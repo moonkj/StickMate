@@ -21,6 +21,10 @@ namespace StickMate.States
         // "착지를 확정할 때"(여기) 양쪽에 재사용되는 공용 히스테리시스 값이다.
         private float _landingConfirmTimer;
 
+        // 이 Fall 페이즈가 시작된 시점의 월드 Y — 착지 확정 시 낙하 높이를 계산해 구르기 이펙트 트리거
+        // (UX_FLOW.md 4절 "구르기(ROLL)") 판정에 사용한다.
+        private float _fallStartWorldY;
+
         public FallState(StickmanBlackboard blackboard)
         {
             _blackboard = blackboard;
@@ -31,6 +35,7 @@ namespace StickMate.States
         public void Enter(StateTransitionContext context)
         {
             _landingConfirmTimer = 0f;
+            _fallStartWorldY = _blackboard.Body != null ? _blackboard.Body.position.y : 0f;
             // TODO(Phase 2): 낙하 포즈(팔다리 늘어짐) 전환 — Active Ragdoll IK 블렌딩.
         }
 
@@ -48,6 +53,16 @@ namespace StickMate.States
             _landingConfirmTimer += deltaTime;
             float grace = _blackboard.Config != null ? _blackboard.Config.fallGraceDuration : 0.1f;
             if (_landingConfirmTimer < grace) return;
+
+            // 착지 확정 — 낙하 높이가 임계값 이상이면 구르기 착지 훅 발행(UX_FLOW.md 4절 "구르기(ROLL)").
+            // 실제 파티클/애니메이션 재생은 Phase 2+ 렌더링 레이어 담당, 여기서는 트리거 조건만 계산한다.
+            float currentWorldY = _blackboard.Body != null ? _blackboard.Body.position.y : _fallStartWorldY;
+            float fallHeight = _fallStartWorldY - currentWorldY;
+            float rollThreshold = _blackboard.Config != null ? _blackboard.Config.rollLandingHeightThreshold : 2f;
+            if (fallHeight >= rollThreshold)
+            {
+                StickmanEventBus.RaiseLandingRollRequested(fallHeight);
+            }
 
             _blackboard.ResetGroundLossTimer();
             float deadzone = _blackboard.Config != null ? _blackboard.Config.moveInputDeadzone : 0.15f;

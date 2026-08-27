@@ -40,9 +40,24 @@ namespace StickMate.Core
         [Tooltip("ragdollSettleSpeedThreshold 이하 속도가 이 시간(초) 이상 유지되어야 실제로 Getup 전이 (순간적인 감속 오탐 방지)")]
         public float ragdollSettleHoldDuration = 0.5f;
 
-        [Header("파쿠르")]
-        [Tooltip("ParkourClimb 진입 판정을 위한 벽/모서리 발판 감지 반경")]
+        [Tooltip("Ragdoll -> Getup 진입 후 직립 포즈로 보간 완료까지 걸리는 기준 시간(초). GetupState._getupProgress가 이 값으로 정규화된다")]
+        public float getupDuration = 0.6f;
+
+        [Tooltip("Getup 중 각 관절이 목표 각도(직립)를 얼마나 적극적으로 따라가는지의 비례 제어 게인(도/초 per 도 오차)")]
+        public float getupMotorGain = 6f;
+
+        [Tooltip("Getup 중 관절 모터가 낼 수 있는 최대 토크")]
+        public float getupMaxMotorTorque = 50f;
+
+        [Header("파쿠르 (docs/UX_FLOW.md 4절)")]
+        [Tooltip("ParkourClimb 진입 판정을 위한 벽/모서리 발판 감지 반경(경계 근접 거리이자, 벽으로 인정할 최소 높이차 겸용)")]
         public float parkourDetectionRadius = 0.5f;
+
+        [Tooltip("ParkourClimb 상태에서 매달린 위치부터 벽 상단까지 올라가는 데 걸리는 기준 시간(초)")]
+        public float parkourClimbDuration = 0.5f;
+
+        [Tooltip("착지 시 이 값(월드 유닛) 이상 낙하했으면 구르기(부드러운 착지) 이벤트를 발행한다. 실제 파티클/애니메이션은 Phase 2+ 렌더링 레이어 담당")]
+        public float rollLandingHeightThreshold = 2f;
 
         [Header("비침해 원칙")]
         [Tooltip("클릭 관통 기본 ON 여부 (원칙 2)")]

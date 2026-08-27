@@ -46,6 +46,32 @@ namespace StickMate.Core
             return false;
         }
 
+        /// <summary>
+        /// RAGDOLL 강제 인터럽트의 단일 진입점(아키텍처 0절). 몸통이든 사지든 어떤 파츠가 외력(충돌)을
+        /// 받으면 이 메서드로 통지되어, 충격량 크기가 StickConfig.ragdollForceThreshold 이상이면 현재
+        /// 능동 상태가 무엇이든(Idle/Walk/Jump/Fall/ParkourClimb/Attack) 즉시 Ragdoll로 강제 전이한다.
+        /// Getup 도중에도 다시 호출되면 재인터럽트된다 — ChangeState는 이미 Ragdoll이어도 Enter()를 다시
+        /// 실행해 _settleTimer를 리셋하므로, "계속 얻어맞으면 계속 ragdoll" 동작이 별도 코드 없이
+        /// 보장된다(GetupState.cs 참고). 루트 파츠는 OnCollisionEnter2D가 직접 호출하고, 사지 등
+        /// 비루트 파츠는 RagdollLimbImpactRelay.cs를 부착하면 같은 경로로 통지된다(실제 프리팹 배선은
+        /// Phase 2 범위 밖).
+        /// </summary>
+        public void ReportExternalImpact(float impulseMagnitude)
+        {
+            if (_isSuspended || _machine == null || _config == null) return;
+            if (impulseMagnitude < _config.ragdollForceThreshold) return;
+            // UX_FLOW.md 31-2 #2 대비 스냅샷 — RagdollState.Enter()가 이 값을 IHasDialogueParams로
+            // 노출해 "윽.../으악!/으아아아악?!" 같은 충격 강도별 대사를 파생시킬 수 있게 한다.
+            if (_blackboard != null) _blackboard.LastImpactMagnitude = impulseMagnitude;
+            _machine.ChangeState(StickmanStateId.Ragdoll, isForcedInterrupt: true);
+        }
+
+        private void OnCollisionEnter2D(Collision2D collision)
+        {
+            if (_body == null) return;
+            ReportExternalImpact(collision.relativeVelocity.magnitude * _body.mass);
+        }
+
         private void Awake()
         {
             _body = GetComponent<Rigidbody2D>();
@@ -91,14 +117,15 @@ namespace StickMate.Core
                 { StickmanStateId.Walk, new WalkState(_blackboard) },
                 { StickmanStateId.Jump, new JumpState(_blackboard) },
                 { StickmanStateId.Fall, new FallState(_blackboard) },
-                // Phase 1 범위 밖 — Phase 0 스텁을 그대로 등록(파라미터 없는 생성자 유지 중).
-                // 전부 등록해두는 이유: StickmanStateMachine.ChangeState()가 미등록 키를 안전하게
-                // 거부하도록 방금 고쳤지만(BUG-M2), 애초에 8종을 다 등록해두면 그 방어 코드를 밟을
-                // 일 자체가 없다.
-                { StickmanStateId.ParkourClimb, new ParkourClimbState() },
+                // Phase 2에서 ParkourClimb/Ragdoll/Getup을 정식 구현하며 Idle/Walk/Jump/Fall과 동일하게
+                // 블랙보드 주입 생성자로 전환했다. Attack만 아직 Phase 3 범위라 파라미터 없는 생성자를
+                // 유지 중이다. 8종을 전부 등록해두는 이유: StickmanStateMachine.ChangeState()가 미등록
+                // 키를 안전하게 거부하도록 이미 고쳤지만(BUG-M2), 애초에 8종을 다 등록해두면 그 방어
+                // 코드를 밟을 일 자체가 없다.
+                { StickmanStateId.ParkourClimb, new ParkourClimbState(_blackboard) },
                 { StickmanStateId.Attack, new AttackState() },
-                { StickmanStateId.Ragdoll, new RagdollState() },
-                { StickmanStateId.Getup, new GetupState() },
+                { StickmanStateId.Ragdoll, new RagdollState(_blackboard) },
+                { StickmanStateId.Getup, new GetupState(_blackboard) },
             };
 
             // BUG-P1-M2 대응(Major, docs/BUG_REPORT_PHASE1.md): 생성과 "최초 상태 활성화"를 분리했다.

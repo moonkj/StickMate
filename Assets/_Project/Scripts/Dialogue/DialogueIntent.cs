@@ -13,24 +13,32 @@ namespace StickMate.Dialogue
     ///    이 컨텍스트는 StickmanStateMachine.ChangeState()가 전이를 "확정"하는 순간에만 발급되어
     ///    해당 상태의 IStickmanState.Enter(context)로 전달된다 (States/IStickmanState.cs 참고).
     ///    즉 DialogueIntent는 사실상 어떤 상태의 Enter() 구현부 안에서만 만들어질 수 있다.
-    /// 2) 대사 문자열 자체도 "상태 확정 이후" 시점에 그 상태(context.To)로부터만 파생되도록 강제하기
-    ///    위해, 생성자가 완성된 문자열을 직접 받지 않고 Func&lt;StickmanStateId, string&gt;
-    ///    (상태 -> 텍스트 매핑 함수)를 받아 그 자리에서 context.To를 넣어 텍스트를 만들어낸다.
-    ///    호출자가 상태와 무관한 임의 문자열을 미리 준비해 끼워 넣는 경로 자체를 없앤다.
+    /// 2) 대사 문자열 자체도 "상태 확정 이후" 시점에 그 상태(context.To)와 그 상태가 노출하는 파라미터
+    ///    (IHasDialogueParams.DialogueParams, BUG-M7 대응)로부터만 파생되도록 강제하기 위해, 생성자가
+    ///    완성된 문자열을 직접 받지 않고 Func&lt;StickmanStateId, object, string&gt;(상태+파라미터 ->
+    ///    텍스트 매핑 함수)를 받아 그 자리에서 만들어낸다. 호출자가 상태와 무관한 임의 문자열/파라미터를
+    ///    미리 준비해 끼워 넣는 경로 자체를 없앤다 — 파라미터는 항상 StickmanStateMachine.CurrentState
+    ///    (=지금 Enter() 중인 그 상태 인스턴스)에서 직접 읽는다(아래 3.5 참고). 파라미터가 필요 없는
+    ///    단순 상태(Idle 유휴 잡담 등)를 위해 Func&lt;StickmanStateId, string&gt;를 받는 편의 생성자도
+    ///    유지한다.
     /// 3) "상태가 중도 취소되면 같은 프레임에 자동 만료": StickmanStateMachine은 ChangeState가
     ///    호출될 때마다 TransitionGeneration을 증가시킨다. DialogueIntent는 생성 시점의 세대를
     ///    스냅샷으로 보관하고, StickmanEventBus.StateTransitioned를 구독해 이후 발생하는 모든 전이
     ///    이벤트에서 "내 세대가 아직 최신인지"를 확인한다. 세대가 바뀌었다면(즉 자신을 만든 전이가
     ///    다른 전이로 추월/취소됨) 같은 프레임 안에서 즉시 만료 처리(IsValid = false)하고
     ///    DialogueExpired 이벤트를 발생시켜 UI 레이어가 말풍선을 즉시 숨기게 한다.
+    /// 3.5) 파라미터 조회(BUG-M7): context.OriginMachine.CurrentState를 IHasDialogueParams로 캐스팅해
+    ///    파라미터 객체를 얻는다. ChangeState()가 Enter() 호출 "전"에 이미 _current를 새 상태로
+    ///    교체해두므로, 이 생성자가 실행되는 시점(=Enter() 구현부 안)에는 CurrentState가 항상 지금
+    ///    확정된 바로 그 상태 인스턴스를 가리킨다 — 즉 호출자가 파라미터를 자유롭게 지어낼 수 없고,
+    ///    실제 상태 객체가 구조적으로 노출한 값만 텍스트에 반영된다.
     /// 4) 외부(UI 등)는 StickmanEventBus.DialogueRequested/DialogueExpired 이벤트만 구독한다 —
     ///    상태머신이나 개별 상태 클래스를 직접 참조하지 않는다 (레이어 분리).
-    ///
-    /// 알려진 한계 (Debugger 리뷰 필요): C# 구조체 특성상 default(StateTransitionContext) 또는
-    /// new StateTransitionContext()로 OriginMachine == null인 "가짜" 컨텍스트가 만들어질 수 있다.
-    /// 이 경우 아래 생성자가 즉시 ArgumentException을 던지므로 크래시 대신 명확한 실패로 막지만,
-    /// 컴파일 타임에 원천 차단하는 수준은 아니다. 더 강한 보증이 필요하면 Phase 2에서
-    /// StateTransitionContext를 발급 1회용 토큰을 가진 클래스로 바꾸는 방안을 검토한다.
+    /// 5) 1회용 발급 토큰(BUG-M1 Phase 2 완결, docs/BUG_REPORT_PHASE0.md): 생성자가
+    ///    context.TryConsumeToken()을 호출해, 같은 StateTransitionContext로 DialogueIntent를 두 번
+    ///    만드는 시도를 InvalidOperationException으로 막는다. StateTransitionContext 자체도
+    ///    readonly struct에서 sealed class로 전환되어(States/IStickmanState.cs 참고)
+    ///    default(...)/new StateTransitionContext() 같은 "공짜 위조"가 컴파일 단계에서부터 불가능하다.
     /// </summary>
     public sealed class DialogueIntent
     {
@@ -60,25 +68,67 @@ namespace StickMate.Dialogue
         /// Enter() 안에서만 이 값을 가질 수 있다.
         /// </param>
         /// <param name="textFromState">
-        /// context.To(확정된 상태)만 입력받는 텍스트 파생 함수. 상태와 무관한 자유 문자열 전달을
-        /// 막기 위해 시그니처를 의도적으로 Func&lt;StickmanStateId, string&gt;로 제한한다.
+        /// context.To(확정된 상태)만 입력받는 텍스트 파생 함수. 파라미터가 필요 없는 단순 상태(예: Idle
+        /// 유휴 잡담)를 위한 편의 오버로드 — 내부적으로 아래 파라미터 포함 생성자에 위임한다.
         /// </param>
         public DialogueIntent(StateTransitionContext context, Func<StickmanStateId, string> textFromState)
+            : this(context, WrapSimpleTextFunc(textFromState))
         {
+        }
+
+        // Func<StickmanStateId,string> -> Func<StickmanStateId,object,string> 어댑터. textFromState가
+        // null이면 그대로 null을 전달해(파라미터 포함 생성자가) 동일한 ArgumentNullException을 던지게 한다.
+        private static Func<StickmanStateId, object, string> WrapSimpleTextFunc(Func<StickmanStateId, string> textFromState)
+        {
+            return textFromState == null ? (Func<StickmanStateId, object, string>)null : (id, _) => textFromState(id);
+        }
+
+        /// <param name="context">
+        /// 상태 전이가 확정된 그 순간의 컨텍스트. StickmanStateMachine.ChangeState() 내부에서만
+        /// 생성되어 IStickmanState.Enter(context)로 전달되므로, 정상적인 경로에서는 상태 구현체의
+        /// Enter() 안에서만 이 값을 가질 수 있다.
+        /// </param>
+        /// <param name="textFromState">
+        /// context.To(확정된 상태)와 그 상태의 파라미터(IHasDialogueParams.DialogueParams, 구현하지
+        /// 않은 상태라면 null)를 입력받는 텍스트 파생 함수(BUG-M7 대응). 상태와 무관한 자유 문자열/
+        /// 파라미터 전달을 막기 위해 파라미터는 항상 context.OriginMachine.CurrentState에서 직접 읽는다.
+        /// </param>
+        public DialogueIntent(StateTransitionContext context, Func<StickmanStateId, object, string> textFromState)
+        {
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context),
+                    "StateTransitionContext는 null일 수 없습니다 — StickmanStateMachine.ChangeState()가 발급한 " +
+                    "컨텍스트만 사용하세요.");
+            }
             if (context.OriginMachine == null)
             {
                 throw new ArgumentException(
                     "StateTransitionContext는 StickmanStateMachine.ChangeState()가 발급한 것이어야 합니다. " +
-                    "default(StateTransitionContext) 등으로 임의 생성된 컨텍스트로는 DialogueIntent를 만들 수 없습니다.",
+                    "OriginMachine이 없는 컨텍스트로는 DialogueIntent를 만들 수 없습니다.",
                     nameof(context));
             }
             if (textFromState == null) throw new ArgumentNullException(nameof(textFromState));
+
+            // BUG-M1 Phase 2 완결: 같은 컨텍스트로 DialogueIntent를 두 번 만드는 시도를 여기서 차단한다.
+            // 검증(null 체크)이 모두 끝난 뒤에만 토큰을 소비해, 무관한 사유로 예외가 나는 경우까지
+            // 토큰을 낭비하지 않는다.
+            if (!context.TryConsumeToken())
+            {
+                throw new InvalidOperationException(
+                    "이 StateTransitionContext는 이미 다른 DialogueIntent를 생성하는 데 소비되었습니다. " +
+                    "같은 상태 전이 확정 시점으로 DialogueIntent를 두 번 만들 수 없습니다(BUG-M1 Phase 2 대응).");
+            }
 
             StateId = context.To;
             CreatedFrame = context.ConfirmedFrame;
             _transitionGeneration = context.TransitionGeneration;
             _originMachine = context.OriginMachine;
-            Text = textFromState(context.To);
+
+            // BUG-M7 대응: 파라미터는 호출자가 넘기는 게 아니라 "지금 실제로 Enter() 중인 상태 인스턴스"
+            // 에서 직접 읽는다(StickmanStateMachine.CurrentState 참고) — 상태와 무관한 파라미터 위조 불가.
+            object dialogueParams = (_originMachine.CurrentState as IHasDialogueParams)?.DialogueParams;
+            Text = textFromState(context.To, dialogueParams);
 
             // 이후 이 전이가 추월/취소되는 첫 순간을 감지하기 위해 구독한다. Expire()에서 반드시 해제한다.
             StickmanEventBus.StateTransitioned += OnAnyStateTransitioned;

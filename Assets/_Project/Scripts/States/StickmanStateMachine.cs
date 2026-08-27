@@ -52,6 +52,17 @@ namespace StickMate.States
         internal int CurrentTransitionGeneration => _transitionGeneration;
 
         /// <summary>
+        /// 지금 활성화된 상태 인스턴스 그 자체(BUG-M7 대응, docs/BUG_REPORT_PHASE0.md). DialogueIntent가
+        /// 파라미터 기반 텍스트를 파생시킬 때, 호출자가 임의로 넘긴 객체가 아니라 "실제로 지금 Enter()가
+        /// 실행 중인 그 상태 인스턴스"에서 직접 IHasDialogueParams.DialogueParams를 읽어오기 위해
+        /// 노출한다 — ChangeState()가 Enter() 호출 전에 이미 _current를 새 상태로 교체해두므로, Enter()
+        /// 구현부 안에서 이 프로퍼티를 읽으면 항상 "지금 확정된 바로 그 상태"를 가리킨다. internal로 좁혀
+        /// 같은 어셈블리(DialogueIntent)만 접근 가능하게 한다 — CurrentTransitionGeneration과 동일한
+        /// 캡슐화 수준.
+        /// </summary>
+        internal IStickmanState CurrentState => _current;
+
+        /// <summary>
         /// 생성만 하고 아직 어떤 상태도 활성화하지 않는다(Enter()가 호출되지 않음).
         /// BUG-P1-M2 대응(Major, docs/BUG_REPORT_PHASE1.md, Architect 권고): 이전에는 생성자가 즉시
         /// ChangeState(initialState)를 호출해, 호출자가 StickmanBlackboard.Machine을 아직 배선하기

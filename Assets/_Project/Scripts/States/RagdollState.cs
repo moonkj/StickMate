@@ -1,4 +1,5 @@
 using StickMate.Core;
+using StickMate.Dialogue;
 
 namespace StickMate.States
 {
@@ -11,34 +12,87 @@ namespace StickMate.States
     /// 이는 인터럽트형 전이이므로 진행 중이던 모션/대사가 무엇이든 취소된다. 이 전이를 호출할 때는
     /// 반드시 StateMachine.ChangeState(StickmanStateId.Ragdoll, isForcedInterrupt: true)로 호출해
     /// UI 레이어가 "정상 종료"와 "강제 취소"를 구분해 연출할 수 있게 한다 (UX_FLOW.md 5절/9절-2).
+    /// 실제 진입 트리거는 StickmanAgent.ReportExternalImpact()(충돌 콜백 기반, Core/StickmanAgent.cs와
+    /// Core/RagdollLimbImpactRelay.cs 참고)가 현재 상태와 무관하게 단일 진입점으로 처리한다 — 이 상태
+    /// 자신은 "이미 Ragdoll로 확정된 뒤"의 물리 위임/기상 판정만 책임진다.
     ///
     /// 이탈 조건 (-> Getup): 몸통/사지 각 Rigidbody2D 속도 크기가 StickConfig.ragdollSettleSpeedThreshold
     /// 이하로 StickConfig.ragdollSettleHoldDuration초 이상 "지속"되어야 한다. 순간적으로만 느려졌다가
     /// 다시 빨라지면(예: 굴러가다 재가속) 카운터가 리셋되고 Ragdoll을 유지한다 — 오탐(너무 이른 기상) 방지.
-    ///
-    /// Phase 0에서는 스캐폴딩이므로 실제 속도 측정/누적 타이머 로직은 비워두고 TODO로 남긴다.
+    /// 속도 측정은 RagdollRig.GetMaxSpeed()(전신 중 최댓값)를 사용한다.
     /// </summary>
-    public sealed class RagdollState : IStickmanState
+    public sealed class RagdollState : IStickmanState, IHasDialogueParams
     {
-        public StickmanStateId StateId => StickmanStateId.Ragdoll;
+        private readonly StickmanBlackboard _blackboard;
 
-        // TODO(Phase 2): ragdollSettleSpeedThreshold 이하 속도가 유지된 누적 시간(초).
+        // ragdollSettleSpeedThreshold 이하 속도가 유지된 누적 시간(초).
         private float _settleTimer;
+
+        /// <summary>
+        /// BUG-M7 파라미터 파이프라인 시연(docs/UX_FLOW.md 31-2 #2). ImpactRatio = 이번 충격량 /
+        /// ragdollForceThreshold — "임계값 대비 배율" 단위로 노출해 대사 매핑 함수가 31-2 표의
+        /// 3구간(1.0~2.0 / 2.0~4.0 / 4.0 초과)을 그대로 재사용할 수 있게 한다.
+        /// </summary>
+        public sealed class RagdollDialogueParams
+        {
+            public float ImpactRatio;
+        }
+
+        private readonly RagdollDialogueParams _dialogueParams = new RagdollDialogueParams();
+
+        public object DialogueParams => _dialogueParams;
+
+        public RagdollState(StickmanBlackboard blackboard)
+        {
+            _blackboard = blackboard;
+        }
+
+        public StickmanStateId StateId => StickmanStateId.Ragdoll;
 
         public void Enter(StateTransitionContext context)
         {
             _settleTimer = 0f;
-            // TODO(Phase 2): 모든 Joint2D의 모터/목표 각도 추종을 끄고 전신을 순수 물리 낙하물로 전환.
-            // 대사 정책: 이 상태에서 DialogueIntent를 만든다면 "피격/충격" 계열 대사만 허용
-            // (예: 비명, 신음) — 상태가 Ragdoll로 확정된 뒤에만 파생되므로 원칙 1을 자동 준수한다.
+            // 모든 관절의 모터/목표 각도 추종을 끄고 전신을 순수 물리 낙하물로 전환.
+            _blackboard.GetRagdollRig()?.EnterRagdoll();
+
+            // BUG-M7 대응 시연(UX_FLOW.md 31-2 #2) — StickmanAgent.ReportExternalImpact()가 이 전이
+            // 직전에 스냅샷해둔 충격량을 임계값 대비 배율로 환산해 파라미터로 노출하고, 그 값 하나로
+            // "윽.../으악!/으아아아악?!" 세 갈래를 갈라 파생시킨다(같은 매핑 함수, 같은 스냅샷 — 31-1 원칙).
+            float threshold = _blackboard.Config != null ? _blackboard.Config.ragdollForceThreshold : 8f;
+            _dialogueParams.ImpactRatio = threshold > 0f ? _blackboard.LastImpactMagnitude / threshold : 0f;
+
+            _ = new DialogueIntent(context, (id, dialogueParams) =>
+            {
+                var p = dialogueParams as RagdollDialogueParams;
+                float ratio = p != null ? p.ImpactRatio : 0f;
+                if (ratio < 2.0f) return "윽...!";
+                if (ratio < 4.0f) return "으악!";
+                return "으아아아악?!";
+            });
         }
 
         public void Tick(float deltaTime)
         {
-            // TODO(Phase 2):
-            // 1. 전신 Rigidbody2D 속도 크기 측정.
-            // 2. StickConfig.ragdollSettleSpeedThreshold 이하이면 _settleTimer += deltaTime, 아니면 0으로 리셋.
-            // 3. _settleTimer >= StickConfig.ragdollSettleHoldDuration 이면 StateMachine.ChangeState(Getup).
+            RagdollRig rig = _blackboard.GetRagdollRig();
+            if (rig == null) return;
+
+            float speed = rig.GetMaxSpeed();
+            float settleThreshold = _blackboard.Config != null ? _blackboard.Config.ragdollSettleSpeedThreshold : 0.3f;
+
+            if (speed <= settleThreshold)
+            {
+                _settleTimer += deltaTime;
+            }
+            else
+            {
+                _settleTimer = 0f; // 오탐 방지: 순간적으로만 느려진 경우는 리셋하고 Ragdoll 유지
+            }
+
+            float holdDuration = _blackboard.Config != null ? _blackboard.Config.ragdollSettleHoldDuration : 0.5f;
+            if (_settleTimer >= holdDuration)
+            {
+                _blackboard.Machine.ChangeState(StickmanStateId.Getup);
+            }
         }
 
         public void Exit() { }

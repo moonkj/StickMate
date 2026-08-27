@@ -41,6 +41,10 @@ namespace StickMate.States
 
             // BUG-P1-M5 대응: 접지 중이거나 코요테 타임 이내일 때만 점프 허용(StickmanStateMachine.cs
             // 전이 규칙 주석 참고, Architect 결정으로 의도된 코요테 타임 채택).
+            // 참고: Idle의 점프(AutoWanderController "제자리 점프" 26-1)는 방향 의도가 없는 수직 점프이므로
+            // ParkourClimb 판정(방향 필요)을 의도적으로 건너뛴다 — 애매한 방향으로 벽을 잡으려다 허공에
+            // 뜬 채 멈추는 것보다 평범한 수직 점프가 안전하다(UX_FLOW.md 4절 원칙). 파쿠르 진입은
+            // WalkState.cs(진행 방향이 명확한 경우)만 담당한다.
             if (_blackboard.JumpPressed && _blackboard.IsWithinCoyoteTime(info))
             {
                 _blackboard.Machine.ChangeState(StickmanStateId.Jump);

@@ -1,3 +1,5 @@
+**Phase 1 최종 승인 — Phase 2(Ragdoll/파쿠르/DialogueIntent) 착수 가능**
+
 # StickMate — Phase 1 버그 리포트 (3차, 타겟 검토, Debugger, Teammate2)
 > 작성: Debugger · 작성일: 2026-08-27 · 대상: 커밋 `6ee9be4`("Phase 1 2차 반려 수정: 자율 배회 AI 도입 + 발판 폴백 안전망")
 > 범위: **전면 재검토 아님.** 신규 `States/AutoWanderController.cs`, `States/IMovementIntentSource.cs`, `Platform/FallbackPlatformWindowService.cs`와 수정된 `Core/StickmanAgent.cs`, `Core/StickConfig.cs`, `Core/StickmanEventBus.cs`, `Platform/FootholdPoller.cs`, `States/GroundSensor.cs`, `States/IdleState.cs`, `States/StickmanBlackboard.cs`, `States/StickmanStateMachine.cs`, `States/WalkState.cs`만 적대적으로 재검증.
@@ -62,3 +64,34 @@ Windows 실기기/실빌드 환경 부재로 H1~H6은 여전히 미검증 상태
 ## 결론
 
 **BUG-P1-R3-B1(Blocker) 1건 해결 전까지 Phase 2 착수 보류 — Coder로 재반려.** 이 항목을 제외한 나머지(BUG-P1-B1/B2 본연의 재현 시나리오, M2 배선, 신규 파일 3종의 스펙 정합성)는 전부 검증 통과했다. BUG-P1-R3-B1의 수정안 1번(`FallbackPlatformWindowService`가 항상 바닥 안전망을 덧붙이도록 변경)은 파일 하나, 수십 줄 규모로 예상되어 반려 사이클이 길어지지 않을 것으로 판단한다.
+
+---
+
+## 4차 최종 확인 (Debugger, 매우 좁은 타겟 — 핫픽스 커밋만 적대적 재검증)
+
+> 대상: 커밋 `b901020`("Phase 1 핫픽스: 발판 틈새 무한낙하 + 안전망 좌표계 버그 수정") 단독. Architect가 BUG-P1-R3-B1을 직접 수정. `git show b901020 --stat` 확인 결과 변경 파일은 `Assets/_Project/Scripts/Platform/FallbackPlatformWindowService.cs`(핵심 로직), `Assets/_Project/Scripts/Core/StickmanAgent.cs`(호출부 1줄), 그리고 `Tasklist.md`/`docs/BUG_REPORT_PHASE1_R3.md`/`process.md`(기록용) — 예고된 범위와 정확히 일치. 전면 재검토는 수행하지 않았다.
+
+**결론: 4건 전부 통과. 신규 이슈 없음.**
+
+| # | 점검 항목 | 결론 |
+|---|---|---|
+| 1 | BUG-P1-R3-B1 실제 해결 여부 | **해결 확인.** `EnumerateFootholds()`는 이제 `_inner.EnumerateFootholds()`의 결과(0개든 N개든 무관)를 `_combined`에 전부 복사한 뒤 `GetFallbackFoothold()`를 **항상 마지막에 Add**한다(대체가 아니라 무조건 추가). `GroundSensor.Sense()`의 for 루프를 직접 재확인: `minLeftOs`/`maxRightOs` 누적은 매 항목마다 계속되지만, `if (grounded) continue;`로 "현재 발판" 판정 자체는 **리스트에서 처음 매치되는 항목 하나**로 고정된다. 안전망은 항상 리스트 끝(마지막 인덱스)에 추가되므로 실제 발판이 하나라도 그 앞에 있으면 반드시 먼저 매치되어 채택되고, 안전망은 "발밑에 매치되는 실제 발판이 하나도 없을 때"(= 발판 사이 틈에서 낙하 중일 때 화면 바닥까지 떨어졌을 때)만 매치된다. 안전망 자체도 `withinX` 조건이 `[0, width]` 전체 폭이라 어떤 X좌표에서 낙하하든 결국 화면 바닥에서 잡힌다 — 발판 사이 틈 무한낙하 시나리오(BUG-P1-R3-B1 재현 절차 1~7)가 실제로 닫힌다. 우선순위 로직에 편향/누락 없음. |
+| 2 | 좌표계 수정의 정확성 | **정확함, 독립 검산 완료(자기검토 편향 없음).** `ScreenCoordinateConverter.WorldToOsScreen`을 직접 재도출: `osY = (Screen.height - unityScreen.y) * dpi` — unityY=0(Unity 스크린 좌하단, 시각적 화면 맨 아래)일 때 `osY = Screen.height*dpi`(최대값), unityY=Screen.height(시각적 맨 위)일 때 `osY = 0`. 즉 **osY=0은 화면 맨 위, osY=Screen.height*dpi는 화면 맨 아래**임을 문서 주석이 아니라 수식 자체로 재확인했다. 구코드는 `Rect(0, 0, width, height)` → `r.y=0` → 화면 맨 위에 배치(버그 확정). 신코드는 `height = Screen.height*dpi`로 재정의한 뒤 `Rect(0, height - FallbackFootholdHeight, width, FallbackFootholdHeight)` → `r.y = Screen.height*dpi - 40`, `r.y + r.height = Screen.height*dpi`(정확히 osY 최대값, 즉 화면의 물리적 맨 아래 경계와 일치). `GroundSensor.Sense()`가 착지 판정에 쓰는 좌표는 `r.y`(발판 "상단")인데, 그 값이 `Screen.height*dpi`에서 두께(40)만큼만 안쪽으로 들어간 지점이므로 명백히 "화면 하단 근처"다. 반대 방향으로 틀렸을 가능성(예: 여전히 위쪽이거나 화면 중앙)을 열어두고 재검산했으나 수식상 그럴 여지가 없음 — 수정 방향과 계산 모두 맞다. |
+| 3 | 회귀: `ScreenLeftWorldX/RightWorldX` 전체 확장이 `isTrueScreenEdge`/`CheckScreenBoundsOrFall`에 주는 영향 | **부작용 있음 — 그러나 신규 버그가 아니라 R3 리포트가 이미 명시적으로 권고·예견한 의도된 트레이드오프임을 확인.** 안전망이 이제 항상 `[0, width]` 전체 폭으로 리스트에 포함되므로 `GroundSensor.Sense()`의 `minLeftOs`/`maxRightOs` 누적 결과, `ScreenLeftWorldX`/`ScreenRightWorldX`는 (멀티모니터로 실제 창이 화면 밖으로 확장되는 예외적 경우를 빼면) 사실상 항상 물리적 화면 전체 폭과 같아진다. 결과적으로 창 하나만 떠 있고 그 창이 화면 끝에 닿지 않는 경우 `AutoWanderController.IsNearFootholdEdge`의 `isTrueScreenEdge` 판정이 **false로 정확히 바뀐다**(그 창의 가장자리 ≠ 화면 진짜 끝) — 이는 오히려 핫픽스 이전에 존재하던 별개의 숨은 결함(발판이 1개뿐이면 그 발판 자신의 경계가 `ScreenRightWorldX`와 항상 같아져 `isTrueScreenEdge`가 항상 true로 오판되고, 그 결과 26-2의 10% 점프 확률이 그런 상황에서는 항상 0%로 억눌리던 문제)을 부수적으로 고친 것이다. 본 리포트 3차 검토 결론(수정안 1번 항목, "부작용: ScreenLeftWorldX/RightWorldX가 사실상 항상 화면 전체 폭이 되는데, 이는 오히려 올바른 방향이다")에서 이미 이 정확한 트레이드오프를 예견하고 권고했던 그대로다. `CheckScreenBoundsOrFall`도 같은 이유로 발동 빈도가 줄어들지만, 이 함수의 계약("모든 발판의 합집합 경계 이탈 시 Fall")과 모순되지 않으며 실질적으로 "가상 데스크톱 자체를 벗어남" 검사로 수렴한다 — 의도된 방향. **결론: 새로운 버그 아님, 의도된 트레이드오프.** |
+| 4 | `StickConfig config = null` 옵셔널 파라미터의 다른 호출부 누락 여부 | **문제 없음.** `grep -rn "FallbackPlatformWindowService(" --include="*.cs"` 결과 프로젝트 전체에서 생성자 정의(`FallbackPlatformWindowService.cs:59`)와 호출부(`StickmanAgent.cs:225`) 단 2곳뿐이며, 유일한 호출부가 이미 `_config`를 명시적으로 넘긴다(`new FallbackPlatformWindowService(new Win32WindowService(), _config)`). `_config`는 `[SerializeField]`로 `Awake()` 이전에 역직렬화가 끝나 `CreatePlatformService()` 호출 시점엔 이미 값이 채워져 있다(인스펙터에서 프리팹 참조를 비워두면 null일 수 있으나 이는 콘텐츠 설정 문제이지 이번 코드 변경과 무관하며, 그 경우도 생성자/`GetFallbackFoothold()`가 `dpi=1` 폴백으로 안전하게 처리함). dpi=1 기본값으로 "조용히 다르게 동작"하는 미배선 호출부는 존재하지 않는다. |
+
+### 컴파일 재검증 (클린 재빌드로 독립 확인)
+
+3차 리포트가 남긴 "Library 캐시 재사용으로 경고 카운트 독립 재확인 못함" caveat을 이번에 해소했다. 첫 배치모드 실행은 `Asset File Changes: new=0, changed=0`으로 캐시 히트였으나, `Library/ScriptAssemblies`(+`PlayerDataCache`/`Bee`)를 강제 삭제한 뒤 재실행한 두 번째 배치모드 컴파일(`script compilation time: 3.416138s`, 실제 재컴파일 확인)에서:
+
+- `error CS`: **0건**
+- `warning CS`: **2종 2건**(에디터/플레이어 어셈블리 각각 1회씩, 중복 집계 아님) — `RagdollState.cs(26,23) CS0414 _settleTimer 미사용`, `GetupState.cs(23,23) CS0414 _getupProgress 미사용`. 2차 리포트가 보고한 기존 경고 2건과 정확히 일치, 신규 경고 없음.
+- `Batchmode quit successfully invoked` 정상 종료.
+
+**기준선(에러 0/경고 2) 클린 재빌드로 최종 확인 완료.**
+
+### 4차 결론
+
+핫픽스 커밋 `b901020`은 BUG-P1-R3-B1을 코드 로직·좌표계 계산 모두 정확하게 해결했다. 항목 3에서 발견된 "화면 경계 판정 범위 확장" 부작용은 신규 버그가 아니라 3차 리포트가 사전에 예견·권고한 트레이드오프이며, 오히려 기존에 존재하던 별개의 미보고 결함(단일 발판 상황에서 `isTrueScreenEdge` 상시 오판)을 부수적으로 개선했다. 다른 호출부의 옵셔널 파라미터 누락 위험도 없다. 클린 재빌드로 에러 0/경고 2(기존과 동일) 기준선을 독립적으로 재확인했다.
+
+**Architect 재확인 불필요 — Phase 1 최종 승인.**

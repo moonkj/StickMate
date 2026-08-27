@@ -11,20 +11,29 @@ namespace StickMate.States
     /// 발급 즉시 해당 상태의 Enter(context)로 전달된다 — 즉 DialogueIntent는 사실상
     /// IStickmanState.Enter() 구현부 안에서만 만들어질 수 있다.
     ///
-    /// 알려진 한계(Debugger 리뷰, docs/BUG_REPORT_PHASE0.md BUG-M1): 애초 우려했던 default(StateTransitionContext)
-    /// 우회보다 실제 위험 범위가 더 넓었다 — 생성자와 필드가 모두 public이면 Enter() 밖의 어떤 코드든
-    /// "머신 참조 하나"만 있으면 TransitionGeneration이 현재 세대와 정확히 일치하는 "진짜처럼 통과하는"
-    /// 컨텍스트를 위조할 수 있어, ArgumentException 가드(OriginMachine == null 검사)를 그대로 우회한다.
-    /// 이는 원칙 1(행동-텍스트 싱크) 방어선을 실질적으로 무력화할 수 있는 경로였다.
-    /// 2026-08-27 Coder 대응(BUG-M1 최소 비용안, Debugger/Architect 권고 반영): 생성자와 모든 필드를
-    /// public에서 internal로 좁혔다 — 프로젝트에 별도 asmdef가 없어 States/Dialogue 네임스페이스가
-    /// 전부 같은 기본 어셈블리(Assembly-CSharp)에서 컴파일되므로 기존 호출부(DialogueIntent 등)는
-    /// 그대로 동작한다. 단, 이 조치는 "다른 어셈블리에서의 위조"만 막을 뿐 같은 어셈블리 내 임의 코드가
-    /// internal 생성자를 호출하는 것까지는 막지 못하는 절반의 방어라는 한계를 Debugger가 이미 명시했다
-    /// (Tasklist.md 교차 레이어 로그 BUG-M1 참고). 완전한 보증은 여전히 Phase 2의 "발급 1회용 토큰을
-    /// 가진 sealed 클래스" 전환으로 미룬다.
+    /// 이력(BUG-M1, docs/BUG_REPORT_PHASE0.md): 원래는 readonly struct였다. 구조체는 항상
+    /// default(StateTransitionContext)/new StateTransitionContext()로 "OriginMachine == null"인
+    /// 가짜 인스턴스를 만들 수 있었고, 설령 생성자/필드를 internal로 좁혀도(1차 대응) "머신 참조 하나"만
+    /// 있으면 TransitionGeneration이 현재 세대와 정확히 일치하는 "진짜처럼 통과하는" 컨텍스트를
+    /// 위조해 같은 컨텍스트로 DialogueIntent를 여러 번(또는 Enter() 밖에서) 만들 수 있었다.
+    /// 2026-08-27 Coder 대응(BUG-M1 Phase 2 완결, Debugger/Architect 합의사항 — "발급 1회용 토큰을 가진
+    /// sealed 클래스"로 전환):
+    ///   1) struct -> sealed class. 클래스는 명시적으로 선언한 생성자만 존재하므로(암묵적 매개변수 없는
+    ///      public 생성자가 생기지 않음) default(StateTransitionContext)/new StateTransitionContext()류의
+    ///      "공짜 위조"는 애초에 컴파일되지 않는다. 유일한 생성자는 여전히 internal이라 접근 범위도 좁다.
+    ///      (기존 IStickmanState.Enter(StateTransitionContext context) 시그니처는 타입 이름이 그대로라
+    ///      변경 없음 — 호출부/구현부 어디도 손댈 필요가 없다.)
+    ///   2) 1회용 발급 토큰(<see cref="TryConsumeToken"/>) 추가. DialogueIntent 생성자가 텍스트를
+    ///      만들기 직전에 이 토큰을 소비하며, 같은 컨텍스트로 두 번째 DialogueIntent를 만들려는 시도는
+    ///      항상 실패한다 — "같은 전이 확정 시점을 재사용해 대사를 여러 번 위조"하는 경로를 원천 차단.
+    /// 남은 한계(정직하게 문서화): 이 프로젝트에 asmdef 분리가 없어 States/Dialogue가 전부 같은
+    /// 어셈블리(Assembly-CSharp)로 컴파일되므로, 같은 어셈블리 내부 코드가 internal 생성자를 직접
+    /// 호출해 임의의 From/To/OriginMachine으로 컨텍스트를 새로 찍어내는 것 자체는 여전히 가능하다
+    /// (컴파일러 수준에서 "발급자는 오직 ChangeState뿐"임을 강제하려면 asmdef 분리가 필요). 다만 이제는
+    /// 그런 시도가 "같은 컨텍스트 재사용"이 아니라 "완전히 새로운 컨텍스트를 처음부터 조작"하는 훨씬
+    /// 노골적인 코드가 되므로, 코드 리뷰로 걸러내기 쉬워졌다는 점에서 방어선이 실질적으로 강화되었다.
     /// </summary>
-    public readonly struct StateTransitionContext
+    public sealed class StateTransitionContext
     {
         internal readonly StickmanStateId From;
         internal readonly StickmanStateId To;
@@ -45,6 +54,10 @@ namespace StickMate.States
         /// </summary>
         internal readonly StickmanStateMachine OriginMachine;
 
+        /// <summary>BUG-M1 Phase 2 완결 — 1회용 발급 토큰. TryConsumeToken()이 이미 한 번 성공적으로
+        /// 소비했는지를 추적한다.</summary>
+        private bool _tokenConsumed;
+
         internal StateTransitionContext(StickmanStateId from, StickmanStateId to, int confirmedFrame, int transitionGeneration, StickmanStateMachine originMachine)
         {
             From = from;
@@ -52,6 +65,19 @@ namespace StickMate.States
             ConfirmedFrame = confirmedFrame;
             TransitionGeneration = transitionGeneration;
             OriginMachine = originMachine;
+        }
+
+        /// <summary>
+        /// 이 컨텍스트의 1회용 발급 토큰을 소비한다. 최초 호출만 true를 반환하고, 그 이후로는 항상
+        /// false를 반환한다 — DialogueIntent 생성자가 이 메서드를 통해 "같은 전이 확정 시점(컨텍스트)으로
+        /// DialogueIntent가 이미 만들어진 적이 있는지"를 확인해, 같은 컨텍스트로 대사를 두 번 만드는
+        /// 경로를 구조적으로 막는다(BUG-M1 Phase 2 완결).
+        /// </summary>
+        internal bool TryConsumeToken()
+        {
+            if (_tokenConsumed) return false;
+            _tokenConsumed = true;
+            return true;
         }
     }
 

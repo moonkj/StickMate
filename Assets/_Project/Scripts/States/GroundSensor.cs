@@ -16,6 +16,11 @@ namespace StickMate.States
     /// </summary>
     public static class GroundSensor
     {
+        // ParkourClimb 벽 탐지(TryFindClimbableWall)에서, 경계 건너편 발판을 "충분히 가깝다"고 인정하는
+        // 탐색 폭을 parkourDetectionRadius의 배수로 정의하는 구현 세부 상수. AutoWanderController의
+        // ScreenEdgeEpsilon과 같은 성격(디자이너 튜닝 값이 아니라 휴리스틱 여유값)이라 StickConfig가
+        // 아니라 여기 상수로 둔다 — 실제 프리팹/씬으로 검증되면 조정될 수 있다.
+        private const float AdjacentFootholdSearchRadiusMultiplier = 4f;
         public readonly struct GroundInfo
         {
             /// <summary>캐릭터 발이 어떤 발판 상단의 접지 허용 오차(StickConfig.groundSnapTolerance) 안에 있는지.</summary>
@@ -123,6 +128,79 @@ namespace StickMate.States
 
             return new GroundInfo(grounded, groundWorldY, true, screenLeftWorldX, screenRightWorldX,
                 currentFootholdLeftWorldX, currentFootholdRightWorldX);
+        }
+
+        /// <summary>
+        /// ParkourClimb 진입 판정(아키텍처 0절, UX_FLOW.md 4절): 지금 딛고 있는 발판(info)의 진행방향
+        /// 경계 근처(parkourDetectionRadius 이내)에, 상단이 지금 발판보다 눈에 띄게(parkourDetectionRadius
+        /// 이상) 높은 다른 발판이 있는지 찾는다. 있으면 그 발판(핸들 포함, 이후 등반 중 "잡을 곳이
+        /// 사라졌는지" 재확인용)과 상단 월드 Y를 반환한다("벽"으로 간주). 비슷하거나 더 낮은 발판은
+        /// 파쿠르 대상이 아니라 평범한 점프/낙하 대상이므로 제외한다.
+        /// </summary>
+        public static bool TryFindClimbableWall(Camera cam, Vector2 footWorldPos, GroundInfo info, int direction,
+            IReadOnlyList<PlatformFoothold> footholds, StickConfig config, out PlatformFoothold wallFoothold, out float wallTopWorldY)
+        {
+            wallFoothold = default;
+            wallTopWorldY = 0f;
+            if (cam == null || !info.Grounded || footholds == null || footholds.Count == 0) return false;
+
+            float detectionRadius = config != null ? config.parkourDetectionRadius : 0.5f;
+            float edgeX = direction > 0 ? info.CurrentFootholdRightWorldX : info.CurrentFootholdLeftWorldX;
+            float distanceToEdge = direction > 0 ? edgeX - footWorldPos.x : footWorldPos.x - edgeX;
+            if (distanceToEdge > detectionRadius) return false; // 아직 경계 근처가 아님
+
+            _ = ScreenCoordinateConverter.WorldToOsScreen(cam, footWorldPos, config, out float depth);
+            float searchSlack = detectionRadius * AdjacentFootholdSearchRadiusMultiplier;
+            float bestTopY = float.NegativeInfinity;
+            bool found = false;
+
+            for (int i = 0; i < footholds.Count; i++)
+            {
+                PlatformFoothold fh = footholds[i];
+                Rect r = fh.ScreenRect;
+                Vector3 topLeftWorld = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(r.x, r.y), depth, config);
+                Vector3 topRightWorld = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(r.x + r.width, r.y), depth, config);
+
+                bool horizontallyNear = direction > 0
+                    ? topLeftWorld.x >= edgeX - detectionRadius && topLeftWorld.x <= edgeX + searchSlack
+                    : topRightWorld.x <= edgeX + detectionRadius && topRightWorld.x >= edgeX - searchSlack;
+                if (!horizontallyNear) continue;
+
+                if (topLeftWorld.y - info.GroundWorldY < detectionRadius) continue; // 충분히 높지 않음(파쿠르 대상 아님)
+
+                if (topLeftWorld.y > bestTopY)
+                {
+                    bestTopY = topLeftWorld.y;
+                    wallFoothold = fh;
+                    found = true;
+                }
+            }
+
+            if (found) wallTopWorldY = bestTopY;
+            return found;
+        }
+
+        /// <summary>
+        /// ParkourClimb 등반 중, handle로 식별된 발판이 캐시에 여전히 존재하는지 재확인하고 존재하면
+        /// 그 발판의 최신 상단 월드 Y를 반환한다(창이 이동했을 수 있으므로 매 프레임 재계산). 존재하지
+        /// 않으면(창이 닫히거나 이동해 사라짐) false — "잡을 곳이 사라짐" 실패 처리(UX_FLOW.md 4절)에 사용.
+        /// </summary>
+        public static bool TryGetFootholdTopWorldY(Camera cam, Vector2 refWorldPos, long handle,
+            IReadOnlyList<PlatformFoothold> footholds, StickConfig config, out float topWorldY)
+        {
+            topWorldY = 0f;
+            if (cam == null || footholds == null) return false;
+
+            for (int i = 0; i < footholds.Count; i++)
+            {
+                if (footholds[i].Handle != handle) continue;
+                Rect r = footholds[i].ScreenRect;
+                _ = ScreenCoordinateConverter.WorldToOsScreen(cam, refWorldPos, config, out float depth);
+                Vector3 topWorld = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(r.x, r.y), depth, config);
+                topWorldY = topWorld.y;
+                return true;
+            }
+            return false;
         }
     }
 }

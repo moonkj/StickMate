@@ -37,6 +37,20 @@ namespace StickMate.States
             // 전이 규칙 주석 참고, Architect 결정으로 의도된 코요테 타임 채택).
             if (_blackboard.JumpPressed && _blackboard.IsWithinCoyoteTime(info))
             {
+                // ParkourClimb 진입 판정(아키텍처 0절, UX_FLOW.md 4절/26-2): AutoWanderController가
+                // 발판 경계에서 발생시키는 JumpRequested 펄스가, 마침 진행방향에 그보다 눈에 띄게 높은
+                // 발판(벽)이 있을 때 자연스럽게 등반으로 이어지는 확장. info.Grounded를 명시적으로
+                // 요구해 공중(코요테 타임)에서는 벽을 잡지 않도록 한다.
+                if (info.Grounded)
+                {
+                    int climbDirection = _blackboard.MoveInputX >= 0f ? 1 : -1;
+                    if (_blackboard.TryFindClimbableWall(info, climbDirection, out _, out _))
+                    {
+                        _blackboard.Machine.ChangeState(StickmanStateId.ParkourClimb);
+                        return;
+                    }
+                }
+
                 _blackboard.Machine.ChangeState(StickmanStateId.Jump);
                 return;
             }

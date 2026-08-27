@@ -95,6 +95,14 @@ namespace StickMate.Core
         /// <summary>AutoWanderController가 두리번거리기/앉기·하품 트리거 조건을 판정했을 때 발생(UX_FLOW.md 26-3절).</summary>
         public static event Action<WanderAmbientMotion> WanderAmbientMotionRequested;
 
+        /// <summary>
+        /// FallState가 착지를 확정한 순간, 낙하 높이가 StickConfig.rollLandingHeightThreshold 이상이었을
+        /// 때 발생(UX_FLOW.md 4절 "구르기(ROLL)"). 페이로드는 실제 낙하 높이(월드 유닛). 실제 구르기
+        /// 파티클/애니메이션 재생은 Phase 2+ 렌더링 레이어가 이 이벤트를 구독해 담당한다 — 지금은 아무도
+        /// 구독하지 않아도 무해(트리거 조건 계산 자체가 지금 확정해두는 목적).
+        /// </summary>
+        public static event Action<float> LandingRollRequested;
+
         public static void RaiseStateTransitioned(StickmanStateId from, StickmanStateId to, bool isForcedInterrupt = false)
             => StateTransitioned?.Invoke(new StateTransitionEvent(from, to, isForcedInterrupt));
 
@@ -112,5 +120,8 @@ namespace StickMate.Core
 
         public static void RaiseWanderAmbientMotionRequested(WanderAmbientMotion motion)
             => WanderAmbientMotionRequested?.Invoke(motion);
+
+        public static void RaiseLandingRollRequested(float fallHeight)
+            => LandingRollRequested?.Invoke(fallHeight);
     }
 }

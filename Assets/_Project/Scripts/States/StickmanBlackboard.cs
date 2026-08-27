@@ -26,6 +26,14 @@ namespace StickMate.States
         public FootholdPoller FootholdPoller;
 
         /// <summary>
+        /// StickmanAgent.ReportExternalImpact()가 RAGDOLL로 강제 전이시키기 직전에 기록하는 충격량
+        /// 스냅샷(UX_FLOW.md 31-2 #2 "Ragdoll impactMagnitude" 파라미터용). RagdollState.Enter()가
+        /// 이 값을 StickConfig.ragdollForceThreshold로 나눈 배율을 IHasDialogueParams로 노출해,
+        /// 대사 강도와 실제 충격 강도가 항상 같은 파라미터에서 파생되도록 한다(31-1 원칙).
+        /// </summary>
+        public float LastImpactMagnitude;
+
+        /// <summary>
         /// 이동 의도의 유일한 출처(BUG-P1-B2 대응, docs/BUG_REPORT_PHASE1.md Blocker). 예전에는
         /// StickmanAgent.Update()가 UnityEngine.Input.GetAxisRaw/GetButtonDown을 직접 읽어
         /// MoveInputX/JumpPressed 필드에 대입했지만, 키보드 의존은 실제 분리 오버레이(WS_EX_NOACTIVATE)가
@@ -45,6 +53,10 @@ namespace StickMate.States
         // Idle<->Walk를 오가는 동안에도 값이 보존되어야 발판 경계에서 상태가 왔다갔다 할 때마다
         // 유예 타이머가 리셋되는 오탐을 막을 수 있어(상태 인스턴스 밖인) 블랙보드에 둔다.
         private float _groundLossTimer;
+
+        // Active Ragdoll(아키텍처 0절) 파츠 캐시. Ragdoll/Getup 두 상태가 공유하므로 블랙보드가
+        // 최초 1회만 구성해 보관한다(매 프레임 GetComponentsInChildren 재탐색 금지 컨벤션 준수).
+        private RagdollRig _ragdollRig;
 
         /// <summary>FootholdPoller의 캐시(= OS를 직접 호출하지 않는 저렴한 조회)를 이용해 접지 상태를 계산한다.</summary>
         public GroundSensor.GroundInfo SenseGround()
@@ -132,6 +144,49 @@ namespace StickMate.States
                 Machine.ChangeState(StickmanStateId.Fall);
             }
             return true;
+        }
+
+        /// <summary>
+        /// Active Ragdoll 파츠 캐시(Rigidbody2D/HingeJoint2D) — RagdollState/GetupState가 공유한다.
+        /// 최초 필요 시 1회만 Body.transform을 루트로 GetComponentsInChildren 탐색을 수행해 캐싱한다.
+        /// </summary>
+        public RagdollRig GetRagdollRig()
+        {
+            if (_ragdollRig == null && Body != null)
+            {
+                _ragdollRig = new RagdollRig(Body.transform);
+            }
+            return _ragdollRig;
+        }
+
+        /// <summary>
+        /// ParkourClimb 진입 판정(아키텍처 0절 파쿠르, UX_FLOW.md 4절). 지금 딛고 있는 발판의 진행방향
+        /// 경계에 근접(parkourDetectionRadius 이내)했고, 그 경계 너머 가까이에 상단이 눈에 띄게 더 높은
+        /// (parkourDetectionRadius 이상) 다른 발판이 있으면 "벽"으로 판정한다. 비슷하거나 더 낮은 발판은
+        /// 파쿠르가 아니라 평범한 점프/낙하 대상이므로 제외한다. 좌표 변환/발판 순회는 전부 GroundSensor에
+        /// 위임한다(States/*.cs가 직접 좌표 변환식을 만들지 않는 기존 컨벤션 유지).
+        /// </summary>
+        public bool TryFindClimbableWall(GroundSensor.GroundInfo info, int direction, out long wallHandle, out float wallTopWorldY)
+        {
+            wallHandle = 0L;
+            var footholds = FootholdPoller != null ? FootholdPoller.CachedFootholds : System.Array.Empty<PlatformFoothold>();
+            Vector2 foot = Body != null ? Body.position : Vector2.zero;
+            bool found = GroundSensor.TryFindClimbableWall(MainCamera, foot, info, direction, footholds, Config,
+                out PlatformFoothold wall, out wallTopWorldY);
+            if (found) wallHandle = wall.Handle;
+            return found;
+        }
+
+        /// <summary>
+        /// ParkourClimb 등반 도중, handle로 식별된 발판이 여전히 존재하는지 매 프레임 재확인하고 존재하면
+        /// 그 발판의 최신 상단 월드 Y를 반환한다(창이 이동했을 수 있으므로 매 프레임 재계산). 존재하지
+        /// 않으면 false — "잡을 곳이 사라짐(창 이동/닫힘)" 실패 처리(UX_FLOW.md 4절)에 사용한다.
+        /// </summary>
+        public bool TryGetFootholdTopWorldY(long handle, out float topWorldY)
+        {
+            var footholds = FootholdPoller != null ? FootholdPoller.CachedFootholds : System.Array.Empty<PlatformFoothold>();
+            Vector2 refPos = Body != null ? Body.position : Vector2.zero;
+            return GroundSensor.TryGetFootholdTopWorldY(MainCamera, refPos, handle, footholds, Config, out topWorldY);
         }
     }
 }
