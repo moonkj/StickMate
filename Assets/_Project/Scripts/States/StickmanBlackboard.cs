@@ -117,6 +117,22 @@ namespace StickMate.States
         public System.Action<bool> SetCharacterVisible;
 
         /// <summary>
+        /// BUG-P5-M1 대응(Major, docs/BUG_REPORT_PHASE5.md) — RunawayState의 Hidden 페이즈가 렌더러를
+        /// 숨긴 동안(아직 발견되지 않음)임을 StickmanAgent.Resume()에 알리는 통로. 기존 문제: Resume()은
+        /// 항상 SetRenderersEnabled(true)를 무조건 호출했는데, 가출 Hidden 구간 중 전체화면 Suspend/
+        /// Resume이 한 번이라도 왕복하면 이 무조건 호출이 RunawayState의 독립적인 은신 가시성 의도를
+        /// 덮어써 아직 못 찾은 캐릭터가 강제로 노출됐다(20절 핵심 상호작용 위반).
+        /// RunawayState.HideCharacterAtHideSpot()이 true로 세팅하고, ShowCharacterRevealed()/
+        /// RestoreCharacter()/Exit()가 false로 되돌린다 — Resume()은 이 플래그가 true인 동안만
+        /// SetRenderersEnabled(true) 호출을 건너뛴다("Suspend/Resume의 렌더러 제어"와 "Runaway의 렌더러
+        /// 제어"가 서로의 존재를 알게 되는 최소 접점). IStickmanState에 훅을 추가하는 대안(Enter/Exit
+        /// 외 제3의 메서드)도 검토했으나, 그러면 인터페이스를 구현하는 다른 10여 개 상태 전부가 영향
+        /// 범위에 들어와 이 필드 하나만 추가하는 쪽이 더 침습적이지 않다고 판단했다(BUG_REPORT_PHASE5.md
+        /// 수정 제안 (b) 채택, Coder 판단).
+        /// </summary>
+        public bool IsCharacterHiddenByRunaway;
+
+        /// <summary>
         /// CursorProvider(OS 화면 좌표)를 이 블랙보드의 MainCamera/Config로 Unity 월드 좌표로 역변환한다.
         /// ScreenCoordinateConverter의 "cameraDepth는 같은 호출 세트 안에서 재사용" 규칙을 지키기 위해,
         /// Body 위치를 기준점으로 삼아 depth를 산출한 뒤 그 depth로 커서 좌표를 되돌린다(SenseGround()가

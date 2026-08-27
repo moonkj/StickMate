@@ -251,6 +251,17 @@ namespace StickMate.Core
                  "으로 계산된다(항상 RAGDOLL 전이를 보장하기 위해 1보다 크게 유지할 것).")]
         public float rodeoShakeImpactMultiplier = 1.25f;
 
+        [Tooltip("BUG-P5-M2 대응(docs/BUG_REPORT_PHASE5.md) — UX 24절 '1단계(로데오/인질극 발동 확률에 " +
+                 "스트레스 가중치)'용. 스트레스 게이지(StressGauge.CurrentLevel, 0~1)가 이 값 이상이면 " +
+                 "아래 rodeoStressTriggerSecondsMultiplier가 적용되어 로데오가 좀 더 쉽게 발동한다. UX " +
+                 "명시값 근사치(60%대).")]
+        public float stressRodeoWeightThreshold = 0.6f;
+
+        [Tooltip("위 임계값 이상일 때 rodeoStillTriggerSeconds에 곱해지는 배율(24절 '약한 가중치' — " +
+                 "1보다 작을수록 정지 판정 시간이 짧아져 로데오가 더 자주 발동). 과하게 공격적이지 않도록 " +
+                 "기본값은 완만한 단축(30%)만 적용한다.")]
+        public float rodeoStressTriggerSecondsMultiplier = 0.7f;
+
         [Header("윈도우 창 도둑 (docs/UX_FLOW.md 27-1절, Phase 4)")]
         [Tooltip("유휴 판정 저확률 추첨 주기(초). 10/11절과 동일한 스펙터클 트리거 패턴 재사용.")]
         public float windowTheftCheckInterval = 60f;

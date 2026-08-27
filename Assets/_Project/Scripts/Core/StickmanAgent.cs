@@ -294,7 +294,17 @@ namespace StickMate.Core
         {
             _isSuspended = false;
             SetBodiesSimulated(true);
-            SetRenderersEnabled(true);
+            // BUG-P5-M1 대응(Major, docs/BUG_REPORT_PHASE5.md): 예전에는 여기서 무조건
+            // SetRenderersEnabled(true)를 호출해, 가출(RunawayState) Hidden 페이즈 중 전체화면 Suspend/
+            // Resume이 왕복하면 아직 발견되지 않은 캐릭터가 강제로 다시 보이게 되는 버그가 있었다.
+            // RunawayState가 자신의 은신 가시성 의도를 IsCharacterHiddenByRunaway로 알려오는 동안은
+            // 이 무조건 복원을 건너뛴다(StickmanBlackboard.IsCharacterHiddenByRunaway 문서 참고) —
+            // "Suspend/Resume의 렌더러 제어"가 "Runaway의 렌더러 제어"를 마지막에 실행됐다는 이유만으로
+            // 덮어쓰지 않게 한다.
+            if (_blackboard == null || !_blackboard.IsCharacterHiddenByRunaway)
+            {
+                SetRenderersEnabled(true);
+            }
             // Minor m4 대응(docs/BUG_REPORT_PHASE1.md): Suspended 동안 FootholdPoller.Tick()도 함께
             // 건너뛰어(Update() 조기 return) 캐시가 오래됐을 수 있다 — 재개 즉시 최신 발판으로 갱신해
             // 다음 폴링 주기(최대 footholdPollInterval)까지 스테일 캐시로 서 있는 것처럼 보이지 않게 한다.

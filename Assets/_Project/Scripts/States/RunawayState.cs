@@ -31,10 +31,19 @@ namespace StickMate.States
     /// private SetRenderersEnabled를 노출)만 사용하고, StickmanAgent._isSuspended(전체화면 은닉)와는
     /// 완전히 독립이다 — 20절 예외 상태: "가출 상태는 이미 화면에 안 보이는 상태이므로 전체화면 감지가
     /// 와도 특별히 취소할 필요는 없다"를 그대로 반영해, 이 상태를 StickmanAgent.Suspend()의 강제
-    /// Idle 목록에 넣지 않았다(Tasklist.md 교차 레이어 로그에 판단 근거 기록) — Suspended가 되면
+    /// Idle 목록에 넣지 않았다(Tasklist.md 교차 레이어 영향 로그에 판단 근거 기록) — Suspended가 되면
     /// StickmanStateMachine.Tick() 자체가 건너뛰어지므로 이 상태의 내부 타이머(자동 복귀 타임아웃
     /// 포함)도 함께 멈췄다가 재개된다. 이는 "숨어있는 동안 방치돼도 안 들키게" 보호하는 셈이라 20절
     /// 취지와 상충하지 않는다.
+    ///
+    /// BUG-P5-M1 대응(Major, docs/BUG_REPORT_PHASE5.md — Debugger 발견): 위 "완전히 독립"이라는 설계
+    /// 의도와 달리, 실제로는 StickmanAgent.Resume()이 이 상태를 전혀 모른 채 무조건
+    /// SetRenderersEnabled(true)를 호출했다 — Hidden 페이즈 중 전체화면 Suspend/Resume이 한 번이라도
+    /// 왕복하면 아직 발견되지 않은 캐릭터가 강제로 노출됐다. 지금은 HideCharacterAtHideSpot()/
+    /// ShowCharacterRevealed()/RestoreCharacter()/Exit()가 StickmanBlackboard.IsCharacterHiddenByRunaway
+    /// 플래그를 함께 관리해, Resume()이 그 플래그를 확인하고 자기 복원 호출을 건너뛰도록 최소 접점 하나만
+    /// 추가했다(전체 독립성 설계 자체는 유지 — Resume()이 "묻는" 것이지 RunawayState가 Suspend 경로에
+    /// 개입하는 것은 아니다).
     /// </summary>
     public sealed class RunawayState : IStickmanState
     {
@@ -112,6 +121,7 @@ namespace StickMate.States
             _blackboard.RunawaySnackOfferedSignaled = false;
             _blackboard.RunawayManualRecallSignaled = false;
             _blackboard.RunawayForceSummonSignaled = false;
+            _blackboard.IsCharacterHiddenByRunaway = false; // BUG-P5-M1 대응 — Fleeing 시작 시점엔 아직 숨지 않았으므로 명시적으로 false.
 
             StickmanEventBus.RaiseRunawayLifecycleChanged(RunawayLifecyclePhase.Fleeing, default);
             // "나 안 해!" — 확정된 RUNAWAY 전이에서 파생된 현재형 선언(예고형 아님, 20절 원문 그대로).
@@ -238,16 +248,22 @@ namespace StickMate.States
                 _blackboard.Body.position = _hideSpotWorldPos;
             }
             _blackboard.SetCharacterVisible?.Invoke(false);
+            // BUG-P5-M1 대응 — Hidden 페이즈 진입을 StickmanAgent.Resume()에 알려, 이 구간 중 전체화면
+            // Suspend/Resume이 왕복해도 Resume()이 렌더러를 무조건 복원하지 않도록 한다(StickmanBlackboard.
+            // IsCharacterHiddenByRunaway 문서 참고).
+            _blackboard.IsCharacterHiddenByRunaway = true;
         }
 
         private void ShowCharacterRevealed()
         {
             _blackboard.SetCharacterVisible?.Invoke(true);
+            _blackboard.IsCharacterHiddenByRunaway = false; // BUG-P5-M1 대응 — 발견됨(Found)부터는 다시 일반 가시성 규칙을 따른다.
         }
 
         private void RestoreCharacter()
         {
             _blackboard.SetCharacterVisible?.Invoke(true);
+            _blackboard.IsCharacterHiddenByRunaway = false; // BUG-P5-M1 대응 — Reconciling/SelfReturning 진입 시에도 동일하게 해제.
             if (_blackboard.Body != null)
             {
                 _blackboard.Body.position = _preHideWorldPos;
@@ -266,6 +282,7 @@ namespace StickMate.States
             // 예기치 못한 강제 인터럽트로 이 상태를 빠져나가는 경우에도 캐릭터가 숨은 채/Kinematic으로
             // 얼어붙은 채 남지 않게 한다.
             _blackboard.SetCharacterVisible?.Invoke(true);
+            _blackboard.IsCharacterHiddenByRunaway = false; // BUG-P5-M1 대응 — 강제 인터럽트로 빠져나가는 경우에도 플래그가 새지 않게 방어적으로 해제.
             if (_blackboard.Body != null && _blackboard.Body.bodyType == RigidbodyType2D.Kinematic)
             {
                 _blackboard.Body.bodyType = RigidbodyType2D.Dynamic;

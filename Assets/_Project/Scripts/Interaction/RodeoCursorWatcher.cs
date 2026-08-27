@@ -9,6 +9,14 @@ namespace StickMate.Interaction
     /// (15절 부분적 클릭관통 해제 대상 아님, 13절에 명시). 커서 좌표는 9절-3에서 이미 마련된 전역 폴링
     /// 채널(StickmanAgent.TryGetCursorPosition, ICursorPositionService)을 그대로 재사용한다 — 신규
     /// 폴링 채널을 만들지 않는다.
+    ///
+    /// BUG-P5-M2 대응(Major, docs/BUG_REPORT_PHASE5.md): UX 24절 "1단계(인질극/로데오는 스트레스 게이지가
+    /// 중간 수준이면 발동 확률에 가중치)"가 이전 라운드에는 전혀 배선되지 않았었다. 지금은
+    /// GetEffectiveStillTriggerSeconds()가 StressGauge.CurrentLevel을 약한 가중치로 반영한다 — 임계값
+    /// (StickConfig.stressRodeoWeightThreshold) 이상이면 정지 판정 시간(rodeoStillTriggerSeconds)을
+    /// 완만하게 단축(stressRodeoTriggerSecondsMultiplier)해 "로데오가 좀 더 자주 발동"하는 정도로만
+    /// 반영한다 — 발동 자체를 확률 판정으로 바꾸거나 조건을 새로 추가하지 않는다(기존 "정지 시간 도달"
+    /// 조건 그대로, 그 시간만 스트레스에 따라 짧아짐).
     /// </summary>
     public sealed class RodeoCursorWatcher : MonoBehaviour
     {
@@ -69,9 +77,20 @@ namespace StickMate.Interaction
             _lastCursorOs = cursorOs;
             _hasLastCursor = true;
 
-            if (_stillTimer < _config.rodeoStillTriggerSeconds) return;
+            if (_stillTimer < GetEffectiveStillTriggerSeconds()) return;
 
             TryTrigger(cursorOs);
+        }
+
+        /// <summary>BUG-P5-M2 대응 — 스트레스 게이지가 임계값 이상이면 정지 판정 시간을 완만하게
+        /// 단축해 로데오가 좀 더 자주 발동하도록 한다(24절 "1단계 발동 확률 가중치"의 약한 반영).</summary>
+        private float GetEffectiveStillTriggerSeconds()
+        {
+            float baseSeconds = _config.rodeoStillTriggerSeconds;
+            if (StressGauge.CurrentLevel < _config.stressRodeoWeightThreshold) return baseSeconds;
+
+            float multiplier = Mathf.Max(0.1f, _config.rodeoStressTriggerSecondsMultiplier);
+            return baseSeconds * multiplier;
         }
 
         private void TryTrigger(Vector2 cursorOs)

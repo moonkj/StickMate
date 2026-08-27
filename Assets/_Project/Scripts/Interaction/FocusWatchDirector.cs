@@ -301,9 +301,25 @@ namespace StickMate.Interaction
             SpectacleEventLock.Release(this);
         }
 
+        /// <summary>Minor 2 대응(docs/BUG_REPORT_PHASE5.md): 다른 8개 Director와 달리 이 메서드만
+        /// SpectacleEventLock 소유권 확인 없이 항상 세션을 취소했다 — 로데오/인질극류처럼 "지금 화면을
+        /// 방해 중인 스펙터클"을 끄려고 트레이 긴급정지를 눌러도, 그 순간 별개로 진행 중이던 포모도로
+        /// 세션까지 함께 날아가는 부작용이 있었다.
+        /// 판단 근거: 6-5절은 긴급정지 버튼을 "이러한 이벤트"(인질극/로데오/창 점령 등 악동·반항 계열
+        /// 방해성 이벤트)를 끄는 안전판으로 정의한다 — 포모도로는 유저가 자발적으로 켠 생산성 기능이라
+        /// 이 "이러한 이벤트" 부류에 속하지 않는다. 반면 18절은 "탈출구: ... 트레이 긴급정지도 항상
+        /// 유효"라고 명시해, 포모도로 자체를 끄는 경로로도 긴급정지가 유효해야 한다고 요구한다 — 이
+        /// 요구를 지우면 18절 문서 계약을 깨게 되므로 구독 자체를 제거하는 안은 채택하지 않았다.
+        /// 두 요구를 동시에 만족하는 지점: 다른 방해성 이벤트가 현재 SpectacleEventLock을 쥐고 있다면
+        /// (즉 이 컴포넌트가 소유자가 아니라면) 그 긴급정지는 그 이벤트를 겨냥한 것이 거의 확실하므로
+        /// 무관한 포모도로에 반응하지 않는다. 락이 비어있거나(다른 이벤트가 활성 중이 아님) 포모도로
+        /// 자신의 포즈 상태(FocusStart/Complete/Cancelled/Nudge)가 이미 락을 쥐고 있는 상태라면, 그
+        /// 긴급정지가 겨냥할 다른 대상이 없으므로 18절의 "항상 유효한 탈출구"를 그대로 적용한다(가장
+        /// 흔한 케이스 — 포모도로만 실행 중이고 다른 이벤트가 없을 때도 여전히 즉시 종료 가능).</summary>
         private void OnEmergencyStop()
         {
-            // 트레이 긴급정지는 집중 모드 자체와 무관하게 항상 즉시 유효(18절 "탈출구").
+            if (SpectacleEventLock.IsActive && SpectacleEventLock.CurrentOwner != (object)this) return;
+
             IsSessionActive = false;
             ReleaseOwnedLock(forceIdle: true);
         }

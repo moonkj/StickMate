@@ -91,3 +91,9 @@
 - SpectacleEventLock 참여 기준을 "ChangeState로 단일 상태 슬롯을 다투는가"로 통일 — 합리적 판단으로 승인.
 - 리더 독립 컴파일 재검증: 에러0/경고0.
 - 다음: Debugger에게 Phase 5 검토 위임.
+
+## 2026-08-28 (계속) — Phase 5 반려 수정 완료
+- Debugger 검토: Blocker 0, Major 2(BUG-P5-M1: Resume()이 가출 은신 중 렌더러 강제복원 / BUG-P5-M2: UX24절 로데오-스트레스 가중치 미구현인데 완료로 오보고), Minor 2(과다사용 반복가산 의도확인, 포모도로 무관긴급정지 취소).
+- Coder 수정: IsCharacterHiddenByRunaway 플래그로 Resume()과 RunawayState 가시성 제어 조율(침습 적은 방식 선택). RodeoCursorWatcher에 스트레스 가중치 연동(정지판정시간 완만히 단축, 과하지 않게). Minor1은 의도된 에스컬레이션으로 확정 기록. Minor2는 SpectacleEventLock 소유자 확인 가드로 "진짜 무관한 긴급정지만" 무시하도록 정교화(포모도로 자체 탈출구 기능은 보존).
+- 컴파일 재검증: 에러0/경고0, EditMode 13/13 통과.
+- **Phase 5 사실상 마무리. 다음: Debugger 최종 확인 후 Phase 6(성능점검/최종리뷰/문서화)로 프로젝트 마감 단계 진입.**
