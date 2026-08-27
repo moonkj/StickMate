@@ -1,6 +1,9 @@
 # StickMate — 프로젝트 컨벤션 (CLAUDE.md)
 
-바탕화면에서 돌아다니는 졸라맨(스틱맨) 데스크톱 오버레이 앱. Unity 6 LTS 기반.
+바탕화면에서 돌아다니는 졸라맨(스틱맨) 앱. Unity 6 LTS 기반. **4개 플랫폼 동시 지원 목표: macOS / Windows / iPad / iPhone.**
+
+- 데스크톱(macOS/Windows): 실시간 타 윈도우 열거 오버레이 (기존 설계)
+- 모바일(iPad/iPhone): iOS 샌드박스 정책상 실오버레이 불가 → **"스크린샷 백드롭 모드"**(유저가 캡처한 홈 화면 스크린샷을 정적 배경으로 쓰고 그 위에서 캐릭터가 노는 착시 연출, 사용자 확정 결정). 상세: `docs/ARCHITECTURE.md` 0-1절.
 
 ## 필독 문서
 - `docs/ARCHITECTURE.md` — 설계 요약, 기술 스택, 무빙 방식 결정 근거
