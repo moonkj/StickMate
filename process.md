@@ -56,3 +56,10 @@
 - 나머지 전부 통과: 토큰화 우회경로 없음, ReportExternalImpact 가드/리셋 보장, RagdollRig 파츠0개 안전, 파쿠르 좌표계/재확인/배회AI 경합 없음, 낙하높이·충격량 축 분리 결정과 구현 정확히 일치, Ragdoll/ParkourClimb 대사 매핑 UX 31절과 일치.
 - 범위 작아(2줄) 리더가 직접 핫픽스: ParkourClimbState.Tick()에서 매 프레임 linearVelocity.y도 0으로 재확정(SnapToGround의 기존 관행과 동일하게). 컴파일 재검증: 에러 0/경고 0.
 - 다음: Debugger 짧은 재확인 후 문제 없으면 Phase 2 최종 승인, Phase 3(전투/커서상호작용) 착수.
+
+## 2026-08-27 (계속) — Phase 3 구현 + 텍스트-액션 회귀 테스트 인프라
+- Coder: Phase 3(전투/커서상호작용) 5개 기능 전부 구현 — 부분적 클릭관통 해제(인프라, 단 진짜 OS 히트테스트는 BUG-B1 미해결로 소유권 부기까지만), 격파 미니게임, 라이벌 스틱맨 AI(관전전용), 드래그&던지기, 로데오 커서. AttackState도 이번에 완성(예전엔 Tick() 비어있어 영원히 안 빠져나오는 상태였음). 공통 인프라 SpectacleEventLock(4개 스펙터클 상호배제)/RagdollImpactResolver(중복 제거) 신설.
+- Test Engineer(병렬): 텍스트-액션 싱크 EditMode 회귀 테스트 8건 작성, 실제 -runTests로 8/8 통과 확인(2회, 클린 재컴파일 포함). 프로덕션 코드를 이름 있는 어셈블리(StickMate.Runtime.asmdef)로 승격 + 테스트 asmdef + InternalsVisibleTo 구성.
+- Architect 결정: 격파 미니게임 "릴리즈 순간" 대사(Enter() 밖에서 확정되는 문제) — 예외를 두지 않고 RagdollState의 기존 자기-전이(self-transition) 패턴을 재사용하도록 지시(Tasklist 교차 로그 기록). 다음 라운드에서 Coder가 반영.
+- 리더 독립 컴파일 재검증: 에러 0/경고 0.
+- 다음: Debugger에게 Phase 3 전체 검토 위임(범위가 커서 꼼꼼히).

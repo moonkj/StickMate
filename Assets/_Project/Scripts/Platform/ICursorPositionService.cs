@@ -31,4 +31,14 @@ namespace StickMate.Platform
         /// </summary>
         bool TryGetGlobalCursorPosition(out Vector2 osScreenPosition);
     }
+
+    /// <summary>
+    /// TryGetGlobalCursorPosition과 동일한 시그니처의 델리게이트 — out 매개변수가 있어 System.Func로
+    /// 표현할 수 없어 별도 선언한다(AutoWanderController.CursorPositionQuery와 동일한 이유로 별도 선언).
+    /// StickmanAgent.TryGetCursorPosition을 여러 소비자(States.StickmanBlackboard.CursorProvider,
+    /// Phase 3 드래그&던지기/로데오 커서 등)에 같은 델리게이트 타입으로 연결하기 위한 공용 타입 —
+    /// 메서드 그룹 변환은 시그니처만 일치하면 임의의 델리게이트 타입에 성립하므로, 기존
+    /// AutoWanderController.CursorProvider 배선(다른 델리게이트 타입)에는 아무 영향이 없다.
+    /// </summary>
+    public delegate bool CursorPositionQuery(out Vector2 osScreenPosition);
 }

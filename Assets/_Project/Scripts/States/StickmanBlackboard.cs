@@ -49,6 +49,48 @@ namespace StickMate.States
         /// <summary>이번 프레임에 점프가 요청되었는지. IntentSource에서 매 프레임 조회.</summary>
         public bool JumpPressed => IntentSource != null && IntentSource.JumpRequested;
 
+        /// <summary>
+        /// StickmanAgent.TryGetCursorPosition과 동일한 시그니처(CursorPositionQuery, UX_FLOW.md 9절-3
+        /// 전역 커서 폴링 채널 재사용) — 드래그&던지기(DragThrowState)/로데오 커서(RodeoCursorState)가
+        /// 커서 월드 좌표를 조회하기 위해 사용한다(Phase 3). AutoWanderController.CursorProvider(26-4 훅)와는
+        /// 별개의 델리게이트 인스턴스지만 둘 다 같은 StickmanAgent.TryGetCursorPosition 메서드 그룹을 가리킨다.
+        /// </summary>
+        public CursorPositionQuery CursorProvider;
+
+        /// <summary>
+        /// 드래그&던지기(12절) "놓기" 신호. DragThrowController(Interaction)가 마우스업/트레이 긴급정지
+        /// 발생 시 true로 세팅하고, DragThrowState.Tick()이 다음 틱에 읽는 즉시 false로 되돌리는 1회성
+        /// 펄스 계약이다(IMovementIntentSource.JumpRequested와 동일한 소비-후-리셋 원칙, 다만 리셋 주체가
+        /// 컨트롤러가 아니라 소비자 자신이라는 점만 다르다 — 이 신호는 매 프레임이 아니라 이벤트성으로만
+        /// 세팅되므로 컨트롤러 쪽에서 "다음 프레임에 리셋"할 고정된 타이밍이 없다).
+        /// </summary>
+        public bool DragReleaseSignaled;
+
+        /// <summary>
+        /// 격파 미니게임(10절) 클릭 판정 신호. BattleMinigameDirector(Interaction)가 캐릭터 히트박스
+        /// 클릭을 감지하면 true로 세팅하고, BattleMinigameState.Tick()이 다음 틱에 소비 후 false로
+        /// 되돌린다(DragReleaseSignaled와 동일한 소비-후-리셋 펄스 계약).
+        /// </summary>
+        public bool BattleClickSignaled;
+
+        /// <summary>
+        /// CursorProvider(OS 화면 좌표)를 이 블랙보드의 MainCamera/Config로 Unity 월드 좌표로 역변환한다.
+        /// ScreenCoordinateConverter의 "cameraDepth는 같은 호출 세트 안에서 재사용" 규칙을 지키기 위해,
+        /// Body 위치를 기준점으로 삼아 depth를 산출한 뒤 그 depth로 커서 좌표를 되돌린다(SenseGround()가
+        /// 발판 좌표를 되돌릴 때 쓰는 것과 동일한 패턴).
+        /// </summary>
+        public bool TryGetCursorWorldPosition(out Vector2 worldPos)
+        {
+            worldPos = default;
+            if (CursorProvider == null || MainCamera == null || Body == null) return false;
+            if (!CursorProvider(out Vector2 osScreen)) return false;
+
+            _ = ScreenCoordinateConverter.WorldToOsScreen(MainCamera, Body.position, Config, out float depth);
+            Vector3 world = ScreenCoordinateConverter.OsScreenToWorld(MainCamera, osScreen, depth, Config);
+            worldPos = world;
+            return true;
+        }
+
         // Idle/Walk(지상 상태)에서 발판을 잃은 뒤 실제로 Fall로 전이하기까지의 유예 누적 시간.
         // Idle<->Walk를 오가는 동안에도 값이 보존되어야 발판 경계에서 상태가 왔다갔다 할 때마다
         // 유예 타이머가 리셋되는 오탐을 막을 수 있어(상태 인스턴스 밖인) 블랙보드에 둔다.

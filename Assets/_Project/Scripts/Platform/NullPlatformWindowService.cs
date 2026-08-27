@@ -7,10 +7,28 @@ namespace StickMate.Platform
     /// 에디터/미지원 플랫폼 폴백 구현체. 실제 OS 열거를 하지 않고 더미 발판 1개(작업표시줄/Dock 역할)를
     /// 반환해, 상태머신·발판 인식 로직을 어떤 플랫폼 API 없이도 크래시 없이 에디터에서 테스트할 수 있게 한다.
     /// </summary>
-    public sealed class NullPlatformWindowService : IPlatformWindowService, ICursorPositionService
+    public sealed class NullPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService
     {
         // 더미 발판 목록. GC 압박 방지를 위해 생성자에서 1회만 만들고 매 호출마다 동일 인스턴스를 재사용한다.
         private readonly List<PlatformFoothold> _dummyFootholds;
+
+        // ILocalClickCaptureService(UX_FLOW.md 15절) — 에디터에는 애초에 클릭관통을 흉내낼 네이티브
+        // 창이 없으므로(SetClickThrough가 no-op) 여기도 순수 소유권/영역 부기만 제공한다. 이 부기만으로도
+        // Phase 3 컨트롤러(Interaction/*)가 "동시에 두 이벤트가 캐릭터 클릭을 다투는 상황"을 에디터에서
+        // 그대로 재현/검증할 수 있다는 실익이 있다(ILocalClickCaptureService.cs 핵심 한계 문서 참고).
+        private readonly LocalClickCaptureGate _clickCaptureGate = new LocalClickCaptureGate();
+
+        public bool RequestLocalClickCapture(Rect hitboxOsScreen, object owner)
+            => _clickCaptureGate.TryRequestCapture(hitboxOsScreen, owner);
+
+        public void UpdateLocalClickCaptureRegion(Rect hitboxOsScreen, object owner)
+            => _clickCaptureGate.UpdateRegion(hitboxOsScreen, owner);
+
+        public void ReleaseLocalClickCapture(object owner)
+            => _clickCaptureGate.ReleaseCapture(owner);
+
+        public bool IsLocalClickCaptureOwnedBy(object owner)
+            => _clickCaptureGate.IsOwnedBy(owner);
 
         public NullPlatformWindowService()
         {

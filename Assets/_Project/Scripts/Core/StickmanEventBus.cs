@@ -15,6 +15,39 @@ namespace StickMate.Core
         Attack,
         Ragdoll,
         Getup,
+
+        // ==== Phase 3 (docs/UX_FLOW.md 10/12/13절) — 커서 상호작용/전투 미니게임 ====
+
+        /// <summary>격파 미니게임(10절): 기 모으기 게이지 → 스위트스팟 클릭 판정 → 성공/실패(최대
+        /// battleMaxRetries회 재도전)/5초 무입력 타임아웃. Idle/Walk에서 진입, 정상 종료 시 Idle 복귀.</summary>
+        BattleMinigame,
+
+        /// <summary>드래그&던지기(12절): 유저가 캐릭터 히트박스를 마우스다운으로 붙잡아 끄는 동안의 상태.
+        /// Kinematic으로 커서를 추종하다가 놓으면 계산된 속도로 Dynamic 던지기 → 임계값 초과 시 Ragdoll,
+        /// 아니면 Fall로 자연 전이.</summary>
+        Dragged,
+
+        /// <summary>로데오 커서(13절): 클릭 없이 커서 정지만으로 발동, 캐릭터가 커서 위치에 올라타 따라
+        /// 다니다가 거친 흔들기/10초 타임아웃/트레이 긴급정지 3중 안전망으로 종료.</summary>
+        RodeoCursor,
+    }
+
+    /// <summary>UX_FLOW.md 10절 격파 미니게임 한 차례 시도의 결과. StickmanEventBus가 트리거 조건만
+    /// 발행하고(실제 파티클/파괴 연출은 Phase 2+ 렌더링 담당, WanderAmbientMotionRequested와 동일 패턴),
+    /// Success/Exhausted는 상태 종료(Idle 복귀)로 이어지고 Fail은 같은 상태 안에서 재시도로 이어진다.</summary>
+    public enum BattleMinigamePhase
+    {
+        Success,
+        Fail,
+        Exhausted,
+    }
+
+    /// <summary>UX_FLOW.md 11절 라이벌 스틱맨 대결의 종료 결과.</summary>
+    public enum RivalDuelResult
+    {
+        PlayerWon,
+        RivalWon,
+        Draw,
     }
 
     /// <summary>
@@ -103,6 +136,18 @@ namespace StickMate.Core
         /// </summary>
         public static event Action<float> LandingRollRequested;
 
+        /// <summary>격파 미니게임(10절) 한 차례 시도의 결과가 확정되었을 때 발생 — 실제 파괴/코믹리액션
+        /// 연출은 Phase 2+ 렌더링 레이어가 이 이벤트를 구독해 담당한다(지금은 트리거 조건만 계산).</summary>
+        public static event Action<BattleMinigamePhase> BattleMinigamePhaseChanged;
+
+        /// <summary>라이벌 스틱맨 대결(11절)이 시작되었을 때 발생 — 등장 연출/조우 대사 트리거용
+        /// (지금은 구독자 없음, Phase 2+ 렌더링 레이어 몫).</summary>
+        public static event Action RivalDuelStarted;
+
+        /// <summary>라이벌 스틱맨 대결이 종료되었을 때 발생(승/패/무승부). 트레이 UI의 "대결 중" 배지
+        /// 해제 등에 사용 예정(지금은 구독자 없음).</summary>
+        public static event Action<RivalDuelResult> RivalDuelEnded;
+
         public static void RaiseStateTransitioned(StickmanStateId from, StickmanStateId to, bool isForcedInterrupt = false)
             => StateTransitioned?.Invoke(new StateTransitionEvent(from, to, isForcedInterrupt));
 
@@ -123,5 +168,14 @@ namespace StickMate.Core
 
         public static void RaiseLandingRollRequested(float fallHeight)
             => LandingRollRequested?.Invoke(fallHeight);
+
+        public static void RaiseBattleMinigamePhaseChanged(BattleMinigamePhase phase)
+            => BattleMinigamePhaseChanged?.Invoke(phase);
+
+        public static void RaiseRivalDuelStarted()
+            => RivalDuelStarted?.Invoke();
+
+        public static void RaiseRivalDuelEnded(RivalDuelResult result)
+            => RivalDuelEnded?.Invoke(result);
     }
 }

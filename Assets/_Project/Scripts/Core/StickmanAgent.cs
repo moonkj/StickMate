@@ -47,6 +47,25 @@ namespace StickMate.Core
         }
 
         /// <summary>
+        /// Phase 3 Interaction 레이어(드래그&던지기/로데오 커서/격파 미니게임 컨트롤러, 라이벌 스틱맨 AI)가
+        /// 읽기 전용으로 접근하기 위한 통로. 이 프로퍼티들을 새로 추가한 이유: UX_FLOW.md 10~13절 기능들은
+        /// 의도적으로 StickmanAgent 밖의 별도 컴포넌트(Interaction/*)로 구현되었는데(관심사 분리 — Core는
+        /// Phase 3 개별 기능의 존재 자체를 몰라도 된다), 그 컴포넌트들이 상태 전이를 트리거하거나(Machine),
+        /// 부분적 클릭관통 해제를 요청하거나(PlatformService as ILocalClickCaptureService), 전체화면
+        /// Suspend 여부를 확인하려면(IsSuspended, 라이벌 대결의 "전체화면 감지 시 즉시 취소" 요구사항)
+        /// 최소한의 읽기 접근이 필요하다. 전부 이미 존재하던 private 필드를 그대로 노출할 뿐 새 로직은 없다.
+        /// </summary>
+        public StickmanBlackboard Blackboard => _blackboard;
+
+        /// <summary>부분적 클릭관통 해제(ILocalClickCaptureService)로 캐스팅해 쓰기 위한 통로.</summary>
+        public IPlatformWindowService PlatformService => _platformService;
+
+        /// <summary>전체화면 게임 감지로 현재 Suspended 상태인지 — 라이벌 대결(11절) "전체화면 감지 시
+        /// 즉시 취소" 요구사항을 Interaction/RivalStickmanAgent.cs가 직접 폴링하기 위해 필요하다(라이벌은
+        /// 플레이어의 StickmanStateMachine에 속하지 않으므로 아래 Suspend()의 일반 처리 대상이 아니다).</summary>
+        public bool IsSuspended => _isSuspended;
+
+        /// <summary>
         /// RAGDOLL 강제 인터럽트의 단일 진입점(아키텍처 0절). 몸통이든 사지든 어떤 파츠가 외력(충돌)을
         /// 받으면 이 메서드로 통지되어, 충격량 크기가 StickConfig.ragdollForceThreshold 이상이면 현재
         /// 능동 상태가 무엇이든(Idle/Walk/Jump/Fall/ParkourClimb/Attack) 즉시 Ragdoll로 강제 전이한다.
@@ -54,16 +73,16 @@ namespace StickMate.Core
         /// 실행해 _settleTimer를 리셋하므로, "계속 얻어맞으면 계속 ragdoll" 동작이 별도 코드 없이
         /// 보장된다(GetupState.cs 참고). 루트 파츠는 OnCollisionEnter2D가 직접 호출하고, 사지 등
         /// 비루트 파츠는 RagdollLimbImpactRelay.cs를 부착하면 같은 경로로 통지된다(실제 프리팹 배선은
-        /// Phase 2 범위 밖).
+        /// Phase 2 범위 밖). Phase 3부터는 판정식 자체를 States.RagdollImpactResolver로 위임한다 —
+        /// States/DragThrowState.cs(던진 속도 기반)/RodeoCursorState.cs(거친 흔들기)/
+        /// Interaction/RivalStickmanAgent.cs(라이벌 자신의 피격)도 동일한 판정식을 써야 해서, 이
+        /// MonoBehaviour 메서드에서만 로직을 갖고 있으면 다른 순수 C# 클래스에서 재사용할 수 없었다.
+        /// 공개 시그니처는 전혀 바뀌지 않았다 — 기존 호출부(OnCollisionEnter2D 등) 무수정으로 계속 동작한다.
         /// </summary>
         public void ReportExternalImpact(float impulseMagnitude)
         {
             if (_isSuspended || _machine == null || _config == null) return;
-            if (impulseMagnitude < _config.ragdollForceThreshold) return;
-            // UX_FLOW.md 31-2 #2 대비 스냅샷 — RagdollState.Enter()가 이 값을 IHasDialogueParams로
-            // 노출해 "윽.../으악!/으아아아악?!" 같은 충격 강도별 대사를 파생시킬 수 있게 한다.
-            if (_blackboard != null) _blackboard.LastImpactMagnitude = impulseMagnitude;
-            _machine.ChangeState(StickmanStateId.Ragdoll, isForcedInterrupt: true);
+            RagdollImpactResolver.TryApplyImpact(_blackboard, impulseMagnitude);
         }
 
         private void OnCollisionEnter2D(Collision2D collision)
@@ -110,6 +129,9 @@ namespace StickMate.Core
             // 26-4 훅 예약(Phase 2 커서 근접 반응 선반영 스펙) — 지금은 AutoWanderController가 이 값을
             // 읽지 않는다. Phase 2에서 실제 반응 로직을 채울 때 다시 배선할 필요가 없도록 미리 연결만 해둔다.
             _autoWander.CursorProvider = TryGetCursorPosition;
+            // Phase 3: 드래그&던지기(DragThrowState)/로데오 커서(RodeoCursorState)가 커서 월드 좌표를
+            // 조회하기 위한 별도 배선(같은 메서드 그룹을 가리키는 다른 델리게이트 인스턴스일 뿐).
+            _blackboard.CursorProvider = TryGetCursorPosition;
 
             var states = new Dictionary<StickmanStateId, IStickmanState>
             {
@@ -117,15 +139,19 @@ namespace StickMate.Core
                 { StickmanStateId.Walk, new WalkState(_blackboard) },
                 { StickmanStateId.Jump, new JumpState(_blackboard) },
                 { StickmanStateId.Fall, new FallState(_blackboard) },
-                // Phase 2에서 ParkourClimb/Ragdoll/Getup을 정식 구현하며 Idle/Walk/Jump/Fall과 동일하게
-                // 블랙보드 주입 생성자로 전환했다. Attack만 아직 Phase 3 범위라 파라미터 없는 생성자를
-                // 유지 중이다. 8종을 전부 등록해두는 이유: StickmanStateMachine.ChangeState()가 미등록
-                // 키를 안전하게 거부하도록 이미 고쳤지만(BUG-M2), 애초에 8종을 다 등록해두면 그 방어
-                // 코드를 밟을 일 자체가 없다.
                 { StickmanStateId.ParkourClimb, new ParkourClimbState(_blackboard) },
-                { StickmanStateId.Attack, new AttackState() },
+                // Phase 3: AttackState도 나머지 상태와 동일하게 블랙보드 주입 생성자로 전환(실제 Tick()
+                // 완료/복귀 로직이 이번에 함께 구현됨 — Interaction/RivalStickmanAgent.cs의 유일한 사용처).
+                { StickmanStateId.Attack, new AttackState(_blackboard) },
                 { StickmanStateId.Ragdoll, new RagdollState(_blackboard) },
                 { StickmanStateId.Getup, new GetupState(_blackboard) },
+                // Phase 3 신규(UX_FLOW.md 10/12/13절) — 전부 Interaction/* 컨트롤러가 부분적 클릭관통
+                // 해제/SpectacleEventLock을 확보한 뒤에만 ChangeState를 호출한다(States/*.cs는 그 획득
+                // 절차를 전혀 모른다). 11종을 전부 등록해두는 이유는 위와 동일(BUG-M2 방어 코드를 밟을
+                // 일 자체를 없앰).
+                { StickmanStateId.BattleMinigame, new BattleMinigameState(_blackboard) },
+                { StickmanStateId.Dragged, new DragThrowState(_blackboard) },
+                { StickmanStateId.RodeoCursor, new RodeoCursorState(_blackboard) },
             };
 
             // BUG-P1-M2 대응(Major, docs/BUG_REPORT_PHASE1.md): 생성과 "최초 상태 활성화"를 분리했다.
@@ -201,6 +227,22 @@ namespace StickMate.Core
         private void Suspend()
         {
             _isSuspended = true;
+
+            // Phase 3 예외(UX_FLOW.md 10/12/13절): 격파 미니게임/드래그&던지기/로데오 커서는 "능동 개입"
+            // 스펙터클이라 전체화면 감지 시 일반 Suspend(상태 보존 후 재개)가 아니라 즉시 취소되어야
+            // 한다 — "비침해 원칙이 항상 이 기능들보다 우선"이라고 세 절 모두 명시적으로 못박았다.
+            // RAGDOLL/GETUP/ParkourClimb 등 물리 기반 상태는 아래의 일반 Suspend(보존)를 그대로 유지한다.
+            // ChangeState(Idle, isForcedInterrupt:true)가 각 상태의 Exit()을 실행시켜 Kinematic->Dynamic
+            // 복구(DragThrowState/RodeoCursorState) 및 StateTransitioned 발행(Interaction 컨트롤러들의
+            // 락 해제 트리거, DragThrowController/BattleMinigameDirector/RodeoCursorWatcher 참고)을
+            // 자연스럽게 유발한다 — 이 메서드는 그 사실만 트리거할 뿐 락 해제 자체에는 관여하지 않는다.
+            StickmanStateId current = _machine.CurrentStateId;
+            if (current == StickmanStateId.Dragged || current == StickmanStateId.RodeoCursor ||
+                current == StickmanStateId.BattleMinigame)
+            {
+                _machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+            }
+
             // 상태/파라미터 보존(UX_FLOW.md 6-4절/9절-4, "IDLE 리셋 금지"): 상태 인스턴스를 파괴하거나
             // Idle로 되돌리지 않고 단순히 Tick 호출 자체를 건너뛴다 — 진행 중이던 상태의 내부 타이머
             // (예: FallState._landingConfirmTimer)가 그대로 멈춰 있다가 Resume() 이후 이어서 진행된다.

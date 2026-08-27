@@ -84,3 +84,15 @@
 **BUG-P2-M1(Major) 수정 전까지 Phase 3 착수 보류 — Coder로 반려 필요.** 이 항목을 제외한 나머지(토큰화/단일 진입점/재인터럽트 리셋/파쿠르 좌표계·재확인·배회AI 경합/축 분리 결정/Ragdoll·ParkourClimb 대사 매핑)는 전부 검증 통과했다. BUG-P2-M1의 수정안 1번(Tick()마다 `linearVelocity.y` 재확정)은 파일 하나, 두 줄 내외 규모로 예상되어 반려 사이클이 길어지지 않을 것으로 판단한다. Minor 5건은 급하지 않으므로 Coder 재량으로 다음 라운드 이후 처리해도 무방하다.
 
 수정 완료 후 재검토 시 확인할 것: (1) BUG-P2-M1 수정이 실제로 등반 직후 튐을 없애는지(Play 모드 또는 최소한 코드 레벨로 `linearVelocity.y`가 매 Tick 0으로 유지되는지 재확인), (2) 클린 재빌드 기준선(에러 0/경고 0) 유지 여부.
+
+---
+
+## 핫픽스 재확인 (Debugger, 2026-08-27)
+
+대상: 커밋 `7d209bd`("Phase 2 핫픽스: ParkourClimb 착지 튐 버그 수정")—변경 범위는 `Assets/_Project/Scripts/States/ParkourClimbState.cs` 1개 파일, `Tick()`에 10줄 추가뿐임을 `git show --stat`으로 확인.
+
+1. **수정 제안 1번과 정확히 일치**: `ParkourClimbState.cs:103-105`(`pos.y` Lerp 대입) 바로 다음, `:113-115`에 `Vector2 v = _blackboard.Body.linearVelocity; v.y = 0f; _blackboard.Body.linearVelocity = v;`가 추가됨 — 위치를 갱신할 때마다 매 프레임 속도도 재확정하는, 제안한 "가장 간단한" 방식 그대로. `Enter()`의 1회성 초기화(`:61-64`)를 대체한 것이 아니라 `Tick()` 전체로 확장한 것이라 기존 패턴(`SnapToGround`)과 일관됨.
+2. **부작용 없음**: 추가된 3줄은 `v.y`만 읽고 쓰며 `v.x`는 전혀 건드리지 않는다(대입도, 참조도 없음). `Tick()`의 다른 곳에서도 `linearVelocity.x`를 별도로 설정하는 코드가 없으므로, `Enter()`에서 0으로 고정된 x축 값은 그대로 유지된다 — 등반 중 x축 이동/그 외 물리 반응에 영향 없음.
+3. **컴파일 기준선 유지**: 배치모드 재실행 — `error CS` 0건, `warning CS` 0건, `Batchmode quit successfully`/`Exiting batchmode successfully now` 정상 종료 확인(로그상 `0 items updated`로 Library 캐시 재사용이었으나, 이 커밋 상태의 클린 재빌드는 커밋 메시지 및 이전 라운드에서 이미 별도로 확인된 "에러 0/경고 0"과 일치하는 결과라 상충하는 증거 없음).
+
+**Phase 2 최종 승인 — Phase 3(전투/커서상호작용) 착수 가능**

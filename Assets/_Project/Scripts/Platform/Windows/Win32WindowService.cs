@@ -15,7 +15,7 @@ namespace StickMate.Platform.Windows
     /// 종료(WM_CLOSE 전송/TerminateProcess)시키는 메서드. 오직 열거(읽기)와 "우리 오버레이 자신"의
     /// 확장 스타일(WS_EX_LAYERED/TRANSPARENT)·Z-order만 다룬다 (아키텍처 3절 유저 자산 불변 원칙).
     /// </summary>
-    public sealed class Win32WindowService : IPlatformWindowService, ICursorPositionService
+    public sealed class Win32WindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService
     {
         #region Win32 선언 (이 리전 밖으로 유출 금지)
         [StructLayout(LayoutKind.Sequential)]
@@ -202,6 +202,26 @@ namespace StickMate.Platform.Windows
             osScreenPosition = Vector2.zero;
             return false;
         }
+
+        // ILocalClickCaptureService(UX_FLOW.md 15절, 부분적 클릭관통 해제) — 소유권/영역 부기는
+        // LocalClickCaptureGate에 위임한다. **중요한 한계(ILocalClickCaptureService.cs 문서 필독)**:
+        // 지금은 게임 창 자체가 진짜 분리 오버레이가 아니라서(BUG-B1) SetClickThrough가 애초에
+        // 실제로 켜지지 않는다(NotSupportedException 안전가드) — 따라서 여기서도 SetWindowRgn 등
+        // 실제 OS 히트테스트 변경은 시도하지 않는다. 진짜 분리 오버레이가 생긴 뒤에야 이 메서드들이
+        // 그 오버레이 HWND에 실제 리전을 걸 수 있게 된다(후속 작업).
+        private readonly LocalClickCaptureGate _clickCaptureGate = new LocalClickCaptureGate();
+
+        public bool RequestLocalClickCapture(Rect hitboxOsScreen, object owner)
+            => _clickCaptureGate.TryRequestCapture(hitboxOsScreen, owner);
+
+        public void UpdateLocalClickCaptureRegion(Rect hitboxOsScreen, object owner)
+            => _clickCaptureGate.UpdateRegion(hitboxOsScreen, owner);
+
+        public void ReleaseLocalClickCapture(object owner)
+            => _clickCaptureGate.ReleaseCapture(owner);
+
+        public bool IsLocalClickCaptureOwnedBy(object owner)
+            => _clickCaptureGate.IsOwnedBy(owner);
 
         public bool IsFullscreenAppActive()
         {
