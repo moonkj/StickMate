@@ -84,6 +84,8 @@
 ## 교차 레이어 영향 로그 (실시간 공유)
 > 한 팀원의 변경이 다른 레이어에 준 영향을 여기에 기록한다.
 
+- **[Architect, 2026-08-27]** Debugger 3차 검토(BUG-P1-R3-B1, Blocker)에서 발견된 "발판 사이 빈틈 점프 시 무한낙하"를 리더가 직접 핫픽스: `FallbackPlatformWindowService.EnumerateFootholds()`를 "real.Count==0일 때만 대체"에서 "항상 안전망 1개를 목록 끝에 추가"로 변경. 조사 중 추가 발견: 원래 합성 발판 Rect가 y=0(OS 좌표계 좌상단 원점 기준 화면 맨 위)에 놓여 있어 주석("화면 하단")과 실제 배치가 반대였던 좌표계 버그도 함께 수정(Screen.height*dpi 기준 하단 근처로 정정). `StickConfig`(desktopDpiScale)를 옵션 인자로 받도록 생성자 확장, 호출부(`StickmanAgent.CreatePlatformService`) 갱신. Unity 배치모드 컴파일 재검증: 에러 0/신규경고 0.
+
 - **[UX Designer → Coder, 2026-08-27]** `DialogueIntent`는 상태머신의 `Enter()` 호출(또는 강제 전이 훅)과 반드시 같은 프레임에 생성/취소되어야 함. 전제조건 판정은 `Enter()` 이전에 끝나야 하고, `Enter()` 호출 자체가 "행동 확정" 유일 신호여야 함. 강제 인터럽트(RAGDOLL 등)는 말풍선 최소 노출시간 규칙을 항상 이김(즉시 철회). 근거: `docs/UX_FLOW.md` 5절.
 - **[UX Designer → Coder, 2026-08-27]** 상태머신에 "일반 전이"와 "강제 인터럽트 전이"를 구분하는 우선순위/플래그가 이벤트버스에 필요함(현재 설계에 명시적 구분 없음 — 추가 검토 요청). 근거: `docs/UX_FLOW.md` 9절-2.
 - **[UX Designer → Coder, 2026-08-27]** 클릭 관통 ON 상태에서도 커서 근접 앰비언트 반응을 위해 전역 커서 좌표 폴링 경로가 클릭-패스스루 구현과 독립적으로 필요(클릭 관통이 좌표 조회까지 막으면 안 됨). 근거: `docs/UX_FLOW.md` 9절-3.
@@ -132,6 +134,10 @@
   - **(BUG-P1-M2, Phase 2 선반영)** `StickmanStateMachine(states)` + `Start(initialState)` 분리를 Phase 2 착수 전에 미리 반영했다. Phase 2 담당자는 새 초기 상태를 등록할 때 생성자가 더 이상 즉시 `Enter()`를 호출하지 않는다는 점만 유의하면 된다(`blackboard.Machine` 배선 후 `Start()` 호출 순서를 지킬 것).
   - **(BUG-P1-M6, Phase 2 선반영)** `StickmanAgent.Suspend()/Resume()`을 `_allBodies`(`GetComponentsInChildren<Rigidbody2D>(true)`) 전체 순회로 일반화했다. Phase 2에서 RAGDOLL 상태의 사지 Rigidbody2D를 몸통 자식으로 배치하기만 하면 별도 수정 없이 Suspend/Resume이 자동으로 전부 커버한다.
   - 나머지(BUG-P1-M1/M3/M4/M5, Minor m4)는 단일 파일 내 값싼 수정이라 교차 레이어 영향 없음 — 각 항목 상세는 Phase 1 표의 해당 행 참고. Unity 배치모드 컴파일 재검증: 에러 0건, 경고 2건(RagdollState/GetupState 기존 미사용 필드뿐, 신규 경고 없음 — 이전 라운드 기준선 그대로 유지).
+- **[Debugger → Coder/Architect, 2026-08-27, 3차 타겟 검토]** 커밋 `6ee9be4`(2차 반려 수정분)만 적대적 재검증. 전체 리포트: `docs/BUG_REPORT_PHASE1_R3.md` (Blocker 1건 신규, **Coder로 재반려 필요**).
+  - BUG-P1-B2(키보드 의존): `grep`으로 프로젝트 전체 `GetAxisRaw`/`GetButtonDown` 등 실제 호출 0건 재확인 — **완전 해결**. BUG-P1-M2(생성자/Start 분리): `StickmanAgent.Awake()`가 `_blackboard.Machine = _machine;` 다음에 `_machine.Start(...)`를 호출하는 순서를 코드로 직접 재확인 — **정확히 배선됨**. `AutoWanderController`의 UX_FLOW.md 26절 수치(Idle/Walk 지속시간, 방향전환 8%, Idle후 75/20/5% 분기, 경계 90/10%, 지터 ±17.5% 등)는 `StickConfig` 필드와 1:1 대조 완료, 전부 일치.
+  - **(BUG-P1-R3-B1, Blocker, 신규)** `AutoWanderController`의 "발판 경계 10% 점프 시도"(26-2)가, 서로 떨어진 두 발판(예: 창 A/B) 사이의 빈 틈으로 점프했을 때 착지 실패 시 안전망이 없다 — `GroundSensor.GroundInfo.ScreenLeftWorldX/RightWorldX`가 "모든 발판의 합집합 바운딩 박스"라서 발판 사이 틈을 표현하지 못하고, `FallbackPlatformWindowService`는 실제 발판이 1개라도 있으면 개입하지 않기 때문(`real.Count > 0`이면 그대로 통과). 결과: 캐릭터가 Y축으로 영원히 낙하(Y축 하한 체크/리스폰 로직 전무, grep 확인) — BUG-P1-B1이 막으려던 것과 동일한 "영구 소멸" 실패 모드가 유저 조작 없이 자율적으로, 통계적으로 필연에 가깝게 재발한다. **수정 권고**: `FallbackPlatformWindowService`가 실제 발판이 있어도 화면 최하단 안전망을 항상 추가로 덧붙이도록 변경(현재는 "0개일 때만 대체"). 상세: `docs/BUG_REPORT_PHASE1_R3.md` BUG-P1-R3-B1.
+  - 배치모드 재컴파일: 에러 0건 확인(경고 카운트는 Library 캐시 재사용으로 이번 로그에서 독립 재확인 못함 — 이전 기준선과 상충하는 증거는 없음).
 
 ## 과학적 토론 로그 (원인 불명 버그)
 > 가설 → 검증방법 → 결과 → 결론 순으로 기록. 아래는 Phase 0 정적 검토만으로는 확답할 수 없어 가설로 남긴 항목(실측 필요) — 전체 근거는 `docs/BUG_REPORT_PHASE0.md` 하단 참고.

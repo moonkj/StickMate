@@ -33,3 +33,10 @@
 - Major 5건(M2 상태머신 생성자 타이밍/M3 반환값 무시/M4 캐시 불변성/M5 코요테 타임 명문화/M6 다중 Rigidbody Suspend) 전부 반영. 컴파일 재검증: 에러 0, 신규 경고 0.
 - UX Designer는 병렬로 Phase 4(OS 장난: 창도둑/청소부/그라피티/크래시/블랙홀/PC연동) 선행 설계도 완료 — "윈도우 크래시" 트리거로 기획 원문의 키보드 타건속도 감지를 키보드 폐기 결정과의 일관성을 이유로 스스로 배제한 점이 특히 좋았음.
 - **Phase 1 2차 게이트 승인.** 다음: Debugger 3차(타겟) 검토 후 문제 없으면 Phase 2(Ragdoll/파쿠르/DialogueIntent) 착수.
+
+## 2026-08-27 (계속) — Phase 1 3차 검토 + Architect 핫픽스
+- Debugger 3차(타겟) 검토: BUG-P1-B2(키보드의존)/BUG-P1-M2(생성자타이밍)/AutoWanderController 스펙 일치 전부 확인 완료. 컴파일 에러 0.
+- 신규 Blocker(BUG-P1-R3-B1) 발견: 서로 떨어진 두 발판 사이 빈틈으로 배회 AI가 점프 시도 시 착지 실패 → 무한낙하 재발(FallbackPlatformWindowService가 "실제 발판이 1개라도 있으면" 개입하지 않는 구조였기 때문).
+- 범위가 작고 명확해 리더가 직접 핫픽스 적용(전체 Coder 라운드 생략): EnumerateFootholds()가 항상 화면 하단 안전망을 목록 끝에 추가하도록 변경. 조사 중 원래 구현의 좌표계 버그(안전망이 화면 "맨 위"에 배치되던 것 — y=0이 OS 좌표계에서 화면 상단을 뜻함)도 함께 발견해 수정.
+- Unity 배치모드 컴파일 재검증: 에러 0, 신규 경고 0(기존 Ragdoll/Getup 스텁 경고 2건만 유지).
+- 다음: Debugger 최종 확인(4차, 이번 핫픽스만 타겟) 후 문제 없으면 Phase 1 최종 승인 및 Phase 2(Ragdoll/파쿠르/DialogueIntent) 착수.
