@@ -50,7 +50,7 @@ iOS/iPadOS는 앱 샌드박스 정책상 "다른 앱 창 열거"·"시스템 전
 | 수익화 | 스킨/DLC 프리뷰, 업적 | P2 |
 
 ## 2. 기술 스택
-- **엔진**: Unity 6 LTS, URP 2D, Rigidbody2D + Joint2D 기반 Active Ragdoll
+- **엔진**: Unity 6 LTS, **Built-in RP**(2026-08-28 Architect 확정 — 초기 설계는 URP 2D를 전제했으나 씬/렌더링 작업이 아직 없어 URP 특화 기능에 의존하는 코드가 전무함을 확인, 불필요한 패키지 의존 추가를 피하고 현재 프로젝트 실제 상태를 공식 기준으로 채택. 향후 실제 비주얼/셰이더 작업 착수 시 URP 전환은 Package Manager 설치 한 번으로 가능하며 기존 C# 게임로직에 영향 없음), Rigidbody2D + Joint2D 기반 Active Ragdoll
 - **플랫폼 오버레이**: `IPlatformWindowService` 인터페이스
   - Windows: Win32 P/Invoke (`SetWindowLong` WS_EX_LAYERED/WS_EX_TRANSPARENT, `EnumWindows`, `DwmGetWindowAttribute`)
   - macOS: Objective-C++ 네이티브 플러그인 (`NSWindow` 오버레이, `CGWindowListCopyWindowInfo`)
