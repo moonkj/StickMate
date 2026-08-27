@@ -38,8 +38,14 @@ namespace StickMate.States
 
         public StickmanStateId CurrentStateId => _current != null ? _current.StateId : default;
 
-        /// <summary>DialogueIntent.IsValid가 참조하는 "현재 유효한 전이 세대" 값.</summary>
-        public int CurrentTransitionGeneration => _transitionGeneration;
+        /// <summary>
+        /// DialogueIntent.IsValid가 참조하는 "현재 유효한 전이 세대" 값.
+        /// BUG-M1 대응(2026-08-27, Debugger/Architect 권고): public이면 Enter() 밖에서도 이 값을 읽어
+        /// "현재 세대와 정확히 일치하는" 위조 컨텍스트를 만들 수 있었다. internal로 좁혀 DialogueIntent
+        /// (같은 어셈블리)만 읽을 수 있게 한다 — IStickmanState.cs의 StateTransitionContext internal화와
+        /// 짝을 이루는 조치. 완전한 방어는 아님(같은 어셈블리 내부는 여전히 접근 가능) — 위 로그 참고.
+        /// </summary>
+        internal int CurrentTransitionGeneration => _transitionGeneration;
 
         public StickmanStateMachine(Dictionary<StickmanStateId, IStickmanState> states, StickmanStateId initialState)
         {
@@ -61,13 +67,25 @@ namespace StickMate.States
         /// </param>
         public void ChangeState(StickmanStateId next, bool isForcedInterrupt = false)
         {
+            // BUG-M2 대응(2026-08-27, Debugger/Architect 권고): 원래 코드는 _states[next] 조회를
+            // Exit()/세대 증가 "이후"에 수행해, next가 미등록 키면 이미 Exit()된 옛 상태를 _current가
+            // 계속 가리키는 "좀비" 상태로 고착되고 복구 경로가 없었다(KeyNotFoundException 발생 시점에
+            // 이미 뮤테이션이 절반 진행된 상태). 뮤테이션(Exit 호출/세대 증가) 이전에 next의 존재를
+            // 먼저 검증해, 실패 시 현재 상태를 그대로 유지한 채 안전하게 반환한다.
+            if (!_states.TryGetValue(next, out IStickmanState nextState))
+            {
+                Debug.LogError($"[StickmanStateMachine] ChangeState({next}) 실패 — 등록되지 않은 상태 ID. " +
+                                $"현재 상태({CurrentStateId})를 그대로 유지합니다.");
+                return;
+            }
+
             StickmanStateId from = CurrentStateId;
 
             _current?.Exit();
             _transitionGeneration++; // 직전 전이로 만들어진 모든 DialogueIntent를 이 시점부로 구세대 취급
 
             var context = new StateTransitionContext(from, next, Time.frameCount, _transitionGeneration, this);
-            _current = _states[next];
+            _current = nextState;
             _current.Enter(context);
 
             StickmanEventBus.RaiseStateTransitioned(from, next, isForcedInterrupt);

@@ -45,6 +45,21 @@ namespace StickMate.Core
         [Tooltip("발판 목록을 다시 열거(폴링)하는 주기(초). 매 프레임 열거 금지 — 반드시 이 주기로 제한")]
         public float footholdPollInterval = 0.5f;
 
+        [Tooltip("전체화면 게임 감지(IsFullscreenAppActive)를 다시 확인하는 주기(초). 발판 폴링과 별도 주기로 관리한다")]
+        public float fullscreenPollInterval = 1.5f;
+
+        [Header("좌표계 변환 (Platform/ScreenCoordinateConverter.cs 참고)")]
+        [Tooltip("Unity가 보고하는 화면 픽셀 단위 ↔ OS가 보고하는 실제 데스크톱 픽셀 단위 사이의 배율. " +
+                 "고DPI(Retina 등) 환경에서 두 값이 다를 때 보정용. 기본값 1 = 배율 차이 없음으로 가정(Phase 1 근사치).")]
+        public float desktopDpiScale = 1f;
+
+        [Tooltip("캐릭터 발 위치(OS 좌표)와 발판 상단 사이 허용 오차(OS 픽셀 단위). 이 범위 안이면 접지로 판정")]
+        public float groundSnapTolerance = 6f;
+
+        [Header("입력")]
+        [Tooltip("이동 입력(-1~1)의 불감대. 이 값 이하는 '입력 없음'으로 취급해 Idle<->Walk 떨림을 방지")]
+        public float moveInputDeadzone = 0.15f;
+
         [Header("색상 (임시 플레이스홀더 — 디자이너 확정 전까지)")]
         public Color primaryOutlineColor = Color.black;
         public Color dialogueBubbleColor = Color.white;
