@@ -75,6 +75,12 @@ namespace StickMate.Interaction
             _batteryPollTimer += dt;
             float interval = Mathf.Max(1f, _config.hardwareBatteryPollInterval);
             if (_batteryPollTimer < interval) return;
+            // BUG-P4-M1 대응(Major, docs/BUG_REPORT_PHASE4.md): UpdateSignalLifecycle의 회복 쿨다운은
+            // "이 호출과 다음 호출 사이에 실제로 흐른 시간"만큼 줄어야 하는데, 여기서 매 프레임의 dt(한
+            // 프레임 분량)만 넘기면 이 메서드 자체가 interval(예: 90초)마다 한 번만 호출되므로 쿨다운이
+            // 사실상 거의 줄지 않는다(TickCpu의 기존 elapsedThisSample 패턴과 동일하게, 리셋 직전에
+            // 누적된 폴 타이머 값을 스냅샷해 넘긴다).
+            float elapsedThisPoll = _batteryPollTimer;
             _batteryPollTimer = 0f;
 
             float level = SystemInfo.batteryLevel; // 미지원 환경(대부분의 데스크톱)에서는 -1을 반환
@@ -84,7 +90,7 @@ namespace StickMate.Interaction
             bool sustainedNow = lowNow && _batteryLowLastPoll;
             _batteryLowLastPoll = lowNow;
 
-            UpdateSignalLifecycle(_battery, sustainedNow, dt, _config.hardwareReactionCooldownSeconds);
+            UpdateSignalLifecycle(_battery, sustainedNow, elapsedThisPoll, _config.hardwareReactionCooldownSeconds);
         }
 
         private void TickCharging(float dt)
@@ -92,12 +98,14 @@ namespace StickMate.Interaction
             _chargingPollTimer += dt;
             float interval = Mathf.Max(1f, _config.hardwareChargingPollInterval);
             if (_chargingPollTimer < interval) return;
+            // BUG-P4-M1 대응 — TickBattery와 동일 이유로 dt 대신 실제 경과 폴 간격을 넘긴다.
+            float elapsedThisPoll = _chargingPollTimer;
             _chargingPollTimer = 0f;
 
             bool chargingNow = SystemInfo.batteryStatus == BatteryStatus.Charging;
             // 충전 상태는 순간 스파이크 개념이 아니라 실제 물리적 사건(플러그 삽입)이라 별도 연속-확인
             // 없이 다음 폴링에서 바로 반영한다(23절: "상태 진입 시 1회 전이 연출"이라는 목표와도 부합).
-            UpdateSignalLifecycle(_charging, chargingNow, dt, _config.hardwareReactionCooldownSeconds);
+            UpdateSignalLifecycle(_charging, chargingNow, elapsedThisPoll, _config.hardwareReactionCooldownSeconds);
         }
 
         private void TickCpu(float dt)
@@ -128,6 +136,8 @@ namespace StickMate.Interaction
             _networkPollTimer += dt;
             float interval = Mathf.Max(1f, _config.hardwareNetworkPollInterval);
             if (_networkPollTimer < interval) return;
+            // BUG-P4-M1 대응 — TickBattery와 동일 이유로 dt 대신 실제 경과 폴 간격을 넘긴다.
+            float elapsedThisPoll = _networkPollTimer;
             _networkPollTimer = 0f;
 
             bool downNow = Application.internetReachability == NetworkReachability.NotReachable;
@@ -135,7 +145,7 @@ namespace StickMate.Interaction
             bool sustainedNow = downNow && _networkDownLastPoll;
             _networkDownLastPoll = downNow;
 
-            UpdateSignalLifecycle(_network, sustainedNow, dt, _config.hardwareReactionCooldownSeconds);
+            UpdateSignalLifecycle(_network, sustainedNow, elapsedThisPoll, _config.hardwareReactionCooldownSeconds);
         }
 
         /// <summary>

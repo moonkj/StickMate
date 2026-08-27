@@ -76,3 +76,11 @@
 - Architect 승인 2건: 윈도우크래시 스윙/크랙수명 분리, 하드웨어반응 SpectacleEventLock 미적용(지속적 배경무드라 일회성 스펙터클과 별개 판단).
 - 리더 독립 컴파일 재검증: 에러0/경고0.
 - 다음: Debugger에게 Phase 4 검토 위임.
+
+## 2026-08-28 (계속) — Phase 4 Major 핫픽스
+- Debugger 검토: Blocker 0, Major 1(BUG-P4-M1: HardwareReactionDirector의 배터리/충전/네트워크 회복 쿨다운이 매 프레임 dt만 소진해 실제로는 배터리 26일/충전 8.7일/네트워크 5.8일 걸리는 은닉 버그 — CPU만 올바른 패턴 사용), Minor 2(우선순위 선점 정책 확인 요청, CPU 프레임타임 오탐 잠재위험).
+- 나머지 5개 중점 점검(유저자산불변 정적스캔 커버리지, 청소부/블랙홀 락 상호배제, 크래시 100%클릭관통, self-transition 함정 재발 여부, IDesktopIconLayoutService 안전 스텁) 전부 통과.
+- 범위 작아 리더가 직접 핫픽스: TickBattery/TickCharging/TickNetwork가 매 프레임 dt 대신 실제 경과 폴 간격을 UpdateSignalLifecycle에 전달하도록 수정(TickCpu의 기존 올바른 패턴과 통일).
+- Minor 확인: 우선순위 선점 안 함(이미 표시중인 반응 유지) 정책 승인 — 급전환 방지가 맞는 설계.
+- 컴파일 재검증: 에러0/경고0.
+- 다음: Debugger 짧은 재확인 후 Phase 5(생산성/반항·스트레스/육성) 착수.
