@@ -84,6 +84,39 @@ namespace StickMate.States
         public int AttackShotsRemaining;
 
         /// <summary>
+        /// 가출(20절) 은신처 월드 좌표 스냅샷 — Interaction/RunawayDirector.cs가 ChangeState(Runaway)
+        /// 직전에 세팅하고, States/RunawayState.cs의 초기 Enter()가 1회 소비한다(AttackShotsRemaining과
+        /// 동일한 "펄스 세팅 → 소비" 관례).
+        /// </summary>
+        public Vector2 PendingRunawayHideWorldPos;
+
+        /// <summary>가출 상태에서 "발견됨"(캐릭터 히트박스 클릭) 1회성 신호. RunawayDirector가
+        /// StickmanClickHitbox.MouseDown을 구독해 세팅하고, RunawayState.Tick()이 Hidden 페이즈에서만
+        /// 소비한다(다른 페이즈 중 세팅되면 조용히 무시 — DragReleaseSignaled와 동일한 소비-후-리셋 펄스).</summary>
+        public bool RunawayFoundSignaled;
+
+        /// <summary>가출 상태에서 "간식을 줌"(Found 페이즈 전용) 1회성 신호. 실제 UI(간식 주기 버튼)는
+        /// Phase2+ 렌더링 담당 — 지금은 Interaction/RunawayDirector.cs가 공개한 OfferSnack()이 이 신호를 세팅한다.</summary>
+        public bool RunawaySnackOfferedSignaled;
+
+        /// <summary>가출 상태에서 "돌아오라고 부르기"(트레이 수동 소환, 20절) 1회성 신호.</summary>
+        public bool RunawayManualRecallSignaled;
+
+        /// <summary>가출 상태에서 트레이 긴급정지로 인한 "강제 소환"(24절 — 인질극의 '종료'와 달리 가출은
+        /// '즉시 강제 복귀') 1회성 신호. 다른 복귀 신호와 달리 어떤 페이즈에서도 즉시 처리된다.</summary>
+        public bool RunawayForceSummonSignaled;
+
+        /// <summary>
+        /// 캐릭터 렌더러 표시/숨김 제어(가출 20절 전용 통로). StickmanAgent.Awake()가 자신의 기존
+        /// private SetRenderersEnabled(bool)를 그대로 이 델리게이트에 연결한다(CursorProvider와 동일한
+        /// "이미 있는 private 메서드를 블랙보드로 노출" 패턴 — 새 메서드를 만들지 않는다). Suspend()/
+        /// Resume()의 전체화면 은닉과는 별개의 독립 스위치다 — RunawayState는 이 필드만 사용하고
+        /// StickmanAgent._isSuspended 플래그에는 관여하지 않는다(20절 예외: 가출 중 전체화면 감지가
+        /// 와도 강제 취소하지 않고 그냥 함께 멈췄다가(Suspended는 Tick 자체를 건너뜀) 재개된다).
+        /// </summary>
+        public System.Action<bool> SetCharacterVisible;
+
+        /// <summary>
         /// CursorProvider(OS 화면 좌표)를 이 블랙보드의 MainCamera/Config로 Unity 월드 좌표로 역변환한다.
         /// ScreenCoordinateConverter의 "cameraDepth는 같은 호출 세트 안에서 재사용" 규칙을 지키기 위해,
         /// Body 위치를 기준점으로 삼아 depth를 산출한 뒤 그 depth로 커서 좌표를 되돌린다(SenseGround()가

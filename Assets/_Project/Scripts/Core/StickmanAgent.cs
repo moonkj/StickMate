@@ -132,6 +132,10 @@ namespace StickMate.Core
             // Phase 3: 드래그&던지기(DragThrowState)/로데오 커서(RodeoCursorState)가 커서 월드 좌표를
             // 조회하기 위한 별도 배선(같은 메서드 그룹을 가리키는 다른 델리게이트 인스턴스일 뿐).
             _blackboard.CursorProvider = TryGetCursorPosition;
+            // Phase 5(UX_FLOW.md 20절): 가출(RunawayState)이 은신 중 렌더러를 숨기고 발견 시 다시
+            // 보이게 하기 위한 통로. 이미 존재하는 private SetRenderersEnabled를 그대로 노출할 뿐
+            // 새 메서드를 만들지 않는다(CursorProvider와 동일한 관례).
+            _blackboard.SetCharacterVisible = SetRenderersEnabled;
 
             var states = new Dictionary<StickmanStateId, IStickmanState>
             {
@@ -165,6 +169,22 @@ namespace StickMate.Core
                     cfg => cfg.blackholeDurationSeconds) },
                 { StickmanStateId.WindowCrash, new TimedSpectacleState(_blackboard, StickmanStateId.WindowCrash,
                     cfg => cfg.windowCrashSwingDuration) },
+                // Phase 5 신규(UX_FLOW.md 17/18/19절) — 전부 TimedSpectacleState의 일반화된 대사 지원을
+                // 재사용한다(Phase 4의 4개 등록과 동일한 컨벤션, States/TimedSpectacleState.cs 문서 참고).
+                // 가출(Runaway)만 다중 페이즈/텔레포트/렌더러 토글이 필요해 전용 States/RunawayState.cs를 쓴다.
+                { StickmanStateId.TodoReminder, new TimedSpectacleState(_blackboard, StickmanStateId.TodoReminder,
+                    cfg => cfg.todoReminderHoldSeconds, TodoListModel.ConsumePendingReminderText) },
+                { StickmanStateId.FocusStart, new TimedSpectacleState(_blackboard, StickmanStateId.FocusStart,
+                    cfg => cfg.pomodoroStartPoseHoldSeconds, cfg => "좋아, 감시 시작") },
+                { StickmanStateId.FocusComplete, new TimedSpectacleState(_blackboard, StickmanStateId.FocusComplete,
+                    cfg => cfg.pomodoroCompletePoseHoldSeconds, cfg => "수고했어!") },
+                { StickmanStateId.FocusCancelled, new TimedSpectacleState(_blackboard, StickmanStateId.FocusCancelled,
+                    cfg => cfg.pomodoroCancelPoseHoldSeconds, cfg => "그래 쉬자") },
+                { StickmanStateId.FocusNudge, new TimedSpectacleState(_blackboard, StickmanStateId.FocusNudge,
+                    cfg => cfg.pomodoroNudgeDialogueHoldSeconds, cfg => "어? 딴 데 보고 있네?") },
+                { StickmanStateId.Sulky, new TimedSpectacleState(_blackboard, StickmanStateId.Sulky,
+                    cfg => cfg.stressSulkyHoldSeconds, cfg => "아 몰라...") },
+                { StickmanStateId.Runaway, new RunawayState(_blackboard) },
             };
 
             // BUG-P1-M2 대응(Major, docs/BUG_REPORT_PHASE1.md): 생성과 "최초 상태 활성화"를 분리했다.

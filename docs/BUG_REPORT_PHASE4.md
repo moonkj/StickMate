@@ -105,3 +105,16 @@
 ## 과학적 토론 로그
 
 이번 라운드는 원인 불명 버그가 없었다(BUG-P4-M1은 코드를 직접 추적해 원인이 100% 확정됨 — 가설 검증 절차 불필요).
+
+---
+
+## 핫픽스 재확인
+
+> **[Debugger, 2026-08-28]** 대상: 커밋 `10aef27`("Phase 4 핫픽스: 하드웨어 반응 쿨다운 버그 수정 (BUG-P4-M1)"), 변경 파일 1개(`Interaction/HardwareReactionDirector.cs`).
+
+- **좁은 타겟 재확인**: `TickBattery`(:73-94)/`TickCharging`(:96-109)/`TickNetwork`(:134-149) 3곳 전부 `_xxxPollTimer = 0f` 리셋 직전에 `float elapsedThisPoll = _xxxPollTimer;`로 스냅샷한 뒤 `UpdateSignalLifecycle(..., elapsedThisPoll, ...)`에 그 값을 넘김을 코드로 직접 확인 — `TickCpu`의 기존 `elapsedThisSample` 패턴(:111-131, 샘플 타이머를 리셋 직전에 스냅샷해 넘김)과 형태가 완전히 동일하다. 더 이상 `dt`(프레임당 값)를 넘기는 자리는 이 파일에 없다(grep 확인).
+- **부작용 점검**: `_batteryLowLastPoll`/`_networkDownLastPoll` 기반 연속-확인(2회 폴링) 로직(:90-91, :145-146)은 `lowNow`/`downNow` 원시값만 사용하고 `elapsedThisPoll`과 무관해 변경 없음. `ResolveAndNotify()`/`TryStart()`(:184-208)는 `state.Sustained`/`state.Notified`만 참조하고 dt를 직접 다루지 않으므로 우선순위 판정 로직 자체도 변경 없음 — 이번 수정으로 `RecoveryCooldownRemaining`이 의도한 실제 속도로 줄어드는 것 외에 다른 동작 변화는 없음을 확인.
+- **Unity 배치모드 컴파일 재확인**: 클린 재빌드 없이 증분 배치모드 실행(`-batchmode -nographics -quit`), 로그에서 `error CS`/`warning CS` 매치 0건, `Exiting batchmode successfully now!` 정상 종료 확인.
+- **EditMode 테스트 재실행**: `-runTests -testPlatform EditMode`, `testResults.xml` 직접 파싱 결과 `testcasecount="13" result="Passed" total="13" passed="13" failed="0"` — 기존 13/13 기준선과 동일, 회귀 없음.
+
+**결론**: BUG-P4-M1 핫픽스가 좁은 타겟대로 정확히 적용되었고 부작용·회귀 없음을 확인. **Phase 4 최종 승인 — Phase 5(생산성/반항·스트레스/육성) 착수 가능.**

@@ -386,6 +386,144 @@ namespace StickMate.Core
                  "회복 이후에도 이 시간만큼은 재알림을 유예한다(빠른 flapping 방지).")]
         public float hardwareReactionCooldownSeconds = 420f;
 
+        [Header("투두 말풍선 (docs/UX_FLOW.md 17절, Phase 5)")]
+        [Tooltip("들고 다니는 모드 리마인더 유휴 판정 주기(초). 할일 개수와 무관한 고정 주기(17절 명시).")]
+        public float todoReminderCheckInterval = 45f;
+
+        [Tooltip("판정 주기마다 리마인더가 실제로 발동할 확률(0~1).")]
+        public float todoReminderChance = 0.2f;
+
+        [Tooltip("들고 다니는 모드 — 종이를 펼쳐 대사를 보여주는 지속 시간(초). 이후 자동으로 Idle 복귀.")]
+        public float todoReminderHoldSeconds = 3f;
+
+        [Tooltip("활성(미완료) 할일이 이 개수를 넘으면 추가 시 '먼저 정리해볼까?' 같은 가벼운 안내만 " +
+                 "노출(추가 자체는 막지 않음 — 강제 차단은 스트레스 유발이므로 지양, 17절).")]
+        public int todoActiveCountSoftCap = 15;
+
+        [Tooltip("체크 완료된 항목이 포스트잇 목록에서 취소선 상태로 남아있다가 자동으로 정리(완료함으로 " +
+                 "이동)되기까지의 시간(초).")]
+        public float todoCompletedLingerSeconds = 2.5f;
+
+        [Tooltip("완료 체크를 실수로 눌렀을 때 되돌릴 수 있는 허용 시간(초). UX 명시값 3초.")]
+        public float todoUndoWindowSeconds = 3f;
+
+        [Tooltip("포스트잇 카드에 한 번에 노출하는 최대 줄 수. 초과분은 '[+N개 더보기]'로 접힘(17절).")]
+        public int todoPostItMaxVisibleRows = 4;
+
+        [Header("포모도로 감시자 (docs/UX_FLOW.md 18절, Phase 5)")]
+        [Tooltip("딴짓 감지 관찰 창 길이(초). UX 명시값 2분.")]
+        public float pomodoroObservationWindowSeconds = 120f;
+
+        [Tooltip("타이머 시작 직후 무조건 관찰만 하고 경고를 발동하지 않는 유예 시간(초). UX 명시값 2분.")]
+        public float pomodoroGraceSeconds = 120f;
+
+        [Tooltip("한 관찰 창 안에서 이 횟수 이상 전경 창(포커스) 전환이 있으면 '산만함' 후보로 카운트. UX 명시값 6회.")]
+        public int pomodoroFocusSwitchThreshold = 6;
+
+        [Tooltip("산만함 후보 창이 이 횟수만큼 연속되어야 1단계(눈치주기)가 발동. UX 명시값 3회 연속.")]
+        public int pomodoroTier1ConsecutiveWindows = 3;
+
+        [Tooltip("1단계 발동 후 추가로 이만큼 더 연속되면 2단계(부드러운 리마인드)로 에스컬레이션. UX 명시값 +2주기.")]
+        public int pomodoroTier2AdditionalWindows = 2;
+
+        [Tooltip("2단계 발동 후 추가로 이만큼 더 연속되면 3단계(창 두드림)로 에스컬레이션.")]
+        public int pomodoroTier3AdditionalWindows = 2;
+
+        [Tooltip("이 시간(초) 이상 커서가 완전히 정지해 있으면 '자리비움' 극단값 신호(보조, 단독 판정 금지)로 반영.")]
+        public float pomodoroMouseIdleSeconds = 90f;
+
+        [Tooltip("아주 짧은 구간 동안 커서 이동 속도(OS px/초)가 이 값을 넘으면 '정처 없이 훑는' 극단값 신호로 반영.")]
+        public float pomodoroMouseErraticSpeedThreshold = 4000f;
+
+        [Tooltip("위 극단값 판정에 쓰는 순간 이동 속도 샘플 구간(초).")]
+        public float pomodoroMouseErraticSampleSeconds = 1.0f;
+
+        [Tooltip("집중 모드 시작 포즈(안경+팔짱) 유지 시간(초).")]
+        public float pomodoroStartPoseHoldSeconds = 2f;
+
+        [Tooltip("타이머 정상 만료 축하 포즈 유지 시간(초).")]
+        public float pomodoroCompletePoseHoldSeconds = 2.5f;
+
+        [Tooltip("유저가 중도에 집중 모드를 끌 때(패널티 없는 톤) 포즈 유지 시간(초).")]
+        public float pomodoroCancelPoseHoldSeconds = 1.5f;
+
+        [Tooltip("2단계 '어? 딴 데 보고 있네?' 대사 노출 유지 시간(초).")]
+        public float pomodoroNudgeDialogueHoldSeconds = 2f;
+
+        [Header("스트레스 게이지 (docs/UX_FLOW.md 19절, Phase 5)")]
+        [Tooltip("격파훈련 과다 판정 관찰 창 길이(초). UX 명시값 5분.")]
+        public float stressOveruseWindowSeconds = 300f;
+
+        [Tooltip("위 창 안에서 격파 미니게임/드래그&던지기 진입이 이 횟수를 넘으면 초과분마다 스트레스 증가. UX 명시값 8회.")]
+        public int stressOveruseTriggerCount = 8;
+
+        [Tooltip("과다 상호작용 초과 1건마다 더해지는 스트레스 증가량(0~1 게이지 기준).")]
+        public float stressOveruseIncrement = 0.12f;
+
+        [Tooltip("상호작용이 전혀 없는 상태가 이 시간(초)을 넘으면 '심심함/외로움' 스트레스가 누적되기 " +
+                 "시작한다. UX 명시값 반나절(12시간).")]
+        public float stressNeglectThresholdSeconds = 43200f;
+
+        [Tooltip("방치 임계값을 넘긴 뒤, 초과 1시간당 더해지는 스트레스 증가량.")]
+        public float stressNeglectIncrementPerHourOver = 0.05f;
+
+        [Tooltip("긴급정지 반복 사용 판정 관찰 창 길이(초).")]
+        public float stressEmergencyStopWindowSeconds = 600f;
+
+        [Tooltip("위 창 안에서 긴급정지 사용이 이 횟수를 넘으면 초과분마다 아주 약한 스트레스 증가(19절 — " +
+                 "긴급정지는 유저의 정당한 권리이므로 사용을 주저하게 만들 정도로 강하면 안 됨).")]
+        public int stressEmergencyStopTriggerCount = 3;
+
+        [Tooltip("긴급정지 과다 사용 초과 1건마다 더해지는 스트레스 증가량 — 다른 트리거보다 훨씬 약하게 유지할 것.")]
+        public float stressEmergencyStopIncrement = 0.03f;
+
+        [Tooltip("최근 상호작용이 있어 '방치' 상태가 아닐 때, 시간당 자연 감소하는 스트레스량(게이지가 " +
+                 "한 번 오른 뒤 영원히 안 내려가는 단조증가를 막기 위한 Coder 판단 — Tasklist 참고).")]
+        public float stressPassiveDecayPerHour = 0.05f;
+
+        [Tooltip("이 값(0~1) 이상이면 SULKY(부루퉁함) 상태가 발동 후보가 된다. UX 명시값 80%.")]
+        public float stressSulkyThreshold = 0.8f;
+
+        [Tooltip("SULKY 발동 저확률 추첨 주기(초).")]
+        public float stressSulkyCheckInterval = 30f;
+
+        [Tooltip("판정 주기마다 SULKY가 발동할 확률(0~1) — 게이지가 임계값을 넘은 동안에만 적용.")]
+        public float stressSulkyChance = 0.5f;
+
+        [Tooltip("SULKY 종료 후 다음 발동까지의 최소 쿨다운(초).")]
+        public float stressSulkyCooldownSeconds = 90f;
+
+        [Tooltip("SULKY 한숨/처진 자세 유지 시간(초).")]
+        public float stressSulkyHoldSeconds = 2f;
+
+        [Header("가출 (docs/UX_FLOW.md 20/24절, Phase 5)")]
+        [Tooltip("스트레스 게이지가 이 값(0~1) 이상이면 가출(2단계, 확정 발동)이 트리거된다. 24절 — " +
+                 "1단계(인질극/로데오 확률 가중)와 달리 확률이 아니라 임계값 도달 시 확정 발동.")]
+        public float stressRunawayThreshold = 1.0f;
+
+        [Tooltip("'나 안 해!' 대사 이후 화면 가장자리로 뛰어가는 애니메이션 유지 시간(초). 실제 이동/모션 " +
+                 "연출은 Phase2+ 렌더링 담당 — 이 시간 동안은 상태만 확정 유지.")]
+        public float runawayFleeDurationSeconds = 1.2f;
+
+        [Tooltip("가출 은신처(화면 네 모서리)를 화면 가장자리로부터 안쪽으로 띄우는 여백(OS 화면 픽셀).")]
+        public float runawayHideSpotMarginPx = 60f;
+
+        [Tooltip("아무 조치가 없어도 스스로 복귀하는 안전망 타임아웃(초). UX 명시값 1~2시간 구간(기본 1.5시간).")]
+        public float runawayAutoReturnSeconds = 5400f;
+
+        [Tooltip("간식을 받아먹고 화해 대사를 하는 동안의 유지 시간(초), 이후 정상 Idle 복귀.")]
+        public float runawayReconcileHoldSeconds = 1.5f;
+
+        [Tooltip("자동 타임아웃/수동 소환/긴급 강제소환으로 스스로 돌아올 때의 대사 유지 시간(초).")]
+        public float runawaySelfReturnHoldSeconds = 1.2f;
+
+        [Tooltip("숨어있는 동안 은신처 근처에 은은한 단서(흔들림/소리)를 알리는 주기(초). 실제 연출은 " +
+                 "Phase2+ 렌더링 담당 — 지금은 트리거 이벤트만 발행.")]
+        public float runawayHintPulseIntervalSeconds = 8f;
+
+        [Tooltip("간식을 받아 화해했을 때 감소하는 스트레스량(0~1) — 완전 리셋은 아님(20절 명시).")]
+        public float runawaySnackStressRelief = 0.5f;
+
         [Header("색상 (임시 플레이스홀더 — 디자이너 확정 전까지)")]
         public Color primaryOutlineColor = Color.black;
         public Color dialogueBubbleColor = Color.white;

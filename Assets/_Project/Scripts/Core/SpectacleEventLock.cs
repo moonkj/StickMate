@@ -16,6 +16,30 @@ namespace StickMate.Core
         DesktopTidy,
         BlackholeSummon,
         WindowCrash,
+
+        // ==== Phase 5 (docs/UX_FLOW.md 17~20절) — Coder 판단 기록(Tasklist.md 교차 레이어 로그에도
+        // 동일 근거 기록): 이 락에 참여시킬지 여부는 "StickmanStateMachine.ChangeState()를 직접
+        // 호출해 단일 상태 슬롯을 두고 경쟁하는가"로 판단했다. Interaction/HardwareReactionDirector.cs는
+        // ChangeState를 전혀 호출하지 않고(현재 상태 위에 얹는 순수 오버레이 신호) 이 락에 참여하지
+        // 않는 것이 승인된 선례인데, 아래 5개는 전부 ChangeState를 호출해 다른 스펙터클과 같은 단일
+        // 상태 슬롯을 다툴 수 있으므로 하드웨어 반응과 달리 이 락에 참여시킨다. ====
+
+        /// <summary>투두 '들고 다니는 모드' 리마인더(17절) — ChangeState(TodoReminder) 호출.</summary>
+        TodoReminder,
+
+        /// <summary>포모도로 감시자 시작/종료/2단계 리마인드 포즈(18절) — FocusStart/FocusComplete/
+        /// FocusCancelled/FocusNudge 4개 상태가 모두 이 하나의 kind를 공유한다(서로 겹칠 일이 없는
+        /// 순차적 생애주기이므로 세분화할 실익이 없다).</summary>
+        FocusPose,
+
+        /// <summary>SULKY(19절) — ChangeState(Sulky) 호출. 하드웨어 반응과 달리 실제 상태 슬롯을 쓰므로
+        /// 참여시킨다(Tasklist.md 교차 레이어 로그 판단 근거 참고).</summary>
+        Sulky,
+
+        /// <summary>가출(20절) — UX_FLOW.md 25절-20이 명시적으로 요구: "가출 상태는 16절-15의 상호배제
+        /// 세트(10/11/13/14절)에 포함되어야 한다." 다른 5개와 달리 수 시간 지속될 수 있어 락을 가장
+        /// 오래 붙들 수 있는 항목이다.</summary>
+        Runaway,
     }
 
     /// <summary>

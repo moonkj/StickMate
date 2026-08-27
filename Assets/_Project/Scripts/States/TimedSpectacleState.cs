@@ -1,5 +1,6 @@
 using System;
 using StickMate.Core;
+using StickMate.Dialogue;
 
 namespace StickMate.States
 {
@@ -19,20 +20,30 @@ namespace StickMate.States
     /// 취소(전체화면 감지/유저 실제 조작 감지 등)는 이 클래스의 책임이 아니다 — 각 Director가
     /// StickmanStateMachine.ChangeState(Idle, isForcedInterrupt: true)를 직접 호출해 강제 종료시킨다
     /// (BattleMinigameDirector/DragThrowController의 ReleaseOwnedLocks() 관행과 동일).
+    ///
+    /// [Phase 5 일반화, docs/UX_FLOW.md 17/18/19절] 선택적 4번째 생성자 인자(dialogueTextSelector)를
+    /// 추가했다 — 투두 리마인더("확정된 할일 텍스트")/포모도로 시작-종료-넛지("좋아, 감시 시작"/
+    /// "수고했어!"/"그래 쉬자"/"어? 딴 데 보고 있네?")/SULKY("아 몰라...")는 전부 이 클래스와 동일한
+    /// "순수 타이머" 형태이면서 원칙 1(대사는 확정된 Enter()에서만 파생)을 지키는 고정 대사 1회만
+    /// 추가로 필요했다. null(기본값)이면 기존 4개 등록(그라피티/청소부/블랙홀/크래시)처럼 대사를 전혀
+    /// 만들지 않아 하위 호환된다 — 기존 호출부는 무수정.
     /// </summary>
     public sealed class TimedSpectacleState : IStickmanState
     {
         private readonly StickmanBlackboard _blackboard;
         private readonly StickmanStateId _stateId;
         private readonly Func<StickConfig, float> _durationSecondsSelector;
+        private readonly Func<StickConfig, string> _dialogueTextSelector;
 
         private float _timer;
 
-        public TimedSpectacleState(StickmanBlackboard blackboard, StickmanStateId stateId, Func<StickConfig, float> durationSecondsSelector)
+        public TimedSpectacleState(StickmanBlackboard blackboard, StickmanStateId stateId,
+            Func<StickConfig, float> durationSecondsSelector, Func<StickConfig, string> dialogueTextSelector = null)
         {
             _blackboard = blackboard;
             _stateId = stateId;
             _durationSecondsSelector = durationSecondsSelector;
+            _dialogueTextSelector = dialogueTextSelector;
         }
 
         public StickmanStateId StateId => _stateId;
@@ -40,6 +51,15 @@ namespace StickMate.States
         public void Enter(StateTransitionContext context)
         {
             _timer = 0f;
+
+            if (_dialogueTextSelector == null) return;
+            string text = _dialogueTextSelector(_blackboard.Config);
+            // 비어있으면 대사를 만들지 않는다(예: 투두 리마인더가 소비할 대기 중인 텍스트가 없는
+            // 방어적 엣지 케이스 — 트리거 측이 미리 개수를 확인하므로 정상 경로에서는 발생하지 않는다).
+            if (!string.IsNullOrEmpty(text))
+            {
+                _ = new DialogueIntent(context, id => text);
+            }
         }
 
         public void Tick(float deltaTime)

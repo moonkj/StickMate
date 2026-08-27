@@ -57,6 +57,37 @@ namespace StickMate.Core
         /// Idle 복귀). 크랙 유리 오버레이 자체의 3초 수명은 이 상태와 독립적으로
         /// Interaction/WindowCrashDirector.cs가 관리하며, 그 오버레이는 예외 없이 100% 클릭관통이다.</summary>
         WindowCrash,
+
+        // ==== Phase 5 (docs/UX_FLOW.md 17~20절) — 생산성(투두/포모도로) + 반항/스트레스(SULKY/가출).
+        // TodoReminder/FocusStart/FocusComplete/FocusCancelled/FocusNudge/Sulky는 전부 "물리/입력 변경
+        // 없는 순수 타이머 + 고정 대사 1회" 형태라 States/TimedSpectacleState.cs(선택적 대사 지원으로
+        // 일반화됨)를 재사용해 인스턴스화한다 — Phase 4의 4개 상태와 동일한 재사용 컨벤션. Runaway만
+        // 다중 페이즈/텔레포트/렌더러 토글이 필요해 전용 States/RunawayState.cs를 쓴다. ====
+
+        /// <summary>투두 말풍선 '들고 다니는 모드'(17절): 종이를 꺼내 확정된 할일 1개를 대사로 보여주고
+        /// 다시 접어 넣는 순수 연출. Interaction/TodoReminderDirector.cs가 유휴 판정으로 트리거한다.</summary>
+        TodoReminder,
+
+        /// <summary>포모도로 감시자(18절) 타이머 시작 포즈(안경+팔짱) + "좋아, 감시 시작" 대사.</summary>
+        FocusStart,
+
+        /// <summary>포모도로 감시자 타이머 정상 만료 축하 포즈 + "수고했어!" 대사.</summary>
+        FocusComplete,
+
+        /// <summary>포모도로 감시자 유저의 중도 취소 시 패널티 없는 톤의 포즈 + "그래 쉬자" 대사.</summary>
+        FocusCancelled,
+
+        /// <summary>포모도로 감시자 2단계 "부드러운 리마인드" — "어? 딴 데 보고 있네?" 대사 1회.</summary>
+        FocusNudge,
+
+        /// <summary>스트레스 게이지(19절)가 임계값(80%) 근접 시 확정 발동하는 SULKY(부루퉁함) — 한숨/짜증
+        /// 대사와 처진 자세. "곧 가출한다"는 예고가 아니라 "지금 기분이 안 좋다"는 현재형 사실 보고.</summary>
+        Sulky,
+
+        /// <summary>가출(20절, 반항 2단계): 스트레스 게이지가 확정 임계값에 도달하면 확률이 아니라
+        /// 확정 발동. "나 안 해!" → 은신 → 유저 탐색(클릭)/자동 타임아웃/긴급 강제소환 → 복귀까지
+        /// 여러 페이즈를 States/RunawayState.cs가 전담한다.</summary>
+        Runaway,
     }
 
     /// <summary>
@@ -164,6 +195,45 @@ namespace StickMate.Core
         {
             Kind = kind;
             Active = active;
+        }
+    }
+
+    /// <summary>docs/UX_FLOW.md 18절 포모도로 감시자 "딴짓 감지" 에스컬레이션 단계. None=정상 범위
+    /// 복귀(즉시 리셋), Glance=1단계(곁눈질, 대사 없음, 순수 앰비언트 이벤트), Nudge=2단계(대사 1회,
+    /// 실제로는 이벤트가 아니라 StickmanStateId.FocusNudge 상태 전이로 표현되므로 이 이벤트에는 잘
+    /// 실리지 않는다 — 그래도 렌더링 레이어가 "지금 몇 단계인지" 한 번에 알 수 있도록 함께 통지한다),
+    /// WindowTap=3단계(타이머 위젯 두드림+화면 흔들림, 순수 앰비언트 이벤트).</summary>
+    public enum FocusWatchTier
+    {
+        None,
+        Glance,
+        Nudge,
+        WindowTap,
+    }
+
+    /// <summary>가출(20절) 상태의 세부 생애주기. Phase2+ 렌더링이 이 값으로 "뛰어가는 애니메이션 →
+    /// 사라짐 → (숨은 자리 은은한 단서) → 발견되어 놀란 표정으로 드러남 → 화해/자진복귀 → 정상 복귀"를
+    /// 표현한다. 지금은 트리거 조건/좌표만 확정하고 실제 연출은 아무도 구독하지 않아도 무해하다
+    /// (WanderAmbientMotionRequested류 기존 패턴과 동일).</summary>
+    public enum RunawayLifecyclePhase
+    {
+        Fleeing,
+        Hidden,
+        Found,
+        Reconciled,
+        SelfReturned,
+    }
+
+    /// <summary>가출 생애주기 변경 이벤트 — 은신처 좌표(OS 화면, Hidden/Found에서만 의미 있음)를 함께 싣는다.</summary>
+    public readonly struct RunawayLifecycleEvent
+    {
+        public readonly RunawayLifecyclePhase Phase;
+        public readonly Vector2 HideSpotOsScreen;
+
+        public RunawayLifecycleEvent(RunawayLifecyclePhase phase, Vector2 hideSpotOsScreen)
+        {
+            Phase = phase;
+            HideSpotOsScreen = hideSpotOsScreen;
         }
     }
 
@@ -300,6 +370,28 @@ namespace StickMate.Core
         /// <summary>PC 하드웨어 반응(23/27-6절) 표시 상태 변경 — 동시에 최대 하나만 Active=true.</summary>
         public static event Action<HardwareReactionEvent> HardwareReactionChanged;
 
+        /// <summary>투두 목록(17절)이 바뀌었을 때(추가/체크/취소/삭제/자동정리) 발생 — FootholdsChanged와
+        /// 동일한 "변경 사실만 통지, 실제 데이터는 Core.TodoListModel에서 직접 조회" 패턴. UI(포스트잇
+        /// 위젯)와 Interaction/TodoReminderDirector.cs가 함께 구독한다.</summary>
+        public static event Action TodoListChanged;
+
+        /// <summary>스트레스 게이지(19절) 값이 바뀌었을 때 발생(0~1, 클램프됨). 3단 노출(표정/트레이 점/
+        /// 설정창 상세)은 지금 렌더링 레이어가 없어 아무도 구독하지 않아도 무해하다 — 트리거 조건 계산
+        /// 자체를 지금 확정해두는 것이 목적(LandingRollRequested/WanderAmbientMotionRequested와 동일 패턴).</summary>
+        public static event Action<float> StressLevelChanged;
+
+        /// <summary>포모도로 감시자(18절) "딴짓 감지" 에스컬레이션 단계 변경 — Glance/WindowTap은 순수
+        /// 앰비언트 신호(상태 전이 없음), Nudge는 StickmanStateId.FocusNudge 상태 전이와 별도로 "지금
+        /// 몇 단계인지"를 렌더링 레이어에 알리기 위해 함께 발행된다. None은 즉시 리셋을 뜻한다.</summary>
+        public static event Action<FocusWatchTier> FocusWatchTierChanged;
+
+        /// <summary>가출(20절) 생애주기 변경 — 실제 사라짐/발견/화해 연출은 Phase2+ 렌더링 담당.</summary>
+        public static event Action<RunawayLifecycleEvent> RunawayLifecycleChanged;
+
+        /// <summary>가출 중 은신처 근처의 은은한 단서(흔들림/소리) 트리거 — Interaction/RunawayDirector.cs가
+        /// runawayHintPulseIntervalSeconds 주기로 발행한다. 실제 연출은 Phase2+ 렌더링 담당.</summary>
+        public static event Action<Vector2> RunawayHintPulseRequested;
+
         public static void RaiseStateTransitioned(StickmanStateId from, StickmanStateId to, bool isForcedInterrupt = false)
             => StateTransitioned?.Invoke(new StateTransitionEvent(from, to, isForcedInterrupt));
 
@@ -344,5 +436,20 @@ namespace StickMate.Core
 
         public static void RaiseHardwareReactionChanged(HardwareReactionKind kind, bool active)
             => HardwareReactionChanged?.Invoke(new HardwareReactionEvent(kind, active));
+
+        public static void RaiseTodoListChanged()
+            => TodoListChanged?.Invoke();
+
+        public static void RaiseStressLevelChanged(float level)
+            => StressLevelChanged?.Invoke(level);
+
+        public static void RaiseFocusWatchTierChanged(FocusWatchTier tier)
+            => FocusWatchTierChanged?.Invoke(tier);
+
+        public static void RaiseRunawayLifecycleChanged(RunawayLifecyclePhase phase, Vector2 hideSpotOsScreen)
+            => RunawayLifecycleChanged?.Invoke(new RunawayLifecycleEvent(phase, hideSpotOsScreen));
+
+        public static void RaiseRunawayHintPulseRequested(Vector2 hideSpotOsScreen)
+            => RunawayHintPulseRequested?.Invoke(hideSpotOsScreen);
     }
 }
