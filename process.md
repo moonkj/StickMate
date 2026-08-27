@@ -40,3 +40,19 @@
 - 범위가 작고 명확해 리더가 직접 핫픽스 적용(전체 Coder 라운드 생략): EnumerateFootholds()가 항상 화면 하단 안전망을 목록 끝에 추가하도록 변경. 조사 중 원래 구현의 좌표계 버그(안전망이 화면 "맨 위"에 배치되던 것 — y=0이 OS 좌표계에서 화면 상단을 뜻함)도 함께 발견해 수정.
 - Unity 배치모드 컴파일 재검증: 에러 0, 신규 경고 0(기존 Ragdoll/Getup 스텁 경고 2건만 유지).
 - 다음: Debugger 최종 확인(4차, 이번 핫픽스만 타겟) 후 문제 없으면 Phase 1 최종 승인 및 Phase 2(Ragdoll/파쿠르/DialogueIntent) 착수.
+
+## 2026-08-27 (계속) — Phase 1 최종 승인 + Phase 2 구현 완료
+- Debugger 4차(타겟, 리더 자체 핫픽스 편향 검증 포함) 최종 승인: Library 캐시 삭제 후 클린 재컴파일까지 독립 재확인, 에러 0/회귀 0. **Phase 1 공식 종료.**
+- Phase 2(Active Ragdoll, ParkourClimb, DialogueIntent 강화) — Coder/UX Designer 병렬 진행:
+  - Active Ragdoll: `RagdollRig`(런타임 파츠/관절 탐색) + `ReportExternalImpact()` 단일 진입점(충격량 기반, 어떤 능동 상태든 강제 인터럽트) + GETUP 비례제어 기상. Phase1 선반영된 상태머신 생성자 분리/다중Rigidbody Suspend 덕에 무리없이 확장.
+  - ParkourClimb: 자율 배회 AI의 경계 점프 시도를 자연 확장(벽 감지 시 Climb, 없으면 기존 Jump).
+  - DialogueIntent: `StateTransitionContext` 구조체→봉인 클래스+1회용 토큰 전환(BUG-M1 완결, 컴파일 타임 위조 차단) + `IHasDialogueParams` 파라미터 파이프라인(BUG-P1-M7 해결) — UX 31절 대사 매핑표 그대로 Attack/Ragdoll/ParkourClimb에 실전 연결.
+  - 컴파일: 에러 0, 경고 0(기존 미사용 필드 2건 자연 해소).
+- **Architect 판단 필요 사항 해결**: 낙하높이기반 구르기 훅 vs 충격량기반 Ragdoll 진입, 두 축 통합 여부 — **통합하지 않기로 결정**. 기획 원문 1-4절("항상 부드럽게 착지")에 따라 낙하는 높이 불문 항상 우아한 연출, Ragdoll은 오직 실제 피격/충돌 전용으로 역할을 명확히 분리 확정.
+- 다음: Debugger에게 Phase 2 검토 위임.
+
+## 2026-08-27 (계속) — Phase 2 Major 핫픽스
+- Debugger 검토: Blocker 0, Major 1(BUG-P2-M1: ParkourClimb 등반 중 linearVelocity.y 미재확정 → 등반 완료 직후 착지 튐), Minor 5.
+- 나머지 전부 통과: 토큰화 우회경로 없음, ReportExternalImpact 가드/리셋 보장, RagdollRig 파츠0개 안전, 파쿠르 좌표계/재확인/배회AI 경합 없음, 낙하높이·충격량 축 분리 결정과 구현 정확히 일치, Ragdoll/ParkourClimb 대사 매핑 UX 31절과 일치.
+- 범위 작아(2줄) 리더가 직접 핫픽스: ParkourClimbState.Tick()에서 매 프레임 linearVelocity.y도 0으로 재확정(SnapToGround의 기존 관행과 동일하게). 컴파일 재검증: 에러 0/경고 0.
+- 다음: Debugger 짧은 재확인 후 문제 없으면 Phase 2 최종 승인, Phase 3(전투/커서상호작용) 착수.

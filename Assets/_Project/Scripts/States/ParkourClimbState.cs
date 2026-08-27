@@ -104,6 +104,16 @@ namespace StickMate.States
             pos.y = Mathf.Lerp(_startWorldY, _wallTopWorldY, _climbProgress);
             _blackboard.Body.position = pos;
 
+            // BUG-P2-M1 대응(Major, docs/BUG_REPORT_PHASE2.md): Enter()의 1회성 속도 제로화만으로는
+            // 부족하다 — Body는 여전히 일반 Dynamic Rigidbody2D라 매 FixedUpdate마다 중력이
+            // linearVelocity.y에 조용히 계속 누적된다(등반 도중엔 위 pos.y Lerp가 매 프레임 위치를
+            // 덮어써 화면상 안 보이지만, 등반 완료로 Idle/Walk에 전이된 직후 그 누적 속도가 그대로
+            // 적용돼 착지 튐(pop)이 매번 재현됨). SnapToGround의 기존 관행(위치를 옮길 때마다 속도도
+            // 함께 재확정)과 동일하게 여기서도 매 프레임 재확정한다.
+            Vector2 v = _blackboard.Body.linearVelocity;
+            v.y = 0f;
+            _blackboard.Body.linearVelocity = v;
+
             if (_climbProgress >= 1f)
             {
                 float deadzone = _blackboard.Config != null ? _blackboard.Config.moveInputDeadzone : 0.15f;
