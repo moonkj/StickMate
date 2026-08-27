@@ -43,17 +43,51 @@ namespace StickMate.Platform
         // 스케일은 groundSnapTolerance 등이 가정하는 값 그대로 유지된다.
         private const float DummyFootholdWidthMultiplier = 4f;
 
+        // BUG-P1-R4-B1 핫픽스(2026-08-28, Architect 진단 — 사용자가 GUI 에디터에서 Main.unity를 직접
+        // Play시켜 육안으로 "화면 제일 상단에서 뭔가 걸려 잘려 보인다"고 보고, 캐릭터가 카메라 뷰포트
+        // 최상단 가장자리에 걸쳐 정착하는 것으로 진단됨): 이 발판의 세로 위치를 더 이상 고정 픽셀
+        // 두께(예전 40f)로 화면 맨 아래에서 잡지 않고, 화면 세로 길이(Screen.height)에 대한 "비율"로
+        // 잡는다. 두 가지 독립적인 이유가 있다.
+        //
+        // (1) [근본 원인 자체] 예전 코드는 `new Rect(widenedX, 0f, ...)`로 이 발판을 만들었다.
+        //     Platform/ScreenCoordinateConverter.cs 문서의 좌표계(좌상단 원점, y 아래로 갈수록 증가)에서
+        //     y=0은 화면의 "맨 위"다 — 즉 주석은 "작업표시줄"이라 해놓고 실제로는 화면 최상단에 배치한
+        //     반대 버그였다. Platform/FallbackPlatformWindowService.cs가 예전에(BUG-P1-R3-B1) 정확히
+        //     같은 종류의 실수를 고친 적이 있는데(그때는 이 클래스를 건드리지 않아 여기 남아 있었다),
+        //     그 클래스와 동일한 패턴 — Rect의 y를 `Screen.height - 발판두께`로 잡아 화면 진짜 하단
+        //     근처에 둔다 — 을 그대로 따른다.
+        // (2) [단순히 위/아래만 뒤집으면 안 되는 이유] Editor/SceneBootstrapper.cs는 이 발판의 상단
+        //     가장자리가 변환되는 월드 Y를 기준으로 캐릭터/지면을 배치한다. 발판 두께를 예전처럼 고정
+        //     픽셀값(40f)으로 두면, 이 상단 가장자리가 "화면 맨 아래에서 몇 유닛 위"인지가 실제
+        //     Screen.height에 반비례해 달라진다 — 해상도가 클수록(예: GUI 에디터의 큰 Game View)
+        //     발판이 화면 맨 아래에 더 바짝 붙어, 이번에는 캐릭터가 화면 "하단" 가장자리에 걸려 잘리는
+        //     동일 계열 버그가 반대쪽에서 재발할 위험이 있다. 두께를 Screen.height의 고정 "비율"로
+        //     잡으면 이 상단 가장자리의 월드 Y가 (Editor/SceneBootstrapper.cs의 ComputeGroundTopWorldY
+        //     유도 과정 참고) Screen.height 실측값과 무관하게 항상 `cam.y - orthographicSize*(1-2*fraction)`
+        //     라는 카메라 설정만의 폐쇄형 값으로 귀결되어, 어떤 해상도(배치모드 640x480이든 GUI의 임의
+        //     Game View 크기든)에서도 캐릭터 전신이 뷰포트 안에 여유 있게 들어오도록 보장할 수 있다.
+        //
+        // public인 이유: Editor/SceneBootstrapper.cs가 groundTopWorldY를 계산할 때 이 비율을 직접
+        // 재사용해야 한다(매직 넘버로 각자 따로 계산하면, 두 파일의 가정이 서로 어긋나 버린 것 자체가
+        // 이번 버그의 근본 원인 중 하나였다 — 재발 방지를 위해 단일 소스로 강제).
+        public const float DummyFootholdHeightFraction = 0.2f;
+
         public NullPlatformWindowService()
         {
-            // 화면 하단을 가로지르는 가상의 "작업표시줄" 발판 하나. 폭은 화면 폭의
+            // 화면 하단 근처를 가로지르는 가상의 "작업표시줄" 발판 하나. 폭은 화면 폭의
             // DummyFootholdWidthMultiplier배로, 화면 중심(=world x=0, 카메라가 x=0에 위치)을 기준으로
             // 좌우 대칭 확장한다 — 배회 AI가 카메라 뷰포트보다 훨씬 넓은 범위를 돌아다닐 수 있다.
             // 에디터 테스트용 스텁이므로 해상도 변경 시 재계산하지 않고 생성 시점 값으로 고정한다.
             float baseWidth = Screen.width > 0 ? Screen.width : 1920f;
             float widenedWidth = baseWidth * DummyFootholdWidthMultiplier;
             float widenedX = (baseWidth - widenedWidth) / 2f;
-            const float dummyTaskbarHeight = 40f;
-            var dummyRect = new Rect(widenedX, 0f, widenedWidth, dummyTaskbarHeight);
+
+            // 위 DummyFootholdHeightFraction 문서 참고 — 화면 진짜 하단에서 위로 이 비율만큼의 두께를
+            // 갖는 발판. FallbackPlatformWindowService.GetFallbackFoothold()와 동일한 "y = height - 두께"
+            // 패턴으로 화면 하단 근처에 둔다(예전처럼 y=0에 두지 않음).
+            float baseHeight = Screen.height > 0 ? Screen.height : 1080f;
+            float dummyTaskbarHeight = baseHeight * DummyFootholdHeightFraction;
+            var dummyRect = new Rect(widenedX, baseHeight - dummyTaskbarHeight, widenedWidth, dummyTaskbarHeight);
 
             _dummyFootholds = new List<PlatformFoothold>(1)
             {

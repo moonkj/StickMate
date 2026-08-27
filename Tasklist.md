@@ -427,3 +427,27 @@
 - MacWindowService: Boolean 마샬링(`[MarshalAs(UnmanagedType.I1)]`) 3개 함수 전부 정확, 안전가드(SetClickThrough/SetAlwaysOnTop 무조건 예외) Win32와 대칭 확인, 실제 부작용 코드 없음. `MacWindowEnumerationDiagnostic` 직접 재실행 — Coder 원 실측과 일치(이번 세션 창 2개 정확히 열거, 나머지 19개 시스템레이어 제외, 한글 디코딩 정상).
 - `!UNITY_EDITOR` 가드: Windows/macOS 두 분기 모두 대칭 적용 확인. `Library/EditorUserBuildSettings.asset`에서 활성 빌드타깃 `OSXUniversal` 확인. EditMode 13/13·PlayMode 20/20 전부 통과 + 로그에 MacWindowService 흔적 없음(계속 NullPlatformWindowService 더미 발판)으로 에디터 무영향 간접 확인.
 - 컴파일 에러0/경고0 재확인.
+
+## BUG-P1-R4-B1 수정 — 캐릭터가 화면 상단에 잘려 보이는 카메라 프레이밍 버그 (Coder, 2026-08-28)
+
+**배경**: 리더가 사용자에게 실제 동작을 보여주려고 Unity 에디터를 GUI 모드로 띄우고 `Main.unity`를 Play시켰다. 사용자가 직접 화면을 보고 "화면 제일 상단에서 뭐가 좀 왔다갔다하고 안 보인다"고 보고 — 캐릭터가 카메라 뷰포트 맨 위 경계에 걸쳐 잘려 보이는 것으로 리더가 진단했다. 지금까지 어떤 자동 테스트도 이 버그를 잡아내지 못했다(기존 테스트는 `transform.position.y`가 "발산하지 않는지"만 확인했을 뿐 실제로 화면 안에 보이는지는 검증한 적이 없었다).
+
+**근본 원인**: `Assets/_Project/Scripts/Platform/NullPlatformWindowService.cs` 생성자가 더미 발판("작업표시줄" 역할)을 `new Rect(widenedX, 0f, widenedWidth, dummyTaskbarHeight)`로 만들었는데, 이 프로젝트가 일관되게 쓰는 OS 좌표계(좌상단 원점, y 아래로 갈수록 증가 — `Platform/ScreenCoordinateConverter.cs` 문서)에서 y=0은 화면 "맨 위"다. 즉 주석은 "작업표시줄"이라 해놓고 실제로는 화면 최상단에 발판을 놓은 반대 버그였다 — `Platform/FallbackPlatformWindowService.cs`에서 예전에(BUG-P1-R3-B1) 고쳤던 것과 정확히 같은 종류의 실수인데, 그때는 `NullPlatformWindowService`를 건드리지 않아 여기 남아 있었다. 이 발판 위치가 `Assets/Editor/SceneBootstrapper.cs`의 `groundTopWorldY = cam.transform.position.y + cam.orthographicSize`(카메라 뷰포트 "상단" 가장자리) 계산과 맞물려, 캐릭터가 정확히 뷰포트 최상단 경계에 정착하도록 만들었다.
+
+### 적용한 수정
+
+1. **`Assets/_Project/Scripts/Platform/NullPlatformWindowService.cs`** — 더미 발판을 화면 진짜 "맨 아래"에 두도록 수정(`FallbackPlatformWindowService.GetFallbackFoothold()`와 동일한 `y = height - 두께` 패턴). 다만 단순히 위/아래만 뒤집으면 이번엔 반대쪽(화면 하단) 가장자리에서 캐릭터가 잘리는 동일 계열 버그가 재발할 위험이 있어(발판 두께가 고정 픽셀값 40이면, 해상도가 클수록 발판이 화면 맨 아래에 더 바짝 붙는다), 발판 두께를 고정 픽셀이 아니라 `Screen.height`에 대한 비율(`DummyFootholdHeightFraction = 0.2f`, 신규 `public const`)로 바꿨다. 이러면 발판 상단 가장자리가 대응하는 월드 Y가 `Screen.height` 실측값과 무관하게 항상 `cam.y - orthographicSize*(1-2*f)`라는 카메라 설정만의 폐쇄형 값이 된다(해상도가 배치모드 640x480이든 GUI의 임의 Game View 크기든 동일하게 안전). `DummyFootholdHeightFraction`을 `public`으로 노출해 `SceneBootstrapper.cs`가 매직 넘버로 따로 계산하지 않고 이 값을 직접 참조하게 했다 — 두 파일이 서로 다른 가정을 갖게 된 것 자체가 이번 버그의 근본 원인 중 하나였기 때문(재발 방지).
+2. **`Assets/Editor/SceneBootstrapper.cs`** — 신규 헬퍼 `ComputeGroundTopWorldY(Camera cam)`가 위 폐쇄형 수식(`cam.y - orthographicSize*(1-2*f)`)을 계산하고, `CreateGroundCollider()`(RAGDOLL 물리 바닥)와 `BuildMainScene()`의 캐릭터 초기 배치 둘 다 이 헬퍼 하나만 거치도록 통일(기존에는 두 곳이 각자 `cam.transform.position.y + cam.orthographicSize`를 따로 계산해 서로 어긋날 위험이 있었음). `orthographicSize`는 BUG-SW-M2 경고(8개 OS-px 필드 종속) 때문에 그대로 5로 유지했고, 대신 `DummyFootholdHeightFraction=0.2`를 골라 캐릭터 전신(발~머리, 로컬 y 0~1.8유닛)이 뷰포트 안에 넉넉한 여백을 두고 들어오도록 설계했다: `groundTopWorldY = -3`(orthoSize=5, cam.y=0 기준) → 지면이 뷰포트 하단(cam.y-5)에서 2유닛 위, 머리 정수리(약 -1.2)가 뷰포트 상단(cam.y+5)에서 6.2유닛 아래 — 위/아래 여백 모두 최소 요구치(0.5~1유닛)를 크게 상회.
+3. **`Assets/_Project/Scripts/Tests/PlayMode/StickmanOnScreenFramingTests.cs`(신규)** — 재발 방지 테스트. `Main.unity`를 실제로 Play시켜 캐릭터의 모든 `SpriteRenderer.bounds`를 합친 월드 바운딩박스(발끝~머리끝)를 `Camera.main.WorldToScreenPoint()`로 스크린 좌표 변환한 뒤, 정착 후 5초/10초/15초 시점에 화면 세로 범위([marginPx, Screen.height-marginPx], margin=0.5월드유닛을 px로 환산) 안에 있는지 검증한다. 가로(X)는 의도적으로 화면 폭 안 포함을 강제하지 않는다 — `NullPlatformWindowService`의 더미 발판은 BUG-SW-M2 대응으로 카메라 뷰포트보다 4배 넓게 설계되어 있고 `AutoWanderController`가 그 범위를 자유롭게 배회하는 것이 명시적으로 의도된 동작이라, 15초 관찰 구간에서 X가 카메라 뷰포트를 벗어나는 것은 정상이다(실측으로도 확인 — 아래 참고). X는 발산(NaN/Infinity) 여부만 확인한다.
+
+### 실측 검증
+
+- **재생성**: `-executeMethod StickMate.EditorTools.SceneBootstrapper.BuildAll --force`. 재생성된 `Main.unity`에서 `PhysicsGround.m_LocalPosition.y = -4`(기대값: `groundTopWorldY(-3) - thickness/2(1) = -4`, 일치), Stickman 프리팹 인스턴스 오버라이드 `m_LocalPosition.y = -2.7`(기대값: `-3 + 0.3 = -2.7`, 일치) 확인.
+- **컴파일**: Unity 배치모드 — `error CS`/`warning CS` 매치 0건, exit code 0(`Logs/coder_compile_check1.log`, `Logs/coder_final_compile.log`).
+- **EditMode**: `total="13" passed="13" failed="0"`(기준선 유지, `Logs/coder_editmode.xml`).
+- **PlayMode 5회 독립 반복 실행**(매회 새 프로세스, `-runTests -testPlatform PlayMode`, `-quit` 미사용): **5/5 전부 통과**, 매회 `total="3" passed="3" failed="0"`(기존 `StickmanFallsSettlesAndWanders`/`RagdollEntersAndRecoversToActiveState` + 신규 `StickmanStaysWithinVerticalViewportMargin`, 로그: `Logs/coder_pm_probe1.log`~`coder_pm_probe5.log`, XML: `Logs/coder_pm_probe1.xml`~`coder_pm_probe5.xml`).
+  - 신규 프레이밍 테스트 실측(5회 전체): `bottomScreen.y`(발) 86.7~96.7px, `topScreen.y`(머리) 117.4~183.0px — 여백 하한 24px(=0.5유닛)와 상단 한계 456px(=Screen.height-24)에 전혀 근접하지 않고 항상 화면 중하단부에 안정적으로 위치.
+  - 가로 드리프트 실측으로 X 미검증 결정이 타당함을 확인: run2 t=10s에 `topScreen.x=729.1`으로 `Screen.width=640`을 이미 초과 — AutoWander가 카메라 뷰포트 밖으로 나가는 것이 실제로 자주 발생하는 정상 동작임을 실측으로 재확인(따라서 X를 화면 폭으로 강제 검증했다면 이 버그 수정과 무관한 이유로 테스트가 빈번히 실패했을 것).
+  - 기존 회귀 없음: `StickmanRagdollRecoveryTests` 5/5 `recoveredToActive=True`(1.25s), `StickmanPlaytestSmokeTests` 5/5 최종상태 Idle/Walk(접지) 유지.
+
+**결론**: BUG-P1-R4-B1 해소. `git status` 기준 이번 작업 변경분은 `Assets/_Project/Scripts/Platform/NullPlatformWindowService.cs`/`Assets/Editor/SceneBootstrapper.cs`(코드), `Assets/_Project/Scripts/Tests/PlayMode/StickmanOnScreenFramingTests.cs`(신규 테스트), `Assets/_Project/Prefabs/Stickman.prefab`/`Assets/_Project/Scenes/Main.unity`(재생성된 에셋)뿐이다. Debugger 재확인 대상.

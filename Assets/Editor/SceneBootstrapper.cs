@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using StickMate.Core;
 using StickMate.Interaction;
+using StickMate.Platform;
 
 namespace StickMate.EditorTools
 {
@@ -21,16 +22,27 @@ namespace StickMate.EditorTools
     ///   -executeMethod StickMate.EditorTools.SceneBootstrapper.BuildAll -quit -logFile <path>
     ///   (기존 에셋이 있으면 건너뛴다 — 강제로 덮어쓰려면 커맨드라인 끝에 --force 추가)
     ///
-    /// 좌표계 참고(BuildMainScene 배치 근거): Platform/NullPlatformWindowService.cs의 더미 발판은
-    /// OS 좌상단 원점 기준 y=[0,40] 구간(화면 최상단 40px 밴드)에 고정되어 있고, Platform/
-    /// ScreenCoordinateConverter.cs를 거치면 이는 항상 "카메라 뷰포트의 최상단 가장자리" 월드 Y로
-    /// 환산된다(카메라 위치/orthographicSize와 무관하게 top = cam.y + orthographicSize로 고정되는
-    /// 수학적 귀결 — 임의로 바꿀 수 없다). 즉 이 더미 폴백에서는 캐릭터가 "화면 상단에 걸린 작업표시줄"
-    /// 위에 서게 되며, 발(=Root Transform 피벗, StickmanBlackboard.SenseGround가 Body.position을
-    /// 그대로 발 위치로 쓰기 때문)이 뷰포트 맨 위 가장자리에 닿는 순간 몸통 대부분이 시야 밖으로
-    /// 벗어난다. 이는 NullPlatformWindowService(Phase 1, 이미 테스트로 검증된 기존 코드)의 기존
-    /// 특성이며 이번 배선 작업의 범위 밖이라 수정하지 않는다 — 플레이테스트는 화면 렌더링이 아니라
-    /// transform.position 실측 로그로 검증하므로 이 시각적 프레이밍 이슈와 무관하게 유효하다.
+    /// 좌표계 참고(BuildMainScene 배치 근거, BUG-P1-R4-B1 핫픽스로 갱신 — 2026-08-28, Architect 진단):
+    /// 사용자가 GUI 에디터에서 Main.unity를 직접 Play시켜 육안으로 "화면 제일 상단에서 뭔가 걸려 잘려
+    /// 보인다"고 보고했고, 캐릭터가 카메라 뷰포트 최상단 가장자리에 걸쳐 정착하고 있었음이 원인으로
+    /// 밝혀졌다. 근본 원인은 Platform/NullPlatformWindowService.cs의 더미 발판이 `y=0`(OS 좌상단
+    /// 원점 기준 화면 "맨 위")에 놓여 있던 반대 버그였다(주석은 "작업표시줄"이라 해놓고 실제로는
+    /// 화면 최상단에 배치 — Platform/FallbackPlatformWindowService.cs가 예전에(BUG-P1-R3-B1) 고쳤던
+    /// 것과 정확히 같은 종류의 실수인데 그때는 이 클래스를 건드리지 않아 남아 있었다). 이제 그 발판은
+    /// 화면 세로 길이의 `NullPlatformWindowService.DummyFootholdHeightFraction` 비율만큼을 화면 진짜
+    /// "맨 아래"에서 위로 잡는다(그 클래스 상단 문서에 상세 유도 과정 있음).
+    ///
+    /// 단순히 위/아래만 뒤집으면 반대쪽 가장자리(화면 하단)에서 캐릭터가 잘리는 동일 계열 버그가
+    /// 재발할 수 있으므로, 아래 ComputeGroundTopWorldY()가 발판 상단 가장자리(=캐릭터가 서는 지면)의
+    /// 월드 Y를 카메라 설정만으로 계산하는 폐쇄형 수식을 제공한다. Screen.height와 발판 두께가 둘 다
+    /// 같은 비율(DummyFootholdHeightFraction=f)로 스케일되므로 Screen.height 항이 정확히 상쇄되어
+    /// 아래처럼 해상도와 무관한 값이 나온다(카메라가 x=0, z=-10에 있고 orthographic이라고 가정):
+    ///   groundTopWorldY = cam.y - orthographicSize * (1 - 2*f)
+    /// f=0.2(기본값) 기준 orthographicSize=5일 때 groundTopWorldY = cam.y - 3, 즉 뷰포트 하단
+    /// (cam.y-5)에서 2유닛 위, 뷰포트 상단(cam.y+5)까지는 8유닛 남는다. 캐릭터 전신 높이(발~정수리
+    /// 약 1.8유닛, BuildStickmanPrefab의 Head/Torso/팔다리 로컬 좌표 참고)를 이 위에 얹으면 머리
+    /// 상단이 cam.y-1.2로, 위/아래 여백이 각각 6.2유닛/2유닛 확보되어 최소 요구치(0.5~1유닛)를 크게
+    /// 상회한다 — Tests/PlayMode의 StickmanOnScreenFramingTests.cs가 이를 매 실행마다 실측 검증한다.
     ///
     /// 주의(BUG-SW-M2, Architect 반려 수정, 2026-08-28, docs/BUG_REPORT_SCENE_WIRING.md): 카메라
     /// orthographicSize를 바꾸면 GroundSensor의 OS-px↔world-unit 변환 비율(px/unit =
@@ -281,9 +293,8 @@ namespace StickMate.EditorTools
 
         /// <summary>
         /// 최소 씬 생성: Main Camera(직교) + Stickman 프리팹 인스턴스 1개 + RAGDOLL용 정적 바닥
-        /// Collider2D 1개. 인스턴스는 더미 발판(클래스 문서 상단 좌표계 설명 참고) 바로 위쪽 — 카메라
-        /// 뷰포트 상단 가장자리(cam.y+orthographicSize)보다 0.3유닛 위 — 에서 낙하해 스냅되도록
-        /// 배치한다.
+        /// Collider2D 1개. 인스턴스는 더미 발판(클래스 문서 상단 좌표계 설명, ComputeGroundTopWorldY
+        /// 참고) 바로 위쪽 — 그 지면보다 0.3유닛 위 — 에서 낙하해 스냅되도록 배치한다.
         /// </summary>
         public static void BuildMainScene(GameObject stickmanPrefab)
         {
@@ -332,11 +343,11 @@ namespace StickMate.EditorTools
             if (stickmanPrefab != null)
             {
                 var instance = (GameObject)PrefabUtility.InstantiatePrefab(stickmanPrefab, scene);
-                // 더미 발판(클래스 문서 상단 좌표계 설명)은 항상 카메라 뷰포트 "상단" 가장자리(=
-                // cam.y+orthographicSize)에 위치한다. 낙하 높이는 0.3유닛으로 보수적으로 잡아
+                // 더미 발판(클래스 문서 상단 좌표계 설명, ComputeGroundTopWorldY 참고)의 상단 가장자리
+                // 바로 위에서 낙하해 스냅되도록 배치한다. 낙하 높이는 0.3유닛으로 보수적으로 잡아
                 // CreateOrLoadConfig에서 넓힌 groundSnapTolerance와 함께 헤드리스 환경의 낮은
                 // 프레임레이트로 인한 접지 감지 터널링을 이중으로 예방한다.
-                instance.transform.position = new Vector3(0f, cam.transform.position.y + cam.orthographicSize + 0.3f, 0f);
+                instance.transform.position = new Vector3(0f, ComputeGroundTopWorldY(cam) + 0.3f, 0f);
             }
             else
             {
@@ -371,12 +382,26 @@ namespace StickMate.EditorTools
         private const float LimbAngularDamping = 1.5f;
 
         /// <summary>
+        /// 더미 발판(Platform/NullPlatformWindowService.cs)의 상단 가장자리가 대응하는 월드 Y를,
+        /// 실제 Screen.height 실측값과 무관한 폐쇄형 수식으로 계산한다(클래스 문서 상단 "좌표계 참고"
+        /// 절에 유도 과정 있음). CreateGroundCollider()와 BuildMainScene()의 캐릭터 초기 배치가 반드시
+        /// 이 헬퍼 하나만 거쳐야 한다 — 두 곳이 각자 따로(매직 넘버로) 계산하다가 서로 어긋난 것 자체가
+        /// 이번 화면 프레이밍 버그의 근본 원인 중 하나였다(BUG-P1-R4-B1). NullPlatformWindowService의
+        /// DummyFootholdHeightFraction 공개 상수를 그대로 참조해, 그 클래스의 발판 배치가 바뀌면 이
+        /// 계산도 자동으로 함께 갱신되도록 한다(재발 방지).
+        /// </summary>
+        private static float ComputeGroundTopWorldY(Camera cam)
+        {
+            float fraction = NullPlatformWindowService.DummyFootholdHeightFraction;
+            return cam.transform.position.y - cam.orthographicSize * (1f - 2f * fraction);
+        }
+
+        /// <summary>
         /// RAGDOLL이 실제로 착지할 수 있는 정적 바닥(Rigidbody2D 없음 — Unity 표준 정적 콜라이더).
-        /// Y좌표는 NullPlatformWindowService의 더미 발판이 논리적으로 대응하는 높이(클래스 문서 상단
-        /// 좌표계 설명 참고 — 카메라 뷰포트 "상단" 가장자리, cam.y+orthographicSize)와 일치시킨다 —
-        /// Idle/Walk의 SnapToGround가 캐릭터를 스냅시키는 바로 그 Y이므로, RAGDOLL 진입 직후 root의
-        /// CapsuleCollider2D(발 피벗 기준 바닥이 로컬 y=0)가 곧바로 이 바닥과 접촉한다. 레이어는
-        /// Default(0)로 둔다 — StickmanLimbLayerName과는 자기들끼리만 충돌을 끄는 매트릭스이므로
+        /// Y좌표는 NullPlatformWindowService의 더미 발판이 논리적으로 대응하는 높이(ComputeGroundTopWorldY
+        /// 참고)와 일치시킨다 — Idle/Walk의 SnapToGround가 캐릭터를 스냅시키는 바로 그 Y이므로, RAGDOLL
+        /// 진입 직후 root의 CapsuleCollider2D(발 피벗 기준 바닥이 로컬 y=0)가 곧바로 이 바닥과 접촉한다.
+        /// 레이어는 Default(0)로 둔다 — StickmanLimbLayerName과는 자기들끼리만 충돌을 끄는 매트릭스이므로
         /// Default 레이어와는 정상적으로 충돌한다.
         /// </summary>
         private static void CreateGroundCollider(Camera cam)
@@ -384,7 +409,7 @@ namespace StickMate.EditorTools
             var ground = new GameObject("PhysicsGround");
             ground.layer = 0; // Default.
 
-            float groundTopWorldY = cam.transform.position.y + cam.orthographicSize;
+            float groundTopWorldY = ComputeGroundTopWorldY(cam);
             ground.transform.position = new Vector3(0f, groundTopWorldY - GroundColliderThickness * 0.5f, 0f);
 
             var collider = ground.AddComponent<BoxCollider2D>();
