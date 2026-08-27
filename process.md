@@ -103,3 +103,8 @@
 - Reviewer(품질 리뷰): 좋은 점 4개(주석 컨벤션 일관성, StickmanAgent 저비만화 유지, 플랫폼 확장지점 유효성, RivalStickmanAgent로 다중인스턴스 패턴 실증) 확인. 개선 요청 1건 — SpectacleEventLock 해제 보일러플레이트가 12개 Director에 반복(DRY 위반, 정책 변경 시 12곳 수동 동기화 필요, 락 미해제 회귀 재발 위험).
 - **개선 R2**: Coder가 `SpectacleEventLock.ReleaseIfOwned()` 공용 헬퍼 신설, 10곳 교체(2곳은 구조적으로 안 맞아 근거와 함께 예외 유지 — RivalEncounterDirector/FocusWatchDirector). 리더 독립 컴파일 재검증: 에러0/경고0.
 - 다음: Reviewer에게 R2 재확인 요청, 승인되면 Doc Writer에게 최종 문서화(README) 위임하고 프로젝트 마감.
+
+## 2026-08-28 (계속) — 개선 R2 재확인 승인
+- Reviewer가 R2(락 해제 공용 헬퍼 추출)를 재확인: 헬퍼 설계/10곳 교체 diff/2곳 예외 근거/컴파일·테스트 기준선 전부 독립 재검증 완료. **개선할 부분 없음 — 최종 완료.**
+- 사용자 지정 리뷰 프로세스(개선사이클→R2→...→개선없으면 종료) 완료.
+- 다음: Doc Writer에게 README/기술문서 최종 정리 위임. 완료되면 프로젝트 1차 마감.

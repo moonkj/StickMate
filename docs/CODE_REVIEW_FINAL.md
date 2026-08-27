@@ -64,3 +64,18 @@ private void ReleaseOwnedLock() {
 ## 참고: 검토 범위
 
 `CLAUDE.md`, `docs/ARCHITECTURE.md`, `docs/UX_FLOW.md`(목차/전 절), `Tasklist.md`(Phase 0~6 전체 로그), `Assets/_Project/Scripts/` 전체(Core 7파일/Dialogue 2파일/Interaction 18파일/Platform 11파일/States 22파일/Plugins 2파일/Tests 2파일 + AssemblyInfo.cs, 총 65개 .cs) 를 검토했다. 정확성 버그는 찾지 않았다(Debugger가 이미 6라운드에 걸쳐 Blocker/Major/Minor를 검증 완료했고, 이번 리뷰의 스코프가 아니다).
+
+---
+
+## (개선 R2) 재확인
+
+**개선할 부분 없음 — 최종 완료**
+
+대상 커밋: `b793b7e` "Phase 6 (개선 R2): SpectacleEventLock 락 해제 공용 헬퍼 추출". `git show b793b7e --stat`으로 변경 범위(Core/SpectacleEventLock.cs + Interaction/* 12파일 + Tasklist.md/docs)를 확인하고 아래 4가지를 직접 재검증했다.
+
+1. **헬퍼 설계가 12곳의 실제 다양성을 반영하는지** — `SpectacleEventLock.ReleaseIfOwned(owner, machine, guardedState, clickCapture=null)`을 직접 읽었다. 12곳 중 소유권 사전 확인이 없던 3곳(`BattleMinigameDirector`/`DragThrowController`/`WindowCrashDirector`)에 헬퍼가 확인을 추가한 것이 유일한 동작 변화 후보였는데, 세 파일의 `ChangeState(guardedState)` 호출부를 전부 `grep`으로 추적한 결과 예외 없이 "`SpectacleEventLock.TryAcquire()` 성공 직후에만" 호출된다(다른 어떤 코드도 그 상태로 전이하지 않음) — 즉 `CurrentStateId==guardedState`이면 항상 `CurrentOwner==owner`이므로 가드 추가는 관찰 가능한 동작을 바꾸지 않는다. 강제전이 대상(`Idle`)/방식(`isForcedInterrupt:true`)은 12곳 전부 동일해 고정값으로 처리한 것도 타당하고, 클릭캡처 해제는 실제로 쓰는 2곳(`BattleMinigameDirector`/`DragThrowController`)만 옵션 인자로 넘기는 구조도 억지 통합이 아니다.
+2. **10곳 교체가 동작을 바꾸지 않았는지** — `git show b793b7e`로 10개 Director 각각의 `OnDisable()`/`ReleaseOwned*()` diff를 전부 직접 대조했다. `Graffiti`/`WindowTheft`/`DesktopIconMirror` 3곳은 `_hasRegion`/`_hasTarget` 필드 리셋이 "`ChangeState`와 `Release` 사이"에서 "헬퍼 호출 직전"으로 실행 순서가 바뀌었는데, 세 파일 모두 `OnDisable()`에서 `StickmanEventBus.StateTransitioned -= OnStateTransitioned`가 헬퍼 호출보다 먼저 실행돼 그 구간에 해당 필드를 읽는 콜백이 이미 끊겨 있음을 소스에서 직접 확인했다 — 순서 변경이 안전하다는 Coder 주장이 맞다. `WindowCrashDirector`는 컨트롤러 고유의 오버레이 정리(`_overlayActive`/`RaiseOverlay(Cancelled)`)를 헬퍼 밖에 그대로 남겨 공통 3단계만 추출했다. 나머지는 사실상 1:1 치환.
+3. **`RivalEncounterDirector`/`FocusWatchDirector` 예외 처리의 타당성** — 코드를 직접 읽었다. `RivalEncounterDirector.ReleaseOwnedLock()`은 `StickmanStateId` 비교가 아니라 `_rival?.ForceEndDuel()`로 상대방의 별도 상태머신을 정리하므로 `guardedState` 개념 자체가 없어 헬퍼 시그니처로 표현 불가능하다. `FocusWatchDirector.ReleaseOwnedLock(bool forceIdle)`은 단일 상태가 아니라 `IsFocusPoseState()`(4개 상태 predicate)로 가드하므로 단일 `StickmanStateId` 파라미터로 표현할 수 없다. 이 두 예외는 애초에 R1 리뷰 본문("`RivalEncounterDirector`나 `FocusWatchDirector`처럼 정리 로직이 실제로 다른 소수는 헬퍼 적용 대상에서 빼도 무방하다")에서 리뷰어가 직접 승인한 지점과 정확히 일치한다 — 게을러서 남긴 예외가 아니라 원 지적 그대로를 이행한 것.
+4. **컴파일 + EditMode 테스트 독립 재실행** — Coder가 남긴 `compile_r2.log`/`testresults_r2.xml`은 작업 트리에 남아있지 않아(임시 산출물로 추정) Unity 6000.0.82f1로 리뷰어가 직접 재실행했다. 배치모드 컴파일: `error CS`/`warning CS` 매치 0건. `-runTests -testPlatform EditMode`: `testcasecount="13" result="Passed" total="13" passed="13" failed="0"` — 13개 케이스 전부 개별 확인. 에러0/경고0 + 13/13 기준선 독립 재확인 완료.
+
+R1에서 유일한 반려 사유였던 DRY 위반은 실질적으로 해소됐고, 이번 재작업이 새로운 문제를 도입하지도 않았다. 추가 개선 사이클 불필요.
