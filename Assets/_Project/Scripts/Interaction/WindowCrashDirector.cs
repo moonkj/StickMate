@@ -41,6 +41,11 @@ namespace StickMate.Interaction
             ReleaseOwned();
         }
 
+        // 개선 R2(docs/CODE_REVIEW_FINAL.md): 오버레이 자체 정리(이 컨트롤러만의 고유 로직)는 그대로
+        // 남기고, 공통 3단계(소유권 확인 → 필요시 강제 Idle 전이 → Release)만 SpectacleEventLock.
+        // ReleaseIfOwned로 추출했다. 원래 이 메서드는 소유권을 먼저 확인하지 않고 상태만 비교했지만,
+        // TickAutoTrigger()가 TryAcquire 성공 직후에만 ChangeState(WindowCrash)를 호출하는 불변식이
+        // 유지되므로 소유권 선확인을 추가해도 동작은 동일하다(SpectacleEventLock.ReleaseIfOwned 문서 참고).
         private void ReleaseOwned()
         {
             if (_overlayActive)
@@ -48,12 +53,7 @@ namespace StickMate.Interaction
                 _overlayActive = false;
                 RaiseOverlay(SpectacleOverlayPhase.Cancelled);
             }
-            if (_player != null && _player.Blackboard != null && _player.Blackboard.Machine != null &&
-                _player.Blackboard.Machine.CurrentStateId == StickmanStateId.WindowCrash)
-            {
-                _player.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
-            }
-            SpectacleEventLock.Release(this);
+            SpectacleEventLock.ReleaseIfOwned(this, _player != null ? _player.Blackboard?.Machine : null, StickmanStateId.WindowCrash);
         }
 
         private void Update()

@@ -37,6 +37,12 @@ namespace StickMate.Interaction
             ReleaseOwnedLock();
         }
 
+        // 개선 R2(docs/CODE_REVIEW_FINAL.md) 판단: SpectacleEventLock.ReleaseIfOwned 헬퍼로 흡수하지
+        // 않는 예외로 남긴다(리뷰어가 직접 지목한 소수 예외 중 하나) — 다른 11곳은 전부 "guardedState와
+        // StickmanStateId를 비교해 강제 Idle 전이"하는 형태지만, 이 컨트롤러는 상태 비교가 아니라
+        // RivalStickmanAgent.ForceEndDuel() 호출로 정리한다(대결 상대 캐릭터의 별도 상태머신을 건드리는
+        // 것이지 _player의 StickmanStateMachine을 강제 전이하는 게 아니다) — guardedState 개념 자체가
+        // 이 케이스에 없어 헬퍼 시그니처로 표현할 수 없다.
         private void ReleaseOwnedLock()
         {
             if (SpectacleEventLock.CurrentOwner != (object)this) return;

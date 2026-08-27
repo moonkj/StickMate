@@ -1,3 +1,6 @@
+using StickMate.Platform;
+using StickMate.States;
+
 namespace StickMate.Core
 {
     /// <summary>격파 미니게임/라이벌 대결/드래그&던지기/로데오 커서 — 어느 것이 이 락을 걸고 있는지.</summary>
@@ -78,6 +81,46 @@ namespace StickMate.Core
         {
             if (_owner == null || _owner != owner) return;
             _owner = null;
+        }
+
+        /// <summary>
+        /// 개선 R2(docs/CODE_REVIEW_FINAL.md "SpectacleEventLock 해제 보일러플레이트" 지적 대응) —
+        /// 12개 Director의 OnDisable() 등이 각자 손으로 반복해온 3단계(소유권 확인 → 필요시 강제 Idle
+        /// 전이 → Release(+옵션으로 ILocalClickCaptureService 해제))를 추출한 공용 헬퍼.
+        ///
+        /// 값을 고정한 이유: fallback 상태는 항상 <see cref="StickmanStateId.Idle"/>, 전이는 항상
+        /// isForcedInterrupt:true — 12곳 전부 예외 없이 이 두 값을 썼으므로 파라미터로 열어두지 않는다
+        /// (과설계 방지). clickCapture는 옵션(기본 null) — BattleMinigameDirector/DragThrowController
+        /// 2곳만 실제로 넘긴다.
+        ///
+        /// 소유권 확인을 항상 먼저 하는 이유: 12곳 중 9곳(GraffitiDirector/TodoReminderDirector/
+        /// RunawayDirector/WindowTheftDirector/DesktopIconMirrorDirector/RodeoCursorWatcher/
+        /// StressGaugeDirector/FocusWatchDirector/RivalEncounterDirector)은 원래도 이 가드가 있었다.
+        /// BattleMinigameDirector/DragThrowController/WindowCrashDirector 3곳은 원래 이 가드 없이
+        /// 상태 비교만 했지만, 세 곳 모두 "SpectacleEventLock.TryAcquire 성공 직후에만 guardedState로
+        /// ChangeState한다"는 불변식을 코드 전체에서 예외 없이 지킨다(다른 어떤 컴포넌트도 이 세
+        /// state로 전이하지 않는다) — 즉 CurrentStateId==guardedState이면 항상 CurrentOwner==owner이기도
+        /// 하므로, 이 가드를 추가해도 실제로 관찰 가능한 동작은 전혀 달라지지 않는다(Tasklist.md 개선
+        /// R2 절에 근거 기록).
+        ///
+        /// 이 헬퍼로 흡수하지 않은 2곳: RivalEncounterDirector(상태 비교가 아니라 `_rival?.ForceEndDuel()`
+        /// 경유로 정리하므로 guardedState 개념 자체가 없음), FocusWatchDirector(단일 상태가 아니라
+        /// 4개 상태 중 하나인지(IsFocusPoseState)를 확인하는 커스텀 가드라 단일 StickmanStateId
+        /// 파라미터로 표현할 수 없음) — 둘 다 억지로 끼워맞추지 않고 각자의 정리 로직을 유지한다.
+        /// </summary>
+        public static void ReleaseIfOwned(
+            object owner,
+            StickmanStateMachine machine,
+            StickmanStateId guardedState,
+            ILocalClickCaptureService clickCapture = null)
+        {
+            if (_owner == null || _owner != owner) return;
+            if (machine != null && machine.CurrentStateId == guardedState)
+            {
+                machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+            }
+            clickCapture?.ReleaseLocalClickCapture(owner);
+            Release(owner);
         }
     }
 }

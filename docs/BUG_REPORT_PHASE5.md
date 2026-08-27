@@ -71,3 +71,16 @@
 ## 결론
 
 Blocker 0건, Major 2건(BUG-P5-M1, BUG-P5-M2) — **Coder로 반려 필요.** 두 항목 모두 크래시/데이터 손상은 아니며 각자 자동 복귀 타임아웃/긴급정지 등 기존 안전망으로 결국 회복되지만, 하나는 20절의 핵심 상호작용 계약을 깨는 실제 동작 결함(BUG-P5-M1)이고 다른 하나는 24절 요구사항이 미구현인 채 "완료"로 보고된 상태(BUG-P5-M2)라 다음 라운드 착수 전 처리를 권고한다. 수정 후에는 Phase 6(성능 점검/최종 리뷰/문서화)로 넘어갈 준비가 대부분 되어 있다 — Phase 0~4 대비 이번 라운드도 새로운 아키텍처 패턴 없이 기존 컨벤션(정적 클래스/SpectacleEventLock/TimedSpectacleState/self-transition/펄스 신호) 재사용으로만 구현되어 구조적 위험은 낮다.
+
+---
+
+## 핫픽스 재확인 (Debugger, 2026-08-28)
+
+대상: 커밋 `8d45ab0`("Phase 5 반려 수정: 가출 렌더러 버그 + 로데오-스트레스 연동 + 긴급정지 정교화").
+
+- **BUG-P5-M1 재확인**: `StickmanBlackboard.IsCharacterHiddenByRunaway` 플래그가 `RunawayState`의 모든 진입/이탈 경로에서 정확히 관리됨을 코드로 확인 — `Enter()`(신규 Fleeing 진입, 이전 사이클 잔류 방지) → `false`, `HideCharacterAtHideSpot()`(Hidden 진입) → `true`, `ShowCharacterRevealed()`(Found) → `false`, `RestoreCharacter()`(Reconciling/SelfReturning) → `false`, `Exit()`(방어적 복구) → `false`. `StickmanStateMachine.ChangeState()`(`:124`)는 self-transition을 포함해 매 전이마다 `_current?.Exit()`을 무조건 먼저 호출하므로, Runaway가 아닌 다른 방식으로 상태가 끝나는 경로(강제 인터럽트 포함)에서도 반드시 `Exit()`을 거쳐 플래그가 `false`로 복귀함을 확인했다 — 플래그가 true로 영구 고착되는 경로 없음. `StickmanAgent.Resume()`(`:293-307`)은 `_blackboard.IsCharacterHiddenByRunaway`가 true인 동안만 `SetRenderersEnabled(true)` 호출을 건너뛰도록 정확히 구현되어 있다. 전체화면 Suspend 중에는 `SetBodiesSimulated(false)`가 모든 Rigidbody2D의 `simulated`도 함께 끄므로(클릭 레이캐스트도 함께 비활성) Suspended 구간 동안 발견 신호가 발생할 수 없어, Resume() 시점에 플래그가 유효하지 않은 상태로 관측될 여지도 없다. **수정 확인 완료, 재발 없음.**
+- **BUG-P5-M2 재확인**: `RodeoCursorWatcher.GetEffectiveStillTriggerSeconds()`가 `StressGauge.CurrentLevel`을 실제로 읽어 `stressRodeoWeightThreshold`(기본 0.6) 이상일 때만 `rodeoStillTriggerSeconds`(기본 5초)에 `rodeoStressTriggerSecondsMultiplier`(기본 0.7, `Mathf.Max(0.1f, …)`로 0/음수 배율 방어)를 곱해 정지 판정 시간을 완만히(최대 30%) 단축함을 확인했다 — 발동 조건 자체(정지 시간 도달)는 그대로이고 그 시간만 짧아지는 구조라 "약한 가중치" 요구를 넘어서는 공격적인 변경이 아니다. **수정 확인 완료.**
+- **`FocusWatchDirector.OnEmergencyStop()` 가드 재확인**: `if (SpectacleEventLock.IsActive && SpectacleEventLock.CurrentOwner != (object)this) return;`(`:321`)을 `SpectacleEventLock.IsActive`(`_owner != null`) 정의와 대조 확인 — (1) 락이 비어있으면(`IsActive==false`) 조건 전체가 false라 그대로 진행해 즉시 세션 취소, (2) 락을 Pomodoro 자신(FocusStart/Complete/Cancelled/Nudge)이 쥐고 있으면 `CurrentOwner==this`라 조건이 false라 마찬가지로 즉시 취소, (3) 락을 다른 이벤트(로데오 등)가 쥐고 있을 때만 조건이 true가 되어 무시함을 확인했다 — 의도한 3가지 케이스 모두 정확히 동작한다.
+- **재빌드/재테스트**: `Library/ScriptAssemblies`/`Bee`/`PlayerDataCache` 강제 삭제 후 `-batchmode -nographics -quit` 재컴파일 — `error CS`/`warning CS` 매치 0건, 정상 종료 확인. 이어서 `-runTests -testPlatform EditMode` 실행, `testResults.xml` 직접 파싱: `testcasecount="13" result="Passed" total="13" passed="13" failed="0"`. **에러 0/경고 0 + 13/13 통과 기준선 재확인 완료.**
+
+**Phase 5 최종 승인 — Phase 6(성능점검/최종리뷰/문서화) 착수 가능.**

@@ -55,19 +55,17 @@ namespace StickMate.Interaction
             ReleaseOwnedLocks();
         }
 
-        /// <summary>지금 이 컴포넌트가 소유 중인 락(SpectacleEventLock/ILocalClickCaptureService)을 반환한다.</summary>
+        /// <summary>
+        /// 개선 R2(docs/CODE_REVIEW_FINAL.md): 3단계 보일러플레이트를 SpectacleEventLock.ReleaseIfOwned로
+        /// 추출했다(BattleMinigameDirector.ReleaseOwnedLocks()와 동일한 근거로 소유권 선확인을 추가해도
+        /// 동작은 동일 — SpectacleEventLock.ReleaseIfOwned 문서 참고). Exit()가 Kinematic->Dynamic
+        /// 방어적 복구를 담당하므로 강제 Idle 전이로 안전하게 놓아준다.
+        /// </summary>
         private void ReleaseOwnedLocks()
         {
-            if (_player != null && _player.Blackboard != null && _player.Blackboard.Machine != null &&
-                _player.Blackboard.Machine.CurrentStateId == StickmanStateId.Dragged)
-            {
-                // Exit()가 Kinematic->Dynamic 방어적 복구를 담당하므로 강제 Idle 전이로 안전하게 놓아준다.
-                _player.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
-            }
-
-            _clickCapture?.ReleaseLocalClickCapture(this);
+            SpectacleEventLock.ReleaseIfOwned(this, _player != null ? _player.Blackboard?.Machine : null,
+                StickmanStateId.Dragged, _clickCapture);
             _clickCapture = null;
-            SpectacleEventLock.Release(this);
         }
 
         private void Update()

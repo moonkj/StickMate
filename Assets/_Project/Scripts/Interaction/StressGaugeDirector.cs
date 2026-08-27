@@ -55,15 +55,10 @@ namespace StickMate.Interaction
             ReleaseOwnedSulkyLock();
         }
 
+        // 개선 R2(docs/CODE_REVIEW_FINAL.md): 3단계 보일러플레이트를 SpectacleEventLock.ReleaseIfOwned로 추출.
         private void ReleaseOwnedSulkyLock()
         {
-            if (SpectacleEventLock.CurrentOwner != (object)this) return;
-            if (_player != null && _player.Blackboard != null && _player.Blackboard.Machine != null &&
-                _player.Blackboard.Machine.CurrentStateId == StickmanStateId.Sulky)
-            {
-                _player.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
-            }
-            SpectacleEventLock.Release(this);
+            SpectacleEventLock.ReleaseIfOwned(this, _player != null ? _player.Blackboard?.Machine : null, StickmanStateId.Sulky);
         }
 
         /// <summary>"장시간 방치"(19절) 판정에 쓰는 최소 정의의 '상호작용' 신호 — 캐릭터 클릭, 투두

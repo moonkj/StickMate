@@ -46,16 +46,11 @@ namespace StickMate.Interaction
             ReleaseOwnedLock();
         }
 
+        // 개선 R2(docs/CODE_REVIEW_FINAL.md): 3단계 보일러플레이트를 SpectacleEventLock.ReleaseIfOwned로 추출.
+        // States/RunawayState.cs의 Exit()가 렌더러/Kinematic을 방어적으로 복구하므로 강제 Idle 전이가 안전하다.
         private void ReleaseOwnedLock()
         {
-            if (SpectacleEventLock.CurrentOwner != (object)this) return;
-            if (_player != null && _player.Blackboard != null && _player.Blackboard.Machine != null &&
-                _player.Blackboard.Machine.CurrentStateId == StickmanStateId.Runaway)
-            {
-                // States/RunawayState.cs의 Exit()가 렌더러/Kinematic을 방어적으로 복구하므로 안전하다.
-                _player.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
-            }
-            SpectacleEventLock.Release(this);
+            SpectacleEventLock.ReleaseIfOwned(this, _player != null ? _player.Blackboard?.Machine : null, StickmanStateId.Runaway);
         }
 
         private void Update()

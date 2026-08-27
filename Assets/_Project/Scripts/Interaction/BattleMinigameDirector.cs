@@ -50,22 +50,20 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// 지금 이 컴포넌트가 소유 중인 락(SpectacleEventLock/ILocalClickCaptureService)을 반환한다.
-        /// Release()/ReleaseLocalClickCapture() 둘 다 "소유자 본인일 때만" 동작하는 멱등 가드가 이미
-        /// 있으므로, 소유하지 않은 상태에서 호출되거나 중복 호출돼도 예외 없이 안전하다.
+        /// 개선 R2(docs/CODE_REVIEW_FINAL.md): 3단계 보일러플레이트를 SpectacleEventLock.ReleaseIfOwned로
+        /// 추출했다 — 캐릭터가 얼어붙은 중간 상태(기 모으는 자세)로 남지 않도록 안전한 Idle로 강제
+        /// 복귀시키는 것까지 헬퍼가 담당한다. 원래 이 메서드는 SpectacleEventLock 소유권을 먼저 확인하지
+        /// 않고 상태만 비교했지만, TryBegin()이 TryAcquire 성공 직후에만 ChangeState(BattleMinigame)을
+        /// 호출하는 불변식이 코드 전체에서 유지되므로(다른 어떤 경로도 이 상태로 전이하지 않는다) 헬퍼의
+        /// 소유권 선확인을 추가해도 관찰 가능한 동작은 동일하다(SpectacleEventLock.ReleaseIfOwned 문서
+        /// 참고). Release()/ReleaseLocalClickCapture()는 "소유자 본인일 때만" 동작하는 멱등 가드가 이미
+        /// 있으므로 중복 호출돼도 예외 없이 안전하다.
         /// </summary>
         private void ReleaseOwnedLocks()
         {
-            if (_player != null && _player.Blackboard != null && _player.Blackboard.Machine != null &&
-                _player.Blackboard.Machine.CurrentStateId == StickmanStateId.BattleMinigame)
-            {
-                // 캐릭터가 얼어붙은 중간 상태(기 모으는 자세)로 남지 않도록 안전한 Idle로 강제 복귀.
-                _player.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
-            }
-
-            _clickCapture?.ReleaseLocalClickCapture(this);
+            SpectacleEventLock.ReleaseIfOwned(this, _player != null ? _player.Blackboard?.Machine : null,
+                StickmanStateId.BattleMinigame, _clickCapture);
             _clickCapture = null;
-            SpectacleEventLock.Release(this);
         }
 
         /// <summary>트레이 메뉴 "격파 놀이"(10절 수동 트리거)에서 호출할 공개 진입점. 이미 다른

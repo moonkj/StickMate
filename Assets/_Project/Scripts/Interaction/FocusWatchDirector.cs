@@ -279,6 +279,12 @@ namespace StickMate.Interaction
             _player.Blackboard.Machine.ChangeState(stateId);
         }
 
+        // 개선 R2(docs/CODE_REVIEW_FINAL.md) 판단: SpectacleEventLock.ReleaseIfOwned 헬퍼로 흡수하지
+        // 않는 예외로 남긴다(리뷰어가 직접 지목한 소수 예외 중 하나) — 다른 11곳은 단일 StickmanStateId
+        // 하나와 CurrentStateId를 비교하지만, 이 컨트롤러는 4개 상태(FocusStart/FocusComplete/
+        // FocusCancelled/FocusNudge) 중 하나인지를 IsFocusPoseState()로 확인해야 해서 단일
+        // StickmanStateId 파라미터로 표현할 수 없다(다중값 predicate로 일반화하면 이 한 곳을 위해
+        // 헬퍼 시그니처에 delegate 파라미터를 추가하는 셈이라 추상화 비용이 절감분보다 크다는 판단).
         private void ReleaseOwnedLock(bool forceIdle)
         {
             if (SpectacleEventLock.CurrentOwner != (object)this) return;

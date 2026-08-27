@@ -97,3 +97,9 @@
 - Coder 수정: IsCharacterHiddenByRunaway 플래그로 Resume()과 RunawayState 가시성 제어 조율(침습 적은 방식 선택). RodeoCursorWatcher에 스트레스 가중치 연동(정지판정시간 완만히 단축, 과하지 않게). Minor1은 의도된 에스컬레이션으로 확정 기록. Minor2는 SpectacleEventLock 소유자 확인 가드로 "진짜 무관한 긴급정지만" 무시하도록 정교화(포모도로 자체 탈출구 기능은 보존).
 - 컴파일 재검증: 에러0/경고0, EditMode 13/13 통과.
 - **Phase 5 사실상 마무리. 다음: Debugger 최종 확인 후 Phase 6(성능점검/최종리뷰/문서화)로 프로젝트 마감 단계 진입.**
+
+## 2026-08-28 (계속) — Phase 6: 성능 점검 통과 + 리뷰 개선 R2
+- Performance Engineer: 24시간 상주 기준 전체 감사 — 실질적 문제 0건. 폴링 규율/캐싱/할당금지 컨벤션이 5라운드 내내 실제로 지켜졌음을 확인. Rigidbody2D 설정이 FixedUpdate 아닌 Update 경로인 점만 향후 물리 타이밍 참고사항으로 기록(성능 문제 아님, 범위 밖).
+- Reviewer(품질 리뷰): 좋은 점 4개(주석 컨벤션 일관성, StickmanAgent 저비만화 유지, 플랫폼 확장지점 유효성, RivalStickmanAgent로 다중인스턴스 패턴 실증) 확인. 개선 요청 1건 — SpectacleEventLock 해제 보일러플레이트가 12개 Director에 반복(DRY 위반, 정책 변경 시 12곳 수동 동기화 필요, 락 미해제 회귀 재발 위험).
+- **개선 R2**: Coder가 `SpectacleEventLock.ReleaseIfOwned()` 공용 헬퍼 신설, 10곳 교체(2곳은 구조적으로 안 맞아 근거와 함께 예외 유지 — RivalEncounterDirector/FocusWatchDirector). 리더 독립 컴파일 재검증: 에러0/경고0.
+- 다음: Reviewer에게 R2 재확인 요청, 승인되면 Doc Writer에게 최종 문서화(README) 위임하고 프로젝트 마감.
