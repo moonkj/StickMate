@@ -13,7 +13,7 @@
 
 | 플랫폼 | 방식 | 설명 |
 |---|---|---|
-| macOS | 데스크톱 오버레이 | `IPlatformWindowService`가 타 윈도우를 실시간 열거해 발판으로 사용(설계상 목표). **네이티브 구현체는 아직 없음** — `Platform/MacOS/`는 플레이스홀더뿐. |
+| macOS | 데스크톱 오버레이 | CoreGraphics/CoreFoundation C ABI 직접 P/Invoke(`CGWindowListCopyWindowInfo`)로 창 열거. 클릭관통/항상위는 Windows와 동일하게 안전가드로 **현재 비활성화**(네이티브 Objective-C++ 플러그인 없이는 NSWindow 조작 불가 — 아래 [알려진 한계](#알려진-한계--다음-단계) 참고). |
 | Windows | 데스크톱 오버레이 | Win32 P/Invoke(`EnumWindows`, `DwmGetWindowAttribute`)로 창 열거. 클릭관통/항상위는 안전가드로 **현재 비활성화**(아래 [알려진 한계](#알려진-한계--다음-단계) 참고). |
 | iPad / iPhone | 스크린샷 백드롭 모드 | iOS 샌드박스 정책상 실제 오버레이가 불가능해, 유저가 캡처한 홈 화면 스크린샷을 정적 배경으로 쓰고 아이콘 줄/Dock 위치를 탭으로 지정해 발판 삼는 착시 연출. |
 
@@ -50,7 +50,7 @@
 
 1. Unity Hub 설치 후 **Unity 6000.0.82f1 (6 LTS)** 에디터 설치(모듈: macOS/Windows Build Support, 모바일 타깃 시 iOS Build Support 추가).
 2. Unity Hub → Add project from disk → 이 리포 루트(`/Users/kjmoon/App/StickMate`) 선택 → 열면 자동 임포트/컴파일.
-3. **중요 — 씬/프리팹이 아직 없다.** `Assets/` 안에는 `.unity` 씬 파일도 `.prefab` 파일도 존재하지 않는다. Phase 0~6은 상태머신/플랫폼서비스/이벤트버스/텍스트-액션 계약 등 **코드 레이어만** 구현하고 EditMode 테스트로 검증했으며, 실제 스틱맨 캐릭터 프리팹(스프라이트, Rigidbody2D/HingeJoint2D 리그, 씬 배선)은 의도적으로 다음 단계로 남겨둔 작업이다. 지금 프로젝트를 열고 Play를 눌러도 빈 씬만 보이는 게 정상이다.
+3. `Assets/_Project/Scenes/Main.unity`를 열고 Play를 누르면 `Assets/_Project/Prefabs/Stickman.prefab`(플레이스홀더 스프라이트 리그)이 실제로 낙하→접지→자율 배회하는 모습을 볼 수 있다. 아트 에셋은 아직 없어 흰 사각형/원 스프라이트로만 구성돼 있다 — 프리팹/씬은 `Assets/Editor/SceneBootstrapper.cs`(메뉴: `StickMate/Build All` 또는 `Rebuild All`)로 재생성 가능(기존 에셋이 있으면 기본적으로 건드리지 않음).
 
 ## 구현 현황
 
@@ -74,29 +74,30 @@
 
 ## 테스트
 
-`Tests/EditMode/`에 EditMode 테스트 2종(총 13건), 프로덕션 코드는 `StickMate.Runtime.asmdef`로 승격되어 있고 테스트 어셈블리(`StickMate.Tests.EditMode.asmdef`)가 `InternalsVisibleTo`로 내부 API에 접근한다.
+`Tests/EditMode/`(로직 단위)와 `Tests/PlayMode/`(씬 실배선 스모크/회귀) 두 어셈블리. 프로덕션 코드는 `StickMate.Runtime.asmdef`로 승격되어 있고 테스트 어셈블리들이 `InternalsVisibleTo`로 내부 API에 접근한다.
 
 | 테스트 파일 | 건수 | 검증 대상 |
 |---|---|---|
-| `DialogueTextActionSyncTests.cs` | 8 | 텍스트-액션 싱크 계약 — 강제 취소 시 말풍선 자동 만료, 컨텍스트 위조/재사용 차단, 파라미터 스냅샷 불변 |
-| `UserAssetImmutabilityAuditTests.cs` | 5 | 유저 자산 불변 원칙 — 소스코드 전수 스캔으로 금지 API(창/파일 이동·삭제) 호출 여부 감사 |
+| `DialogueTextActionSyncTests.cs` (EditMode) | 8 | 텍스트-액션 싱크 계약 — 강제 취소 시 말풍선 자동 만료, 컨텍스트 위조/재사용 차단, 파라미터 스냅샷 불변 |
+| `UserAssetImmutabilityAuditTests.cs` (EditMode) | 5 | 유저 자산 불변 원칙 — 소스코드 전수 스캔으로 금지 API(창/파일 이동·삭제) 호출 여부 감사 |
+| `StickmanPlaytestSmokeTests.cs` (PlayMode) | 1 | `Main.unity`를 실제로 15초간 구동 — 무한낙하 없음, 자율배회 실이동, 종료시점 접지상태(Idle/Walk) |
+| `StickmanRagdollRecoveryTests.cs` (PlayMode) | 1 | RAGDOLL 강제진입 → GETUP → Idle/Walk 복귀(정지/이동 중 피격 둘 다) — 15회 반복 실측 100% 통과 |
 
-실행 명령어(예):
+실행 명령어(예 — **`-runTests`와 `-quit`을 같이 쓰면 테스트가 끝나기 전에 조기 종료되니 함께 쓰지 말 것**):
 
 ```bash
 /Applications/Unity/Hub/Editor/6000.0.82f1/Unity.app/Contents/MacOS/Unity \
-  -batchmode -quit -projectPath /Users/kjmoon/App/StickMate \
+  -batchmode -nographics -projectPath /Users/kjmoon/App/StickMate \
   -runTests -testPlatform EditMode \
-  -testResults /Users/kjmoon/App/StickMate/testresults.xml
+  -testResults /Users/kjmoon/App/StickMate/testresults.xml \
+  -logFile /Users/kjmoon/App/StickMate/testresults.log
 ```
 
-최근 확인 기준(개선 R2 재검증) 13/13 통과, 컴파일 에러/경고 0건.
+(`-testPlatform PlayMode`로 바꾸면 씬 스모크/랙돌 복귀 테스트 실행.) 최근 확인 기준 EditMode 13/13, PlayMode 2/2(각각 다회 반복으로 재현성 확인), 컴파일 에러/경고 0건.
 
 ## 알려진 한계 / 다음 단계
 
-- **macOS 네이티브 미구현**: `Platform/MacOS/`는 플레이스홀더뿐, `NSWindow` 오버레이/`CGWindowListCopyWindowInfo` 실구현 없음.
-- **진짜 분리 오버레이 미구현(BUG-B1)**: `Win32WindowService`가 아직 게임 자신의 창을 재사용하는 임시 스텁이라, `SetClickThrough`/`SetAlwaysOnTop` 호출 시 게임 창 자체가 파괴되는 것을 막기 위해 안전가드(`NotSupportedException`)로 차단해 둔 상태. 즉 Windows에서 클릭관통이 실제로는 아직 켜지지 않는다. 별도 `CreateWindowEx` 기반 오버레이 창 구현이 선행 과제.
-- **씬/프리팹 배선 전무**: 캐릭터 스프라이트, Rigidbody2D/HingeJoint2D 리그, UI(투두 포스트잇 등) 실제 씬 오브젝트 구성이 필요.
+- **macOS/Windows 둘 다 진짜 분리 오버레이/클릭관통 미구현**: `MacWindowService`(`CGWindowListCopyWindowInfo` 기반)/`Win32WindowService`(`EnumWindows` 기반) 둘 다 창 열거는 실제로 동작하지만, `SetClickThrough`/`SetAlwaysOnTop`은 안전가드(`NotSupportedException`)로 항상 거부한다 — 진짜 분리된 오버레이 창(macOS: Objective-C++ 네이티브 플러그인, Windows: `CreateWindowEx` 기반)이 있어야 클릭관통/항상위를 안전하게 켤 수 있다(이번 범위 밖, BUG-B1과 동일 계열). 두 플랫폼 다 에디터에서는 활성 빌드 타깃과 무관하게 `NullPlatformWindowService`를 쓰도록 `!UNITY_EDITOR` 가드가 걸려 있다(실측으로 필요성이 확인된 가드 — `Core/StickmanAgent.cs` 참고).
 - **던전 파밍 / 세포분열·군대 보류(P3)**: `RivalStickmanAgent`가 이미 독립된 상태머신 인스턴스를 여러 개 동시 운용하는 패턴을 실증해, 착수 시 기술적 난이도는 낮을 것으로 판단됨(최종 코드 리뷰 근거).
 - **Windows 데스크톱 아이콘 좌표 조회 스텁**: `IDesktopIconLayoutService`는 Windows 실기기 부재로 정직한 no-op으로 남아 있음(청소부/블랙홀 연출에 영향).
 - **물리 갱신이 `Update()` 경로**: `Rigidbody2D` 속도/위치 설정이 `FixedUpdate()`가 아닌 `Tick()`(→`Update()`) 경로에서 이뤄짐. 성능 문제는 아니지만 프레임레이트 변동 시 물리 잔떨림 가능성이 있어, 렌더링/모터 레이어 착수 시 재검토 권고(`docs/PERFORMANCE_REPORT.md` 참고 사항).

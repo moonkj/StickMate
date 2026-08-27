@@ -134,3 +134,11 @@ Phase 0(스캐폴딩) → 1(코어루프) → 2(랙돌/파쿠르) → 3(전투/�
 - Coder가 부수적으로 발견한 기존 스모크테스트 플레이키니스(AutoWanderController RNG로 인한 우연한 제자리점프가 "7초 전체 구간 Y변동" 판정과 충돌) — **리더가 직접 진단/수정**: "Y 변동폭" 판정을 "종료 시점 상태머신이 Idle/Walk(접지)인가"로 교체(더 정확한 의도 표현). PlayMode 테스트 3회 연속(각기 다른 RNG 경로) 전부 통과로 디플레이킹 검증 완료.
 - 컴파일: 에러0/경고0. EditMode 13/13, PlayMode 2/2(3회 재현).
 - **StickMate 코드+씬 배선 1차 완성.** 유저가 Unity Hub에서 Main.unity를 열고 Play를 누르면 실제로 캐릭터가 자율 배회하는 모습을 볼 수 있는 상태.
+
+## 2026-08-28 (계속) — macOS 네이티브 창 열거 + 랙돌 감쇠 버그 수정 + 에디터 가드 대칭화
+- Coder(macOS): `MacWindowService.cs` — 네이티브 .bundle 없이 CoreGraphics/CoreFoundation C ABI 직접 P/Invoke로 창 열거(Phase0 m8 해소). 실측: 이 세션의 실제 창(터미널/노트 등) 정확히 열거, 시스템 레이어(Dock/메뉴바 등) 정확히 제외, 한글 창 제목도 정확히 디코딩 확인.
+- **중요 발견**: 활성 빌드 타깃이 macOS면 에디터 컴파일 컨텍스트에도 UNITY_STANDALONE_OSX가 함께 정의됨 실측 확인 → `!UNITY_EDITOR` 가드 필수. **Architect가 대칭 보강**: Windows 분기(`UNITY_STANDALONE_WIN`)에도 동일한 잠재 위험이 있음을 인지해 동일 가드 추가(지금까지 활성 타깃이 계속 macOS여서 드러나지 않았을 뿐, 향후 Windows 개발자가 프로젝트를 열면 에디터 실측이 조용히 깨질 뻔한 위험 사전 차단).
+- Coder(랙돌 감쇠, 병렬): BUG-SW-M4(Debugger가 8회 반복 검증 중 발견한 "이동 중 피격 시 25% 확률로 GETUP 영구 실패") — 팔다리 Rigidbody2D에 linearDamping/angularDamping 추가 + EnterRagdoll() 진입 시 각속도 절반 감쇠. **15회 반복 재검증 100% 통과**(이동 중 피격 4/4 포함, 이전엔 전멸하던 케이스).
+- README.md 최신화: 씬/프리팹 배선 완료 반영(더 이상 "빈 씬" 아님), PlayMode 테스트 2종 추가, macOS/Windows 오버레이 한계 통합 정리.
+- 리더 독립 컴파일 재검증(통합 상태): 에러0/경고0.
+- 다음: Debugger에게 이번 라운드(macOS 열거 + 랙돌 감쇠 + 에디터 가드) 통합 검토 위임.

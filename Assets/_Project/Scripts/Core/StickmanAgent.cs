@@ -5,6 +5,9 @@ using StickMate.States;
 #if UNITY_STANDALONE_WIN
 using StickMate.Platform.Windows;
 #endif
+#if UNITY_STANDALONE_OSX && !UNITY_EDITOR
+using StickMate.Platform.MacOS;
+#endif
 #if UNITY_IOS || UNITY_ANDROID
 using StickMate.Platform.Mobile;
 #endif
@@ -334,13 +337,40 @@ namespace StickMate.Core
 
         private IPlatformWindowService CreatePlatformService()
         {
-#if UNITY_STANDALONE_WIN
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
             // BUG-P1-B1 대응(Blocker, docs/BUG_REPORT_PHASE1.md): Win32WindowService.EnumerateFootholds()가
             // "제목 있는 가시 창"을 하나도 못 찾으면(모든 창 최소화 등 흔한 상황) 빈 리스트를 반환해
             // GroundedTick/CheckScreenBoundsOrFall 둘 다 무력화되고 캐릭터가 화면 밖으로 무한 낙하한다.
             // FallbackPlatformWindowService 데코레이터로 감싸 "화면 하단 합성 발판 1개" 안전망을 항상
             // 보장한다(NullPlatformWindowService의 더미 발판과 동일한 개념을 실제 데스크톱 구현체에 이식).
+            //
+            // `&& !UNITY_EDITOR`(2026-08-28, Architect 대칭 보강): macOS 네이티브 창 열거 작업 중 Coder가
+            // 실측으로 확인한 사실 — Unity 에디터는 활성 빌드 타깃이 그 플랫폼이면 에디터 컴파일
+            // 컨텍스트 자체에도 해당 STANDALONE 심볼이 함께 정의된다(UNITY_EDITOR와 배타가 아님). 이
+            // 프로젝트의 활성 빌드 타깃이 지금까지 계속 macOS여서 이 Windows 분기가 에디터에서 실제로
+            // 컴파일된 적이 없었을 뿐, 나중에 Windows 개발자가 이 프로젝트를 열고 활성 빌드 타깃을
+            // Windows로 바꾸는 순간 이 가드 없이는 에디터 Play/배치모드 실측이 전부 조용히
+            // Win32WindowService로 바뀌어(NullPlatformWindowService의 더미 발판을 안 쓰게 됨) 지금까지
+            // 쌓인 모든 실측 검증 전제가 깨진다. macOS 분기(아래)의 동일 가드와 대칭을 맞춘다.
             return new FallbackPlatformWindowService(new Win32WindowService(), _config);
+#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+            // macOS 네이티브 창 열거 도입(docs/BUG_REPORT_PHASE0.md m8 해소, Tasklist.md "macOS 네이티브
+            // 창 열거" 절 참고) — Win32와 동일하게 "제목/레이어 필터를 통과한 창을 하나도 못 찾으면
+            // GroundedTick/CheckScreenBoundsOrFall이 무력화되어 무한 낙하"하는 동일한 위험이 있으므로
+            // 동일한 FallbackPlatformWindowService 안전망으로 감싼다.
+            //
+            // `&& !UNITY_EDITOR`가 반드시 필요한 이유(Win32 분기와의 차이점, 실측으로 확인됨): Unity
+            // 에디터는 "활성 빌드 타깃"이 macOS Standalone으로 설정되어 있으면 에디터 컴파일 컨텍스트
+            // 자체에도 UNITY_EDITOR와 UNITY_STANDALONE_OSX가 동시에 정의된다(Windows 대상일 때
+            // UNITY_STANDALONE_WIN이 마찬가지로 에디터에도 동시 정의되는 것과 같은 매커니즘 — Win32
+            // 분기에 이 가드가 없는 것은 이 프로젝트의 활성 빌드 타깃이 지금까지 macOS였고 Windows
+            // 브랜치가 에디터에서 실제로 컴파일된 적이 없었기 때문일 뿐, 안전해서가 아니다). 이 프로젝트의
+            // 모든 실측 플레이테스트(PlayMode 스모크 테스트, EditMode 13종)는 에디터 배치모드로
+            // 실행되며 NullPlatformWindowService의 더미 발판에 의존하고 있으므로, 이 가드가 없으면
+            // 에디터 실행 시에도 MacWindowService(CoreGraphics P/Invoke)가 조용히 활성화되어 그 실측
+            // 결과가 전부 달라진다 — 실제 macOS 앱 빌드(Player)에서만 MacWindowService를 쓰도록
+            // `!UNITY_EDITOR`로 명시적으로 분리한다.
+            return new FallbackPlatformWindowService(new MacWindowService(), _config);
 #elif UNITY_IOS || UNITY_ANDROID
             // 모바일 발판/배경 설정 자체(SetBackdropScreenshot/AddUserDefinedFoothold)는 UX 온보딩
             // 흐름이 별도로 호출한다(docs/UX_FLOW.md 1-B/3절) — 여기서는 서비스 인스턴스만 만들어 배선한다.
@@ -351,9 +381,8 @@ namespace StickMate.Core
             // 조용히 무력화된다.
             return new ScreenshotBackdropPlatformService();
 #else
-            // 에디터 및 macOS(네이티브 플러그인 미구현, Platform/MacOS/.gitkeep만 존재) 폴백.
-            // macOS 실구현은 Phase 0 버그 리포트(BUG_REPORT_PHASE0.md m8)에 커버리지 공백으로 이미
-            // 기록된 대로 별도 Objective-C++ 플러그인 작업이 필요하며 Phase 1 범위 밖이다.
+            // 에디터(모든 활성 빌드 타깃 공통) 및 그 외 미지원 조합 폴백. macOS 실빌드는 위
+            // UNITY_STANDALONE_OSX && !UNITY_EDITOR 분기가 전담하므로 이 분기로 내려오지 않는다.
             // NullPlatformWindowService는 이미 항상 더미 발판을 반환하므로 FallbackPlatformWindowService로
             // 감쌀 필요가 없다(불필요한 간접 계층 추가 방지).
             return new NullPlatformWindowService();

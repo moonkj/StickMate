@@ -74,3 +74,52 @@
 1. **PlayMode 스모크 테스트의 실제 커버리지가 이름/문서 표현보다 좁음** — 위 중점 점검 3 참고. 테스트 이름(`StickmanFallsSettlesAndWanders`)과 Tasklist.md 표현은 "자율배회 AI 실증"을 폭넓게 주장하지만, 실측 재현 결과 Idle/Walk 외 다른 상태는 씬 구조상(단일 평면 발판, 충돌 대상 전무) 근본적으로 도달 불가능하다. 테스트 자체를 지금 확장할 필요는 없으나(그러려면 벽/장애물 있는 발판 구성이 먼저 필요), 주석이나 Tasklist에 "이 테스트는 Idle/Walk/접지 스냅만 검증하며 ParkourClimb/Ragdoll/Getup/Attack은 커버하지 않는다"는 범위 한정 문구를 추가하면 다음 라운드에서 혼동을 줄일 수 있다.
 2. **`SceneBootstrapper.CreateOrLoadConfig()`가 기존 config 로드 시에도 `groundSnapTolerance` 한 필드만 항상 강제 덮어씀** — `SceneBootstrapper.cs:71`. 다른 필드는 "기존 값 보존"이 기본 정책인데 이 필드만 예외적으로 항상 20으로 재설정된다. 누군가 나중에 이 값을 다른 이유로 에디터에서 수동 조정해두면, `BuildAll`을 다시 실행하는 순간(예: 프리팹만 고치려고) 조용히 20으로 되돌아간다. 급하지 않으나 주석으로 "이 필드는 재실행 시 항상 재적용됨"을 명시하면 좋겠다.
 3. **`HingeJoint2D.m_UseLimits: 0`(각도 제한 없음)** — 4개 관절 전부 각도 제한이 없어(YAML 확인) GETUP의 P-제어 모터가 이론상 무릎/팔꿈치를 반대 방향으로 굽히는 등 부자연스러운 경로로 목표 각도에 도달할 수 있다. 이는 Phase 2 리포트에서 이미 "이번 배선에서 구조만 만족, 실측 후 결정" 대상으로 disclosure된 항목이라 신규 버그로 잡지 않으나, 실제 프리팹이 생긴 지금이 `useLimits`를 켤 적기라는 점을 재확인해둔다.
+
+---
+
+## 반려 수정 + 디플레이킹 최종 확인 (Debugger, 2026-08-28, 대상 커밋 `2862ad6`)
+
+**결론: 씬/프리팹 배선 최종 승인 보류 — 검증 과정에서 신규 Major 1건(BUG-SW-M4) 발견, Coder 재작업 필요.**
+
+BUG-SW-M1/M2/M3 원 지적사항 자체와 스모크 테스트 디플레이킹 수정은 전부 실측으로 건전함을 확인했다. 그러나 지시받은 대로 PlayMode를 여러 차례 독립 재실행해 신뢰성을 검증하는 과정에서, 이번 라운드에 Coder가 신설한 `StickmanRagdollRecoveryTests.cs` 자체가 약 25% 확률로 실패함을 발견했고, 원인을 추적한 결과 BUG-SW-M1이 완전히 해결되지 않았다는 결론에 도달했다. 아래 상세.
+
+### BUG-SW-M1 재검증 — 배선은 정확하나, 신규 Major(BUG-SW-M4) 발견
+
+**배선 자체는 전부 정확히 구현됨(실측 확인)**:
+- `ProjectSettings/TagManager.asset`에 `StickmanLimb` 레이어가 인덱스 8에 등록됨을 확인.
+- `ProjectSettings/Physics2DSettings.asset`의 `m_LayerCollisionMatrix`(256 hex = 128byte = 32×32bit 매트릭스)를 직접 바이트 단위로 디코딩 — 레이어8 행의 8번 비트가 정확히 0(자체충돌 비활성)이고 나머지 31비트는 전부 1(다른 레이어와는 정상 충돌)임을 확인. `Physics2D.IgnoreLayerCollision(8,8,true)`가 의도대로 정확히 반영됨.
+- `Main.unity`에 `PhysicsGround`(BoxCollider2D, size={200,2}, position.y=4, layer=0 Default) 신규 확인 — 콜라이더 상단 Y=5가 `cam.transform.position.y(0) + cam.orthographicSize(5)`와 정확히 일치, 클래스 문서 주석과 부합.
+- `Stickman.prefab` YAML 직접 확인: 4개 팔다리 전부 `m_Layer: 8`, 각각 `BoxCollider2D` 부착(시각 크기와 동일), `RagdollLimbImpactRelay` 4개 부착(스크립트 GUID `2ac7cc5aa599b44fc9b8e2ce2ebc58c9`로 대조 확인 — 클래스명은 YAML에 없으므로 문자열 grep만으로는 놓칠 뻔했다), 4개 전부 `_agent` 필드가 루트 `StickmanAgent`(fileID를 script guid까지 교차 검증)로 정확히 배선됨. `HingeJoint2D` 4개 전부 `m_EnableCollision: 0`(연결된 바디끼리 애초에 충돌 안 함, 표준 설정) 확인.
+- `StickmanRagdollRecoveryTests.cs` 코드 리뷰 — `ReportExternalImpact()` 강제 호출 → `Assert.AreEqual(Ragdoll, ...)` → Getup/Idle·Walk 폴링 → `Assert.IsTrue(sawGetup)`/`Assert.IsTrue(recoveredToActive)` 이중 검증. 실제 물리 상태를 측정하는 진짜 assert이며 트리비얼하지 않음을 확인.
+
+**그러나 반복 재실행에서 실제 정착 실패를 발견**:
+- `-runTests -testPlatform PlayMode -quit 없이` 8회 독립 재실행(매회 새 프로세스, `System.Guid` 기반 RNG로 경로 상이) 결과 **2회(런3, 런7) `RagdollEntersAndRecoversToActiveState` 실패**, 6회 통과.
+- 실패 2건 모두 로그상 `충격 전 상태=Walk`(캐릭터가 이동 중일 때 강제 충격을 받음), 통과 6건 모두 `충격 전 상태=Idle`(정지 중 피격) — 뚜렷한 상관관계.
+- 실패 시 15초 관찰 동안 `state=Ragdoll`을 벗어나지 못하고, `maxLimbSpeed`가 정착 임계값(0.3) 위아래를 감쇠 없이 계속 넘나듦(예: 런3 로그 `0.018→0.889→1.092→0.541→...`) — settle 조건(0.3 이하 0.5초 연속 유지)이 한 번도 성립하지 않음.
+- 근본 원인 규명을 위해 임시 진단 PlayMode 테스트(`DebuggerDiagRagdollWalkImpactTest.cs`, 검증 직후 삭제 — 삭제 후 `git status`/`git diff`로 저장소에 잔여 변경 없음 확인)를 작성해 "Walk 상태를 확정으로 잡은 뒤 강제 충격 + 45초 장기 관찰"을 실행: `maxLimbSpeed`가 **45초 내내 감쇠 없이 약 2초 주기로 0.02~0.65 사이를 안정적으로 오갔다**(진폭이 시간에 따라 줄어드는 추세가 관측되지 않음) — 15초든 45초든 질적으로 동일한 패턴이라 "느리게 정착"이 아니라 **"사실상 정착하지 않는 비감쇠 진동"**에 가깝다고 판단.
+- 코드상 원인 추정(수정은 Architect/Coder 판단, 여기서는 진단만): (1) 모든 사지 `Rigidbody2D`가 `m_LinearDamping: 0`(각속도 감쇠도 확인 필요)로 감쇠가 전혀 없음. (2) `RagdollRig.EnterRagdoll()`(`Assets/_Project/Scripts/States/RagdollRig.cs`)은 조인트 모터만 끌 뿐 각 파츠의 `linearVelocity`/`angularVelocity`를 전혀 초기화하지 않음. (3) `WalkState.Tick()`이 매 프레임 루트 `Rigidbody2D.linearVelocity.x`를 직접 대입하는데 `HingeJoint2D` 구속 때문에 팔다리도 결국 비슷한 속도로 끌려가고, 이 운동량을 가진 채 그대로 RAGDOLL로 전이하면 바닥 마찰만으로는 다 흡수되지 못하고 진자처럼 계속 되튀는 것으로 보인다.
+- **신규 Major — BUG-SW-M4(제안): "이동 중 피격 시 RAGDOLL이 사실상 정착하지 못하고 GETUP에 영원히 도달하지 못할 수 있음"**. 원래 BUG-SW-M1이 우려했던 "화면 밖 무한낙하"는 확실히 해결됐다(바닥에 붙은 채로 진동하므로 카메라 밖으로 사라지지 않음). 그러나 "RAGDOLL→GETUP 복귀"라는 이번 라운드의 핵심 계약은 **정지 중 피격(8/8 전부 0.25~1.25초 내 정상 복귀)**에서만 검증됐을 뿐, **이동 중 피격(2/2 전부 15초+/45초 확장관찰에서도 미복귀)**에서는 깨져 있다. `DragThrowState`/`RivalStickmanAgent`가 트리거하는 실전 RAGDOLL은 캐릭터가 가만히 서 있을 때보다 전투/이동 중 발생할 확률이 낮지 않으므로, 재현 빈도가 무시할 수준이 아니라고 판단해 Major로 분류한다.
+- 수정 제안(강제 아님): (a) 사지 `Rigidbody2D`에 적당한 linear/angular damping 부여, (b) `EnterRagdoll()` 시점에 파츠 속도를 일부만 감쇠(완전 제로화는 "충격에 날아가는" 손맛을 죽이므로 비추천), (c) 원 리포트가 이미 제안했던 "일정 시간(예: 5~7초) 경과 시 속도 무관 강제 Getup" 안전망 — 이번 실측 결과를 보면 이 안전망이 사실상 필수로 보인다.
+
+### BUG-SW-M2 재검증 — 정상
+
+`Main.unity`에서 `orthographic size: 5` 직접 확인(원복됨). `NullPlatformWindowService.cs`에 `DummyFootholdWidthMultiplier=4f` 기반 화면 폭 독립 확장 로직이 정확히 반영됨을 확인. 재계산: px/unit = `Screen.height(480) / (2×orthoSize(5))` = 48, `groundSnapTolerance(20px) / 48 ≈ 0.417` world-unit — 원래 설계 의도(0.3~0.4유닛)와 재부합함을 확인(실측 로그 `cam.orthoSize=5` 매치).
+
+### BUG-SW-M3 재검증 — 정상
+
+`-executeMethod StickMate.EditorTools.SceneBootstrapper.BuildAll`을 강제 플래그 없이 재실행 → 로그에 `DefaultStickConfig.asset`/`Stickman.prefab`/`Main.unity` 3개 전부 "이미 존재해 건너뜁니다" 메시지 확인, `git status`/`git diff`로 세 대상 파일이 바이트 단위로 무변경임을 재확인 — 멱등성 유지됨.
+
+### 디플레이킹 수정 검증 — 건전함 (가장 중요, 상세)
+
+- **코드 구조 분석**: `WalkState`/`IdleState` 둘 다 매 프레임 `StickmanBlackboard.GroundedTick()`을 호출하며, 이 함수는 `info.Grounded==false`가 `fallGraceDuration`(0.1초) 이상 지속되면 즉시 `Fall`로 강제 전이시킨다. 즉 상태머신이 지금 `Idle`/`Walk`로 분류돼 있다는 사실 자체가 "현재 실제로 접지 중"임을 구조적으로 보장하며, `Jump`/`Fall`/`ParkourClimb`/`Ragdoll`/`Getup`는 이 최종 판정에서 전부 배제된다 — "불안정한 상태에서 우연히 걸려 통과"하는 역방향 위양성 경로는 코드 구조상 존재하지 않음을 확인했다.
+- **반복 재실행**: 기존 스모크 테스트(`StickmanFallsSettlesAndWanders`)만 놓고 8회 독립 실행 전부 100% 통과 — 회차마다 RNG 배회 경로가 달랐음(X 이동 범위 3.4~10.0유닛 등 다양)에도 흔들림 없었다.
+- **버그 주입 검증 1(양성 대조)**: `GroundSensor.cs`의 `withinYBand` 판정을 강제로 `false`로 바꿔(접지가 영구히 실패하도록 재현) 재실행 → 테스트가 정확히 실패(`최종 상태=Fall`, exit code 2)함을 확인 — 이 assert에 실제 탐지력이 있음을 실증. 즉시 원복 후 `git diff` 클린 확인.
+- **버그 주입 검증 2(참고)**: `StickmanBlackboard.SnapToGround()`의 위치 강제대입 라인만 비활성화하는 주입은 테스트를 통과시켰다 — 이는 위양성이 아니라, BUG-SW-M1 수정으로 캐릭터 루트에 실제 `CapsuleCollider2D`+바닥 `Collider2D`가 생기면서 물리 충돌 자체가 위치를 붙잡아주는 이중 안전장치가 됐기 때문(수정의 자연스러운 부산물). 즉시 원복 후 `git diff` 클린 확인.
+- **결론: 디플레이킹 판정 로직(`finalState == Idle/Walk`) 자체는 건전하고 실제 탐지력이 있다.** 다만 이를 검증하는 과정(반복 PlayMode 실행)에서 위 BUG-SW-M4를 별도로 발견했다.
+
+### 최종 재검증 수치
+
+- Unity 배치모드 독립 재컴파일: `error CS`/`warning CS` 매치 0건, exit code 0.
+- EditMode: `total="13" passed="13" failed="0"` — 기준선 유지.
+- PlayMode(기존 2개 테스트, `-quit` 없이 `-runTests` 사용): 단발 실행 기준 `total="2" passed="2" failed="0"` 재현 확인. 다만 8회 반복 시 `StickmanRagdollRecoveryTests`만 2/8 실패(위 BUG-SW-M4), `StickmanPlaytestSmokeTests`는 8/8 전부 통과.
+- 모든 임시 진단 파일(`DebuggerDiagRagdollWalkImpactTest.cs`)과 임시 버그 주입(2건)은 검증 직후 삭제/원복했으며, 최종 `git status`/`git diff` 기준 이 검토가 추적 대상 파일에 남긴 변경은 0건이다(검토 도중 무관한 별도 작업자가 macOS 네이티브 창 열거 관련 파일들을 동시에 수정 중이었음을 확인했으나, 이는 이번 검토 범위 밖이며 손대지 않았다).

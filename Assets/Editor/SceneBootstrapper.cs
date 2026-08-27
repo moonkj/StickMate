@@ -356,6 +356,20 @@ namespace StickMate.EditorTools
         private const float GroundColliderHalfWidth = 100f;
         private const float GroundColliderThickness = 2f;
 
+        // BUG-SW-M4 대응(Architect 결정, 2026-08-28, docs/BUG_REPORT_SCENE_WIRING.md) — 팔다리
+        // Rigidbody2D가 linearDamping=0(Unity 기본값)이었던 것이 "이동(Walk) 중 피격" RAGDOLL이
+        // GETUP으로 절대 복귀하지 못하는 근본 원인 중 하나였다: 걷기 관성이 HingeJoint2D를 통해
+        // 팔다리로 전파된 채 감쇠 없이 계속 진동해 RagdollState의 정착 판정
+        // (StickConfig.ragdollSettleSpeedThreshold 이하가 ragdollSettleHoldDuration초 유지)이
+        // 15초 관찰 안에 성립하지 않았다(실측: 8회 중 2회, 전부 Walk 피격에서 재현). 실제 랙돌은
+        // 항상 0이 아닌 damping을 갖는다는 것이 물리적으로 당연하므로 이는 설계 결함이 아니라 프리팹
+        // 튜닝 누락이었다. 값은 실측(StickmanRagdollRecoveryTests 10회+ 반복 PlayMode 실행)으로
+        // "이동 중 피격도 안정적으로 정착"과 "너무 뻣뻣해 보이지 않음(순간 정지처럼 안 보임)" 사이의
+        // 균형을 잡아 선정했다 — 너무 크면 랙돌이 마치 진흙 속에 있는 것처럼 즉시 멈춰버리고, 너무
+        // 작으면 이번 버그가 재발한다.
+        private const float LimbLinearDamping = 0.6f;
+        private const float LimbAngularDamping = 1.5f;
+
         /// <summary>
         /// RAGDOLL이 실제로 착지할 수 있는 정적 바닥(Rigidbody2D 없음 — Unity 표준 정적 콜라이더).
         /// Y좌표는 NullPlatformWindowService의 더미 발판이 논리적으로 대응하는 높이(클래스 문서 상단
@@ -420,6 +434,10 @@ namespace StickMate.EditorTools
             rb.bodyType = RigidbodyType2D.Dynamic;
             rb.mass = mass;
             rb.gravityScale = gravityScale;
+            // BUG-SW-M4: 아래 클래스 상수 선언부 주석 참고 — 감쇠 없는 팔다리가 이동 중 피격 RAGDOLL의
+            // 정착 실패 원인이었다.
+            rb.linearDamping = LimbLinearDamping;
+            rb.angularDamping = LimbAngularDamping;
 
             var joint = limb.AddComponent<HingeJoint2D>();
             joint.connectedBody = connectedBody;

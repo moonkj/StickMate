@@ -42,6 +42,21 @@ namespace StickMate.States
                 if (_joints[i] == null) continue;
                 _joints[i].useMotor = false;
             }
+
+            // BUG-SW-M4 대응(Architect 결정, 2026-08-28, docs/BUG_REPORT_SCENE_WIRING.md) — 이동
+            // 중(Walk) 피격 시 걷기 관성이 HingeJoint2D를 통해 팔다리에 이미 실려 있는 채로 RAGDOLL에
+            // 진입하면, Rigidbody2D의 damping만으로는 GetMaxSpeed()가 ragdollSettleSpeedThreshold
+            // 이하로 안정적으로 내려가기까지 시간이 오래 걸리거나(실측 8회 중 2회, 전부 Walk 피격에서
+            // 15초 관찰 안에 정착 실패) 사실상 걸리지 않는 경우가 있었다. 여기서 각속도만 한 번 절반으로
+            // 깎아 초기 회전 관성을 즉시 줄인다 — 선속도(linearVelocity)는 건드리지 않으므로 "충격에
+            // 붕 날아가는" 손맛은 그대로 유지되고, 회전만 처음부터 덜 격렬하게 시작해 damping이 나머지를
+            // 정리할 시간을 벌어준다.
+            const float angularVelocityDampenOnEntry = 0.5f;
+            for (int i = 0; i < _bodies.Length; i++)
+            {
+                if (_bodies[i] == null) continue;
+                _bodies[i].angularVelocity *= angularVelocityDampenOnEntry;
+            }
         }
 
         /// <summary>

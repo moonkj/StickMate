@@ -345,3 +345,76 @@
   - Unity 배치모드 컴파일: `error CS`/`warning CS` 매치 0건, exit code 0.
   - EditMode: `total="13" passed="13" failed="0"` (기준선 유지, 신규 씬/프리팹 배선이 기존 순수 로직 테스트에 영향 없음).
   - PlayMode: `total="2" passed="2" failed="0"`(`StickmanFallsSettlesAndWanders` 기존 스모크 테스트 + 신규 `RagdollEntersAndRecoversToActiveState`, 기준선 1/1 초과 달성). 참고: 첫 회 실행에서 `StickmanFallsSettlesAndWanders`가 1회 실패한 적이 있었는데, 원인은 `AutoWanderController`가 `System.Guid.NewGuid()` 기반 비결정 RNG를 쓰는 기존 설계상 "Idle 종료 후 저확률(5%) 제자리 점프"가 우연히 테스트의 "정착 구간"(t≥8s) 안에서 발생해 순간적으로 Y가 튄 것(t=12.5s에 0.249유닛 튐, 곧바로 원위치)이었다 — 이번 3개 버그 수정과는 무관한 기존 테스트 설계의 RNG 시드 비결정성(재실행 시 재현 안 됨, 이후 2회 연속 재실행 모두 2/2 통과)이며, Debugger 리포트의 Minor 1(테스트 커버리지 범위 협소)과 연결되는 별도 관찰 사항으로 기록만 해둔다(이번 반려 수정 스코프 밖).
+
+## 2026-08-28 (계속) — 씬/프리팹 반려 수정 + 디플레이킹 최종 확인 (Debugger)
+
+**결론: 최종 승인 보류 — 신규 Major(BUG-SW-M4) 발견, Coder 재작업 필요.** 상세는 `docs/BUG_REPORT_SCENE_WIRING.md` 맨 아래 섹션 참고.
+
+- BUG-SW-M1/M2/M3 배선 자체(레이어/충돌매트릭스/바닥콜라이더/relay 부착/orthoSize/멱등성)는 TagManager.asset·Physics2DSettings.asset·prefab/scene YAML 직접 확인으로 전부 정확함을 재검증.
+- 디플레이킹 수정(`finalState==Idle/Walk` 판정)은 코드 구조상 역방향 위양성 불가능함을 확인, 8회 반복 실행 전부 통과, 버그 주입(접지판정 강제실패)으로 실제 탐지력도 실증 — 건전함.
+- **그러나 신규 발견**: 검증차 PlayMode를 8회 반복 실행한 결과 신규 `StickmanRagdollRecoveryTests`가 2/8(25%) 실패 — 전부 "이동 중(Walk) 피격" 케이스였고, "정지 중(Idle) 피격"은 8/8 성공. 45초 확장 진단 결과 이동 중 피격 시 팔다리 속도가 감쇠 없이 계속 진동(약 2초 주기, 0.02~0.65 사이)해 GETUP 조건이 사실상 영원히 성립하지 않음을 확인. 원래 BUG-SW-M1의 "화면 밖 무한낙하"는 해결됐으나, "RAGDOLL→GETUP 복귀"는 이동 중 피격이라는 실전에서 드물지 않은 케이스에서 여전히 깨져 있음(감쇠 없는 Rigidbody2D + `EnterRagdoll()`이 속도를 초기화 안 함 + 이동 관성이 조인트로 팔다리에 전파됨이 원인으로 추정).
+- 검증에 사용한 임시 진단 테스트 파일과 2건의 임시 버그 주입은 전부 검증 직후 삭제/원복, `git status`/`git diff` 클린 확인.
+- 다음: Architect/Coder에게 BUG-SW-M4 전달 — damping 추가 또는 시간 기반 강제 Getup 안전망 등 수정 후 Debugger 재확인 필요.
+
+## macOS 네이티브 창 열거 — `docs/BUG_REPORT_PHASE0.md` m8 해소 (Coder, 2026-08-28)
+
+| 작업 | 담당 | 상태 | 메모 |
+|---|---|---|---|
+| `MacWindowService`(CoreGraphics/CoreFoundation P/Invoke) 구현 | Coder | 완료 | 아래 상세 |
+| `StickmanAgent.CreatePlatformService()` macOS 실빌드 분기 배선 | Coder | 완료 | 아래 상세 |
+| 실측 검증(`-executeMethod`, 실제 열린 창 열거 확인) | Coder | 완료 | 아래 상세 — 실측 로그 포함 |
+
+- **배경**: Phase 0부터 `Platform/MacOS/`는 `.gitkeep`뿐인 플레이스홀더였다(`docs/BUG_REPORT_PHASE0.md` m8, README.md "알려진 한계"). ARCHITECTURE.md는 macOS를 Windows와 동급 1차 데스크톱 타깃으로 명시하지만 실구현이 전무했다. Windows(`Win32WindowService`)도 창 열거는 되지만 진짜 분리 오버레이(클릭관통 활성화)는 아직 없다(BUG-B1, 안전가드로 차단) — 이번 라운드는 macOS를 정확히 그 수준까지만 맞춘다. 진짜 네이티브 플러그인(.bundle) 빌드는 범위 밖.
+- **왜 Objective-C++ 플러그인 없이 가능한가**: macOS는 CoreGraphics 공개 C ABI(`CGWindowListCopyWindowInfo`, `CGEventCreate`/`CGEventGetLocation`, `CGDisplayBounds` 등, `/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics`)를 C#에서 직접 P/Invoke할 수 있어, CoreFoundation 보조 함수(`CFArrayGetCount/GetValueAtIndex`, `CFDictionaryGetValue`, `CFNumberGetValue`, `CFStringCreateWithCString/GetCString`, `CFRelease`, `/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation`)와 함께 쓰면 네이티브 플러그인 없이도 안전한 조회 전용 열거가 가능하다.
+- **신규 파일 `Assets/_Project/Scripts/Platform/MacOS/MacWindowService.cs`**(`#if UNITY_STANDALONE_OSX`로 전체 격리, Win32WindowService.cs와 동일한 파일 단위 P/Invoke 격리 컨벤션) — `IPlatformWindowService` + `ICursorPositionService` 구현:
+  - `EnumerateFootholds()`: `kCGWindowListOptionOnScreenOnly|kCGWindowListExcludeDesktopElements`로 열거, `kCGWindowLayer==0`(일반 앱 창)만 채택(메뉴바/Dock/데스크톱아이콘/알림센터 등 시스템 레이어 제외), `kCGWindowOwnerPID`(1차, 정확한 식별자)+`kCGWindowOwnerName`(보조 신호) 이중 판정으로 자기 자신 창 제외. `kCGWindowBounds`는 X/Y/Width/Height를 손으로 하나씩 파싱하는 대신 CoreGraphics 공식 왕복 함수 `CGRectMakeWithDictionaryRepresentation`으로 한 번에 CGRect 변환(마샬링 표면적 축소). 반환이 z-order 전→후 보장(Apple 문서화)됨을 이용해 필터 통과 후 첫 항목을 `IsTopmost=true`로 표시(Win32의 `hWnd==GetForegroundWindow()`와 동일 의도의 근사).
+  - `CreateOverlayWindow()`: Win32처럼 "자기 창 핸들 재사용" 폴백도 시도하지 않는다 — `Process.MainWindowHandle`은 .NET BCL상 Windows 전용이라 macOS에서 아예 호출 불가. 대신 열거 파이프라인에서 ownerPID==자신인 창을 찾아 CGWindowID만 기록하는 진단적 구현(실사용처 없음 — 아래 두 메서드가 무조건 거부하므로).
+  - `SetClickThrough()`/`SetAlwaysOnTop()`: 항상 `NotSupportedException`. 실제 NSWindow의 `ignoresMouseEvents`/`level` 조작은 Cocoa 오브젝트 접근이 필요해 CoreGraphics/CoreFoundation 공개 C ABI로는 원천 불가능(비공개 SkyLight API는 금지 대상), Objective-C++ 네이티브 플러그인이 있어야만 가능 — Win32의 BUG-B1 가드와 같은 패턴이되, Win32는 "진짜 오버레이가 생기면 조건부로 풀리는" 가드인 반면 macOS는 "네이티브 플러그인이 생기기 전까지 원천 불가능"이라 조건 없이 항상 거부(차이를 클래스 문서에 명시).
+  - `IsFullscreenAppActive()`: (자신 제외) 최상단 일반 레이어 창의 bounds가 `CGDisplayBounds(CGMainDisplayID())`와 오차 0.5px 이내로 일치하면 true — Win32의 "전경창==모니터 전체" 휴리스틱을 그대로 이식.
+  - `ICursorPositionService.TryGetGlobalCursorPosition()`: `CGEventCreate(NULL)`+`CGEventGetLocation()`으로 전역 커서 좌표 조회(입력 주입 없는 순수 조회). 좌표계 확인: `CGEventGetLocation`/`CGWindowListCopyWindowInfo`/`CGDisplayBounds`는 전부 동일한 "Quartz 디스플레이 좌표계"(메인 디스플레이 좌상단 원점, y 아래로 증가)를 쓰며 `PlatformFoothold.ScreenRect`/Win32 `GetWindowRect`와 이미 일치 — 추가 y반전 불필요(AppKit `NSWindow`/`NSScreen` 좌표계와는 다른 얘기라 향후 실제 Cocoa 플러그인 추가 시 그쪽은 별도 반전 필요, 클래스 문서에 명시).
+  - `ILocalClickCaptureService`/`IDesktopIconLayoutService`는 이번 라운드에 의도적으로 미구현(요청 범위 밖) — `FallbackPlatformWindowService`의 `as` 캐스팅이 null로 안전 처리.
+  - **마샬링 함정 발견/수정**: CoreFoundation의 `Boolean`/`bool` 반환값은 1바이트인데 `[MarshalAs(UnmanagedType.I1)]` 없이 선언하면 .NET 기본 마샬러가 4바이트로 오독해 쓰레기 상위 바이트까지 읽어 true/false 판정이 무작위로 깨질 수 있다(Win32 `BOOL`은 반대로 4바이트라 이 속성이 없어야 맞음 — 두 플랫폼 규칙이 다름, 다른 파일 패턴을 그대로 복사하면 안 됨). `CGRectMakeWithDictionaryRepresentation`/`CFStringGetCString`/`CFNumberGetValue`에 전부 명시적으로 이 속성을 붙였고, 아래 실측에서 실제로 정확히 동작함을 확인했다.
+  - `kCGWindow*` 딕셔너리 키는 심볼을 `dlsym`으로 조회하는 대신 동일한 리터럴 문자열로 직접 CFString을 만들어 사용(`CGWindowListCopyWindowInfo`가 반환하는 CFDictionary는 `kCFTypeDictionaryKeyCallBacks`로 생성되어 키 비교가 포인터 동일성이 아닌 `CFEqual`(내용 비교)이므로 안전 — 여러 언어의 검증된 CoreGraphics FFI 관용구, dlsym 왕복보다 마샬링 표면적이 적음).
+- **`StickmanAgent.CreatePlatformService()` 배선** (`Assets/_Project/Scripts/Core/StickmanAgent.cs`): 기존 `#else`(macOS/에디터 공용 Null 폴백)를 `#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR`(신규, `FallbackPlatformWindowService(new MacWindowService(), _config)` — Win32와 동일하게 "발판 0개 무한낙하" 안전망으로 감쌈) / 나머지 `#else`(기존 `NullPlatformWindowService` 유지)로 분리.
+  - **`&& !UNITY_EDITOR`가 필수인 이유(지시문의 가정을 실측으로 검증 → 가정이 틀렸음을 확인)**: 작업 지시는 "`UNITY_STANDALONE_OSX`는 실제 빌드에서만 정의되고 에디터에서는 정의 안 됨"이라 가정했으나, 임시 진단 스크립트로 `-executeMethod` 실측한 결과 **이 프로젝트의 활성 빌드 타깃이 `StandaloneOSX`로 설정돼 있어 에디터 컴파일 컨텍스트에도 `UNITY_EDITOR`와 `UNITY_STANDALONE_OSX`가 동시에 정의됨을 확인**했다(`Logs/define_diag.log`). Win32 분기(`UNITY_STANDALONE_WIN`)에 `!UNITY_EDITOR`가 없는 것은 "안전해서"가 아니라 "이 프로젝트의 활성 빌드 타깃이 지금까지 Windows였던 적이 없어 그 분기가 에디터에서 컴파일된 적이 없었을 뿐"임을 시사한다(Win32 분기는 이번 스코프 밖이라 손대지 않고 관찰만 기록). 이 가드가 없었다면 에디터/배치모드에서도 `MacWindowService`가 조용히 활성화되어, 지금까지 모든 실측 플레이테스트가 의존해온 `NullPlatformWindowService` 더미 발판을 대체해버렸을 것이다.
+- **실측 검증** (`Assets/Editor/MacWindowEnumerationDiagnostic.cs`, 메뉴 `StickMate/Diagnostics/Log macOS Window Enumeration` — SceneBootstrapper.cs와 동일 컨벤션으로 영구 진단 도구 보존): `-executeMethod`로 이 macOS 세션에 실제 열려 있던 창을 대상으로 실행. 교차 확인용 `osascript`로 확보한 실제 포그라운드 프로세스 목록: `Cursor, KakaoTalk, Notes, Finder, Simulator, Google Chrome, Claude, Unity Hub`. 실측 로그(`Logs/mac_enum_test.log`) 발췌:
+  ```
+  [MACWIN-TEST] EnumerateFootholds() 결과 개수 = 2
+  [MACWIN-TEST] foothold[0] handle=865 rect=(x=0.0, y=33.0, w=1512.0, h=874.0) isTopmost=True   # Cursor 에디터 창
+  [MACWIN-TEST] foothold[1] handle=50 rect=(x=256.0, y=147.0, w=1000.0, h=660.0) isTopmost=False # Notes(메모) 창
+  [MACWIN-TEST] IsFullscreenAppActive() = False
+  [MACWIN-TEST] TryGetGlobalCursorPosition() = True, pos=(649.1,390.7)
+  [MACWIN-TEST] CreateOverlayWindow() = False   # 배치모드는 온스크린 창이 없어 정상적으로 "못 찾음"
+  [MACWIN-TEST] SetClickThrough()/SetAlwaysOnTop() 안전가드 정상 동작(NotSupportedException)
+  [MACWIN-TEST] 원시 온스크린 창 총 개수(필터링 전) = 21
+  ```
+  원시 21개 중 필터링 제외 항목 전수 대조: 제어 센터(layer=25) 9개, Window Server 메뉴바(layer=24)/커서 트래킹(layer=2147483630), Dock(layer=20), 알림 센터(layer=-2147483601) 2개, Finder 데스크톱 레이어(-2147483603), Wallpaper(layer=-2147483624 — `kCGDesktopIconWindowLevel`과 정확히 일치, 마샬링 정확성의 강력한 증거), Window Server 배경 레이어(-2147483602/-2147483626) — 전부 `layer≠0`이라 정확히 제외됨. `layer==0`인 진짜 일반 앱 창은 Cursor·Notes 2개뿐이었고 정확히 그 2개만 채택됨. 오너 이름의 한글 문자열("제어 센터"/"메모"/"알림 센터")도 깨짐 없이 정확히 디코딩되어 `CFStringGetCString`+UTF-8 마샬링이 올바름을 추가 확인. 결론: **P/Invoke 마샬링이 실제 실행에서 정확하게 동작함을 실측으로 확인**(단순 컴파일 통과가 아니라 실측으로 검증 완료).
+- **검증**: Unity 배치모드 컴파일(`Logs/mac_compile_check.log`) — `error CS`/`warning CS` 매치 0건, exit code 0. EditMode(`Logs/mac_editmode_results.xml`) — `total="13" passed="13" failed="0"`(기준선 유지, 에디터가 여전히 `NullPlatformWindowService`를 쓰는 회귀 확인 겸함).
+- **참고로 발견한 무관한 사항(이번 스코프 밖, 수정 안 함)**: PlayMode 스모크 테스트를 추가 확인 차 2회 재실행한 결과 `0/2`, `1/2`로 실행마다 달라졌다. `git diff`로 이번 변경분이 씬/프리팹/설정 파일을 전혀 건드리지 않았음을 확인했고, `StickmanAgent.CreatePlatformService()`의 신규 분기도 `!UNITY_EDITOR` 조건 때문에 에디터에서는 논리적으로 완전히 no-op이라 이 실패와 무관함이 코드로 보장된다. 위 Debugger 로그(바로 위 절, BUG-SW-M4)와 대조한 결과 이동 중 RAGDOLL 피격 시 GETUP 복귀가 25% 확률로 실패하는 이미 접수된 별도 결함과 정확히 일치하는 패턴이었다 — 이번 macOS 작업과는 무관하므로 고치지 않고 교차 확인만 기록해둔다.
+
+## BUG-SW-M4 수정 — 이동 중 피격 RAGDOLL 정착 실패 (Coder, 2026-08-28)
+
+**배경**: Debugger가 `docs/BUG_REPORT_SCENE_WIRING.md` 맨 아래 절에서 `StickmanRagdollRecoveryTests`를 8회 독립 반복 실행해 2/8(25%) 실패를 발견 — 전부 "이동(Walk) 중 피격" 케이스, "정지(Idle) 중 피격"은 8/8 성공. 45초 확장 진단으로 `maxLimbSpeed`가 감쇠 없이(진폭 축소 추세 없음, 약 2초 주기로 0.02~0.65 사이를 무한 반복) 진동해 `RagdollState`의 정착 판정(`GetMaxSpeed() <= ragdollSettleSpeedThreshold`가 `ragdollSettleHoldDuration` 이상 유지)이 사실상 영원히 성립하지 않는 구조적 문제로 진단됨. 원인: (1) 팔다리 4개 `Rigidbody2D`가 전부 `linearDamping=0`(Unity 기본값), (2) `RagdollRig.EnterRagdoll()`이 속도를 전혀 초기화하지 않아 걷기 관성이 HingeJoint2D를 통해 그대로 실려 있는 채로 RAGDOLL 진입.
+
+**Architect 결정**: 실제 랙돌은 항상 0이 아닌 damping을 갖는다 — 설계 결함이 아니라 프리팹 튜닝 누락. 프리팹을 손으로 고치는 대신 `SceneBootstrapper.cs`(프리팹을 코드로 조립하는 유일한 소스)를 고치고 `--force`로 재생성해 반영.
+
+### 적용한 수정
+
+1. **`Assets/Editor/SceneBootstrapper.cs`** — 클래스 상단에 `LimbLinearDamping = 0.6f`, `LimbAngularDamping = 1.5f` 상수를 신설하고, `CreateLimb()`에서 각 팔다리 `Rigidbody2D` 생성 시 `rb.linearDamping`/`rb.angularDamping`에 적용(기존에는 `mass`/`gravityScale`만 설정하고 damping은 Unity 기본값 그대로 방치되어 있었음). 루트 몸통 `Rigidbody2D`는 건드리지 않음(정지 중 피격은 이미 8/8 정상이었고, 문제의 근원이 팔다리 쪽 관성 전파였기 때문).
+2. **`Assets/_Project/Scripts/States/RagdollRig.cs`** — `EnterRagdoll()`에서 관절 모터를 끄는 것에 더해, 모든 파츠(`_bodies`, 루트 포함)의 `angularVelocity`를 진입 시 한 번만 절반(`×0.5`)으로 깎는 보조 조치 추가. `linearVelocity`는 건드리지 않아 "충격에 붕 날아가는" 손맛은 유지하면서, 회전 관성만 초기부터 덜어 damping이 나머지를 정리할 시간을 벌어준다.
+3. `StickConfig.ragdollSettleSpeedThreshold`(0.3)/`ragdollSettleHoldDuration`(0.5)는 값 변경 없이 유지 — 아래 실측 결과 damping 조정만으로 충분한 여유(15초 관찰 한도 대비 절반 이하 시간에 정착)가 확보되어 추가 완화가 불필요했음.
+
+값 선정(`linearDamping=0.6`, `angularDamping=1.5`)은 임시 진단 PlayMode 테스트(`CoderDiagRagdollWalkImpactTest.cs`, 실측 검증 직후 삭제 — 삭제 후 저장소에 잔여 변경 없음 확인)로 실제 걷기 상태를 기다렸다가 강제 충격을 준 뒤 20초 관찰해 튜닝: 너무 작으면 기존 버그 재발, 너무 크면 랙돌이 순간 정지처럼 뻣뻣해 보여 "충격에 나가떨어지는" 손맛이 사라짐. 최종 값에서는 충격 직후 `maxLimbSpeed`가 최대 약 4.9까지 튀어 오르는(=여전히 격렬하게 나뒹구는 구간이 존재) 것을 확인해 과도한 경직 없음을 확인했다.
+
+### 실측 검증
+
+- **재생성**: `-executeMethod StickMate.EditorTools.SceneBootstrapper.BuildAll --force`로 `Stickman.prefab`/`Main.unity`/`DefaultStickConfig.asset` 재생성. `git diff --stat` 확인 — 프리팹/씬만 갱신(fileID 재할당 포함, BUG-SW-M3 경고대로 전체 재실행이라 안전), config는 값 무변경. 재생성된 프리팹 YAML에서 4개 팔다리 전부 `m_LinearDamping: 0.6`/`m_AngularDamping: 1.5` 반영 확인, 루트는 기존 기본값(`0`/`0.05`) 그대로 유지 확인.
+- **임시 진단 테스트 6회 반복**(실제 Walk 상태를 폴링으로 기다린 뒤 강제 충격 + 20초 관찰): **6/6 성공**, 정착+복귀 소요 5.50~6.75초(20초 한도 대비 충분한 여유). 검증 후 진단 테스트 파일 삭제.
+- **공식 `StickmanRagdollRecoveryTests` + `StickmanPlaytestSmokeTests` 15회 독립 반복 실행**(매회 새 프로세스, `-runTests -testPlatform PlayMode` — `-quit` 미사용, 매회 `System.Guid` 기반 RNG로 경로 상이):
+  - **15/15 전부 통과(100%)** — 두 테스트 합계 `total="2" passed="2" failed="0"` 15회 전부 확인(실행 로그: `Logs/coder_pm_run1.log`~`coder_pm_run15.log`, 결과 XML: `Logs/coder_pm_run1.xml`~`coder_pm_run15.xml`).
+  - "충격 전 상태" 분포: Idle 11회, **Walk 4회**(run1, run5, run9, run14 — 이전 100% 실패 재현 케이스). **Walk 피격 4/4 전부 성공**, 소요 시간 3.25~4.75초(관찰 한도 15초 대비 여유 충분). Idle 피격 11/11 전부 성공, 소요 1.25초로 기존과 동일(회귀 없음).
+  - 이전 Debugger 실측(8회 중 Walk 2/2 실패)과 대조하면 표본 수/비율이 늘었음에도(15회 중 Walk 4/4 성공) 완전히 역전됨을 확인.
+- **최종 재검증**: Unity 배치모드 컴파일(`Logs/coder_final_compile.log`) — `error CS`/`warning CS` 매치 0건, exit code 0. EditMode(`Logs/coder_final_editmode.xml`) — `total="13" passed="13" failed="0"`(기준선 유지).
+- 검증에 쓴 임시 진단 파일(`CoderDiagRagdollWalkImpactTest.cs`)은 삭제 완료, `git status` 기준 이번 작업으로 남은 변경은 `Assets/Editor/SceneBootstrapper.cs`/`Assets/_Project/Scripts/States/RagdollRig.cs`(코드)와 `Assets/_Project/Prefabs/Stickman.prefab`/`Assets/_Project/Scenes/Main.unity`(재생성된 에셋)뿐이다(무관한 macOS 작업 파일들은 손대지 않음).
+
+**결론**: BUG-SW-M4 해소. Debugger 재확인 대상.
