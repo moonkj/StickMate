@@ -22,6 +22,7 @@ namespace StickMate.Core
         [SerializeField] private StickConfig _config;
 
         private Rigidbody2D _body;
+        private Rigidbody2D[] _allBodies; // BUG-P1-M6: Suspend()/Resume()가 전신(Phase 2 다중 파츠 Ragdoll 대비)을 순회하기 위한 캐시.
         private Camera _mainCamera;
         private IPlatformWindowService _platformService;
         private ICursorPositionService _cursorService; // 지원하는 구현체에서만 non-null (분리된 경로, ICursorPositionService.cs 참고)
@@ -29,6 +30,7 @@ namespace StickMate.Core
         private StickmanStateMachine _machine;
         private StickmanBlackboard _blackboard;
         private Renderer[] _renderers;
+        private AutoWanderController _autoWander; // BUG-P1-B2: 키보드 입력을 대체하는 자율 배회 소스(docs/UX_FLOW.md 26절, 매 프레임 Tick 필요).
 
         private float _fullscreenPollTimer;
         private bool _isSuspended;
@@ -47,7 +49,19 @@ namespace StickMate.Core
         private void Awake()
         {
             _body = GetComponent<Rigidbody2D>();
+            // BUG-P1-M6 대응(Major, docs/BUG_REPORT_PHASE1.md): SetRenderersEnabled와 대칭을 맞춰
+            // Suspend()/Resume()도 전신(Phase 2 다중 파츠 Active Ragdoll 대비)을 순회하도록 여기서 1회 캐싱.
+            _allBodies = GetComponentsInChildren<Rigidbody2D>(true);
+
             _mainCamera = Camera.main;
+            // BUG-P1-M1 대응(Major): 재획득 로직까지는 아니지만, 최소한 씬에 MainCamera 태그가 없어
+            // 접지 판정이 영구 무력화될 수 있는 흔한 실수를 조용히 넘기지 않고 즉시 알린다.
+            if (_mainCamera == null)
+            {
+                Debug.LogError("[StickmanAgent] Camera.main이 null입니다 — 씬에 MainCamera 태그가 붙은 카메라가 " +
+                                "없으면 접지 판정이 불가능해 캐릭터가 무한 낙하할 수 있습니다(BUG-P1-M1).");
+            }
+
             _renderers = GetComponentsInChildren<Renderer>(true);
 
             _platformService = CreatePlatformService();
@@ -61,6 +75,15 @@ namespace StickMate.Core
                 Config = _config,
                 FootholdPoller = _footholdPoller,
             };
+
+            // BUG-P1-B2 대응(Blocker): 키보드 입력을 완전히 폐기하고 docs/UX_FLOW.md 26절 자율 배회 AI
+            // 스펙의 정식 구현으로 대체. 인스턴스마다 독립된 RNG를 주입해(26-3) 향후 Phase 5 세포분열로
+            // 여러 개체가 동시에 존재해도 전부 같은 패턴으로 움직이지 않게 한다.
+            _autoWander = new AutoWanderController(_blackboard, _config, new System.Random(System.Guid.NewGuid().GetHashCode()));
+            _blackboard.IntentSource = _autoWander;
+            // 26-4 훅 예약(Phase 2 커서 근접 반응 선반영 스펙) — 지금은 AutoWanderController가 이 값을
+            // 읽지 않는다. Phase 2에서 실제 반응 로직을 채울 때 다시 배선할 필요가 없도록 미리 연결만 해둔다.
+            _autoWander.CursorProvider = TryGetCursorPosition;
 
             var states = new Dictionary<StickmanStateId, IStickmanState>
             {
@@ -78,19 +101,26 @@ namespace StickMate.Core
                 { StickmanStateId.Getup, new GetupState() },
             };
 
-            // 주의(Debugger 검토 요청 — Tasklist.md 교차 레이어 로그 참고): StickmanStateMachine 생성자는
-            // 즉시 ChangeState(initialState)를 호출해 초기 상태의 Enter()를 실행한다. 그 시점에는 아직
-            // 아래 줄(_blackboard.Machine = _machine)이 실행되기 전이라 blackboard.Machine이 null이다.
-            // 현재 IdleState.Enter()는 Machine을 참조하지 않으므로 Phase 1에서는 문제가 없지만,
-            // Phase 2 이후 어떤 상태의 Enter()가 Machine을 참조하게 되면 NullReferenceException이 난다.
-            // StickmanStateMachine의 생성자 타이밍을 바꾸는 건 구조 변경이라 여기서 임의로 고치지 않았다.
-            _machine = new StickmanStateMachine(states, StickmanStateId.Idle);
+            // BUG-P1-M2 대응(Major, docs/BUG_REPORT_PHASE1.md): 생성과 "최초 상태 활성화"를 분리했다.
+            // 생성자는 더 이상 즉시 ChangeState를 호출하지 않으므로, blackboard.Machine을 먼저 완전히
+            // 배선한 뒤에 Start()를 호출하면 "초기 상태의 Enter()가 무엇을 참조하든 Machine이 null일 수
+            // 있는" 경우의 수 자체가 구조적으로 사라진다(우연이 아니라 보증).
+            _machine = new StickmanStateMachine(states);
             _blackboard.Machine = _machine;
+            _machine.Start(StickmanStateId.Idle);
         }
 
         private void Start()
         {
-            _platformService.CreateOverlayWindow();
+            // BUG-P1-M3 대응(Major, docs/BUG_REPORT_PHASE1.md): 반환값을 버리지 않고 확인한다. 실패해도
+            // 여기서 흐름을 막지는 않는다(에디터/Null 폴백 등은 애초에 오버레이 개념이 없어 항상 true) —
+            // 다만 실패를 조용히 삼키지 않고 로그로 남겨, 가설 H4(부트스트랩 타이밍에 핸들이 Zero) 같은
+            // 진단 사각지대를 없앤다.
+            bool overlayReady = _platformService.CreateOverlayWindow();
+            if (!overlayReady)
+            {
+                Debug.LogWarning("[StickmanAgent] CreateOverlayWindow() 실패 — 오버레이 핸들을 확보하지 못했습니다(BUG-P1-M3).");
+            }
 
             bool clickThroughDefault = _config != null ? _config.clickThroughDefaultEnabled : true;
             try
@@ -120,9 +150,11 @@ namespace StickMate.Core
 
             _footholdPoller.Tick(dt);
 
-            // 입력은 여기서 프레임당 1회만 읽어 블랙보드에 스냅샷 — 각 상태가 개별적으로 Input을 폴링하지 않게 함.
-            _blackboard.MoveInputX = Input.GetAxisRaw("Horizontal");
-            _blackboard.JumpPressed = Input.GetButtonDown("Jump");
+            // BUG-P1-B2 대응(Blocker): 예전에는 여기서 UnityEngine.Input을 직접 폴링해 블랙보드에
+            // 대입했지만, 이제 유일한 이동 의도 출처는 IMovementIntentSource(_autoWander)이며
+            // blackboard.MoveInputX/JumpPressed는 그 소스를 읽는 계산된 프로퍼티다(StickmanBlackboard.cs
+            // 참고) — 여기서는 그 소스의 내부 타이머만 갱신해주면 된다.
+            _autoWander.Tick(dt);
 
             _machine.Tick(dt);
         }
@@ -145,7 +177,7 @@ namespace StickMate.Core
             // 상태/파라미터 보존(UX_FLOW.md 6-4절/9절-4, "IDLE 리셋 금지"): 상태 인스턴스를 파괴하거나
             // Idle로 되돌리지 않고 단순히 Tick 호출 자체를 건너뛴다 — 진행 중이던 상태의 내부 타이머
             // (예: FallState._landingConfirmTimer)가 그대로 멈춰 있다가 Resume() 이후 이어서 진행된다.
-            if (_body != null) _body.simulated = false; // 물리 시뮬레이션도 함께 멈춰 숨겨진 동안 위치가 흐트러지지 않게 함.
+            SetBodiesSimulated(false); // 물리 시뮬레이션도 함께 멈춰 숨겨진 동안 위치가 흐트러지지 않게 함.
             SetRenderersEnabled(false);
             // TODO(Phase 2 렌더링 레이어): 즉시 on/off 대신 ≤200ms 페이드 아웃/인 연출 추가.
         }
@@ -153,8 +185,24 @@ namespace StickMate.Core
         private void Resume()
         {
             _isSuspended = false;
-            if (_body != null) _body.simulated = true;
+            SetBodiesSimulated(true);
             SetRenderersEnabled(true);
+            // Minor m4 대응(docs/BUG_REPORT_PHASE1.md): Suspended 동안 FootholdPoller.Tick()도 함께
+            // 건너뛰어(Update() 조기 return) 캐시가 오래됐을 수 있다 — 재개 즉시 최신 발판으로 갱신해
+            // 다음 폴링 주기(최대 footholdPollInterval)까지 스테일 캐시로 서 있는 것처럼 보이지 않게 한다.
+            _footholdPoller.PollImmediately();
+        }
+
+        // BUG-P1-M6 대응(Major): 루트 하나의 Rigidbody2D만 토글하던 것을 전신(Phase 2 다중 파츠 Active
+        // Ragdoll 대비, Awake()에서 GetComponentsInChildren<Rigidbody2D>(true)로 캐싱)으로 일반화 —
+        // SetRenderersEnabled와 대칭을 맞춘다.
+        private void SetBodiesSimulated(bool simulated)
+        {
+            if (_allBodies == null) return;
+            for (int i = 0; i < _allBodies.Length; i++)
+            {
+                if (_allBodies[i] != null) _allBodies[i].simulated = simulated;
+            }
         }
 
         private void SetRenderersEnabled(bool enabled)
@@ -169,15 +217,27 @@ namespace StickMate.Core
         private IPlatformWindowService CreatePlatformService()
         {
 #if UNITY_STANDALONE_WIN
-            return new Win32WindowService();
+            // BUG-P1-B1 대응(Blocker, docs/BUG_REPORT_PHASE1.md): Win32WindowService.EnumerateFootholds()가
+            // "제목 있는 가시 창"을 하나도 못 찾으면(모든 창 최소화 등 흔한 상황) 빈 리스트를 반환해
+            // GroundedTick/CheckScreenBoundsOrFall 둘 다 무력화되고 캐릭터가 화면 밖으로 무한 낙하한다.
+            // FallbackPlatformWindowService 데코레이터로 감싸 "화면 하단 합성 발판 1개" 안전망을 항상
+            // 보장한다(NullPlatformWindowService의 더미 발판과 동일한 개념을 실제 데스크톱 구현체에 이식).
+            return new FallbackPlatformWindowService(new Win32WindowService());
 #elif UNITY_IOS || UNITY_ANDROID
             // 모바일 발판/배경 설정 자체(SetBackdropScreenshot/AddUserDefinedFoothold)는 UX 온보딩
             // 흐름이 별도로 호출한다(docs/UX_FLOW.md 1-B/3절) — 여기서는 서비스 인스턴스만 만들어 배선한다.
+            // 주의: 이 서비스는 FallbackPlatformWindowService로 감싸지 않는다 — EnumerateFootholds()의
+            // 빈 결과는 버그가 아니라 "유저가 아직 발판을 탭 지정하지 않음"이라는 의도된 신호이고,
+            // ScreenshotBackdropPlatformService.IsConfigured가 이 상태를 감지해 온보딩을 노출해야 한다
+            // (UX_FLOW.md 3절/9절-7). 여기서 항상 발판이 있는 것처럼 위장하면 그 온보딩 게이트가
+            // 조용히 무력화된다.
             return new ScreenshotBackdropPlatformService();
 #else
             // 에디터 및 macOS(네이티브 플러그인 미구현, Platform/MacOS/.gitkeep만 존재) 폴백.
             // macOS 실구현은 Phase 0 버그 리포트(BUG_REPORT_PHASE0.md m8)에 커버리지 공백으로 이미
             // 기록된 대로 별도 Objective-C++ 플러그인 작업이 필요하며 Phase 1 범위 밖이다.
+            // NullPlatformWindowService는 이미 항상 더미 발판을 반환하므로 FallbackPlatformWindowService로
+            // 감쌀 필요가 없다(불필요한 간접 계층 추가 방지).
             return new NullPlatformWindowService();
 #endif
         }

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using UnityEngine;
 using StickMate.Core;
 
@@ -41,15 +42,24 @@ namespace StickMate.Platform
         // 한 번만 복사하므로 매 프레임 할당 금지 규칙과 충돌하지 않는다.
         private readonly List<PlatformFoothold> _cache = new List<PlatformFoothold>(64);
 
+        // BUG-P1-M4 대응(Major, docs/BUG_REPORT_PHASE1.md, Phase 0 Minor m2 재발): IReadOnlyList<T>로
+        // 노출해도 List<T>가 그 인터페이스를 구현하므로 호출부가 캐스팅해 Add/Clear/Sort로 변형할 수
+        // 있었다. _cache.AsReadOnly()는 같은 List를 그대로 감싸는 "살아있는" 뷰이므로(내부 리스트가
+        // 바뀌면 이 래퍼를 통한 조회에도 즉시 반영됨) 생성자에서 1회만 감싸두면 된다 — Poll()이 캐시
+        // 내용을 갱신할 때마다 매번 새로 감쌀 필요가 없다(그러면 매 프레임 호출되는 프로퍼티에서
+        // 할당이 생겨 24시간 상주 앱 GC 압박 방지 컨벤션과 충돌한다).
+        private readonly ReadOnlyCollection<PlatformFoothold> _readOnlyCache;
+
         private float _timer;
 
-        public IReadOnlyList<PlatformFoothold> CachedFootholds => _cache;
+        public IReadOnlyList<PlatformFoothold> CachedFootholds => _readOnlyCache;
 
         public FootholdPoller(IPlatformWindowService service, StickConfig config)
         {
             _service = service;
             _config = config;
             _timer = 0f;
+            _readOnlyCache = _cache.AsReadOnly();
             Poll(); // 첫 프레임부터 발판 정보가 있어야 "빈 화면에 멈춰 보임"을 피할 수 있다 (UX_FLOW.md 6-1절).
         }
 

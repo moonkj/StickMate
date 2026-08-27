@@ -33,13 +33,28 @@ namespace StickMate.States
             /// <summary>모든 발판을 통틀어 가장 오른쪽 경계(Unity 월드 X).</summary>
             public readonly float ScreenRightWorldX;
 
-            public GroundInfo(bool grounded, float groundWorldY, bool hasAnyFoothold, float screenLeftWorldX, float screenRightWorldX)
+            /// <summary>
+            /// Grounded일 때, 지금 실제로 딛고 서 있는 그 발판 "하나"만의 왼쪽 경계(Unity 월드 X).
+            /// docs/UX_FLOW.md 26-2/26-7 요구사항(AutoWanderController 배회 AI의 "발판 경계 도달" 판정) —
+            /// ScreenLeftWorldX/RightWorldX(전체 발판 통합 경계)와 달리, 넓은 발판 하나를 걷다가 그 발판의
+            /// 끝에 도달했지만 마침 그 옆에 다른 발판이 더 있는 경우를 올바르게 구분하기 위해 필요하다.
+            /// Grounded==false면 무의미(footWorldPos.x로 채워짐).
+            /// </summary>
+            public readonly float CurrentFootholdLeftWorldX;
+
+            /// <summary>위와 동일하되 지금 딛고 있는 발판의 오른쪽 경계.</summary>
+            public readonly float CurrentFootholdRightWorldX;
+
+            public GroundInfo(bool grounded, float groundWorldY, bool hasAnyFoothold, float screenLeftWorldX, float screenRightWorldX,
+                float currentFootholdLeftWorldX, float currentFootholdRightWorldX)
             {
                 Grounded = grounded;
                 GroundWorldY = groundWorldY;
                 HasAnyFoothold = hasAnyFoothold;
                 ScreenLeftWorldX = screenLeftWorldX;
                 ScreenRightWorldX = screenRightWorldX;
+                CurrentFootholdLeftWorldX = currentFootholdLeftWorldX;
+                CurrentFootholdRightWorldX = currentFootholdRightWorldX;
             }
         }
 
@@ -50,7 +65,7 @@ namespace StickMate.States
         {
             if (cam == null || footholds == null || footholds.Count == 0)
             {
-                return new GroundInfo(false, footWorldPos.y, false, footWorldPos.x, footWorldPos.x);
+                return new GroundInfo(false, footWorldPos.y, false, footWorldPos.x, footWorldPos.x, footWorldPos.x, footWorldPos.x);
             }
 
             Vector2 footOs = ScreenCoordinateConverter.WorldToOsScreen(cam, footWorldPos, config, out float depth);
@@ -60,6 +75,8 @@ namespace StickMate.States
             float groundWorldY = footWorldPos.y;
             float minLeftOs = float.MaxValue;
             float maxRightOs = float.MinValue;
+            float currentLeftOs = footOs.x;
+            float currentRightOs = footOs.x;
 
             for (int i = 0; i < footholds.Count; i++)
             {
@@ -79,6 +96,8 @@ namespace StickMate.States
                     grounded = true;
                     Vector3 topWorld = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(footOs.x, r.y), depth, config);
                     groundWorldY = topWorld.y;
+                    currentLeftOs = r.x;
+                    currentRightOs = rightEdge;
                 }
             }
 
@@ -92,7 +111,18 @@ namespace StickMate.States
                 screenRightWorldX = rightWorld.x;
             }
 
-            return new GroundInfo(grounded, groundWorldY, true, screenLeftWorldX, screenRightWorldX);
+            float currentFootholdLeftWorldX = footWorldPos.x;
+            float currentFootholdRightWorldX = footWorldPos.x;
+            if (grounded)
+            {
+                Vector3 curLeftWorld = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(currentLeftOs, footOs.y), depth, config);
+                Vector3 curRightWorld = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(currentRightOs, footOs.y), depth, config);
+                currentFootholdLeftWorldX = curLeftWorld.x;
+                currentFootholdRightWorldX = curRightWorld.x;
+            }
+
+            return new GroundInfo(grounded, groundWorldY, true, screenLeftWorldX, screenRightWorldX,
+                currentFootholdLeftWorldX, currentFootholdRightWorldX);
         }
     }
 }

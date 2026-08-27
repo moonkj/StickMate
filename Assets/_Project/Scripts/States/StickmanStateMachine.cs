@@ -9,7 +9,11 @@ namespace StickMate.States
     ///
     /// 전이 규칙 (주석 — Phase 1/2에서 각 상태 Tick()에 실제로 구현됨):
     /// - Idle  <-> Walk           : 이동 입력 유무.
-    /// - Idle/Walk -> Jump        : 점프 입력 + 접지(발판 위) 상태일 때.
+    /// - Idle/Walk -> Jump        : 점프 입력 + (접지 또는 코요테 타임 이내)일 때.
+    ///       코요테 타임(StickConfig.coyoteTimeDuration)은 발판을 막 벗어난 직후 짧은 유예 구간에서도
+    ///       점프를 허용하는 의도된 사양이다(Architect 결정, 2026-08-27, docs/BUG_REPORT_PHASE1.md
+    ///       BUG-P1-M5 — 캐주얼 데스크톱 토이라 관대한 조작감이 낫다는 판단). 발판 이탈→Fall 강제 전이
+    ///       유예에 쓰이는 StickConfig.fallGraceDuration과 값은 같아도 되지만 개념적으로 분리된 필드다.
     /// - Jump -> Fall             : 상승 속도가 0 이하로 바뀌는 시점(정점 통과).
     /// - Fall -> Idle/Walk        : 발판 착지 감지 (StickConfig.fallGraceDuration 유예 적용).
     /// - Idle/Walk/Jump/Fall/ParkourClimb/Attack -> Ragdoll :
@@ -47,9 +51,34 @@ namespace StickMate.States
         /// </summary>
         internal int CurrentTransitionGeneration => _transitionGeneration;
 
-        public StickmanStateMachine(Dictionary<StickmanStateId, IStickmanState> states, StickmanStateId initialState)
+        /// <summary>
+        /// 생성만 하고 아직 어떤 상태도 활성화하지 않는다(Enter()가 호출되지 않음).
+        /// BUG-P1-M2 대응(Major, docs/BUG_REPORT_PHASE1.md, Architect 권고): 이전에는 생성자가 즉시
+        /// ChangeState(initialState)를 호출해, 호출자가 StickmanBlackboard.Machine을 아직 배선하기
+        /// 전(Awake() 중간)에 초기 상태의 Enter()가 실행되는 타이밍 문제가 있었다(우연히 Idle.Enter()가
+        /// Machine을 안 써서 지금까지는 안전했을 뿐). 생성과 "최초 상태 활성화"를 분리해, 호출자가 모든
+        /// 의존성(특히 blackboard.Machine)을 완전히 배선한 뒤 <see cref="Start"/>를 호출하게 강제함으로써
+        /// "초기 상태의 Enter()가 무엇을 참조하든 Machine이 null일 수 있는" 경우의 수 자체를 구조적으로
+        /// 없앤다.
+        /// </summary>
+        public StickmanStateMachine(Dictionary<StickmanStateId, IStickmanState> states)
         {
             _states = states;
+            _current = null; // 아직 어떤 상태도 활성화되지 않음 — Start() 호출 전까지 Tick()도 no-op.
+        }
+
+        /// <summary>
+        /// 블랙보드 등 모든 의존성이 완전히 배선된 뒤 1회 호출한다. 이 호출 시점부터 초기 상태의
+        /// Enter()가 실행된다(BUG-P1-M2). 두 번째 호출은 상태머신을 재초기화하지 않고 에러 로그만 남긴다
+        /// (일반 상태 전이는 ChangeState()를 사용할 것 — Start()는 최초 1회 전용).
+        /// </summary>
+        public void Start(StickmanStateId initialState)
+        {
+            if (_current != null)
+            {
+                Debug.LogError("[StickmanStateMachine] Start()가 이미 호출된 상태머신에 다시 호출되었습니다. 무시합니다.");
+                return;
+            }
             ChangeState(initialState);
         }
 

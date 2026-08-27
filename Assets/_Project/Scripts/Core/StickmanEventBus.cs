@@ -17,6 +17,20 @@ namespace StickMate.Core
         Getup,
     }
 
+    /// <summary>
+    /// docs/UX_FLOW.md 26-3절 "살아있는 느낌" 디테일 — AutoWanderController가 타이밍/확률 조건만 판정해
+    /// 발행하는 유휴 연출 신호. 실제 애니메이션 재생은 Phase 2+ 렌더링 레이어가 이 이벤트를 구독해 담당한다
+    /// (지금은 아무도 구독하지 않아도 무해 — 트리거 조건 계산 자체는 지금 확정해두는 것이 목적).
+    /// </summary>
+    public enum WanderAmbientMotion
+    {
+        /// <summary>Idle 진입 후 1.0~2.5초 랜덤 지연 뒤 발동, 0.6~1.0초 지속(26-3).</summary>
+        LookAround,
+
+        /// <summary>"Idle 연장"이 연속 3회 이상 선택된 경우에만 15% 확률로 발동, 1.5~2.5초 지속(26-3).</summary>
+        SitAndYawn,
+    }
+
     /// <summary>상태 전이 1건을 나타내는 불변 이벤트 페이로드 (From -> To).</summary>
     public readonly struct StateTransitionEvent
     {
@@ -78,6 +92,9 @@ namespace StickMate.Core
         /// </summary>
         public static event Action GlobalEmergencyStopRequested;
 
+        /// <summary>AutoWanderController가 두리번거리기/앉기·하품 트리거 조건을 판정했을 때 발생(UX_FLOW.md 26-3절).</summary>
+        public static event Action<WanderAmbientMotion> WanderAmbientMotionRequested;
+
         public static void RaiseStateTransitioned(StickmanStateId from, StickmanStateId to, bool isForcedInterrupt = false)
             => StateTransitioned?.Invoke(new StateTransitionEvent(from, to, isForcedInterrupt));
 
@@ -92,5 +109,8 @@ namespace StickMate.Core
 
         public static void RaiseGlobalEmergencyStop()
             => GlobalEmergencyStopRequested?.Invoke();
+
+        public static void RaiseWanderAmbientMotionRequested(WanderAmbientMotion motion)
+            => WanderAmbientMotionRequested?.Invoke(motion);
     }
 }

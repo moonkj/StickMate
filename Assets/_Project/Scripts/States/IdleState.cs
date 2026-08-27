@@ -39,7 +39,9 @@ namespace StickMate.States
             if (_blackboard.CheckScreenBoundsOrFall(info)) return;
             if (_blackboard.GroundedTick(deltaTime, info)) return;
 
-            if (_blackboard.JumpPressed)
+            // BUG-P1-M5 대응: 접지 중이거나 코요테 타임 이내일 때만 점프 허용(StickmanStateMachine.cs
+            // 전이 규칙 주석 참고, Architect 결정으로 의도된 코요테 타임 채택).
+            if (_blackboard.JumpPressed && _blackboard.IsWithinCoyoteTime(info))
             {
                 _blackboard.Machine.ChangeState(StickmanStateId.Jump);
                 return;
