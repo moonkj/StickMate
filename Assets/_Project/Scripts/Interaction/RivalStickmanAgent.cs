@@ -158,6 +158,11 @@ namespace StickMate.Interaction
             }
             else
             {
+                // Minor 2(docs/BUG_REPORT_PHASE3.md) 대응: 라이벌만 Attack 모션에 들어가고 플레이어는
+                // 절대 들어가지 않아 "서로 주먹질"이 라이벌 일방 공격처럼 비대칭이었다. 플레이어가
+                // 선타를 낼 때도 대칭으로 Attack 상태에 진입시킨다 — 렌더링 레이어가 붙기 전에
+                // 상태머신 레벨에서 먼저 맞춰두면 이후 애니메이션 작업이 두 배로 늘지 않는다.
+                TryPlayOpponentAttackAnimation();
                 RagdollImpactResolver.TryApplyImpact(_blackboard, impulse);
                 _hitsTakenByRival++;
             }
@@ -172,8 +177,33 @@ namespace StickMate.Interaction
             var current = _machine.CurrentStateId;
             if (current == StickmanStateId.Idle || current == StickmanStateId.Walk)
             {
+                // Minor 1(docs/BUG_REPORT_PHASE3.md) 대응 — AttackState.Enter()가 읽을 스냅샷을 미리
+                // 채운다: 이번 타격 이후 라이벌이 몇 대 더 맞혀야 대결이 끝나는지("한 발 더!" 분기 근거).
+                // _hitsTakenByPlayer는 아직 이번 타격이 반영되기 전 값이므로 +1을 감안해 뺀다.
+                int hitsToLose = _config != null ? _config.rivalDuelHitsToLose : 2;
+                _blackboard.AttackShotsRemaining = Mathf.Max(0, hitsToLose - _hitsTakenByPlayer - 1);
                 _machine.ChangeState(StickmanStateId.Attack);
             }
+        }
+
+        /// <summary>
+        /// Minor 2 대응 — 플레이어가 선타를 낼 때 플레이어 쪽 상태머신에도 Attack을 진입시킨다.
+        /// 플레이어 AttackState는 attackDuration(기본 0.4초) 경과 시 스스로 진입 직전 상태(Idle/Walk)로
+        /// 복귀하므로(States/AttackState.cs), 여기서 별도의 원복 처리를 할 필요가 없다.
+        /// </summary>
+        private void TryPlayOpponentAttackAnimation()
+        {
+            if (_opponent == null) return;
+            var opponentMachine = _opponent.Blackboard != null ? _opponent.Blackboard.Machine : null;
+            if (opponentMachine == null) return;
+
+            var current = opponentMachine.CurrentStateId;
+            if (current != StickmanStateId.Idle && current != StickmanStateId.Walk) return;
+
+            // Minor 1과 동일한 스냅샷 원칙 — 이번 타격 이후 플레이어가 몇 대 더 맞혀야 대결이 끝나는지.
+            int hitsToLose = _config != null ? _config.rivalDuelHitsToLose : 2;
+            _opponent.Blackboard.AttackShotsRemaining = Mathf.Max(0, hitsToLose - _hitsTakenByRival - 1);
+            opponentMachine.ChangeState(StickmanStateId.Attack);
         }
 
         private void CheckDuelOutcome()

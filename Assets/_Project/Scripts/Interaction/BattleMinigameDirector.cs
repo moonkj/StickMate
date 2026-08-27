@@ -40,6 +40,32 @@ namespace StickMate.Interaction
             if (_hitbox != null) _hitbox.MouseDown -= OnHitboxMouseDown;
             StickmanEventBus.StateTransitioned -= OnStateTransitioned;
             StickmanEventBus.GlobalEmergencyStopRequested -= OnEmergencyStop;
+
+            // BUG-P3-M1(Major, docs/BUG_REPORT_PHASE3.md) 대응: 이 컴포넌트가 SpectacleEventLock/
+            // ILocalClickCaptureService를 쥔 채 비활성화/파괴되면(예: 향후 "격파 미니게임 자동발생"
+            // 설정 토글) 두 락 모두 소유자 본인만 해제 가능·타임아웃 없음이라 앱 재시작 전까지 영구
+            // 잠긴다. 위에서 이미 OnStateTransitioned 구독을 해제했으므로 ChangeState()가 만드는
+            // StateTransitioned 이벤트로는 더 이상 락이 자동 해제되지 않는다 — 여기서 직접 해제한다.
+            ReleaseOwnedLocks();
+        }
+
+        /// <summary>
+        /// 지금 이 컴포넌트가 소유 중인 락(SpectacleEventLock/ILocalClickCaptureService)을 반환한다.
+        /// Release()/ReleaseLocalClickCapture() 둘 다 "소유자 본인일 때만" 동작하는 멱등 가드가 이미
+        /// 있으므로, 소유하지 않은 상태에서 호출되거나 중복 호출돼도 예외 없이 안전하다.
+        /// </summary>
+        private void ReleaseOwnedLocks()
+        {
+            if (_player != null && _player.Blackboard != null && _player.Blackboard.Machine != null &&
+                _player.Blackboard.Machine.CurrentStateId == StickmanStateId.BattleMinigame)
+            {
+                // 캐릭터가 얼어붙은 중간 상태(기 모으는 자세)로 남지 않도록 안전한 Idle로 강제 복귀.
+                _player.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+            }
+
+            _clickCapture?.ReleaseLocalClickCapture(this);
+            _clickCapture = null;
+            SpectacleEventLock.Release(this);
         }
 
         /// <summary>트레이 메뉴 "격파 놀이"(10절 수동 트리거)에서 호출할 공개 진입점. 이미 다른
@@ -109,6 +135,11 @@ namespace StickMate.Interaction
         private void OnStateTransitioned(StateTransitionEvent evt)
         {
             if (evt.From != StickmanStateId.BattleMinigame) return;
+            // BattleMinigameState는 클릭 판정("릴리즈 순간") 때마다 자기 자신에게 재전이한다
+            // (States/BattleMinigameState.cs, RagdollState의 반복 피격과 동일한 self-transition
+            // 패턴 — Architect 지시, Tasklist.md 교차 레이어 로그). From==To==BattleMinigame인 이
+            // 경우는 "빠져나가는 것"이 아니라 여전히 진행 중인 대결이므로 락을 풀면 안 된다.
+            if (evt.To == StickmanStateId.BattleMinigame) return;
             _clickCapture?.ReleaseLocalClickCapture(this);
             _clickCapture = null;
             SpectacleEventLock.Release(this);

@@ -29,6 +29,19 @@ namespace StickMate.Interaction
         {
             StickmanEventBus.RivalDuelEnded -= OnDuelEnded;
             StickmanEventBus.GlobalEmergencyStopRequested -= OnEmergencyStop;
+
+            // BUG-P3-M1(Major, docs/BUG_REPORT_PHASE3.md) 대응: OnDuelEnded 구독을 이미 위에서
+            // 해제했으므로, ForceEndDuel()이 발행하는 RivalDuelEnded로는 더 이상 락이 자동 해제되지
+            // 않는다 — 여기서 직접 반환한다(멱등 — SpectacleEventLock.Release()가 소유자 확인 후
+            // no-op하므로 중복 호출해도 안전).
+            ReleaseOwnedLock();
+        }
+
+        private void ReleaseOwnedLock()
+        {
+            if (SpectacleEventLock.CurrentOwner != (object)this) return;
+            _rival?.ForceEndDuel(); // 대결 중이었다면 캐릭터를 대기 상태로 되돌린다(승패는 무승부로 처리).
+            SpectacleEventLock.Release(this);
         }
 
         private void Update()

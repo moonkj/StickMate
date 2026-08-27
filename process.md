@@ -63,3 +63,9 @@
 - Architect 결정: 격파 미니게임 "릴리즈 순간" 대사(Enter() 밖에서 확정되는 문제) — 예외를 두지 않고 RagdollState의 기존 자기-전이(self-transition) 패턴을 재사용하도록 지시(Tasklist 교차 로그 기록). 다음 라운드에서 Coder가 반영.
 - 리더 독립 컴파일 재검증: 에러 0/경고 0.
 - 다음: Debugger에게 Phase 3 전체 검토 위임(범위가 커서 꼼꼼히).
+
+## 2026-08-27 (계속) — Phase 3 반려 수정 완료
+- Debugger 검토: Blocker 0, Major 1(BUG-P3-M1: 4개 Interaction Director가 OnDisable/OnDestroy 시 SpectacleEventLock/클릭캡처락 미해제 — 영구 잠금 위험), Minor 2(AttackState.ShotsRemaining 죽은코드, 라이벌 대결 비대칭).
+- Coder 수정: 4개 Director에 OnDisable 락 반환 로직(멱등) 추가. 격파 미니게임 릴리즈 대사를 Architect 지시대로 self-transition 패턴으로 전환(RagdollState와 동일 파이프라인) — 과정에서 self-transition이 Director를 "이탈"로 오판시킬 뻔한 부작용을 스스로 발견해 가드 추가. Minor 2건도 함께 해소.
+- 검증: 클린 재컴파일 에러0/경고0, EditMode 회귀테스트 8/8 통과.
+- 다음: Debugger 최종 확인 후 Phase 3 승인, Phase 4(OS 장난/PC연동, UX 설계는 이미 완료됨) 착수.

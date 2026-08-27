@@ -21,10 +21,11 @@ namespace StickMate.States
         public StickmanStateId StateId => StickmanStateId.Attack;
 
         /// <summary>
-        /// 이 상태가 대사 매핑 함수에 구조적으로 노출하는 파라미터(BUG-M7). Phase 3 현재 유일한 사용처
-        /// (라이벌 대결)는 매번 이 상태를 1회성 단발 타격으로만 쓰므로 항상 0(=마지막 타격)으로 채운다 —
-        /// 콤보/탄약을 추적하는 실제 전투 큐가 생기면 그 값을 그대로 이 필드에 흘려보내면 되고, 파이프라인
-        /// 자체는 이미 완성되어 있어 추가 배선이 필요 없다.
+        /// 이 상태가 대사 매핑 함수에 구조적으로 노출하는 파라미터(BUG-M7). 값의 출처는
+        /// StickmanBlackboard.AttackShotsRemaining(docs/BUG_REPORT_PHASE3.md Minor 1 대응) — 호출자가
+        /// ChangeState(Attack) 직전에 채워두는 스냅샷 입력이다. Phase 5 이전엔 콤보/탄약을 추적하는 진짜
+        /// 전투 큐가 없으므로 "이번 타격이 이 대결을 끝내는 결정타인지" 정도의 데모 수준 신호로만 쓴다
+        /// (현재 유일한 사용처인 Interaction/RivalStickmanAgent.cs 참고) — 아무도 채우지 않으면 기본값 0.
         /// </summary>
         public sealed class AttackDialogueParams
         {
@@ -49,9 +50,10 @@ namespace StickMate.States
             _elapsed = 0f;
             _returnState = ResolveReturnState(context.From);
 
-            // TODO(Phase 3+ 전투 로직 확장): 실제 콤보/탄약 카운트가 생기면 여기서 채운다. 지금은
-            // Interaction/RivalStickmanAgent.cs가 매번 단발 타격으로만 이 상태를 쓰므로 항상 0.
-            _dialogueParams.ShotsRemaining = 0;
+            // BUG-P3-M1(Minor 1) 대응: 호출자가 ChangeState(Attack) 직전에 채워둔 스냅샷을 그대로
+            // 읽는다(StickmanBlackboard.AttackShotsRemaining 문서 참고) — 값을 채우지 않은 호출부는
+            // 기본값 0("오늘은 여기까지")을 그대로 받는다.
+            _dialogueParams.ShotsRemaining = _blackboard.AttackShotsRemaining;
 
             // BUG-M7 대응: 텍스트가 "한 발 더!/오늘은 여기까지"로 파생되되, 그 근거(ShotsRemaining)가
             // 이 상태 인스턴스에서 구조적으로 노출된 값이라는 점이 핵심(UX_FLOW.md 31-2 표 #1 리터럴 그대로).

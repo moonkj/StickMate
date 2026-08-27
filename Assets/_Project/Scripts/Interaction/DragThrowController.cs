@@ -47,6 +47,27 @@ namespace StickMate.Interaction
             }
             StickmanEventBus.StateTransitioned -= OnStateTransitioned;
             StickmanEventBus.GlobalEmergencyStopRequested -= OnEmergencyStop;
+
+            // BUG-P3-M1(Major, docs/BUG_REPORT_PHASE3.md) 대응 — BattleMinigameDirector와 동일한
+            // 근거: OnStateTransitioned 구독을 이미 위에서 해제했으므로 더 이상 자동으로 락이
+            // 풀리지 않는다. 여기서 직접 반환한다(멱등 — Release()/ReleaseLocalClickCapture()가
+            // 소유자 확인 후 no-op하므로 중복 호출해도 안전).
+            ReleaseOwnedLocks();
+        }
+
+        /// <summary>지금 이 컴포넌트가 소유 중인 락(SpectacleEventLock/ILocalClickCaptureService)을 반환한다.</summary>
+        private void ReleaseOwnedLocks()
+        {
+            if (_player != null && _player.Blackboard != null && _player.Blackboard.Machine != null &&
+                _player.Blackboard.Machine.CurrentStateId == StickmanStateId.Dragged)
+            {
+                // Exit()가 Kinematic->Dynamic 방어적 복구를 담당하므로 강제 Idle 전이로 안전하게 놓아준다.
+                _player.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+            }
+
+            _clickCapture?.ReleaseLocalClickCapture(this);
+            _clickCapture = null;
+            SpectacleEventLock.Release(this);
         }
 
         private void Update()

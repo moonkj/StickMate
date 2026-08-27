@@ -18,16 +18,16 @@ namespace StickMate.States
     /// blackboard.BattleClickSignaled를 세팅하고, 이 상태의 Tick()이 매 프레임 그 신호를 소비한다
     /// (DragThrowState의 DragReleaseSignaled와 동일한 컨벤션).
     ///
-    /// [알려진 설계 한계, 정직하게 문서화] UX_FLOW.md 31-2 표 #5는 "chargeRatio(릴리즈 확정 순간 값)"
-    /// 파라미터로 릴리즈 시점의 대사("필살기다!"/"어... 어라?")를 파생시키는 예시를 제시하지만, 그
-    /// 시점(클릭 순간)은 이 상태의 Enter()가 아니라 Tick() 도중이다 — DialogueIntent는 오직 Enter()
-    /// 안에서만 생성 가능하다는 원칙(31-1/9절-1)과 정면으로 충돌하므로, "같은 상태 안에서 여러 차례
-    /// 반복되는 판정 각각에 스냅샷 대사를 붙이는" 일반해가 아직 없다(이 표 자체도 "지금 구현 대상은
-    /// 아님"이라 명시했었다). Enter()의 고정 대사("좋아, 간다")만 구현하고, 성공/실패/소진 각 결과는
-    /// StickmanEventBus.BattleMinigamePhaseChanged 이벤트로만 알린다 — 실제 리액션 텍스트/애니메이션은
-    /// 이 설계 질문이 해소된 뒤 Phase 2+ 렌더링 레이어와 함께 다음 라운드에 추가하길 권고(Architect 조율 요청).
+    /// [self-transition, Architect 지시 2026-08-27 — Tasklist.md 교차 레이어 로그] "릴리즈 순간"
+    /// (클릭으로 성공/실패가 갈리는 그 프레임)의 대사(UX_FLOW.md 31-2 표 #5)는 DialogueIntent가 오직
+    /// Enter() 안에서만 만들어질 수 있다는 원칙(31-1/9절-1)에 예외를 두지 않는다. 대신 RagdollState가
+    /// 반복 피격 때 쓰는 것과 동일한 패턴을 재사용한다: 판정에 필요한 파라미터(chargeRatio)를 재전이
+    /// 직전에 필드에 기록해두고, 같은 상태로 자기 자신을 다시 ChangeState()해 Exit()→Enter()를
+    /// 재실행시킨다 — "판정 순간"과 "전이 확정 순간"이 코드 구조상 같은 프레임의 같은 사건이 된다.
+    /// TickCharging()이 판정을 직접 내리지 않고 TriggerResolution()으로 자기-전이만 시키면,
+    /// 실제 판정(성공/실패/재도전/소진)과 대사 파생은 전부 Enter()의 ResolveOutcome()이 담당한다.
     /// </summary>
-    public sealed class BattleMinigameState : IStickmanState
+    public sealed class BattleMinigameState : IStickmanState, IHasDialogueParams
     {
         private enum Phase { Charging, Resolving }
 
@@ -41,6 +41,24 @@ namespace StickMate.States
         private float _resolveTimer;
         private bool _terminal; // 이번 Resolving이 끝나면 종료(Idle 복귀)인지, 재도전인지.
 
+        // self-transition 패턴용 보류 파라미터 — TriggerResolution()이 기록하고 다음 Enter()가 소비한다.
+        private bool _pendingResolution;
+        private float _pendingChargeRatio;
+
+        /// <summary>
+        /// UX_FLOW.md 31-2 표 #5 대응 파라미터. chargeRatio는 릴리즈(클릭) 확정 순간의 게이지 비율
+        /// (0~1) 스냅샷이며, 성공/실패 판정(스위트스팟 70~85% 기준)과는 별개 축이다 — 이 대사는 "게이지가
+        /// 얼마나 꽉 찼는지"에 대한 감탄사라 표에 명시된 임계값(0.9)을 그대로 쓴다.
+        /// </summary>
+        public sealed class BattleDialogueParams
+        {
+            public float ChargeRatio;
+        }
+
+        private readonly BattleDialogueParams _dialogueParams = new BattleDialogueParams();
+
+        public object DialogueParams => _dialogueParams;
+
         public StickmanStateId StateId => StickmanStateId.BattleMinigame;
 
         public BattleMinigameState(StickmanBlackboard blackboard)
@@ -50,6 +68,14 @@ namespace StickMate.States
 
         public void Enter(StateTransitionContext context)
         {
+            if (_pendingResolution)
+            {
+                _pendingResolution = false;
+                ResolveOutcome(_pendingChargeRatio, context);
+                return;
+            }
+
+            // 최초 진입(Director가 트리거) — 새 대결 사이클을 시작한다.
             _retryCount = 0;
             _noInputTimer = 0f;
             BeginCharge();
@@ -77,7 +103,8 @@ namespace StickMate.States
             if (_noInputTimer >= inputTimeout)
             {
                 // "유저가 다른 작업으로 이탈"로 간주 — 부분적 클릭관통 해제는 Interaction/
-                // BattleMinigameDirector가 이 상태의 Exit(=StateTransitioned)을 구독해 원복한다.
+                // BattleMinigameDirector가 이 상태의 Exit(=StateTransitioned, To!=BattleMinigame)을
+                // 구독해 원복한다.
                 StickmanEventBus.RaiseBattleMinigamePhaseChanged(BattleMinigamePhase.Exhausted);
                 _blackboard.Machine.ChangeState(StickmanStateId.Idle);
                 return;
@@ -96,27 +123,42 @@ namespace StickMate.States
             {
                 _blackboard.BattleClickSignaled = false;
                 _noInputTimer = 0f; // 맞았든 틀렸든 "클릭 입력이 있었다"는 사실 자체로 무입력 타이머 리셋.
-                ResolveClick(ratio);
+                TriggerResolution(ratio);
                 return;
             }
 
             if (ratio >= 1f)
             {
-                // 끝까지 클릭이 전혀 없었음 -> 미스(실패)로 취급(무한정 같은 게이지에 머무르지 않게 함).
-                ResolveOutcome(success: false);
+                // 끝까지 클릭이 전혀 없었음 -> 미스(실패)로 취급(ratio=1.0 스냅샷, 무한정 같은 게이지에 머무르지 않게 함).
+                TriggerResolution(1f);
             }
         }
 
-        private void ResolveClick(float ratio)
+        /// <summary>
+        /// "릴리즈 순간"의 실제 판정(성공/실패/재도전/소진)과 대사 파생은 여기서 직접 하지 않는다 —
+        /// chargeRatio 스냅샷만 기록해두고 같은 상태로 자기 자신을 재전이시켜, Enter()의
+        /// ResolveOutcome()이 그 값을 읽어 처리하게 한다(위 클래스 주석의 self-transition 패턴).
+        /// </summary>
+        private void TriggerResolution(float chargeRatio)
         {
-            float sweetStart = _blackboard.Config != null ? _blackboard.Config.battleSweetSpotStart : 0.70f;
-            float sweetEnd = _blackboard.Config != null ? _blackboard.Config.battleSweetSpotEnd : 0.85f;
-            bool success = ratio >= sweetStart && ratio <= sweetEnd;
-            ResolveOutcome(success);
+            _pendingChargeRatio = chargeRatio;
+            _pendingResolution = true;
+            _blackboard.Machine.ChangeState(StickmanStateId.BattleMinigame, isForcedInterrupt: false);
         }
 
-        private void ResolveOutcome(bool success)
+        /// <summary>
+        /// self-transition으로 재실행된 Enter() 안에서만 호출된다. 성공/실패/재도전/소진 판정과
+        /// StickmanEventBus 통지, "릴리즈 순간" DialogueIntent 생성을 모두 이 시점(=전이 확정 시점)에서
+        /// 함께 처리해 판정과 대사 파생이 항상 같은 프레임의 같은 사건이 되게 한다.
+        /// </summary>
+        private void ResolveOutcome(float chargeRatio, StateTransitionContext context)
         {
+            _dialogueParams.ChargeRatio = chargeRatio;
+
+            float sweetStart = _blackboard.Config != null ? _blackboard.Config.battleSweetSpotStart : 0.70f;
+            float sweetEnd = _blackboard.Config != null ? _blackboard.Config.battleSweetSpotEnd : 0.85f;
+            bool success = chargeRatio >= sweetStart && chargeRatio <= sweetEnd;
+
             _phase = Phase.Resolving;
             _resolveTimer = 0f;
 
@@ -124,21 +166,31 @@ namespace StickMate.States
             {
                 _terminal = true;
                 StickmanEventBus.RaiseBattleMinigamePhaseChanged(BattleMinigamePhase.Success);
-                return;
-            }
-
-            _retryCount++;
-            int maxRetries = _blackboard.Config != null ? _blackboard.Config.battleMaxRetries : 3;
-            if (_retryCount > maxRetries)
-            {
-                _terminal = true;
-                StickmanEventBus.RaiseBattleMinigamePhaseChanged(BattleMinigamePhase.Exhausted);
             }
             else
             {
-                _terminal = false;
-                StickmanEventBus.RaiseBattleMinigamePhaseChanged(BattleMinigamePhase.Fail);
+                _retryCount++;
+                int maxRetries = _blackboard.Config != null ? _blackboard.Config.battleMaxRetries : 3;
+                if (_retryCount > maxRetries)
+                {
+                    _terminal = true;
+                    StickmanEventBus.RaiseBattleMinigamePhaseChanged(BattleMinigamePhase.Exhausted);
+                }
+                else
+                {
+                    _terminal = false;
+                    StickmanEventBus.RaiseBattleMinigamePhaseChanged(BattleMinigamePhase.Fail);
+                }
             }
+
+            // UX_FLOW.md 31-2 표 #5 — chargeRatio 스냅샷만으로 파생(성공/실패 판정과는 별개 축, 임계값
+            // 0.9는 표 원문 그대로).
+            _ = new DialogueIntent(context, (id, dialogueParams) =>
+            {
+                var p = dialogueParams as BattleDialogueParams;
+                float ratio = p != null ? p.ChargeRatio : 0f;
+                return ratio >= 0.9f ? "필살기다!" : "어... 어라?";
+            });
         }
 
         private void TickResolving(float deltaTime)

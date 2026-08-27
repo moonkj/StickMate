@@ -29,6 +29,22 @@ namespace StickMate.Interaction
         {
             StickmanEventBus.StateTransitioned -= OnStateTransitioned;
             StickmanEventBus.GlobalEmergencyStopRequested -= OnEmergencyStop;
+
+            // BUG-P3-M1(Major, docs/BUG_REPORT_PHASE3.md) 대응 — 기존 OnEmergencyStop()과 같은 판정을
+            // 재사용하되, 위에서 이미 OnStateTransitioned 구독을 해제했으므로 SpectacleEventLock을
+            // 여기서 직접 반환해야 한다(멱등 — 소유자 확인 후 no-op하므로 중복 호출해도 안전).
+            ReleaseOwnedLock();
+        }
+
+        private void ReleaseOwnedLock()
+        {
+            if (SpectacleEventLock.CurrentOwner != (object)this) return;
+            if (_player != null && _player.Blackboard != null && _player.Blackboard.Machine != null &&
+                _player.Blackboard.Machine.CurrentStateId == StickmanStateId.RodeoCursor)
+            {
+                _player.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+            }
+            SpectacleEventLock.Release(this);
         }
 
         private void Update()

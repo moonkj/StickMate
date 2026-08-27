@@ -74,6 +74,16 @@ namespace StickMate.States
         public bool BattleClickSignaled;
 
         /// <summary>
+        /// Attack(전투) 상태의 IHasDialogueParams 스냅샷 입력값(BUG-M7 파이프라인, docs/BUG_REPORT_PHASE3.md
+        /// Minor 1 대응). 호출자(현재는 Interaction/RivalStickmanAgent.cs)가 Machine.ChangeState(Attack)를
+        /// 호출하기 직전에 이번 타격 이후 "몇 대 더 맞아야 결판나는지"를 계산해 이 필드에 써두면,
+        /// AttackState.Enter()가 그 값을 그대로 스냅샷해 "한 발 더!"(&gt;=1)/"오늘은 여기까지"(0) 대사를
+        /// 파생시킨다. 아무도 세팅하지 않고 ChangeState(Attack)만 호출하면 기본값 0("오늘은 여기까지")
+        /// 그대로 유지된다 — 값을 채우지 않는 호출부에서도 안전한 기본 동작.
+        /// </summary>
+        public int AttackShotsRemaining;
+
+        /// <summary>
         /// CursorProvider(OS 화면 좌표)를 이 블랙보드의 MainCamera/Config로 Unity 월드 좌표로 역변환한다.
         /// ScreenCoordinateConverter의 "cameraDepth는 같은 호출 세트 안에서 재사용" 규칙을 지키기 위해,
         /// Body 위치를 기준점으로 삼아 depth를 산출한 뒤 그 depth로 커서 좌표를 되돌린다(SenseGround()가
