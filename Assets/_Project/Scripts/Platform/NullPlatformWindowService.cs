@@ -30,13 +30,30 @@ namespace StickMate.Platform
         public bool IsLocalClickCaptureOwnedBy(object owner)
             => _clickCaptureGate.IsOwnedBy(owner);
 
+        // BUG-SW-M2 대응(Architect 결정, 2026-08-28, docs/BUG_REPORT_SCENE_WIRING.md): 이 더미 발판의
+        // OS-px 폭을 화면 폭(Screen.width) 그대로 쓰면, Platform/ScreenCoordinateConverter.cs의 변환이
+        // 정확히 카메라 뷰포트 폭과 1:1로 대응하므로(px=0/Screen.width가 각각 뷰포트의 왼쪽/오른쪽
+        // 가장자리 world X로 그대로 역변환됨) 발판의 월드 폭이 항상 "카메라에 보이는 만큼"으로 orthographicSize에
+        // 종속되어버린다. 이전 라운드는 "자율 배회 AI가 15초 관찰 구간 안에 화면 끝에 닿는다"는 문제를
+        // 해결하려고 SceneBootstrapper.cs의 카메라 orthographicSize를 5→20으로 키웠는데, 그 방식은
+        // px/world-unit 변환 비율 자체를 바꿔버려 StickConfig.groundSnapTolerance 및 다른 7개 OS-px
+        // 단위 필드(wanderCursorReactionRadiusPx 등)의 유효 월드 크기까지 의도치 않게 조용히 4배
+        // 넓혀버리는 부작용을 냈다(BUG-SW-M2). 카메라 크기는 건드리지 않고 이 더미 발판의 OS-px 폭만
+        // 화면 폭의 배수로 독립적으로 넓혀 배회 관찰 범위 문제를 해결한다 — 이렇게 하면 px/world-unit
+        // 스케일은 groundSnapTolerance 등이 가정하는 값 그대로 유지된다.
+        private const float DummyFootholdWidthMultiplier = 4f;
+
         public NullPlatformWindowService()
         {
-            // 화면 하단을 가로지르는 가상의 "작업표시줄" 발판 하나.
+            // 화면 하단을 가로지르는 가상의 "작업표시줄" 발판 하나. 폭은 화면 폭의
+            // DummyFootholdWidthMultiplier배로, 화면 중심(=world x=0, 카메라가 x=0에 위치)을 기준으로
+            // 좌우 대칭 확장한다 — 배회 AI가 카메라 뷰포트보다 훨씬 넓은 범위를 돌아다닐 수 있다.
             // 에디터 테스트용 스텁이므로 해상도 변경 시 재계산하지 않고 생성 시점 값으로 고정한다.
-            float width = Screen.width > 0 ? Screen.width : 1920f;
+            float baseWidth = Screen.width > 0 ? Screen.width : 1920f;
+            float widenedWidth = baseWidth * DummyFootholdWidthMultiplier;
+            float widenedX = (baseWidth - widenedWidth) / 2f;
             const float dummyTaskbarHeight = 40f;
-            var dummyRect = new Rect(0f, 0f, width, dummyTaskbarHeight);
+            var dummyRect = new Rect(widenedX, 0f, widenedWidth, dummyTaskbarHeight);
 
             _dummyFootholds = new List<PlatformFoothold>(1)
             {

@@ -14,9 +14,12 @@ namespace StickMate.EditorTools
     /// 사각형/원 스프라이트만으로 "졸라맨을 연상시키는 최소 구성"을 만든다.
     ///
     /// 사용법:
-    /// - 에디터: 메뉴 StickMate/Build All (Config + Prefab + Scene).
-    /// - 배치 모드(재생성/CI용): Unity -batchmode -nographics -projectPath <repo>
+    /// - 에디터: 메뉴 StickMate/Build All (최초 1회) — 이미 있는 에셋은 건너뛴다. 기존 에셋을 의도적으로
+    ///   덮어쓰려면 StickMate/Rebuild All (기존 자산 덮어씀, 주의)을 쓸 것(BUG-SW-M3, 아래 클래스 문서
+    ///   경고 참고).
+    /// - 배치 모드(최초 생성/CI용): Unity -batchmode -nographics -projectPath <repo>
     ///   -executeMethod StickMate.EditorTools.SceneBootstrapper.BuildAll -quit -logFile <path>
+    ///   (기존 에셋이 있으면 건너뛴다 — 강제로 덮어쓰려면 커맨드라인 끝에 --force 추가)
     ///
     /// 좌표계 참고(BuildMainScene 배치 근거): Platform/NullPlatformWindowService.cs의 더미 발판은
     /// OS 좌상단 원점 기준 y=[0,40] 구간(화면 최상단 40px 밴드)에 고정되어 있고, Platform/
@@ -28,6 +31,23 @@ namespace StickMate.EditorTools
     /// 벗어난다. 이는 NullPlatformWindowService(Phase 1, 이미 테스트로 검증된 기존 코드)의 기존
     /// 특성이며 이번 배선 작업의 범위 밖이라 수정하지 않는다 — 플레이테스트는 화면 렌더링이 아니라
     /// transform.position 실측 로그로 검증하므로 이 시각적 프레이밍 이슈와 무관하게 유효하다.
+    ///
+    /// 주의(BUG-SW-M2, Architect 반려 수정, 2026-08-28, docs/BUG_REPORT_SCENE_WIRING.md): 카메라
+    /// orthographicSize를 바꾸면 GroundSensor의 OS-px↔world-unit 변환 비율(px/unit =
+    /// Screen.height/(2*orthographicSize))도 함께 바뀐다. 이 비율에는 StickConfig.groundSnapTolerance
+    /// 뿐 아니라 wanderCursorReactionRadiusPx/rodeoStillRadiusPx/rodeoReachDistancePx/
+    /// graffitiMinRadiusPx/graffitiMaxRadiusPx/graffitiRegionSizePx/runawayHideSpotMarginPx까지
+    /// 총 7개의 OS-px 단위 필드가 종속되어 있다 — orthographicSize를 조정할 때는 반드시 이 8개
+    /// 필드(위 7개 + groundSnapTolerance) 전부의 유효 월드 크기를 함께 재검토할 것(Tasklist.md
+    /// "씬/프리팹 배선" 절의 재검토 표 참고). "화면이 좁아 배회 관찰 범위가 부족하다"는 문제는
+    /// 카메라가 아니라 Platform/NullPlatformWindowService.cs의 더미 발판 폭(OS-px)을 넓히는 것으로
+    /// 해결한다 — 그래야 카메라 스케일과 발판 관측 범위가 서로 독립적으로 조정 가능하다.
+    ///
+    /// 주의(BUG-SW-M3, Architect 반려 수정, 2026-08-28): 아래 BuildAll()/각 Build* 메서드는 기본적으로
+    /// "최초 생성" 전용이다 — 대상 에셋(Stickman.prefab/Main.unity/DefaultStickConfig.asset)이 이미
+    /// 있으면 건드리지 않고 건너뛴다(로그만 남김). 특히 Main.unity를 강제로 재생성하면 그 사이 씬에
+    /// 수동으로 추가한 내용이 전부 사라진다 — 정말로 덮어써야 한다면 메뉴 "StickMate/Rebuild All
+    /// (기존 자산 덮어씀, 주의)"을 쓰거나 배치 모드에서 커맨드라인 인자에 --force를 추가할 것.
     /// </summary>
     public static class SceneBootstrapper
     {
@@ -42,22 +62,81 @@ namespace StickMate.EditorTools
 
         private const int SpriteTextureSize = 64; // PPU와 동일하게 잡아 스프라이트 1장 = 세계 단위 1x1가 되게 함.
 
-        [MenuItem("StickMate/Build All (Config + Prefab + Scene)")]
+        // BUG-SW-M1(Architect 결정, 2026-08-28) — 표준 Active Ragdoll 레이어 기법: 몸통/머리/팔다리를
+        // 전부 이 레이어에 몰아넣고, 이 레이어끼리의 충돌만 Physics2D 매트릭스에서 끈다(EnsureStickmanLimbLayer 참고).
+        private const string StickmanLimbLayerName = "StickmanLimb";
+
+        // BUG-SW-M3(Architect 결정, 2026-08-28) — 배치 모드에서 기존 에셋을 의도적으로 덮어쓰고 싶을 때만
+        // 켜는 커맨드라인 플래그. 예: -executeMethod StickMate.EditorTools.SceneBootstrapper.BuildAll --force
+        private const string ForceCommandLineArg = "--force";
+
+        [MenuItem("StickMate/Build All (최초 1회)")]
         public static void BuildAll()
         {
-            StickConfig config = CreateOrLoadConfig();
-            GameObject prefab = BuildStickmanPrefab(config);
-            BuildMainScene(prefab);
+            BuildAllInternal(HasForceFlag());
+        }
+
+        [MenuItem("StickMate/Rebuild All (기존 자산 덮어씀, 주의)")]
+        public static void RebuildAllMenuItem()
+        {
+            // BUG-SW-M3 대응: 대화형 에디터에서는 실수로 기존 씬/프리팹을 날리지 않도록 확인을 받는다.
+            // 배치 모드(CI 등)에서는 이 메뉴 항목을 직접 호출한 것 자체가 명시적 의도이므로 대화상자로
+            // 막지 않는다(대화상자는 배치 모드에서 응답 불가 상태로 멈출 수 있어 더 위험하다).
+            if (!Application.isBatchMode && !EditorUtility.DisplayDialog(
+                    "Rebuild All 확인",
+                    "기존 " + PrefabAssetPath + " / " + SceneAssetPath + " / " + ConfigAssetPath + "을(를) 전부 덮어씁니다.\n" +
+                    "Main.unity에 수동으로 추가한 내용은 이 작업으로 전부 사라집니다. 계속할까요?",
+                    "덮어쓰기", "취소"))
+            {
+                return;
+            }
+            BuildAllInternal(force: true);
+        }
+
+        private static void BuildAllInternal(bool force)
+        {
+            StickConfig config = CreateOrLoadConfig(force);
+            GameObject prefab = BuildStickmanPrefab(config, force);
+            BuildMainScene(prefab, force);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log("[SceneBootstrapper] BuildAll 완료 — " + ConfigAssetPath + ", " + PrefabAssetPath + ", " + SceneAssetPath);
+            Debug.Log("[SceneBootstrapper] BuildAll 완료(force=" + force + ") — " + ConfigAssetPath + ", " + PrefabAssetPath + ", " + SceneAssetPath);
+        }
+
+        private static bool HasForceFlag()
+        {
+            string[] args = System.Environment.GetCommandLineArgs();
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] == ForceCommandLineArg) return true;
+            }
+            return false;
         }
 
         [MenuItem("StickMate/Build Default StickConfig")]
         public static StickConfig CreateOrLoadConfig()
         {
+            return CreateOrLoadConfig(force: false);
+        }
+
+        /// <summary>
+        /// BUG-SW-M3 대응: 이미 존재하는 config는 기본적으로(force==false) 건드리지 않는다 — 이전에는
+        /// groundSnapTolerance 한 필드만 재실행 때마다 항상 강제 재적용해, 누군가 에디터에서 이 값을
+        /// 다른 이유로 수동 조정해둬도 다음 BuildAll 실행 때 조용히 20으로 되돌아가는 문제가 있었다
+        /// (docs/BUG_REPORT_SCENE_WIRING.md Minor 2). 이제는 "새로 만드는 경우" 또는 "force==true"일
+        /// 때만 이 튜닝값을 적용한다.
+        /// </summary>
+        public static StickConfig CreateOrLoadConfig(bool force)
+        {
             EnsureFolder(DataFolder);
             var existing = AssetDatabase.LoadAssetAtPath<StickConfig>(ConfigAssetPath);
+
+            if (existing != null && !force)
+            {
+                Debug.Log("[SceneBootstrapper] " + ConfigAssetPath + "이(가) 이미 존재해 건너뜁니다(기존 값 보존, --force로 강제 가능) — BUG-SW-M3.");
+                return existing;
+            }
+
             StickConfig config = existing != null ? existing : ScriptableObject.CreateInstance<StickConfig>();
 
             // 실측 튜닝(플레이테스트 R1 결과, Tasklist.md "씬/프리팹 배선" 절 참고): 기본값 6px는
@@ -67,7 +146,9 @@ namespace StickMate.EditorTools
             // 낙하하는 것을 배치 모드 PlayMode 스모크 테스트로 실측 확인했다(States/GroundSensor.cs
             // 로직 자체는 무수정 — 여기서는 StickConfig.cs가 "추후 물리 튜닝으로 교체될 임시값"이라고
             // 명시한 데이터 값만 조정한다). 20px로 넉넉히 키워 이 배치 환경 기준 약 0.3~0.4유닛 밴드를
-            // 확보한다.
+            // 확보한다(orthographicSize=5 기준 — BUG-SW-M2 대응으로 orthographicSize를 원래 값으로
+            // 되돌렸으므로 이 계산은 다시 유효하다. orthographicSize를 바꿀 경우의 재검토 의무는 클래스
+            // 문서 상단 BUG-SW-M2 경고 참고).
             config.groundSnapTolerance = 20f;
 
             if (existing == null)
@@ -85,7 +166,7 @@ namespace StickMate.EditorTools
         [MenuItem("StickMate/Build Stickman Prefab")]
         public static GameObject BuildStickmanPrefabMenuItem()
         {
-            GameObject prefab = BuildStickmanPrefab(CreateOrLoadConfig());
+            GameObject prefab = BuildStickmanPrefab(CreateOrLoadConfig(force: false), force: false);
             AssetDatabase.SaveAssets();
             return prefab;
         }
@@ -95,13 +176,40 @@ namespace StickMate.EditorTools
         /// StickmanBlackboard.SenseGround()가 Body.position을 그대로 "발" 위치로 취급하므로 로컬 y=0을
         /// 발 높이로 둔다. 팔다리는 States/RagdollRig.cs가 GetComponentsInChildren&lt;Rigidbody2D/
         /// HingeJoint2D&gt;(true)로 순회할 수 있도록 각자 독립된 Rigidbody2D+HingeJoint2D(root에 연결)를
-        /// 갖는다 — 콜라이더는 없음(의도: 몸통/팔다리끼리 겹치는 콜라이더가 상시 물리 시뮬레이션 중
-        /// 서로 충돌 판정을 일으켜 걷는 동안 떨림/폭주를 유발하는 것을 원천 차단, 머리의 작은
-        /// CircleCollider2D만 루트의 compound collider로 합쳐진다).
+        /// 갖는다.
+        ///
+        /// BUG-SW-M1 반려 수정(Architect 결정, 2026-08-28, docs/BUG_REPORT_SCENE_WIRING.md): 이전에는
+        /// 팔다리에 Collider2D를 아예 안 붙여 자체충돌 떨림을 막았는데, 그 결과 씬에 바닥 Collider2D도
+        /// 없는 것과 겹쳐 RAGDOLL이 무엇과도 충돌할 수 없어 영원히 낙하하는 구조적 결함을 낳았다.
+        /// 이제는 표준 Active Ragdoll 기법(레이어 기반 자체충돌 차단)을 쓴다: 루트/머리/팔다리 전부를
+        /// 하나의 전용 레이어(StickmanLimbLayerName)에 몰아넣고, 그 레이어끼리의 충돌만 Physics2D
+        /// 매트릭스에서 끈다(EnsureStickmanLimbLayer). 이러면 팔다리는 실제 Collider2D를 갖고 바닥
+        /// 등 다른 레이어와는 정상 충돌하면서도, 서로(그리고 몸통과)는 여전히 충돌하지 않는다 — 원래
+        /// 걱정했던 "몸통/팔다리 겹치는 콜라이더의 상시 떨림"은 콜라이더 제거가 아니라 레이어
+        /// 필터링으로 해결된다.
         /// </summary>
         public static GameObject BuildStickmanPrefab(StickConfig config)
         {
+            return BuildStickmanPrefab(config, force: false);
+        }
+
+        /// <summary>force==false(기본값)면 Stickman.prefab이 이미 존재할 때 건드리지 않고 건너뛴다
+        /// (BUG-SW-M3 대응 — 재실행마다 fileID가 무작위로 재할당되어 Main.unity의 PrefabInstance
+        /// 오버라이드가 고아가 되는 것을 방지).</summary>
+        public static GameObject BuildStickmanPrefab(StickConfig config, bool force)
+        {
             EnsureFolder(PrefabFolder);
+
+            // 레이어/충돌 매트릭스 설정은 멱등적이고 되돌릴 위험이 없는 프로젝트 설정 변경이라, 프리팹
+            // 자체를 건너뛰는 경우에도 항상 재확인해 최신 상태로 유지한다(BUG-SW-M1).
+            int limbLayer = EnsureStickmanLimbLayer();
+
+            var existingPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabAssetPath);
+            if (existingPrefab != null && !force)
+            {
+                Debug.Log("[SceneBootstrapper] " + PrefabAssetPath + "이(가) 이미 존재해 건너뜁니다(기존 fileID 보존, --force로 강제 가능) — BUG-SW-M3.");
+                return existingPrefab;
+            }
 
             Sprite rectSprite = GetOrCreateSprite(SpritesFolder + "/RectSprite.asset", isCircle: false);
             Sprite circleSprite = GetOrCreateSprite(SpritesFolder + "/CircleSprite.asset", isCircle: true);
@@ -109,6 +217,7 @@ namespace StickMate.EditorTools
             float gravityScale = config != null ? config.gravityScale : 3f;
 
             var root = new GameObject("Stickman");
+            root.layer = limbLayer;
 
             var rb = root.AddComponent<Rigidbody2D>();
             rb.bodyType = RigidbodyType2D.Dynamic;
@@ -131,31 +240,34 @@ namespace StickMate.EditorTools
             CreateStaticVisual(root.transform, "Torso", rectSprite, new Vector3(0f, 1.0f, 0f), new Vector2(0.16f, 0.8f), outline, sortingOrder: 1);
 
             // 머리 — 시각 + 작은 CircleCollider2D(루트 Rigidbody2D의 compound collider로 자동 합산됨).
+            // 루트와 같은 limbLayer에 두어야 팔다리와의 자체충돌 무시 매트릭스가 머리에도 적용된다.
             var head = CreateStaticVisual(root.transform, "Head", circleSprite, new Vector3(0f, 1.6f, 0f), new Vector2(0.4f, 0.4f), outline, sortingOrder: 3);
+            head.layer = limbLayer;
             var headCollider = head.AddComponent<CircleCollider2D>();
             headCollider.radius = 0.4f; // 시각 크기(반경 0.5 상당)보다 작게 잡아 "작은" 콜라이더로.
 
-            // 팔다리 — Rigidbody2D + HingeJoint2D(connectedBody=root). 조인트 anchor 계산이 스케일에
-            // 영향받지 않도록 물리 오브젝트 자체는 scale=1로 유지하고, 스프라이트는 별도 자식(Visual)에서만 스케일.
+            // 팔다리 — Rigidbody2D + HingeJoint2D(connectedBody=root) + Collider2D(limbLayer). 조인트
+            // anchor 계산이 스케일에 영향받지 않도록 물리 오브젝트 자체는 scale=1로 유지하고, 스프라이트는
+            // 별도 자식(Visual)에서만 스케일.
             const float hipY = 0.6f, shoulderY = 1.3f;
             const float legHalfLength = 0.3f, armHalfLength = 0.25f;
 
             CreateLimb(root.transform, rb, "LeftLeg", rectSprite, new Vector2(0.12f, 0.6f),
                 localPos: new Vector3(-0.12f, hipY - legHalfLength, 0f),
                 anchor: new Vector2(0f, legHalfLength), connectedAnchor: new Vector2(-0.12f, hipY),
-                outline, mass: 0.15f, gravityScale: gravityScale, sortingOrder: 0);
+                outline, mass: 0.15f, gravityScale: gravityScale, sortingOrder: 0, limbLayer: limbLayer, agent: agent);
             CreateLimb(root.transform, rb, "RightLeg", rectSprite, new Vector2(0.12f, 0.6f),
                 localPos: new Vector3(0.12f, hipY - legHalfLength, 0f),
                 anchor: new Vector2(0f, legHalfLength), connectedAnchor: new Vector2(0.12f, hipY),
-                outline, mass: 0.15f, gravityScale: gravityScale, sortingOrder: 0);
+                outline, mass: 0.15f, gravityScale: gravityScale, sortingOrder: 0, limbLayer: limbLayer, agent: agent);
             CreateLimb(root.transform, rb, "LeftArm", rectSprite, new Vector2(0.1f, 0.5f),
                 localPos: new Vector3(-0.28f, shoulderY - armHalfLength, 0f),
                 anchor: new Vector2(0f, armHalfLength), connectedAnchor: new Vector2(-0.28f, shoulderY),
-                outline, mass: 0.1f, gravityScale: gravityScale, sortingOrder: 2);
+                outline, mass: 0.1f, gravityScale: gravityScale, sortingOrder: 2, limbLayer: limbLayer, agent: agent);
             CreateLimb(root.transform, rb, "RightArm", rectSprite, new Vector2(0.1f, 0.5f),
                 localPos: new Vector3(0.28f, shoulderY - armHalfLength, 0f),
                 anchor: new Vector2(0f, armHalfLength), connectedAnchor: new Vector2(0.28f, shoulderY),
-                outline, mass: 0.1f, gravityScale: gravityScale, sortingOrder: 2);
+                outline, mass: 0.1f, gravityScale: gravityScale, sortingOrder: 2, limbLayer: limbLayer, agent: agent);
 
             GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, PrefabAssetPath, out bool success);
             Object.DestroyImmediate(root);
@@ -168,32 +280,54 @@ namespace StickMate.EditorTools
         }
 
         /// <summary>
-        /// 최소 씬 생성: Main Camera(직교) + Stickman 프리팹 인스턴스 1개. 인스턴스는 더미 발판(클래스
-        /// 문서 상단 좌표계 설명 참고) 바로 위쪽 — 카메라 뷰포트 상단 가장자리(cam.y+orthographicSize)
-        /// 보다 0.3유닛 위 — 에서 낙하해 스냅되도록 배치한다.
+        /// 최소 씬 생성: Main Camera(직교) + Stickman 프리팹 인스턴스 1개 + RAGDOLL용 정적 바닥
+        /// Collider2D 1개. 인스턴스는 더미 발판(클래스 문서 상단 좌표계 설명 참고) 바로 위쪽 — 카메라
+        /// 뷰포트 상단 가장자리(cam.y+orthographicSize)보다 0.3유닛 위 — 에서 낙하해 스냅되도록
+        /// 배치한다.
         /// </summary>
         public static void BuildMainScene(GameObject stickmanPrefab)
         {
+            BuildMainScene(stickmanPrefab, force: false);
+        }
+
+        /// <summary>force==false(기본값)면 Main.unity가 이미 존재할 때 건드리지 않고 건너뛴다(BUG-SW-M3
+        /// 대응 — EditorSceneManager.NewScene(EmptyScene)로 항상 완전히 새로 만들던 이전 동작은 그
+        /// 사이 씬에 수동으로 추가된 모든 내용을 경고 없이 파괴했다).</summary>
+        public static void BuildMainScene(GameObject stickmanPrefab, bool force)
+        {
+            var existingScene = AssetDatabase.LoadAssetAtPath<SceneAsset>(SceneAssetPath);
+            if (existingScene != null && !force)
+            {
+                Debug.Log("[SceneBootstrapper] " + SceneAssetPath + "이(가) 이미 존재해 건너뜁니다(수동 편집 내용 보존, --force로 강제 가능) — BUG-SW-M3.");
+                RegisterSceneInBuildSettings(SceneAssetPath); // 이미 등록돼 있어도 안전(중복 등록 방지 로직 있음).
+                return;
+            }
+
             EnsureFolder(SceneFolder);
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            // orthographicSize=20 채택 근거(플레이테스트 R1 결과): 5로는 640x480 헤드리스 환경에서
-            // 세계 폭이 약 13.3유닛에 불과해, 자율 배회 AI(WalkState.walkSpeed=2.5유닛/초)가 15초
-            // 관찰 구간 안에 실제로 화면(=유일한 더미 발판) 가장자리에 도달해 버려 CheckScreenBoundsOrFall이
-            // 정상적으로 Fall 전이를 발생시키는 것을 실측으로 확인했다(버그가 아니라 의도된 "발판 이탈 시
-            // 낙하" 동작 그 자체 — States/StickmanBlackboard.cs 참고). 배회 행동을 화면 끝에 닿지 않고
-            // 충분히 관찰하기 위해 세계 폭을 4배(약 53유닛)로 넓힌다 — 캐릭터/물리 배선과는 무관한
-            // 순수 카메라 프레이밍 조정.
+            // BUG-SW-M2 반려 수정(Architect 결정, 2026-08-28, docs/BUG_REPORT_SCENE_WIRING.md):
+            // orthographicSize를 원래 설계값(5)으로 되돌린다. 이전 라운드는 "화면이 좁아 배회 AI가
+            // 15초 관찰 구간 안에 화면 끝(=유일한 더미 발판) 가장자리에 도달해버린다"는 문제를
+            // orthographicSize를 5→20으로 키워서 해결했는데, 이 값은 GroundSensor의 OS-px↔world-unit
+            // 변환 비율에도 곱연산으로 반영되어 groundSnapTolerance 등 8개 OS-px 필드의 유효 월드
+            // 크기를 조용히 4배 넓혀버리는 부작용을 냈다(클래스 문서 상단 BUG-SW-M2 경고 참고). 관찰
+            // 범위가 좁다는 원래 문제는 카메라가 아니라 Platform/NullPlatformWindowService.cs의 더미
+            // 발판 폭(OS-px, DummyFootholdWidthMultiplier)을 넓히는 것으로 독립적으로 해결한다.
             var camGo = new GameObject("Main Camera");
             camGo.tag = "MainCamera";
             var cam = camGo.AddComponent<Camera>();
             cam.orthographic = true;
-            cam.orthographicSize = 20f;
+            cam.orthographicSize = 5f;
             cam.transform.position = new Vector3(0f, 0f, -10f);
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.85f, 0.85f, 0.85f, 1f); // 데스크톱 배경 대용 임시 밝은 회색.
             camGo.AddComponent<AudioListener>();
+
+            // BUG-SW-M1 대응: RAGDOLL이 실제로 부딪혀 멈출 수 있는 정적 바닥. Rigidbody2D를 붙이지
+            // 않으므로 Unity가 자동으로 정적 콜라이더로 취급한다(Architect 결정 — "표준 랙돌 기법").
+            CreateGroundCollider(cam);
 
             if (stickmanPrefab != null)
             {
@@ -211,6 +345,36 @@ namespace StickMate.EditorTools
 
             EditorSceneManager.SaveScene(scene, SceneAssetPath);
             RegisterSceneInBuildSettings(SceneAssetPath);
+        }
+
+        // BUG-SW-M1 대응: RAGDOLL 물리 안전망 바닥의 폭. 화면 폭(약 13.3유닛, orthoSize=5 기준)이나
+        // NullPlatformWindowService의 넓힌 배회 범위(약 53유닛, DummyFootholdWidthMultiplier=4 기준)
+        // 보다 넉넉히 넓게 고정폭으로 잡는다 — 정확한 화면 폭 계산식에 종속시키지 않는 이유는
+        // BUG-SW-M2의 교훈(서로 다른 목적의 크기 계산을 하나의 값에 묶으면 한쪽을 조정할 때 다른 쪽이
+        // 조용히 깨진다) 때문이다. 캐릭터가 배회 범위 어디에 있다가 RAGDOLL에 진입해도 이 바닥을
+        // 벗어나지 않는다.
+        private const float GroundColliderHalfWidth = 100f;
+        private const float GroundColliderThickness = 2f;
+
+        /// <summary>
+        /// RAGDOLL이 실제로 착지할 수 있는 정적 바닥(Rigidbody2D 없음 — Unity 표준 정적 콜라이더).
+        /// Y좌표는 NullPlatformWindowService의 더미 발판이 논리적으로 대응하는 높이(클래스 문서 상단
+        /// 좌표계 설명 참고 — 카메라 뷰포트 "상단" 가장자리, cam.y+orthographicSize)와 일치시킨다 —
+        /// Idle/Walk의 SnapToGround가 캐릭터를 스냅시키는 바로 그 Y이므로, RAGDOLL 진입 직후 root의
+        /// CapsuleCollider2D(발 피벗 기준 바닥이 로컬 y=0)가 곧바로 이 바닥과 접촉한다. 레이어는
+        /// Default(0)로 둔다 — StickmanLimbLayerName과는 자기들끼리만 충돌을 끄는 매트릭스이므로
+        /// Default 레이어와는 정상적으로 충돌한다.
+        /// </summary>
+        private static void CreateGroundCollider(Camera cam)
+        {
+            var ground = new GameObject("PhysicsGround");
+            ground.layer = 0; // Default.
+
+            float groundTopWorldY = cam.transform.position.y + cam.orthographicSize;
+            ground.transform.position = new Vector3(0f, groundTopWorldY - GroundColliderThickness * 0.5f, 0f);
+
+            var collider = ground.AddComponent<BoxCollider2D>();
+            collider.size = new Vector2(GroundColliderHalfWidth * 2f, GroundColliderThickness);
         }
 
         private static void RegisterSceneInBuildSettings(string scenePath)
@@ -243,12 +407,14 @@ namespace StickMate.EditorTools
         }
 
         private static void CreateLimb(Transform hierarchyParent, Rigidbody2D connectedBody, string name, Sprite sprite,
-            Vector2 worldSize, Vector3 localPos, Vector2 anchor, Vector2 connectedAnchor, Color color, float mass, float gravityScale, int sortingOrder)
+            Vector2 worldSize, Vector3 localPos, Vector2 anchor, Vector2 connectedAnchor, Color color, float mass, float gravityScale,
+            int sortingOrder, int limbLayer, StickmanAgent agent)
         {
             var limb = new GameObject(name);
             limb.transform.SetParent(hierarchyParent, false);
             limb.transform.localPosition = localPos;
             limb.transform.localScale = Vector3.one; // 조인트 anchor 계산이 스케일에 영향받지 않도록 유지.
+            limb.layer = limbLayer; // BUG-SW-M1: 루트/머리와 같은 레이어 — 자체충돌은 매트릭스가 끄고, 바닥 등과는 정상 충돌.
 
             var rb = limb.AddComponent<Rigidbody2D>();
             rb.bodyType = RigidbodyType2D.Dynamic;
@@ -262,6 +428,23 @@ namespace StickMate.EditorTools
             joint.connectedAnchor = connectedAnchor;
             joint.useMotor = false;
 
+            // BUG-SW-M1: 팔다리에 실제 Collider2D를 부여한다(이전에는 자체충돌 떨림을 막으려고 아예
+            // 없앴는데, 그 결과 RagdollLimbImpactRelay가 영구히 발동 불가능해지고 바닥과도 충돌할 수
+            // 없어 RAGDOLL이 절대 안착하지 못했다). 시각 스프라이트와 동일한 크기의 BoxCollider2D로,
+            // limb 자신의 원점(anchor 계산 기준)에 그대로 겹치게 둔다(Visual 자식과 동일한 중심).
+            var collider = limb.AddComponent<BoxCollider2D>();
+            collider.size = worldSize;
+
+            // BUG-SW-M1: 사지 피격을 StickmanAgent.ReportExternalImpact()로 중계 — 이전에는 어떤
+            // 프리팹에도 부착되지 않아 죽은 코드였다. Reset()/Awake() 기반 자동 탐색(GetComponentInParent)에
+            // 의존하지 않고, StickmanAgent._config와 동일한 패턴(SerializedObject 직접 대입)으로
+            // 에디터 시점에 확실하게 배선한다 — 에디터 스크립팅 중에는 MonoBehaviour 생명주기 콜백
+            // 실행 시점이 보장되지 않기 때문이다.
+            var relay = limb.AddComponent<RagdollLimbImpactRelay>();
+            var relaySo = new SerializedObject(relay);
+            relaySo.FindProperty("_agent").objectReferenceValue = agent;
+            relaySo.ApplyModifiedPropertiesWithoutUndo();
+
             var visual = new GameObject("Visual");
             visual.transform.SetParent(limb.transform, false);
             visual.transform.localPosition = Vector3.zero;
@@ -271,6 +454,54 @@ namespace StickMate.EditorTools
             sr.sprite = sprite;
             sr.color = color;
             sr.sortingOrder = sortingOrder;
+        }
+
+        /// <summary>
+        /// BUG-SW-M1 대응(Architect 결정, 2026-08-28) — 표준 Active Ragdoll 레이어 기법: 몸통/머리/
+        /// 팔다리를 전부 이 레이어에 몰아넣고, 이 레이어끼리의 충돌만 Physics2D 레이어 충돌 매트릭스에서
+        /// 끈다(자체충돌 떨림 방지). 콜라이더를 아예 없애던 기존 접근과 달리, 다른 레이어(바닥 등)와는
+        /// 정상적으로 충돌한다. 이미 존재하는 레이어면 그 인덱스를 그대로 재사용한다(재실행 시 중복
+        /// 생성/재할당 없음 — BUG-SW-M3와 동일한 멱등성 원칙). Physics2D.IgnoreLayerCollision 호출은
+        /// 에디터(비-Play 모드)에서 실행되면 ProjectSettings/Physics2DSettings.asset에 바로 반영된다
+        /// (Project Settings > Physics 2D 창에서 매트릭스를 직접 클릭하는 것과 동일한 효과).
+        /// </summary>
+        private static int EnsureStickmanLimbLayer()
+        {
+            var tagManagerAssets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset");
+            if (tagManagerAssets == null || tagManagerAssets.Length == 0)
+            {
+                Debug.LogError("[SceneBootstrapper] ProjectSettings/TagManager.asset을 열지 못해 '" +
+                    StickmanLimbLayerName + "' 레이어를 만들지 못했습니다 — 팔다리 자체충돌 방지가 적용되지 않습니다.");
+                return 0;
+            }
+
+            var tagManager = new SerializedObject(tagManagerAssets[0]);
+            var layersProp = tagManager.FindProperty("layers");
+
+            for (int i = 0; i < layersProp.arraySize; i++)
+            {
+                if (layersProp.GetArrayElementAtIndex(i).stringValue == StickmanLimbLayerName)
+                {
+                    Physics2D.IgnoreLayerCollision(i, i, true);
+                    return i;
+                }
+            }
+
+            // 사용자 레이어 슬롯은 8~31(0~7은 Unity 내장 예약 레이어). 첫 빈 슬롯에 배정한다.
+            for (int i = 8; i < layersProp.arraySize; i++)
+            {
+                var element = layersProp.GetArrayElementAtIndex(i);
+                if (string.IsNullOrEmpty(element.stringValue))
+                {
+                    element.stringValue = StickmanLimbLayerName;
+                    tagManager.ApplyModifiedProperties();
+                    Physics2D.IgnoreLayerCollision(i, i, true);
+                    return i;
+                }
+            }
+
+            Debug.LogError("[SceneBootstrapper] 빈 레이어 슬롯이 없어 '" + StickmanLimbLayerName + "' 레이어를 만들지 못했습니다.");
+            return 0;
         }
 
         private static Sprite GetOrCreateSprite(string path, bool isCircle)

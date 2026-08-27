@@ -126,3 +126,11 @@ Phase 0(스캐폴딩) → 1(코어루프) → 2(랙돌/파쿠르) → 3(전투/�
 - PlayMode 정식 회귀 테스트 1건 신설(StickMate.Tests.PlayMode), 향후 -runTests -testPlatform PlayMode로 재실행 가능.
 - 리더 독립 컴파일 재검증: 에러0/경고0.
 - 다음: Debugger에게 씬/프리팹/구성 검토 위임(코드 로직이 아닌 에셋 배선 관점).
+
+## 2026-08-28 (계속) — 씬/프리팹 반려 수정 완료 + 스모크 테스트 디플레이킹
+- Coder: BUG-SW-M1(랙돌 무한낙하) — 표준 랙돌 레이어 기법(StickmanLimb 레이어, 자체충돌 차단) + 바닥 콜라이더 + RagdollLimbImpactRelay 부착으로 해결. 실측: 강제 RAGDOLL 진입 → 0.5~1.0초 내 Getup → Walk 복귀, 2회 독립 확인.
+- BUG-SW-M2(px/world-unit 괴리) — orthographicSize를 원복(20→5)하고, 관측 문제는 카메라가 아니라 더미발판 폭 확장으로 분리 해결(스케일에 영향 없음). 7개 px필드 중 실제 영향받는 건 2개뿐임을 추적 확인.
+- BUG-SW-M3(빌더 비멱등) — 기존 에셋 존재 시 기본적으로 스킵, 강제 재생성은 별도 메뉴/플래그로 분리. md5 비교로 멱등성 실측 확인.
+- Coder가 부수적으로 발견한 기존 스모크테스트 플레이키니스(AutoWanderController RNG로 인한 우연한 제자리점프가 "7초 전체 구간 Y변동" 판정과 충돌) — **리더가 직접 진단/수정**: "Y 변동폭" 판정을 "종료 시점 상태머신이 Idle/Walk(접지)인가"로 교체(더 정확한 의도 표현). PlayMode 테스트 3회 연속(각기 다른 RNG 경로) 전부 통과로 디플레이킹 검증 완료.
+- 컴파일: 에러0/경고0. EditMode 13/13, PlayMode 2/2(3회 재현).
+- **StickMate 코드+씬 배선 1차 완성.** 유저가 Unity Hub에서 Main.unity를 열고 Play를 누르면 실제로 캐릭터가 자율 배회하는 모습을 볼 수 있는 상태.
