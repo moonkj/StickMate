@@ -15,7 +15,7 @@ namespace StickMate.Platform.Windows
     /// 종료(WM_CLOSE 전송/TerminateProcess)시키는 메서드. 오직 열거(읽기)와 "우리 오버레이 자신"의
     /// 확장 스타일(WS_EX_LAYERED/TRANSPARENT)·Z-order만 다룬다 (아키텍처 3절 유저 자산 불변 원칙).
     /// </summary>
-    public sealed class Win32WindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService
+    public sealed class Win32WindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService
     {
         #region Win32 선언 (이 리전 밖으로 유출 금지)
         [StructLayout(LayoutKind.Sequential)]
@@ -241,6 +241,27 @@ namespace StickMate.Platform.Windows
                 && winRect.Right == monitorInfo.rcMonitor.Right
                 && winRect.Bottom == monitorInfo.rcMonitor.Bottom;
         }
+
+        // IDesktopIconLayoutService(UX_FLOW.md 27-2/27-5절) — 정직한 미구현 스텁. 실제 구현은
+        // Progman → SHELLDLL_DefView → SysListView32 창에 LVM_GETITEMCOUNT/LVM_GETITEMPOSITION을
+        // 보내야 하는데, 그 결과는 대상(탐색기) 프로세스 메모리에 있는 구조체를 가리키므로
+        // VirtualAllocEx/WriteProcessMemory/ReadProcessMemory 기반 크로스 프로세스 IPC가 추가로
+        // 필요하다 — 이 파일의 나머지 P/Invoke(자기 프로세스 메모리만 다루는 EnumWindows/GetWindowRect류)
+        // 보다 훨씬 복잡하고, 이 개발 환경에는 검증할 실제 Windows 하드웨어가 없다(Unity 배치모드는
+        // macOS에서 실행 — Tasklist.md 교차 레이어 로그 참고). 검증 불가능한 크로스 프로세스 코드를
+        // 작성해 배포하는 대신, 정직하게 false/빈 목록을 반환한다 — 그 결과 Windows 실빌드에서 청소부/
+        // 블랙홀은 안전하게 "아이콘 조회 실패로 트리거 억제"만 될 뿐 어떤 오작동도 일으키지 않는다
+        // (IDesktopIconLayoutService.cs 문서 상단 "알려진 한계" 참고, macOS 네이티브 플러그인 미구현/
+        // BUG-B1 진짜 오버레이 미구현과 동일 계열의 정직한 커버리지 공백). 후속 작업으로 남긴다.
+        private static readonly List<Rect> EmptyIconRects = new List<Rect>(0);
+
+        public bool TryGetIconRegion(out Rect osScreenRegion)
+        {
+            osScreenRegion = default;
+            return false;
+        }
+
+        public IReadOnlyList<Rect> EnumerateIconRects() => EmptyIconRects;
     }
 }
 #endif

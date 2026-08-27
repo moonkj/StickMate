@@ -7,7 +7,7 @@ namespace StickMate.Platform
     /// 에디터/미지원 플랫폼 폴백 구현체. 실제 OS 열거를 하지 않고 더미 발판 1개(작업표시줄/Dock 역할)를
     /// 반환해, 상태머신·발판 인식 로직을 어떤 플랫폼 API 없이도 크래시 없이 에디터에서 테스트할 수 있게 한다.
     /// </summary>
-    public sealed class NullPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService
+    public sealed class NullPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService
     {
         // 더미 발판 목록. GC 압박 방지를 위해 생성자에서 1회만 만들고 매 호출마다 동일 인스턴스를 재사용한다.
         private readonly List<PlatformFoothold> _dummyFootholds;
@@ -67,6 +67,55 @@ namespace StickMate.Platform
             Vector3 mouse = Input.mousePosition;
             osScreenPosition = new Vector2(mouse.x, Screen.height - mouse.y);
             return true;
+        }
+
+        // IDesktopIconLayoutService(UX_FLOW.md 27-2/27-5절) — 에디터에는 실제 OS 아이콘 조회 API가
+        // 없으므로(IDesktopIconLayoutService.cs 문서 상단 "알려진 한계" 참고), 화면 좌상단에 합성
+        // 아이콘 그리드를 반환해 청소부/블랙홀의 오버레이 파이프라인·취소 판정 로직을 에디터에서 검증할
+        // 수 있게 한다. 실제 아이콘이 아니므로 클릭해도 실행되는 앱이 없지만, "좌표 조회 → 오버레이 →
+        // 취소 판정" 구조 자체를 테스트하는 데는 충분하다. 해상도 변경 시 재계산하지 않고 생성 시점
+        // 값으로 고정(다른 더미 값들과 동일한 컨벤션).
+        private const int IconGridColumns = 4;
+        private const int IconGridRows = 3;
+        private const float IconCellSize = 64f;
+        private const float IconCellSpacing = 16f;
+        private readonly List<Rect> _dummyIconRects = new List<Rect>(IconGridColumns * IconGridRows);
+        private Rect _dummyIconRegion;
+        private bool _dummyIconGridBuilt;
+
+        private void EnsureDummyIconGridBuilt()
+        {
+            if (_dummyIconGridBuilt) return;
+            _dummyIconGridBuilt = true;
+
+            const float originX = 24f;
+            const float originY = 24f;
+            float step = IconCellSize + IconCellSpacing;
+
+            for (int row = 0; row < IconGridRows; row++)
+            {
+                for (int col = 0; col < IconGridColumns; col++)
+                {
+                    _dummyIconRects.Add(new Rect(originX + col * step, originY + row * step, IconCellSize, IconCellSize));
+                }
+            }
+
+            float width = (IconGridColumns - 1) * step + IconCellSize;
+            float height = (IconGridRows - 1) * step + IconCellSize;
+            _dummyIconRegion = new Rect(originX, originY, width, height);
+        }
+
+        public bool TryGetIconRegion(out Rect osScreenRegion)
+        {
+            EnsureDummyIconGridBuilt();
+            osScreenRegion = _dummyIconRegion;
+            return true;
+        }
+
+        public IReadOnlyList<Rect> EnumerateIconRects()
+        {
+            EnsureDummyIconGridBuilt();
+            return _dummyIconRects;
         }
     }
 }

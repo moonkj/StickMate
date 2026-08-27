@@ -69,3 +69,10 @@
 - Coder 수정: 4개 Director에 OnDisable 락 반환 로직(멱등) 추가. 격파 미니게임 릴리즈 대사를 Architect 지시대로 self-transition 패턴으로 전환(RagdollState와 동일 파이프라인) — 과정에서 self-transition이 Director를 "이탈"로 오판시킬 뻔한 부작용을 스스로 발견해 가드 추가. Minor 2건도 함께 해소.
 - 검증: 클린 재컴파일 에러0/경고0, EditMode 회귀테스트 8/8 통과.
 - 다음: Debugger 최종 확인 후 Phase 3 승인, Phase 4(OS 장난/PC연동, UX 설계는 이미 완료됨) 착수.
+
+## 2026-08-28 — Phase 4 구현 완료 (OS 장난/PC연동)
+- Coder: 6개 기능(창도둑/청소부/그라피티/크래시/블랙홀/PC하드웨어반응) 전부 구현. 청소부·블랙홀은 공용 DesktopIconMirrorDirector로 통합(UX 28절-25 권고 반영). 윈도우 크래시는 100% 클릭관통 구조적 보장(ILocalClickCaptureService 미참조). Win32 실제 아이콘 좌표 조회는 Windows 실기기 부재로 정직한 미구현 스텁으로 남김(no-op).
+- Test Engineer(병렬, Coder보다 먼저 완료): 유저 자산 불변 정적 감사 테스트 5건 — 금지 API 소스 스캔, 가짜 위반 주입으로 실제 탐지력 검증 후 제거. 위반사항 없음.
+- Architect 승인 2건: 윈도우크래시 스윙/크랙수명 분리, 하드웨어반응 SpectacleEventLock 미적용(지속적 배경무드라 일회성 스펙터클과 별개 판단).
+- 리더 독립 컴파일 재검증: 에러0/경고0.
+- 다음: Debugger에게 Phase 4 검토 위임.

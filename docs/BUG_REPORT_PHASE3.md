@@ -80,3 +80,19 @@
 수정 완료 후 재검토 시 확인할 것: (1) BUG-P3-M1 수정이 실제로 `OnDisable()` 경로에서 두 락 모두 해제되는지(코드 레벨 확인으로 충분, Play 모드 불필요), (2) 격파 미니게임 self-transition 반영 시 UX 31-2 표 #5("필살기다!"/"어... 어라?")와 텍스트가 정확히 일치하는지 + `chargeRatio` 스냅샷이 31-1 원칙(같은 함수·같은 Enter() 스냅샷)을 지키는지, (3) 클린 재빌드 기준선(에러 0/경고 0) + 텍스트-액션 회귀 테스트 8/8 통과 유지 여부.
 
 **Phase 3(전투/커서상호작용) — 위 Major 1건 수정 전까지 Phase 4(OS 장난/PC연동) 착수 보류. 수정 후 재검토 필요.**
+
+---
+
+## 반려 수정 재확인 (Debugger, 2026-08-27, 커밋 `3a7bc22` 대상)
+
+좁은 타겟(위 "수정 완료 후 재검토 시 확인할 것" 3개 항목)만 코드 레벨로 재확인했다.
+
+1. **BUG-P3-M1(락 미해제) — 4개 Director 전부 해소 확인.** `BattleMinigameDirector`/`DragThrowController`/`RivalEncounterDirector`/`RodeoCursorWatcher`의 `OnDisable()`이 모두 `ReleaseOwnedLock(s)()`를 호출해 `SpectacleEventLock.Release`/`ILocalClickCaptureService.ReleaseLocalClickCapture`를 직접 반환함을 확인. 두 락 구현(`Core/SpectacleEventLock.cs:44-48`, `Platform/LocalClickCaptureGate.cs:46-51`) 모두 `if (_owner == null || _owner != owner) return;` 가드가 있어 소유자가 아니거나 이미 해제된 상태에서 다시 호출해도 예외 없이 no-op임을 코드로 확인(멱등 보장). 캐릭터가 중간 상태(기 모으기/드래그/로데오)로 얼어붙지 않도록 `ChangeState(Idle, isForcedInterrupt: true)`로 안전 복귀시키는 처리도 4곳 모두 존재.
+2. **격파 미니게임 self-transition — Architect 지시대로 반영 확인, 잔여 경로 없음.** `States/BattleMinigameState.cs`의 `TickCharging()`→`TriggerResolution()`은 `chargeRatio` 스냅샷만 필드에 기록하고 `ChangeState(BattleMinigame, isForcedInterrupt:false)`로 자기-전이만 시킬 뿐, `DialogueIntent`를 직접 생성하지 않는다. 실제 판정(성공/실패/재도전/소진)과 "릴리즈 순간" `DialogueIntent`(필살기다!/어... 어라?)는 오직 `Enter()`→`ResolveOutcome()` 경로에서만 만들어짐을 확인 — `Tick()`/`TickResolving()`을 포함해 그 외 경로에 잔여 대사 생성 코드 없음. `StickmanStateMachine.ChangeState()`(`States/StickmanStateMachine.cs:108-132`)는 `next == 현재상태`를 특별 취급하지 않고 항상 `Exit()`→세대 증가→`Enter()` 순서를 그대로 실행하므로 self-transition이 실제로 `Enter()` 재실행을 유발함을 구조적으로 확인했다. **이탈 오판 방지 가드**도 `BattleMinigameDirector.OnStateTransitioned()`에 `if (evt.From != BattleMinigame) return; if (evt.To == BattleMinigame) return;` 형태로 존재 — `From==To==BattleMinigame`(self-transition)일 때는 락을 풀지 않고, 실제로 다른 상태로 빠져나갈 때만 락을 해제함을 확인. `DragThrowState`/`RodeoCursorState`는 애초에 self-transition을 쓰지 않아(grep 확인) 해당 가드가 불필요하며 실제로도 추가되지 않았다 — 과잉 수정 없음.
+3. **AttackState.ShotsRemaining / 라이벌 대결 비대칭 — 기존 계약과 충돌 없음.** `AttackState.Enter()`가 이제 `StickmanBlackboard.AttackShotsRemaining`(신규 필드, 기본값 0)을 그대로 읽어 텍스트 분기("한 발 더!"/"오늘은 여기까지")에 쓰며, 세팅하지 않는 다른 호출부는 기존과 동일하게 0을 받아 회귀 없음. `RivalStickmanAgent`에서 라이벌/플레이어 양쪽 모두 타격 직전에 `hitsToLose - hitsTaken - 1` 스냅샷을 계산해 채우는 방식이 대칭적으로 동일함을 확인했고, `_hitsTakenByPlayer`/`_hitsTakenByRival` 증가 시점이 스냅샷 계산 이후라 off-by-one 없음(예: 라이벌이 맞을 차례엔 `TryPlayOpponentAttackAnimation()`이 먼저 플레이어 상태머신에 Attack을 진입시키고, 그 다음 `RagdollImpactResolver.TryApplyImpact()`가 라이벌 자신에게 충격을 적용 — 서로 다른 블랙보드라 순서 문제 없음). `CheckDuelOutcome()`의 승패 판정 로직·`DialogueTextActionSyncTests` 8건은 이 변경과 무관한 범용 목(mock) 상태로 테스트하므로 영향 없음.
+
+**검증 — Unity 배치모드 직접 재실행 결과:**
+- 컴파일(`-batchmode -nographics -quit`): `error CS` 0건, `warning CS` 0건, `Batchmode quit successfully`/`Exiting batchmode successfully now` 정상 종료.
+- EditMode 테스트(`-runTests -testPlatform EditMode`): `testcasecount="8" result="Passed" total="8" passed="8" failed="0"`, 로그 내 `error CS`/`warning CS` 0건.
+
+**결론 — 3개 항목 모두 문제 없음. Phase 3 최종 승인 — Phase 4(OS 장난/PC연동) 착수 가능**

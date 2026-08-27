@@ -40,13 +40,14 @@ namespace StickMate.Platform
     /// 한다(UX_FLOW.md 3절/9절-7). 여기서 항상 발판이 있는 것처럼 위장하면 그 온보딩 게이트가 조용히
     /// 무력화된다 — 배선은 StickmanAgent.CreatePlatformService() 참고.
     /// </summary>
-    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService
+    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService
     {
         private const float FallbackFootholdHeight = 40f;
 
         private readonly IPlatformWindowService _inner;
         private readonly ICursorPositionService _innerCursor; // null이면 내부 서비스가 커서 조회를 지원하지 않음
         private readonly ILocalClickCaptureService _innerClickCapture; // null이면 내부 서비스가 부분적 클릭관통 해제를 지원하지 않음
+        private readonly IDesktopIconLayoutService _innerIconLayout; // null이면 내부 서비스가 아이콘 좌표 조회를 지원하지 않음
         private readonly StickConfig _config; // desktopDpiScale만 읽는다 — null이면 배율 1로 취급.
 
         // 재사용 버퍼. "실제 발판 전부 + 안전망 1개"를 매 호출 다시 채워 넣지만 리스트 자체는 재할당하지
@@ -62,6 +63,7 @@ namespace StickMate.Platform
             _inner = inner;
             _innerCursor = inner as ICursorPositionService;
             _innerClickCapture = inner as ILocalClickCaptureService;
+            _innerIconLayout = inner as IDesktopIconLayoutService;
             _config = config;
         }
 
@@ -126,5 +128,19 @@ namespace StickMate.Platform
 
         public bool IsLocalClickCaptureOwnedBy(object owner)
             => _innerClickCapture != null && _innerClickCapture.IsLocalClickCaptureOwnedBy(owner);
+
+        // IDesktopIconLayoutService(UX_FLOW.md 27-2/27-5절) — 발판 열거와 달리 이 데코레이터는 아이콘
+        // 좌표 조회 자체에는 아무 로직도 얹지 않고 내부 서비스가 지원하면 그대로 통과시킨다
+        // (ICursorPositionService/ILocalClickCaptureService와 동일한 delegate 패턴). 내부 서비스가
+        // 지원하지 않으면(현재 Win32WindowService가 정직하게 미구현 상태) 항상 조회 실패로 안전하게 처리한다.
+        public bool TryGetIconRegion(out Rect osScreenRegion)
+        {
+            if (_innerIconLayout != null) return _innerIconLayout.TryGetIconRegion(out osScreenRegion);
+            osScreenRegion = default;
+            return false;
+        }
+
+        public IReadOnlyList<Rect> EnumerateIconRects()
+            => _innerIconLayout != null ? _innerIconLayout.EnumerateIconRects() : System.Array.Empty<Rect>();
     }
 }

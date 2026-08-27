@@ -7,6 +7,15 @@ namespace StickMate.Core
         RivalDuel,
         DragAndThrow,
         RodeoCursor,
+
+        // ==== Phase 4 (docs/UX_FLOW.md 27절/28절-29) — 기존 4종과 동일한 "한 번에 하나만" 상호배제
+        // 세트에 신규 편입. DesktopTidy/BlackholeSummon은 같은 전역 락을 공유하는 것만으로 27-2/27-5가
+        // 요구하는 "둘 사이의 더 강한 상호배제"도 자동으로 충족된다(별도 락 불필요). ====
+        WindowTheft,
+        Graffiti,
+        DesktopTidy,
+        BlackholeSummon,
+        WindowCrash,
     }
 
     /// <summary>

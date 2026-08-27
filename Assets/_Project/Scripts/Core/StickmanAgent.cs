@@ -152,6 +152,19 @@ namespace StickMate.Core
                 { StickmanStateId.BattleMinigame, new BattleMinigameState(_blackboard) },
                 { StickmanStateId.Dragged, new DragThrowState(_blackboard) },
                 { StickmanStateId.RodeoCursor, new RodeoCursorState(_blackboard) },
+                // Phase 4 신규(UX_FLOW.md 27절) — 창 도둑만 자체 대사/페이즈 로직이 있어 전용 State
+                // 클래스(WindowTheftState)를 쓰고, 나머지 4개(그라피티/청소부/블랙홀/크래시 스윙)는
+                // "물리/입력 변경 없는 순수 타이머" 공통 형태라 하나의 재사용 클래스(TimedSpectacleState)를
+                // 지속시간 선택자만 다르게 주입해 인스턴스화한다(States/TimedSpectacleState.cs 문서 참고).
+                { StickmanStateId.WindowTheft, new WindowTheftState(_blackboard) },
+                { StickmanStateId.Graffiti, new TimedSpectacleState(_blackboard, StickmanStateId.Graffiti,
+                    cfg => UnityEngine.Random.Range(cfg.graffitiHoldDurationMin, cfg.graffitiHoldDurationMax)) },
+                { StickmanStateId.DesktopTidy, new TimedSpectacleState(_blackboard, StickmanStateId.DesktopTidy,
+                    cfg => cfg.desktopTidyDurationSeconds) },
+                { StickmanStateId.BlackholeSummon, new TimedSpectacleState(_blackboard, StickmanStateId.BlackholeSummon,
+                    cfg => cfg.blackholeDurationSeconds) },
+                { StickmanStateId.WindowCrash, new TimedSpectacleState(_blackboard, StickmanStateId.WindowCrash,
+                    cfg => cfg.windowCrashSwingDuration) },
             };
 
             // BUG-P1-M2 대응(Major, docs/BUG_REPORT_PHASE1.md): 생성과 "최초 상태 활성화"를 분리했다.
@@ -236,9 +249,15 @@ namespace StickMate.Core
             // 복구(DragThrowState/RodeoCursorState) 및 StateTransitioned 발행(Interaction 컨트롤러들의
             // 락 해제 트리거, DragThrowController/BattleMinigameDirector/RodeoCursorWatcher 참고)을
             // 자연스럽게 유발한다 — 이 메서드는 그 사실만 트리거할 뿐 락 해제 자체에는 관여하지 않는다.
+            // Phase 4 확장(UX_FLOW.md 27절 각 절, "전체화면 게임 감지 시 즉시 취소" 공통 예외 상태):
+            // 창 도둑/그라피티/청소부/블랙홀/크래시(캐릭터 스윙 쪽)도 동일한 이유로 이 강제 목록에 편입.
+            // 창 크래시 오버레이 자체(3초 수명)는 이 상태와 독립적이라 Interaction/WindowCrashDirector.cs가
+            // IsSuspended를 직접 폴링해 별도로 취소한다(RivalStickmanAgent의 IsSuspended 폴링과 동일 패턴).
             StickmanStateId current = _machine.CurrentStateId;
             if (current == StickmanStateId.Dragged || current == StickmanStateId.RodeoCursor ||
-                current == StickmanStateId.BattleMinigame)
+                current == StickmanStateId.BattleMinigame || current == StickmanStateId.WindowTheft ||
+                current == StickmanStateId.Graffiti || current == StickmanStateId.DesktopTidy ||
+                current == StickmanStateId.BlackholeSummon || current == StickmanStateId.WindowCrash)
             {
                 _machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
             }

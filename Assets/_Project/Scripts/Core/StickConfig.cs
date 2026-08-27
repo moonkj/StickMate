@@ -251,6 +251,141 @@ namespace StickMate.Core
                  "으로 계산된다(항상 RAGDOLL 전이를 보장하기 위해 1보다 크게 유지할 것).")]
         public float rodeoShakeImpactMultiplier = 1.25f;
 
+        [Header("윈도우 창 도둑 (docs/UX_FLOW.md 27-1절, Phase 4)")]
+        [Tooltip("유휴 판정 저확률 추첨 주기(초). 10/11절과 동일한 스펙터클 트리거 패턴 재사용.")]
+        public float windowTheftCheckInterval = 60f;
+
+        [Tooltip("판정 주기마다 발동할 확률(0~1). UX 명시값 2~4%.")]
+        public float windowTheftChance = 0.03f;
+
+        [Tooltip("종료 후 다음 발동까지의 최소 쿨다운(초). UX 명시값 15분.")]
+        public float windowTheftCooldownSeconds = 900f;
+
+        [Tooltip("대상 창 선정 기준 — 창 폭이 캐릭터 신장(OS 화면 픽셀 환산)의 이 배수 이하여야 후보로 " +
+                 "채택된다. 작은 창일수록 '정말 밀리는 듯' 긴장감이 산다(27-1 근거).")]
+        public float windowTheftMaxTargetWidthMultiplier = 3f;
+
+        [Tooltip("1/2회차 시도 각각의 지속 시간(초). 2회 고정(1회는 성의 없어 보이고 3회 이상은 지루함).")]
+        public float windowTheftAttemptDuration = 1.2f;
+
+        [Tooltip("2회 시도 후 포기 리액션(헥헥거림) 지속 시간(초) — 이 시간이 끝나면 정상적으로 Idle로 복귀.")]
+        public float windowTheftGiveUpDuration = 1.5f;
+
+        [Header("바탕화면 청소부 / 블랙홀 (docs/UX_FLOW.md 27-2/27-5절, Phase 4 — 복제 스프라이트 공용 파이프라인)")]
+        [Tooltip("청소부 유휴 판정 저확률 추첨 주기(초).")]
+        public float desktopTidyCheckInterval = 60f;
+
+        [Tooltip("청소부 판정 주기마다 발동할 확률(0~1). UX는 구체 수치를 명시하지 않아 다른 유휴 " +
+                 "스펙터클(창 도둑 2~4%)과 같은 대역으로 임시 추정.")]
+        public float desktopTidyChance = 0.03f;
+
+        [Tooltip("청소부 종료 후 다음 발동까지의 최소 쿨다운(초). UX 미명시 — 창 도둑과 동일한 15분으로 임시 추정.")]
+        public float desktopTidyCooldownSeconds = 900f;
+
+        [Tooltip("청소부 정렬 연출(복제 스프라이트 슬라이드~짠 포즈)의 지속 시간(초). 이 시간 후 정상 " +
+                 "종료(오버레이 페이드아웃) — 실제 슬라이드 애니메이션은 Phase2+ 렌더링 담당.")]
+        public float desktopTidyDurationSeconds = 2.5f;
+
+        [Tooltip("블랙홀 유휴 판정 저확률 추첨 주기(초).")]
+        public float blackholeCheckInterval = 60f;
+
+        [Tooltip("블랙홀 판정 주기마다 발동할 확률(0~1). UX 미명시 — 청소부와 동일 대역으로 임시 추정.")]
+        public float blackholeChance = 0.03f;
+
+        [Tooltip("블랙홀 종료 후 다음 발동까지의 최소 쿨다운(초). UX 미명시 — 청소부와 동일하게 임시 추정.")]
+        public float blackholeCooldownSeconds = 900f;
+
+        [Tooltip("블랙홀 소용돌이~튕겨나옴 연출의 지속 시간(초). 실제 궤적 애니메이션은 Phase2+ 렌더링 담당.")]
+        public float blackholeDurationSeconds = 2.5f;
+
+        [Header("화면 낙서 그라피티 (docs/UX_FLOW.md 27-3절, Phase 4)")]
+        [Tooltip("유휴 판정 저확률 추첨 주기(초).")]
+        public float graffitiCheckInterval = 60f;
+
+        [Tooltip("판정 주기마다 발동할 확률(0~1). UX 미명시 — 방해성이 가장 낮은 항목이라 다른 스펙터클보다 " +
+                 "약간 높게 임시 추정.")]
+        public float graffitiChance = 0.04f;
+
+        [Tooltip("종료 후 다음 발동까지의 최소 쿨다운(초). UX 미명시 — 방해성이 낮아 다른 스펙터클보다 짧게 임시 추정.")]
+        public float graffitiCooldownSeconds = 600f;
+
+        [Tooltip("캐릭터로부터 그리기 후보 영역까지의 최소 반경(OS 화면 픽셀). UX 명시값 200px.")]
+        public float graffitiMinRadiusPx = 200f;
+
+        [Tooltip("캐릭터로부터 그리기 후보 영역까지의 최대 반경(OS 화면 픽셀). UX 명시값 300px.")]
+        public float graffitiMaxRadiusPx = 300f;
+
+        [Tooltip("낙서 영역의 정사각형 한 변 길이(OS 화면 픽셀) — 발판과의 겹침 판정에 쓰이는 후보 사각형 크기.")]
+        public float graffitiRegionSizePx = 96f;
+
+        [Tooltip("낙서가 유지되는 시간(초) 최소. UX 명시값 3~5초 구간(페이드아웃은 별도로 Phase2+ 렌더링이 처리).")]
+        public float graffitiHoldDurationMin = 3f;
+
+        [Tooltip("낙서가 유지되는 시간(초) 최대.")]
+        public float graffitiHoldDurationMax = 5f;
+
+        [Tooltip("겹치지 않는 빈 영역을 찾기 위해 무작위 후보를 시도하는 최대 횟수. 전부 실패하면 이번 " +
+                 "유휴 판정 주기는 스킵하고 다음 주기로 이연한다(27-3, 억지로 창 위에 그리지 않음).")]
+        public int graffitiCandidateSearchAttempts = 8;
+
+        [Header("윈도우 크래시 (docs/UX_FLOW.md 27-4절, Phase 4)")]
+        [Tooltip("유휴 판정 저확률 추첨 주기(초). 원문의 키보드타건속도/에러창 감지 트리거는 UX 설계에서 " +
+                 "이미 배제되어 이 저확률 추첨으로 대체되었다(26-5 키보드 폐기 결정과의 충돌 방지, 27-4 근거).")]
+        public float windowCrashCheckInterval = 60f;
+
+        [Tooltip("판정 주기마다 발동할 확률(0~1). UX 명시값 1~3%(다른 스펙터클보다 낮게 — 시각적 충격이 큼).")]
+        public float windowCrashChance = 0.02f;
+
+        [Tooltip("종료 후 다음 발동까지의 최소 쿨다운(초). UX 명시값 20~30분 구간의 중간값(25분).")]
+        public float windowCrashCooldownSeconds = 1500f;
+
+        [Tooltip("캐릭터의 해머 스윙 모션 지속 시간(초) — 크랙 오버레이 자체의 3초 수명과는 독립적이다.")]
+        public float windowCrashSwingDuration = 0.4f;
+
+        [Tooltip("크랙 유리 오버레이가 유지되는 시간(초). UX 명시값 3초, 이후 파편화 페이드아웃(0.3~0.5초, " +
+                 "Phase2+ 렌더링 담당)과 함께 제거.")]
+        public float windowCrashOverlayDurationSeconds = 3f;
+
+        [Header("PC 하드웨어 반응 (docs/UX_FLOW.md 23/27-6절, Phase 4)")]
+        [Tooltip("배터리 잔량 폴링 주기(초). UX 명시값 60~120초 — 물리적으로 급변하지 않는 값이라 저빈도로 충분.")]
+        public float hardwareBatteryPollInterval = 90f;
+
+        [Tooltip("이 값(0~1) 이하면 배터리 부족 반응 후보. UX 명시값 20%.")]
+        public float hardwareLowBatteryThreshold = 0.2f;
+
+        [Tooltip("충전 중 여부 폴링 주기(초). Unity에는 OS 충전 이벤트 콜백이 없어(크로스플랫폼 API " +
+                 "부재) 항상 이 폴백 폴링을 사용한다 — UX 명시값 30초.")]
+        public float hardwareChargingPollInterval = 30f;
+
+        [Tooltip("CPU 근사 지표(프레임타임) 샘플링 주기(초). UX 명시값 5~10초. **알려진 한계**: Unity에는 " +
+                 "프로세스별 실제 CPU 사용률을 얻는 크로스플랫폼 API가 없어, 이 앱 자신의 프레임타임 저하를 " +
+                 "'시스템 부하'의 매우 거친 근사 지표로 대신 사용한다(Interaction/HardwareReactionDirector.cs 참고).")]
+        public float hardwareCpuSampleInterval = 7f;
+
+        [Tooltip("CPU 과부하로 판정하는 평균 프레임타임 임계값(초). 기본값은 대략 20fps 미만에 해당하는 " +
+                 "근사치 — 정확한 CPU% 문턱값이 아니라 '체감 버벅임' 근사 임계값이다.")]
+        public float hardwareCpuHighFrameTimeThresholdSeconds = 0.05f;
+
+        [Tooltip("CPU 과부하 판정을 확정하기까지 샘플이 연속으로 임계값을 넘겨야 하는 누적 시간(초). " +
+                 "UX 명시값 30~60초(샘플 주기와 판정 주기는 별개 — 27-6 표 근거).")]
+        public float hardwareCpuSustainWindowSeconds = 45f;
+
+        [Tooltip("네트워크 연결성 폴링 주기(초). UX 명시값 15~30초.")]
+        public float hardwareNetworkPollInterval = 20f;
+
+        [Tooltip("네트워크 끊김을 확정하기 전 연속으로 끊김이 관찰되어야 하는 폴링 횟수. 순간적 로밍 " +
+                 "끊김 오탐 방지(23절 근거) — 2회 연속(=폴링 주기의 2배 시간) 확인.")]
+        public int hardwareNetworkConfirmPollCount = 2;
+
+        [Tooltip("배터리 부족 판정을 확정하기 전 연속으로 저잔량이 관찰되어야 하는 폴링 횟수. 순간적 " +
+                 "판독 오류 방지 — 2회 연속 확인.")]
+        public int hardwareBatteryConfirmPollCount = 2;
+
+        [Tooltip("같은 하드웨어 반응이 회복(정상 범위 복귀) 이후 다시 알림 가능해지기까지의 최소 대기 " +
+                 "시간(초). UX 명시값 5~10분 구간의 중간값(7분) — '회복 확인 전 재알림 금지' 규칙과 별개로, " +
+                 "회복 이후에도 이 시간만큼은 재알림을 유예한다(빠른 flapping 방지).")]
+        public float hardwareReactionCooldownSeconds = 420f;
+
         [Header("색상 (임시 플레이스홀더 — 디자이너 확정 전까지)")]
         public Color primaryOutlineColor = Color.black;
         public Color dialogueBubbleColor = Color.white;

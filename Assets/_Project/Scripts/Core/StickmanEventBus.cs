@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using UnityEngine;
 using StickMate.Dialogue;
 
 namespace StickMate.Core
@@ -30,6 +32,139 @@ namespace StickMate.Core
         /// <summary>로데오 커서(13절): 클릭 없이 커서 정지만으로 발동, 캐릭터가 커서 위치에 올라타 따라
         /// 다니다가 거친 흔들기/10초 타임아웃/트레이 긴급정지 3중 안전망으로 종료.</summary>
         RodeoCursor,
+
+        // ==== Phase 4 (docs/UX_FLOW.md 27절) — OS 장난 / 파괴효과. 전부 "실제로는 아무것도 건드리지
+        // 않는 착시" 스펙터클(27-7 체크리스트)이며, 실제 창/아이콘 좌표는 읽기 전용으로만 참조한다. ====
+
+        /// <summary>윈도우 창 도둑(27-1): 작은 창을 붙잡고 미는/당기는 시늉을 2회 시도한 뒤 포기하는
+        /// 순수 연출. 실제 창 좌표를 변경하는 API는 절대 호출하지 않는다(성공 케이스 자체가 설계에 없음).
+        /// Interaction/WindowTheftDirector.cs가 대상 선정/취소 감시를 전담한다.</summary>
+        WindowTheft,
+
+        /// <summary>화면 낙서 그라피티(27-3): 캐릭터 근처 발판과 안 겹치는 빈 영역에 스프레이 낙서를
+        /// 그렸다가 페이드아웃하는 순수 오버레이. 배경화면 파일/설정 API는 전혀 호출하지 않는다.</summary>
+        Graffiti,
+
+        /// <summary>바탕화면 청소부(27-2): 복제 스프라이트로 아이콘을 정렬하는 시늉. 실제 아이콘 좌표는
+        /// 읽기 전용 조회로만 쓰이고, 오버레이는 항상 100% 클릭관통이다. 27-5(블랙홀)와 상호배제.</summary>
+        DesktopTidy,
+
+        /// <summary>블랙홀 소환(27-5): 27-2와 동일한 복제 스프라이트 파이프라인을 재사용하는 코믹 물리
+        /// 스펙터클. 27-2(청소부)와 상호배제.</summary>
+        BlackholeSummon,
+
+        /// <summary>윈도우 크래시(27-4): 활성 창에 해머를 내리치는 캐릭터 스윙 모션(짧게 재생 후 자동
+        /// Idle 복귀). 크랙 유리 오버레이 자체의 3초 수명은 이 상태와 독립적으로
+        /// Interaction/WindowCrashDirector.cs가 관리하며, 그 오버레이는 예외 없이 100% 클릭관통이다.</summary>
+        WindowCrash,
+    }
+
+    /// <summary>
+    /// docs/UX_FLOW.md 27-2/27-5절 — 바탕화면 청소부와 블랙홀 소환이 공유하는 "복제 스프라이트" 파이프라인
+    /// (28절-25 "하나의 공용 컴포넌트로 통합 구현" 권고)에서, 지금 어느 쪽이 진행 중인지 구분하는 값.
+    /// </summary>
+    public enum DesktopIconMirrorKind
+    {
+        DesktopTidy,
+        BlackholeSummon,
+    }
+
+    /// <summary>
+    /// 27-1/27-2/27-3/27-4/27-5(창 도둑/청소부/그라피티/크래시/블랙홀) 오버레이 스펙터클 공용 생애주기
+    /// 단계. Phase2+ 렌더링 레이어가 이 값으로 "자리표시자 오버레이 스프라이트"를 스폰(Started)/즉시
+    /// 제거(Cancelled)/페이드아웃 제거(Completed)한다 — 지금은 좌표/취소판정만 확정하고 실제 스프라이트
+    /// 생성·이동·제거는 다른 트리거 이벤트(WanderAmbientMotionRequested 등)와 동일하게 Phase2+ 몫이다.
+    /// </summary>
+    public enum SpectacleOverlayPhase
+    {
+        Started,
+        Cancelled,
+        Completed,
+    }
+
+    /// <summary>윈도우 창 도둑(27-1) 오버레이 이벤트 — 대상 창의 스냅샷 사각형(OS 화면 좌표)을 함께 실어
+    /// Phase2+ 렌더링이 어디로 캐릭터 팔을 뻗을지 알 수 있게 한다.</summary>
+    public readonly struct WindowTheftOverlayEvent
+    {
+        public readonly Rect TargetRectOsScreen;
+        public readonly SpectacleOverlayPhase Phase;
+
+        public WindowTheftOverlayEvent(Rect targetRectOsScreen, SpectacleOverlayPhase phase)
+        {
+            TargetRectOsScreen = targetRectOsScreen;
+            Phase = phase;
+        }
+    }
+
+    /// <summary>화면 낙서 그라피티(27-3) 오버레이 이벤트 — 그려질 빈 영역(OS 화면 좌표)의 스냅샷.</summary>
+    public readonly struct GraffitiOverlayEvent
+    {
+        public readonly Rect RegionOsScreen;
+        public readonly SpectacleOverlayPhase Phase;
+
+        public GraffitiOverlayEvent(Rect regionOsScreen, SpectacleOverlayPhase phase)
+        {
+            RegionOsScreen = regionOsScreen;
+            Phase = phase;
+        }
+    }
+
+    /// <summary>바탕화면 청소부/블랙홀(27-2/27-5) 오버레이 이벤트 — 이벤트 시작 시 1회 캡처한 아이콘
+    /// 사각형 목록(OS 화면 좌표, 읽기 전용 조회 결과)의 스냅샷. Started에서만 의미 있는 목록이 실리고,
+    /// Cancelled/Completed는 빈 목록으로 발행된다(Phase2+ 렌더링은 자신이 스폰한 스프라이트를 이미
+    /// 알고 있으므로 제거 시점에 목록이 다시 필요하지 않다).</summary>
+    public readonly struct DesktopIconMirrorOverlayEvent
+    {
+        public readonly DesktopIconMirrorKind Kind;
+        public readonly IReadOnlyList<Rect> IconRectsOsScreen;
+        public readonly SpectacleOverlayPhase Phase;
+
+        public DesktopIconMirrorOverlayEvent(DesktopIconMirrorKind kind, IReadOnlyList<Rect> iconRectsOsScreen, SpectacleOverlayPhase phase)
+        {
+            Kind = kind;
+            IconRectsOsScreen = iconRectsOsScreen;
+            Phase = phase;
+        }
+    }
+
+    /// <summary>윈도우 크래시(27-4) 오버레이 이벤트 — 대상(활성) 창의 스냅샷 사각형(OS 화면 좌표).</summary>
+    public readonly struct WindowCrashOverlayEvent
+    {
+        public readonly Rect TargetRectOsScreen;
+        public readonly SpectacleOverlayPhase Phase;
+
+        public WindowCrashOverlayEvent(Rect targetRectOsScreen, SpectacleOverlayPhase phase)
+        {
+            TargetRectOsScreen = targetRectOsScreen;
+            Phase = phase;
+        }
+    }
+
+    /// <summary>docs/UX_FLOW.md 23/27-6절 PC 하드웨어 반응 4종.</summary>
+    public enum HardwareReactionKind
+    {
+        LowBattery,
+        HighCpu,
+        NetworkDown,
+        Charging,
+    }
+
+    /// <summary>
+    /// 하드웨어 반응 표시 상태 변경 이벤트. Active=true는 "이 반응을 지금부터 표현 시작"(23절 우선순위
+    /// 판정을 거쳐 동시에 최대 하나만 true), Active=false는 "표현 종료"(회복 또는 다른 신호에 의한
+    /// 우선순위 교체)를 뜻한다. 실제 배터리/CPU % 숫자는 원칙상(23절 "은유만 담당") 이 이벤트에 싣지
+    /// 않는다 — Phase2+ 렌더링은 Kind만으로 미리 정해진 은유 연출(힘없이 비틀거림/부채질 등)을 고른다.
+    /// </summary>
+    public readonly struct HardwareReactionEvent
+    {
+        public readonly HardwareReactionKind Kind;
+        public readonly bool Active;
+
+        public HardwareReactionEvent(HardwareReactionKind kind, bool active)
+        {
+            Kind = kind;
+            Active = active;
+        }
     }
 
     /// <summary>UX_FLOW.md 10절 격파 미니게임 한 차례 시도의 결과. StickmanEventBus가 트리거 조건만
@@ -148,6 +283,23 @@ namespace StickMate.Core
         /// 해제 등에 사용 예정(지금은 구독자 없음).</summary>
         public static event Action<RivalDuelResult> RivalDuelEnded;
 
+        /// <summary>윈도우 창 도둑(27-1) 오버레이 생애주기 변경. Phase2+ 렌더링이 이 이벤트만 구독해
+        /// 팔 IK/파티클 스폰-제거를 담당한다(지금은 트리거/취소 판정만 계산).</summary>
+        public static event Action<WindowTheftOverlayEvent> WindowTheftOverlayChanged;
+
+        /// <summary>화면 낙서 그라피티(27-3) 오버레이 생애주기 변경.</summary>
+        public static event Action<GraffitiOverlayEvent> GraffitiOverlayChanged;
+
+        /// <summary>바탕화면 청소부/블랙홀(27-2/27-5) 공용 복제 스프라이트 오버레이 생애주기 변경.</summary>
+        public static event Action<DesktopIconMirrorOverlayEvent> DesktopIconMirrorOverlayChanged;
+
+        /// <summary>윈도우 크래시(27-4) 크랙 오버레이 생애주기 변경 — 캐릭터의 짧은 해머 스윙 상태
+        /// (StickmanStateId.WindowCrash)와 독립된 별도 수명(3초)이다.</summary>
+        public static event Action<WindowCrashOverlayEvent> WindowCrashOverlayChanged;
+
+        /// <summary>PC 하드웨어 반응(23/27-6절) 표시 상태 변경 — 동시에 최대 하나만 Active=true.</summary>
+        public static event Action<HardwareReactionEvent> HardwareReactionChanged;
+
         public static void RaiseStateTransitioned(StickmanStateId from, StickmanStateId to, bool isForcedInterrupt = false)
             => StateTransitioned?.Invoke(new StateTransitionEvent(from, to, isForcedInterrupt));
 
@@ -177,5 +329,20 @@ namespace StickMate.Core
 
         public static void RaiseRivalDuelEnded(RivalDuelResult result)
             => RivalDuelEnded?.Invoke(result);
+
+        public static void RaiseWindowTheftOverlayChanged(Rect targetRectOsScreen, SpectacleOverlayPhase phase)
+            => WindowTheftOverlayChanged?.Invoke(new WindowTheftOverlayEvent(targetRectOsScreen, phase));
+
+        public static void RaiseGraffitiOverlayChanged(Rect regionOsScreen, SpectacleOverlayPhase phase)
+            => GraffitiOverlayChanged?.Invoke(new GraffitiOverlayEvent(regionOsScreen, phase));
+
+        public static void RaiseDesktopIconMirrorOverlayChanged(DesktopIconMirrorKind kind, IReadOnlyList<Rect> iconRectsOsScreen, SpectacleOverlayPhase phase)
+            => DesktopIconMirrorOverlayChanged?.Invoke(new DesktopIconMirrorOverlayEvent(kind, iconRectsOsScreen, phase));
+
+        public static void RaiseWindowCrashOverlayChanged(Rect targetRectOsScreen, SpectacleOverlayPhase phase)
+            => WindowCrashOverlayChanged?.Invoke(new WindowCrashOverlayEvent(targetRectOsScreen, phase));
+
+        public static void RaiseHardwareReactionChanged(HardwareReactionKind kind, bool active)
+            => HardwareReactionChanged?.Invoke(new HardwareReactionEvent(kind, active));
     }
 }
