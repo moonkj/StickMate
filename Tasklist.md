@@ -418,3 +418,12 @@
 - 검증에 쓴 임시 진단 파일(`CoderDiagRagdollWalkImpactTest.cs`)은 삭제 완료, `git status` 기준 이번 작업으로 남은 변경은 `Assets/Editor/SceneBootstrapper.cs`/`Assets/_Project/Scripts/States/RagdollRig.cs`(코드)와 `Assets/_Project/Prefabs/Stickman.prefab`/`Assets/_Project/Scenes/Main.unity`(재생성된 에셋)뿐이다(무관한 macOS 작업 파일들은 손대지 않음).
 
 **결론**: BUG-SW-M4 해소. Debugger 재확인 대상.
+
+## macOS 열거 + 랙돌감쇠 + 가드대칭화 통합 확인 (Debugger, 2026-08-28)
+
+**전체 승인 — 이번 라운드(씬배선+macOS+랙돌감쇠) 최종 완료.** 상세는 `docs/BUG_REPORT_SCENE_WIRING.md` 맨 아래 섹션 참고.
+
+- BUG-SW-M4: 프리팹 팔다리 damping(0.6/1.5) + `EnterRagdoll()` 각속도 0.5배 감쇠 코드 확인. PlayMode 20회 독립 재실행 100% 통과(Walk 피격 2/2 포함, run8 t=3.25s/run11 t=6.75s 정상 복귀) — Coder의 15회와 별개로 표본 재확보.
+- MacWindowService: Boolean 마샬링(`[MarshalAs(UnmanagedType.I1)]`) 3개 함수 전부 정확, 안전가드(SetClickThrough/SetAlwaysOnTop 무조건 예외) Win32와 대칭 확인, 실제 부작용 코드 없음. `MacWindowEnumerationDiagnostic` 직접 재실행 — Coder 원 실측과 일치(이번 세션 창 2개 정확히 열거, 나머지 19개 시스템레이어 제외, 한글 디코딩 정상).
+- `!UNITY_EDITOR` 가드: Windows/macOS 두 분기 모두 대칭 적용 확인. `Library/EditorUserBuildSettings.asset`에서 활성 빌드타깃 `OSXUniversal` 확인. EditMode 13/13·PlayMode 20/20 전부 통과 + 로그에 MacWindowService 흔적 없음(계속 NullPlatformWindowService 더미 발판)으로 에디터 무영향 간접 확인.
+- 컴파일 에러0/경고0 재확인.

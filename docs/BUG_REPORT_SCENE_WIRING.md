@@ -123,3 +123,46 @@ BUG-SW-M1/M2/M3 원 지적사항 자체와 스모크 테스트 디플레이킹 �
 - EditMode: `total="13" passed="13" failed="0"` — 기준선 유지.
 - PlayMode(기존 2개 테스트, `-quit` 없이 `-runTests` 사용): 단발 실행 기준 `total="2" passed="2" failed="0"` 재현 확인. 다만 8회 반복 시 `StickmanRagdollRecoveryTests`만 2/8 실패(위 BUG-SW-M4), `StickmanPlaytestSmokeTests`는 8/8 전부 통과.
 - 모든 임시 진단 파일(`DebuggerDiagRagdollWalkImpactTest.cs`)과 임시 버그 주입(2건)은 검증 직후 삭제/원복했으며, 최종 `git status`/`git diff` 기준 이 검토가 추적 대상 파일에 남긴 변경은 0건이다(검토 도중 무관한 별도 작업자가 macOS 네이티브 창 열거 관련 파일들을 동시에 수정 중이었음을 확인했으나, 이는 이번 검토 범위 밖이며 손대지 않았다).
+
+---
+
+## macOS 열거 + 랙돌감쇠 + 가드대칭화 통합 확인 (Debugger, 2026-08-28, 대상 커밋 `6344058`)
+
+**전체 승인 — 이번 라운드(씬배선+macOS+랙돌감쇠) 최종 완료**
+
+Coder의 15회 100% 통과 주장을 그대로 신뢰하지 않고, 세 변경분(BUG-SW-M4 수정/macOS 창 열거/가드 대칭화) 전부 독립 재검증했다. 세 가지 모두 실측으로 건전함을 확인했다.
+
+### 1) BUG-SW-M4(이동 중 피격 GETUP 영구실패) — 재발 없음, 승인
+
+- **프리팹 실측**: `Stickman.prefab` YAML 직접 확인 — RightArm/LeftLeg/RightLeg/LeftArm(4개 팔다리) 전부 `m_LinearDamping: 0.6`, `m_AngularDamping: 1.5`로 변경됨(이전 `0`/`0.05`). 루트 `Stickman`(mass=1, 이동을 직접 구동하는 몸통)은 의도대로 `0`/`0.05` 그대로 유지 — 걷기 반응성에 영향 없이 팔다리 관성만 흡수하도록 설계된 것을 확인.
+- **`RagdollRig.EnterRagdoll()` 코드 확인**: 관절 모터 OFF에 더해 전신 파츠(`_bodies`, 루트 포함)의 `angularVelocity`를 진입 시 1회 `×0.5`. `linearVelocity`는 미변경 — "충격에 날아가는" 손맛 보존 확인.
+- **독립 재실행(Coder의 15회와 별개로 내가 직접 실행)**: `-runTests -testPlatform PlayMode -quit 없이` **20회** 독립 재실행(새 프로세스 2배치, 매회 `System.Guid` 기반 RNG로 경로 상이) — **20/20(100%) 전부 통과**, 매회 `total="2" passed="2" failed="0"`. 지시받은 8~10회를 넘겨 표본을 2배로 확보.
+  - 충격 전 상태 분포: Idle 18회, **Walk 2회**(run8, run11). **Walk 피격 2/2 전부 성공** — run8은 t=3.25s, run11은 t=6.75s에 Idle/Walk로 복귀(15초 관찰 한도 대비 충분한 여유, 이전 반려 당시 관측됐던 "15초/45초 내내 미정착" 패턴 재현 없음). Idle 피격 18/18 전부 1.25s로 일관되게 복귀(회귀 없음).
+  - 20개 로그 전체에서 `error CS`/`warning CS`/의미있는 `LogError`/`LogException` 0건.
+- **결론**: Walk-피격 표본이 2건뿐이라 Coder의 4/4보다 적지만, 합산하면 Walk 피격 총 6/6(Coder 4 + Debugger 2) 전부 성공으로 반려 당시의 25%(2/8) 실패율과 뚜렷이 대비된다. damping 부여 + 진입 시 각속도 감쇠 조합이 실제로 문제를 해소했다고 판단.
+
+### 2) MacWindowService P/Invoke 마샬링 — 코드 확인 결과 정확, 실측 재현 성공
+
+- **Boolean 마샬링**: `CGRectMakeWithDictionaryRepresentation`/`CFStringGetCString`/`CFNumberGetValue` 3개 함수 전부 `[return: MarshalAs(UnmanagedType.I1)]` 명시 확인(1바이트 CoreFoundation Boolean과 정확히 일치). Win32Service의 `bool` 반환 함수들(4바이트 Win32 BOOL)에는 이 속성이 없는 것도 대조 확인 — 두 플랫폼 규칙 차이가 파일별로 정확히 반영됨.
+- **`EnumerateFootholds()` 필터**: `kCGWindowLayer==0` 필터와, `kCGWindowOwnerPID`(1차)+`kCGWindowOwnerName`(보조) 이중 자기 자신 제외 로직 코드로 확인.
+- **안전가드 대칭성**: `CreateOverlayWindow()`는 조회 전용(자기 창의 CGWindowID를 찾아 기록할 뿐, 아무것도 조작하지 않음), `SetClickThrough()`/`SetAlwaysOnTop()`은 Win32의 BUG-B1 가드와 동일하게 무조건 `NotSupportedException`. 부작용을 내는 코드는 어디에도 없음을 전체 파일 정독으로 확인 — macOS 쪽에 실수로 실제 조작 코드가 들어간 흔적 없음.
+- **`MacWindowEnumerationDiagnostic.cs` 직접 재실행**(`-executeMethod ...LogEnumeration`, 이번 세션): `EnumerateFootholds() 결과 개수 = 2`(Cursor, 메모/Notes — 이번 세션 실제 창과 일치), 원시 21개 중 제어센터/메뉴바/Dock/알림센터/Finder데스크톱/Wallpaper/WindowServer배경 등 `layer≠0` 19개 전부 정확히 제외, 한글 오너 이름("제어 센터"/"메모"/"알림 센터") 깨짐 없이 디코딩, `SetClickThrough()`/`SetAlwaysOnTop()` 둘 다 `NotSupportedException` 정상 발동. Coder의 원 실측 로그와 값까지 일치(Cursor 창 rect 등). 재현 성공.
+
+### 3) `!UNITY_EDITOR` 가드 대칭화 — 정확, 에디터는 항상 NullPlatformWindowService로 폴백
+
+- `StickmanAgent.CreatePlatformService()` 4개 분기 전문 확인: `UNITY_STANDALONE_WIN && !UNITY_EDITOR` / `UNITY_STANDALONE_OSX && !UNITY_EDITOR` / `UNITY_IOS || UNITY_ANDROID` / `#else`(NullPlatformWindowService). Windows·macOS 두 분기 모두 정확히 `&& !UNITY_EDITOR` 대칭 적용 확인.
+- `Library/EditorUserBuildSettings.asset` 직접 확인 — `m_ActiveBuildTarget`이 `OSXUniversal`(Architecture x64+ARM64)로 설정되어 있음을 재확인, Coder/Architect 주장(활성 빌드타깃=macOS)과 일치.
+- 간접 증거: EditMode 13/13, PlayMode 20/20 전부 통과하며 로그 어디에도 `MacWindowService`/CoreGraphics 관련 로그가 등장하지 않고(발판은 계속 `NullPlatformWindowService`의 더미 발판 패턴), 낙하/스냅/배회 좌표 범위도 기존 기준선과 동일 — 에디터 배치모드에서 macOS 분기가 실제로 컴파일·실행되지 않고 있음을 실측으로 재확인(코드 가드가 실제로 작동 중).
+
+### 최종 재검증 수치 (Debugger 독립)
+
+- Unity 배치모드 컴파일: `error CS`/`warning CS` 매치 0건, exit code 0.
+- EditMode: `total="13" passed="13" failed="0"` — 기준선 유지.
+- PlayMode: 20회 독립 반복 `total="2" passed="2" failed="0"` **20/20(100%)** — 기준선(2/2) 대비 반복 견고성까지 확인(BUG-SW-M4 케이스 포함).
+- `MacWindowEnumerationDiagnostic` 재실행 — Coder 원 실측과 값 일치, 재현 성공.
+
+### 결론
+
+세 변경분(BUG-SW-M4 damping 수정, MacWindowService, `!UNITY_EDITOR` 가드 대칭화) 전부 코드 검토 + 독립 실측(20회 PlayMode 반복 + macOS 진단 재실행)으로 문제 없음을 확인했다. 씬/프리팹 배선 반려 사이클에서 시작된 BUG-SW-M4까지 포함해 이번 라운드 전체 항목이 모두 해소됨.
+
+**전체 승인 — 이번 라운드(씬배선+macOS+랙돌감쇠) 최종 완료**

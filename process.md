@@ -142,3 +142,7 @@ Phase 0(스캐폴딩) → 1(코어루프) → 2(랙돌/파쿠르) → 3(전투/�
 - README.md 최신화: 씬/프리팹 배선 완료 반영(더 이상 "빈 씬" 아님), PlayMode 테스트 2종 추가, macOS/Windows 오버레이 한계 통합 정리.
 - 리더 독립 컴파일 재검증(통합 상태): 에러0/경고0.
 - 다음: Debugger에게 이번 라운드(macOS 열거 + 랙돌 감쇠 + 에디터 가드) 통합 검토 위임.
+
+## 2026-08-28 (계속) — 통합 최종 승인
+- Debugger 독립 재검증(20회 PlayMode 반복, Walk 피격 2/2 포함): BUG-SW-M4 완전 해소 확인. macOS 마샬링(Boolean 3곳 MarshalAs 확인)/필터/자기제외/실제 창 열거 재현 전부 정상. 에디터 가드 대칭화도 활성빌드타깃(OSXUniversal) 기준 정상 작동(에디터는 계속 NullPlatformWindowService 사용) 확인.
+- **전체 승인 — 씬배선+macOS+랙돌감쇠 라운드 최종 완료.**
