@@ -333,7 +333,14 @@ namespace StickMate.EditorTools
             cam.orthographicSize = 5f;
             cam.transform.position = new Vector3(0f, 0f, -10f);
             cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = new Color(0.85f, 0.85f, 0.85f, 1f); // 데스크톱 배경 대용 임시 밝은 회색.
+            // "바로 바탕화면에서 구동" 라운드(2026-08-28) 대응: 알파를 0으로 낮춰 카메라가 그리는 배경을
+            // 완전 투명으로 바꾼다. Platform/MacOS/StickMateOverlayPlugin.m의 SM_ConfigureOverlayWindow가
+            // 우리 자신의 NSWindow를 setOpaque:NO + backgroundColor=clearColor로 맞춰주는 쪽과 짝을 이루는
+            // 절반 — 카메라가 알파 1로 그리면 창을 아무리 투명하게 만들어도 렌더 결과 자체가 불투명색으로
+            // 덮여 무의미하다. 정직한 한계(StickMateOverlayPlugin.m 문서 주석 참고): Unity Standalone Mac
+            // Player의 렌더 서페이스가 기본적으로 불투명 합성을 가정하고 있어, 이 알파값만으로 데스크톱
+            // 배경이 실제로 완전히 비쳐 보이는 것까지 100% 보장되지는 않는다 — 실측/외부 확인 필요.
+            cam.backgroundColor = new Color(0.85f, 0.85f, 0.85f, 0f);
             camGo.AddComponent<AudioListener>();
 
             // BUG-SW-M1 대응: RAGDOLL이 실제로 부딪혀 멈출 수 있는 정적 바닥. Rigidbody2D를 붙이지

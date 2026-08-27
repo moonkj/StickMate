@@ -46,27 +46,37 @@ namespace StickMate.EditorTools
             bool cursorOk = service.TryGetGlobalCursorPosition(out Vector2 cursor);
             Debug.Log($"[MACWIN-TEST] TryGetGlobalCursorPosition() = {cursorOk}, pos=({cursor.x:F1},{cursor.y:F1})");
 
-            bool overlayOk = service.CreateOverlayWindow();
-            Debug.Log($"[MACWIN-TEST] CreateOverlayWindow() = {overlayOk} (자기 자신의 온스크린 CGWindowID 탐색 결과 — 아래 안전가드 확인용)");
-
+            // "바로 바탕화면에서 구동" 라운드(2026-08-28) 갱신: CreateOverlayWindow/SetClickThrough/
+            // SetAlwaysOnTop은 더 이상 무조건 NotSupportedException을 던지는 안전가드가 아니라, 실제
+            // StickMateOverlayPlugin.bundle(Assets/Plugins/macOS/)을 [DllImport]로 호출하는 진짜 구현이다
+            // (Platform/MacOS/MacWindowService.cs 클래스 문서 참고). 그런데 이 진단 도구 자신은
+            // Assets/Editor/ 아래에 있어 Unity 에디터 프로세스에서만 실행되고, 그 네이티브 플러그인은
+            // 빌드 스크립트(Assets/Editor/BuildStandalone.cs)가 명시적으로
+            // PluginImporter.SetCompatibleWithEditor(false)로 잠가뒀다(에디터 자신의 창을 실수로 건드리는
+            // 사고를 원천 차단하기 위한 의도적 설계 — 클래스 문서 참고). 따라서 이 메뉴 항목을 에디터에서
+            // 실행하면 세 함수 모두 P/Invoke 엔트리포인트를 찾지 못해 DllNotFoundException을 던지는 것이
+            // "정상"이다 — 실제 Standalone Player 안에서만(StickmanAgent.Start() 경로) 진짜로 호출된다.
             try
             {
+                bool overlayOk = service.CreateOverlayWindow();
+                Debug.Log($"[MACWIN-TEST] CreateOverlayWindow() = {overlayOk}");
+
                 service.SetClickThrough(true);
-                Debug.LogError("[MACWIN-TEST] SetClickThrough()가 예외 없이 성공함 — 안전가드가 깨졌습니다!");
-            }
-            catch (NotSupportedException ex)
-            {
-                Debug.Log("[MACWIN-TEST] SetClickThrough() 안전가드 정상 동작(NotSupportedException): " + ex.Message);
-            }
+                Debug.Log("[MACWIN-TEST] SetClickThrough() 예외 없이 반환됨(에디터에서는 예상 밖 — 플러그인이 에디터에도 로드된 것으로 보임, 재확인 필요).");
 
-            try
-            {
                 service.SetAlwaysOnTop(true);
-                Debug.LogError("[MACWIN-TEST] SetAlwaysOnTop()가 예외 없이 성공함 — 안전가드가 깨졌습니다!");
+                Debug.Log("[MACWIN-TEST] SetAlwaysOnTop() 예외 없이 반환됨(에디터에서는 예상 밖 — 플러그인이 에디터에도 로드된 것으로 보임, 재확인 필요).");
+            }
+            catch (DllNotFoundException ex)
+            {
+                Debug.Log("[MACWIN-TEST] 예상된 정상 동작(DllNotFoundException) — 에디터 프로세스에는 " +
+                    "StickMateOverlayPlugin이 로드되지 않습니다(PluginImporter가 SetCompatibleWithEditor(false)로 " +
+                    "의도적으로 막아둠): " + ex.Message);
             }
             catch (NotSupportedException ex)
             {
-                Debug.Log("[MACWIN-TEST] SetAlwaysOnTop() 안전가드 정상 동작(NotSupportedException): " + ex.Message);
+                // 플러그인이 로드는 됐지만(예: 위 설정이 바뀐 경우) 대상 NSWindow를 못 찾은 경우의 정직한 실패.
+                Debug.Log("[MACWIN-TEST] SM_IsMainWindowFound()==0으로 인한 정상 실패(NotSupportedException): " + ex.Message);
             }
 
             Debug.Log("[MACWIN-TEST] ==== 원시(raw, 필터링 없음) CGWindowListCopyWindowInfo 대조 덤프 시작 ====");

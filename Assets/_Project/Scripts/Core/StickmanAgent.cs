@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using StickMate.Platform;
@@ -37,6 +38,24 @@ namespace StickMate.Core
 
         private float _fullscreenPollTimer;
         private bool _isSuspended;
+
+        // ============================================================================
+        // 클릭 관통 긴급 종료 안전장치("바로 바탕화면에서 구동" 라운드, 사용자 명시 요청, 2026-08-28).
+        // 클릭관통이 켜지면 마우스 클릭이 우리 창을 그대로 통과해버려, 그 순간부터는 클릭으로 우리
+        // 창에 다시 포커스를 줄 방법이 원천적으로 사라진다(Accessibility 권한 없이는 전역 핫키도 불가능 —
+        // Unity Input 시스템은 우리 창이 키보드 포커스를 가진 동안만 입력을 받는다). 두 겹의 방어선을 둔다:
+        // (1) 앱 시작 직후 ClickThroughSafetyDelaySeconds 동안은 클릭관통을 끈 채로 유지해, 그 사이
+        //     사용자가 아무 데도 클릭하지 않으면 우리 창이 여전히 키 윈도우 상태를 유지한다.
+        // (2) 그 동안(그리고 그 이후에도 우리 창이 키보드 포커스를 유지하는 한) EmergencyDisableKey를
+        //     누르면 즉시 클릭관통을 강제로 끈다.
+        // 한계(정직하게 기록): 이 두 장치 모두 "우리 창이 키보드 포커스를 잃지 않았을 때"만 유효하다 —
+        // 클릭관통 상태에서 사용자가 다른 창을 클릭해 포커스가 넘어가면 이후에는 이 앱 안에서 되돌릴
+        // 방법이 없다(실제 배포판이라면 메뉴바 아이콘/전역 단축키 같은 별도 UX가 필요 — 이번 라운드
+        // 범위 밖). 그 경우의 최종 안전망은 터미널에서 프로세스를 직접 종료하는 것뿐이다.
+        // ============================================================================
+        private const float ClickThroughSafetyDelaySeconds = 5f;
+        private const KeyCode EmergencyDisableKey = KeyCode.Escape;
+        private bool _clickThroughDefaultEnabled;
 
         /// <summary>
         /// 클릭 관통(SetClickThrough)과 완전히 독립된 커서 좌표 조회 경로(UX_FLOW.md 9절-3).
@@ -211,27 +230,68 @@ namespace StickMate.Core
                 Debug.LogWarning("[StickmanAgent] CreateOverlayWindow() 실패 — 오버레이 핸들을 확보하지 못했습니다(BUG-P1-M3).");
             }
 
-            bool clickThroughDefault = _config != null ? _config.clickThroughDefaultEnabled : true;
+            _clickThroughDefaultEnabled = _config != null ? _config.clickThroughDefaultEnabled : true;
             try
             {
-                // 비침해 원칙 2: 클릭 관통 기본 ON — "앱 시작 시 SetClickThrough 호출 지점"은 여기로 고정한다.
+                // 항상위는 클릭관통과 달리 "우리 창을 다시 조작할 수단을 잃는" 위험이 없으므로(마우스/
+                // 키보드 입력은 그대로 받는다) 지연 없이 즉시 적용한다.
                 // 주의(BUG-B1, docs/BUG_REPORT_PHASE0.md Blocker): Win32WindowService는 아직 진짜
                 // 분리된 오버레이 창이 없어(게임 자신의 창을 재사용하는 스텁), 안전 가드가
                 // NotSupportedException을 던지도록 막아뒀다. 진짜 오버레이 HWND 구현 전까지 Windows
-                // 에서는 아래 두 호출이 의도적으로 실패한다 — 버그가 아니라 "게임 창 자체가
-                // 클릭관통/최상단 고정되는" 훨씬 나쁜 결과를 막기 위한 임시 안전장치다.
-                _platformService.SetClickThrough(clickThroughDefault);
+                // 에서는 이 호출이 의도적으로 실패한다 — 버그가 아니라 "게임 창 자체가 최상단 고정되는"
+                // 훨씬 나쁜 결과를 막기 위한 임시 안전장치다. macOS는 이제 실제 네이티브 플러그인으로
+                // 진짜 동작한다(Platform/MacOS/MacWindowService.cs).
                 _platformService.SetAlwaysOnTop(true);
             }
             catch (System.NotSupportedException ex)
             {
-                Debug.LogWarning("[StickmanAgent] 클릭 관통/항상위 배선을 건너뜀 — 진짜 오버레이 창 구현 전까지 " +
+                Debug.LogWarning("[StickmanAgent] 항상위 배선을 건너뜀 — 진짜 오버레이 창 구현 전까지 " +
+                                  "안전 가드가 활성화되어 있습니다(BUG-B1 참고): " + ex.Message);
+            }
+
+            // 비침해 원칙 2: 클릭 관통 기본 ON — 다만 위 클래스 상단 "클릭 관통 긴급 종료 안전장치"
+            // 문서가 설명하듯, 켜지는 순간 우리 창을 다시 클릭할 수 없게 될 위험이 있어 즉시 켜지 않고
+            // ClickThroughSafetyDelaySeconds만큼 지연시킨다(그 사이 EmergencyDisableKey/Update() 참고로
+            // 언제든 되돌릴 수 있음을 사용자가 확인할 시간을 번다).
+            StartCoroutine(EnableClickThroughAfterSafetyDelay());
+        }
+
+        private IEnumerator EnableClickThroughAfterSafetyDelay()
+        {
+            yield return new WaitForSeconds(ClickThroughSafetyDelaySeconds);
+            ApplyClickThrough(_clickThroughDefaultEnabled);
+        }
+
+        /// <summary>
+        /// "앱 시작 시 SetClickThrough 호출 지점"(비침해 원칙 2)과 EmergencyDisableKey 긴급 해제
+        /// 경로가 공유하는 단일 진입점 — BUG-B1 가드 실패를 동일한 방식으로 흡수한다.
+        /// </summary>
+        private void ApplyClickThrough(bool enabled)
+        {
+            try
+            {
+                _platformService.SetClickThrough(enabled);
+            }
+            catch (System.NotSupportedException ex)
+            {
+                Debug.LogWarning("[StickmanAgent] 클릭 관통 배선을 건너뜀 — 진짜 오버레이 창 구현 전까지 " +
                                   "안전 가드가 활성화되어 있습니다(BUG-B1 참고): " + ex.Message);
             }
         }
 
         private void Update()
         {
+            // 클릭 관통 긴급 종료 안전장치(클래스 상단 문서 참고) — Suspended 여부와 무관하게 항상 먼저
+            // 확인한다(다른 모든 early-return보다 위에 둬서, 어떤 상태에서도 이 키만은 항상 반응하게).
+            // Unity Input 시스템은 우리 창이 키보드 포커스를 가진 동안만 이 입력을 받을 수 있다는 한계가
+            // 있다(전역 핫키가 아님 — 클릭관통으로 포커스를 완전히 잃으면 이 경로도 함께 무력화된다,
+            // 클래스 상단 문서의 "한계" 절 참고).
+            if (Input.GetKeyDown(EmergencyDisableKey))
+            {
+                Debug.Log($"[StickmanAgent] {EmergencyDisableKey} 눌림 — 클릭 관통 긴급 강제 OFF.");
+                ApplyClickThrough(false);
+            }
+
             float dt = Time.deltaTime;
 
             TickFullscreenSuspend(dt);

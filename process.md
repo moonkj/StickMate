@@ -153,3 +153,12 @@ Phase 0(스캐폴딩) → 1(코어루프) → 2(랙돌/파쿠르) → 3(전투/�
 - Coder 수정: 더미 발판을 화면 진짜 하단으로 이동 + 해상도 비율 기반 배치로 안정화 + SceneBootstrapper의 지면 계산을 단일 헬퍼로 통일(중복 계산 어긋남 방지). 신규 화면가시성 PlayMode 테스트 추가(캐릭터가 실제로 뷰포트 안에 보이는지 검증 — 이번 버그를 처음부터 잡았을 테스트).
 - 실측: 발/머리 스크린좌표 5회 반복 전부 여백 안 충분(24~456px 여유). PlayMode 15/15 통과.
 - 다음: Debugger 검토(병행), 그리고 **진짜 바탕화면 오버레이(macOS 네이티브 클릭관통/투명창) 착수** — 사용자 요청으로 Standalone 빌드 + Objective-C 네이티브 플러그인 구현 시작.
+
+## 2026-08-28 (계속) — 진짜 바탕화면 오버레이 구현 (사용자 요청, 최대 규모 작업)
+- Coder: `StickMateOverlayPlugin.m`(Objective-C 네이티브 플러그인, clang 직접 컴파일 .bundle) — 우리 자신의 NSWindow 하나만 조작(다른 프로세스 창 접근 자체 불가능한 API로 원천 차단). SetClickThrough/SetAlwaysOnTop/CreateOverlayWindow를 실제 구현으로 교체(그동안의 안전가드 해제).
+- 안전장치: 앱 시작 5초간 클릭관통 지연 + Escape 키 긴급 해제(단, 포커스 잃으면 무효 — 정직하게 문서화, 최종 안전망은 터미널 프로세스 종료).
+- BuildStandalone.cs로 실제 macOS Standalone 빌드(.app, 유니버설 arm64+x86_64) 생성 및 실행 — **PID 49739, 현재 사용자 실제 데스크톱에서 구동 중**.
+- 이중 검증: Player.log 내부 로그(windowLevel=3 NSFloatingWindowLevel) + 외부 독립 프로세스의 CGWindowListCopyWindowInfo 재조회(kCGWindowLayer=3) 완전 일치 확인.
+- 리더 직접 코드 검토: 네이티브 플러그인이 NSApplication.windows(자기 프로세스 스코프)만 순회 — 타 프로세스 창 접근 경로 자체가 없음을 확인, 절대 원칙(유저 자산 불변) 준수 확인.
+- **정직한 한계**: 완전 투명 렌더링은 100% 미보장(Unity 렌더서페이스 기본 불투명 가정), 클릭관통 체감 자체는 Accessibility 권한 없이 프로그래밍 검증 불가 — 사용자 육안 확인 필요.
+- Builds/ 디렉토리는 이미 Phase 0부터 .gitignore에 있어 빌드 산출물(102MB) 커밋 안전하게 제외됨.

@@ -166,3 +166,45 @@ Coder의 15회 100% 통과 주장을 그대로 신뢰하지 않고, 세 변경�
 세 변경분(BUG-SW-M4 damping 수정, MacWindowService, `!UNITY_EDITOR` 가드 대칭화) 전부 코드 검토 + 독립 실측(20회 PlayMode 반복 + macOS 진단 재실행)으로 문제 없음을 확인했다. 씬/프리팹 배선 반려 사이클에서 시작된 BUG-SW-M4까지 포함해 이번 라운드 전체 항목이 모두 해소됨.
 
 **전체 승인 — 이번 라운드(씬배선+macOS+랙돌감쇠) 최종 완료**
+
+---
+
+## 카메라 프레이밍 수정 확인 (Debugger, 2026-08-28, 대상 커밋 `10e55ea`)
+
+**승인 — BUG-P1-R4-B1(카메라 프레이밍) 해소 확인, 회귀 없음.**
+
+지시받은 4개 항목을 전부 독립적으로(코드 검산 + grep + 실제 Unity 배치모드 실행) 재검증했다. Coder의 실측 주장을 그대로 신뢰하지 않고 직접 계산과 재실행으로 확인했다.
+
+### 1) `NullPlatformWindowService`의 더미 발판 배치 — 계산으로 검산, 정확히 화면 하단
+
+`NullPlatformWindowService.cs`의 생성자는 `dummyRect.y = baseHeight - baseHeight*DummyFootholdHeightFraction`(f=0.2) = `baseHeight*0.8`로 발판을 놓는다. `ScreenCoordinateConverter`의 좌표계(좌상단 원점, y 아래로 증가)에서 이 값을 Unity 스크린 좌표(좌하단 원점)로 뒤집으면 `unityY = Screen.height - osY = baseHeight*0.2`, 즉 화면 아래에서 20% 지점 — 명백히 "화면 하단" 쪽이다(예전 버그의 `y=0`은 반대로 화면 맨 위였음).
+
+이 `unityY`를 직교카메라 월드좌표로 환산하면 `worldY = cam.y + orthographicSize*(2*unityY/Screen.height - 1) = cam.y - orthographicSize*(1-2f)` — `SceneBootstrapper.ComputeGroundTopWorldY()`가 쓰는 폐쇄형 수식과 대수적으로 정확히 일치함을 직접 유도해 확인했다(두 파일이 독립적으로 같은 값에 도달하는 게 아니라, 애초에 후자가 전자의 기하학적 결과를 그대로 재유도한 것 — 우연의 일치가 아니라 설계대로 상수(f)를 공유해서 나온 필연적 일치). f=0.2, orthoSize=5, cam.y=0 기준 `groundTopWorldY=-3`, 문서 주장과 일치.
+
+### 2) `ComputeGroundTopWorldY` 단일 헬퍼 사용 — grep으로 중복 계산 없음 확인
+
+`grep -rn "ComputeGroundTopWorldY\|groundTopWorldY\|orthographicSize" Assets/`로 전수조사한 결과, 이 계산식을 실제로 수행하는 코드는 `SceneBootstrapper.cs:396`(헬퍼 본체) 단 한 곳이고, 호출부는 `BuildMainScene()`의 캐릭터 초기 배치(`:350`)와 `CreateGroundCollider()`의 RAGDOLL 바닥 배치(`:412`) 정확히 두 곳뿐이다. 나머지 매치는 전부 주석/문서 설명이었다. 예전처럼 두 곳이 `cam.transform.position.y + cam.orthographicSize`를 각자 따로 계산하던 코드는 남아있지 않음을 확인 — 재발 방지 리팩터가 실제로 적용됐다.
+
+### 3) `StickmanOnScreenFramingTests` — 진짜 assert, X축 미검증 근거도 실측으로 타당함 확인
+
+- 가짜 통과 아님: `SceneManager.LoadScene`으로 실제 `Main.unity`를 로드하고, 실제 `SpriteRenderer.bounds`를 합산해 `Camera.WorldToScreenPoint`로 환산한 뒤 `Assert.GreaterOrEqual`/`Assert.LessOrEqual`로 화면 세로 범위를 검증한다 — 물리 시뮬레이션을 실제로 돌리는 진짜 상태 기반 assert다.
+- X축 미검증 근거 검산: 주석이 드는 수치(walkSpeed=2.5, 최대 Walk 지속시간 ~4.7초)를 코드로 직접 대조했다 — `StickConfig.cs`의 `wanderWalkDurationMax=4.0`과 `AutoWanderController.Jitter()`의 `wanderDurationJitterRatio=0.175` 기본값으로 `4.0×1.175=4.7`이 정확히 나온다. `2.5×4.7=11.75`유닛 편도 이동이 가능한데, orthoSize=5·640x480(aspect 4:3) 기준 뷰포트 반폭은 `5×(640/480)=6.67`유닛뿐이라 산술적으로 자주 초과한다 — 근거가 타당하다.
+- 아래 실측(5회 재실행)에서도 X가 실제로 화면 폭을 벗어나는 사례를 여러 번 직접 확인했다(예: run5 t=10s `bottomScreen.x=-44.3`, `Screen.width=640` 기준 화면 왼쪽 밖). X를 화면 폭으로 강제 검증했다면 이 버그와 무관하게 자주 실패했을 것 — 미검증 결정은 타당하다.
+
+### 4) 이전 라운드(BUG-SW-M1~M4, macOS, 에디터가드)와의 공존 — 회귀 없음
+
+재실행한 5회 PlayMode 로그에서 `StickmanRagdollRecoveryTests`(BUG-SW-M4 대상) 결과를 직접 대조했다: 5회 전부 `recoveredToActive=True`(런2~5는 정지 중 피격 1.25s, 런1은 이동 중 피격 3.25s로 정상 복귀 — Walk 피격 케이스도 재현됐고 정상 처리됨). 랙돌 정착 위치(`pos.y`)는 5회 전부 `-2.99~-3.00`으로, 바뀐 `groundTopWorldY=-3`과 정확히 일치 — 새 지면 Y로 바뀐 뒤에도 랙돌이 여전히 같은 논리적 바닥에 올바르게 안착함을 확인했다. macOS/에디터가드 쪽은 이번 커밋이 건드리지 않은 파일이라 별도 재검증하지 않았다(직전 라운드에서 이미 승인 완료).
+
+### 독립 실측 수치 (Debugger, Coder의 실측과 별개로 직접 재실행)
+
+- **컴파일**: Unity 배치모드(`Logs/dbg2_compile.log`) — `error CS`/`warning CS` 매치 0건, exit code 0.
+- **EditMode**: `total="13" passed="13" failed="0"`(`Logs/dbg2_editmode.xml`) — 기준선 유지.
+- **PlayMode 5회 독립 재실행**(매회 새 프로세스, `-runTests -testPlatform PlayMode`, `-quit` 미사용, `Logs/dbg2_pm_run1~5.log/xml`): **5/5 전부 통과**, 매회 `total="3" passed="3" failed="0"`(신규 `StickmanStaysWithinVerticalViewportMargin` 포함). 매회 다른 RNG seed 확인(진짜 독립 실행).
+  - 신규 프레이밍 테스트 실측(5회, 15개 샘플): `bottomScreen.y` 89.4~96.4px, `topScreen.y` 117.1~183.0px — 여백 하한(24px)·상한(456px) 근처에 전혀 근접하지 않음.
+  - `StickmanRagdollRecoveryTests` 5/5, `StickmanPlaytestSmokeTests` 5/5(최종상태 Idle/Walk 접지) 전부 정상 — 회귀 없음.
+  - 로그 5개 전체에서 `error CS`/`warning CS` 0건.
+- 테스트 실행 중 `Assets/`에 생성된 임시 `InitTestScene<guid>.unity`(Unity 테스트 러너가 배치모드에서 남기는 부산물, 이전 커밋에도 동일 패턴의 파일이 있었음)는 검증 후 삭제해 정리했다. `Assets/Plugins/macOS/`는 이번 검토와 무관한 별도 작업자의 진행 중인 작업(네이티브 오버레이 플러그인)으로 확인되어 손대지 않았다.
+
+### 결론
+
+계산 검산·grep 전수조사·실제 Unity 재실행 세 가지 모두 Coder의 주장과 일치했고, 회귀도 없었다. **승인.**

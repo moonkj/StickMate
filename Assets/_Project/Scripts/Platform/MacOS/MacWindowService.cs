@@ -17,27 +17,54 @@ namespace StickMate.Platform.MacOS
     /// 애초에 다른 창을 조작하는 부수효과가 존재하지 않는다.
     ///
     /// ============================================================================
-    /// 이번 라운드의 의도적 범위(Architect/Debugger 지시, docs/BUG_REPORT_PHASE0.md m8 해소) — Win32와
-    /// "같은 수준"으로 맞춘다: 창 열거(EnumerateFootholds)는 진짜로 동작, 진짜 분리 오버레이/클릭관통은
-    /// Win32의 BUG-B1과 동일하게 다음 과제로 명시적으로 남긴다.
+    /// "바로 바탕화면에서 구동" 라운드(사용자 명시 요청, 2026-08-28) — 지금까지 CreateOverlayWindow()/
+    /// SetClickThrough()/SetAlwaysOnTop()가 안전가드(NotSupportedException)로 막혀 있던 이유는 Unity
+    /// 에디터 Play 모드의 게임뷰가 에디터 UI 안의 패널일 뿐 실제 OS 창이 아니라서, 진짜 투명/클릭관통
+    /// 오버레이를 만들려면 (1) 독립 실행 빌드(Standalone Player)가 있어야 하고 (2) 그 빌드가 만드는 실제
+    /// NSWindow를 네이티브 코드로 조작해야 했기 때문이다(CoreGraphics/CoreFoundation 공개 C ABI에는
+    /// "쓰기" 수단이 없음 — 비공개 SkyLight API는 금지 대상). 이번 라운드에서 처음으로 실제 Standalone
+    /// 빌드(Assets/Editor/BuildStandalone.cs)를 만들었으므로, 그 빌드가 만드는 진짜 NSWindow를 조작하는
+    /// Objective-C 네이티브 플러그인(Assets/Plugins/macOS/StickMateOverlayPlugin.m,
+    /// StickMateOverlayPlugin.bundle로 컴파일됨)을 추가하고 아래 세 메서드를 그 플러그인 호출로 교체했다.
     /// ============================================================================
-    /// - 진짜 구현: EnumerateFootholds(), IsFullscreenAppActive(), ICursorPositionService(전역 커서 조회).
-    ///   전부 CoreGraphics/CoreFoundation의 공개 C ABI 함수만 사용하는 순수 조회 동작이라, 네이티브
-    ///   Objective-C++ 플러그인(.bundle) 없이도 안전하게 실동작한다.
-    /// - 안전가드(진짜 구현 아님): CreateOverlayWindow()/SetClickThrough()/SetAlwaysOnTop() — 실제
-    ///   NSWindow(클릭관통=NSWindow.ignoresMouseEvents, 항상위=NSWindow.level)를 조작하려면 Cocoa
-    ///   오브젝트에 접근하는 네이티브 플러그인이 반드시 필요한데, 이번 라운드는 그 플러그인 빌드가
-    ///   범위 밖이다(Architect 지시). CoreGraphics C ABI만으로는 "다른 프로세스는 물론 우리 자신의
-    ///   NSWindow조차" 클릭관통/레벨을 바꿀 수 있는 공개 수단이 없다(비공개 SkyLight API는 금지 대상).
-    ///   Win32WindowService의 BUG-B1 가드(NotSupportedException)와 동일한 패턴으로 재사용한다.
+    /// - 진짜 구현: EnumerateFootholds(), IsFullscreenAppActive(), ICursorPositionService(전역 커서 조회) —
+    ///   기존과 동일하게 CoreGraphics/CoreFoundation 공개 C ABI만 사용하는 순수 조회 동작.
+    /// - 신규 진짜 구현: CreateOverlayWindow()/SetClickThrough()/SetAlwaysOnTop() — 이제
+    ///   [DllImport("StickMateOverlayPlugin")]로 네이티브 플러그인의 SM_IsMainWindowFound()/
+    ///   SM_ConfigureOverlayWindow()를 호출해 실제 NSWindow.ignoresMouseEvents/NSWindow.level을 쓴다.
+    ///   대상 창을 못 찾으면(SM_IsMainWindowFound()==0) 조용히 no-op하지 않고 NotSupportedException으로
+    ///   즉시 실패를 알린다(이전 라운드들의 컨벤션과 동일 — StickmanAgent.Start()가 이 예외를 잡아 로그로
+    ///   남기고 나머지 초기화를 계속하는 기존 처리 경로를 그대로 재사용).
+    /// - 이 클래스 자신은 여전히 "다른 프로세스의 창"에는 절대 접근하지 않는다 — 네이티브 플러그인도
+    ///   NSApplication.sharedApplication.windows(우리 프로세스 자신의 창 목록)만 순회한다
+    ///   (StickMateOverlayPlugin.m 문서 주석 참고).
     ///
-    /// ILocalClickCaptureService/IDesktopIconLayoutService는 이번 라운드에 의도적으로 구현하지 않는다
+    /// ILocalClickCaptureService/IDesktopIconLayoutService는 이번 라운드에도 의도적으로 구현하지 않는다
     /// (요청 범위 밖) — FallbackPlatformWindowService가 `as` 캐스팅으로 null 처리해 안전하게 no-op/실패
     /// 취급하므로 컴파일/런타임 모두 문제 없다(Win32WindowService가 실제로 두 인터페이스 다 구현한 것과
     /// 다른 점 — macOS는 이번 라운드에 그 두 캐퍼빌리티까지는 손대지 않는다).
     /// </summary>
     public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService
     {
+        // ============================================================================
+        // 네이티브 오버레이 플러그인 P/Invoke 선언(Assets/Plugins/macOS/StickMateOverlayPlugin.m).
+        // DllImport 대상 이름은 확장자 없는 번들 이름 — Unity가 Standalone macOS 빌드에 포함시킨
+        // StickMateOverlayPlugin.bundle을 찾아 로드한다(에디터에서는 PluginImporter가
+        // SetCompatibleWithEditor(false)로 막아뒀으므로 로드되지 않는다 — 애초에 이 클래스 자체가
+        // StickmanAgent.CreatePlatformService()의 `UNITY_STANDALONE_OSX && !UNITY_EDITOR` 분기에서만
+        // 인스턴스화되므로 에디터에서 호출될 일도 없다).
+        // ============================================================================
+        private const string OverlayPluginName = "StickMateOverlayPlugin";
+
+        [DllImport(OverlayPluginName)]
+        private static extern void SM_ConfigureOverlayWindow(int makeClickThrough, int alwaysOnTop, int transparent);
+
+        [DllImport(OverlayPluginName)]
+        private static extern int SM_GetOverlayWindowLevel();
+
+        [DllImport(OverlayPluginName)]
+        private static extern int SM_IsMainWindowFound();
+
         #region CoreGraphics / CoreFoundation P/Invoke 선언 (이 리전 밖으로 유출 금지)
 
         // 프레임워크 경로 직접 지정(dylib 캐시/서명 문제 없이 시스템 프레임워크를 안정적으로 로드하는
@@ -157,13 +184,14 @@ namespace StickMate.Platform.MacOS
         private readonly int _currentProcessId;
         private readonly string _currentProcessName;
 
-        // Win32WindowService의 _usingUnsafeSelfWindowFallback과 대응하는 필드는 두지 않는다 — macOS는
-        // "조건부로 위험을 감수하면 실제 클릭관통이 걸리는" 경로 자체가 없다(네이티브 플러그인 부재로
-        // NSWindow에 접근할 방법이 전혀 없음). 아래 SetClickThrough/SetAlwaysOnTop은 항상 무조건
-        // NotSupportedException을 던진다 — Win32처럼 "나중에 진짜 오버레이가 생기면 이 가드가 조건부로
-        // 풀린다"가 아니라, "네이티브 플러그인을 새로 만들기 전까지는 원천적으로 불가능"이라는 뜻이라
-        // 가드 조건 없이 항상 던지는 편이 더 정직하다.
-        private int _overlayWindowId = -1;
+        // 클릭관통/항상위의 현재 목표 상태를 기억해둔다. 네이티브 SM_ConfigureOverlayWindow()는 두
+        // 속성을 하나의 호출로 동시에 적용하는 단일 함수라(StickMateOverlayPlugin.m 참고),
+        // SetClickThrough()/SetAlwaysOnTop()가 서로 독립적으로 호출되어도(IPlatformWindowService 계약상
+        // 별개 메서드) 매번 "마지막으로 알려진 두 값 전부"를 함께 넘겨야 한 쪽 호출이 다른 쪽 상태를
+        // 조용히 되돌리지 않는다. 투명(transparent)은 토글 개념이 아니라 오버레이의 항상 성립해야 하는
+        // 성질이라 별도 상태 없이 항상 1(true)로 넘긴다.
+        private bool _clickThroughEnabled;
+        private bool _alwaysOnTopEnabled;
 
         public MacWindowService()
         {
@@ -278,73 +306,76 @@ namespace StickMate.Platform.MacOS
         }
 
         // ============================================================================
-        // 안전가드 3종 — Win32WindowService의 BUG-B1 가드 패턴 재사용. 진짜 구현하지 않는다.
+        // 네이티브 플러그인 배선 3종 — 이제 실제로 Objective-C 플러그인(StickMateOverlayPlugin.m)을
+        // 호출해 우리 자신의 NSWindow를 조작한다("바로 바탕화면에서 구동" 라운드, 2026-08-28).
         // ============================================================================
 
         /// <summary>
-        /// Win32와 달리 "우리 자신의 창 핸들을 재사용하는 위험한 폴백"조차 시도하지 않는다 — Win32는
-        /// Process.MainWindowHandle이라는 관리 코드 API로 즉시 핸들을 얻을 수 있지만, 이는 Windows
-        /// 전용 구현이라(.NET BCL 문서상 비-Windows 플랫폼에서 지원 안 됨) macOS에서는 애초에 호출할
-        /// 수 없다. 대신 우리가 이미 만든 읽기 전용 열거 파이프라인(CGWindowListCopyWindowInfo)에서
-        /// "ownerPID==우리 자신"인 창을 찾아 그 CGWindowID를 기록해두는 것으로 대체한다 — 이 값은
-        /// 어디에도 쓰이지 않고(SetClickThrough/SetAlwaysOnTop이 아래에서 무조건 거부하므로) 순수하게
-        /// "오버레이로 쓸 창을 찾았는지"에 대한 진단 정보 역할만 한다.
+        /// 네이티브 플러그인이 우리 자신의 Unity Player 메인 창을 실제로 찾을 수 있는지
+        /// SM_IsMainWindowFound()로 확인한다. 찾았다면 초기 상태(클릭관통 OFF, 항상위 OFF, 투명 ON)를
+        /// 곧바로 적용해둔다 — 클릭관통이 기본으로 꺼진 채 시작해야 사용자가 최소한의 반응 시간을 갖는다
+        /// (StickmanAgent.Start()의 지연 로직과 이중 안전장치, 클래스 문서 "안전상 중요" 참고). 못 찾으면
+        /// false를 반환할 뿐 예외를 던지지는 않는다 — 기존 컨벤션(BUG-P1-M3, StickmanAgent.Start()가
+        /// 경고 로그만 남기고 계속 진행)을 그대로 유지한다. 반면 SetClickThrough/SetAlwaysOnTop은 이후에
+        /// 대상 창이 없는 채로 호출되면 조용히 넘어가지 않고 예외를 던진다(아래 참고) — "오버레이 확보
+        /// 자체의 실패"와 "확보된 오버레이의 속성 변경 실패"를 다른 강도로 취급한다.
         /// </summary>
         public bool CreateOverlayWindow()
         {
-            IntPtr windowArray = CopyOnScreenWindowList();
-            if (windowArray == IntPtr.Zero) return false;
-
-            try
+            bool found = SM_IsMainWindowFound() != 0;
+            if (!found)
             {
-                long count = CFArrayGetCount(windowArray);
-                for (long i = 0; i < count; i++)
-                {
-                    IntPtr windowDict = CFArrayGetValueAtIndex(windowArray, i);
-                    if (windowDict == IntPtr.Zero) continue;
-                    if (!IsSelfWindow(windowDict)) continue;
-
-                    if (TryGetInt(windowDict, _keyWindowNumber, out int windowNumber))
-                    {
-                        _overlayWindowId = windowNumber;
-                        return true;
-                    }
-                }
-            }
-            finally
-            {
-                CFRelease(windowArray);
+                Debug.LogWarning("[MacWindowService] CreateOverlayWindow(): SM_IsMainWindowFound()==0 — " +
+                    "네이티브 플러그인이 Unity Player의 메인 NSWindow를 찾지 못했습니다. 이후 " +
+                    "SetClickThrough/SetAlwaysOnTop 호출이 모두 실패할 수 있습니다.");
+                return false;
             }
 
-            return false; // 자기 자신의 온스크린 창을 못 찾음(예: 완전히 최소화됨) — StickmanAgent.Start()가 경고 로그만 남기고 계속 진행.
+            _clickThroughEnabled = false;
+            _alwaysOnTopEnabled = false;
+            SM_ConfigureOverlayWindow(0, 0, 1); // 투명은 항상 시도, 클릭관통/항상위는 안전하게 OFF로 시작.
+            Debug.Log("[MacWindowService] CreateOverlayWindow(): 메인 NSWindow 확보 및 초기 상태 적용 완료 " +
+                $"(clickThrough=false, alwaysOnTop=false, transparent=true, windowLevel={SM_GetOverlayWindowLevel()}).");
+            return true;
         }
 
         /// <summary>
-        /// 항상 실패(NotSupportedException). 실제 클릭 관통은 NSWindow.ignoresMouseEvents(Cocoa)를
-        /// 조작해야 하는데, 이 파일이 쓰는 CoreGraphics/CoreFoundation 공개 C ABI에는 그런 쓰기 API가
-        /// 없다(비공개 SkyLight 프레임워크의 CGSSetWindowAlpha류는 심사 거부/차단 대상이라 사용 금지).
-        /// Objective-C++ 네이티브 플러그인(.bundle)으로 NSWindow 참조를 얻어야만 가능하며, 그 플러그인
-        /// 빌드는 이번 라운드 범위 밖이다(Architect 지시) — Win32WindowService.SetClickThrough()의
-        /// BUG-B1 가드와 동일한 목적: "위험한 부작용 없이 조용히 실패"가 아니라 "호출부가 반드시
+        /// SM_ConfigureOverlayWindow()로 실제 NSWindow.ignoresMouseEvents를 쓴다. 대상 창을 못 찾으면
+        /// (SM_IsMainWindowFound()==0) 조용히 무시하지 않고 즉시 NotSupportedException을 던진다 — 이전
+        /// 라운드들의 컨벤션과 동일: "위험한 부작용 없이 조용히 실패"가 아니라 "호출부가 반드시
         /// 알아채도록 즉시 예외로 실패"시킨다(StickMate.Core.StickmanAgent.Start()가 이 예외를 잡아
         /// 로그로 남기고 나머지 초기화를 계속하는 기존 처리 경로를 그대로 재사용).
         /// </summary>
         public void SetClickThrough(bool enabled)
         {
-            throw new NotSupportedException(
-                "MacWindowService.SetClickThrough(): 실제 NSWindow 클릭관통 조작은 Objective-C++ 네이티브 " +
-                "플러그인이 있어야 가능합니다(CoreGraphics/CoreFoundation 공개 C ABI만으로는 불가능, " +
-                "docs/BUG_REPORT_PHASE0.md m8). 네이티브 플러그인 구현은 이번 라운드 범위 밖입니다.");
+            if (SM_IsMainWindowFound() == 0)
+            {
+                throw new NotSupportedException(
+                    "MacWindowService.SetClickThrough(): 네이티브 플러그인이 대상 NSWindow를 찾지 못해 " +
+                    "클릭관통을 적용할 수 없습니다(SM_IsMainWindowFound()==0). StickMateOverlayPlugin.bundle이 " +
+                    "빌드에 정상 포함되었는지, CreateOverlayWindow()가 먼저 호출되었는지 확인하세요.");
+            }
+
+            _clickThroughEnabled = enabled;
+            SM_ConfigureOverlayWindow(_clickThroughEnabled ? 1 : 0, _alwaysOnTopEnabled ? 1 : 0, 1);
+            Debug.Log($"[MacWindowService] SetClickThrough({enabled}) 적용 완료 — windowLevel={SM_GetOverlayWindowLevel()}.");
         }
 
-        /// <summary>SetClickThrough와 동일한 이유로 항상 실패(NotSupportedException) — 실제 항상위 고정은
-        /// NSWindow.level 조작이 필요하며 동일하게 네이티브 플러그인 전제 조건이다.</summary>
+        /// <summary>SetClickThrough와 동일한 실패 정책 — SM_ConfigureOverlayWindow()로 실제
+        /// NSWindow.level(NSFloatingWindowLevel/NSNormalWindowLevel)을 쓴다.</summary>
         public void SetAlwaysOnTop(bool enabled)
         {
-            throw new NotSupportedException(
-                "MacWindowService.SetAlwaysOnTop(): 실제 NSWindow 레벨(항상위) 조작은 Objective-C++ 네이티브 " +
-                "플러그인이 있어야 가능합니다(CoreGraphics/CoreFoundation 공개 C ABI만으로는 불가능, " +
-                "docs/BUG_REPORT_PHASE0.md m8). 네이티브 플러그인 구현은 이번 라운드 범위 밖입니다.");
+            if (SM_IsMainWindowFound() == 0)
+            {
+                throw new NotSupportedException(
+                    "MacWindowService.SetAlwaysOnTop(): 네이티브 플러그인이 대상 NSWindow를 찾지 못해 " +
+                    "항상위 설정을 적용할 수 없습니다(SM_IsMainWindowFound()==0). StickMateOverlayPlugin.bundle이 " +
+                    "빌드에 정상 포함되었는지, CreateOverlayWindow()가 먼저 호출되었는지 확인하세요.");
+            }
+
+            _alwaysOnTopEnabled = enabled;
+            SM_ConfigureOverlayWindow(_clickThroughEnabled ? 1 : 0, _alwaysOnTopEnabled ? 1 : 0, 1);
+            Debug.Log($"[MacWindowService] SetAlwaysOnTop({enabled}) 적용 완료 — windowLevel={SM_GetOverlayWindowLevel()}.");
         }
 
         /// <summary>

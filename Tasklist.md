@@ -451,3 +451,44 @@
   - 기존 회귀 없음: `StickmanRagdollRecoveryTests` 5/5 `recoveredToActive=True`(1.25s), `StickmanPlaytestSmokeTests` 5/5 최종상태 Idle/Walk(접지) 유지.
 
 **결론**: BUG-P1-R4-B1 해소. `git status` 기준 이번 작업 변경분은 `Assets/_Project/Scripts/Platform/NullPlatformWindowService.cs`/`Assets/Editor/SceneBootstrapper.cs`(코드), `Assets/_Project/Scripts/Tests/PlayMode/StickmanOnScreenFramingTests.cs`(신규 테스트), `Assets/_Project/Prefabs/Stickman.prefab`/`Assets/_Project/Scenes/Main.unity`(재생성된 에셋)뿐이다. Debugger 재확인 대상.
+
+## 2026-08-28 (계속) — 카메라 프레이밍 수정 Debugger 승인
+
+- 더미 발판 배치식을 직접 대수적으로 검산해 `ComputeGroundTopWorldY`와 정확히 일치함을 확인, grep 전수조사로 지면 Y 계산이 그 헬퍼 한 곳에서만 이뤄짐을 확인, 신규 프레이밍 테스트가 진짜 assert이며 X축 미검증 근거(walkSpeed×최대Walk지속 > 뷰포트 반폭)도 산술적으로 타당함을 확인.
+- 컴파일 에러0/경고0, EditMode 13/13, PlayMode 5회 독립 재실행 5/5 전부 통과(랙돌 정착 위치도 새 지면 Y와 일치, 회귀 없음). 상세는 `docs/BUG_REPORT_SCENE_WIRING.md` 맨 아래 섹션 참고. **승인.**
+
+## "바로 바탕화면에서 구동" — macOS 네이티브 오버레이 플러그인 + 실제 Standalone 빌드 (Coder, 2026-08-28)
+
+**배경**: 사용자가 명시적으로 요청 — "바로 바탕화면에서 구동할 수 있게 구현해줘". `MacWindowService.CreateOverlayWindow()`/`SetClickThrough()`/`SetAlwaysOnTop()`가 지금까지 안전가드(`NotSupportedException`)로 막혀 있던 이유는 Unity 에디터 Play 모드의 게임뷰가 에디터 UI 안의 패널일 뿐 실제 OS 창이 아니라서였다 — 진짜 투명/클릭관통 오버레이를 만들려면 (1) 실제 Standalone 빌드가 있어야 하고 (2) 그 빌드가 만드는 진짜 `NSWindow`를 네이티브 코드로 조작해야 한다. 이 프로젝트는 지금까지 씬/프리팹만 만들었을 뿐 한 번도 실제 `.app` 빌드를 만든 적이 없었다.
+
+### 적용한 수정
+
+1. **`Assets/Plugins/macOS/StickMateOverlayPlugin.m`(신규)** — Objective-C 네이티브 플러그인. `extern "C"` C ABI로 `SM_ConfigureOverlayWindow(makeClickThrough, alwaysOnTop, transparent)`/`SM_GetOverlayWindowLevel()`/`SM_IsMainWindowFound()` 세 함수를 export한다. `StickMate_FindMainWindow()`가 `[NSApplication sharedApplication].windows`에서 `isVisible && isMainWindow`인 창을 우선 찾고, 없으면 "첫 보이는 창"으로 폴백한다 — 절대 다른 프로세스의 창에는 접근하지 않는다(우리 프로세스 자신의 `NSApplication.windows`만 순회). 클릭관통은 `setIgnoresMouseEvents:`, 항상위는 `setLevel:(NSFloatingWindowLevel/NSNormalWindowLevel)`, 투명은 `setOpaque:NO`+`backgroundColor=clearColor`+`hasShadow:NO`+`FullSizeContentView`+타이틀바 투명화+콘텐츠뷰 레이어 비불투명 시도로 구현했다. `clang -dynamiclib -arch arm64 -arch x86_64 -mmacosx-version-min=11.0 -framework Cocoa`로 유니버설 바이너리(`Assets/Plugins/macOS/build.sh`, 재현 가능한 빌드 스크립트도 함께 커밋)로 컴파일해 `StickMateOverlayPlugin.bundle`(Info.plist `CFBundlePackageType=BNDL` 포함)로 패키징했다.
+2. **`Assets/Editor/BuildStandalone.cs`(신규)** — `ConfigureNativePluginImporter()`가 `PluginImporter.SetCompatibleWithAnyPlatform(false)`+`SetCompatibleWithEditor(false)`+`SetCompatibleWithPlatform(BuildTarget.StandaloneOSX, true)`+`SetPlatformData(..., "CPU", "AnyCPU")`로 이 플러그인을 macOS Standalone 전용으로 명시 잠근다(에디터 비활성화는 안전상 중요 — Unity 에디터 자신의 메인 창을 실수로 클릭관통/항상위로 바꿔버리는 사고를 원천 차단). `PerformBuild()`가 `BuildPipeline.BuildPlayer`로 `Builds/macOS/StickMate.app`을 만든다(`-executeMethod StickMate.EditorTools.BuildStandalone.PerformBuild -quit`로 배치 실행 가능 — 실제 빌드 자체는 `-quit`과 함께 써도 안전하고, "`-quit` 금지" 컨벤션은 PlayMode 테스트 전용임을 확인해둠).
+3. **`Assets/_Project/Scripts/Platform/MacOS/MacWindowService.cs`** — `CreateOverlayWindow()`/`SetClickThrough()`/`SetAlwaysOnTop()`를 `[DllImport("StickMateOverlayPlugin")]`로 위 네이티브 함수를 호출하는 실제 구현으로 교체(기존 CoreGraphics 전용 읽기 전용 코드는 그대로 유지 — `EnumerateFootholds`/`IsFullscreenAppActive`/커서 조회는 무수정). `SM_IsMainWindowFound()==0`이면 `SetClickThrough`/`SetAlwaysOnTop`은 여전히 `NotSupportedException`으로 실패를 명시적으로 알린다(조용히 무시하지 않음 — 기존 컨벤션 유지). `_clickThroughEnabled`/`_alwaysOnTopEnabled` 두 상태를 기억해 `SM_ConfigureOverlayWindow`(3개 인자 동시 적용 단일 함수) 호출 시 서로의 상태를 되돌리지 않게 했다.
+4. **`Assets/Editor/SceneBootstrapper.cs`** — Main Camera 배경색 알파를 `1`→`0`으로 변경(`Clear Flags=Solid Color` 유지). 카메라가 그리는 알파가 그대로여야 네이티브 플러그인의 창 투명화가 의미를 가지므로 두 절반이 반드시 짝을 이룬다. `-executeMethod SceneBootstrapper.BuildAll --force`로 `Main.unity`/`Stickman.prefab`/`DefaultStickConfig.asset`을 재생성해 반영했다(BUG-SW-M3 컨벤션대로 — 재생성 전 씬은 SceneBootstrapper가 만든 최소 구성(Main Camera+PhysicsGround+Stickman 인스턴스)뿐이라 수동 편집 유실 위험 없음을 확인 후 진행).
+5. **`Assets/_Project/Scripts/Core/StickmanAgent.cs`(긴급 종료 안전장치)** — 클릭관통이 켜지는 순간부터 클릭으로 우리 창에 포커스를 되돌릴 방법이 사라지는 위험에 대응해 이중 방어선을 추가했다: (1) `Start()`가 `SetClickThrough`를 더 이상 즉시 호출하지 않고 `EnableClickThroughAfterSafetyDelay()` 코루틴으로 `ClickThroughSafetyDelaySeconds=5f`초 지연시킨다(항상위는 위험이 없으므로 즉시 적용 유지). (2) `Update()` 최상단(다른 모든 early-return보다 위)에서 `KeyCode.Escape`(`EmergencyDisableKey`)를 감지하면 `ApplyClickThrough(false)`로 즉시 클릭관통을 강제 OFF한다. 두 경로 모두 `ApplyClickThrough()` 단일 헬퍼를 공유. **정직한 한계**: 이 두 장치 모두 "우리 창이 키보드 포커스를 유지하고 있을 때"만 유효하다(Unity Input은 전역 핫키가 아님, Accessibility 권한 없이는 불가능) — 클릭관통 상태에서 사용자가 다른 창을 클릭해 포커스가 넘어가면 앱 내부에서 되돌릴 방법이 없다. 최종 안전망은 터미널에서 프로세스를 직접 종료하는 것뿐이며, 이번 검증에서는 실제로 그 경로(PID 직접 kill 가능)를 확보해둔 채 진행했다.
+6. **`Assets/Editor/MacWindowEnumerationDiagnostic.cs`** — 기존 진단 메뉴가 "안전가드는 항상 `NotSupportedException`을 던진다"고 가정했던 것을 갱신. 이 도구는 `Assets/Editor/`(에디터 전용)에 있고 네이티브 플러그인은 `SetCompatibleWithEditor(false)`로 잠겨 있으므로, 에디터에서 실행하면 이제 `DllNotFoundException`이 "정상"이다 — 그 경우를 명시적으로 잡아 로그를 남기도록 catch 절을 갱신(우연히 에디터에도 플러그인이 로드되는 회귀가 생기면 오히려 이 로그로 드러나게 설계).
+
+### 실측 검증
+
+- **컴파일**: Unity 배치모드 3회(코드 변경마다 재확인) — 최종 `Logs/coder_compile_after_scene.log` 기준 `error CS`/`warning CS` 매치 0건, exit code 0.
+- **EditMode**: `Logs/coder_native_editmode.xml` — `total="13" passed="13" failed="0"`(기준선 유지, 에디터 무영향 재확인).
+- **PlayMode**: `Logs/coder_native_playmode.log`/`.xml` — `total="3" passed="3" failed="0"`(기존 3종 전부 회귀 없음). 로그 전문에 `MacWindowService`/`StickMateOverlayPlugin` 문자열이 전혀 없음을 grep으로 확인 — 에디터 PlayMode는 여전히 `NullPlatformWindowService` 더미 발판만 쓰고 네이티브 플러그인과 완전히 무관함을 재확인.
+- **PluginImporter 설정**: `ConfigureNativePluginImporter()` 실행 후 `.meta` 확인 — `platformData.Any.enabled=0`, `platformData.Editor.enabled=0`, `platformData.OSXUniversal.enabled=1`(`CPU: AnyCPU`)로 정확히 macOS Standalone 전용 잠금 확인.
+- **빌드**: `Logs/coder_build.log` — `[BuildStandalone] 빌드 결과: Succeeded, 총 에러 0건, 총 경고 0건, 소요 00:00:11.09, 크기 102179062 bytes`. 산출물 `Builds/macOS/StickMate.app` 확인. `Contents/MacOS/StickMateSkeleton`이 이미 `arm64+x86_64` 유니버설 바이너리(프로젝트 Player Settings 기본값)임을 `file`로 확인. `Contents/PlugIns/StickMateOverlayPlugin.bundle`이 앱 번들 안에 실제로 포함됨을 확인(Unity가 자동으로 넣어줌 — 별도 복사 스크립트 불필요).
+- **실행**: 빌드된 실행파일을 직접 백그라운드로 실행(`nohup .../StickMateSkeleton & disown`) — **PID 49739**, `ps`로 지속 실행 확인(`PPID=1`로 정상 detach, 이 세션 종료 후에도 계속 살아있음).
+- **네이티브 플러그인 실측 로그**(`~/Library/Logs/DefaultCompany/StickMateSkeleton/Player.log`):
+  - `SM_ConfigureOverlayWindow 적용 완료: clickThrough=0 alwaysOnTop=0 transparent=1 level=0` — `CreateOverlayWindow()` 초기 적용, `SM_IsMainWindowFound()`가 실제 창을 찾음.
+  - `SetAlwaysOnTop(True) 적용 완료 — windowLevel=3` — `NSFloatingWindowLevel`(=3) 적용 확인.
+  - 정확히 **5.033초 뒤** `SetClickThrough(True) 적용 완료 — windowLevel=3` — `ClickThroughSafetyDelaySeconds=5f` 지연 로직이 실제로 그 시간만큼 지연시킨 뒤 클릭관통을 켰음을 타임스탬프로 실측 확인(`05:40:29.731` → `05:40:34.764`).
+- **창 레벨 외부(독립 프로세스) 검증**: `CGWindowListCopyWindowInfo`(공개 API, Screen Recording 권한 불필요) 기반 별도 컴파일 도구로 PID 49739의 창을 직접 조회 — 메인 창(`windowNumber=1221`, `owner="StickMateSkeleton"`, `onScreen=1`, `bounds=(0,33,1512,949)`)의 **`kCGWindowLayer=3`**(=`NSFloatingWindowLevel`)을 확인. 우리 프로세스 내부 로그(`SM_GetOverlayWindowLevel()=3`)와 완전히 독립적인 외부 관측치가 정확히 일치 — 네이티브 플러그인이 실제 OS 레벨에서 창 레벨을 바꿨음이 이중으로 확증됨.
+
+### 정직한 한계(사용자 직접 확인 필요)
+
+- **클릭관통 자체(실제로 마우스 클릭이 창을 통과하는가)는 이번 라운드에서 프로그래밍적으로 검증하지 못했다** — Accessibility 권한 없이는 합성 클릭 이벤트를 만들어 "정말 아래 창이 클릭됐는지" 확인할 신뢰 가능한 방법이 없다. `NSWindow.ignoresMouseEvents=YES`가 네이티브 코드에서 실제로 호출됐다는 로그(`SM_ConfigureOverlayWindow 적용 완료: clickThrough=1 ...`)까지만 확인했고, 이는 Apple 공식 API 계약상 클릭관통을 보장하지만 최종 체감은 사용자가 데스크톱에서 직접 다른 창을 클릭해 확인해야 한다.
+- **화면 투명도(스틱맨 뒤 데스크톱 배경이 실제로 완전히 비쳐 보이는지)도 육안 확인이 필요하다** — 카메라 알파=0 + `setOpaque:NO`+`backgroundColor=clearColor`까지는 확인했지만, Unity Standalone Mac Player의 렌더 서페이스(Metal 레이어)가 기본적으로 불투명 합성을 가정하고 있어 이 조합만으로 100% 완전 투명이 보장되는지는 이번 라운드에서 실측하지 못했다(`StickMateOverlayPlugin.m` 문서 주석에 이 한계를 그대로 남겨둠). 리더가 이미 확인한 대로 이 환경에는 Screen Recording 권한이 없어 스크린샷으로 직접 확인할 수도 없었다.
+- **긴급 종료 안전장치(5초 지연 + Escape 키)는 우리 창이 키보드 포커스를 유지하는 동안만 유효**하다 — 전역 핫키가 아니므로 클릭관통 상태에서 포커스가 다른 앱으로 넘어가면 앱 내부에서 되돌릴 방법이 없다(위 "적용한 수정" 5번 참고). 실사용 배포판이라면 메뉴바 아이콘 등 별도 UX가 필요 — 이번 라운드 범위 밖으로 남겨둔다.
+- **Player Settings 아키텍처를 코드로 강제하지 않았다** — Unity 6에서 `EditorUserBuildSettings.macOSXArchitecture` 공개 필드를 찾지 못해(컴파일 에러로 확인) 추측성 API 호출 대신 프로젝트 기본값에 맡겼다. 다행히 기본값이 이미 유니버설(`arm64+x86_64`, 실측 `file` 명령으로 확인)이라 이번 검증에는 영향 없었지만, Intel Mac 배포 시에는 Xcode Build Settings UI로 재확인 권고.
+
+**결론**: 사용자가 지금 데스크톱에서 직접 확인 가능한 실제 `.app`이 PID **49739**로 백그라운드에서 계속 실행 중이다(이 세션이 종료돼도 살아있음, `kill 49739`로 언제든 종료 가능). 네이티브 플러그인의 실제 호출/윈도우 레벨 변경은 프로세스 내부 로그와 외부 독립 도구 양쪽에서 이중 확증했다. 클릭관통 체감/완전 투명 여부는 사용자 육안 확인이 필요한 항목으로 명확히 남겨둔다. Debugger/Architect 재확인 대상.
