@@ -256,3 +256,45 @@
   - `RivalEncounterDirector.ReleaseOwnedLock()`: 상태 비교가 아니라 `_rival?.ForceEndDuel()`(대결 상대의 별도 상태머신 정리) 경유라 `guardedState` 개념 자체가 없음.
   - `FocusWatchDirector.ReleaseOwnedLock(bool forceIdle)`: 단일 상태가 아니라 `IsFocusPoseState()`로 4개 상태(FocusStart/FocusComplete/FocusCancelled/FocusNudge) 중 하나인지 확인하는 커스텀 가드 — 이 한 곳을 위해 헬퍼 시그니처에 predicate delegate 파라미터를 추가하면 추상화 비용이 절감분보다 크다고 판단(참고: 코드 확인 결과 `forceIdle` 인자는 실제로는 두 호출부 모두 `true`만 전달해 `false` 분기가 죽은 코드지만, 리팩터링 범위를 헬퍼 추출로 한정하기 위해 이 메서드 자체는 손대지 않았다).
 - **검증**: Unity 배치모드 컴파일 재실행(`compile_r2.log`) — `error CS`/`warning CS` 매치 0건, exit code 0. `-runTests -testPlatform EditMode` 재실행(`testresults_r2.xml`) — `testcasecount="13" result="Passed" total="13" passed="13" failed="0"`. 에러0/경고0 + 13/13 기준선 유지 확인(리팩터링이 기존 동작을 깨지 않았다는 핵심 증거 — 순수 구조 변경, 신규 기능/동작 변경 없음).
+
+---
+
+## 씬/프리팹 배선 — Phase 0~6 코드 레이어를 실제 씬/프리팹으로 처음 배선 (README.md "빌드/실행 방법" 3번 항목 해소)
+
+| 작업 | 담당 | 상태 | 메모 |
+|---|---|---|---|
+| `DefaultStickConfig.asset` 생성 | Coder | 완료 | 아래 상세 |
+| `Stickman.prefab`(Rigidbody2D+HingeJoint2D 리그, 코드 생성 스프라이트) | Coder | 완료 | 아래 상세 |
+| `Main.unity`(카메라+캐릭터 인스턴스, 빌드 설정 등록) | Coder | 완료 | 아래 상세 |
+| 배치모드 PlayMode 스모크 테스트로 실측 검증 | Coder | 완료 | 아래 상세 — 실측 로그 포함 |
+
+- **배경**: Phase 0~6은 `Assets/_Project/Scripts/`의 순수 C# 게임로직만 구현하고 씬(`.unity`)/프리팹(`.prefab`)이 하나도 없는 상태로 남겨져 있었다(README.md "빌드/실행 방법" 3번 항목에 명시적으로 기록됨). 이번 작업은 그 코드가 실제로 Rigidbody2D/Update 루프 위에서 동작하는지 처음으로 검증하는 것이 목적이다.
+- **신규 에셋**:
+  - `Assets/_Project/Data/DefaultStickConfig.asset` — `StickConfig` 인스턴스. 필드 대부분은 코드 기본값 그대로 두었고, `groundSnapTolerance`만 6→20으로 조정(사유는 아래 "실측으로 발견한 이슈" 참고).
+  - `Assets/_Project/Data/Sprites/{RectSprite,CircleSprite}.asset` — 실제 아트 에셋이 없어 `Texture2D.SetPixels32`+`Sprite.Create`로 코드 생성한 흰 사각형/원 스프라이트(64x64, PPU=64 → 스케일 1로 세계단위 1x1). `AssetDatabase.CreateAsset`+`AddObjectToAsset`으로 영구 에셋화해(런타임 전용 `Sprite.Create` 결과를 프리팹이 임베드에 의존하지 않도록) 재실행/재생성 시에도 안정적으로 재사용된다.
+  - `Assets/_Project/Prefabs/Stickman.prefab` — 루트(`Rigidbody2D` Dynamic + `CapsuleCollider2D` + `StickmanClickHitbox` + `StickmanAgent`, `_config`는 `SerializedObject`로 위 asset 배선) + 자식 6개: Torso/Head(시각 전용, Head만 작은 `CircleCollider2D` 보유 — Rigidbody2D가 없어 루트의 compound collider로 자동 합산됨), LeftArm/RightArm/LeftLeg/RightLeg(각각 독립 `Rigidbody2D`+`HingeJoint2D`, `connectedBody`=루트, `autoConfigureConnectedAnchor=false`로 anchor/connectedAnchor를 수동 고정해 초기 배치와 정확히 일치시킴 — 초기 구속 오차 0). **팔다리에는 의도적으로 Collider2D를 붙이지 않았다** — 몸통/팔다리 콜라이더가 상시 물리 시뮬레이션 중(걷기 등 RAGDOLL이 아닌 상태에서도 4개 Rigidbody2D가 계속 시뮬레이션됨) 서로 겹쳐 충돌 판정을 일으켜 캐릭터가 떨리거나 튕겨나가는 것을 원천 차단하기 위함(스프라이트는 조인트 anchor 계산에 스케일이 관여하지 않도록 별도 "Visual" 자식에서만 스케일).
+  - `Assets/_Project/Scenes/Main.unity` — Main Camera(직교, orthographicSize=20, 이유는 아래) + Stickman 프리팹 인스턴스 1개(카메라 뷰포트 상단 가장자리 0.3유닛 위에서 낙하 시작). `EditorBuildSettings.scenes`에도 등록 완료(`ProjectSettings/EditorBuildSettings.asset` 확인됨).
+  - `Assets/Editor/SceneBootstrapper.cs` — 위 3개 에셋을 재생성하는 에디터 빌더(메뉴 `StickMate/Build All...` 또는 `-executeMethod StickMate.EditorTools.SceneBootstrapper.BuildAll`). 리더 지시대로 작업 종료 후에도 남겨둠 — 나중에 프리팹 리그를 조정하거나 씬을 재생성할 때 코드로 일관되게 재현 가능.
+  - `Assets/_Project/Scripts/Tests/PlayMode/{StickMate.Tests.PlayMode.asmdef,StickmanPlaytestSmokeTests.cs}` — 정식 Unity Test Framework PlayMode 테스트(EditMode처럼 `-runTests -testPlatform PlayMode`로 CI 재실행 가능한 영구 회귀 자산). `Main.unity`를 로드해 15초간 0.5초 간격으로 `StickmanAgent.transform.position`을 샘플링하며 `Debug.Log`로도 남겨(`[PLAYTEST]` 접두사) `-logFile` 결과에서 grep으로 실측 로그를 바로 확인할 수 있게 했다. 검증 항목: (a) 정착 구간(t≥8s) Y 변동폭 <0.05유닛(무한낙하 아님), (b) 전체 구간 X 변동폭 >0.3유닛(자율 배회가 실제로 걸음), (c) UTF 기본 동작상 `Debug.LogError`/`LogException`이 한 번이라도 발생하면 테스트가 자동 실패(별도 예외 감지 코드 불필요).
+- **좌표계 관찰(코드 무수정, 기록만)**: `Platform/NullPlatformWindowService.cs`의 더미 발판은 OS 좌상단 원점 기준 `Rect(0,0,width,40)`, 즉 화면 최상단 40px 밴드다. `Platform/ScreenCoordinateConverter.cs`를 거치면 이는 카메라 위치/orthographicSize와 무관하게 항상 "카메라 뷰포트의 최상단 가장자리" 월드 Y로 고정 환산된다(top = cam.y + orthographicSize). 즉 캐릭터의 발(=`StickmanBlackboard.SenseGround()`가 그대로 발 위치로 쓰는 `Body.position`)이 이 지점에 스냅되면 몸통 대부분이 카메라 시야 밖(더 위)으로 벗어난다 — 코드 주석은 "화면 하단"이라 적혀 있어 실제 배치(최상단)와 이름이 어긋나 보이지만, 이미 EditMode 테스트로 검증된 기존 Phase 1 코드이고 씬/프리팹 배선 스코프 밖이라 손대지 않았다. 플레이테스트는 화면 렌더링이 아니라 `transform.position` 실측 로그로 검증하므로 이 프레이밍 이슈와는 무관하게 유효하다. Phase 2+ 렌더링 담당자가 참고할 수 있도록 `Assets/Editor/SceneBootstrapper.cs` 클래스 문서 상단에도 동일 내용을 기록해뒀다.
+- **실측으로 발견한 이슈 2건과 대응(전부 "데이터/씬 배선" 조정으로 해결 — `States/*.cs` 로직 자체는 무수정)**:
+  1. **접지 감지 터널링**: 최초 시도(spawn 1유닛 낙하, `groundSnapTolerance` 기본값 6px, `Screen=640x480` 헤드리스 환경)에서 캐릭터가 접지 판정 밴드(약 0.125유닛 폭)를 한 프레임에 통과해 무한 낙하하는 것을 실측 확인(`t=0.5s y=2.174` → `t=2.0s y=-53.449`, 계속 발산). 원인은 README에 이미 기록된 기존 알려진 한계("물리 갱신이 Update() 경로")와 같은 계열 — 헤드리스 배치 환경의 낮은 프레임레이트에서 프레임당 이동거리가 얇은 판정 밴드보다 커질 수 있음. `StickConfig.cs` 자체가 "기본값은 추후 UX/디자인·물리 튜닝으로 교체될 임시값"이라고 명시한 값이므로, 코드가 아니라 `DefaultStickConfig.asset`의 `groundSnapTolerance`를 20px로, 낙하 시작 높이를 1유닛→0.3유닛으로 조정해 재검증 — 정착.
+  2. **단일 더미 발판 화면 이탈**: `orthographicSize=5`(세계 폭 약 13.3유닛)로는 15초 관찰 구간 안에 자율 배회 AI가 실제로 유일한 더미 발판의 가장자리에 도달해 `CheckScreenBoundsOrFall`이 정상적으로 Fall 전이시키는 것을 실측 확인(`t=12.0s x=-6.446` → `t=14.5s x=-8.188, y=-63.594`로 발산). **이것은 버그가 아니라 "발판 이탈 시 낙하"라는 기존 설계 그대로의 동작**이다 — 다만 더미 폴백이 발판을 화면 전체 폭 1개로만 제공해 배회 관찰 시간 대비 세계가 좁았던 것이 원인. 카메라 `orthographicSize`를 5→20(세계 폭 약 4배)으로 넓혀 재검증 — 15초 동안 가장자리에 닿지 않고 배회 관찰 가능. 순수 카메라 프레이밍 조정이며 캐릭터/물리/AI 로직은 무관.
+- **실측 결과(최종 통과 런, `Logs/playmode_run3.log`에서 grep, `[PLAYTEST]` 접두사 로그 원문 발췌)**:
+  ```
+  [PLAYTEST] 시작 — initialY=20.300, duration=15s, interval=0.5s
+  [PLAYTEST] DIAG Screen=640x480, cam.orthoSize=20, cam.y=0
+  [PLAYTEST] t=0.5s x=0.001 y=19.974
+  [PLAYTEST] t=1.0s x=0.000 y=19.974
+  [PLAYTEST] t=2.5s x=0.068 y=19.974
+  [PLAYTEST] t=5.0s x=6.444 y=19.973
+  [PLAYTEST] t=8.0s x=11.358 y=19.973
+  [PLAYTEST] t=11.0s x=13.874 y=19.973
+  [PLAYTEST] t=15.0s x=18.640 y=19.974
+  [PLAYTEST] 정착 구간(t>=8s) Y 범위: 0.0015 (min=19.973, max=19.974)
+  [PLAYTEST] 전체 구간 X 범위: 18.6405 (min=-0.001, max=18.640)
+  [PLAYTEST] 완료 — 정착 Y범위=0.0015(<0.05), X범위=18.6405(>0.3)
+  ```
+  (a) Y가 낙하 시작(20.3) 직후 즉시 ~19.974로 정착해 15초 내내 0.0015유닛 이내로 유지됨(무한낙하 아님, 정상 스냅). (b) X가 0에서 18.64유닛까지 단조 증가(자율 배회 AI가 실제로 `Rigidbody2D`를 걷게 함 — 이번 런은 우연히 한 방향으로 계속 걸었으나, 도중 여러 샘플 구간의 증가율 변화(예: t=6.5~7.5s 구간 완만해짐)가 Idle/turn-check 개입의 흔적). (c) 전체 로그(`Logs/playmode_run3.log`)에 `Error`/`Exception` 매치 0건. `-runTests` 종료 코드 0, `Logs/playmode_results3.xml`에 `total="1" passed="1" failed="0"`.
+- **검증**: Unity 배치모드 전체 컴파일(`Logs/final_compile.log`) — `error CS`/`warning CS` 매치 0건, exit code 0. EditMode 재실행(`Logs/editmode_final.xml`) — `total="13" passed="13" failed="0"` 유지(신규 씬/프리팹/config 데이터가 기존 순수 로직 테스트에 영향 없음 확인). PlayMode 신규 테스트(`Logs/playmode_results3.xml`) — `total="1" passed="1" failed="0"`.
+- **남은 것(다음 단계 후보, 이번 스코프 밖)**: (1) 실제 아트 에셋으로 코드 생성 스프라이트 교체. (2) `HingeJoint2D` 각도 제한(`useLimits`)이나 실제 RAGDOLL 강제 피격(`ReportExternalImpact`) 경로는 이번 배선에서 구조만 만족시켰을 뿐 실제 격파/드래그 등 Phase 3 상호작용으로는 아직 검증 안 함(다음 플레이테스트 후보). (3) 위 "실측으로 발견한 이슈 2건"이 시사하듯, README에 이미 기록된 "물리 갱신이 Update() 경로" 한계는 헤드리스/저프레임레이트 환경에서 실제로 판정 밴드 터널링을 일으킬 수 있음이 이번에 처음 실측으로 확인됨 — `groundSnapTolerance` 데이터 튜닝으로 우회했지만, 근본적으로는 FixedUpdate 이관이나 연속 충돌 검사 방식 도입이 더 견고한 해법일 수 있어 Architect 판단 요청. (4) `NullPlatformWindowService` 더미 발판이 "화면 하단"이라는 주석과 달리 실제로는 화면 최상단에 배치되는 좌표계 불일치는 이번에 처음 시각적으로 드러났다(위 "좌표계 관찰" 참고) — Phase 1 로직 자체는 EditMode 테스트로 이미 검증된 상태라 이번 스코프에서 수정하지 않았으나, 실제 렌더링 레이어 착수 전 Architect/Debugger 확인 권고.

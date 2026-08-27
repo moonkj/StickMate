@@ -118,3 +118,11 @@ Phase 0(스캐폴딩) → 1(코어루프) → 2(랙돌/파쿠르) → 3(전투/�
 - 총 커밋 19개, EditMode 회귀테스트 13건(텍스트-액션싱크 8 + 유저자산불변감사 5) 전부 통과 유지.
 - Blocker 다수 발견·해소(발판0개 무한낙하, 키보드의존이동 근본결함, 게임창 자기파괴 위험 등), Major 다수 발견·해소, 개선사이클 1회(R2, DRY위반 해소) 완주.
 - 남은 것: 씬/프리팹 배선(캐릭터 리그/UI), macOS 네이티브, 진짜 분리 오버레이(BUG-B1), 던전파밍/세포분열(P3 보류) — README "알려진 한계"에 명시.
+
+## 2026-08-28 (계속) — 씬/프리팹 배선 완료 (README "다음 단계" 첫 항목 착수)
+- Coder: DefaultStickConfig.asset, Stickman.prefab(플레이스홀더 스프라이트 리그 — 루트 Rigidbody2D+StickmanAgent, 팔다리 4개는 Rigidbody2D+HingeJoint2D로 RagdollRig 계약 충족, 충돌체는 의도적으로 제외해 상시물리 떨림 방지), Main.unity(직교카메라+인스턴스), SceneBootstrapper.cs(재생성용 에디터 빌더) 생성.
+- **실측 플레이테스트**(PlayMode 배치 실행, 15초 관찰): Y좌표 즉시 정착 후 변동폭 0.0015유닛(무한낙하 없음), X좌표 0→18.64유닛 실제 이동(자율배회 AI 실동작 확인), 에러/예외 0건.
+- 실측 중 발견해 수정한 이슈 2건(전부 데이터 튜닝, 로직 무수정): (1) groundSnapTolerance가 너무 좁아 저프레임레이트에서 접지판정 터널링 → 6px→20px. (2) 카메라 시야가 좁아 유일한 더미발판 가장자리에 도달해 정상적으로 Fall(설계대로 동작, 버그 아님) → orthographicSize 5→20로 확장해 데모 관찰성 개선.
+- PlayMode 정식 회귀 테스트 1건 신설(StickMate.Tests.PlayMode), 향후 -runTests -testPlatform PlayMode로 재실행 가능.
+- 리더 독립 컴파일 재검증: 에러0/경고0.
+- 다음: Debugger에게 씬/프리팹/구성 검토 위임(코드 로직이 아닌 에셋 배선 관점).
