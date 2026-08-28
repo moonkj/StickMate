@@ -53,6 +53,14 @@ namespace StickMate.States
         /// 1프레임 펄스 계약). IntentSource에서 매 프레임 조회 — WalkState가 소비한다.</summary>
         public bool LedgeHangPressed => IntentSource != null && IntentSource.LedgeHangRequested;
 
+        /// <summary>이번 프레임에 "낙차가 작은 턱에서 그냥 앞으로 뛰어내리기"가 요청되었는지(위 두 펄스와
+        /// 동일한 1프레임 계약). IntentSource에서 매 프레임 조회 — WalkState가 소비한다.</summary>
+        public bool HopDownPressed => IntentSource != null && IntentSource.HopDownRequested;
+
+        /// <summary>이번 프레임에 "낮은 턱을 기어올라 되돌아가기"가 요청되었는지(동일한 1프레임 계약).
+        /// IntentSource에서 매 프레임 조회 — WalkState가 소비해 ParkourClimb로 보낸다.</summary>
+        public bool StepUpPressed => IntentSource != null && IntentSource.StepUpRequested;
+
         /// <summary>
         /// StickmanAgent.TryGetCursorPosition과 동일한 시그니처(CursorPositionQuery, UX_FLOW.md 9절-3
         /// 전역 커서 폴링 채널 재사용) — 드래그&던지기(DragThrowState)/로데오 커서(RodeoCursorState)가
@@ -766,8 +774,61 @@ namespace StickMate.States
             var footholds = FootholdPoller != null ? FootholdPoller.CachedFootholds : System.Array.Empty<PlatformFoothold>();
             Vector2 foot = Body != null ? Body.position : Vector2.zero;
             float outward = Config != null ? Config.ledgeHangEdgeOffset : 0.14f;
+            // 상한 없음(0) — 매달리기는 "깊으면 깊을수록" 성립한다. 하한만이 안전 조건이다.
             return GroundSensor.TryFindDescendTarget(MainCamera, foot, info, direction, footholds, Config, outward,
-                LedgeHangDropDepth, out targetHandle, out targetTopWorldY);
+                LedgeHangMinDropDepth, 0f, out targetHandle, out targetTopWorldY);
+        }
+
+        /// <summary>
+        /// ★ 뛰어내리기(HopDown) 진입 판정(2026-08-29, 사용자 결정 "낙차가 작으면 뛰어내리게 한다").
+        /// 위 <see cref="TryFindDescendTarget"/>와 **같은 함수**를 쓰되 낙차 밴드만 반대편을 물어본다:
+        /// [<see cref="StickConfig.hopDownMinDropHeight"/>, <see cref="HopDownMaxDropHeight"/>).
+        ///
+        /// 두 판정은 구조적으로 상호 배타다 — HopDownMaxDropHeight의 기본값이 곧
+        /// <see cref="LedgeHangMinDropDepth"/>이기 때문이다. 그래서 "둘 다 성립"(어느 쪽을 할지 모호)도
+        /// "둘 다 불성립"(내려갈 곳이 있는데 아무 것도 안 함)도 생기지 않는다. 다만 목적지가 여러 개인
+        /// 배치에서는 서로 **다른 발판**을 고를 수 있으므로(예: 1유닛 아래에 턱, 5유닛 아래에 바닥),
+        /// 호출부(AutoWanderController)는 반드시 이쪽을 **먼저** 물어야 한다 — 실제로 발이 먼저 닿는
+        /// 면은 언제나 더 가까운 쪽이고, 그 위로 매달려 지나가면 몸이 발판을 파고든다.
+        /// </summary>
+        public bool TryFindHopDownTarget(GroundSensor.GroundInfo info, int direction, out long targetHandle, out float targetTopWorldY)
+        {
+            var footholds = FootholdPoller != null ? FootholdPoller.CachedFootholds : System.Array.Empty<PlatformFoothold>();
+            Vector2 foot = Body != null ? Body.position : Vector2.zero;
+            float outward = Config != null ? Config.hopDownProbeOutward : 0.2f;
+            float minDrop = Config != null ? Config.hopDownMinDropHeight : 0.35f;
+            return GroundSensor.TryFindDescendTarget(MainCamera, foot, info, direction, footholds, Config, outward,
+                Mathf.Max(0.0001f, minDrop), HopDownMaxDropHeight, out targetHandle, out targetTopWorldY);
+        }
+
+        /// <summary>
+        /// 매달리기가 성립하려면 필요한 **최소 낙차**(월드 유닛). 손끝~발끝 거리(<see cref="LedgeHangDropDepth"/>)가
+        /// 본질이지만, 파쿠르 감지 반경보다 작아지는 퇴화 배치(팔을 못 찾는 폴백 등)에서 판정이 무의미해지지
+        /// 않도록 그 값으로 바닥을 받쳐둔다 — 2026-08-29 이전에 GroundSensor 안에 하드코딩돼 있던
+        /// Mathf.Max(detectionRadius, dropDepth)를 그대로 옮겨온 것이라 기존 거동과 100% 동일하다.
+        /// 이 값이 곧 "매달리기 / 뛰어내리기"의 분기 임계값이다.
+        /// </summary>
+        public float LedgeHangMinDropDepth
+        {
+            get
+            {
+                float detectionRadius = Config != null ? Config.parkourDetectionRadius : 0.5f;
+                return Mathf.Max(detectionRadius, LedgeHangDropDepth);
+            }
+        }
+
+        /// <summary>
+        /// 뛰어내리기로 처리할 낙차의 상한(이 값 자신은 제외). StickConfig.hopDownMaxDropHeight가 0 이하면
+        /// <see cref="LedgeHangMinDropDepth"/>를 자동으로 쓴다(권장 기본값) — 그래야 두 밴드가 정확히
+        /// 맞물려 틈도 겹침도 생기지 않는다.
+        /// </summary>
+        public float HopDownMaxDropHeight
+        {
+            get
+            {
+                float configured = Config != null ? Config.hopDownMaxDropHeight : 0f;
+                return configured > 0f ? configured : LedgeHangMinDropDepth;
+            }
         }
 
         /// <summary>

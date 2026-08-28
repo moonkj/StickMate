@@ -66,18 +66,30 @@ namespace StickMate.States
         private float _edgePauseTimer;
         private float _edgePauseDuration;
 
-        // 매달려 내려가기 추첨은 한 Walk 페이즈(정확히는 "한 방향으로 걷는 한 구간")당 최대 1회만
-        // 한다. 매 프레임 다시 뽑으면 경계에 머무는 몇 프레임 동안 확률이 사실상 1이 되어 "일부만
-        // 매달리게" 하려는 설정 자체가 무의미해진다.
-        private bool _ledgeHangRolledThisLeg;
+        // 경계 행동 추첨(매달려 내려가기 / 뛰어내리기 / 되올라가기)은 한 Walk 페이즈(정확히는 "한
+        // 방향으로 걷는 한 구간")당 **통틀어 최대 1회**만 한다. 매 프레임 다시 뽑으면 경계에 머무는 몇
+        // 프레임 동안 확률이 사실상 1이 되어 "일부만 하게" 하려는 설정 자체가 무의미해진다. 세 갈래를
+        // 각각 따로 뽑지 않고 하나로 묶은 이유도 같다 — 한 경계에서 주사위를 세 번 굴리면 "아무 것도
+        // 안 할 확률"이 설정값의 곱으로 떨어져 캐릭터가 경계마다 뭔가를 하게 된다.
+        private bool _edgeActionRolledThisLeg;
+
+        // ★ 뛰어내리기 "확약" 서브 상태(2026-08-29). 추첨에 당첨된 순간 바로 발을 떼지 않고, 모서리
+        // 코앞(hopDownEdgeCommitDistance)까지 계속 걸어간 뒤에 펄스를 낸다. 왜 바로 떼면 안 되는가는
+        // StickConfig.hopDownEdgeCommitDistance의 Tooltip에 적어뒀다(요약: 경계 판정 거리 0.3유닛에서
+        // 곧장 Fall로 보내면 몸이 아직 발판 위라 FallState가 같은 발판에 도로 착지한다).
+        private bool _hopDownCommitted;
 
         private float _moveInputX;
         private bool _jumpRequestedThisTick;
         private bool _ledgeHangRequestedThisTick;
+        private bool _hopDownRequestedThisTick;
+        private bool _stepUpRequestedThisTick;
 
         public float MoveInputX => _moveInputX;
         public bool JumpRequested => _jumpRequestedThisTick;
         public bool LedgeHangRequested => _ledgeHangRequestedThisTick;
+        public bool HopDownRequested => _hopDownRequestedThisTick;
+        public bool StepUpRequested => _stepUpRequestedThisTick;
 
         public AutoWanderController(StickmanBlackboard blackboard, StickConfig config, System.Random rng)
         {
@@ -93,6 +105,8 @@ namespace StickMate.States
         {
             _jumpRequestedThisTick = false;
             _ledgeHangRequestedThisTick = false;
+            _hopDownRequestedThisTick = false;
+            _stepUpRequestedThisTick = false;
 
             if (_phase == Phase.Resting) TickResting(deltaTime);
             else TickMoving(deltaTime);
@@ -181,7 +195,8 @@ namespace StickMate.States
             _turnCheckTimer = 0f;
             _spontaneousTurnUsedThisPhase = false;
             _isEdgePaused = false;
-            _ledgeHangRolledThisLeg = false;
+            _edgeActionRolledThisLeg = false;
+            _hopDownCommitted = false;
             _direction = PickDirectionAvoidingEdge();
             _moveInputX = _direction;
         }
@@ -214,30 +229,47 @@ namespace StickMate.States
 
             // 26-2: 발판 경계 판정. 접지 중일 때만 의미가 있다 — 공중(점프/낙하 중)에는 판정하지 않는다.
             GroundSensor.GroundInfo info = _blackboard.SenseGround();
-            if (info.Grounded && IsNearFootholdEdge(info, _direction, out bool isTrueScreenEdge))
+            if (!info.Grounded)
             {
-                // ★ 매달려 내려가기 추첨(2026-08-28, 사용자 명시 요청 "내려갈때도 매달려서 내려가는형태로").
-                // 기존 두 분기(점프 시도 / 정지 후 반대 방향)보다 **먼저** 판정하되, 다음 세 조건이 전부
-                // 참일 때만 발동한다:
-                //   (1) 이 걷기 구간에서 아직 추첨하지 않았다(매 프레임 재추첨 방지 — 위 필드 주석 참고),
-                //   (2) 화면 자체의 끝이 아니다(끝에서 바깥으로 매달리면 몸이 화면 밖으로 나간다),
-                //   (3) 실제로 **매달린 발보다 아래에 내려앉을 발판이 있다**
-                //       (StickmanBlackboard.TryFindDescendTarget — 없으면 그냥 떨어지는 것과 같으므로 안 한다).
-                // 추첨에 떨어지거나 조건이 안 맞으면 아래 기존 분기로 그대로 흘러간다 — 즉 이 기능이
-                // 꺼져 있으면(ledgeHangChance=0) 직전 라운드까지의 거동과 100% 동일하다.
-                if (!_ledgeHangRolledThisLeg && !isTrueScreenEdge)
+                // 공중으로 나갔다면 뛰어내리기 확약은 이미 소임을 다했다(펄스로 발을 뗐거나, 그냥 걸어서
+                // 모서리를 넘어갔거나). 확약이 남아 있으면 다음 경계에서 걷기만 하고 서지 않게 되므로
+                // 반드시 여기서 해제한다.
+                _hopDownCommitted = false;
+                // 발이 땅에서 떨어진 순간부터는 "새 걷기 구간"으로 본다 — 추첨을 한 번으로 제한하는
+                // 이유는 "같은 모서리에 머무는 동안 매 프레임 재추첨하지 않기" 하나뿐인데, 공중으로
+                // 나갔다는 것은 그 모서리를 이미 떠났다는 뜻이다. 이 리셋이 없으면 뛰어내린 직후 착지한
+                // 발판에서는 추첨 자체를 못 해, 되올라가려면 반대편 경계까지 한 번 왕복해야 한다.
+                _edgeActionRolledThisLeg = false;
+            }
+            if (info.Grounded && IsNearFootholdEdge(info, _direction, out bool isTrueScreenEdge, out float remainingToEdge))
+            {
+                // ★ 경계 행동 추첨 — 한 걷기 구간당 1회(위 _edgeActionRolledThisLeg 주석 참고). 아래 세
+                // 갈래를 **낙차/높이로 먼저 가른 뒤** 그 갈래의 확률로만 추첨한다. 공통 전제 두 가지:
+                //   (1) 화면 자체의 끝이 아니다(끝에서 바깥으로 나가면 몸이 화면 밖으로 나간다),
+                //   (2) 실제로 갈 곳이 있다(내려앉을 발판 / 올라설 턱이 실존할 때만 추첨한다).
+                // 추첨에 떨어지거나 조건이 안 맞으면 아래 기존 분기(점프 시도 / 정지 후 반대 방향)로
+                // 그대로 흘러간다 — 즉 세 확률을 전부 0으로 두면 예전 거동과 100% 동일하다.
+                if (!_edgeActionRolledThisLeg && !isTrueScreenEdge)
                 {
-                    _ledgeHangRolledThisLeg = true;
-                    float hangChance = Cfg(c => c.ledgeHangChance, 0.35f);
-                    if (hangChance > 0f && _rng.NextDouble() < hangChance
-                        && _blackboard.TryFindDescendTarget(info, _direction, out _, out _))
+                    _edgeActionRolledThisLeg = true;
+                    if (TryRollEdgeAction(info)) return;
+                }
+
+                // ★ 뛰어내리기 확약 중이면 정지/반전하지 않고 모서리 코앞까지 계속 걸어간 뒤 발을 뗀다
+                // (2026-08-29). 이 블록이 아래 기존 분기보다 먼저 와야 한다 — 그렇지 않으면 확약해두고도
+                // 90% 분기(정지 후 반대 방향)에 먼저 걸려 그 자리에서 돌아서 버린다.
+                if (_hopDownCommitted)
+                {
+                    _moveInputX = _direction;
+                    float commitDistance = Cfg(c => c.hopDownEdgeCommitDistance, 0.12f);
+                    if (remainingToEdge <= commitDistance)
                     {
-                        // 실제 상태 전이는 WalkState가 한다(이 클래스는 "의도"만 만든다는 계약 유지).
-                        // 진행 방향을 그대로 유지해 매달리는 쪽을 바라보게 한다.
-                        _ledgeHangRequestedThisTick = true;
-                        _moveInputX = _direction;
-                        return;
+                        // 실제 상태 전이(수평 속도 부여 + Fall)는 WalkState가 한다 — 이 클래스는 "의도"만
+                        // 만든다는 계약 유지.
+                        _hopDownCommitted = false;
+                        _hopDownRequestedThisTick = true;
                     }
+                    return;
                 }
 
                 // 화면 자체의 물리적 끝(더 이상 발판이 없음)에서는 점프 확률을 항상 0으로 강제 —
@@ -288,8 +320,9 @@ namespace StickMate.States
             _isEdgePaused = false;
             _direction = -_direction;
             _moveInputX = _direction;
-            // 반대 방향으로 도는 순간부터는 "새 걷기 구간"이다 — 반대쪽 경계에서 매달리기를 다시 추첨한다.
-            _ledgeHangRolledThisLeg = false;
+            // 반대 방향으로 도는 순간부터는 "새 걷기 구간"이다 — 반대쪽 경계에서 다시 추첨한다.
+            _edgeActionRolledThisLeg = false;
+            _hopDownCommitted = false;
 
             // 경계 바운스는 26-1 통계상 "새 Walk 페이즈"로 집계하지 않는다(_moveTimer는 정지 중 멈춰
             // 있었다) — 남아 있던 Walk 지속시간을 그대로 이어간다. 이미 다 써버렸다면 여기서 Idle로.
@@ -303,24 +336,93 @@ namespace StickMate.States
         /// isTrueScreenEdge: 그 발판의 경계가 전체 발판 통합 경계(화면 자체의 끝)와 일치하는지 —
         /// 옆에 다른 발판이 더 있다면 false(그 발판만의 끝일 뿐 화면의 끝은 아님).
         /// </summary>
-        private bool IsNearFootholdEdge(GroundSensor.GroundInfo info, int direction, out bool isTrueScreenEdge)
+        private bool IsNearFootholdEdge(GroundSensor.GroundInfo info, int direction, out bool isTrueScreenEdge,
+            out float remainingToEdge)
         {
             float stopDistance = Cfg(c => c.wanderEdgeStopDistance, 0.3f);
             float characterX = _blackboard.Body != null ? _blackboard.Body.position.x : 0f;
 
-            float remaining;
             if (direction > 0)
             {
-                remaining = info.CurrentFootholdRightWorldX - characterX;
+                remainingToEdge = info.CurrentFootholdRightWorldX - characterX;
                 isTrueScreenEdge = Mathf.Abs(info.CurrentFootholdRightWorldX - info.ScreenRightWorldX) <= ScreenEdgeEpsilon;
             }
             else
             {
-                remaining = characterX - info.CurrentFootholdLeftWorldX;
+                remainingToEdge = characterX - info.CurrentFootholdLeftWorldX;
                 isTrueScreenEdge = Mathf.Abs(info.CurrentFootholdLeftWorldX - info.ScreenLeftWorldX) <= ScreenEdgeEpsilon;
             }
 
-            return remaining <= stopDistance;
+            return remainingToEdge <= stopDistance;
+        }
+
+        /// <summary>
+        /// ★ 경계에서 무엇을 할지 한 번만 정한다(2026-08-29, 사용자 결정 "낙차가 작으면 뛰어내리게 한다").
+        ///
+        /// 우선순위와 그 근거:
+        ///   1. **뛰어내리기**(낙차 [hopDownMinDropHeight, 매달리기 최소치)) — 가장 먼저 물어야 한다.
+        ///      두 판정이 서로 다른 발판을 고를 수 있는데(예: 1유닛 아래 턱 + 5유닛 아래 바닥), 실제로
+        ///      발이 먼저 닿는 면은 언제나 더 가까운 쪽이다. 매달리기를 먼저 채택하면 매달린 몸이 그
+        ///      가까운 발판을 파고든다(StickmanBlackboard.TryFindHopDownTarget 문서 참고).
+        ///   2. **매달려 내려가기**(낙차 >= 매달리기 최소치) — 기존 동작 그대로.
+        ///   3. **되올라가기**(진행 방향에 stepUpMaxHeight 이하의 턱) — 내려갈 곳이 없을 때만 본다.
+        ///      아래로 갈 수 있는 자리에서 위를 함께 보면 한 경계에서 방향이 왔다갔다한다.
+        ///
+        /// 반환값 true = 이번 프레임에 의도를 발행했으니 호출부는 즉시 return해야 한다.
+        /// (뛰어내리기는 "확약"만 하고 아직 펄스를 내지 않는다 — 모서리 코앞까지 더 걸어가야 하므로
+        ///  false를 돌려주고 바로 아래의 확약 블록이 그 걷기를 이어받는다.)
+        /// </summary>
+        private bool TryRollEdgeAction(GroundSensor.GroundInfo info)
+        {
+            // 1) 뛰어내리기 — 낙차가 작아 매달릴 이유가 없는 턱.
+            float hopChance = Cfg(c => c.hopDownChance, 0.5f);
+            if (hopChance > 0f && _blackboard.TryFindHopDownTarget(info, _direction, out long hopHandle, out float hopTopY))
+            {
+                if (_rng.NextDouble() < hopChance)
+                {
+                    _hopDownCommitted = true;
+                    _moveInputX = _direction;
+                    Debug.Log($"[뛰어내리기] 결정 — 방향={(_direction > 0 ? "오른쪽" : "왼쪽")}, " +
+                        $"낙차={(info.GroundWorldY - hopTopY):F3}유닛(매달리기 최소치 {_blackboard.LedgeHangMinDropDepth:F3}보다 작음), " +
+                        $"내려앉을 발판핸들={hopHandle}. 모서리 코앞까지 걸어간 뒤 발을 뗍니다.");
+                }
+                // 추첨 성공이든 실패든 "여기서는 뛰어내리기 갈래였다"가 확정이다. 성공했으면 확약 블록이
+                // 이어받고(그래서 false), 실패했으면 기존 배회 행동(정지 후 반대 방향)으로 흘러간다.
+                return false;
+            }
+
+            // 2) 매달려 내려가기 — 손끝~발끝 거리보다 깊은 낙차(기존 동작).
+            float hangChance = Cfg(c => c.ledgeHangChance, 0.35f);
+            if (hangChance > 0f && _rng.NextDouble() < hangChance
+                && _blackboard.TryFindDescendTarget(info, _direction, out _, out _))
+            {
+                // 실제 상태 전이는 WalkState가 한다(이 클래스는 "의도"만 만든다는 계약 유지).
+                // 진행 방향을 그대로 유지해 매달리는 쪽을 바라보게 한다.
+                _ledgeHangRequestedThisTick = true;
+                _moveInputX = _direction;
+                return true;
+            }
+
+            // 3) 되올라가기 — 내려갈 곳이 없고 진행 방향에 낮은 턱이 있을 때. ★ 이 분기가 없으면 한 번
+            // Dock 아래로 내려간 캐릭터가 영영 못 올라온다(경계 점프 확률이 기본 0이라 ParkourClimb를
+            // 유발할 다른 경로가 없다) — 2026-08-29 사용자 지시의 핵심 절반이다.
+            float stepUpChance = Cfg(c => c.stepUpChance, 0.5f);
+            if (stepUpChance > 0f && _rng.NextDouble() < stepUpChance
+                && _blackboard.TryFindClimbableWall(info, _direction, out long wallHandle, out float wallTopY))
+            {
+                float wallHeight = wallTopY - info.GroundWorldY;
+                float maxHeight = Cfg(c => c.stepUpMaxHeight, 1.5f);
+                if (wallHeight <= maxHeight)
+                {
+                    _stepUpRequestedThisTick = true;
+                    _moveInputX = _direction;
+                    Debug.Log($"[되올라가기] 결정 — 방향={(_direction > 0 ? "오른쪽" : "왼쪽")}, " +
+                        $"턱 높이={wallHeight:F3}유닛(상한 {maxHeight:F2}), 턱 발판핸들={wallHandle}.");
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>26-1: 최초(또는 매 Walk 페이즈 시작 시) 진행 방향은 좌우 50:50 랜덤. 단, 지금 위치가
@@ -332,8 +434,8 @@ namespace StickMate.States
             GroundSensor.GroundInfo info = _blackboard.SenseGround();
             if (!info.Grounded) return dir;
 
-            bool huggingRightScreenEdge = IsNearFootholdEdge(info, 1, out bool rightIsScreenEdge) && rightIsScreenEdge;
-            bool huggingLeftScreenEdge = IsNearFootholdEdge(info, -1, out bool leftIsScreenEdge) && leftIsScreenEdge;
+            bool huggingRightScreenEdge = IsNearFootholdEdge(info, 1, out bool rightIsScreenEdge, out _) && rightIsScreenEdge;
+            bool huggingLeftScreenEdge = IsNearFootholdEdge(info, -1, out bool leftIsScreenEdge, out _) && leftIsScreenEdge;
             if (huggingRightScreenEdge && !huggingLeftScreenEdge) return -1;
             if (huggingLeftScreenEdge && !huggingRightScreenEdge) return 1;
             return dir;

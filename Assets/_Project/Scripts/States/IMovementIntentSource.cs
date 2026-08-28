@@ -37,5 +37,30 @@ namespace StickMate.States
         /// 늘어나는 비용보다 의도를 분리해 두는 편이 훨씬 싸다.
         /// </summary>
         bool LedgeHangRequested { get; }
+
+        /// <summary>
+        /// 이번 프레임에 "낙차가 작은 턱에서 그냥 앞으로 뛰어내리기" 의도가 새로 발생했는지 —
+        /// 위 두 펄스와 **완전히 동일한 1프레임 펄스 계약**을 따른다.
+        ///
+        /// 왜 LedgeHangRequested를 재사용하지 않는가(2026-08-29): 목적지 판정 기준이 정반대다.
+        /// 매달리기는 "손끝~발끝 거리보다 **더 깊은**" 발판만 목적지로 인정하고, 뛰어내리기는
+        /// "그보다 **얕은**" 발판만 인정한다(StickmanBlackboard.TryFindHopDownTarget / TryFindDescendTarget).
+        /// 한 채널로 합치면 소비자(WalkState)가 어느 쪽 판정을 다시 돌려야 하는지 알 수 없고, 잘못된
+        /// 쪽을 고르면 "매달렸는데 발밑에 이미 발판이 있음"(몸이 발판을 파고듦) 또는 "얕은 턱에서
+        /// 매달리려다 실패해 그냥 서 있음" 중 하나가 된다.
+        /// </summary>
+        bool HopDownRequested { get; }
+
+        /// <summary>
+        /// 이번 프레임에 "발판 경계 앞의 낮은 턱을 기어올라 되돌아가기"(States/ParkourClimbState.cs)
+        /// 의도가 새로 발생했는지 — 역시 동일한 1프레임 펄스 계약.
+        ///
+        /// 왜 JumpRequested를 재사용하지 않는가(2026-08-29): WalkState의 점프 분기는 "벽이 있으면
+        /// ParkourClimb, 없으면 Jump"라 **의도가 실패했을 때 점프로 흘러내린다.** 사용자 피드백
+        /// ("이상하게 점프도 하고")으로 경계 점프 확률(wanderEdgeJumpAttemptChance)은 기본 0이 되었으므로,
+        /// 되올라가기 의도가 점프로 새는 경로가 있으면 그 결정이 무력화된다. 이 채널은 벽 판정에
+        /// 실패하면 **아무 일도 일어나지 않는다**(그 자리에 그대로 서 있다가 기존 배회 행동으로 복귀).
+        /// </summary>
+        bool StepUpRequested { get; }
     }
 }

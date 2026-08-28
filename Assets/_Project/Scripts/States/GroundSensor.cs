@@ -380,12 +380,18 @@ namespace StickMate.States
         /// 착지는 언제나처럼 FallState의 스윕 교차 판정이 확정한다(그 사이에 창이 움직여도 안전).
         ///
         /// 판정 위치는 "지금 서 있는 x"가 아니라 **경계에서 dropOutwardOffset만큼 바깥으로 나간 x**다 —
-        /// 실제로 손을 놓았을 때 몸이 있을 자리가 거기이기 때문이다. 그 x를 세로 범위에 포함하면서
-        /// 상단이 지금 발판보다 minDropDepth 이상 낮은 발판 중 **가장 높은 것**(= 가장 먼저 만나는
-        /// 착지면)을 고른다.
+        /// 실제로 손을 놓았을 때(혹은 발을 내딛었을 때) 몸이 있을 자리가 거기이기 때문이다. 그 x를 가로
+        /// 범위에 포함하면서 낙차가 [minDropDepth, maxDropDepth) 밴드 안인 발판 중 **가장 높은 것**
+        /// (= 가장 먼저 만나는 착지면)을 고른다.
+        ///
+        /// ★ 2026-08-29 — 이 함수는 이제 매달리기와 **뛰어내리기** 양쪽의 목적지 판정을 겸한다. 둘의
+        /// 차이는 오직 호출부가 넘기는 낙차 밴드뿐이다(아래 루프 안 주석에 유도 과정을 적어뒀다).
         /// </summary>
+        /// <param name="minDropDepth">인정할 최소 낙차(월드 유닛). 이보다 얕은 발판은 목적지가 아니다.</param>
+        /// <param name="maxDropDepth">인정할 낙차 상한(월드 유닛, 이 값 자신은 제외). 0 이하면 상한 없음.</param>
         public static bool TryFindDescendTarget(Camera cam, Vector2 footWorldPos, GroundInfo info, int direction,
-            IReadOnlyList<PlatformFoothold> footholds, StickConfig config, float dropOutwardOffset, float minDropDepth,
+            IReadOnlyList<PlatformFoothold> footholds, StickConfig config, float dropOutwardOffset,
+            float minDropDepth, float maxDropDepth,
             out long targetHandle, out float targetTopWorldY)
         {
             targetHandle = 0L;
@@ -414,12 +420,21 @@ namespace StickMate.States
 
                 if (dropX < topLeftWorld.x || dropX > topRightWorld.x) continue; // 그 x가 발판 위가 아님
 
-                // ★ 매달렸을 때 **발이 가 있을 높이보다 아래**여야 한다(minDropDepth = 손끝~발끝 거리).
-                // 이게 이 판정의 핵심 안전 조건이다: 목적지가 그보다 위에 있으면 매달리는 순간 발이 이미
-                // 그 발판을 지나쳐 버려서, "매달려 내려간다"가 아니라 "매달려서 목적지를 건너뛰고 더
-                // 아래로 떨어진다"가 된다. 겸사겸사 "한 계단 턱(예: Dock 35pt)"처럼 매달릴 이유가 없는
-                // 미세한 단차도 자동으로 걸러진다 — 그런 곳은 기존 배회 거동(돌아서기)이 더 자연스럽다.
-                if (info.GroundWorldY - topLeftWorld.y < Mathf.Max(detectionRadius, minDropDepth)) continue;
+                // ★ 낙차 밴드 [minDropDepth, maxDropDepth) 판정 — 이 한 줄이 "매달리기"와 "뛰어내리기"를
+                // 가르는 유일한 기준이며, **호출부가 밴드를 정한다**(2026-08-29 이전에는 여기서
+                // Mathf.Max(detectionRadius, minDropDepth)로 하한을 강제해 호출부가 더 얕은 목적지를
+                // 물어볼 방법 자체가 없었다 — 그래서 Dock 단차 0.855유닛에서 캐릭터가 아무 것도 못 했다).
+                //
+                //  · 매달리기(LedgeHang) 호출  : [손끝~발끝 거리, ∞)  — 목적지가 그보다 위에 있으면
+                //      매달리는 순간 발이 이미 그 발판을 지나쳐, "매달려 내려간다"가 아니라 "목적지를
+                //      건너뛰고 더 아래로 떨어진다"가 된다. 이 하한이 그 사고를 막는 안전 조건이다.
+                //  · 뛰어내리기(HopDown) 호출  : [hopDownMinDropHeight, 손끝~발끝 거리) — 매달릴 이유가
+                //      없는 한 계단 턱. 상한이 매달리기의 하한과 같아 두 밴드는 틈도 겹침도 없다.
+                //
+                // maxDropDepth <= 0이면 상한 없음(매달리기 호출이 쓰는 형태).
+                float dropDepth = info.GroundWorldY - topLeftWorld.y;
+                if (dropDepth < minDropDepth) continue;
+                if (maxDropDepth > 0f && dropDepth >= maxDropDepth) continue;
 
                 if (topLeftWorld.y > bestTopY)
                 {

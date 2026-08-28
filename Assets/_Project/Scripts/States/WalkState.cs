@@ -70,6 +70,76 @@ namespace StickMate.States
                 }
             }
 
+            // ★ 그냥 뛰어내리기 진입 판정(2026-08-29, 사용자 결정 "낙차가 작으면 뛰어내리게 한다").
+            // 매달리기와 같은 자리에서, 같은 이유로(의도가 만들어진 프레임과 소비되는 프레임 사이에 창이
+            // 닫혔을 수 있다) 목적지를 **다시** 확인한다. 새 상태를 만들지 않고 기존 Fall로 보내는 것이
+            // 이 동작의 전부다 — 매달리기와 달리 잡을 곳도, 유지시간도, 페이즈도 없기 때문이다.
+            // 안전 규칙은 전부 기존 것을 그대로 물려받는다: 착지 확정은 FallState의 스윕 교차 판정이,
+            // 화면 밖 금지와 무한 낙하 금지는 StickmanBlackboard.EnforceScreenBoundsAndRescue가 맡는다.
+            if (_blackboard.HopDownPressed && info.Grounded)
+            {
+                int hopDirection = _blackboard.MoveInputX >= 0f ? 1 : -1;
+                if (_blackboard.TryFindHopDownTarget(info, hopDirection, out long hopHandle, out float hopTopY)
+                    && _blackboard.Body != null)
+                {
+                    // ── (1) 발을 모서리 **바깥**에 내려놓는다.
+                    // ★ 이 한 줄이 없으면 뛰어내리기가 통째로 무효가 된다(2026-08-29 실측으로 확인).
+                    // 왜: 서 있는 몸은 발판 상단선에 **정확히** 스냅돼 있다(StickmanBlackboard.SnapToGround).
+                    // 그 상태로 Fall에 들어가면 FallState의 스윕 교차 판정이 보는 선분은 "상단선 위(같은
+                    // 높이) -> 상단선 아래"가 되고, x가 아직 그 발판 위라 **방금 떠난 그 발판을 위에서
+                    // 관통한 것**으로 인정된다. 실측 로그: `[FallState] 착지 확정 — 발판핸들=8001,
+                    // 낙하높이=0.00유닛` — 즉 제자리에서 도로 착지했다. 수평 속도만으로는 못 막는다
+                    // (모서리까지 남은 거리를 지나가기 전에 이미 첫 프레임의 교차가 성립한다).
+                    //
+                    // 그래서 목적지를 물어볼 때 쓴 **탐침 지점 그대로**(모서리 + 진행방향 x
+                    // hopDownProbeOutward)에 몸을 옮긴다. 부수 효과로 "예상 착지 지점"과 "실제 낙하
+                    // 시작 x"가 정확히 일치하게 되어 착지 예측이 빗나갈 수 없다. 이미 모서리 바깥으로
+                    // 나가 있다면 뒤로 끌어당기지 않는다(Mathf.Max/Min).
+                    float edgeWorldX = hopDirection > 0 ? info.CurrentFootholdRightWorldX : info.CurrentFootholdLeftWorldX;
+                    float outward = _blackboard.Config != null ? _blackboard.Config.hopDownProbeOutward : 0.2f;
+                    Vector2 before = _blackboard.Body.position;
+                    float steppedX = edgeWorldX + hopDirection * Mathf.Max(0f, outward);
+                    steppedX = hopDirection > 0 ? Mathf.Max(before.x, steppedX) : Mathf.Min(before.x, steppedX);
+                    // Rigidbody2D.position만 쓰면 안 된다 — 다른 코드가 최근에 Transform을 직접 옮겼다면
+                    // 다음 물리 스텝의 Transform->Rigidbody 동기화가 이 대입을 **되돌린다**(2026-08-29
+                    // 실측: 6.300 -> 6.600으로 옮겼는데 다음 프레임 위치가 6.340이었다 = 6.300에서
+                    // 속도만 적분된 값). 이 프로젝트의 다른 순간이동 지점
+                    // (StickmanBlackboard.RescueToSafeGround / 화면 클램프)이 이미 둘 다 쓰는 이유와 같다.
+                    _blackboard.Body.position = new Vector2(steppedX, before.y);
+                    _blackboard.Body.transform.position =
+                        new Vector3(steppedX, before.y, _blackboard.Body.transform.position.z);
+
+                    // ── (2) "살짝 앞으로 내딛는" 느낌 — 수평 속도 한 번. FallState는 x속도를 건드리지
+                    // 않으므로(중력만 y에 작용) 이 한 번의 부여가 착지까지 그대로 유지된다. y는 0으로
+                    // 확정한다: 걸어 나가듯 떨어져야지 위로 뛰어오르면 "점프"가 되어버린다.
+                    float walkSpeed = _blackboard.Config != null ? _blackboard.Config.walkSpeed : 2.5f;
+                    float scale = _blackboard.Config != null ? _blackboard.Config.hopDownStepOffSpeedScale : 0.8f;
+                    _blackboard.Body.linearVelocity = new Vector2(hopDirection * walkSpeed * scale, 0f);
+
+                    Debug.Log($"[뛰어내리기] 발을 뗍니다 — 방향={(hopDirection > 0 ? "오른쪽" : "왼쪽")}, " +
+                        $"모서리 월드X={edgeWorldX:F3}, 딛기 전 X={before.x:F3} -> 내딛은 X={_blackboard.Body.position.x:F3}" +
+                        $"(목표 {steppedX:F3}, 전진 {Mathf.Abs(steppedX - before.x):F3}유닛), 월드Y={before.y:F3}, " +
+                        $"낙차={(info.GroundWorldY - hopTopY):F3}유닛, 예상 착지 발판핸들={hopHandle}(상단 Y={hopTopY:F3}), " +
+                        $"내딛는 수평속도={(hopDirection * walkSpeed * scale):F2}유닛/초.");
+
+                    _blackboard.Machine.ChangeState(StickmanStateId.Fall);
+                    return;
+                }
+            }
+
+            // ★ 되올라가기 진입 판정(2026-08-29) — 뛰어내린 캐릭터가 다시 올라오는 유일한 경로다.
+            // 아래 점프 분기 안의 ParkourClimb 판정과 목적지는 같지만, 벽을 못 찾았을 때 **점프로
+            // 흘러내리지 않는다**는 점이 다르다(IMovementIntentSource.StepUpRequested 문서 참고).
+            if (_blackboard.StepUpPressed && info.Grounded)
+            {
+                int stepUpDirection = _blackboard.MoveInputX >= 0f ? 1 : -1;
+                if (_blackboard.TryFindClimbableWall(info, stepUpDirection, out _, out _))
+                {
+                    _blackboard.Machine.ChangeState(StickmanStateId.ParkourClimb);
+                    return;
+                }
+            }
+
             // BUG-P1-M5 대응: 접지 중이거나 코요테 타임 이내일 때만 점프 허용(StickmanStateMachine.cs
             // 전이 규칙 주석 참고, Architect 결정으로 의도된 코요테 타임 채택).
             if (_blackboard.JumpPressed && _blackboard.IsWithinCoyoteTime(info))

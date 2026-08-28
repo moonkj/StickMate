@@ -60,6 +60,8 @@ namespace StickMate.Tests.PlayMode
             public float MoveInputX { get; set; }
             public bool JumpRequested => false;
             public bool LedgeHangRequested => false;
+            public bool HopDownRequested => false;
+            public bool StepUpRequested => false;
         }
 
         private StickmanAgent _agent;

@@ -23,6 +23,13 @@ namespace StickMate.Interaction
         /// WalkState의 해당 분기가 자연히 발동하지 않는다, JumpRequested와 같은 이유).</summary>
         public bool LedgeHangRequested => false;
 
+        /// <summary>라이벌은 경계에서 뛰어내리지도, 턱을 기어오르지도 않는다(위와 같은 이유 — 관전 전용
+        /// 스펙터클이라 좌우 추적만으로 충분하다). WalkState의 해당 분기가 자연히 발동하지 않는다.</summary>
+        public bool HopDownRequested => false;
+
+        /// <inheritdoc cref="HopDownRequested"/>
+        public bool StepUpRequested => false;
+
         public RivalPursuitIntentSource(StickmanBlackboard blackboard, StickConfig config, System.Func<Vector2> targetProvider)
         {
             _blackboard = blackboard;
