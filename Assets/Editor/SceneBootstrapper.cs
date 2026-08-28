@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using Kirurobo;
 using StickMate.Core;
+using StickMate.Dialogue;
 using StickMate.Interaction;
 using StickMate.Platform;
 
@@ -584,6 +585,22 @@ namespace StickMate.EditorTools
             CreateFilledDot(head.transform, "RightEye", new Vector3(EyeOffsetX, EyeOffsetY, 0f),
                 EyePupilRadius, outline, sortingOrder: 5);
 
+            // ================================================================================
+            // 말풍선 렌더러 배선 (2026-08-29 — 원칙 1의 산출물이 화면에 한 번도 안 나오던 문제)
+            // ================================================================================
+            // Dialogue/DialogueIntent 파이프라인은 여러 라운드에 걸쳐 정교하게 만들어졌지만
+            // StickmanEventBus.DialogueRequested를 **구독하는 코드가 어디에도 없어서** 대사가 생성되고
+            // 만료되기만 할 뿐 아무도 볼 수 없었다(DragThrowController/RodeoCursorWatcher가 "로직은 있는데
+            // 씬에 배치가 안 됨" 상태였던 것과 정확히 같은 유형의 누락). 여기서 프리팹에 배치해
+            // --force 재현성을 유지한다. 앵커는 머리 오브젝트 — RAGDOLL로 머리가 뒹굴어도 말풍선이
+            // 정확히 머리를 따라간다.
+            var bubble = root.AddComponent<DialogueBubbleRenderer>();
+            var bubbleSo = new SerializedObject(bubble);
+            bubbleSo.FindProperty("_agent").objectReferenceValue = agent;
+            bubbleSo.FindProperty("_anchor").objectReferenceValue = head.transform;
+            bubbleSo.FindProperty("_config").objectReferenceValue = config;
+            bubbleSo.ApplyModifiedPropertiesWithoutUndo();
+
             // 팔다리 — 각각 2마디(위=대퇴/상완, 아래=정강이/전완). 아래 마디는 위 마디의 자식이라
             // 위 마디를 돌리면 딸려오고, 아래 마디를 추가로 돌리면 무릎/팔꿈치가 접힌다(CreateLimb 문서).
             // 중립 벌림/굽힘 각도는 LineRenderer를 비스듬히 그려서가 아니라 **transform.localRotation
@@ -653,6 +670,21 @@ namespace StickMate.EditorTools
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
+            // ★ 2026-08-29 실측으로 확인한 함정 — NewScene 이후 config 참조가 죽어 있을 수 있다.
+            // EditorSceneManager.NewScene(Single)은 직전 씬을 파괴하면서 참조가 끊긴 에셋을 언로드한다.
+            // 그러면 여기까지 인자로 들고 온 StickConfig의 네이티브 객체가 사라져, C# 참조는 남아 있어도
+            // UnityEngine.Object의 "가짜 null" 상태가 된다. 실제로 이 라운드에서 라이벌 컴포넌트 2개의
+            // _config가 조용히 null로 직렬화되어(씬 YAML에 fileID: 0) **라이벌이 영원히 스폰되지 않는**
+            // 버그가 났다 — RivalEncounterDirector.Update()가 `_config == null`이면 즉시 return하기 때문.
+            // 증상이 조용하다(에러도 경고도 없다)는 점이 이 함정의 가장 나쁜 부분이라, 여기서 한 번
+            // 되살려 아래 모든 배선이 같은 인스턴스를 쓰게 만든다.
+            if (config == null)
+            {
+                config = AssetDatabase.LoadAssetAtPath<StickConfig>(ConfigAssetPath);
+                Debug.Log("[SceneBootstrapper] NewScene 이후 StickConfig 참조가 언로드되어 " + ConfigAssetPath +
+                          "에서 다시 로드했습니다" + (config != null ? " (성공)." : " (실패 — 배선이 비어 있을 수 있습니다)."));
+            }
+
             var camGo = new GameObject("Main Camera");
             camGo.tag = "MainCamera";
             var cam = camGo.AddComponent<Camera>();
@@ -715,6 +747,9 @@ namespace StickMate.EditorTools
                 // 자연스럽고("어딘가에서 내려온다"), 헤드리스 테스트에서도 0.9초면 착지가 끝나 기존
                 // 샘플 시점(t=5/10/15초)에 아무 영향이 없다(실측 확인).
                 instance.transform.position = new Vector3(0f, cam.transform.position.y, 0f);
+
+                // 라이벌 스틱맨(11절) 배선 — 아래 CreateRivalStickman 문서 참고.
+                CreateRivalStickman(stickmanPrefab, config, instance.GetComponent<StickmanAgent>());
             }
             else
             {
@@ -907,6 +942,112 @@ namespace StickMate.EditorTools
             go.AddComponent<UnityEngine.EventSystems.EventSystem>();
             Debug.Log("[SceneBootstrapper] EventSystem 배치 완료 — UniWindowController의 " +
                 "hitTestType=Raycast가 EventSystem.current를 null 체크 없이 사용하므로 필수다.");
+        }
+
+        /// <summary>
+        /// 라이벌 스틱맨(docs/UX_FLOW.md 11절 "붉은 스틱맨이 난입해 서로 쫓아다니며 싸운다") 배선.
+        ///
+        /// ============================================================================
+        /// 왜 이제야 배선하는가
+        /// ============================================================================
+        /// Interaction/RivalStickmanAgent.cs(추적/전투 AI)와 RivalEncounterDirector.cs(스폰 판정)는
+        /// Phase 3에 이미 완성돼 있었지만 **씬 어디에도 배치되지 않아 한 번도 스폰된 적이 없었다** —
+        /// DragThrowController/RodeoCursorWatcher가 겪었던 것과 정확히 같은 유형의 누락이다.
+        ///
+        /// ============================================================================
+        /// 왜 별도 프리팹을 새로 만들지 않고 플레이어 프리팹을 복제해 깎아내는가
+        /// ============================================================================
+        /// 라이벌은 "붉은색이고 조종 대상이 아닌" 것 말고는 플레이어와 **완전히 같은 지오메트리**
+        /// (2분절 팔다리 + 관절 + 콜라이더 + 레이어)를 필요로 한다. 그 지오메트리는 BuildStickmanPrefab
+        /// 안에서 서로 얽힌 계산(footLift/totalHeight/관절 각도 제한)으로 만들어지므로, 별도 빌더로
+        /// 복제하면 두 벌이 서로 어긋나는 순간 라이벌만 조용히 깨진다. 그래서 같은 프리팹을 인스턴스화한
+        /// 뒤 **플레이어 전용 컴포넌트만 제거**한다 — 지오메트리에 대한 단일 진실 소스를 유지한다.
+        ///
+        /// 제거 대상(플레이어 전용): StickmanAgent(플랫폼 서비스/발판 폴러/자율 배회 소유자),
+        /// StickmanClickHitbox / DragThrowController / RodeoCursorWatcher(유저 상호작용 — 라이벌은
+        /// 관전 전용이라 클릭 대상이 아니다), AppControlDirector(앱 제어 메뉴는 하나면 된다).
+        /// 남기는 것: Rigidbody2D/콜라이더/팔다리 계층/DialogueBubbleRenderer(라이벌도 말을 한다).
+        ///
+        /// 팔다리의 RagdollLimbImpactRelay는 남겨두어도 안전하다 — 그 컴포넌트는 StickmanAgent를
+        /// 부모에서 찾아 쓰는데, 못 찾으면 아무것도 하지 않는다(Core/RagdollLimbImpactRelay.cs).
+        /// </summary>
+        private static void CreateRivalStickman(GameObject stickmanPrefab, StickConfig config, StickmanAgent player)
+        {
+            if (player == null)
+            {
+                Debug.LogError("[SceneBootstrapper] 플레이어 StickmanAgent를 찾지 못해 라이벌을 배선하지 못했습니다.");
+                return;
+            }
+
+            // 호출 경로가 늘어나도 같은 함정(위 BuildMainScene의 NewScene 주석)에 빠지지 않도록 한 번 더 방어.
+            if (config == null) config = AssetDatabase.LoadAssetAtPath<StickConfig>(ConfigAssetPath);
+
+            var rival = (GameObject)PrefabUtility.InstantiatePrefab(stickmanPrefab);
+            rival.name = "RivalStickman";
+            // 프리팹 연결을 끊는다 — 아래에서 컴포넌트를 제거할 것이고, 프리팹 인스턴스에서는 프리팹이
+            // 소유한 컴포넌트를 제거할 수 없다(그리고 남겨두면 플레이어 프리팹 수정이 라이벌의 삭제
+            // 오버라이드와 충돌한다).
+            PrefabUtility.UnpackPrefabInstance(rival, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+
+            // 플레이어 전용 컴포넌트 제거. 다른 컴포넌트가 의존하는 것(StickmanAgent/StickmanClickHitbox)을
+            // **나중에** 지워야 RequireComponent 제약에 걸리지 않는다.
+            DestroyComponentIfPresent<AppControlDirector>(rival);
+            DestroyComponentIfPresent<RodeoCursorWatcher>(rival);
+            DestroyComponentIfPresent<DragThrowController>(rival);
+            DestroyComponentIfPresent<StickmanClickHitbox>(rival);
+            DestroyComponentIfPresent<StickmanAgent>(rival);
+
+            // 붉은색(11절). 런타임에도 RivalStickmanAgent.Awake()가 같은 값을 다시 적용하지만,
+            // 씬 에셋에도 구워둬야 에디터에서 열었을 때 "왜 검은색이지?" 하는 혼란이 없다.
+            Color rivalColor = config != null ? config.rivalInkColor : new Color(0.85f, 0.13f, 0.13f);
+            var rivalLines = rival.GetComponentsInChildren<LineRenderer>(true);
+            for (int i = 0; i < rivalLines.Length; i++)
+            {
+                rivalLines[i].startColor = rivalColor;
+                rivalLines[i].endColor = rivalColor;
+            }
+
+            // 스폰 전 대기 위치는 화면 밖 멀리. RivalStickmanAgent.Awake()가 Rigidbody2D.simulated를
+            // 꺼두므로 여기서 가만히 있다가, BeginDuel()이 실제 스폰 좌표로 옮긴다.
+            rival.transform.position = new Vector3(RivalParkingWorldX, 0f, 0f);
+
+            var rivalAgent = rival.AddComponent<RivalStickmanAgent>();
+            var rivalSo = new SerializedObject(rivalAgent);
+            rivalSo.FindProperty("_config").objectReferenceValue = config;
+            rivalSo.ApplyModifiedPropertiesWithoutUndo();
+
+            // 라이벌의 말풍선은 **자기 상태머신이 발급한 대사만** 그려야 한다(UX_FLOW.md 5절 규칙 7).
+            // 그 상태머신은 첫 대결에서야 만들어지므로, 그 전까지는 이 플래그가 "화자 미지정 = 전부
+            // 수신" 폴백을 막는다(Dialogue/DialogueBubbleRenderer.cs의 _requireBoundSpeaker 참고).
+            var rivalBubble = rival.GetComponent<DialogueBubbleRenderer>();
+            if (rivalBubble != null)
+            {
+                var bubbleSo = new SerializedObject(rivalBubble);
+                bubbleSo.FindProperty("_agent").objectReferenceValue = null; // 라이벌은 StickmanAgent가 없다.
+                bubbleSo.FindProperty("_requireBoundSpeaker").boolValue = true;
+                bubbleSo.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            // 스폰 판정기. 라이벌 오브젝트 자신에 붙인다(별도 관리 오브젝트를 늘리지 않는다).
+            var director = rival.AddComponent<RivalEncounterDirector>();
+            var directorSo = new SerializedObject(director);
+            directorSo.FindProperty("_player").objectReferenceValue = player;
+            directorSo.FindProperty("_rival").objectReferenceValue = rivalAgent;
+            directorSo.FindProperty("_config").objectReferenceValue = config;
+            directorSo.ApplyModifiedPropertiesWithoutUndo();
+
+            Debug.Log("[SceneBootstrapper] 라이벌 스틱맨 배선 완료 — 붉은색 " + rivalColor +
+                      ", 대기 위치 x=" + RivalParkingWorldX + ", 강제 소환 단축키 Ctrl+Opt+Cmd+V.");
+        }
+
+        /// <summary>대기 위치 x(월드 유닛). 화면 폭(orthographicSize=12 기준 약 32유닛)과 배회 범위
+        /// (약 53유닛)를 모두 벗어나 어떤 판정에도 걸리지 않는다.</summary>
+        private const float RivalParkingWorldX = 500f;
+
+        private static void DestroyComponentIfPresent<T>(GameObject go) where T : Component
+        {
+            var component = go.GetComponent<T>();
+            if (component != null) Object.DestroyImmediate(component, allowDestroyingAssets: false);
         }
 
         private static void CreateGroundCollider(Camera cam)

@@ -769,6 +769,45 @@ namespace StickMate.Core
                  "'캐릭터 키의 두어 배쯤 떨어지면 눈을 끝까지 돌린다'에 해당한다.")]
         public float eyeTrackingFullRangeWorld = 4f;
 
+        // ============================================================================
+        // 말풍선(대사 표시) — docs/UX_FLOW.md 5절 UX 계약의 튜닝 값
+        // ============================================================================
+        // 계약 자체(즉시 취소/큐잉 금지/파생 순서)는 코드의 불변식이라 설정으로 끌 수 없다. 여기 있는
+        // 것은 "얼마나 오래/크게 보이는가"와 "혼잣말을 얼마나 자주 하는가"뿐이다.
+
+        [Header("말풍선 (docs/UX_FLOW.md 5절)")]
+
+        [Tooltip("말풍선 표시 기능 자체의 on/off. 끄면 DialogueIntent는 그대로 생성되지만(원칙 1 파이프라인 무변경) " +
+                 "화면에 그리지 않는다.")]
+        public bool dialogueBubbleEnabled = true;
+
+        [Tooltip("가독성을 위한 최소 노출 시간(초, UX_FLOW.md 5절 규칙 4 권장 0.6~0.8). 상태가 그보다 " +
+                 "빨리 정상 종료돼도 이 시간까지는 말풍선을 유지한 뒤 페이드아웃한다. **강제 인터럽트** " +
+                 "(RAGDOLL 등)는 이 값과 무관하게 항상 즉시 제거가 이긴다 — 그건 설정이 아니라 계약이다.")]
+        public float dialogueMinVisibleSeconds = 0.7f;
+
+        [Tooltip("한 말풍선의 최대 노출 시간(초). 상태가 아주 오래 지속돼도(예: Idle 6초) 말풍선이 " +
+                 "화면에 눌러앉지 않게 한다. 0 이하면 상한 없음. 이 방향(더 일찍 사라짐)은 계약이 막는 " +
+                 "실패 모드('행동보다 텍스트가 오래 남음')의 반대편이라 안전하다.")]
+        public float dialogueMaxVisibleSeconds = 4f;
+
+        [Tooltip("말풍선 글자 크기(Unity 스크린 픽셀 = macOS 포인트). 캐릭터가 화면상 약 80pt로 작으므로 " +
+                 "너무 줄이면 읽을 수 없다.")]
+        public int dialogueFontSize = 16;
+
+        [Tooltip("IDLE 진입 시 혼잣말을 할 확률(0~1, UX_FLOW.md 26-3절 '살아있는 느낌'). 0이면 유휴 " +
+                 "혼잣말이 완전히 꺼진다(직전 라운드까지의 거동과 100% 동일).")]
+        [Range(0f, 1f)]
+        public float idleChatterChance = 0.28f;
+
+        [Tooltip("WALK 진입 시 혼잣말을 할 확률(0~1). 걷는 중에는 유휴보다 말수가 적은 편이 자연스럽다.")]
+        [Range(0f, 1f)]
+        public float walkChatterChance = 0.14f;
+
+        [Tooltip("혼잣말 사이의 최소 간격(초). Idle<->Walk 전이가 2~6초마다 일어나므로 이 쿨다운이 " +
+                 "없으면 확률이 낮아도 체감상 수다스러워진다. Idle과 Walk가 하나의 타이머를 공유한다.")]
+        public float ambientChatterCooldownSeconds = 11f;
+
         [Header("색상 (임시 플레이스홀더 — 디자이너 확정 전까지)")]
 
         [Tooltip("캐릭터 선 색 프리셋(사용자 요청, 2026-08-28: '캐릭터를 흰색 or 검은색으로 선택할수있게'). " +
@@ -784,6 +823,12 @@ namespace StickMate.Core
 
         [Tooltip("inkColor == White일 때 쓰는 실제 색.")]
         public Color whiteInkColor = Color.white;
+
+        [Tooltip("라이벌 스틱맨(docs/UX_FLOW.md 11절 '붉은 스틱맨')의 선 색. 플레이어와 즉시 구분되어야 " +
+                 "하므로 잉크색 프리셋(검정/흰색)과 별개로 고정 색을 갖는다 — 플레이어가 흰색 프리셋일 " +
+                 "때도 라이벌은 붉은색 그대로다. Interaction/RivalStickmanAgent.cs가 시작 시 자기 " +
+                 "LineRenderer 전체에 이 값을 적용한다(에셋 값만 바꿔도 씬 재생성 없이 반영).")]
+        public Color rivalInkColor = new Color(0.85f, 0.13f, 0.13f);
 
         /// <summary>
         /// 지금 설정된 프리셋의 실제 선 색. 캐릭터를 그리는 모든 경로(에디터 프리팹 생성/런타임 갱신)는

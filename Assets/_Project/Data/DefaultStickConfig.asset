@@ -36,6 +36,18 @@ MonoBehaviour:
   parkourDetectionRadius: 0.5
   parkourClimbDuration: 0.5
   rollLandingHeightThreshold: 2
+  ledgeHangChance: 0.35
+  ledgeHangGrabDuration: 0.28
+  ledgeHangHoldDurationMin: 0.55
+  ledgeHangHoldDurationMax: 1.5
+  ledgeHangMaxDuration: 3
+  ledgeHangEdgeOffset: 0.14
+  ledgeHangArmSpreadDegrees: 11
+  ledgeHangElbowBendDegrees: 8
+  ledgeHangLegSpreadDegrees: 6
+  ledgeHangKneeBendDegrees: 14
+  ledgeHangSwayAmplitudeDegrees: 5
+  ledgeHangSwayFrequencyHz: 0.9
   clickThroughDefaultEnabled: 1
   footholdPollInterval: 0.3
   fullscreenPollInterval: 1.5
@@ -184,9 +196,17 @@ MonoBehaviour:
   eyeTrackingFollowRate: 12
   eyeTrackingNeutralRadiusWorld: 0.6
   eyeTrackingFullRangeWorld: 4
+  dialogueBubbleEnabled: 1
+  dialogueMinVisibleSeconds: 0.7
+  dialogueMaxVisibleSeconds: 4
+  dialogueFontSize: 16
+  idleChatterChance: 0.28
+  walkChatterChance: 0.14
+  ambientChatterCooldownSeconds: 11
   inkColor: 0
   primaryOutlineColor: {r: 0, g: 0, b: 0, a: 1}
   whiteInkColor: {r: 1, g: 1, b: 1, a: 1}
+  rivalInkColor: {r: 0.85, g: 0.13, b: 0.13, a: 1}
   dialogueBubbleColor: {r: 1, g: 1, b: 1, a: 1}
   backgroundFallbackColor: {r: 0.94, g: 0.94, b: 0.94, a: 1}
   verboseDiagnosticsLogging: 0

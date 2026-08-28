@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using StickMate.Core;
+using StickMate.Dialogue;
 using StickMate.Platform;
 using StickMate.States;
 
@@ -31,6 +32,8 @@ namespace StickMate.Interaction
 
         private Rigidbody2D _body;
         private Renderer[] _renderers;
+        private LineRenderer[] _lineRenderers;   // 붉은색 일괄 적용 대상(StickmanAgent.ApplyInkColor와 동일 패턴).
+        private DialogueBubbleRenderer _bubble;  // 라이벌 전용 말풍선(있으면 자기 상태머신에 바인딩).
         private StickmanBlackboard _blackboard;
         private StickmanStateMachine _machine;
         private RivalPursuitIntentSource _pursuit;
@@ -48,8 +51,32 @@ namespace StickMate.Interaction
         {
             _body = GetComponent<Rigidbody2D>();
             _renderers = GetComponentsInChildren<Renderer>(true);
+            _lineRenderers = GetComponentsInChildren<LineRenderer>(true);
+            _bubble = GetComponent<DialogueBubbleRenderer>();
             _body.simulated = false; // 스폰 전에는 완전히 비활성 — 관전 전용 스펙터클이 시작될 때만 등장.
             SetRenderersEnabled(false);
+            ApplyRivalInkColor();
+        }
+
+        /// <summary>
+        /// 11절 "붉은 스틱맨" — 자기 LineRenderer 전체를 StickConfig.rivalInkColor로 칠한다.
+        /// 씬에 구워둔 색에 의존하지 않고 런타임에 한 번 더 적용하는 이유는 플레이어 쪽
+        /// (StickmanAgent.ApplyInkColorFromConfig)과 같다: 에셋 값만 바꿔도 씬/프리팹 재생성 없이
+        /// 색이 바뀌어야 하기 때문이다. 플레이어의 잉크색 프리셋(검정/흰색) 전환과는 **독립적**이다 —
+        /// 두 캐릭터가 같은 색이 되면 누가 라이벌인지 구분할 수 없다.
+        /// </summary>
+        private void ApplyRivalInkColor()
+        {
+            if (_lineRenderers == null || _config == null) return;
+            Color c = _config.rivalInkColor;
+            for (int i = 0; i < _lineRenderers.Length; i++)
+            {
+                LineRenderer lr = _lineRenderers[i];
+                if (lr == null) continue;
+                lr.startColor = c;
+                lr.endColor = c;
+                if (lr.material != null) lr.material.color = c;
+            }
         }
 
         /// <summary>스폰 확률/쿨다운 판정은 Interaction/RivalEncounterDirector.cs가 전담한다 — 이 메서드는
@@ -65,6 +92,7 @@ namespace StickMate.Interaction
             SetRenderersEnabled(true);
 
             EnsureMachineBuilt();
+            ApplyRivalInkColor(); // _config가 EnsureMachineBuilt에서 뒤늦게 채워졌을 수 있다.
 
             _inDuel = true;
             _durationTimer = 0f;
@@ -73,11 +101,17 @@ namespace StickMate.Interaction
             _hitsTakenByPlayer = 0;
 
             StickmanEventBus.RaiseRivalDuelStarted();
+            Debug.Log($"[라이벌] 등장 — 스폰 좌표 {spawnWorldPos}, 색 {(_config != null ? _config.rivalInkColor.ToString() : "기본 붉은색")}, " +
+                      $"최대 지속 {(_config != null ? _config.rivalMaxDurationSeconds : 30f):F0}초. 서로 쫓아다니며 싸웁니다(관전 전용).");
         }
 
         private void EnsureMachineBuilt()
         {
             if (_blackboard != null) return; // 최초 1회만 구성(매 대결마다 재구성 금지 — GC/재탐색 방지).
+
+            // 심층 방어 — 씬 배선이 비어 있어도 플레이어와 같은 설정으로 동작하게 한다
+            // (Interaction/RivalEncounterDirector.Awake()와 같은 이유).
+            if (_config == null) _config = _opponent.Blackboard.Config;
 
             _blackboard = new StickmanBlackboard
             {
@@ -102,6 +136,13 @@ namespace StickMate.Interaction
 
             _machine = new StickmanStateMachine(states);
             _blackboard.Machine = _machine;
+
+            // UX_FLOW.md 5절 규칙 7(다중 캐릭터 동시 발화) — 라이벌의 말풍선은 **자기 상태머신이 발급한
+            // 대사만** 그린다. 머신은 첫 대결에서야 만들어지므로 여기가 바인딩할 수 있는 가장 이른
+            // 시점이고, 그 전까지는 렌더러의 _requireBoundSpeaker 플래그가 "화자 미지정 = 전부 수신"
+            // 폴백을 막아 플레이어의 대사가 라이벌 머리 위에 뜨는 사고를 원천 차단한다.
+            _bubble?.Bind(_machine, transform.Find("Head") != null ? transform.Find("Head") : transform);
+
             _machine.Start(StickmanStateId.Idle);
         }
 
@@ -226,9 +267,12 @@ namespace StickMate.Interaction
             _body.linearVelocity = Vector2.zero;
             _body.simulated = false; // 물리 정지 — 다음 스폰까지 완전히 대기 상태로 되돌아간다.
             SetRenderersEnabled(false);
+            // 캐릭터가 사라지는데 말풍선만 남으면 안 된다 — 퇴장과 같은 프레임에 지운다.
+            _bubble?.HideImmediate();
             // 승패와 무관하게 즉시 퇴장(실제 파일/창은 전혀 변경하지 않음, 원칙 3). 걸어 나가는 연출은
             // Phase 2+ 렌더링 레이어 담당 — 지금은 결과 통지 + 비활성화만 수행한다.
             StickmanEventBus.RaiseRivalDuelEnded(result);
+            Debug.Log($"[라이벌] 퇴장 — 결과 {result} (라이벌 피격 {_hitsTakenByRival}회 / 플레이어 피격 {_hitsTakenByPlayer}회).");
         }
 
         private void SetRenderersEnabled(bool enabled)

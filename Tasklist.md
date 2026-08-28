@@ -1457,3 +1457,85 @@ owner='Dock' name='Wallpaper-' layer=-2147483624    rect=(0, 0, 1512, 982)
 - **`StickConfig.walkBounceAmplitude` 제거 → `walkFootGroundingBlend` 신설**(의미가 "월드 유닛 진폭"에서 "0~1 적용 정도"로 바뀌므로 이름을 함께 바꿨다). `DefaultStickConfig.asset`도 갱신(`walkBounceAmplitude: 0.025` → `walkFootGroundingBlend: 1`).
 - `StickmanPoseAnimator.TickWalkPose()` 시그니처의 `bounceAmplitude` → `groundingBlend`. 호출부는 `WalkState` 하나뿐이라 갱신 완료.
 - 매달리기용 `StickConfig` 신규 필드 11개(`ledgeHang*`) — 전부 신규라 기존 값과 충돌 없음.
+
+---
+
+## 말풍선 렌더링(원칙 1의 산출물을 처음으로 화면에 띄움) + 라이벌 스틱맨 실배선 (2026-08-29, Coder)
+
+### ① 문제 — 파이프라인은 있는데 그리는 사람이 없었다
+
+`DialogueIntent`/`StateTransitionContext`/`IHasDialogueParams` 파이프라인은 여러 라운드에 걸쳐 정교하게 다듬어졌고 EditMode 8건으로 계약까지 고정돼 있었지만, **`StickmanEventBus.DialogueRequested`를 구독하는 코드가 프로젝트 어디에도 없었다**(grep으로 확인). 대사는 계속 생성되고 만료됐지만 아무도 볼 수 없었다 — `DragThrowController`/`RodeoCursorWatcher`가 겪었던 "로직은 있는데 씬에 배치가 안 됨"과 같은 유형의 누락이며, 하필 이 프로젝트의 **1순위 원칙**의 산출물이었다.
+
+### ② 신규 `Dialogue/DialogueBubbleRenderer.cs` — UX_FLOW 5절 계약의 화면 구현부
+
+| 5절 규칙 | 구현 | 검증 |
+|---|---|---|
+| 3(b)/4 강제 취소 | `DialogueExpired`가 **같은 프레임의 강제 인터럽트**로 도착하면 이벤트 핸들러 안에서 **동기적으로** 제거(페이드아웃 없음). 화면에 남는 시간이 구조적으로 0프레임 | PlayMode ①, 실행 로그 `표시 frame=14` → `제거 frame=14` |
+| 3(a)/4 정상 종료 | 최소 노출 `dialogueMinVisibleSeconds`(0.7초)를 채운 뒤 120ms 페이드아웃. 강제 취소는 이 규칙을 **항상** 이긴다 | PlayMode ② |
+| 5 큐잉 금지 | 새 `DialogueRequested`가 오면 이전 말풍선을 즉시 교체(큐 자체가 없음) | PlayMode ③ |
+| 6 위치/스타일 | 머리 위 + 꼬리가 캐릭터를 가리킴, 등장 150ms, 화면 경계에서는 **꼬리 방향 유지한 채 박스만 안쪽으로** | 실행 확인 |
+| 7 다중 캐릭터 | `Bind(machine, anchor)`로 화자를 지정 — 라이벌과 플레이어가 서로의 말풍선을 훔치지 않는다 | PlayMode ④ |
+
+**"강제 인터럽트인지"를 아는 근거(이벤트 순서)**: `DialogueIntent`는 만료 사유를 싣지 않으므로(세대 불일치만 본다) `StateTransitionEvent.IsForcedInterrupt`를 함께 구독해 잇는다. `ChangeState`가 **① 세대 증가 → ② Enter()(새 대사 생성 가능) → ③ RaiseStateTransitioned → ④ 구세대 Intent의 Expire**  순서로 진행하고, 구독자 호출 순서 = 등록 순서 = [렌더러(OnEnable, 씬 시작) … 각 Intent(생성 시점)]이므로 **렌더러가 항상 먼저 플래그를 받는다**. 프레임 번호까지 대조해 오래된 플래그 재사용도 막았다. 페이드아웃 **잔상**도 강제 인터럽트가 오면 즉시 지운다.
+
+**렌더링 방식**: legacy uGUI(ScreenSpaceOverlay Canvas + `UnityEngine.UI.Text`) — 캐릭터는 LineRenderer지만 말풍선은 글자가 본체라 텍스트 레이아웃/줄바꿈이 필요하고, 이 프로젝트에 TextMeshPro가 없다. 투명 오버레이와 충돌하지 않는다(카메라는 알파 0으로 클리어하고 오버레이 캔버스가 그 위에 자기 알파로 합성 → 말풍선 모양 픽셀만 불투명). 캔버스는 **씬 루트에** 만든다(`AppControlDirector`와 동일) — 움직이는 캐릭터의 자식으로 두면 RAGDOLL 회전이 섞여 들어간다.
+- 스타일: 흰 채움 + 검은 테두리 2.5px + 검은 굵은 글씨(캐릭터의 굵은 획 문법). 잉크색이 흰색 프리셋이면 말풍선이 자동 반전.
+- 꼬리(삼각형)는 스프라이트 에셋 없이 **알파 커버리지 텍스처 2장을 코드로 생성**(테두리용 실루엣 + 빗변만 안으로 들인 채움). 색은 `Image.color`로 입혀 잉크색 전환이 그대로 반영. 그리는 순서를 꼬리테두리 → 박스 → 꼬리채움으로 쌓아 박스 아래 테두리와 이음매가 사라진다.
+- **한글 폰트**: 내장 `LegacyRuntime.ttf`에는 한글 글리프가 없어 두부가 된다. `ResolveKoreanFont()`가 후보 폰트를 하나씩 만들어 `RequestCharactersInTexture` → `GetCharacterInfo('한')`으로 **글리프 폭을 실측**해 첫 성공 폰트를 쓴다(이름만 보고 믿지 않는다). 실측 결과 **'Apple SD Gothic Neo' 통과**.
+
+### ③ 유휴 혼잣말 — 대사를 볼 기회 자체가 거의 없던 문제
+
+대사를 만드는 상태는 Attack/Ragdoll/ParkourClimb/LedgeHang 등 "사건이 일어날 때"뿐이고, 캐릭터가 대부분의 시간을 보내는 Idle/Walk에는 대사가 전혀 없었다(`IdleState`의 `TODO(Phase 2)` 주석이 그 자리였다). 신규 `Dialogue/AmbientChatter.cs`가 26-3절 "살아있는 느낌"으로 그 자리를 채운다.
+
+**원칙 1을 우회하지 않는 방식(중요)**: 랜덤 문자열을 띄우는 게 아니다. ⑴ 확률/쿨다운 추첨은 `Enter()` 안에서 **텍스트를 만들기 전에** 끝나고, 통과했다면 그 자리에서 곧바로 `DialogueIntent`가 생긴다("혼잣말을 한다"는 행동 자체가 그 전이로 확정된 사실). ⑵ 고른 줄 번호는 `IHasDialogueParams`로 노출되는 스냅샷(`ChatterParams.LineIndex`)이 되고, 매핑 함수 `AmbientChatter.Resolve(stateId, params)`는 **난수를 전혀 쓰지 않는 순수 함수**다 — 31-3 체크리스트의 "어느 Enter() 호출의 어느 파라미터에서 나왔는지 역추적 가능"을 만족한다. ⑶ Idle/Walk는 별도 함수가 아니라 **같은 매핑 함수 안의 분기**(31-1). 대사는 전부 현재형 서술이라 "말만 하고 안 함"이 성립할 문장이 없다.
+
+신규 설정 7개: `dialogueBubbleEnabled` / `dialogueMinVisibleSeconds`(0.7) / `dialogueMaxVisibleSeconds`(4) / `dialogueFontSize`(16) / `idleChatterChance`(0.28) / `walkChatterChance`(0.14) / `ambientChatterCooldownSeconds`(11, Idle·Walk 공유). 확률 0으로 두면 직전 라운드와 100% 동일한 거동.
+
+### ④ 라이벌 스틱맨(11절) 실배선 — 역시 "한 번도 스폰된 적 없음"이었다
+
+`RivalStickmanAgent`/`RivalEncounterDirector`는 Phase 3에 완성됐지만 **씬 어디에도 배치되지 않았다**(확인 결과 사실). `SceneBootstrapper.CreateRivalStickman()`이 플레이어 프리팹을 인스턴스화 → 언팩 → **플레이어 전용 컴포넌트만 제거**(AppControlDirector/RodeoCursorWatcher/DragThrowController/StickmanClickHitbox/StickmanAgent) 후 `RivalStickmanAgent`+`RivalEncounterDirector`를 붙인다. 별도 프리팹을 새로 만들지 않은 이유: 지오메트리(footLift/totalHeight/관절 제한)가 `BuildStickmanPrefab` 안에서 서로 얽혀 계산되므로 두 벌로 나누면 한쪽이 조용히 어긋난다 — **단일 진실 소스 유지**.
+- **붉은색**: `StickConfig.rivalInkColor`(0.85,0.13,0.13) 신설. 씬에도 굽고 런타임에도 `RivalStickmanAgent.Awake()`가 다시 적용(에셋만 바꿔도 반영). 플레이어의 잉크색 프리셋(검정/흰색)과 **독립** — 같은 색이 되면 구분이 안 된다.
+- **말풍선 분리**: 라이벌도 자기 `DialogueBubbleRenderer`를 갖고, 첫 대결에서 머신이 만들어질 때 `Bind()`한다. 그 전까지는 신규 `_requireBoundSpeaker` 플래그가 "화자 미지정 = 전부 수신" 폴백을 막아 플레이어 대사가 라이벌 머리 위에 뜨는 사고를 차단한다.
+- **강제 스폰 경로**: 기본 스폰은 90초 주기 × 4% × 20분 쿨다운이라 실사용 중 사실상 볼 수 없다. `RivalEncounterDirector.ForceSpawnNow()` 신설 — **확률과 쿨다운만** 건너뛰고 상호배제 락(`SpectacleEventLock`)은 그대로 지킨다.
+
+### ⑤ 신규 단축키 2개 (기존 `Ctrl+Opt+Cmd+*` 체계에 추가)
+- **`Ctrl+Opt+Cmd+B`** = 지금 즉시 말풍선. 대사 문자열을 직접 쏘는 게 아니라 강제 발화 펄스를 세운 뒤 **실제 상태 재진입**을 일으켜 대사가 여전히 `Enter()` 안에서만 파생되게 한다. Idle/Walk가 아닐 때는 아무것도 하지 않는다(진행 중인 행동을 대사 때문에 중단시키지 않는다).
+- **`Ctrl+Opt+Cmd+V`** = 라이벌 강제 소환.
+- 우클릭 메뉴에도 [말풍선 띄우기]/[라이벌 소환] 2행 추가(총 7행).
+
+### 검증
+- 컴파일 **에러 0 / 경고 0**, 빌드 **Succeeded 0/0**(102.7MB)
+- **EditMode 13/13**(무변경), **PlayMode 14/14**(기준선 10 + 말풍선 계약 4)
+- 실행 실측(PID 87052): 예외/에러 **0건**, `[말풍선] 한글 폰트 확정: 'Apple SD Gothic Neo' (글리프 실측 통과)`, 유휴 혼잣말 "여기 좋네"/"발판 참 좁네"/"하암..." 정상 표시
+- **같은 프레임 즉시 제거 실측**: `[말풍선] 표시 (Attack) "한 발 더!" — frame=14` → `[말풍선] 제거 — 강제 인터럽트 즉시 제거 (Attack), frame=14`
+
+### 교차 레이어 영향
+- `DialogueIntent`에 **`internal StickmanStateMachine OriginMachine` 추가**(기존 private 필드의 읽기 전용 노출, 새 로직 없음) — 5절 규칙 7(화자 구분)을 UI가 지키려면 필수. 대사 **생성** 경로의 방어선(컨텍스트 요구 + 1회용 토큰)에는 아무 영향 없음.
+- `StickmanBlackboard`에 **`NextChatterAllowedUnscaledTime`/`ForcedChatterSignaled` 2개 추가**(기존 펄스 관례와 동일).
+- `IdleState`/`WalkState`가 **`IHasDialogueParams`를 구현**(둘 다 신규 구현 — 기존 호출부 영향 없음).
+- `GlobalKey`에 **`B`/`V` 추가**(맨 끝). 구현체는 `MacWindowService` 하나뿐이라 kVK 매핑도 함께 갱신. 다른 플랫폼은 이 인터페이스를 구현하지 않아 영향 없음.
+- `AppControlDirector.MenuAction`에 2행 추가 → `MenuRowCount` 5 → 7(패널 높이는 이 상수에서 유도되므로 자동 반영).
+- `StickConfig` 신규 필드 8개(`dialogue*` 4, 혼잣말 3, `rivalInkColor` 1) — 전부 신규라 기존 값과 충돌 없음. `DefaultStickConfig.asset`도 갱신.
+- **`Main.unity`/`Stickman.prefab` 재생성 필요**(`--force`) — 말풍선 렌더러와 라이벌이 씬/프리팹에 구워지므로. 이번 라운드에 `RebuildAllMenuItem`으로 이미 재생성 완료.
+
+### ⑥ 배선 도중 발견해 고친 조용한 버그 — `NewScene` 이후 StickConfig 참조가 죽는다
+
+라이벌을 배선하고 확률을 100%로 올려 실행했는데도 **아무 에러 없이 영원히 스폰되지 않았다.** 씬 YAML을 열어보니 `RivalEncounterDirector._config`/`RivalStickmanAgent._config`가 둘 다 `fileID: 0`(null)이었고, `RivalEncounterDirector.Update()`는 `_config == null`이면 첫 줄에서 return한다.
+
+**원인**: `EditorSceneManager.NewScene(EmptyScene, Single)`이 직전 씬을 파괴하면서 참조가 끊긴 에셋을 언로드한다. 그러면 `BuildMainScene`이 인자로 들고 온 `StickConfig`의 네이티브 객체가 사라져 **C# 참조는 살아 있는데 UnityEngine.Object로는 "가짜 null"**이 된다. `objectReferenceValue = config`가 조용히 null을 쓰고, `Color fallbackBg = config != null ? ... : 기본값` 같은 기존 방어 코드도 조용히 폴백 쪽으로 넘어가 있었다(값이 같아 눈에 띄지 않았다). 프리팹 배선은 `NewScene` **이전**이라 무사했던 것이 증상을 더 헷갈리게 만들었다.
+
+**대응 3겹**: ⑴ `BuildMainScene`이 `NewScene` 직후 `config == null`이면 `AssetDatabase.LoadAssetAtPath`로 되살리고 그 사실을 로그로 남긴다, ⑵ `CreateRivalStickman`에서도 한 번 더 방어, ⑶ 런타임 심층 방어 — `RivalEncounterDirector.Awake()`가 `_config`가 비면 `_player.Config`로 채우고 그래도 없으면 **경고를 남긴다**(조용히 안 뜨는 것이 이 버그의 가장 나쁜 부분이었다). `RivalStickmanAgent`도 `EnsureMachineBuilt()`에서 상대의 설정으로 폴백한다.
+
+### 라이벌 실행 실측 (확률을 임시로 100%/5초 주기로 올려 관측 후 원복)
+```
+[라이벌] 등장 — 스폰 좌표 (-6.00, -10.17), 색 RGBA(0.850,0.130,0.130,1.000), 최대 지속 30초
+[말풍선] 표시 (Attack) "한 발 더!"  — frame=748     <- 한쪽 캐릭터
+[말풍선] 표시 (Ragdoll) "윽...!"    — frame=748     <- 다른 캐릭터, 같은 프레임
+[말풍선] 제거 — 외부 요청, frame=1280               <- 라이벌 퇴장과 같은 프레임에 라이벌 말풍선만 제거
+[라이벌] 퇴장 — 결과 PlayerWon (라이벌 피격 2회 / 플레이어 피격 1회)
+```
+스크린샷으로 **검은 플레이어 옆에 붉은 라이벌**이 Dock 위에 나란히 서 있는 것을 확인했다. 같은 프레임에 두 캐릭터가 각자 다른 대사를 띄웠고 서로 섞이지 않았다 — 5절 규칙 7이 실제로 지켜진다는 실행 증거다. 관측 후 `rivalSpawnCheckInterval`/`rivalSpawnChance`/`rivalSpawnCooldownSeconds`는 원래 값(90 / 0.04 / 1200)으로 되돌렸고, 신규 필드를 제외하면 설정 에셋이 라운드 시작 시점과 **완전히 동일**함을 diff로 확인했다.
+
+### 남은 과제(정직한 기록)
+- 라이벌은 `TickPose()`를 호출하지 않아 팔다리가 중립 포즈로 고정된 채 이동한다(플레이어처럼 걷는 애니메이션이 없다). 최소 스코프 구현의 기존 한계이며 이번 라운드에서 손대지 않았다.
+- 말풍선 크기/글자 크기는 Unity 스크린 픽셀 단위 상수이고, 이 환경에서는 `desktopDpiScale=1.000`(Screen 1512x982 = OS 포인트와 1:1)이라 16px = 16pt로 정확히 맞는다. dpi 배율이 1이 아닌 디스플레이에서는 `dialogueFontSize`로 조정해야 한다(자동 배율 계산은 넣지 않았다 — 이 환경에서 검증되지 않은 보정을 넣는 쪽이 더 위험하다고 판단).

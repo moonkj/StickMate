@@ -19,6 +19,19 @@ namespace StickMate.Interaction
         private float _checkTimer;
         private float _cooldownRemaining;
 
+        private void Awake()
+        {
+            // 심층 방어(2026-08-29): 씬 배선에서 _config가 비어 있으면 라이벌은 **아무 에러도 없이**
+            // 영원히 스폰되지 않는다(Update()의 첫 줄에서 return). 실제로 그 사고가 한 번 났으므로
+            // (Editor/SceneBootstrapper.cs의 NewScene 함정 주석) 플레이어의 설정으로 대신 채운다.
+            if (_config == null && _player != null) _config = _player.Config;
+            if (_config == null)
+            {
+                Debug.LogWarning("[라이벌] StickConfig가 비어 있습니다 — 스폰 판정을 할 수 없어 라이벌이 " +
+                                 "등장하지 않습니다(씬 배선 확인 필요).");
+            }
+        }
+
         private void OnEnable()
         {
             StickmanEventBus.RivalDuelEnded += OnDuelEnded;
@@ -72,6 +85,43 @@ namespace StickMate.Interaction
             if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.RivalDuel, this)) return;
 
             _rival.BeginDuel(_player, ComputeSpawnPosition());
+        }
+
+        /// <summary>
+        /// 확률/쿨다운을 건너뛰고 지금 즉시 대결을 시작한다(Interaction/AppControlDirector.cs의 데모
+        /// 단축키 Ctrl+Opt+Cmd+V / 우클릭 메뉴 [라이벌 소환]).
+        ///
+        /// 왜 이 경로가 필요한가: 기본 스폰 조건은 90초 주기 × 4% 확률 + 20분 쿨다운
+        /// (StickConfig.rivalSpawn*)이라 실사용 중에는 몇 시간을 지켜봐야 한 번 볼까 말까다. 그러면
+        /// "구현했지만 실제로 스폰되는지 아무도 확인하지 못한" 상태가 그대로 유지된다 — 이 프로젝트가
+        /// 이미 여러 번 겪은 "로직은 있는데 씬에 배치가 안 됨" 유형의 사고와 정확히 같은 뿌리다.
+        ///
+        /// **건너뛰는 것은 확률과 쿨다운뿐이다.** 상호배제 락(Core.SpectacleEventLock)과 "이미 대결
+        /// 중이면 무시"는 그대로 지킨다 — 그 둘은 편의가 아니라 안전 규칙이기 때문이다.
+        /// </summary>
+        public void ForceSpawnNow(string reason)
+        {
+            if (_rival == null || _player == null)
+            {
+                Debug.LogWarning($"[라이벌] 강제 소환 실패({reason}) — 라이벌/플레이어 배선이 없습니다.");
+                return;
+            }
+            if (_rival.InDuel)
+            {
+                Debug.Log($"[라이벌] 강제 소환 건너뜀({reason}) — 이미 대결 중입니다.");
+                return;
+            }
+            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.RivalDuel, this))
+            {
+                Debug.Log($"[라이벌] 강제 소환 건너뜀({reason}) — 다른 스펙터클이 진행 중입니다(상호배제 락).");
+                return;
+            }
+
+            Vector2 spawn = ComputeSpawnPosition();
+            _checkTimer = 0f;
+            _rival.BeginDuel(_player, spawn);
+            Debug.Log($"[라이벌] 강제 소환({reason}) — 스폰 좌표 {spawn}, 최대 지속 " +
+                      $"{(_config != null ? _config.rivalMaxDurationSeconds : 30f):F0}초.");
         }
 
         private Vector2 ComputeSpawnPosition()

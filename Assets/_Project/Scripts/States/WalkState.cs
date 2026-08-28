@@ -1,5 +1,6 @@
 using UnityEngine;
 using StickMate.Core;
+using StickMate.Dialogue;
 
 namespace StickMate.States
 {
@@ -11,9 +12,15 @@ namespace StickMate.States
     /// Phase 1 구현 범위: 이동/정지/점프 전이와 Fall 강제 전이(발판 이탈·화면 경계 이탈). Attack/
     /// ParkourClimb/Ragdoll 전이는 Phase 2/3에서 추가된다.
     /// </summary>
-    public sealed class WalkState : IStickmanState
+    public sealed class WalkState : IStickmanState, IHasDialogueParams
     {
         private readonly StickmanBlackboard _blackboard;
+
+        /// <summary>보행 혼잣말(26-3절)이 이번 전이에서 고른 대사 줄 번호 스냅샷 — IdleState와 동일한
+        /// 파라미터 파이프라인(Dialogue/AmbientChatter.cs 참고). Idle과 쿨다운 타이머를 공유한다.</summary>
+        private readonly AmbientChatter.ChatterParams _chatterParams = new AmbientChatter.ChatterParams();
+
+        public object DialogueParams => _chatterParams;
 
         public WalkState(StickmanBlackboard blackboard)
         {
@@ -30,6 +37,14 @@ namespace StickMate.States
             // 없어졌기 때문이다(States/StickmanPoseAnimator.cs 클래스 문서 참고). 실제 각도 세팅은
             // Tick()이 매 프레임 수행한다.
             _blackboard.GetPoseAnimator()?.ResetWalkPhase();
+
+            // 보행 혼잣말(26-3절) — IdleState.Enter()와 동일한 파이프라인. 대사 표와 확률만 다르고
+            // 매핑 함수는 같은 AmbientChatter.Resolve 하나를 공유한다(UX_FLOW.md 31-1 "같은 매핑 함수
+            // 안의 분기만 허용" — Idle/Walk 분기는 그 함수 내부의 상태 ID 분기다).
+            if (AmbientChatter.TryRollChatter(_blackboard, StickmanStateId.Walk, _chatterParams))
+            {
+                _ = new DialogueIntent(context, AmbientChatter.Resolve);
+            }
         }
 
         public void Tick(float deltaTime)

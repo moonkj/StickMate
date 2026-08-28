@@ -88,6 +88,20 @@ namespace StickMate.States
         public int AttackShotsRemaining;
 
         /// <summary>
+        /// 유휴 혼잣말(docs/UX_FLOW.md 26-3절, Dialogue/AmbientChatter.cs)의 다음 발화 허용 시각
+        /// (Time.unscaledTime 기준). Idle과 Walk가 **하나의 타이머를 공유**한다 — 둘은 2~6초마다
+        /// 번갈아 일어나므로 각자 쿨다운을 두면 확률이 낮아도 체감상 수다스러워진다.
+        /// </summary>
+        public float NextChatterAllowedUnscaledTime;
+
+        /// <summary>
+        /// "지금 즉시 혼잣말을 하라"는 강제 발화 펄스(Interaction/AppControlDirector.cs의 데모 단축키
+        /// Ctrl+Opt+Cmd+B). AmbientChatter.TryRollChatter()가 소비 즉시 리셋하며, 소비되면 확률/쿨다운을
+        /// 모두 건너뛴다(DragReleaseSignaled/BattleClickSignaled와 동일한 1프레임 펄스 계약).
+        /// </summary>
+        public bool ForcedChatterSignaled;
+
+        /// <summary>
         /// 가출(20절) 은신처 월드 좌표 스냅샷 — Interaction/RunawayDirector.cs가 ChangeState(Runaway)
         /// 직전에 세팅하고, States/RunawayState.cs의 초기 Enter()가 1회 소비한다(AttackShotsRemaining과
         /// 동일한 "펄스 세팅 → 소비" 관례).

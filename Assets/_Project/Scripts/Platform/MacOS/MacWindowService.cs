@@ -128,6 +128,8 @@ namespace StickMate.Platform.MacOS
         private const ushort kVK_ANSI_C = 0x08;
         private const ushort kVK_ANSI_D = 0x02;
         private const ushort kVK_ANSI_R = 0x0F;
+        private const ushort kVK_ANSI_B = 0x0B;
+        private const ushort kVK_ANSI_V = 0x09;
 
         [DllImport(CoreGraphicsLib)]
         private static extern uint CGMainDisplayID();
@@ -1065,6 +1067,8 @@ namespace StickMate.Platform.MacOS
                 case GlobalKey.C:       code = kVK_ANSI_C;  break;
                 case GlobalKey.D:       code = kVK_ANSI_D;  break;
                 case GlobalKey.R:       code = kVK_ANSI_R;  break;
+                case GlobalKey.B:       code = kVK_ANSI_B;  break;
+                case GlobalKey.V:       code = kVK_ANSI_V;  break;
                 default:
                     pressed = false;
                     return false;

@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using StickMate.Core;
 using StickMate.Platform;
+using StickMate.States;
 
 namespace StickMate.Interaction
 {
@@ -44,6 +45,8 @@ namespace StickMate.Interaction
     ///                  Control + Option + Command + C = 잉크색(검정/흰색) 전환
     ///                  Control + Option + Command + R = 로데오 커서 켜기/끄기
     ///                  Control + Option + Command + D = 진단 로그 켜기/끄기
+    ///                  <b>Control + Option + Command + B</b> = 지금 즉시 말풍선 띄우기(데모)
+    ///                  <b>Control + Option + Command + V</b> = 라이벌 스틱맨 강제 소환(데모)
     ///     3개 조합키를 모두 쓰는 이유: Cmd+Shift+Q는 macOS의 "로그아웃"이고 Cmd+Q는 활성 앱 종료라
     ///     둘 다 이미 의미가 있다. Ctrl+Option+Cmd 조합은 시스템/일반 앱이 거의 쓰지 않아, 사용자가
     ///     다른 앱에서 작업하다 실수로 데스크톱 펫을 종료시킬 위험이 사실상 없다.
@@ -79,7 +82,7 @@ namespace StickMate.Interaction
         // 전역 단축키 엣지 판정 — 첫 폴링은 기록만 하고 넘어가, 앱 시작 순간 이미 눌려 있던 키를
         // 명령으로 오인하지 않는다(StickmanClickHitbox의 _globalPressedInitialized와 동일한 관례).
         private bool _hotkeyInitialized;
-        private bool _prevQ, _prevC, _prevD, _prevR;
+        private bool _prevQ, _prevC, _prevD, _prevR, _prevB, _prevV;
 
         // 우클릭/메뉴 클릭 엣지 판정.
         private bool _rightPrev;
@@ -96,10 +99,13 @@ namespace StickMate.Interaction
         private Text[] _rowLabels;
         private RectTransform[] _rowRects;
         private BoxCollider2D _menuBlocker; // 메뉴 위 클릭이 밑의 다른 앱까지 새지 않게 막는 히트테스트용.
+        private RivalEncounterDirector _rivalDirector; // 라이벌 강제 소환용(지연 탐색 후 캐시).
 
         // 메뉴 행 정의 — 순서가 곧 화면 표시 순서이자 히트테스트 인덱스다.
-        private enum MenuAction { Quit = 0, InkColor = 1, Rodeo = 2, Diagnostics = 3, Close = 4 }
-        private const int MenuRowCount = 5;
+        // 순서 = 화면 표시 순서 = 히트테스트 인덱스. 새 항목은 항상 [닫기] **앞에** 넣는다
+        // (닫기가 마지막 줄이라는 관습을 지키기 위해 — 인덱스는 MenuRowCount가 자동으로 따라간다).
+        private enum MenuAction { Quit = 0, InkColor = 1, Rodeo = 2, Diagnostics = 3, SayNow = 4, SpawnRival = 5, Close = 6 }
+        private const int MenuRowCount = 7;
 
         private void Awake()
         {
@@ -118,7 +124,8 @@ namespace StickMate.Interaction
             Debug.Log("[앱제어] 준비 완료 — 종료 방법 2가지: " +
                 "(1) 전역 단축키 **Control+Option+Command+Q**, " +
                 "(2) **캐릭터 우클릭 -> [앱 종료] 클릭**. " +
-                "그 밖의 단축키: Ctrl+Opt+Cmd+C(잉크색 전환) / R(로데오 커서 on-off) / D(진단 로그 on-off). " +
+                "그 밖의 단축키: Ctrl+Opt+Cmd+C(잉크색 전환) / R(로데오 커서 on-off) / D(진단 로그 on-off) / " +
+                "**B(말풍선 즉시 띄우기)** / **V(라이벌 스틱맨 강제 소환)**. " +
                 $"전역 키 조회={(_keyService != null ? "사용 가능" : "미지원 — 우클릭 메뉴만 동작")}, " +
                 $"전역 버튼 조회={(_buttonService != null ? "사용 가능" : "미지원 — 단축키만 동작")}.");
         }
@@ -147,11 +154,13 @@ namespace StickMate.Interaction
             bool c = chord && IsKeyDown(GlobalKey.C);
             bool d = chord && IsKeyDown(GlobalKey.D);
             bool r = chord && IsKeyDown(GlobalKey.R);
+            bool b = chord && IsKeyDown(GlobalKey.B);
+            bool v = chord && IsKeyDown(GlobalKey.V);
 
             if (!_hotkeyInitialized)
             {
                 _hotkeyInitialized = true;
-                _prevQ = q; _prevC = c; _prevD = d; _prevR = r;
+                _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevV = v;
                 return;
             }
 
@@ -159,12 +168,16 @@ namespace StickMate.Interaction
             bool cRise = c && !_prevC;
             bool dRise = d && !_prevD;
             bool rRise = r && !_prevR;
-            _prevQ = q; _prevC = c; _prevD = d; _prevR = r;
+            bool bRise = b && !_prevB;
+            bool vRise = v && !_prevV;
+            _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevV = v;
 
             if (qRise) Invoke(MenuAction.Quit, "전역 단축키 Ctrl+Opt+Cmd+Q");
             else if (cRise) Invoke(MenuAction.InkColor, "전역 단축키 Ctrl+Opt+Cmd+C");
             else if (rRise) Invoke(MenuAction.Rodeo, "전역 단축키 Ctrl+Opt+Cmd+R");
             else if (dRise) Invoke(MenuAction.Diagnostics, "전역 단축키 Ctrl+Opt+Cmd+D");
+            else if (bRise) Invoke(MenuAction.SayNow, "전역 단축키 Ctrl+Opt+Cmd+B");
+            else if (vRise) Invoke(MenuAction.SpawnRival, "전역 단축키 Ctrl+Opt+Cmd+V");
         }
 
         private bool IsKeyDown(GlobalKey key)
@@ -311,10 +324,71 @@ namespace StickMate.Interaction
                     RefreshMenuLabels();
                     break;
 
+                case MenuAction.SayNow:
+                    ForceSayNow(source);
+                    break;
+
+                case MenuAction.SpawnRival:
+                    ForceSpawnRival(source);
+                    break;
+
                 case MenuAction.Close:
                     CloseMenu("메뉴 [닫기]");
                     break;
             }
+        }
+
+        // ==================== 데모 진입점 (말풍선 / 라이벌) ====================
+
+        /// <summary>
+        /// "지금 즉시 말풍선을 보여달라"(Ctrl+Opt+Cmd+B). 화면을 볼 수 없는 개발 환경에서도, 그리고
+        /// 사용자가 확률(StickConfig.idleChatterChance)을 기다리지 않고도 원칙 1의 산출물을 눈으로
+        /// 확인할 수 있게 하는 통로다.
+        ///
+        /// **원칙 1을 우회하지 않는다**: 대사 문자열을 직접 만들어 이벤트로 쏘는 게 아니라,
+        /// 블랙보드에 강제 발화 펄스를 세운 뒤 <b>실제 상태 전이</b>(지금 상태로의 재진입)를 일으킨다.
+        /// 대사는 여전히 그 전이가 확정된 뒤 Idle/WalkState.Enter() 안에서만 파생된다 —
+        /// "혼잣말을 한다"는 행동 자체가 이 전이로 확정된 사실이 된다.
+        ///
+        /// Idle/Walk가 아닐 때(낙하/랙돌/스펙터클 진행 중)는 아무것도 하지 않는다. 진행 중인 행동을
+        /// 대사를 보여주자고 중단시키는 것이야말로 5절이 막으려는 "텍스트가 행동을 끌고 가는" 구조다.
+        /// </summary>
+        private void ForceSayNow(string source)
+        {
+            var blackboard = _agent != null ? _agent.Blackboard : null;
+            if (blackboard == null || blackboard.Machine == null)
+            {
+                Debug.LogWarning($"[앱제어] 말풍선 요청({source}) — 상태머신을 찾지 못해 건너뜁니다.");
+                return;
+            }
+
+            StickmanStateId current = blackboard.Machine.CurrentStateId;
+            if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
+            {
+                Debug.Log($"[앱제어] 말풍선 요청({source}) — 지금은 {current} 중이라 건너뜁니다(진행 중인 행동을 " +
+                          "대사 때문에 중단시키지 않는다 — UX_FLOW.md 5절).");
+                return;
+            }
+
+            blackboard.ForcedChatterSignaled = true;      // 확률/쿨다운을 건너뛰는 1프레임 펄스.
+            blackboard.Machine.ChangeState(current);      // 같은 상태로 재진입 = Enter()가 다시 확정 실행된다.
+            Debug.Log($"[앱제어] 말풍선 강제 발화({source}) — {current} 재진입으로 대사를 파생시켰습니다.");
+        }
+
+        /// <summary>
+        /// 라이벌 스틱맨 강제 소환(Ctrl+Opt+Cmd+V). 기본 스폰은 90초마다 4% 확률 + 20분 쿨다운
+        /// (StickConfig.rivalSpawn*)이라 실사용 중 한 번 보기도 어려워, 테스트/데모용 강제 경로를 둔다.
+        /// 확률/쿨다운만 건너뛸 뿐 상호배제 락(Core.SpectacleEventLock)은 그대로 지킨다.
+        /// </summary>
+        private void ForceSpawnRival(string source)
+        {
+            if (_rivalDirector == null) _rivalDirector = Object.FindFirstObjectByType<RivalEncounterDirector>();
+            if (_rivalDirector == null)
+            {
+                Debug.LogWarning($"[앱제어] 라이벌 소환({source}) — 씬에 RivalEncounterDirector가 없어 건너뜁니다.");
+                return;
+            }
+            _rivalDirector.ForceSpawnNow($"앱제어 {source}");
         }
 
         // ==================== 메뉴 UI ====================
@@ -329,7 +403,7 @@ namespace StickMate.Interaction
             if (_menuBlocker != null) _menuBlocker.enabled = true;
             RefreshMenuLabels();
             UpdateMenuPlacement();
-            Debug.Log("[앱제어] 캐릭터 우클릭 — 제어 메뉴를 열었습니다([앱 종료]/[잉크색]/[로데오]/[진단로그]/[닫기]).");
+            Debug.Log("[앱제어] 캐릭터 우클릭 — 제어 메뉴를 열었습니다([앱 종료]/[잉크색]/[로데오]/[진단로그]/[말풍선]/[라이벌]/[닫기]).");
         }
 
         private void CloseMenu(string reason)
@@ -447,6 +521,8 @@ namespace StickMate.Interaction
                 $"로데오 커서: {(_config != null && _config.rodeoCursorEnabled ? "켬" : "끔")}");
             SetRowText(MenuAction.Diagnostics,
                 $"진단 로그: {(_config != null && _config.verboseDiagnosticsLogging ? "켬" : "끔")}");
+            SetRowText(MenuAction.SayNow, "말풍선 띄우기");
+            SetRowText(MenuAction.SpawnRival, "라이벌 소환");
             SetRowText(MenuAction.Close, "닫기");
         }
 
