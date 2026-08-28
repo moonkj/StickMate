@@ -78,7 +78,18 @@ namespace StickMate.Platform.MacOS
         // 리더/사용자가 화면을 볼 수 없는 환경(Screen Recording 권한 없음)에서 "지금 캐릭터가 진짜
         // Finder 창 위에 서 있는가"를 판별할 수 있는 유일한 수단이 로그다. 그래서 히트테스트 감시(25초
         // 한정)와 달리 이 리포트는 상시로 돌되 주기를 넉넉히 잡아 로그량을 통제한다.
-        private const float FootholdReportIntervalSeconds = 2.5f;
+        //
+        // ★ 2026-08-28 정리(기능 안정화 후): 2.5초 주기는 실측 결과 Player.log의 84%(443줄 중 372줄)를
+        // [발판리포트]/[창진단] 두 줄이 차지하게 만들어, 정작 중요한 경고/예외가 묻혔다. 24시간 상주
+        // 앱에서는 그 자체로 결함이다. 그렇다고 지우면 다음 회귀 때 다시 눈이 먼 채로 조사해야 하므로
+        // 삭제하지 않고 StickConfig.verboseDiagnosticsLogging 스위치로 옮긴다:
+        //   - 기본(false): 60초 심장박동. "지금 무엇을 딛고 있는가"는 재빌드 없이 언제든 확인 가능하되
+        //     하루 1440줄 수준으로 로그량이 24배 줄어든다.
+        //   - 켜면(true):  예전과 동일한 2.5초/7.5초 촘촘한 리포트 + 히트테스트 프로브까지 전부 복귀.
+        // 이상 신호([화면클램프]/[캐릭터구조]/[발판변경])는 이 스위치와 무관하게 항상 남는다 —
+        // 그것들은 "정상 상태 보고"가 아니라 "무언가 잘못됐다"는 신호라 조용해질 이유가 없다.
+        private const float FootholdReportIntervalSecondsVerbose = 2.5f;
+        private const float FootholdReportIntervalSecondsQuiet = 60f;
 
         // 한 줄에 나열할 실제 창의 최대 개수(그 이상은 "...외 N개"로 접는다 — 창을 20개씩 띄운
         // 환경에서 로그 한 줄이 수천 자가 되는 것을 막는다).
@@ -86,9 +97,26 @@ namespace StickMate.Platform.MacOS
         private float _footholdReportTimer;
         private readonly System.Text.StringBuilder _reportBuilder = new System.Text.StringBuilder(512);
 
-        /// <summary>창 전체 덤프([창진단]) 주기(초) — 발판 리포트보다 길어서 따로 둔다.</summary>
+        /// <summary>창 전체 덤프([창진단]) 주기(초) — 발판 리포트보다 길어서 따로 둔다. 이 덤프는 한 줄이
+        /// 수백~수천 자라 특히 무거우므로, 위 정리 이후 verboseDiagnosticsLogging이 켜졌을 때만 남긴다.</summary>
         private const float WindowDumpIntervalSeconds = 7.5f;
         private float _windowDumpTimer;
+
+        /// <summary>
+        /// 상세 진단 로그 스위치(StickConfig.verboseDiagnosticsLogging)의 현재 값. 에이전트/블랙보드가
+        /// 아직 없으면(초기 몇 프레임) 조용한 기본값(false)으로 취급한다 — 진단 로그 때문에 시작 경로에
+        /// 예외를 만들지 않는다는 기존 태도와 같다.
+        /// </summary>
+        private bool VerboseDiagnostics
+        {
+            get
+            {
+                if (_agent == null) _agent = UnityEngine.Object.FindAnyObjectByType<Core.StickmanAgent>();
+                var blackboard = _agent != null ? _agent.Blackboard : null;
+                var config = blackboard != null ? blackboard.Config : null;
+                return config != null && config.verboseDiagnosticsLogging;
+            }
+        }
 
         // ============================================================================
         // 오버레이 창 전체화면 확장 — 헤드라인 기능의 선행 조건
@@ -170,7 +198,8 @@ namespace StickMate.Platform.MacOS
                 ApplyTransparentSafeCameraBackground();
                 Debug.Log($"[MacOverlayStateEnforcer] 창 부착 감지 — windowSize={windowSize}, " +
                     $"clientSize={_controller.clientSize}, windowPosition={_controller.windowPosition}, " +
-                    $"경과 {_elapsed:F2}초. 이제 목표 상태를 재적용합니다.");
+                    $"경과 {_elapsed:F2}초. 이제 목표 상태를 재적용합니다. " +
+                    $"진단로그={(VerboseDiagnostics ? $"상세(발판리포트 {FootholdReportIntervalSecondsVerbose}초 + 창진단 {WindowDumpIntervalSeconds}초 + 히트테스트 프로브)" : $"조용함(발판리포트 {FootholdReportIntervalSecondsQuiet}초 심장박동만) — 더 보려면 DefaultStickConfig.asset의 verboseDiagnosticsLogging 체크")}.");
                 _timer = ReapplyIntervalSeconds;
             }
 
@@ -341,11 +370,13 @@ namespace StickMate.Platform.MacOS
         /// </summary>
         private void TickFootholdReport()
         {
+            bool verbose = VerboseDiagnostics; // 프로퍼티가 에이전트 탐색까지 겸한다.
+            float reportInterval = verbose ? FootholdReportIntervalSecondsVerbose : FootholdReportIntervalSecondsQuiet;
+
             _footholdReportTimer += Time.unscaledDeltaTime;
-            if (_footholdReportTimer < FootholdReportIntervalSeconds) return;
+            if (_footholdReportTimer < reportInterval) return;
             _footholdReportTimer = 0f;
 
-            if (_agent == null) _agent = UnityEngine.Object.FindAnyObjectByType<Core.StickmanAgent>();
             var blackboard = _agent != null ? _agent.Blackboard : null;
             if (blackboard == null || blackboard.FootholdPoller == null) return;
 
@@ -415,8 +446,8 @@ namespace StickMate.Platform.MacOS
 
             // 리더 지시 1항 — 창 전체 덤프(앱 이름 + PID + 사각형 + 알파 + onscreen + z-order + 탈락 사유).
             // 발판 리포트보다 훨씬 길어서 주기를 별도로 둔다.
-            _windowDumpTimer += FootholdReportIntervalSeconds;
-            if (describer != null && _windowDumpTimer >= WindowDumpIntervalSeconds)
+            _windowDumpTimer += reportInterval;
+            if (verbose && describer != null && _windowDumpTimer >= WindowDumpIntervalSeconds)
             {
                 _windowDumpTimer = 0f;
                 _reportBuilder.Clear();
@@ -450,6 +481,10 @@ namespace StickMate.Platform.MacOS
         private void TickHitTestProbe()
         {
             if (_elapsed > ProbeDurationSeconds) return;
+            // 시작 25초로 이미 스스로 멈추는 유한 프로브지만, 평상시에는 이것도 남기지 않는다
+            // (위 FootholdReportIntervalSecondsQuiet 문단의 로그량 정리와 같은 취지 — 삭제가 아니라
+            // StickConfig.verboseDiagnosticsLogging 스위치로 이동).
+            if (!VerboseDiagnostics) return;
 
             _probeTimer += Time.unscaledDeltaTime;
             if (_probeTimer < ProbeIntervalSeconds) return;

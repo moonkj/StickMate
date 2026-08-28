@@ -315,6 +315,13 @@ namespace StickMate.States
         private float _fallStuckTimer;
         private long _lastReportedFootholdHandle = long.MinValue;
 
+        // [화면클램프] 로그 throttle(2026-08-28 로그 정리 라운드). 이 로그는 "이상 신호"라
+        // StickConfig.verboseDiagnosticsLogging과 무관하게 항상 남겨야 하지만, 클램프는 캐릭터가
+        // 가장자리를 계속 밀 때 **매 프레임** 성립할 수 있어 그대로 두면 초당 수십 줄이 쏟아진다.
+        // 최소 간격만 두어 "무슨 일이 있었다"는 신호는 잃지 않으면서 홍수만 막는다.
+        private const float ScreenClampLogMinIntervalSeconds = 2f;
+        private float _lastScreenClampLogTime = float.NegativeInfinity;
+
         /// <summary>
         /// 매 프레임 마지막에 호출 — (1) 캐릭터 OS 좌표를 오버레이 창(=화면) 안으로 하드 클램프하고,
         /// (2) 그래도 발판을 완전히 잃은 채 오래 낙하 중이면 화면 중앙 지면으로 강제 복귀시킨다.
@@ -346,9 +353,14 @@ namespace StickMate.States
                 if (!Mathf.Approximately(clampedX, os.x)) v.x = 0f;   // 벽에 막힌 것처럼 수평 관성 제거
                 if (clampedY < os.y) v.y = 0f;                        // 아래로 뚫고 나가던 관성 제거
                 Body.linearVelocity = v;
-                Debug.Log($"[화면클램프] 캐릭터가 화면 밖으로 나가려 해 되돌렸습니다 — OS ({os.x:F1},{os.y:F1}) -> " +
-                    $"({clampedX:F1},{clampedY:F1}), 화면=({origin.x:F0},{origin.y:F0} {screenW:F0}x{screenH:F0}), " +
-                    $"상태={(Machine != null ? Machine.CurrentStateId.ToString() : "?")}.");
+                if (Time.unscaledTime - _lastScreenClampLogTime >= ScreenClampLogMinIntervalSeconds)
+                {
+                    _lastScreenClampLogTime = Time.unscaledTime;
+                    Debug.Log($"[화면클램프] 캐릭터가 화면 밖으로 나가려 해 되돌렸습니다 — OS ({os.x:F1},{os.y:F1}) -> " +
+                        $"({clampedX:F1},{clampedY:F1}), 화면=({origin.x:F0},{origin.y:F0} {screenW:F0}x{screenH:F0}), " +
+                        $"상태={(Machine != null ? Machine.CurrentStateId.ToString() : "?")}. " +
+                        $"(같은 로그는 최소 {ScreenClampLogMinIntervalSeconds}초 간격으로만 남깁니다)");
+                }
             }
 
             // (2) 최종 안전망 — 오래 낙하 중이면(= 어떤 발판에도 착지하지 못하는 상황) 강제 복귀.

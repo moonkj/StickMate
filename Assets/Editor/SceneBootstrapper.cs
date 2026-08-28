@@ -46,11 +46,19 @@ namespace StickMate.EditorTools
     /// 같은 비율(DummyFootholdHeightFraction=f)로 스케일되므로 Screen.height 항이 정확히 상쇄되어
     /// 아래처럼 해상도와 무관한 값이 나온다(카메라가 x=0, z=-10에 있고 orthographic이라고 가정):
     ///   groundTopWorldY = cam.y - orthographicSize * (1 - 2*f)
-    /// f=0.2(기본값) 기준 orthographicSize=5일 때 groundTopWorldY = cam.y - 3, 즉 뷰포트 하단
-    /// (cam.y-5)에서 2유닛 위, 뷰포트 상단(cam.y+5)까지는 8유닛 남는다. 캐릭터 전신 높이(발~정수리
-    /// 약 1.8유닛, BuildStickmanPrefab의 Head/Torso/팔다리 로컬 좌표 참고)를 이 위에 얹으면 머리
-    /// 상단이 cam.y-1.2로, 위/아래 여백이 각각 6.2유닛/2유닛 확보되어 최소 요구치(0.5~1유닛)를 크게
-    /// 상회한다 — Tests/PlayMode의 StickmanOnScreenFramingTests.cs가 이를 매 실행마다 실측 검증한다.
+    ///
+    /// ★ 2026-08-28 갱신(사용자 신고 "지금도 떠있는것처럼보임"): f가 0.2에서 "Dock 높이 비율"
+    /// (NullPlatformWindowService.DockSafeBottomInsetPoints 75pt / ReferenceScreenHeightPoints 982pt
+    /// ≈ 0.0764)로 내려갔다. f=0.2일 때는 딛을 창이 하나도 없으면 캐릭터가 화면 바닥에서 196pt나 위,
+    /// 즉 화면 한가운데쯤에 서 있어 "허공에 떠 있는 것처럼" 보였다(그 신고의 직접 원인). 이제
+    /// 안전망 발판의 상단이 실측 화면(1512x982) 기준 OS y=907 = Dock 바로 위가 된다.
+    ///
+    /// 현재 값(f≈0.0764, orthographicSize=12, cam.y=0) 기준:
+    ///   groundTopWorldY = 0 - 12*(1 - 0.1527) = -10.167  (뷰포트 하단 -12에서 1.83유닛 위)
+    /// 캐릭터 전신 높이(발~정수리 약 2.27유닛, BuildStickmanPrefab 참고)를 얹으면 머리 상단이
+    /// 약 -7.9로 뷰포트 상단(+12)까지 한참 남고, 발 아래 여백 1.83유닛은 프레이밍 테스트의 최소
+    /// 요구치(0.5유닛)를 3.6배 상회한다 — Tests/PlayMode의 StickmanOnScreenFramingTests.cs가 이를
+    /// 매 실행마다 실측 검증한다(그 1.83유닛이 화면상 정확히 Dock 높이 75pt에 대응한다).
     ///
     /// 주의(BUG-SW-M2, Architect 반려 수정, 2026-08-28, docs/BUG_REPORT_SCENE_WIRING.md): 카메라
     /// orthographicSize를 바꾸면 GroundSensor의 OS-px↔world-unit 변환 비율(px/unit =
@@ -740,6 +748,11 @@ namespace StickMate.EditorTools
         /// 이번 화면 프레이밍 버그의 근본 원인 중 하나였다(BUG-P1-R4-B1). NullPlatformWindowService의
         /// DummyFootholdHeightFraction 공개 상수를 그대로 참조해, 그 클래스의 발판 배치가 바뀌면 이
         /// 계산도 자동으로 함께 갱신되도록 한다(재발 방지).
+        ///
+        /// ★ 이 단일 소스 설계가 실제로 값을 한 번에 옮겨준 사례(2026-08-28): 안전망 발판을 화면 80%
+        /// 지점에서 Dock 위로 내리는 작업에서 코드로 바꾼 것은 그 상수 하나뿐이고, 캐릭터 스폰 Y
+        /// (BuildMainScene)와 RAGDOLL 물리 바닥 Y(CreateGroundCollider)는 둘 다 이 헬퍼를 거치므로
+        /// 자동으로 함께 내려갔다(-7.2 -> -10.167). 씬 에셋에 구운 값이므로 --force 재생성이 필요하다.
         /// </summary>
         private static float ComputeGroundTopWorldY(Camera cam)
         {
@@ -883,8 +896,9 @@ namespace StickMate.EditorTools
             // 레이어 2 = "Ignore Raycast"(Unity 예약 레이어). 물리 충돌에는 아무 영향이 없고
             // (레이어 충돌 매트릭스는 별개 — StickmanLimb와 계속 정상 충돌한다) **레이캐스트 질의에서만**
             // 제외된다. hitTestType=Raycast 전환의 필수 조건이다: 이 바닥은 눈에 보이지 않는 물리
-            // 안전망인데도 화면 하단 20% 폭 전체를 덮고 있어, 레이캐스트 히트테스트가 여기에 걸리면
-            // 그 띠에서 클릭이 전부 우리 앱에 잡혀 버린다(비침해 원칙 2 정면 위반).
+            // 안전망인데도 화면 하단 띠(2026-08-28부터 Dock 높이 = 화면의 약 7.6%, 그 전에는 20%) 전체를
+            // 덮고 있어, 레이캐스트 히트테스트가 여기에 걸리면 그 띠에서 클릭이 전부 우리 앱에 잡혀
+            // 버린다(비침해 원칙 2 정면 위반).
             ground.layer = 2;
 
             float groundTopWorldY = ComputeGroundTopWorldY(cam);

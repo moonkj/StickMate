@@ -96,7 +96,37 @@ namespace StickMate.Platform
         // public인 이유: Editor/SceneBootstrapper.cs가 groundTopWorldY를 계산할 때 이 비율을 직접
         // 재사용해야 한다(매직 넘버로 각자 따로 계산하면, 두 파일의 가정이 서로 어긋나 버린 것 자체가
         // 이번 버그의 근본 원인 중 하나였다 — 재발 방지를 위해 단일 소스로 강제).
-        public const float DummyFootholdHeightFraction = 0.2f;
+        //
+        // ============================================================================
+        // ★ 2026-08-28 하향 0.2 -> Dock 높이 비율(사용자 신고 "지금도 떠있는것처럼보임")
+        // ============================================================================
+        // 직전 라운드는 오클루전 컬링/발판 고착/화면 클램프를 전부 고쳤는데도 사용자가 여전히 캐릭터가
+        // "화면 한가운데 떠 있다"고 신고했고, 그 라운드 보고서가 스스로 "정직한 한계"로 남긴 항목이
+        // 정확히 이 상수였다: f=0.2면 안전망 발판의 상단이 화면 높이의 80% 지점(실측 1512x982 화면 기준
+        // OS y=785.6)이라, 딛을 창이 하나도 없을 때 캐릭터가 화면 바닥에서 **196pt나 위**에 서 있었다.
+        // 창이 전부 최소화됐거나 전체화면 창 하나가 모든 발판을 가리면 발밑에 아무 시각적 근거가 없어
+        // "허공 부유"로 보인다 — 원래 이 값은 "가상의 작업표시줄"이라는 개념에서 나온 것인데, 실제
+        // 데스크톱에서 작업표시줄에 해당하는 것(macOS Dock)은 화면 높이의 20%가 아니라 훨씬 얇다.
+        //
+        // 그래서 이제 이 비율을 "화면 하단에서 Dock 높이만큼만 띄운다"로 재정의한다. 실측 근거는 직전
+        // 라운드에 창을 화면 전체로 넓히면서 이미 확보해뒀다(Platform/MacOS/MacOverlayStateEnforcer.cs의
+        // "오버레이 창 전체화면 확장" 주석): 라이브러리의 GetMonitorRect()가 돌려준 작업영역
+        // (0,75,1512,874)과 CGDisplayBounds의 화면 전체(1512x982)의 차이가 곧 메뉴바 33pt + Dock 75pt다.
+        // 즉 Dock 상단 = OS y 907이고, 캐릭터는 이제 그 위에 선다(Dock에 가려지지도, 허공에 뜨지도 않음).
+        //
+        // 왜 런타임에 Dock 높이를 매번 조회하지 않고 상수(비율)로 고정하는가: 이 값은 Editor/
+        // SceneBootstrapper.cs가 **씬 에셋에 굽는** 지면 콜라이더/스폰 Y의 단일 소스이기도 하다. 런타임
+        // 조회값과 씬에 구운 값이 서로 달라지면, 이 파일이 과거에 반복해서 겪은 바로 그 "두 곳이 따로
+        // 계산해 어긋나는" 버그가 재발한다(BUG-P1-R4-B1, BUG-P1-R5-B2). 해상도가 달라져도 월드 Y가
+        // 변하지 않는 폐쇄형 수식을 유지하려면 비율이 상수여야 한다.
+        public const float DockSafeBottomInsetPoints = 75f;      // macOS Dock 실측 높이(OS 포인트).
+        public const float ReferenceScreenHeightPoints = 982f;   // 그 Dock을 실측한 화면의 전체 높이.
+
+        /// <summary>
+        /// 안전망/더미 발판의 상단을 화면 진짜 바닥에서 위로 띄우는 비율(= 그 발판 띠의 두께 비율과 동일).
+        /// 실측 Dock 높이 75pt / 화면 높이 982pt ≈ 0.0764. 위 "★ 2026-08-28 하향" 문단이 근거다.
+        /// </summary>
+        public const float DummyFootholdHeightFraction = DockSafeBottomInsetPoints / ReferenceScreenHeightPoints;
 
         public NullPlatformWindowService()
         {
