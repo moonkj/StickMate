@@ -178,6 +178,8 @@ namespace StickMate.Core
                 { StickmanStateId.Jump, new JumpState(_blackboard) },
                 { StickmanStateId.Fall, new FallState(_blackboard) },
                 { StickmanStateId.ParkourClimb, new ParkourClimbState(_blackboard) },
+                // 매달려 내려가기(ParkourClimb의 하강 방향, 사용자 명시 요청 2026-08-28).
+                { StickmanStateId.LedgeHang, new LedgeHangState(_blackboard) },
                 // Phase 3: AttackState도 나머지 상태와 동일하게 블랙보드 주입 생성자로 전환(실제 Tick()
                 // 완료/복귀 로직이 이번에 함께 구현됨 — Interaction/RivalStickmanAgent.cs의 유일한 사용처).
                 { StickmanStateId.Attack, new AttackState(_blackboard) },

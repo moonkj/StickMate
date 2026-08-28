@@ -84,15 +84,25 @@ namespace StickMate.Core
                  "튀지 않도록 입력 자체를 완만하게 만든다(속도가 0에서 차오르며 보폭도 자연스럽게 빨라진다).")]
         public float walkSpeedSmoothingRate = 6f;
 
-        [Tooltip("Walk 중 몸 전체가 상하로 흔들리는 진폭(월드 유닛). 실제 걷기처럼 한 걸음마다 몸이 살짝 " +
-                 "오르내리게 해 뻣뻣함을 줄인다(2026-08-28 사용자 \"너무 뻣뻣하게 움직임\" 대응). 보행 " +
-                 "사인파의 2배 주파수로 진동한다(다리가 모였을 때 높고 벌어졌을 때 낮다). **시각 전용**이라 " +
-                 "Rigidbody2D.position은 건드리지 않는다 — 접지 판정이 루트의 물리 위치를 발 높이로 쓰기 " +
-                 "때문에 그걸 흔들면 접지 로직이 깨진다(States/StickmanPoseAnimator.SetBodyOffset 참고).")]
-        public float walkBounceAmplitude = 0.025f;
+        // walkBounceAmplitude 제거(2026-08-28 실측): "한 걸음마다 몸이 살짝 오르내린다"는 목적은 그대로지만,
+        // 그 곡선을 손으로 적은 8키 표(진폭 0.025)로 두었더니 **기하학과 위상이 반대**여서 디딤발이 지면을
+        // 최대 0.025유닛 파고들고 최대 0.070유닛 떠 있었다. 이제 진폭·위상을 전부 다리 각도에서 유도한다
+        // (States/StickmanPoseAnimator.ComputeFootGroundingOffset 문서에 측정치와 유도 과정). 남은 조절
+        // 여지는 아래 "얼마나 적용할 것인가" 하나뿐이다.
+
+        [Tooltip("걷는 동안 '지금 땅에 닿아 있는 발이 지면에 정확히 붙어 있도록' 몸통을 상하로 보정하는 " +
+                 "정도(0~1). 1이면 낮은 쪽 발이 항상 지면에 정확히 닿고(권장), 0이면 보정을 아예 하지 않아 " +
+                 "몸이 상하로 전혀 움직이지 않는다(예전 동작으로 되돌리는 안전 스위치가 아니라 '흔들림 없음'). " +
+                 "진폭 자체는 다리 길이와 관절 각도에서 자동으로 나오므로 여기서 정할 값이 아니다 — 실제 " +
+                 "프리팹 치수에서 약 0.07유닛(전신 높이의 3%)이며, 사람이 걸을 때 엉덩이가 오르내리는 비율과 " +
+                 "같은 수준이다. **시각 전용**이라 Rigidbody2D.position은 건드리지 않는다 — 접지 판정이 " +
+                 "루트의 물리 위치를 발 높이로 쓰기 때문에 그걸 흔들면 접지 로직이 깨진다" +
+                 "(States/StickmanPoseAnimator.SetBodyOffset 참고).")]
+        [Range(0f, 1f)]
+        public float walkFootGroundingBlend = 1f;
 
         [Tooltip("Idle에서 몸 전체가 호흡처럼 아주 느리게 오르내리는 진폭(월드 유닛). 완전 정지는 " +
-                 "\"얼어붙은 것\"처럼 보이므로 항상 미세하게 살아있게 만든다. walkBounceAmplitude와 같은 " +
+                 "\"얼어붙은 것\"처럼 보이므로 항상 미세하게 살아있게 만든다. walkFootGroundingBlend와 같은 " +
                  "시각 전용 오프셋 경로를 쓴다.")]
         public float idleBreathAmplitude = 0.012f;
 
@@ -158,6 +168,63 @@ namespace StickMate.Core
 
         [Tooltip("착지 시 이 값(월드 유닛) 이상 낙하했으면 구르기(부드러운 착지) 이벤트를 발행한다. 실제 파티클/애니메이션은 Phase 2+ 렌더링 레이어 담당")]
         public float rollLandingHeightThreshold = 2f;
+
+        // ── 매달려 내려가기(LedgeHang) — UX_FLOW.md 4절 "매달리기(HANG)" 행의 하강 방향 구현.
+        //    사용자 명시 요청(2026-08-28): "내려갈때도 매달려서 내려가는형태로".
+        //    States/LedgeHangState.cs가 소비한다. 안전 규칙(발판 소실 즉시 낙하 / 화면 밖 금지 /
+        //    무한 매달림 금지)은 설정값이 아니라 상태 코드의 불변식이라 여기에 스위치를 두지 않는다 —
+        //    유일하게 조절 가능한 것은 "얼마나 자주, 얼마나 오래" 매달리느냐뿐이다.
+
+        [Tooltip("발판 가장자리에 도달했을 때 (그냥 돌아서지 않고) 모서리를 붙잡고 매달려 내려갈 확률 " +
+                 "(0~1). 항상 매달리면 지루하므로 기본값은 절반 이하로 둔다 — 나머지 확률은 기존 " +
+                 "배회 행동(정지 후 반대 방향 전환)으로 그대로 흡수된다. 0이면 이 동작이 완전히 꺼지고 " +
+                 "직전 라운드까지의 거동과 100% 동일해진다(안전한 되돌리기 스위치).\n" +
+                 "매달릴 아래쪽 발판이 실제로 존재할 때만 추첨하므로, 확률을 1로 올려도 화면 최하단 " +
+                 "안전망 위에서는 발동하지 않는다(내려갈 곳이 없으므로).")]
+        [Range(0f, 1f)]
+        public float ledgeHangChance = 0.35f;
+
+        [Tooltip("가장자리에서 몸을 낮춰 모서리를 붙잡기까지 걸리는 시간(초). 이 구간 동안 루트가 " +
+                 "'서 있던 위치 -> 매달린 위치'로 보간되므로, 너무 짧으면 순간이동처럼 보인다.")]
+        public float ledgeHangGrabDuration = 0.28f;
+
+        [Tooltip("모서리를 붙잡은 뒤 손을 놓기까지 매달려 있는 시간(초)의 최솟값. 실제 유지시간은 " +
+                 "[min, max] 사이의 난수라 매번 조금씩 다르다.")]
+        public float ledgeHangHoldDurationMin = 0.55f;
+
+        [Tooltip("매달려 있는 시간(초)의 최댓값. 위 min과 함께 난수 구간을 이룬다.")]
+        public float ledgeHangHoldDurationMax = 1.5f;
+
+        [Tooltip("★ 안전 규칙(무한 매달림 금지) — 잡기+매달림 전체에 걸리는 절대 상한(초). 어떤 이유로 " +
+                 "페이즈 타이머가 진행되지 않아도 이 시간이 지나면 무조건 손을 놓고 Fall로 전이한다. " +
+                 "위 hold 최댓값보다 반드시 커야 의미가 있다(UX_FLOW.md 4절 '무한 대기 금지').")]
+        public float ledgeHangMaxDuration = 3f;
+
+        [Tooltip("매달린 자세에서 몸이 모서리 바깥으로 나가는 거리(월드 유닛). 0이면 모서리 선 위에 " +
+                 "정확히 걸쳐 매달리고, 값이 커질수록 발판 바깥쪽으로 더 나가 매달린다. 손을 놓으면 " +
+                 "이 X에서 그대로 낙하하므로 발판 아래로 되돌아 떨어지지 않게 하는 역할도 겸한다.")]
+        public float ledgeHangEdgeOffset = 0.14f;
+
+        [Tooltip("매달린 자세에서 양팔을 위로 뻗을 때 수직에서 바깥쪽으로 벌리는 각도(도). 0이면 두 팔이 " +
+                 "완전히 수직이라 몸통 선과 겹쳐 팔이 안 보인다(Idle 실루엣과 같은 이유로 약간 벌린다).")]
+        public float ledgeHangArmSpreadDegrees = 11f;
+
+        [Tooltip("매달린 자세의 팔꿈치 굽힘(도). 완전히 편 팔은 '막대기'로 보이므로 항상 조금 굽혀둔다.")]
+        public float ledgeHangElbowBendDegrees = 8f;
+
+        [Tooltip("매달린 자세에서 다리가 아래로 늘어질 때의 벌림(도)과 무릎 굽힘(도). 몸이 매달려 " +
+                 "축 늘어진 느낌을 주려면 Idle보다 다리를 모으고 무릎을 조금 더 굽혀야 한다.")]
+        public float ledgeHangLegSpreadDegrees = 6f;
+
+        [Tooltip("매달린 자세의 무릎 굽힘(도). 위 ledgeHangLegSpreadDegrees와 짝이다.")]
+        public float ledgeHangKneeBendDegrees = 14f;
+
+        [Tooltip("매달린 동안 몸이 좌우로 흔들리는 진폭(도)과 주파수(Hz) 중 진폭. UX_FLOW.md 4절이 " +
+                 "요구한 '대롱대롱, 미세한 흔들림'을 만든다. 0이면 흔들림 없이 정지한다.")]
+        public float ledgeHangSwayAmplitudeDegrees = 5f;
+
+        [Tooltip("매달린 흔들림의 주파수(Hz). 0.9면 약 1.1초에 한 번 좌우 왕복한다.")]
+        public float ledgeHangSwayFrequencyHz = 0.9f;
 
         [Header("비침해 원칙")]
         [Tooltip("클릭 관통 기본 ON 여부 (원칙 2)")]

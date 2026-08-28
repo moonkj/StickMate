@@ -19,6 +19,10 @@ namespace StickMate.Interaction
         public float MoveInputX { get; private set; }
         public bool JumpRequested => false;
 
+        /// <summary>라이벌은 관전 전용 스펙터클이라 매달려 내려가기도 다루지 않는다(항상 false —
+        /// WalkState의 해당 분기가 자연히 발동하지 않는다, JumpRequested와 같은 이유).</summary>
+        public bool LedgeHangRequested => false;
+
         public RivalPursuitIntentSource(StickmanBlackboard blackboard, StickConfig config, System.Func<Vector2> targetProvider)
         {
             _blackboard = blackboard;

@@ -38,6 +38,23 @@ namespace StickMate.States
             if (_blackboard.CheckScreenBoundsOrFall(info)) return;
             if (_blackboard.GroundedTick(deltaTime, info)) return;
 
+            // ★ 매달려 내려가기 진입 판정(2026-08-28, 사용자 명시 요청 "내려갈때도 매달려서 내려가는형태로").
+            // 점프 분기보다 **먼저** 본다 — 둘 다 발판 경계에서 성립할 수 있는데, 매달리기 펄스는
+            // AutoWanderController가 "내려갈 발판이 실제로 있다"까지 확인한 뒤에만 발생시키므로 더
+            // 구체적인 의도다(펄스가 없으면 이 블록은 통째로 건너뛰어져 기존 거동과 완전히 같다).
+            // info.Grounded와 목적지 존재를 여기서 **다시** 확인하는 이유: 의도가 만들어진 프레임과
+            // 소비되는 프레임 사이에 창이 닫히거나 발판을 잃었을 수 있고, 그 경우 매달릴 모서리 자체가
+            // 없는 채로 상태에 진입하게 된다(States/LedgeHangState.cs의 안전 규칙 선행 조건).
+            if (_blackboard.LedgeHangPressed && info.Grounded)
+            {
+                int hangDirection = _blackboard.MoveInputX >= 0f ? 1 : -1;
+                if (_blackboard.TryFindDescendTarget(info, hangDirection, out _, out _))
+                {
+                    _blackboard.Machine.ChangeState(StickmanStateId.LedgeHang);
+                    return;
+                }
+            }
+
             // BUG-P1-M5 대응: 접지 중이거나 코요테 타임 이내일 때만 점프 허용(StickmanStateMachine.cs
             // 전이 규칙 주석 참고, Architect 결정으로 의도된 코요테 타임 채택).
             if (_blackboard.JumpPressed && _blackboard.IsWithinCoyoteTime(info))
@@ -84,7 +101,7 @@ namespace StickMate.States
                 {
                     pose.TickWalkPose(deltaTime, Mathf.Abs(v.x), _blackboard.BuildPoseSettings(),
                         _blackboard.PoseSmoothingRate, _blackboard.WalkSpeedSmoothingRate,
-                        _blackboard.Config.walkBounceAmplitude,
+                        _blackboard.Config.walkFootGroundingBlend,
                         _blackboard.Config.walkPoseAmplitudeScale, _blackboard.Config.walkStrideScale);
                 }
             }

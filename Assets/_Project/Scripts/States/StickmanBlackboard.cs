@@ -49,6 +49,10 @@ namespace StickMate.States
         /// <summary>이번 프레임에 점프가 요청되었는지. IntentSource에서 매 프레임 조회.</summary>
         public bool JumpPressed => IntentSource != null && IntentSource.JumpRequested;
 
+        /// <summary>이번 프레임에 "모서리를 붙잡고 매달려 내려가기"가 요청되었는지(JumpPressed와 동일한
+        /// 1프레임 펄스 계약). IntentSource에서 매 프레임 조회 — WalkState가 소비한다.</summary>
+        public bool LedgeHangPressed => IntentSource != null && IntentSource.LedgeHangRequested;
+
         /// <summary>
         /// StickmanAgent.TryGetCursorPosition과 동일한 시그니처(CursorPositionQuery, UX_FLOW.md 9절-3
         /// 전역 커서 폴링 채널 재사용) — 드래그&던지기(DragThrowState)/로데오 커서(RodeoCursorState)가
@@ -559,6 +563,17 @@ namespace StickMate.States
             rig.SnapRootUpright();
             if (Machine.CurrentStateId == StickmanStateId.Walk) return;
 
+            // 매달려 내려가기 — 중립 Idle 포즈가 아니라 "팔을 위로 뻗어 모서리를 잡고 몸이 아래로
+            // 늘어진" 전용 포즈를 적용한다(States/StickmanPoseAnimator.ApplyLedgeHangPose). Walk와 달리
+            // 상태 자신이 아니라 여기서 적용하는 이유: 이 포즈는 Idle 중립 포즈의 자리를 대체하는 것이라
+            // 위 Idle 분기와 같은 층에 두는 편이 "상태 ID 하나로 포즈가 결정된다"는 이 메서드의 계약과
+            // 정확히 일치한다.
+            if (Machine.CurrentStateId == StickmanStateId.LedgeHang)
+            {
+                pose.ApplyLedgeHangPose(deltaTime, BuildLedgeHangPoseSettings(), PoseSmoothingRate);
+                return;
+            }
+
             pose.ApplyIdlePose(deltaTime, BuildPoseSettings(), PoseSmoothingRate);
         }
 
@@ -705,6 +720,66 @@ namespace StickMate.States
             var footholds = FootholdPoller != null ? FootholdPoller.CachedFootholds : System.Array.Empty<PlatformFoothold>();
             Vector2 refPos = Body != null ? Body.position : Vector2.zero;
             return GroundSensor.TryGetFootholdTopWorldY(MainCamera, refPos, handle, footholds, Config, out topWorldY);
+        }
+
+        /// <summary>
+        /// 매달려 내려가기(LedgeHang) 진입 판정 — TryFindClimbableWall의 반대 방향. 진행방향 경계 바깥으로
+        /// 내려섰을 때 실제로 내려앉을 더 낮은 발판이 있는지 확인한다(없으면 매달리지 않고 기존 배회
+        /// 거동대로 돌아선다). 좌표 변환/발판 순회는 전부 GroundSensor에 위임(BUG-M5 컨벤션).
+        /// </summary>
+        public bool TryFindDescendTarget(GroundSensor.GroundInfo info, int direction, out long targetHandle, out float targetTopWorldY)
+        {
+            var footholds = FootholdPoller != null ? FootholdPoller.CachedFootholds : System.Array.Empty<PlatformFoothold>();
+            Vector2 foot = Body != null ? Body.position : Vector2.zero;
+            float outward = Config != null ? Config.ledgeHangEdgeOffset : 0.14f;
+            return GroundSensor.TryFindDescendTarget(MainCamera, foot, info, direction, footholds, Config, outward,
+                LedgeHangDropDepth, out targetHandle, out targetTopWorldY);
+        }
+
+        /// <summary>
+        /// 매달렸을 때 **발끝이 모서리보다 얼마나 아래로 내려가는가**(월드 유닛) = 손끝~발끝 거리.
+        /// 한 값이 두 곳에서 동시에 쓰인다(그래서 여기 한 곳에서만 계산한다):
+        ///   (1) LedgeHangState가 "손이 모서리에 정확히 닿는" 루트 Y를 정할 때 (모서리 Y − 이 값),
+        ///   (2) TryFindDescendTarget이 "내려갈 발판이 매달린 발보다 아래인가"를 판정할 때.
+        /// 프리팹의 실제 어깨 높이/팔 길이에서 유도되므로 목 길이나 팔 길이를 바꿔도 자동으로 따라온다.
+        /// 팔을 찾지 못하는 폴백 경로(테스트 리그 등)에서는 파쿠르 감지 반경으로 되돌린다.
+        /// </summary>
+        public float LedgeHangDropDepth
+        {
+            get
+            {
+                StickmanPoseAnimator pose = GetPoseAnimator();
+                float reach = pose != null ? pose.HangHandReachAboveRoot(BuildLedgeHangPoseSettings()) : 0f;
+                return reach > 0.0001f ? reach : (Config != null ? Config.parkourDetectionRadius : 0.5f);
+            }
+        }
+
+        /// <summary>
+        /// 매달린 동안 매 프레임 호출 — 붙잡은 발판이 여전히 존재하는지 재확인하고, 존재하면 그 발판의
+        /// 최신 상단 Y와 (direction 쪽) 모서리 X를 함께 돌려준다. 창이 옆으로 움직이면 붙잡은 손도 따라
+        /// 움직여야 하므로 Y만으로는 부족하다. false면 "잡을 곳이 사라짐" -> 즉시 낙하.
+        /// </summary>
+        public bool TryGetFootholdEdgeWorld(long handle, int direction, out float topWorldY, out float edgeWorldX)
+        {
+            var footholds = FootholdPoller != null ? FootholdPoller.CachedFootholds : System.Array.Empty<PlatformFoothold>();
+            Vector2 refPos = Body != null ? Body.position : Vector2.zero;
+            return GroundSensor.TryGetFootholdEdgeWorld(MainCamera, refPos, handle, direction, footholds, Config,
+                out topWorldY, out edgeWorldX);
+        }
+
+        /// <summary>
+        /// 매달리기 포즈 설정 묶음을 StickConfig에서 구성한다(BuildPoseSettings와 동일한 패턴 — Config가
+        /// 없는 테스트/폴백 경로에서도 안전하도록 각 값에 기본값을 둔다).
+        /// </summary>
+        public StickmanPoseAnimator.LedgeHangPoseSettings BuildLedgeHangPoseSettings()
+        {
+            return new StickmanPoseAnimator.LedgeHangPoseSettings(
+                Config != null ? Config.ledgeHangArmSpreadDegrees : 11f,
+                Config != null ? Config.ledgeHangElbowBendDegrees : 8f,
+                Config != null ? Config.ledgeHangLegSpreadDegrees : 6f,
+                Config != null ? Config.ledgeHangKneeBendDegrees : 14f,
+                Config != null ? Config.ledgeHangSwayAmplitudeDegrees : 5f,
+                Config != null ? Config.ledgeHangSwayFrequencyHz : 0.9f);
         }
     }
 }

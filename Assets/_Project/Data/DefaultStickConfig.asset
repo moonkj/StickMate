@@ -20,7 +20,7 @@ MonoBehaviour:
   idleArmSpreadDegrees: 40
   poseSmoothingRate: 35
   walkSpeedSmoothingRate: 6
-  walkBounceAmplitude: 0.025
+  walkFootGroundingBlend: 1
   idleBreathAmplitude: 0.012
   idleBreathFrequencyHz: 0.8
   idleBreathArmDegrees: 1.5

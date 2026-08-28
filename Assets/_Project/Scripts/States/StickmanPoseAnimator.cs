@@ -109,12 +109,10 @@ namespace StickMate.States
         /// <summary>4키 팔꿈치 굽힘(도). 항상 15~25도로 굽어 있어 절대 완전히 펴지지 않는다.</summary>
         private static readonly float[] ArmElbowKeys = { 15f, 20f, 25f, 20f };
 
-        /// <summary>
-        /// 8키 몸통 상하 바운스(정규화 -1~+1, 진폭은 StickConfig.walkBounceAmplitude가 곱한다).
-        /// 리더 지정: Passing(t=0.25/0.75)에서 가장 높고 Down(t=0.125/0.625)에서 가장 낮다 —
-        /// 사이클당 2번 오르내린다.
-        /// </summary>
-        private static readonly float[] BounceKeys = { -0.3f, -1f, 1f, 0.3f, -0.3f, -1f, 1f, 0.3f };
+        // 몸통 상하 바운스는 더 이상 손으로 적은 8키 표(BounceKeys)가 아니다 — 2026-08-28 실측으로
+        // 그 표의 **위상이 기하학과 반대**임이 드러났기 때문이다(아래 ComputeFootGroundingOffset 문서에
+        // 측정치와 유도가 있다). 이제는 지금 실제로 적용돼 있는 다리 각도에서 "낮은 쪽 발이 지면에
+        // 정확히 닿으려면 몸이 얼마나 오르내려야 하는가"를 매 프레임 계산해 쓴다.
 
         /// <summary>팔은 같은 쪽 다리와 반대 위상 — 다리 위상에 이만큼 더해서 팔 키를 샘플링한다.</summary>
         private const float ArmPhaseOffset = 0.5f;
@@ -133,6 +131,7 @@ namespace StickMate.States
         /// <summary>아래 마디(정강이/전완)의 보간 계수 배율. 위 마디보다 더 늦게 따라와야 관절 연쇄가
         /// 채찍처럼 이어지는 느낌이 난다.</summary>
         private const float LowerSegmentSmoothingRatio = 0.75f;
+
 
         /// <summary>한 마디(대퇴/정강이/상완/전완)의 절차적 제어에 필요한 것 전부. 매 프레임 재탐색 금지.</summary>
         private sealed class Segment
@@ -194,6 +193,9 @@ namespace StickMate.States
 
         // Idle 미세 호흡 모션의 자체 타이머(초). Walk 위상과 독립이라 상태를 오가도 이어진다.
         private float _idleTime;
+
+        // 매달리기(LedgeHang) 흔들림 위상의 자체 타이머(초) — 매달릴 때마다 0에서 시작한다.
+        private float _hangTime;
 
         // 시각 전용 상하 오프셋(월드 유닛). 걷기 바운스/Idle 호흡이 여기에 쓴다. **Rigidbody2D.position은
         // 절대 건드리지 않는다** — 접지 판정(GroundSensor/SnapToGround)이 루트의 물리 위치를 발 높이로
@@ -420,6 +422,83 @@ namespace StickMate.States
             }
         }
 
+        /// <summary>
+        /// ★ 매달리기 포즈(UX_FLOW.md 4절 "매달리기(HANG)": "팔이 완전히 펴진 채 대롱대롱, 미세한
+        /// 흔들림") — 사용자 요청 "내려갈때도 매달려서 내려가는형태로"의 시각적 실체.
+        ///
+        /// 각도 규약은 이 클래스 전체와 같다: 마디 로컬 -y가 끝(손/발)이고 각도 0이 "곧게 아래".
+        /// 따라서 **팔을 위로 뻗는다 = 어깨 각도 180도 근처**다(0이 아니라 180이라는 점이 Idle/Walk와
+        /// 다른 유일한 핵심이며, 나머지는 전부 기존 경로를 그대로 탄다).
+        ///   - 팔: 180 ∓ spread (좌우로 살짝 벌려 몸통 선과 겹치지 않게) + 팔꿈치 약간 굽힘.
+        ///   - 다리: 거의 수직으로 모으고(spread 작게) 무릎만 조금 접어 축 늘어진 느낌.
+        ///   - 흔들림: 사지 전체에 같은 위상의 사인파를 더해 몸이 통째로 좌우로 대롱거리게 한다
+        ///     (마디별로 다른 위상을 주면 "흔들린다"가 아니라 "허우적댄다"로 보인다).
+        /// 몸 오프셋은 0으로 되돌린다 — 매달린 몸의 상하 위치는 포즈가 아니라 LedgeHangState가 루트
+        /// 위치로 직접 만든다(호흡/바운스 오프셋이 남아 있으면 손이 모서리에서 미세하게 떨어져 보인다).
+        /// </summary>
+        public void ApplyLedgeHangPose(float deltaTime, in LedgeHangPoseSettings settings, float smoothingRate)
+        {
+            SetBodyOffset(0f);
+
+            _hangTime += deltaTime;
+            float sway = Mathf.Sin(_hangTime * settings.SwayFrequencyHz * Mathf.PI * 2f) * settings.SwayAmplitudeDegrees;
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float upper;
+                float lower;
+                if (limb.IsLeg)
+                {
+                    // 다리는 아래로 늘어진다(각도 0 = 곧게 아래) + 흔들림이 그대로 실린다.
+                    upper = limb.NeutralSign * settings.LegSpreadDegrees + sway;
+                    lower = KneeBendSign * Mathf.Max(0f, settings.KneeBendDegrees);
+                }
+                else
+                {
+                    // 팔은 위로 뻗어 모서리를 잡는다(각도 180 = 곧게 위). 흔들림은 다리와 **반대 부호**로
+                    // 넣는다 — 손이 모서리에 고정된 채 몸이 흔들리면, 몸에서 본 팔은 반대로 기운다.
+                    upper = HangArmUpperAngle(limb.NeutralSign, settings.ArmSpreadDegrees) - sway;
+                    lower = ElbowBendSign * Mathf.Max(0f, settings.ElbowBendDegrees);
+                }
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+        }
+
+        /// <summary>매달릴 때 팔을 위로 뻗는 어깨 각도. 180이 정확히 수직 위이고, 부호에 따라 바깥으로
+        /// 벌린다(왼팔 sign=-1 -> 180+spread, 오른팔 sign=+1 -> 180-spread).</summary>
+        private static float HangArmUpperAngle(float neutralSign, float spreadDegrees)
+        {
+            return 180f - neutralSign * spreadDegrees;
+        }
+
+        /// <summary>매달리기 진입 시 흔들림 위상을 0에서 시작시킨다(LedgeHangState.Enter가 호출).</summary>
+        public void ResetHangPhase() => _hangTime = 0f;
+
+        /// <summary>
+        /// ★ 매달린 자세에서 **손끝이 루트(=발 원점)보다 얼마나 위에 있는가**(월드 유닛).
+        /// LedgeHangState가 "손이 모서리에 정확히 닿는" 루트 Y를 계산하는 데 쓴다:
+        ///     매달린 루트 Y = 모서리 상단 Y − 이 값
+        /// 하드코딩 상수가 아니라 **프리팹의 실제 어깨 부착 높이와 팔 마디 길이**에서 유도하므로,
+        /// 어깨 위치(목 길이)나 팔 길이를 바꿔도 손이 모서리에서 떨어지거나 파묻히지 않는다.
+        /// 계산은 ApplyAngle이 실제로 쓰는 것과 같은 회전식이다(각도 θ의 마디 끝 방향 = (sinθ, −cosθ)).
+        /// 좌우 대칭이라 오른팔 하나만 계산하면 충분하다(팔이 없으면 0).
+        /// </summary>
+        public float HangHandReachAboveRoot(in LedgeHangPoseSettings settings)
+        {
+            Limb arm = _rightArm ?? _leftArm;
+            if (arm == null || arm.Upper == null) return 0f;
+
+            float sign = arm.NeutralSign;
+            float upperAngle = HangArmUpperAngle(sign, settings.ArmSpreadDegrees);
+            float lowerAngle = upperAngle + ElbowBendSign * Mathf.Max(0f, settings.ElbowBendDegrees);
+
+            float y = arm.Upper.PivotLocal.y;
+            y += arm.Upper.Length * -Mathf.Cos(upperAngle * Mathf.Deg2Rad);
+            if (arm.Lower != null) y += arm.Lower.Length * -Mathf.Cos(lowerAngle * Mathf.Deg2Rad);
+            return y;
+        }
+
         /// <summary>보간 없이 즉시 중립 포즈로 스냅(첫 프레임 초기화 전용 — StickmanAgent.Awake()).</summary>
         public void ApplyIdlePoseImmediate(in PoseSettings settings)
         {
@@ -451,7 +530,7 @@ namespace StickMate.States
         /// 프레임레이트 독립이다.
         /// </summary>
         public void TickWalkPose(float deltaTime, float horizontalSpeedAbs, in PoseSettings settings,
-            float smoothingRate, float speedSmoothingRate, float bounceAmplitude,
+            float smoothingRate, float speedSmoothingRate, float groundingBlend,
             float amplitudeScale, float strideScale)
         {
             // 주파수 입력 속도 — 호출부가 넘긴 **명령** 속도(walkSpeed)가 아니라 루트가 실제로 이동한
@@ -503,8 +582,10 @@ namespace StickMate.States
                 : _smoothedSpeed * 0.6f;
             _phase01 = Mathf.Repeat(_phase01 + cyclesPerSecond * deltaTime, 1f);
 
-            // 상하 바운스 — Passing(t=0.25/0.75)에서 최고, Down(t=0.125/0.625)에서 최저.
-            SetBodyOffset(SampleCyclic(BounceKeys, _phase01) * bounceAmplitude);
+            // 상하 바운스 — 손으로 적은 곡선이 아니라 다리 기하학에서 유도한다(아래 메서드 문서 참고).
+            // 각도 적용 **전에** 계산하므로 입력은 직전 프레임의 실제 각도다(1프레임 = 사이클의 1% 미만
+            // 지연이라 눈에 띄지 않고, 대신 ApplyAngle이 이 값을 그대로 쓸 수 있어 배선이 단순해진다).
+            SetBodyOffset(ComputeFootGroundingOffset() * Mathf.Clamp01(groundingBlend));
 
             for (int i = 0; i < _limbs.Length; i++)
             {
@@ -531,6 +612,51 @@ namespace StickMate.States
 
                 ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
             }
+        }
+
+        /// <summary>
+        /// ★ 2026-08-28 실측 대응 — 걷는 동안 몸통을 상하로 얼마나 움직여야 **낮은 쪽 발이 지면에
+        /// 정확히 닿는가**(월드 유닛, 시각 전용 오프셋).
+        ///
+        /// 왜 손으로 적은 바운스 곡선을 버렸는가(측정 결과): 예전 8키 표(BounceKeys, 진폭
+        /// walkBounceAmplitude=0.025)를 이 계산과 대조해보니 **위상이 서로 반대**였다. 사람이 걸을 때
+        /// 엉덩이는 다리가 몸 아래 수직으로 지날 때(t=0.25) 가장 높고 두 발이 앞뒤로 벌어졌을 때
+        /// (t≈0.44) 가장 낮은데, 옛 표는 t=0.125에서 최저(-1)를 찍었다. 그 결과 실제 프리팹 치수에서
+        /// 디딤발이 지면을 최대 **0.025유닛 파고들고**(t≈0.12) 반대로 최대 **0.070유닛 떠 있었다**
+        /// (t≈0.44). 즉 "땅에 닿아 있어야 할 발"이 계속 지면을 들락거렸다 — 보폭/주파수 역산이 정확한데도
+        /// 걸음이 어색해 보이던 원인 중 하나다.
+        ///
+        /// 계산: 루트 원점이 곧 지면(이 프로젝트의 접지 규약)이고 발끝의 루트 기준 높이는
+        ///   엉덩이 부착 높이(PivotLocal.y) − (U·cos(엉덩이각) + L·cos(엉덩이각 − 무릎굽힘))
+        /// 이므로, 두 다리 중 **더 깊이 내려간 쪽**(= 지금 땅에 닿아 있는 발)의 값을 0으로 만드는
+        /// 오프셋은 그대로 (그 깊이 − 부착 높이)다. 두 다리의 최댓값을 쓰므로 발이 바뀌는 순간에도
+        /// 연속이고(두 연속 함수의 max), 어떤 발도 지면 아래로 내려가지 않는다.
+        ///
+        /// 입력이 "목표 각도"가 아니라 **지금 실제로 적용돼 있는 각도**(Segment.CurrentAngle)라는 점이
+        /// 중요하다 — 지수 감쇠 보간 때문에 실제 각도는 표보다 진폭이 조금 작은데, 표 기준으로 계산하면
+        /// 그 차이만큼 다시 어긋난다. 좌우 반전(_facingSign)은 각도 부호만 뒤집으므로 cos에 영향이 없다.
+        /// </summary>
+        private float ComputeFootGroundingOffset()
+        {
+            float deepest = float.NegativeInfinity;
+            float pivotY = 0f;
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                if (!limb.IsLeg || limb.Upper == null) continue;
+
+                float hip = limb.Upper.CurrentAngle;
+                // 아래 마디의 CurrentAngle은 KneeBendSign이 곱해진 값이라, 굽힘량으로 되돌린다.
+                float knee = limb.Lower != null ? limb.Lower.CurrentAngle * KneeBendSign : 0f;
+                float drop = limb.Upper.Length * Mathf.Cos(hip * Mathf.Deg2Rad)
+                           + (limb.Lower != null ? limb.Lower.Length * Mathf.Cos((hip - knee) * Mathf.Deg2Rad) : 0f);
+                if (drop > deepest)
+                {
+                    deepest = drop;
+                    pivotY = limb.Upper.PivotLocal.y;
+                }
+            }
+            return deepest > float.NegativeInfinity ? deepest - pivotY : 0f;
         }
 
         /// <summary>
@@ -756,6 +882,31 @@ namespace StickMate.States
                 BreathAmplitude = breathAmplitude;
                 BreathFrequencyHz = breathFrequencyHz;
                 BreathArmDegrees = breathArmDegrees;
+            }
+        }
+
+        /// <summary>
+        /// 매달리기 포즈 각도 묶음(위 PoseSettings와 같은 성격·같은 컨벤션 — readonly struct + in 파라미터).
+        /// StickmanBlackboard.BuildLedgeHangPoseSettings()가 StickConfig에서 구성해 넘긴다.
+        /// </summary>
+        public readonly struct LedgeHangPoseSettings
+        {
+            public readonly float ArmSpreadDegrees;
+            public readonly float ElbowBendDegrees;
+            public readonly float LegSpreadDegrees;
+            public readonly float KneeBendDegrees;
+            public readonly float SwayAmplitudeDegrees;
+            public readonly float SwayFrequencyHz;
+
+            public LedgeHangPoseSettings(float armSpread, float elbowBend, float legSpread, float kneeBend,
+                float swayAmplitude, float swayFrequencyHz)
+            {
+                ArmSpreadDegrees = armSpread;
+                ElbowBendDegrees = elbowBend;
+                LegSpreadDegrees = legSpread;
+                KneeBendDegrees = kneeBend;
+                SwayAmplitudeDegrees = swayAmplitude;
+                SwayFrequencyHz = swayFrequencyHz;
             }
         }
     }

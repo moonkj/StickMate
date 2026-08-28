@@ -26,5 +26,16 @@ namespace StickMate.States
         /// 버그가 생길 수 있다.
         /// </summary>
         bool JumpRequested { get; }
+
+        /// <summary>
+        /// 이번 프레임에 "발판 모서리를 붙잡고 매달려 내려가기"(States/LedgeHangState.cs) 의도가 새로
+        /// 발생했는지 — <see cref="JumpRequested"/>와 **완전히 동일한 1프레임 펄스 계약**을 따른다.
+        ///
+        /// 왜 JumpRequested를 재사용하지 않고 채널을 새로 팠는가: 점프는 "위로", 매달려 내려가기는
+        /// "아래로"라 의도가 정반대이고, 소비자(WalkState)가 둘을 구분할 방법이 없으면 발판 경계에서
+        /// 두 동작이 서로를 잡아먹는다(지금도 경계 점프 분기가 같은 자리에 있다). 펄스가 하나 더
+        /// 늘어나는 비용보다 의도를 분리해 두는 편이 훨씬 싸다.
+        /// </summary>
+        bool LedgeHangRequested { get; }
     }
 }

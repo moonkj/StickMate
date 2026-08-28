@@ -370,6 +370,70 @@ namespace StickMate.States
         }
 
         /// <summary>
+        /// ★ 매달려 내려가기(LedgeHang) 진입 판정 — <see cref="TryFindClimbableWall"/>의 **반대 방향**.
+        /// 지금 딛고 있는 발판(info)의 진행방향 경계 근처에서, 그 경계 바깥으로 몸을 내렸을 때 실제로
+        /// 내려앉을 **더 낮은 발판**이 있는지 찾는다. 있으면 그 발판의 핸들과 상단 월드 Y를 반환한다.
+        ///
+        /// 왜 "아래에 발판이 있을 때만" 매달리는가(안전 규칙): 이 판정이 없으면 화면 최하단 안전망 위
+        /// (그 아래에는 아무것도 없다)에서도 매달리기를 시도하게 되고, 그건 "내려가기"가 아니라 그냥
+        /// 화면 밖으로 떨어지려는 동작이 된다. 반환된 발판은 낙하 목적지의 **예상값**일 뿐이며, 실제
+        /// 착지는 언제나처럼 FallState의 스윕 교차 판정이 확정한다(그 사이에 창이 움직여도 안전).
+        ///
+        /// 판정 위치는 "지금 서 있는 x"가 아니라 **경계에서 dropOutwardOffset만큼 바깥으로 나간 x**다 —
+        /// 실제로 손을 놓았을 때 몸이 있을 자리가 거기이기 때문이다. 그 x를 세로 범위에 포함하면서
+        /// 상단이 지금 발판보다 minDropDepth 이상 낮은 발판 중 **가장 높은 것**(= 가장 먼저 만나는
+        /// 착지면)을 고른다.
+        /// </summary>
+        public static bool TryFindDescendTarget(Camera cam, Vector2 footWorldPos, GroundInfo info, int direction,
+            IReadOnlyList<PlatformFoothold> footholds, StickConfig config, float dropOutwardOffset, float minDropDepth,
+            out long targetHandle, out float targetTopWorldY)
+        {
+            targetHandle = 0L;
+            targetTopWorldY = 0f;
+            if (cam == null || !info.Grounded || footholds == null || footholds.Count == 0) return false;
+
+            float detectionRadius = config != null ? config.parkourDetectionRadius : 0.5f;
+            float edgeX = direction > 0 ? info.CurrentFootholdRightWorldX : info.CurrentFootholdLeftWorldX;
+            float distanceToEdge = direction > 0 ? edgeX - footWorldPos.x : footWorldPos.x - edgeX;
+            if (distanceToEdge > detectionRadius) return false; // 아직 경계 근처가 아님
+
+            // 손을 놓았을 때 몸이 실제로 있을 x(모서리 바깥).
+            float dropX = edgeX + direction * Mathf.Max(0f, dropOutwardOffset);
+
+            _ = ScreenCoordinateConverter.WorldToOsScreen(cam, footWorldPos, config, out float depth);
+            float bestTopY = float.NegativeInfinity;
+            bool found = false;
+
+            for (int i = 0; i < footholds.Count; i++)
+            {
+                PlatformFoothold fh = footholds[i];
+                if (fh.Handle == info.GroundedFootholdHandle) continue; // 지금 딛고 있는 그 발판은 목적지가 아니다
+                Rect r = fh.ScreenRect;
+                Vector3 topLeftWorld = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(r.x, r.y), depth, config);
+                Vector3 topRightWorld = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(r.x + r.width, r.y), depth, config);
+
+                if (dropX < topLeftWorld.x || dropX > topRightWorld.x) continue; // 그 x가 발판 위가 아님
+
+                // ★ 매달렸을 때 **발이 가 있을 높이보다 아래**여야 한다(minDropDepth = 손끝~발끝 거리).
+                // 이게 이 판정의 핵심 안전 조건이다: 목적지가 그보다 위에 있으면 매달리는 순간 발이 이미
+                // 그 발판을 지나쳐 버려서, "매달려 내려간다"가 아니라 "매달려서 목적지를 건너뛰고 더
+                // 아래로 떨어진다"가 된다. 겸사겸사 "한 계단 턱(예: Dock 35pt)"처럼 매달릴 이유가 없는
+                // 미세한 단차도 자동으로 걸러진다 — 그런 곳은 기존 배회 거동(돌아서기)이 더 자연스럽다.
+                if (info.GroundWorldY - topLeftWorld.y < Mathf.Max(detectionRadius, minDropDepth)) continue;
+
+                if (topLeftWorld.y > bestTopY)
+                {
+                    bestTopY = topLeftWorld.y;
+                    targetHandle = fh.Handle;
+                    found = true;
+                }
+            }
+
+            if (found) targetTopWorldY = bestTopY;
+            return found;
+        }
+
+        /// <summary>
         /// ParkourClimb 등반 중, handle로 식별된 발판이 캐시에 여전히 존재하는지 재확인하고 존재하면
         /// 그 발판의 최신 상단 월드 Y를 반환한다(창이 이동했을 수 있으므로 매 프레임 재계산). 존재하지
         /// 않으면(창이 닫히거나 이동해 사라짐) false — "잡을 곳이 사라짐" 실패 처리(UX_FLOW.md 4절)에 사용.
@@ -387,6 +451,33 @@ namespace StickMate.States
                 _ = ScreenCoordinateConverter.WorldToOsScreen(cam, refWorldPos, config, out float depth);
                 Vector3 topWorld = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(r.x, r.y), depth, config);
                 topWorldY = topWorld.y;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 위 <see cref="TryGetFootholdTopWorldY"/>와 같은 재확인을 하되, 매달린 **모서리의 x**까지 함께
+        /// 돌려준다(LedgeHang 전용). 매달린 동안 창이 옆으로 움직이면 붙잡은 모서리도 함께 움직여야
+        /// 하므로, 상단 Y만으로는 부족하고 그 방향 경계 X가 매 프레임 필요하다.
+        /// direction &gt; 0이면 오른쪽 모서리, 아니면 왼쪽 모서리를 돌려준다.
+        /// </summary>
+        public static bool TryGetFootholdEdgeWorld(Camera cam, Vector2 refWorldPos, long handle, int direction,
+            IReadOnlyList<PlatformFoothold> footholds, StickConfig config, out float topWorldY, out float edgeWorldX)
+        {
+            topWorldY = 0f;
+            edgeWorldX = 0f;
+            if (cam == null || footholds == null) return false;
+
+            for (int i = 0; i < footholds.Count; i++)
+            {
+                if (footholds[i].Handle != handle) continue;
+                Rect r = footholds[i].ScreenRect;
+                _ = ScreenCoordinateConverter.WorldToOsScreen(cam, refWorldPos, config, out float depth);
+                Vector3 topLeft = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(r.x, r.y), depth, config);
+                Vector3 topRight = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(r.x + r.width, r.y), depth, config);
+                topWorldY = topLeft.y;
+                edgeWorldX = direction > 0 ? topRight.x : topLeft.x;
                 return true;
             }
             return false;

@@ -66,11 +66,18 @@ namespace StickMate.States
         private float _edgePauseTimer;
         private float _edgePauseDuration;
 
+        // 매달려 내려가기 추첨은 한 Walk 페이즈(정확히는 "한 방향으로 걷는 한 구간")당 최대 1회만
+        // 한다. 매 프레임 다시 뽑으면 경계에 머무는 몇 프레임 동안 확률이 사실상 1이 되어 "일부만
+        // 매달리게" 하려는 설정 자체가 무의미해진다.
+        private bool _ledgeHangRolledThisLeg;
+
         private float _moveInputX;
         private bool _jumpRequestedThisTick;
+        private bool _ledgeHangRequestedThisTick;
 
         public float MoveInputX => _moveInputX;
         public bool JumpRequested => _jumpRequestedThisTick;
+        public bool LedgeHangRequested => _ledgeHangRequestedThisTick;
 
         public AutoWanderController(StickmanBlackboard blackboard, StickConfig config, System.Random rng)
         {
@@ -85,6 +92,7 @@ namespace StickMate.States
         public void Tick(float deltaTime)
         {
             _jumpRequestedThisTick = false;
+            _ledgeHangRequestedThisTick = false;
 
             if (_phase == Phase.Resting) TickResting(deltaTime);
             else TickMoving(deltaTime);
@@ -173,6 +181,7 @@ namespace StickMate.States
             _turnCheckTimer = 0f;
             _spontaneousTurnUsedThisPhase = false;
             _isEdgePaused = false;
+            _ledgeHangRolledThisLeg = false;
             _direction = PickDirectionAvoidingEdge();
             _moveInputX = _direction;
         }
@@ -207,6 +216,30 @@ namespace StickMate.States
             GroundSensor.GroundInfo info = _blackboard.SenseGround();
             if (info.Grounded && IsNearFootholdEdge(info, _direction, out bool isTrueScreenEdge))
             {
+                // ★ 매달려 내려가기 추첨(2026-08-28, 사용자 명시 요청 "내려갈때도 매달려서 내려가는형태로").
+                // 기존 두 분기(점프 시도 / 정지 후 반대 방향)보다 **먼저** 판정하되, 다음 세 조건이 전부
+                // 참일 때만 발동한다:
+                //   (1) 이 걷기 구간에서 아직 추첨하지 않았다(매 프레임 재추첨 방지 — 위 필드 주석 참고),
+                //   (2) 화면 자체의 끝이 아니다(끝에서 바깥으로 매달리면 몸이 화면 밖으로 나간다),
+                //   (3) 실제로 **매달린 발보다 아래에 내려앉을 발판이 있다**
+                //       (StickmanBlackboard.TryFindDescendTarget — 없으면 그냥 떨어지는 것과 같으므로 안 한다).
+                // 추첨에 떨어지거나 조건이 안 맞으면 아래 기존 분기로 그대로 흘러간다 — 즉 이 기능이
+                // 꺼져 있으면(ledgeHangChance=0) 직전 라운드까지의 거동과 100% 동일하다.
+                if (!_ledgeHangRolledThisLeg && !isTrueScreenEdge)
+                {
+                    _ledgeHangRolledThisLeg = true;
+                    float hangChance = Cfg(c => c.ledgeHangChance, 0.35f);
+                    if (hangChance > 0f && _rng.NextDouble() < hangChance
+                        && _blackboard.TryFindDescendTarget(info, _direction, out _, out _))
+                    {
+                        // 실제 상태 전이는 WalkState가 한다(이 클래스는 "의도"만 만든다는 계약 유지).
+                        // 진행 방향을 그대로 유지해 매달리는 쪽을 바라보게 한다.
+                        _ledgeHangRequestedThisTick = true;
+                        _moveInputX = _direction;
+                        return;
+                    }
+                }
+
                 // 화면 자체의 물리적 끝(더 이상 발판이 없음)에서는 점프 확률을 항상 0으로 강제 —
                 // 그렇지 않으면 화면 밖으로 뛰어내리는 결과가 된다(26-2 표 마지막 행).
                 // ★ 2026-08-28: StickConfig.wanderEdgeJumpAttemptChance의 기본값도 0.10 -> 0이 되어,
@@ -255,6 +288,8 @@ namespace StickMate.States
             _isEdgePaused = false;
             _direction = -_direction;
             _moveInputX = _direction;
+            // 반대 방향으로 도는 순간부터는 "새 걷기 구간"이다 — 반대쪽 경계에서 매달리기를 다시 추첨한다.
+            _ledgeHangRolledThisLeg = false;
 
             // 경계 바운스는 26-1 통계상 "새 Walk 페이즈"로 집계하지 않는다(_moveTimer는 정지 중 멈춰
             // 있었다) — 남아 있던 Walk 지속시간을 그대로 이어간다. 이미 다 써버렸다면 여기서 Idle로.
