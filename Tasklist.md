@@ -1727,3 +1727,24 @@ y만 보간하고 x는 손대지 않았다. 진입 조건은 "지금 딛는 발�
 - **화면 물리적 끝에서 "제자리 걷기"**: 화면 클램프 한계(≈58pt = 기본 8pt + 시각 반폭 50pt)가 배회 AI의 경계 판정 거리(0.3유닛≈24pt)보다 **커서**, 화면 끝에서는 경계 판정이 영영 안 걸린 채 클램프를 계속 밀어댄다(걷기 애니메이션은 도는데 위치는 안 변함). Walk 지속시간(1.5~4초) 만료로만 풀린다. **이번 변경과 무관한 기존 지점**.
 - **발을 뗄 때 앞으로 튀는 거리**: 0.31유닛(≈25pt)을 한 프레임에 건너뛴다. 순간이동 자체의 근거는 정당하나(그렇지 않으면 스윕이 떠난 발판을 다시 잡음) 이 프로젝트 사용자는 순간이동성 아티팩트에 반복적으로 민감했다.
 - **Dock 폭 추정 잔여 오차**(직전 라운드에서 이월): 65% vs 실측 70.7%, 바깥 모서리 44pt 띠. 정확한 폭은 화면 기록 권한이 필요해 비침해 원칙상 배제 상태 그대로.
+
+---
+
+## 2026-08-29 — 리더 전수 감사: **"로직 완성 · 배선 없음" 죽은 코드 목록**
+이 프로젝트에서 **4회 반복된 실패 유형**(말풍선 / 드래그 / 라이벌 / 격파미니게임 — 전부 "구현 완료" 보고 후 화면에 한 픽셀도 안 나옴)을 다음 라운드 착수 **전에** 전수로 확정했다. 추측이 아니라 grep 실측이다.
+
+### 구독자 0명인 전역 이벤트 (11건)
+`WindowTheftOverlayChanged` · `WindowCrashOverlayChanged` · `HardwareReactionChanged` · `DesktopIconMirrorOverlayChanged` · `StressLevelChanged` · `RunawayLifecycleChanged` · `RunawayHintPulseRequested` · `FocusWatchTierChanged` · `RivalDuelStarted` · `LandingRollRequested` · `WanderAmbientMotionRequested`
+(대조군 — 정상 배선된 것들: `StateTransitioned` 13, `GlobalEmergencyStopRequested` 12, `DialogueExpired` 2, `TodoListChanged` 2, `DialogueRequested`/`FootholdsChanged`/`GraffitiOverlayChanged`/`BattleMinigamePhaseChanged`/`RivalDuelEnded` 각 1)
+
+### `SceneBootstrapper`에 배치되지 않은 디렉터 (9개)
+`WindowTheftDirector` · `WindowCrashDirector` · `HardwareReactionDirector` · `DesktopIconMirrorDirector` · `StressGaugeDirector` · `RunawayDirector` · `TodoReminderDirector` · `TodoPostItWidget` · `FocusWatchDirector`
+
+### 리더 판단 — 우선순위와 근거
+- **이번 라운드(발주함)**: 창 도둑 / 창 크래시 / PC 하드웨어 반응. 셋 다 **이미 있는 창 열거 기능만으로 동작**하고 추가 OS 권한이 필요 없으며 사용자 데스크톱에서 즉시 눈에 보인다.
+- **다음 라운드**: Phase 5(스트레스 게이지 / 가출 / 투두 포스트잇 / 포모도로 감시자).
+- **의도적 보류 — `DesktopIconMirrorDirector`(청소부·블랙홀)**: `MacWindowService`가 `IDesktopIconLayoutService`를 구현하지 않아 macOS에서 **조용히 no-op**이다(코드로 확인). 실제 데스크톱 아이콘 좌표는 접근성 또는 화면 기록 권한이 필요해 **비침해 원칙상 배제 상태 그대로**다. Windows `Win32WindowService`도 같은 이유로 정직한 미구현 스텁(크로스 프로세스 `ReadProcessMemory` 필요, 검증할 실기 없음). 이건 "배선을 깜빡한 것"이 아니라 **플랫폼 제약으로 막힌 것**이라 위 목록과 성격이 다르다.
+- `LandingRollRequested` / `WanderAmbientMotionRequested`는 모션 계열이라 렌더러가 아니라 `StickmanPoseAnimator` 쪽 작업 — 별도 묶음으로 이월.
+
+### 재발 방지
+앞으로 기능 발주 시 **착수 전에 구독자/씬 배치를 grep으로 먼저 확인**하는 것을 지시문에 고정 포함한다. "구현 완료" 보고의 수용 조건에 **실제 화면에 나온 증거(Player.log 라인 또는 스크린샷)** 를 요구한다.
