@@ -1748,3 +1748,47 @@ y만 보간하고 x는 손대지 않았다. 진입 조건은 "지금 딛는 발�
 
 ### 재발 방지
 앞으로 기능 발주 시 **착수 전에 구독자/씬 배치를 grep으로 먼저 확인**하는 것을 지시문에 고정 포함한다. "구현 완료" 보고의 수용 조건에 **실제 화면에 나온 증거(Player.log 라인 또는 스크린샷)** 를 요구한다.
+
+---
+
+## 2026-08-29 — Phase 4 시각 레이어 3종 신설 + 실배선 (Coder / 커밋 953d92a)
+바로 위 리더 감사에서 확정한 죽은 코드 중 **창 도둑 / 창 크래시 / PC 하드웨어 반응** 3종을 살렸다. 셋 다 구독자 0명 + 씬 미배치라 **빌드에서 한 번도 실행된 적이 없었다**.
+
+### 신규 파일
+`Interaction/WindowTheftRenderer.cs` · `Interaction/WindowCrashRenderer.cs` · `Interaction/HardwareReactionRenderer.cs` + PlayMode 테스트 3종
+
+관례는 기존 `GraffitiRenderer`/`BattleMinigameRenderer`를 그대로 따랐다: 전역 이벤트 구독 → LineRenderer로 그림 → `OnDisable`/종료 페이즈에서 `Teardown()`, 머티리얼은 캐릭터 LineRenderer에서 빌려 씀(`Shader.Find` 미사용), **씬 전체 탐색 폴백 없이** 같은 GameObject의 `StickmanAgent`만 사용.
+
+### 수정한 기존 파일
+- `SceneBootstrapper` — 디렉터 3 + 렌더러 3 배치, `CreateRivalStickman`에서 그 6개 전부 제거(**라이벌 복제 함정 1차 방어**; 렌더러 쪽 씬탐색 폴백 제거가 2차 방어).
+- **`WindowTheftDirector` 계약 구멍**: `Started`/`Cancelled`만 발행하고 **정상 종료 `Completed`를 한 번도 발행하지 않았다.** 구독자 0명일 때는 무해했지만 렌더러가 생기는 순간 고스트가 영구히 남는다 — `GraffitiDirector`의 `wasCancelled` 가드를 이식. **"죽은 코드는 계약 위반을 숨긴다"의 실례**로 기록해둔다.
+- **`HardwareReactionDirector`**: `IsSuspended`일 때 `return`만 하던 것을 `ClearAllVisibleReactions()`로 변경. 이모트 컨테이너가 캐릭터 자식이 아니라 `SetRenderersEnabled(false)`에 안 걸려서, 전체화면 게임 위에 이모트가 그대로 떠 있었다(**UX 23절 위반**).
+- `AppControlDirector` / `IGlobalKeyStateService` / `MacWindowService` — 단축키 3종.
+
+### 신규 단축키 / 메뉴 (기존 체계에 추가, 메뉴 9행 → 12행)
+`Ctrl+Opt+Cmd+T` 창 도둑 / `Ctrl+Opt+Cmd+X` 창 크래시 / `Ctrl+Opt+Cmd+H` 하드웨어 반응 데모(4종 순환, 6초 자동 종료)
+하드웨어 반응만 **데모 미리보기**인 이유: 배터리를 실제로 20%로 만드는 건 27-7이 금지하는 OS 제어라 같은 의미의 강제 경로가 존재할 수 없다. 이름·로그·수명에서 "실제 신호 아님"을 명시.
+
+### 불변 원칙 3 준수 — 실물로 증명
+창 도둑 = 진짜 창은 **미동도 없이** 복사본 고스트만 끌려감. 크래시 = 진짜 창에 아무 짓도 안 하고 가짜 균열만 얹음. **콜라이더 항상 0개**.
+> **27-4 클릭관통 실물 증명**: 균열이 떠 있는 3초 사이에 계산기 `7` 버튼을 실제로 클릭 → 디스플레이가 `7`로, `AC`가 `C`로 바뀜. 클릭이 균열 레이어를 그대로 통과했다. (Phase 4 당시 Test Engineer가 "런타임 검증 필요"로 남겨둔 항목의 직접 해소)
+
+### 도중에 발견해 고친 것 2건 — 둘 다 "화면에 안 나온다"의 재발
+1. 이모트 `HeadOffsetY`를 1.05로 잡았더니 **가슴팍에 겹쳐** 그려짐 — **캐릭터 루트 원점이 *발* 높이**라서다(정수리 약 1.79). → 2.32로 수정.
+2. 캐릭터가 창 상단 테두리(OS y=33)에 서 있는 시간이 길어 머리 위 이모트가 **화면 밖으로 통째로 잘림** → 카메라 뷰포트 안으로 클램프.
+
+### 검증
+컴파일 0/0, EditMode **13/13**(금지 API 정적 스캔 5건 포함, 신규 코드 위반 0), PlayMode **37/37**(기준선 26 + 신규 11).
+신규 테스트는 전부 절대 조건이고 `Main.unity`를 실제 로드한다 — 디렉터/렌더러가 **정확히 1개씩**(0=배치 누락, 2=라이벌 복제), 이벤트 발행 시 시각 오브젝트 실존, `ActiveColliderCount == 0`(크래시는 생성 직후·유지 중·파편 낙하 중 3시점), 종료 시 컨테이너가 씬에서 실제 소멸. **배치를 빠뜨리면 첫 줄에서 실패한다.**
+
+### 리더 독립 검증
+빌드 산출물(08:33)이 모든 `.cs`보다 최신 → 컴파일 무결성 입증. `DefaultStickConfig.asset` diff 10줄은 **직전 라운드 신규 필드 직렬화분**이고 값이 전부 코드 기본값과 일치함을 대조 확인(손편집 아님). `CreateRivalStickman`의 `DestroyComponentIfPresent` 목록에 신규 6개 전부 포함됨을 grep 확인.
+
+### 남은 사항
+- 우클릭 메뉴는 코드 배선만 하고 실물로 열어보지 못했다(합성 우클릭 좌표가 macOS 메뉴바에 닿을 위험). 단축키와 **같은 `Invoke(MenuAction.X)` 경로**를 타므로 동작은 검증됐고, 미검증은 행 렌더링/히트테스트 인덱스뿐.
+- 창 도둑/크래시는 "캐릭터 신장 3배 이하 폭의 실제 창"이 있어야 발동한다 — 없으면 "후보 창 없음"으로 스킵.
+- 창 도둑이 실사용에서 조기 취소되는 빈도가 높다(캐릭터가 낙하/파쿠르로 자주 전이). Director 로직은 손대지 않음.
+
+### 배선 감사 진척
+구독자 0명 이벤트 **11 → 8**, 씬 미배치 디렉터 **9 → 6**.
+남은 것: `StressLevelChanged`·`RunawayLifecycleChanged`·`RunawayHintPulseRequested`·`FocusWatchTierChanged`(→ 다음 라운드 발주함) / `DesktopIconMirrorOverlayChanged`(플랫폼 제약, 보류) / `RivalDuelStarted`·`LandingRollRequested`·`WanderAmbientMotionRequested`(모션 계열, 별도 묶음).
