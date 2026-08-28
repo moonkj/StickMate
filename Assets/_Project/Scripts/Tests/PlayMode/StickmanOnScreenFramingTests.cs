@@ -16,7 +16,10 @@ namespace StickMate.Tests.PlayMode
     /// 확인했을 뿐, 그 Y가 실제로 카메라 뷰포트 안(=화면에 보이는 범위) 안인지는 전혀 검증하지 않아 이
     /// 버그가 사용자가 직접 눈으로 발견할 때까지 아무 자동 테스트에도 걸리지 않은 채 남아 있었다.
     ///
-    /// 방법: 캐릭터의 모든 SpriteRenderer.bounds를 합쳐 월드 바운딩박스(발끝~머리끝)를 구하고,
+    /// 방법: 캐릭터의 모든 Renderer.bounds(SpriteRenderer뿐 아니라 LineRenderer 등 렌더러 종류를
+    /// 가리지 않는 공통 베이스 타입 — 2026-08-28 "고전적 졸라맨" 시각 교체로 몸통/팔다리/머리가
+    /// SpriteRenderer에서 LineRenderer로 바뀌었으므로 특정 렌더러 타입에 고정하지 않는다)를 합쳐
+    /// 월드 바운딩박스(발끝~머리끝)를 구하고,
     /// Camera.main.WorldToScreenPoint로 스크린 좌표로 변환해 화면 세로 범위
     /// ([여백, Screen.height-여백]) 안에 있는지를 정착 후 5초/10초/15초 시점에서 확인한다. 여백은
     /// Architect 지시(0.5~1유닛)의 하한인 0.5월드유닛을 카메라의 px/유닛 환산비로 픽셀 단위 환산해 쓴다
@@ -54,8 +57,8 @@ namespace StickMate.Tests.PlayMode
             Assert.IsNotNull(cam, "Camera.main을 찾지 못했습니다.");
             Assert.IsTrue(cam.orthographic, $"{LogPrefix} 이 테스트는 orthographic 카메라 배치를 가정합니다.");
 
-            SpriteRenderer[] renderers = agent.GetComponentsInChildren<SpriteRenderer>(true);
-            Assert.IsTrue(renderers.Length > 0, "캐릭터에서 SpriteRenderer를 하나도 찾지 못했습니다.");
+            Renderer[] renderers = agent.GetComponentsInChildren<Renderer>(true);
+            Assert.IsTrue(renderers.Length > 0, "캐릭터에서 Renderer(SpriteRenderer/LineRenderer 등)를 하나도 찾지 못했습니다.");
 
             // px/월드유닛 환산비 — orthographic 카메라는 X/Y 모두 동일 스케일(왜곡 없음)이므로
             // Screen.height/(2*orthographicSize) 하나로 충분하다(Platform/ScreenCoordinateConverter.cs와
@@ -97,7 +100,7 @@ namespace StickMate.Tests.PlayMode
                 "화면 세로 범위 안에 최소 여백을 두고 들어와 있었습니다.");
         }
 
-        private static Bounds ComputeCombinedBounds(SpriteRenderer[] renderers)
+        private static Bounds ComputeCombinedBounds(Renderer[] renderers)
         {
             Bounds combined = renderers[0].bounds;
             for (int i = 1; i < renderers.Length; i++)

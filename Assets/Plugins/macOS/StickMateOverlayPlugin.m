@@ -75,7 +75,8 @@ int SM_GetOverlayWindowLevel(void) {
 ///
 /// makeClickThrough != 0  -> [window setIgnoresMouseEvents:YES]  (마우스 입력이 아래 창으로 그대로 통과)
 /// alwaysOnTop != 0       -> [window setLevel:NSFloatingWindowLevel] (그 외에는 NSNormalWindowLevel로 복귀)
-/// transparent != 0       -> 창을 불투명 해제 + 배경을 완전 투명색으로 + 타이틀바 제거를 시도.
+/// transparent != 0       -> 창을 불투명 해제 + 배경을 완전 투명색으로 + 타이틀바 텍스트만 숨김
+///                            (신호등 버튼/타이틀바 구조는 보존 — 2026-08-28 보수적 조정, 아래 참고).
 ///
 /// 정직한 한계(작업 지시서가 요구한 대로 기록): Unity Standalone Mac Player의 렌더 서페이스(콘텐츠
 /// 뷰 내부의 Metal/OpenGL 레이어)는 엔진이 기본적으로 불투명(opaque)하게 그리도록 되어 있어, 여기서
@@ -101,15 +102,21 @@ void SM_ConfigureOverlayWindow(int makeClickThrough, int alwaysOnTop, int transp
         [window setBackgroundColor:[NSColor clearColor]];
         [window setHasShadow:NO];
 
-        // 타이틀바를 최대한 제거해 테두리 없는 오버레이에 근접시킨다. Borderless로 완전히 바꾸면
-        // 일부 Unity Player 초기화 경로가 기대하는 타이틀 콘텐츠 뷰 레이아웃과 충돌할 수 있어,
-        // "타이틀바를 투명하게 만들고 콘텐츠 뷰를 전체 창 크기로 확장"하는 더 안전한 조합
-        // (FullSizeContentView + 타이틀바 투명화)을 우선 시도한다. 완전 Borderless가 필요하면 이후
-        // 라운드에서 실측 후 교체할 것 — 지금은 "부분적으로라도 최대한 근접"이라는 지시에 맞춘 보수적
-        // 선택이다.
-        NSWindowStyleMask mask = [window styleMask];
-        mask |= NSWindowStyleMaskFullSizeContentView;
-        [window setStyleMask:mask];
+        // 타이틀바 텍스트만 숨긴다 — 보수적 조정(사용자가 실제로 실행되는 앱을 보고 "이상하게
+        // 나온다"고 지적한 뒤, 2026-08-28 재검토). 이전에는 여기서 NSWindowStyleMaskFullSizeContentView도
+        // 함께 켜서 콘텐츠 뷰를 타이틀바 영역까지 확장시켰는데, 그 결과 불투명하게 그려지는 Unity
+        // 게임 렌더 서페이스가 타이틀바 신호등 버튼(빨강/노랑/초록, close/miniaturize/zoom) 바로
+        // 아래까지 파고들게 된다 — 신호등 버튼 자체가 사라지거나 클릭 불가능해지는 것은 아니지만,
+        // 버튼이 정상적인 타이틀바 배경 스트립 위가 아니라 게임 화면 바로 위에 붕 뜬 것처럼 보이는
+        // 부자연스러운 경계가 생길 수 있다 — 사용자가 지적한 "창이 이상해 보인다"는 증상과 정확히
+        // 들어맞을 수 있는 원인이라고 판단해 제거했다.
+        //
+        // FullSizeContentView 없이 titlebarAppearsTransparent만 켜면: 타이틀바 영역은 원래 표준
+        // 레이아웃(신호등이 놓이는 그 스트립)을 그대로 유지한 채 배경만 창 배경색(투명 설정 시
+        // clearColor)에 맞춰지고, 콘텐츠 뷰는 여전히 타이틀바 아래에서 시작한다 — 즉 타이틀 "텍스트"만
+        // 사라지고 창의 나머지 테두리/버튼 배치는 정상 윈도우와 동일하게 보인다. 완전 Borderless
+        // (styleMask에서 NSWindowStyleMaskTitled 자체를 제거)는 더 과감한 변경이라 이번에는 시도하지
+        // 않았다 — 필요하면 사용자 육안 확인 후 다음 라운드에서 재검토할 것.
         [window setTitlebarAppearsTransparent:YES];
         [window setTitleVisibility:NSWindowTitleHidden];
 

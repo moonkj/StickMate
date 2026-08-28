@@ -11,8 +11,15 @@ namespace StickMate.EditorTools
 {
     /// <summary>
     /// Phase 0~6이 순수 C# 게임로직만 구현하고 의도적으로 남겨둔 씬/프리팹 배선(README.md "빌드/실행
-    /// 방법" 3번 항목)을 채우는 에디터 빌더. 실제 아트 에셋이 아직 없으므로 코드로 생성한 단색
-    /// 사각형/원 스프라이트만으로 "졸라맨을 연상시키는 최소 구성"을 만든다.
+    /// 방법" 3번 항목)을 채우는 에디터 빌더. 실제 아트 에셋이 아직 없으므로 코드로 생성한 시각 표현만으로
+    /// "졸라맨을 연상시키는 최소 구성"을 만든다.
+    ///
+    /// 시각 스타일(사용자 확정 요청 대응, 2026-08-28): 사용자가 실행 중인 앱을 직접 보고 채워진
+    /// 사각형/원 블록 형태가 "이상하게 나온다"고 지적했고, 두 스타일 중 "고전적 졸라맨 느낌(동그란
+    /// 머리 + 가는 선만으로 그린 몸통/팔다리)"을 명시적으로 선택했다. 그래서 채워진 SpriteRenderer
+    /// 사각형/원 대신 LineRenderer로 얇은 선(몸통/팔다리)과 속이 빈 원(머리)을 그린다 — 물리 파츠
+    /// 배치/크기(Rigidbody2D/Collider2D/HingeJoint2D)는 이 교체로 전혀 바뀌지 않는다(아래
+    /// BuildStickmanPrefab 문서, ConfigureLine/CreateHeadRingVisual/CreateLineSegmentVisual 참고).
     ///
     /// 사용법:
     /// - 에디터: 메뉴 StickMate/Build All (최초 1회) — 이미 있는 에셋은 건너뛴다. 기존 에셋을 의도적으로
@@ -64,7 +71,6 @@ namespace StickMate.EditorTools
     public static class SceneBootstrapper
     {
         private const string DataFolder = "Assets/_Project/Data";
-        private const string SpritesFolder = DataFolder + "/Sprites";
         private const string PrefabFolder = "Assets/_Project/Prefabs";
         private const string SceneFolder = "Assets/_Project/Scenes";
 
@@ -72,7 +78,16 @@ namespace StickMate.EditorTools
         private const string PrefabAssetPath = PrefabFolder + "/Stickman.prefab";
         private const string SceneAssetPath = SceneFolder + "/Main.unity";
 
-        private const int SpriteTextureSize = 64; // PPU와 동일하게 잡아 스프라이트 1장 = 세계 단위 1x1가 되게 함.
+        // 사용자 확정 요청 대응(2026-08-28) — "고전적 졸라맨"(동그란 머리 + 가는 선만으로 그린 몸통/
+        // 팔다리) 시각 스타일. LineRenderer로만 그리므로 스프라이트 텍스처가 더 이상 필요 없다(이전에
+        // 쓰던 SpriteTextureSize/GetOrCreateSprite/RectSprite·CircleSprite.asset 제거). 아래 값들은
+        // 오직 렌더링에만 영향을 준다 — 물리 파츠 배치/크기(Rigidbody2D/Collider2D/HingeJoint2D)는
+        // 전부 무변경.
+        private const float LineWidth = 0.05f; // 손그림 느낌의 얇은 선 두께(월드 유닛).
+        private const int LineCapVertices = 4; // 선 끝/모서리를 살짝 둥글려 각진 느낌을 줄임(손그림 느낌).
+        private const int HeadRingSegments = 24; // 머리 원 근사에 쓰는 선분 개수(24면 육안으로 매끈한 원).
+        private const float HeadVisualRadius = 0.25f; // 머리 링의 시각 반경. 물리 CircleCollider2D.radius(0.4, 아래 참고)와는 별개 값 — 판정 크기는 무변경.
+        private const float EndMarkHalfWidth = 0.06f; // 손/발 표현용 짧은 가로선의 절반 폭(필수는 아니지만 졸라맨 느낌 강화).
 
         // BUG-SW-M1(Architect 결정, 2026-08-28) — 표준 Active Ragdoll 레이어 기법: 몸통/머리/팔다리를
         // 전부 이 레이어에 몰아넣고, 이 레이어끼리의 충돌만 Physics2D 매트릭스에서 끈다(EnsureStickmanLimbLayer 참고).
@@ -223,8 +238,6 @@ namespace StickMate.EditorTools
                 return existingPrefab;
             }
 
-            Sprite rectSprite = GetOrCreateSprite(SpritesFolder + "/RectSprite.asset", isCircle: false);
-            Sprite circleSprite = GetOrCreateSprite(SpritesFolder + "/CircleSprite.asset", isCircle: true);
             Color outline = config != null ? config.primaryOutlineColor : Color.black;
             float gravityScale = config != null ? config.gravityScale : 3f;
 
@@ -248,15 +261,20 @@ namespace StickMate.EditorTools
             so.FindProperty("_config").objectReferenceValue = config;
             so.ApplyModifiedPropertiesWithoutUndo();
 
-            // 몸통 — 시각 전용(물리 없음, root 자식 Transform으로 그대로 따라다님).
-            CreateStaticVisual(root.transform, "Torso", rectSprite, new Vector3(0f, 1.0f, 0f), new Vector2(0.16f, 0.8f), outline, sortingOrder: 1);
+            // 몸통 — 시각 전용(물리 없음, root 자식 Transform으로 그대로 따라다님). 채워진 사각형 대신
+            // 얇은 세로 선 하나로 표현(사용자 확정 요청, 클래스 문서 상단 참고). 기존 사각형과 동일한
+            // 세로 범위(로컬 y 0.6~1.4)를 그대로 유지해 화면 프레이밍(BUG-P1-R4-B1)에 영향이 없다.
+            CreateLineSegmentVisual(root.transform, "Torso", new Vector3(0f, 1.0f, 0f),
+                new Vector3(0f, 0.4f, 0f), new Vector3(0f, -0.4f, 0f), outline, sortingOrder: 1);
 
-            // 머리 — 시각 + 작은 CircleCollider2D(루트 Rigidbody2D의 compound collider로 자동 합산됨).
-            // 루트와 같은 limbLayer에 두어야 팔다리와의 자체충돌 무시 매트릭스가 머리에도 적용된다.
-            var head = CreateStaticVisual(root.transform, "Head", circleSprite, new Vector3(0f, 1.6f, 0f), new Vector2(0.4f, 0.4f), outline, sortingOrder: 3);
+            // 머리 — 시각(속이 빈 링) + 작은 CircleCollider2D(루트 Rigidbody2D의 compound collider로
+            // 자동 합산됨). 루트와 같은 limbLayer에 두어야 팔다리와의 자체충돌 무시 매트릭스가 머리에도
+            // 적용된다. 물리 판정 반경(0.4)은 BUG-SW-M1 이후 그대로 — 시각 반경(HeadVisualRadius)만
+            // 사용자 요청에 맞춰 "채워진 원"에서 "속이 빈 동그라미"로 바꿨을 뿐 판정 크기는 무변경.
+            var head = CreateHeadRingVisual(root.transform, "Head", new Vector3(0f, 1.6f, 0f), HeadVisualRadius, outline, sortingOrder: 3);
             head.layer = limbLayer;
             var headCollider = head.AddComponent<CircleCollider2D>();
-            headCollider.radius = 0.4f; // 시각 크기(반경 0.5 상당)보다 작게 잡아 "작은" 콜라이더로.
+            headCollider.radius = 0.4f;
 
             // 팔다리 — Rigidbody2D + HingeJoint2D(connectedBody=root) + Collider2D(limbLayer). 조인트
             // anchor 계산이 스케일에 영향받지 않도록 물리 오브젝트 자체는 scale=1로 유지하고, 스프라이트는
@@ -264,19 +282,19 @@ namespace StickMate.EditorTools
             const float hipY = 0.6f, shoulderY = 1.3f;
             const float legHalfLength = 0.3f, armHalfLength = 0.25f;
 
-            CreateLimb(root.transform, rb, "LeftLeg", rectSprite, new Vector2(0.12f, 0.6f),
+            CreateLimb(root.transform, rb, "LeftLeg", new Vector2(0.12f, 0.6f),
                 localPos: new Vector3(-0.12f, hipY - legHalfLength, 0f),
                 anchor: new Vector2(0f, legHalfLength), connectedAnchor: new Vector2(-0.12f, hipY),
                 outline, mass: 0.15f, gravityScale: gravityScale, sortingOrder: 0, limbLayer: limbLayer, agent: agent);
-            CreateLimb(root.transform, rb, "RightLeg", rectSprite, new Vector2(0.12f, 0.6f),
+            CreateLimb(root.transform, rb, "RightLeg", new Vector2(0.12f, 0.6f),
                 localPos: new Vector3(0.12f, hipY - legHalfLength, 0f),
                 anchor: new Vector2(0f, legHalfLength), connectedAnchor: new Vector2(0.12f, hipY),
                 outline, mass: 0.15f, gravityScale: gravityScale, sortingOrder: 0, limbLayer: limbLayer, agent: agent);
-            CreateLimb(root.transform, rb, "LeftArm", rectSprite, new Vector2(0.1f, 0.5f),
+            CreateLimb(root.transform, rb, "LeftArm", new Vector2(0.1f, 0.5f),
                 localPos: new Vector3(-0.28f, shoulderY - armHalfLength, 0f),
                 anchor: new Vector2(0f, armHalfLength), connectedAnchor: new Vector2(-0.28f, shoulderY),
                 outline, mass: 0.1f, gravityScale: gravityScale, sortingOrder: 2, limbLayer: limbLayer, agent: agent);
-            CreateLimb(root.transform, rb, "RightArm", rectSprite, new Vector2(0.1f, 0.5f),
+            CreateLimb(root.transform, rb, "RightArm", new Vector2(0.1f, 0.5f),
                 localPos: new Vector3(0.28f, shoulderY - armHalfLength, 0f),
                 anchor: new Vector2(0f, armHalfLength), connectedAnchor: new Vector2(0.28f, shoulderY),
                 outline, mass: 0.1f, gravityScale: gravityScale, sortingOrder: 2, limbLayer: limbLayer, agent: agent);
@@ -438,21 +456,92 @@ namespace StickMate.EditorTools
             EditorBuildSettings.scenes = list.ToArray();
         }
 
-        private static GameObject CreateStaticVisual(Transform parent, string name, Sprite sprite, Vector3 localPos, Vector2 worldSize, Color color, int sortingOrder)
+        /// <summary>
+        /// SpriteRenderer가 기본으로 쓰는 것과 동일한 Unity 내장 머티리얼을 그대로 재사용한다 — 새
+        /// 에셋을 만들 필요가 없고(임시 Material 인스턴스를 그냥 대입하면 프리팹 저장 시 참조가
+        /// 유실될 위험이 있는 것과 달리, 이건 항상 유효한 영구 엔진 내장 에셋 참조다), Built-in 렌더
+        /// 파이프라인(ProjectSettings/GraphicsSettings.asset의 m_CustomRenderPipeline: {fileID: 0}로
+        /// 확인됨 — URP/HDRP 미사용)에서 확실히 렌더링됨이 보장된다.
+        /// </summary>
+        private static Material GetLineMaterial()
+        {
+            return AssetDatabase.GetBuiltinExtraResource<Material>("Sprites-Default.mat");
+        }
+
+        /// <summary>
+        /// LineRenderer 공통 설정. useWorldSpace=false로 두는 것이 핵심 — 점 좌표를 자신이 붙은
+        /// Transform 기준 로컬 좌표로 해석하게 해서, 팔다리처럼 HingeJoint2D 물리로 매 프레임
+        /// 이동/회전하는 오브젝트에 붙여도 별도의 "매프레임 위치 갱신" 스크립트 없이 자동으로 따라간다
+        /// (Renderer는 어차피 매 프레임 자신이 속한 Transform의 world 행렬로 로컬 정점을 다시 그리기
+        /// 때문 — MeshRenderer/SpriteRenderer와 동일한 원리).
+        /// </summary>
+        private static LineRenderer ConfigureLine(GameObject go, Color color, int sortingOrder, bool loop)
+        {
+            var lr = go.AddComponent<LineRenderer>();
+            lr.useWorldSpace = false;
+            lr.material = GetLineMaterial();
+            lr.startColor = color;
+            lr.endColor = color;
+            lr.startWidth = LineWidth;
+            lr.endWidth = LineWidth;
+            lr.numCapVertices = LineCapVertices; // 끝을 살짝 둥글려 손그림 느낌(각진 사각형 끝 대신).
+            lr.numCornerVertices = LineCapVertices;
+            lr.sortingOrder = sortingOrder;
+            lr.loop = loop;
+            return lr;
+        }
+
+        /// <summary>직선 하나로 된 시각 표현(몸통). 물리 없이 parent의 자식 Transform으로만 존재 —
+        /// CreateStaticVisual이 하던 역할을 사각형 스프라이트 대신 LineRenderer로 대체한다.</summary>
+        private static GameObject CreateLineSegmentVisual(Transform parent, string name, Vector3 localPos, Vector3 localStart, Vector3 localEnd, Color color, int sortingOrder)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             go.transform.localPosition = localPos;
-            go.transform.localScale = new Vector3(worldSize.x, worldSize.y, 1f);
+            go.transform.localScale = Vector3.one;
 
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = sprite;
-            sr.color = color;
-            sr.sortingOrder = sortingOrder;
+            var lr = ConfigureLine(go, color, sortingOrder, loop: false);
+            lr.positionCount = 2;
+            lr.SetPosition(0, localStart);
+            lr.SetPosition(1, localEnd);
             return go;
         }
 
-        private static void CreateLimb(Transform hierarchyParent, Rigidbody2D connectedBody, string name, Sprite sprite,
+        /// <summary>속이 빈 원(링) 시각 표현(머리) — HeadRingSegments개의 점을 원주 위에 찍고
+        /// loop=true로 닫아 "채워지지 않은 동그라미"를 그린다.</summary>
+        private static GameObject CreateHeadRingVisual(Transform parent, string name, Vector3 localPos, float radius, Color color, int sortingOrder)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPos;
+            go.transform.localScale = Vector3.one;
+
+            var lr = ConfigureLine(go, color, sortingOrder, loop: true);
+            lr.positionCount = HeadRingSegments;
+            for (int i = 0; i < HeadRingSegments; i++)
+            {
+                float angle = (i / (float)HeadRingSegments) * Mathf.PI * 2f;
+                lr.SetPosition(i, new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f));
+            }
+            return go;
+        }
+
+        /// <summary>손/발 표현용 짧은 가로선(필수는 아니지만 "졸라맨" 느낌 강화). parent(limb)의
+        /// 자식으로 둬 부모와 함께 물리로 이동/회전한다.</summary>
+        private static void CreateEndMark(Transform parent, Vector3 localAt, Color color, int sortingOrder)
+        {
+            var go = new GameObject("EndMark");
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localAt;
+            go.transform.localScale = Vector3.one;
+
+            var lr = ConfigureLine(go, color, sortingOrder, loop: false);
+            lr.positionCount = 2;
+            lr.SetPosition(0, new Vector3(-EndMarkHalfWidth, 0f, 0f));
+            lr.SetPosition(1, new Vector3(EndMarkHalfWidth, 0f, 0f));
+        }
+
+        private static void CreateLimb(Transform hierarchyParent, Rigidbody2D connectedBody, string name,
             Vector2 worldSize, Vector3 localPos, Vector2 anchor, Vector2 connectedAnchor, Color color, float mass, float gravityScale,
             int sortingOrder, int limbLayer, StickmanAgent agent)
         {
@@ -480,8 +569,9 @@ namespace StickMate.EditorTools
 
             // BUG-SW-M1: 팔다리에 실제 Collider2D를 부여한다(이전에는 자체충돌 떨림을 막으려고 아예
             // 없앴는데, 그 결과 RagdollLimbImpactRelay가 영구히 발동 불가능해지고 바닥과도 충돌할 수
-            // 없어 RAGDOLL이 절대 안착하지 못했다). 시각 스프라이트와 동일한 크기의 BoxCollider2D로,
-            // limb 자신의 원점(anchor 계산 기준)에 그대로 겹치게 둔다(Visual 자식과 동일한 중심).
+            // 없어 RAGDOLL이 절대 안착하지 못했다). limb 자신의 원점(anchor 계산 기준)에 그대로
+            // 겹치게 둔다. 물리 판정 크기(worldSize)는 시각 표현(가는 선)과 완전히 독립 — 사용자 요청에
+            // 따라 시각만 얇은 선으로 바꿨을 뿐 이 BUG-SW-M1 튜닝값에는 손대지 않았다.
             var collider = limb.AddComponent<BoxCollider2D>();
             collider.size = worldSize;
 
@@ -495,15 +585,20 @@ namespace StickMate.EditorTools
             relaySo.FindProperty("_agent").objectReferenceValue = agent;
             relaySo.ApplyModifiedPropertiesWithoutUndo();
 
-            var visual = new GameObject("Visual");
-            visual.transform.SetParent(limb.transform, false);
-            visual.transform.localPosition = Vector3.zero;
-            visual.transform.localScale = new Vector3(worldSize.x, worldSize.y, 1f);
+            // 사용자 확정 요청 대응(2026-08-28) — "고전적 졸라맨" 시각 스타일(클래스 문서 상단 참고).
+            // limb 자신은 이미 scale=1(위 주석 — 조인트 anchor 계산 때문)이라 LineRenderer를 별도
+            // "Visual" 자식 없이 limb에 직접 붙인다. 로컬 y축을 따라 관절(anchor) 쪽에서 반대쪽 끝
+            // (손/발)까지 얇은 선 하나를 그린다 — anchor=(0, halfLength)가 이미 이 limb의 "위쪽 끝"이므로
+            // 그대로 재사용해 하드코딩 중복 없이 시각과 물리 anchor가 항상 일치하게 한다.
+            float halfLength = worldSize.y * 0.5f;
+            var lr = ConfigureLine(limb, color, sortingOrder, loop: false);
+            lr.positionCount = 2;
+            lr.SetPosition(0, new Vector3(0f, halfLength, 0f));
+            lr.SetPosition(1, new Vector3(0f, -halfLength, 0f));
 
-            var sr = visual.AddComponent<SpriteRenderer>();
-            sr.sprite = sprite;
-            sr.color = color;
-            sr.sortingOrder = sortingOrder;
+            // 손/발 표현(필수는 아니지만 "졸라맨" 느낌 강화) — limb 끝(관절 반대쪽, 손/발 위치)에
+            // 짧은 가로선을 하나 더 그린다. limb의 자식으로 둬 부모와 함께 물리로 이동/회전한다.
+            CreateEndMark(limb.transform, new Vector3(0f, -halfLength, 0f), color, sortingOrder);
         }
 
         /// <summary>
@@ -552,49 +647,6 @@ namespace StickMate.EditorTools
 
             Debug.LogError("[SceneBootstrapper] 빈 레이어 슬롯이 없어 '" + StickmanLimbLayerName + "' 레이어를 만들지 못했습니다.");
             return 0;
-        }
-
-        private static Sprite GetOrCreateSprite(string path, bool isCircle)
-        {
-            var existingSprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-            if (existingSprite != null) return existingSprite;
-
-            EnsureFolder(SpritesFolder);
-
-            int size = SpriteTextureSize;
-            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-            tex.filterMode = FilterMode.Bilinear;
-            tex.wrapMode = TextureWrapMode.Clamp;
-
-            var pixels = new Color32[size * size];
-            float half = size / 2f;
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    bool inside = true;
-                    if (isCircle)
-                    {
-                        float dx = (x + 0.5f) - half;
-                        float dy = (y + 0.5f) - half;
-                        inside = (dx * dx + dy * dy) <= half * half;
-                    }
-                    pixels[y * size + x] = inside ? new Color32(255, 255, 255, 255) : new Color32(255, 255, 255, 0);
-                }
-            }
-            tex.SetPixels32(pixels);
-            tex.Apply();
-            tex.name = isCircle ? "CircleTex" : "RectTex";
-
-            var sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
-            sprite.name = isCircle ? "CircleSprite" : "RectSprite";
-
-            AssetDatabase.CreateAsset(tex, path);
-            AssetDatabase.AddObjectToAsset(sprite, tex);
-            AssetDatabase.ImportAsset(path);
-            AssetDatabase.SaveAssets();
-
-            return AssetDatabase.LoadAssetAtPath<Sprite>(path);
         }
 
         private static void EnsureFolder(string path)
