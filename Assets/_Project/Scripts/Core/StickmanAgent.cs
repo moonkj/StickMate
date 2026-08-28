@@ -216,6 +216,13 @@ namespace StickMate.Core
             _machine = new StickmanStateMachine(states);
             _blackboard.Machine = _machine;
             _machine.Start(StickmanStateId.Idle);
+
+            // 근본 재구현(2026-08-28, States/RagdollRig.cs 클래스 문서 참고): 물리 모드/포즈를 첫
+            // FixedUpdate보다 먼저 확정해둔다. 프리팹이 이미 능동 모드 기본값(루트 FreezeRotation,
+            // 팔다리 Kinematic, 관절 비활성)으로 저장돼 있지만, 여기서 한 번 더 명시적으로 적용해
+            // 프리팹이 어떤 상태로 저장돼 있든 런타임 첫 프레임부터 반드시 직립 중립 포즈로 시작하게
+            // 만든다("우연히 맞는 것"이 아니라 코드로 보증).
+            _blackboard.SnapToIdlePose();
         }
 
         private void Start()
@@ -306,6 +313,12 @@ namespace StickMate.Core
             _autoWander.Tick(dt);
 
             _machine.Tick(dt);
+
+            // 상태 로직이 끝난 뒤(= 이번 프레임의 최종 상태가 확정된 뒤) 물리 모드와 팔다리 포즈를
+            // 그 상태에 맞게 재적용한다. 멱등이며 상태 ID만 보고 판단하므로, 강제 인터럽트/전체화면
+            // 취소/외부 ChangeState 등 어떤 경로로 상태가 바뀌어도 물리 모드가 상태와 어긋난 채
+            // 남을 수 없다(StickmanBlackboard.TickPose() 문서 참고).
+            _blackboard.TickPose(dt);
         }
 
         private void TickFullscreenSuspend(float deltaTime)

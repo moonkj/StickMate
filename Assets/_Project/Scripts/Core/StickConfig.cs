@@ -17,57 +17,86 @@ namespace StickMate.Core
         [Tooltip("점프 시 초기 상승 속도")]
         public float jumpForce = 6f;
 
-        [Header("보행 애니메이션 (Walk 상태 절차적 다리/팔 흔들기, 2026-08-28)")]
+        [Header("포즈 애니메이션 (능동 상태 절차적 팔다리 제어, 2026-08-28 근본 재구현)")]
+        // 왜 모터 관련 필드가 전부 사라졌는가(walkCycleMotorGain / walkCycleMaxMotorTorque /
+        // walkCycleMaxMotorSpeedDegPerSec / walkCycleLegAngleLimitDegrees / walkCycleArmAngleLimitDegrees):
+        // 능동 상태에서 HingeJoint2D 모터로 중력과 싸우던 물리 기반 접근 자체를 폐기했기 때문이다
+        // (States/StickmanPoseAnimator.cs 클래스 문서 참고). 이제 팔다리는 Kinematic + transform
+        // 직접 제어이므로 토크/게인/각도제한이라는 개념이 존재하지 않는다 — 목표 각도가 곧 실제 각도다.
         [Tooltip("현재 수평 이동 속도(유닛/초)에 곱해 다리 흔들기 주파수(Hz)를 산출하는 비례 계수 — 빠르게 " +
-                 "걸을수록 다리도 빨리 움직이도록 States/WalkCycleAnimator.cs가 사용한다. 정교한 IK/보행 " +
-                 "사이클 동기화가 목적이 아니라 \"걷는 것처럼 보이는\" 최소 절차적 애니메이션이므로 대략적인 " +
-                 "값이면 충분하다(Architect 결정, 2026-08-28 — 걷기 애니메이션 신규 추가). 실측 후 하향 조정 " +
-                 "(0.8→0.45, 아래 재조정 이력 참고): 기본 walkSpeed(2.5)에서 원래 값은 2Hz(다리 1회 왕복에 " +
-                 "0.5초)로, 사인파 목표각의 순간 최대 각속도가 약 314도/초에 달해 walkCycleMaxMotorSpeedDegPerSec로 " +
-                 "감당 가능한 범위를 크게 넘었었다.")]
-        public float walkCycleFrequencyPerSpeed = 0.45f;
+                 "걸을수록 다리도 빨리 움직인다. States/StickmanPoseAnimator.cs가 사용한다. 절차적 제어로 " +
+                 "바뀌면서 모터 추종 지연이 사라졌으므로, 모터 시절 안전 하향값(0.45)보다 다시 올려 " +
+                 "육안으로 걷는 게 확실히 보이게 한다(walkSpeed 2.5 기준 약 1.5Hz = 다리 1회 왕복 0.67초).")]
+        public float walkCycleFrequencyPerSpeed = 0.55f;
 
-        [Tooltip("Walk 중 각 다리 HingeJoint2D가 흔들리는 목표각 진폭(도). 실제 목표각은 이 값과 -이 값 " +
-                 "사이를 사인파로 오가며, 왼다리/오른다리는 위상차 180도(반대 방향)로 구동된다. " +
-                 "walkCycleLegAngleLimitDegrees보다 확실히 작게 유지해 매 주기 끝에서 각도 제한(하드 스톱)에 " +
-                 "부딪히지 않도록 여유를 둔다(실측 후 25→18로 하향, 아래 재조정 이력 참고).")]
-        public float walkCycleLegSwingDegrees = 18f;
+        [Tooltip("Walk 중 각 다리가 중립(Idle) 각도를 기준으로 앞뒤로 흔들리는 진폭(도). 왼다리/오른다리는 " +
+                 "위상차 180도로 서로 반대 방향으로 움직인다. 절차적 제어이므로 이 값이 곧 실제 최대 " +
+                 "각도이며 물리적 오버슈트가 원천적으로 없다.")]
+        public float walkCycleLegSwingDegrees = 20f;
 
-        [Tooltip("보행 애니메이션 중 각 관절이 목표각을 얼마나 적극적으로 따라가는지의 비례 제어 게인 " +
-                 "(도/초 per 도 오차) — GetupState의 getupMotorGain과 같은 성격이지만 값은 훨씬 낮다(실측 후 " +
-                 "8→3.5로 하향). 실측 이력(2026-08-28, Architect 실측 지적 대응): 기존 8은 다리(질량 " +
-                 "0.15kg, 관성모멘트가 매우 작음)에 비해 지나치게 공격적이어서, Walk 진입 시점의 초기 각도 " +
-                 "오차만으로도 목표 모터 속도가 순간적으로 매우 커져(오차×게인) 다리가 걷잡을 수 없이 튕기듯 " +
-                 "회전하다가 몸통 반대편까지 감겨버리는 사고(사용자 스크린샷 — \"관절이 다 부러짐\")로 " +
-                 "이어졌다. walkCycleMaxMotorSpeedDegPerSec 상한과 함께 적용해야 안전하다.")]
-        public float walkCycleMotorGain = 3.5f;
+        [Tooltip("Walk 중 팔이 흔들리는 진폭을 다리 진폭 대비 비율로 지정(팔은 다리와 반대 위상). " +
+                 "0이면 팔을 흔들지 않고 Idle 중립 각도를 유지한다.")]
+        public float walkCycleArmSwingRatio = 0.85f;
 
-        [Tooltip("보행 애니메이션 중 관절 모터가 낼 수 있는 최대 토크 — getupMaxMotorTorque와 동일한 성격의 " +
-                 "값이지만 훨씬 작다(실측 후 50→12로 하향). Walk 중 다리는 몸 전체를 일으켜 세우는 GETUP과 " +
-                 "달리 자기 자신의 관성/댐핑만 이기면 되므로 훨씬 적은 토크로 충분하고, 과도한 토크는 아래 " +
-                 "walkCycleMotorGain 문서에 기록된 사고의 원인 중 하나였다.")]
-        public float walkCycleMaxMotorTorque = 12f;
+        [Tooltip("Idle(및 Walk를 제외한 모든 능동 상태)에서 양다리를 바깥쪽으로 벌리는 각도(도). 0이면 " +
+                 "두 다리가 완전히 붙어 수직으로 서고, 값이 커질수록 졸라맨 그림의 '/ \\' 처럼 벌어진다. " +
+                 "사용자 확정 참고 실루엣(2026-08-28): 머리 O / 몸통 | / 팔 /|\\ / 다리 / \\.")]
+        public float idleLegSpreadDegrees = 12f;
 
-        [Tooltip("보행 애니메이션 중 관절 모터에 실제로 명령하는 각속도(motor.motorSpeed)의 절댓값 상한 " +
-                 "(도/초). 비례 제어(오차×게인)만으로는 Walk 진입 순간의 큰 초기 각도 오차가 순간적으로 " +
-                 "극단적인 모터 속도 명령(수백~1000도/초 이상)으로 이어질 수 있어(위 walkCycleMotorGain " +
-                 "문서 참고), 이 상한으로 항상 부드럽게 목표를 향해 수렴하도록 강제한다 — \"부드럽게 움직여야 " +
-                 "하는데\"(사용자 명시 지적, 2026-08-28)에 대한 직접 대응. 신규 필드(2026-08-28).")]
-        public float walkCycleMaxMotorSpeedDegPerSec = 150f;
+        [Tooltip("Idle에서 양팔을 몸통 옆으로 내려 벌리는 각도(도) — 위 idleLegSpreadDegrees와 동일한 부호 " +
+                 "규약(왼팔은 -, 오른팔은 +). 졸라맨 '/|\\' 실루엣이 나오도록 다리보다 크게 잡는다.")]
+        public float idleArmSpreadDegrees = 40f;
 
-        [Tooltip("Walk 중 각 다리 HingeJoint2D에 적용하는 물리적 각도 제한(HingeJoint2D.useLimits=true, " +
-                 "JointAngleLimits2D.min=-이 값, max=+이 값, 중립 자세 0도 기준 좌우 대칭). Walk를 벗어나면 " +
-                 "(WalkState.Exit) useLimits=false로 원복해 RAGDOLL의 자유로운 전신 물리 낙하/GETUP의 기존 " +
-                 "동작에는 전혀 영향을 주지 않는다. 신규 필드(2026-08-28, Architect 실측 지적 대응) — 기존에는 " +
-                 "다리 관절에 각도 제한 자체가 없어(프리팹 기본값 useLimits=0), 모터가 강하게 튈 경우 다리가 " +
-                 "몸통을 뚫고 반대 방향으로 완전히 감기는 등 해부학적으로 불가능한 각도까지 돌아갈 수 있었다 " +
-                 "(사용자 스크린샷으로 확인된 \"관절이 다 부러짐\" 사고의 직접 원인).")]
-        public float walkCycleLegAngleLimitDegrees = 35f;
+        [Tooltip("팔다리 각도가 목표각을 따라가는 지수 감쇠 계수(1/초). 클수록 즉각적이고 작을수록 " +
+                 "부드럽다. 프레임레이트 독립 공식 t = 1 - exp(-rate*deltaTime)에 쓰이므로(단순 " +
+                 "Lerp(a,b,rate*dt)와 달리 fps가 달라도 같은 체감 속도가 나온다), 값의 의미는 " +
+                 "\"약 1/rate 초 만에 목표까지의 오차가 63% 줄어든다\"이다. 사용자 요청(2026-08-28, " +
+                 "\"부드럽게 움직여야 함\"을 두 번 강조)으로 도입 — 이전에는 사인파 목표각을 매 프레임 " +
+                 "즉시 대입해 상태 전환·프레임레이트 변동 순간마다 각도가 툭툭 튀었다.")]
+        public float poseSmoothingRate = 14f;
 
-        [Tooltip("Walk 중 각 팔 HingeJoint2D에 적용하는 물리적 각도 제한 — walkCycleLegAngleLimitDegrees와 " +
-                 "동일한 목적/적용 방식(중립 0도 기준 좌우 대칭, Walk 이탈 시 원복). 팔 흔들기 진폭이 다리보다 " +
-                 "작으므로(WalkCycleAnimator.cs의 ArmSwingRatio=0.5) 제한값도 더 작게 잡는다.")]
-        public float walkCycleArmAngleLimitDegrees = 25f;
+        [Tooltip("보행 사이클 주파수 산출에 쓰는 수평 속도의 지수 감쇠 계수(1/초). poseSmoothingRate와 " +
+                 "같은 공식·같은 단위. 걷기 시작/멈춤처럼 속도가 급변할 때 다리 흔들기 주파수가 함께 " +
+                 "튀지 않도록 입력 자체를 완만하게 만든다(속도가 0에서 차오르며 보폭도 자연스럽게 빨라진다).")]
+        public float walkSpeedSmoothingRate = 6f;
+
+        [Tooltip("Walk 중 몸 전체가 상하로 흔들리는 진폭(월드 유닛). 실제 걷기처럼 한 걸음마다 몸이 살짝 " +
+                 "오르내리게 해 뻣뻣함을 줄인다(2026-08-28 사용자 \"너무 뻣뻣하게 움직임\" 대응). 보행 " +
+                 "사인파의 2배 주파수로 진동한다(다리가 모였을 때 높고 벌어졌을 때 낮다). **시각 전용**이라 " +
+                 "Rigidbody2D.position은 건드리지 않는다 — 접지 판정이 루트의 물리 위치를 발 높이로 쓰기 " +
+                 "때문에 그걸 흔들면 접지 로직이 깨진다(States/StickmanPoseAnimator.SetBodyOffset 참고).")]
+        public float walkBounceAmplitude = 0.03f;
+
+        [Tooltip("Idle에서 몸 전체가 호흡처럼 아주 느리게 오르내리는 진폭(월드 유닛). 완전 정지는 " +
+                 "\"얼어붙은 것\"처럼 보이므로 항상 미세하게 살아있게 만든다. walkBounceAmplitude와 같은 " +
+                 "시각 전용 오프셋 경로를 쓴다.")]
+        public float idleBreathAmplitude = 0.012f;
+
+        [Tooltip("Idle 호흡 모션의 주파수(Hz). 0.8이면 약 1.25초에 한 번 오르내린다.")]
+        public float idleBreathFrequencyHz = 0.8f;
+
+        [Tooltip("Idle 호흡에 맞춰 양팔 각도가 중립에서 벌어졌다 모이는 범위(도). 1~2도 정도의 아주 작은 " +
+                 "값이라 \"움직인다\"기보다 \"살아있다\"로만 읽힌다.")]
+        public float idleBreathArmDegrees = 1.5f;
+
+        [Tooltip("Idle 중립 자세에서 무릎을 굽혀두는 각도(도). 0(완전히 편 상태)이면 사용자 지적대로 " +
+                 "\"막대기\" 느낌이 난다 — 사람은 서 있을 때도 무릎이 완전히 펴져 있지 않다. " +
+                 "Editor/SceneBootstrapper.cs의 IdleKneeBendDegrees와 반드시 같은 값이어야 한다(프리팹 " +
+                 "저장 자세와 런타임 목표각이 어긋나면 첫 프레임에 튄다).")]
+        public float idleKneeBendDegrees = 4f;
+
+        [Tooltip("Idle 중립 자세에서 팔꿈치를 굽혀두는 각도(도). 무릎보다 크게 잡는다 — 사람은 서 있을 때 " +
+                 "팔꿈치가 눈에 띄게 굽어 있다. SceneBootstrapper.IdleElbowBendDegrees와 같은 값이어야 한다.")]
+        public float idleElbowBendDegrees = 10f;
+
+        [Tooltip("Walk 중 무릎이 추가로 접히는 최대 각도(도). 다리를 앞으로 스윙해 발을 들어올릴 때 접히고 " +
+                 "딛고 있을 때 펴진다. 굽힘량은 Max(0, sin(...))로 계산돼 **절대 음수가 되지 않으므로** " +
+                 "무릎이 뒤로 꺾이는 경우의 수가 구조적으로 없다(States/StickmanPoseAnimator.cs 참고).")]
+        public float walkKneeBendDegrees = 30f;
+
+        [Tooltip("Walk 중 팔꿈치가 idleElbowBendDegrees 위에 추가로 접히는 최대 각도(도). 팔은 다리만큼 " +
+                 "크게 접히지 않으므로 작게 잡는다.")]
+        public float walkElbowBendDegrees = 15f;
 
         [Header("물리")]
         [Tooltip("중력 스케일 (Rigidbody2D.gravityScale에 곱해 사용)")]
@@ -95,11 +124,10 @@ namespace StickMate.Core
         [Tooltip("Ragdoll -> Getup 진입 후 직립 포즈로 보간 완료까지 걸리는 기준 시간(초). GetupState._getupProgress가 이 값으로 정규화된다")]
         public float getupDuration = 0.6f;
 
-        [Tooltip("Getup 중 각 관절이 목표 각도(직립)를 얼마나 적극적으로 따라가는지의 비례 제어 게인(도/초 per 도 오차)")]
-        public float getupMotorGain = 6f;
-
-        [Tooltip("Getup 중 관절 모터가 낼 수 있는 최대 토크")]
-        public float getupMaxMotorTorque = 50f;
+        // getupMotorGain / getupMaxMotorTorque 제거(2026-08-28 근본 재구현): GETUP도 더 이상 관절
+        // 모터로 몸을 일으키지 않는다. RagdollRig가 루트 회전각을, StickmanPoseAnimator가 팔다리 각도를
+        // 각각 "널브러진 실제 각도 -> 직립 중립 각도"로 progress에 따라 직접 보간한다(100% 예측 가능,
+        // 절대 실패하지 않음). getupDuration 하나로 전체 연출 시간이 결정된다.
 
         [Header("파쿠르 (docs/UX_FLOW.md 4절)")]
         [Tooltip("ParkourClimb 진입 판정을 위한 벽/모서리 발판 감지 반경(경계 근접 거리이자, 벽으로 인정할 최소 높이차 겸용)")]

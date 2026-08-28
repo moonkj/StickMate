@@ -14,6 +14,21 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   walkSpeed: 2.5
   jumpForce: 6
+  walkCycleFrequencyPerSpeed: 0.55
+  walkCycleLegSwingDegrees: 20
+  walkCycleArmSwingRatio: 0.85
+  idleLegSpreadDegrees: 12
+  idleArmSpreadDegrees: 40
+  poseSmoothingRate: 14
+  walkSpeedSmoothingRate: 6
+  walkBounceAmplitude: 0.03
+  idleBreathAmplitude: 0.012
+  idleBreathFrequencyHz: 0.8
+  idleBreathArmDegrees: 1.5
+  idleKneeBendDegrees: 4
+  idleElbowBendDegrees: 10
+  walkKneeBendDegrees: 30
+  walkElbowBendDegrees: 15
   gravityScale: 3
   fallGraceDuration: 0.1
   coyoteTimeDuration: 0.1
@@ -21,8 +36,6 @@ MonoBehaviour:
   ragdollSettleSpeedThreshold: 0.3
   ragdollSettleHoldDuration: 0.5
   getupDuration: 0.6
-  getupMotorGain: 6
-  getupMaxMotorTorque: 50
   parkourDetectionRadius: 0.5
   parkourClimbDuration: 0.5
   rollLandingHeightThreshold: 2

@@ -24,17 +24,12 @@ namespace StickMate.States
 
         public void Enter(StateTransitionContext context)
         {
-            // 보행 애니메이션 시작(Architect 결정, 2026-08-28) — 매번 같은 자세(위상 0)에서 다리 흔들기를
-            // 시작하도록 위상 타이머를 리셋하고, 다리/팔 관절에 물리적 각도 제한을 건다(실측 지적 대응,
-            // WalkCycleAnimator.cs 클래스 문서 "각도 제한/모터 속도 상한" 참고 — 각도 제한 없이 모터만
-            // 켜면 다리가 몸통 반대편까지 감겨버리는 사고가 실측으로 확인됐다). 실제 모터 구동은 Tick()에서
-            // 매 프레임 수행.
-            WalkCycleAnimator animator = _blackboard.GetWalkCycleAnimator();
-            if (animator != null && _blackboard.Config != null)
-            {
-                animator.EnterWalking(_blackboard.Config.walkCycleLegAngleLimitDegrees,
-                    _blackboard.Config.walkCycleArmAngleLimitDegrees);
-            }
+            // 보행 애니메이션 시작(2026-08-28 근본 재구현) — 매번 같은 자세(위상 0 = Idle 중립)에서
+            // 다리 흔들기를 시작하도록 위상 타이머만 리셋한다. 예전에 여기서 걸던 HingeJoint2D 각도
+            // 제한/모터 설정은 전부 사라졌다: 팔다리가 Kinematic이 되어 관절 모터라는 개념 자체가
+            // 없어졌기 때문이다(States/StickmanPoseAnimator.cs 클래스 문서 참고). 실제 각도 세팅은
+            // Tick()이 매 프레임 수행한다.
+            _blackboard.GetPoseAnimator()?.ResetWalkPhase();
         }
 
         public void Tick(float deltaTime)
@@ -80,15 +75,18 @@ namespace StickMate.States
                 v.x = move * speed;
                 _blackboard.Body.linearVelocity = v;
 
-                // 보행 애니메이션(Architect 결정, 2026-08-28): 다리(+팔) HingeJoint2D를 실제 수평 속도에
-                // 비례한 주파수의 사인파 목표각으로 구동한다 — 정교한 IK가 아니라 "걷는 것처럼 보이는"
-                // 최소 절차적 애니메이션. WalkCycleAnimator.cs 클래스 문서 참고.
-                WalkCycleAnimator animator = _blackboard.GetWalkCycleAnimator();
-                if (animator != null && _blackboard.Config != null)
+                // 보행 애니메이션(2026-08-28 근본 재구현): 다리/팔의 transform.localRotation을 실제
+                // 수평 속도에 비례한 주파수의 사인파로 **직접** 세팅한다(물리 모터 구동 아님) — 정교한
+                // IK가 아니라 "걷는 것처럼 보이는" 최소 절차적 애니메이션이라는 스코프는 그대로지만,
+                // 이제 계산한 각도가 곧 실제 각도라 오버슈트/무너짐이 원천적으로 불가능하다.
+                // States/StickmanPoseAnimator.cs 클래스 문서 참고.
+                StickmanPoseAnimator pose = _blackboard.GetPoseAnimator();
+                if (pose != null && _blackboard.Config != null)
                 {
-                    animator.Tick(deltaTime, Mathf.Abs(v.x), _blackboard.Config.walkCycleFrequencyPerSpeed,
-                        _blackboard.Config.walkCycleLegSwingDegrees, _blackboard.Config.walkCycleMotorGain,
-                        _blackboard.Config.walkCycleMaxMotorTorque, _blackboard.Config.walkCycleMaxMotorSpeedDegPerSec);
+                    pose.TickWalkPose(deltaTime, Mathf.Abs(v.x), _blackboard.BuildPoseSettings(),
+                        _blackboard.Config.walkCycleFrequencyPerSpeed, _blackboard.Config.walkCycleLegSwingDegrees,
+                        _blackboard.Config.walkCycleArmSwingRatio, _blackboard.PoseSmoothingRate,
+                        _blackboard.WalkSpeedSmoothingRate, _blackboard.Config.walkBounceAmplitude);
                 }
             }
             // 좌우 반전(스프라이트 flip)은 Phase 2 렌더링 레이어 담당 — 여기서는 물리 이동/보행 애니메이션만.
@@ -96,11 +94,10 @@ namespace StickMate.States
 
         public void Exit()
         {
-            // Idle/Fall/Jump/Ragdoll 등 어디로 전이하든 다리/팔 모터를 반드시 끈다(WalkCycleAnimator.cs
-            // 클래스 문서 "RAGDOLL과의 충돌 방지" 참고) — StickmanStateMachine.ChangeState()는
-            // isForcedInterrupt 여부와 무관하게 항상 새 상태 Enter() 이전에 이 Exit()을 먼저 호출하므로,
-            // Ragdoll로 강제 인터럽트되는 경우에도 RagdollRig.EnterRagdoll()보다 항상 먼저 실행된다.
-            _blackboard.GetWalkCycleAnimator()?.StopWalking();
+            // 예전에는 여기서 다리/팔 모터를 끄고 각도 제한을 원복해야 했지만(모터 기반 구현), 이제는
+            // 할 일이 없다: Walk를 벗어나면 다음 프레임부터 StickmanBlackboard.TickPose()가 현재 상태
+            // ID를 보고 자동으로 Idle 중립 포즈(또는 RAGDOLL 물리 위임)를 적용한다. 상태별 정리 코드를
+            // 빠뜨려서 생기는 버그 자체가 구조적으로 사라진 것이 이번 재구현의 핵심 이득 중 하나다.
         }
     }
 }

@@ -159,10 +159,16 @@ namespace StickMate.States
         // 최초 1회만 구성해 보관한다(매 프레임 GetComponentsInChildren 재탐색 금지 컨벤션 준수).
         private RagdollRig _ragdollRig;
 
-        // Walk 상태 절차적 보행 애니메이션(다리/팔 HingeJoint2D 캐시, 2026-08-28). GetRagdollRig()와
-        // 동일한 지연 생성/캐싱 패턴 — WalkState만 사용하지만 향후 다른 이동형 능동 상태가 재사용할 수
-        // 있도록 RagdollRig와 같은 위치(블랙보드)에 둔다.
-        private WalkCycleAnimator _walkCycleAnimator;
+        // 능동 상태 절차적 팔다리 포즈 드라이버(2026-08-28 근본 재구현). GetRagdollRig()와 동일한 지연
+        // 생성/캐싱 패턴 — Idle/Walk/Getup을 포함한 모든 능동 상태가 공유한다.
+        private StickmanPoseAnimator _poseAnimator;
+
+        // 머리 안 눈동자 점 제어(States/EyeController.cs). 같은 지연 생성/캐싱 패턴.
+        private EyeController _eyeController;
+
+        // 마지막으로 확정된 바라보는 방향(+1 오른쪽 / -1 왼쪽). 이동 의도가 불감대 이하일 때는 갱신하지
+        // 않고 그대로 유지한다(정지 중에 방향이 흔들리지 않게).
+        private float _facingSign = 1f;
 
         /// <summary>FootholdPoller의 캐시(= OS를 직접 호출하지 않는 저렴한 조회)를 이용해 접지 상태를 계산한다.</summary>
         public GroundSensor.GroundInfo SenseGround()
@@ -266,17 +272,133 @@ namespace StickMate.States
         }
 
         /// <summary>
-        /// Walk 상태 절차적 보행 애니메이션 캐시(WalkCycleAnimator.cs) — GetRagdollRig()와 동일한 지연
+        /// 능동 상태 절차적 포즈 드라이버 캐시(StickmanPoseAnimator.cs) — GetRagdollRig()와 동일한 지연
         /// 생성/캐싱 패턴. 최초 필요 시 1회만 Body.transform을 루트로 이름 기반 관절 탐색을 수행한다.
         /// </summary>
-        public WalkCycleAnimator GetWalkCycleAnimator()
+        public StickmanPoseAnimator GetPoseAnimator()
         {
-            if (_walkCycleAnimator == null && Body != null)
+            if (_poseAnimator == null && Body != null)
             {
-                _walkCycleAnimator = new WalkCycleAnimator(Body.transform);
+                _poseAnimator = new StickmanPoseAnimator(Body.transform);
             }
-            return _walkCycleAnimator;
+            return _poseAnimator;
         }
+
+        /// <summary>
+        /// 매 프레임(StickmanAgent.Update()가 _machine.Tick() 직후에 1회) 호출되는 **물리 모드 + 포즈의
+        /// 단일 진실 공급원**. 2026-08-28 근본 재구현의 핵심 배선이다.
+        ///
+        /// 왜 각 상태의 Enter/Exit이 아니라 여기인가: 상태가 14개가 넘고, 어느 하나라도 물리 모드 복구를
+        /// 빠뜨리면 그 상태에서만 캐릭터가 다시 무너진다(실제로 예전 구현이 그렇게 무너졌다). 게다가
+        /// 전체화면 Suspend의 강제 취소, 테스트의 직접 ChangeState, ReportExternalImpact의 강제 인터럽트
+        /// 등 상태 밖에서 상태가 바뀌는 경로가 여럿이다. "지금 상태 ID가 무엇인가"만 보고 매 프레임
+        /// 멱등적으로 재적용하면 그 모든 경로가 자동으로 커버된다.
+        ///
+        /// 규칙:
+        ///   Ragdoll  -> 전신 물리 위임(RagdollRig.EnterRagdoll). 포즈에 일절 개입하지 않는다.
+        ///   Getup    -> 능동 모드로 되돌리되 루트 각도는 스냅하지 않는다(GetupState가 직접 보간).
+        ///   Walk     -> 능동 모드 + 직립 스냅. 팔다리 각도는 WalkState.Tick()이 이미 사인파로 세팅했다.
+        ///   그 외 능동 -> 능동 모드 + 직립 스냅 + Idle 중립 포즈(졸라맨 직립 실루엣).
+        /// </summary>
+        public void TickPose(float deltaTime)
+        {
+            RagdollRig rig = GetRagdollRig();
+            StickmanPoseAnimator pose = GetPoseAnimator();
+            if (rig == null || pose == null || Machine == null) return;
+
+            // 바라보는 방향 갱신 — 이동 의도가 불감대를 넘을 때만 바꾼다(0 근처에서 부호가 떨리면
+            // 캐릭터가 좌우로 깜빡인다). 뚜렷한 의도가 없으면 마지막 방향을 그대로 유지한다.
+            float deadzone = Config != null ? Config.moveInputDeadzone : 0.15f;
+            float move = MoveInputX;
+            if (Mathf.Abs(move) > deadzone)
+            {
+                _facingSign = move >= 0f ? 1f : -1f;
+                pose.SetFacing(_facingSign);
+                GetEyeController()?.SetFacing(_facingSign);
+            }
+
+            // 눈은 상태와 무관하게 항상 갱신한다(머리의 자식이라 RAGDOLL 중에도 머리를 따라간다).
+            // 지금은 항상 정면 — 다음 라운드에 커서 추적을 여기에 연결한다(EyeController.cs 문서의
+            // "다음 라운드 배선 지점" 참고).
+            GetEyeController()?.LookForward();
+
+            if (Machine.CurrentStateId == StickmanStateId.Ragdoll)
+            {
+                // EnterRagdoll()이 아니라 멱등 버전을 쓴다 — 전자는 진입 이벤트마다 각속도를 절반으로
+                // 깎으므로 매 프레임 호출하면 RAGDOLL이 회전하지 못한다(RagdollRig.cs 참고).
+                rig.EnsureRagdollMode();
+                return;
+            }
+
+            // RAGDOLL -> 능동 모드로 막 전환된 프레임에는, 물리가 마음대로 굴려놓은 실제 각도에서
+            // 스무딩이 이어지도록 보간 상태값을 동기화한다(안 하면 랙돌 이전의 낡은 각도에서 튄다).
+            if (rig.EnterActiveMode()) pose.SyncFromTransform();
+            if (Machine.CurrentStateId == StickmanStateId.Getup) return;
+
+            rig.SnapRootUpright();
+            if (Machine.CurrentStateId == StickmanStateId.Walk) return;
+
+            pose.ApplyIdlePose(deltaTime, BuildPoseSettings(), PoseSmoothingRate);
+        }
+
+        /// <summary>
+        /// 보간 없이 즉시 직립 중립 포즈로 스냅한다(StickmanAgent.Awake() 전용) — 첫 프레임부터
+        /// 확정된 자세로 시작하게 만든다. 매 프레임 경로인 TickPose()와 달리 deltaTime이 없는 시점이라
+        /// 지수 감쇠를 적용할 수 없으므로 별도 진입점으로 둔다.
+        /// </summary>
+        public void SnapToIdlePose()
+        {
+            RagdollRig rig = GetRagdollRig();
+            StickmanPoseAnimator pose = GetPoseAnimator();
+            if (rig == null || pose == null) return;
+            rig.EnterActiveMode();
+            rig.SnapRootUpright();
+            pose.ApplyIdlePoseImmediate(BuildPoseSettings());
+            GetEyeController()?.LookForward();
+        }
+
+        /// <summary>머리 안 눈동자 점 제어 캐시 — GetRagdollRig()와 동일한 지연 생성/캐싱 패턴.</summary>
+        public EyeController GetEyeController()
+        {
+            if (_eyeController == null && Body != null)
+            {
+                _eyeController = new EyeController(Body.transform);
+            }
+            return _eyeController;
+        }
+
+        /// <summary>Idle 중립 다리 벌림 각도(도) — Config 미배선 시에도 안전한 기본값을 쓴다.</summary>
+        public float IdleLegSpreadDegrees => Config != null ? Config.idleLegSpreadDegrees : 12f;
+
+        /// <summary>Idle 중립 팔 벌림 각도(도).</summary>
+        public float IdleArmSpreadDegrees => Config != null ? Config.idleArmSpreadDegrees : 40f;
+
+        /// <summary>
+        /// StickConfig에서 포즈 각도 설정 묶음을 구성한다(readonly struct — 매 프레임 호출 경로라 힙
+        /// 할당이 없다). Config가 배선되지 않은 테스트/폴백 경로에서도 안전하도록 각 값에 기본값을 둔다.
+        /// </summary>
+        public StickmanPoseAnimator.PoseSettings BuildPoseSettings()
+        {
+            return new StickmanPoseAnimator.PoseSettings(
+                IdleLegSpreadDegrees,
+                IdleArmSpreadDegrees,
+                Config != null ? Config.idleKneeBendDegrees : 4f,
+                Config != null ? Config.idleElbowBendDegrees : 10f,
+                Config != null ? Config.walkKneeBendDegrees : 30f,
+                Config != null ? Config.walkElbowBendDegrees : 15f,
+                Config != null ? Config.idleBreathAmplitude : 0.012f,
+                Config != null ? Config.idleBreathFrequencyHz : 0.8f,
+                Config != null ? Config.idleBreathArmDegrees : 1.5f);
+        }
+
+        /// <summary>실측 검증/디버그용 — 마지막으로 확정된 바라보는 방향 부호(+1 오른쪽 / -1 왼쪽).</summary>
+        public float FacingSign => _facingSign;
+
+        /// <summary>팔다리 각도 지수 감쇠 계수(1/초).</summary>
+        public float PoseSmoothingRate => Config != null ? Config.poseSmoothingRate : 14f;
+
+        /// <summary>보행 주파수 입력 속도의 지수 감쇠 계수(1/초).</summary>
+        public float WalkSpeedSmoothingRate => Config != null ? Config.walkSpeedSmoothingRate : 6f;
 
         /// <summary>
         /// ParkourClimb 진입 판정(아키텍처 0절 파쿠르, UX_FLOW.md 4절). 지금 딛고 있는 발판의 진행방향

@@ -19,7 +19,7 @@ namespace StickMate.EditorTools
     /// 머리 + 가는 선만으로 그린 몸통/팔다리)"을 명시적으로 선택했다. 그래서 채워진 SpriteRenderer
     /// 사각형/원 대신 LineRenderer로 얇은 선(몸통/팔다리)과 속이 빈 원(머리)을 그린다 — 물리 파츠
     /// 배치/크기(Rigidbody2D/Collider2D/HingeJoint2D)는 이 교체로 전혀 바뀌지 않는다(아래
-    /// BuildStickmanPrefab 문서, ConfigureLine/CreateHeadRingVisual/CreateLineSegmentVisual 참고).
+    /// BuildStickmanPrefab 문서, ConfigureLine/CreateFilledHead/CreateLineSegmentVisual 참고).
     ///
     /// 사용법:
     /// - 에디터: 메뉴 StickMate/Build All (최초 1회) — 이미 있는 에셋은 건너뛴다. 기존 에셋을 의도적으로
@@ -83,23 +83,87 @@ namespace StickMate.EditorTools
         // 쓰던 SpriteTextureSize/GetOrCreateSprite/RectSprite·CircleSprite.asset 제거). 아래 값들은
         // 오직 렌더링에만 영향을 준다 — 물리 파츠 배치/크기(Rigidbody2D/Collider2D/HingeJoint2D)는
         // 전부 무변경.
-        private const float LineWidth = 0.05f; // 손그림 느낌의 얇은 선 두께(월드 유닛).
-        private const int LineCapVertices = 4; // 선 끝/모서리를 살짝 둥글려 각진 느낌을 줄임(손그림 느낌).
-        private const int HeadRingSegments = 24; // 머리 원 근사에 쓰는 선분 개수(24면 육안으로 매끈한 원).
-        private const float HeadVisualRadius = 0.25f; // 머리 링의 시각 반경. 물리 CircleCollider2D.radius(0.4, 아래 참고)와는 별개 값 — 판정 크기는 무변경.
+        // 선 두께/캡 — 2026-08-28 사용자가 제시한 시각 레퍼런스(Alan Becker "Animator vs Animation"
+        // 계열 스틱맨) 반영. 그 스타일의 핵심은 (a) 아주 굵은 검은 획, (b) 모든 선 끝이 둥근 캡이라
+        // 관절에서 둥근 끝끼리 자연스럽게 겹쳐 매끄럽게 이어진다는 점이다. 우리가 계속 고생했던
+        // "관절이 나눠져 보임"/"검은 뭉치" 문제는 이 스타일에서는 저절로 해결된다 — 오히려 관절 부위가
+        // 살짝 뭉쳐 보이는 게 정상이고 자연스럽다(리더 명시).
+        private const float LineWidth = 0.11f;      // 기본 획 두께(몸통). 머리 반경 0.22의 절반.
+        private const float LegLineWidth = 0.12f;   // 다리는 기본보다 아주 약간 굵게.
+        private const float ArmLineWidth = 0.10f;   // 팔은 기본보다 아주 약간 얇게.
+        private const int LineCapVertices = 8; // 끝/모서리를 확실히 둥글게(레퍼런스 스타일의 round cap).
+        private const int HeadRingSegments = 24; // 머리 테두리 링 근사에 쓰는 선분 개수(24면 육안으로 매끈한 원).
 
-        // 손/발 끝 표현(BUG-P1-R5-B4, Architect 웹 레퍼런스 조사 기반 반려 수정, 2026-08-28) — 봉선화
-        // (棒線畵, "졸라맨") 표준 표현은 손/발을 "짧은 직각선(hook)"이 아니라 "작은 점(채워진 원)"으로
-        // 그린다. 예전 CreateEndMark()는 limb 끝에 짧은 가로선을 그려 몸통 선과 만나 T자/훅 모양이
-        // 됐는데, 이게 레퍼런스와 다르다는 지적을 받아 "속이 채워진 작은 원"으로 교체한다(아래
-        // CreateEndMark 참고). 채워진 원이지만 SpriteRenderer를 다시 들여오지 않고, 이번 라운드에서
-        // 확립한 "LineRenderer만 사용" 컨벤션을 유지한 채로 만든다 — 반지름보다 두꺼운 선 폭으로 아주
-        // 작은 원 경로를 그리면 링의 두께가 중심까지 겹쳐 채워진 원처럼 보인다(HeadRingSegments=24는
-        // 머리처럼 큰 "속이 빈" 원에 맞는 값이라 그대로 재사용하지 않고, 이 작은 "채워진" 점 전용으로
-        // 별도 세그먼트 수/반지름/선폭을 둔다).
-        private const float HandFootDotRadius = 0.04f; // Architect 지시 범위(0.03~0.05유닛)의 중간값.
-        private const int HandFootDotSegments = 8; // 이 크기(반지름 0.04)에서는 8각형도 육안상 원으로 보임 — 머리(24)만큼 세분화할 필요 없음.
-        private const float HandFootDotLineWidth = HandFootDotRadius * 2.4f; // 반지름의 2배(지름)보다 넉넉히 두꺼워야 링 안쪽까지 완전히 채워져 "속이 빈 원"이 아니라 "채워진 점"으로 보인다.
+        // 흰 얼굴의 검은 테두리 두께 — 팔다리 획(0.10~0.12)보다 약간 얇게 잡아 머리가 지나치게 두꺼워
+        // 보이지 않게 한다(리더 지시: "팔다리 선 두께와 비슷하거나 약간 얇게").
+        private const float HeadOutlineWidth = 0.09f;
+        // 머리 시각 반경. 물리 CircleCollider2D.radius(0.4, 아래 참고)와는 별개 값 — 판정 크기는 무변경.
+        // 머리는 "흰색으로 채워진 원 + 검은 테두리"다(사용자 정정, 2026-08-28) — CreateFilledHead()가
+        // 길이 0인 선분에 지름만큼의 선 폭 + 둥근 캡을 줘서 흰 채움을 만들고, 그 위에 CreateRing()이
+        // 검은 링을 겹쳐 그린다(SpriteRenderer 재도입 없이 "LineRenderer만 사용" 컨벤션 유지).
+        private const float HeadVisualRadius = 0.22f;
+
+// 눈동자 점(CreateFilledDot)이 쓰는 원 근사 세분화 수. 손/발 끝 점은 2026-08-28 사용자 요청으로
+        // 완전히 제거했으므로("손과 발에 동그란 뭉치같은건 필요없을거 같은데") 이제 이 상수는 눈 전용이다.
+        // 이 크기(반지름 0.018)에서는 8각형도 육안상 원으로 보인다 — 머리 링(24)만큼 세분화할 필요 없음.
+        private const int FilledDotSegments = 8;
+
+        // 머리(채워진 원)의 둥근 캡 세분화 — 반지름이 크므로 점(8)보다 훨씬 촘촘해야 매끈해 보인다.
+        private const int HeadCapVertices = 16;
+
+
+        // 눈(눈동자 점) — 2026-08-28 사용자 요청("나중에 마우스 위치에 따라 눈도 움직여야 해서 눈도
+        // 있어야 하고"). 리더 지정 좌표: 머리 링 반경 0.22 기준 (±0.075, +0.02), 반경 0.018.
+        // "눈도 너무 커서 이상함"(사용자) 대응으로 0.035 -> 0.018로 축소 — 머리 안에 작은 점 두 개가
+        // 콕 찍힌 정도. 눈동자 이동 범위는 States/EyeController.cs의 MaxPupilOffset이 제한한다.
+        private const float EyePupilRadius = 0.018f;
+        private const float EyeOffsetX = 0.075f;
+        private const float EyeOffsetY = 0.02f;
+
+        // 중립(Idle) 팔 벌림 각도 — StickConfig.idleArmSpreadDegrees와 반드시 같은 값이어야 한다
+        // (프리팹 저장 시점의 초기 localRotation과 런타임 포즈 목표각이 일치해야 첫 프레임에 튀지 않는다).
+        private const float IdleArmSpreadDegrees = 40f;
+
+        // 중립(Idle) 다리 벌림 각도 — StickConfig.idleLegSpreadDegrees와 반드시 같은 값이어야 한다
+        // (프리팹 저장 자세와 런타임 포즈 목표각이 어긋나면 첫 프레임에 튄다). 접지 보정(LimbDrop)도
+        // 이 값을 쓰므로 클래스 레벨 상수로 둔다.
+        private const float IdleLegSpreadDegrees = 12f;
+
+        // 팔다리 2분절 길이(리더 지정 총 길이를 상/하로 나눈 값) — 팔 0.75 = 0.38 + 0.37,
+        // 다리 0.95 = 0.50 + 0.45.
+        private const float ArmUpperLength = 0.38f, ArmLowerLength = 0.37f;
+        private const float LegUpperLength = 0.50f, LegLowerLength = 0.45f;
+
+        // 중립(Idle) 무릎/팔꿈치 굽힘 각도 — StickConfig의 같은 이름 필드와 반드시 일치해야 한다
+        // (프리팹 저장 자세와 런타임 포즈 목표각이 어긋나면 첫 프레임에 튄다). 완전히 편 0도로 두면
+        // 사용자 지적대로 "막대기" 느낌이 나므로 항상 살짝 굽혀둔다.
+        private const float IdleKneeBendDegrees = 4f;
+        private const float IdleElbowBendDegrees = 10f;
+
+        // 굽힘 방향 부호 — States/StickmanPoseAnimator.cs의 KneeBendSign/ElbowBendSign과 같은 규약
+        // (무릎은 뒤로, 팔꿈치는 앞으로). 사람 관절은 반대로 꺾이지 않는다.
+        private const float KneeBendSign = -1f;
+        private const float ElbowBendSign = 1f;
+
+        // RAGDOLL에서 무릎/팔꿈치 HingeJoint2D에 거는 각도 제한. 접히는 쪽으로는 이만큼까지 허용하고,
+        // 반대(과신전) 쪽으로는 아주 약간의 여유만 준다 — 물리로 넘어간 뒤에도 관절이 사람처럼
+        // 한 방향으로만 접히게 하기 위해서다. 능동 상태에서는 관절 자체가 비활성이라 무관하다.
+        // [정직한 한계] HingeJoint2D의 각도 제한은 관절이 enable될 때의 상대 자세를 기준으로 해석되므로,
+        // RAGDOLL 진입 시점의 포즈가 기준이 된다(항상 해부학적 0도가 기준인 것은 아니다). 그래도 진입
+        // 자세에서 크게 벗어나는 과신전은 확실히 막힌다.
+        private const float MaxJointBendDegrees = 100f;
+        private const float JointHyperExtendMarginDegrees = 5f;
+
+        /// <summary>
+        /// 중립 자세에서 엉덩이부터 발끝까지의 수직 낙차. 대퇴는 hipAngle, 정강이는 hipAngle+무릎각의
+        /// 누적 각도로 각각 기울어 있으므로 따로 계산해 더한다(접지 보정 footLift 산출용).
+        /// </summary>
+        private static float LimbDrop(float hipAngleDegrees)
+        {
+            float hip = hipAngleDegrees * Mathf.Deg2Rad;
+            float knee = (hipAngleDegrees + KneeBendSign * IdleKneeBendDegrees) * Mathf.Deg2Rad;
+            return LegUpperLength * Mathf.Cos(hip) + LegLowerLength * Mathf.Cos(knee);
+        }
 
         // BUG-SW-M1(Architect 결정, 2026-08-28) — 표준 Active Ragdoll 레이어 기법: 몸통/머리/팔다리를
         // 전부 이 레이어에 몰아넣고, 이 레이어끼리의 충돌만 Physics2D 매트릭스에서 끈다(EnsureStickmanLimbLayer 참고).
@@ -260,11 +324,17 @@ namespace StickMate.EditorTools
             rb.bodyType = RigidbodyType2D.Dynamic;
             rb.gravityScale = gravityScale;
             rb.mass = 1f;
+            // 근본 재구현(2026-08-28, States/RagdollRig.cs 클래스 문서 참고) — 루트(몸통) 회전 고정.
+            // 기존 프리팹은 Rigidbody2D 5개 전부 m_Constraints: 0이었고, 그래서 몸통이 자유롭게 넘어질
+            // 수 있었다(사용자가 여러 번 보고한 "바닥에 쓰러져 누운 채 팔다리가 제멋대로 뻗은" 모습의
+            // 직접 원인). 능동 상태에서는 항상 이 제약이 걸려 있어야 하고, RAGDOLL 진입 시에만
+            // RagdollRig.EnterRagdoll()이 런타임에 이 비트를 푼다. 프리팹 저장값 자체를 능동 모드
+            // 기본값으로 둬서, 씬 로드 직후 첫 물리 스텝부터 절대 넘어지지 않게 한다.
+            rb.constraints = RigidbodyConstraints2D.FreezeRotation;
 
             var capsule = root.AddComponent<CapsuleCollider2D>();
             capsule.direction = CapsuleDirection2D.Vertical;
-            capsule.size = new Vector2(0.4f, 1.8f);
-            capsule.offset = new Vector2(0f, 0.9f);
+            // 크기는 아래 지오메트리 계산이 끝난 뒤 전신 높이에서 유도해 대입한다(totalHeight 참고).
 
             root.AddComponent<StickmanClickHitbox>();
 
@@ -273,43 +343,110 @@ namespace StickMate.EditorTools
             so.FindProperty("_config").objectReferenceValue = config;
             so.ApplyModifiedPropertiesWithoutUndo();
 
-            // 몸통 — 시각 전용(물리 없음, root 자식 Transform으로 그대로 따라다님). 채워진 사각형 대신
-            // 얇은 세로 선 하나로 표현(사용자 확정 요청, 클래스 문서 상단 참고). 기존 사각형과 동일한
-            // 세로 범위(로컬 y 0.6~1.4)를 그대로 유지해 화면 프레이밍(BUG-P1-R4-B1)에 영향이 없다.
-            CreateLineSegmentVisual(root.transform, "Torso", new Vector3(0f, 1.0f, 0f),
-                new Vector3(0f, 0.4f, 0f), new Vector3(0f, -0.4f, 0f), outline, sortingOrder: 1);
+            // ================================================================================
+            // 졸라맨 지오메트리 (2026-08-28 리더 지정 좌표, 사용자 스크린샷 판독 결과 반영)
+            // ================================================================================
+            // 리더가 지정한 루트 로컬 좌표(발끝 보정 전, 2026-08-28 3차 사용자 피드백 반영):
+            //   머리 링 반경 0.22 (0.25에서 축소 — "머리가 몸에 비해 크다"), 몸통 바로 위에 얹는다
+            //   몸통 (0, 1.35) -> (0, 0.45)             (길이 0.9)
+            //   어깨 부착점 (0, 1.18)  — 좌우 팔이 **같은 점**에서 시작 (레퍼런스 /|\)
+            //   엉덩이 부착점 (0, 0.45) — 좌우 다리가 **같은 점**에서 시작 (레퍼런스 / \)
+            //   팔 길이 0.75 (0.5에서 연장), 중립 벌림 40도
+            //   다리 길이 0.95 (0.6에서 연장), 중립 벌림 12도 (18도는 너무 벌어져 보였다)
+            // 팔다리 연장은 사용자 지적 "팔 몸 다리 비율이 이상하고" 대응 — 머리 대비 팔다리가 짧아
+            // 뭉툭해 보였다. 손/발 끝 점(EndMark)은 사용자 요청으로 **전부 제거**했다("손과 발에
+            // 동그란 뭉치같은건 필요없을거 같은데") — 팔다리는 그냥 선으로 끝난다.
+            //
+            // 왜 좌우를 같은 x=0 점에 두는가: 어깨를 x=±0.05로 두었더니 팔이 거의 수직인 순간 몸통 선과
+            // 완전히 겹쳐 **팔이 아예 안 보였다**(사용자 스크린샷). 레퍼런스 졸라맨은 팔다리가 몸통 위의
+            // 한 점에서 갈라져 나오고 벌어짐은 전적으로 **각도**가 만든다. 부착점에서 선끼리 겹치는 것은
+            // 정상이고 의도된 것이다(그게 "관절"이다).
+            //
+            // FootLift: 위 좌표를 그대로 쓰면 중립 자세의 발끝 y = 0.45 - 0.95*cos(12°) = -0.48로 루트
+            // 원점보다 한참 아래로 내려간다. 그런데 이 프로젝트는 States/GroundSensor.cs / SnapToGround()가
+            // "루트 원점 = 발 높이"를 전제로 접지/스냅을 계산한다(StickmanBlackboard.SenseGround 문서).
+            // 그래서 실루엣(상대 거리/각도)은 리더 지정값 그대로 두고 **전체를 그 낙차만큼 위로 평행이동**해
+            // 발끝이 정확히 루트 원점(=지면)에 닿게 한다. 하드코딩이 아니라 실제 다리 길이/각도에서
+            // 유도하므로, 다리 길이나 중립 각도를 바꾸면 접지가 자동으로 따라온다.
+            const float SpecHipY = 0.45f, SpecShoulderY = 1.18f, SpecTorsoTopY = 1.35f;
+            // 중립 자세의 발끝 낙차 — 무릎이 살짝 굽어 있으므로 대퇴/정강이를 각자의 **누적 각도**로
+            // 따로 계산해 더해야 정확하다. 무릎 굽힘 부호가 좌우 공통(사람 무릎은 둘 다 뒤로 접힌다)이라
+            // 좌우 낙차가 아주 조금 달라지므로, 둘 중 **큰 쪽**을 기준으로 들어올려 어느 발도 지면 아래로
+            // 내려가지 않게 한다(차이는 0.02유닛 미만이라 육안으로 구분되지 않는다).
+            float leftDrop = LimbDrop(-IdleLegSpreadDegrees);
+            float rightDrop = LimbDrop(IdleLegSpreadDegrees);
+            float footLift = Mathf.Max(leftDrop, rightDrop) - SpecHipY;
+            float hipY = SpecHipY + footLift;
+            float shoulderY = SpecShoulderY + footLift;
+            float torsoTopY = SpecTorsoTopY + footLift;
+            float torsoBottomY = SpecHipY + footLift;
+            // 머리는 몸통 꼭대기 바로 위에 얹는다(링 아래 끝이 몸통 상단과 만나도록) — 고정 상수를 따로
+            // 두면 몸통 길이/머리 반경을 바꿀 때마다 목이 끊기거나 파묻히므로 항상 유도해서 쓴다.
+            float headY = torsoTopY + HeadVisualRadius;
+            // 루트 CapsuleCollider2D는 발끝(0)부터 머리 꼭대기까지 덮어야 RAGDOLL이 바닥에 자연스럽게
+            // 눕는다 — 팔다리를 늘렸으므로 전신 높이에서 유도한다(예전 고정값 1.8은 새 비율과 어긋난다).
+            float totalHeight = headY + HeadVisualRadius;
 
-            // 머리 — 시각(속이 빈 링) + 작은 CircleCollider2D(루트 Rigidbody2D의 compound collider로
-            // 자동 합산됨). 루트와 같은 limbLayer에 두어야 팔다리와의 자체충돌 무시 매트릭스가 머리에도
-            // 적용된다. 물리 판정 반경(0.4)은 BUG-SW-M1 이후 그대로 — 시각 반경(HeadVisualRadius)만
-            // 사용자 요청에 맞춰 "채워진 원"에서 "속이 빈 동그라미"로 바꿨을 뿐 판정 크기는 무변경.
-            var head = CreateHeadRingVisual(root.transform, "Head", new Vector3(0f, 1.6f, 0f), HeadVisualRadius, outline, sortingOrder: 3);
+            capsule.size = new Vector2(0.4f, totalHeight);
+            capsule.offset = new Vector2(0f, totalHeight * 0.5f);
+
+            // 몸통 위쪽 끝을 머리 원 안으로 살짝 파고들게 한다(레퍼런스가 그렇다 — 목 부분에서 굵은
+            // 획이 머리 덩어리와 자연스럽게 이어져 보인다). 파고드는 깊이는 머리 반경의 절반.
+            float torsoTopOverlapped = torsoTopY + HeadVisualRadius * 0.5f;
+            float torsoCenterY = (torsoTopOverlapped + torsoBottomY) * 0.5f;
+            float torsoHalf = (torsoTopOverlapped - torsoBottomY) * 0.5f;
+            CreateLineSegmentVisual(root.transform, "Torso", new Vector3(0f, torsoCenterY, 0f),
+                new Vector3(0f, torsoHalf, 0f), new Vector3(0f, -torsoHalf, 0f), outline, sortingOrder: 1);
+
+            // 머리 — **흰색으로 꽉 채운 원 + 검은 테두리**(2026-08-28 사용자 정정: "얼굴은 흰색에 눈이
+            // 검은색이어야지"). 배경이 밝은 회색(backgroundFallbackColor)이라 흰 얼굴만으로는 배경과
+            // 구분되지 않으므로 검은 테두리가 반드시 필요하다. 세 겹을 sortingOrder로 쌓는다:
+            //   3: 흰색 채움(CreateFilledHead)  4: 검은 테두리 링(CreateRing)  5: 검은 눈동자 점
+            // 물리 CircleCollider2D(반경 0.4, BUG-SW-M1 이후 무변경)는 채움 오브젝트("Head")에 붙인다 —
+            // 이 오브젝트가 머리의 기준 Transform이라 StickmanPoseAnimator의 몸 바운스/EyeController의
+            // 부모 노릇을 함께 한다.
+            var head = CreateFilledHead(root.transform, "Head", new Vector3(0f, headY, 0f), HeadVisualRadius,
+                Color.white, sortingOrder: 3);
             head.layer = limbLayer;
             var headCollider = head.AddComponent<CircleCollider2D>();
             headCollider.radius = 0.4f;
+            CreateRing(head.transform, "HeadOutline", Vector3.zero, HeadVisualRadius, HeadOutlineWidth,
+                outline, sortingOrder: 4);
 
-            // 팔다리 — Rigidbody2D + HingeJoint2D(connectedBody=root) + Collider2D(limbLayer). 조인트
-            // anchor 계산이 스케일에 영향받지 않도록 물리 오브젝트 자체는 scale=1로 유지하고, 스프라이트는
-            // 별도 자식(Visual)에서만 스케일.
-            const float hipY = 0.6f, shoulderY = 1.3f;
-            const float legHalfLength = 0.3f, armHalfLength = 0.25f;
+            // 눈(눈동자 점 2개) — **반드시 머리의 자식**이라야 RAGDOLL로 머리가 뒹굴 때도 따라간다.
+            // 흰 얼굴 위에 검은 점 두 개(사용자 정정 반영). sortingOrder는 테두리(4)보다 위(5).
+            // 런타임에 States/EyeController.cs가 이 점들의 localPosition을 중립에서 조금씩 오프셋해
+            // 시선을 움직인다(다음 라운드에 커서 추적 연결 예정 — 그 클래스 문서의 배선 지점 참고).
+            CreateFilledDot(head.transform, "LeftEye", new Vector3(-EyeOffsetX, EyeOffsetY, 0f),
+                EyePupilRadius, outline, sortingOrder: 5);
+            CreateFilledDot(head.transform, "RightEye", new Vector3(EyeOffsetX, EyeOffsetY, 0f),
+                EyePupilRadius, outline, sortingOrder: 5);
 
-            CreateLimb(root.transform, rb, "LeftLeg", new Vector2(0.12f, 0.6f),
-                localPos: new Vector3(-0.12f, hipY - legHalfLength, 0f),
-                anchor: new Vector2(0f, legHalfLength), connectedAnchor: new Vector2(-0.12f, hipY),
-                outline, mass: 0.15f, gravityScale: gravityScale, sortingOrder: 0, limbLayer: limbLayer, agent: agent);
-            CreateLimb(root.transform, rb, "RightLeg", new Vector2(0.12f, 0.6f),
-                localPos: new Vector3(0.12f, hipY - legHalfLength, 0f),
-                anchor: new Vector2(0f, legHalfLength), connectedAnchor: new Vector2(0.12f, hipY),
-                outline, mass: 0.15f, gravityScale: gravityScale, sortingOrder: 0, limbLayer: limbLayer, agent: agent);
-            CreateLimb(root.transform, rb, "LeftArm", new Vector2(0.1f, 0.5f),
-                localPos: new Vector3(-0.28f, shoulderY - armHalfLength, 0f),
-                anchor: new Vector2(0f, armHalfLength), connectedAnchor: new Vector2(-0.28f, shoulderY),
-                outline, mass: 0.1f, gravityScale: gravityScale, sortingOrder: 2, limbLayer: limbLayer, agent: agent);
-            CreateLimb(root.transform, rb, "RightArm", new Vector2(0.1f, 0.5f),
-                localPos: new Vector3(0.28f, shoulderY - armHalfLength, 0f),
-                anchor: new Vector2(0f, armHalfLength), connectedAnchor: new Vector2(0.28f, shoulderY),
-                outline, mass: 0.1f, gravityScale: gravityScale, sortingOrder: 2, limbLayer: limbLayer, agent: agent);
+            // 팔다리 — 각각 2마디(위=대퇴/상완, 아래=정강이/전완). 아래 마디는 위 마디의 자식이라
+            // 위 마디를 돌리면 딸려오고, 아래 마디를 추가로 돌리면 무릎/팔꿈치가 접힌다(CreateLimb 문서).
+            // 중립 벌림/굽힘 각도는 LineRenderer를 비스듬히 그려서가 아니라 **transform.localRotation
+            // 초기값**으로 준다 — 그래야 States/StickmanPoseAnimator.cs가 각도를 세팅할 때 이중으로
+            // 더해지지 않는다.
+            CreateLimb(root.transform, rb, "LeftLeg", attachLocal: new Vector2(0f, hipY),
+                upperLength: LegUpperLength, lowerLength: LegLowerLength, width: LegLineWidth,
+                upperAngle: -IdleLegSpreadDegrees, lowerAngle: KneeBendSign * IdleKneeBendDegrees,
+                lowerMinAngle: -MaxJointBendDegrees, lowerMaxAngle: JointHyperExtendMarginDegrees,
+                outline, mass: 0.09f, gravityScale: gravityScale, sortingOrder: 0, limbLayer: limbLayer, agent: agent);
+            CreateLimb(root.transform, rb, "RightLeg", attachLocal: new Vector2(0f, hipY),
+                upperLength: LegUpperLength, lowerLength: LegLowerLength, width: LegLineWidth,
+                upperAngle: IdleLegSpreadDegrees, lowerAngle: KneeBendSign * IdleKneeBendDegrees,
+                lowerMinAngle: -MaxJointBendDegrees, lowerMaxAngle: JointHyperExtendMarginDegrees,
+                outline, mass: 0.09f, gravityScale: gravityScale, sortingOrder: 0, limbLayer: limbLayer, agent: agent);
+            CreateLimb(root.transform, rb, "LeftArm", attachLocal: new Vector2(0f, shoulderY),
+                upperLength: ArmUpperLength, lowerLength: ArmLowerLength, width: ArmLineWidth,
+                upperAngle: -IdleArmSpreadDegrees, lowerAngle: ElbowBendSign * IdleElbowBendDegrees,
+                lowerMinAngle: -JointHyperExtendMarginDegrees, lowerMaxAngle: MaxJointBendDegrees,
+                outline, mass: 0.06f, gravityScale: gravityScale, sortingOrder: 2, limbLayer: limbLayer, agent: agent);
+            CreateLimb(root.transform, rb, "RightArm", attachLocal: new Vector2(0f, shoulderY),
+                upperLength: ArmUpperLength, lowerLength: ArmLowerLength, width: ArmLineWidth,
+                upperAngle: IdleArmSpreadDegrees, lowerAngle: ElbowBendSign * IdleElbowBendDegrees,
+                lowerMinAngle: -JointHyperExtendMarginDegrees, lowerMaxAngle: MaxJointBendDegrees,
+                outline, mass: 0.06f, gravityScale: gravityScale, sortingOrder: 2, limbLayer: limbLayer, agent: agent);
 
             GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, PrefabAssetPath, out bool success);
             Object.DestroyImmediate(root);
@@ -528,7 +665,36 @@ namespace StickMate.EditorTools
 
         /// <summary>속이 빈 원(링) 시각 표현(머리) — HeadRingSegments개의 점을 원주 위에 찍고
         /// loop=true로 닫아 "채워지지 않은 동그라미"를 그린다.</summary>
-        private static GameObject CreateHeadRingVisual(Transform parent, string name, Vector3 localPos, float radius, Color color, int sortingOrder)
+        /// <summary>
+        /// 채워진 검은 머리 - 레퍼런스(Alan Becker 계열)는 머리가 "속이 빈 동그라미"가 아니라 **꽉 찬
+        /// 검은 덩어리**다. 길이 0인 선분에 지름만큼의 선 폭 + 둥근 캐을 주면 LineRenderer 하나로 완전히
+        /// 채워진 원이 나온다(SpriteRenderer를 다시 들여오지 않고 "LineRenderer만 사용" 컨벤션 유지).
+        /// </summary>
+        private static GameObject CreateFilledHead(Transform parent, string name, Vector3 localPos, float radius,
+            Color color, int sortingOrder)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPos;
+            go.transform.localScale = Vector3.one;
+
+            var lr = ConfigureLine(go, color, sortingOrder, loop: false);
+            lr.startWidth = radius * 2f;
+            lr.endWidth = radius * 2f;
+            lr.numCapVertices = HeadCapVertices;
+            lr.positionCount = 2;
+            lr.SetPosition(0, Vector3.zero);
+            lr.SetPosition(1, Vector3.zero);
+            return go;
+        }
+
+        /// <summary>
+        /// 속이 빈 원(링) — 지금은 흰 얼굴의 검은 테두리 전용이다. 반지름 radius의 원 경로를 width
+        /// 두께의 선으로 그린다(선이 반지름보다 얇으므로 가운데가 뚫린 링이 된다 — 채워진 원을 만드는
+        /// CreateFilledHead와는 정확히 이 점만 다르다).
+        /// </summary>
+        private static GameObject CreateRing(Transform parent, string name, Vector3 localPos, float radius,
+            float width, Color color, int sortingOrder)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
@@ -536,6 +702,8 @@ namespace StickMate.EditorTools
             go.transform.localScale = Vector3.one;
 
             var lr = ConfigureLine(go, color, sortingOrder, loop: true);
+            lr.startWidth = width;
+            lr.endWidth = width;
             lr.positionCount = HeadRingSegments;
             for (int i = 0; i < HeadRingSegments; i++)
             {
@@ -545,86 +713,133 @@ namespace StickMate.EditorTools
             return go;
         }
 
-        /// <summary>손/발 표현용 작은 채워진 점(봉선화 표준 표현, 클래스 상단 BUG-P1-R5-B4 문서 참고).
-        /// parent(limb)의 자식으로 둬 부모와 함께 물리로 이동/회전한다. 아주 작은 원형 경로를 그 반지름보다
-        /// 두꺼운 선으로 그려 "속이 빈 원"이 아니라 "채워진 점"처럼 보이게 한다(LineRenderer만 쓰는
-        /// 컨벤션 유지 — SpriteRenderer 재도입 없음).</summary>
-        private static void CreateEndMark(Transform parent, Vector3 localAt, Color color, int sortingOrder)
+        /// <summary>
+        /// 채워진 작은 원(점) 하나. 반지름보다 두꺼운 선으로 원 경로를 그려 "속이 빈 원"이 아니라
+        /// "채워진 점"으로 보이게 한다(SpriteRenderer를 재도입하지 않고 "LineRenderer만 사용" 컨벤션 유지).
+        /// 손/발 끝 점과 눈동자가 이 하나를 공유한다.
+        /// </summary>
+        private static GameObject CreateFilledDot(Transform parent, string name, Vector3 localAt, float radius,
+            Color color, int sortingOrder)
         {
-            var go = new GameObject("EndMark");
+            var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             go.transform.localPosition = localAt;
             go.transform.localScale = Vector3.one;
 
             var lr = ConfigureLine(go, color, sortingOrder, loop: true);
-            lr.startWidth = HandFootDotLineWidth;
-            lr.endWidth = HandFootDotLineWidth;
-            lr.positionCount = HandFootDotSegments;
-            for (int i = 0; i < HandFootDotSegments; i++)
+            lr.startWidth = radius * 2.4f; // 지름보다 넉넉히 두꺼워야 안쪽까지 완전히 채워진다.
+            lr.endWidth = radius * 2.4f;
+            lr.positionCount = FilledDotSegments;
+            for (int i = 0; i < FilledDotSegments; i++)
             {
-                float angle = (i / (float)HandFootDotSegments) * Mathf.PI * 2f;
-                lr.SetPosition(i, new Vector3(Mathf.Cos(angle) * HandFootDotRadius, Mathf.Sin(angle) * HandFootDotRadius, 0f));
+                float angle = (i / (float)FilledDotSegments) * Mathf.PI * 2f;
+                lr.SetPosition(i, new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f));
             }
+            return go;
         }
 
+        /// <summary>
+        /// 팔다리 하나를 **2마디**로 만든다(2026-08-28 사용자 "손이랑 다리가 다 그냥 막대기 같음" 대응).
+        ///
+        ///   위 마디(대퇴/상완)     : 부모=root, transform 원점 = 관절 부착점(attachLocal),
+        ///                            선 (0,0) -> (0,-upperLength)
+        ///   아래 마디(정강이/전완) : 부모=위 마디, 원점 = 무릎/팔꿈치 지점 (0,-upperLength),
+        ///                            선 (0,0) -> (0,-lowerLength)
+        ///
+        /// 왜 원점을 관절에 두는가: 능동 상태에서는 HingeJoint2D가 꺼져 있고 StickmanPoseAnimator가
+        /// transform.localRotation을 직접 세팅해 포즈를 만든다. transform 회전은 항상 그 transform의
+        /// 원점을 중심으로 일어나므로, 원점이 마디 한가운데에 있으면 다리가 고관절이 아니라 허벅지
+        /// 중간을 축으로 돌아 몸에서 떨어져 보인다. 원점 = 관절이면 그 사각지대가 기하학 레벨에서
+        /// 사라지고, 물리 anchor도 (0,0)으로 단순해진다 — 시각/물리/회전축이 전부 하나의 값에서
+        /// 파생되므로 서로 어긋나는 것 자체가 불가능하다.
+        ///
+        /// 아래 마디의 HingeJoint2D에는 각도 제한(useLimits)을 걸어 RAGDOLL에서도 관절이 사람처럼 한
+        /// 방향으로만 접히게 한다(lowerMinAngle/lowerMaxAngle — MaxJointBendDegrees 문서의 한계 참고).
+        /// </summary>
         private static void CreateLimb(Transform hierarchyParent, Rigidbody2D connectedBody, string name,
-            Vector2 worldSize, Vector3 localPos, Vector2 anchor, Vector2 connectedAnchor, Color color, float mass, float gravityScale,
-            int sortingOrder, int limbLayer, StickmanAgent agent)
+            Vector2 attachLocal, float upperLength, float lowerLength, float width,
+            float upperAngle, float lowerAngle, float lowerMinAngle, float lowerMaxAngle,
+            Color color, float mass, float gravityScale, int sortingOrder, int limbLayer, StickmanAgent agent)
         {
-            var limb = new GameObject(name);
-            limb.transform.SetParent(hierarchyParent, false);
-            limb.transform.localPosition = localPos;
-            limb.transform.localScale = Vector3.one; // 조인트 anchor 계산이 스케일에 영향받지 않도록 유지.
-            limb.layer = limbLayer; // BUG-SW-M1: 루트/머리와 같은 레이어 — 자체충돌은 매트릭스가 끄고, 바닥 등과는 정상 충돌.
+            GameObject upper = CreateLimbSegment(hierarchyParent, connectedBody, name, attachLocal, upperLength,
+                width, upperAngle, useLimits: false, minAngle: 0f, maxAngle: 0f,
+                color, mass, gravityScale, sortingOrder, limbLayer, agent);
 
-            var rb = limb.AddComponent<Rigidbody2D>();
-            rb.bodyType = RigidbodyType2D.Dynamic;
+            // 아래 마디는 위 마디의 자식이고, 그 관절 부착점은 위 마디 로컬 공간의 (0, -upperLength)
+            // (= 무릎/팔꿈치). 위 마디의 Rigidbody2D에 연결한다.
+            CreateLimbSegment(upper.transform, upper.GetComponent<Rigidbody2D>(), name + "Lower",
+                new Vector2(0f, -upperLength), lowerLength, width, lowerAngle,
+                useLimits: true, minAngle: lowerMinAngle, maxAngle: lowerMaxAngle,
+                color, mass, gravityScale, sortingOrder, limbLayer, agent);
+        }
+
+        private static GameObject CreateLimbSegment(Transform hierarchyParent, Rigidbody2D connectedBody, string name,
+            Vector2 attachLocal, float length, float width, float neutralAngleDegrees,
+            bool useLimits, float minAngle, float maxAngle,
+            Color color, float mass, float gravityScale, int sortingOrder, int limbLayer, StickmanAgent agent)
+        {
+            var segment = new GameObject(name);
+            segment.transform.SetParent(hierarchyParent, false);
+            segment.transform.localPosition = new Vector3(attachLocal.x, attachLocal.y, 0f); // 원점 = 관절.
+            segment.transform.localScale = Vector3.one; // 조인트 anchor 계산이 스케일에 영향받지 않도록 유지.
+            // 중립 각도는 여기(초기 localRotation)에만 준다 — LineRenderer는 항상 로컬 -y 방향으로 곧게
+            // 그리고 각도는 오직 회전으로 표현한다. 선을 비스듬히 그린 뒤 회전까지 시키면 각도가 이중으로
+            // 더해져 런타임 포즈와 프리팹 저장 자세가 어긋난다.
+            segment.transform.localRotation = Quaternion.Euler(0f, 0f, neutralAngleDegrees);
+            segment.layer = limbLayer; // BUG-SW-M1: 자체충돌은 레이어 매트릭스가 끄고, 바닥 등과는 정상 충돌.
+
+            var rb = segment.AddComponent<Rigidbody2D>();
+            // 근본 재구현(2026-08-28): 마디의 저장 기본값은 Kinematic이다 — 능동 상태(앱 시작 직후 포함)에서
+            // 팔다리는 물리가 아니라 States/StickmanPoseAnimator.cs가 transform으로 직접 제어하기 때문이다.
+            // RAGDOLL 진입 시에만 RagdollRig가 Dynamic으로 되돌린다. mass/damping/gravityScale은 그 RAGDOLL
+            // 구간에서 그대로 유효하므로 값을 유지한다.
+            rb.bodyType = RigidbodyType2D.Kinematic;
             rb.mass = mass;
             rb.gravityScale = gravityScale;
-            // BUG-SW-M4: 아래 클래스 상수 선언부 주석 참고 — 감쇠 없는 팔다리가 이동 중 피격 RAGDOLL의
-            // 정착 실패 원인이었다.
+            // BUG-SW-M4: 감쇠 없는 팔다리가 이동 중 피격 RAGDOLL의 정착 실패 원인이었다.
             rb.linearDamping = LimbLinearDamping;
             rb.angularDamping = LimbAngularDamping;
 
-            var joint = limb.AddComponent<HingeJoint2D>();
+            var joint = segment.AddComponent<HingeJoint2D>();
             joint.connectedBody = connectedBody;
-            joint.autoConfigureConnectedAnchor = false; // anchor/connectedAnchor를 초기 배치와 정확히 일치하게 수동 고정(자동 재계산으로 인한 예측 불가 오차 방지).
-            joint.anchor = anchor;
-            joint.connectedAnchor = connectedAnchor;
+            joint.autoConfigureConnectedAnchor = false; // 자동 재계산으로 인한 예측 불가 오차 방지.
+            joint.anchor = Vector2.zero;                // 원점이 곧 관절이므로 정확히 (0,0).
+            joint.connectedAnchor = attachLocal;        // 부모 로컬 공간의 같은 지점.
             joint.useMotor = false;
+            if (useLimits)
+            {
+                joint.limits = new JointAngleLimits2D { min = minAngle, max = maxAngle };
+                joint.useLimits = true;
+            }
+            // 능동 모드 기본값: 관절 비활성(RagdollRig가 RAGDOLL에서만 켠다). 마디가 Kinematic이어도
+            // 살아있는 HingeJoint2D는 Dynamic인 쪽을 잡아당겨 절차적 포즈를 미세하게 흔들 수 있으므로
+            // 컴포넌트 자체를 꺼둔다(RagdollRig.cs 클래스 문서 참고).
+            joint.enabled = false;
 
-            // BUG-SW-M1: 팔다리에 실제 Collider2D를 부여한다(이전에는 자체충돌 떨림을 막으려고 아예
-            // 없앴는데, 그 결과 RagdollLimbImpactRelay가 영구히 발동 불가능해지고 바닥과도 충돌할 수
-            // 없어 RAGDOLL이 절대 안착하지 못했다). limb 자신의 원점(anchor 계산 기준)에 그대로
-            // 겹치게 둔다. 물리 판정 크기(worldSize)는 시각 표현(가는 선)과 완전히 독립 — 사용자 요청에
-            // 따라 시각만 얇은 선으로 바꿨을 뿐 이 BUG-SW-M1 튜닝값에는 손대지 않았다.
-            var collider = limb.AddComponent<BoxCollider2D>();
-            collider.size = worldSize;
+            // BUG-SW-M1: 마디에 실제 Collider2D를 부여한다(콜라이더가 없으면 RagdollLimbImpactRelay가
+            // 영구히 발동 불가능해지고 바닥과도 충돌할 수 없어 RAGDOLL이 절대 안착하지 못한다).
+            // 원점이 관절이므로 박스도 그만큼 아래로 옮겨 시각(선)과 물리 형상을 일치시킨다.
+            var collider = segment.AddComponent<BoxCollider2D>();
+            collider.size = new Vector2(width, length);
+            collider.offset = new Vector2(0f, -length * 0.5f);
 
-            // BUG-SW-M1: 사지 피격을 StickmanAgent.ReportExternalImpact()로 중계 — 이전에는 어떤
-            // 프리팹에도 부착되지 않아 죽은 코드였다. Reset()/Awake() 기반 자동 탐색(GetComponentInParent)에
-            // 의존하지 않고, StickmanAgent._config와 동일한 패턴(SerializedObject 직접 대입)으로
-            // 에디터 시점에 확실하게 배선한다 — 에디터 스크립팅 중에는 MonoBehaviour 생명주기 콜백
-            // 실행 시점이 보장되지 않기 때문이다.
-            var relay = limb.AddComponent<RagdollLimbImpactRelay>();
+            // BUG-SW-M1: 사지 피격을 StickmanAgent.ReportExternalImpact()로 중계. Reset()/Awake() 기반
+            // 자동 탐색에 의존하지 않고 SerializedObject 직접 대입으로 에디터 시점에 확실하게 배선한다.
+            var relay = segment.AddComponent<RagdollLimbImpactRelay>();
             var relaySo = new SerializedObject(relay);
             relaySo.FindProperty("_agent").objectReferenceValue = agent;
             relaySo.ApplyModifiedPropertiesWithoutUndo();
 
-            // 사용자 확정 요청 대응(2026-08-28) — "고전적 졸라맨" 시각 스타일(클래스 문서 상단 참고).
-            // limb 자신은 이미 scale=1(위 주석 — 조인트 anchor 계산 때문)이라 LineRenderer를 별도
-            // "Visual" 자식 없이 limb에 직접 붙인다. 로컬 y축을 따라 관절(anchor) 쪽에서 반대쪽 끝
-            // (손/발)까지 얇은 선 하나를 그린다 — anchor=(0, halfLength)가 이미 이 limb의 "위쪽 끝"이므로
-            // 그대로 재사용해 하드코딩 중복 없이 시각과 물리 anchor가 항상 일치하게 한다.
-            float halfLength = worldSize.y * 0.5f;
-            var lr = ConfigureLine(limb, color, sortingOrder, loop: false);
+            // 레퍼런스 스타일의 굵은 검은 획 — 관절(로컬 원점)에서 마디 끝까지. 시작점이 정확히 원점이라
+            // 회전 중심과 선의 시작점이 항상 같고, 둥근 캡(LineCapVertices=8)이 관절에서 자연스럽게
+            // 겹쳐 매끄럽게 이어진다.
+            var lr = ConfigureLine(segment, color, sortingOrder, loop: false);
+            lr.startWidth = width;
+            lr.endWidth = width;
             lr.positionCount = 2;
-            lr.SetPosition(0, new Vector3(0f, halfLength, 0f));
-            lr.SetPosition(1, new Vector3(0f, -halfLength, 0f));
-
-            // 손/발 표현(필수는 아니지만 "졸라맨" 느낌 강화) — limb 끝(관절 반대쪽, 손/발 위치)에
-            // 짧은 가로선을 하나 더 그린다. limb의 자식으로 둬 부모와 함께 물리로 이동/회전한다.
-            CreateEndMark(limb.transform, new Vector3(0f, -halfLength, 0f), color, sortingOrder);
+            lr.SetPosition(0, Vector3.zero);
+            lr.SetPosition(1, new Vector3(0f, -length, 0f));
+            return segment;
         }
 
         /// <summary>

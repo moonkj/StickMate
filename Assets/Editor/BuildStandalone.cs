@@ -34,6 +34,7 @@ namespace StickMate.EditorTools
         public static void PerformBuild()
         {
             ConfigureNativePluginImporter();
+            ConfigureRunInBackground();
 
             string[] scenes = GetEnabledScenePaths();
             if (scenes.Length == 0)
@@ -77,6 +78,26 @@ namespace StickMate.EditorTools
             {
                 Debug.LogError("[BuildStandalone] 빌드 실패(result=" + summary.result + ") — 위 로그의 에러 메시지를 확인하세요.");
             }
+        }
+
+        /// <summary>
+        /// PlayerSettings.runInBackground을 true로 강제한다(2026-08-28, 걷기 애니메이션 검증 라운드 —
+        /// 실측으로 발견한 사고 대응). 왜 필요한가: 이 프로젝트 기본값(Unity 신규 프로젝트 템플릿의
+        /// 기본값)은 false였는데, 이 앱은 클릭관통+항상위 오버레이로 "사용자가 다른 창에서 작업하는
+        /// 동안 배경에서 계속 돌아다니는" 것 자체가 핵심 컨셉이다(CLAUDE.md "비침해" 원칙, 클릭관통
+        /// 기본 ON). runInBackground=false인 채로는 Unity가 자기 자신이 OS 포그라운드(활성) 앱이 아닌
+        /// 순간 게임 루프를 사실상 멈춰버려(Update()가 거의 호출되지 않음), 클릭관통 오버레이의 존재
+        /// 이유와 정면으로 모순된다 — 실측으로 확인: 이 값이 false인 빌드를 실행한 뒤 다른 앱(에디터)에
+        /// 포커스가 가 있는 상태로 100초+ 관찰하니 Walk 상태 진입 후 겨우 ~3초치 걷기 애니메이션 로그만
+        /// 남기고 완전히 멈췄다(Tasklist.md 참고). true로 바꾼 뒤 동일 시나리오 재실측에서 정상적으로
+        /// 계속 갱신됨을 확인했다. 매 빌드마다 멱등적으로 강제 적용해 향후 다른 사람이 Player Settings
+        /// UI에서 실수로 꺼도 다음 빌드에서 자동으로 복구되게 한다.
+        /// </summary>
+        public static void ConfigureRunInBackground()
+        {
+            PlayerSettings.runInBackground = true;
+            Debug.Log("[BuildStandalone] PlayerSettings.runInBackground=true 적용 완료 — 오버레이 앱이 " +
+                "OS 포그라운드가 아니어도(다른 창 사용 중에도) 계속 시뮬레이션되도록 강제.");
         }
 
         private static string[] GetEnabledScenePaths()
