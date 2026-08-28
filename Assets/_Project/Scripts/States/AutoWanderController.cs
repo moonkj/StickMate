@@ -118,11 +118,19 @@ namespace StickMate.States
             ResolvePostIdleBranch();
         }
 
-        /// <summary>26-1: Idle 종료 후 Walk 75% / Idle 연장 20% / 제자리 점프 5%(가중치 랜덤).</summary>
+        /// <summary>
+        /// 26-1: Idle 종료 후 Walk / Idle 연장 / 제자리 점프(가중치 랜덤). 세 갈래의 확률은 전부
+        /// StickConfig가 정하며, 이 메서드에는 하드코딩된 확률이 하나도 없다.
+        ///
+        /// ★ 2026-08-28 사용자 피드백 "이상하게 점프도 하고" 대응 — StickConfig.wanderPostIdleJumpChance의
+        /// 기본값이 0.05 -> 0으로 내려갔다. 즉 기본 상태에서 이 분기는 절대 선택되지 않고, 남은 확률은
+        /// 전부 "Idle 연장"으로 흡수된다(Walk 75% / Idle 연장 25%). 분기 자체를 지우지 않은 이유는
+        /// UX 26-1이 정식으로 설계한 행동이기 때문이다 — 설정값 하나만 되돌리면 그대로 되살아난다.
+        /// </summary>
         private void ResolvePostIdleBranch()
         {
             float walkChance = Cfg(c => c.wanderPostIdleWalkChance, 0.75f);
-            float jumpChance = Cfg(c => c.wanderPostIdleJumpChance, 0.05f);
+            float jumpChance = Cfg(c => c.wanderPostIdleJumpChance, 0f);
 
             double roll = _rng.NextDouble();
             if (roll < walkChance)
@@ -201,7 +209,11 @@ namespace StickMate.States
             {
                 // 화면 자체의 물리적 끝(더 이상 발판이 없음)에서는 점프 확률을 항상 0으로 강제 —
                 // 그렇지 않으면 화면 밖으로 뛰어내리는 결과가 된다(26-2 표 마지막 행).
-                float jumpChance = isTrueScreenEdge ? 0f : Cfg(c => c.wanderEdgeJumpAttemptChance, 0.10f);
+                // ★ 2026-08-28: StickConfig.wanderEdgeJumpAttemptChance의 기본값도 0.10 -> 0이 되어,
+                // 화면 끝이 아닌 발판 경계에서도 기본적으로는 점프하지 않고 항상 아래 90% 분기(정지 후
+                // 반대 방향 전환)로만 간다(사용자 피드백 "이상하게 점프도 하고"). 배회(걷기/서기) 자체는
+                // 그대로다 — 꺼진 것은 점프뿐이다.
+                float jumpChance = isTrueScreenEdge ? 0f : Cfg(c => c.wanderEdgeJumpAttemptChance, 0f);
                 if (jumpChance > 0f && _rng.NextDouble() < jumpChance)
                 {
                     // 10%: 정지 대신 진행 방향을 유지한 채 점프 펄스만 발동("파쿠르 예고" 이스터에그).

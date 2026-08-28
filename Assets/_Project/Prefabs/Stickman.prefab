@@ -203,8 +203,8 @@ Rigidbody2D:
   m_UseFullKinematicContacts: 0
   m_UseAutoMass: 0
   m_Mass: 0.06
-  m_LinearDamping: 0.6
-  m_AngularDamping: 1.5
+  m_LinearDamping: 0.9
+  m_AngularDamping: 3
   m_GravityScale: 3
   m_Material: {fileID: 0}
   m_IncludeLayers:
@@ -241,7 +241,7 @@ HingeJoint2D:
     m_MaximumMotorForce: 10000
   m_UseLimits: 1
   m_AngleLimits:
-    m_LowerAngle: -5
+    m_LowerAngle: 3
     m_UpperAngle: 100
 --- !u!61 &8226885467752470952
 BoxCollider2D:
@@ -621,8 +621,8 @@ Rigidbody2D:
   m_UseFullKinematicContacts: 0
   m_UseAutoMass: 0
   m_Mass: 0.06
-  m_LinearDamping: 0.6
-  m_AngularDamping: 1.5
+  m_LinearDamping: 0.9
+  m_AngularDamping: 3
   m_GravityScale: 3
   m_Material: {fileID: 0}
   m_IncludeLayers:
@@ -659,7 +659,7 @@ HingeJoint2D:
     m_MaximumMotorForce: 10000
   m_UseLimits: 1
   m_AngleLimits:
-    m_LowerAngle: -5
+    m_LowerAngle: 3
     m_UpperAngle: 100
 --- !u!61 &8051777006153594334
 BoxCollider2D:
@@ -885,8 +885,8 @@ Rigidbody2D:
   m_UseFullKinematicContacts: 0
   m_UseAutoMass: 0
   m_Mass: 0.09
-  m_LinearDamping: 0.6
-  m_AngularDamping: 1.5
+  m_LinearDamping: 0.9
+  m_AngularDamping: 3
   m_GravityScale: 3
   m_Material: {fileID: 0}
   m_IncludeLayers:
@@ -924,7 +924,7 @@ HingeJoint2D:
   m_UseLimits: 1
   m_AngleLimits:
     m_LowerAngle: -100
-    m_UpperAngle: 5
+    m_UpperAngle: -3
 --- !u!61 &1925662238389937446
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -1150,8 +1150,8 @@ Rigidbody2D:
   m_UseFullKinematicContacts: 0
   m_UseAutoMass: 0
   m_Mass: 0.06
-  m_LinearDamping: 0.6
-  m_AngularDamping: 1.5
+  m_LinearDamping: 0.9
+  m_AngularDamping: 3
   m_GravityScale: 3
   m_Material: {fileID: 0}
   m_IncludeLayers:
@@ -1186,10 +1186,10 @@ HingeJoint2D:
   m_Motor:
     m_MotorSpeed: 0
     m_MaximumMotorForce: 10000
-  m_UseLimits: 0
+  m_UseLimits: 1
   m_AngleLimits:
-    m_LowerAngle: 0
-    m_UpperAngle: 359
+    m_LowerAngle: -75
+    m_UpperAngle: 75
 --- !u!61 &5346345580061919466
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -1585,8 +1585,8 @@ Rigidbody2D:
   m_UseFullKinematicContacts: 0
   m_UseAutoMass: 0
   m_Mass: 0.09
-  m_LinearDamping: 0.6
-  m_AngularDamping: 1.5
+  m_LinearDamping: 0.9
+  m_AngularDamping: 3
   m_GravityScale: 3
   m_Material: {fileID: 0}
   m_IncludeLayers:
@@ -1621,10 +1621,10 @@ HingeJoint2D:
   m_Motor:
     m_MotorSpeed: 0
     m_MaximumMotorForce: 10000
-  m_UseLimits: 0
+  m_UseLimits: 1
   m_AngleLimits:
-    m_LowerAngle: 0
-    m_UpperAngle: 359
+    m_LowerAngle: -65
+    m_UpperAngle: 65
 --- !u!61 &150948701524576606
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -1858,7 +1858,7 @@ Rigidbody2D:
   m_UseAutoMass: 0
   m_Mass: 1
   m_LinearDamping: 0
-  m_AngularDamping: 0.05
+  m_AngularDamping: 2
   m_GravityScale: 3
   m_Material: {fileID: 0}
   m_IncludeLayers:
@@ -2048,8 +2048,8 @@ Rigidbody2D:
   m_UseFullKinematicContacts: 0
   m_UseAutoMass: 0
   m_Mass: 0.09
-  m_LinearDamping: 0.6
-  m_AngularDamping: 1.5
+  m_LinearDamping: 0.9
+  m_AngularDamping: 3
   m_GravityScale: 3
   m_Material: {fileID: 0}
   m_IncludeLayers:
@@ -2087,7 +2087,7 @@ HingeJoint2D:
   m_UseLimits: 1
   m_AngleLimits:
     m_LowerAngle: -100
-    m_UpperAngle: 5
+    m_UpperAngle: -3
 --- !u!61 &4631851601961363587
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -2384,8 +2384,8 @@ Rigidbody2D:
   m_UseFullKinematicContacts: 0
   m_UseAutoMass: 0
   m_Mass: 0.09
-  m_LinearDamping: 0.6
-  m_AngularDamping: 1.5
+  m_LinearDamping: 0.9
+  m_AngularDamping: 3
   m_GravityScale: 3
   m_Material: {fileID: 0}
   m_IncludeLayers:
@@ -2420,10 +2420,10 @@ HingeJoint2D:
   m_Motor:
     m_MotorSpeed: 0
     m_MaximumMotorForce: 10000
-  m_UseLimits: 0
+  m_UseLimits: 1
   m_AngleLimits:
-    m_LowerAngle: 0
-    m_UpperAngle: 359
+    m_LowerAngle: -65
+    m_UpperAngle: 65
 --- !u!61 &1976863534389389283
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -2649,8 +2649,8 @@ Rigidbody2D:
   m_UseFullKinematicContacts: 0
   m_UseAutoMass: 0
   m_Mass: 0.06
-  m_LinearDamping: 0.6
-  m_AngularDamping: 1.5
+  m_LinearDamping: 0.9
+  m_AngularDamping: 3
   m_GravityScale: 3
   m_Material: {fileID: 0}
   m_IncludeLayers:
@@ -2685,10 +2685,10 @@ HingeJoint2D:
   m_Motor:
     m_MotorSpeed: 0
     m_MaximumMotorForce: 10000
-  m_UseLimits: 0
+  m_UseLimits: 1
   m_AngleLimits:
-    m_LowerAngle: 0
-    m_UpperAngle: 359
+    m_LowerAngle: -75
+    m_UpperAngle: 75
 --- !u!61 &4385783421264920647
 BoxCollider2D:
   m_ObjectHideFlags: 0

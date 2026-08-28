@@ -27,6 +27,16 @@ namespace StickMate.Interaction
         private bool _hasLastCursor;
         private float _stillTimer;
 
+        private void Start()
+        {
+            // 실측 검증용 준비 상태 로그(DragThrowController.[0/6]과 같은 컨벤션) — 사용자 신고
+            // "갑자기 마우스쪽으로 자기혼자 이동"이 다시 보고될 때, 로그 한 줄로 "로데오가 꺼져 있었는지"를
+            // 즉시 확정할 수 있게 한다. 조용한 no-op을 남기지 않는다는 프로젝트 컨벤션 그대로.
+            Debug.Log($"[RodeoCursorWatcher] 준비 완료 — 로데오 커서 자동 발동={( _config != null && _config.rodeoCursorEnabled ? "ON" : "OFF(기본값)")}. " +
+                "OFF면 커서 정지 폴링 자체를 하지 않으므로 캐릭터가 커서로 다가가는 일이 없습니다 " +
+                "(StickConfig.rodeoCursorEnabled를 켜면 UX 13절 원래 동작으로 복원).");
+        }
+
         private void OnEnable()
         {
             StickmanEventBus.StateTransitioned += OnStateTransitioned;
@@ -53,6 +63,19 @@ namespace StickMate.Interaction
         private void Update()
         {
             if (_player == null || _config == null) return;
+
+            // ★ 2026-08-28 사용자 피드백 대응 — 자동 발동 기본 OFF.
+            // 사용자는 이 기능을 "갑자기 마우스쪽으로 자기혼자 이동"하는 **버그**로 인식했고(의도된
+            // 기능이라는 것을 알 수 없었다), 드래그&던지기를 시험할 때마다 끼어들어 테스트를 막았다.
+            // 기능 자체(States/RodeoCursorState.cs, UX 13절)는 그대로 살려두고 **트리거만** 이 한 줄로
+            // 차단한다 — 여기서 되돌아가면 정지 타이머 누적조차 시작되지 않으므로, 켜는 순간 항상
+            // "지금부터 5초"를 새로 채우게 되어(이미 오래 정지해 있었더라도) 즉시 발동하는 부작용도 없다.
+            if (!_config.rodeoCursorEnabled)
+            {
+                _hasLastCursor = false;
+                _stillTimer = 0f;
+                return;
+            }
 
             if (!_player.TryGetCursorPosition(out Vector2 cursorOs))
             {

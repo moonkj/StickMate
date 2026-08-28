@@ -49,11 +49,11 @@ MonoBehaviour:
   wanderTurnCheckInterval: 0.5
   wanderSpontaneousTurnChance: 0.08
   wanderPostIdleWalkChance: 0.75
-  wanderPostIdleJumpChance: 0.05
+  wanderPostIdleJumpChance: 0
   wanderEdgeStopDistance: 0.3
   wanderEdgeTurnPauseMin: 0.3
   wanderEdgeTurnPauseMax: 0.8
-  wanderEdgeJumpAttemptChance: 0.1
+  wanderEdgeJumpAttemptChance: 0
   wanderDurationJitterRatio: 0.175
   wanderLookAroundDelayMin: 1
   wanderLookAroundDelayMax: 2.5
@@ -86,7 +86,8 @@ MonoBehaviour:
   dragThrowVelocitySampleWindowSeconds: 0.12
   dragThrowMaxSpeed: 12
   dragThrowMaxHoldSeconds: 10
-  dragFollowSmoothTime: 0.08
+  dragFollowSmoothTime: 0
+  rodeoCursorEnabled: 0
   rodeoStillRadiusPx: 5
   rodeoStillTriggerSeconds: 5
   rodeoReachDistancePx: 400

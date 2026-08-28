@@ -11,9 +11,18 @@ namespace StickMate.States
     /// Machine.ChangeState(Dragged)를 호출한다 — 이 상태 자신은 그 획득 절차를 전혀 모르고, 진입한
     /// 이상 "지금 드래그 중"이라는 사실만 다룬다(원칙 1: Enter() 호출 자체가 확정 신호).
     ///
-    /// 물리: Enter()에서 Rigidbody2D를 Kinematic으로 전환(질량 개입 없이 위치를 직접 제어) — 커서를
-    /// SmoothDamp로 뒤쫓아 "스프링·댐퍼로 따라오는 관성감"을 낸다(12절, 텔레포트처럼 딱 붙지 않음).
-    /// 최근 dragThrowVelocitySampleWindowSeconds(0.12초) 구간의 위치 이력을 원형 버퍼에 쌓아두었다가,
+    /// 물리: Enter()에서 Rigidbody2D를 Kinematic으로 전환(질량 개입 없이 위치를 직접 제어)하고, 잡은
+    /// 지점(grab offset)을 유지한 채 커서를 따라간다.
+    ///
+    /// ★ 2026-08-28 추종 방식 변경(사용자 피드백 "마우스에 딱 붙어서 끌려가야 하는데 이상하게 끌려감"):
+    /// 기본값이 **즉시 밀착**으로 바뀌었다(StickConfig.dragFollowSmoothTime = 0). 원래 12절은 "몸통은
+    /// 커서를 스프링·댐퍼로 뒤따라오는 관성감(순간 텔레포트처럼 딱 붙지 않음)"을 요구했지만, 실제로
+    /// 만들어 보니 사용자가 이를 "이상하게 끌려간다"고 느꼈다 — 커서로 물건을 끄는 상호작용에서는
+    /// 잡은 지점이 커서에서 눈에 띄게 뒤처지는 것 자체가 고장으로 읽힌다. 그래서 **잡은 지점은 커서에
+    /// 밀착**시키고, 12절이 원한 "대롱대롱 매달린 느낌"은 팔다리 쪽(포즈/관성)에 맡긴다. 스프링 경로는
+    /// 삭제하지 않았고 그 설정값을 0보다 크게 두면 그대로 되살아난다(FollowCursor 문서 참고).
+    ///
+    /// 최근 dragThrowVelocitySampleWindowSeconds(0.12초) 구간의 **커서** 위치 이력을 원형 버퍼에 쌓아두었다가,
     /// 놓는 순간 평균 속도를 계산해 dragThrowMaxSpeed로 clamp한 뒤 Dynamic 복귀 + 그 속도로 던진다 —
     /// clamp가 없으면 "실종 버그"(화면 밖으로 사라져 안 돌아옴)로 이어질 수 있다(12절 명시). 던진 속도
     /// (질량 곱 = 충격량)가 ragdollForceThreshold를 넘으면 RagdollImpactResolver를 통해 즉시 Ragdoll로
@@ -32,6 +41,10 @@ namespace StickMate.States
     {
         // 0.12초 창이면 200fps에서도 24개 표본이면 충분 — 여유 있게 32.
         private const int SampleCapacity = 32;
+
+        // [4/6] 추종 로그 주기(초). 1초는 짧은 드래그 한 번에 한두 줄밖에 안 남아 사용자 테스트 로그로
+        // 판별하기에 표본이 부족했다 — 0.5초로 줄여 같은 드래그에서 두 배의 표본을 남긴다.
+        private const float FollowLogInterval = 0.5f;
 
         private readonly StickmanBlackboard _blackboard;
         private readonly Vector2[] _samplePositions = new Vector2[SampleCapacity];
@@ -121,12 +134,22 @@ namespace StickMate.States
             FollowCursor(cursorWorld, deltaTime);
 
             _followLogTimer += deltaTime;
-            if (_followLogTimer >= 1f)
+            if (_followLogTimer >= FollowLogInterval)
             {
                 _followLogTimer = 0f;
                 Vector2 body = _blackboard.Body != null ? _blackboard.Body.position : Vector2.zero;
+                // ★ "밀착 오차" — 사용자가 실제로 잡은 지점(몸통 - 잡은 오프셋)이 커서에서 얼마나
+                // 떨어져 있는가. 에이전트는 마우스를 조작할 수 없어 드래그 손맛을 직접 검증할 수 없으므로,
+                // 사용자가 테스트할 때 이 한 값만 보면 "딱 붙었는지"를 객관적으로 판별할 수 있게 한다.
+                // 0에 가까울수록 밀착(즉시 추종 경로에서는 소수점 둘째 자리까지 0.00이 정상이다).
+                // 참고: 지면 소프트 클램프(아래 FollowCursor)가 걸리면 커서가 지면 아래로 내려간
+                // 만큼은 의도적으로 오차가 남는다 — 그건 버그가 아니라 "바닥 밑으로는 끌고 가지 않는다"는 규칙이다.
+                Vector2 grabbedPointWorld = body - _grabOffset;
+                float stickError = Vector2.Distance(grabbedPointWorld, cursorWorld);
                 Debug.Log($"[DragThrowState] [4/6] 드래그 추종 중 — 커서 월드={cursorWorld.ToString("F2")}, " +
+                    $"잡은 지점={grabbedPointWorld.ToString("F2")}, **밀착 오차={stickError:F3}유닛**, " +
                     $"몸통={body.ToString("F2")}, 목표(커서+오프셋)={(cursorWorld + _grabOffset).ToString("F2")}, " +
+                    $"추종 스무딩={( _blackboard.Config != null ? _blackboard.Config.dragFollowSmoothTime : 0f):F3}초, " +
                     $"홀드 {_holdTimer:F1}초, 물리모드={_blackboard.Body?.bodyType}.");
             }
         }
@@ -173,10 +196,36 @@ namespace StickMate.States
             return offset;
         }
 
+        /// <summary>
+        /// ★ 2026-08-28 사용자 피드백 대응 — "마우스로 끌고가면 마우스에 딱 붙어서 끌려가야 하는데
+        /// 이상하게 끌려감".
+        ///
+        /// 무엇이 문제였나(두 겹의 지연이 겹쳐 있었다):
+        ///   (1) SmoothDamp(0.08초) — 목표까지의 오차를 지수적으로 줄이는 스프링이라 **원리상 목표에
+        ///       도달하지 않는다**. 커서를 일정 속도로 끌면 캐릭터는 항상 `속도 × 0.08초`만큼 뒤에
+        ///       끌려간다(예: 5유닛/초로 끌면 0.4유닛 = 몸통 높이의 약 1/5). 사용자가 "흐물흐물"로
+        ///       느낀 것의 주범.
+        ///   (2) Rigidbody2D.MovePosition() — Kinematic 바디에서 이 호출은 "다음 물리 스텝까지
+        ///       이동하라"는 예약이다. 이 Tick()은 Update()(프레임)에서 도는데 물리는 FixedUpdate
+        ///       주기라, 매 프레임 목표를 갱신해도 실제 반영은 항상 한 물리 스텝 뒤다.
+        ///
+        /// 어떻게 고쳤나: dragFollowSmoothTime이 0 이하(현재 기본값)면 스프링을 **완전히 건너뛰고**
+        /// 목표 위치를 그 프레임에 즉시 대입한다. Rigidbody2D.position(물리 바디)과 Transform(렌더링)
+        /// 양쪽에 모두 써서 (2)의 한 스텝 지연까지 없앤다 — 물리 바디만 갱신하면 다음 물리 스텝 전까지
+        /// 화면상 위치가 그대로라 눈에는 여전히 뒤처져 보인다. 드래그 중 루트는 Kinematic이므로 이
+        /// 순간이동은 물리적으로도 합법이며(질량/충돌 반작용 개입 없음), 이것이 곧 12절이 요구하는
+        /// "커서에 잡힌 물건" 그 자체다.
+        ///
+        /// 값을 0보다 크게 두면 예전 스프링·댐퍼 경로가 그대로 되살아난다(두 경로를 모두 유지).
+        ///
+        /// **던지기 속도와는 완전히 별개다** — ComputeThrowVelocity()는 몸통 위치를 한 번도 읽지 않고
+        /// PushSample()이 쌓은 **커서 좌표 이력**(0.12초 창)만 평균한다. 즉 추종을 아무리 즉각적으로
+        /// 만들어도 던지는 손맛(12절의 손떨림 방지 스무딩 포함)은 수치 하나 바뀌지 않는다.
+        /// </summary>
         private void FollowCursor(Vector2 target, float deltaTime)
         {
             if (_blackboard.Body == null) return;
-            float smoothTime = _blackboard.Config != null ? _blackboard.Config.dragFollowSmoothTime : 0.08f;
+            float smoothTime = _blackboard.Config != null ? _blackboard.Config.dragFollowSmoothTime : 0f;
             Vector2 current = _blackboard.Body.position;
             // 잡은 지점이 커서에 붙어 있는 것처럼 보이도록 오프셋을 유지한 채 따라간다(CaptureGrabOffset 참고).
             Vector2 desired = target + _grabOffset;
@@ -191,8 +240,32 @@ namespace StickMate.States
                 desired.y = surfaceY;
             }
 
-            Vector2 next = Vector2.SmoothDamp(current, desired, ref _followVelocityRef, Mathf.Max(0.001f, smoothTime), Mathf.Infinity, deltaTime);
+            if (smoothTime <= 0f)
+            {
+                // 즉시 밀착 경로(기본값).
+                _followVelocityRef = Vector2.zero; // 나중에 스무딩을 다시 켜도 낡은 속도에서 튀지 않도록.
+                SetBodyPositionImmediate(desired);
+                return;
+            }
+
+            Vector2 next = Vector2.SmoothDamp(current, desired, ref _followVelocityRef, smoothTime, Mathf.Infinity, deltaTime);
             _blackboard.Body.MovePosition(next);
+        }
+
+        /// <summary>
+        /// 물리 바디와 Transform을 같은 좌표로 동시에 맞춘다(FollowCursor 문서 (2) 참고).
+        /// Physics2D.autoSyncTransforms가 꺼져 있는 기본 설정에서는 둘 중 하나만 써도 나머지 하나가
+        /// 다음 물리 스텝까지 낡은 값을 들고 있으므로, "화면에 보이는 위치"와 "물리가 아는 위치"가
+        /// 프레임마다 어긋난다. 드래그 중에는 이 어긋남이 곧 사용자가 체감하는 지연이다.
+        /// </summary>
+        private void SetBodyPositionImmediate(Vector2 position)
+        {
+            Rigidbody2D body = _blackboard.Body;
+            if (body == null) return;
+            body.position = position;                       // 물리 바디(놓는 순간 Dynamic 복귀 기준점).
+            Transform t = body.transform;
+            Vector3 local = t.position;
+            t.position = new Vector3(position.x, position.y, local.z); // 렌더링(이번 프레임에 바로 반영).
         }
 
         private void PushSample(Vector2 pos)

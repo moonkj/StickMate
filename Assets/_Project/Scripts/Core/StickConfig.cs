@@ -203,8 +203,11 @@ namespace StickMate.Core
         [Tooltip("Idle 종료 후 Walk로 전이할 확률(0~1). 26-1.")]
         public float wanderPostIdleWalkChance = 0.75f;
 
-        [Tooltip("Idle 종료 후 제자리 점프를 할 확률(0~1). 나머지(1 - Walk확률 - 이 값)는 Idle 연장. 26-1.")]
-        public float wanderPostIdleJumpChance = 0.05f;
+        [Tooltip("Idle 종료 후 제자리 점프를 할 확률(0~1). 나머지(1 - Walk확률 - 이 값)는 Idle 연장. 26-1.\n" +
+                 "★ 기본값 0 = 무작위 점프 비활성(2026-08-28 사용자 피드백 \"이상하게 점프도 하고\" 대응). " +
+                 "UX 26-1의 5% 스펙 자체는 폐기하지 않고 이 값만 0으로 내린 것이므로, 되살리려면 이 필드를 " +
+                 "0.05로 되돌리면 원래 동작이 그대로 복원된다(States/AutoWanderController.cs 로직 무수정).")]
+        public float wanderPostIdleJumpChance = 0f;
 
         [Tooltip("진행 방향 앞쪽, 지금 딛고 있는 발판의 잔여 길이가 이 값(유닛) 이하이면 경계 도달로 판정. 26-2.")]
         public float wanderEdgeStopDistance = 0.3f;
@@ -216,8 +219,10 @@ namespace StickMate.Core
         public float wanderEdgeTurnPauseMax = 0.8f;
 
         [Tooltip("경계 도달 시 정지 대신 진행 방향을 유지한 채 점프를 시도할 확률(0~1). 화면 자체의 물리적 " +
-                 "끝(더 이상 발판이 없음)에서는 이 확률과 무관하게 항상 0으로 강제된다(화면 밖 낙하 방지). 26-2.")]
-        public float wanderEdgeJumpAttemptChance = 0.10f;
+                 "끝(더 이상 발판이 없음)에서는 이 확률과 무관하게 항상 0으로 강제된다(화면 밖 낙하 방지). 26-2.\n" +
+                 "★ 기본값 0 = 발판 경계 점프 비활성(위 wanderPostIdleJumpChance와 같은 사용자 피드백 대응). " +
+                 "되살리려면 0.10으로 되돌리면 된다 — 그러면 26-2의 '90% 정지 / 10% 점프' 분기가 그대로 복원된다.")]
+        public float wanderEdgeJumpAttemptChance = 0f;
 
         [Tooltip("Idle/Walk 지속시간·경계 정지 대기시간에 곱해지는 지터 비율(±). 예: 0.175 = ±17.5%. 26-3.")]
         public float wanderDurationJitterRatio = 0.175f;
@@ -322,11 +327,25 @@ namespace StickMate.Core
         [Tooltip("마우스다운 상태로 이만큼(초) 유지되면 자동으로 놓임(release) 처리된다.")]
         public float dragThrowMaxHoldSeconds = 10f;
 
-        [Tooltip("드래그 중 캐릭터가 커서를 뒤쫓는 스프링·댐퍼 추종의 SmoothDamp 시간 상수(초). 작을수록 " +
-                 "커서에 더 즉각적으로 달라붙는다.")]
-        public float dragFollowSmoothTime = 0.08f;
+        [Tooltip("드래그 중 캐릭터가 커서를 뒤쫓는 SmoothDamp 시간 상수(초). 작을수록 커서에 더 즉각적으로 " +
+                 "달라붙는다.\n" +
+                 "★ 0 = 스무딩 없이 잡은 지점이 커서에 즉시 밀착(2026-08-28 사용자 피드백 \"마우스에 딱 붙어서 " +
+                 "끌려가야 하는데 이상하게 끌려감\" 대응, 현재 기본값). 0보다 크면 예전처럼 스프링·댐퍼 관성 " +
+                 "추종이 되살아난다 — 값만 바꾸면 되고 로직은 두 경로를 모두 갖고 있다.\n" +
+                 "이 값은 '위치 추종'에만 관여한다. 놓을 때의 던지기 속도는 아래 " +
+                 "dragThrowVelocitySampleWindowSeconds 구간의 **커서 이동 이력**으로만 계산되므로 이 값을 " +
+                 "0으로 둬도 던지기 손맛은 전혀 변하지 않는다(States/DragThrowState.cs 참고).")]
+        public float dragFollowSmoothTime = 0f;
 
         [Header("로데오 커서 (docs/UX_FLOW.md 13절, Phase 3)")]
+        [Tooltip("로데오 커서(마우스가 일정 시간 멈추면 캐릭터가 커서로 다가가 올라타는 UX 13절 기능) " +
+                 "자동 발동 스위치.\n" +
+                 "★ 기본값 OFF(2026-08-28 사용자 피드백 \"갑자기 마우스쪽으로 자기혼자 이동\" 대응 — 의도된 " +
+                 "기능인 줄 모르고 버그로 인식했고, 드래그&던지기 테스트를 계속 방해했다). 기능/상태 " +
+                 "(States/RodeoCursorState.cs)는 그대로 살아 있고 감시자(Interaction/RodeoCursorWatcher.cs)가 " +
+                 "이 값만 확인해 폴링을 건너뛴다 — 이 값을 true(에셋에서 1)로 바꾸면 즉시 원래대로 발동한다.")]
+        public bool rodeoCursorEnabled = false;
+
         [Tooltip("커서가 '정지'로 간주되는 이동 반경(OS 화면 픽셀). 이 반경 안의 흔들림은 무시.")]
         public float rodeoStillRadiusPx = 5f;
 

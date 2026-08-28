@@ -1,3 +1,4 @@
+using System.Text;
 using UnityEngine;
 
 namespace StickMate.States
@@ -49,10 +50,24 @@ namespace StickMate.States
         // RAGDOLL 진입 시 각속도를 한 번 깎는 비율(BUG-SW-M4, 아래 EnterRagdoll 참고).
         private const float AngularVelocityDampenOnEntry = 0.5f;
 
+        // 관절 각도 부호 규약을 실측으로 판정할 때(DetectJointAngleSign) 표본으로 쓸 수 있는 최소 진입
+        // 각도(도). 이보다 작으면 referenceAngle도 0 근처라 부호를 신뢰할 수 없어 건너뛴다.
+        private const float MinAngleForSignDetectionDegrees = 2f;
+
         private readonly Rigidbody2D _root;
         private readonly Rigidbody2D[] _bodies;      // 루트 포함 전신(GetMaxSpeed용).
         private readonly Rigidbody2D[] _limbBodies;  // 루트 제외 — 모드에 따라 bodyType이 바뀌는 대상.
         private readonly HingeJoint2D[] _joints;
+
+        // 프리팹에 저장된 **해부학 기준** 관절 제한(마디를 완전히 편 상태 = localRotation 0도가 기준).
+        // 런타임에 joint.limits를 덮어쓰기 때문에 반드시 생성 시점(=아직 한 번도 덮어쓰지 않은 시점)에
+        // 원본을 복사해둬야 한다 — 이후에는 이 배열만 진실로 취급한다.
+        private readonly JointAngleLimits2D[] _anatomicalLimits;
+        private readonly bool[] _jointUsesLimits;
+
+        // RAGDOLL 진입(관절 enable) 시점의 마디 상대 각도와, 그때 Unity가 잡은 referenceAngle.
+        private readonly float[] _entryLocalAngles;
+        private readonly float[] _entryReferenceAngles;
 
         private bool _modeInitialized;
         private bool _isRagdollMode;
@@ -79,6 +94,17 @@ namespace StickMate.States
                 limbs.Add(_bodies[i]);
             }
             _limbBodies = limbs.ToArray();
+
+            _anatomicalLimits = new JointAngleLimits2D[_joints.Length];
+            _jointUsesLimits = new bool[_joints.Length];
+            _entryLocalAngles = new float[_joints.Length];
+            _entryReferenceAngles = new float[_joints.Length];
+            for (int i = 0; i < _joints.Length; i++)
+            {
+                if (_joints[i] == null) continue;
+                _anatomicalLimits[i] = _joints[i].limits;
+                _jointUsesLimits[i] = _joints[i].useLimits;
+            }
         }
 
         /// <summary>
@@ -190,13 +216,110 @@ namespace StickMate.States
             // 순서 중요: 팔다리가 Dynamic이 된 뒤에 관절을 켠다(Kinematic 상태로 켜면 관절이 루트만
             // 잡아당긴다). StickmanPoseAnimator가 항상 구속식을 만족하는 위치에 팔다리를 두고 있어
             // 이 시점에 위치 오차로 인한 튕김은 발생하지 않는다.
+            EnableJointsWithAnatomicalLimits();
+            return true;
+        }
+
+        /// <summary>
+        /// ★ 2026-08-28 — 이월 과제 해소: "RAGDOLL 중 팔꿈치가 관절 제한을 순간 초과하는 현상 —
+        /// HingeJoint2D 제한이 enable 시점 자세 기준으로 재해석됨"(Tasklist.md).
+        ///
+        /// 무엇이 문제였나: HingeJoint2D의 각도 제한은 **절대 각도가 아니라 jointAngle에 대한 제한**이고,
+        /// jointAngle은 "관절이 만들어진 순간의 상대 각도(referenceAngle)로부터 얼마나 돌아갔는가"다.
+        /// 이 프로젝트는 능동 모드에서 관절을 통째로 disable하고 RAGDOLL에서 다시 enable하므로, 관절은
+        /// **매 RAGDOLL 진입마다 새로 만들어지고 그때의 포즈가 referenceAngle로 굳는다.** 그래서 프리팹에
+        /// 적어둔 제한(예: 팔꿈치 +3~+100)이 진입 포즈만큼 통째로 밀려 해석됐고, 실측에서 팔꿈치가
+        /// -59도(= 반대로 꺾임)까지 가는 것이 관찰됐다.
+        ///
+        /// 어떻게 고쳤나: 관절을 켠 직후 Unity가 확정한 referenceAngle을 읽어, 프리팹의 해부학 기준
+        /// 제한을 그 좌표계로 **다시 환산해** 넣는다. 진입 포즈가 무엇이든 최종 허용 범위는 항상 같은
+        /// 해부학적 구간이 된다(무릎은 늘 뒤로만, 팔꿈치는 늘 앞으로만, 둘 다 완전한 일직선 금지).
+        ///
+        /// 부호 규약을 하드코딩하지 않는 이유: jointAngle이 "자기 바디 - 연결 바디"인지 그 반대인지는
+        /// Unity 내부 구현에 달려 있어 문서만으로 확정할 수 없다. 대신 진입 시점에 이미 알고 있는 값
+        /// (마디의 localRotation)과 Unity가 답한 referenceAngle의 **부호를 비교**해 규약을 실측 판정한다
+        /// (DetectJointAngleSign). 판정이 틀릴 여지를 남기지 않으면서, 엔진 버전이 바뀌어도 자동으로 따라간다.
+        /// </summary>
+        private void EnableJointsWithAnatomicalLimits()
+        {
+            // 1차 패스: 진입 자세를 먼저 기록하고 관절을 켠 뒤, Unity가 확정한 referenceAngle을 수집한다.
+            for (int i = 0; i < _joints.Length; i++)
+            {
+                HingeJoint2D joint = _joints[i];
+                if (joint == null) continue;
+                _entryLocalAngles[i] = Mathf.DeltaAngle(0f, joint.transform.localEulerAngles.z);
+                joint.useMotor = false;
+                joint.enabled = true;
+                _entryReferenceAngles[i] = Mathf.DeltaAngle(0f, joint.referenceAngle);
+            }
+
+            float sign = DetectJointAngleSign();
+
+            // 2차 패스: 해부학 기준 제한을 이번 진입의 jointAngle 좌표계로 환산해 적용한다.
+            //   sign = +1 : jointAngle = (각도 - 진입각)        -> [aMin - 진입각, aMax - 진입각]
+            //   sign = -1 : jointAngle = -(각도 - 진입각)       -> [진입각 - aMax, 진입각 - aMin]
+            for (int i = 0; i < _joints.Length; i++)
+            {
+                HingeJoint2D joint = _joints[i];
+                if (joint == null || !_jointUsesLimits[i]) continue;
+
+                JointAngleLimits2D anatomical = _anatomicalLimits[i];
+                float entry = _entryLocalAngles[i];
+                joint.limits = sign >= 0f
+                    ? new JointAngleLimits2D { min = anatomical.min - entry, max = anatomical.max - entry }
+                    : new JointAngleLimits2D { min = entry - anatomical.max, max = entry - anatomical.min };
+                joint.useLimits = true;
+            }
+
+            LogJointLimitDiagnostics(sign);
+        }
+
+        /// <summary>
+        /// jointAngle이 마디의 localRotation과 같은 방향으로 증가하는지(+1) 반대인지(-1)를 실측 판정한다.
+        /// 관절이 방금 만들어졌으므로 referenceAngle = (부호) x (진입 시 상대 각도)이고, 진입 각도는
+        /// 우리가 이미 알고 있다 — 두 값의 부호만 비교하면 규약이 나온다(크기는 쓰지 않으므로 엔진이
+        /// 도/라디안 중 무엇으로 답하든 무관). 규약은 엔진 전역이라 표본 하나로 충분하지만, 각도가 작은
+        /// 관절은 오차에 취약하므로 **진입 각도의 절댓값이 가장 큰 관절**을 표본으로 고른다(어깨 40도).
+        /// 쓸 만한 표본이 하나도 없으면(전신이 정확히 일직선인 이론상의 경우) +1로 둔다 — 그 경우
+        /// 진입각이 0이라 두 공식의 결과 차이도 좌우 대칭 구간에서는 사라진다.
+        /// </summary>
+        private float DetectJointAngleSign()
+        {
+            float bestAbsAngle = 0f;
+            float sign = 1f;
             for (int i = 0; i < _joints.Length; i++)
             {
                 if (_joints[i] == null) continue;
-                _joints[i].useMotor = false;
-                _joints[i].enabled = true;
+                float entry = _entryLocalAngles[i];
+                float reference = _entryReferenceAngles[i];
+                if (Mathf.Abs(entry) < MinAngleForSignDetectionDegrees) continue;
+                if (Mathf.Abs(reference) < 0.0001f) continue;
+                if (Mathf.Abs(entry) <= bestAbsAngle) continue;
+
+                bestAbsAngle = Mathf.Abs(entry);
+                sign = reference * entry >= 0f ? 1f : -1f;
             }
-            return true;
+            return sign;
+        }
+
+        /// <summary>
+        /// RAGDOLL 진입마다 1회(모드 전환 시에만 호출되므로 에피소드당 한 줄) 관절 제한 환산 결과를 남긴다.
+        /// 에이전트는 마우스를 조작해 캐릭터를 던져볼 수 없으므로, 랙돌 자세가 다시 이상해졌다는 신고가
+        /// 오면 이 한 줄로 "제한이 실제로 해부학 기준으로 적용됐는지"를 로그만으로 확정할 수 있어야 한다.
+        /// </summary>
+        private void LogJointLimitDiagnostics(float sign)
+        {
+            var sb = new StringBuilder();
+            sb.Append("[RagdollRig] RAGDOLL 관절 제한 적용 — jointAngle 부호 규약=").Append(sign >= 0f ? "+1(로컬각과 동일)" : "-1(로컬각과 반대)");
+            for (int i = 0; i < _joints.Length; i++)
+            {
+                if (_joints[i] == null || !_jointUsesLimits[i]) continue;
+                sb.Append(" | ").Append(_joints[i].name)
+                  .Append(": 진입각 ").Append(_entryLocalAngles[i].ToString("F1"))
+                  .Append("도, 해부학 [").Append(_anatomicalLimits[i].min.ToString("F0")).Append(",").Append(_anatomicalLimits[i].max.ToString("F0"))
+                  .Append("] -> 적용 [").Append(_joints[i].limits.min.ToString("F0")).Append(",").Append(_joints[i].limits.max.ToString("F0")).Append("]");
+            }
+            Debug.Log(sb.ToString());
         }
 
         /// <summary>

@@ -151,14 +151,42 @@ namespace StickMate.EditorTools
         private const float KneeBendSign = -1f;
         private const float ElbowBendSign = 1f;
 
-        // RAGDOLL에서 무릎/팔꿈치 HingeJoint2D에 거는 각도 제한. 접히는 쪽으로는 이만큼까지 허용하고,
-        // 반대(과신전) 쪽으로는 아주 약간의 여유만 준다 — 물리로 넘어간 뒤에도 관절이 사람처럼
-        // 한 방향으로만 접히게 하기 위해서다. 능동 상태에서는 관절 자체가 비활성이라 무관하다.
-        // [정직한 한계] HingeJoint2D의 각도 제한은 관절이 enable될 때의 상대 자세를 기준으로 해석되므로,
-        // RAGDOLL 진입 시점의 포즈가 기준이 된다(항상 해부학적 0도가 기준인 것은 아니다). 그래도 진입
-        // 자세에서 크게 벗어나는 과신전은 확실히 막힌다.
+        // ================================================================================
+        // RAGDOLL 관절 각도 제한 (2026-08-28 사용자 피드백 "떨어지면 이상하게 넘어짐" 대응)
+        // ================================================================================
+        // 사용자 스크린샷의 문제는 "누워 있는 것" 자체가 아니라 **팔다리가 사람이라면 불가능한 모양으로
+        // 쭉 뻗어 있는 것**이었다(수평으로 일직선, 불가사리 같은 형태). 원인은 두 가지였다:
+        //
+        //   (1) 위 마디(대퇴/상완)에는 각도 제한이 **아예 없었다**(useLimits: false). 즉 RAGDOLL에서
+        //       다리/팔이 고관절·어깨를 축으로 360도 자유 회전할 수 있었고, 그래서 몸통에 대해 완전히
+        //       수직으로 뻗은 "대(大)자" 자세가 물리적으로 허용됐다.
+        //   (2) 아래 마디(정강이/전완)의 제한이 "완전히 편 상태(0도)를 포함"하고 있었다
+        //       (예전 팔꿈치 -5~+100). 사람의 무릎/팔꿈치는 힘이 빠져 늘어져 있어도 완전한 일직선이
+        //       되지 않는다 — 0을 포함하니 막대기처럼 곧게 뻗은 그림이 나왔다.
+        //
+        // 그래서 (1) 위 마디에도 제한을 걸고, (2) 아래 마디의 제한 구간에서 0도를 **제외**한다
+        // (항상 MinJointBendDegrees 이상 굽어 있음). 능동 상태에서는 관절 자체가 비활성이라 무관하며,
+        // 여기 값들은 오직 RAGDOLL 구간의 모양만 결정한다.
+        //
+        // [이전 라운드의 '정직한 한계'는 이번에 해소했다] HingeJoint2D의 각도 제한은 관절이 enable될
+        // 때의 상대 자세(referenceAngle)를 기준으로 재해석되므로, 여기 적힌 값을 그대로 두면 RAGDOLL
+        // 진입 포즈에 따라 허용 범위가 통째로 밀린다(실측: 팔꿈치가 제한 -5~+100을 넘어 -59도까지 감).
+        // 이제 States/RagdollRig.cs가 **관절을 켜는 순간** referenceAngle을 읽어 이 값들을 해부학적
+        // 기준(= 마디의 localRotation 0도)으로 다시 환산해 넣는다. 즉 여기 숫자는 "마디를 완전히 편
+        // 상태를 0도로 봤을 때의 허용 각도"라는 하나의 뜻만 갖는다.
         private const float MaxJointBendDegrees = 100f;
-        private const float JointHyperExtendMarginDegrees = 5f;
+
+        // 무릎/팔꿈치가 최소한 이만큼은 항상 굽어 있게 한다(완전한 일직선 금지). 중립(Idle) 굽힘각
+        // (무릎 4도 / 팔꿈치 10도)보다 반드시 작아야 한다 — 그렇지 않으면 서 있는 자세 자체가 제한
+        // 밖이라 RAGDOLL에 들어가는 순간 관절이 튄다.
+        private const float MinJointBendDegrees = 3f;
+
+        // 고관절/어깨의 스윙 허용 범위(중립 0도 = 마디가 몸통 축과 나란한 상태 기준, ±).
+        // 하한 조건: 보행 키포즈의 최대 각도(엉덩이 ±25도, 어깨 ±18도)와 Idle 벌림(다리 12도, 팔 40도)을
+        // 모두 포함해야 한다 — 능동 포즈가 제한 밖이면 RAGDOLL 진입 프레임에 팔다리가 튄다.
+        // 상한 조건: 90도(몸통에 완전히 수직)를 넘기지 않아야 "대자로 뻗은" 실루엣이 막힌다.
+        private const float HipSwingLimitDegrees = 65f;
+        private const float ShoulderSwingLimitDegrees = 75f;
 
         /// <summary>
         /// 중립 자세에서 엉덩이부터 발끝까지의 수직 낙차. 대퇴는 hipAngle, 정강이는 hipAngle+무릎각의
@@ -378,6 +406,9 @@ namespace StickMate.EditorTools
             // RagdollRig.EnterRagdoll()이 런타임에 이 비트를 푼다. 프리팹 저장값 자체를 능동 모드
             // 기본값으로 둬서, 씬 로드 직후 첫 물리 스텝부터 절대 넘어지지 않게 한다.
             rb.constraints = RigidbodyConstraints2D.FreezeRotation;
+            // RAGDOLL 전용 회전 감쇠(RootAngularDamping 문서 참고 — 능동 상태에서는 회전 자체가 잠겨 있어
+            // 이 값이 개입할 여지가 없다).
+            rb.angularDamping = RootAngularDamping;
 
             var capsule = root.AddComponent<CapsuleCollider2D>();
             capsule.direction = CapsuleDirection2D.Vertical;
@@ -542,25 +573,31 @@ namespace StickMate.EditorTools
             // 중립 벌림/굽힘 각도는 LineRenderer를 비스듬히 그려서가 아니라 **transform.localRotation
             // 초기값**으로 준다 — 그래야 States/StickmanPoseAnimator.cs가 각도를 세팅할 때 이중으로
             // 더해지지 않는다.
+            // 무릎은 뒤로만(KneeBendSign=-1) 접히므로 허용 구간이 [-100, -3], 팔꿈치는 앞으로만
+            // (ElbowBendSign=+1) 접히므로 [+3, +100] — 두 구간 모두 0(완전히 편 상태)을 포함하지 않는다.
             CreateLimb(root.transform, rb, "LeftLeg", attachLocal: new Vector2(0f, hipY),
                 upperLength: LegUpperLength, lowerLength: LegLowerLength, width: LegLineWidth,
                 upperAngle: -IdleLegSpreadDegrees, lowerAngle: KneeBendSign * IdleKneeBendDegrees,
-                lowerMinAngle: -MaxJointBendDegrees, lowerMaxAngle: JointHyperExtendMarginDegrees,
+                upperMinAngle: -HipSwingLimitDegrees, upperMaxAngle: HipSwingLimitDegrees,
+                lowerMinAngle: -MaxJointBendDegrees, lowerMaxAngle: KneeBendSign * MinJointBendDegrees,
                 outline, mass: 0.09f, gravityScale: gravityScale, sortingOrder: 0, limbLayer: limbLayer, agent: agent);
             CreateLimb(root.transform, rb, "RightLeg", attachLocal: new Vector2(0f, hipY),
                 upperLength: LegUpperLength, lowerLength: LegLowerLength, width: LegLineWidth,
                 upperAngle: IdleLegSpreadDegrees, lowerAngle: KneeBendSign * IdleKneeBendDegrees,
-                lowerMinAngle: -MaxJointBendDegrees, lowerMaxAngle: JointHyperExtendMarginDegrees,
+                upperMinAngle: -HipSwingLimitDegrees, upperMaxAngle: HipSwingLimitDegrees,
+                lowerMinAngle: -MaxJointBendDegrees, lowerMaxAngle: KneeBendSign * MinJointBendDegrees,
                 outline, mass: 0.09f, gravityScale: gravityScale, sortingOrder: 0, limbLayer: limbLayer, agent: agent);
             CreateLimb(root.transform, rb, "LeftArm", attachLocal: new Vector2(0f, shoulderY),
                 upperLength: ArmUpperLength, lowerLength: ArmLowerLength, width: ArmLineWidth,
                 upperAngle: -IdleArmSpreadDegrees, lowerAngle: ElbowBendSign * IdleElbowBendDegrees,
-                lowerMinAngle: -JointHyperExtendMarginDegrees, lowerMaxAngle: MaxJointBendDegrees,
+                upperMinAngle: -ShoulderSwingLimitDegrees, upperMaxAngle: ShoulderSwingLimitDegrees,
+                lowerMinAngle: ElbowBendSign * MinJointBendDegrees, lowerMaxAngle: MaxJointBendDegrees,
                 outline, mass: 0.06f, gravityScale: gravityScale, sortingOrder: 2, limbLayer: limbLayer, agent: agent);
             CreateLimb(root.transform, rb, "RightArm", attachLocal: new Vector2(0f, shoulderY),
                 upperLength: ArmUpperLength, lowerLength: ArmLowerLength, width: ArmLineWidth,
                 upperAngle: IdleArmSpreadDegrees, lowerAngle: ElbowBendSign * IdleElbowBendDegrees,
-                lowerMinAngle: -JointHyperExtendMarginDegrees, lowerMaxAngle: MaxJointBendDegrees,
+                upperMinAngle: -ShoulderSwingLimitDegrees, upperMaxAngle: ShoulderSwingLimitDegrees,
+                lowerMinAngle: ElbowBendSign * MinJointBendDegrees, lowerMaxAngle: MaxJointBendDegrees,
                 outline, mass: 0.06f, gravityScale: gravityScale, sortingOrder: 2, limbLayer: limbLayer, agent: agent);
 
             GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, PrefabAssetPath, out bool success);
@@ -681,8 +718,19 @@ namespace StickMate.EditorTools
         // "이동 중 피격도 안정적으로 정착"과 "너무 뻣뻣해 보이지 않음(순간 정지처럼 안 보임)" 사이의
         // 균형을 잡아 선정했다 — 너무 크면 랙돌이 마치 진흙 속에 있는 것처럼 즉시 멈춰버리고, 너무
         // 작으면 이번 버그가 재발한다.
-        private const float LimbLinearDamping = 0.6f;
-        private const float LimbAngularDamping = 1.5f;
+        //
+        // ★ 2026-08-28 상향(0.6/1.5 -> 0.9/3.0, 사용자 피드백 "떨어지면 이상하게 넘어짐"): 관절 제한을
+        // 조여도 감쇠가 약하면 팔다리가 제한 경계에서 오래 튕기며 파닥거려 "축 늘어진" 느낌 대신
+        // "경련하는" 느낌이 난다. 두 값 모두 **RAGDOLL 구간에만** 유효하다는 점이 이 상향을 안전하게
+        // 만든다 — 능동 상태에서 팔다리는 Kinematic이라 damping이 물리적으로 적용될 대상이 없다.
+        private const float LimbLinearDamping = 0.9f;
+        private const float LimbAngularDamping = 3f;
+
+        // 루트(몸통)의 각(회전) 감쇠. 능동 상태에서는 루트 회전이 FreezeRotation으로 완전히 잠겨 있으므로
+        // (States/RagdollRig.EnterActiveMode) 이 값 역시 **RAGDOLL 구간에서만** 의미를 갖는다 —
+        // 걷기/점프/낙하 거동에는 영향이 없다(선형 damping은 그런 보장이 없어 0 그대로 둔다).
+        // 몸통이 바닥에서 팽이처럼 계속 구르지 않고 몇 번 뒤척인 뒤 멈추게 하는 것이 목적이다.
+        private const float RootAngularDamping = 2f;
 
         /// <summary>
         /// 더미 발판(Platform/NullPlatformWindowService.cs)의 상단 가장자리가 대응하는 월드 Y를,
@@ -993,16 +1041,19 @@ namespace StickMate.EditorTools
         /// 사라지고, 물리 anchor도 (0,0)으로 단순해진다 — 시각/물리/회전축이 전부 하나의 값에서
         /// 파생되므로 서로 어긋나는 것 자체가 불가능하다.
         ///
-        /// 아래 마디의 HingeJoint2D에는 각도 제한(useLimits)을 걸어 RAGDOLL에서도 관절이 사람처럼 한
-        /// 방향으로만 접히게 한다(lowerMinAngle/lowerMaxAngle — MaxJointBendDegrees 문서의 한계 참고).
+        /// **두 마디 모두** HingeJoint2D에 각도 제한(useLimits)을 건다 — 위 마디는 고관절/어깨 스윙
+        /// 범위(upperMinAngle/upperMaxAngle), 아래 마디는 무릎/팔꿈치 굽힘 범위(lowerMinAngle/
+        /// lowerMaxAngle). 2026-08-28까지 위 마디는 제한이 없어 RAGDOLL에서 팔다리가 몸통을 축으로
+        /// 360도 돌 수 있었다(MaxJointBendDegrees 위 문서의 원인 (1) 참고).
         /// </summary>
         private static void CreateLimb(Transform hierarchyParent, Rigidbody2D connectedBody, string name,
             Vector2 attachLocal, float upperLength, float lowerLength, float width,
-            float upperAngle, float lowerAngle, float lowerMinAngle, float lowerMaxAngle,
+            float upperAngle, float lowerAngle,
+            float upperMinAngle, float upperMaxAngle, float lowerMinAngle, float lowerMaxAngle,
             Color color, float mass, float gravityScale, int sortingOrder, int limbLayer, StickmanAgent agent)
         {
             GameObject upper = CreateLimbSegment(hierarchyParent, connectedBody, name, attachLocal, upperLength,
-                width, upperAngle, useLimits: false, minAngle: 0f, maxAngle: 0f,
+                width, upperAngle, useLimits: true, minAngle: upperMinAngle, maxAngle: upperMaxAngle,
                 color, mass, gravityScale, sortingOrder, limbLayer, agent);
 
             // 아래 마디는 위 마디의 자식이고, 그 관절 부착점은 위 마디 로컬 공간의 (0, -upperLength)
