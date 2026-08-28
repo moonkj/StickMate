@@ -1,7 +1,9 @@
 {
     "name": "StickMate.Runtime",
     "rootNamespace": "",
-    "references": [],
+    "references": [
+        "Kirurobo.UniWindowController"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

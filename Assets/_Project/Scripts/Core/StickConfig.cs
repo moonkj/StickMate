@@ -628,14 +628,17 @@ namespace StickMate.Core
         public Color primaryOutlineColor = Color.black;
         public Color dialogueBubbleColor = Color.white;
 
-        [Tooltip("Main Camera 배경 RGB(알파는 1로 고정 — 불투명, Editor/SceneBootstrapper.cs 참고)의 " +
-                 "밝은 배경색. 이력(2026-08-28, Architect 진단): 이전 라운드들은 이 배경의 알파를 0으로 " +
-                 "낮춰 진짜 투명 오버레이를 시도했는데, StickMateOverlayPlugin.m의 네이티브 창 투명화가 " +
-                 "실제로 성공한 적이 한 번도 없어(Unity Standalone Mac Player 렌더 서페이스가 기본적으로 " +
-                 "불투명 합성을 가정) 알파=0인 픽셀이 RGB 값과 무관하게 그냥 검정으로 합성되는 사고가 " +
-                 "재발했다(사용자 실측: 완전히 균일한 검정 화면). 이번 라운드부터 진짜 투명 시도는 " +
-                 "명시적으로 다음 과제로 미루고(MacWindowService.cs가 transparent=0을 넘긴다), 카메라 " +
-                 "배경 알파를 항상 1(불투명)로 고정해 이 RGB가 그대로, 확실히 렌더링되게 한다 — " +
+        [Tooltip("Main Camera 배경 RGB(알파는 0 = 완전 투명, Editor/SceneBootstrapper.cs 참고)의 밝은 " +
+                 "배경색. 이력(2026-08-28): 자체 제작 Objective-C 플러그인으로 창 투명화를 시도하던 " +
+                 "라운드들에서는 네이티브 투명화가 한 번도 성공하지 못해 알파=0 픽셀이 RGB와 무관하게 " +
+                 "검정으로 합성되는 사고(완전히 균일한 검정 화면)가 재발했고, 그래서 알파를 1로 고정한 " +
+                 "적이 있다. 이번 라운드에 자체 플러그인을 전부 제거하고 검증된 오픈소스 " +
+                 "UniWindowController(com.kirurobo.uniwinc)로 교체하면서 알파 0을 다시 켰다. 다만 그 " +
+                 "사고의 교훈인 방어책은 그대로 유지한다 — 알파만 0으로 두고 RGB는 이 밝은 회색을 " +
+                 "유지하므로, 만에 하나 투명화가 또 실패하더라도 최악의 결과가 '밝은 회색 창 안의 검정 " +
+                 "캐릭터'(최소한 보이는 상태)이지 '검정-on-검정'이 아니다. 같은 이유로 " +
+                 "UniWindowController의 autoSwitchCameraBackground는 false로 꺼둔다(켜져 있으면 " +
+                 "라이브러리가 배경을 Color.clear = RGB(0,0,0)로 덮어써 이 방어책을 무력화한다). " +
                  "primaryOutlineColor(검정) 캐릭터 선과 대비되는 밝은 배경. 매직 넘버를 코드에 직접 두지 " +
                  "않는다는 이 클래스 상단 컨벤션에 따라, 이전에 SceneBootstrapper.cs에 하드코딩돼 있던 " +
                  "동일 목적의 값(0.85,0.85,0.85)을 이 필드로 승격했다.")]

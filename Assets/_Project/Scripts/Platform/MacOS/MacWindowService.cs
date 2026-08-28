@@ -3,6 +3,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
 using UnityEngine;
+using Kirurobo;
 using StickMate.Platform;
 
 namespace StickMate.Platform.MacOS
@@ -17,27 +18,42 @@ namespace StickMate.Platform.MacOS
     /// 애초에 다른 창을 조작하는 부수효과가 존재하지 않는다.
     ///
     /// ============================================================================
-    /// "바로 바탕화면에서 구동" 라운드(사용자 명시 요청, 2026-08-28) — 지금까지 CreateOverlayWindow()/
-    /// SetClickThrough()/SetAlwaysOnTop()가 안전가드(NotSupportedException)로 막혀 있던 이유는 Unity
-    /// 에디터 Play 모드의 게임뷰가 에디터 UI 안의 패널일 뿐 실제 OS 창이 아니라서, 진짜 투명/클릭관통
-    /// 오버레이를 만들려면 (1) 독립 실행 빌드(Standalone Player)가 있어야 하고 (2) 그 빌드가 만드는 실제
-    /// NSWindow를 네이티브 코드로 조작해야 했기 때문이다(CoreGraphics/CoreFoundation 공개 C ABI에는
-    /// "쓰기" 수단이 없음 — 비공개 SkyLight API는 금지 대상). 이번 라운드에서 처음으로 실제 Standalone
-    /// 빌드(Assets/Editor/BuildStandalone.cs)를 만들었으므로, 그 빌드가 만드는 진짜 NSWindow를 조작하는
-    /// Objective-C 네이티브 플러그인(Assets/Plugins/macOS/StickMateOverlayPlugin.m,
-    /// StickMateOverlayPlugin.bundle로 컴파일됨)을 추가하고 아래 세 메서드를 그 플러그인 호출로 교체했다.
+    /// UniWindowController 도입 라운드(2026-08-28) — 진짜 투명 데스크톱 오버레이
     /// ============================================================================
-    /// - 진짜 구현: EnumerateFootholds(), IsFullscreenAppActive(), ICursorPositionService(전역 커서 조회) —
-    ///   기존과 동일하게 CoreGraphics/CoreFoundation 공개 C ABI만 사용하는 순수 조회 동작.
-    /// - 신규 진짜 구현: CreateOverlayWindow()/SetClickThrough()/SetAlwaysOnTop() — 이제
-    ///   [DllImport("StickMateOverlayPlugin")]로 네이티브 플러그인의 SM_IsMainWindowFound()/
-    ///   SM_ConfigureOverlayWindow()를 호출해 실제 NSWindow.ignoresMouseEvents/NSWindow.level을 쓴다.
-    ///   대상 창을 못 찾으면(SM_IsMainWindowFound()==0) 조용히 no-op하지 않고 NotSupportedException으로
-    ///   즉시 실패를 알린다(이전 라운드들의 컨벤션과 동일 — StickmanAgent.Start()가 이 예외를 잡아 로그로
-    ///   남기고 나머지 초기화를 계속하는 기존 처리 경로를 그대로 재사용).
-    /// - 이 클래스 자신은 여전히 "다른 프로세스의 창"에는 절대 접근하지 않는다 — 네이티브 플러그인도
-    ///   NSApplication.sharedApplication.windows(우리 프로세스 자신의 창 목록)만 순회한다
-    ///   (StickMateOverlayPlugin.m 문서 주석 참고).
+    /// 이전 라운드들은 자체 제작 Objective-C 플러그인(당시 Assets/Plugins/macOS/, 이번 라운드에 삭제됨)으로
+    /// NSWindow.opaque/backgroundColor/CALayer를 직접 만져 투명화를 시도했으나 여러 라운드에 걸쳐 한 번도
+    /// 성공하지 못했다(창이 완전 검게 나오거나 아무 변화 없음). Unity Standalone Mac Player의 Metal 렌더
+    /// 서페이스를 실제로 투명 합성시키려면 NSWindow 속성만으로는 부족하고 CAMetalLayer의 opaque 플래그와
+    /// 뷰 계층 전체의 배경을 정확한 순서로 다뤄야 하는데, 그 노하우가 검증된 오픈소스가
+    /// kirurobo/UniWindowController(MIT)다. 이번 라운드에서 자체 플러그인을 전부 제거하고 이 라이브러리로
+    /// 교체했다(UPM: https://github.com/kirurobo/UniWindowController.git#upm, 패키지명 com.kirurobo.uniwinc).
+    ///
+    /// 배선 방식: UniWindowController는 씬에 배치하는 MonoBehaviour이므로(네이티브 LibUniWinC.bundle을
+    /// 감싸는 래퍼), 이 서비스는 `UniWindowController.current`로 그 싱글턴 인스턴스를 찾아 프로퍼티를
+    /// 세팅하는 얇은 어댑터 역할만 한다. 씬 배치 자체는 Assets/Editor/SceneBootstrapper.cs가 자동으로
+    /// 수행하므로 수동 씬 편집이 필요 없다(--force 재현 가능, 기존 컨벤션).
+    ///   - CreateOverlayWindow() -> UniWindowController.current 확보 + isTransparent=true 적용
+    ///   - SetClickThrough(bool) -> isClickThrough + isHitTestEnabled 조합(아래 "히트테스트" 참고)
+    ///   - SetAlwaysOnTop(bool)  -> isTopmost
+    ///
+    /// 히트테스트(isHitTestEnabled)와 안전장치의 상호작용 — 중요:
+    /// UniWindowController는 isHitTestEnabled=true일 때 매 프레임 커서 아래 픽셀의 알파를 검사해
+    /// isClickThrough를 자동으로 켜고 끈다(UpdateClickThrough()). 즉 "창 전체는 관통하되 캐릭터가 그려진
+    /// 불투명 픽셀 위에서만 클릭을 받는" 동작을 OS 레벨로 실제 구현해준다 — docs/UX_FLOW.md 15절의
+    /// "부분적 클릭관통 해제"(ILocalClickCaptureService)가 "진짜 OS 히트테스트는 불가능"이라며 미뤄뒀던
+    /// 바로 그 기능이다. 다만 이 자동 제어는 StickmanAgent의 안전장치(5초 지연, Escape 강제 해제)를
+    /// 다음 프레임에 그대로 덮어써 무력화할 수 있으므로, 이 어댑터는 두 값을 함께 다룬다:
+    ///   - SetClickThrough(false)  -> isHitTestEnabled=false + isClickThrough=false (자동 제어까지 정지 =
+    ///     Escape 긴급 해제가 실제로 "계속" 유지된다. 이게 없으면 다음 프레임에 다시 켜져 버린다.)
+    ///   - SetClickThrough(true)   -> isHitTestEnabled=true  + isClickThrough=true  (이후는 라이브러리의
+    ///     픽셀 히트테스트가 캐릭터 위에서만 클릭을 받도록 자동 관리)
+    /// 결과적으로 "앱 시작 후 5초 동안은 어디를 클릭해도 앱이 받는다 / Escape를 누르면 즉시 그 상태로
+    /// 영구 복귀"라는 기존 안전 계약이 그대로 보존된다.
+    /// ============================================================================
+    /// - 기존과 동일한 진짜 구현: EnumerateFootholds(), IsFullscreenAppActive(), ICursorPositionService —
+    ///   CoreGraphics/CoreFoundation 공개 C ABI만 쓰는 순수 조회 동작(아래 #region 참고).
+    /// - 이 클래스 자신은 여전히 "다른 프로세스의 창"에는 절대 접근하지 않는다 — UniWindowController도
+    ///   자기 자신의 창(AttachMyWindow)만 다룬다.
     ///
     /// ILocalClickCaptureService/IDesktopIconLayoutService는 이번 라운드에도 의도적으로 구현하지 않는다
     /// (요청 범위 밖) — FallbackPlatformWindowService가 `as` 캐스팅으로 null 처리해 안전하게 no-op/실패
@@ -46,28 +62,6 @@ namespace StickMate.Platform.MacOS
     /// </summary>
     public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService
     {
-        // ============================================================================
-        // 네이티브 오버레이 플러그인 P/Invoke 선언(Assets/Plugins/macOS/StickMateOverlayPlugin.m).
-        // DllImport 대상 이름은 확장자 없는 번들 이름 — Unity가 Standalone macOS 빌드에 포함시킨
-        // StickMateOverlayPlugin.bundle을 찾아 로드한다(에디터에서는 PluginImporter가
-        // SetCompatibleWithEditor(false)로 막아뒀으므로 로드되지 않는다 — 애초에 이 클래스 자체가
-        // StickmanAgent.CreatePlatformService()의 `UNITY_STANDALONE_OSX && !UNITY_EDITOR` 분기에서만
-        // 인스턴스화되므로 에디터에서 호출될 일도 없다).
-        // ============================================================================
-        private const string OverlayPluginName = "StickMateOverlayPlugin";
-
-        [DllImport(OverlayPluginName)]
-        private static extern void SM_ConfigureOverlayWindow(int makeClickThrough, int alwaysOnTop, int transparent);
-
-        [DllImport(OverlayPluginName)]
-        private static extern int SM_GetOverlayWindowLevel();
-
-        [DllImport(OverlayPluginName)]
-        private static extern int SM_IsMainWindowFound();
-
-        [DllImport(OverlayPluginName)]
-        private static extern double SM_GetMainWindowBackingScaleFactor();
-
         #region CoreGraphics / CoreFoundation P/Invoke 선언 (이 리전 밖으로 유출 금지)
 
         // 프레임워크 경로 직접 지정(dylib 캐시/서명 문제 없이 시스템 프레임워크를 안정적으로 로드하는
@@ -105,6 +99,23 @@ namespace StickMate.Platform.MacOS
 
         [DllImport(CoreGraphicsLib)]
         private static extern uint CGMainDisplayID();
+
+        // 디스플레이 백킹 배율(Retina 배율) 조회용 3종. CGDisplayModeGetWidth는 "포인트" 폭,
+        // CGDisplayModeGetPixelWidth는 실제 "백킹 픽셀" 폭을 돌려주므로 둘의 비가 곧 backingScaleFactor다
+        // (Retina 2x면 3024/1512 = 2). NSScreen.backingScaleFactor를 AppKit 없이 얻는 공개 CoreGraphics
+        // 경로 — 자체 네이티브 플러그인 제거 후 DetectDesktopDpiScale()의 대체 구현으로 쓴다.
+        // size_t 반환이므로 64비트 macOS에서 UIntPtr(=8바이트)로 마샬링한다.
+        [DllImport(CoreGraphicsLib)]
+        private static extern IntPtr CGDisplayCopyDisplayMode(uint display);
+
+        [DllImport(CoreGraphicsLib)]
+        private static extern UIntPtr CGDisplayModeGetWidth(IntPtr mode);
+
+        [DllImport(CoreGraphicsLib)]
+        private static extern UIntPtr CGDisplayModeGetPixelWidth(IntPtr mode);
+
+        [DllImport(CoreGraphicsLib)]
+        private static extern void CGDisplayModeRelease(IntPtr mode);
 
         [DllImport(CoreGraphicsLib)]
         private static extern IntPtr CGEventCreate(IntPtr source);
@@ -187,19 +198,57 @@ namespace StickMate.Platform.MacOS
         private readonly int _currentProcessId;
         private readonly string _currentProcessName;
 
-        // 클릭관통/항상위의 현재 목표 상태를 기억해둔다. 네이티브 SM_ConfigureOverlayWindow()는 두
-        // 속성을 하나의 호출로 동시에 적용하는 단일 함수라(StickMateOverlayPlugin.m 참고),
-        // SetClickThrough()/SetAlwaysOnTop()가 서로 독립적으로 호출되어도(IPlatformWindowService 계약상
-        // 별개 메서드) 매번 "마지막으로 알려진 두 값 전부"를 함께 넘겨야 한 쪽 호출이 다른 쪽 상태를
-        // 조용히 되돌리지 않는다. 투명(transparent)은 "완전히 새까만 화면" 사고 대응(Architect 결정,
-        // 2026-08-28) 이후 항상 0(false)으로 넘긴다 — 여러 라운드에 걸쳐 진짜 투명 창이 한 번도 성공한
-        // 적이 없어(Unity Standalone Mac Player 렌더 서페이스가 기본적으로 불투명 합성을 가정), 알파=0
-        // 픽셀이 RGB와 무관하게 검정으로 합성되는 문제가 재발했다. 진짜 투명은 명시적으로 다음 과제로
-        // 미루고, 이번 라운드는 불투명 창 + 밝은 카메라 배경(SceneBootstrapper.cs, StickConfig.
-        // backgroundFallbackColor)으로 확실한 가시성을 확보한다. 네이티브 함수 자체의 transparent 처리
-        // 로직(StickMateOverlayPlugin.m)은 그대로 남겨둔다 — 호출부만 0을 넘기도록 바꿨다.
+        // 클릭관통/항상위의 "우리가 마지막으로 의도한" 목표 상태. UniWindowController는 프로퍼티마다
+        // 독립적으로 적용되므로(자체 플러그인처럼 한 함수에 두 값을 함께 넘길 필요가 없다) 이 값들은
+        // 이제 상태 재적용용이 아니라 로그/진단과 CreateOverlayWindow() 재호출 시의 초기화 기준으로만
+        // 쓴다. isHitTestEnabled는 클래스 문서 "히트테스트" 절에 설명한 대로 SetClickThrough()가 함께
+        // 제어하므로 별도 필드를 두지 않는다(UniWindowController 인스턴스가 단일 진실 원천).
         private bool _clickThroughEnabled;
         private bool _alwaysOnTopEnabled;
+
+        // 창 부착 이후 목표 상태를 재적용하는 런타임 전용 보조 컴포넌트(MacOverlayStateEnforcer.cs).
+        private MacOverlayStateEnforcer _enforcer;
+
+        /// <summary>
+        /// 씬에 배치된 UniWindowController(Assets/Editor/SceneBootstrapper.cs가 자동 생성)를 찾는다.
+        ///
+        /// 왜 `UniWindowController.current` 하나로 끝나지 않는가: 그 프로퍼티가 내부적으로 쓰는
+        /// FindAnyObjectByType은 기본적으로 "활성 오브젝트만" 찾는데, 이 프로젝트는 그 GameObject를
+        /// 의도적으로 비활성 상태로 씬에 저장한다(SceneBootstrapper.ConfigureUniWindowController()의
+        /// "매우 중요" 주석 참고 — 헤드리스 실행에서 네이티브 _findMyWindow()가 프로세스를 크래시시키기
+        /// 때문). 그래서 비활성 오브젝트까지 포함해 한 번 더 찾고, activateIfInactive=true면 여기서
+        /// 활성화한다. GameObject.SetActive(true)는 Awake()를 동기적으로 실행하므로, 이 호출 직후부터는
+        /// `UniWindowController.current`도 정상적으로 채워진다.
+        ///
+        /// 인스턴스가 아예 없으면 새로 만들지 않고 null을 반환한다(라이브러리 0.9.8의
+        /// FindOrCreateInstance()도 동일 정책) — 호출부가 실패를 명시적으로 처리한다(조용한 no-op 금지).
+        /// </summary>
+        private static UniWindowController ResolveController(bool activateIfInactive)
+        {
+            var controller = UniWindowController.current;
+            if (controller == null)
+            {
+                controller = UnityEngine.Object.FindAnyObjectByType<UniWindowController>(FindObjectsInactive.Include);
+            }
+            if (controller == null)
+            {
+                return null;
+            }
+
+            if (activateIfInactive && !controller.gameObject.activeSelf)
+            {
+                Debug.Log("[MacWindowService] 씬의 UniWindowController가 비활성 상태 — 실제 Player에서만 " +
+                    "활성화한다는 설계대로 지금 활성화합니다(SetActive(true) -> Awake() 동기 실행).");
+                controller.gameObject.SetActive(true);
+            }
+            return controller;
+        }
+
+        /// <summary>이미 활성화된 인스턴스만 조회하는 축약형(활성화 부수효과 없음).</summary>
+        private static UniWindowController Controller
+        {
+            get { return ResolveController(activateIfInactive: false); }
+        }
 
         public MacWindowService()
         {
@@ -233,12 +282,51 @@ namespace StickMate.Platform.MacOS
         /// </summary>
         public float DetectDesktopDpiScale()
         {
-            double backingScaleFactor = SM_GetMainWindowBackingScaleFactor();
-            if (backingScaleFactor <= 0.0)
+            // 자체 플러그인의 SM_GetMainWindowBackingScaleFactor()(NSWindow.backingScaleFactor)를 대체하는
+            // 순수 CoreGraphics 구현(UniWindowController 도입 라운드, 2026-08-28).
+            //
+            // 왜 UniWindowController.clientSize를 쓰지 않는가 — 실측으로 확인한 함정: 이 메서드는
+            // StickmanAgent.Start()에서 호출되는데 그 시점에는 UniWindowController가 아직 자기 NSWindow를
+            // 붙잡기 전이라(부착은 첫 Update()에서 일어난다) clientSize가 (0,0)으로 나온다. 실제로 처음
+            // 그렇게 구현했다가 Player.log에 desktopDpiScale=1.000(= 보정 없음)이 찍히는 것을 실측으로
+            // 확인했다. 그래서 창이 아니라 "디스플레이" 자체의 배율을 조회하는 방식으로 바꿨다 — 이쪽은
+            // 창 부착 여부와 무관하게 항상 즉시 정확한 값을 준다.
+            //
+            // CGDisplayModeGetWidth = 포인트 폭, CGDisplayModeGetPixelWidth = 백킹 픽셀 폭이므로
+            // backingScaleFactor = pixelWidth / pointWidth이고, 이 메서드가 반환해야 하는
+            // StickConfig.desktopDpiScale("Unity 픽셀 -> OS 픽셀 배율")은 그 역수다(Retina 2x면 0.5).
+            // 조회 실패/비정상 값이면 안전한 기본값 1(보정 없음)로 폴백한다.
+            IntPtr mode = CGDisplayCopyDisplayMode(CGMainDisplayID());
+            if (mode == IntPtr.Zero)
             {
+                Debug.LogWarning("[MacWindowService] DetectDesktopDpiScale(): CGDisplayCopyDisplayMode 실패 — 배율 보정 없이 1을 사용합니다.");
                 return 1f;
             }
-            return (float)(1.0 / backingScaleFactor);
+
+            try
+            {
+                double pointWidth = (double)(ulong)CGDisplayModeGetWidth(mode);
+                double pixelWidth = (double)(ulong)CGDisplayModeGetPixelWidth(mode);
+                if (pointWidth <= 0.0 || pixelWidth <= 0.0)
+                {
+                    return 1f;
+                }
+
+                double backingScaleFactor = pixelWidth / pointWidth;
+                if (backingScaleFactor <= 0.0)
+                {
+                    return 1f;
+                }
+
+                float scale = (float)(1.0 / backingScaleFactor);
+                Debug.Log($"[MacWindowService] DetectDesktopDpiScale(): 디스플레이 포인트폭={pointWidth}, " +
+                    $"백킹픽셀폭={pixelWidth}, backingScaleFactor={backingScaleFactor:F3} -> desktopDpiScale={scale:F3}.");
+                return scale;
+            }
+            finally
+            {
+                CGDisplayModeRelease(mode);
+            }
         }
 
         /// <summary>
@@ -339,76 +427,134 @@ namespace StickMate.Platform.MacOS
         }
 
         // ============================================================================
-        // 네이티브 플러그인 배선 3종 — 이제 실제로 Objective-C 플러그인(StickMateOverlayPlugin.m)을
-        // 호출해 우리 자신의 NSWindow를 조작한다("바로 바탕화면에서 구동" 라운드, 2026-08-28).
+        // 오버레이 배선 3종 — UniWindowController(com.kirurobo.uniwinc) 어댑터.
+        // 자체 Objective-C 플러그인은 이 라운드에서 완전히 제거됐다(클래스 문서 상단 참고).
         // ============================================================================
 
         /// <summary>
-        /// 네이티브 플러그인이 우리 자신의 Unity Player 메인 창을 실제로 찾을 수 있는지
-        /// SM_IsMainWindowFound()로 확인한다. 찾았다면 초기 상태(클릭관통 OFF, 항상위 OFF, 투명 ON)를
-        /// 곧바로 적용해둔다 — 클릭관통이 기본으로 꺼진 채 시작해야 사용자가 최소한의 반응 시간을 갖는다
-        /// (StickmanAgent.Start()의 지연 로직과 이중 안전장치, 클래스 문서 "안전상 중요" 참고). 못 찾으면
-        /// false를 반환할 뿐 예외를 던지지는 않는다 — 기존 컨벤션(BUG-P1-M3, StickmanAgent.Start()가
-        /// 경고 로그만 남기고 계속 진행)을 그대로 유지한다. 반면 SetClickThrough/SetAlwaysOnTop은 이후에
-        /// 대상 창이 없는 채로 호출되면 조용히 넘어가지 않고 예외를 던진다(아래 참고) — "오버레이 확보
-        /// 자체의 실패"와 "확보된 오버레이의 속성 변경 실패"를 다른 강도로 취급한다.
+        /// 씬의 UniWindowController를 확보하고 "진짜 투명 오버레이" 초기 상태를 적용한다.
+        ///   isTransparent=true  — 이번 라운드의 핵심 목표(회색 창이 아니라 바탕화면 위에 직접 표시).
+        ///   isClickThrough=false / isHitTestEnabled=false — 클릭관통은 반드시 꺼진 채로 시작한다.
+        ///     StickmanAgent.Start()의 5초 지연 안전장치와 이중으로 겹쳐, 시작 직후에는 사용자가 어디를
+        ///     클릭해도 앱이 입력을 받는다(창을 되돌릴 수단 상실 방지).
+        ///   isTopmost=false — SetAlwaysOnTop()이 이후 명시적으로 켠다.
+        /// 인스턴스를 찾지 못하면 false를 반환할 뿐 예외를 던지지 않는다 — 기존 컨벤션(BUG-P1-M3,
+        /// StickmanAgent.Start()가 경고만 남기고 계속 진행)을 그대로 유지한다.
+        ///
+        /// 주의(공식 문서 경고): 투명은 Unity 에디터에서는 동작하지 않는다 — 반드시 Standalone 빌드로
+        /// 검증해야 한다. 실제로 UniWindowController.SetTransparent()의 네이티브 호출부는 `#if
+        /// !UNITY_EDITOR`로 감싸여 있다.
         /// </summary>
         public bool CreateOverlayWindow()
         {
-            bool found = SM_IsMainWindowFound() != 0;
-            if (!found)
+            var controller = ResolveController(activateIfInactive: true);
+            if (controller == null)
             {
-                Debug.LogWarning("[MacWindowService] CreateOverlayWindow(): SM_IsMainWindowFound()==0 — " +
-                    "네이티브 플러그인이 Unity Player의 메인 NSWindow를 찾지 못했습니다. 이후 " +
-                    "SetClickThrough/SetAlwaysOnTop 호출이 모두 실패할 수 있습니다.");
+                Debug.LogWarning("[MacWindowService] CreateOverlayWindow(): 씬에서 UniWindowController를 " +
+                    "찾지 못했습니다(UniWindowController.current == null). SceneBootstrapper가 프리팹을 " +
+                    "배치했는지 확인하세요 — 이후 SetClickThrough/SetAlwaysOnTop 호출이 모두 실패합니다.");
                 return false;
             }
 
             _clickThroughEnabled = false;
             _alwaysOnTopEnabled = false;
-            SM_ConfigureOverlayWindow(0, 0, 0); // 투명 비활성화(Architect 결정, 2026-08-28), 클릭관통/항상위는 안전하게 OFF로 시작.
-            Debug.Log("[MacWindowService] CreateOverlayWindow(): 메인 NSWindow 확보 및 초기 상태 적용 완료 " +
-                $"(clickThrough=false, alwaysOnTop=false, transparent=false, windowLevel={SM_GetOverlayWindowLevel()}).");
+
+            // 순서 중요: 히트테스트 자동 제어를 먼저 끈 뒤에 클릭관통을 끈다. 반대로 하면 투명화 직후
+            // 프레임에 자동 제어가 클릭관통을 다시 켜버릴 수 있다.
+            controller.isHitTestEnabled = false;
+            controller.isClickThrough = false;
+            controller.isTopmost = false;
+            controller.isTransparent = true;
+
+            // 창 부착 타이밍 문제 보정(MacOverlayStateEnforcer 클래스 문서 참고) — UniWindowController는
+            // 첫 Update()에서야 자기 NSWindow를 붙잡으므로, Start() 시점의 설정 중 항상위/클릭관통은
+            // 조용히 되돌아간다. 목표 상태를 들고 있다가 부착 확인 후 재적용하는 보조 컴포넌트를 띄운다.
+            _enforcer = MacOverlayStateEnforcer.EnsureExists(controller);
+            _enforcer.DesiredTransparent = true;
+            _enforcer.DesiredTopmost = false;
+            _enforcer.DesiredClickThrough = false;
+            _enforcer.DesiredHitTest = false;
+            _enforcer.MarkDirty();
+
+            Debug.Log("[MacWindowService] CreateOverlayWindow(): UniWindowController 확보 및 초기 상태 적용 완료 " +
+                $"(isTransparent={controller.isTransparent}, isClickThrough={controller.isClickThrough}, " +
+                $"isTopmost={controller.isTopmost}, isHitTestEnabled={controller.isHitTestEnabled}, " +
+                $"hitTestType={controller.hitTestType}, opacityThreshold={controller.opacityThreshold}, " +
+                $"clientSize={controller.clientSize}, windowPosition={controller.windowPosition}).");
             return true;
         }
 
         /// <summary>
-        /// SM_ConfigureOverlayWindow()로 실제 NSWindow.ignoresMouseEvents를 쓴다. 대상 창을 못 찾으면
-        /// (SM_IsMainWindowFound()==0) 조용히 무시하지 않고 즉시 NotSupportedException을 던진다 — 이전
-        /// 라운드들의 컨벤션과 동일: "위험한 부작용 없이 조용히 실패"가 아니라 "호출부가 반드시
-        /// 알아채도록 즉시 예외로 실패"시킨다(StickMate.Core.StickmanAgent.Start()가 이 예외를 잡아
-        /// 로그로 남기고 나머지 초기화를 계속하는 기존 처리 경로를 그대로 재사용).
+        /// 클릭관통 on/off. 클래스 문서 "히트테스트" 절에 설명한 대로 isClickThrough 하나만 건드리면
+        /// UniWindowController의 매 프레임 자동 제어(UpdateClickThrough)가 다음 프레임에 그대로 덮어써
+        /// 버리므로, isHitTestEnabled도 함께 제어해 안전장치가 실제로 유지되게 한다.
+        ///   enabled=false(Escape 긴급 해제, 시작 후 5초 구간) -> 자동 제어 정지 + 클릭관통 해제
+        ///   enabled=true(정상 오버레이 동작)                  -> 클릭관통 ON + 픽셀 알파 기반 자동
+        ///     히트테스트 ON(= 캐릭터가 그려진 불투명 픽셀 위에서만 클릭을 받는 부분적 관통 해제)
+        /// 인스턴스가 없으면 조용히 무시하지 않고 NotSupportedException으로 즉시 실패를 알린다(이전
+        /// 라운드들과 동일한 컨벤션 — StickmanAgent가 이 예외를 잡아 로그로 남기고 계속 진행한다).
         /// </summary>
         public void SetClickThrough(bool enabled)
         {
-            if (SM_IsMainWindowFound() == 0)
+            var controller = Controller;
+            if (controller == null)
             {
                 throw new NotSupportedException(
-                    "MacWindowService.SetClickThrough(): 네이티브 플러그인이 대상 NSWindow를 찾지 못해 " +
-                    "클릭관통을 적용할 수 없습니다(SM_IsMainWindowFound()==0). StickMateOverlayPlugin.bundle이 " +
-                    "빌드에 정상 포함되었는지, CreateOverlayWindow()가 먼저 호출되었는지 확인하세요.");
+                    "MacWindowService.SetClickThrough(): 씬에서 UniWindowController를 찾지 못해 클릭관통을 " +
+                    "적용할 수 없습니다(UniWindowController.current == null). SceneBootstrapper가 프리팹을 " +
+                    "배치했는지, CreateOverlayWindow()가 먼저 호출되었는지 확인하세요.");
             }
 
             _clickThroughEnabled = enabled;
-            SM_ConfigureOverlayWindow(_clickThroughEnabled ? 1 : 0, _alwaysOnTopEnabled ? 1 : 0, 0);
-            Debug.Log($"[MacWindowService] SetClickThrough({enabled}) 적용 완료 — windowLevel={SM_GetOverlayWindowLevel()}.");
+            if (enabled)
+            {
+                controller.isClickThrough = true;
+                controller.isHitTestEnabled = true;
+            }
+            else
+            {
+                controller.isHitTestEnabled = false;
+                controller.isClickThrough = false;
+            }
+
+            if (_enforcer != null)
+            {
+                _enforcer.DesiredClickThrough = enabled;
+                _enforcer.DesiredHitTest = enabled;
+                _enforcer.MarkDirty();
+            }
+
+            Debug.Log($"[MacWindowService] SetClickThrough({enabled}) 적용 완료 — " +
+                $"isClickThrough={controller.isClickThrough}, isHitTestEnabled={controller.isHitTestEnabled}, " +
+                $"isTransparent={controller.isTransparent}.");
         }
 
-        /// <summary>SetClickThrough와 동일한 실패 정책 — SM_ConfigureOverlayWindow()로 실제
-        /// NSWindow.level(NSFloatingWindowLevel/NSNormalWindowLevel)을 쓴다.</summary>
+        /// <summary>SetClickThrough와 동일한 실패 정책 — UniWindowController.isTopmost를 통해 실제
+        /// NSWindow.level(NSFloatingWindowLevel)을 설정한다.</summary>
         public void SetAlwaysOnTop(bool enabled)
         {
-            if (SM_IsMainWindowFound() == 0)
+            var controller = Controller;
+            if (controller == null)
             {
                 throw new NotSupportedException(
-                    "MacWindowService.SetAlwaysOnTop(): 네이티브 플러그인이 대상 NSWindow를 찾지 못해 " +
-                    "항상위 설정을 적용할 수 없습니다(SM_IsMainWindowFound()==0). StickMateOverlayPlugin.bundle이 " +
-                    "빌드에 정상 포함되었는지, CreateOverlayWindow()가 먼저 호출되었는지 확인하세요.");
+                    "MacWindowService.SetAlwaysOnTop(): 씬에서 UniWindowController를 찾지 못해 항상위 " +
+                    "설정을 적용할 수 없습니다(UniWindowController.current == null). SceneBootstrapper가 " +
+                    "프리팹을 배치했는지, CreateOverlayWindow()가 먼저 호출되었는지 확인하세요.");
             }
 
             _alwaysOnTopEnabled = enabled;
-            SM_ConfigureOverlayWindow(_clickThroughEnabled ? 1 : 0, _alwaysOnTopEnabled ? 1 : 0, 0);
-            Debug.Log($"[MacWindowService] SetAlwaysOnTop({enabled}) 적용 완료 — windowLevel={SM_GetOverlayWindowLevel()}.");
+            controller.isTopmost = enabled;
+
+            if (_enforcer != null)
+            {
+                _enforcer.DesiredTopmost = enabled;
+                _enforcer.MarkDirty();
+            }
+
+            // 되읽은 값이 목표와 다른 것은 "실패"가 아니라 "아직 창 부착 전"이라는 뜻이다 — 그 경우
+            // MacOverlayStateEnforcer가 부착 직후 재적용한다(그 클래스 문서의 실측 사고 기록 참고).
+            Debug.Log($"[MacWindowService] SetAlwaysOnTop({enabled}) 적용 완료 — isTopmost={controller.isTopmost}" +
+                (controller.isTopmost != enabled ? " (아직 창 부착 전 — Enforcer가 재적용 예정)" : "") + ".");
         }
 
         /// <summary>

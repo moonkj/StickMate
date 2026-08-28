@@ -764,3 +764,126 @@ Walk 이탈 시 즉시 리셋하던 문제도 자동 해소됐다: `TickPose()`�
 - `StickmanBlackboard.TickPose()`가 `MoveInputX`의 부호로 매 프레임 갱신하되, **`moveInputDeadzone`을 넘을 때만** 바꾼다(0 근처에서 부호가 떨리면 캐릭터가 좌우로 깜빡인다). 정지 중에는 마지막 방향을 유지한다.
 
 **실측 검증(PlayMode 로그)**: `moveX=-1.00 → facing=-1`일 때 `knees=(12.6, 6.0)`(양수), `moveX=+1.00 → facing=+1`일 때 `knees=(-11.5, -8.8)`(음수) — 이동 방향이 바뀌는 즉시 포즈 전체가 미러링되고, **무릎 굽힘은 어느 방향으로 걸든 항상 "진행 방향 기준 뒤쪽" 한 방향으로만 접힌다**(부호가 통째로 뒤집힐 뿐, 한 방향성은 그대로 유지). 팔꿈치도 동일하게 반대 부호로 일관된다.
+
+---
+
+## UniWindowController 도입 — 진짜 투명 데스크톱 오버레이 달성 (2026-08-28, Coder)
+
+여러 라운드 실패했던 **"회색 창 안이 아니라 진짜 바탕화면 위에 투명하게 떠서 돌아다니게 만들기"** 를 이번 라운드에 달성했다(사용자 실측 확인 — 바탕화면과 Dock이 캐릭터 뒤로 그대로 비쳐 보이는 스크린샷). 자체 제작 Objective-C 플러그인을 전부 버리고 검증된 오픈소스로 교체한 것이 결정적이었다.
+
+### (1) 설치 / 배선
+
+- **패키지**: `Packages/manifest.json`에 UPM git 의존성 `"com.kirurobo.uniwinc": "https://github.com/kirurobo/UniWindowController.git#upm"` 추가(해석된 커밋 `304f9ba2aa4a`, 버전 0.9.8). `Packages/packages-lock.json`에 자동 기록됨. 동봉 네이티브 `LibUniWinC.bundle`은 x86_64+arm64 유니버설이라 Apple Silicon에서 추가 작업 불필요(빌드 산출물 `StickMate.app/Contents/PlugIns/LibUniWinC.bundle`에 정상 포함 확인).
+- **asmdef**: `StickMate.Runtime.asmdef`의 `references`에 `Kirurobo.UniWindowController` 추가. `Assets/Editor/`는 asmdef가 없어(Assembly-CSharp-Editor) `autoReferenced: true`로 자동 참조된다.
+- **어댑터**: `Platform/MacOS/MacWindowService.cs`의 `CreateOverlayWindow()`/`SetClickThrough()`/`SetAlwaysOnTop()`이 `[DllImport("StickMateOverlayPlugin")]` 대신 `UniWindowController`의 `isTransparent`/`isClickThrough`/`isTopmost`/`isHitTestEnabled`를 세팅한다. `EnumerateFootholds()`/`IsFullscreenAppActive()`/`ICursorPositionService`의 CoreGraphics 조회 경로는 무변경.
+- **씬 자동 배치**: `SceneBootstrapper.ConfigureUniWindowController()`가 패키지 프리팹 `Packages/com.kirurobo.uniwinc/Runtime/Prefabs/UniWindowController.prefab`을 인스턴스화한다(경로를 못 찾으면 빈 GameObject + `AddComponent` 폴백). `--force`로 완전 재현 가능 — 수동 씬 편집 없음.
+
+### (2) 자체 제작 플러그인 제거 범위 (참조 0건)
+
+삭제: `Assets/Plugins/macOS/StickMateOverlayPlugin.m`(+`.meta`), `StickMateOverlayPlugin.bundle`(+`.meta`), `build.sh`(+`.meta`), 그리고 빈 `Assets/Plugins/` 폴더 트리 전체.
+코드 제거: `MacWindowService`의 `[DllImport]` 4종(`SM_ConfigureOverlayWindow`/`SM_GetOverlayWindowLevel`/`SM_IsMainWindowFound`/`SM_GetMainWindowBackingScaleFactor`), `BuildStandalone.ConfigureNativePluginImporter()`와 `PluginAssetPath` 상수 및 그 호출부, `MacWindowEnumerationDiagnostic`의 `DllNotFoundException` 처리 분기.
+남은 언급은 **"무엇을 왜 제거했는가"를 설명하는 문서 주석 3곳뿐**이며 실제 코드 참조는 0건이다.
+
+### (3) 안전장치 — 유지하되 라이브러리 자동 제어와 충돌 해결 (중요)
+
+`StickmanAgent`의 기존 안전장치(시작 후 5초 지연 + Escape 즉시 강제 해제)는 **로직 무수정**으로 그대로 유지된다. 다만 그대로 두면 무력화되는 함정이 있어 어댑터 쪽에서 해결했다:
+
+> `UniWindowController`는 `isHitTestEnabled=true`일 때 **매 프레임** 커서 아래 픽셀 알파를 보고 `isClickThrough`를 자동으로 켜고 끈다(`UpdateClickThrough()`). 즉 Escape로 클릭관통을 꺼도 **다음 프레임에 라이브러리가 다시 켜버린다.**
+
+그래서 `MacWindowService.SetClickThrough()`가 두 값을 함께 다룬다:
+- `SetClickThrough(false)`(Escape 긴급 해제 / 시작 후 5초 구간) → `isHitTestEnabled=false` **+** `isClickThrough=false` — 자동 제어까지 정지시켜 해제가 실제로 "계속" 유지된다.
+- `SetClickThrough(true)`(정상 오버레이) → `isClickThrough=true` + `isHitTestEnabled=true`.
+
+### (4) `isHitTestEnabled` — Phase 3 "부분적 클릭관통 해제"를 대체 가능 (다음 라운드 과제)
+
+**이 기능으로 `docs/UX_FLOW.md` 15절의 "부분적 클릭관통 해제"(`ILocalClickCaptureService`)를 대체 가능하다.** 그 인터페이스는 "진짜 OS 히트테스트는 별도 오버레이 창 없이는 불가능"이라며 상태 부기만 하고 실제 히트테스트를 미뤄뒀는데, `UniWindowController`의 `hitTestType = Opacity`가 바로 그것을 실제로 해준다 — 커서 아래 픽셀 알파가 `opacityThreshold`(0.1) 이상이면 클릭을 앱이 받고, 그 외 영역은 100% 관통된다. 이번 라운드에서는 **켜고 동작 확인까지만** 했고(실측 로그에서 `isHitTestEnabled=True` 확인), `ILocalClickCaptureService` 구조를 이 기능으로 전면 대체하는 리팩터링은 **다음 라운드 과제**다.
+
+### (5) 실측으로 발견해 고친 2건 (둘 다 "부착 타이밍" 문제)
+
+`UniWindowController`는 자기 NSWindow를 `Awake()`가 아니라 **첫 `Update()`** 에서 붙잡는다(`UpdateTargetWindow()` → `AttachMyWindow()`). 우리 배선 지점인 `StickmanAgent.Start()`는 그보다 먼저다.
+
+1. **항상위(topmost)가 조용히 사라짐** — `SetTopmost(true)`는 `_isTopmost = _uniWinCore.IsTopmost`로 되읽는데 `IsTopmost`가 `IsActive && _isTopmost`라 부착 전엔 **무조건 false**로 되돌아간다. 실측: 로그 `SetAlwaysOnTop(True) 적용 완료 — isTopmost=False` + 외부 `CGWindowListCopyWindowInfo` 조회에서 `kCGWindowLayer=0`. → **신규 `Platform/MacOS/MacOverlayStateEnforcer.cs`** (런타임 전용, 씬 미저장)가 목표 상태를 들고 있다가 `windowSize != (0,0)`으로 부착을 확인한 뒤 0.5초 간격 5회 재적용하고 결과를 되읽어 로그로 남긴다.
+2. **DPI 보정 실패** — 같은 이유로 `clientSize=(0,0)`을 읽어 `desktopDpiScale=1.000`(보정 없음)이 나왔다. → `DetectDesktopDpiScale()`을 **창이 아니라 디스플레이** 기준으로 재구현: `CGDisplayCopyDisplayMode` + `CGDisplayModeGetWidth`(포인트) / `CGDisplayModeGetPixelWidth`(백킹 픽셀). 부착 여부와 무관하게 항상 즉시 정확하다.
+
+### (6) 헤드리스 크래시 — PlayMode 테스트가 통째로 죽던 사고
+
+`-batchmode -nographics`에는 NSWindow가 **하나도 없어** 네이티브 `LibUniWinC._findMyWindow()`(Swift) 안에서 **프로세스가 통째로 크래시**했다(스택: `_findMyWindow` ← `AttachMyWindow` ← `UpdateTargetWindow` ← `Update`). PlayMode 테스트가 `EXIT=133`으로 죽고 결과 XML조차 생성되지 않았다.
+
+**해결**: `SceneBootstrapper`가 이 GameObject를 **비활성(`SetActive(false)`) 상태로 씬에 저장**하고, 활성화는 실제 Standalone Player에서만 인스턴스화되는 `MacWindowService.CreateOverlayWindow()`가 담당한다(`ResolveController(activateIfInactive: true)` — `FindObjectsInactive.Include`로 비활성까지 찾은 뒤 `SetActive(true)`, 이때 `Awake()`가 동기 실행되어 `UniWindowController.current`가 채워진다). 부수 효과로 "에디터 Play 모드에서 에디터 자신의 창을 건드리는" 사고도 원천 차단된다 — 공식 문서도 "투명은 에디터에서 동작하지 않으니 빌드해서 테스트하라"고 경고한다.
+
+### (7) 카메라 배경 — 알파 0 복귀 + 방어책 유지
+
+`SceneBootstrapper`가 `clearFlags=SolidColor`, `backgroundColor = (backgroundFallbackColor.rgb, alpha 0)`으로 되돌렸다. **RGB는 밝은 회색 그대로 유지**한다 — 이전 라운드에서 확립된 방어책으로, 만에 하나 투명화가 실패해도 최악의 결과가 "밝은 회색 창 안의 검정 캐릭터"(최소한 보이는 상태)이지 "검정-on-검정"이 아니게 한다. 같은 이유로 `UniWindowController.autoSwitchCameraBackground = false`로 꺼둔다 — 켜져 있으면 라이브러리가 투명화 시점에 배경을 `Color.clear`(= RGB 0,0,0 + 알파 0)로 덮어써 이 방어책을 무력화한다.
+
+### (8) 실측 검증 결과 (구체 수치)
+
+Player.log 되읽음 값 (`MacOverlayStateEnforcer` 로그):
+```
+isTransparent=True, isTopmost=True, isClickThrough=True, isHitTestEnabled=True
+windowSize=(1512, 846), clientSize=(1512, 846), windowPosition=(0, 75)
+cameraBg=clearFlags=SolidColor, rgba=(0.94,0.94,0.94,0.00)
+desktopDpiScale=0.500  (디스플레이 포인트폭 1512 / 백킹픽셀폭 3024 = backingScaleFactor 2.000)
+```
+외부 독립 프로세스(Swift + `CGWindowListCopyWindowInfo`, `Assets/Editor/MacWindowEnumerationDiagnostic.cs`와 같은 방식)로 조회한 우리 창(`winID` 메인 창):
+```
+변경 전:  kCGWindowAlpha=1.0  kCGWindowLayer=0    kCGWindowIsOnscreen=true
+변경 후:  kCGWindowAlpha=1.0  kCGWindowLayer=101  kCGWindowIsOnscreen=true
+```
+- `kCGWindowLayer` `0 → 101`: 항상위가 **윈도우서버 레벨에서 실제로 적용됨**을 확인(`Enforcer` 재적용 전에는 0이었다).
+- `kCGWindowAlpha=1.0`은 **정상이다** — 이 값은 `NSWindow.alphaValue`(창 전체 균일 불투명도)이지 픽셀별 알파가 아니다. 픽셀 단위 투명은 이 필드에 나타나지 않으며, 실제 투명 성공은 사용자 스크린샷(바탕화면/Dock이 그대로 비쳐 보임)으로 확인했다.
+- 스크린샷은 이 환경에 Screen Recording 권한이 없어 에이전트 쪽에서는 불가능(시도하지 않음).
+
+기준선: **컴파일 에러 0 / 경고 0**, **EditMode 13/13**, **PlayMode 3/3**, 빌드 `Succeeded`(에러 0, 경고 0).
+
+### (9) 같은 라운드 사용자 피드백 3건 반영
+
+**(a) 얼굴을 "비워서" 투명하게** — 사용자: "얼굴이 흰색이 아니고 색 자체가 없어야지, 비워져있어야함". 직전의 "흰 채움 + 검은 테두리"는 **불투명 회색 배경을 전제로 한 설계**였다. 진짜 투명 창이 동작하게 됐으므로 흰 채움 원을 제거했다 — `CreateFilledHead()`(LineRenderer로 흰 원을 그리던 함수)를 **`CreateHeadAnchor()`**(렌더러 없는 순수 앵커)로 대체. `Head` GameObject 자체는 그대로 남는다(`CircleCollider2D`, `StickmanPoseAnimator`가 이름 "Head"로 찾는 몸 바운스 기준, `EyeController`의 눈 부모 역할). 최종 모습: **검은 링 + 그 안에 검은 점 2개, 나머지는 전부 투명**. 프리팹 실측: 흰색 `(1,1,1,1)` 항목 0건, LineRenderer 12개(몸통 1 + 머리링 1 + 눈 2 + 팔다리 8)로 흰 채움 1개가 정확히 사라졌다. 사용하지 않게 된 `HeadCapVertices` 상수도 제거.
+
+**(b) 계단 현상(알파 앤티에일리어싱) 제거** — `BuildStandalone.ConfigureAntiAliasing()` 신설(`ConfigureRunInBackground()`와 같은 멱등 패턴): 전체 6개 품질 레벨의 `QualitySettings.antiAliasing`을 **4x**로 강제. `ProjectSettings/QualitySettings.asset` 실측으로 6개 레벨 전부 `antiAliasing: 4` 확인. 씬 쪽은 `cam.allowMSAA = true`, **`cam.allowHDR = false`**(HDR 버퍼는 투명 합성에서 알파를 잃을 수 있다). 머티리얼은 점검 결과 그대로 두면 된다 — `Sprites-Default.mat`의 `Blend One OneMinusSrcAlpha`(프리멀티플라이드)는 `dstA = srcA + dstA(1-srcA)`로 알파를 올바르게 출력하므로, MSAA 커버리지 리졸브가 가장자리에 중간 알파를 만들어준다. **MSAA를 켠 뒤 투명이 여전히 정상인지 재검증 완료**(`isTransparent=True` 되읽음 + `kCGWindowLayer=101` 유지).
+
+**(c) 캐릭터 크기 축소** — 사용자: "사이즈도 너무 커", "창 위로 돌아다니고 해야 하는데 너무 크잖아". 카메라 `orthographicSize` **5 → 12**(`OrthographicSize` 상수로 승격). 계산 근거: 캐릭터 전신 높이는 지오메트리 상수에서 유도되어 **2.27 월드유닛**, 실측 창 높이 **846pt** → 화면상 높이 = `2.27 / (2·orthoSize) · 846`. `orthoSize=5`면 **192pt**(너무 큼), `orthoSize=12`면 **80pt**(목표 구간 70~90pt의 한가운데). 선 두께는 `LineWidthScale = 0.7` 일괄 배율 도입(몸통 0.11→0.077, 다리 0.12→0.084, 팔 0.10→0.070, 머리링 0.09→0.063) — 화면상 약 2.5~3.0pt로 리더 지시 "2~3px 유지"에 맞췄다.
+
+> **BUG-SW-M2 함정 재확인(리더 경고 대응, "조용히" 바꾸지 않았다)**: `orthographicSize`는 `ScreenCoordinateConverter`의 OS-px↔월드유닛 변환 비율에 곱연산으로 반영되어 `StickConfig`의 px 필드 유효 월드 크기를 **2.4배** 넓힌다. 과거 5→20(4배) 변경이 접지 터널링을 유발해 되돌린 이력이 있다. 이번이 안전하다고 판단한 근거를 수치로 확인했다: `groundSnapTolerance = 6 OS-px` → 월드 환산 `6·(24/1692) = 0.085유닛`으로 캐릭터 전신(2.27유닛) 대비 **3.7%**(변경 전 0.036유닛 = 1.6%). **허용 오차가 넓어지는 방향**이라 터널링은 오히려 덜 일어난다. 지면 Y(`ComputeGroundTopWorldY`)와 RAGDOLL 바닥(`CreateGroundCollider`)은 둘 다 카메라에서 유도되므로 자동으로 따라온다. **프리팹의 월드 크기/질량/관절은 전혀 건드리지 않았다** — 프리팹 축소 방식 대신 이 방식을 고른 가장 큰 이유이며, "안 넘어지고 걷는다"는 이미 검증된 물리 거동이 그대로 보존된다.
+
+### (10) 남은 한계 (정직한 기록)
+
+- **`isHitTestEnabled` + 얇은 선의 UX 상충**: 클릭관통 ON 상태에서는 커서가 **불투명 픽셀 위**에 있을 때만 클릭이 전달되는데, 선 두께를 화면상 2.5~3pt로 줄였으므로 "캐릭터를 클릭"하려면 그 얇은 획을 정확히 맞춰야 한다. `opacityThreshold=0.1`과 MSAA의 부분 알파가 약간 완화해주지만 근본 해결은 아니다 — 다음 라운드에서 `hitTestType = Raycast`(Collider2D 기반, `CircleCollider2D` 반경 0.4가 이미 있다)로 바꾸면 캐릭터 주변 넉넉한 영역에서 클릭을 받을 수 있다. `ILocalClickCaptureService` 대체 리팩터링과 함께 다루면 좋다.
+- **창이 화면 전체를 덮지 않는다**: 실측 `windowSize=(1512, 846)`, `windowPosition=(0, 75)` — 화면 폭은 전부 덮지만 세로는 846pt로 하단/상단 일부가 빠진다. 데스크톱 펫이 화면 어디든 갈 수 있으려면 `shouldFitMonitor`/`isFreePositioningEnabled`(메뉴바 위 배치 허용) 검토가 필요하다. 이번 라운드 범위 밖.
+- **`StickMate.Runtime.asmdef`의 플랫폼 범위**: `Kirurobo.UniWindowController`의 `includePlatforms`는 Editor/macOS/Windows Standalone 뿐인데 `StickMate.Runtime`은 전 플랫폼이다. macOS 빌드에서는 문제없음을 실측 확인했지만, 향후 iOS/Android 빌드 시 이 참조가 문제를 일으키는지 그 시점에 확인해야 한다.
+- **실제 다른 창 위 정밀 착지**는 이번에도 검증하지 못했다(`desktopDpiScale=0.5`가 이제 실제로 적용되므로 조건은 갖춰졌지만, 실행 환경에 발밑에 밟을 다른 창이 없어 안전망 발판만 사용됨).
+
+### 같은 라운드 후속 피드백 2건 (2026-08-28, Coder)
+
+**(a) "목이 얼굴을 뚫고 올라와있는거 같고"** — 직전까지 몸통(목) 선의 위쪽 끝을 `torsoTopY + HeadVisualRadius*0.5`로 **머리 원 안쪽 깊숙이** 파고들게 배치했었다. 그때는 얼굴이 흰색으로 꽉 차 있어서(sortingOrder 3) 파고든 부분이 가려졌는데, 이번 라운드에 얼굴을 투명하게 비우면서 그 선이 머리 안에서 그대로 드러났다.
+
+수정: `torsoTopOverlapped = torsoTopY + (HeadOutlineWidth - LineWidth) * 0.5f`. 유도 근거 — 머리 링은 반지름 `R` 원 경로를 두께 `W`로 그리므로 링이 차지하는 반경 구간이 `[R-W/2, R+W/2]`이고, 링의 **안쪽 가장자리**는 `torsoTopY + W/2`다(`torsoTopY = headY - R`). 몸통 선은 둥근 캡 때문에 끝점보다 `LineWidth/2` 더 위로 뻗으므로 `끝점 + LineWidth/2 = torsoTopY + W/2` → `끝점 = torsoTopY + (W - LineWidth)/2`. 이러면 (i) 링 안쪽 빈 공간을 1px도 침범하지 않고 (ii) 몸통 획이 링 두께 구간을 완전히 가로질러 겹치므로 목-머리 사이에 틈도 생기지 않는다.
+
+**(b) "캐릭터 주변이 반짝거림 검은색 선이라 그런가?" — 원인 규명 및 해결**
+
+리더가 MSAA를 끄고 확인해보라고 했지만, **끄지 않고도 원인을 특정해 근본 해결했다**(계단 현상과 반짝임을 동시에 제거 — 리더가 제시한 "둘 다 잡기"의 상위 결과).
+
+**진짜 원인**: 씬에 저장된 카메라 배경이 `(0.94, 0.94, 0.94, alpha 0)` = "밝은 회색 + 알파 0"이었다. 알파 0이라 투명이 성공하면 이 RGB는 보이지 않는다 — **MSAA를 켜기 전까지는.** MSAA는 한 픽셀의 여러 서브샘플을 평균하므로, 캐릭터 윤곽선 픽셀(예: 50% 덮임)은
+```
+rgb = (검정 0.0 x 0.5) + (배경 0.94 x 0.5) = 0.47
+alpha = (1 x 0.5) + (0 x 0.5) = 0.5
+```
+가 된다. 즉 **알파 0인 배경의 밝은 RGB가 가장자리 픽셀로 새어 들어온다.** 검은 캐릭터 둘레에 밝은 회색 프린지가 생기고, 캐릭터가 서브픽셀로 움직일 때마다 그 밝기가 프레임마다 변해 "반짝거리는" 것처럼 보인다.
+
+**결정적 방증**: `UniWindowController` 자신이 `autoSwitchCameraBackground`가 켜져 있으면 투명화 시점에 배경을 `Color.clear`(= 0,0,0,0)로 바꾼다(`SetCameraBackground()`). 패키지 샘플 씬(`Samples~/01_SimpleSample`)도 에디터에서는 임의의 RGB에 알파 0을 저장해두지만 **런타임에는 라이브러리가 `Color.clear`로 덮어쓴다**. 우리가 그 자동 전환을 끄고(방어책 유지 목적) 밝은 회색을 유지한 것이 바로 이 아티팩트의 원인이었다.
+
+**해결**: `MacOverlayStateEnforcer.ApplyTransparentSafeCameraBackground()` 신설 — 창 부착이 확인되고 `isTransparent`가 true로 **되읽힌 경우에만** 카메라 배경 RGB를 검정으로 낮춘다(알파는 계속 0). 같은 픽셀이 `rgb=0, alpha=0.5`가 되어 프린지 없이 정확히 "50% 농도의 검은 선"으로 합성된다.
+
+**방어책은 그대로 유지된다** — 투명화가 실패한 경우에는 이 교정이 실행되지 않아 배경이 밝은 회색으로 남고, 예전처럼 "밝은 회색 창 안의 검정 캐릭터"(최소한 보이는 상태)가 된다. 즉 리더가 확립한 "검정-on-검정 금지" 원칙을 깨지 않으면서 아티팩트만 제거했다.
+
+실측(Player.log): `투명 확인됨 — 카메라 배경 RGB를 검정으로 교정했습니다 ... (0.94,0.94,0.94,0.00) -> (0.00,0.00,0.00,0.00)`, 이후 재적용 로그의 `cameraBg=rgba=(0.00,0.00,0.00,0.00)` 확인. `kCGWindowLayer=101` 유지, 예외 0건.
+
+**만약 그래도 반짝임이 남는다면**(다음 라운드 참고): 그때는 `BuildStandalone.ConfigureAntiAliasing()`의 `TargetAntiAliasing`을 `0`으로 바꿔 MSAA를 끄면 확실히 사라진다(대신 계단 현상이 돌아온다 — 리더의 우선순위 "반짝임 제거 > 계단현상 제거"에 따른 폴백).
+
+### 후속 과제 (이번 라운드에서 하지 않음 — 리더 지시로 기록만)
+
+- **캐릭터에 얇은 흰색 외곽선(또는 그림자) 추가**: 사용자가 "검은색 선이라 그런가?"라고 물었는데, 실제로 **어두운 배경화면에서 검은 캐릭터는 잘 보이지 않는다**. 데스크톱 펫은 밝은/어두운 배경 어디서든 보여야 하므로, 각 `LineRenderer` 뒤에 조금 더 두꺼운 흰색 선을 한 겹 깔거나(sortingOrder를 한 단계 아래로) 드롭섀도를 두는 방법을 검토할 가치가 있다.
+- **`hitTestType`을 `Opacity` → `Raycast`로 전환 검토**: 위 (10) "남은 한계" 참고 — 얇은 선 위를 정확히 클릭해야 하는 UX 문제를 `CircleCollider2D`(이미 존재, 반경 0.4) 기반 판정으로 해결할 수 있다. `ILocalClickCaptureService` 대체 리팩터링과 함께.
+
+### 검증 강도 조정 (리더 지시, 2026-08-28)
+
+**순수 시각 수정(색/크기/좌표)에는 90초 실측과 전체 테스트 스위트를 매번 돌리지 않는다.** 컴파일 확인 + 짧은 실행(20~30초)으로 크래시/예외만 확인하고 빠르게 빌드해 넘긴다. **물리/상태머신 로직을 건드릴 때만** 기존의 엄격한 검증(EditMode 13/13 + PlayMode 3/3 + 90초+ 실측)을 적용한다.

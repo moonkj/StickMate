@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.kirurobo.uniwinc": "https://github.com/kirurobo/UniWindowController.git#upm",
     "com.unity.test-framework": "1.6.0",
     "com.unity.multiplayer.center": "1.0.0",
     "com.unity.ugui": "2.0.0",

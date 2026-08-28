@@ -46,37 +46,32 @@ namespace StickMate.EditorTools
             bool cursorOk = service.TryGetGlobalCursorPosition(out Vector2 cursor);
             Debug.Log($"[MACWIN-TEST] TryGetGlobalCursorPosition() = {cursorOk}, pos=({cursor.x:F1},{cursor.y:F1})");
 
-            // "바로 바탕화면에서 구동" 라운드(2026-08-28) 갱신: CreateOverlayWindow/SetClickThrough/
-            // SetAlwaysOnTop은 더 이상 무조건 NotSupportedException을 던지는 안전가드가 아니라, 실제
-            // StickMateOverlayPlugin.bundle(Assets/Plugins/macOS/)을 [DllImport]로 호출하는 진짜 구현이다
-            // (Platform/MacOS/MacWindowService.cs 클래스 문서 참고). 그런데 이 진단 도구 자신은
-            // Assets/Editor/ 아래에 있어 Unity 에디터 프로세스에서만 실행되고, 그 네이티브 플러그인은
-            // 빌드 스크립트(Assets/Editor/BuildStandalone.cs)가 명시적으로
-            // PluginImporter.SetCompatibleWithEditor(false)로 잠가뒀다(에디터 자신의 창을 실수로 건드리는
-            // 사고를 원천 차단하기 위한 의도적 설계 — 클래스 문서 참고). 따라서 이 메뉴 항목을 에디터에서
-            // 실행하면 세 함수 모두 P/Invoke 엔트리포인트를 찾지 못해 DllNotFoundException을 던지는 것이
-            // "정상"이다 — 실제 Standalone Player 안에서만(StickmanAgent.Start() 경로) 진짜로 호출된다.
+            // UniWindowController 도입 라운드(2026-08-28) 갱신: CreateOverlayWindow/SetClickThrough/
+            // SetAlwaysOnTop은 이제 자체 제작 네이티브 플러그인([DllImport])이 아니라 씬에 배치된
+            // UniWindowController(com.kirurobo.uniwinc) 인스턴스를 조작한다
+            // (Platform/MacOS/MacWindowService.cs 클래스 문서 참고). 이 진단 도구는 Assets/Editor/ 아래에
+            // 있어 에디터 프로세스에서 씬을 Play하지 않은 채 실행되므로 씬에 UniWindowController 인스턴스가
+            // 없는 것이 보통이다 — 따라서 CreateOverlayWindow()가 false를 반환하고 나머지 둘이
+            // NotSupportedException을 던지는 것이 "정상"이다. 게다가 라이브러리의 투명화 자체가
+            // `#if !UNITY_EDITOR`로 막혀 있어(공식 문서: "투명은 에디터에서 동작하지 않는다") 진짜 검증은
+            // Standalone Player 안에서만(StickmanAgent.Start() 경로) 가능하다.
             try
             {
                 bool overlayOk = service.CreateOverlayWindow();
-                Debug.Log($"[MACWIN-TEST] CreateOverlayWindow() = {overlayOk}");
+                Debug.Log($"[MACWIN-TEST] CreateOverlayWindow() = {overlayOk} " +
+                    "(에디터에서 씬에 UniWindowController가 없으면 false가 정상).");
 
                 service.SetClickThrough(true);
-                Debug.Log("[MACWIN-TEST] SetClickThrough() 예외 없이 반환됨(에디터에서는 예상 밖 — 플러그인이 에디터에도 로드된 것으로 보임, 재확인 필요).");
+                Debug.Log("[MACWIN-TEST] SetClickThrough() 예외 없이 반환됨 — 씬에 UniWindowController " +
+                    "인스턴스가 실제로 존재한다는 뜻(에디터에서는 창 투명화는 어차피 적용되지 않음).");
 
                 service.SetAlwaysOnTop(true);
-                Debug.Log("[MACWIN-TEST] SetAlwaysOnTop() 예외 없이 반환됨(에디터에서는 예상 밖 — 플러그인이 에디터에도 로드된 것으로 보임, 재확인 필요).");
-            }
-            catch (DllNotFoundException ex)
-            {
-                Debug.Log("[MACWIN-TEST] 예상된 정상 동작(DllNotFoundException) — 에디터 프로세스에는 " +
-                    "StickMateOverlayPlugin이 로드되지 않습니다(PluginImporter가 SetCompatibleWithEditor(false)로 " +
-                    "의도적으로 막아둠): " + ex.Message);
+                Debug.Log("[MACWIN-TEST] SetAlwaysOnTop() 예외 없이 반환됨.");
             }
             catch (NotSupportedException ex)
             {
-                // 플러그인이 로드는 됐지만(예: 위 설정이 바뀐 경우) 대상 NSWindow를 못 찾은 경우의 정직한 실패.
-                Debug.Log("[MACWIN-TEST] SM_IsMainWindowFound()==0으로 인한 정상 실패(NotSupportedException): " + ex.Message);
+                Debug.Log("[MACWIN-TEST] 예상된 정상 실패(NotSupportedException) — 에디터 씬에 " +
+                    "UniWindowController 인스턴스가 없습니다: " + ex.Message);
             }
 
             Debug.Log("[MACWIN-TEST] ==== 원시(raw, 필터링 없음) CGWindowListCopyWindowInfo 대조 덤프 시작 ====");

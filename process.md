@@ -212,3 +212,22 @@ Phase 0(스캐폴딩) → 1(코어루프) → 2(랙돌/파쿠르) → 3(전투/�
   - API: `isTransparent` / `isTopmost` / `isClickThrough` / `isHitTestEnabled`
   - **보너스**: `isHitTestEnabled`가 커서 위치 기반 자동 히트테스트를 제공 — Phase 3에서 "부분적 클릭관통 해제"(UX_FLOW 15절)로 설계했으나 "진짜 OS 히트테스트는 불가능"이라며 소유권 부기만 해두고 미뤘던 기능이 라이브러리로 해결됨.
   - 주의: "투명은 Unity 에디터에서 동작 안 함, 빌드해서 테스트할 것"(공식 문서) — 기존 빌드 기반 검증 방식이 옳았음을 확인.
+
+## 2026-08-28 — 🎉 진짜 바탕화면 투명 오버레이 성공 (프로젝트 최대 마일스톤)
+여러 라운드 실패했던 투명창을 UniWindowController 통합으로 해결. **사용자가 실제 macOS 바탕화면 위에 캐릭터가 걸어다니는 스크린샷으로 확인.**
+
+- **설치**: `Packages/manifest.json`에 UPM git 의존성(v0.9.8). `LibUniWinC.bundle`(x86_64+arm64 유니버설)이 `.app/Contents/PlugIns/`에 정상 포함.
+- **배선**: `MacWindowService`가 `isTransparent/isClickThrough/isTopmost/isHitTestEnabled`를 세팅하는 얇은 어댑터로 교체. `SceneBootstrapper.ConfigureUniWindowController()`로 프리팹 자동 배치(`--force` 재현 가능).
+- **자체 플러그인 완전 제거**: `StickMateOverlayPlugin.m`/`.bundle`/`build.sh`/`DllImport` 4종/`ConfigureNativePluginImporter()` 전부 삭제, 실제 코드 참조 0건 확인.
+- **실측**: `kCGWindowLayer 0→101`(항상위 윈도우서버 레벨 적용 확인), `isTransparent/isTopmost/isClickThrough/isHitTestEnabled` 전부 되읽기 True, 112초 연속 무예외.
+
+**Coder가 진행 중 발견해 고친 함정 3건(전부 중요)**:
+1. **헤드리스 크래시**: `-nographics`엔 NSWindow가 없어 네이티브 `_findMyWindow()`에서 프로세스가 통째로 죽음(PlayMode EXIT=133) → 씬에는 비활성 저장, 실제 Player에서만 활성화.
+2. **항상위/DPI 조용한 유실**: 라이브러리는 첫 `Update()`에서 창을 붙잡는데 우리 배선은 `Start()`라 더 빨랐음 → `MacOverlayStateEnforcer.cs` 신설(부착 확인 후 재적용+되읽기 검증).
+3. **클릭관통 안전장치 무력화**: `isHitTestEnabled=true`면 라이브러리가 매 프레임 `isClickThrough`를 자동 제어해 **Escape 긴급해제가 다음 프레임에 되살아남** → `SetClickThrough(false)`가 `isHitTestEnabled`까지 함께 끄도록 처리. 안전 계약(5초 지연+Escape) 보존.
+
+**시각 피드백 반영**: 얼굴 투명화(흰 채움 제거→검은 링+검은 눈만), 크기 축소(`orthographicSize` 5→12, 화면상 192pt→80pt), 목이 머리 뚫는 문제 수정, MSAA 4x.
+- **반짝임 근본 해결**: 원인은 카메라 배경의 밝은 RGB(0.94)가 MSAA 서브샘플 평균을 통해 가장자리로 새어 밝은 프린지를 만든 것. `MacOverlayStateEnforcer`가 **투명이 실제 확인된 뒤에만** RGB를 검정으로 낮추도록 해 계단현상·반짝임 동시 제거하면서 "투명 실패 시 검정-on-검정 금지" 방어책도 유지.
+
+**후속 과제**: 얇은 선 vs Opacity 히트테스트 상충(`hitTestType=Raycast`로 전환 필요 — 마우스 상호작용 연결 시 함께), 창이 화면 전체를 못 덮음(`shouldFitMonitor` 검토), 어두운 배경에서 검은 캐릭터 시인성(흰 외곽선), 타 창 위 정밀 착지 미검증.
+**`isHitTestEnabled`가 Phase 3 "부분적 클릭관통 해제"(UX_FLOW 15절)를 대체 가능** — 다음 라운드에 `ILocalClickCaptureService` 대체 검토.

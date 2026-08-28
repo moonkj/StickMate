@@ -3,6 +3,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Kirurobo;
 using StickMate.Core;
 using StickMate.Interaction;
 using StickMate.Platform;
@@ -88,28 +89,33 @@ namespace StickMate.EditorTools
         // 관절에서 둥근 끝끼리 자연스럽게 겹쳐 매끄럽게 이어진다는 점이다. 우리가 계속 고생했던
         // "관절이 나눠져 보임"/"검은 뭉치" 문제는 이 스타일에서는 저절로 해결된다 — 오히려 관절 부위가
         // 살짝 뭉쳐 보이는 게 정상이고 자연스럽다(리더 명시).
-        private const float LineWidth = 0.11f;      // 기본 획 두께(몸통). 머리 반경 0.22의 절반.
-        private const float LegLineWidth = 0.12f;   // 다리는 기본보다 아주 약간 굵게.
-        private const float ArmLineWidth = 0.10f;   // 팔은 기본보다 아주 약간 얇게.
+        // 선 두께 일괄 축소 배율(2026-08-28 사용자 피드백 "사이즈도 너무 커" 대응 라운드).
+        // 카메라 orthographicSize를 5 -> 12로 키워 캐릭터가 화면에서 약 2.4배 작아졌는데(아래
+        // OrthographicSize 상수 문서 참고), 선 두께를 그대로 두면 상대적으로 굵어져 작은 캐릭터가
+        // 검은 뭉치처럼 뭉개져 보인다. 축소 후 화면상 획 두께가 약 2.5~3.0 포인트가 되도록 잡은 값이다
+        // (리더 지시: "너무 얇으면 안 보이니 화면상 2~3px 정도는 유지"). 계산: 창 높이 846pt /
+        // (2*12 유닛) = 35.25 pt/유닛 이므로 0.11*0.7*35.25 ~= 2.7pt.
+        private const float LineWidthScale = 0.7f;
+
+        private const float LineWidth = 0.11f * LineWidthScale;      // 기본 획 두께(몸통).
+        private const float LegLineWidth = 0.12f * LineWidthScale;   // 다리는 기본보다 아주 약간 굵게.
+        private const float ArmLineWidth = 0.10f * LineWidthScale;   // 팔은 기본보다 아주 약간 얇게.
         private const int LineCapVertices = 8; // 끝/모서리를 확실히 둥글게(레퍼런스 스타일의 round cap).
         private const int HeadRingSegments = 24; // 머리 테두리 링 근사에 쓰는 선분 개수(24면 육안으로 매끈한 원).
 
-        // 흰 얼굴의 검은 테두리 두께 — 팔다리 획(0.10~0.12)보다 약간 얇게 잡아 머리가 지나치게 두꺼워
-        // 보이지 않게 한다(리더 지시: "팔다리 선 두께와 비슷하거나 약간 얇게").
-        private const float HeadOutlineWidth = 0.09f;
+        // 머리 테두리(검은 링) 두께 — 팔다리 획보다 약간 얇게 잡아 머리가 지나치게 두꺼워 보이지 않게
+        // 한다(리더 지시: "팔다리 선 두께와 비슷하거나 약간 얇게"). 위 LineWidthScale이 함께 곱해진다.
+        private const float HeadOutlineWidth = 0.09f * LineWidthScale;
         // 머리 시각 반경. 물리 CircleCollider2D.radius(0.4, 아래 참고)와는 별개 값 — 판정 크기는 무변경.
-        // 머리는 "흰색으로 채워진 원 + 검은 테두리"다(사용자 정정, 2026-08-28) — CreateFilledHead()가
-        // 길이 0인 선분에 지름만큼의 선 폭 + 둥근 캡을 줘서 흰 채움을 만들고, 그 위에 CreateRing()이
-        // 검은 링을 겹쳐 그린다(SpriteRenderer 재도입 없이 "LineRenderer만 사용" 컨벤션 유지).
+        // 머리는 이제 "검은 링(테두리)만, 안쪽은 완전히 비어 투명"이다(사용자 정정, 2026-08-28 —
+        // "얼굴이 흰색이 아니고 색 자체가 없어야지"). 진짜 투명 창이 동작하게 되어 얼굴 안쪽으로
+        // 바탕화면이 그대로 비쳐야 하므로, 예전의 흰 채움 원(CreateFilledHead)은 제거했다.
         private const float HeadVisualRadius = 0.22f;
 
 // 눈동자 점(CreateFilledDot)이 쓰는 원 근사 세분화 수. 손/발 끝 점은 2026-08-28 사용자 요청으로
         // 완전히 제거했으므로("손과 발에 동그란 뭉치같은건 필요없을거 같은데") 이제 이 상수는 눈 전용이다.
         // 이 크기(반지름 0.018)에서는 8각형도 육안상 원으로 보인다 — 머리 링(24)만큼 세분화할 필요 없음.
         private const int FilledDotSegments = 8;
-
-        // 머리(채워진 원)의 둥근 캡 세분화 — 반지름이 크므로 점(8)보다 훨씬 촘촘해야 매끈해 보인다.
-        private const int HeadCapVertices = 16;
 
 
         // 눈(눈동자 점) — 2026-08-28 사용자 요청("나중에 마우스 위치에 따라 눈도 움직여야 해서 눈도
@@ -168,6 +174,39 @@ namespace StickMate.EditorTools
         // BUG-SW-M1(Architect 결정, 2026-08-28) — 표준 Active Ragdoll 레이어 기법: 몸통/머리/팔다리를
         // 전부 이 레이어에 몰아넣고, 이 레이어끼리의 충돌만 Physics2D 매트릭스에서 끈다(EnsureStickmanLimbLayer 참고).
         private const string StickmanLimbLayerName = "StickmanLimb";
+
+        /// <summary>
+        /// Main Camera의 직교 크기. 5 -> 12 (2026-08-28 사용자 피드백: "사이즈도 너무 커", "창 위로
+        /// 돌아다니고 해야 하는데 너무 크잖아").
+        ///
+        /// 계산 근거: 캐릭터 전신 높이는 지오메트리 상수에서 유도되어 약 2.27 월드유닛이다
+        /// (BuildStickmanPrefab의 totalHeight — 발끝 0에서 머리 꼭대기까지). 실측한 Player 창 높이는
+        /// 846 포인트이므로 화면상 캐릭터 높이 = 2.27 / (2 * orthographicSize) * 846.
+        ///   orthographicSize=5  -> 192pt (기존, 너무 큼)
+        ///   orthographicSize=12 -> 80pt  (목표 구간 70~90pt의 한가운데)  <- 채택
+        /// macOS 제목표시줄(약 28pt)이나 Dock 아이콘(약 60pt) 위에 서 있는 게 자연스러운 크기다.
+        ///
+        /// ============================================================================
+        /// BUG-SW-M2 함정 재확인(리더 명시 경고) — 이번에는 "조용히" 바꾸지 않는다
+        /// ============================================================================
+        /// 이 값은 Platform/ScreenCoordinateConverter.cs의 OS-px <-> 월드유닛 변환 비율에 곱연산으로
+        /// 반영되므로, StickConfig의 px 단위 필드들의 "유효 월드 크기"가 5/12 -> 2.4배 넓어진다.
+        /// 과거 5->20(4배) 변경이 접지 터널링을 유발해 되돌린 이력이 있다.
+        ///
+        /// 이번 변경이 안전하다고 판단한 근거(수치로 확인):
+        ///   - groundSnapTolerance = 6 OS-px. 백킹 픽셀 기준 Screen.height=1692에서
+        ///     월드 환산 = 6 * (2*12 / 1692) = 0.085 유닛. 캐릭터 전신(2.27유닛) 대비 3.7%로 여전히
+        ///     매우 작다(변경 전에는 0.036유닛 = 1.6%). 즉 **허용 오차가 넓어지는 방향**이라
+        ///     "발판을 뚫고 지나가는" 터널링은 오히려 덜 일어난다(BUG-SW-M2 때의 4배와 달리 2.4배이고,
+        ///     절대값도 캐릭터 대비 4% 미만).
+        ///   - 지면 Y(ComputeGroundTopWorldY)와 RAGDOLL 바닥(CreateGroundCollider)은 둘 다 카메라에서
+        ///     유도되므로 자동으로 따라온다(고정 상수 없음).
+        ///   - 캐릭터 프리팹의 월드 크기/질량/관절은 **전혀 건드리지 않는다** — 물리 거동이 그대로라
+        ///     "안 넘어지고 걷는다"는 이미 검증된 동작이 보존된다(프리팹 축소 방식 대신 이 방식을 고른
+        ///     가장 큰 이유).
+        /// 그럼에도 실측 재검증은 필수다(90초+ 연속 실행, grounded 이탈/낙하 고착 0건 확인).
+        /// </summary>
+        private const float OrthographicSize = 12f;
 
         // BUG-SW-M3(Architect 결정, 2026-08-28) — 배치 모드에서 기존 에셋을 의도적으로 덮어쓰고 싶을 때만
         // 켜는 커맨드라인 플래그. 예: -executeMethod StickMate.EditorTools.SceneBootstrapper.BuildAll --force
@@ -395,23 +434,43 @@ namespace StickMate.EditorTools
             capsule.size = new Vector2(0.4f, totalHeight);
             capsule.offset = new Vector2(0f, totalHeight * 0.5f);
 
-            // 몸통 위쪽 끝을 머리 원 안으로 살짝 파고들게 한다(레퍼런스가 그렇다 — 목 부분에서 굵은
-            // 획이 머리 덩어리와 자연스럽게 이어져 보인다). 파고드는 깊이는 머리 반경의 절반.
-            float torsoTopOverlapped = torsoTopY + HeadVisualRadius * 0.5f;
+            // 몸통(목) 선의 위쪽 끝 — **머리 링 안쪽으로 침범하지 않게** 정확히 맞춘다
+            // (2026-08-28 사용자 지적: "목이 얼굴을 뚫고 올라와있는거 같고").
+            //
+            // 이력: 직전까지는 torsoTopY + HeadVisualRadius*0.5로 머리 원 **안쪽 깊숙이** 파고들게 했다.
+            // 그때는 얼굴 안쪽이 흰색으로 꽉 채워져 있어서(sortingOrder 3) 파고든 부분이 가려져 보이지
+            // 않았다. 이번 라운드에 얼굴을 투명하게 비우면서 그 선이 머리 안에서 그대로 드러났다.
+            //
+            // 계산: 머리 링은 반지름 HeadVisualRadius 원 경로를 HeadOutlineWidth 두께로 그리므로,
+            // 링이 차지하는 반경 구간은 [R - W/2, R + W/2]다. 즉 링의 **안쪽 가장자리**는 머리 중심에서
+            // R - W/2 만큼 떨어진 곳 = torsoTopY + HeadOutlineWidth/2 (torsoTopY = headY - R 이므로).
+            // 몸통 선은 둥근 캡 때문에 끝점보다 LineWidth/2 만큼 더 위로 뻗으므로, 그 시각적 끝이 링
+            // 안쪽 가장자리에 정확히 닿으려면:
+            //     끝점 + LineWidth/2 = torsoTopY + HeadOutlineWidth/2
+            //  => 끝점 = torsoTopY + (HeadOutlineWidth - LineWidth)/2
+            // 이러면 (a) 링 안쪽 빈 공간으로는 1px도 침범하지 않고, (b) 몸통 획이 링 두께 구간을 완전히
+            // 가로질러 겹치므로 목과 머리 사이에 틈도 생기지 않는다.
+            float torsoTopOverlapped = torsoTopY + (HeadOutlineWidth - LineWidth) * 0.5f;
             float torsoCenterY = (torsoTopOverlapped + torsoBottomY) * 0.5f;
             float torsoHalf = (torsoTopOverlapped - torsoBottomY) * 0.5f;
             CreateLineSegmentVisual(root.transform, "Torso", new Vector3(0f, torsoCenterY, 0f),
                 new Vector3(0f, torsoHalf, 0f), new Vector3(0f, -torsoHalf, 0f), outline, sortingOrder: 1);
 
-            // 머리 — **흰색으로 꽉 채운 원 + 검은 테두리**(2026-08-28 사용자 정정: "얼굴은 흰색에 눈이
-            // 검은색이어야지"). 배경이 밝은 회색(backgroundFallbackColor)이라 흰 얼굴만으로는 배경과
-            // 구분되지 않으므로 검은 테두리가 반드시 필요하다. 세 겹을 sortingOrder로 쌓는다:
-            //   3: 흰색 채움(CreateFilledHead)  4: 검은 테두리 링(CreateRing)  5: 검은 눈동자 점
-            // 물리 CircleCollider2D(반경 0.4, BUG-SW-M1 이후 무변경)는 채움 오브젝트("Head")에 붙인다 —
-            // 이 오브젝트가 머리의 기준 Transform이라 StickmanPoseAnimator의 몸 바운스/EyeController의
-            // 부모 노릇을 함께 한다.
-            var head = CreateFilledHead(root.transform, "Head", new Vector3(0f, headY, 0f), HeadVisualRadius,
-                Color.white, sortingOrder: 3);
+            // 머리 — **검은 링(테두리)만 + 안쪽은 완전히 비어 투명**(2026-08-28 사용자 정정: "얼굴이
+            // 흰색이 아니고 색 자체가 없어야지, 비워져있어야함").
+            //
+            // 이력: 직전 라운드까지는 "흰색으로 꽉 채운 원 + 검은 테두리"였는데, 그건 **불투명한 밝은
+            // 회색 배경을 전제로 한 설계**였다(흰 얼굴이 회색 배경과 구분되도록). 이번 라운드에
+            // UniWindowController로 진짜 투명 창이 실제 동작하게 되었으므로(사용자 실측 확인 — 바탕화면과
+            // Dock이 그대로 비쳐 보임), 얼굴 안쪽도 아무것도 그리지 않아 바탕화면이 그대로 비치게 한다.
+            // 흰 채움을 만들던 CreateFilledHead()는 LineRenderer가 없는 순수 앵커 CreateHeadAnchor()로
+            // 대체했다.
+            //
+            // 두 겹을 sortingOrder로 쌓는다:  4: 검은 테두리 링(CreateRing)   5: 검은 눈동자 점
+            // 물리 CircleCollider2D(반경 0.4, BUG-SW-M1 이후 무변경)는 앵커 오브젝트("Head")에 붙인다 —
+            // 이 오브젝트가 머리의 기준 Transform이라 StickmanPoseAnimator의 몸 바운스(이름 "Head"로
+            // 탐색)/EyeController의 부모 노릇을 함께 한다. 렌더러가 사라져도 이 역할은 그대로다.
+            var head = CreateHeadAnchor(root.transform, "Head", new Vector3(0f, headY, 0f));
             head.layer = limbLayer;
             var headCollider = head.AddComponent<CircleCollider2D>();
             headCollider.radius = 0.4f;
@@ -419,7 +478,7 @@ namespace StickMate.EditorTools
                 outline, sortingOrder: 4);
 
             // 눈(눈동자 점 2개) — **반드시 머리의 자식**이라야 RAGDOLL로 머리가 뒹굴 때도 따라간다.
-            // 흰 얼굴 위에 검은 점 두 개(사용자 정정 반영). sortingOrder는 테두리(4)보다 위(5).
+            // 투명한(비어 있는) 얼굴 안에 검은 점 두 개가 떠 있는 형태. sortingOrder는 테두리(4)보다 위(5).
             // 런타임에 States/EyeController.cs가 이 점들의 localPosition을 중립에서 조금씩 오프셋해
             // 시선을 움직인다(다음 라운드에 커서 추적 연결 예정 — 그 클래스 문서의 배선 지점 참고).
             CreateFilledDot(head.transform, "LeftEye", new Vector3(-EyeOffsetX, EyeOffsetY, 0f),
@@ -490,37 +549,41 @@ namespace StickMate.EditorTools
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            // BUG-SW-M2 반려 수정(Architect 결정, 2026-08-28, docs/BUG_REPORT_SCENE_WIRING.md):
-            // orthographicSize를 원래 설계값(5)으로 되돌린다. 이전 라운드는 "화면이 좁아 배회 AI가
-            // 15초 관찰 구간 안에 화면 끝(=유일한 더미 발판) 가장자리에 도달해버린다"는 문제를
-            // orthographicSize를 5→20으로 키워서 해결했는데, 이 값은 GroundSensor의 OS-px↔world-unit
-            // 변환 비율에도 곱연산으로 반영되어 groundSnapTolerance 등 8개 OS-px 필드의 유효 월드
-            // 크기를 조용히 4배 넓혀버리는 부작용을 냈다(클래스 문서 상단 BUG-SW-M2 경고 참고). 관찰
-            // 범위가 좁다는 원래 문제는 카메라가 아니라 Platform/NullPlatformWindowService.cs의 더미
-            // 발판 폭(OS-px, DummyFootholdWidthMultiplier)을 넓히는 것으로 독립적으로 해결한다.
             var camGo = new GameObject("Main Camera");
             camGo.tag = "MainCamera";
             var cam = camGo.AddComponent<Camera>();
             cam.orthographic = true;
-            cam.orthographicSize = 5f;
+            cam.orthographicSize = OrthographicSize;
             cam.transform.position = new Vector3(0f, 0f, -10f);
+            // 계단 현상(알파 앤티에일리어싱) 제거 — 투명 창에서는 프레임버퍼 알파가 그대로 창 투명도가
+            // 되므로, MSAA가 꺼져 있으면 캐릭터 윤곽선의 알파가 0/1로만 나와 들쭉날쭉해 보인다
+            // (사용자 실측 지적: "캐릭터 주변으로 픽셀이 깨져보이는데"). 프로젝트 전역 MSAA 값은
+            // Assets/Editor/BuildStandalone.cs의 ConfigureAntiAliasing()이 빌드마다 멱등적으로 강제하고,
+            // 카메라 쪽 스위치는 여기서 명시적으로 켠다(기본값이 true지만 의존하지 않는다).
+            cam.allowMSAA = true;
+            cam.allowHDR = false; // 알파 채널 보존 — HDR 버퍼는 투명 합성에서 알파를 잃을 수 있다.
             cam.clearFlags = CameraClearFlags.SolidColor;
-            // 투명 오버레이 비활성화(Architect 결정, 2026-08-28, "완전히 새까만 화면" 사고 대응): 이전
-            // 라운드들은 이 알파를 0으로 낮춰 카메라 배경을 완전 투명으로 만들고
-            // Platform/MacOS/StickMateOverlayPlugin.m의 SM_ConfigureOverlayWindow(transparent=1)와 짝을
-            // 이루려 했으나, 그 네이티브 창 투명화가 여러 라운드에 걸쳐 한 번도 실제로 성공한 적이 없다
-            // (Unity Standalone Mac Player의 렌더 서페이스가 기본적으로 불투명 합성을 가정). 그 결과
-            // 알파=0인 픽셀이 RGB 값과 무관하게 그냥 검정으로 합성되어 "완전히 균일한 검정 화면"으로
-            // 보이는 사고가 재발했다(사용자 실측, 2026-08-28) — 알파 0을 유지하는 한 RGB를 무엇으로
-            // 설정해도 의미가 없었다는 뜻이다. 진짜 투명 창은 명시적으로 다음 과제로 미루고, 이번
-            // 라운드는 카메라 배경 알파를 항상 1(완전 불투명)로 고정해 RGB(StickConfig.
-            // backgroundFallbackColor, 기본 밝은 회색)가 확실히, 그대로 렌더링되게 한다 —
-            // primaryOutlineColor(검정) 캐릭터 선과 대비되는 밝은 배경. MacWindowService.cs의
-            // SM_ConfigureOverlayWindow 호출도 이 라운드에서 transparent=0으로 바뀌었다(클릭관통/
-            // 항상위는 계속 실제 NSWindow API를 사용 — 그쪽은 이미 로그로 정상 동작이 확인됨).
+            // 진짜 투명 오버레이 재활성화(UniWindowController 도입 라운드, 2026-08-28).
+            //
+            // 왜 알파 0인가: UniWindowController가 창을 투명하게 만들어도, 카메라가 알파 1(불투명)로
+            // 화면을 클리어하면 렌더 결과 자체가 불투명이라 창은 여전히 회색 사각형으로 보인다. 즉
+            // "창 투명화(네이티브)"와 "렌더 결과의 알파 0(Unity)"은 반드시 짝을 이뤄야 한다.
+            //
+            // 왜 RGB는 검정이 아니라 밝은 회색인가(이전 라운드에서 확립된 방어책, 반드시 유지):
+            // 자체 플러그인 시절 알파를 0으로 두고 RGB도 (0,0,0)이면, 투명화가 실패했을 때 화면이
+            // "완전히 새까만 창"이 되어 검정 캐릭터 선이 검정 배경에 묻혀 아무것도 안 보이는 사고가
+            // 반복됐다. RGB를 StickConfig.backgroundFallbackColor(밝은 회색)로 유지하면 투명화가
+            // 실패하더라도 최악의 결과가 "밝은 회색 창 안의 검정 캐릭터"(= 최소한 보이는 상태)가 된다.
+            // 그래서 UniWindowController 프리팹의 autoSwitchCameraBackground도 false로 꺼둔다 —
+            // 그 기능이 켜져 있으면 라이브러리가 투명화 시점에 배경을 Color.clear(=RGB 0,0,0 + 알파 0)로
+            // 덮어써 이 방어책을 무력화한다(ConfigureUniWindowController() 참고).
             Color fallbackBg = config != null ? config.backgroundFallbackColor : new Color(0.94f, 0.94f, 0.94f);
-            cam.backgroundColor = new Color(fallbackBg.r, fallbackBg.g, fallbackBg.b, 1f);
+            cam.backgroundColor = new Color(fallbackBg.r, fallbackBg.g, fallbackBg.b, 0f);
             camGo.AddComponent<AudioListener>();
+
+            // 진짜 투명/클릭관통/항상위를 담당하는 UniWindowController를 씬에 자동 배치한다.
+            // 수동 씬 편집 없이 --force로 항상 재현 가능해야 한다는 기존 컨벤션에 따라 코드로 생성한다.
+            ConfigureUniWindowController(cam);
 
             // BUG-SW-M1 대응: RAGDOLL이 실제로 부딪혀 멈출 수 있는 정적 바닥. Rigidbody2D를 붙이지
             // 않으므로 Unity가 자동으로 정적 콜라이더로 취급한다(Architect 결정 — "표준 랙돌 기법").
@@ -590,6 +653,91 @@ namespace StickMate.EditorTools
         /// 레이어는 Default(0)로 둔다 — StickmanLimbLayerName과는 자기들끼리만 충돌을 끄는 매트릭스이므로
         /// Default 레이어와는 정상적으로 충돌한다.
         /// </summary>
+        /// <summary>
+        /// UniWindowController(com.kirurobo.uniwinc) 인스턴스를 씬에 배치하고 이 프로젝트에 맞는 초기
+        /// 상태로 설정한다(UniWindowController 도입 라운드, 2026-08-28).
+        ///
+        /// 패키지의 Runtime/Prefabs/UniWindowController.prefab을 먼저 시도하고(업스트림 업데이트를
+        /// 자동으로 따라가기 위함), 찾지 못하면 빈 GameObject + AddComponent로 폴백한다 — 패키지 내부
+        /// 경로가 향후 버전에서 바뀌더라도 씬 생성 자체가 실패하지 않게 하는 방어책이다.
+        ///
+        /// 설정값과 근거:
+        ///   - _isTransparent = true   : 이번 라운드의 핵심 목표. 창 attach 시점에 네이티브로 자동 적용되며,
+        ///     런타임에 MacWindowService.CreateOverlayWindow()가 한 번 더 명시적으로 적용한다(이중 안전).
+        ///   - _isTopmost = false      : StickmanAgent.Start()가 SetAlwaysOnTop(true)로 명시적으로 켠다.
+        ///   - isHitTestEnabled = false: 매우 중요. true면 라이브러리가 매 프레임 커서 아래 알파를 보고
+        ///     isClickThrough를 자동으로 켜버려, StickmanAgent의 "시작 후 5초간 클릭관통 금지" 안전장치가
+        ///     시작 즉시 무력화된다. 5초 뒤 MacWindowService.SetClickThrough(true)가 이 값을 켠다.
+        ///   - autoSwitchCameraBackground = false : 위 카메라 배경 주석 참고 — 라이브러리가 배경을
+        ///     Color.clear(RGB 0,0,0)로 덮어쓰는 것을 막아 "투명 실패 시 검정-on-검정" 사고를 예방한다.
+        ///   - hitTestType = Opacity   : 커서 아래 픽셀의 알파로 판정(캐릭터 선 위에서만 클릭 수신).
+        ///   - currentCamera           : Camera.main 자동 탐색에 의존하지 않고 명시 지정(헤드리스/배치
+        ///     환경에서 탐색이 실패하는 경우를 없앤다).
+        /// </summary>
+        private static void ConfigureUniWindowController(Camera cam)
+        {
+            const string PrefabPath = "Packages/com.kirurobo.uniwinc/Runtime/Prefabs/UniWindowController.prefab";
+
+            GameObject go = null;
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+            if (prefab != null)
+            {
+                go = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            }
+            else
+            {
+                Debug.LogWarning("[SceneBootstrapper] " + PrefabPath + "을(를) 찾지 못해 빈 GameObject + " +
+                    "AddComponent<UniWindowController>()로 폴백합니다(패키지 경로 변경 가능성).");
+                go = new GameObject("UniWindowController");
+                go.AddComponent<UniWindowController>();
+            }
+
+            var controller = go.GetComponent<UniWindowController>();
+            if (controller == null)
+            {
+                controller = go.AddComponent<UniWindowController>();
+            }
+
+            // public 필드는 직접 대입.
+            controller.isHitTestEnabled = false;
+            controller.hitTestType = UniWindowController.HitTestType.Opacity;
+            controller.autoSwitchCameraBackground = false;
+            controller.currentCamera = cam;
+            controller.forceWindowed = true;
+
+            // _isTransparent / _isTopmost는 [SerializeField] private이라 SerializedObject로만 씬에
+            // 저장 가능하다(런타임 프로퍼티 setter는 네이티브 창을 건드리므로 에디터에서 쓰면 안 된다).
+            var so = new SerializedObject(controller);
+            so.FindProperty("_isTransparent").boolValue = true;
+            so.FindProperty("_isTopmost").boolValue = false;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            // ============================================================================
+            // 매우 중요 — 이 GameObject는 반드시 "비활성" 상태로 씬에 저장한다.
+            // ============================================================================
+            // 실측으로 발견한 사고(2026-08-28, PlayMode 테스트 3/3 -> 프로세스 크래시): 네이티브
+            // LibUniWinC의 Swift 함수 _findMyWindow()는 NSApplication의 창 목록에서 자기 창을 찾는데,
+            // `-batchmode -nographics`로 도는 Unity(= 우리 PlayMode 테스트 실행 방식)에는 NSWindow가
+            // 아예 하나도 없어 그 안에서 프로세스가 통째로 죽는다(스택: LibUniWinC._findMyWindow <-
+            // AttachMyWindow <- UniWindowController.UpdateTargetWindow <- Update). 컴포넌트가 활성인 채로
+            // 씬에 저장되면 씬을 여는 모든 헤드리스 실행이 이 크래시를 밟는다.
+            //
+            // 그래서 씬에는 비활성으로 저장하고, 활성화는 실제 Standalone macOS Player 안에서만 일어나는
+            // Platform/MacOS/MacWindowService.CreateOverlayWindow()가 담당한다(그 서비스 자체가
+            // StickmanAgent.CreatePlatformService()의 `UNITY_STANDALONE_OSX && !UNITY_EDITOR` 분기에서만
+            // 인스턴스화된다). 부수 효과로 "에디터 Play 모드에서 에디터 자신의 창을 건드리는" 사고도
+            // 함께 원천 차단된다 — 어차피 공식 문서가 "투명은 에디터에서 동작하지 않으니 빌드해서
+            // 테스트하라"고 경고하므로 에디터에서 이 컴포넌트가 돌아야 할 이유가 없다.
+            go.SetActive(false);
+
+            EditorUtility.SetDirty(controller);
+
+            Debug.Log("[SceneBootstrapper] UniWindowController 배치 완료 " +
+                "(activeSelf=false — 실제 Player에서 MacWindowService가 활성화, " +
+                "_isTransparent=true, _isTopmost=false, isHitTestEnabled=false, hitTestType=Opacity, " +
+                "autoSwitchCameraBackground=false, currentCamera=Main Camera).");
+        }
+
         private static void CreateGroundCollider(Camera cam)
         {
             var ground = new GameObject("PhysicsGround");
@@ -675,28 +823,19 @@ namespace StickMate.EditorTools
         /// 검은 덩어리**다. 길이 0인 선분에 지름만큼의 선 폭 + 둥근 캐을 주면 LineRenderer 하나로 완전히
         /// 채워진 원이 나온다(SpriteRenderer를 다시 들여오지 않고 "LineRenderer만 사용" 컨벤션 유지).
         /// </summary>
-        private static GameObject CreateFilledHead(Transform parent, string name, Vector3 localPos, float radius,
-            Color color, int sortingOrder)
+        private static GameObject CreateHeadAnchor(Transform parent, string name, Vector3 localPos)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             go.transform.localPosition = localPos;
             go.transform.localScale = Vector3.one;
-
-            var lr = ConfigureLine(go, color, sortingOrder, loop: false);
-            lr.startWidth = radius * 2f;
-            lr.endWidth = radius * 2f;
-            lr.numCapVertices = HeadCapVertices;
-            lr.positionCount = 2;
-            lr.SetPosition(0, Vector3.zero);
-            lr.SetPosition(1, Vector3.zero);
             return go;
         }
 
         /// <summary>
-        /// 속이 빈 원(링) — 지금은 흰 얼굴의 검은 테두리 전용이다. 반지름 radius의 원 경로를 width
-        /// 두께의 선으로 그린다(선이 반지름보다 얇으므로 가운데가 뚫린 링이 된다 — 채워진 원을 만드는
-        /// CreateFilledHead와는 정확히 이 점만 다르다).
+        /// 속이 빈 원(링) — 머리 테두리 전용. 반지름 radius의 원 경로를 width 두께의 선으로 그린다
+        /// (선이 반지름보다 얇으므로 가운데가 뚫린 링이 된다). 진짜 투명 창 도입 후 얼굴 안쪽은
+        /// 아무것도 그리지 않으므로(CreateHeadAnchor 참고), 이 링이 머리의 유일한 외곽선이다.
         /// </summary>
         private static GameObject CreateRing(Transform parent, string name, Vector3 localPos, float radius,
             float width, Color color, int sortingOrder)

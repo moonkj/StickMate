@@ -11,8 +11,15 @@ namespace StickMate.EditorTools
     /// "바로 바탕화면에서 구동" 라운드(사용자 명시 요청, 2026-08-28) 대응 — 이 프로젝트가 지금까지 씬/
     /// 프리팹만 만들었을 뿐 한 번도 실제 Standalone 빌드(.app)를 만든 적이 없었다는 것이 macOS 진짜
     /// 오버레이(클릭관통/항상위/투명)를 구현하지 못했던 근본 이유였다(Unity 에디터 Play 모드의 게임뷰는
-    /// 에디터 UI 안의 패널일 뿐 실제 OS 창이 아니라서, Platform/MacOS/StickMateOverlayPlugin.m이 조작할
-    /// 진짜 NSWindow 자체가 없었음). 이 클래스는 그 실제 빌드를 만드는 최소 배치 스크립트다.
+    /// 에디터 UI 안의 패널일 뿐 실제 OS 창이 아니라서, 조작할 진짜 NSWindow 자체가 없었음). 이 클래스는
+    /// 그 실제 빌드를 만드는 최소 배치 스크립트다.
+    ///
+    /// UniWindowController 도입 라운드(2026-08-28) 갱신: 자체 제작 Objective-C 플러그인
+    /// (StickMateOverlayPlugin.bundle)을 전부 제거하고 검증된 오픈소스 UniWindowController
+    /// (com.kirurobo.uniwinc, UPM git 의존성)로 교체했으므로, 이 스크립트가 그 번들의 PluginImporter를
+    /// 손으로 설정하던 ConfigureNativePluginImporter()도 함께 삭제했다 — 패키지에 동봉된
+    /// Runtime/Plugins/MacOS/LibUniWinC.bundle은 패키지 자신의 .meta가 이미 플랫폼별 임포트 설정을
+    /// 들고 있어(그리고 x86_64+arm64 유니버설로 배포되어) 추가 설정이 필요 없다.
     ///
     /// 사용법:
     /// - 에디터: 메뉴 StickMate/Build Standalone macOS Player.
@@ -26,15 +33,14 @@ namespace StickMate.EditorTools
     /// </summary>
     public static class BuildStandalone
     {
-        private const string PluginAssetPath = "Assets/Plugins/macOS/StickMateOverlayPlugin.bundle";
         private const string BuildSubFolder = "Builds/macOS";
         private const string AppFileName = "StickMate.app";
 
         [MenuItem("StickMate/Build Standalone macOS Player")]
         public static void PerformBuild()
         {
-            ConfigureNativePluginImporter();
             ConfigureRunInBackground();
+            ConfigureAntiAliasing();
 
             string[] scenes = GetEnabledScenePaths();
             if (scenes.Length == 0)
@@ -53,8 +59,8 @@ namespace StickMate.EditorTools
             // EditorUserBuildSettings.macOSXArchitecture 필드가 제거되어 이 스크립트에서 강제로 바꿀
             // 안정적인 공개 API를 확인하지 못했다 — PlayerSettings.SetArchitecture(NamedBuildTarget,int)가
             // 있지만 int 아키텍처 코드가 문서화되어 있지 않아 추측으로 잘못된 값을 설정하는 위험을
-            // 피했다). StickMateOverlayPlugin.bundle 자체는 arm64+x86_64 유니버설로 빌드해뒀으므로
-            // (Assets/Plugins/macOS/build.sh), 메인 앱 바이너리가 arm64 전용이든 유니버설이든 플러그인
+            // 피했다). UniWindowController가 동봉한 LibUniWinC.bundle 자체가 arm64+x86_64 유니버설이므로
+            // (lipo -info로 실측 확인), 메인 앱 바이너리가 arm64 전용이든 유니버설이든 플러그인
             // 로딩에는 문제가 없다. 이 검증은 arm64 Apple Silicon 개발 머신에서 실행하므로 최소한 이
             // 머신에서는 정상 동작한다 — Intel Mac 배포용 유니버설 강제는 다음 라운드에서 Xcode
             // Build Settings > Architecture UI로 직접 확인 후 처리할 것.
@@ -100,6 +106,41 @@ namespace StickMate.EditorTools
                 "OS 포그라운드가 아니어도(다른 창 사용 중에도) 계속 시뮬레이션되도록 강제.");
         }
 
+        /// <summary>
+        /// 모든 QualitySettings 레벨의 안티에일리어싱(MSAA)을 4x로 강제한다(2026-08-28, 사용자 실측
+        /// 지적 "캐릭터 주변으로 픽셀이 깨져보이는데" 대응). ConfigureRunInBackground()와 동일한 멱등
+        /// 패턴 — 누군가 Quality Settings UI에서 실수로 꺼도 다음 빌드에서 자동 복구된다.
+        ///
+        /// 왜 투명 창에서 특히 중요한가: 투명 오버레이에서는 프레임버퍼의 알파 채널 값이 그대로 창의
+        /// 픽셀 투명도가 된다. MSAA가 꺼져 있으면 캐릭터 선의 가장자리 알파가 0 아니면 1로만 나와
+        /// 윤곽선이 들쭉날쭉한 계단 모양으로 보인다. MSAA를 켜면 가장자리 픽셀이 부분 커버리지에 따라
+        /// 중간 알파값을 갖게 되어 부드러운 경계가 만들어진다.
+        ///
+        /// 4x를 고른 이유: 8x는 이 정도 단순한 2D 라인 렌더링에서 육안 차이가 거의 없으면서 24시간
+        /// 상주 앱의 GPU 부담만 늘린다(이 프로젝트의 상주 앱 성격상 4x가 적정선).
+        ///
+        /// 주의(리더 명시): MSAA는 투명 창 합성에 영향을 줄 수 있으므로 켠 뒤 반드시 투명이 여전히
+        /// 정상 동작하는지 실측 재검증할 것 — 투명이 우선순위다.
+        /// </summary>
+        public static void ConfigureAntiAliasing()
+        {
+            const int TargetAntiAliasing = 4;
+
+            int originalLevel = QualitySettings.GetQualityLevel();
+            string[] names = QualitySettings.names;
+            for (int i = 0; i < names.Length; i++)
+            {
+                // 두 번째 인자 false = 레벨 전환 시 무거운 리소스 재적용(ApplyExpensiveChanges)을 건너뛴다.
+                // 배치 빌드에서 굳이 각 레벨의 셰이더/텍스처를 다시 로드할 이유가 없다.
+                QualitySettings.SetQualityLevel(i, false);
+                QualitySettings.antiAliasing = TargetAntiAliasing;
+            }
+            QualitySettings.SetQualityLevel(originalLevel, false);
+
+            Debug.Log($"[BuildStandalone] QualitySettings.antiAliasing={TargetAntiAliasing} 적용 완료 " +
+                $"(전체 {names.Length}개 품질 레벨) — 투명 창에서 캐릭터 윤곽선 계단 현상 제거용.");
+        }
+
         private static string[] GetEnabledScenePaths()
         {
             var list = new List<string>();
@@ -108,44 +149,6 @@ namespace StickMate.EditorTools
                 if (s.enabled) list.Add(s.path);
             }
             return list.ToArray();
-        }
-
-        /// <summary>
-        /// Assets/Plugins/macOS/StickMateOverlayPlugin.bundle을 macOS Standalone 전용(다른 모든
-        /// 플랫폼/에디터 비활성, CPU=AnyCPU — 유니버설 바이너리라 아키텍처를 특정하지 않아도 됨)으로
-        /// 명시 설정한다.
-        ///
-        /// 왜 필요한가: Unity의 "Plugins/&lt;플랫폼명&gt; 폴더에 두면 자동으로 그 플랫폼 전용이 된다"는
-        /// 매직 동작은 Android/iOS/WebGL 등 모바일/웹 플랫폼 한정이고, 데스크톱 네이티브 플러그인은
-        /// 새로 임포트되면 기본적으로 "Any Platform"(모든 플랫폼 + 에디터 포함)으로 활성화된다. 이
-        /// 프로젝트는 지금은 macOS만 다루지만 Win32WindowService.cs가 이미 존재하듯 향후 Windows
-        /// 빌드도 만들 수 있으므로, 이 macOS 전용 네이티브 코드가 실수로 다른 플랫폼 빌드에 끼어들지
-        /// 않도록 명시적으로 잠가야 한다. 에디터 비활성화는 별도로 중요한 안전 장치이기도 하다 — Unity
-        /// 에디터 자신의 메인 창을 클릭관통/항상위로 바꿔버리는 사고를 원천 차단한다(MacWindowService.cs
-        /// 클래스 문서 참고, 에디터에서는 애초에 StickmanAgent가 이 서비스를 인스턴스화하지도 않지만
-        /// PluginImporter 레벨에서도 이중으로 막아둔다).
-        /// </summary>
-        public static void ConfigureNativePluginImporter()
-        {
-            AssetDatabase.Refresh();
-            AssetDatabase.ImportAsset(PluginAssetPath, ImportAssetOptions.ForceUpdate);
-
-            var importer = AssetImporter.GetAtPath(PluginAssetPath) as PluginImporter;
-            if (importer == null)
-            {
-                Debug.LogError("[BuildStandalone] " + PluginAssetPath + "의 PluginImporter를 찾지 못했습니다 — " +
-                    "번들이 실제로 그 경로에 존재하는지, .bundle 디렉터리 구조가 올바른지 확인하세요.");
-                return;
-            }
-
-            importer.SetCompatibleWithAnyPlatform(false);
-            importer.SetCompatibleWithEditor(false);
-            importer.SetCompatibleWithPlatform(BuildTarget.StandaloneOSX, true);
-            importer.SetPlatformData(BuildTarget.StandaloneOSX, "CPU", "AnyCPU");
-            importer.SaveAndReimport();
-
-            Debug.Log("[BuildStandalone] " + PluginAssetPath + " PluginImporter 설정 완료 " +
-                "(StandaloneOSX 전용, 에디터 비활성, CPU=AnyCPU).");
         }
 
         // BUG-P1-R5-B3 조사 기록(Architect 실측 진단 대응, 2026-08-28) — Architect가 "실제 Retina 화면
