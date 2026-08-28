@@ -985,3 +985,81 @@ DetectDesktopDpiScale(): 자기 창 실측 — 창=(0,33,1512x874), Screen=(1512
 0~5초 구간: isHitTestEnabled=False, isClickThrough=False (안전장치 유지) -> 5초 후 둘 다 True
 좌표 실측: 캐릭터 역산 OS (690, 825) vs 실제 커서 CGEventGetLocation (690.1, 825.1) — 오차 0.1px
 ```
+
+---
+
+## 후속 핫픽스 — "마우스로 안 잡힘" 원인 규명 + 캐릭터 색상 선택 (2026-08-28, Coder)
+
+사용자 실측 신고 **"마우스로 안 잡힘"**. 리더가 Player.log에서 `[StickmanClickHitbox] 마우스다운 감지`는 찍히는데 `Dragged` 전이 로그가 전혀 없다는 결정적 증거를 특정해줬다. 즉 **히트테스트/클릭 감지는 정상이고, 컨트롤러가 이벤트를 받고도 조용히 되돌아가고 있었다.**
+
+### (1) 진짜 원인 — 데코레이터 계약 구멍 2개 (둘 다 "조용한 실패")
+
+**(a) 드래그가 중단된 지점 — `ILocalClickCaptureService`**
+
+`MacWindowService`는 "실제 OS 히트테스트는 UniWindowController가 하니 부기는 불필요"라는 이유로 `ILocalClickCaptureService`를 **의도적으로 구현하지 않았다.** 그런데 이 서비스는 항상 `FallbackPlatformWindowService` 데코레이터로 감싸여 소비되고, 그 데코레이터는 인터페이스를 **자기가 구현**하면서 내부 서비스에 위임한다:
+
+```
+_innerClickCapture = (MacWindowService as ILocalClickCaptureService) == null
+  -> RequestLocalClickCapture(...) 가 항상 false
+```
+
+그 결과 `DragThrowController.OnMouseDown()`의
+
+```csharp
+if (_clickCapture != null && !_clickCapture.RequestLocalClickCapture(hitboxOs, this))
+{ SpectacleEventLock.Release(this); return; }   // <-- 매번 여기서 되돌아감
+```
+
+가 **매 클릭마다 성립**했다. `_clickCapture`는 데코레이터라 non-null인데 요청은 false이므로, 클릭은 감지되는데 `ChangeState(Dragged)`에 절대 도달하지 못했다. 직전 라운드 보고서에 "미구현이라 요청은 실패 처리되고 컨트롤러가 방어하고 있어 드래그 진입에는 영향이 없다"고 적었던 것은 **명백한 오독**이다(그 방어 분기가 바로 중단 지점이었다).
+
+**수정**: `MacWindowService`가 `Win32WindowService`/`NullPlatformWindowService`와 **완전히 동일한 방식**으로 공용 `LocalClickCaptureGate`에 위임해 부기를 구현한다. 리더가 범위 밖으로 지정한 "`isHitTestEnabled`로 15절을 대체하는 리팩터링"이 아니라, 다른 플랫폼이 이미 갖고 있던 부기를 macOS에도 채워 데코레이터 계약을 만족시키는 것이다.
+
+**(b) 전역 버튼 폴링 경로가 한 번도 켜진 적이 없었다 — `IGlobalPointerButtonService`**
+
+같은 데코레이터가 이 신규 인터페이스를 통과시키지 않아 `PlatformService as IGlobalPointerButtonService`가 **항상 null**이었다(실측 로그: `전역버튼경로=미지원`). 즉 직전 라운드에 "창 포커스와 무관한 보조 경로"라고 만들어둔 것이 실제로는 죽어 있었다. `ICursorPositionService`와 동일한 위임 패턴으로 통과시켰다. 수정 후 실측: **`전역버튼경로=사용 가능`**.
+
+### (2) 리더 가설 (b) 대응 — 놓기 판정을 전역 폴링으로 승격
+
+리더가 "`OnMouseDown`/`OnMouseUp`이 항상 즉시 연달아 찍힌다 → 창 마우스 캡처 유실 의심"을 제기했다. Player.log에는 타임스탬프가 없어 **인접한 두 줄만으로는 시간 간격을 알 수 없으므로** 판별 자체가 불가능했다. 두 가지를 함께 처리했다:
+
+- **측정**: `BeginPress` 시각을 기록해 `EndPress`에서 **홀드 시간(초)** 을 직접 로그에 찍는다. 이제 (a)"짧은 클릭"과 (b)"캡처 유실"을 로그만으로 구분할 수 있다.
+- **방어**: 전역 폴링 경로가 살아 있으면 **Unity의 `OnMouseUp`으로는 드래그를 끝내지 않는다.** `OnMouseUp`이 와도 `CGEventSourceButtonState`가 "아직 눌려 있다"고 답하면 그 사실을 로그로 남기고 **무시하고 드래그를 계속**한다. 놓기 판정은 전역 폴링이 전담한다(창 포커스/캡처와 무관). 전역 경로가 없는 플랫폼에서는 예전처럼 `OnMouseUp`이 놓기를 담당한다.
+
+즉 (b)가 사실이든 아니든 드래그는 성립하고, 사실 여부는 로그로 확정된다.
+
+### (3) 전 구간 단계 로그 `[n/6]` (리더 지시)
+
+사용자가 시도하면 리더가 로그만 보고 어디서 끊겼는지 즉시 판별할 수 있도록 전 경로에 번호를 매겼다.
+
+| 단계 | 로그 |
+|---|---|
+| `[0/6]` | `[StickmanClickHitbox] 준비 완료` / `[DragThrowController] 준비 완료` (시작 시 1회) |
+| `[1/6]` | `캐릭터 위 마우스다운 감지(소스)` + 커서 월드 좌표 + 전역버튼경로 상태 |
+| `[2/6]` | `가드 통과 — Idle -> Dragged 전이 요청` **또는 실패 사유**(상태 불일치 / SpectacleEventLock 점유자 / 클릭캡처 거부 / player null) |
+| `[3/6]` | `[DragThrowState] 드래그 시작(Dragged 진입)` + 잡은 오프셋 + 물리모드 |
+| `[4/6]` | `드래그 추종 중` — 1초 간격, 커서/몸통/목표 좌표 |
+| `[5/6]` | `마우스업 감지(소스) — 홀드 시간 N초` + `놓기 신호 전달` |
+| `[6/6]` | `놓음 — 던진 속도/충격량 -> RAGDOLL 또는 Fall` |
+
+**모든 조기 반환에 사유 로그를 붙였다** — 조용한 no-op이 이번 사고의 진단을 지연시킨 직접 원인이었다.
+
+### (4) 캐릭터 색상 선택 (흰색/검은색) — 사용자 요청
+
+- `StickConfig`에 `enum StickmanInkColor { Black = 0, White = 1 }` + `inkColor` 필드 + `whiteInkColor`(기본 흰색) 추가. `primaryOutlineColor`는 Black 프리셋의 실제 색으로 **그대로 재사용**(기존 배선/문서 무효화 없음). 읽기는 반드시 `ResolveInkColor()`를 거친다.
+- `SceneBootstrapper`가 프리팹 생성 시 `ResolveInkColor()`를 쓴다.
+- **런타임 일괄 갱신**: `StickmanAgent.ApplyInkColor(Color)` / `ApplyInkColorFromConfig()` 신설 — 캐릭터의 모든 `LineRenderer`(몸통/머리링/눈 2개/팔다리 8개 = 12개) 색을 한 번에 바꾼다. `Start()`에서 항상 호출하므로 **프리팹에 저장된 색과 무관하게 런타임에는 항상 `StickConfig.inkColor`가 이긴다** — 즉 에셋 값만 바꾸면 프리팹/씬 재생성 없이 색이 바뀐다. 다음 라운드의 설정 UI/토글 단축키는 이 메서드 하나만 호출하면 된다.
+- **설정 UI는 만들지 않았다**(리더 지시, 범위 확장 금지).
+
+**눈 색 결정 — 선과 "같은 색"이 정답이다(반대색 아님).** 이 캐릭터의 머리는 *링(테두리)만 있고 안쪽은 완전히 비어 바탕화면이 그대로 비치는* 구조라, 눈동자는 '얼굴 위의 무늬'가 아니라 **배경 위에 직접 찍힌 잉크 점**이다. 따라서 잉크와 같은 색일 때만 링과 함께 보인다(검정 잉크+밝은 배경 → 검은 링 안 검은 점 / 흰 잉크+어두운 배경 → 흰 링 안 흰 점). 반대색으로 하면 정확히 망가진다 — 흰 캐릭터인데 눈만 검정이면, **흰색이 필요했던 바로 그 어두운 배경 위에 검은 점**을 찍는 셈이라 눈이 사라진다. 기존 코드가 이미 눈에 `outline` 색을 넘기고 있었으므로 추가 분기 없이 그대로 성립한다.
+
+**흰색으로 바꾸는 법**: `Assets/_Project/Data/DefaultStickConfig.asset`에서 `inkColor: 0` -> `inkColor: 1`. 빌드만 다시 하면 되고 프리팹/씬 재생성은 필요 없다(에디터에서는 인스펙터의 "색상" 섹션에서 Ink Color를 White로).
+
+### 검증
+
+컴파일 에러 0 / 경고 0, EditMode 13/13, PlayMode 3/3, 빌드 Succeeded(에러 0/경고 0). 실행 실측:
+```
+[StickmanAgent] 캐릭터 선 색 적용 — 프리셋=Black, 색=(0.00,0.00,0.00), LineRenderer 12개 갱신.
+[StickmanClickHitbox] [0/6] 준비 완료 — 콜라이더 11/11개 활성, 전역버튼경로=사용 가능, MouseDown 구독자=1명
+[DragThrowController] [0/6] 준비 완료 — player=True, hitbox=True, hitboxCollider=CapsuleCollider2D
+```
+`전역버튼경로=미지원 -> 사용 가능` 전환이 (1)(b) 수정의 직접 증거다. **실제 드래그 성립 여부는 사용자 테스트로만 확정 가능하다**(에이전트가 마우스를 조작할 수 없음).

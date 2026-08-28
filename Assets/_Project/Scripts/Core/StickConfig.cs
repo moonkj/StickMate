@@ -3,6 +3,17 @@ using UnityEngine;
 namespace StickMate.Core
 {
     /// <summary>
+    /// 캐릭터 선 색 프리셋(사용자 요청, 2026-08-28). 밝은 바탕화면에서는 검정이, 어두운 바탕화면에서는
+    /// 흰색이 보인다 — 데스크톱 펫은 사용자의 배경을 고를 수 없으므로 둘 다 지원해야 한다.
+    /// 값을 숫자로 직렬화하므로(Black=0) 기존 에셋은 자동으로 Black을 유지한다.
+    /// </summary>
+    public enum StickmanInkColor
+    {
+        Black = 0,
+        White = 1,
+    }
+
+    /// <summary>
     /// 수치/색상 상수 보관용 ScriptableObject.
     /// 컨벤션: 코드에 매직 넘버/하드코딩 색상을 두지 않고 전부 이 에셋을 경유해 참조한다.
     /// Phase 0에서는 필드 정의만 하고, 기본값은 추후 UX/디자인·물리 튜닝으로 교체될 임시값이다.
@@ -625,7 +636,37 @@ namespace StickMate.Core
         public float runawaySnackStressRelief = 0.5f;
 
         [Header("색상 (임시 플레이스홀더 — 디자이너 확정 전까지)")]
+
+        [Tooltip("캐릭터 선 색 프리셋(사용자 요청, 2026-08-28: '캐릭터를 흰색 or 검은색으로 선택할수있게'). " +
+                 "배경이 어두운 바탕화면에서는 검은 캐릭터가 거의 보이지 않으므로 흰색이 필요하다. " +
+                 "이 값만 바꾸면 프리팹을 다시 만들 필요 없이 런타임에 즉시 반영된다 — " +
+                 "StickmanAgent.ApplyInkColorFromConfig()가 시작 시 모든 LineRenderer 색을 이 값으로 " +
+                 "일괄 갱신하기 때문이다(Core/StickmanAgent.cs 참고).")]
+        public StickmanInkColor inkColor = StickmanInkColor.Black;
+
+        [Tooltip("inkColor == Black일 때 쓰는 실제 색. 기존 필드를 그대로 재사용하므로 지금까지의 " +
+                 "모든 배선/문서가 무효화되지 않는다.")]
         public Color primaryOutlineColor = Color.black;
+
+        [Tooltip("inkColor == White일 때 쓰는 실제 색.")]
+        public Color whiteInkColor = Color.white;
+
+        /// <summary>
+        /// 지금 설정된 프리셋의 실제 선 색. 캐릭터를 그리는 모든 경로(에디터 프리팹 생성/런타임 갱신)는
+        /// 반드시 이 메서드를 거쳐야 한다 — primaryOutlineColor를 직접 읽으면 프리셋 전환이 무시된다.
+        ///
+        /// [눈 색에 대한 결정과 근거 — 리더 질문에 대한 답]
+        /// 눈동자 점도 **선과 같은 색**을 쓴다(반대색이 아니다). 이 캐릭터의 머리는 "링(테두리)만 있고
+        /// 안쪽은 완전히 비어 바탕화면이 그대로 비치는" 구조라, 눈은 '얼굴 위의 무늬'가 아니라
+        /// **배경 위에 찍힌 잉크 점**이다. 따라서 잉크와 같은 색일 때만 링과 함께 보인다:
+        ///   - 검정 잉크 + 밝은 배경 -> 검은 링 안에 검은 점 두 개(현재 상태, 정상)
+        ///   - 흰 잉크 + 어두운 배경 -> 흰 링 안에 흰 점 두 개(정상)
+        /// 반대색으로 하면 정확히 망가진다: 흰 캐릭터인데 눈만 검정이면, 흰색이 필요한 이유였던 그
+        /// **어두운 배경 위에 검은 점**을 찍는 셈이라 눈이 사라진다. 즉 "눈은 선과 같은 색"이 이 구조에서
+        /// 유일하게 성립하는 선택이다.
+        /// </summary>
+        public Color ResolveInkColor()
+            => inkColor == StickmanInkColor.White ? whiteInkColor : primaryOutlineColor;
         public Color dialogueBubbleColor = Color.white;
 
         [Tooltip("Main Camera 배경 RGB(알파는 0 = 완전 투명, Editor/SceneBootstrapper.cs 참고)의 밝은 " +

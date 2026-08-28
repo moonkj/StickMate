@@ -37,6 +37,9 @@ namespace StickMate.States
         private readonly Vector2[] _samplePositions = new Vector2[SampleCapacity];
         private readonly float[] _sampleTimes = new float[SampleCapacity];
 
+        // 드래그 추종 상태를 1초 간격으로 남기기 위한 타이머(진단용 — 사용자가 끄는 동안 캐릭터가
+        // 실제로 커서를 따라가고 있는지, 좌표가 어긋나지 않는지를 리더가 Player.log만으로 판별할 수 있게).
+        private float _followLogTimer;
         private int _sampleHead;
         private int _sampleCount;
         private float _holdTimer;
@@ -76,7 +79,8 @@ namespace StickMate.States
                 _grabOffset = CaptureGrabOffset(cursorWorld);
             }
 
-            Debug.Log($"[DragThrowState] 드래그 시작 — 커서 월드={( _cursorEverAvailable ? cursorWorld.ToString("F2") : "(조회 실패)")}, " +
+            _followLogTimer = 0f;
+            Debug.Log($"[DragThrowState] [3/6] 드래그 시작(Dragged 진입) — 커서 월드={( _cursorEverAvailable ? cursorWorld.ToString("F2") : "(조회 실패)")}, " +
                 $"몸통={_blackboard.Body?.position.ToString("F2")}, 잡은 오프셋={_grabOffset.ToString("F2")}, " +
                 $"물리모드={_blackboard.Body?.bodyType}.");
 
@@ -115,6 +119,16 @@ namespace StickMate.States
             _cursorEverAvailable = true;
             PushSample(cursorWorld);
             FollowCursor(cursorWorld, deltaTime);
+
+            _followLogTimer += deltaTime;
+            if (_followLogTimer >= 1f)
+            {
+                _followLogTimer = 0f;
+                Vector2 body = _blackboard.Body != null ? _blackboard.Body.position : Vector2.zero;
+                Debug.Log($"[DragThrowState] [4/6] 드래그 추종 중 — 커서 월드={cursorWorld.ToString("F2")}, " +
+                    $"몸통={body.ToString("F2")}, 목표(커서+오프셋)={(cursorWorld + _grabOffset).ToString("F2")}, " +
+                    $"홀드 {_holdTimer:F1}초, 물리모드={_blackboard.Body?.bodyType}.");
+            }
         }
 
         public void Exit()
@@ -244,7 +258,7 @@ namespace StickMate.States
             // 관례) 즉시 RAGDOLL로 자연 전이 — 아니면 평범한 Fall(포물선 낙하)로 보낸다.
             float impulseMagnitude = speed * mass;
             bool wentRagdoll = RagdollImpactResolver.TryApplyImpact(_blackboard, impulseMagnitude);
-            Debug.Log($"[DragThrowState] 놓음 — 던진 속도={throwVelocity.ToString("F2")}(속력 {speed:F2}, " +
+            Debug.Log($"[DragThrowState] [6/6] 놓음 — 던진 속도={throwVelocity.ToString("F2")}(속력 {speed:F2}, " +
                 $"상한 {maxSpeed:F2}), 충격량={impulseMagnitude:F2} -> {(wentRagdoll ? "RAGDOLL" : "Fall")}.");
             if (!wentRagdoll)
             {

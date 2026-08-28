@@ -34,6 +34,7 @@ namespace StickMate.Core
         private StickmanStateMachine _machine;
         private StickmanBlackboard _blackboard;
         private Renderer[] _renderers;
+        private LineRenderer[] _lineRenderers; // 색 프리셋 일괄 갱신(ApplyInkColor) 대상 캐시.
         private AutoWanderController _autoWander; // BUG-P1-B2: 키보드 입력을 대체하는 자율 배회 소스(docs/UX_FLOW.md 26절, 매 프레임 Tick 필요).
 
         private float _fullscreenPollTimer;
@@ -130,6 +131,9 @@ namespace StickMate.Core
             }
 
             _renderers = GetComponentsInChildren<Renderer>(true);
+            // 색 프리셋 일괄 갱신용 캐시(사용자 요청 "흰색 or 검은색 선택", 2026-08-28).
+            // 몸통/머리링/눈/팔다리가 전부 LineRenderer라 이 배열 하나면 캐릭터 전체를 덮는다.
+            _lineRenderers = GetComponentsInChildren<LineRenderer>(true);
 
             _platformService = CreatePlatformService();
             _cursorService = _platformService as ICursorPositionService;
@@ -231,6 +235,11 @@ namespace StickMate.Core
             // 여기서 흐름을 막지는 않는다(에디터/Null 폴백 등은 애초에 오버레이 개념이 없어 항상 true) —
             // 다만 실패를 조용히 삼키지 않고 로그로 남겨, 가설 H4(부트스트랩 타이밍에 핸들이 Zero) 같은
             // 진단 사각지대를 없앤다.
+            // 색 프리셋 적용(사용자 요청, 2026-08-28) — 프리팹에 저장된 색이 무엇이든 런타임에는 항상
+            // StickConfig.inkColor가 이긴다. 덕분에 프리팹/씬을 다시 생성하지 않고 에셋 값만 바꿔도
+            // 흰색/검은색을 전환할 수 있다.
+            ApplyInkColorFromConfig();
+
             bool overlayReady = _platformService.CreateOverlayWindow();
             if (!overlayReady)
             {
@@ -261,6 +270,37 @@ namespace StickMate.Core
             // ClickThroughSafetyDelaySeconds만큼 지연시킨다(그 사이 EmergencyDisableKey/Update() 참고로
             // 언제든 되돌릴 수 있음을 사용자가 확인할 시간을 번다).
             StartCoroutine(EnableClickThroughAfterSafetyDelay());
+        }
+
+        /// <summary>
+        /// StickConfig.inkColor 프리셋을 캐릭터 전체(몸통/머리 링/눈동자/팔다리)에 일괄 적용한다.
+        /// 눈동자도 같은 색을 쓰는 근거는 StickConfig.ResolveInkColor() 문서 참고(머리 안쪽이 비어 있어
+        /// 눈은 '배경 위의 잉크 점'이므로 잉크와 같은 색이어야 보인다).
+        /// </summary>
+        public void ApplyInkColorFromConfig()
+        {
+            if (_config == null) return;
+            ApplyInkColor(_config.ResolveInkColor());
+        }
+
+        /// <summary>
+        /// 캐릭터의 모든 LineRenderer 색을 한 번에 바꾼다. 다음 라운드에 설정 UI나 토글 단축키를 붙일 때
+        /// 이 메서드 하나만 호출하면 된다(리더 지시: "런타임 갱신 메서드가 존재하는 것까지").
+        /// </summary>
+        public void ApplyInkColor(Color color)
+        {
+            if (_lineRenderers == null) return;
+            int applied = 0;
+            for (int i = 0; i < _lineRenderers.Length; i++)
+            {
+                LineRenderer lr = _lineRenderers[i];
+                if (lr == null) continue;
+                lr.startColor = color;
+                lr.endColor = color;
+                applied++;
+            }
+            Debug.Log($"[StickmanAgent] 캐릭터 선 색 적용 — 프리셋={( _config != null ? _config.inkColor.ToString() : "?")}, " +
+                $"색=({color.r:F2},{color.g:F2},{color.b:F2}), LineRenderer {applied}개 갱신.");
         }
 
         private IEnumerator EnableClickThroughAfterSafetyDelay()

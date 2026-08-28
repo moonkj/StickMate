@@ -60,7 +60,7 @@ namespace StickMate.Platform.MacOS
     /// 취급하므로 컴파일/런타임 모두 문제 없다(Win32WindowService가 실제로 두 인터페이스 다 구현한 것과
     /// 다른 점 — macOS는 이번 라운드에 그 두 캐퍼빌리티까지는 손대지 않는다).
     /// </summary>
-    public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService, IGlobalPointerButtonService
+    public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService, IGlobalPointerButtonService, ILocalClickCaptureService
     {
         #region CoreGraphics / CoreFoundation P/Invoke 선언 (이 리전 밖으로 유출 금지)
 
@@ -746,6 +746,44 @@ namespace StickMate.Platform.MacOS
             }
             ScreenCoordinateConverter.OverlayOriginOsScreen = origin;
         }
+
+        // ============================================================================
+        // ILocalClickCaptureService — 소유권/영역 부기(LocalClickCaptureGate에 위임)
+        // ============================================================================
+        //
+        // ★ 사용자 신고 "마우스로 안 잡힘"의 진짜 원인 (2026-08-28, 리더가 Player.log로 특정)
+        // ----------------------------------------------------------------------------
+        // 직전 라운드까지 이 클래스는 ILocalClickCaptureService를 "실제 OS 히트테스트는 UniWindowController가
+        // 하니까 부기는 필요 없다"는 이유로 **의도적으로 구현하지 않았다.** 그런데 이 서비스는 항상
+        // FallbackPlatformWindowService 데코레이터로 감싸여 소비되고, 그 데코레이터는:
+        //     ILocalClickCaptureService를 **자기가 구현**하면서 내부 서비스에 위임한다
+        //     -> _innerClickCapture = (inner as ILocalClickCaptureService) == null (여기 미구현이므로)
+        //     -> RequestLocalClickCapture(...)가 **항상 false**를 반환
+        // 그래서 DragThrowController.OnMouseDown()의
+        //     if (_clickCapture != null && !_clickCapture.RequestLocalClickCapture(...)) { 락 반환; return; }
+        // 분기가 **매번 성립**했다. `_clickCapture`는 데코레이터라 non-null인데 요청은 false이므로,
+        // 클릭은 정상 감지되는데도 ChangeState(Dragged)에 도달하지 못하고 조용히 되돌아간 것이다
+        // (Player.log에 MouseDown/MouseUp만 찍히고 Dragged 전이가 전혀 없던 이유).
+        //
+        // 수정: Win32WindowService/NullPlatformWindowService와 **완전히 동일한 방식**으로 공용
+        // LocalClickCaptureGate에 위임해 부기를 구현한다. 이는 리더가 범위 밖으로 지정한
+        // "isHitTestEnabled로 ILocalClickCaptureService를 대체하는 리팩터링"이 아니라, 다른 플랫폼이
+        // 이미 갖고 있던 동일 부기를 macOS에도 채워 넣어 데코레이터 계약을 만족시키는 것이다.
+        // 실제 OS 히트테스트는 여전히 UniWindowController(hitTestType=Raycast)가 담당하며 이 부기와
+        // 서로 간섭하지 않는다(ILocalClickCaptureService.cs 문서 상단 "핵심 한계" 참고).
+        private readonly LocalClickCaptureGate _clickCaptureGate = new LocalClickCaptureGate();
+
+        public bool RequestLocalClickCapture(Rect hitboxOsScreen, object owner)
+            => _clickCaptureGate.TryRequestCapture(hitboxOsScreen, owner);
+
+        public void UpdateLocalClickCaptureRegion(Rect hitboxOsScreen, object owner)
+            => _clickCaptureGate.UpdateRegion(hitboxOsScreen, owner);
+
+        public void ReleaseLocalClickCapture(object owner)
+            => _clickCaptureGate.ReleaseCapture(owner);
+
+        public bool IsLocalClickCaptureOwnedBy(object owner)
+            => _clickCaptureGate.IsOwnedBy(owner);
 
         /// <summary>
         /// 우리 프로세스가 소유한 온스크린 창 중 면적이 가장 큰 것의 화면 사각형(Quartz 좌표, OS 포인트).

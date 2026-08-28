@@ -32,7 +32,7 @@ namespace StickMate.Interaction
             // 실측 검증용 준비 상태 로그(리더 지시) — "드래그가 실제로 발동할 준비가 됐는가"를 한 줄로
             // 확인할 수 있게 한다. 이 줄이 안 보이면 컴포넌트 자체가 씬/프리팹에 배선되지 않은 것이다
             // (이번 라운드에 실제로 그랬다 — Tasklist.md 참고).
-            Debug.Log($"[DragThrowController] 준비 완료 — player={(_player != null)}, hitbox={(_hitbox != null)}, " +
+            Debug.Log($"[DragThrowController] [0/6] 준비 완료 — player={(_player != null)}, hitbox={(_hitbox != null)}, " +
                 $"hitboxCollider={(_hitboxCollider != null ? _hitboxCollider.GetType().Name : "(없음)")}, " +
                 $"부분클릭관통해제 서비스={((_player != null ? _player.PlatformService as ILocalClickCaptureService : null) != null ? "지원" : "미지원(소유권 부기 생략)")}. " +
                 "캐릭터를 마우스로 누르면 Dragged 상태로 전이합니다.");
@@ -87,33 +87,68 @@ namespace StickMate.Interaction
             _clickCapture.UpdateLocalClickCaptureRegion(ComputeHitboxOsRect(), this);
         }
 
+        /// <summary>
+        /// ★ 2026-08-28 — 모든 조기 반환에 **실패 사유 로그**를 붙였다(리더 지시). 사용자 신고
+        /// "마우스로 안 잡힘"을 조사할 때 Player.log에 `[StickmanClickHitbox] 마우스다운 감지`만 찍히고
+        /// 그 뒤가 완전히 침묵해서, 어느 가드에서 되돌아간 것인지 전혀 알 수 없었던 것이 진단을
+        /// 지연시킨 직접 원인이다. 조용한 no-op을 남기지 않는다는 이 프로젝트 컨벤션을 이 메서드에도
+        /// 적용한다.
+        /// </summary>
         private void OnMouseDown()
         {
-            if (_player == null) return;
+            if (_player == null)
+            {
+                Debug.LogWarning("[DragThrowController] [2/6] 드래그 진입 실패 — _player 참조가 null입니다(프리팹 배선 확인 필요).");
+                return;
+            }
 
             // UX 12절 예외: RAGDOLL/GETUP/ParkourClimb 등 물리·이동 우선 상태 도중엔 새 드래그 시도를
             // 무시한다. 다른 스펙터클 이벤트가 이미 활성 중이어도 무시(16-15 상호배제).
             var current = _player.Blackboard.Machine.CurrentStateId;
-            if (current != StickmanStateId.Idle && current != StickmanStateId.Walk) return;
-            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.DragAndThrow, this)) return;
+            if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
+            {
+                Debug.Log($"[DragThrowController] [2/6] 드래그 진입 무시 — 현재 상태가 {current}라서(Idle/Walk에서만 잡을 수 있음).");
+                return;
+            }
+
+            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.DragAndThrow, this))
+            {
+                Debug.Log($"[DragThrowController] [2/6] 드래그 진입 실패 — SpectacleEventLock을 " +
+                    $"{SpectacleEventLock.ActiveKind}(소유자 {SpectacleEventLock.CurrentOwner?.GetType().Name})가 점유 중입니다.");
+                return;
+            }
 
             _clickCapture = _player.PlatformService as ILocalClickCaptureService;
             Rect hitboxOs = ComputeHitboxOsRect();
             if (_clickCapture != null && !_clickCapture.RequestLocalClickCapture(hitboxOs, this))
             {
-                // 이론상 SpectacleEventLock을 이미 확보했으므로 여기서 실패할 일은 없지만(같은 owner
-                // 토큰), 방어적으로 락을 되돌린다.
+                // ★ 사용자 신고 "마우스로 안 잡힘"이 정확히 여기서 발생했다(2026-08-28):
+                // MacWindowService가 ILocalClickCaptureService를 구현하지 않아
+                // FallbackPlatformWindowService의 위임이 항상 false를 반환했고, `_clickCapture`는
+                // 데코레이터라 non-null이라 이 분기가 매번 성립했다. macOS 구현체에 부기를 추가해
+                // 근본 해결했지만(Platform/MacOS/MacWindowService.cs 참고), 재발 시 즉시 보이도록
+                // 로그를 남긴다.
+                Debug.LogWarning("[DragThrowController] [2/6] 드래그 진입 실패 — 부분적 클릭관통 해제(15절) 요청이 " +
+                    $"거부됐습니다(서비스={_clickCapture.GetType().Name}, 히트박스={hitboxOs}). 락을 되돌립니다.");
                 SpectacleEventLock.Release(this);
                 return;
             }
 
+            Debug.Log($"[DragThrowController] [2/6] 가드 통과 — {current} -> Dragged 전이를 요청합니다 " +
+                $"(히트박스 OS={hitboxOs}, 클릭캡처={(_clickCapture != null ? _clickCapture.GetType().Name : "없음")}).");
             _player.Blackboard.Machine.ChangeState(StickmanStateId.Dragged);
         }
 
         private void OnMouseUp()
         {
             if (_player == null) return;
-            if (_player.Blackboard.Machine.CurrentStateId != StickmanStateId.Dragged) return;
+            var current = _player.Blackboard.Machine.CurrentStateId;
+            if (current != StickmanStateId.Dragged)
+            {
+                Debug.Log($"[DragThrowController] [5/6] 마우스업을 받았지만 현재 상태가 {current}라 무시합니다(드래그 중이 아님).");
+                return;
+            }
+            Debug.Log("[DragThrowController] [5/6] 놓기 신호 전달 — DragThrowState가 다음 Tick에 던지기를 계산합니다.");
             _player.Blackboard.DragReleaseSignaled = true;
         }
 

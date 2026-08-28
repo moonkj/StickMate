@@ -56,6 +56,10 @@ namespace StickMate.Interaction
 
         // 두 입력 경로가 공유하는 "지금 잡고 있다" 상태 — 엣지 트리거로 중복 발생을 막는다.
         private bool _pressed;
+        // 눌림 시작 시각 — 실제로 "누르고 끌었는지" vs "즉시 떼졌는지"를 실측으로 판별하기 위한 진단용
+        // (리더 지시, 2026-08-28: Player.log에는 타임스탬프가 없어 로그 두 줄이 인접해 보이는 것만으로는
+        // 시간 간격을 알 수 없다 — 홀드 시간을 직접 찍어야 판별이 가능하다).
+        private float _pressStartTime;
         // 전역 폴링 경로의 직전 프레임 버튼 상태(상승/하강 엣지 판정용). 첫 폴링은 기록만 하고 넘어가,
         // 앱 시작 순간 이미 버튼이 눌려 있던 경우를 클릭으로 오인하지 않는다.
         private bool _globalPressedPrev;
@@ -79,7 +83,7 @@ namespace StickMate.Interaction
             {
                 if (_colliders[i] != null && _colliders[i].enabled) activeColliders++;
             }
-            Debug.Log($"[StickmanClickHitbox] 준비 완료 — agent={( _agent != null )}, " +
+            Debug.Log($"[StickmanClickHitbox] [0/6] 준비 완료 — agent={( _agent != null )}, " +
                 $"콜라이더 {activeColliders}/{_colliders.Length}개 활성, " +
                 $"전역버튼경로={(_buttonService != null ? "사용 가능" : "미지원(Unity OnMouseDown만)")}, " +
                 $"MouseDown 구독자={(MouseDown != null ? MouseDown.GetInvocationList().Length : 0)}명, " +
@@ -99,11 +103,13 @@ namespace StickMate.Interaction
             }
 
             bool rising = down && !_globalPressedPrev;
-            bool falling = !down && _globalPressedPrev;
             _globalPressedPrev = down;
 
             if (rising && !_pressed && IsCursorOverHitbox()) BeginPress("전역폴링");
-            else if (falling && _pressed) EndPress("전역폴링");
+            // 놓기 판정은 **엣지가 아니라 현재 상태**로 한다: Unity의 OnMouseUp이 먼저 튀어 press를
+            // 끝내버린 경우 falling 엣지를 이미 놓쳤을 수 있고, 반대로 press가 유지되는 한 "버튼이
+            // 실제로 떼졌는가"만 보면 되기 때문이다.
+            else if (!down && _pressed) EndPress("전역폴링");
         }
 
         /// <summary>커서(OS 전역 좌표)가 지금 이 캐릭터의 콜라이더 중 하나 안에 있는지. Unity 표준
@@ -130,23 +136,52 @@ namespace StickMate.Interaction
             BeginPress("Unity OnMouseDown");
         }
 
+        /// <summary>
+        /// Unity 표준 마우스업.
+        ///
+        /// ★ 중요 — 전역 폴링 경로가 살아 있으면 이 경로로는 press를 끝내지 않는다(2026-08-28,
+        /// 리더 가설 (b) 대응). 우리 창은 투명 + 클릭관통 + 대개 비활성 앱이라, macOS가 마우스 캡처를
+        /// 우리에게 계속 쥐여 준다는 보장이 없다 — 사용자가 버튼을 누른 채 끌고 있는데도 Unity가
+        /// 곧바로 OnMouseUp을 쏴 드래그가 즉시 끝나버릴 수 있다(사용자 신고 "안 잡힘"과 정확히 일치하는
+        /// 증상이다). 그래서 **"버튼이 실제로 떼졌는가"의 판정은 창 포커스와 무관한
+        /// IGlobalPointerButtonService(CGEventSourceButtonState) 폴링에 맡기고**, 이쪽은 진단 로그만
+        /// 남긴다. 전역 경로를 못 쓰는 플랫폼에서는 예전처럼 이 경로가 그대로 놓기를 담당한다.
+        /// </summary>
         private void OnMouseUp()
         {
             if (!_pressed) return;
+
+            if (_buttonService != null && _buttonService.TryGetPrimaryButtonPressed(out bool stillDown) && stillDown)
+            {
+                Debug.Log($"[StickmanClickHitbox] Unity OnMouseUp이 왔지만 전역 폴링은 버튼이 **아직 눌려 있다**고 " +
+                    $"보고합니다(홀드 {Time.time - _pressStartTime:F2}초) — 창 마우스 캡처 유실로 판단해 무시하고 " +
+                    "드래그를 계속합니다(놓기는 전역 폴링이 판정).");
+                return;
+            }
+
             EndPress("Unity OnMouseUp");
         }
 
         private void BeginPress(string source)
         {
             _pressed = true;
-            Debug.Log($"[StickmanClickHitbox] 캐릭터 위 마우스다운 감지({source}).");
+            _pressStartTime = Time.time;
+
+            string cursorInfo = "(커서 조회 불가)";
+            if (_agent != null && _agent.Blackboard != null
+                && _agent.Blackboard.TryGetCursorWorldPosition(out Vector2 cw))
+            {
+                cursorInfo = cw.ToString("F2");
+            }
+            Debug.Log($"[StickmanClickHitbox] [1/6] 캐릭터 위 마우스다운 감지({source}) — 커서 월드={cursorInfo}, " +
+                $"전역버튼경로={(_buttonService != null ? "활성" : "미지원")}.");
             MouseDown?.Invoke();
         }
 
         private void EndPress(string source)
         {
             _pressed = false;
-            Debug.Log($"[StickmanClickHitbox] 마우스업 감지({source}).");
+            Debug.Log($"[StickmanClickHitbox] [5/6] 마우스업 감지({source}) — 홀드 시간 {Time.time - _pressStartTime:F2}초.");
             MouseUp?.Invoke();
         }
     }

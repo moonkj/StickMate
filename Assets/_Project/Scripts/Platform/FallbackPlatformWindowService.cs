@@ -40,12 +40,19 @@ namespace StickMate.Platform
     /// 한다(UX_FLOW.md 3절/9절-7). 여기서 항상 발판이 있는 것처럼 위장하면 그 온보딩 게이트가 조용히
     /// 무력화된다 — 배선은 StickmanAgent.CreatePlatformService() 참고.
     /// </summary>
-    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService
+    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService
     {
         private readonly IPlatformWindowService _inner;
         private readonly ICursorPositionService _innerCursor; // null이면 내부 서비스가 커서 조회를 지원하지 않음
         private readonly ILocalClickCaptureService _innerClickCapture; // null이면 내부 서비스가 부분적 클릭관통 해제를 지원하지 않음
         private readonly IDesktopIconLayoutService _innerIconLayout; // null이면 내부 서비스가 아이콘 좌표 조회를 지원하지 않음
+
+        // ★ 사용자 신고 "마우스로 안 잡힘" 조사 중 함께 발견(2026-08-28): 이 데코레이터가
+        // IGlobalPointerButtonService를 통과시키지 않아, StickmanClickHitbox의
+        // `PlatformService as IGlobalPointerButtonService` 캐스팅이 **항상 null**이었다
+        // (실측 로그: "전역버튼경로=미지원"). 그래서 창 포커스와 무관한 전역 버튼 폴링 경로가
+        // 실제로는 한 번도 활성화된 적이 없었다. ICursorPositionService와 동일한 위임 패턴으로 통과시킨다.
+        private readonly IGlobalPointerButtonService _innerButton; // null이면 내부 서비스가 전역 버튼 조회를 지원하지 않음
         private readonly StickConfig _config; // desktopDpiScale만 읽는다 — null이면 배율 1로 취급.
 
         // 합성 발판 캐시 무효화 판정에 쓰는 직전 오버레이 창 원점(위 GetFallbackFoothold 참고).
@@ -65,6 +72,7 @@ namespace StickMate.Platform
             _innerCursor = inner as ICursorPositionService;
             _innerClickCapture = inner as ILocalClickCaptureService;
             _innerIconLayout = inner as IDesktopIconLayoutService;
+            _innerButton = inner as IGlobalPointerButtonService;
             _config = config;
         }
 
@@ -164,6 +172,14 @@ namespace StickMate.Platform
         public void SetAlwaysOnTop(bool enabled) => _inner.SetAlwaysOnTop(enabled);
 
         public bool IsFullscreenAppActive() => _inner.IsFullscreenAppActive();
+
+        // IGlobalPointerButtonService — 위 _innerButton 선언부의 사고 기록 참고. 순수 통과.
+        public bool TryGetPrimaryButtonPressed(out bool pressed)
+        {
+            if (_innerButton != null) return _innerButton.TryGetPrimaryButtonPressed(out pressed);
+            pressed = false;
+            return false;
+        }
 
         public bool TryGetGlobalCursorPosition(out Vector2 osScreenPosition)
         {

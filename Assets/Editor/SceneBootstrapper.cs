@@ -357,7 +357,11 @@ namespace StickMate.EditorTools
                 return existingPrefab;
             }
 
-            Color outline = config != null ? config.primaryOutlineColor : Color.black;
+            // 색 프리셋(StickConfig.inkColor)을 반드시 ResolveInkColor()로 거쳐 읽는다 —
+            // primaryOutlineColor를 직접 읽으면 흰색 프리셋이 무시된다(그 메서드 문서 참고).
+            // 참고: 런타임에는 StickmanAgent.ApplyInkColorFromConfig()가 시작 시 한 번 더 일괄
+            // 적용하므로, 프리팹을 다시 만들지 않고 에셋 값만 바꿔도 색이 바뀐다.
+            Color outline = config != null ? config.ResolveInkColor() : Color.black;
             float gravityScale = config != null ? config.gravityScale : 3f;
 
             var root = new GameObject("Stickman");

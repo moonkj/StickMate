@@ -243,3 +243,18 @@ Phase 0(스캐폴딩) → 1(코어루프) → 2(랙돌/파쿠르) → 3(전투/�
 - **Escape 안전장치 재확인**: 메커니즘이 히트테스트 방식과 무관함을 확인(`isHitTestEnabled=false`가 라이브러리 자동 제어 자체를 정지). 시작 후 5초 구간에서 한 프레임도 안 뒤집힘 실측.
 - PlayMode 일시 실패 원인도 해결: 배치모드엔 커서가 없는데 `NullPlatformWindowService`가 고정 (0,0)을 유효 커서로 보고해 로데오가 자동 발동 → 배치모드에서는 "커서 없음"을 정직하게 반환하도록 수정(에디터 Play 모드 무변경).
 - 검증: 컴파일 에러0/경고0, EditMode 13/13, PlayMode 3/3, 73초 가동 예외0. PID 76957.
+
+## 2026-08-28 (계속) — 드래그 실패 원인 규명: 데코레이터 계약 구멍 2개
+사용자 "마우스로 안 잡힘" → 리더가 Player.log 분석해 **"클릭 감지는 정상인데 상태 전이가 없다"**로 범위를 좁혀 전달 → Coder가 근본 원인 확정.
+
+**원인 (둘 다 조용한 실패)**:
+- **(a) 드래그 중단 지점**: `MacWindowService`가 `ILocalClickCaptureService`를 의도적으로 미구현했는데, 이 서비스는 항상 `FallbackPlatformWindowService` 데코레이터로 감싸여 소비된다. 데코레이터는 그 인터페이스를 **자기가 구현**하며 내부에 위임하므로 `_innerClickCapture`가 null → `RequestLocalClickCapture()`가 항상 false → `DragThrowController.OnMouseDown()`의 방어 분기에서 **매 클릭마다 되돌아감**. (Coder가 직전 라운드 보고서에서 "컨트롤러가 방어하고 있어 영향 없다"고 쓴 것이 오독이었음을 스스로 정정 — 그 방어 분기가 바로 중단 지점이었다.) → Win32/Null과 동일하게 공용 `LocalClickCaptureGate`에 위임하도록 구현.
+- **(b) 전역 폴링 경로 미연결**: 같은 데코레이터가 `IGlobalPointerButtonService`도 통과시키지 않아 캐스팅이 항상 null(`전역버튼경로=미지원`) → `ICursorPositionService`와 동일 패턴으로 통과. 수정 후 `전역버튼경로=사용 가능` 실측.
+
+**리더 가설 (b)(캡처 유실) 처리**: Player.log에 타임스탬프가 없어 "즉시 연달아"는 미확정 사실이었음. 측정(홀드 시간 로깅)과 방어(전역 폴링이 살아있으면 Unity `OnMouseUp`으로 드래그를 끝내지 않고, 전역 버튼 상태가 "아직 눌림"이면 무시하고 계속)를 동시 적용 — 가설이 사실이어도 드래그가 성립한다.
+
+**단계 로그 `[n/6]` 도입**: 준비→마우스다운→가드통과/실패사유→Dragged진입→추종중→마우스업(홀드시간)→던진속도. **모든 조기 반환에 사유 로그**를 붙였다(조용한 no-op이 이번 진단 지연의 직접 원인이었음).
+
+**캐릭터 색상 선택**: `StickConfig.inkColor`(enum Black/White) + `StickmanAgent.ApplyInkColor()` 런타임 일괄 갱신(LineRenderer 12개). `Start()`에서 항상 호출하므로 프리팹 저장색과 무관하게 config가 이긴다. 흰색 전환: `DefaultStickConfig.asset`의 `inkColor: 0 → 1`(빌드만, 씬/프리팹 재생성 불필요). **눈 색은 선과 같은 색이 정답** — 머리는 링만 있고 안쪽이 비어 바탕화면이 비치므로, 눈동자는 얼굴 위 무늬가 아니라 배경 위 잉크 점이다. 반대색이면 흰 캐릭터의 검은 눈이 어두운 배경에 묻힌다.
+
+PID 77411. 컴파일 에러0/경고0, EditMode 13/13, PlayMode 3/3, 99초 예외0. **실제 드래그 성립 여부는 사용자 마우스 조작 테스트로 판정 필요.**
