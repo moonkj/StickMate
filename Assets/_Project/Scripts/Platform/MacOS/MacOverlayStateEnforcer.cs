@@ -55,6 +55,23 @@ namespace StickMate.Platform.MacOS
         private const float AttachTimeoutSeconds = 15f;
         private float _elapsed;
 
+        // ============================================================================
+        // 히트테스트 실측 감시(드래그&던지기 실배선 라운드, 2026-08-28)
+        // ============================================================================
+        // hitTestType을 Opacity -> Raycast로 바꿨으므로, 그 판정이 실제로 동작하는지를 **로그로**
+        // 확인할 수 있어야 한다. 실제 마우스 조작은 자동 검증이 불가능하지만, 라이브러리가 쓰는 것과
+        // 정확히 같은 질의(Physics2D.GetRayIntersection + 카메라 ScreenPointToRay)를 우리가 두 지점에
+        // 직접 쏴 보면 "판정 인프라가 준비됐는가"까지는 결정적으로 확인된다:
+        //   (A) 캐릭터의 현재 화면 좌표 -> 반드시 캐릭터 콜라이더가 잡혀야 한다(클릭 가능).
+        //   (B) 캐릭터에서 멀리 떨어진 빈 지점 -> 아무것도 잡히지 않아야 한다(클릭 관통 유지,
+        //       비침해 원칙 2). 여기서 무언가 잡히면 그 영역의 클릭을 우리가 훔치고 있다는 뜻이다.
+        // 동시에 클릭관통 안전장치(시작 5초 지연, Escape 긴급 해제)가 라이브러리 자동 제어에 덮이지
+        // 않는지도 같은 줄에서 되읽어 남긴다.
+        private const float ProbeIntervalSeconds = 1f;
+        private const float ProbeDurationSeconds = 25f;
+        private float _probeTimer;
+        private Core.StickmanAgent _agent;
+
         // 목표 상태 — MacWindowService가 자기 API 호출 때마다 갱신한다.
         internal bool DesiredTransparent = true;
         internal bool DesiredTopmost;
@@ -120,6 +137,8 @@ namespace StickMate.Platform.MacOS
                 _timer = ReapplyIntervalSeconds;
             }
 
+            TickHitTestProbe();
+
             if (_appliedCount >= ReapplyAttempts)
             {
                 return;
@@ -146,6 +165,47 @@ namespace StickMate.Platform.MacOS
                 $"isClickThrough={_controller.isClickThrough}, isHitTestEnabled={_controller.isHitTestEnabled}) / " +
                 $"windowSize={_controller.windowSize}, clientSize={_controller.clientSize}, " +
                 $"windowPosition={_controller.windowPosition}, cameraBg={CameraBackgroundDescription()}.");
+        }
+
+        /// <summary>
+        /// 위 "히트테스트 실측 감시" 주석 참고 — 라이브러리와 같은 질의를 두 지점에 직접 쏴 보고,
+        /// 클릭관통/히트테스트 플래그를 함께 되읽어 Player.log에 남긴다. 창 부착 후 ProbeDurationSeconds
+        /// 동안만 1초 간격으로 돌고 스스로 멈춘다(24시간 상주 앱의 로그를 영원히 더럽히지 않는다).
+        /// </summary>
+        private void TickHitTestProbe()
+        {
+            if (_elapsed > ProbeDurationSeconds) return;
+
+            _probeTimer += Time.unscaledDeltaTime;
+            if (_probeTimer < ProbeIntervalSeconds) return;
+            _probeTimer = 0f;
+
+            Camera cam = _controller.currentCamera != null ? _controller.currentCamera : Camera.main;
+            if (cam == null) return;
+
+            if (_agent == null) _agent = UnityEngine.Object.FindAnyObjectByType<Core.StickmanAgent>();
+            var body = _agent != null && _agent.Blackboard != null ? _agent.Blackboard.Body : null;
+            if (body == null) return;
+
+            // (A) 캐릭터 몸통 중앙(발끝 원점 + 대략 상반신 높이)의 화면 좌표.
+            Vector3 charWorld = body.position + new Vector2(0f, 1.1f);
+            Vector3 charScreen = cam.WorldToScreenPoint(charWorld);
+            RaycastHit2D onChar = Physics2D.GetRayIntersection(cam.ScreenPointToRay(charScreen));
+
+            // (B) 캐릭터에서 화면 가로로 멀리 떨어진 빈 지점(같은 높이) — 반드시 아무것도 없어야 한다.
+            var emptyScreen = new Vector3(
+                Mathf.Repeat(charScreen.x + Screen.width * 0.4f, Screen.width),
+                charScreen.y, charScreen.z);
+            RaycastHit2D onEmpty = Physics2D.GetRayIntersection(cam.ScreenPointToRay(emptyScreen));
+
+            Debug.Log("[MacOverlayStateEnforcer] 히트테스트 감시 — " +
+                $"모드={_controller.hitTestType}, isHitTestEnabled={_controller.isHitTestEnabled}, " +
+                $"isClickThrough={_controller.isClickThrough}, isTransparent={_controller.isTransparent}, " +
+                $"isTopmost={_controller.isTopmost} / " +
+                $"캐릭터지점(screen {charScreen.x:F0},{charScreen.y:F0})={(onChar.collider != null ? onChar.collider.name + "/" + onChar.collider.GetType().Name : "미검출(문제!)")}, " +
+                $"빈지점(screen {emptyScreen.x:F0},{emptyScreen.y:F0})={(onEmpty.collider != null ? onEmpty.collider.name + " (관통 깨짐!)" : "없음(정상 관통)")}, " +
+                $"상태={( _agent != null && _agent.Blackboard != null && _agent.Blackboard.Machine != null ? _agent.Blackboard.Machine.CurrentStateId.ToString() : "?")}, " +
+                $"오버레이원점={StickMate.Platform.ScreenCoordinateConverter.OverlayOriginOsScreen}.");
         }
 
         /// <summary>

@@ -42,6 +42,9 @@ namespace StickMate.States
         private float _holdTimer;
         private Vector2 _followVelocityRef; // SmoothDamp 내부 상태(물리 속도 아님, 순수 추종 연산용)
         private bool _cursorEverAvailable;
+        // 잡은 순간의 "커서 -> 몸통 원점" 오프셋. FollowCursor()가 이 오프셋을 유지한 채 커서를 따라가므로
+        // 캐릭터는 **사용자가 실제로 붙잡은 그 지점**이 커서에 붙은 것처럼 움직인다(아래 문서 참고).
+        private Vector2 _grabOffset;
 
         public StickmanStateId StateId => StickmanStateId.Dragged;
 
@@ -65,11 +68,17 @@ namespace StickMate.States
                 _blackboard.Body.bodyType = RigidbodyType2D.Kinematic;
             }
 
+            _grabOffset = Vector2.zero;
             if (_blackboard.TryGetCursorWorldPosition(out Vector2 cursorWorld))
             {
                 _cursorEverAvailable = true;
                 PushSample(cursorWorld);
+                _grabOffset = CaptureGrabOffset(cursorWorld);
             }
+
+            Debug.Log($"[DragThrowState] 드래그 시작 — 커서 월드={( _cursorEverAvailable ? cursorWorld.ToString("F2") : "(조회 실패)")}, " +
+                $"몸통={_blackboard.Body?.position.ToString("F2")}, 잡은 오프셋={_grabOffset.ToString("F2")}, " +
+                $"물리모드={_blackboard.Body?.bodyType}.");
 
             // UX 12절에는 드래그 "진입" 시점의 대사가 명시되어 있지 않다 — WalkState/JumpState와 동일한
             // 관례로, 정말 필요한 대사가 없는 상태는 DialogueIntent를 만들지 않는 것도 원칙 1을 지키는
@@ -120,12 +129,55 @@ namespace StickMate.States
             }
         }
 
+        /// <summary>
+        /// 잡은 순간의 "커서 -> 몸통 원점" 오프셋을 기록한다. 이게 없으면(= 몸통 원점을 커서에 그대로
+        /// 맞추면) 문제가 두 가지 생긴다:
+        ///   (1) 루트 원점은 이 프로젝트에서 **발끝**이다(SceneBootstrapper.BuildStickmanPrefab 문서 —
+        ///       StickmanBlackboard.SenseGround가 Body.position을 그대로 발 높이로 취급한다). 그래서
+        ///       원점을 커서에 맞추면 캐릭터가 커서 **위쪽**에 통째로 매달린 모습이 되어, 잡은 지점과
+        ///       보이는 위치가 어긋난다(12절의 "대롱대롱 매달리는" 그림과 반대).
+        ///   (2) 누르는 순간 캐릭터가 커서 위치로 순간이동하듯 튄다 — 12절이 명시적으로 배제한 연출
+        ///       ("순간 텔레포트처럼 커서에 딱 붙지 않음").
+        /// 오프셋을 유지하면 사용자가 머리를 잡으면 머리가, 다리를 잡으면 다리가 커서에 붙은 채로
+        /// 따라온다. 부수 효과로 **좌표 변환에 상수 오차가 남아 있어도 드래그 추종에서는 그 오차가
+        /// 상쇄된다**(잡는 순간 측정한 상대 오프셋을 그대로 유지하므로).
+        ///
+        /// 다만 오프셋이 무한정 커지면(예: 좌표계가 크게 어긋난 상태에서 전역 폴링 경로로 잡힌 경우)
+        /// 캐릭터가 커서에서 한참 떨어진 채 끌려다니게 되므로, 전신 높이를 넘지 않는 선으로 clamp한다.
+        /// </summary>
+        private Vector2 CaptureGrabOffset(Vector2 cursorWorld)
+        {
+            if (_blackboard.Body == null) return Vector2.zero;
+            Vector2 offset = _blackboard.Body.position - cursorWorld;
+
+            // 전신 높이 근사치(콜라이더 바운즈) — 없으면 보수적인 고정값.
+            float maxOffset = 2.5f;
+            var collider = _blackboard.Body.GetComponent<Collider2D>();
+            if (collider != null) maxOffset = Mathf.Max(0.1f, collider.bounds.size.magnitude);
+
+            if (offset.magnitude > maxOffset) offset = offset.normalized * maxOffset;
+            return offset;
+        }
+
         private void FollowCursor(Vector2 target, float deltaTime)
         {
             if (_blackboard.Body == null) return;
             float smoothTime = _blackboard.Config != null ? _blackboard.Config.dragFollowSmoothTime : 0.08f;
             Vector2 current = _blackboard.Body.position;
-            Vector2 next = Vector2.SmoothDamp(current, target, ref _followVelocityRef, Mathf.Max(0.001f, smoothTime), Mathf.Infinity, deltaTime);
+            // 잡은 지점이 커서에 붙어 있는 것처럼 보이도록 오프셋을 유지한 채 따라간다(CaptureGrabOffset 참고).
+            Vector2 desired = target + _grabOffset;
+
+            // 소프트 클램프(12절 "화면 경계 도달 시 ... 안쪽으로 소프트 클램프") — 지면 아래로는
+            // 끌고 내려가지 않는다. Kinematic MovePosition은 정적 바닥 콜라이더를 그대로 통과하므로,
+            // 커서가 지면보다 아래(예: macOS Dock 영역)에 있을 때 그대로 따라가면 캐릭터가 바닥 밑에
+            // 놓인 채 놓여진다. 그 위치는 접지 허용 오차 밖이라 Grounded가 영원히 false이고 물리 바닥이
+            // 위로 올려주지도 못해 **Fall 상태에 영구 고착**된다(실측 확인, 2026-08-28).
+            if (_blackboard.TryGetGroundSurfaceWorldY(desired, out float surfaceY) && desired.y < surfaceY)
+            {
+                desired.y = surfaceY;
+            }
+
+            Vector2 next = Vector2.SmoothDamp(current, desired, ref _followVelocityRef, Mathf.Max(0.001f, smoothTime), Mathf.Infinity, deltaTime);
             _blackboard.Body.MovePosition(next);
         }
 
@@ -192,6 +244,8 @@ namespace StickMate.States
             // 관례) 즉시 RAGDOLL로 자연 전이 — 아니면 평범한 Fall(포물선 낙하)로 보낸다.
             float impulseMagnitude = speed * mass;
             bool wentRagdoll = RagdollImpactResolver.TryApplyImpact(_blackboard, impulseMagnitude);
+            Debug.Log($"[DragThrowState] 놓음 — 던진 속도={throwVelocity.ToString("F2")}(속력 {speed:F2}, " +
+                $"상한 {maxSpeed:F2}), 충격량={impulseMagnitude:F2} -> {(wentRagdoll ? "RAGDOLL" : "Fall")}.");
             if (!wentRagdoll)
             {
                 _blackboard.Machine.ChangeState(StickmanStateId.Fall);

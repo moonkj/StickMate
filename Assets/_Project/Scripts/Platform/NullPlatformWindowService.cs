@@ -139,8 +139,27 @@ namespace StickMate.Platform
         // 좌표(Game View 기준)로 대체한다. Input.mousePosition은 Unity 스크린 좌표(좌하단 원점)이므로
         // PlatformFoothold와 동일한 좌상단 원점 OS 좌표계로 변환해서 반환한다
         // (Platform/ScreenCoordinateConverter.cs의 좌표계 설명과 동일한 y 반전 규칙).
+        //
+        // 배치 모드(-batchmode -nographics) 예외 — 드래그&던지기 실배선 라운드(2026-08-28)에 실측으로
+        // 드러난 문제: 그 환경에는 **마우스 커서라는 것이 애초에 존재하지 않아** Input.mousePosition이
+        // 영원히 (0,0)으로 고정된다. 그런데 그것을 "유효한 커서 좌표"라고 true로 보고하면, 커서가 5초
+        // 이상 멈춰 있는 것으로 판정되어 로데오 커서(Interaction/RodeoCursorWatcher, UX_FLOW.md 13절)가
+        // 자동 발동하고 캐릭터가 화면 좌상단(0,0)으로 끌려간다. 실제로 이 라운드에 로데오 감시자를
+        // 프리팹에 배선하자마자 PlayMode 스모크 테스트 3종이 전부 그 이유로 실패했다(캐릭터가 화면
+        // 왼쪽 밖으로 이탈 / 상태가 RodeoCursor로 고착).
+        //
+        // 그래서 "커서가 없는 환경에서는 없다고 정직하게 보고한다"로 고친다. 소비자는 전부 이 bool을
+        // 확인하므로(각 호출부 참고) 안전하게 아무 일도 일어나지 않는다. 사람이 직접 조작하는 에디터
+        // Play 모드(isBatchMode==false)에서는 예전과 완전히 동일하게 동작한다 — 즉 테스트를 통과시키려고
+        // 기능을 끈 것이 아니라, 가짜 입력이 게임플레이를 움직이던 것을 막은 것이다.
         public bool TryGetGlobalCursorPosition(out Vector2 osScreenPosition)
         {
+            if (Application.isBatchMode)
+            {
+                osScreenPosition = default;
+                return false;
+            }
+
             Vector3 mouse = Input.mousePosition;
             osScreenPosition = new Vector2(mouse.x, Screen.height - mouse.y);
             return true;

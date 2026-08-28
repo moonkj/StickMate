@@ -181,6 +181,19 @@ namespace StickMate.States
         }
 
         /// <summary>
+        /// probeWorldPos의 x에서 딛을 수 있는 지면(가장 높은 발판 상단)의 월드 Y.
+        /// GroundSensor.TryGetSurfaceWorldY 문서 참고 — 커서가 지면보다 아래에 있을 때 캐릭터를 그리로
+        /// 옮겨 지면 밑에 가두는 사고(Fall 영구 고착)를 막기 위해 드래그&던지기/로데오가 쓴다.
+        /// </summary>
+        public bool TryGetGroundSurfaceWorldY(Vector2 probeWorldPos, out float surfaceWorldY)
+        {
+            var footholds = FootholdPoller != null
+                ? FootholdPoller.CachedFootholds
+                : System.Array.Empty<PlatformFoothold>();
+            return GroundSensor.TryGetSurfaceWorldY(MainCamera, probeWorldPos, footholds, Config, out surfaceWorldY);
+        }
+
+        /// <summary>
         /// Idle/Walk 공용 지상 로직: 접지 중이면 유예 타이머를 리셋하고 위치를 발판에 스냅한다.
         /// 접지가 아니면 유예 타이머를 누적하다가 StickConfig.fallGraceDuration을 넘기면 Fall로
         /// 강제 전이한다(발판 경계의 미세한 흔들림으로 인한 오탐 방지, StickConfig.cs 문서 참고).

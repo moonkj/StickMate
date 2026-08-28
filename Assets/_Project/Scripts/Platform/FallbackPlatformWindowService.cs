@@ -48,6 +48,9 @@ namespace StickMate.Platform
         private readonly IDesktopIconLayoutService _innerIconLayout; // null이면 내부 서비스가 아이콘 좌표 조회를 지원하지 않음
         private readonly StickConfig _config; // desktopDpiScale만 읽는다 — null이면 배율 1로 취급.
 
+        // 합성 발판 캐시 무효화 판정에 쓰는 직전 오버레이 창 원점(위 GetFallbackFoothold 참고).
+        private Vector2 _cachedOverlayOrigin = new Vector2(float.NaN, float.NaN);
+
         // 재사용 버퍼. "실제 발판 전부 + 안전망 1개"를 매 호출 다시 채워 넣지만 리스트 자체는 재할당하지
         // 않는다(24시간 상주 앱, GC 압박 방지 컨벤션 — FootholdPoller.cs와 동일 원칙). EnumerateFootholds()가
         // 매 프레임이 아니라 FootholdPoller의 폴링 주기에서만 호출되므로 Add() 비용은 무시 가능하다.
@@ -84,10 +87,19 @@ namespace StickMate.Platform
             float width = (Screen.width > 0 ? Screen.width : 1920f) * dpi;
             float height = (Screen.height > 0 ? Screen.height : 1080f) * dpi;
 
-            if (!Mathf.Approximately(width, _cachedScreenWidth) || !Mathf.Approximately(height, _cachedScreenHeight))
+            // 오버레이 창이 화면 좌상단이 아닌 곳에서 시작할 수 있다(macOS: 메뉴바/Dock을 뺀 가운데
+            // 구간). 이 합성 발판은 "우리 창의 하단"을 뜻하므로, 창 원점만큼 통째로 평행이동해야
+            // ScreenCoordinateConverter가 만들어내는 캐릭터의 OS 좌표와 같은 공간에 놓인다 —
+            // 안 그러면 캐릭터의 발 높이와 이 발판의 상단 Y가 창 오프셋만큼 어긋나 접지 판정이
+            // 영원히 실패한다(드래그&던지기 배선 라운드에 실측으로 확인: 상태가 Fall에 고착).
+            Vector2 overlayOrigin = ScreenCoordinateConverter.OverlayOriginOsScreen;
+
+            if (!Mathf.Approximately(width, _cachedScreenWidth) || !Mathf.Approximately(height, _cachedScreenHeight)
+                || !Mathf.Approximately(overlayOrigin.x, _cachedOverlayOrigin.x) || !Mathf.Approximately(overlayOrigin.y, _cachedOverlayOrigin.y))
             {
                 _cachedScreenWidth = width;
                 _cachedScreenHeight = height;
+                _cachedOverlayOrigin = overlayOrigin;
 
                 // BUG-P1-R5-B2 대응(Coder 발견/수정, 2026-08-28) — "바로 바탕화면에서 구동" 라운드가 처음
                 // 만든 실제 Standalone .app을 직접 실행해 Player.log에 캐릭터 위치를 초 단위로 남기는
@@ -139,7 +151,7 @@ namespace StickMate.Platform
 
                 // y = height - 두께: ScreenCoordinateConverter와 동일한 좌상단원점/y하향증가 좌표계에서
                 // "화면 진짜 하단에서 위로 두께만큼"을 뜻한다(위 클래스 주석의 핫픽스 설명 참고).
-                var rect = new Rect(widenedX, height - thickness, widenedWidth, thickness);
+                var rect = new Rect(widenedX + overlayOrigin.x, overlayOrigin.y + height - thickness, widenedWidth, thickness);
                 _fallbackFoothold = new PlatformFoothold(handle: -1L, screenRect: rect, isTopmost: true);
             }
             return _fallbackFoothold;

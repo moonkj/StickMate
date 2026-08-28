@@ -27,6 +27,17 @@ namespace StickMate.Interaction
             if (_hitboxCollider == null) _hitboxCollider = GetComponent<Collider2D>();
         }
 
+        private void Start()
+        {
+            // 실측 검증용 준비 상태 로그(리더 지시) — "드래그가 실제로 발동할 준비가 됐는가"를 한 줄로
+            // 확인할 수 있게 한다. 이 줄이 안 보이면 컴포넌트 자체가 씬/프리팹에 배선되지 않은 것이다
+            // (이번 라운드에 실제로 그랬다 — Tasklist.md 참고).
+            Debug.Log($"[DragThrowController] 준비 완료 — player={(_player != null)}, hitbox={(_hitbox != null)}, " +
+                $"hitboxCollider={(_hitboxCollider != null ? _hitboxCollider.GetType().Name : "(없음)")}, " +
+                $"부분클릭관통해제 서비스={((_player != null ? _player.PlatformService as ILocalClickCaptureService : null) != null ? "지원" : "미지원(소유권 부기 생략)")}. " +
+                "캐릭터를 마우스로 누르면 Dragged 상태로 전이합니다.");
+        }
+
         private void OnEnable()
         {
             if (_hitbox != null)

@@ -131,6 +131,45 @@ namespace StickMate.States
         }
 
         /// <summary>
+        /// 주어진 월드 X 위치에서 "가장 높은 발판 상단"의 월드 Y를 구한다(접지 허용 오차와 무관 —
+        /// 캐릭터가 지금 그 높이에 있든 말든 그 x에서 딛을 수 있는 표면이 어디인지만 답한다).
+        ///
+        /// 왜 Sense()로는 안 되는가: Sense()의 Grounded는 "발이 발판 상단의 groundSnapTolerance 안에
+        /// 있는가"라서, 캐릭터가 발판보다 한참 아래에 있으면 언제나 false다. 그런데 드래그&던지기/
+        /// 로데오 커서는 **커서가 지면보다 아래에 있을 수 있고**(macOS Dock 영역 등), 그 좌표로 캐릭터를
+        /// Kinematic MovePosition 하면 정적 바닥 콜라이더를 그대로 통과해 지면 밑에 놓이게 된다. 그
+        /// 상태에서 Dynamic으로 돌아가면 접지 판정은 영원히 false이고(허용 오차 밖) 물리 바닥이 위로
+        /// 올려주지도 못해 **Fall 상태에 영구 고착**된다 — 드래그&던지기 배선 라운드(2026-08-28)에
+        /// 실측으로 확인한 현상이다. 그 상황을 애초에 만들지 않기 위해 "이 x에서 지면은 어디인가"를
+        /// 접지 여부와 분리해 물어볼 수 있어야 한다.
+        /// </summary>
+        public static bool TryGetSurfaceWorldY(Camera cam, Vector2 probeWorldPos,
+            IReadOnlyList<PlatformFoothold> footholds, StickConfig config, out float surfaceWorldY)
+        {
+            surfaceWorldY = probeWorldPos.y;
+            if (cam == null || footholds == null || footholds.Count == 0) return false;
+
+            Vector2 probeOs = ScreenCoordinateConverter.WorldToOsScreen(cam, probeWorldPos, config, out float depth);
+
+            // 좌상단 원점(y 아래로 증가)이므로 "가장 높은 상단" = r.y가 가장 작은 것.
+            bool found = false;
+            float bestTopOs = float.MaxValue;
+            for (int i = 0; i < footholds.Count; i++)
+            {
+                Rect r = footholds[i].ScreenRect;
+                if (probeOs.x < r.x || probeOs.x > r.x + r.width) continue;
+                if (r.y >= bestTopOs) continue;
+                bestTopOs = r.y;
+                found = true;
+            }
+            if (!found) return false;
+
+            Vector3 topWorld = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(probeOs.x, bestTopOs), depth, config);
+            surfaceWorldY = topWorld.y;
+            return true;
+        }
+
+        /// <summary>
         /// ParkourClimb 진입 판정(아키텍처 0절, UX_FLOW.md 4절): 지금 딛고 있는 발판(info)의 진행방향
         /// 경계 근처(parkourDetectionRadius 이내)에, 상단이 지금 발판보다 눈에 띄게(parkourDetectionRadius
         /// 이상) 높은 다른 발판이 있는지 찾는다. 있으면 그 발판(핸들 포함, 이후 등반 중 "잡을 곳이

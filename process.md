@@ -231,3 +231,15 @@ Phase 0(스캐폴딩) → 1(코어루프) → 2(랙돌/파쿠르) → 3(전투/�
 
 **후속 과제**: 얇은 선 vs Opacity 히트테스트 상충(`hitTestType=Raycast`로 전환 필요 — 마우스 상호작용 연결 시 함께), 창이 화면 전체를 못 덮음(`shouldFitMonitor` 검토), 어두운 배경에서 검은 캐릭터 시인성(흰 외곽선), 타 창 위 정밀 착지 미검증.
 **`isHitTestEnabled`가 Phase 3 "부분적 클릭관통 해제"(UX_FLOW 15절)를 대체 가능** — 다음 라운드에 `ILocalClickCaptureService` 대체 검토.
+
+## 2026-08-28 (계속) — 마우스 상호작용 연결 (잡아서 던지기 실동작)
+**핵심 발견**: `DragThrowController`/`RodeoCursorWatcher`가 **씬/프리팹 어디에도 배치되어 있지 않았다.** Phase 3에서 로직은 다 만들었는데 `MouseDown` 이벤트 구독자가 0명이라 한 번도 실행된 적이 없었다. 이번 라운드의 본질은 구현이 아니라 **배선**이었다.
+
+- **Raycast 히트테스트 전환**: `hitTestType = Opacity → Raycast`. 라이브러리 소스를 읽고 전제 3가지를 맞춤 — ① EventSystem 필수(`HitTestByRaycast()`가 null 체크 없이 `EventSystem.current` 사용 → 없으면 NRE로 코루틴이 죽어 클릭관통이 얼어붙음), ② `PhysicsGround`를 Ignore Raycast 레이어로 이동(안 하면 화면 하단 20% 띠가 클릭을 삼켜 비침해 원칙 위반), ③ 카메라 명시 지정.
+- **클릭 영역**: `isTrigger` GrabArea 캡슐 추가(화면상 약 28×90pt) — 얇은 획(2.5~3pt) 대비 약 10배. 트리거라 물리 거동 무변경.
+- **입력 이중 경로**: Unity `OnMouseDown` + 신규 `IGlobalPointerButtonService`(macOS `CGEventSourceButtonState`, 조회 전용) 폴링. 후자는 비활성 앱의 첫 클릭이 콘텐츠 뷰로 안 내려오는 macOS 동작 대비책.
+- **좌표계 버그 2건 실측 발견·수정**(중요): ① `desktopDpiScale`이 정확히 2배 틀렸음(`macRetinaSupport:0`이라 Unity가 포인트 단위 보고 → 0.5가 아니라 1.0) → 자기 창 폭/`Screen.width` 직접 측정 방식으로 교체. ② 창이 화면 좌상단이 아니라 (0,61)에서 시작 → `ScreenCoordinateConverter.OverlayOriginOsScreen` 신설, `FallbackPlatformWindowService` 합성 발판도 연쇄 평행이동. **검증: 캐릭터 위치 역산 OS (690,825) vs 실제 커서 (690.1,825.1) — 오차 0.1px.**
+- **로데오 커서 실동작 확인** + 실측 중 2건 수정: ⓐ 라이딩 중 `_stillTimer` 누적으로 내려온 다음 프레임에 즉시 재발동(영원히 커서에 붙어 드래그 불가) → 이탈 시 타이머 리셋, ⓑ 커서가 지면선 아래(Dock 영역)면 캐릭터가 바닥 밑에 놓여 Fall 영구 고착 → UX 13절대로 트리거 억제 + `DragThrowState`에도 소프트 클램프(12절).
+- **Escape 안전장치 재확인**: 메커니즘이 히트테스트 방식과 무관함을 확인(`isHitTestEnabled=false`가 라이브러리 자동 제어 자체를 정지). 시작 후 5초 구간에서 한 프레임도 안 뒤집힘 실측.
+- PlayMode 일시 실패 원인도 해결: 배치모드엔 커서가 없는데 `NullPlatformWindowService`가 고정 (0,0)을 유효 커서로 보고해 로데오가 자동 발동 → 배치모드에서는 "커서 없음"을 정직하게 반환하도록 수정(에디터 Play 모드 무변경).
+- 검증: 컴파일 에러0/경고0, EditMode 13/13, PlayMode 3/3, 73초 가동 예외0. PID 76957.

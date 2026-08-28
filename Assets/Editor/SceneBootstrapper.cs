@@ -175,6 +175,10 @@ namespace StickMate.EditorTools
         // 전부 이 레이어에 몰아넣고, 이 레이어끼리의 충돌만 Physics2D 매트릭스에서 끈다(EnsureStickmanLimbLayer 참고).
         private const string StickmanLimbLayerName = "StickmanLimb";
 
+        // 클릭 잡기 영역(GrabArea, isTrigger) 치수 — 근거는 BuildStickmanPrefab의 해당 블록 주석 참고.
+        private const float GrabAreaWidth = 0.8f;
+        private const float GrabAreaVerticalPadding = 0.15f;
+
         /// <summary>
         /// Main Camera의 직교 크기. 5 -> 12 (2026-08-28 사용자 피드백: "사이즈도 너무 커", "창 위로
         /// 돌아다니고 해야 하는데 너무 크잖아").
@@ -375,7 +379,7 @@ namespace StickMate.EditorTools
             capsule.direction = CapsuleDirection2D.Vertical;
             // 크기는 아래 지오메트리 계산이 끝난 뒤 전신 높이에서 유도해 대입한다(totalHeight 참고).
 
-            root.AddComponent<StickmanClickHitbox>();
+            var hitbox = root.AddComponent<StickmanClickHitbox>();
 
             var agent = root.AddComponent<StickmanAgent>();
             var so = new SerializedObject(agent);
@@ -433,6 +437,49 @@ namespace StickMate.EditorTools
 
             capsule.size = new Vector2(0.4f, totalHeight);
             capsule.offset = new Vector2(0f, totalHeight * 0.5f);
+
+            // ================================================================================
+            // 클릭 잡기 영역(GrabArea) — 드래그&던지기 실배선 라운드(2026-08-28) 신설
+            // ================================================================================
+            // 왜 별도 콜라이더가 필요한가: 물리용 루트 캡슐은 폭 0.4유닛(화면상 약 14pt)이라 "손으로
+            // 집기"에는 좁다. 그렇다고 물리 캡슐 자체를 넓히면 바닥/랙돌 거동이 바뀌어 이미 검증된
+            // 물리를 흔들게 된다. 그래서 **isTrigger=true**인 별도 캡슐을 얹는다:
+            //   - 트리거는 물리 충돌을 전혀 일으키지 않는다(바닥/랙돌 거동 무변경 보증).
+            //   - 그러면서 Unity의 OnMouseDown 히트테스트와 UniWindowController의
+            //     Physics2D.GetRayIntersection 히트테스트에는 **둘 다 잡힌다**
+            //     (ProjectSettings/Physics2DSettings.asset의 m_QueriesHitTriggers=1 확인).
+            // 크기 근거: 폭 GrabAreaWidth(0.8유닛)는 카메라 orthographicSize=12, 창 높이 846pt 기준
+            //   0.8 x 846/(2*12) = 약 28pt — 얇은 획(2.5~3pt) 대비 약 10배 넓은 "버튼만 한" 표적이다.
+            //   세로는 전신을 덮고 위아래로 GrabAreaVerticalPadding씩 여유를 준다.
+            // 이보다 더 키우지 않는 이유: 캐릭터에서 멀리 떨어진 빈 공간까지 클릭을 잡으면 비침해
+            //   원칙 2(그 외 영역 100% 관통)가 체감상 깨진다.
+            var grabArea = root.AddComponent<CapsuleCollider2D>();
+            grabArea.direction = CapsuleDirection2D.Vertical;
+            grabArea.isTrigger = true;
+            grabArea.size = new Vector2(GrabAreaWidth, totalHeight + GrabAreaVerticalPadding * 2f);
+            grabArea.offset = new Vector2(0f, totalHeight * 0.5f);
+
+            // ================================================================================
+            // Phase 3 상호작용 컨트롤러 배선 (드래그&던지기 / 로데오 커서)
+            // ================================================================================
+            // 이 두 컴포넌트의 로직은 Phase 3에 이미 완성돼 있었지만 **씬/프리팹 어디에도 배치되지
+            // 않아** 실제로는 한 번도 동작한 적이 없었다(직전 라운드까지 프리팹의 스크립트는
+            // StickmanAgent / StickmanClickHitbox / RagdollLimbImpactRelay 3종뿐이었다). 이번 라운드의
+            // 핵심 수정이며, 여기서 코드로 배치해 --force 재현성을 유지한다.
+            var dragThrow = root.AddComponent<DragThrowController>();
+            var dragSo = new SerializedObject(dragThrow);
+            dragSo.FindProperty("_player").objectReferenceValue = agent;
+            dragSo.FindProperty("_hitbox").objectReferenceValue = hitbox;
+            // 넉넉한 GrabArea를 히트박스 영역 기준으로 넘긴다(부분적 클릭관통 해제 15절의 영역 부기가
+            // 실제 클릭 판정 영역과 일치하도록 — 물리 캡슐이 아니라 이쪽이 사용자가 실제로 누르는 영역이다).
+            dragSo.FindProperty("_hitboxCollider").objectReferenceValue = grabArea;
+            dragSo.ApplyModifiedPropertiesWithoutUndo();
+
+            var rodeo = root.AddComponent<RodeoCursorWatcher>();
+            var rodeoSo = new SerializedObject(rodeo);
+            rodeoSo.FindProperty("_player").objectReferenceValue = agent;
+            rodeoSo.FindProperty("_config").objectReferenceValue = config;
+            rodeoSo.ApplyModifiedPropertiesWithoutUndo();
 
             // 몸통(목) 선의 위쪽 끝 — **머리 링 안쪽으로 침범하지 않게** 정확히 맞춘다
             // (2026-08-28 사용자 지적: "목이 얼굴을 뚫고 올라와있는거 같고").
@@ -581,6 +628,9 @@ namespace StickMate.EditorTools
             cam.backgroundColor = new Color(fallbackBg.r, fallbackBg.g, fallbackBg.b, 0f);
             camGo.AddComponent<AudioListener>();
 
+            // hitTestType=Raycast의 전제 조건(ConfigureUniWindowController 문서 (a) 참고).
+            EnsureEventSystem();
+
             // 진짜 투명/클릭관통/항상위를 담당하는 UniWindowController를 씬에 자동 배치한다.
             // 수동 씬 편집 없이 --force로 항상 재현 가능해야 한다는 기존 컨벤션에 따라 코드로 생성한다.
             ConfigureUniWindowController(cam);
@@ -670,7 +720,23 @@ namespace StickMate.EditorTools
         ///     시작 즉시 무력화된다. 5초 뒤 MacWindowService.SetClickThrough(true)가 이 값을 켠다.
         ///   - autoSwitchCameraBackground = false : 위 카메라 배경 주석 참고 — 라이브러리가 배경을
         ///     Color.clear(RGB 0,0,0)로 덮어쓰는 것을 막아 "투명 실패 시 검정-on-검정" 사고를 예방한다.
-        ///   - hitTestType = Opacity   : 커서 아래 픽셀의 알파로 판정(캐릭터 선 위에서만 클릭 수신).
+        ///   - hitTestType = Raycast   : **커서 아래에 Collider2D가 있는지**로 판정(2026-08-28 전환).
+        ///     이전의 Opacity(커서 아래 픽셀 알파)는 우리 캐릭터가 화면상 2.5~3pt짜리 얇은 선이라
+        ///     "그 획을 정확히 맞춰야만 클릭이 먹는" 사실상 불가능한 UX였다(직전 라운드 한계 기록).
+        ///     Raycast 모드는 UniWindowController.HitTestByRaycast()가 매 프레임
+        ///     `EventSystem.current.RaycastAll` -> `Physics.Raycast` -> `Physics2D.GetRayIntersection`
+        ///     순으로 확인하므로, 캐릭터에 이미 있는 Collider2D(루트 캡슐/머리 원/팔다리 박스) +
+        ///     아래에서 추가하는 넉넉한 GrabArea 트리거가 그대로 클릭 영역이 된다.
+        ///     **이 모드가 요구하는 3가지 전제를 이 파일이 전부 충족시킨다**:
+        ///       (a) EventSystem이 씬에 있어야 한다 — 없으면 `EventSystem.current.RaycastAll`에서
+        ///           NullReferenceException이 나고 히트테스트 코루틴이 통째로 죽는다(그러면 클릭관통
+        ///           상태가 마지막 값에 얼어붙는다). EnsureEventSystem()이 생성한다.
+        ///       (b) currentCamera가 유효해야 한다 — 아래에서 명시 지정.
+        ///       (c) 클릭을 받고 싶지 **않은** 콜라이더는 "Ignore Raycast" 레이어에 둬야 한다.
+        ///           라이브러리가 쓰는 레이어 마스크가 정확히 `~LayerMask.GetMask("Ignore Raycast")`이고
+        ///           Physics2D 쪽도 DefaultRaycastLayers라 이 레이어만 제외되기 때문이다. 그래서
+        ///           CreateGroundCollider()의 보이지 않는 물리 바닥을 그 레이어로 옮긴다 — 안 그러면
+        ///           화면 하단 전체 띠에서 클릭이 앱에 잡혀 비침해 원칙 2가 깨진다.
         ///   - currentCamera           : Camera.main 자동 탐색에 의존하지 않고 명시 지정(헤드리스/배치
         ///     환경에서 탐색이 실패하는 경우를 없앤다).
         /// </summary>
@@ -700,7 +766,7 @@ namespace StickMate.EditorTools
 
             // public 필드는 직접 대입.
             controller.isHitTestEnabled = false;
-            controller.hitTestType = UniWindowController.HitTestType.Opacity;
+            controller.hitTestType = UniWindowController.HitTestType.Raycast;
             controller.autoSwitchCameraBackground = false;
             controller.currentCamera = cam;
             controller.forceWindowed = true;
@@ -734,14 +800,40 @@ namespace StickMate.EditorTools
 
             Debug.Log("[SceneBootstrapper] UniWindowController 배치 완료 " +
                 "(activeSelf=false — 실제 Player에서 MacWindowService가 활성화, " +
-                "_isTransparent=true, _isTopmost=false, isHitTestEnabled=false, hitTestType=Opacity, " +
+                "_isTransparent=true, _isTopmost=false, isHitTestEnabled=false, hitTestType=Raycast, " +
                 "autoSwitchCameraBackground=false, currentCamera=Main Camera).");
+        }
+
+        /// <summary>
+        /// UniWindowController의 Raycast 히트테스트가 요구하는 EventSystem을 씬에 배치한다.
+        ///
+        /// 왜 필수인가: HitTestByRaycast()의 첫 줄이 `EventSystem.current.RaycastAll(...)`인데 null
+        /// 체크가 없다. 씬에 EventSystem이 없으면 이 호출이 NullReferenceException을 던지고, 그 코루틴
+        /// (HitTestCoroutine)이 통째로 종료된다 — 즉 히트테스트가 조용히 멈추고 클릭관통 상태가 마지막
+        /// 값에 영구히 얼어붙는다. "조용한 오동작"이 가장 나쁜 형태라 반드시 함께 배치한다.
+        ///
+        /// 입력 모듈(StandaloneInputModule)은 일부러 붙이지 않는다 — 이 프로젝트에는 uGUI Canvas가
+        /// 하나도 없어 RaycastAll이 항상 빈 결과를 돌려주고(그 다음 단계인 카메라 레이캐스트로 넘어간다),
+        /// 모듈이 없어도 EventSystem.current는 OnEnable에서 정상적으로 채워진다. 필요 없는 컴포넌트가
+        /// 매 프레임 입력을 훑지 않게 하는 편이 상주 앱에 유리하다.
+        /// </summary>
+        private static void EnsureEventSystem()
+        {
+            var go = new GameObject("EventSystem");
+            go.AddComponent<UnityEngine.EventSystems.EventSystem>();
+            Debug.Log("[SceneBootstrapper] EventSystem 배치 완료 — UniWindowController의 " +
+                "hitTestType=Raycast가 EventSystem.current를 null 체크 없이 사용하므로 필수다.");
         }
 
         private static void CreateGroundCollider(Camera cam)
         {
             var ground = new GameObject("PhysicsGround");
-            ground.layer = 0; // Default.
+            // 레이어 2 = "Ignore Raycast"(Unity 예약 레이어). 물리 충돌에는 아무 영향이 없고
+            // (레이어 충돌 매트릭스는 별개 — StickmanLimb와 계속 정상 충돌한다) **레이캐스트 질의에서만**
+            // 제외된다. hitTestType=Raycast 전환의 필수 조건이다: 이 바닥은 눈에 보이지 않는 물리
+            // 안전망인데도 화면 하단 20% 폭 전체를 덮고 있어, 레이캐스트 히트테스트가 여기에 걸리면
+            // 그 띠에서 클릭이 전부 우리 앱에 잡혀 버린다(비침해 원칙 2 정면 위반).
+            ground.layer = 2;
 
             float groundTopWorldY = ComputeGroundTopWorldY(cam);
             ground.transform.position = new Vector3(0f, groundTopWorldY - GroundColliderThickness * 0.5f, 0f);

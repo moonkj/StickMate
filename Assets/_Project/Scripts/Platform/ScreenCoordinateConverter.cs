@@ -39,6 +39,33 @@ namespace StickMate.Platform
     public static class ScreenCoordinateConverter
     {
         /// <summary>
+        /// 오버레이 창(= 우리 Unity Player 창)의 좌상단이 OS 데스크톱 좌표계에서 어디에 있는지.
+        /// 기본값 (0,0)은 "창이 화면 좌상단에서 시작한다"는 이 클래스의 원래 가정이며, 그 가정이
+        /// 맞는 환경(에디터/헤드리스/Windows 스텁)에서는 아래 두 변환식이 예전과 완전히 동일하게 동작한다.
+        ///
+        /// ============================================================================
+        /// 왜 필요한가 — 드래그&던지기 배선 라운드(2026-08-28)에 실측 로그로 드러난 좌표 어긋남
+        /// ============================================================================
+        /// 직전 라운드 실측: `windowSize=(1512, 846)`, `windowPosition=(0, 75)`. 즉 우리 창은 화면 폭은
+        /// 전부 덮지만 **세로로는 메뉴바/Dock을 뺀 가운데 846pt 구간에만** 존재한다. 그런데 이 클래스의
+        /// 기존 식은 `osY = (Screen.height - unityY) * dpi`로 "창 좌상단 = 화면 좌상단"을 가정하므로,
+        /// 커서(CGEventGetLocation, 화면 전역 좌표)를 월드로 되돌릴 때 창 오프셋만큼 통째로 틀어진다.
+        /// 실측값 기준 세로 오차는 약 60~75 OS-pt = 월드 약 2유닛으로, 캐릭터 전신 높이(2.27유닛)에
+        /// 맞먹는다 — 드래그하면 캐릭터가 커서에서 한 몸 길이만큼 벗어난 채 따라다니게 된다.
+        ///
+        /// 그래서 "OS 데스크톱 좌표 ↔ 창 클라이언트 좌표"의 원점 차이를 이 한 값으로 흡수한다. 실제
+        /// 갱신은 Platform/MacOS/MacWindowService.EnumerateFootholds()가 이미 돌고 있는 창 열거
+        /// 루프에서 자기 창(IsSelfWindow)의 kCGWindowBounds를 집어 그대로 대입한다 — 추가 시스템 호출이
+        /// 전혀 없고, 커서 좌표(CGEventGetLocation)와 **완전히 같은 Quartz 좌표계**라 좌표계 혼용
+        /// 위험도 없다(MacWindowService의 ICursorPositionService 주석 참고).
+        ///
+        /// static 가변 상태인 이유: 이 클래스는 순수 static 유틸이고 소비자(States/Interaction 전역)가
+        /// 인스턴스를 들고 다니지 않는다. 프로젝트에 이미 같은 성격의 static이 있다(Core/SpectacleEventLock,
+        /// Core/StressGauge). 기본값이 (0,0)이라 세팅하지 않는 플랫폼/테스트는 기존 동작 그대로다.
+        /// </summary>
+        public static Vector2 OverlayOriginOsScreen { get; set; } = Vector2.zero;
+
+        /// <summary>
         /// Unity 월드 좌표 -> OS 데스크톱 좌표(좌상단 원점, 픽셀).
         /// </summary>
         /// <param name="cameraDepth">
@@ -51,8 +78,9 @@ namespace StickMate.Platform
             cameraDepth = unityScreen.z;
 
             float dpi = config != null ? Mathf.Max(0.0001f, config.desktopDpiScale) : 1f;
-            float osX = unityScreen.x * dpi;
-            float osY = (Screen.height - unityScreen.y) * dpi; // 좌상단 원점으로 y 반전
+            Vector2 origin = OverlayOriginOsScreen;
+            float osX = unityScreen.x * dpi + origin.x;
+            float osY = (Screen.height - unityScreen.y) * dpi + origin.y; // 좌상단 원점으로 y 반전 + 창 오프셋
             return new Vector2(osX, osY);
         }
 
@@ -60,8 +88,9 @@ namespace StickMate.Platform
         public static Vector3 OsScreenToWorld(Camera cam, Vector2 osScreenPoint, float cameraDepth, StickConfig config)
         {
             float dpi = config != null ? Mathf.Max(0.0001f, config.desktopDpiScale) : 1f;
-            float unityX = osScreenPoint.x / dpi;
-            float unityY = Screen.height - (osScreenPoint.y / dpi); // 좌하단 원점으로 y 재반전
+            Vector2 origin = OverlayOriginOsScreen;
+            float unityX = (osScreenPoint.x - origin.x) / dpi;
+            float unityY = Screen.height - ((osScreenPoint.y - origin.y) / dpi); // 좌하단 원점으로 y 재반전
             return cam.ScreenToWorldPoint(new Vector3(unityX, unityY, cameraDepth));
         }
     }

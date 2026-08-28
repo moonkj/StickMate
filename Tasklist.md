@@ -887,3 +887,101 @@ alpha = (1 x 0.5) + (0 x 0.5) = 0.5
 ### 검증 강도 조정 (리더 지시, 2026-08-28)
 
 **순수 시각 수정(색/크기/좌표)에는 90초 실측과 전체 테스트 스위트를 매번 돌리지 않는다.** 컴파일 확인 + 짧은 실행(20~30초)으로 크래시/예외만 확인하고 빠르게 빌드해 넘긴다. **물리/상태머신 로직을 건드릴 때만** 기존의 엄격한 검증(EditMode 13/13 + PlayMode 3/3 + 90초+ 실측)을 적용한다.
+
+---
+
+## 드래그&던지기 / 로데오 커서 "실제 입력 배선" 라운드 (2026-08-28, Coder)
+
+사용자 지적 **"마우스로 캐릭터를 들고 여러가지 제어가 가능해야하는데 지금은 단순히 돌아만다님"** 대응. Phase 3에 이미 구현돼 있던 로직을 실제 마우스 입력에 연결했다.
+
+### (0) 근본 원인 — 컨트롤러가 씬/프리팹 어디에도 배선되어 있지 않았다
+
+`Stickman.prefab`을 실측 조회한 결과, 붙어 있던 MonoBehaviour는 **`StickmanAgent` / `StickmanClickHitbox` / `RagdollLimbImpactRelay` 3종뿐**이었다. `Interaction/DragThrowController.cs`와 `Interaction/RodeoCursorWatcher.cs`는 코드로만 존재하고 **한 번도 씬에 배치된 적이 없어 단 한 줄도 실행된 적이 없었다.** `StickmanClickHitbox`가 `MouseDown` 이벤트를 쏴도 구독자가 0명이었던 것이다. 그래서 이번 라운드의 핵심 수정은 새 로직이 아니라 **배선**이다(`SceneBootstrapper.BuildStickmanPrefab`에서 코드로 부착 + `SerializedObject`로 `_player`/`_hitbox`/`_hitboxCollider`/`_config` 주입, `--force` 재현 가능).
+
+### (1) 히트테스트 Opacity -> Raycast 전환
+
+직전 라운드 한계("2.5~3pt 획을 정확히 클릭해야 반응") 해소. `SceneBootstrapper.ConfigureUniWindowController()`에서 `hitTestType = HitTestType.Raycast`. 라이브러리 소스(`UniWindowController.HitTestByRaycast()`)를 읽고 이 모드가 요구하는 전제 3가지를 전부 맞췄다:
+
+1. **EventSystem 필수** — `HitTestByRaycast()` 첫 줄이 `EventSystem.current.RaycastAll(...)`인데 **null 체크가 없다.** 씬에 EventSystem이 없으면 NRE로 `HitTestCoroutine`이 통째로 죽고 클릭관통 상태가 마지막 값에 영구히 얼어붙는다("조용한 오동작"). `EnsureEventSystem()` 신설(입력 모듈은 붙이지 않음 — 이 프로젝트엔 Canvas가 없어 필요 없다).
+2. **레이어** — 라이브러리 마스크는 `~LayerMask.GetMask("Ignore Raycast")`, Physics2D 쪽은 `DefaultRaycastLayers`. 그래서 **`PhysicsGround`를 레이어 0 -> 2(Ignore Raycast)로 이동**했다. 안 그러면 화면 하단 20% 전체 띠(보이지도 않는 물리 안전망 바닥)에서 클릭이 앱에 잡혀 비침해 원칙 2가 정면으로 깨진다. 레이어 2는 레이캐스트에서만 제외될 뿐 충돌 매트릭스에는 영향이 없어 물리 거동은 무변경.
+3. **카메라** — 기존대로 `currentCamera`를 Main Camera로 명시 지정.
+
+**클릭 영역**: 물리용 루트 캡슐(폭 0.4유닛 = 화면상 약 14pt)은 그대로 두고, **`isTrigger=true`인 별도 `CapsuleCollider2D` "GrabArea"(0.8 x 전신+0.3 = 화면상 약 28pt x 90pt)** 를 루트에 추가했다. 트리거는 물리 충돌을 일으키지 않으므로 검증된 바닥/랙돌 거동이 전혀 바뀌지 않으면서, `m_QueriesHitTriggers=1`이라 Unity `OnMouseDown`과 `Physics2D.GetRayIntersection` 히트테스트에는 둘 다 잡힌다. 얇은 획(2.5~3pt) 대비 **약 10배 넓은 표적**. 팔다리 `BoxCollider2D`(Kinematic)도 레이캐스트에 정상적으로 잡히는 것을 실측 확인했다.
+
+### (2) 이중 입력 경로 — `OnMouseDown` + 전역 버튼 폴링
+
+`StickmanClickHitbox`가 이제 두 경로에서 같은 `MouseDown`/`MouseUp`을 낸다(`_pressed` 엣지 플래그로 중복 방지).
+- (a) Unity 표준 `OnMouseDown`/`OnMouseUp`.
+- (b) **신규** `Platform/IGlobalPointerButtonService`(macOS: `CGEventSourceButtonState`, 조회 전용·권한 불필요) + 기존 커서 폴링 조합. 창 포커스와 무관하다.
+
+(b)가 필요한 이유: 우리 창은 항상위 투명 오버레이 + 평소 클릭관통 + 대개 **비활성 앱**이다. macOS에서 비활성 앱 창의 첫 클릭은 앱 활성화에만 소비되고 콘텐츠 뷰로 안 내려올 수 있다(`acceptsFirstMouse` 기본 NO) — 그러면 "눌렀는데 아무 일도 안 일어남"이 된다. **비침해 원칙은 (b)에서도 유지**: 버튼이 눌렸다는 사실만으로는 아무 일도 안 하고, 그 순간 커서가 캐릭터 `Collider2D` 안에 있을 때만 발동한다(판정 영역이 (a)와 동일).
+
+### (3) 좌표계 버그 2건을 실측으로 발견해 수정 (이번 라운드에서 가장 중요)
+
+리더 지시("드래그 추종이 커서와 정확히 일치하는지 실측")를 따르다 **기존 좌표 변환이 2중으로 틀려 있었음**을 발견했다. 둘 다 고쳤고, 실측으로 오차 0.1px까지 검증했다.
+
+**(a) `desktopDpiScale`이 정확히 2배 틀렸다.** 직전 라운드는 디스플레이 `backingScaleFactor`(=2)의 역수 0.5를 썼다. 그러나 `ProjectSettings`의 **`macRetinaSupport: 0`** 이라 Unity는 백킹 픽셀이 아니라 **포인트**로 렌더/보고한다 — 실측 `Screen=(1512x846)` == 우리 창 크기 `(1512x846 pt)` → 올바른 값은 **1.0**. 수정: `DetectDesktopDpiScale()`이 디스플레이 배율 대신 **자기 창 폭(kCGWindowBounds, OS 포인트) / `Screen.width`(Unity 픽셀)** 를 직접 측정한다. 창 열거는 UniWindowController 부착과 무관하게 `Start()` 시점부터 성공하므로(실측 확인) 직전 라운드가 겪은 "부착 전 clientSize=(0,0)" 함정에도 걸리지 않는다.
+
+**(b) 창이 화면 좌상단에서 시작한다는 가정이 틀렸다.** 실측: 창 원점 Quartz **(0, 61)**, 크기 (1512x846) — 메뉴바/Dock을 뺀 가운데 구간에만 존재한다. `ScreenCoordinateConverter`는 원점 (0,0)을 가정했으므로 커서(전역 좌표)↔월드 변환이 61pt(월드 약 1.7유닛) 통째로 어긋나 있었다. 수정: `ScreenCoordinateConverter.OverlayOriginOsScreen`(static, 기본 (0,0)이라 다른 플랫폼/테스트는 무변경) 신설. 갱신은 `MacWindowService.EnumerateFootholds()`가 **이미 돌고 있는 창 열거 루프** 안에서 자기 창을 만나면 그 `kCGWindowBounds`를 대입한다(추가 시스템 호출 0건, 커서와 **완전히 같은 Quartz 좌표계**라 좌표계 혼용 위험 없음). 라이브러리의 `windowPosition`(=(0,75))은 다른 좌표 규약(AppKit y-up)이라 쓰지 않았다 — 실제로 `982 - 846 - 61 = 75`로 두 값이 서로 뒤집힌 관계임을 확인했다.
+
+> **연쇄 수정**: `FallbackPlatformWindowService`의 합성 안전망 발판은 "창이 (0,0)에서 시작" 전제로 만들어져 있었다. (b) 적용 직후 실측에서 캐릭터가 **`Fall` 상태에 고착**(발 높이와 발판 상단 Y가 61pt 어긋남)되는 것을 확인해, 그 사각형도 오버레이 원점만큼 평행이동하도록 함께 고쳤다. 수정 후 정상적으로 `Idle`로 정착하는 것을 재실측했다.
+
+**실측 검증(결정적)**: 로데오로 캐릭터가 커서에 올라탄 순간, Player.log의 캐릭터 화면 좌표에서 역산한 OS 좌표가 **(690, 825)**, 같은 시각 외부 프로세스가 `CGEventGetLocation`으로 읽은 실제 커서가 **(690.1, 825.1)** — 오차 0.1px. 월드↔OS 왕복이 정확해졌음이 증명됐다.
+
+### (4) `DragThrowState` — 잡은 지점 오프셋 유지
+
+`FollowCursor()`가 몸통 원점을 커서에 그대로 맞추면 (i) 이 프로젝트의 루트 원점은 **발끝**이라 캐릭터가 커서 위쪽에 통째로 매달리고, (ii) 누르는 순간 순간이동하듯 튄다(12절이 명시적으로 배제한 연출). 그래서 `Enter()`에서 "커서->몸통" 오프셋을 기록해 유지한다(전신 대각선 길이로 clamp). 머리를 잡으면 머리가, 다리를 잡으면 다리가 커서에 붙는다. 부수 효과로 좌표 변환에 상수 오차가 남더라도 드래그 추종에서는 상쇄된다. **속도 계산/상한/RAGDOLL 전이 로직은 무수정**.
+
+### (5) 안전장치 재확인 (Escape / 5초 지연)
+
+`hitTestType`을 바꿔도 안전장치 메커니즘은 그대로다 — `SetClickThrough(false)`가 `isHitTestEnabled=false`를 함께 걸어 **라이브러리의 매 프레임 자동 제어 자체를 정지**시키기 때문이며, 이는 히트테스트 "방식"(Opacity/Raycast)과 무관하다. 실측(`MacOverlayStateEnforcer` 신규 감시 로그, 1초 간격): 시작 후 5초 구간 내내 `isHitTestEnabled=False, isClickThrough=False`가 **한 프레임도 뒤집히지 않고** 유지되다가 5초 뒤 둘 다 `True`로 전환. Escape 경로는 이 5초 구간과 **완전히 동일한 코드 경로**(`ApplyClickThrough(false)`)다. 5초 지연도 그대로 유지.
+
+### (6) 신규 실측 감시 로그 (`MacOverlayStateEnforcer.TickHitTestProbe`)
+
+부착 후 25초 동안 1초 간격으로, 라이브러리와 **같은 질의**(`cam.ScreenPointToRay` + `Physics2D.GetRayIntersection`)를 두 지점에 직접 쏴 남긴다. 실측 결과 전 구간에서:
+- 캐릭터 지점 -> `Stickman/CapsuleCollider2D` **검출**(클릭 가능)
+- 캐릭터에서 화면 가로로 605px 떨어진 빈 지점 -> **미검출**(정상 관통 = 비침해 유지)
+
+### (7) PlayMode 테스트 3/3 실패 -> 원인 규명 후 복구
+
+로데오 감시자를 프리팹에 배선하자마자 PlayMode 3종이 전부 깨졌다. 원인: `-batchmode -nographics`에는 **마우스 커서가 애초에 존재하지 않는데** `NullPlatformWindowService.TryGetGlobalCursorPosition()`이 `Input.mousePosition`의 고정값 (0,0)을 "유효한 커서"라고 `true`로 보고 → 5초 정지 판정 → 로데오 자동 발동 → 캐릭터가 화면 좌상단으로 끌려감. 수정: **배치 모드에서는 `false`(커서 없음)를 정직하게 반환**한다. 소비자는 전부 이 bool을 확인하므로 안전하며, 사람이 조작하는 에디터 Play 모드는 예전과 동일하다. 기능을 끈 것이 아니라 **가짜 입력이 게임플레이를 움직이던 것**을 막았다.
+
+### (8) 로데오 커서 — 동작 확인됨 + 재트리거 버그 1건 수정
+
+실측 로그에서 상태가 `Idle -> RodeoCursor`로 실제 전이했고, 그 시점 캐릭터 위치가 실제 커서와 0.1px 이내로 일치했다(위 (3) 검증에 쓴 바로 그 데이터). **정상 동작한다.**
+
+다만 배선 직후 실측에서 캐릭터가 커서에서 **영원히 내려오지 않는** 현상을 발견했다(상태 시퀀스가 17초 연속 `RodeoCursor`). 타임아웃(`rodeoMaxDurationSeconds=10`)은 정상 동작하고 있었고, 진짜 원인은 **재트리거 조건**이었다: `RodeoCursorWatcher.Update()`의 `_stillTimer`가 상태와 무관하게 매 프레임 누적되므로, 10초 라이딩이 끝나 Idle로 돌아온 바로 그 프레임에 이미 10초가 쌓여 있어 다음 프레임에 즉시 재발동한다. `TryTrigger()`가 발동 직전 `_stillTimer = 0f`로 리셋하며 남긴 주석("즉시 재트리거 방지 — 다음 5초를 다시 채워야 함")이 이미 의도를 명시하고 있는데 라이딩 중 누적이 그 의도를 무력화한 것이다.
+
+**수정**: `OnStateTransitioned`(RodeoCursor 이탈)에서 `_stillTimer`를 한 번 더 리셋 — 새 규칙 추가가 아니라 **이미 문서화된 규칙이 실제로 지켜지게** 만드는 2줄 수정이다. 이 수정 없이는 사용자가 마우스를 가만히 두는 순간 캐릭터가 커서에 붙어버려(그 상태에서는 `Dragged` 진입 조건인 Idle/Walk가 아니다) **드래그&던지기를 시험조차 할 수 없어**, 이번 라운드의 목표 자체가 검증 불가능해진다.
+
+> **다음 라운드 검토 과제(수정하지 않음)**: 로데오 발동 중에는 캐릭터가 커서 위에 있으므로 히트테스트가 `isClickThrough=False`를 유지한다 — 즉 그동안 사용자의 클릭이 앱에 잡힌다. 사용자가 마우스를 한 번도 건드리지 않은 채 앱을 켜두면 5초 뒤 자동 발동하므로, "유저가 캐릭터를 발견하기도 전에 첫 클릭을 삼키는" 시나리오가 가능하다. 완화안 후보: (a) 앱 시작 후 커서가 한 번이라도 움직인 뒤에만 로데오를 arming, (b) 로데오 중 클릭이 감지되면 즉시 내려오기.
+
+### (9) 실측으로 발견한 "지면 밑 영구 고착" 1건 수정
+
+로데오가 정상 발동하기 시작하자마자 새 현상이 드러났다: 라이딩이 끝나 캐릭터가 커서에서 내려온 뒤 **`Fall` 상태에 영구 고착**된다(실측 상태 시퀀스 `RodeoCursor` x10 -> `Fall` x7, 위치 고정).
+
+**원인**: 씬의 논리적 지면(발판 상단)은 창 하단에서 위로 20% 지점(월드 y=-7.2)인데, 커서는 그보다 **아래**(macOS Dock 영역)에 있을 수 있다. Kinematic `MovePosition`은 정적 바닥 콜라이더를 그대로 통과하므로 캐릭터가 바닥 **밑**에 놓이고, 거기서 Dynamic으로 돌아가면 `GroundSensor`의 접지 판정(`|footOs.y - 발판상단| <= groundSnapTolerance`)이 영원히 false이며 물리 바닥이 위로 올려주지도 못한다. **드래그&던지기도 똑같이 노출된다** — 사용자가 캐릭터를 화면 하단 20% 안으로 끌고 내려가 놓으면 같은 고착에 빠진다.
+
+**수정 3곳**:
+- `GroundSensor.TryGetSurfaceWorldY()` 신설 — "이 x에서 딛을 수 있는 가장 높은 발판 상단은 어디인가"를 **접지 허용 오차와 무관하게** 답한다(`Sense()`의 Grounded로는 답할 수 없는 질문). `StickmanBlackboard.TryGetGroundSurfaceWorldY()`로 노출.
+- `DragThrowState.FollowCursor()` — 추종 목표 Y를 지면 아래로 내려가지 않게 **소프트 클램프**. UX_FLOW.md 12절이 이미 명시한 "안쪽으로 소프트 클램프" 처리다.
+- `RodeoCursorWatcher.TryTrigger()` — 커서가 지면선보다 아래면 **발동 자체를 억제**. UX_FLOW.md 13절 예외("캐릭터가 물리적으로 도달 불가능한 위치에 정지해 있으면 트리거를 억제")가 이미 규정한 정답이며, 클램프해서 어정쩡하게 태우는 것보다 스펙에 맞다.
+
+### (10) 범위 밖으로 남긴 것 (리더 지시 준수)
+
+`isHitTestEnabled`로 `ILocalClickCaptureService`(15절 부분적 클릭관통 해제)를 **대체하는 리팩터링은 하지 않았다.** 기존 소유권 부기 구조를 그대로 두고 충돌만 없게 했다 — macOS의 `MacWindowService`는 그 인터페이스를 구현하지 않으므로 `DragThrowController`에서 `as` 캐스팅이 null이 되고, 실제 OS 히트테스트는 UniWindowController가 별도로 담당한다(두 메커니즘이 서로 간섭하지 않음). 실측 로그에서도 `부분클릭관통해제 서비스=지원`(FallbackPlatformWindowService 경유)으로 잡히지만 내부 서비스가 미구현이라 요청은 실패 처리되고, `DragThrowController`가 그 경우를 이미 방어하고 있어 드래그 진입에는 영향이 없다.
+
+### 검증 결과
+
+컴파일 **에러 0 / 경고 0**, **EditMode 13/13**, **PlayMode 3/3**, 빌드 `Succeeded`(에러 0, 경고 0). 실제 `.app` 실행 60초+ — 예외/크래시 0건.
+
+**실측 로그 요약**
+```
+DetectDesktopDpiScale(): 자기 창 실측 — 창=(0,33,1512x874), Screen=(1512x846) -> desktopDpiScale=1.000
+오버레이 창 원점(Quartz) — origin=(0, 61), size=(1512x846)
+[StickmanClickHitbox]   준비 완료 — 콜라이더 11/11개 활성, MouseDown 구독자=1명, 레이어=StickmanLimb(8)
+[DragThrowController]   준비 완료 — player=True, hitbox=True, hitboxCollider=CapsuleCollider2D
+히트테스트 감시 — 모드=Raycast / 캐릭터지점=Stickman/CapsuleCollider2D 검출 / 빈지점=없음(정상 관통)
+0~5초 구간: isHitTestEnabled=False, isClickThrough=False (안전장치 유지) -> 5초 후 둘 다 True
+좌표 실측: 캐릭터 역산 OS (690, 825) vs 실제 커서 CGEventGetLocation (690.1, 825.1) — 오차 0.1px
+```

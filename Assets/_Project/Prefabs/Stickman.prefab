@@ -1813,6 +1813,9 @@ GameObject:
   - component: {fileID: 627099406341302380}
   - component: {fileID: 3153001888014274433}
   - component: {fileID: 1198757566834526807}
+  - component: {fileID: 3319260651251182870}
+  - component: {fileID: 6756588753813904748}
+  - component: {fileID: 6433574258769762577}
   m_Layer: 8
   m_Name: Stickman
   m_TagString: Untagged
@@ -1929,6 +1932,72 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e17090dae30d647758ebadd303896d0f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  _config: {fileID: 11400000, guid: a80c0efcbfabb4baaad9177df5ad9015, type: 2}
+--- !u!70 &3319260651251182870
+CapsuleCollider2D:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5478997775956544787}
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Density: 1
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ForceSendLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_ForceReceiveLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_ContactCaptureLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_CallbackLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_IsTrigger: 1
+  m_UsedByEffector: 0
+  m_CompositeOperation: 0
+  m_CompositeOrder: 0
+  m_Offset: {x: 0, y: 1.1373472}
+  m_Size: {x: 0.8, y: 2.5746944}
+  m_Direction: 0
+--- !u!114 &6756588753813904748
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5478997775956544787}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bf597b923677141228215cc990c800d2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _player: {fileID: 1198757566834526807}
+  _hitbox: {fileID: 3153001888014274433}
+  _hitboxCollider: {fileID: 3319260651251182870}
+--- !u!114 &6433574258769762577
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5478997775956544787}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 900d7919edc0f4bd5bd5c10bb4e727a7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _player: {fileID: 1198757566834526807}
   _config: {fileID: 11400000, guid: a80c0efcbfabb4baaad9177df5ad9015, type: 2}
 --- !u!1 &6281831076349952178
 GameObject:
@@ -2821,7 +2890,7 @@ Transform:
   m_GameObject: {fileID: 8694210785216910390}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1.3811945, z: 0}
+  m_LocalPosition: {x: 0, y: 1.3811944, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

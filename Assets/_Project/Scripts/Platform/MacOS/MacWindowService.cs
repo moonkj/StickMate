@@ -60,7 +60,7 @@ namespace StickMate.Platform.MacOS
     /// 취급하므로 컴파일/런타임 모두 문제 없다(Win32WindowService가 실제로 두 인터페이스 다 구현한 것과
     /// 다른 점 — macOS는 이번 라운드에 그 두 캐퍼빌리티까지는 손대지 않는다).
     /// </summary>
-    public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService
+    public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService, IGlobalPointerButtonService
     {
         #region CoreGraphics / CoreFoundation P/Invoke 선언 (이 리전 밖으로 유출 금지)
 
@@ -96,6 +96,18 @@ namespace StickMate.Platform.MacOS
 
         [DllImport(CoreGraphicsLib)]
         private static extern CGRect CGDisplayBounds(uint display);
+
+        // 마우스 버튼의 "현재 눌림 상태"를 창 포커스와 무관하게 조회한다(IGlobalPointerButtonService).
+        // 조회 전용 공개 API이며 이벤트를 주입하지도, CGEventTap처럼 접근성 권한을 요구하지도 않는다.
+        // 반환형은 C의 bool(1바이트)이므로 이 파일의 마샬링 규칙대로 I1을 명시한다(아래 "마샬링 함정" 참고).
+        [DllImport(CoreGraphicsLib)]
+        [return: MarshalAs(UnmanagedType.I1)]
+        private static extern bool CGEventSourceButtonState(int stateID, uint button);
+
+        // kCGEventSourceStateCombinedSessionState = 0 — "지금 이 로그인 세션에서 실제로 눌려 있는 상태".
+        // HIDSystemState(1)는 물리 장치만 보므로 트랙패드/보조 입력 조합에서 놓칠 수 있어 세션 상태를 쓴다.
+        private const int kCGEventSourceStateCombinedSessionState = 0;
+        private const uint kCGMouseButtonLeft = 0;
 
         [DllImport(CoreGraphicsLib)]
         private static extern uint CGMainDisplayID();
@@ -296,6 +308,37 @@ namespace StickMate.Platform.MacOS
             // backingScaleFactor = pixelWidth / pointWidth이고, 이 메서드가 반환해야 하는
             // StickConfig.desktopDpiScale("Unity 픽셀 -> OS 픽셀 배율")은 그 역수다(Retina 2x면 0.5).
             // 조회 실패/비정상 값이면 안전한 기본값 1(보정 없음)로 폴백한다.
+            // ========================================================================
+            // 1순위 — **직접 측정**(드래그&던지기 배선 라운드, 2026-08-28에 실측으로 교체)
+            // ========================================================================
+            // ScreenCoordinateConverter가 실제로 필요로 하는 값은 "디스플레이의 백킹 배율"이 아니라
+            // **`Unity가 보고하는 1픽셀`이 `OS 좌표계의 몇 단위`인가**다. 그 둘은 항상 같지 않다:
+            // 이 프로젝트는 ProjectSettings의 `macRetinaSupport: 0`이라 Unity가 Retina 백킹 픽셀이 아니라
+            // 포인트 단위로 렌더/보고한다. 실측 로그(2026-08-28):
+            //     디스플레이 backingScaleFactor = 2.000  ->  기존 식의 결과 desktopDpiScale = 0.500
+            //     그러나 실제로는 Screen=(1512x846) == 우리 창 크기(1512x846 pt) == 배율 1.000
+            // 즉 기존 식은 **정확히 2배 틀린 값**을 주고 있었고, 그 결과 커서 좌표(CGEventGetLocation,
+            // 진짜 OS 포인트)를 월드로 되돌릴 때 좌표가 2배로 어긋났다(드래그 추종/로데오 도달 판정/
+            // 실제 창 위 착지가 전부 이 오차를 공유한다).
+            //
+            // 그래서 우리 창의 실제 폭(kCGWindowBounds, OS 포인트)을 Screen.width(Unity 픽셀)로 나눠
+            // 그 비율을 직접 측정한다. 창 열거는 UniWindowController의 부착 여부와 무관하게 Unity가
+            // 자기 NSWindow를 만든 직후부터 성공하므로(실측 확인 — Start() 시점에 이미 자기 창이
+            // 조회된다), 이전 라운드가 겪었던 "부착 전이라 clientSize=(0,0)" 함정에도 걸리지 않는다.
+            // 겸사겸사 오버레이 원점도 여기서 즉시 반영해 첫 프레임부터 좌표 변환이 정확해진다.
+            if (TryGetSelfWindowRect(out Rect selfRect) && Screen.width > 0 && selfRect.width > 0f)
+            {
+                ScreenCoordinateConverter.OverlayOriginOsScreen = selfRect.position;
+                float measured = selfRect.width / Screen.width;
+                Debug.Log($"[MacWindowService] DetectDesktopDpiScale(): 자기 창 실측 — 창={selfRect}, " +
+                    $"Screen=({Screen.width}x{Screen.height}) -> desktopDpiScale={measured:F3} " +
+                    "(창 폭[OS 포인트] / Screen.width[Unity 픽셀]). 오버레이 원점도 함께 반영했습니다.");
+                return measured;
+            }
+
+            Debug.LogWarning("[MacWindowService] DetectDesktopDpiScale(): 자기 창을 찾지 못해 디스플레이 " +
+                "백킹 배율 기반 폴백을 사용합니다 — macRetinaSupport 설정에 따라 틀릴 수 있습니다.");
+
             IntPtr mode = CGDisplayCopyDisplayMode(CGMainDisplayID());
             if (mode == IntPtr.Zero)
             {
@@ -381,6 +424,7 @@ namespace StickMate.Platform.MacOS
         public IReadOnlyList<PlatformFoothold> EnumerateFootholds()
         {
             _footholdBuffer.Clear();
+            _overlayOriginPassArea = 0.0; // CaptureOverlayOrigin()의 "이번 패스 최대 면적" 리셋.
 
             IntPtr windowArray = CopyOnScreenWindowList();
             if (windowArray == IntPtr.Zero) return _footholdBuffer; // 조회 실패 — FallbackPlatformWindowService 안전망이 감싸므로 빈 리스트로도 안전.
@@ -393,12 +437,19 @@ namespace StickMate.Platform.MacOS
                     IntPtr windowDict = CFArrayGetValueAtIndex(windowArray, i);
                     if (windowDict == IntPtr.Zero) continue;
 
+                    // 이 앱 자신(Unity 플레이어 프로세스)의 창은 발판 후보에서 제외한다. 순서 주의:
+                    // 아래 레이어 필터보다 **먼저** 판정한다 — 우리 창은 항상위(kCGWindowLayer=101)라
+                    // 레이어 필터에 먼저 걸리면 여기까지 오지 못하고, 그러면 바로 아래의 오버레이 원점
+                    // 캡처가 영원히 실행되지 않는다(발판 목록에서 제외된다는 결과 자체는 순서와 무관하게 동일).
+                    if (IsSelfWindow(windowDict))
+                    {
+                        CaptureOverlayOrigin(windowDict);
+                        continue;
+                    }
+
                     // 일반 앱 창(kCGWindowLayer==0)만 채택 — 메뉴바/데스크톱 배경 등 시스템 레이어 제외.
                     // Win32의 "제목 있는 가시 창"(GetWindowTextLength!=0) 필터와 같은 목적의 휴리스틱.
                     if (!TryGetInt(windowDict, _keyWindowLayer, out int layer) || layer != 0) continue;
-
-                    // 이 앱 자신(Unity 플레이어 프로세스)의 창은 발판 후보에서 제외.
-                    if (IsSelfWindow(windowDict)) continue;
 
                     IntPtr boundsDict = CFDictionaryGetValue(windowDict, _keyWindowBounds);
                     if (boundsDict == IntPtr.Zero) continue;
@@ -638,6 +689,107 @@ namespace StickMate.Platform.MacOS
                 CFRelease(eventRef);
             }
         }
+
+        // ============================================================================
+        // IGlobalPointerButtonService — 창 포커스와 무관한 "왼쪽 버튼 눌림" 조회
+        // (Platform/IGlobalPointerButtonService.cs 문서의 "왜 OnMouseDown만으로는 부족한가" 참고)
+        // ============================================================================
+
+        /// <summary>
+        /// CGEventSourceButtonState로 지금 왼쪽 버튼이 눌려 있는지 조회한다. TryGetGlobalCursorPosition과
+        /// 마찬가지로 순수 조회이며 어떤 이벤트도 주입하지 않는다. CoreGraphics 호출 자체가 실패하는
+        /// 경우는 없으므로 항상 true를 반환한다(인터페이스가 false를 허용하는 것은 "이 플랫폼은 아예
+        /// 지원 안 함"을 표현하기 위한 것으로, macOS에서는 해당 없음).
+        /// </summary>
+        public bool TryGetPrimaryButtonPressed(out bool pressed)
+        {
+            pressed = CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, kCGMouseButtonLeft);
+            return true;
+        }
+
+        /// <summary>
+        /// 우리 오버레이 창의 화면상 좌상단을 Platform/ScreenCoordinateConverter.OverlayOriginOsScreen에
+        /// 반영한다(그 프로퍼티 문서의 "왜 필요한가" 참고 — 창이 화면 좌상단에서 시작하지 않아 커서↔월드
+        /// 변환이 통째로 틀어지던 문제).
+        ///
+        /// 여기서 읽는 kCGWindowBounds는 CGEventGetLocation(커서 좌표)과 **정확히 같은 Quartz 전역
+        /// 디스플레이 좌표계**(좌상단 원점, y 아래로 증가)라 별도 변환이 전혀 필요 없다 —
+        /// UniWindowController.windowPosition을 쓰지 않는 이유가 이것이다(그쪽은 라이브러리 내부의
+        /// 다른 좌표 규약을 따르므로 커서 좌표와 직접 비교할 수 없다).
+        ///
+        /// 한 프로세스가 여러 창을 가질 수 있으므로(상태 표시용 보조 창 등) **면적이 가장 큰 창**을
+        /// 오버레이 본체로 본다. EnumerateFootholds()가 이미 도는 열거 루프 안에서 호출되므로 추가
+        /// 시스템 호출이 0건이고, 창이 움직이거나 Dock/메뉴바 표시가 바뀌어도 폴링 주기마다 자동 추종한다.
+        /// </summary>
+        private void CaptureOverlayOrigin(IntPtr windowDict)
+        {
+            IntPtr boundsDict = CFDictionaryGetValue(windowDict, _keyWindowBounds);
+            if (boundsDict == IntPtr.Zero) return;
+            if (!CGRectMakeWithDictionaryRepresentation(boundsDict, out CGRect rect)) return;
+
+            double area = rect.Size.Width * rect.Size.Height;
+            if (area <= 0.0) return;
+
+            // 같은 열거 패스 안에서 더 큰 창이 나오면 그쪽으로 교체한다. 패스가 새로 시작될 때
+            // 리셋해야 하므로 EnumerateFootholds()의 프레임 카운터 대신 "이번 패스에서 본 최대 면적"을
+            // _footholdBuffer.Clear()와 같은 시점에 초기화한다(아래 _overlayOriginPassArea 참고).
+            if (area < _overlayOriginPassArea) return;
+            _overlayOriginPassArea = area;
+
+            var origin = new Vector2((float)rect.Origin.X, (float)rect.Origin.Y);
+            if (!_overlayOriginLogged || Vector2.Distance(origin, ScreenCoordinateConverter.OverlayOriginOsScreen) > 0.5f)
+            {
+                _overlayOriginLogged = true;
+                Debug.Log($"[MacWindowService] 오버레이 창 원점(Quartz 좌표) 갱신 — origin={origin}, " +
+                    $"size=({rect.Size.Width}x{rect.Size.Height}), Screen=({Screen.width}x{Screen.height}). " +
+                    "이 값이 커서<->월드 변환의 세로 오프셋 보정에 쓰입니다(ScreenCoordinateConverter.OverlayOriginOsScreen).");
+            }
+            ScreenCoordinateConverter.OverlayOriginOsScreen = origin;
+        }
+
+        /// <summary>
+        /// 우리 프로세스가 소유한 온스크린 창 중 면적이 가장 큰 것의 화면 사각형(Quartz 좌표, OS 포인트).
+        /// CaptureOverlayOrigin()과 같은 판정을 쓰지만, 이쪽은 발판 열거 루프 밖에서 단발성으로 필요할 때
+        /// (DetectDesktopDpiScale) 독립적으로 한 번 조회한다.
+        /// </summary>
+        private bool TryGetSelfWindowRect(out Rect rect)
+        {
+            rect = default;
+            IntPtr windowArray = CopyOnScreenWindowList();
+            if (windowArray == IntPtr.Zero) return false;
+
+            bool found = false;
+            double bestArea = 0.0;
+            try
+            {
+                long count = CFArrayGetCount(windowArray);
+                for (long i = 0; i < count; i++)
+                {
+                    IntPtr windowDict = CFArrayGetValueAtIndex(windowArray, i);
+                    if (windowDict == IntPtr.Zero) continue;
+                    if (!IsSelfWindow(windowDict)) continue;
+
+                    IntPtr boundsDict = CFDictionaryGetValue(windowDict, _keyWindowBounds);
+                    if (boundsDict == IntPtr.Zero) continue;
+                    if (!CGRectMakeWithDictionaryRepresentation(boundsDict, out CGRect r)) continue;
+
+                    double area = r.Size.Width * r.Size.Height;
+                    if (area <= bestArea) continue;
+                    bestArea = area;
+                    rect = new Rect((float)r.Origin.X, (float)r.Origin.Y, (float)r.Size.Width, (float)r.Size.Height);
+                    found = true;
+                }
+            }
+            finally
+            {
+                CFRelease(windowArray);
+            }
+            return found;
+        }
+
+        // CaptureOverlayOrigin()이 한 열거 패스 안에서 "가장 큰 자기 창"을 고르기 위한 작업 변수.
+        private double _overlayOriginPassArea;
+        private bool _overlayOriginLogged;
     }
 }
 #endif
