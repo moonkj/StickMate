@@ -50,8 +50,18 @@ namespace StickMate.States
             /// <summary>위와 동일하되 지금 딛고 있는 발판의 오른쪽 경계.</summary>
             public readonly float CurrentFootholdRightWorldX;
 
+            /// <summary>
+            /// Grounded일 때 실제로 딛고 있는 그 발판의 PlatformFoothold.Handle.
+            /// "지금 어느 창 위에 서 있는가"를 상위 레이어(진단 로그/헤드라인 기능 검증)가 사람이 읽을 수
+            /// 있는 이름으로 되짚기 위한 식별자다 — 이 값으로 원본 창을 조작하는 API는 절대 호출하지
+            /// 않는다(CLAUDE.md 절대 불변 원칙 3, 읽기 전용). Grounded==false면 0(무의미).
+            /// FallbackPlatformWindowService의 합성 안전망은 -1을 쓰므로, -1이면 "실제 창이 아니라
+            /// 안전망 위"라는 뜻이 된다.
+            /// </summary>
+            public readonly long GroundedFootholdHandle;
+
             public GroundInfo(bool grounded, float groundWorldY, bool hasAnyFoothold, float screenLeftWorldX, float screenRightWorldX,
-                float currentFootholdLeftWorldX, float currentFootholdRightWorldX)
+                float currentFootholdLeftWorldX, float currentFootholdRightWorldX, long groundedFootholdHandle = 0L)
             {
                 Grounded = grounded;
                 GroundWorldY = groundWorldY;
@@ -60,13 +70,29 @@ namespace StickMate.States
                 ScreenRightWorldX = screenRightWorldX;
                 CurrentFootholdLeftWorldX = currentFootholdLeftWorldX;
                 CurrentFootholdRightWorldX = currentFootholdRightWorldX;
+                GroundedFootholdHandle = groundedFootholdHandle;
             }
         }
 
         /// <param name="cam">좌표 변환 기준 카메라. null이면 접지 판정 불가로 취급(안전한 기본값 반환).</param>
         /// <param name="footWorldPos">캐릭터 발바닥 기준 월드 좌표(Rigidbody2D.position 등 피벗이 발이라고 가정).</param>
         /// <param name="footholds">FootholdPoller.CachedFootholds — 이 함수는 OS를 직접 호출하지 않는다.</param>
-        public static GroundInfo Sense(Camera cam, Vector2 footWorldPos, IReadOnlyList<PlatformFoothold> footholds, StickConfig config)
+        /// <param name="preferredHandle">
+        /// ★ 사용자 신고 "새 창을 켜면 캐릭터가 최상단으로 순간이동"의 수정(2026-08-28, 리더 지시 3~5항).
+        /// 0이 아니면 **오직 그 핸들의 발판만** 접지 후보로 본다. 왜 필요한가: 예전에는 매 프레임
+        /// 목록을 앞에서부터 훑어 "첫 매치"를 채택했는데, 새 창이 열리면 그 창이 z-order 최전면이라
+        /// 목록 앞쪽에 끼어들고, 마침 캐릭터가 그 창 상단선의 허용오차 안에 있으면 채택 대상이 바뀐다.
+        /// 그러면 StickmanBlackboard.SnapToGround()가 캐릭터 Y를 그 창 상단으로 **즉시 대입**해
+        /// 공중 순간이동이 발생했다. 이제 딛고 있는 발판은 핸들로 고정되고, 발판 전환은 오직
+        /// "낙하 -> 착지"로만 일어난다.
+        ///
+        /// 그 핸들의 발판이 목록에서 사라졌거나(창이 닫힘/가려짐) 캐릭터 X가 그 발판의 X 범위를
+        /// 벗어났으면 Grounded=false가 되어 호출부가 즉시 Fall로 보낸다(리더 지시 4항) — "사라져도 계속
+        /// 걷는" 반대편 버그가 재발하지 않도록 두 요구를 한 판정에 함께 담았다.
+        /// 0이면 "아직 딛고 있는 발판이 없음"이라 예전처럼 목록 순서대로 첫 매치를 새로 획득한다.
+        /// </param>
+        public static GroundInfo Sense(Camera cam, Vector2 footWorldPos, IReadOnlyList<PlatformFoothold> footholds, StickConfig config,
+            long preferredHandle = 0L)
         {
             if (cam == null || footholds == null || footholds.Count == 0)
             {
@@ -77,6 +103,7 @@ namespace StickMate.States
             float tolerance = config != null ? config.groundSnapTolerance : 6f;
 
             bool grounded = false;
+            long groundedHandle = 0L;
             float groundWorldY = footWorldPos.y;
             float minLeftOs = float.MaxValue;
             float maxRightOs = float.MinValue;
@@ -94,11 +121,15 @@ namespace StickMate.States
 
                 if (grounded) continue; // 이미 접지 확정 — 좌우 경계 누적은 계속하되 재판정은 생략
 
+                // 발판 고착(sticky): 이미 딛고 있는 발판이 지정돼 있으면 그 핸들만 후보다.
+                if (preferredHandle != 0L && fh.Handle != preferredHandle) continue;
+
                 bool withinX = footOs.x >= r.x && footOs.x <= rightEdge;
                 bool withinYBand = Mathf.Abs(footOs.y - r.y) <= tolerance;
                 if (withinX && withinYBand)
                 {
                     grounded = true;
+                    groundedHandle = fh.Handle;
                     Vector3 topWorld = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(footOs.x, r.y), depth, config);
                     groundWorldY = topWorld.y;
                     currentLeftOs = r.x;
@@ -127,7 +158,78 @@ namespace StickMate.States
             }
 
             return new GroundInfo(grounded, groundWorldY, true, screenLeftWorldX, screenRightWorldX,
-                currentFootholdLeftWorldX, currentFootholdRightWorldX);
+                currentFootholdLeftWorldX, currentFootholdRightWorldX, groundedHandle);
+        }
+
+        /// <summary>
+        /// ★ 헤드라인 기능("윈도우 창 = 지형")의 실제 착지 판정 — 스윕(sweep) 방식 교차 검사.
+        ///
+        /// ============================================================================
+        /// 왜 Sense()의 허용오차 밴드만으로는 실제 창 위에 절대 착지할 수 없었는가 (2026-08-28 실측/유도)
+        /// ============================================================================
+        /// Sense()의 Grounded는 "발이 발판 상단에서 ±groundSnapTolerance(기본 20 OS-pt) 안에 있는가"라는
+        /// **한 시점(instant) 검사**다. 그리고 FallState는 그 조건이 fallGraceDuration(0.1초) **연속으로**
+        /// 유지돼야 착지를 확정한다(스쳐 지나가는 한 프레임 접촉으로 인한 채터링 방지). 두 규칙을 곱하면
+        /// 실제로 착지 가능한 낙하 속도의 상한이 생긴다:
+        ///     밴드 두께 2 x 20pt = 40pt = 40 / (Screen.height / (2 x orthographicSize)) 월드유닛
+        ///     (Screen.height=846, orthographicSize=12 기준 = 약 1.13유닛)
+        ///     -> 착지 가능 최대 낙하속도 ~= 1.13유닛 / 0.1초 = 약 11.3유닛/초
+        /// 그런데 gravityScale=3이면 가속도가 29.4유닛/초^2라 **2.2유닛(=약 78 OS-pt)만 자유낙하해도**
+        /// 이 상한을 넘는다. 즉 캐릭터는 창 상단을 그냥 통과해 버리고, 유일하게 "착지에 성공하던" 곳은
+        /// 화면 하단의 합성 안전망뿐이었다 — 그 위치에만 Editor/SceneBootstrapper.cs가 만든 **물리
+        /// 정적 콜라이더**가 겹쳐 있어서 몸이 물리적으로 멈춰 서고, 속도가 0이 된 뒤에야 비로소 밴드
+        /// 조건이 0.1초를 채울 수 있었기 때문이다. 실제 타 앱 창에는 그런 콜라이더가 없으므로
+        /// "창 위를 걸어다닌다"는 헤드라인 기능이 원리적으로 한 번도 성립할 수 없었다.
+        ///
+        /// 해법: 낙하를 "점"이 아니라 "이번 프레임에 발이 지나간 선분"으로 보고, 그 선분이 어떤 발판의
+        /// 상단선을 위->아래로 가로질렀는지 검사한다(연속 충돌 검출의 표준 기법). 이러면 낙하 속도와
+        /// 프레임률에 관계없이 통과가 불가능해진다. 여러 발판을 한 프레임에 가로질렀다면 가장 **높은**
+        /// (좌상단 원점이라 r.y가 가장 작은) 발판을 채택한다 — 위에서 떨어지면 제일 먼저 닿는 면이다.
+        ///
+        /// 좌표계/읽기전용 원칙은 Sense()와 동일하다(ScreenCoordinateConverter만 경유, OS 호출 없음).
+        /// </summary>
+        /// <param name="prevFootWorldPos">직전 프레임의 발 월드 좌표.</param>
+        /// <param name="currFootWorldPos">이번 프레임의 발 월드 좌표.</param>
+        /// <param name="handle">채택된 발판의 PlatformFoothold.Handle(안전망이면 -1).</param>
+        /// <param name="landingWorldY">그 발판 상단의 월드 Y — 호출부가 여기로 스냅해야 한다.</param>
+        public static bool TryFindLandingCrossing(Camera cam, Vector2 prevFootWorldPos, Vector2 currFootWorldPos,
+            IReadOnlyList<PlatformFoothold> footholds, StickConfig config, out long handle, out float landingWorldY)
+        {
+            handle = 0L;
+            landingWorldY = currFootWorldPos.y;
+            if (cam == null || footholds == null || footholds.Count == 0) return false;
+
+            Vector2 currOs = ScreenCoordinateConverter.WorldToOsScreen(cam, currFootWorldPos, config, out float depth);
+            Vector2 prevOs = ScreenCoordinateConverter.WorldToOsScreen(cam, prevFootWorldPos, config, out _);
+
+            // 좌상단 원점(y가 아래로 증가)이므로 "아래로 이동" = os y 증가. 상승 중이거나 정지 상태면
+            // 착지 교차가 성립하지 않는다(점프 상승 중 천장을 뚫고 착지하는 사고 방지).
+            if (currOs.y <= prevOs.y) return false;
+
+            bool found = false;
+            float bestTopOs = float.MaxValue;
+            for (int i = 0; i < footholds.Count; i++)
+            {
+                PlatformFoothold fh = footholds[i];
+                Rect r = fh.ScreenRect;
+
+                // 가로 범위: 이번 프레임 끝 지점 기준으로 판정한다(수평 이동은 낙하 속도에 비해 훨씬
+                // 느려서 이 근사로 충분하다 — 발판 모서리에 정확히 걸치는 경우만 한 프레임 늦어진다).
+                if (currOs.x < r.x || currOs.x > r.x + r.width) continue;
+
+                // 위->아래 교차: 직전에는 상단선 위(또는 같은 높이)에 있었고 지금은 아래로 내려갔다.
+                if (prevOs.y > r.y || currOs.y < r.y) continue;
+
+                if (r.y >= bestTopOs) continue;
+                bestTopOs = r.y;
+                handle = fh.Handle;
+                found = true;
+            }
+            if (!found) return false;
+
+            Vector3 topWorld = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(currOs.x, bestTopOs), depth, config);
+            landingWorldY = topWorld.y;
+            return true;
         }
 
         /// <summary>

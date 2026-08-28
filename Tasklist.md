@@ -1141,3 +1141,95 @@ if (_clickCapture != null && !_clickCapture.RequestLocalClickCapture(hitboxOs, t
   (상태 표본이 23개에서 끊기는 것은 정상이다 — 상태를 찍는 `MacOverlayStateEnforcer.TickHitTestProbe`가 창 부착 후 `ProbeDurationSeconds = 25f` 동안만 로그를 남기도록 **원래 설계된** 것이지 프로세스가 멈춘 것이 아니다. 프로세스는 그 뒤로도 계속 살아 있고 새 예외를 한 건도 남기지 않았다.) 준비 로그 `[RodeoCursorWatcher] 준비 완료 — 로데오 커서 자동 발동=OFF(기본값)` / `[DragThrowController] [0/6] 준비 완료 — ... 부분클릭관통해제 서비스=지원`.
 - **드래그 밀착감은 실제 마우스 조작이 필요해 에이전트가 검증할 수 없다.** 사용자 테스트 시 `[4/6]`의 `밀착 오차` 값으로 판별할 것.
 - git commit 없음(리더 지시).
+
+---
+
+## 헤드라인 기능 "윈도우 창 = 지형" 실동작 확정 + 사용자 신고 4건 대응 (2026-08-28, Coder)
+
+기획서 1-1절의 핵심 컨셉이 **이번 라운드에 처음으로 실측 검증**됐다. 그 과정에서 사용자가 실사용 중 신고한 4개 증상까지 같은 뿌리에서 함께 고쳤다.
+
+### (A) 오버레이 창을 화면 전체로 확장 — 선행 조건
+
+| | 이전 | 이후 |
+|---|---|---|
+| Quartz 원점 | (0, 61) | **(0, 0)** |
+| 창 크기 / Screen | 1512x846 | **1512x982 / Screen=(1512x982)** |
+| 덮지 못하던 영역 | 상단 메뉴바 33pt + 하단 Dock 75pt | 없음(화면 전체) |
+
+- `MacOverlayStateEnforcer.TickFullScreenBounds()` 신설: (a) `Screen.SetResolution` → (b) `isFreePositioningEnabled=true`(macOS의 "visibleFrame 안으로 밀어넣기" 제약 해제) → (c) `windowSize` → `windowPosition` 순서로 대입. 최대 6회 재시도 후 오차 1pt 이내면 중단.
+- **좌표 규약을 추측하지 않았다**: `UniWindowController.windowPosition`은 Cocoa(좌하단 원점) 규약이고 `GetMonitorRect()`는 **visibleFrame**(메뉴바/Dock 제외)만 준다는 것을 실측으로 확정했다. 화면 진짜 전체 크기는 `MacWindowService.TryGetMainDisplayBounds()`(CGDisplayBounds, 순수 조회)로 따로 얻는다.
+- **좌표 정확도 재검증**: 창 원점이 (0,61)→(0,0)으로 바뀌었지만 `ScreenCoordinateConverter.OverlayOriginOsScreen`이 발판 폴링마다 자동 추종하므로 변환식은 그대로 성립한다. 실측: 캐릭터가 Finder 창 상단(OS y=160.0)에 섰을 때 캐릭터 OS y=**160.0** — 오차 0.0pt.
+
+### (B) ★ 헤드라인 기능이 원리적으로 동작 불가능했던 진짜 원인 — 스윕 착지로 수정
+
+`FallState`는 "발이 창 상단 ±`groundSnapTolerance`(20pt) 안에 **연속 0.1초**(`fallGraceDuration`) 머무를 것"을 착지 조건으로 썼다. 이걸 속도로 풀면:
+
+```
+밴드 두께 40pt ÷ (Screen.height/(2·orthographicSize)) ≈ 1.13유닛
+착지 가능 최대 낙하속도 ≈ 1.13유닛 / 0.1초 ≈ 11.3유닛/초
+gravityScale=3 → 가속도 29.4유닛/s² → 2.2유닛(≈78pt)만 떨어져도 이 상한 초과
+```
+
+즉 **78pt 넘게 떨어지면 창 상단을 그냥 통과했다.** 유일하게 착지에 성공하던 곳은 화면 하단 합성 안전망뿐이었는데, 거기에만 `SceneBootstrapper`가 만든 **물리 정적 콜라이더**가 겹쳐 몸이 물리적으로 멈춰야 비로소 0.1초가 채워졌기 때문이다. 실제 타 앱 창에는 그 콜라이더가 없다 → 헤드라인 기능이 한 번도 성립할 수 없었다.
+
+- 수정: `GroundSensor.TryFindLandingCrossing()` 신설 — 낙하를 "점"이 아니라 **"이번 프레임에 발이 지나간 선분"**으로 보고 발판 상단선을 위→아래로 가로질렀는지 검사(연속 충돌 검출). 여러 발판을 한 프레임에 가로지르면 가장 높은(r.y 최소) 것을 채택. 낙하 속도/프레임률과 무관하게 통과가 불가능해진다.
+- `FallState`는 1순위로 이 교차 판정을, 2순위로 기존 밴드+유예 판정을 쓴다. 착지 후처리(상단 스냅 + 하강 속도 제거 + 구르기 훅 + Idle/Walk 전이)는 `ConfirmLanding()` 하나로 통합.
+
+### (C) 사용자 신고 4증상 — "발판 선택 로직" 한 덩어리로 재정리
+
+| # | 증상 | 원인 | 수정 |
+|---|---|---|---|
+| 1 | 가려진 창 위 **허공 부유** | `kCGWindowListOptionOnScreenOnly`는 **완전히 덮여 안 보이는 창도 반환**한다 | 오클루전 컬링(아래) |
+| 2 | 창을 최대화해도 **안 떨어짐** | 동일 — 덮인 창이 발판으로 계속 살아 있었음 | 동일 |
+| 3 | 새 창 열면 **최상단으로 순간이동** | `Sense()`가 매 프레임 목록 **첫 매치**를 재선택 → 새 창이 z-order 앞에 끼어들면 `SnapToGround()`가 그 높이로 즉시 대입 | 발판 고착(핸들 추적) |
+| 4 | **화면 밖으로 사라짐** | 창이 화면 경계를 넘어가면 발판도 화면 밖까지 뻗어, 그 위를 걸어 나가버림 | 발판 화면 클리핑 + 하드 클램프 + 리스폰 |
+
+배제한 가설(코드로 확인): **발판은 이미 "창 상단 테두리"다** — `Sense()`의 세로 판정은 `Mathf.Abs(footOs.y - r.y) <= tolerance`로 `r.y`(상단선)만 본다. 창 내부는 바닥이 아니다. 접지 고착 경로도 없었다(`GroundedTick`이 0.1초 뒤 무조건 Fall).
+
+**최종 사양 6가지 (전부 구현/검증 완료)**
+1. **보이는 창만 발판** — `MacWindowService.BuildVisibleTopEdgeFootholds()`: z-order 앞→뒤로 훑으며, 창 i의 상단선 구간에서 "앞선 창 중 그 높이를 세로로 포함하는 것들"의 가로 구간을 뺀다. 남은 조각마다 발판을 하나씩 낸다(핸들은 원본 창 유지). 조각이 없으면 발판 0개 = 낙하. 추가 필터: `kCGWindowAlpha < 0.05` / 60x40pt 미만 / `kCGWindowIsOnscreen=false` / 주 디스플레이 밖 / `kCGWindowLayer != 0` / 자기 자신(PID+이름).
+2. **발판 = 창 상단 테두리** (기존 유지, 재확인).
+3. **발판 고착** — `StickmanBlackboard.CurrentFootholdHandle`. `GroundSensor.Sense(preferredHandle)`는 0이 아니면 **그 핸들만** 후보로 본다.
+4. **사라지거나 X 범위 이탈 시 즉시 Fall** — 고착 핸들이 목록에 없으면 접지 실패 → `GroundedTick`이 0.1초 뒤 Fall(`[발판상실]` 사유 로그).
+5. **발판 전환은 낙하→착지로만** — 설정은 `FallState.ConfirmLanding()`, 해제는 `FallState.Enter()`. 유일한 예외는 "공중을 거치지 않은 최초 접지"(앱 시작 직후)의 획득 1회.
+6. **화면 밖 소실 방지(최우선)** — 2중 방어: (a) 발판 사각형을 디스플레이 경계로 클리핑(배회 AI가 인식하는 "발판 끝"이 항상 화면 안), (b) `StickmanBlackboard.EnforceScreenBoundsAndRescue()`가 `StickmanAgent.Update()` **맨 마지막**에 캐릭터 OS 좌표를 화면 안으로 하드 클램프. 어떤 상태가 몸을 어디로 옮겼든 되돌린다.
+7. **최종 안전망** — Fall이 6초 이상 이어지면 `RescueToSafeGround()`가 화면 가로 중앙의 지면으로 강제 복귀 + Idle.
+
+### (D) 안전망 발판과의 관계 (실측 확인)
+
+- `FallbackPlatformWindowService`는 실제 발판 **뒤에** 안전망(handle `-1`)을 붙이고, `Sense()`는 목록 순서대로 첫 매치를 채택하므로 실제 창이 항상 우선한다 — 실측으로 확인(`딛고있음=실제 창: Finder`가 안전망보다 먼저 채택됨).
+- 발판 고착 도입 후에는 순서 의존이 아예 사라졌다(핸들로 직접 지목).
+- **정직한 한계**: 안전망은 화면 세로 80% 지점(OS y=785.6)에 있다. 화면 전체를 덮는 창이 모든 발판을 가리면 캐릭터가 여기에 착지하는데, 그 위치는 Dock보다 121pt 위라 **여전히 "창 한가운데 떠 있는" 것처럼 보일 수 있다.** 안전망을 화면 바닥으로 내리려면 `NullPlatformWindowService.DummyFootholdHeightFraction`(=RAGDOLL 물리 바닥/캐릭터 스폰 Y의 단일 소스)을 함께 옮기고 씬/프리팹을 재생성 + PlayMode 프레이밍 테스트 기준선을 다시 잡아야 해서 이번 범위 밖으로 둔다. **다음 라운드 후보.**
+
+### (E) 리더가 로그만으로 판별할 수 있게 만든 진단 (상시)
+
+- `[발판리포트]` (2.5초) — `보이는 상단테두리 N개(원본창 M개 중 완전히 가려져 제외 K개)=[앱이름@(x,y wxh) ...] | 딛고있음=실제 창: Finder / 합성 안전망 / (공중) | 고착핸들 | 발판상단OS y | 캐릭터OS=(x,y) 화면안=예/아니오 | 상태 | 오버레이원점/창/Screen`
+- `[창진단]` (7.5초) — 창 전체 덤프: **z-order + 앱이름 + PID + 사각형 + alpha + onscreen + 가려짐 후 보이는 상단폭**, 그리고 **탈락 창과 사유**.
+- 이벤트 로그: `[FallState] 착지 확정`(발판핸들/실제창·안전망 구분/낙하높이), `[발판변경] 이전→이후 (사유)`, `[발판상실] (사유 3종 안내)`, `[화면클램프]`, `[캐릭터구조]`.
+- `StickConfig.footholdPollInterval` 0.5 → **0.3초**(창 변화 반응 지연 단축).
+
+### 실측 증거 (Player.log, 임시 자가 테스트로 재현)
+
+| 검증 항목 | 결과 |
+|---|---|
+| 실제 창 위 착지 | `[FallState] 착지 확정 — 발판핸들=3897(실제 창), 착지 월드Y=8.679` (표적 Finder 창 상단과 정확히 일치) |
+| 착지 좌표 정확도 | Finder 창 상단 **OS y=160.0** vs 캐릭터 **OS y=160.0** — **오차 0.0pt** |
+| 창 위 보행 | 캐릭터 OS x가 456→631→714→671→569로 이동, 전 구간이 창 가로범위 [180,880] 안 |
+| 창 이동 추종 | 창이 (180,160)→(234,392)로 옮겨지자 캐릭터도 발판상단 OS y=392로 함께 이동 |
+| 창 좌우 끝 이탈 → 낙하 | 창 오른쪽 끝 바깥(OS x=940)에 놓자 15.29유닛 낙하 후 안전망 착지 |
+| **최대화 시 낙하(신고 2)** | 전체 덮는 창 생성 → `[발판상실] 핸들=865` → `원본창 3개 중 완전히 가려져 제외 2개` → 안전망 착지 |
+| **가려짐 복구** | 덮는 창을 닫자 두 창 모두 `보이는상단폭=700 / 1512`로 즉시 복귀, 탈락 0개 |
+| **화면 밖 복귀(신고 4)** | OS (2012,491)→(1504,491), OS (756,-400)→(756,8) — `[화면클램프]` 2/2 성공 |
+
+### 검증
+- 컴파일 **에러 0 / 경고 0**, 빌드 **Succeeded 0/0**
+- **EditMode 13/13, PlayMode 3/3** (기준선 유지)
+- 실행 실측 **예외/에러 0건**
+- 임시 검증 코드(`TickLandingSelfTest` / `TickOffscreenRescueSelfTest`)는 검증 후 **전부 제거**했다(137줄). 상시 진단 로그만 남겼다.
+- 테스트용으로 띄운 Finder 창은 전부 정리했다. git commit 없음(리더 지시).
+
+### 교차 레이어 영향
+- `GroundSensor.GroundInfo`에 `GroundedFootholdHandle` 추가(기본값 있는 선택 인자라 기존 호출부 무영향).
+- `GroundSensor.Sense()`에 `preferredHandle` 선택 인자 추가 — **States 레이어 전체의 접지 의미가 "매 프레임 재선택"에서 "고착 추적"으로 바뀌었다.** 몸을 임의 위치로 옮기는 상태(Drag/Rodeo/Ragdoll)는 낡은 핸들 때문에 접지 실패 → 0.1초 뒤 Fall → `Enter()`가 핸들 초기화 → 재획득으로 **스스로 회복**한다(고착이 남지 않는다).
+- `FallbackPlatformWindowService.Inner` / `SyntheticFootholdHandle` 공개(진단 전용).
+- **테스트 갭 인지(리더 지적)**: `StickmanOnScreenFramingTests`는 `NullPlatformWindowService`의 합성 발판만 쓰므로 실제 창 발판 환경의 화면 경계 이탈을 재현하지 못한다. 그래서 6번(하드 클램프)을 테스트가 아니라 **런타임 불변조건**으로 구현했다.

@@ -359,6 +359,12 @@ namespace StickMate.Core
             // 취소/외부 ChangeState 등 어떤 경로로 상태가 바뀌어도 물리 모드가 상태와 어긋난 채
             // 남을 수 없다(StickmanBlackboard.TickPose() 문서 참고).
             _blackboard.TickPose(dt);
+
+            // ★ 리더 지시 6·7항(2026-08-28) — 화면 밖 소실 방지. 반드시 **마지막**에 호출한다:
+            // 어떤 상태가 어떤 이유로 몸을 옮겼든(드래그/던지기/랙돌/순간이동성 스냅) 그 결과를 여기서
+            // 화면 안으로 되돌리고, 오래 착지하지 못하면 강제 복귀시킨다
+            // (StickmanBlackboard.EnforceScreenBoundsAndRescue 문서 참고).
+            _blackboard.EnforceScreenBoundsAndRescue(dt);
         }
 
         private void TickFullscreenSuspend(float deltaTime)

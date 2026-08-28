@@ -170,6 +170,19 @@ namespace StickMate.States
         // 않고 그대로 유지한다(정지 중에 방향이 흔들리지 않게).
         private float _facingSign = 1f;
 
+        /// <summary>
+        /// ★ 지금 실제로 딛고 있는 발판의 핸들(0 = 없음/공중). 리더 지시 3~5항의 "발판 고착" 상태.
+        /// - 착지 확정(FallState.ConfirmLanding)에서만 설정된다 = 발판 전환은 낙하->착지로만 일어난다.
+        /// - Fall 진입(FallState.Enter)에서 0으로 지워진다 = 공중에서는 어떤 발판도 붙잡고 있지 않다.
+        /// - 이 값이 0이 아니면 SenseGround()는 그 핸들의 발판만 접지 후보로 본다(GroundSensor.Sense의
+        ///   preferredHandle 문서 참고). 그 발판이 사라지거나 X 범위를 벗어나면 즉시 Grounded=false가
+        ///   되고 GroundedTick()이 Fall로 보낸다.
+        /// 드래그/랙돌/로데오처럼 몸을 임의 위치로 옮기는 상태를 거쳐 오면 값이 낡아 있을 수 있는데,
+        /// 그때는 접지 판정이 실패해 fallGraceDuration(0.1초) 뒤 Fall -> Enter에서 0으로 초기화 ->
+        /// 재획득으로 **스스로 회복된다**(고착 상태가 남지 않는다).
+        /// </summary>
+        public long CurrentFootholdHandle;
+
         /// <summary>FootholdPoller의 캐시(= OS를 직접 호출하지 않는 저렴한 조회)를 이용해 접지 상태를 계산한다.</summary>
         public GroundSensor.GroundInfo SenseGround()
         {
@@ -177,7 +190,20 @@ namespace StickMate.States
                 ? FootholdPoller.CachedFootholds
                 : System.Array.Empty<PlatformFoothold>();
             Vector2 foot = Body != null ? Body.position : Vector2.zero;
-            return GroundSensor.Sense(MainCamera, foot, footholds, Config);
+            return GroundSensor.Sense(MainCamera, foot, footholds, Config, CurrentFootholdHandle);
+        }
+
+        /// <summary>
+        /// 스윕 착지 판정(GroundSensor.TryFindLandingCrossing 문서 참고 — 헤드라인 기능 "창 위 착지"가
+        /// 실제로 성립하게 만드는 연속 교차 검사). FallState가 매 프레임 호출한다.
+        /// </summary>
+        public bool TryFindLandingCrossing(Vector2 prevFootWorldPos, Vector2 currFootWorldPos, out long handle, out float landingWorldY)
+        {
+            var footholds = FootholdPoller != null
+                ? FootholdPoller.CachedFootholds
+                : System.Array.Empty<PlatformFoothold>();
+            return GroundSensor.TryFindLandingCrossing(MainCamera, prevFootWorldPos, currFootWorldPos, footholds, Config,
+                out handle, out landingWorldY);
         }
 
         /// <summary>
@@ -203,6 +229,16 @@ namespace StickMate.States
         {
             if (info.Grounded)
             {
+                // 발판 "획득": 아직 붙잡은 발판이 없는 상태(0)에서 처음 접지하면 그 발판으로 고착한다.
+                // 이 한 줄이 없으면 앱 시작 직후처럼 낙하->착지를 한 번도 거치지 않은 구간에서
+                // CurrentFootholdHandle이 0으로 남아, 매 프레임 목록 첫 매치를 새로 고르는 예전 동작이
+                // 그대로 살아난다 — 새 창이 열릴 때 그 창 상단으로 순간이동하는 증상(사용자 신고 3번)의
+                // 잔여 경로다. 획득 이후에는 GroundSensor.Sense()가 이 핸들만 보므로 재선택이 불가능하다.
+                if (CurrentFootholdHandle == 0L && info.GroundedFootholdHandle != 0L)
+                {
+                    CurrentFootholdHandle = info.GroundedFootholdHandle;
+                    ReportFootholdChangeIfNeeded("접지 획득(공중을 거치지 않은 최초 접지)");
+                }
                 _groundLossTimer = 0f;
                 SnapToGround(info);
                 return false;
@@ -213,6 +249,11 @@ namespace StickMate.States
             if (_groundLossTimer < grace) return false;
 
             _groundLossTimer = 0f;
+            // 리더 지시: 발판을 잃는 순간을 **사유와 함께** 남긴다(로그가 유일한 판별 수단).
+            Debug.Log($"[발판상실] 딛고 있던 발판(핸들={CurrentFootholdHandle})이 {grace:F2}초 동안 접지 조건을 " +
+                "만족하지 못해 Fall로 전이합니다 — 사유는 (a) 그 창이 닫히거나 다른 창에 완전히 가려져 " +
+                "발판 목록에서 사라짐, (b) 창이 움직여 캐릭터 X가 그 창의 X 범위를 벗어남, " +
+                "(c) 창이 세로로 이동해 상단선이 허용오차 밖으로 벗어남 중 하나다.");
             Machine.ChangeState(StickmanStateId.Fall);
             return true;
         }
@@ -249,6 +290,117 @@ namespace StickMate.States
                 v.y = 0f;
                 Body.linearVelocity = v;
             }
+        }
+
+        // ============================================================================
+        // ★ 리더 지시 6·7항 — 화면 밖 소실 방지(하드 클램프) + 최종 안전망(리스폰)
+        // ============================================================================
+        // 사용자 신고 4번: "그러다가 갑자기 화면 밖으로 사라져버림". 캐릭터를 영영 잃어버리는 것이
+        // 가장 치명적이므로 이 규칙은 다른 모든 로직보다 **나중에, 무조건** 적용된다
+        // (StickmanAgent.Update()가 상태 Tick을 전부 끝낸 뒤 마지막에 호출한다 —
+        // 어떤 상태가 어떤 이유로 몸을 옮겼든 그 결과를 여기서 되돌린다).
+        //
+        // 왜 기존 CheckScreenBoundsOrFall로는 부족한가: 그 검사는 "발판들의 좌우 범위"를 화면으로
+        // 간주한다. 그런데 실제 창은 화면 경계를 넘어갈 수 있어서(창을 화면 밖으로 반쯤 끌어다 놓는
+        // 흔한 상황) 그 범위 자체가 화면 밖까지 뻗고, 그러면 캐릭터가 그 위를 걸어 화면 밖으로
+        // 나가버린다. MacWindowService가 발판을 디스플레이 경계로 잘라내는 것이 1차 방어이고,
+        // 여기가 그와 독립적인 2차(최종) 방어다.
+
+        /// <summary>화면 경계에서 남겨둘 여유(OS 포인트). 캐릭터 몸이 절반쯤 걸치는 것도 막는다.</summary>
+        private const float ScreenClampMarginOsPx = 8f;
+
+        /// <summary>이 시간(초) 넘게 Fall이 이어지면 "유효 발판을 완전히 잃었다"고 보고 리스폰한다.</summary>
+        private const float LostCharacterRescueSeconds = 6f;
+
+        private float _fallStuckTimer;
+        private long _lastReportedFootholdHandle = long.MinValue;
+
+        /// <summary>
+        /// 매 프레임 마지막에 호출 — (1) 캐릭터 OS 좌표를 오버레이 창(=화면) 안으로 하드 클램프하고,
+        /// (2) 그래도 발판을 완전히 잃은 채 오래 낙하 중이면 화면 중앙 지면으로 강제 복귀시킨다.
+        /// </summary>
+        public void EnforceScreenBoundsAndRescue(float deltaTime)
+        {
+            if (Body == null || MainCamera == null) return;
+
+            float dpi = Config != null ? Mathf.Max(0.0001f, Config.desktopDpiScale) : 1f;
+            Vector2 origin = ScreenCoordinateConverter.OverlayOriginOsScreen;
+            float screenW = (Screen.width > 0 ? Screen.width : 1920) * dpi;
+            float screenH = (Screen.height > 0 ? Screen.height : 1080) * dpi;
+
+            Vector2 os = ScreenCoordinateConverter.WorldToOsScreen(MainCamera, Body.position, Config, out float depth);
+            float minX = origin.x + ScreenClampMarginOsPx;
+            float maxX = origin.x + screenW - ScreenClampMarginOsPx;
+            float minY = origin.y + ScreenClampMarginOsPx;
+            float maxY = origin.y + screenH - ScreenClampMarginOsPx;
+
+            float clampedX = Mathf.Clamp(os.x, minX, maxX);
+            float clampedY = Mathf.Clamp(os.y, minY, maxY);
+            bool clamped = !Mathf.Approximately(clampedX, os.x) || !Mathf.Approximately(clampedY, os.y);
+            if (clamped)
+            {
+                Vector3 world = ScreenCoordinateConverter.OsScreenToWorld(MainCamera, new Vector2(clampedX, clampedY), depth, Config);
+                Body.position = new Vector2(world.x, world.y);
+                Body.transform.position = new Vector3(world.x, world.y, Body.transform.position.z);
+                Vector2 v = Body.linearVelocity;
+                if (!Mathf.Approximately(clampedX, os.x)) v.x = 0f;   // 벽에 막힌 것처럼 수평 관성 제거
+                if (clampedY < os.y) v.y = 0f;                        // 아래로 뚫고 나가던 관성 제거
+                Body.linearVelocity = v;
+                Debug.Log($"[화면클램프] 캐릭터가 화면 밖으로 나가려 해 되돌렸습니다 — OS ({os.x:F1},{os.y:F1}) -> " +
+                    $"({clampedX:F1},{clampedY:F1}), 화면=({origin.x:F0},{origin.y:F0} {screenW:F0}x{screenH:F0}), " +
+                    $"상태={(Machine != null ? Machine.CurrentStateId.ToString() : "?")}.");
+            }
+
+            // (2) 최종 안전망 — 오래 낙하 중이면(= 어떤 발판에도 착지하지 못하는 상황) 강제 복귀.
+            bool falling = Machine != null && Machine.CurrentStateId == StickmanStateId.Fall;
+            _fallStuckTimer = falling ? _fallStuckTimer + deltaTime : 0f;
+            if (_fallStuckTimer >= LostCharacterRescueSeconds)
+            {
+                _fallStuckTimer = 0f;
+                RescueToSafeGround();
+            }
+        }
+
+        /// <summary>
+        /// 캐릭터를 화면 가로 중앙으로 옮기고, 그 X에서 딛을 수 있는 가장 높은 발판(없으면 합성 안전망이
+        /// 항상 있으므로 사실상 항상 존재한다) 위에 세운 뒤 Idle로 되돌린다. 리더 지시 7항.
+        /// </summary>
+        public void RescueToSafeGround()
+        {
+            if (Body == null || MainCamera == null) return;
+
+            float dpi = Config != null ? Mathf.Max(0.0001f, Config.desktopDpiScale) : 1f;
+            Vector2 origin = ScreenCoordinateConverter.OverlayOriginOsScreen;
+            float centerOsX = origin.x + (Screen.width > 0 ? Screen.width : 1920) * dpi * 0.5f;
+
+            Vector2 before = Body.position;
+            _ = ScreenCoordinateConverter.WorldToOsScreen(MainCamera, before, Config, out float depth);
+            Vector3 centerWorld = ScreenCoordinateConverter.OsScreenToWorld(MainCamera, new Vector2(centerOsX, origin.y), depth, Config);
+
+            float targetY = centerWorld.y;
+            var probe = new Vector2(centerWorld.x, before.y);
+            if (TryGetGroundSurfaceWorldY(probe, out float surfaceY)) targetY = surfaceY;
+
+            Body.position = new Vector2(centerWorld.x, targetY);
+            Body.transform.position = new Vector3(centerWorld.x, targetY, Body.transform.position.z);
+            Body.linearVelocity = Vector2.zero;
+            CurrentFootholdHandle = 0L; // 재획득하도록 초기화
+            ResetGroundLossTimer();
+            Machine?.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+
+            Debug.Log($"[캐릭터구조] {LostCharacterRescueSeconds}초 이상 착지하지 못해 강제 복귀시켰습니다 — " +
+                $"월드 {before} -> ({centerWorld.x:F3},{targetY:F3}) (화면 가로 중앙의 지면). " +
+                "사용자가 캐릭터를 잃어버리지 않게 하는 최종 안전망입니다(리더 지시 7항).");
+        }
+
+        /// <summary>딛고 있는 발판이 바뀔 때마다 이전->이후를 한 줄로 남긴다(리더 지시: 순간이동 추적용).</summary>
+        public void ReportFootholdChangeIfNeeded(string reason)
+        {
+            if (CurrentFootholdHandle == _lastReportedFootholdHandle) return;
+            long before = _lastReportedFootholdHandle;
+            _lastReportedFootholdHandle = CurrentFootholdHandle;
+            if (before == long.MinValue) return; // 최초 1회는 "변경"이 아니다
+            Debug.Log($"[발판변경] {before} -> {CurrentFootholdHandle} ({reason}).");
         }
 
         /// <summary>

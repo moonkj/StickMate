@@ -164,7 +164,7 @@ namespace StickMate.Core
         public bool clickThroughDefaultEnabled = true;
 
         [Tooltip("발판 목록을 다시 열거(폴링)하는 주기(초). 매 프레임 열거 금지 — 반드시 이 주기로 제한")]
-        public float footholdPollInterval = 0.5f;
+        public float footholdPollInterval = 0.3f;
 
         [Tooltip("전체화면 게임 감지(IsFullscreenAppActive)를 다시 확인하는 주기(초). 발판 폴링과 별도 주기로 관리한다")]
         public float fullscreenPollInterval = 1.5f;

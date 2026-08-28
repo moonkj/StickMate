@@ -76,6 +76,19 @@ namespace StickMate.Platform
             _config = config;
         }
 
+        /// <summary>
+        /// 감싸고 있는 실제 플랫폼 서비스. 진단(플랫폼별 부가 정보 조회 — 예: macOS의 창 소유 앱 이름)
+        /// 목적으로만 노출한다. 게임플레이 코드는 절대 이 프로퍼티로 구체 타입에 의존하지 말고
+        /// IPlatformWindowService 계약만 사용할 것(아키텍처 2절 플랫폼 추상화 원칙).
+        /// </summary>
+        public IPlatformWindowService Inner => _inner;
+
+        /// <summary>
+        /// 합성 안전망 발판에 부여하는 핸들. GroundSensor.GroundInfo.GroundedFootholdHandle이 이 값이면
+        /// "실제 창이 아니라 안전망 위에 서 있다"는 뜻이다(진단 로그가 이 상수를 참조한다).
+        /// </summary>
+        public const long SyntheticFootholdHandle = -1L;
+
         public IReadOnlyList<PlatformFoothold> EnumerateFootholds()
         {
             IReadOnlyList<PlatformFoothold> real = _inner.EnumerateFootholds();
@@ -160,7 +173,7 @@ namespace StickMate.Platform
                 // y = height - 두께: ScreenCoordinateConverter와 동일한 좌상단원점/y하향증가 좌표계에서
                 // "화면 진짜 하단에서 위로 두께만큼"을 뜻한다(위 클래스 주석의 핫픽스 설명 참고).
                 var rect = new Rect(widenedX + overlayOrigin.x, overlayOrigin.y + height - thickness, widenedWidth, thickness);
-                _fallbackFoothold = new PlatformFoothold(handle: -1L, screenRect: rect, isTopmost: true);
+                _fallbackFoothold = new PlatformFoothold(handle: SyntheticFootholdHandle, screenRect: rect, isTopmost: true);
             }
             return _fallbackFoothold;
         }

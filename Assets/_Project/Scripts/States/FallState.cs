@@ -25,6 +25,20 @@ namespace StickMate.States
         // (UX_FLOW.md 4절 "구르기(ROLL)") 판정에 사용한다.
         private float _fallStartWorldY;
 
+        // ★ 헤드라인 기능 수정(2026-08-28) — 스윕 착지 판정용 "직전 프레임 발 위치".
+        // 왜 필요한가는 States/GroundSensor.TryFindLandingCrossing()의 문서에 유도 과정까지 적어뒀다:
+        // 허용오차 밴드(±groundSnapTolerance)를 한 시점만 보는 기존 판정은 낙하 속도가 약 11유닛/초를
+        // 넘는 순간(=자유낙하 2.2유닛 이후) 원리적으로 성립하지 않아, 실제 타 앱 창 위에는 절대 착지할
+        // 수 없었다. 이 필드는 "이번 프레임에 발이 지나간 선분"의 시작점이다.
+        private Vector2 _prevFootWorldPos;
+        private bool _hasPrevFootSample;
+
+        /// <summary>FallbackPlatformWindowService가 합성 안전망 발판에 부여하는 핸들(그 클래스 참고).</summary>
+        private const long SyntheticSafetyNetHandle = -1L;
+
+        // 같은 발판에 연속 착지할 때 로그가 중복되지 않도록 하는 직전 값(long.MinValue = 아직 없음).
+        private long _lastLoggedLandingHandle = long.MinValue;
+
         public FallState(StickmanBlackboard blackboard)
         {
             _blackboard = blackboard;
@@ -36,6 +50,13 @@ namespace StickMate.States
         {
             _landingConfirmTimer = 0f;
             _fallStartWorldY = _blackboard.Body != null ? _blackboard.Body.position.y : 0f;
+            _prevFootWorldPos = _blackboard.Body != null ? _blackboard.Body.position : Vector2.zero;
+            _hasPrevFootSample = _blackboard.Body != null;
+            // 공중에서는 어떤 발판도 붙잡고 있지 않다(발판 고착 해제) — StickmanBlackboard.CurrentFootholdHandle
+            // 문서 참고. 이 초기화 덕분에 다음 착지에서 발판을 새로 획득하고, 낡은 핸들로 인한 접지 실패가
+            // 스스로 회복된다.
+            _blackboard.CurrentFootholdHandle = 0L;
+            _blackboard.ReportFootholdChangeIfNeeded("Fall 진입 — 공중");
             // TODO(Phase 2): 낙하 포즈(팔다리 늘어짐) 전환 — Active Ragdoll IK 블렌딩.
         }
 
@@ -44,6 +65,29 @@ namespace StickMate.States
             GroundSensor.GroundInfo info = _blackboard.SenseGround();
             if (_blackboard.CheckScreenBoundsOrFall(info)) return; // 이미 Fall이라 사실상 no-op이지만 안전하게 유지
 
+            // ★ 1순위: 스윕 교차 착지(GroundSensor.TryFindLandingCrossing 문서 참고). 이번 프레임에 발이
+            // 어떤 발판의 상단선을 위->아래로 가로질렀다면 낙하 속도와 무관하게 그 자리에서 착지를
+            // 확정한다. 유예(fallGraceDuration)를 적용하지 않는 이유: 교차는 "스쳐 지나간 접촉"이 아니라
+            // 기하학적으로 확정된 관통이므로, 채터링 방지를 위한 유예가 필요 없고 오히려 그 유예 때문에
+            // 실제 창 위 착지가 전부 실패해왔다(같은 문서의 유도 참고).
+            if (_hasPrevFootSample && _blackboard.Body != null)
+            {
+                Vector2 currFoot = _blackboard.Body.position;
+                if (_blackboard.TryFindLandingCrossing(_prevFootWorldPos, currFoot, out long crossedHandle, out float landingWorldY))
+                {
+                    ConfirmLanding(landingWorldY, crossedHandle);
+                    return;
+                }
+                _prevFootWorldPos = currFoot;
+            }
+            else if (_blackboard.Body != null)
+            {
+                _prevFootWorldPos = _blackboard.Body.position;
+                _hasPrevFootSample = true;
+            }
+
+            // 2순위(기존 경로 유지): 아주 느린 하강/미세 진동으로 교차가 성립하지 않는 경우를 위해
+            // 허용오차 밴드 + 유예 시간 판정을 그대로 남긴다.
             if (!info.Grounded)
             {
                 _landingConfirmTimer = 0f;
@@ -54,14 +98,52 @@ namespace StickMate.States
             float grace = _blackboard.Config != null ? _blackboard.Config.fallGraceDuration : 0.1f;
             if (_landingConfirmTimer < grace) return;
 
+            ConfirmLanding(info.GroundWorldY, info.GroundedFootholdHandle);
+        }
+
+        /// <summary>
+        /// 착지 확정 공통 처리 — 위치 스냅 + 하강 속도 제거 + 구르기 훅 + Idle/Walk 전이.
+        /// 스윕 교차 경로와 기존 밴드+유예 경로가 **같은** 후처리를 쓰도록 한 곳에 모은다.
+        /// </summary>
+        private void ConfirmLanding(float landingWorldY, long footholdHandle)
+        {
+            if (_blackboard.Body != null)
+            {
+                // 발판 상단으로 즉시 스냅한다. 스윕 경로에서는 이 스냅이 필수다 — 교차를 감지한 시점의
+                // 몸은 이미 상단선 "아래"로 내려가 있으므로(그래서 교차인 것이다) 스냅하지 않으면 다음
+                // 프레임의 Idle/Walk 접지 판정이 허용오차 밖이 되어 곧바로 Fall로 되돌아간다.
+                Vector2 pos = _blackboard.Body.position;
+                _blackboard.Body.position = new Vector2(pos.x, landingWorldY);
+                Vector2 v = _blackboard.Body.linearVelocity;
+                if (v.y < 0f)
+                {
+                    v.y = 0f;
+                    _blackboard.Body.linearVelocity = v;
+                }
+            }
+
             // 착지 확정 — 낙하 높이가 임계값 이상이면 구르기 착지 훅 발행(UX_FLOW.md 4절 "구르기(ROLL)").
             // 실제 파티클/애니메이션 재생은 Phase 2+ 렌더링 레이어 담당, 여기서는 트리거 조건만 계산한다.
-            float currentWorldY = _blackboard.Body != null ? _blackboard.Body.position.y : _fallStartWorldY;
-            float fallHeight = _fallStartWorldY - currentWorldY;
+            float fallHeight = _fallStartWorldY - landingWorldY;
             float rollThreshold = _blackboard.Config != null ? _blackboard.Config.rollLandingHeightThreshold : 2f;
             if (fallHeight >= rollThreshold)
             {
                 StickmanEventBus.RaiseLandingRollRequested(fallHeight);
+            }
+
+            // 발판 고착 확정 — 이 시점부터 접지 판정은 이 핸들만 본다(리더 지시 3~5항).
+            _blackboard.CurrentFootholdHandle = footholdHandle;
+            _blackboard.ReportFootholdChangeIfNeeded("착지");
+
+            // 헤드라인 기능 검증용 착지 증거 로그(리더가 화면을 볼 수 없으므로 로그가 유일한 판별 수단).
+            // 착지는 이산 이벤트라 상주 앱의 로그를 크게 더럽히지 않지만, 같은 발판에 연속으로 다시
+            // 착지하는 경우(경계 진동)는 한 줄로 접어 중복을 막는다.
+            if (footholdHandle != _lastLoggedLandingHandle)
+            {
+                _lastLoggedLandingHandle = footholdHandle;
+                Debug.Log($"[FallState] 착지 확정 — 발판핸들={footholdHandle}" +
+                    $"{(footholdHandle == SyntheticSafetyNetHandle ? "(합성 안전망)" : "(실제 창)")}, " +
+                    $"착지 월드Y={landingWorldY:F3}, 낙하높이={fallHeight:F2}유닛.");
             }
 
             _blackboard.ResetGroundLossTimer();

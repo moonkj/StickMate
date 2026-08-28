@@ -164,6 +164,19 @@ namespace StickMate.Platform.MacOS
         [return: MarshalAs(UnmanagedType.I1)]
         private static extern bool CFNumberGetValue(IntPtr number, int theType, out int value);
 
+        // kCGWindowAlpha는 CFNumber(부동소수)라 위 int 오버로드로는 못 읽는다 — 같은 심볼의 double
+        // 오버로드를 별도로 선언한다(P/Invoke는 시그니처별로 독립 바인딩되므로 이름 충돌이 아니다).
+        [DllImport(CoreFoundationLib, EntryPoint = "CFNumberGetValue")]
+        [return: MarshalAs(UnmanagedType.I1)]
+        private static extern bool CFNumberGetValueDouble(IntPtr number, int theType, out double value);
+
+        // kCGWindowIsOnscreen은 CFBoolean이다.
+        [DllImport(CoreFoundationLib)]
+        [return: MarshalAs(UnmanagedType.I1)]
+        private static extern bool CFBooleanGetValue(IntPtr boolean);
+
+        private const int kCFNumberFloat64Type = 6;
+
         [DllImport(CoreFoundationLib)]
         private static extern void CFRelease(IntPtr cf);
 
@@ -197,10 +210,71 @@ namespace StickMate.Platform.MacOS
         private readonly IntPtr _keyWindowOwnerPID;
         private readonly IntPtr _keyWindowOwnerName;
         private readonly IntPtr _keyWindowNumber;
+        private readonly IntPtr _keyWindowAlpha;
+        private readonly IntPtr _keyWindowIsOnscreen;
 
         // 열거 결과 버퍼. 매 호출 시 새 List를 만들지 않고 Clear 후 재사용한다(Win32WindowService와
         // 동일한 24시간 상주 앱 컨벤션).
         private readonly List<PlatformFoothold> _footholdBuffer = new List<PlatformFoothold>(64);
+
+        // ★ 헤드라인 기능("윈도우 창 = 지형") 검증 라운드(2026-08-28) — _footholdBuffer와 **인덱스가 1:1로
+        // 대응하는** 소유 앱 이름 버퍼. PlatformFoothold 자체에는 이름을 넣지 않는다: 그 구조체는 4개
+        // 플랫폼이 공유하는 계약이고, "창 제목/앱 이름을 저장하지 않는다"는 기존 설계(Win32WindowService가
+        // GetWindowText 결과를 버리는 것과 동일)를 깨지 않기 위해서다. 여기 이름은 **진단 로그에서
+        // 사람이 읽기 위한 용도로만** 쓰이며(리더가 화면을 볼 수 없어 로그가 유일한 판별 수단),
+        // 이 값으로 원본 창을 조작하는 API는 어디서도 호출하지 않는다(CLAUDE.md 절대 불변 원칙 3).
+        private readonly List<string> _footholdOwnerNames = new List<string>(64);
+
+        // ============================================================================
+        // 가려진 창 제거(오클루전 컬링)용 재사용 버퍼 — 아래 EnumerateFootholds() 문서 참고.
+        // 전부 재사용 리스트다(24시간 상주 앱, 매 폴링 할당 금지 컨벤션).
+        // ============================================================================
+        private readonly List<Rect> _rawRects = new List<Rect>(64);
+        private readonly List<long> _rawHandles = new List<long>(64);
+        private readonly List<string> _rawNames = new List<string>(64);
+        private readonly List<int> _rawPids = new List<int>(64);
+        private readonly List<float> _rawAlphas = new List<float>(64);
+        private readonly List<bool> _rawOnscreen = new List<bool>(64);
+        private readonly List<float> _rawVisibleWidth = new List<float>(64); // 가려짐 계산 후 남은 총 폭
+
+        // 필터에서 탈락한 창들(진단 로그 전용 — 리더가 "보이지 않는데 발판이 된 창"을 특정할 수 있게).
+        private readonly List<Rect> _rejRects = new List<Rect>(32);
+        private readonly List<string> _rejNames = new List<string>(32);
+        private readonly List<int> _rejPids = new List<int>(32);
+        private readonly List<string> _rejReasons = new List<string>(32);
+        private readonly List<float> _segStarts = new List<float>(16);
+        private readonly List<float> _segEnds = new List<float>(16);
+        private readonly List<float> _tmpStarts = new List<float>(16);
+        private readonly List<float> _tmpEnds = new List<float>(16);
+
+        /// <summary>이번 열거에서 필터를 통과한 "원본 창" 개수(가려짐 판정 전). 진단 로그 전용.</summary>
+        public int LastRawWindowCount { get; private set; }
+
+        /// <summary>
+        /// 가려짐 판정으로 상단 테두리가 통째로 사라진 창의 수(원본 창 - 발판을 하나라도 낸 창).
+        /// 진단 로그 전용 — 리더가 "지금 몇 개가 가려져서 제외됐는지"를 로그로 판별할 수 있게 한다.
+        /// </summary>
+        public int LastFullyOccludedWindowCount { get; private set; }
+
+        /// <summary>
+        /// 가려짐 계산 후 남은 상단 테두리 조각이 이보다 좁으면 버린다(OS 포인트). 캐릭터 몸통 폭보다
+        /// 훨씬 좁은 조각 위에 서 있게 하면 "허공에 떠 있다"는 사용자 인식이 그대로 재발하기 때문이다.
+        /// </summary>
+        private const float MinVisibleFootholdWidth = 24f;
+
+        /// <summary>알파가 이 값 미만이면 "보이지 않는 창"으로 보고 발판 후보에서 제외(리더 지시 2항).</summary>
+        private const float MinWindowAlpha = 0.05f;
+
+        /// <summary>이보다 작은 창은 발판으로 쓰지 않는다(알림 배너/툴팁/보조 패널 등, OS 포인트).</summary>
+        private const float MinWindowWidth = 60f;
+        private const float MinWindowHeight = 40f;
+
+        // 탈락 사유 문자열 상수 — 매 폴링 문자열 할당을 피하려고 리터럴을 재사용한다.
+        private const string RejectAlpha = "알파≈0(투명/비표시)";
+        private const string RejectTooSmall = "너무 작음";
+        private const string RejectOffscreenFlag = "kCGWindowIsOnscreen=false";
+        private const string RejectOffDisplay = "화면(주 디스플레이) 밖";
+        private const string RejectFullyOccluded = "다른 창에 완전히 가려짐";
 
         // CFStringGetCString용 재사용 버퍼(오너 이름 조회 — 자기 자신 제외 판정의 보조 신호로만 사용,
         // 아래 IsSelfWindow 참고). 창 제목 자체는 PlatformFoothold가 애초에 노출하지 않는다
@@ -269,6 +343,8 @@ namespace StickMate.Platform.MacOS
             _keyWindowOwnerPID = CFStringCreateWithCString(IntPtr.Zero, "kCGWindowOwnerPID", kCFStringEncodingUTF8);
             _keyWindowOwnerName = CFStringCreateWithCString(IntPtr.Zero, "kCGWindowOwnerName", kCFStringEncodingUTF8);
             _keyWindowNumber = CFStringCreateWithCString(IntPtr.Zero, "kCGWindowNumber", kCFStringEncodingUTF8);
+            _keyWindowAlpha = CFStringCreateWithCString(IntPtr.Zero, "kCGWindowAlpha", kCFStringEncodingUTF8);
+            _keyWindowIsOnscreen = CFStringCreateWithCString(IntPtr.Zero, "kCGWindowIsOnscreen", kCFStringEncodingUTF8);
 
             using (var self = System.Diagnostics.Process.GetCurrentProcess())
             {
@@ -391,6 +467,25 @@ namespace StickMate.Platform.MacOS
             return CFNumberGetValue(numberRef, kCFNumberSInt32Type, out value);
         }
 
+        private bool TryGetFloat(IntPtr windowDict, IntPtr key, out float value)
+        {
+            value = 0f;
+            IntPtr numberRef = CFDictionaryGetValue(windowDict, key);
+            if (numberRef == IntPtr.Zero) return false;
+            if (!CFNumberGetValueDouble(numberRef, kCFNumberFloat64Type, out double d)) return false;
+            value = (float)d;
+            return true;
+        }
+
+        private bool TryGetBool(IntPtr windowDict, IntPtr key, out bool value)
+        {
+            value = false;
+            IntPtr boolRef = CFDictionaryGetValue(windowDict, key);
+            if (boolRef == IntPtr.Zero) return false;
+            value = CFBooleanGetValue(boolRef);
+            return true;
+        }
+
         private string TryGetString(IntPtr windowDict, IntPtr key)
         {
             IntPtr stringRef = CFDictionaryGetValue(windowDict, key);
@@ -421,9 +516,58 @@ namespace StickMate.Platform.MacOS
             return !string.IsNullOrEmpty(ownerName) && ownerName == _currentProcessName;
         }
 
+        /// <summary>
+        /// ★ 사용자 신고 버그(2026-08-28): "창 위에서 걸어다닐 때 다른 창을 최대화하면 중간에 그대로
+        /// 거기서 걸어다님" — 즉 딛고 있던 창이 다른 창에 완전히 가려져 눈에 보이지 않는데도 캐릭터가
+        /// 허공에서 계속 걷는다.
+        ///
+        /// 원인(가설 4가 적중, 나머지 3개는 코드로 배제됨):
+        ///   (1) 폴링 주기? — StickConfig.footholdPollInterval은 0.3~0.5초로 짧다. 사용자는 "그대로
+        ///       계속 걸어다닌다"고 했으므로 일시적 지연이 아니다. 주 원인 아님(반응성 차원에서 주기는
+        ///       0.5 -> 0.3으로 함께 줄였다).
+        ///   (2) 접지 고착(sticky)? — GroundSensor.Sense()는 핸들을 기억하지 않고 **매 프레임 좌표로
+        ///       재판정**하고, StickmanBlackboard.GroundedTick()은 접지 실패가 fallGraceDuration(0.1초)
+        ///       지속되면 무조건 Fall로 보낸다. 고착 경로 없음 — 원인 아님.
+        ///   (3) 발판 사각형이 "창 전체"라 창 내부 어디서나 접지되나? — Sense()의 세로 판정은
+        ///       `Mathf.Abs(footOs.y - r.y) <= tolerance`로 **r.y(창 상단선)만** 본다. 창 내부는 바닥이
+        ///       되지 않는다 — 원인 아님.
+        ///   (4) **가려진 창이 그대로 발판으로 남는다 — 이게 원인이다.**
+        ///       kCGWindowListOptionOnScreenOnly는 "화면에 존재하는" 창을 모두 돌려준다. 다른 창에
+        ///       완전히 덮여 **한 픽셀도 보이지 않는 창도 그대로 목록에 남는다.** 그래서 최대화된 창이
+        ///       덮어버린 뒤에도 옛 창의 상단선이 발판으로 계속 살아 있었고, 사용자 눈에는 캐릭터가
+        ///       허공을 걷는 것으로 보였다.
+        ///
+        /// 수정: z-order를 실제로 활용해 **"눈에 보이는 상단 테두리 조각"만** 발판으로 채택한다.
+        /// CGWindowListCopyWindowInfo(OnScreenOnly)는 앞->뒤 순서를 보장하므로, 창 i의 상단선
+        /// 구간 [x, x+width] (높이 r.y)에서 **i보다 앞에 있는 모든 창 j 중 그 높이를 세로로 포함하는
+        /// 것들의 가로 구간**을 빼면 남는 것이 곧 "실제로 보이는 상단 테두리"다. 남은 조각이 여러 개면
+        /// 조각마다 발판을 하나씩 낸다(핸들은 원본 창 그대로 — ParkourClimb의 핸들 추적과 진단 로그가
+        /// 그대로 동작한다). 조각이 하나도 남지 않으면 그 창은 발판을 내지 않는다 = 캐릭터가 낙하한다.
+        ///
+        /// 비용: 창 수 n에 대해 O(n^2) 사각형 연산이지만 n은 보통 수십 개이고 폴링 주기(0.3초)마다
+        /// 한 번만 도므로 무시 가능하다. 모든 버퍼는 재사용한다(할당 0).
+        ///
+        /// 읽기 전용 원칙은 그대로다 — 여기서 하는 일은 전부 우리 쪽 메모리상의 사각형 계산이며,
+        /// 타 프로세스 창에는 조회 외에 어떤 호출도 하지 않는다.
+        /// </summary>
         public IReadOnlyList<PlatformFoothold> EnumerateFootholds()
         {
             _footholdBuffer.Clear();
+            _footholdOwnerNames.Clear();
+            _rawRects.Clear();
+            _rawHandles.Clear();
+            _rawNames.Clear();
+            _rawPids.Clear();
+            _rawAlphas.Clear();
+            _rawOnscreen.Clear();
+            _rawVisibleWidth.Clear();
+            _rejRects.Clear();
+            _rejNames.Clear();
+            _rejPids.Clear();
+            _rejReasons.Clear();
+            LastRawWindowCount = 0;
+            LastFullyOccludedWindowCount = 0;
+            bool hasDisplay = TryGetMainDisplayBounds(out Rect displayBounds);
             _overlayOriginPassArea = 0.0; // CaptureOverlayOrigin()의 "이번 패스 최대 면적" 리셋.
 
             IntPtr windowArray = CopyOnScreenWindowList();
@@ -458,15 +602,37 @@ namespace StickMate.Platform.MacOS
                     long handle = 0;
                     if (TryGetInt(windowDict, _keyWindowNumber, out int windowNumber)) handle = windowNumber;
 
-                    // CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly)는 z-order 기준
-                    // 앞->뒤 순서로 보장되어 반환된다(Apple 문서화된 동작) — 필터 통과 후 이 버퍼에
-                    // 처음 추가되는 항목이 곧 "현재 화면에서 가장 앞에 있는(눈에 보이는) 일반 앱 창"이다.
-                    // Win32의 `hWnd == GetForegroundWindow()` 판정과 동일한 의도(포커스를 가진
-                    // 최상단 창)를 z-order로 근사한다.
-                    bool isTopmost = _footholdBuffer.Count == 0;
-
                     var screenRect = new Rect((float)rect.Origin.X, (float)rect.Origin.Y, (float)rect.Size.Width, (float)rect.Size.Height);
-                    _footholdBuffer.Add(new PlatformFoothold(handle, screenRect, isTopmost));
+                    // 위 _footholdOwnerNames 선언부 참고 — 진단 로그 전용, 인덱스 1:1 유지가 계약이다.
+                    string ownerName = TryGetString(windowDict, _keyWindowOwnerName);
+                    if (string.IsNullOrEmpty(ownerName)) ownerName = "(이름없음)";
+                    TryGetInt(windowDict, _keyWindowOwnerPID, out int ownerPid);
+                    float alpha = TryGetFloat(windowDict, _keyWindowAlpha, out float a) ? a : 1f;
+                    bool onScreen = !TryGetBool(windowDict, _keyWindowIsOnscreen, out bool os) || os;
+
+                    // ---- 필터(리더 지시 2항). 탈락 사유를 남겨 진단 로그로 특정할 수 있게 한다. ----
+                    string reject = null;
+                    if (alpha < MinWindowAlpha) reject = RejectAlpha;
+                    else if (screenRect.width < MinWindowWidth || screenRect.height < MinWindowHeight) reject = RejectTooSmall;
+                    else if (!onScreen) reject = RejectOffscreenFlag;
+                    else if (hasDisplay && !screenRect.Overlaps(displayBounds)) reject = RejectOffDisplay;
+
+                    if (reject != null)
+                    {
+                        _rejRects.Add(screenRect); _rejNames.Add(ownerName); _rejPids.Add(ownerPid); _rejReasons.Add(reject);
+                        continue;
+                    }
+
+                    // CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly)는 z-order 기준
+                    // 앞->뒤 순서로 보장되어 반환된다(Apple 문서화된 동작). 그 순서를 그대로 유지한 채
+                    // 원본 목록에 쌓아두고, 루프가 끝난 뒤 가려짐 계산을 한 번에 수행한다.
+                    _rawRects.Add(screenRect);
+                    _rawHandles.Add(handle);
+                    _rawNames.Add(ownerName);
+                    _rawPids.Add(ownerPid);
+                    _rawAlphas.Add(alpha);
+                    _rawOnscreen.Add(onScreen);
+                    _rawVisibleWidth.Add(0f);
                 }
             }
             finally
@@ -474,7 +640,150 @@ namespace StickMate.Platform.MacOS
                 CFRelease(windowArray);
             }
 
+            LastRawWindowCount = _rawRects.Count;
+            BuildVisibleTopEdgeFootholds(hasDisplay, displayBounds);
             return _footholdBuffer;
+        }
+
+        /// <summary>
+        /// 원본 창 목록(_rawRects, z-order 앞->뒤)에서 "다른 창에 가려지지 않은 상단 테두리 조각"만
+        /// 골라 _footholdBuffer를 채운다. 위 EnumerateFootholds() 문서의 (4)번 수정 본체.
+        /// </summary>
+        private void BuildVisibleTopEdgeFootholds(bool hasDisplay, Rect displayBounds)
+        {
+            for (int i = 0; i < _rawRects.Count; i++)
+            {
+                Rect r = _rawRects[i];
+
+                _segStarts.Clear();
+                _segEnds.Clear();
+                // 리더 지시 6항(화면 밖 소실 방지)의 발판 쪽 절반: 창이 화면 경계를 넘어가 있어도
+                // **발판은 화면 안쪽까지만** 뻗게 잘라낸다. 그러면 배회 AI가 "발판 끝"으로 인식하는
+                // 지점이 항상 화면 안이라, 캐릭터가 걸어서 화면 밖으로 나가는 경로 자체가 사라진다.
+                float left = r.x;
+                float right = r.x + r.width;
+                if (hasDisplay)
+                {
+                    left = Mathf.Max(left, displayBounds.x);
+                    right = Mathf.Min(right, displayBounds.x + displayBounds.width);
+                    if (right - left < MinVisibleFootholdWidth) { _rawVisibleWidth[i] = 0f; LastFullyOccludedWindowCount++; continue; }
+                }
+                _segStarts.Add(left);
+                _segEnds.Add(right);
+
+                // 나보다 앞(작은 인덱스)에 있는 창만 나를 가릴 수 있다.
+                for (int j = 0; j < i && _segStarts.Count > 0; j++)
+                {
+                    Rect o = _rawRects[j];
+                    // 가리는 창이 내 상단선 높이를 세로로 포함하지 않으면 내 발판에 영향이 없다.
+                    if (r.y < o.y || r.y > o.y + o.height) continue;
+
+                    float oL = o.x;
+                    float oR = o.x + o.width;
+
+                    _tmpStarts.Clear();
+                    _tmpEnds.Clear();
+                    for (int k = 0; k < _segStarts.Count; k++)
+                    {
+                        float sx = _segStarts[k];
+                        float ex = _segEnds[k];
+                        if (oR <= sx || oL >= ex)
+                        {
+                            _tmpStarts.Add(sx); _tmpEnds.Add(ex); // 겹치지 않음 — 그대로 통과
+                            continue;
+                        }
+                        if (sx < oL) { _tmpStarts.Add(sx); _tmpEnds.Add(oL); } // 왼쪽 잔여
+                        if (oR < ex) { _tmpStarts.Add(oR); _tmpEnds.Add(ex); } // 오른쪽 잔여
+                    }
+
+                    _segStarts.Clear(); _segEnds.Clear();
+                    for (int k = 0; k < _tmpStarts.Count; k++) { _segStarts.Add(_tmpStarts[k]); _segEnds.Add(_tmpEnds[k]); }
+                }
+
+                bool emittedAny = false;
+                float visibleWidthTotal = 0f;
+                for (int k = 0; k < _segStarts.Count; k++)
+                {
+                    float width = _segEnds[k] - _segStarts[k];
+                    if (width < MinVisibleFootholdWidth) continue;
+                    visibleWidthTotal += width;
+                    // isTopmost: 목록 전체에서 처음 채택되는 조각이 곧 "가장 앞에서 실제로 보이는" 발판.
+                    _footholdBuffer.Add(new PlatformFoothold(_rawHandles[i],
+                        new Rect(_segStarts[k], r.y, width, r.height), _footholdBuffer.Count == 0));
+                    _footholdOwnerNames.Add(_rawNames[i]);
+                    emittedAny = true;
+                }
+                _rawVisibleWidth[i] = visibleWidthTotal;
+                if (!emittedAny)
+                {
+                    LastFullyOccludedWindowCount++;
+                    _rejRects.Add(r); _rejNames.Add(_rawNames[i]); _rejPids.Add(_rawPids[i]); _rejReasons.Add(RejectFullyOccluded);
+                }
+            }
+        }
+
+        /// <summary>
+        /// ★ 리더 지시 1항 — "지금 열거되는 창 전체"를 앱 이름 + PID + 사각형 + 알파 + onscreen +
+        /// z-order + 가려짐 후 남은 폭 + 탈락 사유까지 한 번에 덤프한다. 사용자 스크린샷과 좌표를
+        /// 직접 대조해 "보이지 않는데 발판이 된 창"을 특정하는 것이 목적이다.
+        /// 문자열 조립은 이 메서드를 실제로 호출할 때만 일어나므로(진단 주기 5초) 폴링 경로에는
+        /// 할당이 추가되지 않는다.
+        /// </summary>
+        public void AppendWindowDiagnostics(System.Text.StringBuilder sb)
+        {
+            sb.Append("채택 ").Append(_rawRects.Count).Append("개 [");
+            for (int i = 0; i < _rawRects.Count; i++)
+            {
+                if (i > 0) sb.Append(" | ");
+                Rect r = _rawRects[i];
+                sb.Append('z').Append(i).Append(':').Append(_rawNames[i]).Append("(pid ").Append(_rawPids[i]).Append(") ")
+                  .Append('(').Append(r.x.ToString("F0")).Append(',').Append(r.y.ToString("F0")).Append(' ')
+                  .Append(r.width.ToString("F0")).Append('x').Append(r.height.ToString("F0")).Append(')')
+                  .Append(" alpha=").Append(_rawAlphas[i].ToString("F2"))
+                  .Append(" onscreen=").Append(_rawOnscreen[i] ? "Y" : "N")
+                  .Append(" 보이는상단폭=").Append(_rawVisibleWidth[i].ToString("F0"));
+            }
+            sb.Append("] / 탈락 ").Append(_rejRects.Count).Append("개 [");
+            for (int i = 0; i < _rejRects.Count; i++)
+            {
+                if (i > 0) sb.Append(" | ");
+                Rect r = _rejRects[i];
+                sb.Append(_rejNames[i]).Append("(pid ").Append(_rejPids[i]).Append(") ")
+                  .Append('(').Append(r.x.ToString("F0")).Append(',').Append(r.y.ToString("F0")).Append(' ')
+                  .Append(r.width.ToString("F0")).Append('x').Append(r.height.ToString("F0")).Append(") 사유=")
+                  .Append(_rejReasons[i]);
+            }
+            sb.Append(']');
+        }
+
+        /// <summary>
+        /// 주 디스플레이의 전체 사각형(Quartz 좌표, OS 포인트 — 메뉴바/Dock 띠까지 포함한 진짜 화면 전체).
+        /// MacOverlayStateEnforcer의 오버레이 전체화면 확장이 이 값을 목표 크기로 쓴다.
+        ///
+        /// 왜 UniWindowController.GetMonitorRect()로는 부족한가(실측): 그쪽은 **visibleFrame**(메뉴바
+        /// 33pt + Dock 75pt를 뺀 작업영역)을 돌려준다 — 실측값 (0,75,1512,874). 화면 최상단/최하단 띠에
+        /// 걸친 타 앱 창 위로도 캐릭터가 갈 수 있으려면 오버레이가 그 띠까지 덮어야 하므로 화면 전체
+        /// 크기가 따로 필요하다. CGDisplayBounds는 순수 조회이며 어떤 창도 건드리지 않는다.
+        /// </summary>
+        public bool TryGetMainDisplayBounds(out Rect bounds)
+        {
+            CGRect r = CGDisplayBounds(CGMainDisplayID());
+            bounds = new Rect((float)r.Origin.X, (float)r.Origin.Y, (float)r.Size.Width, (float)r.Size.Height);
+            return bounds.width > 0f && bounds.height > 0f;
+        }
+
+        /// <summary>
+        /// 마지막 EnumerateFootholds() 결과에서 handle에 해당하는 창의 소유 앱 이름(진단 로그 전용).
+        /// 찾지 못하면 null. 위 _footholdOwnerNames 선언부의 사용 제한(읽기 전용, 로그 전용) 참고.
+        /// </summary>
+        public string TryDescribeFoothold(long handle)
+        {
+            int count = Mathf.Min(_footholdBuffer.Count, _footholdOwnerNames.Count);
+            for (int i = 0; i < count; i++)
+            {
+                if (_footholdBuffer[i].Handle == handle) return _footholdOwnerNames[i];
+            }
+            return null;
         }
 
         // ============================================================================

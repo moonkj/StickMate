@@ -37,7 +37,7 @@ MonoBehaviour:
   parkourClimbDuration: 0.5
   rollLandingHeightThreshold: 2
   clickThroughDefaultEnabled: 1
-  footholdPollInterval: 0.5
+  footholdPollInterval: 0.3
   fullscreenPollInterval: 1.5
   desktopDpiScale: 1
   groundSnapTolerance: 20

@@ -72,6 +72,43 @@ namespace StickMate.Platform.MacOS
         private float _probeTimer;
         private Core.StickmanAgent _agent;
 
+        // ============================================================================
+        // 헤드라인 기능("윈도우 창 = 지형") 상시 진단 리포트 — 2026-08-28
+        // ============================================================================
+        // 리더/사용자가 화면을 볼 수 없는 환경(Screen Recording 권한 없음)에서 "지금 캐릭터가 진짜
+        // Finder 창 위에 서 있는가"를 판별할 수 있는 유일한 수단이 로그다. 그래서 히트테스트 감시(25초
+        // 한정)와 달리 이 리포트는 상시로 돌되 주기를 넉넉히 잡아 로그량을 통제한다.
+        private const float FootholdReportIntervalSeconds = 2.5f;
+
+        // 한 줄에 나열할 실제 창의 최대 개수(그 이상은 "...외 N개"로 접는다 — 창을 20개씩 띄운
+        // 환경에서 로그 한 줄이 수천 자가 되는 것을 막는다).
+        private const int MaxFootholdsPerReport = 8;
+        private float _footholdReportTimer;
+        private readonly System.Text.StringBuilder _reportBuilder = new System.Text.StringBuilder(512);
+
+        /// <summary>창 전체 덤프([창진단]) 주기(초) — 발판 리포트보다 길어서 따로 둔다.</summary>
+        private const float WindowDumpIntervalSeconds = 7.5f;
+        private float _windowDumpTimer;
+
+        // ============================================================================
+        // 오버레이 창 전체화면 확장 — 헤드라인 기능의 선행 조건
+        // ============================================================================
+        // 실측(직전 라운드 Player.log): windowSize=(1512,846), Quartz 원점=(0,61) — 즉 창이 화면
+        // (1512x982pt)의 세로 가운데 846pt만 덮고 위 61pt(메뉴바)와 아래 75pt(Dock)가 비어 있었다.
+        // ScreenCoordinateConverter는 "OS 좌표 -> 창 클라이언트 좌표"를 OverlayOriginOsScreen으로
+        // 보정하므로 좌표 자체는 맞지만, **창 밖 영역에 있는 타 앱 창 위로는 캐릭터를 그릴 수가 없어**
+        // 그 영역의 창은 발판으로 쓸 수 없다. 그래서 창을 모니터 전체로 넓힌다.
+        //
+        // 좌표 규약(실측으로 확정): UniWindowController.windowPosition은 Quartz(좌상단 원점)가 아니라
+        // **Cocoa 규약(좌하단 원점, 창의 좌하단 모서리)** 이다. 직전 로그가 그 증거다 —
+        // Quartz 원점 y=61 + 창높이 846 = 907이고 화면 높이 982에서 빼면 75, 그리고 라이브러리가
+        // 보고한 windowPosition은 정확히 (0, 75)였다. 그래서 이 코드는 규약을 추측하지 않고
+        // **같은 라이브러리의 GetMonitorRect()가 돌려주는 모니터 사각형을 그대로** 창 위치/크기로
+        // 대입한다(두 값이 같은 좌표계이므로 규약과 무관하게 정확히 겹친다).
+        private bool _fullScreenBoundsApplied;
+        private int _fullScreenApplyAttempts;
+        private const int MaxFullScreenApplyAttempts = 6;
+
         // 목표 상태 — MacWindowService가 자기 API 호출 때마다 갱신한다.
         internal bool DesiredTransparent = true;
         internal bool DesiredTopmost;
@@ -138,6 +175,8 @@ namespace StickMate.Platform.MacOS
             }
 
             TickHitTestProbe();
+            TickFullScreenBounds();
+            TickFootholdReport();
 
             if (_appliedCount >= ReapplyAttempts)
             {
@@ -165,6 +204,242 @@ namespace StickMate.Platform.MacOS
                 $"isClickThrough={_controller.isClickThrough}, isHitTestEnabled={_controller.isHitTestEnabled}) / " +
                 $"windowSize={_controller.windowSize}, clientSize={_controller.clientSize}, " +
                 $"windowPosition={_controller.windowPosition}, cameraBg={CameraBackgroundDescription()}.");
+        }
+
+        /// <summary>
+        /// 오버레이 창을 현재 모니터 전체(메뉴바/Dock 영역 포함)로 확장한다 — 위 "오버레이 창 전체화면
+        /// 확장" 주석의 근거 참고. 창이 부착된 뒤에만 의미가 있으므로 Update()의 attached 분기에서만
+        /// 호출된다.
+        ///
+        /// 세 단계를 모두 밟는 이유(하나라도 빠지면 실측에서 실패한다):
+        ///   (a) Screen.SetResolution — Unity 자신의 백버퍼/보고 해상도. 이걸 안 바꾸면 NSWindow만 커지고
+        ///       Screen.width/height는 옛 값 그대로라 ScreenCoordinateConverter의 y 반전이 통째로 틀어진다.
+        ///   (b) isFreePositioningEnabled=true — macOS는 기본적으로 창을 "보이는 영역(visibleFrame,
+        ///       메뉴바/Dock 제외)" 안으로 밀어 넣는다. 이 플래그가 그 제약을 푼다(라이브러리의
+        ///       EnableFreePositioning).
+        ///   (c) windowSize -> windowPosition 순서로 대입. 크기를 먼저 정해야 위치 대입이 최종 좌표가 된다.
+        ///
+        /// 재시도하는 이유: (a)의 해상도 변경은 프레임 끝에 반영되고, 창 스타일 확정도 한두 프레임
+        /// 걸린다. 최대 MaxFullScreenApplyAttempts번만 시도하고 성공(오차 1pt 이내)하면 즉시 멈춘다 —
+        /// 사용자가 창을 직접 만졌을 때 영원히 되돌리지 않기 위한 기존 컨벤션(ReapplyAttempts)과 같은 태도다.
+        /// </summary>
+        private void TickFullScreenBounds()
+        {
+            if (_fullScreenBoundsApplied || _fullScreenApplyAttempts >= MaxFullScreenApplyAttempts) return;
+
+            _timerFullScreen += Time.unscaledDeltaTime;
+            if (_timerFullScreen < ReapplyIntervalSeconds) return;
+            _timerFullScreen = 0f;
+            _fullScreenApplyAttempts++;
+
+            if (!TryGetTargetMonitorRect(out Rect monitor, out bool isPrimaryMonitor))
+            {
+                Debug.LogWarning("[MacOverlayStateEnforcer] 전체화면 확장 실패 — 모니터 사각형을 조회하지 " +
+                    $"못했습니다(GetMonitorCount={UniWindowController.GetMonitorCount()}). 창 크기를 그대로 둡니다.");
+                _fullScreenApplyAttempts = MaxFullScreenApplyAttempts;
+                return;
+            }
+
+            Vector2 sizeBefore = _controller.windowSize;
+            Vector2 posBefore = _controller.windowPosition;
+
+            // 라이브러리의 GetMonitorRect()는 실측 결과 **visibleFrame**(메뉴바 33pt + Dock 75pt를 뺀
+            // 작업영역)을 돌려준다: (0,75,1512,874). 화면 진짜 전체(1512x982)를 덮으려면 그 두 띠까지
+            // 포함해야 하고, 그러려면 화면 전체 높이를 알아야 하는데 라이브러리는 그 값을 노출하지 않는다.
+            // 그래서 이미 갖고 있는 두 좌표계의 관계식으로 **유도**한다(추측이 아니라 항등식이다):
+            //     라이브러리 pos.y(창 좌하단, Cocoa 좌하단 원점) + Quartz origin.y(창 좌상단, 좌상단 원점)
+            //     + 창 높이  ==  화면 전체 높이
+            // 실측 대입: 75 + 33 + 874 = 982 (= 1512x982 화면). Quartz origin은 MacWindowService가
+            // 발판 폴링(0.5초)마다 갱신하므로 이 시점에 항상 현재 창 기준으로 최신이다.
+            // 유도값이 상식 범위를 벗어나면(창보다 작거나 300pt 넘게 크면) 조용히 포기하고 작업영역만
+            // 덮는다 — 잘못된 값으로 창을 화면 밖에 던지는 것보다 낫다.
+            Rect targetRect = monitor;
+            string coverageMode = "작업영역(visibleFrame)";
+            var describer = ResolveDescriber();
+            if (isPrimaryMonitor && describer != null && describer.TryGetMainDisplayBounds(out Rect display))
+            {
+                // 주 모니터에서는 Cocoa 좌표 y=0이 곧 화면 맨 아래이므로, 창의 좌하단을 (0,0)에 두고
+                // 높이를 CGDisplayBounds가 알려준 화면 전체 높이로 늘리면 메뉴바 띠와 Dock 띠까지 전부
+                // 덮인다. 보조 모니터는 Cocoa 원점이 주 모니터 기준이라 같은 식이 성립하지 않으므로
+                // 작업영역(visibleFrame) 그대로 둔다(정직한 한계 — 멀티모니터 정교화는 별도 과제).
+                targetRect = new Rect(0f, 0f, display.width, display.height);
+                coverageMode = "화면 전체(메뉴바/Dock 띠 포함)";
+            }
+            monitor = targetRect;
+
+            // (a) Unity 자신의 해상도.
+            if (Screen.width != Mathf.RoundToInt(monitor.width) || Screen.height != Mathf.RoundToInt(monitor.height))
+            {
+                Screen.SetResolution(Mathf.RoundToInt(monitor.width), Mathf.RoundToInt(monitor.height), FullScreenMode.Windowed);
+            }
+
+            // (b) 메뉴바/Dock 영역 위로도 창을 놓을 수 있게 한다.
+            if (!_controller.isFreePositioningEnabled) _controller.isFreePositioningEnabled = true;
+
+            // (c) 크기 -> 위치.
+            _controller.windowSize = monitor.size;
+            _controller.windowPosition = monitor.position;
+
+            Vector2 sizeAfter = _controller.windowSize;
+            Vector2 posAfter = _controller.windowPosition;
+            bool ok = Mathf.Abs(sizeAfter.x - monitor.width) <= 1f && Mathf.Abs(sizeAfter.y - monitor.height) <= 1f
+                && Mathf.Abs(posAfter.x - monitor.x) <= 1f && Mathf.Abs(posAfter.y - monitor.y) <= 1f;
+            if (ok) _fullScreenBoundsApplied = true;
+
+            Debug.Log($"[MacOverlayStateEnforcer] 전체화면 확장 시도 {_fullScreenApplyAttempts}/{MaxFullScreenApplyAttempts} — " +
+                $"모니터={monitor}, 이전(size={sizeBefore}, pos={posBefore}) -> 이후(size={sizeAfter}, pos={posAfter}), " +
+                $"Screen=({Screen.width}x{Screen.height}), isFreePositioningEnabled={_controller.isFreePositioningEnabled}, " +
+                $"덮는범위={coverageMode}, 결과={(ok ? "성공(오차 1pt 이내)" : "미달 — 다음 시도에서 재적용")}.");
+        }
+
+        private float _timerFullScreen;
+
+        /// <summary>
+        /// 창 중심이 속한 모니터의 사각형을 라이브러리 좌표계 그대로 돌려준다. 멀티 모니터에서 어느
+        /// 화면을 덮을지 결정하는 유일한 기준이며, 실패 시 0번(주 모니터)로 폴백한다.
+        /// </summary>
+        private bool TryGetTargetMonitorRect(out Rect monitor, out bool isPrimary)
+        {
+            monitor = default;
+            isPrimary = false;
+            int count = UniWindowController.GetMonitorCount();
+            if (count <= 0) return false;
+
+            Vector2 pos = _controller.windowPosition;
+            Vector2 size = _controller.windowSize;
+            Vector2 center = pos + size * 0.5f;
+
+            for (int i = 0; i < count; i++)
+            {
+                Rect r = UniWindowController.GetMonitorRect(i);
+                if (r.width <= 0f || r.height <= 0f) continue;
+                if (r.Contains(center))
+                {
+                    monitor = r;
+                    isPrimary = i == 0;
+                    return true;
+                }
+            }
+
+            Rect primary = UniWindowController.GetMonitorRect(0);
+            if (primary.width <= 0f || primary.height <= 0f) return false;
+            monitor = primary;
+            isPrimary = true;
+            return true;
+        }
+
+        /// <summary>
+        /// ★ 헤드라인 기능 검증 리포트 — "지금 감지된 실제 창 목록"과 "캐릭터가 지금 무엇을 딛고 있는지"를
+        /// 한 줄로 남긴다. 리더가 화면을 볼 수 없으므로 이 로그가 유일한 판별 수단이다(작업 지시 4항).
+        ///
+        /// 읽는 법:
+        ///   발판N개=[Finder@(x,y,w,h) ...]  — MacWindowService가 이번 폴링에서 실제로 채택한 타 앱 창들.
+        ///                                     비어 있으면 "실제 창 0개"(= 안전망만 있는 상태)다.
+        ///   딛고있음=Finder / 합성안전망 / (공중) — GroundSensor가 이번 프레임에 채택한 그 발판.
+        ///   캐릭터OS=(x,y)                  — 캐릭터 발 위치를 창 원점 보정까지 거쳐 OS 좌표로 되돌린 값.
+        ///                                     "딛고있음"이 실제 창이면 그 창의 상단 y와 거의 같아야 한다.
+        /// </summary>
+        private void TickFootholdReport()
+        {
+            _footholdReportTimer += Time.unscaledDeltaTime;
+            if (_footholdReportTimer < FootholdReportIntervalSeconds) return;
+            _footholdReportTimer = 0f;
+
+            if (_agent == null) _agent = UnityEngine.Object.FindAnyObjectByType<Core.StickmanAgent>();
+            var blackboard = _agent != null ? _agent.Blackboard : null;
+            if (blackboard == null || blackboard.FootholdPoller == null) return;
+
+            var footholds = blackboard.FootholdPoller.CachedFootholds;
+            var describer = ResolveDescriber();
+
+            _reportBuilder.Clear();
+            int realCount = 0;
+            int listed = 0;
+            for (int i = 0; i < footholds.Count; i++)
+            {
+                var fh = footholds[i];
+                if (fh.Handle == FallbackPlatformWindowService.SyntheticFootholdHandle) continue; // 안전망은 아래에서 따로 표기
+                realCount++;
+                if (listed >= MaxFootholdsPerReport) continue;
+                if (listed > 0) _reportBuilder.Append(", ");
+                listed++;
+                Rect r = fh.ScreenRect;
+                _reportBuilder.Append(DescribeName(describer, fh.Handle))
+                    .Append('@').Append('(').Append(r.x.ToString("F0")).Append(',').Append(r.y.ToString("F0"))
+                    .Append(' ').Append(r.width.ToString("F0")).Append('x').Append(r.height.ToString("F0")).Append(')');
+            }
+            if (realCount > listed) _reportBuilder.Append(" 외 ").Append(realCount - listed).Append("개");
+
+            var body = blackboard.Body;
+            Vector2 charOs = Vector2.zero;
+            string standing = "(몸 없음)";
+            string groundTop = "-";
+            if (body != null && blackboard.MainCamera != null)
+            {
+                charOs = ScreenCoordinateConverter.WorldToOsScreen(blackboard.MainCamera, body.position, blackboard.Config, out _);
+                var info = blackboard.SenseGround();
+                if (!info.Grounded)
+                {
+                    standing = "(공중/낙하)";
+                }
+                else if (info.GroundedFootholdHandle == FallbackPlatformWindowService.SyntheticFootholdHandle)
+                {
+                    standing = "합성 안전망";
+                }
+                else
+                {
+                    standing = "실제 창: " + DescribeName(describer, info.GroundedFootholdHandle);
+                }
+                if (info.Grounded)
+                {
+                    Vector2 groundOs = ScreenCoordinateConverter.WorldToOsScreen(blackboard.MainCamera,
+                        new Vector2(body.position.x, info.GroundWorldY), blackboard.Config, out _);
+                    groundTop = groundOs.y.ToString("F1");
+                }
+            }
+
+            string occlusionNote = describer != null
+                ? $" (원본창 {describer.LastRawWindowCount}개 중 완전히 가려져 제외 {describer.LastFullyOccludedWindowCount}개)"
+                : string.Empty;
+            // 리더 지시: "화면 경계 내 여부"를 매 리포트에 명시한다(화면 밖 소실 추적).
+            Vector2 origin = ScreenCoordinateConverter.OverlayOriginOsScreen;
+            Vector2 winSize = _controller.windowSize;
+            bool insideScreen = charOs.x >= origin.x && charOs.x <= origin.x + winSize.x
+                && charOs.y >= origin.y && charOs.y <= origin.y + winSize.y;
+
+            Debug.Log($"[발판리포트] 보이는 상단테두리 {realCount}개{occlusionNote}=[{_reportBuilder}] | 딛고있음={standing} | " +
+                $"고착핸들={blackboard.CurrentFootholdHandle} | 발판상단OS y={groundTop} | " +
+                $"캐릭터OS=({charOs.x:F1},{charOs.y:F1}) 화면안={(insideScreen ? "예" : "아니오(문제!)")} | " +
+                $"상태={(blackboard.Machine != null ? blackboard.Machine.CurrentStateId.ToString() : "?")} | " +
+                $"오버레이원점={origin}, 창={winSize}, Screen=({Screen.width}x{Screen.height})");
+
+            // 리더 지시 1항 — 창 전체 덤프(앱 이름 + PID + 사각형 + 알파 + onscreen + z-order + 탈락 사유).
+            // 발판 리포트보다 훨씬 길어서 주기를 별도로 둔다.
+            _windowDumpTimer += FootholdReportIntervalSeconds;
+            if (describer != null && _windowDumpTimer >= WindowDumpIntervalSeconds)
+            {
+                _windowDumpTimer = 0f;
+                _reportBuilder.Clear();
+                describer.AppendWindowDiagnostics(_reportBuilder);
+                Debug.Log("[창진단] " + _reportBuilder);
+            }
+        }
+
+        /// <summary>
+        /// 발판 핸들 -> 소유 앱 이름 조회기(MacWindowService). StickmanAgent는 항상
+        /// FallbackPlatformWindowService 데코레이터를 노출하므로 한 겹 벗겨서 찾는다.
+        /// </summary>
+        private MacWindowService ResolveDescriber()
+        {
+            var service = _agent != null ? _agent.PlatformService : null;
+            if (service is FallbackPlatformWindowService decorator) service = decorator.Inner;
+            return service as MacWindowService;
+        }
+
+        private static string DescribeName(MacWindowService describer, long handle)
+        {
+            string name = describer != null ? describer.TryDescribeFoothold(handle) : null;
+            return string.IsNullOrEmpty(name) ? "창#" + handle : name;
         }
 
         /// <summary>
