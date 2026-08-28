@@ -32,6 +32,21 @@ namespace StickMate.Platform
         /// <summary>그라피티 강제 발동 데모(Ctrl+Opt+Cmd+G, Graffiti) — 자동 발동이 60초마다 4% 추첨 +
         /// 10분 쿨다운이라 K와 같은 이유로 강제 경로가 필요하다. Interaction/AppControlDirector.cs.</summary>
         G,
+
+        /// <summary>창 도둑 강제 발동 데모(Ctrl+Opt+Cmd+T, Theft) — 자동 발동이 60초마다 3% 추첨 +
+        /// 15분 쿨다운이라 K/G와 같은 이유로 강제 경로가 필요하다. Interaction/AppControlDirector.cs.</summary>
+        T,
+
+        /// <summary>윈도우 크래시 강제 발동 데모(Ctrl+Opt+Cmd+X, 부서짐) — 자동 발동이 60초마다 2% 추첨 +
+        /// 25분 쿨다운으로 이 프로젝트의 모든 스펙터클 중 가장 희소해(27-4: 파괴 연출은 더 드물어야 한다)
+        /// 확률만으로는 실물 검증이 사실상 불가능하다. Interaction/AppControlDirector.cs.</summary>
+        X,
+
+        /// <summary>PC 하드웨어 반응 데모 미리보기(Ctrl+Opt+Cmd+H, Hardware) — 다른 데모와 성격이 다르다.
+        /// 확률을 건너뛰는 게 아니라 "실제로는 일어나지 않은 신호의 연출만" 4종 순환 미리보기하는
+        /// 경로이며(배터리를 20%로 만드는 것은 원칙 3/27-7이 금지하는 OS 제어다), 짧게 표시되고 스스로
+        /// 걷힌다. Interaction/HardwareReactionDirector.ForceTriggerNow 문서 참고.</summary>
+        H,
     }
 
     /// <summary>

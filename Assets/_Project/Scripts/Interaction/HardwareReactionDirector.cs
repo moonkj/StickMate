@@ -39,6 +39,18 @@ namespace StickMate.Interaction
 
         private HardwareReactionKind? _currentlyShown;
 
+        // ==================== 데모 미리보기(전역 단축키 Ctrl+Opt+Cmd+H / 우클릭 메뉴) ====================
+        // 다른 5개 Director의 ForceTriggerNow는 "확률/쿨다운만 건너뛴다"는 성격이지만, 하드웨어 반응은
+        // 확률이 아니라 **실제 하드웨어 상태**가 트리거라 같은 의미의 강제 경로가 존재할 수 없다(배터리를
+        // 20%로 만들 수는 없다 — 만들려고 해도 원칙 3/27-7이 금지하는 OS 제어다). 그래서 이것만은
+        // "실제 신호와 무관한 데모 미리보기"임을 이름/로그/수명에서 분명히 하고, 4종을 한 번에 하나씩
+        // 순환 표시한 뒤 스스로 걷힌다. 미리보기 중에는 실제 신호 표현을 잠시 양보한다(23절 "동시에 두
+        // 가지 표정을 겹쳐 보이면 안 됨").
+        private const float DemoPreviewSeconds = 6f;
+        private HardwareReactionKind? _demoKind;
+        private float _demoRemaining;
+        private int _demoCycleIndex;
+
         // 배터리
         private float _batteryPollTimer;
         private bool _batteryLowLastPoll;
@@ -60,14 +72,122 @@ namespace StickMate.Interaction
         private void Update()
         {
             if (_player == null || _config == null) return;
-            if (_player.IsSuspended) return; // 6-4절: 전체화면 게임 감지 중에는 모든 하드웨어 반응 연출도 함께 숨김.
+            // 6-4절: 전체화면 게임 감지 중에는 모든 하드웨어 반응 연출도 함께 숨김.
+            // 2026-08-29 시각 레이어 라운드 보강: 지금까지는 여기서 그냥 return만 했다. 구독자가 0명일
+            // 때는 아무 차이가 없었지만, HardwareReactionRenderer가 생긴 뒤로는 이모트 컨테이너가
+            // 캐릭터의 자식이 아니라 독립 GameObject라 StickmanAgent.Suspend()의 SetRenderersEnabled(false)에
+            // 걸리지 않는다 — 즉 return만 하면 전체화면 게임 위에 이모트가 그대로 떠 있게 된다.
+            // 표현 중이던 것을 명시적으로 걷어야 23절 "전체화면 감지 중에는 함께 숨김"이 실제로 성립한다.
+            if (_player.IsSuspended)
+            {
+                ClearAllVisibleReactions("전체화면 게임 감지(6-4절)");
+                return;
+            }
 
             float dt = Time.deltaTime;
             TickBattery(dt);
             TickCharging(dt);
             TickCpu(dt);
             TickNetwork(dt);
+
+            // 데모 미리보기가 떠 있는 동안에는 폴링/지속조건 갱신은 그대로 계속하되(그래야 미리보기가
+            // 끝난 직후 실제 상태가 정확히 반영된다) 표현 결정만 잠시 양보한다.
+            if (TickDemoPreview(dt)) return;
+
             ResolveAndNotify();
+        }
+
+        /// <summary>
+        /// 하드웨어 반응 데모 미리보기 발동(Ctrl+Opt+Cmd+H / 우클릭 메뉴). 누를 때마다
+        /// 배터리 -> CPU -> 네트워크 -> 충전 순으로 하나씩 <see cref="DemoPreviewSeconds"/>초간 보여준다.
+        ///
+        /// <b>이것은 "실제 하드웨어 신호"가 아니다</b>(로그에도 그렇게 남긴다). 다른 Director의
+        /// ForceTriggerNow와 달리 확률을 건너뛰는 게 아니라 존재하지 않는 신호를 표현만 해보는 것이므로,
+        /// 유저가 이 화면을 보고 "지금 배터리가 부족하구나"로 오해하면 안 되는 성격의 경로다 — 그래서
+        /// 스스로 짧게 걷히고, 걷히는 즉시 실제 신호 판정이 그대로 재개된다.
+        /// 하드웨어를 조회만 하고 제어(쓰기)하지 않는다는 27-7 규약은 이 경로에서도 당연히 그대로다.
+        /// </summary>
+        public void ForceTriggerNow(string reason)
+        {
+            if (_player == null || _config == null)
+            {
+                Debug.LogWarning($"[하드웨어] 데모 미리보기 실패({reason}) — 플레이어/설정 배선이 없습니다.");
+                return;
+            }
+
+            // 실제 신호가 표현 중이면 먼저 걷어 두 표현이 겹치지 않게 한다(23절 우선순위 원칙).
+            if (_currentlyShown.HasValue)
+            {
+                StickmanEventBus.RaiseHardwareReactionChanged(_currentlyShown.Value, active: false);
+                _currentlyShown = null;
+            }
+            if (_demoKind.HasValue)
+            {
+                StickmanEventBus.RaiseHardwareReactionChanged(_demoKind.Value, active: false);
+                _demoKind = null;
+            }
+
+            HardwareReactionKind kind = DemoCycleOrder[_demoCycleIndex % DemoCycleOrder.Length];
+            _demoCycleIndex++;
+            _demoKind = kind;
+            _demoRemaining = DemoPreviewSeconds;
+            StickmanEventBus.RaiseHardwareReactionChanged(kind, active: true);
+
+            Debug.Log($"[하드웨어] 데모 미리보기 시작({reason}) — {kind} 반응을 {DemoPreviewSeconds:F0}초간 표시합니다. " +
+                "★ 실제 하드웨어 신호가 아니라 연출 확인용 미리보기이며, 끝나면 실제 신호 판정이 그대로 재개됩니다. " +
+                "(조회 전용 — OS 제어(쓰기) API 호출 0건, 27-7)");
+        }
+
+        /// <summary>
+        /// 지금 화면에 떠 있는 반응(실제 신호 표현 + 데모 미리보기)을 전부 걷는다. 회복 게이트/쿨다운
+        /// 상태(SignalState)는 건드리지 않으므로, 숨김 사유가 사라지면 ResolveAndNotify()가 원래 규칙
+        /// 그대로 다시 판정한다("계속 20% 이하에 머물러 있는 동안은 재알림하지 않는다"는 27-6 보강
+        /// 규칙도 Notified 플래그가 그대로라 유지된다).
+        /// </summary>
+        private void ClearAllVisibleReactions(string reason)
+        {
+            if (_currentlyShown.HasValue)
+            {
+                StickmanEventBus.RaiseHardwareReactionChanged(_currentlyShown.Value, active: false);
+                Debug.Log($"[하드웨어] {_currentlyShown.Value} 반응 표현을 걷습니다 — {reason}.");
+                _currentlyShown = null;
+            }
+            if (_demoKind.HasValue)
+            {
+                StickmanEventBus.RaiseHardwareReactionChanged(_demoKind.Value, active: false);
+                _demoKind = null;
+                _demoRemaining = 0f;
+            }
+        }
+
+        private void OnDisable()
+        {
+            // 이 컨트롤러가 꺼질 때 이모트가 화면에 영구히 남지 않게 한다(다른 Director들이 OnDisable()에서
+            // SpectacleEventLock을 반드시 반환하는 것과 같은 취지의 정리 관례 — 이 기능은 락에 참여하지
+            // 않으므로 반환할 락은 없고, 대신 표현 중인 이벤트를 닫아준다).
+            ClearAllVisibleReactions("컨트롤러 비활성화");
+        }
+
+        private static readonly HardwareReactionKind[] DemoCycleOrder =
+        {
+            HardwareReactionKind.LowBattery,
+            HardwareReactionKind.HighCpu,
+            HardwareReactionKind.NetworkDown,
+            HardwareReactionKind.Charging,
+        };
+
+        /// <summary>데모 미리보기가 진행 중이면 true(그동안 실제 신호 표현은 보류된다).</summary>
+        private bool TickDemoPreview(float dt)
+        {
+            if (!_demoKind.HasValue) return false;
+
+            _demoRemaining -= dt;
+            if (_demoRemaining > 0f) return true;
+
+            StickmanEventBus.RaiseHardwareReactionChanged(_demoKind.Value, active: false);
+            Debug.Log($"[하드웨어] 데모 미리보기 종료 — {_demoKind.Value} 이모트를 걷고 실제 신호 판정을 재개합니다.");
+            _demoKind = null;
+            return false;
         }
 
         private void TickBattery(float dt)

@@ -48,6 +48,16 @@ MonoBehaviour:
   ledgeHangKneeBendDegrees: 14
   ledgeHangSwayAmplitudeDegrees: 5
   ledgeHangSwayFrequencyHz: 0.9
+  hopDownChance: 0.5
+  hopDownMinDropHeight: 0.35
+  hopDownMaxDropHeight: 0
+  hopDownProbeOutward: 0.2
+  hopDownDropThroughIgnoreDuration: 0.25
+  hopDownEdgeCommitDistance: 0.12
+  hopDownStepOffSpeedScale: 0.8
+  stepUpChance: 0.5
+  stepUpMaxHeight: 1.5
+  parkourMantleInset: 0.25
   clickThroughDefaultEnabled: 1
   footholdPollInterval: 0.3
   fullscreenPollInterval: 1.5

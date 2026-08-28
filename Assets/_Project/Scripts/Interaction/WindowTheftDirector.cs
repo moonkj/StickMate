@@ -55,6 +55,58 @@ namespace StickMate.Interaction
             SpectacleEventLock.ReleaseIfOwned(this, _player != null ? _player.Blackboard?.Machine : null, StickmanStateId.WindowTheft);
         }
 
+        /// <summary>
+        /// 창 도둑 강제 발동(전역 단축키 Ctrl+Opt+Cmd+T / 캐릭터 우클릭 메뉴). 기본 트리거는 60초 주기
+        /// 3% 추첨 + 15분 쿨다운이라 실사용/검증 중에 한 번 보기도 어려워, GraffitiDirector.ForceTriggerNow /
+        /// RivalEncounterDirector.ForceSpawnNow와 같은 관례로 "확률/쿨다운만 건너뛰는" 데모 경로를 둔다.
+        ///
+        /// <b>27-1의 규칙은 강제 경로에서도 하나도 완화하지 않는다</b> — 상호배제 락, Idle/Walk 진입
+        /// 조건, 그리고 "캐릭터 신장의 windowTheftMaxTargetWidthMultiplier배 이하인 실제 창"이라는 대상
+        /// 선정 조건을 그대로 통과해야 한다. 후보 창이 없으면 아무 일도 일어나지 않는다(억지로 큰 창을
+        /// 대상으로 삼지 않는다 — 그러면 "밀어도 안 움직임"이 당연해 보여 개그가 죽는다).
+        /// </summary>
+        public void ForceTriggerNow(string reason)
+        {
+            if (_player == null || _config == null)
+            {
+                Debug.LogWarning($"[창도둑] 강제 발동 실패({reason}) — 플레이어/설정 배선이 없습니다.");
+                return;
+            }
+            if (SpectacleEventLock.IsActive)
+            {
+                Debug.Log($"[창도둑] 강제 발동 건너뜀({reason}) — 다른 스펙터클({SpectacleEventLock.ActiveKind})이 " +
+                          "진행 중입니다(상호배제 락).");
+                return;
+            }
+
+            var current = _player.Blackboard.Machine.CurrentStateId;
+            if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
+            {
+                Debug.Log($"[창도둑] 강제 발동 건너뜀({reason}) — 지금은 {current} 중입니다(Idle/Walk에서만 시작).");
+                return;
+            }
+
+            if (!TryFindTargetWindow(out PlatformFoothold target))
+            {
+                Debug.Log($"[창도둑] 강제 발동 건너뜀({reason}) — 캐릭터 신장의 " +
+                    $"{_config.windowTheftMaxTargetWidthMultiplier:F1}배 이하 폭을 가진 실제 창을 찾지 못했습니다 " +
+                    "(27-1: 큰 창을 억지로 대상으로 삼지 않는다).");
+                return;
+            }
+
+            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.WindowTheft, this)) return;
+
+            _targetHandle = target.Handle;
+            _targetRectSnapshot = target.ScreenRect;
+            _hasTarget = true;
+
+            RaiseOverlay(SpectacleOverlayPhase.Started);
+            _player.Blackboard.Machine.ChangeState(StickmanStateId.WindowTheft);
+
+            Debug.Log($"[창도둑] 강제 발동({reason}) — 대상 창 handle={_targetHandle}, OS영역 {_targetRectSnapshot}. " +
+                "실제 창은 1픽셀도 움직이지 않으며(원칙 3), 화면에 보이는 것은 복사본(고스트) 사각형뿐입니다.");
+        }
+
         private void Update()
         {
             if (_cooldownRemaining > 0f) _cooldownRemaining -= Time.deltaTime;
@@ -170,7 +222,23 @@ namespace StickMate.Interaction
             // (BattleMinigameDirector의 동일한 self-transition 가드와 같은 이유).
             if (evt.To == StickmanStateId.WindowTheft) return;
 
+            // 2026-08-29 시각 레이어 라운드에서 메운 계약 구멍: 지금까지 이 Director는 Started/Cancelled만
+            // 발행하고 **정상 종료(Completed)를 한 번도 발행하지 않았다**. 구독자가 0명이던 동안에는 아무도
+            // 몰랐지만, WindowTheftRenderer가 생긴 이상 정상 종료 신호가 없으면 고스트 창이 화면에 영구히
+            // 남는다. GraffitiDirector.OnStateTransitioned의 wasCancelled 가드를 그대로 이식한다 —
+            // CancelAttempt()가 이미 _hasTarget=false + Cancelled를 발행했으면 여기서 Completed를
+            // 겹쳐 발행하지 않는다.
+            bool alreadyCancelled = !_hasTarget; // CancelAttempt()가 이미 Cancelled를 발행하고 나온 경로.
             _hasTarget = false;
+            if (!alreadyCancelled)
+            {
+                // 강제 인터럽트로 빠져나간 경우(전체화면 게임 감지 시 StickmanAgent.Suspend()가 Idle로
+                // 강제 전이시키는 경로 등)는 "정상 종료"가 아니므로 Cancelled로 알린다 — 렌더러가 천천히
+                // 페이드아웃하는 대신 즉시 걷어내야 하는 상황이다(27-1 "전체화면 게임 감지 시 즉시 취소").
+                RaiseOverlay(evt.IsForcedInterrupt
+                    ? SpectacleOverlayPhase.Cancelled
+                    : SpectacleOverlayPhase.Completed);
+            }
             _cooldownRemaining = _config != null ? _config.windowTheftCooldownSeconds : 900f;
             SpectacleEventLock.Release(this);
         }

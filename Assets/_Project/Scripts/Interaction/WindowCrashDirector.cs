@@ -56,6 +56,63 @@ namespace StickMate.Interaction
             SpectacleEventLock.ReleaseIfOwned(this, _player != null ? _player.Blackboard?.Machine : null, StickmanStateId.WindowCrash);
         }
 
+        /// <summary>
+        /// 윈도우 크래시 강제 발동(전역 단축키 Ctrl+Opt+Cmd+X / 캐릭터 우클릭 메뉴). 기본 트리거는 60초
+        /// 주기 2% 추첨 + 25분 쿨다운으로 <b>이 프로젝트의 모든 스펙터클 중 가장 희소하게</b> 설계돼
+        /// 있어(27-4: 파괴 연출은 시각적 충격이 커서 다른 것보다 더 드물어야 한다) 확률만으로는 실물
+        /// 검증이 사실상 불가능하다. GraffitiDirector.ForceTriggerNow와 같은 관례로 데모 경로를 둔다.
+        ///
+        /// 완화하지 않는 것: 상호배제 락, Idle/Walk 진입 조건, 그리고 "포그라운드(IsTopmost)인 실제 창이
+        /// 있어야 한다"는 대상 선정 조건. 그리고 무엇보다 <b>대상 창에는 여전히 아무 짓도 하지 않는다</b> —
+        /// 발행하는 것은 좌표 스냅샷 이벤트 하나뿐이고 크랙은 100% 클릭관통 시각 레이어다(27-4).
+        /// </summary>
+        public void ForceTriggerNow(string reason)
+        {
+            if (_player == null || _config == null)
+            {
+                Debug.LogWarning($"[창크래시] 강제 발동 실패({reason}) — 플레이어/설정 배선이 없습니다.");
+                return;
+            }
+            if (_overlayActive)
+            {
+                Debug.Log($"[창크래시] 강제 발동 건너뜀({reason}) — 이미 크랙 오버레이가 떠 있습니다.");
+                return;
+            }
+            if (SpectacleEventLock.IsActive)
+            {
+                Debug.Log($"[창크래시] 강제 발동 건너뜀({reason}) — 다른 스펙터클({SpectacleEventLock.ActiveKind})이 " +
+                          "진행 중입니다(상호배제 락).");
+                return;
+            }
+
+            var current = _player.Blackboard.Machine.CurrentStateId;
+            if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
+            {
+                Debug.Log($"[창크래시] 강제 발동 건너뜀({reason}) — 지금은 {current} 중입니다(Idle/Walk에서만 시작).");
+                return;
+            }
+
+            if (!TryFindForegroundWindow(out PlatformFoothold target))
+            {
+                Debug.Log($"[창크래시] 강제 발동 건너뜀({reason}) — 포그라운드(IsTopmost) 실제 창을 찾지 못했습니다.");
+                return;
+            }
+
+            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.WindowCrash, this)) return;
+
+            _targetHandle = target.Handle;
+            _targetRectSnapshot = target.ScreenRect;
+            _overlayTimer = 0f;
+            _overlayActive = true;
+
+            RaiseOverlay(SpectacleOverlayPhase.Started);
+            _player.Blackboard.Machine.ChangeState(StickmanStateId.WindowCrash);
+
+            Debug.Log($"[창크래시] 강제 발동({reason}) — 대상 창 handle={_targetHandle}, OS영역 {_targetRectSnapshot}, " +
+                $"크랙 유지 {_config.windowCrashOverlayDurationSeconds:F1}초. " +
+                "크랙은 순수 시각 레이어이므로 그동안에도 그 창은 평소처럼 클릭/타이핑됩니다(27-4).");
+        }
+
         private void Update()
         {
             if (_cooldownRemaining > 0f) _cooldownRemaining -= Time.deltaTime;

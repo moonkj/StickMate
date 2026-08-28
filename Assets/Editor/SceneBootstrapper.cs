@@ -556,6 +556,52 @@ namespace StickMate.EditorTools
             root.AddComponent<GraffitiRenderer>();
 
             // ================================================================================
+            // Phase 4 시각 레이어 배선 (창 도둑 / 창 크래시 / PC 하드웨어 반응) — 2026-08-29
+            // ================================================================================
+            // 격파/그라피티와 **완전히 같은 유형의 누락**이 3건 더 있었다: 세 기능의 Director/State
+            // 로직은 Phase 4에 이미 완성돼 있었지만 Director가 씬 어디에도 배치되지 않았고(따라서
+            // Update()가 한 번도 돌지 않아 트리거 추첨조차 일어나지 않았다), 그 위에
+            // WindowTheftOverlayChanged / WindowCrashOverlayChanged / HardwareReactionChanged를
+            // 구독하는 코드가 0건이라 화면에는 한 픽셀도 나오지 않았다. 이번 라운드에 신설한 렌더러
+            // 3종과 함께 여기서 배치한다.
+            //
+            // SpectacleEventLock 참여 여부는 원 설계를 그대로 따른다 — 창 도둑/창 크래시는 ChangeState()로
+            // 단일 상태 슬롯을 다투므로 참여(각 Director가 이미 TryAcquire/Release를 구현), 하드웨어 반응은
+            // 상태 전이를 하지 않는 머리 위 이모트라 의도적으로 비참여(Phase 4 설계 결정 5).
+            var windowTheft = root.AddComponent<WindowTheftDirector>();
+            var theftSo = new SerializedObject(windowTheft);
+            theftSo.FindProperty("_player").objectReferenceValue = agent;
+            // 27-1 대상 창 선정("캐릭터 신장의 3배 이하 폭")에 쓰는 신장 측정용 콜라이더.
+            // 클릭 표적이 아니라 **몸 크기**를 재는 용도이므로, 넉넉한 GrabArea가 아니라 실제 물리
+            // 캡슐을 넘긴다(DragThrow/Battle이 GrabArea를 넘기는 것과 목적이 다르다).
+            theftSo.FindProperty("_characterCollider").objectReferenceValue = capsule;
+            theftSo.FindProperty("_config").objectReferenceValue = config;
+            theftSo.ApplyModifiedPropertiesWithoutUndo();
+
+            // 진짜 창 위에 겹쳐 그리는 "복사본(고스트) 창" + 힘줄/먼지. 직렬화 필드가 없고 Awake()에서
+            // 같은 GameObject의 StickmanAgent를 직접 찾으므로 배선이 필요 없다(GraffitiRenderer와 동일 관례).
+            root.AddComponent<WindowTheftRenderer>();
+
+            var windowCrash = root.AddComponent<WindowCrashDirector>();
+            var crashSo = new SerializedObject(windowCrash);
+            crashSo.FindProperty("_player").objectReferenceValue = agent;
+            crashSo.FindProperty("_config").objectReferenceValue = config;
+            crashSo.ApplyModifiedPropertiesWithoutUndo();
+
+            // 가짜 균열 오버레이. **콜라이더를 단 하나도 만들지 않는다** — 27-4가 못박은 "보기엔 깨진
+            // 유리, 만지면 평범한 창"(3초 내내 100% 클릭관통)을 구조적으로 보장하는 지점이다.
+            root.AddComponent<WindowCrashRenderer>();
+
+            var hardware = root.AddComponent<HardwareReactionDirector>();
+            var hardwareSo = new SerializedObject(hardware);
+            hardwareSo.FindProperty("_player").objectReferenceValue = agent;
+            hardwareSo.FindProperty("_config").objectReferenceValue = config;
+            hardwareSo.ApplyModifiedPropertiesWithoutUndo();
+
+            // 배터리/CPU/네트워크/충전 은유를 머리 위 작은 이모트로 그리는 시각 레이어(23절).
+            root.AddComponent<HardwareReactionRenderer>();
+
+            // ================================================================================
             // 앱 제어 수단 배선 (2026-08-28 — "터미널 없이 끌 수 있어야 한다")
             // ================================================================================
             // Interaction/AppControlDirector.cs: 전역 단축키(Ctrl+Opt+Cmd+Q 종료 등)와 캐릭터 우클릭
@@ -1054,6 +1100,18 @@ namespace StickMate.EditorTools
             DestroyComponentIfPresent<BattleMinigameDirector>(rival);
             DestroyComponentIfPresent<GraffitiRenderer>(rival);
             DestroyComponentIfPresent<GraffitiDirector>(rival);
+            // 창 도둑/창 크래시/하드웨어 반응(2026-08-29 신설) — 격파/그라피티와 **정확히 같은 함정**이다.
+            // 세 렌더러 모두 StickmanEventBus의 전역 정적 이벤트를 구독하므로, 남겨두면 플레이어가
+            // 창 도둑을 시작할 때 라이벌 쪽 렌더러도 같은 이벤트를 받아 고스트 창/균열/이모트가 두 벌
+            // 그려진다(격파에서 "[격파] 소환"이 정확히 2번 찍혀 실측 확인된 그 버그). 각 렌더러에도
+            // "자기 GameObject의 StickmanAgent가 없으면 아무것도 하지 않는다"는 자체 가드가 있지만,
+            // 애초에 배치하지 않는 것이 1차 방어다. Director 3종은 플레이어 전용 트리거이므로 함께 제거한다.
+            DestroyComponentIfPresent<WindowTheftRenderer>(rival);
+            DestroyComponentIfPresent<WindowTheftDirector>(rival);
+            DestroyComponentIfPresent<WindowCrashRenderer>(rival);
+            DestroyComponentIfPresent<WindowCrashDirector>(rival);
+            DestroyComponentIfPresent<HardwareReactionRenderer>(rival);
+            DestroyComponentIfPresent<HardwareReactionDirector>(rival);
             DestroyComponentIfPresent<RodeoCursorWatcher>(rival);
             DestroyComponentIfPresent<DragThrowController>(rival);
             DestroyComponentIfPresent<StickmanClickHitbox>(rival);

@@ -49,6 +49,9 @@ namespace StickMate.Interaction
     ///                  <b>Control + Option + Command + V</b> = 라이벌 스틱맨 강제 소환(데모)
     ///                  <b>Control + Option + Command + K</b> = 격파 미니게임 강제 발동(데모, "breaK")
     ///                  <b>Control + Option + Command + G</b> = 그라피티 강제 발동(데모, "Graffiti")
+    ///                  <b>Control + Option + Command + T</b> = 창 도둑 강제 발동(데모, "Theft")
+    ///                  <b>Control + Option + Command + X</b> = 윈도우 크래시 강제 발동(데모, 부서짐)
+    ///                  <b>Control + Option + Command + H</b> = 하드웨어 반응 데모 미리보기(4종 순환, "Hardware")
     ///     3개 조합키를 모두 쓰는 이유: Cmd+Shift+Q는 macOS의 "로그아웃"이고 Cmd+Q는 활성 앱 종료라
     ///     둘 다 이미 의미가 있다. Ctrl+Option+Cmd 조합은 시스템/일반 앱이 거의 쓰지 않아, 사용자가
     ///     다른 앱에서 작업하다 실수로 데스크톱 펫을 종료시킬 위험이 사실상 없다.
@@ -85,6 +88,7 @@ namespace StickMate.Interaction
         // 명령으로 오인하지 않는다(StickmanClickHitbox의 _globalPressedInitialized와 동일한 관례).
         private bool _hotkeyInitialized;
         private bool _prevQ, _prevC, _prevD, _prevR, _prevB, _prevV, _prevK, _prevG;
+        private bool _prevT, _prevX, _prevH;
 
         // 우클릭/메뉴 클릭 엣지 판정.
         private bool _rightPrev;
@@ -104,6 +108,9 @@ namespace StickMate.Interaction
         private RivalEncounterDirector _rivalDirector; // 라이벌 강제 소환용(지연 탐색 후 캐시).
         private BattleMinigameDirector _battleDirector; // 격파 미니게임 강제 발동용(지연 탐색 후 캐시).
         private GraffitiDirector _graffitiDirector;     // 그라피티 강제 발동용(지연 탐색 후 캐시).
+        private WindowTheftDirector _windowTheftDirector;   // 창 도둑 강제 발동용(지연 탐색 후 캐시).
+        private WindowCrashDirector _windowCrashDirector;   // 윈도우 크래시 강제 발동용(지연 탐색 후 캐시).
+        private HardwareReactionDirector _hardwareDirector;  // 하드웨어 반응 데모 미리보기용(지연 탐색 후 캐시).
 
         // 메뉴 행 정의 — 순서가 곧 화면 표시 순서이자 히트테스트 인덱스다.
         // 순서 = 화면 표시 순서 = 히트테스트 인덱스. 새 항목은 항상 [닫기] **앞에** 넣는다
@@ -111,9 +118,10 @@ namespace StickMate.Interaction
         private enum MenuAction
         {
             Quit = 0, InkColor = 1, Rodeo = 2, Diagnostics = 3, SayNow = 4, SpawnRival = 5,
-            BattleMinigame = 6, Graffiti = 7, Close = 8,
+            BattleMinigame = 6, Graffiti = 7, WindowTheft = 8, WindowCrash = 9, HardwareReaction = 10,
+            Close = 11,
         }
-        private const int MenuRowCount = 9;
+        private const int MenuRowCount = 12;
 
         private void Awake()
         {
@@ -134,7 +142,8 @@ namespace StickMate.Interaction
                 "(2) **캐릭터 우클릭 -> [앱 종료] 클릭**. " +
                 "그 밖의 단축키: Ctrl+Opt+Cmd+C(잉크색 전환) / R(로데오 커서 on-off) / D(진단 로그 on-off) / " +
                 "**B(말풍선 즉시 띄우기)** / **V(라이벌 스틱맨 강제 소환)** / **K(격파 미니게임 강제 발동)** / " +
-                "**G(그라피티 강제 발동)**. " +
+                "**G(그라피티 강제 발동)** / **T(창 도둑 강제 발동)** / **X(윈도우 크래시 강제 발동)** / " +
+                "**H(하드웨어 반응 데모 미리보기 — 4종 순환)**. " +
                 $"전역 키 조회={(_keyService != null ? "사용 가능" : "미지원 — 우클릭 메뉴만 동작")}, " +
                 $"전역 버튼 조회={(_buttonService != null ? "사용 가능" : "미지원 — 단축키만 동작")}.");
         }
@@ -167,11 +176,15 @@ namespace StickMate.Interaction
             bool v = chord && IsKeyDown(GlobalKey.V);
             bool k = chord && IsKeyDown(GlobalKey.K);
             bool g = chord && IsKeyDown(GlobalKey.G);
+            bool t = chord && IsKeyDown(GlobalKey.T);
+            bool x = chord && IsKeyDown(GlobalKey.X);
+            bool h = chord && IsKeyDown(GlobalKey.H);
 
             if (!_hotkeyInitialized)
             {
                 _hotkeyInitialized = true;
                 _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevV = v; _prevK = k; _prevG = g;
+                _prevT = t; _prevX = x; _prevH = h;
                 return;
             }
 
@@ -183,7 +196,11 @@ namespace StickMate.Interaction
             bool vRise = v && !_prevV;
             bool kRise = k && !_prevK;
             bool gRise = g && !_prevG;
+            bool tRise = t && !_prevT;
+            bool xRise = x && !_prevX;
+            bool hRise = h && !_prevH;
             _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevV = v; _prevK = k; _prevG = g;
+            _prevT = t; _prevX = x; _prevH = h;
 
             if (qRise) Invoke(MenuAction.Quit, "전역 단축키 Ctrl+Opt+Cmd+Q");
             else if (cRise) Invoke(MenuAction.InkColor, "전역 단축키 Ctrl+Opt+Cmd+C");
@@ -193,6 +210,9 @@ namespace StickMate.Interaction
             else if (vRise) Invoke(MenuAction.SpawnRival, "전역 단축키 Ctrl+Opt+Cmd+V");
             else if (kRise) Invoke(MenuAction.BattleMinigame, "전역 단축키 Ctrl+Opt+Cmd+K");
             else if (gRise) Invoke(MenuAction.Graffiti, "전역 단축키 Ctrl+Opt+Cmd+G");
+            else if (tRise) Invoke(MenuAction.WindowTheft, "전역 단축키 Ctrl+Opt+Cmd+T");
+            else if (xRise) Invoke(MenuAction.WindowCrash, "전역 단축키 Ctrl+Opt+Cmd+X");
+            else if (hRise) Invoke(MenuAction.HardwareReaction, "전역 단축키 Ctrl+Opt+Cmd+H");
         }
 
         private bool IsKeyDown(GlobalKey key)
@@ -355,6 +375,18 @@ namespace StickMate.Interaction
                     ForceGraffiti(source);
                     break;
 
+                case MenuAction.WindowTheft:
+                    ForceWindowTheft(source);
+                    break;
+
+                case MenuAction.WindowCrash:
+                    ForceWindowCrash(source);
+                    break;
+
+                case MenuAction.HardwareReaction:
+                    ForceHardwareReaction(source);
+                    break;
+
                 case MenuAction.Close:
                     CloseMenu("메뉴 [닫기]");
                     break;
@@ -446,6 +478,56 @@ namespace StickMate.Interaction
             _graffitiDirector.ForceTriggerNow($"앱제어 {source}");
         }
 
+        /// <summary>
+        /// 창 도둑 강제 발동(Ctrl+Opt+Cmd+T). 자동 발동은 60초 주기 3% 추첨 + 15분 쿨다운이라 K/G와
+        /// 정확히 같은 이유로 데모 경로가 필요하다. 확률/쿨다운만 건너뛸 뿐, "캐릭터 신장의 3배 이하 폭을
+        /// 가진 실제 창"이라는 27-1 대상 선정 조건과 상호배제 락은 그대로 지킨다.
+        /// </summary>
+        private void ForceWindowTheft(string source)
+        {
+            if (_windowTheftDirector == null) _windowTheftDirector = Object.FindFirstObjectByType<WindowTheftDirector>();
+            if (_windowTheftDirector == null)
+            {
+                Debug.LogWarning($"[앱제어] 창 도둑({source}) — 씬에 WindowTheftDirector가 없어 건너뜁니다.");
+                return;
+            }
+            _windowTheftDirector.ForceTriggerNow($"앱제어 {source}");
+        }
+
+        /// <summary>
+        /// 윈도우 크래시 강제 발동(Ctrl+Opt+Cmd+X). 자동 발동이 60초 주기 2% 추첨 + 25분 쿨다운으로 이
+        /// 프로젝트에서 가장 희소한 스펙터클이라(27-4: 파괴 연출은 더 드물어야 한다) 확률만으로는 실물
+        /// 검증이 사실상 불가능하다. 크랙은 100% 클릭관통 시각 레이어이므로 강제로 띄워도 대상 창의
+        /// 조작을 방해하지 않는다.
+        /// </summary>
+        private void ForceWindowCrash(string source)
+        {
+            if (_windowCrashDirector == null) _windowCrashDirector = Object.FindFirstObjectByType<WindowCrashDirector>();
+            if (_windowCrashDirector == null)
+            {
+                Debug.LogWarning($"[앱제어] 윈도우 크래시({source}) — 씬에 WindowCrashDirector가 없어 건너뜁니다.");
+                return;
+            }
+            _windowCrashDirector.ForceTriggerNow($"앱제어 {source}");
+        }
+
+        /// <summary>
+        /// 하드웨어 반응 데모 미리보기(Ctrl+Opt+Cmd+H). 위 3개와 성격이 다르다 — 확률을 건너뛰는 게
+        /// 아니라 <b>실제로는 일어나지 않은 신호의 연출만</b> 잠깐 보여주는 경로다(배터리를 20%로
+        /// 만드는 것은 원칙 3/27-7이 금지하는 OS 제어이므로 애초에 불가능하다). 누를 때마다
+        /// 배터리 -> CPU -> 네트워크 -> 충전 순으로 하나씩 순환하며, 스스로 짧게 걷힌다.
+        /// </summary>
+        private void ForceHardwareReaction(string source)
+        {
+            if (_hardwareDirector == null) _hardwareDirector = Object.FindFirstObjectByType<HardwareReactionDirector>();
+            if (_hardwareDirector == null)
+            {
+                Debug.LogWarning($"[앱제어] 하드웨어 반응({source}) — 씬에 HardwareReactionDirector가 없어 건너뜁니다.");
+                return;
+            }
+            _hardwareDirector.ForceTriggerNow($"앱제어 {source}");
+        }
+
         // ==================== 메뉴 UI ====================
 
         private void OpenMenu()
@@ -459,7 +541,7 @@ namespace StickMate.Interaction
             RefreshMenuLabels();
             UpdateMenuPlacement();
             Debug.Log("[앱제어] 캐릭터 우클릭 — 제어 메뉴를 열었습니다([앱 종료]/[잉크색]/[로데오]/[진단로그]/" +
-                "[말풍선]/[라이벌]/[격파 놀이]/[그라피티]/[닫기]).");
+                "[말풍선]/[라이벌]/[격파 놀이]/[그라피티]/[창 도둑]/[창 부수기]/[하드웨어 반응]/[닫기]).");
         }
 
         private void CloseMenu(string reason)
@@ -581,6 +663,9 @@ namespace StickMate.Interaction
             SetRowText(MenuAction.SpawnRival, "라이벌 소환");
             SetRowText(MenuAction.BattleMinigame, "격파 놀이 시작");
             SetRowText(MenuAction.Graffiti, "그라피티 그리기");
+            SetRowText(MenuAction.WindowTheft, "창 도둑 놀이");
+            SetRowText(MenuAction.WindowCrash, "창 부수기(가짜)");
+            SetRowText(MenuAction.HardwareReaction, "하드웨어 반응 미리보기");
             SetRowText(MenuAction.Close, "닫기");
         }
 
