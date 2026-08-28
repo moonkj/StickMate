@@ -65,6 +65,9 @@ namespace StickMate.Platform.MacOS
         [DllImport(OverlayPluginName)]
         private static extern int SM_IsMainWindowFound();
 
+        [DllImport(OverlayPluginName)]
+        private static extern double SM_GetMainWindowBackingScaleFactor();
+
         #region CoreGraphics / CoreFoundation P/Invoke 선언 (이 리전 밖으로 유출 금지)
 
         // 프레임워크 경로 직접 지정(dylib 캐시/서명 문제 없이 시스템 프레임워크를 안정적으로 로드하는
@@ -206,6 +209,31 @@ namespace StickMate.Platform.MacOS
                 _currentProcessId = self.Id;
                 _currentProcessName = self.ProcessName;
             }
+        }
+
+        /// <summary>
+        /// BUG-P1-R5-B3 조사 대응(Architect 실측 진단, 2026-08-28) — 이 클래스가 CoreGraphics로 읽는 실제
+        /// OS 창 좌표(AppKit "포인트" 단위)와 Unity `Screen.width`/`height`/`WorldToScreenPoint`(Retina
+        /// 화면에서는 실제 백킹 픽셀 단위, 포인트의 backingScaleFactor배)가 서로 다른 단위를 쓰는 문제를
+        /// 보정하기 위해, 네이티브 플러그인으로 실제 화면의 `backingScaleFactor`를 조회해
+        /// `Platform/ScreenCoordinateConverter.cs`가 기대하는 `StickConfig.desktopDpiScale`(그 필드
+        /// 문서의 "Unity 픽셀 -> OS 픽셀 배율" 정의 그대로) 값으로 환산해 반환한다. 배율은 역수(1/backing)
+        /// 다 — Unity 쪽이 OS(AppKit 포인트) 쪽보다 backingScaleFactor배 더 큰 숫자를 보고하므로, 그
+        /// 값을 곱해 OS 단위로 줄이려면 1/backingScaleFactor를 곱해야 한다(예: Retina 2x면 0.5).
+        /// 창을 못 찾거나 배율이 비정상(0 이하)이면 안전한 기본값 1(배율 없음)을 반환한다 — 조용히
+        /// 잘못된 배율을 적용하는 것보다, "보정 없음"으로 안전하게 폴백하는 편이 기존 컨벤션과 일치한다.
+        /// 호출자(StickmanAgent.CreatePlatformService())가 이 값을 `StickConfig.desktopDpiScale`에
+        /// 1회 적용한다 — 씬 에셋(ScriptableObject) 파일 자체를 수정하는 것이 아니라 실행 중인 빌드의
+        /// 메모리상 인스턴스 값만 갱신하므로, 다음 실행 때는 다시 이 메서드가 그 화면 기준으로 재계산한다.
+        /// </summary>
+        public float DetectDesktopDpiScale()
+        {
+            double backingScaleFactor = SM_GetMainWindowBackingScaleFactor();
+            if (backingScaleFactor <= 0.0)
+            {
+                return 1f;
+            }
+            return (float)(1.0 / backingScaleFactor);
         }
 
         /// <summary>

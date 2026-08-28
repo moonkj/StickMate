@@ -430,7 +430,21 @@ namespace StickMate.Core
             // 에디터 실행 시에도 MacWindowService(CoreGraphics P/Invoke)가 조용히 활성화되어 그 실측
             // 결과가 전부 달라진다 — 실제 macOS 앱 빌드(Player)에서만 MacWindowService를 쓰도록
             // `!UNITY_EDITOR`로 명시적으로 분리한다.
-            return new FallbackPlatformWindowService(new MacWindowService(), _config);
+            //
+            // BUG-P1-R5-B3 조사 대응(Architect 실측 진단, 2026-08-28) — Retina 화면에서 실제 OS 창
+            // 좌표(AppKit 포인트)와 Unity Screen.width/height(백킹 픽셀)가 서로 다른 단위를 쓰는 문제를
+            // 보정하기 위해, 이 서비스를 안전망으로 감싸기 전에 실제 화면의 backingScaleFactor를 조회해
+            // `_config.desktopDpiScale`에 1회 적용한다(MacWindowService.DetectDesktopDpiScale() 문서
+            // 참고). `_config`는 씬에 배선된 ScriptableObject 인스턴스를 그대로 참조하므로 이 대입은
+            // 그 자산 "파일"을 수정하는 게 아니라 이번 실행의 메모리상 값만 갱신한다 — 다음 실행 때는
+            // 다시 이 코드가 그 시점 화면 기준으로 재계산한다.
+            var macService = new MacWindowService();
+            if (_config != null)
+            {
+                _config.desktopDpiScale = macService.DetectDesktopDpiScale();
+                Debug.Log($"[StickmanAgent] macOS 실제 화면 배율 감지 — desktopDpiScale={_config.desktopDpiScale:F3}로 설정(1.0=비Retina, 0.5=Retina 2x).");
+            }
+            return new FallbackPlatformWindowService(macService, _config);
 #elif UNITY_IOS || UNITY_ANDROID
             // 모바일 발판/배경 설정 자체(SetBackdropScreenshot/AddUserDefinedFoothold)는 UX 온보딩
             // 흐름이 별도로 호출한다(docs/UX_FLOW.md 1-B/3절) — 여기서는 서비스 인스턴스만 만들어 배선한다.

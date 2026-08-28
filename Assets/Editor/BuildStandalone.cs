@@ -126,5 +126,40 @@ namespace StickMate.EditorTools
             Debug.Log("[BuildStandalone] " + PluginAssetPath + " PluginImporter 설정 완료 " +
                 "(StandaloneOSX 전용, 에디터 비활성, CPU=AnyCPU).");
         }
+
+        // BUG-P1-R5-B3 조사 기록(Architect 실측 진단 대응, 2026-08-28) — Architect가 "실제 Retina 화면
+        // (실측 1512x949 포인트 vs 3024x1898 백킹 픽셀)에서 낙하 고착/랙돌 폭주가 재발한다"고 지적하며
+        // `PlayerSettings.macRetinaSupport`(Unity가 Screen.width/height를 백킹 픽셀로 보고하게 하는
+        // 설정)를 의심할 만한 근거로 들었다. 먼저 `PlayerSettings.macRetinaSupport = false`로 꺼서
+        // Unity가 `Screen.width`/`height`를 AppKit과 같은 "포인트" 단위로 보고하게 만드는 방법을
+        // 시도했으나, **실측으로 확인한 결과 이 프로젝트의 Unity 6 Metal 렌더러에서는 이 설정이
+        // `Screen.width`/`height`에 전혀 영향을 주지 않았다**(빌드된 `Info.plist`에 `NSHighResolutionCapable`
+        // 키가 사라진 것은 확인했지만, 실행 중인 `.app`의 진단 로그는 이 값을 끈 뒤에도 여전히
+        // `screenWH=(3024x1898)`을 보고함 — `NSHighResolutionCapable`은 구형 OpenGL/Quartz 백킹스토어
+        // 협상용 힌트라서 Metal 기반 렌더러는 이를 무시하는 것으로 보인다). 그래서 이 접근은 폐기했다
+        // (해당 코드는 되돌림).
+        //
+        // 대신 실측(60초+ 실제 .app 실행, Player.log 임시 디버그)으로 확인한 진짜 원인은 픽셀/포인트
+        // 단위 불일치가 **아니라** `Platform/FallbackPlatformWindowService.cs`의 안전망 발판이 (1) 화면
+        // 하단 고정 40px에 있어 씬이 가정하는 지면 Y(화면 하단에서 위로 20%)와 어긋났고(BUG-P1-R5-B2로
+        // 수정), (2) 폭도 뷰포트 폭 그대로라 `NullPlatformWindowService`의 4배 넓힌 더미 발판과 달리
+        // `AutoWanderController`의 최대 Walk 이동거리보다 좁아 실제 배포 환경에서만 가장자리 이탈이
+        // 자주 발생했던 것이었다(BUG-P1-R5-B3, 아래 `FallbackPlatformWindowService.cs` 참고) — 둘 다
+        // `FallbackPlatformWindowService.cs`/`NullPlatformWindowService.cs` 안에서 완결되며,
+        // `Screen.width`/`height`가 물리 픽셀이든 포인트든 그 안전망 자신의 계산과 캐릭터 좌표 변환이
+        // "같은 Unity Screen.height/width 값"을 일관되게 재사용하기 때문에 자체적으로 상쇄되어 무관하다
+        // (`Platform/ScreenCoordinateConverter.cs`도 동일 값을 왕복 변환에 쓴다). 실측: 두 수정을 모두
+        // 적용한 뒤 macRetinaSupport는 원래대로(`true`, Retina 렌더링 유지) 둔 채로 138초+ 연속 실행 —
+        // `grounded=False`(낙하) 이벤트 0건.
+        //
+        // 남은 진짜 한계(정직하게 기록, 다음 라운드 참고): `StickConfig.desktopDpiScale`(기본값 1)은
+        // 실제 데스크톱의 다른 진짜 창(`CGWindowListCopyWindowInfo`가 보고하는, AppKit 포인트 단위)을
+        // 발판으로 인식하는 경로에는 여전히 보정되지 않은 채 남아 있다 — Retina Mac에서 Unity의
+        // 물리픽셀 기준 캐릭터 좌표와 실제 창의 포인트 기준 좌표가 어긋나, "캐릭터가 실제 다른 창 위에
+        // 정확히 올라서는" 핵심 기능 자체는 이 라운드에서 실측 검증되지 못했다(이 실행 환경에는 발밑에
+        // 밟을 다른 실제 창이 하나도 없어 안전망(위 수정)만 계속 쓰였음 — footholds=1 고정). 이번
+        // 라운드는 시간 관계상 "실제 창이 전혀 없어도 절대 낙하 고착되지 않는다"까지만 확정하고, 실제
+        // 창 위 정밀 착지의 DPI 보정(예: 네이티브 `NSWindow.backingScaleFactor` 조회로
+        // `desktopDpiScale` 자동 설정)은 다음 라운드 과제로 이월한다.
     }
 }

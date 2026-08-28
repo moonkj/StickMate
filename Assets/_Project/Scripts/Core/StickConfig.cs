@@ -538,5 +538,17 @@ namespace StickMate.Core
         [Header("색상 (임시 플레이스홀더 — 디자이너 확정 전까지)")]
         public Color primaryOutlineColor = Color.black;
         public Color dialogueBubbleColor = Color.white;
+
+        [Tooltip("Main Camera 배경 RGB(알파는 항상 0으로 별도 고정 — Editor/SceneBootstrapper.cs 참고)의 " +
+                 "방어적 폴백 색상. 사용자가 두 라운드 연속 '까만 화면에 이상하게 나온다'고 보고한 사고 " +
+                 "(2026-08-28, Architect 진단: StickMateOverlayPlugin.m의 진짜 투명 창 시도가 Unity " +
+                 "Standalone Mac Player 렌더 서페이스의 기본 불투명 합성 때문에 실패할 경우, 카메라가 " +
+                 "그리는 이 RGB가 그대로 불투명 단색 배경으로 보이게 된다)의 재발을 막기 위한 필드다. " +
+                 "진짜 창 투명화가 성공하면 알파=0 덕분에 이 RGB는 애초에 보이지 않고, 실패해도 검정이 " +
+                 "아닌 밝은 색이라 primaryOutlineColor(검정) 캐릭터 선이 항상 대비되어 보인다 — " +
+                 "'검정 위에 검정' 최악의 경우를 원천 차단하는 방어적 설계. 매직 넘버를 코드에 직접 두지 " +
+                 "않는다는 이 클래스 상단 컨벤션에 따라, 이전에 SceneBootstrapper.cs에 하드코딩돼 있던 " +
+                 "동일 목적의 값(0.85,0.85,0.85)을 이 필드로 승격했다.")]
+        public Color backgroundFallbackColor = new Color(0.94f, 0.94f, 0.94f);
     }
 }

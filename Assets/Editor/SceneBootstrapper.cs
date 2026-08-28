@@ -87,7 +87,19 @@ namespace StickMate.EditorTools
         private const int LineCapVertices = 4; // 선 끝/모서리를 살짝 둥글려 각진 느낌을 줄임(손그림 느낌).
         private const int HeadRingSegments = 24; // 머리 원 근사에 쓰는 선분 개수(24면 육안으로 매끈한 원).
         private const float HeadVisualRadius = 0.25f; // 머리 링의 시각 반경. 물리 CircleCollider2D.radius(0.4, 아래 참고)와는 별개 값 — 판정 크기는 무변경.
-        private const float EndMarkHalfWidth = 0.06f; // 손/발 표현용 짧은 가로선의 절반 폭(필수는 아니지만 졸라맨 느낌 강화).
+
+        // 손/발 끝 표현(BUG-P1-R5-B4, Architect 웹 레퍼런스 조사 기반 반려 수정, 2026-08-28) — 봉선화
+        // (棒線畵, "졸라맨") 표준 표현은 손/발을 "짧은 직각선(hook)"이 아니라 "작은 점(채워진 원)"으로
+        // 그린다. 예전 CreateEndMark()는 limb 끝에 짧은 가로선을 그려 몸통 선과 만나 T자/훅 모양이
+        // 됐는데, 이게 레퍼런스와 다르다는 지적을 받아 "속이 채워진 작은 원"으로 교체한다(아래
+        // CreateEndMark 참고). 채워진 원이지만 SpriteRenderer를 다시 들여오지 않고, 이번 라운드에서
+        // 확립한 "LineRenderer만 사용" 컨벤션을 유지한 채로 만든다 — 반지름보다 두꺼운 선 폭으로 아주
+        // 작은 원 경로를 그리면 링의 두께가 중심까지 겹쳐 채워진 원처럼 보인다(HeadRingSegments=24는
+        // 머리처럼 큰 "속이 빈" 원에 맞는 값이라 그대로 재사용하지 않고, 이 작은 "채워진" 점 전용으로
+        // 별도 세그먼트 수/반지름/선폭을 둔다).
+        private const float HandFootDotRadius = 0.04f; // Architect 지시 범위(0.03~0.05유닛)의 중간값.
+        private const int HandFootDotSegments = 8; // 이 크기(반지름 0.04)에서는 8각형도 육안상 원으로 보임 — 머리(24)만큼 세분화할 필요 없음.
+        private const float HandFootDotLineWidth = HandFootDotRadius * 2.4f; // 반지름의 2배(지름)보다 넉넉히 두꺼워야 링 안쪽까지 완전히 채워져 "속이 빈 원"이 아니라 "채워진 점"으로 보인다.
 
         // BUG-SW-M1(Architect 결정, 2026-08-28) — 표준 Active Ragdoll 레이어 기법: 몸통/머리/팔다리를
         // 전부 이 레이어에 몰아넣고, 이 레이어끼리의 충돌만 Physics2D 매트릭스에서 끈다(EnsureStickmanLimbLayer 참고).
@@ -124,7 +136,7 @@ namespace StickMate.EditorTools
         {
             StickConfig config = CreateOrLoadConfig(force);
             GameObject prefab = BuildStickmanPrefab(config, force);
-            BuildMainScene(prefab, force);
+            BuildMainScene(prefab, config, force);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log("[SceneBootstrapper] BuildAll 완료(force=" + force + ") — " + ConfigAssetPath + ", " + PrefabAssetPath + ", " + SceneAssetPath);
@@ -316,13 +328,13 @@ namespace StickMate.EditorTools
         /// </summary>
         public static void BuildMainScene(GameObject stickmanPrefab)
         {
-            BuildMainScene(stickmanPrefab, force: false);
+            BuildMainScene(stickmanPrefab, CreateOrLoadConfig(force: false), force: false);
         }
 
         /// <summary>force==false(기본값)면 Main.unity가 이미 존재할 때 건드리지 않고 건너뛴다(BUG-SW-M3
         /// 대응 — EditorSceneManager.NewScene(EmptyScene)로 항상 완전히 새로 만들던 이전 동작은 그
         /// 사이 씬에 수동으로 추가된 모든 내용을 경고 없이 파괴했다).</summary>
-        public static void BuildMainScene(GameObject stickmanPrefab, bool force)
+        public static void BuildMainScene(GameObject stickmanPrefab, StickConfig config, bool force)
         {
             var existingScene = AssetDatabase.LoadAssetAtPath<SceneAsset>(SceneAssetPath);
             if (existingScene != null && !force)
@@ -355,10 +367,20 @@ namespace StickMate.EditorTools
             // 완전 투명으로 바꾼다. Platform/MacOS/StickMateOverlayPlugin.m의 SM_ConfigureOverlayWindow가
             // 우리 자신의 NSWindow를 setOpaque:NO + backgroundColor=clearColor로 맞춰주는 쪽과 짝을 이루는
             // 절반 — 카메라가 알파 1로 그리면 창을 아무리 투명하게 만들어도 렌더 결과 자체가 불투명색으로
-            // 덮여 무의미하다. 정직한 한계(StickMateOverlayPlugin.m 문서 주석 참고): Unity Standalone Mac
-            // Player의 렌더 서페이스가 기본적으로 불투명 합성을 가정하고 있어, 이 알파값만으로 데스크톱
-            // 배경이 실제로 완전히 비쳐 보이는 것까지 100% 보장되지는 않는다 — 실측/외부 확인 필요.
-            cam.backgroundColor = new Color(0.85f, 0.85f, 0.85f, 0f);
+            // 덮여 무의미하다.
+            //
+            // 방어적 폴백(BUG-P1-R5-B1 대응, Architect 결정, 2026-08-28 — 사용자가 두 라운드 연속
+            // "까만 화면에 이상하게 나온다"고 보고): 진짜 투명 창(StickMateOverlayPlugin.m 참고, Unity
+            // Standalone Mac Player의 렌더 서페이스가 기본적으로 불투명 합성을 가정하고 있어 100% 보장
+            // 못 함)이 실패하면, 알파만 0으로 두고 RGB를 기본값(검정)으로 남겨둘 경우 렌더 결과가 불투명
+            // 검정 배경이 되어 캐릭터 선 색(config.primaryOutlineColor, 기본 검정)과 완전히 겹쳐 "검정 위에
+            // 검정"으로 아무것도 안 보이는 최악의 상황이 된다. RGB는 StickConfig.backgroundFallbackColor
+            // (기본 밝은 회색)로 설정해두면: 투명이 성공할 경우 알파=0이라 이 RGB는 애초에 안 보이고,
+            // 실패해도 밝은 배경 위에 검정 선 캐릭터가 확실히 대비되어 보인다 — 매직 넘버 하드코딩 금지
+            // 컨벤션(StickConfig.cs 클래스 문서)에 따라 이전 하드코딩 값(0.85,0.85,0.85)을 config 필드로
+            // 승격했다.
+            Color fallbackBg = config != null ? config.backgroundFallbackColor : new Color(0.94f, 0.94f, 0.94f);
+            cam.backgroundColor = new Color(fallbackBg.r, fallbackBg.g, fallbackBg.b, 0f);
             camGo.AddComponent<AudioListener>();
 
             // BUG-SW-M1 대응: RAGDOLL이 실제로 부딪혀 멈출 수 있는 정적 바닥. Rigidbody2D를 붙이지
@@ -526,8 +548,10 @@ namespace StickMate.EditorTools
             return go;
         }
 
-        /// <summary>손/발 표현용 짧은 가로선(필수는 아니지만 "졸라맨" 느낌 강화). parent(limb)의
-        /// 자식으로 둬 부모와 함께 물리로 이동/회전한다.</summary>
+        /// <summary>손/발 표현용 작은 채워진 점(봉선화 표준 표현, 클래스 상단 BUG-P1-R5-B4 문서 참고).
+        /// parent(limb)의 자식으로 둬 부모와 함께 물리로 이동/회전한다. 아주 작은 원형 경로를 그 반지름보다
+        /// 두꺼운 선으로 그려 "속이 빈 원"이 아니라 "채워진 점"처럼 보이게 한다(LineRenderer만 쓰는
+        /// 컨벤션 유지 — SpriteRenderer 재도입 없음).</summary>
         private static void CreateEndMark(Transform parent, Vector3 localAt, Color color, int sortingOrder)
         {
             var go = new GameObject("EndMark");
@@ -535,10 +559,15 @@ namespace StickMate.EditorTools
             go.transform.localPosition = localAt;
             go.transform.localScale = Vector3.one;
 
-            var lr = ConfigureLine(go, color, sortingOrder, loop: false);
-            lr.positionCount = 2;
-            lr.SetPosition(0, new Vector3(-EndMarkHalfWidth, 0f, 0f));
-            lr.SetPosition(1, new Vector3(EndMarkHalfWidth, 0f, 0f));
+            var lr = ConfigureLine(go, color, sortingOrder, loop: true);
+            lr.startWidth = HandFootDotLineWidth;
+            lr.endWidth = HandFootDotLineWidth;
+            lr.positionCount = HandFootDotSegments;
+            for (int i = 0; i < HandFootDotSegments; i++)
+            {
+                float angle = (i / (float)HandFootDotSegments) * Mathf.PI * 2f;
+                lr.SetPosition(i, new Vector3(Mathf.Cos(angle) * HandFootDotRadius, Mathf.Sin(angle) * HandFootDotRadius, 0f));
+            }
         }
 
         private static void CreateLimb(Transform hierarchyParent, Rigidbody2D connectedBody, string name,

@@ -522,3 +522,77 @@
 - **정직한 한계**: 이번 세션에도 Screen Recording 권한이 없어(기존에 문서화된 환경 제약과 동일) `kCGWindowListOptionOnScreenOnly` 필터로는 창이 조회되지 않았다(권한 없이는 On-screen 여부 자체를 WindowServer가 알려주지 않는 것으로 보임) — `kCGWindowListOptionAll`로는 정상적으로 창 메타데이터(bounds/layer)가 조회되어 창 자체는 확실히 존재/등록돼 있음을 확인했지만, 새 타이틀바 조정과 새 졸라맨 모양이 실제로 사용자 화면에 "정상적으로 보이는지"의 최종 육안 확인은 여전히 사용자 몫으로 남는다.
 
 **결론**: 캐릭터 시각을 사용자가 확정 선택한 "고전적 졸라맨"(가는 선 + 속이 빈 원) 스타일로 교체했고 물리 동작은 전혀 손대지 않았다. 오버레이 타이틀바는 신호등 버튼/구조를 보존하면서 타이틀 텍스트만 숨기는 보수적 조합으로 되돌렸다. 새 빌드가 PID 57301로 백그라운드 실행 중이다(`kill 57301`로 종료 가능). git commit은 하지 않음. Debugger/Architect/사용자 재확인 대상.
+
+## "까만 화면에 이상하게 나온다" 2연속 재발 대응 — 방어적 배경색 + 실측으로 찾은 진짜 이동불가 버그 수정 (Coder, 2026-08-28)
+
+**배경**: 사용자가 두 라운드 연속 "까만 화면에 제대로 움직이지도 않는다", "엄청 이상한데 졸라맨같지도 않다"고 보고. Architect 진단: (1) 진짜 투명 창이 실패하면 카메라 배경(당시 알파만 0, RGB는 기본 검정)이 불투명 검정으로 렌더링되어 검정 선 캐릭터와 겹쳐 안 보였을 가능성, (2) "제대로 움직이지 않는다"는 별도 재확인 필요. 이번 라운드는 진짜 투명 창은 포기하고 "확실히 보이는 졸라맨"을 최우선으로 확정한다.
+
+### 1) 방어적 배경색 — StickConfig.backgroundFallbackColor 신설
+
+- **`Assets/_Project/Scripts/Core/StickConfig.cs`**: `backgroundFallbackColor`(기본 `(0.94,0.94,0.94)`, 밝은 회색) 필드 신설. 매직 넘버를 코드에 직접 두지 않는다는 이 클래스 상단 컨벤션에 따라, 이전 라운드가 `Assets/Editor/SceneBootstrapper.cs`에 하드코딩해뒀던 동일 목적 값(`0.85,0.85,0.85`)을 config 필드로 승격.
+- **`Assets/Editor/SceneBootstrapper.cs`**: `BuildMainScene(GameObject, StickConfig, bool)`로 시그니처 변경(config 파라미터 추가, 인자 없는 오버로드는 `CreateOrLoadConfig(false)`로 자동 로드). 카메라 배경색을 `new Color(config.backgroundFallbackColor.r/g/b, 0f)`로 설정 — **알파는 항상 0 고정, RGB만 config에서 읽음**. 진짜 투명이 성공하면 알파=0이라 이 RGB는 안 보이고, 실패해서 불투명 렌더링되면 밝은 회색 배경이 되어 검정 선 캐릭터(`primaryOutlineColor`, 검정 유지)와 항상 대비된다 — "검정 위에 검정" 최악의 경우를 원천 차단.
+- `--force` 재생성 후 `DefaultStickConfig.asset`/`Main.unity` 실측 확인: `backgroundFallbackColor: {r: 0.94, g: 0.94, b: 0.94}`, 씬 카메라 `m_BackGroundColor: {r: 0.94, g: 0.94, b: 0.94, a: 0}` — 의도한 값 정확히 반영.
+
+### 2) StickMateOverlayPlugin.m — 투명 시도 보강 + 진단 로그(진짜 투명은 여전히 미해결, 다음 라운드 이월)
+
+- `StickMate_ApplyTransparencyRecursive()` 신설 — 기존에는 `contentView` 자신의 레이어만 비-불투명 시도했는데, 이제 그 서브뷰 트리 전체에 재귀 적용(Unity 렌더 서페이스가 별도 자식 뷰일 가능성 대비).
+- `StickMate_LogViewHierarchy()` 신설 — Screen Recording 권한이 없어 스크린샷 확인이 불가능한 이 환경에서, `SM_ConfigureOverlayWindow(transparent=1)` 호출 시 Player.log에 뷰 트리(클래스명/frame/layer)를 자동으로 남기도록 배선.
+- **실측 결과(중요한 진단 정보)**: 실제 `.app` 실행 로그에서 `contentView` 자신이 곧 `PlayerWindowView`(클래스명)이고 그 `layer`가 바로 `CAMetalLayer`임을 확인 — 서브뷰가 별도로 더 있는 구조가 아니라 **콘텐츠 뷰 자신이 실제 렌더 서페이스**였다. 즉 기존 코드의 `contentView.layer.opaque=NO` 시도가 원래도 "맞는 대상"을 건드리고 있었다는 뜻이지만, 그럼에도 진짜 데스크톱 투과 여부는 스크린샷 없이는 100% 확인 불가 — Unity가 매 프레임 이 `CAMetalLayer`의 `opaque`를 자체적으로 되돌릴 가능성은 엔진이 비공개라 배제할 수 없다. **Architect 결정대로 이번 라운드는 진짜 투명 실현을 포기하고 다음 라운드 과제로 명시 이월**(위 1번 방어적 배경색으로 최악의 경우만 방지).
+
+### 3) "제대로 움직이지 않는다" 재확인 — 실측으로 진짜 원인을 찾아 수정함 (BUG-P1-R5-B2)
+
+- LineRenderer가 물리 파츠를 못 따라가는 버그인지 코드 재검토: `ConfigureLine()`이 `useWorldSpace=false`로 올바르게 설정돼 있고, 팔다리 LineRenderer는 Rigidbody2D/HingeJoint2D를 가진 limb 오브젝트 자신에 직접 붙어 있어 물리 회전/이동을 자동으로 따라감 — **이 경로는 문제 없음을 코드로 재확인**.
+- `AutoWanderController`가 실제로 Idle/Walk를 오가며 `Rigidbody2D`를 움직이는지는 기존 PlayMode 스모크 테스트로 재확인(3/3 통과) — 하지만 **이 테스트는 에디터/배치모드 전용 `NullPlatformWindowService`(더미 발판)만 거친다**는 점이 이번에 결정적으로 중요했다.
+- 지시대로 임시 디버그 로그(`transform.position`/`MoveInputX`/상태/발판정보를 1초 간격으로 Player.log에 기록)를 `StickmanAgent.Update()`에 추가하고 **실제 Standalone `.app`을 직접 실행**해 확인한 결과, **PlayMode 테스트에서는 드러나지 않는 진짜 버그를 실측으로 발견**:
+  - 실제 `.app` 실행 중 `state=Fall footholds=1 grounded=False`가 30초 넘게 고정 — 캐릭터가 **영원히 FallState에 갇혀 좌우로 전혀 움직이지 않음**(`AutoWanderController`의 `MoveInputX`는 -1/0/1로 정상 오가고 있었지만 FallState는 그 값을 소비하지 않음).
+  - **근본 원인**: `FallbackPlatformWindowService`(macOS/Windows 실제 빌드가 실제 창을 하나도 못 찾을 때 쓰는 안전망 발판)가 예전에는 고정 픽셀 두께(40px)로 "화면의 진짜 맨 아래"에 안전망을 뒀는데, `Assets/Editor/SceneBootstrapper.cs`가 캐릭터 스폰/RAGDOLL 바닥 Y를 계산하는 기준은 `NullPlatformWindowService.DummyFootholdHeightFraction`(화면 하단에서 위로 20%)이다 — **두 값이 서로 다른 Y를 가정**하고 있었다. 에디터/배치모드 테스트는 전부 `NullPlatformWindowService`만 쓰므로(`!UNITY_EDITOR` 가드) 이 불일치가 지금까지 어떤 EditMode/PlayMode 테스트에도 걸리지 않고 숨어 있었다 — **진짜 `.app`을 실제로 실행해봐야만 드러나는 버그**였다.
+  - **수정**: `Assets/_Project/Scripts/Platform/FallbackPlatformWindowService.cs`의 안전망 발판 두께를 고정 40px 대신 `height * NullPlatformWindowService.DummyFootholdHeightFraction`으로 변경(단일 소스 공유 — `NullPlatformWindowService.cs`가 이미 "Editor/SceneBootstrapper.cs와 어긋나면 안 된다"고 명시한 원칙을 이 실제 플랫폼 안전망에도 동일 적용). 실제 창이 화면에 있으면 그 창이 먼저 매치되므로(안전망은 항상 리스트 끝에 추가) 정상 사용 시나리오는 영향 없음.
+  - **수정 후 재실행 실측**: `state=Idle→Walk→Idle→Walk` 정상 전이, `grounded=True`로 바뀌었고 `pos.x`가 실제로 `-0.50→-2.63→-4.77→-5.50`(Walk 구간)처럼 시간에 따라 뚜렷하게 이동함을 확인. 검증 후 임시 디버그 로그(필드+호출부)는 완전히 제거.
+
+### 실측 검증(최종)
+
+- **컴파일**: Unity 배치모드 — `error CS`/`warning CS` 매치 0건, exit code 0.
+- **EditMode**: `total="13" passed="13" failed="0"`(기준선 유지, `FallbackPlatformWindowService` 수정은 `NullPlatformWindowService` 경로에 영향 없음을 재확인).
+- **PlayMode**: `total="3" passed="3" failed="0"`(수정 전/후 양쪽 다 재확인 — 회귀 없음).
+- **Standalone 빌드**: `총 에러 0건, 총 경고 0건`, `Builds/macOS/StickMate.app` 재생성.
+- **실제 `.app` 실행**(임시 디버그 로그 제거 후 최종본) — PID **58671**, `Player.log`에 예외/에러 없음, 오버레이 플러그인 로그 정상 순서(`transparent=1` 즉시 → `alwaysOnTop` 즉시 → 5초 지연 후 `clickThrough=1`).
+
+### 사용자 확인 포인트(정확한 기대값)
+
+- **정상이라면 화면에 밝은 회색(`#F0F0F0` 근처) 배경 위에 검정 선으로 그려진 졸라맨(속이 빈 원 머리 + 가는 선 몸통/팔다리)이 보여야 한다** — 만약 여전히 완전히 까맣게 보인다면 이번 방어적 배경색 자체가 적용 안 된 것(빌드 미갱신 등)이므로 그건 별도 버그.
+- 캐릭터가 몇 초 간격으로 가만히 서 있다가(Idle) 좌우로 걷다가(Walk) 다시 멈추는 동작을 반복해야 정상 — 위 2)에서 확인했듯 실측으로 실제 좌우 이동을 재확인했다.
+- 진짜 데스크톱이 캐릭터 뒤로 비쳐 보이는지(완전 투명)는 이번 라운드에서 여전히 미해결/미검증 — 안 비치고 밝은 회색 배경이 보여도 "설계대로"이며 버그 아님(다음 라운드 과제로 명시 이월).
+
+**결론**: 배경 대비 문제는 config 기반 방어적 폴백으로 재발 방지 구조를 갖췄고, "제대로 움직이지 않는다"는 막연한 재확인이 아니라 **실제 `.app` 실행 실측으로 진짜 원인(FallbackPlatformWindowService 안전망 Y 불일치)을 찾아 수정**했다 — 이번 수정이 없었다면 사용자가 실제 데스크톱에서 앱을 켤 때(주변에 마침 캐릭터 스폰 높이와 맞는 실제 창이 없는 흔한 경우) 캐릭터가 계속 정지 화면처럼 보였을 것이다. 진짜 투명 창은 Architect 결정대로 다음 라운드 과제로 명시 이월. git commit은 하지 않음. Debugger/Architect/사용자 재확인 대상.
+
+## Architect 실측 지적 후속 대응 — Retina 낙하고착/랙돌 폭주 Blocker + 손발 표현 레퍼런스 반영 (Coder, 2026-08-28)
+
+**배경**: Architect가 사용자에게 보여준 임시 진단 빌드(PID 58459 추정)의 Player.log를 직접 읽고 두 가지를 지적: (1) 실제 Retina 화면(`1512x949` 포인트 vs `3024x1898` 백킹 픽셀)에서 한참 잘 걷다가(`t=30.1 state=Walk grounded=True`) 갑자기 `grounded=False`가 6초 넘게 지속되는(`t=31.2~37.3`) 낙하 고착이 재발했고, 이것이 뒤이은 격렬한 랙돌 폭주(2번째 스크린샷의 팔다리가 뒤엉킨 모습)로 이어졌을 것으로 추정 — Retina DPI 배율 미보정을 유력한 원인 가설로 제시. (2) 사용자가 "먼저 졸라맨 레퍼런스를 확인하고 다시 구현하라"고 지적, Architect가 웹 조사한 결과 손/발은 "짧은 직각선(hook)"이 아니라 "작은 점(채워진 원)"으로 그리는 게 표준(봉선화/棒線畵).
+
+### 1) 손/발 표현 — 채워진 작은 점으로 교체
+
+- **`Assets/Editor/SceneBootstrapper.cs`**: `CreateEndMark()`를 "짧은 가로선"에서 "작은 채워진 원"으로 교체. `HandFootDotRadius=0.04`(Architect 지시 범위 0.03~0.05의 중간값), `HandFootDotSegments=8`, `HandFootDotLineWidth=반지름×2.4`(반지름보다 두꺼운 선으로 작은 원 경로를 그려 "속이 빈 원"이 아니라 "채워진 점"처럼 보이게 함 — `SpriteRenderer`를 재도입하지 않고 이번 라운드에서 확립한 "LineRenderer만 사용" 컨벤션 유지). 더 이상 쓰지 않는 `EndMarkHalfWidth` 상수 제거.
+- 비율 재점검(사용자 요청 대응): 머리 지름(0.5)/전신 높이(1.85) ≈ 27%, 팔(0.5)<다리(0.6)<몸통(0.7) — 일반적인 단순 졸라맨 비율 범위 안에 있음을 산술로 확인, 별도 조정 불필요로 판단.
+- `--force` 재생성 후 프리팹 실측: `EndMark` 4개 전부 `m_Loop: 1`(닫힌 원), `widthCurve.value=0.096`(=0.04×2.4), 반지름 0.04 원주 8점 좌표 확인.
+
+### 2) Retina 낙하고착/랙돌 폭주 Blocker — 조사 결과 원인은 DPI가 아니라 안전망 발판의 "폭"이었음
+
+- **1차 가설 검증(폐기)**: `PlayerSettings.macRetinaSupport = false`로 꺼서 `Screen.width/height`를 AppKit과 같은 "포인트" 단위로 강제하는 방법을 먼저 시도했으나, **실측 결과 이 프로젝트의 Unity 6 Metal 렌더러에서는 이 설정이 `Screen.width/height`에 전혀 영향을 주지 않았다**(빌드 후 진단 로그로 `screenWH=(3024x1898)` 그대로 확인 — `NSHighResolutionCapable` Info.plist 키는 사라졌지만 Metal 백킹 레이어는 이를 무시하는 것으로 보임). 이 접근은 폐기하고 코드를 되돌렸다(정직하게 실패 기록).
+- **진짜 원인(실측)**: `Platform/FallbackPlatformWindowService.cs`의 안전망 발판이 **폭**을 `Screen.width` 그대로(뷰포트 폭 그대로, 절반폭 약 8유닛) 써왔는데, `AutoWanderController`의 한 Walk 페이즈 최대 이동거리(walkSpeed×wanderWalkDurationMax×지터, 기본값 기준 약 11.75유닛)가 이를 초과할 수 있다 — `NullPlatformWindowService`(에디터/배치모드 전용 더미 발판)는 정확히 이 문제 때문에 이미 `DummyFootholdWidthMultiplier`(4배)로 폭을 넓혀뒀지만, 그 넓히기가 실제 macOS/Windows 배포판이 쓰는 이 안전망에는 한 번도 이식되지 않았었다. 에디터 테스트는 4배 넓은 관찰 범위 덕에 이 가장자리에 거의 안 닿지만, 실제 배포판은 정상적인 배회만으로도 수십~백여 초 안에 가장자리에 닿을 수 있어 재현됐다(직전 라운드 BUG-P1-R5-B2로 "t=0부터 영원히 낙하 고착"은 이미 고쳤지만, 이 폭 문제는 "한참 잘 걷다가 나중에 재발"하는 별도 사례였다).
+- **수정**: `Platform/NullPlatformWindowService.cs`의 `DummyFootholdWidthMultiplier`를 `private`→`public`으로 승격(단일 소스 공유, `DummyFootholdHeightFraction`과 동일 원칙). `FallbackPlatformWindowService.GetFallbackFoothold()`가 이 배율로 안전망 폭도 화면 중심 기준 좌우 대칭으로 넓히도록 수정.
+- **남은 진짜 DPI 문제는 실제로 존재해서 추가로 고쳤음**: 안전망(합성 발판)은 폭/높이 계산이 전부 Unity 자신의 `Screen.width/height`를 일관되게 재사용해 물리픽셀/포인트 단위 차이가 자체 상쇄되지만, **실제 다른 OS 창**(`CGWindowListCopyWindowInfo`, 항상 AppKit 포인트 단위)을 발판으로 인식하는 경로는 이 상쇄 혜택이 없어 Retina Mac에서는 여전히 어긋난 상태였다(`StickConfig.desktopDpiScale` 기본값 1 그대로). 이를 제대로 고치기 위해:
+  - `Assets/Plugins/macOS/StickMateOverlayPlugin.m`에 `SM_GetMainWindowBackingScaleFactor()` 신설(`[window backingScaleFactor]` 반환, 창 못 찾으면 안전값 1.0).
+  - `Assets/_Project/Scripts/Platform/MacOS/MacWindowService.cs`에 `DetectDesktopDpiScale()` 신설(`1.0/backingScaleFactor` 반환).
+  - `Assets/_Project/Scripts/Core/StickmanAgent.cs`의 `CreatePlatformService()` macOS 분기가 `FallbackPlatformWindowService`로 감싸기 전에 이 값을 `_config.desktopDpiScale`에 1회 적용(씬 에셋 파일이 아니라 실행 중 메모리 인스턴스만 갱신).
+  - 실측: 이 Retina 환경에서 `desktopDpiScale=0.500`으로 정확히 감지됨(백킹배율 2.0의 역수, 이론값과 정확히 일치) — Player.log로 확인.
+  - **정직한 한계**: 이 DPI 자동감지 자체는 "값이 이론상 정확한 숫자로 계산됨"까지 실측했으나, 이 검증 환경에는 발밑에 밟을 실제 다른 OS 창이 하나도 없어서(항상 `footholds=1`, 안전망만 매치) "실제 다른 창 위에 정밀하게 올라서는" 종단 시나리오까지는 이번 라운드에서 실측하지 못했다 — 다음 라운드에서 실제 창이 있는 환경(예: Finder/Terminal 창을 화면에 띄운 채로) 재검증 권장.
+
+### 실측 검증(최종, 60초+ 요구사항 충족)
+
+- **컴파일**: Unity 배치모드 — `error CS`/`warning CS` 매치 0건.
+- **EditMode**: `total="13" passed="13" failed="0"`.
+- **PlayMode**: `total="3" passed="3" failed="0"`.
+- **Standalone 빌드**: `총 에러 0건, 총 경고 0건`.
+- **실제 `.app` 117초+ 연속 실행 실측**(임시 디버그 로그, 폭 넓히기+DPI 감지 적용 후): `grounded=False`(낙하) 이벤트 **0건**, 최고 속도 2.51(`walkSpeed` 기본값 2.5와 일치, 폭주 없음), `state` Idle 82회/Walk 35회로 정상 순환. 캐릭터가 `x=-31.61`까지 걸어간 뒤(이론적 안전망 경계 약 ±31.86과 정확히 근접) 자연스럽게 멈춰서는 것을 확인 — 폭 넓히기가 의도한 대로 실제 경계에서 정상적으로 정지/방향전환하는 것을 실측으로 확증. 검증 후 임시 디버그 로그 완전 제거, 최종 클린 빌드로 재확인(예외/에러 0건).
+
+**결론**: Architect가 지적한 낙하고착/랙돌 폭주 Blocker는 실측 조사 결과 최초 가설(Retina Screen.width/height 단위 불일치)이 원인이 아니라 안전망 발판의 폭이 실제 배포 환경에서만 좁았던 것이 원인이었음을 확인하고 수정했다(에디터 테스트로는 재현 불가능한 종류). 진짜 Retina DPI 보정도 별도로 필요해서 네이티브 API로 자동 감지하도록 구현했고, 안전망 자체는 이 보정 없이도 자체 상쇄로 안전했지만 향후 실제 창 인식 정확도를 위해 필요한 기반을 마련했다. 손/발 표현은 레퍼런스에 맞게 채워진 작은 점으로 교체했다. git commit은 하지 않음. Debugger/Architect/사용자 재확인 대상 — 특히 실제 다른 창이 있는 환경에서의 종단 검증을 다음 라운드에서 권장.

@@ -41,7 +41,20 @@ namespace StickMate.Platform
         // 넓혀버리는 부작용을 냈다(BUG-SW-M2). 카메라 크기는 건드리지 않고 이 더미 발판의 OS-px 폭만
         // 화면 폭의 배수로 독립적으로 넓혀 배회 관찰 범위 문제를 해결한다 — 이렇게 하면 px/world-unit
         // 스케일은 groundSnapTolerance 등이 가정하는 값 그대로 유지된다.
-        private const float DummyFootholdWidthMultiplier = 4f;
+        //
+        // public인 이유(BUG-P1-R5-B3 대응, Coder 실측 발견, 2026-08-28): 이 폭 넓히기는 원래 "에디터
+        // 테스트에서 배회 관찰 범위가 좁다"는 문제만 풀려고 만들었는데, 실제 Standalone .app을 60초+
+        // 실행해보니 `Platform/FallbackPlatformWindowService.cs`(macOS/Windows 실제 빌드가 실제 창을
+        // 하나도 못 찾을 때 쓰는 안전망 발판)는 이 폭 넓히기를 전혀 적용하지 않고 있어서, 실제 배포
+        // 환경의 "안전한 배회 범위"가 에디터 테스트보다 4배나 좁았다(뷰포트 폭 그대로, 절반폭 약
+        // 8유닛). `AutoWanderController`의 한 Walk 페이즈 최대 이동거리(walkSpeed×wanderWalkDurationMax×
+        // 지터, 기본값 기준 약 11.75유닛)가 이 좁은 절반폭을 초과할 수 있어, 에디터에서는 몇 시간을
+        // 돌려도 거의 안 걸리던 "발판 가장자리 이탈 후 영원히 낙하 고착" 경로가 실제 배포 환경에서는
+        // 수십 초 안에 실제로 재현됐다(제자리 점프가 하필 가장자리 근처에서 발동해 착지 시 발판 밖으로
+        // 벗어나는 경로로 추정). Editor/SceneBootstrapper.cs와 이 값을 단일 소스로 공유해야 어긋나지
+        // 않는다는 `DummyFootholdHeightFraction`과 동일한 원칙에 따라, 이제 이 폭 배율도
+        // FallbackPlatformWindowService.cs가 재사용할 수 있도록 public으로 승격한다.
+        public const float DummyFootholdWidthMultiplier = 4f;
 
         // BUG-P1-R4-B1 핫픽스(2026-08-28, Architect 진단 — 사용자가 GUI 에디터에서 Main.unity를 직접
         // Play시켜 육안으로 "화면 제일 상단에서 뭔가 걸려 잘려 보인다"고 보고, 캐릭터가 카메라 뷰포트

@@ -168,3 +168,4 @@ MonoBehaviour:
   runawaySnackStressRelief: 0.5
   primaryOutlineColor: {r: 0, g: 0, b: 0, a: 1}
   dialogueBubbleColor: {r: 1, g: 1, b: 1, a: 1}
+  backgroundFallbackColor: {r: 0.94, g: 0.94, b: 0.94, a: 1}

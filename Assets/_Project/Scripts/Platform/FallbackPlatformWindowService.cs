@@ -42,8 +42,6 @@ namespace StickMate.Platform
     /// </summary>
     public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService
     {
-        private const float FallbackFootholdHeight = 40f;
-
         private readonly IPlatformWindowService _inner;
         private readonly ICursorPositionService _innerCursor; // null이면 내부 서비스가 커서 조회를 지원하지 않음
         private readonly ILocalClickCaptureService _innerClickCapture; // null이면 내부 서비스가 부분적 클릭관통 해제를 지원하지 않음
@@ -90,9 +88,53 @@ namespace StickMate.Platform
             {
                 _cachedScreenWidth = width;
                 _cachedScreenHeight = height;
+
+                // BUG-P1-R5-B2 대응(Coder 발견/수정, 2026-08-28) — "바로 바탕화면에서 구동" 라운드가 처음
+                // 만든 실제 Standalone .app을 직접 실행해 Player.log에 캐릭터 위치를 초 단위로 남기는
+                // 임시 디버그 로그로 확인한 결과, 화면에 실제 OS 창이 하나도 안 보이는 흔한 상황(이번
+                // 검증 환경 포함)에서 캐릭터가 FallState에 영원히 갇혀(footholds=1이지만 grounded=False)
+                // 좌우로 전혀 움직이지 않는 것을 실측으로 재현했다.
+                //
+                // 근본 원인: 이 안전망 발판을 예전에는 고정 픽셀 두께(40f)로 "화면의 진짜 맨 아래"에
+                // 뒀는데, Editor/SceneBootstrapper.cs가 캐릭터 스폰/RAGDOLL 안전 바닥 Y를 계산할 때
+                // 기준으로 삼는 값은 그게 아니라 NullPlatformWindowService.DummyFootholdHeightFraction
+                // (화면 하단에서 위로 20%)이다 — 즉 이 안전망(예전: 화면 맨 아래 40px)과 씬이 실제로
+                // 캐릭터를 놓는 높이(화면 하단에서 위로 20% 지점)가 서로 다른 Y를 가정하고 있었다.
+                // 에디터/배치모드 테스트는 전부 NullPlatformWindowService만 쓰므로(!UNITY_EDITOR 가드,
+                // 위 클래스 문서 참고) 이 불일치가 지금까지 어떤 EditMode/PlayMode 테스트에도 걸리지
+                // 않고 숨어 있었다 — 실제 macOS Standalone 빌드를 실제로 실행해봐야만(에디터가 아닌
+                // 진짜 .app) 드러나는 종류의 버그였다.
+                //
+                // 수정: 이 안전망의 두께도 NullPlatformWindowService.DummyFootholdHeightFraction과
+                // 정확히 같은 비율로 맞춘다(그 클래스가 이미 "Editor/SceneBootstrapper.cs와 단일 소스로
+                // 공유해야 어긋나지 않는다"고 명시한 것과 동일한 원칙을 이 실제 플랫폼 안전망에도 적용).
+                // 이러면 화면에 실제 창이 하나도 안 보이는 상황에서도, 이 안전망의 논리적 발판 Y가
+                // 씬의 물리적 RAGDOLL 안전 바닥/캐릭터 스폰 Y와 정확히 일치해 캐릭터가 정상적으로
+                // Grounded==true를 얻고 Idle/Walk를 오갈 수 있다. 실제 OS 창이 보이면(정상적인 사용
+                // 시나리오) 그 창이 먼저 매치되므로(EnumerateFootholds()가 항상 안전망을 "끝에" 추가하는
+                // 정책, 위 클래스 문서 참고) 이 변경은 그 경우에 아무 영향이 없다.
+                float thickness = height * NullPlatformWindowService.DummyFootholdHeightFraction;
+
+                // BUG-P1-R5-B3 대응(Coder 실측 발견, 2026-08-28) — 위 BUG-P1-R5-B2로 "낙하 고착이 t=0부터
+                // 영원히 지속"되는 문제는 해소됐지만, 실제 Standalone .app을 60초 이상 계속 관찰해보니
+                // (Architect 지시로 재검증) 한참 걸어다니다 이 안전망 발판의 가장자리 밖으로 나가면서
+                // 다시 낙하 고착에 빠지는(수십 초 뒤 재발) 별도 사례를 발견했다. 원인: 이 안전망은 지금까지
+                // 폭을 `Screen.width` 그대로(=카메라 뷰포트 폭 그대로) 써왔는데, 그 절반폭(예:
+                // orthographicSize=5, 16:10 화면 기준 약 8유닛)은 `AutoWanderController`의 한 Walk 페이즈
+                // 최대 이동거리(walkSpeed×wanderWalkDurationMax×지터, 기본값 기준 약 11.75유닛)보다 좁다
+                // — `NullPlatformWindowService`(에디터/배치모드 전용)의 더미 발판은 정확히 이 문제 때문에
+                // 이미 `DummyFootholdWidthMultiplier`(4배)로 폭을 넓혀뒀는데, 그 넓히기가 실제 macOS/
+                // Windows 배포 환경이 쓰는 이 안전망에는 한 번도 이식되지 않았었다 — 그래서 에디터
+                // 테스트는 이 가장자리에 거의 닿지 않지만(4배 넓은 관찰 범위), 실제 배포판은 정상적인
+                // 배회만으로도 수십 초 안에 가장자리에 닿을 수 있었다. 수정: 동일한 배율을 여기도 적용해
+                // 화면 중심(world x=0)을 기준으로 좌우 대칭으로 폭을 넓힌다 — `NullPlatformWindowService`
+                // 생성자의 동일 계산식을 그대로 재사용(단일 소스 공유, 어긋남 재발 방지).
+                float widenedWidth = width * NullPlatformWindowService.DummyFootholdWidthMultiplier;
+                float widenedX = (width - widenedWidth) / 2f;
+
                 // y = height - 두께: ScreenCoordinateConverter와 동일한 좌상단원점/y하향증가 좌표계에서
-                // "화면 진짜 하단 근처"를 뜻한다(위 클래스 주석의 핫픽스 설명 참고).
-                var rect = new Rect(0f, height - FallbackFootholdHeight, width, FallbackFootholdHeight);
+                // "화면 진짜 하단에서 위로 두께만큼"을 뜻한다(위 클래스 주석의 핫픽스 설명 참고).
+                var rect = new Rect(widenedX, height - thickness, widenedWidth, thickness);
                 _fallbackFoothold = new PlatformFoothold(handle: -1L, screenRect: rect, isTopmost: true);
             }
             return _fallbackFoothold;
