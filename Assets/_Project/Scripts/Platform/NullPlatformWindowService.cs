@@ -42,6 +42,19 @@ namespace StickMate.Platform
         // 화면 폭의 배수로 독립적으로 넓혀 배회 관찰 범위 문제를 해결한다 — 이렇게 하면 px/world-unit
         // 스케일은 groundSnapTolerance 등이 가정하는 값 그대로 유지된다.
         //
+        // ★ 2026-08-28 되돌림(리더 지시, 사용자 피드백 "캐릭터가 화면 벗어나서 잘 안 보임"):
+        // 배율을 4 -> 1(=화면 폭과 정확히 일치)로 되돌린다. 아래 두 문단은 이 배율이 왜 4였는지에 대한
+        // 이력이며, 그 이유는 이미 사라졌다:
+        //   - 4배로 넓힌 목적은 "자율 배회 AI가 관찰 구간 안에 발판 끝에 닿아 Fall로 떨어져 고착된다"는
+        //     문제의 우회였는데, 그 진짜 원인(발판이 하나도 없거나 경계를 벗어났을 때의 낙하 고착)은
+        //     FallbackPlatformWindowService가 항상 안전망 발판을 제공하도록 고치면서 해결됐다.
+        //   - 남은 것은 부작용뿐이었다: 발판이 화면보다 4배 넓으니 AutoWanderController의 경계 판정
+        //     (경계 도달 시 정지 후 방향 전환)이 **화면 밖 한참 먼 곳**에서야 걸려, 캐릭터가 화면
+        //     바깥으로 걸어나가 보이지 않는 시간이 길었다(사용자 신고 증상 그 자체).
+        // 배율 1이면 그 경계 판정이 곧 화면 가장자리 판정이 되어 캐릭터가 항상 화면 안에 머문다.
+        // 또한 AutoWanderController는 이 경계가 "화면 자체의 끝"일 때(isTrueScreenEdge) 점프 시도
+        // 확률을 0으로 두므로, 가장자리에서 점프로 발판 밖에 착지하는 경로도 열리지 않는다.
+        //
         // public인 이유(BUG-P1-R5-B3 대응, Coder 실측 발견, 2026-08-28): 이 폭 넓히기는 원래 "에디터
         // 테스트에서 배회 관찰 범위가 좁다"는 문제만 풀려고 만들었는데, 실제 Standalone .app을 60초+
         // 실행해보니 `Platform/FallbackPlatformWindowService.cs`(macOS/Windows 실제 빌드가 실제 창을
@@ -54,7 +67,7 @@ namespace StickMate.Platform
         // 벗어나는 경로로 추정). Editor/SceneBootstrapper.cs와 이 값을 단일 소스로 공유해야 어긋나지
         // 않는다는 `DummyFootholdHeightFraction`과 동일한 원칙에 따라, 이제 이 폭 배율도
         // FallbackPlatformWindowService.cs가 재사용할 수 있도록 public으로 승격한다.
-        public const float DummyFootholdWidthMultiplier = 4f;
+        public const float DummyFootholdWidthMultiplier = 1f;
 
         // BUG-P1-R4-B1 핫픽스(2026-08-28, Architect 진단 — 사용자가 GUI 에디터에서 Main.unity를 직접
         // Play시켜 육안으로 "화면 제일 상단에서 뭔가 걸려 잘려 보인다"고 보고, 캐릭터가 카메라 뷰포트

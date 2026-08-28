@@ -74,21 +74,54 @@ namespace StickMate.States
         /// <summary>팔꿈치가 접히는 방향(앞쪽). 무릎과 반대다.</summary>
         private const float ElbowBendSign = 1f;
 
-        /// <summary>
-        /// 보행 사이클에서 무릎 굽힘이 최대가 되는 위상 오프셋(라디안). 다리를 앞으로 스윙해 발을
-        /// 들어올릴 때 접히고 딛고 있을 때 펴지는 타이밍을 만든다.
-        /// </summary>
-        private const float KneeBendPhaseOffset = Mathf.PI * 0.5f;
+        // ─────────────────────────────────────────────────────────────────────────────────────
+        // 명시적 키프레임 보행 사이클 (2026-08-28 리더 결정 — 사인파 방식 폐기)
+        // ─────────────────────────────────────────────────────────────────────────────────────
+        // 왜 사인파를 버렸는가: 여러 라운드 동안 사용자가 계속 "움직임이 어색하다"고 지적했고, 원인은
+        // 튜닝이 아니라 곡선의 형태 자체였다. **실제 사람의 걷기는 사인파가 아니다.**
+        //   (1) 걷기는 "디딤(stance)"과 "흔듦(swing)" 두 국면이 비대칭인데 사인파는 완벽히 대칭이다.
+        //   (2) 무릎은 스윙 중에 크게(45~50도) 접혔다가 착지 직전에 펴지는데, 사인파로는 이 타이밍이
+        //       절대 나오지 않는다 — 사인파는 최대 굽힘이 항상 사이클의 고정된 대칭 지점에 온다.
+        //   (3) 사용자가 제시한 레퍼런스(Alan Becker 계열)는 애니메이터가 포즈를 하나하나 잡은
+        //       키프레임 애니메이션이다.
+        // 그래서 8개 키포즈를 표로 정의하고 그 사이를 보간하는 고전적 방식으로 교체했다. 아래 각도는
+        // 리더가 지정한 값 그대로다.
+        //
+        // 부호 규약(리더 지정): 엉덩이(대퇴)는 +가 **앞쪽(진행 방향)**, 무릎은 +가 **뒤로 접힘**
+        // (사람 무릎이 접히는 방향, 절대 음수가 되면 안 됨). 이 표의 값을 실제 Z 회전으로 옮길 때
+        // 무릎에는 KneeBendSign(-1)을, 팔꿈치에는 ElbowBendSign(+1)을 곱한다.
+        //
+        // 이 표를 StickConfig가 아니라 여기 상수로 두는 이유: 이건 튜닝 스칼라가 아니라 "애니메이션
+        // 에셋"에 가까운 16개 값의 묶음이고, 서로 정합성(디딤/흔듦 국면 구분)을 가져야 의미가 있다.
+        // 개별 값을 따로 만지면 보행이 깨지므로 표 전체를 하나의 단위로 다룬다.
 
-        /// <summary>팔꿈치 굽힘 변동의 위상 오프셋(라디안). 무릎과 같은 성격.</summary>
-        private const float ElbowBendPhaseOffset = Mathf.PI * 0.5f;
+        /// <summary>왼다리 기준 8키 엉덩이 각도(도, + = 앞). 오른다리는 위상 0.5 오프셋.</summary>
+        private static readonly float[] LegHipKeys = { 25f, 12f, 0f, -15f, -25f, -12f, 0f, 15f };
+
+        /// <summary>왼다리 기준 8키 무릎 굽힘(도, 항상 0 이상 = 뒤로 접힘). 스윙 국면(t=0.625~0.75)에서
+        /// 45~50도로 크게 접히고 디딤 국면(t=0~0.375)에서는 5~20도로 거의 펴진다 — 이 **비대칭**이
+        /// 자연스러움의 핵심이다.</summary>
+        private static readonly float[] LegKneeKeys = { 5f, 20f, 5f, 5f, 10f, 45f, 50f, 25f };
+
+        /// <summary>4키 어깨 각도(도, + = 앞). 팔은 같은 쪽 다리와 반대 위상(t+0.5)으로 샘플링한다.</summary>
+        private static readonly float[] ArmShoulderKeys = { 18f, 0f, -18f, 0f };
+
+        /// <summary>4키 팔꿈치 굽힘(도). 항상 15~25도로 굽어 있어 절대 완전히 펴지지 않는다.</summary>
+        private static readonly float[] ArmElbowKeys = { 15f, 20f, 25f, 20f };
 
         /// <summary>
-        /// Walk 중 팔이 유지하는 최소 벌림(중립 팔 각도 대비 비율). 0이면 사인파가 0을 지나는 순간 팔이
-        /// 몸통 선과 완전히 겹쳐 사라져 보인다(사용자 "팔이 아예 안 보인다"와 같은 종류의 문제) —
-        /// 걷는 동안에도 항상 이만큼은 바깥으로 벌린 채 앞뒤로 흔든다.
+        /// 8키 몸통 상하 바운스(정규화 -1~+1, 진폭은 StickConfig.walkBounceAmplitude가 곱한다).
+        /// 리더 지정: Passing(t=0.25/0.75)에서 가장 높고 Down(t=0.125/0.625)에서 가장 낮다 —
+        /// 사이클당 2번 오르내린다.
         /// </summary>
-        private const float ArmWalkBaseRatio = 0.45f;
+        private static readonly float[] BounceKeys = { -0.3f, -1f, 1f, 0.3f, -0.3f, -1f, 1f, 0.3f };
+
+        /// <summary>팔은 같은 쪽 다리와 반대 위상 — 다리 위상에 이만큼 더해서 팔 키를 샘플링한다.</summary>
+        private const float ArmPhaseOffset = 0.5f;
+
+        /// <summary>실제 이동 속도를 평균 내는 측정 창(초). 물리 고정 스텝(50Hz) 5회분이라 렌더 프레임
+        /// 단위의 톱니가 확실히 상쇄되면서도, 속도 변화에 대한 반응이 눈에 띄게 늦어지지 않는다.</summary>
+        private const float SpeedWindowSeconds = 0.1f;
 
         /// <summary>
         /// 팔의 보간 계수를 다리 대비 얼마로 낮출지(follow-through). 사지가 전부 같은 타이밍에 딱딱
@@ -110,6 +143,7 @@ namespace StickMate.States
             public bool FollowsBodyOffset; // 루트 직속(위 마디)만 true — 몸 바운스 오프셋을 여기에 더한다.
             public float CurrentAngle;     // 지수 감쇠 보간의 상태값 = 지금 실제로 적용돼 있는 각도(도).
             public float GetupStartAngle;  // GETUP 보간 시작각(널브러진 실제 각도) 캡처값.
+            public float Length;           // 이 마디의 길이(월드 유닛) — 보폭 계산/발끝 좌표 산출용.
         }
 
         /// <summary>팔 또는 다리 하나 = 위 마디 + 아래 마디.</summary>
@@ -118,7 +152,7 @@ namespace StickMate.States
             public Segment Upper;
             public Segment Lower;
             public float NeutralSign;  // 바깥쪽 방향 부호(왼쪽 -1 / 오른쪽 +1).
-            public float PhaseOffset;  // 보행 사이클 위상(라디안). 왼다리 0, 오른다리 π, 팔은 같은 쪽 다리의 반대.
+            public float PhaseOffset;  // 보행 사이클 위상(0~1). 왼다리 0, 오른다리 0.5. 팔은 ArmPhaseOffset을 더 더한다.
             public bool IsLeg;
         }
 
@@ -129,9 +163,31 @@ namespace StickMate.States
         private readonly Limb[] _limbs;
         private readonly Segment[] _segments;
 
-        // Walk 사인파의 누적 위상(라디안). 시간×주파수가 아니라 **위상을 적분**한다: 걷는 속도가 바뀌면
-        // 주파수가 바뀌는데, 시간에 주파수를 곱하는 방식은 그 순간 위상이 통째로 점프해 다리가 툭 튄다.
-        private float _phase;
+        // 보행 사이클의 누적 위상(0~1, 1이 한 사이클). 시간×주파수가 아니라 **위상을 적분**한다: 걷는
+        // 속도가 바뀌면 주파수가 바뀌는데, 시간에 주파수를 곱하는 방식은 그 순간 위상이 통째로 점프해
+        // 다리가 툭 튄다.
+        private float _phase01;
+
+        /// <summary>
+        /// 한 보행 사이클당 몸이 실제로 전진해야 하는 거리(월드 유닛). 키프레임 표의 디딤 국면
+        /// (t=0 Contact -> t=0.5 Toe-off)에서 발이 몸 기준으로 앞에서 뒤로 이동하는 거리(= 한 걸음)를
+        /// 다리 길이와 각도로부터 계산하고, 한 사이클에 양다리가 한 걸음씩 딛으므로 2배 한다.
+        ///
+        /// **왜 이게 중요한가(발 미끄러짐)**: 예전에는 StickConfig의 임의 계수
+        /// (walkCycleFrequencyPerSpeed)를 속도에 곱해 주파수를 냈는데, 그 값이 실제 보폭과 무관해서
+        /// 디딤발이 바닥에서 미끄러졌다(문워크). 이제는 주파수를 **실제 이동 속도에서 역산**한다:
+        ///     사이클 주파수(Hz) = 수평 이동 속도 / 이 거리
+        /// 이러면 발이 지면에 붙어 있는 것처럼 보인다. 다리 길이나 키프레임 각도를 바꿔도 자동으로
+        /// 다시 맞는다(하드코딩된 계수가 하나도 없다).
+        ///
+        /// 매 Walk 틱마다 다시 계산한다(sin 4번) — StickConfig.walkPoseAmplitudeScale로 포즈 진폭을
+        /// 바꾸면 보폭도 함께 바뀌어야 발이 계속 붙어 있기 때문이다. 마지막 값은 실측 로그용으로 남긴다.
+        /// </summary>
+        private float _distancePerCycle;
+
+        // 다리 마디 길이 캐시(월드 유닛) — 보폭 계산 입력. 프리팹 지오메트리에서 1회만 읽는다.
+        private readonly float _legUpperLength;
+        private readonly float _legLowerLength;
 
         // 보행 주파수 산출에 쓰는 수평 속도의 스무딩 값 — 속도가 급변해도 주파수가 튀지 않게 한다.
         private float _smoothedSpeed;
@@ -158,6 +214,15 @@ namespace StickMate.States
         // 함께 뒤집는다.
         private float _facingSign = 1f;
 
+        // 루트(물리 몸통) Transform — 보행 사이클 주파수 산출에 쓰는 **실제** 수평 이동량 측정용.
+        // 이 클래스는 루트를 절대 움직이지 않는다(읽기 전용 사용).
+        private readonly Transform _root;
+        private float _prevRootX;
+        private bool _hasPrevRootX;
+        private float _speedWindowDistance; // 측정 창에 누적된 이동 거리(월드 유닛).
+        private float _speedWindowTime;     // 측정 창에 누적된 시간(초).
+        private float _measuredSpeed;       // 마지막으로 확정된 측정 속도(유닛/초).
+
         // 몸통/머리 시각 오브젝트와 그 중립 로컬 위치(상하 오프셋의 기준점).
         private readonly Transform _torso;
         private readonly Transform _head;
@@ -175,13 +240,15 @@ namespace StickMate.States
                 return;
             }
 
+            _root = root;
             Transform[] all = root.GetComponentsInChildren<Transform>(true);
 
             _leftLeg = BuildLimb(all, "LeftLeg", sign: -1f, phase: 0f, isLeg: true);
-            _rightLeg = BuildLimb(all, "RightLeg", sign: 1f, phase: Mathf.PI, isLeg: true);
-            // 팔은 같은 쪽 다리와 반대 위상(실제 보행에서 왼팔은 왼다리와 반대로 나간다).
-            _leftArm = BuildLimb(all, "LeftArm", sign: -1f, phase: Mathf.PI, isLeg: false);
-            _rightArm = BuildLimb(all, "RightArm", sign: 1f, phase: 0f, isLeg: false);
+            _rightLeg = BuildLimb(all, "RightLeg", sign: 1f, phase: 0.5f, isLeg: true);
+            // 팔의 PhaseOffset은 "같은 쪽 다리"와 같게 두고, 다리와의 반대 위상은 샘플링 시점에
+            // ArmPhaseOffset(0.5)을 더해 만든다 — 왼팔은 왼다리의 반대로 나간다.
+            _leftArm = BuildLimb(all, "LeftArm", sign: -1f, phase: 0f, isLeg: false);
+            _rightArm = BuildLimb(all, "RightArm", sign: 1f, phase: 0.5f, isLeg: false);
 
             var limbs = new System.Collections.Generic.List<Limb>(4);
             var segments = new System.Collections.Generic.List<Segment>(8);
@@ -201,6 +268,38 @@ namespace StickMate.States
             }
             if (_torso != null) _torsoNeutral = _torso.localPosition;
             if (_head != null) _headNeutral = _head.localPosition;
+
+            Limb refLeg = _leftLeg ?? _rightLeg;
+            if (refLeg != null)
+            {
+                _legUpperLength = refLeg.Upper != null ? refLeg.Upper.Length : 0f;
+                _legLowerLength = refLeg.Lower != null ? refLeg.Lower.Length : 0f;
+            }
+            _distancePerCycle = ComputeDistancePerCycle(1f);
+        }
+
+        /// <summary>보폭(한 걸음) × 2 = 한 사이클 이동 거리. <see cref="_distancePerCycle"/> 문서 참고.</summary>
+        private float ComputeDistancePerCycle(float amplitudeScale)
+        {
+            if (_legUpperLength <= 0f || _legLowerLength <= 0f) return 0f;
+
+            // 디딤 국면의 시작(Contact, 키 0)과 끝(Toe-off, 키 4)에서의 발끝 수평 위치 차이 = 한 걸음.
+            // 진폭 배율을 곱한 **실제로 적용되는 각도**로 계산해야 보폭과 애니메이션이 어긋나지 않는다.
+            float contact = FootHorizontalOffset(LegHipKeys[0] * amplitudeScale, LegKneeKeys[0] * amplitudeScale,
+                _legUpperLength, _legLowerLength);
+            float toeOff = FootHorizontalOffset(LegHipKeys[4] * amplitudeScale, LegKneeKeys[4] * amplitudeScale,
+                _legUpperLength, _legLowerLength);
+            return Mathf.Abs(contact - toeOff) * 2f;
+        }
+
+        /// <summary>
+        /// 엉덩이 각도와 무릎 굽힘이 주어졌을 때 발끝이 엉덩이로부터 얼마나 앞(+)/뒤(-)에 있는지.
+        /// 정강이의 절대 각도는 (엉덩이각 - 무릎굽힘) — 무릎이 뒤로 접히면 그만큼 앞쪽 각도가 줄어든다.
+        /// </summary>
+        private static float FootHorizontalOffset(float hipDegrees, float kneeDegrees, float upper, float lower)
+        {
+            return upper * Mathf.Sin(hipDegrees * Mathf.Deg2Rad)
+                 + lower * Mathf.Sin((hipDegrees - kneeDegrees) * Mathf.Deg2Rad);
         }
 
         private static void AddLimb(System.Collections.Generic.List<Limb> limbs,
@@ -247,6 +346,7 @@ namespace StickMate.States
         private static Segment BuildSegment(Transform t, bool followsBodyOffset)
         {
             var joint = t.GetComponent<HingeJoint2D>();
+            var box = t.GetComponent<BoxCollider2D>();
             return new Segment
             {
                 Transform = t,
@@ -255,6 +355,9 @@ namespace StickMate.States
                 PivotLocal = joint != null ? joint.connectedAnchor : (Vector2)t.localPosition,
                 AnchorLocal = joint != null ? joint.anchor : Vector2.zero,
                 FollowsBodyOffset = followsBodyOffset,
+                // 마디 길이는 BoxCollider2D.size.y와 정확히 같게 만들어져 있다
+                // (Editor/SceneBootstrapper.CreateLimbSegment) — 하드코딩 대신 그 값을 읽는다.
+                Length = box != null ? box.size.y : 0f,
             };
         }
 
@@ -274,8 +377,12 @@ namespace StickMate.States
         /// <summary>Walk 진입 시 위상/속도 리셋 — 매번 같은 자세(중립)에서 걷기 사이클을 시작한다.</summary>
         public void ResetWalkPhase()
         {
-            _phase = 0f;
-            _smoothedSpeed = 0f; // 0에서 시작해 실제 속도로 차오르며 보폭 주파수가 자연스럽게 올라간다.
+            _phase01 = 0f;
+            _smoothedSpeed = -1f;  // 미초기화 표식 — 첫 틱에서 실제 속도로 즉시 채운다(TickWalkPose 참고).
+            _hasPrevRootX = false; // 이전 위치가 없으면 첫 틱은 호출부가 넘긴 명령 속도를 쓴다.
+            _speedWindowDistance = 0f;
+            _speedWindowTime = 0f;
+            _measuredSpeed = -1f;
         }
 
         /// <summary>
@@ -326,9 +433,17 @@ namespace StickMate.States
         }
 
         /// <summary>
-        /// Walk 포즈 — 엉덩이/어깨는 위상차 180도의 사인파로 앞뒤로 흔들고, 무릎/팔꿈치는 항상 한 방향
-        /// (사람 관절과 같게)으로만 접힌다. 무릎은 다리를 앞으로 스윙해 발을 들어올릴 때 접히고 딛고
-        /// 있을 때 펴진다. 팔꿈치는 상시 기본 굽힘 위에 약간의 변동만 얹는다.
+        /// Walk 포즈 — 8개 키포즈 표(<see cref="LegHipKeys"/> 등)를 Catmull-Rom 스플라인으로 보간해
+        /// 만든다. 선형 보간을 쓰지 않는 이유는 키포즈마다 각도의 기울기가 꺾여 딱딱해 보이기 때문이고,
+        /// SmoothStep을 쓰지 않는 이유는 매 키포즈에서 속도가 0이 되어 "찍고 멈추는" 느낌이 나기
+        /// 때문이다 — Catmull-Rom은 키를 정확히 지나면서 속도가 연속이라 이 용도에 맞다.
+        ///
+        /// 주파수는 임의 계수가 아니라 **실제 이동 속도에서 역산**한다(<see cref="_distancePerCycle"/>
+        /// 문서 참고) — 이게 디딤발이 바닥에서 미끄러지는 문워크를 막는 핵심이다.
+        ///
+        /// amplitudeScale(StickConfig.walkPoseAmplitudeScale)은 표의 모든 관절 각도에 곱해지는 전체
+        /// 진폭 배율이고, strideScale(StickConfig.walkStrideScale)은 계산된 사이클 이동 거리에 곱하는
+        /// 보정 계수다. 진폭을 바꾸면 보폭도 같이 다시 계산되므로 어느 배율에서도 발이 붙어 있다.
         ///
         /// 부드러움 장치: (1) 위상을 적분해 속도 변화에 위상이 점프하지 않게 하고, (2) 주파수 입력이 되는
         /// 수평 속도 자체를 스무딩하며, (3) 최종 각도를 지수 감쇠로 추종하고, (4) 팔은 다리보다, 아래
@@ -336,44 +451,116 @@ namespace StickMate.States
         /// 프레임레이트 독립이다.
         /// </summary>
         public void TickWalkPose(float deltaTime, float horizontalSpeedAbs, in PoseSettings settings,
-            float frequencyPerSpeed, float legSwingDegrees, float armSwingRatio,
-            float smoothingRate, float speedSmoothingRate, float bounceAmplitude)
+            float smoothingRate, float speedSmoothingRate, float bounceAmplitude,
+            float amplitudeScale, float strideScale)
         {
-            _smoothedSpeed = Damp(_smoothedSpeed, horizontalSpeedAbs, speedSmoothingRate, deltaTime);
-            _phase += 2f * Mathf.PI * frequencyPerSpeed * _smoothedSpeed * deltaTime;
-            if (_phase > Mathf.PI * 2f) _phase -= Mathf.PI * 2f; // 부동소수 정밀도 유지(각도 결과는 동일).
+            // 주파수 입력 속도 — 호출부가 넘긴 **명령** 속도(walkSpeed)가 아니라 루트가 실제로 이동한
+            // 거리에서 측정한다. 벽/발판 경계에 막혀 명령대로 못 나아가는 순간에도 다리가 헛돌지 않게
+            // 하려는 것이고, 마찰로 실제 속도가 명령보다 낮은 것(실측 2.26 vs 명령 2.5)도 자동으로
+            // 반영된다("사이클 주파수 = 실제 수평 이동 속도 / 보폭" — 리더 지시의 '실제').
+            //
+            // **반드시 창(window) 단위로 평균 내야 한다**: 물리는 고정 스텝(50Hz)인데 렌더는 그보다
+            // 빨라서, 어떤 Update 프레임의 이동량은 0이고 다음 프레임은 한 스텝치가 통째로 들어온다.
+            // 프레임 단위 순간속도에 상한을 씌우면 큰 값만 잘리고 0은 그대로 남아 **평균이 통째로
+            // 내려간다** — 실측에서 이 때문에 사이클이 1.35Hz여야 할 구간에서 0.94Hz로 돌아 디딤발이
+            // 계속 미끄러졌다(로그 phase 증가율로 확인). 창에 거리와 시간을 각각 누적해 나누면 그
+            // 톱니가 정확히 상쇄된다. 상한은 순간적인 위치 점프(스냅/텔레포트) 방어용으로만 남긴다.
+            if (_root != null)
+            {
+                float rootX = _root.position.x;
+                if (_hasPrevRootX)
+                {
+                    _speedWindowDistance += Mathf.Abs(rootX - _prevRootX);
+                    _speedWindowTime += deltaTime;
+                    if (_speedWindowTime >= SpeedWindowSeconds)
+                    {
+                        _measuredSpeed = Mathf.Min(_speedWindowDistance / _speedWindowTime, horizontalSpeedAbs * 3f);
+                        _speedWindowDistance = 0f;
+                        _speedWindowTime = 0f;
+                    }
+                }
+                _prevRootX = rootX;
+                _hasPrevRootX = true;
+            }
+            // 아직 한 창도 못 채웠으면 호출부가 넘긴 명령 속도를 그대로 쓴다(걷기 시작 직후 0.1초).
+            float measuredSpeed = _measuredSpeed >= 0f ? _measuredSpeed : horizontalSpeedAbs;
 
-            // 상하 바운스 — 다리가 가장 벌어진 순간(|sin|=1)에 몸이 가장 낮고 다리가 모인 순간(sin=0)에
-            // 가장 높으므로, |sin|은 보행 사인파의 2배 주파수가 된다. 평균 0 근처가 되도록 0.5를 뺀다.
-            SetBodyOffset((0.5f - Mathf.Abs(Mathf.Sin(_phase))) * bounceAmplitude);
+            // 첫 Walk 틱에서는 스무딩 없이 실제 속도로 시작한다(_smoothedSpeed 음수 = 미초기화 표식).
+            // 0에서 서서히 차오르게 두면 걷기 시작 직후 다리가 실제 이동 속도보다 느리게 놀아 그 구간만
+            // 발이 미끄러진다 — 보폭 역산으로 문워크를 없애는 이번 구현에서는 그 자체가 결함이다.
+            // 걷는 도중의 속도 변화에는 계속 스무딩이 걸린다(주파수가 튀지 않게).
+            _smoothedSpeed = _smoothedSpeed < 0f
+                ? measuredSpeed
+                : Damp(_smoothedSpeed, measuredSpeed, speedSmoothingRate, deltaTime);
 
-            float armBase = settings.ArmSpreadDegrees * ArmWalkBaseRatio;
+            if (amplitudeScale <= 0f) amplitudeScale = 1f;
+
+            // 사이클 주파수(Hz) = 이동 속도 / 한 사이클 이동 거리. 보폭을 계산할 수 없는 이례적 상황
+            // (콜라이더 누락 등)에서만 안전한 고정값으로 폴백한다.
+            _distancePerCycle = ComputeDistancePerCycle(amplitudeScale) * Mathf.Max(0.1f, strideScale);
+            float cyclesPerSecond = _distancePerCycle > 0.0001f
+                ? _smoothedSpeed / _distancePerCycle
+                : _smoothedSpeed * 0.6f;
+            _phase01 = Mathf.Repeat(_phase01 + cyclesPerSecond * deltaTime, 1f);
+
+            // 상하 바운스 — Passing(t=0.25/0.75)에서 최고, Down(t=0.125/0.625)에서 최저.
+            SetBodyOffset(SampleCyclic(BounceKeys, _phase01) * bounceAmplitude);
 
             for (int i = 0; i < _limbs.Length; i++)
             {
                 Limb limb = _limbs[i];
-                float t = _phase + limb.PhaseOffset;
-                float swing = Mathf.Sin(t);
+                float t = _phase01 + limb.PhaseOffset;
 
                 float upper;
                 float lower;
                 if (limb.IsLeg)
                 {
-                    upper = swing * legSwingDegrees;
-                    // Max(0, ...)라 굽힘량이 절대 음수가 되지 않고 거기에 고정 부호를 곱하므로, 무릎이
-                    // 반대로(뒤로) 꺾이는 경우의 수가 구조적으로 존재하지 않는다.
-                    lower = KneeBendSign * (settings.IdleKneeBendDegrees
-                        + settings.WalkKneeBendDegrees * Mathf.Max(0f, Mathf.Sin(t + KneeBendPhaseOffset)));
+                    upper = SampleCyclic(LegHipKeys, t) * amplitudeScale;
+                    // 스플라인은 키 사이에서 살짝 오버슈트할 수 있다. 무릎이 음수(뒤로 꺾임)가 되는 것은
+                    // 절대 허용하지 않으므로 0에서 자른다 — 이 한 줄로 "사람 관절처럼 한 방향으로만
+                    // 접힌다"는 불변식이 스플라인 오버슈트와 무관하게 유지된다.
+                    lower = KneeBendSign * Mathf.Max(0f, SampleCyclic(LegKneeKeys, t) * amplitudeScale);
                 }
                 else
                 {
-                    upper = limb.NeutralSign * armBase + swing * legSwingDegrees * armSwingRatio;
-                    lower = ElbowBendSign * (settings.IdleElbowBendDegrees
-                        + settings.WalkElbowBendDegrees * Mathf.Max(0f, Mathf.Sin(t + ElbowBendPhaseOffset)));
+                    // 팔은 같은 쪽 다리와 반대 위상(리더 지정 t+0.5).
+                    float ta = t + ArmPhaseOffset;
+                    upper = SampleCyclic(ArmShoulderKeys, ta) * amplitudeScale;
+                    lower = ElbowBendSign * Mathf.Max(0f, SampleCyclic(ArmElbowKeys, ta) * amplitudeScale);
                 }
 
                 ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
             }
+        }
+
+        /// <summary>
+        /// 순환 키프레임 배열을 위상(0~1)에서 Catmull-Rom 스플라인으로 샘플링한다. 배열 전체가 한
+        /// 사이클이며 끝과 처음이 이어지므로(순환) 이음매에서도 각도가 매끄럽게 연결된다.
+        /// </summary>
+        private static float SampleCyclic(float[] keys, float phase01)
+        {
+            int n = keys.Length;
+            if (n == 0) return 0f;
+            if (n == 1) return keys[0];
+
+            float x = Mathf.Repeat(phase01, 1f) * n;
+            int i1 = Mathf.FloorToInt(x) % n;
+            float u = x - Mathf.Floor(x);
+            int i0 = (i1 - 1 + n) % n;
+            int i2 = (i1 + 1) % n;
+            int i3 = (i1 + 2) % n;
+            return CatmullRom(keys[i0], keys[i1], keys[i2], keys[i3], u);
+        }
+
+        /// <summary>Catmull-Rom 스플라인 1구간. p1~p2 사이를 u(0~1)로 보간하며 키를 정확히 지난다.</summary>
+        private static float CatmullRom(float p0, float p1, float p2, float p3, float u)
+        {
+            float u2 = u * u;
+            float u3 = u2 * u;
+            return 0.5f * ((2f * p1)
+                + (-p0 + p2) * u
+                + (2f * p0 - 5f * p1 + 4f * p2 - p3) * u2
+                + (-p0 + 3f * p1 - 3f * p2 + p3) * u3);
         }
 
         /// <summary>
@@ -422,6 +609,24 @@ namespace StickMate.States
             rightKnee = AngleOf(_rightLeg != null ? _rightLeg.Lower : null);
             leftElbow = AngleOf(_leftArm != null ? _leftArm.Lower : null);
             rightElbow = AngleOf(_rightArm != null ? _rightArm.Lower : null);
+        }
+
+        /// <summary>실측 검증/디버그용 — 두 발 끝의 월드 좌표(아래 마디 끝 = 로컬 (0,-Length)).
+        /// 발 미끄러짐(문워크) 확인에 쓴다: 디딤 국면 동안 디딤발의 월드 X가 거의 고정이어야 한다.</summary>
+        public void GetFootWorldPositions(out Vector2 left, out Vector2 right)
+        {
+            left = FootWorldPosition(_leftLeg);
+            right = FootWorldPosition(_rightLeg);
+        }
+
+        /// <summary>실측 검증/디버그용 — 현재 보행 사이클 위상(0~1)과 한 사이클 이동 거리.</summary>
+        public float WalkPhase01 => _phase01;
+        public float DistancePerCycle => _distancePerCycle;
+
+        private static Vector2 FootWorldPosition(Limb limb)
+        {
+            if (limb == null || limb.Lower == null || limb.Lower.Transform == null) return Vector2.zero;
+            return limb.Lower.Transform.TransformPoint(new Vector3(0f, -limb.Lower.Length, 0f));
         }
 
         private static float AngleOf(Segment segment)
@@ -537,21 +742,17 @@ namespace StickMate.States
             public readonly float ArmSpreadDegrees;
             public readonly float IdleKneeBendDegrees;
             public readonly float IdleElbowBendDegrees;
-            public readonly float WalkKneeBendDegrees;
-            public readonly float WalkElbowBendDegrees;
             public readonly float BreathAmplitude;
             public readonly float BreathFrequencyHz;
             public readonly float BreathArmDegrees;
 
             public PoseSettings(float legSpread, float armSpread, float idleKnee, float idleElbow,
-                float walkKnee, float walkElbow, float breathAmplitude, float breathFrequencyHz, float breathArmDegrees)
+                float breathAmplitude, float breathFrequencyHz, float breathArmDegrees)
             {
                 LegSpreadDegrees = legSpread;
                 ArmSpreadDegrees = armSpread;
                 IdleKneeBendDegrees = idleKnee;
                 IdleElbowBendDegrees = idleElbow;
-                WalkKneeBendDegrees = walkKnee;
-                WalkElbowBendDegrees = walkElbow;
                 BreathAmplitude = breathAmplitude;
                 BreathFrequencyHz = breathFrequencyHz;
                 BreathArmDegrees = breathArmDegrees;

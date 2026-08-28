@@ -129,6 +129,11 @@ namespace StickMate.Platform
                 // 배회만으로도 수십 초 안에 가장자리에 닿을 수 있었다. 수정: 동일한 배율을 여기도 적용해
                 // 화면 중심(world x=0)을 기준으로 좌우 대칭으로 폭을 넓힌다 — `NullPlatformWindowService`
                 // 생성자의 동일 계산식을 그대로 재사용(단일 소스 공유, 어긋남 재발 방지).
+                // ★ 2026-08-28: 위 이력의 배율은 이제 1이다(NullPlatformWindowService.DummyFootholdWidthMultiplier
+                // 선언부의 "되돌림" 문단 참고) — 낙하 고착의 진짜 원인은 이 안전망 발판이 항상 제공되도록
+                // 고친 것으로 해결됐고, 폭 4배 확장은 캐릭터가 화면 밖으로 걸어나가는 부작용만 남겨
+                // 사용자가 "화면 벗어나서 잘 안 보임"으로 신고했다. 계산식은 그대로 두고 상수만 1이 되므로
+                // 폭 = 화면 폭, 좌우 오프셋 = 0이 된다(계산 구조를 유지해 나중에 다시 조정할 여지는 남긴다).
                 float widenedWidth = width * NullPlatformWindowService.DummyFootholdWidthMultiplier;
                 float widenedX = (width - widenedWidth) / 2f;
 

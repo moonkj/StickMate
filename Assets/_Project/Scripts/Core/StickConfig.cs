@@ -23,20 +23,29 @@ namespace StickMate.Core
         // 능동 상태에서 HingeJoint2D 모터로 중력과 싸우던 물리 기반 접근 자체를 폐기했기 때문이다
         // (States/StickmanPoseAnimator.cs 클래스 문서 참고). 이제 팔다리는 Kinematic + transform
         // 직접 제어이므로 토크/게인/각도제한이라는 개념이 존재하지 않는다 — 목표 각도가 곧 실제 각도다.
-        [Tooltip("현재 수평 이동 속도(유닛/초)에 곱해 다리 흔들기 주파수(Hz)를 산출하는 비례 계수 — 빠르게 " +
-                 "걸을수록 다리도 빨리 움직인다. States/StickmanPoseAnimator.cs가 사용한다. 절차적 제어로 " +
-                 "바뀌면서 모터 추종 지연이 사라졌으므로, 모터 시절 안전 하향값(0.45)보다 다시 올려 " +
-                 "육안으로 걷는 게 확실히 보이게 한다(walkSpeed 2.5 기준 약 1.5Hz = 다리 1회 왕복 0.67초).")]
-        public float walkCycleFrequencyPerSpeed = 0.55f;
+        // walkCycleFrequencyPerSpeed / walkCycleLegSwingDegrees / walkCycleArmSwingRatio 제거
+        // (2026-08-28 키프레임 보행 사이클 교체): 보행이 사인파 진폭/주파수 계수로 표현되지 않는다.
+        // 관절 각도는 States/StickmanPoseAnimator.cs의 8키 포즈 표가 정의하고(튜닝 스칼라가 아니라
+        // 서로 정합성을 갖는 "애니메이션 에셋"이라 그쪽에 둔다), 사이클 주파수는 그 표에서 계산한
+        // 보폭과 실제 이동 속도로 역산한다 — 임의 계수를 곱하던 예전 방식이 디딤발이 미끄러지는
+        // 문워크의 원인이었다.
 
-        [Tooltip("Walk 중 각 다리가 중립(Idle) 각도를 기준으로 앞뒤로 흔들리는 진폭(도). 왼다리/오른다리는 " +
-                 "위상차 180도로 서로 반대 방향으로 움직인다. 절차적 제어이므로 이 값이 곧 실제 최대 " +
-                 "각도이며 물리적 오버슈트가 원천적으로 없다.")]
-        public float walkCycleLegSwingDegrees = 20f;
+        [Tooltip("보행 키포즈 표(States/StickmanPoseAnimator.cs)의 **모든 관절 각도에 곱해지는 전체 진폭 " +
+                 "배율**. 1이면 리더가 지정한 표 그대로(엉덩이 ±25도, 스윙 무릎 50도), 0.8이면 전체적으로 " +
+                 "얌전하게, 1.2면 과장되게 걷는다. 표의 개별 값은 서로 정합성을 가져야 하므로 코드 상수로 " +
+                 "두고, 나중에 튜닝할 여지는 이 하나의 스칼라로만 연다. 보폭 역산도 이 배율이 적용된 " +
+                 "각도로 계산되므로 값을 바꿔도 발이 미끄러지지 않는다.")]
+        public float walkPoseAmplitudeScale = 1f;
 
-        [Tooltip("Walk 중 팔이 흔들리는 진폭을 다리 진폭 대비 비율로 지정(팔은 다리와 반대 위상). " +
-                 "0이면 팔을 흔들지 않고 Idle 중립 각도를 유지한다.")]
-        public float walkCycleArmSwingRatio = 0.85f;
+        [Tooltip("키포즈 표에서 기하학적으로 계산한 한 사이클 이동 거리(보폭×2)에 곱하는 보정 계수. " +
+                 "1이면 계산값 그대로 쓴다. 실제 화면에서 디딤발이 앞으로 밀리면(=사이클이 너무 느림) " +
+                 "1보다 작게, 뒤로 끌리면 1보다 크게 미세 조정한다. 값이 커질수록 한 걸음을 더 크게 " +
+                 "잡는다고 가정하므로 다리 놀리는 속도가 느려진다(주파수 = 이동속도 / 사이클 이동거리).\n" +
+                 "기본값 0.93의 근거(실측): 1.0(순수 기하학값)으로 .app을 100초 돌린 로그에서 디딤 국면 " +
+                 "전체의 발 순수 이동량이 몸 이동량의 평균 +7%로 남았다 — 각도가 목표각을 지수 감쇠로 " +
+                 "따라가느라 실제 진폭이 표보다 조금 작아(엉덩이 실측 ±23.8도 vs 표 ±25도) 보폭이 그만큼 " +
+                 "짧아지기 때문이다. 사이클을 그 비율만큼 빠르게 돌려 상쇄한다.")]
+        public float walkStrideScale = 0.93f;
 
         [Tooltip("Idle(및 Walk를 제외한 모든 능동 상태)에서 양다리를 바깥쪽으로 벌리는 각도(도). 0이면 " +
                  "두 다리가 완전히 붙어 수직으로 서고, 값이 커질수록 졸라맨 그림의 '/ \\' 처럼 벌어진다. " +
@@ -51,9 +60,13 @@ namespace StickMate.Core
                  "부드럽다. 프레임레이트 독립 공식 t = 1 - exp(-rate*deltaTime)에 쓰이므로(단순 " +
                  "Lerp(a,b,rate*dt)와 달리 fps가 달라도 같은 체감 속도가 나온다), 값의 의미는 " +
                  "\"약 1/rate 초 만에 목표까지의 오차가 63% 줄어든다\"이다. 사용자 요청(2026-08-28, " +
-                 "\"부드럽게 움직여야 함\"을 두 번 강조)으로 도입 — 이전에는 사인파 목표각을 매 프레임 " +
-                 "즉시 대입해 상태 전환·프레임레이트 변동 순간마다 각도가 툭툭 튀었다.")]
-        public float poseSmoothingRate = 14f;
+                 "\"부드럽게 움직여야 함\"을 두 번 강조)으로 도입 — 이전에는 목표각을 매 프레임 즉시 " +
+                 "대입해 상태 전환·프레임레이트 변동 순간마다 각도가 툭툭 튀었다. 2026-08-28 키프레임 " +
+                 "보행 교체 후 14 -> 35로 상향: 보행 곡선 자체가 이미 Catmull-Rom으로 매끄러워 스무딩이 " +
+                 "부드러움을 만들 필요가 없어졌고, 오히려 낮은 값은 1.5Hz 보행에서 다리 각도 진폭을 " +
+                 "17%나 깎아 **디딤발이 미끄러지는(문워크) 원인**이 됐다(실측 slip 0.5 -> 0.05). 이제 " +
+                 "이 값의 역할은 상태 전환(Idle<->Walk, GETUP 복귀)에서만 각도가 튀지 않게 하는 것이다.")]
+        public float poseSmoothingRate = 35f;
 
         [Tooltip("보행 사이클 주파수 산출에 쓰는 수평 속도의 지수 감쇠 계수(1/초). poseSmoothingRate와 " +
                  "같은 공식·같은 단위. 걷기 시작/멈춤처럼 속도가 급변할 때 다리 흔들기 주파수가 함께 " +
@@ -65,7 +78,7 @@ namespace StickMate.Core
                  "사인파의 2배 주파수로 진동한다(다리가 모였을 때 높고 벌어졌을 때 낮다). **시각 전용**이라 " +
                  "Rigidbody2D.position은 건드리지 않는다 — 접지 판정이 루트의 물리 위치를 발 높이로 쓰기 " +
                  "때문에 그걸 흔들면 접지 로직이 깨진다(States/StickmanPoseAnimator.SetBodyOffset 참고).")]
-        public float walkBounceAmplitude = 0.03f;
+        public float walkBounceAmplitude = 0.025f;
 
         [Tooltip("Idle에서 몸 전체가 호흡처럼 아주 느리게 오르내리는 진폭(월드 유닛). 완전 정지는 " +
                  "\"얼어붙은 것\"처럼 보이므로 항상 미세하게 살아있게 만든다. walkBounceAmplitude와 같은 " +
@@ -89,14 +102,10 @@ namespace StickMate.Core
                  "팔꿈치가 눈에 띄게 굽어 있다. SceneBootstrapper.IdleElbowBendDegrees와 같은 값이어야 한다.")]
         public float idleElbowBendDegrees = 10f;
 
-        [Tooltip("Walk 중 무릎이 추가로 접히는 최대 각도(도). 다리를 앞으로 스윙해 발을 들어올릴 때 접히고 " +
-                 "딛고 있을 때 펴진다. 굽힘량은 Max(0, sin(...))로 계산돼 **절대 음수가 되지 않으므로** " +
-                 "무릎이 뒤로 꺾이는 경우의 수가 구조적으로 없다(States/StickmanPoseAnimator.cs 참고).")]
-        public float walkKneeBendDegrees = 30f;
-
-        [Tooltip("Walk 중 팔꿈치가 idleElbowBendDegrees 위에 추가로 접히는 최대 각도(도). 팔은 다리만큼 " +
-                 "크게 접히지 않으므로 작게 잡는다.")]
-        public float walkElbowBendDegrees = 15f;
+        // walkKneeBendDegrees / walkElbowBendDegrees 제거(2026-08-28): 보행 중 무릎/팔꿈치 굽힘은
+        // 이제 단일 최대치가 아니라 위상별 키프레임 표(StickmanPoseAnimator.LegKneeKeys/ArmElbowKeys)가
+        // 정의한다 — "스윙에서 45~50도로 크게 접히고 디딤에서 5~20도로 거의 펴진다"는 **비대칭**이
+        // 자연스러움의 핵심이라 하나의 스칼라로는 표현할 수 없다.
 
         [Header("물리")]
         [Tooltip("중력 스케일 (Rigidbody2D.gravityScale에 곱해 사용)")]

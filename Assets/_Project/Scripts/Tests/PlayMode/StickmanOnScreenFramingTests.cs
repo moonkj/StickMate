@@ -25,23 +25,26 @@ namespace StickMate.Tests.PlayMode
     /// Architect 지시(0.5~1유닛)의 하한인 0.5월드유닛을 카메라의 px/유닛 환산비로 픽셀 단위 환산해 쓴다
     /// (해상도에 무관하게 항상 "적어도 0.5유닛의 여백"을 강제하도록).
     ///
-    /// 가로(X) 방향은 이 테스트에서 화면 폭 안 포함 여부를 의도적으로 강제하지 않는다 — 이는 이번
-    /// 버그와 무관한, 사전에 문서화된 별개의 설계 특성이다: Platform/NullPlatformWindowService.cs의
-    /// 더미 발판은 BUG-SW-M2(Tasklist.md "씬/프리팹 배선" 절, 2026-08-28) 대응으로 카메라 뷰포트보다
-    /// DummyFootholdWidthMultiplier(4)배 넓게 설계되어 있고, AutoWanderController가 그 넓은 범위 전체를
-    /// 자유롭게 배회하는 것이 명시적으로 의도된 동작이다(그 상수 선언부 주석: "배회 AI가 카메라
-    /// 뷰포트보다 훨씬 넓은 범위를 돌아다닐 수 있다"). 실제로 walkSpeed(2.5)×최대 Walk 지속시간(지터
-    /// 포함 최대 약 4.7초)만으로 단일 Walk 페이즈가 카메라 뷰포트 반폭(orthoSize=5 기준 약 6.67유닛)을
-    /// 넘는 편도 거리(~11.75유닛)를 낼 수 있어, 15초 관찰 구간에서 캐릭터가 카메라 뷰포트 가로 범위를
-    /// 벗어나는 것은 정상이다 — 수직 방향과 달리 수평 방향은 "항상 카메라 프레임 안"이 이 씬의 설계
-    /// 불변식이 아니다(지면 Y와 달리 발판의 X 범위 자체가 뷰포트보다 넓게 잡혀 있기 때문). 이 테스트는
-    /// 대신 X가 유한(발산하지 않음)한지만 로그로 남긴다.
+    /// 가로(X) 방향도 2026-08-28부터 함께 검증한다(리더 지시, 사용자 피드백 "캐릭터가 화면 벗어나서
+    /// 잘 안 보임"). 예전에는 의도적으로 검증하지 않았는데, 그 전제는 더미/안전망 발판이 카메라
+    /// 뷰포트보다 DummyFootholdWidthMultiplier(당시 4)배 넓다는 것이었다 — 그래서 캐릭터가 화면 가로
+    /// 범위를 벗어나는 것이 "정상"이었다. 이제 그 배율이 1(=화면 폭과 일치)로 되돌아갔으므로
+    /// (Platform/NullPlatformWindowService.cs 선언부의 "되돌림" 문단 참고) **캐릭터가 항상 화면 안에
+    /// 보인다**가 씬의 설계 불변식이 되었고, 이 테스트가 그 회귀를 자동으로 잡는다.
+    ///
+    /// 단 X는 세로와 달리 "전신 바운딩박스 전체"가 아니라 **몸의 가로 중심**을 기준으로 본다:
+    /// AutoWanderController는 발판 경계 wanderEdgeStopDistance(0.3유닛) 앞에서 멈춰 돌아서므로 가장자리
+    /// 에서는 팔/다리 끝이 화면 밖으로 조금 나갈 수 있고(획 폭까지 포함하면 더), 그것까지 실패로 보면
+    /// 정상 동작을 오탐한다. "캐릭터가 화면 안에 보인다"의 실질적 판정은 몸통이 화면 안에 있는가이다.
     /// </summary>
     public sealed class StickmanOnScreenFramingTests
     {
         private const string LogPrefix = "[FRAMING-TEST]";
         private static readonly float[] SampleTimes = { 5f, 10f, 15f };
         private const float MinWorldMarginUnits = 0.5f; // Architect 지시 요구치(0.5~1유닛)의 하한.
+        // 가로 여백은 세로보다 느슨하게 잡는다(위 클래스 문서 "단 X는..." 참고) — 몸 중심이 화면
+        // 가장자리에서 이만큼 안쪽에 있으면 캐릭터는 확실히 화면에 보인다.
+        private const float MinHorizontalWorldMarginUnits = 0.1f;
 
         [UnityTest]
         public IEnumerator StickmanStaysWithinVerticalViewportMargin()
@@ -88,6 +91,17 @@ namespace StickMate.Tests.PlayMode
                     && !float.IsNaN(topScreen.x) && !float.IsInfinity(topScreen.x);
                 Assert.IsTrue(xFinite, $"{LogPrefix} t={elapsed:F1}s 캐릭터 X 좌표가 발산했습니다(NaN/Infinity).");
 
+                // 가로 검증(2026-08-28 신설): 몸 중심이 화면 가로 범위 안에 여백을 두고 있어야 한다.
+                Vector3 centerScreen = cam.WorldToScreenPoint(new Vector3(bounds.center.x, bounds.center.y, bounds.center.z));
+                float marginXPx = MinHorizontalWorldMarginUnits * pxPerWorldUnit;
+                Assert.GreaterOrEqual(centerScreen.x, marginXPx,
+                    $"{LogPrefix} t={elapsed:F1}s 캐릭터가 화면 왼쪽 밖으로 나갔습니다(screenX={centerScreen.x:F1} < {marginXPx:F1}) " +
+                    "— 더미/안전망 발판 폭이 화면보다 넓어져 배회 경계 판정이 화면 밖에서 걸리는 회귀 의심 " +
+                    "(Platform/NullPlatformWindowService.DummyFootholdWidthMultiplier 확인).");
+                Assert.LessOrEqual(centerScreen.x, Screen.width - marginXPx,
+                    $"{LogPrefix} t={elapsed:F1}s 캐릭터가 화면 오른쪽 밖으로 나갔습니다(screenX={centerScreen.x:F1} > {Screen.width - marginXPx:F1}) " +
+                    "— 위와 동일한 회귀 의심.");
+
                 Assert.GreaterOrEqual(bottomScreen.y, marginPx,
                     $"{LogPrefix} t={elapsed:F1}s 캐릭터 발이 화면 하단 여백 밖입니다(screenY={bottomScreen.y:F1} < {marginPx:F1}) " +
                     "— 화면 아래로 잘려 보일 수 있습니다(BUG-P1-R4-B1 재발 의심).");
@@ -97,7 +111,7 @@ namespace StickMate.Tests.PlayMode
             }
 
             Debug.Log($"{LogPrefix} 완료 — 모든 샘플 시점({string.Join(",", SampleTimes)}초)에서 캐릭터 전신(발~머리)이 " +
-                "화면 세로 범위 안에 최소 여백을 두고 들어와 있었습니다.");
+                "화면 세로 범위 안에 최소 여백을 두고 들어와 있었고, 몸 중심이 화면 가로 범위 안에 있었습니다.");
         }
 
         private static Bounds ComputeCombinedBounds(Renderer[] renderers)

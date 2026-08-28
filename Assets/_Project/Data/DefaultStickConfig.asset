@@ -14,21 +14,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   walkSpeed: 2.5
   jumpForce: 6
-  walkCycleFrequencyPerSpeed: 0.55
-  walkCycleLegSwingDegrees: 20
-  walkCycleArmSwingRatio: 0.85
+  walkPoseAmplitudeScale: 1
+  walkStrideScale: 0.93
   idleLegSpreadDegrees: 12
   idleArmSpreadDegrees: 40
-  poseSmoothingRate: 14
+  poseSmoothingRate: 35
   walkSpeedSmoothingRate: 6
-  walkBounceAmplitude: 0.03
+  walkBounceAmplitude: 0.025
   idleBreathAmplitude: 0.012
   idleBreathFrequencyHz: 0.8
   idleBreathArmDegrees: 1.5
   idleKneeBendDegrees: 4
   idleElbowBendDegrees: 10
-  walkKneeBendDegrees: 30
-  walkElbowBendDegrees: 15
   gravityScale: 3
   fallGraceDuration: 0.1
   coyoteTimeDuration: 0.1

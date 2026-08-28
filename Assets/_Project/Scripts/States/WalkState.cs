@@ -75,18 +75,17 @@ namespace StickMate.States
                 v.x = move * speed;
                 _blackboard.Body.linearVelocity = v;
 
-                // 보행 애니메이션(2026-08-28 근본 재구현): 다리/팔의 transform.localRotation을 실제
-                // 수평 속도에 비례한 주파수의 사인파로 **직접** 세팅한다(물리 모터 구동 아님) — 정교한
-                // IK가 아니라 "걷는 것처럼 보이는" 최소 절차적 애니메이션이라는 스코프는 그대로지만,
-                // 이제 계산한 각도가 곧 실제 각도라 오버슈트/무너짐이 원천적으로 불가능하다.
-                // States/StickmanPoseAnimator.cs 클래스 문서 참고.
+                // 보행 애니메이션(2026-08-28): 8개 키포즈 표를 Catmull-Rom으로 보간해 다리/팔의
+                // transform.localRotation을 **직접** 세팅한다(물리 모터 구동 아님, 사인파도 아님).
+                // 사이클 주파수는 임의 계수가 아니라 여기서 넘기는 실제 수평 속도에서 역산되므로
+                // 디딤발이 바닥에서 미끄러지지 않는다. States/StickmanPoseAnimator.cs 문서 참고.
                 StickmanPoseAnimator pose = _blackboard.GetPoseAnimator();
                 if (pose != null && _blackboard.Config != null)
                 {
                     pose.TickWalkPose(deltaTime, Mathf.Abs(v.x), _blackboard.BuildPoseSettings(),
-                        _blackboard.Config.walkCycleFrequencyPerSpeed, _blackboard.Config.walkCycleLegSwingDegrees,
-                        _blackboard.Config.walkCycleArmSwingRatio, _blackboard.PoseSmoothingRate,
-                        _blackboard.WalkSpeedSmoothingRate, _blackboard.Config.walkBounceAmplitude);
+                        _blackboard.PoseSmoothingRate, _blackboard.WalkSpeedSmoothingRate,
+                        _blackboard.Config.walkBounceAmplitude,
+                        _blackboard.Config.walkPoseAmplitudeScale, _blackboard.Config.walkStrideScale);
                 }
             }
             // 좌우 반전(스프라이트 flip)은 Phase 2 렌더링 레이어 담당 — 여기서는 물리 이동/보행 애니메이션만.

@@ -384,8 +384,6 @@ namespace StickMate.States
                 IdleArmSpreadDegrees,
                 Config != null ? Config.idleKneeBendDegrees : 4f,
                 Config != null ? Config.idleElbowBendDegrees : 10f,
-                Config != null ? Config.walkKneeBendDegrees : 30f,
-                Config != null ? Config.walkElbowBendDegrees : 15f,
                 Config != null ? Config.idleBreathAmplitude : 0.012f,
                 Config != null ? Config.idleBreathFrequencyHz : 0.8f,
                 Config != null ? Config.idleBreathArmDegrees : 1.5f);
@@ -395,7 +393,7 @@ namespace StickMate.States
         public float FacingSign => _facingSign;
 
         /// <summary>팔다리 각도 지수 감쇠 계수(1/초).</summary>
-        public float PoseSmoothingRate => Config != null ? Config.poseSmoothingRate : 14f;
+        public float PoseSmoothingRate => Config != null ? Config.poseSmoothingRate : 35f;
 
         /// <summary>보행 주파수 입력 속도의 지수 감쇠 계수(1/초).</summary>
         public float WalkSpeedSmoothingRate => Config != null ? Config.walkSpeedSmoothingRate : 6f;
