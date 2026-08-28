@@ -220,6 +220,20 @@ namespace StickMate.States
         }
 
         /// <summary>
+        /// probeWorldPos의 x에서 **가장 낮은** 발판 상단(= 그 x에서의 바닥)의 월드 Y.
+        /// GroundSensor.TryGetFloorWorldY 문서 참고 — 드래그/로데오의 "지면 아래로는 끌고 내려가지
+        /// 않는다" 소프트 클램프가 써야 하는 값이다(가장 높은 표면을 쓰면 캐릭터를 위쪽 창으로
+        /// 끌어올려 버린다 — 사용자 신고 "마우스로 끌었는데 갑자기 다른 창 위로 올라감").
+        /// </summary>
+        public bool TryGetFloorWorldY(Vector2 probeWorldPos, out float floorWorldY)
+        {
+            var footholds = FootholdPoller != null
+                ? FootholdPoller.CachedFootholds
+                : System.Array.Empty<PlatformFoothold>();
+            return GroundSensor.TryGetFloorWorldY(MainCamera, probeWorldPos, footholds, Config, out floorWorldY);
+        }
+
+        /// <summary>
         /// Idle/Walk 공용 지상 로직: 접지 중이면 유예 타이머를 리셋하고 위치를 발판에 스냅한다.
         /// 접지가 아니면 유예 타이머를 누적하다가 StickConfig.fallGraceDuration을 넘기면 Fall로
         /// 강제 전이한다(발판 경계의 미세한 흔들림으로 인한 오탐 방지, StickConfig.cs 문서 참고).
@@ -306,8 +320,18 @@ namespace StickMate.States
         // 나가버린다. MacWindowService가 발판을 디스플레이 경계로 잘라내는 것이 1차 방어이고,
         // 여기가 그와 독립적인 2차(최종) 방어다.
 
-        /// <summary>화면 경계에서 남겨둘 여유(OS 포인트). 캐릭터 몸이 절반쯤 걸치는 것도 막는다.</summary>
+        /// <summary>화면 경계에서 남겨둘 최소 여유(OS 포인트). 아래 CharacterVisualHalfWidthWorld가
+        /// 더해져 실제 여유가 결정된다.</summary>
         private const float ScreenClampMarginOsPx = 8f;
+
+        /// <summary>
+        /// ★ 2026-08-28 (리더 추가 관찰: "캐릭터가 화면 왼쪽 끝에서 잘려 보인다") — 캐릭터의 **시각적
+        /// 반폭**(월드 유닛). 화면 하드 클램프는 루트(=발 중심) 좌표만 보므로, 이 값을 더하지 않으면
+        /// 가장자리에서 팔/머리가 화면 밖으로 잘린다. Core/StickmanAgent가 자신의 렌더러 바운즈에서
+        /// 주기적으로 갱신한다(포즈에 따라 팔 벌린 너비가 바뀌므로 상수로 둘 수 없다). 0이면 예전처럼
+        /// 루트만 클램프한다(테스트/폴백 경로에서도 안전).
+        /// </summary>
+        public float CharacterVisualHalfWidthWorld;
 
         /// <summary>이 시간(초) 넘게 Fall이 이어지면 "유효 발판을 완전히 잃었다"고 보고 리스폰한다.</summary>
         private const float LostCharacterRescueSeconds = 6f;
@@ -336,10 +360,28 @@ namespace StickMate.States
             float screenH = (Screen.height > 0 ? Screen.height : 1080) * dpi;
 
             Vector2 os = ScreenCoordinateConverter.WorldToOsScreen(MainCamera, Body.position, Config, out float depth);
-            float minX = origin.x + ScreenClampMarginOsPx;
-            float maxX = origin.x + screenW - ScreenClampMarginOsPx;
+
+            // 시각적 반폭을 OS 픽셀로 환산해 좌우 여유에 더한다 — 이게 없으면 루트(발)는 화면 안인데
+            // 벌린 팔과 머리가 화면 밖으로 잘린다(리더 관찰). 카메라의 "월드 1유닛 = 몇 Unity 픽셀"에
+            // desktopDpiScale을 곱하면 OS 포인트가 된다(ScreenCoordinateConverter와 같은 환산 규칙).
+            float pxPerWorldUnit = MainCamera.orthographic && MainCamera.orthographicSize > 0f
+                ? (Screen.height * 0.5f) / MainCamera.orthographicSize
+                : 0f;
+            float halfWidthOsPx = Mathf.Max(0f, CharacterVisualHalfWidthWorld) * pxPerWorldUnit * dpi;
+
+            float sideMargin = ScreenClampMarginOsPx + halfWidthOsPx;
+            float minX = origin.x + sideMargin;
+            float maxX = origin.x + screenW - sideMargin;
             float minY = origin.y + ScreenClampMarginOsPx;
-            float maxY = origin.y + screenH - ScreenClampMarginOsPx;
+            // ★ 아래쪽 여유는 0이다(2026-08-28). 이유: 안전망 발판이 화면 최하단 근처로 내려온 뒤로는
+            // 이 클램프가 **지면과 싸운다**. 실측으로 재현된 사고: 640x480 테스트 화면에서 8 OS px는
+            // 0.4월드유닛이라 지면(0.245유닛)보다 위에 있었고, RAGDOLL이 지면에 내려앉을 때마다 클램프가
+            // 매 프레임 위로 되돌리며 세로 속도를 0으로 만들어 **영원히 안정되지 못했다**(GETUP 미도달로
+            // StickmanRagdollRecoveryTests가 빨간불). 이 클램프의 목적은 "캐릭터를 화면 밖에서 잃어버리지
+            // 않는다"이고 그 목적에는 경계 자체(여유 0)로 충분하다 — 발판/지면은 언제나 화면 안에 있으므로
+            // 정상 동작에서는 아예 발동하지 않고, 진짜로 화면 아래로 빠져나가는 경우만 잡는다.
+            float maxY = origin.y + screenH;
+            if (minX > maxX) { minX = maxX = origin.x + screenW * 0.5f; } // 화면보다 캐릭터가 넓은 병리적 경우
 
             float clampedX = Mathf.Clamp(os.x, minX, maxX);
             float clampedY = Mathf.Clamp(os.y, minY, maxY);
@@ -357,7 +399,8 @@ namespace StickMate.States
                 {
                     _lastScreenClampLogTime = Time.unscaledTime;
                     Debug.Log($"[화면클램프] 캐릭터가 화면 밖으로 나가려 해 되돌렸습니다 — OS ({os.x:F1},{os.y:F1}) -> " +
-                        $"({clampedX:F1},{clampedY:F1}), 화면=({origin.x:F0},{origin.y:F0} {screenW:F0}x{screenH:F0}), " +
+                        $"({clampedX:F1},{clampedY:F1}), 좌우여유={sideMargin:F1}pt(기본 {ScreenClampMarginOsPx:F0} + 시각반폭 {halfWidthOsPx:F1}), " +
+                        $"화면=({origin.x:F0},{origin.y:F0} {screenW:F0}x{screenH:F0}), " +
                         $"상태={(Machine != null ? Machine.CurrentStateId.ToString() : "?")}. " +
                         $"(같은 로그는 최소 {ScreenClampLogMinIntervalSeconds}초 간격으로만 남깁니다)");
                 }
@@ -494,10 +537,11 @@ namespace StickMate.States
                 GetEyeController()?.SetFacing(_facingSign);
             }
 
-            // 눈은 상태와 무관하게 항상 갱신한다(머리의 자식이라 RAGDOLL 중에도 머리를 따라간다).
-            // 지금은 항상 정면 — 다음 라운드에 커서 추적을 여기에 연결한다(EyeController.cs 문서의
-            // "다음 라운드 배선 지점" 참고).
-            GetEyeController()?.LookForward();
+            // ★ 눈 커서 추적(2026-08-28 배선 완료, 사용자 명시 요청 "마우스 위치에 따라 눈도 움직여야").
+            // 상태와 무관하게 **항상** 갱신한다 — 눈은 머리의 자식이므로 RAGDOLL로 머리가 뒹구는 동안에도
+            // 머리를 따라 함께 움직이고(자동), 그 위에서 EyeController가 머리 로컬 공간으로 변환된
+            // 시선 방향을 계속 적용한다(뒤집힌 머리에서도 화면상 커서 쪽을 본다).
+            TickEyeTracking(deltaTime);
 
             if (Machine.CurrentStateId == StickmanStateId.Ragdoll)
             {
@@ -533,6 +577,64 @@ namespace StickMate.States
             pose.ApplyIdlePoseImmediate(BuildPoseSettings());
             GetEyeController()?.LookForward();
         }
+
+        /// <summary>
+        /// 눈 커서 추적 1프레임 갱신 + 진단 로그. TickPose()에서만 호출된다.
+        ///
+        /// 진단(리더 지시 "커서 위치에 따른 눈동자 오프셋 값을 로그로 찍어 검증"): 실제 눈 움직임은
+        /// 사용자만 볼 수 있으므로, 커서/머리 좌표와 실제 적용된 오프셋을 함께 남긴다. 상주 앱의 로그를
+        /// 더럽히지 않도록 **시작 직후 EyeLogSampleCount회만** 남기고 그 뒤로는 조용해진다
+        /// (StickConfig.verboseDiagnosticsLogging을 켜면 EyeLogIntervalSeconds 주기로 계속 남는다 —
+        /// [발판리포트]/[창진단]과 동일한 스위치 컨벤션).
+        /// </summary>
+        private void TickEyeTracking(float deltaTime)
+        {
+            EyeController eyes = GetEyeController();
+            if (eyes == null) return;
+
+            bool hasCursor = TryGetCursorWorldPosition(out Vector2 cursorWorld);
+            eyes.TickLookAt(hasCursor, cursorWorld, deltaTime, BuildEyeTrackingSettings());
+
+            bool verbose = Config != null && Config.verboseDiagnosticsLogging;
+            if (!verbose && _eyeLogSamplesLeft <= 0) return;
+
+            _eyeLogTimer += deltaTime;
+            if (_eyeLogTimer < EyeLogIntervalSeconds) return;
+            _eyeLogTimer = 0f;
+            if (!verbose) _eyeLogSamplesLeft--;
+
+            Vector2 offset = eyes.CurrentPupilOffset;
+            Vector2 headWorld = Vector2.zero;
+            float distance = -1f;
+            if (Body != null)
+            {
+                headWorld = Body.position;
+                if (hasCursor) distance = Vector2.Distance(cursorWorld, headWorld);
+            }
+            Debug.Log($"[눈추적] 커서={(hasCursor ? cursorWorld.ToString("F2") : "(조회 실패)")}, " +
+                $"몸통={headWorld.ToString("F2")}, 거리={distance:F2}유닛, " +
+                $"눈동자오프셋={offset.ToString("F4")}(길이 {offset.magnitude:F4}), " +
+                $"시선={eyes.CurrentLookDirection.ToString("F3")}, 눈발견={eyes.HasEyes}, " +
+                $"상태={(Machine != null ? Machine.CurrentStateId.ToString() : "?")}.");
+        }
+
+        /// <summary>StickConfig의 눈 추적 튜닝 값 묶음(미배선 경로에서도 안전한 기본값 사용).</summary>
+        public EyeController.EyeTrackingSettings BuildEyeTrackingSettings()
+        {
+            if (Config == null) return EyeController.EyeTrackingSettings.Default;
+            return new EyeController.EyeTrackingSettings(
+                Config.eyeTrackingEnabled,
+                Config.eyeMaxPupilOffset,
+                Config.eyeTrackingFollowRate,
+                Config.eyeTrackingNeutralRadiusWorld,
+                Config.eyeTrackingFullRangeWorld);
+        }
+
+        // 눈 추적 진단 로그 상태(TickEyeTracking 문서 참고).
+        private const float EyeLogIntervalSeconds = 2f;
+        private const int EyeLogInitialSamples = 6;
+        private int _eyeLogSamplesLeft = EyeLogInitialSamples;
+        private float _eyeLogTimer;
 
         /// <summary>머리 안 눈동자 점 제어 캐시 — GetRagdollRig()와 동일한 지연 생성/캐싱 패턴.</summary>
         public EyeController GetEyeController()

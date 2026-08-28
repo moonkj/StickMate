@@ -54,7 +54,16 @@ namespace StickMate.Tests.PlayMode
     {
         private const string LogPrefix = "[FRAMING-TEST]";
         private static readonly float[] SampleTimes = { 5f, 10f, 15f };
-        private const float MinWorldMarginUnits = 0.5f; // Architect 지시 요구치(0.5~1유닛)의 하한.
+        private const float MinWorldMarginUnits = 0.5f; // Architect 지시 요구치(0.5~1유닛)의 하한 — **상단 전용**.
+
+        // ★ 2026-08-28 — 하단 여백만 별도로 완화한다(사용자 요청 "독아래로 가면 바닥으로 내려가야하는데").
+        // 이 상수를 나눈 이유: 원래 0.5유닛 여백은 "캐릭터가 화면 **위쪽** 가장자리에 걸쳐 안 보인다"
+        // (BUG-P1-R4-B1)를 잡으려고 만든 값이라 위/아래에 같은 값을 썼다. 그런데 이번 라운드에 안전망
+        // 발판이 **의도적으로** 화면 진짜 최하단(BottomSafetyNetInsetPoints=10pt, 화면 높이의 약 1%)으로
+        // 내려갔으므로, 하단 0.5유닛(=화면 높이의 약 2%) 여백은 이제 **정상 동작을 실패로 판정**한다.
+        // 검증 의도("전신이 화면 안에 보인다")는 그대로 유지하면서 하한만 새 사양에 맞춘다 — 발끝이
+        // 화면 밖으로 나가는 진짜 회귀는 이 값으로도 여전히 걸린다. 위쪽은 완화하지 않는다.
+        private const float MinBottomWorldMarginUnits = 0.05f;
         // 가로 여백은 세로보다 느슨하게 잡는다(위 클래스 문서 "단 X는..." 참고) — 몸 중심이 화면
         // 가장자리에서 이만큼 안쪽에 있으면 캐릭터는 확실히 화면에 보인다.
         private const float MinHorizontalWorldMarginUnits = 0.1f;
@@ -90,6 +99,7 @@ namespace StickMate.Tests.PlayMode
             // 동일한 변환 전제).
             float pxPerWorldUnit = Screen.height / (2f * cam.orthographicSize);
             float marginPx = MinWorldMarginUnits * pxPerWorldUnit;
+            float bottomMarginPx = MinBottomWorldMarginUnits * pxPerWorldUnit;
 
             Debug.Log($"{LogPrefix} 시작 — Screen={Screen.width}x{Screen.height}, cam.orthoSize={cam.orthographicSize}, " +
                 $"cam.y={cam.transform.position.y:F3}, marginPx={marginPx:F1}(={MinWorldMarginUnits}유닛)");
@@ -125,9 +135,10 @@ namespace StickMate.Tests.PlayMode
                     $"{LogPrefix} t={elapsed:F1}s 캐릭터가 화면 오른쪽 밖으로 나갔습니다(screenX={centerScreen.x:F1} > {Screen.width - marginXPx:F1}) " +
                     "— 위와 동일한 회귀 의심.");
 
-                Assert.GreaterOrEqual(bottomScreen.y, marginPx,
-                    $"{LogPrefix} t={elapsed:F1}s 캐릭터 발이 화면 하단 여백 밖입니다(screenY={bottomScreen.y:F1} < {marginPx:F1}) " +
-                    "— 화면 아래로 잘려 보일 수 있습니다(BUG-P1-R4-B1 재발 의심).");
+                Assert.GreaterOrEqual(bottomScreen.y, bottomMarginPx,
+                    $"{LogPrefix} t={elapsed:F1}s 캐릭터 발이 화면 하단 밖입니다(screenY={bottomScreen.y:F1} < {bottomMarginPx:F1}) " +
+                    "— 화면 아래로 잘려 보일 수 있습니다(BUG-P1-R4-B1 재발 의심). 안전망 발판은 화면 최하단에 " +
+                    "있는 것이 **정상**이므로 하한만 MinBottomWorldMarginUnits로 완화되어 있습니다.");
                 Assert.LessOrEqual(topScreen.y, Screen.height - marginPx,
                     $"{LogPrefix} t={elapsed:F1}s 캐릭터 머리가 화면 상단 여백 밖입니다(screenY={topScreen.y:F1} > {Screen.height - marginPx:F1}) " +
                     "— 화면 위로 잘려 보일 수 있습니다(BUG-P1-R4-B1 재발 의심 — 사용자가 실제로 목격했던 원래 증상).");
@@ -155,7 +166,7 @@ namespace StickMate.Tests.PlayMode
                         $"{LogPrefix} t={elapsed:F1}s 접지 중인 캐릭터의 발 높이({actualFootWorldY:F3})가 안전망 발판 상수가 " +
                         $"말하는 높이({expectedFootWorldY:F3})와 {error:F3}유닛 어긋났습니다. 둘 중 하나입니다 — " +
                         "(a) 안전망 발판(Platform/NullPlatformWindowService.DummyFootholdHeightFraction)이 다시 화면 " +
-                        "한가운데로 올라가 캐릭터가 '허공에 떠 있는 것처럼' 보이는 회귀, 또는 (b) 씬에 구운 지면/스폰 Y" +
+                        "위쪽으로 올라가 캐릭터가 '허공에 떠 있는 것처럼' 보이는 회귀, 또는 (b) 씬에 구운 지면/스폰 Y" +
                         "(Editor/SceneBootstrapper.cs)와 그 상수가 어긋난 회귀 — 후자라면 --force로 씬을 재생성해야 합니다.");
                 }
             }

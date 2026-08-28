@@ -272,6 +272,54 @@ namespace StickMate.States
         }
 
         /// <summary>
+        /// ★ 사용자 신고 "마우스로 끌었는데 갑자기 다른 창 위로 올라감"의 수정(2026-08-28).
+        ///
+        /// 주어진 월드 X에서 **가장 낮은** 발판 상단(= 그 x에서의 "바닥")의 월드 Y를 구한다.
+        /// TryGetSurfaceWorldY()가 "가장 **높은** 표면"을 답하는 것과 정확히 반대다.
+        ///
+        /// ============================================================================
+        /// 왜 이 메서드가 새로 필요했는가 — 드래그 순간이동의 진짜 원인
+        /// ============================================================================
+        /// DragThrowState.FollowCursor()에는 "지면 아래로는 끌고 내려가지 않는다"는 **소프트 클램프**가
+        /// 있다(그 위치에 놓으면 정적 바닥 콜라이더 밑에 갇혀 Fall에 영구 고착되기 때문 — 그 함수 문서
+        /// 참고). 그런데 그 클램프가 "지면"을 TryGetSurfaceWorldY(= 그 x에서 **가장 높은** 창 상단)로
+        /// 물었다. 클램프 식은 `if (desired.y &lt; surfaceY) desired.y = surfaceY;` 라 **한 방향으로만
+        /// 작동한다 — 캐릭터를 위로 올린다.** 따라서 커서 x가 화면 위쪽에 있는 창의 가로 범위에
+        /// 걸치기만 하면, 캐릭터를 화면 아래쪽에서 끌고 있어도 매 프레임 그 창의 상단선으로 **끌어
+        /// 올려졌다**. 실측 규모: 안전망(OS y=907, 월드 -10.17) 근처에서 끌던 캐릭터가 OS y=160
+        /// 짜리 Finder 창 상단(월드 +8.1)으로 약 18유닛 순간이동한다 — 사용자가 본 그 증상이다.
+        ///
+        /// 클램프의 원래 목적("세상 바닥 밑으로 내려보내지 않는다")에 실제로 대응하는 값은 **그 x에서
+        /// 가장 낮은 표면**이다(대개 화면 최하단의 합성 안전망, Platform/FallbackPlatformWindowService).
+        /// 그 값으로 클램프하면 위로 끌어올리는 힘이 "정말로 바닥 밑으로 내려갔을 때"로만 제한된다.
+        /// </summary>
+        public static bool TryGetFloorWorldY(Camera cam, Vector2 probeWorldPos,
+            IReadOnlyList<PlatformFoothold> footholds, StickConfig config, out float floorWorldY)
+        {
+            floorWorldY = probeWorldPos.y;
+            if (cam == null || footholds == null || footholds.Count == 0) return false;
+
+            Vector2 probeOs = ScreenCoordinateConverter.WorldToOsScreen(cam, probeWorldPos, config, out float depth);
+
+            // 좌상단 원점(y 아래로 증가)이므로 "가장 낮은 상단" = r.y가 가장 **큰** 것.
+            bool found = false;
+            float lowestTopOs = float.MinValue;
+            for (int i = 0; i < footholds.Count; i++)
+            {
+                Rect r = footholds[i].ScreenRect;
+                if (probeOs.x < r.x || probeOs.x > r.x + r.width) continue;
+                if (r.y <= lowestTopOs) continue;
+                lowestTopOs = r.y;
+                found = true;
+            }
+            if (!found) return false;
+
+            Vector3 topWorld = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(probeOs.x, lowestTopOs), depth, config);
+            floorWorldY = topWorld.y;
+            return true;
+        }
+
+        /// <summary>
         /// ParkourClimb 진입 판정(아키텍처 0절, UX_FLOW.md 4절): 지금 딛고 있는 발판(info)의 진행방향
         /// 경계 근처(parkourDetectionRadius 이내)에, 상단이 지금 발판보다 눈에 띄게(parkourDetectionRadius
         /// 이상) 높은 다른 발판이 있는지 찾는다. 있으면 그 발판(핸들 포함, 이후 등반 중 "잡을 곳이

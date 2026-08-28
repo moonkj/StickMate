@@ -230,14 +230,22 @@ namespace StickMate.States
             // 잡은 지점이 커서에 붙어 있는 것처럼 보이도록 오프셋을 유지한 채 따라간다(CaptureGrabOffset 참고).
             Vector2 desired = target + _grabOffset;
 
-            // 소프트 클램프(12절 "화면 경계 도달 시 ... 안쪽으로 소프트 클램프") — 지면 아래로는
+            // 소프트 클램프(12절 "화면 경계 도달 시 ... 안쪽으로 소프트 클램프") — **세상 바닥** 아래로는
             // 끌고 내려가지 않는다. Kinematic MovePosition은 정적 바닥 콜라이더를 그대로 통과하므로,
             // 커서가 지면보다 아래(예: macOS Dock 영역)에 있을 때 그대로 따라가면 캐릭터가 바닥 밑에
             // 놓인 채 놓여진다. 그 위치는 접지 허용 오차 밖이라 Grounded가 영원히 false이고 물리 바닥이
             // 위로 올려주지도 못해 **Fall 상태에 영구 고착**된다(실측 확인, 2026-08-28).
-            if (_blackboard.TryGetGroundSurfaceWorldY(desired, out float surfaceY) && desired.y < surfaceY)
+            //
+            // ★ 2026-08-28 버그 수정 — 사용자 신고 "마우스로 끌었는데 갑자기 다른 창 위로 올라감".
+            // 예전에는 이 "바닥"을 TryGetGroundSurfaceWorldY(= 그 x에서 **가장 높은** 창 상단)로 물었다.
+            // 이 클램프는 `desired.y < floor`일 때 desired를 **위로** 올리는 단방향 연산이므로, 커서가
+            // 화면 위쪽 창의 가로 범위에 걸치기만 하면 화면 아래에서 끌던 캐릭터가 매 프레임 그 창
+            // 상단으로 끌어올려졌다(실측 규모: 안전망 월드 -10.17 -> Finder 창 상단 월드 +8.1, 약 18유닛
+            // 순간이동). 클램프의 원래 목적에 대응하는 값은 "그 x에서 **가장 낮은** 표면"이므로
+            // TryGetFloorWorldY로 교체한다(States/GroundSensor.TryGetFloorWorldY 문서에 유도 전문).
+            if (_blackboard.TryGetFloorWorldY(desired, out float floorY) && desired.y < floorY)
             {
-                desired.y = surfaceY;
+                desired.y = floorY;
             }
 
             if (smoothTime <= 0f)

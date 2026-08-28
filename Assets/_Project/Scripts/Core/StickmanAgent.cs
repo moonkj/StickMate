@@ -83,6 +83,14 @@ namespace StickMate.Core
         /// <summary>부분적 클릭관통 해제(ILocalClickCaptureService)로 캐스팅해 쓰기 위한 통로.</summary>
         public IPlatformWindowService PlatformService => _platformService;
 
+        /// <summary>
+        /// 이 에이전트가 쓰는 설정 에셋. Interaction/AppControlDirector.cs(앱 제어 메뉴/단축키)가
+        /// 잉크색·로데오·진단로그 토글을 위해 읽고 쓴다 — Blackboard.Config로도 같은 인스턴스에
+        /// 닿을 수 있지만, "설정을 바꾸는" 소비자가 상태머신용 블랙보드를 경유하는 것은 의미가
+        /// 어긋나므로 별도 통로로 노출한다(기존 private 필드를 그대로 내보낼 뿐 새 로직은 없다).
+        /// </summary>
+        public StickConfig Config => _config;
+
         /// <summary>전체화면 게임 감지로 현재 Suspended 상태인지 — 라이벌 대결(11절) "전체화면 감지 시
         /// 즉시 취소" 요구사항을 Interaction/RivalStickmanAgent.cs가 직접 폴링하기 위해 필요하다(라이벌은
         /// 플레이어의 StickmanStateMachine에 속하지 않으므로 아래 Suspend()의 일반 처리 대상이 아니다).</summary>
@@ -360,11 +368,45 @@ namespace StickMate.Core
             // 남을 수 없다(StickmanBlackboard.TickPose() 문서 참고).
             _blackboard.TickPose(dt);
 
+            // 화면 클램프가 쓸 "지금 몸이 실제로 얼마나 넓은가"를 갱신한다(포즈 확정 직후여야 정확하다).
+            TickVisualHalfWidth(dt);
+
             // ★ 리더 지시 6·7항(2026-08-28) — 화면 밖 소실 방지. 반드시 **마지막**에 호출한다:
             // 어떤 상태가 어떤 이유로 몸을 옮겼든(드래그/던지기/랙돌/순간이동성 스냅) 그 결과를 여기서
             // 화면 안으로 되돌리고, 오래 착지하지 못하면 강제 복귀시킨다
             // (StickmanBlackboard.EnforceScreenBoundsAndRescue 문서 참고).
             _blackboard.EnforceScreenBoundsAndRescue(dt);
+        }
+
+        // ============================================================================
+        // 캐릭터 시각적 반폭 추적 (2026-08-28, 리더 관찰 "화면 왼쪽 끝에서 잘려 보인다")
+        // ============================================================================
+        // 화면 하드 클램프(StickmanBlackboard.EnforceScreenBoundsAndRescue)는 루트(=발 중심)만 보므로,
+        // 벌린 팔/머리의 실제 폭을 모르면 가장자리에서 몸이 반쯤 잘린다. 포즈에 따라 폭이 계속 바뀌므로
+        // 상수로 둘 수 없고, 그렇다고 매 프레임 렌더러 12개의 bounds를 합치는 것도 24시간 상주 앱에서는
+        // 불필요한 낭비다 — 그래서 이 간격으로만 갱신한다(가장자리에 닿기까지는 최소 수백 ms가 걸리므로
+        // 0.25초면 항상 최신값이나 다름없다).
+        private const float VisualHalfWidthRefreshInterval = 0.25f;
+        private float _visualHalfWidthTimer = float.MaxValue;
+
+        private void TickVisualHalfWidth(float deltaTime)
+        {
+            _visualHalfWidthTimer += deltaTime;
+            if (_visualHalfWidthTimer < VisualHalfWidthRefreshInterval) return;
+            _visualHalfWidthTimer = 0f;
+            if (_renderers == null || _body == null || _blackboard == null) return;
+
+            float centerX = _body.position.x;
+            float halfWidth = 0f;
+            for (int i = 0; i < _renderers.Length; i++)
+            {
+                Renderer r = _renderers[i];
+                if (r == null || !r.enabled) continue;
+                Bounds b = r.bounds;
+                halfWidth = Mathf.Max(halfWidth, Mathf.Abs(b.max.x - centerX));
+                halfWidth = Mathf.Max(halfWidth, Mathf.Abs(centerX - b.min.x));
+            }
+            _blackboard.CharacterVisualHalfWidthWorld = halfWidth;
         }
 
         private void TickFullscreenSuspend(float deltaTime)

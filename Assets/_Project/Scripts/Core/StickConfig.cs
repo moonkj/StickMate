@@ -654,6 +654,54 @@ namespace StickMate.Core
         [Tooltip("간식을 받아 화해했을 때 감소하는 스트레스량(0~1) — 완전 리셋은 아님(20절 명시).")]
         public float runawaySnackStressRelief = 0.5f;
 
+        [Header("Dock 발판 (사용자 요청: '독위에서만 걷고 독아래로 가면 바닥으로 내려가야')")]
+
+        [Tooltip("macOS Dock 띠의 두께(OS 포인트). Dock 발판의 상단 = 화면 바닥 - 이 값이 된다. " +
+                 "기본 75는 이 환경의 실측치다(CGDisplayBounds의 화면 전체 982pt - 작업영역 874pt - " +
+                 "메뉴바 33pt = 75pt). Dock 자동 숨김을 쓰거나 Dock을 좌/우로 옮겼다면 0으로 두면 " +
+                 "Dock 발판이 사라지고 모든 낙하가 화면 바닥 안전망으로 간다.")]
+        public float dockFootholdThicknessPoints = 75f;
+
+        [Tooltip("Dock 발판의 가로 폭(화면 폭 대비 비율, 화면 가로 정중앙 정렬). 0이면 Dock 발판 비활성. " +
+                 "왜 실제 Dock 사각형을 쓰지 않는가는 Platform/FallbackPlatformWindowService.TryGetDockFoothold의 " +
+                 "문서에 실측 조사 결과와 함께 적어뒀다(요약: Dock 창은 CGWindowList에 화면 전체 크기로 " +
+                 "열거되고, 진짜 막대 폭은 화면 기록 권한 없이는 얻을 수 없다). " +
+                 "기본값 0.65는 이 환경 실측 폭(1069/1512 = 0.707)보다 **일부러 좁게** 잡은 값이다 — " +
+                 "추정이 넓으면 Dock 없는 자리에 캐릭터가 떠 있게 되고(사용자가 신고한 바로 그 증상), " +
+                 "좁으면 실제 Dock 안쪽에서 조금 일찍 떨어질 뿐이라 틀리는 방향을 안전한 쪽으로 고정했다. " +
+                 "Dock에 아이콘이 많아 실제 Dock이 더 넓다면 이 값을 올려도 된다.")]
+        [Range(0f, 1f)]
+        public float dockFootholdWidthFraction = 0.65f;
+
+        [Header("눈 커서 추적 (사용자 요청: '마우스 위치에 따라 눈도 움직여야')")]
+
+        [Tooltip("눈동자가 마우스 커서를 따라갈지 여부. 기본 ON. 끄면 눈동자가 부드럽게 중립(정면)으로 " +
+                 "돌아가 고정된다 — 값을 바꾸면 재빌드 없이 다음 프레임부터 즉시 반영된다" +
+                 "(States/EyeController.cs가 매 프레임 이 설정 묶음을 새로 읽기 때문).")]
+        public bool eyeTrackingEnabled = true;
+
+        [Tooltip("눈동자가 중립에서 벗어날 수 있는 최대 거리(월드 유닛). 머리 링 반경 0.22 / 눈 중립 " +
+                 "(±0.075,+0.02) / 눈동자 반경 0.018 기준으로 기하학적 상한은 0.0929이며, 이 값이 " +
+                 "그보다 크면 States/EyeController.MaxSafePupilOffset(0.09)으로 자동 clamp된다 — " +
+                 "즉 이 필드를 아무리 키워도 눈동자가 머리 링 밖으로 나가는 일은 구조적으로 불가능하다.")]
+        public float eyeMaxPupilOffset = 0.05f;
+
+        [Tooltip("눈동자 추적 강도 k (프레임레이트 독립 지수 감쇠 1-exp(-k*dt)의 k). 클수록 커서를 " +
+                 "빠르게 따라간다. 12면 약 0.25초 안에 목표의 95%에 도달한다(즉시 스냅처럼 보이지 않으면서 " +
+                 "굼뜨지도 않는 값). 0이면 눈이 전혀 움직이지 않는다.")]
+        public float eyeTrackingFollowRate = 12f;
+
+        [Tooltip("이 거리(월드 유닛) 안에 커서가 들어오면 눈이 중립(정면)으로 돌아간다 — '커서가 " +
+                 "캐릭터와 겹치면 정면' 요구사항. 이 구간에서는 방향 벡터 자체가 의미가 없어(머리 " +
+                 "한가운데) 눈동자가 미세하게 떨리기만 하므로 아예 중립으로 고정하는 편이 자연스럽다.")]
+        public float eyeTrackingNeutralRadiusWorld = 0.6f;
+
+        [Tooltip("이 거리(월드 유닛) 이상 떨어지면 눈동자가 최대 오프셋에서 포화되어 더 이상 커지지 " +
+                 "않는다 — '커서가 아주 멀면 최대 오프셋에서 멈춤' 요구사항. NeutralRadius와 이 값 " +
+                 "사이에서 오프셋이 0에서 최대까지 선형으로 커진다. 화면 세로가 약 24유닛이므로 4는 " +
+                 "'캐릭터 키의 두어 배쯤 떨어지면 눈을 끝까지 돌린다'에 해당한다.")]
+        public float eyeTrackingFullRangeWorld = 4f;
+
         [Header("색상 (임시 플레이스홀더 — 디자이너 확정 전까지)")]
 
         [Tooltip("캐릭터 선 색 프리셋(사용자 요청, 2026-08-28: '캐릭터를 흰색 or 검은색으로 선택할수있게'). " +

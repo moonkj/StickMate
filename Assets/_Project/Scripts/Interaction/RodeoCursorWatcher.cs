@@ -131,9 +131,13 @@ namespace StickMate.Interaction
             // 위치는 정적 바닥 콜라이더 **밑**이라 라이딩이 끝나 Dynamic으로 돌아가는 순간 접지 판정이
             // 영원히 false가 되어(허용 오차 밖) Fall 상태에 영구 고착된다. 도달 불가 판정으로 애초에
             // 발동시키지 않는 것이 13절이 이미 규정한 정답이다.
+            // ★ 2026-08-28 수정: 여기서도 "지면"을 가장 **높은** 표면으로 물으면 안 된다(드래그
+            // 순간이동 버그와 같은 계열의 오류 — States/GroundSensor.TryGetFloorWorldY 문서 참고).
+            // 화면 위쪽에 창이 하나만 열려 있어도 그 아래 전 영역이 "지면 아래"로 판정되어 로데오가
+            // 사실상 영구 억제됐다. 진짜 판정 대상은 "그 x에서 가장 낮은 표면(바닥)보다 아래인가"다.
             if (blackboard.TryGetCursorWorldPosition(out Vector2 cursorWorld)
-                && blackboard.TryGetGroundSurfaceWorldY(cursorWorld, out float surfaceY)
-                && cursorWorld.y < surfaceY)
+                && blackboard.TryGetFloorWorldY(cursorWorld, out float floorY)
+                && cursorWorld.y < floorY)
             {
                 return;
             }

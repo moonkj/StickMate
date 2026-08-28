@@ -1300,3 +1300,105 @@ DummyFootholdHeightFraction = 75/982 ≈ 0.0764   (이전 0.2)
 - **EditMode 13/13, PlayMode 3/3**
 - 실행 실측 예외/에러 **0건**, `화면안=예`, 상태 Idle 정상
 - git commit 없음(리더 지시)
+
+---
+
+## 드래그 순간이동 수정 + Dock 발판/바닥 안전망 + 앱 제어 수단 + 눈 커서 추적 (2026-08-28, Coder)
+
+리더 지시 우선순위 ①위쪽 착지 오판 → ②Dock 발판+바닥 안전망+클램프 여유 → ③종료 수단 → ④눈 추적 → ⑤매달려 내려가기.
+**①~④ 완료, ⑤는 다음 라운드로 이월**(리더가 명시적으로 허용한 범위).
+
+### ① 사용자 신고 "마우스로 끌었는데 갑자기 다른창위로 올라감" — 원인 2개, 둘 다 수정
+
+**리더 가설(스윕 교차 판정에 하강 조건이 없다)은 코드 확인 결과 사실이 아니었다.** `GroundSensor.TryFindLandingCrossing()`에는 처음부터 방향 조건이 있었다(`currOs.y <= prevOs.y`면 즉시 false + 상단선을 위→아래로 지날 때만 인정). 진짜 원인은 다른 곳에 두 개 있었다.
+
+**(원인 1, 주범) `DragThrowState.FollowCursor()`의 지면 소프트 클램프가 "지면"을 잘못 물었다.**
+클램프 식은 `if (desired.y < ground) desired.y = ground;` 라 **위로만** 작동하는 단방향 연산인데, ground를 `GroundSensor.TryGetSurfaceWorldY`(= 그 x에서 **가장 높은** 창 상단)로 물었다. 그래서 커서 x가 화면 위쪽 창의 가로 범위에 걸치기만 하면 화면 아래에서 끌던 캐릭터가 **매 프레임 그 창 상단으로 끌어올려졌다.**
+- 실측 규모(PlayMode 테스트 로그): 드래그 위치 월드Y **-9.88** / 예전 클램프 기준(가장 높은 표면) **+8.16** → 한 프레임에 **18.0유닛 순간이동**.
+- 수정: `GroundSensor.TryGetFloorWorldY()` 신설(= 그 x에서 **가장 낮은** 표면 = 진짜 바닥). 클램프의 원래 목적("세상 바닥 밑으로 내려보내 Fall 영구 고착되는 것 방지")은 그대로 보존된다.
+- 같은 계열의 오류가 `Interaction/RodeoCursorWatcher.cs`에도 있었다(화면 위에 창이 하나만 있어도 그 아래 전 영역이 "지면 아래"로 판정되어 로데오가 사실상 영구 억제). 함께 교체.
+
+**(원인 2, 던진 직후) `FallState`의 2순위 착지 판정(허용오차 밴드+유예)에 방향 개념이 아예 없었다.**
+위로 던지면 상승 중에 창 상단선의 ±`groundSnapTolerance` 밴드에 들어가고, 포물선 정점 부근은 속도가 0에 가까워 `fallGraceDuration`(0.1초)을 쉽게 채운다 → **지나쳐 올라가던 창 위에 착지**. 몸이 위로 움직이는 동안(`linearVelocity.y > 0.05`)에는 이 경로도 성립하지 않게 가드 추가.
+
+**드래그 중 접지 판정 확인(리더 요청)**: `DragThrowState.Tick()`은 `SenseGround`/`GroundedTick`을 호출하지 않는다 — 드래그 중 접지 판정은 원래부터 비활성이었다. 발판 고착도 정상: 놓기→Fall 진입에서 `CurrentFootholdHandle=0`으로 해제되고 착지에서 재설정된다(실측 로그 `[발판변경] -2 -> 0 (Fall 진입) → 0 -> -1 (착지)`).
+
+**회귀 테스트 신설** `Tests/PlayMode/FootholdLandingDirectionTests.cs` (3종, PlayMode 3→6):
+`FloorProbeReturnsLowestSurfaceSoDragNeverLiftsCharacterUp` / `UpwardPassThroughFootholdTopDoesNotLand` / `DownwardPassThroughFootholdTopStillLandsOnThatWindow`(정상 낙하 착지가 죽지 않았음을 반대편에서 확인, 착지 Y 오차 0.01 이내).
+
+**실행 실측(빌드된 .app + 합성 마우스 이벤트로 실제 드래그 재현)**: 화면 전폭을 덮는 창(Cursor, 상단 OS y=33 = 월드 +11.19)이 열린 상태에서 캐릭터를 화면 전체에 걸쳐 끌었을 때 몸통 월드Y가 **-6.21 ~ -0.10** 범위에 머물렀고(밀착 오차 0.000유닛), 그 창 상단으로 끌려 올라가지 않았다. 예전 코드였다면 모든 프레임이 +11.19였어야 한다.
+
+### ② Dock 발판 + 화면 최하단 안전망 + 클램프 여유
+
+**★ 리더 지시 1항("Dock 프로세스가 소유한 창의 실제 사각형을 발판으로 써라")은 실측 결과 불가능하다.**
+`CGWindowListCopyWindowInfo` 전수 덤프(2026-08-28, 이 환경):
+```
+owner='Dock' name='Dock'       layer=20  alpha=1.0  rect=(0, 0, 1512, 982)
+owner='Dock' name='Wallpaper-' layer=-2147483624    rect=(0, 0, 1512, 982)
+```
+**Dock 창의 bounds는 Dock 막대가 아니라 화면 전체다.** 그대로 발판으로 쓰면 화면 전폭 발판이 화면 **맨 위**(y=0)에 생겨 지금보다 훨씬 나빠진다. 다른 경로도 전부 확인/차단:
+- `com.apple.dock` 환경설정 — tilesize(49)/persistent-apps(13)/recent-apps(3)는 읽히지만 **실행 중 앱 타일 수**를 알 수 없어 폭 계산 불가(예측 가능한 17타일로는 실제 폭이 나오지 않는다).
+- `CGWindowListCreateImage`로 Dock 창만 캡처해 알파 경계를 재면 **정확히** 나온다(실측: **x 221~1290, 폭 1069pt, 화면 가로 정중앙, 두께 68pt**). 하지만 이 API는 macOS 10.15+에서 **화면 기록 권한**을 요구하고 권한 팝업을 띄운다 → 비침해 원칙(CLAUDE.md 2)과 "권한 없이 동작"이라는 플랫폼 계약에 정면으로 어긋나 **채택하지 않음**.
+
+**따라서 "정확히 알 수 있는 것만 실측값, 알 수 없는 폭만 설정값"으로 나눴다** (`FallbackPlatformWindowService.TryGetDockFoothold`, 핸들 **-2**):
+- 세로(정확): 상단 = 화면 바닥 − `StickConfig.dockFootholdThicknessPoints`(기본 75 = 실측 Dock 두께). 0으로 두면 Dock 발판 자체가 사라진다(자동 숨김/좌우 Dock 대응).
+- 가로(추정): 화면 가로 정중앙 정렬 + `StickConfig.dockFootholdWidthFraction`(기본 **0.65**). 실측 폭 비율 0.707보다 **일부러 좁게** 잡았다 — 넓으면 Dock 없는 자리에 캐릭터가 서서 사용자가 신고한 "공중 부양"이 재발하지만, 좁으면 실제 Dock 안쪽에서 조금 일찍 떨어질 뿐이라 **틀리는 방향을 안전한 쪽으로 고정**했다. 실행 실측 발판: `(265,907 983x75)` → 실제 Dock `[221,1290]` 안에 완전히 포함.
+
+**바닥 안전망**: 단일 소스 상수 하나만 교체 — `DockSafeBottomInsetPoints(75)` → `BottomSafetyNetInsetPoints(40)`, `DummyFootholdHeightFraction = 40/982 ≈ 0.0407`. 여기서 (a) 더미 발판, (b) 실배포 안전망, (c) 씬에 굽는 지면/스폰/RAGDOLL 바닥 Y, (d) PlayMode 프레이밍 테스트 기대값이 전부 자동 파생된다(`--force` 재생성으로 확인: 스폰 Y −9.867 → **−11.4556**, 실행 실측 발판 상단 OS y **907 → 942**).
+- **왜 0(화면 맨 아래)이 아닌 40pt인가 — 테스트가 잡아준 값이다.** 처음에 10pt로 잡았더니 프레이밍 테스트가 즉시 빨간불: 루트(발)는 발판에 정확히 놓이지만 **렌더러 바운즈 아래끝이 루트보다 0.55월드유닛 더 내려간다**(실측: 루트 −11.60, bounds.min.y −12.15) → 발끝이 화면 밖으로 잘림. 40pt면 발이 뷰포트 바닥에서 0.98유닛 위 = 바운즈까지 0.43유닛 여유(RAGDOLL 벌어짐 흡수). 40pt는 Dock 띠(하단 75pt) **안쪽**이라 "Dock 바깥에서는 바닥으로 내려간다"는 요구를 시각적으로 만족한다.
+
+**부수 사고 1건과 그 수정(테스트가 잡음)**: 안전망이 내려오자 화면 하드 클램프가 **지면과 싸우기 시작했다**. 640x480 테스트 화면에서 하단 여유 8 OS px = 0.4월드유닛으로 지면(0.245유닛)보다 위라, RAGDOLL이 지면에 내려앉을 때마다 클램프가 매 프레임 위로 되돌리고 세로 속도를 0으로 만들어 **영원히 안정되지 못했다**(`StickmanRagdollRecoveryTests`가 GETUP 미도달로 실패). → 하단 클램프 여유를 **0**(화면 경계 그 자체)으로 바꿨다. 이 클램프의 목적은 "화면 밖에서 잃어버리지 않는다"이고 발판/지면은 언제나 화면 안이므로 정상 동작에서는 발동하지 않는다.
+
+**스폰 위치 변경(필수 연쇄)**: 안전망(942)이 Dock(907)보다 **아래**가 되면서, 예전처럼 안전망 바로 위에 스폰하면 캐릭터가 **Dock에 영원히 올라갈 수 없다**(착지는 상단선을 위→아래로 가로질러야만 성립, 자율 배회 점프 높이 0.61유닛 < 필요 1.29유닛). 스폰을 **화면 세로 중앙(카메라 y)** 으로 옮겨 첫 프레임부터 자유낙하해 그 x의 가장 높은 표면(창 → Dock → 바닥)에 자연 착지하게 했다. 실행 실측: `[FallState] 착지 확정 — 발판핸들=-2(Dock), 낙하높이=9.99유닛`.
+
+**화면 클램프에 캐릭터 시각 폭 반영**(리더 관찰 "화면 왼쪽 끝에서 잘려 보인다"): `StickmanBlackboard.CharacterVisualHalfWidthWorld` 신설, `StickmanAgent`가 렌더러 바운즈에서 0.25초마다 갱신(포즈에 따라 팔 벌린 폭이 바뀌므로 상수 불가). 실측 로그: `[화면클램프] OS (2.0,445.5) -> (58.2,445.5), 좌우여유=58.2pt(기본 8 + 시각반폭 50.2)`.
+
+**동작 실측(요청한 시나리오 그대로)**: Dock 위(OS y=907)를 걸어다니다가 → 캐릭터를 Dock 가로범위 밖(OS x=90)에 놓자 → `[발판변경] -2 -> 0 (Fall)` → `[FallState] 착지 확정 — 발판핸들=-1(화면 최하단 안전망), 착지 월드Y=-11.022` → OS y **942**에서 보행. 그 뒤 다시 Dock 가장자리에서 ParkourClimb로 Dock 위로 복귀하는 것도 관찰됐다(기존 파쿠르 로직이 35pt 단차를 그대로 처리).
+
+### ③ 앱 제어 수단 — 이제 터미널 없이 끌 수 있다
+
+리더 제시 3안 중 **2안+3안을 함께** 채택(1안 NSStatusItem은 네이티브 Objective-C 플러그인이 필요한데 이 프로젝트는 자체 플러그인을 전부 제거하고 UniWindowController로 교체한 이력이 있어 되돌리는 비용/위험이 라운드 예산 초과).
+
+**2안 전역 단축키** — 핵심 미지수였던 "권한 없이 키 상태를 읽을 수 있는가"를 **먼저 실측**했다: `CGEventSourceKeyState`는 권한 없이 호출해도 크래시 없이 false를 돌려주고, 세션에 실제 키 이벤트가 들어오면 true로 바뀐다(떼면 즉시 false). 이미 쓰고 있는 `CGEventSourceButtonState`와 같은 계열의 조회 전용 API다.
+- `Platform/IGlobalKeyStateService.cs` 신설 + `MacWindowService` 구현. **키 7개(Ctrl/Opt/Cmd/Q/C/D/R)만** 열거형으로 노출 — 전체 키맵을 노출하면 조회 전용이라도 사실상 키로거 형태가 되므로 범위를 타입 수준에서 못박았다.
+- 조합: **Ctrl+Option+Cmd + Q**(종료) / **C**(잉크색) / **R**(로데오 on-off) / **D**(진단 로그 on-off). Cmd+Shift+Q는 macOS 로그아웃, Cmd+Q는 활성 앱 종료라 둘 다 쓸 수 없다. Ctrl+Opt+Cmd는 시스템/일반 앱이 거의 쓰지 않아 오발동 위험이 사실상 없다.
+- **실측**: 빌드된 .app 실행 중 4개 조합을 합성 키 이벤트로 눌러 전부 반응 확인(`[앱제어] 잉크색 전환 -> White` / `로데오 커서 켬` / `진단 로그 켬(촘촘)`).
+
+**3안 캐릭터 우클릭 메뉴**(2안의 이중화 — 향후 macOS가 이 API에 TCC 권한을 요구하게 되어도 종료 수단이 죽지 않도록 단일 실패점을 없앤다): `Interaction/AppControlDirector.cs`.
+- 캐릭터 우클릭 → 캐릭터 옆에 패널(앱 종료 / 잉크색 / 로데오 커서 / 진단 로그 / 닫기). 좌클릭은 이미 드래그&던지기가 쓰므로 우클릭을 쓴다(`IGlobalPointerButtonService.TryGetSecondaryButtonPressed` 신설, `CGEventSourceButtonState`의 버튼 번호만 다름).
+- **버튼 히트테스트를 uGUI EventSystem이 아니라 전역 커서 좌표로 직접 판정**한다 — 클릭관통 오버레이에서는 창이 마우스 이벤트를 실제로 받는다는 보장이 없기 때문(StickmanClickHitbox가 같은 이유로 이미 쓰는 방식). `ScreenCoordinateConverter.OsScreenToUnityScreen()` 신설(좌표 변환은 이 클래스만 담당한다는 BUG-M5 컨벤션 유지).
+- 12초 무동작 자동 닫힘 / 메뉴 밖 클릭 = 취소 / 메뉴 영역 히트테스트 차단막(isTrigger라 캐릭터 물리에 무관).
+- **실측(합성 마우스 이벤트로 실제 조작)**: 캐릭터 우클릭 → `[앱제어] 캐릭터 우클릭 — 제어 메뉴를 열었습니다` → 계산한 [앱 종료] 행 좌표 클릭 → `[앱제어] 종료 요청(우클릭 메뉴) — Application.Quit()` → **프로세스 실제 종료 확인**.
+
+**기존 안전장치 무변경 확인**: 이 컴포넌트는 `SetClickThrough`를 한 번도 호출하지 않는다. 시작 5초 클릭관통 지연(`ClickThroughSafetyDelaySeconds`)과 Escape 긴급 해제(`EmergencyDisableKey`)는 코드/동작 모두 그대로이며, 실행 로그에서 5초 뒤 `clickThrough=True, hitTest=True`로 정상 전환되는 것을 확인했다.
+
+### ④ 눈 커서 추적 (사용자 명시 요청 "마우스위치에 따라 눈도 움직여야")
+
+`EyeController.TickLookAt()` 하나가 매 프레임 진입점(`StickmanBlackboard.TickPose` 마지막 줄). 커서 좌표는 기존 채널을 그대로 재사용(`TryGetCursorWorldPosition` → `StickmanAgent.TryGetCursorPosition` → `ICursorPositionService`) — 새 배관 없음.
+- **링 밖으로 못 나간다**: `MaxSafePupilOffset=0.09`를 프리팹 실측치에서 유도(링 안쪽 가장자리 0.1885 − 눈 중립 거리 0.0776 − 눈동자 반경 0.018 = 0.0929). 설정값은 항상 이 상한으로 clamp되므로 구조적으로 불가능.
+- **부드럽게**: 기존 컨벤션과 같은 프레임레이트 독립 지수 감쇠 `1-exp(-k·dt)`, k=`eyeTrackingFollowRate`(12).
+- **가까우면 중립 / 멀면 포화**: 머리~커서 거리를 [`eyeTrackingNeutralRadiusWorld`(0.6), `eyeTrackingFullRangeWorld`(4)] 구간에서 0~1로 정규화.
+- **RAGDOLL 대응**: 눈은 머리의 자식이라 따라 도는 것은 자동이지만, 그대로 두면 머리가 뒤집혔을 때 눈이 엉뚱한 쪽을 본다. 월드 방향을 `Transform.InverseTransformDirection`으로 **머리 로컬 공간**으로 변환해 적용하므로 머리가 어떤 각도로 뒹굴어도 화면상 커서 쪽을 계속 본다.
+- `StickConfig`: `eyeTrackingEnabled`(기본 ON) / `eyeMaxPupilOffset` / `eyeTrackingFollowRate` / `eyeTrackingNeutralRadiusWorld` / `eyeTrackingFullRangeWorld`.
+- **실측 로그**(`[눈추적]`, 시작 직후 6회 + verbose 시 2초 주기):
+  - 먼 커서: 거리 23.02유닛 → 눈동자오프셋 (0.0233,0.0442) **길이 0.0500 = 최대치에서 포화** ✔
+  - 캐릭터가 걸어가며 커서와의 각도가 변함: 시선 x가 0.467 → 0.340 → 0.258로 연속 변화 ✔
+  - 커서를 캐릭터 위에 올림: 거리 1.10유닛 → 오프셋 길이 0.0185로 축소(중립 방향으로 감쇠 중) ✔
+
+### ⑤ 매달려 내려가기 — **이월**
+리더가 "여유 있으면"으로 지정한 항목. ①~④의 검증(합성 입력으로 드래그/우클릭 메뉴/종료/Dock 낙하를 실제로 재현)에 시간을 썼고, 무리해서 붙이는 것보다 다음 라운드에 `ParkourClimbState` 확장으로 제대로 하는 편이 낫다고 판단했다.
+
+### 검증
+- 컴파일 **에러 0 / 경고 0**, 빌드 **Succeeded 0/0**
+- **EditMode 13/13** (무변경), **PlayMode 6/6** (기준선 3 + 신규 회귀 3)
+- 실행 실측 예외/에러 **0건**, `화면안=예`
+- 임시 검증 코드는 프로젝트에 남기지 않았다 — 모든 실행 검증은 프로젝트 밖 스크립트(합성 CGEvent 입력)로 수행했고, 상시 진단 로그만 남겼다.
+- 검증 중 열린 앱 창(메모)은 정리했다. git commit 없음(리더 지시).
+
+### 교차 레이어 영향
+- `IGlobalPointerButtonService`에 `TryGetSecondaryButtonPressed` 추가 — 구현체는 `MacWindowService`/`FallbackPlatformWindowService` 2개뿐이라 둘 다 갱신 완료.
+- `IGlobalKeyStateService`/`GlobalKey` 신설(Platform 레이어). 미지원 플랫폼은 구현하지 않으면 되고, 소비 측은 `as` 캐스팅 null 판정.
+- `GroundSensor.TryGetFloorWorldY` 신설. **`TryGetSurfaceWorldY`(가장 높은 표면)는 그대로 남겨두었다** — `RescueToSafeGround`(화면 중앙 최상단 지면으로 복귀)는 여전히 "가장 높은" 쪽이 맞다. 둘을 혼동하면 이번 버그가 재발하므로 각 문서에 용도를 명시했다.
+- `StickmanAgent.Config` 프로퍼티 공개(기존 private 필드 노출, 새 로직 없음).
+- **합성 발판 핸들 규약 확장**: -1 = 화면 최하단 안전망, **-2 = Dock**(신규). 진단 로그/착지 로그가 둘을 구분해 표시한다.
+- 프레이밍 테스트의 하단 여백 상수를 `MinBottomWorldMarginUnits`(0.05)로 분리 — 안전망이 **의도적으로** 화면 최하단으로 내려갔으므로 기존 0.5유닛은 정상 동작을 실패로 판정한다. 상단은 완화하지 않았고, "발 Y == 발판 상수" 대조는 그대로 유지(오차 실측 0.001유닛).

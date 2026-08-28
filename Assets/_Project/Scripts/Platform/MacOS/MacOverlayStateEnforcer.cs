@@ -415,7 +415,11 @@ namespace StickMate.Platform.MacOS
                 }
                 else if (info.GroundedFootholdHandle == FallbackPlatformWindowService.SyntheticFootholdHandle)
                 {
-                    standing = "합성 안전망";
+                    standing = "화면 최하단 안전망";
+                }
+                else if (info.GroundedFootholdHandle == FallbackPlatformWindowService.DockFootholdHandle)
+                {
+                    standing = "Dock";
                 }
                 else
                 {

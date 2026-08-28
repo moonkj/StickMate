@@ -84,6 +84,25 @@ namespace StickMate.Platform
             return new Vector2(osX, osY);
         }
 
+        /// <summary>
+        /// OS 데스크톱 좌표(좌상단 원점) -> Unity 스크린 좌표(좌하단 원점, Unity 픽셀).
+        /// 카메라/월드를 전혀 거치지 않는 순수 화면 좌표 변환이라 ScreenSpaceOverlay UI의 히트테스트에
+        /// 그대로 쓸 수 있다(Interaction/AppControlDirector.cs의 우클릭 메뉴 — 클릭관통 오버레이에서는
+        /// uGUI EventSystem을 신뢰할 수 없어 전역 커서 좌표로 직접 판정해야 한다).
+        ///
+        /// 변환식은 OsScreenToWorld()의 앞부분과 **완전히 동일한 한 벌**이다 — 좌표 변환은 오직 이
+        /// 클래스만 담당한다는 컨벤션(BUG-M5)을 지키기 위해 소비자 쪽에서 같은 식을 다시 쓰지 않고
+        /// 여기에 이름을 붙여 노출한다.
+        /// </summary>
+        public static Vector2 OsScreenToUnityScreen(Vector2 osScreenPoint, StickConfig config)
+        {
+            float dpi = config != null ? Mathf.Max(0.0001f, config.desktopDpiScale) : 1f;
+            Vector2 origin = OverlayOriginOsScreen;
+            float unityX = (osScreenPoint.x - origin.x) / dpi;
+            float unityY = Screen.height - ((osScreenPoint.y - origin.y) / dpi);
+            return new Vector2(unityX, unityY);
+        }
+
         /// <summary>OS 데스크톱 좌표 -> Unity 월드 좌표. cameraDepth는 WorldToOsScreen에서 얻은 값을 그대로 넘길 것.</summary>
         public static Vector3 OsScreenToWorld(Camera cam, Vector2 osScreenPoint, float cameraDepth, StickConfig config)
         {

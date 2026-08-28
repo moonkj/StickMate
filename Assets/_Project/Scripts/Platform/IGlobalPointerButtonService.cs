@@ -35,5 +35,16 @@ namespace StickMate.Platform
         /// 소비자는 Unity 표준 경로만 쓴다(조용한 오동작 대신 "지원 안 함"을 명시적으로 알린다).
         /// </summary>
         bool TryGetPrimaryButtonPressed(out bool pressed);
+
+        /// <summary>
+        /// 오른쪽 버튼이 지금 눌려 있으면 pressed=true. 왼쪽과 완전히 같은 조회 API(macOS:
+        /// CGEventSourceButtonState의 버튼 번호만 다름)라 추가 권한도, 추가 위험도 없다.
+        ///
+        /// 왜 오른쪽 버튼이 필요한가(2026-08-28 "앱을 제어할 수단" 라운드): 캐릭터 위 **왼쪽** 클릭은
+        /// 이미 드래그&던지기(12절)가 쓰고 있어 다른 의미를 얹을 수 없다. 오른쪽 버튼은 이 앱에서
+        /// 아무도 쓰지 않으므로, "캐릭터를 우클릭하면 제어 메뉴가 뜬다"는 데스크톱 앱의 관습적인
+        /// 조작을 기존 상호작용과 충돌 없이 얹을 수 있다(Interaction/AppControlDirector.cs).
+        /// </summary>
+        bool TryGetSecondaryButtonPressed(out bool pressed);
     }
 }

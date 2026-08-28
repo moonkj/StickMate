@@ -122,11 +122,41 @@ namespace StickMate.Platform
         public const float DockSafeBottomInsetPoints = 75f;      // macOS Dock 실측 높이(OS 포인트).
         public const float ReferenceScreenHeightPoints = 982f;   // 그 Dock을 실측한 화면의 전체 높이.
 
+        // ============================================================================
+        // ★★ 2026-08-28 (2) — 안전망을 Dock 높이에서 **화면 진짜 최하단**으로 다시 내림
+        //     사용자: "맥북같은경우는 독위에서만 걷고 독아래로 가면 바닥으로 내려가야하는데"
+        // ============================================================================
+        // 직전 라운드에 이 값을 Dock 높이(75pt)로 내렸더니 새로운 문제가 드러났다: 이 안전망은
+        // **화면 전체 폭**에 깔려 있어서, Dock이 실제로는 존재하지 않는 좌우 바깥 영역에서도 캐릭터가
+        // Dock 높이에 서 있었다(사용자 스크린샷: 화면 왼쪽 끝, Dock 바깥인데 Dock 높이에 서 있음).
+        // 사용자 눈에는 여전히 "공중 부양"이다.
+        //
+        // 이제 역할을 둘로 나눈다:
+        //   • **Dock 발판**(FallbackPlatformWindowService.GetDockFoothold) — Dock이 실제로 있는
+        //     가로 구간에만 존재하는 별도 발판. 캐릭터는 그 위를 걷는다.
+        //   • **바닥 안전망**(이 상수) — 화면 진짜 최하단. Dock 좌우 바깥으로 걸어 나가면 Dock 발판의
+        //     X 범위를 벗어나 낙하하고, 여기에 착지한다. 이것이 사용자가 요구한 동작이다.
+        //
+        // 왜 0이 아니라 BottomSafetyNetInsetPoints(40pt)인가 — **실측으로 정한 값이다**:
+        // 처음에 10pt(화면 높이의 1%)로 잡았더니 PlayMode 프레이밍 테스트가 즉시 잡아냈다. 캐릭터의
+        // 루트(=발 원점)는 발판 상단에 정확히 놓이지만, **렌더러 바운즈의 아래끝은 루트보다 0.55월드
+        // 유닛 더 내려간다**(실측: 루트 -11.60일 때 bounds.min.y=-12.15 — 다리 선의 둥근 캡, 그리고
+        // RAGDOLL로 팔다리가 벌어졌을 때의 여유). 즉 발판을 화면 맨 아래에 붙이면 발끝이 화면 밖으로
+        // 잘려 나간다(리더가 지적한 "캐릭터가 잘려 보인다"의 세로판).
+        //   화면 높이 24월드유닛 기준 40pt/982pt = 0.0407 -> 발이 뷰포트 바닥에서 0.98유닛 위 ->
+        //   바운즈 아래끝까지 0.43유닛의 여유가 남는다(RAGDOLL 벌어짐까지 흡수).
+        // 이전 값 75pt(Dock 높이)와 비교하면 절반 가까이 내려온 것이고, Dock 띠(하단 75pt) **안쪽**에
+        // 들어오므로 "Dock 바깥에서는 화면 바닥으로 내려간다"는 사용자 요구를 시각적으로 만족한다.
+        public const float BottomSafetyNetInsetPoints = 40f;
+
         /// <summary>
         /// 안전망/더미 발판의 상단을 화면 진짜 바닥에서 위로 띄우는 비율(= 그 발판 띠의 두께 비율과 동일).
-        /// 실측 Dock 높이 75pt / 화면 높이 982pt ≈ 0.0764. 위 "★ 2026-08-28 하향" 문단이 근거다.
+        /// 40pt / 982pt ≈ 0.0407. 이 값 하나가 (a) 이 클래스의 더미 발판, (b) FallbackPlatformWindowService의
+        /// 실제 배포판 안전망, (c) Editor/SceneBootstrapper의 씬에 굽는 지면/스폰/RAGDOLL 바닥 Y,
+        /// (d) PlayMode 프레이밍 테스트의 기대 발 높이를 **모두** 파생시키는 단일 소스다
+        /// (grep: DummyFootholdHeightFraction / ComputeGroundTopWorldY). 값만 바꾸면 넷이 함께 따라온다.
         /// </summary>
-        public const float DummyFootholdHeightFraction = DockSafeBottomInsetPoints / ReferenceScreenHeightPoints;
+        public const float DummyFootholdHeightFraction = BottomSafetyNetInsetPoints / ReferenceScreenHeightPoints;
 
         public NullPlatformWindowService()
         {

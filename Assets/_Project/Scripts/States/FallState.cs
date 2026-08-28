@@ -36,6 +36,16 @@ namespace StickMate.States
         /// <summary>FallbackPlatformWindowService가 합성 안전망 발판에 부여하는 핸들(그 클래스 참고).</summary>
         private const long SyntheticSafetyNetHandle = -1L;
 
+        /// <summary>같은 클래스가 합성 Dock 발판에 부여하는 핸들 — 착지 로그에서 구분해 표시한다.</summary>
+        private const long SyntheticDockHandle = -2L;
+
+        /// <summary>
+        /// "위로 움직이는 중"으로 볼 최소 상승 속도(월드 유닛/초). 정확히 0으로 두면 접지 직전의 미세한
+        /// 수치 진동(+1e-5 같은 값)만으로도 착지가 계속 거부되어 원래의 "느린 하강 착지" 경로가 죽는다.
+        /// 아주 작은 값이면 충분하다 — 실제로 문제가 되는 "던져 올린" 상승은 유닛/초 단위다.
+        /// </summary>
+        private const float UpwardLandingVelocityEpsilon = 0.05f;
+
         // 같은 발판에 연속 착지할 때 로그가 중복되지 않도록 하는 직전 값(long.MinValue = 아직 없음).
         private long _lastLoggedLandingHandle = long.MinValue;
 
@@ -88,7 +98,17 @@ namespace StickMate.States
 
             // 2순위(기존 경로 유지): 아주 느린 하강/미세 진동으로 교차가 성립하지 않는 경우를 위해
             // 허용오차 밴드 + 유예 시간 판정을 그대로 남긴다.
-            if (!info.Grounded)
+            //
+            // ★ 2026-08-28 추가 — **상승 중 착지 금지**(사용자 신고 "갑자기 다른 창 위로 올라감"의
+            // 두 번째 경로). 1순위 스윕 교차 판정에는 원래부터 방향 조건이 있었지만
+            // (GroundSensor.TryFindLandingCrossing: `currOs.y <= prevOs.y`면 즉시 false + 상단선을
+            // 위->아래로 지났을 때만 인정), 이 2순위 밴드 판정에는 방향 개념이 아예 없었다. 그래서
+            // 캐릭터를 **위로 던지면** 상승 중에 어떤 창 상단선의 ±groundSnapTolerance 밴드에 들어가고,
+            // 포물선 정점 부근에서는 속도가 0에 가까워 그 밴드에 fallGraceDuration(0.1초)을 쉽게
+            // 채운다 -> 지나쳐 올라가던 창 위에 그대로 "착지"했다. 사람이 바닥을 아래에서 뚫고 올라가며
+            // 착지하지는 않으므로, 몸이 위로 움직이는 동안에는 이 경로도 성립시키지 않는다.
+            bool movingUpward = _blackboard.Body != null && _blackboard.Body.linearVelocity.y > UpwardLandingVelocityEpsilon;
+            if (!info.Grounded || movingUpward)
             {
                 _landingConfirmTimer = 0f;
                 return;
@@ -142,7 +162,7 @@ namespace StickMate.States
             {
                 _lastLoggedLandingHandle = footholdHandle;
                 Debug.Log($"[FallState] 착지 확정 — 발판핸들={footholdHandle}" +
-                    $"{(footholdHandle == SyntheticSafetyNetHandle ? "(합성 안전망)" : "(실제 창)")}, " +
+                    $"{(footholdHandle == SyntheticSafetyNetHandle ? "(화면 최하단 안전망)" : footholdHandle == SyntheticDockHandle ? "(Dock)" : "(실제 창)")}, " +
                     $"착지 월드Y={landingWorldY:F3}, 낙하높이={fallHeight:F2}유닛.");
             }
 

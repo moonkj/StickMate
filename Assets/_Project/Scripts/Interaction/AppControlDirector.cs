@@ -1,0 +1,492 @@
+using UnityEngine;
+using UnityEngine.UI;
+using StickMate.Core;
+using StickMate.Platform;
+
+namespace StickMate.Interaction
+{
+    /// <summary>
+    /// ★ 앱 제어 수단(2026-08-28 리더 지시: "지금 터미널 없이는 끌 수도 없다").
+    ///
+    /// ============================================================================
+    /// 문제
+    /// ============================================================================
+    /// 이 앱의 창은 클릭 관통 상태라 클릭으로 포커스를 줄 수 없고, Unity의 Input은 창이 키보드 포커스를
+    /// 가진 동안만 동작한다(Core/StickmanAgent의 Escape 긴급 해제가 가진 바로 그 한계 — 사용자가 다른
+    /// 앱을 한 번 클릭하는 순간 무력화된다). 그래서 지금까지 앱을 끄는 유일한 방법이 터미널
+    /// <c>kill PID</c>였다. 실사용 앱으로는 치명적이다.
+    ///
+    /// ============================================================================
+    /// 채택한 수단과 그 이유 (리더가 제시한 3안 중)
+    /// ============================================================================
+    /// 1안(macOS 메뉴바 NSStatusItem)은 **채택하지 않았다**. NSStatusItem은 AppKit Objective-C API라
+    ///    네이티브 플러그인이 반드시 필요한데, 이 프로젝트는 직전 라운드들에서 자체 Objective-C
+    ///    플러그인이 반복적으로 실패해 전부 제거하고 검증된 오픈소스(UniWindowController)로 교체한
+    ///    이력이 있다(Platform/MacOS/MacWindowService.cs 클래스 문서). 그걸 되돌리는 비용/위험이
+    ///    이 라운드 예산을 확실히 넘어선다.
+    ///
+    /// 2안(**전역 단축키**) — 채택. 핵심 미지수였던 "접근성 권한 없이 키 상태를 읽을 수 있는가"를
+    ///    먼저 실측으로 확인했다: <c>CGEventSourceKeyState</c>는 우리가 이미 마우스에 쓰고 있는
+    ///    <c>CGEventSourceButtonState</c>와 같은 계열의 조회 전용 API로, 권한 없이 동작한다
+    ///    (Platform/IGlobalKeyStateService.cs의 "권한에 대하여" 절에 실측 절차 기록). 창 포커스와
+    ///    무관하므로 클릭 관통 상태에서도 항상 살아 있다.
+    ///
+    /// 3안(**캐릭터 자체를 조작 UI로**) — 함께 채택(2안의 이중화). 2안 하나에만 의존하면, 만약 향후
+    ///    macOS가 이 API에 TCC 권한을 요구하도록 바꾸는 순간 사용자가 다시 앱을 끌 수 없게 된다.
+    ///    "터미널 없이 종료할 수 있어야 한다"는 최소 요구사항을 단일 실패점 위에 올려두지 않기 위해,
+    ///    이미 검증된 경로(캐릭터 위 클릭 감지 — Interaction/StickmanClickHitbox.cs가 실제 드래그로
+    ///    동작 확인됨)를 그대로 재사용하는 **우클릭 메뉴**를 함께 둔다.
+    ///
+    /// ============================================================================
+    /// 사용법 (사용자에게 안내해야 하는 내용)
+    /// ============================================================================
+    ///   • 전역 단축키: <b>Control + Option + Command + Q</b> = 종료
+    ///                  Control + Option + Command + C = 잉크색(검정/흰색) 전환
+    ///                  Control + Option + Command + R = 로데오 커서 켜기/끄기
+    ///                  Control + Option + Command + D = 진단 로그 켜기/끄기
+    ///     3개 조합키를 모두 쓰는 이유: Cmd+Shift+Q는 macOS의 "로그아웃"이고 Cmd+Q는 활성 앱 종료라
+    ///     둘 다 이미 의미가 있다. Ctrl+Option+Cmd 조합은 시스템/일반 앱이 거의 쓰지 않아, 사용자가
+    ///     다른 앱에서 작업하다 실수로 데스크톱 펫을 종료시킬 위험이 사실상 없다.
+    ///   • 캐릭터 <b>우클릭</b> -> 캐릭터 옆에 작은 메뉴가 뜬다. 그 메뉴의 [앱 종료]를 클릭하면 종료.
+    ///     좌클릭은 이미 드래그&던지기(12절)가 쓰고 있으므로 우클릭을 쓴다(충돌 없음).
+    ///
+    /// ============================================================================
+    /// 기존 안전장치와의 관계 (절대 깨뜨리지 않는다)
+    /// ============================================================================
+    /// 이 컴포넌트는 <c>SetClickThrough</c>를 **한 번도 호출하지 않는다**. 시작 5초 클릭관통 지연과
+    /// Escape 긴급 해제(Core/StickmanAgent)는 그대로 살아 있고, 이 클래스는 그 위에 종료/설정 수단만
+    /// 얹는다. 반대 방향도 마찬가지다 — 메뉴가 열려 있든 말든 클릭관통 상태는 변하지 않으므로,
+    /// 메뉴를 띄운 채로도 비침해 원칙(CLAUDE.md 2)이 유지된다.
+    /// </summary>
+    public sealed class AppControlDirector : MonoBehaviour
+    {
+        // 전역 단축키 조합 — 클래스 문서 "사용법" 참고.
+        private const float PollInterval = 0.05f;          // 20Hz. 단축키 감지에 충분하고 비용은 무시 가능.
+        private const float MenuAutoCloseSeconds = 12f;    // 열어두고 잊어버려도 알아서 사라진다.
+        private const float MenuPanelWidth = 188f;         // Unity 스크린 픽셀(= 화면 포인트 / dpi 배율).
+        private const float MenuRowHeight = 26f;
+        private const float MenuHeaderHeight = 22f;
+        private const float MenuPadding = 6f;
+        private const float MenuOffsetFromCharacterX = 34f; // 캐릭터와 겹치지 않도록 옆으로 밀어 놓는 거리.
+
+        private StickmanAgent _agent;
+        private StickConfig _config;
+        private IGlobalKeyStateService _keyService;
+        private IGlobalPointerButtonService _buttonService;
+
+        private float _pollTimer;
+
+        // 전역 단축키 엣지 판정 — 첫 폴링은 기록만 하고 넘어가, 앱 시작 순간 이미 눌려 있던 키를
+        // 명령으로 오인하지 않는다(StickmanClickHitbox의 _globalPressedInitialized와 동일한 관례).
+        private bool _hotkeyInitialized;
+        private bool _prevQ, _prevC, _prevD, _prevR;
+
+        // 우클릭/메뉴 클릭 엣지 판정.
+        private bool _rightPrev;
+        private bool _rightInitialized;
+        private bool _leftPrev;
+        private bool _leftInitialized;
+
+        private bool _menuOpen;
+        private float _menuTimer;
+
+        // 메뉴 UI(런타임 생성 — 씬/프리팹 수동 배선 없이도 동작. TodoPostItWidget과 동일한 관례).
+        private Canvas _canvas;
+        private RectTransform _panel;
+        private Text[] _rowLabels;
+        private RectTransform[] _rowRects;
+        private BoxCollider2D _menuBlocker; // 메뉴 위 클릭이 밑의 다른 앱까지 새지 않게 막는 히트테스트용.
+
+        // 메뉴 행 정의 — 순서가 곧 화면 표시 순서이자 히트테스트 인덱스다.
+        private enum MenuAction { Quit = 0, InkColor = 1, Rodeo = 2, Diagnostics = 3, Close = 4 }
+        private const int MenuRowCount = 5;
+
+        private void Awake()
+        {
+            _agent = GetComponent<StickmanAgent>();
+            if (_agent == null) _agent = Object.FindFirstObjectByType<StickmanAgent>();
+        }
+
+        private void Start()
+        {
+            _config = _agent != null ? _agent.Config : null;
+            _keyService = _agent != null ? _agent.PlatformService as IGlobalKeyStateService : null;
+            _buttonService = _agent != null ? _agent.PlatformService as IGlobalPointerButtonService : null;
+
+            // 시작 배너 — 사용자가 "어떻게 끄는지"를 로그에서도 확인할 수 있게 한다. 이 앱은 창을
+            // 클릭할 수 없으므로, 조작법을 알려주는 통로 자체가 귀하다.
+            Debug.Log("[앱제어] 준비 완료 — 종료 방법 2가지: " +
+                "(1) 전역 단축키 **Control+Option+Command+Q**, " +
+                "(2) **캐릭터 우클릭 -> [앱 종료] 클릭**. " +
+                "그 밖의 단축키: Ctrl+Opt+Cmd+C(잉크색 전환) / R(로데오 커서 on-off) / D(진단 로그 on-off). " +
+                $"전역 키 조회={(_keyService != null ? "사용 가능" : "미지원 — 우클릭 메뉴만 동작")}, " +
+                $"전역 버튼 조회={(_buttonService != null ? "사용 가능" : "미지원 — 단축키만 동작")}.");
+        }
+
+        private void Update()
+        {
+            _pollTimer += Time.unscaledDeltaTime;
+            if (_pollTimer < PollInterval) return;
+            _pollTimer = 0f;
+
+            TickHotkeys();
+            TickRightClickMenu();
+        }
+
+        // ==================== 2안: 전역 단축키 ====================
+
+        private void TickHotkeys()
+        {
+            if (_keyService == null) return;
+
+            // 조합키 3개가 모두 눌려 있을 때만 동작키를 본다 — 이 순서가 곧 비침해 보장이다
+            // (Platform/IGlobalKeyStateService.cs "비침해 원칙 유지" 절 참고).
+            bool chord = IsKeyDown(GlobalKey.Control) && IsKeyDown(GlobalKey.Option) && IsKeyDown(GlobalKey.Command);
+
+            bool q = chord && IsKeyDown(GlobalKey.Q);
+            bool c = chord && IsKeyDown(GlobalKey.C);
+            bool d = chord && IsKeyDown(GlobalKey.D);
+            bool r = chord && IsKeyDown(GlobalKey.R);
+
+            if (!_hotkeyInitialized)
+            {
+                _hotkeyInitialized = true;
+                _prevQ = q; _prevC = c; _prevD = d; _prevR = r;
+                return;
+            }
+
+            bool qRise = q && !_prevQ;
+            bool cRise = c && !_prevC;
+            bool dRise = d && !_prevD;
+            bool rRise = r && !_prevR;
+            _prevQ = q; _prevC = c; _prevD = d; _prevR = r;
+
+            if (qRise) Invoke(MenuAction.Quit, "전역 단축키 Ctrl+Opt+Cmd+Q");
+            else if (cRise) Invoke(MenuAction.InkColor, "전역 단축키 Ctrl+Opt+Cmd+C");
+            else if (rRise) Invoke(MenuAction.Rodeo, "전역 단축키 Ctrl+Opt+Cmd+R");
+            else if (dRise) Invoke(MenuAction.Diagnostics, "전역 단축키 Ctrl+Opt+Cmd+D");
+        }
+
+        private bool IsKeyDown(GlobalKey key)
+            => _keyService != null && _keyService.TryGetKeyPressed(key, out bool pressed) && pressed;
+
+        // ==================== 3안: 캐릭터 우클릭 메뉴 ====================
+
+        private void TickRightClickMenu()
+        {
+            if (_buttonService == null) return;
+
+            // (a) 우클릭 상승 엣지 -> 커서가 캐릭터 위면 메뉴 토글.
+            if (_buttonService.TryGetSecondaryButtonPressed(out bool right))
+            {
+                if (!_rightInitialized) { _rightInitialized = true; _rightPrev = right; }
+                else
+                {
+                    bool rise = right && !_rightPrev;
+                    _rightPrev = right;
+                    if (rise && IsCursorOverCharacter())
+                    {
+                        if (_menuOpen) CloseMenu("캐릭터 우클릭(토글 닫기)");
+                        else OpenMenu();
+                    }
+                }
+            }
+
+            if (!_menuOpen) return;
+
+            // (b) 자동 닫힘 — 열어두고 잊어버려도 화면에 영구히 남지 않는다.
+            _menuTimer += PollInterval;
+            if (_menuTimer >= MenuAutoCloseSeconds)
+            {
+                CloseMenu($"{MenuAutoCloseSeconds:F0}초 무동작 자동 닫힘");
+                return;
+            }
+
+            UpdateMenuPlacement();
+
+            // (c) 좌클릭 상승 엣지 -> 메뉴 행 히트테스트.
+            //     **창 포커스와 무관한 전역 폴링으로 직접 판정한다** — uGUI의 EventSystem 경로는 우리
+            //     창이 마우스 이벤트를 실제로 수신해야 동작하는데, 클릭관통 오버레이에서는 그 보장이
+            //     없기 때문이다(StickmanClickHitbox가 같은 이유로 이미 이 방식을 쓴다).
+            if (!_buttonService.TryGetPrimaryButtonPressed(out bool left)) return;
+            if (!_leftInitialized) { _leftInitialized = true; _leftPrev = left; return; }
+            bool leftRise = left && !_leftPrev;
+            _leftPrev = left;
+            if (!leftRise) return;
+
+            if (!TryGetCursorUnityScreen(out Vector2 cursorScreen)) return;
+
+            int hit = HitTestMenuRow(cursorScreen);
+            if (hit < 0)
+            {
+                // 메뉴 밖 클릭 = 취소(데스크톱 앱의 관습적 동작).
+                CloseMenu("메뉴 밖 클릭");
+                return;
+            }
+            _menuTimer = 0f; // 조작이 있었으니 자동 닫힘 타이머를 다시 채운다.
+            Invoke((MenuAction)hit, "우클릭 메뉴");
+        }
+
+        private bool IsCursorOverCharacter()
+        {
+            if (_agent == null || _agent.Blackboard == null) return false;
+            if (!_agent.Blackboard.TryGetCursorWorldPosition(out Vector2 cursorWorld)) return false;
+
+            // 판정 영역을 StickmanClickHitbox와 정확히 같게 맞춘다(캐릭터의 모든 Collider2D).
+            Collider2D[] colliders = _agent.GetComponentsInChildren<Collider2D>(true);
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                Collider2D col = colliders[i];
+                if (col == null || !col.enabled) continue;
+                if (col.OverlapPoint(cursorWorld)) return true;
+            }
+            return false;
+        }
+
+        private bool TryGetCursorUnityScreen(out Vector2 unityScreen)
+        {
+            unityScreen = default;
+            if (_agent == null || !_agent.TryGetCursorPosition(out Vector2 osScreen)) return false;
+            unityScreen = ScreenCoordinateConverter.OsScreenToUnityScreen(osScreen, _config);
+            return true;
+        }
+
+        /// <summary>커서(Unity 스크린 좌표)가 어느 메뉴 행 위인지. 메뉴 밖이면 -1.</summary>
+        private int HitTestMenuRow(Vector2 cursorScreen)
+        {
+            if (_panel == null) return -1;
+            for (int i = 0; i < MenuRowCount; i++)
+            {
+                RectTransform rt = _rowRects[i];
+                if (rt == null) continue;
+                // ScreenSpaceOverlay 캔버스에서는 RectTransform의 월드 좌표가 곧 스크린 픽셀 좌표다.
+                Vector3[] corners = new Vector3[4];
+                rt.GetWorldCorners(corners);
+                if (cursorScreen.x >= corners[0].x && cursorScreen.x <= corners[2].x &&
+                    cursorScreen.y >= corners[0].y && cursorScreen.y <= corners[2].y)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        // ==================== 동작 ====================
+
+        private void Invoke(MenuAction action, string source)
+        {
+            switch (action)
+            {
+                case MenuAction.Quit:
+                    Debug.Log($"[앱제어] 종료 요청({source}) — Application.Quit()을 호출합니다. " +
+                        "안녕히 계세요!");
+                    CloseMenu("종료");
+                    Application.Quit();
+#if UNITY_EDITOR
+                    UnityEditor.EditorApplication.isPlaying = false;
+#endif
+                    break;
+
+                case MenuAction.InkColor:
+                    if (_config == null) break;
+                    _config.inkColor = _config.inkColor == StickmanInkColor.White
+                        ? StickmanInkColor.Black
+                        : StickmanInkColor.White;
+                    _agent?.ApplyInkColorFromConfig();
+                    Debug.Log($"[앱제어] 잉크색 전환({source}) -> {_config.inkColor}.");
+                    RefreshMenuLabels();
+                    break;
+
+                case MenuAction.Rodeo:
+                    if (_config == null) break;
+                    _config.rodeoCursorEnabled = !_config.rodeoCursorEnabled;
+                    Debug.Log($"[앱제어] 로데오 커서 {(_config.rodeoCursorEnabled ? "켬" : "끔")}({source}).");
+                    RefreshMenuLabels();
+                    break;
+
+                case MenuAction.Diagnostics:
+                    if (_config == null) break;
+                    _config.verboseDiagnosticsLogging = !_config.verboseDiagnosticsLogging;
+                    Debug.Log($"[앱제어] 진단 로그 {(_config.verboseDiagnosticsLogging ? "켬(촘촘)" : "끔(60초 심장박동만)")}({source}).");
+                    RefreshMenuLabels();
+                    break;
+
+                case MenuAction.Close:
+                    CloseMenu("메뉴 [닫기]");
+                    break;
+            }
+        }
+
+        // ==================== 메뉴 UI ====================
+
+        private void OpenMenu()
+        {
+            EnsureMenuBuilt();
+            _menuOpen = true;
+            _menuTimer = 0f;
+            _leftInitialized = false; // 메뉴를 여는 그 클릭이 곧바로 행 클릭으로 오인되지 않게 엣지 재초기화.
+            if (_canvas != null) _canvas.gameObject.SetActive(true);
+            if (_menuBlocker != null) _menuBlocker.enabled = true;
+            RefreshMenuLabels();
+            UpdateMenuPlacement();
+            Debug.Log("[앱제어] 캐릭터 우클릭 — 제어 메뉴를 열었습니다([앱 종료]/[잉크색]/[로데오]/[진단로그]/[닫기]).");
+        }
+
+        private void CloseMenu(string reason)
+        {
+            if (!_menuOpen) return;
+            _menuOpen = false;
+            if (_canvas != null) _canvas.gameObject.SetActive(false);
+            if (_menuBlocker != null) _menuBlocker.enabled = false;
+            Debug.Log($"[앱제어] 제어 메뉴를 닫았습니다 — {reason}.");
+        }
+
+        private void EnsureMenuBuilt()
+        {
+            if (_canvas != null) return;
+
+            var canvasGo = new GameObject("AppControlCanvas", typeof(Canvas), typeof(CanvasScaler));
+            canvasGo.transform.SetParent(null, false);
+            _canvas = canvasGo.GetComponent<Canvas>();
+            _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            _canvas.sortingOrder = 32760; // 다른 모든 UI(TodoPostItWidget 포함)보다 위 — 종료 수단이 가려지면 안 된다.
+
+            float panelHeight = MenuHeaderHeight + MenuRowHeight * MenuRowCount + MenuPadding * 2f;
+            var panelGo = new GameObject("ControlPanel", typeof(RectTransform), typeof(Image));
+            panelGo.transform.SetParent(canvasGo.transform, false);
+            _panel = panelGo.GetComponent<RectTransform>();
+            _panel.anchorMin = Vector2.zero;
+            _panel.anchorMax = Vector2.zero;
+            _panel.pivot = new Vector2(0f, 0.5f);
+            _panel.sizeDelta = new Vector2(MenuPanelWidth, panelHeight);
+            // 불투명에 가까운 밝은 패널 — 어떤 바탕화면 위에서도 글자가 읽혀야 한다(종료 수단이므로
+            // "안 보여서 못 끄는" 상황이 절대 없어야 한다).
+            panelGo.GetComponent<Image>().color = new Color(0.97f, 0.97f, 0.97f, 0.97f);
+
+            var header = CreateLabel(panelGo.transform, "Header", MenuHeaderHeight,
+                new Vector2(0f, 1f), new Vector2(MenuPadding, -MenuPadding));
+            header.text = "StickMate";
+            header.fontStyle = FontStyle.Bold;
+            header.color = new Color(0.35f, 0.35f, 0.35f, 1f);
+            header.fontSize = 12;
+
+            _rowLabels = new Text[MenuRowCount];
+            _rowRects = new RectTransform[MenuRowCount];
+            for (int i = 0; i < MenuRowCount; i++)
+            {
+                var rowGo = new GameObject($"Row{i}", typeof(RectTransform), typeof(Image));
+                rowGo.transform.SetParent(panelGo.transform, false);
+                var rt = rowGo.GetComponent<RectTransform>();
+                rt.anchorMin = new Vector2(0f, 1f);
+                rt.anchorMax = new Vector2(0f, 1f);
+                rt.pivot = new Vector2(0f, 1f);
+                rt.sizeDelta = new Vector2(MenuPanelWidth - MenuPadding * 2f, MenuRowHeight);
+                rt.anchoredPosition = new Vector2(MenuPadding, -(MenuPadding + MenuHeaderHeight + MenuRowHeight * i));
+                rowGo.GetComponent<Image>().color = i == (int)MenuAction.Quit
+                    ? new Color(0.92f, 0.30f, 0.26f, 0.16f)  // 종료 행만 옅은 붉은 배경으로 구분.
+                    : new Color(0f, 0f, 0f, 0.05f);
+                _rowRects[i] = rt;
+
+                var label = CreateLabel(rowGo.transform, "Label", MenuRowHeight, Vector2.zero, Vector2.zero);
+                label.rectTransform.anchorMin = Vector2.zero;
+                label.rectTransform.anchorMax = Vector2.one;
+                label.rectTransform.offsetMin = new Vector2(8f, 0f);
+                label.rectTransform.offsetMax = Vector2.zero;
+                _rowLabels[i] = label;
+            }
+
+            var hint = CreateLabel(panelGo.transform, "Hint", MenuHeaderHeight,
+                new Vector2(0f, 0f), new Vector2(MenuPadding, 2f));
+            hint.rectTransform.pivot = new Vector2(0f, 0f);
+            hint.text = "단축키: ⌃⌥⌘Q 종료";
+            hint.fontSize = 10;
+            hint.color = new Color(0.45f, 0.45f, 0.45f, 1f);
+
+            // 메뉴 영역 히트테스트 차단막 — UniWindowController의 Raycast 히트테스트가 이 콜라이더를
+            // 발견하면 그 자리에서 클릭관통이 풀려, 메뉴를 클릭할 때 그 클릭이 **밑에 있는 다른 앱까지
+            // 함께 새는** 것을 막는다. isTrigger=true라 캐릭터 물리(충돌/랙돌 인터럽트)에는 전혀
+            // 관여하지 않는다(OnCollisionEnter2D는 트리거에서 발생하지 않는다). 메뉴가 닫혀 있는
+            // 동안에는 enabled=false라 존재 자체가 없는 것과 같다.
+            var blockerGo = new GameObject("AppControlMenuBlocker");
+            _menuBlocker = blockerGo.AddComponent<BoxCollider2D>();
+            _menuBlocker.isTrigger = true;
+            _menuBlocker.enabled = false;
+
+            canvasGo.SetActive(false);
+        }
+
+        private static Text CreateLabel(Transform parent, string name, float height, Vector2 anchor, Vector2 anchoredPos)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(Text));
+            go.transform.SetParent(parent, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = anchor;
+            rt.anchorMax = anchor;
+            rt.pivot = new Vector2(0f, 1f);
+            rt.anchoredPosition = anchoredPos;
+            rt.sizeDelta = new Vector2(MenuPanelWidth - MenuPadding * 2f, height);
+
+            var text = go.GetComponent<Text>();
+            // TodoPostItWidget과 동일 — 이 프로젝트에는 TextMeshPro가 없으므로 Unity 내장 legacy 폰트를 쓴다.
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.fontSize = 13;
+            text.alignment = TextAnchor.MiddleLeft;
+            text.color = Color.black;
+            text.horizontalOverflow = HorizontalWrapMode.Overflow;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
+            return text;
+        }
+
+        private void RefreshMenuLabels()
+        {
+            if (_rowLabels == null) return;
+            SetRowText(MenuAction.Quit, "✕  앱 종료");
+            SetRowText(MenuAction.InkColor,
+                $"잉크색: {(_config != null && _config.inkColor == StickmanInkColor.White ? "흰색" : "검정")}");
+            SetRowText(MenuAction.Rodeo,
+                $"로데오 커서: {(_config != null && _config.rodeoCursorEnabled ? "켬" : "끔")}");
+            SetRowText(MenuAction.Diagnostics,
+                $"진단 로그: {(_config != null && _config.verboseDiagnosticsLogging ? "켬" : "끔")}");
+            SetRowText(MenuAction.Close, "닫기");
+        }
+
+        private void SetRowText(MenuAction action, string text)
+        {
+            int i = (int)action;
+            if (_rowLabels != null && i < _rowLabels.Length && _rowLabels[i] != null) _rowLabels[i].text = text;
+        }
+
+        /// <summary>메뉴를 캐릭터 옆(화면 안)으로 옮긴다 — 캐릭터가 걸어가도 메뉴가 따라온다.</summary>
+        private void UpdateMenuPlacement()
+        {
+            if (_panel == null || _agent == null || _agent.Blackboard == null) return;
+            Camera cam = _agent.Blackboard.MainCamera;
+            Rigidbody2D body = _agent.Blackboard.Body;
+            if (cam == null || body == null) return;
+
+            Vector3 charScreen = cam.WorldToScreenPoint(body.position);
+            float panelW = _panel.sizeDelta.x;
+            float panelH = _panel.sizeDelta.y;
+
+            // 기본은 캐릭터 오른쪽. 오른쪽이 화면 밖이면 왼쪽으로 뒤집는다.
+            float x = charScreen.x + MenuOffsetFromCharacterX;
+            if (x + panelW > Screen.width - 4f) x = charScreen.x - MenuOffsetFromCharacterX - panelW;
+            x = Mathf.Clamp(x, 4f, Mathf.Max(4f, Screen.width - panelW - 4f));
+
+            // 세로는 캐릭터 몸통 중앙 언저리. 화면 위/아래로 넘치면 안쪽으로 끌어당긴다.
+            float y = Mathf.Clamp(charScreen.y + panelH * 0.5f, panelH * 0.5f + 4f,
+                Mathf.Max(panelH * 0.5f + 4f, Screen.height - panelH * 0.5f - 4f));
+
+            _panel.anchoredPosition = new Vector2(x, y);
+
+            // 히트테스트 차단막을 같은 화면 영역의 월드 사각형으로 맞춘다.
+            if (_menuBlocker != null)
+            {
+                Vector3 bl = cam.ScreenToWorldPoint(new Vector3(x, y - panelH * 0.5f, charScreen.z));
+                Vector3 tr = cam.ScreenToWorldPoint(new Vector3(x + panelW, y + panelH * 0.5f, charScreen.z));
+                _menuBlocker.transform.position = new Vector3((bl.x + tr.x) * 0.5f, (bl.y + tr.y) * 0.5f, 0f);
+                _menuBlocker.size = new Vector2(Mathf.Abs(tr.x - bl.x), Mathf.Abs(tr.y - bl.y));
+            }
+        }
+    }
+}

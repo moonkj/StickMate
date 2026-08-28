@@ -40,7 +40,7 @@ namespace StickMate.Platform
     /// 한다(UX_FLOW.md 3절/9절-7). 여기서 항상 발판이 있는 것처럼 위장하면 그 온보딩 게이트가 조용히
     /// 무력화된다 — 배선은 StickmanAgent.CreatePlatformService() 참고.
     /// </summary>
-    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService
+    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService, IGlobalKeyStateService
     {
         private readonly IPlatformWindowService _inner;
         private readonly ICursorPositionService _innerCursor; // null이면 내부 서비스가 커서 조회를 지원하지 않음
@@ -53,6 +53,7 @@ namespace StickMate.Platform
         // (실측 로그: "전역버튼경로=미지원"). 그래서 창 포커스와 무관한 전역 버튼 폴링 경로가
         // 실제로는 한 번도 활성화된 적이 없었다. ICursorPositionService와 동일한 위임 패턴으로 통과시킨다.
         private readonly IGlobalPointerButtonService _innerButton; // null이면 내부 서비스가 전역 버튼 조회를 지원하지 않음
+        private readonly IGlobalKeyStateService _innerKeyState;     // null이면 내부 서비스가 전역 키 조회를 지원하지 않음
         private readonly StickConfig _config; // desktopDpiScale만 읽는다 — null이면 배율 1로 취급.
 
         // 합성 발판 캐시 무효화 판정에 쓰는 직전 오버레이 창 원점(위 GetFallbackFoothold 참고).
@@ -73,6 +74,7 @@ namespace StickMate.Platform
             _innerClickCapture = inner as ILocalClickCaptureService;
             _innerIconLayout = inner as IDesktopIconLayoutService;
             _innerButton = inner as IGlobalPointerButtonService;
+            _innerKeyState = inner as IGlobalKeyStateService;
             _config = config;
         }
 
@@ -98,8 +100,78 @@ namespace StickMate.Platform
             {
                 for (int i = 0; i < real.Count; i++) _combined.Add(real[i]);
             }
+            // ★ 2026-08-28 (2) — Dock 발판(사용자: "독위에서만 걷고 독아래로 가면 바닥으로 내려가야").
+            // 안전망보다 **앞에** 넣는다: 둘 다 합성 발판이지만 Dock 쪽이 더 높으므로 낙하 스윕 판정이
+            // 먼저 만나야 한다(GroundSensor.TryFindLandingCrossing은 가장 높은 것을 채택하므로 순서에
+            // 무관하지만, "실제 창 -> Dock -> 바닥" 이라는 고도 순서를 목록 순서로도 드러내 둔다).
+            if (TryGetDockFoothold(out PlatformFoothold dock)) _combined.Add(dock);
             _combined.Add(GetFallbackFoothold()); // 항상 마지막에 추가 — 실제 발판이 우선 채택되도록.
             return _combined;
+        }
+
+        /// <summary>
+        /// Dock에 부여하는 합성 발판 핸들. 안전망(-1)과 구분해 진단 로그가 "지금 Dock 위인지 화면
+        /// 바닥인지"를 사람이 읽을 수 있게 한다.
+        /// </summary>
+        public const long DockFootholdHandle = -2L;
+
+        /// <summary>
+        /// ★ macOS Dock을 발판으로 합성한다 (2026-08-28, 사용자 요청 "독위에서만 걷고 독아래로 가면
+        /// 바닥으로 내려가야하는데").
+        ///
+        /// ============================================================================
+        /// 왜 CGWindowListCopyWindowInfo의 Dock 창 사각형을 그대로 쓰지 못하는가 (실측 조사 결과)
+        /// ============================================================================
+        /// 리더 지시는 "Dock은 Dock 프로세스가 소유한 창으로 열거되니 그 실제 사각형을 쓰라"였다.
+        /// 그래서 이 환경에서 직접 열거해봤다(2026-08-28, CGWindowListCopyWindowInfo 전수 덤프):
+        ///
+        ///     owner='Dock'  name='Dock'        layer=20   alpha=1.0  rect=(0, 0, 1512, 982)
+        ///     owner='Dock'  name='Wallpaper-'  layer=-2147483624     rect=(0, 0, 1512, 982)
+        ///
+        /// **Dock 창의 bounds는 Dock 막대가 아니라 화면 전체다.** macOS의 Dock 프로세스는 화면 전체를
+        /// 덮는 투명 레이어 하나를 갖고 그 안에 막대를 그리며(Launchpad/Mission Control도 같은 창을
+        /// 쓴다), 실제로 보이는 막대의 사각형은 공개 API로 노출되지 않는다. 그대로 발판으로 쓰면 화면
+        /// 전체 폭 발판이 화면 **맨 위**(y=0)에 생겨 지금보다 훨씬 나빠진다.
+        ///
+        /// 다른 경로도 전부 확인했고 전부 막혔다:
+        ///   • com.apple.dock 환경설정: tilesize/persistent-apps는 있지만 **실행 중인 앱 타일 수**를
+        ///     알 수 없어 폭을 계산할 수 없다(실측: 예측 가능한 타일 17개로는 실제 폭 1069pt가 나오지
+        ///     않는다 — 실행 중 앱들이 더 붙어 있었다).
+        ///   • CGWindowListCreateImage로 Dock 창만 캡처해 알파 경계를 재면 **정확히** 나온다(실측:
+        ///     x 221~1290, 폭 1069pt, 화면 가로 정중앙 정렬, 두께 68pt). 하지만 이 API는 macOS 10.15+
+        ///     에서 **화면 기록 권한**을 요구하고 권한 요청 팝업을 띄운다 — 비침해 원칙(CLAUDE.md 2)과
+        ///     "권한 없이 동작"이라는 이 프로젝트의 플랫폼 계약에 정면으로 어긋나 채택하지 않았다.
+        ///
+        /// 그래서 **정확히 알 수 있는 것만 실측값으로 쓰고, 알 수 없는 폭만 설정값**으로 뺀다:
+        ///   • **세로(정확)**: Dock 띠 두께는 StickConfig.dockFootholdThicknessPoints. 상단 =
+        ///     화면 바닥 - 두께. (Dock 자동 숨김을 쓰면 두께를 0으로 두면 이 발판이 사라진다.)
+        ///   • **가로(추정)**: 화면 가로 정중앙 정렬 + StickConfig.dockFootholdWidthFraction 폭.
+        ///     기본값 0.65는 위 실측(1069/1512 = 0.707)보다 **일부러 좁게** 잡았다 — 추정이 실제보다
+        ///     넓으면 Dock이 없는 자리에 캐릭터가 서서 사용자가 신고한 그 "공중 부양"이 재발하지만,
+        ///     좁으면 실제 Dock 안쪽에서 조금 일찍 떨어질 뿐이라 눈에 거슬리지 않는다. 틀리는 방향을
+        ///     안전한 쪽으로 고정한 것이다.
+        ///   • 0을 주면 Dock 발판 자체가 비활성화되고 전부 바닥 안전망으로 떨어진다.
+        /// </summary>
+        public bool TryGetDockFoothold(out PlatformFoothold dock)
+        {
+            dock = default;
+            if (_config == null) return false;
+
+            float widthFraction = _config.dockFootholdWidthFraction;
+            float thickness = _config.dockFootholdThicknessPoints;
+            if (widthFraction <= 0f || thickness <= 0f) return false;
+
+            float dpi = Mathf.Max(0.0001f, _config.desktopDpiScale);
+            float screenW = (Screen.width > 0 ? Screen.width : 1920f) * dpi;
+            float screenH = (Screen.height > 0 ? Screen.height : 1080f) * dpi;
+            Vector2 origin = ScreenCoordinateConverter.OverlayOriginOsScreen;
+
+            float dockWidth = screenW * Mathf.Clamp01(widthFraction);
+            float dockX = origin.x + (screenW - dockWidth) * 0.5f;   // 화면 가로 정중앙(실측 확인).
+            float dockTopY = origin.y + screenH - thickness;
+
+            dock = new PlatformFoothold(DockFootholdHandle, new Rect(dockX, dockTopY, dockWidth, thickness), true);
+            return true;
         }
 
         private PlatformFoothold GetFallbackFoothold()
@@ -197,6 +269,21 @@ namespace StickMate.Platform
         public bool TryGetPrimaryButtonPressed(out bool pressed)
         {
             if (_innerButton != null) return _innerButton.TryGetPrimaryButtonPressed(out pressed);
+            pressed = false;
+            return false;
+        }
+
+        public bool TryGetSecondaryButtonPressed(out bool pressed)
+        {
+            if (_innerButton != null) return _innerButton.TryGetSecondaryButtonPressed(out pressed);
+            pressed = false;
+            return false;
+        }
+
+        // IGlobalKeyStateService — 전역 단축키(앱 제어) 조회. 위 두 채널과 동일한 순수 위임 패턴.
+        public bool TryGetKeyPressed(GlobalKey key, out bool pressed)
+        {
+            if (_innerKeyState != null) return _innerKeyState.TryGetKeyPressed(key, out pressed);
             pressed = false;
             return false;
         }

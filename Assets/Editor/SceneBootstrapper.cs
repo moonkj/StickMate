@@ -524,6 +524,14 @@ namespace StickMate.EditorTools
             rodeoSo.FindProperty("_config").objectReferenceValue = config;
             rodeoSo.ApplyModifiedPropertiesWithoutUndo();
 
+            // ================================================================================
+            // 앱 제어 수단 배선 (2026-08-28 — "터미널 없이 끌 수 있어야 한다")
+            // ================================================================================
+            // Interaction/AppControlDirector.cs: 전역 단축키(Ctrl+Opt+Cmd+Q 종료 등)와 캐릭터 우클릭
+            // 제어 메뉴. 직렬화 필드가 없고 Awake()에서 같은 GameObject의 StickmanAgent를 직접
+            // 찾으므로(없으면 씬 전체에서 탐색) SerializedObject 배선이 필요 없다.
+            root.AddComponent<AppControlDirector>();
+
             // 몸통(목) 선의 위쪽 끝 — **머리 링 안쪽으로 침범하지 않게** 정확히 맞춘다
             // (2026-08-28 사용자 지적: "목이 얼굴을 뚫고 올라와있는거 같고").
             //
@@ -691,11 +699,22 @@ namespace StickMate.EditorTools
             if (stickmanPrefab != null)
             {
                 var instance = (GameObject)PrefabUtility.InstantiatePrefab(stickmanPrefab, scene);
-                // 더미 발판(클래스 문서 상단 좌표계 설명, ComputeGroundTopWorldY 참고)의 상단 가장자리
-                // 바로 위에서 낙하해 스냅되도록 배치한다. 낙하 높이는 0.3유닛으로 보수적으로 잡아
-                // CreateOrLoadConfig에서 넓힌 groundSnapTolerance와 함께 헤드리스 환경의 낮은
-                // 프레임레이트로 인한 접지 감지 터널링을 이중으로 예방한다.
-                instance.transform.position = new Vector3(0f, ComputeGroundTopWorldY(cam) + 0.3f, 0f);
+                // ★ 2026-08-28 스폰 높이 변경 — 화면 세로 중앙에서 시작해 **떨어지면서 착지**하게 한다
+                // (사용자 요청 "독위에서만 걷고 독아래로 가면 바닥으로 내려가야하는데").
+                //
+                // 이력: 예전에는 안전망 발판 상단 바로 위(ComputeGroundTopWorldY + 0.3)에 놓았다. 그런데
+                // 이번 라운드에 안전망이 화면 최하단(OS y=942)으로 내려가고 Dock 발판(OS y=907)이 그보다
+                // **위에** 새로 생기면서, 그 스폰 위치는 이미 Dock 상단선 아래가 되어버렸다. 착지는
+                // "발판 상단선을 위->아래로 가로지를 때만" 성립하므로(States/GroundSensor.TryFindLandingCrossing),
+                // 아래에서 시작한 캐릭터는 **Dock에 영원히 올라갈 수 없다** — 실측으로 확인했다
+                // (자율 배회의 점프 높이는 jumpForce 6 / gravityScale 3 기준 약 0.61유닛인데 바닥에서
+                // Dock 상단까지는 약 1.29유닛이라 점프로도 닿지 않는다).
+                //
+                // 화면 세로 중앙(= 카메라 y)에서 시작하면 첫 프레임부터 자유낙하해 그 x에서 가장 높은
+                // 표면(창 -> Dock -> 바닥 안전망 순)에 자연스럽게 착지한다. 데스크톱 펫으로서도 이쪽이
+                // 자연스럽고("어딘가에서 내려온다"), 헤드리스 테스트에서도 0.9초면 착지가 끝나 기존
+                // 샘플 시점(t=5/10/15초)에 아무 영향이 없다(실측 확인).
+                instance.transform.position = new Vector3(0f, cam.transform.position.y, 0f);
             }
             else
             {

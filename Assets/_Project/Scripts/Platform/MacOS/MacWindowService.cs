@@ -60,7 +60,7 @@ namespace StickMate.Platform.MacOS
     /// 취급하므로 컴파일/런타임 모두 문제 없다(Win32WindowService가 실제로 두 인터페이스 다 구현한 것과
     /// 다른 점 — macOS는 이번 라운드에 그 두 캐퍼빌리티까지는 손대지 않는다).
     /// </summary>
-    public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService, IGlobalPointerButtonService, ILocalClickCaptureService
+    public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService, IGlobalPointerButtonService, IGlobalKeyStateService, ILocalClickCaptureService
     {
         #region CoreGraphics / CoreFoundation P/Invoke 선언 (이 리전 밖으로 유출 금지)
 
@@ -104,10 +104,30 @@ namespace StickMate.Platform.MacOS
         [return: MarshalAs(UnmanagedType.I1)]
         private static extern bool CGEventSourceButtonState(int stateID, uint button);
 
+        // 키보드 키의 "현재 눌림 상태"를 창 포커스와 무관하게 조회한다(IGlobalKeyStateService).
+        // CGEventSourceButtonState와 정확히 같은 계열의 조회 전용 공개 API이며, 이벤트를 가로채는
+        // CGEventTap과 달리 접근성 권한을 요구하지 않는다(2026-08-28 이 환경에서 실측 확인 —
+        // Platform/IGlobalKeyStateService.cs의 "권한에 대하여" 절 참고). 반환형은 C의 bool(1바이트).
+        [DllImport(CoreGraphicsLib)]
+        [return: MarshalAs(UnmanagedType.I1)]
+        private static extern bool CGEventSourceKeyState(int stateID, ushort keycode);
+
         // kCGEventSourceStateCombinedSessionState = 0 — "지금 이 로그인 세션에서 실제로 눌려 있는 상태".
         // HIDSystemState(1)는 물리 장치만 보므로 트랙패드/보조 입력 조합에서 놓칠 수 있어 세션 상태를 쓴다.
         private const int kCGEventSourceStateCombinedSessionState = 0;
         private const uint kCGMouseButtonLeft = 0;
+        private const uint kCGMouseButtonRight = 1;
+
+        // macOS 가상 키코드(<HIToolbox/Events.h>의 kVK_* 상수). CoreGraphics가 심볼로 익스포트하지 않는
+        // 고정 리터럴이라(하드웨어 배열이 아니라 "가상" 키코드라 자판 배열/언어와 무관하게 불변)
+        // 이 파일의 다른 헤더 상수들과 동일하게 하드코딩한다.
+        private const ushort kVK_Command = 0x37;
+        private const ushort kVK_Option = 0x3A;
+        private const ushort kVK_Control = 0x3B;
+        private const ushort kVK_ANSI_Q = 0x0C;
+        private const ushort kVK_ANSI_C = 0x08;
+        private const ushort kVK_ANSI_D = 0x02;
+        private const ushort kVK_ANSI_R = 0x0F;
 
         [DllImport(CoreGraphicsLib)]
         private static extern uint CGMainDisplayID();
@@ -1013,6 +1033,44 @@ namespace StickMate.Platform.MacOS
         public bool TryGetPrimaryButtonPressed(out bool pressed)
         {
             pressed = CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, kCGMouseButtonLeft);
+            return true;
+        }
+
+        /// <summary>오른쪽 버튼 — 왼쪽과 동일한 조회 API, 버튼 번호만 다르다(캐릭터 우클릭 제어 메뉴용).</summary>
+        public bool TryGetSecondaryButtonPressed(out bool pressed)
+        {
+            pressed = CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, kCGMouseButtonRight);
+            return true;
+        }
+
+        // ============================================================================
+        // IGlobalKeyStateService — 창 포커스와 무관한 전역 단축키 조회
+        // (Platform/IGlobalKeyStateService.cs 문서의 "왜 필요한가"/"권한에 대하여" 참고)
+        // ============================================================================
+
+        /// <summary>
+        /// CGEventSourceKeyState로 지금 그 키가 눌려 있는지 조회한다. TryGetPrimaryButtonPressed와
+        /// 완전히 같은 성격의 순수 조회이며 어떤 이벤트도 주입하지 않는다. 지원 키는
+        /// Platform.GlobalKey 열거형에 열거된 7개뿐이다(그 문서의 "왜 필요한 것만 있는가" 참고).
+        /// </summary>
+        public bool TryGetKeyPressed(GlobalKey key, out bool pressed)
+        {
+            ushort code;
+            switch (key)
+            {
+                case GlobalKey.Command: code = kVK_Command; break;
+                case GlobalKey.Option:  code = kVK_Option;  break;
+                case GlobalKey.Control: code = kVK_Control; break;
+                case GlobalKey.Q:       code = kVK_ANSI_Q;  break;
+                case GlobalKey.C:       code = kVK_ANSI_C;  break;
+                case GlobalKey.D:       code = kVK_ANSI_D;  break;
+                case GlobalKey.R:       code = kVK_ANSI_R;  break;
+                default:
+                    pressed = false;
+                    return false;
+            }
+
+            pressed = CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState, code);
             return true;
         }
 
