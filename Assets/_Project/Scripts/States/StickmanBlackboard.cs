@@ -242,6 +242,10 @@ namespace StickMate.States
         /// <summary>
         /// 스윕 착지 판정(GroundSensor.TryFindLandingCrossing 문서 참고 — 헤드라인 기능 "창 위 착지"가
         /// 실제로 성립하게 만드는 연속 교차 검사). FallState가 매 프레임 호출한다.
+        ///
+        /// ★ 2026-08-29 — 뛰어내리기 직후의 drop-through 유예를 여기서 함께 적용한다
+        /// (<see cref="DropThroughIgnoredFootholdHandle"/> 문서 참고). 이 한 곳에서 넘겨주므로
+        /// FallState는 "무시 핸들"이라는 개념 자체를 알 필요가 없다.
         /// </summary>
         public bool TryFindLandingCrossing(Vector2 prevFootWorldPos, Vector2 currFootWorldPos, out long handle, out float landingWorldY)
         {
@@ -249,7 +253,48 @@ namespace StickMate.States
                 ? FootholdPoller.CachedFootholds
                 : System.Array.Empty<PlatformFoothold>();
             return GroundSensor.TryFindLandingCrossing(MainCamera, prevFootWorldPos, currFootWorldPos, footholds, Config,
-                out handle, out landingWorldY);
+                out handle, out landingWorldY, DropThroughIgnoredFootholdHandle);
+        }
+
+        // ============================================================================
+        // ★ 뛰어내리기 직후 "방금 떠난 발판" 통과 유예 (drop-through, 2026-08-29)
+        // ============================================================================
+        // 왜 필요한가 / 왜 이 방식인가는 States/WalkState.cs의 "발을 뗍니다" 블록 주석과
+        // StickConfig.hopDownDropThroughIgnoreDuration의 Tooltip에 근거까지 적어뒀다. 요약하면:
+        // 서 있는 몸은 발판 상단선에 정확히 스냅돼 있어 그대로 Fall에 들어가면 스윕 교차가 방금 떠난
+        // 발판을 다시 잡는다. 예전에는 몸을 모서리 바깥으로 **순간이동**시켜 이를 피했지만(실측 0.31유닛),
+        // 순간이동은 사용자가 반복 지적해온 아티팩트라 "잠깐 착지 후보에서 빼기"로 대체했다.
+        //
+        // 적용 범위는 의도적으로 최소다: 이 값을 세팅하는 곳은 WalkState의 뛰어내리기 블록 **한 곳**뿐이고,
+        // 읽는 곳은 FallState의 착지 확정 두 경로뿐이다. 매달리기 해제/던지기/일반 낙하는 이 값을 절대
+        // 세팅하지 않으므로 0(무시 없음)이라 기존 동작과 100% 동일하다.
+
+        private long _dropThroughIgnoredHandle;
+        private float _dropThroughIgnoreUntilTime = float.NegativeInfinity;
+
+        /// <summary>
+        /// 지금 착지 후보에서 제외해야 할 발판 핸들(유예가 끝났거나 애초에 없으면 0 = 제외 없음).
+        /// 0은 이 프로젝트 전체에서 "발판 없음"을 뜻하는 관례값이라 그대로 재사용한다.
+        /// </summary>
+        public long DropThroughIgnoredFootholdHandle =>
+            Time.time <= _dropThroughIgnoreUntilTime ? _dropThroughIgnoredHandle : 0L;
+
+        /// <summary>주어진 핸들이 지금 drop-through 유예로 착지 후보에서 빠져 있는지.</summary>
+        public bool IsFootholdDropThroughIgnored(long handle)
+        {
+            return handle != 0L && handle == DropThroughIgnoredFootholdHandle;
+        }
+
+        /// <summary>
+        /// 지금부터 durationSeconds 동안 그 발판을 착지 후보에서 제외한다(뛰어내리기 전용).
+        /// 유예는 시간이 지나면 스스로 풀리므로 해제 호출이 필요 없다 — 어떤 경로로 상태가 바뀌어도
+        /// "무시가 영구히 남는" 사고가 구조적으로 불가능하다.
+        /// </summary>
+        public void BeginDropThroughIgnore(long footholdHandle, float durationSeconds)
+        {
+            if (footholdHandle == 0L || durationSeconds <= 0f) return;
+            _dropThroughIgnoredHandle = footholdHandle;
+            _dropThroughIgnoreUntilTime = Time.time + durationSeconds;
         }
 
         /// <summary>
@@ -392,6 +437,124 @@ namespace StickMate.States
         private const float ScreenClampLogMinIntervalSeconds = 2f;
         private float _lastScreenClampLogTime = float.NegativeInfinity;
 
+        // ============================================================================
+        // ★ 화면 클램프 경계의 단일 소스 (2026-08-29 — "화면 물리적 끝에서 제자리 걷기" 수정)
+        // ============================================================================
+        // 증상: 캐릭터가 화면 좌/우 끝까지 걸어가면 걷기 애니메이션만 돌고 위치는 변하지 않는
+        // "러닝머신"이 되어, Walk 지속시간(1.5~4초)이 만료될 때까지 스스로 풀리지 않았다.
+        //
+        // 원인: 아래 하드 클램프는 캐릭터 루트를 화면 끝에서 (ScreenClampMarginOsPx + 시각 반폭)만큼
+        // 안쪽에 가둔다(실측 약 58pt). 그런데 배회 AI의 경계 판정(AutoWanderController.IsNearFootholdEdge)은
+        // wanderEdgeStopDistance(0.3유닛 ≈ 24pt)를 **발판의 원시 경계**(= 화면 끝)에서 쟀다.
+        // 58 > 24라서 "경계 근처"가 영영 성립하지 않았고, 캐릭터는 돌아설 이유를 못 찾은 채 클램프만
+        // 계속 밀었다.
+        //
+        // 해법: "캐릭터가 물리적으로 갈 수 있는 한계"를 이 클래스가 **하나의 계산식**으로만 만들고
+        // (ComputeScreenClampOsBounds), 클램프 본체와 조회 API(TryGetWalkableScreenBoundsWorld)가
+        // 둘 다 그것만 읽게 한다. 두 곳이 각자 계산하면 반드시 다시 어긋난다 — 이 프로젝트가 이미
+        // 두 번 겪은 실패 유형이다(BUG-P1-R4-B1 씬 지면 Y vs 발판 상수 이중 정의,
+        // BUG-P1-R5-B2 Dock 구간 이중 계산 → 단일 소스화로 해결).
+
+        /// <summary>
+        /// 화면 하드 클램프가 캐릭터 루트를 가두는 OS 좌표 경계 묶음.
+        /// 생산자는 <see cref="ComputeScreenClampOsBounds"/> 하나뿐이다.
+        /// </summary>
+        private readonly struct ScreenClampOsBounds
+        {
+            public readonly float MinX;
+            public readonly float MaxX;
+            public readonly float MinY;
+            public readonly float MaxY;
+            /// <summary>좌우에 실제로 적용된 여유(기본 여유 + 시각 반폭, OS 포인트) — 로그용.</summary>
+            public readonly float SideMargin;
+            public readonly float HalfWidthOsPx;
+            public readonly Vector2 Origin;
+            public readonly float ScreenW;
+            public readonly float ScreenH;
+
+            public ScreenClampOsBounds(float minX, float maxX, float minY, float maxY,
+                float sideMargin, float halfWidthOsPx, Vector2 origin, float screenW, float screenH)
+            {
+                MinX = minX;
+                MaxX = maxX;
+                MinY = minY;
+                MaxY = maxY;
+                SideMargin = sideMargin;
+                HalfWidthOsPx = halfWidthOsPx;
+                Origin = origin;
+                ScreenW = screenW;
+                ScreenH = screenH;
+            }
+        }
+
+        /// <summary>
+        /// 하드 클램프 경계(OS 좌표)를 계산하는 **유일한** 곳. MainCamera가 null이면 호출하지 말 것
+        /// (두 호출부 모두 앞에서 null을 걸러낸다).
+        /// </summary>
+        private ScreenClampOsBounds ComputeScreenClampOsBounds()
+        {
+            float dpi = Config != null ? Mathf.Max(0.0001f, Config.desktopDpiScale) : 1f;
+            Vector2 origin = ScreenCoordinateConverter.OverlayOriginOsScreen;
+            float screenW = (Screen.width > 0 ? Screen.width : 1920) * dpi;
+            float screenH = (Screen.height > 0 ? Screen.height : 1080) * dpi;
+
+            // 시각적 반폭을 OS 픽셀로 환산해 좌우 여유에 더한다 — 이게 없으면 루트(발)는 화면 안인데
+            // 벌린 팔과 머리가 화면 밖으로 잘린다(2026-08-28 리더 관찰). 카메라의 "월드 1유닛 = 몇
+            // Unity 픽셀"에 desktopDpiScale을 곱하면 OS 포인트가 된다(ScreenCoordinateConverter와 같은
+            // 환산 규칙).
+            float pxPerWorldUnit = MainCamera != null && MainCamera.orthographic && MainCamera.orthographicSize > 0f
+                ? (Screen.height * 0.5f) / MainCamera.orthographicSize
+                : 0f;
+            float halfWidthOsPx = Mathf.Max(0f, CharacterVisualHalfWidthWorld) * pxPerWorldUnit * dpi;
+
+            float sideMargin = ScreenClampMarginOsPx + halfWidthOsPx;
+            float minX = origin.x + sideMargin;
+            float maxX = origin.x + screenW - sideMargin;
+            if (minX > maxX) { minX = maxX = origin.x + screenW * 0.5f; } // 화면보다 캐릭터가 넓은 병리적 경우
+
+            float minY = origin.y + ScreenClampMarginOsPx;
+            // ★ 아래쪽 여유는 0이다(2026-08-28). 이유: 안전망 발판이 화면 최하단 근처로 내려온 뒤로는
+            // 이 클램프가 **지면과 싸운다**. 실측으로 재현된 사고: 640x480 테스트 화면에서 8 OS px는
+            // 0.4월드유닛이라 지면(0.245유닛)보다 위에 있었고, RAGDOLL이 지면에 내려앉을 때마다 클램프가
+            // 매 프레임 위로 되돌리며 세로 속도를 0으로 만들어 **영원히 안정되지 못했다**(GETUP 미도달로
+            // StickmanRagdollRecoveryTests가 빨간불). 이 클램프의 목적은 "캐릭터를 화면 밖에서
+            // 잃어버리지 않는다"이고 그 목적에는 경계 자체(여유 0)로 충분하다 — 발판/지면은 언제나
+            // 화면 안에 있으므로 정상 동작에서는 아예 발동하지 않고, 진짜로 화면 아래로 빠져나가는
+            // 경우만 잡는다.
+            float maxY = origin.y + screenH;
+
+            return new ScreenClampOsBounds(minX, maxX, minY, maxY, sideMargin, halfWidthOsPx, origin, screenW, screenH);
+        }
+
+        /// <summary>
+        /// ★ "캐릭터가 물리적으로 갈 수 있는 좌우 한계"(Unity 월드 X) — 화면 하드 클램프가 실제로
+        /// 캐릭터를 붙잡아 세우는 바로 그 X다. 클램프 본체와 **완전히 같은 계산식**
+        /// (<see cref="ComputeScreenClampOsBounds"/>)에서 파생되므로 두 값이 어긋날 수 없다.
+        ///
+        /// 소비자: AutoWanderController.IsNearFootholdEdge() — 발판의 경계가 곧 화면의 끝인 쪽
+        /// (isTrueScreenEdge)에서는 **원시 발판 경계가 아니라 이 한계**까지의 거리로 "경계 근처"를
+        /// 판정해야, 클램프에 닿기 전에 스스로 멈추고 돌아선다(위 문단의 러닝머신 증상 수정).
+        ///
+        /// 주의: 반환값은 **캐릭터 루트(발 중심)** 기준이며 시각 반폭이 이미 반영돼 있다
+        /// (CharacterVisualHalfWidthWorld가 포즈에 따라 변하므로 프레임마다 조금씩 달라질 수 있다 —
+        /// 캐싱하지 말고 필요할 때마다 물어볼 것).
+        /// </summary>
+        /// <returns>Body/MainCamera가 없어 계산할 수 없으면 false(그 경우 out 값은 무의미).</returns>
+        public bool TryGetWalkableScreenBoundsWorld(out float leftWorldX, out float rightWorldX)
+        {
+            leftWorldX = 0f;
+            rightWorldX = 0f;
+            if (Body == null || MainCamera == null) return false;
+
+            // 왕복 정밀도를 위해 클램프와 같은 depth(카메라 거리)를 쓴다 — ScreenCoordinateConverter의
+            // 계약(WorldToOsScreen이 준 depth를 그대로 OsScreenToWorld에 넘길 것)을 그대로 지킨다.
+            Vector2 os = ScreenCoordinateConverter.WorldToOsScreen(MainCamera, Body.position, Config, out float depth);
+            ScreenClampOsBounds b = ComputeScreenClampOsBounds();
+            leftWorldX = ScreenCoordinateConverter.OsScreenToWorld(MainCamera, new Vector2(b.MinX, os.y), depth, Config).x;
+            rightWorldX = ScreenCoordinateConverter.OsScreenToWorld(MainCamera, new Vector2(b.MaxX, os.y), depth, Config).x;
+            return true;
+        }
+
         /// <summary>
         /// 매 프레임 마지막에 호출 — (1) 캐릭터 OS 좌표를 오버레이 창(=화면) 안으로 하드 클램프하고,
         /// (2) 그래도 발판을 완전히 잃은 채 오래 낙하 중이면 화면 중앙 지면으로 강제 복귀시킨다.
@@ -400,37 +563,14 @@ namespace StickMate.States
         {
             if (Body == null || MainCamera == null) return;
 
-            float dpi = Config != null ? Mathf.Max(0.0001f, Config.desktopDpiScale) : 1f;
-            Vector2 origin = ScreenCoordinateConverter.OverlayOriginOsScreen;
-            float screenW = (Screen.width > 0 ? Screen.width : 1920) * dpi;
-            float screenH = (Screen.height > 0 ? Screen.height : 1080) * dpi;
-
             Vector2 os = ScreenCoordinateConverter.WorldToOsScreen(MainCamera, Body.position, Config, out float depth);
 
-            // 시각적 반폭을 OS 픽셀로 환산해 좌우 여유에 더한다 — 이게 없으면 루트(발)는 화면 안인데
-            // 벌린 팔과 머리가 화면 밖으로 잘린다(리더 관찰). 카메라의 "월드 1유닛 = 몇 Unity 픽셀"에
-            // desktopDpiScale을 곱하면 OS 포인트가 된다(ScreenCoordinateConverter와 같은 환산 규칙).
-            float pxPerWorldUnit = MainCamera.orthographic && MainCamera.orthographicSize > 0f
-                ? (Screen.height * 0.5f) / MainCamera.orthographicSize
-                : 0f;
-            float halfWidthOsPx = Mathf.Max(0f, CharacterVisualHalfWidthWorld) * pxPerWorldUnit * dpi;
+            // 경계 계산은 전부 ComputeScreenClampOsBounds()에 있다 — 그 함수가 **유일한 생산자**이고
+            // TryGetWalkableScreenBoundsWorld()도 같은 것을 읽는다(두 함수의 문서 참고).
+            ScreenClampOsBounds b = ComputeScreenClampOsBounds();
 
-            float sideMargin = ScreenClampMarginOsPx + halfWidthOsPx;
-            float minX = origin.x + sideMargin;
-            float maxX = origin.x + screenW - sideMargin;
-            float minY = origin.y + ScreenClampMarginOsPx;
-            // ★ 아래쪽 여유는 0이다(2026-08-28). 이유: 안전망 발판이 화면 최하단 근처로 내려온 뒤로는
-            // 이 클램프가 **지면과 싸운다**. 실측으로 재현된 사고: 640x480 테스트 화면에서 8 OS px는
-            // 0.4월드유닛이라 지면(0.245유닛)보다 위에 있었고, RAGDOLL이 지면에 내려앉을 때마다 클램프가
-            // 매 프레임 위로 되돌리며 세로 속도를 0으로 만들어 **영원히 안정되지 못했다**(GETUP 미도달로
-            // StickmanRagdollRecoveryTests가 빨간불). 이 클램프의 목적은 "캐릭터를 화면 밖에서 잃어버리지
-            // 않는다"이고 그 목적에는 경계 자체(여유 0)로 충분하다 — 발판/지면은 언제나 화면 안에 있으므로
-            // 정상 동작에서는 아예 발동하지 않고, 진짜로 화면 아래로 빠져나가는 경우만 잡는다.
-            float maxY = origin.y + screenH;
-            if (minX > maxX) { minX = maxX = origin.x + screenW * 0.5f; } // 화면보다 캐릭터가 넓은 병리적 경우
-
-            float clampedX = Mathf.Clamp(os.x, minX, maxX);
-            float clampedY = Mathf.Clamp(os.y, minY, maxY);
+            float clampedX = Mathf.Clamp(os.x, b.MinX, b.MaxX);
+            float clampedY = Mathf.Clamp(os.y, b.MinY, b.MaxY);
             bool clamped = !Mathf.Approximately(clampedX, os.x) || !Mathf.Approximately(clampedY, os.y);
             if (clamped)
             {
@@ -445,8 +585,8 @@ namespace StickMate.States
                 {
                     _lastScreenClampLogTime = Time.unscaledTime;
                     Debug.Log($"[화면클램프] 캐릭터가 화면 밖으로 나가려 해 되돌렸습니다 — OS ({os.x:F1},{os.y:F1}) -> " +
-                        $"({clampedX:F1},{clampedY:F1}), 좌우여유={sideMargin:F1}pt(기본 {ScreenClampMarginOsPx:F0} + 시각반폭 {halfWidthOsPx:F1}), " +
-                        $"화면=({origin.x:F0},{origin.y:F0} {screenW:F0}x{screenH:F0}), " +
+                        $"({clampedX:F1},{clampedY:F1}), 좌우여유={b.SideMargin:F1}pt(기본 {ScreenClampMarginOsPx:F0} + 시각반폭 {b.HalfWidthOsPx:F1}), " +
+                        $"화면=({b.Origin.x:F0},{b.Origin.y:F0} {b.ScreenW:F0}x{b.ScreenH:F0}), " +
                         $"상태={(Machine != null ? Machine.CurrentStateId.ToString() : "?")}. " +
                         $"(같은 로그는 최소 {ScreenClampLogMinIntervalSeconds}초 간격으로만 남깁니다)");
                 }

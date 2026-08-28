@@ -144,12 +144,12 @@ namespace StickMate.Tests.PlayMode
 
             _service = new TestFootholdService();
             _service.Footholds.Add(new PlatformFoothold(DockHandle, new Rect(w * 0.30f, dockTopOs, w * 0.40f, h - dockTopOs), true));
-            // 바닥 조각은 화면 끝까지 뻗지 않는다(10%~30%, 70%~90%). 화면 끝에 딱 붙여 두면 캐릭터가
-            // EnforceScreenBoundsAndRescue의 하드 클램프(기본 여유 8pt + 시각 반폭)에 먼저 걸려 발판
-            // 모서리로부터 wanderEdgeStopDistance(0.3유닛)보다 멀리 떨어진 곳에서 멈추고, 그러면 배회
-            // AI의 경계 판정이 영영 성립하지 않아 돌아서지 못한다(실측 확인). 실제 배포에서는 Walk
-            // 지속시간(1.5~4초)이 만료되면서 방향이 새로 뽑히므로 스스로 풀리지만, 이 테스트는 관찰을
-            // 위해 지속시간을 길게 잡으므로 배치 쪽에서 미리 여유를 둔다.
+            // 바닥 조각은 화면 끝까지 뻗지 않는다(10%~30%, 70%~90%). 이 배치를 고른 원래 이유는
+            // "화면 끝에서 배회 AI가 돌아서지 못하는" 증상(러닝머신)을 피하기 위해서였는데, 그 증상
+            // 자체는 2026-08-29에 수정됐다(StickmanBlackboard.TryGetWalkableScreenBoundsWorld 단일
+            // 소스화 + Tests/PlayMode/ScreenEdgeTurnaroundTests.cs). 배치를 그대로 두는 이유는 이
+            // 파일이 검증하려는 것이 화면 끝 거동이 아니라 **Dock 단차에서의 뛰어내리기/되올라가기**라,
+            // 화면 끝 로직을 섞지 않는 편이 실패 원인을 좁히기 좋기 때문이다.
             _service.Footholds.Add(new PlatformFoothold(LeftFloorHandle, new Rect(w * 0.10f, floorTopOs, w * 0.20f, h - floorTopOs), false));
             _service.Footholds.Add(new PlatformFoothold(RightFloorHandle, new Rect(w * 0.70f, floorTopOs, w * 0.20f, h - floorTopOs), false));
 

@@ -82,8 +82,8 @@ namespace StickMate.States
                 if (_blackboard.TryFindHopDownTarget(info, hopDirection, out long hopHandle, out float hopTopY)
                     && _blackboard.Body != null)
                 {
-                    // ── (1) 발을 모서리 **바깥**에 내려놓는다.
-                    // ★ 이 한 줄이 없으면 뛰어내리기가 통째로 무효가 된다(2026-08-29 실측으로 확인).
+                    // ── (1) 방금 떠난 발판을 짧은 시간 착지 후보에서 제외한다(drop-through).
+                    // ★ 이 장치가 없으면 뛰어내리기가 통째로 무효가 된다(2026-08-29 실측으로 확인).
                     // 왜: 서 있는 몸은 발판 상단선에 **정확히** 스냅돼 있다(StickmanBlackboard.SnapToGround).
                     // 그 상태로 Fall에 들어가면 FallState의 스윕 교차 판정이 보는 선분은 "상단선 위(같은
                     // 높이) -> 상단선 아래"가 되고, x가 아직 그 발판 위라 **방금 떠난 그 발판을 위에서
@@ -91,35 +91,41 @@ namespace StickMate.States
                     // 낙하높이=0.00유닛` — 즉 제자리에서 도로 착지했다. 수평 속도만으로는 못 막는다
                     // (모서리까지 남은 거리를 지나가기 전에 이미 첫 프레임의 교차가 성립한다).
                     //
-                    // 그래서 목적지를 물어볼 때 쓴 **탐침 지점 그대로**(모서리 + 진행방향 x
-                    // hopDownProbeOutward)에 몸을 옮긴다. 부수 효과로 "예상 착지 지점"과 "실제 낙하
-                    // 시작 x"가 정확히 일치하게 되어 착지 예측이 빗나갈 수 없다. 이미 모서리 바깥으로
-                    // 나가 있다면 뒤로 끌어당기지 않는다(Mathf.Max/Min).
-                    float edgeWorldX = hopDirection > 0 ? info.CurrentFootholdRightWorldX : info.CurrentFootholdLeftWorldX;
-                    float outward = _blackboard.Config != null ? _blackboard.Config.hopDownProbeOutward : 0.2f;
-                    Vector2 before = _blackboard.Body.position;
-                    float steppedX = edgeWorldX + hopDirection * Mathf.Max(0f, outward);
-                    steppedX = hopDirection > 0 ? Mathf.Max(before.x, steppedX) : Mathf.Min(before.x, steppedX);
-                    // Rigidbody2D.position만 쓰면 안 된다 — 다른 코드가 최근에 Transform을 직접 옮겼다면
-                    // 다음 물리 스텝의 Transform->Rigidbody 동기화가 이 대입을 **되돌린다**(2026-08-29
-                    // 실측: 6.300 -> 6.600으로 옮겼는데 다음 프레임 위치가 6.340이었다 = 6.300에서
-                    // 속도만 적분된 값). 이 프로젝트의 다른 순간이동 지점
-                    // (StickmanBlackboard.RescueToSafeGround / 화면 클램프)이 이미 둘 다 쓰는 이유와 같다.
-                    _blackboard.Body.position = new Vector2(steppedX, before.y);
-                    _blackboard.Body.transform.position =
-                        new Vector3(steppedX, before.y, _blackboard.Body.transform.position.z);
+                    // ★ 2026-08-29 2차 수정 — 왜 순간이동 대신 이 방식인가(리더 지시 "발을 뗄 때 앞으로
+                    // 튀는 거리를 줄여라", 채택 근거):
+                    //   · 예전 구현은 몸을 "모서리 + hopDownProbeOutward"로 **순간이동**시켜 위 문제를
+                    //     피했다. 실측 전진량 11.900 -> 12.210 = 0.31유닛(약 25pt)을 한 프레임에 건너뛰었고,
+                    //     사용자가 반복적으로 신고해온 순간이동성 아티팩트("갑자기 순간이동", "마우스로
+                    //     끌었는데 갑자기 다른창위로 올라감")와 같은 종류의 현상이었다.
+                    //   · 값을 줄여 0.15유닛 이하로 낮추는 선택지도 있었지만, 그래도 순간이동은 남는다.
+                    //     플랫포머의 표준 관행인 drop-through("아래로 내려가기" 중에는 방금 떠난 발판을
+                    //     통과시킨다)를 쓰면 **전진량을 0으로** 만들 수 있어 이쪽을 채택했다.
+                    //   · 스윕 판정 계약은 깨지지 않는다: GroundSensor.TryFindLandingCrossing에 기본값 0인
+                    //     ignoreHandle 파라미터가 하나 늘었을 뿐이고, 그 값을 채우는 곳은 이 블록 하나다.
+                    //     매달리기 해제/던지기/일반 낙하는 유예를 설정하지 않으므로 전혀 영향이 없다.
+                    //   · 유예는 시간이 지나면 스스로 풀린다(해제 호출 없음) — 어떤 경로로 상태가 바뀌어도
+                    //     "무시가 영구히 남는" 사고가 구조적으로 불가능하다.
+                    float ignoreDuration = _blackboard.Config != null
+                        ? _blackboard.Config.hopDownDropThroughIgnoreDuration
+                        : 0.25f;
+                    _blackboard.BeginDropThroughIgnore(info.GroundedFootholdHandle, ignoreDuration);
 
                     // ── (2) "살짝 앞으로 내딛는" 느낌 — 수평 속도 한 번. FallState는 x속도를 건드리지
-                    // 않으므로(중력만 y에 작용) 이 한 번의 부여가 착지까지 그대로 유지된다. y는 0으로
-                    // 확정한다: 걸어 나가듯 떨어져야지 위로 뛰어오르면 "점프"가 되어버린다.
+                    // 않으므로(중력만 y에 작용) 이 한 번의 부여가 착지까지 그대로 유지되고, 몸은 이 속도로
+                    // **걸어서** 모서리를 넘는다(순간이동 없음). y는 0으로 확정한다: 걸어 나가듯 떨어져야지
+                    // 위로 뛰어오르면 "점프"가 되어버린다.
                     float walkSpeed = _blackboard.Config != null ? _blackboard.Config.walkSpeed : 2.5f;
                     float scale = _blackboard.Config != null ? _blackboard.Config.hopDownStepOffSpeedScale : 0.8f;
+                    Vector2 before = _blackboard.Body.position;
                     _blackboard.Body.linearVelocity = new Vector2(hopDirection * walkSpeed * scale, 0f);
 
+                    float edgeWorldX = hopDirection > 0 ? info.CurrentFootholdRightWorldX : info.CurrentFootholdLeftWorldX;
                     Debug.Log($"[뛰어내리기] 발을 뗍니다 — 방향={(hopDirection > 0 ? "오른쪽" : "왼쪽")}, " +
-                        $"모서리 월드X={edgeWorldX:F3}, 딛기 전 X={before.x:F3} -> 내딛은 X={_blackboard.Body.position.x:F3}" +
-                        $"(목표 {steppedX:F3}, 전진 {Mathf.Abs(steppedX - before.x):F3}유닛), 월드Y={before.y:F3}, " +
-                        $"낙차={(info.GroundWorldY - hopTopY):F3}유닛, 예상 착지 발판핸들={hopHandle}(상단 Y={hopTopY:F3}), " +
+                        $"모서리 월드X={edgeWorldX:F3}, 발 뗀 X={before.x:F3}(모서리까지 남은 거리 " +
+                        $"{Mathf.Abs(edgeWorldX - before.x):F3}유닛), 전진 {Mathf.Abs(_blackboard.Body.position.x - before.x):F3}유닛" +
+                        $"(순간이동 없음 — drop-through {ignoreDuration:F2}초로 발판핸들 {info.GroundedFootholdHandle} 통과), " +
+                        $"월드Y={before.y:F3}, 낙차={(info.GroundWorldY - hopTopY):F3}유닛, " +
+                        $"예상 착지 발판핸들={hopHandle}(상단 Y={hopTopY:F3}), " +
                         $"내딛는 수평속도={(hopDirection * walkSpeed * scale):F2}유닛/초.");
 
                     _blackboard.Machine.ChangeState(StickmanStateId.Fall);

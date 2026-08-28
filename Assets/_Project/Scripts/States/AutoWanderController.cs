@@ -74,9 +74,10 @@ namespace StickMate.States
         private bool _edgeActionRolledThisLeg;
 
         // ★ 뛰어내리기 "확약" 서브 상태(2026-08-29). 추첨에 당첨된 순간 바로 발을 떼지 않고, 모서리
-        // 코앞(hopDownEdgeCommitDistance)까지 계속 걸어간 뒤에 펄스를 낸다. 왜 바로 떼면 안 되는가는
-        // StickConfig.hopDownEdgeCommitDistance의 Tooltip에 적어뒀다(요약: 경계 판정 거리 0.3유닛에서
-        // 곧장 Fall로 보내면 몸이 아직 발판 위라 FallState가 같은 발판에 도로 착지한다).
+        // 코앞(hopDownEdgeCommitDistance)까지 계속 걸어간 뒤에 펄스를 낸다. 경계 판정 거리(0.3유닛)에서
+        // 곧장 Fall로 보내면 아직 발판 한복판인데 낙하가 시작돼 "바닥을 뚫고 내려가는" 것처럼 보인다
+        // (제자리 재착지 자체는 2026-08-29 2차 수정의 drop-through가 막는다 — States/WalkState.cs의
+        // "발을 뗍니다" 블록 주석 참고. 그래서 이 확약이 지금 맡는 역할은 연출뿐이다).
         private bool _hopDownCommitted;
 
         private float _moveInputX;
@@ -335,22 +336,40 @@ namespace StickMate.States
         /// 진행 방향 앞쪽으로 "지금 딛고 있는 발판"의 잔여 길이가 wanderEdgeStopDistance 이하인지 판정한다.
         /// isTrueScreenEdge: 그 발판의 경계가 전체 발판 통합 경계(화면 자체의 끝)와 일치하는지 —
         /// 옆에 다른 발판이 더 있다면 false(그 발판만의 끝일 뿐 화면의 끝은 아님).
+        ///
+        /// ★ 2026-08-29 수정 — "화면 물리적 끝에서 제자리 걷기"(러닝머신) 대응.
+        /// isTrueScreenEdge인 쪽에서는 **원시 발판 경계가 아니라 캐릭터가 실제로 갈 수 있는 한계**
+        /// (StickmanBlackboard.TryGetWalkableScreenBoundsWorld — 화면 하드 클램프가 붙잡아 세우는 바로
+        /// 그 X)까지의 거리로 잔여 길이를 잰다. 예전에는 원시 경계(=화면 끝)에서 쟀기 때문에, 클램프가
+        /// 화면 끝에서 약 58pt 안쪽에 캐릭터를 세워두는 동안 이 판정에 필요한 거리(0.3유닛 ≈ 24pt)가
+        /// 영영 성립하지 않아 캐릭터가 걷기 애니메이션만 돌린 채 클램프를 계속 밀었다(Walk 지속시간이
+        /// 만료돼야 겨우 풀렸다). 두 값이 다시 어긋나지 않도록 클램프와 이 조회는 블랙보드 안의
+        /// 같은 계산식 하나에서 파생된다.
+        ///
+        /// 화면 끝이 아닌(isTrueScreenEdge == false) 평범한 발판 경계는 예전 그대로 원시 경계로
+        /// 잰다 — 그 경계는 캐릭터가 실제로 딛고 넘어설 수 있는 지점이라 클램프와 무관하다.
+        /// 안전 방향으로만 좁히도록 Min/Max를 쓰므로, 발판 경계가 클램프보다 안쪽이면 아무 것도 바뀌지 않는다.
         /// </summary>
         private bool IsNearFootholdEdge(GroundSensor.GroundInfo info, int direction, out bool isTrueScreenEdge,
             out float remainingToEdge)
         {
             float stopDistance = Cfg(c => c.wanderEdgeStopDistance, 0.3f);
             float characterX = _blackboard.Body != null ? _blackboard.Body.position.x : 0f;
+            bool hasWalkable = _blackboard.TryGetWalkableScreenBoundsWorld(out float walkableLeftX, out float walkableRightX);
 
             if (direction > 0)
             {
-                remainingToEdge = info.CurrentFootholdRightWorldX - characterX;
-                isTrueScreenEdge = Mathf.Abs(info.CurrentFootholdRightWorldX - info.ScreenRightWorldX) <= ScreenEdgeEpsilon;
+                float boundaryX = info.CurrentFootholdRightWorldX;
+                isTrueScreenEdge = Mathf.Abs(boundaryX - info.ScreenRightWorldX) <= ScreenEdgeEpsilon;
+                if (isTrueScreenEdge && hasWalkable) boundaryX = Mathf.Min(boundaryX, walkableRightX);
+                remainingToEdge = boundaryX - characterX;
             }
             else
             {
-                remainingToEdge = characterX - info.CurrentFootholdLeftWorldX;
-                isTrueScreenEdge = Mathf.Abs(info.CurrentFootholdLeftWorldX - info.ScreenLeftWorldX) <= ScreenEdgeEpsilon;
+                float boundaryX = info.CurrentFootholdLeftWorldX;
+                isTrueScreenEdge = Mathf.Abs(boundaryX - info.ScreenLeftWorldX) <= ScreenEdgeEpsilon;
+                if (isTrueScreenEdge && hasWalkable) boundaryX = Mathf.Max(boundaryX, walkableLeftX);
+                remainingToEdge = characterX - boundaryX;
             }
 
             return remainingToEdge <= stopDistance;

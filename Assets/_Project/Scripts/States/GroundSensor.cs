@@ -192,8 +192,16 @@ namespace StickMate.States
         /// <param name="currFootWorldPos">이번 프레임의 발 월드 좌표.</param>
         /// <param name="handle">채택된 발판의 PlatformFoothold.Handle(안전망이면 -1).</param>
         /// <param name="landingWorldY">그 발판 상단의 월드 Y — 호출부가 여기로 스냅해야 한다.</param>
+        /// <param name="ignoreHandle">
+        /// ★ 2026-08-29 — 이 핸들의 발판은 착지 후보에서 제외한다(0 = 제외 없음, 기본값이라 기존 호출부는
+        /// 무수정으로 예전과 완전히 동일하게 동작한다). 뛰어내리기(HopDown) 직후 **방금 떠난 그 발판**을
+        /// 짧은 시간 통과시키는 플랫포머의 drop-through 관행용이다 — 서 있던 몸은 발판 상단선에 정확히
+        /// 스냅돼 있어서, 모서리를 아직 넘지 않은 채 Fall로 전이하면 아래 교차 조건
+        /// (prevOs.y &lt;= r.y &amp;&amp; currOs.y &gt;= r.y)이 곧바로 성립해 제자리에 도로 착지해 버린다.
+        /// 유예/해제 관리는 StickmanBlackboard가 전담한다(이 함수는 넘겨받은 값만 본다).
+        /// </param>
         public static bool TryFindLandingCrossing(Camera cam, Vector2 prevFootWorldPos, Vector2 currFootWorldPos,
-            IReadOnlyList<PlatformFoothold> footholds, StickConfig config, out long handle, out float landingWorldY)
+            IReadOnlyList<PlatformFoothold> footholds, StickConfig config, out long handle, out float landingWorldY, long ignoreHandle = 0L)
         {
             handle = 0L;
             landingWorldY = currFootWorldPos.y;
@@ -211,6 +219,9 @@ namespace StickMate.States
             for (int i = 0; i < footholds.Count; i++)
             {
                 PlatformFoothold fh = footholds[i];
+
+                // drop-through 유예 중인 발판은 아예 후보에서 뺀다(위 ignoreHandle 문서 참고).
+                if (ignoreHandle != 0L && fh.Handle == ignoreHandle) continue;
                 Rect r = fh.ScreenRect;
 
                 // 가로 범위: 이번 프레임 끝 지점 기준으로 판정한다(수평 이동은 낙하 속도에 비해 훨씬

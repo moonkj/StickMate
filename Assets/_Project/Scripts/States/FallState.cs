@@ -110,7 +110,13 @@ namespace StickMate.States
             // 채운다 -> 지나쳐 올라가던 창 위에 그대로 "착지"했다. 사람이 바닥을 아래에서 뚫고 올라가며
             // 착지하지는 않으므로, 몸이 위로 움직이는 동안에는 이 경로도 성립시키지 않는다.
             bool movingUpward = _blackboard.Body != null && _blackboard.Body.linearVelocity.y > UpwardLandingVelocityEpsilon;
-            if (!info.Grounded || movingUpward)
+            // ★ 2026-08-29 — 뛰어내리기 직후의 drop-through 유예(StickmanBlackboard
+            // .DropThroughIgnoredFootholdHandle 문서 참고). 1순위 스윕 경로는 블랙보드 래퍼가 이미
+            // 무시 핸들을 넘겨 걸러주지만, 이 2순위 밴드 경로는 GroundSensor.Sense()의 결과를 직접
+            // 보므로 여기서 한 번 더 확인해야 한다 — 방금 떠난 발판의 상단선 허용오차 밴드 안에
+            // 몸이 잠시 남아 있는 동안 이 경로로 제자리 착지가 확정되는 것을 막는다.
+            bool ignoredByDropThrough = _blackboard.IsFootholdDropThroughIgnored(info.GroundedFootholdHandle);
+            if (!info.Grounded || movingUpward || ignoredByDropThrough)
             {
                 _landingConfirmTimer = 0f;
                 return;
