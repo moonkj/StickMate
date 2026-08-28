@@ -526,6 +526,36 @@ namespace StickMate.EditorTools
             rodeoSo.ApplyModifiedPropertiesWithoutUndo();
 
             // ================================================================================
+            // Phase 3/4 스펙터클 배선 (격파 미니게임 / 그라피티) — 2026-08-29
+            // ================================================================================
+            // 위 DragThrowController/RodeoCursorWatcher와 **완전히 같은 유형의 누락**이었다: 두 기능의
+            // 상태 머신/트리거/락 로직은 진작 완성돼 있었는데 Director가 씬 어디에도 배치되지 않았고,
+            // 그 위에 이벤트를 구독해 실제로 그리는 렌더러조차 존재하지 않아 화면에는 한 픽셀도 나오지
+            // 않았다. 여기서 Director 2개 + 이번 라운드에 신설한 렌더러 2개를 함께 배치한다.
+            var battle = root.AddComponent<BattleMinigameDirector>();
+            var battleSo = new SerializedObject(battle);
+            battleSo.FindProperty("_player").objectReferenceValue = agent;
+            battleSo.FindProperty("_hitbox").objectReferenceValue = hitbox;
+            // 드래그&던지기와 같은 이유로 물리 캡슐이 아니라 넉넉한 GrabArea를 넘긴다(부분적 클릭관통
+            // 해제 영역 부기가 사용자가 실제로 누르는 영역과 일치해야 한다).
+            battleSo.FindProperty("_hitboxCollider").objectReferenceValue = grabArea;
+            battleSo.FindProperty("_config").objectReferenceValue = config;
+            battleSo.ApplyModifiedPropertiesWithoutUndo();
+
+            // 소환 판자/기 모으기 게이지/파편을 그리는 시각 레이어. 직렬화 필드가 없고 Awake()에서 같은
+            // GameObject의 StickmanAgent/StickmanClickHitbox를 직접 찾으므로 배선이 필요 없다
+            // (AppControlDirector와 동일한 관례).
+            root.AddComponent<BattleMinigameRenderer>();
+
+            var graffiti = root.AddComponent<GraffitiDirector>();
+            var graffitiSo = new SerializedObject(graffiti);
+            graffitiSo.FindProperty("_player").objectReferenceValue = agent;
+            graffitiSo.FindProperty("_config").objectReferenceValue = config;
+            graffitiSo.ApplyModifiedPropertiesWithoutUndo();
+
+            root.AddComponent<GraffitiRenderer>();
+
+            // ================================================================================
             // 앱 제어 수단 배선 (2026-08-28 — "터미널 없이 끌 수 있어야 한다")
             // ================================================================================
             // Interaction/AppControlDirector.cs: 전역 단축키(Ctrl+Opt+Cmd+Q 종료 등)와 캐릭터 우클릭
@@ -965,7 +995,9 @@ namespace StickMate.EditorTools
         ///
         /// 제거 대상(플레이어 전용): StickmanAgent(플랫폼 서비스/발판 폴러/자율 배회 소유자),
         /// StickmanClickHitbox / DragThrowController / RodeoCursorWatcher(유저 상호작용 — 라이벌은
-        /// 관전 전용이라 클릭 대상이 아니다), AppControlDirector(앱 제어 메뉴는 하나면 된다).
+        /// 관전 전용이라 클릭 대상이 아니다), AppControlDirector(앱 제어 메뉴는 하나면 된다),
+        /// BattleMinigameDirector/Renderer + GraffitiDirector/Renderer(라이벌은 이 스펙터클의 주체가
+        /// 아니고, 렌더러는 전역 이벤트를 구독하므로 남겨두면 소환물이 두 벌 생긴다 — 실측 확인).
         /// 남기는 것: Rigidbody2D/콜라이더/팔다리 계층/DialogueBubbleRenderer(라이벌도 말을 한다).
         ///
         /// 팔다리의 RagdollLimbImpactRelay는 남겨두어도 안전하다 — 그 컴포넌트는 StickmanAgent를
@@ -992,6 +1024,17 @@ namespace StickMate.EditorTools
             // 플레이어 전용 컴포넌트 제거. 다른 컴포넌트가 의존하는 것(StickmanAgent/StickmanClickHitbox)을
             // **나중에** 지워야 RequireComponent 제약에 걸리지 않는다.
             DestroyComponentIfPresent<AppControlDirector>(rival);
+            // 격파 미니게임/그라피티(2026-08-29 신설) — 라이벌은 이 스펙터클의 주체가 아니다.
+            // 특히 렌더러 2종을 남겨두면 **실측으로 확인된 실제 버그**가 난다: 두 렌더러 모두
+            // StickmanEventBus의 전역 정적 이벤트를 구독하므로, 플레이어가 격파를 시작하면 라이벌의
+            // 렌더러도 같은 이벤트를 받아 판자 한 벌을 더 소환한다(첫 실행 로그에 "[격파] 소환"이
+            // 정확히 2번 찍혀 발견했다). 렌더러 쪽에도 "자기 GameObject의 StickmanAgent가 없으면
+            // 아무것도 하지 않는다"는 자체 가드를 넣었지만, 애초에 배치하지 않는 것이 1차 방어다
+            // (DragThrowController/RodeoCursorWatcher를 지우는 것과 정확히 같은 이유).
+            DestroyComponentIfPresent<BattleMinigameRenderer>(rival);
+            DestroyComponentIfPresent<BattleMinigameDirector>(rival);
+            DestroyComponentIfPresent<GraffitiRenderer>(rival);
+            DestroyComponentIfPresent<GraffitiDirector>(rival);
             DestroyComponentIfPresent<RodeoCursorWatcher>(rival);
             DestroyComponentIfPresent<DragThrowController>(rival);
             DestroyComponentIfPresent<StickmanClickHitbox>(rival);

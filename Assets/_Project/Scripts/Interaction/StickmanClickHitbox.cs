@@ -54,6 +54,19 @@ namespace StickMate.Interaction
         private Collider2D[] _colliders;
         private IGlobalPointerButtonService _buttonService;
 
+        /// <summary>
+        /// 캐릭터 계층 <b>바깥</b>에 런타임 생성된 임시 클릭 대상(현재 유일한 사용처: 격파 미니게임에서
+        /// 소환되는 기와 스택/기 모으기 게이지 — Interaction/BattleMinigameRenderer.cs).
+        ///
+        /// 왜 _colliders 배열을 다시 스캔하지 않는가: 그 배열은 Awake()에서 GetComponentsInChildren으로
+        /// 한 번만 캐시되고, 소환 오브젝트는 (캐릭터가 걸어도 허공의 제자리에 남아야 하므로) 캐릭터의
+        /// 자식이 아니라 씬 루트에 만들어진다. 매 프레임 재스캔은 낭비이고, 자식으로 붙이면 캐릭터를
+        /// 던졌을 때 기와가 함께 날아가버린다. 그래서 "명시적으로 등록/해제하는 추가 목록"이라는
+        /// 가장 좁은 형태를 택했다 — 등록 주체가 자기 수명 안에서 반드시 짝을 맞춰 해제한다.
+        /// </summary>
+        private readonly System.Collections.Generic.List<Collider2D> _extraColliders =
+            new System.Collections.Generic.List<Collider2D>();
+
         // 두 입력 경로가 공유하는 "지금 잡고 있다" 상태 — 엣지 트리거로 중복 발생을 막는다.
         private bool _pressed;
         // 눌림 시작 시각 — 실제로 "누르고 끌었는지" vs "즉시 떼졌는지"를 실측으로 판별하기 위한 진단용
@@ -64,6 +77,21 @@ namespace StickMate.Interaction
         // 앱 시작 순간 이미 버튼이 눌려 있던 경우를 클릭으로 오인하지 않는다.
         private bool _globalPressedPrev;
         private bool _globalPressedInitialized;
+
+        /// <summary>임시 클릭 대상 등록(중복 등록/null은 무시). 호출자는 반드시 짝이 되는
+        /// <see cref="UnregisterExtraCollider"/>를 자기 정리 경로에서 호출해야 한다.</summary>
+        public void RegisterExtraCollider(Collider2D collider)
+        {
+            if (collider == null || _extraColliders.Contains(collider)) return;
+            _extraColliders.Add(collider);
+        }
+
+        /// <summary>등록 해제(미등록/null은 조용히 무시 — 멱등).</summary>
+        public void UnregisterExtraCollider(Collider2D collider)
+        {
+            if (collider == null) return;
+            _extraColliders.Remove(collider);
+        }
 
         private void Awake()
         {
@@ -125,6 +153,16 @@ namespace StickMate.Interaction
             {
                 Collider2D c = _colliders[i];
                 if (c == null || !c.enabled) continue;
+                if (c.OverlapPoint(cursorWorld)) return true;
+            }
+
+            // 임시 클릭 대상(격파 미니게임의 기와/게이지). 파괴된 항목은 만나는 즉시 목록에서 지운다 —
+            // 등록자가 해제하기 전에 GameObject가 먼저 Destroy되는 경우에도 목록이 새지 않게 한다.
+            for (int i = _extraColliders.Count - 1; i >= 0; i--)
+            {
+                Collider2D c = _extraColliders[i];
+                if (c == null) { _extraColliders.RemoveAt(i); continue; }
+                if (!c.enabled) continue;
                 if (c.OverlapPoint(cursorWorld)) return true;
             }
             return false;

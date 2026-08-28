@@ -7,8 +7,8 @@ namespace StickMate.Interaction
     /// <summary>
     /// docs/UX_FLOW.md 27-3절 화면 낙서 그라피티 — 캐릭터 근처(200~300px 반경)의, 어떤 발판(창) 사각형과도
     /// 겹치지 않는 빈 화면 영역을 찾아 순수 오버레이로 그렸다가 페이드아웃하는 스펙터클의 트리거/영역
-    /// 선정/취소 감시를 전담한다. 실제 스프레이 애니메이션/그림 렌더링은 Phase2+ 렌더링 레이어가
-    /// GraffitiOverlayChanged 이벤트를 구독해 담당한다.
+    /// 선정/취소 감시를 전담한다. 실제 스프레이 애니메이션/그림 렌더링은
+    /// Interaction/GraffitiRenderer.cs가 GraffitiOverlayChanged 이벤트를 구독해 담당한다.
     ///
     /// 절대 원칙 3 재확인: 배경화면 이미지 파일/설정 API는 이 파일 어디에도 호출하지 않는다 — 순수
     /// 화면 위 오버레이 레이어 좌표 계산일 뿐이다.
@@ -41,6 +41,59 @@ namespace StickMate.Interaction
         {
             _hasRegion = false;
             SpectacleEventLock.ReleaseIfOwned(this, _player != null ? _player.Blackboard?.Machine : null, StickmanStateId.Graffiti);
+        }
+
+        /// <summary>
+        /// 그라피티 강제 발동(전역 단축키 Ctrl+Opt+Cmd+G / 캐릭터 우클릭 메뉴). 기본 트리거는 60초 주기
+        /// 4% 추첨 + 10분 쿨다운이라 실사용/검증 중에 한 번 보기도 어려워, RivalEncounterDirector.
+        /// ForceSpawnNow와 같은 관례로 "확률/쿨다운만 건너뛰는" 데모 경로를 둔다.
+        ///
+        /// <b>27-3의 침해 방지 규칙은 강제 경로에서도 하나도 완화하지 않는다</b> — 상호배제 락,
+        /// Idle/Walk 진입 조건, 그리고 무엇보다 "발판(다른 창)과 겹치지 않는 빈 영역을 찾지 못하면
+        /// 그리지 않고 이연한다"는 규칙을 그대로 통과해야 한다. 사용자가 단축키를 눌렀다는 사실이
+        /// 남의 작업 창 위에 낙서해도 된다는 허락은 아니다.
+        /// </summary>
+        public void ForceTriggerNow(string reason)
+        {
+            if (_player == null || _config == null)
+            {
+                Debug.LogWarning($"[그라피티] 강제 발동 실패({reason}) — 플레이어/설정 배선이 없습니다.");
+                return;
+            }
+            if (SpectacleEventLock.IsActive)
+            {
+                Debug.Log($"[그라피티] 강제 발동 건너뜀({reason}) — 다른 스펙터클({SpectacleEventLock.ActiveKind})이 " +
+                          "진행 중입니다(상호배제 락).");
+                return;
+            }
+
+            var current = _player.Blackboard.Machine.CurrentStateId;
+            if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
+            {
+                Debug.Log($"[그라피티] 강제 발동 건너뜀({reason}) — 지금은 {current} 중입니다(Idle/Walk에서만 시작).");
+                return;
+            }
+
+            if (!TryFindEmptyRegion(out Rect region))
+            {
+                Debug.Log($"[그라피티] 강제 발동 건너뜀({reason}) — 캐릭터 주변 " +
+                    $"{_config.graffitiMinRadiusPx:F0}~{_config.graffitiMaxRadiusPx:F0}px 안에서 " +
+                    "다른 창과 겹치지 않는 빈 영역을 찾지 못했습니다(27-3: 억지로 창 위에 그리지 않는다).");
+                return;
+            }
+
+            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.Graffiti, this)) return;
+
+            _checkTimer = 0f;
+            _cooldownRemaining = 0f;
+            _regionSnapshot = region;
+            _hasRegion = true;
+            RaiseOverlay(SpectacleOverlayPhase.Started);
+            _player.Blackboard.Machine.ChangeState(StickmanStateId.Graffiti);
+
+            Debug.Log($"[그라피티] 강제 발동({reason}) — 빈 영역 OS좌표 {region}, " +
+                $"유지 {_config.graffitiHoldDurationMin:F0}~{_config.graffitiHoldDurationMax:F0}초. " +
+                "배경화면 파일/설정 API는 호출하지 않는 순수 오버레이입니다.");
         }
 
         private void Update()

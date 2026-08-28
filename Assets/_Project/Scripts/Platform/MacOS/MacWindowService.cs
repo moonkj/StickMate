@@ -130,6 +130,8 @@ namespace StickMate.Platform.MacOS
         private const ushort kVK_ANSI_R = 0x0F;
         private const ushort kVK_ANSI_B = 0x0B;
         private const ushort kVK_ANSI_V = 0x09;
+        private const ushort kVK_ANSI_G = 0x05;
+        private const ushort kVK_ANSI_K = 0x28;
 
         [DllImport(CoreGraphicsLib)]
         private static extern uint CGMainDisplayID();
@@ -1053,7 +1055,7 @@ namespace StickMate.Platform.MacOS
         /// <summary>
         /// CGEventSourceKeyState로 지금 그 키가 눌려 있는지 조회한다. TryGetPrimaryButtonPressed와
         /// 완전히 같은 성격의 순수 조회이며 어떤 이벤트도 주입하지 않는다. 지원 키는
-        /// Platform.GlobalKey 열거형에 열거된 7개뿐이다(그 문서의 "왜 필요한 것만 있는가" 참고).
+        /// Platform.GlobalKey 열거형에 열거된 것뿐이다(그 문서의 "왜 필요한 것만 있는가" 참고).
         /// </summary>
         public bool TryGetKeyPressed(GlobalKey key, out bool pressed)
         {
@@ -1069,6 +1071,8 @@ namespace StickMate.Platform.MacOS
                 case GlobalKey.R:       code = kVK_ANSI_R;  break;
                 case GlobalKey.B:       code = kVK_ANSI_B;  break;
                 case GlobalKey.V:       code = kVK_ANSI_V;  break;
+                case GlobalKey.K:       code = kVK_ANSI_K;  break;
+                case GlobalKey.G:       code = kVK_ANSI_G;  break;
                 default:
                     pressed = false;
                     return false;

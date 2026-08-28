@@ -24,6 +24,14 @@ namespace StickMate.Platform
 
         /// <summary>라이벌 스틱맨 강제 스폰 데모(Ctrl+Opt+Cmd+V) — Interaction/AppControlDirector.cs.</summary>
         V,
+
+        /// <summary>격파 미니게임 강제 발동 데모(Ctrl+Opt+Cmd+K, "격파"/breaK) — 자동 발동이 60초마다
+        /// 5% 추첨이라 확률만으로는 검증이 사실상 불가능하다. Interaction/AppControlDirector.cs.</summary>
+        K,
+
+        /// <summary>그라피티 강제 발동 데모(Ctrl+Opt+Cmd+G, Graffiti) — 자동 발동이 60초마다 4% 추첨 +
+        /// 10분 쿨다운이라 K와 같은 이유로 강제 경로가 필요하다. Interaction/AppControlDirector.cs.</summary>
+        G,
     }
 
     /// <summary>
@@ -46,7 +54,7 @@ namespace StickMate.Platform
     /// 권한 부여 없이 호출했을 때 크래시 없이 false를 돌려주었고, 세션에 실제로 키 이벤트가 들어오자
     /// 같은 호출이 true로 바뀌었다(그리고 떼는 즉시 false로 돌아왔다).
     ///
-    /// **비침해 원칙 유지**: 조회만 하고 어떤 입력도 주입하지 않으며, 위 GlobalKey에 열거된 9개 키
+    /// **비침해 원칙 유지**: 조회만 하고 어떤 입력도 주입하지 않으며, 위 GlobalKey에 열거된 11개 키
     /// 외에는 애초에 물어볼 수단이 없다. 조합키 3개를 모두 누른 상태에서만 동작키를 확인하므로
     /// 사용자가 다른 앱에서 타이핑하는 내용은 이 채널로 관측될 수 없다.
     /// </summary>

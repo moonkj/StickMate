@@ -70,6 +70,53 @@ namespace StickMate.Interaction
         /// 스펙터클 이벤트가 활성 중이면 조용히 실패(false)한다.</summary>
         public bool TriggerManually() => TryBegin();
 
+        /// <summary>
+        /// 격파 미니게임 강제 발동(전역 단축키 Ctrl+Opt+Cmd+K / 캐릭터 우클릭 메뉴). 기본 자동 발동은
+        /// 60초마다 5% 추첨이라 실사용/검증 중에 한 번 보기도 어려워, RivalEncounterDirector.ForceSpawnNow와
+        /// 같은 관례로 "확률만 건너뛰는" 데모 경로를 둔다 — 상호배제 락(SpectacleEventLock)과 진입 가능
+        /// 상태 조건(Idle/Walk)은 그대로 지킨다. 왜 조용히 실패하는 TriggerManually를 그냥 쓰지 않는가:
+        /// 화면을 볼 수 없는 검증 환경에서 "왜 아무 일도 안 일어났는지"를 로그만으로 판별할 수 있어야 하기
+        /// 때문에, 실패 사유를 구분해 남긴다.
+        /// </summary>
+        public void ForceTriggerNow(string reason)
+        {
+            if (_player == null)
+            {
+                Debug.LogWarning($"[격파] 강제 발동 실패({reason}) — 플레이어 배선이 없습니다.");
+                return;
+            }
+            if (SpectacleEventLock.IsActive)
+            {
+                Debug.Log($"[격파] 강제 발동 건너뜀({reason}) — 다른 스펙터클({SpectacleEventLock.ActiveKind})이 " +
+                          "진행 중입니다(상호배제 락).");
+                return;
+            }
+
+            var current = _player.Blackboard.Machine.CurrentStateId;
+            if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
+            {
+                Debug.Log($"[격파] 강제 발동 건너뜀({reason}) — 지금은 {current} 중입니다(Idle/Walk에서만 시작).");
+                return;
+            }
+
+            _idleCheckTimer = 0f;
+            if (TryBegin())
+            {
+                Debug.Log($"[격파] 강제 발동({reason}) — 기 모으기 " +
+                    $"{(_config != null ? _config.battleChargeDurationMin : 1.5f):F1}~" +
+                    $"{(_config != null ? _config.battleChargeDurationMax : 2.0f):F1}초, 스위트스팟 " +
+                    $"{(_config != null ? _config.battleSweetSpotStart : 0.70f):P0}~" +
+                    $"{(_config != null ? _config.battleSweetSpotEnd : 0.85f):P0}, " +
+                    $"최대 재도전 {(_config != null ? _config.battleMaxRetries : 3)}회, " +
+                    $"무입력 타임아웃 {(_config != null ? _config.battleInputTimeoutSeconds : 5f):F0}초. " +
+                    "이제 판자/게이지 위나 캐릭터 위를 클릭하세요.");
+            }
+            else
+            {
+                Debug.LogWarning($"[격파] 강제 발동 실패({reason}) — 부분적 클릭관통 해제 요청이 거부되었습니다.");
+            }
+        }
+
         private void Update()
         {
             if (_clickCapture != null && _player != null &&

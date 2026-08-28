@@ -78,6 +78,26 @@ namespace StickMate.States
         public bool BattleClickSignaled;
 
         /// <summary>
+        /// 격파 미니게임(10절) "기 모으기" 게이지의 현재 채움 비율(0~1) — <b>순수 렌더 힌트</b>다.
+        /// BattleMinigameState.TickCharging()이 매 프레임 자기가 이미 계산한 값을 그대로 여기에
+        /// 복사해두고, Interaction/BattleMinigameRenderer가 읽어 게이지 바를 그린다.
+        ///
+        /// 왜 이벤트가 아니라 블랙보드 필드인가: 이 값은 "매 프레임 바뀌는 연속량"이라 이벤트로 쏘면
+        /// 초당 60회 델리게이트 호출이 되고, 무엇보다 <b>판정에는 전혀 쓰이지 않는다</b>(성공/실패는
+        /// 여전히 상태 내부의 _chargeElapsed만으로 결정된다). 렌더러가 이 필드를 못 읽거나 잘못 읽어도
+        /// 게임 판정은 1비트도 달라지지 않는다 — SetCharacterVisible(가출 렌더러 토글)과 같은
+        /// "상태 → 렌더링 레이어 단방향 통보" 관례를 따른다.
+        /// </summary>
+        public float BattleChargeRatio;
+
+        /// <summary>
+        /// 지금 게이지를 그려야 하는지(=Charging 페이즈인지). Resolving(판정 후 대기/재도전 간격) 동안은
+        /// false가 되어 게이지가 사라지고, 다음 재도전에서 다시 true로 돌아온다. 게이지 유무 자체가
+        /// "지금 클릭이 판정에 먹히는 구간인가"의 시각 신호라 사용자가 헛클릭하지 않게 해준다.
+        /// </summary>
+        public bool BattleChargeGaugeVisible;
+
+        /// <summary>
         /// Attack(전투) 상태의 IHasDialogueParams 스냅샷 입력값(BUG-M7 파이프라인, docs/BUG_REPORT_PHASE3.md
         /// Minor 1 대응). 호출자(현재는 Interaction/RivalStickmanAgent.cs)가 Machine.ChangeState(Attack)를
         /// 호출하기 직전에 이번 타격 이후 "몇 대 더 맞아야 결판나는지"를 계산해 이 필드에 써두면,

@@ -10,9 +10,10 @@ namespace StickMate.States
     ///
     /// 진입: Interaction/BattleMinigameDirector가 (유휴 저확률 추첨 또는 트레이 메뉴 수동 트리거로)
     /// 부분적 클릭관통 해제 + SpectacleEventLock을 확보했을 때만 Machine.ChangeState(BattleMinigame)를
-    /// 호출한다. 클릭 판정 대상은 캐릭터 자신의 히트박스를 재사용한다(UX 10절 "캐릭터/오브젝트의 화면
-    /// 히트박스 영역" 중 "캐릭터" 쪽 — 실제 소환 오브젝트의 별도 콜라이더/스프라이트는 아직 렌더링
-    /// 레이어가 없어 이번 라운드에 구현하지 않는다, WanderAmbientMotionRequested류 패턴과 동일).
+    /// 호출한다. 클릭 판정 대상은 캐릭터 자신의 히트박스 + 소환된 오브젝트/게이지의 콜라이더 둘 다이며
+    /// (UX 10절 "캐릭터/오브젝트의 화면 히트박스 영역"), 후자는 시각 레이어인
+    /// Interaction/BattleMinigameRenderer가 런타임에 만들어 StickmanClickHitbox에 등록한다 —
+    /// 이 상태 클래스는 그 존재를 전혀 모른다(둘 다 결국 같은 MouseDown 이벤트 하나로 합류한다).
     ///
     /// 클릭 입력 경로: Interaction/BattleMinigameDirector가 StickmanClickHitbox.MouseDown을 구독해
     /// blackboard.BattleClickSignaled를 세팅하고, 이 상태의 Tick()이 매 프레임 그 신호를 소비한다
@@ -94,6 +95,11 @@ namespace StickMate.States
             _chargeDuration = max > min ? Random.Range(min, max) : min;
 
             _blackboard.BattleClickSignaled = false;
+
+            // 렌더 힌트 초기화 — 이 시점부터 게이지가 화면에 보이기 시작한다(StickmanBlackboard의
+            // BattleChargeRatio/BattleChargeGaugeVisible 문서 참고: 판정에는 전혀 쓰이지 않는 단방향 통보).
+            _blackboard.BattleChargeRatio = 0f;
+            _blackboard.BattleChargeGaugeVisible = true;
         }
 
         public void Tick(float deltaTime)
@@ -118,6 +124,7 @@ namespace StickMate.States
         {
             _chargeElapsed += deltaTime;
             float ratio = _chargeDuration > 0f ? Mathf.Clamp01(_chargeElapsed / _chargeDuration) : 1f;
+            _blackboard.BattleChargeRatio = ratio; // 렌더 힌트(게이지 바) — 판정은 아래에서 ratio로 직접 한다.
 
             if (_blackboard.BattleClickSignaled)
             {
@@ -162,6 +169,11 @@ namespace StickMate.States
             _phase = Phase.Resolving;
             _resolveTimer = 0f;
 
+            // 판정이 끝난 구간에서는 게이지를 감춘다 — "지금 클릭해도 판정에 안 먹힌다"는 사실을
+            // 게이지 유무만으로 알 수 있게 해 헛클릭을 줄인다(재도전이면 BeginCharge가 다시 켠다).
+            _blackboard.BattleChargeRatio = chargeRatio;
+            _blackboard.BattleChargeGaugeVisible = false;
+
             if (success)
             {
                 _terminal = true;
@@ -205,6 +217,15 @@ namespace StickMate.States
             else BeginCharge();
         }
 
-        public void Exit() { }
+        /// <summary>
+        /// 어떤 경로로 빠져나가든(성공 종료/소진/타임아웃/긴급정지 강제 인터럽트) 게이지 렌더 힌트를
+        /// 반드시 끈다 — Director의 OnDisable() 락 반환과 같은 취지의 "중간 상태를 화면에 남기지
+        /// 않는다" 관례다. self-transition(재판정)에서도 Exit()이 호출되지만, 곧이어 실행되는 Enter()의
+        /// ResolveOutcome()/BeginCharge()가 값을 다시 확정하므로 문제되지 않는다.
+        /// </summary>
+        public void Exit()
+        {
+            _blackboard.BattleChargeGaugeVisible = false;
+        }
     }
 }
