@@ -96,6 +96,8 @@ namespace StickMate.Platform.MacOS
         private const int MaxFootholdsPerReport = 8;
         private float _footholdReportTimer;
         private readonly System.Text.StringBuilder _reportBuilder = new System.Text.StringBuilder(512);
+        /// <summary>합성 발판(Dock/안전망 두 조각)의 X 구간을 모으는 재사용 버퍼 — 위 겹침 확인용(2026-08-29).</summary>
+        private readonly System.Text.StringBuilder _syntheticBuilder = new System.Text.StringBuilder(512);
 
         /// <summary>창 전체 덤프([창진단]) 주기(초) — 발판 리포트보다 길어서 따로 둔다. 이 덤프는 한 줄이
         /// 수백~수천 자라 특히 무거우므로, 위 정리 이후 verboseDiagnosticsLogging이 켜졌을 때만 남긴다.</summary>
@@ -384,12 +386,31 @@ namespace StickMate.Platform.MacOS
             var describer = ResolveDescriber();
 
             _reportBuilder.Clear();
+            // ★ 2026-08-29 추가 — 합성 발판(Dock + 안전망 두 조각)의 사각형을 매 리포트에 함께 남긴다.
+            // 이번 라운드의 버그("독과 겹쳐서 걸음")는 정확히 "Dock 발판의 X 구간"과 "바닥 안전망의 X
+            // 구간"이 겹쳐 있던 것이 원인인데, 지금까지 리포트가 안전망을 아예 표기하지 않아 로그만
+            // 봐서는 그 겹침을 볼 수 없었다. 이제 한 줄에서 "Dock 구간 / 안전망 왼쪽 / 안전망 오른쪽"이
+            // 서로 정확히 맞물려 있는지(틈도 겹침도 없는지)를 사람이 바로 확인할 수 있다.
+            _syntheticBuilder.Clear();
             int realCount = 0;
             int listed = 0;
             for (int i = 0; i < footholds.Count; i++)
             {
                 var fh = footholds[i];
-                if (fh.Handle == FallbackPlatformWindowService.SyntheticFootholdHandle) continue; // 안전망은 아래에서 따로 표기
+                // 합성 발판(안전망 두 조각 / Dock)은 실제 창과 섞이지 않게 별도 문자열로 모은다.
+                if (fh.Handle == FallbackPlatformWindowService.SyntheticFootholdHandle
+                    || fh.Handle == FallbackPlatformWindowService.SyntheticFootholdHandleRight
+                    || fh.Handle == FallbackPlatformWindowService.DockFootholdHandle)
+                {
+                    if (_syntheticBuilder.Length > 0) _syntheticBuilder.Append(", ");
+                    Rect sr = fh.ScreenRect;
+                    _syntheticBuilder
+                        .Append(fh.Handle == FallbackPlatformWindowService.DockFootholdHandle ? "Dock"
+                            : fh.Handle == FallbackPlatformWindowService.SyntheticFootholdHandle ? "안전망왼쪽" : "안전망오른쪽")
+                        .Append(" x").Append(sr.x.ToString("F0")).Append('~').Append(sr.xMax.ToString("F0"))
+                        .Append(" 상단y").Append(sr.y.ToString("F0"));
+                    continue;
+                }
                 realCount++;
                 if (listed >= MaxFootholdsPerReport) continue;
                 if (listed > 0) _reportBuilder.Append(", ");
@@ -415,7 +436,11 @@ namespace StickMate.Platform.MacOS
                 }
                 else if (info.GroundedFootholdHandle == FallbackPlatformWindowService.SyntheticFootholdHandle)
                 {
-                    standing = "화면 최하단 안전망";
+                    standing = "화면 최하단 안전망(Dock 왼쪽 바깥)";
+                }
+                else if (info.GroundedFootholdHandle == FallbackPlatformWindowService.SyntheticFootholdHandleRight)
+                {
+                    standing = "화면 최하단 안전망(Dock 오른쪽 바깥)";
                 }
                 else if (info.GroundedFootholdHandle == FallbackPlatformWindowService.DockFootholdHandle)
                 {
@@ -442,7 +467,7 @@ namespace StickMate.Platform.MacOS
             bool insideScreen = charOs.x >= origin.x && charOs.x <= origin.x + winSize.x
                 && charOs.y >= origin.y && charOs.y <= origin.y + winSize.y;
 
-            Debug.Log($"[발판리포트] 보이는 상단테두리 {realCount}개{occlusionNote}=[{_reportBuilder}] | 딛고있음={standing} | " +
+            Debug.Log($"[발판리포트] 보이는 상단테두리 {realCount}개{occlusionNote}=[{_reportBuilder}] | 합성=[{_syntheticBuilder}] | 딛고있음={standing} | " +
                 $"고착핸들={blackboard.CurrentFootholdHandle} | 발판상단OS y={groundTop} | " +
                 $"캐릭터OS=({charOs.x:F1},{charOs.y:F1}) 화면안={(insideScreen ? "예" : "아니오(문제!)")} | " +
                 $"상태={(blackboard.Machine != null ? blackboard.Machine.CurrentStateId.ToString() : "?")} | " +

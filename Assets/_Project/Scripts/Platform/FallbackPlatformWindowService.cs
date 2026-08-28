@@ -14,7 +14,7 @@ namespace StickMate.Platform
     /// [2026-08-27, Architect 핫픽스 — BUG-P1-R3-B1] Debugger 3차 검토에서 발견: "real.Count==0일 때만
     /// 대체"하는 원래 구현은 서로 떨어진 두 발판 사이의 빈 틈으로 AutoWanderController가 점프를 시도해
     /// 착지에 실패하는 경우(real.Count는 계속 1 이상이므로 폴백이 개입하지 않음) 여전히 무한 낙하가
-    /// 재발했다. 수정: 내부 서비스가 무엇을 반환하든 상관없이 "화면 하단 가로 전체 폭" 안전망을 매번
+    /// 재발했다. 수정: 내부 서비스가 무엇을 반환하든 상관없이 화면 하단 안전망을 매번
     /// 목록 끝에 추가한다(대체가 아니라 항상 추가) — GroundSensor.Sense()는 리스트를 순서대로 훑다가
     /// 첫 매치를 채택하므로(끝에 있는 이 안전망보다 앞선 실제 발판이 항상 우선), 진짜 발판 위에 서 있는
     /// 정상 동작에는 전혀 영향이 없고 오직 "그 어떤 실제 발판도 발밑에 없을 때"만 조용히 개입한다.
@@ -33,6 +33,11 @@ namespace StickMate.Platform
     /// 그대로 델리게이트한다 — StickmanAgent가 `_platformService as ICursorPositionService`로 커서
     /// 조회 지원 여부를 판정하는 기존 설계(UX_FLOW.md 9절-3, Debugger 승인)가 이 데코레이터로 감싼
     /// 뒤에도 그대로 동작해야 하기 때문이다.
+    ///
+    /// ★ 2026-08-29 — 그 안전망은 더 이상 "화면 전체 폭 한 장"이 아니다. macOS Dock 가로 구간을
+    /// 잘라낸 **두 조각**(Dock 왼쪽 바깥 / 오른쪽 바깥)이며, 그렇게 바꾼 이유(사용자 신고 "처음엔
+    /// 독위에서 잘다니다가 좀 다니다 보면 다시 독과 겹쳐서 걸음")와 Dock 구간의 물리 바닥과의 역할
+    /// 차이는 아래 AppendBottomSafetyNet()의 문서에 전부 적어뒀다.
     ///
     /// 의도적으로 감싸지 않는 대상: ScreenshotBackdropPlatformService(모바일)는 이 데코레이터로 감싸지
     /// 않는다 — 그 서비스의 "발판 0개" 반환은 버그가 아니라 "유저가 아직 발판을 탭 지정하지 않음"이라는
@@ -56,16 +61,26 @@ namespace StickMate.Platform
         private readonly IGlobalKeyStateService _innerKeyState;     // null이면 내부 서비스가 전역 키 조회를 지원하지 않음
         private readonly StickConfig _config; // desktopDpiScale만 읽는다 — null이면 배율 1로 취급.
 
-        // 합성 발판 캐시 무효화 판정에 쓰는 직전 오버레이 창 원점(위 GetFallbackFoothold 참고).
+        // 합성 발판 캐시 무효화 판정에 쓰는 직전 오버레이 창 원점(아래 AppendBottomSafetyNet 참고).
         private Vector2 _cachedOverlayOrigin = new Vector2(float.NaN, float.NaN);
 
-        // 재사용 버퍼. "실제 발판 전부 + 안전망 1개"를 매 호출 다시 채워 넣지만 리스트 자체는 재할당하지
+        // 재사용 버퍼. "실제 발판 전부 + Dock + 안전망 조각들"을 매 호출 다시 채워 넣지만 리스트 자체는 재할당하지
         // 않는다(24시간 상주 앱, GC 압박 방지 컨벤션 — FootholdPoller.cs와 동일 원칙). EnumerateFootholds()가
         // 매 프레임이 아니라 FootholdPoller의 폴링 주기에서만 호출되므로 Add() 비용은 무시 가능하다.
         private readonly List<PlatformFoothold> _combined = new List<PlatformFoothold>(8);
-        private PlatformFoothold _fallbackFoothold;
+
+        // 바닥 안전망 캐시 — 2026-08-29부터 Dock 가로 구간을 잘라낸 **두 조각**이다
+        // (AppendBottomSafetyNet 문서 참고). Dock이 비활성이면 왼쪽 조각 하나가 전체 폭을 차지한다.
+        private PlatformFoothold _safetyNetLeft;
+        private PlatformFoothold _safetyNetRight;
+        private bool _hasSafetyNetLeft;
+        private bool _hasSafetyNetRight;
         private float _cachedScreenWidth = -1f;
         private float _cachedScreenHeight = -1f;
+        // 캐시 무효화용 직전 Dock 가로 구간(설정을 런타임에 바꿔도 안전망 구멍이 함께 따라오게 한다).
+        private bool _cachedHasDock;
+        private float _cachedDockLeftOsX = float.NaN;
+        private float _cachedDockRightOsX = float.NaN;
 
         public FallbackPlatformWindowService(IPlatformWindowService inner, StickConfig config = null)
         {
@@ -88,8 +103,20 @@ namespace StickMate.Platform
         /// <summary>
         /// 합성 안전망 발판에 부여하는 핸들. GroundSensor.GroundInfo.GroundedFootholdHandle이 이 값이면
         /// "실제 창이 아니라 안전망 위에 서 있다"는 뜻이다(진단 로그가 이 상수를 참조한다).
+        /// 2026-08-29부터 안전망은 Dock 가로 구간을 잘라낸 두 조각이며, 이 핸들은 그 중 **Dock 왼쪽
+        /// 바깥 조각**(그리고 Dock이 비활성일 때의 전체 폭 한 조각)을 가리킨다 — 오른쪽 조각은
+        /// <see cref="SyntheticFootholdHandleRight"/>다.
         /// </summary>
         public const long SyntheticFootholdHandle = -1L;
+
+        /// <summary>
+        /// Dock **오른쪽 바깥** 안전망 조각의 핸들. 왼쪽 조각(-1)과 반드시 구분되어야 한다 —
+        /// GroundSensor.Sense()의 발판 고착(preferredHandle)이 핸들로 발판을 식별하므로, 두 조각이
+        /// 같은 핸들을 쓰면 "지금 딛고 있는 조각"의 좌우 경계(GroundInfo.CurrentFoothold*WorldX)가
+        /// 반대편 조각의 것으로 잘못 잡혀 AutoWanderController의 경계 판정이 어긋난다
+        /// (GroundSensor.TryGetFootholdEdgeWorld/TryGetFootholdTopWorldY도 핸들로 첫 매치를 고른다).
+        /// </summary>
+        public const long SyntheticFootholdHandleRight = -3L;
 
         public IReadOnlyList<PlatformFoothold> EnumerateFootholds()
         {
@@ -105,7 +132,9 @@ namespace StickMate.Platform
             // 먼저 만나야 한다(GroundSensor.TryFindLandingCrossing은 가장 높은 것을 채택하므로 순서에
             // 무관하지만, "실제 창 -> Dock -> 바닥" 이라는 고도 순서를 목록 순서로도 드러내 둔다).
             if (TryGetDockFoothold(out PlatformFoothold dock)) _combined.Add(dock);
-            _combined.Add(GetFallbackFoothold()); // 항상 마지막에 추가 — 실제 발판이 우선 채택되도록.
+            // 항상 마지막에 추가 — 실제 발판이 우선 채택되도록. 2026-08-29부터 Dock 가로 구간을
+            // 잘라낸 두 조각(Dock 왼쪽 바깥 / 오른쪽 바깥)이 들어간다(AppendBottomSafetyNet 문서 참고).
+            AppendBottomSafetyNet(_combined);
             return _combined;
         }
 
@@ -155,6 +184,41 @@ namespace StickMate.Platform
         public bool TryGetDockFoothold(out PlatformFoothold dock)
         {
             dock = default;
+            if (!TryGetDockSpanOsScreen(out float dockLeftOsX, out float dockRightOsX)) return false;
+
+            float dpi = Mathf.Max(0.0001f, _config.desktopDpiScale);
+            float screenH = (Screen.height > 0 ? Screen.height : 1080f) * dpi;
+            Vector2 origin = ScreenCoordinateConverter.OverlayOriginOsScreen;
+
+            float thickness = _config.dockFootholdThicknessPoints;
+            float dockTopY = origin.y + screenH - thickness;
+
+            dock = new PlatformFoothold(DockFootholdHandle,
+                new Rect(dockLeftOsX, dockTopY, dockRightOsX - dockLeftOsX, thickness), true);
+            return true;
+        }
+
+        /// <summary>
+        /// ★★ Dock 가로 구간의 **단일 소스**(2026-08-29, 사용자 신고 "처음엔 독위에서 잘다니다가 좀
+        /// 다니다 보면 다시 독과 겹쳐서 걸음").
+        ///
+        /// 이 메서드 하나가 두 곳을 동시에 파생시킨다:
+        ///   (a) <see cref="TryGetDockFoothold"/> — Dock 위에 서는 발판 사각형의 좌/우 끝.
+        ///   (b) <see cref="AppendBottomSafetyNet"/> — 화면 최하단 안전망에서 **잘라낼 구멍**의 좌/우 끝.
+        /// 즉 "안전망의 구멍"과 "Dock 발판"은 정의상 **정확히 같은 X 구간**이라, 둘이 어긋나 틈(발판이
+        /// 하나도 없는 X 구간 -> 낙하 고착)이나 겹침(Dock 아래를 걸어다님 -> 이번 버그)이 생기는 것이
+        /// 구조적으로 불가능하다. 리더 지시 2항: "Dock 발판 생성과 안전망 분할이 각각 다른 값을 쓰면
+        /// 틈이 생기거나 겹친다. 상수 하나에서 둘 다 파생되게 해라."
+        /// (이 프로젝트는 과거 두 곳이 따로 계산해 어긋난 버그가 2회 있었다 — BUG-P1-R4-B1, BUG-P1-R5-B2.)
+        ///
+        /// 반환하는 좌표는 PlatformFoothold.ScreenRect와 동일한 공간(오버레이 창 원점 기준 OS 좌표)이다.
+        /// Dock이 비활성(폭 비율 0 또는 두께 0)이거나 설정이 없으면 false — 그때 안전망은 예전처럼
+        /// 화면 전체 폭 한 조각으로 남는다(잘라낼 Dock 자체가 없으므로 겹칠 일도 없다).
+        /// </summary>
+        public bool TryGetDockSpanOsScreen(out float dockLeftOsX, out float dockRightOsX)
+        {
+            dockLeftOsX = 0f;
+            dockRightOsX = 0f;
             if (_config == null) return false;
 
             float widthFraction = _config.dockFootholdWidthFraction;
@@ -163,18 +227,64 @@ namespace StickMate.Platform
 
             float dpi = Mathf.Max(0.0001f, _config.desktopDpiScale);
             float screenW = (Screen.width > 0 ? Screen.width : 1920f) * dpi;
-            float screenH = (Screen.height > 0 ? Screen.height : 1080f) * dpi;
             Vector2 origin = ScreenCoordinateConverter.OverlayOriginOsScreen;
 
             float dockWidth = screenW * Mathf.Clamp01(widthFraction);
-            float dockX = origin.x + (screenW - dockWidth) * 0.5f;   // 화면 가로 정중앙(실측 확인).
-            float dockTopY = origin.y + screenH - thickness;
-
-            dock = new PlatformFoothold(DockFootholdHandle, new Rect(dockX, dockTopY, dockWidth, thickness), true);
+            dockLeftOsX = origin.x + (screenW - dockWidth) * 0.5f;   // 화면 가로 정중앙(실측 확인).
+            dockRightOsX = dockLeftOsX + dockWidth;
             return true;
         }
 
-        private PlatformFoothold GetFallbackFoothold()
+        /// <summary>
+        /// ★★ 화면 최하단 "바닥 안전망"을 목록 끝에 덧붙인다 — 2026-08-29부터 **Dock 가로 구간을
+        /// 잘라낸 두 조각**(Dock 왼쪽 바깥 / Dock 오른쪽 바깥)이다.
+        ///
+        /// ============================================================================
+        /// 왜 한 장짜리 전체 폭 안전망이 버그였는가 (사용자 신고 2026-08-29:
+        /// "처음엔 독위에서 잘다니다가 좀 다니다 보면 다시 독과 겹쳐서 걸음")
+        /// ============================================================================
+        /// 직전 구성은 Dock 발판(화면 바닥-75pt, 가로 정중앙 65%)과 이 안전망(화면 최하단, **가로 화면
+        /// 전체 폭**) 두 장이었다. 그래서 다음 순서가 성립했다:
+        ///   (1) 캐릭터가 Dock 위(중앙 65% 구간)를 정상적으로 걷는다.        ← 사용자가 처음 본 정상 동작
+        ///   (2) Dock 가로 끝을 벗어나면 정상 낙하한다.
+        ///   (3) 화면 최하단 안전망에 착지한다.                              ← 여기까지가 의도된 동작
+        ///   (4) 그런데 그 안전망이 **화면 전체 폭**이라, 계속 걸어서 **다시 Dock 가로 구간 안쪽으로**
+        ///       들어간다(GroundSensor.Sense()의 발판 고착은 핸들이 같은 한 X 범위 안에서 자유롭게
+        ///       이동할 수 있게 해준다 — 그 발판이 화면 전체 폭이었으므로 제한이 사실상 없었다).
+        ///   (5) 그 자리에서 캐릭터는 화면 최하단 높이(OS y≈942)인데 그 위 75pt를 Dock이 차지하고 있으니
+        ///       **Dock과 겹쳐 보인다**. 우리 오버레이는 항상 최상단이라 캐릭터가 Dock 위에 덧그려진다.
+        ///
+        /// 수정: 안전망을 "전체 폭 사각형 하나"가 아니라 **Dock 좌측 바깥 조각 + 우측 바깥 조각**으로
+        /// 쪼갠다. 그러면 X 좌표별로 바닥이 정확히 하나씩만 존재하게 된다:
+        ///   • Dock 가로 범위 **안**  -> 바닥은 Dock 상단(OS y≈907)뿐   -> 캐릭터가 Dock **위**에 선다.
+        ///   • Dock 가로 범위 **밖**  -> 바닥은 화면 최하단(OS y≈942)   -> Dock 옆 바닥에 선다.
+        /// 이것이 사용자가 원래 요청한 동작이다("독위에서만 걷고 독아래로 가면 바닥으로 내려가야").
+        /// 안전망 조각의 끝은 곧 발판의 끝이므로 AutoWanderController의 경계 판정(26-2)이 Dock 경계에서
+        /// 캐릭터를 멈춰 세우고 되돌린다 — 즉 (4)의 "걸어서 Dock 밑으로 들어가는" 경로가 사라진다.
+        /// 반대로 Dock 위로 다시 올라가려면 위에서 떨어지거나 점프/파쿠르가 필요하다(의도된 동작).
+        ///
+        /// ============================================================================
+        /// 이 "논리적 발판"과 씬의 "물리 지면 콜라이더(PhysicsGround)"의 역할 차이 — 절대 혼동 금지
+        /// ============================================================================
+        /// 두 가지는 **일부러** 모양이 다르다(리더 지시 1항):
+        ///   • 이 안전망(논리적 발판, 두 조각) : GroundSensor의 접지/착지/경계 **판정**에만 쓰인다.
+        ///     Dock 구간에 구멍이 뚫려 있어야 "Dock 밑을 걸어다니는" 판정이 원천적으로 불가능해진다.
+        ///   • Editor/SceneBootstrapper.CreateGroundCollider()의 PhysicsGround(BoxCollider2D, 폭 200유닛)
+        ///     : Unity 2D 물리의 **실제 충돌면**이며 **전체 폭 그대로 유지한다**. RAGDOLL은 상태머신의
+        ///     접지 판정이 아니라 순수 물리로 굴러다니므로, 여기까지 구멍을 뚫으면 Dock 가로 구간에서
+        ///     랙돌이 바닥을 그대로 통과해 화면 아래로 사라진다. 논리적 구멍은 "그 X에서는 서 있을 수
+        ///     없다"는 뜻이지 "그 X에는 물리 바닥이 없다"는 뜻이 아니다.
+        /// 즉 Dock 구간의 최하단에서 캐릭터는 (물리적으로는 떠받쳐지지만) 논리적으로는 접지하지 못한다.
+        /// 그 상태로 흘러드는 예외 경로(사용자가 그리로 던짐 등)는 StickmanBlackboard의 최종 안전망
+        /// (LostCharacterRescueSeconds초 이상 Fall이면 RescueToSafeGround)이 회수한다 — 그 구조 대신
+        /// 물리 바닥에 구멍을 뚫는 선택은 "랙돌이 화면 밖으로 사라진다"는 훨씬 나쁜 실패로 이어진다.
+        ///
+        /// 구멍의 좌/우 끝은 <see cref="TryGetDockSpanOsScreen"/> **하나**에서만 나온다(Dock 발판 사각형도
+        /// 같은 메서드에서 나온다) — 두 곳이 따로 계산해 틈/겹침이 생기는 것을 구조적으로 막는다(리더 지시 2항).
+        /// Dock이 비활성(폭 0/두께 0, 예: Dock 자동 숨김)이면 잘라낼 것이 없으므로 예전과 100% 동일한
+        /// **화면 전체 폭 한 조각**이 된다.
+        /// </summary>
+        private void AppendBottomSafetyNet(List<PlatformFoothold> target)
         {
             float dpi = _config != null ? Mathf.Max(0.0001f, _config.desktopDpiScale) : 1f;
             float width = (Screen.width > 0 ? Screen.width : 1920f) * dpi;
@@ -187,75 +297,75 @@ namespace StickMate.Platform
             // 영원히 실패한다(드래그&던지기 배선 라운드에 실측으로 확인: 상태가 Fall에 고착).
             Vector2 overlayOrigin = ScreenCoordinateConverter.OverlayOriginOsScreen;
 
+            // 잘라낼 구멍 = Dock 발판과 **정확히 같은** X 구간(위 문서 참고, 단일 소스).
+            bool hasDock = TryGetDockSpanOsScreen(out float dockLeftOsX, out float dockRightOsX);
+
             if (!Mathf.Approximately(width, _cachedScreenWidth) || !Mathf.Approximately(height, _cachedScreenHeight)
-                || !Mathf.Approximately(overlayOrigin.x, _cachedOverlayOrigin.x) || !Mathf.Approximately(overlayOrigin.y, _cachedOverlayOrigin.y))
+                || !Mathf.Approximately(overlayOrigin.x, _cachedOverlayOrigin.x) || !Mathf.Approximately(overlayOrigin.y, _cachedOverlayOrigin.y)
+                || hasDock != _cachedHasDock
+                || !Mathf.Approximately(dockLeftOsX, _cachedDockLeftOsX) || !Mathf.Approximately(dockRightOsX, _cachedDockRightOsX))
             {
                 _cachedScreenWidth = width;
                 _cachedScreenHeight = height;
                 _cachedOverlayOrigin = overlayOrigin;
+                _cachedHasDock = hasDock;
+                _cachedDockLeftOsX = dockLeftOsX;
+                _cachedDockRightOsX = dockRightOsX;
 
                 // BUG-P1-R5-B2 대응(Coder 발견/수정, 2026-08-28) — "바로 바탕화면에서 구동" 라운드가 처음
                 // 만든 실제 Standalone .app을 직접 실행해 Player.log에 캐릭터 위치를 초 단위로 남기는
                 // 임시 디버그 로그로 확인한 결과, 화면에 실제 OS 창이 하나도 안 보이는 흔한 상황(이번
                 // 검증 환경 포함)에서 캐릭터가 FallState에 영원히 갇혀(footholds=1이지만 grounded=False)
-                // 좌우로 전혀 움직이지 않는 것을 실측으로 재현했다.
-                //
-                // 근본 원인: 이 안전망 발판을 예전에는 고정 픽셀 두께(40f)로 "화면의 진짜 맨 아래"에
-                // 뒀는데, Editor/SceneBootstrapper.cs가 캐릭터 스폰/RAGDOLL 안전 바닥 Y를 계산할 때
-                // 기준으로 삼는 값은 그게 아니라 NullPlatformWindowService.DummyFootholdHeightFraction
-                // (화면 하단에서 위로 20%)이다 — 즉 이 안전망(예전: 화면 맨 아래 40px)과 씬이 실제로
-                // 캐릭터를 놓는 높이(화면 하단에서 위로 20% 지점)가 서로 다른 Y를 가정하고 있었다.
-                // 에디터/배치모드 테스트는 전부 NullPlatformWindowService만 쓰므로(!UNITY_EDITOR 가드,
-                // 위 클래스 문서 참고) 이 불일치가 지금까지 어떤 EditMode/PlayMode 테스트에도 걸리지
-                // 않고 숨어 있었다 — 실제 macOS Standalone 빌드를 실제로 실행해봐야만(에디터가 아닌
-                // 진짜 .app) 드러나는 종류의 버그였다.
-                //
-                // 수정: 이 안전망의 두께도 NullPlatformWindowService.DummyFootholdHeightFraction과
-                // 정확히 같은 비율로 맞춘다(그 클래스가 이미 "Editor/SceneBootstrapper.cs와 단일 소스로
-                // 공유해야 어긋나지 않는다"고 명시한 것과 동일한 원칙을 이 실제 플랫폼 안전망에도 적용).
-                // 이러면 화면에 실제 창이 하나도 안 보이는 상황에서도, 이 안전망의 논리적 발판 Y가
-                // 씬의 물리적 RAGDOLL 안전 바닥/캐릭터 스폰 Y와 정확히 일치해 캐릭터가 정상적으로
-                // Grounded==true를 얻고 Idle/Walk를 오갈 수 있다. 실제 OS 창이 보이면(정상적인 사용
-                // 시나리오) 그 창이 먼저 매치되므로(EnumerateFootholds()가 항상 안전망을 "끝에" 추가하는
-                // 정책, 위 클래스 문서 참고) 이 변경은 그 경우에 아무 영향이 없다.
-                //
-                // ★ 2026-08-28(사용자 신고 "지금도 떠있는것처럼보임"): 그 공유 상수가 0.2(화면 높이의
-                // 20%)에서 "Dock 높이 비율"(75/982 ≈ 0.0764)로 내려갔다. 이 안전망은 그 상수를 그대로
-                // 쓰므로 여기 계산식은 한 글자도 바뀌지 않지만, 결과는 크게 달라진다 — 실측 1512x982
-                // 화면 기준 발판 상단이 OS y=785.6(화면 중간쯤)에서 y=907(Dock 바로 위)로 내려간다.
-                // 즉 "딛을 창이 하나도 없을 때 캐릭터가 화면 한가운데 떠 있는 것처럼 보인다"는 신고의
-                // 직접 원인이 여기서 사라진다. 근거/유도는 그 상수 선언부 문서 참고.
+                // 좌우로 전혀 움직이지 않는 것을 실측으로 재현했다. 근본 원인은 이 안전망의 두께가
+                // Editor/SceneBootstrapper.cs가 씬에 굽는 지면 Y의 기준
+                // (NullPlatformWindowService.DummyFootholdHeightFraction)과 서로 다른 값이었던 것이다.
+                // 수정: 그 공개 상수를 그대로 참조해 **단일 소스**로 묶는다(그 선언부 문서에 유도 과정).
+                // ★ 2026-08-28: 그 상수가 화면 높이의 20% -> 화면 최하단 40pt(BottomSafetyNetInsetPoints)로
+                // 내려갔다. 여기 계산식은 한 글자도 바뀌지 않지만 결과는 크게 달라진다 — 실측 1512x982
+                // 화면 기준 발판 상단이 OS y=785.6(화면 중간쯤)에서 y=942(화면 최하단)로 내려간다.
                 float thickness = height * NullPlatformWindowService.DummyFootholdHeightFraction;
 
-                // BUG-P1-R5-B3 대응(Coder 실측 발견, 2026-08-28) — 위 BUG-P1-R5-B2로 "낙하 고착이 t=0부터
-                // 영원히 지속"되는 문제는 해소됐지만, 실제 Standalone .app을 60초 이상 계속 관찰해보니
-                // (Architect 지시로 재검증) 한참 걸어다니다 이 안전망 발판의 가장자리 밖으로 나가면서
-                // 다시 낙하 고착에 빠지는(수십 초 뒤 재발) 별도 사례를 발견했다. 원인: 이 안전망은 지금까지
-                // 폭을 `Screen.width` 그대로(=카메라 뷰포트 폭 그대로) 써왔는데, 그 절반폭(예:
-                // orthographicSize=5, 16:10 화면 기준 약 8유닛)은 `AutoWanderController`의 한 Walk 페이즈
-                // 최대 이동거리(walkSpeed×wanderWalkDurationMax×지터, 기본값 기준 약 11.75유닛)보다 좁다
-                // — `NullPlatformWindowService`(에디터/배치모드 전용)의 더미 발판은 정확히 이 문제 때문에
-                // 이미 `DummyFootholdWidthMultiplier`(4배)로 폭을 넓혀뒀는데, 그 넓히기가 실제 macOS/
-                // Windows 배포 환경이 쓰는 이 안전망에는 한 번도 이식되지 않았었다 — 그래서 에디터
-                // 테스트는 이 가장자리에 거의 닿지 않지만(4배 넓은 관찰 범위), 실제 배포판은 정상적인
-                // 배회만으로도 수십 초 안에 가장자리에 닿을 수 있었다. 수정: 동일한 배율을 여기도 적용해
-                // 화면 중심(world x=0)을 기준으로 좌우 대칭으로 폭을 넓힌다 — `NullPlatformWindowService`
-                // 생성자의 동일 계산식을 그대로 재사용(단일 소스 공유, 어긋남 재발 방지).
-                // ★ 2026-08-28: 위 이력의 배율은 이제 1이다(NullPlatformWindowService.DummyFootholdWidthMultiplier
-                // 선언부의 "되돌림" 문단 참고) — 낙하 고착의 진짜 원인은 이 안전망 발판이 항상 제공되도록
-                // 고친 것으로 해결됐고, 폭 4배 확장은 캐릭터가 화면 밖으로 걸어나가는 부작용만 남겨
-                // 사용자가 "화면 벗어나서 잘 안 보임"으로 신고했다. 계산식은 그대로 두고 상수만 1이 되므로
-                // 폭 = 화면 폭, 좌우 오프셋 = 0이 된다(계산 구조를 유지해 나중에 다시 조정할 여지는 남긴다).
+                // 폭 배율은 NullPlatformWindowService의 더미 발판과 공유하는 단일 소스다(현재 1 =
+                // 화면 폭과 정확히 일치; 계산 구조를 남겨 나중에 다시 조정할 여지를 둔다 — 그 선언부의
+                // "되돌림" 문단 참고).
                 float widenedWidth = width * NullPlatformWindowService.DummyFootholdWidthMultiplier;
                 float widenedX = (width - widenedWidth) / 2f;
 
                 // y = height - 두께: ScreenCoordinateConverter와 동일한 좌상단원점/y하향증가 좌표계에서
                 // "화면 진짜 하단에서 위로 두께만큼"을 뜻한다(위 클래스 주석의 핫픽스 설명 참고).
-                var rect = new Rect(widenedX + overlayOrigin.x, overlayOrigin.y + height - thickness, widenedWidth, thickness);
-                _fallbackFoothold = new PlatformFoothold(handle: SyntheticFootholdHandle, screenRect: rect, isTopmost: true);
+                float netLeftOsX = overlayOrigin.x + widenedX;
+                float netRightOsX = netLeftOsX + widenedWidth;
+                float netTopOsY = overlayOrigin.y + height - thickness;
+
+                // Dock이 없으면 구멍의 좌우 끝을 둘 다 안전망 오른쪽 끝에 두어, 왼쪽 조각이 전체 폭을
+                // 차지하고 오른쪽 조각이 폭 0이 되게 한다(= 예전의 한 장짜리 안전망과 완전히 동일).
+                // Clamp는 Dock이 안전망보다 넓거나 밖으로 벗어난 병리적 설정에서도 조각 폭이 음수가
+                // 되지 않게 한다.
+                float holeLeftOsX = hasDock ? Mathf.Clamp(dockLeftOsX, netLeftOsX, netRightOsX) : netRightOsX;
+                float holeRightOsX = hasDock ? Mathf.Clamp(dockRightOsX, netLeftOsX, netRightOsX) : netRightOsX;
+
+                float leftPieceWidth = holeLeftOsX - netLeftOsX;
+                float rightPieceWidth = netRightOsX - holeRightOsX;
+
+                _hasSafetyNetLeft = leftPieceWidth > MinSafetyNetPieceWidthOsPoints;
+                _hasSafetyNetRight = rightPieceWidth > MinSafetyNetPieceWidthOsPoints;
+                _safetyNetLeft = new PlatformFoothold(SyntheticFootholdHandle,
+                    new Rect(netLeftOsX, netTopOsY, Mathf.Max(0f, leftPieceWidth), thickness), isTopmost: true);
+                _safetyNetRight = new PlatformFoothold(SyntheticFootholdHandleRight,
+                    new Rect(holeRightOsX, netTopOsY, Mathf.Max(0f, rightPieceWidth), thickness), isTopmost: true);
             }
-            return _fallbackFoothold;
+
+            if (_hasSafetyNetLeft) target.Add(_safetyNetLeft);
+            if (_hasSafetyNetRight) target.Add(_safetyNetRight);
         }
+
+        /// <summary>
+        /// 안전망 조각을 발판으로 인정하는 최소 폭(OS 포인트). 이보다 얇은 조각은 캐릭터가 설 수 없는
+        /// 실오라기라 오히려 접지/낙하가 매 프레임 뒤집히는 채터링만 만든다. Dock이 화면 폭 전체를
+        /// 차지하도록 설정한 극단적인 경우(dockFootholdWidthFraction=1)에는 두 조각 모두 사라지고
+        /// Dock 발판만 남는다 — 그때는 "Dock 바깥"이라는 X 구간 자체가 없으므로 정상이다.
+        /// </summary>
+        private const float MinSafetyNetPieceWidthOsPoints = 1f;
 
         public bool CreateOverlayWindow() => _inner.CreateOverlayWindow();
 

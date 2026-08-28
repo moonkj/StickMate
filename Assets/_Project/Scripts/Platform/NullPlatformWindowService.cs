@@ -132,10 +132,17 @@ namespace StickMate.Platform
         // 사용자 눈에는 여전히 "공중 부양"이다.
         //
         // 이제 역할을 둘로 나눈다:
-        //   • **Dock 발판**(FallbackPlatformWindowService.GetDockFoothold) — Dock이 실제로 있는
+        //   • **Dock 발판**(FallbackPlatformWindowService.TryGetDockFoothold) — Dock이 실제로 있는
         //     가로 구간에만 존재하는 별도 발판. 캐릭터는 그 위를 걷는다.
         //   • **바닥 안전망**(이 상수) — 화면 진짜 최하단. Dock 좌우 바깥으로 걸어 나가면 Dock 발판의
         //     X 범위를 벗어나 낙하하고, 여기에 착지한다. 이것이 사용자가 요구한 동작이다.
+        //
+        // ★ 2026-08-29 추가(사용자 신고 "처음엔 독위에서 잘다니다가 좀 다니다 보면 다시 독과 겹쳐서
+        //   걸음"): 그 바닥 안전망은 이 상수가 정하는 **높이**는 그대로 두되, **가로로는 Dock 구간을
+        //   잘라낸 두 조각**이 되었다(FallbackPlatformWindowService.AppendBottomSafetyNet). 전체 폭
+        //   한 장이면 Dock 옆 바닥에 착지한 캐릭터가 계속 걸어서 Dock 밑으로 다시 들어가 겹쳐 보였기
+        //   때문이다. 이 파일의 더미 발판(에디터/배치모드 전용, 아래 생성자)은 Dock 개념이 없는
+        //   환경이라 예전처럼 한 장 그대로다 — 이 상수가 두 곳의 **높이** 단일 소스라는 사실은 불변.
         //
         // 왜 0이 아니라 BottomSafetyNetInsetPoints(40pt)인가 — **실측으로 정한 값이다**:
         // 처음에 10pt(화면 높이의 1%)로 잡았더니 PlayMode 프레이밍 테스트가 즉시 잡아냈다. 캐릭터의

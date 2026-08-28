@@ -851,6 +851,25 @@ namespace StickMate.EditorTools
         /// 진입 직후 root의 CapsuleCollider2D(발 피벗 기준 바닥이 로컬 y=0)가 곧바로 이 바닥과 접촉한다.
         /// 레이어는 Default(0)로 둔다 — StickmanLimbLayerName과는 자기들끼리만 충돌을 끄는 매트릭스이므로
         /// Default 레이어와는 정상적으로 충돌한다.
+        ///
+        /// ============================================================================
+        /// ★★ 이 물리 바닥은 **전체 폭 그대로 유지한다** — 논리적 발판과 일부러 모양이 다르다
+        ///    (2026-08-29, 사용자 신고 "다시 독과 겹쳐서 걸음" 수정 라운드, 리더 지시 1항)
+        /// ============================================================================
+        /// 같은 라운드에 Platform/FallbackPlatformWindowService의 **논리적** 바닥 안전망은 Dock 가로
+        /// 구간을 잘라낸 두 조각으로 쪼개졌다(그 클래스의 AppendBottomSafetyNet 문서 참고). 그런데
+        /// 여기 이 BoxCollider2D는 그 구멍을 **따라가면 안 된다**. 둘의 역할이 다르기 때문이다:
+        ///   • 논리적 발판(FallbackPlatformWindowService) : GroundSensor의 접지/착지/경계 **판정** 전용.
+        ///     Dock 구간에 구멍이 있어야 "Dock 밑을 걸어다녀 Dock과 겹쳐 보이는" 상태가 원천 차단된다.
+        ///   • 이 PhysicsGround(BoxCollider2D)          : Unity 2D 물리의 **실제 충돌면**.
+        ///     RAGDOLL은 상태머신 판정이 아니라 순수 물리로 굴러다니므로 여기까지 구멍을 뚫으면
+        ///     Dock 가로 구간(=화면 정중앙 65%, 캐릭터가 대부분의 시간을 보내는 곳)에서 랙돌이 바닥을
+        ///     그대로 통과해 화면 아래로 사라진다.
+        /// 정리하면, Dock 구간의 화면 최하단에서 캐릭터는 "물리적으로는 떠받쳐지지만 논리적으로는 접지
+        /// 하지 않는다". 그 상태로 흘러드는 예외 경로(사용자가 그리로 던짐 등)는 상태머신 쪽 최종
+        /// 안전망(StickmanBlackboard의 LostCharacterRescueSeconds Fall 감시 -> RescueToSafeGround)이
+        /// 회수한다 — 그 대신 물리 바닥에 구멍을 뚫는 선택은 "랙돌이 화면 밖으로 사라진다"는 훨씬
+        /// 나쁜 실패로 이어진다.
         /// </summary>
         /// <summary>
         /// UniWindowController(com.kirurobo.uniwinc) 인스턴스를 씬에 배치하고 이 프로젝트에 맞는 초기

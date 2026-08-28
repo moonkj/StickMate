@@ -33,8 +33,10 @@ namespace StickMate.States
         private Vector2 _prevFootWorldPos;
         private bool _hasPrevFootSample;
 
-        /// <summary>FallbackPlatformWindowService가 합성 안전망 발판에 부여하는 핸들(그 클래스 참고).</summary>
+        /// <summary>FallbackPlatformWindowService가 합성 안전망 발판에 부여하는 핸들(그 클래스 참고).
+        /// 2026-08-29부터 안전망은 Dock 좌/우 바깥 두 조각이라 핸들도 둘이다(-1 왼쪽, -3 오른쪽).</summary>
         private const long SyntheticSafetyNetHandle = -1L;
+        private const long SyntheticSafetyNetRightHandle = -3L;
 
         /// <summary>같은 클래스가 합성 Dock 발판에 부여하는 핸들 — 착지 로그에서 구분해 표시한다.</summary>
         private const long SyntheticDockHandle = -2L;
@@ -162,7 +164,7 @@ namespace StickMate.States
             {
                 _lastLoggedLandingHandle = footholdHandle;
                 Debug.Log($"[FallState] 착지 확정 — 발판핸들={footholdHandle}" +
-                    $"{(footholdHandle == SyntheticSafetyNetHandle ? "(화면 최하단 안전망)" : footholdHandle == SyntheticDockHandle ? "(Dock)" : "(실제 창)")}, " +
+                    $"{(footholdHandle == SyntheticSafetyNetHandle ? "(화면 최하단 안전망-Dock왼쪽바깥)" : footholdHandle == SyntheticSafetyNetRightHandle ? "(화면 최하단 안전망-Dock오른쪽바깥)" : footholdHandle == SyntheticDockHandle ? "(Dock)" : "(실제 창)")}, " +
                     $"착지 월드Y={landingWorldY:F3}, 낙하높이={fallHeight:F2}유닛.");
             }
 
