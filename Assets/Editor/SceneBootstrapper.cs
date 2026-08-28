@@ -363,24 +363,21 @@ namespace StickMate.EditorTools
             cam.orthographicSize = 5f;
             cam.transform.position = new Vector3(0f, 0f, -10f);
             cam.clearFlags = CameraClearFlags.SolidColor;
-            // "바로 바탕화면에서 구동" 라운드(2026-08-28) 대응: 알파를 0으로 낮춰 카메라가 그리는 배경을
-            // 완전 투명으로 바꾼다. Platform/MacOS/StickMateOverlayPlugin.m의 SM_ConfigureOverlayWindow가
-            // 우리 자신의 NSWindow를 setOpaque:NO + backgroundColor=clearColor로 맞춰주는 쪽과 짝을 이루는
-            // 절반 — 카메라가 알파 1로 그리면 창을 아무리 투명하게 만들어도 렌더 결과 자체가 불투명색으로
-            // 덮여 무의미하다.
-            //
-            // 방어적 폴백(BUG-P1-R5-B1 대응, Architect 결정, 2026-08-28 — 사용자가 두 라운드 연속
-            // "까만 화면에 이상하게 나온다"고 보고): 진짜 투명 창(StickMateOverlayPlugin.m 참고, Unity
-            // Standalone Mac Player의 렌더 서페이스가 기본적으로 불투명 합성을 가정하고 있어 100% 보장
-            // 못 함)이 실패하면, 알파만 0으로 두고 RGB를 기본값(검정)으로 남겨둘 경우 렌더 결과가 불투명
-            // 검정 배경이 되어 캐릭터 선 색(config.primaryOutlineColor, 기본 검정)과 완전히 겹쳐 "검정 위에
-            // 검정"으로 아무것도 안 보이는 최악의 상황이 된다. RGB는 StickConfig.backgroundFallbackColor
-            // (기본 밝은 회색)로 설정해두면: 투명이 성공할 경우 알파=0이라 이 RGB는 애초에 안 보이고,
-            // 실패해도 밝은 배경 위에 검정 선 캐릭터가 확실히 대비되어 보인다 — 매직 넘버 하드코딩 금지
-            // 컨벤션(StickConfig.cs 클래스 문서)에 따라 이전 하드코딩 값(0.85,0.85,0.85)을 config 필드로
-            // 승격했다.
+            // 투명 오버레이 비활성화(Architect 결정, 2026-08-28, "완전히 새까만 화면" 사고 대응): 이전
+            // 라운드들은 이 알파를 0으로 낮춰 카메라 배경을 완전 투명으로 만들고
+            // Platform/MacOS/StickMateOverlayPlugin.m의 SM_ConfigureOverlayWindow(transparent=1)와 짝을
+            // 이루려 했으나, 그 네이티브 창 투명화가 여러 라운드에 걸쳐 한 번도 실제로 성공한 적이 없다
+            // (Unity Standalone Mac Player의 렌더 서페이스가 기본적으로 불투명 합성을 가정). 그 결과
+            // 알파=0인 픽셀이 RGB 값과 무관하게 그냥 검정으로 합성되어 "완전히 균일한 검정 화면"으로
+            // 보이는 사고가 재발했다(사용자 실측, 2026-08-28) — 알파 0을 유지하는 한 RGB를 무엇으로
+            // 설정해도 의미가 없었다는 뜻이다. 진짜 투명 창은 명시적으로 다음 과제로 미루고, 이번
+            // 라운드는 카메라 배경 알파를 항상 1(완전 불투명)로 고정해 RGB(StickConfig.
+            // backgroundFallbackColor, 기본 밝은 회색)가 확실히, 그대로 렌더링되게 한다 —
+            // primaryOutlineColor(검정) 캐릭터 선과 대비되는 밝은 배경. MacWindowService.cs의
+            // SM_ConfigureOverlayWindow 호출도 이 라운드에서 transparent=0으로 바뀌었다(클릭관통/
+            // 항상위는 계속 실제 NSWindow API를 사용 — 그쪽은 이미 로그로 정상 동작이 확인됨).
             Color fallbackBg = config != null ? config.backgroundFallbackColor : new Color(0.94f, 0.94f, 0.94f);
-            cam.backgroundColor = new Color(fallbackBg.r, fallbackBg.g, fallbackBg.b, 0f);
+            cam.backgroundColor = new Color(fallbackBg.r, fallbackBg.g, fallbackBg.b, 1f);
             camGo.AddComponent<AudioListener>();
 
             // BUG-SW-M1 대응: RAGDOLL이 실제로 부딪혀 멈출 수 있는 정적 바닥. Rigidbody2D를 붙이지

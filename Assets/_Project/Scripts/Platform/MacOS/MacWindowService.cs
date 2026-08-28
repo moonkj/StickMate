@@ -191,8 +191,13 @@ namespace StickMate.Platform.MacOS
         // 속성을 하나의 호출로 동시에 적용하는 단일 함수라(StickMateOverlayPlugin.m 참고),
         // SetClickThrough()/SetAlwaysOnTop()가 서로 독립적으로 호출되어도(IPlatformWindowService 계약상
         // 별개 메서드) 매번 "마지막으로 알려진 두 값 전부"를 함께 넘겨야 한 쪽 호출이 다른 쪽 상태를
-        // 조용히 되돌리지 않는다. 투명(transparent)은 토글 개념이 아니라 오버레이의 항상 성립해야 하는
-        // 성질이라 별도 상태 없이 항상 1(true)로 넘긴다.
+        // 조용히 되돌리지 않는다. 투명(transparent)은 "완전히 새까만 화면" 사고 대응(Architect 결정,
+        // 2026-08-28) 이후 항상 0(false)으로 넘긴다 — 여러 라운드에 걸쳐 진짜 투명 창이 한 번도 성공한
+        // 적이 없어(Unity Standalone Mac Player 렌더 서페이스가 기본적으로 불투명 합성을 가정), 알파=0
+        // 픽셀이 RGB와 무관하게 검정으로 합성되는 문제가 재발했다. 진짜 투명은 명시적으로 다음 과제로
+        // 미루고, 이번 라운드는 불투명 창 + 밝은 카메라 배경(SceneBootstrapper.cs, StickConfig.
+        // backgroundFallbackColor)으로 확실한 가시성을 확보한다. 네이티브 함수 자체의 transparent 처리
+        // 로직(StickMateOverlayPlugin.m)은 그대로 남겨둔다 — 호출부만 0을 넘기도록 바꿨다.
         private bool _clickThroughEnabled;
         private bool _alwaysOnTopEnabled;
 
@@ -361,9 +366,9 @@ namespace StickMate.Platform.MacOS
 
             _clickThroughEnabled = false;
             _alwaysOnTopEnabled = false;
-            SM_ConfigureOverlayWindow(0, 0, 1); // 투명은 항상 시도, 클릭관통/항상위는 안전하게 OFF로 시작.
+            SM_ConfigureOverlayWindow(0, 0, 0); // 투명 비활성화(Architect 결정, 2026-08-28), 클릭관통/항상위는 안전하게 OFF로 시작.
             Debug.Log("[MacWindowService] CreateOverlayWindow(): 메인 NSWindow 확보 및 초기 상태 적용 완료 " +
-                $"(clickThrough=false, alwaysOnTop=false, transparent=true, windowLevel={SM_GetOverlayWindowLevel()}).");
+                $"(clickThrough=false, alwaysOnTop=false, transparent=false, windowLevel={SM_GetOverlayWindowLevel()}).");
             return true;
         }
 
@@ -385,7 +390,7 @@ namespace StickMate.Platform.MacOS
             }
 
             _clickThroughEnabled = enabled;
-            SM_ConfigureOverlayWindow(_clickThroughEnabled ? 1 : 0, _alwaysOnTopEnabled ? 1 : 0, 1);
+            SM_ConfigureOverlayWindow(_clickThroughEnabled ? 1 : 0, _alwaysOnTopEnabled ? 1 : 0, 0);
             Debug.Log($"[MacWindowService] SetClickThrough({enabled}) 적용 완료 — windowLevel={SM_GetOverlayWindowLevel()}.");
         }
 
@@ -402,7 +407,7 @@ namespace StickMate.Platform.MacOS
             }
 
             _alwaysOnTopEnabled = enabled;
-            SM_ConfigureOverlayWindow(_clickThroughEnabled ? 1 : 0, _alwaysOnTopEnabled ? 1 : 0, 1);
+            SM_ConfigureOverlayWindow(_clickThroughEnabled ? 1 : 0, _alwaysOnTopEnabled ? 1 : 0, 0);
             Debug.Log($"[MacWindowService] SetAlwaysOnTop({enabled}) 적용 완료 — windowLevel={SM_GetOverlayWindowLevel()}.");
         }
 

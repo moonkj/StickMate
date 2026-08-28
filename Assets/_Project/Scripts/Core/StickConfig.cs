@@ -17,6 +17,58 @@ namespace StickMate.Core
         [Tooltip("점프 시 초기 상승 속도")]
         public float jumpForce = 6f;
 
+        [Header("보행 애니메이션 (Walk 상태 절차적 다리/팔 흔들기, 2026-08-28)")]
+        [Tooltip("현재 수평 이동 속도(유닛/초)에 곱해 다리 흔들기 주파수(Hz)를 산출하는 비례 계수 — 빠르게 " +
+                 "걸을수록 다리도 빨리 움직이도록 States/WalkCycleAnimator.cs가 사용한다. 정교한 IK/보행 " +
+                 "사이클 동기화가 목적이 아니라 \"걷는 것처럼 보이는\" 최소 절차적 애니메이션이므로 대략적인 " +
+                 "값이면 충분하다(Architect 결정, 2026-08-28 — 걷기 애니메이션 신규 추가). 실측 후 하향 조정 " +
+                 "(0.8→0.45, 아래 재조정 이력 참고): 기본 walkSpeed(2.5)에서 원래 값은 2Hz(다리 1회 왕복에 " +
+                 "0.5초)로, 사인파 목표각의 순간 최대 각속도가 약 314도/초에 달해 walkCycleMaxMotorSpeedDegPerSec로 " +
+                 "감당 가능한 범위를 크게 넘었었다.")]
+        public float walkCycleFrequencyPerSpeed = 0.45f;
+
+        [Tooltip("Walk 중 각 다리 HingeJoint2D가 흔들리는 목표각 진폭(도). 실제 목표각은 이 값과 -이 값 " +
+                 "사이를 사인파로 오가며, 왼다리/오른다리는 위상차 180도(반대 방향)로 구동된다. " +
+                 "walkCycleLegAngleLimitDegrees보다 확실히 작게 유지해 매 주기 끝에서 각도 제한(하드 스톱)에 " +
+                 "부딪히지 않도록 여유를 둔다(실측 후 25→18로 하향, 아래 재조정 이력 참고).")]
+        public float walkCycleLegSwingDegrees = 18f;
+
+        [Tooltip("보행 애니메이션 중 각 관절이 목표각을 얼마나 적극적으로 따라가는지의 비례 제어 게인 " +
+                 "(도/초 per 도 오차) — GetupState의 getupMotorGain과 같은 성격이지만 값은 훨씬 낮다(실측 후 " +
+                 "8→3.5로 하향). 실측 이력(2026-08-28, Architect 실측 지적 대응): 기존 8은 다리(질량 " +
+                 "0.15kg, 관성모멘트가 매우 작음)에 비해 지나치게 공격적이어서, Walk 진입 시점의 초기 각도 " +
+                 "오차만으로도 목표 모터 속도가 순간적으로 매우 커져(오차×게인) 다리가 걷잡을 수 없이 튕기듯 " +
+                 "회전하다가 몸통 반대편까지 감겨버리는 사고(사용자 스크린샷 — \"관절이 다 부러짐\")로 " +
+                 "이어졌다. walkCycleMaxMotorSpeedDegPerSec 상한과 함께 적용해야 안전하다.")]
+        public float walkCycleMotorGain = 3.5f;
+
+        [Tooltip("보행 애니메이션 중 관절 모터가 낼 수 있는 최대 토크 — getupMaxMotorTorque와 동일한 성격의 " +
+                 "값이지만 훨씬 작다(실측 후 50→12로 하향). Walk 중 다리는 몸 전체를 일으켜 세우는 GETUP과 " +
+                 "달리 자기 자신의 관성/댐핑만 이기면 되므로 훨씬 적은 토크로 충분하고, 과도한 토크는 아래 " +
+                 "walkCycleMotorGain 문서에 기록된 사고의 원인 중 하나였다.")]
+        public float walkCycleMaxMotorTorque = 12f;
+
+        [Tooltip("보행 애니메이션 중 관절 모터에 실제로 명령하는 각속도(motor.motorSpeed)의 절댓값 상한 " +
+                 "(도/초). 비례 제어(오차×게인)만으로는 Walk 진입 순간의 큰 초기 각도 오차가 순간적으로 " +
+                 "극단적인 모터 속도 명령(수백~1000도/초 이상)으로 이어질 수 있어(위 walkCycleMotorGain " +
+                 "문서 참고), 이 상한으로 항상 부드럽게 목표를 향해 수렴하도록 강제한다 — \"부드럽게 움직여야 " +
+                 "하는데\"(사용자 명시 지적, 2026-08-28)에 대한 직접 대응. 신규 필드(2026-08-28).")]
+        public float walkCycleMaxMotorSpeedDegPerSec = 150f;
+
+        [Tooltip("Walk 중 각 다리 HingeJoint2D에 적용하는 물리적 각도 제한(HingeJoint2D.useLimits=true, " +
+                 "JointAngleLimits2D.min=-이 값, max=+이 값, 중립 자세 0도 기준 좌우 대칭). Walk를 벗어나면 " +
+                 "(WalkState.Exit) useLimits=false로 원복해 RAGDOLL의 자유로운 전신 물리 낙하/GETUP의 기존 " +
+                 "동작에는 전혀 영향을 주지 않는다. 신규 필드(2026-08-28, Architect 실측 지적 대응) — 기존에는 " +
+                 "다리 관절에 각도 제한 자체가 없어(프리팹 기본값 useLimits=0), 모터가 강하게 튈 경우 다리가 " +
+                 "몸통을 뚫고 반대 방향으로 완전히 감기는 등 해부학적으로 불가능한 각도까지 돌아갈 수 있었다 " +
+                 "(사용자 스크린샷으로 확인된 \"관절이 다 부러짐\" 사고의 직접 원인).")]
+        public float walkCycleLegAngleLimitDegrees = 35f;
+
+        [Tooltip("Walk 중 각 팔 HingeJoint2D에 적용하는 물리적 각도 제한 — walkCycleLegAngleLimitDegrees와 " +
+                 "동일한 목적/적용 방식(중립 0도 기준 좌우 대칭, Walk 이탈 시 원복). 팔 흔들기 진폭이 다리보다 " +
+                 "작으므로(WalkCycleAnimator.cs의 ArmSwingRatio=0.5) 제한값도 더 작게 잡는다.")]
+        public float walkCycleArmAngleLimitDegrees = 25f;
+
         [Header("물리")]
         [Tooltip("중력 스케일 (Rigidbody2D.gravityScale에 곱해 사용)")]
         public float gravityScale = 3f;
@@ -539,14 +591,15 @@ namespace StickMate.Core
         public Color primaryOutlineColor = Color.black;
         public Color dialogueBubbleColor = Color.white;
 
-        [Tooltip("Main Camera 배경 RGB(알파는 항상 0으로 별도 고정 — Editor/SceneBootstrapper.cs 참고)의 " +
-                 "방어적 폴백 색상. 사용자가 두 라운드 연속 '까만 화면에 이상하게 나온다'고 보고한 사고 " +
-                 "(2026-08-28, Architect 진단: StickMateOverlayPlugin.m의 진짜 투명 창 시도가 Unity " +
-                 "Standalone Mac Player 렌더 서페이스의 기본 불투명 합성 때문에 실패할 경우, 카메라가 " +
-                 "그리는 이 RGB가 그대로 불투명 단색 배경으로 보이게 된다)의 재발을 막기 위한 필드다. " +
-                 "진짜 창 투명화가 성공하면 알파=0 덕분에 이 RGB는 애초에 보이지 않고, 실패해도 검정이 " +
-                 "아닌 밝은 색이라 primaryOutlineColor(검정) 캐릭터 선이 항상 대비되어 보인다 — " +
-                 "'검정 위에 검정' 최악의 경우를 원천 차단하는 방어적 설계. 매직 넘버를 코드에 직접 두지 " +
+        [Tooltip("Main Camera 배경 RGB(알파는 1로 고정 — 불투명, Editor/SceneBootstrapper.cs 참고)의 " +
+                 "밝은 배경색. 이력(2026-08-28, Architect 진단): 이전 라운드들은 이 배경의 알파를 0으로 " +
+                 "낮춰 진짜 투명 오버레이를 시도했는데, StickMateOverlayPlugin.m의 네이티브 창 투명화가 " +
+                 "실제로 성공한 적이 한 번도 없어(Unity Standalone Mac Player 렌더 서페이스가 기본적으로 " +
+                 "불투명 합성을 가정) 알파=0인 픽셀이 RGB 값과 무관하게 그냥 검정으로 합성되는 사고가 " +
+                 "재발했다(사용자 실측: 완전히 균일한 검정 화면). 이번 라운드부터 진짜 투명 시도는 " +
+                 "명시적으로 다음 과제로 미루고(MacWindowService.cs가 transparent=0을 넘긴다), 카메라 " +
+                 "배경 알파를 항상 1(불투명)로 고정해 이 RGB가 그대로, 확실히 렌더링되게 한다 — " +
+                 "primaryOutlineColor(검정) 캐릭터 선과 대비되는 밝은 배경. 매직 넘버를 코드에 직접 두지 " +
                  "않는다는 이 클래스 상단 컨벤션에 따라, 이전에 SceneBootstrapper.cs에 하드코딩돼 있던 " +
                  "동일 목적의 값(0.85,0.85,0.85)을 이 필드로 승격했다.")]
         public Color backgroundFallbackColor = new Color(0.94f, 0.94f, 0.94f);

@@ -159,6 +159,11 @@ namespace StickMate.States
         // 최초 1회만 구성해 보관한다(매 프레임 GetComponentsInChildren 재탐색 금지 컨벤션 준수).
         private RagdollRig _ragdollRig;
 
+        // Walk 상태 절차적 보행 애니메이션(다리/팔 HingeJoint2D 캐시, 2026-08-28). GetRagdollRig()와
+        // 동일한 지연 생성/캐싱 패턴 — WalkState만 사용하지만 향후 다른 이동형 능동 상태가 재사용할 수
+        // 있도록 RagdollRig와 같은 위치(블랙보드)에 둔다.
+        private WalkCycleAnimator _walkCycleAnimator;
+
         /// <summary>FootholdPoller의 캐시(= OS를 직접 호출하지 않는 저렴한 조회)를 이용해 접지 상태를 계산한다.</summary>
         public GroundSensor.GroundInfo SenseGround()
         {
@@ -258,6 +263,19 @@ namespace StickMate.States
                 _ragdollRig = new RagdollRig(Body.transform);
             }
             return _ragdollRig;
+        }
+
+        /// <summary>
+        /// Walk 상태 절차적 보행 애니메이션 캐시(WalkCycleAnimator.cs) — GetRagdollRig()와 동일한 지연
+        /// 생성/캐싱 패턴. 최초 필요 시 1회만 Body.transform을 루트로 이름 기반 관절 탐색을 수행한다.
+        /// </summary>
+        public WalkCycleAnimator GetWalkCycleAnimator()
+        {
+            if (_walkCycleAnimator == null && Body != null)
+            {
+                _walkCycleAnimator = new WalkCycleAnimator(Body.transform);
+            }
+            return _walkCycleAnimator;
         }
 
         /// <summary>
