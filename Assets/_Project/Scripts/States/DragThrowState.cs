@@ -301,12 +301,9 @@ namespace StickMate.States
         /// </summary>
         private void SetBodyPositionImmediate(Vector2 position)
         {
-            Rigidbody2D body = _blackboard.Body;
-            if (body == null) return;
-            body.position = position;                       // 물리 바디(놓는 순간 Dynamic 복귀 기준점).
-            Transform t = body.transform;
-            Vector3 local = t.position;
-            t.position = new Vector3(position.x, position.y, local.z); // 렌더링(이번 프레임에 바로 반영).
+            // 이 두 줄짜리 패턴을 본떠 StickmanBlackboard.MoveBodyToWorld가 만들어졌다 — 중복을
+            // 남기지 않도록 여기서도 그 창구를 쓴다(동작은 동일: 물리 바디 + Transform 동시 기록).
+            _blackboard.MoveBodyToWorld(position);
         }
 
         private void PushSample(Vector2 pos)

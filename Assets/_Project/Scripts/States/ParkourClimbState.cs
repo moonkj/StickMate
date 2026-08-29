@@ -146,7 +146,10 @@ namespace StickMate.States
             {
                 pos.x = Mathf.Lerp(_startWorldX, mantleTargetX, _climbProgress);
             }
-            _blackboard.Body.position = pos;
+            // 몸 위치를 쓰는 유일한 창구(StickmanBlackboard.MoveBodyToWorld) — Rigidbody2D.position만
+            // 쓰면 그 프레임에 그려지는 Transform이 낡은 좌표로 남는다(autoSyncTransforms 꺼짐).
+            // 여기는 0.5초 보간이라 프레임당 이동량이 작지만, 창이 갑자기 크게 움직이면 그만큼 튄다.
+            _blackboard.MoveBodyToWorld(pos);
 
             // BUG-P2-M1 대응(Major, docs/BUG_REPORT_PHASE2.md): Enter()의 1회성 속도 제로화만으로는
             // 부족하다 — Body는 여전히 일반 Dynamic Rigidbody2D라 매 FixedUpdate마다 중력이

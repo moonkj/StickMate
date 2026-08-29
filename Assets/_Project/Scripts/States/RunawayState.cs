@@ -243,10 +243,11 @@ namespace StickMate.States
 
         private void HideCharacterAtHideSpot()
         {
-            if (_blackboard.Body != null)
-            {
-                _blackboard.Body.position = _hideSpotWorldPos;
-            }
+            // 몸 순간이동은 MoveBodyToWorld 한 창구로만 — Rigidbody2D.position만 쓰면 그 프레임에
+            // 그려지는 Transform이 낡은 좌표로 남는다(Physics2D.autoSyncTransforms 꺼짐).
+            // 여기는 직후에 렌더러를 끄므로 그 프레임엔 아무것도 안 그려지지만, 이 좌표는 다음
+            // RestoreCharacter가 되돌릴 기준이자 은신 중 Transform이기도 하다.
+            _blackboard.MoveBodyToWorld(_hideSpotWorldPos);
             _blackboard.SetCharacterVisible?.Invoke(false);
             // BUG-P5-M1 대응 — Hidden 페이즈 진입을 StickmanAgent.Resume()에 알려, 이 구간 중 전체화면
             // Suspend/Resume이 왕복해도 Resume()이 렌더러를 무조건 복원하지 않도록 한다(StickmanBlackboard.
@@ -262,12 +263,13 @@ namespace StickMate.States
 
         private void RestoreCharacter()
         {
+            // 순서 주의: **먼저 옮기고 그 다음에 보인다.** 반대로 하면 렌더러가 켜진 프레임에
+            // 아직 은신처 좌표를 들고 있는 Transform이 그려진다(화면 모서리에서 한 프레임 번쩍임).
+            // 그리고 그 이동은 반드시 MoveBodyToWorld로 — Rigidbody2D.position만 쓰면 Transform은
+            // 다음 물리 스텝까지 은신처에 남아 순서를 바꿔도 같은 팝이 난다(autoSyncTransforms 꺼짐).
+            _blackboard.MoveBodyToWorld(_preHideWorldPos);
             _blackboard.SetCharacterVisible?.Invoke(true);
             _blackboard.IsCharacterHiddenByRunaway = false; // BUG-P5-M1 대응 — Reconciling/SelfReturning 진입 시에도 동일하게 해제.
-            if (_blackboard.Body != null)
-            {
-                _blackboard.Body.position = _preHideWorldPos;
-            }
         }
 
         private Vector2 HideSpotOsScreenSnapshot()

@@ -175,7 +175,10 @@ namespace StickMate.States
                 float t = grabDuration > 0f ? Mathf.Clamp01(_phaseTimer / grabDuration) : 1f;
                 // SmoothStep — 몸을 낮추는 동작은 시작/끝에서 속도가 0이어야 "붙잡는" 느낌이 난다
                 // (등속 Lerp는 툭 떨어졌다가 툭 멈추는 것처럼 보인다).
-                _blackboard.Body.position = Vector2.Lerp(_startWorldPos, hangPos, t * t * (3f - 2f * t));
+                // MoveBodyToWorld: Rigidbody2D.position만 쓰면 그 프레임의 Transform이 낡은 좌표로
+                // 남는다(autoSyncTransforms 꺼짐). 붙잡는 0.28초 보간은 프레임당 이동량이 작지만
+                // 아래 Hanging과 같은 창구를 쓰게 통일한다.
+                _blackboard.MoveBodyToWorld(Vector2.Lerp(_startWorldPos, hangPos, t * t * (3f - 2f * t)));
 
                 if (t >= 1f)
                 {
@@ -187,7 +190,10 @@ namespace StickMate.States
             }
             else
             {
-                _blackboard.Body.position = hangPos;
+                // 매달린 채 유지 — 붙잡은 창이 움직이면 위 hangPos가 그만큼 갱신되므로, 이 대입은
+                // 사실상 "창 이동량만큼의 순간이동"이다. 창을 빠르게 드래그하면 한 프레임 이동량이
+                // 착지 스냅만큼 커질 수 있어 반드시 Transform까지 함께 써야 한다.
+                _blackboard.MoveBodyToWorld(hangPos);
                 _phaseTimer += deltaTime;
                 if (_phaseTimer >= _holdDuration)
                 {
