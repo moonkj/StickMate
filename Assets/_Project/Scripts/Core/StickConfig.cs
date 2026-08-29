@@ -1838,6 +1838,27 @@ namespace StickMate.Core
                  "(정점이 화면 밖으로 잘리지 않게)으로 함께 걸린다.")]
         public float archeryArrowArcApexDistanceRatio = 0.18f;
 
+        [Tooltip("★ 2026-08-29 사용자 신고 '화살이 과녁에 좀 이상하게 꽂힘 / 다 외곽에 꽂히는거 같음' 대응.\n\n" +
+                 "과녁 면에 꽂힌 화살이 수평에서 아래로 기울 수 있는 **최대 각도**(도). 위 " +
+                 "archeryArrowArcApexDistanceRatio로 궤적을 과장하면 착탄 순간의 접선이 아주 가팔라져 " +
+                 "(실측 42.9도) 화살이 과녁 면에 거의 수직으로 꽂힌 것처럼 보였다. 실제 양궁은 이 정도 " +
+                 "사거리에서 거의 수평으로 꽂힌다. 비행 중의 과장된 회전은 그대로 두고 **마지막 " +
+                 "archeryImpactSettleRatio 구간에서만** 이 값 이내로 부드럽게 눕힌다.")]
+        [Range(0f, 60f)]
+        public float archeryFaceImpactMaxDescentDegrees = 14f;
+
+        [Tooltip("빗나가 **땅에** 꽂힌 화살이 지면과 이루는 각도(도). 과녁 면과 달리 땅에 꽂힌 화살은 " +
+                 "비스듬해야 '박혔다'로 읽힌다(수평이면 바닥에 누워 있는 것처럼 보인다). 클램프가 아니라 " +
+                 "**확정 각도**다 — 사거리가 달라져도 흙에 박힌 모양이 흔들리지 않게 하기 위해서다.")]
+        [Range(5f, 80f)]
+        public float archeryGroundImpactDescentDegrees = 38f;
+
+        [Tooltip("착탄 각도 보정을 시작하는 지점 — 비행 시간의 **마지막 몇 할**(0~0.6). 0.22면 마지막 " +
+                 "22%(비행 1.1초 기준 약 0.24초, 60fps에서 14프레임)에 걸쳐 접선 각도에서 착탄 각도로 " +
+                 "smoothstep 보간한다. 0이면 보정 없음(= 접선 각도 그대로 꽂힘, 신고된 버그 재현).")]
+        [Range(0f, 0.6f)]
+        public float archeryImpactSettleRatio = 0.22f;
+
         // ---- 자세(각도, 도) — 크기와 무관한 양이므로 비율이 아니라 절대값이 맞다(리더 지시). ----
         // 각도 규약은 States/StickmanPoseAnimator.cs 전체와 같다: 마디 로컬 -y가 끝(손/발),
         // 각도 0이 "곧게 아래", 끝 방향은 (sinθ, -cosθ). 즉 +90이 정면(진행 방향) 수평이다.

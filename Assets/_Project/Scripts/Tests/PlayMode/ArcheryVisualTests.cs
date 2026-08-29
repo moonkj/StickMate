@@ -261,6 +261,9 @@ namespace StickMate.Tests.PlayMode
             float elapsed = 0f;
             int maxSpawned = 0;
             int maxStuck = 0;
+            var stuckResults = new List<ArcheryShotResult>(3);
+            var stuckDescents = new List<float>(3);
+            var stuckOvershoots = new List<float>(3);
             bool leftArchery = false;
             Vector2 footAtStateEnd = footAtStart;
             float archerySeconds = 0f;
@@ -269,6 +272,18 @@ namespace StickMate.Tests.PlayMode
                 elapsed += Time.deltaTime;
                 maxSpawned = Mathf.Max(maxSpawned, _renderer.SpawnedArrowCount);
                 maxStuck = Mathf.Max(maxStuck, _renderer.StuckArrowCount);
+                // 꽂힌 화살의 모양은 **사라지기 전에** 재야 한다 — 루프를 빠져나올 조건이
+                // "렌더러가 안 보임"이고 그 시점에는 이미 Teardown으로 화살 목록이 비어 있다.
+                if (_renderer.StuckArrowCount == 3 && stuckResults.Count == 0)
+                {
+                    for (int i = 0; i < 3; i++)
+                    {
+                        if (!_renderer.TryGetStuckArrow(i, out ArcheryShotResult sr, out float sd, out float so)) continue;
+                        stuckResults.Add(sr);
+                        stuckDescents.Add(sd);
+                        stuckOvershoots.Add(so);
+                    }
+                }
                 if (!leftArchery)
                 {
                     archerySeconds = elapsed;
@@ -329,6 +344,38 @@ namespace StickMate.Tests.PlayMode
                         "정중앙인데 도달점이 과녁 중심과 다릅니다.");
                 }
             }
+
+            // ★ 2026-08-29 사용자 신고 "화살이 과녁에 좀 이상하게 꽂힘 / 다 외곽에 꽂히는거 같음"
+            //   회귀 잠금 — 실제 씬에서 꽂힌 3발의 **모양**을 잰다.
+            Assert.AreEqual(3, stuckResults.Count,
+                "3발이 꽂힌 순간의 모양을 재지 못했습니다 — 관찰 창구(TryGetStuckArrow)가 비어 있습니다.");
+            for (int i = 0; i < 3; i++)
+            {
+                Assert.AreEqual(0f, stuckOvershoots[i], 1e-4f,
+                    $"{i + 1}발째({stuckResults[i]}) 화살이 도달점보다 진행 방향으로 " +
+                    $"{stuckOvershoots[i]:F3}유닛 더 나가 있습니다 — 도달점에 꽂히는 것은 **촉**이어야 하는데 " +
+                    "오늬(꼬리)가 꽂혀 화살이 과녁을 관통해 반대편으로 삐져나온 그림이 됩니다. " +
+                    "정중앙에 맞은 화살조차 촉이 바깥 링에 걸려 '다 외곽에 꽂힌다'로 보인 실제 신고 원인입니다.");
+                Assert.GreaterOrEqual(stuckDescents[i], -1f,
+                    $"{i + 1}발째 화살이 코를 위로 든 채 꽂혔습니다({stuckDescents[i]:F1}도) — 내려꽂혀야 합니다.");
+
+                if (stuckResults[i] == ArcheryShotResult.Miss)
+                {
+                    Assert.AreEqual(_renderer.GroundImpactDescentDegrees, stuckDescents[i], 0.75f,
+                        $"{i + 1}발째(빗나감) 땅에 꽂힌 각도가 {stuckDescents[i]:F1}도입니다 — " +
+                        $"설정값 {_renderer.GroundImpactDescentDegrees:F1}도로 확정되어야 합니다.");
+                }
+                else
+                {
+                    Assert.LessOrEqual(stuckDescents[i], _renderer.FaceImpactMaxDescentDegrees + 0.75f,
+                        $"{i + 1}발째({stuckResults[i]}) 과녁 면에 {stuckDescents[i]:F1}도로 꽂혔습니다 — " +
+                        $"상한 {_renderer.FaceImpactMaxDescentDegrees:F1}도를 넘습니다. 이 정도로 가파르면 " +
+                        "화살이 과녁 면을 비스듬히 가로질러 '이상하게 꽂혔다'로 보입니다.");
+                }
+            }
+            Debug.Log($"[활쏘기테스트] 꽂힌 3발 하강각 = {stuckDescents[0]:F1} / {stuckDescents[1]:F1} / " +
+                $"{stuckDescents[2]:F1}도, 촉 초과분 = {stuckOvershoots[0]:F3} / {stuckOvershoots[1]:F3} / " +
+                $"{stuckOvershoots[2]:F3}유닛(전부 0이어야 정상).");
 
             // 정리 — 컨테이너가 씬에서 **실제로** 소멸했는가.
             yield return new WaitForSeconds(0.5f);
@@ -461,6 +508,149 @@ namespace StickMate.Tests.PlayMode
             // 볼록함 0이면 정확히 직선 — "포물선을 끄는" 경계 동작.
             Vector2 flat = ArcheryRenderer.TrajectoryPoint(from, to, flight, 0f, flight * 0.5f);
             Assert.AreEqual(chordMidY, flat.y, 1e-3f, "볼록함 0인데 직선이 아닙니다.");
+        }
+
+        // ============================================================================
+        // ④-b 착탄 각도 — 궤적을 아무리 과장해도 **꽂히는 각도**는 합리적 범위 안이다
+        // ============================================================================
+        // ★ 2026-08-29 사용자 신고 "화살이 과녁에 좀 이상하게 꽂힘". 원인은 두 가지가 겹친 것인데
+        //   그중 하나가 "비행 중의 과장된 포물선 접선을 그대로 고정해 꽂았다"이다. 아래 수치는
+        //   실행 중인 빌드의 로그에서 그대로 가져온 실제 사격 조건이다
+        //   (사거리 25.34유닛, 비행 1.11초, 신장 1.71, archeryArrowArcApexDistanceRatio=0.18).
+
+        private const float RealSpan = 25.34f;      // 실측 사거리(유닛).
+        private const float RealFlight = 1.11f;     // 실측 비행 시간(초).
+        private const float RealApex = RealSpan * 0.18f;  // 실측 볼록함(= 4.56유닛).
+
+        [Test]
+        public void ExaggeratedArcMakesTheRawTangentAbsurdlySteep_NegativeControl()
+        {
+            // 네거티브 컨트롤: 보정을 되돌리면(= 접선 각도를 그대로 쓰면) 실제로 과도한 각도가 나오는가.
+            var from = new Vector2(0f, 1.33f);
+            var to = new Vector2(RealSpan, 1.02f);
+            float tangent = ArcheryRenderer.ImpactTangentDegrees(from, to, RealFlight, RealApex);
+            float descent = ArcheryRenderer.DescentDegrees(tangent);
+
+            Assert.Greater(descent, 35f,
+                $"보정 없는 접선 하강각이 {descent:F1}도뿐입니다 — 이 테스트는 '수정을 되돌리면 실제로 " +
+                "과도한 각도가 나온다'를 증명하는 네거티브 컨트롤이라, 여기서 완만하면 아래 클램프 " +
+                "테스트가 아무것도 증명하지 못합니다.");
+
+            // 볼록함을 키울수록 단조적으로 더 가팔라진다(원인-결과의 방향성 확인).
+            float steeper = ArcheryRenderer.DescentDegrees(
+                ArcheryRenderer.ImpactTangentDegrees(from, to, RealFlight, RealApex * 2f));
+            Assert.Greater(steeper, descent,
+                "볼록함을 2배로 키웠는데 착탄 접선이 더 가팔라지지 않았습니다 — 인과가 성립하지 않습니다.");
+        }
+
+        [Test]
+        public void SettledImpactAngleClampsTheFaceHitNearHorizontal()
+        {
+            const float faceMax = 14f;
+            var from = new Vector2(0f, 1.33f);
+
+            foreach (float dir in new[] { 1f, -1f })   // 좌우 미러링 — 부호를 방향마다 따로 다루면 반드시 한쪽이 틀린다.
+            {
+                string label = dir > 0f ? "오른쪽" : "왼쪽";
+                var to = new Vector2(RealSpan * dir, 1.02f);
+                float tangent = ArcheryRenderer.ImpactTangentDegrees(from, to, RealFlight, RealApex);
+
+                Assert.AreEqual(ArcheryRenderer.DescentDegrees(
+                        ArcheryRenderer.ImpactTangentDegrees(new Vector2(0f, 1.33f), new Vector2(RealSpan, 1.02f), RealFlight, RealApex)),
+                    ArcheryRenderer.DescentDegrees(tangent), 1e-3f,
+                    $"{label}으로 쏠 때의 하강각이 오른쪽과 다릅니다 — 좌우 미러링에서 각도 부호가 깨졌습니다.");
+
+                float settled = ArcheryRenderer.SettledImpactAngle(tangent, faceMax, exact: false);
+                float settledDescent = ArcheryRenderer.DescentDegrees(settled);
+                Assert.LessOrEqual(settledDescent, faceMax + 1e-3f,
+                    $"{label}: 보정 후 하강각이 {settledDescent:F1}도로 상한 {faceMax}도를 넘습니다.");
+                Assert.Greater(settledDescent, 0f, $"{label}: 보정 후 화살이 코를 들거나 완전히 수평입니다.");
+
+                // 수평 진행 방향은 절대 뒤집히지 않는다(뒤집히면 화살이 반대로 날아온 것처럼 보인다).
+                Assert.AreEqual(Mathf.Sign(Mathf.Cos(tangent * Mathf.Deg2Rad)),
+                    Mathf.Sign(Mathf.Cos(settled * Mathf.Deg2Rad)),
+                    $"{label}: 보정이 화살의 좌우 진행 방향을 뒤집었습니다.");
+            }
+        }
+
+        [Test]
+        public void SettledImpactAngleNeverSteepensAnAlreadyGentleShot()
+        {
+            // 아주 가까운 사격은 원래도 완만하다 — 클램프가 그것을 **더 가파르게 만들면 안 된다**.
+            var from = new Vector2(0f, 1.33f);
+            var to = new Vector2(2.5f, 1.20f);
+            float tangent = ArcheryRenderer.ImpactTangentDegrees(from, to, 0.4f, 0.2f);
+            float raw = ArcheryRenderer.DescentDegrees(tangent);
+            float settled = ArcheryRenderer.DescentDegrees(
+                ArcheryRenderer.SettledImpactAngle(tangent, 14f, exact: false));
+            Assert.LessOrEqual(settled, raw + 1e-3f,
+                $"원래 {raw:F1}도로 완만하던 사격이 보정 후 {settled:F1}도로 더 가팔라졌습니다 — " +
+                "클램프는 상한이지 목표값이 아닙니다.");
+        }
+
+        [Test]
+        public void GroundMissUsesAnExactAngleSoDirtStuckArrowsAlwaysLookTheSame()
+        {
+            const float ground = 38f;
+            var from = new Vector2(0f, 1.33f);
+            // 사거리가 크게 달라도 땅에 박힌 모양은 같아야 한다.
+            foreach (float span in new[] { 4f, 12f, RealSpan })
+            {
+                float tangent = ArcheryRenderer.ImpactTangentDegrees(
+                    from, new Vector2(span, 0f), RealFlight, span * 0.18f);
+                float d = ArcheryRenderer.DescentDegrees(
+                    ArcheryRenderer.SettledImpactAngle(tangent, ground, exact: true));
+                Assert.AreEqual(ground, d, 1e-3f,
+                    $"사거리 {span:F1}유닛에서 땅에 꽂힌 각도가 {d:F1}도입니다 — 확정 각도 {ground}도여야 합니다.");
+            }
+        }
+
+        [Test]
+        public void SettleWeightIsZeroUntilTheLastStretchThenReachesOneExactlyAtImpact()
+        {
+            const float flight = 1.11f;
+            float start = flight * (1f - 0.22f);
+
+            Assert.AreEqual(0f, ArcheryRenderer.SettleWeight(0f, flight, start), 1e-5f,
+                "발사 직후부터 각도 보정이 걸리면 비행 중의 포물선 회전이 뭉개집니다.");
+            Assert.AreEqual(0f, ArcheryRenderer.SettleWeight(start, flight, start), 1e-5f,
+                "보정 시작 지점에서 가중치가 0이 아닙니다 — 그 순간 각도가 툭 튑니다.");
+            Assert.AreEqual(1f, ArcheryRenderer.SettleWeight(flight, flight, start), 1e-5f,
+                "착탄 순간 가중치가 1이 아닙니다 — 꽂힌 각도가 설정값에 도달하지 못합니다.");
+
+            float prev = -1f;
+            for (int i = 0; i <= 20; i++)
+            {
+                float w = ArcheryRenderer.SettleWeight(flight * i / 20f, flight, start);
+                Assert.GreaterOrEqual(w, prev - 1e-5f, "보정 가중치가 도중에 되돌아갑니다(각도가 흔들립니다).");
+                prev = w;
+            }
+
+            // 보정 비율 0 = 기능 끄기(신고된 버그 재현 경로) — 착탄 순간에도 가중치가 0이라
+            // 접선 각도가 그대로 꽂힌다. 이것이 이번 신고의 재현 조건이다.
+            Assert.AreEqual(0f, ArcheryRenderer.SettleWeight(flight, flight, flight), 1e-5f,
+                "보정 비율을 0으로 두었는데도 각도가 보정됩니다 — 설정으로 끌 수 없다는 뜻입니다.");
+        }
+
+        [Test]
+        public void ShippingConfigKeepsTheImpactAngleSane()
+        {
+            var cfg = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                Assert.Greater(cfg.archeryFaceImpactMaxDescentDegrees, 0f,
+                    "과녁 면 착탄 상한이 0도면 화살이 완전히 수평으로 꽂혀 '박혔다'가 안 읽힙니다.");
+                Assert.LessOrEqual(cfg.archeryFaceImpactMaxDescentDegrees, 25f,
+                    $"출하 설정의 과녁 면 착탄 상한이 {cfg.archeryFaceImpactMaxDescentDegrees}도입니다 — " +
+                    "이 정도면 신고된 '이상하게 꽂힘'이 그대로 돌아옵니다.");
+                Assert.Greater(cfg.archeryGroundImpactDescentDegrees, cfg.archeryFaceImpactMaxDescentDegrees,
+                    "땅에 꽂히는 각도가 과녁 면보다 완만합니다 — 땅에 누운 화살처럼 보입니다.");
+                Assert.Greater(cfg.archeryImpactSettleRatio, 0f,
+                    "착탄 각도 보정 구간이 0입니다 — 검증용으로 껐던 값이 그대로 커밋된 상태입니다.");
+                Assert.LessOrEqual(cfg.archeryImpactSettleRatio, 0.4f,
+                    "보정 구간이 비행의 40%를 넘습니다 — 화살이 날아가는 내내 각도가 바뀌어 포물선이 뭉개집니다.");
+            }
+            finally { Object.DestroyImmediate(cfg); }
         }
 
         // ============================================================================

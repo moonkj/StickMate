@@ -111,6 +111,12 @@ namespace StickMate.Interaction
             public bool Stuck;
             public float StuckAge;
             public float StuckAngle;
+            /// <summary>이 화살이 **꽂힐 때** 취할 각도(도). 발사 시점에 이미 확정된다 —
+            /// 궤적이 역산이라 착탄 접선도 역산이 가능하고, 그래야 마지막 구간에서 접선 각도로부터
+            /// 이 값으로 부드럽게 눕히는 보간의 목표점이 프레임레이트와 무관하게 고정된다.</summary>
+            public float SettledAngle;
+            /// <summary>각도 보정을 시작하는 시각(초). Flight * (1 - settleRatio).</summary>
+            public float SettleStart;
             /// <summary>이 화살의 사전 확정 결과. **화살마다** 들고 있어야 한다 — 비행 시간(0.62초)이
             /// 다음 발의 조준 시작(발사 후 0.34초)보다 길어서, 도달 시점에는 렌더러의 "현재 계획"이
             /// 이미 다음 발로 넘어가 있다. 여기 스냅샷하지 않으면 빗나감 흙먼지가 엉뚱한 발에 붙는다.</summary>
@@ -196,6 +202,33 @@ namespace StickMate.Interaction
         /// <summary>이번 사이클에 실제로 스폰된 화살 총 수(날아가는 중 + 꽂힘).</summary>
         public int SpawnedArrowCount => _arrows.Count;
 
+        /// <summary>
+        /// 꽂힌 화살 하나의 <b>모양</b>을 테스트가 실측하는 창구(2026-08-29 사용자 신고
+        /// "화살이 과녁에 좀 이상하게 꽂힘 / 다 외곽에 꽂히는거 같음" 회귀 잠금).
+        /// </summary>
+        /// <param name="descentDegrees">수평 대비 하강각(도, + = 코가 아래). 과녁 면은 완만해야 한다.</param>
+        /// <param name="tipOvershootLocal">화살 폴리라인이 <b>도달점보다 진행 방향으로 더 나간</b> 거리
+        /// (화살 로컬 유닛). 촉이 도달점에 꽂히는 것이 정상이므로 <b>0이어야 한다</b> — 양수면
+        /// 화살이 과녁을 관통해 반대편으로 삐져나온 그림이 된다.</param>
+        public bool TryGetStuckArrow(int index, out ArcheryShotResult result,
+            out float descentDegrees, out float tipOvershootLocal)
+        {
+            result = ArcheryShotResult.Miss;
+            descentDegrees = 0f;
+            tipOvershootLocal = 0f;
+            if (index < 0 || index >= _arrows.Count) return false;
+            Arrow a = _arrows[index];
+            if (a == null || !a.Stuck || a.Line == null) return false;
+
+            result = a.Result;
+            descentDegrees = DescentDegrees(a.StuckAngle);
+
+            float maxX = float.NegativeInfinity;
+            for (int i = 0; i < a.Line.positionCount; i++) maxX = Mathf.Max(maxX, a.Line.GetPosition(i).x);
+            tipOvershootLocal = maxX;
+            return true;
+        }
+
         // ==================== 캐릭터 실측 치수 ====================
 
         private StickmanMetrics Metrics
@@ -233,6 +266,18 @@ namespace StickMate.Interaction
         public float BowHalfLength => Height * BowHalfLengthRatio;
         public float BowMaxPull => Height * BowMaxPullRatio;
         public float ArrowShaftLength => Height * ArrowShaftRatio;
+
+        /// <summary>과녁 면에 꽂힌 화살이 수평에서 아래로 기울 수 있는 최대 각도(도).</summary>
+        public float FaceImpactMaxDescentDegrees => Config != null
+            ? Mathf.Clamp(Config.archeryFaceImpactMaxDescentDegrees, 0f, 60f) : 14f;
+
+        /// <summary>땅에 꽂힌 화살(빗나감)이 지면과 이루는 확정 각도(도).</summary>
+        public float GroundImpactDescentDegrees => Config != null
+            ? Mathf.Clamp(Config.archeryGroundImpactDescentDegrees, 5f, 80f) : 38f;
+
+        /// <summary>착탄 각도 보정 구간 — 비행 시간의 마지막 몇 할(0~0.6).</summary>
+        public float ImpactSettleRatio => Config != null
+            ? Mathf.Clamp(Config.archeryImpactSettleRatio, 0f, 0.6f) : 0.22f;
 
         /// <summary>포물선 볼록함의 <b>하한</b>(신장 비례). 아주 가까운 사격에서도 궤적이 직선처럼
         /// 납작해지지 않게 받쳐준다.</summary>
@@ -617,7 +662,12 @@ namespace StickMate.Interaction
 
             var line = CreateLine(go.transform, "Line", ResolveInk(), StrokeWidth * 0.62f, SortingBow, loop: false, capVertices: 0);
             line.positionCount = 7;
-            BuildArrowPolyline(line, Vector2.zero, ArrowShaftLength);
+            // ★ 화살의 기준점은 <b>촉</b>이다(오늬가 아니다). 오늬를 -shaft에 두면 촉이 정확히 로컬
+            // 원점 = 궤적점에 온다. 2026-08-29 사용자 신고 "다 외곽에 꽂히는거 같음"의 실제 원인이
+            // 이것이었다 — 오늬를 기준점으로 두면 도달점에 꽂히는 것은 꼬리이고 촉은 그보다
+            // 화살대 길이(신장의 34% = 과녁 반지름의 85%)만큼 **더 앞**에 그려져, 정중앙에 맞은
+            // 화살조차 촉이 바깥 링에 걸린 "과녁을 관통한" 그림이 된다(실측 스크린샷 확인).
+            BuildArrowPolyline(line, new Vector2(-ArrowShaftLength, 0f), ArrowShaftLength);
 
             _arrows.Add(new Arrow
             {
@@ -629,6 +679,11 @@ namespace StickMate.Interaction
                 Flight = _planFlight,
                 Elapsed = 0f,
                 Result = _planResult,
+                SettledAngle = SettledImpactAngle(
+                    ImpactTangentDegrees(origin, _planImpactLocal, _planFlight, apex),
+                    _planResult == ArcheryShotResult.Miss ? GroundImpactDescentDegrees : FaceImpactMaxDescentDegrees,
+                    exact: _planResult == ArcheryShotResult.Miss),
+                SettleStart = _planFlight * (1f - ImpactSettleRatio),
             });
         }
 
@@ -646,7 +701,12 @@ namespace StickMate.Interaction
                     Vector2 p = a.Origin + a.LaunchVel * t - new Vector2(0f, 0.5f * a.Gravity * t * t);
                     Vector2 v = a.LaunchVel - new Vector2(0f, a.Gravity * t);
                     a.Root.localPosition = new Vector3(p.x, p.y, 0f);
-                    a.StuckAngle = Mathf.Atan2(v.y, v.x) * Mathf.Rad2Deg;
+
+                    // 비행 중에는 **실제 접선 각도** 그대로 돈다(과장된 포물선이 눈에 보여야 한다).
+                    // 마지막 SettleStart 이후 구간에서만 착탄 각도로 smoothstep 보간한다 — 급전환이
+                    // 눈에 띄지 않으면서도 꽂히는 순간의 각도는 사거리/볼록함과 무관하게 고정된다.
+                    float tangent = Mathf.Atan2(v.y, v.x) * Mathf.Rad2Deg;
+                    a.StuckAngle = Mathf.LerpAngle(tangent, a.SettledAngle, SettleWeight(t, a));
                     a.Root.localRotation = Quaternion.Euler(0f, 0f, a.StuckAngle);
 
                     if (a.Elapsed >= a.Flight)
@@ -654,7 +714,7 @@ namespace StickMate.Interaction
                         a.Stuck = true;
                         a.StuckAge = 0f;
                         a.Line.sortingOrder = SortingStuckArrow;
-                        OnArrowLanded(p, a.Result);
+                        OnArrowLanded(p, a.Result, tangent, a.StuckAngle);
                     }
                 }
                 else
@@ -670,12 +730,16 @@ namespace StickMate.Interaction
             }
         }
 
-        private void OnArrowLanded(Vector2 localImpact, ArcheryShotResult result)
+        private static float SettleWeight(float elapsed, Arrow a)
+            => SettleWeight(elapsed, a.Flight, a.SettleStart);
+
+        private void OnArrowLanded(Vector2 localImpact, ArcheryShotResult result, float tangentDeg, float stuckDeg)
         {
             CreateImpactBurst(localImpact);
             if (result == ArcheryShotResult.Miss) SpawnDust(localImpact);
 
-            Debug.Log($"[활쏘기] 화살 도달 — 결과={result}, 도달점(로컬)={localImpact.ToString("F2")}. " +
+            Debug.Log($"[활쏘기] 화살 도달 — 결과={result}, 도달점(로컬)={localImpact.ToString("F2")}(**촉 끝** 기준), " +
+                $"접선 각도={tangentDeg:F1}도 -> 꽂힌 각도={stuckDeg:F1}도(수평 대비 하강 {DescentDegrees(stuckDeg):F1}도). " +
                 "사전 확정 도달점과 동일합니다(궤적 역산이므로 오차가 누적되지 않습니다).");
         }
 
@@ -787,6 +851,60 @@ namespace StickMate.Interaction
             float t = Mathf.Max(0.0001f, flightSeconds);
             float g = SolveGravity(t, apexHeight);
             return (to - from) / t + new Vector2(0f, 0.5f * g * t);
+        }
+
+        /// <summary>
+        /// 착탄 순간(t = flightSeconds)의 <b>접선 각도</b>(도, 월드 X축 기준). 궤적이 역산이므로
+        /// 이 값도 발사 전에 닫힌 형태로 구할 수 있다 — 테스트가 "볼록함을 키우면 접선이 실제로
+        /// 가팔라진다"는 네거티브 컨트롤을 검증하는 데 쓴다.
+        /// </summary>
+        public static float ImpactTangentDegrees(Vector2 from, Vector2 to, float flightSeconds, float apexHeight)
+        {
+            float T = Mathf.Max(0.0001f, flightSeconds);
+            float g = SolveGravity(T, apexHeight);
+            Vector2 v = SolveLaunchVelocity(from, to, T, apexHeight) - new Vector2(0f, g * T);
+            return Mathf.Atan2(v.y, v.x) * Mathf.Rad2Deg;
+        }
+
+        /// <summary>
+        /// 어떤 방향 각도가 <b>진행 방향 수평에서 아래로</b> 얼마나 기울었는지(도). 좌우 어느 쪽으로
+        /// 날아가든 같은 부호 규약(+ = 코가 아래)이 되게 정규화한다 — 이 프로젝트는 좌우 미러링이
+        /// 상시라 부호를 방향마다 따로 다루면 반드시 한쪽에서 틀린다.
+        /// </summary>
+        public static float DescentDegrees(float angleDegrees)
+        {
+            float dirSign = Mathf.Cos(angleDegrees * Mathf.Deg2Rad) >= 0f ? 1f : -1f;
+            float baseAngle = dirSign >= 0f ? 0f : 180f;
+            return -Mathf.DeltaAngle(baseAngle, angleDegrees) * dirSign;
+        }
+
+        /// <summary>
+        /// 접선 각도로부터 <b>실제로 꽂힐 각도</b>를 만든다. 수평 진행 방향(좌/우)은 그대로 두고
+        /// 하강각만 손본다.
+        /// <para><paramref name="exact"/>=false(과녁 면): 하강각을 <paramref name="descentDegrees"/>
+        /// <b>이내로 클램프</b>한다 — 이미 완만한 짧은 사격은 건드리지 않는다.</para>
+        /// <para><paramref name="exact"/>=true(땅): 하강각을 그 값으로 <b>확정</b>한다 — 땅에 박힌
+        /// 화살은 사거리와 무관하게 같은 모양이어야 "박혔다"로 읽힌다.</para>
+        /// </summary>
+        public static float SettledImpactAngle(float tangentDegrees, float descentDegrees, bool exact)
+        {
+            float dirSign = Mathf.Cos(tangentDegrees * Mathf.Deg2Rad) >= 0f ? 1f : -1f;
+            float baseAngle = dirSign >= 0f ? 0f : 180f;
+            float descent = DescentDegrees(tangentDegrees);
+            float target = exact ? descentDegrees : Mathf.Min(descent, descentDegrees);
+            return Mathf.DeltaAngle(0f, baseAngle + -target * dirSign);
+        }
+
+        /// <summary>
+        /// 착탄 각도 보정의 가중치(0~1) — <paramref name="settleStart"/> 전에는 0(접선 그대로),
+        /// 그 뒤로 smoothstep으로 1까지 오른다. 비행 시간에 대한 비율로만 정의되므로 프레임레이트가
+        /// 달라져도 같은 시점에 같은 각도가 된다.
+        /// </summary>
+        public static float SettleWeight(float elapsed, float flightSeconds, float settleStart)
+        {
+            float span = Mathf.Max(0.0001f, flightSeconds - settleStart);
+            float u = Mathf.Clamp01((elapsed - settleStart) / span);
+            return u * u * (3f - 2f * u);
         }
 
         /// <summary>궤적 위의 한 점(테스트/진단용 — 렌더러 내부와 완전히 같은 식을 쓴다).</summary>
