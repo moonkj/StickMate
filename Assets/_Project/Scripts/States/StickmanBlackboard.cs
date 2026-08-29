@@ -830,6 +830,31 @@ namespace StickMate.States
                 "올라가지 않습니다(2026-08-29 수정 — 이 함수 문서의 실측 근거 참고).");
         }
 
+        // ================================================================================
+        // ★ 되올라가기(ParkourClimb) 맨틀 완료 신호 — 2026-08-29 "독 위로 올라간 직후 바로 다시 내려감"
+        // ================================================================================
+        // 배회 AI(AutoWanderController)는 상태 머신을 구독하지 않고 블랙보드만 읽는다는 기존 계약을
+        // 유지하면서 "방금 턱 위로 올라섰다"를 알려야 해서, 이벤트 대신 **단조 증가 카운터**로 노출한다
+        // (이벤트 구독은 24시간 상주 앱에서 해제 누락 = 누수라 이 프로젝트가 계속 피해온 형태다).
+        // 소비자는 자기가 마지막으로 본 번호와 다르면 "새 맨틀이 있었다"로 판정한다.
+        //
+        // 왜 필요했나(실측, Logs 참고): 등반을 유발한 다음 프레임부터 배회 AI는 여전히 "발판 경계에
+        // 서 있다"고 보고 경계 정지(BeginEdgePause)를 걸었고, 그 정지가 등반 도중 끝나면서 진행 방향을
+        // **방금 올라온 바깥쪽으로** 뒤집고 경계 행동 추첨권까지 리셋했다. 등반이 끝난 캐릭터는
+        // parkourMantleInset(0.25)만큼만 안쪽에 서므로 이미 wanderEdgeStopDistance(0.3) 안이라,
+        // 올라선 지 9프레임(약 0.15초) 만에 같은 모서리로 다시 뛰어내렸다.
+        public int ClimbMantleSequence { get; private set; }
+
+        /// <summary>마지막 맨틀에서 캐릭터가 **올라선 방향**(+1 오른쪽 / -1 왼쪽). 턱 안쪽을 가리킨다.</summary>
+        public int ClimbMantleDirection { get; private set; } = 1;
+
+        /// <summary>ParkourClimbState가 등반을 마치고 턱 위에 실제로 올라선 프레임에 1회 호출한다.</summary>
+        public void ReportClimbMantleCompleted(int direction)
+        {
+            ClimbMantleDirection = direction >= 0 ? 1 : -1;
+            ClimbMantleSequence++;
+        }
+
         /// <summary>딛고 있는 발판이 바뀔 때마다 이전->이후를 한 줄로 남긴다(리더 지시: 순간이동 추적용).</summary>
         public void ReportFootholdChangeIfNeeded(string reason)
         {

@@ -471,5 +471,171 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 내려간 뒤 스스로 Dock 위로 되올라오지 못했습니다(stepUpChance=1인데도) — " +
                 "한 번 내려가면 영영 아래에서만 지내게 됩니다. 이번 작업의 핵심 실패입니다.");
         }
+
+        // ============================================================================
+        // (5) ★ 2026-08-29 회귀 — 되올라간 **뒤에도 Dock 위에 머무는가**
+        //
+        // 위 (4)는 "한 번 왕복"만 확인하고 그 순간 종료했다. 그래서 사용자가 신고한 증상
+        // ("독위로 가끔 올라오긴 하지만 바로 다시 내려감")을 통째로 놓쳤다 — 실측한 실제 거동은
+        // 턱 위에 올라선 지 **9프레임(약 0.15초)** 만에 같은 모서리로 다시 뛰어내리는 것이었다.
+        // 그 구멍을 여기서 막는다: 되올라온 뒤 DockHoldSeconds 동안 **연속으로** Dock 발판을 딛고
+        // 있어야 한다. 아래 (6)이 같은 계측기로 수정 전 코드에서는 실패하는 것까지 확인한다.
+        // ============================================================================
+
+        /// <summary>되올라온 뒤 Dock을 계속 딛고 있어야 하는 시간(초).</summary>
+        private const float DockHoldSeconds = 5f;
+
+        /// <summary>(5)/(6) 공용 계측 결과 — 코루틴은 반환값을 줄 수 없어 필드로 받는다.</summary>
+        private bool _climbedBackToDock;
+        private float _dockHoldSeconds;
+        private bool _dockLost;
+        private long _handleWhenDockLost;
+        private float _climbBackWorldX;
+        private float _dockWidthWorldUnits;
+
+        [UnityTest]
+        public IEnumerator AutoWanderStaysOnDockAfterClimbingBackInsteadOfImmediatelyHoppingDown()
+        {
+            yield return MeasureDockHoldAfterAutoClimbBack(usePostClimbCooldown: true);
+
+            Assert.IsTrue(_climbedBackToDock,
+                $"{LogPrefix} 자율 배회가 Dock 위로 되올라오지 못해 이 테스트의 전제가 성립하지 않습니다((4) 먼저 확인).");
+            Assert.GreaterOrEqual(_dockHoldSeconds, DockHoldSeconds,
+                $"{LogPrefix} 되올라온 뒤 {_dockHoldSeconds:F2}초 만에 Dock을 떠났습니다(요구 {DockHoldSeconds:F0}초, " +
+                $"떠난 순간의 발판핸들={_handleWhenDockLost}, 0이면 공중=뛰어내림) — 사용자 신고 \"독위로 올라오긴 하지만 바로 다시 " +
+                "내려감\"의 재현입니다. StickConfig.postClimbDescendCooldown / parkourMantleInset 회귀를 의심하세요.");
+        }
+
+        // ============================================================================
+        // (6) 네거티브 컨트롤 — 수정을 끄면 (5)의 계측기가 실제로 증상을 잡아내는가
+        //     StickConfig.postClimbDescendCooldown = 0 + parkourMantleInset = 0.25(수정 전 값)로
+        //     되돌리면 예전 코드 경로가 그대로 복원된다(로직 분기 자체가 이 두 값에만 의존).
+        // ============================================================================
+
+        [UnityTest]
+        public IEnumerator NegativeControl_WithoutPostClimbCooldown_LeavesDockAlmostImmediately()
+        {
+            yield return MeasureDockHoldAfterAutoClimbBack(usePostClimbCooldown: false);
+
+            Assert.IsTrue(_climbedBackToDock,
+                $"{LogPrefix} (네거티브 컨트롤) 되올라오는 것 자체가 안 됐습니다 — 대조 실험이 성립하지 않습니다.");
+            Assert.Less(_dockHoldSeconds, DockHoldSeconds,
+                $"{LogPrefix} (네거티브 컨트롤) 수정을 껐는데도 Dock에 {_dockHoldSeconds:F2}초 이상 머물렀습니다 — " +
+                "(5)의 계측기가 증상을 잡아내지 못한다는 뜻이라 그 테스트를 신뢰할 수 없습니다. " +
+                "고장 재현 조건(경계 정지가 등반 도중 끝나며 방향이 반전되는 타이밍)이 바뀌었는지 확인하세요.");
+        }
+
+        /// <summary>
+        /// (5)/(6) 공용 본문 — 자율 배회만으로 Dock에서 내려갔다가 되올라온 뒤, **Dock 발판을 연속으로
+        /// 몇 초 유지하는지**를 잰다. 스크립트 펄스는 일절 쓰지 않는다((4)와 같은 정책 실측 방식).
+        /// </summary>
+        private IEnumerator MeasureDockHoldAfterAutoClimbBack(bool usePostClimbCooldown)
+        {
+            _climbedBackToDock = false;
+            _dockHoldSeconds = 0f;
+            _dockLost = false;
+            _handleWhenDockLost = 0L;
+
+            yield return SetUpDockLayout(DockDropUnits, 0.60f);
+            StickmanBlackboard bb = _agent.Blackboard;
+
+            // (4)와 같은 취지의 결정론화 — 다만 걷기 구간을 짧게 잡아, 되올라온 뒤 관측 5초 안에
+            // **Dock 반대편 끝까지 걸어가 정당하게 뛰어내리는** 경로가 섞이지 않게 한다(아래 폭 단언 참고).
+            _clonedConfig.wanderIdleDurationMin = 0.5f;
+            _clonedConfig.wanderIdleDurationMax = 0.5f;
+            _clonedConfig.wanderWalkDurationMin = 1.2f;
+            _clonedConfig.wanderWalkDurationMax = 1.2f;
+            _clonedConfig.wanderDurationJitterRatio = 0f;
+            _clonedConfig.wanderSpontaneousTurnChance = 0f;
+            _clonedConfig.wanderPostIdleWalkChance = 1f;
+            _clonedConfig.wanderPostIdleJumpChance = 0f;
+            _clonedConfig.wanderEdgeJumpAttemptChance = 0f;
+            _clonedConfig.wanderEdgeTurnPauseMin = 0.15f;
+            _clonedConfig.wanderEdgeTurnPauseMax = 0.15f;
+            _clonedConfig.ledgeHangChance = 0f;
+            _clonedConfig.hopDownChance = 1f;   // 내려갈 수 있으면 반드시 내려간다 = 최악 조건.
+            _clonedConfig.stepUpChance = 1f;
+
+            if (!usePostClimbCooldown)
+            {
+                // 수정 전 코드 경로 복원(네거티브 컨트롤).
+                _clonedConfig.postClimbDescendCooldown = 0f;
+                _clonedConfig.parkourMantleInset = 0.25f;
+            }
+
+            _dockWidthWorldUnits = _dockRightWorldX - _dockLeftWorldX;
+            float maxTravelDuringHold = _clonedConfig.walkSpeed * _clonedConfig.wanderWalkDurationMax * 2f;
+            Assert.Greater(_dockWidthWorldUnits, maxTravelDuringHold,
+                $"{LogPrefix} 리그 전제 실패 — Dock 폭({_dockWidthWorldUnits:F2}유닛)이 관측 구간 최대 이동거리" +
+                $"({maxTravelDuringHold:F2}유닛)보다 좁습니다. 그러면 '반대편 끝까지 걸어가 정당하게 내려간 것'과 " +
+                "'올라오자마자 같은 모서리로 되내려간 것'을 구분할 수 없습니다.");
+
+            var wander = new AutoWanderController(bb, _clonedConfig, new System.Random(20260829));
+            bb.IntentSource = wander;
+
+            bool wasOnDock = bb.CurrentFootholdHandle == DockHandle;
+            bool hoppedDownToFloor = false;
+            long lastHandle = bb.CurrentFootholdHandle;
+            float elapsed = 0f;
+
+            // ── 1단계: 스스로 내려갔다가 스스로 되올라올 때까지.
+            while (elapsed < 45f && !_climbedBackToDock)
+            {
+                yield return null;
+                float dt = Time.deltaTime;
+                elapsed += dt;
+                wander.Tick(dt);
+
+                long handle = bb.CurrentFootholdHandle;
+                if (handle == lastHandle) continue;
+                lastHandle = handle;
+
+                if (handle == DockHandle)
+                {
+                    wasOnDock = true;
+                    if (hoppedDownToFloor)
+                    {
+                        _climbedBackToDock = true;
+                        _climbBackWorldX = bb.Body.position.x;
+                    }
+                }
+                else if (wasOnDock && (handle == LeftFloorHandle || handle == RightFloorHandle))
+                {
+                    hoppedDownToFloor = true;
+                }
+            }
+
+            if (!_climbedBackToDock)
+            {
+                Debug.Log($"{LogPrefix} Dock 체류 실측 중단 — {elapsed:F2}초 안에 되올라오지 못했습니다" +
+                    $"(내려감={hoppedDownToFloor}, 현재 핸들={bb.CurrentFootholdHandle}).");
+                yield break;
+            }
+
+            // ── 2단계: 되올라온 순간부터 Dock 발판을 **연속으로** 얼마나 유지하는지.
+            float hold = 0f;
+            while (hold < DockHoldSeconds)
+            {
+                yield return null;
+                float dt = Time.deltaTime;
+                wander.Tick(dt);
+                if (bb.CurrentFootholdHandle != DockHandle)
+                {
+                    // 핸들 0은 "발판 없음(공중)" — 뛰어내려 낙하 중이라는 뜻이라 그대로 기록한다.
+                    _dockLost = true;
+                    _handleWhenDockLost = bb.CurrentFootholdHandle;
+                    break;
+                }
+                hold += dt;
+            }
+            _dockHoldSeconds = hold;
+
+            Debug.Log($"{LogPrefix} Dock 체류 실측(쿨다운 {(usePostClimbCooldown ? _clonedConfig.postClimbDescendCooldown.ToString("F1") + "초" : "꺼짐(네거티브 컨트롤)")}, " +
+                $"맨틀 인셋={_clonedConfig.parkourMantleInset:F2}, 경계판정거리={_clonedConfig.wanderEdgeStopDistance:F2}) — " +
+                $"되올라온 X={_climbBackWorldX:F3}(Dock {_dockLeftWorldX:F3}~{_dockRightWorldX:F3}, 폭 {_dockWidthWorldUnits:F2}유닛), " +
+                $"연속 체류={_dockHoldSeconds:F2}초(요구 {DockHoldSeconds:F0}초), " +
+                $"떠난 순간 핸들={(!_dockLost ? "(안 떠남)" : _handleWhenDockLost == 0L ? "0(공중 — 뛰어내림)" : _handleWhenDockLost.ToString())}, " +
+                $"최종 상태={bb.Machine.CurrentStateId}, 왕복까지 {elapsed:F2}초.");
+        }
     }
 }

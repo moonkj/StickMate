@@ -55,9 +55,10 @@ MonoBehaviour:
   hopDownDropThroughIgnoreDuration: 0.25
   hopDownEdgeCommitDistance: 0.12
   hopDownStepOffSpeedScale: 0.8
-  stepUpChance: 0.5
+  stepUpChance: 0.85
   stepUpMaxHeight: 2.4
-  parkourMantleInset: 0.25
+  parkourMantleInset: 0.45
+  postClimbDescendCooldown: 8
   clickThroughDefaultEnabled: 1
   footholdPollInterval: 0.3
   fullscreenPollInterval: 1.5

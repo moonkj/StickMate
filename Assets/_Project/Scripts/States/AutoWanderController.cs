@@ -80,6 +80,15 @@ namespace StickMate.States
         // "발을 뗍니다" 블록 주석 참고. 그래서 이 확약이 지금 맡는 역할은 연출뿐이다).
         private bool _hopDownCommitted;
 
+        // ★ 되올라간 직후 "바로 다시 내려가기" 방지(2026-08-29, 사용자 신고 "독위로 가끔 올라오긴 하지만
+        // 바로 다시 내려감"). 두 필드가 한 쌍이다:
+        //   _lastSeenClimbMantleSequence — 블랙보드의 맨틀 완료 카운터를 마지막으로 본 값. 달라지면
+        //     "방금 턱 위에 올라섰다"는 뜻이다(StickmanBlackboard.ClimbMantleSequence의 실측 근거 참고).
+        //   _descendSuppressTimer — 이 시간(초) 동안 경계 추첨에서 **내려가는 갈래만** 제외한다.
+        //     되올라가기와 "경계에서 돌아서기"는 그대로 두므로 화면 밖으로 걸어 나가는 경로는 없다.
+        private int _lastSeenClimbMantleSequence;
+        private float _descendSuppressTimer;
+
         private float _moveInputX;
         private bool _jumpRequestedThisTick;
         private bool _ledgeHangRequestedThisTick;
@@ -97,6 +106,9 @@ namespace StickMate.States
             _blackboard = blackboard;
             _config = config;
             _rng = rng ?? new System.Random();
+            // 생성 시점의 카운터를 기준선으로 잡는다 — 그렇지 않으면 과거의 등반 한 번을 "방금 올라섰다"로
+            // 오인해 첫 Tick에 엉뚱하게 걷기 시작한다(테스트가 컨트롤러를 나중에 갈아 끼우는 경로가 있다).
+            _lastSeenClimbMantleSequence = _blackboard != null ? _blackboard.ClimbMantleSequence : 0;
             EnterResting();
         }
 
@@ -109,8 +121,45 @@ namespace StickMate.States
             _hopDownRequestedThisTick = false;
             _stepUpRequestedThisTick = false;
 
+            if (_descendSuppressTimer > 0f) _descendSuppressTimer -= deltaTime;
+            ConsumeClimbMantleSignalIfAny();
+
             if (_phase == Phase.Resting) TickResting(deltaTime);
             else TickMoving(deltaTime);
+        }
+
+        /// <summary>
+        /// ★ "되올라간 직후 곧바로 다시 내려감" 수정의 본체(2026-08-29). ParkourClimbState가 턱 위에
+        /// 실제로 올라선 프레임에 올린 신호를 소비한다.
+        ///
+        /// 실측한 고장 순서(Logs, frame 번호는 실제 로그 값):
+        ///   f=8925 아래 발판 경계에서 되올라가기 당첨 -> ParkourClimb 진입(f=8926)
+        ///   f=8926 배회 AI는 등반을 모른 채 여전히 "경계에 서 있다"고 보고 경계 정지(0.45초)를 건다
+        ///   f=8976 등반 도중 그 정지가 끝나며 **진행 방향을 바깥쪽으로 반전** + 경계 추첨권 리셋
+        ///   f=8982 등반 완료. 맨틀 지점은 모서리에서 0.250유닛 안쪽인데 경계 판정 거리는 0.300이라
+        ///          **올라선 그 프레임에 이미 경계** -> 뛰어내리기 추첨 -> f=8991 발을 뗌(약 0.15초 만에).
+        ///
+        /// 그래서 여기서 세 가지를 한다 — (1) 진행 중이던 경계 정지/뛰어내리기 확약 취소,
+        /// (2) 진행 방향을 **올라선 방향(턱 안쪽)** 으로 되돌려 새 걷기 구간 시작(그 자리에 멈춰 서 있으면
+        /// 쿨다운이 끝나는 순간 같은 일이 반복된다), (3) 내려가는 갈래만 쿨다운 동안 추첨에서 제외.
+        ///
+        /// StickConfig.postClimbDescendCooldown이 0 이하면 아무 것도 하지 않는다 = 예전 거동(네거티브 컨트롤).
+        /// </summary>
+        private void ConsumeClimbMantleSignalIfAny()
+        {
+            if (_blackboard == null) return;
+            int sequence = _blackboard.ClimbMantleSequence;
+            if (sequence == _lastSeenClimbMantleSequence) return;
+            _lastSeenClimbMantleSequence = sequence;
+
+            float cooldown = Cfg(c => c.postClimbDescendCooldown, 8f);
+            if (cooldown <= 0f) return;
+
+            _descendSuppressTimer = cooldown;
+            int inward = _blackboard.ClimbMantleDirection >= 0 ? 1 : -1;
+            EnterMoving(inward);
+            Debug.Log($"[되올라가기] 안착 — 턱 안쪽({(inward > 0 ? "오른쪽" : "왼쪽")})으로 걸어 들어갑니다. " +
+                $"되내려가기는 {cooldown:F1}초 동안 유예(경계에서 돌아서기/추가 되올라가기는 그대로).");
         }
 
         // ==================== Resting (26-1, 26-3) ====================
@@ -188,7 +237,11 @@ namespace StickMate.States
 
         // ==================== Moving (26-1, 26-2) ====================
 
-        private void EnterMoving()
+        private void EnterMoving() => EnterMoving(0);
+
+        /// <param name="forcedDirection">0이면 26-1대로 좌우 랜덤(경계 회피 포함). +1/-1이면 그 방향으로
+        /// 강제한다 — 맨틀 직후 "올라선 턱 안쪽으로 걸어 들어가기"에만 쓴다.</param>
+        private void EnterMoving(int forcedDirection)
         {
             _phase = Phase.Moving;
             _moveTimer = 0f;
@@ -198,7 +251,7 @@ namespace StickMate.States
             _isEdgePaused = false;
             _edgeActionRolledThisLeg = false;
             _hopDownCommitted = false;
-            _direction = PickDirectionAvoidingEdge();
+            _direction = forcedDirection != 0 ? (forcedDirection > 0 ? 1 : -1) : PickDirectionAvoidingEdge();
             _moveInputX = _direction;
         }
 
@@ -393,9 +446,14 @@ namespace StickMate.States
         /// </summary>
         private bool TryRollEdgeAction(GroundSensor.GroundInfo info)
         {
+            // ★ 되올라간 직후 유예 구간(2026-08-29) — 내려가는 두 갈래(1·2)만 건너뛰고 되올라가기(3)와
+            // 기존 배회 거동(정지 후 반대 방향)은 그대로 둔다. 이 구간에서도 경계에서 "돌아서기"는
+            // 정상 동작하므로 화면 밖으로 걸어 나가지 않는다(ConsumeClimbMantleSignalIfAny 문서 참고).
+            bool descendSuppressed = _descendSuppressTimer > 0f;
+
             // 1) 뛰어내리기 — 낙차가 작아 매달릴 이유가 없는 턱.
             float hopChance = Cfg(c => c.hopDownChance, 0.5f);
-            if (hopChance > 0f && _blackboard.TryFindHopDownTarget(info, _direction, out long hopHandle, out float hopTopY))
+            if (!descendSuppressed && hopChance > 0f && _blackboard.TryFindHopDownTarget(info, _direction, out long hopHandle, out float hopTopY))
             {
                 if (_rng.NextDouble() < hopChance)
                 {
@@ -412,7 +470,7 @@ namespace StickMate.States
 
             // 2) 매달려 내려가기 — 손끝~발끝 거리보다 깊은 낙차(기존 동작).
             float hangChance = Cfg(c => c.ledgeHangChance, 0.35f);
-            if (hangChance > 0f && _rng.NextDouble() < hangChance
+            if (!descendSuppressed && hangChance > 0f && _rng.NextDouble() < hangChance
                 && _blackboard.TryFindDescendTarget(info, _direction, out _, out _))
             {
                 // 실제 상태 전이는 WalkState가 한다(이 클래스는 "의도"만 만든다는 계약 유지).

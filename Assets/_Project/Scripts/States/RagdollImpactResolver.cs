@@ -97,12 +97,19 @@ namespace StickMate.States
                 if (float.IsNaN(lowestContactY) || y < lowestContactY) lowestContactY = y;
             }
 
+            // ★ 2026-08-29 — "외력으로 판정 -> RAGDOLL 전이"를 shielded==false일 때 무조건 적었던 것을
+            // 고쳤다. 이 로그는 TryApplyImpact()가 실제로 임계값과 비교하기 *전에* 찍히므로, shielded가
+            // false라도 impulseMagnitude가 임계값 미만이면 RAGDOLL 전이는 일어나지 않는다 — 그런데도
+            // "전이"라고 단정해 로그만 보고 오판하게 만들었다(디버거가 실사용 조사 중 발견).
+            bool willRagdoll = !shielded && impulseMagnitude >= blackboard.Config.ragdollForceThreshold;
+            string verdict = shielded ? "착지로 판정해 무시"
+                : willRagdoll ? "외력으로 판정, 임계값 초과 -> RAGDOLL 전이"
+                : "외력으로 판정했으나 임계값 미만 -> 전이 없음";
             Debug.Log($"[착지충격] 충돌 충격량={impulseMagnitude:F2}(랙돌 임계 " +
                 $"{blackboard.Config.ragdollForceThreshold:F1}), 상태=" +
                 $"{(blackboard.Machine != null ? blackboard.Machine.CurrentStateId.ToString() : "?")}, " +
                 $"접촉 {count}개(최저 y={lowestContactY:F3}), 발 y={footY:F3}, " +
-                $"차단스위치={blackboard.Config.landingImpactRagdollShield} -> " +
-                $"{(shielded ? "착지로 판정해 무시" : "외력으로 판정 -> RAGDOLL 전이")}.");
+                $"차단스위치={blackboard.Config.landingImpactRagdollShield} -> {verdict}.");
         }
 
         /// <summary>위 문서의 (1)+(2) 판정. 판단에 필요한 것이 하나라도 없으면 안전한 쪽(= 예외 아님,

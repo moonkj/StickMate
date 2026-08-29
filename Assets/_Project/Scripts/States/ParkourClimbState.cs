@@ -170,7 +170,14 @@ namespace StickMate.States
                 _blackboard.ReportFootholdChangeIfNeeded("벽타기 완료 — 턱 위에 올라섬");
                 _blackboard.ResetGroundLossTimer();
 
-                Debug.Log($"[벽타기] 완료 — 올라선 월드=({pos.x:F3},{pos.y:F3}), 발판핸들={_wallHandle}.");
+                // ★ 배회 AI에게 "방금 턱 위로 올라섰다"를 알린다(2026-08-29). 이 신호가 없으면 등반을
+                // 유발했던 경계 판정이 그대로 살아 있어, 배회 AI가 진행 방향을 방금 올라온 바깥쪽으로
+                // 뒤집고 곧바로 같은 모서리로 다시 뛰어내린다(StickmanBlackboard.ClimbMantleSequence의
+                // 실측 근거 주석 참고). 상태 머신을 구독시키지 않고 블랙보드 카운터로 알리는 이유도 거기 적었다.
+                _blackboard.ReportClimbMantleCompleted(_direction);
+
+                Debug.Log($"[벽타기] 완료 — 올라선 월드=({pos.x:F3},{pos.y:F3}), 발판핸들={_wallHandle}, " +
+                    $"올라선 방향={(_direction > 0 ? "오른쪽" : "왼쪽")}(맨틀 신호 #{_blackboard.ClimbMantleSequence}).");
 
                 float deadzone = _blackboard.Config != null ? _blackboard.Config.moveInputDeadzone : 0.15f;
                 StickmanStateId next = Mathf.Abs(_blackboard.MoveInputX) > deadzone ? StickmanStateId.Walk : StickmanStateId.Idle;
