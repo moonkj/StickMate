@@ -129,6 +129,11 @@ namespace StickMate.Interaction
                 { StickmanStateId.Idle, new IdleState(_blackboard) },
                 { StickmanStateId.Walk, new WalkState(_blackboard) },
                 { StickmanStateId.Fall, new FallState(_blackboard) },
+                // ★ 필수(2026-08-29 "무릎앉아 착지" 라운드): FallState는 낙하 높이가
+                // StickConfig.rollLandingHeightThreshold를 넘으면 LandingCrouch로 전이한다. 라이벌도
+                // 같은 FallState 인스턴스 타입을 쓰므로 여기 등록하지 않으면 ChangeState가 BUG-M2 방어
+                // 코드를 밟아(에러 로그 + 현재 상태 유지) 라이벌이 Fall에 영구 고착된다.
+                { StickmanStateId.LandingCrouch, new LandingCrouchState(_blackboard) },
                 { StickmanStateId.Attack, new AttackState(_blackboard) },
                 { StickmanStateId.Ragdoll, new RagdollState(_blackboard) },
                 { StickmanStateId.Getup, new GetupState(_blackboard) },
@@ -142,6 +147,11 @@ namespace StickMate.Interaction
             // 시점이고, 그 전까지는 렌더러의 _requireBoundSpeaker 플래그가 "화자 미지정 = 전부 수신"
             // 폴백을 막아 플레이어의 대사가 라이벌 머리 위에 뜨는 사고를 원천 차단한다.
             _bubble?.Bind(_machine, transform.Find("Head") != null ? transform.Find("Head") : transform);
+            // 만화 레터링 배치(2026-08-29)는 "진행 방향의 반대쪽"에 글자를 놓는다. 라이벌은 자기
+            // StickmanBlackboard를 따로 들고 있어(StickmanAgent가 아니다) 렌더러가 자동으로 찾을 수
+            // 없으므로, 자기 방향을 여기서 직접 물려준다 — 없으면 렌더러가 플레이어의 방향을 읽어
+            // 라이벌의 글자가 엉뚱한 쪽에 붙는다(규칙 7 화자 분리의 배치 판).
+            if (_bubble != null) _bubble.FacingSource = () => _blackboard != null ? _blackboard.FacingSign : 1f;
 
             _machine.Start(StickmanStateId.Idle);
         }

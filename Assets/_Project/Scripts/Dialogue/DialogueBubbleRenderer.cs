@@ -35,9 +35,9 @@ namespace StickMate.Dialogue
     ///                          (HideImmediate는 경과 시간을 아예 보지 않는다).
     /// · 규칙 5 큐잉 금지     : 새 `DialogueRequested`가 오면 이전 말풍선을 즉시 교체한다 — 다음 대사를
     ///                          모아두었다가 나중에 꺼내는 큐가 애초에 없다.
-    /// · 규칙 6 위치/스타일   : 캐릭터 머리 위 + 꼬리가 캐릭터를 가리킴, 등장 150ms/소멸 120ms 페이드,
-    ///                          화면 경계 근처에서는 <b>꼬리 방향을 유지한 채 박스만 안쪽으로</b> 민다
-    ///                          (<see cref="UpdatePlacement"/>).
+    /// · 규칙 6 위치/스타일   : 등장 150ms/소멸 120ms. 배치는 아래 "만화 레터링 전환"으로 갱신됐다
+    ///                          (종전: 머리 위 + 꼬리가 캐릭터를 가리킴, 화면 경계에서는 꼬리 방향을
+    ///                          유지한 채 박스만 안쪽으로 — <see cref="UpdateBubblePlacement"/>에 보존).
     /// · 규칙 7 다중 캐릭터   : `Bind()`로 화자(StickmanStateMachine)를 지정하면 그 머신이 발급한
     ///                          대사만 표시한다 — 라이벌 스틱맨이 동시에 말해도 서로의 말풍선을 훔치지
     ///                          않는다(각자 자기 렌더러를 하나씩 갖는다).
@@ -67,6 +67,29 @@ namespace StickMate.Dialogue
     /// 따른다. 투명 오버레이에서도 문제가 없다 — 카메라는 알파 0으로 클리어하지만 ScreenSpaceOverlay
     /// 캔버스는 그 위에 자기 알파로 합성되므로, 불투명 흰 Image가 있는 픽셀만 알파 1이 되어 <b>말풍선
     /// 모양 그대로만</b> 화면에 남는다(배경은 그대로 비친다).
+    ///
+    /// ============================================================================
+    /// ★★ 만화 레터링 전환 (2026-08-29, 사용자 요구 — 이 클래스가 지금 실제로 그리는 것)
+    /// ============================================================================
+    /// 원문 두 건:
+    ///   (1) "말풍선 말고 텍스트만 캐릭터 걸어가는방향 반대쪽 대각선 상단에 나타나게 해줘"
+    ///   (2) "만화처럼" / "만화스타일"
+    ///
+    /// 그래서 <b>말풍선 도형(타원 링 몸통 + 삼각 꼬리)을 더 이상 그리지 않는다.</b> 화면에 남는 것은
+    /// 글자뿐이고, 그 글자는:
+    ///   · <b>진행 방향의 반대쪽 대각선 위</b>에 놓인다(오른쪽으로 걸으면 왼쪽 위) — 진행 방향 앞을
+    ///     글자가 가리지 않게 뒤로 흘리는 것이 의도다. 쪽은 대사가 뜨는 순간 한 번 확정되어 그 대사가
+    ///     사라질 때까지 고정된다(캐릭터가 돌아설 때마다 글자가 좌우로 날아다니면 읽을 수 없다).
+    ///   · <b>잉크색 글자 + 반대색 외곽선</b>으로 그려진다. 이것이 만화 레터링의 기본 문법이면서
+    ///     동시에 배경이 사라진 뒤의 유일한 가독성 대책이다 — 검은 캐릭터 + 어두운 바탕화면,
+    ///     흰 캐릭터 + 밝은 바탕화면 양쪽에서 글자가 사라지는 것을 이 선 하나가 막는다.
+    ///   · 굵은 페이스(AppleSDGothicNeo-Heavy 계열) + 미세 기울임 + 등장 시 팝(스케일 바운스).
+    ///
+    /// 도형을 그리던 코드는 <b>지우지 않고 전부 남겼다</b>(<see cref="DrawBubbleShapes"/> 플래그 하나로
+    /// 종전 그림이 그대로 복원된다) — 되돌리기 요구에 대비한 리더 지시다.
+    ///
+    /// 이 전환은 순수하게 "어떻게 보이는가"만 바꾼다. 대사 생성/만료 계약(DialogueRequested /
+    /// DialogueExpired / IsForcedInterrupt / TransitionGeneration)은 한 줄도 손대지 않았다.
     ///
     /// 한글 폰트: Unity 내장 `LegacyRuntime.ttf`(Arial 계열)에는 한글 글리프가 없어 네모(두부)로 깨진다.
     /// 그래서 <see cref="ResolveKoreanFont"/>가 OS 설치 폰트에서 한글이 실제로 렌더링되는 것을
@@ -103,6 +126,80 @@ namespace StickMate.Dialogue
         // 꼬리가 머리를 파고들거나 허공에 뜬다. 기준값의 단일 소스는 StickmanAgent.CharacterTotalHeightWorld.
         // 현재 프리팹 실측 2.27유닛에 곱하면 검증을 마친 종전 값(0.34)이 그대로 나온다.
         private const float HeadTopOffsetRatio = 0.1498f; // 머리 중심에서 꼬리 끝까지(0.34 / 2.27).
+
+        // ============================================================================
+        // ★★ 만화 레터링 모드 (사용자 요구 2026-08-29)
+        //   "말풍선 말고 텍스트만 캐릭터 걸어가는방향 반대쪽 대각선 상단에 나타나게 해줘"
+        //   "만화처럼 / 만화스타일"
+        // ============================================================================
+        // 말풍선 도형(타원 링 몸통 + 삼각 꼬리)을 **그리지 않고 글자만** 띄운다. 도형을 만드는 코드
+        // (CreateTailPart / UpdateEllipseSprites / BuildEllipseRingSprite / BuildEllipseSprite /
+        //  BuildTriangleEdgeBandSprite / BuildTriangleSprite / UpdateBubblePlacement)는 **지우지 않고
+        // 그대로 남겨 둔다** — 사용자가 "예전 말풍선으로 되돌려 달라"고 할 수 있고, 그때 이 플래그
+        // 하나만 true로 되돌리면 종전 그림이 한 줄의 수정도 없이 그대로 돌아온다(리더 지시).
+        //
+        // ★ const가 아니라 static readonly인 이유: `const bool DrawBubbleShapes = false`로 두면
+        //   `if (DrawBubbleShapes) { ... }` 블록 전체가 **CS0162 "도달할 수 없는 코드"** 경고가 된다.
+        //   이 프로젝트의 기준선은 경고 0건이므로 컴파일 타임 상수로 만들지 않는다(런타임 분기 한 번의
+        //   비용은 대사 표시 빈도를 생각하면 측정조차 되지 않는다).
+        private static readonly bool DrawBubbleShapes = false;
+
+        // ---- 만화 레터링 스타일 (배율 1.0 기준 baseline — 실제 사용은 Scaled*/Resolve* 경유) ----
+        //
+        // ★ 왜 외곽선이 "스타일"이자 동시에 "기능"인가:
+        //   말풍선 배경이 사라지면서 글자가 **바탕화면과 직접 맞닿는다.** 잉크색은 캐릭터 프리셋을
+        //   따르므로(검정/흰색) 검은 글자 + 어두운 바탕화면, 흰 글자 + 밝은 바탕화면 조합에서는
+        //   글자가 그냥 사라진다. 만화 레터링의 표준 문법인 "잉크색 글자 + 반대색 외곽선"이 그 두
+        //   요구(만화 느낌 / 가독성)를 **하나의 해법으로** 동시에 푼다.
+        /// <summary>
+        /// 글자 외곽선 두께 = **글자 크기에 대한 비율**(em 비율). ★ 고정 두께로 두면 안 된다
+        /// (2026-08-29 리더 지시, 그리고 실측으로 확인한 실패): 외곽선은 글자 뒤에 사방으로 깔리므로
+        /// 글자가 작아질수록 이웃 글자의 후광끼리 붙어 자모 사이를 메운다. 한글은 한 글자에 자모가
+        /// 2~3개라 라틴 문자보다 훨씬 빨리 뭉개진다 — 폰트를 줄이면 선도 같은 비율로 줄어야 한다.
+        /// 0.09의 근거: uGUI Outline은 대각선 네 방향(±t, ±t)에 복제를 깔아 실효 두께가 t·√2이므로
+        /// 화면상 획 굵기는 글자 크기의 약 12.7%가 된다 — 만화 레터링에서 흔히 쓰는 굵기대이면서
+        /// 글자 속 빈 곳을 메우지 않는 상한이다.
+        /// </summary>
+        private const float TextOutlineEmRatio = 0.06f;
+        /// <summary>외곽선 두께의 화면상 하한(캔버스 유닛 = OS 포인트). 아주 작은 글자에서도 선이
+        /// 0으로 수렴해 사라지면 안 된다 — 이 선이 글자와 바탕화면 사이의 유일한 분리막이다.
+        /// Retina에서 0.6pt = 물리 1.2px라 한 픽셀 폭의 또렷한 테두리가 남는다.</summary>
+        private const float MinTextOutlineThickness = 0.4f;
+        /// <summary>
+        /// 만화 레터링 폰트 배율. ★ 2026-08-29 사용자 요구 "일단 텍스트 크기 지금의 절반".
+        /// 리더가 지정한 목표는 현재 출하 배율(characterScale = 0.75)에서 **실효 6pt**이고,
+        /// 16(설정값) x 0.75(캐릭터 배율) x 0.5 = 6이 정확히 그 값이다.
+        /// ★ 특정 숫자에 하드코딩하지 않는다 — `Mathf.Max(하한, 설정값 x 캐릭터배율 x 이 값)` 구조를
+        /// 그대로 유지하므로, 사용자가 characterScale이나 dialogueFontSize를 바꾸면 함께 따라간다.
+        /// </summary>
+        private const float ComicFontScale = 0.875f;
+        /// <summary>텍스트 전용 모드의 줄바꿈 최대 폭(배율 1.0 기준). 말풍선 시절(220)보다 좁다 —
+        /// 만화 레터링은 가로로 긴 한 줄보다 짧은 여러 줄로 쌓이는 쪽이 자연스럽다.</summary>
+        private const float ComicMaxTextWidth = 170f;
+        /// <summary>글자 블록과 머리 사이의 대각선 간격(전신 높이 대비 비율). 가로 / 세로.
+        /// ★ 절대 유닛이 아니라 비율인 이유는 HeadTopOffsetRatio와 완전히 같다 — 사용자가
+        /// characterScale을 계속 바꾸므로(현재 0.75) 절대값은 그 순간 전부 틀린 값이 된다.</summary>
+        private const float TextGapXRatio = 0.20f;
+        private const float TextGapYRatio = 0.10f;
+        /// <summary>팝인(툭 튀어나오는 등장) 지속 시간. 규칙 6의 "등장 150ms"를 깨지 않으려고
+        /// 페이드인과 **같은 길이**로 맞췄다 — 알파는 그대로 150ms에 걸쳐 오르고, 그 위에 스케일
+        /// 바운스만 겹친다(페이드보다 만화답게 보이는 것이 목적이지 계약을 바꾸는 것이 아니다).</summary>
+        private const float PopInSeconds = FadeInSeconds;
+        private const float PopInStartScale = 0.55f;
+        private const float PopInOvershoot = 1.12f;
+        /// <summary>팝인에서 오버슈트 정점에 도달하는 지점(0~1 진행도).</summary>
+        private const float PopInPeakAt = 0.6f;
+        /// <summary>손글씨 느낌을 내는 미세 기울기의 최대 각도(도). ★ 과하면 읽기 힘들어진다 —
+        /// 리더 지시 "미세하게". 대사 문자열의 결정적 해시에서 뽑으므로 같은 대사는 항상 같은 각도다
+        /// (프레임마다 각도가 떨리면 글자가 진동하는 것으로 보인다).</summary>
+        private const float ComicTiltMaxDegrees = 2.5f;
+        /// <summary>이 크기(캔버스 유닛 = OS 포인트) 미만에서는 기울기를 아예 끈다 —
+        /// 회전 리샘플링이 작은 한글 글리프를 뭉개기 때문이다(ComicTiltFor 문서 참고).</summary>
+        private const int ComicTiltMinFontSize = 10;
+        /// <summary>감탄사 강조 배율 — 느낌표가 든 대사("윽…!")를 조금 더 크게 외친다(만화 문법).</summary>
+        private const float ComicEmphasisScale = 1.14f;
+        /// <summary>화면 끝 뒤집기 보간 속도(쪽 부호/초). 순간이동처럼 튀지 않게 좌우로 미끄러진다.</summary>
+        private const float SideFlipSpeed = 5f;
 
         // ============================================================================
         // ★★ 두 배율의 합성 — 어디에 무엇을 곱하는가 (2026-08-29, 리더 지시)
@@ -171,6 +268,12 @@ namespace StickMate.Dialogue
         /// </summary>
         private float ScaledTailPanelOverlap => ScaledBorderThickness;
 
+        /// <summary>글자 외곽선 두께(캔버스 유닛). **글자 크기에 비례**하되 화면상 하한을 받친다
+        /// (<see cref="TextOutlineEmRatio"/> 문서 참고 — 고정 두께면 작은 글자를 잡아먹는다).</summary>
+        private float ScaledTextOutline => Mathf.Max(MinTextOutlineThickness, ResolveFontSize() * TextOutlineEmRatio);
+        /// <summary>텍스트 전용 모드의 줄바꿈 최대 폭(캔버스 유닛).</summary>
+        private float ScaledComicMaxTextWidth => ComicMaxTextWidth * BubbleScale;
+
         /// <summary>
         /// 말풍선 글자 크기(캔버스 유닛 = OS 포인트). **여기만 단순 비례가 아니다.**
         ///
@@ -186,17 +289,51 @@ namespace StickMate.Dialogue
         private int ResolveFontSize()
         {
             int configured = _config != null ? Mathf.Max(8, _config.dialogueFontSize) : 16;
-            return Mathf.Max(MinReadableFontSize, Mathf.RoundToInt(configured * BubbleScale));
+            // 말풍선 모드로 되돌리면 종전 크기(하한 12pt)가 그대로 복원된다.
+            if (DrawBubbleShapes)
+                return Mathf.Max(MinReadableFontSize, Mathf.RoundToInt(configured * BubbleScale));
+            // 만화 레터링 모드 — 기준값과 하한을 **둘 다** 절반으로 내린다(ComicFontScale 문서 참고).
+            // 하한만 그대로 두면 배율을 줄여도 하한에 걸려 아무것도 바뀌지 않는다.
+            return Mathf.Max(MinComicFontSize, Mathf.RoundToInt(configured * BubbleScale * ComicFontScale));
         }
 
-        /// <summary>말풍선 글자의 화면상 하한(캔버스 유닛 = OS 포인트). 위 ResolveFontSize() 문서 참고.</summary>
+        /// <summary>말풍선(도형) 모드 글자의 화면상 하한(캔버스 유닛 = OS 포인트). 위 ResolveFontSize() 참고.</summary>
         private const int MinReadableFontSize = 12;
 
-        /// <summary>이 캐릭터의 전신 높이(월드 유닛). 캐릭터 기준 오프셋의 유일한 기준값.</summary>
-        private float CharacterHeight => _agent != null ? _agent.CharacterTotalHeightWorld : BaselineTotalHeightFallback;
+        /// <summary>
+        /// 만화 레터링 모드 글자의 화면상 하한. 기준값(<see cref="ComicFontScale"/>)과 **항상 같은
+        /// 비율로 함께 움직인다** — 하한만 그대로 두면 기준값을 줄여도 하한에 걸려 크기가 변하지 않고,
+        /// 하한만 올리면 작은 캐릭터 배율에서 글자만 상대적으로 커진다.
+        /// 이력: 12(말풍선 시절) -> 6("지금의 절반") -> 9("지금의 1.5배", 6 x 1.5).
+        /// </summary>
+        private const int MinComicFontSize = 9;
+
+        /// <summary>
+        /// 이 캐릭터의 전신 높이(월드 유닛). 캐릭터 기준 오프셋의 유일한 기준값.
+        ///
+        /// 조회 순서: StickmanAgent(그 자신이 <see cref="StickmanMetrics"/>.TotalHeight로 위임한다) ->
+        /// 계층에서 직접 찾은 StickmanMetrics -> 배율 1.0 폴백. 두 번째 단계가 있어야 에이전트를 갖지
+        /// 않는 화자(라이벌 렌더러, 테스트 리그)에서도 오프셋이 캐릭터 배율을 따라간다 —
+        /// 폴백 상수로 떨어지면 배율 0.75 캐릭터 옆에 배율 1.0 간격으로 글자가 뜬다.
+        /// </summary>
+        private float CharacterHeight
+        {
+            get
+            {
+                if (_agent != null) return _agent.CharacterTotalHeightWorld;
+                StickmanMetrics metrics = _metrics != null ? _metrics : (_metrics = StickmanMetrics.Find(this));
+                return metrics != null ? metrics.TotalHeight : BaselineTotalHeightFallback;
+            }
+        }
 
         /// <summary>머리 중심에서 꼬리 끝까지(월드 유닛) — 해상도/줌 무관, 캐릭터 크기 추종.</summary>
         private float HeadTopWorldOffset => CharacterHeight * HeadTopOffsetRatio;
+
+        /// <summary>글자 블록과 머리 사이의 가로 간격(월드 유닛) — 캐릭터 크기 추종.</summary>
+        private float TextGapWorldX => CharacterHeight * TextGapXRatio;
+
+        /// <summary>글자 블록과 머리 사이의 세로 간격(월드 유닛) — 캐릭터 크기 추종.</summary>
+        private float TextGapWorldY => CharacterHeight * TextGapYRatio;
         private const float FadeInSeconds = 0.15f;      // 규칙 6 "등장 150ms".
         private const float FadeOutSeconds = 0.12f;     // 규칙 6 "소멸 100~150ms".
 
@@ -255,6 +392,7 @@ namespace StickMate.Dialogue
         private Image _tailOutlineImage;
         private Image _tailFillImage;
         private Text _label;
+        private Outline _labelOutline;   // 만화 레터링 외곽선(잉크색의 반대색). 텍스트 전용 모드에서만 붙는다.
         private RectTransform _labelRect;
         private Camera _camera;
 
@@ -276,6 +414,21 @@ namespace StickMate.Dialogue
         private bool _lastTransitionForced;
         private int _forcedInterruptFrame = -1;
 
+        // ==================== 만화 레터링 표시 상태 ====================
+        // ★ 왜 "쪽"을 대사 시작 시점에 한 번 정하고 그대로 두는가 (리더 지시에 대한 판단 근거)
+        //   캐릭터는 걷다가 화면 끝에서 돌아서고, 유휴 중에도 방향이 바뀔 수 있다. 매 프레임
+        //   FacingSign을 그대로 따라가면 캐릭터가 돌아설 때마다 글자가 머리 위를 가로질러 좌우로
+        //   날아다녀 **읽을 수가 없다**. 그래서 쪽은 대사가 뜨는 순간의 진행 방향으로 한 번 확정하고
+        //   그 대사가 사라질 때까지 유지한다(대사 수명은 최대 4초 — dialogueMaxVisibleSeconds).
+        //   글자 자체는 머리를 계속 따라다니므로 캐릭터가 글자를 두고 떠나는 일은 없다.
+        //   유일한 예외가 화면 끝 클램프인데, 그때도 순간이동이 아니라 _sideBlend로 미끄러진다.
+        private float _latchedTextSide = -1f; // +1 = 캐릭터 오른쪽 / -1 = 왼쪽. 기본값은 "오른쪽을 보고 있다"의 반대.
+        private float _sideBlend = -1f;       // 실제로 그려지는 연속 쪽 값(-1 ~ +1). 뒤집기 보간용.
+        private bool _snapSideBlend = true;   // 새 대사의 첫 프레임에는 보간 없이 제자리에서 시작한다.
+        private float _popElapsed;            // 팝인 경과 시간(초).
+        private float _steadyScale = 1f;      // 감탄사 강조 등 정상 상태의 배율(팝인과 곱해진다).
+        private float _tiltDegrees;           // 이 대사의 미세 기울기(도).
+
         // ==================== 테스트/진단용 공개 관측점 ====================
         /// <summary>지금 말풍선이 화면에 있는가(알파 &gt; 0이고 루트가 활성). 즉시 제거의 "같은 프레임"
         /// 보장을 PlayMode 테스트가 동기적으로 확인하는 지점이다.</summary>
@@ -289,6 +442,30 @@ namespace StickMate.Dialogue
 
         /// <summary>지금까지 즉시 제거가 몇 번 일어났는지(회귀 테스트 카운터).</summary>
         public int ImmediateRemovalCount { get; private set; }
+
+        /// <summary>마지막으로 계산된 글자 블록 중심(캔버스 유닛). 테스트/진단 전용 관측점.</summary>
+        public Vector2 LastTextCenterCanvas { get; private set; }
+
+        /// <summary>마지막으로 계산된 기준점 = 머리 바로 위(캔버스 유닛). 테스트/진단 전용 관측점.</summary>
+        public Vector2 LastTextAnchorCanvas { get; private set; }
+
+        /// <summary>지금 글자가 놓인 쪽(+1 캐릭터 오른쪽 / -1 왼쪽). 정의상 **진행 방향의 반대**다.</summary>
+        public float LastTextSideSign { get; private set; } = -1f;
+
+        /// <summary>배치에 실제로 쓰인 글자 블록 크기(캔버스 유닛, 강조 배율 반영·팝인 제외).
+        /// 테스트가 "기준점에서 글자 블록 **가장자리**까지의 간격"을 계산하는 데 쓴다.</summary>
+        public Vector2 LastTextSizeCanvas { get; private set; }
+
+        /// <summary>
+        /// 화자가 바라보는 방향(+1 오른쪽 / -1 왼쪽)의 공급자. null이면 <see cref="StickmanAgent"/>의
+        /// Blackboard.FacingSign을 읽는다.
+        ///
+        /// 왜 주입 창구가 필요한가: 라이벌 스틱맨(Interaction/RivalStickmanAgent.cs)은 플레이어와 다른
+        /// <c>StickmanBlackboard</c>를 자기 필드로 들고 있고 StickmanAgent를 갖지 않는다 — 그 화자의
+        /// 말풍선 렌더러가 플레이어의 방향을 읽으면 글자가 엉뚱한 쪽에 붙는다(규칙 7 화자 분리의
+        /// 배치 판). Bind()의 시그니처를 바꾸지 않고 붙일 수 있는 최소한의 이음매다.
+        /// </summary>
+        public System.Func<float> FacingSource { get; set; }
 
         /// <summary>
         /// 이 렌더러가 담당할 화자를 지정한다. 라이벌 스틱맨처럼 자기 상태머신을 따로 가진 캐릭터가
@@ -392,13 +569,28 @@ namespace StickMate.Dialogue
             _alpha = 0f;
 
             _snapEmoteLift = true; // 첫 프레임부터 이모트 위에 자리 잡는다(미끄러져 올라오지 않는다).
+
+            // ★ 진행 방향의 **반대쪽**을 이 대사의 수명 동안 고정한다(_latchedTextSide 문서 참고).
+            //   ResolveFacingSign()은 방향을 알 수 없을 때 직전 판단을 그대로 유지하므로, 정지(Idle)
+            //   중이라고 해서 글자가 가운데로 튀어나오는 일이 없다.
+            _latchedTextSide = -ResolveFacingSign();
+            _snapSideBlend = true;
+            _popElapsed = 0f;
+            _tiltDegrees = ComicTiltFor(_activeText, ResolveFontSize());
+            _steadyScale = ComicEmphasisFor(_activeText);
+
             RefreshColors(); // 잉크색 프리셋(Ctrl+Opt+Cmd+C)이 런타임에 바뀌어도 다음 대사부터 즉시 반영.
             ApplyText(_activeText);
             if (_canvas != null) _canvas.gameObject.SetActive(true);
             UpdatePlacement();
             ApplyAlpha(0f);
 
-            Debug.Log($"[말풍선] 표시 ({intent.StateId}) \"{_activeText}\" — frame={Time.frameCount}");
+            // 배치 정보를 함께 남긴다 — 화면을 볼 수 없는 검증 환경에서도 "어느 쪽에 놓였는지"를
+            // 실행 로그만으로 재구성할 수 있어야 한다(이 프로젝트의 표시/제거 로그 쌍과 같은 취지).
+            Debug.Log($"[말풍선] 표시 ({intent.StateId}) \"{_activeText}\" — " +
+                      $"진행방향={(_latchedTextSide < 0f ? "오른쪽" : "왼쪽")}, " +
+                      $"글자쪽={(_latchedTextSide < 0f ? "왼쪽위" : "오른쪽위")}, " +
+                      $"글자크기={ResolveFontSize()}pt, 외곽선={ScaledTextOutline:F2}pt, frame={Time.frameCount}");
         }
 
         private void OnDialogueExpired(DialogueIntent intent)
@@ -445,6 +637,7 @@ namespace StickMate.Dialogue
 
             float dt = Time.unscaledDeltaTime;
             float elapsed = Time.unscaledTime - _shownAtUnscaledTime;
+            _popElapsed += dt; // 팝인(등장 스케일 바운스) 진행 — PopScale() 참고.
 
             if (!_fadingOut)
             {
@@ -529,7 +722,8 @@ namespace StickMate.Dialogue
             if (_camera == null) _camera = ResolveCamera();
             if (_camera == null || _anchor == null) return;
 
-            // 꼬리 끝이 가리키는 지점 = 머리 바로 위(월드 오프셋이라 줌/해상도가 바뀌어도 자동 추종).
+            // 기준점 = 머리 바로 위(월드 오프셋이라 줌/해상도가 바뀌어도 자동 추종).
+            // 말풍선 모드에서는 꼬리 끝이 가리키는 지점이고, 텍스트 모드에서는 대각선 오프셋의 원점이다.
             // 하드웨어 반응 이모트가 떠 있으면 그 위로 비켜 선다(아래 TickEmoteLift 문서 참고).
             Vector3 tipWorld = _anchor.position + Vector3.up * (HeadTopWorldOffset + TickEmoteLift());
             Vector3 tipScreen = _camera.WorldToScreenPoint(tipWorld);
@@ -548,6 +742,199 @@ namespace StickMate.Dialogue
             float screenW = ScreenCoordinateConverter.UnityScreenToCanvas(Screen.width, _config);
             float screenH = ScreenCoordinateConverter.UnityScreenToCanvas(Screen.height, _config);
 
+            LastTextAnchorCanvas = tip;
+
+            if (DrawBubbleShapes) UpdateBubblePlacement(tip, panelSize, screenW, screenH);
+            else UpdateComicTextPlacement(tipWorld, tip, panelSize, screenW, screenH);
+        }
+
+        // ============================================================================
+        // ★ 만화 레터링 배치 — "진행 방향의 반대쪽 대각선 상단"
+        // ============================================================================
+        // 의도(사용자 요구 원문 "캐릭터 걸어가는방향 반대쪽 대각선 상단"): 진행 방향 **앞**을 글자가
+        // 가리지 않게 뒤로 흘린다. 오른쪽으로 걸으면 글자는 왼쪽 위, 왼쪽으로 걸으면 오른쪽 위.
+        //
+        // 간격을 **월드 유닛으로 잡고 그 다음에 화면 좌표로 환산**하는 이유: 캔버스 유닛으로 직접
+        // 잡으면 캐릭터 배율(characterScale)과 카메라 줌 어느 쪽도 따라가지 못한다. 기준점과
+        // "기준점 + (gapX, gapY)" 두 월드 점을 각각 투영해 그 차이를 쓰면 두 배율이 모두 자동으로
+        // 반영된다(투영 방식이 무엇이든 성립한다).
+        private void UpdateComicTextPlacement(Vector3 tipWorld, Vector2 tip, Vector2 panelSize,
+            float screenW, float screenH)
+        {
+            Vector3 gapWorld = tipWorld + new Vector3(TextGapWorldX, TextGapWorldY, 0f);
+            Vector3 gapScreen = _camera.WorldToScreenPoint(gapWorld);
+            float gapX = Mathf.Abs(ScreenCoordinateConverter.UnityScreenToCanvas(gapScreen.x, _config) - tip.x);
+            float gapY = Mathf.Abs(ScreenCoordinateConverter.UnityScreenToCanvas(gapScreen.y, _config) - tip.y);
+
+            // 클램프에는 정상 상태 배율만 반영한다 — 팝인 오버슈트(최대 1.12배)는 150ms짜리 순간이고,
+            // 그것까지 넣으면 등장할 때마다 글자가 화면 안쪽으로 한 번 밀렸다가 제자리로 돌아온다.
+            Vector2 size = panelSize * Mathf.Max(0.01f, _steadyScale);
+
+            ComicTextPlacement placement = ComputeComicTextPlacement(
+                tip, size, _latchedTextSide, gapX, gapY, screenW, screenH, ScreenEdgeMargin);
+
+            // 뒤집기(화면 끝)는 순간이동이 아니라 좌우로 미끄러진다 — 새 대사의 첫 프레임에만 스냅한다.
+            if (_snapSideBlend)
+            {
+                _snapSideBlend = false;
+                _sideBlend = placement.SideSign;
+            }
+            else
+            {
+                _sideBlend = Mathf.MoveTowards(_sideBlend, placement.SideSign,
+                    Time.unscaledDeltaTime * SideFlipSpeed);
+            }
+
+            // 보간 중에는 연속값 _sideBlend로 X를 다시 잡는다(부호가 0을 지나며 머리 위를 가로지른다).
+            float half = size.x * 0.5f;
+            float centerX = tip.x + _sideBlend * (gapX + half);
+            float minX = ScreenEdgeMargin + half;
+            float maxX = Mathf.Max(minX, screenW - ScreenEdgeMargin - half);
+            centerX = Mathf.Clamp(centerX, minX, maxX);
+
+            var center = new Vector2(centerX, placement.Center.y);
+            _panel.anchoredPosition = center;
+            _panel.localScale = Vector3.one * (_steadyScale * PopScale());
+            _panel.localRotation = Quaternion.Euler(0f, 0f, _tiltDegrees);
+
+            LastTextCenterCanvas = center;
+            LastTextSideSign = placement.SideSign;
+            LastTextSizeCanvas = size;
+        }
+
+        /// <summary>글자 블록 배치 계산 결과(<see cref="ComputeComicTextPlacement"/>).</summary>
+        public readonly struct ComicTextPlacement
+        {
+            public ComicTextPlacement(Vector2 center, float sideSign, bool flippedByScreenEdge)
+            {
+                Center = center;
+                SideSign = sideSign;
+                FlippedByScreenEdge = flippedByScreenEdge;
+            }
+
+            /// <summary>글자 블록 중심(캔버스 유닛).</summary>
+            public Vector2 Center { get; }
+
+            /// <summary>실제로 놓인 쪽(+1 캐릭터 오른쪽 / -1 왼쪽).</summary>
+            public float SideSign { get; }
+
+            /// <summary>화면 밖으로 잘릴 상황이라 선호 쪽에서 반대로 뒤집혔는가.</summary>
+            public bool FlippedByScreenEdge { get; }
+        }
+
+        /// <summary>
+        /// 글자 블록을 놓을 자리를 구한다 — **순수 함수**라 카메라/씬 없이 그대로 테스트할 수 있다
+        /// (PlayMode의 DialogueComicTextPlacementTests가 이 함수를 직접 호출해 계약을 잠근다).
+        ///
+        /// 규칙:
+        ///   1) 선호 쪽(<paramref name="preferredSideSign"/> = 진행 방향의 반대)의 대각선 위에 놓는다.
+        ///      기준점에서 가로로 gapX + 반폭, 세로로 gapY + 반높이 떨어진 자리 = "대각선 상단".
+        ///   2) 그 자리에서 화면 좌우로 잘리면 **반대쪽으로 뒤집는다**. 안쪽으로 밀어 넣지 않는 이유:
+        ///      밀면 글자가 캐릭터 머리 위로 올라타 "반대쪽 대각선"이라는 요구 자체가 깨진다
+        ///      (캐릭터는 화면 좌우 끝에 서 있는 시간이 길다 — 벽타기/가장자리 회전).
+        ///   3) 양쪽 다 안 되는 극단(글자가 화면보다 넓음)에서는 최소한 잘리지 않게 안쪽으로 민다.
+        ///   4) 세로는 창 상단 테두리에서 잘리지 않게 클램프한다(규칙 6 "잘리지 않게").
+        /// </summary>
+        public static ComicTextPlacement ComputeComicTextPlacement(
+            Vector2 tipCanvas, Vector2 textSize, float preferredSideSign,
+            float gapX, float gapY, float screenW, float screenH, float margin)
+        {
+            float side = preferredSideSign >= 0f ? 1f : -1f;
+            float half = textSize.x * 0.5f;
+
+            float centerX = tipCanvas.x + side * (gapX + half);
+            bool flipped = false;
+            if (centerX + half > screenW - margin || centerX - half < margin)
+            {
+                float mirrored = tipCanvas.x - side * (gapX + half);
+                if (mirrored + half <= screenW - margin && mirrored - half >= margin)
+                {
+                    centerX = mirrored;
+                    side = -side;
+                    flipped = true;
+                }
+            }
+
+            float minX = margin + half;
+            float maxX = Mathf.Max(minX, screenW - margin - half);
+            centerX = Mathf.Clamp(centerX, minX, maxX);
+
+            float halfH = textSize.y * 0.5f;
+            float centerY = tipCanvas.y + gapY + halfH;
+            float minY = margin + halfH;
+            float maxY = Mathf.Max(minY, screenH - margin - halfH);
+            centerY = Mathf.Clamp(centerY, minY, maxY);
+
+            return new ComicTextPlacement(new Vector2(centerX, centerY), side, flipped);
+        }
+
+        /// <summary>
+        /// 지금 화자가 바라보는 방향(+1 오른쪽 / -1 왼쪽).
+        /// 방향을 알 수 없으면 **직전 판단을 그대로 유지한다** — 0을 돌려주면 정지(Idle) 중에 글자가
+        /// 가운데로 튀어나온다(사용자 요구 "방향이 없다고 가운데로 튀면 안 된다").
+        /// </summary>
+        private float ResolveFacingSign()
+        {
+            if (FacingSource != null)
+            {
+                float injected = FacingSource();
+                if (Mathf.Abs(injected) > 0.001f) return Mathf.Sign(injected);
+            }
+            if (_agent != null && _agent.Blackboard != null)
+            {
+                float facing = _agent.Blackboard.FacingSign;
+                if (Mathf.Abs(facing) > 0.001f) return Mathf.Sign(facing);
+            }
+            return -_latchedTextSide; // 직전에 쓰던 쪽의 반대 = 직전에 알고 있던 진행 방향.
+        }
+
+        /// <summary>
+        /// 팝인(툭 튀어나오는 등장) 배율. 0 -> <see cref="PopInStartScale"/>,
+        /// <see cref="PopInPeakAt"/> -> <see cref="PopInOvershoot"/>, 1 -> 1.0의 2구간 SmoothStep.
+        /// 페이드보다 만화답게 보이라는 리더 지시에 대한 구현이며, 알파 페이드(150ms)는 그대로 둔다.
+        /// </summary>
+        private float PopScale()
+        {
+            if (_popElapsed >= PopInSeconds) return 1f;
+            float t = Mathf.Clamp01(_popElapsed / Mathf.Max(0.01f, PopInSeconds));
+            return t < PopInPeakAt
+                ? Mathf.Lerp(PopInStartScale, PopInOvershoot, Mathf.SmoothStep(0f, 1f, t / PopInPeakAt))
+                : Mathf.Lerp(PopInOvershoot, 1f, Mathf.SmoothStep(0f, 1f, (t - PopInPeakAt) / (1f - PopInPeakAt)));
+        }
+
+        /// <summary>
+        /// 이 대사의 미세 기울기(도). 대사 문자열의 **결정적 해시**에서 뽑으므로 같은 대사는 항상 같은
+        /// 각도이고, 프레임마다 다시 계산해도 글자가 떨리지 않는다. 난수를 쓰지 않는 것은 이 프로젝트의
+        /// 컨벤션이기도 하다(Dialogue/AmbientChatter.cs "같은 입력이면 항상 같은 출력").
+        /// </summary>
+        private static float ComicTiltFor(string text, int fontSize)
+        {
+            if (string.IsNullOrEmpty(text)) return 0f;
+            // ★ 작은 글자에서는 기울이지 않는다 (2026-08-29 실측으로 확인한 실패).
+            //   기울이면 글자 쿼드가 픽셀 격자와 어긋나 글리프 아틀라스가 바이리니어로 다시 샘플링된다.
+            //   32px 글리프에서는 눈에 띄지 않지만 12px 한글에서는 자모 획이 통째로 뭉개져 읽을 수
+            //   없게 된다 — 손글씨 느낌보다 "읽힌다"가 먼저다.
+            if (fontSize < ComicTiltMinFontSize) return 0f;
+            int hash = 17;
+            for (int i = 0; i < text.Length; i++) hash = unchecked(hash * 31 + text[i]);
+            float t = ((hash & 0x7fffffff) % 1000) / 999f;
+            return Mathf.Lerp(-ComicTiltMaxDegrees, ComicTiltMaxDegrees, t);
+        }
+
+        /// <summary>감탄사 강조 배율 — 느낌표가 든 대사는 조금 더 크게 외친다(만화 문법).</summary>
+        private static float ComicEmphasisFor(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return 1f;
+            return text.IndexOf('!') >= 0 || text.IndexOf('\uFF01') >= 0 ? ComicEmphasisScale : 1f;
+        }
+
+        /// <summary>
+        /// 종전 말풍선(타원 몸통 + 꼬리) 배치. <see cref="DrawBubbleShapes"/>가 true일 때만 호출된다 —
+        /// 지금은 만화 레터링 모드라 실행되지 않지만, 되돌리기 요구에 대비해 **한 줄도 바꾸지 않고**
+        /// 그대로 보존한다(플래그 하나로 종전 그림이 그대로 복원된다).
+        /// </summary>
+        private void UpdateBubblePlacement(Vector2 tip, Vector2 panelSize, float screenW, float screenH)
+        {
             // 박스는 꼬리 위에 놓인다. 화면 위/아래로 넘치면 안쪽으로 민다.
             float scaledTailHeight = ScaledTailHeight;
             float scaledTailWidth = ScaledTailWidth;
@@ -681,17 +1068,34 @@ namespace StickMate.Dialogue
             return fill;
         }
 
+        /// <summary>
+        /// 글자 **외곽선** 색 — 잉크색의 반대색. 흰 잉크(어두운 배경용 프리셋)면 검정, 검은 잉크면 흰색.
+        ///
+        /// ★ 여기서만 알파를 1로 고정하는 것이 의도다(<see cref="ResolveBubbleFillColor"/>의 "알파를
+        /// 보존하라"와 반대). 말풍선 채움은 "있어도 되고 없어도 되는 옅은 판"이지만, 이 선은 글자와
+        /// 바탕화면 사이의 **유일한 분리막**이라 옅게 만들면 존재 이유가 사라진다 — 검은 캐릭터가
+        /// 어두운 바탕화면 위에서, 흰 캐릭터가 밝은 바탕화면 위에서 글자를 잃는 바로 그 실패다.
+        /// </summary>
+        private Color ResolveTextOutlineColor()
+        {
+            bool whiteInk = _config != null && _config.inkColor == StickmanInkColor.White;
+            return whiteInk ? new Color(0f, 0f, 0f, 1f) : new Color(1f, 1f, 1f, 1f);
+        }
+
         public void RefreshColors()
         {
-            if (_panelOutlineImage == null) return;
             Color ink = _config != null ? _config.ResolveInkColor() : Color.black;
             Color bubble = ResolveBubbleFillColor();
 
-            _panelOutlineImage.color = ink;
-            _tailOutlineImage.color = ink;
-            _panelInnerImage.color = bubble;
-            _tailFillImage.color = bubble;
+            // ★ null 허용: 만화 레터링 모드에서는 꼬리/몸통 이미지가 아예 만들어지지 않는다
+            //   (BuildUi의 DrawBubbleShapes 분기). 예전처럼 "첫 이미지가 null이면 통째로 return"하면
+            //   글자 색과 외곽선 색까지 함께 건너뛰어 프리셋 전환이 조용히 무시된다.
+            if (_panelOutlineImage != null) _panelOutlineImage.color = ink;
+            if (_tailOutlineImage != null) _tailOutlineImage.color = ink;
+            if (_panelInnerImage != null) _panelInnerImage.color = bubble;
+            if (_tailFillImage != null) _tailFillImage.color = bubble;
             if (_label != null) _label.color = ink;
+            if (_labelOutline != null) _labelOutline.effectColor = ResolveTextOutlineColor();
         }
 
         // ==================== UI 구성 (런타임 생성 — 씬/프리팹 수동 배선 불필요) ====================
@@ -701,18 +1105,40 @@ namespace StickMate.Dialogue
             if (_label == null) return;
             _label.text = text ?? string.Empty;
 
+            // 글자 크기를 매 대사마다 다시 맞춘다. BuildUi(Awake)에서 한 번만 정하면 실행 중에
+            // 캐릭터 배율이 바뀌었을 때(모니터 이동/설정 변경) 글자만 옛 크기로 남고, 무엇보다
+            // 외곽선 두께가 글자 크기에서 유도되므로(ScaledTextOutline) 둘이 어긋나면 선이 획을 메운다.
+            int fontSize = ResolveFontSize() * Mathf.Max(1, TextSupersample);
+            if (_label.fontSize != fontSize) _label.fontSize = fontSize;
+
             // 줄바꿈을 감안한 실제 크기 계산. CanvasScaler를 붙이지 않아 scaleFactor는 1이지만,
             // 나중에 누가 스케일러를 붙여도 조용히 깨지지 않도록 명시적으로 나눠준다.
             // 라벨은 TextSupersample배로 확대된 좌표계에서 살고 localScale로 되돌아오므로, 제너레이터가
             // 주는 값도 그 배율만큼 크다 — 캔버스 픽셀로 환산해서 쓴다.
             float ss = Mathf.Max(1, TextSupersample);
-            float maxTextWidth = ScaledMaxTextWidth;
+            float maxTextWidth = DrawBubbleShapes ? ScaledMaxTextWidth : ScaledComicMaxTextWidth;
             TextGenerationSettings settings = _label.GetGenerationSettings(new Vector2(maxTextWidth * ss, 0f));
             float scale = settings.scaleFactor > 0f ? settings.scaleFactor : 1f;
             TextGenerator gen = _label.cachedTextGeneratorForLayout;
             float textW = Mathf.Min(maxTextWidth, gen.GetPreferredWidth(_label.text, settings) / scale / ss);
             settings = _label.GetGenerationSettings(new Vector2(textW * ss, 0f));
             float textH = gen.GetPreferredHeight(_label.text, settings) / scale / ss;
+
+            if (!DrawBubbleShapes)
+            {
+                // ★ 만화 레터링: 몸통/여백/테두리가 없으므로 **글자 블록 자체가 곧 배치 단위**다.
+                //   유일한 고정분은 외곽선이 글자 바깥으로 번지는 두께다 — 그만큼 넓혀야 화면 클램프가
+                //   외곽선까지 감싸고, 그러지 않으면 화면 끝에서 선만 잘려 글자가 잘린 것처럼 보인다.
+                float outlinePad = ScaledTextOutline * 2f;
+                _panel.sizeDelta = new Vector2(
+                    Mathf.Ceil(textW + outlinePad),
+                    Mathf.Ceil(textH + outlinePad));
+                // 라벨 사각형은 측정치보다 아주 조금 넉넉히 준다 — 딱 맞추면 반올림 오차 한 픽셀에
+                // 줄바꿈이 한 번 더 일어나 마지막 글자가 아래로 떨어진다.
+                _labelRect.sizeDelta = new Vector2((textW + 2f) * ss, (textH + 2f) * ss);
+                ApplyOutlineStyle();
+                return;
+            }
 
             // 타원은 같은 넓이의 사각형보다 모서리 쪽 유효 폭이 좁다 — 글자 블록에 √2를 곱한 뒤
             // 여백을 더해야 글자가 타원 안에 온전히 들어간다(위 EllipseFitFactor 문서 참고).
@@ -756,11 +1182,26 @@ namespace StickMate.Dialogue
             _group.blocksRaycasts = false;
             _group.interactable = false;
 
-            // 그리는 순서(뒤 -> 앞): 꼬리 테두리 / 박스 테두리 / 박스 안쪽 / 꼬리 채움 / 글자.
-            // 꼬리 채움이 박스 아래 테두리 위에 와야 꼬리와 박스가 하나로 이어져 보인다.
-            _tailOutline = CreateTailPart(canvasGo.transform, "TailOutline", ink, filled: true, out _tailOutlineImage);
-            _panel = CreatePanel(canvasGo.transform, ink, bubble);
-            _tailFill = CreateTailPart(canvasGo.transform, "TailFill", bubble, filled: false, out _tailFillImage);
+            if (DrawBubbleShapes)
+            {
+                // 그리는 순서(뒤 -> 앞): 꼬리 테두리 / 박스 테두리 / 박스 안쪽 / 꼬리 채움 / 글자.
+                // 꼬리 채움이 박스 아래 테두리 위에 와야 꼬리와 박스가 하나로 이어져 보인다.
+                _tailOutline = CreateTailPart(canvasGo.transform, "TailOutline", ink, filled: true, out _tailOutlineImage);
+                _panel = CreatePanel(canvasGo.transform, ink, bubble);
+                _tailFill = CreateTailPart(canvasGo.transform, "TailFill", bubble, filled: false, out _tailFillImage);
+            }
+            else
+            {
+                // ★ 만화 레터링 모드 — 도형은 하나도 만들지 않는다. 몸통은 "글자를 담아 옮기고
+                //   회전/팝인 스케일을 먹는 빈 컨테이너"로만 남는다(Image는 꺼서 흰 사각형이 그려지는
+                //   것을 막는다 — 스프라이트 없는 Image는 흰 판을 그린다).
+                _panel = CreatePanel(canvasGo.transform, ink, bubble);
+                _panelOutlineImage.enabled = false;
+                _panelInnerImage.enabled = false;
+                // 회전/팝인의 중심이 글자 한가운데여야 한다(몸통 바닥 중앙 기준이면 글자가 그 아래
+                // 축을 중심으로 휘둘린다). 배치도 그에 맞춰 "중심 좌표"를 직접 넣는다.
+                _panel.pivot = new Vector2(0.5f, 0.5f);
+            }
 
             // 글자는 몸통의 자식이라 몸통을 옮기면 함께 따라온다. 스트레치 앵커가 아니라 **중앙 앵커 +
             // 명시 크기**를 쓰는 이유: 아래 localScale(1/TextSupersample)과 스트레치 앵커를 같이 쓰면
@@ -785,6 +1226,29 @@ namespace StickMate.Dialogue
             _label.horizontalOverflow = HorizontalWrapMode.Wrap;
             _label.verticalOverflow = VerticalWrapMode.Overflow;
             _label.raycastTarget = false;
+
+            if (!DrawBubbleShapes)
+            {
+                // ★ 만화 레터링의 외곽선. uGUI 기본 제공 Outline(Shadow 파생)은 글리프 메시를 네 대각선
+                //   방향으로 복제해 깔아 준다 — 짧은 대사(대부분 3~8자)에서 정점 수가 문제 될 양이 아니고,
+                //   이 프로젝트에 TextMeshPro가 없어 SDF 외곽선을 쓸 수 없으므로 이것이 표준 경로다.
+                //
+                //   useGraphicAlpha = false인 이유: 페이드는 이미 CanvasGroup.alpha가 캔버스 전체에
+                //   곱해 처리한다(ApplyAlpha). 여기서 글자 알파를 한 번 더 곱하면 이중 적용이 되어
+                //   등장/소멸 중에 외곽선만 먼저 옅어져 글자가 배경에 잠깐 묻힌다.
+                _labelOutline = labelGo.AddComponent<Outline>();
+                _labelOutline.useGraphicAlpha = false;
+                _labelOutline.effectColor = ResolveTextOutlineColor();
+                ApplyOutlineStyle();
+            }
+        }
+
+        /// <summary>외곽선 두께를 현재 캐릭터 배율에 맞춘다(폰트 크기와 함께 매 대사마다 갱신된다).</summary>
+        private void ApplyOutlineStyle()
+        {
+            if (_labelOutline == null) return;
+            float thickness = ScaledTextOutline * Mathf.Max(1, TextSupersample);
+            _labelOutline.effectDistance = new Vector2(thickness, thickness);
         }
 
         private RectTransform CreatePanel(Transform parent, Color ink, Color bubble)
@@ -1223,8 +1687,18 @@ namespace StickMate.Dialogue
             if (_cachedFont != null) return _cachedFont;
 
             // 1순위: 진짜 Bold 페이스(합성 볼드 회피). 실패하면 조용히 아래 일반 후보로 넘어간다.
+            // ★ 만화 레터링용으로 **더 무거운 페이스를 먼저** 시도한다(리더 지시 "굵고 또렷하게").
+            //   실측(2026-08-29, system_profiler SPFontsDataType): 이 머신의 AppleSDGothicNeo.ttc에는
+            //   Heavy / ExtraBold / SemiBold / Bold 페이스가 모두 들어 있다. 한글 손글씨·만화 전용
+            //   폰트는 시스템에 없고(Comic Sans MS / Marker Felt / Noteworthy는 전부 한글 글리프가
+            //   없어 두부가 된다 — 이 프로젝트가 이미 겪은 실패), 그래서 "가장 무거운 고딕 + 외곽선 +
+            //   미세 기울임"으로 만화 느낌을 낸다. 어떤 후보든 아래 CanRenderKorean 실측을 통과해야만
+            //   채택되므로, 목록에 없는 환경에서도 두부가 되는 일은 없다.
             var boldCandidates = new List<string>
             {
+                "AppleSDGothicNeo-Heavy", "Apple SD Gothic Neo Heavy",
+                "AppleSDGothicNeo-ExtraBold", "Apple SD Gothic Neo ExtraBold",
+                "NanumGothicExtraBold", "NanumSquareRoundEB", "NanumSquareEB",
                 "AppleSDGothicNeo-Bold", "Apple SD Gothic Neo Bold", "AppleGothic Bold",
                 "Malgun Gothic Bold", "맑은 고딕 Bold", "NanumGothicBold", "NanumGothic Bold",
                 "NanumBarunGothicBold", "PingFangSC-Semibold", "HiraginoSans-W6",
