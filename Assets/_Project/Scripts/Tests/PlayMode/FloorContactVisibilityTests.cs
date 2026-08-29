@@ -104,7 +104,28 @@ namespace StickMate.Tests.PlayMode
             }
 
             // 스폰 낙하 -> 착지(LandingCrouch: 실측상 잉크가 가장 아래로 내려가는 자세) 구간 — 잘림만 본다.
-            for (int i = 0; i < 300; i++) { yield return null; Sample(measureGap: false); }
+            // ★ 2026-08-29 — "300프레임"(yield return null)을 "착지 확인까지 실시간 대기"로 교체했다.
+            // 배치모드는 프레임이 실시간과 결부되지 않아(uncapped), yield return null 300회가
+            // FixedUpdate를 300번 보장하지 않는다 — 실제로 300프레임이 0.3초에 끝나버리면 캐릭터가
+            // 아직 스폰 높이에서 낙하 전(Idle)인 채로 이 루프가 끝나고, 그 스폰 순간 좌표(실측
+            // 489pt, 위 주석 참고)가 다음 루프(measureGap=true)로 새어 들어가 접지 간격 검증을
+            // 오염시킨다(간헐적 실패로 관측됨: 482.72pt). 착지가 실제로 확인될 때까지
+            // WaitForSeconds(실시간 기준)로 기다리고, 혹시 착지 자체가 영영 안 되는 회귀라면
+            // 타임아웃으로 그 사실 자체를 실패로 드러낸다(무한 대기 금지).
+            const float FallTimeoutSeconds = 10f;
+            float fallElapsed = 0f;
+            bool landedOnce = false;
+            while (fallElapsed < FallTimeoutSeconds)
+            {
+                yield return new WaitForSeconds(0.05f);
+                fallElapsed += 0.05f;
+                Sample(measureGap: false);
+                StickmanStateId s = agent.Blackboard.Machine.CurrentStateId;
+                if (s == StickmanStateId.Idle || s == StickmanStateId.Walk) { landedOnce = true; break; }
+            }
+            Assert.IsTrue(landedOnce,
+                $"{LogPrefix} {FallTimeoutSeconds:F0}초 안에 스폰 낙하 후 착지(Idle/Walk 전이)를 확인하지 " +
+                "못했습니다 — 착지 자체가 안 되는 회귀일 수 있습니다.");
             // 배회(Idle/Walk) 관찰 — 여기부터 간격도 함께 잰다.
             for (int i = 0; i < 300; i++) { yield return new WaitForSeconds(0.05f); Sample(measureGap: true); }
             // RAGDOLL 강제 — 팔다리가 가장 크게 벌어지는 케이스까지 포함시킨다.

@@ -87,7 +87,17 @@ namespace StickMate.Interaction
             _opponent = opponent;
 
             _body.simulated = true;
+            // ★ StickmanBlackboard.MoveBodyToWorld와 같은 이유로 Rigidbody2D.position만이 아니라
+            // Transform.position도 함께 옮긴다(2026-08-29, "몸 순간이동은 항상 둘 다" 원칙 후속 적용).
+            // AutoSyncTransforms가 꺼져 있어(ProjectSettings/Physics2DSettings.asset), 여기서
+            // Rigidbody2D만 옮기면 바로 아래 SetRenderersEnabled(true)로 보이게 되는 첫 프레임에
+            // Awake() 시점 프리팹 배치 좌표(스폰 좌표가 아닌 곳)가 그대로 그려진다 — RunawayState.
+            // RestoreCharacter()에서 실측 확인된 것과 동일한 1프레임 팝 패턴이다. 이 컴포넌트는 별도
+            // StickmanBlackboard 인스턴스를 아직 갖고 있지 않을 수 있어(EnsureMachineBuilt 이전)
+            // 공용 창구를 못 쓰므로, 여기서는 같은 두 줄을 직접 적용한다.
             _body.position = spawnWorldPos;
+            Transform bodyTransform = _body.transform;
+            bodyTransform.position = new Vector3(spawnWorldPos.x, spawnWorldPos.y, bodyTransform.position.z);
             _body.linearVelocity = Vector2.zero;
             SetRenderersEnabled(true);
 
