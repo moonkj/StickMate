@@ -75,21 +75,61 @@ namespace StickMate.Interaction
         private const float FadeInSeconds = 0.9f;    // 은은하게 — "점진적 비주얼 변화"(19절)라 확 튀면 안 된다.
         private const float FadeOutSeconds = 1.1f;   // 회복은 더 느긋하게(달래진 직후 급변하면 게임 UI처럼 보인다).
 
-        // 캐릭터 루트(Rigidbody2D.position)는 **발 높이**가 로컬 y=0이다(Editor/SceneBootstrapper.cs의
-        // 프리팹 지오메트리 주석: 몸통 0.45~1.35, 머리 링 중심 약 1.57 / 반경 0.22 -> 정수리 약 1.79).
-        // 어깨는 몸통 상단(1.35) 언저리이므로 머리 위 오버레이(HardwareReactionRenderer의 2.32)와
-        // 세로로 확실히 갈라진다 — 두 연출이 동시에 떠도 겹치지 않는 것이 이 배치의 핵심 이유다.
-        private const float ShoulderY = 1.33f;
-        private const float ShoulderHalfSpan = 0.40f;  // 어깨 표시가 좌우로 벌어지는 거리.
-        private const float SighSpawnY = 1.62f;        // 한숨 퍼프가 나는 높이(머리 옆).
-        private const float SighSpawnX = 0.52f;
+        // ============================================================================
+        // ★ 2026-08-29 리더 지시 — 캐릭터 기준 치수는 전부 **전신 높이 대비 비율**이다.
+        // ============================================================================
+        // 캐릭터 루트(Rigidbody2D.position)는 **발 높이**가 로컬 y=0이다. 종전에는 그 위에 얹는 값을
+        // 전부 절대 월드유닛 상수로 적어 두었는데, StickConfig.characterScale이 0.5가 되는 순간
+        // (사용자 요구 "지금의 절반 + 추후 조정 가능") 캐릭터만 절반이 되고 이 상수들은 그대로라
+        // 어깨 표시가 **머리 위 허공**에 뜬다. 그래서 배치·크기·속도를 전부 비율로 옮긴다.
+        //
+        // 기준 치수의 유일한 조회 경로는 Core/StickmanMetrics.cs다 — 상수 복사가 아니라 계층 실측이고,
+        // 같은 계산이 렌더러마다 한 벌씩 생겨 그 중 하나가 조용히 어긋나는 이 프로젝트의 반복 실패
+        // (Dock 구간 이중 계산, 씬 지면 Y 이중 정의)를 구조적으로 막는다.
+        //
+        // 아래 비율의 분자는 **검증을 마친 종전 값 그 자체**이고 분모는 배율 1.0 기준 신장이다.
+        // 따라서 배율 1.0에서는 지금까지와 완전히 같은 그림이 나온다(= 회귀 없음의 증거).
+        //
+        // ★ 단 하나의 예외: 어깨 높이.
+        //   종전 상수 ShoulderY = 1.33은 접지 보정(SceneBootstrapper의 footLift, 배율 1.0에서 0.4847)이
+        //   들어가기 **전** 프리팹(정수리 약 1.79)에서 손으로 옮겨 적은 값이다. 지금 프리팹의 실측 어깨는
+        //   1.7647이므로, 1.33은 배율 1.0에서조차 어깨가 아니라 **갈비뼈 언저리(0.43유닛 아래)**를
+        //   가리키고 있었다. 여기에 비율화를 그대로 적용하면 "틀린 위치를 배율에 맞춰 정확히 유지"하게
+        //   되므로, 이 한 값만은 비율 대신 StickmanMetrics.ShoulderLocalY 실측을 쓴다
+        //   (리더 지시: "전용 멤버가 있으면 비율 계산 대신 그걸 써라 — 그게 더 정확하다").
+        //   같은 이유로 한숨 퍼프의 높이도 머리 실측(HeadCenterLocalY / HeadRadius)에 붙인다.
+        private const float ShoulderHalfSpanRatio = 0.40f / StickConfig.BaselineCharacterTotalHeight;   // 어깨 표시가 좌우로 벌어지는 거리.
+        private const float DroopReachRatio = 0.30f / StickConfig.BaselineCharacterTotalHeight;         // 처짐 호가 바깥으로 뻗는 길이.
+        private const float DroopDepthAlarmRatio = 0.34f / StickConfig.BaselineCharacterTotalHeight;    // 경고 단계 처짐 깊이.
+        private const float DroopDepthCautionRatio = 0.19f / StickConfig.BaselineCharacterTotalHeight;  // 주의 단계 처짐 깊이.
+        private const float SlumpBackStartXRatio = 0.10f / StickConfig.BaselineCharacterTotalHeight;    // 굽은 등 획 시작 x.
+        private const float SlumpBackReachXRatio = 0.16f / StickConfig.BaselineCharacterTotalHeight;    // 굽은 등 획이 뒤로 뻗는 길이.
+        private const float SlumpBackRiseYRatio = 0.12f / StickConfig.BaselineCharacterTotalHeight;     // 굽은 등 획 시작 높이(어깨 위).
+        private const float SlumpBackDropYRatio = 0.30f / StickConfig.BaselineCharacterTotalHeight;     // 굽은 등 획이 내려가는 깊이.
+        private const float SighSpawnXRatio = 0.52f / StickConfig.BaselineCharacterTotalHeight;         // 한숨 퍼프가 나는 가로 위치(머리 옆).
+        private const float SighRadiusRatio = 0.085f / StickConfig.BaselineCharacterTotalHeight;        // 한숨 퍼프 원의 반지름.
+        private const float StrokeWidthRatio = 0.048f / StickConfig.BaselineCharacterTotalHeight;       // 획 두께.
+        private const float ClampMarginRatio = 0.75f / StickConfig.BaselineCharacterTotalHeight;        // 화면 경계 여유(FollowShoulders 참고).
 
-        private const float StrokeWidth = 0.048f;
+        // ★ 이동 속도도 비율이다(리더 지시 3 — 배치만 비율화하고 속도를 절대로 남기면 알갱이가 몸 쪽으로
+        // 두 배 깊이 파고든다. HardwareReactionRenderer의 땀방울에서 실제로 발생한 실패다).
+        // 배율 0.5에서 절대 속도를 그대로 두면 한숨 퍼프가 같은 수명 동안 **몸 길이의 두 배 비율**로
+        // 솟아올라 머리를 훌쩍 넘어가 버린다.
+        private const float SighRiseSpeedRatio = 0.42f / StickConfig.BaselineCharacterTotalHeight;      // 한숨 퍼프 상승(유닛/초).
+        private const float SighDriftSpeedRatio = 0.22f / StickConfig.BaselineCharacterTotalHeight;     // 한숨 퍼프 좌우 표류(유닛/초).
+
+        // 어깨/머리 실측을 못 구했을 때의 폴백 비율(배율 1.0 프리팹 기준). StickmanMetrics 자신이 쓰는
+        // 것과 같은 값이라, 이 경로로 떨어져도 "어깨가 발밑에 있다" 같은 값은 나오지 않는다.
+        private const float BaselineShoulderRatio = 1.7646944f / StickConfig.BaselineCharacterTotalHeight;
+        private const float BaselineHeadCenterRatio = 2.0546944f / StickConfig.BaselineCharacterTotalHeight;
+        private const float BaselineHeadRadiusRatio = 0.22f / StickConfig.BaselineCharacterTotalHeight;
+        // 한숨 퍼프는 머리 중심에서 머리 반경의 이만큼 위에 난다(종전 1.62 - 머리중심 1.57 = 0.05, 반경 0.22 기준).
+        private const float SighAboveHeadCenterRatio = 0.05f / 0.22f;
+
         private const int SortingOrder = 8;            // 캐릭터 획(0~5) 위, 그라피티(9)/격파(10~15) 아래.
 
         private const float SighLifeSeconds = 1.5f;
         private const int SighMaxAlive = 3;
-        private const float SighRiseSpeed = 0.42f;
 
         // 24절 "처지고 어두운 표정, 채도 낮은 팔레트" — 인질극 계열의 밝은 강조색과 반대 방향으로 잡는다.
         private static readonly Color CautionColor = new Color(0.72f, 0.63f, 0.36f, 1f);
@@ -111,6 +151,72 @@ namespace StickMate.Interaction
         /// </summary>
         private StickmanAgent _agent;
         private Material _lineMaterial;
+
+        // ==================== 캐릭터 실측 치수 조회 ====================
+
+        /// <summary>캐릭터 치수의 <b>유일한</b> 조회 경로(Core/StickmanMetrics.cs). 값이 매 프레임 필요한
+        /// 경로라 컴포넌트를 한 번만 찾아 캐시한다(GetComponentInParent를 24시간 내내 돌리지 않는다).
+        /// 못 찾으면(손으로 조립한 테스트 리그 등) null을 캐시하고 아래 비율 폴백으로 떨어진다.</summary>
+        private StickmanMetrics _metrics;
+        private bool _metricsResolved;
+
+        private StickmanMetrics Metrics
+        {
+            get
+            {
+                if (_metrics != null) return _metrics;
+                if (_metricsResolved) return null;
+                _metricsResolved = true;
+                _metrics = _agent != null ? _agent.Metrics : StickmanMetrics.Find(this);
+                return _metrics;
+            }
+        }
+
+        /// <summary>이 캐릭터의 전신 높이(월드 유닛) — 위 모든 비율의 유일한 기준값.</summary>
+        private float Height
+        {
+            get
+            {
+                StickmanMetrics m = Metrics;
+                return m != null ? m.TotalHeight : StickConfig.BaselineCharacterTotalHeight;
+            }
+        }
+
+        // ==================== 테스트/진단용 배치 관찰 창구 ====================
+        // (아래 4개는 Tests/PlayMode/RendererScaleRatioTests.cs가 배율 1.0/0.5 양쪽에서 단언한다.)
+
+        /// <summary>어깨 표시가 붙는 로컬 Y(발바닥 기준). <b>실측 어깨 높이 그 자체</b>이며 비율이 아니다.</summary>
+        public float ShoulderAnchorLocalY
+        {
+            get
+            {
+                StickmanMetrics m = Metrics;
+                return m != null ? m.ShoulderLocalY : Height * BaselineShoulderRatio;
+            }
+        }
+
+        /// <summary>한숨 퍼프가 나는 로컬 Y(발바닥 기준) — 머리 실측(중심 + 반경 비율)에 붙는다.</summary>
+        public float SighSpawnLocalY
+        {
+            get
+            {
+                StickmanMetrics m = Metrics;
+                float headCenter = m != null ? m.HeadCenterLocalY : Height * BaselineHeadCenterRatio;
+                float headRadius = m != null ? m.HeadRadius : Height * BaselineHeadRadiusRatio;
+                return headCenter + headRadius * SighAboveHeadCenterRatio;
+            }
+        }
+
+        /// <summary>어깨 표시가 좌우로 벌어지는 거리(월드 유닛).</summary>
+        public float ShoulderHalfSpan => Height * ShoulderHalfSpanRatio;
+
+        /// <summary>획 두께(월드 유닛).</summary>
+        public float StrokeWidth => Height * StrokeWidthRatio;
+
+        private float SighSpawnX => Height * SighSpawnXRatio;
+        private float SighRiseSpeed => Height * SighRiseSpeedRatio;
+        private float SighDriftSpeed => Height * SighDriftSpeedRatio;
+        private float SighRadius => Height * SighRadiusRatio;
 
         private GameObject _container;
         private readonly List<LineRenderer> _lines = new List<LineRenderer>(4);
@@ -238,17 +344,20 @@ namespace StickMate.Interaction
             bool alarm = tier == StressMoodTier.Alarm;
             Color color = alarm ? AlarmColor : CautionColor;
             // 단계가 오를수록 더 깊이 처진다 — "점진적 비주얼 변화"(19절)를 한 개의 숫자로 표현한다.
-            float droop = alarm ? 0.34f : 0.19f;
+            float droop = Height * (alarm ? DroopDepthAlarmRatio : DroopDepthCautionRatio);
+            float shoulderLocalY = ShoulderAnchorLocalY;
+            float droopReach = Height * DroopReachRatio;
+            float halfSpan = ShoulderHalfSpan;
 
             for (int side = -1; side <= 1; side += 2)
             {
-                float x0 = ShoulderHalfSpan * side;
+                float x0 = halfSpan * side;
                 var pts = new Vector3[5];
                 for (int i = 0; i < pts.Length; i++)
                 {
                     float t = i / (float)(pts.Length - 1);
                     // 어깨에서 바깥으로 나가며 아래로 늘어지는 호(2차 곡선).
-                    pts[i] = new Vector3(x0 + side * t * 0.30f, ShoulderY - droop * t * t, 0f);
+                    pts[i] = new Vector3(x0 + side * t * droopReach, shoulderLocalY - droop * t * t, 0f);
                 }
                 _lines.Add(CreateLine(side < 0 ? "ShoulderDroopL" : "ShoulderDroopR", pts, color, loop: false));
             }
@@ -257,10 +366,14 @@ namespace StickMate.Interaction
             {
                 // 경고 단계에서만 목/등이 굽은 것을 한 획 더 얹는다(자세가 더 무너졌다는 신호).
                 var back = new Vector3[4];
+                float startX = Height * SlumpBackStartXRatio;
+                float reachX = Height * SlumpBackReachXRatio;
+                float riseY = Height * SlumpBackRiseYRatio;
+                float dropY = Height * SlumpBackDropYRatio;
                 for (int i = 0; i < back.Length; i++)
                 {
                     float t = i / (float)(back.Length - 1);
-                    back[i] = new Vector3(-0.10f - t * 0.16f, ShoulderY + 0.12f - t * 0.30f, 0f);
+                    back[i] = new Vector3(-startX - t * reachX, shoulderLocalY + riseY - t * dropY, 0f);
                 }
                 _lines.Add(CreateLine("SlumpBack", back, color, loop: false));
             }
@@ -274,7 +387,27 @@ namespace StickMate.Interaction
 
         private void LateUpdate()
         {
-            if (_container == null) return;
+            // ★ 2026-08-29 실측 버그 수정(배율 0.75 육안 검증 중 발견).
+            // OnEnable()은 "켜지는 시점에 이미 게이지가 쌓여 있을 수 있다"를 처리하려고 곧바로
+            // OnStressLevelChanged를 부른다. 그런데 그 시점에는 StickmanAgent가 아직 Blackboard/Body를
+            // 배선하기 전이라 Rebuild()가 "캐릭터 배선이 없습니다" 경고만 남기고 아무것도 그리지 못한다.
+            // 그 사이 _tier는 이미 Caution/Alarm으로 **확정**돼 버려서, 이후 StressLevelChanged가 아무리
+            // 날아와도 `target == _tier`에서 전부 걸러진다 — 즉 어깨 처짐이 **영원히 0픽셀**이 된다.
+            // 실측 Player.log: "기분 표시를 그리지 못했습니다" 직후 "단계 안정 -> 주의 ... 시각 오브젝트 0개".
+            // 이 프로젝트가 반복해서 겪은 "로직은 도는데 화면엔 0픽셀"과 정확히 같은 실패다.
+            //
+            // 그래서 배선이 준비된 뒤 한 번 따라잡는다. 배선이 준비됐을 때만 시도하므로 헛도는 프레임이
+            // 없고, Calm이거나 사라지는 중이면 애초에 그릴 것이 없어 곧바로 빠져나간다.
+            if (_container == null)
+            {
+                if (_tier == StressMoodTier.Calm || _fadingOut) return;
+                var pending = _agent != null ? _agent.Blackboard : null;
+                if (pending == null || pending.Body == null) return; // 아직 배선 전 — 다음 프레임에 다시 본다.
+                Debug.Log($"[스트레스] 시작 프레임 경합 보정 — 단계 {TierLabel(_tier)}가 배선 완료 전에 확정돼 " +
+                    "그려지지 못했습니다. 배선이 준비되어 지금 다시 그립니다.");
+                Rebuild(_tier);
+                if (_container == null) return;
+            }
 
             float dt = Time.deltaTime;
 
@@ -295,8 +428,11 @@ namespace StickMate.Interaction
 
         /// <summary>
         /// 어깨 표시를 캐릭터에 붙여 따라다니게 하되 <b>화면 안에 머무르게 클램프</b>한다.
-        /// HardwareReactionRenderer.FollowHead()와 같은 이유다 — 캐릭터는 창의 상단 테두리를 발판으로
-        /// 삼아 화면 최상단에 서 있는 시간이 길고, 그때 어깨 높이(1.33유닛)조차 잘려 나갈 수 있다.
+        /// HardwareReactionRenderer.FollowHead()와 같은 이유다 — 캐릭터는 창의 상단 테두리나 Dock을
+        /// 발판으로 삼아 화면 최상단에 서 있는 시간이 길고, 그때 어깨 높이조차 잘려 나갈 수 있다.
+        /// 여유(margin)도 절대 유닛이 아니라 전신 높이 비율이다 — 배율 0.5에서 절대 0.75유닛을 그대로
+        /// 두면 캐릭터 반 키만큼을 화면 안쪽으로 끌어당겨, 화면 끝에 선 캐릭터에서 어깨 표시만 몸을
+        /// 벗어나 따로 논다.
         /// </summary>
         private void FollowShoulders()
         {
@@ -307,7 +443,7 @@ namespace StickMate.Interaction
             {
                 float halfH = cam.orthographicSize;
                 float halfW = halfH * cam.aspect;
-                const float margin = 0.75f; // 어깨 표시 + 한숨 퍼프가 함께 들어오는 여유.
+                float margin = Height * ClampMarginRatio; // 어깨 표시 + 한숨 퍼프가 함께 들어오는 여유.
                 Vector3 camPos = cam.transform.position;
                 target.x = Mathf.Clamp(target.x, camPos.x - halfW + margin, camPos.x + halfW - margin);
                 target.y = Mathf.Clamp(target.y, camPos.y - halfH + margin, camPos.y + halfH - margin);
@@ -354,7 +490,7 @@ namespace StickMate.Interaction
                     continue;
                 }
 
-                p.Root.localPosition += new Vector3(p.DriftX * dt, SighRiseSpeed * dt, 0f);
+                p.Root.localPosition += new Vector3(p.DriftX * dt, SighRiseSpeed * dt, 0f); // 둘 다 전신 높이 비율에서 유도된 속도다.
                 float scale = Mathf.Lerp(0.6f, 1.5f, t);
                 p.Root.localScale = new Vector3(scale, scale, 1f);
 
@@ -372,9 +508,10 @@ namespace StickMate.Interaction
 
             var go = new GameObject("SighPuff");
             go.transform.SetParent(_container.transform, false);
-            go.transform.localPosition = new Vector3(SighSpawnX * facing, SighSpawnY, 0f);
+            // 컨테이너는 발바닥(AnchorWorldPosition)에 놓이므로 이 로컬 Y가 곧 "발바닥에서 얼마나 위"다.
+            go.transform.localPosition = new Vector3(SighSpawnX * facing, SighSpawnLocalY, 0f);
 
-            Vector3[] shape = BuildCircle(Vector3.zero, 0.085f, 9);
+            Vector3[] shape = BuildCircle(Vector3.zero, SighRadius, 9);
             var lr = go.AddComponent<LineRenderer>();
             lr.useWorldSpace = false;
             lr.material = _lineMaterial;
@@ -390,7 +527,7 @@ namespace StickMate.Interaction
             lr.positionCount = shape.Length;
             lr.SetPositions(shape);
 
-            _puffs.Add(new Puff { Root = go.transform, Line = lr, Age = 0f, DriftX = facing * 0.22f });
+            _puffs.Add(new Puff { Root = go.transform, Line = lr, Age = 0f, DriftX = facing * SighDriftSpeed });
         }
 
         // ==================== 종료 ====================

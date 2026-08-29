@@ -66,21 +66,65 @@ namespace StickMate.Interaction
         private const float DustSpawnInterval = 0.14f;
         private const int TransientMaxAlive = 14;   // 24시간 상주 앱 — 무한 증식 상한.
 
+        // ============================================================================
+        // ★ 2026-08-29 리더 지시 — 캐릭터 기준 치수는 전부 **전신 높이 대비 비율**이다.
+        // ============================================================================
+        // 종전에는 아래 값이 전부 절대 월드유닛이었다. StickConfig.characterScale이 0.5가 되면 캐릭터만
+        // 절반이 되고 과자(반지름 0.30, 오프셋 y+1.02)는 그대로라, 과자가 **정수리(배율 0.5에서 1.137)
+        // 근처의 허공**에 캐릭터 몸통만 한 크기로 떠 있게 된다. 먼지/속도선도 마찬가지로 몸 길이 대비
+        // 두 배로 커진다.
+        //
+        // 기준 치수의 유일한 조회 경로는 Core/StickmanMetrics.cs다(상수 복사가 아니라 계층 실측).
+        // 분자는 검증을 마친 종전 값 그 자체, 분모는 배율 1.0 기준 신장이므로 배율 1.0에서는 지금까지와
+        // 완전히 같은 그림/움직임이 나온다.
+        //
+        // ★ 시간 상수(수명/간격)와 각진동수(SnackBobSpeed)는 길이 차원이 아니라 비율화 대상이 아니다.
+        //   "작아졌다고 더 빨리 사라질" 이유가 없다 — 대신 **길이/초 차원의 속도는 전부 비율화한다**
+        //   (리더 지시 3: 배치만 비율화하고 속도를 절대로 남기면 알갱이가 몸 쪽으로 두 배 깊이 파고든다).
         private const float HintRippleSeconds = 1.25f;   // 20절 "아주 미세한" 단서라 느리고 옅게.
-        private const float HintRippleStartRadius = 0.18f;
-        private const float HintRippleEndRadius = 1.05f;
+        // 힌트 파문은 은신처(= 숨은 캐릭터가 있는 자리)를 가리키는 단서다. 캐릭터가 절반이 되었는데
+        // 파문만 원래 크기로 남으면 "미세한 단서"가 아니라 화면에서 가장 큰 도형이 되어 20절의 의도가
+        // 뒤집힌다. 그래서 발견 폭발(아래 FoundBurst)과 같은 기준으로 함께 비율화한다.
+        private const float HintRippleStartRadiusRatio = 0.18f / StickConfig.BaselineCharacterTotalHeight;
+        private const float HintRippleEndRadiusRatio = 1.05f / StickConfig.BaselineCharacterTotalHeight;
         private const float HintRippleMaxAlpha = 0.34f;  // 대비를 일부러 낮춘다(너무 쉬우면 재미없다).
 
         private const float FoundBurstSeconds = 0.75f;
         private const int FoundBurstRays = 8;
+        private const float FoundBurstStartRadiusRatio = 0.22f / StickConfig.BaselineCharacterTotalHeight; // 방사선 시작 반경.
+        private const float FoundBurstSpeedRatio = 0.42f / StickConfig.BaselineCharacterTotalHeight;       // 방사선 속도(유닛/초).
 
-        private const float SnackOffsetX = 0.92f;   // 캐릭터 옆(발견된 자리)에 놓이는 과자.
-        private const float SnackOffsetY = 1.02f;
-        private const float SnackRadius = 0.30f;
-        private const float SnackBobSpeed = 2.6f;
-        private const float SnackBobAmplitude = 0.06f;
+        private const float SnackOffsetXRatio = 0.92f / StickConfig.BaselineCharacterTotalHeight;   // 캐릭터 옆(발견된 자리)에 놓이는 과자.
+        private const float SnackOffsetYRatio = 1.02f / StickConfig.BaselineCharacterTotalHeight;
+        private const float SnackRadiusRatio = 0.30f / StickConfig.BaselineCharacterTotalHeight;
+        private const float SnackChipRadiusRatio = 0.035f / StickConfig.BaselineCharacterTotalHeight;
+        private const float SnackBobAmplitudeRatio = 0.06f / StickConfig.BaselineCharacterTotalHeight;
+        private const float SnackBobSpeed = 2.6f;   // 각진동수(rad/초) — 길이 차원이 아니라 절대값이 맞다.
 
-        private const float StrokeWidth = 0.052f;
+        // 도주 속도선 — 캐릭터 뒤로 흐르는 선 3줄.
+        private const float SpeedLineBackXRatio = 0.55f / StickConfig.BaselineCharacterTotalHeight;  // 몸 뒤로 물러난 생성 x.
+        private const float SpeedLineBaseYRatio = 0.55f / StickConfig.BaselineCharacterTotalHeight;  // 가장 아래 줄의 높이.
+        private const float SpeedLineStepYRatio = 0.42f / StickConfig.BaselineCharacterTotalHeight;  // 줄 간격.
+        private const float SpeedLineSpeedRatio = 0.9f / StickConfig.BaselineCharacterTotalHeight;   // 흐르는 속도(유닛/초).
+        private const float StreakLengthRatio = 0.34f / StickConfig.BaselineCharacterTotalHeight;    // 선 한 줄의 길이.
+
+        // 발밑 먼지.
+        private const float DustBackXRatio = 0.28f / StickConfig.BaselineCharacterTotalHeight;
+        private const float DustYRatio = 0.06f / StickConfig.BaselineCharacterTotalHeight;
+        private const float DustStartRadiusRatio = 0.06f / StickConfig.BaselineCharacterTotalHeight;
+        private const float DustEndRadiusRatio = 0.36f / StickConfig.BaselineCharacterTotalHeight;
+
+        // 화해 반짝임(머리 위쪽) / 귀가 먼지(발밑).
+        private const float ReconcileSpreadXRatio = 0.45f / StickConfig.BaselineCharacterTotalHeight;
+        private const float ReconcileBaseYRatio = 1.1f / StickConfig.BaselineCharacterTotalHeight;
+        private const float ReconcileSpreadYRatio = 0.5f / StickConfig.BaselineCharacterTotalHeight;
+        private const float ReconcileStartRadiusRatio = 0.04f / StickConfig.BaselineCharacterTotalHeight;
+        private const float ReconcileEndRadiusRatio = 0.16f / StickConfig.BaselineCharacterTotalHeight;
+        private const float ReturnDustSpreadXRatio = 0.35f / StickConfig.BaselineCharacterTotalHeight;
+        private const float ReturnDustYRatio = 0.05f / StickConfig.BaselineCharacterTotalHeight;
+        private const float ReturnDustEndRadiusRatio = 0.42f / StickConfig.BaselineCharacterTotalHeight;
+
+        private const float StrokeWidthRatio = 0.052f / StickConfig.BaselineCharacterTotalHeight;
         private const int SortingEffect = 8;        // 캐릭터 획(0~5) 위, 그라피티(9) 아래.
 
         private static readonly Color FleeColor = new Color(0.58f, 0.60f, 0.66f, 1f);
@@ -110,6 +154,52 @@ namespace StickMate.Interaction
         /// SceneBootstrapper가 라이벌에서 제거하는 것이 1차 방어, 이 가드가 2차.
         /// </summary>
         private StickmanAgent _agent;
+
+        // ==================== 캐릭터 실측 치수 조회 ====================
+
+        /// <summary>캐릭터 치수의 <b>유일한</b> 조회 경로(Core/StickmanMetrics.cs). 매 프레임 쓰이는
+        /// 값이라 컴포넌트를 한 번만 찾아 캐시한다. 못 찾으면 null을 캐시하고 비율 폴백으로 떨어진다.</summary>
+        private StickmanMetrics _metrics;
+        private bool _metricsResolved;
+
+        private StickmanMetrics Metrics
+        {
+            get
+            {
+                if (_metrics != null) return _metrics;
+                if (_metricsResolved) return null;
+                _metricsResolved = true;
+                _metrics = _agent != null ? _agent.Metrics : StickmanMetrics.Find(this);
+                return _metrics;
+            }
+        }
+
+        /// <summary>이 캐릭터의 전신 높이(월드 유닛) — 위 모든 비율의 유일한 기준값.</summary>
+        private float Height
+        {
+            get
+            {
+                StickmanMetrics m = Metrics;
+                return m != null ? m.TotalHeight : StickConfig.BaselineCharacterTotalHeight;
+            }
+        }
+
+        // ==================== 테스트/진단용 배치 관찰 창구 ====================
+        // (Tests/PlayMode/RendererScaleRatioTests.cs가 배율 1.0/0.5 양쪽에서 단언한다.)
+
+        /// <summary>과자가 놓이는 로컬 오프셋(발바닥 기준, x는 바라보는 방향 부호를 곱하기 전).</summary>
+        public float SnackOffsetLocalX => Height * SnackOffsetXRatio;
+
+        /// <summary>과자가 놓이는 로컬 Y(발바닥 기준).</summary>
+        public float SnackOffsetLocalY => Height * SnackOffsetYRatio;
+
+        /// <summary>과자 원의 반지름(월드 유닛). 클릭 콜라이더도 이 값에서 유도된다.</summary>
+        public float SnackRadius => Height * SnackRadiusRatio;
+
+        /// <summary>획 두께(월드 유닛).</summary>
+        public float StrokeWidth => Height * StrokeWidthRatio;
+
+        private float SnackBobAmplitude => Height * SnackBobAmplitudeRatio;
         private StickmanClickHitbox _hitbox;
         private RunawayDirector _director;
         private Material _lineMaterial;
@@ -259,10 +349,12 @@ namespace StickMate.Interaction
 
             // 파문 2겹(안쪽이 먼저, 바깥쪽이 조금 늦게) — 한 겹이면 "그냥 원"으로 보이고 두 겹이면
             // "무언가 꿈틀했다"로 읽힌다.
-            SpawnRing(LastHideSpotWorld, HintColor, HintRippleSeconds, HintRippleStartRadius,
-                HintRippleEndRadius, HintRippleMaxAlpha);
-            SpawnRing(LastHideSpotWorld, HintColor, HintRippleSeconds * 0.72f, HintRippleStartRadius * 0.5f,
-                HintRippleEndRadius * 0.55f, HintRippleMaxAlpha * 0.8f);
+            float hintStart = Height * HintRippleStartRadiusRatio;
+            float hintEnd = Height * HintRippleEndRadiusRatio;
+            SpawnRing(LastHideSpotWorld, HintColor, HintRippleSeconds, hintStart,
+                hintEnd, HintRippleMaxAlpha);
+            SpawnRing(LastHideSpotWorld, HintColor, HintRippleSeconds * 0.72f, hintStart * 0.5f,
+                hintEnd * 0.55f, HintRippleMaxAlpha * 0.8f);
 
             Debug.Log($"[가출] 은신처 힌트 파문 #{HintPulseCount} — 월드 {LastHideSpotWorld} " +
                 $"(최대 알파 {HintRippleMaxAlpha:F2}로 일부러 옅게, 20절 '아주 미세한' 단서).");
@@ -317,10 +409,13 @@ namespace StickMate.Interaction
             if (_speedLineTimer >= SpeedLineSpawnInterval && _transients.Count < TransientMaxAlive)
             {
                 _speedLineTimer = 0f;
+                float backX = Height * SpeedLineBackXRatio;
+                float baseY = Height * SpeedLineBaseYRatio;
+                float stepY = Height * SpeedLineStepYRatio;
                 for (int i = 0; i < 3; i++)
                 {
-                    float y = 0.55f + i * 0.42f;
-                    SpawnStreak(new Vector3(body.x - facing * 0.55f, body.y + y, 0f), -facing);
+                    float y = baseY + i * stepY;
+                    SpawnStreak(new Vector3(body.x - facing * backX, body.y + y, 0f), -facing);
                 }
             }
 
@@ -328,8 +423,8 @@ namespace StickMate.Interaction
             if (_dustTimer >= DustSpawnInterval && _transients.Count < TransientMaxAlive)
             {
                 _dustTimer = 0f;
-                SpawnRing(new Vector2(body.x - facing * 0.28f, body.y + 0.06f), FleeColor,
-                    DustLifeSeconds, 0.06f, 0.36f, 0.8f);
+                SpawnRing(new Vector2(body.x - facing * (Height * DustBackXRatio), body.y + Height * DustYRatio),
+                    FleeColor, DustLifeSeconds, Height * DustStartRadiusRatio, Height * DustEndRadiusRatio, 0.8f);
             }
         }
 
@@ -346,16 +441,23 @@ namespace StickMate.Interaction
             _snackRoot.transform.position = SnackWorldPosition();
 
             // 과자 본체(원) + 초코칩 3개 — 14절 "사과 먹이기"와 같은 톤의 앱 소유 UI.
+            float snackRadius = SnackRadius;
+            float stroke = StrokeWidth;
             _snackLines.Add(CreateLineOn(_snackRoot.transform, "SnackBody",
-                BuildCircle(Vector3.zero, SnackRadius, 14), SnackColor, StrokeWidth, loop: true));
+                BuildCircle(Vector3.zero, snackRadius, 14), SnackColor, stroke, loop: true));
+            // 초코칩 위치는 과자 반지름(0.30) 대비 비율이라 과자와 함께 저절로 따라온다.
+            float chipUnit = snackRadius / 0.30f;
             var chipOffsets = new[]
             {
-                new Vector3(-0.10f, 0.07f, 0f), new Vector3(0.11f, 0.04f, 0f), new Vector3(0.01f, -0.11f, 0f),
+                new Vector3(-0.10f * chipUnit, 0.07f * chipUnit, 0f),
+                new Vector3(0.11f * chipUnit, 0.04f * chipUnit, 0f),
+                new Vector3(0.01f * chipUnit, -0.11f * chipUnit, 0f),
             };
+            float chipRadius = Height * SnackChipRadiusRatio;
             for (int i = 0; i < chipOffsets.Length; i++)
             {
                 _snackLines.Add(CreateLineOn(_snackRoot.transform, $"SnackChip{i}",
-                    BuildCircle(chipOffsets[i], 0.035f, 6), SnackColor, StrokeWidth * 0.8f, loop: true));
+                    BuildCircle(chipOffsets[i], chipRadius, 6), SnackColor, stroke * 0.8f, loop: true));
             }
 
             // 클릭 대상. isTrigger인 이유는 AppControlDirector의 메뉴 차단막/BattleMinigameRenderer의
@@ -363,7 +465,7 @@ namespace StickMate.Interaction
             // (캐릭터가 과자에 부딪혀 튕기면 안 된다).
             _snackCollider = _snackRoot.AddComponent<BoxCollider2D>();
             _snackCollider.isTrigger = true;
-            _snackCollider.size = new Vector2(SnackRadius * 2.4f, SnackRadius * 2.4f);
+            _snackCollider.size = new Vector2(snackRadius * 2.4f, snackRadius * 2.4f); // 반지름이 비율이라 클릭 영역도 함께 따라온다.
             _hitbox?.RegisterExtraCollider(_snackCollider);
         }
 
@@ -383,7 +485,7 @@ namespace StickMate.Interaction
         {
             if (_snackRoot == null) return;
             Vector3 pos = SnackWorldPosition();
-            pos.y += Mathf.Sin(Time.time * SnackBobSpeed) * SnackBobAmplitude; // "여기 있어" 하는 작은 부유.
+            pos.y += Mathf.Sin(Time.time * SnackBobSpeed) * SnackBobAmplitude; // "여기 있어" 하는 작은 부유(진폭은 전신 높이 비율).
             _snackRoot.transform.position = pos;
         }
 
@@ -395,10 +497,12 @@ namespace StickMate.Interaction
                 : transform.position;
             float facing = blackboard != null && blackboard.FacingSign != 0f ? Mathf.Sign(blackboard.FacingSign) : 1f;
 
-            Vector3 target = new Vector3(body.x + SnackOffsetX * facing, body.y + SnackOffsetY, 0f);
+            Vector3 target = new Vector3(body.x + SnackOffsetLocalX * facing, body.y + SnackOffsetLocalY, 0f);
 
             // 발견 지점은 화면 네 모서리라 과자가 화면 밖으로 밀려나기 쉽다 — 반드시 뷰포트 안으로
             // 끌어들인다(HardwareReactionRenderer.FollowHead()와 같은 이유이자 같은 관례).
+            // 여유가 SnackRadius 배수라 비율화의 혜택을 저절로 받는다 — 절대 유닛이었다면 배율 0.5에서
+            // 캐릭터 한 키 가까이를 화면 안쪽으로 끌어당겨 과자만 몸에서 떨어져 나갔을 것이다.
             Camera cam = blackboard != null ? blackboard.MainCamera : null;
             if (cam != null && cam.orthographic)
             {
@@ -416,12 +520,14 @@ namespace StickMate.Interaction
 
         private void SpawnFoundBurst(Vector2 center)
         {
+            float startRadius = Height * FoundBurstStartRadiusRatio;
+            float burstSpeed = Height * FoundBurstSpeedRatio;
             for (int i = 0; i < FoundBurstRays; i++)
             {
                 float angle = i / (float)FoundBurstRays * Mathf.PI * 2f;
                 var dir = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
-                SpawnStreakAt(new Vector3(center.x + dir.x * 0.22f, center.y + dir.y * 0.22f, 0f),
-                    dir * 0.42f, FoundColor, FoundBurstSeconds, worldAnchored: true);
+                SpawnStreakAt(new Vector3(center.x + dir.x * startRadius, center.y + dir.y * startRadius, 0f),
+                    dir * burstSpeed, FoundColor, FoundBurstSeconds, worldAnchored: true);
             }
         }
 
@@ -430,10 +536,13 @@ namespace StickMate.Interaction
             var blackboard = _agent != null ? _agent.Blackboard : null;
             if (blackboard == null || blackboard.Body == null) return;
             Vector3 body = blackboard.Body.position;
+            float spreadX = Height * ReconcileSpreadXRatio;
+            float baseY = Height * ReconcileBaseYRatio;
+            float spreadY = Height * ReconcileSpreadYRatio;
             for (int i = 0; i < 5; i++)
             {
-                SpawnRing(new Vector2(body.x + Random.Range(-0.45f, 0.45f), body.y + 1.1f + Random.Range(0f, 0.5f)),
-                    ReconcileColor, 1.0f, 0.04f, 0.16f, 0.95f);
+                SpawnRing(new Vector2(body.x + Random.Range(-spreadX, spreadX), body.y + baseY + Random.Range(0f, spreadY)),
+                    ReconcileColor, 1.0f, Height * ReconcileStartRadiusRatio, Height * ReconcileEndRadiusRatio, 0.95f);
             }
         }
 
@@ -442,10 +551,11 @@ namespace StickMate.Interaction
             var blackboard = _agent != null ? _agent.Blackboard : null;
             if (blackboard == null || blackboard.Body == null) return;
             Vector3 body = blackboard.Body.position;
+            float spreadX = Height * ReturnDustSpreadXRatio;
             for (int i = 0; i < 3; i++)
             {
-                SpawnRing(new Vector2(body.x + Random.Range(-0.35f, 0.35f), body.y + 0.05f),
-                    FleeColor, DustLifeSeconds * 1.4f, 0.06f, 0.42f, 0.7f);
+                SpawnRing(new Vector2(body.x + Random.Range(-spreadX, spreadX), body.y + Height * ReturnDustYRatio),
+                    FleeColor, DustLifeSeconds * 1.4f, Height * DustStartRadiusRatio, Height * ReturnDustEndRadiusRatio, 0.7f);
             }
         }
 
@@ -476,7 +586,8 @@ namespace StickMate.Interaction
         }
 
         private void SpawnStreak(Vector3 worldPos, float dirX)
-            => SpawnStreakAt(worldPos, new Vector2(dirX * 0.9f, 0f), FleeColor, SpeedLineLifeSeconds, worldAnchored: true);
+            => SpawnStreakAt(worldPos, new Vector2(dirX * (Height * SpeedLineSpeedRatio), 0f), FleeColor,
+                SpeedLineLifeSeconds, worldAnchored: true);
 
         private void SpawnStreakAt(Vector3 worldPos, Vector2 velocity, Color color, float life, bool worldAnchored)
         {
@@ -491,7 +602,8 @@ namespace StickMate.Interaction
             Vector2 unit = velocity.sqrMagnitude > 0.0001f ? velocity.normalized : Vector2.right;
             lr.positionCount = 2;
             lr.SetPosition(0, Vector3.zero);
-            lr.SetPosition(1, new Vector3(unit.x * 0.34f, unit.y * 0.34f, 0f));
+            float streakLength = Height * StreakLengthRatio;
+            lr.SetPosition(1, new Vector3(unit.x * streakLength, unit.y * streakLength, 0f));
 
             _transients.Add(new Transient
             {

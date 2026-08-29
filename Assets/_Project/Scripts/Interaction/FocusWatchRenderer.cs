@@ -46,21 +46,51 @@ namespace StickMate.Interaction
     {
         // ==================== 연출 상수 ====================
 
+        // ============================================================================
+        // ★ 2026-08-29 리더 지시 — 캐릭터 기준 치수는 전부 **전신 높이 대비 비율**이다.
+        // ============================================================================
         // 캐릭터 루트는 **발 높이**가 y=0이다(SceneBootstrapper 프리팹 지오메트리 주석 참고).
         // 링은 18절이 지정한 "발밑"이므로 발 높이 근처를 중심으로 잡는다 — 머리 위 오버레이
-        // (HardwareReactionRenderer 2.32 / StressGaugeRenderer 어깨 1.33)와 세로로 완전히 갈라진다.
-        private const float RingCenterY = 0.08f;
-        private const float RingRadius = 0.54f;
+        // (HardwareReactionRenderer의 이모트 / StressGaugeRenderer의 어깨 표시)와 세로로 완전히 갈라진다.
+        //
+        // 종전에는 이 값들이 전부 절대 월드유닛이었다. 그래서 StickConfig.characterScale이 0.5가 되면
+        // 캐릭터만 절반이 되고 **링 반지름 0.54는 그대로**라, 발밑 링이 캐릭터 키의 거의 절반을 삼켜
+        // 몸을 가로지르고 곁눈질 호는 정수리(배율 0.5에서 1.137) 훨씬 위 허공에 뜬다.
+        //
+        // 기준 치수의 유일한 조회 경로는 Core/StickmanMetrics.cs다(상수 복사가 아니라 계층 실측).
+        // 아래 비율의 분자는 검증을 마친 종전 값 그 자체, 분모는 배율 1.0 기준 신장이므로 배율 1.0에서는
+        // 지금까지와 완전히 같은 그림이 나온다.
+        //
+        // ★ 예외: 곁눈질 호의 높이(종전 GlanceY = 1.72).
+        //   그 값은 "정수리 약 1.79 바로 아래"라는 주석대로 **접지 보정(footLift) 이전 프리팹**의 머리
+        //   위치에서 옮겨 적은 것이다. 지금 프리팹의 실측 머리 중심은 2.0547 / 정수리 2.2747이므로
+        //   1.72는 배율 1.0에서조차 머리가 아니라 목 아래를 가리킨다. 그래서 이 한 값만은 비율 대신
+        //   StickmanMetrics의 머리 실측(HeadCenterLocalY / HeadRadius)에 붙인다 — 리더 지시
+        //   "머리처럼 이미 전용 멤버가 있으면 비율 계산 대신 그걸 써라".
+        private const float RingCenterYRatio = 0.08f / StickConfig.BaselineCharacterTotalHeight;
+        private const float RingRadiusRatio = 0.54f / StickConfig.BaselineCharacterTotalHeight;
         private const int RingSegments = 40;
 
-        private const float GlanceY = 1.72f;   // 머리 옆(정수리 약 1.79 바로 아래).
-        private const float GlanceX = 0.46f;
+        private const float GlanceXRatio = 0.46f / StickConfig.BaselineCharacterTotalHeight;      // 곁눈질 호의 가로 위치(머리 옆).
+        private const float GlanceArcBulgeXRatio = 0.06f / StickConfig.BaselineCharacterTotalHeight; // 호가 가로로 부푸는 폭.
+        private const float GlanceArcBulgeYRatio = 0.12f / StickConfig.BaselineCharacterTotalHeight; // 호가 세로로 부푸는 폭.
+        // 곁눈질 호는 머리 중심에서 머리 반경의 이만큼 위에 놓인다(종전 1.72 - 머리중심 1.57 = 0.15, 반경 0.22 기준).
+        private const float GlanceAboveHeadCenterRatio = 0.15f / 0.22f;
 
-        private const float TapShakeAmplitude = 0.075f;
+        private const float TapShakeAmplitudeRatio = 0.075f / StickConfig.BaselineCharacterTotalHeight;
+        private const float TapMarkInnerGapRatio = 0.08f / StickConfig.BaselineCharacterTotalHeight;  // 두드림 자국 안쪽 끝(링 바깥 여유).
+        private const float TapMarkOuterGapRatio = 0.28f / StickConfig.BaselineCharacterTotalHeight;  // 두드림 자국 바깥쪽 끝.
+        private const float StrokeWidthRatio = 0.05f / StickConfig.BaselineCharacterTotalHeight;
+
+        // ★ TapShakeSpeed는 각진동수(rad/초)라 길이 차원이 아니다 — 비율화 대상이 아니고 절대값이 맞다.
+        // 크기가 절반이 되어도 "같은 빠르기로 떠는" 것이 자연스럽다(진폭만 절반이 된다).
         private const float TapShakeSpeed = 17f;
         private const int TapMarkCount = 3;
 
-        private const float StrokeWidth = 0.05f;
+        // 머리 실측을 못 구했을 때의 폴백 비율(배율 1.0 프리팹 기준) — StickmanMetrics 자신이 쓰는 값과 같다.
+        private const float BaselineHeadCenterRatio = 2.0546944f / StickConfig.BaselineCharacterTotalHeight;
+        private const float BaselineHeadRadiusRatio = 0.22f / StickConfig.BaselineCharacterTotalHeight;
+
         private const int SortingOrder = 7;   // 캐릭터 획(0~5) 앞, 그라피티(9) 뒤.
 
         private static readonly Color TrackColor = new Color(0.42f, 0.46f, 0.52f, 0.55f);
@@ -76,6 +106,62 @@ namespace StickMate.Interaction
         private StickmanAgent _agent;
         private FocusWatchDirector _director;
         private Material _lineMaterial;
+
+        // ==================== 캐릭터 실측 치수 조회 ====================
+
+        /// <summary>캐릭터 치수의 <b>유일한</b> 조회 경로(Core/StickmanMetrics.cs). 매 프레임 쓰이는
+        /// 값이라 컴포넌트를 한 번만 찾아 캐시한다. 못 찾으면 null을 캐시하고 비율 폴백으로 떨어진다.</summary>
+        private StickmanMetrics _metrics;
+        private bool _metricsResolved;
+
+        private StickmanMetrics Metrics
+        {
+            get
+            {
+                if (_metrics != null) return _metrics;
+                if (_metricsResolved) return null;
+                _metricsResolved = true;
+                _metrics = _agent != null ? _agent.Metrics : StickmanMetrics.Find(this);
+                return _metrics;
+            }
+        }
+
+        /// <summary>이 캐릭터의 전신 높이(월드 유닛) — 위 모든 비율의 유일한 기준값.</summary>
+        private float Height
+        {
+            get
+            {
+                StickmanMetrics m = Metrics;
+                return m != null ? m.TotalHeight : StickConfig.BaselineCharacterTotalHeight;
+            }
+        }
+
+        // ==================== 테스트/진단용 배치 관찰 창구 ====================
+        // (Tests/PlayMode/RendererScaleRatioTests.cs가 배율 1.0/0.5 양쪽에서 단언한다.)
+
+        /// <summary>타이머 링의 반지름(월드 유닛).</summary>
+        public float RingRadius => Height * RingRadiusRatio;
+
+        /// <summary>링 중심의 로컬 Y(발바닥 기준) — 18절 "캐릭터 발밑".</summary>
+        public float RingCenterLocalY => Height * RingCenterYRatio;
+
+        /// <summary>곁눈질 호의 로컬 Y(발바닥 기준) — 머리 실측(중심 + 반경 비율)에 붙는다.</summary>
+        public float GlanceLocalY
+        {
+            get
+            {
+                StickmanMetrics m = Metrics;
+                float headCenter = m != null ? m.HeadCenterLocalY : Height * BaselineHeadCenterRatio;
+                float headRadius = m != null ? m.HeadRadius : Height * BaselineHeadRadiusRatio;
+                return headCenter + headRadius * GlanceAboveHeadCenterRatio;
+            }
+        }
+
+        /// <summary>획 두께(월드 유닛).</summary>
+        public float StrokeWidth => Height * StrokeWidthRatio;
+
+        private float GlanceX => Height * GlanceXRatio;
+        private float TapShakeAmplitude => Height * TapShakeAmplitudeRatio;
 
         private GameObject _container;
         private LineRenderer _arc;
@@ -174,8 +260,9 @@ namespace StickMate.Interaction
                 // 3단계 "살짝 화면 흔들림" — **이 오버레이만** 떤다(캐릭터 레이어 국소 효과, 18절).
                 // 실제 창/화면을 흔드는 코드는 이 경로에 존재하지 않는다.
                 float shake = Mathf.Sin(_tierTimer * TapShakeSpeed);
-                center.x += shake * TapShakeAmplitude;
-                center.y += Mathf.Cos(_tierTimer * TapShakeSpeed * 1.3f) * TapShakeAmplitude * 0.6f;
+                float amplitude = TapShakeAmplitude; // 전신 높이 비율 — 캐릭터가 절반이면 떨림 폭도 절반.
+                center.x += shake * amplitude;
+                center.y += Mathf.Cos(_tierTimer * TapShakeSpeed * 1.3f) * amplitude * 0.6f;
             }
             _container.transform.position = center;
 
@@ -203,7 +290,8 @@ namespace StickMate.Interaction
 
             RebuildTierVisuals();
 
-            Debug.Log($"[포모도로] 타이머 링 생성 — 캐릭터 발밑(y+{RingCenterY:F2}) 반지름 {RingRadius:F2}유닛, " +
+            Debug.Log($"[포모도로] 타이머 링 생성 — 캐릭터 발밑(y+{RingCenterLocalY:F2}) 반지름 {RingRadius:F2}유닛" +
+                $"(전신 {Height:F2}유닛 기준 비율), " +
                 $"남은 시간 {_director.RemainingSeconds:F0}초 / 총 {_director.SessionDurationSeconds:F0}초, " +
                 $"시각 오브젝트 {ActiveVisualCount}개, 콜라이더 {ActiveColliderCount}개(항상 0).");
         }
@@ -245,7 +333,10 @@ namespace StickMate.Interaction
             {
                 // 머리 옆 곁눈질 호 2개("말없이 곁눈질하는 표정 변화만" — 18절 1단계).
                 // 링 컨테이너 기준 좌표라 y는 링 중심에서 머리 옆까지의 상대 높이다.
-                float relY = GlanceY - RingCenterY;
+                float relY = GlanceLocalY - RingCenterLocalY;
+                float glanceX = GlanceX;
+                float bulgeX = Height * GlanceArcBulgeXRatio;
+                float bulgeY = Height * GlanceArcBulgeYRatio;
                 for (int side = -1; side <= 1; side += 2)
                 {
                     var pts = new Vector3[5];
@@ -253,8 +344,8 @@ namespace StickMate.Interaction
                     {
                         float t = i / (float)(pts.Length - 1);
                         float a = Mathf.Lerp(-50f, 50f, t) * Mathf.Deg2Rad;
-                        pts[i] = new Vector3(GlanceX * side + Mathf.Sin(a) * 0.06f * side,
-                            relY + Mathf.Cos(a) * 0.12f - 0.12f, 0f);
+                        pts[i] = new Vector3(glanceX * side + Mathf.Sin(a) * bulgeX * side,
+                            relY + Mathf.Cos(a) * bulgeY - bulgeY, 0f);
                     }
                     _glanceLines.Add(CreateLine(side < 0 ? "GlanceL" : "GlanceR", pts, GlanceColor, StrokeWidth * 0.8f, loop: false));
                 }
@@ -263,11 +354,14 @@ namespace StickMate.Interaction
             if (_tier == FocusWatchTier.WindowTap)
             {
                 // 링을 두드린 자국 — 링 바깥 위쪽에 짧은 선 3개.
+                float ringRadius = RingRadius;
+                float innerR = ringRadius + Height * TapMarkInnerGapRatio;
+                float outerR = ringRadius + Height * TapMarkOuterGapRatio;
                 for (int i = 0; i < TapMarkCount; i++)
                 {
                     float angle = (60f + i * 30f) * Mathf.Deg2Rad;
-                    var inner = new Vector3(Mathf.Cos(angle) * (RingRadius + 0.08f), Mathf.Sin(angle) * (RingRadius + 0.08f), 0f);
-                    var outer = new Vector3(Mathf.Cos(angle) * (RingRadius + 0.28f), Mathf.Sin(angle) * (RingRadius + 0.28f), 0f);
+                    var inner = new Vector3(Mathf.Cos(angle) * innerR, Mathf.Sin(angle) * innerR, 0f);
+                    var outer = new Vector3(Mathf.Cos(angle) * outerR, Mathf.Sin(angle) * outerR, 0f);
                     _tapLines.Add(CreateLine($"TapMark{i}", new[] { inner, outer }, TapColor, StrokeWidth, loop: false));
                 }
             }
@@ -296,11 +390,13 @@ namespace StickMate.Interaction
             Vector3 body = blackboard != null && blackboard.Body != null
                 ? (Vector3)blackboard.Body.position
                 : transform.position;
-            Vector3 target = new Vector3(body.x, body.y + RingCenterY, 0f);
+            Vector3 target = new Vector3(body.x, body.y + RingCenterLocalY, 0f);
 
             // 링이 화면 밖으로 잘려 나가지 않게 뷰포트 안으로 클램프한다 — 캐릭터는 창 상단 테두리에
             // 서 있는 시간이 길고 화면 최하단 안전망에 서 있을 때도 있어서, 링 반지름만큼은 반드시
             // 여유를 둬야 한다(HardwareReactionRenderer.FollowHead()에서 실측으로 배운 교훈).
+            // 여유가 RingRadius 배수라 비율화의 혜택을 저절로 받는다 — 절대 유닛으로 적혀 있었다면
+            // 배율 0.5에서 캐릭터 한 키 가까이를 화면 안쪽으로 끌어당겨 링만 몸에서 떨어져 나갔을 것이다.
             Camera cam = blackboard != null ? blackboard.MainCamera : null;
             if (cam != null && cam.orthographic)
             {

@@ -37,15 +37,36 @@ namespace StickMate.Interaction
         private const float UnfoldSeconds = 0.22f;  // 주머니에서 꺼내 펴는 시간.
         private const float FoldSeconds = 0.20f;    // 다시 접어 넣는 시간.
 
-        // 캐릭터 루트는 **발 높이**가 y=0이다(SceneBootstrapper 프리팹 지오메트리: 몸통 0.45~1.35,
-        // 정수리 약 1.79). 손은 몸통 중간~아래이므로 종이는 가슴 높이 언저리에 든다.
-        private const float PaperOffsetX = 0.66f;
-        private const float PaperOffsetY = 1.02f;
-        private const float PaperHalfW = 0.24f;
-        private const float PaperHalfH = 0.30f;
+        // ============================================================================
+        // ★ 2026-08-29 리더 지시 — 캐릭터 기준 치수는 전부 **전신 높이 대비 비율**이다.
+        // ============================================================================
+        // 캐릭터 루트는 **발 높이**가 y=0이고, 손은 몸통 중간~아래이므로 종이는 가슴 높이 언저리에 든다.
+        // 종전에는 이 값들이 전부 절대 월드유닛이었다. StickConfig.characterScale이 0.5가 되면 캐릭터만
+        // 절반이 되고 종이(반폭 0.24 / 반높이 0.30, 오프셋 y+1.02)는 그대로라, 종이가 **정수리
+        // (배율 0.5에서 1.137) 언저리 허공에 몸통만 한 크기로** 떠 있게 된다 — "손에 들고 있는 것처럼
+        // 보인다"는 이 연출의 전제가 통째로 깨진다.
+        //
+        // 기준 치수의 유일한 조회 경로는 Core/StickmanMetrics.cs다(상수 복사가 아니라 계층 실측).
+        // 분자는 검증을 마친 종전 값 그 자체, 분모는 배율 1.0 기준 신장이므로 배율 1.0에서는 지금까지와
+        // 완전히 같은 그림이 나온다(= 회귀 없음의 증거).
+        //
+        // ★ 시간 상수(UnfoldSeconds/FoldSeconds)와 흔들림 각진동수는 길이 차원이 아니라 그대로 둔다.
+        //   이 연출에는 길이/초 차원의 속도가 없다(종이는 캐릭터를 따라다닐 뿐 스스로 이동하지 않는다).
+        private const float PaperOffsetXRatio = 0.66f / StickConfig.BaselineCharacterTotalHeight;
+        private const float PaperOffsetYRatio = 1.02f / StickConfig.BaselineCharacterTotalHeight;
+        private const float PaperHalfWRatio = 0.24f / StickConfig.BaselineCharacterTotalHeight;
+        private const float PaperHalfHRatio = 0.30f / StickConfig.BaselineCharacterTotalHeight;
         private const int PaperTextLines = 3;
 
-        private const float StrokeWidth = 0.045f;
+        // 종이 안쪽 디테일(접힌 모서리 / 글자 줄)은 **종이 크기 대비 비율**이라 종이와 함께 저절로
+        // 따라온다 — 종전 절대값(0.10 / 0.11 / 0.07)을 배율 1.0 종이 반폭 0.24, 반높이 0.30으로 나눈 값이다.
+        private const float PaperFoldCornerOfHalfW = 0.10f / 0.24f;
+        private const float PaperFoldCornerOfHalfH = 0.10f / 0.30f;
+        private const float PaperTextTopInsetOfHalfH = 0.11f / 0.30f;
+        private const float PaperTextLineStepOfHalfH = 0.11f / 0.30f;
+        private const float PaperTextLeftInsetOfHalfW = 0.07f / 0.24f;
+
+        private const float StrokeWidthRatio = 0.045f / StickConfig.BaselineCharacterTotalHeight;
         private const int SortingOrder = 7; // 캐릭터 획(0~5) 앞 = 손에 들고 있는 것처럼 보인다.
 
         private static readonly Color PaperColor = new Color(0.30f, 0.33f, 0.38f, 1f);
@@ -60,6 +81,53 @@ namespace StickMate.Interaction
         /// </summary>
         private StickmanAgent _agent;
         private Material _lineMaterial;
+
+        // ==================== 캐릭터 실측 치수 조회 ====================
+
+        /// <summary>캐릭터 치수의 <b>유일한</b> 조회 경로(Core/StickmanMetrics.cs). 매 프레임 쓰이는
+        /// 값이라 컴포넌트를 한 번만 찾아 캐시한다. 못 찾으면 null을 캐시하고 비율 폴백으로 떨어진다.</summary>
+        private StickmanMetrics _metrics;
+        private bool _metricsResolved;
+
+        private StickmanMetrics Metrics
+        {
+            get
+            {
+                if (_metrics != null) return _metrics;
+                if (_metricsResolved) return null;
+                _metricsResolved = true;
+                _metrics = _agent != null ? _agent.Metrics : StickmanMetrics.Find(this);
+                return _metrics;
+            }
+        }
+
+        /// <summary>이 캐릭터의 전신 높이(월드 유닛) — 위 모든 비율의 유일한 기준값.</summary>
+        private float Height
+        {
+            get
+            {
+                StickmanMetrics m = Metrics;
+                return m != null ? m.TotalHeight : StickConfig.BaselineCharacterTotalHeight;
+            }
+        }
+
+        // ==================== 테스트/진단용 배치 관찰 창구 ====================
+        // (Tests/PlayMode/RendererScaleRatioTests.cs가 배율 1.0/0.5 양쪽에서 단언한다.)
+
+        /// <summary>종이가 놓이는 로컬 X(발바닥 기준, 바라보는 방향 부호를 곱하기 전).</summary>
+        public float PaperOffsetLocalX => Height * PaperOffsetXRatio;
+
+        /// <summary>종이가 놓이는 로컬 Y(발바닥 기준) — 가슴 높이 언저리.</summary>
+        public float PaperOffsetLocalY => Height * PaperOffsetYRatio;
+
+        /// <summary>종이의 반폭(월드 유닛).</summary>
+        public float PaperHalfWidth => Height * PaperHalfWRatio;
+
+        /// <summary>종이의 반높이(월드 유닛).</summary>
+        public float PaperHalfHeight => Height * PaperHalfHRatio;
+
+        /// <summary>획 두께(월드 유닛).</summary>
+        public float StrokeWidth => Height * StrokeWidthRatio;
 
         private GameObject _container;
         private readonly List<LineRenderer> _lines = new List<LineRenderer>(6);
@@ -136,36 +204,44 @@ namespace StickMate.Interaction
             _container.transform.SetParent(null, false);
             _container.transform.position = PaperWorldPosition();
 
-            // 종이 테두리.
+            // 종이 테두리. 아래 지역 변수는 전부 전신 높이 비율에서 나온 값이다(위 비율 상수 블록 참고).
+            float halfW = PaperHalfWidth;
+            float halfH = PaperHalfHeight;
+            float stroke = StrokeWidth;
             _lines.Add(CreateLine("PaperSheet", new[]
             {
-                new Vector3(-PaperHalfW, -PaperHalfH, 0f),
-                new Vector3(PaperHalfW, -PaperHalfH, 0f),
-                new Vector3(PaperHalfW, PaperHalfH, 0f),
-                new Vector3(-PaperHalfW, PaperHalfH, 0f),
-            }, PaperColor, StrokeWidth, loop: true));
+                new Vector3(-halfW, -halfH, 0f),
+                new Vector3(halfW, -halfH, 0f),
+                new Vector3(halfW, halfH, 0f),
+                new Vector3(-halfW, halfH, 0f),
+            }, PaperColor, stroke, loop: true));
 
             // 오른쪽 위 접힌 모서리 — 사각형 하나만 있으면 "종이"로 읽히지 않는다.
+            float foldW = halfW * PaperFoldCornerOfHalfW;
+            float foldH = halfH * PaperFoldCornerOfHalfH;
             _lines.Add(CreateLine("PaperFold", new[]
             {
-                new Vector3(PaperHalfW - 0.10f, PaperHalfH, 0f),
-                new Vector3(PaperHalfW - 0.10f, PaperHalfH - 0.10f, 0f),
-                new Vector3(PaperHalfW, PaperHalfH - 0.10f, 0f),
-            }, PaperColor, StrokeWidth * 0.85f, loop: false));
+                new Vector3(halfW - foldW, halfH, 0f),
+                new Vector3(halfW - foldW, halfH - foldH, 0f),
+                new Vector3(halfW, halfH - foldH, 0f),
+            }, PaperColor, stroke * 0.85f, loop: false));
 
             // "글자" 흉내 3줄. 진짜 텍스트는 말풍선이 그린다(클래스 문서 "역할 분담" 참고).
             // 남은 할일 개수에 따라 줄 길이만 살짝 달라져 "뭔가 적혀 있다"는 느낌을 준다.
             int remaining = Mathf.Max(1, TodoListModel.UncompletedCount);
+            float textTopInset = halfH * PaperTextTopInsetOfHalfH;
+            float textStep = halfH * PaperTextLineStepOfHalfH;
+            float textLeftInset = halfW * PaperTextLeftInsetOfHalfW;
             for (int i = 0; i < PaperTextLines; i++)
             {
-                float y = PaperHalfH - 0.11f - i * 0.11f;
-                float len = PaperHalfW * (i == PaperTextLines - 1 ? 0.85f : 1.45f)
+                float y = halfH - textTopInset - i * textStep;
+                float len = halfW * (i == PaperTextLines - 1 ? 0.85f : 1.45f)
                     * (i == 0 ? 1f : Mathf.Clamp01(0.55f + 0.15f * remaining));
                 _lines.Add(CreateLine($"PaperTextLine{i}", new[]
                 {
-                    new Vector3(-PaperHalfW + 0.07f, y, 0f),
-                    new Vector3(-PaperHalfW + 0.07f + len, y, 0f),
-                }, PaperTextColor, StrokeWidth * 0.7f, loop: false));
+                    new Vector3(-halfW + textLeftInset, y, 0f),
+                    new Vector3(-halfW + textLeftInset + len, y, 0f),
+                }, PaperTextColor, stroke * 0.7f, loop: false));
             }
 
             _mode = Mode.Unfolding;
@@ -238,14 +314,18 @@ namespace StickMate.Interaction
             // 종이를 든 방향은 꺼낸 순간의 방향으로 고정한다 — 들고 있는 동안 캐릭터가 방향을 바꿔도
             // 종이가 몸을 관통해 반대편으로 순간이동하면 안 된다(이 프로젝트 사용자가 순간이동성
             // 아티팩트에 반복적으로 민감했다는 이력, process.md 참고).
-            Vector3 target = new Vector3(body.x + PaperOffsetX * _facingAtSpawn, body.y + PaperOffsetY, 0f);
+            Vector3 target = new Vector3(body.x + PaperOffsetLocalX * _facingAtSpawn, body.y + PaperOffsetLocalY, 0f);
 
+            // 종이가 화면 밖으로 잘려 나가지 않게 뷰포트 안으로 클램프한다 — 캐릭터는 창 상단 테두리나
+            // Dock 위에 서 있는 시간이 길다(HardwareReactionRenderer.FollowHead()와 같은 이유이자 같은
+            // 관례). 여유가 종이 크기 배수라 비율화의 혜택을 저절로 받는다 — 절대 유닛이었다면 배율
+            // 0.5에서 캐릭터 키의 40%가 넘는 값을 화면 안쪽으로 끌어당겨 종이만 몸에서 떨어져 나갔을 것이다.
             Camera cam = blackboard != null ? blackboard.MainCamera : null;
             if (cam != null && cam.orthographic)
             {
                 float halfH = cam.orthographicSize;
                 float halfW = halfH * cam.aspect;
-                float margin = Mathf.Max(PaperHalfW, PaperHalfH) * 1.6f;
+                float margin = Mathf.Max(PaperHalfWidth, PaperHalfHeight) * 1.6f;
                 Vector3 camPos = cam.transform.position;
                 target.x = Mathf.Clamp(target.x, camPos.x - halfW + margin, camPos.x + halfW - margin);
                 target.y = Mathf.Clamp(target.y, camPos.y - halfH + margin, camPos.y + halfH - margin);
