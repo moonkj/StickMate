@@ -227,8 +227,14 @@ namespace StickMate.Platform
                 return false;
             }
 
+            // Input.mousePosition은 Unity 스크린 좌표(좌하단 원점, **Unity 픽셀**)이고, 이 인터페이스가
+            // 약속하는 반환값은 OS 데스크톱 좌표(좌상단 원점, **OS 포인트**)다. 고DPI에서 두 단위가
+            // 다르므로 ScreenCoordinateConverter가 쓰는 것과 **같은 배율**을 곱해 맞춘다(2026-08-29
+            // Retina 대응 라운드). 이 서비스가 실제로 쓰이는 에디터 환경은 배율이 1이라 값이 바뀌지
+            // 않지만, 배율 정의를 한 곳에서만 해석한다는 컨벤션(BUG-M5)에 맞춰 식을 통일해 둔다.
+            float dpi = Mathf.Max(0.0001f, ScreenCoordinateConverter.ResolveDpiScale(null));
             Vector3 mouse = Input.mousePosition;
-            osScreenPosition = new Vector2(mouse.x, Screen.height - mouse.y);
+            osScreenPosition = new Vector2(mouse.x * dpi, (Screen.height - mouse.y) * dpi);
             return true;
         }
 

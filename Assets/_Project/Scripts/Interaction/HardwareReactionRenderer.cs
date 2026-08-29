@@ -78,6 +78,17 @@ namespace StickMate.Interaction
         private const int SparkleMaxAlive = 4;
         private const float DropletFallSeconds = 0.9f;
 
+        // ★ 2026-08-29 비율화 누락분 보강 — 위 배치 상수는 전부 전신 높이 대비 비율로 옮겼는데,
+        // 땀방울/반짝임의 **이동 속도**만 절대 유닛(월드/초)으로 남아 있었다. 속도가 절대값이면
+        // 캐릭터가 작아질수록 같은 수명 동안 몸 길이 대비 더 멀리 이동한다 — 배율 1.0에서 땀방울은
+        // 전신 높이의 0.25배만 떨어지지만 배율 0.5에서는 0.49배(가슴~허리 높이까지)를 떨어져,
+        // 사용자가 신고한 "눈같이 내리는" 알갱이가 캐릭터 쪽으로 더 깊이 파고든다.
+        // 종전 검증값(0.55 / 0.62 / 0.08)을 당시 기준 높이 2.27로 나눠 비율로 환산했으므로,
+        // 배율 1.0에서는 지금까지와 완전히 같은 움직임이 그대로 나온다.
+        private const float SparkleRiseSpeedRatio = 0.2423f; // 충전 반짝임 상승(0.55 / 2.27).
+        private const float DropletFallSpeedRatio = 0.2731f; // 땀방울 낙하(0.62 / 2.27).
+        private const float DropletDriftSpeedRatio = 0.0352f; // 땀방울 좌우 흔들림 최대(0.08 / 2.27).
+
         private static readonly Color BatteryColor = new Color(0.93f, 0.35f, 0.28f, 1f); // 거의 빈 배터리 = 경고 계열.
         private static readonly Color HeatColor = new Color(0.98f, 0.55f, 0.16f, 1f);
         private static readonly Color SweatColor = new Color(0.36f, 0.68f, 0.96f, 1f);
@@ -534,7 +545,11 @@ namespace StickMate.Interaction
                 Line = lr,
                 Age = 0f,
                 Life = charging ? SparkleLifeSeconds : DropletFallSeconds,
-                Velocity = charging ? new Vector2(0f, 0.55f) : new Vector2(Random.Range(-0.08f, 0.08f), -0.62f),
+                // 절대 유닛이 아니라 전신 높이 비율 — 위 SparkleRiseSpeedRatio 주석의 근거 참고.
+                Velocity = charging
+                    ? new Vector2(0f, Height * SparkleRiseSpeedRatio)
+                    : new Vector2(Random.Range(-1f, 1f) * Height * DropletDriftSpeedRatio,
+                                  -Height * DropletFallSpeedRatio),
             });
         }
 

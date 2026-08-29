@@ -407,62 +407,49 @@ namespace StickMate.Platform.MacOS
         }
 
         /// <summary>
-        /// BUG-P1-R5-B3 조사 대응(Architect 실측 진단, 2026-08-28) — 이 클래스가 CoreGraphics로 읽는 실제
-        /// OS 창 좌표(AppKit "포인트" 단위)와 Unity `Screen.width`/`height`/`WorldToScreenPoint`(Retina
-        /// 화면에서는 실제 백킹 픽셀 단위, 포인트의 backingScaleFactor배)가 서로 다른 단위를 쓰는 문제를
-        /// 보정하기 위해, 네이티브 플러그인으로 실제 화면의 `backingScaleFactor`를 조회해
-        /// `Platform/ScreenCoordinateConverter.cs`가 기대하는 `StickConfig.desktopDpiScale`(그 필드
-        /// 문서의 "Unity 픽셀 -> OS 픽셀 배율" 정의 그대로) 값으로 환산해 반환한다. 배율은 역수(1/backing)
-        /// 다 — Unity 쪽이 OS(AppKit 포인트) 쪽보다 backingScaleFactor배 더 큰 숫자를 보고하므로, 그
-        /// 값을 곱해 OS 단위로 줄이려면 1/backingScaleFactor를 곱해야 한다(예: Retina 2x면 0.5).
-        /// 창을 못 찾거나 배율이 비정상(0 이하)이면 안전한 기본값 1(배율 없음)을 반환한다 — 조용히
-        /// 잘못된 배율을 적용하는 것보다, "보정 없음"으로 안전하게 폴백하는 편이 기존 컨벤션과 일치한다.
-        /// 호출자(StickmanAgent.CreatePlatformService())가 이 값을 `StickConfig.desktopDpiScale`에
-        /// 1회 적용한다 — 씬 에셋(ScriptableObject) 파일 자체를 수정하는 것이 아니라 실행 중인 빌드의
-        /// 메모리상 인스턴스 값만 갱신하므로, 다음 실행 때는 다시 이 메서드가 그 화면 기준으로 재계산한다.
+        /// 화면 배율(Unity 픽셀 ↔ OS 포인트)을 실측해 <see cref="ScreenCoordinateConverter"/>에 반영하고,
+        /// 호출자가 <c>StickConfig.desktopDpiScale</c>에 대입할 값으로 **0(= "자동")** 을 돌려준다.
+        ///
+        /// ============================================================================
+        /// 반환값이 왜 배율이 아니라 0인가 (2026-08-29 Retina 대응 라운드, 리더 지시 2항)
+        /// ============================================================================
+        /// 이 라운드에서 배율의 단일 소스가 `StickConfig`(에셋 필드)에서 `ScreenCoordinateConverter`
+        /// (런타임 실측)로 옮겨졌고, `StickConfig.desktopDpiScale`의 의미는 "배율 값"이 아니라
+        /// **"자동 산출을 덮어쓰는 수동 오버라이드(0 이하 = 자동)"** 로 바뀌었다.
+        ///
+        /// 그래서 여기서 측정한 값을 그대로 반환해 호출자가 그 필드에 넣게 두면, 시작 시점의 배율이
+        /// 수동 오버라이드로 **박제**되어 이후 <see cref="CaptureOverlayOrigin"/>의 매 폴링 재측정이
+        /// 통째로 무시된다. 그 재측정은 이 앱에서 실제로 필요하다 — MacOverlayStateEnforcer가 시작 직후
+        /// `Screen.SetResolution`으로 창을 화면 전체로 넓히고, 사용자가 창을 다른 배율의 모니터로 옮길
+        /// 수도 있다. 그래서 측정 결과는 컨버터에 **직접** 넣고, 필드에는 "자동"을 뜻하는 0을 준다.
+        ///
+        /// ★ Player.log를 읽는 사람에게: 이 로그 바로 뒤에 찍히는
+        ///   `[StickmanAgent] ... desktopDpiScale=0.000로 설정` 은 **정상**이며 "수동 오버라이드 없음
+        ///   (= 자동)"을 뜻한다. 실제로 쓰이는 배율은 아래 이 로그가 찍는 값이다.
+        ///
+        /// 측정 방법(1순위): 우리 창의 실제 폭(kCGWindowBounds, OS 포인트)을 같은 순간의
+        /// Screen.width(Unity 픽셀)로 나눈다. 창 열거는 UniWindowController의 부착 여부와 무관하게
+        /// Unity가 자기 NSWindow를 만든 직후부터 성공하므로(실측 확인 — Start() 시점에 이미 자기 창이
+        /// 조회된다), 이전 라운드가 겪었던 "부착 전이라 clientSize=(0,0)" 함정에 걸리지 않는다.
+        /// 겸사겸사 오버레이 원점도 같은 관측에서 함께 반영돼 첫 프레임부터 좌표 변환이 정확해진다.
+        ///
+        /// 2순위(자기 창을 못 찾은 경우): 디스플레이의 backingScaleFactor(CGDisplayModeGetPixelWidth /
+        /// CGDisplayModeGetWidth)의 역수. `macRetinaSupport`가 켜져 있는 지금은 이 값이 1순위와 일치하지만
+        /// (Unity가 백킹 픽셀을 보고하므로), 그 설정이 다시 꺼지면 어긋난다 — 그래서 어디까지나 폴백이고
+        /// 경고를 남긴다. 둘 다 실패하면 아무것도 건드리지 않는다(컨버터의 직전 값/기본값 1 유지).
         /// </summary>
         public float DetectDesktopDpiScale()
         {
-            // 자체 플러그인의 SM_GetMainWindowBackingScaleFactor()(NSWindow.backingScaleFactor)를 대체하는
-            // 순수 CoreGraphics 구현(UniWindowController 도입 라운드, 2026-08-28).
-            //
-            // 왜 UniWindowController.clientSize를 쓰지 않는가 — 실측으로 확인한 함정: 이 메서드는
-            // StickmanAgent.Start()에서 호출되는데 그 시점에는 UniWindowController가 아직 자기 NSWindow를
-            // 붙잡기 전이라(부착은 첫 Update()에서 일어난다) clientSize가 (0,0)으로 나온다. 실제로 처음
-            // 그렇게 구현했다가 Player.log에 desktopDpiScale=1.000(= 보정 없음)이 찍히는 것을 실측으로
-            // 확인했다. 그래서 창이 아니라 "디스플레이" 자체의 배율을 조회하는 방식으로 바꿨다 — 이쪽은
-            // 창 부착 여부와 무관하게 항상 즉시 정확한 값을 준다.
-            //
-            // CGDisplayModeGetWidth = 포인트 폭, CGDisplayModeGetPixelWidth = 백킹 픽셀 폭이므로
-            // backingScaleFactor = pixelWidth / pointWidth이고, 이 메서드가 반환해야 하는
-            // StickConfig.desktopDpiScale("Unity 픽셀 -> OS 픽셀 배율")은 그 역수다(Retina 2x면 0.5).
-            // 조회 실패/비정상 값이면 안전한 기본값 1(보정 없음)로 폴백한다.
-            // ========================================================================
-            // 1순위 — **직접 측정**(드래그&던지기 배선 라운드, 2026-08-28에 실측으로 교체)
-            // ========================================================================
-            // ScreenCoordinateConverter가 실제로 필요로 하는 값은 "디스플레이의 백킹 배율"이 아니라
-            // **`Unity가 보고하는 1픽셀`이 `OS 좌표계의 몇 단위`인가**다. 그 둘은 항상 같지 않다:
-            // 이 프로젝트는 ProjectSettings의 `macRetinaSupport: 0`이라 Unity가 Retina 백킹 픽셀이 아니라
-            // 포인트 단위로 렌더/보고한다. 실측 로그(2026-08-28):
-            //     디스플레이 backingScaleFactor = 2.000  ->  기존 식의 결과 desktopDpiScale = 0.500
-            //     그러나 실제로는 Screen=(1512x846) == 우리 창 크기(1512x846 pt) == 배율 1.000
-            // 즉 기존 식은 **정확히 2배 틀린 값**을 주고 있었고, 그 결과 커서 좌표(CGEventGetLocation,
-            // 진짜 OS 포인트)를 월드로 되돌릴 때 좌표가 2배로 어긋났다(드래그 추종/로데오 도달 판정/
-            // 실제 창 위 착지가 전부 이 오차를 공유한다).
-            //
-            // 그래서 우리 창의 실제 폭(kCGWindowBounds, OS 포인트)을 Screen.width(Unity 픽셀)로 나눠
-            // 그 비율을 직접 측정한다. 창 열거는 UniWindowController의 부착 여부와 무관하게 Unity가
-            // 자기 NSWindow를 만든 직후부터 성공하므로(실측 확인 — Start() 시점에 이미 자기 창이
-            // 조회된다), 이전 라운드가 겪었던 "부착 전이라 clientSize=(0,0)" 함정에도 걸리지 않는다.
-            // 겸사겸사 오버레이 원점도 여기서 즉시 반영해 첫 프레임부터 좌표 변환이 정확해진다.
             if (TryGetSelfWindowRect(out Rect selfRect) && Screen.width > 0 && selfRect.width > 0f)
             {
-                ScreenCoordinateConverter.OverlayOriginOsScreen = selfRect.position;
-                float measured = selfRect.width / Screen.width;
+                ScreenCoordinateConverter.ReportOverlayWindowOsRect(selfRect);
                 Debug.Log($"[MacWindowService] DetectDesktopDpiScale(): 자기 창 실측 — 창={selfRect}, " +
-                    $"Screen=({Screen.width}x{Screen.height}) -> desktopDpiScale={measured:F3} " +
-                    "(창 폭[OS 포인트] / Screen.width[Unity 픽셀]). 오버레이 원점도 함께 반영했습니다.");
-                return measured;
+                    $"Screen=({Screen.width}x{Screen.height}) -> 자동 배율 {ScreenCoordinateConverter.AutoDpiScale:F3} " +
+                    "(창 폭[OS 포인트] / Screen.width[Unity 픽셀])를 ScreenCoordinateConverter에 반영했습니다" +
+                    "(오버레이 원점도 같은 관측에서 함께 반영). " +
+                    "반환값 0 = '수동 오버라이드 없음(자동)' — 바로 뒤의 [StickmanAgent] 로그가 " +
+                    "desktopDpiScale=0.000으로 찍히는 것은 정상입니다.");
+                return 0f;
             }
 
             Debug.LogWarning("[MacWindowService] DetectDesktopDpiScale(): 자기 창을 찾지 못해 디스플레이 " +
@@ -471,29 +458,25 @@ namespace StickMate.Platform.MacOS
             IntPtr mode = CGDisplayCopyDisplayMode(CGMainDisplayID());
             if (mode == IntPtr.Zero)
             {
-                Debug.LogWarning("[MacWindowService] DetectDesktopDpiScale(): CGDisplayCopyDisplayMode 실패 — 배율 보정 없이 1을 사용합니다.");
-                return 1f;
+                Debug.LogWarning("[MacWindowService] DetectDesktopDpiScale(): CGDisplayCopyDisplayMode 실패 — " +
+                    "배율을 갱신하지 않고 ScreenCoordinateConverter의 현재 값을 그대로 둡니다.");
+                return 0f;
             }
 
             try
             {
                 double pointWidth = (double)(ulong)CGDisplayModeGetWidth(mode);
                 double pixelWidth = (double)(ulong)CGDisplayModeGetPixelWidth(mode);
-                if (pointWidth <= 0.0 || pixelWidth <= 0.0)
-                {
-                    return 1f;
-                }
+                if (pointWidth <= 0.0 || pixelWidth <= 0.0) return 0f;
 
                 double backingScaleFactor = pixelWidth / pointWidth;
-                if (backingScaleFactor <= 0.0)
-                {
-                    return 1f;
-                }
+                if (backingScaleFactor <= 0.0) return 0f;
 
                 float scale = (float)(1.0 / backingScaleFactor);
+                ScreenCoordinateConverter.AutoDpiScale = scale;
                 Debug.Log($"[MacWindowService] DetectDesktopDpiScale(): 디스플레이 포인트폭={pointWidth}, " +
-                    $"백킹픽셀폭={pixelWidth}, backingScaleFactor={backingScaleFactor:F3} -> desktopDpiScale={scale:F3}.");
-                return scale;
+                    $"백킹픽셀폭={pixelWidth}, backingScaleFactor={backingScaleFactor:F3} -> 자동 배율 {scale:F3}(폴백).");
+                return 0f;
             }
             finally
             {
@@ -1352,15 +1335,25 @@ namespace StickMate.Platform.MacOS
             if (area < _overlayOriginPassArea) return;
             _overlayOriginPassArea = area;
 
-            var origin = new Vector2((float)rect.Origin.X, (float)rect.Origin.Y);
-            if (!_overlayOriginLogged || Vector2.Distance(origin, ScreenCoordinateConverter.OverlayOriginOsScreen) > 0.5f)
+            var osRect = new Rect((float)rect.Origin.X, (float)rect.Origin.Y,
+                (float)rect.Size.Width, (float)rect.Size.Height);
+            bool originMoved = Vector2.Distance(osRect.position, ScreenCoordinateConverter.OverlayOriginOsScreen) > 0.5f;
+
+            // ★ 원점과 DPI 배율을 **한 번의 관측**으로 함께 보고한다(2026-08-29 Retina 대응 라운드).
+            // 배율 = 창 폭(OS 포인트) / Screen.width(Unity 픽셀). 폴링마다 재측정되므로 창이 리사이즈되거나
+            // 다른 배율의 모니터로 옮겨져도 자동으로 따라간다 — 하드코딩 0.5가 아닌 이유가 이것이다.
+            ScreenCoordinateConverter.ReportOverlayWindowOsRect(osRect);
+
+            if (!_overlayOriginLogged || originMoved
+                || Mathf.Abs(ScreenCoordinateConverter.AutoDpiScale - _lastLoggedDpiScale) > 0.01f)
             {
                 _overlayOriginLogged = true;
-                Debug.Log($"[MacWindowService] 오버레이 창 원점(Quartz 좌표) 갱신 — origin={origin}, " +
-                    $"size=({rect.Size.Width}x{rect.Size.Height}), Screen=({Screen.width}x{Screen.height}). " +
-                    "이 값이 커서<->월드 변환의 세로 오프셋 보정에 쓰입니다(ScreenCoordinateConverter.OverlayOriginOsScreen).");
+                _lastLoggedDpiScale = ScreenCoordinateConverter.AutoDpiScale;
+                Debug.Log($"[MacWindowService] 오버레이 창 원점/배율(Quartz 좌표) 갱신 — origin={osRect.position}, " +
+                    $"size=({rect.Size.Width}x{rect.Size.Height}), Screen=({Screen.width}x{Screen.height}) " +
+                    $"-> desktopDpiScale(자동)={ScreenCoordinateConverter.AutoDpiScale:F3}. " +
+                    "이 두 값이 커서<->월드 변환의 오프셋/배율 보정에 쓰입니다(ScreenCoordinateConverter).");
             }
-            ScreenCoordinateConverter.OverlayOriginOsScreen = origin;
         }
 
         // ============================================================================
@@ -1444,6 +1437,8 @@ namespace StickMate.Platform.MacOS
         // CaptureOverlayOrigin()이 한 열거 패스 안에서 "가장 큰 자기 창"을 고르기 위한 작업 변수.
         private double _overlayOriginPassArea;
         private bool _overlayOriginLogged;
+        // 로그를 배율 변화에도 반응시키기 위한 직전 값(로그 스팸 방지 — 0.3초마다 도는 폴링이다).
+        private float _lastLoggedDpiScale = -1f;
     }
 }
 #endif

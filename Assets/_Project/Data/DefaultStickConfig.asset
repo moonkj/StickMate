@@ -61,7 +61,7 @@ MonoBehaviour:
   clickThroughDefaultEnabled: 1
   footholdPollInterval: 0.3
   fullscreenPollInterval: 1.5
-  desktopDpiScale: 1
+  desktopDpiScale: 0
   groundSnapTolerance: 20
   moveInputDeadzone: 0.15
   wanderIdleDurationMin: 2
@@ -218,7 +218,7 @@ MonoBehaviour:
   primaryOutlineColor: {r: 0, g: 0, b: 0, a: 1}
   whiteInkColor: {r: 1, g: 1, b: 1, a: 1}
   rivalInkColor: {r: 0.85, g: 0.13, b: 0.13, a: 1}
-  dialogueBubbleColor: {r: 1, g: 1, b: 1, a: 1}
+  dialogueBubbleColor: {r: 1, g: 1, b: 1, a: 0}
   backgroundFallbackColor: {r: 0.94, g: 0.94, b: 0.94, a: 1}
   verboseDiagnosticsLogging: 0
   groundSnapMaxDistanceWorld: 0.6
@@ -226,4 +226,5 @@ MonoBehaviour:
   dockTilePitchPaddingPoints: 2.5
   dockPanelFixedPaddingPoints: 76.5
   dockExtraRunningAppTileEstimate: 6
-  characterScale: 0.5
+  characterScale: 0.75
+  enableAutonomousHardwareReactions: 0

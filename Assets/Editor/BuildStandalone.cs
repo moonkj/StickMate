@@ -176,14 +176,25 @@ namespace StickMate.EditorTools
         // 적용한 뒤 macRetinaSupport는 원래대로(`true`, Retina 렌더링 유지) 둔 채로 138초+ 연속 실행 —
         // `grounded=False`(낙하) 이벤트 0건.
         //
-        // 남은 진짜 한계(정직하게 기록, 다음 라운드 참고): `StickConfig.desktopDpiScale`(기본값 1)은
-        // 실제 데스크톱의 다른 진짜 창(`CGWindowListCopyWindowInfo`가 보고하는, AppKit 포인트 단위)을
-        // 발판으로 인식하는 경로에는 여전히 보정되지 않은 채 남아 있다 — Retina Mac에서 Unity의
-        // 물리픽셀 기준 캐릭터 좌표와 실제 창의 포인트 기준 좌표가 어긋나, "캐릭터가 실제 다른 창 위에
-        // 정확히 올라서는" 핵심 기능 자체는 이 라운드에서 실측 검증되지 못했다(이 실행 환경에는 발밑에
-        // 밟을 다른 실제 창이 하나도 없어 안전망(위 수정)만 계속 쓰였음 — footholds=1 고정). 이번
-        // 라운드는 시간 관계상 "실제 창이 전혀 없어도 절대 낙하 고착되지 않는다"까지만 확정하고, 실제
-        // 창 위 정밀 착지의 DPI 보정(예: 네이티브 `NSWindow.backingScaleFactor` 조회로
-        // `desktopDpiScale` 자동 설정)은 다음 라운드 과제로 이월한다.
+        // ★ 위 실험 기록의 정정 + 후속 처리 (2026-08-29 Retina 대응 라운드)
+        // ----------------------------------------------------------------------------
+        // 위 문단이 "폐기했다(코드는 되돌림)"고 적어 둔 것과 달리, **ProjectSettings의
+        // `macRetinaSupport` 값만 0인 채로 남아 있었다**(코드는 되돌렸지만 설정은 아니었다). 그 잔재가
+        // 사용자 신고 "전체적으로 해상도가 너무 안좋음"의 직접 원인이었다 — 실측: 실행 로그
+        // `Screen=(1512x982)` vs `system_profiler`의 `3024x1964 Retina`, 그리고 빌드 Info.plist에
+        // `NSHighResolutionCapable` 키 없음. 앱만 1x로 그려지고 OS가 2배로 확대하고 있었다.
+        //
+        // 위 문단의 "이 설정은 Screen.width/height에 전혀 영향을 주지 않았다"는 관찰은 **방향이 반대로
+        // 기록된 것**이다. 이번 라운드에 0 -> 1로 되돌리고 실측한 결과 Screen이 실제로 3024x1964로
+        // 바뀌었다(즉 이 설정은 Metal 렌더러에서도 정상 동작한다).
+        //
+        // 함께 처리한 것(그때 "다음 라운드 과제로 이월"이라고 적어 둔 DPI 보정이 이번 라운드다):
+        //   · `StickConfig.desktopDpiScale`의 의미를 "수동 오버라이드(0 이하 = 자동)"로 바꾸고, 실제
+        //     배율은 `Platform/ScreenCoordinateConverter`가 창 폭(OS 포인트)/Screen.width(Unity 픽셀)로
+        //     **매 발판 폴링마다 실측**한다(하드코딩 0.5 금지 — 외장 모니터/비Retina 환경 대응).
+        //   · 좌표 소비자 전원(발판/Dock/안전망/화면 클램프/커서/클릭/드래그)이 그 단일 소스를 거치게 정리.
+        //   · ScreenSpaceOverlay 캔버스 3종에 `CanvasScaler.scaleFactor = 1/dpi` — UI의 물리적 크기는
+        //     그대로 두고 해상도만 2배로 올린다.
+        //   · 잠금 테스트: Tests/PlayMode/RetinaDpiCoordinateTests.cs(배율 1/2 양쪽 왕복 항등).
     }
 }

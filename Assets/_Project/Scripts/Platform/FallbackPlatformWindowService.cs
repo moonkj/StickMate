@@ -189,7 +189,7 @@ namespace StickMate.Platform
             dock = default;
             if (!TryGetDockSpanOsScreen(out float dockLeftOsX, out float dockRightOsX)) return false;
 
-            float dpi = Mathf.Max(0.0001f, _config.desktopDpiScale);
+            float dpi = Mathf.Max(0.0001f, ScreenCoordinateConverter.ResolveDpiScale(_config));
             float screenH = (Screen.height > 0 ? Screen.height : 1080f) * dpi;
             Vector2 origin = ScreenCoordinateConverter.OverlayOriginOsScreen;
 
@@ -239,7 +239,7 @@ namespace StickMate.Platform
             float thickness = _config.dockFootholdThicknessPoints;
             if (thickness <= 0f) return false;
 
-            float dpi = Mathf.Max(0.0001f, _config.desktopDpiScale);
+            float dpi = Mathf.Max(0.0001f, ScreenCoordinateConverter.ResolveDpiScale(_config));
             float screenW = (Screen.width > 0 ? Screen.width : 1920f) * dpi;
             Vector2 origin = ScreenCoordinateConverter.OverlayOriginOsScreen;
 
@@ -331,7 +331,7 @@ namespace StickMate.Platform
         /// </summary>
         private void AppendBottomSafetyNet(List<PlatformFoothold> target)
         {
-            float dpi = _config != null ? Mathf.Max(0.0001f, _config.desktopDpiScale) : 1f;
+            float dpi = Mathf.Max(0.0001f, ScreenCoordinateConverter.ResolveDpiScale(_config));
             float width = (Screen.width > 0 ? Screen.width : 1920f) * dpi;
             float height = (Screen.height > 0 ? Screen.height : 1080f) * dpi;
 

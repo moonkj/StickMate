@@ -23,7 +23,8 @@ namespace StickMate.States
         {
             if (_blackboard.Body == null) return;
             float jumpForce = _blackboard.Config != null ? _blackboard.Config.jumpForce : 6f;
-            float walkSpeed = _blackboard.Config != null ? _blackboard.Config.walkSpeed : 2.5f;
+            // 배율 반영 속도 — 공중 수평 이동도 지상 보행과 같은 속도여야 착지 순간 속도가 튀지 않는다.
+            float walkSpeed = _blackboard.Config != null ? _blackboard.Config.ResolveWalkSpeed() : 2.5f;
             // 수평 속도는 입력 방향을 그대로 반영해 자연스러운 점프 궤적을 만든다(제자리 점프 방지).
             _blackboard.Body.linearVelocity = new Vector2(_blackboard.MoveInputX * walkSpeed, jumpForce);
         }

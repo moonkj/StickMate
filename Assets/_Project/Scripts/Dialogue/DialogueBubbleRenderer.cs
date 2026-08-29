@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using StickMate.Core;
 using StickMate.States;
 using StickMate.Interaction;
+using StickMate.Platform;
 
 namespace StickMate.Dialogue
 {
@@ -75,7 +76,13 @@ namespace StickMate.Dialogue
     {
         // ==================== 스타일 상수 ====================
         // 캐릭터가 "굵은 검은 획 + 빈 얼굴"이므로 말풍선도 같은 문법(흰 배경 + 굵은 검은 테두리 +
-        // 검은 글씨)을 따른다. 값은 전부 Unity 스크린 픽셀(= macOS 포인트, Screen.height≈846 기준).
+        // 검은 글씨)을 따른다. 값의 단위는 **캔버스 유닛 == OS 포인트**다(Retina에서도 물리적 크기가
+        // 같다 — CanvasScaler가 흡수한다. 아래 "두 배율의 합성" 블록 참고).
+        //
+        // ★★ 여기 적힌 숫자는 **캐릭터 배율 1.0 기준의 baseline**이다. 실제 레이아웃 코드는 이 상수를
+        // 직접 쓰지 말고 반드시 Scaled* 프로퍼티(ScaledBorderThickness 등)를 써야 한다 — 캐릭터가
+        // 절반 크기가 되면 말풍선도 함께 줄어들어야 하고, 한 군데라도 원본 상수가 남으면 그 항만
+        // 고정분으로 남아 "폰트를 줄여도 말풍선이 캐릭터보다 크다"가 재발한다(리더 실측 보고, 2026-08-29).
         private const int SortingOrderBubble = 31000;   // TodoPostItWidget(30000) 위, AppControlDirector 메뉴(32760) 아래.
         private const float BorderThickness = 2.5f;     // 검은 테두리 두께.
         private const float TextPadding = 7f;           // 테두리 안쪽 여백.
@@ -97,8 +104,96 @@ namespace StickMate.Dialogue
         // 현재 프리팹 실측 2.27유닛에 곱하면 검증을 마친 종전 값(0.34)이 그대로 나온다.
         private const float HeadTopOffsetRatio = 0.1498f; // 머리 중심에서 꼬리 끝까지(0.34 / 2.27).
 
+        // ============================================================================
+        // ★★ 두 배율의 합성 — 어디에 무엇을 곱하는가 (2026-08-29, 리더 지시)
+        // ============================================================================
+        // 이 컴포넌트에는 성격이 전혀 다른 배율이 **두 개** 얹힌다. 둘을 같은 곳에 곱하면 반드시 어긋난다.
+        //
+        //   [A] Retina DPI 배율  — CanvasScaler.scaleFactor = 1/dpi (ApplyCanvasScaleFactor)
+        //       단계: 캔버스 유닛 -> 물리 픽셀.  겉보기 크기를 **바꾸지 않는다**(해상도만 올린다).
+        //       그래서 아래 상수들은 이 배율을 몰라도 되고, 알아서도 안 된다 — 이 배율 덕분에
+        //       "캔버스 1유닛 == OS 포인트 1"이라는 불변식이 성립하고, 배치 계산(UnityScreenToCanvas)이
+        //       그 불변식 위에 서 있다.
+        //
+        //   [B] 캐릭터 크기 배율 — StickmanMetrics.Scale (BubbleScale)
+        //       단계: 상수 -> 캔버스 유닛.  겉보기 크기를 **바꾼다**(캐릭터가 절반이면 말풍선도 절반).
+        //
+        // 최종 화면 크기 = 상수 x [B] x [A]px/pt.  즉 배율 0.5 캐릭터 + Retina 2x면
+        // "테두리 2.5 -> 1.25pt -> 물리 2.5px"가 된다. [B]를 CanvasScaler에 얹지 않는 이유가 여기 있다:
+        // 그랬다면 [A]의 불변식이 깨져 배치가 어긋나고, 무엇보다 **폰트까지 함께 비례**해 버린다.
+        // 폰트는 아래 ResolveFontSize()가 가독성 하한을 걸어 따로 처리해야 하는 유일한 예외다.
+        //
+        // ============================================================================
+        // 왜 [B]가 필요한가 — 실측 (리더 보고, 2026-08-29)
+        // ============================================================================
+        // 캐릭터 크기 작업으로 전신이 2.2747 -> 1.1373유닛(화면상 80pt -> 40pt)이 됐다. 그런데 말풍선
+        // 몸통 높이는 대략 `textH x 1.414 + 19pt`이고, 그 19pt는 (BorderThickness 2.5 + TextPadding 7)의
+        // 양쪽 합이라 **폰트와 무관한 고정분**이다. 그래서 fontSize를 코드 하한 8까지 낮춰도 32pt가
+        // 바닥이라, 폰트 설정만으로는 말풍선이 캐릭터(40pt)보다 커지는 것을 못 막는다 —
+        // 고정분 자체를 배율에 태워야 한다.
+        private const float BaselineTotalHeightFallback = StickConfig.BaselineCharacterTotalHeight;
+
+        /// <summary>
+        /// 말풍선 기하(테두리/여백/꼬리/최대 줄바꿈 폭)에 곱할 캐릭터 크기 배율.
+        /// 단일 소스는 <see cref="StickmanMetrics"/>(프리팹 계층 실측) — 상수를 복사하지 않는다.
+        /// 컴포넌트를 못 찾는 리그/테스트에서는 1.0으로 폴백해 예전과 동일하게 동작한다.
+        ///
+        /// 하한 0.35: 배율을 아주 작게 준 사용자가 있어도 테두리가 0에 수렴해 사라지거나 여백이 음수가
+        /// 되지 않게 받친다(캐릭터 획 두께에 화면상 하한을 둔 SceneBootstrapper와 같은 태도).
+        /// </summary>
+        private float BubbleScale
+        {
+            get
+            {
+                StickmanMetrics metrics = _metrics != null ? _metrics : (_metrics = StickmanMetrics.Find(this));
+                float scale = metrics != null ? metrics.Scale : 1f;
+                return Mathf.Clamp(scale, 0.35f, 4f);
+            }
+        }
+
+        private StickmanMetrics _metrics;
+
+        // 배율이 곱해진 실제 사용 값 — 아래 레이아웃/생성 코드는 반드시 이쪽을 쓴다(원본 상수 직접 사용 금지).
+        private float ScaledBorderThickness => BorderThickness * BubbleScale;
+        private float ScaledTextPadding => TextPadding * BubbleScale;
+        private float ScaledMaxTextWidth => MaxTextWidth * BubbleScale;
+        private float ScaledTailWidth => TailWidth * BubbleScale;
+        private float ScaledTailHeight => TailHeight * BubbleScale;
+        /// <summary>
+        /// 꼬리 윗변을 몸통 타원 경계보다 이만큼 **안쪽**에 둔다.
+        ///
+        /// ★ 투명 말풍선 전환(2026-08-29)으로 의미가 바뀌었다. 예전에는 "채움이 몸통 아래 테두리를
+        /// 덮는 양"(5pt)이었지만, 이제 몸통은 링이고 안쪽이 비어 있다 — 겹침이 링 두께보다 크면 꼬리
+        /// 선의 윗부분이 **투명한 몸통 안쪽으로 삐져 들어와** 말풍선 안에 짧은 선 두 개가 떠 보인다.
+        /// 그래서 정확히 링 두께만큼만 넣는다: 꼬리 선의 열린 윗변이 링 두께 안에 완전히 파묻혀
+        /// 링과 이어지고, 안쪽으로는 한 픽셀도 넘어오지 않는다.
+        /// (원본 상수 TailPanelOverlap은 그 시절 근거와 함께 문서로 남겨 둔다 — 지금은 쓰이지 않는다.)
+        /// </summary>
+        private float ScaledTailPanelOverlap => ScaledBorderThickness;
+
+        /// <summary>
+        /// 말풍선 글자 크기(캔버스 유닛 = OS 포인트). **여기만 단순 비례가 아니다.**
+        ///
+        /// 기하(테두리/여백/꼬리)는 캐릭터 배율에 그대로 비례해도 되지만 글자는 안 된다 — 크기를 줄이면
+        /// 어느 지점부터 그냥 못 읽는다. 그래서 비례로 줄이되 <see cref="MinReadableFontSize"/>에서
+        /// 바닥을 받친다(SceneBootstrapper가 캐릭터 획 두께에 화면상 하한을 둔 것과 같은 문법).
+        ///
+        /// 하한 12pt의 근거: 배율 0.5에서 단순 비례면 8pt이고, 그 크기의 한글은 획이 서로 붙어 읽히지
+        /// 않는다(이 프로젝트가 이미 겪은 문제 — ResolveKoreanFont의 "합성 볼드가 16px 한글을 뭉갠다"
+        /// 기록 참고). 12pt면 배율 0.5에서 말풍선 전체가 약 29pt = 캐릭터(40pt)의 73%로, 머리 위에
+        /// 자연스럽게 얹히면서 글자도 읽힌다. Retina에서 실제 렌더는 24 물리픽셀이라 선명도도 충분하다.
+        /// </summary>
+        private int ResolveFontSize()
+        {
+            int configured = _config != null ? Mathf.Max(8, _config.dialogueFontSize) : 16;
+            return Mathf.Max(MinReadableFontSize, Mathf.RoundToInt(configured * BubbleScale));
+        }
+
+        /// <summary>말풍선 글자의 화면상 하한(캔버스 유닛 = OS 포인트). 위 ResolveFontSize() 문서 참고.</summary>
+        private const int MinReadableFontSize = 12;
+
         /// <summary>이 캐릭터의 전신 높이(월드 유닛). 캐릭터 기준 오프셋의 유일한 기준값.</summary>
-        private float CharacterHeight => _agent != null ? _agent.CharacterTotalHeightWorld : 2.27f;
+        private float CharacterHeight => _agent != null ? _agent.CharacterTotalHeightWorld : BaselineTotalHeightFallback;
 
         /// <summary>머리 중심에서 꼬리 끝까지(월드 유닛) — 해상도/줌 무관, 캐릭터 크기 추종.</summary>
         private float HeadTopWorldOffset => CharacterHeight * HeadTopOffsetRatio;
@@ -118,19 +213,23 @@ namespace StickMate.Dialogue
         private const float EllipseInsetFactor = 0.14644661f;
 
         // ============================================================================
-        // ★ 글자 선명도 (사용자 신고 2026-08-29: "텍스트 폰트가 부드럽지 않음")
+        // ★ 글자 선명도 (사용자 신고 2026-08-29: "텍스트 폰트가 부드럽지 않음" / "해상도가 너무 안좋음")
         // ============================================================================
-        // 진단 결과(자세한 근거는 아래 ResolveKoreanFont 위 주석): 이 앱의 프레임버퍼는 1x인데
-        // 화면은 2x Retina라 OS 컴포지터가 전부 2배로 확대한다. 캔버스 스케일은 1이므로(CanvasScaler
-        // 없음) "캔버스가 축소돼 있다"는 가설은 실측으로 기각됐다.
+        // 진단(자세한 근거는 아래 ResolveKoreanFont 위 주석): 진짜 원인은 이 컴포넌트가 아니라
+        // ProjectSettings의 `macRetinaSupport: 0`이었다 — 앱 프레임버퍼가 1x인데 화면이 2x Retina라
+        // OS 컴포지터가 전부 2배로 확대하고 있었다.
         //
-        // 프레임버퍼 해상도 자체는 이 컴포넌트가 바꿀 수 없다(ProjectSettings 전역 설정 —
-        // 리더 판단 사항). 대신 여기서 할 수 있는 최선은 **글리프를 2배 크기로 래스터라이즈해서
-        // 절반으로 축소 렌더링**하는 것이다: 글자 한 픽셀이 4개 텍셀의 평균으로 결정되므로
-        // (bilinear 2:1 축소 = 2x2 박스 필터) 획 경계의 계단/뭉침이 눈에 띄게 줄어든다.
-        // 레이아웃 수치는 전부 캔버스 픽셀 기준을 유지하고, 라벨만 이 배율로 확대했다가
-        // localScale로 되돌린다.
-        private const int TextSupersample = 2;
+        // **2026-08-29 Retina 대응 라운드에서 그 근본 원인이 해소됐다**(`macRetinaSupport: 1` +
+        // CanvasScaler.scaleFactor = 1/dpi, ApplyCanvasScaleFactor() 참고). 이제 캔버스가 물리 픽셀
+        // 기준으로 2배 해상도에 그려지고 uGUI가 글리프를 `fontSize * canvas.scaleFactor` 크기로
+        // 래스터라이즈하므로, 글자는 **네이티브 Retina 해상도로 직접** 그려진다.
+        //
+        // 그래서 이 슈퍼샘플링 배율은 1(=끔)로 되돌린다. 근본 원인이 사라진 지금 2로 두면 글리프를
+        // 32 x 2 = 64px로 구워 절반으로 줄여 그리는 셈이라, 폰트 아틀라스만 4배로 쓰면서 오히려 한 번
+        // 더 리샘플링돼 미세하게 무뎌진다(상시 실행 앱이라 아틀라스 낭비도 그냥 낭비가 아니다).
+        // 상수와 나눗셈 경로는 그대로 남겨 둔다 — 값이 1이면 전부 항등이 되고, 훗날 비Retina 환경에서
+        // 다시 필요해지면 이 숫자 하나만 바꾸면 된다.
+        private const int TextSupersample = 1;
 
         [SerializeField] private StickmanAgent _agent;   // 플레이어용 자동 배선(같은 GameObject 우선).
         [SerializeField] private Transform _anchor;      // 머리 Transform. 비면 Awake에서 "Head"를 찾는다.
@@ -146,6 +245,7 @@ namespace StickMate.Dialogue
         private StickmanStateMachine _machine;
 
         private Canvas _canvas;
+        private CanvasScaler _scaler;
         private CanvasGroup _group;
         private RectTransform _panel;      // 검은 테두리(바깥)
         private RectTransform _tailOutline;
@@ -339,6 +439,10 @@ namespace StickMate.Dialogue
             }
             if (!IsBubbleVisible) return;
 
+            // 배율은 실행 중에 바뀔 수 있다(창을 다른 배율의 모니터로 옮기거나, 시작 직후
+            // MacOverlayStateEnforcer가 창을 화면 전체로 넓히는 시점). 보이는 동안만 매 프레임 추종한다.
+            ApplyCanvasScaleFactor();
+
             float dt = Time.unscaledDeltaTime;
             float elapsed = Time.unscaledTime - _shownAtUnscaledTime;
 
@@ -402,6 +506,23 @@ namespace StickMate.Dialogue
 
         // ==================== 배치 (규칙 6) ====================
 
+        /// <summary>
+        /// ScreenSpaceOverlay 캔버스의 스케일을 현재 화면 배율에 맞춘다 — **캔버스 1유닛 == OS 포인트 1**.
+        ///
+        /// 왜 필요한가(2026-08-29 Retina 대응 라운드, 리더 지시 5항): `macRetinaSupport`를 켜면
+        /// Screen.width/height가 물리 백킹 픽셀(3024x1964)이 되고, scaleFactor가 1인 캔버스는 그 픽셀을
+        /// 그대로 자기 좌표로 쓴다 — 즉 이 파일의 모든 상수(fontSize 16, TextPadding, MaxTextWidth 220 …
+        /// 전부 "포인트 기준으로 눈으로 맞춘 값")가 **물리적으로 절반 크기**가 된다. scaleFactor를 1/dpi
+        /// (Retina면 2)로 두면 물리적 크기는 Retina 이전과 정확히 같고 렌더 해상도만 2배가 된다.
+        /// 즉 "같은 크기, 두 배 선명" — 가독성 하한 문제가 애초에 발생하지 않는 형태다.
+        /// </summary>
+        private void ApplyCanvasScaleFactor()
+        {
+            if (_scaler == null) return;
+            float target = ScreenCoordinateConverter.ResolveCanvasScaleFactor(_config);
+            if (!Mathf.Approximately(_scaler.scaleFactor, target)) _scaler.scaleFactor = target;
+        }
+
         private void UpdatePlacement()
         {
             if (_panel == null) return;
@@ -411,15 +532,27 @@ namespace StickMate.Dialogue
             // 꼬리 끝이 가리키는 지점 = 머리 바로 위(월드 오프셋이라 줌/해상도가 바뀌어도 자동 추종).
             // 하드웨어 반응 이모트가 떠 있으면 그 위로 비켜 선다(아래 TickEmoteLift 문서 참고).
             Vector3 tipWorld = _anchor.position + Vector3.up * (HeadTopWorldOffset + TickEmoteLift());
-            Vector3 tip = _camera.WorldToScreenPoint(tipWorld);
-            if (tip.z < 0f) return; // 카메라 뒤 — 배치 불가(직교 카메라에서는 사실상 발생하지 않음).
+            Vector3 tipScreen = _camera.WorldToScreenPoint(tipWorld);
+            if (tipScreen.z < 0f) return; // 카메라 뒤 — 배치 불가(직교 카메라에서는 사실상 발생하지 않음).
+
+            // ★ 단위 변환(2026-08-29 Retina 대응): WorldToScreenPoint/Screen.width는 **Unity 픽셀**인데,
+            // 아래 anchoredPosition/sizeDelta는 **캔버스 유닛**이다. Retina에서 CanvasScaler.scaleFactor가
+            // 2가 되면서 둘이 정확히 2배 어긋나므로, 배치 계산에 들어가기 전에 캔버스 유닛으로 환산한다
+            // (환산 후 캔버스 1유닛 == OS 포인트 1이라, 아래의 모든 상수는 예전 의미 그대로다).
+            // 이 변환을 빼먹으면 말풍선이 화면 우상단 밖으로 날아간다.
+            Vector2 tip = new Vector2(
+                ScreenCoordinateConverter.UnityScreenToCanvas(tipScreen.x, _config),
+                ScreenCoordinateConverter.UnityScreenToCanvas(tipScreen.y, _config));
 
             Vector2 panelSize = _panel.sizeDelta;
-            float screenW = Screen.width;
-            float screenH = Screen.height;
+            float screenW = ScreenCoordinateConverter.UnityScreenToCanvas(Screen.width, _config);
+            float screenH = ScreenCoordinateConverter.UnityScreenToCanvas(Screen.height, _config);
 
             // 박스는 꼬리 위에 놓인다. 화면 위/아래로 넘치면 안쪽으로 민다.
-            float panelBottom = tip.y + TailHeight - TailPanelOverlap;
+            float scaledTailHeight = ScaledTailHeight;
+            float scaledTailWidth = ScaledTailWidth;
+            float scaledOverlap = ScaledTailPanelOverlap;
+            float panelBottom = tip.y + scaledTailHeight - scaledOverlap;
             panelBottom = Mathf.Min(panelBottom, screenH - ScreenEdgeMargin - panelSize.y);
             panelBottom = Mathf.Max(panelBottom, ScreenEdgeMargin);
 
@@ -434,10 +567,10 @@ namespace StickMate.Dialogue
             // 떨어져 허공에 뜬다. 그래서 (1) 꼬리가 붙을 수 있는 좌우 범위를 타원 기준으로 제한하고,
             // (2) 꼬리 **바깥 모서리**에서의 타원 아래 경계 높이를 구해 그 위에 꼬리 윗변을 얹는다
             // (바깥 모서리로 재야 꼬리 윗변 전체가 타원 안에 들어간다).
-            float maxOffset = Mathf.Max(0f, a * TailEllipseSpanLimit - TailWidth * 0.5f);
+            float maxOffset = Mathf.Max(0f, a * TailEllipseSpanLimit - scaledTailWidth * 0.5f);
             float tailCenterX = Mathf.Clamp(tip.x, panelCenterX - maxOffset, panelCenterX + maxOffset);
 
-            float outerDx = Mathf.Abs(tailCenterX - panelCenterX) + TailWidth * 0.5f;
+            float outerDx = Mathf.Abs(tailCenterX - panelCenterX) + scaledTailWidth * 0.5f;
             float t = a > 0.01f ? Mathf.Clamp01(1f - (outerDx * outerDx) / (a * a)) : 0f;
             float ellipseBottomY = panelBottom + b - b * Mathf.Sqrt(t);
 
@@ -445,10 +578,10 @@ namespace StickMate.Dialogue
 
             // 꼬리 윗변은 타원 경계보다 TailPanelOverlap만큼 위(=몸통 안쪽)에 두고, 아래 끝은 항상
             // 머리 바로 위(tip)를 정확히 가리키게 길이를 맞춘다.
-            float tailTop = ellipseBottomY + TailPanelOverlap;
-            float tailHeight = Mathf.Max(TailHeight * 0.6f, tailTop - tip.y);
+            float tailTop = ellipseBottomY + scaledOverlap;
+            float tailHeight = Mathf.Max(scaledTailHeight * 0.6f, tailTop - tip.y);
             var tailPos = new Vector2(tailCenterX, tailTop);
-            var tailSize = new Vector2(TailWidth, tailHeight);
+            var tailSize = new Vector2(scaledTailWidth, tailHeight);
             _tailOutline.anchoredPosition = tailPos;
             _tailOutline.sizeDelta = tailSize;
             _tailFill.anchoredPosition = tailPos;
@@ -528,12 +661,31 @@ namespace StickMate.Dialogue
         /// StickmanAgent.ApplyInkColorFromConfig()가 LineRenderer만 갱신하므로, 말풍선은 여기서
         /// 자기 몫을 따라간다 — 흰 캐릭터(어두운 배경)일 때 흰 말풍선에 흰 글씨가 되는 사고를 막는다.
         /// </summary>
+        /// <summary>
+        /// 말풍선 **안쪽 채움** 색. 기본은 알파 0(완전 투명)이고, 그때 말풍선은 캐릭터 머리와 똑같이
+        /// "잉크 링만 있고 안은 비어 있는" 모습이 된다(2026-08-29 사용자 요구 "얼굴처럼 투명").
+        ///
+        /// 알파를 살려 두는 이유(리더 허용 범위): 아이콘/글자가 빽빽한 바탕화면 위에서는 배경이 완전히
+        /// 비쳐 글자가 안 읽힐 수 있다. 그럴 때 StickConfig.dialogueBubbleColor의 **알파만** 0.1~0.2로
+        /// 올려 아주 옅은 판을 깔 수 있게 남긴다 — 흰 배경을 통째로 되살리는 것과는 다르다.
+        ///
+        /// 잉크색 프리셋 연동 유지: 흰 캐릭터(어두운 배경) 프리셋에서는 옅은 채움도 검정 쪽이어야 한다.
+        /// 단 **알파는 설정값을 그대로 보존**한다 — 예전 코드처럼 Color.black을 통째로 대입하면 알파가
+        /// 1로 되살아나 "투명하게 해 달라"는 요구가 흰 캐릭터에서만 조용히 깨진다.
+        /// </summary>
+        private Color ResolveBubbleFillColor()
+        {
+            if (_config == null) return new Color(1f, 1f, 1f, 0f);
+            Color fill = _config.dialogueBubbleColor;
+            if (_config.inkColor == StickmanInkColor.White) fill = new Color(0f, 0f, 0f, fill.a);
+            return fill;
+        }
+
         public void RefreshColors()
         {
             if (_panelOutlineImage == null) return;
             Color ink = _config != null ? _config.ResolveInkColor() : Color.black;
-            Color bubble = _config != null ? _config.dialogueBubbleColor : Color.white;
-            if (_config != null && _config.inkColor == StickmanInkColor.White) bubble = Color.black;
+            Color bubble = ResolveBubbleFillColor();
 
             _panelOutlineImage.color = ink;
             _tailOutlineImage.color = ink;
@@ -554,16 +706,19 @@ namespace StickMate.Dialogue
             // 라벨은 TextSupersample배로 확대된 좌표계에서 살고 localScale로 되돌아오므로, 제너레이터가
             // 주는 값도 그 배율만큼 크다 — 캔버스 픽셀로 환산해서 쓴다.
             float ss = Mathf.Max(1, TextSupersample);
-            TextGenerationSettings settings = _label.GetGenerationSettings(new Vector2(MaxTextWidth * ss, 0f));
+            float maxTextWidth = ScaledMaxTextWidth;
+            TextGenerationSettings settings = _label.GetGenerationSettings(new Vector2(maxTextWidth * ss, 0f));
             float scale = settings.scaleFactor > 0f ? settings.scaleFactor : 1f;
             TextGenerator gen = _label.cachedTextGeneratorForLayout;
-            float textW = Mathf.Min(MaxTextWidth, gen.GetPreferredWidth(_label.text, settings) / scale / ss);
+            float textW = Mathf.Min(maxTextWidth, gen.GetPreferredWidth(_label.text, settings) / scale / ss);
             settings = _label.GetGenerationSettings(new Vector2(textW * ss, 0f));
             float textH = gen.GetPreferredHeight(_label.text, settings) / scale / ss;
 
             // 타원은 같은 넓이의 사각형보다 모서리 쪽 유효 폭이 좁다 — 글자 블록에 √2를 곱한 뒤
             // 여백을 더해야 글자가 타원 안에 온전히 들어간다(위 EllipseFitFactor 문서 참고).
-            float pad = (BorderThickness + TextPadding) * 2f;
+            // ★ 고정분(테두리+여백)도 캐릭터 배율에 태운다 — 이 항이 폰트와 무관한 상수로 남아 있던 것이
+            // "폰트를 하한까지 줄여도 말풍선이 캐릭터보다 크다"의 직접 원인이었다(BubbleScale 문서 참고).
+            float pad = (ScaledBorderThickness + ScaledTextPadding) * 2f;
             float w = Mathf.Ceil(textW * EllipseFitFactor + pad);
             float h = Mathf.Ceil(textH * EllipseFitFactor + pad);
             _panel.sizeDelta = new Vector2(w, h);
@@ -579,21 +734,23 @@ namespace StickMate.Dialogue
         private void BuildUi()
         {
             Color ink = _config != null ? _config.ResolveInkColor() : Color.black;
-            Color bubble = _config != null ? _config.dialogueBubbleColor : Color.white;
-            // 캐릭터 잉크가 흰색 프리셋이면 말풍선도 반전해야 보인다(어두운 배경 + 흰 캐릭터).
-            if (_config != null && _config.inkColor == StickmanInkColor.White) bubble = Color.black;
-            int fontSize = _config != null ? Mathf.Max(8, _config.dialogueFontSize) : 16;
+            Color bubble = ResolveBubbleFillColor();
+            int fontSize = ResolveFontSize(); // 캐릭터 배율 비례 + 가독성 하한(ResolveFontSize 문서 참고).
 
             // 캔버스는 **씬 루트에** 만든다(부모 없음). ScreenSpaceOverlay 캔버스를 움직이는 캐릭터의
             // 자식으로 두면 RAGDOLL로 루트가 회전/이동할 때 부모 변환이 섞여 들어갈 수 있다.
             // Interaction/AppControlDirector.cs도 정확히 같은 이유로 SetParent(null)을 쓴다(그쪽은 실제
             // 실행에서 검증된 유일한 uGUI 경로다). 위치는 매 프레임 UpdatePlacement()가 스크린 좌표로
             // 직접 계산하므로 부모가 없어도 캐릭터를 정확히 따라간다.
-            var canvasGo = new GameObject("DialogueBubbleCanvas (" + gameObject.name + ")", typeof(Canvas), typeof(CanvasGroup));
+            var canvasGo = new GameObject("DialogueBubbleCanvas (" + gameObject.name + ")",
+                typeof(Canvas), typeof(CanvasScaler), typeof(CanvasGroup));
             canvasGo.transform.SetParent(null, false);
             _canvas = canvasGo.GetComponent<Canvas>();
             _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             _canvas.sortingOrder = SortingOrderBubble;
+            _scaler = canvasGo.GetComponent<CanvasScaler>();
+            _scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+            ApplyCanvasScaleFactor();
             _group = canvasGo.GetComponent<CanvasGroup>();
             // 말풍선은 순수 관전용 표시물이다 — 클릭을 절대 가로채지 않는다(비침해 원칙 2).
             _group.blocksRaycasts = false;
@@ -648,8 +805,9 @@ namespace StickMate.Dialogue
             var innerRect = innerGo.GetComponent<RectTransform>();
             innerRect.anchorMin = Vector2.zero;
             innerRect.anchorMax = Vector2.one;
-            innerRect.offsetMin = new Vector2(BorderThickness, BorderThickness);
-            innerRect.offsetMax = new Vector2(-BorderThickness, -BorderThickness);
+            float border = ScaledBorderThickness;
+            innerRect.offsetMin = new Vector2(border, border);
+            innerRect.offsetMax = new Vector2(-border, -border);
             _panelInnerImage = innerGo.GetComponent<Image>();
             _panelInnerImage.color = bubble;
             _panelInnerImage.raycastTarget = false;
@@ -664,7 +822,7 @@ namespace StickMate.Dialogue
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.zero;
             rect.pivot = new Vector2(0.5f, 1f); // 위쪽 중앙 기준 — 박스 바닥에 매달린다.
-            rect.sizeDelta = new Vector2(TailWidth, TailHeight);
+            rect.sizeDelta = new Vector2(ScaledTailWidth, ScaledTailHeight);
             image = go.GetComponent<Image>();
             image.sprite = filled ? GetTailOutlineSprite() : GetTailFillSprite();
             image.color = color;
@@ -683,19 +841,48 @@ namespace StickMate.Dialogue
         // 작은 텍스처를 확대하면 경계가 흐물해진다. 그래서 **표시 크기와 1:1인 텍스처**를 그때그때
         // 만든다. 대사가 바뀔 때만(수 초에 한 번) ~100x50 루프를 도는 것이라 비용은 무시할 수 있고,
         // 같은 크기면 재사용하므로 같은 길이의 대사가 이어질 때는 아예 다시 만들지 않는다.
+        /// <summary>
+        /// 말풍선 타원(테두리/채움)의 스프라이트를 몸통 크기에 맞춰 다시 굽는다.
+        ///
+        /// ★ 해상도 주의(2026-08-29 Retina 대응): 인자 width/height는 **캔버스 유닛**(= OS 포인트)인데,
+        /// 이 텍스처가 실제로 화면에 깔리는 것은 **물리 픽셀**이다. 캔버스 유닛 크기 그대로 구우면
+        /// Retina에서 텍스처가 2배로 늘어나 깔리면서 타원 가장자리의 안티에일리어싱이 뭉개진다 —
+        /// 글자만 선명해지고 말풍선 윤곽만 흐린, 더 이상해 보이는 결과가 된다. 그래서 캔버스 스케일만큼
+        /// 곱해 **물리 픽셀 해상도로 굽는다**(RectTransform 크기는 그대로라 보이는 크기는 변하지 않는다).
+        /// 캐시 키에 그 배율도 포함해, 모니터를 옮겨 배율이 바뀌면 자동으로 다시 굽는다.
+        /// </summary>
         private void UpdateEllipseSprites(float width, float height)
         {
-            int w = Mathf.Max(8, Mathf.CeilToInt(width));
-            int h = Mathf.Max(8, Mathf.CeilToInt(height));
+            // 캔버스 유닛 -> 물리 픽셀 배율(비Retina 1, Retina 2). 상한을 두는 이유: 말풍선이 커진
+            // 상태에서 배율까지 곱해지므로, 병리적인 값이 들어오면 텍스처 메모리가 제곱으로 튄다.
+            float deviceScale = Mathf.Clamp(ScreenCoordinateConverter.ResolveCanvasScaleFactor(_config), 1f, 4f);
+
+            int w = Mathf.Max(8, Mathf.CeilToInt(width * deviceScale));
+            int h = Mathf.Max(8, Mathf.CeilToInt(height * deviceScale));
             if (_ellipseSpriteSize.x == w && _ellipseSpriteSize.y == h && _ellipseOuterSprite != null) return;
 
             DestroyEllipseSprites();
 
-            _ellipseOuterSprite = BuildEllipseSprite(w, h, 0f, "StickMateBubbleEllipseOuter");
-            // 안쪽 채움은 테두리 두께만큼 작은 타원. 몸통 Image의 자식 RectTransform이 이미 사방으로
-            // BorderThickness만큼 들어가 있으므로(CreatePanel) 그 크기에 맞춰 만든다.
-            int iw = Mathf.Max(4, w - Mathf.CeilToInt(BorderThickness * 2f));
-            int ih = Mathf.Max(4, h - Mathf.CeilToInt(BorderThickness * 2f));
+            // ★★ 투명 말풍선(2026-08-29 사용자 요구 "말풍선도 흰색바탕이 아니고 얼굴처럼 투명한데다
+            // 텍스트가 써져야함"): 바깥 스프라이트를 **채운 타원이 아니라 링(테두리 띠)** 으로 굽는다.
+            //
+            // 왜 "안쪽 이미지를 투명하게" 로는 안 되는가: 예전 구조는 [채운 잉크 타원] 위에 [조금 작은
+            // 말풍선색 타원]을 덮어 그 차집합이 테두리처럼 보이게 한 것이었다. 안쪽만 투명하게 만들면
+            // 덮개가 사라져 **잉크로 꽉 찬 검은 타원**이 된다(정확히 반대 결과다).
+            //
+            // 그래서 캐릭터 머리와 **같은 문법**을 쓴다: 머리는 링 하나(LineRenderer, loop)만 있고 안은
+            // 완전히 비어 있다(Editor/SceneBootstrapper.cs "머리 — 검은 링(테두리)만 + 안쪽은 완전히
+            // 비어 투명" 참고). 말풍선도 링 한 장이 유일한 외곽선이고 안쪽은 비워 둔다.
+            float ringPx = Mathf.Max(1f, ScaledBorderThickness * deviceScale);
+            _ellipseOuterSprite = BuildEllipseRingSprite(w, h, ringPx, "StickMateBubbleEllipseRing");
+
+            // 안쪽 이미지는 이제 "선택적 옅은 반투명 채움"이다(기본은 알파 0 = 완전 투명).
+            // StickConfig.dialogueBubbleColor의 **알파**가 그 세기를 조절하는 유일한 창구다 —
+            // 복잡한 바탕화면(아이콘/글자) 위에서 글자가 안 읽힐 때 살짝 깔아 주기 위한 여지로 남긴다.
+            // 링 두께만큼 안으로 들어간 타원이라 링과 겹치지 않는다.
+            int border = Mathf.CeilToInt(ScaledBorderThickness * 2f * deviceScale);
+            int iw = Mathf.Max(4, w - border);
+            int ih = Mathf.Max(4, h - border);
             _ellipseInnerSprite = BuildEllipseSprite(iw, ih, 0f, "StickMateBubbleEllipseInner");
             _ellipseSpriteSize = new Vector2Int(w, h);
 
@@ -728,6 +915,64 @@ namespace StickMate.Dialogue
         /// **근사 부호거리**로 구한다(f 자체는 거리에 비례하지 않아 긴 타원에서 위아래 AA 폭이
         /// 달라진다 — 나눠주면 어느 방향에서도 같은 1픽셀 띠가 된다).
         /// </summary>
+        /// <summary>
+        /// 타원 **테두리 띠(링)** 의 알파 마스크. 안쪽은 완전히 투명하다 — 캐릭터 머리와 같은 문법
+        /// (Editor/SceneBootstrapper.cs의 HeadOutline 링).
+        ///
+        /// 수학: <see cref="BuildEllipseSprite"/>와 같은 부호 있는 거리 dist(양수 = 타원 바깥)를 쓰고,
+        /// "바깥 경계 안쪽" AND "경계에서 thickness보다 깊지 않음"의 교집합을 덮개율로 삼는다.
+        ///   바깥쪽 경계 덮개 = clamp01(0.5 - dist)          (dist=0에서 0.5, 안으로 갈수록 1)
+        ///   안쪽 경계 덮개  = clamp01(dist + thickness + 0.5)
+        ///   링 덮개 = min(둘)
+        /// 두 항 모두 1픽셀 폭으로 부드럽게 떨어지므로 투명 오버레이에서도 계단이 보이지 않는다
+        /// (이 앱은 프레임버퍼 알파가 곧 창 투명도라 경계 안티에일리어싱이 특히 중요하다).
+        /// </summary>
+        private static Sprite BuildEllipseRingSprite(int w, int h, float thickness, string name)
+        {
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false)
+            {
+                name = name,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave,
+            };
+
+            float a = Mathf.Max(0.5f, w * 0.5f);
+            float b = Mathf.Max(0.5f, h * 0.5f);
+            float cx = w * 0.5f;
+            float cy = h * 0.5f;
+            float invA2 = 1f / (a * a);
+            float invB2 = 1f / (b * b);
+            float t = Mathf.Max(0.75f, thickness);
+
+            var pixels = new Color32[w * h];
+            for (int y = 0; y < h; y++)
+            {
+                float py = y + 0.5f - cy;
+                float py2 = py * py;
+                for (int x = 0; x < w; x++)
+                {
+                    float px = x + 0.5f - cx;
+                    float f = px * px * invA2 + py2 * invB2 - 1f;
+                    float gx = px * invA2;
+                    float gy = py * invB2;
+                    float g = 2f * Mathf.Sqrt(gx * gx + gy * gy);
+                    float dist = g > 1e-6f ? f / g : -1f; // 양수 = 타원 바깥
+                    float outer = Mathf.Clamp01(0.5f - dist);
+                    float inner = Mathf.Clamp01(dist + t + 0.5f);
+                    float coverage = Mathf.Min(outer, inner);
+                    pixels[y * w + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(coverage * 255f));
+                }
+            }
+            tex.SetPixels32(pixels);
+            tex.Apply(false, false);
+
+            var sprite = Sprite.Create(tex, new Rect(0f, 0f, w, h), new Vector2(0.5f, 0.5f), 100f);
+            sprite.name = name;
+            sprite.hideFlags = HideFlags.HideAndDontSave;
+            return sprite;
+        }
+
         private static Sprite BuildEllipseSprite(int w, int h, float inset, string name)
         {
             var tex = new Texture2D(w, h, TextureFormat.RGBA32, false)
@@ -781,18 +1026,42 @@ namespace StickMate.Dialogue
         private static Sprite _tailOutlineSprite;
         private static Sprite _tailFillSprite;
 
+        /// <summary>
+        /// 꼬리의 **선**(두 빗변만). 투명 말풍선 전환(2026-08-29) 전에는 "채운 삼각형 위에 조금 작은
+        /// 채움 삼각형을 덮어" 테두리를 만들었지만, 안쪽이 투명해지면 덮개가 없어 잉크 삼각형이 그대로
+        /// 남는다 — 그래서 처음부터 두 빗변만 있는 띠로 굽는다(몸통 링과 같은 문법).
+        ///
+        /// 윗변이 자동으로 열리는 이유: 아래 BuildTriangleSprite의 거리 d는 **두 빗변까지의 거리**만
+        /// 보므로, 윗변 한가운데는 삼각형 깊숙한 안쪽(d가 큼)이라 띠에 포함되지 않는다. 즉 별도 처리
+        /// 없이 "위가 뚫린 V자"가 나오고, 그 열린 윗변이 몸통 타원 링 안으로 파묻혀 선이 이어진다
+        /// (UpdatePlacement의 tailTop = 타원 경계 + 링 두께).
+        /// </summary>
         private static Sprite GetTailOutlineSprite()
         {
-            if (_tailOutlineSprite == null) _tailOutlineSprite = BuildTriangleSprite(0f, "StickMateTailOutline");
+            if (_tailOutlineSprite == null)
+            {
+                // 띠 두께(텍스처 픽셀). 몸통 링과 같은 화면 두께로 보이도록 "테두리 두께 / 꼬리 폭"
+                // 비율을 텍스처 폭에 투영한다 — 이 비율은 캐릭터 배율에 대해 불변이다(아래 참고).
+                float texBorder = BorderThickness * (TriangleTexWidth / TailWidth);
+                _tailOutlineSprite = BuildTriangleEdgeBandSprite(texBorder, "StickMateTailOutline");
+            }
             return _tailOutlineSprite;
         }
 
+        /// <summary>
+        /// 꼬리 안쪽의 **선택적 옅은 반투명 채움**(기본 알파 0 = 완전 투명). 몸통의 Inner 이미지와 짝이며,
+        /// 세기는 StickConfig.dialogueBubbleColor의 알파 하나로 함께 조절된다.
+        /// 두 빗변에서 선 두께만큼 안으로 들어간 삼각형이라 꼬리 선과 겹치지 않는다.
+        /// </summary>
         private static Sprite GetTailFillSprite()
         {
-            // 안쪽 채움은 두 빗변에서 테두리 두께만큼 안으로 들어간 삼각형(윗변은 줄이지 않는다 —
-            // 그래야 박스 안쪽 흰 면과 이음매 없이 이어진다).
             if (_tailFillSprite == null)
             {
+                // ★ 여기만 원본 상수를 그대로 쓴다(캐릭터 배율을 곱하지 않는다). 이 값은 "텍스처 폭 대비
+                // 테두리 두께의 **비율**"이라 분자/분모에서 배율이 정확히 상쇄된다:
+                //   (BorderThickness x s) x (96 / (TailWidth x s)) == BorderThickness x (96 / TailWidth).
+                // 그래서 이 정적 캐시는 캐릭터 배율과 무관하게 모든 화자가 공유해도 안전하다
+                // (static 메서드라 인스턴스 프로퍼티를 참조할 수도 없다).
                 float texBorder = BorderThickness * (TriangleTexWidth / TailWidth);
                 _tailFillSprite = BuildTriangleSprite(texBorder, "StickMateTailFill");
             }
@@ -807,6 +1076,48 @@ namespace StickMate.Dialogue
         /// 들어간(윗변은 그대로인) 작은 삼각형이 된다. 경계는 1픽셀 안티에일리어싱되어 투명 오버레이
         /// 창에서도 계단이 보이지 않는다.
         /// </summary>
+        /// <summary>
+        /// 삼각형의 **두 빗변만** 남긴 띠(윗변은 열려 있다). 안쪽은 완전히 투명하다.
+        /// 덮개율 = min(clamp01(d + 0.5), clamp01(band - d + 0.5)) — d는 두 빗변 중 가까운 쪽까지의
+        /// 안쪽 거리이므로, 0 &lt;= d &lt;= band 인 띠만 남고 그보다 깊은 안쪽/바깥은 투명해진다.
+        /// </summary>
+        private static Sprite BuildTriangleEdgeBandSprite(float band, string name)
+        {
+            const int w = TriangleTexWidth;
+            const int h = TriangleTexHeight;
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false)
+            {
+                name = name,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave,
+            };
+
+            var topLeft = new Vector2(0f, h);
+            var topRight = new Vector2(w, h);
+            var apex = new Vector2(w * 0.5f, 0f);
+            float t = Mathf.Max(1f, band);
+
+            var pixels = new Color32[w * h];
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 0; x < w; x++)
+                {
+                    var p = new Vector2(x + 0.5f, y + 0.5f);
+                    float d = Mathf.Min(SignedDistance(p, topLeft, apex), SignedDistance(p, apex, topRight));
+                    float coverage = Mathf.Min(Mathf.Clamp01(d + 0.5f), Mathf.Clamp01(t - d + 0.5f));
+                    pixels[y * w + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(coverage * 255f));
+                }
+            }
+            tex.SetPixels32(pixels);
+            tex.Apply(false, false);
+
+            var sprite = Sprite.Create(tex, new Rect(0f, 0f, w, h), new Vector2(0.5f, 0.5f), 100f);
+            sprite.name = name;
+            sprite.hideFlags = HideFlags.HideAndDontSave;
+            return sprite;
+        }
+
         private static Sprite BuildTriangleSprite(float inset, string name)
         {
             const int w = TriangleTexWidth;
@@ -891,15 +1202,21 @@ namespace StickMate.Dialogue
         ///   `Assets/Editor/BuildStandalone.cs`의 해당 주석은 그 실험을 "폐기했다(코드는 되돌림)"고
         ///   기록하고 있다(설정 값만 남았다).
         ///
-        /// 여기서 되돌리지 않는 이유(리더 판단 사항으로 이관): macRetinaSupport를 켜면
-        /// Screen.width/height가 3024x1964가 되어 **모든 ScreenSpaceOverlay 캔버스의 UI가 물리적으로
-        /// 절반 크기가 된다**(말풍선/앱제어 메뉴/투두 위젯 — 이 컴포넌트 밖의 다른 담당자 파일 포함).
-        /// SceneBootstrapper가 경고한 "OS-px 단위 7개 필드"의 재검토도 함께 필요하다.
+        /// ★ 해소됨 (2026-08-29 Retina 대응 라운드, 사용자 신고 "전체적으로 해상도가 너무 안좋음").
+        /// `macRetinaSupport`를 1로 되돌리고, 그로 인해 딸려오는 문제들을 함께 처리했다:
+        ///   · 좌표계: DPI 배율의 단일 소스를 Platform/ScreenCoordinateConverter로 옮기고 런타임 실측
+        ///     (창 폭[OS 포인트] / Screen.width[Unity 픽셀])으로 자동 산출. StickConfig.desktopDpiScale은
+        ///     "수동 오버라이드(0 이하 = 자동)"로 의미가 바뀌었다.
+        ///   · UI 크기: 세 ScreenSpaceOverlay 캔버스 전부 CanvasScaler.scaleFactor = 1/dpi
+        ///     (<see cref="ApplyCanvasScaleFactor"/>) — 캔버스 1유닛 == OS 포인트 1이라 물리적 크기는
+        ///     Retina 이전과 같고 해상도만 2배가 된다.
+        ///   · "OS-px 단위 필드" 재검토: 결론은 그 필드들이 전부 **OS 포인트**이며 배율 보정 뒤에는
+        ///     값을 바꿀 필요가 없다는 것이었다(Core/StickConfig.cs의 해당 필드 주석 참고).
         ///
-        /// 이 컴포넌트가 그 안에서 할 수 있는 최선 두 가지는 적용했다:
-        ///   · 글리프 2배 슈퍼샘플링(<see cref="TextSupersample"/>)
-        ///   · 합성 볼드 대신 **진짜 Bold 페이스** 사용(아래) — 16px 한글에서 합성 볼드는 획을
+        /// 이 컴포넌트에 남은 선명도 대책:
+        ///   · 합성 볼드 대신 **진짜 Bold 페이스** 사용(아래) — 16pt 한글에서 합성 볼드는 획을
         ///     서로 붙여 뭉개는 가장 큰 원인이다.
+        ///   · <see cref="TextSupersample"/>은 근본 원인이 사라져 1(끔)로 되돌렸다(그 상수 주석 참고).
         /// </summary>
         private static Font ResolveKoreanFont(int size)
         {

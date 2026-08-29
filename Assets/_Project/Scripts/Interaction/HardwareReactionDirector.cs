@@ -18,6 +18,11 @@ namespace StickMate.Interaction
     /// 하드웨어 반응은 "능동 개입 스펙터클"이 아니라 23절이 별도로 정의한 자체 규율(지속조건/쿨다운/
     /// 회복게이트/우선순위 1개만 표현)을 따르는 훨씬 가벼운 유휴 idle 자세 변형이기 때문이다(23절
     /// "캐릭터가 동시에 두 가지 다른 표정/자세를 겹쳐 보이면 안 됨"은 아래 우선순위 리졸버가 전담).
+    ///
+    /// ★ 2026-08-29 — 아래 4개 신호의 <b>자율(스스로 뜨는) 발동은 기본적으로 꺼져 있다</b>:
+    /// <see cref="StickConfig.enableAutonomousHardwareReactions"/>가 기본 false이고, Update()의 단일
+    /// 게이트가 Tick*() 4개와 ResolveAndNotify()를 함께 막는다. 데모 미리보기(<see cref="ForceTriggerNow"/>,
+    /// 전역 단축키 Ctrl+Opt+Cmd+H / 우클릭 메뉴)는 그 게이트 바깥이라 OFF에서도 그대로 동작한다.
     /// </summary>
     public sealed class HardwareReactionDirector : MonoBehaviour
     {
@@ -85,16 +90,47 @@ namespace StickMate.Interaction
             }
 
             float dt = Time.deltaTime;
-            TickBattery(dt);
-            TickCharging(dt);
-            TickCpu(dt);
-            TickNetwork(dt);
+
+            // ★ 2026-08-29 자율 발동 마스터 게이트 (StickConfig.enableAutonomousHardwareReactions, 기본 false)
+            //
+            // 사용자 신고: "머리위에 저 주황색이랑 눈같이 내리는건 뭐야 캐릭하고 겹치는데"
+            // (= CPU 과부하 이모트의 열기 물결 + 땀방울). 같은 라운드에 다른 구경거리 연출은 자율 발동
+            // 확률을 0으로 내려 조용해졌지만, 이 기능은 트리거가 확률이 아니라 실제 하드웨어 임계값이라
+            // 0으로 내릴 확률 필드 자체가 없어서 혼자 남아 계속 떴다.
+            //
+            // 게이트를 **여기 한 곳**에 두는 이유: 4종(배터리/충전/CPU/네트워크)의 자율 트리거는 전부
+            // Tick*() -> UpdateSignalLifecycle() -> ResolveAndNotify() -> RaiseHardwareReactionChanged()
+            // 라는 하나의 경로로만 흐른다. Tick* 4개와 ResolveAndNotify를 함께 막으면 자율 발동 경로에서
+            // HardwareReactionChanged가 발행될 방법이 남지 않는다(신호별로 4곳에 조건을 흩뿌리면 하나를
+            // 빠뜨리는 순간 사용자에게는 안 고친 것과 같다).
+            //
+            // 반대로 **데모 미리보기(TickDemoPreview / ForceTriggerNow)는 이 게이트 바깥**이다 —
+            // 기능을 지우는 게 아니라 기본값을 조용하게 만드는 것이므로, Ctrl+Opt+Cmd+H와 우클릭 메뉴는
+            // OFF 상태에서도 그대로 동작해야 한다.
+            bool autonomousEnabled = _config.enableAutonomousHardwareReactions;
+
+            if (autonomousEnabled)
+            {
+                TickBattery(dt);
+                TickCharging(dt);
+                TickCpu(dt);
+                TickNetwork(dt);
+            }
+            else if (_currentlyShown.HasValue)
+            {
+                // 런타임에 인스펙터로 플래그를 내린 경우 — 이미 떠 있던 **실제 신호 표현만** 즉시 걷는다.
+                // (데모 미리보기는 유저가 방금 직접 요청한 것이므로 여기서 건드리지 않고 제 수명대로 둔다.)
+                StickmanEventBus.RaiseHardwareReactionChanged(_currentlyShown.Value, active: false);
+                Debug.Log($"[하드웨어] {_currentlyShown.Value} 반응 표현을 걷습니다 — 자율 발동이 꺼져 있습니다" +
+                    "(StickConfig.enableAutonomousHardwareReactions=false). 수동 발동(Ctrl+Opt+Cmd+H / 우클릭 메뉴)은 그대로 동작합니다.");
+                _currentlyShown = null;
+            }
 
             // 데모 미리보기가 떠 있는 동안에는 폴링/지속조건 갱신은 그대로 계속하되(그래야 미리보기가
             // 끝난 직후 실제 상태가 정확히 반영된다) 표현 결정만 잠시 양보한다.
             if (TickDemoPreview(dt)) return;
 
-            ResolveAndNotify();
+            if (autonomousEnabled) ResolveAndNotify();
         }
 
         /// <summary>
@@ -106,6 +142,11 @@ namespace StickMate.Interaction
         /// 유저가 이 화면을 보고 "지금 배터리가 부족하구나"로 오해하면 안 되는 성격의 경로다 — 그래서
         /// 스스로 짧게 걷히고, 걷히는 즉시 실제 신호 판정이 그대로 재개된다.
         /// 하드웨어를 조회만 하고 제어(쓰기)하지 않는다는 27-7 규약은 이 경로에서도 당연히 그대로다.
+        ///
+        /// ★ 2026-08-29 — 이 경로는 <see cref="StickConfig.enableAutonomousHardwareReactions"/>를 <b>읽지
+        /// 않는다</b>. 그 플래그는 "스스로 뜨는 것"만 막는 자율 발동 게이트이고, 유저가 단축키/메뉴로
+        /// 직접 요청한 미리보기까지 막으면 4종 이모트를 확인할 방법이 통째로 사라진다(기능을 지우는 게
+        /// 아니라 기본값을 조용하게 만드는 것이 목적이다).
         /// </summary>
         public void ForceTriggerNow(string reason)
         {

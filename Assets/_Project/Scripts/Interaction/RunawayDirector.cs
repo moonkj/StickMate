@@ -138,7 +138,7 @@ namespace StickMate.Interaction
             var blackboard = _player.Blackboard;
             if (blackboard.MainCamera == null || blackboard.Body == null) return blackboard.Body != null ? blackboard.Body.position : Vector2.zero;
 
-            float dpi = _config.desktopDpiScale > 0f ? _config.desktopDpiScale : 1f;
+            float dpi = Mathf.Max(0.0001f, ScreenCoordinateConverter.ResolveDpiScale(_config));
             float screenW = (Screen.width > 0 ? Screen.width : 1920f) * dpi;
             float screenH = (Screen.height > 0 ? Screen.height : 1080f) * dpi;
             float margin = Mathf.Max(0f, _config.runawayHideSpotMarginPx);

@@ -114,7 +114,9 @@ namespace StickMate.States
                     // 않으므로(중력만 y에 작용) 이 한 번의 부여가 착지까지 그대로 유지되고, 몸은 이 속도로
                     // **걸어서** 모서리를 넘는다(순간이동 없음). y는 0으로 확정한다: 걸어 나가듯 떨어져야지
                     // 위로 뛰어오르면 "점프"가 되어버린다.
-                    float walkSpeed = _blackboard.Config != null ? _blackboard.Config.walkSpeed : 2.5f;
+                    // ★ 배율 반영 속도(StickConfig.ResolveWalkSpeed 문서 — 보폭이 배율에 비례하므로 속도도 함께
+                    // 비례해야 보행 사이클 주파수가 유지되고 디딤발이 미끄러지지 않는다).
+                    float walkSpeed = _blackboard.Config != null ? _blackboard.Config.ResolveWalkSpeed() : 2.5f;
                     float scale = _blackboard.Config != null ? _blackboard.Config.hopDownStepOffSpeedScale : 0.8f;
                     Vector2 before = _blackboard.Body.position;
                     _blackboard.Body.linearVelocity = new Vector2(hopDirection * walkSpeed * scale, 0f);
@@ -178,7 +180,7 @@ namespace StickMate.States
 
             if (_blackboard.Body != null)
             {
-                float speed = _blackboard.Config != null ? _blackboard.Config.walkSpeed : 2.5f;
+                float speed = _blackboard.Config != null ? _blackboard.Config.ResolveWalkSpeed() : 2.5f;
                 Vector2 v = _blackboard.Body.linearVelocity;
                 v.x = move * speed;
                 _blackboard.Body.linearVelocity = v;

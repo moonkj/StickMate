@@ -539,7 +539,7 @@ namespace StickMate.States
         /// </summary>
         private ScreenClampOsBounds ComputeScreenClampOsBounds()
         {
-            float dpi = Config != null ? Mathf.Max(0.0001f, Config.desktopDpiScale) : 1f;
+            float dpi = Mathf.Max(0.0001f, ScreenCoordinateConverter.ResolveDpiScale(Config));
             Vector2 origin = ScreenCoordinateConverter.OverlayOriginOsScreen;
             float screenW = (Screen.width > 0 ? Screen.width : 1920) * dpi;
             float screenH = (Screen.height > 0 ? Screen.height : 1080) * dpi;
@@ -687,7 +687,7 @@ namespace StickMate.States
         {
             if (Body == null || MainCamera == null) return;
 
-            float dpi = Config != null ? Mathf.Max(0.0001f, Config.desktopDpiScale) : 1f;
+            float dpi = Mathf.Max(0.0001f, ScreenCoordinateConverter.ResolveDpiScale(Config));
             Vector2 origin = ScreenCoordinateConverter.OverlayOriginOsScreen;
             float centerOsX = origin.x + (Screen.width > 0 ? Screen.width : 1920) * dpi * 0.5f;
 

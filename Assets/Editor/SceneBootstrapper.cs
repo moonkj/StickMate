@@ -56,9 +56,10 @@ namespace StickMate.EditorTools
     ///
     /// 현재 값(f≈0.0764, orthographicSize=12, cam.y=0) 기준:
     ///   groundTopWorldY = 0 - 12*(1 - 0.1527) = -10.167  (뷰포트 하단 -12에서 1.83유닛 위)
-    /// 캐릭터 전신 높이(발~정수리 약 2.27유닛, BuildStickmanPrefab 참고)를 얹으면 머리 상단이
-    /// 약 -7.9로 뷰포트 상단(+12)까지 한참 남고, 발 아래 여백 1.83유닛은 프레이밍 테스트의 최소
-    /// 요구치(0.5유닛)를 3.6배 상회한다 — Tests/PlayMode의 StickmanOnScreenFramingTests.cs가 이를
+    /// 캐릭터 전신 높이(배율 1.0에서 발~정수리 약 2.27유닛, 기본 배율 0.5에서 약 1.14유닛 —
+    /// BuildStickmanPrefab의 "크기 배율" 절 참고)를 얹어도 머리 상단이 뷰포트 상단(+12)까지 한참
+    /// 남고(배율 1.0에서 -7.9), 발 아래 여백 1.83유닛은 프레이밍 테스트의 최소
+    /// 요구치(0.5유닛)를 3.6배 상회한다 — 캐릭터가 작아지는 방향은 이 여백을 더 늘리므로 안전하다 — Tests/PlayMode의 StickmanOnScreenFramingTests.cs가 이를
     /// 매 실행마다 실측 검증한다(그 1.83유닛이 화면상 정확히 Dock 높이 75pt에 대응한다).
     ///
     /// 주의(BUG-SW-M2, Architect 반려 수정, 2026-08-28, docs/BUG_REPORT_SCENE_WIRING.md): 카메라
@@ -106,20 +107,22 @@ namespace StickMate.EditorTools
         // (2*12 유닛) = 35.25 pt/유닛 이므로 0.11*0.7*35.25 ~= 2.7pt.
         private const float LineWidthScale = 0.7f;
 
-        private const float LineWidth = 0.11f * LineWidthScale;      // 기본 획 두께(몸통).
-        private const float LegLineWidth = 0.12f * LineWidthScale;   // 다리는 기본보다 아주 약간 굵게.
-        private const float ArmLineWidth = 0.10f * LineWidthScale;   // 팔은 기본보다 아주 약간 얇게.
+        // ★ 2026-08-29 크기 배율 도입 — 아래 값들은 전부 **배율 1.0 기준**이다(Baseline 접두사).
+        // 실제로 쓰이는 값은 BuildStickmanPrefab이 StickConfig.characterScale을 곱해 만든 지역 변수다.
+        private const float BaselineLineWidth = 0.11f * LineWidthScale;      // 기본 획 두께(몸통).
+        private const float BaselineLegLineWidth = 0.12f * LineWidthScale;   // 다리는 기본보다 아주 약간 굵게.
+        private const float BaselineArmLineWidth = 0.10f * LineWidthScale;   // 팔은 기본보다 아주 약간 얇게.
         private const int LineCapVertices = 8; // 끝/모서리를 확실히 둥글게(레퍼런스 스타일의 round cap).
         private const int HeadRingSegments = 24; // 머리 테두리 링 근사에 쓰는 선분 개수(24면 육안으로 매끈한 원).
 
         // 머리 테두리(검은 링) 두께 — 팔다리 획보다 약간 얇게 잡아 머리가 지나치게 두꺼워 보이지 않게
         // 한다(리더 지시: "팔다리 선 두께와 비슷하거나 약간 얇게"). 위 LineWidthScale이 함께 곱해진다.
-        private const float HeadOutlineWidth = 0.09f * LineWidthScale;
+        private const float BaselineHeadOutlineWidth = 0.09f * LineWidthScale;
         // 머리 시각 반경. 물리 CircleCollider2D.radius(0.4, 아래 참고)와는 별개 값 — 판정 크기는 무변경.
         // 머리는 이제 "검은 링(테두리)만, 안쪽은 완전히 비어 투명"이다(사용자 정정, 2026-08-28 —
         // "얼굴이 흰색이 아니고 색 자체가 없어야지"). 진짜 투명 창이 동작하게 되어 얼굴 안쪽으로
         // 바탕화면이 그대로 비쳐야 하므로, 예전의 흰 채움 원(CreateFilledHead)은 제거했다.
-        private const float HeadVisualRadius = 0.22f;
+        private const float BaselineHeadVisualRadius = 0.22f;
 
 // 눈동자 점(CreateFilledDot)이 쓰는 원 근사 세분화 수. 손/발 끝 점은 2026-08-28 사용자 요청으로
         // 완전히 제거했으므로("손과 발에 동그란 뭉치같은건 필요없을거 같은데") 이제 이 상수는 눈 전용이다.
@@ -131,9 +134,9 @@ namespace StickMate.EditorTools
         // 있어야 하고"). 리더 지정 좌표: 머리 링 반경 0.22 기준 (±0.075, +0.02), 반경 0.018.
         // "눈도 너무 커서 이상함"(사용자) 대응으로 0.035 -> 0.018로 축소 — 머리 안에 작은 점 두 개가
         // 콕 찍힌 정도. 눈동자 이동 범위는 States/EyeController.cs의 MaxPupilOffset이 제한한다.
-        private const float EyePupilRadius = 0.018f;
-        private const float EyeOffsetX = 0.075f;
-        private const float EyeOffsetY = 0.02f;
+        private const float BaselineEyePupilRadius = 0.018f;
+        private const float BaselineEyeOffsetX = 0.075f;
+        private const float BaselineEyeOffsetY = 0.02f;
 
         // 중립(Idle) 팔 벌림 각도 — StickConfig.idleArmSpreadDegrees와 반드시 같은 값이어야 한다
         // (프리팹 저장 시점의 초기 localRotation과 런타임 포즈 목표각이 일치해야 첫 프레임에 튀지 않는다).
@@ -146,8 +149,8 @@ namespace StickMate.EditorTools
 
         // 팔다리 2분절 길이(리더 지정 총 길이를 상/하로 나눈 값) — 팔 0.75 = 0.38 + 0.37,
         // 다리 0.95 = 0.50 + 0.45.
-        private const float ArmUpperLength = 0.38f, ArmLowerLength = 0.37f;
-        private const float LegUpperLength = 0.50f, LegLowerLength = 0.45f;
+        private const float BaselineArmUpperLength = 0.38f, BaselineArmLowerLength = 0.37f;
+        private const float BaselineLegUpperLength = 0.50f, BaselineLegLowerLength = 0.45f;
 
         // 중립(Idle) 무릎/팔꿈치 굽힘 각도 — StickConfig의 같은 이름 필드와 반드시 일치해야 한다
         // (프리팹 저장 자세와 런타임 포즈 목표각이 어긋나면 첫 프레임에 튄다). 완전히 편 0도로 두면
@@ -201,11 +204,11 @@ namespace StickMate.EditorTools
         /// 중립 자세에서 엉덩이부터 발끝까지의 수직 낙차. 대퇴는 hipAngle, 정강이는 hipAngle+무릎각의
         /// 누적 각도로 각각 기울어 있으므로 따로 계산해 더한다(접지 보정 footLift 산출용).
         /// </summary>
-        private static float LimbDrop(float hipAngleDegrees)
+        private static float LimbDrop(float hipAngleDegrees, float legUpperLength, float legLowerLength)
         {
             float hip = hipAngleDegrees * Mathf.Deg2Rad;
             float knee = (hipAngleDegrees + KneeBendSign * IdleKneeBendDegrees) * Mathf.Deg2Rad;
-            return LegUpperLength * Mathf.Cos(hip) + LegLowerLength * Mathf.Cos(knee);
+            return legUpperLength * Mathf.Cos(hip) + legLowerLength * Mathf.Cos(knee);
         }
 
         // BUG-SW-M1(Architect 결정, 2026-08-28) — 표준 Active Ragdoll 레이어 기법: 몸통/머리/팔다리를
@@ -213,19 +216,24 @@ namespace StickMate.EditorTools
         private const string StickmanLimbLayerName = "StickmanLimb";
 
         // 클릭 잡기 영역(GrabArea, isTrigger) 치수 — 근거는 BuildStickmanPrefab의 해당 블록 주석 참고.
-        private const float GrabAreaWidth = 0.8f;
-        private const float GrabAreaVerticalPadding = 0.15f;
+        private const float BaselineGrabAreaWidth = 0.8f;
+        private const float BaselineGrabAreaVerticalPadding = 0.15f;
 
         /// <summary>
         /// Main Camera의 직교 크기. 5 -> 12 (2026-08-28 사용자 피드백: "사이즈도 너무 커", "창 위로
         /// 돌아다니고 해야 하는데 너무 크잖아").
         ///
-        /// 계산 근거: 캐릭터 전신 높이는 지오메트리 상수에서 유도되어 약 2.27 월드유닛이다
-        /// (BuildStickmanPrefab의 totalHeight — 발끝 0에서 머리 꼭대기까지). 실측한 Player 창 높이는
-        /// 846 포인트이므로 화면상 캐릭터 높이 = 2.27 / (2 * orthographicSize) * 846.
+        /// 계산 근거: 캐릭터 전신 높이는 지오메트리 상수에서 유도되어 **배율 1.0에서** 약 2.27
+        /// 월드유닛이다(BuildStickmanPrefab의 totalHeight — 발끝 0에서 머리 꼭대기까지). 실측한
+        /// Player 창 높이는 846 포인트이므로 화면상 캐릭터 높이 = 2.27 / (2 * orthographicSize) * 846.
         ///   orthographicSize=5  -> 192pt (기존, 너무 큼)
         ///   orthographicSize=12 -> 80pt  (목표 구간 70~90pt의 한가운데)  <- 채택
         /// macOS 제목표시줄(약 28pt)이나 Dock 아이콘(약 60pt) 위에 서 있는 게 자연스러운 크기다.
+        ///
+        /// ★ 2026-08-29 — 사용자가 그마저도 "절반 정도"를 요구해 StickConfig.characterScale(기본 0.5)이
+        /// 도입됐다. **카메라는 건드리지 않고 프리팹만 줄인다**: 카메라를 키우면 BUG-SW-M2의 OS-px 필드
+        /// 8종이 전부 의미가 달라져 재검토 의무가 딸려오지만, 프리팹만 줄이면 OS-px 값들의 유효 월드
+        /// 크기가 그대로 보존되기 때문이다. 기본 배율에서 화면상 캐릭터 높이는 약 40pt다.
         ///
         /// ============================================================================
         /// BUG-SW-M2 함정 재확인(리더 명시 경고) — 이번에는 "조용히" 바꾸지 않는다
@@ -248,6 +256,61 @@ namespace StickMate.EditorTools
         /// 그럼에도 실측 재검증은 필수다(90초+ 연속 실행, grounded 이탈/낙하 고착 0건 확인).
         /// </summary>
         private const float OrthographicSize = 12f;
+
+        // ================================================================================
+        // ★ 캐릭터 크기 배율 (2026-08-29 — 사용자 요구 "캐릭터 사이즈가 지금의 절반정도 되어야함
+        //    추후 사이즈 조정가능해야하고"). 단일 소스: StickConfig.characterScale.
+        // ================================================================================
+        // 이 프리팹 빌더가 크기의 **유일한 생산자**다. 위 Baseline* 상수(= 배율 1.0에서 사용자 확인을
+        // 받은 실루엣)에 배율을 곱해 몸통/팔다리 길이·머리 반경·눈·콜라이더·잡기 영역·선 두께를 전부
+        // 만들고, 런타임은 그 결과를 실측해서 쓴다(Core/StickmanMetrics.cs / StickmanPoseAnimator /
+        // StickmanAgent.TickVisualHalfWidth). 각도는 곱하지 않는다 — 각도는 크기 불변량이라 배율을
+        // 곱하면 실루엣 자체가 뭉개진다(다리를 절반 길이로 줄이면서 벌림각까지 절반으로 줄이면
+        // 캐릭터가 "작아지는" 게 아니라 "다른 캐릭터"가 된다).
+        //
+        // 배율을 곱하지 **않는** 것과 그 근거:
+        //   · 관절 각도 제한 / 중립 벌림·굽힘 각도 : 위와 같은 이유(무차원량).
+        //   · Rigidbody2D 질량(루트 1 / 다리 0.09 / 팔 0.06) : 중력은 가속도라 낙하 거동에 영향이 없고,
+        //     질량을 줄이면 StickConfig.ragdollForceThreshold(충격량 기준)가 조용히 예민해진다.
+        //   · 카메라 orthographicSize : 화면(=바탕화면)은 캐릭터와 함께 줄어들지 않는다. 이걸 건드리면
+        //     BUG-SW-M2의 OS-px 필드 8종 재검토 의무가 통째로 딸려온다(위 그 문서 참고).
+
+        /// <summary>실측한 Player 창 높이(포인트). 아래 "화면상 최소 크기" 하한들의 환산 기준이며,
+        /// 다른 계산에는 쓰이지 않는다(정확한 창 높이는 런타임에만 알 수 있고, 하한 판정에는 이
+        /// 근사치로 충분하다).</summary>
+        private const float ReferenceWindowHeightPoints = 846f;
+
+        /// <summary>월드 1유닛이 화면에서 몇 포인트인가 = 846 / (2*12) = 35.25.</summary>
+        private const float PointsPerWorldUnit = ReferenceWindowHeightPoints / (2f * OrthographicSize);
+
+        /// <summary>
+        /// 획 두께의 **화면상 하한**(포인트). 캐릭터가 작아지면 선도 같이 얇아지는 것이 원칙적으로
+        /// 맞지만, 선에는 크기와 무관한 절대 조건이 하나 있다 — "보여야 한다". 배율 1.0에서 획은
+        /// 0.077유닛 = 약 2.7pt인데(리더 지시 "화면상 2~3pt는 유지"), 그대로 비례하면 배율 0.5에서
+        /// 1.36pt가 되어 안티에일리어싱에 묻힌다. 그래서 비례로 줄이되 이 값에서 바닥을 받친다.
+        /// 이 하한이 실제로 걸리기 시작하는 배율은 2.0/2.7 ≒ 0.74다.
+        /// </summary>
+        private const float MinStrokeScreenPoints = 2.0f;
+
+        /// <summary>
+        /// 클릭 잡기 영역 폭의 **화면상 하한**(포인트). 잡기 영역이 존재하는 이유 자체가 "마우스로
+        /// 집을 수 있어야 한다"는 **사람 쪽 조건**이라 캐릭터가 작아져도 무한정 같이 작아지면 안 된다
+        /// (배율 1.0에서 0.8유닛 = 약 28pt = "버튼만 한 표적", 배율 0.5 비례로는 14pt로 좁아진다).
+        /// 세로는 항상 전신을 덮으므로 하한이 필요 없고, 가로만 받친다.
+        /// </summary>
+        private const float MinGrabAreaScreenPoints = 18f;
+
+        /// <summary>화면상 최소 포인트 수를 월드 유닛으로 환산한다(하한 계산 전용).</summary>
+        private static float ScreenPointsToWorld(float points) => points / PointsPerWorldUnit;
+
+        /// <summary>
+        /// 획 두께에 배율을 적용하되 화면상 최소 두께 아래로는 내려가지 않게 한다
+        /// (<see cref="MinStrokeScreenPoints"/> 문서 참고).
+        /// </summary>
+        private static float ScaledStrokeWidth(float baselineWidth, float scale)
+        {
+            return Mathf.Max(baselineWidth * scale, ScreenPointsToWorld(MinStrokeScreenPoints));
+        }
 
         // BUG-SW-M3(Architect 결정, 2026-08-28) — 배치 모드에서 기존 에셋을 의도적으로 덮어쓰고 싶을 때만
         // 켜는 커맨드라인 플래그. 예: -executeMethod StickMate.EditorTools.SceneBootstrapper.BuildAll --force
@@ -273,6 +336,37 @@ namespace StickMate.EditorTools
             {
                 return;
             }
+            BuildAllInternal(force: true);
+        }
+
+        /// <summary>
+        /// ★ 캐릭터 크기 조정 전용 진입점(2026-08-29). StickConfig.characterScale을 바꾼 뒤 이걸 누르면
+        /// 프리팹과 씬이 함께 다시 구워진다.
+        ///
+        /// 왜 프리팹만 다시 굽지 않는가: 씬의 라이벌 스틱맨은 프리팹 인스턴스가 아니라 **언팩된 사본**
+        /// 이라(CreateRivalStickman 문서 참고) 프리팹만 갈면 플레이어만 작아지고 라이벌은 옛 크기로
+        /// 남는다. 게다가 프리팹을 다시 저장하면 fileID가 재할당되어 Main.unity의 PrefabInstance
+        /// 오버라이드가 고아가 된다(BUG-SW-M3). 그래서 크기 변경은 언제나 프리팹+씬 동시 재생성이다.
+        /// </summary>
+        [MenuItem("StickMate/Resize Stickman (characterScale 반영, 프리팹+씬 재생성)")]
+        public static void ResizeStickmanMenuItem()
+        {
+            StickConfig config = AssetDatabase.LoadAssetAtPath<StickConfig>(ConfigAssetPath);
+            float scale = config != null ? config.ResolveCharacterScale() : 1f;
+            float height = StickConfig.BaselineCharacterTotalHeight * scale;
+
+            if (!Application.isBatchMode && !EditorUtility.DisplayDialog(
+                    "캐릭터 크기 재생성",
+                    "StickConfig.characterScale = " + scale.ToString("F3") +
+                    " (전신 높이 약 " + height.ToString("F3") + "유닛, 화면상 약 " +
+                    (height * PointsPerWorldUnit).ToString("F0") + "pt)로\n" +
+                    PrefabAssetPath + " 와 " + SceneAssetPath + " 을(를) 다시 굽습니다.\n\n" +
+                    "Main.unity에 수동으로 추가한 내용은 이 작업으로 사라집니다. 계속할까요?",
+                    "재생성", "취소"))
+            {
+                return;
+            }
+
             BuildAllInternal(force: true);
         }
 
@@ -401,6 +495,24 @@ namespace StickMate.EditorTools
             Color outline = config != null ? config.ResolveInkColor() : Color.black;
             float gravityScale = config != null ? config.gravityScale : 3f;
 
+            // ★ 크기 배율 — 아래 모든 지오메트리가 이 하나에서 파생된다(위 "캐릭터 크기 배율" 절 참고).
+            float bodyScale = config != null ? config.ResolveCharacterScale() : 1f;
+            float headVisualRadius = BaselineHeadVisualRadius * bodyScale;
+            float headOutlineWidth = ScaledStrokeWidth(BaselineHeadOutlineWidth, bodyScale);
+            float lineWidth = ScaledStrokeWidth(BaselineLineWidth, bodyScale);
+            float legLineWidth = ScaledStrokeWidth(BaselineLegLineWidth, bodyScale);
+            float armLineWidth = ScaledStrokeWidth(BaselineArmLineWidth, bodyScale);
+            float armUpperLength = BaselineArmUpperLength * bodyScale;
+            float armLowerLength = BaselineArmLowerLength * bodyScale;
+            float legUpperLength = BaselineLegUpperLength * bodyScale;
+            float legLowerLength = BaselineLegLowerLength * bodyScale;
+            float eyePupilRadius = BaselineEyePupilRadius * bodyScale;
+            float eyeOffsetX = BaselineEyeOffsetX * bodyScale;
+            float eyeOffsetY = BaselineEyeOffsetY * bodyScale;
+            // 잡기 영역: 세로 여백은 순수 비례, 가로는 "마우스로 집을 수 있는 최소 폭"에서 바닥을 받친다.
+            float grabAreaWidth = Mathf.Max(BaselineGrabAreaWidth * bodyScale, ScreenPointsToWorld(MinGrabAreaScreenPoints));
+            float grabAreaVerticalPadding = BaselineGrabAreaVerticalPadding * bodyScale;
+
             var root = new GameObject("Stickman");
             root.layer = limbLayer;
 
@@ -460,13 +572,17 @@ namespace StickMate.EditorTools
             // 구간이다. 머리 중심 y는 항상 몸통 상단 + 머리 반경으로 유도되므로 **머리 아래 끝은 정확히
             // 몸통 상단(SpecTorsoTopY=1.35)**이고, 목 길이 = 1.35 - 어깨y. 즉 0.17 -> 0.07이 된다.
             // 머리/몸통 좌표 자체는 건드리지 않는다(그 비율은 이미 사용자 확인을 받았다).
-            const float SpecHipY = 0.45f, SpecShoulderY = 1.28f, SpecTorsoTopY = 1.35f;
+            // ★ 2026-08-29: 아래 세 수치는 **배율 1.0 기준**이며 곧바로 bodyScale이 곱해진다.
+            const float BaselineSpecHipY = 0.45f, BaselineSpecShoulderY = 1.28f, BaselineSpecTorsoTopY = 1.35f;
+            float SpecHipY = BaselineSpecHipY * bodyScale;
+            float SpecShoulderY = BaselineSpecShoulderY * bodyScale;
+            float SpecTorsoTopY = BaselineSpecTorsoTopY * bodyScale;
             // 중립 자세의 발끝 낙차 — 무릎이 살짝 굽어 있으므로 대퇴/정강이를 각자의 **누적 각도**로
             // 따로 계산해 더해야 정확하다. 무릎 굽힘 부호가 좌우 공통(사람 무릎은 둘 다 뒤로 접힌다)이라
             // 좌우 낙차가 아주 조금 달라지므로, 둘 중 **큰 쪽**을 기준으로 들어올려 어느 발도 지면 아래로
             // 내려가지 않게 한다(차이는 0.02유닛 미만이라 육안으로 구분되지 않는다).
-            float leftDrop = LimbDrop(-IdleLegSpreadDegrees);
-            float rightDrop = LimbDrop(IdleLegSpreadDegrees);
+            float leftDrop = LimbDrop(-IdleLegSpreadDegrees, legUpperLength, legLowerLength);
+            float rightDrop = LimbDrop(IdleLegSpreadDegrees, legUpperLength, legLowerLength);
             float footLift = Mathf.Max(leftDrop, rightDrop) - SpecHipY;
             float hipY = SpecHipY + footLift;
             float shoulderY = SpecShoulderY + footLift;
@@ -474,13 +590,20 @@ namespace StickMate.EditorTools
             float torsoBottomY = SpecHipY + footLift;
             // 머리는 몸통 꼭대기 바로 위에 얹는다(링 아래 끝이 몸통 상단과 만나도록) — 고정 상수를 따로
             // 두면 몸통 길이/머리 반경을 바꿀 때마다 목이 끊기거나 파묻히므로 항상 유도해서 쓴다.
-            float headY = torsoTopY + HeadVisualRadius;
+            float headY = torsoTopY + headVisualRadius;
             // 루트 CapsuleCollider2D는 발끝(0)부터 머리 꼭대기까지 덮어야 RAGDOLL이 바닥에 자연스럽게
             // 눕는다 — 팔다리를 늘렸으므로 전신 높이에서 유도한다(예전 고정값 1.8은 새 비율과 어긋난다).
-            float totalHeight = headY + HeadVisualRadius;
+            float totalHeight = headY + headVisualRadius;
 
-            capsule.size = new Vector2(0.4f, totalHeight);
+            // 루트 물리 캡슐 폭 0.4는 배율 1.0 기준값이라 함께 줄인다(팔다리와 같은 몸이므로).
+            capsule.size = new Vector2(0.4f * bodyScale, totalHeight);
             capsule.offset = new Vector2(0f, totalHeight * 0.5f);
+
+            Debug.Log($"[SceneBootstrapper] 캐릭터 크기 배율={bodyScale:F3} (StickConfig.characterScale) — " +
+                      $"전신 높이={totalHeight:F4}유닛(배율 1.0 기준 {StickConfig.BaselineCharacterTotalHeight:F4}), " +
+                      $"화면상 약 {(totalHeight * PointsPerWorldUnit):F0}pt, 머리 반경={headVisualRadius:F4}, " +
+                      $"어깨 y={shoulderY:F4}, 획 두께={lineWidth:F4}유닛({(lineWidth * PointsPerWorldUnit):F1}pt), " +
+                      $"잡기 영역 폭={grabAreaWidth:F3}유닛({(grabAreaWidth * PointsPerWorldUnit):F0}pt).");
 
             // ================================================================================
             // 클릭 잡기 영역(GrabArea) — 드래그&던지기 실배선 라운드(2026-08-28) 신설
@@ -492,16 +615,27 @@ namespace StickMate.EditorTools
             //   - 그러면서 Unity의 OnMouseDown 히트테스트와 UniWindowController의
             //     Physics2D.GetRayIntersection 히트테스트에는 **둘 다 잡힌다**
             //     (ProjectSettings/Physics2DSettings.asset의 m_QueriesHitTriggers=1 확인).
-            // 크기 근거: 폭 GrabAreaWidth(0.8유닛)는 카메라 orthographicSize=12, 창 높이 846pt 기준
+            // 크기 근거: 폭 BaselineGrabAreaWidth(배율 1.0에서 0.8유닛)는 카메라 orthographicSize=12, 창 높이 846pt 기준
             //   0.8 x 846/(2*12) = 약 28pt — 얇은 획(2.5~3pt) 대비 약 10배 넓은 "버튼만 한" 표적이다.
-            //   세로는 전신을 덮고 위아래로 GrabAreaVerticalPadding씩 여유를 준다.
+            //   세로는 전신을 덮고 위아래로 grabAreaVerticalPadding씩 여유를 준다(둘 다 배율이 곱해진다 —
+            //   가로만 "마우스로 집을 수 있는 최소 폭"(MinGrabAreaScreenPoints)에서 바닥을 받친다).
             // 이보다 더 키우지 않는 이유: 캐릭터에서 멀리 떨어진 빈 공간까지 클릭을 잡으면 비침해
             //   원칙 2(그 외 영역 100% 관통)가 체감상 깨진다.
             var grabArea = root.AddComponent<CapsuleCollider2D>();
             grabArea.direction = CapsuleDirection2D.Vertical;
             grabArea.isTrigger = true;
-            grabArea.size = new Vector2(GrabAreaWidth, totalHeight + GrabAreaVerticalPadding * 2f);
+            grabArea.size = new Vector2(grabAreaWidth, totalHeight + grabAreaVerticalPadding * 2f);
             grabArea.offset = new Vector2(0f, totalHeight * 0.5f);
+
+            // ================================================================================
+            // 캐릭터 실측 치수 조회 창구 (Core/StickmanMetrics.cs) — 2026-08-29 크기 배율 라운드
+            // ================================================================================
+            // 시각 레이어(말풍선/이모트/게이지/타이머 링)가 "머리 위 y+2.6" 같은 절대 상수 대신
+            // "키의 n%"로 앵커를 잡을 수 있게 하는 단일 조회 경로다. 직렬화 필드가 없고 Awake()에서
+            // 자기 계층(비-트리거 캡슐 / "Head" / "LeftArm" / "LeftLeg")을 **실측**하므로 배선이
+            // 필요 없고, 이 빌더가 구운 값과 어긋날 수도 없다(굽힌 상수를 복사하지 않는다).
+            // ★ 라이벌 스틱맨도 이 컴포넌트를 그대로 가져간다 — 라이벌 말풍선도 같은 API를 쓴다.
+            root.AddComponent<StickmanMetrics>();
 
             // ================================================================================
             // Phase 3 상호작용 컨트롤러 배선 (드래그&던지기 / 로데오 커서)
@@ -682,24 +816,24 @@ namespace StickMate.EditorTools
             // 몸통(목) 선의 위쪽 끝 — **머리 링 안쪽으로 침범하지 않게** 정확히 맞춘다
             // (2026-08-28 사용자 지적: "목이 얼굴을 뚫고 올라와있는거 같고").
             //
-            // 이력: 직전까지는 torsoTopY + HeadVisualRadius*0.5로 머리 원 **안쪽 깊숙이** 파고들게 했다.
+            // 이력: 직전까지는 torsoTopY + headVisualRadius*0.5로 머리 원 **안쪽 깊숙이** 파고들게 했다.
             // 그때는 얼굴 안쪽이 흰색으로 꽉 채워져 있어서(sortingOrder 3) 파고든 부분이 가려져 보이지
             // 않았다. 이번 라운드에 얼굴을 투명하게 비우면서 그 선이 머리 안에서 그대로 드러났다.
             //
-            // 계산: 머리 링은 반지름 HeadVisualRadius 원 경로를 HeadOutlineWidth 두께로 그리므로,
+            // 계산: 머리 링은 반지름 headVisualRadius 원 경로를 headOutlineWidth 두께로 그리므로,
             // 링이 차지하는 반경 구간은 [R - W/2, R + W/2]다. 즉 링의 **안쪽 가장자리**는 머리 중심에서
-            // R - W/2 만큼 떨어진 곳 = torsoTopY + HeadOutlineWidth/2 (torsoTopY = headY - R 이므로).
-            // 몸통 선은 둥근 캡 때문에 끝점보다 LineWidth/2 만큼 더 위로 뻗으므로, 그 시각적 끝이 링
+            // R - W/2 만큼 떨어진 곳 = torsoTopY + headOutlineWidth/2 (torsoTopY = headY - R 이므로).
+            // 몸통 선은 둥근 캡 때문에 끝점보다 lineWidth/2 만큼 더 위로 뻗으므로, 그 시각적 끝이 링
             // 안쪽 가장자리에 정확히 닿으려면:
-            //     끝점 + LineWidth/2 = torsoTopY + HeadOutlineWidth/2
-            //  => 끝점 = torsoTopY + (HeadOutlineWidth - LineWidth)/2
+            //     끝점 + lineWidth/2 = torsoTopY + headOutlineWidth/2
+            //  => 끝점 = torsoTopY + (headOutlineWidth - lineWidth)/2
             // 이러면 (a) 링 안쪽 빈 공간으로는 1px도 침범하지 않고, (b) 몸통 획이 링 두께 구간을 완전히
             // 가로질러 겹치므로 목과 머리 사이에 틈도 생기지 않는다.
-            float torsoTopOverlapped = torsoTopY + (HeadOutlineWidth - LineWidth) * 0.5f;
+            float torsoTopOverlapped = torsoTopY + (headOutlineWidth - lineWidth) * 0.5f;
             float torsoCenterY = (torsoTopOverlapped + torsoBottomY) * 0.5f;
             float torsoHalf = (torsoTopOverlapped - torsoBottomY) * 0.5f;
             CreateLineSegmentVisual(root.transform, "Torso", new Vector3(0f, torsoCenterY, 0f),
-                new Vector3(0f, torsoHalf, 0f), new Vector3(0f, -torsoHalf, 0f), outline, sortingOrder: 1);
+                new Vector3(0f, torsoHalf, 0f), new Vector3(0f, -torsoHalf, 0f), lineWidth, outline, sortingOrder: 1);
 
             // 머리 — **검은 링(테두리)만 + 안쪽은 완전히 비어 투명**(2026-08-28 사용자 정정: "얼굴이
             // 흰색이 아니고 색 자체가 없어야지, 비워져있어야함").
@@ -718,18 +852,19 @@ namespace StickMate.EditorTools
             var head = CreateHeadAnchor(root.transform, "Head", new Vector3(0f, headY, 0f));
             head.layer = limbLayer;
             var headCollider = head.AddComponent<CircleCollider2D>();
-            headCollider.radius = 0.4f;
-            CreateRing(head.transform, "HeadOutline", Vector3.zero, HeadVisualRadius, HeadOutlineWidth,
+            // 머리 물리 원(반경 0.4, 시각 링 0.22와 별개 — BUG-SW-M1 이후 비율 무변경)도 함께 줄인다.
+            headCollider.radius = 0.4f * bodyScale;
+            CreateRing(head.transform, "HeadOutline", Vector3.zero, headVisualRadius, headOutlineWidth,
                 outline, sortingOrder: 4);
 
             // 눈(눈동자 점 2개) — **반드시 머리의 자식**이라야 RAGDOLL로 머리가 뒹굴 때도 따라간다.
             // 투명한(비어 있는) 얼굴 안에 검은 점 두 개가 떠 있는 형태. sortingOrder는 테두리(4)보다 위(5).
             // 런타임에 States/EyeController.cs가 이 점들의 localPosition을 중립에서 조금씩 오프셋해
             // 시선을 움직인다(다음 라운드에 커서 추적 연결 예정 — 그 클래스 문서의 배선 지점 참고).
-            CreateFilledDot(head.transform, "LeftEye", new Vector3(-EyeOffsetX, EyeOffsetY, 0f),
-                EyePupilRadius, outline, sortingOrder: 5);
-            CreateFilledDot(head.transform, "RightEye", new Vector3(EyeOffsetX, EyeOffsetY, 0f),
-                EyePupilRadius, outline, sortingOrder: 5);
+            CreateFilledDot(head.transform, "LeftEye", new Vector3(-eyeOffsetX, eyeOffsetY, 0f),
+                eyePupilRadius, outline, sortingOrder: 5);
+            CreateFilledDot(head.transform, "RightEye", new Vector3(eyeOffsetX, eyeOffsetY, 0f),
+                eyePupilRadius, outline, sortingOrder: 5);
 
             // ================================================================================
             // 말풍선 렌더러 배선 (2026-08-29 — 원칙 1의 산출물이 화면에 한 번도 안 나오던 문제)
@@ -755,25 +890,25 @@ namespace StickMate.EditorTools
             // 무릎은 뒤로만(KneeBendSign=-1) 접히므로 허용 구간이 [-100, -3], 팔꿈치는 앞으로만
             // (ElbowBendSign=+1) 접히므로 [+3, +100] — 두 구간 모두 0(완전히 편 상태)을 포함하지 않는다.
             CreateLimb(root.transform, rb, "LeftLeg", attachLocal: new Vector2(0f, hipY),
-                upperLength: LegUpperLength, lowerLength: LegLowerLength, width: LegLineWidth,
+                upperLength: legUpperLength, lowerLength: legLowerLength, width: legLineWidth,
                 upperAngle: -IdleLegSpreadDegrees, lowerAngle: KneeBendSign * IdleKneeBendDegrees,
                 upperMinAngle: -HipSwingLimitDegrees, upperMaxAngle: HipSwingLimitDegrees,
                 lowerMinAngle: -MaxJointBendDegrees, lowerMaxAngle: KneeBendSign * MinJointBendDegrees,
                 outline, mass: 0.09f, gravityScale: gravityScale, sortingOrder: 0, limbLayer: limbLayer, agent: agent);
             CreateLimb(root.transform, rb, "RightLeg", attachLocal: new Vector2(0f, hipY),
-                upperLength: LegUpperLength, lowerLength: LegLowerLength, width: LegLineWidth,
+                upperLength: legUpperLength, lowerLength: legLowerLength, width: legLineWidth,
                 upperAngle: IdleLegSpreadDegrees, lowerAngle: KneeBendSign * IdleKneeBendDegrees,
                 upperMinAngle: -HipSwingLimitDegrees, upperMaxAngle: HipSwingLimitDegrees,
                 lowerMinAngle: -MaxJointBendDegrees, lowerMaxAngle: KneeBendSign * MinJointBendDegrees,
                 outline, mass: 0.09f, gravityScale: gravityScale, sortingOrder: 0, limbLayer: limbLayer, agent: agent);
             CreateLimb(root.transform, rb, "LeftArm", attachLocal: new Vector2(0f, shoulderY),
-                upperLength: ArmUpperLength, lowerLength: ArmLowerLength, width: ArmLineWidth,
+                upperLength: armUpperLength, lowerLength: armLowerLength, width: armLineWidth,
                 upperAngle: -IdleArmSpreadDegrees, lowerAngle: ElbowBendSign * IdleElbowBendDegrees,
                 upperMinAngle: -ShoulderSwingLimitDegrees, upperMaxAngle: ShoulderSwingLimitDegrees,
                 lowerMinAngle: ElbowBendSign * MinJointBendDegrees, lowerMaxAngle: MaxJointBendDegrees,
                 outline, mass: 0.06f, gravityScale: gravityScale, sortingOrder: 2, limbLayer: limbLayer, agent: agent);
             CreateLimb(root.transform, rb, "RightArm", attachLocal: new Vector2(0f, shoulderY),
-                upperLength: ArmUpperLength, lowerLength: ArmLowerLength, width: ArmLineWidth,
+                upperLength: armUpperLength, lowerLength: armLowerLength, width: armLineWidth,
                 upperAngle: IdleArmSpreadDegrees, lowerAngle: ElbowBendSign * IdleElbowBendDegrees,
                 upperMinAngle: -ShoulderSwingLimitDegrees, upperMaxAngle: ShoulderSwingLimitDegrees,
                 lowerMinAngle: ElbowBendSign * MinJointBendDegrees, lowerMaxAngle: MaxJointBendDegrees,
@@ -1320,15 +1455,17 @@ namespace StickMate.EditorTools
         /// (Renderer는 어차피 매 프레임 자신이 속한 Transform의 world 행렬로 로컬 정점을 다시 그리기
         /// 때문 — MeshRenderer/SpriteRenderer와 동일한 원리).
         /// </summary>
-        private static LineRenderer ConfigureLine(GameObject go, Color color, int sortingOrder, bool loop)
+        private static LineRenderer ConfigureLine(GameObject go, Color color, int sortingOrder, bool loop, float width)
         {
             var lr = go.AddComponent<LineRenderer>();
             lr.useWorldSpace = false;
             lr.material = GetLineMaterial();
             lr.startColor = color;
             lr.endColor = color;
-            lr.startWidth = LineWidth;
-            lr.endWidth = LineWidth;
+            // ★ 2026-08-29: 예전에는 상수 LineWidth를 여기서 직접 읽었다. 크기 배율이 들어오면서
+            // 두께가 호출부마다 달라지므로(전부 BuildStickmanPrefab이 배율을 곱해 만든다) 인자로 받는다.
+            lr.startWidth = width;
+            lr.endWidth = width;
             lr.numCapVertices = LineCapVertices; // 끝을 살짝 둥글려 손그림 느낌(각진 사각형 끝 대신).
             lr.numCornerVertices = LineCapVertices;
             lr.sortingOrder = sortingOrder;
@@ -1338,14 +1475,14 @@ namespace StickMate.EditorTools
 
         /// <summary>직선 하나로 된 시각 표현(몸통). 물리 없이 parent의 자식 Transform으로만 존재 —
         /// CreateStaticVisual이 하던 역할을 사각형 스프라이트 대신 LineRenderer로 대체한다.</summary>
-        private static GameObject CreateLineSegmentVisual(Transform parent, string name, Vector3 localPos, Vector3 localStart, Vector3 localEnd, Color color, int sortingOrder)
+        private static GameObject CreateLineSegmentVisual(Transform parent, string name, Vector3 localPos, Vector3 localStart, Vector3 localEnd, float width, Color color, int sortingOrder)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             go.transform.localPosition = localPos;
             go.transform.localScale = Vector3.one;
 
-            var lr = ConfigureLine(go, color, sortingOrder, loop: false);
+            var lr = ConfigureLine(go, color, sortingOrder, loop: false, width);
             lr.positionCount = 2;
             lr.SetPosition(0, localStart);
             lr.SetPosition(1, localEnd);
@@ -1381,9 +1518,7 @@ namespace StickMate.EditorTools
             go.transform.localPosition = localPos;
             go.transform.localScale = Vector3.one;
 
-            var lr = ConfigureLine(go, color, sortingOrder, loop: true);
-            lr.startWidth = width;
-            lr.endWidth = width;
+            var lr = ConfigureLine(go, color, sortingOrder, loop: true, width);
             lr.positionCount = HeadRingSegments;
             for (int i = 0; i < HeadRingSegments; i++)
             {
@@ -1406,9 +1541,8 @@ namespace StickMate.EditorTools
             go.transform.localPosition = localAt;
             go.transform.localScale = Vector3.one;
 
-            var lr = ConfigureLine(go, color, sortingOrder, loop: true);
-            lr.startWidth = radius * 2.4f; // 지름보다 넉넉히 두꺼워야 안쪽까지 완전히 채워진다.
-            lr.endWidth = radius * 2.4f;
+            // 지름보다 넉넉히 두꺼워야 안쪽까지 완전히 채워진다.
+            var lr = ConfigureLine(go, color, sortingOrder, loop: true, radius * 2.4f);
             lr.positionCount = FilledDotSegments;
             for (int i = 0; i < FilledDotSegments; i++)
             {
@@ -1516,9 +1650,7 @@ namespace StickMate.EditorTools
             // 레퍼런스 스타일의 굵은 검은 획 — 관절(로컬 원점)에서 마디 끝까지. 시작점이 정확히 원점이라
             // 회전 중심과 선의 시작점이 항상 같고, 둥근 캡(LineCapVertices=8)이 관절에서 자연스럽게
             // 겹쳐 매끄럽게 이어진다.
-            var lr = ConfigureLine(segment, color, sortingOrder, loop: false);
-            lr.startWidth = width;
-            lr.endWidth = width;
+            var lr = ConfigureLine(segment, color, sortingOrder, loop: false, width);
             lr.positionCount = 2;
             lr.SetPosition(0, Vector3.zero);
             lr.SetPosition(1, new Vector3(0f, -length, 0f));

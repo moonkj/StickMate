@@ -85,6 +85,7 @@ namespace StickMate.Interaction
         }
 
         private Canvas _canvas;
+        private CanvasScaler _scaler;   // Retina 대응 — 캔버스 1유닛 == OS 포인트 1로 맞춘다(ApplyCanvasScaleFactor).
         private RectTransform _panelRoot;
         private RectTransform _rowContainer;
         private readonly List<RowWidgets> _rows = new List<RowWidgets>();
@@ -159,6 +160,7 @@ namespace StickMate.Interaction
 
         private void Update()
         {
+            ApplyCanvasScaleFactor(); // 배율은 실행 중에 바뀔 수 있다(모니터 이동/시작 직후 창 확장).
             TickGlobalClickPolling();
             SyncClickThroughBlocker();
 
@@ -219,8 +221,23 @@ namespace StickMate.Interaction
             }
         }
 
+        /// <summary>
+        /// ScreenSpaceOverlay 캔버스의 스케일을 현재 화면 배율에 맞춘다 — **캔버스 1유닛 == OS 포인트 1**.
+        /// 근거는 ScreenCoordinateConverter.ResolveCanvasScaleFactor() 문서 참고(2026-08-29 Retina 대응,
+        /// 리더 지시 5항). 이 위젯은 화면 우상단 앵커 + 고정 오프셋으로만 배치되므로 스크린 픽셀 <-> 캔버스
+        /// 유닛 환산이 필요한 코드가 없다(아래 ContainsScreenPoint/SyncClickThroughBlocker는 GetWorldCorners를
+        /// 쓰는데, 그 값에는 캔버스 루트의 localScale(=scaleFactor)이 이미 곱해져 있어 스크린 픽셀 그대로다).
+        /// </summary>
+        private void ApplyCanvasScaleFactor()
+        {
+            if (_scaler == null) return;
+            float target = ScreenCoordinateConverter.ResolveCanvasScaleFactor(_agentConfig);
+            if (!Mathf.Approximately(_scaler.scaleFactor, target)) _scaler.scaleFactor = target;
+        }
+
         /// <summary>ScreenSpaceOverlay 캔버스에서는 RectTransform의 월드 좌표가 곧 스크린 픽셀 좌표다
-        /// (AppControlDirector.HitTestMenuRow와 같은 전제).</summary>
+        /// (AppControlDirector.HitTestMenuRow와 같은 전제 — CanvasScaler.scaleFactor가 1이 아니어도
+        /// 캔버스 루트의 localScale에 이미 반영돼 있어 그대로 성립한다).</summary>
         private static bool ContainsScreenPoint(RectTransform rt, Vector2 screenPoint)
         {
             if (rt == null) return false;
@@ -376,6 +393,9 @@ namespace StickMate.Interaction
             _canvas = canvasGo.GetComponent<Canvas>();
             _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             _canvas.sortingOrder = SortingOrderTopMost;
+            _scaler = canvasGo.GetComponent<CanvasScaler>();
+            _scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+            ApplyCanvasScaleFactor();
 
             var panelGo = new GameObject("PostItPanel", typeof(RectTransform), typeof(Image));
             panelGo.transform.SetParent(canvasGo.transform, false);

@@ -88,9 +88,11 @@ namespace StickMate.Interaction
 
             if (!TryFindTargetWindow(out PlatformFoothold target))
             {
-                Debug.Log($"[창도둑] 강제 발동 건너뜀({reason}) — 캐릭터 신장의 " +
-                    $"{_config.windowTheftMaxTargetWidthMultiplier:F1}배 이하 폭을 가진 실제 창을 찾지 못했습니다 " +
-                    "(27-1: 큰 창을 억지로 대상으로 삼지 않는다).");
+                // 2026-08-29: 종전에는 여기서 "찾지 못했습니다"만 찍어서, 강제 발동이 실패해도 **폭 조건에
+                // 걸린 건지 후보 목록 자체가 비어 있는 건지** 구분할 수 없었다(직전 라운드에서 창 도둑을
+                // 실물로 한 번도 못 본 채로 남은 직접적인 원인이다). 실제 후보 목록과 각 창의 폭을
+                // 그대로 찍어 다음 실행 한 번으로 원인이 특정되게 한다.
+                Debug.Log($"[창도둑] 강제 발동 건너뜀({reason}) — {BuildTargetSearchDiagnostic()}");
                 return;
             }
 
@@ -206,6 +208,57 @@ namespace StickMate.Interaction
 
         // 매 판정마다 새 List를 만들지 않기 위한 재사용 버퍼(24시간 상주 앱 컨벤션).
         private readonly List<PlatformFoothold> _candidateBuffer = new List<PlatformFoothold>(16);
+
+        /// <summary>
+        /// 대상 창 탐색이 실패한 이유를 사람이 읽을 수 있는 한 줄로 만든다. <b>강제 발동 실패 시에만</b>
+        /// 호출한다(자동 발동 경로는 60초마다 돌므로 여기서 문자열을 만들면 로그가 오염된다).
+        ///
+        /// 이 진단이 필요한 이유 — 후보 소스가 <b>FootholdPoller의 발판 목록</b>이라는 구조적 결합 때문이다.
+        /// 발판 목록은 "상단 테두리가 앞에서 실제로 보이는 창"만 담는다(Platform/MacOS/MacWindowService.cs의
+        /// 가려짐 계산). 그래서 작은 창이 큰 창 <b>뒤에</b> 있으면 폭 조건을 따지기도 전에 목록에서
+        /// 사라진다 — 실측 로그: 계산기/작은 Finder를 띄워도 전체화면 에디터 창 뒤에 있으면
+        /// "사유=다른 창에 완전히 가려짐"으로 탈락하고, 남는 후보는 맨 앞의 큰 창 하나뿐이다.
+        /// 아래 출력이 "실제 창 후보 0개"인지 "후보는 있는데 전부 너무 넓다"인지를 갈라준다.
+        /// </summary>
+        private string BuildTargetSearchDiagnostic()
+        {
+            var footholds = _player.Blackboard.FootholdPoller != null ? _player.Blackboard.FootholdPoller.CachedFootholds : null;
+            if (footholds == null || footholds.Count == 0)
+            {
+                return "발판 폴러의 창 목록이 비어 있습니다(아직 첫 폴링 전이거나 열거된 창이 하나도 없음).";
+            }
+
+            float characterHeightOsPx = ComputeCharacterHeightOsPx();
+            if (characterHeightOsPx <= 0f)
+            {
+                return "캐릭터 신장을 OS 픽셀로 환산하지 못했습니다(콜라이더/카메라 배선 확인 필요).";
+            }
+            float maxWidth = characterHeightOsPx * Mathf.Max(0.01f, _config.windowTheftMaxTargetWidthMultiplier);
+
+            int realCount = 0;
+            int syntheticCount = 0;
+            var widths = new System.Text.StringBuilder();
+            for (int i = 0; i < footholds.Count; i++)
+            {
+                PlatformFoothold f = footholds[i];
+                if (f.Handle < 0) { syntheticCount++; continue; }
+                realCount++;
+                if (widths.Length > 0) widths.Append(", ");
+                widths.Append("handle=").Append(f.Handle)
+                      .Append(" 폭=").Append(f.ScreenRect.width.ToString("F0")).Append("pt")
+                      .Append(f.ScreenRect.width <= maxWidth ? "(통과)" : "(너무 넓음)");
+            }
+
+            string limit = $"기준: 캐릭터 신장 {characterHeightOsPx:F0}pt x {_config.windowTheftMaxTargetWidthMultiplier:F1}배 = 폭 {maxWidth:F0}pt 이하";
+            if (realCount == 0)
+            {
+                return $"실제 창 후보가 0개입니다(합성 발판 {syntheticCount}개는 Dock/안전망이라 제외). " +
+                       "작은 창이 큰 창 뒤에 가려져 있으면 발판 목록에 아예 오르지 않습니다 — " +
+                       $"대상 창을 맨 앞으로 꺼낸 뒤 다시 시도하세요. {limit}.";
+            }
+            return $"실제 창 후보 {realCount}개가 전부 폭 조건을 넘었습니다 [{widths}]. {limit} " +
+                   "(27-1: 큰 창을 억지로 대상으로 삼지 않는다).";
+        }
 
         private float ComputeCharacterHeightOsPx()
         {

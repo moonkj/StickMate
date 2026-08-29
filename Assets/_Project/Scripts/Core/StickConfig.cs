@@ -330,11 +330,49 @@ namespace StickMate.Core
         public float fullscreenPollInterval = 1.5f;
 
         [Header("좌표계 변환 (Platform/ScreenCoordinateConverter.cs 참고)")]
-        [Tooltip("Unity가 보고하는 화면 픽셀 단위 ↔ OS가 보고하는 실제 데스크톱 픽셀 단위 사이의 배율. " +
-                 "고DPI(Retina 등) 환경에서 두 값이 다를 때 보정용. 기본값 1 = 배율 차이 없음으로 가정(Phase 1 근사치).")]
-        public float desktopDpiScale = 1f;
+        [Tooltip("[보통은 0으로 두세요 — 자동] Unity 화면 픽셀 ↔ OS 데스크톱 포인트 배율의 수동 오버라이드.\n" +
+                 "• 0 이하(기본): 자동. ScreenCoordinateConverter가 우리 창의 OS 포인트 폭 / Screen.width로 " +
+                 "매 발판 폴링마다 실측한다(Retina 2x면 0.5, 비Retina면 1.0). 외장 모니터로 옮겨도 자동 추종한다.\n" +
+                 "• 0보다 큰 값: 그 값을 자동 산출 대신 강제로 쓴다. 자동 산출이 통하지 않는 환경을 " +
+                 "디버깅할 때만 쓰는 탈출구다 — 켜 두면 모니터를 바꿔도 갱신되지 않는다.\n" +
+                 "이 값을 직접 읽지 말 것: 소비자는 반드시 ScreenCoordinateConverter.ResolveDpiScale(config)를 " +
+                 "거친다(좌표 변환 단일 소스 컨벤션 BUG-M5).")]
+        public float desktopDpiScale = 0f;
 
-        [Tooltip("캐릭터 발 위치(OS 좌표)와 발판 상단 사이 허용 오차(OS 픽셀 단위). 이 범위 안이면 접지로 판정")]
+        // ================================================================================
+        // ★★ "OS-px 필드" 단위 규약 — 결론: **전부 OS 포인트다** (2026-08-29 Retina 대응 라운드, 리더 지시 4항)
+        // ================================================================================
+        // 대상 8개 필드(Assets/Editor/SceneBootstrapper.cs의 BUG-SW-M2 경고가 지목한 목록):
+        //   groundSnapTolerance / wanderCursorReactionRadiusPx / rodeoStillRadiusPx / rodeoReachDistancePx /
+        //   graffitiMinRadiusPx / graffitiMaxRadiusPx / graffitiRegionSizePx / runawayHideSpotMarginPx
+        // (+ 코드 상수 States/StickmanBlackboard.ScreenClampMarginOsPx도 같은 규약이다.)
+        //
+        // 지금까지 이름과 주석이 "OS 화면 픽셀"이라고 적혀 있었지만, `macRetinaSupport`가 꺼져 있어
+        // 포인트와 픽셀이 우연히 같았을 뿐이라 실제로는 검증된 적이 없는 표기였다. 이번 라운드에 각
+        // 소비자를 전수 추적해 확정한 결과는 다음과 같다 — **모두 OS 포인트**다:
+        //
+        //   · groundSnapTolerance      : States/GroundSensor.Sense()에서 `footOs.y`(WorldToOsScreen 결과,
+        //                                이미 dpi가 곱해진 OS 포인트)와 `foothold.ScreenRect.y`(CGWindowBounds,
+        //                                OS 포인트)의 차이와 직접 비교된다. 양쪽이 포인트이므로 이 값도 포인트.
+        //   · rodeoStillRadiusPx       : Interaction/RodeoCursorWatcher가 CGEventGetLocation(OS 포인트)끼리의
+        //     rodeoReachDistancePx       거리, 그리고 그 커서와 WorldToOsScreen(OS 포인트)의 거리에 쓴다.
+        //   · graffiti*Px              : Interaction/GraffitiDirector가 `Screen.width * dpi`(= OS 포인트 폭)와
+        //     runawayHideSpotMarginPx    Interaction/RunawayDirector가 같은 식으로 만든 화면 사각형 안에서 쓴다.
+        //   · wanderCursorReactionRadiusPx : 아직 소비자가 없는 예약 필드지만, 이름이 가리키는 커서 좌표가
+        //                                OS 포인트이므로 같은 규약으로 확정해 둔다.
+        //
+        // ★ 그래서 `macRetinaSupport`를 켠 뒤에도 이 8개 값은 **하나도 바꾸지 않았다**. 이유:
+        //   Screen.width/height가 2배(3024x1964)가 되는 동시에 자동 산출된 dpi 배율이 0.5가 되어
+        //   `Screen.width * dpi`가 정확히 예전 값(1512)을 유지하고, WorldToOsScreen도 `* dpi`로 같은
+        //   포인트 공간을 돌려준다. 즉 이 필드들이 사는 좌표 공간 자체가 Retina 전후로 불변이다.
+        //   (물리적 크기도 불변이다 — 20pt는 Retina에서도 20pt다.)
+        //
+        // ⚠ 반대로 여전히 살아 있는 함정: **카메라 orthographicSize를 바꾸면** 이 값들의 "월드 환산 크기"가
+        //   달라진다(월드유닛당 포인트 = 창높이[포인트] / (2*orthographicSize)). 그건 DPI와 무관한 별개의
+        //   종속성이며, SceneBootstrapper의 BUG-SW-M2 경고는 그 의미로 계속 유효하다.
+
+        [Tooltip("캐릭터 발 위치(OS 좌표)와 발판 상단 사이 허용 오차(**OS 포인트**). 이 범위 안이면 접지로 판정. " +
+                 "단위 근거는 아래 \"OS-px 필드 단위 규약\" 블록 참고 — Retina를 켜도 값을 바꿀 필요가 없다.")]
         public float groundSnapTolerance = 6f;
 
         [Header("입력")]
@@ -402,8 +440,8 @@ namespace StickMate.Core
         [Tooltip("'Idle 연장'이 연속 3회 이상 선택됐을 때, 앉기/하품 연출을 트리거할 확률(0~1). 26-3.")]
         public float wanderRestExtendSitChance = 0.15f;
 
-        [Tooltip("커서 근접 반응 트리거 반경(OS 화면 픽셀). Phase 2로 연기됨(26-4) — 지금은 필드만 예약, " +
-                 "AutoWanderController가 아직 소비하지 않음.")]
+        [Tooltip("커서 근접 반응 트리거 반경(**OS 포인트**, 아래 \"OS-px 필드 단위 규약\" 참고). Phase 2로 연기됨(26-4) — " +
+                 "지금은 필드만 예약, AutoWanderController가 아직 소비하지 않음.")]
         public float wanderCursorReactionRadiusPx = 150f;
 
         [Header("전투 공용 (Attack 상태, Phase 3)")]
@@ -508,14 +546,14 @@ namespace StickMate.Core
                  "이 값만 확인해 폴링을 건너뛴다 — 이 값을 true(에셋에서 1)로 바꾸면 즉시 원래대로 발동한다.")]
         public bool rodeoCursorEnabled = false;
 
-        [Tooltip("커서가 '정지'로 간주되는 이동 반경(OS 화면 픽셀). 이 반경 안의 흔들림은 무시.")]
+        [Tooltip("커서가 '정지'로 간주되는 이동 반경(**OS 포인트**, 아래 \"OS-px 필드 단위 규약\" 참고). 이 반경 안의 흔들림은 무시.")]
         public float rodeoStillRadiusPx = 5f;
 
         [Tooltip("커서가 이만큼(초) 연속으로 정지 상태를 유지하면 로데오 커서가 발동.")]
         public float rodeoStillTriggerSeconds = 5f;
 
-        [Tooltip("트리거 시점에 캐릭터와 커서 사이 거리가 이 값(OS 화면 픽셀) 이내여야 '도달 가능'으로 " +
-                 "판정해 발동한다.")]
+        [Tooltip("트리거 시점에 캐릭터와 커서 사이 거리가 이 값(**OS 포인트**, 아래 \"OS-px 필드 단위 규약\" 참고) " +
+                 "이내여야 '도달 가능'으로 판정해 발동한다.")]
         public float rodeoReachDistancePx = 400f;
 
         [Tooltip("캐릭터가 커서 위치로 '폴짝 올라타는' 접근 단계의 지속 시간(초).")]
@@ -605,13 +643,13 @@ namespace StickMate.Core
         [Tooltip("종료 후 다음 발동까지의 최소 쿨다운(초). UX 미명시 — 방해성이 낮아 다른 스펙터클보다 짧게 임시 추정.")]
         public float graffitiCooldownSeconds = 600f;
 
-        [Tooltip("캐릭터로부터 그리기 후보 영역까지의 최소 반경(OS 화면 픽셀). UX 명시값 200px.")]
+        [Tooltip("캐릭터로부터 그리기 후보 영역까지의 최소 반경(**OS 포인트**, 아래 \"OS-px 필드 단위 규약\" 참고). UX 명시값 200px.")]
         public float graffitiMinRadiusPx = 200f;
 
-        [Tooltip("캐릭터로부터 그리기 후보 영역까지의 최대 반경(OS 화면 픽셀). UX 명시값 300px.")]
+        [Tooltip("캐릭터로부터 그리기 후보 영역까지의 최대 반경(**OS 포인트**, 아래 \"OS-px 필드 단위 규약\" 참고). UX 명시값 300px.")]
         public float graffitiMaxRadiusPx = 300f;
 
-        [Tooltip("낙서 영역의 정사각형 한 변 길이(OS 화면 픽셀) — 발판과의 겹침 판정에 쓰이는 후보 사각형 크기.")]
+        [Tooltip("낙서 영역의 정사각형 한 변 길이(**OS 포인트**, 아래 \"OS-px 필드 단위 규약\" 참고) — 발판과의 겹침 판정에 쓰이는 후보 사각형 크기.")]
         public float graffitiRegionSizePx = 96f;
 
         [Tooltip("낙서가 유지되는 시간(초) 최소. UX 명시값 3~5초 구간(페이드아웃은 별도로 Phase2+ 렌더링이 처리).")]
@@ -812,7 +850,7 @@ namespace StickMate.Core
                  "연출은 Phase2+ 렌더링 담당 — 이 시간 동안은 상태만 확정 유지.")]
         public float runawayFleeDurationSeconds = 1.2f;
 
-        [Tooltip("가출 은신처(화면 네 모서리)를 화면 가장자리로부터 안쪽으로 띄우는 여백(OS 화면 픽셀).")]
+        [Tooltip("가출 은신처(화면 네 모서리)를 화면 가장자리로부터 안쪽으로 띄우는 여백(**OS 포인트**, 아래 \"OS-px 필드 단위 규약\" 참고).")]
         public float runawayHideSpotMarginPx = 60f;
 
         [Tooltip("아무 조치가 없어도 스스로 복귀하는 안전망 타임아웃(초). UX 명시값 1~2시간 구간(기본 1.5시간).")]
@@ -901,8 +939,10 @@ namespace StickMate.Core
                  "실패 모드('행동보다 텍스트가 오래 남음')의 반대편이라 안전하다.")]
         public float dialogueMaxVisibleSeconds = 4f;
 
-        [Tooltip("말풍선 글자 크기(Unity 스크린 픽셀 = macOS 포인트). 캐릭터가 화면상 약 80pt로 작으므로 " +
-                 "너무 줄이면 읽을 수 없다.")]
+        [Tooltip("말풍선 글자 크기(캔버스 유닛 = macOS 포인트)의 **배율 1.0 기준값**. 실제 사용값은 " +
+                 "DialogueBubbleRenderer.ResolveFontSize()가 characterScale을 곱한 뒤 가독성 하한(12pt)으로 " +
+                 "받친 값이다 — 기하(테두리/여백/꼬리)와 달리 글자는 단순 비례로 줄이면 읽을 수 없기 때문이다. " +
+                 "Retina에서는 이 값이 물리적으로 2배 픽셀에 그려질 뿐 크기는 그대로다(CanvasScaler가 흡수).")]
         public int dialogueFontSize = 16;
 
         [Tooltip("IDLE 진입 시 혼잣말을 할 확률(0~1, UX_FLOW.md 26-3절 '살아있는 느낌'). 0이면 유휴 " +
@@ -956,7 +996,14 @@ namespace StickMate.Core
         /// </summary>
         public Color ResolveInkColor()
             => inkColor == StickmanInkColor.White ? whiteInkColor : primaryOutlineColor;
-        public Color dialogueBubbleColor = Color.white;
+        [Tooltip("말풍선 **안쪽 채움** 색. ★ 기본 알파 0 = 완전 투명(2026-08-29 사용자 요구 \"말풍선도 " +
+                 "흰색바탕이 아니고 얼굴처럼 투명한데다 텍스트가 써져야함\"). 이 상태에서 말풍선은 캐릭터 " +
+                 "머리와 같은 문법이 된다 — 잉크 링(테두리)만 있고 안은 비어 바탕화면이 그대로 비친다.\n" +
+                 "알파를 남겨 둔 이유: 아이콘/글자가 빽빽한 바탕화면 위에서 글자가 안 읽힐 때 0.1~0.2 정도로 " +
+                 "올려 아주 옅은 판을 깔 수 있는 조절 창구다. 1로 되돌리면 예전의 불투명 흰 말풍선이 된다.\n" +
+                 "RGB는 흰 캐릭터 프리셋(inkColor=White)에서 자동으로 검정 쪽으로 반전되며, 그때도 알파는 " +
+                 "이 값이 그대로 쓰인다(DialogueBubbleRenderer.ResolveBubbleFillColor).")]
+        public Color dialogueBubbleColor = new Color(1f, 1f, 1f, 0f);
 
         [Tooltip("Main Camera 배경 RGB(알파는 0 = 완전 투명, Editor/SceneBootstrapper.cs 참고)의 밝은 " +
                  "배경색. 이력(2026-08-28): 자체 제작 Objective-C 플러그인으로 창 투명화를 시도하던 " +
@@ -1074,7 +1121,8 @@ namespace StickMate.Core
         //
         // ────────────────────────────────────────────────────────────────────────────────────
         // 적용 방법 (중요): 이 값을 바꾼 뒤 반드시 프리팹/씬을 다시 구워야 화면에 반영된다.
-        //   에디터 : 메뉴 StickMate/Rebuild All (기존 자산 덮어씀, 주의)
+        //   에디터 : 메뉴 StickMate/Resize Stickman (characterScale 반영, 프리팹+씬 재생성)
+        //            (같은 일을 하는 StickMate/Rebuild All 도 가능하다)
         //   배치   : Unity -batchmode -nographics -projectPath <repo> \
         //            -executeMethod StickMate.EditorTools.SceneBootstrapper.BuildAll -quit --force
         // (씬의 라이벌 스틱맨은 프리팹을 **복제해 언팩**한 사본이라 씬 재생성 없이는 따라오지 않는다.)
@@ -1096,6 +1144,15 @@ namespace StickMate.Core
         //   · coyoteTimeDuration / fallGraceDuration → 거리가 아니라 시간이라 배율과 무관하다.
         //   · 팔다리 질량(프리팹 0.09/0.06) → 중력은 가속도라 낙하 거동에 영향이 없고, 질량을 함께
         //       줄이면 ragdollForceThreshold(충격량 기준)가 조용히 예민해진다. 그래서 무변경.
+        //   · jumpForce(6) → 자율 배회의 점프 확률이 둘 다 0이라 도달 경로 자체가 없다. 게다가 점프 높이
+        //       0.61유닛은 배율 0.5에서 키의 53%로 오히려 더 그럴듯하다(배율 1.0에서는 27%였다).
+        //
+        // ★★ 반대로 **비례로 바꾼** 값들
+        //   · 프리팹 지오메트리 전부(몸통/팔다리/머리/눈/콜라이더/잡기영역/획 두께) — 이 빌더가 곱한다.
+        //   · walkSpeed → 아래 ResolveWalkSpeed() 문서(보행 사이클 주파수를 배율과 무관하게 유지).
+        //   · 눈동자 이동 폭 → States/EyeController.cs가 머리 링을 실측해 스스로 환산한다.
+        //   · 획 두께 / 잡기 영역 폭 → 비례하되 "화면상 최소 크기"에서 바닥을 받친다
+        //     (Editor/SceneBootstrapper.cs의 MinStrokeScreenPoints / MinGrabAreaScreenPoints).
 
         [Header("캐릭터 크기 (2026-08-29 사용자 요구 — 절반 + 추후 조정)")]
 
@@ -1111,12 +1168,20 @@ namespace StickMate.Core
                  "2.507 x 배율이다. 2.507 x 0.341 = 0.855이므로 그보다 작은 배율에서는 Dock 단차가 " +
                  "'뛰어내리기' 밴드를 벗어나 '매달리기'로 분류되고, 그 낙차에서 매달리면 발이 이미 " +
                  "목적지를 지나쳐 있어 어색해진다. 그래서 슬라이더 하한을 0.35로 막아뒀다" +
-                 "(0.5에서는 매달리기 최소 낙차가 1.254라 0.855가 밴드 [0.35, 1.254) 안에 넉넉히 든다).\n\n" +
-                 "참고 — walkSpeed는 일부러 함께 줄이지 않는다(화면/Dock 폭은 캐릭터가 작아져도 그대로라 " +
-                 "가로지르는 데 걸리는 시간이 배로 늘어난다). 다만 보폭이 배율만큼 짧아지므로 다리를 " +
-                 "놀리는 주기는 그만큼 빨라진다 — 종종거리는 느낌이 과하면 walkSpeed를 직접 낮출 것.")]
+                 "(현재 기본 0.75에서는 매달리기 최소 낙차가 1.880이라 0.855가 밴드 [0.35, 1.880) 안에 넉넉히 든다).\n\n" +
+                 "참고 — walkSpeed도 이 배율에 비례한다(ResolveWalkSpeed()). 처음에는 '화면 폭은 그대로니 " +
+                 "속도는 두자'고 판단했지만, 그 상태로 WalkFootSlipTests가 실패했다(디딤발 미끄러짐 0.465, " +
+                 "상한 0.30) — 보폭이 배율에 비례하는데 속도가 고정이면 보행 사이클 주파수가 배율의 역수만큼 " +
+                 "빨라져 poseSmoothingRate(35)가 목표 각도를 못 따라가고, 그게 곧 문워크다. 속도를 함께 " +
+                 "줄이면 주파수가 배율과 무관해져 기존 실측 튜닝값이 어떤 배율에서도 그대로 유효하다. " +
+                 "대가는 화면을 가로지르는 시간이 배율에 반비례해 늘어나는 것이며, 더 빠르게 하고 싶으면 " +
+                 "walkSpeed 자체를 올리면 된다(배율은 그 위에 곱해진다).")]
         [Range(MinCharacterScale, MaxCharacterScale)]
-        public float characterScale = 0.5f;
+        // ★ 2026-08-29 사용자 요구 "캐릭터 사이즈를 지금보다는 1.5배 더 키워주고" — 0.5 -> 0.75.
+        // 전신 높이 2.2746944 x 0.75 = 약 1.7060유닛(화면상 약 60pt). 배율 0.75는 Dock 임계 배율
+        // (DockHopDownCriticalScale = 0.341)보다 한참 위라 Dock 단차 0.855유닛이 '뛰어내리기' 밴드
+        // [0.35, 2.5072 x 0.75 = 1.880) 안에 넉넉히 남는다 — 실제 빌드에서 왕복까지 육안 확인했다.
+        public float characterScale = 0.75f;
 
         /// <summary>슬라이더 하한. Dock 단차 임계 배율(약 0.341, 위 Tooltip 유도)보다 조금 위에 둔다.</summary>
         public const float MinCharacterScale = 0.35f;
@@ -1139,6 +1204,32 @@ namespace StickMate.Core
         /// </summary>
         public const float DockHopDownCriticalScale = 0.341f;
 
+        /// <summary>
+        /// ★ 배율이 반영된 실제 보행 속도(유닛/초). <b>walkSpeed를 직접 읽지 말고 반드시 이것을 쓸 것.</b>
+        ///
+        /// 왜 속도까지 비례해야 하는가(2026-08-29 실측으로 뒤집힌 판단):
+        /// 처음에는 "화면/Dock 폭은 캐릭터가 작아져도 그대로니 가로지르는 시간이 배로 늘지 않게
+        /// walkSpeed는 절대값으로 두자"고 결정했는데, 그 상태로 Tests/PlayMode/WalkFootSlipTests가
+        /// **빨간불**이 났다(디딤발 미끄러짐 0.465, 상한 0.30). 원인이 명확하다:
+        ///   보행 사이클 주파수 = 실제 이동 속도 / 한 사이클 이동 거리(보폭)
+        /// 인데 보폭은 다리 길이에서 유도되어 배율에 비례한다. 속도를 고정한 채 배율만 절반으로 내리면
+        /// 주파수가 그대로 2배(약 1.35Hz -> 2.7Hz)가 되고, 그 속도에서는 poseSmoothingRate(35)의 지수
+        /// 감쇠가 목표 각도를 따라잡지 못해 실제 관절 진폭이 깎인다 — 그게 곧 문워크다(이 값이 14였던
+        /// 시절 1.35Hz에서 진폭이 17% 깎여 slip 0.5가 났던 것과 **정확히 같은 실패**, poseSmoothingRate
+        /// Tooltip 참고).
+        ///
+        /// 속도를 배율에 비례시키면 주파수가 배율과 무관하게 일정해져, poseSmoothingRate(35)/
+        /// walkStrideScale(0.93) 같은 실측 튜닝값이 **어떤 배율에서도 그대로 유효**하다. 즉 "발이
+        /// 미끄러지지 않는다"가 재튜닝 없이 구조적으로 보장된다. 부수 효과로 "초당 몇 신장을
+        /// 걷는가"(약 1.1 신장/초 — 사람의 보행과 같은 수준)도 보존된다.
+        ///
+        /// 대가: 화면을 가로지르는 데 걸리는 시간이 배율에 반비례해 늘어난다(배율 0.5에서 2배).
+        /// 데스크톱 펫에게는 오히려 자연스럽다고 판단했다 — 작은 것이 큰 것과 같은 속도로 돌아다니면
+        /// 그 자체가 부자연스럽다. 더 빠르게 하고 싶으면 walkSpeed를 직접 올리면 된다(이 배율은
+        /// 그 위에 곱해질 뿐이다).
+        /// </summary>
+        public float ResolveWalkSpeed() => walkSpeed * ResolveCharacterScale();
+
         /// <summary>배율을 안전 구간으로 clamp해서 돌려준다. 직렬화된 값이 예전 에셋이나 스크립트로
         /// 범위 밖으로 들어와도 지오메트리 생성이 깨지지 않게 하는 유일한 조회 경로다.</summary>
         public float ResolveCharacterScale()
@@ -1147,5 +1238,39 @@ namespace StickMate.Core
             if (s <= 0f || float.IsNaN(s)) return 1f; // 0/음수/NaN은 "설정 안 됨"으로 보고 기존 크기 유지.
             return Mathf.Clamp(s, MinCharacterScale, MaxCharacterScale);
         }
+
+        // ============================================================================
+        // PC 하드웨어 반응 — 자율 발동 마스터 스위치 (2026-08-29 사용자 피드백 대응)
+        // ============================================================================
+        // 왜 이 스위치가 위쪽 "PC 하드웨어 반응" 섹션이 아니라 파일 맨 끝의 별도 섹션에 있는가:
+        // 같은 라운드에 다른 작업자가 위쪽 섹션들을 동시에 편집 중이라 리더가 맨 끝 신규 섹션으로
+        // 지정했다. 기능적으로는 위 hardware* 필드 전체를 지배하는 상위 게이트다.
+        //
+        // 다른 구경거리 연출(격파/창도둑/그라피티/크래시/투두 등)은 "자율 발동 확률"을 0으로 내려서
+        // 조용하게 만들 수 있었지만, 하드웨어 반응만은 그 방법이 통하지 않는다 — 트리거가 확률이 아니라
+        // **실제 배터리 잔량 / 프레임타임 / 네트워크 연결성 / 충전 상태**이기 때문이다. 확률 필드가
+        // 애초에 존재하지 않으므로 0으로 내릴 대상도 없고, 그래서 다른 연출을 전부 끈 뒤에도 이것만
+        // 혼자 남아 계속 떴다(사용자 실측: "머리위에 저 주황색이랑 눈같이 내리는건 뭐야 캐릭하고
+        // 겹치는데" — 주황색 물결 = CPU 과부하 열기, 눈처럼 내리는 것 = 그 땀방울).
+        // 그래서 확률 대신 **명시적 enable 플래그**를 둔다.
+
+        [Header("PC 하드웨어 반응 — 자율 발동 스위치 (2026-08-29 사용자 피드백)")]
+
+        [Tooltip("배터리 부족 / 충전 중 / CPU 과부하 / 네트워크 끊김을 **스스로 감지해서** 머리 위 " +
+                 "이모트를 띄울지 여부.\n\n" +
+                 "★ 기본 OFF인 이유 (2026-08-29 사용자 피드백: 요청하지 않은 연출이 캐릭터를 가림) — " +
+                 "사용자가 스크린샷과 함께 '머리위에 저 주황색이랑 눈같이 내리는건 뭐야 캐릭하고 겹치는데'라고 " +
+                 "신고했다. 주황색 구불구불한 선은 CPU 과부하 이모트의 열기 물결, 눈처럼 내리는 것은 그 " +
+                 "땀방울이다. 같은 라운드에 다른 구경거리 연출은 전부 자율 발동 확률을 0으로 내렸는데, " +
+                 "이 기능만은 트리거가 확률이 아니라 실제 하드웨어 임계값이라 확률 0으로 끌 수 없어 혼자 " +
+                 "남아 계속 떴다. 이 사용자가 프로젝트 내내 원해온 것은 '깔끔한 졸라맨이 돌아다니는 것'이므로, " +
+                 "요청하지 않은 자율 연출은 기본적으로 조용해야 한다.\n\n" +
+                 "★ 기능을 지우는 것이 아니라 기본값을 조용하게 만드는 것이다 — " +
+                 "**수동 발동 경로(전역 단축키 Ctrl+Opt+Cmd+H 데모 미리보기 / 캐릭터 우클릭 메뉴)는 이 값을 " +
+                 "읽지 않으므로 OFF에서도 그대로 살아 있다.** 4종 이모트를 눈으로 확인하고 싶으면 그쪽을 쓰면 된다.\n\n" +
+                 "이 값을 true로 올리면 위 hardware* 임계값/폴링 주기 설정이 전부 되살아나 배터리·발열·" +
+                 "네트워크·충전 신호가 원래 규칙(지속조건 -> 회복 게이트 -> 우선순위 1개만 표현)대로 다시 " +
+                 "자율 발동한다. 즉 이 하나가 4종 자율 트리거 **전부**의 상위 게이트다.")]
+        public bool enableAutonomousHardwareReactions = false;
     }
 }

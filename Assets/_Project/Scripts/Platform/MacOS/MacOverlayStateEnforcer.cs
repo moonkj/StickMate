@@ -113,11 +113,21 @@ namespace StickMate.Platform.MacOS
         {
             get
             {
-                if (_agent == null) _agent = UnityEngine.Object.FindAnyObjectByType<Core.StickmanAgent>();
-                var blackboard = _agent != null ? _agent.Blackboard : null;
-                var config = blackboard != null ? blackboard.Config : null;
+                var config = ResolveConfig();
                 return config != null && config.verboseDiagnosticsLogging;
             }
+        }
+
+        /// <summary>
+        /// 씬에 배선된 StickConfig(없으면 null). ScreenCoordinateConverter의 DPI 배율 해석에 넘길
+        /// "수동 오버라이드" 출처이며, null이어도 컨버터가 자동 배율로 폴백하므로 안전하다
+        /// (VerboseDiagnostics와 같은 조회를 공유한다 — 에이전트가 아직 없는 초기 몇 프레임에는 null).
+        /// </summary>
+        private Core.StickConfig ResolveConfig()
+        {
+            if (_agent == null) _agent = UnityEngine.Object.FindAnyObjectByType<Core.StickmanAgent>();
+            var blackboard = _agent != null ? _agent.Blackboard : null;
+            return blackboard != null ? blackboard.Config : null;
         }
 
         // ============================================================================
@@ -299,9 +309,22 @@ namespace StickMate.Platform.MacOS
             monitor = targetRect;
 
             // (a) Unity 자신의 해상도.
-            if (Screen.width != Mathf.RoundToInt(monitor.width) || Screen.height != Mathf.RoundToInt(monitor.height))
+            //
+            // ★★ 단위 주의 (2026-08-29 Retina 대응 라운드 — 여기가 이번 작업에서 가장 위험한 한 줄이었다)
+            // `monitor`는 UniWindowController/CGDisplayBounds가 준 **OS 포인트**(1512x982)이고,
+            // `Screen.SetResolution`/`Screen.width`는 **Unity 픽셀**이다. `macRetinaSupport`가 꺼져 있던
+            // 동안에는 두 단위가 우연히 같아서(1x) 아무 문제가 없었지만, 켠 뒤에도 포인트를 그대로
+            // 넘기면 Unity가 백버퍼를 1512x982 **픽셀**로 잡아 창이 756x491 포인트 = 화면의 **1/4**로
+            // 쪼그라든다. 게다가 바로 다음 줄의 windowSize 대입(포인트)과 서로 다른 크기를 요구하게 되어
+            // 두 값이 매 재시도마다 싸운다.
+            // 그래서 포인트 -> Unity 픽셀 변환을 반드시 거친다: 픽셀 = 포인트 / dpiScale (Retina면 x2).
+            // 배율의 단일 소스는 ScreenCoordinateConverter다(MacWindowService가 발판 폴링마다 실측 보고).
+            float dpi = Mathf.Max(0.0001f, ScreenCoordinateConverter.ResolveDpiScale(ResolveConfig()));
+            int targetPixelW = Mathf.RoundToInt(monitor.width / dpi);
+            int targetPixelH = Mathf.RoundToInt(monitor.height / dpi);
+            if (Screen.width != targetPixelW || Screen.height != targetPixelH)
             {
-                Screen.SetResolution(Mathf.RoundToInt(monitor.width), Mathf.RoundToInt(monitor.height), FullScreenMode.Windowed);
+                Screen.SetResolution(targetPixelW, targetPixelH, FullScreenMode.Windowed);
             }
 
             // (b) 메뉴바/Dock 영역 위로도 창을 놓을 수 있게 한다.
@@ -319,7 +342,8 @@ namespace StickMate.Platform.MacOS
 
             Debug.Log($"[MacOverlayStateEnforcer] 전체화면 확장 시도 {_fullScreenApplyAttempts}/{MaxFullScreenApplyAttempts} — " +
                 $"모니터={monitor}, 이전(size={sizeBefore}, pos={posBefore}) -> 이후(size={sizeAfter}, pos={posAfter}), " +
-                $"Screen=({Screen.width}x{Screen.height}), isFreePositioningEnabled={_controller.isFreePositioningEnabled}, " +
+                $"Screen=({Screen.width}x{Screen.height}) [목표 {targetPixelW}x{targetPixelH} 픽셀, dpi배율={dpi:F3}], " +
+                $"isFreePositioningEnabled={_controller.isFreePositioningEnabled}, " +
                 $"덮는범위={coverageMode}, 결과={(ok ? "성공(오차 1pt 이내)" : "미달 — 다음 시도에서 재적용")}.");
         }
 

@@ -115,44 +115,60 @@ namespace StickMate.Core
         // 렌더러 바운즈로 재지 않는 이유: 포즈에 따라(팔을 들면) 매 프레임 값이 흔들려 머리 위 연출이
         // 같이 떨린다. 전신 높이는 "이 캐릭터의 규격"이지 "지금 자세의 크기"가 아니다.
 
-        /// <summary>프리팹에서 높이를 읽지 못했을 때의 폴백(현재 프리팹 실측값). 테스트에서 손으로
-        /// 조립한 캐릭터처럼 캡슐이 없는 경우에도 연출이 0 크기로 붕괴하지 않게 한다.</summary>
-        private const float FallbackTotalHeightWorld = 2.27f;
+        // ★★ 2026-08-29 통합(리더 지시) — 생산자는 Core/StickmanMetrics.cs 하나다.
+        // ============================================================================
+        // 이 프로퍼티와 StickmanMetrics가 같은 라운드에 각각 만들어져 **캐릭터 치수의 단일 소스가 두
+        // 개**가 되어 있었다(이 프로젝트가 이미 여러 번 겪은 실패 유형 — Dock 구간 이중 계산,
+        // 씬 지면 Y vs 발판 상수 이중 정의). 크기 배율(StickConfig.characterScale)을 소유하는 쪽이
+        // StickmanMetrics이므로 그쪽을 유일한 생산자로 삼고, 이 프로퍼티는 **얇은 위임**만 남긴다.
+        //
+        // 이 프로퍼티를 지우지 않는 이유: 이미 커밋된 렌더러 3종(DialogueBubbleRenderer /
+        // HardwareReactionRenderer / BattleMinigameRenderer)이 이 이름으로 값을 읽고 있다. 위임으로
+        // 바꾸면 그 파일들을 한 줄도 건드리지 않고 값이 하나로 수렴한다.
+        //
+        // 두 구현의 실질적 차이는 없었다 — 둘 다 루트의 **비-트리거** CapsuleCollider2D.size.y를 읽는다
+        // (GrabArea는 isTrigger=true라 전신보다 위아래로 더 크므로 반드시 제외해야 한다).
+        // StickmanMetrics 쪽은 거기에 더해 머리 중심/머리 반경/어깨/엉덩이 높이와 크기 배율까지
+        // 함께 실측하므로, 새 코드는 이 프로퍼티가 아니라 StickmanMetrics를 직접 쓰는 편이 낫다.
 
-        private float _cachedTotalHeight;
+        private StickmanMetrics _metrics;
+        private bool _metricsWarningLogged;
+
+        /// <summary>
+        /// 캐릭터 실측 치수 조회 창구(Core/StickmanMetrics.cs). 프리팹에 없으면(손으로 조립한 테스트
+        /// 리그 등) 즉석에서 붙여준다 — 그래야 "치수를 재는 곳은 언제나 한 군데"라는 불변식이
+        /// 폴백 경로에서도 깨지지 않는다(StickmanMetrics 자신이 계층 실측 실패 시 배율 1.0 비율로
+        /// 되메우므로 0이 나올 수 없다).
+        /// </summary>
+        public StickmanMetrics Metrics
+        {
+            get
+            {
+                if (_metrics != null) return _metrics;
+                _metrics = GetComponent<StickmanMetrics>();
+                if (_metrics == null)
+                {
+                    if (!_metricsWarningLogged)
+                    {
+                        _metricsWarningLogged = true;
+                        Debug.LogWarning("[StickmanAgent] 프리팹에 StickmanMetrics가 없어 런타임에 부착합니다 — " +
+                            "Editor/SceneBootstrapper.cs가 굽는 프리팹이라면 --force로 다시 구우세요.");
+                    }
+                    _metrics = gameObject.AddComponent<StickmanMetrics>();
+                }
+                return _metrics;
+            }
+        }
 
         /// <summary>
         /// 캐릭터 전신 높이(월드 유닛) — 발끝(로컬 y=0)부터 정수리까지. 머리 위/정면 연출은
         /// <b>전부 이 값의 비율</b>로 자기 위치를 잡는다(절대 유닛 상수를 두지 않는다).
         /// 소비자: Dialogue/DialogueBubbleRenderer, Interaction/HardwareReactionRenderer,
         /// Interaction/BattleMinigameRenderer.
+        ///
+        /// ★ 값의 생산자는 <see cref="Metrics"/>(Core/StickmanMetrics.cs) 하나뿐이다 — 위 통합 문단 참고.
         /// </summary>
-        public float CharacterTotalHeightWorld
-        {
-            get
-            {
-                if (_cachedTotalHeight > 0f) return _cachedTotalHeight;
-                _cachedTotalHeight = MeasureTotalHeight();
-                return _cachedTotalHeight;
-            }
-        }
-
-        private float MeasureTotalHeight()
-        {
-            var capsules = GetComponents<CapsuleCollider2D>();
-            for (int i = 0; i < capsules.Length; i++)
-            {
-                // GrabArea(isTrigger=true)는 전신보다 위아래로 더 크다 — 물리 몸통 캡슐만 정답이다.
-                if (capsules[i] == null || capsules[i].isTrigger) continue;
-                float h = capsules[i].size.y * Mathf.Abs(transform.localScale.y);
-                if (h > 0.01f) return h;
-            }
-
-            Debug.LogWarning("[StickmanAgent] 전신 높이를 읽을 루트 CapsuleCollider2D(비트리거)를 찾지 못해 " +
-                $"폴백 {FallbackTotalHeightWorld:F2}유닛을 씁니다 — 머리 위/정면 연출 위치가 캐릭터 크기를 " +
-                "따라가지 못할 수 있습니다.");
-            return FallbackTotalHeightWorld;
-        }
+        public float CharacterTotalHeightWorld => Metrics.TotalHeight;
 
         /// <summary>
         /// RAGDOLL 강제 인터럽트의 단일 진입점(아키텍처 0절). 몸통이든 사지든 어떤 파츠가 외력(충돌)을

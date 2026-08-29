@@ -20,11 +20,11 @@ namespace StickMate.Platform
     /// 변환 절차 (Unity 월드 -> OS 데스크톱):
     ///   a. Camera.WorldToScreenPoint로 Unity 스크린 좌표(좌하단 원점) 획득.
     ///   b. y를 Screen.height 기준으로 뒤집어 좌상단 원점으로 전환: osY = Screen.height - unityY.
-    ///   c. StickConfig.desktopDpiScale을 곱해 "Unity가 보고하는 픽셀 단위" ↔ "OS가 보고하는 실제
-    ///      데스크톱 픽셀 단위" 배율 차이를 보정한다. 예: macOS Retina에서 Unity가 백킹 스토어 픽셀을
-    ///      보고하지만 CGWindowListCopyWindowInfo는 포인트(1x) 단위를 반환하는 경우, 또는 Windows에서
-    ///      프로세스 DPI 인식 설정에 따라 GetWindowRect가 물리/논리 픽셀 중 무엇을 반환하는지 달라지는
-    ///      경우(Debugger 가설 H3, docs/BUG_REPORT_PHASE0.md 참고, 실측 전까지는 1(배율 없음)로 둔다).
+    ///   c. DPI 배율(<see cref="ResolveDpiScale"/>)을 곱해 "Unity가 보고하는 픽셀 단위" ↔ "OS가 보고하는
+    ///      실제 데스크톱 포인트 단위" 배율 차이를 보정한다. 예: macOS Retina에서 Unity가 백킹 스토어
+    ///      픽셀(3024x1964)을 보고하지만 CGWindowListCopyWindowInfo/CGEventGetLocation은 포인트
+    ///      (1512x982)를 반환하는 경우, 또는 Windows에서 프로세스 DPI 인식 설정에 따라 GetWindowRect가
+    ///      물리/논리 픽셀 중 무엇을 반환하는지 달라지는 경우.
     ///
     /// 왕복 정밀도: 카메라가 직교(2D) 투영이더라도 Camera.ScreenToWorldPoint는 세 번째 인자를
     /// "카메라로부터의 거리"로 해석한다. WorldToOsScreen이 반환하는 cameraDepth를 OsScreenToWorld
@@ -34,10 +34,127 @@ namespace StickMate.Platform
     /// - 오버레이가 OS 가상 데스크톱의 (0,0)에서 시작해 화면 전체를 덮는다고 가정한다. 실제 멀티모니터
     ///   배치(오프셋/다른 해상도)에 따른 보정은 IPlatformWindowService가 모니터 경계를 노출해야
     ///   가능한데, 이는 Phase 0 교차 레이어 로그 9절-5 항목으로 아직 미반영 상태다.
-    /// - desktopDpiScale은 화면 전체에 대해 단일 값이다. 모니터마다 DPI가 다른 환경은 Phase 4 정교화 대상.
+    /// - DPI 배율은 화면 전체에 대해 단일 값이다. 모니터마다 DPI가 다른 환경은 Phase 4 정교화 대상
+    ///   (단, 오버레이 창이 실제로 놓인 화면 기준으로 매 폴링마다 재측정되므로 모니터를 옮기면 자동 추종한다).
     /// </summary>
     public static class ScreenCoordinateConverter
     {
+        // ============================================================================
+        // ★★ DPI 배율의 **단일 소스** (2026-08-29 Retina 대응 라운드, 리더 지시 2항)
+        // ============================================================================
+        // 배경: ProjectSettings의 `macRetinaSupport`가 0에서 1로 바뀌면서 Unity의 Screen.width/height와
+        // WorldToScreenPoint가 **물리 백킹 픽셀**(3024x1964)을 보고하게 됐다. 반면 이 앱이 상대하는 OS
+        // 좌표(CGWindowListCopyWindowInfo의 창 사각형 / CGEventGetLocation의 커서 / CGDisplayBounds)는
+        // 전부 **AppKit 포인트**(1512x982)다. 두 단위 사이의 배율이 곧 아래 DpiScale이다.
+        //
+        //     OS 포인트 = Unity 픽셀 x DpiScale        (Retina 2x -> 0.5, 비Retina -> 1.0)
+        //
+        // 왜 하드코딩(0.5)하면 안 되는가: 외장 모니터(비Retina)를 물리면 그 화면에서는 1.0이고, 사용자가
+        // 창을 모니터 사이로 옮기면 실행 중에 바뀐다. 그래서 **실측**한다 — 우리 창의 OS 포인트 폭을
+        // 같은 순간의 Screen.width(Unity 픽셀)로 나눈 값이 정확히 그 배율이다(창 크기와 무관하게 성립하는
+        // 비율이며, 창이 실제로 놓인 화면의 배율을 자동으로 반영한다).
+        //
+        // 왜 여기(이 클래스)인가: BUG-M5 컨벤션("좌표 변환식은 이 유틸에만 존재한다")의 연장이다. 예전에는
+        // 소비자들이 각자 `config.desktopDpiScale`을 직접 읽어 `Screen.width * dpi` 식을 다시 썼고, 그
+        // 필드는 "실측된 적 없는 근사치 1"이었다. 이제 값의 생산(ReportOverlayWindowOsRect)과 해석
+        // (ResolveDpiScale)이 모두 이 클래스에 있고, 소비자는 결과만 받아 쓴다.
+
+        /// <summary>
+        /// 플랫폼 계층이 실측해 보고한 자동 배율. <see cref="ReportOverlayWindowOsRect"/>가 갱신한다.
+        /// 아무도 보고하지 않은 환경(에디터/헤드리스/Windows 스텁)에서는 1(배율 차이 없음)로 남아
+        /// 예전과 완전히 동일하게 동작한다.
+        ///
+        /// setter가 public인 이유: 테스트가 "배율 2인 척"을 만들 유일한 수단이고(Tests/PlayMode/
+        /// RetinaDpiCoordinateTests.cs), 플랫폼 계층이 창 사각형 없이 디스플레이 배율만 아는 폴백
+        /// 경로에서도 대입해야 하기 때문이다. 0 이하/NaN/무한대는 조용히 무시한다 — 잘못된 배율을
+        /// 받아들이는 것보다 직전 값을 유지하는 편이 안전하다(0을 받아들이면 나눗셈이 폭발한다).
+        /// </summary>
+        public static float AutoDpiScale
+        {
+            get { return _autoDpiScale; }
+            set
+            {
+                if (float.IsNaN(value) || float.IsInfinity(value) || value <= 0f) return;
+                _autoDpiScale = value;
+            }
+        }
+        private static float _autoDpiScale = 1f;
+
+        /// <summary>
+        /// 실제로 쓸 배율을 결정하는 **유일한** 함수. 모든 소비자는 `config.desktopDpiScale`을 직접 읽지
+        /// 말고 이 함수를 부른다.
+        ///
+        /// 규칙(StickConfig.desktopDpiScale의 툴팁과 동일):
+        ///   · config.desktopDpiScale &gt; 0  -> 사람이 지정한 **수동 오버라이드**. 그 값을 그대로 쓴다.
+        ///   · 그 외(0 이하 / config 없음)   -> <see cref="AutoDpiScale"/>(실측 자동 산출값).
+        /// </summary>
+        public static float ResolveDpiScale(StickConfig config)
+        {
+            if (config != null && config.desktopDpiScale > 0f) return config.desktopDpiScale;
+            return _autoDpiScale;
+        }
+
+        /// <summary>
+        /// 플랫폼 계층이 "우리 오버레이 창의 OS 사각형(포인트)"을 보고하는 단일 진입점.
+        /// <see cref="OverlayOriginOsScreen"/>(원점)과 <see cref="AutoDpiScale"/>(배율)을 **같은 순간의
+        /// 한 관측**에서 함께 유도하므로 둘이 서로 다른 시점의 값으로 어긋날 수 없다.
+        ///
+        /// 배율을 여기서 스냅샷하는 이유(중요): Screen.width는 실행 중에 바뀔 수 있다
+        /// (MacOverlayStateEnforcer.TickFullScreenBounds()가 Screen.SetResolution으로 창을 화면 전체로
+        /// 넓힌다). 폭과 Screen.width를 각각 다른 시점에 읽어 나중에 나누면 그 전환 프레임에서 배율이
+        /// 순간적으로 2배 틀린 값이 되어 캐릭터가 화면 밖으로 튄다. 그래서 비율은 **관측 순간에** 계산해
+        /// 저장한다.
+        /// </summary>
+        public static void ReportOverlayWindowOsRect(Rect overlayRectOsPoints)
+        {
+            OverlayOriginOsScreen = overlayRectOsPoints.position;
+            if (overlayRectOsPoints.width > 0f && Screen.width > 0)
+            {
+                AutoDpiScale = overlayRectOsPoints.width / Screen.width;
+            }
+        }
+
+        /// <summary>
+        /// ScreenSpaceOverlay 캔버스(<c>CanvasScaler.scaleFactor</c>)에 넣을 값 = <b>Unity 픽셀 / OS 포인트</b>.
+        /// Retina 2x면 2, 비Retina면 1이다.
+        ///
+        /// 왜 이 값인가 — 이 프로젝트의 UI 상수(말풍선 폰트 크기/여백, 앱제어 메뉴 행 높이, 투두 카드 폭)는
+        /// 전부 **macOS 포인트 기준으로 눈으로 맞춰진 값**이다(Dialogue/DialogueBubbleRenderer.cs 상단
+        /// "값은 전부 Unity 스크린 픽셀(= macOS 포인트, Screen.height≈846 기준)" 참고). scaleFactor를 이
+        /// 배율로 두면 **캔버스 1유닛 == OS 포인트 1**이 되어, Retina를 켜기 전과 UI의 물리적 크기가
+        /// 정확히 같으면서 렌더 해상도만 2배가 된다(= 같은 크기, 더 선명). scaleFactor를 1로 방치하면
+        /// 캔버스 1유닛 == 물리 픽셀 1이 되어 모든 UI가 물리적으로 절반 크기로 쪼그라든다 — 이것이
+        /// 리더 지시 5항이 경고한 함정이다. "가독성 하한" 걱정은 이 정의에서는 발생하지 않는다:
+        /// 글자의 물리적 크기가 변하지 않기 때문이다.
+        /// </summary>
+        public static float ResolveCanvasScaleFactor(StickConfig config)
+        {
+            float dpi = ResolveDpiScale(config);
+            return dpi > 0f ? 1f / dpi : 1f;
+        }
+
+        /// <summary>
+        /// Unity 스크린 픽셀 좌표(WorldToScreenPoint / Screen.width 등) -> ScreenSpaceOverlay 캔버스 유닛.
+        /// <see cref="ResolveCanvasScaleFactor"/>로 스케일된 캔버스에 <c>anchoredPosition</c>을 대입하는
+        /// 코드는 반드시 이 변환을 거쳐야 한다(안 거치면 Retina에서 UI가 화면 우상단 밖으로 날아간다).
+        ///
+        /// 주의 — 반대 방향은 필요 없는 경우가 많다: ScreenSpaceOverlay 캔버스에서 RectTransform의
+        /// <c>GetWorldCorners</c>는 캔버스 루트의 localScale(=scaleFactor)이 이미 곱해진 **스크린 픽셀**을
+        /// 돌려준다. 그래서 히트테스트(AppControlDirector.HitTestMenuRow / TodoPostItWidget.ContainsScreenPoint)와
+        /// 클릭관통 차단막(Camera.ScreenToWorldPoint)은 scaleFactor와 무관하게 예전 코드 그대로 정확하다.
+        /// </summary>
+        public static float UnityScreenToCanvas(float unityScreenValue, StickConfig config)
+        {
+            return unityScreenValue * ResolveDpiScale(config);
+        }
+
+        /// <summary>캔버스 유닛 -> Unity 스크린 픽셀(<see cref="UnityScreenToCanvas"/>의 역).</summary>
+        public static float CanvasToUnityScreen(float canvasValue, StickConfig config)
+        {
+            float dpi = ResolveDpiScale(config);
+            return dpi > 0f ? canvasValue / dpi : canvasValue;
+        }
+
         /// <summary>
         /// 오버레이 창(= 우리 Unity Player 창)의 좌상단이 OS 데스크톱 좌표계에서 어디에 있는지.
         /// 기본값 (0,0)은 "창이 화면 좌상단에서 시작한다"는 이 클래스의 원래 가정이며, 그 가정이
@@ -55,9 +172,10 @@ namespace StickMate.Platform
         ///
         /// 그래서 "OS 데스크톱 좌표 ↔ 창 클라이언트 좌표"의 원점 차이를 이 한 값으로 흡수한다. 실제
         /// 갱신은 Platform/MacOS/MacWindowService.EnumerateFootholds()가 이미 돌고 있는 창 열거
-        /// 루프에서 자기 창(IsSelfWindow)의 kCGWindowBounds를 집어 그대로 대입한다 — 추가 시스템 호출이
-        /// 전혀 없고, 커서 좌표(CGEventGetLocation)와 **완전히 같은 Quartz 좌표계**라 좌표계 혼용
-        /// 위험도 없다(MacWindowService의 ICursorPositionService 주석 참고).
+        /// 루프에서 자기 창(IsSelfWindow)의 kCGWindowBounds를 집어 <see cref="ReportOverlayWindowOsRect"/>로
+        /// 넘기는 것이다 — 추가 시스템 호출이 전혀 없고, 커서 좌표(CGEventGetLocation)와 **완전히 같은
+        /// Quartz 좌표계**라 좌표계 혼용 위험도 없다(MacWindowService의 ICursorPositionService 주석 참고).
+        /// 그 한 번의 보고에서 <see cref="AutoDpiScale"/>도 함께 유도된다(원점과 배율이 항상 같은 관측에서 나온다).
         ///
         /// static 가변 상태인 이유: 이 클래스는 순수 static 유틸이고 소비자(States/Interaction 전역)가
         /// 인스턴스를 들고 다니지 않는다. 프로젝트에 이미 같은 성격의 static이 있다(Core/SpectacleEventLock,
@@ -77,7 +195,7 @@ namespace StickMate.Platform
             Vector3 unityScreen = cam.WorldToScreenPoint(worldPos); // 좌하단 원점, Unity 픽셀
             cameraDepth = unityScreen.z;
 
-            float dpi = config != null ? Mathf.Max(0.0001f, config.desktopDpiScale) : 1f;
+            float dpi = Mathf.Max(0.0001f, ResolveDpiScale(config));
             Vector2 origin = OverlayOriginOsScreen;
             float osX = unityScreen.x * dpi + origin.x;
             float osY = (Screen.height - unityScreen.y) * dpi + origin.y; // 좌상단 원점으로 y 반전 + 창 오프셋
@@ -96,7 +214,7 @@ namespace StickMate.Platform
         /// </summary>
         public static Vector2 OsScreenToUnityScreen(Vector2 osScreenPoint, StickConfig config)
         {
-            float dpi = config != null ? Mathf.Max(0.0001f, config.desktopDpiScale) : 1f;
+            float dpi = Mathf.Max(0.0001f, ResolveDpiScale(config));
             Vector2 origin = OverlayOriginOsScreen;
             float unityX = (osScreenPoint.x - origin.x) / dpi;
             float unityY = Screen.height - ((osScreenPoint.y - origin.y) / dpi);
@@ -106,7 +224,7 @@ namespace StickMate.Platform
         /// <summary>OS 데스크톱 좌표 -> Unity 월드 좌표. cameraDepth는 WorldToOsScreen에서 얻은 값을 그대로 넘길 것.</summary>
         public static Vector3 OsScreenToWorld(Camera cam, Vector2 osScreenPoint, float cameraDepth, StickConfig config)
         {
-            float dpi = config != null ? Mathf.Max(0.0001f, config.desktopDpiScale) : 1f;
+            float dpi = Mathf.Max(0.0001f, ResolveDpiScale(config));
             Vector2 origin = OverlayOriginOsScreen;
             float unityX = (osScreenPoint.x - origin.x) / dpi;
             float unityY = Screen.height - ((osScreenPoint.y - origin.y) / dpi); // 좌하단 원점으로 y 재반전

@@ -107,6 +107,7 @@ namespace StickMate.Interaction
 
         // 메뉴 UI(런타임 생성 — 씬/프리팹 수동 배선 없이도 동작. TodoPostItWidget과 동일한 관례).
         private Canvas _canvas;
+        private CanvasScaler _scaler;   // Retina 대응 — 캔버스 1유닛 == OS 포인트 1로 맞춘다(ApplyCanvasScaleFactor).
         private RectTransform _panel;
         private Text[] _rowLabels;
         private RectTransform[] _rowRects;
@@ -678,6 +679,9 @@ namespace StickMate.Interaction
             _canvas = canvasGo.GetComponent<Canvas>();
             _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             _canvas.sortingOrder = 32760; // 다른 모든 UI(TodoPostItWidget 포함)보다 위 — 종료 수단이 가려지면 안 된다.
+            _scaler = canvasGo.GetComponent<CanvasScaler>();
+            _scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+            ApplyCanvasScaleFactor();
 
             float panelHeight = MenuHeaderHeight + MenuRowHeight * MenuRowCount + MenuPadding * 2f;
             var panelGo = new GameObject("ControlPanel", typeof(RectTransform), typeof(Image));
@@ -812,6 +816,19 @@ namespace StickMate.Interaction
             if (_rowLabels != null && i < _rowLabels.Length && _rowLabels[i] != null) _rowLabels[i].text = text;
         }
 
+        /// <summary>
+        /// ScreenSpaceOverlay 캔버스의 스케일을 현재 화면 배율에 맞춘다 — **캔버스 1유닛 == OS 포인트 1**.
+        /// 근거는 ScreenCoordinateConverter.ResolveCanvasScaleFactor() 문서 참고(2026-08-29 Retina 대응,
+        /// 리더 지시 5항). 이게 없으면 Retina에서 종료 메뉴가 물리적으로 절반 크기가 되어 읽기 어려워진다 —
+        /// 이 메뉴는 사용자가 앱을 끄는 **유일한 수단**이라 특히 작아지면 안 된다.
+        /// </summary>
+        private void ApplyCanvasScaleFactor()
+        {
+            if (_scaler == null) return;
+            float target = ScreenCoordinateConverter.ResolveCanvasScaleFactor(_config);
+            if (!Mathf.Approximately(_scaler.scaleFactor, target)) _scaler.scaleFactor = target;
+        }
+
         /// <summary>메뉴를 캐릭터 옆(화면 안)으로 옮긴다 — 캐릭터가 걸어가도 메뉴가 따라온다.</summary>
         private void UpdateMenuPlacement()
         {
@@ -820,26 +837,41 @@ namespace StickMate.Interaction
             Rigidbody2D body = _agent.Blackboard.Body;
             if (cam == null || body == null) return;
 
-            Vector3 charScreen = cam.WorldToScreenPoint(body.position);
+            ApplyCanvasScaleFactor(); // 배율은 실행 중에 바뀔 수 있다(모니터 이동/시작 직후 창 확장).
+
+            // ★ 단위 변환(2026-08-29 Retina 대응): WorldToScreenPoint/Screen.width는 **Unity 픽셀**,
+            // anchoredPosition/sizeDelta는 **캔버스 유닛**이다. scaleFactor가 2인 Retina에서 이 변환을
+            // 빼먹으면 메뉴가 캐릭터에서 화면 절반만큼 떨어진 곳에 그려진다.
+            Vector3 charScreenPx = cam.WorldToScreenPoint(body.position);
+            float charX = ScreenCoordinateConverter.UnityScreenToCanvas(charScreenPx.x, _config);
+            float charY = ScreenCoordinateConverter.UnityScreenToCanvas(charScreenPx.y, _config);
+            float screenW = ScreenCoordinateConverter.UnityScreenToCanvas(Screen.width, _config);
+            float screenH = ScreenCoordinateConverter.UnityScreenToCanvas(Screen.height, _config);
+
             float panelW = _panel.sizeDelta.x;
             float panelH = _panel.sizeDelta.y;
 
             // 기본은 캐릭터 오른쪽. 오른쪽이 화면 밖이면 왼쪽으로 뒤집는다.
-            float x = charScreen.x + MenuOffsetFromCharacterX;
-            if (x + panelW > Screen.width - 4f) x = charScreen.x - MenuOffsetFromCharacterX - panelW;
-            x = Mathf.Clamp(x, 4f, Mathf.Max(4f, Screen.width - panelW - 4f));
+            float x = charX + MenuOffsetFromCharacterX;
+            if (x + panelW > screenW - 4f) x = charX - MenuOffsetFromCharacterX - panelW;
+            x = Mathf.Clamp(x, 4f, Mathf.Max(4f, screenW - panelW - 4f));
 
             // 세로는 캐릭터 몸통 중앙 언저리. 화면 위/아래로 넘치면 안쪽으로 끌어당긴다.
-            float y = Mathf.Clamp(charScreen.y + panelH * 0.5f, panelH * 0.5f + 4f,
-                Mathf.Max(panelH * 0.5f + 4f, Screen.height - panelH * 0.5f - 4f));
+            float y = Mathf.Clamp(charY + panelH * 0.5f, panelH * 0.5f + 4f,
+                Mathf.Max(panelH * 0.5f + 4f, screenH - panelH * 0.5f - 4f));
 
             _panel.anchoredPosition = new Vector2(x, y);
 
             // 히트테스트 차단막을 같은 화면 영역의 월드 사각형으로 맞춘다.
+            // Camera.ScreenToWorldPoint는 **Unity 픽셀**을 받으므로 캔버스 유닛을 되돌려 넘긴다.
             if (_menuBlocker != null)
             {
-                Vector3 bl = cam.ScreenToWorldPoint(new Vector3(x, y - panelH * 0.5f, charScreen.z));
-                Vector3 tr = cam.ScreenToWorldPoint(new Vector3(x + panelW, y + panelH * 0.5f, charScreen.z));
+                float pxLeft = ScreenCoordinateConverter.CanvasToUnityScreen(x, _config);
+                float pxRight = ScreenCoordinateConverter.CanvasToUnityScreen(x + panelW, _config);
+                float pxBottom = ScreenCoordinateConverter.CanvasToUnityScreen(y - panelH * 0.5f, _config);
+                float pxTop = ScreenCoordinateConverter.CanvasToUnityScreen(y + panelH * 0.5f, _config);
+                Vector3 bl = cam.ScreenToWorldPoint(new Vector3(pxLeft, pxBottom, charScreenPx.z));
+                Vector3 tr = cam.ScreenToWorldPoint(new Vector3(pxRight, pxTop, charScreenPx.z));
                 _menuBlocker.transform.position = new Vector3((bl.x + tr.x) * 0.5f, (bl.y + tr.y) * 0.5f, 0f);
                 _menuBlocker.size = new Vector2(Mathf.Abs(tr.x - bl.x), Mathf.Abs(tr.y - bl.y));
             }

@@ -171,8 +171,12 @@ namespace StickMate.States
         /// **한 시점(instant) 검사**다. 그리고 FallState는 그 조건이 fallGraceDuration(0.1초) **연속으로**
         /// 유지돼야 착지를 확정한다(스쳐 지나가는 한 프레임 접촉으로 인한 채터링 방지). 두 규칙을 곱하면
         /// 실제로 착지 가능한 낙하 속도의 상한이 생긴다:
-        ///     밴드 두께 2 x 20pt = 40pt = 40 / (Screen.height / (2 x orthographicSize)) 월드유닛
-        ///     (Screen.height=846, orthographicSize=12 기준 = 약 1.13유닛)
+        ///     밴드 두께 2 x 20pt = 40pt = 40 / (창높이[OS 포인트] / (2 x orthographicSize)) 월드유닛
+        ///     (창높이=846pt, orthographicSize=12 기준 = 약 1.13유닛)
+        ///     ※ 단위 주의(2026-08-29 Retina 대응): 분모는 Screen.height(Unity 픽셀)가 아니라 그것에 dpi
+        ///       배율을 곱한 **OS 포인트** 창높이다. Retina에서는 Screen.height=1964, dpi=0.5로 곱이
+        ///       982pt가 되어 이 유도식의 값이 변하지 않는다(tolerance 자체가 포인트 단위이므로 —
+        ///       Core/StickConfig.cs의 "OS-px 필드 단위 규약" 블록 참고).
         ///     -> 착지 가능 최대 낙하속도 ~= 1.13유닛 / 0.1초 = 약 11.3유닛/초
         /// 그런데 gravityScale=3이면 가속도가 29.4유닛/초^2라 **2.2유닛(=약 78 OS-pt)만 자유낙하해도**
         /// 이 상한을 넘는다. 즉 캐릭터는 창 상단을 그냥 통과해 버리고, 유일하게 "착지에 성공하던" 곳은
