@@ -33,3 +33,6 @@
 
 # Crashlytics
 crashlytics-build.properties
+
+# Unity Test Runner 임시 씬 (PlayMode 실행마다 생성됨)
+Assets/InitTestScene*
