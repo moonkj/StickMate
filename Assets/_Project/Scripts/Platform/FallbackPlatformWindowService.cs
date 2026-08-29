@@ -45,7 +45,7 @@ namespace StickMate.Platform
     /// 한다(UX_FLOW.md 3절/9절-7). 여기서 항상 발판이 있는 것처럼 위장하면 그 온보딩 게이트가 조용히
     /// 무력화된다 — 배선은 StickmanAgent.CreatePlatformService() 참고.
     /// </summary>
-    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService, IGlobalKeyStateService
+    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService, IGlobalKeyStateService, IRawWindowRectSource
     {
         private readonly IPlatformWindowService _inner;
         private readonly ICursorPositionService _innerCursor; // null이면 내부 서비스가 커서 조회를 지원하지 않음
@@ -61,6 +61,8 @@ namespace StickMate.Platform
         // 실제로는 한 번도 활성화된 적이 없었다. ICursorPositionService와 동일한 위임 패턴으로 통과시킨다.
         private readonly IGlobalPointerButtonService _innerButton; // null이면 내부 서비스가 전역 버튼 조회를 지원하지 않음
         private readonly IGlobalKeyStateService _innerKeyState;     // null이면 내부 서비스가 전역 키 조회를 지원하지 않음
+        // null이면 내부 서비스가 "가려짐 필터 이전 원본 창 목록"을 지원하지 않음 -> RawWindows가 빈 목록.
+        private readonly IRawWindowRectSource _innerRawWindows;
         private readonly StickConfig _config; // desktopDpiScale만 읽는다 — null이면 배율 1로 취급.
 
         // 합성 발판 캐시 무효화 판정에 쓰는 직전 오버레이 창 원점(아래 AppendBottomSafetyNet 참고).
@@ -93,6 +95,7 @@ namespace StickMate.Platform
             _innerDockMetrics = inner as IDockMetricsService;
             _innerButton = inner as IGlobalPointerButtonService;
             _innerKeyState = inner as IGlobalKeyStateService;
+            _innerRawWindows = inner as IRawWindowRectSource;
             _config = config;
         }
 
@@ -102,6 +105,18 @@ namespace StickMate.Platform
         /// IPlatformWindowService 계약만 사용할 것(아키텍처 2절 플랫폼 추상화 원칙).
         /// </summary>
         public IPlatformWindowService Inner => _inner;
+
+        // 미지원 내부 서비스일 때 돌려줄 빈 목록 — 매 조회마다 새 배열/리스트를 만들지 않도록 1회만 만든다.
+        private static readonly IReadOnlyList<PlatformFoothold> EmptyRawWindows = new List<PlatformFoothold>(0).AsReadOnly();
+
+        /// <summary>
+        /// IRawWindowRectSource 통과(ICursorPositionService 등과 동일한 위임 패턴). 이 데코레이터가
+        /// 목록 끝에 덧붙이는 <b>합성 발판(Dock/안전망, Handle&lt;0)은 여기에 절대 섞지 않는다</b> —
+        /// 이 채널의 계약은 "OS가 실제로 열거해 준 원본 창"이고, 창 도둑이 합성 사각형을 대상으로 삼으면
+        /// 존재하지도 않는 창의 고스트를 그리게 된다.
+        /// </summary>
+        public IReadOnlyList<PlatformFoothold> RawWindows
+            => _innerRawWindows != null ? _innerRawWindows.RawWindows : EmptyRawWindows;
 
         /// <summary>
         /// 합성 안전망 발판에 부여하는 핸들. GroundSensor.GroundInfo.GroundedFootholdHandle이 이 값이면

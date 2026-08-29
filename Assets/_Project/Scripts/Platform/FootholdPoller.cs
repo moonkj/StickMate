@@ -52,7 +52,24 @@ namespace StickMate.Platform
 
         private float _timer;
 
+        // ★ 2026-08-29 창 도둑 복구 라운드 — "가려짐 필터 이전 원본 창" 캐시(Platform/IRawWindowRectSource.cs).
+        // 발판 캐시와 **같은 폴링 주기**로만 갱신해, 소비자(Interaction/WindowTheftDirector)가 프레임마다
+        // 서비스를 직접 두드리지 않게 한다(이 클래스가 존재하는 이유 자체가 그 계약의 강제다).
+        // 서비스 구현체의 내부 버퍼를 그대로 들고 있으면 다음 열거 때 제자리에서 바뀌므로 값을 복사한다
+        // (_cache와 같은 이유). 지원하지 않는 플랫폼에서는 이 목록이 영원히 비어 있고, 소비자는 그것을
+        // 폴백 신호로 쓴다.
+        private readonly IRawWindowRectSource _rawSource;
+        private readonly List<PlatformFoothold> _rawCache = new List<PlatformFoothold>(64);
+        private readonly ReadOnlyCollection<PlatformFoothold> _readOnlyRawCache;
+
         public IReadOnlyList<PlatformFoothold> CachedFootholds => _readOnlyCache;
+
+        /// <summary>
+        /// 가려짐(오클루전) 필터를 거치기 <b>전</b>의 원본 창 목록. 창 도둑처럼 "딛는 것이 아니라 미는"
+        /// 연출만 이 목록을 쓴다 — 접지/걷기 계열은 절대 이걸 쓰면 안 된다(보이지 않는 창을 딛고 허공을
+        /// 걷는 2026-08-28 사용자 신고 버그가 그대로 재발한다). 플랫폼이 지원하지 않으면 빈 목록.
+        /// </summary>
+        public IReadOnlyList<PlatformFoothold> CachedRawWindows => _readOnlyRawCache;
 
         public FootholdPoller(IPlatformWindowService service, StickConfig config)
         {
@@ -60,6 +77,8 @@ namespace StickMate.Platform
             _config = config;
             _timer = 0f;
             _readOnlyCache = _cache.AsReadOnly();
+            _rawSource = service as IRawWindowRectSource;
+            _readOnlyRawCache = _rawCache.AsReadOnly();
             Poll(); // 첫 프레임부터 발판 정보가 있어야 "빈 화면에 멈춰 보임"을 피할 수 있다 (UX_FLOW.md 6-1절).
         }
 
@@ -83,6 +102,12 @@ namespace StickMate.Platform
         private void Poll()
         {
             IReadOnlyList<PlatformFoothold> latest = _service.EnumerateFootholds();
+
+            // 원본 창 캐시는 발판 변경 여부와 무관하게 매 폴링 갱신한다 — 아래 HasChanged 조기 반환보다
+            // **먼저** 해야 한다. 발판 목록이 그대로여도(예: 맨 앞 큰 창 하나만 계속 보이는 상황) 그 뒤에
+            // 가려진 창들은 열리고 닫히기 때문이다.
+            RefreshRawCache();
+
             if (!HasChanged(latest)) return;
 
             _cache.Clear();
@@ -91,6 +116,18 @@ namespace StickMate.Platform
                 _cache.Add(latest[i]);
             }
             StickmanEventBus.RaiseFootholdsChanged();
+        }
+
+        private void RefreshRawCache()
+        {
+            if (_rawSource == null) return;
+            IReadOnlyList<PlatformFoothold> raw = _rawSource.RawWindows;
+            _rawCache.Clear();
+            if (raw == null) return;
+            for (int i = 0; i < raw.Count; i++)
+            {
+                _rawCache.Add(raw[i]);
+            }
         }
 
         private bool HasChanged(IReadOnlyList<PlatformFoothold> latest)

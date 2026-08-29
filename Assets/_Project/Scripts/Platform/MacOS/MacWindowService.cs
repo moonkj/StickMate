@@ -2,6 +2,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using UnityEngine;
 using Kirurobo;
 using StickMate.Platform;
@@ -60,7 +61,7 @@ namespace StickMate.Platform.MacOS
     /// 취급하므로 컴파일/런타임 모두 문제 없다(Win32WindowService가 실제로 두 인터페이스 다 구현한 것과
     /// 다른 점 — macOS는 이번 라운드에 그 두 캐퍼빌리티까지는 손대지 않는다).
     /// </summary>
-    public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService, IGlobalPointerButtonService, IGlobalKeyStateService, ILocalClickCaptureService, IDockMetricsService
+    public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService, IGlobalPointerButtonService, IGlobalKeyStateService, ILocalClickCaptureService, IDockMetricsService, IRawWindowRectSource
     {
         #region CoreGraphics / CoreFoundation P/Invoke 선언 (이 리전 밖으로 유출 금지)
 
@@ -340,6 +341,20 @@ namespace StickMate.Platform.MacOS
         private readonly List<bool> _rawOnscreen = new List<bool>(64);
         private readonly List<float> _rawVisibleWidth = new List<float>(64); // 가려짐 계산 후 남은 총 폭
 
+        // ★ 2026-08-29 창 도둑 복구 라운드 — IRawWindowRectSource 읽기 전용 채널의 뒷단.
+        // 위 _rawRects/_rawHandles(가려짐 계산 입력)와 **같은 패스에서 같은 창들로** 채워지는 사본이며,
+        // 발판 열거/가려짐 계산에는 전혀 참여하지 않는다(순수 추가 출력). 소비자에게는 아래
+        // _readOnlyRawWindows 뷰만 내보내 List로 다시 캐스팅해 변형하는 경로를 막는다
+        // (FootholdPoller.cs의 BUG-P1-M4 대응과 같은 이유).
+        private readonly List<PlatformFoothold> _rawWindowBuffer = new List<PlatformFoothold>(64);
+        private readonly ReadOnlyCollection<PlatformFoothold> _readOnlyRawWindows;
+
+        /// <summary>
+        /// IRawWindowRectSource 구현 — 마지막 열거 패스의 원본 창 목록(가려짐 필터 이전, 창 전체 사각형).
+        /// 조회만 한다(절대 불변 원칙 3).
+        /// </summary>
+        public IReadOnlyList<PlatformFoothold> RawWindows => _readOnlyRawWindows;
+
         // 필터에서 탈락한 창들(진단 로그 전용 — 리더가 "보이지 않는데 발판이 된 창"을 특정할 수 있게).
         private readonly List<Rect> _rejRects = new List<Rect>(32);
         private readonly List<string> _rejNames = new List<string>(32);
@@ -441,6 +456,7 @@ namespace StickMate.Platform.MacOS
 
         public MacWindowService()
         {
+            _readOnlyRawWindows = _rawWindowBuffer.AsReadOnly(); // 살아있는 뷰 — 매 폴링 재생성 금지(할당 0).
             _keyWindowLayer = CFStringCreateWithCString(IntPtr.Zero, "kCGWindowLayer", kCFStringEncodingUTF8);
             _keyWindowBounds = CFStringCreateWithCString(IntPtr.Zero, "kCGWindowBounds", kCFStringEncodingUTF8);
             _keyWindowOwnerPID = CFStringCreateWithCString(IntPtr.Zero, "kCGWindowOwnerPID", kCFStringEncodingUTF8);
@@ -647,6 +663,7 @@ namespace StickMate.Platform.MacOS
             _rawAlphas.Clear();
             _rawOnscreen.Clear();
             _rawVisibleWidth.Clear();
+            _rawWindowBuffer.Clear();
             _rejRects.Clear();
             _rejNames.Clear();
             _rejPids.Clear();
@@ -719,6 +736,11 @@ namespace StickMate.Platform.MacOS
                     _rawAlphas.Add(alpha);
                     _rawOnscreen.Add(onScreen);
                     _rawVisibleWidth.Add(0f);
+
+                    // IRawWindowRectSource 채널(창 도둑 전용): 가려짐 계산에 들어가기 전 상태를 그대로
+                    // 한 벌 복사해 둔다. IsTopmost는 z-order 맨 앞(첫 항목)만 true — 발판 쪽의
+                    // "실제로 보이는 첫 조각" 정의와 달리 여기서는 순수 z-order 의미다.
+                    _rawWindowBuffer.Add(new PlatformFoothold(handle, screenRect, _rawWindowBuffer.Count == 0));
                 }
             }
             finally

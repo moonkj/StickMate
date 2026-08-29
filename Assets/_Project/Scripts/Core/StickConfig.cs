@@ -638,6 +638,16 @@ namespace StickMate.Core
                  "채택된다. 작은 창일수록 '정말 밀리는 듯' 긴장감이 산다(27-1 근거).")]
         public float windowTheftMaxTargetWidthMultiplier = 3f;
 
+        [Tooltip("대상 창 폭 상한의 **절대 하한**(OS 포인트). 최종 상한 = max(캐릭터 신장 x " +
+                 "windowTheftMaxTargetWidthMultiplier, 이 값).\n" +
+                 "★ 2026-08-29 신설 — 상한을 캐릭터 신장에만 비례시키면 characterScale(순수 시각 설정)이 " +
+                 "게임플레이 조건(어떤 창을 훔칠 수 있는가)을 조용히 바꾼다. 실측: 배율 1.0에서 상한 279pt였던 것이 " +
+                 "배율 0.75에서 237pt(신장 79.0pt x 3), 배율 0.5에서는 158pt까지 떨어져 macOS 표준 창 최소 폭" +
+                 "(계산기 실측 230pt, Finder 483pt)보다 좁아진다 = 후보가 항상 0개 = 기능이 조용히 죽는다.\n" +
+                 "값 근거: 배율 1.0 시절의 원래 상한 279pt를 기준선으로, 계산기(230pt)가 여유 있게 들어오도록 " +
+                 "280pt. 이보다 크게 올리면 27-1이 금지하는 '큰 창을 억지로 미는' 연출이 되어 개그가 죽는다.")]
+        public float windowTheftMinTargetWidthPoints = 280f;
+
         [Tooltip("1/2회차 시도 각각의 지속 시간(초). 2회 고정(1회는 성의 없어 보이고 3회 이상은 지루함).")]
         public float windowTheftAttemptDuration = 1.2f;
 

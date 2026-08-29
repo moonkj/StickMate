@@ -124,6 +124,7 @@ MonoBehaviour:
   windowTheftChance: 0
   windowTheftCooldownSeconds: 900
   windowTheftMaxTargetWidthMultiplier: 3
+  windowTheftMinTargetWidthPoints: 280
   windowTheftAttemptDuration: 1.2
   windowTheftGiveUpDuration: 1.5
   desktopTidyCheckInterval: 60

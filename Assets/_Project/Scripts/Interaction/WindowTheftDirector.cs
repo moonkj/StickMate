@@ -11,7 +11,14 @@ namespace StickMate.Interaction
     /// 언제 강제로 취소하는지" + "어느 창을 대상으로 삼는지"만 결정한다.
     ///
     /// 절대 원칙 3 재확인: 아래 어디에도 대상 창의 좌표/크기를 변경하는 API 호출이 없다 — 오직
-    /// FootholdPoller.CachedFootholds(읽기 전용 열거)를 조회/비교할 뿐이다.
+    /// FootholdPoller의 읽기 전용 목록을 조회/비교할 뿐이다.
+    ///
+    /// ★ 2026-08-29 — 후보 소스를 <b>FootholdPoller.CachedRawWindows</b>(가려짐 필터 이전 원본 창)로
+    /// 바꿨다. 종전에는 CachedFootholds(= 상단 테두리가 실제로 보이는 창만)를 썼는데, 작은 창은 대개 큰 창
+    /// 뒤에 가려져 있어 폭 판정에 도달하기도 전에 후보에서 빠졌다(실측: 계산기를 띄워둬도 전체화면에 가까운
+    /// 에디터 창 뒤에 있으면 "완전히 가려짐"으로 탈락 -> 후보 0개 -> 강제 발동조차 조용히 실패).
+    /// 창 도둑은 <b>창을 딛는 연출이 아니라 미는 연출</b>이라 가려짐 여부와 무관해도 된다. 접지/걷기 쪽은
+    /// 예전 그대로 CachedFootholds만 쓴다(그쪽에서 가려진 창을 받으면 허공을 걷는 버그가 재발한다).
     /// </summary>
     public sealed class WindowTheftDirector : MonoBehaviour
     {
@@ -61,8 +68,8 @@ namespace StickMate.Interaction
         /// RivalEncounterDirector.ForceSpawnNow와 같은 관례로 "확률/쿨다운만 건너뛰는" 데모 경로를 둔다.
         ///
         /// <b>27-1의 규칙은 강제 경로에서도 하나도 완화하지 않는다</b> — 상호배제 락, Idle/Walk 진입
-        /// 조건, 그리고 "캐릭터 신장의 windowTheftMaxTargetWidthMultiplier배 이하인 실제 창"이라는 대상
-        /// 선정 조건을 그대로 통과해야 한다. 후보 창이 없으면 아무 일도 일어나지 않는다(억지로 큰 창을
+        /// 조건, 그리고 "폭이 상한(= max(캐릭터 신장 x windowTheftMaxTargetWidthMultiplier,
+        /// windowTheftMinTargetWidthPoints)) 이하인 실제 창"이라는 대상 선정 조건을 그대로 통과해야 한다. 후보 창이 없으면 아무 일도 일어나지 않는다(억지로 큰 창을
         /// 대상으로 삼지 않는다 — 그러면 "밀어도 안 움직임"이 당연해 보여 개그가 죽는다).
         /// </summary>
         public void ForceTriggerNow(string reason)
@@ -105,7 +112,11 @@ namespace StickMate.Interaction
             RaiseOverlay(SpectacleOverlayPhase.Started);
             _player.Blackboard.Machine.ChangeState(StickmanStateId.WindowTheft);
 
-            Debug.Log($"[창도둑] 강제 발동({reason}) — 대상 창 handle={_targetHandle}, OS영역 {_targetRectSnapshot}. " +
+            // 폭/상한/가려짐 여부를 함께 남긴다 — 이 한 줄이 "왜 이 창이 뽑혔는지"와 "가려진 창도
+            // 대상이 되는지"(2026-08-29 수정의 직접 증거)를 다음 실행에서 재확인할 수 있게 한다.
+            Debug.Log($"[창도둑] 강제 발동({reason}) — 대상 창 handle={_targetHandle}, OS영역 {_targetRectSnapshot}, " +
+                $"폭={_targetRectSnapshot.width:F0}pt(상한 {WindowTheftTargetRules.ComputeMaxTargetWidthOsPx(ComputeCharacterHeightOsPx(), _config):F0}pt), " +
+                $"가려짐={(IsHandleInFootholdList(_targetHandle) ? "아니오(발판 목록에도 보임)" : "예(다른 창 뒤 — 발판 목록에는 없음)")}. " +
                 "실제 창은 1픽셀도 움직이지 않으며(원칙 3), 화면에 보이는 것은 복사본(고스트) 사각형뿐입니다.");
         }
 
@@ -127,20 +138,37 @@ namespace StickMate.Interaction
         {
             if (!_hasTarget) return;
 
-            var footholds = _player.Blackboard.FootholdPoller != null ? _player.Blackboard.FootholdPoller.CachedFootholds : null;
-            if (footholds == null) { CancelAttempt(); return; }
+            // 감시도 반드시 **선정과 같은 목록**을 봐야 한다. 예전처럼 여기만 CachedFootholds를 보면,
+            // 대상 창이 다른 창 뒤로 들어간 순간(또는 애초에 가려진 창을 대상으로 삼은 순간) "목록에서
+            // 사라짐 = 창이 닫힘"으로 오판해 시도가 시작되자마자 취소된다.
+            var windows = ResolveCandidateSource();
+            if (windows == null) { CancelAttempt(); return; }
 
-            for (int i = 0; i < footholds.Count; i++)
+            for (int i = 0; i < windows.Count; i++)
             {
-                if (footholds[i].Handle != _targetHandle) continue;
+                if (windows[i].Handle != _targetHandle) continue;
 
                 // 유저가 실제로 그 창을 옮기면(드래그) 캐릭터가 놀라며 즉시 취소 — 27-1 예외 상태.
-                if (footholds[i].ScreenRect != _targetRectSnapshot) CancelAttempt();
+                if (windows[i].ScreenRect != _targetRectSnapshot) CancelAttempt();
                 return;
             }
 
             // 목록에서 사라짐 = 대상 창이 도중에 닫힘 — 27-1 예외 상태.
             CancelAttempt();
+        }
+
+        /// <summary>
+        /// 대상 선정/감시가 공유하는 단일 후보 소스. 원본 창 목록(가려짐 필터 이전)을 우선 쓰고, 그
+        /// 채널이 없는 플랫폼(Windows/모바일/에디터 폴백)에서는 예전대로 발판 목록으로 되돌아간다 —
+        /// 새 채널이 없다고 기능이 통째로 죽지 않게 하는 폴백이다(NullPlatformWindowService 관례).
+        /// </summary>
+        private IReadOnlyList<PlatformFoothold> ResolveCandidateSource()
+        {
+            var poller = _player.Blackboard.FootholdPoller;
+            if (poller == null) return null;
+            IReadOnlyList<PlatformFoothold> raw = poller.CachedRawWindows;
+            if (raw != null && raw.Count > 0) return raw;
+            return poller.CachedFootholds;
         }
 
         private void CancelAttempt()
@@ -180,28 +208,21 @@ namespace StickMate.Interaction
             _player.Blackboard.Machine.ChangeState(StickmanStateId.WindowTheft);
         }
 
-        /// <summary>27-1 대상 선정: 폭이 캐릭터 신장(OS px 환산)의 windowTheftMaxTargetWidthMultiplier배
-        /// 이하인 실제(핸들 음수 아님 — 안전망 합성 발판 제외) 창 중 무작위 하나. 후보가 없으면 false.</summary>
+        /// <summary>27-1 대상 선정: 폭이 상한(WindowTheftTargetRules.ComputeMaxTargetWidthOsPx —
+        /// 캐릭터 신장 x 배수와 절대 하한 중 큰 값) 이하인 실제(핸들 음수 아님 — 안전망 합성 발판 제외)
+        /// 창 중 무작위 하나. 후보가 없으면 false. 판정식은 EditMode 테스트가 씬 없이 잠글 수 있도록
+        /// WindowTheftTargetRules에 단일 소스로 두고 여기서는 호출만 한다.</summary>
         private bool TryFindTargetWindow(out PlatformFoothold target)
         {
             target = default;
-            var footholds = _player.Blackboard.FootholdPoller != null ? _player.Blackboard.FootholdPoller.CachedFootholds : null;
-            if (footholds == null || footholds.Count == 0) return false;
+            var windows = ResolveCandidateSource();
+            if (windows == null || windows.Count == 0) return false;
 
             float characterHeightOsPx = ComputeCharacterHeightOsPx();
             if (characterHeightOsPx <= 0f) return false;
-            float maxWidth = characterHeightOsPx * Mathf.Max(0.01f, _config.windowTheftMaxTargetWidthMultiplier);
+            float maxWidth = WindowTheftTargetRules.ComputeMaxTargetWidthOsPx(characterHeightOsPx, _config);
 
-            _candidateBuffer.Clear();
-            for (int i = 0; i < footholds.Count; i++)
-            {
-                PlatformFoothold f = footholds[i];
-                if (f.Handle < 0) continue; // FallbackPlatformWindowService 안전망 합성 발판 제외(실제 창 아님)
-                if (f.ScreenRect.width <= 0f || f.ScreenRect.width > maxWidth) continue;
-                _candidateBuffer.Add(f);
-            }
-
-            if (_candidateBuffer.Count == 0) return false;
+            if (WindowTheftTargetRules.CollectCandidates(windows, maxWidth, _candidateBuffer) == 0) return false;
             target = _candidateBuffer[Random.Range(0, _candidateBuffer.Count)];
             return true;
         }
@@ -213,19 +234,25 @@ namespace StickMate.Interaction
         /// 대상 창 탐색이 실패한 이유를 사람이 읽을 수 있는 한 줄로 만든다. <b>강제 발동 실패 시에만</b>
         /// 호출한다(자동 발동 경로는 60초마다 돌므로 여기서 문자열을 만들면 로그가 오염된다).
         ///
-        /// 이 진단이 필요한 이유 — 후보 소스가 <b>FootholdPoller의 발판 목록</b>이라는 구조적 결합 때문이다.
-        /// 발판 목록은 "상단 테두리가 앞에서 실제로 보이는 창"만 담는다(Platform/MacOS/MacWindowService.cs의
-        /// 가려짐 계산). 그래서 작은 창이 큰 창 <b>뒤에</b> 있으면 폭 조건을 따지기도 전에 목록에서
-        /// 사라진다 — 실측 로그: 계산기/작은 Finder를 띄워도 전체화면 에디터 창 뒤에 있으면
-        /// "사유=다른 창에 완전히 가려짐"으로 탈락하고, 남는 후보는 맨 앞의 큰 창 하나뿐이다.
-        /// 아래 출력이 "실제 창 후보 0개"인지 "후보는 있는데 전부 너무 넓다"인지를 갈라준다.
+        /// 이 진단이 처음 필요했던 이유는 후보 소스가 <b>FootholdPoller의 발판 목록</b>이라는 구조적
+        /// 결합이었다 — 발판 목록은 "상단 테두리가 앞에서 실제로 보이는 창"만 담아서, 작은 창이 큰 창
+        /// <b>뒤에</b> 있으면 폭 조건을 따지기도 전에 사라졌다. 그 결합은 2026-08-29에 원본 창 목록
+        /// (Platform/IRawWindowRectSource.cs)으로 갈아끼워 해소했고, 이 진단은 이제 "무슨 소스를 몇 개
+        /// 봤고 폭 상한이 얼마였는지"를 남겨 <b>다음 회귀를 한 줄로 특정</b>하는 역할로 남는다.
         /// </summary>
         private string BuildTargetSearchDiagnostic()
         {
-            var footholds = _player.Blackboard.FootholdPoller != null ? _player.Blackboard.FootholdPoller.CachedFootholds : null;
-            if (footholds == null || footholds.Count == 0)
+            var poller = _player.Blackboard.FootholdPoller;
+            IReadOnlyList<PlatformFoothold> raw = poller != null ? poller.CachedRawWindows : null;
+            bool usingRaw = raw != null && raw.Count > 0;
+            IReadOnlyList<PlatformFoothold> windows = ResolveCandidateSource();
+            string sourceLabel = usingRaw
+                ? "원본 창 목록(가려짐 무관)"
+                : "발판 목록(가려짐 필터 통과분 — 원본 채널 미지원 플랫폼 폴백)";
+
+            if (windows == null || windows.Count == 0)
             {
-                return "발판 폴러의 창 목록이 비어 있습니다(아직 첫 폴링 전이거나 열거된 창이 하나도 없음).";
+                return $"{sourceLabel}이 비어 있습니다(아직 첫 폴링 전이거나 열거된 창이 하나도 없음).";
             }
 
             float characterHeightOsPx = ComputeCharacterHeightOsPx();
@@ -233,31 +260,46 @@ namespace StickMate.Interaction
             {
                 return "캐릭터 신장을 OS 픽셀로 환산하지 못했습니다(콜라이더/카메라 배선 확인 필요).";
             }
-            float maxWidth = characterHeightOsPx * Mathf.Max(0.01f, _config.windowTheftMaxTargetWidthMultiplier);
+            float maxWidth = WindowTheftTargetRules.ComputeMaxTargetWidthOsPx(characterHeightOsPx, _config);
 
             int realCount = 0;
             int syntheticCount = 0;
             var widths = new System.Text.StringBuilder();
-            for (int i = 0; i < footholds.Count; i++)
+            for (int i = 0; i < windows.Count; i++)
             {
-                PlatformFoothold f = footholds[i];
+                PlatformFoothold f = windows[i];
                 if (f.Handle < 0) { syntheticCount++; continue; }
                 realCount++;
                 if (widths.Length > 0) widths.Append(", ");
                 widths.Append("handle=").Append(f.Handle)
                       .Append(" 폭=").Append(f.ScreenRect.width.ToString("F0")).Append("pt")
-                      .Append(f.ScreenRect.width <= maxWidth ? "(통과)" : "(너무 넓음)");
+                      .Append(WindowTheftTargetRules.IsEligibleTarget(f, maxWidth) ? "(통과)" : "(너무 넓음)");
             }
 
-            string limit = $"기준: 캐릭터 신장 {characterHeightOsPx:F0}pt x {_config.windowTheftMaxTargetWidthMultiplier:F1}배 = 폭 {maxWidth:F0}pt 이하";
+            float scaled = characterHeightOsPx * Mathf.Max(0.01f, _config.windowTheftMaxTargetWidthMultiplier);
+            string limit = $"기준: max(신장 {characterHeightOsPx:F0}pt x {_config.windowTheftMaxTargetWidthMultiplier:F1}배 " +
+                           $"= {scaled:F0}pt, 절대하한 {_config.windowTheftMinTargetWidthPoints:F0}pt) = 폭 {maxWidth:F0}pt 이하";
             if (realCount == 0)
             {
-                return $"실제 창 후보가 0개입니다(합성 발판 {syntheticCount}개는 Dock/안전망이라 제외). " +
-                       "작은 창이 큰 창 뒤에 가려져 있으면 발판 목록에 아예 오르지 않습니다 — " +
-                       $"대상 창을 맨 앞으로 꺼낸 뒤 다시 시도하세요. {limit}.";
+                return $"소스={sourceLabel}인데 실제 창이 0개입니다(합성 발판 {syntheticCount}개는 Dock/안전망이라 제외). " +
+                       $"열려 있는 일반 앱 창이 정말 하나도 없는지 확인하세요. {limit}.";
             }
-            return $"실제 창 후보 {realCount}개가 전부 폭 조건을 넘었습니다 [{widths}]. {limit} " +
+            return $"소스={sourceLabel}, 실제 창 후보 {realCount}개가 전부 폭 조건을 넘었습니다 [{widths}]. {limit} " +
                    "(27-1: 큰 창을 억지로 대상으로 삼지 않는다).";
+        }
+
+        /// <summary>진단 전용 — 이 핸들이 "실제로 보이는 발판" 목록에도 들어 있는지(= 가려지지 않았는지).</summary>
+        private bool IsHandleInFootholdList(long handle)
+        {
+            var poller = _player.Blackboard.FootholdPoller;
+            if (poller == null) return false;
+            IReadOnlyList<PlatformFoothold> footholds = poller.CachedFootholds;
+            if (footholds == null) return false;
+            for (int i = 0; i < footholds.Count; i++)
+            {
+                if (footholds[i].Handle == handle) return true;
+            }
+            return false;
         }
 
         private float ComputeCharacterHeightOsPx()
