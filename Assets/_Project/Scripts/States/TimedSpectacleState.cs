@@ -64,6 +64,17 @@ namespace StickMate.States
 
         public void Tick(float deltaTime)
         {
+            // ★ 2026-08-29 — "물리/입력 변경 없음"이라는 클래스 설계와는 별개로, 접지 유지만은
+            // Idle/Walk와 동일하게 챙겨야 한다. 이 상태들이 서는 발판(Dock/타 앱 창 상단)은 논리
+            // 발판이라 물리 콜라이더가 없다 — GroundedTick()을 안 부르면 이 상태에 머무는 동안
+            // 중력만 계속 누적돼, 실제로는 화면 최하단 물리 바닥까지 자유낙하한다. 창 도둑을
+            // Dock/창 위에서 발동하면 0.5초 만에 랙돌로 강제 취소되는 회귀로 실측 확인됐다
+            // (착지 충격량이 랙돌 임계를 넘음). 이 클래스를 공유하는 그라피티/청소부/블랙홀/크래시/
+            // 투두 리마인더/포모도로/SULKY 전부 같은 결함을 안고 있었다.
+            GroundSensor.GroundInfo info = _blackboard.SenseGround();
+            if (_blackboard.CheckScreenBoundsOrFall(info)) return;
+            if (_blackboard.GroundedTick(deltaTime, info)) return;
+
             _timer += deltaTime;
             float duration = _durationSecondsSelector != null && _blackboard.Config != null
                 ? _durationSecondsSelector(_blackboard.Config)

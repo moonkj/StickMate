@@ -57,6 +57,15 @@ namespace StickMate.States
 
         public void Tick(float deltaTime)
         {
+            // ★ 2026-08-29 — TimedSpectacleState.Tick()과 같은 이유로 같은 수정을 적용한다(그 파일
+            // 주석 참고). 이 상태가 서는 발판(Dock/타 앱 창 상단)은 물리 콜라이더가 없는 논리 발판이라,
+            // GroundedTick()을 안 부르면 시도 도중 자유낙하해 랙돌로 강제 취소된다(실측: 0.5초 만에
+            // 발생, 착지 충격량이 임계 초과). 이 결함 때문에 창 도둑이 Dock/창 위에서는 한 번도 완주된
+            // 적이 없었다.
+            GroundSensor.GroundInfo info = _blackboard.SenseGround();
+            if (_blackboard.CheckScreenBoundsOrFall(info)) return;
+            if (_blackboard.GroundedTick(deltaTime, info)) return;
+
             _timer += deltaTime;
             float attemptDuration = _blackboard.Config != null ? _blackboard.Config.windowTheftAttemptDuration : 1.2f;
             float giveUpDuration = _blackboard.Config != null ? _blackboard.Config.windowTheftGiveUpDuration : 1.5f;
