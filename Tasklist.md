@@ -1792,3 +1792,41 @@ y만 보간하고 x는 손대지 않았다. 진입 조건은 "지금 딛는 발�
 ### 배선 감사 진척
 구독자 0명 이벤트 **11 → 8**, 씬 미배치 디렉터 **9 → 6**.
 남은 것: `StressLevelChanged`·`RunawayLifecycleChanged`·`RunawayHintPulseRequested`·`FocusWatchTierChanged`(→ 다음 라운드 발주함) / `DesktopIconMirrorOverlayChanged`(플랫폼 제약, 보류) / `RivalDuelStarted`·`LandingRollRequested`·`WanderAmbientMotionRequested`(모션 계열, 별도 묶음).
+
+---
+
+## 2026-08-29 — Phase 5 시각 레이어 4종 신설 + 실배선 (Coder / 커밋 aed8cf3)
+리더 감사 목록의 나머지를 마저 살렸다. **배선 감사 최종: 구독자 0명 이벤트 11 → 4, 씬 미배치 디렉터 9 → 1.**
+
+### 신규 파일 (5)
+- `Interaction/StressGaugeRenderer.cs` — 19절 "상시" 채널. **막대/숫자가 아니라 어깨 처짐 호 + 한숨 퍼프**(주의=2획, 경고=3획, 24절 채도 낮은 팔레트). 어깨 높이(1.33)에 그려 머리 위 하드웨어 이모트(2.32)와 **세로로 분리** — 직전 라운드의 "가슴팍 겹침" 실패를 미리 피했다. `StressLevelChanged`는 자연 감소 때문에 수 프레임마다 오므로 **단계가 바뀔 때만** 재구성.
+- `Interaction/RunawayRenderer.cs` — 20절. **은신 중엔 상시 표시 없음**(찾기 게임을 망치지 않기 위해), 힌트 파문만. 과자는 `RegisterExtraCollider`(`BattleMinigameRenderer`의 검증된 경로) 재사용.
+- `Interaction/TodoReminderRenderer.cs` — 17절 손에 든 종이. **텍스트는 그리지 않는다** — 말풍선이 대사의 유일한 소스라는 불변 원칙 1을 렌더러 차원에서 보장.
+- `Interaction/FocusWatchRenderer.cs` — 18절 발밑 타이머 링.
+- `Tests/PlayMode/Phase5VisualLayerTests.cs` (7건)
+
+### 발견한 죽은 코드 2건 — 이 프로젝트 패턴의 6·7번째
+1. **`TodoListModel.Add()` 호출자가 프로젝트 전체에 0건.** 목록이 영원히 비어 있으니 포스트잇은 "빈 상태 예외"로 **항상** 숨겨졌고, 리마인더 추첨도 매번 즉시 return했다. **투두 기능 전체가 도달 불가능**이었다.
+2. **씬 `EventSystem`에 입력 모듈이 없어 `Button.onClick`이 구조적으로 발동 불가.** 게다가 클릭관통 차단 콜라이더가 없어 클릭이 밑의 앱으로 샜다. → 리더가 지시문에서 "**아직 한 번도 검증된 적 없는 항목**"으로 콕 집어 실측을 요구했던 바로 그 지점이다. 지목이 적중했다.
+   교훈: **uGUI 클릭에 의존하는 기능은 앞으로 전부 이 두 겹을 먼저 확인**한다(입력 모듈 존재 + 차단 콜라이더).
+
+### 신규 단축키 (기존 체계에 추가)
+`Ctrl+Opt+Cmd+S` 스트레스 단계 순환 / `N` 가출↔돌아오라고 부르기(24절대로 메뉴 라벨도 분기) / `J` 할일 추가+알림 / `F` 집중 모드 토글. 우클릭 메뉴 4행 추가(스트레스 행이 19절 "트레이 색점" 대역).
+
+### 검증
+컴파일 0/0, EditMode 13/13, **PlayMode 44/44**(기존 37 + 신규 7). 전부 `Main.unity` 실제 로드 + 절대 조건 단언.
+**네거티브 컨트롤**(리더가 표준으로 요구한 방식): 입력 모듈 수정만 되돌리고 재빌드 → `EveryPhase5ComponentIsPlacedExactlyOnce`가 실제로 실패(`Expected: not null / But was: null`), 복구 후 재통과. 새 테스트가 실효성이 있다는 증거.
+실앱 로그로 4종 전부 실제 발동 확인(스트레스 단계 전이 / 가출 은신→**안 보이는 캐릭터 클릭**→발견→자진 복귀 / 투두 체크박스 **실제 OS 클릭** 토글 / 포모도로 링 90초 만료).
+
+### 정직한 미검증
+- **과자 클릭 실물 미실행**: 은신처가 화면 네 모서리라 과자가 OS y≈27(macOS 메뉴바)에 놓여, 실클릭 시 Apple 메뉴를 누를 위험이 있어 하지 않았다. 존재 + 콜라이더 정확히 1개는 PlayMode 절대 단언과 실앱 로그로 확인.
+- **종이 접기 애니메이션 실물 미관측**: 실앱에서 리마인더가 매번 무관한 Ragdoll로 강제 인터럽트돼 `IsForcedInterrupt → 즉시 제거` 분기만 탔다(UX 5절대로 정상 동작). 정상 종료 경로는 PlayMode가 커버.
+
+### 동시 작업 사고 (기록)
+이 라운드 도중 **다른 에이전트가 같은 워킹 트리에서 `DialogueBubbleRenderer.cs`/`BattleMinigameRenderer.cs`를 편집**하고 있어, 그 중간 상태 때문에 트리가 컴파일 불가가 되어 실행이 2회 실패했다(대기 후 재개).
+→ **리더 조치**: 커밋 시 그 2개 파일을 제외해 Phase 5만 분리 커밋했다. 앞으로 병렬 발주 시 **파일 소유권 경계를 지시문에 명시**하는 것으로는 부족하고, **Unity 실행 직렬화**까지 함께 지시해야 한다(이미 지시문에 포함시켰으나 편집 자체의 중간 상태는 막지 못했다).
+
+### 배선 감사 최종 잔여
+- `DesktopIconMirrorOverlayChanged` / `DesktopIconMirrorDirector` — **플랫폼 제약으로 보류**(macOS `IDesktopIconLayoutService` 미구현, 실제 아이콘 좌표는 접근성/화면기록 권한 필요 → 비침해 원칙상 배제). 배선 누락이 아니다.
+- `LandingRollRequested` / `WanderAmbientMotionRequested` — 모션 계열(`StickmanPoseAnimator` 작업), 별도 묶음.
+- `RivalDuelStarted` — 라이벌 대결 시작 연출.
