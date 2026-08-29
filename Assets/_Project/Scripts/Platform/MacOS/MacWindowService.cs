@@ -135,6 +135,10 @@ namespace StickMate.Platform.MacOS
         private const ushort kVK_ANSI_T = 0x11; // 창 도둑 데모(Theft)
         private const ushort kVK_ANSI_X = 0x07; // 윈도우 크래시 데모(부서짐)
         private const ushort kVK_ANSI_H = 0x04; // 하드웨어 반응 데모 미리보기(Hardware)
+        private const ushort kVK_ANSI_S = 0x01; // 스트레스 게이지 단계 순환(Stress)
+        private const ushort kVK_ANSI_N = 0x2D; // 가출 발동 / 돌아오라고 부르기("Nope 나 안 해")
+        private const ushort kVK_ANSI_J = 0x26; // 할일 추가 + 알림(Job)
+        private const ushort kVK_ANSI_F = 0x03; // 집중 모드 켜기/끄기(Focus)
 
         [DllImport(CoreGraphicsLib)]
         private static extern uint CGMainDisplayID();
@@ -1079,6 +1083,10 @@ namespace StickMate.Platform.MacOS
                 case GlobalKey.T:       code = kVK_ANSI_T;  break;
                 case GlobalKey.X:       code = kVK_ANSI_X;  break;
                 case GlobalKey.H:       code = kVK_ANSI_H;  break;
+                case GlobalKey.S:       code = kVK_ANSI_S;  break;
+                case GlobalKey.N:       code = kVK_ANSI_N;  break;
+                case GlobalKey.J:       code = kVK_ANSI_J;  break;
+                case GlobalKey.F:       code = kVK_ANSI_F;  break;
                 default:
                     pressed = false;
                     return false;

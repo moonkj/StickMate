@@ -47,6 +47,30 @@ namespace StickMate.Platform
         /// 경로이며(배터리를 20%로 만드는 것은 원칙 3/27-7이 금지하는 OS 제어다), 짧게 표시되고 스스로
         /// 걷힌다. Interaction/HardwareReactionDirector.ForceTriggerNow 문서 참고.</summary>
         H,
+
+        /// <summary>스트레스 게이지 단계 순환 미리보기(Ctrl+Opt+Cmd+S, Stress) — 하드웨어 반응(H)과 같은
+        /// 성격이다. 실사용에서 게이지가 실제로 차오르는 데는 수 시간~반나절이 걸려(19절: 반나절 방치 /
+        /// 5분 내 8회 격파훈련) 확률을 건너뛰는 것만으로는 검증이 불가능하다.
+        /// Interaction/StressGaugeDirector.ForceTriggerNow 문서 참고.</summary>
+        S,
+
+        /// <summary>가출 강제 발동 / 가출 중이면 [돌아오라고 부르기](Ctrl+Opt+Cmd+N, "Nope 나 안 해") —
+        /// 가출은 확률이 아니라 스트레스 임계값 도달 시 확정 발동(24절)이라, 이 경로는 확률이 아니라
+        /// <b>임계값</b>을 건너뛴다. 20절이 상시 제공을 요구한 수동 소환 탈출구를 겸한다
+        /// (캐릭터가 화면에서 사라진 상태라 캐릭터 우클릭에만 의존하면 탈출구에 도달하지 못할 수 있다).
+        /// Interaction/RunawayDirector.ForceTriggerNow 문서 참고.</summary>
+        N,
+
+        /// <summary>할일 추가(데모) + 들고 다니는 모드 알림 강제 발동(Ctrl+Opt+Cmd+J, Job) — 17절의 정식
+        /// 진입점("[+ 할일 추가]")이 설정창/트레이와 함께 아직 없어, 지금은 이 경로가 목록에 항목을 넣는
+        /// 유일한 통로다. Interaction/TodoReminderDirector.ForceTriggerNow 문서 참고.</summary>
+        J,
+
+        /// <summary>집중 모드 켜기/끄기(Ctrl+Opt+Cmd+F, Focus) — 다른 항목과 달리 데모가 아니라 <b>정식
+        /// 진입점</b>이다. 18절의 "[시작] 트레이 메뉴 '집중 모드'"/"[종료-중도취소] 트레이에서 끄기"를
+        /// 트레이가 없는 지금 아키텍처에서 이 단축키가 대신한다.
+        /// Interaction/FocusWatchDirector.ForceTriggerNow 문서 참고.</summary>
+        F,
     }
 
     /// <summary>

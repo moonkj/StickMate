@@ -92,8 +92,8 @@ MonoBehaviour:
   battleFailRetryDelaySeconds: 1.5
   battleSuccessResolveDelaySeconds: 1
   battleInputTimeoutSeconds: 5
-  battleAutoTriggerCheckInterval: 60
-  battleAutoTriggerChance: 0.05
+  battleAutoTriggerCheckInterval: 3
+  battleAutoTriggerChance: 1
   rivalSpawnCheckInterval: 90
   rivalSpawnChance: 0.04
   rivalSpawnCooldownSeconds: 1200
@@ -186,6 +186,7 @@ MonoBehaviour:
   stressEmergencyStopTriggerCount: 3
   stressEmergencyStopIncrement: 0.03
   stressPassiveDecayPerHour: 0.05
+  stressTierCautionLevel: 0.4
   stressSulkyThreshold: 0.8
   stressSulkyCheckInterval: 30
   stressSulkyChance: 0.5

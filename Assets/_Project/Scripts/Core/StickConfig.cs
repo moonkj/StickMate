@@ -771,6 +771,13 @@ namespace StickMate.Core
                  "한 번 오른 뒤 영원히 안 내려가는 단조증가를 막기 위한 Coder 판단 — Tasklist 참고).")]
         public float stressPassiveDecayPerHour = 0.05f;
 
+        [Tooltip("19절 '상시' 노출 채널의 초록->노랑 경계(0~1). 이 값 이상이면 어깨가 처지기 시작한다 " +
+                 "(Interaction/StressGaugeRenderer.cs). 노랑->빨강 경계는 별도 값을 두지 않고 아래 " +
+                 "stressSulkyThreshold를 그대로 재사용한다 — 빨간 신호를 봐야 하는 시점과 실제로 " +
+                 "부루퉁해지는 시점이 어긋나면 안 되기 때문(같은 경계를 두 곳에서 계산해 어긋난 " +
+                 "전례가 이 프로젝트에 이미 두 번 있다: Dock 구간, 화면 클램프).")]
+        public float stressTierCautionLevel = 0.4f;
+
         [Tooltip("이 값(0~1) 이상이면 SULKY(부루퉁함) 상태가 발동 후보가 된다. UX 명시값 80%.")]
         public float stressSulkyThreshold = 0.8f;
 

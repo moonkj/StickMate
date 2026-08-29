@@ -46,7 +46,11 @@ namespace StickMate.Interaction
 
         public PomodoroSensitivity Sensitivity { get; set; } = PomodoroSensitivity.Normal;
 
-        private float _sessionDurationSeconds;
+        /// <summary>이번 세션의 총 길이(초). Interaction/FocusWatchRenderer.cs가 타이머 링의 남은 시간
+        /// 비율을 계산할 때 <see cref="RemainingSeconds"/>와 짝으로 읽는다 — 렌더러가 분 단위를 다시
+        /// 곱하는 식으로 자체 계산하면 15/25/50분 선택값이 어긋나므로 값의 생산자를 한 곳으로 둔다.</summary>
+        public float SessionDurationSeconds { get; private set; }
+
         private float _graceRemaining;
 
         private bool _hasForegroundHandle;
@@ -77,14 +81,67 @@ namespace StickMate.Interaction
             ReleaseOwnedLock(forceIdle: true);
         }
 
+        /// <summary>세션 길이의 하한(초) — 원래 코드의 값을 그대로 유지한다(1분 미만을 넘기는 호출자는
+        /// 존재하지 않으므로 이 라운드에서 건드릴 이유가 없다). 이름만 상수로 뽑았다.</summary>
+        private const float MinimumSessionSeconds = 60f;
+
+        /// <summary>
+        /// 집중 모드 데모 토글(Ctrl+Opt+Cmd+F / 우클릭 메뉴). 다른 Director의 ForceTriggerNow가
+        /// "확률/쿨다운만 건너뛴다"는 성격인 것과 달리, 포모도로는 애초에 확률이 아니라 <b>유저가
+        /// 직접 켜는 기능</b>이라 이 경로가 곧 정식 진입점이다 — 트레이 메뉴가 없는 지금 아키텍처에서
+        /// 18절의 "[시작] 트레이 메뉴 '집중 모드'"와 "[종료-중도취소] 트레이에서 '집중 모드 끄기'"를
+        /// 하나의 토글로 제공한다.
+        ///
+        /// 진행 중이면 즉시 정상 종료(패널티 없는 톤 — 18절), 아니면 새 세션을 시작한다. 세션 길이는
+        /// 링이 실제로 줄어드는 것을 눈으로 확인할 수 있게 짧게 잡는다(실사용 15/25/50분은
+        /// <see cref="StartFocusSession"/>에 그대로 남아 있고 설정창이 생기면 그쪽을 부르면 된다).
+        /// 감시 판정 로직/유예 시간/에스컬레이션 임계값은 하나도 건드리지 않는다.
+        /// </summary>
+        public void ForceTriggerNow(string reason)
+        {
+            if (_player == null || _config == null)
+            {
+                Debug.LogWarning($"[포모도로] 집중 모드 토글 실패({reason}) — 플레이어/설정 배선이 없습니다.");
+                return;
+            }
+
+            if (IsSessionActive)
+            {
+                Debug.Log($"[포모도로] 집중 모드 끄기({reason}) — 남은 시간 {RemainingSeconds:F0}초에서 중도 취소합니다. " +
+                    "패널티 없는 톤으로 종료하고(18절) 타이머 링을 걷습니다.");
+                StopFocusSession();
+                return;
+            }
+
+            float demoMinutes = DemoSessionSeconds / 60f;
+            StartFocusSession(demoMinutes);
+            // 데모 전용 유예 단축. StickConfig.pomodoroGraceSeconds(기본 120초)는 실사용 15~50분
+            // 세션을 전제한 값이라 90초짜리 데모에서는 세션 전체를 덮어버려 에스컬레이션 경로를
+            // **구조적으로 도달 불가능**하게 만든다(= 3단계 연출을 한 번도 눈으로 볼 수 없다).
+            // 설정값 자체는 건드리지 않고 이 데모 세션의 남은 유예만 줄인다.
+            _graceRemaining = Mathf.Min(_graceRemaining, DemoGraceSeconds);
+            Debug.Log($"[포모도로] 집중 모드 시작({reason}) — 데모 길이 {DemoSessionSeconds:F0}초, " +
+                $"유예 {_graceRemaining:F0}초(그동안은 관찰만 하고 경고하지 않는다 — 18절), " +
+                $"민감도 {Sensitivity}, 딴짓 감지 {(DistractionDetectionEnabled ? "켬" : "끔")}. " +
+                "캐릭터 발밑에 타이머 링이 나타나고, 안경+팔짱 포즈(FocusStart)로 전이하며 대사를 파생합니다.");
+        }
+
+        /// <summary>데모 토글이 쓰는 세션 길이(초) — 링이 눈에 띄게 줄어드는 것을 한 자리에서 확인할 수
+        /// 있을 만큼 짧게.</summary>
+        private const float DemoSessionSeconds = 90f;
+
+        /// <summary>데모 세션에만 적용하는 유예 시간(초). 실사용 값(StickConfig.pomodoroGraceSeconds,
+        /// 기본 120초)은 90초 데모를 통째로 덮어버려 경고가 구조적으로 절대 발동하지 않는다.</summary>
+        private const float DemoGraceSeconds = 8f;
+
         /// <summary>트레이 메뉴 "집중 모드" 시작(18절). minutes는 15/25/50 등 유저 선택값.</summary>
         public void StartFocusSession(float minutes)
         {
             if (_player == null || _config == null) return;
 
             IsSessionActive = true;
-            _sessionDurationSeconds = Mathf.Max(60f, minutes * 60f);
-            RemainingSeconds = _sessionDurationSeconds;
+            SessionDurationSeconds = Mathf.Max(MinimumSessionSeconds, minutes * 60f);
+            RemainingSeconds = SessionDurationSeconds;
             _graceRemaining = Mathf.Max(0f, _config.pomodoroGraceSeconds);
 
             _hasForegroundHandle = false;

@@ -133,6 +133,18 @@ namespace StickMate.Core
             }
         }
 
+        /// <summary>테스트/디버그 전용 완전 초기화 — 정적 클래스라 씬을 다시 로드해도 목록이 그대로
+        /// 살아남기 때문에, PlayMode 테스트가 서로의 목록을 물려받아 "빈 상태 예외"(17절) 검증이
+        /// 실행 순서에 따라 통과/실패하는 것을 막는다(Core/StressGauge.ResetForTesting과 같은 이유,
+        /// 같은 관례). 정상 게임플레이 경로에서는 호출되지 않는다.</summary>
+        public static void ResetForTesting()
+        {
+            _active.Clear();
+            _completedArchive.Clear();
+            _pendingReminderText = null;
+            _nextId = 1;
+        }
+
         private static TodoItem FindActive(int id)
         {
             for (int i = 0; i < _active.Count; i++)

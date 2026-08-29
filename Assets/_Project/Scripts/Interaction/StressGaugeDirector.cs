@@ -61,6 +61,48 @@ namespace StickMate.Interaction
             SpectacleEventLock.ReleaseIfOwned(this, _player != null ? _player.Blackboard?.Machine : null, StickmanStateId.Sulky);
         }
 
+        /// <summary>
+        /// 스트레스 게이지 데모 순환(Ctrl+Opt+Cmd+S / 우클릭 메뉴). 다른 Director의 ForceTriggerNow가
+        /// "확률/쿨다운만 건너뛴다"는 성격인 것과 달리, 스트레스는 확률이 아니라 <b>실제로 쌓이는 데
+        /// 수 시간~반나절이 걸리는 값</b>이라(19절: 5분 내 8회 격파훈련 / 반나절 방치 / 자연 감소
+        /// 0.05per시간) 같은 의미의 강제 경로가 존재할 수 없다. 그래서 이것만은
+        /// HardwareReactionDirector.ForceTriggerNow와 같은 성격 — <b>실제로는 아직 쌓이지 않은 값의
+        /// 연출만</b> 미리 보여주는 경로다.
+        ///
+        /// 누를 때마다 안정 -> 주의 -> 경고 -> 안정으로 순환한다. 경고 단계를 지나 다시 안정으로
+        /// 돌아오는 세 번째 단계를 반드시 두는 이유: 자연 감소가 시간당 0.05라 한 번 0.8까지 올려두면
+        /// 스스로 내려오는 데 16시간이 걸린다 — 데모가 앱을 반나절 동안 부루퉁한 상태로 고정시키면
+        /// 안 된다(SULKY 자동 발동이 계속 걸린다).
+        ///
+        /// 게이지 값 자체는 Core.StressGauge를 통해서만 바꾼다(값의 단일 소유자를 우회하지 않는다).
+        /// SULKY 전이는 여기서 직접 호출하지 않고 기존 판정(TickSulkyAutoTrigger)에 그대로 맡긴다 —
+        /// 상호배제 락/쿨다운/진입 상태 조건을 데모가 건너뛰면 실물 검증의 의미가 없어진다.
+        /// </summary>
+        public void ForceTriggerNow(string reason)
+        {
+            if (_config == null)
+            {
+                Debug.LogWarning($"[스트레스] 데모 순환 실패({reason}) — 설정 배선이 없습니다.");
+                return;
+            }
+
+            float alarm = Mathf.Clamp01(_config.stressSulkyThreshold);
+            float caution = Mathf.Clamp(_config.stressTierCautionLevel, 0f, alarm);
+            float current = StressGauge.CurrentLevel;
+
+            float next;
+            if (current < caution) next = caution;
+            else if (current < alarm) next = alarm;
+            else next = 0f;
+
+            StressGauge.SetLevel(next);
+            Debug.Log($"[스트레스] 데모 순환({reason}) — 게이지 {current:F2} -> {next:F2}. " +
+                "★ 화면에는 숫자도 막대도 그리지 않는다(19절) — 어깨 처짐/한숨의 단계 변화로만 보인다. " +
+                $"경고 단계({alarm:F2}) 이상이면 SULKY 자동 발동 추첨이 " +
+                $"{_config.stressSulkyCheckInterval:F0}초 주기 {_config.stressSulkyChance:P0} 확률로 시작되고, " +
+                $"가출 임계값({_config.stressRunawayThreshold:F2}) 도달 시에는 확률 없이 확정 발동한다(24절).");
+        }
+
         /// <summary>"장시간 방치"(19절) 판정에 쓰는 최소 정의의 '상호작용' 신호 — 캐릭터 클릭, 투두
         /// 목록 변경(추가/체크), 긴급정지 사용. 유휴 자동 발동 스펙터클(그라피티/창도둑 등)은 유저
         /// 상호작용이 아니라 앱 스스로 트리거한 것이므로 의도적으로 제외한다(포함시키면 "방치" 신호가

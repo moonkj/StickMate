@@ -602,6 +602,76 @@ namespace StickMate.EditorTools
             root.AddComponent<HardwareReactionRenderer>();
 
             // ================================================================================
+            // Phase 5 시각 레이어 배선 (스트레스 게이지 / 가출 / 투두 / 포모도로 감시자) — 2026-08-29
+            // ================================================================================
+            // 리더 전수 감사가 확정한 목록 그대로다. Phase 5의 Director/State 로직(트리거 판정,
+            // 5페이즈 가출 진행, 포모도로 에스컬레이션, 포스트잇 데이터 모델)은 전부 완성돼 있었지만
+            //   · Director 5개가 씬 어디에도 배치되지 않아 Update()가 단 한 번도 돌지 않았고,
+            //   · StressLevelChanged / RunawayLifecycleChanged / RunawayHintPulseRequested /
+            //     FocusWatchTierChanged 4개 이벤트의 구독자가 프로젝트 전체에 0건이었으며,
+            //   · Core.TodoListModel.Add()를 호출하는 코드조차 0건이라 투두 기능 전체가 도달 불가능이었다
+            //     (목록이 영원히 비어 있으니 포스트잇은 "빈 상태 예외"로 항상 숨겨졌다).
+            // 이번 라운드에 신설한 렌더러 4종과 함께 여기서 배치한다.
+            //
+            // SpectacleEventLock 참여 여부는 Phase 5 설계 결정 1을 그대로 따른다 — 기준은
+            // "ChangeState()를 직접 호출해 단일 상태 슬롯을 다투는가"다. TodoReminder/FocusPose/Sulky/
+            // Runaway는 전부 ChangeState를 호출하므로 참여(각 Director가 이미 TryAcquire/Release를
+            // 구현), StressGauge 자체는 값 보관 + 이벤트 발행만 하므로 비참여(HardwareReactionDirector와
+            // 정확히 같은 논리). 이번 라운드에서 이 판단을 바꾸지 않았다.
+            var stress = root.AddComponent<StressGaugeDirector>();
+            var stressSo = new SerializedObject(stress);
+            stressSo.FindProperty("_player").objectReferenceValue = agent;
+            // "장시간 방치" 판정을 리셋하는 상호작용 신호로 캐릭터 클릭을 구독한다 — 클릭 **표적**이
+            // 아니라 클릭 **사실**만 쓰므로 GrabArea가 아니라 히트박스 컴포넌트 자체를 넘긴다.
+            stressSo.FindProperty("_hitbox").objectReferenceValue = hitbox;
+            stressSo.FindProperty("_config").objectReferenceValue = config;
+            stressSo.ApplyModifiedPropertiesWithoutUndo();
+
+            // 어깨 처짐 + 한숨 퍼프(19절 "상시" 채널). 직렬화 필드가 없고 Awake()에서 같은 GameObject의
+            // StickmanAgent를 직접 찾으므로 배선이 필요 없다(다른 렌더러들과 동일 관례).
+            root.AddComponent<StressGaugeRenderer>();
+
+            var runaway = root.AddComponent<RunawayDirector>();
+            var runawaySo = new SerializedObject(runaway);
+            runawaySo.FindProperty("_player").objectReferenceValue = agent;
+            // 20절의 "찾기"는 신규 입력 경로를 만들지 않고 기존 캐릭터 히트박스를 그대로 쓴다.
+            runawaySo.FindProperty("_hitbox").objectReferenceValue = hitbox;
+            runawaySo.FindProperty("_config").objectReferenceValue = config;
+            runawaySo.ApplyModifiedPropertiesWithoutUndo();
+
+            // 속도선/먼지/은신처 힌트 파문/발견 폭발/[간식 주기] 과자. 과자만 클릭 대상이며 그 콜라이더는
+            // StickmanClickHitbox.RegisterExtraCollider로 등록된다(BattleMinigameRenderer와 동일 경로).
+            root.AddComponent<RunawayRenderer>();
+
+            var todoReminder = root.AddComponent<TodoReminderDirector>();
+            var todoSo = new SerializedObject(todoReminder);
+            todoSo.FindProperty("_player").objectReferenceValue = agent;
+            todoSo.FindProperty("_config").objectReferenceValue = config;
+            todoSo.ApplyModifiedPropertiesWithoutUndo();
+
+            // 손에 든 종이(17절 "들고 다니는 모드"). 할일 **텍스트**는 말풍선이 그린다(원칙 1 —
+            // 같은 문자열의 소스를 두 벌 만들지 않는다).
+            root.AddComponent<TodoReminderRenderer>();
+
+            // 포스트잇 카드(17절 "포스트잇 모드"). 이 위젯만은 [SerializeField] _config를 갖고 있어
+            // 배선이 필요하다(Awake()에서 StickmanAgent.Config 폴백도 하지만, 씬 에셋에 값이 구워져
+            // 있어야 에디터에서 열었을 때 혼란이 없다 — 라이벌 _config null 사고와 같은 교훈).
+            var postIt = root.AddComponent<TodoPostItWidget>();
+            var postItSo = new SerializedObject(postIt);
+            postItSo.FindProperty("_config").objectReferenceValue = config;
+            postItSo.ApplyModifiedPropertiesWithoutUndo();
+
+            var focusWatch = root.AddComponent<FocusWatchDirector>();
+            var focusSo = new SerializedObject(focusWatch);
+            focusSo.FindProperty("_player").objectReferenceValue = agent;
+            focusSo.FindProperty("_config").objectReferenceValue = config;
+            focusSo.ApplyModifiedPropertiesWithoutUndo();
+
+            // 발밑 타이머 링 + 1/3단계 경고 연출(18절). 같은 GameObject의 FocusWatchDirector에서 남은
+            // 시간을 읽으므로 배선이 필요 없다.
+            root.AddComponent<FocusWatchRenderer>();
+
+            // ================================================================================
             // 앱 제어 수단 배선 (2026-08-28 — "터미널 없이 끌 수 있어야 한다")
             // ================================================================================
             // Interaction/AppControlDirector.cs: 전역 단축키(Ctrl+Opt+Cmd+Q 종료 등)와 캐릭터 우클릭
@@ -1035,8 +1105,20 @@ namespace StickMate.EditorTools
         {
             var go = new GameObject("EventSystem");
             go.AddComponent<UnityEngine.EventSystems.EventSystem>();
-            Debug.Log("[SceneBootstrapper] EventSystem 배치 완료 — UniWindowController의 " +
-                "hitTestType=Raycast가 EventSystem.current를 null 체크 없이 사용하므로 필수다.");
+            // ★ 2026-08-29: StandaloneInputModule을 함께 붙인다. 이전 주석은 "이 프로젝트에는 uGUI
+            // Canvas가 하나도 없어 모듈이 필요 없다"고 했고 그때는 사실이었지만, 그 뒤 말풍선
+            // (DialogueBubbleRenderer) / 앱 제어 메뉴(AppControlDirector) / 투두 포스트잇
+            // (TodoPostItWidget)이 각자 Canvas를 만들면서 전제가 깨졌다.
+            //
+            // 입력 모듈이 없는 EventSystem은 포인터 이벤트를 **아예 처리하지 않으므로**
+            // Button.onClick이 영원히 발동하지 않는다 — 포스트잇 체크박스가 한 번도 눌리지 않았던
+            // 원인 절반이 정확히 이것이었다(Interaction/TodoPostItWidget.cs 클래스 문서 (1)).
+            // 나머지 절반은 클릭관통이라 클릭이 이 창까지 오지도 않았던 것이고, 그쪽은 그 위젯이
+            // 자체 차단막 콜라이더로 해결한다.
+            go.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
+            Debug.Log("[SceneBootstrapper] EventSystem + StandaloneInputModule 배치 완료 — " +
+                "EventSystem은 UniWindowController의 hitTestType=Raycast가 null 체크 없이 사용하므로 필수이고, " +
+                "입력 모듈은 uGUI Button.onClick(투두 포스트잇 체크박스)이 발동하기 위해 필수다.");
         }
 
         /// <summary>
@@ -1112,6 +1194,22 @@ namespace StickMate.EditorTools
             DestroyComponentIfPresent<WindowCrashDirector>(rival);
             DestroyComponentIfPresent<HardwareReactionRenderer>(rival);
             DestroyComponentIfPresent<HardwareReactionDirector>(rival);
+            // Phase 5(2026-08-29 신설) — 창 도둑/크래시/하드웨어 반응과 **정확히 같은 함정**이다.
+            // 렌더러 4종이 전부 StickmanEventBus의 전역 정적 이벤트를 구독하므로, 남겨두면 플레이어가
+            // 가출할 때 라이벌 쪽에도 과자/파문이 한 벌 더 그려지고 라이벌 어깨에도 처짐 표시가 뜬다.
+            // TodoPostItWidget은 특히 위험하다 — 자기 Canvas와 클릭관통 차단막을 통째로 한 벌 더 만들어
+            // 화면 우상단에 포스트잇 카드가 겹쳐 뜨고, 차단막 두 개가 같은 영역을 덮는다.
+            // Director 4종은 플레이어 전용 트리거이므로 함께 제거한다(라이벌은 스트레스를 받지도,
+            // 가출하지도, 할일을 갖지도, 집중 모드를 켜지도 않는다).
+            DestroyComponentIfPresent<StressGaugeRenderer>(rival);
+            DestroyComponentIfPresent<StressGaugeDirector>(rival);
+            DestroyComponentIfPresent<RunawayRenderer>(rival);
+            DestroyComponentIfPresent<RunawayDirector>(rival);
+            DestroyComponentIfPresent<TodoReminderRenderer>(rival);
+            DestroyComponentIfPresent<TodoReminderDirector>(rival);
+            DestroyComponentIfPresent<TodoPostItWidget>(rival);
+            DestroyComponentIfPresent<FocusWatchRenderer>(rival);
+            DestroyComponentIfPresent<FocusWatchDirector>(rival);
             DestroyComponentIfPresent<RodeoCursorWatcher>(rival);
             DestroyComponentIfPresent<DragThrowController>(rival);
             DestroyComponentIfPresent<StickmanClickHitbox>(rival);

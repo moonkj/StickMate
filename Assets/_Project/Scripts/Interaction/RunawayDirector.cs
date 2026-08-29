@@ -72,6 +72,64 @@ namespace StickMate.Interaction
             _player.Blackboard.Machine.ChangeState(StickmanStateId.Runaway);
         }
 
+        /// <summary>
+        /// 가출 강제 발동/강제 복귀 토글(Ctrl+Opt+Cmd+N / 우클릭 메뉴).
+        ///
+        /// 이 기능은 확률이 아니라 <b>스트레스 임계값 도달 시 확정 발동</b>(24절)이고 그 임계값
+        /// (StickConfig.stressRunawayThreshold, 기본 1.0)까지 실제로 게이지가 차오르는 데는 실사용에서
+        /// 수 시간~수일이 걸린다 — 즉 확률만 건너뛰는 다른 Director와 달리 <b>임계값을 건너뛰는</b> 것이
+        /// 이 데모 경로의 성격이다. 상호배제 락(Core.SpectacleEventLock)과 진입 상태 조건(Idle/Walk)은
+        /// 그대로 지킨다.
+        ///
+        /// 이미 가출 중이면 20절의 <b>[돌아오라고 부르기]</b>(수동 소환)로 동작한다 — 20절이 "찾기
+        /// 미니게임을 강제하지 않는다"며 상시 제공을 요구한 탈출구를, 트레이가 없는 지금 아키텍처에서
+        /// 단축키/메뉴로 제공하는 것이다(캐릭터가 화면에서 사라진 상태라 캐릭터 우클릭 메뉴에 의존하는
+        /// 경로만 두면 유저가 탈출구에 도달하지 못할 수 있다).
+        /// </summary>
+        public void ForceTriggerNow(string reason)
+        {
+            if (_player == null || _config == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
+            {
+                Debug.LogWarning($"[가출] 강제 발동 실패({reason}) — 플레이어/설정 배선이 없습니다.");
+                return;
+            }
+
+            var current = _player.Blackboard.Machine.CurrentStateId;
+            if (current == StickmanStateId.Runaway)
+            {
+                _player.Blackboard.RunawayManualRecallSignaled = true;
+                Debug.Log($"[가출] [돌아오라고 부르기]({reason}) — 수동 소환 신호를 세웠습니다. " +
+                    "찾기 미니게임을 강제하지 않는 상시 탈출구다(20절).");
+                return;
+            }
+
+            if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
+            {
+                Debug.Log($"[가출] 강제 발동({reason}) — 지금은 {current} 중이라 건너뜁니다" +
+                    "(진행 중인 행동을 데모 때문에 중단시키지 않는다).");
+                return;
+            }
+
+            if (SpectacleEventLock.IsActive)
+            {
+                Debug.Log($"[가출] 강제 발동({reason}) — 다른 스펙터클({SpectacleEventLock.ActiveKind})이 " +
+                    "진행 중이라 건너뜁니다(25절-20 상호배제는 강제 경로에서도 그대로 지킨다).");
+                return;
+            }
+            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.Runaway, this)) return;
+
+            int corner = Random.Range(0, 4);
+            _player.Blackboard.PendingRunawayHideWorldPos = ComputeHideSpotWorldPos(corner);
+            _player.Blackboard.Machine.ChangeState(StickmanStateId.Runaway);
+
+            Debug.Log($"[가출] 강제 발동({reason}) — 스트레스 임계값을 건너뛰고 확정 진입. " +
+                $"은신처 모서리 #{corner} 월드 {_player.Blackboard.PendingRunawayHideWorldPos}, " +
+                $"뛰어가는 시간 {_config.runawayFleeDurationSeconds:F2}초 후 은신. " +
+                $"자동 복귀 마지노선 {_config.runawayAutoReturnSeconds:F0}초, " +
+                $"힌트 파문 주기 {_config.runawayHintPulseIntervalSeconds:F0}초. " +
+                "다시 같은 단축키를 누르면 [돌아오라고 부르기]로 동작한다.");
+        }
+
         /// <summary>은신처 4곳(화면 네 모서리, 20절)을 OS 화면 좌표로 계산한 뒤 캐릭터 현재 위치 기준
         /// 카메라 depth로 월드 좌표로 되돌린다(StickmanBlackboard.TryGetCursorWorldPosition과 동일한
         /// 왕복 변환 관례 — ScreenCoordinateConverter.cs 문서의 "같은 호출 세트 안에서 cameraDepth 재사용" 규칙).</summary>

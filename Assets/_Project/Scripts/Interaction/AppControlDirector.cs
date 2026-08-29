@@ -52,6 +52,10 @@ namespace StickMate.Interaction
     ///                  <b>Control + Option + Command + T</b> = 창 도둑 강제 발동(데모, "Theft")
     ///                  <b>Control + Option + Command + X</b> = 윈도우 크래시 강제 발동(데모, 부서짐)
     ///                  <b>Control + Option + Command + H</b> = 하드웨어 반응 데모 미리보기(4종 순환, "Hardware")
+    ///                  <b>Control + Option + Command + S</b> = 스트레스 게이지 단계 순환(미리보기, "Stress")
+    ///                  <b>Control + Option + Command + N</b> = 가출 발동 / 가출 중이면 돌아오라고 부르기("Nope")
+    ///                  <b>Control + Option + Command + J</b> = 할일 추가(데모) + 들고 다니는 모드 알림("Job")
+    ///                  <b>Control + Option + Command + F</b> = 집중 모드 켜기/끄기("Focus")
     ///     3개 조합키를 모두 쓰는 이유: Cmd+Shift+Q는 macOS의 "로그아웃"이고 Cmd+Q는 활성 앱 종료라
     ///     둘 다 이미 의미가 있다. Ctrl+Option+Cmd 조합은 시스템/일반 앱이 거의 쓰지 않아, 사용자가
     ///     다른 앱에서 작업하다 실수로 데스크톱 펫을 종료시킬 위험이 사실상 없다.
@@ -89,6 +93,8 @@ namespace StickMate.Interaction
         private bool _hotkeyInitialized;
         private bool _prevQ, _prevC, _prevD, _prevR, _prevB, _prevV, _prevK, _prevG;
         private bool _prevT, _prevX, _prevH;
+        // Phase 5(2026-08-29): 스트레스(S) / 가출(N) / 할일(J) / 집중 모드(F).
+        private bool _prevS, _prevN, _prevJ, _prevF;
 
         // 우클릭/메뉴 클릭 엣지 판정.
         private bool _rightPrev;
@@ -111,6 +117,10 @@ namespace StickMate.Interaction
         private WindowTheftDirector _windowTheftDirector;   // 창 도둑 강제 발동용(지연 탐색 후 캐시).
         private WindowCrashDirector _windowCrashDirector;   // 윈도우 크래시 강제 발동용(지연 탐색 후 캐시).
         private HardwareReactionDirector _hardwareDirector;  // 하드웨어 반응 데모 미리보기용(지연 탐색 후 캐시).
+        private StressGaugeDirector _stressDirector;        // 스트레스 게이지 단계 순환용(지연 탐색 후 캐시).
+        private RunawayDirector _runawayDirector;           // 가출 발동/돌아오라고 부르기용(지연 탐색 후 캐시).
+        private TodoReminderDirector _todoDirector;         // 할일 추가 + 리마인더 강제 발동용(지연 탐색 후 캐시).
+        private FocusWatchDirector _focusDirector;          // 집중 모드 토글용(지연 탐색 후 캐시).
 
         // 메뉴 행 정의 — 순서가 곧 화면 표시 순서이자 히트테스트 인덱스다.
         // 순서 = 화면 표시 순서 = 히트테스트 인덱스. 새 항목은 항상 [닫기] **앞에** 넣는다
@@ -119,9 +129,11 @@ namespace StickMate.Interaction
         {
             Quit = 0, InkColor = 1, Rodeo = 2, Diagnostics = 3, SayNow = 4, SpawnRival = 5,
             BattleMinigame = 6, Graffiti = 7, WindowTheft = 8, WindowCrash = 9, HardwareReaction = 10,
-            Close = 11,
+            // Phase 5(2026-08-29 신설) — 항상 [닫기] **앞에** 넣는다(위 주석의 관습).
+            StressGauge = 11, Runaway = 12, TodoReminder = 13, FocusWatch = 14,
+            Close = 15,
         }
-        private const int MenuRowCount = 12;
+        private const int MenuRowCount = 16;
 
         private void Awake()
         {
@@ -143,7 +155,9 @@ namespace StickMate.Interaction
                 "그 밖의 단축키: Ctrl+Opt+Cmd+C(잉크색 전환) / R(로데오 커서 on-off) / D(진단 로그 on-off) / " +
                 "**B(말풍선 즉시 띄우기)** / **V(라이벌 스틱맨 강제 소환)** / **K(격파 미니게임 강제 발동)** / " +
                 "**G(그라피티 강제 발동)** / **T(창 도둑 강제 발동)** / **X(윈도우 크래시 강제 발동)** / " +
-                "**H(하드웨어 반응 데모 미리보기 — 4종 순환)**. " +
+                "**H(하드웨어 반응 데모 미리보기 — 4종 순환)** / **S(스트레스 게이지 단계 순환)** / " +
+                "**N(가출 발동, 가출 중이면 돌아오라고 부르기)** / **J(할일 추가 + 알림)** / " +
+                "**F(집중 모드 켜기/끄기)**. " +
                 $"전역 키 조회={(_keyService != null ? "사용 가능" : "미지원 — 우클릭 메뉴만 동작")}, " +
                 $"전역 버튼 조회={(_buttonService != null ? "사용 가능" : "미지원 — 단축키만 동작")}.");
         }
@@ -179,12 +193,17 @@ namespace StickMate.Interaction
             bool t = chord && IsKeyDown(GlobalKey.T);
             bool x = chord && IsKeyDown(GlobalKey.X);
             bool h = chord && IsKeyDown(GlobalKey.H);
+            bool sKey = chord && IsKeyDown(GlobalKey.S);
+            bool n = chord && IsKeyDown(GlobalKey.N);
+            bool j = chord && IsKeyDown(GlobalKey.J);
+            bool f = chord && IsKeyDown(GlobalKey.F);
 
             if (!_hotkeyInitialized)
             {
                 _hotkeyInitialized = true;
                 _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevV = v; _prevK = k; _prevG = g;
                 _prevT = t; _prevX = x; _prevH = h;
+                _prevS = sKey; _prevN = n; _prevJ = j; _prevF = f;
                 return;
             }
 
@@ -199,8 +218,13 @@ namespace StickMate.Interaction
             bool tRise = t && !_prevT;
             bool xRise = x && !_prevX;
             bool hRise = h && !_prevH;
+            bool sRise = sKey && !_prevS;
+            bool nRise = n && !_prevN;
+            bool jRise = j && !_prevJ;
+            bool fRise = f && !_prevF;
             _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevV = v; _prevK = k; _prevG = g;
             _prevT = t; _prevX = x; _prevH = h;
+            _prevS = sKey; _prevN = n; _prevJ = j; _prevF = f;
 
             if (qRise) Invoke(MenuAction.Quit, "전역 단축키 Ctrl+Opt+Cmd+Q");
             else if (cRise) Invoke(MenuAction.InkColor, "전역 단축키 Ctrl+Opt+Cmd+C");
@@ -213,6 +237,10 @@ namespace StickMate.Interaction
             else if (tRise) Invoke(MenuAction.WindowTheft, "전역 단축키 Ctrl+Opt+Cmd+T");
             else if (xRise) Invoke(MenuAction.WindowCrash, "전역 단축키 Ctrl+Opt+Cmd+X");
             else if (hRise) Invoke(MenuAction.HardwareReaction, "전역 단축키 Ctrl+Opt+Cmd+H");
+            else if (sRise) Invoke(MenuAction.StressGauge, "전역 단축키 Ctrl+Opt+Cmd+S");
+            else if (nRise) Invoke(MenuAction.Runaway, "전역 단축키 Ctrl+Opt+Cmd+N");
+            else if (jRise) Invoke(MenuAction.TodoReminder, "전역 단축키 Ctrl+Opt+Cmd+J");
+            else if (fRise) Invoke(MenuAction.FocusWatch, "전역 단축키 Ctrl+Opt+Cmd+F");
         }
 
         private bool IsKeyDown(GlobalKey key)
@@ -387,6 +415,26 @@ namespace StickMate.Interaction
                     ForceHardwareReaction(source);
                     break;
 
+                case MenuAction.StressGauge:
+                    ForceStressGauge(source);
+                    RefreshMenuLabels(); // 트레이 점 자리를 대신하는 라벨(19절 "필요시(트레이)" 채널)을 즉시 갱신.
+                    break;
+
+                case MenuAction.Runaway:
+                    ForceRunaway(source);
+                    RefreshMenuLabels(); // 24절: 가출 중에는 같은 행이 "종료"가 아니라 "소환"으로 보여야 한다.
+                    break;
+
+                case MenuAction.TodoReminder:
+                    ForceTodoReminder(source);
+                    RefreshMenuLabels();
+                    break;
+
+                case MenuAction.FocusWatch:
+                    ForceFocusWatch(source);
+                    RefreshMenuLabels();
+                    break;
+
                 case MenuAction.Close:
                     CloseMenu("메뉴 [닫기]");
                     break;
@@ -528,6 +576,73 @@ namespace StickMate.Interaction
             _hardwareDirector.ForceTriggerNow($"앱제어 {source}");
         }
 
+        // ==================== Phase 5 데모 진입점 (스트레스 / 가출 / 할일 / 집중 모드) ====================
+
+        /// <summary>
+        /// 스트레스 게이지 단계 순환(Ctrl+Opt+Cmd+S). 하드웨어 반응(H)과 같은 성격의 "미리보기" 경로다 —
+        /// 확률을 건너뛰는 것이 아니라 <b>실사용에서는 수 시간~반나절이 걸려야 쌓이는 값</b>을 미리
+        /// 세워 보는 것이다(19절: 반나절 방치 / 5분 내 8회 격파훈련 / 시간당 0.05 자연 감소).
+        /// </summary>
+        private void ForceStressGauge(string source)
+        {
+            if (_stressDirector == null) _stressDirector = Object.FindFirstObjectByType<StressGaugeDirector>();
+            if (_stressDirector == null)
+            {
+                Debug.LogWarning($"[앱제어] 스트레스 게이지({source}) — 씬에 StressGaugeDirector가 없어 건너뜁니다.");
+                return;
+            }
+            _stressDirector.ForceTriggerNow($"앱제어 {source}");
+        }
+
+        /// <summary>
+        /// 가출 발동 / 돌아오라고 부르기 토글(Ctrl+Opt+Cmd+N). 24절이 "같은 버튼이 상황에 따라 다른
+        /// 동작을 하면서 라벨이 안 바뀌면 혼란"이라고 못박았으므로, 이 행의 라벨은
+        /// <see cref="RefreshMenuLabels"/>에서 현재 상태에 따라 다르게 표기한다.
+        /// </summary>
+        private void ForceRunaway(string source)
+        {
+            if (_runawayDirector == null) _runawayDirector = Object.FindFirstObjectByType<RunawayDirector>();
+            if (_runawayDirector == null)
+            {
+                Debug.LogWarning($"[앱제어] 가출({source}) — 씬에 RunawayDirector가 없어 건너뜁니다.");
+                return;
+            }
+            _runawayDirector.ForceTriggerNow($"앱제어 {source}");
+        }
+
+        /// <summary>
+        /// 할일 추가(데모) + 들고 다니는 모드 알림 강제 발동(Ctrl+Opt+Cmd+J). 17절의 정식 진입점인
+        /// "설정창/트레이 메뉴의 [+ 할일 추가]"가 아직 없어, <b>목록에 항목을 넣는 유일한 경로</b>이기도
+        /// 하다(이 경로가 생기기 전에는 Core.TodoListModel.Add 호출자가 0건이라 투두 기능 전체가 도달
+        /// 불가능이었다). 실제 캘린더/할일 앱은 읽지 않는다(원칙 3).
+        /// </summary>
+        private void ForceTodoReminder(string source)
+        {
+            if (_todoDirector == null) _todoDirector = Object.FindFirstObjectByType<TodoReminderDirector>();
+            if (_todoDirector == null)
+            {
+                Debug.LogWarning($"[앱제어] 할일 알림({source}) — 씬에 TodoReminderDirector가 없어 건너뜁니다.");
+                return;
+            }
+            _todoDirector.ForceTriggerNow($"앱제어 {source}");
+        }
+
+        /// <summary>
+        /// 집중 모드 켜기/끄기(Ctrl+Opt+Cmd+F). 18절의 "[시작] 트레이 메뉴 '집중 모드'"와
+        /// "[종료-중도취소] 트레이에서 '집중 모드 끄기'"를 하나의 토글로 제공한다 — 트레이가 없는 지금
+        /// 아키텍처에서는 이 단축키/메뉴 행이 곧 그 트레이 메뉴다(데모가 아니라 정식 진입점).
+        /// </summary>
+        private void ForceFocusWatch(string source)
+        {
+            if (_focusDirector == null) _focusDirector = Object.FindFirstObjectByType<FocusWatchDirector>();
+            if (_focusDirector == null)
+            {
+                Debug.LogWarning($"[앱제어] 집중 모드({source}) — 씬에 FocusWatchDirector가 없어 건너뜁니다.");
+                return;
+            }
+            _focusDirector.ForceTriggerNow($"앱제어 {source}");
+        }
+
         // ==================== 메뉴 UI ====================
 
         private void OpenMenu()
@@ -541,7 +656,8 @@ namespace StickMate.Interaction
             RefreshMenuLabels();
             UpdateMenuPlacement();
             Debug.Log("[앱제어] 캐릭터 우클릭 — 제어 메뉴를 열었습니다([앱 종료]/[잉크색]/[로데오]/[진단로그]/" +
-                "[말풍선]/[라이벌]/[격파 놀이]/[그라피티]/[창 도둑]/[창 부수기]/[하드웨어 반응]/[닫기]).");
+                "[말풍선]/[라이벌]/[격파 놀이]/[그라피티]/[창 도둑]/[창 부수기]/[하드웨어 반응]/" +
+                "[스트레스]/[가출]/[할일 알림]/[집중 모드]/[닫기]).");
         }
 
         private void CloseMenu(string reason)
@@ -666,6 +782,27 @@ namespace StickMate.Interaction
             SetRowText(MenuAction.WindowTheft, "창 도둑 놀이");
             SetRowText(MenuAction.WindowCrash, "창 부수기(가짜)");
             SetRowText(MenuAction.HardwareReaction, "하드웨어 반응 미리보기");
+
+            // 19절 "필요시(트레이)" 채널 — 트레이가 없는 이 앱에서 이 행이 트레이 색점을 대신한다.
+            // **수치가 아니라 상태만** 보여준다(19절이 명시적으로 요구한 형태). 단계 경계 계산은
+            // StressGaugeRenderer.TierForLevel 하나에서만 나온다(경계가 두 곳에서 계산되지 않게).
+            StressMoodTier tier = StressGaugeRenderer.TierForLevel(StressGauge.CurrentLevel, _config);
+            string dot = tier == StressMoodTier.Alarm ? "●" : tier == StressMoodTier.Caution ? "◐" : "○";
+            SetRowText(MenuAction.StressGauge, $"스트레스: {dot} {StressGaugeRenderer.TierLabel(tier)}");
+
+            // 24절 필수 요구: 가출 중에는 같은 버튼이 "종료"가 아니라 "소환"으로 동작하므로 라벨도 달라야 한다.
+            bool isRunaway = _agent != null && _agent.Blackboard != null && _agent.Blackboard.Machine != null
+                && _agent.Blackboard.Machine.CurrentStateId == StickmanStateId.Runaway;
+            SetRowText(MenuAction.Runaway, isRunaway ? "돌아오라고 부르기" : "가출 시키기");
+
+            SetRowText(MenuAction.TodoReminder, $"할일 알림 ({TodoListModel.UncompletedCount}건)");
+
+            if (_focusDirector == null) _focusDirector = Object.FindFirstObjectByType<FocusWatchDirector>();
+            bool focusOn = _focusDirector != null && _focusDirector.IsSessionActive;
+            SetRowText(MenuAction.FocusWatch, focusOn
+                ? $"집중 모드 끄기 ({_focusDirector.RemainingSeconds:F0}초 남음)"
+                : "집중 모드 시작");
+
             SetRowText(MenuAction.Close, "닫기");
         }
 
