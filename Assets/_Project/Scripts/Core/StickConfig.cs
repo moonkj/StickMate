@@ -871,20 +871,28 @@ namespace StickMate.Core
 
         [Header("Dock 발판 (사용자 요청: '독위에서만 걷고 독아래로 가면 바닥으로 내려가야')")]
 
-        [Tooltip("macOS Dock 띠의 두께(OS 포인트). Dock 발판의 상단 = 화면 바닥 - 이 값이 된다. " +
+        [Tooltip("Dock 띠 두께(OS 포인트)의 **폴백** 값. Dock 발판의 상단 = 화면 바닥 - 이 값.\n\n" +
+                 "★ 2026-08-29 2차: 정상 경로에서는 더 이상 이 값을 쓰지 않는다 — 두께를 " +
+                 "tilesize + dockThicknessTilePaddingPoints로 파생시키므로 Dock 크기 설정을 바꾼 " +
+                 "사용자에게도 따라간다. 이 값이 쓰이는 경우는 dockMetricsFromSystemEnabled가 꺼져 " +
+                 "있거나 com.apple.dock 조회가 실패했을 때뿐이다.\n\n" +
                  "기본 75는 이 환경의 실측치다(CGDisplayBounds의 화면 전체 982pt - 작업영역 874pt - " +
-                 "메뉴바 33pt = 75pt). Dock 자동 숨김을 쓰거나 Dock을 좌/우로 옮겼다면 0으로 두면 " +
-                 "Dock 발판이 사라지고 모든 낙하가 화면 바닥 안전망으로 간다.")]
+                 "메뉴바 33pt = 75pt, tilesize=49 기준). 0으로 두면 Dock 발판이 사라지고 모든 낙하가 " +
+                 "화면 바닥 안전망으로 간다.")]
         public float dockFootholdThicknessPoints = 75f;
 
-        [Tooltip("Dock 발판의 가로 폭(화면 폭 대비 비율, 화면 가로 정중앙 정렬). 0이면 Dock 발판 비활성. " +
-                 "왜 실제 Dock 사각형을 쓰지 않는가는 Platform/FallbackPlatformWindowService.TryGetDockFoothold의 " +
-                 "문서에 실측 조사 결과와 함께 적어뒀다(요약: Dock 창은 CGWindowList에 화면 전체 크기로 " +
-                 "열거되고, 진짜 막대 폭은 화면 기록 권한 없이는 얻을 수 없다). " +
-                 "기본값 0.65는 이 환경 실측 폭(1069/1512 = 0.707)보다 **일부러 좁게** 잡은 값이다 — " +
-                 "추정이 넓으면 Dock 없는 자리에 캐릭터가 떠 있게 되고(사용자가 신고한 바로 그 증상), " +
-                 "좁으면 실제 Dock 안쪽에서 조금 일찍 떨어질 뿐이라 틀리는 방향을 안전한 쪽으로 고정했다. " +
-                 "Dock에 아이콘이 많아 실제 Dock이 더 넓다면 이 값을 올려도 된다.")]
+        [Tooltip("Dock 가로 폭의 **폴백** 값(화면 폭 대비 비율, 가로 정중앙 정렬). 0이면 Dock 발판 비활성.\n\n" +
+                 "★ 2026-08-29 2차: 정상 경로에서는 쓰이지 않는다 — 폭은 타일 개수 x 피치 + 고정분 + " +
+                 "구분선으로 계산하며, 타일 개수는 NSWorkspace로 정확히 센다(근거는 " +
+                 "Platform/IDockMetricsService.cs). 이 비율이 쓰이는 경우는 비-macOS이거나 " +
+                 "dockMetricsFromSystemEnabled가 꺼져 있거나 조회가 실패했을 때뿐이다.\n\n" +
+                 "왜 실제 Dock 창의 사각형을 쓰지 않는가: Dock 프로세스가 소유한 창은 'Dock'과 " +
+                 "'Wallpaper-' 둘뿐이고 둘 다 화면 전체 크기이며, 시스템 전체 창을 전수 조사해도 " +
+                 "Dock 막대 모양인 창은 하나도 없다(2026-08-29 실측 확정). 정확한 나머지 경로는 " +
+                 "화면 기록/접근성 권한을 요구해 금지다.\n\n" +
+                 "기본값 0.65는 실측 폭(약 0.74)보다 **일부러 좁게** 잡은 값이다 — 넓게 틀리면 Dock이 " +
+                 "없는 자리에 캐릭터가 떠 있게 되고(사용자가 신고한 그 증상), 좁으면 조금 일찍 떨어질 뿐이라 " +
+                 "틀리는 방향을 안전한 쪽으로 고정했다.")]
         [Range(0f, 1f)]
         public float dockFootholdWidthFraction = 0.65f;
 
@@ -1078,31 +1086,65 @@ namespace StickMate.Core
                  "Platform/IDockMetricsService.cs에 실측 데이터와 유도 과정을 적어뒀다.")]
         public bool dockMetricsFromSystemEnabled = true;
 
-        [Tooltip("Dock 타일 하나가 차지하는 가로 피치에서 tilesize를 뺀 나머지(OS 포인트) — 타일 사이 여백.\n" +
-                 "실측 근거(2026-08-29, 이 개발 머신 tilesize=49): 앱을 하나 실행/종료해 타일을 정확히 " +
-                 "1개만 바꿨더니 Dock 패널 폭이 51.5pt 변했다. 즉 피치 = 51.5 = tilesize(49) + 2.5.")]
-        public float dockTilePitchPaddingPoints = 2.5f;
+        [Tooltip("Dock 타일 하나가 차지하는 가로 피치에서 tilesize를 뺀 나머지(OS 포인트) — 타일 사이 여백.\n\n" +
+                 "실측 근거(2026-08-29 2차, 이 개발 머신 tilesize=49): 앱을 하나씩 켜서 타일을 20->25개로 " +
+                 "1개씩만 늘리며 매번 스크린샷에서 Dock 패널 좌우 테두리를 다시 쟀다.\n" +
+                 "  N=20 -> 1123.50pt / 21 -> 1175.00 / 22 -> 1229.00 / 23 -> 1281.00 / 24 -> 1335.00 / 25 -> 1387.00\n" +
+                 "최소제곱 기울기 52.84 ≈ tilesize(49) + 4. 표본 2개뿐이던 직전 라운드는 이 값을 2.5로 " +
+                 "잡았고, 그 1.3pt 오차가 타일 수만큼 곱해져 폭 오차로 누적됐다.")]
+        public float dockTilePitchPaddingPoints = 4f;
 
-        [Tooltip("타일 전체 폭에 더해지는 고정분(OS 포인트) — 패널 좌우 안쪽 여백 + 구분선(보통 2개).\n" +
-                 "실측 근거: 타일 21개일 때 폭 1158.0, 20개일 때 1106.5. 두 표본 모두 " +
-                 "(폭 - 타일수 x 51.5) = 76.5로 일치했다.")]
-        public float dockPanelFixedPaddingPoints = 76.5f;
+        [Tooltip("타일 전체 폭에 더해지는 고정분(OS 포인트) — 패널 좌우 안쪽 여백만. 구분선 몫은 아래 " +
+                 "dockSeparatorWidthPoints로 분리했다(구분선 개수는 Dock 구획 구성에 따라 1~2개로 변한다).\n\n" +
+                 "실측 분해: 패널 왼쪽 테두리 -> 첫 아이콘 타일 왼쪽 끝 = 9.5pt(좌우 대칭) -> 2 x 9.5 = 19, " +
+                 "여기서 피치 정의상 마지막 타일 뒤에 한 번 더 붙는 여백 4pt를 빼 15.")]
+        public float dockPanelFixedPaddingPoints = 15f;
 
-        [Tooltip("**실행 중이지만 Dock에 고정돼 있지 않은 앱**의 타일 수 보정치. 이 값은 어떤 공개 " +
-                 "설정에도 없고(앱을 켜고 끌 때마다 변한다) 공개 API로 정확히 셀 방법도 없어서, " +
-                 "'모르는 만큼'을 여기서 더한다.\n\n" +
-                 "★ 왜 넉넉하게(= Dock을 실제보다 넓게) 잡는가 — 리더가 요구한 '어느 쪽으로 틀릴 것인가' " +
-                 "판단이다. 두 방향의 실패 모습이 다르다:\n" +
-                 " · 좁게 틀리면: Dock 가로 끝 바깥이 '안전망' 구간이 되어 캐릭터가 화면 최하단(OS y≈942)에 " +
-                 "서는데, 그 자리에는 **진짜 Dock 아이콘이 있다**. 우리 오버레이는 항상 최상단이라 " +
-                 "캐릭터가 Dock 아이콘 위에 덧그려진다 — 사용자가 두 번 신고한 바로 그 증상이고, " +
-                 "화면에서 대단히 눈에 띈다.\n" +
-                 " · 넓게 틀리면: Dock이 없는 자리에서도 캐릭터가 Dock 상단 높이(OS y≈907)에 선다. " +
-                 "즉 화면 맨 아래에서 35pt 떠 보인다. 그 구간의 배경은 아무 것도 없는 벽지라 " +
-                 "비교 대상이 없고, 화면 좌우 맨 끝이라 눈에 잘 띄지 않는다.\n" +
-                 "두 증상을 실제로 띄워 비교한 결과 겹침이 확실히 더 나쁘다. 그래서 기본값을 0이 아니라 " +
-                 "여유 있게 둔다. 0으로 내리면 '고정된 앱만' 세므로 반드시 좁게 틀린다.")]
-        public int dockExtraRunningAppTileEstimate = 6;
+        [Tooltip("Dock 구분선 하나가 차지하는 가로 폭(OS 포인트).\n\n" +
+                 "실측 근거(2026-08-29): 구분선을 사이에 둔 두 아이콘의 중심 간격이 같은 구획 안의 " +
+                 "피치(53pt)보다 23~25pt 넓었다. Dock 구획은 [Finder+고정앱] | [최근/실행중] | " +
+                 "[기타스택+휴지통]이라 보통 구분선이 2개이고, 가운데 구획이 비면(show-recents를 끄고 " +
+                 "실행 중 비고정 앱도 없을 때) 1개로 준다 — 개수는 MacWindowService가 세어서 넘긴다.")]
+        public float dockSeparatorWidthPoints = 24f;
+
+        [Tooltip("Dock 띠 두께를 tilesize에서 파생시킬 때 더하는 여백(OS 포인트). 두께 = tilesize + 이 값.\n\n" +
+                 "실측 근거(2026-08-29): tilesize=49인 이 환경에서 Dock 두께가 정확히 75.00pt였다 " +
+                 "(NSScreen.visibleFrame 하단 인셋 75.00 = 화면 982 - 작업영역 874 - 메뉴바 33, " +
+                 "그리고 스크린샷에서 잰 패널 상단 테두리 y=907 = 982-75와도 일치). 75 - 49 = 26.\n\n" +
+                 "★ 정직한 한계: 이 관계식의 보정점은 tilesize=49 한 점뿐이다. 두 번째 점을 얻으려면 " +
+                 "사용자의 Dock 크기 설정을 바꿔야 하는데 그건 절대 불변 원칙 3(유저 자산 불변) 위반이라 " +
+                 "하지 않았다. 그래도 하드코딩 75보다는 낫다 — Dock 크기를 바꾼 사용자에게 최소한 " +
+                 "따라가긴 한다. Dock 실측이 꺼져 있거나 실패하면 dockFootholdThicknessPoints로 폴백한다.")]
+        public float dockThicknessTilePaddingPoints = 26f;
+
+        [Tooltip("계산한 Dock 패널 좌우 끝에서 안쪽으로 깎아낼 여유(OS 포인트, 한쪽당).\n\n" +
+                 "왜 필요한가 — 두 가지 이유가 겹친다:\n" +
+                 " (1) Dock 패널은 모서리가 크게 둥글다(실측 반경 약 20pt). 패널의 가장 바깥 X에서는 " +
+                 "패널 윗면이 이미 아래로 휘어 있어서, 거기에 캐릭터를 Dock 상단 높이로 세우면 " +
+                 "실제로는 살짝 떠 보인다.\n" +
+                 " (2) 리더 지시 — 오차가 남으면 틀리는 방향을 '좁게'로 둔다. 넓게 틀리면 Dock이 없는 " +
+                 "자리에서 캐릭터가 떠 보여 '고장'으로 읽히고(2026-08-29 2차 신고), 좁게 틀리면 Dock " +
+                 "가장자리에서 조금 일찍 내려갈 뿐이라 '지저분함'으로 읽힌다. 둘 다 나쁘면 덜 고장처럼 " +
+                 "보이는 쪽을 택한다.\n\n" +
+                 "폭 공식의 실측 잔차는 최대 1.0pt이므로 이 값은 잔차 보정이 아니라 (1)의 기하 보정이 " +
+                 "주 목적이다. 0으로 두면 계산한 패널 사각형을 그대로 쓴다.")]
+        public float dockFootholdEdgeInsetPoints = 6f;
+
+        [Tooltip("**실행 중이지만 Dock에 고정돼 있지 않은 앱**의 타일 수 보정치.\n\n" +
+                 "★ 2026-08-29 2차 라운드에서 기본값을 6 -> 0으로 내렸다. 이 값은 더 이상 상시 보정이 " +
+                 "아니라 **비상 폴백**이다.\n\n" +
+                 "경위: 이 타일 수는 어떤 Dock 설정에도 없어서 직전 라운드는 셀 수 없다고 보고 6을 " +
+                 "때려박았다. 그 결과 Dock을 실제(x 194~1318)보다 좌우 각 77pt 넓게(x 125.5~1386.5) " +
+                 "잡았고, 그 77pt 띠에서 'Dock이 없는데 Dock 위에 선 것처럼 부양'하는 증상이 나왔다 " +
+                 "— 사용자가 스크린샷과 함께 즉시 신고했다. '넓게 틀리면 덜 눈에 띈다'는 판단이 틀렸다.\n\n" +
+                 "지금은 그 집합을 NSWorkspace.runningApplications(activationPolicy == Regular)로 " +
+                 "**직접 센다** — 그게 'Dock에 타일이 생기는 앱'의 정의 그 자체다. 셈에 성공하면 " +
+                 "DockMetrics.IsTileCountExact = true가 되고 이 보정치는 **무시된다**(성공했는데도 더하면 " +
+                 "부양이 그대로 재발한다).\n\n" +
+                 "이 값이 실제로 쓰이는 경우는 하나뿐이다: NSWorkspace 조회 자체가 실패했을 때(AppKit이 " +
+                 "로드되지 않은 배치 모드 등). 그때 타일 수는 반드시 실제보다 작으므로 Dock을 좁게 보고, " +
+                 "그 방향이 리더가 지정한 안전한 오답 방향이라 기본값 0으로도 무해하다.")]
+        public int dockExtraRunningAppTileEstimate = 0;
 
         // ====================================================================================
         // ★ 캐릭터 크기 배율 (2026-08-29 — 사용자 요구 "캐릭터 사이즈가 지금의 절반정도 되어야함
@@ -1272,5 +1314,172 @@ namespace StickMate.Core
                  "네트워크·충전 신호가 원래 규칙(지속조건 -> 회복 게이트 -> 우선순위 1개만 표현)대로 다시 " +
                  "자율 발동한다. 즉 이 하나가 4종 자율 트리거 **전부**의 상위 게이트다.")]
         public bool enableAutonomousHardwareReactions = false;
+
+        // ============================================================================
+        // 낙하 자세 + 무릎앉아 착지 (2026-08-29 사용자 명시 요청)
+        // ============================================================================
+        // 사용자 원문: "떨어질때 관절이 이상하게 꺾이면서 넘어지는데 떨어질때 무릎앉아 형태로 멋지게
+        // 착지해야지". 두 개의 서로 다른 결함이 겹쳐 있었고 이 섹션은 그 둘을 함께 고친다.
+        //
+        //  (1) **낙하 중 자세가 아예 없었다.** StickmanBlackboard.TickPose()는 상태 ID로 포즈를 고르는데
+        //      Fall에 해당하는 분기가 없어 Idle 중립 포즈(팔 살짝 벌리고 다리 곧게)로 떨어졌다 — 막대기가
+        //      그대로 내려오는 그림이다. 아래 fallPose* 값이 "팔은 위/바깥, 다리는 살짝 접힘"이라는
+        //      Alan Becker 계열 졸라맨 낙하 자세를 만든다.
+        //
+        //  (2) **착지 연출이 통째로 없었고, 그 자리를 RAGDOLL이 차지하고 있었다.**
+        //      StickmanEventBus.LandingRollRequested는 FallState가 이미 발행하고 있었지만 구독자가 0명
+        //      이었다(이 프로젝트에서 6번 반복된 "로직은 있는데 아무도 안 듣는" 패턴). 착지는 아무 연출
+        //      없이 지나갔고, 그 자리는 아래 landingCrouch*가 채운다.
+        //
+        //  (3) 그리고 그 옆에 **착지 충격이 RAGDOLL로 새는 경로**가 열려 있었다. 씬의 물리 바닥
+        //      (Editor/SceneBootstrapper.CreateGroundCollider의 PhysicsGround)에 부딪힌 충돌 콜백이
+        //      StickmanAgent.OnCollisionEnter2D -> RagdollImpactResolver로 흘러가는데, 루트 질량 1 /
+        //      ragdollForceThreshold 8 / gravityScale 3이면 v = sqrt(2*9.81*3*h) = 8, 즉 계산상
+        //      **1.09유닛만 떨어져도** 임계값을 넘는다.
+        //      ★ 실측으로 확인한 범위는 계산보다 좁다(정직하게 기록): **논리 발판이 있는 정상 착지에서는
+        //      이 충격량이 0.00**이었다 — FallState가 Update에서 먼저 착지를 확정해 몸을 스냅하고 하강
+        //      속도를 지우기 때문이다. 실제로 이 경로를 밟는 것은 **물리 바닥은 있는데 논리 발판은 없는
+        //      구간**(안전망에 뚫린 Dock 가로 구멍)으로 떨어질 때이고, 그때는 스냅이 없어 전속력 충돌이
+        //      그대로 랙돌이 된다. 아래 landingImpactRagdollShield가 그 경로를 끊는다.
+        //
+        // ★ 배율 대응 규약(리더 지시): **각도는 크기와 무관하므로 절대값**이 맞고, 거리/속도 성분만
+        //   StickMate.Core.StickmanMetrics에서 파생시킨다. 그래서 이 섹션의 거리·속도 항목은 전부
+        //   "신장(TotalHeight)의 몇 배"라는 무차원 값으로 노출되어 있고, 실제 월드 유닛은 런타임에
+        //   실측 신장을 곱해 얻는다. 앉는 깊이조차 별도 거리 값이 아니라 **무릎/엉덩이 각도에서 유도**
+        //   된다(StickmanPoseAnimator.ComputeFootGroundingOffset — 발이 지면에 정확히 닿는 몸 높이를
+        //   실제 마디 길이로 역산하므로 어떤 배율에서도 발이 뜨거나 파묻히지 않는다).
+
+        [Header("낙하 중 공중 자세 (2026-08-29 사용자 요청)")]
+
+        [Tooltip("낙하 중 팔을 들어올리는 각도(도). 0 = 곧게 아래, 180 = 곧게 위. 좌우 팔에 각각 " +
+                 "부호가 곱해지므로 152는 '수직 위에서 바깥으로 28도 벌어진' 만세 자세다. 사람이 " +
+                 "떨어질 때 팔이 위로 뜨는 것은 공기 저항이 아니라 **몸통이 팔보다 먼저 가속되기 " +
+                 "때문**이라, 낙하 연출의 가장 큰 신호다(Alan Becker 계열 졸라맨 레퍼런스도 동일).")]
+        public float fallPoseArmRaiseDegrees = 152f;
+
+        [Tooltip("낙하 중 팔꿈치 굽힘(도, 항상 0 이상). 완전히 편 팔은 '막대기'로 보이므로 조금 굽혀둔다.")]
+        public float fallPoseElbowBendDegrees = 20f;
+
+        [Tooltip("낙하 중 다리를 벌리는 각도(도). 좌우 다리에 각각 부호가 곱해진다 — 두 다리가 완전히 " +
+                 "겹치면 옆에서 본 실루엣이 외다리로 보인다.")]
+        public float fallPoseLegSpreadDegrees = 15f;
+
+        [Tooltip("낙하 중 다리를 앞으로 들어올리는 각도(도, + = 진행 방향). 무릎 굽힘과 함께 '다리를 " +
+                 "살짝 접어 올린' 형태를 만든다.")]
+        public float fallPoseHipDegrees = 14f;
+
+        [Tooltip("낙하 중 무릎 굽힘(도, 항상 0 이상 = 사람 무릎이 접히는 방향). 착지 준비 자세로 자연스럽게 " +
+                 "이어지도록 무릎앉아 각도(landingCrouchFrontKneeDegrees)보다는 확실히 얕게 둔다.")]
+        public float fallPoseKneeBendDegrees = 38f;
+
+        [Tooltip("낙하 자세가 **최대 진폭**이 되는 하강 속도 — 초당 몇 신장을 떨어지는가(신장 배수/초). " +
+                 "기본 7은 배율 0.75(신장 1.71유닛)에서 약 12유닛/초, 즉 자유낙하 2.4유닛 지점이다. " +
+                 "이 값 미만에서는 자세가 비례해서 옅어지므로, 한 계단 내려서는 정도의 짧은 낙하에서는 " +
+                 "만세 자세가 거의 나오지 않는다(막 떨어지기 시작 -> 최고 속도로 자세가 점진 변화). " +
+                 "★ 속도는 거리 성분이라 신장으로 나눠 무차원화한다 — 배율을 바꿔도 같은 '체감 속도'에서 " +
+                 "같은 자세가 나온다.")]
+        public float fallPoseFullSpeedHeightsPerSecond = 7f;
+
+        [Tooltip("낙하 자세의 최소 진폭(0~1). 하강 속도가 0에 가까운 순간(정점 직후)에도 Idle 중립 " +
+                 "포즈로 완전히 되돌아가지 않게 하는 바닥값 — 0으로 두면 점프 정점에서 자세가 한 번 " +
+                 "풀렸다가 다시 잡히는 것이 보인다.")]
+        public float fallPoseMinIntensity = 0.16f;
+
+        [Header("무릎앉아 착지 (2026-08-29 사용자 요청 — 핵심)")]
+
+        [Tooltip("무릎앉아 착지 연출 자체의 마스터 스위치. 끄면 FallState는 예전처럼 착지 즉시 " +
+                 "Idle/Walk로 전이한다(LandingRollRequested 이벤트 발행은 그대로 유지). " +
+                 "Tests/PlayMode/LandingCrouchTests.cs의 네거티브 컨트롤이 이 스위치를 끄고 " +
+                 "'연출이 실제로 사라지는지'를 확인한다.")]
+        public bool landingCrouchEnabled = true;
+
+        [Tooltip("★ 착지 충격이 RAGDOLL로 새는 것을 막는 스위치(기본 ON). 켜면 Jump/Fall/LandingCrouch " +
+                 "상태에서 **발밑에서 올라온 충돌**(접촉점이 발 높이 이하)은 외력으로 치지 않는다.\n\n" +
+                 "근거: 아키텍처 0절이 RAGDOLL을 배정한 대상은 피격/던져짐 같은 **외력**이다. 자기가 " +
+                 "떨어져서 땅에 닿는 것은 외력이 아니라 착지이며, 그 처리는 이 파일 위쪽 " +
+                 "landingCrouch* 연출이 담당한다. 이 스위치를 끄면 논리 발판이 없는 구간(안전망에 뚫린 " +
+                 "Dock 가로 구멍)으로 떨어졌을 때 전속력 지면 충돌이 그대로 랙돌이 되던 예전 거동이 " +
+                 "돌아온다 — PlayMode 실측으로 on/off 대조를 확인했다. " +
+                 "옆/위에서 들어오는 충돌(라이벌 타격, 던져져 벽에 부딪힘)과 직접 호출 경로" +
+                 "(DragThrowState의 던진 속도, RivalStickmanAgent의 타격, RodeoCursorState의 흔들기)는 " +
+                 "이 스위치와 무관하게 그대로 랙돌을 발생시킨다.")]
+        public bool landingImpactRagdollShield = true;
+
+        [Tooltip("무릎앉아가 **최대 깊이**가 되는 낙하 높이 — rollLandingHeightThreshold 위로 신장의 " +
+                 "몇 배를 더 떨어졌을 때인가(신장 배수). 기본 3은 배율 0.75(신장 1.71유닛)에서 " +
+                 "임계값 2유닛 + 5.12유닛 = 7.1유닛 낙하다. 즉 '화면 위쪽 창에서 바닥까지' 정도가 " +
+                 "최대 깊이가 된다. ★ 거리 성분이라 신장 배수로 노출한다.")]
+        public float landingCrouchDeepFallHeights = 3f;
+
+        [Tooltip("임계값을 **갓 넘긴** 낙하에서의 깊이 비율(0~1). 0으로 두면 임계값 근처의 착지가 " +
+                 "'앉는 시늉만 하고 마는' 밋밋한 그림이 되므로 바닥값을 준다.")]
+        public float landingCrouchMinDepth01 = 0.45f;
+
+        [Tooltip("가장 얕은 무릎앉아의 총 지속 시간(초) — 임계값을 갓 넘긴 낙하.")]
+        public float landingCrouchDurationShallow = 0.32f;
+
+        [Tooltip("가장 깊은 무릎앉아의 총 지속 시간(초) — landingCrouchDeepFallHeights 이상 낙하. " +
+                 "'높을수록 더 깊이 앉고 더 오래 유지'(리더 지시)의 시간 쪽 절반이다. " +
+                 "★ 시간은 거리가 아니라 배율과 무관하므로 절대값이 맞다.")]
+        public float landingCrouchDurationDeep = 0.62f;
+
+        [Tooltip("총 지속 시간 중 '눌리는' 구간의 비율(0~1). 착지 충격이므로 아주 짧고 빨라야 한다 — " +
+                 "이 구간이 길면 앉는 동작이 스스로 앉는 것처럼 보여 충격 흡수로 읽히지 않는다.")]
+        public float landingCrouchCompressFraction = 0.18f;
+
+        [Tooltip("총 지속 시간 중 '가장 깊은 자세로 버티는' 구간의 비율(0~1). 이 정지 구간이 있어야 " +
+                 "포즈가 한 장의 그림으로 눈에 남는다(애니메이션의 hold/moving hold 관행).")]
+        public float landingCrouchHoldFraction = 0.24f;
+
+        [Tooltip("일어서는 구간 끝에서 중립보다 살짝 더 펴지는 반동의 크기(0~1). '눌렸다가 펴지는 " +
+                 "리듬'(리더 지시)을 만드는 값이며, 0이면 그냥 스르륵 일어난다. 무릎 굽힘은 어떤 " +
+                 "경우에도 음수(뒤로 꺾임)가 되지 않도록 코드에서 0에서 잘린다.")]
+        public float landingCrouchReboundAmount = 0.22f;
+
+        [Tooltip("최대 깊이에서 **앞다리** 엉덩이 각도(도, + = 진행 방향). 앞발이 몸 앞쪽 바닥을 " +
+                 "디디는 다리다.")]
+        public float landingCrouchFrontHipDegrees = 78f;
+
+        [Tooltip("최대 깊이에서 앞다리 무릎 굽힘(도, 항상 0 이상). 이 값이 사실상 '얼마나 낮게 앉는가'를 " +
+                 "결정한다 — 몸 높이는 별도 거리 값이 아니라 이 각도에서 유도되기 때문이다" +
+                 "(StickmanPoseAnimator.ComputeFootGroundingOffset).\n\n" +
+                 "★ 기본값은 실측 계산으로 정했다: 프리팹 기하(엉덩이 높이 = 다리 두 마디 길이의 합)에서 " +
+                 "앞다리 각도 (78도, 112도)면 몸이 신장의 약 21% 내려가고, 그때 뒷다리 무릎이 지면에서 " +
+                 "신장의 1% 이내로 내려온다 — 즉 '한쪽 무릎이 바닥에 닿는' 실루엣이 정확히 나온다. " +
+                 "처음 잡았던 (58도, 92도)는 몸이 11%밖에 내려가지 않아 '살짝 굽힌' 정도에 그쳤다.")]
+        public float landingCrouchFrontKneeDegrees = 112f;
+
+        [Tooltip("최대 깊이에서 **뒷다리** 엉덩이 각도(도, − = 뒤쪽). 뒷다리는 무릎이 바닥 가까이 " +
+                 "내려가는 쪽이라 허벅지가 거의 수직이어야 한다.")]
+        public float landingCrouchRearHipDegrees = -16f;
+
+        [Tooltip("최대 깊이에서 뒷다리 무릎 굽힘(도, 항상 0 이상). 정강이가 뒤로 눕도록 앞다리보다 " +
+                 "얕게 두면 무릎이 바닥에 닿을 듯 말 듯한 '한쪽 무릎 착지' 실루엣이 나온다.")]
+        public float landingCrouchRearKneeDegrees = 76f;
+
+        [Tooltip("최대 깊이에서 **앞팔** 어깨 각도(도, + = 진행 방향). 손이 바닥 쪽으로 내려가 몸을 " +
+                 "받치는 팔이다(3점 착지의 그 팔).")]
+        public float landingCrouchFrontArmDegrees = 64f;
+
+        [Tooltip("최대 깊이에서 앞팔 팔꿈치 굽힘(도, 항상 0 이상).")]
+        public float landingCrouchFrontElbowDegrees = 26f;
+
+        [Tooltip("최대 깊이에서 **뒷팔** 어깨 각도(도, − = 뒤쪽). 뒤로 크게 젖혀 균형을 잡는 팔이며, " +
+                 "이 좌우 비대칭이 '멋지게'의 실질적인 내용이다 — 두 팔이 대칭이면 그냥 쪼그려 앉은 " +
+                 "그림이 된다.")]
+        public float landingCrouchRearArmDegrees = -118f;
+
+        [Tooltip("최대 깊이에서 뒷팔 팔꿈치 굽힘(도, 항상 0 이상).")]
+        public float landingCrouchRearElbowDegrees = 24f;
+
+        [Tooltip("무릎앉아 포즈 각도의 지수 감쇠 계수(1/초). poseSmoothingRate(35)보다 높게 두는 이유: " +
+                 "이 포즈는 지속 상태가 아니라 0.3~0.6초짜리 **정해진 곡선**이라, 보간이 느리면 눌리는 " +
+                 "구간이 통째로 뭉개져 '툭 앉았다'가 사라진다. 프레임레이트 독립 공식" +
+                 "(1-exp(-k*dt))이라 이 값을 올려도 fps에 따라 결과가 달라지지 않는다.")]
+        public float landingCrouchPoseSmoothingRate = 48f;
+
+        [Tooltip("착지 직후 남은 수평 속도를 죽이는 지수 감쇠 계수(1/초). 0이면 앉은 채로 옆으로 " +
+                 "미끄러진다. 너무 크면 공중에서의 수평 이동이 착지 순간 뚝 끊겨 부자연스럽다.")]
+        public float landingCrouchHorizontalDamping = 12f;
     }
 }

@@ -223,8 +223,11 @@ MonoBehaviour:
   verboseDiagnosticsLogging: 0
   groundSnapMaxDistanceWorld: 0.6
   dockMetricsFromSystemEnabled: 1
-  dockTilePitchPaddingPoints: 2.5
-  dockPanelFixedPaddingPoints: 76.5
-  dockExtraRunningAppTileEstimate: 6
+  dockTilePitchPaddingPoints: 4
+  dockPanelFixedPaddingPoints: 15
+  dockSeparatorWidthPoints: 24
+  dockThicknessTilePaddingPoints: 26
+  dockFootholdEdgeInsetPoints: 6
+  dockExtraRunningAppTileEstimate: 0
   characterScale: 0.75
   enableAutonomousHardwareReactions: 0

@@ -233,6 +233,55 @@ namespace StickMate.Platform.MacOS
         [DllImport(CoreFoundationLib)]
         private static extern void CFRelease(IntPtr cf);
 
+        [DllImport(CoreFoundationLib)]
+        private static extern IntPtr CFDictionaryGetTypeID();
+
+        // ============================================================================
+        // ★ 2026-08-29 — Objective-C 런타임 최소 배선. **오직 하나의 목적**: NSWorkspace로
+        // "지금 Dock에 타일이 생기는 앱"을 정확히 세는 것(IDockMetricsService 문서 2절).
+        // ============================================================================
+        // 왜 이게 필요한가: Dock 폭 공식의 유일한 미지수가 "실행 중이지만 Dock에 고정돼 있지 않은 앱의
+        // 수"였고, 직전 라운드는 그걸 셀 방법이 없다고 보고 상수 6으로 때려박아 좌우 각 77pt를 틀렸다.
+        // 그 수의 정의 그 자체가 NSWorkspace.runningApplications 중 activationPolicy ==
+        // NSApplicationActivationPolicyRegular인 앱이다. 조회 전용 공개 API이며 어떤 권한도 요구하지
+        // 않는다(화면 기록/접근성 모두 무관 — 절대 불변 원칙 3, 비침해 원칙).
+        //
+        // ★ 마샬링 안전 규칙 — 이 파일에서 objc_msgSend는 **정수/포인터 반환만** 쓴다.
+        // 구조체(NSRect 등)나 부동소수 반환은 아키텍처별 반환 규약(ARM64의 x8 간접 반환, x86_64의
+        // _stret/_fpret 분기)이 달라 P/Invoke 선언 실수 시 잡을 수 없는 하드 크래시가 난다. 그래서
+        // NSScreen.visibleFrame으로 Dock 두께를 직접 재는 경로는 **일부러 쓰지 않았고**, 두께는
+        // tilesize에서 파생시킨다(IDockMetricsService 문서 4절). 여기 선언된 3개 오버로드는 전부
+        // 포인터/NSInteger 반환이라 두 아키텍처에서 동일한 규약을 탄다.
+        //
+        // objc_msgSend는 C에서 가변인자로 선언돼 있지만 실제 호출 규약은 "받는 메서드의 시그니처
+        // 그대로"다. 그래서 시그니처마다 EntryPoint를 같게 둔 별도 선언을 만드는 것이 정석이며
+        // (Xamarin.Mac/Unity 네이티브 플러그인이 쓰는 바로 그 방식), 하나의 선언을 여러 시그니처에
+        // 재사용하면 안 된다.
+        private const string ObjCLib = "/usr/lib/libobjc.A.dylib";
+
+        [DllImport(ObjCLib, CharSet = CharSet.Ansi, EntryPoint = "objc_getClass")]
+        private static extern IntPtr ObjCGetClass(string name);
+
+        [DllImport(ObjCLib, CharSet = CharSet.Ansi, EntryPoint = "sel_registerName")]
+        private static extern IntPtr ObjCSelector(string name);
+
+        /// <summary>[receiver selector] — 객체 포인터 반환(sharedWorkspace/runningApplications/bundleIdentifier).</summary>
+        [DllImport(ObjCLib, EntryPoint = "objc_msgSend")]
+        private static extern IntPtr ObjCSendPtr(IntPtr receiver, IntPtr selector);
+
+        /// <summary>[receiver selector] — NSInteger/NSUInteger 반환(count/activationPolicy).
+        /// IntPtr로 받으면 32/64비트 양쪽에서 폭이 자동으로 맞는다.</summary>
+        [DllImport(ObjCLib, EntryPoint = "objc_msgSend")]
+        private static extern IntPtr ObjCSendNInt(IntPtr receiver, IntPtr selector);
+
+        /// <summary>[receiver selector:index] — NSUInteger 인자 1개, 객체 포인터 반환(objectAtIndex:).</summary>
+        [DllImport(ObjCLib, EntryPoint = "objc_msgSend")]
+        private static extern IntPtr ObjCSendPtrWithNUInt(IntPtr receiver, IntPtr selector, IntPtr index);
+
+        /// <summary>NSApplicationActivationPolicyRegular — "Dock에 타일이 생기고 메뉴바를 갖는 보통 앱".
+        /// 1=Accessory(LSUIElement, Dock 타일 없음), 2=Prohibited(백그라운드 전용).</summary>
+        private const int NSApplicationActivationPolicyRegular = 0;
+
         // ============================================================================
         // 중요한 마샬링 함정(실측 이전에는 발견하기 어려움 — 반드시 문서화):
         // macOS/CoreFoundation의 Boolean/bool 반환값은 1바이트(C99 stdbool 또는 MacTypes.h의 unsigned
@@ -1064,31 +1113,47 @@ namespace StickMate.Platform.MacOS
         private bool _lastFullscreenVerdict;
 
         // ============================================================================
-        // IDockMetricsService — Dock 실측(2026-08-29 "지금도 독이랑 계속 겹쳐")
+        // IDockMetricsService — Dock 실측
+        // (2026-08-29 1차 "지금도 독이랑 계속 겹쳐" / 2차 "지금도 제대로 바닥과 독을 제대로 인식 못하는거 같음")
         // ============================================================================
 
+        // 이 조회는 발판 폴링마다(EnumerateFootholds가 한 번 돌 때 2회) 불린다. CFPreferences 조회 6종 +
+        // NSWorkspace 앱 열거를 그 빈도로 돌릴 이유가 없어 짧게 캐시한다. 캐시 유효기간은 "앱을 켰을 때
+        // Dock이 넓어지는 것을 사람이 눈치채기 전에 따라잡는" 수준이면 충분하다.
+        private const double DockMetricsCacheSeconds = 0.75;
+        private DockMetrics _cachedDockMetrics;
+        private bool _cachedDockMetricsValid;
+        private double _cachedDockMetricsTime = double.NegativeInfinity;
+
         /// <summary>
-        /// com.apple.dock의 사용자 기본 설정을 **읽기 전용**으로 조회해 Dock 발판 기하의 입력을 만든다.
-        /// 근거/실측/한계는 Platform/IDockMetricsService.cs의 클래스 문서에 전부 적어뒀다.
+        /// com.apple.dock 설정과 NSWorkspace 실행 앱 목록을 **읽기 전용**으로 조회해 Dock 발판 기하의
+        /// 입력을 만든다. 근거/실측/유도/한계는 Platform/IDockMetricsService.cs의 인터페이스 문서에
+        /// 전부 적어뒀다(왜 Dock 창 bounds를 못 쓰는지에 대한 전수 조사 결과 포함).
         ///
         /// 읽는 키와 미설정 시 macOS 기본값:
         ///   · orientation    (CFString) : "bottom"/"left"/"right".  미설정 -> "bottom"
         ///   · autohide       (CFBoolean): 자동 숨김.                미설정 -> false
         ///   · tilesize       (CFNumber) : 아이콘 한 변(pt).         미설정 -> 48
-        ///   · persistent-apps / persistent-others (CFArray) : 고정된 앱/기타 타일 수.
+        ///   · persistent-apps / persistent-others (CFArray) : 고정된 앱/기타 타일.
         ///   · show-recents   (CFBoolean): 최근 사용 앱 표시.        미설정 -> true
-        ///   · recent-apps    (CFArray)  : 최근 사용 앱 타일 수.
+        ///   · recent-apps    (CFArray)  : 최근 사용 앱 타일.
         ///
-        /// ★ 정직한 한계 — **실행 중이지만 Dock에 고정돼 있지 않은 앱**의 타일은 이 설정 어디에도 없다.
-        /// 그 수는 시시각각 변하고(앱을 켜고 끌 때마다), 공개 API로 정확히 세는 방법이 없다
-        /// (CoreGraphics 창 목록으로 근사하면 창 없는 백그라운드 앱을 놓치고, 반대로 Dock 타일이 없는
-        /// 에이전트 앱을 세게 된다 — 실측에서 양방향으로 다 틀렸다). 그래서 이 함수는 **알 수 있는
-        /// 타일만 정직하게 세어 반환**하고, "모르는 만큼"의 보정은 호출부가
-        /// StickConfig.dockExtraRunningAppTileEstimate로 더한다. 그 필드의 Tooltip에 왜 넉넉하게
-        /// (= Dock을 실제보다 넓게) 잡는 쪽이 옳은지 실측 근거와 함께 적어뒀다.
+        /// ★ 직전 라운드와의 결정적 차이 — 타일 개수를 **센다**.
+        /// 예전에는 "실행 중이지만 고정돼 있지 않은 앱"을 셀 방법이 없다고 보고 호출부가 상수
+        /// (dockExtraRunningAppTileEstimate = 6)를 더했고, 그 결과 Dock을 좌우 각 77pt 넓게 잡아
+        /// "Dock 없는 자리에서 캐릭터가 부양"하는 이번 신고가 나왔다. 이제 그 집합을 NSWorkspace로
+        /// 직접 열거한다(activationPolicy == Regular인 앱이 곧 Dock 타일이 생기는 앱의 정의).
+        /// 성공하면 DockMetrics.IsTileCountExact = true로 알려서 호출부가 그 상수 보정을 **끄게** 한다.
         /// </summary>
         public bool TryGetDockMetrics(out DockMetrics metrics)
         {
+            double now = Time.realtimeSinceStartupAsDouble;
+            if (_cachedDockMetricsValid && now - _cachedDockMetricsTime < DockMetricsCacheSeconds)
+            {
+                metrics = _cachedDockMetrics;
+                return true;
+            }
+
             metrics = default;
             IntPtr appId = IntPtr.Zero;
             var keys = new System.Collections.Generic.List<IntPtr>();
@@ -1115,15 +1180,32 @@ namespace StickMate.Platform.MacOS
                 bool autoHide = CopyPrefBool(MakeKey("autohide"), appId, defaultValue: false);
                 float tileSize = CopyPrefNumber(MakeKey("tilesize"), appId, defaultValue: 48f);
 
-                int persistentApps = CopyPrefArrayCount(MakeKey("persistent-apps"), appId);
+                // 고정 앱: 개수뿐 아니라 **번들 ID**까지 읽는다 — 아래에서 실행 중 앱 목록과 합집합을
+                // 만들 때 "고정돼 있으면서 실행 중"인 앱을 두 번 세지 않기 위해서다(이 중복 제거가
+                // 빠지면 타일을 과다 계상해 다시 Dock을 넓게 잡는다 = 이번 신고의 재발).
+                var pinnedIds = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+                int persistentApps = CopyPrefTileBundleIds(MakeKey("persistent-apps"), appId, pinnedIds);
                 int persistentOthers = CopyPrefArrayCount(MakeKey("persistent-others"), appId);
+
                 bool showRecents = CopyPrefBool(MakeKey("show-recents"), appId, defaultValue: true);
-                int recentApps = showRecents ? CopyPrefArrayCount(MakeKey("recent-apps"), appId) : 0;
+                // "최근 사용" 구획과 "실행 중이지만 고정 안 됨" 구획은 Dock에서 **같은 구획**이고 서로
+                // 겹친다(최근 목록의 앱이 지금 실행 중일 수 있다). 그래서 개수를 더하는 게 아니라
+                // 번들 ID 합집합의 크기를 쓴다.
+                var recentsSection = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+                if (showRecents) CopyPrefTileBundleIds(MakeKey("recent-apps"), appId, recentsSection);
 
-                // +1 = 휴지통(항상 존재하며 persistent-others에 들어 있지 않다).
-                int tileCount = persistentApps + persistentOthers + recentApps + 1;
+                bool exact = TryAppendRunningRegularApps(recentsSection, pinnedIds);
 
-                metrics = new DockMetrics(isBottom, autoHide, tileSize, tileCount);
+                // Finder(+1)는 항상 있고 persistent-apps에 들어 있지 않다. 휴지통(+1)도 마찬가지다.
+                int tileCount = 1 + persistentApps + persistentOthers + recentsSection.Count + 1;
+
+                // 구분선: [Finder+고정앱] | [최근/실행중] | [기타스택+휴지통]. 가운데 구획이 비면 1개로 준다.
+                int separatorCount = recentsSection.Count > 0 ? 2 : 1;
+
+                metrics = new DockMetrics(isBottom, autoHide, tileSize, tileCount, separatorCount, exact);
+                _cachedDockMetrics = metrics;
+                _cachedDockMetricsValid = true;
+                _cachedDockMetricsTime = now;
                 return true;
             }
             catch (System.Exception e)
@@ -1138,6 +1220,126 @@ namespace StickMate.Platform.MacOS
                 for (int i = 0; i < keys.Count; i++) CFRelease(keys[i]);
                 if (appId != IntPtr.Zero) CFRelease(appId);
             }
+        }
+
+        /// <summary>
+        /// com.apple.dock의 타일 배열(persistent-apps / recent-apps)에서 각 타일의
+        /// tile-data -> bundle-identifier 문자열을 꺼내 <paramref name="into"/>에 담는다.
+        /// 반환값은 **배열 원소 수**(번들 ID가 없는 타일 — 예: 폴더/URL 타일 — 도 자리를 차지하므로
+        /// 개수는 개수대로 세야 한다). 번들 ID는 중복 제거용이고 개수는 폭 계산용이라 둘 다 필요하다.
+        /// </summary>
+        private int CopyPrefTileBundleIds(IntPtr key, IntPtr appId, System.Collections.Generic.HashSet<string> into)
+        {
+            if (key == IntPtr.Zero) return 0;
+            IntPtr v = CFPreferencesCopyAppValue(key, appId);
+            if (v == IntPtr.Zero) return 0;
+            IntPtr tileDataKey = IntPtr.Zero;
+            IntPtr bundleKey = IntPtr.Zero;
+            try
+            {
+                if (CFGetTypeID(v) != CFArrayGetTypeID()) return 0;
+                int count = (int)CFArrayGetCount(v);
+                if (count <= 0) return 0;
+
+                tileDataKey = CFStringCreateWithCString(IntPtr.Zero, "tile-data", kCFStringEncodingUTF8);
+                bundleKey = CFStringCreateWithCString(IntPtr.Zero, "bundle-identifier", kCFStringEncodingUTF8);
+                if (tileDataKey == IntPtr.Zero || bundleKey == IntPtr.Zero) return count;
+
+                for (int i = 0; i < count; i++)
+                {
+                    // CFArrayGetValueAtIndex/CFDictionaryGetValue는 Get 규칙(소유권 없음) — 해제하지 않는다.
+                    IntPtr tile = CFArrayGetValueAtIndex(v, i);
+                    if (tile == IntPtr.Zero || CFGetTypeID(tile) != CFDictionaryGetTypeID()) continue;
+                    IntPtr tileData = CFDictionaryGetValue(tile, tileDataKey);
+                    if (tileData == IntPtr.Zero || CFGetTypeID(tileData) != CFDictionaryGetTypeID()) continue;
+                    IntPtr bundle = CFDictionaryGetValue(tileData, bundleKey);
+                    if (bundle == IntPtr.Zero || CFGetTypeID(bundle) != CFStringGetTypeID()) continue;
+                    string id = CopyCFStringValue(bundle);
+                    if (!string.IsNullOrEmpty(id)) into.Add(id);
+                }
+                return count;
+            }
+            finally
+            {
+                if (tileDataKey != IntPtr.Zero) CFRelease(tileDataKey);
+                if (bundleKey != IntPtr.Zero) CFRelease(bundleKey);
+                CFRelease(v); // CFPreferencesCopyAppValue는 Copy 규칙.
+            }
+        }
+
+        /// <summary>
+        /// ★ Dock 폭 공식의 마지막 미지수를 없애는 함수 — "지금 Dock에 타일이 생겨 있는 앱" 중
+        /// 고정되지 않은 것들의 번들 ID를 <paramref name="into"/>에 합친다(합집합이므로 최근 사용
+        /// 목록과 겹쳐도 중복되지 않는다).
+        ///
+        /// 정의상 정확하다: NSApplicationActivationPolicyRegular(=0)는 "Dock에 나타나고 메뉴바를 갖는
+        /// 앱"이라는 뜻이고, LSUIElement 같은 백그라운드/에이전트 앱은 Accessory(1)/Prohibited(2)라
+        /// 자동으로 빠진다. 직전 라운드가 대안으로 검토했다 실패한 "CGWindowList의 고유 소유자 이름
+        /// 세기"와 달리 **창이 하나도 열려 있지 않은 앱도 정확히 포함**된다(그 앱도 Dock 타일은 있다).
+        ///
+        /// Finder는 제외한다 — Dock 맨 왼쪽 고정 타일로 이미 +1 세고 있고, 여기서 또 세면 두 번 센다.
+        /// 우리 자신(StickMate)은 **일부러 제외하지 않는다**: 우리도 .regular 앱이라 실제로 Dock에
+        /// 타일이 하나 생기고(실측 스크린샷에서 확인), 그 타일도 Dock 폭을 실제로 넓히기 때문이다.
+        /// </summary>
+        /// <returns>열거에 성공했으면 true. false면 호출부가 "모르는 만큼"의 상수 보정을 되살려야 한다.</returns>
+        private bool TryAppendRunningRegularApps(System.Collections.Generic.HashSet<string> into,
+            System.Collections.Generic.HashSet<string> pinnedIds)
+        {
+            try
+            {
+                IntPtr workspaceClass = ObjCGetClass("NSWorkspace");
+                if (workspaceClass == IntPtr.Zero) return false;   // AppKit 미로드(배치 모드 등).
+
+                IntPtr workspace = ObjCSendPtr(workspaceClass, ObjCSelector("sharedWorkspace"));
+                if (workspace == IntPtr.Zero) return false;
+
+                IntPtr apps = ObjCSendPtr(workspace, ObjCSelector("runningApplications"));
+                if (apps == IntPtr.Zero) return false;
+
+                IntPtr selCount = ObjCSelector("count");
+                IntPtr selObjectAtIndex = ObjCSelector("objectAtIndex:");
+                IntPtr selPolicy = ObjCSelector("activationPolicy");
+                IntPtr selBundleId = ObjCSelector("bundleIdentifier");
+                if (selCount == IntPtr.Zero || selObjectAtIndex == IntPtr.Zero
+                    || selPolicy == IntPtr.Zero || selBundleId == IntPtr.Zero) return false;
+
+                long count = ObjCSendNInt(apps, selCount).ToInt64();
+                // 방어: 말도 안 되는 값이면(포인터를 정수로 오독했을 때의 증상) 조용히 포기한다.
+                if (count < 0 || count > 4096) return false;
+
+                for (long i = 0; i < count; i++)
+                {
+                    IntPtr app = ObjCSendPtrWithNUInt(apps, selObjectAtIndex, new IntPtr(i));
+                    if (app == IntPtr.Zero) continue;
+                    if (ObjCSendNInt(app, selPolicy).ToInt64() != NSApplicationActivationPolicyRegular) continue;
+
+                    // NSString은 CFString과 toll-free bridged라 기존 CF 변환 헬퍼를 그대로 쓸 수 있다.
+                    IntPtr bundleId = ObjCSendPtr(app, selBundleId);
+                    if (bundleId == IntPtr.Zero) continue;
+                    string id = CopyCFStringValue(bundleId);
+                    if (string.IsNullOrEmpty(id)) continue;
+                    if (id == "com.apple.finder") continue;        // 맨 왼쪽 고정 타일로 이미 셌다.
+                    if (pinnedIds.Contains(id)) continue;          // 고정 타일로 이미 셌다.
+                    into.Add(id);
+                }
+                return true;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[Dock실측] 실행 중 앱 목록 조회에 실패했습니다({e.GetType().Name}) — " +
+                    "타일 개수를 정확히 세지 못하므로 StickConfig.dockExtraRunningAppTileEstimate 보정으로 폴백합니다.");
+                return false;
+            }
+        }
+
+        /// <summary>CFString(또는 toll-free bridged NSString)을 managed 문자열로. 소유권은 건드리지 않는다.</summary>
+        private string CopyCFStringValue(IntPtr cfString)
+        {
+            if (cfString == IntPtr.Zero) return null;
+            if (!CFStringGetCString(cfString, _ownerNameBuffer, _ownerNameBuffer.Length, kCFStringEncodingUTF8)) return null;
+            int len = Array.IndexOf(_ownerNameBuffer, (byte)0);
+            if (len < 0) len = _ownerNameBuffer.Length;
+            return System.Text.Encoding.UTF8.GetString(_ownerNameBuffer, 0, len);
         }
 
         /// <summary>CFPreferences에서 CFString 값을 읽는다(없으면 null). 반환된 CFTypeRef는 Copy 규칙이라 해제한다.</summary>

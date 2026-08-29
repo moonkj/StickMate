@@ -151,73 +151,22 @@ namespace StickMate.Platform
         /// ★ macOS Dock을 발판으로 합성한다 (2026-08-28, 사용자 요청 "독위에서만 걷고 독아래로 가면
         /// 바닥으로 내려가야하는데").
         ///
-        /// ============================================================================
-        /// 왜 CGWindowListCopyWindowInfo의 Dock 창 사각형을 그대로 쓰지 못하는가 (실측 조사 결과)
-        /// ============================================================================
-        /// 리더 지시는 "Dock은 Dock 프로세스가 소유한 창으로 열거되니 그 실제 사각형을 쓰라"였다.
-        /// 그래서 이 환경에서 직접 열거해봤다(2026-08-28, CGWindowListCopyWindowInfo 전수 덤프):
+        /// 사각형은 **한 글자도 여기서 계산하지 않는다** — 전부 <see cref="TryGetDockRectOsScreen"/>
+        /// 단일 소스에서 나온다(같은 값이 안전망의 구멍에도 그대로 쓰인다). 어떻게 그 사각형을 구하는지,
+        /// 왜 Dock 창의 bounds를 쓸 수 없는지, 각 계수의 실측 근거는 전부 그 메서드와
+        /// Platform/IDockMetricsService.cs의 문서에 있다.
         ///
-        ///     owner='Dock'  name='Dock'        layer=20   alpha=1.0  rect=(0, 0, 1512, 982)
-        ///     owner='Dock'  name='Wallpaper-'  layer=-2147483624     rect=(0, 0, 1512, 982)
-        ///
-        /// **Dock 창의 bounds는 Dock 막대가 아니라 화면 전체다.** macOS의 Dock 프로세스는 화면 전체를
-        /// 덮는 투명 레이어 하나를 갖고 그 안에 막대를 그리며(Launchpad/Mission Control도 같은 창을
-        /// 쓴다), 실제로 보이는 막대의 사각형은 공개 API로 노출되지 않는다. 그대로 발판으로 쓰면 화면
-        /// 전체 폭 발판이 화면 **맨 위**(y=0)에 생겨 지금보다 훨씬 나빠진다.
-        ///
-        /// 다른 경로도 전부 확인했고 전부 막혔다:
-        ///   • com.apple.dock 환경설정: tilesize/persistent-apps는 있지만 **실행 중인 앱 타일 수**를
-        ///     알 수 없어 폭을 계산할 수 없다(실측: 예측 가능한 타일 17개로는 실제 폭 1069pt가 나오지
-        ///     않는다 — 실행 중 앱들이 더 붙어 있었다).
-        ///   • CGWindowListCreateImage로 Dock 창만 캡처해 알파 경계를 재면 **정확히** 나온다(실측:
-        ///     x 221~1290, 폭 1069pt, 화면 가로 정중앙 정렬, 두께 68pt). 하지만 이 API는 macOS 10.15+
-        ///     에서 **화면 기록 권한**을 요구하고 권한 요청 팝업을 띄운다 — 비침해 원칙(CLAUDE.md 2)과
-        ///     "권한 없이 동작"이라는 이 프로젝트의 플랫폼 계약에 정면으로 어긋나 채택하지 않았다.
-        ///
-        /// 그래서 **정확히 알 수 있는 것만 실측값으로 쓰고, 알 수 없는 폭만 설정값**으로 뺀다:
-        ///   • **세로(정확)**: Dock 띠 두께는 StickConfig.dockFootholdThicknessPoints. 상단 =
-        ///     화면 바닥 - 두께. (Dock 자동 숨김을 쓰면 두께를 0으로 두면 이 발판이 사라진다.)
-        ///   • **가로(추정)**: 화면 가로 정중앙 정렬 + StickConfig.dockFootholdWidthFraction 폭.
-        ///     기본값 0.65는 위 실측(1069/1512 = 0.707)보다 **일부러 좁게** 잡았다 — 추정이 실제보다
-        ///     넓으면 Dock이 없는 자리에 캐릭터가 서서 사용자가 신고한 그 "공중 부양"이 재발하지만,
-        ///     좁으면 실제 Dock 안쪽에서 조금 일찍 떨어질 뿐이라 눈에 거슬리지 않는다. 틀리는 방향을
-        ///     안전한 쪽으로 고정한 것이다.
-        ///   • 0을 주면 Dock 발판 자체가 비활성화되고 전부 바닥 안전망으로 떨어진다.
+        /// false를 돌려주는 경우 = Dock 발판이 존재하지 않아야 하는 경우(자동 숨김 / 좌우 세로 Dock /
+        /// 두께 0 / 폭 0). 그때는 모든 낙하가 화면 바닥 안전망으로 간다.
         /// </summary>
         public bool TryGetDockFoothold(out PlatformFoothold dock)
         {
             dock = default;
-            if (!TryGetDockSpanOsScreen(out float dockLeftOsX, out float dockRightOsX)) return false;
-
-            float dpi = Mathf.Max(0.0001f, ScreenCoordinateConverter.ResolveDpiScale(_config));
-            float screenH = (Screen.height > 0 ? Screen.height : 1080f) * dpi;
-            Vector2 origin = ScreenCoordinateConverter.OverlayOriginOsScreen;
-
-            float thickness = _config.dockFootholdThicknessPoints;
-            float dockTopY = origin.y + screenH - thickness;
-
-            dock = new PlatformFoothold(DockFootholdHandle,
-                new Rect(dockLeftOsX, dockTopY, dockRightOsX - dockLeftOsX, thickness), true);
+            if (!TryGetDockRectOsScreen(out Rect rect)) return false;
+            dock = new PlatformFoothold(DockFootholdHandle, rect, true);
             return true;
         }
 
-        /// <summary>
-        /// ★★ Dock 가로 구간의 **단일 소스**(2026-08-29, 사용자 신고 "처음엔 독위에서 잘다니다가 좀
-        /// 다니다 보면 다시 독과 겹쳐서 걸음").
-        ///
-        /// 이 메서드 하나가 두 곳을 동시에 파생시킨다:
-        ///   (a) <see cref="TryGetDockFoothold"/> — Dock 위에 서는 발판 사각형의 좌/우 끝.
-        ///   (b) <see cref="AppendBottomSafetyNet"/> — 화면 최하단 안전망에서 **잘라낼 구멍**의 좌/우 끝.
-        /// 즉 "안전망의 구멍"과 "Dock 발판"은 정의상 **정확히 같은 X 구간**이라, 둘이 어긋나 틈(발판이
-        /// 하나도 없는 X 구간 -> 낙하 고착)이나 겹침(Dock 아래를 걸어다님 -> 이번 버그)이 생기는 것이
-        /// 구조적으로 불가능하다. 리더 지시 2항: "Dock 발판 생성과 안전망 분할이 각각 다른 값을 쓰면
-        /// 틈이 생기거나 겹친다. 상수 하나에서 둘 다 파생되게 해라."
-        /// (이 프로젝트는 과거 두 곳이 따로 계산해 어긋난 버그가 2회 있었다 — BUG-P1-R4-B1, BUG-P1-R5-B2.)
-        ///
-        /// 반환하는 좌표는 PlatformFoothold.ScreenRect와 동일한 공간(오버레이 창 원점 기준 OS 좌표)이다.
-        /// Dock이 비활성(폭 비율 0 또는 두께 0)이거나 설정이 없으면 false — 그때 안전망은 예전처럼
-        /// 화면 전체 폭 한 조각으로 남는다(잘라낼 Dock 자체가 없으므로 겹칠 일도 없다).
-        /// </summary>
         // Dock 구간 로그는 **내용이 바뀔 때만** 남긴다 — 이 함수는 발판 폴링마다(0.3초) 불리므로
         // 그대로 두면 로그가 잠긴다. 그러면서도 "지금 Dock을 어디로 보고 있는가"는 항상 최신 1줄로 남는다.
         private string _lastDockSpanLog;
@@ -229,22 +178,57 @@ namespace StickMate.Platform
             Debug.Log("[Dock실측] " + message);
         }
 
-        public bool TryGetDockSpanOsScreen(out float dockLeftOsX, out float dockRightOsX)
+        /// <summary>
+        /// ★★★ Dock 사각형의 **단일 소스**. 이 프로젝트에서 Dock 기하를 아는 곳은 여기 하나뿐이다.
+        ///
+        /// 이 메서드 하나에서 세 곳이 전부 파생된다:
+        ///   (a) <see cref="TryGetDockFoothold"/>      — Dock 위에 서는 발판 사각형(가로 구간 + 상단 Y).
+        ///   (b) <see cref="TryGetDockSpanOsScreen"/>  — 그 사각형의 좌/우 끝만 뽑아 쓰는 얇은 래퍼.
+        ///   (c) <see cref="AppendBottomSafetyNet"/>   — 화면 최하단 안전망에서 잘라낼 **구멍**의 좌/우 끝.
+        /// 즉 "안전망의 구멍"과 "Dock 발판"은 정의상 정확히 같은 X 구간이라, 둘이 어긋나 틈(발판이
+        /// 하나도 없는 X 구간 -> 낙하 고착)이나 겹침(Dock 아래를 걸어다님)이 생기는 것이 구조적으로
+        /// 불가능하다. (이 프로젝트는 두 곳이 따로 계산해 어긋난 버그가 이미 2회 있었다 —
+        /// BUG-P1-R4-B1, BUG-P1-R5-B2. 리더가 그래서 단일 소스를 못박았다.)
+        ///
+        /// ============================================================================
+        /// 어떻게 구하는가 (2026-08-29 2차 라운드에서 전면 재보정)
+        /// ============================================================================
+        /// Dock 창의 bounds는 쓸 수 없다 — Dock 프로세스가 소유한 창은 'Dock'과 'Wallpaper-' 둘뿐이고
+        /// 둘 다 화면 전체 크기이며, 시스템 전체 창 143개 중 Dock 막대 모양인 창은 소유자를 불문하고
+        /// 하나도 없다(전수 덤프로 확정). 정확한 나머지 경로 둘은 화면 기록/접근성 권한을 요구해 금지다.
+        /// 상세는 Platform/IDockMetricsService.cs 인터페이스 문서 1절.
+        ///
+        /// 그래서 타일 개수 N에서 계산한다. 직전 라운드가 틀린 이유는 공식이 아니라 **N을 몰랐던 것**
+        /// 하나였고(실행 중이지만 고정 안 된 앱 수를 상수 6으로 때려박음 -> 좌우 각 77pt 과대 -> 이번
+        /// "부양" 신고), 이제 N을 NSWorkspace로 정확히 센다.
+        ///
+        ///     폭 = N x (tilesize + dockTilePitchPaddingPoints)
+        ///        + dockPanelFixedPaddingPoints
+        ///        + 구분선수 x dockSeparatorWidthPoints
+        ///     좌우 = 화면 가로 정중앙 정렬 후 dockFootholdEdgeInsetPoints만큼 안쪽으로 깎음
+        ///     두께 = tilesize + dockThicknessTilePaddingPoints,  상단 Y = 화면 바닥 - 두께
+        ///
+        /// 실측 검증(6표본, 최대 오차 1.0pt)과 각 계수의 근거는 IDockMetricsService.cs 3~4절과
+        /// StickConfig의 각 필드 Tooltip에 있다.
+        ///
+        /// Dock이 비활성(자동 숨김 / 좌우 세로 배치 / 두께 0 / 폭 비율 0)이면 false — 그때 안전망은
+        /// 예전처럼 화면 전체 폭 한 조각으로 남는다(잘라낼 Dock 자체가 없으므로 겹칠 일도 없다).
+        /// </summary>
+        /// <param name="rect">오버레이 창 원점 기준 OS 좌표(PlatformFoothold.ScreenRect와 같은 공간).</param>
+        public bool TryGetDockRectOsScreen(out Rect rect)
         {
-            dockLeftOsX = 0f;
-            dockRightOsX = 0f;
+            rect = default;
             if (_config == null) return false;
-
-            float widthFraction = _config.dockFootholdWidthFraction;
-            float thickness = _config.dockFootholdThicknessPoints;
-            if (thickness <= 0f) return false;
 
             float dpi = Mathf.Max(0.0001f, ScreenCoordinateConverter.ResolveDpiScale(_config));
             float screenW = (Screen.width > 0 ? Screen.width : 1920f) * dpi;
+            float screenH = (Screen.height > 0 ? Screen.height : 1080f) * dpi;
             Vector2 origin = ScreenCoordinateConverter.OverlayOriginOsScreen;
 
-            // ★ 1순위 — OS 설정에서 실제 Dock 폭을 계산한다(2026-08-29 "지금도 독이랑 계속 겹쳐").
-            // 근거/실측/유도는 Platform/IDockMetricsService.cs 문서 참고.
+            float width;
+            float thickness;
+
+            // ★ 1순위 — OS에서 읽은 타일 구성으로 계산한다.
             if (_config.dockMetricsFromSystemEnabled && _innerDockMetrics != null
                 && _innerDockMetrics.TryGetDockMetrics(out DockMetrics m))
             {
@@ -257,26 +241,66 @@ namespace StickMate.Platform
                     return false;
                 }
 
-                int tiles = Mathf.Max(1, m.TileCount + Mathf.Max(0, _config.dockExtraRunningAppTileEstimate));
+                // 타일 수를 정확히 셌으면(IsTileCountExact) 보정 상수를 **더하지 않는다** — 세는 데
+                // 성공했는데도 더하면 직전 라운드의 과대 추정(좌우 각 77pt)이 그대로 재발한다.
+                int extra = m.IsTileCountExact ? 0 : Mathf.Max(0, _config.dockExtraRunningAppTileEstimate);
+                int tiles = Mathf.Max(1, m.TileCount + extra);
                 float pitch = Mathf.Max(1f, m.TileSizePoints + _config.dockTilePitchPaddingPoints);
-                float measuredWidth = tiles * pitch + _config.dockPanelFixedPaddingPoints;
-                measuredWidth = Mathf.Clamp(measuredWidth, 0f, screenW);
+                int separators = Mathf.Max(0, m.SeparatorCount);
 
-                dockLeftOsX = origin.x + (screenW - measuredWidth) * 0.5f;  // 가운데 정렬(실측 확인 — 타일 1개 변화가 좌우 대칭이었다).
-                dockRightOsX = dockLeftOsX + measuredWidth;
-                LogDockSpanOnce($"Dock 실측 — tilesize={m.TileSizePoints:F0}pt, 설정에서 센 타일 {m.TileCount}개 " +
-                    $"+ 실행중 앱 보정 {_config.dockExtraRunningAppTileEstimate}개 = {tiles}개, 피치 {pitch:F1}pt, " +
-                    $"고정분 {_config.dockPanelFixedPaddingPoints:F1}pt -> 폭 {measuredWidth:F1}pt " +
-                    $"(화면의 {(measuredWidth / Mathf.Max(1f, screenW)):P1}), OS x {dockLeftOsX:F1}~{dockRightOsX:F1}. " +
-                    $"참고: 고정 비율 추정({widthFraction:F2})이었다면 {screenW * widthFraction:F1}pt였습니다.");
-                return true;
+                width = tiles * pitch
+                        + _config.dockPanelFixedPaddingPoints
+                        + separators * _config.dockSeparatorWidthPoints;
+                width = Mathf.Clamp(width, 0f, screenW);
+
+                thickness = m.TileSizePoints + _config.dockThicknessTilePaddingPoints;
+
+                LogDockSpanOnce($"Dock 계산 — tilesize={m.TileSizePoints:F0}pt, 타일 {m.TileCount}개" +
+                    $"({(m.IsTileCountExact ? "정확히 셈" : $"셀 수 없어 +{extra}개 보정")}), 구분선 {separators}개, " +
+                    $"피치 {pitch:F1}pt -> 폭 {width:F1}pt (화면의 {(width / Mathf.Max(1f, screenW)):P1}), " +
+                    $"두께 {thickness:F1}pt, 가장자리 여유 {_config.dockFootholdEdgeInsetPoints:F1}pt.");
+            }
+            else
+            {
+                // 2순위 — 폴백(비-macOS이거나 조회 실패). 예전과 완전히 동일한 고정 비율 추정.
+                float widthFraction = _config.dockFootholdWidthFraction;
+                if (widthFraction <= 0f) return false;
+                width = screenW * Mathf.Clamp01(widthFraction);
+                thickness = _config.dockFootholdThicknessPoints;
             }
 
-            // 2순위 — 폴백(비-macOS이거나 설정 조회 실패). 예전과 완전히 동일한 고정 비율 추정.
-            if (widthFraction <= 0f) return false;
-            float dockWidth = screenW * Mathf.Clamp01(widthFraction);
-            dockLeftOsX = origin.x + (screenW - dockWidth) * 0.5f;   // 화면 가로 정중앙(실측 확인).
-            dockRightOsX = dockLeftOsX + dockWidth;
+            if (thickness <= 0f) return false;
+
+            // 가운데 정렬은 추정이 아니라 실측이다 — 표본 6개 전부에서 패널 중심이 화면 정중앙과
+            // 0.25pt 이내로 일치했고, 타일 1개 변화가 좌우로 정확히 대칭으로 나타났다.
+            float left = origin.x + (screenW - width) * 0.5f;
+            float right = left + width;
+
+            // 안쪽으로 깎기(narrow bias) — 근거는 StickConfig.dockFootholdEdgeInsetPoints Tooltip.
+            // 깎다가 폭이 0 이하가 되면(타일이 극단적으로 적은 Dock) Dock 발판 자체를 포기한다.
+            float inset = Mathf.Max(0f, _config.dockFootholdEdgeInsetPoints);
+            left += inset;
+            right -= inset;
+            if (right - left <= 0f) return false;
+
+            rect = new Rect(left, origin.y + screenH - thickness, right - left, thickness);
+            return true;
+        }
+
+        /// <summary>
+        /// Dock 가로 구간(좌/우 끝)만 필요한 호출부를 위한 얇은 래퍼. 값은 전적으로
+        /// <see cref="TryGetDockRectOsScreen"/>에서 나온다 — 여기서 따로 계산하는 것은 하나도 없다.
+        /// </summary>
+        public bool TryGetDockSpanOsScreen(out float dockLeftOsX, out float dockRightOsX)
+        {
+            if (!TryGetDockRectOsScreen(out Rect rect))
+            {
+                dockLeftOsX = 0f;
+                dockRightOsX = 0f;
+                return false;
+            }
+            dockLeftOsX = rect.xMin;
+            dockRightOsX = rect.xMax;
             return true;
         }
 
