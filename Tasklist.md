@@ -1913,3 +1913,41 @@ Dock 낙차는 **OS 유래라 0.855유닛 고정**인데 매달리기 최소 낙
 
 ### 크기 변경이 조용히 죽인 것 (미해결)
 **창 도둑 대상 창 폭 상한 = 캐릭터 신장 × 3.** 배율 1.0에서 279pt였던 것이 0.5에서 **140pt**, 0.75에서 약 210pt가 된다. macOS 표준 창 최소 폭(계산기 230pt, Finder 483pt)보다 작아 **발동 자체가 불가능**해진다. 게임플레이 조건이 크기 설정에 딸려 바뀐 사례. 완화안: 상한을 `max(신장×3, 절대하한 280pt)`로 두거나, 후보 소스를 발판 목록이 아닌 **가려짐 필터 이전 원본 창 목록**으로 바꾸기(후자가 근본 해결).
+
+---
+
+## 2026-08-29 — PlayMode 회귀 1건 진단·수정: 착지 **첫 프레임**만 잉크가 화면 밖 8.82pt (Debugger)
+
+**실패**: `FloorContactVisibilityTests.FeetVisuallyTouchScreenBottomAndAreNeverClipped`
+`[FLOOR-TEST] 캐릭터 잉크가 화면 아래로 8.82pt 잘려 나갔습니다(상태=LandingCrouch, 허용 1pt)`.
+
+### 리더 가설(잔여 루트 회전)은 실측으로 **반증**
+가설: `ThrowTumble → LandingCrouch` 전이 시 루트에 잔여 회전이 남아 무릎앉아 포즈가 아래로 벌어진다.
+검증: 임시 진단 테스트(`TempFloorDiagTests`, 확인 후 삭제)로 실패 프레임의 상태·루트 회전·정점별 최저 Y를 전부 덤프.
+- 실패 재현 구간에 **`ThrowTumble`은 한 번도 등장하지 않았다**(`Logs/dbg_floor1.log`에 `[던지기회전]` 0건). 실패 경로는 스폰 낙하 11.63유닛 → `FallState` → `LandingCrouch` 단일 경로.
+- 실패 프레임의 **루트 회전 = 0.000도**(`rootRotZ=0.000 bodyRot=0.000`), `_depth01`도 정상 상한 1.00.
+- 정점 덤프상 **발끝은 루트 기준 −0.004 ~ −0.032유닛**(선 반폭 수준)으로 포즈 자체는 완벽히 접지. 즉 포즈/깊이/회전 전부 무죄.
+
+### 진짜 원인 — `Rigidbody2D.position`만 쓰고 `Transform`을 안 써서 생긴 **1프레임 좌표 desync**
+`ProjectSettings/Physics2DSettings.asset`의 `m_AutoSyncTransforms: 0`(꺼짐). 그래서 `Rigidbody2D.position`에만 대입하면 **화면에 그려지는 Transform은 다음 물리 스텝까지 옛 위치**에 남는다. 프레임 순서가 `FixedUpdate(물리 적분) → Update(상태 Tick=착지 스냅) → 렌더`이므로 착지한 그 프레임만 "물리가 방금 적분해 둔, 발판을 뚫고 내려간 위치"로 그려진다.
+
+실측(`Logs/dbg_diag4.log`, 낙하 속도 −24.7유닛/초):
+```
+[f=315] st=Fall          rootY=-10.6301 bodyY=-10.6301 vy=-24.721
+[f=316] st=LandingCrouch rootY=-12.1840 bodyY=-11.8045 vy=0.000  inkMinY=-12.2155 -> below=8.82pt  ← 정확히 이 한 프레임
+[f=317] st=LandingCrouch rootY=-11.8027 bodyY=-11.8045                              -> below=-6.78pt
+```
+어긋남 0.3795유닛(=15.5pt)은 그 프레임의 물리 적분량 그대로다 — **높이 떨어질수록/프레임이 길수록 더 깊이 파묻힌 그림이 한 프레임 번쩍인다**(다른 화면 크기·배율에서 재발할 성질). 여유값(8pt)을 올렸다면 원인을 그대로 둔 채 덮는 것이었다.
+
+`ThrowTumbleState`는 이미 같은 이유로 두 곳에 함께 쓰고 있었는데(`ApplyRootRotation`/`ConfirmLanding`), **`FallState.ConfirmLanding`만 그 규칙에서 빠져 있었다** — 같은 계산이 두 벌로 흩어져 한쪽만 고쳐진 이 프로젝트의 반복 실패 유형.
+
+### 수정 (2파일)
+- `States/StickmanBlackboard.cs` — 몸 순간이동의 **유일한 창구** `MoveBodyToWorld(Vector2)` 신설(`Rigidbody2D.position` + `Transform.position` 동시 기록, 속도는 건드리지 않음). 기존에 각자 두 줄로 중복하던 `EnforceScreenBoundsAndRescue`/`RescueToSafeGround`와, Transform을 안 쓰던 `SnapToGround`(상한 0.6유닛까지 옮길 수 있어 최대 24pt 팝 가능)를 전부 이 창구로 통일.
+- `States/FallState.cs:150` — 착지 스냅을 `MoveBodyToWorld`로 교체(회귀의 직접 원인).
+
+### 검증
+- 대상 테스트 **3회 연속 통과**(`Logs/dbg_floor2/3/4.xml`), 최악하향돌출 −5.86 / −5.20 / −4.63pt(전부 화면 안쪽), 접지 간격 7.24pt(허용 12pt).
+- 전체 **PlayMode 136/136**(`Logs/dbg_pm_full.xml`), **EditMode 28/28**(`Logs/dbg_em_full.xml`), 컴파일 `error CS`/`warning CS` 0건.
+
+### 남은 같은 계열(미수정 — 후속 발주 권고)
+`ParkourClimbState:149`, `LedgeHangState:178/190`, `RunawayState:248/269`, `DragThrowState:306`이 아직 `Body.position`만 쓴다. 이번 실패 경로가 아니라 손대지 않았지만, 한 프레임에 크게 순간이동하는 값을 쓰는 곳이면 같은 증상이 난다 — `MoveBodyToWorld`로 통일 권고.
