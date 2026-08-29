@@ -50,8 +50,9 @@ namespace StickMate.States
         ///
         /// 판정 근거는 아키텍처 0절이다 — RAGDOLL이 배정된 대상은 **피격/던져짐 같은 외력**이고, 자기가
         /// 떨어져서 땅에 닿는 것은 외력이 아니라 착지다. 그래서 다음 두 조건을 **동시에** 만족할 때만
-        /// 무시한다:
-        ///   (1) 지금 상태가 공중/착지 계열(Jump / Fall / LandingCrouch)이고,
+        /// 무시한다(★ 2026-08-30 갱신 — (1)이 상태 허용목록에서 "부딪힌 대상"으로 바뀌었다.
+        /// 근거는 <see cref="IsOwnLandingContact"/> 본문 주석):
+        ///   (1) 부딪힌 상대가 Dynamic 바디가 아니다(= 정적 지면/바닥이지 라이벌 같은 움직이는 물체가 아니다),
         ///   (2) 접촉점이 발 높이 근처 이하다(= 발밑에서 올라온 면).
         /// 그래서 옆에서 날아온 라이벌의 주먹이나 던져져 벽에 부딪히는 충돌은 그대로 랙돌이 되고,
         /// 직접 호출 경로(DragThrowState의 던진 속도 / RivalStickmanAgent의 타격 / RodeoCursorState의
@@ -119,19 +120,23 @@ namespace StickMate.States
             if (blackboard == null || blackboard.Machine == null || blackboard.Body == null) return false;
             if (blackboard.Config != null && !blackboard.Config.landingImpactRagdollShield) return false;
 
-            StickmanStateId state = blackboard.Machine.CurrentStateId;
-            // ThrowTumble 포함(2026-08-29 "던져도 무릎앉아 착지" 라운드): 던져진 채 회전하다 착지하는
-            // 것도 자기 착지이지 외력이 아니다. 특히 논리 발판이 없는 구간(안전망에 뚫린 Dock 가로
-            // 구멍)으로 던져지면 전속력 그대로 물리 바닥에 부딪히는데, 그것이 랙돌이 되면 사용자가
-            // 신고한 "던지면 관절 꺾이며 넘어짐"이 그대로 되돌아온다.
-            // 대가(정직하게): 회전 중에는 루트 원점이 회전 보정으로 몸 위쪽에 있을 수 있어, 그 순간
-            // **옆에서 들어온 충돌도 "발 높이 이하"로 판정되어 함께 무시될 수 있다**. 회전은 길어야
-            // 1~2초이고 그 사이 라이벌 타격이 겹칠 확률은 낮은 반면, 반대 방향의 오판(자기 착지를
-            // 외력으로 보는 것)은 사용자가 이미 두 번 신고한 증상이라 이쪽을 택했다.
-            if (state != StickmanStateId.Fall && state != StickmanStateId.Jump &&
-                state != StickmanStateId.LandingCrouch && state != StickmanStateId.ThrowTumble) return false;
-
+            // ★★ 2026-08-30 (디버거) — **상태 허용목록을 없앴다.**
+            // 예전에는 Fall/Jump/LandingCrouch/ThrowTumble 넷일 때만 차단했다. 그런데 이 프로젝트의
+            // 발판(Dock/창 상단)은 논리 발판일 뿐 물리 콜라이더가 없어서, **접지 스냅을 부르지 않는
+            // 어떤 상태든** 그 위에서 자유낙하해 물리 바닥에 전속력으로 부딪힌다. 그때 상태가 저 넷에
+            // 없으면(Attack/Getup/BattleMinigame/…) 자기 착지가 외력으로 오판되어 RAGDOLL이 됐다 —
+            // 실제 앱 로그의 "[착지충격] 충돌 충격량=10.01 ... 상태=BattleMinigame ... -> RAGDOLL 전이"가
+            // 그 증거이고, 사용자 신고 "갑자기 독 아래로 떨어지면서 관절이 이상하게 꺾임"의 그림이다.
+            // 목록을 늘리는 것은 같은 실패를 다음 상태에 미루는 일이라, 판정 기준 자체를 상태가 아니라
+            // **부딪힌 대상**으로 바꾼다:
+            //   · 정적(또는 비-Dynamic) 콜라이더가 발밑에서 올라온 것  = 지면/바닥 = 내 착지  -> 차단
+            //   · Dynamic 바디(라이벌 등)와의 충돌                      = 외력            -> 그대로 랙돌
+            // 이 규칙은 상태 목록에 의존하지 않으므로 새 상태가 생겨도 자동으로 옳다.
+            // 직접 호출 경로(DragThrowState의 던진 속도 / RivalStickmanAgent의 타격 /
+            // RodeoCursorState의 거친 흔들기)는 애초에 이 메서드를 거치지 않아 전혀 영향이 없다.
             if (collision == null) return false;
+            Rigidbody2D otherBody = collision.rigidbody;
+            if (otherBody != null && otherBody.bodyType == RigidbodyType2D.Dynamic) return false;
             float footY = blackboard.Body.position.y;
             float ceiling = footY + blackboard.CharacterHeightWorld * LandingContactHeightRatio;
             int count = collision.contactCount;

@@ -242,6 +242,10 @@ MonoBehaviour:
   fallPoseMinIntensity: 0.16
   landingCrouchEnabled: 1
   landingImpactRagdollShield: 1
+  groundKeepingSafetyNetEnabled: 1
+  sinkholeLiftRecoveryEnabled: 1
+  sinkholeLiftRestSeconds: 0.35
+  sinkholeLiftMaxHeights: 1.5
   landingCrouchDeepFallHeights: 3
   landingCrouchMinDepth01: 0.45
   landingCrouchDurationShallow: 0.32

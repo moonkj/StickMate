@@ -464,6 +464,15 @@ namespace StickMate.Core
 
             _machine.Tick(dt);
 
+            // ★★ 접지 유지 안전망(2026-08-30, 디버거 — 사용자 신고 "갑자기 독 아래로 떨어지면서
+            // 관절이 이상하게 꺾임"). 상태가 스스로 GroundedTick()을 부르지 않아도 **여기 한 곳에서**
+            // 대신 불러준다. TickPose()가 "포즈는 상태 ID 하나로 한 곳에서 결정된다"를 보장하는 것과
+            // 정확히 같은 이유이며(상태가 14개가 넘고 하나라도 빠뜨리면 그 상태에서만 깨진다),
+            // 실제로 Attack/Getup/BattleMinigame이 그렇게 빠져 있었다.
+            // 상태가 이미 불렀으면 프레임 번호로 감지해 중복하지 않는다
+            // (StickmanBlackboard.TickGroundKeepingSafetyNet 문서 참고).
+            _blackboard.TickGroundKeepingSafetyNet(dt);
+
             // 상태 로직이 끝난 뒤(= 이번 프레임의 최종 상태가 확정된 뒤) 물리 모드와 팔다리 포즈를
             // 그 상태에 맞게 재적용한다. 멱등이며 상태 ID만 보고 판단하므로, 강제 인터럽트/전체화면
             // 취소/외부 ChangeState 등 어떤 경로로 상태가 바뀌어도 물리 모드가 상태와 어긋난 채

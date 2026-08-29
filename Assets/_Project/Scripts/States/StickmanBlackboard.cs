@@ -267,6 +267,13 @@ namespace StickMate.States
         // 유예 타이머가 리셋되는 오탐을 막을 수 있어(상태 인스턴스 밖인) 블랙보드에 둔다.
         private float _groundLossTimer;
 
+        // ★ 2026-08-30 — GroundedTick()이 마지막으로 실행된 프레임 번호(TickGroundKeepingSafetyNet 참고).
+        private int _groundedTickFrame = -1;
+
+        // ★ 2026-08-30 — Fall 상태인데 실제로는 멈춰 있는(= 논리 발판 없는 물리면에 얹힌) 시간 누적.
+        // EnforceScreenBoundsAndRescue()의 사각지대 회수 판정에 쓴다.
+        private float _fallRestingTimer;
+
         // Active Ragdoll(아키텍처 0절) 파츠 캐시. Ragdoll/Getup 두 상태가 공유하므로 블랙보드가
         // 최초 1회만 구성해 보관한다(매 프레임 GetComponentsInChildren 재탐색 금지 컨벤션 준수).
         private RagdollRig _ragdollRig;
@@ -402,6 +409,10 @@ namespace StickMate.States
         /// <returns>이번 호출로 Fall 전이가 발생했으면 true(호출부는 나머지 로직을 생략해야 함).</returns>
         public bool GroundedTick(float deltaTime, GroundSensor.GroundInfo info)
         {
+            // ★ 2026-08-30 — 이번 프레임에 이미 접지 유지가 수행됐음을 기록한다. 아래
+            // TickGroundKeepingSafetyNet()이 "상태가 스스로 불렀는가"를 이 값으로 판정해 **중복
+            // 호출을 하지 않는다**(중복되면 _groundLossTimer가 두 배로 쌓여 유예가 절반으로 줄어든다).
+            _groundedTickFrame = Time.frameCount;
             if (info.Grounded)
             {
                 // 발판 "획득": 아직 붙잡은 발판이 없는 상태(0)에서 처음 접지하면 그 발판으로 고착한다.
@@ -435,6 +446,81 @@ namespace StickMate.States
         }
 
         public void ResetGroundLossTimer() => _groundLossTimer = 0f;
+
+        // ================================================================================
+        // ★★ 접지 유지 안전망 (2026-08-30, 디버거 — 사용자 신고 "갑자기 독 아래로 떨어지면서
+        //    관절이 이상하게 꺾임"의 근본 원인 차단)
+        // ================================================================================
+        // 무엇이 문제였나(PlayMode 실측 재현, Tests/PlayMode/DockSinkholeRegressionTests.cs):
+        //   Dock/타 창 상단은 **논리 발판일 뿐 물리 콜라이더가 없다.** 그래서 매 프레임 접지 스냅
+        //   (GroundedTick -> SnapToGround)을 부르지 않는 상태에 들어가는 순간, 캐릭터는 서 있던 그
+        //   자리에서 자유낙하해 화면 최하단 물리 바닥(PhysicsGround)에 전속력으로 부딪힌다. 그 충격량은
+        //   Dock 단차 1.64유닛만으로도 v = sqrt(2*9.81*3*1.64) = 9.8 > ragdollForceThreshold(8)이라
+        //   **RAGDOLL로 강제 전이**되고, 캐릭터는 관절이 꺾인 채 Dock 아래에 널브러진다.
+        //   실측 전이 추적(Attack 진입 1건):
+        //     Idle->Attack 몸=(0.000,-10.167) -> Attack->Ragdoll(강제) 몸=(0.000,-11.886)
+        //     -> Ragdoll->Getup -> Getup->Idle -> Idle->Fall -> (6초 뒤) 강제 복귀
+        //
+        // 왜 각 상태에 GroundedTick을 하나씩 더 넣지 않는가:
+        //   그게 정확히 2026-08-29 라운드가 한 일이고(WindowTheft/TimedSpectacle에만 추가),
+        //   그때 Attack/Getup/BattleMinigame이 빠져 이번 신고로 돌아왔다. 이 프로젝트에서 반복된
+        //   실패 유형("안전장치를 한 곳만 고치고 같은 패턴의 다른 경로에는 안 넣기")이므로, 목록의
+        //   방향을 뒤집는다: **공중/자기구동 상태만 제외하고 나머지는 전부 기본 보호**한다.
+        //   앞으로 새 상태를 추가하는 사람이 아무것도 하지 않아도 안전한 쪽이 기본값이 된다.
+        //   (TickPose가 "상태 ID 하나로 포즈가 결정된다"를 한 곳에 모은 것과 같은 설계다.)
+        //
+        // 중복 호출은 하지 않는다 — 상태가 이미 자기 Tick에서 GroundedTick을 불렀으면
+        // _groundedTickFrame이 이번 프레임이라 그대로 반환한다(그래서 기존 상태들의 거동은 100% 그대로).
+
+        /// <summary>
+        /// 이 상태 ID가 **접지 유지를 스스로 책임지는가**(= 안전망이 손대면 안 되는가).
+        /// 공중에 있거나(Jump/Fall/ThrowTumble) 몸 위치를 스스로 구동하거나(LedgeHang/ParkourClimb/
+        /// Dragged/RodeoCursor/Runaway) 전신을 물리에 위임한(Ragdoll) 상태들이다.
+        /// 여기 없는 상태는 전부 안전망의 보호를 받는다.
+        /// </summary>
+        public static bool IsGroundKeepingSelfManaged(StickmanStateId id)
+        {
+            switch (id)
+            {
+                case StickmanStateId.Jump:          // 상승/하강 — 접지 스냅을 걸면 점프가 사라진다.
+                case StickmanStateId.Fall:          // FallState가 스윕 교차로 착지를 직접 확정한다.
+                case StickmanStateId.ThrowTumble:   // 공중 회전 비행.
+                case StickmanStateId.Ragdoll:       // 전신 물리 위임(아키텍처 0절).
+                case StickmanStateId.Dragged:       // 커서 추종(유저가 들고 있다).
+                case StickmanStateId.RodeoCursor:   // 커서 위에 올라타 있다.
+                case StickmanStateId.LedgeHang:     // 모서리에 매달려 몸 위치를 직접 보간한다.
+                case StickmanStateId.ParkourClimb:  // 턱 위로 몸 위치를 직접 보간한다.
+                case StickmanStateId.Runaway:       // 은신처로 순간이동/은닉한다.
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// StickmanAgent.Update()가 상태 Tick **직후** 1회 호출하는 접지 유지 안전망(위 문서 참고).
+        /// 상태가 이미 GroundedTick()을 불렀거나, 그 상태가 접지를 스스로 관리하는 종류이거나,
+        /// StickConfig.groundKeepingSafetyNetEnabled가 꺼져 있으면 아무 것도 하지 않는다.
+        /// </summary>
+        public void TickGroundKeepingSafetyNet(float deltaTime)
+        {
+            if (Machine == null || Body == null) return;
+            if (Config != null && !Config.groundKeepingSafetyNetEnabled) return;
+            if (_groundedTickFrame == Time.frameCount) return;      // 상태가 이미 스스로 했다.
+
+            StickmanStateId id = Machine.CurrentStateId;
+            if (IsGroundKeepingSelfManaged(id)) return;
+
+            GroundSensor.GroundInfo info = SenseGround();
+            if (CheckScreenBoundsOrFall(info)) return;
+            if (!GroundedTick(deltaTime, info)) return;
+
+            // 안전망이 실제로 개입해 Fall로 보낸 경우만 남긴다(이산 사건이라 로그가 넘치지 않는다).
+            Debug.Log($"[접지안전망] 상태 {id}가 접지 유지를 하지 않아 안전망이 대신 처리했고, " +
+                "발판을 잃어 Fall로 전이시켰습니다. 이 안전망이 없으면 이 상태에 머무는 동안 " +
+                "논리 발판(Dock/창 상단, 물리 콜라이더 없음) 위에서 그대로 자유낙하해 화면 최하단 " +
+                "물리 바닥에 전속력으로 부딪히고 RAGDOLL이 됩니다(2026-08-30 신고의 근본 원인).");
+        }
 
         /// <summary>
         /// Idle/Walk의 Jump 전이가 실제로 확인해야 할 조건: "접지 중이거나, 발판을 벗어난 지
@@ -757,6 +843,33 @@ namespace StickMate.States
 
             // (2) 최종 안전망 — 오래 낙하 중이면(= 어떤 발판에도 착지하지 못하는 상황) 강제 복귀.
             bool falling = Machine != null && Machine.CurrentStateId == StickmanStateId.Fall;
+
+            // ★★ (1.5) Dock 사각지대 즉시 회수 (2026-08-30, 디버거) — 아래 6초 안전망보다 **먼저** 본다.
+            // Dock 가로 구간의 화면 최하단은 "물리적으로는 떠받쳐지지만 논리적으로는 접지하지 않는"
+            // 사각지대다(Editor/SceneBootstrapper.CreateGroundCollider 문서의 의도적 설계). 그리로
+            // 흘러든 캐릭터는 **Fall 상태인데 속도가 0**이라는, 정상 낙하에서는 성립할 수 없는 조합에
+            // 빠진다 — 착지가 영원히 확정되지 않고 6초 뒤 화면 가로 중앙으로 순간이동할 때까지 Dock
+            // 아래에 박혀 있는다(PlayMode 실측: Idle->Fall 이후 41,000프레임 = 정확히 6초 고착).
+            // 그 조합을 속도로 감지해 **가로 이동 없이 바로 위 발판(=Dock 상단)으로 올려세운다.**
+            if (falling && Config != null && Config.sinkholeLiftRecoveryEnabled)
+            {
+                float restEps = Mathf.Max(0.0001f, SinkholeRestSpeedEpsilon);
+                if (Body.linearVelocity.sqrMagnitude <= restEps * restEps) _fallRestingTimer += deltaTime;
+                else _fallRestingTimer = 0f;
+
+                float restHold = Mathf.Max(0.05f, Config.sinkholeLiftRestSeconds);
+                if (_fallRestingTimer >= restHold && TryLiftOutOfSinkhole())
+                {
+                    _fallRestingTimer = 0f;
+                    _fallStuckTimer = 0f;
+                    return;
+                }
+            }
+            else
+            {
+                _fallRestingTimer = 0f;
+            }
+
             _fallStuckTimer = falling ? _fallStuckTimer + deltaTime : 0f;
             if (_fallStuckTimer >= LostCharacterRescueSeconds)
             {
@@ -800,6 +913,50 @@ namespace StickMate.States
         /// 다른 창 위로 올라감")도 원인이 TryGetSurfaceWorldY(가장 높은 표면)였고 TryGetFloorWorldY로
         /// 바꿔 고쳤다(GroundSensor.TryGetFloorWorldY 문서). 이 함수만 예전 호출부로 남아 있었다.
         /// </summary>
+        /// <summary>
+        /// "Fall인데 실제로는 멈춰 있다"로 볼 최대 속도(월드 유닛/초). 정상 낙하는 첫 1~2프레임을
+        /// 빼면 이 값을 즉시 넘어서므로(중력 가속 29.4유닛/초²), sinkholeLiftRestSeconds 동안
+        /// 이 아래로 유지되는 것은 사실상 "물리면 위에 얹혀 있다"는 뜻이다.
+        /// </summary>
+        private const float SinkholeRestSpeedEpsilon = 0.05f;
+
+        /// <summary>
+        /// Dock 사각지대(물리 바닥은 있는데 논리 발판이 없는 구간)에서 **가로 이동 없이** 바로 위
+        /// 발판 위로 올려세운다. 목표 높이는 <see cref="TryGetFloorWorldY"/>(그 x에서 **가장 낮은**
+        /// 발판 상단)로 고른다 — <see cref="RescueToSafeGround"/>가 "가장 높은 표면"을 쓰다가
+        /// 최대화된 창 꼭대기로 순간이동시켰던 사고(그 함수 문서의 실측 근거)를 되풀이하지 않기 위해서다.
+        /// Dock 가로 구간에서 그 값은 정확히 Dock 상단이다(안전망 조각은 그 구간에 구멍이 뚫려 있다).
+        /// </summary>
+        /// <returns>실제로 올려세웠으면 true. 위에 발판이 없거나 낙차가 상한을 넘으면 false
+        /// (그 경우는 "진짜로 잃어버린 것"이라 기존 6초 안전망에 그대로 맡긴다).</returns>
+        private bool TryLiftOutOfSinkhole()
+        {
+            if (Body == null || Machine == null) return false;
+            Vector2 pos = Body.position;
+            if (!TryGetFloorWorldY(pos, out float floorWorldY)) return false;
+
+            float rise = floorWorldY - pos.y;
+            if (rise <= 0.001f) return false; // 위에 딛을 것이 없다 — 사각지대가 아니다.
+
+            float maxHeights = Config != null ? Mathf.Max(0f, Config.sinkholeLiftMaxHeights) : 1.5f;
+            float maxRise = maxHeights * CharacterHeightWorld;
+            if (rise > maxRise) return false;
+
+            MoveBodyToWorld(new Vector2(pos.x, floorWorldY));
+            Body.linearVelocity = Vector2.zero;
+            CurrentFootholdHandle = 0L; // 다음 프레임에 재획득하도록 초기화(RescueToSafeGround와 동일 관례).
+            ResetGroundLossTimer();
+            Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+
+            Debug.Log($"[사각지대회수] Fall 상태인데 {(Config != null ? Config.sinkholeLiftRestSeconds : 0.35f):F2}초 동안 " +
+                $"속도가 0이었습니다 = 논리 발판이 없는 물리면(Dock 가로 구간의 화면 최하단) 위에 얹혀 " +
+                $"있다는 뜻입니다. 가로 이동 없이 바로 위 발판으로 올려세웁니다 — 월드 " +
+                $"({pos.x:F3},{pos.y:F3}) -> ({pos.x:F3},{floorWorldY:F3}), 끌어올린 높이 {rise:F3}유닛" +
+                $"(상한 {maxRise:F3} = 신장 {CharacterHeightWorld:F3} x {maxHeights:F2}). " +
+                "이 회수가 없으면 6초 뒤 화면 가로 중앙으로 순간이동할 때까지 Dock 아래에 박혀 있습니다.");
+            return true;
+        }
+
         public void RescueToSafeGround()
         {
             if (Body == null || MainCamera == null) return;

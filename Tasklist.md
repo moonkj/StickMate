@@ -2408,3 +2408,99 @@ f=8991 [뛰어내리기] 발을 뗍니다 — 올라선 지 9프레임(약 0.15�
 - 보관함 목록은 페이지 버튼 전용이다(휠 스크롤 미구현 — 위 근거).
 - 크기 배율은 여전히 **읽기 전용 표시**다. `characterScale`은 프리팹 지오메트리에 구워지는 값이라
   런타임 슬라이더는 "움직였는데 아무 일도 안 일어나는" UI가 된다(창에도 그 사실을 적어 두었다).
+
+---
+
+## 2026-08-30 — "갑자기 독 아래로 떨어지면서 관절이 이상하게 꺾임" / "한 명이 독 아래에서 계속 쓰러짐" **[Debugger]**
+
+기준선 `1154629`. 사용자 신고 2건은 **같은 하나의 결함**의 두 얼굴이었다(플레이어 쪽 / 라이벌 쪽).
+
+### 과학적 토론 로그
+
+| # | 가설 | 검증 방법 | 결과 | 결론 |
+|---|------|-----------|------|------|
+| H1 | 과거 사고 1의 재발(좌우 반전 시 무릎 해부학 제한 미반전) | 실제 앱 `Player.log`의 `[RagdollRig]` 줄 전수 확인 — 적용 범위가 항상 0을 포함하는지 | `바라보는 방향=왼쪽(해부학 제한 좌우반전 적용) … 적용 [-1,96]` — 반전이 정상 동작, 진입각이 전부 허용 범위 안 | **반증.** 재발 아님 |
+| H2 | `stepUpChance` 0.85 상향으로 `ParkourClimb` 결함이 자주 노출됨 | 수정 없는 빌드로 자율 배회 35분 실측(`repro1.log`) | 뛰어내리기 10회 / 되올라가기 10회 전부 정상, RAGDOLL 0회, 구조 0회 | **반증.** 등반 경로는 무결 |
+| H3 | 리더가 남긴 후속 권고대로 `Body.position` 직접 대입이 다른 곳에 더 남아 있다 | `grep -rn "Body\.position[[:space:]]*="` 전수 | 프로덕션 2곳뿐 — `MoveBodyToWorld` 본체와 `RivalStickmanAgent.BeginDuel`(둘 다 Transform도 함께 씀, 주석에 근거 명시) | **반증.** 누락 없음 |
+| H4 | 과거 사고 2(논리 발판 위에서 `GroundedTick` 미호출 → 자유낙하 → 랙돌)가 **다른 상태**에 남아 있다 | ① 실제 `Player.log`에서 `[착지충격] … 상태=BattleMinigame … -> RAGDOLL 전이` 발견 ② PlayMode로 Attack/Getup/BattleMinigame 재현 | `Idle->Attack 몸=(0.000,-10.167)` → `Attack->Ragdoll(강제) 몸=(0.000,-11.886)` → Getup → Fall → 6초 고착 | **입증.** 근본 원인 ① |
+| H5 | 착지 충격 차단막이 **상태 허용목록**이라 H4의 상태들을 못 막는다 | 접지 안전망만 끄고 차단막만 켠 조건에서 실제 물리 바닥 충돌 실측(T1c) | 차단막 단독으로도 RAGDOLL 0회(최저Y −11.968 = 실제 관통 발생) | **입증.** 근본 원인 ② |
+| H6 | Dock 가로 구간 하단(물리 바닥은 있고 논리 발판은 없는 사각지대)에 갇히면 회복이 6초 + 화면 중앙 순간이동이다 | PlayMode에서 Dock 폭을 넓혀 캐릭터를 삼킨 뒤 회복 시간/이동량 측정 | `Idle->Fall 몸=(13.440,-11.801)` → **6.00초** 고착 → `Fall->Idle(강제) 몸=(0.000,-10.167)` = 가로 **13.44유닛** 순간이동 | **입증.** 근본 원인 ③ |
+| H7 | 리더 지적 — 위 수정이 플레이어에만 적용되고 **라이벌**은 별도 경로라 그대로다 | `RivalStickmanAgent.Update()` 정독 + PlayMode 재현(T5/T5n) + 실제 앱에서 라이벌 강제 소환 | 라이벌 `Update()`에 `TickGroundKeepingSafetyNet` / `TickPose` / `EnforceScreenBoundsAndRescue`가 **하나도 없었다**. 수정 전 라이벌: 최저Y −11.968 → 최종 −11.799 **Fall 고착(영구)** | **입증.** 근본 원인 ④ = "한 명이"의 정체 |
+
+### 근본 원인 (4건, 서로 연쇄)
+
+1. **접지 유지(`GroundedTick`) 호출이 상태마다 흩어져 있었고 `Attack`/`Getup`/`BattleMinigame`/`RodeoCursor`에 빠져 있었다.**
+   Dock/창 상단은 **논리 발판일 뿐 물리 콜라이더가 없다.** 그 상태에 들어가는 순간 그 자리에서 자유낙하한다.
+   Dock 단차 1.6375유닛만으로 `v = sqrt(2·9.81·3·1.6375) = 9.8 > ragdollForceThreshold(8)`.
+   → 2026-08-29 라운드가 `WindowTheft`/`TimedSpectacle`에만 넣고 나머지를 빠뜨린 것의 직접 결과다
+   (**"안전장치를 한 곳만 고치고 같은 패턴의 다른 경로에는 안 넣기"** — 이 프로젝트 반복 실패 유형).
+2. **착지 충격 차단막이 상태 허용목록(`Fall`/`Jump`/`LandingCrouch`/`ThrowTumble`)이었다.** 위 1의 상태들은 목록 밖이라 자기 착지가 외력으로 오판됐다.
+3. **Dock 사각지대 회복이 6초 + 화면 가로 중앙 순간이동뿐이었다.** Dock 가로 폭은 실제로 변한다(실측: 앱 하나 켜고 끄면 `x201~1312 ↔ x174~1338`) — 안전망 위에 서 있던 캐릭터가 그 확장에 삼켜지는 것만으로 이 경로에 들어간다.
+4. **라이벌(`RivalStickmanAgent`)은 플레이어가 매 프레임 보장하는 3가지를 하나도 하지 않았다.** 대결 중 1.2초마다 들어가는 `AttackState`(0.4초 자유낙하 = 2.35유닛 > 단차 1.64유닛)로 매 공격마다 Dock 아래로 가라앉았고, 6초 강제 복귀조차 없어 **영원히 못 나왔다.** 라이벌에는 `OnCollisionEnter2D`가 아예 없어(`RagdollLimbImpactRelay`는 부모에 `StickmanAgent`가 없어 무동작) 낙하로는 랙돌이 안 되고, 대신 플레이어의 반격이 계속 들어와 "가라앉은 채 계속 쓰러짐"이 됐다.
+
+### 실측 증거 (수치가 실제 사용자 로그와 정확히 일치)
+
+- 사용자 환경 `Player.log`: `[착지충격] 충돌 충격량=10.18 … 발 y=-11.886`, `충격량=10.01 … 상태=BattleMinigame … -> RAGDOLL 전이`, 이어서 `[RagdollRig]` 7회 / `[캐릭터구조]` 6회(복귀 지점 전부 `(0.000,-10.167)`).
+- 내 네거티브 컨트롤 빌드(`-diagnofix`) 실측: `충격량=10.18`, `충격량=10.01`, `상태=Attack` — **같은 수치**가 재현됐다.
+- 스크린샷: 수정 전 = 캐릭터가 Dock 아이콘 사이에 팔다리가 벌어진 채 파묻힘 + `윽...!`. 수정 후 = 플레이어(검정)/라이벌(빨강) 둘 다 Dock 상단에 정상 직립.
+
+### 수정 (6파일)
+
+- **`States/StickmanBlackboard.cs`**
+  - `GroundedTick()`이 실행 프레임을 기록 → 중복 호출 무해화.
+  - **`TickGroundKeepingSafetyNet(dt)` 신설** — 목록의 방향을 **허용목록에서 제외목록으로 뒤집었다.**
+    `IsGroundKeepingSelfManaged()`에 공중/자기구동 9개(Jump/Fall/ThrowTumble/Ragdoll/Dragged/RodeoCursor/LedgeHang/ParkourClimb/Runaway)만 넣고 **나머지는 전부 기본 보호**. 새 상태를 추가하는 사람이 아무것도 안 해도 안전한 쪽이 기본값이다.
+  - **`TryLiftOutOfSinkhole()` 신설** — "Fall인데 속도가 0"이라는, 정상 낙하에서 성립할 수 없는 조합을 감지해 **가로 이동 없이** 바로 위 발판(=Dock 상단)으로 올려세운다. 목표 높이는 `TryGetFloorWorldY`(가장 낮은 발판 상단)로 고른다 — `RescueToSafeGround`가 "가장 높은 표면"을 쓰다 최대화된 창 꼭대기로 튀었던 사고를 되풀이하지 않기 위해서다.
+- **`States/RagdollImpactResolver.cs`** — `IsOwnLandingContact()`의 상태 허용목록을 **없애고** 판정 기준을 "부딪힌 대상"으로 바꿨다: `collision.rigidbody`가 Dynamic이 아니면(=정적 지면) 발밑 접촉은 내 착지. 라이벌 타격 같은 Dynamic 충돌과 직접 호출 경로(던지기/타격/흔들기)는 그대로 랙돌.
+- **`Core/StickmanAgent.cs`** — 상태 Tick 직후 `TickGroundKeepingSafetyNet(dt)` 1줄.
+- **`Interaction/RivalStickmanAgent.cs`** — 플레이어와 **같은 세 줄을 같은 순서로** 실행하도록 배선 + 테스트용 `Blackboard` 공개(플레이어의 `StickmanAgent.Blackboard`와 대칭).
+- **`Core/StickConfig.cs` + `Data/DefaultStickConfig.asset`** — 신규 4개. 전부 끄면 예전 거동:
+  `groundKeepingSafetyNetEnabled`(true) / `sinkholeLiftRecoveryEnabled`(true) / `sinkholeLiftRestSeconds`(0.35) / `sinkholeLiftMaxHeights`(1.5, **신장 배수** — 배율 불변).
+
+### 회귀 테스트 (신규 10건, `Tests/PlayMode/DockSinkholeRegressionTests.cs`)
+
+배치를 실제와 동일하게 만든다: **씬 `PhysicsGround` 상단 Y를 실측해** 그 높이에 논리 안전망 두 조각을 놓고, 그보다 1.6375유닛 위에 Dock 발판을 놓되 Dock 가로 구간에는 구멍을 남긴다.
+
+| 테스트 | 잠그는 것 | 실측 결과 |
+|--------|-----------|-----------|
+| T1 Attack | Dock 위 Attack → 랙돌 0, Dock 아래로 안 내려감 | 최저Y −10.167, RAGDOLL 0 |
+| T1b BattleMinigame | 실제 로그에 남은 그 상태를 이름으로 못박음 | 최저Y −10.167, RAGDOLL 0 |
+| **T1c 차단막 단독** | 안전망만 끄고 **진짜 물리 바닥 충돌**을 발생시켜 차단막을 실제로 실행시킨다 | 최저Y **−11.968**(관통 발생) 인데 RAGDOLL 0 |
+| **T1n 네거티브** | 두 수정 되돌리면 버그가 실제로 재현 | 최저Y −11.968, **RAGDOLL 1회/18963프레임** |
+| T2 Getup | 같은 조건을 Getup 경로로 | 최저Y −10.167, RAGDOLL 0 |
+| T3 사각지대 | 회복 **2초 미만** + 가로 이동 **0.5유닛 미만** + Dock 상단 복귀 | **0.35초 / 0.000유닛 / −10.167** |
+| **T3n 네거티브** | 회수 끄면 예전 거동 | **6.00초 / 가로 13.440유닛 / (0.000,−10.167)** |
+| T4 과잉차단 방지 | 진짜 외력은 **여전히** 랙돌 | 임계 2배 외력 → 1프레임 만에 Ragdoll |
+| **T5 라이벌** | 라이벌도 같은 보호를 받는가 | 최저Y −10.167, 최종 −10.167(Walk) |
+| **T5n 네거티브** | 라이벌 쪽 수정 끄면 가라앉아 **못 나옴** | 최저Y −11.968, **최종 −11.799 Fall 고착** |
+
+`T1c`를 따로 둔 이유: T1/T1b/T2는 안전망이 낙하 자체를 막아 **두 번째 수정이 한 번도 실행되지 않은 채 통과**한다. 그 상태로 두면 "돌아갈 것 같다"짜리 테스트가 된다.
+
+### 검증
+
+- 컴파일 `error CS`/`warning CS` **0건**, 빌드 경고 0건.
+- **EditMode 50/50**, **PlayMode 172/172**(기존 162 + 신규 10).
+- 실제 앱 실측(격리 빌드, 제품명 `StickMateDbg`로 로그/저장 경로 분리 — 병행 작업 중인 다른 인스턴스와 충돌 없음):
+  - 수정 전(`-diagnofix`): RAGDOLL 5회 / `[캐릭터구조]` 5회, 스크린샷에서 Dock에 파묻힘 확인.
+  - 수정 후: 같은 트리거를 반복해도 `[사각지대회수] 8회` / `[접지안전망] 8회` / **`[캐릭터구조] 0회`**, 회복 시간 0.35초, 가로 이동 0.
+  - 자율 배회 35분 무개입: RAGDOLL 0 / 구조 0 / 뛰어내리기·되올라가기 각 10회 정상.
+
+### 교차 레이어 영향 로그
+
+- **★ 플레이어와 라이벌의 "프레임 계약"이 갈라져 있었다.** 앞으로 `StickmanAgent.Update()`에 매 프레임 보장을 추가하는 사람은 **반드시 `RivalStickmanAgent.Update()`에도 같은 줄을 넣어야 한다.** 이번에 3건이 한꺼번에 누락돼 있었다(`TickGroundKeepingSafetyNet`/`TickPose`/`EnforceScreenBoundsAndRescue`). `TickPose` 누락은 라이벌의 물리 모드/포즈가 상태와 어긋난 채 남을 수 있었다는 뜻이기도 하다.
+- **진단 가능성 결함(수정함)**: `[착지충격]` 로그가 시작 직후 6건만 남기고 침묵해서, 정작 문제의 RAGDOLL 5건은 **원인 줄이 하나도 안 남았다.** `verboseDiagnosticsLogging`을 켜면 임계값 이상은 계속 남지만, 기본값에서 "가장 중요한 사건의 원인만 안 찍히는" 구조였다. 지금 코드는 그대로 두었으나(로그 홍수 방지 의도가 명확) **리더 판단 필요**: 임계값 초과 충돌만이라도 표본 제한에서 빼는 편이 낫다.
+
+### 미해결 / 알려진 제약 (리더 판단 필요)
+
+1. **Dock 가로 구간의 물리 바닥과 논리 발판이 여전히 어긋나 있다.** 이번 수정은 그 사각지대에 빠졌을 때 0.35초 만에 회수하는 것이지 사각지대를 없앤 것이 아니다. 근본 해법은 **Dock 가로 구간의 물리 바닥을 Dock 상단 높이로 올리는 계단**을 `TryGetDockSpanOsScreen`(논리 발판과 같은 단일 소스)에서 파생시키는 것인데, 그러려면 씬 배선(`Assets/Editor/SceneBootstrapper.cs`)이 필요하다 — **그 파일은 지금 다른 에이전트가 편집 중이라 이번 라운드에서 손대지 않았다.**
+2. **`RodeoCursorState`는 제외목록에 넣었다**(커서에 올라타 위치를 스스로 구동하므로). 그 상태에서 논리 발판 위 자유낙하가 문제가 될 수 있는지는 별도 확인이 필요하다(`rodeoCursorEnabled` 기본 0이라 현재 도달 불가).
+3. `RivalStickmanAgent.BeginDuel:107`은 아직 `MoveBodyToWorld` 창구를 쓰지 않는다(그 시점에 블랙보드가 없어서 — 주석에 근거 명시). 이제 `Blackboard` 프로퍼티가 생겼으므로 `EnsureMachineBuilt()`를 먼저 부르고 창구로 통일하는 정리가 가능하다.
+
+### 다른 에이전트 작업에서 발견한 플래키 테스트 (내 변경과 무관 — 코더 전달)
+
+**Minor / `Tests/PlayMode/CharacterPortraitStageTests.HiddenPoseDrawsNothingAndStandingPoseDrawsLines`**
+
+- 재현: 전체 PlayMode 3회 중 **1회** 실패(`Expected: 0 / But was: 8`). 같은 소스로 즉시 재실행하면 통과(182/182), 필터 단독 실행도 통과. 내 변경을 전부 되돌린 기준선에서도 통과 — 즉 **결정론적 인과가 아니라 타이밍 경합**이다.
+- 근본 원인(코드로 확인): `Interaction/CharacterInfoWindow.cs:327-333`의 `RefreshPresence()`는 **플레이어 상태가 바뀐 프레임에만** `_stage.SetPose(PoseForState(id))`를 밀어넣는다. 테스트는 창을 연 채 `stage.SetPose(Hidden)`을 **직접** 호출한 뒤 `yield return null` **한 프레임만** 기다린다. 그 한 프레임 사이에 자율 배회(`AutoWanderController`)가 Idle↔Walk를 넘기면 창이 포즈를 `Standing`으로 덮어써 선 8개가 되살아난다. 배회 전이 주기가 1.5~4초라 실행마다 확률적으로 걸린다.
+- 수정 제안(둘 중 하나): (a) 테스트가 포즈를 직접 세팅하기 전에 `bb.IntentSource`를 정지 소스로 갈아끼워 상태를 고정한다(이 프로젝트 PlayMode 표준 관례), (b) `CharacterPortraitStage`에 "수동 오버라이드 중" 플래그를 두어 창의 자동 갱신이 덮어쓰지 않게 한다.
+- 내 변경은 이 경합의 **원인이 아니라 타이밍만 흔들었다**(사각지대 회수/접지 안전망 로그가 그 테스트 구간에 단 한 줄도 없다 — `play3.log` 기준 첫 발생 라인 10834 > 테스트 종료 라인 3762).

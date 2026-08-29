@@ -1473,6 +1473,48 @@ namespace StickMate.Core
                  "이 스위치와 무관하게 그대로 랙돌을 발생시킨다.")]
         public bool landingImpactRagdollShield = true;
 
+        // ================================================================================
+        // ★ 2026-08-30 (디버거) — 사용자 신고 "갑자기 독 아래로 떨어지면서 관절이 이상하게 꺾임"
+        // ================================================================================
+        // 실측으로 확정한 인과(재현 로그: Tests/PlayMode/DockSinkholeRegressionTests.cs, 실제 앱
+        // Player.log의 "[착지충격] ... 상태=BattleMinigame ... -> RAGDOLL 전이"):
+        //   Dock/창 상단은 **논리 발판일 뿐 물리 콜라이더가 없다.** 그래서 매 프레임 접지 스냅
+        //   (StickmanBlackboard.GroundedTick)을 부르지 않는 상태에 들어가는 순간 캐릭터는 그 자리에서
+        //   자유낙하해 화면 최하단 물리 바닥(PhysicsGround)에 전속력으로 부딪히고, 그 충격이
+        //   RAGDOLL 임계값을 넘겨 **관절이 꺾인 채 Dock 아래에 널브러진다.**
+        //   그 접지 스냅 호출은 2026-08-29 라운드에 WindowTheft/TimedSpectacle에만 추가됐고
+        //   Attack/Getup/BattleMinigame에는 여전히 빠져 있었다("안전장치를 한 곳만 고치고 같은 패턴의
+        //   다른 경로에는 안 넣는" 이 프로젝트의 반복 실패 유형).
+        [Header("접지 유지 안전망 / Dock 사각지대 회수 (2026-08-30 디버거)")]
+
+        [Tooltip("★ 접지 유지 안전망(기본 ON). 상태가 스스로 GroundedTick()을 부르지 않아도 " +
+                 "StickmanAgent가 상태 Tick 직후 **한 곳에서** 대신 불러준다. 새 상태를 추가하는 " +
+                 "사람이 이 호출을 빠뜨려도 '논리 발판 위에서 자유낙하 -> 물리 바닥 충돌 -> RAGDOLL'이 " +
+                 "구조적으로 재발하지 않게 만드는 것이 목적이다(허용목록이 아니라 **제외목록** 방식 — " +
+                 "공중/자기구동 상태만 빼고 나머지는 전부 기본 보호). 끄면 예전처럼 각 상태가 스스로 " +
+                 "부른 것만 동작한다(네거티브 컨트롤).")]
+        public bool groundKeepingSafetyNetEnabled = true;
+
+        [Tooltip("★ Dock 사각지대 즉시 회수(기본 ON). Dock 가로 구간의 화면 최하단은 '물리적으로는 " +
+                 "떠받쳐지지만 논리적으로는 접지하지 않는' 사각지대다(Editor/SceneBootstrapper의 " +
+                 "CreateGroundCollider 문서 참고). 그리로 흘러든 캐릭터는 Fall 상태인데도 **속도 0으로 " +
+                 "멈춰 있어** 착지가 영원히 확정되지 않고, 6초 뒤 화면 가로 중앙으로 순간이동하는 " +
+                 "최종 안전망(RescueToSafeGround)에 걸릴 때까지 Dock 아래에 박혀 있었다. 켜면 그 상태를 " +
+                 "속도로 감지해 **그 자리에서 바로 위 발판(=Dock 상단)으로 올려세운다** — 가로 " +
+                 "순간이동이 없고 6초가 아니라 sinkholeLiftRestSeconds 만에 회복된다. " +
+                 "끄면 예전 거동(6초 후 화면 중앙 복귀)으로 돌아간다(네거티브 컨트롤).")]
+        public bool sinkholeLiftRecoveryEnabled = true;
+
+        [Tooltip("사각지대 판정에 필요한 '멈춰 있음' 지속 시간(초). 낙하 중에는 속도가 0으로 이만큼 " +
+                 "유지될 수 없으므로 오탐이 구조적으로 어렵다.")]
+        public float sinkholeLiftRestSeconds = 0.35f;
+
+        [Tooltip("사각지대 회수가 캐릭터를 끌어올릴 수 있는 최대 높이(**신장 배수**). Dock 단차는 " +
+                 "신장의 약 0.96배(1.64유닛 / 신장 1.71유닛)라 기본 1.5배면 충분하고, 그보다 큰 " +
+                 "낙차는 '진짜로 잃어버린 것'이라 기존 6초 안전망에 맡긴다. ★ 거리 성분이라 " +
+                 "신장 배수로 노출한다(캐릭터 배율 불변).")]
+        public float sinkholeLiftMaxHeights = 1.5f;
+
         [Tooltip("무릎앉아가 **최대 깊이**가 되는 낙하 높이 — rollLandingHeightThreshold 위로 신장의 " +
                  "몇 배를 더 떨어졌을 때인가(신장 배수). 기본 3은 배율 0.75(신장 1.71유닛)에서 " +
                  "임계값 2유닛 + 5.12유닛 = 7.1유닛 낙하다. 즉 '화면 위쪽 창에서 바닥까지' 정도가 " +

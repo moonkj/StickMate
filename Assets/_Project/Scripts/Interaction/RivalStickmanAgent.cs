@@ -47,6 +47,15 @@ namespace StickMate.Interaction
 
         public bool InDuel => _inDuel;
 
+        /// <summary>
+        /// 이 라이벌의 상태/물리 컨텍스트(대결 전에는 null — <see cref="BeginDuel"/>의
+        /// EnsureMachineBuilt()에서 최초 1회 만들어진다). Core/StickmanAgent.Blackboard와 **같은 의도**로
+        /// 공개한다: 이 프로젝트의 검증은 로그와 PlayMode 실측이 유일한 수단인데, 라이벌만 이 통로가
+        /// 없어서 "플레이어는 고쳤는데 라이벌은 그대로"인 결함(2026-08-30 "한 명이 독 아래에서 계속
+        /// 쓰러짐")을 테스트로 잠글 방법이 아예 없었다.
+        /// </summary>
+        public StickmanBlackboard Blackboard => _blackboard;
+
         private void Awake()
         {
             _body = GetComponent<Rigidbody2D>();
@@ -184,7 +193,38 @@ namespace StickMate.Interaction
 
             _pursuit.Tick(dt);
             _machine.Tick(dt);
+
+            // ================================================================================
+            // ★★ 2026-08-30 (디버거) — 사용자 신고 **"한 명이 독 아래에서 계속 쓰러짐"**
+            // ================================================================================
+            // 라이벌은 플레이어(Core/StickmanAgent.Update)가 매 프레임 보장하는 **세 가지**를 하나도
+            // 하지 않고 있었다. 그래서 같은 상황에서 플레이어만 회복하고 라이벌만 Dock 아래에 남았다 —
+            // 사용자가 "한 명이"라고 정확히 짚은 비대칭의 정체다. 실측 인과:
+            //
+            //   · 대결 중 라이벌은 rivalAttackCooldownSeconds(1.2초)마다 AttackState에 들어간다.
+            //     AttackState는 접지 스냅(GroundedTick)을 부르지 않고, 이 프로젝트의 발판
+            //     (Dock/창 상단)은 **논리 발판일 뿐 물리 콜라이더가 없다.** attackDuration 0.4초
+            //     자유낙하 = 0.5*29.43*0.4² = 2.35유닛 > Dock 단차 1.64유닛 —
+            //     **공격 한 번마다 Dock 아래로 가라앉는다.**
+            //   · 가라앉은 자리는 논리 발판이 없는 사각지대라 착지가 확정되지 않고 Fall에 고착된다.
+            //     플레이어에게는 6초 강제 복귀(EnforceScreenBoundsAndRescue)가 있지만 **라이벌은
+            //     그 호출 자체가 없어서 영원히 못 나온다.**
+            //   · 그 상태에서 플레이어의 반격(TickCombatExchange)이 계속 들어와 RAGDOLL이 반복된다
+            //     = "계속 쓰러짐".
+            //
+            // 고치는 방법은 "라이벌 전용 예외"를 만드는 것이 아니라, **플레이어와 같은 세 줄을 같은
+            // 순서로 실행**하는 것이다. 라이벌은 별도 StickmanBlackboard/StickmanStateMachine
+            // 인스턴스를 갖고 있을 뿐 계약은 완전히 동일하므로, 두 캐릭터의 프레임 계약이 갈라져
+            // 있었다는 사실 자체가 결함이었다(이 프로젝트가 반복해 겪은 "한쪽만 고치는" 실패 유형).
+            _blackboard.TickGroundKeepingSafetyNet(dt);
+            _blackboard.TickPose(dt);
+
             TickCombatExchange(dt);
+
+            // 플레이어와 동일하게 **마지막에** 화면 클램프 + 사각지대 회수 + 6초 최종 안전망을 돌린다
+            // (StickmanAgent.Update()의 마지막 줄과 같은 이유: 어떤 상태가 어떤 이유로 몸을 옮겼든
+            // 그 결과를 여기서 되돌린다). 이게 없어서 라이벌만 Dock 아래에 영구히 남았다.
+            if (_inDuel) _blackboard.EnforceScreenBoundsAndRescue(dt);
 
             float maxDuration = _config != null ? _config.rivalMaxDurationSeconds : 30f;
             if (_inDuel && _durationTimer >= maxDuration)
