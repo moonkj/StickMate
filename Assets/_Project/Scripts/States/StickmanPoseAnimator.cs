@@ -499,6 +499,172 @@ namespace StickMate.States
             return y;
         }
 
+        /// <summary>
+        /// ★ 낙하 중 공중 자세(2026-08-29, 사용자 요청 "떨어질때 관절이 이상하게 꺾이면서 넘어지는데").
+        ///
+        /// 왜 필요한가: StickmanBlackboard.TickPose()는 상태 ID로 포즈를 고르는데 Fall에 해당하는
+        /// 분기가 없어 지금까지 낙하 중에도 <see cref="ApplyIdlePose"/>(직립 중립)가 적용되고 있었다 —
+        /// 팔을 살짝 벌리고 다리를 곧게 편 채 막대기가 그대로 내려오는 그림이다.
+        ///
+        /// 자세의 형태(Alan Becker 계열 졸라맨 레퍼런스): **팔은 위/바깥으로, 다리는 살짝 접힘.**
+        /// 사람이 떨어질 때 팔이 위로 뜨는 이유는 공기 저항이 아니라 몸통이 팔보다 먼저 가속되기
+        /// 때문이라, 이것이 낙하를 알리는 가장 큰 신호다. 각도 규약은 이 클래스 전체와 같다:
+        /// 마디 로컬 −y가 끝(손/발), 각도 0이 "곧게 아래", 끝 방향은 (sinθ, −cosθ)다. 따라서
+        /// **팔을 위-바깥으로 뻗는다 = 어깨 각도 ±152도**(부호는 그 팔의 바깥 방향 NeutralSign)이며,
+        /// 180이면 정확히 수직 위, 152면 수직에서 바깥으로 28도 벌어진 만세 자세다.
+        ///
+        /// <paramref name="intensity01"/>는 "지금 얼마나 빠르게 떨어지고 있는가"(0~1)다 — 호출부가
+        /// 하강 속도를 신장으로 나눈 무차원 값에서 만든다(StickmanBlackboard.ComputeFallPoseIntensity).
+        /// 이 값으로 Idle 중립 포즈와 낙하 자세를 섞으므로, 막 떨어지기 시작한 순간에는 자세가 거의
+        /// 변하지 않다가 최고 속도에 가까워질수록 만세 자세가 완성된다(리더 지시 "낙하 속도/시간에 따라
+        /// 자세가 점진적으로 변하면 더 좋다"). 한 계단 내려서는 정도의 짧은 낙하에서는 사실상 자세가
+        /// 바뀌지 않는다는 부수 효과도 여기서 나온다.
+        ///
+        /// 몸 오프셋은 0으로 되돌린다 — 공중에는 "발이 닿는 지면"이 없으므로 보행/착지에서 쓰는
+        /// 접지 보정(<see cref="ComputeFootGroundingOffset"/>)이 의미를 갖지 않는다.
+        /// </summary>
+        public void ApplyFallPose(float deltaTime, in PoseSettings idle, in FallPoseSettings fall,
+            float smoothingRate, float intensity01)
+        {
+            SetBodyOffset(0f);
+
+            float t = Mathf.Clamp01(intensity01);
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float upper;
+                float lower;
+                if (limb.IsLeg)
+                {
+                    // 다리는 좌우로 벌리면서(NeutralSign) 공통으로 앞쪽으로 살짝 들어올린다(HipDegrees).
+                    upper = limb.NeutralSign * fall.LegSpreadDegrees + fall.HipDegrees;
+                    lower = KneeBendSign * Mathf.Max(0f, fall.KneeBendDegrees);
+                }
+                else
+                {
+                    // 만세 — 부호가 곧 그 팔의 바깥 방향이므로 좌우 대칭이 자동으로 보장된다.
+                    upper = limb.NeutralSign * fall.ArmRaiseDegrees;
+                    lower = ElbowBendSign * Mathf.Max(0f, fall.ElbowBendDegrees);
+                }
+
+                upper = Mathf.LerpAngle(NeutralUpperAngle(limb, idle), upper, t);
+                lower = Mathf.LerpAngle(NeutralLowerAngle(limb, idle), lower, t);
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+        }
+
+        /// <summary>
+        /// ★★ 무릎앉아 착지 포즈(2026-08-29, 사용자 요청의 핵심 — "떨어질때 무릎앉아 형태로 멋지게
+        /// 착지해야지"). States/LandingCrouchState.cs가 매 프레임 자기 진행 곡선의 값을
+        /// <paramref name="amount"/>로 넘겨 호출한다.
+        ///
+        /// ============================================================================
+        /// 앉는 "깊이"를 왜 거리 값으로 두지 않았는가 (배율 대응의 핵심)
+        /// ============================================================================
+        /// 몸이 얼마나 내려앉는지는 별도의 설정값이 아니라 **무릎/엉덩이 각도에서 유도**된다.
+        /// <see cref="ComputeFootGroundingOffset"/>이 "지금 이 다리 각도에서 발이 지면에 정확히 닿으려면
+        /// 몸이 얼마나 오르내려야 하는가"를 실제 마디 길이로 역산해 주기 때문이다. 덕분에
+        ///   · 캐릭터 배율(StickConfig.characterScale)이 바뀌어도 발이 뜨거나 지면을 파고들지 않고,
+        ///   · 각도만 만지면 깊이가 따라오므로 "각도와 깊이가 서로 어긋나는" 상태 자체가 존재할 수 없다.
+        /// 각도는 크기와 무관한 양이므로 StickConfig에 절대값으로 두는 것이 맞다(리더 지시).
+        ///
+        /// ============================================================================
+        /// 좌우 비대칭 = "멋지게"의 실질적 내용
+        /// ============================================================================
+        /// 두 다리를 같은 각도로 굽히면 그냥 쪼그려 앉은 그림이다. 바깥 방향 부호가 +인 쪽(오른쪽
+        /// 마디)을 **앞**, −인 쪽을 **뒤**로 고정해서
+        ///   · 앞다리: 엉덩이를 크게 앞으로 + 무릎을 깊게 접어 앞발로 바닥을 디디고,
+        ///   · 뒷다리: 허벅지를 거의 수직으로 세우고 무릎을 얕게 접어 **무릎이 바닥에 닿을 듯 말 듯**,
+        ///   · 앞팔: 손이 바닥 쪽으로 내려가 몸을 받치고(3점 착지),
+        ///   · 뒷팔: 뒤로 크게 젖혀 균형을 잡는다.
+        /// 최종 적용 시점(<see cref="ApplyAngle"/>)에서 _facingSign이 곱해지므로, 캐릭터가 왼쪽을 보고
+        /// 있으면 이 "앞/뒤"가 통째로 좌우 반전되어 항상 진행 방향이 앞이 된다.
+        ///
+        /// ============================================================================
+        /// amount가 음수일 수 있다 — 눌렸다가 펴지는 반동
+        /// ============================================================================
+        /// 0 = 직립 중립, 1 = 최대 깊이. 일어서는 구간의 끝에서 호출부가 잠깐 **음수**를 넘기며, 그때는
+        /// 중립보다 더 편 자세(다리 완전 직립 + 팔을 바깥으로 더 벌림)로 섞어 몸이 살짝 위로 솟았다가
+        /// 가라앉게 한다. Mathf.LerpAngle은 t를 0~1로 clamp하므로 음수를 그대로 넘겨 외삽할 수 없어,
+        /// 양수/음수 두 갈래를 명시적으로 나눠 섞는다. 무릎 굽힘은 어느 갈래에서도 0 미만이 될 수 없다
+        /// (사람 무릎은 뒤로 꺾이지 않는다 — 이 클래스 전체의 불변식).
+        /// </summary>
+        public void ApplyLandingCrouchPose(float deltaTime, in PoseSettings idle,
+            in LandingCrouchPoseSettings crouch, float smoothingRate, float amount)
+        {
+            float down = Mathf.Clamp01(amount);
+            float up = Mathf.Clamp01(-amount);
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                bool front = limb.NeutralSign >= 0f;
+                float upper = NeutralUpperAngle(limb, idle);
+                float lower = NeutralLowerAngle(limb, idle);
+
+                if (limb.IsLeg)
+                {
+                    float deepHip = front ? crouch.FrontHipDegrees : crouch.RearHipDegrees;
+                    float deepKnee = KneeBendSign * Mathf.Max(0f, front ? crouch.FrontKneeDegrees : crouch.RearKneeDegrees);
+                    upper = Mathf.LerpAngle(upper, deepHip, down);
+                    lower = Mathf.LerpAngle(lower, deepKnee, down);
+                    if (up > 0f)
+                    {
+                        // 완전 직립(엉덩이 0 / 무릎 0)이 이 리그에서 가능한 가장 "편" 자세다 —
+                        // 그때 발끝이 가장 깊이 내려가므로 접지 보정이 몸을 중립보다 위로 올린다.
+                        upper = Mathf.LerpAngle(upper, 0f, up);
+                        lower = Mathf.LerpAngle(lower, 0f, up);
+                    }
+                }
+                else
+                {
+                    float deepShoulder = front ? crouch.FrontArmDegrees : crouch.RearArmDegrees;
+                    float deepElbow = ElbowBendSign * Mathf.Max(0f, front ? crouch.FrontElbowDegrees : crouch.RearElbowDegrees);
+                    upper = Mathf.LerpAngle(upper, deepShoulder, down);
+                    lower = Mathf.LerpAngle(lower, deepElbow, down);
+                    if (up > 0f)
+                    {
+                        upper = Mathf.LerpAngle(upper, limb.NeutralSign * (idle.ArmSpreadDegrees + ReboundArmSpreadDegrees), up);
+                        lower = Mathf.LerpAngle(lower, ElbowBendSign * idle.IdleElbowBendDegrees * ReboundElbowRatio, up);
+                    }
+                }
+
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+
+            // ★ 몸 높이는 **이번 프레임에 실제로 적용된 각도**에서 계산한다 — 걷기(TickWalkPose)가
+            // 각도 적용 **전에** 직전 프레임 각도로 계산하는 것과 일부러 다르다.
+            //
+            // 왜 다른가: 걷기의 접지 보정은 사이클에 걸쳐 완만히 변해 한 프레임 지연이 눈에 띄지 않지만,
+            // 무릎앉아의 "눌림" 구간은 0.1~0.2초 안에 몸을 신장의 16~20%만큼 내린다. 그 구간에서 한
+            // 프레임 지연은 곧 발이 지면에서 그만큼 뜨는 것이고, 낮은 fps일수록 커진다. 각도를 먼저
+            // 확정하고 그 각도로 몸 높이를 정한 뒤 위 마디의 부착점만 새 오프셋으로 다시 적용하면
+            // (아래 두 줄) 그 지연이 원리적으로 0이 된다 — 이 상태에서는 "발이 지면에 붙어 있다"가
+            // 근사가 아니라 항등식이다.
+            SetBodyOffset(ComputeFootGroundingOffset());
+            ReapplyCurrentAngles();
+        }
+
+        /// <summary>지금 보간 상태(Segment.CurrentAngle)를 각도 변경 없이 다시 적용한다. 각도 자체는
+        /// 그대로이므로 회전은 바뀌지 않고, <see cref="ApplyAngle"/>이 함께 계산하는 **부착점 위치**만
+        /// 최신 몸 오프셋(_bodyOffsetY)으로 갱신된다. 마디 4~8개짜리 루프라 비용은 무시할 수준이다.</summary>
+        private void ReapplyCurrentAngles()
+        {
+            for (int i = 0; i < _segments.Length; i++)
+            {
+                ApplyAngle(_segments[i], _segments[i].CurrentAngle);
+            }
+        }
+
+        /// <summary>일어서는 반동에서 팔을 중립보다 얼마나 더 바깥으로 벌릴지(도). 튜닝 스칼라가 아니라
+        /// **자세의 형태**라 StickConfig가 아니라 여기 상수로 둔다(보행 키프레임 표와 같은 판단 기준 —
+        /// 이 값 하나만 따로 만지면 반동의 의미가 깨진다). 반동의 크기 자체는
+        /// StickConfig.landingCrouchReboundAmount가 정한다.</summary>
+        private const float ReboundArmSpreadDegrees = 46f;
+
+        /// <summary>일어서는 반동에서 팔꿈치를 중립 대비 얼마나 펼지(비율). 위 상수와 같은 성격.</summary>
+        private const float ReboundElbowRatio = 0.35f;
+
         /// <summary>보간 없이 즉시 중립 포즈로 스냅(첫 프레임 초기화 전용 — StickmanAgent.Awake()).</summary>
         public void ApplyIdlePoseImmediate(in PoseSettings settings)
         {
@@ -907,6 +1073,59 @@ namespace StickMate.States
                 KneeBendDegrees = kneeBend;
                 SwayAmplitudeDegrees = swayAmplitude;
                 SwayFrequencyHz = swayFrequencyHz;
+            }
+        }
+
+        /// <summary>
+        /// 낙하 중 공중 자세 각도 묶음(<see cref="ApplyFallPose"/>). 위 두 구조체와 같은 성격·같은
+        /// 컨벤션(readonly struct + in 파라미터 — 매 프레임 경로라 힙 할당/복사 비용이 없다).
+        /// StickmanBlackboard.BuildFallPoseSettings()가 StickConfig에서 구성해 넘긴다.
+        /// </summary>
+        public readonly struct FallPoseSettings
+        {
+            public readonly float ArmRaiseDegrees;
+            public readonly float ElbowBendDegrees;
+            public readonly float LegSpreadDegrees;
+            public readonly float HipDegrees;
+            public readonly float KneeBendDegrees;
+
+            public FallPoseSettings(float armRaise, float elbowBend, float legSpread, float hip, float kneeBend)
+            {
+                ArmRaiseDegrees = armRaise;
+                ElbowBendDegrees = elbowBend;
+                LegSpreadDegrees = legSpread;
+                HipDegrees = hip;
+                KneeBendDegrees = kneeBend;
+            }
+        }
+
+        /// <summary>
+        /// 무릎앉아 착지 포즈의 **최대 깊이 각도** 묶음(<see cref="ApplyLandingCrouchPose"/>).
+        /// 여기 담긴 값은 전부 "amount=1일 때의 각도"이며, 중간 깊이는 Idle 중립과의 보간으로 만들어진다.
+        /// StickmanBlackboard.BuildLandingCrouchPoseSettings()가 StickConfig에서 구성해 넘긴다.
+        /// </summary>
+        public readonly struct LandingCrouchPoseSettings
+        {
+            public readonly float FrontHipDegrees;
+            public readonly float FrontKneeDegrees;
+            public readonly float RearHipDegrees;
+            public readonly float RearKneeDegrees;
+            public readonly float FrontArmDegrees;
+            public readonly float FrontElbowDegrees;
+            public readonly float RearArmDegrees;
+            public readonly float RearElbowDegrees;
+
+            public LandingCrouchPoseSettings(float frontHip, float frontKnee, float rearHip, float rearKnee,
+                float frontArm, float frontElbow, float rearArm, float rearElbow)
+            {
+                FrontHipDegrees = frontHip;
+                FrontKneeDegrees = frontKnee;
+                RearHipDegrees = rearHip;
+                RearKneeDegrees = rearKnee;
+                FrontArmDegrees = frontArm;
+                FrontElbowDegrees = frontElbow;
+                RearArmDegrees = rearArm;
+                RearElbowDegrees = rearElbow;
             }
         }
     }

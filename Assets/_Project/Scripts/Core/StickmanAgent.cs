@@ -190,10 +190,22 @@ namespace StickMate.Core
             RagdollImpactResolver.TryApplyImpact(_blackboard, impulseMagnitude);
         }
 
+        /// <summary>
+        /// ★ 충돌 콜백 전용 통지(2026-08-29, "무릎앉아 착지" 라운드). <see cref="ReportExternalImpact"/>와
+        /// 같은 판정을 쓰되, 그 앞에 "이건 외력이 아니라 내 착지다"라는 예외 하나가 추가된 경로다 —
+        /// 판정과 근거는 전부 States/RagdollImpactResolver.TryApplyCollisionImpact 문서에 있다.
+        /// 루트(아래 OnCollisionEnter2D)와 비루트 파츠(Core/RagdollLimbImpactRelay)가 함께 쓴다.
+        /// </summary>
+        public void ReportCollisionImpact(Collision2D collision, float impulseMagnitude)
+        {
+            if (_isSuspended || _machine == null || _config == null) return;
+            RagdollImpactResolver.TryApplyCollisionImpact(_blackboard, collision, impulseMagnitude);
+        }
+
         private void OnCollisionEnter2D(Collision2D collision)
         {
             if (_body == null) return;
-            ReportExternalImpact(collision.relativeVelocity.magnitude * _body.mass);
+            ReportCollisionImpact(collision, collision.relativeVelocity.magnitude * _body.mass);
         }
 
         private void Awake()
@@ -251,6 +263,10 @@ namespace StickMate.Core
                 { StickmanStateId.Walk, new WalkState(_blackboard) },
                 { StickmanStateId.Jump, new JumpState(_blackboard) },
                 { StickmanStateId.Fall, new FallState(_blackboard) },
+                // 무릎앉아 착지(사용자 명시 요청 2026-08-29) — FallState가 착지를 확정하면서 낙하 높이가
+                // StickConfig.rollLandingHeightThreshold 이상일 때만 전이시킨다. 등록을 빠뜨리면
+                // ChangeState가 BUG-M2 방어 코드(에러 로그 + 현재 상태 유지)를 밟아 연출이 통째로 사라진다.
+                { StickmanStateId.LandingCrouch, new LandingCrouchState(_blackboard) },
                 { StickmanStateId.ParkourClimb, new ParkourClimbState(_blackboard) },
                 // 매달려 내려가기(ParkourClimb의 하강 방향, 사용자 명시 요청 2026-08-28).
                 { StickmanStateId.LedgeHang, new LedgeHangState(_blackboard) },

@@ -105,6 +105,27 @@ namespace StickMate.Core
         /// 등반 경로까지 회귀 위험에 노출된다.
         /// </summary>
         LedgeHang,
+
+        // ==== 무릎앉아 착지 (사용자 명시 요청 2026-08-29: "떨어질때 관절이 이상하게 꺾이면서 넘어지는데
+        // 떨어질때 무릎앉아 형태로 멋지게 착지해야지") ====
+
+        /// <summary>
+        /// 높은 곳에서 떨어져 착지한 직후, **한쪽 무릎을 굽혀 낮게 앉아 충격을 흡수했다가 일어서는**
+        /// 짧은 능동 상태(States/LandingCrouchState.cs). docs/UX_FLOW.md 4절의 "구르기(ROLL)" 행이
+        /// 요구하던 "부드러운 착지 연출"의 실체이며, 그 판정 신호였던
+        /// <see cref="StickmanEventBus.LandingRollRequested"/>와 **같은 조건**
+        /// (낙하 높이 &gt;= StickConfig.rollLandingHeightThreshold)에서 FallState가 직접 전이시킨다.
+        ///
+        /// 왜 이벤트 구독자가 아니라 FallState의 직접 전이인가: 착지 직후의 상태 전이는 "있으면 좋은
+        /// 연출"이 아니라 **다음 상태를 결정하는 흐름 그 자체**다. 이벤트 구독자에게 맡기면 FallState가
+        /// 같은 프레임에 이미 Idle/Walk로 전이한 뒤에 구독자가 다시 ChangeState를 부르는 순서 의존이
+        /// 생기고, 구독자가 없으면(이 프로젝트에서 6번 반복된 실패 유형) 조용히 사라진다.
+        /// LandingRollRequested는 먼지 파티클 같은 **부수 연출**용으로 그대로 남는다.
+        ///
+        /// 정상 종료는 Idle/Walk(착지 시점의 이동 의도로 분기)이며, 도중 외력 임계값 초과 시 다른 능동
+        /// 상태와 똑같이 Ragdoll로 강제 인터럽트될 수 있다.
+        /// </summary>
+        LandingCrouch,
     }
 
     /// <summary>

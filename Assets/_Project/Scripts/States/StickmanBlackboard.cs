@@ -34,6 +34,19 @@ namespace StickMate.States
         public float LastImpactMagnitude;
 
         /// <summary>
+        /// ★ 마지막 착지에서 실제로 떨어진 높이(월드 유닛). FallState.ConfirmLanding()이
+        /// StickmanEventBus.LandingRollRequested에 싣는 것과 **정확히 같은 값**을 여기에도 남긴 뒤
+        /// LandingCrouch로 전이하고, LandingCrouchState.Enter()가 이 스냅샷 하나로 앉는 깊이와 유지
+        /// 시간을 함께 정한다("높을수록 더 깊이 앉고 더 오래 유지" — 리더 지시).
+        ///
+        /// LastImpactMagnitude와 완전히 같은 관례다(전이를 확정하기 직전에 원인이 되는 물리량을
+        /// 스냅샷으로 남기고, 진입한 상태가 그 하나에서 모든 파생값을 만든다). 이 값을 이벤트
+        /// 페이로드에서 다시 읽지 않는 이유는, 이벤트 구독자가 0명이어도 착지 연출은 반드시 동작해야
+        /// 하기 때문이다 — 이 프로젝트에서 "구독자가 없어 기능이 통째로 죽어 있던" 사례가 6번 있었다.
+        /// </summary>
+        public float LastLandingFallHeight;
+
+        /// <summary>
         /// 이동 의도의 유일한 출처(BUG-P1-B2 대응, docs/BUG_REPORT_PHASE1.md Blocker). 예전에는
         /// StickmanAgent.Update()가 UnityEngine.Input.GetAxisRaw/GetButtonDown을 직접 읽어
         /// MoveInputX/JumpPressed 필드에 대입했지만, 키보드 의존은 실제 분리 오버레이(WS_EX_NOACTIVATE)가
@@ -211,6 +224,10 @@ namespace StickMate.States
 
         // 머리 안 눈동자 점 제어(States/EyeController.cs). 같은 지연 생성/캐싱 패턴.
         private EyeController _eyeController;
+
+        // 캐릭터 실측 치수 조회 창구(Core/StickmanMetrics.cs). 같은 지연 생성/캐싱 패턴 — 낙하 자세의
+        // "초당 몇 신장을 떨어지는가" 무차원화와 착지 깊이 램프의 신장 배수 환산에 쓴다.
+        private StickmanMetrics _metrics;
 
         // 마지막으로 확정된 바라보는 방향(+1 오른쪽 / -1 왼쪽). 이동 의도가 불감대 이하일 때는 갱신하지
         // 않고 그대로 유지한다(정지 중에 방향이 흔들리지 않게).
@@ -828,6 +845,23 @@ namespace StickMate.States
             rig.SnapRootUpright();
             if (Machine.CurrentStateId == StickmanStateId.Walk) return;
 
+            // ★ 무릎앉아 착지(2026-08-29) — Walk와 **완전히 같은 이유**로 여기서 아무 것도 하지 않는다:
+            // 포즈를 이미 LandingCrouchState.Tick()이 자기 진행 곡선으로 세팅했다. 이 분기를 빠뜨리면
+            // 아래 ApplyIdlePose가 매 프레임 그 위에 중립 포즈를 덧씌워 연출이 통째로 사라진다.
+            if (Machine.CurrentStateId == StickmanStateId.LandingCrouch) return;
+
+            // ★ 낙하 중 공중 자세(2026-08-29, 사용자 요청 "떨어질때 관절이 이상하게 꺾이면서 넘어지는데").
+            // 여기에 분기가 없어서 지금까지 낙하 중에도 아래 Idle 중립 포즈가 적용됐다 — 막대기가 그대로
+            // 내려오는 그림이었다. Jump도 같은 포즈를 쓰되 상승 중에는 세기가 0이라 사실상 중립이고,
+            // 정점을 지나 Fall로 넘어가면서 자연스럽게 만세 자세로 이어진다.
+            StickmanStateId airborne = Machine.CurrentStateId;
+            if (airborne == StickmanStateId.Fall || airborne == StickmanStateId.Jump)
+            {
+                pose.ApplyFallPose(deltaTime, BuildPoseSettings(), BuildFallPoseSettings(),
+                    PoseSmoothingRate, ComputeFallPoseIntensity());
+                return;
+            }
+
             // 매달려 내려가기 — 중립 Idle 포즈가 아니라 "팔을 위로 뻗어 모서리를 잡고 몸이 아래로
             // 늘어진" 전용 포즈를 적용한다(States/StickmanPoseAnimator.ApplyLedgeHangPose). Walk와 달리
             // 상태 자신이 아니라 여기서 적용하는 이유: 이 포즈는 Idle 중립 포즈의 자리를 대체하는 것이라
@@ -946,6 +980,93 @@ namespace StickMate.States
                 Config != null ? Config.idleBreathAmplitude : 0.012f,
                 Config != null ? Config.idleBreathFrequencyHz : 0.8f,
                 Config != null ? Config.idleBreathArmDegrees : 1.5f);
+        }
+
+        /// <summary>
+        /// 캐릭터 실측 치수 조회 창구(Core/StickmanMetrics.cs) — 지연 조회 + 캐싱(GetPoseAnimator와
+        /// 동일한 컨벤션). 프리팹/테스트 리그에 컴포넌트가 없으면 null이며, 호출부는 반드시
+        /// <see cref="CharacterHeightWorld"/>처럼 폴백이 있는 경로를 쓴다.
+        /// </summary>
+        public StickmanMetrics Metrics
+        {
+            get
+            {
+                if (_metrics == null && Body != null) _metrics = StickmanMetrics.Find(Body);
+                return _metrics;
+            }
+        }
+
+        /// <summary>
+        /// 지금 캐릭터의 실측 신장(월드 유닛). 낙하/착지 연출의 **거리·속도 성분을 무차원화**하는 분모다
+        /// (리더 지시: "거리·속도 성분은 StickmanMetrics에서 파생시켜라. 각도는 크기와 무관하니 절대값").
+        /// StickmanMetrics를 못 찾는 폴백 경로에서는 배율 1.0 기준 신장으로 되메운다 — 0을 돌려주면
+        /// 나눗셈이 무한대가 되어 연출이 조용히 망가진다.
+        /// </summary>
+        public float CharacterHeightWorld
+        {
+            get
+            {
+                StickmanMetrics m = Metrics;
+                float h = m != null ? m.TotalHeight : 0f;
+                return h > 0.0001f ? h : StickConfig.BaselineCharacterTotalHeight;
+            }
+        }
+
+        /// <summary>낙하 자세 각도 묶음(StickConfig -> StickmanPoseAnimator). BuildPoseSettings와 동일한
+        /// 패턴 — Config가 없는 테스트/폴백 경로에서도 안전하도록 각 값에 기본값을 둔다.</summary>
+        public StickmanPoseAnimator.FallPoseSettings BuildFallPoseSettings()
+        {
+            return new StickmanPoseAnimator.FallPoseSettings(
+                Config != null ? Config.fallPoseArmRaiseDegrees : 143f,
+                Config != null ? Config.fallPoseElbowBendDegrees : 20f,
+                Config != null ? Config.fallPoseLegSpreadDegrees : 15f,
+                Config != null ? Config.fallPoseHipDegrees : 14f,
+                Config != null ? Config.fallPoseKneeBendDegrees : 38f);
+        }
+
+        /// <summary>무릎앉아 착지 포즈의 최대 깊이 각도 묶음(StickConfig -> StickmanPoseAnimator).</summary>
+        public StickmanPoseAnimator.LandingCrouchPoseSettings BuildLandingCrouchPoseSettings()
+        {
+            return new StickmanPoseAnimator.LandingCrouchPoseSettings(
+                Config != null ? Config.landingCrouchFrontHipDegrees : 82f,
+                Config != null ? Config.landingCrouchFrontKneeDegrees : 126f,
+                Config != null ? Config.landingCrouchRearHipDegrees : -40f,
+                Config != null ? Config.landingCrouchRearKneeDegrees : 55f,
+                Config != null ? Config.landingCrouchFrontArmDegrees : 64f,
+                Config != null ? Config.landingCrouchFrontElbowDegrees : 26f,
+                Config != null ? Config.landingCrouchRearArmDegrees : -128f,
+                Config != null ? Config.landingCrouchRearElbowDegrees : 24f);
+        }
+
+        /// <summary>무릎앉아 포즈 각도의 지수 감쇠 계수(1/초) — 왜 poseSmoothingRate보다 높은지는
+        /// StickConfig.landingCrouchPoseSmoothingRate Tooltip 참고.</summary>
+        public float LandingCrouchPoseSmoothingRate =>
+            Config != null && Config.landingCrouchPoseSmoothingRate > 0f
+                ? Config.landingCrouchPoseSmoothingRate
+                : 48f;
+
+        /// <summary>
+        /// 낙하 자세의 세기(0~1) — "지금 얼마나 빠르게 떨어지고 있는가".
+        ///
+        /// 하강 속도를 **신장으로 나눠** 무차원화한 뒤(초당 몇 신장을 떨어지는가)
+        /// StickConfig.fallPoseFullSpeedHeightsPerSecond를 1로 보는 비율을 만든다. 그래서 캐릭터
+        /// 배율이 바뀌어도 "같은 체감 속도에서 같은 자세"가 유지된다 — 속도를 절대 유닛/초로 재면
+        /// 작은 캐릭터일수록 같은 낙하에서 자세가 더 세게 나오는 어긋남이 생긴다.
+        ///
+        /// 상승 중(velocity.y &gt; 0)에는 0이 되어 Jump 상승 구간에서는 사실상 중립 포즈다.
+        /// StickConfig.fallPoseMinIntensity가 바닥을 받쳐, 정점 부근에서 자세가 한 번 완전히 풀렸다가
+        /// 다시 잡히는 깜빡임을 막는다.
+        /// </summary>
+        public float ComputeFallPoseIntensity()
+        {
+            float downward = Body != null ? Mathf.Max(0f, -Body.linearVelocity.y) : 0f;
+            float full = Config != null ? Config.fallPoseFullSpeedHeightsPerSecond : 7f;
+            float minIntensity = Config != null ? Mathf.Clamp01(Config.fallPoseMinIntensity) : 0.16f;
+            if (full <= 0.0001f) return 1f;
+
+            float heightsPerSecond = downward / CharacterHeightWorld;
+            float t = Mathf.Clamp01(heightsPerSecond / full);
+            return Mathf.Max(minIntensity, t);
         }
 
         /// <summary>실측 검증/디버그용 — 마지막으로 확정된 바라보는 방향 부호(+1 오른쪽 / -1 왼쪽).</summary>

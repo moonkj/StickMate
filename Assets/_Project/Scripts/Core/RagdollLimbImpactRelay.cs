@@ -36,7 +36,9 @@ namespace StickMate.Core
         private void OnCollisionEnter2D(Collision2D collision)
         {
             if (_agent == null || _body == null) return;
-            _agent.ReportExternalImpact(collision.relativeVelocity.magnitude * _body.mass);
+            // 루트(StickmanAgent.OnCollisionEnter2D)와 **같은** 진입점을 쓴다 — 착지 접촉을 외력에서
+            // 걸러내는 예외가 파츠마다 어긋나면 안 된다(2026-08-29 "무릎앉아 착지" 라운드).
+            _agent.ReportCollisionImpact(collision, collision.relativeVelocity.magnitude * _body.mass);
         }
     }
 }

@@ -15,7 +15,13 @@ namespace StickMate.States
     ///       BUG-P1-M5 — 캐주얼 데스크톱 토이라 관대한 조작감이 낫다는 판단). 발판 이탈→Fall 강제 전이
     ///       유예에 쓰이는 StickConfig.fallGraceDuration과 값은 같아도 되지만 개념적으로 분리된 필드다.
     /// - Jump -> Fall             : 상승 속도가 0 이하로 바뀌는 시점(정점 통과).
+    /// - Fall -> LandingCrouch    : 발판 착지 감지 + 낙하 높이 >= StickConfig.rollLandingHeightThreshold.
+    ///       "무릎앉아 착지"(사용자 명시 요청 2026-08-29) 연출 상태. StickConfig.landingCrouchEnabled를
+    ///       끄면 이 갈래가 사라지고 아래 Fall -> Idle/Walk만 남는다(예전 거동과 100% 동일).
     /// - Fall -> Idle/Walk        : 발판 착지 감지 (StickConfig.fallGraceDuration 유예 적용).
+    ///       낙하 높이가 위 임계값 미만일 때의 갈래다(예: macOS Dock 단차 0.855유닛).
+    /// - LandingCrouch -> Idle/Walk : 무릎앉아 진행 곡선 완료 시(이동 의도 유무로 분기).
+    ///       도중 접지를 잃으면(창이 닫히거나 움직임) Fall로, 외력 임계값 초과 시 Ragdoll로 빠진다.
     /// - Idle/Walk/Jump/Fall/ParkourClimb/Attack -> Ragdoll :
     ///       외력(피격/투척/충격량 크기)이 StickConfig.ragdollForceThreshold 이상이면
     ///       "능동 상태가 무엇이든" 즉시 강제 인터럽트 전이. (진행 중이던 Attack/ParkourClimb도 취소됨)

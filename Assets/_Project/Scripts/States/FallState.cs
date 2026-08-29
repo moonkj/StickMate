@@ -6,9 +6,12 @@ namespace StickMate.States
     /// <summary>
     /// 능동 상태: StickConfig.gravityScale에 따라 자유낙하(중력 자체는 Rigidbody2D 설정으로 처리 —
     /// 이 상태는 착지/화면이탈 감지만 담당).
-    /// 전이: 발판 착지 감지 -> Idle/Walk(착지 시 이동 입력 유무로 분기) /
+    /// 전이: 발판 착지 감지 -> LandingCrouch(낙하 높이 >= StickConfig.rollLandingHeightThreshold) /
+    ///                        Idle/Walk(그 미만 — 착지 시 이동 입력 유무로 분기) /
     ///       화면(발판 좌우 범위) 이탈 -> Fall 유지(사실상 no-op) /
     ///       외력 임계값 초과 -> Ragdoll(강제 인터럽트, Phase 2).
+    /// 낙하 중 자세는 이 상태가 아니라 StickmanBlackboard.TickPose()가 상태 ID로 적용한다
+    /// (States/StickmanPoseAnimator.ApplyFallPose — 팔은 위/바깥, 다리는 살짝 접힘).
     /// </summary>
     public sealed class FallState : IStickmanState
     {
@@ -69,7 +72,10 @@ namespace StickMate.States
             // 스스로 회복된다.
             _blackboard.CurrentFootholdHandle = 0L;
             _blackboard.ReportFootholdChangeIfNeeded("Fall 진입 — 공중");
-            // TODO(Phase 2): 낙하 포즈(팔다리 늘어짐) 전환 — Active Ragdoll IK 블렌딩.
+            // 낙하 중 공중 자세(팔은 위/바깥, 다리는 살짝 접힘)는 StickmanBlackboard.TickPose()가 상태
+            // ID를 보고 매 프레임 적용한다(States/StickmanPoseAnimator.ApplyFallPose) — Walk를 제외한
+            // 모든 능동 상태의 포즈가 그 한 곳에서 결정된다는 이 프로젝트의 계약을 그대로 따른다.
+            // 2026-08-29 이전에는 그 분기가 없어 낙하 중에도 Idle 중립 포즈(막대기)로 떨어졌다.
         }
 
         public void Tick(float deltaTime)
@@ -151,10 +157,11 @@ namespace StickMate.States
             }
 
             // 착지 확정 — 낙하 높이가 임계값 이상이면 구르기 착지 훅 발행(UX_FLOW.md 4절 "구르기(ROLL)").
-            // 실제 파티클/애니메이션 재생은 Phase 2+ 렌더링 레이어 담당, 여기서는 트리거 조건만 계산한다.
+            // 부수 연출(먼지 파티클 등)을 위한 신호로 그대로 유지한다.
             float fallHeight = _fallStartWorldY - landingWorldY;
             float rollThreshold = _blackboard.Config != null ? _blackboard.Config.rollLandingHeightThreshold : 2f;
-            if (fallHeight >= rollThreshold)
+            bool crouchLanding = fallHeight >= rollThreshold;
+            if (crouchLanding)
             {
                 StickmanEventBus.RaiseLandingRollRequested(fallHeight);
             }
@@ -175,6 +182,28 @@ namespace StickMate.States
             }
 
             _blackboard.ResetGroundLossTimer();
+
+            // ★★ 무릎앉아 착지(2026-08-29, 사용자 명시 요청 "떨어질때 무릎앉아 형태로 멋지게 착지해야지").
+            //
+            // 위 LandingRollRequested는 2026-08-27부터 여기서 발행되고 있었지만 **구독자가 프로젝트 전체에
+            // 0명**이었다 — 즉 "부드러운 착지 연출"은 판정만 있고 실물이 통째로 없었다(이 프로젝트에서
+            // 6번 반복된 "로직은 있는데 아무도 안 듣는" 패턴). 그래서 상태 전이 자체는 이벤트 구독자에게
+            // 맡기지 않고 여기서 직접 확정한다:
+            //   · 착지 후 무엇을 하는가는 "있으면 좋은 연출"이 아니라 **흐름 그 자체**다. 구독자에게
+            //     맡기면 이 메서드가 이미 Idle/Walk로 전이한 뒤 구독자가 다시 ChangeState를 부르는
+            //     순서 의존이 생기고, 구독자가 사라지면 조용히 예전 거동으로 되돌아간다.
+            //   · 깊이/유지시간의 입력이 되는 낙하 높이는 이벤트 페이로드와 **같은 값**을 블랙보드
+            //     스냅샷으로 넘긴다(LastImpactMagnitude -> RagdollState와 완전히 같은 관례).
+            // 낙차가 임계값 미만이면(예: Dock 단차 0.855유닛) 이 분기를 타지 않으므로 예전과 100% 동일하게
+            // 곧바로 Idle/Walk로 복귀한다 — 한 계단 내려올 때마다 무릎을 꿇지 않는다.
+            bool crouchEnabled = _blackboard.Config == null || _blackboard.Config.landingCrouchEnabled;
+            if (crouchLanding && crouchEnabled)
+            {
+                _blackboard.LastLandingFallHeight = fallHeight;
+                _blackboard.Machine.ChangeState(StickmanStateId.LandingCrouch);
+                return;
+            }
+
             float deadzone = _blackboard.Config != null ? _blackboard.Config.moveInputDeadzone : 0.15f;
             StickmanStateId next = Mathf.Abs(_blackboard.MoveInputX) > deadzone ? StickmanStateId.Walk : StickmanStateId.Idle;
             _blackboard.Machine.ChangeState(next);
