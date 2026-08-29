@@ -96,6 +96,64 @@ namespace StickMate.Core
         /// 플레이어의 StickmanStateMachine에 속하지 않으므로 아래 Suspend()의 일반 처리 대상이 아니다).</summary>
         public bool IsSuspended => _isSuspended;
 
+        // ============================================================================
+        // ★ 캐릭터 전신 높이의 단일 소스 (리더 지시 2026-08-29 — 크기 조정 가능해야 함)
+        // ============================================================================
+        // 왜 필요한가: 사용자가 "캐릭터 사이즈가 지금의 절반 정도 되어야 하고 추후 조정 가능해야 한다"고
+        // 요구했다. 머리 위 연출(말풍선/하드웨어 이모트)과 정면 연출(격파 미니게임)이 지금처럼 절대
+        // 유닛 상수로 위치를 잡고 있으면, 캐릭터 크기가 바뀌는 순간 전부 다시 겹친다 — 실제로 이번
+        // 라운드의 "이모트가 머리와 겹친다"가 정확히 그 방식(값 하나만 올림)으로 생긴 버그다.
+        //
+        // 왜 루트 CapsuleCollider2D인가: Assets/Editor/SceneBootstrapper.cs의 BuildStickmanPrefab이
+        // 전신 높이를 `totalHeight`로 계산한 뒤 **그대로** 루트 물리 캡슐에 대입한다
+        // (`capsule.size = new Vector2(0.4f, totalHeight)`). 즉 프리팹 안에 이미 정답이 들어 있어
+        // 부트스트래퍼를 고치지 않고도 읽을 수 있고, 지오메트리를 바꾸면 이 값이 자동으로 따라온다.
+        //
+        // 루트에는 캡슐이 둘이다 — 물리 몸통(isTrigger=false, 높이=totalHeight)과 클릭용 GrabArea
+        // (isTrigger=true, 높이=totalHeight + 여유*2). **isTrigger가 아닌 쪽**만 골라야 정확하다.
+        //
+        // 렌더러 바운즈로 재지 않는 이유: 포즈에 따라(팔을 들면) 매 프레임 값이 흔들려 머리 위 연출이
+        // 같이 떨린다. 전신 높이는 "이 캐릭터의 규격"이지 "지금 자세의 크기"가 아니다.
+
+        /// <summary>프리팹에서 높이를 읽지 못했을 때의 폴백(현재 프리팹 실측값). 테스트에서 손으로
+        /// 조립한 캐릭터처럼 캡슐이 없는 경우에도 연출이 0 크기로 붕괴하지 않게 한다.</summary>
+        private const float FallbackTotalHeightWorld = 2.27f;
+
+        private float _cachedTotalHeight;
+
+        /// <summary>
+        /// 캐릭터 전신 높이(월드 유닛) — 발끝(로컬 y=0)부터 정수리까지. 머리 위/정면 연출은
+        /// <b>전부 이 값의 비율</b>로 자기 위치를 잡는다(절대 유닛 상수를 두지 않는다).
+        /// 소비자: Dialogue/DialogueBubbleRenderer, Interaction/HardwareReactionRenderer,
+        /// Interaction/BattleMinigameRenderer.
+        /// </summary>
+        public float CharacterTotalHeightWorld
+        {
+            get
+            {
+                if (_cachedTotalHeight > 0f) return _cachedTotalHeight;
+                _cachedTotalHeight = MeasureTotalHeight();
+                return _cachedTotalHeight;
+            }
+        }
+
+        private float MeasureTotalHeight()
+        {
+            var capsules = GetComponents<CapsuleCollider2D>();
+            for (int i = 0; i < capsules.Length; i++)
+            {
+                // GrabArea(isTrigger=true)는 전신보다 위아래로 더 크다 — 물리 몸통 캡슐만 정답이다.
+                if (capsules[i] == null || capsules[i].isTrigger) continue;
+                float h = capsules[i].size.y * Mathf.Abs(transform.localScale.y);
+                if (h > 0.01f) return h;
+            }
+
+            Debug.LogWarning("[StickmanAgent] 전신 높이를 읽을 루트 CapsuleCollider2D(비트리거)를 찾지 못해 " +
+                $"폴백 {FallbackTotalHeightWorld:F2}유닛을 씁니다 — 머리 위/정면 연출 위치가 캐릭터 크기를 " +
+                "따라가지 못할 수 있습니다.");
+            return FallbackTotalHeightWorld;
+        }
+
         /// <summary>
         /// RAGDOLL 강제 인터럽트의 단일 진입점(아키텍처 0절). 몸통이든 사지든 어떤 파츠가 외력(충돌)을
         /// 받으면 이 메서드로 통지되어, 충격량 크기가 StickConfig.ragdollForceThreshold 이상이면 현재
@@ -453,6 +511,15 @@ namespace StickMate.Core
             // (예: FallState._landingConfirmTimer)가 그대로 멈춰 있다가 Resume() 이후 이어서 진행된다.
             SetBodiesSimulated(false); // 물리 시뮬레이션도 함께 멈춰 숨겨진 동안 위치가 흐트러지지 않게 함.
             SetRenderersEnabled(false);
+
+            // ★ 2026-08-29 (리더 지시) — 여기에 로그가 **한 줄도 없었다**. 사용자 신고 "캐릭터가 안
+            // 보이다가 클릭하면 나타난다"를 조사할 때 "전체화면 Suspend 때문인가?"를 가릴 수단이
+            // 전혀 없어서 Player.log 전수를 뒤져야 했다. 캐릭터가 화면에서 사라지는 것은 이 앱에서
+            // 가장 눈에 띄는 사건이므로 사유와 함께 반드시 남긴다(판정 근거 창 이름/bounds는 바로 앞
+            // 줄에 [전체화면판정] 로그로 남는다 — Platform/MacOS/MacWindowService.cs 참고).
+            Debug.Log($"[전체화면숨김] 전체화면 앱이 감지되어 캐릭터를 숨기고 물리를 멈춥니다(비침해 원칙 2) — " +
+                $"숨기기 직전 상태={current}, 렌더러 {( _renderers != null ? _renderers.Length : 0)}개 비활성화. " +
+                "직전 [전체화면판정] 줄에 어느 창 때문인지가 적혀 있습니다.");
             // TODO(Phase 2 렌더링 레이어): 즉시 on/off 대신 ≤200ms 페이드 아웃/인 연출 추가.
         }
 
@@ -467,10 +534,19 @@ namespace StickMate.Core
             // 이 무조건 복원을 건너뛴다(StickmanBlackboard.IsCharacterHiddenByRunaway 문서 참고) —
             // "Suspend/Resume의 렌더러 제어"가 "Runaway의 렌더러 제어"를 마지막에 실행됐다는 이유만으로
             // 덮어쓰지 않게 한다.
-            if (_blackboard == null || !_blackboard.IsCharacterHiddenByRunaway)
+            bool hiddenByRunaway = _blackboard != null && _blackboard.IsCharacterHiddenByRunaway;
+            if (!hiddenByRunaway)
             {
                 SetRenderersEnabled(true);
             }
+
+            // Suspend()와 짝을 이루는 로그(위 주석 참고). 가출 은신 중이라 일부러 감춰둔 경우를
+            // 명시적으로 구분해 적는다 — 그러지 않으면 "Resume 했는데도 캐릭터가 안 보인다"가
+            // 또 원인 불명 신고가 된다.
+            Debug.Log("[전체화면숨김] 해제 — 물리를 재개했습니다. " +
+                (hiddenByRunaway
+                    ? "단, 지금은 가출(Runaway) 은신 중이라 캐릭터는 일부러 계속 숨겨둡니다(클릭해 찾으면 나타납니다)."
+                    : "캐릭터를 다시 보이게 했습니다."));
             // Minor m4 대응(docs/BUG_REPORT_PHASE1.md): Suspended 동안 FootholdPoller.Tick()도 함께
             // 건너뛰어(Update() 조기 return) 캐시가 오래됐을 수 있다 — 재개 즉시 최신 발판으로 갱신해
             // 다음 폴링 주기(최대 footholdPollInterval)까지 스테일 캐시로 서 있는 것처럼 보이지 않게 한다.

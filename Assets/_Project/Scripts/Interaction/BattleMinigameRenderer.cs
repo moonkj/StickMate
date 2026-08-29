@@ -76,31 +76,91 @@ namespace StickMate.Interaction
         // 화면 환산 기준: 카메라 orthographicSize=12, 창 높이 846pt -> 35.25 pt/유닛
         // (Assets/Editor/SceneBootstrapper.cs의 OrthographicSize 문서와 같은 계산).
 
-        private const float StackForwardOffset = 1.05f; // 캐릭터 정면으로 밀어놓는 거리(약 37pt).
-        private const float StackBaseHeight = 1.02f;    // 맨 아래 판자의 중심 높이(주먹~어깨 사이).
-        private const float TileWidth = 1.00f;          // 판자 가로(약 35pt = 캐릭터 키의 44%).
-        private const float TileHeight = 0.30f;         // 판자 세로(약 11pt).
-        private const float TileGap = 0.13f;            // 판자 사이 간격.
+        // ★ 2026-08-29 리더 지시 — 아래 치수는 전부 **캐릭터 전신 높이 대비 비율**이다(절대 유닛 금지).
+        // 사용자가 "캐릭터 사이즈가 지금의 절반 정도 + 추후 조정 가능"을 요구했으므로, 절대 유닛으로
+        // 두면 크기를 바꿀 때마다 판자/게이지가 캐릭터를 다시 파고든다. 기준값의 단일 소스는
+        // StickmanAgent.CharacterTotalHeightWorld 하나뿐이다(<see cref="Height"/>).
+        // 현재 프리팹 실측 2.27유닛에 곱하면 검증을 마친 종전 값이 그대로 나온다.
+
+        internal const float StackForwardOffsetRatio = 0.4626f; // 캐릭터 정면 거리(1.05 / 2.27).
+        private const float StackBaseHeightRatio = 0.4493f;     // 맨 아래 판자 중심 높이(1.02 / 2.27).
+        internal const float TileWidthRatio = 0.4405f;          // 판자 가로(1.00 / 2.27 = 캐릭터 키의 44%).
+        private const float TileHeightRatio = 0.1322f;          // 판자 세로(0.30 / 2.27).
+        private const float TileGapRatio = 0.0573f;             // 판자 사이 간격(0.13 / 2.27).
         private const int TileCount = 2;                // "순차 소환되어 쌓임" — 2장이면 충분히 읽힌다.
 
-        private const float GaugeWidth = 1.56f;         // 게이지 트랙 가로(약 55pt).
+        internal const float GaugeWidthRatio = 0.6872f;         // 게이지 트랙 가로(1.56 / 2.27).
         // 실물 스크린샷 확인 후 상향(2026-08-29): 0.20유닛(약 8pt)은 캐릭터 키가 화면상 80pt뿐인
         // 이 앱에서 '무엇이 얼마나 찼는지'를 읽기에 너무 얇았다. 테두리를 뺀 실제 채움 두께가
-        // 약 7.5pt가 되도록 잡은 값이다.
-        private const float GaugeHeight = 0.26f;
-        private const float GaugeDropBelowStack = 0.46f; // 맨 아래 판자에서 게이지까지의 수직 간격.
+        // 약 7.5pt가 되도록 잡은 값이다(0.26 / 2.27).
+        private const float GaugeHeightRatio = 0.1145f;
+        private const float GaugeDropBelowStackRatio = 0.2026f; // 판자~게이지 수직 간격(0.46 / 2.27).
 
-        private const float StrokeWidth = 0.077f;       // 캐릭터 몸통 획(0.11*0.7)과 같은 굵기.
+        /// <summary>이 캐릭터의 전신 높이(월드 유닛) — 모든 비율의 유일한 기준값.</summary>
+        private float Height => _agent != null ? _agent.CharacterTotalHeightWorld : FallbackHeight;
+
+        /// <summary>에이전트를 아직 못 잡았을 때의 기준(현재 프리팹 실측). 연출이 0 크기로 붕괴하지 않게.</summary>
+        internal const float FallbackHeight = 2.27f;
+
+        private float StackForwardOffset => Height * StackForwardOffsetRatio;
+        private float StackBaseHeight => Height * StackBaseHeightRatio;
+        private float TileWidth => Height * TileWidthRatio;
+        private float TileHeight => Height * TileHeightRatio;
+        private float TileGap => Height * TileGapRatio;
+        private float GaugeWidth => Height * GaugeWidthRatio;
+        private float GaugeHeight => Height * GaugeHeightRatio;
+        private float GaugeDropBelowStack => Height * GaugeDropBelowStackRatio;
+
+        // ============================================================================
+        // ★ 게이지-캐릭터 겹침 수정 (사용자 실측 신고 2026-08-29: "게이지가 캐릭터랑 겹치고")
+        // ============================================================================
+        // 증상: 게이지가 컨테이너 로컬 x=0을 **중심**으로 그려졌다. 컨테이너는 캐릭터 정면
+        // StackForwardOffset(1.05)에 있으므로 게이지 왼쪽 끝은 캐릭터 중심에서 겨우
+        // 1.05 - 1.56/2 = +0.27유닛까지 파고들었고, 판자(+0.55부터)보다 더 캐릭터 쪽으로 튀어나와
+        // 다리/몸통 위에 그대로 얹혔다.
+        //
+        // 실측 근거(스크린샷 픽셀 측정, 3024x1964 캡처 / 40.9pt·유닛): 캐릭터 실루엣의 실제 반폭은
+        // 다리를 벌린 상태에서 약 12pt = 0.30유닛, 포즈에 따라 최대 0.45유닛 남짓이다.
+        // (StickmanBlackboard가 화면 클램프용으로 보고하는 '시각 반폭 50pt'는 렌더러 바운즈 합집합이라
+        //  실루엣보다 4배 크게 나온다 — 여기서는 쓰지 않는다. 그 값은 클램프 여유용 보수적 추정치다.)
+        //
+        // 해법: 게이지를 판자 더미와 **같은 근접 모서리**에서 시작시키고 캐릭터 반대 방향으로만
+        // 뻗게 한다. 판자 더미의 근접 모서리(+0.55유닛)는 사용자가 문제 삼지 않은 위치이며 실루엣
+        // 반폭보다 확실히 바깥이다. 게이지 폭(=읽히는 크기)은 1유닛도 줄이지 않는다.
+        /// <summary>캐릭터 중심에서 연출(판자·게이지)의 가장 가까운 모서리까지 반드시 남겨야 하는
+        /// 거리. 기본 배치의 판자 근접 모서리(StackForwardOffset - TileWidth/2 = 0.55유닛)와 같은 값이라
+        /// 정상 배치에서는 아무것도 바꾸지 않고, 화면 끝 클램프가 연출을 캐릭터 쪽으로 밀 때만
+        /// 하한선으로 작동한다.</summary>
+        internal const float MinCharacterClearanceRatio = StackForwardOffsetRatio - TileWidthRatio * 0.5f;
+
+        internal static float MinCharacterClearance(float height) => height * MinCharacterClearanceRatio;
+
+        /// <summary>컨테이너 원점 기준, 게이지 중심의 로컬 x 오프셋 크기. 게이지의 근접 모서리를
+        /// 판자 더미의 근접 모서리와 정확히 맞춘다(둘 다 캐릭터에서 <see cref="StackForwardOffset"/>
+        /// - TileWidth/2 만큼 떨어진 같은 선에서 시작). 실제 부호는 facing이 정한다.</summary>
+        internal const float GaugeForwardShiftRatio = (GaugeWidthRatio - TileWidthRatio) * 0.5f;
+
+        private float GaugeForwardShift => Height * GaugeForwardShiftRatio;
+
+        /// <summary>화면 가장자리에서 남겨둘 최소 여백(월드 유닛, 약 4pt). 연출 전체가 이 안쪽에 있어야
+        /// "화면 밖으로 밀려나 안 보인다"가 되지 않는다.</summary>
+        private const float ScreenEdgePadWorld = 0.10f;
+
+        private const float StrokeWidthRatio = 0.0339f; // 캐릭터 몸통 획과 같은 굵기(0.077 / 2.27).
+        private float StrokeWidth => Height * StrokeWidthRatio;
 
         // ==================== 타이밍 ====================
 
         private const float SpawnDropSeconds = 0.28f;   // 판자 한 장이 위에서 떨어져 자리 잡는 시간.
         private const float SpawnStaggerSeconds = 0.12f; // "순차" 소환 — 장마다 이만큼씩 늦게 시작.
-        private const float SpawnDropHeight = 0.75f;    // 낙하 시작 높이(제자리 기준 위쪽).
-        private const float IdleWobbleAmplitude = 0.018f; // 착지 후 "살짝 흔들림"(10절)의 진폭.
+        private const float SpawnDropHeightRatio = 0.3304f;      // 낙하 시작 높이(0.75 / 2.27).
+        private float SpawnDropHeight => Height * SpawnDropHeightRatio;
+        private const float IdleWobbleAmplitudeRatio = 0.0079f;  // "살짝 흔들림"(10절)의 진폭(0.018 / 2.27).
+        private float IdleWobbleAmplitude => Height * IdleWobbleAmplitudeRatio;
         private const float IdleWobbleSpeed = 3.4f;
         private const float FailShakeSeconds = 0.42f;   // 실패 시 판자가 버티며 흔들리는 시간.
-        private const float FailShakeAmplitude = 0.075f;
+        private const float FailShakeAmplitudeRatio = 0.0330f;   // 실패 흔들림 진폭(0.075 / 2.27).
+        private float FailShakeAmplitude => Height * FailShakeAmplitudeRatio;
         private const float RetreatSeconds = 0.62f;     // 3회 소진/타임아웃 시 "민망한 퇴장".
         private const float ShatterSeconds = 0.95f;     // 파편이 날아가며 사라지기까지.
         private const float ImpactBurstSeconds = 0.24f; // 타격점 방사형 임팩트 선.
@@ -110,12 +170,20 @@ namespace StickMate.Interaction
 
         private const int ShardCount = 14;
         private const int ImpactRayCount = 7;
-        private const float ShardSpeedMin = 1.6f;
-        private const float ShardSpeedMax = 4.6f;
-        private const float ShardGravity = 7.5f;
-        private const float ShardSpinMax = 900f;
-        private const float ShardLengthMin = 0.10f;
-        private const float ShardLengthMax = 0.26f;
+        // 파편도 캐릭터 크기를 따라간다 — 길이만 줄이고 속도/중력을 그대로 두면 작은 캐릭터에서
+        // 파편이 화면 절반을 가로지른다(같은 비율로 스케일해야 연출 지속시간이 유지된다).
+        private const float ShardSpeedMinRatio = 0.7048f;   // 1.6 / 2.27
+        private const float ShardSpeedMaxRatio = 2.0264f;   // 4.6 / 2.27
+        private const float ShardGravityRatio = 3.3040f;    // 7.5 / 2.27
+        private const float ShardLengthMinRatio = 0.0441f;  // 0.10 / 2.27
+        private const float ShardLengthMaxRatio = 0.1145f;  // 0.26 / 2.27
+        private const float ShardSpinMax = 900f;            // 각속도는 크기와 무관(도/초).
+
+        private float ShardSpeedMin => Height * ShardSpeedMinRatio;
+        private float ShardSpeedMax => Height * ShardSpeedMaxRatio;
+        private float ShardGravity => Height * ShardGravityRatio;
+        private float ShardLengthMin => Height * ShardLengthMinRatio;
+        private float ShardLengthMax => Height * ShardLengthMaxRatio;
 
         // ==================== 색 ====================
 
@@ -303,7 +371,10 @@ namespace StickMate.Interaction
             // 캐릭터의 자식으로 붙이지 않는 이유: 소환된 판자는 "허공에 쌓인 물체"라 캐릭터가 걷거나
             // 던져져도 제자리에 있어야 한다(10절 "허공에 쌓임"). 캐릭터를 따라다니면 격파할 대상이
             // 아니라 캐릭터의 장식품처럼 보인다.
-            _container.transform.position = new Vector3(_anchorWorld.x + _facing * StackForwardOffset, _anchorWorld.y, 0f);
+            _container.transform.position = new Vector3(
+                ResolveContainerWorldX(blackboard),
+                ResolveContainerWorldY(blackboard != null ? blackboard.MainCamera : null),
+                0f);
 
             _stackRoot = new GameObject("Stack").transform;
             _stackRoot.SetParent(_container.transform, false);
@@ -331,12 +402,163 @@ namespace StickMate.Interaction
             // (StickmanClickHitbox의 준비 상태 로그와 같은 취지).
             Rect targetOs = ClickHitboxRectUtility.ComputeOsRect(
                 _clickTarget, blackboard.MainCamera, blackboard.Config);
+            float nearEdge = Mathf.Abs(_container.transform.position.x - TileWidth * 0.5f * _facing - _anchorWorld.x);
+            float farEdge = Mathf.Abs(_container.transform.position.x
+                + (GaugeForwardShift + GaugeWidth * 0.5f) * _facing - _anchorWorld.x);
             Debug.Log($"[격파] 소환 — 판자 {TileCount}장 + 기 모으기 게이지를 캐릭터 " +
-                $"{(_facing > 0f ? "오른쪽" : "왼쪽")} {StackForwardOffset:F2}유닛 앞에 배치했습니다. " +
+                $"{(_facing > 0f ? "오른쪽" : "왼쪽")}으로 배치했습니다(근접 모서리 {nearEdge:F2}유닛 / " +
+                $"먼 모서리 {farEdge:F2}유닛, 최소 여유 {MinCharacterClearance(Height):F2}유닛, " +
+                $"전신 {Height:F2}유닛 기준). " +
                 $"스위트스팟 {SweetStart():P0}~{SweetEnd():P0}, 클릭 표적 " +
                 $"{(_clickTarget != null ? "등록됨" : "생성 실패")} " +
                 $"OS사각형=x{targetOs.x:F0},y{targetOs.y:F0},w{targetOs.width:F0},h{targetOs.height:F0} " +
                 $"(중심 {targetOs.center.x:F0},{targetOs.center.y:F0}).");
+        }
+
+        // ============================================================================
+        // 배치 결정 — 캐릭터와 겹치지 않으면서 화면 밖으로도 나가지 않는 x를 고른다
+        // ============================================================================
+        //
+        // 두 요구가 동시에 걸린다(둘 다 사용자/리더 지시):
+        //   (1) 연출의 근접 모서리가 캐릭터 실루엣을 침범하지 않을 것  -> MinCharacterClearance
+        //   (2) 연출 전체가 화면 안에 보일 것                        -> 카메라 가시 범위 클램프
+        // 캐릭터가 화면 끝에 바짝 붙어 정면이 바깥을 향하면 둘을 동시에 만족할 수 없다. 그때는
+        // **반대편으로 미러링**한다 — 잘려서 안 보이는 게이지보다 반대쪽에 온전히 보이는 게이지가 낫다
+        // (리더 지시: "화면 밖으로 밀려나면 안 된다"가 더 강한 요구다).
+        private float ResolveContainerWorldX(StickmanBlackboard blackboard)
+        {
+            Camera cam = blackboard != null ? blackboard.MainCamera : null;
+            if (cam == null || !cam.orthographic) return _anchorWorld.x + _facing * StackForwardOffset;
+
+            float camHalfWidth = cam.orthographicSize * cam.aspect;
+            Placement p = ComputePlacement(
+                _anchorWorld.x, _facing,
+                cam.transform.position.x - camHalfWidth + ScreenEdgePadWorld,
+                cam.transform.position.x + camHalfWidth - ScreenEdgePadWorld,
+                Height);
+
+            if (p.Mirrored)
+            {
+                Debug.Log($"[격파] 캐릭터가 화면 끝({_anchorWorld.x:F2})에 붙어 있어 연출을 " +
+                    $"{(_facing > 0f ? "왼" : "오른")}쪽(정면 반대)으로 미러링했습니다 — 화면 밖으로 잘려 " +
+                    "안 보이는 것보다 반대편에 온전히 보이는 편이 낫습니다.");
+            }
+            _facing = p.Facing;
+            return p.ContainerX;
+        }
+
+        // ==================== 배치 계산의 순수 함수 코어 (테스트 대상) ====================
+        //
+        // Camera/Transform에서 떼어낸 순수 계산으로 둔 이유: "캐릭터가 화면 가장자리에 있을 때"(리더
+        // 지시)는 실물 앱에서 재현을 기다리기가 어렵다 — 캐릭터가 화면 끝에 서 있는 **동안** 미니게임
+        // 자동 발동이 겹쳐야 하는데, 실측 17회 연속 소환이 전부 화면 중앙(x 520~970)에서 일어났다.
+        // 그래서 이 경계 동작만은 EditMode 테스트(BattleMinigamePlacementTests)로 결정론적으로 잠근다.
+
+        /// <summary>컨테이너 원점에서 연출의 <b>근접</b> 모서리(캐릭터 쪽)까지의 거리.</summary>
+        internal static float NearEdgeLocalX(float height) => height * TileWidthRatio * 0.5f;
+
+        /// <summary>컨테이너 원점에서 연출의 <b>먼</b> 모서리(게이지 끝)까지의 거리.</summary>
+        internal static float FarEdgeLocalX(float height) =>
+            height * (GaugeForwardShiftRatio + GaugeWidthRatio * 0.5f);
+
+        /// <summary>배치 계산 결과. Facing은 미러링으로 뒤집혔을 수 있다.</summary>
+        internal readonly struct Placement
+        {
+            public readonly float ContainerX;
+            public readonly float Facing;
+            public readonly bool Mirrored;
+
+            public Placement(float containerX, float facing, bool mirrored)
+            {
+                ContainerX = containerX;
+                Facing = facing;
+                Mirrored = mirrored;
+            }
+        }
+
+        internal static Placement ComputePlacement(
+            float anchorX, float facing, float visibleMin, float visibleMax, float height)
+        {
+            facing = facing >= 0f ? 1f : -1f;
+            float near = NearEdgeLocalX(height);
+            float far = FarEdgeLocalX(height);
+            float clearanceFloor = MinCharacterClearance(height);
+
+            float desired = anchorX + facing * height * StackForwardOffsetRatio;
+            if (Fits(desired, facing, anchorX, visibleMin, visibleMax, height))
+                return new Placement(desired, facing, false);
+
+            // 정면 쪽에 자리가 없다 -> 반대편으로 미러링해서 시도한다.
+            float mirrored = anchorX - facing * height * StackForwardOffsetRatio;
+            if (Fits(mirrored, -facing, anchorX, visibleMin, visibleMax, height))
+                return new Placement(mirrored, -facing, true);
+
+            // 양쪽 다 빠듯한 병리적 화면(연출 폭보다 화면이 좁음) — 화면 안을 우선하고 캐릭터 겹침만
+            // 하한선으로 막는다.
+            float minX = visibleMin + (facing > 0f ? near : far);
+            float maxX = visibleMax - (facing > 0f ? far : near);
+            float clamped = maxX >= minX ? Mathf.Clamp(desired, minX, maxX) : desired;
+            float clearance = facing > 0f
+                ? (clamped - near) - anchorX
+                : anchorX - (clamped + near);
+            if (clearance < clearanceFloor)
+            {
+                clamped = facing > 0f
+                    ? anchorX + clearanceFloor + near
+                    : anchorX - clearanceFloor - near;
+            }
+            return new Placement(clamped, facing, false);
+        }
+
+        /// <summary>
+        /// 세로 배치 — 연출 전체가 화면 위/아래로 밀려나지 않게 가둔다.
+        ///
+        /// 실측으로 드러난 문제(2026-08-29 검증 중): 이 앱의 발판은 "다른 창의 상단 테두리"라,
+        /// 화면 거의 전체를 덮는 큰 창(에디터 창 등)의 상단 테두리는 **화면 맨 위(OS y=33)**에 있다.
+        /// 캐릭터가 거기 서 있으면 판자 더미(캐릭터 위 +1.60유닛까지)가 통째로 화면 밖으로 나가
+        /// 게이지고 판자고 단 한 픽셀도 보이지 않았다(실측: 연속 8회 소환 전부 화면 위로 이탈).
+        /// 가로 겹침만 고쳐도 이 상태에서는 아무것도 검증할 수 없어서 함께 잡는다 —
+        /// 리더 지시 "화면 밖으로 밀려나면 안 된다"는 좌우만의 이야기가 아니다.
+        ///
+        /// 클램프가 걸리면 연출이 캐릭터 몸통 쪽으로 조금 내려오지만, 그건 "보이지 않는 것"보다
+        /// 언제나 낫다(가로 미러링과 같은 판단 기준).
+        /// </summary>
+        private float ResolveContainerWorldY(Camera cam)
+        {
+            if (cam == null || !cam.orthographic) return _anchorWorld.y;
+            return ComputeContainerY(
+                _anchorWorld.y,
+                cam.transform.position.y + cam.orthographicSize - ScreenEdgePadWorld,
+                cam.transform.position.y - cam.orthographicSize + ScreenEdgePadWorld,
+                Height);
+        }
+
+        /// <summary>컨테이너 원점에서 연출의 <b>위</b> 끝(맨 위 판자 윗변)까지의 거리.</summary>
+        internal static float TopEdgeLocalY(float height) => height *
+            (StackBaseHeightRatio + (TileCount - 1) * (TileHeightRatio + TileGapRatio) + TileHeightRatio * 0.5f);
+
+        /// <summary>컨테이너 원점에서 연출의 <b>아래</b> 끝(게이지 아랫변)까지의 거리.</summary>
+        internal static float BottomEdgeLocalY(float height) => height *
+            (StackBaseHeightRatio - GaugeDropBelowStackRatio - GaugeHeightRatio * 0.5f);
+
+        internal static float ComputeContainerY(float anchorY, float visibleTop, float visibleBottom, float height)
+        {
+            float maxY = visibleTop - TopEdgeLocalY(height);
+            float minY = visibleBottom - BottomEdgeLocalY(height);
+            return maxY >= minY ? Mathf.Clamp(anchorY, minY, maxY) : anchorY;
+        }
+
+        /// <summary>연출 전체가 [min,max] 안에 들어가면서 캐릭터에서 최소 여유도 지키는지.</summary>
+        private static bool Fits(float containerX, float facing, float anchorX, float min, float max, float height)
+        {
+            float near = NearEdgeLocalX(height);
+            float far = FarEdgeLocalX(height);
+            float left = facing > 0f ? containerX - near : containerX - far;
+            float right = facing > 0f ? containerX + far : containerX + near;
+            if (left < min || right > max) return false;
+
+            float clearance = facing > 0f ? left - anchorX : anchorX - right;
+            return clearance >= MinCharacterClearance(height) - 0.001f;
         }
 
         private Tile CreateTile(int index, float restLocalY, Color ink)
@@ -365,7 +587,11 @@ namespace StickMate.Interaction
         {
             var go = new GameObject("ChargeGauge");
             go.transform.SetParent(_container.transform, false);
-            go.transform.localPosition = new Vector3(0f, StackBaseHeight - GaugeDropBelowStack, 0f);
+            // ★ 로컬 x = 0(중앙)이 아니라 캐릭터 **반대 방향**으로 GaugeForwardShift만큼 민다.
+            // 그래야 게이지의 근접 모서리가 판자 더미의 근접 모서리와 정확히 같은 선에 놓여,
+            // 폭을 하나도 줄이지 않고도 캐릭터 실루엣 밖으로 완전히 빠진다(위 상수 문서 참고).
+            go.transform.localPosition = new Vector3(
+                _facing * GaugeForwardShift, StackBaseHeight - GaugeDropBelowStack, 0f);
 
             float halfW = GaugeWidth * 0.5f;
             float halfH = GaugeHeight * 0.5f;
@@ -405,14 +631,20 @@ namespace StickMate.Interaction
             float bottom = StackBaseHeight - GaugeDropBelowStack - GaugeHeight * 0.5f;
             const float padding = 0.12f;
 
+            // 게이지가 더 이상 로컬 x=0 중심이 아니므로(위 CreateGauge 참고) 표적도 좌우 비대칭이다 —
+            // 판자와 게이지의 실제 합집합에서 다시 구한다. 이걸 빼먹으면 게이지 끝을 눌러도 판정에
+            // 잡히지 않는(=클릭관통으로 새어 나가는) 사각지대가 생긴다.
+            float left = Mathf.Min(-TileWidth * 0.5f, _facing * GaugeForwardShift - GaugeWidth * 0.5f);
+            float right = Mathf.Max(TileWidth * 0.5f, _facing * GaugeForwardShift + GaugeWidth * 0.5f);
+
             var go = new GameObject("BattleClickTarget");
             go.transform.SetParent(_container.transform, false);
-            go.transform.localPosition = new Vector3(0f, (top + bottom) * 0.5f, 0f);
+            go.transform.localPosition = new Vector3((left + right) * 0.5f, (top + bottom) * 0.5f, 0f);
 
             _clickTarget = go.AddComponent<BoxCollider2D>();
             _clickTarget.isTrigger = true; // 히트테스트에는 잡히고 물리 충돌은 절대 일으키지 않는다.
             _clickTarget.size = new Vector2(
-                Mathf.Max(TileWidth, GaugeWidth) + padding * 2f,
+                Mathf.Max(0.1f, right - left) + padding * 2f,
                 Mathf.Max(0.1f, top - bottom) + padding * 2f);
 
             _hitbox?.RegisterExtraCollider(_clickTarget);

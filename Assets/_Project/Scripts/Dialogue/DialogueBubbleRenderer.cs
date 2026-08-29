@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using StickMate.Core;
 using StickMate.States;
+using StickMate.Interaction;
 
 namespace StickMate.Dialogue
 {
@@ -81,11 +82,55 @@ namespace StickMate.Dialogue
         private const float MaxTextWidth = 220f;        // 이 폭을 넘으면 줄바꿈.
         private const float TailWidth = 24f;
         private const float TailHeight = 15f;
-        private const float TailPanelOverlap = 3f;      // 꼬리 채움이 박스 아래 테두리를 덮어 자연스럽게 잇는 양.
+        // 꼬리 채움이 몸통 테두리를 덮어 자연스럽게 잇는 양. 타원 전환(2026-08-29)으로 상향:
+        // 사각형이면 아래 변이 평평해 3px면 충분했지만, 타원은 중앙에서 멀어질수록 아래 경계가
+        // 위로 휘어 올라가고 **안쪽(채움) 타원**은 바깥 타원보다 더 위에 있다. 실측 계산상 최대
+        // 세로 간격이 약 2.5px라 그보다 확실히 큰 값이어야 이음매가 생기지 않는다.
+        private const float TailPanelOverlap = 5f;
+        /// <summary>꼬리가 붙을 수 있는 최대 위치(몸통 반폭 대비 비율, 꼬리 바깥 모서리 기준).
+        /// 이보다 옆으로 나가면 타원 아래 경계가 너무 높이 휘어 꼬리가 몸통 옆구리에 매달린 것처럼 보인다.</summary>
+        private const float TailEllipseSpanLimit = 0.75f;
         private const float ScreenEdgeMargin = 8f;      // 화면 가장자리 최소 여백(규칙 6 "잘리지 않게").
-        private const float HeadTopWorldOffset = 0.34f; // 머리 중심에서 꼬리 끝까지(월드 유닛) — 해상도/줌 무관.
+        // ★ 2026-08-29 리더 지시 — 캐릭터 기준 오프셋은 **전신 높이 대비 비율**로만 둔다.
+        // 절대 유닛으로 두면 캐릭터 크기를 바꾸는 순간(사용자가 "절반 크기 + 추후 조정 가능"을 요구했다)
+        // 꼬리가 머리를 파고들거나 허공에 뜬다. 기준값의 단일 소스는 StickmanAgent.CharacterTotalHeightWorld.
+        // 현재 프리팹 실측 2.27유닛에 곱하면 검증을 마친 종전 값(0.34)이 그대로 나온다.
+        private const float HeadTopOffsetRatio = 0.1498f; // 머리 중심에서 꼬리 끝까지(0.34 / 2.27).
+
+        /// <summary>이 캐릭터의 전신 높이(월드 유닛). 캐릭터 기준 오프셋의 유일한 기준값.</summary>
+        private float CharacterHeight => _agent != null ? _agent.CharacterTotalHeightWorld : 2.27f;
+
+        /// <summary>머리 중심에서 꼬리 끝까지(월드 유닛) — 해상도/줌 무관, 캐릭터 크기 추종.</summary>
+        private float HeadTopWorldOffset => CharacterHeight * HeadTopOffsetRatio;
         private const float FadeInSeconds = 0.15f;      // 규칙 6 "등장 150ms".
         private const float FadeOutSeconds = 0.12f;     // 규칙 6 "소멸 100~150ms".
+
+        // ============================================================================
+        // ★ 타원 말풍선 기하 (사용자 신고 2026-08-29: "말풍선도 네모가 아닌 타원 형태의 말풍선")
+        // ============================================================================
+        // 가로 tw, 세로 th인 글자 블록을 품는 **최소 넓이 타원**의 반지름은 (tw/2·√2, th/2·√2)다
+        // (직사각형의 네 꼭짓점이 타원 위에 놓이는 조건 (x/a)²+(y/b)²=1을 넓이 최소로 푼 결과).
+        // 그래서 사각형 시절의 "글자 + 여백" 대신 "글자·√2 + 여백"으로 몸통 크기를 잡는다 —
+        // 이걸 빼먹으면 모서리 쪽 글자가 타원 밖으로 삐져나온다.
+        private const float EllipseFitFactor = 1.41421356f;
+        /// <summary>타원에 내접하는 최대 직사각형의 가장자리 여백 비율((1 - 1/√2)/2). 글자 RectTransform을
+        /// 이만큼 안으로 넣으면 글자 영역이 정확히 그 내접 사각형이 된다.</summary>
+        private const float EllipseInsetFactor = 0.14644661f;
+
+        // ============================================================================
+        // ★ 글자 선명도 (사용자 신고 2026-08-29: "텍스트 폰트가 부드럽지 않음")
+        // ============================================================================
+        // 진단 결과(자세한 근거는 아래 ResolveKoreanFont 위 주석): 이 앱의 프레임버퍼는 1x인데
+        // 화면은 2x Retina라 OS 컴포지터가 전부 2배로 확대한다. 캔버스 스케일은 1이므로(CanvasScaler
+        // 없음) "캔버스가 축소돼 있다"는 가설은 실측으로 기각됐다.
+        //
+        // 프레임버퍼 해상도 자체는 이 컴포넌트가 바꿀 수 없다(ProjectSettings 전역 설정 —
+        // 리더 판단 사항). 대신 여기서 할 수 있는 최선은 **글리프를 2배 크기로 래스터라이즈해서
+        // 절반으로 축소 렌더링**하는 것이다: 글자 한 픽셀이 4개 텍셀의 평균으로 결정되므로
+        // (bilinear 2:1 축소 = 2x2 박스 필터) 획 경계의 계단/뭉침이 눈에 띄게 줄어든다.
+        // 레이아웃 수치는 전부 캔버스 픽셀 기준을 유지하고, 라벨만 이 배율로 확대했다가
+        // localScale로 되돌린다.
+        private const int TextSupersample = 2;
 
         [SerializeField] private StickmanAgent _agent;   // 플레이어용 자동 배선(같은 GameObject 우선).
         [SerializeField] private Transform _anchor;      // 머리 Transform. 비면 Awake에서 "Head"를 찾는다.
@@ -110,7 +155,14 @@ namespace StickMate.Dialogue
         private Image _tailOutlineImage;
         private Image _tailFillImage;
         private Text _label;
+        private RectTransform _labelRect;
         private Camera _camera;
+
+        // 타원 몸통 스프라이트 — 크기가 바뀔 때마다 그 크기에 딱 맞춰 다시 만든다(아래
+        // UpdateEllipseSprites 문서 참고). 인스턴스별로 갖는다: 말풍선 크기는 화자마다 다르다.
+        private Sprite _ellipseOuterSprite;
+        private Sprite _ellipseInnerSprite;
+        private Vector2Int _ellipseSpriteSize = new Vector2Int(-1, -1);
 
         // ==================== 표시 상태 ====================
         private DialogueIntent _active;        // 지금 표시 중인 대사(만료됐지만 최소 노출 중일 수도 있음).
@@ -155,6 +207,9 @@ namespace StickMate.Dialogue
             if (_anchor == null) _anchor = transform.Find("Head");
             if (_anchor == null) _anchor = transform;
             if (_config == null && _agent != null) _config = _agent.Config;
+            // 같은 GameObject의 이모트만 본다 — 씬 전체 탐색을 쓰면 라이벌의 이모트를 보고
+            // 플레이어 말풍선이 올라가는 사고가 난다(_requireBoundSpeaker와 같은 취지의 화자 분리).
+            _hardware = GetComponent<HardwareReactionRenderer>();
             BuildUi();
             HideImmediateInternal(logReason: null);
         }
@@ -187,6 +242,10 @@ namespace StickMate.Dialogue
             // 남지 않는다 — 캐릭터가 파괴되는데 말풍선 캔버스만 화면에 남는 사고 방지.
             if (_canvas != null) Destroy(_canvas.gameObject);
             _canvas = null;
+            // 타원 스프라이트/텍스처는 HideFlags.HideAndDontSave라 자동 회수 대상이 아니다 —
+            // 여기서 명시적으로 지우지 않으면 캐릭터가 파괴될 때마다 텍스처가 누수된다
+            // (라이벌 스틱맨은 대결마다 만들어지고 사라진다).
+            DestroyEllipseSprites();
         }
 
         private void OnDisable()
@@ -232,6 +291,7 @@ namespace StickMate.Dialogue
             _shownAtUnscaledTime = Time.unscaledTime;
             _alpha = 0f;
 
+            _snapEmoteLift = true; // 첫 프레임부터 이모트 위에 자리 잡는다(미끄러져 올라오지 않는다).
             RefreshColors(); // 잉크색 프리셋(Ctrl+Opt+Cmd+C)이 런타임에 바뀌어도 다음 대사부터 즉시 반영.
             ApplyText(_activeText);
             if (_canvas != null) _canvas.gameObject.SetActive(true);
@@ -349,7 +409,8 @@ namespace StickMate.Dialogue
             if (_camera == null || _anchor == null) return;
 
             // 꼬리 끝이 가리키는 지점 = 머리 바로 위(월드 오프셋이라 줌/해상도가 바뀌어도 자동 추종).
-            Vector3 tipWorld = _anchor.position + Vector3.up * HeadTopWorldOffset;
+            // 하드웨어 반응 이모트가 떠 있으면 그 위로 비켜 선다(아래 TickEmoteLift 문서 참고).
+            Vector3 tipWorld = _anchor.position + Vector3.up * (HeadTopWorldOffset + TickEmoteLift());
             Vector3 tip = _camera.WorldToScreenPoint(tipWorld);
             if (tip.z < 0f) return; // 카메라 뒤 — 배치 불가(직교 카메라에서는 사실상 발생하지 않음).
 
@@ -362,23 +423,91 @@ namespace StickMate.Dialogue
             panelBottom = Mathf.Min(panelBottom, screenH - ScreenEdgeMargin - panelSize.y);
             panelBottom = Mathf.Max(panelBottom, ScreenEdgeMargin);
 
-            // 규칙 6: "꼬리 방향을 유지한 채 박스만 안쪽으로" — 박스 x를 화면 안으로 클램프하고,
-            // 꼬리는 캐릭터 x를 그대로 따라가되 박스 폭 안에 머물게만 한다.
-            float half = panelSize.x * 0.5f;
-            float panelCenterX = Mathf.Clamp(tip.x, ScreenEdgeMargin + half, screenW - ScreenEdgeMargin - half);
-            float tailMinX = panelCenterX - half + TailWidth * 0.5f + BorderThickness + 2f;
-            float tailMaxX = panelCenterX + half - TailWidth * 0.5f - BorderThickness - 2f;
-            float tailCenterX = tailMaxX >= tailMinX ? Mathf.Clamp(tip.x, tailMinX, tailMaxX) : panelCenterX;
+            // 규칙 6: "꼬리 방향을 유지한 채 몸통만 안쪽으로" — 몸통 x를 화면 안으로 클램프하고,
+            // 꼬리는 캐릭터 x를 그대로 따라가되 몸통 폭 안에 머물게만 한다.
+            float a = panelSize.x * 0.5f;   // 타원 가로 반지름
+            float b = panelSize.y * 0.5f;   // 타원 세로 반지름
+            float panelCenterX = Mathf.Clamp(tip.x, ScreenEdgeMargin + a, screenW - ScreenEdgeMargin - a);
+
+            // ★ 타원 전환(2026-08-29): 사각형이면 아래 변이 평평해 꼬리를 어디에 붙여도 같은 높이였지만,
+            // 타원은 중앙에서 멀어질수록 아래 경계가 위로 휘어 올라간다. 그대로 두면 꼬리가 몸통에서
+            // 떨어져 허공에 뜬다. 그래서 (1) 꼬리가 붙을 수 있는 좌우 범위를 타원 기준으로 제한하고,
+            // (2) 꼬리 **바깥 모서리**에서의 타원 아래 경계 높이를 구해 그 위에 꼬리 윗변을 얹는다
+            // (바깥 모서리로 재야 꼬리 윗변 전체가 타원 안에 들어간다).
+            float maxOffset = Mathf.Max(0f, a * TailEllipseSpanLimit - TailWidth * 0.5f);
+            float tailCenterX = Mathf.Clamp(tip.x, panelCenterX - maxOffset, panelCenterX + maxOffset);
+
+            float outerDx = Mathf.Abs(tailCenterX - panelCenterX) + TailWidth * 0.5f;
+            float t = a > 0.01f ? Mathf.Clamp01(1f - (outerDx * outerDx) / (a * a)) : 0f;
+            float ellipseBottomY = panelBottom + b - b * Mathf.Sqrt(t);
 
             _panel.anchoredPosition = new Vector2(panelCenterX, panelBottom);
 
-            // 꼬리는 박스 바닥에서 아래로 뻗는다(TailPanelOverlap만큼 박스 안으로 파고들어 이음매를 지운다).
-            var tailPos = new Vector2(tailCenterX, panelBottom + TailPanelOverlap);
-            var tailSize = new Vector2(TailWidth, TailHeight + TailPanelOverlap);
+            // 꼬리 윗변은 타원 경계보다 TailPanelOverlap만큼 위(=몸통 안쪽)에 두고, 아래 끝은 항상
+            // 머리 바로 위(tip)를 정확히 가리키게 길이를 맞춘다.
+            float tailTop = ellipseBottomY + TailPanelOverlap;
+            float tailHeight = Mathf.Max(TailHeight * 0.6f, tailTop - tip.y);
+            var tailPos = new Vector2(tailCenterX, tailTop);
+            var tailSize = new Vector2(TailWidth, tailHeight);
             _tailOutline.anchoredPosition = tailPos;
             _tailOutline.sizeDelta = tailSize;
             _tailFill.anchoredPosition = tailPos;
             _tailFill.sizeDelta = tailSize;
+        }
+
+        // ============================================================================
+        // ★ 하드웨어 반응 이모트와의 겹침 회피 (리더 좌표 확인, 2026-08-29 — 신고 4건째)
+        // ============================================================================
+        // 겹치는 이유: 머리 중심 앵커 ≈ 2.05, 정수리 ≈ 2.27인데 꼬리 끝은 앵커 + HeadTopWorldOffset(0.34)
+        // = 2.39이고, 하드웨어 이모트 중심은 2.32다. 즉 이모트가 **정수리와 꼬리 끝 사이에 정확히 끼어**
+        // 있어서, 반경까지 감안하면 꼬리와 패널 바닥을 그대로 관통했다. 게다가 하드웨어 반응은
+        // SpectacleEventLock에 참여하지 않으므로(의도된 설계) 유휴 혼잣말과 언제든 동시에 뜬다.
+        //
+        // 해법: 이모트가 떠 있는 동안 꼬리 끝을 **이모트의 실제 상단 위로** 올린다. 상수로 계산하지 않고
+        // HardwareReactionRenderer가 알려주는 실제 월드 y를 쓰는 이유는, 이모트가 화면 위 클램프에
+        // 걸려 머리와 다른 높이에 있을 수 있고(그쪽 FollowHead 참고) 두 연출이 서로 다른 앵커
+        // (말풍선=Head 트랜스폼 / 이모트=Body 위치)를 쓰기 때문이다 — 상수로 맞추면 포즈가 바뀔 때마다
+        // 어긋난다.
+        //
+        // 이모트 쪽은 같은 시간 동안 가로로 비켜 준다(HardwareReactionRenderer.TickDialogueDodge).
+        // 세로/가로를 나눠 각자 자기 좌표만 만지므로 서로의 배치 로직을 알 필요가 없다.
+        //
+        // 화면 위 잘림: 아래 UpdatePlacement의 기존 클램프
+        //   panelBottom = Min(panelBottom, screenH - ScreenEdgeMargin - panelSize.y)
+        // 가 올라간 몸통을 그대로 화면 안으로 되돌린다. 꼬리 길이는 그 클램프 결과에서 다시 계산되므로
+        // (tailTop - tip.y) 끝점은 계속 머리를 가리킨다.
+
+        /// <summary>이모트 상단과 꼬리 끝 사이에 남길 여유(전신 높이 대비 비율, 0.14 / 2.27).</summary>
+        private const float EmoteClearanceRatio = 0.0617f;
+
+        /// <summary>회피가 순간이동처럼 보이지 않게 하는 접근 속도(유닛/초).</summary>
+        private const float EmoteLiftSpeed = 3.6f;
+
+        private HardwareReactionRenderer _hardware;
+        private float _emoteLift;
+        private bool _snapEmoteLift;
+
+        private float TickEmoteLift()
+        {
+            float desired = 0f;
+            if (_hardware != null && _hardware.TryGetOccupiedTopWorldY(out float emoteTop))
+            {
+                desired = Mathf.Max(0f,
+                    (emoteTop + CharacterHeight * EmoteClearanceRatio) - (_anchor.position.y + HeadTopWorldOffset));
+            }
+
+            if (_snapEmoteLift)
+            {
+                // 말풍선이 처음 뜨는 프레임에는 즉시 제자리로 — 아래에서 위로 미끄러져 올라오면
+                // 그 사이 프레임 동안 이모트를 그대로 관통한다.
+                _snapEmoteLift = false;
+                _emoteLift = desired;
+            }
+            else
+            {
+                _emoteLift = Mathf.MoveTowards(_emoteLift, desired, Time.unscaledDeltaTime * EmoteLiftSpeed);
+            }
+            return _emoteLift;
         }
 
         private Camera ResolveCamera()
@@ -422,15 +551,29 @@ namespace StickMate.Dialogue
 
             // 줄바꿈을 감안한 실제 크기 계산. CanvasScaler를 붙이지 않아 scaleFactor는 1이지만,
             // 나중에 누가 스케일러를 붙여도 조용히 깨지지 않도록 명시적으로 나눠준다.
-            TextGenerationSettings settings = _label.GetGenerationSettings(new Vector2(MaxTextWidth, 0f));
+            // 라벨은 TextSupersample배로 확대된 좌표계에서 살고 localScale로 되돌아오므로, 제너레이터가
+            // 주는 값도 그 배율만큼 크다 — 캔버스 픽셀로 환산해서 쓴다.
+            float ss = Mathf.Max(1, TextSupersample);
+            TextGenerationSettings settings = _label.GetGenerationSettings(new Vector2(MaxTextWidth * ss, 0f));
             float scale = settings.scaleFactor > 0f ? settings.scaleFactor : 1f;
             TextGenerator gen = _label.cachedTextGeneratorForLayout;
-            float textW = Mathf.Min(MaxTextWidth, gen.GetPreferredWidth(_label.text, settings) / scale);
-            settings = _label.GetGenerationSettings(new Vector2(textW, 0f));
-            float textH = gen.GetPreferredHeight(_label.text, settings) / scale;
+            float textW = Mathf.Min(MaxTextWidth, gen.GetPreferredWidth(_label.text, settings) / scale / ss);
+            settings = _label.GetGenerationSettings(new Vector2(textW * ss, 0f));
+            float textH = gen.GetPreferredHeight(_label.text, settings) / scale / ss;
 
-            float inset = (BorderThickness + TextPadding) * 2f;
-            _panel.sizeDelta = new Vector2(Mathf.Ceil(textW + inset), Mathf.Ceil(textH + inset));
+            // 타원은 같은 넓이의 사각형보다 모서리 쪽 유효 폭이 좁다 — 글자 블록에 √2를 곱한 뒤
+            // 여백을 더해야 글자가 타원 안에 온전히 들어간다(위 EllipseFitFactor 문서 참고).
+            float pad = (BorderThickness + TextPadding) * 2f;
+            float w = Mathf.Ceil(textW * EllipseFitFactor + pad);
+            float h = Mathf.Ceil(textH * EllipseFitFactor + pad);
+            _panel.sizeDelta = new Vector2(w, h);
+
+            // 글자 영역 = 타원에 내접하는 최대 직사각형.
+            float innerW = Mathf.Max(1f, w * (1f - EllipseInsetFactor * 2f));
+            float innerH = Mathf.Max(1f, h * (1f - EllipseInsetFactor * 2f));
+            _labelRect.sizeDelta = new Vector2(innerW * ss, innerH * ss);
+
+            UpdateEllipseSprites(w, h);
         }
 
         private void BuildUi()
@@ -462,19 +605,24 @@ namespace StickMate.Dialogue
             _panel = CreatePanel(canvasGo.transform, ink, bubble);
             _tailFill = CreateTailPart(canvasGo.transform, "TailFill", bubble, filled: false, out _tailFillImage);
 
-            // 글자는 박스의 자식이라 박스를 옮기면 함께 따라온다.
+            // 글자는 몸통의 자식이라 몸통을 옮기면 함께 따라온다. 스트레치 앵커가 아니라 **중앙 앵커 +
+            // 명시 크기**를 쓰는 이유: 아래 localScale(1/TextSupersample)과 스트레치 앵커를 같이 쓰면
+            // 부모 크기에서 한 번, 스케일에서 또 한 번 줄어들어 글자 영역이 절반이 된다.
+            // 실제 크기는 ApplyText()가 타원의 내접 사각형으로 매번 다시 잡는다.
             var labelGo = new GameObject("Label", typeof(RectTransform), typeof(Text));
             labelGo.transform.SetParent(_panel, false);
-            var labelRect = labelGo.GetComponent<RectTransform>();
-            labelRect.anchorMin = Vector2.zero;
-            labelRect.anchorMax = Vector2.one;
-            float pad = BorderThickness + TextPadding;
-            labelRect.offsetMin = new Vector2(pad, pad);
-            labelRect.offsetMax = new Vector2(-pad, -pad);
+            _labelRect = labelGo.GetComponent<RectTransform>();
+            _labelRect.anchorMin = new Vector2(0.5f, 0.5f);
+            _labelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            _labelRect.pivot = new Vector2(0.5f, 0.5f);
+            _labelRect.anchoredPosition = Vector2.zero;
+            _labelRect.localScale = Vector3.one / Mathf.Max(1, TextSupersample);
             _label = labelGo.GetComponent<Text>();
-            _label.font = ResolveKoreanFont(fontSize);
-            _label.fontSize = fontSize;
-            _label.fontStyle = FontStyle.Bold; // 캐릭터의 굵은 획과 같은 문법 + 작은 화면에서의 가독성.
+            _label.font = ResolveKoreanFont(fontSize * Mathf.Max(1, TextSupersample));
+            _label.fontSize = fontSize * Mathf.Max(1, TextSupersample);
+            // 합성 볼드는 16px 한글에서 획을 서로 붙여 뭉갠다 — 진짜 Bold 페이스를 잡았으면 그걸 쓰고,
+            // 못 잡았을 때만 예전처럼 합성 볼드로 굵기를 흉내 낸다(캐릭터의 굵은 획과 같은 문법).
+            _label.fontStyle = _cachedFontIsRealBold ? FontStyle.Normal : FontStyle.Bold;
             _label.alignment = TextAnchor.MiddleCenter;
             _label.color = ink;
             _label.horizontalOverflow = HorizontalWrapMode.Wrap;
@@ -522,6 +670,106 @@ namespace StickMate.Dialogue
             image.color = color;
             image.raycastTarget = false;
             return rect;
+        }
+
+        // ==================== 타원 몸통 스프라이트 (런타임 생성) ====================
+        //
+        // 사각 Image로는 타원이 나오지 않는다. 꼬리(BuildTriangleSprite)와 **완전히 같은 방법**으로,
+        // 안티에일리어싱된 알파 커버리지를 담은 텍스처를 코드로 만들어 흰 마스크로 쓴다(색은 Image.color가
+        // 입히므로 잉크색/말풍선색 프리셋 전환이 그대로 따라온다 — RefreshColors는 한 줄도 바뀌지 않는다).
+        //
+        // 왜 고정 크기 텍스처 한 장을 늘려 쓰지 않는가: 말풍선 크기는 대사 길이에 따라 60~240px까지
+        // 변한다. 큰 텍스처를 축소하면 밉맵 없는 bilinear 축소가 되어 1픽셀짜리 AA 띠가 뭉개지고,
+        // 작은 텍스처를 확대하면 경계가 흐물해진다. 그래서 **표시 크기와 1:1인 텍스처**를 그때그때
+        // 만든다. 대사가 바뀔 때만(수 초에 한 번) ~100x50 루프를 도는 것이라 비용은 무시할 수 있고,
+        // 같은 크기면 재사용하므로 같은 길이의 대사가 이어질 때는 아예 다시 만들지 않는다.
+        private void UpdateEllipseSprites(float width, float height)
+        {
+            int w = Mathf.Max(8, Mathf.CeilToInt(width));
+            int h = Mathf.Max(8, Mathf.CeilToInt(height));
+            if (_ellipseSpriteSize.x == w && _ellipseSpriteSize.y == h && _ellipseOuterSprite != null) return;
+
+            DestroyEllipseSprites();
+
+            _ellipseOuterSprite = BuildEllipseSprite(w, h, 0f, "StickMateBubbleEllipseOuter");
+            // 안쪽 채움은 테두리 두께만큼 작은 타원. 몸통 Image의 자식 RectTransform이 이미 사방으로
+            // BorderThickness만큼 들어가 있으므로(CreatePanel) 그 크기에 맞춰 만든다.
+            int iw = Mathf.Max(4, w - Mathf.CeilToInt(BorderThickness * 2f));
+            int ih = Mathf.Max(4, h - Mathf.CeilToInt(BorderThickness * 2f));
+            _ellipseInnerSprite = BuildEllipseSprite(iw, ih, 0f, "StickMateBubbleEllipseInner");
+            _ellipseSpriteSize = new Vector2Int(w, h);
+
+            if (_panelOutlineImage != null) _panelOutlineImage.sprite = _ellipseOuterSprite;
+            if (_panelInnerImage != null) _panelInnerImage.sprite = _ellipseInnerSprite;
+        }
+
+        private void DestroyEllipseSprites()
+        {
+            DestroySpriteAndTexture(ref _ellipseOuterSprite);
+            DestroySpriteAndTexture(ref _ellipseInnerSprite);
+            _ellipseSpriteSize = new Vector2Int(-1, -1);
+        }
+
+        private static void DestroySpriteAndTexture(ref Sprite sprite)
+        {
+            if (sprite == null) return;
+            Texture2D tex = sprite.texture;
+            Destroy(sprite);
+            if (tex != null) Destroy(tex);
+            sprite = null;
+        }
+
+        /// <summary>
+        /// 텍스처 사각형에 내접하는 타원의 알파 마스크를 만든다. 경계는 약 1픽셀 폭으로
+        /// 안티에일리어싱되므로(투명 오버레이에서 계단이 그대로 보이는 이 앱에서 특히 중요하다)
+        /// 가장자리가 매끄럽다.
+        ///
+        /// 커버리지는 타원 방정식 f = (x/a)² + (y/b)² - 1 을 그 기울기 크기로 나눠 얻는
+        /// **근사 부호거리**로 구한다(f 자체는 거리에 비례하지 않아 긴 타원에서 위아래 AA 폭이
+        /// 달라진다 — 나눠주면 어느 방향에서도 같은 1픽셀 띠가 된다).
+        /// </summary>
+        private static Sprite BuildEllipseSprite(int w, int h, float inset, string name)
+        {
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false)
+            {
+                name = name,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave,
+            };
+
+            float a = Mathf.Max(0.5f, w * 0.5f - inset);
+            float b = Mathf.Max(0.5f, h * 0.5f - inset);
+            float cx = w * 0.5f;
+            float cy = h * 0.5f;
+            float invA2 = 1f / (a * a);
+            float invB2 = 1f / (b * b);
+
+            var pixels = new Color32[w * h];
+            for (int y = 0; y < h; y++)
+            {
+                float py = y + 0.5f - cy;
+                float py2 = py * py;
+                for (int x = 0; x < w; x++)
+                {
+                    float px = x + 0.5f - cx;
+                    float f = px * px * invA2 + py2 * invB2 - 1f;
+                    // |∇f| = 2·sqrt((x/a²)² + (y/b²)²)
+                    float gx = px * invA2;
+                    float gy = py * invB2;
+                    float g = 2f * Mathf.Sqrt(gx * gx + gy * gy);
+                    float dist = g > 1e-6f ? f / g : -1f; // 양수 = 타원 바깥
+                    float coverage = Mathf.Clamp01(0.5f - dist);
+                    pixels[y * w + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(coverage * 255f));
+                }
+            }
+            tex.SetPixels32(pixels);
+            tex.Apply(false, false);
+
+            var sprite = Sprite.Create(tex, new Rect(0f, 0f, w, h), new Vector2(0.5f, 0.5f), 100f);
+            sprite.name = name;
+            sprite.hideFlags = HideFlags.HideAndDontSave;
+            return sprite;
         }
 
         // ==================== 꼬리 스프라이트 (런타임 생성 — 텍스처 에셋 없이) ====================
@@ -614,6 +862,8 @@ namespace StickMate.Dialogue
 
         private static Font _cachedFont;
         private static bool _koreanGlyphVerified;
+        /// <summary>고른 폰트가 **진짜 Bold 페이스**인가. true면 Unity의 합성 볼드를 끈다.</summary>
+        private static bool _cachedFontIsRealBold;
 
         /// <summary>
         /// 한글이 **실제로 그려지는** 폰트를 고른다. Unity 내장 LegacyRuntime.ttf(Arial 계열)는 한글
@@ -621,10 +871,59 @@ namespace StickMate.Dialogue
         /// RequestCharactersInTexture -> GetCharacterInfo로 "한" 글자의 글리프 폭이 실제로 잡히는지를
         /// 실측해 첫 성공 폰트를 쓴다(이름만 보고 믿지 않는다 — 설치 여부/이름 표기가 OS마다 다르다).
         /// 전부 실패하면 내장 폰트로 폴백하고 경고를 남긴다(앱이 죽지는 않는다).
+        ///
+        /// ============================================================================
+        /// "글자가 부드럽지 않다"(사용자 신고 2026-08-29) 진단 기록 — 추측 금지, 실측만
+        /// ============================================================================
+        /// 가설 (a) "캔버스 스케일 때문에 작게 렌더된 뒤 확대된다" -> **기각**. 이 캔버스에는
+        ///   CanvasScaler가 없어 scaleFactor는 정확히 1이고, 글리프는 fontSize 그대로
+        ///   1:1 픽셀로 그려지고 있었다.
+        /// 가설 (b) "레거시 Text의 비트맵 아틀라스 한계" -> **부분적**. 아틀라스 자체는 FreeType
+        ///   그레이스케일 AA라 그 크기에서는 이미 매끈하다.
+        /// 실제 원인 -> **앱 프레임버퍼가 1x인데 화면이 2x Retina라 OS가 전부 2배로 확대한다.**
+        ///   실측 증거 3가지:
+        ///     1) 실행 로그: `Screen=(1512x982)`, `system_profiler`: 실제 패널 `3024 x 1964 Retina`.
+        ///     2) ProjectSettings의 `macRetinaSupport: 0`, 빌드된 Info.plist에
+        ///        `NSHighResolutionCapable` 키 없음.
+        ///     3) 같은 스크린샷 안에서 macOS가 그린 글자는 선명한데 말풍선 글자만 2x2 블록으로
+        ///        뭉개져 있다(같은 물리 크기, 절반의 실효 해상도).
+        ///   이 값은 8baa871에서 Retina 관련 실험 중 1 -> 0으로 바뀐 뒤 되돌려지지 않은 것으로,
+        ///   `Assets/Editor/BuildStandalone.cs`의 해당 주석은 그 실험을 "폐기했다(코드는 되돌림)"고
+        ///   기록하고 있다(설정 값만 남았다).
+        ///
+        /// 여기서 되돌리지 않는 이유(리더 판단 사항으로 이관): macRetinaSupport를 켜면
+        /// Screen.width/height가 3024x1964가 되어 **모든 ScreenSpaceOverlay 캔버스의 UI가 물리적으로
+        /// 절반 크기가 된다**(말풍선/앱제어 메뉴/투두 위젯 — 이 컴포넌트 밖의 다른 담당자 파일 포함).
+        /// SceneBootstrapper가 경고한 "OS-px 단위 7개 필드"의 재검토도 함께 필요하다.
+        ///
+        /// 이 컴포넌트가 그 안에서 할 수 있는 최선 두 가지는 적용했다:
+        ///   · 글리프 2배 슈퍼샘플링(<see cref="TextSupersample"/>)
+        ///   · 합성 볼드 대신 **진짜 Bold 페이스** 사용(아래) — 16px 한글에서 합성 볼드는 획을
+        ///     서로 붙여 뭉개는 가장 큰 원인이다.
         /// </summary>
         private static Font ResolveKoreanFont(int size)
         {
             if (_cachedFont != null) return _cachedFont;
+
+            // 1순위: 진짜 Bold 페이스(합성 볼드 회피). 실패하면 조용히 아래 일반 후보로 넘어간다.
+            var boldCandidates = new List<string>
+            {
+                "AppleSDGothicNeo-Bold", "Apple SD Gothic Neo Bold", "AppleGothic Bold",
+                "Malgun Gothic Bold", "맑은 고딕 Bold", "NanumGothicBold", "NanumGothic Bold",
+                "NanumBarunGothicBold", "PingFangSC-Semibold", "HiraginoSans-W6",
+            };
+            for (int i = 0; i < boldCandidates.Count; i++)
+            {
+                Font f = TryCreateFont(boldCandidates[i], size);
+                if (f == null) continue;
+                if (!CanRenderKorean(f, size, FontStyle.Normal)) continue;
+                _cachedFont = f;
+                _koreanGlyphVerified = true;
+                _cachedFontIsRealBold = true;
+                Debug.Log($"[말풍선] 한글 폰트 확정: '{boldCandidates[i]}' (진짜 Bold 페이스, 글리프 실측 통과) — " +
+                    "합성 볼드를 끄고 이 페이스를 그대로 씁니다.");
+                return _cachedFont;
+            }
 
             var candidates = new List<string>
             {
@@ -669,10 +968,11 @@ namespace StickMate.Dialogue
             {
                 Font f = TryCreateFont(candidates[i], size);
                 if (f == null) continue;
-                if (!CanRenderKorean(f, size)) continue;
+                if (!CanRenderKorean(f, size, FontStyle.Bold)) continue;
                 _cachedFont = f;
                 _koreanGlyphVerified = true;
-                Debug.Log($"[말풍선] 한글 폰트 확정: '{candidates[i]}' (글리프 실측 통과).");
+                _cachedFontIsRealBold = false;
+                Debug.Log($"[말풍선] 한글 폰트 확정: '{candidates[i]}' (글리프 실측 통과, 합성 볼드 사용).");
                 return _cachedFont;
             }
 
@@ -689,13 +989,15 @@ namespace StickMate.Dialogue
             catch { return null; }
         }
 
-        /// <summary>"한글" 글자의 글리프가 실제로 잡히는지 실측한다(이름만 보고 믿지 않는다).</summary>
-        private static bool CanRenderKorean(Font font, int size)
+        /// <summary>"한글" 글자의 글리프가 실제로 잡히는지 실측한다(이름만 보고 믿지 않는다).
+        /// 실제로 쓸 <paramref name="style"/> 그대로 조회해야 의미가 있다 — 합성 볼드를 끌 폰트를
+        /// Bold로 조회하면 검증한 것과 다른 경로를 재는 셈이 된다.</summary>
+        private static bool CanRenderKorean(Font font, int size, FontStyle style)
         {
             try
             {
-                font.RequestCharactersInTexture("한글", size, FontStyle.Bold);
-                if (!font.GetCharacterInfo('한', out CharacterInfo info, size, FontStyle.Bold)) return false;
+                font.RequestCharactersInTexture("한글", size, style);
+                if (!font.GetCharacterInfo('한', out CharacterInfo info, size, style)) return false;
                 return info.glyphWidth > 0 && info.advance > 0;
             }
             catch

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using StickMate.Core;
+using StickMate.Dialogue;
 
 namespace StickMate.Interaction
 {
@@ -45,17 +46,31 @@ namespace StickMate.Interaction
 
         private const float PopInSeconds = 0.28f;     // 등장(작게 튀어오르며).
         private const float FadeOutSeconds = 0.40f;   // 조건 회복/우선순위 교체로 사라질 때.
-        // 캐릭터 루트(Rigidbody2D.position)는 **발 높이**가 로컬 y=0이다(Editor/SceneBootstrapper.cs의
-        // 프리팹 지오메트리 주석 참고: 몸통 0.45~1.35, 머리 링 중심 약 1.57 / 반경 0.22 -> 정수리 약 1.79).
-        // 처음에 1.05로 잡았다가 실측 스크린샷에서 이모트가 **가슴팍에 겹쳐** 그려지는 것을 확인하고
-        // 정수리 위로 올렸다 — 발 기준임을 잊고 '머리 위'라는 이름만 보고 값을 넣으면 정확히 이렇게 된다.
-        private const float HeadOffsetY = 2.32f;      // 캐릭터 **발** 원점 기준 이모트 중심 높이(월드 유닛).
-        private const float BobAmplitude = 0.045f;    // 살아 있는 느낌의 아주 약한 상하 부유.
+        // 캐릭터 루트(Rigidbody2D.position)는 **발 높이**가 로컬 y=0이다. 현재 프리팹 실측(2026-08-29):
+        // 전신 2.27 / 머리 중심 2.05 / 머리 반경 0.22 -> 정수리 2.27.
+        // 이력: 처음 1.05로 잡았다가 이모트가 **가슴팍에 겹쳐** 보여 정수리 위로 올렸고(2.32),
+        // 그 다음 라운드에 사용자가 **머리와 겹친다**고 다시 신고했다 — 세로 값 하나만 만지는 방식의
+        // 한계다. 지금은 세로(비율) + 가로(머리 옆 대각선)로 배치를 다시 잡았다(아래 배치 설계 절).
+        // ★ 2026-08-29 리더 지시 — 아래 치수는 전부 **캐릭터 전신 높이 대비 비율**이다.
+        // 절대 유닛으로 두면 캐릭터 크기를 바꾸는 순간(사용자가 "절반 크기 + 추후 조정 가능"을 요구했다)
+        // 전부 다시 겹친다. 기준 높이는 StickmanAgent.CharacterTotalHeightWorld 하나뿐이며,
+        // 지금 프리팹 실측 2.27유닛에서 아래 비율을 곱하면 검증을 마친 종전 값이 그대로 나온다
+        // (2.32 / 0.045 / 0.42 / 0.052).
+        private const float HeadOffsetRatio = 1.0220f;   // 발 원점 기준 이모트 중심 높이(2.32 / 2.27).
+        private const float BobAmplitudeRatio = 0.0198f; // 아주 약한 상하 부유(0.045 / 2.27).
+        private const float IconScaleRatio = 0.1850f;    // 정규화(-1~1) 도형을 월드로 옮기는 배율(0.42 / 2.27).
+        private const float StrokeWidthRatio = 0.0229f;  // 이모트 획 두께(0.052 / 2.27).
+
         private const float BobSpeed = 1.9f;
-        private const float IconScale = 0.42f;        // 정규화(-1~1) 도형을 월드로 옮기는 배율.
         private const float ClampMarginRatio = 1.25f; // 화면 경계에서 띄울 여유(IconScale 배수) — FollowHead 참고.
 
-        private const float StrokeWidth = 0.052f;
+        /// <summary>이 캐릭터의 전신 높이(월드 유닛). 위 비율들의 유일한 기준값.</summary>
+        private float Height => _agent != null ? _agent.CharacterTotalHeightWorld : 2.27f;
+
+        private float HeadOffsetY => Height * HeadOffsetRatio;
+        private float BobAmplitude => Height * BobAmplitudeRatio;
+        private float IconScale => Height * IconScaleRatio;
+        private float StrokeWidth => Height * StrokeWidthRatio;
         private const int SortingOrder = 8;           // 캐릭터 획(0~5) 위, 그라피티(9)/격파(10~15) 아래.
 
         private const float SparkleLifeSeconds = 0.85f;
@@ -109,6 +124,19 @@ namespace StickMate.Interaction
         /// <summary>지금 표현 중인 반응 종류(떠 있지 않으면 null).</summary>
         public HardwareReactionKind? VisibleKind => _mode != Mode.None ? _kind : (HardwareReactionKind?)null;
 
+        /// <summary>
+        /// 지금 이모트가 차지하고 있는 월드 y 상한. 말풍선(Dialogue/DialogueBubbleRenderer)이 그 위로
+        /// 비켜설 수 있도록 열어둔 <b>읽기 전용</b> 창구다 — 이쪽에서 말풍선을 건드리는 일은 없다.
+        /// 떠 있지 않으면 false.
+        /// </summary>
+        public bool TryGetOccupiedTopWorldY(out float topWorldY)
+        {
+            topWorldY = 0f;
+            if (_mode == Mode.None || _container == null) return false;
+            topWorldY = _container.transform.position.y + IconScale;
+            return true;
+        }
+
         /// <summary>이 이모트가 지금 실제로 만들어낸 LineRenderer 개수. 정리가 끝나면 반드시 0이다.</summary>
         public int ActiveVisualCount =>
             _container != null ? _container.GetComponentsInChildren<LineRenderer>(true).Length : 0;
@@ -147,6 +175,7 @@ namespace StickMate.Interaction
         private void Begin(HardwareReactionKind kind)
         {
             Teardown();
+            ChooseSide(); // 이번 이모트가 머리 어느 쪽으로 나갈지 여기서 한 번 정한다.
 
             var blackboard = _agent != null ? _agent.Blackboard : null;
             if (blackboard == null || blackboard.Body == null)
@@ -174,7 +203,9 @@ namespace StickMate.Interaction
             _showTimer = 0f;
             _moteTimer = 0f;
 
-            Debug.Log($"[하드웨어] {KindLabel(kind)} 반응 이모트 표시 시작 — 캐릭터 머리 위 {HeadOffsetY:F2}유닛, " +
+            Debug.Log($"[하드웨어] {KindLabel(kind)} 반응 이모트 표시 시작 — 캐릭터 머리 " +
+                $"{(_sideSign > 0f ? "오른" : "왼")}쪽 대각선 위(전신 {Height:F2}유닛 기준 " +
+                $"가로 {HeadSideOffsetX:F2} / 세로 {HeadOffsetY:F2}유닛), " +
                 $"시각 오브젝트 {ActiveVisualCount}개, 콜라이더 {ActiveColliderCount}개(항상 0). " +
                 "★ 수치(%)는 표시하지 않고 은유만 그린다(23절), OS 제어(쓰기) API 호출 0건(27-7).");
         }
@@ -321,6 +352,7 @@ namespace StickMate.Interaction
             target.y += Mathf.Sin(_showTimer * BobSpeed) * BobAmplitude;
 
             Camera cam = _agent != null && _agent.Blackboard != null ? _agent.Blackboard.MainCamera : null;
+
             if (cam != null && cam.orthographic)
             {
                 float halfH = cam.orthographicSize;
@@ -334,13 +366,66 @@ namespace StickMate.Interaction
             _container.transform.position = target;
         }
 
+        // ============================================================================
+        // ★ 머리 위 3요소(머리 / 이모트 / 말풍선) 세로·가로 배치 재설계
+        //   (사용자 실측 신고 2026-08-29: "머리위에 저 주황색... 캐릭하고 겹치는데")
+        // ============================================================================
+        // 무엇이 잘못돼 있었나 — 값 하나가 아니라 **배치 자체**가 없었다:
+        //
+        //   캐릭터 정수리 ........ 2.27  (SceneBootstrapper: headY 2.05 + HeadVisualRadius 0.22)
+        //   이모트 아래 끝 ....... 2.02  (HeadOffsetY 2.32 - 0.7*IconScale, CPU 열기 물결 기준)
+        //   이모트 위 끝 ......... 2.61 ~ 2.74 (종류별 최대 세로 반경까지)
+        //   말풍선 꼬리 끝 ....... 2.39  (머리중심 2.05 + HeadTopWorldOffset 0.34)
+        //
+        // 즉 이모트는 아래로 **정수리 안쪽 0.25유닛까지 파고들고**, 위로는 **꼬리 끝을 넘어서** 있었다.
+        // 세 요소가 전부 x=0 한 줄에 있었으니 겹치지 않을 도리가 없다. 이전 라운드에서 1.05 -> 2.32로
+        // 올린 것은 "가슴팍 겹침"만 본 수정이라 머리 겹침이 그대로 남았다 — 그래서 이번엔 값을 더
+        // 올리는 대신 **차원을 하나 더 쓴다**.
+        //
+        // 새 배치(리더 승인 방향 "머리 옆 대각선"):
+        //   · 이모트는 머리 **옆 대각선 위**로 나간다  -> 이 파일(HeadSideOffsetX)
+        //   · 말풍선은 이모트 **실제 상단 위**로 올라간다 -> DialogueBubbleRenderer.TickEmoteLift()
+        //   세로로만 쌓지 않기 때문에 말풍선이 화면 위로 밀려나는 양도 최소로 유지된다(리더 지시).
+        //
+        // 왜 HeadOffsetY(2.32)는 그대로 두는가: 그 값은 "가슴팍 겹침"을 고치며 올린 것이라 내리면
+        // 그 버그가 되살아난다(리더 명시). 가로로 비키면 내릴 필요 자체가 없다.
+        //
+        // 왜 가로 오프셋인가(정량): 머리 원은 중심 (0, 2.05) 반경 0.22 + 외곽선 두께 절반 ≈ 0.27.
+        // 이모트는 가장 큰 종류 기준 반경 IconScale(0.42, 정규화 도형이 -1~1을 넘지 않으므로 상한이다).
+        // 두 원이 닿지 않으려면
+        // 가로 거리가 0.27 + 0.42 = 0.69보다 커야 하고, 여기에 여유 0.17을 더해 0.86으로 잡았다.
+        // 말풍선 꼬리(반폭 약 0.29유닛)와도 자동으로 벌어진다(0.86 - 0.42 = 0.44 > 0.29).
+
+        /// <summary>이모트를 머리 옆으로 밀어놓는 가로 거리(전신 높이 대비 비율, 0.86 / 2.27).
+        /// 위 산출 근거 참고 — 머리 반경 + 이모트 반경 + 여유를 전부 비율로 환산한 값이다.</summary>
+        private const float HeadSideOffsetRatio = 0.3789f;
+
+        private float HeadSideOffsetX => Height * HeadSideOffsetRatio;
+
+
+        /// <summary>이번 이모트가 나가 있는 방향(+1 오른쪽 / -1 왼쪽). 소환 시 한 번 정하고 그 이모트가
+        /// 사라질 때까지 바꾸지 않는다 — 캐릭터가 화면 중앙을 지날 때마다 좌우로 튀면 산만하다.</summary>
+        private float _sideSign = 1f;
+
+        /// <summary>이모트를 어느 쪽으로 낼지 정한다. **화면 안쪽(중앙 쪽)**을 고르는 이유는 바깥쪽으로
+        /// 내면 아래 FollowHead의 화면 클램프가 도로 끌어당겨 회피가 통째로 무효가 되기 때문이다 —
+        /// 이 앱의 캐릭터는 화면 가장자리에 서 있는 시간이 길다.</summary>
+        private void ChooseSide()
+        {
+            Camera cam = _agent != null && _agent.Blackboard != null ? _agent.Blackboard.MainCamera : null;
+            var blackboard = _agent != null ? _agent.Blackboard : null;
+            float x = blackboard != null && blackboard.Body != null ? blackboard.Body.position.x : transform.position.x;
+            _sideSign = cam != null && x > cam.transform.position.x ? -1f : 1f;
+        }
+
         private Vector3 HeadWorldPosition()
         {
             var blackboard = _agent != null ? _agent.Blackboard : null;
             Vector3 basePos = blackboard != null && blackboard.Body != null
                 ? (Vector3)blackboard.Body.position
                 : transform.position;
-            return new Vector3(basePos.x, basePos.y + HeadOffsetY, 0f);
+            // ★ 머리 **옆 대각선 위** — 세로로만 쌓으면 머리와도 말풍선과도 겹친다(위 배치 설계 참고).
+            return new Vector3(basePos.x + _sideSign * HeadSideOffsetX, basePos.y + HeadOffsetY, 0f);
         }
 
         /// <summary>배터리 잔량 막대 / 와이파이 호 — 종류마다 "깜빡임"의 의미가 다르다(경고 vs 탐색).</summary>
