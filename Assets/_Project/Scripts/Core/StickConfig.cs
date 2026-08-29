@@ -311,8 +311,19 @@ namespace StickMate.Core
 
         [Tooltip("스스로 기어오를 최대 턱 높이(월드 유닛). 이보다 높은 벽은 자율 배회로는 오르지 않는다 — " +
                  "ParkourClimb는 높이와 무관하게 parkourClimbDuration(0.5초)에 올라가므로, 높은 벽까지 " +
-                 "자동으로 오르게 두면 순간이동처럼 보인다. Dock 단차(0.855유닛)는 넉넉히 포함된다.")]
-        public float stepUpMaxHeight = 1.5f;
+                 "자동으로 오르게 두면 순간이동처럼 보인다.\n" +
+                 "★ 2026-08-29 재보정(사용자 신고 \"독 아래 떨어져있으면 계속 거기에서만 왔다갔다함\") — " +
+                 "원래 1.5는 Dock 단차를 0.855유닛으로 보고 잡은 값인데, 같은 라운드에서 (a) 바닥 안전망을 " +
+                 "화면 최하단 40pt 위 -> 8pt 위로 내리고(BottomSafetyNetInsetPoints) (b) Dock 두께를 " +
+                 "하드코딩 75pt에서 tilesize+26 실측 파생으로 바꾸면서, 두 변경이 겹쳐 Dock 상단~안전망 " +
+                 "상단 낙차가 실측 67pt(구 기하 35pt=0.855유닛 대비 약 2배)로 벌어졌다 — 실측: " +
+                 "Dock 상단 OS y=907, 안전망 상단 OS y=974, 환산 1.637유닛. 1.5로는 더 이상 이 낙차를 " +
+                 "덮지 못해 TryFindClimbableWall이 실패하고, 한 번 뛰어내리면 영영 못 올라온다(뛰어내리기 " +
+                 "밴드는 여전히 이 낙차를 포함해 내려가기는 계속 성립하므로 왕복의 절반만 깨진다).\n" +
+                 "Dock 타일 크기(tilesize)는 사용자 설정에 따라 달라 낙차도 함께 변하므로(작은 타일 " +
+                 "~1.2유닛 ~ 큰 타일 ~2.2유닛 추정), 한 번 더 여유를 넉넉히 둔 2.4로 올린다. 그래도 " +
+                 "일반 창 발판(수백 pt 이상)까지 순간이동처럼 자동으로 오르지는 않는다.")]
+        public float stepUpMaxHeight = 2.4f;
 
         [Tooltip("ParkourClimb로 턱 위에 올라선 뒤, 그 발판 안쪽으로 얼마나 들어가 설지(월드 유닛). " +
                  "0이면 모서리 선 위에 정확히 서게 되어 접지 판정이 경계에서 흔들리고 곧바로 다시 떨어진다. " +
@@ -821,8 +832,22 @@ namespace StickMate.Core
                  "(Interaction/StressGaugeRenderer.cs). 노랑->빨강 경계는 별도 값을 두지 않고 아래 " +
                  "stressSulkyThreshold를 그대로 재사용한다 — 빨간 신호를 봐야 하는 시점과 실제로 " +
                  "부루퉁해지는 시점이 어긋나면 안 되기 때문(같은 경계를 두 곳에서 계산해 어긋난 " +
-                 "전례가 이 프로젝트에 이미 두 번 있다: Dock 구간, 화면 클램프).")]
-        public float stressTierCautionLevel = 0.4f;
+                 "전례가 이 프로젝트에 이미 두 번 있다: Dock 구간, 화면 클램프).\n\n" +
+                 "★ 2026-08-29 기본 OFF(2.0) — 사용자 신고 '몸주위로 이상한 주황색 선들이 생김'의 " +
+                 "직접 원인이다. 그 주황색 선들의 정체는 양 어깨에서 바깥·아래로 늘어지는 호 2개(어깨 " +
+                 "처짐)와 머리 옆 작은 원(한숨 퍼프)이며, 색은 StressGaugeRenderer의 CautionColor" +
+                 "(0.72, 0.63, 0.36)다. 이 표시는 확률 기반 구경거리가 아니라 19절이 '상시 채널'로 " +
+                 "설계한 것이라, 직전 라운드에 자율 연출을 전부 OFF로 내릴 때 이것만 빠졌다.\n\n" +
+                 "사용자가 요청하지 않은 표시가 캐릭터를 둘러싸는 것에 불만을 제기한 것이 이번이 " +
+                 "두 번째다(직전은 하드웨어 발열 이모트 — enableAutonomousHardwareReactions=false로 " +
+                 "차단). 같은 결론을 같은 방식으로 적용한다.\n\n" +
+                 "왜 새 on/off 필드를 만들지 않고 임계값을 올렸는가: StressGauge.CurrentLevel은 " +
+                 "0~1로 클램프되므로 1보다 큰 값을 넣으면 이 표시가 뜨는 것이 **원리적으로 불가능**해진다. " +
+                 "바로 아래 stressRunawayThreshold가 정확히 같은 이유로 2.0인 선례가 있고, " +
+                 "Interaction/StressGaugeRenderer.cs는 한 줄도 건드리지 않아도 된다(기능을 지우는 것이 " +
+                 "아니라 조용하게 만드는 것 — 되살리려면 이 값을 원래 기본값 0.4로 되돌리면 그대로 " +
+                 "예전 거동이다).")]
+        public float stressTierCautionLevel = 2f;
 
         [Tooltip("이 값(0~1) 이상이면 SULKY(부루퉁함) 상태가 발동 후보가 된다. UX 명시값 80%.")]
         public float stressSulkyThreshold = 0.8f;
@@ -1493,5 +1518,347 @@ namespace StickMate.Core
         [Tooltip("착지 직후 남은 수평 속도를 죽이는 지수 감쇠 계수(1/초). 0이면 앉은 채로 옆으로 " +
                  "미끄러진다. 너무 크면 공중에서의 수평 이동이 착지 순간 뚝 끊겨 부자연스럽다.")]
         public float landingCrouchHorizontalDamping = 12f;
+
+        // ============================================================================
+        [Header("던지기 공중 회전(텀블링) — 2026-08-29 사용자 요청")]
+        // "마우스로 던졌을때도 이상하게 관절꺽이면서 넘어지는데 던져도 공중에서 회전하면서
+        // 무릎앉아 착지할수있게 해줘"
+        //
+        // ★ 단위 규약(리더 지시 그대로): **각도/각속도는 크기와 무관한 양이라 절대값**이 맞고,
+        //   **거리·속도 성분만** StickmanMetrics.TotalHeight로 나눠 무차원화한다(초당 몇 신장).
+        //   그래서 아래에서 "회전 속도"는 도/초 절대값이고, 그 입력이 되는 던진 속도만 신장 배수다.
+        // ============================================================================
+
+        [Tooltip("던지기 공중 회전 연출의 마스터 스위치(끄면 예전 거동으로 완전 복귀). 끄면 " +
+                 "DragThrowState가 놓는 순간 예전처럼 '충격량 >= ragdollForceThreshold면 Ragdoll, " +
+                 "아니면 Fall'로 분기한다 — Tests/PlayMode/ThrowTumbleTests.cs의 네거티브 컨트롤이 " +
+                 "이 스위치를 끄고 '실제로 랙돌이 되는지'를 확인한다.")]
+        public bool throwTumbleEnabled = true;
+
+        [Tooltip("공중 회전으로 볼 최소 던지기 속도(초당 몇 신장). 이보다 느리게 놓으면 '던진 것'이 " +
+                 "아니라 '내려놓은 것'이므로 회전 없이 평범한 Fall로 보낸다 — 살짝 집었다 놓을 때마다 " +
+                 "공중제비를 도는 것이 오히려 고장으로 읽힌다. ★ 속도는 거리 성분이라 신장으로 나눈 " +
+                 "무차원 값으로 노출한다(배율 0.75, 신장 1.71유닛에서 1.2 = 약 2.05유닛/초).")]
+        public float throwTumbleMinSpeedHeightsPerSecond = 1.2f;
+
+        [Tooltip("던진 속도(초당 신장 배수) 1당 회전 속도(도/초). 세게 던질수록 빨리 돈다는 관계를 " +
+                 "정하는 유일한 계수다. 던지기 속도 상한(dragThrowMaxSpeed 12유닛/초)은 배율 0.75에서 " +
+                 "약 7.0신장/초이므로 기본값 90이면 630도/초(초당 1.75바퀴)가 된다.")]
+        public float throwTumbleDegreesPerHeightSpeed = 90f;
+
+        [Tooltip("회전 속도의 하한(도/초). 최소 던지기 속도 근처에서도 '회전한다'고 알아볼 수 있어야 " +
+                 "한다 — 너무 느리면 회전이 아니라 기울어진 채 날아가는 것으로 보인다.")]
+        public float throwTumbleMinSpinDegreesPerSecond = 220f;
+
+        [Tooltip("회전 속도의 상한(도/초). 너무 빠르면 잔상처럼 뭉개져 자세를 알아볼 수 없고, " +
+                 "착지 정렬(아래)이 마무리할 각도도 그만큼 커진다.")]
+        public float throwTumbleMaxSpinDegreesPerSecond = 720f;
+
+        [Tooltip("착지 **몇 초 전에** 회전을 끝내고 몸을 바로 세울지(초). 정렬을 착지 순간에 딱 맞추면 " +
+                 "예측 오차가 그대로 '기울어진 채 착지'로 나타나므로, 이만큼 여유를 두고 먼저 끝낸 뒤 " +
+                 "직립으로 떨어지게 한다. 0으로 두면 착지 순간에 정확히 맞추려 시도한다(권장하지 않음).")]
+        public float throwTumbleAlignLeadSeconds = 0.1f;
+
+        [Tooltip("정렬 구간에서 허용하는 회전 속도의 배율 상한(회전 속도 대비). 정렬은 '남은 각도 ÷ " +
+                 "남은 시간'으로 매 프레임 다시 계산해 자기 보정하는데, 예측이 흔들릴 때 이 상한이 " +
+                 "없으면 마지막 순간에 팽이처럼 튀는 프레임이 생긴다. 1.0이면 절대 더 빨라지지 않는다" +
+                 "(대신 정렬을 못 끝낼 수 있다).")]
+        public float throwTumbleAlignMaxSpeedFactor = 1.6f;
+
+        [Tooltip("공중 회전 상태의 최대 지속 시간(초) — 안전 상한. 발판이 하나도 없거나 예측이 " +
+                 "실패해 영영 착지하지 못하는 경우 이 시간이 지나면 평범한 Fall로 빠져나간다" +
+                 "(그 뒤로는 기존 낙하/구조 안전망이 그대로 받는다).")]
+        public float throwTumbleMaxSeconds = 6f;
+
+        [Tooltip("정렬 구간에서 웅크린 정도를 얼마까지 풀지(0~1, 0=완전히 편 자세). 회전이 끝나고 " +
+                 "착지를 준비하는 동안 몸을 펴야 '착지 자세를 잡는다'로 읽힌다 — 웅크린 공 그대로 " +
+                 "떨어지면 무릎앉아로 이어지는 흐름이 끊긴다.")]
+        public float throwTumbleLandingTuck01 = 0.15f;
+
+        [Tooltip("웅크린 정도가 목표값으로 수렴하는 지수 감쇠 계수(1/초). 프레임레이트 독립 공식" +
+                 "(1-exp(-k*dt))이라 fps에 따라 결과가 달라지지 않는다.")]
+        public float throwTumbleTuckFadeRate = 10f;
+
+        [Tooltip("공중 회전으로 날아온 착지는 낙차가 작아도 항상 무릎앉아로 받을지. 켜두는 이유: " +
+                 "한 바퀴 이상 돌고 내려온 뒤 아무 일 없었다는 듯 똑바로 서면 그 자체가 고장으로 " +
+                 "읽힌다(연출의 마무리가 없다). 앉는 깊이는 여전히 아래 충격 세기에서 파생되므로, " +
+                 "살짝 던진 착지는 얕게 앉는다. 끄면 평범한 낙하와 같은 낙차 임계값" +
+                 "(rollLandingHeightThreshold)을 그대로 따른다.")]
+        public bool throwTumbleAlwaysCrouchOnLanding = true;
+
+        [Tooltip("착지 충격 세기를 '같은 충격의 낙하 높이'로 환산할 때 **수평 속도**를 얼마나 " +
+                 "반영할지(0~1). 1이면 옆으로 세게 던져 미끄러지듯 닿아도 수직 낙하와 같은 깊이로 " +
+                 "앉는다. 환산식은 에너지 보존 그대로다(h = v²/2g) — 순수 자유낙하에서는 이 값과 " +
+                 "무관하게 실제 낙하 높이와 정확히 일치하므로, 기존 무릎앉아 깊이 램프와 단위가 " +
+                 "어긋날 수 없다(States/ThrowTumbleState.ConfirmLanding 참고).")]
+        public float throwTumbleImpactHorizontalWeight = 0.5f;
+
+        [Tooltip("공중 회전 중 **엉덩이** 각도(도, + = 진행 방향). 다리를 몸 앞으로 크게 접어 올린 " +
+                 "웅크린 텀블링 자세를 만든다 — 사람이 공중제비를 돌 때 몸을 웅크리는 이유는 회전 " +
+                 "관성을 줄이기 위해서이고, 시각적으로도 그래야 '회전'으로 읽힌다.")]
+        public float throwTumbleHipDegrees = 76f;
+
+        [Tooltip("공중 회전 중 무릎 굽힘(도, 항상 0 이상 = 뒤로 접힘).")]
+        public float throwTumbleKneeBendDegrees = 104f;
+
+        [Tooltip("공중 회전 중 **어깨** 각도(도, + = 진행 방향). 팔을 앞으로 모아 몸을 감싼다.")]
+        public float throwTumbleArmDegrees = 46f;
+
+        [Tooltip("공중 회전 중 팔꿈치 굽힘(도, 항상 0 이상). 크게 접어야 팔이 몸을 감싼 것으로 " +
+                 "보인다(마디 로컬 각도라 팔뚝의 절대 각도는 어깨 각도 + 이 값이다).")]
+        public float throwTumbleElbowBendDegrees = 96f;
+
+        [Tooltip("공중 회전 중 좌우 팔다리를 벌리는 각도(도). 0이면 좌우가 완전히 겹쳐 한 쌍처럼 " +
+                 "보이므로 아주 조금만 벌려 깊이감을 준다.")]
+        public float throwTumbleLimbSpreadDegrees = 9f;
+
+        // ============================================================================
+        [Header("붙잡혔을 때 발버둥 — 2026-08-29 사용자 요청")]
+        // "마우스로 캐릭을 잡았을때 막 벗어날려는듯이 몸부림 치게끔 만들어줘"
+        //
+        // 이 값들은 전부 **각도/주파수/시간**이라 캐릭터 배율과 무관한 절대값이 맞다(리더 지시).
+        // 배율을 따라야 하는 거리 성분은 여기 하나도 없다 — 유일하게 거리 차원인 커서 속도만
+        // StickmanMetrics의 신장으로 나눠 무차원화해서 쓴다(dragStruggleCursorSpeedResponse).
+        // ============================================================================
+
+        [Tooltip("발버둥 연출의 마스터 스위치. 끄면 드래그 중 자세가 예전과 100% 동일하게 Idle 중립 " +
+                 "포즈로 돌아간다(StickmanBlackboard.TickPose의 Dragged 분기가 그 경로를 그대로 " +
+                 "유지한다). Tests/PlayMode/DragStruggleTests.cs의 네거티브 컨트롤이 이 스위치를 끄고 " +
+                 "'관절이 실제로 멈추는지'를 확인한다.")]
+        public bool dragStruggleEnabled = true;
+
+        [Tooltip("발버둥의 기본 주파수(Hz, 다리 기준). 팔은 이 주파수의 1.37배로 움직인다" +
+                 "(StickmanPoseAnimator.StruggleArmFrequencyRatio — 정수배가 아니어야 규칙적인 " +
+                 "루프로 보이지 않는다). 너무 높으면 떨림처럼, 너무 낮으면 기지개처럼 보인다.")]
+        public float dragStruggleFrequencyHz = 3.4f;
+
+        [Tooltip("발버둥 최대 세기에서 엉덩이 각도의 진폭(도). 다리를 앞뒤로 차는 크기다.")]
+        public float dragStruggleHipDegrees = 34f;
+
+        [Tooltip("발버둥 최대 세기에서 무릎이 추가로 접히는 각도(도). Idle 중립 굽힘 위에 더해지며 " +
+                 "0~이 값 사이를 오간다(음수가 되지 않으므로 무릎이 반대로 꺾이지 않는다).")]
+        public float dragStruggleKneeDegrees = 40f;
+
+        [Tooltip("발버둥 최대 세기에서 어깨 각도의 진폭(도). 팔을 휘젓는 크기다.")]
+        public float dragStruggleArmDegrees = 46f;
+
+        [Tooltip("발버둥 최대 세기에서 팔꿈치가 추가로 접히는 각도(도).")]
+        public float dragStruggleElbowDegrees = 38f;
+
+        [Tooltip("발버둥 최대 세기에서 몸통이 좌우로 비틀리는 각도(도). 루트의 **시각 회전**으로만 " +
+                 "만들고 루트 위치는 절대 흔들지 않는다 — 위치를 흔들면 '커서에 딱 붙어 끌려온다'는 " +
+                 "이전 라운드 수정(dragFollowSmoothTime=0 즉시 대입)이 무효가 된다. 팔다리보다 느린 " +
+                 "주기로 비틀려야 '허우적'이 아니라 '벗어나려 몸을 튼다'로 읽힌다.")]
+        public float dragStruggleTwistDegrees = 9f;
+
+        [Tooltip("★ 몸부림 리듬의 한 주기(초). '세게 몸부림 → 잠깐 지침'을 이 주기로 반복한다 — " +
+                 "일정한 진폭으로 계속 흔들면 살아 있는 것이 아니라 루프 애니메이션으로 보인다" +
+                 "(리더 지시). 한 주기 안에서 앞의 dragStruggleBurstDutyFraction만큼이 몸부림 " +
+                 "구간(사인 한 봉우리)이고 나머지가 지침 구간이다.")]
+        public float dragStruggleBurstPeriodSeconds = 1.15f;
+
+        [Tooltip("한 주기 중 몸부림(버스트) 구간의 비율(0~1). 나머지가 지침 구간이다. 너무 크면 쉬는 " +
+                 "느낌이 사라지고, 너무 작으면 축 늘어져 보인다.")]
+        public float dragStruggleBurstDutyFraction = 0.55f;
+
+        [Tooltip("지침 구간의 세기(0~1). 0이면 완전히 축 늘어져 '기절'처럼 보이므로, 숨을 고르는 " +
+                 "정도의 바닥값을 준다.")]
+        public float dragStruggleRestIntensity = 0.18f;
+
+        [Tooltip("잡혀 있는 시간이 길어질수록 잦아드는 속도 — 세기가 절반만큼 줄어드는 데 걸리는 " +
+                 "시간(초). 잡힌 직후가 가장 격렬하고 점점 지치는 것이 자연스럽다(리더 지시). " +
+                 "0 이하로 두면 지침 없이 계속 같은 세기로 몸부림친다.")]
+        public float dragStruggleFatigueHalfLifeSeconds = 4.5f;
+
+        [Tooltip("아무리 오래 잡고 있어도 세기가 이 아래로는 내려가지 않는다(0~1). 0으로 두면 오래 " +
+                 "잡고 있을 때 완전히 멈춰 '죽은 것'처럼 보인다.")]
+        public float dragStruggleMinIntensity = 0.4f;
+
+        [Tooltip("커서를 빠르게 흔들수록 더 격렬해지는 정도 — 커서 속도 1신장/초당 더해지는 세기. " +
+                 "★ 속도는 거리 성분이라 신장으로 나눠 무차원화한다(배율이 바뀌어도 '같은 체감 " +
+                 "속도'에서 같은 반응). 0으로 두면 커서 속도에 반응하지 않는다.")]
+        public float dragStruggleCursorSpeedResponse = 0.12f;
+
+        [Tooltip("커서 속도로 더할 수 있는 세기의 상한. 상한이 없으면 커서를 빠르게 흔드는 동안 " +
+                 "진폭이 무한히 커져 팔다리가 뒤엉킨 것처럼 보인다.")]
+        public float dragStruggleMaxCursorBoost = 0.6f;
+
+        // ============================================================================
+        // 활쏘기 (사용자 명시 요청 2026-08-29: "하는 행동중 하나가 활을 들고 화살을 쏘는건데
+        // 과녁이 생성되고 3번정도 포물선을 그리는 활을 쏘는 행동을 하는거지")
+        // ============================================================================
+        // ★ 거리/크기/속도 성분은 전부 **캐릭터 신장 대비 비율**이다(리더 지시: 배율이 바뀌어도
+        //   연출이 같은 그림이어야 한다). 시간(초)과 각도(도)는 크기와 무관한 양이라 절대값이 맞다.
+        //   기준 신장의 유일한 조회 경로는 Core/StickmanMetrics.cs다.
+
+        [Header("활쏘기 (2026-08-29 사용자 요청)")]
+
+        [Tooltip("자율 발동 확률(0~1). ★ 기본값 0 = 사용자가 부르지 않으면 절대 발동하지 않는다. " +
+                 "이 프로젝트 사용자는 요청하지 않은 연출이 뜨는 것에 반복적으로 불만을 표했고 " +
+                 "직전 라운드에 구경거리 연출 전부가 기본 OFF로 내려갔다(다른 *Chance 필드들과 동일). " +
+                 "발동 경로는 전역 단축키 Ctrl+Opt+Cmd+A와 캐릭터 우클릭 메뉴 두 가지뿐이며, 그 " +
+                 "수동 경로는 이 값을 읽지 않으므로 여기를 0으로 둬도 언제든 볼 수 있다.")]
+        public float archeryChance = 0f;
+
+        [Tooltip("자율 발동 추첨 주기(초). archeryChance가 0이면 추첨 자체가 무의미하다.")]
+        public float archeryCheckInterval = 60f;
+
+        [Tooltip("한 사이클이 끝난 뒤 다음 자율 발동까지의 최소 쿨다운(초).")]
+        public float archeryCooldownSeconds = 600f;
+
+        [Tooltip("과녁까지의 **희망** 거리 — 캐릭터 신장 배수. 4.6이면 신장 1.71유닛(배율 0.75)에서 " +
+                 "약 7.9유닛(화면상 약 276pt) 앞이다.\n\n" +
+                 "★ 2026-08-29 사용자 신고 '과녁이 너무 가까이 생성됨'으로 2.8 -> 4.6. 사거리는 " +
+                 "'곡선으로 멀리 날아간다'는 요구와도 직결된다 — 짧으면 포물선이 그려질 공간 자체가 " +
+                 "없어 직선처럼 보인다.\n\n" +
+                 "화면에 이만큼의 자리가 없으면 발동을 포기하지 않고 **들어가는 만큼 줄여서** 놓는다" +
+                 "(ArcheryDirector.TryPlaceHorizontally). 그 하한이 아래 archeryMinTargetDistanceRatio다.")]
+        public float archeryTargetDistanceRatio = 4.6f;
+
+        [Tooltip("화면이 좁을 때까지 줄여도 되는 **최소** 사거리 — 캐릭터 신장 배수. 이보다 가까우면 " +
+                 "'쏘는' 것이 아니라 '찌르는' 것처럼 보이고 포물선도 거의 직선이 되므로, 차라리 " +
+                 "발동하지 않는다(반대편 미러링 -> 그래도 안 되면 조용히 포기).")]
+        public float archeryMinTargetDistanceRatio = 2.6f;
+
+        [Tooltip("과녁 바깥 링의 반지름 — **캐릭터 신장 배수**. 과녁 중심 높이는 별도 설정값이 아니라 " +
+                 "이 값에서 유도된다: 과녁 꼭대기가 정확히 캐릭터 정수리 높이가 되도록 " +
+                 "중심 높이 = 신장 - 반지름 (Interaction/ArcheryDirector.TargetCenterHeight). " +
+                 "그래서 '과녁은 캐릭터와 같은 키'라는 관계가 어느 배율에서도 유지되고, 화면 세로 " +
+                 "판정이 캐릭터 자신의 판정과 같아진다(둘이 따로 놀 경우의 수가 없다).")]
+        public float archeryTargetRadiusRatio = 0.40f;
+
+        [Tooltip("빗나간 화살이 과녁보다 **얼마나 앞에** 떨어지는가 — 과녁 반지름 배수(1보다 커야 한다). " +
+                 "과녁 뒤로 넘기지 않는 이유: 그러면 궤적이 과녁 면 안쪽을 통과해 '빗나갔다'가 아니라 " +
+                 "'뚫었다'로 읽힌다. 앞 땅에 꽂히면 화살이 과녁 x에 도달하기 전에 끝나므로 겹칠 " +
+                 "경우의 수 자체가 없다(States/ArcheryState.ComputeImpactWorld 주석 참고).")]
+        public float archeryMissShortfallRadii = 1.5f;
+
+        [Tooltip("화살이 날아가는 데 걸리는 시간(초). 도달점과 이 값이 정해지면 포물선의 초기 속도는 " +
+                 "유일하게 결정된다 — 힘을 주고 결과를 지켜보는 물리 시뮬레이션이 아니라 **역산**이라 " +
+                 "프레임레이트/충돌 우연으로 연출이 달라지지 않는다(리더 지시).\n\n" +
+                 "★ 2026-08-29 사용자 신고 '화살이 너무 늦게 날라감'으로 0.85 -> 0.62초. 사거리 " +
+                 "7.9유닛을 0.62초에 지나가므로 초당 약 12.7유닛(화면상 약 520pt/초)이다. " +
+                 "이 값을 더 줄이면 포물선을 눈으로 따라갈 수 없고, 늘리면 정점에서 떠 있는 시간이 " +
+                 "길어져 늘어진다(둘의 균형점).")]
+        public float archeryArrowFlightSeconds = 0.62f;
+
+        [Tooltip("비행 시간의 상한(초). 사거리가 길어지면 비행 시간이 함께 늘어나는데" +
+                 "(ArcheryState.ResolveFlightSeconds), 창 폭만 한 25유닛짜리 사격에서까지 비례로 늘리면 " +
+                 "화살이 하늘에 한참 떠 있어 늘어진다. 여기서 잘라 '멀어도 답답하지 않게' 만든다.\n\n" +
+                 "★ 사거리가 기준(archeryTargetDistanceRatio × 신장)일 때 정확히 " +
+                 "archeryArrowFlightSeconds가 되고, 그보다 멀면 **거리의 제곱근**에 비례해 늘어난다. " +
+                 "선형으로 늘리면 먼 사격이 두 배 넘게 느려지고, 고정으로 두면 먼 사격이 눈으로 " +
+                 "따라갈 수 없는 섬광이 된다 — 제곱근이 그 사이의 균형점이다.")]
+        public float archeryArrowFlightMaxSeconds = 1.25f;
+
+        [Tooltip("포물선이 '발사점-도달점 직선' 위로 부푸는 최대 높이 — **캐릭터 신장 배수**. " +
+                 "이 값이 곧 포물선의 볼록함이며, 중력 상수는 여기서 역으로 유도된다" +
+                 "(g = 8*apex/T^2, ArcheryRenderer.SolveGravity). 배율이 바뀌어도 궤적의 **모양**이 " +
+                 "그대로 유지되는 이유다.\n\n" +
+                 "★ 상한의 근거: 이 값을 키우면 화살 최고점이 캐릭터 정수리 위로 올라가고, 캐릭터가 " +
+                 "화면 맨 위 창 테두리에 서 있을 때 궤적 윗부분이 화면 밖으로 잘린다. 0.38이면 " +
+                 "최고점이 정수리 바로 언저리라 '캐릭터가 보이면 궤적도 보인다'가 대체로 성립한다.")]
+        public float archeryArrowArcApexRatio = 0.38f;
+
+        [Tooltip("과녁을 세울 자리까지 걸어가는 데 허용하는 최대 시간(초). 이 시간을 넘기면 그 자리에서 " +
+                 "시작한다 — 발판이 도중에 사라지거나 화면 클램프에 걸려 목표 X에 영원히 도달하지 못할 " +
+                 "수 있는데, 그때 '아무 일도 일어나지 않는' 것보다는 조금 가까운 거리에서라도 쏘는 편이 낫다.")]
+        public float archeryApproachTimeoutSeconds = 12f;
+
+        [Tooltip("과녁이 등장해 자리를 잡는 시간(초). 이 시간이 지나야 첫 발을 당기기 시작한다 — " +
+                 "상태(ArcheryState)와 렌더러(ArcheryRenderer)가 **같은 이 값**을 읽으므로 '과녁이 아직 " +
+                 "커지는 중인데 이미 쏘고 있는' 어긋남이 생기지 않는다.")]
+        public float archeryTargetIntroSeconds = 0.55f;
+
+        [Tooltip("시위를 끝까지 당기는 데 걸리는 시간(초). easeOut이라 처음에 빠르게 당기고 마지막에 " +
+                 "버티듯 느려진다.")]
+        public float archeryDrawSeconds = 0.42f;
+
+        [Tooltip("완전히 당긴 채 겨누고 멈춰 있는 시간(초). 애니메이션의 hold — 이 정지가 있어야 " +
+                 "'겨눴다'가 한 장의 그림으로 눈에 남는다(무릎앉아 착지의 버팀 구간과 같은 관행).")]
+        public float archeryAimHoldSeconds = 0.30f;
+
+        [Tooltip("발사 후 다음 발을 당기기까지의 회복 시간(초).")]
+        public float archeryRecoverSeconds = 0.34f;
+
+        [Tooltip("발사 순간 당기던 팔이 튕겨 나가는 반동의 지속 시간(초). 0이면 반동 없이 그냥 놓는다.")]
+        public float archeryRecoilSeconds = 0.18f;
+
+        [Tooltip("마지막 화살이 도달한 뒤 과녁이 사라지기까지의 시간(초). 상태와 렌더러가 같은 값을 읽는다. " +
+                 "★ 전체 연출이 늘어지지 않도록 0.75 -> 0.55(사용자 신고 대응).")]
+        public float archeryOutroSeconds = 0.55f;
+
+        [Tooltip("활을 쏘는 동안 남은 수평 속도를 죽이는 지수 감쇠 계수(1/초) — '캐릭터가 멈춰 서고'. " +
+                 "0으로 즉시 대입하지 않는 이유는 무릎앉아 착지와 같다(뚝 끊기면 오히려 부자연스럽다).")]
+        public float archeryHorizontalDamping = 14f;
+
+        [Tooltip("활쏘기 포즈 각도의 지수 감쇠 계수(1/초). poseSmoothingRate(35)보다 높게 두는 이유는 " +
+                 "무릎앉아와 같다 — 당기기/발사가 0.2~0.4초짜리 정해진 곡선이라 보간이 느리면 " +
+                 "'튕겨 나가는 반동'이 통째로 뭉개진다. 프레임레이트 독립 공식(1-exp(-k*dt))이라 " +
+                 "이 값을 올려도 fps에 따라 결과가 달라지지 않는다.")]
+        public float archeryPoseSmoothingRate = 46f;
+
+        [Tooltip("포물선 볼록함을 **수평 사거리에 비례**시키는 계수. 0.24면 7.9유닛을 쏠 때 현 위로 " +
+                 "약 1.9유닛(화면상 약 66pt) 부푼다.\n\n" +
+                 "★ 2026-08-29 사용자 신고 '화살이 곡선으로 멀리 날라가야하는데' 대응으로 신설. " +
+                 "볼록함을 신장에만 비례시키면 사거리를 늘리는 순간 상대적으로 납작해져 직선처럼 " +
+                 "보인다 — 멀리 쏠수록 더 높이 떠야 '곡선으로 멀리 날아간다'가 된다. " +
+                 "아래 archeryArrowArcApexRatio가 하한(짧은 사격 방어), 카메라 상단이 상한" +
+                 "(정점이 화면 밖으로 잘리지 않게)으로 함께 걸린다.")]
+        public float archeryArrowArcApexDistanceRatio = 0.18f;
+
+        // ---- 자세(각도, 도) — 크기와 무관한 양이므로 비율이 아니라 절대값이 맞다(리더 지시). ----
+        // 각도 규약은 States/StickmanPoseAnimator.cs 전체와 같다: 마디 로컬 -y가 끝(손/발),
+        // 각도 0이 "곧게 아래", 끝 방향은 (sinθ, -cosθ). 즉 +90이 정면(진행 방향) 수평이다.
+        // 좌우 미러링은 최종 적용 시점(ApplyAngle)에서 facingSign이 곱해져 자동 처리된다.
+
+        [Tooltip("활을 든 **앞팔** 어깨 각도(도). 104 = 수평(90)에서 위로 14도 들어올린 상태. " +
+                 "★ 육안 검증 후 88 -> 104로 올렸다: 이 연출의 실제 조준각이 약 29도 위쪽이라 " +
+                 "(먼 과녁 + 포물선) 팔을 수평으로 두면 활만 위로 기울고 팔은 그대로여서 " +
+                 "'겨눈다'가 아니라 '활을 그냥 들고 있다'로 보였다.")]
+        public float archeryBowArmDegrees = 104f;
+
+        [Tooltip("활을 든 앞팔의 **팔꿈치 절대 각도**(도) — 상대 굽힘이 아니라 전완 자체의 각도다. " +
+                 "실제 적용되는 상대 각도는 코드가 (이 값 - 어깨 각도)로 계산한다. 절대 각도로 두는 " +
+                 "이유: 활을 든 팔은 '곧게 뻗는다'가 핵심인데, 그건 전완의 절대 방향이 어깨와 거의 " +
+                 "같다는 뜻이라 절대값으로 적는 편이 의도가 그대로 읽힌다.")]
+        public float archeryBowForearmDegrees = 108f;
+
+        [Tooltip("시위를 당기는 **뒷팔** 어깨 각도(도, 완전히 당긴 상태). -100 = 위 팔이 뒤쪽으로 " +
+                 "거의 수평(진행 반대 방향)으로 뻗어 팔꿈치가 몸 뒤로 빠진 자세.")]
+        public float archeryDrawUpperDegrees = -99f;
+
+        [Tooltip("시위를 당기는 뒷팔의 **전완 절대 각도**(도, 완전히 당긴 상태). 위 팔이 뒤를 향한 채 " +
+                 "전완이 앞쪽 위로 접혀 손이 뺨 근처로 온다 — 실제 활쏘기의 만작 자세는 팔이 거의 " +
+                 "완전히 접힌 상태(손과 어깨 거리가 상완+전완 길이보다 훨씬 짧다)라, 상대 굽힘이 " +
+                 "180도 근처의 큰 값이 된다. 그래서 이 축도 절대 각도로 적는다.\n\n" +
+                 "★ 육안 검증 후 100 -> 119로 올렸다. 100이면 손이 어깨 바로 옆(어깨에서 0.17유닛)에 " +
+                 "와서 위 팔과 전완이 거의 겹쳐 **한 개의 막대**로 보였다(두 선의 화면상 간격이 3pt로 " +
+                 "선 두께와 비슷했다). 119면 손이 턱 높이로 올라가 어깨~손 거리가 0.32유닛이 되고 " +
+                 "팔꿈치가 뒤로 빠진 V자가 8pt 폭으로 벌어져 '당기고 있다'가 읽힌다.")]
+        public float archeryDrawForearmDegrees = 119f;
+
+        [Tooltip("발사 반동에서 뒷팔이 뒤로 튕겨 나가며 어깨가 추가로 열리는 각도(도). 실제 궁수의 " +
+                 "'follow-through'다 — 이 반동이 없으면 화살만 사라지고 몸은 그대로라 발사 순간이 " +
+                 "눈에 안 띈다.")]
+        public float archeryRecoilOpenDegrees = -38f;
+
+        [Tooltip("발사 반동에서 뒷팔 전완이 펴지는 정도(0~1). 1이면 완전히 펴진다.")]
+        public float archeryRecoilStraighten01 = 0.75f;
+
+        [Tooltip("활 쏘는 자세의 **앞다리** 엉덩이 각도(도, + = 진행 방향). 발을 앞뒤로 벌린 안정된 " +
+                 "스탠스를 만든다.")]
+        public float archeryFrontHipDegrees = 16f;
+
+        [Tooltip("활 쏘는 자세의 **뒷다리** 엉덩이 각도(도, - = 뒤쪽).")]
+        public float archeryRearHipDegrees = -18f;
+
+        [Tooltip("활 쏘는 자세의 무릎 굽힘(도, 항상 0 이상). 살짝 굽혀 버티는 느낌을 만든다.")]
+        public float archeryKneeBendDegrees = 12f;
+
+        [Tooltip("완전히 당겼을 때 몸이 가라앉는 깊이 — **캐릭터 신장 배수**. 활을 당기는 힘에 " +
+                 "몸이 살짝 뒤로/아래로 실리는 것을 표현한다(루트 회전은 능동 상태에서 고정이라 " +
+                 "몸통을 기울일 수 없으므로, 시각 전용 상하 오프셋으로 대신한다). 0이면 가라앉지 않는다.")]
+        public float archeryDrawBodySinkRatio = 0.022f;
     }
 }

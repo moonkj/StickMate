@@ -56,7 +56,7 @@ MonoBehaviour:
   hopDownEdgeCommitDistance: 0.12
   hopDownStepOffSpeedScale: 0.8
   stepUpChance: 0.5
-  stepUpMaxHeight: 1.5
+  stepUpMaxHeight: 2.4
   parkourMantleInset: 0.25
   clickThroughDefaultEnabled: 1
   footholdPollInterval: 0.3
@@ -186,7 +186,7 @@ MonoBehaviour:
   stressEmergencyStopTriggerCount: 3
   stressEmergencyStopIncrement: 0.03
   stressPassiveDecayPerHour: 0.05
-  stressTierCautionLevel: 0.4
+  stressTierCautionLevel: 2
   stressSulkyThreshold: 0.8
   stressSulkyCheckInterval: 30
   stressSulkyChance: 0
@@ -231,3 +231,90 @@ MonoBehaviour:
   dockExtraRunningAppTileEstimate: 0
   characterScale: 0.75
   enableAutonomousHardwareReactions: 0
+  fallPoseArmRaiseDegrees: 143
+  fallPoseElbowBendDegrees: 20
+  fallPoseLegSpreadDegrees: 15
+  fallPoseHipDegrees: 14
+  fallPoseKneeBendDegrees: 38
+  fallPoseFullSpeedHeightsPerSecond: 7
+  fallPoseMinIntensity: 0.16
+  landingCrouchEnabled: 1
+  landingImpactRagdollShield: 1
+  landingCrouchDeepFallHeights: 3
+  landingCrouchMinDepth01: 0.45
+  landingCrouchDurationShallow: 0.32
+  landingCrouchDurationDeep: 0.62
+  landingCrouchCompressFraction: 0.18
+  landingCrouchHoldFraction: 0.24
+  landingCrouchReboundAmount: 0.22
+  landingCrouchFrontHipDegrees: 82
+  landingCrouchFrontKneeDegrees: 126
+  landingCrouchRearHipDegrees: -40
+  landingCrouchRearKneeDegrees: 55
+  landingCrouchFrontArmDegrees: 64
+  landingCrouchFrontElbowDegrees: 26
+  landingCrouchRearArmDegrees: -128
+  landingCrouchRearElbowDegrees: 24
+  landingCrouchPoseSmoothingRate: 48
+  landingCrouchHorizontalDamping: 12
+  throwTumbleEnabled: 1
+  throwTumbleMinSpeedHeightsPerSecond: 1.2
+  throwTumbleDegreesPerHeightSpeed: 90
+  throwTumbleMinSpinDegreesPerSecond: 220
+  throwTumbleMaxSpinDegreesPerSecond: 720
+  throwTumbleAlignLeadSeconds: 0.1
+  throwTumbleAlignMaxSpeedFactor: 1.6
+  throwTumbleMaxSeconds: 6
+  throwTumbleLandingTuck01: 0.15
+  throwTumbleTuckFadeRate: 10
+  throwTumbleAlwaysCrouchOnLanding: 1
+  throwTumbleImpactHorizontalWeight: 0.5
+  throwTumbleHipDegrees: 76
+  throwTumbleKneeBendDegrees: 104
+  throwTumbleArmDegrees: 46
+  throwTumbleElbowBendDegrees: 96
+  throwTumbleLimbSpreadDegrees: 9
+  dragStruggleEnabled: 1
+  dragStruggleFrequencyHz: 3.4
+  dragStruggleHipDegrees: 34
+  dragStruggleKneeDegrees: 40
+  dragStruggleArmDegrees: 46
+  dragStruggleElbowDegrees: 38
+  dragStruggleTwistDegrees: 9
+  dragStruggleBurstPeriodSeconds: 1.15
+  dragStruggleBurstDutyFraction: 0.55
+  dragStruggleRestIntensity: 0.18
+  dragStruggleFatigueHalfLifeSeconds: 4.5
+  dragStruggleMinIntensity: 0.4
+  dragStruggleCursorSpeedResponse: 0.12
+  dragStruggleMaxCursorBoost: 0.6
+  archeryChance: 0
+  archeryCheckInterval: 60
+  archeryCooldownSeconds: 600
+  archeryTargetDistanceRatio: 4.6
+  archeryMinTargetDistanceRatio: 2.6
+  archeryTargetRadiusRatio: 0.4
+  archeryMissShortfallRadii: 1.5
+  archeryArrowFlightSeconds: 0.62
+  archeryArrowFlightMaxSeconds: 1.25
+  archeryArrowArcApexRatio: 0.38
+  archeryApproachTimeoutSeconds: 12
+  archeryTargetIntroSeconds: 0.55
+  archeryDrawSeconds: 0.42
+  archeryAimHoldSeconds: 0.3
+  archeryRecoverSeconds: 0.34
+  archeryRecoilSeconds: 0.18
+  archeryOutroSeconds: 0.55
+  archeryHorizontalDamping: 14
+  archeryPoseSmoothingRate: 46
+  archeryArrowArcApexDistanceRatio: 0.18
+  archeryBowArmDegrees: 104
+  archeryBowForearmDegrees: 108
+  archeryDrawUpperDegrees: -99
+  archeryDrawForearmDegrees: 119
+  archeryRecoilOpenDegrees: -38
+  archeryRecoilStraighten01: 0.75
+  archeryFrontHipDegrees: 16
+  archeryRearHipDegrees: -18
+  archeryKneeBendDegrees: 12
+  archeryDrawBodySinkRatio: 0.022

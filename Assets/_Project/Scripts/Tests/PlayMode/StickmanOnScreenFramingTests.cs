@@ -58,11 +58,17 @@ namespace StickMate.Tests.PlayMode
 
         // ★ 2026-08-28 — 하단 여백만 별도로 완화한다(사용자 요청 "독아래로 가면 바닥으로 내려가야하는데").
         // 이 상수를 나눈 이유: 원래 0.5유닛 여백은 "캐릭터가 화면 **위쪽** 가장자리에 걸쳐 안 보인다"
-        // (BUG-P1-R4-B1)를 잡으려고 만든 값이라 위/아래에 같은 값을 썼다. 그런데 이번 라운드에 안전망
-        // 발판이 **의도적으로** 화면 진짜 최하단(BottomSafetyNetInsetPoints=10pt, 화면 높이의 약 1%)으로
+        // (BUG-P1-R4-B1)를 잡으려고 만든 값이라 위/아래에 같은 값을 썼다. 그런데 안전망 발판이
+        // **의도적으로** 화면 진짜 최하단(BottomSafetyNetInsetPoints, 화면 높이의 1% 미만)으로
         // 내려갔으므로, 하단 0.5유닛(=화면 높이의 약 2%) 여백은 이제 **정상 동작을 실패로 판정**한다.
         // 검증 의도("전신이 화면 안에 보인다")는 그대로 유지하면서 하한만 새 사양에 맞춘다 — 발끝이
         // 화면 밖으로 나가는 진짜 회귀는 이 값으로도 여전히 걸린다. 위쪽은 완화하지 않는다.
+        //
+        // ★ 2026-08-29(바닥 높이 3차 수정) — 이 검사의 **계측 방식**이 바뀌었다: Renderer.bounds가 아니라
+        // StickmanInkBounds(정점 기하)를 쓴다. LineRenderer.bounds는 Y로 +1.0유닛 부풀려져 있어서
+        // (그 클래스 문서에 실측값), 안전망이 화면 바닥(6pt=0.147유닛)까지 내려온 지금은 "정상인데도
+        // 바운즈 아래끝이 화면 밖"이 되어 이 테스트가 통째로 오탐한다. 부풀림을 걷어내면 접지 시 잉크
+        // 아래끝은 화면 바닥에서 약 0.1유닛 위이므로 아래 0.05유닛 하한이 그대로 유효하다.
         private const float MinBottomWorldMarginUnits = 0.05f;
         // 가로 여백은 세로보다 느슨하게 잡는다(위 클래스 문서 "단 X는..." 참고) — 몸 중심이 화면
         // 가장자리에서 이만큼 안쪽에 있으면 캐릭터는 확실히 화면에 보인다.
@@ -111,7 +117,8 @@ namespace StickMate.Tests.PlayMode
                 yield return new WaitForSeconds(sampleTime - elapsed);
                 elapsed = sampleTime;
 
-                Bounds bounds = ComputeCombinedBounds(renderers);
+                Assert.IsTrue(StickmanInkBounds.TryCompute(renderers, out Bounds bounds),
+                    $"{LogPrefix} t={elapsed:F1}s 캐릭터의 잉크 바운즈를 계산하지 못했습니다(활성 렌더러 0개?).");
                 Vector3 bottomWorld = new Vector3(bounds.min.x, bounds.min.y, bounds.center.z);
                 Vector3 topWorld = new Vector3(bounds.max.x, bounds.max.y, bounds.center.z);
                 Vector3 bottomScreen = cam.WorldToScreenPoint(bottomWorld);
@@ -179,14 +186,5 @@ namespace StickMate.Tests.PlayMode
                 "화면 세로 범위 안에 최소 여백을 두고 들어와 있었고, 몸 중심이 화면 가로 범위 안에 있었습니다.");
         }
 
-        private static Bounds ComputeCombinedBounds(Renderer[] renderers)
-        {
-            Bounds combined = renderers[0].bounds;
-            for (int i = 1; i < renderers.Length; i++)
-            {
-                combined.Encapsulate(renderers[i].bounds);
-            }
-            return combined;
-        }
     }
 }

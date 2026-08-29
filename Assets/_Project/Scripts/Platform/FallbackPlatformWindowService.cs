@@ -389,9 +389,13 @@ namespace StickMate.Platform
                 // Editor/SceneBootstrapper.cs가 씬에 굽는 지면 Y의 기준
                 // (NullPlatformWindowService.DummyFootholdHeightFraction)과 서로 다른 값이었던 것이다.
                 // 수정: 그 공개 상수를 그대로 참조해 **단일 소스**로 묶는다(그 선언부 문서에 유도 과정).
-                // ★ 2026-08-28: 그 상수가 화면 높이의 20% -> 화면 최하단 40pt(BottomSafetyNetInsetPoints)로
+                // ★ 2026-08-28: 그 상수가 화면 높이의 20% -> 화면 최하단(BottomSafetyNetInsetPoints)으로
                 // 내려갔다. 여기 계산식은 한 글자도 바뀌지 않지만 결과는 크게 달라진다 — 실측 1512x982
-                // 화면 기준 발판 상단이 OS y=785.6(화면 중간쯤)에서 y=942(화면 최하단)로 내려간다.
+                // 화면 기준 발판 상단이 OS y=785.6(화면 중간쯤)에서 화면 최하단 근처로 내려간다.
+                // ★ 2026-08-29(3): 그 상수가 40pt -> 6pt로 더 내려갔다(사용자 3차 신고 "아직도 바닥을
+                // 정확히 파악못하는거 같음"). 같은 화면에서 발판 상단 OS y=942 -> 976. 40pt의 근거였던
+                // "발끝이 루트보다 0.55유닛 아래"는 LineRenderer.bounds의 계측 아티팩트였고, 정점 기하로
+                // 다시 재보니 실제로 필요한 값은 6pt였다 — 유도 과정은 그 상수 선언부에 있다.
                 float thickness = height * NullPlatformWindowService.DummyFootholdHeightFraction;
 
                 // 폭 배율은 NullPlatformWindowService의 더미 발판과 공유하는 단일 소스다(현재 1 =

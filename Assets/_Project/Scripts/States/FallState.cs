@@ -147,7 +147,11 @@ namespace StickMate.States
                 // 몸은 이미 상단선 "아래"로 내려가 있으므로(그래서 교차인 것이다) 스냅하지 않으면 다음
                 // 프레임의 Idle/Walk 접지 판정이 허용오차 밖이 되어 곧바로 Fall로 되돌아간다.
                 Vector2 pos = _blackboard.Body.position;
-                _blackboard.Body.position = new Vector2(pos.x, landingWorldY);
+                // ★ Rigidbody2D뿐 아니라 Transform에도 함께 쓴다(StickmanBlackboard.MoveBodyToWorld) —
+                // autoSyncTransforms가 꺼져 있어 Rigidbody2D.position에만 대입하면 이 프레임의 그림은
+                // "물리가 방금 적분해 둔 발판 아래 위치"로 그려진다. 실측으로 착지 첫 프레임에만
+                // 잉크가 화면 아래로 8.82pt 잘려 나갔다(FloorContactVisibilityTests 실패의 원인).
+                _blackboard.MoveBodyToWorld(new Vector2(pos.x, landingWorldY));
                 Vector2 v = _blackboard.Body.linearVelocity;
                 if (v.y < 0f)
                 {
