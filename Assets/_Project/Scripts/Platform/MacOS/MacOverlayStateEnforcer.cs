@@ -51,6 +51,9 @@ namespace StickMate.Platform.MacOS
         private bool _gaveUpLogged;
         private bool _cameraBackgroundPremultiplyFixed;
 
+        /// <summary>렌더 품질 실측 진단(<see cref="LogRenderQualityDiagnostics"/>)을 한 번만 찍기 위한 래치.</summary>
+        private bool _renderQualityDiagnosticsLogged;
+
         /// <summary>부착 대기 제한 시간(초). 이 안에 창을 못 붙잡으면 정직하게 실패 로그를 남긴다.</summary>
         private const float AttachTimeoutSeconds = 15f;
         private float _elapsed;
@@ -615,6 +618,73 @@ namespace StickMate.Platform.MacOS
             Debug.Log($"[MacOverlayStateEnforcer] 투명 확인됨 — 카메라 배경 RGB를 검정으로 교정했습니다 " +
                 $"(MSAA 가장자리 프린지/반짝임 제거): ({before.r:F2},{before.g:F2},{before.b:F2},{before.a:F2}) " +
                 $"-> (0.00,0.00,0.00,{before.a:F2}). 알파는 그대로 유지.");
+
+            LogRenderQualityDiagnostics(cam);
+        }
+
+        /// <summary>
+        /// 렌더 품질 **실측** 진단 — 딱 한 번(투명 확인 직후) 찍는다.
+        ///
+        /// ============================================================================
+        /// 왜 이 로그가 필요한가 (2026-08-29 "캐릭터 선이 저해상도로 보임" 조사 라운드)
+        /// ============================================================================
+        /// 이 프로젝트는 그동안 안티에일리어싱 문제를 "QualitySettings.antiAliasing을 4로 설정했다"는
+        /// **설정값**만 보고 판단해 왔다. 그런데 설정값과 실제로 GPU가 쓰는 샘플 수는 다를 수 있다:
+        ///   · Camera.allowMSAA가 꺼져 있으면 무시된다.
+        ///   · 카메라가 RenderTexture로 우회 렌더되면(targetTexture != null 또는 이미지 이펙트)
+        ///     백버퍼 MSAA 경로 자체를 타지 않는다.
+        ///   · HDR 버퍼로 강제되면 포맷에 따라 샘플 수가 내려간다.
+        ///   · **하드웨어가 요청한 샘플 수를 지원하지 않으면 드라이버가 조용히 낮춘다**
+        ///     (8x를 요청해도 4x로 떨어질 수 있다 — 이 값이 이 라운드의 핵심 관측 대상이다).
+        /// `Screen.msaaSamples`가 그 최종 실측치이므로, 요청값(QualitySettings.antiAliasing)과
+        /// 나란히 남겨 둘이 어긋나는 순간 로그만 보고 바로 알 수 있게 한다.
+        ///
+        /// 함께 남기는 "물리픽셀/월드유닛"과 획 두께 실측은 "선이 얇아서 계단이 보이는 것"과
+        /// "렌더 해상도가 낮아서 계단이 보이는 것"을 구분하는 근거다 — 전자면 픽셀 수는 정상인데
+        /// 획이 얇은 것이고, 후자면 화면 전체가 저해상도다(Retina 회귀 재발 감시도 겸한다).
+        /// </summary>
+        private void LogRenderQualityDiagnostics(Camera cam)
+        {
+            if (_renderQualityDiagnosticsLogged) return;
+            _renderQualityDiagnosticsLogged = true;
+
+            // 세로 물리픽셀 / 세로 월드유닛(= orthographicSize * 2). 캐릭터가 화면에서 실제로 몇
+            // 픽셀을 차지하는지 계산하는 유일한 환산 계수다.
+            float pixelsPerUnit = cam.orthographic && cam.orthographicSize > 0f
+                ? cam.pixelHeight / (cam.orthographicSize * 2f)
+                : 0f;
+
+            // 캐릭터 선 두께 실측 — 씬의 모든 LineRenderer를 한 번만 훑는다(상주 앱이라 매 프레임
+            // 하지 않는다). 월드 스케일이 곱해진 실제 두께를 봐야 하므로 lossyScale.x를 함께 쓴다.
+            float minWidthPx = float.MaxValue, maxWidthPx = 0f;
+            int lineCount = 0;
+            var lines = Object.FindObjectsByType<LineRenderer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            foreach (LineRenderer lr in lines)
+            {
+                if (lr == null) continue;
+                float widthPx = lr.startWidth * Mathf.Abs(lr.transform.lossyScale.x) * pixelsPerUnit;
+                if (widthPx <= 0f) continue;
+                lineCount++;
+                if (widthPx < minWidthPx) minWidthPx = widthPx;
+                if (widthPx > maxWidthPx) maxWidthPx = widthPx;
+            }
+            if (lineCount == 0) minWidthPx = 0f;
+
+            int requested = QualitySettings.antiAliasing;
+            int actual = Screen.msaaSamples;
+            string verdict = actual <= 1
+                ? "MSAA 꺼짐(계단 현상 그대로 노출)"
+                : (actual == requested
+                    ? $"요청대로 적용됨 — 가장자리 알파 단계 {actual + 1}개(0 포함)"
+                    : $"★ 요청({requested})과 실측({actual})이 다름 — 하드웨어/렌더경로가 낮춘 것");
+
+            Debug.Log("[렌더품질] MSAA 요청=" + requested + "x, **실측 Screen.msaaSamples=" + actual + "x** -> " + verdict +
+                $" | 품질레벨={QualitySettings.names[QualitySettings.GetQualityLevel()]}" +
+                $" | allowMSAA={cam.allowMSAA}, allowHDR={cam.allowHDR}, targetTexture={(cam.targetTexture == null ? "없음(백버퍼 직접)" : "있음(RT 우회 — MSAA 경로 이탈 의심)")}" +
+                $" | 카메라픽셀=({cam.pixelWidth}x{cam.pixelHeight}), Screen=({Screen.width}x{Screen.height}), dpi={Screen.dpi:F0}" +
+                $" | orthographicSize={cam.orthographicSize:F2} -> {pixelsPerUnit:F1} 물리픽셀/유닛" +
+                $" | LineRenderer {lineCount}개 획 두께 실측 {minWidthPx:F2}~{maxWidthPx:F2} 물리픽셀" +
+                $" | GPU={SystemInfo.graphicsDeviceName} ({SystemInfo.graphicsDeviceType})");
         }
 
         private string CameraBackgroundDescription()
