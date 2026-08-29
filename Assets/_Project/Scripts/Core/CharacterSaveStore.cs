@@ -32,7 +32,11 @@ namespace StickMate.Core
     public static class CharacterSaveStore
     {
         private const string FileName = "stickmate_character.json";
-        private const int CurrentVersion = 1;
+
+        /// <summary>스키마 버전. 2 = 2026-08-30 정보창 리디자인 라운드에서 기록 7종
+        /// (격파/대결/활쏘기 2종/누적 시간/넘어진 횟수/첫 만남 시각)이 추가된 버전. <b>버전 1 파일도 그대로 읽힌다</b> —
+        /// 새 필드는 JsonUtility가 0으로 채우고, 그 0은 "아직 기록이 없다"는 정확한 사실이다.</summary>
+        private const int CurrentVersion = 2;
 
         /// <summary>
         /// 직렬화 스키마. JsonUtility는 프로퍼티를 직렬화하지 않으므로 public 필드로만 구성한다.
@@ -51,6 +55,18 @@ namespace StickMate.Core
             public bool equippedEyes;
             public bool equippedNeck;
             public bool equippedShoulders;
+
+            // ---- v2: 정보창 하단 스탯 블록의 기록(Core/CharacterStatsModel.cs) ----
+            public int battleWins;
+            public int rivalWins;
+            public int archeryShots;
+            public int archeryBullseyes;
+            public float companionSeconds;
+            public int ragdollFalls;
+
+            /// <summary>"근속"의 기준점(Unix 초, UTC). 0이면 아직 기록이 없다는 뜻이고, 로드 직후
+            /// CharacterStatsModel.EnsureFirstRunInitialized()가 지금 시각으로 채운다.</summary>
+            public long firstRunUnixSeconds;
         }
 
         /// <summary>저장 파일의 절대 경로. 진단 로그/테스트에서만 쓴다.</summary>
@@ -83,6 +99,9 @@ namespace StickMate.Core
                 EquipmentModel.RestoreFromSave(EquipmentSlot.Eyes, data.equippedEyes);
                 EquipmentModel.RestoreFromSave(EquipmentSlot.Neck, data.equippedNeck);
                 EquipmentModel.RestoreFromSave(EquipmentSlot.Shoulders, data.equippedShoulders);
+                CharacterStatsModel.RestoreFromSave(data.battleWins, data.rivalWins,
+                    data.archeryShots, data.archeryBullseyes, data.companionSeconds,
+                    data.ragdollFalls, data.firstRunUnixSeconds);
                 LoadedFromFile = true;
 
                 // 복원이 끝난 뒤 한 번만 통지한다(중간 상태를 UI가 그리지 않게 — RestoreFromSave가
@@ -115,12 +134,20 @@ namespace StickMate.Core
                     equippedEyes = EquipmentModel.IsEquipped(EquipmentSlot.Eyes),
                     equippedNeck = EquipmentModel.IsEquipped(EquipmentSlot.Neck),
                     equippedShoulders = EquipmentModel.IsEquipped(EquipmentSlot.Shoulders),
+                    battleWins = CharacterStatsModel.BattleWins,
+                    rivalWins = CharacterStatsModel.RivalWins,
+                    archeryShots = CharacterStatsModel.ArcheryShots,
+                    archeryBullseyes = CharacterStatsModel.ArcheryBullseyes,
+                    companionSeconds = CharacterStatsModel.TotalCompanionSeconds,
+                    ragdollFalls = CharacterStatsModel.RagdollFalls,
+                    firstRunUnixSeconds = CharacterStatsModel.FirstRunUnixSeconds,
                 };
 
                 string dir = Application.persistentDataPath;
                 if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
                 File.WriteAllText(FilePath, JsonUtility.ToJson(data, true));
                 CharacterProgressionModel.MarkSaved();
+                CharacterStatsModel.MarkSaved();
                 return true;
             }
             catch (Exception e)

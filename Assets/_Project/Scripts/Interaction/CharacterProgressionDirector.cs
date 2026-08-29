@@ -90,7 +90,9 @@ namespace StickMate.Interaction
         private void OnApplicationQuit()
         {
             // 종료 직전 마지막 저장 — 주기 저장만 있으면 최대 1분치가 날아간다.
-            if (CharacterProgressionModel.IsDirty) CharacterSaveStore.Save();
+            // 기록(Core/CharacterStatsModel.cs)도 같은 파일에 들어가므로 함께 본다 — 디스크에 쓰는
+            // 경로는 이 컴포넌트 하나로 유지한다(두 컴포넌트가 같은 파일을 번갈아 덮어쓰지 않게).
+            if (CharacterProgressionModel.IsDirty || CharacterStatsModel.IsDirty) CharacterSaveStore.Save();
         }
 
         private void Update()
@@ -109,7 +111,7 @@ namespace StickMate.Interaction
             if (_autoSaveTimer >= saveInterval)
             {
                 _autoSaveTimer -= saveInterval;
-                if (CharacterProgressionModel.IsDirty) CharacterSaveStore.Save();
+                if (CharacterProgressionModel.IsDirty || CharacterStatsModel.IsDirty) CharacterSaveStore.Save();
             }
         }
 

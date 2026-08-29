@@ -60,40 +60,18 @@ namespace StickMate.Interaction
     {
         // ==================== 비율 상수 (전부 머리 반경 / 몸통 길이 배수) ====================
         // 월드유닛 절대값은 하나도 없다 — 클래스 문서 (1) 참고.
+        //
+        // ★ 2026-08-30: 아래 도형 비율들은 internal이다 — 정보창 초상화
+        //   (Interaction/CharacterPortraitGraphic.cs)가 **같은 숫자**를 읽어 같은 모양의 미니어처를
+        //   그리기 때문이다. 여기서 챙 길이를 바꾸면 초상화의 챙도 함께 바뀐다(튜닝값 이중 정의 방지).
 
         private const int SortingOrder = 6;      // 캐릭터 선(0~3)보다 위, 말풍선보다 아래.
         private const float FadeSeconds = 0.18f; // 랙돌 진입/복귀 시 깜빡임을 없애는 짧은 페이드.
 
-        // 모자(캡) — 머리 반경 R 배수.
-        // ★ 육안 검증 1회차(배율 0.75, 머리 반경 화면상 약 16pt)에서 챙 선 0.45R / 관 높이 0.78R은
-        //   관 안쪽 여백(0.78R x 16pt ≈ 2.7pt)이 획 두께(약 3.6pt)보다 얇아 **머리 전체가 까맣게
-        //   메워진 덩어리**로 보였다. 관을 높이고(1.05R) 챙을 눈 위로 올려(0.62R) 안쪽이 비도록 고쳤다.
-        private const float HatBrimLineRatio = 0.62f;   // 챙이 얹히는 높이(머리 중심에서 위로 R x 이 값).
-        private const float HatCrownHeightRatio = 1.05f; // 챙 선에서 정수리 방향으로 솟는 높이.
-        private const float HatCrownHalfWidthRatio = 0.80f; // 관(crown) 밑변 반폭(= 챙 높이에서의 머리 폭 0.785R에 맞춤).
-        private const float HatBrimReachRatio = 1.95f;  // 챙 끝이 머리 중심에서 앞으로 뻗는 거리.
-        private const float HatBrimDropRatio = 0.16f;   // 챙 끝이 챙 선보다 아래로 처지는 정도.
-
-        // 선글라스 — 머리 반경 R 배수.
-        private const float GlassesCenterRatio = 0.00f;  // 렌즈 중심 높이(머리 중심 기준, + = 위).
-        private const float GlassesLensOffsetRatio = 0.44f; // 렌즈 중심의 좌우 거리.
-        private const float GlassesLensHalfWidthRatio = 0.32f;
-        private const float GlassesLensHalfHeightRatio = 0.19f;
-        private const float GlassesTempleReachRatio = 1.02f; // 안경다리가 진행 반대쪽으로 뻗는 x 끝.
-
-        // 나비넥타이 — 머리 반경 R 배수(목은 머리 바로 아래라 R 기준이 자연스럽다).
-        private const float BowTieDropRatio = 1.15f;    // 머리 중심에서 아래로 내려간 위치(머리 링 바로 밑, 어깨보다 위 = 목).
-        private const float BowTieHalfWidthRatio = 0.68f;
-        private const float BowTieHalfHeightRatio = 0.30f;
-        private const float BowTieKnotRatio = 0.13f;
-
-        // 망토 — 어깨~고관절 거리(몸통 길이) 배수 + 머리 반경 배수 혼합.
-        private const float CapeCollarRiseRatio = 0.10f;   // 어깨보다 살짝 위에서 시작(R 배수).
-        private const float CapeCollarFrontRatio = 0.40f;  // 옷깃이 앞쪽으로 나온 폭(R 배수).
-        private const float CapeCollarBackRatio = 0.62f;   // 옷깃이 뒤쪽으로 나온 폭(R 배수).
-        private const float CapeLengthRatio = 1.35f;       // 몸통 길이(어깨-고관절) 배수. 밑단이 고관절 아래로 내려와야 '망토'로 읽힌다.
-        private const float CapeSpreadRatio = 1.35f;       // 자락이 뒤로 벌어지는 폭(R 배수).
-        private const float CapeHemWaveRatio = 0.18f;      // 밑단 물결의 깊이(R 배수).
+        // ★ 2026-08-30: 액세서리 도형 비율/점 좌표는 전부 Interaction/AccessoryShapeBuilder.cs로
+        //   옮겼다. 정보창 초상화(CharacterPortraitStage)가 같은 모자·망토를 한 벌 더 그리게 되면서,
+        //   도형 정의가 두 곳에 있으면 "망토를 고쳤는데 초상화만 옛 모양"이 되기 때문이다.
+        //   이 파일은 이제 "언제/어디에 그릴지"만 책임진다.
 
         // 선 두께 — 캐릭터 획과 같은 문법을 유지하기 위해 전신 높이 비율로 잡는다.
         // 분자 0.048은 StressGaugeRenderer가 이미 쓰는 검증된 획 두께다(같은 그림체를 유지).
@@ -135,32 +113,36 @@ namespace StickMate.Interaction
         /// <summary>획 두께(월드 유닛).</summary>
         public float StrokeWidth => (_metrics != null ? _metrics.TotalHeight : StickConfig.BaselineCharacterTotalHeight) * StrokeWidthRatio;
 
+        /// <summary>지금 치수/방향으로 만든 도형 리그 — 이 렌더러와 초상화가 같은 값을 쓴다.</summary>
+        internal AccessoryShapeBuilder.Rig BuildRig()
+            => new AccessoryShapeBuilder.Rig(R, HeadCenterY, ShoulderY, HipY, _facingSign);
+
         /// <summary>모자 챙 선의 로컬 Y(발바닥 기준).</summary>
-        public float HatBrimLocalY => HeadCenterY + R * HatBrimLineRatio;
+        public float HatBrimLocalY => AccessoryShapeBuilder.HatBrimLocalY(BuildRig());
 
         /// <summary>모자 관(crown) 꼭대기의 로컬 Y.</summary>
-        public float HatTopLocalY => HatBrimLocalY + R * HatCrownHeightRatio;
+        public float HatTopLocalY => AccessoryShapeBuilder.HatTopLocalY(BuildRig());
 
         /// <summary>모자 챙 끝의 로컬 X — <b>부호가 곧 바라보는 방향</b>이다(좌우 반전 회귀 테스트용).</summary>
-        public float HatBrimTipLocalX => _facingSign * R * HatBrimReachRatio;
+        public float HatBrimTipLocalX => _facingSign * R * AccessoryShapeBuilder.HatBrimReachRatio;
 
         /// <summary>선글라스 렌즈 중심의 로컬 Y.</summary>
-        public float GlassesLocalY => HeadCenterY + R * GlassesCenterRatio;
+        public float GlassesLocalY => AccessoryShapeBuilder.GlassesLocalY(BuildRig());
 
         /// <summary>안경다리 끝의 로컬 X — 진행 <b>반대쪽</b>이므로 부호가 챙과 반대여야 한다.</summary>
-        public float GlassesTempleTipLocalX => -_facingSign * R * GlassesTempleReachRatio;
+        public float GlassesTempleTipLocalX => -_facingSign * R * AccessoryShapeBuilder.GlassesTempleReachRatio;
 
         /// <summary>나비넥타이 중심의 로컬 Y.</summary>
-        public float BowTieLocalY => HeadCenterY - R * BowTieDropRatio;
+        public float BowTieLocalY => AccessoryShapeBuilder.BowTieLocalY(BuildRig());
 
         /// <summary>망토 옷깃(어깨)의 로컬 Y.</summary>
-        public float CapeCollarLocalY => ShoulderY + R * CapeCollarRiseRatio;
+        public float CapeCollarLocalY => AccessoryShapeBuilder.CapeCollarLocalY(BuildRig());
 
         /// <summary>망토 밑단의 로컬 Y.</summary>
-        public float CapeHemLocalY => CapeCollarLocalY - TorsoLength * CapeLengthRatio;
+        public float CapeHemLocalY => AccessoryShapeBuilder.CapeHemLocalY(BuildRig());
 
         /// <summary>망토 자락이 가장 멀리 뻗은 로컬 X — 진행 <b>반대쪽</b>(뒤로 흩날린다).</summary>
-        public float CapeTrailTipLocalX => -_facingSign * R * CapeSpreadRatio;
+        public float CapeTrailTipLocalX => -_facingSign * R * AccessoryShapeBuilder.CapeSpreadRatio;
 
         /// <summary>어깨~고관절 거리(몸통 길이).</summary>
         public float TorsoLength => Mathf.Max(0.0001f, ShoulderY - HipY);
@@ -322,6 +304,13 @@ namespace StickMate.Interaction
                 }
             }
             mask |= _facingSign >= 0f ? 1 << 8 : 0;
+            // ★ 2026-08-30 실측으로 발견한 결함: 잉크색(⌃⌥⌘C / 정보창 [외형] 탭)을 바꿔도 액세서리는
+            //   예전 색 그대로 남았다. StickmanAgent.ApplyInkColorFromConfig()는 **Awake에서 캐시한**
+            //   LineRenderer 배열만 갱신하는데 액세서리 선은 그 뒤에 런타임 생성되기 때문이다
+            //   (Tasklist.md의 "캐릭터를 통째로 숨기는 경로" 함정과 정확히 같은 뿌리). 색을 서명에
+            //   넣어 색이 바뀐 프레임에 도형을 다시 굽는다 — 색만 갱신하는 별도 경로를 만들지 않는
+            //   이유는, 그 경로가 재구성 경로와 어긋나 또 하나의 이중 정의가 되기 때문이다.
+            mask ^= ResolveInkColor().GetHashCode();
             // 배율은 실행 중에 바뀌지 않지만(프리팹에 구워짐), 에디터에서 Remeasure를 부르는 경로가
             // 있으므로 치수도 서명에 넣어 조용히 어긋나는 경우를 없앤다.
             mask ^= Mathf.RoundToInt((_metrics != null ? _metrics.TotalHeight : 1f) * 10000f) << 9;
@@ -349,131 +338,40 @@ namespace StickMate.Interaction
         private static bool ShouldDraw(EquipmentSlot slot, StickConfig config)
             => EquipmentModel.IsEquipped(slot) && EquipmentModel.IsUnlocked(slot, config);
 
-        // ==================== 도형 (전부 "진행 방향 기준" 좌표 -> 마지막에 facing을 x에 곱한다) ====================
+        // ==================== 도형 (좌표 계산은 전부 AccessoryShapeBuilder에서 온다) ====================
 
-        /// <summary>캡 모자 — 관(둥근 사다리꼴) + 진행 방향으로 뻗는 챙. 챙 때문에 <b>비대칭</b>이다.</summary>
         private void BuildHat(Color ink)
         {
-            float r = R;
-            float brimY = HatBrimLocalY;
-            float halfW = r * HatCrownHalfWidthRatio;
-            float topY = HatTopLocalY;
-
-            // 관: 밑변 양 끝에서 위로 올라가 둥근 지붕을 그리는 닫힌 고리.
-            var crown = new List<Vector3>(12);
-            crown.Add(F(-halfW, brimY));
-            crown.Add(F(-halfW * 0.92f, brimY + (topY - brimY) * 0.55f));
-            crown.Add(F(-halfW * 0.62f, topY));
-            crown.Add(F(0f, topY + r * 0.05f));
-            crown.Add(F(halfW * 0.62f, topY));
-            crown.Add(F(halfW * 0.92f, brimY + (topY - brimY) * 0.55f));
-            crown.Add(F(halfW, brimY));
-            AddLine("HatCrown", crown.ToArray(), ink, loop: true);
-
-            // 챙: 챙 선에서 진행 방향으로 뻗어 살짝 처지는 두 겹 선(윗면/아랫면).
-            var brim = new[]
-            {
-                F(-halfW * 0.35f, brimY),
-                F(halfW * 0.85f, brimY + r * 0.02f),
-                F(r * HatBrimReachRatio, brimY - r * HatBrimDropRatio),
-                F(halfW * 0.85f, brimY - r * 0.14f),
-                F(-halfW * 0.35f, brimY - r * 0.10f),
-            };
-            AddLine("HatBrim", brim, ink, loop: true);
+            AccessoryShapeBuilder.Rig rig = BuildRig();
+            AddLine("HatCrown", AccessoryShapeBuilder.HatCrown(rig), ink, loop: true);
+            AddLine("HatBrim", AccessoryShapeBuilder.HatBrim(rig), ink, loop: true);
         }
 
-        /// <summary>선글라스 — 렌즈 2개 + 브리지 + 진행 반대쪽 안경다리(비대칭).</summary>
         private void BuildGlasses(Color ink)
         {
-            float r = R;
-            float cy = GlassesLocalY;
-            float dx = r * GlassesLensOffsetRatio;
-            float hw = r * GlassesLensHalfWidthRatio;
-            float hh = r * GlassesLensHalfHeightRatio;
-
-            AddLine("GlassesLensFront", BuildRoundedBox(dx, cy, hw, hh), ink, loop: true);
-            AddLine("GlassesLensBack", BuildRoundedBox(-dx, cy, hw, hh), ink, loop: true);
-            AddLine("GlassesBridge", new[] { F(-dx + hw, cy + hh * 0.35f), F(dx - hw, cy + hh * 0.35f) }, ink, loop: false);
-
-            // 안경다리는 얼굴 <b>뒤쪽</b>(진행 반대 방향)으로 뻗어 귀로 간다 — 이것이 비대칭 요소다.
-            AddLine("GlassesTemple", new[]
-            {
-                F(-dx - hw, cy + hh * 0.45f),
-                F(-r * GlassesTempleReachRatio, cy + hh * 0.15f),
-            }, ink, loop: false);
+            AccessoryShapeBuilder.Rig rig = BuildRig();
+            AddLine("GlassesLensFront", AccessoryShapeBuilder.GlassesLensFront(rig), ink, loop: true);
+            AddLine("GlassesLensBack", AccessoryShapeBuilder.GlassesLensBack(rig), ink, loop: true);
+            AddLine("GlassesBridge", AccessoryShapeBuilder.GlassesBridge(rig), ink, loop: false);
+            AddLine("GlassesTemple", AccessoryShapeBuilder.GlassesTemple(rig), ink, loop: false);
         }
 
-        /// <summary>나비넥타이 — 좌우 대칭(반전해도 같은 그림이어야 정상).</summary>
         private void BuildBowTie(Color ink)
         {
-            float r = R;
-            float cy = BowTieLocalY;
-            float hw = r * BowTieHalfWidthRatio;
-            float hh = r * BowTieHalfHeightRatio;
-            float knot = r * BowTieKnotRatio;
-
-            AddLine("BowTieWings", new[]
-            {
-                F(-hw, cy + hh), F(-knot, cy), F(-hw, cy - hh),
-                F(-hw, cy + hh),
-            }, ink, loop: false);
-            AddLine("BowTieWingsRight", new[]
-            {
-                F(hw, cy + hh), F(knot, cy), F(hw, cy - hh),
-                F(hw, cy + hh),
-            }, ink, loop: false);
-            AddLine("BowTieKnot", BuildRoundedBox(0f, cy, knot, knot * 1.2f), ink, loop: true);
+            AccessoryShapeBuilder.Rig rig = BuildRig();
+            AddLine("BowTieWings", AccessoryShapeBuilder.BowTieLeftWing(rig), ink, loop: false);
+            AddLine("BowTieWingsRight", AccessoryShapeBuilder.BowTieRightWing(rig), ink, loop: false);
+            AddLine("BowTieKnot", AccessoryShapeBuilder.BowTieKnot(rig), ink, loop: true);
         }
 
-        /// <summary>망토 — 어깨에서 진행 <b>반대쪽</b>으로 흘러내리는 가장 비대칭인 아이템.</summary>
         private void BuildCape(Color ink)
         {
-            float r = R;
-            float collarY = CapeCollarLocalY;
-            float hemY = CapeHemLocalY;
-            float front = r * CapeCollarFrontRatio;
-            float back = r * CapeCollarBackRatio;
-            float trail = r * CapeSpreadRatio;
-            float wave = r * CapeHemWaveRatio;
-
-            var outline = new[]
-            {
-                F(front, collarY),                                   // 앞 옷깃
-                F(-back, collarY + r * 0.04f),                       // 뒤 옷깃(살짝 세워진 칼라)
-                F(-trail, hemY + (collarY - hemY) * 0.28f),          // 뒤로 벌어지는 자락
-                F(-trail * 0.82f, hemY),                             // 밑단 뒤 끝
-                F(-trail * 0.34f, hemY + wave),                      // 물결 1
-                F(front * 0.35f, hemY - wave * 0.35f),               // 물결 2(앞쪽 밑단)
-            };
-            AddLine("CapeOutline", outline, ink, loop: true);
-
-            // 접힌 주름 한 줄 — 평면 도형이 아니라 천이라는 것을 읽히게 하는 최소한의 표현.
-            AddLine("CapeFold", new[]
-            {
-                F(-back * 0.35f, collarY - r * 0.10f),
-                F(-trail * 0.52f, hemY + (collarY - hemY) * 0.18f),
-            }, ink, loop: false);
+            AccessoryShapeBuilder.Rig rig = BuildRig();
+            AddLine("CapeOutline", AccessoryShapeBuilder.CapeOutline(rig), ink, loop: true);
+            AddLine("CapeFold", AccessoryShapeBuilder.CapeFold(rig), ink, loop: false);
         }
 
         // ==================== 유틸 ====================
-
-        /// <summary>진행 방향 기준 좌표 -> 로컬 좌표. <b>x에만</b> facing 부호를 곱한다(클래스 문서 (2)).</summary>
-        private Vector3 F(float forwardX, float localY) => new Vector3(forwardX * _facingSign, localY, 0f);
-
-        private Vector3[] BuildRoundedBox(float forwardCx, float cy, float halfW, float halfH)
-        {
-            // 8각 근사 — 원보다 렌즈/매듭처럼 보이고 점이 적어 가볍다.
-            return new[]
-            {
-                F(forwardCx - halfW, cy - halfH * 0.45f),
-                F(forwardCx - halfW * 0.7f, cy + halfH),
-                F(forwardCx + halfW * 0.7f, cy + halfH),
-                F(forwardCx + halfW, cy + halfH * 0.35f),
-                F(forwardCx + halfW * 0.85f, cy - halfH * 0.75f),
-                F(forwardCx + halfW * 0.2f, cy - halfH),
-                F(forwardCx - halfW * 0.6f, cy - halfH),
-            };
-        }
 
         private void AddLine(string name, Vector3[] points, Color color, bool loop)
         {

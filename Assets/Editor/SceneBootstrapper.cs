@@ -843,6 +843,11 @@ namespace StickMate.EditorTools
             progressionSo.FindProperty("_config").objectReferenceValue = config;
             progressionSo.ApplyModifiedPropertiesWithoutUndo();
 
+            // 기록 카운터(격파/대결/활쏘기/함께한 시간) — 전부 StickmanEventBus **구독**이라 격파/라이벌/
+            // 활쏘기의 판정 로직은 이번 라운드에도 한 줄도 수정되지 않았다(2026-08-30 정보창 리디자인).
+            // 직렬화 필드가 없고 Awake()에서 같은 GameObject의 StickmanAgent를 직접 찾으므로 배선 불필요.
+            root.AddComponent<CharacterStatsDirector>();
+
             // 착용 중인 장비를 캐릭터 위에 그리는 시각 레이어. 직렬화 필드가 없고 Awake()에서 같은
             // GameObject의 StickmanAgent/StickmanMetrics를 직접 찾으므로 배선이 필요 없다.
             root.AddComponent<CharacterAccessoryRenderer>();
@@ -1421,6 +1426,9 @@ namespace StickMate.EditorTools
             DestroyComponentIfPresent<CharacterInfoWindow>(rival);
             DestroyComponentIfPresent<CharacterAccessoryRenderer>(rival);
             DestroyComponentIfPresent<CharacterProgressionDirector>(rival);
+            //   · CharacterStatsDirector -> 같은 전역 이벤트를 두 번 구독해 격파/대결/활쏘기 기록이
+            //                              **두 배**로 쌓인다(2026-08-30 신설, 위 XP 두 배와 같은 함정).
+            DestroyComponentIfPresent<CharacterStatsDirector>(rival);
             DestroyComponentIfPresent<RodeoCursorWatcher>(rival);
             DestroyComponentIfPresent<DragThrowController>(rival);
             DestroyComponentIfPresent<StickmanClickHitbox>(rival);
