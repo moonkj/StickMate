@@ -1,0 +1,195 @@
+using UnityEngine;
+using StickMate.Core;
+
+namespace StickMate.Interaction
+{
+    /// <summary>
+    /// ★ 캐릭터 성장의 "언제"를 담당하는 유일한 주체 — 2026-08-29 성장/장비 라운드.
+    ///
+    /// Core/CharacterProgressionModel.cs는 값만 보관하고, 이 컴포넌트가 XP가 들어오는 네 경로를 전부
+    /// 소유한다(StressGauge ↔ StressGaugeDirector와 정확히 같은 분리).
+    ///
+    /// ============================================================================
+    /// XP 소스 — 기존 판정 로직을 <b>한 줄도</b> 건드리지 않는다
+    /// ============================================================================
+    /// 리더 지시: "기존 판정 로직에 읽기 전용으로 훅만 걸어라 — 승패 판정 자체를 바꾸지 마라."
+    /// 그래서 네 소스 중 보너스 3종은 <b>전부 StickmanEventBus 구독</b>으로만 구현했다. 이 파일은
+    /// BattleMinigameDirector / RivalStickmanAgent / ArcheryState를 <b>참조조차 하지 않는다</b>
+    /// (grep으로 검증 가능) — 그 세 곳의 소스 코드는 이번 라운드에 수정되지 않았다.
+    ///
+    ///  · 패시브        : progressionPassiveTickSeconds 주기로 분당 값을 쪼개 적립.
+    ///                    "아무것도 안 해도 자란다"(관찰형 앱 철학)가 주 경로다.
+    ///  · 격파 승리      : BattleMinigamePhaseChanged == Success
+    ///  · 라이벌 대결 승리: RivalDuelEnded == PlayerWon
+    ///  · 활쏘기 명중    : ArcheryShotChanged.Result == Bullseye (Release 시점 1회)
+    ///
+    /// ============================================================================
+    /// 매 프레임 할당 금지 (24시간 상주 앱)
+    /// ============================================================================
+    /// Update()는 타이머 두 개만 굴리고 임계값을 넘을 때만 일한다. 문자열 보간은 실제로 XP가 들어온
+    /// 순간(패시브는 10초에 한 번)과 레벨업/저장 시점에만 일어난다.
+    ///
+    /// ============================================================================
+    /// 원칙 1(행동-텍스트 싱크) — 무관하다
+    /// ============================================================================
+    /// 레벨업해도 대사를 만들지 않는다. 이 컴포넌트는 DialogueIntent를 생성하지도, ChangeState를
+    /// 호출하지도 않으므로 SpectacleEventLock에도 참여하지 않는다(StressGauge/HardwareReaction의
+    /// "순수 오버레이는 락에 참여하지 않는다"와 같은 기준).
+    /// </summary>
+    public sealed class CharacterProgressionDirector : MonoBehaviour
+    {
+        [SerializeField] private StickConfig _config;
+
+        private StickmanAgent _agent;
+        private float _passiveTimer;
+        private float _autoSaveTimer;
+
+        // 활쏘기 한 발은 Aim/Release 두 번 발행된다 — 같은 발을 두 번 세지 않도록 마지막으로 보상한
+        // 발의 인덱스를 기억한다(TodoPostItWidget의 TryClaimAction과 같은 성격의 중복 방어).
+        private int _lastRewardedShotIndex = -1;
+
+        private void Awake()
+        {
+            // 같은 GameObject의 StickmanAgent만 쓴다 — 라이벌 복제본에 이 컴포넌트가 남아 있어도
+            // XP가 두 배로 들어가지 않게 하는 2차 방어(1차 방어는 SceneBootstrapper의 제거).
+            _agent = GetComponent<StickmanAgent>();
+            if (_config == null && _agent != null) _config = _agent.Config;
+        }
+
+        private void Start()
+        {
+            if (_agent == null)
+            {
+                enabled = false;
+                return;
+            }
+
+            CharacterSaveStore.Load();
+
+            Debug.Log($"[성장] 준비 완료 — {CharacterProgressionModel.CharacterName} Lv.{CharacterProgressionModel.Level} " +
+                $"({CharacterProgressionModel.CurrentXp:F0}/{CharacterProgressionModel.XpToNextLevel(_config):F0} XP). " +
+                $"저장 파일={(CharacterSaveStore.LoadedFromFile ? "불러옴" : "없음 — 새 캐릭터로 시작")} " +
+                $"({CharacterSaveStore.FilePath}). " +
+                $"패시브 {(_config != null ? _config.progressionPassiveXpPerMinute : 0f):F1}XP/분.");
+        }
+
+        private void OnEnable()
+        {
+            StickmanEventBus.BattleMinigamePhaseChanged += OnBattlePhaseChanged;
+            StickmanEventBus.RivalDuelEnded += OnRivalDuelEnded;
+            StickmanEventBus.ArcheryShotChanged += OnArcheryShotChanged;
+        }
+
+        private void OnDisable()
+        {
+            StickmanEventBus.BattleMinigamePhaseChanged -= OnBattlePhaseChanged;
+            StickmanEventBus.RivalDuelEnded -= OnRivalDuelEnded;
+            StickmanEventBus.ArcheryShotChanged -= OnArcheryShotChanged;
+        }
+
+        private void OnApplicationQuit()
+        {
+            // 종료 직전 마지막 저장 — 주기 저장만 있으면 최대 1분치가 날아간다.
+            if (CharacterProgressionModel.IsDirty) CharacterSaveStore.Save();
+        }
+
+        private void Update()
+        {
+            float passiveInterval = _config != null ? Mathf.Max(1f, _config.progressionPassiveTickSeconds) : 10f;
+            _passiveTimer += Time.unscaledDeltaTime;
+            if (_passiveTimer >= passiveInterval)
+            {
+                _passiveTimer -= passiveInterval;
+                float perMinute = _config != null ? _config.progressionPassiveXpPerMinute : 0f;
+                if (perMinute > 0f) Grant(perMinute * (passiveInterval / 60f), null);
+            }
+
+            float saveInterval = _config != null ? Mathf.Max(5f, _config.progressionAutoSaveIntervalSeconds) : 60f;
+            _autoSaveTimer += Time.unscaledDeltaTime;
+            if (_autoSaveTimer >= saveInterval)
+            {
+                _autoSaveTimer -= saveInterval;
+                if (CharacterProgressionModel.IsDirty) CharacterSaveStore.Save();
+            }
+        }
+
+        // ==================== 보너스 훅(전부 읽기 전용 구독) ====================
+
+        private void OnBattlePhaseChanged(BattleMinigamePhase phase)
+        {
+            if (phase != BattleMinigamePhase.Success) return;
+            Grant(_config != null ? _config.progressionBattleWinXp : 0f, "격파 성공");
+        }
+
+        private void OnRivalDuelEnded(RivalDuelResult result)
+        {
+            if (result != RivalDuelResult.PlayerWon) return;
+            Grant(_config != null ? _config.progressionRivalWinXp : 0f, "라이벌 대결 승리");
+        }
+
+        private void OnArcheryShotChanged(ArcheryShotEvent shot)
+        {
+            if (shot.Result != ArcheryShotResult.Bullseye) return;
+            if (shot.Phase != ArcheryShotPhase.Release) return;   // Aim/Release 중 한 번만.
+            if (shot.ShotIndex == _lastRewardedShotIndex) return; // 같은 발 재발행 방어.
+            _lastRewardedShotIndex = shot.ShotIndex;
+            Grant(_config != null ? _config.progressionBullseyeXp : 0f, "활쏘기 정중앙 명중");
+        }
+
+        /// <summary>XP 적립의 단일 경로 — 레벨업 감지/즉시 저장/로그가 전부 여기 한 곳에만 있다.</summary>
+        private void Grant(float amount, string bonusLabel)
+        {
+            if (amount <= 0f) return;
+
+            int levelsGained = CharacterProgressionModel.AddXp(amount, _config);
+
+            if (bonusLabel != null)
+            {
+                Debug.Log($"[성장] 보너스 +{amount:F0} XP ({bonusLabel}) — " +
+                    $"Lv.{CharacterProgressionModel.Level} " +
+                    $"{CharacterProgressionModel.CurrentXp:F0}/{CharacterProgressionModel.XpToNextLevel(_config):F0}.");
+            }
+
+            if (levelsGained <= 0) return;
+
+            // 레벨업은 저장 시점이다(리더 지시). 이때 새 장비가 열렸는지도 함께 알린다.
+            Debug.Log($"[성장] ★ 레벨업! Lv.{CharacterProgressionModel.Level - levelsGained} -> " +
+                $"Lv.{CharacterProgressionModel.Level}. {DescribeNewUnlocks(levelsGained)}");
+            StickmanEventBus.RaiseCharacterEquipmentChanged(); // 잠금 표시가 바뀌었다 — 정보창 갱신용.
+            CharacterSaveStore.Save();
+        }
+
+        /// <summary>이번 레벨업으로 새로 열린 슬롯을 사람이 읽는 문장으로. 없으면 다음 해제 안내.</summary>
+        private string DescribeNewUnlocks(int levelsGained)
+        {
+            int before = CharacterProgressionModel.Level - levelsGained;
+            for (int i = 0; i < EquipmentModel.SlotCount; i++)
+            {
+                var slot = (EquipmentSlot)i;
+                int need = EquipmentModel.UnlockLevel(slot, _config);
+                if (need > before && need <= CharacterProgressionModel.Level)
+                {
+                    return $"새 장비 해제: [{EquipmentModel.ItemName(slot)}] — 정보창(⌃⌥⌘I 또는 우상단 톱니)에서 착용할 수 있습니다.";
+                }
+            }
+            return "새로 열린 장비는 없습니다.";
+        }
+
+        /// <summary>
+        /// ★ 육안 검증 전용 진입점(리더 지시: "레벨을 테스트용으로 임시로 올려서 확인해라").
+        /// 정상 게임플레이 경로에서는 호출되지 않는다 — 정보창/단축키/우클릭 메뉴 어디에도 이 메서드로
+        /// 가는 길이 없고, 아래 <c>StickConfig.verboseDiagnosticsLogging</c>이 켜져 있을 때만 동작한다.
+        /// (검증값을 원복하지 않아 사고가 난 전례가 이 프로젝트에 2번 있어, 아예 "일시적으로만 켜지는"
+        ///  형태로 만들어 원복 대상 자체를 없앴다 — 진단 로그를 끄면 이 경로도 함께 닫힌다.)
+        /// </summary>
+        public void GrantDebugXpForVisualCheck(float amount)
+        {
+            if (_config == null || !_config.verboseDiagnosticsLogging)
+            {
+                Debug.LogWarning("[성장] 검증용 XP 지급은 진단 로그(⌃⌥⌘D)가 켜져 있을 때만 동작합니다.");
+                return;
+            }
+            Grant(amount, "검증용 임시 지급");
+        }
+    }
+}

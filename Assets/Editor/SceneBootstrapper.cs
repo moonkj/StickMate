@@ -829,6 +829,37 @@ namespace StickMate.EditorTools
             root.AddComponent<ArcheryRenderer>();
 
             // ================================================================================
+            // 캐릭터 성장(레벨/XP) + 장비 + 정보창 배선
+            // (2026-08-29 사용자 요청: "캐릭터 장비 착용 및 캐릭터 정보 볼수있는 창을 만들어야함")
+            // ================================================================================
+            // SpectacleEventLock 비참여: 셋 다 ChangeState()를 호출하지 않는다(성장은 값 적립,
+            // 액세서리는 순수 오버레이, 정보창은 UI). 참여 기준은 "단일 상태 슬롯을 다투는가"다
+            // (StressGaugeRenderer/HardwareReactionRenderer와 같은 논리).
+            //
+            // XP 훅은 전부 StickmanEventBus **구독**이라 격파/라이벌/활쏘기의 판정 로직은 이 라운드에
+            // 한 줄도 수정되지 않았다(리더 지시 "읽기 전용으로 훅만").
+            var progression = root.AddComponent<CharacterProgressionDirector>();
+            var progressionSo = new SerializedObject(progression);
+            progressionSo.FindProperty("_config").objectReferenceValue = config;
+            progressionSo.ApplyModifiedPropertiesWithoutUndo();
+
+            // 착용 중인 장비를 캐릭터 위에 그리는 시각 레이어. 직렬화 필드가 없고 Awake()에서 같은
+            // GameObject의 StickmanAgent/StickmanMetrics를 직접 찾으므로 배선이 필요 없다.
+            root.AddComponent<CharacterAccessoryRenderer>();
+
+            // 정보/장비 창(docs/UX_FLOW.md 7절이 이 프로젝트에서 처음 실제로 지어진 것). TodoPostItWidget과
+            // 같은 이유로 [SerializeField] _config 배선이 필요하다.
+            var infoWindow = root.AddComponent<CharacterInfoWindow>();
+            var infoSo = new SerializedObject(infoWindow);
+            infoSo.FindProperty("_config").objectReferenceValue = config;
+            infoSo.ApplyModifiedPropertiesWithoutUndo();
+
+            // 화면 우상단 상시 톱니 아이콘 — 정보창의 **주 진입점**(2026-08-29 사용자 요청
+            // "바탕화면 오른쪽 상단에 기어 표시같은걸 띄워놓고 클릭하면 기어가 회전하면서 캐릭터 창이").
+            // 같은 GameObject의 CharacterInfoWindow를 Awake()에서 직접 찾으므로 배선이 필요 없다.
+            root.AddComponent<InfoGearIconWidget>();
+
+            // ================================================================================
             // 앱 제어 수단 배선 (2026-08-28 — "터미널 없이 끌 수 있어야 한다")
             // ================================================================================
             // Interaction/AppControlDirector.cs: 전역 단축키(Ctrl+Opt+Cmd+Q 종료 등)와 캐릭터 우클릭
@@ -1376,6 +1407,20 @@ namespace StickMate.EditorTools
             // Director도 플레이어 전용 트리거이므로 함께 제거한다(라이벌은 활을 쏘지 않는다).
             DestroyComponentIfPresent<ArcheryRenderer>(rival);
             DestroyComponentIfPresent<ArcheryDirector>(rival);
+            // 성장/장비/정보창(2026-08-29 신설) — 라이벌은 **별개 개체**라 레벨도 장비도 정보창도 없다.
+            // 남겨두면 정확히 이 프로젝트가 이미 여러 번 겪은 "소환물이 두 벌" 사고가 난다:
+            //   · InfoGearIconWidget    -> 화면 우상단에 톱니가 두 개 겹쳐 뜨고 클릭 콜라이더도 두 겹.
+            //   · CharacterInfoWindow   -> 자기 Canvas와 클릭관통 차단막을 통째로 한 벌 더 만든다
+            //                              (TodoPostItWidget과 정확히 같은 위험).
+            //   · CharacterProgressionDirector -> 전역 이벤트를 두 번 구독해 XP가 **두 배**로 들어가고
+            //                              저장 파일을 두 주체가 번갈아 덮어쓴다.
+            //   · CharacterAccessoryRenderer -> 라이벌 머리에도 모자가 얹힌다.
+            // 각 컴포넌트에 "자기 GameObject의 StickmanAgent가 없으면 아무것도 하지 않는다"는 2차 방어가
+            // 있지만, 애초에 배치하지 않는 것이 1차 방어다.
+            DestroyComponentIfPresent<InfoGearIconWidget>(rival);
+            DestroyComponentIfPresent<CharacterInfoWindow>(rival);
+            DestroyComponentIfPresent<CharacterAccessoryRenderer>(rival);
+            DestroyComponentIfPresent<CharacterProgressionDirector>(rival);
             DestroyComponentIfPresent<RodeoCursorWatcher>(rival);
             DestroyComponentIfPresent<DragThrowController>(rival);
             DestroyComponentIfPresent<StickmanClickHitbox>(rival);

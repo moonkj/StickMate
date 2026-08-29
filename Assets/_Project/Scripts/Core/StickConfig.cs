@@ -1922,5 +1922,59 @@ namespace StickMate.Core
                  "몸이 살짝 뒤로/아래로 실리는 것을 표현한다(루트 회전은 능동 상태에서 고정이라 " +
                  "몸통을 기울일 수 없으므로, 시각 전용 상하 오프셋으로 대신한다). 0이면 가라앉지 않는다.")]
         public float archeryDrawBodySinkRatio = 0.022f;
+
+        // ============================================================================
+        // 캐릭터 성장(레벨/XP) + 장비 (2026-08-29 사용자 요청: "캐릭터 장비 착용 및 캐릭터 정보
+        // 볼수있는 창을 만들어야함" — 리더가 "진짜 장비/스킨 + 레벨/능력치 육성 요소"로 범위 확정)
+        // ============================================================================
+        // ★ 시간(초/분)과 XP는 크기와 무관한 양이라 절대값이 맞다(신장 비율화 대상이 아니다).
+        //   실제 곡선이 몇 시간짜리인지는 Core/CharacterProgressionModel.cs 클래스 문서의 환산표 참고.
+
+        [Header("캐릭터 성장(레벨/XP) — 2026-08-29 사용자 요청")]
+
+        [Tooltip("다음 레벨까지 필요한 XP = 이 값 x (현재 레벨 ^ 지수). 100이면 Lv1->2에 100XP.")]
+        public float progressionXpCurveBase = 100f;
+
+        [Tooltip("XP 곡선의 지수. 1.15면 레벨이 오를수록 완만하게 느려진다(2.0 같은 큰 값은 " +
+                 "며칠 만에 사실상 진행이 멈춘다).")]
+        public float progressionXpCurveExponent = 1.15f;
+
+        [Tooltip("★ 패시브 XP — 앱이 켜져 있기만 하면 분당 이만큼 쌓인다. 관찰형 앱 철학(‘아무것도 " +
+                 "안 해도 자란다’)의 핵심이라 이것이 주 경로이고 아래 보너스는 가속일 뿐이다.\n\n" +
+                 "1.5 = 시간당 90XP -> Lv1->2가 약 1.1시간, Lv2->3이 약 3.6시간(리더 목표 " +
+                 "‘초반 레벨업이 1~3시간 안에’). 0으로 두면 패시브 적립이 멈춘다.")]
+        public float progressionPassiveXpPerMinute = 1.5f;
+
+        [Tooltip("패시브 XP 적립 주기(초). 분당 값을 이 간격으로 나눠 조금씩 넣는다 — 60초마다 " +
+                 "한 번에 넣으면 정보창의 XP 바가 뚝뚝 끊겨 보인다. 너무 짧으면 이벤트 발행만 잦아진다.")]
+        public float progressionPassiveTickSeconds = 10f;
+
+        [Tooltip("격파 미니게임 성공 1회당 보너스 XP. ★ 승패 판정 자체는 건드리지 않는다 — " +
+                 "Interaction/CharacterProgressionDirector.cs가 StickmanEventBus를 읽기 전용으로 구독할 뿐이다.")]
+        public float progressionBattleWinXp = 25f;
+
+        [Tooltip("라이벌 대결 승리 1회당 보너스 XP(가장 드문 사건이라 가장 크다).")]
+        public float progressionRivalWinXp = 40f;
+
+        [Tooltip("활쏘기 정중앙 명중(Bullseye) 1회당 보너스 XP.")]
+        public float progressionBullseyeXp = 15f;
+
+        [Tooltip("자동 저장 주기(초). 값이 바뀌었을 때만 실제로 디스크에 쓴다. 레벨업/장비 변경/" +
+                 "이름 변경은 이 주기와 무관하게 즉시 저장된다.")]
+        public float progressionAutoSaveIntervalSeconds = 60f;
+
+        [Header("장비 잠금 해제 레벨 — 원안(7절 DLC 구매)을 레벨업 해제로 치환")]
+
+        [Tooltip("모자(머리) 해제 레벨. 하루 8시간 사용 기준 1일차.")]
+        public int equipmentUnlockLevelHead = 2;
+
+        [Tooltip("선글라스(눈) 해제 레벨. 1일차 후반.")]
+        public int equipmentUnlockLevelEyes = 4;
+
+        [Tooltip("나비넥타이(목) 해제 레벨. 약 2.5일차.")]
+        public int equipmentUnlockLevelNeck = 6;
+
+        [Tooltip("망토(어깨) 해제 레벨. 약 5일차 — 가장 눈에 띄는 아이템이라 가장 늦다.")]
+        public int equipmentUnlockLevelShoulders = 8;
     }
 }

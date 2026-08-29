@@ -78,6 +78,13 @@ namespace StickMate.Platform
         /// "확률을 건너뛰는 지름길"이 아니라 정식 진입점이다(F/집중 모드와 같은 성격).
         /// Interaction/ArcheryDirector.ForceTriggerNow 문서 참고.</summary>
         A,
+
+        /// <summary>캐릭터 정보/장비 창 열기·닫기(Ctrl+Opt+Cmd+I, Info) — 활쏘기(A)/집중 모드(F)와 같은
+        /// 성격의 <b>정식 진입점</b>이다(확률을 건너뛰는 데모 지름길이 아니다). 주 진입점은 화면 우상단
+        /// 톱니 아이콘(Interaction/InfoGearIconWidget.cs)이고, 이 단축키와 캐릭터 우클릭 메뉴
+        /// [캐릭터 정보]가 보조 경로다 — 이 프로젝트의 모든 기능이 갖는 "단축키 + 메뉴" 이중 경로 관례.
+        /// Interaction/CharacterInfoWindow.cs 참고.</summary>
+        I,
     }
 
     /// <summary>

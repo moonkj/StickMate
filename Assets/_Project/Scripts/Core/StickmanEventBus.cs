@@ -541,6 +541,16 @@ namespace StickMate.Core
         /// runawayHintPulseIntervalSeconds 주기로 발행한다. 실제 연출은 Phase2+ 렌더링 담당.</summary>
         public static event Action<Vector2> RunawayHintPulseRequested;
 
+        /// <summary>캐릭터 성장(레벨/XP/이름)이 바뀌었을 때 발생 — TodoListChanged와 동일한 "변경 사실만
+        /// 통지, 실제 값은 Core.CharacterProgressionModel에서 직접 조회" 패턴. 소비자는 정보창
+        /// (Interaction/CharacterInfoWindow.cs)이다. XP는 패시브로 계속 차오르므로 <b>수 초에 한 번씩
+        /// 계속 발행된다</b> — 구독자는 이 이벤트마다 UI를 통째로 재구성하지 말 것(24시간 상주 앱).</summary>
+        public static event Action CharacterProgressionChanged;
+
+        /// <summary>장비 착용 상태가 바뀌었을 때 발생(착용/해제/레벨업으로 해제됨/저장파일 로드).
+        /// 소비자는 액세서리 렌더러(Interaction/CharacterAccessoryRenderer.cs)와 정보창이다.</summary>
+        public static event Action CharacterEquipmentChanged;
+
         public static void RaiseStateTransitioned(StickmanStateId from, StickmanStateId to, bool isForcedInterrupt = false)
             => StateTransitioned?.Invoke(new StateTransitionEvent(from, to, isForcedInterrupt));
 
@@ -607,5 +617,11 @@ namespace StickMate.Core
 
         public static void RaiseRunawayHintPulseRequested(Vector2 hideSpotOsScreen)
             => RunawayHintPulseRequested?.Invoke(hideSpotOsScreen);
+
+        public static void RaiseCharacterProgressionChanged()
+            => CharacterProgressionChanged?.Invoke();
+
+        public static void RaiseCharacterEquipmentChanged()
+            => CharacterEquipmentChanged?.Invoke();
     }
 }

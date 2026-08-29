@@ -310,6 +310,9 @@ MonoBehaviour:
   archeryHorizontalDamping: 14
   archeryPoseSmoothingRate: 46
   archeryArrowArcApexDistanceRatio: 0.18
+  archeryFaceImpactMaxDescentDegrees: 14
+  archeryGroundImpactDescentDegrees: 38
+  archeryImpactSettleRatio: 0.22
   archeryBowArmDegrees: 104
   archeryBowForearmDegrees: 108
   archeryDrawUpperDegrees: -99
@@ -320,3 +323,15 @@ MonoBehaviour:
   archeryRearHipDegrees: -18
   archeryKneeBendDegrees: 12
   archeryDrawBodySinkRatio: 0.022
+  progressionXpCurveBase: 100
+  progressionXpCurveExponent: 1.15
+  progressionPassiveXpPerMinute: 1.5
+  progressionPassiveTickSeconds: 10
+  progressionBattleWinXp: 25
+  progressionRivalWinXp: 40
+  progressionBullseyeXp: 15
+  progressionAutoSaveIntervalSeconds: 60
+  equipmentUnlockLevelHead: 2
+  equipmentUnlockLevelEyes: 4
+  equipmentUnlockLevelNeck: 6
+  equipmentUnlockLevelShoulders: 8

@@ -2218,3 +2218,96 @@ f=8991 [뛰어내리기] 발을 뗍니다 — 올라선 지 9프레임(약 0.15�
   셸에서 새로 띄운 빌드(PID 52853)에서는 `[앱제어] 진단 로그 켬(촘촘)(전역 단축키 Ctrl+Opt+Cmd+D)`가 바로 찍혔다.
   macOS TCC가 실행 주체(responsible process)별로 입력 권한을 판정하기 때문으로 보인다 —
   **앞으로 단축키 검증은 셸에서 띄운 인스턴스로 할 것**(Finder/`open`으로 띄운 인스턴스는 단축키가 죽어 있을 수 있다).
+
+---
+
+## 2026-08-29 — 캐릭터 성장(레벨/XP) + 장비 착용 + 정보창 + 우상단 톱니 아이콘 (Coder)
+
+사용자 요구: **"캐릭터 장비 착용 및 캐릭터 정보 볼수있는 창을 만들어야함"** + 추가 요구
+**"바탕화면에서 살고있는 코워커(동료)... 오른쪽 상단에 기어 표시같은걸 띄워놓고 클릭하면 기어가
+회전하면서 캐릭터 창이 나오게끔"**. 기준선 `e18ac09`.
+
+`docs/UX_FLOW.md` 7절 "설정창 와이어프레임"은 진작에 그려져 있었지만 **이 프로젝트에서 한 번도
+지어진 적이 없던 창**이다(Tasklist 곳곳의 "설정창 미구현으로 소비자 없음"). 이번이 그 창을 처음
+실제로 지은 라운드다.
+
+### 신규 파일
+- `Core/CharacterProgressionModel.cs` — 레벨/XP/이름 보관(정적, TodoListModel·StressGauge와 같은 이유).
+  XP 곡선 `100 * level^1.15`, 패시브 1.5XP/분 = 시간당 90XP.
+  Lv1→2 **1.1시간**, 2→3 3.6h, 3→4 7.5h … 장비 해제 레벨 2/4/6/8은 하루 8시간 사용 기준 1/1/2.5/5일차.
+- `Core/EquipmentModel.cs` — 슬롯 4종(머리 모자 / 눈 선글라스 / 목 나비넥타이 / 어깨 망토), 독립 착용.
+  ★ **원안(7절)의 "DLC 구매"를 "레벨업 해제"로 치환**. 근거는 그 파일 클래스 문서에 남겼다 —
+  결제 백엔드도 외부 아트 에셋도 없고(모든 시각 요소가 LineRenderer 프로시저럴 선화라 "미리보기
+  이미지 로드 실패" 같은 개념 자체가 성립하지 않는다), 결제 UI를 흉내만 내는 것은 거짓 약속이다.
+  `docs/UX_FLOW.md`는 고치지 않았다(설계 문서 갱신은 리더 판단).
+- `Core/CharacterSaveStore.cs` — `Application.persistentDataPath`에 JSON 1파일. 실패는 경고 1줄 남기고
+  조용히 무시(상주 앱이 죽는 것보다 낫다). ★ **이 클래스에는 파일을 지우는 코드가 없다** — 원칙 3
+  정적 감사(`UserAssetImmutabilityAuditTests`)가 프로덕션 소스의 파일 삭제 API를 전면 금지하고 있어,
+  화이트리스트를 늘리는 대신 헬퍼 자체를 없애고 테스트가 직접 파일을 지우도록 했다(주석에도 그 API
+  이름을 적을 수 없어 풀어 썼다 — 감사가 주석까지 포함한 텍스트 스캔이다).
+- `Interaction/CharacterProgressionDirector.cs` — XP의 "언제"를 전담. **보너스 3종은 전부
+  StickmanEventBus 구독**이라 `BattleMinigameDirector`/`RivalStickmanAgent`/`ArcheryState`를 참조조차
+  하지 않는다(grep 검증 가능) — 그 세 곳의 판정 로직은 이번 라운드에 한 줄도 수정되지 않았다.
+- `Interaction/CharacterAccessoryRenderer.cs` — 착용 중인 장비만 캐릭터와 같은 문법(LineRenderer +
+  캐릭터 머티리얼 차용)으로 그린다. **월드유닛 절대 상수 0개** — 전부 `StickmanMetrics` 파생.
+- `Interaction/CharacterInfoWindow.cs` — [정보]/[장비] 2탭(스킨·모드·모바일 탭은 이번 범위 밖).
+- `Interaction/InfoGearIconWidget.cs` — 화면 우상단 상시 톱니(주 진입점).
+
+### 수정 파일
+- `Core/StickmanEventBus.cs` — `CharacterProgressionChanged` / `CharacterEquipmentChanged` 추가.
+- `Core/StickConfig.cs` — 성장/장비 설정 12개 필드(곡선/패시브/보너스/자동저장/해제 레벨 4종).
+- `Platform/IGlobalKeyStateService.cs` + `Platform/MacOS/MacWindowService.cs` — `GlobalKey.I`,
+  `kVK_ANSI_I = 0x22`(실제 하드웨어 키 이벤트로 동작 확인).
+- `Interaction/AppControlDirector.cs` — `MenuAction.CharacterInfo`(16번, [닫기] 앞), `MenuRowCount` 17→18,
+  단축키 I, **메뉴 오픈 로그 문자열에도 [캐릭터 정보] 추가**(이번 세션에 정확히 이걸 빠뜨린 전례가 있어
+  스크린샷으로 확인함).
+- `Assets/Editor/SceneBootstrapper.cs` — 신규 4개 컴포넌트 배치 + `CreateRivalStickman`에서 **전부 제거**.
+
+### 진입점 3개
+1. **화면 우상단 톱니 아이콘 클릭**(주 진입점) — 0.42초 감속 1.25바퀴 회전 후 창이 열린다.
+2. 전역 단축키 **⌃⌥⌘I**.
+3. 캐릭터 우클릭 메뉴 **[캐릭터 정보]**.
+셋 다 실제 앱에서 로그로 확인:
+`[정보창] 열림(우상단 톱니 아이콘 클릭)` / `(전역 단축키 Ctrl+Opt+Cmd+I)` / `(우클릭 메뉴)`.
+
+### 테스트
+- EditMode **50/50**(기존 42 + 신규 8), PlayMode **162/162**(기존 147 + 신규 15),
+  컴파일 `error CS` / `warning CS` **0건**, 빌드 경고 0건.
+- 신규 `Tests/EditMode/CharacterProgressionPersistenceTests.cs` — 저장→초기화→로드 왕복(레벨/XP/이름/
+  장비 4종), **파일 삭제 후 기본값(Lv.1) 시작**, 손상 JSON에서 크래시 없이 기본값 복귀, 잠긴 슬롯
+  착용 거부, 해제 레벨 단조 증가, 패시브만으로 Lv1→2가 1~3시간(실측 1.11h).
+  ★ 실행 중인 앱의 진짜 저장 파일과 같은 경로라 OneTimeSetUp/TearDown으로 내용을 백업·복원한다.
+- 신규 `Tests/PlayMode/CharacterAccessoryScaleTests.cs` — 배율 1.0/0.75/0.5 세 지점에서
+  (A) 바깥에서 손계산한 기대값 x 배율과 정확히 일치, (B) 모든 배율에서 참인 절대 조건(모자는 머리 위,
+  선글라스는 머리 링 안, 나비넥타이는 어깨~머리 아래 = 목, 망토 밑단은 고관절 아래),
+  (C) 좌우 반전(챙은 앞 / 망토·안경다리는 뒤, 항상 반대 부호) + **네거티브 컨트롤 2건**
+  (절대 상수를 남겼다면 / 반전을 빼먹었다면 각 조건이 실제로 깨지는지).
+
+### 교차 레이어 영향 로그
+- **★ 캐릭터를 통째로 숨기는 경로와 새 렌더러의 충돌 (실측으로 발견, 이번 라운드에서 수정 완료)**
+  `Core/StickmanAgent`는 **Awake에서 캐시한** 렌더러 배열만 켜고 끄는데(`SetRenderersEnabled`),
+  액세서리 LineRenderer는 그 뒤에 런타임 생성되므로 그 배열에 없다. 그래서 가출 은신
+  (`RunawayState` → `SetCharacterVisible`)과 전체화면 앱 자동 숨김(`Suspend`, 비침해 원칙 2)에서
+  **캐릭터가 사라진 자리에 모자와 망토만 공중에 남았다**. PlayMode 회귀 테스트
+  `Phase5VisualLayerTests`가 실제로 이 상태를 잡아냈다(2건 실패 → 수정 후 162/162).
+  수정: 액세서리 렌더러가 상태 목록을 늘리는 대신 **머리 링(HeadOutline)의 `enabled`를 그대로 따라간다**
+  — 숨기는 이유가 무엇이든(앞으로 새 경로가 생겨도) 자동으로 함께 숨는 유일한 규칙이다.
+  또한 GameObject 비활성화만으로는 부족해 각 LineRenderer의 `enabled`를 직접 끈다(이 앱의 "지금
+  보이는가" 판정이 전부 `GetComponentsInChildren<LineRenderer>(true).enabled`로 이루어지기 때문).
+  → **앞으로 캐릭터에 붙는 런타임 생성 렌더러를 추가하는 사람은 같은 함정에 빠진다.**
+- **PlayMode 테스트가 실행 중인 앱의 저장 파일을 읽는다.** 에디터와 스탠드얼론의
+  `persistentDataPath`가 같아, 저장 파일에 장비가 착용돼 있으면 무관해 보이는 기존 테스트의
+  거동이 바뀐다(위 2건이 그렇게 드러났다). 지금은 그 덕에 버그를 잡았지만, 향후 테스트가 실행
+  순서/외부 파일에 의존하지 않게 하려면 `CharacterProgressionDirector`가 테스트에서는 로드를
+  건너뛰는 스위치가 필요할 수 있다(리더 판단 필요, 이번 범위 밖).
+- **톱니 아이콘의 클릭 콜라이더는 상시 켜져 있다**(화면 우상단 36x36pt). 그 작은 사각형만
+  클릭관통이 해제되고 나머지는 그대로다. macOS 메뉴바(최대 약 38pt)를 피하려고 위 여백을 58pt로
+  잡았다 — 실측으로 메뉴바 클릭(y=22pt)이 톱니에 걸리지 않음을 확인했다.
+- 정보창의 차단막 콜라이더는 **창이 열려 있는 동안만** enabled=true다(Close/OnDisable에서 반드시 끈다).
+
+### 미해결 / 알려진 제약
+- 이름 입력칸(`InputField`)은 **uGUI 경로 전용**이다 — 키보드 입력은 전역 폴링으로 흉내 낼 수 없어
+  창을 클릭해 앱이 활성화된 상태에서만 타이핑이 들어간다. 이번 라운드에서는 마우스 경로(탭 전환/
+  장비 토글/[X])만 실측 검증했고, 타이핑은 실제 키보드가 있는 사용자 검증이 필요하다.
+- 정보창 [정보] 탭의 "지금 상태"는 매 프레임 보되 **상태가 바뀐 프레임에만** 문자열을 만든다
+  (24시간 상주 앱 — 매 프레임 할당 금지). 나머지 수치는 0.25초 주기.

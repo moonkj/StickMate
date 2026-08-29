@@ -56,6 +56,10 @@ namespace StickMate.Interaction
     ///                  <b>Control + Option + Command + N</b> = 가출 발동 / 가출 중이면 돌아오라고 부르기("Nope")
     ///                  <b>Control + Option + Command + J</b> = 할일 추가(데모) + 들고 다니는 모드 알림("Job")
     ///                  <b>Control + Option + Command + F</b> = 집중 모드 켜기/끄기("Focus")
+    ///                  <b>Control + Option + Command + A</b> = 활쏘기 발동("Archery")
+    ///                  <b>Control + Option + Command + I</b> = 캐릭터 정보/장비 창 열기·닫기("Info").
+    ///                    주 진입점은 화면 우상단 톱니 아이콘(Interaction/InfoGearIconWidget.cs)이고
+    ///                    이 단축키와 우클릭 메뉴 [캐릭터 정보]는 보조 경로다.
     ///     3개 조합키를 모두 쓰는 이유: Cmd+Shift+Q는 macOS의 "로그아웃"이고 Cmd+Q는 활성 앱 종료라
     ///     둘 다 이미 의미가 있다. Ctrl+Option+Cmd 조합은 시스템/일반 앱이 거의 쓰지 않아, 사용자가
     ///     다른 앱에서 작업하다 실수로 데스크톱 펫을 종료시킬 위험이 사실상 없다.
@@ -97,6 +101,8 @@ namespace StickMate.Interaction
         private bool _prevS, _prevN, _prevJ, _prevF;
         // 활쏘기(2026-08-29) — A.
         private bool _prevA;
+        // 캐릭터 정보/장비 창(2026-08-29) — I.
+        private bool _prevI;
 
         // 우클릭/메뉴 클릭 엣지 판정.
         private bool _rightPrev;
@@ -125,6 +131,7 @@ namespace StickMate.Interaction
         private TodoReminderDirector _todoDirector;         // 할일 추가 + 리마인더 강제 발동용(지연 탐색 후 캐시).
         private FocusWatchDirector _focusDirector;          // 집중 모드 토글용(지연 탐색 후 캐시).
         private ArcheryDirector _archeryDirector;           // 활쏘기 발동용(지연 탐색 후 캐시).
+        private CharacterInfoWindow _infoWindow;            // 캐릭터 정보/장비 창 토글용(지연 탐색 후 캐시).
 
         // 메뉴 행 정의 — 순서가 곧 화면 표시 순서이자 히트테스트 인덱스다.
         // 순서 = 화면 표시 순서 = 히트테스트 인덱스. 새 항목은 항상 [닫기] **앞에** 넣는다
@@ -138,9 +145,13 @@ namespace StickMate.Interaction
             // 활쏘기(2026-08-29 사용자 요청) — 자율 발동 확률이 기본 0이라 이 행과 단축키 A가
             // **유일한 발동 경로**다(StickConfig.archeryChance 문서 참고). 항상 [닫기] 앞에 넣는다.
             Archery = 15,
-            Close = 16,
+            // 캐릭터 정보/장비 창(2026-08-29 성장/장비 라운드) — 주 진입점은 화면 우상단 톱니
+            // 아이콘(Interaction/InfoGearIconWidget.cs)이고 이 행과 단축키 I는 보조 경로다.
+            // 항상 [닫기] **앞에** 넣는다(위 주석의 관습).
+            CharacterInfo = 16,
+            Close = 17,
         }
-        private const int MenuRowCount = 17;
+        private const int MenuRowCount = 18;
 
         private void Awake()
         {
@@ -164,7 +175,8 @@ namespace StickMate.Interaction
                 "**G(그라피티 강제 발동)** / **T(창 도둑 강제 발동)** / **X(윈도우 크래시 강제 발동)** / " +
                 "**H(하드웨어 반응 데모 미리보기 — 4종 순환)** / **S(스트레스 게이지 단계 순환)** / " +
                 "**N(가출 발동, 가출 중이면 돌아오라고 부르기)** / **J(할일 추가 + 알림)** / " +
-                "**F(집중 모드 켜기/끄기)** / **A(활쏘기 — 과녁을 세우고 3발)**. " +
+                "**F(집중 모드 켜기/끄기)** / **A(활쏘기 — 과녁을 세우고 3발)** / " +
+                "**I(캐릭터 정보/장비 창 — 주 진입점은 화면 우상단 톱니 아이콘)**. " +
                 $"전역 키 조회={(_keyService != null ? "사용 가능" : "미지원 — 우클릭 메뉴만 동작")}, " +
                 $"전역 버튼 조회={(_buttonService != null ? "사용 가능" : "미지원 — 단축키만 동작")}.");
         }
@@ -205,6 +217,7 @@ namespace StickMate.Interaction
             bool j = chord && IsKeyDown(GlobalKey.J);
             bool f = chord && IsKeyDown(GlobalKey.F);
             bool aKey = chord && IsKeyDown(GlobalKey.A);
+            bool iKey = chord && IsKeyDown(GlobalKey.I);
 
             if (!_hotkeyInitialized)
             {
@@ -213,6 +226,7 @@ namespace StickMate.Interaction
                 _prevT = t; _prevX = x; _prevH = h;
                 _prevS = sKey; _prevN = n; _prevJ = j; _prevF = f;
                 _prevA = aKey;
+                _prevI = iKey;
                 return;
             }
 
@@ -232,10 +246,12 @@ namespace StickMate.Interaction
             bool jRise = j && !_prevJ;
             bool fRise = f && !_prevF;
             bool aRise = aKey && !_prevA;
+            bool iRise = iKey && !_prevI;
             _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevV = v; _prevK = k; _prevG = g;
             _prevT = t; _prevX = x; _prevH = h;
             _prevS = sKey; _prevN = n; _prevJ = j; _prevF = f;
             _prevA = aKey;
+            _prevI = iKey;
 
             if (qRise) Invoke(MenuAction.Quit, "전역 단축키 Ctrl+Opt+Cmd+Q");
             else if (cRise) Invoke(MenuAction.InkColor, "전역 단축키 Ctrl+Opt+Cmd+C");
@@ -253,6 +269,7 @@ namespace StickMate.Interaction
             else if (jRise) Invoke(MenuAction.TodoReminder, "전역 단축키 Ctrl+Opt+Cmd+J");
             else if (fRise) Invoke(MenuAction.FocusWatch, "전역 단축키 Ctrl+Opt+Cmd+F");
             else if (aRise) Invoke(MenuAction.Archery, "전역 단축키 Ctrl+Opt+Cmd+A");
+            else if (iRise) Invoke(MenuAction.CharacterInfo, "전역 단축키 Ctrl+Opt+Cmd+I");
         }
 
         private bool IsKeyDown(GlobalKey key)
@@ -451,6 +468,10 @@ namespace StickMate.Interaction
                     ForceArchery(source);
                     break;
 
+                case MenuAction.CharacterInfo:
+                    ToggleCharacterInfo(source);
+                    break;
+
                 case MenuAction.Close:
                     CloseMenu("메뉴 [닫기]");
                     break;
@@ -472,6 +493,23 @@ namespace StickMate.Interaction
                 return;
             }
             _archeryDirector.ForceTriggerNow(source);
+        }
+
+        /// <summary>
+        /// 캐릭터 정보/장비 창 토글(전역 단축키 Ctrl+Opt+Cmd+I / 우클릭 메뉴 [캐릭터 정보]).
+        /// 활쏘기(A)/집중 모드(F)와 같은 성격의 <b>정식 진입점</b>이다 — 확률을 건너뛰는 데모가 아니다.
+        /// 주 진입점은 화면 우상단 톱니 아이콘(Interaction/InfoGearIconWidget.cs)이고 이쪽은 보조 경로다.
+        /// </summary>
+        private void ToggleCharacterInfo(string source)
+        {
+            if (_infoWindow == null) _infoWindow = Object.FindFirstObjectByType<CharacterInfoWindow>();
+            if (_infoWindow == null)
+            {
+                Debug.LogWarning($"[앱제어] 캐릭터 정보창 열기 실패({source}) — 씬에 CharacterInfoWindow가 없습니다.");
+                return;
+            }
+            _infoWindow.Toggle(source);
+            CloseMenu("캐릭터 정보창 열기"); // 창이 메뉴에 가리지 않게.
         }
 
         // ==================== 데모 진입점 (말풍선 / 라이벌) ====================
@@ -690,7 +728,7 @@ namespace StickMate.Interaction
             UpdateMenuPlacement();
             Debug.Log("[앱제어] 캐릭터 우클릭 — 제어 메뉴를 열었습니다([앱 종료]/[잉크색]/[로데오]/[진단로그]/" +
                 "[말풍선]/[라이벌]/[격파 놀이]/[그라피티]/[창 도둑]/[창 부수기]/[하드웨어 반응]/" +
-                "[스트레스]/[가출]/[할일 알림]/[집중 모드]/[활쏘기]/[닫기]).");
+                "[스트레스]/[가출]/[할일 알림]/[집중 모드]/[활쏘기]/[캐릭터 정보]/[닫기]).");
         }
 
         private void CloseMenu(string reason)
@@ -840,6 +878,10 @@ namespace StickMate.Interaction
                 : "집중 모드 시작");
 
             SetRowText(MenuAction.Archery, "활쏘기");
+
+            if (_infoWindow == null) _infoWindow = Object.FindFirstObjectByType<CharacterInfoWindow>();
+            SetRowText(MenuAction.CharacterInfo,
+                _infoWindow != null && _infoWindow.IsOpen ? "캐릭터 정보 닫기" : "캐릭터 정보");
 
             SetRowText(MenuAction.Close, "닫기");
         }
