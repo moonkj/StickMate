@@ -54,6 +54,14 @@ namespace StickMate.States
         // 각도(도). 이보다 작으면 referenceAngle도 0 근처라 부호를 신뢰할 수 없어 건너뛴다.
         private const float MinAngleForSignDetectionDegrees = 2f;
 
+        /// <summary>
+        /// ★ 2026-08-29 — 지금 캐릭터가 어느 쪽을 보고 있는지(+1 오른쪽 / -1 왼쪽)를 물어보는 통로.
+        /// StickmanBlackboard가 자신의 FacingSign을 그대로 넘겨준다(캐싱하지 않고 매번 물어본다 —
+        /// RAGDOLL 진입 시점의 최신 방향이어야 하기 때문). null이면 항상 +1로 취급한다(테스트/폴백).
+        /// 왜 필요한지는 <see cref="EnableJointsWithAnatomicalLimits"/>의 "좌우 반전" 문서 참고.
+        /// </summary>
+        private readonly System.Func<float> _facingSignProvider;
+
         private readonly Rigidbody2D _root;
         private readonly Rigidbody2D[] _bodies;      // 루트 포함 전신(GetMaxSpeed용).
         private readonly Rigidbody2D[] _limbBodies;  // 루트 제외 — 모드에 따라 bodyType이 바뀌는 대상.
@@ -81,8 +89,9 @@ namespace StickMate.States
         /// <summary>루트(몸통)의 현재 Z 회전각(도). 0에 가까울수록 똑바로 서 있다 — 실측 검증 기준값.</summary>
         public float RootRotationDegrees => _root != null ? _root.rotation : 0f;
 
-        public RagdollRig(Transform root)
+        public RagdollRig(Transform root, System.Func<float> facingSignProvider = null)
         {
+            _facingSignProvider = facingSignProvider;
             _bodies = root != null ? root.GetComponentsInChildren<Rigidbody2D>(true) : System.Array.Empty<Rigidbody2D>();
             _joints = root != null ? root.GetComponentsInChildren<HingeJoint2D>(true) : System.Array.Empty<HingeJoint2D>();
             _root = root != null ? root.GetComponent<Rigidbody2D>() : null;
@@ -255,6 +264,29 @@ namespace StickMate.States
 
             float sign = DetectJointAngleSign();
 
+            // ★★ 좌우 반전(2026-08-29, 사용자 신고 "넘어질때도 이상하게 넘어지고")
+            // ------------------------------------------------------------------------------
+            // 이 캐릭터의 좌우 반전은 Transform.localScale.x = -1이 아니라 **각도 부호 뒤집기**로
+            // 구현돼 있다(States/StickmanPoseAnimator.cs: `angleDegrees * _facingSign`). 그런데
+            // 프리팹에 적힌 해부학 제한은 좌우 비대칭이면서(무릎 [-100,-3], 팔꿈치 [3,100] — "한쪽으로만
+            // 굽는다"를 인코딩한 값이다) **반전되지 않은 채 그대로** 쓰이고 있었다. 그 결과:
+            //
+            //   · 오른쪽을 볼 때(facing +1): 서 있는 무릎의 로컬각 -4도 -> 해부학 [-100,-3] 안. 정상.
+            //   · 왼쪽을 볼 때 (facing -1): 서 있는 무릎의 로컬각 +4도 -> 해부학 [-100,-3] **밖**.
+            //
+            // 즉 왼쪽을 보고 넘어지면 (1) 진입 순간 무릎/팔꿈치가 제한 밖에 있어 솔버가 7~13도를
+            // 즉시 튕겨 넣고(넘어지기 시작하는 첫 프레임의 '픽' 하는 부자연스러운 꺾임), (2) 그 뒤로도
+            // 허용 범위가 **거울상 반대쪽**이라 무릎이 앞으로 꺾이고 팔꿈치가 뒤로 꺾인 채 뒹군다.
+            // 실측 로그에도 그대로 남아 있었다: "LeftLegLower: 진입각 4.0도, 해부학 [-100,-3] ->
+            // 적용 [7,104]" — 적용 범위 [7,104]에 진입값 0이 들어있지 않다(= 진입 순간 위반 상태).
+            //
+            // 해법: 해부학 제한도 포즈와 **같은 방식으로** 반전한다([min,max] -> [-max,-min]).
+            // 이러면 어느 쪽을 보든 진입 자세가 항상 허용 범위 안에 들어오고(튕김 소멸), 굽는 방향도
+            // 항상 해부학적으로 옳은 쪽이 된다. 검증법: 아래 [RagdollRig] 로그에서 **적용 범위가 항상
+            // 0을 포함**하는지 보면 된다(진입각 기준 jointAngle은 0에서 시작하므로).
+            float facing = _facingSignProvider != null ? _facingSignProvider() : 1f;
+            bool mirrored = facing < 0f;
+
             // 2차 패스: 해부학 기준 제한을 이번 진입의 jointAngle 좌표계로 환산해 적용한다.
             //   sign = +1 : jointAngle = (각도 - 진입각)        -> [aMin - 진입각, aMax - 진입각]
             //   sign = -1 : jointAngle = -(각도 - 진입각)       -> [진입각 - aMax, 진입각 - aMin]
@@ -263,7 +295,7 @@ namespace StickMate.States
                 HingeJoint2D joint = _joints[i];
                 if (joint == null || !_jointUsesLimits[i]) continue;
 
-                JointAngleLimits2D anatomical = _anatomicalLimits[i];
+                JointAngleLimits2D anatomical = MirrorIfFacingLeft(_anatomicalLimits[i], mirrored);
                 float entry = _entryLocalAngles[i];
                 joint.limits = sign >= 0f
                     ? new JointAngleLimits2D { min = anatomical.min - entry, max = anatomical.max - entry }
@@ -271,7 +303,17 @@ namespace StickMate.States
                 joint.useLimits = true;
             }
 
-            LogJointLimitDiagnostics(sign);
+            LogJointLimitDiagnostics(sign, mirrored);
+        }
+
+        /// <summary>
+        /// 해부학 제한을 좌우 반전한다. 포즈가 각도에 -1을 곱해 반전되므로(위 문서), 제한 구간도
+        /// 같은 변환을 거쳐야 한다 — [min,max]에 -1을 곱하면 순서가 뒤집히므로 [-max,-min]이다.
+        /// </summary>
+        private static JointAngleLimits2D MirrorIfFacingLeft(JointAngleLimits2D limits, bool mirrored)
+        {
+            if (!mirrored) return limits;
+            return new JointAngleLimits2D { min = -limits.max, max = -limits.min };
         }
 
         /// <summary>
@@ -307,10 +349,11 @@ namespace StickMate.States
         /// 에이전트는 마우스를 조작해 캐릭터를 던져볼 수 없으므로, 랙돌 자세가 다시 이상해졌다는 신고가
         /// 오면 이 한 줄로 "제한이 실제로 해부학 기준으로 적용됐는지"를 로그만으로 확정할 수 있어야 한다.
         /// </summary>
-        private void LogJointLimitDiagnostics(float sign)
+        private void LogJointLimitDiagnostics(float sign, bool mirrored)
         {
             var sb = new StringBuilder();
             sb.Append("[RagdollRig] RAGDOLL 관절 제한 적용 — jointAngle 부호 규약=").Append(sign >= 0f ? "+1(로컬각과 동일)" : "-1(로컬각과 반대)");
+            sb.Append(", 바라보는 방향=").Append(mirrored ? "왼쪽(해부학 제한 좌우반전 적용)" : "오른쪽(반전 없음)");
             for (int i = 0; i < _joints.Length; i++)
             {
                 if (_joints[i] == null || !_jointUsesLimits[i]) continue;

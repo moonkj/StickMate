@@ -52,6 +52,13 @@ namespace StickMate.States
         /// </summary>
         public const float MaxSafePupilOffset = 0.09f;
 
+        /// <summary>
+        /// 위 유도식이 실제로 내놓는 기하학적 상한(0.0929) — <see cref="MaxSafePupilOffset"/>은 거기서
+        /// 안전하게 내림한 값이라 "배율 1.0의 기준 치수"로는 이쪽이 정확하다. 아래
+        /// <see cref="_geometryScale"/>의 분모로만 쓰인다.
+        /// </summary>
+        private const float BaselineSafePupilOffset = 0.0929f;
+
         /// <summary>StickConfig가 배선되지 않은 경로(테스트/폴백)에서 쓰는 기본 최대 오프셋.</summary>
         public const float DefaultMaxPupilOffset = 0.05f;
 
@@ -96,6 +103,28 @@ namespace StickMate.States
         private Vector2 _lookDirection;
         private float _appliedMaxOffset = DefaultMaxPupilOffset;
 
+        // ============================================================================
+        // ★ 캐릭터 크기 배율 대응 (2026-08-29 — StickConfig.characterScale 도입 라운드)
+        // ============================================================================
+        // 위 MaxSafePupilOffset의 유도는 **배율 1.0 프리팹의 치수**(머리 반경 0.22 / 링 두께 0.063 /
+        // 눈 중립 0.0776 / 눈동자 0.018)를 손으로 적어 넣은 것이라, 캐릭터가 절반이 되면 그대로 틀린
+        // 값이 된다 — 머리는 반경 0.11로 줄었는데 눈동자는 여전히 0.09까지 나갈 수 있어 **눈이 머리
+        // 링을 뚫고 나간다**. 그래서 생성자에서 프리팹 계층을 실측해 두 값을 만든다:
+        //   _measuredSafeOffset : 지금 이 프리팹에서 눈동자가 나갈 수 있는 진짜 상한.
+        //   _geometryScale      : 그 상한 / 배율 1.0 기준 상한 = 사실상 캐릭터 크기 배율.
+        // StickConfig의 튜닝값(eyeMaxPupilOffset)은 "배율 1.0에서의 값"으로 해석해 _geometryScale을
+        // 곱한 뒤 _measuredSafeOffset으로 다시 clamp한다. 배율 1.0에서는 두 값이 각각 1.0과 0.0929라
+        // **기존 거동과 완전히 동일**하고, 배율 0.5에서는 눈동자 이동폭도 정확히 절반이 된다.
+        // 실측에 실패하면(구버전 프리팹/테스트 리그) 배율 1.0 기준값으로 되돌아간다.
+        private readonly float _measuredSafeOffset = MaxSafePupilOffset;
+        private readonly float _geometryScale = 1f;
+
+        /// <summary>실측한 눈동자 오프셋 상한(월드 유닛). 진단/테스트 전용.</summary>
+        public float MeasuredSafePupilOffset => _measuredSafeOffset;
+
+        /// <summary>머리 지오메트리에서 역산한 캐릭터 크기 배율(배율 1.0에서 1.0). 진단/테스트 전용.</summary>
+        public float GeometryScale => _geometryScale;
+
         /// <summary>두 눈을 모두 찾았는지. 프리팹이 구버전이어도 조용히 무시되도록 호출부에서 쓰지 않아도
         /// 안전하지만(모든 메서드가 null 가드), 진단 목적으로 노출한다.</summary>
         public bool HasEyes => _leftEye != null && _rightEye != null;
@@ -129,6 +158,50 @@ namespace StickMate.States
             // 정의상 항상 옳기 때문이다(프리팹 계층이 바뀌어도 자동으로 따라간다).
             if (_leftEye != null) _head = _leftEye.parent;
             else if (_rightEye != null) _head = _rightEye.parent;
+
+            // ★ 크기 배율 대응 실측(위 _measuredSafeOffset 문서 참고). 링/눈동자 모두 LineRenderer의
+            // 첫 점이 (반지름, 0, 0)이도록 구워지므로(SceneBootstrapper.CreateRing/CreateFilledDot),
+            // 그 x 성분이 곧 반지름이다. 하나라도 못 읽으면 기본값(배율 1.0 기준)을 그대로 둔다.
+            float ringRadius = ReadCircleRadius(FindChildLineRenderer(_head, "HeadOutline"), out float ringWidth);
+            float pupilRadius = ReadCircleRadius(GetLineRenderer(_rightEye ?? _leftEye), out _);
+            float neutralDistance = (_rightEye != null ? _rightNeutral : _leftNeutral).magnitude;
+            if (ringRadius > 0.0001f && pupilRadius > 0.0001f)
+            {
+                float safe = (ringRadius - ringWidth * 0.5f) - neutralDistance - pupilRadius;
+                if (safe > 0.0001f)
+                {
+                    _measuredSafeOffset = safe;
+                    _geometryScale = safe / BaselineSafePupilOffset;
+                }
+            }
+
+            // TickLookAt이 한 번도 돌기 전에 SetLookDirection()이 먼저 불릴 수 있으므로(로데오/전투 등
+            // 스크립트 시선 경로) 초기값도 같은 규칙으로 맞춰둔다 — 안 그러면 그 경로에서만 눈동자가
+            // 배율 1.0 기준 폭으로 움직여 작은 머리를 뚫는다.
+            _appliedMaxOffset = Mathf.Min(DefaultMaxPupilOffset * _geometryScale, _measuredSafeOffset);
+        }
+
+        /// <summary>이름이 일치하는 직속 자식의 LineRenderer(없으면 null).</summary>
+        private static LineRenderer FindChildLineRenderer(Transform parent, string childName)
+        {
+            if (parent == null) return null;
+            for (int i = 0; i < parent.childCount; i++)
+            {
+                Transform c = parent.GetChild(i);
+                if (c != null && c.name == childName) return c.GetComponent<LineRenderer>();
+            }
+            return null;
+        }
+
+        private static LineRenderer GetLineRenderer(Transform t) => t != null ? t.GetComponent<LineRenderer>() : null;
+
+        /// <summary>원 경로로 구워진 LineRenderer에서 반지름과 선 두께를 읽는다(못 읽으면 0).</summary>
+        private static float ReadCircleRadius(LineRenderer lr, out float width)
+        {
+            width = 0f;
+            if (lr == null || lr.positionCount <= 0) return 0f;
+            width = lr.startWidth;
+            return Mathf.Abs(lr.GetPosition(0).x);
         }
 
         /// <summary>
@@ -140,7 +213,9 @@ namespace StickMate.States
         /// <param name="settings">StickConfig에서 만든 추적 파라미터.</param>
         public void TickLookAt(bool hasTarget, Vector2 targetWorld, float deltaTime, in EyeTrackingSettings settings)
         {
-            _appliedMaxOffset = settings.MaxPupilOffset;
+            // 설정값은 "배율 1.0에서의 값"으로 해석한다 — 실측 지오메트리 배율을 곱하고, 그래도
+            // 링을 뚫을 수 없도록 실측 상한으로 한 번 더 막는다(위 _measuredSafeOffset 문서 참고).
+            _appliedMaxOffset = Mathf.Min(settings.MaxPupilOffset * _geometryScale, _measuredSafeOffset);
             Vector2 desired = Vector2.zero;
 
             if (settings.Enabled && hasTarget && _head != null)

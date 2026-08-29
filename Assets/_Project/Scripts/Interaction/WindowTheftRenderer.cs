@@ -72,7 +72,13 @@ namespace StickMate.Interaction
         private const int TrafficLightCount = 3;         // macOS 창처럼 보이게 하는 신호등 점.
 
         private const int StrainMarkCount = 3;           // 붙잡은 손 옆의 힘줄 표시.
-        private const float StrainPulseSpeed = 14f;
+
+        /// <summary>캐릭터 발(루트 원점)에서 손까지의 높이(월드 유닛). 전신 높이 2.27, 머리 중심 앵커
+        /// 2.05인 이 스틱맨 비율에서 어깨가 약 1.55, 앞으로 뻗은 손이 약 1.45다
+        /// (Dialogue/DialogueBubbleRenderer의 머리 앵커 주석과 같은 실측 계열 값).</summary>
+        private const float HandHeightAboveFeetWorld = 1.45f;
+        // 14 -> 8: 초당 두 번 이상 깜빡이던 것을 눈에 거슬리지 않는 속도로 낮춘다(위 색 변경과 같은 이유).
+        private const float StrainPulseSpeed = 8f;
 
         private const float DustSpawnInterval = 0.17f;   // 발밑 먼지 퍼프 생성 주기.
         private const float DustLifeSeconds = 0.52f;
@@ -88,7 +94,18 @@ namespace StickMate.Interaction
 
         private static readonly Color GhostFrameColor = new Color(0.24f, 0.52f, 0.92f, 0.95f);
         private static readonly Color GhostTitleColor = new Color(0.24f, 0.52f, 0.92f, 0.60f);
-        private static readonly Color StrainColor = new Color(0.98f, 0.78f, 0.20f, 1f);
+        // ★ 2026-08-29 — 사용자 신고 "양손에 무슨 노란색이 있는데 그것도 이상함".
+        // 예전 값은 채도 높은 노랑(0.98, 0.78, 0.20)이었다. 이 앱은 흑백 선화 톤이고 사용자는 프로젝트
+        // 내내 "깔끔한 졸라맨"을 요구해왔다(과거 신고: "손과 발에 동그란 뭉치같은건 필요없을거 같은데",
+        // "눈도 너무 커서 이상함"). 화면에서 유일하게 원색인 요소가 하필 캐릭터 손 옆에 붙어 있으니
+        // 시선이 전부 거기로 끌린다 — 정보량은 거의 없는데 가장 튀는, 최악의 조합이었다.
+        //
+        // 지우지 않고 **잉크색 연동**을 고른 이유: 만화의 힘줄/효과선은 원래 잉크로 그리는 것이라
+        // 이 앱의 톤에 정확히 맞고, 말풍선(Dialogue/DialogueBubbleRenderer)이 이미 같은 방식으로
+        // StickConfig.ResolveInkColor()를 따라간다 — 흰색/검은색 프리셋을 바꿔도 자동으로 함께 간다.
+        // 알파도 1.0에서 낮춰(StrainMaxAlpha) "있는지 없는지 모르게 거들기만" 하는 강도로 내렸다.
+        private const float StrainMaxAlpha = 0.5f;
+        private Color _strainColor = new Color(0f, 0f, 0f, StrainMaxAlpha);
         private static readonly Color DustColor = new Color(0.62f, 0.60f, 0.56f, 0.85f);
 
         private enum Mode { None, Straining, SettlingBack, FadingOut }
@@ -234,6 +251,12 @@ namespace StickMate.Interaction
             float sizeX = Mathf.Max(0.05f, xMax - xMin);
             float sizeY = Mathf.Max(0.05f, yMax - yMin);
 
+            // 힘줄 표시 색을 이번 발동 시점의 잉크 프리셋으로 확정한다(말풍선과 같은 방식 —
+            // Dialogue/DialogueBubbleRenderer의 ResolveInkColor() 사용부 참고).
+            Color ink = blackboard.Config != null ? blackboard.Config.ResolveInkColor() : Color.black;
+            ink.a = StrainMaxAlpha;
+            _strainColor = ink;
+
             _lineMaterial = ResolveLineMaterial();
             _container = new GameObject("WindowTheftGhostOverlay");
             _container.transform.SetParent(null, false);
@@ -278,20 +301,30 @@ namespace StickMate.Interaction
                     GhostTitleColor, stroke * 0.9f, SortingGhost, loop: true));
             }
 
-            // (4) 붙잡은 손 옆의 힘줄 표시 — 캐릭터 쪽 세로 모서리에 붙는다.
+            // (4) 붙잡은 손 옆의 힘줄 표시 — 캐릭터 쪽 세로 모서리, **캐릭터 손 높이**에 붙는다.
+            //
+            // ★ 2026-08-29 위치 수정 — 사용자는 "양손에 노란색이 있다"고 했는데, 예전 코드는 마크를
+            // 고스트 창 세로 모서리의 **한가운데**(markY = t * min(sizeY*0.34, 1.1))에 걸었다. 창 높이에만
+            // 비례하는 값이라 캐릭터 손 높이와는 아무 관계가 없었고, 큰 창에서는 캐릭터 머리 위나 발밑
+            // 엉뚱한 높이에 떠 있었다. "붙잡은 손 옆"이라는 이 마크의 존재 이유 자체가 성립하지 않았던 것.
+            // 이제는 캐릭터 발 좌표(characterWorld.y)에서 손 높이만큼 올린 지점을 중심으로 삼고,
+            // 그 결과가 고스트 창 세로 범위를 벗어나면 창 안으로 클램프한다(창 밖 허공에 그리지 않는다).
             float grabEdgeX = halfX * _pullSign;
             float markLength = Mathf.Min(sizeY * 0.10f, 0.36f);
+            float handWorldY = characterWorld.y + HandHeightAboveFeetWorld;
+            float handLocalY = Mathf.Clamp(handWorldY - _restPosition.y, -halfY + markLength, halfY - markLength);
+            float markSpacing = Mathf.Min(markLength * 0.9f, halfY * 0.5f);
             for (int i = 0; i < StrainMarkCount; i++)
             {
                 float t = (i - (StrainMarkCount - 1) * 0.5f) / Mathf.Max(1f, StrainMarkCount - 1);
-                float markY = t * Mathf.Min(sizeY * 0.34f, 1.1f);
+                float markY = handLocalY + t * markSpacing * (StrainMarkCount - 1);
                 float inner = grabEdgeX + _pullSign * markLength * 0.35f;
                 float outer = grabEdgeX + _pullSign * markLength * 1.25f;
                 _strainLines.Add(CreateLine($"StrainMark{i}", new[]
                 {
                     new Vector3(inner, markY, 0f),
                     new Vector3(outer, markY + markLength * 0.35f * Mathf.Sign(t == 0f ? 1f : t), 0f),
-                }, StrainColor, stroke * 1.1f, SortingEffect, loop: false));
+                }, _strainColor, stroke * 1.1f, SortingEffect, loop: false));
             }
 
             _mode = Mode.Straining;
@@ -356,13 +389,14 @@ namespace StickMate.Interaction
 
         private void PulseStrainMarks(float intensity)
         {
-            float blink = 0.35f + 0.65f * Mathf.Abs(Mathf.Sin(_modeTimer * StrainPulseSpeed));
-            float alpha = Mathf.Clamp01(intensity) * blink;
+            // 0.35~1.0 진폭 -> 0.55~1.0. 깜빡임 대비를 줄여 "부드럽게 힘주는" 느낌만 남긴다.
+            float blink = 0.55f + 0.45f * Mathf.Abs(Mathf.Sin(_modeTimer * StrainPulseSpeed));
+            float alpha = Mathf.Clamp01(intensity) * blink * StrainMaxAlpha;
             for (int i = 0; i < _strainLines.Count; i++)
             {
                 LineRenderer lr = _strainLines[i];
                 if (lr == null) continue;
-                Color c = StrainColor;
+                Color c = _strainColor;
                 c.a = alpha;
                 lr.startColor = c;
                 lr.endColor = c;

@@ -51,6 +51,8 @@ namespace StickMate.Platform
         private readonly ICursorPositionService _innerCursor; // null이면 내부 서비스가 커서 조회를 지원하지 않음
         private readonly ILocalClickCaptureService _innerClickCapture; // null이면 내부 서비스가 부분적 클릭관통 해제를 지원하지 않음
         private readonly IDesktopIconLayoutService _innerIconLayout; // null이면 내부 서비스가 아이콘 좌표 조회를 지원하지 않음
+        // null이면 내부 서비스가 Dock 실측을 지원하지 않음 -> dockFootholdWidthFraction 고정 추정 폴백.
+        private readonly IDockMetricsService _innerDockMetrics;
 
         // ★ 사용자 신고 "마우스로 안 잡힘" 조사 중 함께 발견(2026-08-28): 이 데코레이터가
         // IGlobalPointerButtonService를 통과시키지 않아, StickmanClickHitbox의
@@ -88,6 +90,7 @@ namespace StickMate.Platform
             _innerCursor = inner as ICursorPositionService;
             _innerClickCapture = inner as ILocalClickCaptureService;
             _innerIconLayout = inner as IDesktopIconLayoutService;
+            _innerDockMetrics = inner as IDockMetricsService;
             _innerButton = inner as IGlobalPointerButtonService;
             _innerKeyState = inner as IGlobalKeyStateService;
             _config = config;
@@ -215,6 +218,17 @@ namespace StickMate.Platform
         /// Dock이 비활성(폭 비율 0 또는 두께 0)이거나 설정이 없으면 false — 그때 안전망은 예전처럼
         /// 화면 전체 폭 한 조각으로 남는다(잘라낼 Dock 자체가 없으므로 겹칠 일도 없다).
         /// </summary>
+        // Dock 구간 로그는 **내용이 바뀔 때만** 남긴다 — 이 함수는 발판 폴링마다(0.3초) 불리므로
+        // 그대로 두면 로그가 잠긴다. 그러면서도 "지금 Dock을 어디로 보고 있는가"는 항상 최신 1줄로 남는다.
+        private string _lastDockSpanLog;
+
+        private void LogDockSpanOnce(string message)
+        {
+            if (_lastDockSpanLog == message) return;
+            _lastDockSpanLog = message;
+            Debug.Log("[Dock실측] " + message);
+        }
+
         public bool TryGetDockSpanOsScreen(out float dockLeftOsX, out float dockRightOsX)
         {
             dockLeftOsX = 0f;
@@ -223,12 +237,43 @@ namespace StickMate.Platform
 
             float widthFraction = _config.dockFootholdWidthFraction;
             float thickness = _config.dockFootholdThicknessPoints;
-            if (widthFraction <= 0f || thickness <= 0f) return false;
+            if (thickness <= 0f) return false;
 
             float dpi = Mathf.Max(0.0001f, _config.desktopDpiScale);
             float screenW = (Screen.width > 0 ? Screen.width : 1920f) * dpi;
             Vector2 origin = ScreenCoordinateConverter.OverlayOriginOsScreen;
 
+            // ★ 1순위 — OS 설정에서 실제 Dock 폭을 계산한다(2026-08-29 "지금도 독이랑 계속 겹쳐").
+            // 근거/실측/유도는 Platform/IDockMetricsService.cs 문서 참고.
+            if (_config.dockMetricsFromSystemEnabled && _innerDockMetrics != null
+                && _innerDockMetrics.TryGetDockMetrics(out DockMetrics m))
+            {
+                // 세로(좌/우) Dock이면 "화면 하단의 가로 띠"라는 Dock 발판 개념 자체가 성립하지 않는다.
+                // 자동 숨김이면 평소 화면에 없으므로 발판으로 삼으면 캐릭터가 허공에 선다. 둘 다 비활성화.
+                if (!m.IsBottomOriented || m.IsAutoHidden)
+                {
+                    LogDockSpanOnce($"Dock 발판 비활성화 — {(m.IsAutoHidden ? "자동 숨김이 켜져 있음" : "Dock이 화면 하단이 아님(좌/우 세로 Dock)")}. " +
+                        "바닥 안전망만 화면 전체 폭으로 남습니다.");
+                    return false;
+                }
+
+                int tiles = Mathf.Max(1, m.TileCount + Mathf.Max(0, _config.dockExtraRunningAppTileEstimate));
+                float pitch = Mathf.Max(1f, m.TileSizePoints + _config.dockTilePitchPaddingPoints);
+                float measuredWidth = tiles * pitch + _config.dockPanelFixedPaddingPoints;
+                measuredWidth = Mathf.Clamp(measuredWidth, 0f, screenW);
+
+                dockLeftOsX = origin.x + (screenW - measuredWidth) * 0.5f;  // 가운데 정렬(실측 확인 — 타일 1개 변화가 좌우 대칭이었다).
+                dockRightOsX = dockLeftOsX + measuredWidth;
+                LogDockSpanOnce($"Dock 실측 — tilesize={m.TileSizePoints:F0}pt, 설정에서 센 타일 {m.TileCount}개 " +
+                    $"+ 실행중 앱 보정 {_config.dockExtraRunningAppTileEstimate}개 = {tiles}개, 피치 {pitch:F1}pt, " +
+                    $"고정분 {_config.dockPanelFixedPaddingPoints:F1}pt -> 폭 {measuredWidth:F1}pt " +
+                    $"(화면의 {(measuredWidth / Mathf.Max(1f, screenW)):P1}), OS x {dockLeftOsX:F1}~{dockRightOsX:F1}. " +
+                    $"참고: 고정 비율 추정({widthFraction:F2})이었다면 {screenW * widthFraction:F1}pt였습니다.");
+                return true;
+            }
+
+            // 2순위 — 폴백(비-macOS이거나 설정 조회 실패). 예전과 완전히 동일한 고정 비율 추정.
+            if (widthFraction <= 0f) return false;
             float dockWidth = screenW * Mathf.Clamp01(widthFraction);
             dockLeftOsX = origin.x + (screenW - dockWidth) * 0.5f;   // 화면 가로 정중앙(실측 확인).
             dockRightOsX = dockLeftOsX + dockWidth;

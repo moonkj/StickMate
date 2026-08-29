@@ -92,10 +92,10 @@ MonoBehaviour:
   battleFailRetryDelaySeconds: 1.5
   battleSuccessResolveDelaySeconds: 1
   battleInputTimeoutSeconds: 5
-  battleAutoTriggerCheckInterval: 3
-  battleAutoTriggerChance: 1
+  battleAutoTriggerCheckInterval: 60
+  battleAutoTriggerChance: 0
   rivalSpawnCheckInterval: 90
-  rivalSpawnChance: 0.04
+  rivalSpawnChance: 0
   rivalSpawnCooldownSeconds: 1200
   rivalMaxDurationSeconds: 30
   rivalSpawnMinFootholds: 2
@@ -120,21 +120,21 @@ MonoBehaviour:
   stressRodeoWeightThreshold: 0.6
   rodeoStressTriggerSecondsMultiplier: 0.7
   windowTheftCheckInterval: 60
-  windowTheftChance: 0.03
+  windowTheftChance: 0
   windowTheftCooldownSeconds: 900
   windowTheftMaxTargetWidthMultiplier: 3
   windowTheftAttemptDuration: 1.2
   windowTheftGiveUpDuration: 1.5
   desktopTidyCheckInterval: 60
-  desktopTidyChance: 0.03
+  desktopTidyChance: 0
   desktopTidyCooldownSeconds: 900
   desktopTidyDurationSeconds: 2.5
   blackholeCheckInterval: 60
-  blackholeChance: 0.03
+  blackholeChance: 0
   blackholeCooldownSeconds: 900
   blackholeDurationSeconds: 2.5
   graffitiCheckInterval: 60
-  graffitiChance: 0.04
+  graffitiChance: 0
   graffitiCooldownSeconds: 600
   graffitiMinRadiusPx: 200
   graffitiMaxRadiusPx: 300
@@ -143,7 +143,7 @@ MonoBehaviour:
   graffitiHoldDurationMax: 5
   graffitiCandidateSearchAttempts: 8
   windowCrashCheckInterval: 60
-  windowCrashChance: 0.02
+  windowCrashChance: 0
   windowCrashCooldownSeconds: 1500
   windowCrashSwingDuration: 0.4
   windowCrashOverlayDurationSeconds: 3
@@ -158,7 +158,7 @@ MonoBehaviour:
   hardwareBatteryConfirmPollCount: 2
   hardwareReactionCooldownSeconds: 420
   todoReminderCheckInterval: 45
-  todoReminderChance: 0.2
+  todoReminderChance: 0
   todoReminderHoldSeconds: 3
   todoActiveCountSoftCap: 15
   todoCompletedLingerSeconds: 2.5
@@ -189,10 +189,10 @@ MonoBehaviour:
   stressTierCautionLevel: 0.4
   stressSulkyThreshold: 0.8
   stressSulkyCheckInterval: 30
-  stressSulkyChance: 0.5
+  stressSulkyChance: 0
   stressSulkyCooldownSeconds: 90
   stressSulkyHoldSeconds: 2
-  stressRunawayThreshold: 1
+  stressRunawayThreshold: 2
   runawayFleeDurationSeconds: 1.2
   runawayHideSpotMarginPx: 60
   runawayAutoReturnSeconds: 5400
@@ -221,3 +221,9 @@ MonoBehaviour:
   dialogueBubbleColor: {r: 1, g: 1, b: 1, a: 1}
   backgroundFallbackColor: {r: 0.94, g: 0.94, b: 0.94, a: 1}
   verboseDiagnosticsLogging: 0
+  groundSnapMaxDistanceWorld: 0.6
+  dockMetricsFromSystemEnabled: 1
+  dockTilePitchPaddingPoints: 2.5
+  dockPanelFixedPaddingPoints: 76.5
+  dockExtraRunningAppTileEstimate: 6
+  characterScale: 0.5

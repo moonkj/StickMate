@@ -74,8 +74,21 @@ namespace StickMate.Interaction
         // 캐릭터 획(0~5)보다 뒤 = 해머를 든 캐릭터가 균열 앞에 서 있는 것처럼 보인다.
         private const int SortingCrack = -1;
 
-        private static readonly Color CrackColor = new Color(0.93f, 0.95f, 1f, 0.95f);
-        private static readonly Color CrackShadowColor = new Color(0.16f, 0.20f, 0.30f, 0.85f);
+        // ★ 2026-08-29 — 사용자 신고 "눈같이 내리는건 뭐야 캐릭하고 겹치는데".
+        //
+        // 예전 값은 거의 흰색(0.93, 0.95, 1.0, a=0.95)이었다. 이 앱은 밝은 배경(backgroundFallbackColor
+        // 0.94 회색) 위에 검은 선화를 그리므로, **흰 파편은 배경 위에서는 거의 보이지 않고 오직 캐릭터의
+        // 검은 선을 가로지를 때만 보인다.** 즉 유저 눈에는 "캐릭터 위에서만 어른거리는 정체불명의
+        // 흰 조각"이 되고, 그게 신고 문구 그대로다 — 색 대비가 가장 나쁜 곳에만 정보가 남는 최악의 조합.
+        //
+        // 그래서 파편/균열도 잉크색을 따르게 한다(힘줄 표시 Interaction/WindowTheftRenderer와 같은 처리,
+        // 말풍선이 이미 쓰는 StickConfig.ResolveInkColor() 경로). 배경 어디에서나 균일하게 읽히고,
+        // 흰색/검은색 프리셋을 바꿔도 함께 따라간다. 알파도 낮춰(CrackMaxAlpha) 캐릭터보다 확실히
+        // 뒤로 물러나 보이게 한다 — sortingOrder는 이미 캐릭터 뒤(-1)지만, 선 굵기와 밝기가 비슷하면
+        // 앞뒤가 눈으로 구분되지 않아 "겹친다"고 읽힌다.
+        private const float CrackMaxAlpha = 0.45f;
+        private Color _crackColor = new Color(0f, 0f, 0f, CrackMaxAlpha);
+        private Color _crackShadowColor = new Color(0f, 0f, 0f, CrackMaxAlpha * 0.7f);
         private static readonly Color FlashColor = new Color(1f, 1f, 1f, 1f);
 
         private enum Mode { None, Growing, Holding, Shattering, FadingOut }
@@ -172,6 +185,11 @@ namespace StickMate.Interaction
             }
 
             Vector3 characterWorld = blackboard.Body.position;
+            // 균열/파편 색을 이번 발동 시점의 잉크 프리셋으로 확정한다(위 색 상수 주석 참고).
+            Color crackInk = blackboard.Config != null ? blackboard.Config.ResolveInkColor() : Color.black;
+            _crackColor = new Color(crackInk.r, crackInk.g, crackInk.b, CrackMaxAlpha);
+            _crackShadowColor = new Color(crackInk.r, crackInk.g, crackInk.b, CrackMaxAlpha * 0.7f);
+
             ScreenCoordinateConverter.WorldToOsScreen(cam, characterWorld, blackboard.Config, out float depth);
             Vector3 cornerA = ScreenCoordinateConverter.OsScreenToWorld(
                 cam, new Vector2(targetRectOsScreen.xMin, targetRectOsScreen.yMin), depth, blackboard.Config);
@@ -206,7 +224,7 @@ namespace StickMate.Interaction
             {
                 float baseAngle = i * angleStep + Random.Range(-angleStep * 0.28f, angleStep * 0.28f);
                 Vector3[] pts = BuildCrack(impact, baseAngle, maxRadius * Random.Range(0.55f, 1f), sizeX, sizeY);
-                AddShard($"Crack{i}", pts, i % 3 == 0 ? CrackShadowColor : CrackColor, stroke, loop: false);
+                AddShard($"Crack{i}", pts, i % 3 == 0 ? _crackShadowColor : _crackColor, stroke, loop: false);
             }
 
             // (2) 동심 균열 링 — 깨진 유리의 "거미줄" 느낌은 방사선만으로는 안 난다.
@@ -214,7 +232,7 @@ namespace StickMate.Interaction
             {
                 float radius = maxRadius * (0.26f + 0.28f * r);
                 Vector3[] pts = BuildJaggedRing(impact, radius, sizeX, sizeY);
-                AddShard($"CrackRing{r}", pts, CrackColor, stroke * 0.8f, loop: true);
+                AddShard($"CrackRing{r}", pts, _crackColor, stroke * 0.8f, loop: true);
             }
 
             // (3) 타격 섬광.

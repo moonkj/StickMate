@@ -345,8 +345,9 @@ namespace StickMate.States
                     ReportFootholdChangeIfNeeded("접지 획득(공중을 거치지 않은 최초 접지)");
                 }
                 _groundLossTimer = 0f;
-                SnapToGround(info);
-                return false;
+                // 스냅이 상한을 넘어 "발판을 놓고 Fall"로 갔으면 그 사실을 호출부에 그대로 전달한다
+                // (호출부 계약: true = 이번 호출로 Fall 전이가 일어났으니 나머지 로직을 생략하라).
+                return SnapToGround(info);
             }
 
             _groundLossTimer += deltaTime;
@@ -381,11 +382,55 @@ namespace StickMate.States
             return _groundLossTimer <= coyote;
         }
 
-        private void SnapToGround(GroundSensor.GroundInfo info)
+        /// <summary>
+        /// 접지 중 캐릭터 발을 발판 상단선에 정착(settle)시킨다.
+        ///
+        /// ============================================================================
+        /// ★ 2026-08-29 — 이동 거리 상한(리더 지시). "미세 정착"과 "순간이동"을 코드로 구분한다.
+        /// ============================================================================
+        /// 이 함수는 원래 "0.001유닛보다 어긋나 있으면 발판 상단 Y를 그냥 대입"이었고 **이동 거리에
+        /// 상한이 전혀 없었다**. 미세 정착이 목적인 함수가 원리적으로는 화면 끝까지 순간이동시킬 수
+        /// 있는 형태였다는 뜻이다. 지금은 상한을 넘으면 끌어올리지 않고 **발판을 놓고 Fall로 보낸다** —
+        /// 딛고 있던 발판이 캐릭터를 지나쳐 커졌다면 캐릭터는 공중에 남는 것이 물리적으로 맞다.
+        ///
+        /// 상한을 위/아래로 나누지 않은 이유(리더가 판단을 요구한 항목): 두 경우의 **올바른 처리가
+        /// 똑같이 "Fall"**이기 때문이다. 위로 크게 끌려가는 것은 명백한 순간이동이고, 아래로 크게
+        /// 내려가는 것은 애초에 스냅이 아니라 낙하로 처리돼야 한다(그리고 Fall에 들어가면
+        /// GroundSensor.TryFindLandingCrossing의 스윕 교차 판정이 정확한 착지면을 다시 잡아준다 —
+        /// 아래로 억지로 대입하는 것보다 이 경로가 언제나 더 정확하다). 값이 하나면 어긋날 일도 없다.
+        ///
+        /// ★ 정직한 한계 — 이 상한은 지금 코드에서는 **방어적 불변식**이지 이번 신고의 원인 제거가
+        /// 아니다. GroundSensor.Sense()는 발이 발판 상단의 ±groundSnapTolerance(에셋 20 OS-pt ≈ 0.49
+        /// 월드유닛) 안에 있을 때만 Grounded=true를 주고 GroundWorldY도 그때의 그 발판 상단이므로,
+        /// 현재 배선에서 이 함수가 옮길 수 있는 거리는 이미 그 허용오차로 묶여 있다(= 화면 높이만큼
+        /// 끌어올리는 일은 이 경로로는 일어날 수 없다). 실제 신고 원인은 RescueToSafeGround였다
+        /// (그 함수 문서의 실측 로그 근거 참고). 그럼에도 상한을 두는 값어치는 분명하다: "무엇을
+        /// 접지로 볼 것인가(groundSnapTolerance)"와 "몸을 얼마나 순간이동시켜도 되는가"는 서로 다른
+        /// 두 결정인데 지금까지 전자 하나에 묶여 있었다. 누가 groundSnapTolerance를 올리는 순간
+        /// 순간이동 허용치가 조용히 함께 커지는 구조였고, 이 상한이 그 연결을 끊는다.
+        /// </summary>
+        /// <returns>상한 초과로 발판을 놓고 Fall로 전이했으면 true.</returns>
+        private bool SnapToGround(GroundSensor.GroundInfo info)
         {
-            if (Body == null) return;
+            if (Body == null) return false;
             Vector2 pos = Body.position;
-            if (Mathf.Abs(pos.y - info.GroundWorldY) > 0.001f)
+            float delta = info.GroundWorldY - pos.y; // + = 위로 끌어올림, - = 아래로 내림
+            float maxSnap = Config != null ? Mathf.Max(0f, Config.groundSnapMaxDistanceWorld) : 0.6f;
+
+            if (Mathf.Abs(delta) > maxSnap)
+            {
+                Debug.Log($"[스냅상한초과] 접지 스냅이 상한을 넘어 발판을 놓고 낙하시킵니다 — " +
+                    $"{(delta > 0f ? "위로" : "아래로")} {Mathf.Abs(delta):F3}유닛(상한 {maxSnap:F2}) 이동 요구, " +
+                    $"발 월드Y={pos.y:F3}, 발판 상단 월드Y={info.GroundWorldY:F3}, 발판핸들={CurrentFootholdHandle}. " +
+                    "딛고 있던 발판이 캐릭터를 지나쳐 크게 움직였다는 뜻이라, 끌고 가지 않고 공중에 남깁니다.");
+                CurrentFootholdHandle = 0L;
+                ReportFootholdChangeIfNeeded("접지 스냅 상한 초과 — 발판을 놓고 낙하");
+                _groundLossTimer = 0f;
+                Machine?.ChangeState(StickmanStateId.Fall);
+                return true;
+            }
+
+            if (Mathf.Abs(delta) > 0.001f)
             {
                 Body.position = new Vector2(pos.x, info.GroundWorldY);
             }
@@ -395,6 +440,7 @@ namespace StickMate.States
                 v.y = 0f;
                 Body.linearVelocity = v;
             }
+            return false;
         }
 
         // ============================================================================
@@ -603,8 +649,39 @@ namespace StickMate.States
         }
 
         /// <summary>
-        /// 캐릭터를 화면 가로 중앙으로 옮기고, 그 X에서 딛을 수 있는 가장 높은 발판(없으면 합성 안전망이
-        /// 항상 있으므로 사실상 항상 존재한다) 위에 세운 뒤 Idle로 되돌린다. 리더 지시 7항.
+        /// 캐릭터를 화면 가로 중앙으로 옮기고, 그 X의 **바닥**(= 그 x에서 가장 낮은 발판 상단) 위에 세운
+        /// 뒤 Idle로 되돌린다. 리더 지시 7항.
+        ///
+        /// ============================================================================
+        /// ★★ 2026-08-29 — 사용자 신고 "창이 최대이면 갑자기 제일위로 순간이동해서 떨어짐"의 **진짜 원인**
+        /// ============================================================================
+        /// 이 함수는 원래 TryGetGroundSurfaceWorldY(= 그 x에서 **가장 높은** 발판 상단)로 복귀 지점을
+        /// 골랐다. 평소에는 그 값이 Dock 상단이라 아무 문제가 없었는데, 사용자가 창 하나를 **최대화**하면
+        /// 그 창의 상단이 곧 화면 꼭대기가 되고, 화면 가로 중앙에서 "가장 높은 발판 상단" = 화면 꼭대기가
+        /// 된다. 그래서 구조 안전망이 캐릭터를 화면 최상단으로 **순간이동**시켰다.
+        ///
+        /// 실측 증거(Player.log / Player-prev.log, 2026-08-29):
+        ///   · Player-prev.log — [캐릭터구조] 15회 중 **15회 전부** 복귀 지점이 월드 (0.000, 11.193).
+        ///     11.193은 최대화된 Cursor 창 상단(OS y=33) = 화면 꼭대기다.
+        ///   · Player.log — 24회 중 6회가 11.193(그 창이 목록에 있던 구간), 18회는 -10.167(Dock 상단,
+        ///     정상). 즉 "최대화된 창이 있을 때만" 최상단으로 튄다 — 신고 문구 그대로다.
+        ///
+        /// 왜 이 안전망이 그렇게 자주 돌았는가(= 증상이 반복된 이유): Dock 가로 구간의 화면 최하단은
+        /// 물리 바닥(PhysicsGround, 월드 -11.02)이 논리 발판(Dock 상단 -10.167)보다 0.855유닛 아래에
+        /// 있어서 "물리적으로는 떠받쳐지지만 논리적으로는 접지하지 않는" 사각지대다(그 설계 근거는
+        /// Assets/Editor/SceneBootstrapper.cs의 CreateGroundCollider 문서 참고 — 랙돌이 화면 밖으로
+        /// 사라지는 더 나쁜 실패를 막기 위한 의도적 선택이고, 회수는 이 안전망에 맡긴다고 명시돼 있다).
+        /// 그 사각지대로 흘러든 캐릭터는 6초 뒤 여기로 오고, 여기가 캐릭터를 화면 꼭대기로 올려놓고,
+        /// 거기서 다시 떨어져 같은 사각지대로 돌아오는 **무한 루프**가 됐다.
+        ///
+        /// 해법: "가장 높은 표면"이 아니라 **"그 x의 바닥"**(TryGetFloorWorldY)으로 복귀시킨다. 안전망의
+        /// 목적은 "잃어버린 캐릭터를 딛을 수 있는 곳에 돌려놓는다"이지 "가장 높은 곳에 올려놓는다"가
+        /// 아니다. 바닥은 정의상 화면 하단(Dock/합성 안전망)이므로 창을 아무리 최대화해도 이 함수가
+        /// 캐릭터를 위로 끌어올릴 수 없다.
+        ///
+        /// 같은 클래스의 과거 수정과 정확히 같은 교훈이다: 드래그 순간이동("마우스로 끌었는데 갑자기
+        /// 다른 창 위로 올라감")도 원인이 TryGetSurfaceWorldY(가장 높은 표면)였고 TryGetFloorWorldY로
+        /// 바꿔 고쳤다(GroundSensor.TryGetFloorWorldY 문서). 이 함수만 예전 호출부로 남아 있었다.
         /// </summary>
         public void RescueToSafeGround()
         {
@@ -620,7 +697,8 @@ namespace StickMate.States
 
             float targetY = centerWorld.y;
             var probe = new Vector2(centerWorld.x, before.y);
-            if (TryGetGroundSurfaceWorldY(probe, out float surfaceY)) targetY = surfaceY;
+            // ★ 가장 높은 표면(TryGetGroundSurfaceWorldY)이 아니라 **바닥**을 쓴다 — 위 문서의 실측 근거.
+            if (TryGetFloorWorldY(probe, out float floorY)) targetY = floorY;
 
             Body.position = new Vector2(centerWorld.x, targetY);
             Body.transform.position = new Vector3(centerWorld.x, targetY, Body.transform.position.z);
@@ -630,8 +708,10 @@ namespace StickMate.States
             Machine?.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
 
             Debug.Log($"[캐릭터구조] {LostCharacterRescueSeconds}초 이상 착지하지 못해 강제 복귀시켰습니다 — " +
-                $"월드 {before} -> ({centerWorld.x:F3},{targetY:F3}) (화면 가로 중앙의 지면). " +
-                "사용자가 캐릭터를 잃어버리지 않게 하는 최종 안전망입니다(리더 지시 7항).");
+                $"월드 {before} -> ({centerWorld.x:F3},{targetY:F3}) (화면 가로 중앙의 **바닥**). " +
+                "사용자가 캐릭터를 잃어버리지 않게 하는 최종 안전망입니다(리더 지시 7항). " +
+                "복귀 지점은 그 x에서 가장 낮은 발판 상단이므로, 창을 최대화해도 화면 꼭대기로 " +
+                "올라가지 않습니다(2026-08-29 수정 — 이 함수 문서의 실측 근거 참고).");
         }
 
         /// <summary>딛고 있는 발판이 바뀔 때마다 이전->이후를 한 줄로 남긴다(리더 지시: 순간이동 추적용).</summary>
@@ -672,7 +752,10 @@ namespace StickMate.States
         {
             if (_ragdollRig == null && Body != null)
             {
-                _ragdollRig = new RagdollRig(Body.transform);
+                // 바라보는 방향을 **매번 물어보는** 형태로 넘긴다(값 복사 금지) — RAGDOLL 진입 시점의
+                // 최신 방향으로 해부학 관절 제한을 좌우 반전해야 하기 때문이다(RagdollRig의
+                // EnableJointsWithAnatomicalLimits "좌우 반전" 문서, 2026-08-29 "이상하게 넘어짐" 수정).
+                _ragdollRig = new RagdollRig(Body.transform, () => FacingSign);
             }
             return _ragdollRig;
         }

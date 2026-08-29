@@ -60,7 +60,7 @@ namespace StickMate.Platform.MacOS
     /// 취급하므로 컴파일/런타임 모두 문제 없다(Win32WindowService가 실제로 두 인터페이스 다 구현한 것과
     /// 다른 점 — macOS는 이번 라운드에 그 두 캐퍼빌리티까지는 손대지 않는다).
     /// </summary>
-    public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService, IGlobalPointerButtonService, IGlobalKeyStateService, ILocalClickCaptureService
+    public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService, IGlobalPointerButtonService, IGlobalKeyStateService, ILocalClickCaptureService, IDockMetricsService
     {
         #region CoreGraphics / CoreFoundation P/Invoke 선언 (이 리전 밖으로 유출 금지)
 
@@ -205,6 +205,28 @@ namespace StickMate.Platform.MacOS
         [DllImport(CoreFoundationLib)]
         [return: MarshalAs(UnmanagedType.I1)]
         private static extern bool CFBooleanGetValue(IntPtr boolean);
+
+        // ★ 2026-08-29 — Dock 실측(IDockMetricsService)용. 사용자 기본 설정을 **읽기만** 하는 공개 API다
+        // (CFPreferencesSetAppValue 같은 쓰기 함수는 이 파일에 존재하지 않는다 — 절대 불변 원칙 3).
+        // 권한 요구 없음: 화면 기록도 접근성도 아닌, 자기 프로세스에서 남의 앱 도메인 설정을 조회하는
+        // 표준 경로다(`defaults read com.apple.dock`이 하는 일과 정확히 같다).
+        [DllImport(CoreFoundationLib)]
+        private static extern IntPtr CFPreferencesCopyAppValue(IntPtr key, IntPtr applicationID);
+
+        [DllImport(CoreFoundationLib)]
+        private static extern IntPtr CFGetTypeID(IntPtr cf);
+
+        [DllImport(CoreFoundationLib)]
+        private static extern IntPtr CFArrayGetTypeID();
+
+        [DllImport(CoreFoundationLib)]
+        private static extern IntPtr CFNumberGetTypeID();
+
+        [DllImport(CoreFoundationLib)]
+        private static extern IntPtr CFBooleanGetTypeID();
+
+        [DllImport(CoreFoundationLib)]
+        private static extern IntPtr CFStringGetTypeID();
 
         private const int kCFNumberFloat64Type = 6;
 
@@ -955,8 +977,50 @@ namespace StickMate.Platform.MacOS
         /// </summary>
         public bool IsFullscreenAppActive()
         {
+            bool verdict = EvaluateFullscreen(out string reason);
+
+            // ★ 2026-08-29 — 판정이 **바뀔 때만** 사유와 함께 남긴다(리더 지시: 사용자 신고 "캐릭터가
+            // 안 보이다가 클릭하면 나타난다"의 원인 추적 수단이 전혀 없었다). 매 폴링(1.5초)마다 찍으면
+            // 로그가 잠기므로 전이 순간만 기록한다 — "언제 숨었고 어느 창 때문이었나"에는 그것으로 충분하다.
+            if (verdict != _lastFullscreenVerdict)
+            {
+                _lastFullscreenVerdict = verdict;
+                Debug.Log($"[전체화면판정] {(verdict ? "전체화면 앱 감지 -> 캐릭터를 숨깁니다" : "전체화면 해제 -> 캐릭터를 되돌립니다")} — {reason}");
+            }
+            return verdict;
+        }
+
+        /// <summary>
+        /// ============================================================================
+        /// ★ 2026-08-29 검증 기록 — "Finder 데스크톱 창을 전체화면으로 오판한다"는 가설은 **반증됐다**
+        /// ============================================================================
+        /// 리더 가설: 유저가 창을 전부 닫으면 최상단 layer 0 창이 Finder 데스크톱 창이 되고, 그 bounds가
+        /// 화면 전체라 이 함수가 true를 반환해 캐릭터가 사라진다.
+        ///
+        /// 실측(이 머신에서 CoreGraphics로 같은 질의를 직접 재현): Finder 데스크톱 창의 bounds는 확실히
+        /// 디스플레이 전체(0,0 1512x982)가 맞지만, 두 겹의 필터에 **각각 독립적으로** 걸려 여기까지
+        /// 도달하지 못한다.
+        ///   (1) kCGWindowListExcludeDesktopElements — 실측으로 걸러진 4개가 전부 데스크톱 계열이었다:
+        ///       Finder(레이어 -2147483603), Dock "Wallpaper-"(-2147483624),
+        ///       Window Server "Display 1 Backstop"(-2147483626), Window Server "underbelly"(-2147483602).
+        ///   (2) 아래 `layer != 0` 필터 — 그 창들의 layer는 전부 큰 음수라 어차피 통과할 수 없다.
+        /// 즉 데스크톱 창은 목록에 애초에 들어오지 않고, 들어와도 걸러진다. 이 경로는 원인이 아니다.
+        ///
+        /// (진짜 원인은 가출(RunawayState)이었다 — 캐릭터를 숨기고 클릭으로 찾게 하는 스펙터클이 스트레스
+        /// 게이지만으로 자율 발동했다. StickConfig.stressRunawayThreshold 문서 참고.)
+        ///
+        /// 그럼에도 이 진단 로그를 남기는 이유: 다음에 같은 증상이 신고됐을 때 "전체화면 판정 때문인가
+        /// 아닌가"를 재빌드 없이 1초 만에 가를 수 있어야 하기 때문이다(이번 조사에서 그 수단이 없어
+        /// 가설 하나를 세우는 데 로그 전수를 뒤져야 했다).
+        /// </summary>
+        private bool EvaluateFullscreen(out string reason)
+        {
             IntPtr windowArray = CopyOnScreenWindowList();
-            if (windowArray == IntPtr.Zero) return false;
+            if (windowArray == IntPtr.Zero)
+            {
+                reason = "창 목록 조회 실패(CGWindowListCopyWindowInfo == null) — 안전하게 '전체화면 아님'으로 처리.";
+                return false;
+            }
 
             try
             {
@@ -969,25 +1033,188 @@ namespace StickMate.Platform.MacOS
 
                     // 최상단 일반 창이 우리 자신이면 "다른 전체화면 앱"이 아니다(Win32의
                     // fg == _overlayHwnd 처리와 동일 의도) — 더 탐색하지 않고 즉시 false.
-                    if (IsSelfWindow(windowDict)) return false;
+                    if (IsSelfWindow(windowDict))
+                    {
+                        reason = "최상단 일반(layer 0) 창이 우리 자신이라 전체화면 앱이 아님.";
+                        return false;
+                    }
+
+                    string owner = TryGetString(windowDict, _keyWindowOwnerName);
+                    if (string.IsNullOrEmpty(owner)) owner = "(이름 없음)";
 
                     IntPtr boundsDict = CFDictionaryGetValue(windowDict, _keyWindowBounds);
-                    if (boundsDict == IntPtr.Zero) return false;
-                    if (!CGRectMakeWithDictionaryRepresentation(boundsDict, out CGRect winRect)) return false;
+                    if (boundsDict == IntPtr.Zero)
+                    {
+                        reason = $"최상단 창 '{owner}'의 bounds를 읽지 못함 — 전체화면 아님으로 처리.";
+                        return false;
+                    }
+                    if (!CGRectMakeWithDictionaryRepresentation(boundsDict, out CGRect winRect))
+                    {
+                        reason = $"최상단 창 '{owner}'의 bounds 파싱 실패 — 전체화면 아님으로 처리.";
+                        return false;
+                    }
 
                     CGRect displayBounds = CGDisplayBounds(CGMainDisplayID());
                     const double epsilon = 0.5; // 부동소수/서브픽셀 오차 허용치.
-                    return Math.Abs(winRect.Origin.X - displayBounds.Origin.X) < epsilon
+                    bool match = Math.Abs(winRect.Origin.X - displayBounds.Origin.X) < epsilon
                         && Math.Abs(winRect.Origin.Y - displayBounds.Origin.Y) < epsilon
                         && Math.Abs(winRect.Size.Width - displayBounds.Size.Width) < epsilon
                         && Math.Abs(winRect.Size.Height - displayBounds.Size.Height) < epsilon;
+
+                    reason = $"판정 근거 창 = '{owner}' bounds=({winRect.Origin.X:F0},{winRect.Origin.Y:F0} " +
+                        $"{winRect.Size.Width:F0}x{winRect.Size.Height:F0}), 메인 디스플레이=" +
+                        $"({displayBounds.Origin.X:F0},{displayBounds.Origin.Y:F0} " +
+                        $"{displayBounds.Size.Width:F0}x{displayBounds.Size.Height:F0}) -> 일치={match}.";
+                    return match;
                 }
-                return false; // 일반 레이어 창이 하나도 없음(전부 최소화 등) — 전체화면 아님으로 안전 처리.
+                reason = "layer 0(일반 앱) 창이 하나도 없음(전부 최소화 등) — 전체화면 아님으로 안전 처리.";
+                return false;
             }
             finally
             {
                 CFRelease(windowArray);
             }
+        }
+
+        // 위 IsFullscreenAppActive()의 "판정이 바뀔 때만 로그" 상태. 최초 1회는 false에서 시작하므로
+        // 앱 시작 직후 정상(비전체화면) 상태에서는 아무 로그도 남지 않는다.
+        private bool _lastFullscreenVerdict;
+
+        // ============================================================================
+        // IDockMetricsService — Dock 실측(2026-08-29 "지금도 독이랑 계속 겹쳐")
+        // ============================================================================
+
+        /// <summary>
+        /// com.apple.dock의 사용자 기본 설정을 **읽기 전용**으로 조회해 Dock 발판 기하의 입력을 만든다.
+        /// 근거/실측/한계는 Platform/IDockMetricsService.cs의 클래스 문서에 전부 적어뒀다.
+        ///
+        /// 읽는 키와 미설정 시 macOS 기본값:
+        ///   · orientation    (CFString) : "bottom"/"left"/"right".  미설정 -> "bottom"
+        ///   · autohide       (CFBoolean): 자동 숨김.                미설정 -> false
+        ///   · tilesize       (CFNumber) : 아이콘 한 변(pt).         미설정 -> 48
+        ///   · persistent-apps / persistent-others (CFArray) : 고정된 앱/기타 타일 수.
+        ///   · show-recents   (CFBoolean): 최근 사용 앱 표시.        미설정 -> true
+        ///   · recent-apps    (CFArray)  : 최근 사용 앱 타일 수.
+        ///
+        /// ★ 정직한 한계 — **실행 중이지만 Dock에 고정돼 있지 않은 앱**의 타일은 이 설정 어디에도 없다.
+        /// 그 수는 시시각각 변하고(앱을 켜고 끌 때마다), 공개 API로 정확히 세는 방법이 없다
+        /// (CoreGraphics 창 목록으로 근사하면 창 없는 백그라운드 앱을 놓치고, 반대로 Dock 타일이 없는
+        /// 에이전트 앱을 세게 된다 — 실측에서 양방향으로 다 틀렸다). 그래서 이 함수는 **알 수 있는
+        /// 타일만 정직하게 세어 반환**하고, "모르는 만큼"의 보정은 호출부가
+        /// StickConfig.dockExtraRunningAppTileEstimate로 더한다. 그 필드의 Tooltip에 왜 넉넉하게
+        /// (= Dock을 실제보다 넓게) 잡는 쪽이 옳은지 실측 근거와 함께 적어뒀다.
+        /// </summary>
+        public bool TryGetDockMetrics(out DockMetrics metrics)
+        {
+            metrics = default;
+            IntPtr appId = IntPtr.Zero;
+            var keys = new System.Collections.Generic.List<IntPtr>();
+            try
+            {
+                appId = CFStringCreateWithCString(IntPtr.Zero, "com.apple.dock", kCFStringEncodingUTF8);
+                if (appId == IntPtr.Zero) return false;
+
+                IntPtr MakeKey(string name)
+                {
+                    IntPtr k = CFStringCreateWithCString(IntPtr.Zero, name, kCFStringEncodingUTF8);
+                    if (k != IntPtr.Zero) keys.Add(k);
+                    return k;
+                }
+
+                // 미설정이면 CFPreferencesCopyAppValue가 null을 주므로, 각 항목마다 macOS 기본값으로 둔다.
+                bool isBottom = true;
+                string orientation = CopyPrefString(MakeKey("orientation"), appId);
+                if (!string.IsNullOrEmpty(orientation))
+                {
+                    isBottom = orientation == "bottom";
+                }
+
+                bool autoHide = CopyPrefBool(MakeKey("autohide"), appId, defaultValue: false);
+                float tileSize = CopyPrefNumber(MakeKey("tilesize"), appId, defaultValue: 48f);
+
+                int persistentApps = CopyPrefArrayCount(MakeKey("persistent-apps"), appId);
+                int persistentOthers = CopyPrefArrayCount(MakeKey("persistent-others"), appId);
+                bool showRecents = CopyPrefBool(MakeKey("show-recents"), appId, defaultValue: true);
+                int recentApps = showRecents ? CopyPrefArrayCount(MakeKey("recent-apps"), appId) : 0;
+
+                // +1 = 휴지통(항상 존재하며 persistent-others에 들어 있지 않다).
+                int tileCount = persistentApps + persistentOthers + recentApps + 1;
+
+                metrics = new DockMetrics(isBottom, autoHide, tileSize, tileCount);
+                return true;
+            }
+            catch (System.Exception e)
+            {
+                // 설정 조회 실패는 치명적이지 않다 — 호출부가 고정 비율 폴백으로 되돌아간다.
+                Debug.LogWarning($"[Dock실측] com.apple.dock 설정을 읽지 못했습니다({e.GetType().Name}) — " +
+                    "StickConfig.dockFootholdWidthFraction 고정 추정으로 폴백합니다.");
+                return false;
+            }
+            finally
+            {
+                for (int i = 0; i < keys.Count; i++) CFRelease(keys[i]);
+                if (appId != IntPtr.Zero) CFRelease(appId);
+            }
+        }
+
+        /// <summary>CFPreferences에서 CFString 값을 읽는다(없으면 null). 반환된 CFTypeRef는 Copy 규칙이라 해제한다.</summary>
+        private string CopyPrefString(IntPtr key, IntPtr appId)
+        {
+            if (key == IntPtr.Zero) return null;
+            IntPtr v = CFPreferencesCopyAppValue(key, appId);
+            if (v == IntPtr.Zero) return null;
+            try
+            {
+                if (CFGetTypeID(v) != CFStringGetTypeID()) return null;
+                // CFString -> managed. TryGetString()과 같은 변환 규칙(버퍼 재사용, UTF-8, NUL 절단).
+                if (!CFStringGetCString(v, _ownerNameBuffer, _ownerNameBuffer.Length, kCFStringEncodingUTF8)) return null;
+                int len = Array.IndexOf(_ownerNameBuffer, (byte)0);
+                if (len < 0) len = _ownerNameBuffer.Length;
+                return System.Text.Encoding.UTF8.GetString(_ownerNameBuffer, 0, len);
+            }
+            finally { CFRelease(v); }
+        }
+
+        private bool CopyPrefBool(IntPtr key, IntPtr appId, bool defaultValue)
+        {
+            if (key == IntPtr.Zero) return defaultValue;
+            IntPtr v = CFPreferencesCopyAppValue(key, appId);
+            if (v == IntPtr.Zero) return defaultValue;
+            try
+            {
+                if (CFGetTypeID(v) == CFBooleanGetTypeID()) return CFBooleanGetValue(v);
+                // 일부 설정은 0/1 숫자로 저장돼 있다.
+                if (CFGetTypeID(v) == CFNumberGetTypeID() && CFNumberGetValue(v, kCFNumberSInt32Type, out int n)) return n != 0;
+                return defaultValue;
+            }
+            finally { CFRelease(v); }
+        }
+
+        private float CopyPrefNumber(IntPtr key, IntPtr appId, float defaultValue)
+        {
+            if (key == IntPtr.Zero) return defaultValue;
+            IntPtr v = CFPreferencesCopyAppValue(key, appId);
+            if (v == IntPtr.Zero) return defaultValue;
+            try
+            {
+                if (CFGetTypeID(v) != CFNumberGetTypeID()) return defaultValue;
+                if (CFNumberGetValueDouble(v, kCFNumberFloat64Type, out double d)) return (float)d;
+                return defaultValue;
+            }
+            finally { CFRelease(v); }
+        }
+
+        private int CopyPrefArrayCount(IntPtr key, IntPtr appId)
+        {
+            if (key == IntPtr.Zero) return 0;
+            IntPtr v = CFPreferencesCopyAppValue(key, appId);
+            if (v == IntPtr.Zero) return 0;
+            try
+            {
+                if (CFGetTypeID(v) != CFArrayGetTypeID()) return 0;
+                return (int)CFArrayGetCount(v);
+            }
+            finally { CFRelease(v); }
         }
 
         // ============================================================================
