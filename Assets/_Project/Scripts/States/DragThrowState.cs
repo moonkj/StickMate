@@ -62,6 +62,28 @@ namespace StickMate.States
         // 캐릭터는 **사용자가 실제로 붙잡은 그 지점**이 커서에 붙은 것처럼 움직인다(아래 문서 참고).
         private Vector2 _grabOffset;
 
+        // ── 발버둥(2026-08-29, 사용자 요청 "잡았을때 막 벗어날려는듯이 몸부림 치게끔") ──
+        /// <summary>발버둥 전용 누적 시간(초). Idle 호흡/보행 위상과 독립이라 **잡을 때마다 0에서
+        /// 시작한다**(ResetWalkPhase와 같은 관례 — 매번 같은 자세에서 시작하는 편이 예측 가능하다).</summary>
+        private float _struggleTime;
+
+        /// <summary>커서 속도(신장/초)의 지수 감쇠 스무딩 값 — 한 프레임짜리 손떨림에 세기가 튀지 않게 한다.</summary>
+        private float _cursorSpeedHeights;
+        private Vector2 _prevCursorWorld;
+        private bool _hasPrevCursor;
+
+        /// <summary>진단/테스트용 — 지금 프레임의 발버둥 세기(0~1). 순수 연출이라 로그로는 판정이
+        /// 불가능하므로 값으로 단언할 수 있게 노출한다(LandingCrouchState.CurrentCrouchAmount와 같은 관례).</summary>
+        public float CurrentStruggleIntensity { get; private set; }
+
+        /// <summary>커서 속도 스무딩 계수(1/초). 보이는 값을 정하는 튜닝 스칼라가 아니라 잡음 필터라
+        /// StickConfig가 아니라 여기 상수로 둔다.</summary>
+        private const float CursorSpeedSmoothingRate = 8f;
+
+        /// <summary>몸통 비틀림이 팔다리보다 얼마나 느린가. 같은 주파수로 비틀면 몸과 팔다리가 한 덩어리로
+        /// 움직여 "허우적"이 사라진다. 자세의 형태라 상수로 둔다(비틀림의 크기만 StickConfig가 정한다).</summary>
+        private const float StruggleTwistFrequencyRatio = 0.61f;
+
         public StickmanStateId StateId => StickmanStateId.Dragged;
 
         public DragThrowState(StickmanBlackboard blackboard)
@@ -72,6 +94,10 @@ namespace StickMate.States
         public void Enter(StateTransitionContext context)
         {
             _holdTimer = 0f;
+            _struggleTime = 0f;
+            _cursorSpeedHeights = 0f;
+            _hasPrevCursor = false;
+            CurrentStruggleIntensity = 0f;
             _sampleHead = 0;
             _sampleCount = 0;
             _followVelocityRef = Vector2.zero;
@@ -132,6 +158,7 @@ namespace StickMate.States
             _cursorEverAvailable = true;
             PushSample(cursorWorld);
             FollowCursor(cursorWorld, deltaTime);
+            TickStruggle(deltaTime, cursorWorld);
 
             _followLogTimer += deltaTime;
             if (_followLogTimer >= FollowLogInterval)
@@ -164,6 +191,12 @@ namespace StickMate.States
             {
                 _blackboard.Body.bodyType = RigidbodyType2D.Dynamic;
             }
+
+            // 발버둥으로 비틀어 둔 몸통을 반드시 직립으로 되돌린다 — 이 정리를 빠뜨리면 놓는 순간
+            // 기울어진 채로 굳는다(다음 상태 중 ThrowTumble/Ragdoll은 스스로 회전을 다루지만
+            // Fall/Idle은 SnapRootUpright이 다음 프레임에 고쳐줄 뿐이라 한 프레임 기울어 보인다).
+            // 종료 경로가 여러 개(놓기/타임아웃/커서 소실/전체화면 강제 취소)라 한 곳에 모은다.
+            ResetStruggleTwist();
         }
 
         /// <summary>
@@ -313,6 +346,144 @@ namespace StickMate.States
             return (newestPos - oldestPos) / dt;
         }
 
+        // ============================================================================
+        // ★ 발버둥 (2026-08-29, 사용자 명시 요청 "마우스로 캐릭을 잡았을때 막 벗어날려는듯이
+        //    몸부림 치게끔 만들어줘")
+        // ============================================================================
+        //
+        // 무엇이 "살아있음"과 "루프 애니메이션"을 가르는가 (리더 지시의 핵심)
+        // ────────────────────────────────────────────────────────────────────────────
+        // 일정한 진폭으로 계속 흔들면 그건 기계다. 그래서 세기를 세 겹으로 곱한다:
+        //   [1] 리듬  : "세게 몸부림 → 잠깐 지침"의 주기적 봉우리(EvaluateStruggleEnvelope).
+        //   [2] 지침  : 잡혀 있는 시간이 길수록 전체 세기가 잦아든다(반감기, 하한 있음).
+        //   [3] 반응  : 커서를 빠르게 흔들면 그만큼 더 격렬해진다(무차원 커서 속도 × 계수, 상한 있음).
+        // 셋 다 StickConfig로 끌 수 있고(0으로 두면 그 겹만 사라진다), 마스터 스위치를 끄면 자세가
+        // 예전의 Idle 중립으로 정확히 되돌아간다(StickmanBlackboard.TickPose의 Dragged 분기).
+        //
+        // 물리에 맡기지 않는다 (아키텍처 0절)
+        // ────────────────────────────────────────────────────────────────────────────
+        // 팔다리는 Kinematic이고 각도는 전부 절차적 localRotation이다(StickmanPoseAnimator).
+        // 몸통 비틀림도 물리 토크가 아니라 루트의 **시각 회전** 직접 대입이다. 흔들리는 것을 물리에
+        // 맡기면 관절이 제멋대로 꺾이는 그림이 되는데, 그게 이 프로젝트 사용자가 반복해서 신고한 증상이다.
+        //
+        // 드래그 추종을 방해하지 않는다
+        // ────────────────────────────────────────────────────────────────────────────
+        // 루트 **위치**는 여기서 한 픽셀도 건드리지 않는다. 위치를 흔들면 "커서에 딱 붙어 끌려온다"는
+        // 2026-08-28 수정(dragFollowSmoothTime=0 즉시 대입)이 그대로 무효가 된다. 몸부림은 그 위에
+        // 얹히는 팔다리 각도 + 몸통 회전이다.
+        //
+        // 대사는 만들지 않는다 — 사용자는 요청하지 않은 자율 연출에 반복적으로 민감했다. 나중에
+        // 붙인다면 전이가 확정된 Enter()에서 이 상태의 파라미터로부터만 파생시켜야 한다(불변 원칙 1).
+
+        private void TickStruggle(float deltaTime, Vector2 cursorWorld)
+        {
+            StickConfig cfg = _blackboard.Config;
+            if (cfg != null && !cfg.dragStruggleEnabled)
+            {
+                // 스위치 OFF — 포즈는 TickPose의 Dragged 분기가 예전 경로(Idle 중립)로 처리한다.
+                CurrentStruggleIntensity = 0f;
+                return;
+            }
+
+            _struggleTime += deltaTime;
+
+            // 커서 속도(신장/초) — 거리 성분이라 신장으로 나눠 무차원화한다(배율 불변).
+            if (_hasPrevCursor && deltaTime > 0.0001f)
+            {
+                float speed = Vector2.Distance(cursorWorld, _prevCursorWorld) / deltaTime;
+                float heights = speed / Mathf.Max(0.0001f, _blackboard.CharacterHeightWorld);
+                _cursorSpeedHeights = Mathf.Lerp(_cursorSpeedHeights, heights,
+                    1f - Mathf.Exp(-CursorSpeedSmoothingRate * deltaTime));
+            }
+            _prevCursorWorld = cursorWorld;
+            _hasPrevCursor = true;
+
+            float period = cfg != null ? cfg.dragStruggleBurstPeriodSeconds : 1.15f;
+            float duty = cfg != null ? cfg.dragStruggleBurstDutyFraction : 0.55f;
+            float rest = cfg != null ? cfg.dragStruggleRestIntensity : 0.18f;
+            float rhythm = EvaluateStruggleEnvelope(_struggleTime, period, duty, rest);
+
+            float halfLife = cfg != null ? cfg.dragStruggleFatigueHalfLifeSeconds : 4.5f;
+            float minIntensity = cfg != null ? Mathf.Clamp01(cfg.dragStruggleMinIntensity) : 0.4f;
+            float fatigue = EvaluateStruggleFatigue(_holdTimer, halfLife, minIntensity);
+
+            float response = cfg != null ? cfg.dragStruggleCursorSpeedResponse : 0.12f;
+            float maxBoost = cfg != null ? Mathf.Max(0f, cfg.dragStruggleMaxCursorBoost) : 0.6f;
+            float boost = Mathf.Clamp(_cursorSpeedHeights * response, 0f, maxBoost);
+
+            CurrentStruggleIntensity = Mathf.Clamp01(rhythm * fatigue * (1f + boost));
+
+            StickmanPoseAnimator pose = _blackboard.GetPoseAnimator();
+            pose?.ApplyDragStrugglePose(deltaTime, _blackboard.BuildPoseSettings(),
+                _blackboard.BuildDragStrugglePoseSettings(), _blackboard.PoseSmoothingRate,
+                CurrentStruggleIntensity, _struggleTime);
+
+            ApplyStruggleTwist(cfg);
+        }
+
+        /// <summary>
+        /// 몸통 비틀림을 루트의 **시각 회전**에만 적용한다(위치는 절대 건드리지 않는다).
+        /// Rigidbody2D와 Transform 양쪽에 쓰는 이유는 이 프로젝트가 Physics2D.autoSyncTransforms를
+        /// 꺼두었기 때문이다(둘 중 하나만 쓰면 화면과 물리가 한 프레임씩 어긋난다 — 드래그 추종이
+        /// 위치를 두 곳에 모두 쓰는 것과 같은 이유, SetBodyPositionImmediate 참고).
+        /// </summary>
+        private void ApplyStruggleTwist(StickConfig cfg)
+        {
+            Rigidbody2D body = _blackboard.Body;
+            if (body == null) return;
+
+            float amplitude = cfg != null ? cfg.dragStruggleTwistDegrees : 9f;
+            float frequency = cfg != null ? cfg.dragStruggleFrequencyHz : 3.4f;
+            float angle = amplitude * CurrentStruggleIntensity *
+                Mathf.Sin(_struggleTime * frequency * StruggleTwistFrequencyRatio * Mathf.PI * 2f);
+
+            body.rotation = angle;
+            Transform t = body.transform;
+            t.rotation = Quaternion.Euler(0f, 0f, angle);
+        }
+
+        /// <summary>비틀림을 정확히 0으로 되돌린다(Exit 전용, 멱등).</summary>
+        private void ResetStruggleTwist()
+        {
+            Rigidbody2D body = _blackboard.Body;
+            if (body == null) return;
+            body.rotation = 0f;
+            body.transform.rotation = Quaternion.identity;
+        }
+
+        /// <summary>
+        /// 몸부림 리듬 곡선 — "세게 몸부림 → 잠깐 지침"의 한 주기(0~1).
+        /// 앞의 <paramref name="dutyFraction"/>만큼이 사인 한 봉우리(0 → 1 → 0)이고 나머지가 지침
+        /// 구간(<paramref name="restIntensity"/> 고정)이다. 봉우리 구간에서도 지침 세기 아래로는
+        /// 내려가지 않게 해, 버스트의 시작/끝에서 순간적으로 축 늘어지는 것을 막는다.
+        ///
+        /// 설정 비의존 정적 메서드인 이유는 PlayMode 테스트가 곡선의 **형태**(주기 안에 강약이
+        /// 실제로 존재하는가)를 직접 단언할 수 있게 하기 위해서다 —
+        /// LandingCrouchState.EvaluateCrouchCurve와 같은 관례다.
+        /// </summary>
+        public static float EvaluateStruggleEnvelope(float time, float periodSeconds, float dutyFraction, float restIntensity)
+        {
+            float rest = Mathf.Clamp01(restIntensity);
+            if (periodSeconds <= 0.0001f) return 1f;
+
+            float duty = Mathf.Clamp(dutyFraction, 0.05f, 0.95f);
+            float u = Mathf.Repeat(time, periodSeconds) / periodSeconds;
+            if (u > duty) return rest;
+            return Mathf.Max(rest, Mathf.Sin(Mathf.PI * (u / duty)));
+        }
+
+        /// <summary>
+        /// 잡혀 있는 시간에 따른 전체 세기 감쇠(1 → <paramref name="minIntensity"/>). 반감기가 0 이하면
+        /// 감쇠 없이 항상 1이다(그 겹만 끄는 탈출구). 위 곡선과 같은 이유로 정적 순수 함수다.
+        /// </summary>
+        public static float EvaluateStruggleFatigue(float heldSeconds, float halfLifeSeconds, float minIntensity)
+        {
+            float min = Mathf.Clamp01(minIntensity);
+            if (halfLifeSeconds <= 0.0001f) return 1f;
+            float decay = Mathf.Pow(0.5f, Mathf.Max(0f, heldSeconds) / halfLifeSeconds);
+            return Mathf.Lerp(min, 1f, decay);
+        }
+
         private void ReleaseAndThrow()
         {
             Vector2 throwVelocity = ComputeThrowVelocity();
@@ -335,12 +506,51 @@ namespace StickMate.States
                 _blackboard.Body.linearVelocity = throwVelocity;
             }
 
-            // 던진 속도가 충분히 세면(충격량 = 속력 * 질량, StickmanAgent.OnCollisionEnter2D와 동일 단위
-            // 관례) 즉시 RAGDOLL로 자연 전이 — 아니면 평범한 Fall(포물선 낙하)로 보낸다.
             float impulseMagnitude = speed * mass;
+
+            // ============================================================================
+            // ★★ 던진 뒤 무엇이 되는가 (2026-08-29, 사용자 요청 "마우스로 던졌을때도 이상하게
+            //     관절꺽이면서 넘어지는데 던져도 공중에서 회전하면서 무릎앉아 착지할수있게 해줘")
+            // ============================================================================
+            // 예전에는 여기서 곧바로 "충격량 >= ragdollForceThreshold면 RAGDOLL"이었다. 랙돌은 정의상
+            // 전신 물리 위임이라(아키텍처 0절) 팔다리가 제멋대로 꺾이며 뒹굴었고, 그것이 사용자가 신고한
+            // 그 그림이다. 이제는 **깨끗하게 던져진 자유 비행**을 능동 상태(ThrowTumbleState)로 보낸다.
+            //
+            // 갈림 기준은 속도의 크기가 아니라 **원인**이다(States/ThrowTumbleState.cs 클래스 문서에
+            // 근거를 적어뒀다):
+            //   · 유저가 놓은 순간의 속도로 시작하는, 아무 것에도 부딪히지 않은 포물선 = 예측 가능
+            //     -> 공중 회전 + 착지 정렬 + 무릎앉아(연출로 만들 수 있다).
+            //   · 벽/창 충돌, 라이벌의 타격, 로데오에서 거칠게 털려 나감 = 예측 불가능한 외력
+            //     -> 그대로 RAGDOLL(이 메서드를 거치지 않는 다른 경로들이며, 손대지 않았다).
+            //     회전 도중에 벽에 부딪히면 그 충돌 콜백이 여전히 랙돌로 인터럽트한다.
+            //
+            // 아주 살살 놓은 경우(임계 미만)는 '던진 것'이 아니라 '내려놓은 것'이라 회전 없이 평범한
+            // Fall로 보낸다 — 집었다 놓을 때마다 공중제비를 돌면 그게 오히려 고장으로 읽힌다.
+            StickConfig cfg = _blackboard.Config;
+            bool tumbleEnabled = cfg == null || cfg.throwTumbleEnabled;
+            float characterHeight = _blackboard.CharacterHeightWorld;
+            float heightsPerSecond = speed / Mathf.Max(0.0001f, characterHeight);
+            // ★ 판정식은 ThrowTumbleState의 정적 순수 함수 하나만 쓴다 — 던지는 쪽과 받는 쪽이 각자
+            // 계산하면 어긋나는 순간 "던졌는데 아무 일도 안 일어나는" 상태가 된다.
+            if (ThrowTumbleState.IsCleanThrow(speed, characterHeight, cfg))
+            {
+                // 전이가 확정되기 직전에 원인이 되는 물리량을 스냅샷으로 남긴다(LastImpactMagnitude/
+                // LastLandingFallHeight와 완전히 같은 관례) — 회전 방향과 속도가 전부 이 하나에서 나온다.
+                _blackboard.LastThrowVelocity = throwVelocity;
+                Debug.Log($"[DragThrowState] [6/6] 놓음 — 던진 속도={throwVelocity.ToString("F2")}(속력 {speed:F2}, " +
+                    $"상한 {maxSpeed:F2} = {heightsPerSecond:F2}신장/초, 회전 하한 " +
+                    $"{(cfg != null ? cfg.throwTumbleMinSpeedHeightsPerSecond : 1.2f):F2}신장/초), " +
+                    $"충격량={impulseMagnitude:F2} -> **공중 회전(ThrowTumble)**.");
+                _blackboard.Machine.ChangeState(StickmanStateId.ThrowTumble);
+                return;
+            }
+
+            // ── 예전 경로(스위치를 끄거나 너무 약하게 놓은 경우) ─────────────────────────────
+            // 충격량 = 속력 * 질량(StickmanAgent.OnCollisionEnter2D와 동일 단위 관례).
             bool wentRagdoll = RagdollImpactResolver.TryApplyImpact(_blackboard, impulseMagnitude);
             Debug.Log($"[DragThrowState] [6/6] 놓음 — 던진 속도={throwVelocity.ToString("F2")}(속력 {speed:F2}, " +
-                $"상한 {maxSpeed:F2}), 충격량={impulseMagnitude:F2} -> {(wentRagdoll ? "RAGDOLL" : "Fall")}.");
+                $"상한 {maxSpeed:F2} = {heightsPerSecond:F2}신장/초), 충격량={impulseMagnitude:F2}, " +
+                $"회전 스위치={tumbleEnabled} -> {(wentRagdoll ? "RAGDOLL" : "Fall")}.");
             if (!wentRagdoll)
             {
                 _blackboard.Machine.ChangeState(StickmanStateId.Fall);

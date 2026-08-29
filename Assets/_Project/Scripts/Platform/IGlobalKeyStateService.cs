@@ -71,6 +71,13 @@ namespace StickMate.Platform
         /// 트레이가 없는 지금 아키텍처에서 이 단축키가 대신한다.
         /// Interaction/FocusWatchDirector.ForceTriggerNow 문서 참고.</summary>
         F,
+
+        /// <summary>활쏘기 강제 발동(Ctrl+Opt+Cmd+A, Archery) — 자율 발동 확률이 기본 0이라
+        /// (StickConfig.archeryChance, 사용자가 요청하지 않은 연출이 뜨는 것에 반복적으로 불만을
+        /// 표했다) 이 단축키와 캐릭터 우클릭 메뉴가 <b>유일한 발동 경로</b>다. 즉 다른 데모 키들처럼
+        /// "확률을 건너뛰는 지름길"이 아니라 정식 진입점이다(F/집중 모드와 같은 성격).
+        /// Interaction/ArcheryDirector.ForceTriggerNow 문서 참고.</summary>
+        A,
     }
 
     /// <summary>

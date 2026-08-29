@@ -43,6 +43,15 @@ namespace StickMate.Core
         /// 세트(10/11/13/14절)에 포함되어야 한다." 다른 5개와 달리 수 시간 지속될 수 있어 락을 가장
         /// 오래 붙들 수 있는 항목이다.</summary>
         Runaway,
+
+        // ==== 활쏘기(2026-08-29 사용자 요청 "과녁이 생성되고 3번정도 포물선을 그리는 활을 쏘는 행동") ====
+
+        /// <summary>활쏘기(States/ArcheryState.cs) — 이 락에 참여시키는 기준은 다른 항목과 같다:
+        /// "StickmanStateMachine.ChangeState()를 직접 호출해 단일 상태 슬롯을 다투는가". 활쏘기는
+        /// Idle/Walk에서 StickmanStateId.Archery로 상태를 전이시키므로(ChangeState를 전혀 호출하지 않아
+        /// 비참여가 승인된 HardwareReaction/StressGauge와 다르다) 참여가 맞다. 한 사이클이 4초 안팎으로
+        /// 짧아 락을 오래 붙들지 않는다.</summary>
+        Archery,
     }
 
     /// <summary>

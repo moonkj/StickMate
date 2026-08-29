@@ -554,6 +554,122 @@ namespace StickMate.States
         }
 
         /// <summary>
+        /// ★ 붙잡힌 채 발버둥치는 자세(2026-08-29, 사용자 요청 "마우스로 캐릭을 잡았을때 막 벗어날려는듯이
+        /// 몸부림 치게끔 만들어줘"). States/DragThrowState.cs가 드래그 중 매 프레임 호출한다.
+        ///
+        /// 형태: 두 다리를 **서로 반대 위상**으로 차고(허우적), 팔은 다리와 **다른 주파수**로 휘젓는다.
+        /// 주파수 비를 정수배가 아닌 값(<see cref="StruggleArmFrequencyRatio"/>)으로 둔 것이 핵심이다 —
+        /// 팔다리가 같은 주기로 딱딱 맞으면 발버둥이 아니라 행진처럼 보인다. 무릎/팔꿈치는 사인파의
+        /// **절반 위상**으로 접었다 폈다 하되 0 미만으로는 절대 가지 않는다(사람 관절 불변식).
+        ///
+        /// <paramref name="intensity01"/>는 지금 이 순간의 몸부림 세기(0=Idle 중립, 1=최대)이며,
+        /// 호출부가 "세게 몸부림 → 잠깐 지침" 리듬과 시간에 따른 지침을 곱해 만든다
+        /// (DragThrowState.EvaluateStruggleEnvelope). 이 함수는 그 값을 받아 Idle 중립 포즈와 섞기만
+        /// 한다 — 즉 세기가 0이면 결과가 Idle과 정확히 같아, 스위치를 꺼도 자세가 튀지 않는다.
+        ///
+        /// <paramref name="phaseTime"/>은 몸부림 전용 누적 시간(초)이다. Idle 호흡/보행 위상과 독립인
+        /// 이유는 잡을 때마다 같은 자세에서 시작하는 편이 예측 가능하기 때문이다(ResetWalkPhase와 같은 관례).
+        ///
+        /// 몸 오프셋은 0으로 되돌린다 — 잡혀 매달린 몸에는 "발이 닿는 지면"이 없다. 몸통의 비틀림은
+        /// 여기가 아니라 상태가 루트의 시각 회전으로 만든다(팔다리 각도와 루트 회전은 서로 다른 층이다).
+        /// ★ 루트 **위치**는 이 함수도 상태도 절대 흔들지 않는다 — 드래그 추종이 "커서에 딱 붙는다"는
+        /// 이전 라운드 수정(dragFollowSmoothTime=0, 즉시 대입)을 무효로 만들기 때문이다.
+        /// </summary>
+        public void ApplyDragStrugglePose(float deltaTime, in PoseSettings idle, in DragStrugglePoseSettings struggle,
+            float smoothingRate, float intensity01, float phaseTime)
+        {
+            SetBodyOffset(0f);
+
+            float t = Mathf.Clamp01(intensity01);
+            float legPhase = phaseTime * struggle.FrequencyHz * Mathf.PI * 2f;
+            float armPhase = phaseTime * struggle.FrequencyHz * StruggleArmFrequencyRatio * Mathf.PI * 2f;
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float phase = (limb.IsLeg ? legPhase : armPhase) + limb.PhaseOffset * Mathf.PI * 2f;
+                float swing = Mathf.Sin(phase);
+                // 굽힘은 스윙보다 1/4주기 늦게(코사인) 최대가 되고, 0~1 범위라 절대 반대로 꺾이지 않는다.
+                float bend01 = 0.5f - 0.5f * Mathf.Cos(phase * 2f);
+
+                float upper;
+                float lower;
+                if (limb.IsLeg)
+                {
+                    upper = limb.NeutralSign * idle.LegSpreadDegrees + swing * struggle.HipDegrees;
+                    lower = KneeBendSign * (idle.IdleKneeBendDegrees + bend01 * struggle.KneeDegrees);
+                }
+                else
+                {
+                    upper = limb.NeutralSign * idle.ArmSpreadDegrees + swing * struggle.ArmDegrees;
+                    lower = ElbowBendSign * (idle.IdleElbowBendDegrees + bend01 * struggle.ElbowDegrees);
+                }
+
+                upper = Mathf.LerpAngle(NeutralUpperAngle(limb, idle), upper, t);
+                lower = Mathf.LerpAngle(NeutralLowerAngle(limb, idle), lower, t);
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+        }
+
+        /// <summary>발버둥에서 팔이 다리보다 몇 배 빠른가. **정수배가 아닌 값**이라는 것이 요점이다 —
+        /// 정수배면 두 주기가 계속 같은 지점에서 만나 규칙적인 루프로 보인다. 튜닝 스칼라가 아니라
+        /// 자연스러움을 만드는 구조라 StickConfig가 아니라 여기 상수로 둔다(보행 키프레임 표와 같은 기준).</summary>
+        private const float StruggleArmFrequencyRatio = 1.37f;
+
+        /// <summary>
+        /// ★ 던져진 뒤 공중 회전(텀블링) 자세(2026-08-29, 사용자 요청 "던져도 공중에서 회전하면서
+        /// 무릎앉아 착지할수있게 해줘"). States/ThrowTumbleState.cs가 매 프레임 호출한다.
+        ///
+        /// <see cref="ApplyFallPose"/>와 형태가 정반대인 것이 핵심이다: 낙하는 **펼친다**(팔을 위/바깥,
+        /// 다리는 살짝만 접힘), 회전은 **웅크린다**(팔로 몸을 감싸고 다리를 크게 접어 올림). 사람이
+        /// 공중제비를 돌 때 몸을 모으는 이유는 회전 관성을 줄이기 위해서이고, 시각적으로도 팔다리가
+        /// 펴져 있으면 회전이 아니라 "기울어진 채 날아간다"로 읽힌다. 그래서 같은 함수에 플래그를
+        /// 더하지 않고 별도 자세로 둔다(리더 지시 "ApplyFallPose를 참고하되 별도 자세로").
+        ///
+        /// 각도 규약은 이 클래스 전체와 같다(마디 로컬 −y가 끝, 각도 0이 곧게 아래, 하위 마디 각도는
+        /// 부모 기준 로컬). 좌우는 <see cref="Limb.NeutralSign"/>으로 아주 조금만 벌려 깊이감을 준다 —
+        /// 완전히 겹치면 팔다리가 두 개가 아니라 하나로 보인다.
+        ///
+        /// <paramref name="tuck01"/>은 "얼마나 웅크렸는가"(0=Idle 중립, 1=완전히 웅크림)이며 호출부가
+        /// 회전 국면에서는 1, 착지 정렬 국면에서는 <c>StickConfig.throwTumbleLandingTuck01</c>로 낮춰
+        /// 넘긴다 — 그래야 착지 직전에 몸이 펴지면서 무릎앉아로 자연스럽게 이어진다.
+        ///
+        /// 몸 오프셋은 0으로 되돌린다 — 공중에는 발이 닿는 지면이 없어 접지 보정이 의미를 갖지 않는다
+        /// (<see cref="ApplyFallPose"/>와 같은 이유).
+        ///
+        /// ★ 이 함수는 **루트의 회전에 일절 관여하지 않는다.** 몸 전체의 회전은 상태가 루트의 시각
+        /// 회전을 직접 구동한다(아키텍처 0절 — 회전을 물리에 맡기면 그것이 곧 "관절이 이상하게 꺾이는"
+        /// 그림이다). 여기서는 어디까지나 사지의 로컬 각도만 만든다.
+        /// </summary>
+        public void ApplyThrowTumblePose(float deltaTime, in PoseSettings idle, in ThrowTumblePoseSettings tumble,
+            float smoothingRate, float tuck01)
+        {
+            SetBodyOffset(0f);
+
+            float t = Mathf.Clamp01(tuck01);
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float upper;
+                float lower;
+                if (limb.IsLeg)
+                {
+                    upper = tumble.HipDegrees + limb.NeutralSign * tumble.LimbSpreadDegrees;
+                    lower = KneeBendSign * Mathf.Max(0f, tumble.KneeBendDegrees);
+                }
+                else
+                {
+                    upper = tumble.ArmDegrees + limb.NeutralSign * tumble.LimbSpreadDegrees;
+                    lower = ElbowBendSign * Mathf.Max(0f, tumble.ElbowBendDegrees);
+                }
+
+                upper = Mathf.LerpAngle(NeutralUpperAngle(limb, idle), upper, t);
+                lower = Mathf.LerpAngle(NeutralLowerAngle(limb, idle), lower, t);
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+        }
+
+        /// <summary>
         /// ★★ 무릎앉아 착지 포즈(2026-08-29, 사용자 요청의 핵심 — "떨어질때 무릎앉아 형태로 멋지게
         /// 착지해야지"). States/LandingCrouchState.cs가 매 프레임 자기 진행 곡선의 값을
         /// <paramref name="amount"/>로 넘겨 호출한다.
@@ -643,6 +759,113 @@ namespace StickMate.States
             // 근사가 아니라 항등식이다.
             SetBodyOffset(ComputeFootGroundingOffset());
             ReapplyCurrentAngles();
+        }
+
+        /// <summary>
+        /// ★★ 활 쏘는 자세(2026-08-29, 사용자 요청 "활을 들고 화살을 쏘는" 동작의 몸 쪽 절반).
+        /// States/ArcheryState.cs가 매 프레임 자기 진행도를 넘겨 호출한다. 활/화살/과녁 그림은
+        /// Interaction/ArcheryRenderer.cs가 그리고, 이 메서드는 **팔다리 각도만** 책임진다.
+        ///
+        /// ============================================================================
+        /// 왜 각도를 "상대 굽힘"이 아니라 "절대 각도"로 받는가
+        /// ============================================================================
+        /// 이 클래스의 다른 포즈들은 아래 마디를 "무릎/팔꿈치가 몇 도 접혔는가"(상대)로 받는다. 활
+        /// 자세만 다르게 절대 각도(<see cref="ArcheryPoseSettings.BowForearmDegrees"/> 등)를 받는 이유는
+        /// 실제 만작 자세의 기하 때문이다: 시위를 당긴 손은 뺨 근처에 오는데, 어깨~손 거리(신장의
+        /// 약 12%)가 상완+전완 길이(신장의 약 42%)보다 훨씬 짧아 팔이 <b>거의 완전히 접힌다</b>.
+        /// 그때의 상대 굽힘은 200도 근처의 값이 되어 설정 파일에 적어도 사람이 읽을 수 없다.
+        /// 반면 "위 팔은 뒤로 -100도, 전완은 앞위로 +100도"는 그림이 그대로 떠오른다.
+        /// 실제 적용 시에는 (절대 전완각 - 어깨각)으로 상대 각도를 만들어 기존 경로에 그대로 넘긴다.
+        ///
+        /// ============================================================================
+        /// 두 개의 진행도
+        /// ============================================================================
+        /// <paramref name="draw01"/> 0=중립, 1=완전히 당김. Idle 중립 포즈와 만작 자세를 섞으므로
+        /// 당기는 동안 자세가 연속적으로 변한다.
+        /// <paramref name="recoil01"/> 0=반동 없음, 1=발사 직후. 당기는 팔만 뒤로 튕겨 나가며 펴진다
+        /// (follow-through). draw01은 발사 순간 0으로 떨어지므로 두 값이 동시에 큰 일은 없다.
+        ///
+        /// 몸 오프셋: 당기는 힘에 몸이 살짝 가라앉는다. 루트 회전은 능동 상태에서 고정이라
+        /// (아키텍처 0절) 몸통을 뒤로 기울일 수 없으므로, 시각 전용 상하 오프셋으로 대신한다.
+        /// </summary>
+        public void ApplyArcheryPose(float deltaTime, in PoseSettings idle, in ArcheryPoseSettings archery,
+            float smoothingRate, float ready01, float draw01, float recoil01)
+        {
+            float ready = Mathf.Clamp01(ready01);
+            float draw = Mathf.Clamp01(draw01);
+            float recoil = Mathf.Clamp01(recoil01);
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                bool front = limb.NeutralSign >= 0f;
+                float upper = NeutralUpperAngle(limb, idle);
+                float lower = NeutralLowerAngle(limb, idle);
+
+                if (limb.IsLeg)
+                {
+                    // 스탠스는 당김과 함께 자리를 잡는다(발을 앞뒤로 벌리고 무릎을 살짝 굽혀 버틴다).
+                    float hip = front ? archery.FrontHipDegrees : archery.RearHipDegrees;
+                    float knee = KneeBendSign * Mathf.Max(0f, archery.KneeBendDegrees);
+                    // 다리는 발사 후에도 스탠스를 유지해야 한다 — draw01은 발사 순간 0이 되므로
+                    // 그것만 쓰면 쏘자마자 다리가 중립으로 돌아가 자세가 무너진다. 반동 구간에는
+                    // recoil을 함께 보아 스탠스를 붙잡아 둔다.
+                    // 스탠스는 **활을 들고 있는 내내** 유지된다(ready). draw만 쓰면 발사 직후 다리가
+                    // 중립으로 돌아가 자세가 매 발마다 무너진다.
+                    upper = Mathf.LerpAngle(upper, hip, ready);
+                    lower = Mathf.LerpAngle(lower, knee, ready);
+                }
+                else if (front)
+                {
+                    // 활을 든 팔 — 정면 위로 곧게 뻗어 **활쏘기 상태 내내** 그대로 든다(ready).
+                    //
+                    // ★ 2026-08-29 육안 검증에서 잡은 실수: 원래 이 팔도 draw/recoil로 섞었더니
+                    // 당기지 않는 구간(과녁 등장·발사 후 회복)마다 팔이 중립으로 내려가, 활이
+                    // 캐릭터 옆구리에 비스듬히 걸린 것처럼 보였다(사용자 "활이 이상하다"의 큰 몫).
+                    // 실제 궁수도 활을 든 팔은 발사 후에도 그대로 둔다 — follow-through의 절반이다.
+                    upper = Mathf.LerpAngle(upper, archery.BowArmDegrees, ready);
+                    lower = Mathf.LerpAngle(lower,
+                        archery.BowForearmDegrees - archery.BowArmDegrees, ready);
+                }
+                else
+                {
+                    // 시위를 당기는 팔 — 완전히 접혀 손이 뺨 근처로 온다.
+                    float drawUpper = archery.DrawUpperDegrees;
+                    float drawLower = archery.DrawForearmDegrees - archery.DrawUpperDegrees;
+                    upper = Mathf.LerpAngle(upper, drawUpper, draw);
+                    lower = Mathf.LerpAngle(lower, drawLower, draw);
+
+                    if (recoil > 0f)
+                    {
+                        // 발사 — 어깨가 더 열리며 뒤로 빠지고 팔이 펴진다.
+                        float openUpper = drawUpper + archery.RecoilOpenDegrees;
+                        float straight = Mathf.Clamp01(archery.RecoilStraighten01);
+                        float openLower = Mathf.LerpAngle(drawLower, ElbowBendSign * idle.IdleElbowBendDegrees, straight);
+                        upper = Mathf.LerpAngle(upper, openUpper, recoil);
+                        lower = Mathf.LerpAngle(lower, openLower, recoil);
+                    }
+                }
+
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+
+            // 몸이 살짝 가라앉는다 — 무릎앉아와 달리 접지 역산이 아니라 고정 오프셋이다(다리 각도를
+            // 거의 바꾸지 않는 자세라 접지 보정을 쓰면 값이 0에 가까워 아무 일도 일어나지 않는다).
+            SetBodyOffset(-Mathf.Max(0f, archery.BodySinkDistance) * Mathf.Max(draw, recoil) * ready);
+            ReapplyCurrentAngles();
+        }
+
+        /// <summary>
+        /// 실측/렌더링용 — 두 손 끝의 월드 좌표(아래 마디 끝 = 로컬 (0,-Length)).
+        /// <see cref="GetFootWorldPositions"/>와 완전히 같은 계산이며, 활을 든 손 위치가 필요한
+        /// Interaction/ArcheryRenderer.cs가 이 창구만 쓴다(렌더러가 계층을 직접 뒤져 같은 계산을
+        /// 한 벌 더 갖는 것을 막는다 — 이 프로젝트가 이미 두 번 겪은 "같은 값의 두 번째 계산원" 함정).
+        /// 팔이 없으면 Vector2.zero.
+        /// </summary>
+        public void GetHandWorldPositions(out Vector2 left, out Vector2 right)
+        {
+            left = FootWorldPosition(_leftArm);
+            right = FootWorldPosition(_rightArm);
         }
 
         /// <summary>지금 보간 상태(Segment.CurrentAngle)를 각도 변경 없이 다시 적용한다. 각도 자체는
@@ -1100,6 +1323,51 @@ namespace StickMate.States
         }
 
         /// <summary>
+        /// 발버둥 자세 각도 묶음(<see cref="ApplyDragStrugglePose"/>). 위 구조체들과 같은 성격·같은
+        /// 컨벤션. StickmanBlackboard.BuildDragStrugglePoseSettings()가 StickConfig에서 구성해 넘긴다.
+        /// </summary>
+        public readonly struct DragStrugglePoseSettings
+        {
+            public readonly float FrequencyHz;
+            public readonly float HipDegrees;
+            public readonly float KneeDegrees;
+            public readonly float ArmDegrees;
+            public readonly float ElbowDegrees;
+
+            public DragStrugglePoseSettings(float frequencyHz, float hip, float knee, float arm, float elbow)
+            {
+                FrequencyHz = frequencyHz;
+                HipDegrees = hip;
+                KneeDegrees = knee;
+                ArmDegrees = arm;
+                ElbowDegrees = elbow;
+            }
+        }
+
+        /// <summary>
+        /// 공중 회전(텀블링) 자세 각도 묶음(<see cref="ApplyThrowTumblePose"/>). 위 구조체들과 같은
+        /// 성격·같은 컨벤션(readonly struct + in 파라미터 — 매 프레임 경로라 힙 할당이 없다).
+        /// StickmanBlackboard.BuildThrowTumblePoseSettings()가 StickConfig에서 구성해 넘긴다.
+        /// </summary>
+        public readonly struct ThrowTumblePoseSettings
+        {
+            public readonly float HipDegrees;
+            public readonly float KneeBendDegrees;
+            public readonly float ArmDegrees;
+            public readonly float ElbowBendDegrees;
+            public readonly float LimbSpreadDegrees;
+
+            public ThrowTumblePoseSettings(float hip, float kneeBend, float arm, float elbowBend, float limbSpread)
+            {
+                HipDegrees = hip;
+                KneeBendDegrees = kneeBend;
+                ArmDegrees = arm;
+                ElbowBendDegrees = elbowBend;
+                LimbSpreadDegrees = limbSpread;
+            }
+        }
+
+        /// <summary>
         /// 무릎앉아 착지 포즈의 **최대 깊이 각도** 묶음(<see cref="ApplyLandingCrouchPose"/>).
         /// 여기 담긴 값은 전부 "amount=1일 때의 각도"이며, 중간 깊이는 Idle 중립과의 보간으로 만들어진다.
         /// StickmanBlackboard.BuildLandingCrouchPoseSettings()가 StickConfig에서 구성해 넘긴다.
@@ -1126,6 +1394,45 @@ namespace StickMate.States
                 FrontElbowDegrees = frontElbow;
                 RearArmDegrees = rearArm;
                 RearElbowDegrees = rearElbow;
+            }
+        }
+
+        /// <summary>
+        /// 활 쏘는 자세 각도 묶음(<see cref="ApplyArcheryPose"/>). 위 구조체들과 같은 성격·같은
+        /// 컨벤션(readonly struct + in 파라미터 — 매 프레임 경로라 힙 할당/복사 비용이 없다).
+        /// StickmanBlackboard.BuildArcheryPoseSettings()가 StickConfig에서 구성해 넘긴다.
+        ///
+        /// ★ 팔 각도는 <b>절대 각도</b>다(다른 구조체의 "상대 굽힘"과 다르다) — 그 이유는
+        /// <see cref="ApplyArcheryPose"/> 문서 참고. BodySinkDistance만 월드 유닛이며, 호출부가
+        /// 신장 비율에서 이미 곱해 넘긴다(각도는 크기 무관, 거리는 신장 비례 — 리더 지시).
+        /// </summary>
+        public readonly struct ArcheryPoseSettings
+        {
+            public readonly float BowArmDegrees;
+            public readonly float BowForearmDegrees;
+            public readonly float DrawUpperDegrees;
+            public readonly float DrawForearmDegrees;
+            public readonly float RecoilOpenDegrees;
+            public readonly float RecoilStraighten01;
+            public readonly float FrontHipDegrees;
+            public readonly float RearHipDegrees;
+            public readonly float KneeBendDegrees;
+            public readonly float BodySinkDistance;
+
+            public ArcheryPoseSettings(float bowArm, float bowForearm, float drawUpper, float drawForearm,
+                float recoilOpen, float recoilStraighten01, float frontHip, float rearHip, float kneeBend,
+                float bodySinkDistance)
+            {
+                BowArmDegrees = bowArm;
+                BowForearmDegrees = bowForearm;
+                DrawUpperDegrees = drawUpper;
+                DrawForearmDegrees = drawForearm;
+                RecoilOpenDegrees = recoilOpen;
+                RecoilStraighten01 = recoilStraighten01;
+                FrontHipDegrees = frontHip;
+                RearHipDegrees = rearHip;
+                KneeBendDegrees = kneeBend;
+                BodySinkDistance = bodySinkDistance;
             }
         }
     }

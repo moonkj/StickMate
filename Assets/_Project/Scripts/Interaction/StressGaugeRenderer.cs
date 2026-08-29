@@ -257,6 +257,22 @@ namespace StickMate.Interaction
         /// </summary>
         public static StressMoodTier TierForLevel(float level, StickConfig config)
         {
+            // ★★ 마스터 스위치(2026-08-29, 사용자 신고 "몸주위로 이상한 주황색 선들이 생김" 대응).
+            //
+            // 이 프로젝트의 "기본 OFF" 관례는 <b>도달 불가능한 임계값</b>을 넣는 것이다
+            // (StickConfig.stressRunawayThreshold = 2.0이 같은 이유로 그렇게 되어 있다 — 게이지가
+            // 0~1로 클램프되므로 1보다 큰 값은 원리적으로 도달할 수 없다). 그런데 이 메서드만은
+            // 임계값을 올리는 것만으로 꺼지지 않았다: 아래 caution 계산이 <c>Clamp(..., 0f, alarm)</c>로
+            // **alarm(=stressSulkyThreshold=0.8)까지 눌러버리기** 때문에, caution을 2.0으로 올려도
+            // 실효값이 0.8이 되어 "주황(주의)은 사라지지만 게이지가 0.8을 넘으면 빨강(경고)이 그대로
+            // 뜨는" 반쪽 상태가 된다. 그리고 alarm 쪽은 Clamp01이라 1을 넘길 수조차 없다.
+            //
+            // 그래서 clamp보다 **앞에서** 원본 값을 한 번 본다: 1보다 크면 "이 상시 표시를 끈다"는
+            // 뜻으로 해석해 항상 Calm을 돌려준다. 기능을 지우는 것이 아니라 조용하게 만드는 것이며,
+            // 값을 원래 기본값 0.4로 되돌리면 아래 기존 경로를 100% 그대로 탄다(거동 동일).
+            float rawCaution = config != null ? config.stressTierCautionLevel : 0.4f;
+            if (rawCaution > 1f) return StressMoodTier.Calm;
+
             float alarm = config != null ? Mathf.Clamp01(config.stressSulkyThreshold) : 0.8f;
             float caution = config != null ? Mathf.Clamp(config.stressTierCautionLevel, 0f, alarm) : 0.4f;
             if (level >= alarm) return StressMoodTier.Alarm;

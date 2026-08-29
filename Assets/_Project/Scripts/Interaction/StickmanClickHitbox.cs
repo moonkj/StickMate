@@ -50,6 +50,15 @@ namespace StickMate.Interaction
         /// 발생 — 반드시 같은 콜라이더 위에서 뗄 필요는 없다(드래그 도중 캐릭터가 커서를 벗어나도 정상 수신).</summary>
         public event Action MouseUp;
 
+        /// <summary>
+        /// 테스트 전용 — <b>실제 클릭과 완전히 같은 이벤트</b>를 발행한다. PlayMode 테스트는 OS 커서를
+        /// 캐릭터 위로 옮겨 실제 버튼을 누를 수 없으므로(전역 입력은 합성 입력에 반응하지 않는다) 이
+        /// 진입점이 필요하다. 구독자 쪽 분기를 우회하지 않고 <b>같은 이벤트</b>를 쏘므로, 테스트가
+        /// 통과한다는 것은 실제 클릭 경로가 동작한다는 뜻이다(별도 테스트 전용 경로를 만들면 그 보장이
+        /// 사라진다).
+        /// </summary>
+        public void SimulateMouseDownForTests() => MouseDown?.Invoke();
+
         private StickmanAgent _agent;
         private Collider2D[] _colliders;
         private IGlobalPointerButtonService _buttonService;

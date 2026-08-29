@@ -47,6 +47,17 @@ namespace StickMate.States
         public float LastLandingFallHeight;
 
         /// <summary>
+        /// ★ 마지막으로 **던져진** 순간의 속도(월드 유닛/초). DragThrowState.ReleaseAndThrow()가
+        /// ThrowTumble로 전이시키기 직전에 남기고, ThrowTumbleState.Enter()가 이 하나에서 회전
+        /// 방향(던진 방향)과 회전 속도(던진 세기)를 함께 파생시킨다.
+        ///
+        /// 위 LastImpactMagnitude / LastLandingFallHeight와 완전히 같은 관례다 — 전이를 확정하기
+        /// 직전에 원인이 되는 물리량을 스냅샷으로 남기고, 진입한 상태가 그 하나에서 모든 파생값을
+        /// 만든다. 이벤트 페이로드로 흘리지 않는 이유도 같다(구독자가 0명이면 연출이 통째로 죽는다).
+        /// </summary>
+        public Vector2 LastThrowVelocity;
+
+        /// <summary>
         /// 이동 의도의 유일한 출처(BUG-P1-B2 대응, docs/BUG_REPORT_PHASE1.md Blocker). 예전에는
         /// StickmanAgent.Update()가 UnityEngine.Input.GetAxisRaw/GetButtonDown을 직접 읽어
         /// MoveInputX/JumpPressed 필드에 대입했지만, 키보드 의존은 실제 분리 오버레이(WS_EX_NOACTIVATE)가
@@ -117,6 +128,48 @@ namespace StickMate.States
         /// "지금 클릭이 판정에 먹히는 구간인가"의 시각 신호라 사용자가 헛클릭하지 않게 해준다.
         /// </summary>
         public bool BattleChargeGaugeVisible;
+
+        // ==== 활쏘기(2026-08-29 사용자 요청) — Director -> State 계획 스냅샷 + State -> 렌더러 힌트.
+        // 위 BattleChargeRatio와 완전히 같은 관례다(이벤트가 아니라 필드인 이유는 그 문서 참고).
+
+        /// <summary>이번 활쏘기 사이클의 과녁 중심(월드). Interaction/ArcheryDirector가 자리를 확정한
+        /// 직후, <b>ChangeState(Archery)를 호출하기 전에</b> 써둔다 — ArcheryState.Enter()가 이 값에서
+        /// 명중/빗나감 도달점을 계산하므로 그 전에 확정돼 있어야 한다.</summary>
+        public Vector2 ArcheryTargetWorld;
+
+        /// <summary>이번 사이클의 지면 월드 Y(= 발동 시점의 캐릭터 발바닥). 빗나간 화살이 꽂히는 높이.</summary>
+        public float ArcheryGroundWorldY;
+
+        /// <summary>이번 사이클에 캐릭터가 <b>걸어가서 서야 할</b> 월드 X(발판/화면 구간의 한쪽 끝).
+        /// 사용자 명시 요구 "…만큼 캐릭터가 이동한 다음 과녁을 생성후 쏘고" — 순간이동이 아니라
+        /// ArcheryState의 Approach 페이즈가 실제로 걸어서 여기까지 간 뒤에야 과녁이 생성된다.</summary>
+        public float ArcheryStandWorldX;
+
+        /// <summary>이번 사이클에 과녁이 놓인 방향(+1 오른쪽 / -1 왼쪽). 화면 끝에서 미러링됐을 수 있어
+        /// 캐릭터의 현재 FacingSign과 다를 수 있으므로 별도로 스냅샷한다.</summary>
+        public float ArcheryFacingSign = 1f;
+
+        /// <summary>지금 시위가 얼마나 당겨져 있는지(0~1) — <b>순수 렌더 힌트</b>다. ArcheryState가 매
+        /// 프레임 자기가 이미 계산한 값을 복사해두고 ArcheryRenderer가 읽어 시위를 그린다.
+        /// 이 값을 못 읽거나 잘못 읽어도 발사 타이밍/명중 결과는 1비트도 달라지지 않는다.</summary>
+        public float ArcheryDrawRatio;
+
+        /// <summary>지금 활을 들고 있는지(= Archery 상태 진행 중인지). 렌더러가 활을 보이고 감추는 신호.</summary>
+        public bool ArcheryBowVisible;
+
+        /// <summary>활을 꺼내 든 정도(0=아직 안 듦, 1=완전히 들어 겨눔). 과녁이 등장하는 동안 0에서 1로
+        /// 올라가고 그 뒤로는 사이클 내내 1을 유지한다 — 시위를 당기지 않는 구간에도 활은 계속 들려
+        /// 있어야 한다(그러지 않으면 발사 후마다 활이 옆구리로 내려간다). 렌더러는 이 값으로 활을
+        /// 페이드인시킨다.</summary>
+        public float ArcheryReadyRatio;
+
+        /// <summary>
+        /// true인 동안 <see cref="TickPose"/>가 바라보는 방향을 갱신하지 않는다.
+        /// 활쏘기처럼 "제자리에 서서 한 방향을 겨누는" 연출은, 배회 AI가 계속 내보내는 이동 의도로
+        /// 몸이 홱 돌아가면 화살이 뒤통수에서 나가는 그림이 된다. 상태가 Enter에서 켜고 Exit에서
+        /// 반드시 끈다(어떤 종료 경로로도 풀리도록 — 안 풀리면 캐릭터가 영영 한쪽만 보고 걷는다).
+        /// </summary>
+        public bool FacingLocked;
 
         /// <summary>
         /// Attack(전투) 상태의 IHasDialogueParams 스냅샷 입력값(BUG-M7 파이프라인, docs/BUG_REPORT_PHASE3.md
@@ -449,7 +502,7 @@ namespace StickMate.States
 
             if (Mathf.Abs(delta) > 0.001f)
             {
-                Body.position = new Vector2(pos.x, info.GroundWorldY);
+                MoveBodyToWorld(new Vector2(pos.x, info.GroundWorldY));
             }
             if (Body.linearVelocity.y < 0f)
             {
@@ -458,6 +511,36 @@ namespace StickMate.States
                 Body.linearVelocity = v;
             }
             return false;
+        }
+
+        /// <summary>
+        /// ★ 몸을 특정 월드 좌표로 **순간 이동**시키는 유일한 창구(2026-08-29, 디버거 — 착지 첫 프레임
+        /// 잉크가 화면 밖으로 8.82pt 잘려 나가는 회귀 FloorContactVisibilityTests 실패의 근본 원인).
+        ///
+        /// 왜 두 곳(Rigidbody2D.position + Transform.position)에 함께 써야 하는가 — 이 프로젝트는
+        /// Physics2D.autoSyncTransforms가 **꺼져 있다**(ProjectSettings/Physics2DSettings.asset의
+        /// m_AutoSyncTransforms: 0). 그래서 Rigidbody2D.position에만 대입하면 그 값은 물리 엔진 안에서만
+        /// 갱신되고, **화면에 그려지는 Transform은 다음 물리 스텝까지 옛 위치에 그대로 남는다**.
+        /// 프레임 순서가 FixedUpdate(물리 적분) -> Update(상태 Tick = 여기서 스냅) -> 렌더이므로,
+        /// 그 한 프레임은 "물리가 방금 적분해 둔 위치"로 그려진다.
+        ///
+        /// 실측(Logs/dbg_diag4.log, 스폰 낙하 11.63유닛):
+        ///     [f=316] st=LandingCrouch bodyY=-11.8045 rootY(Transform)=-12.1840 -> 잉크 하단 -12.2155
+        ///     화면 바닥이 -12.0000이므로 그 한 프레임만 8.82pt 아래로 잘려 그려졌다.
+        /// 낙하 속도 24.7유닛/초 × 그 프레임의 물리 적분량이 그대로 어긋남이 된다 — 즉 높이 떨어질수록,
+        /// 프레임이 길수록 더 깊이 파묻힌 그림이 한 프레임 번쩍인다.
+        ///
+        /// ThrowTumbleState는 이미 같은 이유로 두 곳에 함께 쓰고 있었다(ApplyRootRotation/ConfirmLanding의
+        /// 주석). 같은 계산이 두 벌로 흩어져 한쪽만 고쳐지는 것이 이 프로젝트가 반복해 겪은 실패라,
+        /// 착지/스냅/클램프/구조가 전부 이 한 창구를 쓰도록 모은다. 속도는 건드리지 않는다(호출부마다
+        /// 관성 처리 규칙이 다르므로 각자 책임).
+        /// </summary>
+        public void MoveBodyToWorld(Vector2 worldPos)
+        {
+            if (Body == null) return;
+            Body.position = worldPos;
+            Transform t = Body.transform;
+            t.position = new Vector3(worldPos.x, worldPos.y, t.position.z);
         }
 
         // ============================================================================
@@ -477,6 +560,20 @@ namespace StickMate.States
         /// <summary>화면 경계에서 남겨둘 최소 여유(OS 포인트). 아래 CharacterVisualHalfWidthWorld가
         /// 더해져 실제 여유가 결정된다.</summary>
         private const float ScreenClampMarginOsPx = 8f;
+
+        // ★ 아래쪽 전용 여유(2026-08-29, 리더 지시 — 바닥 안전망을 화면 최하단 8pt까지 내린 라운드에서
+        // 발견). 물리 바닥이 이제 이 클램프 경계 바로 위(0.196유닛)에 있어서, 전속력 낙하(최대 한
+        // 물리 스텝 0.75유닛 관통 가능)가 클램프 경계를 넘는 순간 이 클램프가 세로 속도를 즉시 0으로
+        // 지워버려 다음 스텝의 충돌 상대속도가 0이 되고, RAGDOLL 진입 임계값 판정이 그 속도를 영영 보지
+        // 못한다(논리 발판이 없는 Dock 구멍 구간으로 전속력 낙하할 때만 발생 — 정상 착지는 발판 스냅이
+        // 먼저 확정하므로 무관). 40pt(≈1유닛)는 화면 최상단에서의 최대 한 스텝 관통(31pt)을 넉넉히
+        // 덮는다.
+        //
+        // 아래 줄 바로 아래 주석의 "여유는 0이다" 결정과 모순이 아니다 — 그건 화면 **안**에서 지면과
+        // 매 프레임 계속 싸우던 정상상태 버그였고(경계가 지면보다 위라 계속 되돌림), 이 여유는 화면
+        // **밖**으로 한 번, 순간적으로만 더 허용하는 것이다. 정상 발판/지면은 항상 화면 안에 있으므로
+        // 이 여유가 있어도 정상 동작에서는 클램프가 여전히 발동하지 않는다.
+        private const float BottomClampSlackOsPoints = 40f;
 
         /// <summary>
         /// ★ 2026-08-28 (리더 추가 관찰: "캐릭터가 화면 왼쪽 끝에서 잘려 보인다") — 캐릭터의 **시각적
@@ -576,15 +673,19 @@ namespace StickMate.States
             if (minX > maxX) { minX = maxX = origin.x + screenW * 0.5f; } // 화면보다 캐릭터가 넓은 병리적 경우
 
             float minY = origin.y + ScreenClampMarginOsPx;
-            // ★ 아래쪽 여유는 0이다(2026-08-28). 이유: 안전망 발판이 화면 최하단 근처로 내려온 뒤로는
-            // 이 클램프가 **지면과 싸운다**. 실측으로 재현된 사고: 640x480 테스트 화면에서 8 OS px는
-            // 0.4월드유닛이라 지면(0.245유닛)보다 위에 있었고, RAGDOLL이 지면에 내려앉을 때마다 클램프가
-            // 매 프레임 위로 되돌리며 세로 속도를 0으로 만들어 **영원히 안정되지 못했다**(GETUP 미도달로
-            // StickmanRagdollRecoveryTests가 빨간불). 이 클램프의 목적은 "캐릭터를 화면 밖에서
-            // 잃어버리지 않는다"이고 그 목적에는 경계 자체(여유 0)로 충분하다 — 발판/지면은 언제나
-            // 화면 안에 있으므로 정상 동작에서는 아예 발동하지 않고, 진짜로 화면 아래로 빠져나가는
-            // 경우만 잡는다.
-            float maxY = origin.y + screenH;
+            // ★ 아래쪽 좌우 방향 여유는 0이다(2026-08-28). 이유: 안전망 발판이 화면 최하단 근처로
+            // 내려온 뒤로는 이 클램프가 **지면과 싸운다**. 실측으로 재현된 사고: 640x480 테스트
+            // 화면에서 8 OS px는 0.4월드유닛이라 지면(0.245유닛)보다 위에 있었고, RAGDOLL이 지면에
+            // 내려앉을 때마다 클램프가 매 프레임 위로 되돌리며 세로 속도를 0으로 만들어 **영원히
+            // 안정되지 못했다**(GETUP 미도달로 StickmanRagdollRecoveryTests가 빨간불). 이 클램프의
+            // 목적은 "캐릭터를 화면 밖에서 잃어버리지 않는다"이고 그 목적에는 경계 자체(여유 0)로
+            // 충분하다 — 발판/지면은 언제나 화면 안에 있으므로 정상 동작에서는 아예 발동하지 않고,
+            // 진짜로 화면 아래로 빠져나가는 경우만 잡는다.
+            //
+            // 다만 아래쪽만은 BottomClampSlackOsPoints만큼 추가 여유를 둔다(2026-08-29, 위 상수 선언부
+            // 주석 참고) — 물리 바닥이 이 경계 바로 위로 내려온 뒤로 전속력 낙하의 한 스텝 관통이
+            // 이 클램프에 먼저 걸려 RAGDOLL 임계값 판정을 무력화하는 새 상호작용이 생겼기 때문이다.
+            float maxY = origin.y + screenH + BottomClampSlackOsPoints;
 
             return new ScreenClampOsBounds(minX, maxX, minY, maxY, sideMargin, halfWidthOsPx, origin, screenW, screenH);
         }
@@ -638,8 +739,7 @@ namespace StickMate.States
             if (clamped)
             {
                 Vector3 world = ScreenCoordinateConverter.OsScreenToWorld(MainCamera, new Vector2(clampedX, clampedY), depth, Config);
-                Body.position = new Vector2(world.x, world.y);
-                Body.transform.position = new Vector3(world.x, world.y, Body.transform.position.z);
+                MoveBodyToWorld(new Vector2(world.x, world.y));
                 Vector2 v = Body.linearVelocity;
                 if (!Mathf.Approximately(clampedX, os.x)) v.x = 0f;   // 벽에 막힌 것처럼 수평 관성 제거
                 if (clampedY < os.y) v.y = 0f;                        // 아래로 뚫고 나가던 관성 제거
@@ -717,8 +817,7 @@ namespace StickMate.States
             // ★ 가장 높은 표면(TryGetGroundSurfaceWorldY)이 아니라 **바닥**을 쓴다 — 위 문서의 실측 근거.
             if (TryGetFloorWorldY(probe, out float floorY)) targetY = floorY;
 
-            Body.position = new Vector2(centerWorld.x, targetY);
-            Body.transform.position = new Vector3(centerWorld.x, targetY, Body.transform.position.z);
+            MoveBodyToWorld(new Vector2(centerWorld.x, targetY));
             Body.linearVelocity = Vector2.zero;
             CurrentFootholdHandle = 0L; // 재획득하도록 초기화
             ResetGroundLossTimer();
@@ -816,7 +915,9 @@ namespace StickMate.States
             // 캐릭터가 좌우로 깜빡인다). 뚜렷한 의도가 없으면 마지막 방향을 그대로 유지한다.
             float deadzone = Config != null ? Config.moveInputDeadzone : 0.15f;
             float move = MoveInputX;
-            if (Mathf.Abs(move) > deadzone)
+            // FacingLocked: 활쏘기처럼 한 방향을 겨누는 연출 중에는 배회 AI의 이동 의도로 몸이
+            // 돌아가면 안 된다(그 필드 문서 참고).
+            if (!FacingLocked && Mathf.Abs(move) > deadzone)
             {
                 _facingSign = move >= 0f ? 1f : -1f;
                 pose.SetFacing(_facingSign);
@@ -842,6 +943,27 @@ namespace StickMate.States
             if (rig.EnterActiveMode()) pose.SyncFromTransform();
             if (Machine.CurrentStateId == StickmanStateId.Getup) return;
 
+            // ★ 던지기 공중 회전(2026-08-29) — **SnapRootUpright보다 먼저** 빠져나가는 유일한 능동
+            // 상태다. 이 상태에서는 몸 전체의 회전을 ThrowTumbleState가 루트의 시각 회전으로 직접
+            // 구동하므로, 여기서 매 프레임 직립으로 스냅해버리면 회전이 통째로 사라진다(그 스냅이
+            // 바로 "루트 회전각 ≈ 0"을 보장하던 장치라, 이 예외의 범위를 이 상태 하나로 좁게 묶는다).
+            // 팔다리 포즈도 상태 자신이 이미 세팅했다(LandingCrouch/Walk와 같은 관례).
+            if (Machine.CurrentStateId == StickmanStateId.ThrowTumble) return;
+
+            // ★ 붙잡혔을 때 발버둥(2026-08-29, 사용자 요청 "잡았을때 막 벗어날려는듯이 몸부림 치게끔").
+            // 몸통 비틀림을 루트의 시각 회전으로 만들기 때문에 여기서도 직립 스냅을 건너뛴다.
+            // 스위치가 꺼져 있으면 **예전 경로 그대로**(직립 스냅 + Idle 중립 포즈)로 되돌아간다 —
+            // 그래야 "끄면 예전 거동"이 말뿐이 아니라 코드로 보장된다.
+            if (Machine.CurrentStateId == StickmanStateId.Dragged)
+            {
+                if (Config == null || !Config.dragStruggleEnabled)
+                {
+                    rig.SnapRootUpright();
+                    pose.ApplyIdlePose(deltaTime, BuildPoseSettings(), PoseSmoothingRate);
+                }
+                return; // 켜져 있으면 DragThrowState.Tick()이 이미 포즈와 몸통 비틀림을 세팅했다.
+            }
+
             rig.SnapRootUpright();
             if (Machine.CurrentStateId == StickmanStateId.Walk) return;
 
@@ -849,6 +971,11 @@ namespace StickMate.States
             // 포즈를 이미 LandingCrouchState.Tick()이 자기 진행 곡선으로 세팅했다. 이 분기를 빠뜨리면
             // 아래 ApplyIdlePose가 매 프레임 그 위에 중립 포즈를 덧씌워 연출이 통째로 사라진다.
             if (Machine.CurrentStateId == StickmanStateId.LandingCrouch) return;
+
+            // ★ 활쏘기(2026-08-29) — Walk/LandingCrouch와 **완전히 같은 이유**로 여기서 아무것도 하지
+            // 않는다: 포즈를 이미 ArcheryState.Tick()이 자기 진행 곡선으로 세팅했다. 이 분기를 빠뜨리면
+            // 아래 ApplyIdlePose가 매 프레임 그 위에 중립 포즈를 덧씌워 활 자세가 통째로 사라진다.
+            if (Machine.CurrentStateId == StickmanStateId.Archery) return;
 
             // ★ 낙하 중 공중 자세(2026-08-29, 사용자 요청 "떨어질때 관절이 이상하게 꺾이면서 넘어지는데").
             // 여기에 분기가 없어서 지금까지 낙하 중에도 아래 Idle 중립 포즈가 적용됐다 — 막대기가 그대로
@@ -1024,6 +1151,53 @@ namespace StickMate.States
                 Config != null ? Config.fallPoseKneeBendDegrees : 38f);
         }
 
+        /// <summary>활 쏘는 자세 각도 묶음(StickConfig -> StickmanPoseAnimator). BuildPoseSettings와
+        /// 동일한 패턴 — Config가 없는 테스트/폴백 경로에서도 안전하도록 각 값에 기본값을 둔다.
+        /// 마지막 인자(몸이 가라앉는 거리)만 <b>신장 비율 -> 월드 거리</b>로 여기서 환산한다
+        /// (각도는 크기 무관, 거리는 신장 비례 — 리더 지시).</summary>
+        public StickmanPoseAnimator.ArcheryPoseSettings BuildArcheryPoseSettings()
+        {
+            return new StickmanPoseAnimator.ArcheryPoseSettings(
+                Config != null ? Config.archeryBowArmDegrees : 88f,
+                Config != null ? Config.archeryBowForearmDegrees : 93f,
+                Config != null ? Config.archeryDrawUpperDegrees : -100f,
+                Config != null ? Config.archeryDrawForearmDegrees : 100f,
+                Config != null ? Config.archeryRecoilOpenDegrees : -38f,
+                Config != null ? Config.archeryRecoilStraighten01 : 0.75f,
+                Config != null ? Config.archeryFrontHipDegrees : 16f,
+                Config != null ? Config.archeryRearHipDegrees : -18f,
+                Config != null ? Config.archeryKneeBendDegrees : 12f,
+                CharacterHeightWorld * (Config != null ? Config.archeryDrawBodySinkRatio : 0.022f));
+        }
+
+        /// <summary>활쏘기 포즈의 지수 감쇠 계수(1/초) — LandingCrouchPoseSmoothingRate와 같은 관례.</summary>
+        public float ArcheryPoseSmoothingRate => Config != null ? Config.archeryPoseSmoothingRate : 46f;
+
+        /// <summary>공중 회전(텀블링) 자세 각도 묶음(StickConfig -> StickmanPoseAnimator).
+        /// BuildFallPoseSettings와 동일한 패턴 — Config가 없는 테스트/폴백 경로에서도 안전하도록
+        /// 각 값에 기본값을 둔다.</summary>
+        public StickmanPoseAnimator.ThrowTumblePoseSettings BuildThrowTumblePoseSettings()
+        {
+            return new StickmanPoseAnimator.ThrowTumblePoseSettings(
+                Config != null ? Config.throwTumbleHipDegrees : 76f,
+                Config != null ? Config.throwTumbleKneeBendDegrees : 104f,
+                Config != null ? Config.throwTumbleArmDegrees : 46f,
+                Config != null ? Config.throwTumbleElbowBendDegrees : 96f,
+                Config != null ? Config.throwTumbleLimbSpreadDegrees : 9f);
+        }
+
+        /// <summary>발버둥 자세 각도 묶음(StickConfig -> StickmanPoseAnimator). BuildFallPoseSettings와
+        /// 동일한 패턴 — Config가 없는 테스트/폴백 경로에서도 안전하도록 각 값에 기본값을 둔다.</summary>
+        public StickmanPoseAnimator.DragStrugglePoseSettings BuildDragStrugglePoseSettings()
+        {
+            return new StickmanPoseAnimator.DragStrugglePoseSettings(
+                Config != null ? Config.dragStruggleFrequencyHz : 3.4f,
+                Config != null ? Config.dragStruggleHipDegrees : 34f,
+                Config != null ? Config.dragStruggleKneeDegrees : 40f,
+                Config != null ? Config.dragStruggleArmDegrees : 46f,
+                Config != null ? Config.dragStruggleElbowDegrees : 38f);
+        }
+
         /// <summary>무릎앉아 착지 포즈의 최대 깊이 각도 묶음(StickConfig -> StickmanPoseAnimator).</summary>
         public StickmanPoseAnimator.LandingCrouchPoseSettings BuildLandingCrouchPoseSettings()
         {
@@ -1071,6 +1245,23 @@ namespace StickMate.States
 
         /// <summary>실측 검증/디버그용 — 마지막으로 확정된 바라보는 방향 부호(+1 오른쪽 / -1 왼쪽).</summary>
         public float FacingSign => _facingSign;
+
+        /// <summary>
+        /// 바라보는 방향을 강제로 지정한다(+1 오른쪽 / -1 왼쪽). <see cref="TickPose"/>가 이동 의도로
+        /// 방향을 갱신하는 것과 <b>정확히 같은 3가지</b>를 한다(내부 부호 + 포즈 애니메이터 + 눈).
+        ///
+        /// 왜 필요한가(2026-08-29 사용자 신고 "활을 이상하게 들고있음"의 근본 원인): 활쏘기는 캐릭터가
+        /// 화면 끝에 있으면 과녁을 <b>반대편으로 미러링</b>해 놓는다. 그런데 그때 몸의 방향을 함께
+        /// 돌리지 않아, 캐릭터가 과녁을 등지고 선 채로 활을 반대쪽(등 뒤)으로 들고 쏘는 그림이 됐다.
+        /// 게다가 활쏘기 중에는 <see cref="FacingLocked"/>가 걸려 배회 AI가 방향을 고쳐줄 수도 없었다.
+        /// 이제 연출을 시작하는 쪽이 "과녁을 향해 돌아선다"를 명시적으로 지시한다.
+        /// </summary>
+        public void SetFacingSign(float sign)
+        {
+            _facingSign = sign >= 0f ? 1f : -1f;
+            GetPoseAnimator()?.SetFacing(_facingSign);
+            GetEyeController()?.SetFacing(_facingSign);
+        }
 
         /// <summary>팔다리 각도 지수 감쇠 계수(1/초).</summary>
         public float PoseSmoothingRate => Config != null ? Config.poseSmoothingRate : 35f;

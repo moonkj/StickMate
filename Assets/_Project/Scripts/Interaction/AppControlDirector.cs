@@ -95,6 +95,8 @@ namespace StickMate.Interaction
         private bool _prevT, _prevX, _prevH;
         // Phase 5(2026-08-29): 스트레스(S) / 가출(N) / 할일(J) / 집중 모드(F).
         private bool _prevS, _prevN, _prevJ, _prevF;
+        // 활쏘기(2026-08-29) — A.
+        private bool _prevA;
 
         // 우클릭/메뉴 클릭 엣지 판정.
         private bool _rightPrev;
@@ -122,6 +124,7 @@ namespace StickMate.Interaction
         private RunawayDirector _runawayDirector;           // 가출 발동/돌아오라고 부르기용(지연 탐색 후 캐시).
         private TodoReminderDirector _todoDirector;         // 할일 추가 + 리마인더 강제 발동용(지연 탐색 후 캐시).
         private FocusWatchDirector _focusDirector;          // 집중 모드 토글용(지연 탐색 후 캐시).
+        private ArcheryDirector _archeryDirector;           // 활쏘기 발동용(지연 탐색 후 캐시).
 
         // 메뉴 행 정의 — 순서가 곧 화면 표시 순서이자 히트테스트 인덱스다.
         // 순서 = 화면 표시 순서 = 히트테스트 인덱스. 새 항목은 항상 [닫기] **앞에** 넣는다
@@ -132,9 +135,12 @@ namespace StickMate.Interaction
             BattleMinigame = 6, Graffiti = 7, WindowTheft = 8, WindowCrash = 9, HardwareReaction = 10,
             // Phase 5(2026-08-29 신설) — 항상 [닫기] **앞에** 넣는다(위 주석의 관습).
             StressGauge = 11, Runaway = 12, TodoReminder = 13, FocusWatch = 14,
-            Close = 15,
+            // 활쏘기(2026-08-29 사용자 요청) — 자율 발동 확률이 기본 0이라 이 행과 단축키 A가
+            // **유일한 발동 경로**다(StickConfig.archeryChance 문서 참고). 항상 [닫기] 앞에 넣는다.
+            Archery = 15,
+            Close = 16,
         }
-        private const int MenuRowCount = 16;
+        private const int MenuRowCount = 17;
 
         private void Awake()
         {
@@ -158,7 +164,7 @@ namespace StickMate.Interaction
                 "**G(그라피티 강제 발동)** / **T(창 도둑 강제 발동)** / **X(윈도우 크래시 강제 발동)** / " +
                 "**H(하드웨어 반응 데모 미리보기 — 4종 순환)** / **S(스트레스 게이지 단계 순환)** / " +
                 "**N(가출 발동, 가출 중이면 돌아오라고 부르기)** / **J(할일 추가 + 알림)** / " +
-                "**F(집중 모드 켜기/끄기)**. " +
+                "**F(집중 모드 켜기/끄기)** / **A(활쏘기 — 과녁을 세우고 3발)**. " +
                 $"전역 키 조회={(_keyService != null ? "사용 가능" : "미지원 — 우클릭 메뉴만 동작")}, " +
                 $"전역 버튼 조회={(_buttonService != null ? "사용 가능" : "미지원 — 단축키만 동작")}.");
         }
@@ -198,6 +204,7 @@ namespace StickMate.Interaction
             bool n = chord && IsKeyDown(GlobalKey.N);
             bool j = chord && IsKeyDown(GlobalKey.J);
             bool f = chord && IsKeyDown(GlobalKey.F);
+            bool aKey = chord && IsKeyDown(GlobalKey.A);
 
             if (!_hotkeyInitialized)
             {
@@ -205,6 +212,7 @@ namespace StickMate.Interaction
                 _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevV = v; _prevK = k; _prevG = g;
                 _prevT = t; _prevX = x; _prevH = h;
                 _prevS = sKey; _prevN = n; _prevJ = j; _prevF = f;
+                _prevA = aKey;
                 return;
             }
 
@@ -223,9 +231,11 @@ namespace StickMate.Interaction
             bool nRise = n && !_prevN;
             bool jRise = j && !_prevJ;
             bool fRise = f && !_prevF;
+            bool aRise = aKey && !_prevA;
             _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevV = v; _prevK = k; _prevG = g;
             _prevT = t; _prevX = x; _prevH = h;
             _prevS = sKey; _prevN = n; _prevJ = j; _prevF = f;
+            _prevA = aKey;
 
             if (qRise) Invoke(MenuAction.Quit, "전역 단축키 Ctrl+Opt+Cmd+Q");
             else if (cRise) Invoke(MenuAction.InkColor, "전역 단축키 Ctrl+Opt+Cmd+C");
@@ -242,6 +252,7 @@ namespace StickMate.Interaction
             else if (nRise) Invoke(MenuAction.Runaway, "전역 단축키 Ctrl+Opt+Cmd+N");
             else if (jRise) Invoke(MenuAction.TodoReminder, "전역 단축키 Ctrl+Opt+Cmd+J");
             else if (fRise) Invoke(MenuAction.FocusWatch, "전역 단축키 Ctrl+Opt+Cmd+F");
+            else if (aRise) Invoke(MenuAction.Archery, "전역 단축키 Ctrl+Opt+Cmd+A");
         }
 
         private bool IsKeyDown(GlobalKey key)
@@ -436,10 +447,31 @@ namespace StickMate.Interaction
                     RefreshMenuLabels();
                     break;
 
+                case MenuAction.Archery:
+                    ForceArchery(source);
+                    break;
+
                 case MenuAction.Close:
                     CloseMenu("메뉴 [닫기]");
                     break;
             }
+        }
+
+        /// <summary>
+        /// 활쏘기 발동(전역 단축키 Ctrl+Opt+Cmd+A / 우클릭 메뉴 [활쏘기]). 다른 데모 항목과 성격이
+        /// 다르다 — <b>확률을 건너뛰는 지름길이 아니라 정식이자 유일한 진입점</b>이다
+        /// (StickConfig.archeryChance 기본값 0: 사용자가 요청하지 않은 연출이 뜨는 것에 반복적으로
+        /// 불만을 표했기 때문. 집중 모드(F)와 같은 성격이다).
+        /// </summary>
+        private void ForceArchery(string source)
+        {
+            if (_archeryDirector == null) _archeryDirector = Object.FindFirstObjectByType<ArcheryDirector>();
+            if (_archeryDirector == null)
+            {
+                Debug.LogWarning($"[앱제어] 활쏘기 발동 실패({source}) — 씬에 ArcheryDirector가 없습니다.");
+                return;
+            }
+            _archeryDirector.ForceTriggerNow(source);
         }
 
         // ==================== 데모 진입점 (말풍선 / 라이벌) ====================
@@ -806,6 +838,8 @@ namespace StickMate.Interaction
             SetRowText(MenuAction.FocusWatch, focusOn
                 ? $"집중 모드 끄기 ({_focusDirector.RemainingSeconds:F0}초 남음)"
                 : "집중 모드 시작");
+
+            SetRowText(MenuAction.Archery, "활쏘기");
 
             SetRowText(MenuAction.Close, "닫기");
         }

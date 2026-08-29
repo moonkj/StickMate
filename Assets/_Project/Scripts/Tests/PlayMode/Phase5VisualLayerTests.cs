@@ -44,6 +44,26 @@ namespace StickMate.Tests.PlayMode
         private const string TodoPaperContainerName = "TodoReminderPaper";
 
         private StickmanAgent _agent;
+
+        /// <summary>기본 OFF가 되기 전의 원래 주의 경계값(StickConfig.stressTierCautionLevel).
+        /// 이 테스트가 렌더러 능력을 검증하는 동안만 잠깐 되돌리는 값이다.</summary>
+        private const float OriginalCautionLevel = 0.4f;
+
+        private StickConfig _configToRestore;
+        private float _savedCautionLevel;
+
+        /// <summary>임시로 낮춘 임계값을 출하 설정(기본 OFF)으로 되돌린다. 테스트가 중간에 실패해도
+        /// 반드시 실행되어야 하므로 [TearDown]에 둔다 — 여기서 빠뜨리면 이 테스트가 뒤이어 도는
+        /// 다른 테스트에까지 표시를 켜놓는다(ScriptableObject 인스턴스는 플레이모드가 끝나도
+        /// 메모리에 남는다).</summary>
+        [TearDown]
+        public void RestoreStressThreshold()
+        {
+            if (_configToRestore == null) return;
+            _configToRestore.stressTierCautionLevel = _savedCautionLevel;
+            _configToRestore = null;
+            StressGauge.SetLevel(0f);
+        }
         private StressGaugeRenderer _stressRenderer;
         private RunawayRenderer _runawayRenderer;
         private RunawayDirector _runawayDirector;
@@ -129,6 +149,18 @@ namespace StickMate.Tests.PlayMode
             Assert.AreEqual(StressMoodTier.Calm, _stressRenderer.CurrentTier);
 
             StickConfig config = _agent.Config;
+
+            // ★ 2026-08-29 — 이 상시 표시는 사용자 신고("몸주위로 이상한 주황색 선들이 생김")로
+            // **기본 OFF**가 되었다(StickConfig.stressTierCautionLevel = 2.0 = 도달 불가능한 값,
+            // StressGaugeRenderer.TierForLevel의 마스터 스위치 참고). 그래서 이 테스트는 출하 설정
+            // 그대로는 아무것도 그릴 수 없다. 여기서 잠깐 원래 기본값(0.4)으로 되돌려 **렌더러 자체의
+            // 능력**을 검증하고 끝나면 반드시 복원한다 — 이 되돌림 자체가
+            // Tests/PlayMode/StressTierDisplayDisabledTests.cs의 "OFF가 정말 OFF인가"에 대한
+            // 네거티브 컨트롤이기도 하다(끄면 안 뜨고, 되돌리면 뜬다).
+            _configToRestore = config;
+            _savedCautionLevel = config.stressTierCautionLevel;
+            config.stressTierCautionLevel = OriginalCautionLevel;
+
             float caution = config.stressTierCautionLevel;
             float alarm = config.stressSulkyThreshold;
 

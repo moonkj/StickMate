@@ -126,6 +126,41 @@ namespace StickMate.Core
         /// 상태와 똑같이 Ragdoll로 강제 인터럽트될 수 있다.
         /// </summary>
         LandingCrouch,
+
+        // ==== 던져졌을 때 공중 회전 후 무릎앉아 착지 (사용자 명시 요청 2026-08-29:
+        // "마우스로 던졌을때도 이상하게 관절꺽이면서 넘어지는데 던져도 공중에서 회전하면서
+        // 무릎앉아 착지할수있게 해줘") ====
+
+        /// <summary>
+        /// 유저가 커서로 붙잡아 **던진 직후의 공중 회전(텀블링)** 능동 상태(States/ThrowTumbleState.cs).
+        /// 던지기가 곧바로 Ragdoll로 가던 예전 경로를 대체한다 — 랙돌은 전신 물리에 위임하므로 팔다리가
+        /// 제멋대로 꺾이며 뒹굴었고, 그것이 사용자가 신고한 "이상하게 관절 꺾이면서 넘어진다"였다.
+        ///
+        /// 아키텍처 0절의 능동 상태 규약을 그대로 지킨다: 팔다리는 Kinematic + 절차적 localRotation이고,
+        /// 몸 전체의 회전은 **루트의 시각 회전을 상태가 직접 구동**한다(물리 각속도에 맡기지 않는다 —
+        /// 물리에 맡기는 순간 그것이 곧 "이상하게 꺾이는" 그림이다).
+        ///
+        /// 정상 종료는 LandingCrouch(무릎앉아 착지)이며, 착지 전에 회전을 정수 바퀴로 마무리해 몸을
+        /// 바로 세운다. 도중 **진짜 외력**(벽 충돌/라이벌 타격 등 임계값 초과 충격)이 들어오면 다른 능동
+        /// 상태와 똑같이 Ragdoll로 강제 인터럽트된다 — 즉 랙돌은 사라진 것이 아니라 "깨끗하게 던져진
+        /// 자유 비행"에서만 빠진 것이다(States/DragThrowState.ReleaseAndThrow의 갈림 기준 주석 참고).
+        /// StickConfig.throwTumbleEnabled를 끄면 던지기가 예전처럼 곧바로 Ragdoll/Fall로 간다.
+        /// </summary>
+        ThrowTumble,
+
+        // ==== 활쏘기 (사용자 명시 요청 2026-08-29: "하는 행동중 하나가 활을 들고 화살을 쏘는건데
+        // 과녁이 생성되고 3번정도 포물선을 그리는 활을 쏘는 행동을 하는거지") ====
+
+        /// <summary>
+        /// 제자리에 서서 <b>당기기 -> 조준 정지 -> 발사</b>를 3회 반복하는 능동 상태
+        /// (States/ArcheryState.cs). 트리거/과녁 자리 선정은 Interaction/ArcheryDirector.cs,
+        /// 과녁·활·화살 그림은 Interaction/ArcheryRenderer.cs가 맡는다.
+        ///
+        /// 명중/빗나감은 <b>전이가 확정된 Enter()에서 미리 전부 뽑아두고</b>, 화살 궤적은 그 확정된
+        /// 도달점을 지나도록 역산한다 — 물리로 던져놓고 우연에 맡기지 않는다(리더 지시).
+        /// 정상 종료는 Idle이며, 다른 스펙터클과 동일하게 SpectacleEventLock에 참여한다.
+        /// </summary>
+        Archery,
     }
 
     /// <summary>
@@ -275,6 +310,75 @@ namespace StickMate.Core
         }
     }
 
+    /// <summary>활쏘기(2026-08-29) 한 발의 <b>사전 확정된</b> 결과. 물리 판정 결과가 아니라
+    /// States/ArcheryState.Enter()가 시나리오로 미리 뽑아둔 값이며(마지막 발은 항상 Bullseye,
+    /// 앞 두 발 중 정확히 하나가 Miss), 렌더러는 이 값에 맞는 도달점을 지나도록 궤적을 역산할 뿐
+    /// 스스로 명중 여부를 판단하지 않는다 — 판정과 그림이 어긋날 경우의 수를 없앤다.</summary>
+    public enum ArcheryShotResult
+    {
+        /// <summary>과녁에 못 미치고 그 앞 땅에 꽂힌다(흙먼지가 함께 난다).</summary>
+        Miss,
+
+        /// <summary>과녁 바깥 링에 꽂힌다.</summary>
+        Hit,
+
+        /// <summary>정중앙에 꽂힌다. 연출의 클라이맥스라 항상 마지막 발이다.</summary>
+        Bullseye,
+    }
+
+    /// <summary>활쏘기 한 발의 두 시점. Aim=시위를 당기기 시작(렌더러가 이 발의 계획을 받아 활을
+    /// 조준선에 맞춘다), Release=놓는 순간(렌더러가 화살을 실제로 띄운다).</summary>
+    public enum ArcheryShotPhase
+    {
+        Aim,
+        Release,
+    }
+
+    /// <summary>활쏘기 한 발의 계획/발사 통지. 도달점이 <b>이벤트에 실려 오므로</b> 렌더러와 상태가
+    /// 같은 좌표를 보게 되고, 둘이 각자 계산해 어긋날 여지가 없다.</summary>
+    public readonly struct ArcheryShotEvent
+    {
+        public readonly int ShotIndex;
+        public readonly ArcheryShotPhase Phase;
+        public readonly ArcheryShotResult Result;
+
+        /// <summary>미리 확정된 도달점(월드 좌표).</summary>
+        public readonly Vector2 ImpactWorld;
+
+        /// <summary>이 화살이 날아가는 데 걸리는 시간(초). 도달점과 이 값이 정해지면 포물선의 초기
+        /// 속도는 유일하게 결정된다(ArcheryRenderer.SolveLaunchVelocity).</summary>
+        public readonly float FlightSeconds;
+
+        public ArcheryShotEvent(int shotIndex, ArcheryShotPhase phase, ArcheryShotResult result,
+            Vector2 impactWorld, float flightSeconds)
+        {
+            ShotIndex = shotIndex;
+            Phase = phase;
+            Result = result;
+            ImpactWorld = impactWorld;
+            FlightSeconds = flightSeconds;
+        }
+    }
+
+    /// <summary>활쏘기 과녁 오버레이의 생애주기. 다른 스펙터클과 같은 SpectacleOverlayPhase 3단계를
+    /// 쓰고, 과녁 중심/지면 높이/바라보는 방향 스냅샷을 함께 싣는다(전부 월드 좌표 — 이 연출은 창
+    /// 좌표계와 무관하게 캐릭터 주변에서만 일어나므로 OS 좌표로 변환할 이유가 없다).</summary>
+    public readonly struct ArcheryOverlayEvent
+    {
+        public readonly Vector2 TargetWorld;
+        public readonly float GroundWorldY;
+        public readonly float Facing;
+        public readonly SpectacleOverlayPhase Phase;
+
+        public ArcheryOverlayEvent(Vector2 targetWorld, float groundWorldY, float facing, SpectacleOverlayPhase phase)
+        {
+            TargetWorld = targetWorld;
+            GroundWorldY = groundWorldY;
+            Facing = facing;
+            Phase = phase;
+        }
+    }
+
     /// <summary>UX_FLOW.md 10절 격파 미니게임 한 차례 시도의 결과. StickmanEventBus가 트리거 조건만
     /// 발행하고(실제 파티클/파괴 연출은 Phase 2+ 렌더링 담당, WanderAmbientMotionRequested와 동일 패턴),
     /// Success/Exhausted는 상태 종료(Idle 복귀)로 이어지고 Fail은 같은 상태 안에서 재시도로 이어진다.</summary>
@@ -383,6 +487,13 @@ namespace StickMate.Core
         /// 연출은 Phase 2+ 렌더링 레이어가 이 이벤트를 구독해 담당한다(지금은 트리거 조건만 계산).</summary>
         public static event Action<BattleMinigamePhase> BattleMinigamePhaseChanged;
 
+        /// <summary>활쏘기(2026-08-29) 과녁 오버레이 생애주기 변경 — Interaction/ArcheryRenderer.cs가
+        /// 구독해 과녁을 세우고 걷는다.</summary>
+        public static event Action<ArcheryOverlayEvent> ArcheryOverlayChanged;
+
+        /// <summary>활쏘기 한 발의 조준 시작/발사 통지 — 사전 확정된 도달점을 함께 싣는다.</summary>
+        public static event Action<ArcheryShotEvent> ArcheryShotChanged;
+
         /// <summary>라이벌 스틱맨 대결(11절)이 시작되었을 때 발생 — 등장 연출/조우 대사 트리거용
         /// (지금은 구독자 없음, Phase 2+ 렌더링 레이어 몫).</summary>
         public static event Action RivalDuelStarted;
@@ -453,6 +564,13 @@ namespace StickMate.Core
 
         public static void RaiseBattleMinigamePhaseChanged(BattleMinigamePhase phase)
             => BattleMinigamePhaseChanged?.Invoke(phase);
+
+        public static void RaiseArcheryOverlayChanged(Vector2 targetWorld, float groundWorldY, float facing, SpectacleOverlayPhase phase)
+            => ArcheryOverlayChanged?.Invoke(new ArcheryOverlayEvent(targetWorld, groundWorldY, facing, phase));
+
+        public static void RaiseArcheryShotChanged(int shotIndex, ArcheryShotPhase phase, ArcheryShotResult result,
+            Vector2 impactWorld, float flightSeconds)
+            => ArcheryShotChanged?.Invoke(new ArcheryShotEvent(shotIndex, phase, result, impactWorld, flightSeconds));
 
         public static void RaiseRivalDuelStarted()
             => RivalDuelStarted?.Invoke();

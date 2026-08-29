@@ -113,8 +113,16 @@ namespace StickMate.States
             if (blackboard.Config != null && !blackboard.Config.landingImpactRagdollShield) return false;
 
             StickmanStateId state = blackboard.Machine.CurrentStateId;
+            // ThrowTumble 포함(2026-08-29 "던져도 무릎앉아 착지" 라운드): 던져진 채 회전하다 착지하는
+            // 것도 자기 착지이지 외력이 아니다. 특히 논리 발판이 없는 구간(안전망에 뚫린 Dock 가로
+            // 구멍)으로 던져지면 전속력 그대로 물리 바닥에 부딪히는데, 그것이 랙돌이 되면 사용자가
+            // 신고한 "던지면 관절 꺾이며 넘어짐"이 그대로 되돌아온다.
+            // 대가(정직하게): 회전 중에는 루트 원점이 회전 보정으로 몸 위쪽에 있을 수 있어, 그 순간
+            // **옆에서 들어온 충돌도 "발 높이 이하"로 판정되어 함께 무시될 수 있다**. 회전은 길어야
+            // 1~2초이고 그 사이 라이벌 타격이 겹칠 확률은 낮은 반면, 반대 방향의 오판(자기 착지를
+            // 외력으로 보는 것)은 사용자가 이미 두 번 신고한 증상이라 이쪽을 택했다.
             if (state != StickmanStateId.Fall && state != StickmanStateId.Jump &&
-                state != StickmanStateId.LandingCrouch) return false;
+                state != StickmanStateId.LandingCrouch && state != StickmanStateId.ThrowTumble) return false;
 
             if (collision == null) return false;
             float footY = blackboard.Body.position.y;

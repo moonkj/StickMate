@@ -281,6 +281,11 @@ namespace StickMate.Core
                 // 일 자체를 없앰).
                 { StickmanStateId.BattleMinigame, new BattleMinigameState(_blackboard) },
                 { StickmanStateId.Dragged, new DragThrowState(_blackboard) },
+                // ★ 던지기 공중 회전(사용자 명시 요청 2026-08-29) — DragThrowState가 놓는 순간
+                // "깨끗하게 던져진 자유 비행"이면 이 상태로 보낸다. 등록을 빠뜨리면 ChangeState가
+                // BUG-M2 방어 코드(에러 로그 + 현재 상태 유지)를 밟아, 던져도 아무 일이 일어나지 않고
+                // 캐릭터가 Dragged에 고착된 것처럼 보인다.
+                { StickmanStateId.ThrowTumble, new ThrowTumbleState(_blackboard) },
                 { StickmanStateId.RodeoCursor, new RodeoCursorState(_blackboard) },
                 // Phase 4 신규(UX_FLOW.md 27절) — 창 도둑만 자체 대사/페이즈 로직이 있어 전용 State
                 // 클래스(WindowTheftState)를 쓰고, 나머지 4개(그라피티/청소부/블랙홀/크래시 스윙)는
@@ -311,6 +316,11 @@ namespace StickMate.Core
                 { StickmanStateId.Sulky, new TimedSpectacleState(_blackboard, StickmanStateId.Sulky,
                     cfg => cfg.stressSulkyHoldSeconds, cfg => "아 몰라...") },
                 { StickmanStateId.Runaway, new RunawayState(_blackboard) },
+                // 활쏘기(사용자 명시 요청 2026-08-29) — 3발 x 3단계 페이즈 머신 + 매 프레임 포즈 구동이라
+                // TimedSpectacleState("부수 효과 없는 순수 타이머")를 재사용할 수 없다(States/ArcheryState.cs
+                // 클래스 문서에 판단 근거). 등록을 빠뜨리면 ChangeState가 BUG-M2 방어 코드를 밟아
+                // 연출이 통째로 사라진다.
+                { StickmanStateId.Archery, new ArcheryState(_blackboard) },
             };
 
             // BUG-P1-M2 대응(Major, docs/BUG_REPORT_PHASE1.md): 생성과 "최초 상태 활성화"를 분리했다.

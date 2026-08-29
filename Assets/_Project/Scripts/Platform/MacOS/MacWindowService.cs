@@ -139,6 +139,7 @@ namespace StickMate.Platform.MacOS
         private const ushort kVK_ANSI_N = 0x2D; // 가출 발동 / 돌아오라고 부르기("Nope 나 안 해")
         private const ushort kVK_ANSI_J = 0x26; // 할일 추가 + 알림(Job)
         private const ushort kVK_ANSI_F = 0x03; // 집중 모드 켜기/끄기(Focus)
+        private const ushort kVK_ANSI_A = 0x00; // 활쏘기 발동(Archery)
 
         [DllImport(CoreGraphicsLib)]
         private static extern uint CGMainDisplayID();
@@ -1499,6 +1500,7 @@ namespace StickMate.Platform.MacOS
                 case GlobalKey.N:       code = kVK_ANSI_N;  break;
                 case GlobalKey.J:       code = kVK_ANSI_J;  break;
                 case GlobalKey.F:       code = kVK_ANSI_F;  break;
+                case GlobalKey.A:       code = kVK_ANSI_A;  break;
                 default:
                     pressed = false;
                     return false;

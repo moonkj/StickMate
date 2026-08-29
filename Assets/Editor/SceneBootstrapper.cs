@@ -806,6 +806,29 @@ namespace StickMate.EditorTools
             root.AddComponent<FocusWatchRenderer>();
 
             // ================================================================================
+            // 활쏘기 배선 (2026-08-29 사용자 요청: "과녁이 생성되고 3번정도 포물선을 그리는 활을 쏘는 행동")
+            // ================================================================================
+            // SpectacleEventLock 참여 — 기준은 다른 항목과 같다("ChangeState()로 단일 상태 슬롯을
+            // 다투는가"). 활쏘기는 Idle/Walk에서 StickmanStateId.Archery로 전이하므로 참여한다.
+            // 자율 발동 확률(StickConfig.archeryChance)은 **기본 0**이라, 배치만으로는 아무 일도
+            // 일어나지 않는다 — 전역 단축키 Ctrl+Opt+Cmd+A / 우클릭 메뉴 [활쏘기]가 유일한 발동 경로다.
+            var archery = root.AddComponent<ArcheryDirector>();
+            var archerySo = new SerializedObject(archery);
+            archerySo.FindProperty("_player").objectReferenceValue = agent;
+            archerySo.FindProperty("_config").objectReferenceValue = config;
+            // 활쏘기 중 캐릭터를 클릭하면 즉시 중단한다(사용자 요구). 클릭 **표적**이 아니라 클릭
+            // **사실**만 쓰므로 GrabArea가 아니라 히트박스 컴포넌트 자체를 넘긴다
+            // (StressGaugeDirector/RunawayDirector와 같은 관례).
+            archerySo.FindProperty("_hitbox").objectReferenceValue = hitbox;
+            archerySo.ApplyModifiedPropertiesWithoutUndo();
+
+            // 과녁/활/화살을 그리는 시각 레이어. **콜라이더를 단 하나도 만들지 않는다** — 과녁은 클릭할
+            // 필요가 없는 관전 전용 오브젝트이므로, 떠 있는 동안에도 그 자리의 다른 앱은 평소처럼
+            // 클릭된다(WindowCrashRenderer와 같은 계약). 직렬화 필드가 없고 Awake()에서 같은
+            // GameObject의 StickmanAgent를 직접 찾으므로 배선이 필요 없다.
+            root.AddComponent<ArcheryRenderer>();
+
+            // ================================================================================
             // 앱 제어 수단 배선 (2026-08-28 — "터미널 없이 끌 수 있어야 한다")
             // ================================================================================
             // Interaction/AppControlDirector.cs: 전역 단축키(Ctrl+Opt+Cmd+Q 종료 등)와 캐릭터 우클릭
@@ -1345,6 +1368,14 @@ namespace StickMate.EditorTools
             DestroyComponentIfPresent<TodoPostItWidget>(rival);
             DestroyComponentIfPresent<FocusWatchRenderer>(rival);
             DestroyComponentIfPresent<FocusWatchDirector>(rival);
+            // 활쏘기(2026-08-29 신설) — 위 렌더러들과 **정확히 같은 함정**이다. ArcheryRenderer는
+            // StickmanEventBus의 전역 정적 이벤트를 구독하므로, 남겨두면 플레이어가 활을 쏠 때
+            // 라이벌 쪽에도 과녁과 화살이 한 벌 더 그려진다(격파에서 "[격파] 소환"이 정확히 2번 찍혀
+            // 실측 확인된 그 버그). 렌더러에도 "자기 GameObject의 StickmanAgent가 없으면 아무것도
+            // 하지 않는다"는 자체 가드가 있지만 애초에 배치하지 않는 것이 1차 방어다.
+            // Director도 플레이어 전용 트리거이므로 함께 제거한다(라이벌은 활을 쏘지 않는다).
+            DestroyComponentIfPresent<ArcheryRenderer>(rival);
+            DestroyComponentIfPresent<ArcheryDirector>(rival);
             DestroyComponentIfPresent<RodeoCursorWatcher>(rival);
             DestroyComponentIfPresent<DragThrowController>(rival);
             DestroyComponentIfPresent<StickmanClickHitbox>(rival);

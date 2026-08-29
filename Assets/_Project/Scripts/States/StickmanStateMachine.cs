@@ -22,6 +22,15 @@ namespace StickMate.States
     ///       낙하 높이가 위 임계값 미만일 때의 갈래다(예: macOS Dock 단차 0.855유닛).
     /// - LandingCrouch -> Idle/Walk : 무릎앉아 진행 곡선 완료 시(이동 의도 유무로 분기).
     ///       도중 접지를 잃으면(창이 닫히거나 움직임) Fall로, 외력 임계값 초과 시 Ragdoll로 빠진다.
+    /// - Dragged -> ThrowTumble   : 유저가 놓은 순간의 속도가 StickConfig.throwTumbleMinSpeedHeightsPerSecond
+    ///       (초당 신장 배수) 이상일 때. "깨끗하게 던져진 자유 비행"만 이 갈래로 간다 — 예전에는 여기서
+    ///       곧바로 Ragdoll이었고 그것이 사용자 신고 "던지면 관절 꺾이며 넘어짐"의 정체였다.
+    ///       StickConfig.throwTumbleEnabled를 끄면 이 갈래가 사라지고 예전 거동(Ragdoll/Fall)으로 복귀한다.
+    /// - Dragged -> Ragdoll/Fall  : 위 임계값 미만이거나 회전 스위치를 껐을 때의 예전 갈래.
+    /// - ThrowTumble -> LandingCrouch : 회전을 정수 바퀴로 마무리해 몸을 세운 뒤 착지 확정.
+    ///       깊이 입력은 착지 충격을 같은 충격의 자유낙하 높이로 환산한 값이다(ThrowTumbleState 문서).
+    ///       화면 이탈/안전 상한 초과 시에는 평범한 Fall로 빠지고, 회전 중 **진짜 충격**(벽 충돌/타격)이
+    ///       들어오면 다른 능동 상태와 똑같이 Ragdoll로 강제 인터럽트된다.
     /// - Idle/Walk/Jump/Fall/ParkourClimb/Attack -> Ragdoll :
     ///       외력(피격/투척/충격량 크기)이 StickConfig.ragdollForceThreshold 이상이면
     ///       "능동 상태가 무엇이든" 즉시 강제 인터럽트 전이. (진행 중이던 Attack/ParkourClimb도 취소됨)
