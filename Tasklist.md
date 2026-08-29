@@ -1830,3 +1830,18 @@ y만 보간하고 x는 손대지 않았다. 진입 조건은 "지금 딛는 발�
 - `DesktopIconMirrorOverlayChanged` / `DesktopIconMirrorDirector` — **플랫폼 제약으로 보류**(macOS `IDesktopIconLayoutService` 미구현, 실제 아이콘 좌표는 접근성/화면기록 권한 필요 → 비침해 원칙상 배제). 배선 누락이 아니다.
 - `LandingRollRequested` / `WanderAmbientMotionRequested` — 모션 계열(`StickmanPoseAnimator` 작업), 별도 묶음.
 - `RivalDuelStarted` — 라이벌 대결 시작 연출.
+
+### 2026-08-29 — 리더 감사 축 추가: "공개 API인데 호출자가 없는 것" (결과: 이상 없음)
+투두 기능이 `TodoListModel.Add()` 호출자 0건으로 통째로 도달 불가능했던 건을 계기로, 기존 감사(이벤트 구독자 / 씬 배치)에 **세 번째 축**을 추가해 전수 실행했다.
+
+**방법**: `Assets/**/*.cs`(테스트 제외)의 `public` 메서드마다 실제 호출 지점(`Name(` 형태)을 세되 **선언 파일 자신과 테스트는 제외**. Unity 생명주기/인터페이스 구현(`Awake`/`Tick`/`Enter`/`Exit` 등)은 폴리모픽 호출이라 제외.
+※ 1차 시도는 `\bName\b` 단어 매칭이라 `Add` 같은 흔한 이름이 주석에만 나와도 호출자로 잡혀 **0건이라는 거짓 음성**이 나왔다. 호출 형태(`Name(`)로 좁혀 재실행한 것이 위 방법이다.
+
+**결과 — 후보 19건, 전부 확인 완료. 사용자에게 보이는 깨진 기능 없음.**
+- 대부분 **같은 파일 안에서만 쓰이는 내부 헬퍼**였다(`ApplyInkColor` ← `ApplyInkColorFromConfig`, `SetLookDirection` ← `LookForward`, `TryGetDockFoothold` ← 발판 조립, `StartFocusSession` ← 데모 진입점). 공개 접근자인 것은 테스트/설정창 대비용이라 문제 아님.
+- **눈 커서 추적은 정상**: 매 프레임 진입점은 `EyeController.TickLookAt()`이고 `StickmanBlackboard.TickPose()` 마지막 줄에서 상태와 무관하게 호출된다. `SetLookDirection`이 후보로 뜬 건 거짓 양성.
+- **가출 되부르기도 정상**: 단축키 경로가 `RunawayManualRecallSignaled = true`를 직접 세운다.
+- 순수 미사용 2건은 **중복**이라 기록만 해둔다: `RunawayDirector.RecallManually()`(단축키 경로가 같은 일을 인라인으로 재구현 — 두 경로가 갈라질 위험), `BattleMinigameDirector.TriggerManually()`(자체 주석이 `ForceTriggerNow`로 대체됐다고 명시).
+- `Platform/Mobile/ScreenshotBackdropPlatformService`의 4개(`SetBackdropScreenshot` 등)는 **모바일 배선 자체가 아직 없어서** 당연한 미호출. 알려진 미착수 항목.
+
+**결론**: 투두 건은 계통적 구멍이 아니라 예외였다. 다만 이 축은 앞으로도 라운드마다 돌린다 — 비용이 grep 한 번뿐이다.
