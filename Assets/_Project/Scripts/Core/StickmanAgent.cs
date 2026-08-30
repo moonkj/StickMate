@@ -368,18 +368,24 @@ namespace StickMate.Core
             {
                 // 항상위는 클릭관통과 달리 "우리 창을 다시 조작할 수단을 잃는" 위험이 없으므로(마우스/
                 // 키보드 입력은 그대로 받는다) 지연 없이 즉시 적용한다.
-                // 주의(BUG-B1, docs/BUG_REPORT_PHASE0.md Blocker): Win32WindowService는 아직 진짜
-                // 분리된 오버레이 창이 없어(게임 자신의 창을 재사용하는 스텁), 안전 가드가
-                // NotSupportedException을 던지도록 막아뒀다. 진짜 오버레이 HWND 구현 전까지 Windows
-                // 에서는 이 호출이 의도적으로 실패한다 — 버그가 아니라 "게임 창 자체가 최상단 고정되는"
-                // 훨씬 나쁜 결과를 막기 위한 임시 안전장치다. macOS는 이제 실제 네이티브 플러그인으로
-                // 진짜 동작한다(Platform/MacOS/MacWindowService.cs).
+                //
+                // ★ 2026-08-30 윈도우 지원 라운드 — BUG-B1(Blocker) 해소로 이 자리의 의미가 바뀌었다.
+                // 이전까지 Windows에서는 Win32WindowService가 "진짜 분리된 오버레이 창"을 갖지 못한
+                // 스텁이라(게임 자신의 창을 재사용) 이 호출이 NotSupportedException으로 **의도적으로
+                // 실패**하도록 막혀 있었다. 이번 라운드에 Windows도 macOS와 동일한 경로
+                // (UniWindowController, com.kirurobo.uniwinc)로 통일되어 두 플랫폼 모두 진짜 투명/
+                // 항상위/클릭관통 오버레이가 실제로 켜진다 — 그 안전 가드는 제거됐다.
+                //
+                // 그런데도 try/catch를 남겨두는 이유(가드의 부활이 아니라 다른 실패 모드):
+                // 두 구현체 모두 "씬에서 UniWindowController를 찾지 못하면" NotSupportedException을
+                // 던진다(조용한 no-op 금지 컨벤션). 그건 배선 사고이지 플랫폼 미지원이 아니므로,
+                // 여기서 잡아 경고로 남기고 나머지 초기화는 계속한다(BUG-P1-M3와 같은 태도).
                 _platformService.SetAlwaysOnTop(true);
             }
             catch (System.NotSupportedException ex)
             {
-                Debug.LogWarning("[StickmanAgent] 항상위 배선을 건너뜀 — 진짜 오버레이 창 구현 전까지 " +
-                                  "안전 가드가 활성화되어 있습니다(BUG-B1 참고): " + ex.Message);
+                Debug.LogWarning("[StickmanAgent] 항상위 배선 실패 — 오버레이 컨트롤러를 찾지 못했습니다" +
+                                  "(씬에 UniWindowController가 배치되어 있는지 확인하세요): " + ex.Message);
             }
 
             // 비침해 원칙 2: 클릭 관통 기본 ON — 다만 위 클래스 상단 "클릭 관통 긴급 종료 안전장치"

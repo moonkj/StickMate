@@ -268,9 +268,33 @@ namespace StickMate.Tests.PlayMode
         private static float Side(Vector2 p, Vector3 a, Vector3 b)
             => (p.x - b.x) * (a.y - b.y) - (a.x - b.x) * (p.y - b.y);
 
-        /// <summary>캐릭터 주변만 크게 렌더해 PNG로 남긴다(배치 실행에서도 동작하는 RT 경로).</summary>
+        /// <summary>
+        /// 캐릭터 주변만 크게 렌더해 PNG로 남긴다(사람이 눈으로 확인하기 위한 증거 이미지).
+        ///
+        /// ★ 2026-08-30 (윈도우 지원 라운드에서 발견) — `-nographics` 가드가 반드시 필요하다.
+        /// 원래 주석은 "배치 실행에서도 동작하는 RT 경로"라고 적혀 있었지만 **실측으로 반증됐다**:
+        /// `-batchmode -nographics`에는 GPU 디바이스가 아예 없어(SystemInfo.graphicsDeviceType == Null)
+        /// 아래 `cam.Render()`가 네이티브에서 SIGSEGV로 **프로세스를 통째로 죽인다**
+        /// (스택: GfxDevice::DrawSharedGeometryJobs ← DrawUtil::DrawLineOrTrailMultiple... ←
+        /// Camera::Render ← 이 메서드). 그러면 PlayMode 전체 스위트가 EXIT=139로 중단되어, 이 뒤에
+        /// 실행돼야 할 테스트 수십 개가 **아예 돌지 않은 채** 결과 XML만 부분적으로 남는다
+        /// (실측: 253개 중 235/237개까지만 기록되고 종료). Tasklist.md에 이미 같은 계열의 사고가
+        /// "오프스크린 카메라는 -batchmode -nographics에서 프로세스를 죽인다"로 기록돼 있다.
+        ///
+        /// 이 가드는 **검증을 약화시키지 않는다** — 이 메서드가 만드는 것은 사람이 볼 PNG 증거일 뿐이고,
+        /// 실제 합격/불합격 판정(채움 메시가 존재하는가 / 머리 링 윗호를 덮는가 / 턱은 안 덮는가)은
+        /// 전부 호출부의 Assert가 메시 정점 기하로 수행한다. 그래픽이 있는 실행(에디터 Test Runner,
+        /// -batchmode without -nographics)에서는 예전과 똑같이 PNG가 저장된다.
+        /// </summary>
         private static IEnumerator Capture(string name)
         {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+            {
+                Debug.Log($"{LogPrefix} 그래픽 디바이스가 없는 실행(-nographics)이라 증거 PNG 캡처를 " +
+                    $"건너뜁니다 — 판정은 메시 기하 Assert가 이미 끝냈습니다(name={name}).");
+                yield break;
+            }
+
             var agent = Object.FindFirstObjectByType<StickmanAgent>();
             Camera main = agent != null && agent.Blackboard != null ? agent.Blackboard.MainCamera : Camera.main;
             if (main == null || agent == null) yield break;

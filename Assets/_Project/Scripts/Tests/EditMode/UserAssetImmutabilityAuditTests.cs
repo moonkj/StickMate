@@ -62,23 +62,14 @@ namespace StickMate.Tests.EditMode
             public Dictionary<string, Func<string, bool>> ExceptionsByFileName;
         }
 
-        /// <summary>
-        /// 알려진 유일한 예외: Win32WindowService.cs가 자기 자신의 오버레이 창(_overlayHwnd)을
-        /// 항상-최상단(topmost)으로 유지하기 위해 SetWindowPos를 호출하는 것 — 단, SWP_NOMOVE|SWP_NOSIZE
-        /// 플래그로 Z-order만 바꾸고 좌표/크기는 절대 건드리지 않는다(위치를 쓰는 인자는 전부 0으로
-        /// 고정, 실제 좌표 변경은 이 플래그가 무시함). Win32WindowService.cs 187~188행 주석 참고.
-        /// P/Invoke 시그니처 선언(extern) 자체는 함수를 "호출"하는 게 아니므로 별도로 허용한다.
-        /// 이 두 조건(extern 선언 / _overlayHwnd + SWP_NOMOVE + SWP_NOSIZE 동시 존재) 중 하나도
-        /// 만족하지 않는 SetWindowPos( 라인이 그 파일에 나타나면 — 예: 타 윈도우 핸들을 인자로 넘기거나
-        /// 좌표를 실제로 바꾸는 호출이 추가되면 — 이 예외는 더 이상 적용되지 않고 그대로 실패 처리된다.
-        /// </summary>
-        private static bool IsSafeSelfOverlaySetWindowPosUsage(string line)
-        {
-            if (line.Contains("extern")) return true; // DllImport 시그니처 선언, 실제 호출이 아님.
-            return line.Contains("_overlayHwnd")
-                && line.Contains("SWP_NOMOVE")
-                && line.Contains("SWP_NOSIZE");
-        }
+        // ★ 2026-08-30 (윈도우 지원 라운드) — SetWindowPos 화이트리스트가 통째로 사라졌다.
+        // 이전까지 유일한 예외는 "Win32WindowService.cs가 자기 오버레이 창의 Z-order만
+        // SWP_NOMOVE|SWP_NOSIZE로 바꾸는 1건"이었고, 이 파일에 그 라인을 재검증하는 함수
+        // (IsSafeSelfOverlaySetWindowPosUsage)와 "그 예외가 죽은 코드가 아닌지" 확인하는 테스트가
+        // 함께 있었다. 이번 라운드에 Windows 오버레이 제어가 통째로 UniWindowController로 옮겨가면서
+        // Win32WindowService.cs에서 SetWindowPos 호출 자체가 사라졌고, 그 두 장치도 함께 제거했다
+        // (원래 테스트 주석이 "호출이 사라진다면 — 좋은 신호 — 함께 제거할 것"이라고 명시해 둔 대로다).
+        // 이제 SetWindowPos(는 프로젝트 어디에서도 예외 없이 금지된다 = 원칙 3의 보장이 더 강해졌다.
 
         private static readonly List<ForbiddenPattern> ForbiddenPatterns = new List<ForbiddenPattern>
         {
@@ -101,12 +92,9 @@ namespace StickMate.Tests.EditMode
             {
                 Needle = "SetWindowPos(",
                 Reason = "타 윈도우의 위치/크기/Z-order를 바꿀 수 있는 Win32 API(27-1 창 도둑, " +
-                    "27-7 체크리스트가 명시적으로 0건을 요구). Win32WindowService.cs의 자기 오버레이 " +
-                    "Z-order 조정 1건만 화이트리스트로 허용하며, 그마저도 라인 단위로 재검증한다.",
-                ExceptionsByFileName = new Dictionary<string, Func<string, bool>>
-                {
-                    ["Win32WindowService.cs"] = IsSafeSelfOverlaySetWindowPosUsage,
-                },
+                    "27-7 체크리스트가 명시적으로 0건을 요구). 2026-08-30부터 화이트리스트 예외가 " +
+                    "하나도 없다 — 오버레이 Z-order 제어가 UniWindowController로 옮겨가 " +
+                    "Win32WindowService.cs의 마지막 1건이 사라졌기 때문이다(위 주석 참고).",
             },
             new ForbiddenPattern
             {
@@ -214,19 +202,22 @@ namespace StickMate.Tests.EditMode
         }
 
         [Test]
-        public void SetWindowPos_화이트리스트_예외가_실제로_검증되고_있다()
+        public void Win32WindowService에는_SetWindowPos_호출이_하나도_없다()
         {
-            // 화이트리스트 엔트리가 정작 아무 매치도 없어 사실상 테스트되지 않는 죽은 코드로 방치되는
-            // 것을 막는 가드. Win32WindowService.cs 리팩터링으로 SetWindowPos 호출이 사라진다면(좋은
-            // 신호), 위 ExceptionsByFileName 엔트리와 이 테스트를 함께 제거할 것.
+            // 위 화이트리스트 제거(2026-08-30)를 코드로 잠근다. 이전 버전의 이 테스트는 정반대로
+            // "SetWindowPos 호출이 최소 1건 있어야 한다"(화이트리스트가 죽은 코드가 아님을 보증)를
+            // 확인했는데, 그 1건이 UniWindowController 전환으로 사라졌으므로 이제는 **0건임**을
+            // 지키는 테스트로 뒤집는다. 누군가 다시 자기 창을 SetWindowPos로 직접 조작하는 코드를
+            // 넣으면 여기서 먼저 걸린다(위 ForbiddenPatterns 스캔에도 예외 없이 걸린다 — 이중 방어).
             var files = CollectScannedSourceFiles();
             var win32File = files.FirstOrDefault(p => Path.GetFileName(p) == "Win32WindowService.cs");
             Assert.IsNotNull(win32File, "Win32WindowService.cs를 찾을 수 없습니다(사전 조건 확인).");
 
             int matchCount = File.ReadAllLines(win32File).Count(l => l.Contains("SetWindowPos("));
-            Assert.Greater(matchCount, 0,
-                "Win32WindowService.cs 안에 SetWindowPos( 호출이 하나도 없어 화이트리스트 예외 로직이 " +
-                "실제로는 아무것도 검증하지 않고 있습니다.");
+            Assert.AreEqual(0, matchCount,
+                "Win32WindowService.cs에 SetWindowPos( 가 다시 등장했습니다. 오버레이의 항상위/스타일 " +
+                "제어는 UniWindowController(isTopmost 등)를 통해서만 해야 합니다 — 직접 Win32 창 조작은 " +
+                "원칙 3의 표면적을 다시 넓힙니다.");
         }
 
         // ================= 2. 읽기 전용 열거 계약 =================

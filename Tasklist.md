@@ -5677,3 +5677,142 @@ test-engineer의 임시 하네스(`ZZTeFillAuditHarness`, 이미 작성·실행�
 test-engineer가 "커밋 전 넣기를 권한다"고 명시한 유일한 항목이라 이제 커밋 가능 상태.
 m2~m8(비대칭 OnDestroy 정리, ApplyAlpha 매프레임 할당, 33-2-0 표 스테일, wornFace 픽스처 부재,
 SectionCountForTab 4칸 상한, CharacterInfoWindow.cs 2333줄 분리)은 전부 다음 폴리시 라운드로 이월.
+
+---
+
+## 2026-08-30 — 코더: Windows 지원 착수 (BUG-B1 해소 + Windows 빌드 자동화)
+
+리더 메모 "윈도우 지원 착수 예약"(이 문서 위쪽)의 실행 라운드. 기준선 커밋 `9ad6279`.
+
+### 과학적 토론 로그 — "Win32 직접 구현" vs "UniWindowController로 통일"
+
+**질문**: BUG-B1(Windows에 진짜 분리된 투명 오버레이 창이 없어 `SetAlwaysOnTop`/`SetClickThrough`가
+`NotSupportedException`으로 막혀 있음)을 풀 때, `CreateWindowEx`로 새 오버레이 HWND를 직접 만들
+것인가, macOS가 이미 쓰고 있는 UniWindowController로 통일할 것인가?
+
+**가설 H1**: "UniWindowController는 macOS 전용 해법이라 Windows에는 못 쓴다."
+→ **반증(코드/바이너리 실측 4건).** 추측이 아니라 패키지 실물을 열어 확인했다.
+1. `Library/PackageCache/com.kirurobo.uniwinc@304f9ba2aa4a/Runtime/Plugins/Windows/x64/LibUniWinC.dll`
+   이 **패키지에 동봉되어 있다**(x86 판도 함께). macOS용 `.bundle`과 나란히 존재한다.
+2. `package.json`의 description이 `"Unified window controller for Mac and Windows"`.
+3. `Runtime/Scripts/LowLevel/UniWinCore.cs`의 P/Invoke 선언 **44개 전부**가 플랫폼 분기 없이 같은
+   심볼(`[DllImport("LibUniWinC")]`)을 부른다. 파일 전체에서 `UNITY_STANDALONE_WIN` 분기는 0건이고
+   `UNITY_EDITOR_WIN`이 2건뿐인데 둘 다 에디터 전용 예외 처리다(투명 갱신/알파값).
+   → macOS에서 실동작 검증이 끝난 `isTransparent / isTopmost / isClickThrough / isHitTestEnabled`
+   네 프로퍼티가 **같은 코드 경로로** Windows에도 그대로 적용된다.
+4. `EnableTransparent()`는 Windows에서 `SetTransparent` + `SetBorderless`를 함께 건다 — 우리가
+   직접 `WS_EX_LAYERED`를 붙이고 프레임을 지우려던 작업과 정확히 같은 일이다.
+
+**가설 H2**: "그래도 직접 구현하면 우리 요구(픽셀 단위 히트테스트)에 더 잘 맞을 것이다."
+→ **반증.** 라이브러리의 `hitTestType=Raycast`(커서 아래 `Collider2D` 유무로 판정)를 이미 macOS가
+쓰고 있고, 이 프로젝트의 씬 배선(`SceneBootstrapper.ConfigureUniWindowController`)이 그 전제 3가지
+(EventSystem / currentCamera / Ignore Raycast 레이어)를 **플랫폼 분기 없이** 이미 갖춰 놨다.
+직접 구현하면 `SetWindowRgn`/`WM_NCHITTEST`를 새로 쓰면서 그 배선을 Windows용으로 한 벌 더 만들어야
+한다 — 얻는 것 없이 갈라진 코드만 늘어난다.
+
+**결론: UniWindowController로 통일.** 부수 효과가 두 개 더 있는데 둘 다 이 프로젝트의 원칙을
+강화하는 방향이다.
+- `Win32WindowService.cs`에서 **쓰기 계열 Win32 호출이 0건이 됐다**(`SetWindowPos`/`SetWindowLong`
+  삭제). 지금까지 `UserAssetImmutabilityAuditTests`가 "자기 오버레이 Z-order 1건"을 라인 단위
+  화이트리스트로 예외 처리하고 있었는데, **그 예외 자체가 사라졌다** — 원칙 3(유저 자산 불변)의
+  표면적이 줄었다. 해당 테스트는 "예외가 죽은 코드가 아님을 보증"하는 형태에서 **"SetWindowPos 호출이
+  0건임을 보증"**하는 형태로 뒤집었다(그 테스트 원문 주석이 "호출이 사라지면 함께 제거할 것"이라고
+  명시해 둔 대로 처리).
+- 씬/프리팹 작업이 **0건**이다. `SceneBootstrapper`가 원래부터 OS 분기 없이 UniWindowController를
+  배치하고 있었기 때문(비활성 저장 → Player에서 서비스가 활성화하는 기존 계약 그대로).
+
+### 실제로 바꾼 것
+- `Platform/Windows/Win32WindowService.cs` — 오버레이 3종을 UniWindowController 어댑터로 교체
+  (macOS 구현과 1:1). 창 열거/커서/전체화면 판정 골격은 **기존 것을 그대로 재사용**했고, 열거
+  필터에 빠져 있던 4가지를 보강했다: (a) **자기 프로세스 창 제외** — 이게 없으면 화면 전체를 덮은
+  우리 오버레이 자신이 발판이 되어 캐릭터가 화면 맨 위에 붙는다, (b) 최소화 창(`IsIconic`),
+  (c) DWM cloaked UWP 껍데기 창, (d) `WS_EX_TOOLWINDOW` 보조 창.
+  추가 구현: `IRawWindowRectSource`(창 도둑용 원본 목록 — Windows는 가려짐 분할을 안 하므로 발판
+  목록이 곧 원본), `ScreenCoordinateConverter.ReportOverlayWindowOsRect()` 보고(원점/DPI 배율),
+  `IGlobalPointerButtonService`/`IGlobalKeyStateService`(`GetAsyncKeyState`).
+- `Platform/Windows/WindowsOverlayStateEnforcer.cs` **신설** — 라이브러리가 첫 `Update()`에서야 창을
+  붙잡는 문제(`IsTopmost => IsActive && _isTopmost` 되읽기)는 `UniWinCore.cs`의 **플랫폼 공통 코드**라
+  Windows에서도 동일하게 발생한다. macOS판(700줄)을 공용화하지 않은 이유는 그 파일 클래스 문서에
+  적었다: 그 대부분이 메뉴바/Dock/Cocoa 원점/Retina 같은 **macOS 창 기하 고유 보정**이고, 공용화하면
+  이미 실측 튜닝이 끝난 macOS 경로에 회귀 위험을 주입한다. 진짜 공유 대상(오버레이 솔루션)은
+  패키지 자체이고 이 파일은 그것을 부르는 얇은 껍데기다.
+- `Core/StickmanAgent.cs:371~382` — BUG-B1 안전 가드 주석/로그 교체. `try/catch`는 남겼지만 의미가
+  바뀌었다(플랫폼 미지원 → "씬에 UniWindowController가 없음"이라는 배선 사고 보고).
+- `Assets/Editor/BuildStandalone.cs` — `PerformBuildWindows()` 신설(`Builds/Windows/StickMate.exe`).
+  macOS `PerformBuild()`는 **한 줄도 건드리지 않았다**(플랫폼 인자화 대신 별도 메서드로 둔 이유는
+  그 메서드 문서 참고). `ConfigureWindowsTransparencySettings()`가 패키지 검증이 요구하는 Windows
+  투명 전제조건 2건을 멱등 적용: `useFlipModelSwapchain=false`(Flip Model이면 레이어드 창의 픽셀별
+  알파가 안 먹음), Graphics APIs(Windows) = **Direct3D11 고정**(D3D12는 투명 창 미지원).
+  `resizableWindow`/`fullScreenMode`/`allowFullscreenSwitch`는 **의도적으로 손대지 않았다** — 전부
+  macOS와 공유되는 전역 설정이라 회귀 위험이 있고, 씬의 `forceWindowed=true`가 같은 결과를 준다.
+
+### 검증 결과 (전부 이 머신에서 실제 실행)
+| 항목 | 결과 |
+|---|---|
+| Windows 타깃 전환 + 크로스 컴파일 + 빌드 | **성공** — `Builds/Windows/StickMate.exe`, 에러 0 / 경고 0 (이 머신에 `WindowsStandaloneSupport` 모듈이 설치돼 있었다) |
+| Windows 빌드 산출물 검사 | `StickMate_Data/Plugins/x86_64/LibUniWinC.dll` 동봉 확인. `StickMate.Runtime.dll` 심볼 대조 — `Win32WindowService`/`WindowsOverlayStateEnforcer` **있음**, `MacWindowService`/`MacOverlayStateEnforcer` **없음**(플랫폼 분기가 의도대로 동작). `boot.config`에 `force-d3d11-bitblt-model=` 기록됨(flip model 해제 반영) |
+| macOS 빌드 회귀 | **에러 0 / 경고 0**, `Builds/macOS/StickMate.app` 정상 생성 |
+| EditMode | **143 / 143 통과** (기준선 유지) |
+| PlayMode | **257 / 257 통과**, 실패 0 / 스킵 0 |
+| ProjectSettings 변경 범위 | `useFlipModelSwapchain: 1→0`, `m_BuildTargetGraphicsAPIs`에 `WindowsStandaloneSupport = D3D11` 항목 추가. **이 둘뿐이고 macOS 관련 값은 그대로**(diff 확인) |
+
+### ★ 이 환경에서 검증 **불가능한** 것 (정직한 한계 — 사용자/리더 필독)
+- 이 개발 머신은 macOS다. `.exe`를 **만들 수는 있어도 실행할 수 없다**. 따라서
+  **"Windows에서 실제로 투명/항상위/클릭관통이 켜지는가"는 이번 라운드에서 확인되지 않았다.**
+  여기서 확인된 것은 (a) 컴파일 통과, (b) 플러그인 동봉, (c) 플랫폼 분기가 의도대로 갈림,
+  (d) macOS 무회귀, (e) 코드 리뷰 수준의 경로 일치(macOS 실동작 구현과 1:1)까지다.
+- 실제 Windows 머신에서 첫 실행 시 확인할 것: ① 창이 투명한가(회색 사각형이면 D3D11/flip model
+  설정이 안 먹은 것), ② `[WindowsOverlayStateEnforcer] 창 부착 감지` 로그가 남는가(안 남으면
+  15초 뒤 실패 경고가 찍힌다), ③ 전체화면 확장이 작업표시줄까지 덮는가, ④ 시작 5초 뒤
+  클릭관통이 켜지고 캐릭터 위에서만 클릭이 잡히는가, ⑤ Ctrl+Alt+Win+D(진단)로 전역 단축키 동작.
+
+### 교차 레이어 영향 로그
+1. **[네이티브/입력]** Windows에도 `IGlobalKeyStateService`/`IGlobalPointerButtonService`가 생겼다
+   (이전엔 미구현이라 `as` 캐스팅이 null → 전역 단축키·우클릭 메뉴가 Windows에서 통째로 죽어 있었다).
+   조합키 매핑은 물리 위치 대응을 따랐다: **Control→Ctrl / Option→Alt / Command→Windows 키**.
+   즉 macOS의 `Ctrl+Opt+Cmd+X`는 Windows에서 `Ctrl+Alt+Win+X`다. `AppControlDirector`의 사용자
+   노출 문자열은 여전히 "Ctrl+Opt+Cmd+…"로 하드코딩돼 있어 **Windows에서 안내 문구가 틀린다** —
+   UI 문자열 플랫폼 분기는 리더 판단이 필요해 이번 라운드에 손대지 않았다.
+2. **[감사/테스트]** `UserAssetImmutabilityAuditTests`의 `SetWindowPos` 화이트리스트를 제거하고
+   테스트 1건을 반대 방향(0건 보증)으로 뒤집었다. 앞으로 자기 창이라도 `SetWindowPos(`를 쓰면
+   예외 없이 실패한다.
+3. **[문서]** `Platform/ILocalClickCaptureService.cs` 상단의 "핵심 한계"(진짜 오버레이가 없어 전역
+   클릭관통이 실제로 안 켜진다)는 두 플랫폼 모두에서 사실이 아니게 됐다. 원문은 이력 보존을 위해
+   남기고 그 위에 정정 블록을 달았다.
+
+### ★ 별건 발견 — PlayMode 전체 스위트를 죽이던 지뢰 (내 변경과 무관, 사전 존재)
+`Tests/PlayMode/AccessoryFillRenderingTests.cs`의 증거 PNG 캡처 헬퍼 `Capture()`가
+`-batchmode -nographics`에서 `cam.Render()`로 **프로세스를 SIGSEGV(EXIT=139)로 죽였다**. 그러면
+PlayMode 전체가 중간에 끊겨 결과 XML에 235/237개까지만 기록되고 나머지는 **실행조차 안 된다**.
+
+왜 지금까지 안 드러났나 — 원인을 두 개 특정했다(둘 다 실측):
+- **(a) 그 파일의 `.meta`가 커밋되지 않았다.** `.cs`만 `git ls-files`에 있고 `.meta`는 없다. 즉
+  Unity가 그 파일을 **한 번도 임포트하지 않은 상태**로 저장소가 유지돼 왔고, 그래서 리더/TE의
+  253개 기준선에 이 4개가 애초에 포함되지 않았다(`te2_pm3.xml`에 `AccessoryFillRenderingTests`
+  문자열 0건). 이번 라운드에 내가 Unity를 돌리면서 `.meta`가 생성돼 파일이 처음 임포트됐다.
+- **(b) 기준선 253은 `-nographics` **없이** 돌린 결과였다.** 근거: 그 XML에서
+  `PortraitTextureIsSupersampledAgainstPhysicalPixelsOnRetina`가 `Passed`인데, 그 테스트는
+  `graphicsDeviceType == Null`이면 `Assert.Ignore`하도록 짜여 있다 → 그 실행엔 GPU가 있었다.
+
+조치: `Capture()` 맨 앞에 `graphicsDeviceType == Null`이면 캡처를 건너뛰는 가드를 넣었다(이 프로젝트에
+**이미 있는 선례** — `PortraitTextureResolutionTests`가 똑같은 가드를 쓴다). 판정 자체는 메시 정점
+기하 `Assert`가 하므로 **검증이 약화되지 않는다**; 그래픽 있는 실행에서는 예전대로 PNG가 남는다.
+가드 후 `-nographics` 전체 실행이 EXIT=0으로 완주했다(257개 중 1개는 위 Retina 테스트가 정상 스킵).
+
+**리더에게**: 커밋할 때 `Assets/_Project/Scripts/Tests/PlayMode/AccessoryFillRenderingTests.cs.meta`를
+**반드시 함께 넣어라**. 안 넣으면 다음 사람이 Unity를 열 때마다 같은 상황이 재현되고, 그 4개 테스트는
+계속 "있지만 안 도는" 상태로 남는다.
+
+### 2026-08-30 — 리더 승인: 윈도우 지원 1차 완료
+UniWindowController 통일 판단 승인(Win32 직접 구현 대신 이미 검증된 macOS 경로 재사용 — 패키지가
+애초에 "Unified window controller for Mac and Windows"로 배포되고 있었다는 실측 근거가 명확함).
+부수 효과로 원칙 3 감사 표면적이 줄어든 것(Win32WindowService의 쓰기 계열 호출 0건화)도 좋은 결과.
+실제 Windows .exe 빌드까지 성공해 산출물 내용물(플랫폼별 DLL/어셈블리 구성)까지 검증한 것 승인.
+맥 빌드 무회귀(0/0, EditMode 143/143, PlayMode 257/257) 확인됨.
+**리더 결정 보류 항목(a) 단축키 안내 문구**: Windows 조합키 안내 문자열이 여전히 Mac 표기
+("Ctrl+Opt+Cmd+Q") — 실제 Windows에서 검증 가능해지는 다음 라운드로 이월(지금 급하지 않음).
+**(b) AccessoryFillRenderingTests.cs.meta 미커밋 + -nographics 크래시**는 리더가 방금 만든 파일의
+결함이었음 — 코더가 선례(`PortraitTextureResolutionTests`)와 같은 `graphicsDeviceType==Null` 가드로
+수정, 감사 로직(메시 기하 단언)은 그대로 유지되어 검증력 약화 없음. 승인.
+**환경 한계 재확인**: 이 세션은 실제 Windows OS에서 투명/항상위/클릭관통 동작을 검증할 수 없다 —
+사용자가 실제 Windows 머신에서 첫 실행 시 확인해야 할 5가지가 Tasklist 본문에 기록됨.

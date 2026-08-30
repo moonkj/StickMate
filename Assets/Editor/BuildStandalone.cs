@@ -4,6 +4,7 @@ using System.IO;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace StickMate.EditorTools
 {
@@ -35,6 +36,11 @@ namespace StickMate.EditorTools
     {
         private const string BuildSubFolder = "Builds/macOS";
         private const string AppFileName = "StickMate.app";
+
+        // 윈도우 지원 라운드(2026-08-30). macOS 경로 상수와 나란히 두되 값은 완전히 분리한다 —
+        // 한쪽 빌드가 다른 쪽 산출물을 덮어쓰는 사고를 구조적으로 없앤다.
+        private const string WindowsBuildSubFolder = "Builds/Windows";
+        private const string WindowsExeFileName = "StickMate.exe";
 
         [MenuItem("StickMate/Build Standalone macOS Player")]
         public static void PerformBuild()
@@ -165,6 +171,119 @@ namespace StickMate.EditorTools
 
             Debug.Log($"[BuildStandalone] QualitySettings.antiAliasing={TargetAntiAliasing} 적용 완료 " +
                 $"(전체 {names.Length}개 품질 레벨) — 투명 창에서 캐릭터 윤곽선 계단 현상 제거용.");
+        }
+
+        // ============================================================================
+        // Windows Standalone 빌드 (2026-08-30 윈도우 지원 라운드)
+        // ============================================================================
+
+        /// <summary>
+        /// Windows(x64) Standalone Player를 <c>Builds/Windows/StickMate.exe</c>에 굽는다.
+        ///
+        /// macOS용 <see cref="PerformBuild"/>를 플랫폼 인자로 일반화하지 않고 **별도 메서드**로 둔 이유:
+        /// 두 플랫폼이 필요로 하는 Player Settings 사전 조정이 서로 다르다(아래
+        /// <see cref="ConfigureWindowsTransparencySettings"/>는 Windows 전용 D3D 설정을 건드린다).
+        /// 공통 메서드에 플래그를 넘기는 형태로 만들면 그 분기가 macOS 경로 안으로 들어오게 되는데,
+        /// macOS 빌드는 이미 실동작 검증이 끝난 경로라 한 줄도 건드리지 않는 편이 안전하다.
+        /// 실제로 공유해야 할 부분(씬 목록/runInBackground/MSAA/결과 로깅)은 이미 별도 메서드로
+        /// 뽑혀 있어 두 경로가 그대로 재사용한다.
+        ///
+        /// 사용법:
+        /// - 에디터: 메뉴 StickMate/Build Standalone Windows Player.
+        /// - 배치 모드: Unity -batchmode -nographics -projectPath &lt;repo&gt; -buildTarget Win64
+        ///   -executeMethod StickMate.EditorTools.BuildStandalone.PerformBuildWindows -quit -logFile &lt;path&gt;
+        ///
+        /// **이 개발 환경(macOS)의 한계 — 반드시 기억할 것**: Unity에 Windows Standalone 모듈이 설치돼
+        /// 있으면 여기서 .exe를 크로스 컴파일까지는 할 수 있지만, 그 .exe를 실행해 투명/항상위/
+        /// 클릭관통이 실제로 동작하는지는 **이 환경에서 검증할 수 없다**. 최종 실동작 확인은 실제
+        /// Windows 머신에서 사용자가 수행해야 한다(Tasklist.md에 동일 내용 기록).
+        /// </summary>
+        [MenuItem("StickMate/Build Standalone Windows Player")]
+        public static void PerformBuildWindows()
+        {
+            ConfigureRunInBackground();
+            ConfigureAntiAliasing();
+            ConfigureWindowsTransparencySettings();
+
+            string[] scenes = GetEnabledScenePaths();
+            if (scenes.Length == 0)
+            {
+                Debug.LogError("[BuildStandalone] EditorBuildSettings에 활성화된 씬이 없습니다 — " +
+                    "StickMate.EditorTools.SceneBootstrapper.BuildAll을 먼저 실행하세요.");
+                return;
+            }
+
+            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            string buildDir = Path.Combine(projectRoot, WindowsBuildSubFolder);
+            Directory.CreateDirectory(buildDir);
+            string locationPath = Path.Combine(buildDir, WindowsExeFileName);
+
+            var options = new BuildPlayerOptions
+            {
+                scenes = scenes,
+                locationPathName = locationPath,
+                target = BuildTarget.StandaloneWindows64,
+                targetGroup = BuildTargetGroup.Standalone,
+                options = BuildOptions.None,
+            };
+
+            Debug.Log("[BuildStandalone] Windows 빌드 시작 -> " + locationPath +
+                " (scenes: " + string.Join(", ", scenes) + ")");
+            BuildReport report = BuildPipeline.BuildPlayer(options);
+            BuildSummary summary = report.summary;
+
+            Debug.Log($"[BuildStandalone] Windows 빌드 결과: {summary.result}, 총 에러 {summary.totalErrors}건, " +
+                $"총 경고 {summary.totalWarnings}건, 소요 {summary.totalTime}, 크기 {summary.totalSize} bytes, " +
+                $"산출물: {summary.outputPath}");
+
+            if (summary.result != BuildResult.Succeeded)
+            {
+                Debug.LogError("[BuildStandalone] Windows 빌드 실패(result=" + summary.result + ") — 위 로그의 " +
+                    "에러 메시지를 확인하세요. 이 머신에 Windows Standalone 모듈이 설치돼 있지 않으면 " +
+                    "여기서 실패합니다(Unity Hub > Add modules > Windows Build Support (IL2CPP/Mono)).");
+            }
+        }
+
+        /// <summary>
+        /// Windows에서 **투명 창이 실제로 합성되기 위한** Player Settings를 강제한다.
+        /// ConfigureRunInBackground/ConfigureAntiAliasing과 같은 멱등 패턴이며, 호출 지점도
+        /// <see cref="PerformBuildWindows"/> 하나뿐이다 — macOS 빌드 경로는 이 함수를 부르지 않으므로
+        /// 지금 잘 동작하는 macOS 설정에 어떤 영향도 주지 않는다.
+        ///
+        /// 두 항목 모두 UniWindowController 패키지의 에디터 검증(UniWindowControllerEditor.cs의
+        /// ShowPlayerSettingsValidation)이 "고치라"고 경고하는 항목을 코드로 옮긴 것이다:
+        ///
+        ///   (1) useFlipModelSwapchain = false
+        ///       Flip Model 스왑체인은 DWM이 창을 합성하는 경로가 달라져 레이어드 창의 픽셀별 알파가
+        ///       먹지 않는다(= 투명 실패). 이 값은 Windows(D3D) 전용 설정이라 macOS(Metal) 빌드에는
+        ///       아무 의미가 없다 — 그래서 프로젝트 전역 설정이어도 macOS 회귀 위험이 없다.
+        ///
+        ///   (2) Graphics APIs for Windows = Direct3D11 고정(Auto 해제)
+        ///       Direct3D12는 투명 창을 지원하지 않는다(패키지 경고문 원문). Auto로 두면 Unity가
+        ///       환경에 따라 D3D12를 고를 수 있으므로, 추측에 맡기지 않고 D3D11로 못 박는다.
+        ///       StandaloneWindows(32)와 StandaloneWindows64 양쪽에 거는 이유는 패키지의 검증 코드가
+        ///       32비트 타깃 키로 조회하기 때문이다(실제 빌드는 64비트만 한다).
+        ///
+        /// 여기서 손대지 않는 것(의도적): resizableWindow / fullScreenMode / allowFullscreenSwitch.
+        /// 패키지는 이 셋도 권장하지만 **전부 macOS와 공유되는 전역 설정**이라, 지금 정상 동작 중인
+        /// macOS 빌드에 회귀를 줄 수 있다. 그리고 이 프로젝트는 씬의 UniWindowController에
+        /// forceWindowed=true가 이미 켜져 있어(SceneBootstrapper.ConfigureUniWindowController) 시작 시
+        /// 전체화면이 자동 해제되므로 실질적으로 같은 결과를 얻는다. 실제 Windows 머신에서 창이
+        /// 전체화면으로 뜨는 문제가 관측되면 그때 이 셋을 함께 조정할 것(추측으로 미리 바꾸지 않는다).
+        /// </summary>
+        public static void ConfigureWindowsTransparencySettings()
+        {
+            PlayerSettings.useFlipModelSwapchain = false;
+
+            var d3d11Only = new[] { GraphicsDeviceType.Direct3D11 };
+            PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.StandaloneWindows, false);
+            PlayerSettings.SetGraphicsAPIs(BuildTarget.StandaloneWindows, d3d11Only);
+            PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.StandaloneWindows64, false);
+            PlayerSettings.SetGraphicsAPIs(BuildTarget.StandaloneWindows64, d3d11Only);
+
+            Debug.Log("[BuildStandalone] Windows 투명 창 전제 조건 적용 완료 — " +
+                "useFlipModelSwapchain=false, Graphics APIs(Windows/Windows64)=Direct3D11 고정. " +
+                "(둘 다 D3D 전용 설정이라 macOS 빌드에는 영향 없음.)");
         }
 
         private static string[] GetEnabledScenePaths()
