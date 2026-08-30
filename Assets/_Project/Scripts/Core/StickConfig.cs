@@ -349,8 +349,15 @@ namespace StickMate.Core
                  "뒤집히기만 하면 다음 프레임에 곧바로 뛰어내리기 추첨이 돌았다. 이 값은 반드시 " +
                  "wanderEdgeStopDistance보다 커야 하며, 그 불변식은 Tests/EditMode에서 잠가 둔다.\n" +
                  "다만 이 값만으로는 증상이 사라지지 않는다(모서리에서 조금 더 걸어가야 할 뿐 결국 같은 " +
-                 "추첨이 돈다) — 실제 원인 수정은 아래 postClimbDescendCooldown이다.")]
-        public float parkourMantleInset = 0.45f;
+                 "추첨이 돈다) — 실제 원인 수정은 아래 postClimbDescendCooldown이다.\n" +
+                 "★★ 2026-08-30 R3-M1 재보정 0.45 -> 0.60. 위 불변식의 상대는 이제 wanderEdgeStopDistance " +
+                 "**설정값(0.30)이 아니라 유도값**이다 — 경계 판정 거리가 몸의 물리 반폭에서 유도되도록 " +
+                 "바뀌면서(Core/DockGeometry.ResolveEdgeStopDistance) 배율 0.75에서 0.405가 됐고, " +
+                 "유휴 '주위 살피기'가 머리를 최대 0.06유닛 밀 수 있는 것까지 감안하면 0.45로는 여유가 " +
+                 "0.045 이하로 쪼그라든다(= 예전의 0.005 근접 충돌과 같은 종류의 함정). 0.60은 그 여유를 " +
+                 "0.195로 되돌린다. 화면상 약 6pt 더 안쪽에 설 뿐이고, 올라선 뒤 더 안전한 자리라 " +
+                 "되내려감 방지에도 유리하다.")]
+        public float parkourMantleInset = 0.6f;
 
         [Tooltip("★ 되올라간 직후 **다시 내려가는 행동(뛰어내리기/매달려 내려가기)을 유예**하는 시간(초). " +
                  "0 이하면 이 기능 전체가 꺼져 2026-08-29 이전 거동으로 정확히 되돌아간다(네거티브 컨트롤용 스위치).\n" +
@@ -465,7 +472,17 @@ namespace StickMate.Core
                  "0.05로 되돌리면 원래 동작이 그대로 복원된다(States/AutoWanderController.cs 로직 무수정).")]
         public float wanderPostIdleJumpChance = 0f;
 
-        [Tooltip("진행 방향 앞쪽, 지금 딛고 있는 발판의 잔여 길이가 이 값(유닛) 이하이면 경계 도달로 판정. 26-2.")]
+        [Tooltip("진행 방향 앞쪽, 지금 딛고 있는 발판의 잔여 길이가 이 값(유닛) 이하이면 경계 도달로 판정. 26-2.\n" +
+                 "★★ 2026-08-30 R3-M1 — 이 값은 이제 **절대값이 아니라 하한**이다. 실제 판정 거리 = " +
+                 "max(이 값, 몸의 물리 반폭 + 0.10)을 States/StickmanBlackboard.EdgeStopDistanceWorld가 " +
+                 "유도한다(유도식/근거: Core/DockGeometry.ResolveEdgeStopDistance).\n" +
+                 "왜 바뀌었나: Dock 물리 계단(Platform/DockPhysicsStep.cs)의 옆면은 바닥 안전망 조각의 " +
+                 "논리 경계와 **정확히 같은 X**에 선다. 그 벽에 막혀 선 캐릭터의 루트는 몸의 물리 반폭" +
+                 "(배율 0.75에서 0.300 + Box2D 접촉 이격 0.005 = 0.305) 아래로 절대 다가가지 못하는데, " +
+                 "이 값이 0.300이라 **경계 밴드가 물리적으로 도달 불가능**했다. 되올라가기 판정을 " +
+                 "평가할 기회조차 없이 그 걷기 구간이 끝날 때까지 벽에 붙어 있었고, 그것이 사용자가 " +
+                 "세 번 신고한 \"Dock 근처에서 멈춰 있음 / 안 올라감\"이다. 이격은 0.4 x 배율이므로 " +
+                 "배율 0.7375 이상에서는 이 상수가 항상 진다 — 배포 배율 0.75는 그 절벽 바로 위였다.")]
         public float wanderEdgeStopDistance = 0.3f;
 
         [Tooltip("경계 도달 시 정지 후 방향을 반전하기까지의 대기 시간 최소(초). 26-2.")]
@@ -537,42 +554,6 @@ namespace StickMate.Core
         [Tooltip("판정 주기마다 자동으로 격파 미니게임이 발동할 확률(0~1). 임시 추정치 — 체감 빈도로 튜닝 필요. " +
                  "★ 2026-08-29 기본 OFF — 사용자 피드백 '머리위에 저 주황색이랑 눈같이 내리는건 뭐야 캐릭하고 겹치는데' / 총평 '제대로 동작하는게 하나도 없음'. 요청하지도 않은 구경거리가 자율 확률로 계속 떠서 캐릭터를 가리고, 유저는 그게 무엇인지도 알 수 없었다. 이 사용자가 프로젝트 내내 원해온 것은 '깔끔한 졸라맨이 돌아다니는 것'이다. 기능을 지우지 않고 **자율 발동만** 끈다 — 단축키/우클릭 메뉴의 수동(강제) 발동 경로는 이 값을 읽지 않으므로 그대로 살아 있다. 구경거리를 다시 켜고 싶으면 이 값만 올리면 된다(원래 기본값은 아래 괄호). 원래 기본값 0.05.")]
         public float battleAutoTriggerChance = 0f;
-
-        [Header("라이벌 스틱맨 대결 (docs/UX_FLOW.md 11절, Phase 3)")]
-        [Tooltip("스폰 확률 판정 주기(초, '유휴 판정 주기마다'를 구체화한 값).")]
-        public float rivalSpawnCheckInterval = 90f;
-
-        [Tooltip("판정 주기마다 라이벌이 등장할 확률(0~1). UX 명시값 3~5% 구간. " +
-                 "★ 2026-08-29 기본 OFF — 사용자 피드백 '머리위에 저 주황색이랑 눈같이 내리는건 뭐야 캐릭하고 겹치는데' / 총평 '제대로 동작하는게 하나도 없음'. 요청하지도 않은 구경거리가 자율 확률로 계속 떠서 캐릭터를 가리고, 유저는 그게 무엇인지도 알 수 없었다. 이 사용자가 프로젝트 내내 원해온 것은 '깔끔한 졸라맨이 돌아다니는 것'이다. 기능을 지우지 않고 **자율 발동만** 끈다 — 단축키/우클릭 메뉴의 수동(강제) 발동 경로는 이 값을 읽지 않으므로 그대로 살아 있다. 구경거리를 다시 켜고 싶으면 이 값만 올리면 된다(원래 기본값은 아래 괄호). 원래 기본값 0.04.")]
-        public float rivalSpawnChance = 0f;
-
-        [Tooltip("대결 종료 후 다음 스폰이 허용되기까지의 최소 쿨다운(초). UX 명시값 20분.")]
-        public float rivalSpawnCooldownSeconds = 1200f;
-
-        [Tooltip("대결 최대 지속 시간(초). 도달 시 승부 미결이어도 무승부로 강제 종료.")]
-        public float rivalMaxDurationSeconds = 30f;
-
-        [Tooltip("스폰을 진행해도 되는 최소 유효 발판 개수(부족하면 다음 판정 주기로 이연).")]
-        public int rivalSpawnMinFootholds = 2;
-
-        [Tooltip("스폰 시 플레이어 기준 좌우 오프셋 거리(월드 유닛) — '화면 가장자리에서 걸어 들어옴' 근사.")]
-        public float rivalSpawnOffsetWorldX = 6f;
-
-        [Tooltip("라이벌 추적 AI가 목표(플레이어) 근처에서 멈추는 정지 거리(월드 유닛).")]
-        public float rivalStopDistance = 0.6f;
-
-        [Tooltip("서로 이 거리(월드 유닛) 이내로 근접하면 공격 판정 시도가 발동.")]
-        public float rivalAttackRange = 1.0f;
-
-        [Tooltip("공격 판정 시도 사이의 쿨다운(초).")]
-        public float rivalAttackCooldownSeconds = 1.2f;
-
-        [Tooltip("이 횟수만큼 피격당한 쪽이 패배로 대결이 종료된다.")]
-        public int rivalDuelHitsToLose = 2;
-
-        [Tooltip("라이벌의 타격이 상대에게 가하는 충격량은 ragdollForceThreshold에 이 배율을 곱한 값으로 " +
-                 "계산된다(항상 RAGDOLL 전이를 보장하기 위해 1보다 크게 유지할 것).")]
-        public float rivalAttackImpactMultiplier = 1.25f;
 
         [Header("드래그&던지기 (docs/UX_FLOW.md 12절, Phase 3)")]
         [Tooltip("던지기 속도 계산에 쓰는 최근 커서 이동 구간 길이(초). UX 명시값 0.12초.")]
@@ -1064,12 +1045,6 @@ namespace StickMate.Core
         [Tooltip("inkColor == White일 때 쓰는 실제 색.")]
         public Color whiteInkColor = Color.white;
 
-        [Tooltip("라이벌 스틱맨(docs/UX_FLOW.md 11절 '붉은 스틱맨')의 선 색. 플레이어와 즉시 구분되어야 " +
-                 "하므로 잉크색 프리셋(검정/흰색)과 별개로 고정 색을 갖는다 — 플레이어가 흰색 프리셋일 " +
-                 "때도 라이벌은 붉은색 그대로다. Interaction/RivalStickmanAgent.cs가 시작 시 자기 " +
-                 "LineRenderer 전체에 이 값을 적용한다(에셋 값만 바꿔도 씬 재생성 없이 반영).")]
-        public Color rivalInkColor = new Color(0.85f, 0.13f, 0.13f);
-
         /// <summary>
         /// 지금 설정된 프리셋의 실제 선 색. 캐릭터를 그리는 모든 경로(에디터 프리팹 생성/런타임 갱신)는
         /// 반드시 이 메서드를 거쳐야 한다 — primaryOutlineColor를 직접 읽으면 프리셋 전환이 무시된다.
@@ -1250,7 +1225,6 @@ namespace StickMate.Core
         //            (같은 일을 하는 StickMate/Rebuild All 도 가능하다)
         //   배치   : Unity -batchmode -nographics -projectPath <repo> \
         //            -executeMethod StickMate.EditorTools.SceneBootstrapper.BuildAll -quit --force
-        // (씬의 라이벌 스틱맨은 프리팹을 **복제해 언팩**한 사본이라 씬 재생성 없이는 따라오지 않는다.)
         // ────────────────────────────────────────────────────────────────────────────────────
         //
         // ★★ 일부러 **절대값으로 남겨둔** 값들과 그 근거 (기계적 비례화 금지 — 2026-08-29 검토)
@@ -1291,7 +1265,7 @@ namespace StickMate.Core
                  "머리 반경, 눈, 콜라이더, 클릭 잡기 영역, 선 두께)가 이 하나에서 파생되고, 보폭/매달리기 " +
                  "손끝 거리/화면 클램프 반폭 같은 런타임 값은 그 프리팹을 실측하므로 자동으로 따라온다.\n\n" +
                  "★ 값을 바꾼 뒤에는 메뉴 'StickMate/Rebuild All (기존 자산 덮어씀, 주의)'로 프리팹과 " +
-                 "씬을 다시 구워야 반영된다(씬의 라이벌은 프리팹 사본이라 씬까지 다시 만들어야 한다).\n\n" +
+                 "씬을 다시 구워야 반영된다(프리팹 재저장은 fileID를 재할당하므로 씬도 함께 굽는다).\n\n" +
                  "★★ 분기점 안내(2026-08-30 정정) — 배율 약 0.653 아래에서는 **Dock 단차의 처리 갈래가 " +
                  "바뀐다**. 근거: Dock 상단→바닥 안전망 낙차는 OS에서 오는 1.6375유닛(이 개발 머신 " +
                  "tilesize=49 기준)인데, 매달리기 최소 낙차(StickmanBlackboard.LedgeHangMinDropDepth = " +
@@ -1339,6 +1313,23 @@ namespace StickMate.Core
         /// 기본 신장이기도 하다.
         /// </summary>
         public const float BaselineCharacterTotalHeight = 2.2746944f;
+
+        /// <summary>
+        /// ★ 배율 1.0에서 **몸이 벽에 얼마나 가까이 설 수 있는가**를 정하는 반폭(월드 유닛) —
+        /// 2026-08-30 R3-M1(Dock 되올라오기 밴드 근접 충돌) 대응으로 신설.
+        ///
+        /// 루트 Rigidbody2D에 달린 **비-트리거** 콜라이더 중 가장 넓은 것의 반폭이며, 실제로는
+        /// 머리 CircleCollider2D의 반경이다(Editor/SceneBootstrapper.cs: <c>headCollider.radius =
+        /// 이 값 x bodyScale</c>). 루트 물리 캡슐의 반폭(0.4/2 = 0.2)보다 넓으므로 **벽에 부딪혀 서는
+        /// 위치를 결정하는 것은 캡슐이 아니라 머리 원**이다(잡기 영역 GrabArea는 isTrigger라 물리
+        /// 충돌을 일으키지 않으므로 여기 포함되지 않는다).
+        ///
+        /// 왜 상수로 노출하는가: 이 값은 "배회 AI가 발판 경계에 얼마나 다가갈 수 있는가"의 하한을
+        /// 물리적으로 결정한다. 실측(Core/StickmanAgent가 콜라이더에서 잰다)이 1차 소스이고 이 상수는
+        /// 프리팹이 없는 폴백 경로의 2차 소스다 — 폴백이 0을 돌려주면 유도가 조용히 꺼지므로
+        /// 절대 0을 돌려주지 않게 하기 위한 바닥이다(Core/DockGeometry.ResolveEdgeStopDistance).
+        /// </summary>
+        public const float BaselineBodyPhysicsHalfWidth = 0.4f;
 
         /// <summary>
         /// Dock 상단→바닥 안전망 낙차가 '뛰어내리기' 밴드에 남아 있으려면 필요한 최소 배율
@@ -1514,8 +1505,8 @@ namespace StickMate.Core
                  "landingCrouch* 연출이 담당한다. 이 스위치를 끄면 논리 발판이 없는 구간(안전망에 뚫린 " +
                  "Dock 가로 구멍)으로 떨어졌을 때 전속력 지면 충돌이 그대로 랙돌이 되던 예전 거동이 " +
                  "돌아온다 — PlayMode 실측으로 on/off 대조를 확인했다. " +
-                 "옆/위에서 들어오는 충돌(라이벌 타격, 던져져 벽에 부딪힘)과 직접 호출 경로" +
-                 "(DragThrowState의 던진 속도, RivalStickmanAgent의 타격, RodeoCursorState의 흔들기)는 " +
+                 "옆/위에서 들어오는 충돌(던져져 벽에 부딪힘)과 직접 호출 경로" +
+                 "(DragThrowState의 던진 속도, RodeoCursorState의 흔들기)는 " +
                  "이 스위치와 무관하게 그대로 랙돌을 발생시킨다.")]
         public bool landingImpactRagdollShield = true;
 
@@ -2035,9 +2026,11 @@ namespace StickMate.Core
         [Tooltip("다음 레벨까지 필요한 XP = 이 값 x (현재 레벨 ^ 지수). 100이면 Lv1->2에 100XP.")]
         public float progressionXpCurveBase = 100f;
 
-        [Tooltip("XP 곡선의 지수. 1.15면 레벨이 오를수록 완만하게 느려진다(2.0 같은 큰 값은 " +
-                 "며칠 만에 사실상 진행이 멈춘다).")]
-        public float progressionXpCurveExponent = 1.15f;
+        [Tooltip("XP 곡선의 지수. 값이 클수록 레벨이 오를수록 급격히 느려진다(2.0 같은 큰 값은 " +
+                 "며칠 만에 사실상 진행이 멈춘다). 1.05 = 32종 장비 카탈로그의 최고 요구 레벨(24)이 " +
+                 "현실적으로 도달 가능하도록 2026-08-30에 1.15에서 완화한 값(Core/CharacterProgressionModel.cs " +
+                 "클래스 문서 \"지수 완화\" 문단 참고).")]
+        public float progressionXpCurveExponent = 1.05f;
 
         [Tooltip("★ 패시브 XP — 앱이 켜져 있기만 하면 분당 이만큼 쌓인다. 관찰형 앱 철학(‘아무것도 " +
                  "안 해도 자란다’)의 핵심이라 이것이 주 경로이고 아래 보너스는 가속일 뿐이다.\n\n" +
@@ -2053,9 +2046,6 @@ namespace StickMate.Core
                  "Interaction/CharacterProgressionDirector.cs가 StickmanEventBus를 읽기 전용으로 구독할 뿐이다.")]
         public float progressionBattleWinXp = 25f;
 
-        [Tooltip("라이벌 대결 승리 1회당 보너스 XP(가장 드문 사건이라 가장 크다).")]
-        public float progressionRivalWinXp = 40f;
-
         [Tooltip("활쏘기 정중앙 명중(Bullseye) 1회당 보너스 XP.")]
         public float progressionBullseyeXp = 15f;
 
@@ -2063,19 +2053,18 @@ namespace StickMate.Core
                  "이름 변경은 이 주기와 무관하게 즉시 저장된다.")]
         public float progressionAutoSaveIntervalSeconds = 60f;
 
-        [Header("장비 잠금 해제 레벨 — 원안(7절 DLC 구매)을 레벨업 해제로 치환")]
-
-        [Tooltip("모자(머리) 해제 레벨. 하루 8시간 사용 기준 1일차.")]
-        public int equipmentUnlockLevelHead = 2;
-
-        [Tooltip("선글라스(눈) 해제 레벨. 1일차 후반.")]
-        public int equipmentUnlockLevelEyes = 4;
-
-        [Tooltip("나비넥타이(목) 해제 레벨. 약 2.5일차.")]
-        public int equipmentUnlockLevelNeck = 6;
-
-        [Tooltip("망토(어깨) 해제 레벨. 약 5일차 — 가장 눈에 띄는 아이템이라 가장 늦다.")]
-        public int equipmentUnlockLevelShoulders = 8;
+        // ============================================================================
+        // 장비 잠금 해제 레벨은 여기 없다 (2026-08-30 32종 확장에서 제거)
+        // ============================================================================
+        // 확장 전에는 카테고리당 아이템이 하나뿐이라 `equipmentUnlockLevelHead/Eyes/Neck/Shoulders`
+        // 4개 필드로 충분했다. 이제 요구 레벨은 **아이템 단위(8카테고리 × 4개 = 32개)**이고,
+        // 그 표는 Core/ItemCatalog.cs에 있다. 32개를 인스펙터 필드로 늘어놓지 않은 이유:
+        //   · 요구 레벨은 **콘텐츠 설계**(디자인 핸드오프에 확정된 값)이지 실행 중에 만져 보는
+        //     튜닝 노브가 아니다 — 이 파일의 나머지 필드와 성격이 다르다.
+        //   · 인스펙터에서 한 칸만 잘못 바뀌면 저장 파일(아이템 아이디)과 조용히 어긋난 채 굴러간다.
+        //   · 자산 파일(DefaultStickConfig.asset)과 코드 표가 **두 벌의 진실**이 된다.
+        // 옛 4개 필드는 읽는 코드가 사라져 삭제했다(자산 파일의 남은 줄은 Unity가 무시하지만,
+        // 혼동을 막으려고 함께 지웠다).
 
         // ============================================================================
         // 배선 감사 잔여 3건 — 구독자 0명 이벤트에 붙인 부가 연출 (2026-08-30)
@@ -2083,9 +2072,9 @@ namespace StickMate.Core
         // 이 세 묶음은 전부 **이미 발행되고 있던 이벤트**에 시각 반응만 붙인 것이다. 트리거 조건과
         // 발동 빈도는 한 줄도 바뀌지 않았고(새 확률/타이머 0개), 상위 이벤트의 기존 발행 빈도를 그대로
         // 물려받는다 — 사용자가 "요청하지 않은 연출이 뜨는 것"에 반복적으로 민감했으므로 자율 발동
-        // 확률을 새로 만드는 것을 금지한 리더 지시의 직접 구현이다. 그래서 세 스위치의 기본값은
+        // 확률을 새로 만드는 것을 금지한 리더 지시의 직접 구현이다. 그래서 이 스위치들의 기본값은
         // **ON**이다: 구경거리성 스펙터클(archeryChance 등 기본 0)이 아니라, 이미 일어나는 동작
-        // (착지/대결/배회)에 얹히는 미세한 생동감 디테일이기 때문이다.
+        // (착지/배회)에 얹히는 미세한 생동감 디테일이기 때문이다.
         //
         // ★ 거리/크기는 전부 **캐릭터 신장 배수**이고 시간(초)/각도(도)는 절대값이다(이 파일 전체 규약).
 
@@ -2125,28 +2114,6 @@ namespace StickMate.Core
         [Tooltip("임계값을 **갓 넘긴** 착지에서의 먼지 세기(0~1). 0이면 임계값 근처 착지에서 먼지가 " +
                  "거의 보이지 않는다.")]
         public float landingDustMinIntensity = 0.45f;
-
-        [Header("대결 시작 충돌 임팩트 — StickmanEventBus.RivalDuelStarted 구독 (2026-08-30)")]
-
-        [Tooltip("라이벌 대결 시작을 알리는 임팩트 선 연출의 마스터 스위치. 끄면 대결은 예전과 " +
-                 "똑같이 시작되고 연출만 사라진다(네거티브 컨트롤).\n\n" +
-                 "★ 라이벌 등장 자체의 확률/쿨다운은 Interaction/RivalEncounterDirector.cs가 정하며 " +
-                 "이 라운드에 한 줄도 건드리지 않았다 — 이 스위치는 '등장했을 때 보이는 것'만 정한다.")]
-        public bool rivalDuelClashEnabled = true;
-
-        [Tooltip("임팩트 선이 퍼졌다가 사라지기까지의 시간(초). 대결은 최대 30초짜리 사건이라 " +
-                 "시작 신호는 짧고 강해야 한다(격파 미니게임의 타격 임팩트 0.24초와 같은 계열).")]
-        public float rivalDuelClashSeconds = 0.45f;
-
-        [Tooltip("임팩트 선이 최종적으로 퍼지는 반경 — **캐릭터 신장 배수**. 두 캐릭터의 중점에 " +
-                 "그려지므로 신장의 절반 정도면 두 캐릭터 사이를 채운다.")]
-        public float rivalDuelClashRadiusRatio = 0.55f;
-
-        [Tooltip("임팩트 선의 갈래 수. 격파 미니게임의 타격 임팩트(7줄)와 같은 계열의 값이다.")]
-        public int rivalDuelClashRayCount = 8;
-
-        [Tooltip("임팩트 선의 두께 — **캐릭터 신장 배수**.")]
-        public float rivalDuelClashStrokeRatio = 0.028f;
 
         [Header("유휴 앰비언트 동작 — StickmanEventBus.WanderAmbientMotionRequested 구독 (2026-08-30)")]
 

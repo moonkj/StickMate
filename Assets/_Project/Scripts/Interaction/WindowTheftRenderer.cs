@@ -119,10 +119,10 @@ namespace StickMate.Interaction
 
         /// <summary>
         /// 이 렌더러가 담당하는 캐릭터. <b>같은 GameObject의 StickmanAgent만</b> 쓰고 씬 전체 탐색
-        /// 폴백은 쓰지 않는다 — 라이벌 스틱맨은 플레이어 프리팹의 복제본이라 이 컴포넌트를 함께 갖게
-        /// 되는데, 씬 폴백을 두면 라이벌 렌더러가 플레이어의 이벤트에 반응해 고스트 창이 두 벌 그려진다
+        /// 폴백은 쓰지 않는다 — 이 프리팹이 복제되면 사본도 이 컴포넌트를 함께 갖게 되는데,
+        /// 씬 폴백을 두면 사본 렌더러가 플레이어의 이벤트에 반응해 고스트 창이 두 벌 그려진다
         /// (2026-08-29 격파 미니게임에서 실측으로 확인된 버그 — GraffitiRenderer/BattleMinigameRenderer의
-        /// 같은 가드 주석 참고). SceneBootstrapper가 라이벌에서 이 컴포넌트를 제거하는 것이 1차 방어이고,
+        /// 같은 가드 주석 참고). 애초에 사본에 배치하지 않는 것이 1차 방어이고,
         /// 이 가드가 2차 방어다.
         /// </summary>
         private StickmanAgent _agent;
@@ -157,8 +157,14 @@ namespace StickMate.Interaction
             _container != null ? _container.GetComponentsInChildren<LineRenderer>(true).Length : 0;
 
         /// <summary>
-        /// 이 오버레이가 만든 콜라이더 수 — <b>항상 0이어야 한다</b>. 27-1은 창 도둑을 11절 라이벌 대결과
-        /// 같은 "관전 콘텐츠"로 분류하며 부분적 클릭관통 해제(15절)를 적용하지 않는다.
+        /// 이 오버레이가 만든 콜라이더 수 — <b>항상 0이어야 한다</b>. 27-1이 창 도둑을 명시적으로
+        /// <b>"관전 전용"</b>으로 분류하기 때문이다("기본은 관전 전용(클릭관통 유지, 이 이벤트를 위한
+        /// 부분적 클릭관통 해제 없음)"). 부분적 클릭관통 해제(15절)를 쓰는 것은 유저가 직접 개입하는
+        /// 10/12/13/14절뿐이고 창 도둑은 그 목록에 없다 — 같은 27절의 27-2~27-5(청소부/그라피티/
+        /// 크래시/블랙홀)와 같은 부류다.
+        /// ★ 2026-08-30 R3-m4 — 예전 문장은 이 분류를 "11절과 같은"이라고 적어 두었는데, 그 11절
+        /// (라이벌 대결)은 같은 날 기능 전체가 삭제되어 "(삭제)"만 남았다. 살아 있는 근거(27-1 본문과
+        /// 15절의 대상 목록)로 바꿔 적는다.
         /// </summary>
         public int ActiveColliderCount =>
             _container != null ? _container.GetComponentsInChildren<Collider2D>(true).Length : 0;
@@ -187,7 +193,7 @@ namespace StickMate.Interaction
 
         private void OnOverlayChanged(WindowTheftOverlayEvent evt)
         {
-            if (_agent == null) return; // 자기 캐릭터가 없는 사본(라이벌) — 전역 이벤트를 받아도 무시한다.
+            if (_agent == null) return; // 자기 캐릭터가 없는 사본 — 전역 이벤트를 받아도 무시한다.
 
             switch (evt.Phase)
             {

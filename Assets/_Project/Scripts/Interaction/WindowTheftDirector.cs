@@ -65,7 +65,7 @@ namespace StickMate.Interaction
         /// <summary>
         /// 창 도둑 강제 발동(전역 단축키 Ctrl+Opt+Cmd+T / 캐릭터 우클릭 메뉴). 기본 트리거는 60초 주기
         /// 3% 추첨 + 15분 쿨다운이라 실사용/검증 중에 한 번 보기도 어려워, GraffitiDirector.ForceTriggerNow /
-        /// RivalEncounterDirector.ForceSpawnNow와 같은 관례로 "확률/쿨다운만 건너뛰는" 데모 경로를 둔다.
+        /// 다른 스펙터클과 같은 관례로 "확률/쿨다운만 건너뛰는" 데모 경로를 둔다.
         ///
         /// <b>27-1의 규칙은 강제 경로에서도 하나도 완화하지 않는다</b> — 상호배제 락, Idle/Walk 진입
         /// 조건, 그리고 "폭이 상한(= max(캐릭터 신장 x windowTheftMaxTargetWidthMultiplier,

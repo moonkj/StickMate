@@ -23,7 +23,7 @@ namespace StickMate.Tests.PlayMode
     /// ============================================================================
     /// 절대 조건으로 단언하는 것
     /// ============================================================================
-    ///  ① 정보창/기록 디렉터가 <b>정확히 1개씩</b>(0=배치 누락, 2=라이벌 복제본에서 미제거).
+    ///  ① 정보창/기록 디렉터가 <b>정확히 1개씩</b>(0=배치 누락, 2=중복 배치).
     ///  ② 촬영장은 메인 카메라가 <b>절대 볼 수 없는 곳</b>에 있다 — 이 구현이 메인 카메라의
     ///     cullingMask를 건드리지 않고 격리를 얻는 유일한 근거이므로, 거리로 직접 단언한다.
     ///  ③ 촬영장에 <b>Collider가 0개</b>다(관전 전용 = 콜라이더 0개 규칙, 물리 비개입).
@@ -69,7 +69,7 @@ namespace StickMate.Tests.PlayMode
             var found = Object.FindObjectsByType<T>(FindObjectsSortMode.None);
             Assert.AreEqual(1, found.Length,
                 $"씬의 {typeof(T).Name} 개수가 {found.Length}개입니다 — 1개여야 합니다. " +
-                "0개면 SceneBootstrapper 배치 누락, 2개 이상이면 라이벌 복제본에서 제거되지 않은 것입니다.");
+                "0개면 SceneBootstrapper 배치 누락, 2개 이상이면 씬에 중복 배치된 것입니다.");
             return found[0];
         }
 
@@ -83,7 +83,7 @@ namespace StickMate.Tests.PlayMode
             Assert.IsNotNull(stats);
             Assert.IsNotNull(progression);
 
-            // 기록 디렉터가 두 개면 격파/대결/활쏘기 기록이 두 배로 쌓인다(라이벌 복제 사고의 재현).
+            // 기록 디렉터가 두 개면 격파/활쏘기 기록이 두 배로 쌓인다(중복 배치 사고의 재현).
             Debug.Log("[초상화테스트] 배선 검증 통과 — 정보창/기록 디렉터/성장 디렉터가 각각 1개.");
         }
 

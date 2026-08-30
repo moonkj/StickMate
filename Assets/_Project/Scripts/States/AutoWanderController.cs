@@ -95,6 +95,25 @@ namespace StickMate.States
         private bool _hopDownRequestedThisTick;
         private bool _stepUpRequestedThisTick;
 
+        // ==================== 진단/테스트 창구 (2026-08-30 R3-M1) ====================
+        // 왜 필요한가: R3-M1은 "값이 맞는가"가 아니라 "**판정을 쓰는 쪽**이 그 값을 실제로 보는가"의
+        // 문제였다. 설정 상수만 검사하는 테스트는 소비자가 유도를 그만 읽어도 초록불을 낸다.
+        // 그래서 IsNearFootholdEdge가 계산한 것을 그대로 노출해, 테스트가 **소비자가 본 숫자**를
+        // 단언할 수 있게 한다(이 프로젝트의 기존 진단 창구 관례 — CharacterPetRenderer.BallSpinDegrees,
+        // CharacterInfoWindow.VisibleScreenRectOf 등과 같은 성격이며 제품 로직은 읽지 않는다).
+
+        /// <summary>직전 <c>IsNearFootholdEdge</c> 호출이 실제로 쓴 경계 판정 거리(유도값).</summary>
+        public float LastEdgeStopDistanceUsed { get; private set; }
+
+        /// <summary>그 호출에서 잰 진행 방향 앞쪽 잔여 거리.</summary>
+        public float LastRemainingToEdge { get; private set; }
+
+        /// <summary>그 호출의 판정 결과("지금 경계 근처인가").</summary>
+        public bool LastEdgeNear { get; private set; }
+
+        /// <summary>그 호출의 진행 방향(+1 오른쪽 / -1 왼쪽). 어느 쪽 경계를 잰 표본인지 구분용.</summary>
+        public int LastEdgeDirection { get; private set; }
+
         public float MoveInputX => _moveInputX;
         public bool JumpRequested => _jumpRequestedThisTick;
         public bool LedgeHangRequested => _ledgeHangRequestedThisTick;
@@ -406,7 +425,14 @@ namespace StickMate.States
         private bool IsNearFootholdEdge(GroundSensor.GroundInfo info, int direction, out bool isTrueScreenEdge,
             out float remainingToEdge)
         {
-            float stopDistance = Cfg(c => c.wanderEdgeStopDistance, 0.3f);
+            // ★ 2026-08-30 R3-M1 — 설정값을 그대로 쓰지 않고 **몸의 물리 반폭에서 유도한다.**
+            // 설정값 0.300은 몸이 벽에 부딪혀 설 수 있는 이격(배율 0.75에서 0.305)보다 작아서,
+            // Dock 물리 계단 옆면에 붙어 선 캐릭터가 이 밴드에 **물리적으로 들어갈 수 없었다** —
+            // 그 결과 되올라가기 판정을 평가할 기회조차 없이 걷기 구간이 끝날 때까지 벽에 붙어 있었다.
+            // 유도식/근거: Core/DockGeometry.ResolveEdgeStopDistance.
+            float stopDistance = _blackboard != null
+                ? _blackboard.EdgeStopDistanceWorld
+                : Cfg(c => c.wanderEdgeStopDistance, 0.3f);
             float characterX = _blackboard.Body != null ? _blackboard.Body.position.x : 0f;
             bool hasWalkable = _blackboard.TryGetWalkableScreenBoundsWorld(out float walkableLeftX, out float walkableRightX);
 
@@ -425,7 +451,15 @@ namespace StickMate.States
                 remainingToEdge = characterX - boundaryX;
             }
 
-            return remainingToEdge <= stopDistance;
+            bool near = remainingToEdge <= stopDistance;
+
+            // 진단 창구 갱신 — 제품 로직은 이 값을 읽지 않는다(테스트/로그 전용).
+            LastEdgeStopDistanceUsed = stopDistance;
+            LastRemainingToEdge = remainingToEdge;
+            LastEdgeNear = near;
+            LastEdgeDirection = direction >= 0 ? 1 : -1;
+
+            return near;
         }
 
         /// <summary>

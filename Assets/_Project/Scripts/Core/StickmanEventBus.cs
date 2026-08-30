@@ -141,7 +141,7 @@ namespace StickMate.Core
         /// 물리에 맡기는 순간 그것이 곧 "이상하게 꺾이는" 그림이다).
         ///
         /// 정상 종료는 LandingCrouch(무릎앉아 착지)이며, 착지 전에 회전을 정수 바퀴로 마무리해 몸을
-        /// 바로 세운다. 도중 **진짜 외력**(벽 충돌/라이벌 타격 등 임계값 초과 충격)이 들어오면 다른 능동
+        /// 바로 세운다. 도중 **진짜 외력**(벽 충돌 등 임계값 초과 충격)이 들어오면 다른 능동
         /// 상태와 똑같이 Ragdoll로 강제 인터럽트된다 — 즉 랙돌은 사라진 것이 아니라 "깨끗하게 던져진
         /// 자유 비행"에서만 빠진 것이다(States/DragThrowState.ReleaseAndThrow의 갈림 기준 주석 참고).
         /// StickConfig.throwTumbleEnabled를 끄면 던지기가 예전처럼 곧바로 Ragdoll/Fall로 간다.
@@ -389,14 +389,6 @@ namespace StickMate.Core
         Exhausted,
     }
 
-    /// <summary>UX_FLOW.md 11절 라이벌 스틱맨 대결의 종료 결과.</summary>
-    public enum RivalDuelResult
-    {
-        PlayerWon,
-        RivalWon,
-        Draw,
-    }
-
     /// <summary>
     /// docs/UX_FLOW.md 26-3절 "살아있는 느낌" 디테일 — AutoWanderController가 타이밍/확률 조건만 판정해
     /// 발행하는 유휴 연출 신호. 실제 동작 재생은 Interaction/IdleAmbientMotionRenderer.cs가 구독해
@@ -415,11 +407,9 @@ namespace StickMate.Core
     /// 착지 부수 연출(먼지) 신호의 페이로드.
     ///
     /// ★ 2026-08-30 — 예전에는 <c>Action&lt;float&gt;</c>(낙하 높이 하나)였다. 구독자를 붙이는 순간
-    /// **누구의 착지인지 알 수 없다**는 문제가 드러나 좌표를 함께 싣도록 바꿨다: 발행자가
-    /// FallState/ThrowTumbleState인데 이 두 상태는 플레이어뿐 아니라 <b>라이벌</b>의 상태머신에도
-    /// 등록되어 있어(Interaction/RivalStickmanAgent.EnsureMachineBuilt), 좌표가 없으면 라이벌이 착지할
-    /// 때 플레이어 발밑에 먼지가 피는 오귀속 버그가 구조적으로 발생한다. 좌표를 실으면 그 대신
-    /// "누가 착지했든 그 자리에" 정확히 그려진다.
+    /// **누구의 착지인지 알 수 없다**는 문제가 드러나 좌표를 함께 싣도록 바꿨다. 지금은 씬에
+    /// 캐릭터가 하나뿐이지만 페이로드는 그대로 유지한다 — 먼지를 "낙하 높이"만으로 그리면 발행자가
+    /// 아니라 구독자가 위치를 추측해야 하고, 그 추측은 상태 전이 타이밍에 따라 어긋난다.
     /// </summary>
     public readonly struct LandingImpactEvent
     {
@@ -522,17 +512,6 @@ namespace StickMate.Core
         /// <summary>활쏘기 한 발의 조준 시작/발사 통지 — 사전 확정된 도달점을 함께 싣는다.</summary>
         public static event Action<ArcheryShotEvent> ArcheryShotChanged;
 
-        /// <summary>라이벌 스틱맨 대결(11절)이 시작되었을 때 발생 — 등장 연출 트리거용.
-        /// 구독자는 Interaction/RivalDuelClashRenderer.cs(두 캐릭터 사이 중점에 짧은 충돌 임팩트 선)다
-        /// (2026-08-30 배선 완료). 페이로드가 없는 이유: 두 캐릭터의 좌표는 이 이벤트가 발행되는 시점에
-        /// 이미 씬에 확정돼 있어(BeginDuel이 몸을 먼저 옮긴 뒤 발행) 구독자가 직접 읽는 편이
-        /// 이중 진실 공급원을 만들지 않는다.</summary>
-        public static event Action RivalDuelStarted;
-
-        /// <summary>라이벌 스틱맨 대결이 종료되었을 때 발생(승/패/무승부). 트레이 UI의 "대결 중" 배지
-        /// 해제 등에 사용 예정(지금은 구독자 없음).</summary>
-        public static event Action<RivalDuelResult> RivalDuelEnded;
-
         /// <summary>윈도우 창 도둑(27-1) 오버레이 생애주기 변경. Phase2+ 렌더링이 이 이벤트만 구독해
         /// 팔 IK/파티클 스폰-제거를 담당한다(지금은 트리거/취소 판정만 계산).</summary>
         public static event Action<WindowTheftOverlayEvent> WindowTheftOverlayChanged;
@@ -612,12 +591,6 @@ namespace StickMate.Core
         public static void RaiseArcheryShotChanged(int shotIndex, ArcheryShotPhase phase, ArcheryShotResult result,
             Vector2 impactWorld, float flightSeconds)
             => ArcheryShotChanged?.Invoke(new ArcheryShotEvent(shotIndex, phase, result, impactWorld, flightSeconds));
-
-        public static void RaiseRivalDuelStarted()
-            => RivalDuelStarted?.Invoke();
-
-        public static void RaiseRivalDuelEnded(RivalDuelResult result)
-            => RivalDuelEnded?.Invoke(result);
 
         public static void RaiseWindowTheftOverlayChanged(Rect targetRectOsScreen, SpectacleOverlayPhase phase)
             => WindowTheftOverlayChanged?.Invoke(new WindowTheftOverlayEvent(targetRectOsScreen, phase));

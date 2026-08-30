@@ -10,8 +10,8 @@ namespace StickMate.States
     /// 왜 필요한가(Phase 3): Core/StickmanAgent.ReportExternalImpact()가 원래 이 판정의 유일한
     /// 진입점이었지만(Phase 2, "단일 진입점" 설계), 그 메서드는 MonoBehaviour 인스턴스 메서드라 블랙보드만
     /// 가진 순수 상태/컨트롤러 클래스(States/DragThrowState.cs — 던진 속도로부터 계산한 충격량,
-    /// States/RodeoCursorState.cs — 거친 흔들기로 튕겨 떨어질 때, Interaction/RivalStickmanAgent.cs —
-    /// 라이벌 자신이 맞았을 때)에서 직접 호출할 수 없다(참조 대상이 다름). 이 정적 유틸로 로직을 분리해
+    /// States/RodeoCursorState.cs — 거친 흔들기로 튕겨 떨어질 때)에서 직접 호출할 수 없다
+    /// (참조 대상이 다름). 이 정적 유틸로 로직을 분리해
     /// 세 곳 이상에서 같은 판정식이 어긋나지 않게 한다 — StickmanAgent.ReportExternalImpact()도 내부적으로
     /// 이 메서드를 호출하도록 리팩터했다(공개 시그니처는 그대로, 내부 구현만 위임).
     /// </summary>
@@ -52,10 +52,10 @@ namespace StickMate.States
         /// 떨어져서 땅에 닿는 것은 외력이 아니라 착지다. 그래서 다음 두 조건을 **동시에** 만족할 때만
         /// 무시한다(★ 2026-08-30 갱신 — (1)이 상태 허용목록에서 "부딪힌 대상"으로 바뀌었다.
         /// 근거는 <see cref="IsOwnLandingContact"/> 본문 주석):
-        ///   (1) 부딪힌 상대가 Dynamic 바디가 아니다(= 정적 지면/바닥이지 라이벌 같은 움직이는 물체가 아니다),
+        ///   (1) 부딪힌 상대가 Dynamic 바디가 아니다(= 정적 지면/바닥이지 움직이는 물체가 아니다),
         ///   (2) 접촉점이 발 높이 근처 이하다(= 발밑에서 올라온 면).
-        /// 그래서 옆에서 날아온 라이벌의 주먹이나 던져져 벽에 부딪히는 충돌은 그대로 랙돌이 되고,
-        /// 직접 호출 경로(DragThrowState의 던진 속도 / RivalStickmanAgent의 타격 / RodeoCursorState의
+        /// 그래서 옆에서 날아온 물체나 던져져 벽에 부딪히는 충돌은 그대로 랙돌이 되고,
+        /// 직접 호출 경로(DragThrowState의 던진 속도 / RodeoCursorState의
         /// 거친 흔들기)는 애초에 이 메서드를 거치지 않으므로 전혀 영향을 받지 않는다.
         /// StickConfig.landingImpactRagdollShield를 끄면 이 예외 전체가 사라져 예전 거동으로 되돌아간다
         /// (Tests/PlayMode/LandingCrouchTests.cs의 네거티브 컨트롤이 그 스위치를 쓴다).
@@ -147,9 +147,9 @@ namespace StickMate.States
             // 목록을 늘리는 것은 같은 실패를 다음 상태에 미루는 일이라, 판정 기준 자체를 상태가 아니라
             // **부딪힌 대상**으로 바꾼다:
             //   · 정적(또는 비-Dynamic) 콜라이더가 발밑에서 올라온 것  = 지면/바닥 = 내 착지  -> 차단
-            //   · Dynamic 바디(라이벌 등)와의 충돌                      = 외력            -> 그대로 랙돌
+            //   · Dynamic 바디와의 충돌                                = 외력            -> 그대로 랙돌
             // 이 규칙은 상태 목록에 의존하지 않으므로 새 상태가 생겨도 자동으로 옳다.
-            // 직접 호출 경로(DragThrowState의 던진 속도 / RivalStickmanAgent의 타격 /
+            // 직접 호출 경로(DragThrowState의 던진 속도 /
             // RodeoCursorState의 거친 흔들기)는 애초에 이 메서드를 거치지 않아 전혀 영향이 없다.
             if (collision == null) return false;
             Rigidbody2D otherBody = collision.rigidbody;

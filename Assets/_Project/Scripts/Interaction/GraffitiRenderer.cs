@@ -71,8 +71,8 @@ namespace StickMate.Interaction
 
         /// <summary>
         /// 이 렌더러가 담당하는 캐릭터. <b>같은 GameObject의 StickmanAgent만</b> 쓰고 씬 전체 탐색
-        /// 폴백은 쓰지 않는다 — 라이벌 스틱맨은 플레이어 프리팹의 복제본이라 이 컴포넌트를 함께 갖게
-        /// 되는데, 씬 폴백을 두면 라이벌의 렌더러가 **플레이어의** StickmanAgent를 자기 것으로 착각해
+        /// 폴백은 쓰지 않는다 — 이 프리팹이 복제되면 사본도 이 컴포넌트를 함께 갖게 되는데,
+        /// 씬 폴백을 두면 사본의 렌더러가 **플레이어의** StickmanAgent를 자기 것으로 착각해
         /// 전역 이벤트에 반응하고 소환물이 두 벌 그려진다(실측 확인, 2026-08-29). 에이전트가 없으면
         /// 이 컴포넌트는 조용히 아무것도 하지 않는다(DialogueBubbleRenderer의 _requireBoundSpeaker와
         /// 같은 취지의 "화자 미지정이면 그리지 않는다" 규약 — UX_FLOW.md 5절 규칙 7).
@@ -108,7 +108,7 @@ namespace StickMate.Interaction
 
         private void OnOverlayChanged(GraffitiOverlayEvent evt)
         {
-            if (_agent == null) return; // 자기 캐릭터가 없는 사본(라이벌) — 전역 이벤트를 받아도 무시한다.
+            if (_agent == null) return; // 자기 캐릭터가 없는 사본 — 전역 이벤트를 받아도 무시한다.
 
             switch (evt.Phase)
             {

@@ -14,7 +14,7 @@ namespace StickMate.Tests.PlayMode
     /// ============================================================================
     /// 이 테스트가 막으려는 실패 모드 (이 프로젝트에서 4번 반복된 바로 그것)
     /// ============================================================================
-    /// 말풍선/드래그/라이벌/격파 4건 모두 "로직은 완성됐는데 아무도 구독/배치를 안 해서 화면에 한 픽셀도
+    /// 말풍선/드래그/격파 3건 모두 "로직은 완성됐는데 아무도 구독/배치를 안 해서 화면에 한 픽셀도
     /// 안 나온다"로 끝났다. 그래서 이 테스트는 렌더러 클래스를 <b>단독으로 new 해서</b> 검사하지 않고,
     /// SceneBootstrapper가 실제로 구워낸 <b>Main.unity를 그대로 로드</b>해서 검사한다 — 렌더러 코드가
     /// 아무리 완벽해도 씬에 배치돼 있지 않으면 이 테스트는 첫 줄에서 실패한다.
@@ -24,7 +24,7 @@ namespace StickMate.Tests.PlayMode
     /// 버그를 2라운드 연속 놓친 전례가 있다)
     /// ============================================================================
     ///  ① 씬에 WindowTheftDirector / WindowTheftRenderer가 <b>정확히 1개씩</b> 있다.
-    ///     (0개 = 배치 누락, 2개 이상 = 라이벌 복제 함정 — 둘 다 즉시 실패시킨다.)
+    ///     (0개 = 배치 누락, 2개 이상 = 중복 배치 함정 — 둘 다 즉시 실패시킨다.)
     ///  ② Started 이벤트를 발행하면 렌더러가 <b>실제로 GameObject를 만든다</b>
     ///     (ActiveVisualCount &gt; 0 이고 "WindowTheftGhostOverlay"가 씬에 실존한다).
     ///  ③ 그 오버레이는 콜라이더를 <b>정확히 0개</b> 만든다(27-1 관전 전용 = 클릭관통 유지).
@@ -50,12 +50,13 @@ namespace StickMate.Tests.PlayMode
             Assert.AreEqual(1, directors.Length,
                 $"씬의 WindowTheftDirector 개수가 {directors.Length}개입니다 — 1개여야 합니다. " +
                 "0개면 Assets/Editor/SceneBootstrapper.cs 배치 누락(이 프로젝트에서 4번 반복된 실패 모드), " +
-                "2개 이상이면 라이벌 스틱맨 복제본에서 제거되지 않은 것입니다(CreateRivalStickman 확인).");
+                "2개 이상이면 씬에 중복 배치된 것입니다.");
 
             var renderers = Object.FindObjectsByType<WindowTheftRenderer>(FindObjectsSortMode.None);
             Assert.AreEqual(1, renderers.Length,
                 $"씬의 WindowTheftRenderer 개수가 {renderers.Length}개입니다 — 1개여야 합니다. " +
-                "2개 이상이면 라이벌이 전역 이벤트를 함께 받아 고스트 창이 두 벌 그려집니다(격파 미니게임에서 실측된 버그).");
+                "2개 이상이면 두 번째 렌더러도 같은 전역 이벤트를 받아 고스트 창이 두 벌 그려집니다" +
+                "(격파 미니게임에서 실측된 버그).");
 
             _renderer = renderers[0];
             Assert.IsFalse(_renderer.IsVisible, "테스트 시작 시점에는 오버레이가 떠 있으면 안 됩니다.");

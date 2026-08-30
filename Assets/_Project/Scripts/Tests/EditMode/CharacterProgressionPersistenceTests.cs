@@ -17,8 +17,8 @@ namespace StickMate.Tests.EditMode
     /// 사용자는 매번 Lv.1로 돌아오고, 그 사실을 알아차릴 때쯤에는 이미 며칠을 잃은 뒤다. 그런데 이 실패는
     /// 예외도 경고도 없이 일어난다(파일이 없으면 그냥 기본값으로 시작하는 것이 정상 동작이기 때문에).
     /// 그래서 세 가지를 못박는다:
-    ///   (1) 저장 -> 초기화 -> 로드 왕복에서 레벨/XP/이름/장비 4종이 그대로 복원된다.
-    ///   (2) <b>파일을 지우면 기본값(Lv.1 / 미착용)으로 시작한다</b>(리더 지시의 명시 항목).
+    ///   (1) 저장 -> 초기화 -> 로드 왕복에서 레벨/XP/이름과 <b>카테고리별로 고른 아이템</b>이 그대로 복원된다.
+    ///   (2) <b>파일을 지우면 기본값(Lv.1 / 기본 차림)으로 시작한다</b>(리더 지시의 명시 항목).
     ///   (3) XP 곡선과 패시브 적립률이 설계 목표("초반 레벨업 1~3시간") 안에 있다.
     ///
     /// ============================================================================
@@ -85,12 +85,16 @@ namespace StickMate.Tests.EditMode
         {
             StickConfig config = LoadDefaultConfig();
 
-            // 가장 늦게 열리는 슬롯(망토)까지 실제로 착용해 보려면 그 해제 레벨을 넘겨야 한다 —
-            // 잠긴 슬롯은 TryToggle이 거부하므로(그게 정상), 여기서 레벨을 충분히 올려 둔다.
+            // 가장 늦게 열리는 아이템(커서 친구, req24)까지 실제로 착용해 보려면 그 요구 레벨을 넘겨야
+            // 한다 — 잠긴 아이템은 TryWear가 거부하므로(그게 정상), 여기서 레벨을 충분히 올려 둔다.
             int topUnlock = 0;
-            for (int i = 0; i < EquipmentModel.SlotCount; i++)
+            for (int s = 0; s < EquipmentModel.SlotCount; s++)
             {
-                topUnlock = Mathf.Max(topUnlock, EquipmentModel.UnlockLevel((EquipmentSlot)i, config));
+                var slot = (EquipmentSlot)s;
+                for (int i = 0; i < EquipmentModel.ItemCount(slot); i++)
+                {
+                    topUnlock = Mathf.Max(topUnlock, EquipmentModel.RequiredLevel(slot, i));
+                }
             }
             int targetLevel = topUnlock + 1;
 
@@ -99,8 +103,13 @@ namespace StickMate.Tests.EditMode
             for (int lv = 1; lv < targetLevel; lv++) bulk += CharacterProgressionModel.XpToNextLevel(lv, config);
             CharacterProgressionModel.AddXp(bulk + 37f, config);
             CharacterProgressionModel.SetCharacterName("책상동료");
-            EquipmentModel.TryToggle(EquipmentSlot.Head, config);
-            EquipmentModel.TryToggle(EquipmentSlot.Shoulders, config);
+
+            // 기본 아이템이 아닌 것을 골라야 "인덱스가 그대로 복원되는가"가 실제로 검증된다 —
+            // 0번만 걸치면 옛 bool 저장으로도 통과해 버린다.
+            Assert.IsTrue(EquipmentModel.TryWear(EquipmentSlot.Head, 3, config), "왕관을 걸치지 못했습니다.");
+            Assert.IsTrue(EquipmentModel.TryWear(EquipmentSlot.Pet, 3, config), "커서 친구를 걸치지 못했습니다.");
+            Assert.IsTrue(EquipmentModel.TryWear(EquipmentSlot.Eyes, EquipmentModel.NotWorn, config),
+                "기본으로 걸치고 있던 선글라스를 벗지 못했습니다.");
 
             int level = CharacterProgressionModel.Level;
             float xp = CharacterProgressionModel.CurrentXp;
@@ -108,7 +117,11 @@ namespace StickMate.Tests.EditMode
 
             Assert.AreEqual(targetLevel, level,
                 $"{targetLevel - 1}레벨 분량 + 여분을 한 번에 넣었으므로 Lv.{targetLevel}이어야 합니다(연속 레벨업 이월).");
-            Assert.AreEqual(37f, xp, 0.01f, "레벨업 후 남은 XP가 이월되지 않고 버려졌습니다.");
+            // 허용 오차 0.01 -> 0.1: 32종 확장으로 목표 레벨이 9에서 25로 올라가며 누적 XP가 4천대에서
+            // 4만대가 됐다. float32의 눈금이 그 크기에서 약 0.004라 24번의 덧셈/뺄셈이 순서만 달라도
+            // 0.01을 넘길 수 있다(실측 잔차 약 0.002). 검증하려는 것은 "37이 버려지지 않았다"이지
+            // 부동소수점 재현이 아니다.
+            Assert.AreEqual(37f, xp, 0.1f, "레벨업 후 남은 XP가 이월되지 않고 버려졌습니다.");
             Assert.IsTrue(CharacterSaveStore.Save(), "저장에 실패했습니다.");
 
             // 프로세스를 새로 켠 것과 같은 상태로 만든 뒤 로드.
@@ -123,10 +136,12 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(xp, CharacterProgressionModel.CurrentXp, 0.01f, "현재 XP가 복원되지 않았습니다.");
             Assert.AreEqual(total, CharacterProgressionModel.TotalXpEarned, 0.01f, "누적 XP가 복원되지 않았습니다.");
             Assert.AreEqual("책상동료", CharacterProgressionModel.CharacterName, "이름이 복원되지 않았습니다.");
-            Assert.IsTrue(EquipmentModel.IsEquipped(EquipmentSlot.Head), "모자 착용 상태가 복원되지 않았습니다.");
-            Assert.IsTrue(EquipmentModel.IsEquipped(EquipmentSlot.Shoulders), "망토 착용 상태가 복원되지 않았습니다.");
-            Assert.IsFalse(EquipmentModel.IsEquipped(EquipmentSlot.Eyes), "착용하지 않은 선글라스가 착용 상태로 복원됐습니다.");
-            Assert.IsFalse(EquipmentModel.IsEquipped(EquipmentSlot.Neck), "착용하지 않은 나비넥타이가 착용 상태로 복원됐습니다.");
+            Assert.AreEqual(3, EquipmentModel.WornIndex(EquipmentSlot.Head),
+                "모자 카테고리에서 고른 아이템(왕관)이 복원되지 않았습니다 — 착용 여부만 남고 '무엇을' 골랐는지가 사라졌습니다.");
+            Assert.AreEqual(3, EquipmentModel.WornIndex(EquipmentSlot.Pet), "펫(커서 친구)이 복원되지 않았습니다.");
+            Assert.AreEqual(EquipmentModel.NotWorn, EquipmentModel.WornIndex(EquipmentSlot.Eyes),
+                "벗어 둔 안경이 착용 상태로 복원됐습니다.");
+            Assert.IsFalse(EquipmentModel.IsEquipped(EquipmentSlot.Neck), "착용하지 않은 넥타이가 착용 상태로 복원됐습니다.");
         }
 
         // ============================================================================
@@ -159,10 +174,16 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(0f, CharacterProgressionModel.CurrentXp, 0.001f, "파일이 없으면 XP 0으로 시작해야 합니다.");
             Assert.AreEqual(CharacterProgressionModel.DefaultCharacterName, CharacterProgressionModel.CharacterName,
                 "파일이 없으면 기본 이름으로 시작해야 합니다.");
-            for (int i = 0; i < EquipmentModel.SlotCount; i++)
+            // ★ 2026-08-30 32종 확장 — "파일이 없으면 아무것도 안 걸친다"에서 "핸드오프가 정한
+            //   기본 차림(모자=천모자, 안경=선글라스, 나머지 6종 미착용)으로 시작한다"로 바뀌었다.
+            //   검증하려는 의도는 그대로다: 파일이 없을 때의 차림은 <b>정해진 하나</b>여야 하고,
+            //   직전 세션의 잔재가 남아서는 안 된다.
+            Assert.AreEqual(0, EquipmentModel.WornIndex(EquipmentSlot.Head), "새 캐릭터는 천모자를 쓰고 시작합니다.");
+            Assert.AreEqual(0, EquipmentModel.WornIndex(EquipmentSlot.Eyes), "새 캐릭터는 선글라스를 쓰고 시작합니다.");
+            for (int i = (int)EquipmentSlot.Neck; i < EquipmentModel.SlotCount; i++)
             {
-                Assert.IsFalse(EquipmentModel.IsEquipped((EquipmentSlot)i),
-                    $"파일이 없는데 {EquipmentModel.ItemName((EquipmentSlot)i)}가 착용 상태입니다.");
+                Assert.AreEqual(EquipmentModel.NotWorn, EquipmentModel.WornIndex((EquipmentSlot)i),
+                    $"파일이 없는데 [{EquipmentModel.SlotName((EquipmentSlot)i)}]에 뭔가 걸쳐져 있습니다.");
             }
         }
 
@@ -186,35 +207,65 @@ namespace StickMate.Tests.EditMode
         // ============================================================================
 
         [Test]
-        public void 잠긴_슬롯은_착용되지_않는다()
+        public void 잠긴_아이템은_착용되지_않는다()
         {
             StickConfig config = LoadDefaultConfig();
             Assert.AreEqual(1, CharacterProgressionModel.Level, "전제: Lv.1에서 시작.");
 
-            for (int i = 0; i < EquipmentModel.SlotCount; i++)
+            // ★ 2026-08-30 32종 확장 — 잠금의 단위가 카테고리에서 <b>아이템</b>으로 내려왔다.
+            //   각 카테고리의 0번은 처음부터 보유이고(그래야 Lv.1 사용자에게 빈 칸이 없다),
+            //   요구 레벨이 붙은 아이템은 여전히 레벨만이 유일한 해제 경로다.
+            for (int s = 0; s < EquipmentModel.SlotCount; s++)
             {
-                var slot = (EquipmentSlot)i;
-                Assert.Greater(EquipmentModel.UnlockLevel(slot, config), 1,
-                    $"{EquipmentModel.ItemName(slot)}의 해제 레벨이 1이면 '레벨업으로 열린다'는 설계가 성립하지 않습니다.");
-                Assert.IsFalse(EquipmentModel.TryToggle(slot, config),
-                    $"Lv.1인데 {EquipmentModel.ItemName(slot)}가 착용됐습니다 — 잠금이 뚫렸습니다.");
-                Assert.IsFalse(EquipmentModel.IsEquipped(slot), $"{EquipmentModel.ItemName(slot)}가 착용 상태입니다.");
+                var slot = (EquipmentSlot)s;
+                for (int i = 0; i < EquipmentModel.ItemCount(slot); i++)
+                {
+                    if (EquipmentModel.RequiredLevel(slot, i) <= 1) continue;
+
+                    Assert.IsFalse(EquipmentModel.TryWear(slot, i, config),
+                        $"Lv.1인데 [{EquipmentModel.ItemName(slot, i)}](Lv.{EquipmentModel.RequiredLevel(slot, i)} 필요)가 " +
+                        "착용됐습니다 — 잠금이 뚫렸습니다.");
+                    Assert.IsFalse(EquipmentModel.IsEquipped(slot, i),
+                        $"[{EquipmentModel.ItemName(slot, i)}]가 착용 상태입니다.");
+                }
             }
         }
 
         [Test]
-        public void 해제_레벨은_슬롯_순서대로_점점_높아진다()
+        public void 요구_레벨은_카테고리_안에서_점점_높아지고_전체적으로_퍼져_있다()
         {
-            StickConfig config = LoadDefaultConfig();
-            int prev = 0;
-            for (int i = 0; i < EquipmentModel.SlotCount; i++)
+            // "며칠에 걸쳐 하나씩 열린다"는 리듬은 이제 카테고리 순서가 아니라 <b>아이템 요구 레벨의
+            // 분포</b>가 만든다. 한 레벨에 여러 개가 몰려 열리면 그 뒤로는 며칠 동안 아무 일도 없다.
+            var opened = new System.Collections.Generic.Dictionary<int, int>();
+            int maxRequired = 0;
+
+            for (int s = 0; s < EquipmentModel.SlotCount; s++)
             {
-                int need = EquipmentModel.UnlockLevel((EquipmentSlot)i, config);
-                Assert.Greater(need, prev,
-                    $"{EquipmentModel.ItemName((EquipmentSlot)i)}의 해제 레벨({need})이 앞 슬롯({prev}) 이하입니다 — " +
-                    "'며칠에 걸쳐 하나씩 열린다'는 리듬이 깨집니다.");
-                prev = need;
+                var slot = (EquipmentSlot)s;
+                int prev = 0;
+                for (int i = 0; i < EquipmentModel.ItemCount(slot); i++)
+                {
+                    int need = EquipmentModel.RequiredLevel(slot, i);
+                    Assert.GreaterOrEqual(need, prev,
+                        $"[{EquipmentModel.SlotName(slot)}]의 요구 레벨이 자리 순서대로 오르지 않습니다.");
+                    prev = need;
+                    maxRequired = Mathf.Max(maxRequired, need);
+
+                    if (need <= 1) continue;
+                    opened.TryGetValue(need, out int n);
+                    opened[need] = n + 1;
+                }
             }
+
+            foreach (var pair in opened)
+            {
+                Assert.LessOrEqual(pair.Value, 2,
+                    $"Lv.{pair.Key}에 아이템 {pair.Value}개가 한꺼번에 열립니다 — 그 앞뒤 레벨이 텅 빕니다.");
+            }
+            Assert.GreaterOrEqual(opened.Count, 12,
+                "잠긴 아이템이 열리는 레벨이 12종류보다 적습니다 — 성장 구간이 듬성듬성해집니다.");
+            Assert.AreEqual(24, maxRequired,
+                "가장 늦게 열리는 아이템의 요구 레벨이 24(커서 친구)가 아닙니다 — 핸드오프 콘텐츠 표와 어긋납니다.");
         }
 
         // ============================================================================
@@ -249,13 +300,15 @@ namespace StickMate.Tests.EditMode
             Assert.Greater(hoursTo3, hoursTo2,
                 $"Lv.2 -> Lv.3({hoursTo3:F2}시간)이 Lv.1 -> Lv.2({hoursTo2:F2}시간)보다 빠릅니다 — 곡선이 뒤집혔습니다.");
 
-            // 첫 장비(모자)까지 걸리는 시간 — "며칠 안에 하나씩"의 첫 단추.
-            int headUnlock = EquipmentModel.UnlockLevel(EquipmentSlot.Head, config);
+            // 처음으로 <b>열리는</b> 아이템(털모자/단정한머리 = Lv.5)까지 걸리는 시간 —
+            // "며칠 안에 하나씩"의 첫 단추. 0번 아이템들은 처음부터 보유라 기다림이 없다.
+            int headUnlock = EquipmentModel.RequiredLevel(EquipmentSlot.Head, 1);
             float cumulative = 0f;
             for (int lv = 1; lv < headUnlock; lv++) cumulative += CharacterProgressionModel.XpToNextLevel(lv, config);
             float hoursToHat = cumulative / perHour;
-            Assert.Less(hoursToHat, 8f,
-                $"첫 장비(모자, Lv.{headUnlock})까지 패시브만으로 {hoursToHat:F1}시간입니다 — 하루 안에는 열려야 합니다.");
+            Assert.Less(hoursToHat, 24f,
+                $"처음 열리는 아이템(Lv.{headUnlock})까지 패시브만으로 {hoursToHat:F1}시간입니다 — " +
+                "하루 8시간 사용 기준으로 며칠씩 걸리면 '며칠 안에 하나씩'이 성립하지 않습니다.");
         }
 
         [Test]

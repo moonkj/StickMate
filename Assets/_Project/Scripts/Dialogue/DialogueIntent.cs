@@ -59,8 +59,8 @@ namespace StickMate.Dialogue
         /// 이 대사를 발급한 상태머신(=화자). UX_FLOW.md 5절 규칙 7("다중 캐릭터 동시 발화 — 서로 다른
         /// 캐릭터의 말풍선은 독립적으로 동일 계약을 따른다")을 UI 레이어가 지키려면, 전역 이벤트
         /// (StickmanEventBus.DialogueRequested)로 날아온 대사가 "누구의 대사인지"를 구분할 수 있어야
-        /// 한다 — 플레이어와 라이벌 스틱맨은 각자 별도의 StickmanStateMachine 인스턴스를 갖기 때문이다
-        /// (Interaction/RivalStickmanAgent.cs). 기존 private 필드를 읽기 전용으로 노출할 뿐 새 로직은
+        /// 한다 — 두 캐릭터가 있다면 각자 별도의 StickmanStateMachine 인스턴스를 갖기 때문이다.
+        /// 기존 private 필드를 읽기 전용으로 노출할 뿐 새 로직은
         /// 없고, internal이라 같은 어셈블리(Dialogue/DialogueBubbleRenderer.cs) 밖으로는 새지 않는다 —
         /// 대사 **생성** 경로의 방어선(생성자가 컨텍스트를 요구하고 토큰을 소비하는 구조)에는 아무런
         /// 영향이 없다.

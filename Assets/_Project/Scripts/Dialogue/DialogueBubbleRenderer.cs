@@ -39,7 +39,7 @@ namespace StickMate.Dialogue
     ///                          (종전: 머리 위 + 꼬리가 캐릭터를 가리킴, 화면 경계에서는 꼬리 방향을
     ///                          유지한 채 박스만 안쪽으로 — <see cref="UpdateBubblePlacement"/>에 보존).
     /// · 규칙 7 다중 캐릭터   : `Bind()`로 화자(StickmanStateMachine)를 지정하면 그 머신이 발급한
-    ///                          대사만 표시한다 — 라이벌 스틱맨이 동시에 말해도 서로의 말풍선을 훔치지
+    ///                          대사만 표시한다 — 두 번째 화자가 동시에 말해도 서로의 말풍선을 훔치지
     ///                          않는다(각자 자기 렌더러를 하나씩 갖는다).
     ///
     /// ============================================================================
@@ -106,7 +106,11 @@ namespace StickMate.Dialogue
         // 직접 쓰지 말고 반드시 Scaled* 프로퍼티(ScaledBorderThickness 등)를 써야 한다 — 캐릭터가
         // 절반 크기가 되면 말풍선도 함께 줄어들어야 하고, 한 군데라도 원본 상수가 남으면 그 항만
         // 고정분으로 남아 "폰트를 줄여도 말풍선이 캐릭터보다 크다"가 재발한다(리더 실측 보고, 2026-08-29).
-        private const int SortingOrderBubble = 31000;   // TodoPostItWidget(30000) 위, AppControlDirector 메뉴(32760) 아래.
+        // TodoPostItWidget(30000) 위, 캐릭터 창(31900)/앱 제어 메뉴(32760) 아래.
+        // ※ 2026-08-30까지 캐릭터 창도 31000이라 <b>동률</b>이었다 — 동률 오버레이 캔버스의 그리기 순서는
+        //   Unity가 보장하지 않아(생성 순서 의존) 창 위를 지나며 말할 때 대사가 뚫리거나 묻힐 수 있었다.
+        //   창을 31900으로 올려 값을 갈랐다. 말풍선이 모달 창 아래로 가는 것은 의도다.
+        private const int SortingOrderBubble = 31000;
         private const float BorderThickness = 2.5f;     // 검은 테두리 두께.
         private const float TextPadding = 7f;           // 테두리 안쪽 여백.
         private const float MaxTextWidth = 220f;        // 이 폭을 넘으면 줄바꿈.
@@ -313,7 +317,7 @@ namespace StickMate.Dialogue
         ///
         /// 조회 순서: StickmanAgent(그 자신이 <see cref="StickmanMetrics"/>.TotalHeight로 위임한다) ->
         /// 계층에서 직접 찾은 StickmanMetrics -> 배율 1.0 폴백. 두 번째 단계가 있어야 에이전트를 갖지
-        /// 않는 화자(라이벌 렌더러, 테스트 리그)에서도 오프셋이 캐릭터 배율을 따라간다 —
+        /// 않는 화자(테스트 리그 등)에서도 오프셋이 캐릭터 배율을 따라간다 —
         /// 폴백 상수로 떨어지면 배율 0.75 캐릭터 옆에 배율 1.0 간격으로 글자가 뜬다.
         /// </summary>
         private float CharacterHeight
@@ -372,9 +376,9 @@ namespace StickMate.Dialogue
         [SerializeField] private Transform _anchor;      // 머리 Transform. 비면 Awake에서 "Head"를 찾는다.
         [SerializeField] private StickConfig _config;
 
-        [Tooltip("true면 Bind()로 화자가 명시되기 전까지 어떤 대사도 그리지 않는다. 라이벌 스틱맨처럼 " +
+        [Tooltip("true면 Bind()로 화자가 명시되기 전까지 어떤 대사도 그리지 않는다. 자기 상태머신을 " +
                  "상태머신이 첫 대결 시점에야 만들어지는 화자용 — 이 플래그가 없으면 그 사이에 " +
-                 "'화자 미지정 = 모든 대사 수신' 폴백이 걸려 플레이어의 대사를 라이벌 머리 위에 " +
+                 "'화자 미지정 = 모든 대사 수신' 폴백이 걸려 남의 대사를 자기 머리 위에 " +
                  "그려버린다(UX_FLOW.md 5절 규칙 7 위반).")]
         [SerializeField] private bool _requireBoundSpeaker;
 
@@ -460,7 +464,7 @@ namespace StickMate.Dialogue
         /// 화자가 바라보는 방향(+1 오른쪽 / -1 왼쪽)의 공급자. null이면 <see cref="StickmanAgent"/>의
         /// Blackboard.FacingSign을 읽는다.
         ///
-        /// 왜 주입 창구가 필요한가: 라이벌 스틱맨(Interaction/RivalStickmanAgent.cs)은 플레이어와 다른
+        /// 왜 주입 창구가 필요한가: 플레이어 외의 화자(테스트 리그 등)는 플레이어와 다른
         /// <c>StickmanBlackboard</c>를 자기 필드로 들고 있고 StickmanAgent를 갖지 않는다 — 그 화자의
         /// 말풍선 렌더러가 플레이어의 방향을 읽으면 글자가 엉뚱한 쪽에 붙는다(규칙 7 화자 분리의
         /// 배치 판). Bind()의 시그니처를 바꾸지 않고 붙일 수 있는 최소한의 이음매다.
@@ -468,7 +472,7 @@ namespace StickMate.Dialogue
         public System.Func<float> FacingSource { get; set; }
 
         /// <summary>
-        /// 이 렌더러가 담당할 화자를 지정한다. 라이벌 스틱맨처럼 자기 상태머신을 따로 가진 캐릭터가
+        /// 이 렌더러가 담당할 화자를 지정한다. 자기 상태머신을 따로 가진 캐릭터가
         /// 자기 말풍선만 그리게 하려고 쓴다(5절 규칙 7). 플레이어는 Start()에서 자동 배선되므로 보통
         /// 호출할 필요가 없다.
         /// </summary>
@@ -484,7 +488,7 @@ namespace StickMate.Dialogue
             if (_anchor == null) _anchor = transform.Find("Head");
             if (_anchor == null) _anchor = transform;
             if (_config == null && _agent != null) _config = _agent.Config;
-            // 같은 GameObject의 이모트만 본다 — 씬 전체 탐색을 쓰면 라이벌의 이모트를 보고
+            // 같은 GameObject의 이모트만 본다 — 씬 전체 탐색을 쓰면 남의 이모트를 보고
             // 플레이어 말풍선이 올라가는 사고가 난다(_requireBoundSpeaker와 같은 취지의 화자 분리).
             _hardware = GetComponent<HardwareReactionRenderer>();
             BuildUi();
@@ -521,7 +525,7 @@ namespace StickMate.Dialogue
             _canvas = null;
             // 타원 스프라이트/텍스처는 HideFlags.HideAndDontSave라 자동 회수 대상이 아니다 —
             // 여기서 명시적으로 지우지 않으면 캐릭터가 파괴될 때마다 텍스처가 누수된다
-            // (라이벌 스틱맨은 대결마다 만들어지고 사라진다).
+            // (두 번째 화자는 씬 수명 중에 만들어지고 사라질 수 있다).
             DestroyEllipseSprites();
         }
 

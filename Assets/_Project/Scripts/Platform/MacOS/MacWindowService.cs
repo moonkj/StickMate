@@ -130,7 +130,6 @@ namespace StickMate.Platform.MacOS
         private const ushort kVK_ANSI_D = 0x02;
         private const ushort kVK_ANSI_R = 0x0F;
         private const ushort kVK_ANSI_B = 0x0B;
-        private const ushort kVK_ANSI_V = 0x09;
         private const ushort kVK_ANSI_G = 0x05;
         private const ushort kVK_ANSI_K = 0x28;
         private const ushort kVK_ANSI_T = 0x11; // 창 도둑 데모(Theft)
@@ -1513,7 +1512,6 @@ namespace StickMate.Platform.MacOS
                 case GlobalKey.D:       code = kVK_ANSI_D;  break;
                 case GlobalKey.R:       code = kVK_ANSI_R;  break;
                 case GlobalKey.B:       code = kVK_ANSI_B;  break;
-                case GlobalKey.V:       code = kVK_ANSI_V;  break;
                 case GlobalKey.K:       code = kVK_ANSI_K;  break;
                 case GlobalKey.G:       code = kVK_ANSI_G;  break;
                 case GlobalKey.T:       code = kVK_ANSI_T;  break;

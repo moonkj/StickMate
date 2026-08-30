@@ -173,7 +173,7 @@ namespace StickMate.States
 
         /// <summary>
         /// Attack(전투) 상태의 IHasDialogueParams 스냅샷 입력값(BUG-M7 파이프라인, docs/BUG_REPORT_PHASE3.md
-        /// Minor 1 대응). 호출자(현재는 Interaction/RivalStickmanAgent.cs)가 Machine.ChangeState(Attack)를
+        /// Minor 1 대응). 호출자가 Machine.ChangeState(Attack)를
         /// 호출하기 직전에 이번 타격 이후 "몇 대 더 맞아야 결판나는지"를 계산해 이 필드에 써두면,
         /// AttackState.Enter()가 그 값을 그대로 스냅샷해 "한 발 더!"(&gt;=1)/"오늘은 여기까지"(0) 대사를
         /// 파생시킨다. 아무도 세팅하지 않고 ChangeState(Attack)만 호출하면 기본값 0("오늘은 여기까지")
@@ -670,6 +670,44 @@ namespace StickMate.States
         /// </summary>
         public float CharacterVisualHalfWidthWorld;
 
+        /// <summary>
+        /// ★ 2026-08-30 R3-M1 — 캐릭터의 **물리적 반폭**(월드 유닛). 위 시각 반폭과 이름은 비슷하지만
+        /// 용도가 정반대다:
+        ///   · 시각 반폭 = 렌더러 바운즈 → "화면 밖으로 잘리지 않게" 클램프에 쓴다(팔/획까지 포함).
+        ///   · 물리 반폭 = 루트 Rigidbody2D의 **비-트리거 콜라이더** 바운즈 → "벽에 얼마나 가까이 설 수
+        ///     있는가"를 정한다. 실제로는 머리 CircleCollider2D의 반경(배율 1.0에서
+        ///     <see cref="StickConfig.BaselineBodyPhysicsHalfWidth"/> = 0.4)이 루트 캡슐 반폭(0.2)보다
+        ///     넓어서 이쪽이 지배한다. 잡기 영역(GrabArea)은 isTrigger라 제외된다.
+        /// Core/StickmanAgent가 시각 반폭과 같은 주기로 갱신한다. 0이면 아래
+        /// <see cref="EdgeStopDistanceWorld"/>가 설정 배율에서 유도한 값으로 되메운다(절대 0이 되지 않는다).
+        /// </summary>
+        public float CharacterPhysicalHalfWidthWorld;
+
+        /// <summary>
+        /// ★ 자율 배회가 "발판 경계에 도달했다"고 볼 거리(월드 유닛) — <b>설정값이 아니라 유도값</b>.
+        /// 2026-08-30 R3-M1: StickConfig.wanderEdgeStopDistance(0.300)가 몸이 벽에 부딪혀 설 수 있는
+        /// 이격(0.305)보다 작아서, Dock 물리 계단 옆면에 붙어 선 캐릭터가 경계 밴드에 **물리적으로
+        /// 들어갈 수 없었다**(되올라가기 판정을 평가할 기회조차 없었다).
+        /// 유도식과 그 근거는 <see cref="DockGeometry.ResolveEdgeStopDistance"/>에 전부 적어 두었다.
+        ///
+        /// 실측 반폭이 없으면(프리팹 없는 테스트 리그) 설정 배율에서 유도한 값으로 되메운다 —
+        /// 여기서 0을 흘리면 유도가 조용히 꺼져 예전 버그가 그대로 되살아난다.
+        /// </summary>
+        public float EdgeStopDistanceWorld
+        {
+            get
+            {
+                float configured = Config != null ? Config.wanderEdgeStopDistance : 0.3f;
+                float halfWidth = CharacterPhysicalHalfWidthWorld;
+                if (halfWidth <= 0f || float.IsNaN(halfWidth))
+                {
+                    float scale = Config != null ? Config.ResolveCharacterScale() : 1f;
+                    halfWidth = StickConfig.BaselineBodyPhysicsHalfWidth * scale;
+                }
+                return DockGeometry.ResolveEdgeStopDistance(configured, halfWidth);
+            }
+        }
+
         /// <summary>이 시간(초) 넘게 Fall이 이어지면 "유효 발판을 완전히 잃었다"고 보고 리스폰한다.</summary>
         private const float LostCharacterRescueSeconds = 6f;
 
@@ -998,8 +1036,10 @@ namespace StickMate.States
         // 왜 필요했나(실측, Logs 참고): 등반을 유발한 다음 프레임부터 배회 AI는 여전히 "발판 경계에
         // 서 있다"고 보고 경계 정지(BeginEdgePause)를 걸었고, 그 정지가 등반 도중 끝나면서 진행 방향을
         // **방금 올라온 바깥쪽으로** 뒤집고 경계 행동 추첨권까지 리셋했다. 등반이 끝난 캐릭터는
-        // parkourMantleInset(0.25)만큼만 안쪽에 서므로 이미 wanderEdgeStopDistance(0.3) 안이라,
+        // parkourMantleInset(당시 0.25)만큼만 안쪽에 서므로 이미 경계 판정 거리(당시 0.30) 안이라,
         // 올라선 지 9프레임(약 0.15초) 만에 같은 모서리로 다시 뛰어내렸다.
+        // (두 값은 그 뒤 각각 0.60 / 유도값 0.405로 올라갔지만 — 2026-08-30 R3-M1 — 이 카운터가
+        //  필요한 이유 자체는 그대로다: 대소 관계는 필요조건일 뿐 충분조건이 아니다.)
         public int ClimbMantleSequence { get; private set; }
 
         /// <summary>마지막 맨틀에서 캐릭터가 **올라선 방향**(+1 오른쪽 / -1 왼쪽). 턱 안쪽을 가리킨다.</summary>

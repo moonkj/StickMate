@@ -11,7 +11,7 @@ namespace StickMate.Interaction
     /// ============================================================================
     /// 리더 지시: "기존 판정 로직을 건드리지 말고 읽기 전용 이벤트 구독으로 카운트를 누적해라
     /// (직전 라운드의 XP 보너스 훅과 같은 패턴)". 그래서 이 파일은 BattleMinigameDirector /
-    /// RivalStickmanAgent / ArcheryState를 <b>참조조차 하지 않는다</b>(grep으로 검증 가능) —
+    /// ArcheryState를 <b>참조조차 하지 않는다</b>(grep으로 검증 가능) —
     /// 전부 <see cref="StickmanEventBus"/> 구독뿐이다. Interaction/CharacterProgressionDirector.cs와
     /// 같은 이벤트를 보지만 하는 일이 다르다(저쪽은 XP 적립, 이쪽은 횟수 기록).
     ///
@@ -56,7 +56,7 @@ namespace StickMate.Interaction
 
         private void Awake()
         {
-            // 같은 GameObject의 StickmanAgent만 쓴다 — 라이벌 복제본에 이 컴포넌트가 남아 있어도
+            // 같은 GameObject의 StickmanAgent만 쓴다 — 복제본에 이 컴포넌트가 남아 있어도
             // 기록이 두 배로 들어가지 않게 하는 2차 방어(1차는 SceneBootstrapper의 제거).
             _agent = GetComponent<StickmanAgent>();
             if (_agent == null) enabled = false;
@@ -66,13 +66,12 @@ namespace StickMate.Interaction
         {
             // 값 요약은 첫 Update(EnsureFirstRunStamped)에서 찍는다 — 여기서는 저장 파일 로드 전일 수
             // 있어 0으로 보일 수 있다(Start 실행 순서 비보장).
-            Debug.Log("[기록] 준비 완료 — 격파/대결/활쏘기/넘어짐/함께한 시간을 읽기 전용으로 집계합니다.");
+            Debug.Log("[기록] 준비 완료 — 격파/활쏘기/넘어짐/함께한 시간을 읽기 전용으로 집계합니다.");
         }
 
         private void OnEnable()
         {
             StickmanEventBus.BattleMinigamePhaseChanged += OnBattlePhaseChanged;
-            StickmanEventBus.RivalDuelEnded += OnRivalDuelEnded;
             StickmanEventBus.ArcheryShotChanged += OnArcheryShotChanged;
             StickmanEventBus.ArcheryOverlayChanged += OnArcheryOverlayChanged;
         }
@@ -80,7 +79,6 @@ namespace StickMate.Interaction
         private void OnDisable()
         {
             StickmanEventBus.BattleMinigamePhaseChanged -= OnBattlePhaseChanged;
-            StickmanEventBus.RivalDuelEnded -= OnRivalDuelEnded;
             StickmanEventBus.ArcheryShotChanged -= OnArcheryShotChanged;
             StickmanEventBus.ArcheryOverlayChanged -= OnArcheryOverlayChanged;
             Flush(); // 씬 종료/컴포넌트 비활성에서 마지막 조각을 잃지 않게.
@@ -111,7 +109,7 @@ namespace StickMate.Interaction
             CharacterStatsModel.EnsureFirstRunInitialized();
             Debug.Log($"[기록] 근속 {CharacterStatsModel.DaysTogether}일차, " +
                 $"함께한 시간 {CharacterStatsModel.FormatCompanionTime()}, " +
-                $"격파 {CharacterStatsModel.BattleWins}회, 대결 {CharacterStatsModel.RivalWins}회, " +
+                $"격파 {CharacterStatsModel.BattleWins}회, " +
                 $"활쏘기 {CharacterStatsModel.ArcheryBullseyes}/{CharacterStatsModel.ArcheryShots}발, " +
                 $"넘어짐 {CharacterStatsModel.RagdollFalls}회.");
         }
@@ -130,22 +128,14 @@ namespace StickMate.Interaction
             Debug.Log($"[기록] 격파 성공 누적 {CharacterStatsModel.BattleWins}회.");
         }
 
-        private void OnRivalDuelEnded(RivalDuelResult result)
-        {
-            if (result != RivalDuelResult.PlayerWon) return;
-            CharacterStatsModel.AddRivalWin();
-            Debug.Log($"[기록] 대결 승리 누적 {CharacterStatsModel.RivalWins}회.");
-        }
-
         /// <summary>
         /// "넘어진 횟수" — <b>내 상태머신</b>이 Ragdoll로 들어간 순간만 센다.
         ///
-        /// ★ StickmanEventBus.StateTransitioned를 구독하지 <b>않는</b> 이유(실측 확인):
-        /// 라이벌 스틱맨(Interaction/RivalStickmanAgent.cs)도 <b>같은 StickmanStateMachine 클래스</b>로
-        /// 자기 상태를 굴리고, 그 전이는 같은 전역 이벤트로 나온다. 그런데 그 이벤트에는 화자 정보가
-        /// 없다(DialogueIntent와 달리 OriginMachine을 싣지 않는다). 그대로 구독하면 <b>라이벌이
-        /// 넘어져도 내 기록이 오른다</b>. 그래서 내 에이전트의 상태 ID를 직접 읽어 진입 순간만 센다 —
-        /// 매 프레임 enum 비교 하나라 24시간 상주 앱에서도 비용이 없다.
+        /// ★ StickmanEventBus.StateTransitioned를 구독하지 <b>않는</b> 이유:
+        /// 그 이벤트에는 화자 정보가 없다(DialogueIntent와 달리 OriginMachine을 싣지 않는다). 지금은
+        /// 씬에 상태머신이 하나뿐이라 우연히 맞겠지만, 같은 StickmanStateMachine 클래스를 굴리는 두
+        /// 번째 개체가 생기는 순간 남의 전이가 내 기록에 섞인다. 그래서 내 에이전트의 상태 ID를 직접
+        /// 읽어 진입 순간만 센다 — 매 프레임 enum 비교 하나라 24시간 상주 앱에서도 비용이 없다.
         /// </summary>
         private void TickRagdollCounter()
         {

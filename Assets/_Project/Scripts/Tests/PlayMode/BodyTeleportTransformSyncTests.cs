@@ -200,7 +200,7 @@ namespace StickMate.Tests.PlayMode
             yield return LoadSceneAndSettle();
             StickmanBlackboard bb = _agent.Blackboard;
 
-            // 다른 스펙터클(라이벌/활쏘기 등)이 끼어들어 Runaway를 중단시키지 않도록 잠근다.
+            // 다른 스펙터클(활쏘기 등)이 끼어들어 Runaway를 중단시키지 않도록 잠근다.
             SpectacleEventLock.Release(SpectacleEventLock.CurrentOwner);
             Assert.IsTrue(SpectacleEventLock.TryAcquire(SpectacleEventKind.Runaway, this),
                 $"{LogPrefix} 스펙터클 락을 잡지 못했습니다.");

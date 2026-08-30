@@ -46,7 +46,7 @@ namespace StickMate.Interaction
     /// 미니 피규어를 <see cref="StageWorldX"/>(= 10000유닛) 떨어진 곳에 세운다. 메인 카메라는
     /// 직교 크기 12(가시 폭 약 32유닛)라 그 좌표를 <b>절대 볼 수 없고</b>(프러스텀 컬링), 그 자리에는
     /// 다른 오브젝트가 하나도 없어 전용 카메라도 미니 피규어만 찍는다. 즉 메인 카메라 설정 변경 0건,
-    /// ProjectSettings 변경 0건으로 같은 격리를 얻는다(라이벌 대기 좌표 x=500과도 한참 떨어져 있다).
+    /// ProjectSettings 변경 0건으로 같은 격리를 얻는다.
     ///
     /// ============================================================================
     /// 비침해 / 감사 규칙
@@ -60,11 +60,13 @@ namespace StickMate.Interaction
     /// </summary>
     public sealed class CharacterPortraitStage : MonoBehaviour
     {
-        /// <summary>촬영장 좌표. 메인 카메라 가시 범위(약 ±16유닛)와 라이벌 대기 좌표(500)에서 한참 멀다.</summary>
+        /// <summary>촬영장 좌표. 메인 카메라 가시 범위(약 ±16유닛)에서 한참 멀다.</summary>
         public const float StageWorldX = 10000f;
 
-        /// <summary>RT를 화면 표시 크기의 몇 배로 찍을 것인가. 2배로 찍어 축소 표시하면 MSAA 없이도
-        /// 대각선 획이 매끄럽다(2026-08-29 "선 화질 조사" 라운드에서 MSAA 8x가 오히려 함정이었다).</summary>
+        /// <summary>RT를 화면 표시 <b>물리 픽셀</b>의 몇 배로 찍을 것인가. 2배로 찍어 축소 표시하면 MSAA 없이도
+        /// 대각선 획이 매끄럽다(2026-08-29 "선 화질 조사" 라운드에서 MSAA 8x가 오히려 함정이었다).
+        /// <para>기준이 "표시 물리 픽셀"이라는 점이 중요하다 — 캔버스 유닛을 기준으로 삼으면 Retina에서
+        /// 슈퍼샘플이 아니라 등배가 된다(<see cref="TryEnsureTexture"/>의 2026-08-30 사고 참고).</para></summary>
         private const int Supersample = 2;
 
         private const int MaxTextureSide = 2048;
@@ -76,8 +78,9 @@ namespace StickMate.Interaction
         private const float ArmLowerRatio = 0.37f / StickConfig.BaselineCharacterTotalHeight;
         private const float LegUpperRatio = 0.50f / StickConfig.BaselineCharacterTotalHeight;
         private const float LegLowerRatio = 0.45f / StickConfig.BaselineCharacterTotalHeight;
-        private const float EyeOffsetXRatio = 0.075f / StickConfig.BaselineCharacterTotalHeight;
-        private const float EyeOffsetYRatio = 0.02f / StickConfig.BaselineCharacterTotalHeight;
+        // ★ 2026-08-30: 눈 중립 오프셋은 Interaction/AccessoryShapeBuilder.cs가 단일 정의처다
+        //   (모자/안경 도형이 같은 눈 좌표를 기준선으로 쓴다 — 두 곳에 적으면 한쪽만 어긋난다).
+        //   여기서는 머리 반경 배수로 받아 쓴다.
         private const float EyeRadiusRatio = 0.030f / StickConfig.BaselineCharacterTotalHeight;
         private const float StrokeWidthRatio = 0.048f / StickConfig.BaselineCharacterTotalHeight;
 
@@ -93,9 +96,46 @@ namespace StickMate.Interaction
         // ────────────────────────────────────────────────────────────────────────
         // 액자(카메라) 배치 — 키 배수. 서 있는 그림 기준으로 잡은 값이지만, 넘어짐 프레이밍도
         // 여기서 가시 사각형을 역산하므로 상수로 못박는다(두 계산이 따로 놀면 조용히 잘린다).
+        //
+        // ★ 2026-08-30 재조정 (docs/UX_FLOW.md 33-7/33-8) — 액자 종횡비가 152/214 = 0.710에서
+        //   188/180 = 1.044로 바뀌면서 세로 표시 크기가 214pt -> 180pt로 줄었다. 옛 값
+        //   (FrameOrthoRatio 0.62 / FrameCenterHeightRatio 0.58)을 그대로 두면 캐릭터만 작아진다.
+        //
+        //   33-8절은 "0.50 부근"을 제안했지만 그대로 쓸 수 없다. 0.50이면 가시 세로 높이가 정확히
+        //   키 1.0배인데, **지금 그릴 수 있는 가장 높은 그림은 키의 1.077배**다(아래 유도). 취향이
+        //   아니라 기하학적으로 안 들어간다. 그래서 추정 대신 **가장 높은 액세서리에서 역산**한다:
+        //
+        //     · 최고점 = 머리 중심 + R·1.80  (털모자 방울 꼭대기와 왕관 지그재그 꼭짓점이 공동 1위)
+        //              = (H − R) + 1.80R = H + 0.80R = 1.0774·H
+        //     · 최저점 = 발끝 획의 아래쪽 = −(획 두께/2) = −0.0106·H
+        //     · 필요한 세로 span = 1.0880·H, 여기에 여백 5%를 더해 1.1424·H
+        //       -> FrameOrthoRatio(반높이) = 0.5712,  FrameCenterHeightRatio(중심) = 0.5334
+        //
+        //   숫자를 손으로 적지 않고 식을 그대로 상수 식으로 둔다 — 모자가 더 높아지면 위 한 줄
+        //   (TallestAccessoryAboveHeadCenterInR)만 고치면 액자가 따라온다.
+        //
+        //   ⚠ 육안 검증 1회는 아직 남아 있다(이 에이전트는 Unity를 실행할 수 없다). 이 값은
+        //     "잘리지 않는 최소 + 5%"이지 "가장 보기 좋은 값"이 아니다.
         // ────────────────────────────────────────────────────────────────────────
-        private const float FrameCenterHeightRatio = 0.58f;
-        private const float FrameOrthoRatio = 0.62f;   // 모자 여유분까지 담기는 최소 크기 + 약간의 여백.
+
+        /// <summary>머리 반경 / 전신 높이. 배율 1.0 프리팹 실측치에서 온다(AccessoryShapeBuilder와 같은 출처).</summary>
+        private const float HeadRadiusInHeight =
+            AccessoryShapeBuilder.BaselineHeadVisualRadius / StickConfig.BaselineCharacterTotalHeight;
+
+        /// <summary>가장 높이 솟는 액세서리의 머리 중심 기준 높이(R 배수) — 털모자 방울 / 왕관 지그재그.</summary>
+        private const float TallestAccessoryAboveHeadCenterInR = 1.80f;
+
+        private const float FrameInkTopRatio =
+            (1f - HeadRadiusInHeight) + TallestAccessoryAboveHeadCenterInR * HeadRadiusInHeight;
+
+        private const float FrameInkBottomRatio = -StrokeWidthRatio * 0.5f;
+
+        /// <summary>가시 사각형이 그림보다 얼마나 넉넉해야 하는가(여백 비율).</summary>
+        private const float FrameMarginRatio = 0.05f;
+
+        private const float FrameCenterHeightRatio = (FrameInkTopRatio + FrameInkBottomRatio) * 0.5f;
+        private const float FrameOrthoRatio =
+            (FrameInkTopRatio - FrameInkBottomRatio) * (1f + FrameMarginRatio) * 0.5f;
 
         /// <summary>넘어짐 — 몸을 눕히는 각도. 90도면 완전 수평이라 12도를 남겨 "쓰러진" 느낌을 준다.</summary>
         private const float FallenLayDownDegrees = -78f;
@@ -197,14 +237,22 @@ namespace StickMate.Interaction
             _builtSignature = -1;
         }
 
-        /// <summary>잉크색에 따라 뒤집히는 액자 바탕색 — 흰 잉크에 흰 종이면 선이 보이지 않는다.
-        /// 정보창도 테두리 색을 이 판단에 맞춰 고른다(색 결정이 두 곳으로 흩어지지 않게 여기 둔다).</summary>
+        /// <summary>
+        /// 잉크색에 따라 뒤집히는 액자 바탕색 — 흰 잉크에 흰 종이면 선이 보이지 않는다.
+        /// 정보창도 테두리 색을 이 판단에 맞춰 고른다(색 결정이 두 곳으로 흩어지지 않게 여기 둔다).
+        ///
+        /// <para>★ 2026-08-30 (병행 레이아웃 코더 발견, 리더 라우팅) — "종이" 값이 옛 팔레트
+        /// <c>#f6f7f9</c>로 남아 있어, 33-1절 신규 팔레트로 칠해진 액자(<see cref="UiChrome.PortraitSurface"/>
+        /// = <c>#f4f3ef</c>)와 <b>RT 캡처 영역 경계에 색 이음매</b>가 보였다. 값을 손으로 옮겨 적지 않고
+        /// <see cref="UiChrome"/> 토큰을 그대로 읽는다 — 팔레트가 또 바뀌어도 두 표면이 함께 따라간다
+        /// (같은 색을 두 곳에 적어 어긋난 것이 애초에 이 결함의 원인이었다).</para>
+        /// </summary>
         public static Color ResolveBackdropColor(StickConfig config)
         {
             bool whiteInk = config != null && config.inkColor == StickmanInkColor.White;
             return whiteInk
-                ? new Color(0.145f, 0.157f, 0.180f, 1f)   // 목탄
-                : new Color(0.965f, 0.969f, 0.976f, 1f);  // 종이
+                ? new Color(0.145f, 0.157f, 0.180f, 1f)   // 목탄 — 흰 잉크용 반전 바탕(33-1절에 대응 토큰 없음)
+                : UiChrome.PortraitSurface;               // 종이 — 정보창 액자와 정확히 같은 색
         }
 
         /// <summary>상태 ID -> 포즈. <b>같은 스냅샷에서 프레즌스 문구와 함께 파생</b>된다 —
@@ -251,9 +299,29 @@ namespace StickMate.Interaction
             }
         }
 
-        /// <summary>표시 크기(캔버스 유닛)와 화면 배율로 RT를 준비한다. 실패하면 false —
-        /// 호출부는 검은 상자 대신 안내 문구를 띄운다(리더 지시).</summary>
-        public bool TryEnsureTexture(float displayWidth, float displayHeight, float dpiScale)
+        /// <summary>
+        /// 표시 크기(캔버스 유닛)로 RT를 준비한다. 실패하면 false — 호출부는 검은 상자 대신 안내 문구를
+        /// 띄운다(리더 지시).
+        ///
+        /// <para>★★ 2026-08-30 <b>실측 버그 수정</b> — 사용자 신고 "캐릭터 창에서 보이는 캐릭터도 픽셀이
+        /// 다 깨져보임". 원인은 안티에일리어싱이 아니라 <b>RT가 표시 크기보다 작았던 것</b>이다.
+        /// 이 함수는 예전에 <c>ScreenCoordinateConverter.ResolveDpiScale()</c>의 값을 받았는데, 그 값의
+        /// 단위는 <b>OS 포인트 / Unity 픽셀</b>이라 <b>Retina에서 2가 아니라 0.5</b>다
+        /// (<c>AutoDpiScale = 창 폭(포인트) / Screen.width(픽셀)</c> = 1512/3024). 그 결과:
+        /// <code>
+        ///   액자 표시 크기 188 캔버스유닛 × 캔버스 scaleFactor 2 = 376 물리 픽셀로 표시
+        ///   RT 크기 = 188 × 0.5(잘못된 배율) × 2(슈퍼샘플) = 188 픽셀
+        ///   -> 376픽셀 자리에 188픽셀 텍스처를 늘려 붙였다. 슈퍼샘플 2배가 아니라 <b>0.5배 축소</b>였고
+        ///      면적으로는 의도의 1/16이다. 계단이 보이는 것이 당연하다.
+        /// </code>
+        /// 필요한 배율은 "캔버스 유닛 -> Unity 픽셀"인 <see cref="ScreenCoordinateConverter.ResolveCanvasScaleFactor"/>
+        /// 다(같은 값을 <c>CanvasScaler.scaleFactor</c>에도 넣는다). 파라미터 이름도 단위가 드러나게 바꿔
+        /// 같은 혼동이 다시 나지 않게 한다 — 두 값은 서로 역수라 <b>틀려도 컴파일도 되고 그림도 나온다</b>.
+        /// </para>
+        /// </summary>
+        /// <param name="pixelsPerCanvasUnit">캔버스 1유닛이 몇 Unity 픽셀인가(= <c>CanvasScaler.scaleFactor</c>).
+        /// Retina에서 2, 비Retina에서 1.</param>
+        public bool TryEnsureTexture(float displayWidth, float displayHeight, float pixelsPerCanvasUnit)
         {
             // ★ 헤드리스(-batchmode -nographics)에서는 오프스크린 카메라를 절대 켜지 않는다.
             //   실측: PlayMode 테스트가 EXIT=139로 죽었고 네이티브 스택이 정확히
@@ -266,8 +334,9 @@ namespace StickMate.Interaction
                 return false;
             }
 
-            int w = Mathf.Clamp(Mathf.RoundToInt(displayWidth * dpiScale) * Supersample, 32, MaxTextureSide);
-            int h = Mathf.Clamp(Mathf.RoundToInt(displayHeight * dpiScale) * Supersample, 32, MaxTextureSide);
+            if (pixelsPerCanvasUnit <= 0f || float.IsNaN(pixelsPerCanvasUnit)) pixelsPerCanvasUnit = 1f;
+            int w = Mathf.Clamp(Mathf.RoundToInt(displayWidth * pixelsPerCanvasUnit) * Supersample, 32, MaxTextureSide);
+            int h = Mathf.Clamp(Mathf.RoundToInt(displayHeight * pixelsPerCanvasUnit) * Supersample, 32, MaxTextureSide);
             if (_texture != null && _texture.width == w && _texture.height == h && _texture.IsCreated()) return true;
 
             ReleaseTexture();
@@ -275,7 +344,12 @@ namespace StickMate.Interaction
             {
                 name = "CharacterPortraitRT",
                 filterMode = FilterMode.Bilinear,
-                antiAliasing = 1,   // 2배 슈퍼샘플로 대신한다(위 Supersample 문서 참고).
+                // RenderTexture는 QualitySettings.antiAliasing을 <b>상속하지 않는다</b>(생성 인자를 안 주면
+                // 항상 1 = MSAA 없음). 여기서는 그래도 1로 둔다 — 2배 슈퍼샘플 축소가 이 선화에는
+                // MSAA보다 낫고(2026-08-29 "선 화질 조사"), MSAA를 켜면 해상 단계가 하나 더 늘어
+                // 상주 앱의 메모리만 커진다. 대신 <b>슈퍼샘플이 실제로 걸리는지</b>가 중요하다 —
+                // 위 파라미터 단위 사고가 정확히 그것을 무너뜨렸다.
+                antiAliasing = 1,
                 autoGenerateMips = false,
             };
 
@@ -390,17 +464,26 @@ namespace StickMate.Interaction
             Rebuild();
         }
 
+        /// <summary>
+        /// ★ 2026-08-30 — 캐릭터 렌더러와 <b>정확히 같은 결함</b>을 여기서도 고쳤다.
+        /// 카테고리 비트마스크는 "천 모자 -> 왕관"처럼 <b>같은 카테고리 안에서 아이템만 바뀌는</b>
+        /// 경우를 못 잡는다(마스크가 그대로다). 캐릭터는 안 바뀌는데 초상화만 옛 모자를 쓰고 있거나
+        /// 그 반대가 되는, 찾기 어려운 불일치가 된다.
+        /// <see cref="EquipmentModel.WornStateSignature"/>는 아이템 자리까지 섞는다.
+        /// </summary>
         private int ComputeSignature()
         {
-            int mask = 0;
+            int hash = EquipmentModel.WornStateSignature;
+
+            int unlockedMask = 0;
             for (int i = 0; i < EquipmentModel.SlotCount; i++)
             {
-                var slot = (EquipmentSlot)i;
-                if (EquipmentModel.IsEquipped(slot) && EquipmentModel.IsUnlocked(slot, _config)) mask |= 1 << i;
+                if (EquipmentModel.IsUnlocked((EquipmentSlot)i)) unlockedMask |= 1 << i;
             }
-            mask |= (int)_pose << 8;
-            mask ^= ResolveInk().GetHashCode();
-            return mask;
+            hash = hash * 31 + unlockedMask;
+            hash = hash * 31 + (int)_pose;
+            hash = hash * 31 + ResolveInk().GetHashCode();
+            return hash;
         }
 
         private Color ResolveInk() => _config != null ? _config.ResolveInkColor() : Color.black;
@@ -412,6 +495,17 @@ namespace StickMate.Interaction
                 if (_lines[i] != null) Destroy(_lines[i].gameObject);
             }
             _lines.Clear();
+
+            for (int i = 0; i < _fillObjects.Count; i++)
+            {
+                if (_fillObjects[i] != null) Destroy(_fillObjects[i]);
+            }
+            _fillObjects.Clear();
+            for (int i = 0; i < _fillMeshes.Count; i++)
+            {
+                if (_fillMeshes[i] != null) Destroy(_fillMeshes[i]);
+            }
+            _fillMeshes.Clear();
 
             if (_figureRoot == null) return;
             _figureRoot.localRotation = Quaternion.identity;
@@ -427,6 +521,7 @@ namespace StickMate.Interaction
 
             DrawBody(ink, armSpread, backArmSpread);
             DrawAccessories(ink);
+            DrawAppearancePreview(ink);
 
             // 눕히기는 <b>다 그린 뒤</b>에 한다 — 얼마나 큰 그림인지 알아야 액자에 넣을 수 있다.
             if (_pose == PortraitPose.Fallen) FrameFallenFigure();
@@ -533,10 +628,11 @@ namespace StickMate.Interaction
 
             // 눈 — 선글라스를 쓰면 렌즈에 가려지므로 그리지 않는다(실제 캐릭터와 같은 겹침 관계).
             if (EquippedAndUnlocked(EquipmentSlot.Eyes)) return;
-            float eyeY = HeadCenterY + h * EyeOffsetYRatio;
+            float eyeX = r * AccessoryShapeBuilder.EyeOffsetXInHeadRadii;
+            float eyeY = HeadCenterY + r * AccessoryShapeBuilder.EyeOffsetYInHeadRadii;
             float eyeR = h * EyeRadiusRatio;
-            AddCircle("EyeBack", new Vector2(-h * EyeOffsetXRatio, eyeY), eyeR, ink, 8);
-            AddCircle("EyeFront", new Vector2(h * EyeOffsetXRatio, eyeY), eyeR, ink, 8);
+            AddCircle("EyeBack", new Vector2(-eyeX, eyeY), eyeR, ink, 8);
+            AddCircle("EyeFront", new Vector2(eyeX, eyeY), eyeR, ink, 8);
         }
 
         /// <summary>2분절 마디. 각도는 아래 방향을 0으로 보고 x쪽으로 벌어지는 각
@@ -551,40 +647,258 @@ namespace StickMate.Interaction
             AddLine(name, new[] { V(root.x, root.y), V(joint.x, joint.y), V(tip.x, tip.y) }, ink, loop: false);
         }
 
+        /// <summary>
+        /// ★ 도형은 실제 캐릭터와 <b>같은 코드</b>에서 나온다(AccessoryShapeBuilder) — 이중 정의 금지.
+        /// 2026-08-30 32종 확장에서 슬롯별 if 사다리를 순회로 바꿨다: 카테고리가 8개가 되면서
+        /// 하나를 빠뜨려도 컴파일은 통과하고 <b>초상화에서만 조용히 사라지는</b> 구조가 됐기 때문이다.
+        /// 머리(HAIR)도 여기서 함께 그려진다 — 정보창에서 고른 것이 초상화에 안 나오면
+        /// 그건 "골랐다"가 아니다.
+        /// <para>초상화는 언제나 정면(facing +1)이고 <b>흔들지 않는다</b> — 액자 속 인물이 걷고 있지
+        /// 않으므로 HemSway를 적용하면 그림과 상태가 어긋난다(원칙 1).</para>
+        /// </summary>
         private void DrawAccessories(Color ink)
         {
-            // ★ 도형은 실제 캐릭터와 <b>같은 코드</b>에서 나온다(AccessoryShapeBuilder) — 이중 정의 금지.
             var rig = new AccessoryShapeBuilder.Rig(HeadRadius, HeadCenterY, ShoulderY, HipY, 1f);
 
-            if (EquippedAndUnlocked(EquipmentSlot.Shoulders))
+            _shapes.Clear();
+            float cover = EquippedAndUnlocked(EquipmentSlot.Head)
+                ? AccessoryShapeBuilder.HatCoverLocalY(EquipmentModel.WornIndex(EquipmentSlot.Head), rig)
+                : float.PositiveInfinity;
+
+            for (int i = 0; i < EquipmentModel.SlotCount; i++)
             {
-                AddLine("CapeOutline", AccessoryShapeBuilder.CapeOutline(rig), ink, loop: true);
-                AddLine("CapeFold", AccessoryShapeBuilder.CapeFold(rig), ink, loop: false);
-            }
-            if (EquippedAndUnlocked(EquipmentSlot.Neck))
-            {
-                AddLine("BowTieLeft", AccessoryShapeBuilder.BowTieLeftWing(rig), ink, loop: false);
-                AddLine("BowTieRight", AccessoryShapeBuilder.BowTieRightWing(rig), ink, loop: false);
-                AddLine("BowTieKnot", AccessoryShapeBuilder.BowTieKnot(rig), ink, loop: true);
-            }
-            if (EquippedAndUnlocked(EquipmentSlot.Head))
-            {
-                AddLine("HatCrown", AccessoryShapeBuilder.HatCrown(rig), ink, loop: true);
-                AddLine("HatBrim", AccessoryShapeBuilder.HatBrim(rig), ink, loop: true);
-            }
-            if (EquippedAndUnlocked(EquipmentSlot.Eyes))
-            {
-                AddLine("GlassesLensFront", AccessoryShapeBuilder.GlassesLensFront(rig), ink, loop: true);
-                AddLine("GlassesLensBack", AccessoryShapeBuilder.GlassesLensBack(rig), ink, loop: true);
-                AddLine("GlassesBridge", AccessoryShapeBuilder.GlassesBridge(rig), ink, loop: false);
-                AddLine("GlassesTemple", AccessoryShapeBuilder.GlassesTemple(rig), ink, loop: false);
+                var slot = (EquipmentSlot)i;
+                if (!EquippedAndUnlocked(slot)) continue;
+
+                int item = EquipmentModel.WornIndex(slot);
+                ItemCatalog.ResolveWornPalette(slot, item, ink, out Color primary, out Color secondary);
+
+                int start = _shapes.Count;
+                AccessoryShapeBuilder.Append(_shapes, slot, item, rig, cover, Stroke * 0.5f, IsMondayForTie);
+                for (int k = start; k < _shapes.Count; k++)
+                {
+                    AccessoryShapeBuilder.Shape shape = _shapes[k];
+                    Color color = ToneColor(shape.Tone, primary, secondary);
+
+                    // 채움 면(모자류)은 실제 캐릭터와 같은 규칙 — 윤곽선 바로 아래에 깔고 윤곽은 어둡게.
+                    Color outline = color;
+                    if (shape.Filled)
+                    {
+                        AddFill(shape, color);
+                        outline = AccessoryShapeBuilder.FillOutlineColor(color);
+                    }
+                    AddLine(shape.Name, shape.Points, outline, shape.Loop, shape.SortingOrder);
+                }
             }
         }
 
+        // ============================================================================
+        // ★ FX / 펫 정적 미리보기 — 2026-08-30 사용자 신고
+        //   "캐릭터 설정창에서 발자국이나, 공 이런건 왼쪽 캐릭터에서 미리보기로 보여줘야하는데 안보여짐"
+        // ============================================================================
+        // FX/펫은 실시간 캐릭터에만 붙어 있었다(발자국은 보폭마다, 공은 주인을 따라 구른다). 그래서
+        // 정보창에서 골라도 액자에는 아무 일도 일어나지 않았다 — 사용자 입장에서는 "고른 게 아니다".
+        //
+        // 여기서는 <b>움직임을 재현하지 않는다</b>. 액자 속 인물은 걷고 있지 않으므로 발자국이
+        // 찍히는 순간도, 공이 굴러오는 궤적도 있을 수 없다(원칙 1의 그림 버전 — 상태에 없는 동작을
+        // 그리지 않는다). 대표 한 컷만 정지 화면으로 놓는다: 발자국 2개, 반짝임 2개, 먼지 한 뭉치,
+        // 펫 1마리. 크기는 실물과 같은 상수(AppearanceShapeBuilder)에서 나오므로 "이만한 게 생긴다"가
+        // 그대로 읽힌다.
+        //
+        // 놓는 자리는 겹치지 않게 좌우로 나눈다 — FX는 왼쪽(지나온 쪽), 펫은 오른쪽.
+        private const float FxPreviewXRatio = -0.26f;   // 신장 배수
+        private const float PetPreviewXRatio = 0.38f;
+
+        /// <summary>미리보기 레이어. 펫/FX는 몸에 붙은 것이 아니므로 몸통 획(0~2) 뒤에 둔다.</summary>
+        private const int PreviewSortingOrder = -3;
+
+        /// <summary>
+        /// <para>넘어짐/가출 포즈에서는 그리지 않는다. 넘어짐은 다 그린 뒤 도형 전체를 눕혀 액자에
+        /// 맞추는데(<see cref="FrameFallenFigure"/>), 발자국까지 함께 누우면 "땅에 찍힌 자국"이라는
+        /// 뜻이 사라지고 액자 프레이밍도 미리보기 크기에 끌려간다.</para>
+        /// </summary>
+        private void DrawAppearancePreview(Color ink)
+        {
+            if (_pose != PortraitPose.Standing && _pose != PortraitPose.Busy) return;
+
+            DrawFxPreview(ink);
+            DrawPetPreview(ink);
+        }
+
+        /// <summary>FX는 캐릭터가 <b>자기 펜으로 남기는 자국</b>이라 실시간 렌더러와 같이 잉크색으로
+        /// 그린다(Interaction/CharacterFxRenderer.cs와 같은 규약 — 미리보기가 실물과 달라지면 안 된다).</summary>
+        private void DrawFxPreview(Color ink)
+        {
+            if (!EquippedAndUnlocked(EquipmentSlot.Fx)) return;
+            int item = EquipmentModel.WornIndex(EquipmentSlot.Fx);
+
+            float h = TotalHeight;
+            float r = HeadRadius;
+            float x = h * FxPreviewXRatio;
+
+            switch (item)
+            {
+                case AppearanceShapeBuilder.FxFootprint:
+                {
+                    float radius = Stroke * 0.9f;
+                    AddDotPreview("FxFootprintA", x, radius, ink);
+                    AddDotPreview("FxFootprintB", x - h * 0.11f, radius, ink);
+                    break;
+                }
+
+                case AppearanceShapeBuilder.FxSparkle:
+                {
+                    float arm = r * AppearanceShapeBuilder.SparkleArmInR;
+                    AddSparklePreview("FxSparkleA", x, HeadCenterY + r * 1.15f, arm, ink);
+                    AddSparklePreview("FxSparkleB", x - h * 0.09f, HeadCenterY + r * 0.35f, arm * 0.7f, ink);
+                    break;
+                }
+
+                case AppearanceShapeBuilder.FxDust:
+                {
+                    float radius = r * 0.5f;
+                    for (int i = 0; i < 2; i++)
+                    {
+                        Vector3[] pts = AppearanceShapeBuilder.DustCrescent(radius, i);
+                        Offset(pts, x, Stroke);
+                        AddLine(i == 0 ? "FxDustA" : "FxDustB", pts, ink, false, PreviewSortingOrder);
+                    }
+                    break;
+                }
+            }
+        }
+
+        /// <summary>펫은 <b>물건</b>이라 자기 색을 갖는다(빨간 공, 종이 비행기) —
+        /// 색표는 Core/ItemCatalog 하나뿐이고 실시간 펫도 같은 값을 읽는다.</summary>
+        private void DrawPetPreview(Color ink)
+        {
+            if (!EquippedAndUnlocked(EquipmentSlot.Pet)) return;
+            int item = EquipmentModel.WornIndex(EquipmentSlot.Pet);
+            ItemCatalog.ResolveWornPalette(EquipmentSlot.Pet, item, ink, out Color primary, out Color secondary);
+
+            float h = TotalHeight;
+            float r = HeadRadius;
+            float x = h * PetPreviewXRatio;
+
+            switch (item)
+            {
+                case AppearanceShapeBuilder.PetBall:
+                {
+                    float radius = h * AppearanceShapeBuilder.BallRadiusInHeight;
+                    AddPreviewLine("PetBallRing", AppearanceShapeBuilder.BallRing(radius, 12), x, radius,
+                        true, primary);
+                    // 반지름 선은 실물과 같이 그린다(굴러가면 이 선이 회전을 읽히게 한다).
+                    AddPreviewLine("PetBallSpoke", AppearanceShapeBuilder.BallSpoke(radius), x, radius,
+                        false, secondary);
+                    break;
+                }
+
+                case AppearanceShapeBuilder.PetPlane:
+                {
+                    float span = r * AppearanceShapeBuilder.PlaneWingSpanInR;
+                    float y = HeadCenterY + r * 0.60f;
+                    AddPreviewLine("PetPlaneBody", AppearanceShapeBuilder.PlaneBody(span), x, y, true, primary);
+                    AddPreviewLine("PetPlaneFold", AppearanceShapeBuilder.PlaneFold(span), x, y, false, secondary);
+                    break;
+                }
+
+                case AppearanceShapeBuilder.PetMini:
+                {
+                    // 정면(facing +1) — 액자 속 인물과 같은 방향을 본다.
+                    Vector3[][] parts = AppearanceShapeBuilder.MiniFigure(h * AppearanceShapeBuilder.MiniScale, 1f);
+                    for (int i = 0; i < parts.Length; i++)
+                    {
+                        AddPreviewLine("PetMini" + i, parts[i], x, 0f, i == 0, primary);
+                    }
+                    break;
+                }
+
+                case AppearanceShapeBuilder.PetCursor:
+                {
+                    float size = r * AppearanceShapeBuilder.CursorSizeInR;
+                    AddPreviewLine("PetCursor", AppearanceShapeBuilder.CursorArrow(size),
+                        x, HeadCenterY + r * 0.95f, false, primary);
+                    break;
+                }
+            }
+        }
+
+        private void AddDotPreview(string name, float x, float radius, Color ink)
+        {
+            Vector3[] pts = AppearanceShapeBuilder.DotSegment(radius);
+            Offset(pts, x, 0f);
+            AddLine(name, pts, ink, false, PreviewSortingOrder, radius * 2f);
+        }
+
+        private void AddSparklePreview(string name, float x, float y, float arm, Color ink)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                Vector3[] pts = AppearanceShapeBuilder.SparkleStroke(arm, i);
+                Offset(pts, x, y);
+                AddLine(name + i, pts, ink, false, PreviewSortingOrder);
+            }
+        }
+
+        private void AddPreviewLine(string name, Vector3[] points, float x, float y, bool loop, Color color)
+        {
+            Offset(points, x, y);
+            AddLine(name, points, color, loop, PreviewSortingOrder);
+        }
+
+        /// <summary>도형은 자기 원점 기준으로 만들어지므로(실시간 렌더러가 오브젝트를 옮겨 놓는다)
+        /// 정적 미리보기는 점을 직접 옮긴다 — 오브젝트를 하나 더 두지 않기 위해서다.</summary>
+        private static void Offset(Vector3[] points, float dx, float dy)
+        {
+            for (int i = 0; i < points.Length; i++)
+            {
+                points[i] = new Vector3(points[i].x + dx, points[i].y + dy, points[i].z);
+            }
+        }
+
+        /// <summary>재구성 때만 쓰는 조립 버퍼(매 프레임 경로가 아니다).</summary>
+        private readonly List<AccessoryShapeBuilder.Shape> _shapes = new List<AccessoryShapeBuilder.Shape>(16);
+
+        /// <summary>33-2-5 (D) 줄무늬 타이의 요일 상태. 재구성은 포즈/장비/색이 바뀔 때만 도므로
+        /// 여기서는 캐싱 없이 그때 한 번만 읽는다(캐릭터 렌더러 쪽은 매 프레임 경로라 캐싱한다).</summary>
+        private static bool IsMondayForTie => System.DateTime.Now.DayOfWeek == System.DayOfWeek.Monday;
+
         private bool EquippedAndUnlocked(EquipmentSlot slot)
-            => EquipmentModel.IsEquipped(slot) && EquipmentModel.IsUnlocked(slot, _config);
+            => EquipmentModel.IsEquipped(slot) && EquipmentModel.IsUnlocked(slot);
 
         private static Vector3 V(float x, float y) => new Vector3(x, y, 0f);
+
+        /// <summary>도형의 <b>역할</b>을 색으로. 실제 캐릭터(CharacterAccessoryRenderer)와 같은 표다.</summary>
+        private static Color ToneColor(byte tone, Color primary, Color secondary)
+        {
+            if (tone == AccessoryShapeBuilder.Accent) return secondary;
+            if (tone == AccessoryShapeBuilder.Shade) return AccessoryShapeBuilder.FillOutlineColor(primary);
+            return primary;
+        }
+
+        /// <summary>채움 면 하나(모자류). 미니 피규어를 통째로 다시 만들 때 함께 지워지도록
+        /// 메시를 <see cref="_fillMeshes"/>가 들고 있는다 — GameObject를 지워도 메시는 남는다.</summary>
+        private void AddFill(in AccessoryShapeBuilder.Shape shape, Color color)
+        {
+            Mesh mesh = AccessoryShapeBuilder.BuildFillMesh(shape.Points, color);
+            if (mesh == null) return;
+
+            var go = new GameObject(shape.Name + "Fill");
+            go.transform.SetParent(_figureRoot, false);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = _lineMaterial;
+            mr.sortingOrder = shape.FillSortingOrder;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+
+            _fillMeshes.Add(mesh);
+            _fillObjects.Add(go);
+        }
+
+        private readonly List<Mesh> _fillMeshes = new List<Mesh>(4);
+        private readonly List<GameObject> _fillObjects = new List<GameObject>(4);
 
         private void AddCircle(string name, Vector2 center, float radius, Color ink, int segments)
         {
@@ -597,18 +911,25 @@ namespace StickMate.Interaction
             AddLine(name, points, ink, loop: true);
         }
 
-        private void AddLine(string name, Vector3[] points, Color ink, bool loop)
+        /// <param name="sortingOrder">33-2-0의 레이어 재배치표. 미니 피규어도 같은 순서를 써야
+        /// "화면 속 캐릭터"와 겹침 관계가 같아진다(망토가 몸 뒤로 간다).</param>
+        /// <param name="width">획 두께 override(0 이하면 캐릭터 획과 같은 <see cref="Stroke"/>).
+        /// 발자국처럼 <b>굵은 캡이 곧 점</b>인 도형만 이 인자를 쓴다.</param>
+        private void AddLine(string name, Vector3[] points, Color ink, bool loop, int sortingOrder = 0,
+            float width = 0f)
         {
             var go = new GameObject(name);
             go.transform.SetParent(_figureRoot, false);
 
+            float stroke = width > 0f ? width : Stroke;
             var lr = go.AddComponent<LineRenderer>();
+            lr.sortingOrder = sortingOrder;
             lr.useWorldSpace = false;
             lr.material = _lineMaterial;
             lr.startColor = ink;
             lr.endColor = ink;
-            lr.startWidth = Stroke;
-            lr.endWidth = Stroke;
+            lr.startWidth = stroke;
+            lr.endWidth = stroke;
             lr.numCapVertices = 4;
             lr.numCornerVertices = 4;
             lr.loop = loop;

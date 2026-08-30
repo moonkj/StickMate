@@ -313,7 +313,7 @@ namespace StickMate.Interaction
 
         private void Awake()
         {
-            // 같은 GameObject의 StickmanAgent만 쓴다 — 라이벌 복제본에 이 컴포넌트가 남아 있어도
+            // 같은 GameObject의 StickmanAgent만 쓴다 — 복제본에 이 컴포넌트가 남아 있어도
             // 톱니가 두 벌 겹쳐 뜨지 않게 하는 2차 방어(1차는 SceneBootstrapper의 제거).
             _agent = GetComponent<StickmanAgent>();
             _config = _agent != null ? _agent.Config : null;
@@ -951,6 +951,18 @@ namespace StickMate.Interaction
         private void ActivateClick()
         {
             if (IsSpinning) return;
+
+            // ★ 2026-08-30 역방향 잠금 — 정보창이 열려 있으면 톱니는 <b>그 창을 닫는 버튼</b>이다.
+            // 예전에는 창을 조회조차 하지 않고 부채꼴을 창 위에 펼쳤다(부채꼴 31500 > 창 31000이었다).
+            // 톱니가 주 진입점이라 "닫으려고 한 번 더 누른다"가 가장 자연스러운 동작인데, 그때마다
+            // 창 위에 부채꼴이 얹힌 화면이 됐다. 닫기만 하고 부채꼴은 펼치지 않는다 — 한 번의 클릭이
+            // "지금 떠 있는 표면을 닫는다"는 뜻이면 충분하고, 닫으려던 사용자에게 곧바로 다른 UI를
+            // 들이미는 것은 같은 실수의 반복이다. 창이 없어야 다음 클릭이 평소처럼 부채꼴을 편다.
+            if (_window != null && _window.IsOpen)
+            {
+                _window.Close("톱니 재클릭(창 닫기)");
+                return;
+            }
 
             if (IsMenuExpanded)
             {

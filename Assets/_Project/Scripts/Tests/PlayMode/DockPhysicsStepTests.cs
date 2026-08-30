@@ -145,7 +145,7 @@ namespace StickMate.Tests.PlayMode
             Assert.AreEqual(1, steps.Length,
                 $"{LogPrefix} 씬의 DockPhysicsStep이 {steps.Length}개입니다 — 1개여야 합니다. " +
                 "0개면 SceneBootstrapper 배치 누락(--force 재생성 필요), 2개 이상이면 중복 배치입니다. " +
-                "★ 물리 바닥은 플레이어/라이벌이 **공유**하는 오브젝트이므로 캐릭터마다 하나씩 두면 안 됩니다.");
+                "★ 물리 바닥은 모든 캐릭터가 **공유**하는 오브젝트이므로 캐릭터마다 하나씩 두면 안 됩니다.");
             _step = steps[0];
 
             yield return new WaitForSeconds(SettleWaitSeconds);

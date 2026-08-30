@@ -13,14 +13,13 @@ namespace StickMate.Interaction
     /// XP 소스 — 기존 판정 로직을 <b>한 줄도</b> 건드리지 않는다
     /// ============================================================================
     /// 리더 지시: "기존 판정 로직에 읽기 전용으로 훅만 걸어라 — 승패 판정 자체를 바꾸지 마라."
-    /// 그래서 네 소스 중 보너스 3종은 <b>전부 StickmanEventBus 구독</b>으로만 구현했다. 이 파일은
-    /// BattleMinigameDirector / RivalStickmanAgent / ArcheryState를 <b>참조조차 하지 않는다</b>
-    /// (grep으로 검증 가능) — 그 세 곳의 소스 코드는 이번 라운드에 수정되지 않았다.
+    /// 그래서 세 소스 중 보너스 2종은 <b>전부 StickmanEventBus 구독</b>으로만 구현했다. 이 파일은
+    /// BattleMinigameDirector / ArcheryState를 <b>참조조차 하지 않는다</b>
+    /// (grep으로 검증 가능) — 그 두 곳의 소스 코드는 이번 라운드에 수정되지 않았다.
     ///
     ///  · 패시브        : progressionPassiveTickSeconds 주기로 분당 값을 쪼개 적립.
     ///                    "아무것도 안 해도 자란다"(관찰형 앱 철학)가 주 경로다.
     ///  · 격파 승리      : BattleMinigamePhaseChanged == Success
-    ///  · 라이벌 대결 승리: RivalDuelEnded == PlayerWon
     ///  · 활쏘기 명중    : ArcheryShotChanged.Result == Bullseye (Release 시점 1회)
     ///
     /// ============================================================================
@@ -50,7 +49,7 @@ namespace StickMate.Interaction
 
         private void Awake()
         {
-            // 같은 GameObject의 StickmanAgent만 쓴다 — 라이벌 복제본에 이 컴포넌트가 남아 있어도
+            // 같은 GameObject의 StickmanAgent만 쓴다 — 복제본에 이 컴포넌트가 남아 있어도
             // XP가 두 배로 들어가지 않게 하는 2차 방어(1차 방어는 SceneBootstrapper의 제거).
             _agent = GetComponent<StickmanAgent>();
             if (_config == null && _agent != null) _config = _agent.Config;
@@ -76,14 +75,12 @@ namespace StickMate.Interaction
         private void OnEnable()
         {
             StickmanEventBus.BattleMinigamePhaseChanged += OnBattlePhaseChanged;
-            StickmanEventBus.RivalDuelEnded += OnRivalDuelEnded;
             StickmanEventBus.ArcheryShotChanged += OnArcheryShotChanged;
         }
 
         private void OnDisable()
         {
             StickmanEventBus.BattleMinigamePhaseChanged -= OnBattlePhaseChanged;
-            StickmanEventBus.RivalDuelEnded -= OnRivalDuelEnded;
             StickmanEventBus.ArcheryShotChanged -= OnArcheryShotChanged;
         }
 
@@ -130,12 +127,6 @@ namespace StickMate.Interaction
             Grant(_config != null ? _config.progressionBattleWinXp : 0f, "격파 성공");
         }
 
-        private void OnRivalDuelEnded(RivalDuelResult result)
-        {
-            if (result != RivalDuelResult.PlayerWon) return;
-            Grant(_config != null ? _config.progressionRivalWinXp : 0f, "라이벌 대결 승리");
-        }
-
         private void OnArcheryShotChanged(ArcheryShotEvent shot)
         {
             if (shot.Result != ArcheryShotResult.Bullseye) return;
@@ -168,20 +159,33 @@ namespace StickMate.Interaction
             CharacterSaveStore.Save();
         }
 
-        /// <summary>이번 레벨업으로 새로 열린 슬롯을 사람이 읽는 문장으로. 없으면 다음 해제 안내.</summary>
+        /// <summary>이번 레벨업으로 새로 열린 <b>아이템</b>을 사람이 읽는 문장으로. 없으면 그렇게 말한다.
+        /// 2026-08-30 32종 확장 전에는 카테고리 4개만 훑었는데, 이제 해제는 아이템 단위라
+        /// (카테고리는 처음부터 열려 있다) 카탈로그 전체를 훑는다. 한 번에 여러 개가 열리는 경우
+        /// (오래 꺼뒀다 켜서 여러 레벨이 한꺼번에 오를 때)를 위해 개수도 함께 알린다.
+        /// 레벨업은 몇 시간에 한 번 있는 사건이라 이 경로의 문자열 할당은 상시 비용이 아니다.</summary>
         private string DescribeNewUnlocks(int levelsGained)
         {
             int before = CharacterProgressionModel.Level - levelsGained;
-            for (int i = 0; i < EquipmentModel.SlotCount; i++)
+            string firstName = null;
+            int count = 0;
+
+            for (int i = 0; i < ItemCatalog.Count; i++)
             {
-                var slot = (EquipmentSlot)i;
-                int need = EquipmentModel.UnlockLevel(slot, _config);
-                if (need > before && need <= CharacterProgressionModel.Level)
-                {
-                    return $"새 장비 해제: [{EquipmentModel.ItemName(slot)}] — 정보창(⌃⌥⌘I 또는 우상단 톱니)에서 착용할 수 있습니다.";
-                }
+                ItemCatalogEntry entry = ItemCatalog.At(i);
+                if (!entry.RequiredLevel.HasValue) continue;   // 행동은 잠기지 않는다.
+
+                int need = entry.RequiredLevel.Value;
+                if (need <= before || need > CharacterProgressionModel.Level) continue;
+
+                count++;
+                if (firstName == null) firstName = entry.DisplayName;
             }
-            return "새로 열린 장비는 없습니다.";
+
+            if (count <= 0) return "새로 열린 장비는 없습니다.";
+
+            string more = count > 1 ? $" 외 {count - 1}종" : string.Empty;
+            return $"새 장비 해제: [{firstName}]{more} — 정보창(⌃⌥⌘I 또는 우상단 톱니)에서 착용할 수 있습니다.";
         }
 
         /// <summary>

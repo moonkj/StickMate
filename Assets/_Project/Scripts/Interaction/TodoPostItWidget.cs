@@ -114,9 +114,9 @@ namespace StickMate.Interaction
         private void Awake()
         {
             _featureEnabled = _featureEnabledDefault;
-            // 같은 GameObject의 StickmanAgent만 쓴다(씬 전체 탐색 폴백 없음) — 라이벌 복제본에 이
-            // 위젯이 남아 있어도 카드가 두 벌 뜨지 않게 하는 2차 방어. 1차 방어는 SceneBootstrapper가
-            // 라이벌에서 이 컴포넌트를 제거하는 것이다.
+            // 같은 GameObject의 StickmanAgent만 쓴다(씬 전체 탐색 폴백 없음) — 복제본에 이
+            // 위젯이 남아 있어도 카드가 두 벌 뜨지 않게 하는 2차 방어. 1차 방어는 애초에 사본에
+            // 이 컴포넌트를 배치하지 않는 것이다.
             _agent = GetComponent<StickmanAgent>();
             if (_config == null && _agent != null) _config = _agent.Config;
             BuildUi();

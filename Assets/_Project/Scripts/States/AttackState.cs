@@ -5,8 +5,11 @@ namespace StickMate.States
 {
     /// <summary>
     /// 능동 상태: 공격 모션 재생(전투 로직과 연동, Phase 3).
-    /// 진입: Idle/Walk 중 공격 입력(Phase 3에서는 Interaction/RivalStickmanAgent.cs의 근접 판정이
-    /// 유일한 실사용처 — 라이벌 스틱맨 대결에서 두 캐릭터가 번갈아 이 상태로 진입해 타격 연출을 보인다).
+    /// 진입: Idle/Walk 중 공격 입력.
+    /// ★ 2026-08-30 — 유일한 호출자였던 컴포넌트가 함께 삭제되어 <b>런타임 생산자가 0개</b>가 됐다.
+    ///   상태 자체는 CLAUDE.md가 명시한 능동 상태 5종의 하나라
+    ///   상태머신에 계속 등록해 두지만, 다시 누군가 ChangeState(Attack)를 부르기 전까지는 재생되지
+    ///   않는다 — 신규 기능이 이 상태를 쓰려면 AttackShotsRemaining을 채우고 호출하면 된다.
     /// 전이: 모션 정상 종료(StickConfig.attackDuration 경과) -> 진입 직전 능동 상태로 복귀 /
     ///       외력 임계값 초과 -> Ragdoll(강제 인터럽트, 예: 공격 모션 재생 도중 선타를 맞음 — 이 경우
     ///       Attack이 만든 DialogueIntent는 TransitionGeneration 불일치로 같은 프레임에 자동 만료된다).
@@ -24,8 +27,8 @@ namespace StickMate.States
         /// 이 상태가 대사 매핑 함수에 구조적으로 노출하는 파라미터(BUG-M7). 값의 출처는
         /// StickmanBlackboard.AttackShotsRemaining(docs/BUG_REPORT_PHASE3.md Minor 1 대응) — 호출자가
         /// ChangeState(Attack) 직전에 채워두는 스냅샷 입력이다. Phase 5 이전엔 콤보/탄약을 추적하는 진짜
-        /// 전투 큐가 없으므로 "이번 타격이 이 대결을 끝내는 결정타인지" 정도의 데모 수준 신호로만 쓴다
-        /// (현재 유일한 사용처인 Interaction/RivalStickmanAgent.cs 참고) — 아무도 채우지 않으면 기본값 0.
+        /// 전투 큐가 없으므로 "이번 타격이 결정타인지" 정도의 신호로만 쓴다 — 지금은 채우는 호출자가
+        /// 없어 항상 기본값 0("오늘은 여기까지")이다.
         /// </summary>
         public sealed class AttackDialogueParams
         {

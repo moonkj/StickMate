@@ -72,7 +72,7 @@ namespace StickMate.Interaction
 
         /// <summary>
         /// 격파 미니게임 강제 발동(전역 단축키 Ctrl+Opt+Cmd+K / 캐릭터 우클릭 메뉴). 기본 자동 발동은
-        /// 60초마다 5% 추첨이라 실사용/검증 중에 한 번 보기도 어려워, RivalEncounterDirector.ForceSpawnNow와
+        /// 60초마다 5% 추첨이라 실사용/검증 중에 한 번 보기도 어려워, 다른 스펙터클과
         /// 같은 관례로 "확률만 건너뛰는" 데모 경로를 둔다 — 상호배제 락(SpectacleEventLock)과 진입 가능
         /// 상태 조건(Idle/Walk)은 그대로 지킨다. 왜 조용히 실패하는 TriggerManually를 그냥 쓰지 않는가:
         /// 화면을 볼 수 없는 검증 환경에서 "왜 아무 일도 안 일어났는지"를 로그만으로 판별할 수 있어야 하기

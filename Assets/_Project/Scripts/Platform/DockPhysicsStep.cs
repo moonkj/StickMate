@@ -59,7 +59,6 @@ namespace StickMate.Platform
     /// (`StickConfig.footholdPollInterval`). 콜라이더를 실제로 만지는 것은 **Dock 사각형이 바뀐 그
     /// 순간뿐**이다.
     ///
-    /// 라이벌도 같은 물리 바닥/계단 위에서 움직인다 — 물리 오브젝트는 공유이므로 별도 처리가 없다.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class DockPhysicsStep : MonoBehaviour
@@ -242,7 +241,7 @@ namespace StickMate.Platform
             if (_agent == null)
             {
                 // 심층 방어 — 씬 배선이 비어도 동작하게 한다(SceneBootstrapper가 NewScene 이후 참조를
-                // 잃어 컴포넌트가 조용히 무동작이 됐던 라이벌 사고와 같은 계열의 방어).
+                // 잃어 컴포넌트가 조용히 무동작이 됐던 사고와 같은 계열의 방어).
                 _agentSearchCooldown -= Time.unscaledDeltaTime;
                 if (_agentSearchCooldown > 0f) return null;
                 _agentSearchCooldown = AgentSearchIntervalSeconds;

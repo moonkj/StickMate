@@ -100,7 +100,7 @@ namespace StickMate.Interaction
 
         /// <summary>
         /// 이 렌더러가 담당하는 캐릭터/감시자. <b>같은 GameObject의 컴포넌트만</b> 쓰고 씬 전체 탐색
-        /// 폴백은 쓰지 않는다 — 라이벌은 플레이어 프리팹의 복제본이라 폴백을 두면 라이벌 발밑에도 링이
+        /// 폴백은 쓰지 않는다 — 이 프리팹이 복제되면 폴백을 두었을 때 사본 발밑에도 링이
         /// 한 벌 더 생긴다(2026-08-29 격파 미니게임에서 실측 확인된 버그와 같은 함정).
         /// </summary>
         private StickmanAgent _agent;
@@ -217,7 +217,7 @@ namespace StickMate.Interaction
 
         private void OnTierChanged(FocusWatchTier tier)
         {
-            if (_agent == null) return; // 자기 캐릭터가 없는 사본(라이벌) — 전역 이벤트를 받아도 무시한다.
+            if (_agent == null) return; // 자기 캐릭터가 없는 사본 — 전역 이벤트를 받아도 무시한다.
 
             // 1단계는 "계속 재알림해도 무방"(18절)이라 같은 값이 반복해서 올 수 있다 — 그때 도형을
             // 다시 만들면 매 관찰 주기마다 깜빡이므로, 값이 실제로 바뀐 순간에만 재구성한다.

@@ -111,7 +111,9 @@ namespace StickMate.States
             if (!_blackboard.TryGetFootholdEdgeWorld(_wallHandle, -_direction, out _, out float nearEdgeX)) return false;
             if (!_blackboard.TryGetFootholdEdgeWorld(_wallHandle, _direction, out _, out float farEdgeX)) return false;
 
-            float inset = _blackboard.Config != null ? _blackboard.Config.parkourMantleInset : 0.25f;
+            // 폴백은 StickConfig의 코드 기본값과 같게 유지한다(2026-08-30 R3-M1: 0.25는 2026-08-29
+            // 이전 화석이라 Config가 없는 경로에서만 옛 거동으로 되돌아가는 조용한 함정이었다).
+            float inset = _blackboard.Config != null ? _blackboard.Config.parkourMantleInset : 0.6f;
             float desired = nearEdgeX + _direction * Mathf.Max(0f, inset);
             targetX = Mathf.Clamp(desired, Mathf.Min(nearEdgeX, farEdgeX), Mathf.Max(nearEdgeX, farEdgeX));
             return true;

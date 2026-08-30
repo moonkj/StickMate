@@ -145,9 +145,9 @@ namespace StickMate.Interaction
 
         /// <summary>
         /// 이 렌더러가 담당하는 캐릭터. <b>같은 GameObject의 StickmanAgent만</b> 쓰고 씬 전체 탐색
-        /// 폴백은 쓰지 않는다 — 라이벌은 플레이어 프리팹의 복제본이라 이 컴포넌트를 함께 갖게 되고,
-        /// 폴백을 두면 라이벌 어깨에도 처짐 표시가 한 벌 더 뜬다(2026-08-29 격파 미니게임에서 실측으로
-        /// 확인된 버그와 같은 함정). SceneBootstrapper가 라이벌에서 제거하는 것이 1차 방어, 이 가드가 2차.
+        /// 폴백은 쓰지 않는다 — 이 프리팹이 복제되면 사본도 이 컴포넌트를 함께 갖게 되고, 폴백을 두면
+        /// 사본 어깨에도 처짐 표시가 한 벌 더 뜬다(2026-08-29 격파 미니게임에서 실측으로 확인된 버그와
+        /// 같은 함정). 애초에 배치하지 않는 것이 1차 방어이고 이 가드가 2차다.
         /// </summary>
         private StickmanAgent _agent;
         private Material _lineMaterial;
@@ -305,7 +305,7 @@ namespace StickMate.Interaction
 
         private void OnStressLevelChanged(float level)
         {
-            if (_agent == null) return; // 자기 캐릭터가 없는 사본(라이벌) — 전역 이벤트를 받아도 무시한다.
+            if (_agent == null) return; // 자기 캐릭터가 없는 사본 — 전역 이벤트를 받아도 무시한다.
 
             LastObservedLevel = level;
             StressMoodTier target = TierForLevel(level, _agent.Config);

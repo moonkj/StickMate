@@ -497,121 +497,6 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
-        // T5 — ★ 라이벌도 같은 보호를 받는가 (리더 지적: 사용자가 **"한 명이"** 독 아래에서
-        //      계속 쓰러진다고 했다 = 두 캐릭터 중 하나만 고쳐졌을 가능성)
-        //
-        //      Interaction/RivalStickmanAgent는 플레이어(Core/StickmanAgent)와 **완전히 별개의**
-        //      Update 루프를 갖고 있고, 거기에는 플레이어가 매 프레임 하는 세 가지
-        //      (TickGroundKeepingSafetyNet / TickPose / EnforceScreenBoundsAndRescue)가 **하나도**
-        //      없었다. 그래서 대결 중 1.2초마다 들어가는 AttackState(0.4초, 접지 스냅 없음)에서
-        //      라이벌만 Dock 아래로 가라앉고, 6초 강제 복귀조차 없어 영영 못 나왔다.
-        //      라이벌에게는 OnCollisionEnter2D 자체가 없어(RagdollLimbImpactRelay는 부모에
-        //      StickmanAgent가 없어 무동작) 랙돌은 플레이어의 반격으로만 생긴다 — 그래서 증상이
-        //      "가라앉은 채 계속 쓰러진다"가 된다.
-        // ============================================================================
-
-        [UnityTest]
-        public IEnumerator T5_RivalGetsSameProtectionOnDock()
-        {
-            yield return SetUpDockLayout(0.13f, 0.885f);
-            yield return RunRivalAttackScenario(disableFixes: false);
-        }
-
-        // ============================================================================
-        // T5n — 네거티브 컨트롤: 라이벌 쪽 스위치를 끄면 실제로 Dock 아래에 가라앉아 못 나온다
-        // ============================================================================
-
-        [UnityTest]
-        public IEnumerator T5n_NegativeControl_RivalSinksBelowDockWithoutFixes()
-        {
-            yield return SetUpDockLayout(0.13f, 0.885f);
-            yield return RunRivalAttackScenario(disableFixes: true);
-        }
-
-        private IEnumerator RunRivalAttackScenario(bool disableFixes)
-        {
-            StickmanBlackboard bb = _agent.Blackboard;
-            float dockCenterX = WorldXAtScreenFraction(0.5f, _dockTopOsY);
-            Place(dockCenterX, _dockTopWorldY, DockHandle, StickmanStateId.Idle);
-            yield return new WaitForSeconds(0.4f);
-
-            var rival = Object.FindFirstObjectByType<Interaction.RivalStickmanAgent>(FindObjectsInactive.Include);
-            Assert.IsNotNull(rival, $"{LogPrefix} 전제 실패 — 씬에서 RivalStickmanAgent를 찾지 못했습니다 " +
-                "(SceneBootstrapper.CreateRivalStickman 배선 확인).");
-
-            // 플레이어에게서 충분히 떨어진 Dock 위에 소환한다 — 근접 전투(rivalAttackRange 1.0)가
-            // 끼어들면 "공격 중 자유낙하"와 "얻어맞아서 랙돌"을 구분할 수 없다.
-            float rivalX = dockCenterX + 8f;
-            rival.BeginDuel(_agent, new Vector2(rivalX, _dockTopWorldY));
-            yield return null;
-            Assert.IsNotNull(rival.Blackboard, $"{LogPrefix} 전제 실패 — 라이벌 블랙보드가 만들어지지 않았습니다.");
-
-            // 라이벌은 자기 StickConfig(원본 자산)를 들고 있으므로, 테스트에서는 복제본으로 갈아끼운다
-            // (원본 자산 불변 — CLAUDE.md 불변 원칙 3).
-            StickConfig rivalCfg = Object.Instantiate(_clonedConfig);
-            if (disableFixes)
-            {
-                rivalCfg.groundKeepingSafetyNetEnabled = false;
-                rivalCfg.sinkholeLiftRecoveryEnabled = false;
-            }
-            rival.Blackboard.Config = rivalCfg;
-
-            Rigidbody2D rivalBody = rival.Blackboard.Body;
-            Assert.IsNotNull(rivalBody, $"{LogPrefix} 전제 실패 — 라이벌 Rigidbody2D가 없습니다.");
-            rival.Blackboard.MoveBodyToWorld(new Vector2(rivalX, _dockTopWorldY));
-            rivalBody.linearVelocity = Vector2.zero;
-            rival.Blackboard.CurrentFootholdHandle = DockHandle;
-            rival.Blackboard.ResetGroundLossTimer();
-            rival.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
-            yield return new WaitForSeconds(0.5f);
-
-            Assert.AreEqual(_dockTopWorldY, rivalBody.position.y, 0.1f,
-                $"{LogPrefix} 전제 실패 — 라이벌이 Dock 위에 서지 못했습니다(y={rivalBody.position.y:F3}).");
-
-            // 대결 중 실제로 반복되는 그 상태(AttackState — 접지 스냅을 부르지 않는다)에 넣는다.
-            rival.Blackboard.Machine.ChangeState(StickmanStateId.Attack);
-
-            float t = 0f;
-            float lowestY = float.MaxValue;
-            while (t < 3f)
-            {
-                t += Time.deltaTime;
-                lowestY = Mathf.Min(lowestY, rivalBody.position.y);
-                yield return null;
-            }
-
-            float finalY = rivalBody.position.y;
-            StickmanStateId finalState = rival.Blackboard.Machine.CurrentStateId;
-            Debug.Log($"{LogPrefix} [라이벌 / 수정무력화={disableFixes}] 결과 — 최저Y={lowestY:F3}, 최종Y={finalY:F3}, " +
-                $"최종상태={finalState}(Dock 상단 {_dockTopWorldY:F3}, 물리바닥 {_floorTopWorldY:F3}).");
-
-            float belowDockThreshold = _dockTopWorldY - DockDropUnits * 0.5f;
-            Object.DestroyImmediate(rivalCfg);
-
-            if (disableFixes)
-            {
-                Assert.Less(lowestY, belowDockThreshold,
-                    $"{LogPrefix} 네거티브 컨트롤 실패 — 라이벌 쪽 수정을 껐는데도 Dock 아래로 " +
-                    $"가라앉지 않았습니다(최저Y={lowestY:F3}). 이 테스트가 실제로 버그를 잡는다는 증거가 " +
-                    "성립하지 않습니다.");
-                Assert.Less(finalY, belowDockThreshold,
-                    $"{LogPrefix} 네거티브 컨트롤 실패 — 가라앉았다가 스스로 회복했습니다" +
-                    $"(최종Y={finalY:F3}). 예전 라이벌에는 회복 경로 자체가 없어야 합니다.");
-                yield break;
-            }
-
-            Assert.GreaterOrEqual(lowestY, belowDockThreshold,
-                $"{LogPrefix} 회귀 — 라이벌이 Attack 중에 Dock 아래로 가라앉았습니다(최저Y={lowestY:F3}). " +
-                "RivalStickmanAgent.Update()에서 _blackboard.TickGroundKeepingSafetyNet(dt) 호출이 " +
-                "빠졌는지 확인하세요. 플레이어만 고치고 라이벌을 빠뜨리면 사용자에게는 " +
-                "'한 명이 독 아래에서 계속 쓰러짐'으로 보입니다.");
-            Assert.AreEqual(_dockTopWorldY, finalY, 0.1f,
-                $"{LogPrefix} 회귀 — 라이벌이 Dock 위로 돌아오지 못했습니다(최종Y={finalY:F3}, " +
-                $"상태={finalState}). RivalStickmanAgent.Update()의 " +
-                "_blackboard.EnforceScreenBoundsAndRescue(dt) 호출 확인.");
-        }
-
-        // ============================================================================
         // T4 — 차단막이 과잉 차단하지 않는다: 진짜 외력은 여전히 RAGDOLL이 된다
         //      (수정이 "랙돌을 통째로 없애버린 것"이 아님을 증명 — 반대 방향 잠금)
         // ============================================================================
@@ -627,7 +512,7 @@ namespace StickMate.Tests.PlayMode
 
             _trace.Clear();
             _ragdollEntries = 0;
-            // 라이벌 타격/던지기와 같은 **직접 호출 경로**(차단막을 거치지 않는다).
+            // 던지기와 같은 **직접 호출 경로**(차단막을 거치지 않는다).
             _agent.ReportExternalImpact(_clonedConfig.ragdollForceThreshold * 2f);
             yield return null;
 

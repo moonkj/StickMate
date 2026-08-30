@@ -33,14 +33,72 @@ namespace StickMate.Tests.EditMode
             return config;
         }
 
+        /// <summary>
+        /// ★ 2026-08-30 R3-M1로 비교 대상이 바뀌었다 — 상대는 <b>설정값이 아니라 유도값</b>이다.
+        /// 경계 판정 거리는 이제 max(설정값, 몸의 물리 반폭 + 0.10)이라(Core/DockGeometry.
+        /// ResolveEdgeStopDistance) 배포 배율 0.75에서 0.300이 아니라 <b>0.405</b>다.
+        /// 예전처럼 설정값(0.300)과만 비교하면 이 불변식은 "지키고 있다"고 초록불을 내면서 실제로는
+        /// 깨져 있을 수 있다 — 그게 정확히 이 프로젝트가 계속 당해 온 실패 유형이다.
+        ///
+        /// 여유를 그냥 &gt;0이 아니라 <see cref="MinInsetMarginUnits"/> 이상 요구하는 이유:
+        /// 유휴 "주위 살피기"가 머리를 최대 (키 x idleAmbientLookHeadShiftRatio) 만큼 옆으로 밀고,
+        /// 좌표 왕복 오차도 0.02유닛까지 허용된다. 소수점 셋째 자리로 붙어 있는 두 상수는
+        /// "우연히 안 깨지고 있는" 상태이며 R3-M1이 정확히 그렇게 터졌다.
+        /// </summary>
+        private const float MinInsetMarginUnits = 0.05f;
+
         [Test]
-        public void 맨틀_인셋은_경계_판정_거리보다_커야_한다()
+        public void 맨틀_인셋은_유도된_경계_판정_거리보다_충분히_커야_한다()
         {
             StickConfig c = LoadDefaultConfig();
-            Assert.Greater(c.parkourMantleInset, c.wanderEdgeStopDistance,
-                $"parkourMantleInset({c.parkourMantleInset:F3})이 wanderEdgeStopDistance({c.wanderEdgeStopDistance:F3}) " +
-                "이하입니다 — 턱 위에 올라선 그 자리가 이미 '발판 경계'로 판정되어, 방향이 한 번 바깥으로 " +
+            float halfWidth = StickConfig.BaselineBodyPhysicsHalfWidth * c.ResolveCharacterScale();
+            float resolvedStop = DockGeometry.ResolveEdgeStopDistance(c.wanderEdgeStopDistance, halfWidth);
+            float margin = c.parkourMantleInset - resolvedStop;
+
+            UnityEngine.Debug.Log($"[WANDER-EDGE] 배율 {c.ResolveCharacterScale():F3} → 물리 반폭 {halfWidth:F3}, " +
+                $"경계 판정 거리 설정값 {c.wanderEdgeStopDistance:F3} → 유도값 {resolvedStop:F3}, " +
+                $"맨틀 인셋 {c.parkourMantleInset:F3} (여유 {margin:F3}, 요구 {MinInsetMarginUnits:F3} 이상)");
+
+            Assert.Greater(margin, MinInsetMarginUnits,
+                $"parkourMantleInset({c.parkourMantleInset:F3})이 **유도된** 경계 판정 거리" +
+                $"({resolvedStop:F3} = max(설정 {c.wanderEdgeStopDistance:F3}, 물리 반폭 {halfWidth:F3} + " +
+                $"{DockGeometry.EdgeStopWallStandoffMarginUnits:F2}))보다 {MinInsetMarginUnits:F3} 넘게 크지 " +
+                "않습니다 — 턱 위에 올라선 그 자리가 이미 '발판 경계'로 판정되어, 방향이 한 번 바깥으로 " +
                 "뒤집히면 곧바로 다시 뛰어내립니다(2026-08-29 사용자 신고의 필요조건).");
+        }
+
+        /// <summary>
+        /// ★ R3-M1의 본체 — 경계 판정 밴드가 **몸이 벽에 붙어 설 수 있는 이격보다 넓은가.**
+        /// 좁으면 Dock 물리 계단 옆면에 막혀 선 캐릭터가 밴드에 물리적으로 들어가지 못해
+        /// 되올라가기 판정을 평가할 기회조차 없다(사용자가 세 번 신고한 증상).
+        ///
+        /// 네거티브 컨트롤: AutoWanderController가 유도값 대신 설정값(0.300)을 그대로 쓰던 예전
+        /// 코드로 되돌리면 여유가 0.305 → 0.300으로 **음수**가 되어 이 단언이 즉시 실패한다.
+        /// </summary>
+        [Test]
+        public void 경계_판정_밴드는_벽_이격보다_넓어야_한다()
+        {
+            StickConfig c = LoadDefaultConfig();
+            float scale = c.ResolveCharacterScale();
+            float halfWidth = StickConfig.BaselineBodyPhysicsHalfWidth * scale;
+            // Box2D 접촉 이격(ProjectSettings의 defaultContactOffset 0.01 → 정착 시 약 절반).
+            const float ContactSeparation = 0.005f;
+            float standoff = halfWidth + ContactSeparation;
+            float resolvedStop = DockGeometry.ResolveEdgeStopDistance(c.wanderEdgeStopDistance, halfWidth);
+
+            UnityEngine.Debug.Log($"[WANDER-EDGE] 벽 이격 {standoff:F3}(반폭 {halfWidth:F3} + 접촉 {ContactSeparation:F3}) " +
+                $"vs 유도 판정 거리 {resolvedStop:F3} → 여유 {(resolvedStop - standoff):F3}");
+
+            Assert.GreaterOrEqual(resolvedStop - standoff, MinInsetMarginUnits,
+                $"경계 판정 거리({resolvedStop:F3})가 벽 이격({standoff:F3})보다 " +
+                $"{MinInsetMarginUnits:F3} 넘게 크지 않습니다 — 캐릭터가 Dock 물리 계단 옆면에 붙어 서면 " +
+                "경계 밴드에 영영 들어가지 못해 되올라가기를 평가조차 못 합니다(2026-08-30 R3-M1).");
+
+            // ★ 설정 절대값 단독으로는 못 덮는다는 사실 자체를 박제한다(유도가 사라지면 빨간불).
+            Assert.Less(c.wanderEdgeStopDistance, standoff,
+                $"설정 절대값({c.wanderEdgeStopDistance:F3})이 벽 이격({standoff:F3})을 이미 덮고 있습니다 — " +
+                "이 테스트의 전제(R3-M1의 근거)가 바뀌었습니다. 설정값을 올려 덮은 것이라면 배율을 " +
+                "키웠을 때 다시 깨지므로, 유도(DockGeometry.ResolveEdgeStopDistance) 쪽을 유지하세요.");
         }
 
         [Test]

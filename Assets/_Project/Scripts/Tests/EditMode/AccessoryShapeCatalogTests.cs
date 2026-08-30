@@ -1,0 +1,387 @@
+using NUnit.Framework;
+using UnityEngine;
+using StickMate.Core;
+using StickMate.Interaction;
+
+namespace StickMate.Tests.EditMode
+{
+    /// <summary>
+    /// ★ 32종 도형 계층의 <b>데이터 계약</b> 회귀 — 2026-08-30 외부 핸드오프 이식 라운드.
+    ///
+    /// ============================================================================
+    /// 이 파일이 잡으려는 실패
+    /// ============================================================================
+    /// (a) <b>아이템 자리 어긋남</b>. <c>AccessoryShapeBuilder</c>는 "3번은 왕관"처럼 <b>정수 자리</b>로
+    ///     도형을 고르는데, 그 순서의 진짜 주인은 <c>Core/ItemCatalog.cs</c>의 표다. 누가 표 중간에
+    ///     아이템을 하나 끼워 넣으면 <b>예외도 경고도 없이</b> 왕관 자리에 중절모가 그려진다.
+    ///     그래서 자리 상수 전부를 <b>아이디 문자열</b>과 맞대어 잠근다.
+    /// (b) <b>모자 커버선의 하드코딩화</b>. 33-4-1은 "왕관만 예외로 머리가 보인다"를 <b>if 분기가 아니라
+    ///     데이터</b>(<c>HatCoverLocalY = +∞</c>)로 표현하라고 명시했다. 그 데이터가 실제로 그런지 본다.
+    /// (c) <b>레이어 순서 뒤집힘</b>. 안경이 눈동자보다 아래로 가면 선글라스 설명문
+    ///     ("표정이 잘 안 보인다")이 거짓말이 된다.
+    ///
+    /// PlayMode가 아니라 EditMode인 이유: 전부 <b>순수 계산</b>이라 씬도 물리도 필요 없고,
+    /// <c>InternalsVisibleTo(StickMate.Tests.EditMode)</c> 덕분에 internal 상수를 직접 볼 수 있다.
+    /// </summary>
+    public sealed class AccessoryShapeCatalogTests
+    {
+        /// <summary>배율 1.0 프리팹 실측 리그(도형 계산에만 쓴다 — GameObject를 만들지 않는다).</summary>
+        private static AccessoryShapeBuilder.Rig Rig(float facing = 1f)
+        {
+            const float H = StickConfig.BaselineCharacterTotalHeight;
+            const float R = 0.22f;
+            return new AccessoryShapeBuilder.Rig(R, H - R, 1.7646944f, 0.9346944f, facing);
+        }
+
+        // ============================================================================
+        // (a) 도형이 고르는 "자리"가 카탈로그 표의 자리와 같다
+        // ============================================================================
+
+        [TestCase(EquipmentSlot.Head, AccessoryShapeBuilder.HeadCap, "equip.head.cap")]
+        [TestCase(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeanie, "equip.head.fur")]
+        [TestCase(EquipmentSlot.Head, AccessoryShapeBuilder.HeadFedora, "equip.head.fedora")]
+        [TestCase(EquipmentSlot.Head, AccessoryShapeBuilder.HeadCrown, "equip.head.crown")]
+        [TestCase(EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesSunglasses, "equip.eyes.sunglasses")]
+        [TestCase(EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesRound, "equip.eyes.round")]
+        [TestCase(EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesGoggles, "equip.eyes.goggles")]
+        [TestCase(EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesMonocle, "equip.eyes.monocle")]
+        [TestCase(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBowTie, "equip.neck.bowtie")]
+        [TestCase(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckStriped, "equip.neck.striped")]
+        [TestCase(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckScarf, "equip.neck.scarf")]
+        [TestCase(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell, "equip.neck.bell")]
+        [TestCase(EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackCape, "equip.shoulders.cape")]
+        [TestCase(EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackLongCape, "equip.shoulders.long_cape")]
+        [TestCase(EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackWings, "equip.shoulders.wings")]
+        [TestCase(EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackBackpack, "equip.shoulders.backpack")]
+        [TestCase(EquipmentSlot.Hair, AccessoryShapeBuilder.HairCowlick, "look.hair.cowlick")]
+        [TestCase(EquipmentSlot.Hair, AccessoryShapeBuilder.HairNeat, "look.hair.neat")]
+        [TestCase(EquipmentSlot.Hair, AccessoryShapeBuilder.HairCurly, "look.hair.curly")]
+        [TestCase(EquipmentSlot.Hair, AccessoryShapeBuilder.HairBald, "look.hair.bald")]
+        public void 도형이_고르는_자리가_카탈로그_표와_같다(EquipmentSlot slot, int itemIndex, string expectedId)
+        {
+            ItemCatalogEntry entry = ItemCatalog.Item(slot, itemIndex);
+            Assert.IsNotNull(entry, $"{slot} {itemIndex}번 자리가 카탈로그 표에 없습니다.");
+            Assert.AreEqual(expectedId, entry.Id,
+                $"{slot} {itemIndex}번이 '{entry.Id}'입니다 — 도형은 '{expectedId}'를 그릴 생각이었습니다. " +
+                "표 중간에 아이템이 끼어들었거나 순서가 바뀌었습니다(예외 없이 엉뚱한 그림이 나오는 유형).");
+        }
+
+        [Test]
+        public void 그릴_수_있는_카테고리는_아이템_4개가_전부_도형을_갖는다()
+        {
+            var drawable = new[]
+            {
+                EquipmentSlot.Head, EquipmentSlot.Eyes, EquipmentSlot.Neck,
+                EquipmentSlot.Shoulders, EquipmentSlot.Hair,
+            };
+            var sink = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+
+            for (int s = 0; s < drawable.Length; s++)
+            {
+                int count = ItemCatalog.ItemCountIn(drawable[s]);
+                Assert.AreEqual(4, count, $"{drawable[s]} 카테고리의 아이템 수가 4가 아닙니다.");
+                for (int i = 0; i < count; i++)
+                {
+                    sink.Clear();
+                    AccessoryShapeBuilder.Append(sink, drawable[s], i, Rig());
+                    Assert.Greater(sink.Count, 0,
+                        $"{drawable[s]} {i}번({ItemCatalog.Item(drawable[s], i).DisplayName})이 선을 하나도 만들지 않습니다 — " +
+                        "착용했는데 화면이 그대로면 그건 착용이 아닙니다(33-4 #4의 민머리 규칙).");
+                    for (int k = 0; k < sink.Count; k++)
+                    {
+                        Assert.GreaterOrEqual(sink[k].Points.Length, 2,
+                            $"{drawable[s]} {i}번의 '{sink[k].Name}' 선에 점이 {sink[k].Points.Length}개뿐입니다.");
+                    }
+                }
+            }
+        }
+
+        // ============================================================================
+        // (b) 모자 커버선은 데이터다 — 왕관만 +∞
+        // ============================================================================
+
+        [Test]
+        public void 모자_커버선이_데이터로_표현되고_왕관만_아무것도_가리지_않는다()
+        {
+            AccessoryShapeBuilder.Rig rig = Rig();
+            float hc = rig.HeadCenterY;
+            float r = rig.HeadRadius;
+
+            Assert.AreEqual(hc + r * 0.62f, AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadCap, rig), 1e-5f,
+                "천 모자의 커버선은 챙 선(HeadCenterY + R·0.62)이어야 합니다.");
+            Assert.AreEqual(hc + r * 0.42f, AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadBeanie, rig), 1e-5f,
+                "털모자는 가장 깊이 눌러쓰므로 커버선이 가장 낮아야 합니다.");
+            Assert.AreEqual(hc + r * 0.58f, AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadFedora, rig), 1e-5f);
+
+            Assert.IsTrue(float.IsPositiveInfinity(
+                    AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadCrown, rig)),
+                "왕관의 커버선이 +∞가 아닙니다 — 왕관은 씌우는 것이 아니라 얹는 것이라 밑이 뚫려 있고, " +
+                "그 예외는 if 분기가 아니라 **이 값**으로 표현돼야 합니다(33-4-1).");
+            Assert.IsTrue(float.IsPositiveInfinity(AccessoryShapeBuilder.HatCoverLocalY(-1, rig)),
+                "모자 미착용(-1)도 아무것도 가리지 않아야 합니다.");
+        }
+
+        /// <summary>
+        /// 33-4-1의 조합표 그대로: 모자 3종은 머리 4종을 전부 숨기고, <b>왕관만</b> 전부 보인다.
+        /// <para>★ 이 표가 지키는 경계 사례 하나 — 민머리 하이라이트의 최고점은 R·0.611로, 천 모자
+        /// 커버선(R·0.62)을 <b>0.009R 차이로 통과</b>한다. 점 좌표만 보면 챙 밑에 한 줄이 남는다.
+        /// 그래서 커버 판정은 <b>획 바깥쪽</b>까지 본다(획 반두께 ≈ 0.109R). 이 테스트가 그 판정을 잠근다.</para>
+        /// </summary>
+        [Test]
+        public void 모자와_머리_동시착용_조합표가_33_4_1과_일치한다()
+        {
+            AccessoryShapeBuilder.Rig rig = Rig();
+            // 획 반두께 — 렌더러가 넘기는 값과 같은 식(전신 높이 × 0.048 / 기준신장 ÷ 2).
+            float strokeHalf = StickConfig.BaselineCharacterTotalHeight
+                * (0.048f / StickConfig.BaselineCharacterTotalHeight) * 0.5f;
+
+            var hats = new[]
+            {
+                AccessoryShapeBuilder.HeadCap, AccessoryShapeBuilder.HeadBeanie, AccessoryShapeBuilder.HeadFedora,
+            };
+            var sink = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+
+            for (int h = 0; h < hats.Length; h++)
+            {
+                float cover = AccessoryShapeBuilder.HatCoverLocalY(hats[h], rig);
+                for (int hair = 0; hair < 4; hair++)
+                {
+                    sink.Clear();
+                    AccessoryShapeBuilder.Append(sink, EquipmentSlot.Hair, hair, rig, cover, strokeHalf);
+                    Assert.AreEqual(0, sink.Count,
+                        $"모자 {hats[h]}번을 썼는데 머리 {hair}번의 선이 {sink.Count}개 남았습니다 — " +
+                        "33-4-1 조합표는 왕관 이외의 모자에서 머리가 전부 숨겨진다고 못박았습니다.");
+                }
+            }
+
+            float crownCover = AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadCrown, rig);
+            for (int hair = 0; hair < 4; hair++)
+            {
+                sink.Clear();
+                AccessoryShapeBuilder.Append(sink, EquipmentSlot.Hair, hair, rig, crownCover, strokeHalf);
+                Assert.Greater(sink.Count, 0,
+                    $"왕관을 썼는데 머리 {hair}번이 사라졌습니다 — 왕관은 밑이 뚫려 있어 머리가 함께 보여야 합니다.");
+            }
+        }
+
+        /// <summary>
+        /// ★ 네거티브 컨트롤 — "획 두께를 빼고 점 좌표만 봤다면" 위 조합표가 <b>실제로 깨진다</b>.
+        /// 이게 실패하면 위 테스트는 헐거운 조건을 통과한 것뿐이라는 뜻이다.
+        /// </summary>
+        [Test]
+        public void 획_두께를_빼면_천모자_민머리_조합이_실제로_깨진다()
+        {
+            AccessoryShapeBuilder.Rig rig = Rig();
+            float cover = AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadCap, rig);
+            var sink = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+
+            AccessoryShapeBuilder.Append(sink, EquipmentSlot.Hair, AccessoryShapeBuilder.HairBald, rig, cover, 0f);
+            Assert.AreEqual(1, sink.Count,
+                "획 두께를 0으로 두면 민머리 하이라이트가 천 모자 커버선을 통과해 살아남아야 합니다 — " +
+                "그러지 않는다면 이 경계 사례가 애초에 존재하지 않는 것이고, 획 두께를 보는 판정의 근거가 사라집니다.");
+        }
+
+        // ============================================================================
+        // (c) 레이어 순서 — 겹침 관계가 설명문과 맞아야 한다
+        // ============================================================================
+
+        [Test]
+        public void 레이어_순서가_겹침_규칙을_만족한다()
+        {
+            // 프리팹 실측: 뒤쪽 팔다리 0 / 몸통 1 / 앞쪽 팔다리 2 / 머리 링 4 / 눈동자 5.
+            const int CharacterMinStroke = 0;
+            const int PupilOrder = 5;
+
+            Assert.Less(AccessoryShapeBuilder.SortBack, CharacterMinStroke,
+                "망토/날개/배낭이 캐릭터 획보다 앞에 있습니다 — 33-2-0이 요구한 '몸통 선 뒤'가 성립하지 않습니다.");
+            Assert.Greater(AccessoryShapeBuilder.SortEyes, PupilOrder,
+                "안경이 눈동자(5)보다 아래입니다 — 렌즈가 눈동자 뒤로 숨어 선글라스 설명문 " +
+                "'표정이 잘 안 보인다'가 거짓이 됩니다.");
+            Assert.Greater(AccessoryShapeBuilder.SortHead, AccessoryShapeBuilder.SortHair,
+                "모자가 머리 모양보다 아래입니다.");
+            Assert.Greater(AccessoryShapeBuilder.SortHair, PupilOrder,
+                "머리 모양이 눈동자보다 아래입니다 — 정수리 위 도형이 머리 링에 가립니다.");
+            Assert.AreEqual(6, AccessoryShapeBuilder.SortDefault,
+                "AddLine의 기본 레이어가 6에서 바뀌면 이 인자를 넘기지 않는 옛 호출부의 그림이 조용히 달라집니다.");
+        }
+
+        [Test]
+        public void 각_아이템의_선이_선언한_레이어로_나온다()
+        {
+            var expected = new (EquipmentSlot Slot, int Order)[]
+            {
+                (EquipmentSlot.Head, AccessoryShapeBuilder.SortHead),
+                (EquipmentSlot.Eyes, AccessoryShapeBuilder.SortEyes),
+                (EquipmentSlot.Neck, AccessoryShapeBuilder.SortNeck),
+                (EquipmentSlot.Shoulders, AccessoryShapeBuilder.SortBack),
+                (EquipmentSlot.Hair, AccessoryShapeBuilder.SortHair),
+            };
+            var sink = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+
+            for (int e = 0; e < expected.Length; e++)
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    sink.Clear();
+                    AccessoryShapeBuilder.Append(sink, expected[e].Slot, i, Rig());
+                    for (int k = 0; k < sink.Count; k++)
+                    {
+                        Assert.AreEqual(expected[e].Order, sink[k].SortingOrder,
+                            $"{expected[e].Slot} {i}번의 '{sink[k].Name}'이 레이어 {sink[k].SortingOrder}로 나왔습니다.");
+                    }
+                }
+            }
+        }
+
+        // ============================================================================
+        // 원칙 1 — 흔들린다고 적힌 아이템은 실제로 흔들 점을 갖고 있다
+        // ============================================================================
+
+        /// <summary>
+        /// 목도리 "끝자락이 걸을 때마다 흔들린다" / 짧은 망토 "늘 가는 방향의 반대쪽으로 날린다" /
+        /// 방울 목걸이(리더 승인으로 문구가 '흔들린다'류로 교체 예정) — 셋 다 <b>흔들 점 구간</b>을
+        /// 선언하고 있어야 한다. 선언이 없으면 렌더러는 영원히 정적이고, 그건 문구가 없는 동작을
+        /// 주장하는 것 = 원칙 1 위반이다.
+        /// </summary>
+        [TestCase(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckScarf)]
+        [TestCase(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell)]
+        [TestCase(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckStriped)]
+        [TestCase(EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackCape)]
+        [TestCase(EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackLongCape)]
+        public void 흔들린다고_적힌_아이템은_흔들_점_구간을_선언한다(EquipmentSlot slot, int item)
+        {
+            var sink = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+            AccessoryShapeBuilder.Append(sink, slot, item, Rig());
+
+            bool any = false;
+            for (int i = 0; i < sink.Count; i++)
+            {
+                if (!sink[i].HasSway) continue;
+                any = true;
+                Assert.LessOrEqual(sink[i].SwayStart + sink[i].SwayCount, sink[i].Points.Length,
+                    $"'{sink[i].Name}'의 흔들 구간이 점 배열 밖을 가리킵니다(런타임 IndexOutOfRange).");
+            }
+            Assert.IsTrue(any,
+                $"{ItemCatalog.Item(slot, item).DisplayName}에 흔들 점이 하나도 없습니다 — " +
+                $"설명문(\"{ItemCatalog.Item(slot, item).Description}\")이 주장하는 동작이 코드에 없습니다.");
+        }
+
+        /// <summary>날개는 "뜨지는 않지만 폼은 난다" — 흔들 점이 <b>없어야</b> 한다(천이 아니다).</summary>
+        [Test]
+        public void 날개와_배낭은_흔들리지_않는다()
+        {
+            var sink = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+            foreach (int item in new[] { AccessoryShapeBuilder.BackWings, AccessoryShapeBuilder.BackBackpack })
+            {
+                sink.Clear();
+                AccessoryShapeBuilder.Append(sink, EquipmentSlot.Shoulders, item, Rig());
+                for (int i = 0; i < sink.Count; i++)
+                {
+                    Assert.IsFalse(sink[i].HasSway,
+                        $"'{sink[i].Name}'이 흔들립니다 — 날개/배낭은 천이 아니라 흔들리면 안 됩니다.");
+                }
+            }
+        }
+
+        // ============================================================================
+        // 33-2-5 (D) 줄무늬 타이의 월요일
+        // ============================================================================
+
+        [Test]
+        public void 줄무늬_타이는_월요일에만_느슨해진다()
+        {
+            var normal = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+            var monday = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+            AccessoryShapeBuilder.Append(normal, EquipmentSlot.Neck, AccessoryShapeBuilder.NeckStriped, Rig(),
+                mondayLoosened: false);
+            AccessoryShapeBuilder.Append(monday, EquipmentSlot.Neck, AccessoryShapeBuilder.NeckStriped, Rig(),
+                mondayLoosened: true);
+
+            Assert.AreEqual(normal.Count, monday.Count, "월요일이라고 선 개수가 달라지면 안 됩니다.");
+            float normalKnotTop = normal[0].Points[0].y;
+            float mondayKnotTop = monday[0].Points[0].y;
+            Assert.Less(mondayKnotTop, normalKnotTop,
+                "월요일인데 매듭이 내려가지 않았습니다 — 설명문 '월요일마다 조금 느슨해진다'가 성립하지 않습니다.");
+            Assert.AreEqual(0.22f * AccessoryShapeBuilder.TieMondayLoosenDropRatio,
+                normalKnotTop - mondayKnotTop, 1e-4f, "느슨해지는 양이 R·0.12가 아닙니다.");
+        }
+
+        /// <summary>다른 넥타이는 요일에 반응하지 않는다(월요일 처리가 카테고리 전체로 새지 않았는가).</summary>
+        [TestCase(AccessoryShapeBuilder.NeckBowTie)]
+        [TestCase(AccessoryShapeBuilder.NeckScarf)]
+        [TestCase(AccessoryShapeBuilder.NeckBell)]
+        public void 줄무늬_타이_외에는_요일에_반응하지_않는다(int item)
+        {
+            var normal = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+            var monday = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+            AccessoryShapeBuilder.Append(normal, EquipmentSlot.Neck, item, Rig(), mondayLoosened: false);
+            AccessoryShapeBuilder.Append(monday, EquipmentSlot.Neck, item, Rig(), mondayLoosened: true);
+
+            Assert.AreEqual(normal.Count, monday.Count);
+            for (int i = 0; i < normal.Count; i++)
+            {
+                for (int p = 0; p < normal[i].Points.Length; p++)
+                {
+                    Assert.AreEqual(normal[i].Points[p], monday[i].Points[p],
+                        $"'{normal[i].Name}'이 요일에 따라 움직입니다 — 월요일 처리는 줄무늬 타이 전용입니다.");
+                }
+            }
+        }
+
+        // ============================================================================
+        // 좌우 반전 — 비대칭 요소가 진행 방향을 따라간다
+        // ============================================================================
+
+        /// <summary>
+        /// 33-2-2 #3이 "가장 비대칭인 요소이므로 facing 반전 회귀 테스트 대상"으로 <b>지목한</b> 고글 스트랩.
+        /// 뒤쪽 반원(각 100°→260°)이라 오른쪽을 볼 때는 x가 전부 음수여야 하고, 왼쪽을 볼 때는 전부 양수여야 한다.
+        /// </summary>
+        [Test]
+        public void 고글_스트랩이_언제나_뒤통수쪽에_있다()
+        {
+            var right = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+            var left = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+            AccessoryShapeBuilder.Append(right, EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesGoggles, Rig(+1f));
+            AccessoryShapeBuilder.Append(left, EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesGoggles, Rig(-1f));
+
+            Vector3[] r = Find(right, "GoggleStrap");
+            Vector3[] l = Find(left, "GoggleStrap");
+            for (int i = 0; i < r.Length; i++)
+            {
+                Assert.Less(r[i].x, 0f, $"오른쪽을 보는데 스트랩 {i}번 점이 얼굴 앞쪽(x={r[i].x:F4})에 있습니다.");
+                Assert.Greater(l[i].x, 0f, $"왼쪽을 보는데 스트랩 {i}번 점이 얼굴 앞쪽(x={l[i].x:F4})에 있습니다.");
+                Assert.AreEqual(-r[i].x, l[i].x, 1e-5f, "스트랩이 좌우 반전되지 않았습니다.");
+                Assert.AreEqual(r[i].y, l[i].y, 1e-5f, "좌우 반전인데 y가 함께 뒤집혔습니다(x에만 부호를 곱해야 합니다).");
+            }
+        }
+
+        /// <summary>왕관은 좌우 대칭이라 방향이 바뀌어도 같은 그림이어야 한다(33-2-1 #4가 명시한 정상 동작).</summary>
+        [Test]
+        public void 왕관은_좌우_대칭이라_반전해도_같은_그림이다()
+        {
+            var right = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+            var left = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+            AccessoryShapeBuilder.Append(right, EquipmentSlot.Head, AccessoryShapeBuilder.HeadCrown, Rig(+1f));
+            AccessoryShapeBuilder.Append(left, EquipmentSlot.Head, AccessoryShapeBuilder.HeadCrown, Rig(-1f));
+
+            Vector3[] a = Find(right, "CrownZigzag");
+            Vector3[] b = Find(left, "CrownZigzag");
+            for (int i = 0; i < a.Length; i++)
+            {
+                // 대칭 도형이므로 반전하면 점 순서만 뒤집힌 같은 집합이 된다.
+                Assert.AreEqual(a[i].x, -b[i].x, 1e-5f);
+                Assert.AreEqual(a[i].y, b[i].y, 1e-5f);
+            }
+        }
+
+        private static Vector3[] Find(System.Collections.Generic.List<AccessoryShapeBuilder.Shape> shapes, string name)
+        {
+            for (int i = 0; i < shapes.Count; i++)
+            {
+                if (shapes[i].Name == name) return shapes[i].Points;
+            }
+            Assert.Fail($"'{name}' 선을 찾지 못했습니다.");
+            return null;
+        }
+    }
+}

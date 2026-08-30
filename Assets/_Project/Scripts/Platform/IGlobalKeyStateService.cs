@@ -22,9 +22,6 @@ namespace StickMate.Platform
         /// <summary>말풍선 즉시 발화 데모(Ctrl+Opt+Cmd+B) — Interaction/AppControlDirector.cs.</summary>
         B,
 
-        /// <summary>라이벌 스틱맨 강제 스폰 데모(Ctrl+Opt+Cmd+V) — Interaction/AppControlDirector.cs.</summary>
-        V,
-
         /// <summary>격파 미니게임 강제 발동 데모(Ctrl+Opt+Cmd+K, "격파"/breaK) — 자동 발동이 60초마다
         /// 5% 추첨이라 확률만으로는 검증이 사실상 불가능하다. Interaction/AppControlDirector.cs.</summary>
         K,

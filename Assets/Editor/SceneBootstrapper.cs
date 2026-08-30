@@ -343,10 +343,9 @@ namespace StickMate.EditorTools
         /// ★ 캐릭터 크기 조정 전용 진입점(2026-08-29). StickConfig.characterScale을 바꾼 뒤 이걸 누르면
         /// 프리팹과 씬이 함께 다시 구워진다.
         ///
-        /// 왜 프리팹만 다시 굽지 않는가: 씬의 라이벌 스틱맨은 프리팹 인스턴스가 아니라 **언팩된 사본**
-        /// 이라(CreateRivalStickman 문서 참고) 프리팹만 갈면 플레이어만 작아지고 라이벌은 옛 크기로
-        /// 남는다. 게다가 프리팹을 다시 저장하면 fileID가 재할당되어 Main.unity의 PrefabInstance
-        /// 오버라이드가 고아가 된다(BUG-SW-M3). 그래서 크기 변경은 언제나 프리팹+씬 동시 재생성이다.
+        /// 왜 프리팹만 다시 굽지 않는가: 프리팹을 다시 저장하면 fileID가 재할당되어 Main.unity의
+        /// PrefabInstance 오버라이드가 고아가 된다(BUG-SW-M3). 그래서 크기 변경은 언제나
+        /// 프리팹+씬 동시 재생성이다.
         /// </summary>
         [MenuItem("StickMate/Resize Stickman (characterScale 반영, 프리팹+씬 재생성)")]
         public static void ResizeStickmanMenuItem()
@@ -390,8 +389,6 @@ namespace StickMate.EditorTools
         /// 덮어쓴다. 컴포넌트 하나를 얹으려고 치르기에는 너무 큰 값이다. 이 메서드는 프리팹을 열어
         /// 없는 컴포넌트만 <c>AddComponent</c>하고 저장하므로 diff가 그 몇 줄로 끝난다.
         ///
-        /// 대상은 씬에 이미 언팩되어 있는 <b>라이벌에는 닿지 않는다</b>(언팩된 인스턴스는 프리팹 변경을
-        /// 물려받지 않는다) — 라이벌에 이 컴포넌트들이 붙으면 Canvas와 차단막이 두 벌 생긴다.
         /// </summary>
         [MenuItem("StickMate/Ensure Prefab Components")]
         public static void EnsurePrefabComponents()
@@ -408,6 +405,11 @@ namespace StickMate.EditorTools
             added += EnsureComponent<GearRadialMenuWidget>(root);
             added += EnsureComponent<FocusSessionPopover>(root);
             added += EnsureComponent<TodoBoardPopover>(root);
+            // 2026-08-30 외형 라운드 신설 3종. 이미 구워진 프리팹에 --force 재생성 없이 얹기 위한 경로다
+            // (--force는 모든 fileID를 재할당해 Main.unity의 오버라이드를 고아로 만든다 — BUG-SW-M3).
+            added += EnsureComponent<CharacterFxRenderer>(root);
+            added += EnsureComponent<CharacterPetRenderer>(root);
+            added += EnsureComponent<LongCapeTripDirector>(root);
 
             if (added > 0) PrefabUtility.SaveAsPrefabAsset(root, PrefabAssetPath);
             PrefabUtility.UnloadPrefabContents(root);
@@ -679,7 +681,6 @@ namespace StickMate.EditorTools
             // "키의 n%"로 앵커를 잡을 수 있게 하는 단일 조회 경로다. 직렬화 필드가 없고 Awake()에서
             // 자기 계층(비-트리거 캡슐 / "Head" / "LeftArm" / "LeftLeg")을 **실측**하므로 배선이
             // 필요 없고, 이 빌더가 구운 값과 어긋날 수도 없다(굽힌 상수를 복사하지 않는다).
-            // ★ 라이벌 스틱맨도 이 컴포넌트를 그대로 가져간다 — 라이벌 말풍선도 같은 API를 쓴다.
             root.AddComponent<StickmanMetrics>();
 
             // ================================================================================
@@ -834,7 +835,7 @@ namespace StickMate.EditorTools
 
             // 포스트잇 카드(17절 "포스트잇 모드"). 이 위젯만은 [SerializeField] _config를 갖고 있어
             // 배선이 필요하다(Awake()에서 StickmanAgent.Config 폴백도 하지만, 씬 에셋에 값이 구워져
-            // 있어야 에디터에서 열었을 때 혼란이 없다 — 라이벌 _config null 사고와 같은 교훈).
+            // 있어야 에디터에서 열었을 때 혼란이 없다 — NewScene 이후 _config가 조용히 null이 됐던 사고와 같은 교훈).
             var postIt = root.AddComponent<TodoPostItWidget>();
             var postItSo = new SerializedObject(postIt);
             postItSo.FindProperty("_config").objectReferenceValue = config;
@@ -881,14 +882,14 @@ namespace StickMate.EditorTools
             // 액세서리는 순수 오버레이, 정보창은 UI). 참여 기준은 "단일 상태 슬롯을 다투는가"다
             // (StressGaugeRenderer/HardwareReactionRenderer와 같은 논리).
             //
-            // XP 훅은 전부 StickmanEventBus **구독**이라 격파/라이벌/활쏘기의 판정 로직은 이 라운드에
+            // XP 훅은 전부 StickmanEventBus **구독**이라 격파/활쏘기의 판정 로직은 이 라운드에
             // 한 줄도 수정되지 않았다(리더 지시 "읽기 전용으로 훅만").
             var progression = root.AddComponent<CharacterProgressionDirector>();
             var progressionSo = new SerializedObject(progression);
             progressionSo.FindProperty("_config").objectReferenceValue = config;
             progressionSo.ApplyModifiedPropertiesWithoutUndo();
 
-            // 기록 카운터(격파/대결/활쏘기/함께한 시간) — 전부 StickmanEventBus **구독**이라 격파/라이벌/
+            // 기록 카운터(격파/활쏘기/함께한 시간) — 전부 StickmanEventBus **구독**이라 격파/
             // 활쏘기의 판정 로직은 이번 라운드에도 한 줄도 수정되지 않았다(2026-08-30 정보창 리디자인).
             // 직렬화 필드가 없고 Awake()에서 같은 GameObject의 StickmanAgent를 직접 찾으므로 배선 불필요.
             root.AddComponent<CharacterStatsDirector>();
@@ -920,22 +921,38 @@ namespace StickMate.EditorTools
             root.AddComponent<TodoBoardPopover>();
 
             // ================================================================================
-            // 배선 감사 잔여 3건 — 구독자 0명 이벤트의 시각 소비자 (2026-08-30)
+            // 배선 감사 잔여 2건 — 구독자 0명 이벤트의 시각 소비자 (2026-08-30)
             // ================================================================================
-            // 리더 전수 감사가 마지막까지 남겨둔 세 이벤트(LandingRollRequested / RivalDuelStarted /
-            // WanderAmbientMotionRequested)에 붙는 소비자들이다. 셋 다 트리거 판정 로직은 이미 완성돼
+            // 리더 전수 감사가 마지막까지 남겨둔 이벤트(LandingRollRequested /
+            // WanderAmbientMotionRequested)에 붙는 소비자들이다. 둘 다 트리거 판정 로직은 이미 완성돼
             // 있었고 구독자만 0명이었으므로, 이 라운드에 Director는 하나도 추가되지 않았다 —
             // **새 자율 확률이 0개**라는 뜻이다(상위 이벤트의 기존 발행 빈도를 그대로 물려받는다).
+            // (세 번째였던 대결 시작 이벤트는 해당 기능 전체 삭제(2026-08-30)로 이벤트 자체가 없어졌다.)
             //
-            // SpectacleEventLock 비참여: 셋 다 ChangeState()를 호출하지 않는다(먼지/임팩트는 순수
+            // SpectacleEventLock 비참여: 둘 다 ChangeState()를 호출하지 않는다(먼지는 순수
             // 오버레이, 유휴 동작은 Idle 포즈 위에 얹는 변주라 상태가 그대로 Idle이다). 참여 기준은
             // 이 파일 전체와 같이 "단일 상태 슬롯을 다투는가"다.
             //
-            // 셋 다 직렬화 필드가 없고 Awake()에서 같은 GameObject의 StickmanAgent를 직접 찾으므로
+            // 둘 다 직렬화 필드가 없고 Awake()에서 같은 GameObject의 StickmanAgent를 직접 찾으므로
             // SerializedObject 배선이 필요 없다(GraffitiRenderer/ArcheryRenderer와 같은 관례).
             root.AddComponent<LandingDustRenderer>();
-            root.AddComponent<RivalDuelClashRenderer>();
             root.AddComponent<IdleAmbientMotionRenderer>();
+
+            // ================================================================================
+            // 외형 이펙트 / 펫 / 긴 망토 넘어짐 (2026-08-30, docs/UX_FLOW.md 33-5 / 33-6 / 33-2-5 B)
+            // ================================================================================
+            // 셋 다 직렬화 필드가 없고 Awake()에서 같은 GameObject의 StickmanAgent/StickmanMetrics를
+            // 직접 찾으므로 SerializedObject 배선이 필요 없다(LandingDustRenderer와 같은 관례).
+            //
+            // ★ CharacterFxRenderer는 같은 GameObject의 LandingDustRenderer를 Awake에서 찾아
+            //   "착지 먼지가 떠 있는 동안 먼지 구름 억제"를 판단한다(같은 루트에 있기만 하면 되고
+            //   AddComponent 순서와는 무관하다 — 없으면 억제만 생략되고 나머지는 그대로 돈다).
+            //
+            // LongCapeTripDirector만 Director다. 새 자율 확률을 하나 늘리지만(평균 90초에 1회),
+            // 그건 **긴 망토를 착용한 동안에만** 돌고 벗으면 즉시 멈춘다 — 리더 승인 항목.
+            root.AddComponent<CharacterFxRenderer>();
+            root.AddComponent<CharacterPetRenderer>();
+            root.AddComponent<LongCapeTripDirector>();
 
             // ================================================================================
             // 앱 제어 수단 배선 (2026-08-28 — "터미널 없이 끌 수 있어야 한다")
@@ -985,7 +1002,11 @@ namespace StickMate.EditorTools
             head.layer = limbLayer;
             var headCollider = head.AddComponent<CircleCollider2D>();
             // 머리 물리 원(반경 0.4, 시각 링 0.22와 별개 — BUG-SW-M1 이후 비율 무변경)도 함께 줄인다.
-            headCollider.radius = 0.4f * bodyScale;
+            // ★ 2026-08-30 R3-M1 — 이 반경은 루트 물리 캡슐의 반폭(0.2 x 배율)보다 넓어서 **캐릭터가
+            // 벽에 부딪혀 서는 위치를 실제로 결정하는 형상**이다. 그래서 숫자를 여기 박아 두지 않고
+            // StickConfig의 상수를 쓴다 — 배회 AI의 경계 판정 거리 유도가 같은 값을 읽는다
+            // (Core/DockGeometry.ResolveEdgeStopDistance / States/StickmanBlackboard.EdgeStopDistanceWorld).
+            headCollider.radius = StickConfig.BaselineBodyPhysicsHalfWidth * bodyScale;
             CreateRing(head.transform, "HeadOutline", Vector3.zero, headVisualRadius, headOutlineWidth,
                 outline, sortingOrder: 4);
 
@@ -1086,9 +1107,9 @@ namespace StickMate.EditorTools
             // ★ 2026-08-29 실측으로 확인한 함정 — NewScene 이후 config 참조가 죽어 있을 수 있다.
             // EditorSceneManager.NewScene(Single)은 직전 씬을 파괴하면서 참조가 끊긴 에셋을 언로드한다.
             // 그러면 여기까지 인자로 들고 온 StickConfig의 네이티브 객체가 사라져, C# 참조는 남아 있어도
-            // UnityEngine.Object의 "가짜 null" 상태가 된다. 실제로 이 라운드에서 라이벌 컴포넌트 2개의
-            // _config가 조용히 null로 직렬화되어(씬 YAML에 fileID: 0) **라이벌이 영원히 스폰되지 않는**
-            // 버그가 났다 — RivalEncounterDirector.Update()가 `_config == null`이면 즉시 return하기 때문.
+            // UnityEngine.Object의 "가짜 null" 상태가 된다. 실측 사례: 이 함정에 빠진 컴포넌트의
+            // _config가 조용히 null로 직렬화되어(씬 YAML에 fileID: 0) 그 컴포넌트가 Update() 첫 줄의
+            // `_config == null` 가드에서 매 프레임 즉시 return하며 **아무 일도 하지 않았다**.
             // 증상이 조용하다(에러도 경고도 없다)는 점이 이 함정의 가장 나쁜 부분이라, 여기서 한 번
             // 되살려 아래 모든 배선이 같은 인스턴스를 쓰게 만든다.
             if (config == null)
@@ -1161,9 +1182,7 @@ namespace StickMate.EditorTools
                 // 샘플 시점(t=5/10/15초)에 아무 영향이 없다(실측 확인).
                 instance.transform.position = new Vector3(0f, cam.transform.position.y, 0f);
 
-                // 라이벌 스틱맨(11절) 배선 — 아래 CreateRivalStickman 문서 참고.
                 var playerAgent = instance.GetComponent<StickmanAgent>();
-                CreateRivalStickman(stickmanPrefab, config, playerAgent);
 
                 // Dock 물리 계단은 플레이어의 발판 폴러(= Dock 발판의 단일 소스)를 읽는다. 물리 바닥은
                 // 프리팹보다 먼저 만들어지므로 배선은 여기서 뒤늦게 채운다(컴포넌트 자신에게도
@@ -1416,196 +1435,6 @@ namespace StickMate.EditorTools
             Debug.Log("[SceneBootstrapper] EventSystem + StandaloneInputModule 배치 완료 — " +
                 "EventSystem은 UniWindowController의 hitTestType=Raycast가 null 체크 없이 사용하므로 필수이고, " +
                 "입력 모듈은 uGUI Button.onClick(투두 포스트잇 체크박스)이 발동하기 위해 필수다.");
-        }
-
-        /// <summary>
-        /// 라이벌 스틱맨(docs/UX_FLOW.md 11절 "붉은 스틱맨이 난입해 서로 쫓아다니며 싸운다") 배선.
-        ///
-        /// ============================================================================
-        /// 왜 이제야 배선하는가
-        /// ============================================================================
-        /// Interaction/RivalStickmanAgent.cs(추적/전투 AI)와 RivalEncounterDirector.cs(스폰 판정)는
-        /// Phase 3에 이미 완성돼 있었지만 **씬 어디에도 배치되지 않아 한 번도 스폰된 적이 없었다** —
-        /// DragThrowController/RodeoCursorWatcher가 겪었던 것과 정확히 같은 유형의 누락이다.
-        ///
-        /// ============================================================================
-        /// 왜 별도 프리팹을 새로 만들지 않고 플레이어 프리팹을 복제해 깎아내는가
-        /// ============================================================================
-        /// 라이벌은 "붉은색이고 조종 대상이 아닌" 것 말고는 플레이어와 **완전히 같은 지오메트리**
-        /// (2분절 팔다리 + 관절 + 콜라이더 + 레이어)를 필요로 한다. 그 지오메트리는 BuildStickmanPrefab
-        /// 안에서 서로 얽힌 계산(footLift/totalHeight/관절 각도 제한)으로 만들어지므로, 별도 빌더로
-        /// 복제하면 두 벌이 서로 어긋나는 순간 라이벌만 조용히 깨진다. 그래서 같은 프리팹을 인스턴스화한
-        /// 뒤 **플레이어 전용 컴포넌트만 제거**한다 — 지오메트리에 대한 단일 진실 소스를 유지한다.
-        ///
-        /// 제거 대상(플레이어 전용): StickmanAgent(플랫폼 서비스/발판 폴러/자율 배회 소유자),
-        /// StickmanClickHitbox / DragThrowController / RodeoCursorWatcher(유저 상호작용 — 라이벌은
-        /// 관전 전용이라 클릭 대상이 아니다), AppControlDirector(앱 제어 메뉴는 하나면 된다),
-        /// BattleMinigameDirector/Renderer + GraffitiDirector/Renderer(라이벌은 이 스펙터클의 주체가
-        /// 아니고, 렌더러는 전역 이벤트를 구독하므로 남겨두면 소환물이 두 벌 생긴다 — 실측 확인).
-        /// 남기는 것: Rigidbody2D/콜라이더/팔다리 계층/DialogueBubbleRenderer(라이벌도 말을 한다).
-        ///
-        /// 팔다리의 RagdollLimbImpactRelay는 남겨두어도 안전하다 — 그 컴포넌트는 StickmanAgent를
-        /// 부모에서 찾아 쓰는데, 못 찾으면 아무것도 하지 않는다(Core/RagdollLimbImpactRelay.cs).
-        /// </summary>
-        private static void CreateRivalStickman(GameObject stickmanPrefab, StickConfig config, StickmanAgent player)
-        {
-            if (player == null)
-            {
-                Debug.LogError("[SceneBootstrapper] 플레이어 StickmanAgent를 찾지 못해 라이벌을 배선하지 못했습니다.");
-                return;
-            }
-
-            // 호출 경로가 늘어나도 같은 함정(위 BuildMainScene의 NewScene 주석)에 빠지지 않도록 한 번 더 방어.
-            if (config == null) config = AssetDatabase.LoadAssetAtPath<StickConfig>(ConfigAssetPath);
-
-            var rival = (GameObject)PrefabUtility.InstantiatePrefab(stickmanPrefab);
-            rival.name = "RivalStickman";
-            // 프리팹 연결을 끊는다 — 아래에서 컴포넌트를 제거할 것이고, 프리팹 인스턴스에서는 프리팹이
-            // 소유한 컴포넌트를 제거할 수 없다(그리고 남겨두면 플레이어 프리팹 수정이 라이벌의 삭제
-            // 오버라이드와 충돌한다).
-            PrefabUtility.UnpackPrefabInstance(rival, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
-
-            // 플레이어 전용 컴포넌트 제거. 다른 컴포넌트가 의존하는 것(StickmanAgent/StickmanClickHitbox)을
-            // **나중에** 지워야 RequireComponent 제약에 걸리지 않는다.
-            DestroyComponentIfPresent<AppControlDirector>(rival);
-            // 격파 미니게임/그라피티(2026-08-29 신설) — 라이벌은 이 스펙터클의 주체가 아니다.
-            // 특히 렌더러 2종을 남겨두면 **실측으로 확인된 실제 버그**가 난다: 두 렌더러 모두
-            // StickmanEventBus의 전역 정적 이벤트를 구독하므로, 플레이어가 격파를 시작하면 라이벌의
-            // 렌더러도 같은 이벤트를 받아 판자 한 벌을 더 소환한다(첫 실행 로그에 "[격파] 소환"이
-            // 정확히 2번 찍혀 발견했다). 렌더러 쪽에도 "자기 GameObject의 StickmanAgent가 없으면
-            // 아무것도 하지 않는다"는 자체 가드를 넣었지만, 애초에 배치하지 않는 것이 1차 방어다
-            // (DragThrowController/RodeoCursorWatcher를 지우는 것과 정확히 같은 이유).
-            DestroyComponentIfPresent<BattleMinigameRenderer>(rival);
-            DestroyComponentIfPresent<BattleMinigameDirector>(rival);
-            DestroyComponentIfPresent<GraffitiRenderer>(rival);
-            DestroyComponentIfPresent<GraffitiDirector>(rival);
-            // 창 도둑/창 크래시/하드웨어 반응(2026-08-29 신설) — 격파/그라피티와 **정확히 같은 함정**이다.
-            // 세 렌더러 모두 StickmanEventBus의 전역 정적 이벤트를 구독하므로, 남겨두면 플레이어가
-            // 창 도둑을 시작할 때 라이벌 쪽 렌더러도 같은 이벤트를 받아 고스트 창/균열/이모트가 두 벌
-            // 그려진다(격파에서 "[격파] 소환"이 정확히 2번 찍혀 실측 확인된 그 버그). 각 렌더러에도
-            // "자기 GameObject의 StickmanAgent가 없으면 아무것도 하지 않는다"는 자체 가드가 있지만,
-            // 애초에 배치하지 않는 것이 1차 방어다. Director 3종은 플레이어 전용 트리거이므로 함께 제거한다.
-            DestroyComponentIfPresent<WindowTheftRenderer>(rival);
-            DestroyComponentIfPresent<WindowTheftDirector>(rival);
-            DestroyComponentIfPresent<WindowCrashRenderer>(rival);
-            DestroyComponentIfPresent<WindowCrashDirector>(rival);
-            DestroyComponentIfPresent<HardwareReactionRenderer>(rival);
-            DestroyComponentIfPresent<HardwareReactionDirector>(rival);
-            // Phase 5(2026-08-29 신설) — 창 도둑/크래시/하드웨어 반응과 **정확히 같은 함정**이다.
-            // 렌더러 4종이 전부 StickmanEventBus의 전역 정적 이벤트를 구독하므로, 남겨두면 플레이어가
-            // 가출할 때 라이벌 쪽에도 과자/파문이 한 벌 더 그려지고 라이벌 어깨에도 처짐 표시가 뜬다.
-            // TodoPostItWidget은 특히 위험하다 — 자기 Canvas와 클릭관통 차단막을 통째로 한 벌 더 만들어
-            // 화면 우상단에 포스트잇 카드가 겹쳐 뜨고, 차단막 두 개가 같은 영역을 덮는다.
-            // Director 4종은 플레이어 전용 트리거이므로 함께 제거한다(라이벌은 스트레스를 받지도,
-            // 가출하지도, 할일을 갖지도, 집중 모드를 켜지도 않는다).
-            DestroyComponentIfPresent<StressGaugeRenderer>(rival);
-            DestroyComponentIfPresent<StressGaugeDirector>(rival);
-            DestroyComponentIfPresent<RunawayRenderer>(rival);
-            DestroyComponentIfPresent<RunawayDirector>(rival);
-            DestroyComponentIfPresent<TodoReminderRenderer>(rival);
-            DestroyComponentIfPresent<TodoReminderDirector>(rival);
-            DestroyComponentIfPresent<TodoPostItWidget>(rival);
-            DestroyComponentIfPresent<FocusWatchRenderer>(rival);
-            DestroyComponentIfPresent<FocusWatchDirector>(rival);
-            // 활쏘기(2026-08-29 신설) — 위 렌더러들과 **정확히 같은 함정**이다. ArcheryRenderer는
-            // StickmanEventBus의 전역 정적 이벤트를 구독하므로, 남겨두면 플레이어가 활을 쏠 때
-            // 라이벌 쪽에도 과녁과 화살이 한 벌 더 그려진다(격파에서 "[격파] 소환"이 정확히 2번 찍혀
-            // 실측 확인된 그 버그). 렌더러에도 "자기 GameObject의 StickmanAgent가 없으면 아무것도
-            // 하지 않는다"는 자체 가드가 있지만 애초에 배치하지 않는 것이 1차 방어다.
-            // Director도 플레이어 전용 트리거이므로 함께 제거한다(라이벌은 활을 쏘지 않는다).
-            DestroyComponentIfPresent<ArcheryRenderer>(rival);
-            DestroyComponentIfPresent<ArcheryDirector>(rival);
-            // 성장/장비/정보창(2026-08-29 신설) — 라이벌은 **별개 개체**라 레벨도 장비도 정보창도 없다.
-            // 남겨두면 정확히 이 프로젝트가 이미 여러 번 겪은 "소환물이 두 벌" 사고가 난다:
-            //   · InfoGearIconWidget    -> 화면 우상단에 톱니가 두 개 겹쳐 뜨고 클릭 콜라이더도 두 겹.
-            //   · CharacterInfoWindow   -> 자기 Canvas와 클릭관통 차단막을 통째로 한 벌 더 만든다
-            //                              (TodoPostItWidget과 정확히 같은 위험).
-            //   · CharacterProgressionDirector -> 전역 이벤트를 두 번 구독해 XP가 **두 배**로 들어가고
-            //                              저장 파일을 두 주체가 번갈아 덮어쓴다.
-            //   · CharacterAccessoryRenderer -> 라이벌 머리에도 모자가 얹힌다.
-            // 각 컴포넌트에 "자기 GameObject의 StickmanAgent가 없으면 아무것도 하지 않는다"는 2차 방어가
-            // 있지만, 애초에 배치하지 않는 것이 1차 방어다.
-            DestroyComponentIfPresent<InfoGearIconWidget>(rival);
-            //   · GearRadialMenuWidget / FocusSessionPopover / TodoBoardPopover -> 각자 Canvas와
-            //     클릭관통 차단막을 통째로 한 벌 더 만든다(위 CharacterInfoWindow와 같은 위험).
-            DestroyComponentIfPresent<GearRadialMenuWidget>(rival);
-            DestroyComponentIfPresent<FocusSessionPopover>(rival);
-            DestroyComponentIfPresent<TodoBoardPopover>(rival);
-            DestroyComponentIfPresent<CharacterInfoWindow>(rival);
-            DestroyComponentIfPresent<CharacterAccessoryRenderer>(rival);
-            DestroyComponentIfPresent<CharacterProgressionDirector>(rival);
-            //   · CharacterStatsDirector -> 같은 전역 이벤트를 두 번 구독해 격파/대결/활쏘기 기록이
-            //                              **두 배**로 쌓인다(2026-08-30 신설, 위 XP 두 배와 같은 함정).
-            DestroyComponentIfPresent<CharacterStatsDirector>(rival);
-            // 배선 감사 잔여 3건(2026-08-30 신설) — 위 렌더러들과 **정확히 같은 함정**이다. 셋 다
-            // StickmanEventBus의 전역 정적 이벤트를 구독하므로 남겨두면:
-            //   · LandingDustRenderer       -> 착지 한 번에 먼지가 두 벌 핀다.
-            //   · RivalDuelClashRenderer    -> 대결 시작 임팩트가 두 벌 겹친다(게다가 라이벌 사본은
-            //                                  자기 자신을 상대로 찾아 중점 계산이 무의미해진다).
-            //   · IdleAmbientMotionRenderer -> 플레이어가 두리번거릴 때 **라이벌이 같이 기지개를 켠다**
-            //                                  (라이벌은 AutoWanderController를 갖지 않으므로 자기
-            //                                  신호를 발행할 일이 없는데도 남의 신호로 움직인다).
-            // 각 컴포넌트에 "자기 GameObject의 StickmanAgent가 없으면 아무것도 하지 않는다"는 2차 방어가
-            // 있지만(위 StickmanAgent 제거로 실제로 발동한다), 애초에 배치하지 않는 것이 1차 방어다.
-            DestroyComponentIfPresent<LandingDustRenderer>(rival);
-            DestroyComponentIfPresent<RivalDuelClashRenderer>(rival);
-            DestroyComponentIfPresent<IdleAmbientMotionRenderer>(rival);
-            DestroyComponentIfPresent<RodeoCursorWatcher>(rival);
-            DestroyComponentIfPresent<DragThrowController>(rival);
-            DestroyComponentIfPresent<StickmanClickHitbox>(rival);
-            DestroyComponentIfPresent<StickmanAgent>(rival);
-
-            // 붉은색(11절). 런타임에도 RivalStickmanAgent.Awake()가 같은 값을 다시 적용하지만,
-            // 씬 에셋에도 구워둬야 에디터에서 열었을 때 "왜 검은색이지?" 하는 혼란이 없다.
-            Color rivalColor = config != null ? config.rivalInkColor : new Color(0.85f, 0.13f, 0.13f);
-            var rivalLines = rival.GetComponentsInChildren<LineRenderer>(true);
-            for (int i = 0; i < rivalLines.Length; i++)
-            {
-                rivalLines[i].startColor = rivalColor;
-                rivalLines[i].endColor = rivalColor;
-            }
-
-            // 스폰 전 대기 위치는 화면 밖 멀리. RivalStickmanAgent.Awake()가 Rigidbody2D.simulated를
-            // 꺼두므로 여기서 가만히 있다가, BeginDuel()이 실제 스폰 좌표로 옮긴다.
-            rival.transform.position = new Vector3(RivalParkingWorldX, 0f, 0f);
-
-            var rivalAgent = rival.AddComponent<RivalStickmanAgent>();
-            var rivalSo = new SerializedObject(rivalAgent);
-            rivalSo.FindProperty("_config").objectReferenceValue = config;
-            rivalSo.ApplyModifiedPropertiesWithoutUndo();
-
-            // 라이벌의 말풍선은 **자기 상태머신이 발급한 대사만** 그려야 한다(UX_FLOW.md 5절 규칙 7).
-            // 그 상태머신은 첫 대결에서야 만들어지므로, 그 전까지는 이 플래그가 "화자 미지정 = 전부
-            // 수신" 폴백을 막는다(Dialogue/DialogueBubbleRenderer.cs의 _requireBoundSpeaker 참고).
-            var rivalBubble = rival.GetComponent<DialogueBubbleRenderer>();
-            if (rivalBubble != null)
-            {
-                var bubbleSo = new SerializedObject(rivalBubble);
-                bubbleSo.FindProperty("_agent").objectReferenceValue = null; // 라이벌은 StickmanAgent가 없다.
-                bubbleSo.FindProperty("_requireBoundSpeaker").boolValue = true;
-                bubbleSo.ApplyModifiedPropertiesWithoutUndo();
-            }
-
-            // 스폰 판정기. 라이벌 오브젝트 자신에 붙인다(별도 관리 오브젝트를 늘리지 않는다).
-            var director = rival.AddComponent<RivalEncounterDirector>();
-            var directorSo = new SerializedObject(director);
-            directorSo.FindProperty("_player").objectReferenceValue = player;
-            directorSo.FindProperty("_rival").objectReferenceValue = rivalAgent;
-            directorSo.FindProperty("_config").objectReferenceValue = config;
-            directorSo.ApplyModifiedPropertiesWithoutUndo();
-
-            Debug.Log("[SceneBootstrapper] 라이벌 스틱맨 배선 완료 — 붉은색 " + rivalColor +
-                      ", 대기 위치 x=" + RivalParkingWorldX + ", 강제 소환 단축키 Ctrl+Opt+Cmd+V.");
-        }
-
-        /// <summary>대기 위치 x(월드 유닛). 화면 폭(orthographicSize=12 기준 약 32유닛)과 배회 범위
-        /// (약 53유닛)를 모두 벗어나 어떤 판정에도 걸리지 않는다.</summary>
-        private const float RivalParkingWorldX = 500f;
-
-        private static void DestroyComponentIfPresent<T>(GameObject go) where T : Component
-        {
-            var component = go.GetComponent<T>();
-            if (component != null) Object.DestroyImmediate(component, allowDestroyingAssets: false);
         }
 
         private static StickMate.Platform.DockPhysicsStep CreateGroundCollider(Camera cam, StickConfig config)

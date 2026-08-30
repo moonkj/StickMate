@@ -46,8 +46,19 @@ namespace StickMate.Core
         /// 이 라운드에 [오늘 할일] 패널이 생기면서 사용자가 <b>자기 진짜 일정을 처음 적는 입구</b>가
         /// 됐다 — 앱을 끄면 조용히 사라지는 할일 목록은 기능 실패다(리더 결정). v1~v3 파일에는
         /// <c>todos</c>가 없어 JsonUtility가 null로 채우고, 그 null은 "적어둔 할일이 없다"는 정확한
-        /// 사실이라 하위 호환이 앞선 버전들과 같은 방식으로 성립한다.</summary>
-        private const int CurrentVersion = 4;
+        /// 사실이라 하위 호환이 앞선 버전들과 같은 방식으로 성립한다.
+        /// 5 = 2026-08-30 캐릭터 정보창 재설계 라운드에서 착용 상태가 <b>bool 4개 → 카테고리 여러 개 ×
+        /// 아이템 아이디</b>로 바뀐 버전(Core/EquipmentModel.cs). 여기서는 하위 호환이 앞선 버전들처럼
+        /// "없으면 기본값"으로 저절로 성립하지 <b>않는다</b> — v1~v4의 <c>equippedHead</c> 4개는 새 필드와
+        /// 자리가 다르기 때문이다. 그래서 이 버전만 <b>명시적 마이그레이션</b>을 한다(아래 Load의 분기):
+        /// 기존 4카테고리는 "착용 중이었다 = 그 카테고리의 기본 아이템(0번)"으로 승격하고, 신규 3카테고리
+        /// (머리/이펙트/펫)는 옛 파일에 존재한 적이 없으므로 전부 미착용에서 시작한다. 옛 사용자의
+        /// 캐릭터 생김새가 업데이트만으로 달라지지 않는다는 것이 이 마이그레이션의 유일한 목표다
+        /// (회귀 테스트: Tests/EditMode/EquipmentMigrationTests.cs).</summary>
+        private const int CurrentVersion = 5;
+
+        /// <summary>착용 상태가 아이템 아이디로 바뀐 첫 버전. 이 값보다 낮은 파일은 bool 4개를 읽는다.</summary>
+        private const int FirstVersionWithWornItemIds = 5;
 
         /// <summary>
         /// 직렬화 스키마. JsonUtility는 프로퍼티를 직렬화하지 않으므로 public 필드로만 구성한다.
@@ -62,6 +73,10 @@ namespace StickMate.Core
             public float currentXp;
             public float totalXpEarned;
             public string characterName;
+
+            // ---- v1~v4: 카테고리당 아이템이 하나뿐이던 시절의 착용 여부 ----
+            // v5부터는 아래 wornXxx가 진짜 상태다. 이 4개는 계속 <b>정확한 값으로</b> 기록한다 —
+            // 파일 안에 서로 어긋나는 두 문장이 남으면 나중에 이 파일을 들여다볼 사람이 속는다.
             public bool equippedHead;
             public bool equippedEyes;
             public bool equippedNeck;
@@ -69,7 +84,9 @@ namespace StickMate.Core
 
             // ---- v2: 정보창 하단 스탯 블록의 기록(Core/CharacterStatsModel.cs) ----
             public int battleWins;
-            public int rivalWins;
+            // ※ v2에는 rivalWins가 있었다(라이벌 대결 승리). 라이벌 기능 전체 삭제(2026-08-30)로
+            //   필드를 없앴다 — JsonUtility는 모르는 키를 조용히 무시하므로 옛 저장 파일도 그대로 읽힌다
+            //   (Tests/EditMode/EquipmentMigrationTests의 v2 픽스처가 그 키를 계속 담고 있어 회귀를 잡는다).
             public int archeryShots;
             public int archeryBullseyes;
             public float companionSeconds;
@@ -95,6 +112,27 @@ namespace StickMate.Core
 
             /// <summary>완료함(17절 데이터 보존 원칙 — 지우지 않고 모아둔다).</summary>
             public TodoRecord[] todoArchive;
+
+            // ---- v5: 카테고리별 "지금 걸친 아이템 아이디"(빈 문자열 = 미착용) ----
+            //
+            // 배열(string[8]) 대신 이름 붙은 필드 8개인 이유: 배열은 <b>enum 순서에 의존</b>한다.
+            // 누군가 EquipmentSlot에 값을 끼워 넣는 순간 모든 사용자의 차림이 한 칸씩 밀리고, 그 사고는
+            // 저장 파일을 열어봐도 눈에 띄지 않는다(그냥 "다른 아이템"이 적혀 있을 뿐이다).
+            // 이름이 붙어 있으면 순서를 바꿔도, 나중에 카테고리를 지워도 파일이 스스로를 설명한다.
+            //
+            // 아이디를 적는 이유는 Core/EquipmentModel.cs의 "인덱스 vs 문자열 아이디" 문단 참고 —
+            // 숫자를 적으면 표 중간에 아이템을 하나 끼워 넣는 날 전원의 착용물이 밀린다.
+            public string wornHead;
+            public string wornEyes;
+            public string wornNeck;
+            public string wornShoulders;
+            // ★ 2026-08-30 표정(FACE) 삭제 — 여기 있던 wornFace 필드를 지웠다. 이미 저장된 v5 파일에는
+            //   "wornFace" 키가 남아 있지만 JsonUtility는 <b>모르는 키를 조용히 버린다</b>. 즉 옛 파일도
+            //   그대로 읽히고(다른 값은 전부 보존), 다음 저장에서 그 키만 사라진다. 버전을 6으로 올리지
+            //   않은 이유는 스키마가 <b>줄어들기만</b> 했기 때문이다 — 새 필드를 못 읽는 구버전이 없다.
+            public string wornHair;
+            public string wornFx;
+            public string wornPet;
         }
 
         /// <summary>
@@ -200,11 +238,8 @@ namespace StickMate.Core
                 }
 
                 CharacterProgressionModel.RestoreFromSave(data.level, data.currentXp, data.totalXpEarned, data.characterName);
-                EquipmentModel.RestoreFromSave(EquipmentSlot.Head, data.equippedHead);
-                EquipmentModel.RestoreFromSave(EquipmentSlot.Eyes, data.equippedEyes);
-                EquipmentModel.RestoreFromSave(EquipmentSlot.Neck, data.equippedNeck);
-                EquipmentModel.RestoreFromSave(EquipmentSlot.Shoulders, data.equippedShoulders);
-                CharacterStatsModel.RestoreFromSave(data.battleWins, data.rivalWins,
+                RestoreEquipment(data);
+                CharacterStatsModel.RestoreFromSave(data.battleWins,
                     data.archeryShots, data.archeryBullseyes, data.companionSeconds,
                     data.ragdollFalls, data.firstRunUnixSeconds);
                 UiLayoutModel.RestoreFromSave(data.gearPositionSaved, data.gearCenterXPoints, data.gearCenterYPoints);
@@ -223,6 +258,40 @@ namespace StickMate.Core
                 Debug.LogWarning($"[성장] 저장 파일을 읽지 못했습니다({e.GetType().Name}: {e.Message}). " +
                     "기본값(Lv.1)으로 시작합니다 — 다음 저장이 정상 내용으로 덮어씁니다.");
             }
+        }
+
+        /// <summary>
+        /// 착용 상태 복원 — <b>v5 마이그레이션이 사는 유일한 자리</b>(위 <c>CurrentVersion</c> 문서 참고).
+        ///
+        /// 두 경로 모두 <b>카테고리를 빠짐없이</b> 지정한다. "옛 파일에 없는 카테고리는 건드리지 않는다"로
+        /// 두면 그 자리에 <b>직전 상태</b>(새 캐릭터 기본 차림 또는 앞선 로드의 잔재)가 남아, 파일이
+        /// 말하지 않은 것을 화면이 보여주게 된다.
+        /// </summary>
+        private static void RestoreEquipment(SaveData data)
+        {
+            if (data.version >= FirstVersionWithWornItemIds)
+            {
+                EquipmentModel.RestoreFromSave(EquipmentSlot.Head, data.wornHead);
+                EquipmentModel.RestoreFromSave(EquipmentSlot.Eyes, data.wornEyes);
+                EquipmentModel.RestoreFromSave(EquipmentSlot.Neck, data.wornNeck);
+                EquipmentModel.RestoreFromSave(EquipmentSlot.Shoulders, data.wornShoulders);
+                EquipmentModel.RestoreFromSave(EquipmentSlot.Hair, data.wornHair);
+                EquipmentModel.RestoreFromSave(EquipmentSlot.Fx, data.wornFx);
+                EquipmentModel.RestoreFromSave(EquipmentSlot.Pet, data.wornPet);
+                return;
+            }
+
+            // v1~v4 — 카테고리당 하나뿐이던 아이템은 그 카테고리의 기본 아이템(0번)이 됐다.
+            EquipmentModel.RestoreFromSave(EquipmentSlot.Head, data.equippedHead);
+            EquipmentModel.RestoreFromSave(EquipmentSlot.Eyes, data.equippedEyes);
+            EquipmentModel.RestoreFromSave(EquipmentSlot.Neck, data.equippedNeck);
+            EquipmentModel.RestoreFromSave(EquipmentSlot.Shoulders, data.equippedShoulders);
+
+            // 신규 3카테고리는 옛 파일에 존재한 적이 없다 → 미착용. 머리를 여기서 "기본값이니까"
+            // 하고 걸쳐 주면, 업데이트만 했는데 캐릭터 얼굴이 달라진다.
+            EquipmentModel.RestoreFromSave(EquipmentSlot.Hair, false);
+            EquipmentModel.RestoreFromSave(EquipmentSlot.Fx, false);
+            EquipmentModel.RestoreFromSave(EquipmentSlot.Pet, false);
         }
 
         /// <summary>
@@ -259,6 +328,10 @@ namespace StickMate.Core
             }
         }
 
+        /// <summary>미착용을 <c>null</c>이 아니라 빈 문자열로 적는다 — JsonUtility는 null 문자열을
+        /// <c>""</c>로 직렬화하므로, 읽는 쪽이 둘을 구분하려 들면 없는 차이를 다루게 된다.</summary>
+        private static string WornId(EquipmentSlot slot) => EquipmentModel.WornItemId(slot) ?? string.Empty;
+
         /// <summary>성공하면 true. 실패해도 예외를 밖으로 던지지 않는다(클래스 문서 참고).</summary>
         public static bool Save()
         {
@@ -279,7 +352,6 @@ namespace StickMate.Core
                     equippedNeck = EquipmentModel.IsEquipped(EquipmentSlot.Neck),
                     equippedShoulders = EquipmentModel.IsEquipped(EquipmentSlot.Shoulders),
                     battleWins = CharacterStatsModel.BattleWins,
-                    rivalWins = CharacterStatsModel.RivalWins,
                     archeryShots = CharacterStatsModel.ArcheryShots,
                     archeryBullseyes = CharacterStatsModel.ArcheryBullseyes,
                     companionSeconds = CharacterStatsModel.TotalCompanionSeconds,
@@ -290,6 +362,13 @@ namespace StickMate.Core
                     gearCenterYPoints = UiLayoutModel.GearCenterPoints.y,
                     todos = ToRecords(TodoListModel.ActiveItems),
                     todoArchive = ToRecords(TodoListModel.CompletedArchive),
+                    wornHead = WornId(EquipmentSlot.Head),
+                    wornEyes = WornId(EquipmentSlot.Eyes),
+                    wornNeck = WornId(EquipmentSlot.Neck),
+                    wornShoulders = WornId(EquipmentSlot.Shoulders),
+                    wornHair = WornId(EquipmentSlot.Hair),
+                    wornFx = WornId(EquipmentSlot.Fx),
+                    wornPet = WornId(EquipmentSlot.Pet),
                 };
 
                 string dir = Application.persistentDataPath;

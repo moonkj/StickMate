@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using StickMate.Core;
+using StickMate.States;
 
 namespace StickMate.Interaction
 {
@@ -39,6 +40,15 @@ namespace StickMate.Interaction
     /// 바운스 오프셋을 그 자리에서 역산한다. 상수 추가 0개.
     ///
     /// ============================================================================
+    /// (3-1) 머리 좌우 추종 — 2026-08-30 사용자 신고("머리만 움직이고 모자는 가만히 있음")
+    /// ============================================================================
+    /// 유휴 앰비언트 "주위 살피기"(States/StickmanPoseAnimator.ApplyIdleAmbientPose)는 <b>머리만</b>
+    /// 좌우로 민다(SetBodyOffset의 headOffsetX). (3)의 바운스 역산은 y만 봤기 때문에 머리가 옆으로
+    /// 움직이는 동안 모자가 제자리에 남아 목이 어긋나 보였다. 컨테이너를 통째로 미는 것으로는
+    /// 고칠 수 없다 — 넥타이/망토는 <b>어깨선</b>에서 유도되므로 함께 밀면 그쪽이 어긋난다.
+    /// 그래서 머리에 붙는 자리(HEAD/EYES/HAIR)만 담는 자식 하나를 두고 거기에만 오프셋을 준다.
+    ///
+    /// ============================================================================
     /// (4) 랙돌 중에는 <b>숨긴다</b> — 그리고 그 이유
     /// ============================================================================
     /// RAGDOLL/ThrowTumble은 전신을 물리에 위임하는 상태라 머리·몸통이 루트에서 독립적으로 굴러간다.
@@ -50,22 +60,26 @@ namespace StickMate.Interaction
     /// 페이드로 사라졌다 나타나므로 깜빡임처럼 보이지 않는다(리더가 명시적으로 허용한 선택지).
     ///
     /// ============================================================================
-    /// 라이벌 복제 방어
+    /// 복제 방어
     /// ============================================================================
     /// 다른 렌더러들과 같은 이유로 자기 GameObject의 StickmanAgent가 없으면 아무것도 하지 않는다.
-    /// 1차 방어는 Editor/SceneBootstrapper.CreateRivalStickman이 이 컴포넌트를 제거하는 것이다
-    /// (라이벌은 장비도 성장도 없는 별개 개체다).
+    /// 이 프리팹의 사본이 씬에 생기면 그 사본에는 이 컴포넌트를 배치하지 않는 것이 1차 방어다
+    /// (장비/성장은 플레이어 하나에만 붙는 전역 상태다).
     /// </summary>
     public sealed class CharacterAccessoryRenderer : MonoBehaviour
     {
         // ==================== 비율 상수 (전부 머리 반경 / 몸통 길이 배수) ====================
         // 월드유닛 절대값은 하나도 없다 — 클래스 문서 (1) 참고.
         //
-        // ★ 2026-08-30: 아래 도형 비율들은 internal이다 — 정보창 초상화
-        //   (Interaction/CharacterPortraitGraphic.cs)가 **같은 숫자**를 읽어 같은 모양의 미니어처를
-        //   그리기 때문이다. 여기서 챙 길이를 바꾸면 초상화의 챙도 함께 바뀐다(튜닝값 이중 정의 방지).
+        // ★ 2026-08-30(R2 m2 갱신): 도형 비율은 이제 이 파일에 없다 — 전부
+        //   Interaction/AccessoryShapeBuilder.cs로 이관했고, 정보창 초상화를 그리는
+        //   Interaction/CharacterPortraitStage.cs가 바로 그 비율을 읽어 미니어처를 만든다.
+        //   챙 길이 같은 튜닝값은 AccessoryShapeBuilder 한 곳만 고치면 몸과 초상화가 함께 따라온다.
 
-        private const int SortingOrder = 6;      // 캐릭터 선(0~3)보다 위, 말풍선보다 아래.
+        // ★ 2026-08-30: 단일 sortingOrder 상수를 폐기했다. 33-2-0의 레이어 재배치표(망토 2 / 머리 6 /
+        //   넥타이 7 / 안경 8 / 모자 9)를 표현하려면 선마다 값이 달라야 하고, 그 값은 도형이
+        //   스스로 선언한다(AccessoryShapeBuilder.Shape.SortingOrder). 기본값은 AddLine의 기본 인자에
+        //   AccessoryShapeBuilder.SortDefault(=6)로 남아 있어 이 인자를 넘기지 않는 호출부는 무변경이다.
         private const float FadeSeconds = 0.18f; // 랙돌 진입/복귀 시 깜빡임을 없애는 짧은 페이드.
 
         // ★ 2026-08-30: 액세서리 도형 비율/점 좌표는 전부 Interaction/AccessoryShapeBuilder.cs로
@@ -77,6 +91,16 @@ namespace StickMate.Interaction
         // 분자 0.048은 StressGaugeRenderer가 이미 쓰는 검증된 획 두께다(같은 그림체를 유지).
         private const float StrokeWidthRatio = 0.048f / StickConfig.BaselineCharacterTotalHeight;
 
+        // HemSway(33-2-5 (A)) — 33절이 준 값 그대로. 진폭은 머리 반경 배수이므로 배율을 자동으로 따라간다.
+        private const float SwayPeriodSeconds = 0.62f;
+        private const float SwayAmplitudeRatio = 0.16f;
+        private const float SwayPointPhaseStep = 0.9f;  // 점마다 위상을 어긋내 천이 접히는 것처럼 보이게 한다.
+        private const float SwayBackRatio = 0.7f;
+        private const float SwayLiftRatio = 0.4f;
+
+        /// <summary>요일 확인 주기(초). 33-2-5 (D) 줄무늬 타이가 자정을 넘겼는지만 알면 되므로 넉넉하다.</summary>
+        private const float DayPollSeconds = 60f;
+
         private StickmanAgent _agent;
         private StickmanMetrics _metrics;
         private Transform _headTransform;
@@ -84,7 +108,42 @@ namespace StickMate.Interaction
         private Material _lineMaterial;
 
         private GameObject _container;
+
+        /// <summary>모자/안경/머리카락만 담는 자식. 머리의 좌우 오프셋을 여기에만 준다.</summary>
+        private Transform _headGroup;
+
+        /// <summary>머리의 <b>중립</b> localX. 프리팹이 굽어 있는 값이므로 Awake에서 한 번만 잰다
+        /// (SetBodyOffset이 아직 아무것도 밀지 않은 시점).</summary>
+        private float _headNeutralLocalX;
+
         private readonly List<LineRenderer> _lines = new List<LineRenderer>(8);
+
+        /// <summary>채움 면(모자류). 알파/표시 토글은 선과 같은 규칙을 따른다.</summary>
+        private readonly List<MeshRenderer> _fills = new List<MeshRenderer>(4);
+
+        /// <summary>직접 만든 메시. <b>반드시 손으로 지운다</b> — GameObject를 Destroy해도 메시는
+        /// 남아서 24시간 상주 앱에서 재구성마다 조금씩 샌다.</summary>
+        private readonly List<Mesh> _fillMeshes = new List<Mesh>(4);
+
+        /// <summary>재구성 때만 쓰는 도형 조립 버퍼. 매번 새 List를 만들지 않는다(24시간 상주 앱).</summary>
+        private readonly List<AccessoryShapeBuilder.Shape> _shapes = new List<AccessoryShapeBuilder.Shape>(16);
+
+        /// <summary>HemSway 대상 선 하나. 원본 점과 작업 버퍼를 함께 들고 있어야
+        /// 매 프레임 배열을 새로 만들지 않고 "원본 + 오프셋"을 계산할 수 있다.</summary>
+        private sealed class SwayLine
+        {
+            public LineRenderer Line;
+            public Vector3[] Base;
+            public Vector3[] Buffer;
+            public int Start;
+            public int Count;
+        }
+
+        private readonly List<SwayLine> _swayLines = new List<SwayLine>(4);
+        private bool _swayApplied;
+
+        private int _cachedDayOfWeek = -1;
+        private float _dayCheckedAt = float.NegativeInfinity;
 
         private float _facingSign = 1f;
         private float _alpha;
@@ -117,28 +176,34 @@ namespace StickMate.Interaction
         internal AccessoryShapeBuilder.Rig BuildRig()
             => new AccessoryShapeBuilder.Rig(R, HeadCenterY, ShoulderY, HipY, _facingSign);
 
-        /// <summary>모자 챙 선의 로컬 Y(발바닥 기준).</summary>
+        // ★ 아래 6개 프로퍼티는 <b>확장 전 기본 아이템 4종</b>(천 모자 / 선글라스 / 나비넥타이 /
+        //   짧은 망토)의 기준선이다. 32종으로 늘어난 지금은 "지금 쓴 아이템"이 아니라 "그 카테고리의
+        //   0번 아이템"을 말한다 — 이름을 바꾸지 않은 이유는 CharacterAccessoryScaleTests가 이 값들로
+        //   배율 1.0/0.75/0.5를 이미 잠그고 있어서다. 신규 12종은 아이템 자리를 인자로 받는
+        //   TryMeasureItemBounds()로 측정한다(프로퍼티를 32개 늘어놓지 않는 이유는 그 함수 문서 참고).
+
+        /// <summary>천 모자(0번) 챙 선의 로컬 Y(발바닥 기준).</summary>
         public float HatBrimLocalY => AccessoryShapeBuilder.HatBrimLocalY(BuildRig());
 
-        /// <summary>모자 관(crown) 꼭대기의 로컬 Y.</summary>
+        /// <summary>천 모자(0번) 관(crown) 꼭대기의 로컬 Y.</summary>
         public float HatTopLocalY => AccessoryShapeBuilder.HatTopLocalY(BuildRig());
 
-        /// <summary>모자 챙 끝의 로컬 X — <b>부호가 곧 바라보는 방향</b>이다(좌우 반전 회귀 테스트용).</summary>
+        /// <summary>천 모자(0번) 챙 끝의 로컬 X — <b>부호가 곧 바라보는 방향</b>이다(좌우 반전 회귀 테스트용).</summary>
         public float HatBrimTipLocalX => _facingSign * R * AccessoryShapeBuilder.HatBrimReachRatio;
 
-        /// <summary>선글라스 렌즈 중심의 로컬 Y.</summary>
+        /// <summary>선글라스(0번) 렌즈 중심의 로컬 Y. 안경 4종이 전부 이 기준선을 공유한다.</summary>
         public float GlassesLocalY => AccessoryShapeBuilder.GlassesLocalY(BuildRig());
 
         /// <summary>안경다리 끝의 로컬 X — 진행 <b>반대쪽</b>이므로 부호가 챙과 반대여야 한다.</summary>
         public float GlassesTempleTipLocalX => -_facingSign * R * AccessoryShapeBuilder.GlassesTempleReachRatio;
 
-        /// <summary>나비넥타이 중심의 로컬 Y.</summary>
+        /// <summary>나비넥타이(0번) 중심의 로컬 Y. 넥타이 4종이 전부 이 기준선을 공유한다.</summary>
         public float BowTieLocalY => AccessoryShapeBuilder.BowTieLocalY(BuildRig());
 
         /// <summary>망토 옷깃(어깨)의 로컬 Y.</summary>
         public float CapeCollarLocalY => AccessoryShapeBuilder.CapeCollarLocalY(BuildRig());
 
-        /// <summary>망토 밑단의 로컬 Y.</summary>
+        /// <summary>짧은 망토(0번) 밑단의 로컬 Y.</summary>
         public float CapeHemLocalY => AccessoryShapeBuilder.CapeHemLocalY(BuildRig());
 
         /// <summary>망토 자락이 가장 멀리 뻗은 로컬 X — 진행 <b>반대쪽</b>(뒤로 흩날린다).</summary>
@@ -161,6 +226,7 @@ namespace StickMate.Interaction
             _headTransform = FindDirectChild("Head");
             if (_headTransform != null)
             {
+                _headNeutralLocalX = _headTransform.localPosition.x;
                 for (int i = 0; i < _headTransform.childCount; i++)
                 {
                     Transform c = _headTransform.GetChild(i);
@@ -182,6 +248,16 @@ namespace StickMate.Interaction
         private void OnDestroy()
         {
             if (_container != null) Destroy(_container);
+            DestroyFillMeshes();
+        }
+
+        private void DestroyFillMeshes()
+        {
+            for (int i = 0; i < _fillMeshes.Count; i++)
+            {
+                if (_fillMeshes[i] != null) Destroy(_fillMeshes[i]);
+            }
+            _fillMeshes.Clear();
         }
 
         private void OnEquipmentChanged()
@@ -195,7 +271,7 @@ namespace StickMate.Interaction
         /// </summary>
         private void LateUpdate()
         {
-            if (_agent == null) return; // 라이벌 복제본 방어(클래스 문서).
+            if (_agent == null) return; // 복제본 방어(클래스 문서).
 
             bool wantVisible = ResolveWantVisible();
             float target = wantVisible ? 1f : 0f;
@@ -217,6 +293,13 @@ namespace StickMate.Interaction
             // 몸 바운스 추종(클래스 문서 (3)) — 컨테이너를 통째로 밀면 네 아이템이 함께 따라간다.
             _container.transform.localPosition = new Vector3(0f, ResolveBodyOffsetY(), 0f);
 
+            // 머리 좌우 추종(클래스 문서 (3-1)) — 머리에 붙은 것만 따라간다.
+            if (_headGroup != null)
+            {
+                _headGroup.localPosition = new Vector3(ResolveHeadOffsetX(), 0f, 0f);
+            }
+
+            TickHemSway();
             ApplyAlpha();
         }
 
@@ -262,6 +345,11 @@ namespace StickMate.Interaction
                 LineRenderer lr = _lines[i];
                 if (lr != null && lr.enabled != enabledState) lr.enabled = enabledState;
             }
+            for (int i = 0; i < _fills.Count; i++)
+            {
+                MeshRenderer mr = _fills[i];
+                if (mr != null && mr.enabled != enabledState) mr.enabled = enabledState;
+            }
         }
 
         private void SyncFacing()
@@ -281,6 +369,11 @@ namespace StickMate.Interaction
             return _headTransform.localPosition.y - _metrics.HeadCenterLocalY;
         }
 
+        /// <summary>클래스 문서 (3-1) — Head의 현재 localX에서 중립을 뺀 값. 세로(y)와 달리
+        /// Metrics에 대응 항등식이 없어(중립 x는 언제나 프리팹 값 그대로다) Awake에서 잰 값을 쓴다.</summary>
+        private float ResolveHeadOffsetX()
+            => _headTransform != null ? _headTransform.localPosition.x - _headNeutralLocalX : 0f;
+
         /// <summary>착용 조합 + 방향 + 배율이 그대로면 아무것도 하지 않는다(24시간 상주 앱 — 매 프레임
         /// GameObject를 만들고 부수지 않는다. StressGaugeRenderer의 "단계가 바뀐 순간에만 재구성"과 동일).</summary>
         private void EnsureBuilt()
@@ -293,90 +386,195 @@ namespace StickMate.Interaction
             _built = true;
         }
 
+        /// <summary>
+        /// ★ 재구성 서명 — 2026-08-30 32종 확장에서 <b>실제 버그를 고친 자리</b>.
+        ///
+        /// 확장 전에는 "카테고리 비트마스크"였다. 그때는 카테고리당 아이템이 하나뿐이라 그 값이 곧
+        /// 착용 상태 전부였지만, 32종이 된 지금은 <b>같은 카테고리 안에서 아이템만 바꾸면</b>
+        /// (천 모자 → 왕관) 마스크가 그대로여서 도형이 영영 갱신되지 않는다 —
+        /// 화면에는 "착용은 됐다는데 그림이 그대로"로 나타난다.
+        /// 그래서 <see cref="EquipmentModel.WornStateSignature"/>(카테고리별 <b>아이템 자리</b>까지 섞는
+        /// 정수 1개, 할당 0)로 갈아탔다. 직전 라운드 데이터 모델 코더가 이 자리를 위해 미리 만들어 둔 값이다.
+        ///
+        /// 잠금 상태도 함께 섞는다: 레벨이 올라 잠긴 아이템이 열리는 순간에도 다시 구워야 한다
+        /// (착용 상태는 그대로인데 그릴지 말지가 바뀌는 유일한 경로다).
+        /// </summary>
         private int ComputeSignature()
         {
-            int mask = 0;
+            int hash = EquipmentModel.WornStateSignature;
+
+            int unlockedMask = 0;
             for (int i = 0; i < EquipmentModel.SlotCount; i++)
             {
-                if (EquipmentModel.IsEquipped((EquipmentSlot)i) && EquipmentModel.IsUnlocked((EquipmentSlot)i, _agent.Config))
+                if (EquipmentModel.IsUnlocked((EquipmentSlot)i))
                 {
-                    mask |= 1 << i;
+                    unlockedMask |= 1 << i;
                 }
             }
-            mask |= _facingSign >= 0f ? 1 << 8 : 0;
+            hash = hash * 31 + unlockedMask;
+            hash = hash * 31 + (_facingSign >= 0f ? 1 : 0);
+
             // ★ 2026-08-30 실측으로 발견한 결함: 잉크색(⌃⌥⌘C / 정보창 [외형] 탭)을 바꿔도 액세서리는
             //   예전 색 그대로 남았다. StickmanAgent.ApplyInkColorFromConfig()는 **Awake에서 캐시한**
             //   LineRenderer 배열만 갱신하는데 액세서리 선은 그 뒤에 런타임 생성되기 때문이다
             //   (Tasklist.md의 "캐릭터를 통째로 숨기는 경로" 함정과 정확히 같은 뿌리). 색을 서명에
             //   넣어 색이 바뀐 프레임에 도형을 다시 굽는다 — 색만 갱신하는 별도 경로를 만들지 않는
             //   이유는, 그 경로가 재구성 경로와 어긋나 또 하나의 이중 정의가 되기 때문이다.
-            mask ^= ResolveInkColor().GetHashCode();
+            hash = hash * 31 + ResolveInkColor().GetHashCode();
+
             // 배율은 실행 중에 바뀌지 않지만(프리팹에 구워짐), 에디터에서 Remeasure를 부르는 경로가
             // 있으므로 치수도 서명에 넣어 조용히 어긋나는 경우를 없앤다.
-            mask ^= Mathf.RoundToInt((_metrics != null ? _metrics.TotalHeight : 1f) * 10000f) << 9;
-            return mask;
+            hash = hash * 31 + Mathf.RoundToInt((_metrics != null ? _metrics.TotalHeight : 1f) * 10000f);
+
+            // 33-2-5 (D) 줄무늬 타이는 월요일에 조금 느슨해진다 — 자정을 넘기면 다시 구워야 한다.
+            hash = hash * 31 + DayOfWeekIndex;
+            return hash;
         }
+
+        /// <summary>
+        /// 오늘 요일. <see cref="System.DateTime.Now"/>를 매 프레임 부르지 않는다 — 이 앱은 하루 종일
+        /// 켜져 있고 요일은 하루에 한 번 바뀐다. <see cref="DayPollSeconds"/>마다 한 번만 확인한다.
+        /// </summary>
+        private int DayOfWeekIndex
+        {
+            get
+            {
+                if (_cachedDayOfWeek < 0 || Time.unscaledTime - _dayCheckedAt >= DayPollSeconds)
+                {
+                    _cachedDayOfWeek = (int)System.DateTime.Now.DayOfWeek;
+                    _dayCheckedAt = Time.unscaledTime;
+                }
+                return _cachedDayOfWeek;
+            }
+        }
+
+        private bool IsMonday => DayOfWeekIndex == (int)System.DayOfWeek.Monday;
+
+        /// <summary>지금 쓴 모자가 선언한 커버선(33-4-1). 모자를 안 썼거나 왕관이면 +∞ = 아무것도 안 가린다.</summary>
+        private float ResolveHatCoverLocalY(in AccessoryShapeBuilder.Rig rig)
+            => ShouldDraw(EquipmentSlot.Head)
+                ? AccessoryShapeBuilder.HatCoverLocalY(EquipmentModel.WornIndex(EquipmentSlot.Head), rig)
+                : float.PositiveInfinity;
 
         private void Rebuild()
         {
             if (_container != null) Destroy(_container);
+            DestroyFillMeshes();
             _lines.Clear();
+            _fills.Clear();
+            _swayLines.Clear();
+            _swayApplied = false;
 
             _lineMaterial = ResolveLineMaterial();
             _container = new GameObject("EquipmentAccessories");
             _container.transform.SetParent(transform, false);
 
+            // ★ 머리에 붙는 것만 따로 담는 자식. 유휴 앰비언트 "주위 살피기"가 머리만 좌우로 미는데
+            //   (AccessoryShapeBuilder.IsHeadAttached 문서), 컨테이너 하나로는 그 오프셋을 모자에만
+            //   줄 수 없다. 목/등 아이템은 어깨선에서 유도되므로 바깥 컨테이너에 그대로 남는다.
+            var headGroup = new GameObject("HeadAttached");
+            headGroup.transform.SetParent(_container.transform, false);
+            _headGroup = headGroup.transform;
+
             Color ink = ResolveInkColor();
-            StickConfig config = _agent != null ? _agent.Config : null;
-
-            if (ShouldDraw(EquipmentSlot.Head, config)) BuildHat(ink);
-            if (ShouldDraw(EquipmentSlot.Eyes, config)) BuildGlasses(ink);
-            if (ShouldDraw(EquipmentSlot.Neck, config)) BuildBowTie(ink);
-            if (ShouldDraw(EquipmentSlot.Shoulders, config)) BuildCape(ink);
-        }
-
-        private static bool ShouldDraw(EquipmentSlot slot, StickConfig config)
-            => EquipmentModel.IsEquipped(slot) && EquipmentModel.IsUnlocked(slot, config);
-
-        // ==================== 도형 (좌표 계산은 전부 AccessoryShapeBuilder에서 온다) ====================
-
-        private void BuildHat(Color ink)
-        {
             AccessoryShapeBuilder.Rig rig = BuildRig();
-            AddLine("HatCrown", AccessoryShapeBuilder.HatCrown(rig), ink, loop: true);
-            AddLine("HatBrim", AccessoryShapeBuilder.HatBrim(rig), ink, loop: true);
+
+            // ★ 슬롯별 if 사다리를 쓰지 않는다 — 카테고리가 4개에서 8개가 되면서, 어느 슬롯을 빠뜨려도
+            //   컴파일은 통과하고 화면에서만 조용히 사라지는 구조가 됐기 때문이다. 순회로 바꾸면
+            //   EquipmentSlot에 값이 하나 더 생기는 순간 자동으로 함께 그려진다(도형만 추가하면 된다).
+            _shapes.Clear();
+            float cover = ResolveHatCoverLocalY(rig);
+            for (int i = 0; i < EquipmentModel.SlotCount; i++)
+            {
+                var slot = (EquipmentSlot)i;
+                if (!ShouldDraw(slot)) continue;
+
+                // 색은 <b>슬롯 단위</b>로 한 번 푼다 — 도형마다 카탈로그를 다시 뒤지지 않기 위해서고,
+                // 그래야 "이 아이템의 두 색"이라는 팔레트 규칙이 코드에서도 그대로 보인다.
+                int item = EquipmentModel.WornIndex(slot);
+                ItemCatalog.ResolveWornPalette(slot, item, ink, out Color primary, out Color secondary);
+
+                int start = _shapes.Count;
+                AccessoryShapeBuilder.Append(_shapes, slot, item, rig, cover, StrokeWidth * 0.5f, IsMonday);
+
+                Transform parent = AccessoryShapeBuilder.IsHeadAttached(slot) ? _headGroup : _container.transform;
+                for (int k = start; k < _shapes.Count; k++)
+                {
+                    AddShape(_shapes[k], ToneColor(_shapes[k].Tone, primary, secondary), parent);
+                }
+            }
         }
 
-        private void BuildGlasses(Color ink)
-        {
-            AccessoryShapeBuilder.Rig rig = BuildRig();
-            AddLine("GlassesLensFront", AccessoryShapeBuilder.GlassesLensFront(rig), ink, loop: true);
-            AddLine("GlassesLensBack", AccessoryShapeBuilder.GlassesLensBack(rig), ink, loop: true);
-            AddLine("GlassesBridge", AccessoryShapeBuilder.GlassesBridge(rig), ink, loop: false);
-            AddLine("GlassesTemple", AccessoryShapeBuilder.GlassesTemple(rig), ink, loop: false);
-        }
-
-        private void BuildBowTie(Color ink)
-        {
-            AccessoryShapeBuilder.Rig rig = BuildRig();
-            AddLine("BowTieWings", AccessoryShapeBuilder.BowTieLeftWing(rig), ink, loop: false);
-            AddLine("BowTieWingsRight", AccessoryShapeBuilder.BowTieRightWing(rig), ink, loop: false);
-            AddLine("BowTieKnot", AccessoryShapeBuilder.BowTieKnot(rig), ink, loop: true);
-        }
-
-        private void BuildCape(Color ink)
-        {
-            AccessoryShapeBuilder.Rig rig = BuildRig();
-            AddLine("CapeOutline", AccessoryShapeBuilder.CapeOutline(rig), ink, loop: true);
-            AddLine("CapeFold", AccessoryShapeBuilder.CapeFold(rig), ink, loop: false);
-        }
+        private static bool ShouldDraw(EquipmentSlot slot)
+            => EquipmentModel.IsEquipped(slot) && EquipmentModel.IsUnlocked(slot);
 
         // ==================== 유틸 ====================
 
-        private void AddLine(string name, Vector3[] points, Color color, bool loop)
+        /// <summary>도형이 선언한 <b>역할</b>을 실제 색으로 바꾼다. 세 번째 톤(그림자)은 팔레트를
+        /// 늘리지 않고 주색에서 유도한다 — AccessoryShapeBuilder.Shade 문서 참고.</summary>
+        private static Color ToneColor(byte tone, Color primary, Color secondary)
+        {
+            if (tone == AccessoryShapeBuilder.Accent) return secondary;
+            if (tone == AccessoryShapeBuilder.Shade) return AccessoryShapeBuilder.FillOutlineColor(primary);
+            return primary;
+        }
+
+        private void AddShape(in AccessoryShapeBuilder.Shape shape, Color color, Transform parent)
+        {
+            // ★ 채움 면 먼저(윤곽선 바로 아래). 2026-08-30 사용자 신고 "모자가 투명해보임" —
+            //   선화만으로는 모자 관 안쪽으로 머리 링이 그대로 비친다(AccessoryShapeBuilder.Shape.Filled).
+            Color outline = color;
+            if (shape.Filled)
+            {
+                AddFill(shape, color, parent);
+                outline = AccessoryShapeBuilder.FillOutlineColor(color);
+            }
+
+            LineRenderer lr = AddLine(shape.Name, shape.Points, outline, shape.Loop, shape.SortingOrder, parent);
+            if (lr == null || !shape.HasSway) return;
+
+            // 흔들 점이 있는 선만 별도 목록에 둔다 — 매 프레임 전체 선을 훑지 않기 위해서다.
+            var buffer = new Vector3[shape.Points.Length];
+            System.Array.Copy(shape.Points, buffer, shape.Points.Length);
+            _swayLines.Add(new SwayLine
+            {
+                Line = lr,
+                Base = shape.Points,
+                Buffer = buffer,
+                Start = shape.SwayStart,
+                Count = Mathf.Min(shape.SwayCount, shape.Points.Length - shape.SwayStart),
+            });
+        }
+
+        /// <param name="sortingOrder">33-2-0의 레이어 재배치표. 기본값은 확장 전 값(6)이라
+        /// 이 인자를 넘기지 않는 기존 호출부는 그대로 같은 그림을 얻는다.</param>
+        /// <summary>채움 면 하나를 만든다. 재질은 캐릭터 선의 것을 그대로 빌려 쓰고 색은 정점 색으로
+        /// 넣는다(AccessoryShapeBuilder.BuildFillMesh 문서). 메시는 <see cref="_fillMeshes"/>가
+        /// 들고 있다가 재구성/파괴 때 직접 지운다 — GameObject를 지워도 메시는 남는다.</summary>
+        private void AddFill(in AccessoryShapeBuilder.Shape shape, Color color, Transform parent)
+        {
+            Mesh mesh = AccessoryShapeBuilder.BuildFillMesh(shape.Points, color);
+            if (mesh == null) return;
+
+            var go = new GameObject(shape.Name + "Fill");
+            go.transform.SetParent(parent != null ? parent : _container.transform, false);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = _lineMaterial;
+            mr.sortingOrder = shape.FillSortingOrder;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+
+            _fillMeshes.Add(mesh);
+            _fills.Add(mr);
+        }
+
+        private LineRenderer AddLine(string name, Vector3[] points, Color color, bool loop,
+            int sortingOrder = AccessoryShapeBuilder.SortDefault, Transform parent = null)
         {
             var go = new GameObject(name);
-            go.transform.SetParent(_container.transform, false);
+            go.transform.SetParent(parent != null ? parent : _container.transform, false);
 
             var lr = go.AddComponent<LineRenderer>();
             lr.useWorldSpace = false;
@@ -387,12 +585,137 @@ namespace StickMate.Interaction
             lr.endWidth = StrokeWidth;
             lr.numCapVertices = 4;
             lr.numCornerVertices = 4;
-            lr.sortingOrder = SortingOrder;
+            lr.sortingOrder = sortingOrder;
             lr.loop = loop;
             lr.positionCount = points.Length;
             lr.SetPositions(points);
             _lines.Add(lr);
+            return lr;
         }
+
+        // ==================== HemSway (docs/UX_FLOW.md 33-2-5 (A)) ====================
+
+        /// <summary>
+        /// ★ 걸을 때만 자락이 흔들린다 — <b>원칙 1(행동-텍스트 싱크)의 그림 버전</b>.
+        ///
+        /// 카탈로그 문구 셋이 지금 존재하지 않는 동작을 주장하고 있었다: 목도리 "끝자락이 걸을 때마다
+        /// 흔들린다", 짧은 망토 "늘 가는 방향의 반대쪽으로 날린다", 방울 목걸이 "움직일 때마다 흔들린다".
+        /// 확장 전 이 렌더러는 <b>완전히 정적</b>이었다(재구성 사이에는 한 점도 움직이지 않는다).
+        ///
+        /// 도형 전체를 매 프레임 다시 굽지 않는다 — 각 도형이 "흔들리는 점 구간"을 스스로 선언하고
+        /// (<see cref="AccessoryShapeBuilder.Shape.SwayStart"/>) 그 점의 x/y에만 오프셋을 더한다.
+        ///
+        /// <b>정지 중에는 <c>SetPositions</c> 호출 자체를 건너뛴다.</b> 24시간 상주 앱에서 헛일을 하지
+        /// 않기 위해서이기도 하고, 그 스킵이 곧 "걸을 <b>때만</b> 흔들린다"를 코드로 보장하기 때문이기도
+        /// 하다. 다만 멈춘 첫 프레임에는 <b>한 번만</b> 원본으로 되돌린다 — 안 그러면 마지막 흔들린
+        /// 모양이 그대로 굳어 "멈췄는데 자락이 뒤로 날린 채"가 된다.
+        /// </summary>
+        private void TickHemSway()
+        {
+            if (_swayLines.Count == 0) return;
+
+            float speed01 = ResolveWalkSpeed01();
+            if (speed01 <= 0.0001f)
+            {
+                if (!_swayApplied) return;
+                for (int i = 0; i < _swayLines.Count; i++)
+                {
+                    SwayLine s = _swayLines[i];
+                    if (s.Line != null) s.Line.SetPositions(s.Base);
+                }
+                _swayApplied = false;
+                return;
+            }
+
+            float phase = Time.time * Mathf.PI * 2f / SwayPeriodSeconds;
+            float amplitude = R * SwayAmplitudeRatio * speed01;
+
+            for (int i = 0; i < _swayLines.Count; i++)
+            {
+                SwayLine s = _swayLines[i];
+                if (s.Line == null) continue;
+
+                System.Array.Copy(s.Base, s.Buffer, s.Base.Length);
+                for (int k = 0; k < s.Count; k++)
+                {
+                    int idx = s.Start + k;
+                    float sway = Mathf.Sin(phase + idx * SwayPointPhaseStep) * amplitude;
+                    Vector3 p = s.Buffer[idx];
+                    p.x += -_facingSign * sway * SwayBackRatio;  // 뒤로 밀린다
+                    p.y += sway * SwayLiftRatio;                 // 살짝 들린다
+                    s.Buffer[idx] = p;
+                }
+                s.Line.SetPositions(s.Buffer);
+            }
+            _swayApplied = true;
+        }
+
+        /// <summary>지금 걷는 속도(0~1). 블랙보드가 없으면 0 — 정지로 본다(테스트 스텁 리그 포함).</summary>
+        private float ResolveWalkSpeed01()
+        {
+            StickmanBlackboard blackboard = _agent != null ? _agent.Blackboard : null;
+            if (blackboard == null || blackboard.Body == null) return 0f;
+            StickConfig config = blackboard.Config;
+            float walk = config != null ? config.ResolveWalkSpeed() : 1f;
+            if (walk <= 0.0001f) return 0f;
+            return Mathf.Clamp01(Mathf.Abs(blackboard.Body.linearVelocity.x) / walk);
+        }
+
+        // ==================== 테스트/진단 훅 ====================
+
+        /// <summary>
+        /// 지금 치수·방향으로 <paramref name="slot"/>의 <paramref name="itemIndex"/>번 아이템을 굽고
+        /// 그 잉크 사각형(획 두께 제외, 점 좌표만)을 돌려준다. 그릴 것이 없으면 false.
+        ///
+        /// 32종 각각에 전용 프로퍼티를 만드는 대신 이 훅 하나를 두는 이유: 프로퍼티를 32개 늘어놓으면
+        /// 그 자체가 도형 정의의 두 번째 사본이 되고, 아이템이 늘 때마다 렌더러를 함께 고쳐야 한다.
+        /// </summary>
+        public bool TryMeasureItemBounds(EquipmentSlot slot, int itemIndex, out Vector2 min, out Vector2 max)
+        {
+            min = default;
+            max = default;
+            _shapes.Clear();
+            // 커버선 +∞ / 월요일 false — 측정은 결정론적이어야 한다(요일에 따라 테스트가 달라지면 안 된다).
+            AccessoryShapeBuilder.Append(_shapes, slot, itemIndex, BuildRig(),
+                float.PositiveInfinity, StrokeWidth * 0.5f, mondayLoosened: false);
+            if (_shapes.Count == 0) return false;
+
+            min = new Vector2(float.MaxValue, float.MaxValue);
+            max = new Vector2(float.MinValue, float.MinValue);
+            for (int i = 0; i < _shapes.Count; i++)
+            {
+                Vector3[] pts = _shapes[i].Points;
+                for (int p = 0; p < pts.Length; p++)
+                {
+                    min = Vector2.Min(min, new Vector2(pts[p].x, pts[p].y));
+                    max = Vector2.Max(max, new Vector2(pts[p].x, pts[p].y));
+                }
+            }
+            return true;
+        }
+
+        /// <summary>이 아이템이 만드는 선의 개수(0이면 도형이 정의되지 않은 자리다).</summary>
+        public int ItemLineCount(EquipmentSlot slot, int itemIndex)
+        {
+            _shapes.Clear();
+            AccessoryShapeBuilder.Append(_shapes, slot, itemIndex, BuildRig(),
+                float.PositiveInfinity, StrokeWidth * 0.5f, mondayLoosened: false);
+            return _shapes.Count;
+        }
+
+        /// <summary>33-4-1 회귀용 — 이 모자를 썼을 때 이 머리 모양의 선이 몇 개나 살아남는가.</summary>
+        public int HairLineCountUnderHat(int hairItemIndex, int hatItemIndex)
+        {
+            _shapes.Clear();
+            AccessoryShapeBuilder.Rig rig = BuildRig();
+            AccessoryShapeBuilder.Append(_shapes, EquipmentSlot.Hair, hairItemIndex, rig,
+                AccessoryShapeBuilder.HatCoverLocalY(hatItemIndex, rig), StrokeWidth * 0.5f, false);
+            return _shapes.Count;
+        }
+
+        /// <summary>이 모자가 선언한 커버선(33-4-1). 왕관/미착용은 <see cref="float.PositiveInfinity"/>.</summary>
+        public float HatCoverLocalYFor(int hatItemIndex)
+            => AccessoryShapeBuilder.HatCoverLocalY(hatItemIndex, BuildRig());
 
         private void ApplyAlpha()
         {
@@ -405,6 +728,19 @@ namespace StickMate.Interaction
                 c.a = _alpha;
                 lr.startColor = c;
                 lr.endColor = c;
+            }
+
+            // 채움 면의 알파는 <b>정점 색</b>에 들어 있다(머티리얼은 캐릭터 것을 공유하므로 절대 만지지
+            // 않는다 — 건드리면 캐릭터 획까지 함께 반투명해진다).
+            for (int i = 0; i < _fillMeshes.Count; i++)
+            {
+                Mesh mesh = _fillMeshes[i];
+                if (mesh == null) continue;
+                Color[] colors = mesh.colors;
+                if (colors == null || colors.Length == 0) continue;
+                if (Mathf.Approximately(colors[0].a, _alpha)) continue;
+                for (int k = 0; k < colors.Length; k++) colors[k].a = _alpha;
+                mesh.colors = colors;
             }
         }
 

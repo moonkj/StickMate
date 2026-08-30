@@ -34,6 +34,9 @@ namespace StickMate.Core
         private StickmanStateMachine _machine;
         private StickmanBlackboard _blackboard;
         private Renderer[] _renderers;
+
+        /// <summary>물리 반폭 실측용 콜라이더 캐시(2026-08-30 R3-M1). Awake에서 한 번만 모은다.</summary>
+        private Collider2D[] _colliders;
         private LineRenderer[] _lineRenderers; // 색 프리셋 일괄 갱신(ApplyInkColor) 대상 캐시.
         private AutoWanderController _autoWander; // BUG-P1-B2: 키보드 입력을 대체하는 자율 배회 소스(docs/UX_FLOW.md 26절, 매 프레임 Tick 필요).
 
@@ -70,12 +73,12 @@ namespace StickMate.Core
         }
 
         /// <summary>
-        /// Phase 3 Interaction 레이어(드래그&던지기/로데오 커서/격파 미니게임 컨트롤러, 라이벌 스틱맨 AI)가
+        /// Phase 3 Interaction 레이어(드래그&던지기/로데오 커서/격파 미니게임 컨트롤러)가
         /// 읽기 전용으로 접근하기 위한 통로. 이 프로퍼티들을 새로 추가한 이유: UX_FLOW.md 10~13절 기능들은
         /// 의도적으로 StickmanAgent 밖의 별도 컴포넌트(Interaction/*)로 구현되었는데(관심사 분리 — Core는
         /// Phase 3 개별 기능의 존재 자체를 몰라도 된다), 그 컴포넌트들이 상태 전이를 트리거하거나(Machine),
         /// 부분적 클릭관통 해제를 요청하거나(PlatformService as ILocalClickCaptureService), 전체화면
-        /// Suspend 여부를 확인하려면(IsSuspended, 라이벌 대결의 "전체화면 감지 시 즉시 취소" 요구사항)
+        /// Suspend 여부를 확인하려면(IsSuspended — "전체화면 감지 시 즉시 취소" 요구사항)
         /// 최소한의 읽기 접근이 필요하다. 전부 이미 존재하던 private 필드를 그대로 노출할 뿐 새 로직은 없다.
         /// </summary>
         public StickmanBlackboard Blackboard => _blackboard;
@@ -91,9 +94,9 @@ namespace StickMate.Core
         /// </summary>
         public StickConfig Config => _config;
 
-        /// <summary>전체화면 게임 감지로 현재 Suspended 상태인지 — 라이벌 대결(11절) "전체화면 감지 시
-        /// 즉시 취소" 요구사항을 Interaction/RivalStickmanAgent.cs가 직접 폴링하기 위해 필요하다(라이벌은
-        /// 플레이어의 StickmanStateMachine에 속하지 않으므로 아래 Suspend()의 일반 처리 대상이 아니다).</summary>
+        /// <summary>전체화면 게임 감지로 현재 Suspended 상태인지 — "전체화면 감지 시 즉시 취소"가
+        /// 필요한데 아래 Suspend()의 일반 처리(상태머신 강제 전이) 대상이 아닌 소비자들이 직접
+        /// 폴링한다(WindowCrashDirector의 오버레이 수명, 정보창/부채꼴/팝오버의 자동 닫기 등).</summary>
         public bool IsSuspended => _isSuspended;
 
         // ============================================================================
@@ -179,8 +182,8 @@ namespace StickMate.Core
         /// 보장된다(GetupState.cs 참고). 루트 파츠는 OnCollisionEnter2D가 직접 호출하고, 사지 등
         /// 비루트 파츠는 RagdollLimbImpactRelay.cs를 부착하면 같은 경로로 통지된다(실제 프리팹 배선은
         /// Phase 2 범위 밖). Phase 3부터는 판정식 자체를 States.RagdollImpactResolver로 위임한다 —
-        /// States/DragThrowState.cs(던진 속도 기반)/RodeoCursorState.cs(거친 흔들기)/
-        /// Interaction/RivalStickmanAgent.cs(라이벌 자신의 피격)도 동일한 판정식을 써야 해서, 이
+        /// States/DragThrowState.cs(던진 속도 기반)/RodeoCursorState.cs(거친 흔들기)도
+        /// 동일한 판정식을 써야 해서, 이
         /// MonoBehaviour 메서드에서만 로직을 갖고 있으면 다른 순수 C# 클래스에서 재사용할 수 없었다.
         /// 공개 시그니처는 전혀 바뀌지 않았다 — 기존 호출부(OnCollisionEnter2D 등) 무수정으로 계속 동작한다.
         /// </summary>
@@ -225,6 +228,10 @@ namespace StickMate.Core
             }
 
             _renderers = GetComponentsInChildren<Renderer>(true);
+            // ★ 2026-08-30 R3-M1 — 물리 반폭 실측용 캐시. 계층의 콜라이더 개수는 런타임에 변하지 않으므로
+            // 여기서 한 번만 모으고, 매 주기에는 "루트 몸에 붙어 있고 트리거가 아닌 것"만 골라 바운즈를 잰다
+            // (필터를 여기서 미리 하지 않는 이유: _body 배선이 이 시점보다 뒤에 끝나는 경로가 있다).
+            _colliders = GetComponentsInChildren<Collider2D>(true);
             // 색 프리셋 일괄 갱신용 캐시(사용자 요청 "흰색 or 검은색 선택", 2026-08-28).
             // 몸통/머리링/눈/팔다리가 전부 LineRenderer라 이 배열 하나면 캐릭터 전체를 덮는다.
             _lineRenderers = GetComponentsInChildren<LineRenderer>(true);
@@ -270,8 +277,8 @@ namespace StickMate.Core
                 { StickmanStateId.ParkourClimb, new ParkourClimbState(_blackboard) },
                 // 매달려 내려가기(ParkourClimb의 하강 방향, 사용자 명시 요청 2026-08-28).
                 { StickmanStateId.LedgeHang, new LedgeHangState(_blackboard) },
-                // Phase 3: AttackState도 나머지 상태와 동일하게 블랙보드 주입 생성자로 전환(실제 Tick()
-                // 완료/복귀 로직이 이번에 함께 구현됨 — Interaction/RivalStickmanAgent.cs의 유일한 사용처).
+                // Phase 3: AttackState도 나머지 상태와 동일하게 블랙보드 주입 생성자로 전환.
+                // ※ 2026-08-30 현재 ChangeState(Attack)를 부르는 런타임 생산자는 0개다(States/AttackState.cs 문서).
                 { StickmanStateId.Attack, new AttackState(_blackboard) },
                 { StickmanStateId.Ragdoll, new RagdollState(_blackboard) },
                 { StickmanStateId.Getup, new GetupState(_blackboard) },
@@ -518,6 +525,56 @@ namespace StickMate.Core
                 halfWidth = Mathf.Max(halfWidth, Mathf.Abs(centerX - b.min.x));
             }
             _blackboard.CharacterVisualHalfWidthWorld = halfWidth;
+
+            TickPhysicalHalfWidth();
+        }
+
+        // ============================================================================
+        // 캐릭터 물리적 반폭 추적 (2026-08-30, R3-M1 "Dock 되올라오기 밴드 근접 충돌")
+        // ============================================================================
+        // 위 시각 반폭과 **다른 값**이다. 시각 반폭은 "화면 밖으로 잘리지 않게" 렌더러 바운즈를 재고,
+        // 이쪽은 "벽에 얼마나 가까이 설 수 있는가"를 재기 때문에 **비-트리거 콜라이더만** 본다.
+        // 실제로 지배하는 형상은 루트 캡슐(반폭 0.2 x 배율)이 아니라 머리 CircleCollider2D
+        // (반경 StickConfig.BaselineBodyPhysicsHalfWidth x 배율 = 0.4 x 배율)다.
+        // 잡기 영역(GrabArea)은 isTrigger라 물리 충돌을 일으키지 않으므로 반드시 제외해야 한다 —
+        // 포함하면 반폭이 0.3(배율 0.75)으로 부풀어 경계 판정이 필요 이상으로 일찍 걸린다.
+        //
+        // 갱신 주기를 시각 반폭과 공유하는 이유: 이 값은 포즈가 아니라 **콜라이더 크기**에서 나오므로
+        // 사실상 상수이고, 유일하게 바뀌는 경우가 캐릭터 크기 배율 변경이다(그때도 0.25초면 충분하다).
+        //
+        // ★ 왜 Collider2D.bounds(월드 AABB)를 쓰지 않고 형상 치수를 직접 읽는가 — 두 오염원 때문이다:
+        //   (1) RAGDOLL로 몸이 누우면 세로 1.7유닛짜리 캡슐의 AABB가 가로로 0.85까지 벌어진다.
+        //   (2) 유휴 "주위 살피기"는 머리 Transform을 좌우로 최대 0.06유닛(키의 3.5%) 민다 — 시각
+        //       전용 연출인데 그 순간 표본을 뜨면 경계 판정 거리가 프레임마다 달라진다.
+        // 형상 치수는 둘 다에 면역이고(회전/포즈 무관), 우리가 알고 싶은 것 — "몸통이 벽에 닿을 때
+        // 루트 원점이 벽에서 얼마나 떨어지는가" — 과 정확히 일치한다.
+        private void TickPhysicalHalfWidth()
+        {
+            if (_colliders == null || _blackboard == null) return;
+
+            float halfWidth = 0f;
+            for (int i = 0; i < _colliders.Length; i++)
+            {
+                Collider2D c = _colliders[i];
+                if (c == null || !c.enabled || c.isTrigger) continue;
+                // 루트 몸에 붙어 있는 것만 — 팔다리는 각자 Kinematic Rigidbody2D를 갖고 있어 정적
+                // 지형을 밀어내지 못하므로(능동 상태에서 벽에 막히는 것은 루트 몸뿐이다) 세면 안 된다.
+                if (c.attachedRigidbody != _body) continue;
+
+                float localHalf;
+                switch (c)
+                {
+                    case CircleCollider2D circle: localHalf = circle.radius; break;
+                    case CapsuleCollider2D capsule:
+                        localHalf = (capsule.direction == CapsuleDirection2D.Vertical
+                            ? capsule.size.x : capsule.size.y) * 0.5f;
+                        break;
+                    case BoxCollider2D box: localHalf = box.size.x * 0.5f; break;
+                    default: localHalf = c.bounds.extents.x; break; // 알 수 없는 형상은 보수적으로 AABB.
+                }
+                halfWidth = Mathf.Max(halfWidth, localHalf * Mathf.Abs(c.transform.lossyScale.x));
+            }
+            if (halfWidth > 0f) _blackboard.CharacterPhysicalHalfWidthWorld = halfWidth;
         }
 
         private void TickFullscreenSuspend(float deltaTime)
@@ -547,7 +604,7 @@ namespace StickMate.Core
             // Phase 4 확장(UX_FLOW.md 27절 각 절, "전체화면 게임 감지 시 즉시 취소" 공통 예외 상태):
             // 창 도둑/그라피티/청소부/블랙홀/크래시(캐릭터 스윙 쪽)도 동일한 이유로 이 강제 목록에 편입.
             // 창 크래시 오버레이 자체(3초 수명)는 이 상태와 독립적이라 Interaction/WindowCrashDirector.cs가
-            // IsSuspended를 직접 폴링해 별도로 취소한다(RivalStickmanAgent의 IsSuspended 폴링과 동일 패턴).
+            // IsSuspended를 직접 폴링해 별도로 취소한다(다른 Director들의 IsSuspended 폴링과 동일 패턴).
             StickmanStateId current = _machine.CurrentStateId;
             if (current == StickmanStateId.Dragged || current == StickmanStateId.RodeoCursor ||
                 current == StickmanStateId.BattleMinigame || current == StickmanStateId.WindowTheft ||

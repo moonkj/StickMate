@@ -131,7 +131,7 @@ namespace StickMate.Interaction
         {
             // 전체화면 게임 감지(6-4절) — 캐릭터 스윙은 StickmanAgent.Suspend()가 이미 강제 처리하지만,
             // 크랙 오버레이 자체는 캐릭터 상태와 독립된 별도 수명이라 여기서 직접 IsSuspended를 폴링해야
-            // 한다(Interaction/RivalStickmanAgent.cs의 IsSuspended 폴링과 동일 패턴).
+            // 한다(다른 Director들의 IsSuspended 폴링과 동일 패턴).
             if (_player.IsSuspended) { CancelOverlay(); return; }
 
             var footholds = _player.Blackboard.FootholdPoller != null ? _player.Blackboard.FootholdPoller.CachedFootholds : null;

@@ -18,7 +18,7 @@ namespace StickMate.Tests.PlayMode
     /// WindowCrashRendererTests / WindowTheftRendererTests와 같은 이유로 <b>Main.unity를 실제로
     /// 로드해서</b> 검사한다 — 렌더러/디렉터가 아무리 잘 만들어져 있어도 씬에 배치돼 있지 않으면 첫
     /// 줄에서 실패해야 한다("로직은 완성, 화면엔 0픽셀"이 이 프로젝트에서 6번 반복된 실패 모드다).
-    /// 그리고 개수를 <b>정확히 1</b>로 단언한다: 0이면 SceneBootstrapper 배치 누락, 2 이상이면 라이벌
+    /// 그리고 개수를 <b>정확히 1</b>로 단언한다: 0이면 SceneBootstrapper 배치 누락, 2 이상이면 중복
     /// 복제본에서 제거되지 않아 과녁이 두 벌 그려진다는 뜻이다(실측 전례가 있는 버그).
     ///
     /// ============================================================================
@@ -74,12 +74,12 @@ namespace StickMate.Tests.PlayMode
             var directors = Object.FindObjectsByType<ArcheryDirector>(FindObjectsSortMode.None);
             Assert.AreEqual(1, directors.Length,
                 $"씬의 ArcheryDirector 개수가 {directors.Length}개입니다 — 1개여야 합니다. " +
-                "0개면 SceneBootstrapper 배치 누락, 2개 이상이면 라이벌 복제본에서 제거되지 않은 것입니다.");
+                "0개면 SceneBootstrapper 배치 누락, 2개 이상이면 씬에 중복 배치된 것입니다.");
 
             var renderers = Object.FindObjectsByType<ArcheryRenderer>(FindObjectsSortMode.None);
             Assert.AreEqual(1, renderers.Length,
                 $"씬의 ArcheryRenderer 개수가 {renderers.Length}개입니다 — 1개여야 합니다. " +
-                "2개 이상이면 라이벌이 전역 이벤트를 함께 받아 과녁이 두 벌 그려집니다.");
+                "2개 이상이면 두 번째 렌더러도 전역 이벤트를 받아 과녁이 두 벌 그려집니다.");
 
             _director = directors[0];
             _renderer = renderers[0];
@@ -99,7 +99,7 @@ namespace StickMate.Tests.PlayMode
         public IEnumerator SceneHasExactlyOneDirectorAndOneRenderer()
         {
             yield return LoadSceneAndResolve();
-            Debug.Log("[활쏘기테스트] 배치 검증 통과 — 디렉터 1개 / 렌더러 1개, 라이벌 복제본에는 없음.");
+            Debug.Log("[활쏘기테스트] 배치 검증 통과 — 디렉터 1개 / 렌더러 1개.");
         }
 
         // ============================================================================

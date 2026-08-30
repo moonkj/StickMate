@@ -34,7 +34,7 @@ namespace StickMate.Tests.PlayMode
 
             var found = Object.FindObjectsByType<InfoGearIconWidget>(FindObjectsSortMode.None);
             Assert.AreEqual(1, found.Length,
-                $"씬의 InfoGearIconWidget 개수가 {found.Length}개입니다 — 1개여야 합니다(2개면 라이벌 복제본에서 미제거).");
+                $"씬의 InfoGearIconWidget 개수가 {found.Length}개입니다 — 1개여야 합니다(2개면 중복 배치).");
             _gear = found[0];
         }
 

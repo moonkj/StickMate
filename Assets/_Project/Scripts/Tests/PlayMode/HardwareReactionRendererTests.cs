@@ -52,13 +52,13 @@ namespace StickMate.Tests.PlayMode
             var directors = Object.FindObjectsByType<HardwareReactionDirector>(FindObjectsSortMode.None);
             Assert.AreEqual(1, directors.Length,
                 $"씬의 HardwareReactionDirector 개수가 {directors.Length}개입니다 — 1개여야 합니다. " +
-                "0개면 SceneBootstrapper 배치 누락(폴링 자체가 돌지 않는다), 2개 이상이면 라이벌 복제본에서 " +
+                "0개면 SceneBootstrapper 배치 누락(폴링 자체가 돌지 않는다), 2개 이상이면 씬에 중복 배치돼 " +
                 "제거되지 않아 같은 신호가 두 번 판정됩니다.");
 
             var renderers = Object.FindObjectsByType<HardwareReactionRenderer>(FindObjectsSortMode.None);
             Assert.AreEqual(1, renderers.Length,
                 $"씬의 HardwareReactionRenderer 개수가 {renderers.Length}개입니다 — 1개여야 합니다. " +
-                "2개 이상이면 라이벌 머리 위에도 이모트가 한 벌 더 뜹니다.");
+                "2개 이상이면 이모트가 한 벌 더 뜹니다.");
 
             _renderer = renderers[0];
             Assert.IsFalse(_renderer.IsVisible, "테스트 시작 시점에는 이모트가 떠 있으면 안 됩니다.");

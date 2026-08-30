@@ -41,7 +41,7 @@
 | `Core/` | 7 | 진입점(`StickmanAgent`), 이벤트 버스/상태 ID(`StickmanEventBus`), 튜닝값(`StickConfig`), 스펙터클 상호배제 락(`SpectacleEventLock`), 투두/스트레스 모델 |
 | `Platform/` | 11 (+ `Windows/`, `MacOS/`, `Mobile/`) | 창 열거·오버레이 인터페이스(`IPlatformWindowService`), Win32 구현체, 모바일 스크린샷 백드롭 구현체, Null/Fallback 폴백 |
 | `States/` | 22 | 상태머신(`StickmanStateMachine`) + `IStickmanState` 구현 14종(Idle/Walk/Jump/Fall/ParkourClimb/Attack/Ragdoll/Getup/BattleMinigame/DragThrow/RodeoCursor/WindowTheft/TimedSpectacle/Runaway) + 지원 유틸(`GroundSensor`, `RagdollRig`, `AutoWanderController`) |
-| `Interaction/` | 18 | 각 기능의 트리거 감시/대상 선정/락 획득을 전담하는 Director 컴포넌트(격파, 드래그&던지기, 로데오커서, 창도둑, 그라피티, 청소부/블랙홀, 크래시, 하드웨어반응, 라이벌 조우, 포모도로, 스트레스, 투두) |
+| `Interaction/` | 18 | 각 기능의 트리거 감시/대상 선정/락 획득을 전담하는 Director 컴포넌트(격파, 드래그&던지기, 로데오커서, 창도둑, 그라피티, 청소부/블랙홀, 크래시, 하드웨어반응, 포모도로, 스트레스, 투두) |
 | `Dialogue/` | 2 | 텍스트-액션 계약 핵심(`DialogueIntent`, `IHasDialogueParams`) |
 | `Plugins/` | 2 | DLC 매니페스트(`MotionPluginSO`, `EffectPluginSO`) |
 | `Tests/` | 2 | EditMode 회귀 테스트(아래 [테스트](#테스트) 참고) |
@@ -59,7 +59,7 @@
 | 0 | 스캐폴딩(플랫폼서비스/이벤트버스/상태머신 골격/`DialogueIntent` 스캐폴딩) | 완료 |
 | 1 | 코어 루프(중력·발판인식·화면이탈낙하, IDLE/WALK/JUMP/FALL, 자율 배회 AI, 전체화면 감지) | 완료 |
 | 2 | Active Ragdoll(RAGDOLL/GETUP), 파쿠르(PARKOUR_CLIMB), `DialogueIntent` 파라미터 파이프라인 | 완료 |
-| 3 | 전투(격파 미니게임/라이벌 AI), 커서 상호작용(드래그&던지기/로데오 커서), 부분적 클릭관통 해제 인프라 | 완료 |
+| 3 | 전투(격파 미니게임), 커서 상호작용(드래그&던지기/로데오 커서), 부분적 클릭관통 해제 인프라 | 완료 |<br>*(라이벌 AI는 2026-08-30 사용자 지시로 전체 삭제 — docs/UX_FLOW.md 11절)*
 | 4 | OS 장난(창도둑/청소부/그라피티/크래시/블랙홀), PC 하드웨어 반응(CPU/배터리/충전/네트워크) | 완료 |
 | 5 | 생산성(투두 말풍선/포모도로 감시자), 반항·스트레스(스트레스 게이지/가출) | 완료 |
 | 5 | 던전 파밍 / 세포분열·군대 | **보류 (P3)** — 스코프 아웃이 아니라 우선순위 최저로 의도적 연기(`ARCHITECTURE.md` 1절 근거) |
@@ -98,7 +98,7 @@
 ## 알려진 한계 / 다음 단계
 
 - **macOS/Windows 둘 다 진짜 분리 오버레이/클릭관통 미구현**: `MacWindowService`(`CGWindowListCopyWindowInfo` 기반)/`Win32WindowService`(`EnumWindows` 기반) 둘 다 창 열거는 실제로 동작하지만, `SetClickThrough`/`SetAlwaysOnTop`은 안전가드(`NotSupportedException`)로 항상 거부한다 — 진짜 분리된 오버레이 창(macOS: Objective-C++ 네이티브 플러그인, Windows: `CreateWindowEx` 기반)이 있어야 클릭관통/항상위를 안전하게 켤 수 있다(이번 범위 밖, BUG-B1과 동일 계열). 두 플랫폼 다 에디터에서는 활성 빌드 타깃과 무관하게 `NullPlatformWindowService`를 쓰도록 `!UNITY_EDITOR` 가드가 걸려 있다(실측으로 필요성이 확인된 가드 — `Core/StickmanAgent.cs` 참고).
-- **던전 파밍 / 세포분열·군대 보류(P3)**: `RivalStickmanAgent`가 이미 독립된 상태머신 인스턴스를 여러 개 동시 운용하는 패턴을 실증해, 착수 시 기술적 난이도는 낮을 것으로 판단됨(최종 코드 리뷰 근거).
+- **던전 파밍 / 세포분열·군대 보류(P3)**: 예전 `RivalStickmanAgent`(2026-08-30 삭제)가 독립된 `StickmanStateMachine` 인스턴스를 플레이어와 병렬로 운용하는 패턴을 실증했었다 — 코드는 사라졌지만 `StickmanStateMachine`/`StickmanBlackboard`가 여전히 인스턴스 단위라 착수 시 기술적 난이도는 낮을 것으로 판단됨(최종 코드 리뷰 근거).
 - **Windows 데스크톱 아이콘 좌표 조회 스텁**: `IDesktopIconLayoutService`는 Windows 실기기 부재로 정직한 no-op으로 남아 있음(청소부/블랙홀 연출에 영향).
 - **물리 갱신이 `Update()` 경로**: `Rigidbody2D` 속도/위치 설정이 `FixedUpdate()`가 아닌 `Tick()`(→`Update()`) 경로에서 이뤄짐. 성능 문제는 아니지만 프레임레이트 변동 시 물리 잔떨림 가능성이 있어, 렌더링/모터 레이어 착수 시 재검토 권고(`docs/PERFORMANCE_REPORT.md` 참고 사항).
 

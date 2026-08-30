@@ -25,8 +25,8 @@ namespace StickMate.Interaction
     /// ============================================================================
     /// 왜 좌표를 이벤트에서 받는가
     /// ============================================================================
-    /// 발행자인 FallState/ThrowTumbleState는 <b>라이벌의 상태머신에도 등록</b>되어 있다
-    /// (Interaction/RivalStickmanAgent.EnsureMachineBuilt). 좌표 없이 "낙하 높이"만 받으면 라이벌이
+    /// 발행자인 FallState/ThrowTumbleState는 <b>어느 캐릭터의 상태머신에도 등록될 수 있다</b>.
+    /// 좌표 없이 "낙하 높이"만 받으면 두 번째 캐릭터가
     /// 착지할 때 플레이어 발밑에 먼지가 피는 오귀속이 구조적으로 발생한다. 그래서 이번 라운드에
     /// 페이로드를 <see cref="LandingImpactEvent"/>로 바꿔 착지 좌표를 함께 싣게 했고, 이 렌더러는
     /// <b>누가 착지했든 그 좌표에</b> 그린다(캐릭터를 따라다니지 않는다 — 먼지는 땅에 남는 것이다).
@@ -57,7 +57,7 @@ namespace StickMate.Interaction
             public float EndScale;
         }
 
-        /// <summary>같은 GameObject의 StickmanAgent만 쓴다 — 라이벌은 플레이어 프리팹의 복제본이라
+        /// <summary>같은 GameObject의 StickmanAgent만 쓴다 — 이 프리팹이 복제되면 사본도 이 컴포넌트를 갖게 되어
         /// 이 컴포넌트를 함께 갖게 되는데, 씬 전체 폴백을 두면 사본이 같은 전역 이벤트에 반응해
         /// 먼지가 두 벌 그려진다(GraffitiRenderer와 같은 규약).</summary>
         private StickmanAgent _agent;

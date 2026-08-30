@@ -220,6 +220,127 @@ namespace StickMate.Tests.EditMode
         }
 
         // ============================================================================
+        // (5) ★ Dock 계단 **옆면**이 강제하는 이격 vs 배회 경계 판정 밴드 (2026-08-30 R3-M1)
+        // ============================================================================
+        //
+        // (1)~(3)이 계단의 **높이**를 다뤘다면 여기는 같은 계단의 **옆면**이다.
+        // DockPhysicsStep은 Dock 발판 사각형을 그대로 물리 계단으로 옮기므로, 계단의 옆면은 바닥
+        // 안전망 조각의 논리 경계와 **정확히 같은 X**에 선다. 그 벽에 막혀 선 캐릭터의 루트는 몸의
+        // 물리 반폭 아래로 절대 다가가지 못하는데, 배회 AI의 경계 판정 거리가 그보다 작으면
+        // **밴드가 물리적으로 도달 불가능**해져 되올라가기를 평가할 기회조차 없다.
+
+        /// <summary>몸의 물리 반폭(배율 1.0에서 0.4 = 머리 원 반경).</summary>
+        private static float BodyHalfWidth(StickConfig c)
+            => StickConfig.BaselineBodyPhysicsHalfWidth * c.ResolveCharacterScale();
+
+        /// <summary>Box2D 접촉 이격 — ProjectSettings/Physics2DSettings의 defaultContactOffset(0.01)의
+        /// 절반 정도가 정착 시 실제로 남는 틈이다(실측: 벽 6.400 / 정지 6.705 / 반폭 0.300).</summary>
+        private const float Box2DContactSeparationUnits = 0.005f;
+
+        /// <summary>"명확한 여유"의 하한. R3-M1의 0.005는 이 값의 1/10이었다.</summary>
+        private const float RequiredClearanceUnits = 0.05f;
+
+        [Test]
+        public void 경계_판정_밴드가_벽_이격을_모든_배율에서_덮어야_한다()
+        {
+            StickConfig deployed = LoadDeployedConfig();
+
+            // 캐릭터 크기 다이얼의 전 구간(StickConfig.Min/MaxCharacterScale) + 배포값.
+            float[] scales =
+            {
+                StickConfig.MinCharacterScale, 0.5f, 0.6531f, deployed.ResolveCharacterScale(),
+                1f, 1.5f, StickConfig.MaxCharacterScale
+            };
+
+            foreach (float scale in scales)
+            {
+                float halfWidth = StickConfig.BaselineBodyPhysicsHalfWidth * scale;
+                float standoff = halfWidth + Box2DContactSeparationUnits;
+                float resolved = DockGeometry.ResolveEdgeStopDistance(deployed.wanderEdgeStopDistance, halfWidth);
+                float clearance = resolved - standoff;
+
+                Debug.Log($"[DOCK-GEOM] 배율 {scale:F3} → 물리 반폭 {halfWidth:F3}, 벽 이격 {standoff:F3}, " +
+                    $"경계 판정 거리 설정 {deployed.wanderEdgeStopDistance:F3} → 유도 {resolved:F3} " +
+                    $"(여유 {clearance:F4})");
+
+                Assert.GreaterOrEqual(clearance, RequiredClearanceUnits,
+                    $"배율 {scale:F3}에서 경계 판정 거리({resolved:F3})가 벽 이격({standoff:F3})보다 " +
+                    $"{RequiredClearanceUnits:F2} 넘게 크지 않습니다(여유 {clearance:F4}) — 이 배율의 사용자는 " +
+                    "Dock 계단 옆면에 붙어 서면 되올라가기를 평가조차 못 합니다(2026-08-30 R3-M1).");
+            }
+        }
+
+        /// <summary>
+        /// ★ 네거티브 컨트롤 그 자체 — "설정 절대값 단독으로는 못 덮는다"를 박제한다.
+        /// 이 단언이 실패한다면 wanderEdgeStopDistance를 손으로 올려 덮은 것이고, 그 방식은 배율을
+        /// 키우는 순간 다시 깨진다(이격 = 0.4 x 배율이므로). 유도 쪽을 유지해야 한다.
+        ///
+        /// 함께 기록: 이 충돌이 **켜지는 tilesize 구간**. 벽이 머리 원까지 덮을 만큼 높아야 이격이
+        /// 0.4 x 배율로 포화하고, 그보다 낮으면 루트 캡슐 반폭(0.2 x 배율)만 남아 문제가 없다.
+        /// </summary>
+        [Test]
+        public void 설정_절대값_단독으로는_벽_이격을_못_덮는다는_사실을_기록한다()
+        {
+            StickConfig deployed = LoadDeployedConfig();
+            float scale = deployed.ResolveCharacterScale();
+            float standoff = BodyHalfWidth(deployed) + Box2DContactSeparationUnits;
+
+            // 머리 원의 아래 끝(발바닥 기준) = (전신 높이 − 머리 시각 반경) − 머리 물리 반경.
+            // 벽이 이 높이를 넘겨 덮어야 머리가 벽면에 닿는다.
+            float totalHeight = StickConfig.BaselineCharacterTotalHeight * scale;
+            const float BaselineHeadVisualRadius = 0.22f;
+            float headBottomLocalY = totalHeight - BaselineHeadVisualRadius * scale
+                                     - StickConfig.BaselineBodyPhysicsHalfWidth * scale;
+            float onsetTileSize = headBottomLocalY / DockGeometry.ReferenceWorldUnitsPerPoint
+                                  - deployed.dockThicknessTilePaddingPoints
+                                  + NullPlatformWindowService.BottomSafetyNetInsetPoints;
+
+            Debug.Log($"[DOCK-GEOM] 배율 {scale:F3} — 벽 이격 {standoff:F3} vs 설정 절대값 " +
+                $"{deployed.wanderEdgeStopDistance:F3}(차이 {(standoff - deployed.wanderEdgeStopDistance):F4}). " +
+                $"머리 원 아래 끝 {headBottomLocalY:F3}유닛 → 이 충돌이 켜지기 시작하는 tilesize ≈ " +
+                $"{onsetTileSize:F1}pt (macOS 기본 48 / 이 개발 머신 " +
+                $"{DockGeometry.DeveloperMachineTileSizePoints:F0} 둘 다 그 위).");
+
+            Assert.Less(deployed.wanderEdgeStopDistance, standoff,
+                $"설정 절대값({deployed.wanderEdgeStopDistance:F3})이 벽 이격({standoff:F3})을 이미 덮고 " +
+                "있습니다 — R3-M1의 전제가 바뀌었습니다. 상수를 올려 덮은 것이라면 배율을 키우는 순간 " +
+                "다시 깨지므로 유도(DockGeometry.ResolveEdgeStopDistance)를 유지하세요.");
+
+            Assert.Less(onsetTileSize, DockGeometry.DeveloperMachineTileSizePoints,
+                $"이 충돌이 켜지는 tilesize({onsetTileSize:F1}pt)가 이 개발 머신의 tilesize" +
+                $"({DockGeometry.DeveloperMachineTileSizePoints:F0})보다 큽니다 — 그렇다면 R3-M1은 " +
+                "사용자 환경에서 재현되지 않는다는 뜻이라 근거를 다시 세워야 합니다.");
+        }
+
+        /// <summary>
+        /// ★ 정직한 한계의 기록 — 맨틀 인셋만은 아직 **배율 전 구간에서 안전하지 않다.**
+        /// 경계 판정 거리는 유도라 배율을 따라가지만 parkourMantleInset은 아직 고정 설정값이라,
+        /// 배율이 커지면 "올라선 자리가 이미 경계"가 다시 성립한다. 그 천장을 여기서 계산해 남긴다 —
+        /// 캐릭터 크기 다이얼을 실제로 켜는 라운드는 이 값을 반드시 보고 맨틀 인셋도 유도로 바꿔야 한다.
+        /// </summary>
+        [Test]
+        public void 맨틀_인셋이_버티는_배율_천장을_기록한다()
+        {
+            StickConfig deployed = LoadDeployedConfig();
+            float scale = deployed.ResolveCharacterScale();
+
+            // parkourMantleInset > 0.4 x s + EdgeStopWallStandoffMarginUnits + RequiredClearanceUnits
+            float ceiling = (deployed.parkourMantleInset
+                             - DockGeometry.EdgeStopWallStandoffMarginUnits
+                             - RequiredClearanceUnits)
+                            / StickConfig.BaselineBodyPhysicsHalfWidth;
+
+            Debug.Log($"[DOCK-GEOM] 맨틀 인셋 {deployed.parkourMantleInset:F3}이 버티는 배율 천장 = " +
+                $"{ceiling:F3} (현재 배포 배율 {scale:F3}, 다이얼 상한 {StickConfig.MaxCharacterScale:F2}). " +
+                "★ 다이얼을 켜는 라운드는 parkourMantleInset도 유도값으로 바꿔야 한다.");
+
+            Assert.Less(scale, ceiling,
+                $"배포 배율({scale:F3})이 맨틀 인셋이 버티는 천장({ceiling:F3})을 넘었습니다 — " +
+                "parkourMantleInset을 올리거나 유도값으로 바꾸세요(Core/DockGeometry.ResolveEdgeStopDistance " +
+                "와 같은 형태).");
+        }
+
+        // ============================================================================
         // (4) 진짜 금지 조합 — 내려갈 길이 하나도 없는 설정 (M1 재정의)
         // ============================================================================
 

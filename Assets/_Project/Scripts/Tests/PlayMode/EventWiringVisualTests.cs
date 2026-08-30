@@ -12,9 +12,10 @@ using StickMate.States;
 namespace StickMate.Tests.PlayMode
 {
     /// <summary>
-    /// ★ 배선 감사 잔여 3건(2026-08-30)의 실측 잠금 —
-    /// <see cref="StickmanEventBus.LandingRollRequested"/> / <see cref="StickmanEventBus.RivalDuelStarted"/> /
+    /// ★ 배선 감사 잔여 2건(2026-08-30)의 실측 잠금 —
+    /// <see cref="StickmanEventBus.LandingRollRequested"/> /
     /// <see cref="StickmanEventBus.WanderAmbientMotionRequested"/>.
+    /// (세 번째였던 대결 시작 이벤트는 해당 기능 전체 삭제(2026-08-30)로 이벤트 자체가 사라졌다.)
     ///
     /// ============================================================================
     /// 왜 실제 씬(Main.unity)을 로드하는가
@@ -28,17 +29,15 @@ namespace StickMate.Tests.PlayMode
     /// 절대 조건으로 단언하는 것(상대 마진 방식 금지 — 이 프로젝트는 그 방식이 버그를 2라운드 연속
     /// 놓친 전례가 있다)
     /// ============================================================================
-    ///  ① 세 소비자 컴포넌트가 씬에 <b>정확히 1개씩</b> 있다(0 = 배치 누락, 2 = 라이벌 복제).
+    ///  ① 두 소비자 컴포넌트가 씬에 <b>정확히 1개씩</b> 있다(0 = 배치 누락, 2 = 중복 배치).
     ///  ② 착지 먼지: <b>실제로 6유닛을 떨어뜨려</b> FallState가 스스로 이벤트를 발행하게 하고,
     ///     그 결과 'LandingDust' GameObject가 씬에 실존하며 <b>발밑 높이</b>에 생긴다.
-    ///  ③ 대결 임팩트: <b>실제로 RivalStickmanAgent.BeginDuel()을 호출해</b> 이벤트를 발행하게 하고,
-    ///     'RivalDuelClash'가 <b>두 캐릭터의 x 사이</b>에 생긴다.
-    ///  ④ 유휴 동작: 신호를 받은 뒤 <b>실제 관절 각도</b>가 중립에서 벗어난다(플래그만 보지 않는다).
+    ///  ③ 유휴 동작: 신호를 받은 뒤 <b>실제 관절 각도</b>가 중립에서 벗어난다(플래그만 보지 않는다).
     ///     기지개는 두 팔이 모두 머리 위로, 주위 살피기는 <b>한쪽 팔만</b> 올라간다 — 두 동작이
     ///     실제로 서로 다른 그림인지까지 확인한다.
-    ///  ⑤ 셋 다 콜라이더를 하나도 만들지 않는다(관전 전용 = 클릭관통 유지, CLAUDE.md 불변 원칙 2).
+    ///  ④ 둘 다 콜라이더를 하나도 만들지 않는다(관전 전용 = 클릭관통 유지, CLAUDE.md 불변 원칙 2).
     ///
-    /// 네거티브 컨트롤(이 프로젝트 표준): 세 StickConfig 스위치를 각각 끄고 같은 자극을 다시 주어
+    /// 네거티브 컨트롤(이 프로젝트 표준): 두 StickConfig 스위치를 각각 끄고 같은 자극을 다시 주어
     /// <b>연출이 실제로 사라지는지</b>를 확인한다 — "통과하는 테스트가 실제로 이 배선을 보고 있다"는 증거다.
     /// </summary>
     public sealed class EventWiringVisualTests
@@ -46,7 +45,6 @@ namespace StickMate.Tests.PlayMode
         private const string LogPrefix = "[배선3건-TEST]";
 
         private const string DustContainerName = "LandingDust";
-        private const string ClashContainerName = "RivalDuelClash";
 
         private const long FlatGroundHandle = 9401L;
 
@@ -76,9 +74,7 @@ namespace StickMate.Tests.PlayMode
         }
 
         private StickmanAgent _agent;
-        private RivalStickmanAgent _rival;
         private LandingDustRenderer _dust;
-        private RivalDuelClashRenderer _clash;
         private IdleAmbientMotionRenderer _ambient;
 
         private StickConfig _originalConfig;
@@ -106,8 +102,6 @@ namespace StickMate.Tests.PlayMode
         [TearDown]
         public void TearDown()
         {
-            if (_rival != null && _rival.InDuel) _rival.ForceEndDuel();
-
             if (_originalConfig != null && _silencedWander)
             {
                 _originalConfig.wanderLookAroundDelayMin = _savedLookDelayMin;
@@ -128,7 +122,6 @@ namespace StickMate.Tests.PlayMode
             if (_clonedConfig != null) Object.DestroyImmediate(_clonedConfig);
             _clonedConfig = null;
             _agent = null;
-            _rival = null;
             _head = null;
         }
 
@@ -144,9 +137,7 @@ namespace StickMate.Tests.PlayMode
 
             _agent = ExactlyOne<StickmanAgent>();
             _dust = ExactlyOne<LandingDustRenderer>();
-            _clash = ExactlyOne<RivalDuelClashRenderer>();
             _ambient = ExactlyOne<IdleAmbientMotionRenderer>();
-            _rival = ExactlyOne<RivalStickmanAgent>();
 
             // ★ 자율 발행자 침묵은 **아무것도 기다리기 전에** 해야 한다. 실측으로 밟은 함정:
             // AutoWanderController는 Idle 진입 후 1.0~2.5초 뒤 스스로 LookAround를 발행하므로,
@@ -299,7 +290,7 @@ namespace StickMate.Tests.PlayMode
             Assert.AreEqual(1, found.Length,
                 $"씬의 {typeof(T).Name} 개수가 {found.Length}개입니다 — 1개여야 합니다. " +
                 "0개면 SceneBootstrapper 배치 누락(이 컴포넌트가 단 한 번도 실행되지 않는다), " +
-                "2개 이상이면 라이벌 복제본에서 제거되지 않아 같은 전역 이벤트에 두 번 반응합니다.");
+                "2개 이상이면 씬에 중복 배치돼 같은 전역 이벤트에 두 번 반응합니다.");
             return found[0];
         }
 
@@ -317,20 +308,18 @@ namespace StickMate.Tests.PlayMode
         // ============================================================================
 
         [UnityTest]
-        public IEnumerator ThreeEventConsumersArePlacedExactlyOnce()
+        public IEnumerator BothEventConsumersArePlacedExactlyOnce()
         {
             yield return SetUpFlatGround();
 
             Assert.IsNotNull(_dust);
-            Assert.IsNotNull(_clash);
             Assert.IsNotNull(_ambient);
 
             Assert.IsFalse(_dust.IsVisible, "시작 시점에 먼지가 떠 있으면 안 됩니다.");
-            Assert.IsFalse(_clash.IsVisible, "시작 시점에 대결 임팩트가 떠 있으면 안 됩니다.");
             Assert.IsFalse(_agent.Blackboard.IsIdleAmbientMotionActive,
                 "시작 시점에 유휴 동작이 재생 중이면 안 됩니다.");
 
-            Debug.Log($"{LogPrefix} 배선 검증 통과 — 소비자 3종이 정확히 1개씩 배치되어 있고 초기 상태는 전부 비활성.");
+            Debug.Log($"{LogPrefix} 배선 검증 통과 — 소비자 2종이 정확히 1개씩 배치되어 있고 초기 상태는 전부 비활성.");
         }
 
         // ============================================================================
@@ -450,76 +439,7 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
-        // ③ 대결 시작 임팩트 — 실제 BeginDuel() 호출로 이벤트를 발행하게 한다
-        // ============================================================================
-
-        [UnityTest]
-        public IEnumerator RivalDuelStartDrawsClashBetweenBothCharacters()
-        {
-            yield return SetUpFlatGround();
-
-            Vector2 playerPos = _agent.Blackboard.Body.position;
-            var spawn = new Vector2(playerPos.x + _characterHeight * 2f, _groundWorldY);
-
-            _rival.BeginDuel(_agent, spawn);
-            yield return null;
-
-            Assert.IsTrue(_clash.IsVisible,
-                $"{LogPrefix} BeginDuel()로 RivalDuelStarted가 발행됐는데 임팩트가 나타나지 않았습니다 — 구독이 끊겼습니다.");
-
-            GameObject container = GameObject.Find(ClashContainerName);
-            Assert.IsNotNull(container,
-                $"{LogPrefix} 렌더러는 '보인다'고 보고했지만 '{ClashContainerName}' GameObject가 씬에 실존하지 않습니다.");
-            Assert.Greater(container.GetComponentsInChildren<LineRenderer>(true).Length, 0,
-                $"{LogPrefix} 임팩트 컨테이너에 LineRenderer가 0개입니다(빈 껍데기).");
-            Assert.AreEqual(0, container.GetComponentsInChildren<Collider2D>(true).Length,
-                $"{LogPrefix} 임팩트가 콜라이더를 만들었습니다 — 관전 전용이므로 클릭관통이 유지되어야 합니다.");
-
-            // 두 캐릭터 **사이**에 그려져야 한다(한쪽에 붙으면 '충돌'로 읽히지 않는다).
-            float minX = Mathf.Min(playerPos.x, spawn.x);
-            float maxX = Mathf.Max(playerPos.x, spawn.x);
-            Assert.GreaterOrEqual(_clash.LastClashWorldPosition.x, minX - 0.01f,
-                $"{LogPrefix} 임팩트 x={_clash.LastClashWorldPosition.x:F3}이 두 캐릭터 구간 [{minX:F3}, {maxX:F3}] 밖입니다.");
-            Assert.LessOrEqual(_clash.LastClashWorldPosition.x, maxX + 0.01f,
-                $"{LogPrefix} 임팩트 x={_clash.LastClashWorldPosition.x:F3}이 두 캐릭터 구간 [{minX:F3}, {maxX:F3}] 밖입니다.");
-
-            // 발밑이 아니라 **가슴 높이**여야 한다(이 프로젝트가 이미 두 번 밟은 함정).
-            Assert.Greater(_clash.LastClashWorldPosition.y, _groundWorldY + _characterHeight * 0.2f,
-                $"{LogPrefix} 임팩트가 발밑에 깔렸습니다(y={_clash.LastClashWorldPosition.y:F3}, 바닥 {_groundWorldY:F3}).");
-
-            yield return new WaitForSeconds(_clonedConfig.rivalDuelClashSeconds + 0.4f);
-            Assert.IsFalse(_clash.IsVisible, $"{LogPrefix} 지속시간이 지났는데 임팩트가 남아 있습니다.");
-            Assert.IsNull(GameObject.Find(ClashContainerName),
-                $"{LogPrefix} '{ClashContainerName}' GameObject가 씬에서 실제로 사라지지 않았습니다.");
-
-            Debug.Log($"{LogPrefix} 대결 임팩트 통과 — 중점 {_clash.LastClashWorldPosition}, " +
-                $"플레이어 x={playerPos.x:F2} / 라이벌 x={spawn.x:F2}, 콜라이더 0개, 자동 소멸 확인.");
-        }
-
-        /// <summary>네거티브 컨트롤 — 스위치를 끄면 대결은 그대로 시작되고 임팩트만 사라진다.</summary>
-        [UnityTest]
-        public IEnumerator RivalDuelClashDisabledDrawsNothing()
-        {
-            yield return SetUpFlatGround();
-
-            _clonedConfig.rivalDuelClashEnabled = false;
-
-            Vector2 playerPos = _agent.Blackboard.Body.position;
-            _rival.BeginDuel(_agent, new Vector2(playerPos.x + _characterHeight * 2f, _groundWorldY));
-            yield return null;
-
-            Assert.IsFalse(_clash.IsVisible,
-                $"{LogPrefix} rivalDuelClashEnabled=false인데 임팩트가 나타났습니다 — 스위치가 아무것도 끄지 않습니다.");
-            Assert.IsNull(GameObject.Find(ClashContainerName),
-                $"{LogPrefix} rivalDuelClashEnabled=false인데 '{ClashContainerName}'이 씬에 생겼습니다.");
-            Assert.IsTrue(_rival.InDuel,
-                $"{LogPrefix} 대조 실패 — 연출을 껐더니 대결 자체가 시작되지 않았습니다. 두 층은 독립이어야 합니다.");
-
-            Debug.Log($"{LogPrefix} 네거티브 컨트롤 통과 — 임팩트만 사라지고 대결은 그대로 시작됨.");
-        }
-
-        // ============================================================================
-        // ④ 유휴 앰비언트 동작 — 실제 관절 각도가 중립을 벗어나는지
+        // ③ 유휴 앰비언트 동작 — 실제 관절 각도가 중립을 벗어나는지
         // ============================================================================
 
         [UnityTest]

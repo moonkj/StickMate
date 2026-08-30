@@ -160,7 +160,7 @@ namespace StickMate.Tests.PlayMode
                 "뒤처진다(UX_FLOW.md 5절 규칙 5).");
         }
 
-        /// <summary>④ 규칙 7 — 다른 캐릭터(라이벌)의 대사는 이 렌더러가 그리지 않는다.</summary>
+        /// <summary>④ 규칙 7 — 다른 상태머신(= 다른 화자)의 대사는 이 렌더러가 그리지 않는다.</summary>
         [UnityTest]
         public IEnumerator OtherSpeakerDialogue_IsNotRendered()
         {
@@ -168,14 +168,14 @@ namespace StickMate.Tests.PlayMode
 
             var otherMachine = new StickmanStateMachine(new Dictionary<StickmanStateId, IStickmanState>
             {
-                { StickmanStateId.Attack, new TalkingState(StickmanStateId.Attack, "라이벌의 대사") },
+                { StickmanStateId.Attack, new TalkingState(StickmanStateId.Attack, "다른 화자의 대사") },
                 { StickmanStateId.Ragdoll, new SilentState(StickmanStateId.Ragdoll) },
             });
 
             otherMachine.Start(StickmanStateId.Attack);
 
             Assert.IsFalse(_renderer.IsBubbleVisible,
-                "다른 상태머신(라이벌)의 대사를 이 렌더러가 그렸다 — 두 캐릭터의 말풍선이 서로 " +
+                "다른 상태머신의 대사를 이 렌더러가 그렸다 — 두 화자의 말풍선이 서로 " +
                 "섞이면 안 된다(UX_FLOW.md 5절 규칙 7).");
 
             otherMachine.ChangeState(StickmanStateId.Ragdoll); // 만료시켜 구독 정리.

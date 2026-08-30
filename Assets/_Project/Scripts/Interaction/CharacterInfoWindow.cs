@@ -7,111 +7,166 @@ using StickMate.Platform;
 namespace StickMate.Interaction
 {
     /// <summary>
-    /// ★ 캐릭터 창(장비 / 외형 / 보관함) — 2026-08-30 <b>리디자인 라운드</b>.
-    /// 사용자 요청: "게임처럼 약간 첨부파일형태였음 좋겠어. 다만 능력치는 스트레스나, 뭔가 다른정보를
-    /// 보여주면좋겠고. 탭을 하나 더만들어서 가지고있는 아이템 장비들을 보여주면좋을듯. 장비나, 행동들..
-    /// 나중에 아이템으로 팔거니깐" / "캐릭터는 간단하지만 캐릭터창은 깔끔하고 요즘 게임 캐릭터창처럼
-    /// 좋아야해". 세부 설계는 리더 + UX 디자이너 확정안을 그대로 구현했다.
+    /// ★ 캐릭터 창(장비 / 외형 / 보관함) — 2026-08-30 <b>외부 디자인 핸드오프 이식 라운드</b>.
+    /// 설계 확정본은 docs/UX_FLOW.md <b>33-7절</b>이고, 이 파일은 그 좌표표를 그대로 옮긴 것이다.
+    /// 좌표/색/글자 크기를 여기서 새로 고르지 않는다 — 고치고 싶으면 33-7을 먼저 고친다.
     ///
     /// ============================================================================
-    /// 참고 이미지(RPG 캐릭터 창)에서 가져온 것 / 바꾼 것
+    /// 골격 (880 × 861, 화면 중앙 모달)
     /// ============================================================================
-    /// 가져온 것: 좌측 고정 패널(이름·칭호·초상화·게이지) + 우측 탭 패널(카드 그리드 → 설명 카드 →
-    /// 하단 2열x3행 스탯 블록)이라는 골격.
-    /// 바꾼 것 — 이 앱에 <b>실제로 존재하는 사실</b>로만 채운다:
-    ///   · HP 바 → <b>스트레스 바</b>(이 앱에 HP는 없다).
-    ///   · 공격력/방어력/… → 근속 / 함께한 시간 / 격파 성공 / 대결 승리 / 활쏘기 명중 / 넘어진 횟수
-    ///     (Core/CharacterStatsModel.cs). <b>스트레스와 "지금 상태"는 스탯 칸에서 뺐다</b> —
-    ///     스트레스는 좌측 게이지와 값이 겹치고, "지금 상태"는 몇 초마다 바뀌어 그리드의 시선을
-    ///     혼자 가져간다. 상태는 초상화 바로 아래 <b>프레즌스 라인</b>("지금 · 걷는 중")으로 옮겼다.
-    ///   · 아이템 설명에 가짜 수치("방어력 +2")도, 없는 효과("매면 자세가 곧아진다")도 넣지 않는다
-    ///     (Core/ItemCatalog.cs 문구 원칙).
+    /// 타이틀바 40 + 본문 821. 본문은 좌측 244(상시 노출) + 우측 636(탭 3개).
+    ///  · 좌측: 이름(+잉크색 스와치·인라인 편집) / 초상화 / 프레즌스 / 게이지 2종 / 스탯 6행.
+    ///  · 우측: 탭바 → 카테고리 섹션 4개(각 4카드) → 선택 상세.
+    /// 옛 [정보] 탭은 좌측 컬럼으로 <b>흡수</b>됐다(탭이 아니라 항상 보인다).
     ///
     /// ============================================================================
-    /// 색/여백/모서리는 이 파일이 고르지 않는다
+    /// 왜 우상단 앵커가 아니라 화면 중앙인가 / 왜 배경 딤을 깔지 않는가 (33-7-7)
     /// ============================================================================
-    /// 전부 Interaction/UiChrome.cs의 토큰에서 온다(둥근 모서리 스프라이트도 거기서 굽는다).
-    /// 여백은 4/8/12/16/24 다섯 단계, 글자는 22/14/12/11/10 다섯 단계 위계만 쓴다.
+    /// 880×861은 톱니 아래(top 84)에서 시작하면 84+861=945pt라 어떤 노트북에도 들어가지 않는다.
+    /// 그래서 중앙 정렬로 바꿨다. <b>2026-08-30 보강</b>: "중앙 <b>고정</b>"이던 부분만 리더가 뒤집었다 —
+    /// 열릴 때는 여전히 화면 중앙이지만 <b>타이틀바를 잡으면 옮길 수 있다</b>(화면 밖으로는 못 나간다).
+    /// 옮긴 자리는 기억하지 않는다. 반대로 스펙의 배경색 <c>#dcdbd7</c>(<see cref="UiChrome.ScreenScrim"/>)은
+    /// <b>깔지 않는다</b> — 그건 브라우저 프로토타입의 "지면"이지 모달 딤이 아니고, 우리가 화면 전체를
+    /// 덮으면 유저의 작업 화면을 통째로 가려 <b>비침해 원칙 2 정면 위반</b>이 된다.
     ///
     /// ============================================================================
-    /// 초상화 = 전용 미니 피규어의 실시간 촬영
+    /// 왜 타이틀바에 "ESC"라고 적지 않고 [✕]를 두는가
     /// ============================================================================
-    /// Interaction/CharacterPortraitStage.cs가 화면 밖 먼 좌표에 세운 미니 피규어를 전용 카메라로
-    /// RenderTexture에 찍고, 여기서는 <see cref="RawImage"/>로 붙이기만 한다. 잉크색/착용 장비/포즈가
-    /// 즉시 반영되고, <b>포즈는 프레즌스 문구와 같은 상태 스냅샷에서 파생</b>된다(서 있는 그림 옆에
-    /// "넘어져 있는 중"이 적히는 어긋남을 구조적으로 막는다).
+    /// 스펙은 우측 상단에 <c>ESC</c> 힌트를 두고 그 키로 닫는다. 그런데 이 프로젝트에서
+    /// <see cref="KeyCode.Escape"/>는 이미 <b>클릭관통 긴급 해제</b>(Core/StickmanAgent)에 묶여 있다.
+    /// 창 닫기를 같은 키에 겹치면 창을 닫을 때마다 <b>보이지 않는 부수효과</b>로 클릭관통이 꺼져
+    /// 화면 전체의 클릭을 우리가 먹기 시작한다(원칙 2 직결). 그래서 그 자리에 [✕] 버튼을 둔다 —
+    /// 있지도 않은 동작을 힌트로 <b>주장하지 않는</b> 쪽이 이 프로젝트의 문구 원칙이기도 하다.
     ///
     /// ============================================================================
-    /// 진입점 3개 (이번 라운드에서 건드리지 않았다)
+    /// 아이콘 32종은 데이터, 그리기는 여기
     /// ============================================================================
-    ///  1. 화면 우상단 톱니 아이콘(주 진입점) — Interaction/InfoGearIconWidget.cs.
-    ///  2. 전역 단축키 ⌃⌥⌘I — Interaction/AppControlDirector.cs.
-    ///  3. 캐릭터 우클릭 메뉴 [캐릭터 정보] — 같은 파일.
+    /// 40×40 썸네일 도형은 <see cref="ItemIconPart"/>(Core/ItemCatalog.cs)에 <b>SVG viewBox 좌표
+    /// 그대로</b> 들어 있고, 이 파일이 화면 좌표로 뒤집어 <see cref="UiChrome.AddPolyline"/>로 그린다.
+    /// 탭을 바꿔도 아이콘을 다시 굽지 않는다 — 카드 하나가 [장비]용/[외형]용 아이콘 <b>두 벌</b>을
+    /// 미리 갖고 있고 켜고 끄기만 한다(탭 전환 때마다 300개 넘는 GameObject를 다시 만들지 않으려고).
     ///
     /// ============================================================================
-    /// 클릭 판정 — TodoPostItWidget과 같은 관례(새 메커니즘을 만들지 않는다)
+    /// 초상화 = 전용 미니 피규어의 실시간 촬영 (신규 SVG 금지 — 33-7-6)
+    /// ============================================================================
+    /// Interaction/CharacterPortraitStage.cs가 찍은 RenderTexture를 <see cref="RawImage"/>로 붙이기만
+    /// 한다. 액자만 스펙 값(204×196 / 여백 8 / 반지름 8)으로 바꿨고, 그 결과 <see cref="PortraitContentSize"/>
+    /// 에서 파생되는 카메라 종횡비가 <b>0.710 → 1.044</b>로 함께 바뀐다(교차 레이어 영향 — 보고 완료).
+    ///
+    /// ============================================================================
+    /// 클릭 판정 / 매 프레임 할당 금지 (기존 관례 그대로)
     /// ============================================================================
     /// (1) uGUI Button + 자체 EventSystem 보강, (2) 창 사각형을 덮는 isTrigger BoxCollider2D,
     /// (3) 전역 폴링 히트테스트. 셋이 같은 핸들러를 부르고 <see cref="ActionDedupSeconds"/>로 중복을
-    /// 막는다. <b>창이 닫히면 차단막은 반드시 꺼진다</b>(비침해 원칙 직결).
-    /// 보관함 목록은 휠 대신 <b>[▲][▼] 버튼</b>으로 넘긴다 — 이 앱의 uGUI 입력은 "창을 클릭해 앱이
-    /// 활성화된 상태"에서만 들어오므로 휠에만 기대면 못 넘기는 사용자가 생긴다(디자이너 지적).
-    ///
-    /// ============================================================================
-    /// 매 프레임 할당 금지 (24시간 상주 앱)
-    /// ============================================================================
-    /// 닫혀 있으면 Update()는 첫 줄에서 돌아간다. 프레즌스 라인은 <b>상태가 바뀐 프레임에만</b>
-    /// 문자열을 만들고, 나머지 수치는 <see cref="SlowRefreshInterval"/> 주기로만 다시 만든다.
-    /// 초상화 카메라는 창이 열려 있는 동안만 돈다.
+    /// 막는다. <b>창이 닫히면 차단막은 반드시 꺼진다</b>. 닫혀 있으면 Update()는 첫 줄에서 돌아가고,
+    /// 열려 있어도 문자열은 상태가 바뀐 프레임과 <see cref="SlowRefreshInterval"/> 주기에만 만든다.
+    /// 히트테스트가 쓰는 코너 배열은 <see cref="_corners"/> 하나를 돌려쓴다(폴링 경로 할당 0).
     /// </summary>
     public sealed class CharacterInfoWindow : MonoBehaviour
     {
         [SerializeField] private StickConfig _config;
 
-        private const int SortingOrderTopMost = 31000; // 포스트잇(30000)보다 위, 앱 제어 메뉴(32760)보다 아래.
+        // ★ 2026-08-30: 31000 -> 31900. 이 창은 모달인데 부채꼴(31500)/팝오버(31700)보다 <b>아래</b>에
+        // 깔려 있었다(디버거 실측) — 값 자체가 "모달"이라는 성격과 모순이었다. 말풍선(31000)과도 값이
+        // 같아 Unity가 그리기 순서를 보장하지 않았다(동률 오버레이 캔버스는 생성 순서에 의존).
+        private const int SortingOrderTopMost = 31900; // 팝오버(31700) 위, 앱 제어 메뉴(32760) 아래.
 
-        // ---- 창 골격(캔버스 유닛 == OS 포인트) ----
-        private const float PanelWidth = 680f;
-        private const float PanelHeight = 520f;
+        // ==================== 33-7-2 확정 치수 (캔버스 유닛 == OS 포인트) ====================
+
+        private const float PanelWidth = 880f;
+        private const float PanelHeight = 861f;
         private const float TitleHeight = 40f;
-        private const float PanelMarginRight = 16f;
-        private const float PanelMarginTop = 84f;   // 톱니 아이콘 바로 아래.
-        private const float PanelMarginBottom = 16f;
+        private const float BodyHeight = PanelHeight - TitleHeight;   // 821
+        private const float ScreenMargin = 16f;
 
-        // ---- 2단 구성 ----
-        private const float LeftWidth = 200f;
-        private const float ColumnGap = 20f;
-        private const float PortraitHeight = 238f;
+        // ---- 좌측 컬럼 ----
+        private const float LeftWidth = 244f;
+        private const float LeftPadX = 20f;
+        private const float LeftContentWidth = LeftWidth - LeftPadX * 2f;   // 204
+        private const float NameY = -22f;
+        private const float SubY = -50f;
+        private const float PortraitY = -83f;
+        private const float PortraitHeight = 196f;
+        private const float PortraitPadding = 8f;
+        private const float PresenceY = -297f;
+        private const float StressLabelY = -330f;
+        private const float StressTrackY = -348f;
+        private const float XpLabelY = -364f;
+        private const float XpTrackY = -382f;
+        private const float TrackHeight = 4f;
+        private const float StatsTopY = -404f;
+        private const float StatsFirstRowY = -408f;
+        private const float StatRowStep = 32f;
+        private const float StatRowHeight = 31f;
+        private const float SwatchSize = 12f;
+        private const float SwatchGap = 8f;
 
-        /// <summary>액자 <b>안쪽</b>(RawImage가 실제로 차지하는) 크기(pt) — 액자 테두리 여백을 뺀 값.
-        /// 촬영장 카메라의 기본 종횡비가 이 값에서 파생되므로(<see cref="CharacterPortraitStage.DesignAspect"/>)
-        /// 액자 크기를 바꾸면 그림 구도도 함께 따라온다. 숫자를 두 곳에 적지 않기 위한 단일 출처다.</summary>
-        public static Vector2 PortraitContentSize => new Vector2(
-            LeftWidth - UiChrome.Space3 * 2f,
-            PortraitHeight - UiChrome.Space3 * 2f);
-
-        // ---- 우측 패널 ----
+        // ---- 우측 컬럼 ----
+        private const float RightX = LeftWidth;                        // 244
+        private const float RightWidth = PanelWidth - LeftWidth;       // 636
+        private const float RightPadX = 22f;
+        private const float RightContentWidth = RightWidth - RightPadX * 2f; // 592
+        private const float TabStripY = -22f;
         private const float TabStripHeight = 32f;
-        private const float StatsBlockHeight = 96f;
-        private const float StatRowHeight = 28f;
-        private const float EquipCardHeight = 66f;
-        private const float BarHeight = 8f;
+        private const float TabGap = 22f;
+        private const float TabUnderlineHeight = 2f;
+        private const float SectionsTopY = -72f;
+        private const float SectionStep = 156f;
+        private const float SectionHeight = 136f;
+        private const float DetailY = -696f;
+        private const float DetailHeight = 103f;
 
-        // ---- 보관함 목록 ----
+        // ---- 카드 ----
+        private const float CardWidth = 141f;
+        private const float CardStep = 150f;
+        private const float CardHeight = 108f;
+        private const float CardTopInSection = -28f;
+        private const float ThumbX = 11f;
+        private const float ThumbY = -11f;
+        private const float ThumbWidth = 119f;
+        private const float ThumbHeight = 62f;
+        /// <summary>썸네일(119×62pt) 안에서 아이콘이 차지하는 정사각 크기.
+        /// <para>40 -> <b>50</b>(2026-08-30 사용자 지적 "아이콘이 조잡"). 40이면 62pt 썸네일 높이의 65%뿐이라
+        /// 형태가 작게 뭉쳐 보였다. 50이면 81%로, 위아래 6pt 여백을 남기면서 획 하나하나가 커진다.</para></summary>
+        private const float IconSize = 50f;
+
+        /// <summary>아이콘 획 두께. 핸드오프 스펙은 <b>40 viewBox 기준 1.7</b>이므로 <see cref="IconSize"/>가
+        /// 커지면 <b>같은 비율로</b> 따라와야 형태가 원본과 같다(두께만 그대로 두면 선이 가늘어진다).</summary>
+        private const float IconStroke = 1.7f * (IconSize / 40f);
+        private const float LockBadgeWidth = 18f;
+        private const float LockBadgeHeight = 17f;
+        private const float CardNameY = -82f;
+        private const float CardTextHeight = 16f;
+
+        /// <summary>한 탭에 들어갈 수 있는 카테고리 수의 <b>상한</b>. 실제로 보여줄 수는 탭마다 다르고
+        /// <see cref="SectionCountForTab"/>가 카탈로그에서 센다([장비] 4 / [외형] 3, 2026-08-30 기준).</summary>
+        private const int SectionCount = 4;
+        private const int CardsPerSection = 4;
+        private const int CardCount = SectionCount * CardsPerSection;   // 16
+        private const int IconSetCount = 2;   // [장비]용 / [외형]용 — 카드 하나가 두 벌을 미리 갖는다.
+
+        // ---- 보관함 ----
         private const float InventoryRowHeight = 24f;
         private const float InventoryRowGap = 3f;
-        private const int InventoryVisibleRows = 8;
+        private const int InventoryVisibleRows = 20;
         private const float InventoryRailWidth = 24f;
         private const float StatusSlotWidth = 96f;   // 훗날 가격표가 들어올 자리(디자이너 확정 최소 폭).
-        private const float InventoryDetailHeight = 76f;
+        private const float InventoryListWidth = RightContentWidth - InventoryRailWidth - UiChrome.Space2;
 
-        /// <summary>목록 한 줄의 설명 칸에 들어가는 글자 수 상한(한글 기준 실측 — 10pt 폰트에서
-        /// 설명 칸 폭이 약 130pt다).</summary>
-        private const int InventoryDescriptionChars = 12;
+        /// <summary>목록 한 줄의 설명 칸에 들어가는 글자 수 상한(10pt 한글 기준 실측 — 칸 폭 약 264pt).</summary>
+        private const int InventoryDescriptionChars = 24;
 
         private const float SlowRefreshInterval = 0.25f;
         private const float ClickPollInterval = 0.05f;
         private const float ActionDedupSeconds = 0.35f;
+
+        /// <summary>액자 <b>안쪽</b>(RawImage가 실제로 차지하는) 크기(pt) — 액자 테두리 여백을 뺀 값.
+        /// 촬영장 카메라의 기본 종횡비가 이 값에서 파생되므로(<see cref="CharacterPortraitStage.DesignAspect"/>)
+        /// 액자 크기를 바꾸면 그림 구도도 함께 따라온다. 숫자를 두 곳에 적지 않기 위한 단일 출처다.
+        /// 33-7-6에서 (176−24)/(238−24)=0.710 → (204−16)/(196−16)=<b>1.044</b>로 바뀌었다.</summary>
+        public static Vector2 PortraitContentSize => new Vector2(
+            LeftContentWidth - PortraitPadding * 2f,
+            PortraitHeight - PortraitPadding * 2f);
 
         private enum Tab { Equipment = 0, Appearance = 1, Inventory = 2 }
         private const int TabCount = 3;
@@ -120,7 +175,16 @@ namespace StickMate.Interaction
         private static readonly string[] TabNames = { "장비", "외형", "보관함" };
         private static readonly string[] StatLabels =
         {
-            "근속", "함께한 시간", "격파 성공", "대결 승리", "활쏘기 명중", "넘어진 횟수",
+            // ※ 4번째 칸은 "대결 승리"였다 — 라이벌 기능 전체 삭제(2026-08-30)로 영구 0이 되는
+            //    죽은 칸이 되어 "보유 장비"(레벨에 따라 실제로 늘어나는 값)로 교체했다.
+            "근속", "함께한 시간", "격파 성공", "보유 장비", "활쏘기 명중", "넘어진 횟수",
+        };
+
+        /// <summary>자물쇠 배지의 고리(스펙 SVG viewBox 20×21, 호는 미리 5점으로 샘플링).
+        /// 몸통은 채운 둥근 사각형이라 <see cref="UiChrome.AddSurface"/>로 따로 그린다.</summary>
+        private static readonly float[] LockShackle =
+        {
+            6.5f, 9.5f, 6.5f, 6.8f, 7.525f, 4.325f, 10f, 3.3f, 12.475f, 4.325f, 13.5f, 6.8f, 13.5f, 9.5f,
         };
 
         private StickmanAgent _agent;
@@ -131,15 +195,17 @@ namespace StickMate.Interaction
         private RectTransform _panel;
         private BoxCollider2D _clickBlocker;
 
-        private Button _closeButton;
         private RectTransform _closeRect;
-        private readonly Image[] _tabChips = new Image[TabCount];
+        private RectTransform _titleBarRect;   // 드래그 손잡이(2026-08-30).
+        private readonly Image[] _tabUnderlines = new Image[TabCount];
         private readonly Text[] _tabLabels = new Text[TabCount];
         private readonly RectTransform[] _tabRects = new RectTransform[TabCount];
-        private readonly GameObject[] _pages = new GameObject[TabCount];
 
-        // 좌측 패널.
+        // ---- 좌측 컬럼 ----
         private Text _nameTitle;
+        private RectTransform _nameRect;
+        private InputField _nameInput;
+        private RectTransform _nameInputRect;
         private Text _rankTitle;
         private Image _portraitFrame;
         private Image _portraitBorder;
@@ -151,36 +217,55 @@ namespace StickMate.Interaction
         private Text _stressValue;
         private RectTransform _xpFill;
         private Text _xpValue;
-        private Text _leftNote;
+        private readonly Text[] _statValues = new Text[StatCount];
+        private readonly Image[] _inkRings = new Image[2];
+        private readonly RectTransform[] _inkRects = new RectTransform[2];
 
-        // [장비] 탭.
-        private sealed class EquipCard
+        // ---- 우측: 카테고리 섹션 + 카드 ----
+        private sealed class SectionView
+        {
+            /// <summary>섹션 한 덩어리(제목줄 + 카드 4장). 탭마다 카테고리 수가 다르므로
+            /// <b>남는 섹션은 통째로 끈다</b> — 2026-08-30 표정(FACE) 삭제로 [외형] 탭이 3칸이 됐다.</summary>
+            public GameObject Root;
+
+            public Image Dot;
+            public Text Title;
+            public Text Code;
+            public Text Count;
+        }
+
+        private sealed class ItemCard
         {
             public RectTransform Rect;
             public Image Surface;
             public Image Outline;
-            public Text Title;
-            public Text Status;
-            public EquipmentSlot Slot;
+            public Image Thumb;
+            public RectTransform LockBadge;
+            public Text Name;
+            public Text Meta;
+            public readonly RectTransform[] IconRoot = new RectTransform[IconSetCount];
+            public readonly Image[][] IconGraphics = new Image[IconSetCount][];
+
+            /// <summary>해금 상태에서 되돌릴 <b>조각별 원래 색</b>(ItemCatalog가 정한 소재색).
+            /// 잠긴 카드는 무채색 실루엣으로 덮어쓰므로, 덮어쓰기 전 색을 어딘가에 갖고 있어야 한다.
+            /// 매 프레임 카탈로그를 다시 뒤지지 않으려고 카드가 굽는 시점에 한 번만 캐시한다.</summary>
+            public readonly Color[][] IconBaseColors = new Color[IconSetCount][];
         }
-        private readonly EquipCard[] _equipCards = new EquipCard[EquipmentModel.SlotCount];
-        private Text _equipDetailName;
-        private Text _equipDetailMeta;
-        private Text _equipDetailBody;
-        private Image _equipActionSurface;
-        private Image _equipActionOutline;
-        private RectTransform _equipActionRect;
-        private Text _equipActionLabel;
 
-        // [외형] 탭.
-        private InputField _nameInput;
-        private readonly Image[] _inkSurfaces = new Image[2];
-        private readonly Image[] _inkOutlines = new Image[2];
-        private readonly RectTransform[] _inkRects = new RectTransform[2];
-        private readonly Text[] _inkLabels = new Text[2];
-        private Text _scaleValue;
+        private readonly SectionView[] _sections = new SectionView[SectionCount];
+        private readonly ItemCard[] _cards = new ItemCard[CardCount];
+        private GameObject _sectionPage;
+        private GameObject _inventoryPage;
 
-        // [보관함] 탭 — 화면에 보이는 행은 고정 개수이고 내용만 갈아 끼운다(가상 목록).
+        private Text _detailName;
+        private Text _detailMeta;
+        private Text _detailBody;
+        private Image _actionSurface;
+        private Image _actionOutline;
+        private RectTransform _actionRect;
+        private Text _actionLabel;
+
+        // ---- 보관함(가상 목록) ----
         private sealed class InventoryRowView
         {
             public RectTransform Rect;
@@ -201,23 +286,45 @@ namespace StickMate.Interaction
         private Text _inventoryDetailName;
         private Text _inventoryDetailBody;
         private int _inventoryScroll;
-
-        // 하단 스탯 블록.
-        private readonly Text[] _statValues = new Text[StatCount];
+        private int _selectedInventoryIndex;
 
         private bool _open;
         private Tab _tab = Tab.Equipment;
         private EquipmentSlot _selectedSlot = EquipmentSlot.Head;
-        private int _selectedInventoryIndex;
+        private int _selectedItem;
+        private int _hoveredCard = -1;
+        private bool _editingName;
         private float _slowTimer;
         private float _clickPollTimer;
         private bool _leftPrev;
         private bool _leftInitialized;
+        private bool _draggingPanel;
+        private Vector2 _dragGrabOffsetPoints;
+        private Vector2 _dragStartOffsetPoints;
+
+        /// <summary>배타 규칙("이 창이 뜨면 부채꼴/팝오버는 접힌다")과 "창 밖 클릭" 예외가 쓰는 이웃 —
+        /// 둘 다 같은 GameObject에 있고, 없을 수도 있으므로(테스트 조립) 늦게 한 번만 찾는다.</summary>
+        private GearRadialMenuWidget _menu;
+        private InfoGearIconWidget _gear;
         private string _lastActionKey;
         private float _lastActionTime;
         private StickmanStateId _lastShownState = (StickmanStateId)(-1);
         private bool _hasShownState;
         private float _lastDpiScale = -1f;
+
+        /// <summary>히트테스트/호버 폴링이 돌려쓰는 코너 버퍼 — 이 앱은 하루 종일 켜져 있어서
+        /// 0.05초마다 <c>new Vector3[4]</c>를 20번씩 만드는 것도 상시 쓰레기가 된다.</summary>
+        private static readonly Vector3[] _corners = new Vector3[4];
+
+        /// <summary>이 창 안의 모든 <see cref="RectMask2D"/> — 빌드 때 한 번만 모은다. 전역 폴링
+        /// 히트테스트가 "마스크에 잘린 자리는 누를 수 없다"를 판단하는 근거(R2 M3).</summary>
+        private RectMask2D[] _masks = System.Array.Empty<RectMask2D>();
+
+        /// <summary>[착용] 버튼이 통째로 잘려 닿을 수 없는 상태인가 — 상태가 바뀔 때만 경고한다(로그 도배 방지).</summary>
+        private bool _actionUnreachable;
+
+        /// <summary>아이콘 한 파츠를 그릴 때 돌려쓰는 점 버퍼(가장 긴 파츠보다 넉넉하게).</summary>
+        private static readonly Vector2[] _iconPoints = new Vector2[64];
 
         public bool IsOpen => _open;
 
@@ -229,7 +336,7 @@ namespace StickMate.Interaction
 
         private void Awake()
         {
-            // 같은 GameObject의 StickmanAgent만 쓴다 — 라이벌 복제본에서 창이 두 벌 뜨지 않게 하는
+            // 같은 GameObject의 StickmanAgent만 쓴다 — 복제본에서 창이 두 벌 뜨지 않게 하는
             // 2차 방어(1차는 SceneBootstrapper의 컴포넌트 제거). TodoPostItWidget과 같은 관례.
             _agent = GetComponent<StickmanAgent>();
             if (_config == null && _agent != null) _config = _agent.Config;
@@ -241,7 +348,8 @@ namespace StickMate.Interaction
         {
             _buttonService = _agent != null ? _agent.PlatformService as IGlobalPointerButtonService : null;
             var module = EventSystem.current != null ? EventSystem.current.GetComponent<BaseInputModule>() : null;
-            Debug.Log("[정보창] 준비 완료(3탭: 장비/외형/보관함) — 여는 방법 3가지: " +
+            Debug.Log($"[정보창] 준비 완료({PanelWidth:F0}×{PanelHeight:F0} 화면 중앙, 3탭: 장비/외형/보관함, " +
+                $"카드 {CardCount}장 + 아이콘 32종) — 여는 방법 3가지: " +
                 "(1) **화면 우상단 톱니 아이콘 클릭**(주 진입점), (2) 전역 단축키 **⌃⌥⌘I**, " +
                 "(3) 캐릭터 우클릭 -> [캐릭터 정보]. " +
                 $"입력 모듈={(module != null ? module.GetType().Name : "★없음(uGUI 클릭 불가)")}, " +
@@ -267,8 +375,8 @@ namespace StickMate.Interaction
         private void OnDestroy()
         {
             // 캔버스가 씬 루트로 나갔으므로(BuildUi 주석) 캐릭터가 사라져도 자동으로 따라 죽지 않는다 —
-            // 여기서 명시적으로 거둔다. 라이벌 복제본에서 이 컴포넌트만 제거하는 경로
-            // (SceneBootstrapper.CreateRivalStickman)에서도 이 OnDestroy가 돌아 캔버스가 남지 않는다.
+            // 여기서 명시적으로 거둔다. 컴포넌트만 제거되는 경로에서도 이 OnDestroy가 돌아
+            // 캔버스가 남지 않는다.
             if (_canvas != null) Destroy(_canvas.gameObject);
             if (_clickBlocker != null) Destroy(_clickBlocker.gameObject);
             if (_stage != null) Destroy(_stage.gameObject);
@@ -286,10 +394,13 @@ namespace StickMate.Interaction
         {
             if (_open) return;
             _open = true;
-            _leftInitialized = false; // 창을 여는 그 클릭이 곧바로 행 클릭으로 오인되지 않게.
+            CloseOverlappingSurfaces($"캐릭터 창 열림({source})");
+            ResetPanelToCenter();      // 33-7-7의 "열면 화면 중앙"은 유지한다(드래그는 그 뒤의 이야기).
+            _leftInitialized = false; // 창을 여는 그 클릭이 곧바로 카드 클릭으로 오인되지 않게.
+            _hoveredCard = -1;
             if (_canvas != null) _canvas.gameObject.SetActive(true);
             if (_clickBlocker != null) _clickBlocker.enabled = true;
-            SyncNameInputFromModel();
+            EndNameEdit(commit: false);
             EnsurePortraitTexture(force: true);
             if (_stage != null) _stage.SetRenderingEnabled(true);
             RefreshAll();
@@ -302,11 +413,34 @@ namespace StickMate.Interaction
         {
             if (!_open) return;
             _open = false;
+            _draggingPanel = false;
+            EndNameEdit(commit: true);
             if (_canvas != null) _canvas.gameObject.SetActive(false);
             if (_clickBlocker != null) _clickBlocker.enabled = false;
             if (_stage != null) _stage.SetRenderingEnabled(false);
-            CommitNameInput();
             Debug.Log($"[정보창] 닫힘({source}).");
+        }
+
+        /// <summary>
+        /// ★ 배타적 모달(2026-08-30) — 이 창이 뜨는 순간 부채꼴 메뉴와 팝오버 2종을 거둔다.
+        /// <b>정리 책임을 여는 쪽 한 곳에만</b> 둔다. 진입점(부채꼴 [캐릭터] / 단축키 ⌃⌥⌘I / 우클릭
+        /// 메뉴)마다 정리 코드를 흩뿌리면 네 번째 진입점이 생길 때 또 샌다 — 실제로 단축키 경로가
+        /// 아무것도 닫지 않아 캔버스 3개(창 + 부채꼴 + 팝오버)가 동시에 뜨는 화면이 재현됐다.
+        /// </summary>
+        private void CloseOverlappingSurfaces(string reason)
+        {
+            if (_menu == null) _menu = GetComponent<GearRadialMenuWidget>();
+            if (_menu != null)
+            {
+                _menu.ForceCloseAll(reason);
+                return;
+            }
+
+            // 부채꼴이 없는 조립(테스트 씬 등)에서도 팝오버는 남아 있을 수 있다.
+            var focus = GetComponent<FocusSessionPopover>();
+            if (focus != null) focus.Close(reason);
+            var todo = GetComponent<TodoBoardPopover>();
+            if (todo != null) todo.Close(reason);
         }
 
         // ==================== 루프 ====================
@@ -317,12 +451,10 @@ namespace StickMate.Interaction
 
             // ★★ 절대 불변 원칙 2(비침해) — 전체화면 게임이 감지되면 창을 닫는다.
             // StickmanAgent.Suspend()는 Awake에서 캐시한 캐릭터 렌더러만 끄고, 이 창은 씬 루트 캔버스
-            // + 씬 루트 차단막이라 그 배열에 없다(액세서리가 겪었던 "몸이 사라진 자리에 모자만 남는다"와
-            // 같은 구조). 게다가 StickmanAgent가 SetAlwaysOnTop(true)를 켜므로 전체화면 게임 위에
-            // 680×520 창이 그대로 떠 있고, 히트테스트가 픽셀 알파 기반이라 그 영역의 클릭까지 먹는다.
-            // Close()가 캔버스/차단막/초상화 촬영장 렌더링을 한 번에 정리한다. 복귀 시 강제로 다시 열지
-            // 않는다 — 사용자가 톱니로 다시 연다(WindowCrashDirector가 오버레이를 되살리지 않는 것과
-            // 같은 판단).
+            // + 씬 루트 차단막이라 그 배열에 없다. 게다가 StickmanAgent가 SetAlwaysOnTop(true)를 켜므로
+            // 전체화면 게임 위에 880×861 창이 그대로 떠 있고, 히트테스트가 픽셀 알파 기반이라 그
+            // 영역의 클릭까지 먹는다. Close()가 캔버스/차단막/초상화 촬영장을 한 번에 정리한다.
+            // 복귀 시 강제로 다시 열지 않는다 — 사용자가 톱니로 다시 연다.
             if (_agent != null && _agent.IsSuspended)
             {
                 Close("전체화면 감지 — 자동 숨김(비침해 원칙 2)");
@@ -331,7 +463,7 @@ namespace StickMate.Interaction
 
             ApplyCanvasScaleFactor();
             SyncClickBlocker();
-            TickGlobalClickPolling();
+            TickGlobalPointer();
             TickPresenceLine();
 
             _slowTimer += Time.unscaledDeltaTime;
@@ -368,12 +500,16 @@ namespace StickMate.Interaction
         {
             if (!_open) return;
             RefreshNumbers();
+            RefreshCards();     // 레벨이 오르면 잠긴 카드가 열린다.
+            RefreshDetail();
+            RefreshInventoryList();
         }
 
         private void OnEquipmentChanged()
         {
             if (!_open) return;
-            RefreshEquipmentCards();
+            RefreshCards();
+            RefreshDetail();
             RefreshInventoryList();
         }
 
@@ -382,15 +518,18 @@ namespace StickMate.Interaction
             _hasShownState = false;
             TickPresenceLine();
             RefreshNumbers();
-            RefreshEquipmentCards();
+            RefreshCards();
+            RefreshDetail();
             RefreshInventoryList();
-            RefreshAppearance();
+            RefreshInkSwatches();
             ApplyTabVisibility();
         }
 
+        /// <summary>0.25초 주기로 다시 만드는 값만 여기 있다 — 카드/상세는 <b>사건이 있을 때만</b>
+        /// 갱신한다(카드 16장의 문자열을 초당 4번 다시 만들 이유가 없다).</summary>
         private void RefreshNumbers()
         {
-            if (_nameTitle != null) _nameTitle.text = CharacterProgressionModel.CharacterName;
+            if (_nameTitle != null && !_editingName) _nameTitle.text = CharacterProgressionModel.CharacterName;
             if (_rankTitle != null)
             {
                 _rankTitle.text = $"Lv.{CharacterProgressionModel.Level}  ·  {RankTitleFor(CharacterProgressionModel.Level)}";
@@ -406,24 +545,16 @@ namespace StickMate.Interaction
             SetBarFill(_xpFill, need > 0f ? Mathf.Clamp01(have / need) : 0f);
             if (_xpValue != null) _xpValue.text = $"{have:F0} / {need:F0}";
 
-            if (_leftNote != null)
-            {
-                _leftNote.text =
-                    $"누적 경험치 {CharacterProgressionModel.TotalXpEarned:F0}  ·  착용 {CountEquipped()}/{EquipmentModel.SlotCount}\n" +
-                    "기록은 앱 전용 데이터 폴더에 자동 저장돼요.";
-            }
-
-            // 하단 스탯 6칸. 0인 항목은 숫자 대신 회색 "아직 없음"으로 — 0이 성취처럼 보이지 않게 한다.
+            // 스탯 6행. 0인 항목은 숫자 대신 회색 "아직 없음"으로 — 0이 성취처럼 보이지 않게 한다.
             SetStat(0, $"{CharacterStatsModel.DaysTogether}일차", true);
             SetStat(1, CharacterStatsModel.FormatCompanionTime(), true);
             SetStat(2, CharacterStatsModel.BattleWins > 0 ? $"{CharacterStatsModel.BattleWins}번" : null, CharacterStatsModel.BattleWins > 0);
-            SetStat(3, CharacterStatsModel.RivalWins > 0 ? $"{CharacterStatsModel.RivalWins}승" : null, CharacterStatsModel.RivalWins > 0);
+            int ownedItems = ItemCatalog.UnlockedEquipmentCount(_config);
+            SetStat(3, $"{ownedItems} / {ItemCatalog.EquipmentCount}종", ownedItems > 0);
             SetStat(4, CharacterStatsModel.TryGetArcheryAccuracy01(out float acc)
                 ? $"{CharacterStatsModel.ArcheryBullseyes} / {CharacterStatsModel.ArcheryShots} ({acc * 100f:F0}%)"
                 : "기록 없음", CharacterStatsModel.ArcheryShots > 0);
             SetStat(5, CharacterStatsModel.RagdollFalls > 0 ? $"{CharacterStatsModel.RagdollFalls}번" : null, CharacterStatsModel.RagdollFalls > 0);
-
-            RefreshEquipDetail();
         }
 
         /// <summary>스탯 한 칸. <paramref name="value"/>가 null이면 회색 "아직 없음"으로 대신한다.</summary>
@@ -431,17 +562,7 @@ namespace StickMate.Interaction
         {
             if (index < 0 || index >= _statValues.Length || _statValues[index] == null) return;
             _statValues[index].text = value ?? "아직 없음";
-            _statValues[index].color = hasRecord ? UiChrome.TextPrimary : UiChrome.TextTertiary;
-        }
-
-        private static int CountEquipped()
-        {
-            int n = 0;
-            for (int i = 0; i < EquipmentModel.SlotCount; i++)
-            {
-                if (EquipmentModel.IsEquipped((EquipmentSlot)i)) n++;
-            }
-            return n;
+            _statValues[index].color = hasRecord ? UiChrome.TextPrimary : UiChrome.TextQuaternary;
         }
 
         /// <summary>레벨 -> 칭호. 새 시스템이 아니라 <b>표시용 매핑 하나</b>다(리더 확정 — 과설계 금지).</summary>
@@ -455,90 +576,206 @@ namespace StickMate.Interaction
             return "사실상 이 화면 주인";
         }
 
-        private void RefreshEquipmentCards()
+        // ==================== 카테고리 섹션 + 카드 ====================
+
+        /// <summary>탭이 보여주는 <paramref name="section"/>번째 카테고리. "외형 계열"의 정의는
+        /// <see cref="EquipmentModel.IsAppearanceSlot"/> 하나뿐이라 여기서 숫자를 다시 적지 않는다.</summary>
+        private static EquipmentSlot SectionSlot(Tab tab, int section)
         {
-            for (int i = 0; i < _equipCards.Length; i++)
+            bool wantAppearance = tab == Tab.Appearance;
+            int found = 0;
+            for (int i = 0; i < EquipmentModel.SlotCount; i++)
             {
-                EquipCard card = _equipCards[i];
-                if (card == null) continue;
-
-                EquipmentSlot slot = card.Slot;
-                bool unlocked = EquipmentModel.IsUnlocked(slot, _config);
-                bool equipped = unlocked && EquipmentModel.IsEquipped(slot);
-                bool selected = slot == _selectedSlot;
-                int needLevel = EquipmentModel.UnlockLevel(slot, _config);
-
-                card.Title.text = EquipmentModel.ItemName(slot);
-                // ★ 이모지(🔒)를 쓰지 않는다 — 내장 LegacyRuntime.ttf에 글리프가 없어 화면에서 빈칸이
-                //   된다(직전 라운드 육안 검증에서 확인). ●/○는 이 폰트에 있어 그대로 쓴다.
-                card.Status.text = !unlocked
-                    ? $"{EquipmentModel.SlotName(slot)}  ·  Lv.{needLevel}에 열림"
-                    : equipped ? $"{EquipmentModel.SlotName(slot)}  ·  ● 착용 중"
-                               : $"{EquipmentModel.SlotName(slot)}  ·  ○ 미착용";
-
-                card.Surface.color = selected ? UiChrome.AccentSurface
-                    : unlocked ? UiChrome.CardSurface : UiChrome.CardSurfaceMuted;
-                card.Outline.color = selected ? UiChrome.AccentBorder : UiChrome.CardBorder;
-                card.Title.color = unlocked ? UiChrome.TextPrimary : UiChrome.TextTertiary;
-                card.Status.color = unlocked ? UiChrome.TextSecondary : UiChrome.TextTertiary;
+                var slot = (EquipmentSlot)i;
+                if (EquipmentModel.IsAppearanceSlot(slot) != wantAppearance) continue;
+                if (found == section) return slot;
+                found++;
             }
-
-            RefreshEquipDetail();
+            return EquipmentSlot.Head;
         }
 
-        /// <summary>선택한 슬롯의 설명 카드. <b>잠긴 슬롯도 회색으로 계속 보여준다</b>(빈 카드로 가리면
-        /// 다음 레벨의 동기부여가 사라진다 — 디자이너 지적). 문구는 전부 <see cref="ItemCatalog"/>에서
-        /// 오므로 장비 탭과 보관함 탭이 다른 문장을 보여줄 수 있는 경로가 없다.</summary>
-        private void RefreshEquipDetail()
+        /// <summary>이 탭이 실제로 보여줄 카테고리 수. 숫자를 적지 않고 <b>센다</b> —
+        /// 카테고리를 지우거나 더할 때 여기와 표가 어긋나면 빈 제목줄이 남거나 한 칸이 사라진다
+        /// (2026-08-30 표정 삭제가 정확히 그 경우였다).</summary>
+        private static int SectionCountForTab(Tab tab)
         {
-            ItemCatalogEntry entry = ItemCatalog.FindBySlot(_selectedSlot);
+            bool wantAppearance = tab == Tab.Appearance;
+            int n = 0;
+            for (int i = 0; i < EquipmentModel.SlotCount; i++)
+            {
+                if (EquipmentModel.IsAppearanceSlot((EquipmentSlot)i) == wantAppearance) n++;
+            }
+            return Mathf.Min(n, SectionCount);
+        }
+
+        private static int IconSetForTab(Tab tab) => tab == Tab.Appearance ? 1 : 0;
+
+        private void RefreshCards()
+        {
+            if (_tab == Tab.Inventory) return;   // 목록 탭에는 카드가 없다.
+            int set = IconSetForTab(_tab);
+
+            int visible = SectionCountForTab(_tab);
+            for (int s = 0; s < SectionCount; s++)
+            {
+                SectionView view = _sections[s];
+                if (view != null && view.Root != null && view.Root.activeSelf != (s < visible))
+                {
+                    view.Root.SetActive(s < visible);
+                }
+                if (s >= visible) continue;
+
+                EquipmentSlot slot = SectionSlot(_tab, s);
+                SectionView section = _sections[s];
+                if (section != null)
+                {
+                    Color tint = UiChrome.CategoryTint(slot);
+                    section.Dot.color = tint;
+                    section.Title.text = EquipmentModel.SlotName(slot);
+                    section.Code.text = EquipmentModel.SlotCode(slot);
+                    section.Count.text = $"{EquipmentModel.OwnedItemCount(slot)} / {EquipmentModel.ItemCount(slot)}";
+                }
+
+                for (int c = 0; c < CardsPerSection; c++)
+                {
+                    ItemCard card = _cards[s * CardsPerSection + c];
+                    if (card == null) continue;
+                    ApplyCardStyle(card, slot, c, set);
+                }
+            }
+        }
+
+        /// <summary>33-7-3 카드 상태 5종 스타일 표를 그대로 옮긴 유일한 자리.</summary>
+        private void ApplyCardStyle(ItemCard card, EquipmentSlot slot, int itemIndex, int iconSet)
+        {
+            ItemCatalogEntry entry = ItemCatalog.Item(slot, itemIndex);
+            for (int i = 0; i < IconSetCount; i++)
+            {
+                if (card.IconRoot[i] != null) card.IconRoot[i].gameObject.SetActive(i == iconSet);
+            }
             if (entry == null) return;
 
-            bool unlocked = EquipmentModel.IsUnlocked(_selectedSlot, _config);
-            bool equipped = unlocked && EquipmentModel.IsEquipped(_selectedSlot);
-            int needLevel = EquipmentModel.UnlockLevel(_selectedSlot, _config);
+            bool owned = entry.IsOwned(_config);
+            bool worn = entry.IsEquipped();
+            bool selected = slot == _selectedSlot && itemIndex == _selectedItem;
+            bool hovered = _hoveredCard >= 0 && _cards[_hoveredCard] == card;
+            Color tint = UiChrome.CategoryTint(slot);
 
-            if (_equipDetailName != null)
+            card.Name.text = owned ? entry.DisplayName : "???";
+            card.Name.color = owned ? UiChrome.TextPrimary : UiChrome.TextDisabled;
+
+            if (!owned)
             {
-                _equipDetailName.text = entry.DisplayName;
-                _equipDetailName.color = unlocked ? UiChrome.TextPrimary : UiChrome.TextTertiary;
+                // "LV.20" — 잠긴 카드의 메타는 <b>언제 열리는지</b> 하나만 말한다.
+                card.Meta.text = $"LV.{entry.RequiredLevel}";
+                card.Meta.color = UiChrome.TextDisabled;
+                card.Surface.color = UiChrome.CardSurfaceMuted;
+                card.Thumb.color = UiChrome.ThumbSurfaceLocked;
+                // 잠김 = <b>무채색 실루엣</b>. 해금 전에 소재색을 미리 보여주면 잠금 연출이 무의미해진다.
+                SetIconColor(card, iconSet, new Color(UiChrome.TextTertiary.r, UiChrome.TextTertiary.g,
+                    UiChrome.TextTertiary.b, 0.34f));
             }
-            if (_equipDetailMeta != null)
+            else
             {
-                _equipDetailMeta.text = unlocked
-                    ? $"{entry.CategoryLabel}  ·  {(equipped ? "착용 중" : "보유")}"
-                    : $"{entry.CategoryLabel}  ·  Lv.{needLevel}부터 착용할 수 있어요 (지금 Lv.{CharacterProgressionModel.Level})";
-            }
-            if (_equipDetailBody != null)
-            {
-                _equipDetailBody.text = entry.Description;
-                _equipDetailBody.color = unlocked ? UiChrome.TextSecondary : UiChrome.TextTertiary;
+                card.Meta.text = worn ? "착용 중" : "보유";
+                card.Meta.color = worn ? tint : UiChrome.TextQuaternary;
+                card.Surface.color = UiChrome.CardSurface;
+                // 착용 중 썸네일 바탕은 <b>카테고리 틴트가 아니라 강조색 wash</b>다(2026-08-30).
+                // 같은 라운드에 아이템별 소재색이 들어오면서, 카테고리 틴트를 그대로 깔면 그 카테고리의
+                // 틴트를 쓰는 아이콘(나비넥타이=초록, 짧은망토=보라, 발자국=초록)이 <b>제 배경색과
+                // 같은 색</b>이 되어 형태가 사라진다. 착용 테두리(CardBorderWorn)도 이미 강조색이므로
+                // 바탕도 같은 계열로 맞추는 편이 "지금 걸치고 있는 칸"이라는 신호가 하나로 읽힌다.
+                // 카테고리는 섹션 헤더의 틴트 도트와 슬롯 코드가 이미 말하고 있다.
+                card.Thumb.color = worn ? UiChrome.AccentSurface : UiChrome.CardSurfaceMuted;
+                // 해금됐으면 <b>아이템 고유의 소재색</b>으로 되돌린다(2026-08-30). 예전에는 착용 여부에 따라
+                // 아이콘 전체를 카테고리 틴트/잉크 한 색으로 덮어써서 32칸이 전부 같은 색으로 보였다.
+                // "착용 중"은 이미 테두리(CardBorderWorn) + 썸네일 wash + 메타 문구 셋이 말하고 있다.
+                RestoreIconColors(card, iconSet);
             }
 
-            if (_equipActionLabel != null)
+            // 테두리 우선순위: 선택 > hover > 착용 중 > 기본. (스펙 1.4 표의 "선택됨이 최우선")
+            card.Outline.color = selected ? UiChrome.TextPrimary
+                : hovered ? UiChrome.CardBorderHover
+                : worn && owned ? UiChrome.CardBorderWorn
+                : UiChrome.CardBorder;
+
+            if (card.LockBadge != null) card.LockBadge.gameObject.SetActive(!owned);
+        }
+
+        /// <summary>조각별 원래 소재색으로 되돌린다.</summary>
+        private static void RestoreIconColors(ItemCard card, int iconSet)
+        {
+            Image[] graphics = card.IconGraphics[iconSet];
+            Color[] baseColors = card.IconBaseColors[iconSet];
+            if (graphics == null || baseColors == null) return;
+            int count = Mathf.Min(graphics.Length, baseColors.Length);
+            for (int i = 0; i < count; i++)
             {
-                _equipActionLabel.text = !unlocked ? $"Lv.{needLevel}에 열림" : equipped ? "벗기" : "착용하기";
-                _equipActionLabel.color = !unlocked ? UiChrome.TextTertiary
-                    : equipped ? UiChrome.TextSecondary : UiChrome.TextOnAccent;
+                if (graphics[i] != null) graphics[i].color = baseColors[i];
             }
-            if (_equipActionSurface != null)
+        }
+
+        private static void SetIconColor(ItemCard card, int iconSet, Color color)
+        {
+            Image[] graphics = card.IconGraphics[iconSet];
+            if (graphics == null) return;
+            for (int i = 0; i < graphics.Length; i++)
             {
-                _equipActionSurface.color = !unlocked ? UiChrome.CardSurfaceMuted
-                    : equipped ? UiChrome.CardSurface : UiChrome.AccentSurface;
+                if (graphics[i] != null) graphics[i].color = color;
             }
-            if (_equipActionOutline != null)
+        }
+
+        /// <summary>선택 상세 패널(33-7-4). <b>잠긴 아이템도 선택은 된다</b> — 왜 잠겼는지 알 수 있는
+        /// 유일한 경로이기 때문이다. 버튼 클릭만 무시한다.</summary>
+        private void RefreshDetail()
+        {
+            if (_tab == Tab.Inventory) return;
+            ItemCatalogEntry entry = ItemCatalog.Item(_selectedSlot, _selectedItem);
+            if (entry == null) return;
+
+            bool owned = entry.IsOwned(_config);
+            bool worn = entry.IsEquipped();
+
+            if (_detailName != null)
             {
-                _equipActionOutline.color = unlocked && !equipped ? UiChrome.AccentBorder : UiChrome.CardBorder;
+                _detailName.text = owned ? entry.DisplayName : "???";
+                _detailName.color = owned ? UiChrome.TextPrimary : UiChrome.TextDisabled;
+            }
+            if (_detailMeta != null)
+            {
+                _detailMeta.text = !owned
+                    ? $"{entry.CategoryLabel}  ·  Lv.{entry.RequiredLevel}에 열림"
+                    : $"{entry.CategoryLabel}  ·  {(worn ? "착용 중" : "보유 중")}";
+            }
+            if (_detailBody != null)
+            {
+                _detailBody.text = owned
+                    ? entry.Description
+                    : $"레벨 {entry.RequiredLevel}이 되면 열립니다. 지금은 실루엣만 보입니다.";
+                _detailBody.color = owned ? UiChrome.TextSecondary : UiChrome.TextDisabled;
+            }
+
+            if (_actionLabel != null) _actionLabel.text = !owned ? "잠김" : worn ? "해제" : "착용";
+            if (_actionSurface != null)
+            {
+                _actionSurface.color = !owned ? UiChrome.CardSurfaceMuted
+                    : worn ? UiChrome.CardSurface : UiChrome.TextPrimary;
+            }
+            if (_actionOutline != null) _actionOutline.color = owned ? UiChrome.TextPrimary : UiChrome.CardBorder;
+            if (_actionLabel != null)
+            {
+                _actionLabel.color = !owned ? UiChrome.TextDisabled
+                    : worn ? UiChrome.TextPrimary : UiChrome.OnAccentSolid;
             }
         }
 
         // ==================== 보관함(가상 목록) ====================
 
-        /// <summary>목록의 논리적 줄 수 = 헤더 2줄 + 카탈로그 전체.</summary>
+        /// <summary>목록의 논리적 줄 수 = 헤더 2줄 + 카탈로그 전체(장비 32 + 행동 13).</summary>
         private static int InventoryLineCount => ItemCatalog.Count + 2;
 
         /// <summary>논리적 줄 번호 -> 카탈로그 인덱스. 헤더면 -1.
-        /// 순서: [걸치는 것] 헤더 → 장비 4종(해제 레벨 순) → [할 줄 아는 것] 헤더 → 행동 13종.
+        /// 순서: [걸치는 것] 헤더 → 장비 32종 → [할 줄 아는 것] 헤더 → 행동 13종.
         /// 카탈로그가 이미 그 순서로 정의되어 있어 재정렬하지 않는다(정렬 규칙이 두 곳에 생기지 않게).</summary>
         private static int CatalogIndexForLine(int line)
         {
@@ -553,7 +790,7 @@ namespace StickMate.Interaction
         {
             if (line == 0)
             {
-                return $"걸치는 것  ({ItemCatalog.UnlockedEquipmentCount(_config)}/{ItemCatalog.EquipmentCount})";
+                return $"걸치는 것  ({ItemCatalog.UnlockedEquipmentCount(_config)} / {ItemCatalog.EquipmentCount})";
             }
             return $"할 줄 아는 것  ({ItemCatalog.ActionCount})";
         }
@@ -583,9 +820,9 @@ namespace StickMate.Interaction
                 if (catalogIndex < 0)
                 {
                     // 헤더 줄 — 표면을 지우고 제목만 남긴다.
-                    view.Surface.color = new Color(0f, 0f, 0f, 0f);
-                    view.Outline.color = new Color(0f, 0f, 0f, 0f);
-                    view.Dot.color = new Color(0f, 0f, 0f, 0f);
+                    view.Surface.color = Color.clear;
+                    view.Outline.color = Color.clear;
+                    view.Dot.color = Color.clear;
                     view.Title.text = string.Empty;
                     view.Subtitle.text = string.Empty;
                     view.Description.text = string.Empty;
@@ -599,23 +836,27 @@ namespace StickMate.Interaction
 
                 bool owned = entry.IsOwned(_config);
                 bool selected = catalogIndex == _selectedInventoryIndex;
-                bool equipped = entry.IsEquipped();
+                bool worn = entry.IsEquipped();
 
                 view.HeaderText.text = string.Empty;
-                view.Title.text = entry.DisplayName;
+                view.Title.text = owned ? entry.DisplayName : "???";
                 view.Subtitle.text = entry.CategoryLabel;
-                view.Description.text = Ellipsize(entry.ShortDescription, InventoryDescriptionChars);
+                view.Description.text = owned ? Ellipsize(entry.ShortDescription, InventoryDescriptionChars) : string.Empty;
                 view.StatusSlot.text = entry.ResolveStatusSlot(_config);
 
-                view.Surface.color = selected ? UiChrome.AccentSurface
+                view.Surface.color = selected ? UiChrome.CardSurface
                     : owned ? UiChrome.CardSurface : UiChrome.CardSurfaceMuted;
-                view.Outline.color = selected ? UiChrome.AccentBorder : UiChrome.CardBorder;
-                view.Dot.color = equipped ? UiChrome.Accent : owned ? UiChrome.TextTertiary : UiChrome.TrackBackground;
-                view.Title.color = owned ? UiChrome.TextPrimary : UiChrome.TextTertiary;
-                view.Subtitle.color = UiChrome.TextTertiary;
-                view.Description.color = owned ? UiChrome.TextSecondary : UiChrome.TextTertiary;
-                view.StatusSlot.color = equipped ? UiChrome.TextOnAccent
-                    : owned ? UiChrome.TextSecondary : UiChrome.TextTertiary;
+                view.Outline.color = selected ? UiChrome.TextPrimary
+                    : worn ? UiChrome.CardBorderWorn : UiChrome.CardBorder;
+                view.Dot.color = entry.Slot.HasValue
+                    ? (worn ? UiChrome.CategoryTint(entry.Slot.Value)
+                            : owned ? UiChrome.TextQuaternary : UiChrome.TrackBackground)
+                    : UiChrome.TextQuaternary;
+                view.Title.color = owned ? UiChrome.TextPrimary : UiChrome.TextDisabled;
+                view.Subtitle.color = UiChrome.TextQuaternary;
+                view.Description.color = owned ? UiChrome.TextSecondary : UiChrome.TextDisabled;
+                view.StatusSlot.color = worn && entry.Slot.HasValue ? UiChrome.CategoryTint(entry.Slot.Value)
+                    : owned ? UiChrome.TextTertiary : UiChrome.TextDisabled;
             }
 
             if (_pageIndicator != null)
@@ -631,8 +872,8 @@ namespace StickMate.Interaction
         }
 
         /// <summary>목록 한 줄에 들어갈 길이로 자른다. 자동 줄바꿈에 맡기면 두 번째 줄이 행 높이에
-        /// 걸려 <b>반쯤 잘린 글자</b>가 남는다(첫 육안 검증에서 실제로 그랬다) — 잘렸다는 사실을
-        /// 말줄임표로 <b>드러내는</b> 편이 정직하고 깔끔하다. 전문은 아래 상세 카드가 보여준다.</summary>
+        /// 걸려 <b>반쯤 잘린 글자</b>가 남는다 — 잘렸다는 사실을 말줄임표로 <b>드러내는</b> 편이
+        /// 정직하고 깔끔하다. 전문은 아래 상세 카드가 보여준다.</summary>
         private static string Ellipsize(string text, int maxChars)
         {
             if (string.IsNullOrEmpty(text) || text.Length <= maxChars) return text;
@@ -643,13 +884,20 @@ namespace StickMate.Interaction
         {
             ItemCatalogEntry entry = ItemCatalog.At(_selectedInventoryIndex);
             if (entry == null) return;
+            bool owned = entry.IsOwned(_config);
 
             if (_inventoryDetailName != null)
             {
-                _inventoryDetailName.text =
-                    $"{entry.DisplayName}   ·   {entry.CategoryLabel}   ·   {entry.ResolveStatusSlot(_config)}";
+                _inventoryDetailName.text = owned
+                    ? $"{entry.DisplayName}   ·   {entry.CategoryLabel}   ·   {entry.ResolveStatusSlot(_config)}"
+                    : $"???   ·   {entry.CategoryLabel}   ·   {entry.ResolveStatusSlot(_config)}";
             }
-            if (_inventoryDetailBody != null) _inventoryDetailBody.text = entry.Description;
+            if (_inventoryDetailBody != null)
+            {
+                _inventoryDetailBody.text = owned
+                    ? entry.Description
+                    : $"레벨 {entry.RequiredLevel}이 되면 열립니다. 지금은 실루엣만 보입니다.";
+            }
         }
 
         private void ScrollInventory(int delta)
@@ -660,25 +908,16 @@ namespace StickMate.Interaction
             RefreshInventoryList();
         }
 
-        private void RefreshAppearance()
+        private void RefreshInkSwatches()
         {
             bool white = _config != null && _config.inkColor == StickmanInkColor.White;
-            for (int i = 0; i < _inkSurfaces.Length; i++)
+            for (int i = 0; i < _inkRings.Length; i++)
             {
                 bool active = (i == 1) == white;
-                if (_inkSurfaces[i] != null) _inkSurfaces[i].color = active ? UiChrome.AccentSurface : UiChrome.CardSurface;
-                if (_inkOutlines[i] != null) _inkOutlines[i].color = active ? UiChrome.AccentBorder : UiChrome.CardBorder;
-                if (_inkLabels[i] != null)
+                if (_inkRings[i] != null)
                 {
-                    _inkLabels[i].fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
-                    _inkLabels[i].color = active ? UiChrome.TextOnAccent : UiChrome.TextSecondary;
+                    _inkRings[i].color = active ? UiChrome.TextPrimary : UiChrome.PanelBorder;
                 }
-            }
-
-            if (_scaleValue != null)
-            {
-                float scale = _config != null ? _config.ResolveCharacterScale() : 1f;
-                _scaleValue.text = $"{scale:F2} 배";
             }
         }
 
@@ -694,52 +933,81 @@ namespace StickMate.Interaction
         {
             if (_tab == tab) return;
             _tab = tab;
+            EndNameEdit(commit: true);
+
+            // 선택이 이 탭에 없는 카테고리를 가리키고 있으면 첫 카테고리로 옮긴다 — 그러지 않으면
+            // [외형] 탭에서 [장비] 아이템의 설명이 보인다(화면과 상세가 다른 말을 하는 상태).
+            if (tab != Tab.Inventory)
+            {
+                bool wantAppearance = tab == Tab.Appearance;
+                if (EquipmentModel.IsAppearanceSlot(_selectedSlot) != wantAppearance)
+                {
+                    _selectedSlot = SectionSlot(tab, 0);
+                    _selectedItem = 0;
+                }
+                RefreshCards();
+                RefreshDetail();
+            }
+
             ApplyTabVisibility();
             Debug.Log($"[정보창] 탭 전환 -> [{TabNames[(int)tab]}].");
         }
 
         private void ApplyTabVisibility()
         {
-            for (int i = 0; i < _pages.Length; i++)
-            {
-                if (_pages[i] != null) _pages[i].SetActive(i == (int)_tab);
-            }
-            for (int i = 0; i < _tabLabels.Length; i++)
+            bool sections = _tab != Tab.Inventory;
+            if (_sectionPage != null) _sectionPage.SetActive(sections);
+            if (_inventoryPage != null) _inventoryPage.SetActive(!sections);
+
+            for (int i = 0; i < TabCount; i++)
             {
                 bool active = i == (int)_tab;
-                if (_tabChips[i] != null) _tabChips[i].color = active ? UiChrome.CardSurface : new Color(1f, 1f, 1f, 0f);
-                if (_tabLabels[i] == null) continue;
-                _tabLabels[i].fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
-                _tabLabels[i].color = active ? UiChrome.TextPrimary : UiChrome.TextSecondary;
+                if (_tabLabels[i] != null)
+                {
+                    _tabLabels[i].fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
+                    _tabLabels[i].color = active ? UiChrome.TextPrimary : UiChrome.TabInactive;
+                }
+                if (_tabUnderlines[i] != null)
+                {
+                    _tabUnderlines[i].color = active ? UiChrome.TextPrimary : Color.clear;
+                }
             }
         }
 
-        /// <summary>슬롯 카드 클릭 = <b>선택</b>. 착용/해제는 설명 카드의 버튼 하나로만 한다 —
-        /// "고른다"와 "입는다"를 같은 클릭에 겹치면, 설명을 읽으려고 눌렀을 뿐인데 옷이 벗겨진다.</summary>
-        private void OnEquipCardClicked(EquipmentSlot slot)
+        /// <summary>카드 클릭 = <b>선택</b>. 착용/해제는 상세 패널의 버튼 하나로만 한다 —
+        /// "고른다"와 "입는다"를 같은 클릭에 겹치면, 설명을 읽으려고 눌렀을 뿐인데 옷이 갈아입혀진다.</summary>
+        private void OnCardClicked(int cardIndex)
         {
-            if (_selectedSlot == slot) return;
+            EquipmentSlot slot = SectionSlot(_tab, cardIndex / CardsPerSection);
+            int item = cardIndex % CardsPerSection;
+            if (_selectedSlot == slot && _selectedItem == item) return;
+
             _selectedSlot = slot;
-            RefreshEquipmentCards();
-            Debug.Log($"[장비] 선택 -> {EquipmentModel.ItemName(slot)}({EquipmentModel.SlotName(slot)}).");
+            _selectedItem = item;
+            RefreshCards();
+            RefreshDetail();
+            Debug.Log($"[{TabNames[(int)_tab]}] 선택 -> {EquipmentModel.ItemName(slot, item)}({EquipmentModel.SlotName(slot)}).");
         }
 
-        private void OnEquipActionClicked()
+        private void OnActionClicked()
         {
-            bool unlocked = EquipmentModel.IsUnlocked(_selectedSlot, _config);
-            if (!unlocked)
+            ItemCatalogEntry entry = ItemCatalog.Item(_selectedSlot, _selectedItem);
+            if (entry == null) return;
+
+            if (!entry.IsOwned(_config))
             {
-                Debug.Log($"[장비] {EquipmentModel.ItemName(_selectedSlot)}은(는) 아직 잠겨 있습니다 — " +
-                    $"Lv.{EquipmentModel.UnlockLevel(_selectedSlot, _config)}에서 해제됩니다" +
-                    $"(현재 Lv.{CharacterProgressionModel.Level}).");
+                // 33-7-4: 잠긴 항목은 버튼 클릭만 무시한다(선택은 되고 설명도 보인다).
+                Debug.Log($"[{TabNames[(int)_tab]}] {entry.DisplayName}은(는) 아직 잠겨 있습니다 — " +
+                    $"Lv.{entry.RequiredLevel}에서 열립니다(현재 Lv.{CharacterProgressionModel.Level}).");
                 return;
             }
 
-            if (!EquipmentModel.TryToggle(_selectedSlot, _config)) return;
-            Debug.Log($"[장비] {EquipmentModel.ItemName(_selectedSlot)} " +
-                $"{(EquipmentModel.IsEquipped(_selectedSlot) ? "착용" : "해제")} — 초상화와 캐릭터에 즉시 반영, 즉시 저장.");
+            if (!EquipmentModel.ToggleItem(_selectedSlot, _selectedItem, _config)) return;
+            Debug.Log($"[{TabNames[(int)_tab]}] {entry.DisplayName} " +
+                $"{(entry.IsEquipped() ? "착용" : "해제")} — 초상화와 캐릭터에 즉시 반영, 즉시 저장.");
             CharacterSaveStore.Save(); // "모든 토글은 즉시 반영(별도 저장 버튼 없음)".
-            RefreshEquipmentCards();
+            RefreshCards();
+            RefreshDetail();
             RefreshInventoryList();
         }
 
@@ -752,11 +1020,11 @@ namespace StickMate.Interaction
             if (entry != null) Debug.Log($"[보관함] 선택 -> {entry.DisplayName}({entry.CategoryLabel}).");
         }
 
-        /// <summary>잉크색 전환 — 우클릭 메뉴 [잉크색]과 <b>같은 경로</b>를 쓴다
-        /// (AppControlDirector.MenuAction.InkColor: config 값 변경 + StickmanAgent에 일괄 적용).
-        /// 액세서리 선은 CharacterAccessoryRenderer가 색을 서명에 넣어 다음 프레임에 따라오고,
-        /// 초상화는 촬영장이 배경색과 선 색을 함께 뒤집는다.</summary>
-        private void OnInkButtonClicked(bool white)
+        /// <summary>잉크색 전환 — 우클릭 메뉴 [잉크색] / 단축키 ⌃⌥⌘C와 <b>같은 경로</b>를 쓴다.
+        /// 33-7-8에서 [외형] 탭이 카테고리로 꽉 차면서 이 버튼이 갈 곳을 잃었고, 없애면
+        /// 잉크색 전환의 <b>유일한 GUI 경로</b>가 사라지므로(남는 건 단축키뿐 = 발견 불가능)
+        /// 좌측 이름 블록으로 옮겼다 — 리더 승인 사항.</summary>
+        private void OnInkSwatchClicked(bool white)
         {
             if (_config == null) return;
             StickmanInkColor next = white ? StickmanInkColor.White : StickmanInkColor.Black;
@@ -764,7 +1032,7 @@ namespace StickMate.Interaction
 
             _config.inkColor = next;
             if (_agent != null) _agent.ApplyInkColorFromConfig();
-            RefreshAppearance();
+            RefreshInkSwatches();
             ApplyPortraitTheme();
             Debug.Log($"[정보창] 잉크색 전환 -> {next} (초상화/캐릭터/액세서리에 즉시 반영).");
         }
@@ -773,6 +1041,9 @@ namespace StickMate.Interaction
         {
             if (_stage != null) _stage.RefreshTheme();
             bool whiteInk = _config != null && _config.inkColor == StickmanInkColor.White;
+            // 액자 바탕은 촬영장의 배경색과 <b>같은 값</b>이어야 한다 — 다르면 8pt 테두리 여백에서
+            // 색이 갈라진 이음매가 보인다. 그래서 33-1의 PortraitSurface를 직접 쓰지 않고 촬영장의
+            // 판단을 그대로 따른다(색 결정이 두 곳으로 흩어지지 않게).
             if (_portraitFrame != null) _portraitFrame.color = CharacterPortraitStage.ResolveBackdropColor(_config);
             if (_portraitBorder != null)
             {
@@ -780,47 +1051,206 @@ namespace StickMate.Interaction
             }
         }
 
-        private void SyncNameInputFromModel()
+        // ==================== 이름 인라인 편집 (33-7-8, 리더 승인) ====================
+
+        private void BeginNameEdit()
         {
-            if (_nameInput == null) return;
-            if (_nameInput.text != CharacterProgressionModel.CharacterName)
-            {
-                _nameInput.text = CharacterProgressionModel.CharacterName;
-            }
+            if (_editingName || _nameInput == null) return;
+            _editingName = true;
+            _nameTitle.gameObject.SetActive(false);
+            _nameInputRect.gameObject.SetActive(true);
+            _nameInput.text = CharacterProgressionModel.CharacterName;
+            if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(_nameInput.gameObject);
+            _nameInput.ActivateInputField();
+            Debug.Log("[정보창] 이름 편집 시작 — 그 자리에서 고치고 Enter(또는 창 닫기)로 확정됩니다.");
         }
 
-        private void CommitNameInput()
+        private void EndNameEdit(bool commit)
         {
             if (_nameInput == null) return;
-            if (_nameInput.text == CharacterProgressionModel.CharacterName) return;
-            CharacterProgressionModel.SetCharacterName(_nameInput.text);
-            SyncNameInputFromModel();
-            CharacterSaveStore.Save();
-            Debug.Log($"[정보창] 이름 변경 -> \"{CharacterProgressionModel.CharacterName}\".");
+            if (commit && _editingName && _nameInput.text != CharacterProgressionModel.CharacterName)
+            {
+                CharacterProgressionModel.SetCharacterName(_nameInput.text);
+                CharacterSaveStore.Save();
+                Debug.Log($"[정보창] 이름 변경 -> \"{CharacterProgressionModel.CharacterName}\".");
+            }
+            _editingName = false;
+            if (_nameInputRect != null) _nameInputRect.gameObject.SetActive(false);
+            if (_nameTitle != null)
+            {
+                _nameTitle.gameObject.SetActive(true);
+                _nameTitle.text = CharacterProgressionModel.CharacterName;
+            }
         }
 
         // ==================== 클릭 경로 3: 전역 폴링 ====================
 
-        private void TickGlobalClickPolling()
+        private void TickGlobalPointer()
         {
             if (_buttonService == null || _panel == null) return;
 
-            _clickPollTimer += Time.unscaledDeltaTime;
-            if (_clickPollTimer < ClickPollInterval) return;
-            _clickPollTimer = 0f;
+            // 드래그 중에만 폴링 간격을 없앤다 — 20Hz로 창을 끌면 커서에서 창이 뚝뚝 끊겨 떨어진다.
+            // 평소에는 예전 그대로 ClickPollInterval(0.05초)로 눌러 둔다(하루 종일 켜져 있는 앱이다).
+            if (!_draggingPanel)
+            {
+                _clickPollTimer += Time.unscaledDeltaTime;
+                if (_clickPollTimer < ClickPollInterval) return;
+                _clickPollTimer = 0f;
+            }
+
+            Vector2 osScreen = Vector2.zero;
+            bool hasCursor = _agent != null && _agent.TryGetCursorPosition(out osScreen);
+            Vector2 cursor = hasCursor
+                ? ScreenCoordinateConverter.OsScreenToUnityScreen(osScreen, _config)
+                : Vector2.zero;
+            if (hasCursor && !_draggingPanel) UpdateHover(cursor);   // 끄는 중에는 카드를 다시 칠하지 않는다.
 
             if (!_buttonService.TryGetPrimaryButtonPressed(out bool left)) return;
-            if (!_leftInitialized) { _leftInitialized = true; _leftPrev = left; return; }
-            bool rising = left && !_leftPrev;
-            _leftPrev = left;
-            if (!rising) return;
+            ProcessPointer(left, cursor, hasCursor);
+        }
 
-            if (_agent == null || !_agent.TryGetCursorPosition(out Vector2 osScreen)) return;
-            Vector2 cursor = ScreenCoordinateConverter.OsScreenToUnityScreen(osScreen, _config);
+        /// <summary>
+        /// 실제 입력과 테스트가 <b>공유하는</b> 포인터 처리(InfoGearIconWidget.ProcessPointer와 같은 관례).
+        /// 누름 = 타이틀바 드래그 시작 또는 클릭 처리, 누른 채 이동 = 창 이동, 뗌 = 드래그 종료.
+        /// </summary>
+        private void ProcessPointer(bool buttonDown, Vector2 cursor, bool hasCursor)
+        {
+            bool prev = _leftPrev;
+            if (!_leftInitialized)
+            {
+                // 창을 여는 그 클릭이 곧바로 카드 클릭/드래그로 오인되지 않게 첫 표본은 버린다.
+                _leftInitialized = true;
+                _leftPrev = buttonDown;
+                return;
+            }
+            _leftPrev = buttonDown;
 
+            if (buttonDown && !prev)
+            {
+                if (!hasCursor) return;
+                if (TryBeginPanelDrag(cursor)) return;   // 타이틀바를 잡았으면 클릭 처리로 넘기지 않는다.
+                FeedClick(cursor);
+                return;
+            }
+            if (buttonDown && _draggingPanel)
+            {
+                if (hasCursor) DragPanelTo(cursor);
+                return;
+            }
+            if (!buttonDown && prev) EndPanelDrag();
+        }
+
+        // ==================== 타이틀바 드래그 (2026-08-30 — 33-7-7 결정의 일부 번복) ====================
+        //
+        // 33-7-7/34-7은 "화면 중앙 고정 모달"로 확정했고 드래그 코드는 처음부터 <b>없었다</b>(버그가
+        // 아니라 미구현이었다). 사용자가 "끌면 옮겨져야 하는데 고정돼 있다"고 해서 리더가 뒤집었다 —
+        // <b>열릴 때는 여전히 화면 중앙</b>에서 시작하고, 타이틀바를 잡은 동안만 옮길 수 있다.
+        // 옮긴 자리는 기억하지 않는다(다음에 열면 다시 중앙 — "열면 중앙" 규칙을 그대로 지킨다).
+        // 클릭 경로가 전역 폴링인 것과 같은 이유로 드래그도 전역 폴링을 쓴다(uGUI 이벤트는 앱이
+        // 활성화된 뒤에만 도착한다 — 이 앱은 그 전제를 둘 수 없다).
+
+        private bool TryBeginPanelDrag(Vector2 cursor)
+        {
+            if (_titleBarRect == null || _panel == null) return false;
+            if (!RectContainsScreenPoint(_titleBarRect, cursor)) return false;
+            if (RectContainsScreenPoint(_closeRect, cursor)) return false;   // [✕]는 버튼이지 손잡이가 아니다.
+
+            // 잡은 지점과 창 중심의 차이를 기억한다 — 드래그가 시작될 때 창이 커서로 순간이동하지 않게.
+            _dragGrabOffsetPoints = _panel.anchoredPosition - ScreenToPanelPoints(cursor, CanvasScale());
+            _dragStartOffsetPoints = _panel.anchoredPosition;
+            _draggingPanel = true;
+            return true;
+        }
+
+        private void DragPanelTo(Vector2 cursor)
+        {
+            if (_panel == null) return;
+            float sf = CanvasScale();
+            _panel.anchoredPosition = ClampPanelPosition(ScreenToPanelPoints(cursor, sf) + _dragGrabOffsetPoints, sf);
+        }
+
+        private void EndPanelDrag()
+        {
+            if (!_draggingPanel) return;
+            _draggingPanel = false;
+            Vector2 p = _panel != null ? _panel.anchoredPosition : Vector2.zero;
+            if ((p - _dragStartOffsetPoints).sqrMagnitude < 0.25f) return;   // 제자리 클릭은 이동이 아니다.
+            Debug.Log($"[정보창] 이동 완료 — 화면 중앙에서 ({p.x:F0}, {p.y:F0})pt 옮긴 자리입니다. " +
+                "다시 열면 중앙에서 시작합니다.");
+        }
+
+        /// <summary>화면 중앙을 원점으로 하는 캔버스 좌표(패널 anchoredPosition과 <b>같은 계</b>).</summary>
+        private static Vector2 ScreenToPanelPoints(Vector2 cursorUnityScreen, float scaleFactor)
+            => new Vector2((cursorUnityScreen.x - Screen.width * 0.5f) / scaleFactor,
+                           (cursorUnityScreen.y - Screen.height * 0.5f) / scaleFactor);
+
+        private float CanvasScale()
+        {
+            float sf = _scaler != null ? _scaler.scaleFactor : 1f;
+            return sf > 0f ? sf : 1f;
+        }
+
+        private void ResetPanelToCenter()
+        {
+            _draggingPanel = false;
+            if (_panel != null) _panel.anchoredPosition = Vector2.zero;
+        }
+
+        /// <summary>
+        /// 테스트 전용 진입점 — 실제 입력과 <b>같은 처리 경로</b>에 커서를 먹인다(PlayMode는 진짜
+        /// 전역 클릭을 만들 수 없다 — PopoverPanel.FeedClickForTests와 같은 사정).
+        /// </summary>
+        public void FeedClickForTests(Vector2 cursorUnityScreen)
+        {
+            if (_open) FeedClick(cursorUnityScreen);
+        }
+
+        /// <summary>테스트 전용 — 버튼 상태와 커서를 <b>실제 입력과 같은 처리 경로</b>에 먹인다
+        /// (드래그는 누름/이동/뗌의 연속이라 단발 클릭 진입점으로는 재현할 수 없다).</summary>
+        public void FeedPointerForTests(bool buttonDown, Vector2 cursorUnityScreen)
+        {
+            if (_open) ProcessPointer(buttonDown, cursorUnityScreen, hasCursor: true);
+        }
+
+        /// <summary>진단/테스트 전용 — 창의 현재 위치(화면 중앙 원점, 캔버스 포인트).</summary>
+        public Vector2 PanelOffsetPoints => _panel != null ? _panel.anchoredPosition : Vector2.zero;
+
+        /// <summary>진단/테스트 전용 — 창의 현재 크기(캔버스 포인트).</summary>
+        public Vector2 PanelSizePoints => _panel != null ? _panel.sizeDelta : Vector2.zero;
+
+        /// <summary>진단/테스트 전용 — 지금 타이틀바를 잡고 끌고 있는가.</summary>
+        public bool IsDraggingPanel => _draggingPanel;
+
+        /// <summary>진단/테스트 전용 — 드래그 손잡이(타이틀바)의 화면 사각형.</summary>
+        public Rect TitleBarScreenRect => RawScreenRectOf(_titleBarRect);
+
+        /// <summary>진단/테스트 전용 — 창 전체의 화면 사각형("화면 안에 들어왔는가"를 재는 창구).</summary>
+        public Rect PanelScreenRect => RawScreenRectOf(_panel);
+
+        private static Rect RawScreenRectOf(RectTransform rt)
+        {
+            if (rt == null || !rt.gameObject.activeInHierarchy) return new Rect();
+            rt.GetWorldCorners(_corners);
+            return Rect.MinMaxRect(_corners[0].x, _corners[0].y, _corners[2].x, _corners[2].y);
+        }
+
+        private void FeedClick(Vector2 cursor)
+        {
             if (ContainsScreenPoint(_closeRect, cursor))
             {
-                if (TryClaimAction("close")) Close("[X] 클릭");
+                if (TryClaimAction("close")) Close("[✕] 클릭");
+                return;
+            }
+
+            if (ContainsScreenPoint(_nameRect, cursor) && !_editingName)
+            {
+                if (TryClaimAction("nameEdit")) BeginNameEdit();
+                return;
+            }
+            for (int i = 0; i < _inkRects.Length; i++)
+            {
+                if (!ContainsScreenPoint(_inkRects[i], cursor)) continue;
+                if (TryClaimAction("ink" + i)) OnInkSwatchClicked(i == 1);
                 return;
             }
 
@@ -831,52 +1261,100 @@ namespace StickMate.Interaction
                 return;
             }
 
-            switch (_tab)
+            if (_tab == Tab.Inventory)
             {
-                case Tab.Equipment:
-                    for (int i = 0; i < _equipCards.Length; i++)
-                    {
-                        EquipCard card = _equipCards[i];
-                        if (card == null || !ContainsScreenPoint(card.Rect, cursor)) continue;
-                        if (TryClaimAction("equip" + i)) OnEquipCardClicked(card.Slot);
-                        return;
-                    }
-                    if (ContainsScreenPoint(_equipActionRect, cursor))
-                    {
-                        if (TryClaimAction("equipAction")) OnEquipActionClicked();
-                    }
+                if (ContainsScreenPoint(_pageUpRect, cursor))
+                {
+                    if (TryClaimAction("pageUp")) ScrollInventory(-1);
                     return;
-
-                case Tab.Appearance:
-                    for (int i = 0; i < _inkRects.Length; i++)
-                    {
-                        if (!ContainsScreenPoint(_inkRects[i], cursor)) continue;
-                        if (TryClaimAction("ink" + i)) OnInkButtonClicked(i == 1);
-                        return;
-                    }
+                }
+                if (ContainsScreenPoint(_pageDownRect, cursor))
+                {
+                    if (TryClaimAction("pageDown")) ScrollInventory(1);
                     return;
-
-                case Tab.Inventory:
-                    if (ContainsScreenPoint(_pageUpRect, cursor))
-                    {
-                        if (TryClaimAction("pageUp")) ScrollInventory(-1);
-                        return;
-                    }
-                    if (ContainsScreenPoint(_pageDownRect, cursor))
-                    {
-                        if (TryClaimAction("pageDown")) ScrollInventory(1);
-                        return;
-                    }
-                    for (int i = 0; i < _inventoryViews.Length; i++)
-                    {
-                        InventoryRowView view = _inventoryViews[i];
-                        if (view == null || view.BoundCatalogIndex < 0) continue;
-                        if (!ContainsScreenPoint(view.Rect, cursor)) continue;
-                        if (TryClaimAction("inv" + i)) OnInventoryRowClicked(view.BoundCatalogIndex);
-                        return;
-                    }
+                }
+                for (int i = 0; i < _inventoryViews.Length; i++)
+                {
+                    InventoryRowView view = _inventoryViews[i];
+                    if (view == null || view.BoundCatalogIndex < 0) continue;
+                    if (!ContainsScreenPoint(view.Rect, cursor)) continue;
+                    if (TryClaimAction("inv" + i)) OnInventoryRowClicked(view.BoundCatalogIndex);
                     return;
+                }
+                return;
             }
+
+            for (int i = 0; i < _cards.Length; i++)
+            {
+                ItemCard card = _cards[i];
+                if (card == null || !ContainsScreenPoint(card.Rect, cursor)) continue;
+                if (TryClaimAction("card" + i)) OnCardClicked(i);
+                return;
+            }
+            if (ContainsScreenPoint(_actionRect, cursor))
+            {
+                if (TryClaimAction("action")) OnActionClicked();
+                return;
+            }
+
+            // ★ 33-7-9의 세 번째 탈출구 — <b>창 밖 클릭</b>(2026-08-30 신설). 여기까지 왔다는 것은 어떤
+            // 컨트롤에도 맞지 않았다는 뜻이라, 패널 안이면 "빈 자리"고 밖이면 닫는다. 이게 없어서 실제
+            // 탈출구가 [✕] 하나뿐이었다(ESC는 클릭관통 긴급 해제에 선점 — 클래스 문서 참고).
+            if (RectContainsScreenPoint(_panel, cursor)) return;
+
+            // 톱니/부채꼴은 예외다. 그쪽도 같은 클릭에 반응하므로(톱니는 뗀 순간 창을 닫는다) 여기서
+            // 먼저 닫으면 한 번의 클릭이 두 번 처리된다.
+            if (IsOnGearSurface(cursor)) return;
+            if (TryClaimAction("outside")) Close("창 밖 클릭");
+        }
+
+        /// <summary>커서가 톱니 아이콘이나 펼쳐진 부채꼴 위인가 — "창 밖 클릭"의 유일한 예외.
+        /// 배타 규칙(<see cref="CloseOverlappingSurfaces"/>) 덕에 부채꼴이 이 창과 함께 떠 있을 일은
+        /// 없지만, 톱니는 창이 열려 있는 동안에도 항상 화면에 있다.</summary>
+        private bool IsOnGearSurface(Vector2 cursor)
+        {
+            if (_gear == null) _gear = GetComponent<InfoGearIconWidget>();
+            if (_gear != null && _gear.IsIconVisible && _gear.InteractiveScreenRect.Contains(cursor)) return true;
+            if (_menu == null) _menu = GetComponent<GearRadialMenuWidget>();
+            return _menu != null && _menu.ContainsCursor(cursor);
+        }
+
+        /// <summary>
+        /// 카드 hover(33-7-3). <b>있으면 좋은 것이지 필수가 아니다</b> — 이 앱의 uGUI 입력은 창을 클릭해
+        /// 앱이 활성화된 뒤에만 정상 도착하고, 전역 커서 조회도 플랫폼에 따라 없을 수 있다.
+        /// hover가 한 프레임도 오지 않아도 선택/착용은 클릭만으로 온전히 동작한다.
+        /// 바뀐 프레임에만 테두리 두 장을 다시 칠한다(문자열/할당 없음).
+        /// </summary>
+        private void UpdateHover(Vector2 cursor)
+        {
+            // 목록 탭에는 카드가 없다. 남아 있던 hover는 지우기만 하면 된다 — 카드가 숨겨져 있어
+            // 다시 칠할 필요가 없고, 탭을 되돌아오면 RefreshCards가 -1 상태로 전부 다시 칠한다.
+            if (_tab == Tab.Inventory)
+            {
+                _hoveredCard = -1;
+                return;
+            }
+
+            int found = -1;
+            for (int i = 0; i < _cards.Length; i++)
+            {
+                if (_cards[i] == null || !ContainsScreenPoint(_cards[i].Rect, cursor)) continue;
+                found = i;
+                break;
+            }
+            if (found == _hoveredCard) return;
+
+            int previous = _hoveredCard;
+            _hoveredCard = found;
+            RestyleCard(previous);
+            RestyleCard(found);
+        }
+
+        private void RestyleCard(int index)
+        {
+            if (index < 0 || index >= _cards.Length || _cards[index] == null) return;
+            EquipmentSlot slot = SectionSlot(_tab, index / CardsPerSection);
+            ApplyCardStyle(_cards[index], slot, index % CardsPerSection, IconSetForTab(_tab));
         }
 
         private bool TryClaimAction(string key)
@@ -887,16 +1365,106 @@ namespace StickMate.Interaction
             return true;
         }
 
-        /// <summary>ScreenSpaceOverlay 캔버스에서는 RectTransform의 월드 좌표가 곧 스크린 픽셀 좌표다
-        /// (AppControlDirector.HitTestMenuRow / TodoPostItWidget과 같은 전제).</summary>
-        private static bool ContainsScreenPoint(RectTransform rt, Vector2 screenPoint)
+        /// <summary>
+        /// ScreenSpaceOverlay 캔버스에서는 RectTransform의 월드 좌표가 곧 스크린 픽셀 좌표다
+        /// (AppControlDirector.HitTestMenuRow / TodoPostItWidget과 같은 전제).
+        ///
+        /// ★ 2026-08-30(R2 M3): <b>마스크에 잘린 자리는 눌리지 않는다.</b> 세로가 짧은 화면에서
+        /// <see cref="ClampPanelToScreen"/>이 패널을 줄이면 본문 아래쪽([착용] 버튼 포함)이
+        /// <see cref="RectMask2D"/>에 잘려 <b>화면에서 사라진다</b>. 그런데 이 전역 폴링 경로는
+        /// 마스크를 모르는 순수 사각형 판정이라, 예전에는 보이지도 않는 버튼이 그대로 눌렸다 —
+        /// 이 프로젝트가 "최악의 형태"라고 부르는 패턴이다(안 보이는데 클릭은 먹는 UI).
+        /// uGUI 배선 쪽은 <see cref="RectMask2D"/>가 <c>ICanvasRaycastFilter</c>라 원래부터 막혀 있었고,
+        /// 이 함수만 빠져 있었다. 부분적으로 잘린 컨트롤은 <b>보이는 부분만</b> 계속 눌린다.
+        /// </summary>
+        private bool ContainsScreenPoint(RectTransform rt, Vector2 screenPoint)
+        {
+            if (!RectContainsScreenPoint(rt, screenPoint)) return false;
+            return IsUnclipped(rt, screenPoint);
+        }
+
+        /// <summary>마스크를 <b>보지 않는</b> 날 사각형 판정(마스크 사각형 자신을 잴 때 쓴다).</summary>
+        private static bool RectContainsScreenPoint(RectTransform rt, Vector2 screenPoint)
         {
             if (rt == null || !rt.gameObject.activeInHierarchy) return false;
-            var corners = new Vector3[4];
-            rt.GetWorldCorners(corners);
-            return screenPoint.x >= corners[0].x && screenPoint.x <= corners[2].x &&
-                   screenPoint.y >= corners[0].y && screenPoint.y <= corners[2].y;
+            rt.GetWorldCorners(_corners);
+            return screenPoint.x >= _corners[0].x && screenPoint.x <= _corners[2].x &&
+                   screenPoint.y >= _corners[0].y && screenPoint.y <= _corners[2].y;
         }
+
+        /// <summary>이 지점이 조상 마스크 <b>전부</b>의 안쪽인가. 마스크 목록은 빌드 때 한 번만
+        /// 모으고(폴링 경로 할당 0), 조상 여부는 <see cref="Transform.IsChildOf"/>로 확인한다.</summary>
+        private bool IsUnclipped(RectTransform rt, Vector2 screenPoint)
+        {
+            if (_masks == null || rt == null) return true;
+            for (int i = 0; i < _masks.Length; i++)
+            {
+                RectMask2D mask = _masks[i];
+                if (mask == null || !mask.isActiveAndEnabled) continue;
+                RectTransform maskRect = mask.rectTransform;
+                if (maskRect == null || maskRect == rt || !rt.IsChildOf(maskRect)) continue;
+                if (!RectContainsScreenPoint(maskRect, screenPoint)) return false;
+            }
+            return true;
+        }
+
+        /// <summary>이 부품이 마스크에 잘리고 <b>남은</b> 화면 사각형(전부 잘리면 넓이 0).
+        /// 진단/테스트 전용 — "보이는 만큼만 눌린다"를 숫자로 확인하는 창구다.</summary>
+        public Rect VisibleScreenRectOf(RectTransform rt)
+        {
+            if (rt == null || !rt.gameObject.activeInHierarchy) return new Rect();
+            rt.GetWorldCorners(_corners);
+            float xMin = _corners[0].x, yMin = _corners[0].y, xMax = _corners[2].x, yMax = _corners[2].y;
+
+            if (_masks != null)
+            {
+                for (int i = 0; i < _masks.Length; i++)
+                {
+                    RectMask2D mask = _masks[i];
+                    if (mask == null || !mask.isActiveAndEnabled) continue;
+                    RectTransform maskRect = mask.rectTransform;
+                    if (maskRect == null || maskRect == rt || !rt.IsChildOf(maskRect)) continue;
+
+                    maskRect.GetWorldCorners(_corners);
+                    xMin = Mathf.Max(xMin, _corners[0].x);
+                    yMin = Mathf.Max(yMin, _corners[0].y);
+                    xMax = Mathf.Min(xMax, _corners[2].x);
+                    yMax = Mathf.Min(yMax, _corners[2].y);
+                }
+            }
+            if (xMax <= xMin || yMax <= yMin) return new Rect();
+            return Rect.MinMaxRect(xMin, yMin, xMax, yMax);
+        }
+
+        /// <summary>[착용]/[해제] 버튼이 지금 화면에 보이는 넓이 비율(0 = 통째로 잘림). 진단/테스트용.</summary>
+        public float ActionButtonVisibleFraction
+        {
+            get
+            {
+                if (_actionRect == null || !_actionRect.gameObject.activeInHierarchy) return 0f;
+                _actionRect.GetWorldCorners(_corners);
+                float full = (_corners[2].x - _corners[0].x) * (_corners[2].y - _corners[0].y);
+                if (full <= 0f) return 0f;
+                Rect visible = VisibleScreenRectOf(_actionRect);
+                return Mathf.Clamp01(visible.width * visible.height / full);
+            }
+        }
+
+        /// <summary>[착용] 버튼의 <b>잘리기 전</b> 화면 사각형 — 테스트가 "안 보이는 자리"를 정확히
+        /// 눌러 보기 위해 필요하다(좌표를 손으로 적으면 레이아웃이 바뀔 때 엉뚱한 곳을 누른다).</summary>
+        public Rect ActionButtonRawScreenRect
+        {
+            get
+            {
+                if (_actionRect == null || !_actionRect.gameObject.activeInHierarchy) return new Rect();
+                _actionRect.GetWorldCorners(_corners);
+                return Rect.MinMaxRect(_corners[0].x, _corners[0].y, _corners[2].x, _corners[2].y);
+            }
+        }
+
+        /// <summary>지금 이 지점을 누르면 [착용] 버튼이 반응하는가(전역 폴링과 <b>같은</b> 판정).</summary>
+        public bool IsActionButtonHittableAt(Vector2 cursorUnityScreen)
+            => ContainsScreenPoint(_actionRect, cursorUnityScreen);
 
         private void ApplyCanvasScaleFactor()
         {
@@ -907,15 +1475,60 @@ namespace StickMate.Interaction
             EnsurePortraitTexture(force: false);
         }
 
-        /// <summary>작은 화면에서 창 아래쪽이 잘리지 않게 높이를 화면에 맞춘다(리더 지시 4항).
-        /// 폭은 건드리지 않는다 — 세로가 먼저 부족해지고, 폭까지 줄이면 3열 목록이 깨진다.</summary>
+        /// <summary>이보다 더 줄이면 좌측 컬럼(244)조차 담지 못한다 — 세로 하한과 같은 값으로 맞췄다.</summary>
+        private const float MinPanelWidth = 320f;
+        private const float MinPanelHeight = 320f;
+
+        /// <summary>작은 화면에서 창이 화면 밖으로 나가지 않게 <b>가로·세로 모두</b> 줄인다.
+        /// 예전에는 세로만 줄이고 폭은 항상 880이라 640폭 화면에서 좌우로 각각 120pt씩 흘러나갔다
+        /// (2026-08-30 디버거 실측). 잘리는 것은 본문 오른쪽/아래쪽이고 <see cref="RectMask2D"/>가
+        /// 패널 밖으로 삐져나오는 그림을 막는다(타이틀바의 [✕]/구분선은 패널 폭을 따라가게 앵커를
+        /// 오른쪽/양끝에 걸어 뒀다 — 안 그러면 그 둘만 창 밖에 떠 있게 된다).
+        /// 33-7-9가 적어 둔 "[▲][▼] 2섹션 페이지 모드" 폴백은 아직 없다.
+        /// 크기를 줄인 뒤에는 드래그로 옮겨 둔 자리도 다시 화면 안으로 끌어들인다.</summary>
         private void ClampPanelToScreen(float scaleFactor)
         {
             if (_panel == null || scaleFactor <= 0f) return;
-            float availableCanvasHeight = Screen.height / scaleFactor - PanelMarginTop - PanelMarginBottom;
-            float height = Mathf.Min(PanelHeight, Mathf.Max(240f, availableCanvasHeight));
-            if (Mathf.Approximately(_panel.sizeDelta.y, height)) return;
-            _panel.sizeDelta = new Vector2(PanelWidth, height);
+            float height = Mathf.Min(PanelHeight, Mathf.Max(MinPanelHeight, Screen.height / scaleFactor - ScreenMargin * 2f));
+            float width = Mathf.Min(PanelWidth, Mathf.Max(MinPanelWidth, Screen.width / scaleFactor - ScreenMargin * 2f));
+            if (!Mathf.Approximately(_panel.sizeDelta.x, width) || !Mathf.Approximately(_panel.sizeDelta.y, height))
+            {
+                _panel.sizeDelta = new Vector2(width, height);
+                SyncActionReachability();
+            }
+
+            Vector2 clamped = ClampPanelPosition(_panel.anchoredPosition, scaleFactor);
+            if (clamped != _panel.anchoredPosition) _panel.anchoredPosition = clamped;
+        }
+
+        /// <summary>창 중심이 화면 밖으로 나가지 않는 범위로 자른다 — 드래그와 화면 크기 변화가
+        /// <b>같은 규칙</b>을 쓴다. 좌표계는 화면 중앙 원점이고, 창이 화면만큼 커지면 이동량은 0이 된다.</summary>
+        private Vector2 ClampPanelPosition(Vector2 desired, float scaleFactor)
+        {
+            if (_panel == null || scaleFactor <= 0f) return desired;
+            float sf = scaleFactor;
+            Vector2 size = _panel.sizeDelta;
+            float maxX = Mathf.Max(0f, (Screen.width / sf - size.x) * 0.5f - ScreenMargin);
+            float maxY = Mathf.Max(0f, (Screen.height / sf - size.y) * 0.5f - ScreenMargin);
+            return new Vector2(Mathf.Clamp(desired.x, -maxX, maxX), Mathf.Clamp(desired.y, -maxY, maxY));
+        }
+
+        /// <summary>
+        /// 화면이 낮아 [착용]/[해제] 버튼이 통째로 잘리면 <b>한 번만</b> 경고한다. 클릭은 이미
+        /// <see cref="ContainsScreenPoint"/>가 막으므로 "안 보이는데 눌린다"는 없어졌지만, 그 화면에서는
+        /// 아이템을 갈아입을 수단 자체가 사라진다는 사실은 조용히 넘길 일이 아니다(33-7-9 페이지 폴백 미구현).
+        /// </summary>
+        private void SyncActionReachability()
+        {
+            if (_actionRect == null) return;
+            bool unreachable = _actionRect.gameObject.activeInHierarchy && ActionButtonVisibleFraction <= 0f;
+            if (unreachable == _actionUnreachable) return;
+            _actionUnreachable = unreachable;
+            if (!unreachable) return;
+
+            Debug.LogWarning("[정보창] 화면 세로가 짧아 상세 패널의 [착용] 버튼이 완전히 가려졌습니다 — " +
+                             "그 자리를 눌러도 반응하지 않습니다(보이지 않는 것은 눌리지 않는다). " +
+                             "33-7-9의 [▲][▼] 페이지 폴백이 들어오기 전까지는 창을 띄울 세로 공간이 더 필요합니다.");
         }
 
         /// <summary>창이 보이는 동안만 창 사각형을 덮는 히트테스트용 콜라이더를 켠다(TodoPostItWidget과
@@ -926,11 +1539,10 @@ namespace StickMate.Interaction
             Camera cam = _agent != null && _agent.Blackboard != null ? _agent.Blackboard.MainCamera : Camera.main;
             if (cam == null) { _clickBlocker.enabled = false; return; }
 
-            var corners = new Vector3[4];
-            _panel.GetWorldCorners(corners);
+            _panel.GetWorldCorners(_corners);
             float depth = Mathf.Abs(cam.transform.position.z);
-            Vector3 bl = cam.ScreenToWorldPoint(new Vector3(corners[0].x, corners[0].y, depth));
-            Vector3 tr = cam.ScreenToWorldPoint(new Vector3(corners[2].x, corners[2].y, depth));
+            Vector3 bl = cam.ScreenToWorldPoint(new Vector3(_corners[0].x, _corners[0].y, depth));
+            Vector3 tr = cam.ScreenToWorldPoint(new Vector3(_corners[2].x, _corners[2].y, depth));
 
             _clickBlocker.enabled = true;
             _clickBlocker.transform.position = new Vector3((bl.x + tr.x) * 0.5f, (bl.y + tr.y) * 0.5f, 0f);
@@ -953,16 +1565,20 @@ namespace StickMate.Interaction
         {
             if (_stage == null || _portraitImage == null) return;
 
-            float dpi = ScreenCoordinateConverter.ResolveDpiScale(_config);
-            if (!force && Mathf.Approximately(dpi, _lastDpiScale) && _stage.HasTexture) return;
-            _lastDpiScale = dpi;
+            // ★ 2026-08-30: 여기 넘겨야 하는 것은 "캔버스 유닛 -> Unity 픽셀" 배율이다(= 이 창의
+            //   CanvasScaler.scaleFactor). 예전에는 그 역수인 ResolveDpiScale()을 넘겨 Retina에서
+            //   RT가 표시 크기의 1/2로 만들어졌고, 그것이 사용자가 신고한 "픽셀이 다 깨져보임"의
+            //   원인이었다(CharacterPortraitStage.TryEnsureTexture 문서에 실측 유도 전문).
+            float pixelsPerCanvasUnit = ScreenCoordinateConverter.ResolveCanvasScaleFactor(_config);
+            if (!force && Mathf.Approximately(pixelsPerCanvasUnit, _lastDpiScale) && _stage.HasTexture) return;
+            _lastDpiScale = pixelsPerCanvasUnit;
 
             Rect rect = _portraitImage.rectTransform.rect;
             Vector2 design = PortraitContentSize;
             float w = rect.width > 1f ? rect.width : design.x;
             float h = rect.height > 1f ? rect.height : design.y;
 
-            bool ok = _stage.TryEnsureTexture(w, h, dpi);
+            bool ok = _stage.TryEnsureTexture(w, h, pixelsPerCanvasUnit);
             _portraitImage.enabled = ok;
             if (ok) _portraitImage.texture = _stage.Texture;
             if (_portraitFallback != null) _portraitFallback.gameObject.SetActive(!ok);
@@ -980,9 +1596,7 @@ namespace StickMate.Interaction
             // 캐릭터 자손으로 두면 이 캔버스 안의 UI 이름이 <b>이름으로 캐릭터 파츠를 찾는 코드</b>
             // (StickmanPoseAnimator / StickmanMetrics / EyeController / DialogueBubbleRenderer /
             // CharacterAccessoryRenderer)에 걸릴 수 있다. 2026-08-30에 부채꼴 메뉴의 "Head"라는 UI
-            // 자손이 정확히 그 사고를 냈다(캐릭터 머리·몸통이 영영 안 움직임). 지금 이 창의 부품
-            // 이름에는 충돌이 없지만, 그건 "앞으로 아무도 Head/Torso라는 이름을 안 쓴다"는 기대에
-            // 기대는 것이라 계층 자체를 분리해 구조적으로 막는다. 정리는 OnDestroy가 책임진다.
+            // 자손이 정확히 그 사고를 냈다(캐릭터 머리·몸통이 영영 안 움직임). 정리는 OnDestroy가 책임진다.
             canvasGo.transform.SetParent(null, false);
             _canvas = canvasGo.GetComponent<Canvas>();
             _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -993,38 +1607,40 @@ namespace StickMate.Interaction
 
             Image panelImage = UiChrome.AddSurface(canvasGo.transform, "InfoPanel", UiChrome.PanelSurface, UiChrome.RadiusPanel);
             _panel = panelImage.rectTransform;
-            _panel.anchorMin = new Vector2(1f, 1f);
-            _panel.anchorMax = new Vector2(1f, 1f);
-            _panel.pivot = new Vector2(1f, 1f);
-            _panel.anchoredPosition = new Vector2(-PanelMarginRight, -PanelMarginTop);
+            // 33-7-7: 화면 중앙 모달. 배경 딤은 깔지 않는다(클래스 문서 참고).
+            _panel.anchorMin = _panel.anchorMax = _panel.pivot = new Vector2(0.5f, 0.5f);
+            _panel.anchoredPosition = Vector2.zero;
             _panel.sizeDelta = new Vector2(PanelWidth, PanelHeight);
 
-            // 그림자를 패널의 첫 자식으로 넣어 패널 그림 뒤에 깔리게 한다(아주 옅게 — 리더 지시).
-            Image shadow = UiChrome.AddShadow(_panel, "PanelShadow", UiChrome.RadiusPanel, 5f, new Vector2(0f, -3f));
+            // 그림자는 패널 한 겹만(33-1: radius 12 / spread 18 / offset (0,-18)).
+            Image shadow = UiChrome.AddShadow(_panel, "PanelShadow", UiChrome.RadiusPanel, 18f, new Vector2(0f, -18f));
             shadow.transform.SetAsFirstSibling();
             UiChrome.AddOutline(_panel, "PanelOutline", UiChrome.PanelBorder, UiChrome.RadiusPanel);
 
             BuildTitleBar(_panel);
 
-            var bodyGo = new GameObject("Body", typeof(RectTransform));
+            var bodyGo = new GameObject("Body", typeof(RectTransform), typeof(RectMask2D));
             bodyGo.transform.SetParent(_panel, false);
             var body = bodyGo.GetComponent<RectTransform>();
-            body.anchorMin = Vector2.zero;
-            body.anchorMax = Vector2.one;
-            body.offsetMin = new Vector2(UiChrome.Space4, UiChrome.Space4);
-            body.offsetMax = new Vector2(-UiChrome.Space4, -(TitleHeight + UiChrome.Space2));
+            body.anchorMin = new Vector2(0f, 0f);
+            body.anchorMax = new Vector2(1f, 1f);
+            body.pivot = new Vector2(0.5f, 1f);
+            body.offsetMin = Vector2.zero;
+            body.offsetMax = new Vector2(0f, -TitleHeight);
+            // 작은 화면에서 패널이 짧아져도 내용이 패널 밖으로 새어 나가지 않게 한다(ClampPanelToScreen).
 
             BuildLeftColumn(body);
             RectTransform right = BuildRightColumn(body);
             BuildTabs(right);
-            BuildEquipmentPage(right);
-            BuildAppearancePage(right);
+            BuildSectionPage(right);
             BuildInventoryPage(right);
-            BuildStatsBlock(right);
             ApplyTabVisibility();
 
             // 클릭관통 차단막 — 씬 루트에 둔다(캐릭터의 자식으로 두면 캐릭터가 걷거나 랙돌로 회전할 때
             // 이 사각형까지 함께 돌아가 창의 화면 사각형과 어긋난다. TodoPostItWidget과 같은 이유).
+            // 히트테스트가 쓸 마스크 목록은 여기서 한 번만 모은다(폴링 경로에서 탐색하지 않는다).
+            _masks = _panel.GetComponentsInChildren<RectMask2D>(true);
+
             var blockerGo = new GameObject("CharacterInfoClickBlocker");
             _clickBlocker = blockerGo.AddComponent<BoxCollider2D>();
             _clickBlocker.isTrigger = true;
@@ -1043,107 +1659,164 @@ namespace StickMate.Interaction
             rt.pivot = new Vector2(0.5f, 1f);
             rt.offsetMin = new Vector2(0f, -TitleHeight);
             rt.offsetMax = Vector2.zero;
+            _titleBarRect = rt;   // 드래그 손잡이 — 여기를 잡은 동안만 창이 움직인다.
 
-            Text title = UiChrome.AddText(barGo.transform, "Title", UiChrome.FontTitle, TextAnchor.MiddleLeft,
-                UiChrome.TextPrimary, bold: true);
-            UiChrome.Stretch(title.rectTransform);
-            title.rectTransform.offsetMin = new Vector2(UiChrome.Space4, 0f);
-            title.rectTransform.offsetMax = new Vector2(-TitleHeight, 0f);
-            title.text = "내 책상 동료";
+            Text title = Label(barGo.transform, "Title", UiChrome.FontTitle, TextAnchor.MiddleLeft,
+                UiChrome.TextPrimary, 16f, -13f, 200f, 14f, "내 책상 동료", bold: true);
+            title.raycastTarget = false;
 
-            Image divider = UiChrome.AddSurface(barGo.transform, "TitleDivider", UiChrome.Divider, 2);
-            var drt = divider.rectTransform;
-            drt.anchorMin = new Vector2(0f, 0f);
-            drt.anchorMax = new Vector2(1f, 0f);
-            drt.pivot = new Vector2(0.5f, 0f);
-            drt.offsetMin = new Vector2(UiChrome.Space4, 0f);
-            drt.offsetMax = new Vector2(-UiChrome.Space4, 1f);
+            Image divider = UiChrome.AddSurface(parent, "TitleDivider", UiChrome.CardBorder, 2);
+            // 폭을 못 박으면 좁은 화면에서 패널이 줄었을 때(ClampPanelToScreen) 구분선만 밖으로 삐져나온다.
+            RectTransform dividerRect = divider.rectTransform;
+            dividerRect.anchorMin = new Vector2(0f, 1f);
+            dividerRect.anchorMax = new Vector2(1f, 1f);
+            dividerRect.pivot = new Vector2(0.5f, 1f);
+            dividerRect.offsetMin = new Vector2(0f, -TitleHeight);
+            dividerRect.offsetMax = new Vector2(0f, -(TitleHeight - 1f));
             divider.raycastTarget = false;
 
-            Image closeSurface = UiChrome.AddSurface(barGo.transform, "CloseButton", UiChrome.CardSurface, UiChrome.RadiusChip);
+            // 스펙의 "ESC" 힌트 자리에 [✕]를 둔다 — 이유는 클래스 문서 참고(ESC는 이미 클릭관통
+            // 긴급 해제에 묶여 있어서, 창 닫기를 겹치면 보이지 않는 부수효과가 생긴다).
+            Image closeSurface = UiChrome.AddSurface(barGo.transform, "CloseButton", UiChrome.CardSurfaceMuted, UiChrome.RadiusChip);
             _closeRect = closeSurface.rectTransform;
-            _closeRect.anchorMin = new Vector2(1f, 0.5f);
-            _closeRect.anchorMax = new Vector2(1f, 0.5f);
-            _closeRect.pivot = new Vector2(1f, 0.5f);
-            _closeRect.anchoredPosition = new Vector2(-UiChrome.Space3, 0f);
-            _closeRect.sizeDelta = new Vector2(26f, 26f);
+            // 오른쪽 끝에 건다(고정 x였다면 좁은 화면에서 패널이 줄 때 [✕]만 창 밖에 남는다).
+            // 880 폭에서의 결과 좌표는 예전과 같다(오른쪽에서 16, 위에서 8).
+            _closeRect.anchorMin = _closeRect.anchorMax = _closeRect.pivot = new Vector2(1f, 1f);
+            _closeRect.sizeDelta = new Vector2(24f, 24f);
+            _closeRect.anchoredPosition = new Vector2(-16f, -8f);
             UiChrome.AddOutline(_closeRect, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
-            Text closeLabel = UiChrome.AddText(_closeRect, "Label", UiChrome.FontBody, TextAnchor.MiddleCenter, UiChrome.TextSecondary);
+            Text closeLabel = UiChrome.AddText(_closeRect, "Label", UiChrome.FontBody, TextAnchor.MiddleCenter, UiChrome.TextTertiary);
             UiChrome.Stretch(closeLabel.rectTransform);
             closeLabel.text = "✕";
 
-            _closeButton = closeSurface.gameObject.AddComponent<Button>();
-            _closeButton.targetGraphic = closeSurface;
-            _closeButton.onClick.AddListener(() => { if (TryClaimAction("close")) Close("[X] 클릭"); });
+            var closeButton = closeSurface.gameObject.AddComponent<Button>();
+            closeButton.targetGraphic = closeSurface;
+            closeButton.onClick.AddListener(() => { if (TryClaimAction("close")) Close("[✕] 클릭"); });
         }
 
-        // -------------------- 좌측 고정 패널 --------------------
+        // -------------------- 좌측 고정 컬럼 --------------------
 
         private void BuildLeftColumn(RectTransform body)
         {
             var go = new GameObject("LeftColumn", typeof(RectTransform));
             go.transform.SetParent(body, false);
             var left = go.GetComponent<RectTransform>();
-            left.anchorMin = new Vector2(0f, 0f);
-            left.anchorMax = new Vector2(0f, 1f);
-            left.pivot = new Vector2(0f, 0.5f);
-            left.sizeDelta = new Vector2(LeftWidth, 0f);
-            left.anchoredPosition = Vector2.zero;
+            UiChrome.PlaceTopLeft(left, 0f, 0f, LeftWidth, BodyHeight);
 
-            _nameTitle = UiChrome.AddText(left, "Name", UiChrome.FontDisplay, TextAnchor.MiddleLeft,
-                UiChrome.TextPrimary, bold: true);
-            UiChrome.PlaceTopLeft(_nameTitle.rectTransform, 0f, 0f, LeftWidth, 32f);
+            Image columnDivider = UiChrome.AddSurface(body, "ColumnDivider", UiChrome.CardBorder, 2);
+            UiChrome.PlaceTopLeft(columnDivider.rectTransform, LeftWidth - 1f, 0f, 1f, BodyHeight);
+            columnDivider.raycastTarget = false;
 
-            _rankTitle = UiChrome.AddText(left, "RankTitle", UiChrome.FontLabel, TextAnchor.MiddleLeft, UiChrome.TextTertiary);
-            UiChrome.PlaceTopLeft(_rankTitle.rectTransform, 0f, -34f, LeftWidth, 18f);
+            // ---- 이름 블록: 이름(인라인 편집) + 잉크색 스와치 2개 ----
+            float swatchRight = LeftPadX + LeftContentWidth;
+            float nameWidth = LeftContentWidth - (SwatchSize * 2f + SwatchGap) - UiChrome.Space3;
 
-            // 초상화 액자 — 바탕 + 1px 테두리 + RenderTexture. 캐릭터 그림 자체는 단순한 채로 둔다.
+            _nameTitle = Label(left, "Name", UiChrome.FontDisplay, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
+                LeftPadX, NameY, nameWidth, 25f, CharacterProgressionModel.CharacterName, bold: true);
+
+            // 이름 글자 자체는 raycastTarget이 아니므로(UiChrome 관례) 클릭을 받을 투명 판을 겹친다.
+            Image nameHit = UiChrome.AddSurface(left, "NameHit", Color.clear, UiChrome.RadiusChip);
+            _nameRect = nameHit.rectTransform;
+            UiChrome.PlaceTopLeft(_nameRect, LeftPadX, NameY, nameWidth, 25f);
+            var nameButton = nameHit.gameObject.AddComponent<Button>();
+            nameButton.targetGraphic = nameHit;
+            nameButton.onClick.AddListener(() => { if (TryClaimAction("nameEdit")) BeginNameEdit(); });
+
+            _nameInput = CreateInputField(left);
+            _nameInputRect = _nameInput.GetComponent<RectTransform>();
+            UiChrome.PlaceTopLeft(_nameInputRect, LeftPadX, NameY, nameWidth, 25f);
+            _nameInputRect.gameObject.SetActive(false);
+
+            for (int i = 0; i < 2; i++)
+            {
+                bool white = i == 1;
+                float x = swatchRight - (2 - i) * SwatchSize - (1 - i) * SwatchGap;
+                var swatchGo = new GameObject(white ? "InkWhite" : "InkBlack", typeof(RectTransform), typeof(Image));
+                swatchGo.transform.SetParent(left, false);
+                var srt = swatchGo.GetComponent<RectTransform>();
+                UiChrome.PlaceTopLeft(srt, x, NameY - 6f, SwatchSize, SwatchSize);
+
+                var fill = swatchGo.GetComponent<Image>();
+                fill.sprite = UiChrome.Circle();
+                fill.type = Image.Type.Simple;
+                fill.color = white ? UiChrome.CardSurface : UiChrome.TextPrimary;
+
+                // 1.5px 링으로 "지금 이 색"을 표시한다(지름 12 기준 비율 = 1.5/12).
+                Image ring = UiChrome.AddCircle(srt, "Ring", SwatchSize, UiChrome.PanelBorder, 1.5f);
+                ring.raycastTarget = false;
+
+                var button = swatchGo.AddComponent<Button>();
+                button.targetGraphic = fill;
+                button.onClick.AddListener(() => { if (TryClaimAction("ink" + (white ? 1 : 0))) OnInkSwatchClicked(white); });
+
+                _inkRings[i] = ring;
+                _inkRects[i] = srt;
+            }
+
+            _rankTitle = Label(left, "RankTitle", UiChrome.FontLabel, TextAnchor.MiddleLeft, UiChrome.TextTertiary,
+                LeftPadX, SubY, LeftContentWidth, 15f, "Lv.1");
+
+            // ---- 초상화 액자 (33-7-6: 204×196 / 여백 8 / 반지름 8) ----
             _portraitFrame = UiChrome.AddSurface(left, "PortraitFrame",
-                CharacterPortraitStage.ResolveBackdropColor(_config), UiChrome.RadiusPanel);
-            UiChrome.PlaceTopLeft(_portraitFrame.rectTransform, 0f, -58f, LeftWidth, PortraitHeight);
+                CharacterPortraitStage.ResolveBackdropColor(_config), 8);
+            UiChrome.PlaceTopLeft(_portraitFrame.rectTransform, LeftPadX, PortraitY, LeftContentWidth, PortraitHeight);
             _portraitFrame.raycastTarget = false;
-            _portraitBorder = UiChrome.AddOutline(_portraitFrame.rectTransform, "Border", UiChrome.CardBorder, UiChrome.RadiusPanel);
+            _portraitBorder = UiChrome.AddOutline(_portraitFrame.rectTransform, "Border", UiChrome.CardBorder, 8);
 
             var imageGo = new GameObject("PortraitImage", typeof(RectTransform), typeof(RawImage));
             imageGo.transform.SetParent(_portraitFrame.transform, false);
-            UiChrome.Stretch(imageGo.GetComponent<RectTransform>(), UiChrome.Space3);
+            UiChrome.Stretch(imageGo.GetComponent<RectTransform>(), PortraitPadding);
             _portraitImage = imageGo.GetComponent<RawImage>();
             _portraitImage.raycastTarget = false;
             _portraitImage.enabled = false;   // RT가 준비되면 켠다.
 
             _portraitFallback = UiChrome.AddText(_portraitFrame.rectTransform, "PortraitFallback",
-                UiChrome.FontLabel, TextAnchor.MiddleCenter, UiChrome.TextTertiary, wrap: true);
+                UiChrome.FontBody, TextAnchor.MiddleCenter, UiChrome.TextTertiary, wrap: true);
             UiChrome.Stretch(_portraitFallback.rectTransform, UiChrome.Space4);
             _portraitFallback.text = "미리보기를 그릴 수 없어요";
             _portraitFallback.gameObject.SetActive(false);
 
-            // 프레즌스 라인 — "이건 프로필 사진, 저건 실시간 상태"가 헷갈리지 않게 액자 <b>밖</b>에 둔다.
-            _presenceText = UiChrome.AddText(left, "Presence", UiChrome.FontLabel, TextAnchor.MiddleLeft, UiChrome.TextSecondary);
-            UiChrome.PlaceTopLeft(_presenceText.rectTransform, 0f, -300f, LeftWidth, 22f);
+            // ---- 프레즌스 + 게이지 2종 ----
+            _presenceText = Label(left, "Presence", UiChrome.FontLabel, TextAnchor.MiddleLeft, UiChrome.TextTertiary,
+                LeftPadX, PresenceY, LeftContentWidth, 15f, "지금  ·  —");
 
-            _stressFill = BuildLabeledBar(left, "스트레스", -332f, UiChrome.WarmAccent, out _stressValue);
-            _xpFill = BuildLabeledBar(left, "EXP", -374f, UiChrome.Accent, out _xpValue);
+            _stressFill = BuildGauge(left, "STRESS", StressLabelY, StressTrackY, UiChrome.TextPrimary, out _stressValue);
+            _xpFill = BuildGauge(left, "EXP", XpLabelY, XpTrackY, UiChrome.Accent, out _xpValue);
 
-            _leftNote = UiChrome.AddText(left, "LeftNote", UiChrome.FontCaption, TextAnchor.UpperLeft,
-                UiChrome.TextTertiary, wrap: true);
-            UiChrome.PlaceTopLeft(_leftNote.rectTransform, 0f, -412f, LeftWidth, 44f);
+            // ---- 스탯 6행 ----
+            Image statsTop = UiChrome.AddSurface(left, "StatsTopLine", UiChrome.Divider, 2);
+            UiChrome.PlaceTopLeft(statsTop.rectTransform, LeftPadX, StatsTopY, LeftContentWidth, 1f);
+            statsTop.raycastTarget = false;
+
+            for (int i = 0; i < StatCount; i++)
+            {
+                float y = StatsFirstRowY - i * StatRowStep;
+                Label(left, "StatKey" + i, UiChrome.FontBody, TextAnchor.MiddleLeft, UiChrome.TextTertiary,
+                    LeftPadX, y, 100f, StatRowHeight, StatLabels[i]);
+                _statValues[i] = Label(left, "StatValue" + i, UiChrome.FontBody, TextAnchor.MiddleRight,
+                    UiChrome.TextPrimary, LeftPadX + 100f, y, LeftContentWidth - 100f, StatRowHeight, "—");
+
+                Image line = UiChrome.AddSurface(left, "StatLine" + i, UiChrome.Divider, 2);
+                UiChrome.PlaceTopLeft(line.rectTransform, LeftPadX, y - StatRowHeight, LeftContentWidth, 1f);
+                line.raycastTarget = false;
+            }
         }
 
-        /// <summary>라벨 한 줄 + 값(우측 정렬) + 그 아래 둥근 막대. 반환값은 채움 RectTransform.</summary>
-        private RectTransform BuildLabeledBar(RectTransform parent, string label, float y, Color fillColor, out Text valueText)
+        /// <summary>라벨행(좌: 이름 / 우: 값) + 그 아래 4pt 트랙. 반환값은 채움 RectTransform.</summary>
+        private RectTransform BuildGauge(RectTransform parent, string label, float labelY, float trackY,
+            Color fillColor, out Text valueText)
         {
-            Text l = UiChrome.AddText(parent, "BarLabel_" + label, UiChrome.FontLabel, TextAnchor.MiddleLeft, UiChrome.TextSecondary);
-            UiChrome.PlaceTopLeft(l.rectTransform, 0f, y, 100f, 16f);
-            l.text = label;
+            Label(parent, "GaugeLabel_" + label, UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.TextTertiary,
+                LeftPadX, labelY, 100f, 13f, label);
 
-            valueText = UiChrome.AddText(parent, "BarValue_" + label, UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.TextTertiary);
-            UiChrome.PlaceTopLeft(valueText.rectTransform, LeftWidth - 140f, y, 140f, 16f);
+            valueText = Label(parent, "GaugeValue_" + label, UiChrome.FontCaption, TextAnchor.MiddleRight,
+                UiChrome.TextTertiary, LeftPadX + 60f, labelY, LeftContentWidth - 60f, 13f, "—");
 
-            Image track = UiChrome.AddSurface(parent, "BarTrack_" + label, UiChrome.TrackBackground, 4);
-            UiChrome.PlaceTopLeft(track.rectTransform, 0f, y - 18f, LeftWidth, BarHeight);
+            Image track = UiChrome.AddSurface(parent, "GaugeTrack_" + label, UiChrome.TrackBackground, UiChrome.RadiusDot);
+            UiChrome.PlaceTopLeft(track.rectTransform, LeftPadX, trackY, LeftContentWidth, TrackHeight);
             track.raycastTarget = false;
 
-            Image fill = UiChrome.AddSurface(track.rectTransform, "Fill", fillColor, 4);
+            Image fill = UiChrome.AddSurface(track.rectTransform, "Fill", fillColor, UiChrome.RadiusDot);
             var frt = fill.rectTransform;
             frt.anchorMin = Vector2.zero;
             frt.anchorMax = new Vector2(0f, 1f);
@@ -1154,260 +1827,341 @@ namespace StickMate.Interaction
             return frt;
         }
 
-        // -------------------- 우측 탭 패널 --------------------
+        // -------------------- 우측 탭 컬럼 --------------------
 
         private RectTransform BuildRightColumn(RectTransform body)
         {
             var go = new GameObject("RightColumn", typeof(RectTransform));
             go.transform.SetParent(body, false);
             var right = go.GetComponent<RectTransform>();
-            right.anchorMin = Vector2.zero;
-            right.anchorMax = Vector2.one;
-            right.offsetMin = new Vector2(LeftWidth + ColumnGap, 0f);
-            right.offsetMax = Vector2.zero;
+            UiChrome.PlaceTopLeft(right, RightX, 0f, RightWidth, BodyHeight);
             return right;
         }
 
-        /// <summary>세그먼트 컨트롤 형태의 탭 — 트랙 하나 위에 칩 3개(선택된 칩만 흰 표면).</summary>
+        /// <summary>밑줄 탭(스펙 1.3) — 칩/배경 없이 라벨 + 활성 탭 2px 밑줄 하나.</summary>
         private void BuildTabs(RectTransform right)
         {
-            Image trackImage = UiChrome.AddSurface(right, "TabStrip", UiChrome.SubtleSurface, UiChrome.RadiusCard);
-            UiChrome.PlaceTopLeft(trackImage.rectTransform, 0f, 0f, RightWidth(), TabStripHeight);
-            trackImage.raycastTarget = false;
-
-            float inner = UiChrome.Space1;
-            float chipWidth = (RightWidth() - inner * 2f - UiChrome.Space1 * (TabCount - 1)) / TabCount;
-
+            float x = RightPadX;
             for (int i = 0; i < TabCount; i++)
             {
-                Image chip = UiChrome.AddSurface(trackImage.rectTransform, "Tab" + TabNames[i], UiChrome.CardSurface, UiChrome.RadiusChip);
-                var rt = chip.rectTransform;
-                UiChrome.PlaceTopLeft(rt, inner + i * (chipWidth + UiChrome.Space1), -inner,
-                    chipWidth, TabStripHeight - inner * 2f);
+                float width = TabLabelWidth(TabNames[i]);
 
-                Text label = UiChrome.AddText(rt, "Label", UiChrome.FontBody, TextAnchor.MiddleCenter, UiChrome.TextSecondary);
+                Image hit = UiChrome.AddSurface(right, "Tab" + TabNames[i], Color.clear, UiChrome.RadiusChip);
+                var rt = hit.rectTransform;
+                UiChrome.PlaceTopLeft(rt, x, TabStripY, width, TabStripHeight);
+
+                Text label = UiChrome.AddText(rt, "Label", UiChrome.FontTitle, TextAnchor.UpperCenter, UiChrome.TabInactive);
                 UiChrome.Stretch(label.rectTransform);
                 label.text = TabNames[i];
 
-                var button = chip.gameObject.AddComponent<Button>();
-                button.targetGraphic = chip;
+                Image underline = UiChrome.AddSurface(rt, "Underline", Color.clear, 2);
+                UiChrome.PlaceTopLeft(underline.rectTransform, 0f, -(TabStripHeight - TabUnderlineHeight),
+                    width, TabUnderlineHeight);
+                underline.raycastTarget = false;
+
+                var button = hit.gameObject.AddComponent<Button>();
+                button.targetGraphic = hit;
                 int captured = i;
                 button.onClick.AddListener(() => { if (TryClaimAction("tab" + captured)) OnTabClicked((Tab)captured); });
 
-                _tabChips[i] = chip;
                 _tabRects[i] = rt;
                 _tabLabels[i] = label;
+                _tabUnderlines[i] = underline;
+                x += width + TabGap;
             }
+
+            Image line = UiChrome.AddSurface(right, "TabBottomLine", UiChrome.CardBorder, 2);
+            UiChrome.PlaceTopLeft(line.rectTransform, RightPadX, TabStripY - TabStripHeight + 1f, RightContentWidth, 1f);
+            line.raycastTarget = false;
         }
 
-        /// <summary>탭 페이지 공통 틀 — 탭 줄 아래부터 스탯 블록 위까지.</summary>
-        private RectTransform CreatePage(RectTransform right, string name)
+        /// <summary>내장 폰트에는 폭 조회 API가 마땅치 않아 <b>글자 수 × 글자 크기</b>로 잡는다 —
+        /// 한글은 정사각에 가까워 이 근사가 잘 맞고, 탭은 셋뿐이라 오차가 누적되지 않는다.</summary>
+        private static float TabLabelWidth(string label) => label.Length * UiChrome.FontTitle + 4f;
+
+        // -------------------- 카테고리 섹션 페이지([장비]/[외형] 공용) --------------------
+
+        private void BuildSectionPage(RectTransform right)
         {
-            var go = new GameObject(name, typeof(RectTransform));
-            go.transform.SetParent(right, false);
-            var rt = go.GetComponent<RectTransform>();
-            rt.anchorMin = Vector2.zero;
-            rt.anchorMax = Vector2.one;
-            rt.offsetMin = new Vector2(0f, StatsBlockHeight + UiChrome.Space4);
-            rt.offsetMax = new Vector2(0f, -(TabStripHeight + UiChrome.Space2));
-            return rt;
-        }
+            var pageGo = new GameObject("SectionPage", typeof(RectTransform));
+            pageGo.transform.SetParent(right, false);
+            var page = pageGo.GetComponent<RectTransform>();
+            UiChrome.PlaceTopLeft(page, 0f, 0f, RightWidth, BodyHeight);
+            _sectionPage = pageGo;
 
-        private void BuildEquipmentPage(RectTransform right)
-        {
-            RectTransform page = CreatePage(right, "EquipmentPage");
-            _pages[(int)Tab.Equipment] = page.gameObject;
-
-            float cardWidth = (RightWidth() - UiChrome.Space3) * 0.5f;
-
-            for (int i = 0; i < EquipmentModel.SlotCount; i++)
+            for (int s = 0; s < SectionCount; s++)
             {
-                var slot = (EquipmentSlot)i;
-                int col = i % 2, row = i / 2;
+                var sectionGo = new GameObject("Section" + s, typeof(RectTransform));
+                sectionGo.transform.SetParent(page, false);
+                var section = sectionGo.GetComponent<RectTransform>();
+                UiChrome.PlaceTopLeft(section, RightPadX, SectionsTopY - s * SectionStep,
+                    RightContentWidth, SectionHeight);
 
-                Image surface = UiChrome.AddSurface(page, "EquipCard" + i, UiChrome.CardSurface, UiChrome.RadiusCard);
-                var rt = surface.rectTransform;
-                UiChrome.PlaceTopLeft(rt, col * (cardWidth + UiChrome.Space3),
-                    -row * (EquipCardHeight + UiChrome.Space3), cardWidth, EquipCardHeight);
-                Image outline = UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+                Image dot = UiChrome.AddSurface(section, "Dot", UiChrome.Accent, UiChrome.RadiusDot);
+                UiChrome.PlaceTopLeft(dot.rectTransform, 0f, -6f, 7f, 7f);
+                dot.raycastTarget = false;
 
-                Text title = UiChrome.AddText(rt, "Title", UiChrome.FontTitle, TextAnchor.UpperLeft, UiChrome.TextPrimary, bold: true);
-                UiChrome.PlaceTopLeft(title.rectTransform, UiChrome.Space3, -UiChrome.Space3, cardWidth - UiChrome.Space3 * 2f, 20f);
+                Text title = Label(section, "Name", UiChrome.FontBody, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
+                    15f, -2f, 70f, 14f, "—", bold: true);
+                Text code = Label(section, "Code", UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.TextQuaternary,
+                    90f, -3f, 46f, 12f, "—");
 
-                Text status = UiChrome.AddText(rt, "Status", UiChrome.FontCaption, TextAnchor.UpperLeft, UiChrome.TextSecondary);
-                UiChrome.PlaceTopLeft(status.rectTransform, UiChrome.Space3, -38f, cardWidth - UiChrome.Space3 * 2f, 16f);
+                Image divider = UiChrome.AddSurface(section, "Divider", UiChrome.Divider, 2);
+                UiChrome.PlaceTopLeft(divider.rectTransform, 142f, -9f, 402f, 1f);
+                divider.raycastTarget = false;
 
-                var button = surface.gameObject.AddComponent<Button>();
-                button.targetGraphic = surface;
-                button.onClick.AddListener(() =>
+                Text count = Label(section, "Count", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.TextQuaternary,
+                    548f, -3f, 44f, 12f, "0 / 4");
+
+                _sections[s] = new SectionView
                 {
-                    if (TryClaimAction("equip" + (int)slot)) OnEquipCardClicked(slot);
-                });
-
-                _equipCards[i] = new EquipCard
-                {
-                    Rect = rt, Surface = surface, Outline = outline, Title = title, Status = status, Slot = slot,
+                    Root = sectionGo, Dot = dot, Title = title, Code = code, Count = count,
                 };
+
+                for (int c = 0; c < CardsPerSection; c++)
+                {
+                    _cards[s * CardsPerSection + c] = BuildCard(section, s, c);
+                }
             }
 
-            float detailTop = -(2f * (EquipCardHeight + UiChrome.Space3));
-            Image detail = UiChrome.AddSurface(page, "EquipDetail", UiChrome.SubtleSurface, UiChrome.RadiusCard);
+            BuildDetailPanel(page);
+        }
+
+        private ItemCard BuildCard(RectTransform section, int sectionIndex, int columnIndex)
+        {
+            int cardIndex = sectionIndex * CardsPerSection + columnIndex;
+
+            Image surface = UiChrome.AddSurface(section, "Card" + cardIndex, UiChrome.CardSurface, UiChrome.RadiusCard);
+            var rt = surface.rectTransform;
+            UiChrome.PlaceTopLeft(rt, columnIndex * CardStep, CardTopInSection, CardWidth, CardHeight);
+            Image outline = UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+
+            Image thumb = UiChrome.AddSurface(rt, "Thumb", UiChrome.CardSurfaceMuted, UiChrome.RadiusThumb);
+            UiChrome.PlaceTopLeft(thumb.rectTransform, ThumbX, ThumbY, ThumbWidth, ThumbHeight);
+            thumb.raycastTarget = false;
+
+            var card = new ItemCard
+            {
+                Rect = rt,
+                Surface = surface,
+                Outline = outline,
+                Thumb = thumb,
+                Name = Label(rt, "Name", UiChrome.FontBody, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
+                    ThumbX, CardNameY, 78f, CardTextHeight, "—"),
+                Meta = Label(rt, "Meta", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.TextQuaternary,
+                    89f, CardNameY, 41f, CardTextHeight, "—"),
+            };
+
+            // [장비]용/[외형]용 아이콘을 미리 두 벌 굽는다(클래스 문서 "탭을 바꿔도 다시 굽지 않는다").
+            for (int set = 0; set < IconSetCount; set++)
+            {
+                EquipmentSlot slot = SectionSlot(set == 1 ? Tab.Appearance : Tab.Equipment, sectionIndex);
+                ItemCatalogEntry entry = ItemCatalog.Item(slot, columnIndex);
+
+                var iconGo = new GameObject("Icon" + set, typeof(RectTransform));
+                iconGo.transform.SetParent(thumb.transform, false);
+                var irt = iconGo.GetComponent<RectTransform>();
+                irt.anchorMin = irt.anchorMax = irt.pivot = new Vector2(0.5f, 0.5f);
+                irt.sizeDelta = new Vector2(IconSize, IconSize);
+                irt.anchoredPosition = Vector2.zero;
+
+                if (entry != null) BuildIcon(irt, entry.Icon);
+                card.IconRoot[set] = irt;
+                Image[] graphics = iconGo.GetComponentsInChildren<Image>(true);
+                card.IconGraphics[set] = graphics;
+                var baseColors = new Color[graphics.Length];
+                for (int g = 0; g < graphics.Length; g++)
+                {
+                    baseColors[g] = graphics[g] != null ? graphics[g].color : UiChrome.IconInk;
+                }
+                card.IconBaseColors[set] = baseColors;
+            }
+
+            // 자물쇠 배지 — 썸네일 우하단에 살짝 걸치게(스펙 right −4 / bottom −3).
+            Image badge = UiChrome.AddSurface(thumb.rectTransform, "LockBadge", UiChrome.ThumbSurfaceLocked, UiChrome.RadiusBadge);
+            var brt = badge.rectTransform;
+            brt.anchorMin = brt.anchorMax = brt.pivot = new Vector2(1f, 0f);
+            brt.sizeDelta = new Vector2(LockBadgeWidth, LockBadgeHeight);
+            brt.anchoredPosition = new Vector2(4f, -3f);
+            badge.raycastTarget = false;
+            BuildLockGlyph(brt);
+            card.LockBadge = brt;
+            card.LockBadge.gameObject.SetActive(false);
+
+            var button = surface.gameObject.AddComponent<Button>();
+            button.targetGraphic = surface;
+            button.onClick.AddListener(() => { if (TryClaimAction("card" + cardIndex)) OnCardClicked(cardIndex); });
+            return card;
+        }
+
+        /// <summary>40×40 viewBox(y가 아래로) -> 부모 중심 기준 화면 좌표(y가 위로).</summary>
+        private static Vector2 FromViewBox(float x, float y, float viewWidth, float viewHeight,
+            float renderWidth, float renderHeight)
+        {
+            return new Vector2(
+                (x - viewWidth * 0.5f) * (renderWidth / viewWidth),
+                (viewHeight * 0.5f - y) * (renderHeight / viewHeight));
+        }
+
+        private static void BuildIcon(RectTransform root, ItemIconPart[] parts)
+        {
+            if (parts == null) return;
+            for (int p = 0; p < parts.Length; p++)
+            {
+                ItemIconPart part = parts[p];
+                float[] v = part.Values;
+                if (v == null) continue;
+
+                switch (part.Kind)
+                {
+                    case ItemIconPartKind.Polyline:
+                    {
+                        int count = Mathf.Min(part.PointCount, _iconPoints.Length);
+                        for (int i = 0; i < count; i++)
+                        {
+                            _iconPoints[i] = FromViewBox(v[i * 2], v[i * 2 + 1], 40f, 40f, IconSize, IconSize);
+                        }
+                        UiChrome.AddPolyline(root, "Seg", _iconPoints, count, IconStroke, part.Color);
+                        break;
+                    }
+                    case ItemIconPartKind.Ring:
+                        UiChrome.AddCircle(root, "Ring", v[2] * 2f * IconScale, part.Color, IconStroke,
+                            FromViewBox(v[0], v[1], 40f, 40f, IconSize, IconSize));
+                        break;
+                    case ItemIconPartKind.DashedRing:
+                        BuildDashedRing(root, v[0], v[1], v[2], part.Color);
+                        break;
+                    case ItemIconPartKind.Dot:
+                        UiChrome.AddCircle(root, "Dot", v[2] * 2f * IconScale, part.Color, 0f,
+                            FromViewBox(v[0], v[1], 40f, 40f, IconSize, IconSize));
+                        break;
+                }
+            }
+        }
+
+        /// <summary>viewBox(40) -> 실제 아이콘 크기 배율. 반지름처럼 <b>길이</b>인 값은 전부 이걸 곱해야 한다
+        /// (좌표는 <see cref="FromViewBox"/>가 이미 환산한다 — 반지름은 그 경로를 타지 않아 예전에는
+        /// IconSize == 40이라 우연히 맞고 있었다).</summary>
+        private const float IconScale = IconSize / 40f;
+
+        /// <summary>점선 원(FX "없음" 전용). 링 스프라이트에는 점선이 없어 짧은 호 8개로 그린다.</summary>
+        private static void BuildDashedRing(RectTransform root, float cx, float cy, float r, Color color)
+        {
+            const int dashes = 8;
+            const int pointsPerDash = 3;
+            Vector2 center = FromViewBox(cx, cy, 40f, 40f, IconSize, IconSize);
+            float radius = r * (IconSize / 40f);
+
+            for (int d = 0; d < dashes; d++)
+            {
+                float start = d * (Mathf.PI * 2f / dashes);
+                for (int i = 0; i < pointsPerDash; i++)
+                {
+                    float a = start + (Mathf.PI / dashes) * (i / (float)(pointsPerDash - 1));
+                    _iconPoints[i] = center + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * radius;
+                }
+                UiChrome.AddPolyline(root, "Dash", _iconPoints, pointsPerDash, IconStroke, color);
+            }
+        }
+
+        /// <summary>자물쇠 14×15(스펙 viewBox 20×21) — 채운 몸통 + 고리 호.</summary>
+        private static void BuildLockGlyph(RectTransform badge)
+        {
+            const float viewW = 20f, viewH = 21f, renderW = 14f, renderH = 15f;
+
+            Image bodyImage = UiChrome.AddSurface(badge, "LockBody", UiChrome.TextQuaternary, 2);
+            var brt = bodyImage.rectTransform;
+            brt.anchorMin = brt.anchorMax = brt.pivot = new Vector2(0.5f, 0.5f);
+            brt.sizeDelta = new Vector2(14f * (renderW / viewW), 10f * (renderH / viewH));
+            brt.anchoredPosition = FromViewBox(10f, 14.5f, viewW, viewH, renderW, renderH);
+            bodyImage.raycastTarget = false;
+
+            int count = LockShackle.Length / 2;
+            for (int i = 0; i < count; i++)
+            {
+                _iconPoints[i] = FromViewBox(LockShackle[i * 2], LockShackle[i * 2 + 1], viewW, viewH, renderW, renderH);
+            }
+            UiChrome.AddPolyline(badge, "LockShackle", _iconPoints, count,
+                IconStroke * (renderW / viewW), UiChrome.TextQuaternary);
+        }
+
+        private void BuildDetailPanel(RectTransform page)
+        {
+            Image detail = UiChrome.AddSurface(page, "Detail", UiChrome.SubtleSurface, UiChrome.RadiusCard);
             var drt = detail.rectTransform;
-            drt.anchorMin = Vector2.zero;
-            drt.anchorMax = Vector2.one;
-            drt.offsetMin = Vector2.zero;
-            drt.offsetMax = new Vector2(0f, detailTop);
+            UiChrome.PlaceTopLeft(drt, RightPadX, DetailY, RightContentWidth, DetailHeight);
             detail.raycastTarget = false;
             UiChrome.AddOutline(drt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
 
-            float innerWidth = RightWidth() - UiChrome.Space4 * 2f;
+            _detailName = Label(drt, "DetailName", UiChrome.FontTitle, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
+                15f, -14f, 150f, 17f, "—", bold: true);
+            _detailMeta = Label(drt, "DetailMeta", UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.TextTertiary,
+                172f, -14f, 330f, 17f, "—");
 
-            _equipDetailName = UiChrome.AddText(drt, "DetailName", UiChrome.FontTitle, TextAnchor.UpperLeft,
-                UiChrome.TextPrimary, bold: true);
-            UiChrome.PlaceTopLeft(_equipDetailName.rectTransform, UiChrome.Space4, -UiChrome.Space3, innerWidth, 20f);
-
-            _equipDetailMeta = UiChrome.AddText(drt, "DetailMeta", UiChrome.FontCaption, TextAnchor.UpperLeft, UiChrome.TextTertiary);
-            UiChrome.PlaceTopLeft(_equipDetailMeta.rectTransform, UiChrome.Space4, -34f, innerWidth, 16f);
-
-            _equipDetailBody = UiChrome.AddText(drt, "DetailBody", UiChrome.FontBody, TextAnchor.UpperLeft,
+            _detailBody = UiChrome.AddText(drt, "DetailBody", UiChrome.FontBody, TextAnchor.UpperLeft,
                 UiChrome.TextSecondary, wrap: true);
-            UiChrome.PlaceTopLeft(_equipDetailBody.rectTransform, UiChrome.Space4, -56f, innerWidth, 36f);
+            UiChrome.PlaceTopLeft(_detailBody.rectTransform, 15f, -42f, RightContentWidth - 30f, 48f);
+            _detailBody.lineSpacing = 1.6f;   // 스펙 line-height 1.6.
 
-            _equipActionSurface = UiChrome.AddSurface(drt, "EquipAction", UiChrome.AccentSurface, UiChrome.RadiusChip);
-            _equipActionRect = _equipActionSurface.rectTransform;
-            UiChrome.PlaceTopLeft(_equipActionRect, UiChrome.Space4, -102f, 128f, 28f);
-            _equipActionOutline = UiChrome.AddOutline(_equipActionRect, "Outline", UiChrome.AccentBorder, UiChrome.RadiusChip);
-            _equipActionLabel = UiChrome.AddText(_equipActionRect, "Label", UiChrome.FontBody, TextAnchor.MiddleCenter,
-                UiChrome.TextOnAccent, bold: true);
-            UiChrome.Stretch(_equipActionLabel.rectTransform);
-            _equipActionLabel.text = "착용하기";
-            var actionButton = _equipActionSurface.gameObject.AddComponent<Button>();
-            actionButton.targetGraphic = _equipActionSurface;
-            actionButton.onClick.AddListener(() => { if (TryClaimAction("equipAction")) OnEquipActionClicked(); });
+            _actionSurface = UiChrome.AddSurface(drt, "Action", UiChrome.TextPrimary, UiChrome.RadiusChip);
+            _actionRect = _actionSurface.rectTransform;
+            UiChrome.PlaceTopLeft(_actionRect, RightContentWidth - 15f - 52f, -13f, 52f, 24f);
+            _actionOutline = UiChrome.AddOutline(_actionRect, "Outline", UiChrome.TextPrimary, UiChrome.RadiusChip);
+            _actionLabel = UiChrome.AddText(_actionRect, "Label", UiChrome.FontBody, TextAnchor.MiddleCenter,
+                UiChrome.OnAccentSolid);
+            UiChrome.Stretch(_actionLabel.rectTransform);
+            _actionLabel.text = "착용";
 
-            Text note = UiChrome.AddText(drt, "Note", UiChrome.FontCaption, TextAnchor.LowerRight, UiChrome.TextTertiary);
-            UiChrome.Stretch(note.rectTransform);
-            note.rectTransform.offsetMin = new Vector2(0f, UiChrome.Space3);
-            note.rectTransform.offsetMax = new Vector2(-UiChrome.Space4, 0f);
-            note.text = "장비는 구매가 아니라 레벨업으로 열려요";
+            var actionButton = _actionSurface.gameObject.AddComponent<Button>();
+            actionButton.targetGraphic = _actionSurface;
+            actionButton.onClick.AddListener(() => { if (TryClaimAction("action")) OnActionClicked(); });
         }
 
-        private void BuildAppearancePage(RectTransform right)
-        {
-            RectTransform page = CreatePage(right, "AppearancePage");
-            _pages[(int)Tab.Appearance] = page.gameObject;
-
-            const float LabelWidth = 76f;
-            const float FieldX = 84f;
-            const float RowHeight = 28f;
-            float rowStep = RowHeight + UiChrome.Space3;
-
-            Text nameLabel = UiChrome.AddText(page, "NameLabel", UiChrome.FontLabel, TextAnchor.MiddleLeft, UiChrome.TextSecondary);
-            UiChrome.PlaceTopLeft(nameLabel.rectTransform, 0f, 0f, LabelWidth, RowHeight);
-            nameLabel.text = "이름";
-
-            _nameInput = CreateInputField(page);
-            UiChrome.PlaceTopLeft(_nameInput.GetComponent<RectTransform>(), FieldX, 0f, 220f, RowHeight);
-
-            Text inkLabel = UiChrome.AddText(page, "InkLabel", UiChrome.FontLabel, TextAnchor.MiddleLeft, UiChrome.TextSecondary);
-            UiChrome.PlaceTopLeft(inkLabel.rectTransform, 0f, -rowStep, LabelWidth, RowHeight);
-            inkLabel.text = "잉크색";
-
-            string[] inkNames = { "검정", "흰색" };
-            for (int i = 0; i < 2; i++)
-            {
-                Image surface = UiChrome.AddSurface(page, "Ink" + inkNames[i], UiChrome.CardSurface, UiChrome.RadiusChip);
-                var rt = surface.rectTransform;
-                UiChrome.PlaceTopLeft(rt, FieldX + i * (92f + UiChrome.Space2), -rowStep, 92f, RowHeight);
-                Image outline = UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
-                Text label = UiChrome.AddText(rt, "Label", UiChrome.FontBody, TextAnchor.MiddleCenter, UiChrome.TextSecondary);
-                UiChrome.Stretch(label.rectTransform);
-                label.text = inkNames[i];
-
-                var button = surface.gameObject.AddComponent<Button>();
-                button.targetGraphic = surface;
-                bool white = i == 1;
-                button.onClick.AddListener(() => { if (TryClaimAction("ink" + (white ? 1 : 0))) OnInkButtonClicked(white); });
-
-                _inkSurfaces[i] = surface;
-                _inkOutlines[i] = outline;
-                _inkRects[i] = rt;
-                _inkLabels[i] = label;
-            }
-
-            // 크기 배율 — 읽기 전용이다(아래 안내가 그 이유를 사용자에게도 정직하게 말한다).
-            Text scaleLabel = UiChrome.AddText(page, "ScaleLabel", UiChrome.FontLabel, TextAnchor.MiddleLeft, UiChrome.TextSecondary);
-            UiChrome.PlaceTopLeft(scaleLabel.rectTransform, 0f, -rowStep * 2f, LabelWidth, RowHeight);
-            scaleLabel.text = "크기 배율";
-
-            _scaleValue = UiChrome.AddText(page, "ScaleValue", UiChrome.FontBody, TextAnchor.MiddleLeft, UiChrome.TextPrimary, bold: true);
-            UiChrome.PlaceTopLeft(_scaleValue.rectTransform, FieldX, -rowStep * 2f, 140f, RowHeight);
-
-            Image divider = UiChrome.AddSurface(page, "Divider", UiChrome.Divider, 2);
-            UiChrome.PlaceTopLeft(divider.rectTransform, 0f, -rowStep * 3f, RightWidth(), 1f);
-            divider.raycastTarget = false;
-
-            Text entryTitle = UiChrome.AddText(page, "EntryTitle", UiChrome.FontLabel, TextAnchor.UpperLeft,
-                UiChrome.TextSecondary, bold: true);
-            UiChrome.PlaceTopLeft(entryTitle.rectTransform, 0f, -rowStep * 3f - UiChrome.Space3, RightWidth(), 18f);
-            entryTitle.text = "이 창을 여는 세 가지 방법";
-
-            Text entryBody = UiChrome.AddText(page, "EntryBody", UiChrome.FontCaption, TextAnchor.UpperLeft,
-                UiChrome.TextTertiary, wrap: true);
-            UiChrome.PlaceTopLeft(entryBody.rectTransform, 0f, -rowStep * 3f - 36f, RightWidth(), 90f);
-            // 슬라이더를 만들지 않은 이유를 화면에서도, 코드에서도 같은 말로 남긴다:
-            // characterScale은 프리팹 지오메트리(뼈 길이/획 두께/콜라이더)에 **구워지는** 값이라
-            // 런타임에 숫자만 바꾸면 그림은 그대로인 채 물리만 어긋난다. 슬라이더를 붙이면 "움직였는데
-            // 아무 일도 안 일어난다"가 되고, 그것이 이 프로젝트가 가장 자주 겪은 실패다.
-            entryBody.text =
-                "화면 우상단 톱니 아이콘  ·  전역 단축키 ⌃⌥⌘I  ·  캐릭터 우클릭 → [캐릭터 정보]\n\n" +
-                "이름과 잉크색은 바꾸는 즉시 반영되고 자동 저장돼요. 크기 배율은 캐릭터 뼈대에 구워지는 " +
-                "값이라 앱 안에서는 바꿀 수 없어요 — 에디터의 [StickMate ▸ Resize Stickman]으로 다시 구워야 합니다.";
-        }
+        // -------------------- 보관함 페이지 --------------------
 
         private void BuildInventoryPage(RectTransform right)
         {
-            RectTransform page = CreatePage(right, "InventoryPage");
-            _pages[(int)Tab.Inventory] = page.gameObject;
+            var pageGo = new GameObject("InventoryPage", typeof(RectTransform));
+            pageGo.transform.SetParent(right, false);
+            var page = pageGo.GetComponent<RectTransform>();
+            UiChrome.PlaceTopLeft(page, 0f, 0f, RightWidth, BodyHeight);
+            _inventoryPage = pageGo;
 
-            float listWidth = RightWidth() - InventoryRailWidth - UiChrome.Space2;
             float rowStep = InventoryRowHeight + InventoryRowGap;
 
             for (int i = 0; i < InventoryVisibleRows; i++)
             {
                 Image surface = UiChrome.AddSurface(page, "InvRow" + i, UiChrome.CardSurface, UiChrome.RadiusChip);
                 var rt = surface.rectTransform;
-                UiChrome.PlaceTopLeft(rt, 0f, -i * rowStep, listWidth, InventoryRowHeight);
+                UiChrome.PlaceTopLeft(rt, RightPadX, SectionsTopY - i * rowStep, InventoryListWidth, InventoryRowHeight);
                 Image outline = UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
 
                 // 장비/행동을 완전히 같은 행 모양으로 그린다(디자이너 확정) —
                 // ● 표식 / 이름 / 부제 / 설명 한 줄 / 상태 슬롯(96pt 고정, 훗날 가격표 자리).
-                Image dot = UiChrome.AddSurface(rt, "Dot", UiChrome.TextTertiary, 3);
+                Image dot = UiChrome.AddSurface(rt, "Dot", UiChrome.TextQuaternary, UiChrome.RadiusDot);
                 UiChrome.PlaceTopLeft(dot.rectTransform, UiChrome.Space2, -(InventoryRowHeight - 6f) * 0.5f, 6f, 6f);
                 dot.raycastTarget = false;
 
                 float nameX = UiChrome.Space2 + 6f + UiChrome.Space2;
-                Text title = UiChrome.AddText(rt, "Title", UiChrome.FontLabel, TextAnchor.MiddleLeft, UiChrome.TextPrimary);
-                UiChrome.PlaceTopLeft(title.rectTransform, nameX, 0f, 92f, InventoryRowHeight);
+                Text title = Label(rt, "Title", UiChrome.FontLabel, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
+                    nameX, 0f, 110f, InventoryRowHeight, string.Empty);
+                Text subtitle = Label(rt, "Subtitle", UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.TextQuaternary,
+                    nameX + 112f, 0f, 48f, InventoryRowHeight, string.Empty);
 
-                Text subtitle = UiChrome.AddText(rt, "Subtitle", UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.TextTertiary);
-                UiChrome.PlaceTopLeft(subtitle.rectTransform, nameX + 94f, 0f, 44f, InventoryRowHeight);
-
-                float descX = nameX + 94f + 46f;
-                float descWidth = listWidth - descX - StatusSlotWidth - UiChrome.Space2;
-                Text description = UiChrome.AddText(rt, "Description", UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.TextSecondary);
-                UiChrome.PlaceTopLeft(description.rectTransform, descX, 0f, Mathf.Max(40f, descWidth), InventoryRowHeight);
+                float descX = nameX + 112f + 50f;
+                float descWidth = InventoryListWidth - descX - StatusSlotWidth - UiChrome.Space2;
+                Text description = Label(rt, "Description", UiChrome.FontCaption, TextAnchor.MiddleLeft,
+                    UiChrome.TextSecondary, descX, 0f, Mathf.Max(40f, descWidth), InventoryRowHeight, string.Empty);
                 // 줄바꿈하지 않는다 — 길이는 Ellipsize가 미리 자른다(위 상수 참고).
                 description.horizontalOverflow = HorizontalWrapMode.Overflow;
                 description.verticalOverflow = VerticalWrapMode.Truncate;
 
-                Text statusSlot = UiChrome.AddText(rt, "StatusSlot", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.TextSecondary);
-                UiChrome.PlaceTopLeft(statusSlot.rectTransform, listWidth - StatusSlotWidth - UiChrome.Space2, 0f,
-                    StatusSlotWidth, InventoryRowHeight);
+                Text statusSlot = Label(rt, "StatusSlot", UiChrome.FontCaption, TextAnchor.MiddleRight,
+                    UiChrome.TextTertiary, InventoryListWidth - StatusSlotWidth - UiChrome.Space2, 0f,
+                    StatusSlotWidth, InventoryRowHeight, string.Empty);
 
-                Text header = UiChrome.AddText(rt, "Header", UiChrome.FontLabel, TextAnchor.MiddleLeft,
-                    UiChrome.TextSecondary, bold: true);
-                UiChrome.PlaceTopLeft(header.rectTransform, 0f, 0f, listWidth, InventoryRowHeight);
+                Text header = Label(rt, "Header", UiChrome.FontLabel, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
+                    0f, 0f, InventoryListWidth, InventoryRowHeight, string.Empty, bold: true);
 
                 var button = surface.gameObject.AddComponent<Button>();
                 button.targetGraphic = surface;
@@ -1426,44 +2180,35 @@ namespace StickMate.Interaction
                 };
             }
 
-            // 페이지 버튼 — 휠에 기대지 않는다(클래스 문서 참고).
+            // 페이지 버튼 — 휠에 기대지 않는다(클래스 문서 참고: 우리 창은 앱이 활성일 때만 휠을 받는다).
             float listHeight = InventoryVisibleRows * rowStep - InventoryRowGap;
-            float railX = listWidth + UiChrome.Space2;
+            float railX = RightPadX + InventoryListWidth + UiChrome.Space2;
 
-            _pageUpRect = BuildPagerButton(page, "PageUp", "▲", railX, 0f, () => ScrollInventory(-1), "pageUp");
-            _pageDownRect = BuildPagerButton(page, "PageDown", "▼", railX, -(listHeight - InventoryRailWidth),
-                () => ScrollInventory(1), "pageDown");
+            _pageUpRect = BuildPagerButton(page, "PageUp", "▲", railX, SectionsTopY, () => ScrollInventory(-1), "pageUp");
+            _pageDownRect = BuildPagerButton(page, "PageDown", "▼", railX,
+                SectionsTopY - (listHeight - InventoryRailWidth), () => ScrollInventory(1), "pageDown");
 
-            _pageIndicator = UiChrome.AddText(page, "PageIndicator", UiChrome.FontCaption, TextAnchor.MiddleCenter, UiChrome.TextTertiary);
-            UiChrome.PlaceTopLeft(_pageIndicator.rectTransform, railX, -(InventoryRailWidth + UiChrome.Space2),
-                InventoryRailWidth, listHeight - InventoryRailWidth * 2f - UiChrome.Space2 * 2f);
+            _pageIndicator = Label(page, "PageIndicator", UiChrome.FontCaption, TextAnchor.MiddleCenter,
+                UiChrome.TextQuaternary, railX, SectionsTopY - (InventoryRailWidth + UiChrome.Space2),
+                InventoryRailWidth, listHeight - InventoryRailWidth * 2f - UiChrome.Space2 * 2f, "1\n/\n1");
 
             Image detail = UiChrome.AddSurface(page, "InventoryDetail", UiChrome.SubtleSurface, UiChrome.RadiusCard);
             var drt = detail.rectTransform;
-            drt.anchorMin = Vector2.zero;
-            drt.anchorMax = new Vector2(1f, 0f);
-            drt.pivot = new Vector2(0.5f, 0f);
-            drt.offsetMin = Vector2.zero;
-            drt.offsetMax = new Vector2(0f, InventoryDetailHeight);
+            UiChrome.PlaceTopLeft(drt, RightPadX, DetailY, RightContentWidth, DetailHeight);
             detail.raycastTarget = false;
             UiChrome.AddOutline(drt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
 
-            float innerWidth = RightWidth() - UiChrome.Space4 * 2f;
+            _inventoryDetailName = Label(drt, "DetailName", UiChrome.FontTitle, TextAnchor.MiddleLeft,
+                UiChrome.TextPrimary, 15f, -14f, RightContentWidth - 30f, 17f, "—", bold: true);
 
-            _inventoryDetailName = UiChrome.AddText(drt, "DetailName", UiChrome.FontBody, TextAnchor.UpperLeft,
-                UiChrome.TextPrimary, bold: true);
-            UiChrome.PlaceTopLeft(_inventoryDetailName.rectTransform, UiChrome.Space4, -UiChrome.Space3, innerWidth, 18f);
-
-            _inventoryDetailBody = UiChrome.AddText(drt, "DetailBody", UiChrome.FontLabel, TextAnchor.UpperLeft,
+            _inventoryDetailBody = UiChrome.AddText(drt, "DetailBody", UiChrome.FontBody, TextAnchor.UpperLeft,
                 UiChrome.TextSecondary, wrap: true);
-            UiChrome.PlaceTopLeft(_inventoryDetailBody.rectTransform, UiChrome.Space4, -34f, innerWidth, 30f);
+            UiChrome.PlaceTopLeft(_inventoryDetailBody.rectTransform, 15f, -42f, RightContentWidth - 30f, 34f);
+            _inventoryDetailBody.lineSpacing = 1.6f;
 
-            Text note = UiChrome.AddText(drt, "Note", UiChrome.FontCaption, TextAnchor.LowerRight, UiChrome.TextTertiary);
-            UiChrome.Stretch(note.rectTransform);
-            note.rectTransform.offsetMin = new Vector2(UiChrome.Space4, UiChrome.Space2);
-            note.rectTransform.offsetMax = new Vector2(-UiChrome.Space4, 0f);
             // 지금 파는 것은 하나도 없다 — 그 사실을 화면에서도 숨기지 않는다.
-            note.text = "지금은 파는 것이 없습니다";
+            Label(drt, "Note", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.TextQuaternary,
+                RightContentWidth - 215f, -DetailHeight + 26f, 200f, 14f, "지금은 파는 것이 없습니다");
         }
 
         private RectTransform BuildPagerButton(RectTransform page, string name, string glyph, float x, float y,
@@ -1474,7 +2219,7 @@ namespace StickMate.Interaction
             UiChrome.PlaceTopLeft(rt, x, y, InventoryRailWidth, InventoryRailWidth);
             UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
 
-            Text label = UiChrome.AddText(rt, "Label", UiChrome.FontCaption, TextAnchor.MiddleCenter, UiChrome.TextSecondary);
+            Text label = UiChrome.AddText(rt, "Label", UiChrome.FontCaption, TextAnchor.MiddleCenter, UiChrome.TextTertiary);
             UiChrome.Stretch(label.rectTransform);
             label.text = glyph;
 
@@ -1484,65 +2229,34 @@ namespace StickMate.Interaction
             return rt;
         }
 
-        private void BuildStatsBlock(RectTransform right)
-        {
-            var blockGo = new GameObject("StatsBlock", typeof(RectTransform));
-            blockGo.transform.SetParent(right, false);
-            var block = blockGo.GetComponent<RectTransform>();
-            block.anchorMin = new Vector2(0f, 0f);
-            block.anchorMax = new Vector2(1f, 0f);
-            block.pivot = new Vector2(0.5f, 0f);
-            block.offsetMin = Vector2.zero;
-            block.offsetMax = new Vector2(0f, StatsBlockHeight);
-
-            float cellWidth = (RightWidth() - UiChrome.Space3) * 0.5f;
-            float rowGap = (StatsBlockHeight - StatRowHeight * 3f) * 0.5f;
-
-            for (int i = 0; i < StatCount; i++)
-            {
-                int col = i % 2, row = i / 2;
-
-                Image cell = UiChrome.AddSurface(block, "Stat" + i, UiChrome.SubtleSurface, UiChrome.RadiusChip);
-                UiChrome.PlaceTopLeft(cell.rectTransform, col * (cellWidth + UiChrome.Space3),
-                    -row * (StatRowHeight + rowGap), cellWidth, StatRowHeight);
-                cell.raycastTarget = false;
-
-                // 좌측 고정폭 라벨 + 우측 정렬 값 — 라벨 길이가 달라도 값이 세로로 줄맞춰진다(디자이너 지시).
-                Text label = UiChrome.AddText(cell.rectTransform, "Label", UiChrome.FontCaption, TextAnchor.MiddleLeft,
-                    UiChrome.TextTertiary);
-                UiChrome.PlaceTopLeft(label.rectTransform, UiChrome.Space3, 0f, 84f, StatRowHeight);
-                label.text = StatLabels[i];
-
-                Text value = UiChrome.AddText(cell.rectTransform, "Value", UiChrome.FontBody, TextAnchor.MiddleRight,
-                    UiChrome.TextPrimary, bold: true);
-                UiChrome.PlaceTopLeft(value.rectTransform, UiChrome.Space3 + 84f, 0f,
-                    cellWidth - UiChrome.Space3 * 2f - 84f, StatRowHeight);
-                value.text = "—";
-                _statValues[i] = value;
-            }
-        }
-
         // ==================== 작은 유틸 ====================
 
-        /// <summary>우측 패널의 실제 폭(캔버스 유닛). 창 폭에서 유도하므로 한 곳만 고치면 전부 따라온다.</summary>
-        private static float RightWidth() => PanelWidth - UiChrome.Space4 * 2f - LeftWidth - ColumnGap;
+        /// <summary>좌상단 원점 배치 + 문자열까지 한 번에 — 이 파일에만 100번 넘게 나오는 조합이다.</summary>
+        private static Text Label(Transform parent, string name, int fontSize, TextAnchor anchor, Color color,
+            float x, float y, float width, float height, string text, bool bold = false)
+        {
+            Text t = UiChrome.AddText(parent, name, fontSize, anchor, color, bold);
+            UiChrome.PlaceTopLeft(t.rectTransform, x, y, width, height);
+            t.text = text;
+            return t;
+        }
 
         private InputField CreateInputField(Transform parent)
         {
             Image surface = UiChrome.AddSurface(parent, "NameInput", UiChrome.CardSurface, UiChrome.RadiusChip);
-            UiChrome.AddOutline(surface.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+            UiChrome.AddOutline(surface.rectTransform, "Outline", UiChrome.PanelBorder, UiChrome.RadiusChip);
 
             Text text = UiChrome.AddText(surface.rectTransform, "Text", UiChrome.FontBody, TextAnchor.MiddleLeft, UiChrome.TextPrimary);
             UiChrome.Stretch(text.rectTransform);
-            text.rectTransform.offsetMin = new Vector2(UiChrome.Space3, 0f);
-            text.rectTransform.offsetMax = new Vector2(-UiChrome.Space3, 0f);
+            text.rectTransform.offsetMin = new Vector2(UiChrome.Space2, 0f);
+            text.rectTransform.offsetMax = new Vector2(-UiChrome.Space2, 0f);
             text.supportRichText = false;
 
             Text placeholder = UiChrome.AddText(surface.rectTransform, "Placeholder", UiChrome.FontBody,
-                TextAnchor.MiddleLeft, UiChrome.TextTertiary);
+                TextAnchor.MiddleLeft, UiChrome.TextQuaternary);
             UiChrome.Stretch(placeholder.rectTransform);
-            placeholder.rectTransform.offsetMin = new Vector2(UiChrome.Space3, 0f);
-            placeholder.rectTransform.offsetMax = new Vector2(-UiChrome.Space3, 0f);
+            placeholder.rectTransform.offsetMin = new Vector2(UiChrome.Space2, 0f);
+            placeholder.rectTransform.offsetMax = new Vector2(-UiChrome.Space2, 0f);
             placeholder.text = CharacterProgressionModel.DefaultCharacterName;
             placeholder.fontStyle = FontStyle.Italic;
 
@@ -1553,7 +2267,7 @@ namespace StickMate.Interaction
             input.characterLimit = CharacterProgressionModel.MaxNameLength;
             input.lineType = InputField.LineType.SingleLine;
             input.text = CharacterProgressionModel.CharacterName;
-            input.onEndEdit.AddListener(_ => CommitNameInput());
+            input.onEndEdit.AddListener(_ => EndNameEdit(commit: true));
             return input;
         }
 

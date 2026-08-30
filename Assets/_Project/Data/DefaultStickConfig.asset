@@ -57,7 +57,7 @@ MonoBehaviour:
   hopDownStepOffSpeedScale: 0.8
   stepUpChance: 0.85
   stepUpMaxHeight: 2.4
-  parkourMantleInset: 0.45
+  parkourMantleInset: 0.6
   postClimbDescendCooldown: 8
   clickThroughDefaultEnabled: 1
   footholdPollInterval: 0.3
@@ -95,17 +95,6 @@ MonoBehaviour:
   battleInputTimeoutSeconds: 5
   battleAutoTriggerCheckInterval: 60
   battleAutoTriggerChance: 0
-  rivalSpawnCheckInterval: 90
-  rivalSpawnChance: 0
-  rivalSpawnCooldownSeconds: 1200
-  rivalMaxDurationSeconds: 30
-  rivalSpawnMinFootholds: 2
-  rivalSpawnOffsetWorldX: 6
-  rivalStopDistance: 0.6
-  rivalAttackRange: 1
-  rivalAttackCooldownSeconds: 1.2
-  rivalDuelHitsToLose: 2
-  rivalAttackImpactMultiplier: 1.25
   dragThrowVelocitySampleWindowSeconds: 0.12
   dragThrowMaxSpeed: 12
   dragThrowMaxHoldSeconds: 10
@@ -219,7 +208,6 @@ MonoBehaviour:
   inkColor: 0
   primaryOutlineColor: {r: 0, g: 0, b: 0, a: 1}
   whiteInkColor: {r: 1, g: 1, b: 1, a: 1}
-  rivalInkColor: {r: 0.85, g: 0.13, b: 0.13, a: 1}
   dialogueBubbleColor: {r: 1, g: 1, b: 1, a: 0}
   backgroundFallbackColor: {r: 0.94, g: 0.94, b: 0.94, a: 1}
   verboseDiagnosticsLogging: 0
@@ -329,17 +317,12 @@ MonoBehaviour:
   archeryKneeBendDegrees: 12
   archeryDrawBodySinkRatio: 0.022
   progressionXpCurveBase: 100
-  progressionXpCurveExponent: 1.15
+  progressionXpCurveExponent: 1.05
   progressionPassiveXpPerMinute: 1.5
   progressionPassiveTickSeconds: 10
   progressionBattleWinXp: 25
-  progressionRivalWinXp: 40
   progressionBullseyeXp: 15
   progressionAutoSaveIntervalSeconds: 60
-  equipmentUnlockLevelHead: 2
-  equipmentUnlockLevelEyes: 4
-  equipmentUnlockLevelNeck: 6
-  equipmentUnlockLevelShoulders: 8
   landingDustEnabled: 1
   landingDustPuffCount: 5
   landingDustSeconds: 0.38
@@ -348,11 +331,6 @@ MonoBehaviour:
   landingDustStrokeRatio: 0.022
   landingDustFullHeights: 3
   landingDustMinIntensity: 0.45
-  rivalDuelClashEnabled: 1
-  rivalDuelClashSeconds: 0.45
-  rivalDuelClashRadiusRatio: 0.55
-  rivalDuelClashRayCount: 8
-  rivalDuelClashStrokeRatio: 0.028
   idleAmbientMotionEnabled: 1
   idleAmbientLookAroundSeconds: 0.9
   idleAmbientLookArmDegrees: 107

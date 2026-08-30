@@ -7,13 +7,13 @@ using StickMate.Core;
 namespace StickMate.Tests.EditMode
 {
     /// <summary>
-    /// ★ 기록(근속/함께한 시간/격파/대결/활쏘기/넘어짐)의 <b>영속화</b> 회귀 테스트 —
+    /// ★ 기록(근속/함께한 시간/격파/활쏘기/넘어짐)의 <b>영속화</b> 회귀 테스트 —
     /// 2026-08-30 정보창 리디자인 라운드.
     ///
     /// ============================================================================
     /// 무엇을 잡으려는가
     /// ============================================================================
-    ///  (1) 저장 -> 초기화 -> 로드 왕복에서 <b>여섯 값이 전부</b> 그대로 돌아온다(리더 지시의 명시 항목:
+    ///  (1) 저장 -> 초기화 -> 로드 왕복에서 <b>다섯 값이 전부</b> 그대로 돌아온다(리더 지시의 명시 항목:
     ///      "카운터 영속화 테스트(재시작 후 유지) 추가").
     ///  (2) <b>구버전(v1) 저장 파일</b>도 그대로 읽힌다 — 이 라운드에서 스키마 버전을 올렸으므로,
     ///      이미 며칠 키운 사용자의 레벨이 날아가면 그게 최악의 회귀다. 새 필드는 0으로 시작하고
@@ -58,11 +58,10 @@ namespace StickMate.Tests.EditMode
         }
 
         [Test]
-        public void 기록_여섯_값이_저장하고_다시_불러온_뒤에도_같다()
+        public void 기록_다섯_값이_저장하고_다시_불러온_뒤에도_같다()
         {
             CharacterStatsModel.AddBattleWin();
             CharacterStatsModel.AddBattleWin();
-            CharacterStatsModel.AddRivalWin();
             CharacterStatsModel.AddArcheryShot(bullseye: true);
             CharacterStatsModel.AddArcheryShot(bullseye: false);
             CharacterStatsModel.AddArcheryShot(bullseye: false);
@@ -83,7 +82,6 @@ namespace StickMate.Tests.EditMode
             CharacterSaveStore.Load();
 
             Assert.AreEqual(2, CharacterStatsModel.BattleWins, "격파 성공 횟수가 복원되지 않았습니다.");
-            Assert.AreEqual(1, CharacterStatsModel.RivalWins, "대결 승리 횟수가 복원되지 않았습니다.");
             Assert.AreEqual(3, CharacterStatsModel.ArcheryShots, "활쏘기 발사 수가 복원되지 않았습니다.");
             Assert.AreEqual(1, CharacterStatsModel.ArcheryBullseyes, "활쏘기 명중 수가 복원되지 않았습니다.");
             Assert.AreEqual(1, CharacterStatsModel.RagdollFalls, "넘어진 횟수가 복원되지 않았습니다.");
@@ -145,7 +143,7 @@ namespace StickMate.Tests.EditMode
         public void 근속은_첫_만남으로부터_지난_날수_더하기_하루다()
         {
             long threeDaysAgo = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 3 * 86400L - 60L;
-            CharacterStatsModel.RestoreFromSave(0, 0, 0, 0, 0f, 0, threeDaysAgo);
+            CharacterStatsModel.RestoreFromSave(0, 0, 0, 0f, 0, threeDaysAgo);
 
             Assert.AreEqual(4, CharacterStatsModel.DaysTogether,
                 "3일 전에 처음 만났으면 오늘은 4일차입니다(첫날이 1일차).");
@@ -156,10 +154,9 @@ namespace StickMate.Tests.EditMode
         {
             // 명중 수 > 발사 수 / 음수 / 미래 시각 — 전부 파일 손상이나 손편집으로 들어올 수 있다.
             long future = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 5 * 86400L;
-            CharacterStatsModel.RestoreFromSave(-3, -1, 2, 99, -50f, -7, future);
+            CharacterStatsModel.RestoreFromSave(-3, 2, 99, -50f, -7, future);
 
             Assert.AreEqual(0, CharacterStatsModel.BattleWins, "음수 기록이 그대로 들어왔습니다.");
-            Assert.AreEqual(0, CharacterStatsModel.RivalWins);
             Assert.AreEqual(0, CharacterStatsModel.RagdollFalls);
             Assert.AreEqual(0f, CharacterStatsModel.TotalCompanionSeconds, 0.001f);
             Assert.AreEqual(2, CharacterStatsModel.ArcheryShots);

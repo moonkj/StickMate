@@ -11,7 +11,10 @@ namespace StickMate.Core
     /// 참고한 RPG 캐릭터 창의 2열x3행 스탯 배치는 그대로 쓰되, <b>내용은 이 앱에 실제로 존재하는
     /// 사실</b>로만 채운다(리더 확정). 이 앱에는 HP도 데미지도 없다 — 없는 숫자를 그럴듯하게 적으면
     /// 그 순간부터 창 전체가 장식이 되고, 사용자는 어느 숫자가 진짜인지 구분할 수 없게 된다.
-    /// 그래서 여섯 칸은 스트레스 / 함께한 시간 / 격파 성공 / 대결 승리 / 활쏘기 명중률 / 지금 상태다.
+    /// 그래서 여섯 칸은 근속 / 함께한 시간 / 격파 성공 / 보유 장비 / 활쏘기 명중률 / 넘어진 횟수다.
+    /// ("대결 승리"는 라이벌 기능 전체 삭제(2026-08-30)로 영구 0이 되는 죽은 칸이 되어 "보유 장비"
+    /// — ItemCatalog.UnlockedEquipmentCount/EquipmentCount — 로 교체했다. 없는 숫자를 적지 않는다는
+    /// 위 원칙은 그대로다: 보유 장비는 레벨에 따라 실제로 변하는 값이다.)
     ///
     /// ============================================================================
     /// 이 클래스는 "언제 세는지"를 모른다
@@ -27,9 +30,6 @@ namespace StickMate.Core
     {
         /// <summary>격파 미니게임 성공 횟수(BattleMinigamePhase.Success 누적).</summary>
         public static int BattleWins { get; private set; }
-
-        /// <summary>라이벌 대결 승리 횟수(RivalDuelResult.PlayerWon 누적).</summary>
-        public static int RivalWins { get; private set; }
 
         /// <summary>지금까지 쏜 화살 수(Release 시점 기준). 명중률의 분모다.</summary>
         public static int ArcheryShots { get; private set; }
@@ -91,12 +91,6 @@ namespace StickMate.Core
             IsDirty = true;
         }
 
-        public static void AddRivalWin()
-        {
-            RivalWins++;
-            IsDirty = true;
-        }
-
         /// <summary>한 발 기록. 명중 여부와 발사 수를 <b>한 번에</b> 올려 둘이 어긋날 수 없게 한다
         /// (분모만 오르고 분자가 누락되는 종류의 버그를 구조적으로 막는다).</summary>
         public static void AddArcheryShot(bool bullseye)
@@ -132,13 +126,12 @@ namespace StickMate.Core
 
         /// <summary>저장 파일 복원 전용(Core/CharacterSaveStore.cs). 이벤트를 쏘지 않는 이유는
         /// CharacterProgressionModel.RestoreFromSave와 같다(복원은 변화가 아니라 초기 상태 확정).</summary>
-        internal static void RestoreFromSave(int battleWins, int rivalWins, int archeryShots,
+        internal static void RestoreFromSave(int battleWins, int archeryShots,
             int archeryBullseyes, float companionSeconds, int ragdollFalls, long firstRunUnixSeconds)
         {
             RagdollFalls = Mathf.Max(0, ragdollFalls);
             FirstRunUnixSeconds = firstRunUnixSeconds > 0L ? firstRunUnixSeconds : 0L;
             BattleWins = Mathf.Max(0, battleWins);
-            RivalWins = Mathf.Max(0, rivalWins);
             ArcheryShots = Mathf.Max(0, archeryShots);
             // 명중 수가 발사 수보다 큰 파일(손상/구버전)이 들어와도 명중률이 100%를 넘지 않게 한다.
             ArcheryBullseyes = Mathf.Clamp(archeryBullseyes, 0, ArcheryShots);
@@ -153,7 +146,6 @@ namespace StickMate.Core
         public static void ResetForTesting()
         {
             BattleWins = 0;
-            RivalWins = 0;
             ArcheryShots = 0;
             ArcheryBullseyes = 0;
             TotalCompanionSeconds = 0f;

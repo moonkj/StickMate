@@ -111,6 +111,18 @@ namespace StickMate.Tests.PlayMode
         /// 측정 오차로 뒤집히는 두 번째 flaky를 원천 차단한다.</summary>
         private const float CrossoverAmbiguityBandUnits = 0.05f;
 
+        /// <summary>(C) 전용 — 배회 AI를 거치지 않고 "왼쪽으로 계속 걸어라"만 주입한다.
+        /// 배회 AI를 쓰면 **수정이 동작하는 순간** 경계 판정에 걸려 벽에 닿기 전에 돌아서므로
+        /// 이격 자체를 잴 수 없다(수정 전에만 측정 가능한 테스트가 되어 회귀 잠금이 안 된다).</summary>
+        private sealed class ScriptedIntentSource : IMovementIntentSource
+        {
+            public float MoveInputX { get; set; }
+            public bool JumpRequested => false;
+            public bool LedgeHangRequested => false;
+            public bool HopDownRequested => false;
+            public bool StepUpRequested => false;
+        }
+
         private sealed class TestFootholdService : IPlatformWindowService
         {
             public readonly List<PlatformFoothold> Footholds = new List<PlatformFoothold>();
@@ -288,7 +300,21 @@ namespace StickMate.Tests.PlayMode
         [UnityTest]
         public IEnumerator LargestTileSizeStillClimbsBackOntoDock()
         {
-            float drop = DockGeometry.DockDropWorldUnits(128f, DockGeometry.DefaultDockThicknessTilePaddingPoints);
+            yield return AssertClimbsBackOntoDock(128f, requireDerivationWarning: true);
+        }
+
+        // ★ 2026-08-30 R3-M1 — 되올라오기 왕복을 **tilesize 전 구간**에서 돌린다.
+        // 128 하나만 보던 것이 R3-M1을 늦게 발견한 이유 중 하나였다: 벽 이격 충돌은 tilesize가
+        // 커야만 켜지지만(머리 원을 덮을 만큼 벽이 높아야 한다), 켜지는 문턱은 33 근처라
+        // **macOS 기본 48과 이 개발 머신 49가 이미 그 안**이었다. 아래 128 전용 테스트는
+        // "유도 경고까지 관측"이라는 추가 조건이 있어 그대로 남기고, 이쪽은 왕복만 본다.
+        [UnityTest] public IEnumerator ClimbsBackOntoDock_TileSize16() { yield return AssertClimbsBackOntoDock(16f, false); }
+        [UnityTest] public IEnumerator ClimbsBackOntoDock_TileSize48() { yield return AssertClimbsBackOntoDock(48f, false); }
+        [UnityTest] public IEnumerator ClimbsBackOntoDock_TileSize80() { yield return AssertClimbsBackOntoDock(80f, false); }
+
+        private IEnumerator AssertClimbsBackOntoDock(float tileSizePoints, bool requireDerivationWarning)
+        {
+            float drop = DockGeometry.DockDropWorldUnits(tileSizePoints, DockGeometry.DefaultDockThicknessTilePaddingPoints);
             yield return SetUpDockLayout(drop);
 
             StickmanBlackboard bb = _agent.Blackboard;
@@ -296,10 +322,13 @@ namespace StickMate.Tests.PlayMode
             // ── 전제 1: 이 배치의 낙차가 설정 절대값을 **넘어야** 한다. 넘지 않으면 되올라가기가
             //    유도(ResolveStepUpMaxHeight) 없이도 통과해 버려 이 테스트는 M3를 하나도 잠그지 못한다.
             //    이 전제가 성립할 때에만 아래의 등반 성공이 곧 "유도가 동작했다"의 증거가 된다.
-            Assert.Greater(drop, _clonedConfig.stepUpMaxHeight,
-                $"{LogPrefix} 전제 실패 — tilesize 128의 낙차({drop:F3})가 stepUpMaxHeight 설정값" +
-                $"({_clonedConfig.stepUpMaxHeight:F3}) 이하입니다. 이 상태로는 등반이 성공해도 " +
-                "M3의 유도 경로를 지났다는 증거가 되지 못합니다(테스트 무의미).");
+            if (requireDerivationWarning)
+            {
+                Assert.Greater(drop, _clonedConfig.stepUpMaxHeight,
+                    $"{LogPrefix} 전제 실패 — tilesize {tileSizePoints:F0}의 낙차({drop:F3})가 stepUpMaxHeight 설정값" +
+                    $"({_clonedConfig.stepUpMaxHeight:F3}) 이하입니다. 이 상태로는 등반이 성공해도 " +
+                    "M3의 유도 경로를 지났다는 증거가 되지 못합니다(테스트 무의미).");
+            }
 
             // ── 확률/시드 제거(R3 M1). 확률 자체가 아니라 "확률이 성립했을 때 경로가 끝까지 이어지는가"를
             //    보는 테스트다. EdgeHopDownTests.AutoWanderHopsDownAndClimbsBackWithoutScriptedPulses와
@@ -356,7 +385,9 @@ namespace StickMate.Tests.PlayMode
             var wander = new AutoWanderController(bb, _clonedConfig, new System.Random(FixedWanderSeed));
             bb.IntentSource = wander;
 
-            Debug.Log($"{LogPrefix} 되올라오기 관찰 시작 — tilesize 128 낙차 {drop:F3}유닛, " +
+            Debug.Log($"{LogPrefix} 되올라오기 관찰 시작 — tilesize {tileSizePoints:F0} 낙차 {drop:F3}유닛, " +
+                $"몸 물리 반폭 {bb.CharacterPhysicalHalfWidthWorld:F3}, 경계 판정 거리 유도값 {bb.EdgeStopDistanceWorld:F3}" +
+                $"(설정 {_clonedConfig.wanderEdgeStopDistance:F3}), " +
                 $"시작 위치 x={startX:F3}(걷기 한계 {walkableRightX:F3}에서 {StartInsetFromScreenEdgeUnits:F2} 안쪽, " +
                 $"Dock 오른쪽 모서리 {_dockRightWorldX:F3}), " +
                 $"stepUpMaxHeight 설정값 {_clonedConfig.stepUpMaxHeight:F3}(이 값만으로는 못 덮는다), " +
@@ -385,7 +416,7 @@ namespace StickMate.Tests.PlayMode
 
             // ★ 절대 조건 — 가장 큰 Dock 아이콘 설정에서도 되올라온다.
             Assert.IsTrue(_sawParkourClimb,
-                $"{LogPrefix} tilesize 128(낙차 {drop:F3}유닛)에서 {RoundTripObserveSeconds:F0}초 동안 " +
+                $"{LogPrefix} tilesize {tileSizePoints:F0}(낙차 {drop:F3}유닛)에서 {RoundTripObserveSeconds:F0}초 동안 " +
                 "ParkourClimb에 한 번도 진입하지 못했습니다 — AutoWanderController가 이 턱을 " +
                 "'너무 높다'고 계속 기각했다는 뜻입니다(= 사용자가 신고한 '영영 못 올라옴'). " +
                 "ResolveStepUpMaxHeight의 실측 낙차 유도를 확인하세요.");
@@ -396,10 +427,194 @@ namespace StickMate.Tests.PlayMode
             // ★ M3 유도 경로가 실제로 발동했다는 직접 증거(R3가 지적한 "223건 실행 중 경고 0회" 구멍).
             //   위 전제 1(낙차 > 설정 절대값) 덕분에 등반 성공만으로도 유도를 지났다는 것이 논리적으로
             //   확정되지만, 로그로도 한 번 더 못박아 다음 사람이 "유도가 도는지" 눈으로 확인할 수 있게 한다.
-            Assert.IsTrue(_sawStepUpDerivationWarning,
-                $"{LogPrefix} 되올라가기 상한 유도 경고(\"{DerivationWarningNeedle}...\")가 한 번도 " +
-                "찍히지 않았습니다 — 실측 낙차 조회(TryMeasureDockDropWorldUnits)가 Dock 발판을 " +
-                "못 찾았다는 뜻이며, 그렇다면 이 배치가 실제 앱의 합성 발판 핸들과 어긋난 것입니다.");
+            if (requireDerivationWarning)
+            {
+                Assert.IsTrue(_sawStepUpDerivationWarning,
+                    $"{LogPrefix} 되올라가기 상한 유도 경고(\"{DerivationWarningNeedle}...\")가 한 번도 " +
+                    "찍히지 않았습니다 — 실측 낙차 조회(TryMeasureDockDropWorldUnits)가 Dock 발판을 " +
+                    "못 찾았다는 뜻이며, 그렇다면 이 배치가 실제 앱의 합성 발판 핸들과 어긋난 것입니다.");
+            }
+        }
+
+        // ============================================================================
+        // (C) ★ Dock 계단 **옆면** 이격 실측 — 2026-08-30 R3-M1
+        // ============================================================================
+        //
+        // R3가 잡은 실패는 "가끔 못 올라온다"가 아니라 **기하가 이미 어긋나 있었다**는 것이다:
+        //   · DockPhysicsStep의 계단 옆면은 바닥 안전망 조각의 논리 경계와 정확히 같은 X에 선다.
+        //   · 그 벽에 막혀 선 캐릭터의 루트는 몸의 물리 반폭(배율 0.75에서 0.300) + Box2D 접촉
+        //     이격(약 0.005) 아래로 절대 다가가지 못한다 = 0.305.
+        //   · 그런데 경계 판정 거리는 0.300이었다 → **밴드가 물리적으로 도달 불가능**.
+        // 아래 테스트는 그 이격을 **실제로 걸어가 부딪혀서** 재고, 유도된 판정 거리가 그것을
+        // 명확한 여유(≥ 0.05유닛)로 덮는지 단언한다. 산술이 아니라 물리 실측이라는 점이 핵심이다 —
+        // EditMode의 DockGeometryInvariantTests가 같은 관계를 순수 산술로 따로 잠근다.
+        //
+        // 네거티브 컨트롤(2026-08-30 디버거가 실제로 되돌려 확인): AutoWanderController.IsNearFootholdEdge를
+        // 예전 코드(`Cfg(c => c.wanderEdgeStopDistance, 0.3f)`)로 되돌리면 **소비자가 쓴 값**이 0.300으로
+        // 떨어져 tilesize 48/80/128에서 여유가 −0.005가 되고, 같은 자리의 경계 판정도 false가 되어
+        // 두 단언이 동시에 빨간불을 낸다.
+        // ★ 1차 시도의 실패 기록: 처음에는 블랙보드의 유도 프로퍼티(EdgeStopDistanceWorld)만 단언했는데,
+        //   그것은 소비자가 유도를 그만 읽어도 그대로 유지되는 값이라 **되돌려도 12/12 통과**했다
+        //   (Logs/dbg_m1_negctrl_play.xml). 그래서 컨트롤러의 진단 창구(LastEdgeStopDistanceUsed /
+        //   LastEdgeNear)를 보도록 바꿨다 — "값이 맞는가"가 아니라 "쓰는 쪽이 그 값을 보는가"가 본질이다.
+
+        // ★ 정지 판정을 "프레임당 이동량"으로 재면 안 된다(2026-08-30 디버거 1차 시도의 실패):
+        // 배치 모드는 프레임 간격이 1ms 안팎이라 **출발 직후 가속 구간**의 프레임당 이동량이
+        // 0.00004유닛까지 내려가고, 그것이 "벽에 붙어 멈췄다"로 오인돼 0.02초 만에 측정이 끝났다
+        // (실측: 이격 2.500 = 출발 지점 그대로). 그래서 **게임 시간 창(window)** 으로 잰다 —
+        // 프레임레이트와 무관하고, 가속 구간(walkSpeedSmoothingRate 6 → 약 0.5초)보다 창이 길다.
+
+        /// <summary>(C) 정지 판정 창의 길이(게임 시간 초).</summary>
+        private const float StandoffSettleWindowSeconds = 0.5f;
+
+        /// <summary>(C) 그 창 동안의 이동량이 이 값(월드 유닛) 이하면 벽에 붙어 멈춘 것으로 본다.
+        /// 정상 보행이면 같은 창에서 walkSpeed x 배율 x 0.5 = 약 0.94유닛을 간다(약 190배 차이).</summary>
+        private const float StandoffSettleWindowEpsilonUnits = 0.005f;
+
+        /// <summary>(C) 가속 구간이 끝나기 전에 "멈췄다"고 오판하지 않기 위한 최소 관측 시간(초).</summary>
+        private const float StandoffMinObserveSeconds = 1.5f;
+
+        /// <summary>(C) 관측 상한(초). 2.5유닛을 walkSpeed x 배율(1.875)로 걸으면 1.4초면 닿는다.</summary>
+        private const float StandoffMaxObserveSeconds = 10f;
+
+        /// <summary>(C) 요구하는 최소 여유(월드 유닛). R3-M1의 실제 여유는 이 값의 1/10인 0.005였다.</summary>
+        private const float RequiredEdgeBandClearanceUnits = 0.05f;
+
+        [UnityTest] public IEnumerator WallStandoffFitsInsideEdgeBand_TileSize16() { yield return AssertWallStandoffFitsInsideEdgeBand(16f); }
+        [UnityTest] public IEnumerator WallStandoffFitsInsideEdgeBand_TileSize48() { yield return AssertWallStandoffFitsInsideEdgeBand(48f); }
+        [UnityTest] public IEnumerator WallStandoffFitsInsideEdgeBand_TileSize80() { yield return AssertWallStandoffFitsInsideEdgeBand(80f); }
+        [UnityTest] public IEnumerator WallStandoffFitsInsideEdgeBand_TileSize128() { yield return AssertWallStandoffFitsInsideEdgeBand(128f); }
+
+        private IEnumerator AssertWallStandoffFitsInsideEdgeBand(float tileSizePoints)
+        {
+            float drop = DockGeometry.DockDropWorldUnits(tileSizePoints, DockGeometry.DefaultDockThicknessTilePaddingPoints);
+            yield return SetUpDockLayout(drop);
+
+            StickmanBlackboard bb = _agent.Blackboard;
+
+            // ── 전제: Dock 물리 계단이 실제로 켜져 있고, 그 옆면이 Dock 발판 경계와 같은 X에 있다.
+            //    꺼져 있으면 벽 자체가 없어 이 테스트는 아무 것도 재지 못한다(조용한 통과 방지).
+            var step = Object.FindFirstObjectByType<DockPhysicsStep>();
+            Assert.IsNotNull(step, $"{LogPrefix} 씬에 DockPhysicsStep이 없습니다 — Main.unity 배선 확인.");
+            Assert.IsTrue(step.IsActive,
+                $"{LogPrefix} Dock 물리 계단이 꺼져 있습니다(dockPhysicsStepEnabled / Dock 발판 조회 확인) — " +
+                "벽이 없으면 이 테스트는 이격을 잴 수 없습니다.");
+            Assert.AreEqual(_dockRightWorldX, step.StepBounds.max.x, 0.02f,
+                $"{LogPrefix} 계단 옆면({step.StepBounds.max.x:F3})이 Dock 발판 경계({_dockRightWorldX:F3})와 " +
+                "다릅니다 — 이 테스트의 전제(벽과 논리 경계가 같은 X)가 깨졌습니다.");
+
+            // ── 안전망 오른쪽 조각 위에 세우고, **배회 AI를 거치지 않고** 왼쪽으로 계속 걷게 한다.
+            //    배회 AI를 쓰면 수정이 동작하는 순간 경계 판정에 걸려 벽에 닿기 전에 돌아서므로
+            //    이격을 잴 수 없다(= 수정 후에는 측정 불가능한 테스트가 된다).
+            bb.MoveBodyToWorld(new Vector2(_dockRightWorldX + 2.5f, _floorTopWorldY));
+            bb.Body.linearVelocity = Vector2.zero;
+            bb.CurrentFootholdHandle = NetRightHandle;
+            bb.ResetGroundLossTimer();
+            bb.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+
+            var scripted = new ScriptedIntentSource { MoveInputX = -1f };
+            bb.IntentSource = scripted;
+
+            float windowStartX = bb.Body.position.x;
+            float windowTimer = 0f;
+            float elapsed = 0f;
+            bool settled = false;
+            while (elapsed < StandoffMaxObserveSeconds && !settled)
+            {
+                yield return null;
+                float dt = Time.deltaTime;
+                elapsed += dt;
+                windowTimer += dt;
+                if (windowTimer < StandoffSettleWindowSeconds) continue;
+
+                float moved = Mathf.Abs(bb.Body.position.x - windowStartX);
+                settled = elapsed >= StandoffMinObserveSeconds && moved <= StandoffSettleWindowEpsilonUnits;
+                windowStartX = bb.Body.position.x;
+                windowTimer = 0f;
+            }
+
+            float standoff = bb.Body.position.x - _dockRightWorldX;
+
+            // ── ★ 여기서부터가 이 테스트의 핵심: **판정을 쓰는 쪽이 실제로 본 숫자**를 잰다.
+            //    블랙보드의 유도 프로퍼티만 단언하면, 소비자(AutoWanderController)가 유도를 그만
+            //    읽어도 초록불이 난다 — 실제로 1차 시도에서 그 구멍 때문에 네거티브 컨트롤이
+            //    통과해 버렸다(2026-08-30 디버거, Logs/dbg_m1_negctrl_play.xml).
+            //    AutoWanderController는 EnterMoving에서 PickDirectionAvoidingEdge를 부르고, 그것이
+            //    **양쪽 방향으로 IsNearFootholdEdge를 한 번씩** 호출한다(마지막 호출이 direction=-1
+            //    = Dock 쪽). 그래서 컨트롤러를 꽂고 Resting(0.05초)만 넘기면 확률과 무관하게
+            //    "벽 쪽 경계 판정"의 실측 표본이 반드시 한 번 남는다 — 결정론적이다.
+            _clonedConfig.wanderIdleDurationMin = 0.05f;
+            _clonedConfig.wanderIdleDurationMax = 0.05f;
+            _clonedConfig.wanderDurationJitterRatio = 0f;
+            _clonedConfig.wanderPostIdleWalkChance = 1f;
+            _clonedConfig.wanderPostIdleJumpChance = 0f;
+            _clonedConfig.hopDownChance = 0f;
+            _clonedConfig.ledgeHangChance = 0f;
+            _clonedConfig.stepUpChance = 0f;      // 이 테스트는 등반이 아니라 **판정**만 본다.
+            _clonedConfig.wanderEdgeJumpAttemptChance = 0f;
+
+            //    ★ 컨트롤러를 IntentSource로 **꽂지 않는다**. IsNearFootholdEdge는 블랙보드의 몸 좌표만
+            //    읽으므로 판정에는 배선이 필요 없고, 반대로 꽂아 버리면 스크립트 의도의 미는 힘이 사라져
+            //    접촉 복원으로 몸이 벽에서 0.03~0.04유닛 밀려난다(1차 시도에서 실제로 그 드리프트가
+            //    "컨트롤러가 잰 잔여거리 ≠ 우리가 잰 이격"을 만들어 tilesize 48/80이 실패했다).
+            //    스크립트 의도를 계속 눌러 둔 채로 판정만 시키면 몸이 정확히 벽에 붙어 있는 그 순간의
+            //    표본이 나온다 — 재현하려는 상황(벽에 눌려 선 채 되올라가기를 평가해야 하는 순간)과 같다.
+            var wander = new AutoWanderController(bb, _clonedConfig, new System.Random(FixedWanderSeed));
+            float pickWait = 0f;
+            while (pickWait < 1f && wander.LastEdgeDirection == 0)
+            {
+                yield return null;
+                pickWait += Time.deltaTime;
+                wander.Tick(Time.deltaTime);
+            }
+
+            Assert.AreEqual(-1, wander.LastEdgeDirection,
+                $"{LogPrefix} 배회 컨트롤러가 왼쪽(Dock 쪽) 경계를 재는 표본을 남기지 않았습니다 " +
+                $"(마지막 방향={wander.LastEdgeDirection}, {pickWait:F2}초) — PickDirectionAvoidingEdge가 " +
+                "양방향으로 IsNearFootholdEdge를 부른다는 이 테스트의 전제가 바뀌었습니다.");
+
+            float resolvedStop = wander.LastEdgeStopDistanceUsed;
+            float clearance = resolvedStop - standoff;
+
+            Debug.Log($"{LogPrefix} (C) tilesize={tileSizePoints:F0}pt 벽 이격 실측 — " +
+                $"정지 x={bb.Body.position.x:F4}, Dock 오른쪽 모서리 {_dockRightWorldX:F4} → 이격 {standoff:F4}유닛. " +
+                $"몸 물리 반폭 실측 {bb.CharacterPhysicalHalfWidthWorld:F4}, " +
+                $"경계 판정 거리 설정 {_clonedConfig.wanderEdgeStopDistance:F3} → **소비자가 실제로 쓴 값** " +
+                $"{resolvedStop:F4} (여유 {clearance:F4}, 요구 {RequiredEdgeBandClearanceUnits:F3} 이상). " +
+                $"컨트롤러가 잰 잔여거리 {wander.LastRemainingToEdge:F4}, 경계판정={wander.LastEdgeNear}. " +
+                $"정착까지 {elapsed:F2}초(정지판정={settled}), 상태={bb.Machine.CurrentStateId}");
+
+            Assert.Less(standoff, 1f,
+                $"{LogPrefix} 이격 {standoff:F3}유닛은 너무 큽니다 — 캐릭터가 벽까지 못 걸어왔거나 " +
+                $"({elapsed:F2}초 관측, 정지판정={settled}) 도중에 다른 상태로 빠졌습니다" +
+                $"(상태={bb.Machine.CurrentStateId}). " +
+                "측정이 성립하지 않았습니다.");
+            Assert.Greater(standoff, 0f,
+                $"{LogPrefix} 이격이 {standoff:F3}유닛(음수)입니다 — 몸이 벽을 파고들었습니다.");
+
+            // ★ 절대 조건 — 유도된 경계 판정 밴드가 벽 이격을 **명확한 여유로** 덮는다.
+            Assert.GreaterOrEqual(clearance, RequiredEdgeBandClearanceUnits,
+                $"{LogPrefix} tilesize {tileSizePoints:F0}pt에서 경계 판정 거리({resolvedStop:F4})가 " +
+                $"벽 이격({standoff:F4})을 {RequiredEdgeBandClearanceUnits:F3} 넘는 여유로 덮지 못합니다" +
+                $"(여유 {clearance:F4}). 캐릭터가 Dock 계단 옆면에 붙어 서면 경계 밴드에 들어가지 못해 " +
+                "되올라가기를 평가조차 못 합니다 — 사용자가 세 번 신고한 \"Dock 근처에서 멈춰 있음\"입니다.");
+
+            // ★★ 소비자 수준의 절대 조건 — 벽에 눌려 선 그 자리에서 배회 AI가 실제로 "경계"라고
+            //     판정하는가. R3-M1의 증상은 정확히 이것이 false였던 것이다(밴드가 도달 불가능).
+            Assert.IsTrue(wander.LastEdgeNear,
+                $"{LogPrefix} 벽에 눌려 선 자리(잔여 {wander.LastRemainingToEdge:F4})에서 배회 AI가 " +
+                $"'경계'로 판정하지 않습니다(판정 거리 {resolvedStop:F4}) — 되올라가기 추첨 자체가 " +
+                "돌지 않으므로 캐릭터는 이 걷기 구간이 끝날 때까지 벽에 붙어 있습니다(2026-08-30 R3-M1).");
+
+            // 컨트롤러가 잰 잔여 거리가 우리가 잰 이격과 같아야 한다(같은 것을 재고 있다는 확인).
+            Assert.AreEqual(standoff, wander.LastRemainingToEdge, 0.02f,
+                $"{LogPrefix} 컨트롤러가 잰 잔여 거리({wander.LastRemainingToEdge:F4})가 이 테스트가 잰 " +
+                $"이격({standoff:F4})과 다릅니다 — 서로 다른 경계를 재고 있습니다(측정 무효).");
+
+            // ★ 실측 반폭이 실제로 갱신되고 있는가(0이면 폴백으로 조용히 넘어간다 = 유도가 죽은 것).
+            Assert.Greater(bb.CharacterPhysicalHalfWidthWorld, 0f,
+                $"{LogPrefix} 몸 물리 반폭 실측이 0입니다 — StickmanAgent.TickPhysicalHalfWidth가 " +
+                "콜라이더를 못 찾았다는 뜻이며, 그러면 경계 판정 거리가 설정 배율 폴백으로만 유도됩니다.");
         }
 
         // ============================================================================

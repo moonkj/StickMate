@@ -436,6 +436,20 @@ namespace StickMate.Interaction
             if (_todoPopover != null) _todoPopover.Close(reason);
         }
 
+        /// <summary>
+        /// ★ 2026-08-30 — 부채꼴과 팝오버 2종을 <b>단계에 상관없이</b> 전부 거둔다. 캐릭터 창(배타 모달)이
+        /// 열릴 때 쓰는 <b>단일 창구</b>다. <see cref="Collapse"/>는 이미 접힌 상태면 즉시 돌아가므로,
+        /// 팝오버 정리를 그쪽에만 맡기면 "메뉴는 접혔는데 팝오버만 남은" 조합이 그대로 샌다.
+        /// 팝오버 참조는 지연 해석이라(열어 본 적 없으면 null) 여기서 한 번 확인해 준다.
+        /// </summary>
+        public void ForceCloseAll(string reason)
+        {
+            if (_focusPopover == null) _focusPopover = GetComponent<FocusSessionPopover>();
+            if (_todoPopover == null) _todoPopover = GetComponent<TodoBoardPopover>();
+            ClosePopovers(reason);
+            Collapse(GearMenuCollapseMode.User, reason);
+        }
+
         private bool AnyPopoverOpen()
             => (_focusPopover != null && _focusPopover.IsOpen) || (_todoPopover != null && _todoPopover.IsOpen);
 

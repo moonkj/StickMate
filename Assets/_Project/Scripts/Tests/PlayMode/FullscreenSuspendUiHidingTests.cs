@@ -144,17 +144,30 @@ namespace StickMate.Tests.PlayMode
             yield return null;
         }
 
-        /// <summary>실제 사용자와 같은 경로로 부채꼴을 펼친 뒤, 팝오버와 캐릭터 창까지 열어 둔다 —
-        /// "가장 많이 떠 있는 상태"에서 감지가 걸리는 것이 최악의 경우다.</summary>
+        /// <summary>
+        /// 네 표면을 <b>동시에</b> 띄운다 — "가장 많이 떠 있는 상태"에서 감지가 걸리는 것이 최악의 경우다.
+        ///
+        /// ★ 2026-08-30 변경: 캐릭터 창이 <b>배타적 모달</b>이 되면서(창을 열면 부채꼴/팝오버가 접히고,
+        /// 창이 열린 채 톱니를 누르면 부채꼴 대신 창이 닫힌다) 이 조합은 <b>실제 사용자 경로로는 더 이상
+        /// 만들 수 없다</b>. 그래도 이 테스트는 남긴다 — Suspend()가 "어떻게 떠 있게 됐든 전부 거둔다"를
+        /// 재는 것이 목적이고, 앞으로 새 진입점이 배타 규칙을 새게 하더라도 이 안전망은 살아 있어야 한다.
+        /// 그래서 조합은 위젯 API로 <b>의도적으로</b> 만든다(순서 중요 — 창을 먼저 연다).
+        /// </summary>
         private IEnumerator OpenEverything()
         {
+            // ① 톱니는 실제 경로 그대로 한 번 눌러 본다(회전/차단막 배선이 살아 있는지 확인하는 의미).
             Vector2 center = _gear.IconScreenCenter;
             _gear.FeedPointerForTests(true, center);
             _gear.FeedPointerForTests(false, center);
             yield return new WaitForSecondsRealtime(InfoGearIconWidget.MenuReadySeconds + 0.25f);
 
-            _todo.Open(_gear.IconScreenRect, "테스트 준비");
+            // ② 창을 먼저 연다 — 창이 열리는 순간 부채꼴/팝오버를 거두므로 순서를 뒤집으면 셋이 못 모인다.
             _window.Open("테스트 준비");
+            yield return null;
+
+            // ③ 그 위에 부채꼴/팝오버를 강제로 되살려 최악의 조합을 만든다.
+            _menu.Expand(center);
+            _todo.Open(_gear.IconScreenRect, "테스트 준비");
             for (int i = 0; i < SettleFrames; i++) yield return null;
         }
 

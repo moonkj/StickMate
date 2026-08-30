@@ -61,10 +61,13 @@ namespace StickMate.Tests.PlayMode
         private const float HatBrimReachRatio = 1.95f;
         private const float GlassesCenterRatio = 0.00f;
         private const float GlassesTempleReachRatio = 1.02f;
-        private const float BowTieDropRatio = 1.15f;
+        private const float NeckCollarRiseRatio = 0.04f;   // 2026-08-30: 머리 중심 기준 -> 어깨선 기준으로 이전
         private const float CapeCollarRiseRatio = 0.10f;
         private const float CapeLengthRatio = 1.35f;
-        private const float CapeSpreadRatio = 1.35f;
+        /// <summary>2026-08-30 실루엣 재설계로 1.35 -> 2.45(AccessoryShapeBuilder.CapeSpreadRatio).
+        /// 이 파일이 값을 <b>다시 적는</b> 이유는 원본과 같은 상수를 읽으면 "둘 다 같이 틀리는" 검사가
+        /// 되기 때문이다 — 값이 바뀌면 여기도 손으로 바꾸는 것이 이 테스트의 의도다.</summary>
+        private const float CapeSpreadRatio = 2.45f;
         private const float StrokeWidthAtScale1 = 0.048f;
 
         private const float ShippedScale = 0.75f;
@@ -162,7 +165,7 @@ namespace StickMate.Tests.PlayMode
             AssertScaled(BaseHeadRadius * HatBrimReachRatio, scale, r.HatBrimTipLocalX, label, "모자 챙 끝 x");
             AssertScaled(BaseHeadCenterY + BaseHeadRadius * GlassesCenterRatio, scale, r.GlassesLocalY, label, "선글라스 높이");
             AssertScaled(-BaseHeadRadius * GlassesTempleReachRatio, scale, r.GlassesTempleTipLocalX, label, "안경다리 끝 x");
-            AssertScaled(BaseHeadCenterY - BaseHeadRadius * BowTieDropRatio, scale, r.BowTieLocalY, label, "나비넥타이 높이");
+            AssertScaled(BaseShoulderY + BaseHeadRadius * NeckCollarRiseRatio, scale, r.BowTieLocalY, label, "나비넥타이 높이");
 
             float collar = BaseShoulderY + BaseHeadRadius * CapeCollarRiseRatio;
             AssertScaled(collar, scale, r.CapeCollarLocalY, label, "망토 옷깃 높이");
@@ -288,7 +291,7 @@ namespace StickMate.Tests.PlayMode
                 $"배율 0.5에서 절대 상수 모자 꼭대기 {legacyHatTop:F4}가 허용 상한 " +
                 $"{(m.HeadTopLocalY + m.TotalHeight * 0.15f):F4}을 넘지 않습니다 — (B)의 모자 조건이 헐겁습니다.");
 
-            float legacyBowTie = BaseHeadCenterY - BaseHeadRadius * BowTieDropRatio; // 1.8017
+            float legacyBowTie = BaseShoulderY + BaseHeadRadius * NeckCollarRiseRatio; // 1.7735
             Assert.Greater(legacyBowTie, m.HeadCenterLocalY - m.HeadRadius,
                 $"배율 0.5에서 절대 상수 나비넥타이 {legacyBowTie:F4}가 머리 아래({(m.HeadCenterLocalY - m.HeadRadius):F4})보다 " +
                 "높지 않습니다 — (B)의 목 조건이 헐겁습니다.");

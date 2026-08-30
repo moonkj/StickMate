@@ -28,7 +28,7 @@ namespace StickMate.Interaction
     /// </summary>
     public sealed class IdleAmbientMotionRenderer : MonoBehaviour
     {
-        /// <summary>같은 GameObject의 StickmanAgent만 쓴다 — 라이벌 사본이 플레이어의 신호를 받아
+        /// <summary>같은 GameObject의 StickmanAgent만 쓴다 — 사본이 플레이어의 신호를 받아
         /// 자기 포즈를 바꾸는 사고를 원천 차단한다(GraffitiRenderer와 같은 규약).</summary>
         private StickmanAgent _agent;
 

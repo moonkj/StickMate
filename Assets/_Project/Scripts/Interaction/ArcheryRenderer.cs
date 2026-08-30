@@ -17,8 +17,8 @@ namespace StickMate.Interaction
     /// · 전역 이벤트 구독 -> LineRenderer로만 그림(이 프로젝트에는 스프라이트 에셋이 하나도 없다).
     /// · 머티리얼은 <b>캐릭터 LineRenderer의 것을 빌려 쓴다</b>. Shader.Find는 빌드 스트리핑 위험이
     ///   있어 쓰지 않는다(스탠드얼론에서만 분홍색으로 깨질 수 있다).
-    /// · 씬 전체 탐색 폴백 없이 <b>같은 GameObject의 StickmanAgent만</b> 쓴다 — 라이벌 스틱맨은
-    ///   플레이어 프리팹의 복제본이라, 씬 폴백을 두면 라이벌 렌더러가 전역 이벤트에 함께 반응해
+    /// · 씬 전체 탐색 폴백 없이 <b>같은 GameObject의 StickmanAgent만</b> 쓴다 — 이 프리팹이 복제되면
+    ///   사본도 이 컴포넌트를 갖게 되고, 씬 폴백을 두면 사본 렌더러가 전역 이벤트에 함께 반응해
     ///   과녁이 두 벌 그려진다(격파 미니게임에서 실측 확인된 버그).
     /// · 종료 시 <see cref="Teardown"/>, <see cref="OnDisable"/>에서도 정리.
     ///
@@ -336,7 +336,7 @@ namespace StickMate.Interaction
 
         private void OnOverlayChanged(ArcheryOverlayEvent evt)
         {
-            if (_agent == null) return; // 자기 캐릭터가 없는 사본(라이벌) — 전역 이벤트를 받아도 무시한다.
+            if (_agent == null) return; // 자기 캐릭터가 없는 사본 — 전역 이벤트를 받아도 무시한다.
 
             switch (evt.Phase)
             {

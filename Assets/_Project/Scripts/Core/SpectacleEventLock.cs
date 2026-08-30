@@ -3,11 +3,10 @@ using StickMate.States;
 
 namespace StickMate.Core
 {
-    /// <summary>격파 미니게임/라이벌 대결/드래그&던지기/로데오 커서 — 어느 것이 이 락을 걸고 있는지.</summary>
+    /// <summary>격파 미니게임/드래그&던지기/로데오 커서 — 어느 것이 이 락을 걸고 있는지.</summary>
     public enum SpectacleEventKind
     {
         BattleMinigame,
-        RivalDuel,
         DragAndThrow,
         RodeoCursor,
 
@@ -94,17 +93,26 @@ namespace StickMate.Core
 
         /// <summary>
         /// 개선 R2(docs/CODE_REVIEW_FINAL.md "SpectacleEventLock 해제 보일러플레이트" 지적 대응) —
-        /// 12개 Director의 OnDisable() 등이 각자 손으로 반복해온 3단계(소유권 확인 → 필요시 강제 Idle
+        /// Director들의 OnDisable() 등이 각자 손으로 반복해온 3단계(소유권 확인 → 필요시 강제 Idle
         /// 전이 → Release(+옵션으로 ILocalClickCaptureService 해제))를 추출한 공용 헬퍼.
         ///
+        /// ★ 2026-08-30 R3-m1 — 개수 정정. **지금 이 메서드를 부르는 파일은 12개**다:
+        /// ArcheryDirector / BattleMinigameDirector / DesktopIconMirrorDirector / DragThrowController /
+        /// FocusWatchDirector / GraffitiDirector / RodeoCursorWatcher / RunawayDirector /
+        /// StressGaugeDirector / TodoReminderDirector / WindowCrashDirector / WindowTheftDirector.
+        /// 아래 "11곳"은 <b>추출 당시(개선 R2)의 숫자</b>이고 그대로 둔다 — 그때의 분류 근거이기
+        /// 때문이다. ArcheryDirector는 그 뒤(2026-08-29 활쏘기 연출 라운드)에 **처음부터 이 헬퍼를
+        /// 쓰며** 태어난 12번째 호출자라 아래 8/3 분류에는 애초에 등장하지 않는다.
+        /// (같은 트리의 Interaction/LongCapeTripDirector.cs가 "12곳"이라고 적고 있던 것이 맞다.)
+        ///
         /// 값을 고정한 이유: fallback 상태는 항상 <see cref="StickmanStateId.Idle"/>, 전이는 항상
-        /// isForcedInterrupt:true — 12곳 전부 예외 없이 이 두 값을 썼으므로 파라미터로 열어두지 않는다
-        /// (과설계 방지). clickCapture는 옵션(기본 null) — BattleMinigameDirector/DragThrowController
+        /// isForcedInterrupt:true — 12곳 전부 예외 없이 이 두 값을 쓴다(파라미터로 열어두지 않는다,
+        /// 과설계 방지). clickCapture는 옵션(기본 null) — BattleMinigameDirector/DragThrowController
         /// 2곳만 실제로 넘긴다.
         ///
-        /// 소유권 확인을 항상 먼저 하는 이유: 12곳 중 9곳(GraffitiDirector/TodoReminderDirector/
+        /// 소유권 확인을 항상 먼저 하는 이유: 추출 당시 11곳 중 8곳(GraffitiDirector/TodoReminderDirector/
         /// RunawayDirector/WindowTheftDirector/DesktopIconMirrorDirector/RodeoCursorWatcher/
-        /// StressGaugeDirector/FocusWatchDirector/RivalEncounterDirector)은 원래도 이 가드가 있었다.
+        /// StressGaugeDirector/FocusWatchDirector)은 원래도 이 가드가 있었다.
         /// BattleMinigameDirector/DragThrowController/WindowCrashDirector 3곳은 원래 이 가드 없이
         /// 상태 비교만 했지만, 세 곳 모두 "SpectacleEventLock.TryAcquire 성공 직후에만 guardedState로
         /// ChangeState한다"는 불변식을 코드 전체에서 예외 없이 지킨다(다른 어떤 컴포넌트도 이 세
@@ -112,10 +120,9 @@ namespace StickMate.Core
         /// 하므로, 이 가드를 추가해도 실제로 관찰 가능한 동작은 전혀 달라지지 않는다(Tasklist.md 개선
         /// R2 절에 근거 기록).
         ///
-        /// 이 헬퍼로 흡수하지 않은 2곳: RivalEncounterDirector(상태 비교가 아니라 `_rival?.ForceEndDuel()`
-        /// 경유로 정리하므로 guardedState 개념 자체가 없음), FocusWatchDirector(단일 상태가 아니라
-        /// 4개 상태 중 하나인지(IsFocusPoseState)를 확인하는 커스텀 가드라 단일 StickmanStateId
-        /// 파라미터로 표현할 수 없음) — 둘 다 억지로 끼워맞추지 않고 각자의 정리 로직을 유지한다.
+        /// 이 헬퍼로 흡수하지 않은 1곳: FocusWatchDirector(단일 상태가 아니라 4개 상태 중
+        /// 하나인지(IsFocusPoseState)를 확인하는 커스텀 가드라 단일 StickmanStateId 파라미터로
+        /// 표현할 수 없음) — 억지로 끼워맞추지 않고 자기 정리 로직을 유지한다.
         /// </summary>
         public static void ReleaseIfOwned(
             object owner,
