@@ -90,6 +90,26 @@ namespace StickMate.Interaction
         private const float BreathPeriodSeconds = 2f;
         private const float BreathAmplitudeRatio = 0.006f;
 
+        // ────────────────────────────────────────────────────────────────────────
+        // 액자(카메라) 배치 — 키 배수. 서 있는 그림 기준으로 잡은 값이지만, 넘어짐 프레이밍도
+        // 여기서 가시 사각형을 역산하므로 상수로 못박는다(두 계산이 따로 놀면 조용히 잘린다).
+        // ────────────────────────────────────────────────────────────────────────
+        private const float FrameCenterHeightRatio = 0.58f;
+        private const float FrameOrthoRatio = 0.62f;   // 모자 여유분까지 담기는 최소 크기 + 약간의 여백.
+
+        /// <summary>넘어짐 — 몸을 눕히는 각도. 90도면 완전 수평이라 12도를 남겨 "쓰러진" 느낌을 준다.</summary>
+        private const float FallenLayDownDegrees = -78f;
+
+        /// <summary>넘어짐 프레이밍 — 그림이 가시 사각형의 몇 할까지 차지해도 되는가(나머지는 여백).
+        /// 넘어진 몸은 가로로 <b>키만큼</b> 길어지는데 액자 가시 폭은 키의 1.02배뿐이라, 여백을
+        /// 남기려면 줄이는 수밖에 없다(모자를 쓰면 키를 넘겨 더 줄어든다).</summary>
+        private const float FallenFrameFill = 0.94f;
+
+        /// <summary>넘어짐 프레이밍 — 그림의 중심을 액자 <b>아래에서</b> 몇 지점에 둘 것인가(0=바닥, 1=천장).
+        /// 0.5보다 낮은 이유는 원래 의도 그대로다: 넘어진 사람이 액자 위쪽에 떠 있으면 "누워 있다"로
+        /// 읽히지 않는다. 값은 옛 구현의 실효 위치(0.345)를 실측해 그 구도를 유지한 것이다.</summary>
+        private const float FallenFrameCenterFromBottom = 0.34f;
+
         private StickConfig _config;
         private StickmanMetrics _metrics;
         private Material _lineMaterial;
@@ -293,10 +313,13 @@ namespace StickMate.Interaction
 
             var camGo = new GameObject("PortraitCamera");
             camGo.transform.SetParent(transform, false);
-            camGo.transform.localPosition = new Vector3(0f, h * 0.58f, -10f);
+            camGo.transform.localPosition = new Vector3(0f, h * FrameCenterHeightRatio, -10f);
             _camera = camGo.AddComponent<Camera>();
             _camera.orthographic = true;
-            _camera.orthographicSize = h * 0.62f;   // 모자 여유분까지 담기는 최소 크기 + 약간의 여백.
+            _camera.orthographicSize = h * FrameOrthoRatio;
+            // ★ RT가 생기기 전에도 종횡비를 못박는다. 안 그러면 그때까지 화면 해상도(헤드리스에서는
+            //   배치 모드 기본값)가 액자 구도를 좌우해, 넘어짐 프레이밍이 실기와 테스트에서 달라진다.
+            _camera.aspect = DesignAspect;
             _camera.clearFlags = CameraClearFlags.SolidColor;
             _camera.backgroundColor = ResolveBackdropColor(_config);
             _camera.nearClipPlane = 0.1f;
@@ -311,6 +334,34 @@ namespace StickMate.Interaction
             figureGo.transform.SetParent(transform, false);
             _figureRoot = figureGo.transform;
             _baseFigureY = 0f;
+        }
+
+        /// <summary>액자의 설계 종횡비(가로/세로). 숫자를 새로 적지 않고 정보창 레이아웃에서 파생시킨다 —
+        /// 액자 크기를 바꾼 사람이 여기를 같이 고치는 일을 기대하면 언젠가 반드시 어긋난다.</summary>
+        public static float DesignAspect
+        {
+            get
+            {
+                Vector2 size = CharacterInfoWindow.PortraitContentSize;
+                return size.y > 0.01f ? size.x / size.y : 1f;
+            }
+        }
+
+        /// <summary>촬영장 로컬 좌표에서의 액자 중심(= 카메라가 보고 있는 점).</summary>
+        private Vector2 FrameCenterLocal => _camera != null
+            ? (Vector2)_camera.transform.localPosition
+            : new Vector2(0f, TotalHeight * FrameCenterHeightRatio);
+
+        /// <summary>액자 가시 사각형의 반폭/반높이(유닛). 넘어짐 프레이밍이 "여기 안에 들어오는가"를
+        /// 판단하는 유일한 기준이다.</summary>
+        private Vector2 FrameHalfExtents
+        {
+            get
+            {
+                float half = _camera != null ? _camera.orthographicSize : TotalHeight * FrameOrthoRatio;
+                float aspect = _camera != null && _camera.aspect > 0.01f ? _camera.aspect : DesignAspect;
+                return new Vector2(half * aspect, half);
+            }
         }
 
         private float TotalHeight => _metrics != null ? _metrics.TotalHeight : StickConfig.BaselineCharacterTotalHeight;
@@ -365,6 +416,7 @@ namespace StickMate.Interaction
             if (_figureRoot == null) return;
             _figureRoot.localRotation = Quaternion.identity;
             _figureRoot.localPosition = Vector3.zero;
+            _figureRoot.localScale = Vector3.one;
             _baseFigureY = 0f;
 
             if (_pose == PortraitPose.Hidden) return; // 가출 — 액자를 비운다.
@@ -373,16 +425,85 @@ namespace StickMate.Interaction
             float armSpread = _pose == PortraitPose.Busy ? 64f : IdleArmSpreadDegrees;
             float backArmSpread = _pose == PortraitPose.Busy ? 128f : IdleArmSpreadDegrees; // 한쪽 팔을 든다.
 
-            if (_pose == PortraitPose.Fallen)
-            {
-                // 넘어짐: 몸 전체를 눕히고 액자 아래쪽으로 내린다(누운 사람이 화면 위에 뜨지 않게).
-                _figureRoot.localRotation = Quaternion.Euler(0f, 0f, -78f);
-                _baseFigureY = TotalHeight * 0.30f;
-                _figureRoot.localPosition = new Vector3(-TotalHeight * 0.30f, _baseFigureY, 0f);
-            }
-
             DrawBody(ink, armSpread, backArmSpread);
             DrawAccessories(ink);
+
+            // 눕히기는 <b>다 그린 뒤</b>에 한다 — 얼마나 큰 그림인지 알아야 액자에 넣을 수 있다.
+            if (_pose == PortraitPose.Fallen) FrameFallenFigure();
+        }
+
+        /// <summary>
+        /// ★ 넘어짐 프레이밍 — 2026-08-30 "초상화에서 머리가 잘린다" 결함 수정.
+        ///
+        /// 옛 구현은 <b>발을 회전축</b>으로 몸을 눕혔다. 발은 로컬 원점이라 회전해도 제자리인데 머리는
+        /// 원점에서 키만큼(회전 반경 = 키) 떨어져 있어, 눕히는 순간 머리만 액자 밖으로 쓸려나갔다
+        /// (실측: 머리 중심이 가시 x범위 밖으로 0.074×키. 증거 사진 Logs/evidence_20260830_portrait_drag/1_*.png).
+        ///
+        /// 그래서 회전축을 <b>그림 자체의 중심</b>으로 옮긴다. 중심을 "키의 절반"으로 가정하지 않고
+        /// 방금 그린 선에서 실측하는 이유는 모자/망토가 몸 밖으로 나가기 때문이다 — 모자를 쓰면
+        /// 그림 중심이 0.482×키에서 0.518×키로 움직인다(가정값 0.5는 둘 다 정확히는 틀린다).
+        ///
+        /// 그리고 눕힌 몸은 가로로 키만큼 길어지는데 액자 가시 폭은 키의 1.02배뿐이다. 회전축만 고쳐도
+        /// 머리 원은 들어오지만 발끝 선 굵기가 반대쪽으로 삐져나가고, 모자를 쓰면 챙이 통째로 잘린다.
+        /// 그래서 넘치는 만큼만 균일 축소한다(넘치지 않으면 배율 1 그대로 — 평소에는 아무 일도 안 한다).
+        /// </summary>
+        private void FrameFallenFigure()
+        {
+            var rotation = Quaternion.Euler(0f, 0f, FallenLayDownDegrees);
+            if (!TryMeasureRotatedInk(rotation, out Vector2 inkMin, out Vector2 inkMax)) return;
+
+            Vector2 inkSize = inkMax - inkMin;
+            Vector2 half = FrameHalfExtents;
+
+            float scale = 1f;
+            if (inkSize.x > 0.0001f) scale = Mathf.Min(scale, half.x * 2f * FallenFrameFill / inkSize.x);
+            if (inkSize.y > 0.0001f) scale = Mathf.Min(scale, half.y * 2f * FallenFrameFill / inkSize.y);
+
+            // 액자 안 목표 지점 — 가로는 정중앙, 세로는 아래쪽(누운 사람이 공중에 뜨지 않게).
+            Vector2 frameCenter = FrameCenterLocal;
+            var target = new Vector2(
+                frameCenter.x,
+                frameCenter.y - half.y + half.y * 2f * FallenFrameCenterFromBottom);
+
+            // 회전축(= 그림의 중심)이 회전·축소 뒤 정확히 target에 오도록 루트 위치를 역산한다.
+            Vector2 rotatedPivot = (inkMin + inkMax) * 0.5f * scale;
+
+            _figureRoot.localRotation = rotation;
+            _figureRoot.localScale = new Vector3(scale, scale, 1f);
+            _baseFigureY = target.y - rotatedPivot.y;
+            _figureRoot.localPosition = new Vector3(target.x - rotatedPivot.x, _baseFigureY, 0f);
+        }
+
+        /// <summary>방금 그린 선 전체를 <paramref name="rotation"/>만 적용해 재고, 선 굵기의 절반만큼
+        /// 부풀린 사각형을 돌려준다(획의 바깥쪽까지가 "보이는 그림"이다). Rebuild에서만 돈다 —
+        /// 매 프레임 경로가 아니므로 순회 비용을 감수해도 된다.</summary>
+        private bool TryMeasureRotatedInk(Quaternion rotation, out Vector2 min, out Vector2 max)
+        {
+            min = new Vector2(float.MaxValue, float.MaxValue);
+            max = new Vector2(float.MinValue, float.MinValue);
+
+            bool any = false;
+            for (int i = 0; i < _lines.Count; i++)
+            {
+                LineRenderer lr = _lines[i];
+                if (lr == null) continue;
+                int count = lr.positionCount;
+                for (int p = 0; p < count; p++)
+                {
+                    Vector3 q = rotation * lr.GetPosition(p);
+                    if (q.x < min.x) min.x = q.x;
+                    if (q.y < min.y) min.y = q.y;
+                    if (q.x > max.x) max.x = q.x;
+                    if (q.y > max.y) max.y = q.y;
+                    any = true;
+                }
+            }
+            if (!any) return false;
+
+            float pad = Stroke * 0.5f;
+            min -= new Vector2(pad, pad);
+            max += new Vector2(pad, pad);
+            return true;
         }
 
         private void DrawBody(Color ink, float frontArmSpread, float backArmSpread)

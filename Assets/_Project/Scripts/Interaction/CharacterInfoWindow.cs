@@ -83,6 +83,13 @@ namespace StickMate.Interaction
         private const float ColumnGap = 20f;
         private const float PortraitHeight = 238f;
 
+        /// <summary>액자 <b>안쪽</b>(RawImage가 실제로 차지하는) 크기(pt) — 액자 테두리 여백을 뺀 값.
+        /// 촬영장 카메라의 기본 종횡비가 이 값에서 파생되므로(<see cref="CharacterPortraitStage.DesignAspect"/>)
+        /// 액자 크기를 바꾸면 그림 구도도 함께 따라온다. 숫자를 두 곳에 적지 않기 위한 단일 출처다.</summary>
+        public static Vector2 PortraitContentSize => new Vector2(
+            LeftWidth - UiChrome.Space3 * 2f,
+            PortraitHeight - UiChrome.Space3 * 2f);
+
         // ---- 우측 패널 ----
         private const float TabStripHeight = 32f;
         private const float StatsBlockHeight = 96f;
@@ -927,8 +934,9 @@ namespace StickMate.Interaction
             _lastDpiScale = dpi;
 
             Rect rect = _portraitImage.rectTransform.rect;
-            float w = rect.width > 1f ? rect.width : LeftWidth - UiChrome.Space3 * 2f;
-            float h = rect.height > 1f ? rect.height : PortraitHeight - UiChrome.Space3 * 2f;
+            Vector2 design = PortraitContentSize;
+            float w = rect.width > 1f ? rect.width : design.x;
+            float h = rect.height > 1f ? rect.height : design.y;
 
             bool ok = _stage.TryEnsureTexture(w, h, dpi);
             _portraitImage.enabled = ok;
