@@ -6,6 +6,7 @@ using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using StickMate.Core;
 using StickMate.Interaction;
+using StickMate.States;
 
 namespace StickMate.Tests.PlayMode
 {
@@ -36,11 +37,21 @@ namespace StickMate.Tests.PlayMode
     {
         private CharacterInfoWindow _window;
 
+        /// <summary>창을 닫고, 고정해 둔 자율 배회 소스를 원래대로 되돌린다(다음 테스트가 정상 배회를
+        /// 관찰할 수 있어야 한다). 정리 진입점은 하나로 유지한다 — TearDown이 여러 개면 실행 순서가
+        /// 정의되지 않는다.</summary>
         [UnityTearDown]
         public IEnumerator CloseWindow()
         {
             if (_window != null) _window.Close("테스트 정리");
             _window = null;
+
+            if (_pinnedAgent != null && _pinnedAgent.Blackboard != null && _originalIntent != null)
+            {
+                _pinnedAgent.Blackboard.IntentSource = _originalIntent;
+            }
+            _pinnedAgent = null;
+            _originalIntent = null;
             yield return null;
         }
 
@@ -145,6 +156,26 @@ namespace StickMate.Tests.PlayMode
                 "창을 닫았는데 초상화 카메라가 계속 돌고 있습니다 — 24시간 상주 앱에서 상시 렌더 비용이 됩니다.");
         }
 
+        /// <summary>
+        /// ★ 플레이키 수정(2026-08-30, 리더 지시 3항 / 디버거 발견 — 전체 PlayMode 3회 중 1회 실패,
+        /// `Expected: 0 / But was: 8`).
+        ///
+        /// 원인은 이 테스트와 **자율 배회의 경합**이었다. Interaction/CharacterInfoWindow의
+        /// TickPresenceLine()은 플레이어 상태가 **바뀐 프레임에만** `SetPose(PoseForState(id))`를 밀어넣는데,
+        /// 이 테스트는 수동으로 `SetPose(Hidden)`을 부른 뒤 `yield return null` **한 프레임만** 기다렸다.
+        /// 그 한 프레임 사이에 AutoWanderController가 Idle↔Walk를 넘기면 창이 포즈를 Standing으로
+        /// 덮어써 선 8개가 되살아난다(배회 전이 주기가 1.5~4초라 실행마다 확률적으로 걸린다).
+        ///
+        /// 수정: **자율 배회를 결정론적으로 고정한다**(이 프로젝트 PlayMode 표준 관례 — EdgeHopDownTests /
+        /// DockSinkholeRegressionTests 등이 쓰는 그 방식). 정지 의도 소스를 꽂으면 캐릭터는 Idle로 내려온
+        /// 뒤 그대로 머무르고, 상태가 바뀌지 않으므로 창이 포즈를 덮어쓸 일 자체가 없어진다.
+        /// 프레임 수로 기다리지 않고 **"상태가 실제로 안정될 때까지 조건 기반 + 타임아웃"**으로 기다리는
+        /// 것도 함께 지킨다(FloorContactVisibilityTests가 확립한 패턴).
+        ///
+        /// 포즈 갱신 자체를 막는 방향(스테이지에 "수동 오버라이드" 플래그 추가)은 일부러 고르지 않았다 —
+        /// 그러면 프로덕션 코드에 테스트 전용 예외가 생기고, "그림과 상태는 항상 같은 스냅샷에서 파생된다"는
+        /// 불변 원칙 1의 방어선에 구멍이 뚫린다.
+        /// </summary>
         [UnityTest]
         public IEnumerator HiddenPoseDrawsNothingAndStandingPoseDrawsLines()
         {
@@ -153,6 +184,8 @@ namespace StickMate.Tests.PlayMode
             _window.Open("테스트");
             yield return null;
             yield return null;
+
+            yield return PinPlayerStateSoTheWindowStopsPushingPoses();
 
             var stage = ExactlyOne<CharacterPortraitStage>();
 
@@ -171,6 +204,60 @@ namespace StickMate.Tests.PlayMode
             yield return null;
             Assert.AreEqual(standingLines, stage.GetComponentsInChildren<LineRenderer>(true).Length,
                 "같은 포즈로 되돌아왔는데 선 개수가 달라졌습니다 — 재구성이 누적/누락되고 있습니다.");
+        }
+
+        /// <summary>이동 의도가 전혀 없는 소스. 꽂으면 Walk는 Idle로 내려오고 그대로 머문다.</summary>
+        private sealed class StillIntentSource : IMovementIntentSource
+        {
+            public float MoveInputX => 0f;
+            public bool JumpRequested => false;
+            public bool LedgeHangRequested => false;
+            public bool HopDownRequested => false;
+            public bool StepUpRequested => false;
+        }
+
+        private StickmanAgent _pinnedAgent;
+        private IMovementIntentSource _originalIntent;
+
+        /// <summary>
+        /// 자율 배회를 정지 소스로 갈아끼우고, 상태가 실제로 **연속 안정** 상태가 될 때까지 기다린다.
+        /// "N프레임"이 아니라 "조건 달성까지 실시간 대기 + 타임아웃"이다 — 프레임 수는 머신 성능/부하에
+        /// 따라 의미가 달라지지만 조건은 달라지지 않는다.
+        /// </summary>
+        private IEnumerator PinPlayerStateSoTheWindowStopsPushingPoses()
+        {
+            _pinnedAgent = Object.FindFirstObjectByType<StickmanAgent>();
+            Assert.IsNotNull(_pinnedAgent, "씬에서 StickmanAgent를 찾지 못했습니다.");
+            StickmanBlackboard bb = _pinnedAgent.Blackboard;
+            Assert.IsNotNull(bb, "StickmanAgent의 블랙보드가 아직 만들어지지 않았습니다.");
+
+            _originalIntent = bb.IntentSource;
+            bb.IntentSource = new StillIntentSource();
+
+            // "N프레임"이 아니라 **조건 달성까지 실시간 대기 + 타임아웃**이다.
+            // 조건은 "상태가 안 바뀐다"가 아니라 **"Idle이 연속으로 유지된다"** 여야 한다 — 씬 로드 직후
+            // 캐릭터는 화면 중앙에서 낙하 중이라(SceneBootstrapper의 스폰 높이) 착지까지 약 0.9초 동안
+            // Fall이 그대로 유지되고, "안 바뀜"만 보면 그 낙하 구간을 안정으로 오판한다(첫 시도에서
+            // 실측으로 걸렸다: `Expected: Idle / But was: Fall`, 0.63초 만에 조기 통과).
+            const float TimeoutSeconds = 15f;
+            const float RequiredStableSeconds = 0.5f;
+            float deadline = Time.realtimeSinceStartup + TimeoutSeconds;
+            float idleSince = -1f;
+            StickmanStateId last = bb.Machine != null ? bb.Machine.CurrentStateId : StickmanStateId.Idle;
+
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+                last = bb.Machine != null ? bb.Machine.CurrentStateId : last;
+                if (last != StickmanStateId.Idle) { idleSince = -1f; continue; }
+                if (idleSince < 0f) idleSince = Time.realtimeSinceStartup;
+                if (Time.realtimeSinceStartup - idleSince >= RequiredStableSeconds) break;
+            }
+
+            Assert.AreEqual(StickmanStateId.Idle, last,
+                "정지 의도를 꽂았는데도 상태가 Idle로 안정되지 않았습니다 — 이 테스트의 전제(창이 포즈를 " +
+                "덮어쓰지 않는다)가 성립하지 않으므로 결과를 신뢰할 수 없습니다.");
+            Debug.Log($"[초상화테스트] 자율 배회 고정 완료 — Idle이 {RequiredStableSeconds:F1}초 이상 연속 유지됨.");
         }
 
         [Test]

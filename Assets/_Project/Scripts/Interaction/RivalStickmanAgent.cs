@@ -96,21 +96,24 @@ namespace StickMate.Interaction
             _opponent = opponent;
 
             _body.simulated = true;
-            // ★ StickmanBlackboard.MoveBodyToWorld와 같은 이유로 Rigidbody2D.position만이 아니라
-            // Transform.position도 함께 옮긴다(2026-08-29, "몸 순간이동은 항상 둘 다" 원칙 후속 적용).
-            // AutoSyncTransforms가 꺼져 있어(ProjectSettings/Physics2DSettings.asset), 여기서
-            // Rigidbody2D만 옮기면 바로 아래 SetRenderersEnabled(true)로 보이게 되는 첫 프레임에
-            // Awake() 시점 프리팹 배치 좌표(스폰 좌표가 아닌 곳)가 그대로 그려진다 — RunawayState.
-            // RestoreCharacter()에서 실측 확인된 것과 동일한 1프레임 팝 패턴이다. 이 컴포넌트는 별도
-            // StickmanBlackboard 인스턴스를 아직 갖고 있지 않을 수 있어(EnsureMachineBuilt 이전)
-            // 공용 창구를 못 쓰므로, 여기서는 같은 두 줄을 직접 적용한다.
-            _body.position = spawnWorldPos;
-            Transform bodyTransform = _body.transform;
-            bodyTransform.position = new Vector3(spawnWorldPos.x, spawnWorldPos.y, bodyTransform.position.z);
+
+            // ★ 2026-08-30 (리더 지시 4항) — 순간이동 창구 통일. 예전에는 여기서 Rigidbody2D.position과
+            // Transform.position 두 줄을 직접 썼다("이 시점에는 아직 블랙보드가 없다"는 이유로). 이제
+            // EnsureMachineBuilt()를 **먼저** 불러 블랙보드를 확보하고 공용 창구 MoveBodyToWorld를 쓴다
+            // (둘 다 옮겨야 하는 이유 전문은 StickmanBlackboard.MoveBodyToWorld 문서 — AutoSyncTransforms가
+            // 꺼져 있어 Rigidbody2D만 옮기면 첫 프레임이 옛 좌표로 그려진다).
+            //
+            // 순서를 바꿔도 안전한 근거(확인함): EnsureMachineBuilt()가 하는 일은 _opponent(바로 위에서
+            // 대입됨)의 블랙보드에서 카메라/설정/발판 폴러를 복사해 상태머신을 만들고 Idle로 시작하는
+            // 것뿐이다. IdleState.Enter()는 좌표를 전혀 읽지 않는다(수평 속도 0 + 혼잣말 추첨).
+            // 그리고 결정적으로 **이 메서드 안에는 프레임 경계가 없다** — 머신 생성부터 몸 이동까지가
+            // 한 번의 동기 호출 안에서 끝나므로, 화면에 그려지거나 물리가 적분되는 시점에는 이미 스폰
+            // 좌표가 반영돼 있다(원래 주석이 걱정한 "1프레임 팝"이 발생할 틈 자체가 없다).
+            EnsureMachineBuilt();
+            _blackboard.MoveBodyToWorld(spawnWorldPos);
             _body.linearVelocity = Vector2.zero;
             SetRenderersEnabled(true);
 
-            EnsureMachineBuilt();
             ApplyRivalInkColor(); // _config가 EnsureMachineBuilt에서 뒤늦게 채워졌을 수 있다.
 
             _inDuel = true;

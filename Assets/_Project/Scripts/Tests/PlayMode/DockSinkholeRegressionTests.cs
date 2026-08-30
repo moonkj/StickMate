@@ -160,6 +160,16 @@ namespace StickMate.Tests.PlayMode
             _clonedConfig = Object.Instantiate(_originalConfig);
             bb.Config = _clonedConfig;
 
+            // ★ 2026-08-30 (리더 지시 1항 이후) — 이 파일은 **Dock 물리 계단을 끈 상태**에서
+            // 상태머신 쪽 안전망(접지 유지 / 사각지대 회수)만 단독으로 검증한다.
+            // 근거는 T1c를 따로 둔 것과 같다: 물리 계단이 켜져 있으면 Dock 구간의 자유낙하 자체가
+            // 물리적으로 일어나지 않아, 여기 있는 안전망들이 **한 번도 실행되지 않은 채 통과**한다
+            // (= "돌아갈 것 같다"짜리 테스트가 된다). 이 방어선들은 계단이 어떤 이유로든 없을 때
+            // (Dock 자동 숨김 / 세로 Dock / 비-macOS / 스위치 off) 여전히 유일한 방어선이므로
+            // 독립적으로 잠가 둬야 한다.
+            // 물리 계단 자체의 효과(= 낙하가 애초에 안 생긴다)는 DockPhysicsStepTests가 잠근다.
+            _clonedConfig.dockPhysicsStepEnabled = false;
+
             var ground = GameObject.Find("PhysicsGround");
             Assert.IsNotNull(ground, $"{LogPrefix} 전제 실패 — 씬에 PhysicsGround가 없습니다. " +
                 "이 테스트는 '물리 바닥은 있는데 논리 발판이 없는 구간'을 재현하므로 그 바닥이 필수다.");
@@ -181,7 +191,8 @@ namespace StickMate.Tests.PlayMode
                 $"Dock 상단 월드Y={_dockTopWorldY:F4}(OS {_dockTopOsY:F1}), 낙차={DockDropUnits:F4}유닛, " +
                 $"신장={bb.CharacterHeightWorld:F3}, 랙돌임계={_clonedConfig.ragdollForceThreshold:F1}, " +
                 $"차단막={_clonedConfig.landingImpactRagdollShield}, 접지안전망={_clonedConfig.groundKeepingSafetyNetEnabled}, " +
-                $"사각지대회수={_clonedConfig.sinkholeLiftRecoveryEnabled}.");
+                $"사각지대회수={_clonedConfig.sinkholeLiftRecoveryEnabled}, " +
+                $"물리계단={_clonedConfig.dockPhysicsStepEnabled}(이 파일은 일부러 끈다).");
         }
 
         private void ApplyDockSpan(float leftFrac, float rightFrac)

@@ -72,8 +72,18 @@ namespace StickMate.States
         /// <summary>
         /// 충돌 충격 통지의 진단 로그. 리더가 화면을 볼 수 없으므로 "착지 충격이 어디로 갔는가"는 로그가
         /// 유일한 판별 수단이다 — 그런데 24시간 상주 앱이라 매 충돌마다 남기면 로그가 무너진다. 그래서
-        /// [눈추적]/[발판리포트]와 동일한 컨벤션을 쓴다: **임계값을 넘는 충격만**, 그리고 기본적으로
-        /// 시작 직후 CollisionLogSampleCount회까지만. StickConfig.verboseDiagnosticsLogging을 켜면 계속 남는다.
+        /// [눈추적]/[발판리포트]와 동일한 컨벤션을 쓴다: 기본적으로 시작 직후 CollisionLogSampleCount회까지만,
+        /// 그 뒤로는 StickConfig.verboseDiagnosticsLogging을 켰을 때 임계값 이상만.
+        ///
+        /// ★★ 2026-08-30 (리더 지시 2항, 디버거 지적) — **RAGDOLL로 실제로 이어지는 충돌은 표본 제한과
+        /// 무관하게 항상 남긴다.** 직전 라운드에 이 로그가 "시작 직후 6건만 남기고 침묵"해서, 정작 문제의
+        /// RAGDOLL 5건은 **원인 줄이 하나도 안 남았다**(가장 중요한 사건의 원인만 안 찍히는 구조였다).
+        /// 로그 예산은 원래 "약한 충돌이 홍수를 이루는 것"을 막으려는 것이지 사건 자체를 감추려는 것이
+        /// 아니다. RAGDOLL 전이는 이산적이고 드문 사건이며(정상 동작에서는 0회 — 회귀 테스트가
+        /// RAGDOLL 0회를 절대 조건으로 잠근다) 자기 착지는 차단막이 먼저 걸러내므로, 이 완화가 로그를
+        /// 무너뜨릴 수 있는 유일한 경우는 "RAGDOLL이 폭주하는 상황" 뿐이다 — 그건 정확히 로그가 필요한
+        /// 상황이다. 반대로 **표본 예산은 소비하지 않는다**: 그 예산의 목적은 "충돌이 아예 안 나는 것"과
+        /// "나는데 약한 것"을 구분하는 초기 표본이므로, RAGDOLL 사건이 그 자리를 빼앗으면 안 된다.
         /// </summary>
         private static int _collisionLogSamplesLeft = CollisionLogSampleCount;
         private const int CollisionLogSampleCount = 6;
@@ -82,12 +92,24 @@ namespace StickMate.States
             float impulseMagnitude, bool shielded)
         {
             if (blackboard == null || blackboard.Config == null) return;
-            // 충돌 진입은 이산 이벤트(매 프레임이 아니다)라 시작 직후 몇 건은 세기와 무관하게 전부 남긴다 —
-            // "충돌이 아예 발생하지 않는 것"과 "발생했는데 약한 것"을 구분하지 못하면 진단이 불가능하기 때문이다.
-            // 그 표본을 다 쓰면 임계값 이상만, 그것도 verboseDiagnosticsLogging이 켜져 있을 때만 남긴다.
-            bool verbose = blackboard.Config.verboseDiagnosticsLogging;
-            if (_collisionLogSamplesLeft > 0) _collisionLogSamplesLeft--;
-            else if (!verbose || impulseMagnitude < blackboard.Config.ragdollForceThreshold) return;
+
+            // ★ 2026-08-29 — "외력으로 판정 -> RAGDOLL 전이"를 shielded==false일 때 무조건 적었던 것을
+            // 고쳤다. 이 로그는 TryApplyImpact()가 실제로 임계값과 비교하기 *전에* 찍히므로, shielded가
+            // false라도 impulseMagnitude가 임계값 미만이면 RAGDOLL 전이는 일어나지 않는다 — 그런데도
+            // "전이"라고 단정해 로그만 보고 오판하게 만들었다(디버거가 실사용 조사 중 발견).
+            bool willRagdoll = !shielded && impulseMagnitude >= blackboard.Config.ragdollForceThreshold;
+
+            // ★★ 2026-08-30 — RAGDOLL로 이어지는 충돌은 표본 예산을 **소비하지도, 확인하지도 않는다**
+            // (위 메서드 문서의 근거 참고). 그 외의 약한 충돌만 예전 규칙(초기 표본 6건 + verbose 토글)을 탄다.
+            if (!willRagdoll)
+            {
+                // 충돌 진입은 이산 이벤트(매 프레임이 아니다)라 시작 직후 몇 건은 세기와 무관하게 전부 남긴다 —
+                // "충돌이 아예 발생하지 않는 것"과 "발생했는데 약한 것"을 구분하지 못하면 진단이 불가능하기 때문이다.
+                // 그 표본을 다 쓰면 임계값 이상만, 그것도 verboseDiagnosticsLogging이 켜져 있을 때만 남긴다.
+                bool verbose = blackboard.Config.verboseDiagnosticsLogging;
+                if (_collisionLogSamplesLeft > 0) _collisionLogSamplesLeft--;
+                else if (!verbose || impulseMagnitude < blackboard.Config.ragdollForceThreshold) return;
+            }
 
             float footY = blackboard.Body != null ? blackboard.Body.position.y : float.NaN;
             float lowestContactY = float.NaN;
@@ -98,11 +120,6 @@ namespace StickMate.States
                 if (float.IsNaN(lowestContactY) || y < lowestContactY) lowestContactY = y;
             }
 
-            // ★ 2026-08-29 — "외력으로 판정 -> RAGDOLL 전이"를 shielded==false일 때 무조건 적었던 것을
-            // 고쳤다. 이 로그는 TryApplyImpact()가 실제로 임계값과 비교하기 *전에* 찍히므로, shielded가
-            // false라도 impulseMagnitude가 임계값 미만이면 RAGDOLL 전이는 일어나지 않는다 — 그런데도
-            // "전이"라고 단정해 로그만 보고 오판하게 만들었다(디버거가 실사용 조사 중 발견).
-            bool willRagdoll = !shielded && impulseMagnitude >= blackboard.Config.ragdollForceThreshold;
             string verdict = shielded ? "착지로 판정해 무시"
                 : willRagdoll ? "외력으로 판정, 임계값 초과 -> RAGDOLL 전이"
                 : "외력으로 판정했으나 임계값 미만 -> 전이 없음";

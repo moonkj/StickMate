@@ -1066,7 +1066,7 @@ namespace StickMate.EditorTools
 
             // BUG-SW-M1 대응: RAGDOLL이 실제로 부딪혀 멈출 수 있는 정적 바닥. Rigidbody2D를 붙이지
             // 않으므로 Unity가 자동으로 정적 콜라이더로 취급한다(Architect 결정 — "표준 랙돌 기법").
-            CreateGroundCollider(cam);
+            StickMate.Platform.DockPhysicsStep dockStep = CreateGroundCollider(cam, config);
 
             if (stickmanPrefab != null)
             {
@@ -1089,7 +1089,18 @@ namespace StickMate.EditorTools
                 instance.transform.position = new Vector3(0f, cam.transform.position.y, 0f);
 
                 // 라이벌 스틱맨(11절) 배선 — 아래 CreateRivalStickman 문서 참고.
-                CreateRivalStickman(stickmanPrefab, config, instance.GetComponent<StickmanAgent>());
+                var playerAgent = instance.GetComponent<StickmanAgent>();
+                CreateRivalStickman(stickmanPrefab, config, playerAgent);
+
+                // Dock 물리 계단은 플레이어의 발판 폴러(= Dock 발판의 단일 소스)를 읽는다. 물리 바닥은
+                // 프리팹보다 먼저 만들어지므로 배선은 여기서 뒤늦게 채운다(컴포넌트 자신에게도
+                // FindFirstObjectByType 심층 방어가 있지만, 명시 배선이 있으면 그 경로를 타지 않는다).
+                if (dockStep != null && playerAgent != null)
+                {
+                    var stepSo = new SerializedObject(dockStep);
+                    stepSo.FindProperty("_agent").objectReferenceValue = playerAgent;
+                    stepSo.ApplyModifiedPropertiesWithoutUndo();
+                }
             }
             else
             {
@@ -1180,6 +1191,25 @@ namespace StickMate.EditorTools
         /// 안전망(StickmanBlackboard의 LostCharacterRescueSeconds Fall 감시 -> RescueToSafeGround)이
         /// 회수한다 — 그 대신 물리 바닥에 구멍을 뚫는 선택은 "랙돌이 화면 밖으로 사라진다"는 훨씬
         /// 나쁜 실패로 이어진다.
+        ///
+        /// ============================================================================
+        /// ★★★ 2026-08-30 (리더 지시 "Dock 사각지대 근본 제거") — 이 바닥은 이제 **한 장이 아니다**
+        /// ============================================================================
+        /// 위 문단이 인정한 그 사각지대("물리적으로는 떠받쳐지지만 논리적으로는 접지하지 않는다")가
+        /// 결국 사용자 신고 두 건의 근원이었다. 물리 바닥은 화면 최하단 한 장인데 그 위의 논리 발판
+        /// (Dock 상단)은 1.64유닛 더 높아서, Dock 가로 구간 **바로 아래에 큰 빈 공간**이 있었기 때문이다.
+        /// 그래서 이 라운드부터 물리 바닥은 Dock 가로 구간에서 **위로 솟은 계단**을 하나 더 갖는다.
+        ///
+        /// 다만 그 계단을 여기서(=씬을 굽는 시점에) 좌표까지 확정할 수는 **없다**:
+        ///   (a) 에디터/배치모드의 플랫폼 서비스는 NullPlatformWindowService라 Dock 발판이 아예 없다.
+        ///   (b) 실제 macOS에서도 Dock 폭은 실행 중에 변한다(실측: x201~1312 ↔ x174~1338).
+        /// 그래서 여기서는 **꺼진 껍데기**(BoxCollider2D + DockPhysicsStep)만 굽고, 실제 X 구간/윗면 Y는
+        /// 런타임에 DockPhysicsStep이 Dock 발판과 **똑같은 단일 소스**에서 받아 채운다. 판단 근거 전문은
+        /// Platform/DockPhysicsStep.cs 클래스 문서에 있다.
+        ///
+        /// 전체 폭 한 장이라는 위 문단의 규칙은 **PhysicsGround 자신에 대해서는 그대로 유효하다** —
+        /// 계단은 그 위에 얹히는 별개 오브젝트이지 이 바닥에 뚫는 구멍이 아니다(랙돌이 Dock 구간에서
+        /// 바닥을 통과하는 실패는 여전히 구조적으로 불가능하다).
         /// </summary>
         /// <summary>
         /// UniWindowController(com.kirurobo.uniwinc) 인스턴스를 씬에 배치하고 이 프로젝트에 맞는 초기
@@ -1487,7 +1517,7 @@ namespace StickMate.EditorTools
             if (component != null) Object.DestroyImmediate(component, allowDestroyingAssets: false);
         }
 
-        private static void CreateGroundCollider(Camera cam)
+        private static StickMate.Platform.DockPhysicsStep CreateGroundCollider(Camera cam, StickConfig config)
         {
             var ground = new GameObject("PhysicsGround");
             // 레이어 2 = "Ignore Raycast"(Unity 예약 레이어). 물리 충돌에는 아무 영향이 없고
@@ -1503,6 +1533,40 @@ namespace StickMate.EditorTools
 
             var collider = ground.AddComponent<BoxCollider2D>();
             collider.size = new Vector2(GroundColliderHalfWidth * 2f, GroundColliderThickness);
+
+            return CreateDockPhysicsStep(ground, collider, config);
+        }
+
+        /// <summary>
+        /// Dock 가로 구간의 물리 계단 "껍데기"를 굽는다(위 CreateGroundCollider 문서의 ★★★ 절 참고).
+        /// 좌표/크기는 굽지 않는다 — Awake()에서 콜라이더가 꺼진 채 시작하고, 런타임에
+        /// <see cref="StickMate.Platform.DockPhysicsStep"/>이 실제 Dock 사각형으로 채운다.
+        ///
+        /// 레이어 2("Ignore Raycast")는 PhysicsGround와 같은 이유로 **필수**다: 이 계단은 화면 하단
+        /// Dock 띠 전체를 덮는 보이지 않는 콜라이더라, 레이캐스트 히트테스트가 여기에 걸리면 Dock
+        /// 영역의 클릭이 전부 우리 앱에 잡힌다(비침해 원칙 2 정면 위반).
+        ///
+        /// PhysicsGround의 **자식**으로 두는 이유: 씬 하이어라키에서 "이 둘은 한 벌의 바닥"이라는 것을
+        /// 드러내고, 나중에 바닥을 통째로 옮기거나 끄는 조작이 계단을 빠뜨릴 수 없게 하기 위해서다.
+        /// (부모 스케일은 1이므로 자식의 월드 좌표 계산에는 영향이 없다.)
+        /// </summary>
+        private static StickMate.Platform.DockPhysicsStep CreateDockPhysicsStep(GameObject ground, BoxCollider2D groundCollider, StickConfig config)
+        {
+            var step = new GameObject("DockPhysicsStep");
+            step.transform.SetParent(ground.transform, false);
+            step.layer = ground.layer;
+
+            var stepCollider = step.AddComponent<BoxCollider2D>();
+            stepCollider.size = Vector2.one;   // 런타임에 덮어쓴다(0으로 두면 Unity가 경고를 낸다).
+            stepCollider.enabled = false;      // 실제 Dock을 확인하기 전까지는 존재하지 않는 것과 같다.
+
+            var driver = step.AddComponent<StickMate.Platform.DockPhysicsStep>();
+            var so = new SerializedObject(driver);
+            so.FindProperty("_config").objectReferenceValue = config;
+            so.FindProperty("_baseGround").objectReferenceValue = groundCollider;
+            so.FindProperty("_stepCollider").objectReferenceValue = stepCollider;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            return driver;
         }
 
         private static void RegisterSceneInBuildSettings(string scenePath)

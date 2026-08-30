@@ -245,6 +245,7 @@ MonoBehaviour:
   groundKeepingSafetyNetEnabled: 1
   sinkholeLiftRecoveryEnabled: 1
   sinkholeLiftRestSeconds: 0.35
+  dockPhysicsStepEnabled: 1
   sinkholeLiftMaxHeights: 1.5
   landingCrouchDeepFallHeights: 3
   landingCrouchMinDepth01: 0.45
