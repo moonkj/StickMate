@@ -11,10 +11,12 @@ namespace StickMate.Interaction
         /// <summary>서 있음(중립).</summary>
         Standing = 0,
 
-        /// <summary>넘어져 있음(랙돌/던져짐/붙잡힘).</summary>
+        /// <summary>넘어져 있음(랙돌/던져짐/일어나는 중). <b>붙잡힘은 여기가 아니다</b> —
+        /// 2026-08-30 사용자 신고 참고(<see cref="PoseForState"/>의 Dragged 주석).</summary>
         Fallen = 1,
 
-        /// <summary>뭔가 하는 중(활쏘기/격파/낙서 등) — 한쪽 팔을 들어 "작업 중"으로 읽힌다.</summary>
+        /// <summary>뭔가 하는 중(활쏘기/격파/낙서/붙잡혀 버둥거림 등) — 한쪽 팔을 들어
+        /// "작업 중 / 들려 있는 중"으로 읽힌다.</summary>
         Busy = 2,
 
         /// <summary>가출 중 — 액자를 <b>비운다</b>(없는 사람을 그리지 않는다).</summary>
@@ -197,9 +199,18 @@ namespace StickMate.Interaction
 
                 case StickmanStateId.Ragdoll:
                 case StickmanStateId.ThrowTumble:
-                case StickmanStateId.Dragged:
                 case StickmanStateId.Getup:
                     return PortraitPose.Fallen;
+
+                // ★ 2026-08-30 사용자 신고 수정: "캐릭터를 잡으면 캐릭터창에서는 가만히 있어야 하는데
+                //   옆으로 이상하게 됨". 원인은 실시간 추종이 아니라 <b>이 한 줄의 버킷 선택</b>이었다 —
+                //   Dragged가 Fallen에 들어 있어서, 붙잡는 순간 액자 속 인물이 78도 기울고 가로로
+                //   0.51유닛 밀려났다(실측: Tests/PlayMode/PortraitDragIndependenceTests).
+                //   붙잡힌 캐릭터는 <b>넘어져 있는 것이 아니라 들린 채 버둥거리는 중</b>이고, 프레즌스
+                //   문구도 "붙잡혀 있는 중"이라 Fallen("넘어져 있는 중")과는 애초에 어긋나 있었다.
+                //   그래서 Busy(정지된 준비 자세, 한쪽 팔을 든 모습)로 옮긴다 — 문구와도 맞고,
+                //   무엇보다 <b>액자 속 인물이 똑바로 선 채 고정</b>된다.
+                case StickmanStateId.Dragged:
 
                 case StickmanStateId.Attack:
                 case StickmanStateId.BattleMinigame:
