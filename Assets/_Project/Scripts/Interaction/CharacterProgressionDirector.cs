@@ -90,9 +90,10 @@ namespace StickMate.Interaction
         private void OnApplicationQuit()
         {
             // 종료 직전 마지막 저장 — 주기 저장만 있으면 최대 1분치가 날아간다.
-            // 기록(Core/CharacterStatsModel.cs)도 같은 파일에 들어가므로 함께 본다 — 디스크에 쓰는
-            // 경로는 이 컴포넌트 하나로 유지한다(두 컴포넌트가 같은 파일을 번갈아 덮어쓰지 않게).
-            if (CharacterProgressionModel.IsDirty || CharacterStatsModel.IsDirty) CharacterSaveStore.Save();
+            // 기록(Core/CharacterStatsModel.cs)과 사용자가 옮긴 톱니 위치(Core/UiLayoutModel.cs)도 같은
+            // 파일에 들어가므로 함께 본다 — 주기/종료 저장 경로는 이 컴포넌트 하나로 유지한다
+            // (두 컴포넌트가 같은 파일을 번갈아 덮어쓰지 않게).
+            if (IsAnythingDirty()) CharacterSaveStore.Save();
         }
 
         private void Update()
@@ -111,9 +112,14 @@ namespace StickMate.Interaction
             if (_autoSaveTimer >= saveInterval)
             {
                 _autoSaveTimer -= saveInterval;
-                if (CharacterProgressionModel.IsDirty || CharacterStatsModel.IsDirty) CharacterSaveStore.Save();
+                if (IsAnythingDirty()) CharacterSaveStore.Save();
             }
         }
+
+        /// <summary>같은 파일에 실리는 모델 중 하나라도 바뀌었는가 — 안 바뀌었으면 디스크를 두드리지
+        /// 않는다(하루 종일 켜져 있는 앱이다).</summary>
+        private static bool IsAnythingDirty()
+            => CharacterProgressionModel.IsDirty || CharacterStatsModel.IsDirty || UiLayoutModel.IsDirty;
 
         // ==================== 보너스 훅(전부 읽기 전용 구독) ====================
 

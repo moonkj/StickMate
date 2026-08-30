@@ -35,8 +35,13 @@ namespace StickMate.Core
 
         /// <summary>스키마 버전. 2 = 2026-08-30 정보창 리디자인 라운드에서 기록 7종
         /// (격파/대결/활쏘기 2종/누적 시간/넘어진 횟수/첫 만남 시각)이 추가된 버전. <b>버전 1 파일도 그대로 읽힌다</b> —
-        /// 새 필드는 JsonUtility가 0으로 채우고, 그 0은 "아직 기록이 없다"는 정확한 사실이다.</summary>
-        private const int CurrentVersion = 2;
+        /// 새 필드는 JsonUtility가 0으로 채우고, 그 0은 "아직 기록이 없다"는 정확한 사실이다.
+        /// 3 = 2026-08-30 톱니 아이콘 길게 눌러 옮기기 라운드에서 <b>사용자가 옮긴 톱니 위치</b>
+        /// (Core/UiLayoutModel.cs)가 추가된 버전. 여기서도 하위 호환은 같은 방식으로 성립한다 —
+        /// v1/v2 파일에는 <c>gearPositionSaved</c>가 없어 JsonUtility가 false로 채우고, 그 false는
+        /// "아직 옮긴 적 없다 = 기본 위치(우상단)를 쓴다"는 정확한 사실이다. 좌표 0,0을 "값 없음"으로
+        /// 해석하지 않는 이유는 (0,0)이 실제로 도달 가능한 좌표라서다(별도 플래그가 필요한 이유).</summary>
+        private const int CurrentVersion = 3;
 
         /// <summary>
         /// 직렬화 스키마. JsonUtility는 프로퍼티를 직렬화하지 않으므로 public 필드로만 구성한다.
@@ -67,6 +72,15 @@ namespace StickMate.Core
             /// <summary>"근속"의 기준점(Unix 초, UTC). 0이면 아직 기록이 없다는 뜻이고, 로드 직후
             /// CharacterStatsModel.EnsureFirstRunInitialized()가 지금 시각으로 채운다.</summary>
             public long firstRunUnixSeconds;
+
+            // ---- v3: 사용자가 옮긴 화면 UI 위치(Core/UiLayoutModel.cs) ----
+
+            /// <summary>사용자가 톱니를 한 번이라도 옮겼는가. false면 아래 좌표는 무시하고 기본 위치를 쓴다.</summary>
+            public bool gearPositionSaved;
+
+            /// <summary>큰 기어 중심(창 좌상단 원점, OS 포인트). 단위 근거는 UiLayoutModel 문서 참고.</summary>
+            public float gearCenterXPoints;
+            public float gearCenterYPoints;
         }
 
         /// <summary>저장 파일의 절대 경로. 진단 로그/테스트에서만 쓴다.</summary>
@@ -102,6 +116,7 @@ namespace StickMate.Core
                 CharacterStatsModel.RestoreFromSave(data.battleWins, data.rivalWins,
                     data.archeryShots, data.archeryBullseyes, data.companionSeconds,
                     data.ragdollFalls, data.firstRunUnixSeconds);
+                UiLayoutModel.RestoreFromSave(data.gearPositionSaved, data.gearCenterXPoints, data.gearCenterYPoints);
                 LoadedFromFile = true;
 
                 // 복원이 끝난 뒤 한 번만 통지한다(중간 상태를 UI가 그리지 않게 — RestoreFromSave가
@@ -141,6 +156,9 @@ namespace StickMate.Core
                     companionSeconds = CharacterStatsModel.TotalCompanionSeconds,
                     ragdollFalls = CharacterStatsModel.RagdollFalls,
                     firstRunUnixSeconds = CharacterStatsModel.FirstRunUnixSeconds,
+                    gearPositionSaved = UiLayoutModel.HasGearCenter,
+                    gearCenterXPoints = UiLayoutModel.GearCenterPoints.x,
+                    gearCenterYPoints = UiLayoutModel.GearCenterPoints.y,
                 };
 
                 string dir = Application.persistentDataPath;
@@ -148,6 +166,7 @@ namespace StickMate.Core
                 File.WriteAllText(FilePath, JsonUtility.ToJson(data, true));
                 CharacterProgressionModel.MarkSaved();
                 CharacterStatsModel.MarkSaved();
+                UiLayoutModel.MarkSaved();
                 return true;
             }
             catch (Exception e)

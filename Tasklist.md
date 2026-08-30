@@ -2860,3 +2860,66 @@ RT를 그대로 PNG로 떠서 3장 남겼다(352x428, Metal).
 `Logs/coder_em_final.xml`, `Logs/coder_pm_final2.xml`.
 드래그 독립성(`PortraitDragIndependenceTests` 2종)·배율 연동(`CharacterScaleInvarianceTests`)·
 초상화 기존 검증(`CharacterPortraitStageTests`) 전부 통과 — 깨진 것 없음.
+
+---
+
+## 2026-08-30 — 우상단 톱니를 **길게 눌러 위치 옮기기** (Coder)
+
+> 사용자 원문: **"캐릭터 설정 기어들도 길게 클릭해서 위치 옮길 수 있게 해줘"**
+> 기준선: HEAD `c9b39d6`. 다른 에이전트가 `Interaction/CharacterPortraitStage.cs`를 병행 작업 중이라 그 파일은 건드리지 않았다(이번 변경과 파일이 겹치지 않는다).
+
+| 작업 | 담당 | 상태 | 메모 |
+|---|---|---|---|
+| 톱니 길게 눌러 드래그 + 위치 영속화 | Coder | 완료 | 아래 상세 |
+
+### 무엇을 바꿨나
+
+- `Assets/_Project/Scripts/Interaction/InfoGearIconWidget.cs`
+  - **짧게 클릭 / 길게 누르기 분기**. 임계는 `LongPressSeconds = 0.4f`(시간) 또는 `DragMoveThresholdPoints = 4f`(누른 채 이동, 일반 드래그 UX 관례). 둘 중 먼저 걸리는 쪽으로 드래그 전환.
+  - **클릭 판정 시점이 "누른 순간" -> "뗀 순간"으로 이동**했다(★ 교차 레이어 영향, 아래 참고). 누른 순간에는 그 입력이 클릭이 될지 드래그가 될지 아직 모르기 때문이다 — "옮기려고 눌렀는데 창부터 뜬다"가 이 요구의 대표적 실패다.
+  - 위치는 `_customCenterPoints`(창 좌상단 원점 **OS 포인트**)로 들고 있고, 히트 사각형/콜라이더/그림이 전부 매 프레임 이 값에서 다시 계산된다 → **드래그 중에도 판정 영역이 함께 따라간다**(안 따라오면 다음 프레임에 "기어 밖"이 되어 드래그가 끊긴다).
+  - **화면 경계 클램프**(`ClampCenterPoints`)는 중심이 아니라 *두 기어를 덮는 히트 사각형 전체*를 화면 안에 가둔다. 매 프레임 돌기 때문에 저장된 좌표가 화면 밖이 된 경우(외장 모니터 분리)도 다음 실행에 자동 복구되고, 보정값이 모델로 되돌아가 저장된다.
+  - 시각 피드백: 드래그 중 컨테이너 스케일 1.0 -> 1.12, 알파 0.70 -> 0.55(살짝 커지고 살짝 옅어짐 = 들려 있다). **회전 기구학은 한 줄도 안 건드렸다** — 회전은 자식(큰/작은 기어)의 각도이고 이건 부모의 스케일/알파라 서로 간섭하지 않는다. 회전 중에는 애초에 새 누름을 받지 않는다.
+  - 폴링: 평소 0.05초 간격 그대로, **누르고 있는 동안만 매 프레임**(0.05초 간격으로 커서를 따라가면 드래그가 뚝뚝 끊긴다). `Update()` 내 신규 할당 없음(전부 struct 연산, 삼각함수는 `static readonly` 1회).
+  - 입력 상태를 못 읽게 되면(`TryGetPrimaryButtonPressed` 실패) `AbortPress` — 드래그 중이었으면 그 자리에 확정하고, 아니면 조용히 취소한다(창을 제멋대로 열지 않는다). 기어가 커서에 영영 붙는 상태를 만들지 않기 위한 안전장치.
+- `Assets/_Project/Scripts/Core/UiLayoutModel.cs` (신규) — 옮긴 위치 보관 + `IsDirty`. `CharacterStatsModel`과 같은 관례(값만 알고, 언제 저장할지는 모른다).
+- `Assets/_Project/Scripts/Core/CharacterSaveStore.cs` — **스키마 v2 -> v3**. 필드 3개 추가(`gearPositionSaved` / `gearCenterXPoints` / `gearCenterYPoints`). v1·v2 파일은 그대로 읽히고 플래그가 false가 되어 "기본 위치(우상단)"로 뜬다(좌표 0,0으로 튀지 않게 **별도 플래그**를 둔 이유 — (0,0)은 실제로 도달 가능한 좌표다).
+- `Assets/_Project/Scripts/Interaction/CharacterProgressionDirector.cs` — 주기/종료 저장의 dirty 판정에 `UiLayoutModel`을 포함(`IsAnythingDirty()`로 추출).
+- 테스트 신규 2파일: `Tests/PlayMode/InfoGearDragTests.cs`(6건), `Tests/EditMode/UiLayoutPersistenceTests.cs`(4건).
+
+### ★ 교차 레이어 영향 (리더 확인 요망)
+
+1. **톱니 클릭이 "누를 때"가 아니라 "뗄 때" 발동한다.** 사용자 체감으로는 버튼을 떼는 순간(보통 100ms 이내)에 회전이 시작된다. 이 프로젝트의 다른 클릭 경로(`StickmanClickHitbox` -> 드래그&던지기)는 여전히 누름 기준이라 서로 다르지만, 그쪽은 "누르면 잡힌다"가 맞고 톱니는 "떼면 눌린 것"이 맞다(옮길 수 있는 버튼이므로). 판정 영역/비침해 규칙은 그대로다.
+2. **저장 파일 스키마가 v3로 올라갔다.** 이 앱 자신의 파일 하나뿐이고 하위 호환은 테스트로 잠갔지만, **v3로 저장한 뒤 예전 빌드로 되돌리면 그 빌드는 파일을 통째로 무시한다**(`version > CurrentVersion` 가드 -> 기본값 시작). 롤백 시 주의.
+3. **위젯이 `CharacterSaveStore.Save()`를 직접 호출한다**(드래그를 뗀 순간 1회). 지금까지 디스크 쓰기 경로는 `CharacterProgressionDirector` 하나였다. 주기 저장(기본 60초)만 믿으면 "옮기고 바로 종료"에서 위치가 날아가므로 즉시 저장을 택했다. 같은 파일에 두 경로가 쓰지만 순간 1회 + 같은 스냅샷 함수라 경합 위험은 없다.
+4. 배율(`characterScale`) 무관 고정 화면 크기 결정은 유지. 기어 회전 기구학(반대 방향/잇수비/중심거리)도 무변경 — `InfoGearMeshingTests` 3건 계속 통과.
+
+### 실측 검증
+
+**자동 테스트** (`pgrep -x Unity`로 직렬화 확인 후 실행)
+- 컴파일 `error CS` / `warning CS` **0건** (`Logs/coder_gear_edit.log`, `Logs/coder_gear_play.log`, 빌드 `Logs/coder_gear_build.log`).
+- **EditMode 67/67**(기준선 63 + 신규 4) — `Logs/coder_gear_edit.xml` `result="Passed" total="67" passed="67" failed="0"`.
+- **PlayMode 198/198**(기준선 192 + 신규 6) — `Logs/coder_gear_play.xml` `result="Passed" total="198" passed="198" failed="0"`. 신규 `InfoGearDragTests` 6/6.
+
+신규 PlayMode 6건이 잠근 절대 조건 + 네거티브 컨트롤:
+
+| 테스트 | 잠근 사실 | 실측 로그 |
+|---|---|---|
+| `ShortClickStillOpensWindowAndDoesNotMoveIcon` | 짧은 클릭은 예전대로 회전 -> 창 열림, 아이콘 **안 움직임** | `중심 (610.00, 422.00) 그대로, 창 열림` |
+| `LongPressTurnsIntoDragAndNeverOpensWindow` | 임계의 **절반(0.2초)에서는 드래그 아님**(네거티브 컨트롤) / 0.53초에서 드래그 / 뗀 뒤 0.9초 기다려도 **창이 열리지 않음** | `[톱니] 길게 누름 감지(0.53초 / 0.0pt 이동)`, `(610,422) -> (288,240), 창 열림 없음` |
+| `DraggingFarEnoughStartsDragBeforeTheTimeThreshold` | 시간 임계 전이라도 거리(4pt의 3배)로 드래그 전환 | `길게 누름 감지(0.00초 / 56.6pt 이동)` |
+| `DroppedPositionSurvivesSceneReload` | 뗀 위치가 **파일**에 남고, 모델을 지운 뒤 씬을 다시 띄워도 복원됨(= 재시작 유지) | `위치 확정 — 중심 (288, 240)pt ... 저장 완료` -> `저장된 위치를 복원합니다 — 중심 (288, 240)pt` |
+| `DragCannotPushIconOffScreen` | 화면 밖 ±600px로 끌어도 히트 사각형이 화면 안에 100% 남음(4변 전부) | — |
+| `SavedPositionOutsideTheScreenIsPulledBackOnStartup` | 저장값이 (99999, 99999)여도 시작 시 화면 안으로 복구 | `사각형 (x:593.81, y:0.00, w:46.19, h:41.18)` |
+
+EditMode 4건: 좌표 저장/로드 왕복 · **구버전 v2 파일이 "옮긴 적 없음"으로 읽힘**(진행도/기록 보존 동시 확인) · 같은 자리 재세팅은 `IsDirty`를 세우지 않음(주기 저장이 매분 디스크를 두드리지 않게) · NaN 좌표 무시.
+
+**실앱 육안 확인** — 빌드 후 셸에서 직접 실행, `Player.log` + 스크린샷.
+- 기본 위치 무회귀: 저장값이 없는 상태에서 톱니 2개가 **예전과 같은 화면 우상단**에 뜬다(스크린샷 `scratchpad/gear_default.png`, `gear_final.png`). 준비 로그도 `오른쪽 30pt / 위 58pt` 그대로.
+- 준비 로그에 임계값이 실측으로 찍힌다: `★ 0.40초 이상 누르고 있거나 누른 채 4pt 이상 끌면 드래그 모드로 바뀌어 ... 떼면 그 자리에 고정되며 저장됩니다(재시작해도 유지)`.
+- 로그 `Exception`/에러 0건.
+
+### 정직한 한계 (사용자/리더 확인 필요)
+
+- **실제 마우스로 길게 눌러 끄는 동작 자체는 실앱에서 육안 확인하지 못했다.** 이 개발 환경에 합성 입력 도구(`cliclick`/PyObjC Quartz)가 없고, 있더라도 사용자의 실제 커서를 움직여 남의 창 위에서 버튼을 누르는 행위가 되므로 비침해 원칙상 하지 않았다. 대신 **실제 입력이 지나가는 바로 그 함수**(`ProcessPointer`)에 버튼/커서를 먹이는 PlayMode 테스트 6건으로 대체했다(테스트 전용 분기를 만들지 않았으므로 통과 = 실경로 동작). 사용자 손으로 한 번 끌어 보고, 그때 `Player.log`에 `[톱니] 길게 누름 감지` / `[톱니] 위치 확정`이 찍히는지 확인해 주시면 확정된다.
+- 저장 파일(`~/Library/Application Support/DefaultCompany/StickMateSkeleton/stickmate_character.json`)은 이번 세션에서 **읽기만** 했다(샌드박스가 쓰기를 막았고, 굳이 우회하지 않았다). 위치 왕복 검증은 전부 테스트가 자기 손으로 백업/복원하며 수행했다.

@@ -55,6 +55,28 @@ namespace StickMate.Interaction
     /// 38pt)보다 확실히 아래에 아이콘을 놓기 위한 값이다.
     ///
     /// ============================================================================
+    /// 짧게 클릭 vs 길게 눌러 옮기기 (2026-08-30 사용자 요청)
+    /// ============================================================================
+    /// 사용자 원문: "캐릭터 설정 기어들도 길게 클릭해서 위치 옮길 수 있게 해줘".
+    ///  · <b>짧게 클릭</b> — 예전 그대로. 두 기어가 맞물려 돈 뒤 캐릭터 창이 열린다(열려 있으면 닫는다).
+    ///  · <b>길게 누르기</b>(<see cref="LongPressSeconds"/> 이상) 또는 누른 채
+    ///    <see cref="DragMoveThresholdPoints"/> 이상 이동 — 드래그로 전환되어 커서를 따라간다.
+    ///    떼면 그 자리에 확정되고 저장 파일에 남아 <b>재시작해도 유지</b>된다(Core/UiLayoutModel.cs).
+    ///
+    /// <b>왜 클릭 판정이 뗄 때로 옮겨갔는가</b>: 누른 순간에 창을 열면 그 클릭이 드래그가 될지 아직
+    /// 모른다 — 옮기려고 눌렀는데 창부터 뜨는 것이 이 요구에서 가장 흔한 실패다. 그래서 "눌렀다"는
+    /// 즉시 아무 일도 하지 않고, <b>뗄 때</b> 드래그였는지 아닌지가 확정된 뒤에 창을 연다.
+    ///
+    /// <b>판정 영역도 함께 따라간다</b>: 히트 사각형/콜라이더는 매 프레임 현재 중심에서 다시 계산되므로
+    /// 드래그 중에도 커서가 계속 "기어 위"다(States/DragThrowState의 개념과 같지만, 이쪽은 물리 바디가
+    /// 아니라 화면 좌표 UI라 힘이 아니라 좌표를 직접 옮긴다). 드래그가 아닐 때 그 사각형 밖 클릭이
+    /// 걸리지 않는다는 비침해 보장은 예전과 완전히 동일하다.
+    ///
+    /// <b>화면 밖으로 못 나간다</b>: 중심이 아니라 <b>두 기어를 덮는 사각형 전체</b>를 화면 안으로
+    /// 클램프한다. 저장된 위치가 (외장 모니터 분리 등으로) 화면 밖이 된 경우에도 다음 프레임에 그대로
+    /// 끌려 들어오고, 그 보정값이 다시 모델로 되돌아가 저장된다.
+    ///
+    /// ============================================================================
     /// 클릭 -> 회전 -> 창 열림
     /// ============================================================================
     /// 클릭 즉시 창을 띄우지 않고 <see cref="SpinSeconds"/> 동안 두 기어를 맞물려 돌린 뒤
@@ -111,6 +133,22 @@ namespace StickMate.Interaction
         private const float ClickPollInterval = 0.05f;
         private const int SortingOrder = 40;        // 캐릭터/액세서리보다 위(화면 UI다).
 
+        // ---- 길게 눌러 옮기기 ----
+
+        /// <summary>이만큼 누르고 있으면 드래그로 전환된다. 0.4초는 "실수로 길게 눌리는" 일이 드물면서
+        /// 옮기려는 사람이 답답함을 느끼기 전인 구간이다(macOS Dock/홈 화면 아이콘 정리와 같은 감각).</summary>
+        private const float LongPressSeconds = 0.4f;
+
+        /// <summary>시간을 채우기 전이라도 이만큼(OS 포인트) 끌면 즉시 드래그다 — 일반적인 드래그 UX
+        /// 관례. 손떨림(1~2pt)으로는 넘지 않는 값이어야 짧은 클릭이 드래그로 오인되지 않는다.</summary>
+        private const float DragMoveThresholdPoints = 4f;
+
+        /// <summary>드래그 중 시각 피드백 — 살짝 커지고(들어올린 느낌) 살짝 옅어진다(화면에서 떠 있다는
+        /// 표시). 회전과 충돌하지 않는다: 회전은 자식(큰/작은 기어)의 각도, 이건 부모의 스케일/알파다.</summary>
+        private const float DragScale = 1.12f;
+        private const float DragScaleSpeed = 8f;
+        private const float DragAlpha = 0.55f;
+
         private StickmanAgent _agent;
         private StickConfig _config;
         private CharacterInfoWindow _window;
@@ -129,6 +167,17 @@ namespace StickMate.Interaction
         private float _clickPollTimer;
         private bool _leftPrev;
         private bool _leftInitialized;
+
+        // ---- 길게 눌러 옮기기 상태 ----
+        private bool _hasCustomCenter;          // 사용자가 옮긴 적이 있는가(없으면 매 프레임 기본 위치를 다시 계산).
+        private Vector2 _customCenterPoints;    // 창 좌상단 원점, OS 포인트(UiLayoutModel과 같은 좌표계).
+        private bool _restoredFromSave;
+        private bool _pressActive;
+        private bool _dragging;
+        private float _pressStartTime;
+        private Vector2 _pressStartCursor;      // Unity 스크린 픽셀.
+        private Vector2 _grabOffsetPoints;      // 잡은 순간의 (중심 - 커서). 기어가 커서로 순간이동하지 않게 한다.
+        private float _visualScale = 1f;
         private bool _builtGeometry;
         private float _builtRadiusWorld = -1f;
         private Color _builtInk = new Color(-1f, -1f, -1f, -1f);
@@ -162,8 +211,44 @@ namespace StickMate.Interaction
         /// 도형이 구워져 있어, 이 각에서 출발해 회전비만 지키면 맞물림이 계속 유지된다.</summary>
         private static float BuildPhaseAngle => SmallGearOffsetAngleDegrees % (360f / BigToothCount);
 
+        /// <summary>지금 길게 눌러 옮기는 중인가(테스트/진단 전용).</summary>
+        public bool IsDraggingIcon => _dragging;
+
+        /// <summary>사용자가 한 번이라도 옮겼는가 — false면 화면 우상단 기본 위치를 쓰고 있다.</summary>
+        public bool HasCustomPosition => _hasCustomCenter;
+
+        /// <summary>큰 기어 중심의 현재 위치(창 좌상단 원점, OS 포인트). 저장값과 같은 좌표계다.</summary>
+        public Vector2 IconCenterPoints => _hasCustomCenter ? _customCenterPoints : DefaultCenterPoints();
+
+        /// <summary>드래그 전환 임계값(초) — 테스트가 이 숫자를 직접 기준으로 삼는다.</summary>
+        public static float DragLongPressSeconds => LongPressSeconds;
+
+        /// <summary>드래그 전환 이동 임계값(OS 포인트).</summary>
+        public static float DragMoveThreshold => DragMoveThresholdPoints;
+
         /// <summary>테스트 전용 — 클릭 없이 회전 연출만 시작한다(창은 회전이 끝나면 정상적으로 열린다).</summary>
         public void StartSpinForTests() => _spinTimer = 0f;
+
+        /// <summary>
+        /// 테스트 전용 진입점 — <b>실제 입력과 완전히 같은 처리 경로</b>(<see cref="ProcessPointer"/>)에
+        /// 버튼 상태와 커서 좌표를 그대로 먹인다. PlayMode 테스트는 OS 커서를 옮겨 진짜 버튼을 누를 수
+        /// 없으므로(전역 입력은 합성 입력에 반응하지 않는다 — Interaction/StickmanClickHitbox.cs의
+        /// SimulateMouseDownForTests와 같은 사정) 이 경로가 필요하다. 별도의 테스트 전용 분기를 만들지
+        /// 않았으므로, 테스트가 통과한다는 것은 실제 클릭/드래그 경로가 동작한다는 뜻이다.
+        /// </summary>
+        /// <param name="buttonDown">지금 왼쪽 버튼이 눌려 있는가(엣지는 내부에서 판정한다).</param>
+        /// <param name="cursorUnityScreen">그 순간의 커서(Unity 스크린 픽셀, 좌하단 원점).</param>
+        public void FeedPointerForTests(bool buttonDown, Vector2 cursorUnityScreen)
+            => ProcessPointer(buttonDown, cursorUnityScreen, hasCursor: true);
+
+        /// <summary>테스트/디버그 전용 — 기본 위치(우상단)로 되돌린다. 저장은 하지 않는다(호출한 쪽이
+        /// 필요하면 직접 저장한다).</summary>
+        public void ResetPositionForTests()
+        {
+            _hasCustomCenter = false;
+            _pressActive = false;
+            _dragging = false;
+        }
 
         private void Awake()
         {
@@ -188,6 +273,8 @@ namespace StickMate.Interaction
                 $"중심 거리 {CenterDistancePoints:F1}pt). 클릭하면 두 기어가 **반대 방향으로** 돌고" +
                 $"(작은 쪽이 {MeshRatio:F2}배 빠르게) 그 뒤 캐릭터 정보창이 열립니다. " +
                 $"전역 폴링 경로={(_buttonService != null ? "사용 가능" : "미지원 — 콜라이더 경로만")}. " +
+                $"★ {LongPressSeconds:F2}초 이상 누르고 있거나 누른 채 {DragMoveThresholdPoints:F0}pt 이상 끌면 " +
+                "드래그 모드로 바뀌어 커서를 따라가고, 떼면 그 자리에 고정되며 저장됩니다(재시작해도 유지). " +
                 "★ 클릭 판정은 두 기어를 덮는 작은 사각형 안에서만 일어나며, 그 밖은 100% 클릭관통 그대로입니다.");
         }
 
@@ -203,27 +290,58 @@ namespace StickMate.Interaction
             if (_camera == null) _camera = _agent.Blackboard != null ? _agent.Blackboard.MainCamera : Camera.main;
             if (_camera == null) return;
 
+            RestoreSavedPositionOnce();
+
+            // 순서에 의미가 있다: 먼저 현재 위치로 히트 사각형을 갱신해야(PlaceOnScreen) 그 사각형으로
+            // "커서가 기어 위인가"를 판정할 수 있고, 드래그가 중심을 옮겼으면 <b>같은 프레임 안에</b>
+            // 다시 배치해야 한 프레임 늦게 따라오는 느낌이 없다. PlaceOnScreen은 할당이 없어
+            // 두 번 불러도 매 프레임 GC가 늘지 않는다(24시간 상주 앱).
             PlaceOnScreen();
             TickSpin();
+            TickPointer();
+            if (_dragging) PlaceOnScreen();
             TickHoverAlpha();
-            TickClick();
+            TickDragVisual();
+        }
+
+        /// <summary>저장된 위치를 딱 한 번 가져온다. Start가 아니라 첫 LateUpdate인 이유: 저장 파일을
+        /// 읽는 쪽(Interaction/CharacterProgressionDirector.Start)과의 실행 순서가 보장되지 않기 때문이다
+        /// (LateUpdate는 그 프레임의 모든 Start 뒤에 온다). 화면 밖 좌표 보정은 PlaceOnScreen의 클램프가
+        /// 매 프레임 하므로 여기서는 값만 받는다.</summary>
+        private void RestoreSavedPositionOnce()
+        {
+            if (_restoredFromSave) return;
+            _restoredFromSave = true;
+            if (!UiLayoutModel.HasGearCenter) return;
+
+            _hasCustomCenter = true;
+            _customCenterPoints = UiLayoutModel.GearCenterPoints;
+            Debug.Log($"[톱니] 저장된 위치를 복원합니다 — 중심 ({_customCenterPoints.x:F0}, {_customCenterPoints.y:F0})pt " +
+                "(창 좌상단 원점). 화면 밖이면 이번 프레임에 화면 안으로 끌어당겨 보정합니다.");
         }
 
         // ==================== 화면 배치 ====================
 
-        /// <summary>화면 우상단 고정 위치로 매 프레임 옮긴다 — <b>캐릭터 위치와 완전히 무관</b>하다.</summary>
+        /// <summary>현재 중심(기본 우상단 또는 사용자가 옮긴 위치)으로 매 프레임 옮긴다 —
+        /// <b>캐릭터 위치와 완전히 무관</b>하다.</summary>
         private void PlaceOnScreen()
         {
             float depth = Mathf.Abs(_camera.transform.position.z);
 
+            // 화면 경계 클램프는 매 프레임 한다 — 저장된 위치가 화면 밖인 경우(외장 모니터 분리 등)도
+            // 여기서 자동 복구된다. 보정 결과를 모델로 되돌려 주어 다음 저장에 그 값이 남는다.
+            Vector2 centerPoints = ClampCenterPoints(_hasCustomCenter ? _customCenterPoints : DefaultCenterPoints());
+            if (_hasCustomCenter)
+            {
+                _customCenterPoints = centerPoints;
+                if (!_dragging) UiLayoutModel.SetGearCenter(centerPoints); // 드래그 중에는 뗄 때 한 번만 확정한다.
+            }
+
             // OS 포인트 -> Unity 픽셀(Retina 대응) -> 월드 유닛.
-            float marginRightPx = ScreenCoordinateConverter.CanvasToUnityScreen(MarginRightPoints, _config);
-            float marginTopPx = ScreenCoordinateConverter.CanvasToUnityScreen(MarginTopPoints, _config);
-            IconScreenCenter = new Vector2(Screen.width - marginRightPx, Screen.height - marginTopPx);
+            IconScreenCenter = LocalPointsToUnityScreen(centerPoints);
 
             float pxPerPoint = ScreenCoordinateConverter.CanvasToUnityScreen(1f, _config);
-            float rad = SmallGearOffsetAngleDegrees * Mathf.Deg2Rad;
-            Vector2 smallOffsetPx = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad)) * (CenterDistancePoints * pxPerPoint);
+            Vector2 smallOffsetPx = SmallGearDirection * (CenterDistancePoints * pxPerPoint);
 
             // 두 기어를 함께 덮는 최소 사각형(+여유). 그 이상은 넓히지 않는다(비침해).
             float bigR = (BigOuterPoints + HitPaddingPoints) * pxPerPoint;
@@ -253,6 +371,57 @@ namespace StickMate.Interaction
                 _clickTarget.size = new Vector2(Mathf.Abs(rectMaxWorld.x - rectCenterWorld.x) * 2f,
                     Mathf.Abs(rectMaxWorld.y - rectCenterWorld.y) * 2f);
             }
+        }
+
+        // ==================== 좌표/경계 (전부 OS 포인트, 창 좌상단 원점) ====================
+
+        /// <summary>작은 기어가 놓이는 방향(단위 벡터, 화면 기준 x=오른쪽 / y=위). const 각도라 한 번만
+        /// 구하면 된다 — 매 프레임 삼각함수를 다시 부르지 않는다.</summary>
+        private static readonly Vector2 SmallGearDirection = new Vector2(
+            Mathf.Cos(SmallGearOffsetAngleDegrees * Mathf.Deg2Rad),
+            Mathf.Sin(SmallGearOffsetAngleDegrees * Mathf.Deg2Rad));
+
+        /// <summary>사용자가 옮긴 적이 없을 때의 위치 — 예전과 완전히 같은 화면 우상단이다.
+        /// 상수로 굳히지 않고 매번 계산하는 이유: 창 크기(그리고 실측 DPI 배율)가 실행 중에 바뀌므로
+        /// "오른쪽 끝에서 30pt"라는 정의를 그때그때 다시 풀어야 정확하다.</summary>
+        private Vector2 DefaultCenterPoints()
+            => new Vector2(ScreenSizePoints().x - MarginRightPoints, MarginTopPoints);
+
+        private Vector2 ScreenSizePoints() => new Vector2(
+            ScreenCoordinateConverter.UnityScreenToCanvas(Screen.width, _config),
+            ScreenCoordinateConverter.UnityScreenToCanvas(Screen.height, _config));
+
+        private Vector2 LocalPointsToUnityScreen(Vector2 centerPoints) => new Vector2(
+            ScreenCoordinateConverter.CanvasToUnityScreen(centerPoints.x, _config),
+            Screen.height - ScreenCoordinateConverter.CanvasToUnityScreen(centerPoints.y, _config));
+
+        private Vector2 UnityScreenToLocalPoints(Vector2 unityScreen) => new Vector2(
+            ScreenCoordinateConverter.UnityScreenToCanvas(unityScreen.x, _config),
+            ScreenCoordinateConverter.UnityScreenToCanvas(Screen.height - unityScreen.y, _config));
+
+        /// <summary>
+        /// 중심이 아니라 <b>두 기어를 덮는 히트 사각형 전체</b>가 화면 안에 남도록 중심을 끌어당긴다.
+        /// 히트 사각형(시각 크기 + <see cref="HitPaddingPoints"/>) 기준인 이유: 그것이 실제로 클릭이
+        /// 먹는 영역이고, 그게 안에 있으면 그림은 당연히 전부 보인다(사각형 ⊇ 그림).
+        /// 화면이 아이콘보다 작은 병적인 경우에도 NaN/역전이 나지 않게 상한을 하한 아래로 내려보내지 않는다.
+        /// </summary>
+        private Vector2 ClampCenterPoints(Vector2 centerPoints)
+        {
+            Vector2 screen = ScreenSizePoints();
+            if (screen.x <= 0f || screen.y <= 0f) return centerPoints;
+
+            float bigR = BigOuterPoints + HitPaddingPoints;
+            float smallR = SmallOuterPoints + HitPaddingPoints;
+            Vector2 smallOffset = SmallGearDirection * CenterDistancePoints; // y는 위가 양수.
+
+            float left = Mathf.Max(bigR, smallR - smallOffset.x);
+            float right = Mathf.Max(bigR, smallR + smallOffset.x);
+            float up = Mathf.Max(bigR, smallR + smallOffset.y);
+            float down = Mathf.Max(bigR, smallR - smallOffset.y);
+
+            float minX = left, maxX = Mathf.Max(left, screen.x - right);
+            float minY = up, maxY = Mathf.Max(up, screen.y - down);   // y는 위에서 아래로 자란다.
+            return new Vector2(Mathf.Clamp(centerPoints.x, minX, maxX), Mathf.Clamp(centerPoints.y, minY, maxY));
         }
 
         /// <summary>배율(화면 해상도/DPI)이나 잉크색이 바뀌지 않으면 도형을 다시 만들지 않는다 —
@@ -444,7 +613,8 @@ namespace StickMate.Interaction
         private void TickHoverAlpha()
         {
             bool highlight = IsSpinning || (_window != null && _window.IsOpen) || IsCursorOverIcon();
-            float target = highlight ? ActiveAlpha : IdleAlpha;
+            // 드래그 중에는 옅게 — "지금 들려서 떠 있다"는 표시다(호버 강조보다 우선한다).
+            float target = _dragging ? DragAlpha : (highlight ? ActiveAlpha : IdleAlpha);
             float next = Mathf.MoveTowards(_alpha, target, AlphaFadeSpeed * Time.unscaledDeltaTime);
             if (Mathf.Approximately(next, _alpha)) return;
             _alpha = next;
@@ -464,25 +634,132 @@ namespace StickMate.Interaction
             }
         }
 
-        // ==================== 클릭 ====================
+        // ==================== 클릭 / 길게 눌러 옮기기 ====================
 
-        private void TickClick()
+        private void TickPointer()
         {
             if (_buttonService == null) return;
 
-            _clickPollTimer += Time.unscaledDeltaTime;
-            if (_clickPollTimer < ClickPollInterval) return;
-            _clickPollTimer = 0f;
+            // 평소에는 0.05초 간격으로만 OS에 묻는다(24시간 상주 앱). 다만 누르고 있는 동안에는 매
+            // 프레임 본다 — 폴링 간격만큼 커서를 늦게 따라가면 드래그가 뚝뚝 끊겨 보인다.
+            if (!_pressActive)
+            {
+                _clickPollTimer += Time.unscaledDeltaTime;
+                if (_clickPollTimer < ClickPollInterval) return;
+                _clickPollTimer = 0f;
+            }
 
-            if (!_buttonService.TryGetPrimaryButtonPressed(out bool left)) return;
+            if (!_buttonService.TryGetPrimaryButtonPressed(out bool left))
+            {
+                // 버튼 상태를 못 읽는데 누른 상태로 남겨두면 기어가 커서에 영원히 붙는다.
+                AbortPress("버튼 상태를 읽지 못함");
+                return;
+            }
             if (!_leftInitialized) { _leftInitialized = true; _leftPrev = left; return; }
-            bool rising = left && !_leftPrev;
-            _leftPrev = left;
-            if (!rising) return;
 
+            bool hasCursor = TryGetCursorUnityScreen(out Vector2 cursor);
+            ProcessPointer(left, cursor, hasCursor);
+        }
+
+        /// <summary>버튼 상태 + 커서 좌표만으로 눌림/드래그/뗌을 판정하는 <b>단일 경로</b>.
+        /// 실제 입력(TickPointer)과 테스트(FeedPointerForTests)가 이 함수를 공유한다.</summary>
+        private void ProcessPointer(bool buttonDown, Vector2 cursorUnityScreen, bool hasCursor)
+        {
+            bool prev = _leftPrev;
+            _leftPrev = buttonDown;
+            _leftInitialized = true;
+
+            if (buttonDown && !prev) BeginPress(cursorUnityScreen, hasCursor);
+            else if (buttonDown && _pressActive) UpdatePress(cursorUnityScreen, hasCursor);
+            else if (!buttonDown && prev) EndPress();
+        }
+
+        private void BeginPress(Vector2 cursorUnityScreen, bool hasCursor)
+        {
             // ★ 비침해 — 버튼이 눌렸다는 사실만으로는 아무 일도 하지 않는다. 커서가 아이콘 사각형
             //   안일 때만 반응한다(클래스 문서 "비침해 보장").
-            if (!IsCursorOverIcon()) return;
+            if (!hasCursor || !IconScreenRect.Contains(cursorUnityScreen)) return;
+            if (IsSpinning) return;
+
+            _pressActive = true;
+            _dragging = false;
+            _pressStartTime = Time.unscaledTime;
+            _pressStartCursor = cursorUnityScreen;
+
+            // 잡은 지점과 중심의 차이를 기억한다 — 드래그가 시작될 때 기어가 커서로 순간이동하지 않게.
+            Vector2 center = _hasCustomCenter ? _customCenterPoints : DefaultCenterPoints();
+            _grabOffsetPoints = center - UnityScreenToLocalPoints(cursorUnityScreen);
+        }
+
+        private void UpdatePress(Vector2 cursorUnityScreen, bool hasCursor)
+        {
+            if (!hasCursor) return;
+
+            if (!_dragging)
+            {
+                float heldSeconds = Time.unscaledTime - _pressStartTime;
+                float movedPoints = ScreenCoordinateConverter.UnityScreenToCanvas(
+                    (cursorUnityScreen - _pressStartCursor).magnitude, _config);
+                if (heldSeconds < LongPressSeconds && movedPoints < DragMoveThresholdPoints) return;
+
+                _dragging = true;
+                Debug.Log($"[톱니] 길게 누름 감지({heldSeconds:F2}초 / {movedPoints:F1}pt 이동) — " +
+                    "드래그 모드로 전환합니다. 이제 커서를 따라가고, 떼면 그 자리에 고정됩니다(캐릭터 창은 열리지 않습니다).");
+            }
+
+            _hasCustomCenter = true;
+            _customCenterPoints = ClampCenterPoints(UnityScreenToLocalPoints(cursorUnityScreen) + _grabOffsetPoints);
+        }
+
+        private void EndPress()
+        {
+            if (!_pressActive) return;
+            _pressActive = false;
+
+            if (_dragging)
+            {
+                _dragging = false;
+                CommitDragPosition();
+                return;
+            }
+
+            ActivateClick();
+        }
+
+        /// <summary>입력 상태를 잃었을 때의 안전 종료 — 드래그였으면 지금 자리를 확정하고, 아니면
+        /// 아무 일도 하지 않는다(눌린 적 없던 것으로 되돌린다 — 창이 제멋대로 열리면 안 된다).</summary>
+        private void AbortPress(string reason)
+        {
+            if (!_pressActive) return;
+            _pressActive = false;
+            _leftPrev = false;
+
+            if (!_dragging)
+            {
+                Debug.Log($"[톱니] 누름 취소 — {reason}. 창은 열지 않습니다.");
+                return;
+            }
+
+            _dragging = false;
+            CommitDragPosition();
+        }
+
+        private void CommitDragPosition()
+        {
+            Vector2 center = ClampCenterPoints(_customCenterPoints);
+            _customCenterPoints = center;
+            UiLayoutModel.SetGearCenter(center);
+
+            // 즉시 저장한다 — 주기 저장(기본 60초)만 믿으면 옮긴 직후 종료했을 때 위치가 날아간다.
+            bool saved = CharacterSaveStore.Save();
+            Debug.Log($"[톱니] 위치 확정 — 중심 ({center.x:F0}, {center.y:F0})pt(창 좌상단 원점). " +
+                $"저장 {(saved ? "완료" : "실패(메모리 값 유지, 다음 주기에 재시도)")} — 재시작해도 이 자리에 뜹니다.");
+        }
+
+        /// <summary>짧은 클릭의 동작 — 예전 그대로다(회전 후 창 열기 / 열려 있으면 닫기). 달라진 것은
+        /// 호출 시점뿐이다(누른 순간 -> 뗀 순간, 클래스 문서 참고).</summary>
+        private void ActivateClick()
+        {
             if (IsSpinning) return;
 
             if (_window != null && _window.IsOpen)
@@ -495,12 +772,30 @@ namespace StickMate.Interaction
             Debug.Log("[톱니] 클릭 — 큰 기어와 작은 기어가 맞물려 돈 뒤 캐릭터 정보창이 열립니다.");
         }
 
-        private bool IsCursorOverIcon()
+        /// <summary>드래그 중임을 눈으로 알 수 있게 살짝 키운다. 회전(자식의 각도)과 겹치지 않는
+        /// 부모의 스케일이라 회전 연출과 충돌하지 않는다.</summary>
+        private void TickDragVisual()
         {
-            if (_agent == null || !_agent.TryGetCursorPosition(out Vector2 osScreen)) return false;
-            Vector2 cursor = ScreenCoordinateConverter.OsScreenToUnityScreen(osScreen, _config);
-            return IconScreenRect.Contains(cursor);
+            if (_container == null) return;
+            float target = _dragging ? DragScale : 1f;
+            if (!Mathf.Approximately(_visualScale, target))
+                _visualScale = Mathf.MoveTowards(_visualScale, target, DragScaleSpeed * Time.unscaledDeltaTime);
+
+            // 도형을 다시 만들면(Build) 스케일이 1로 돌아오므로 현재 값과 비교해 필요한 프레임에만 쓴다.
+            if (Mathf.Approximately(_container.transform.localScale.x, _visualScale)) return;
+            _container.transform.localScale = new Vector3(_visualScale, _visualScale, 1f);
         }
+
+        private bool TryGetCursorUnityScreen(out Vector2 cursorUnityScreen)
+        {
+            cursorUnityScreen = default;
+            if (_agent == null || !_agent.TryGetCursorPosition(out Vector2 osScreen)) return false;
+            cursorUnityScreen = ScreenCoordinateConverter.OsScreenToUnityScreen(osScreen, _config);
+            return true;
+        }
+
+        private bool IsCursorOverIcon()
+            => TryGetCursorUnityScreen(out Vector2 cursor) && IconScreenRect.Contains(cursor);
 
         /// <summary>다른 렌더러들과 같은 이유로 캐릭터 LineRenderer의 머티리얼을 빌려 쓴다
         /// (Shader.Find는 빌드 스트리핑 위험이 있어 쓰지 않는다).</summary>
