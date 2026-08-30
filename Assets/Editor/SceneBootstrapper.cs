@@ -380,6 +380,51 @@ namespace StickMate.EditorTools
             Debug.Log("[SceneBootstrapper] BuildAll 완료(force=" + force + ") — " + ConfigAssetPath + ", " + PrefabAssetPath + ", " + SceneAssetPath);
         }
 
+        /// <summary>
+        /// ★ 이미 만들어진 <c>Stickman.prefab</c>에 <b>빠진 컴포넌트만</b> 얹는다(멱등).
+        /// 메뉴 StickMate/Ensure Prefab Components, 배치 모드
+        /// <c>-executeMethod StickMate.EditorTools.SceneBootstrapper.EnsurePrefabComponents</c>.
+        ///
+        /// 왜 <see cref="BuildAll"/> --force를 쓰지 않는가: 그쪽은 프리팹과 씬을 <b>통째로 다시</b>
+        /// 만들기 때문에 모든 GameObject의 fileID가 재할당되고(BUG-SW-M3) config의 튜닝값까지 다시
+        /// 덮어쓴다. 컴포넌트 하나를 얹으려고 치르기에는 너무 큰 값이다. 이 메서드는 프리팹을 열어
+        /// 없는 컴포넌트만 <c>AddComponent</c>하고 저장하므로 diff가 그 몇 줄로 끝난다.
+        ///
+        /// 대상은 씬에 이미 언팩되어 있는 <b>라이벌에는 닿지 않는다</b>(언팩된 인스턴스는 프리팹 변경을
+        /// 물려받지 않는다) — 라이벌에 이 컴포넌트들이 붙으면 Canvas와 차단막이 두 벌 생긴다.
+        /// </summary>
+        [MenuItem("StickMate/Ensure Prefab Components")]
+        public static void EnsurePrefabComponents()
+        {
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabAssetPath);
+            if (prefab == null)
+            {
+                Debug.LogError("[SceneBootstrapper] " + PrefabAssetPath + "이(가) 없습니다 — 먼저 BuildAll을 실행하세요.");
+                return;
+            }
+
+            GameObject root = PrefabUtility.LoadPrefabContents(PrefabAssetPath);
+            int added = 0;
+            added += EnsureComponent<GearRadialMenuWidget>(root);
+            added += EnsureComponent<FocusSessionPopover>(root);
+            added += EnsureComponent<TodoBoardPopover>(root);
+
+            if (added > 0) PrefabUtility.SaveAsPrefabAsset(root, PrefabAssetPath);
+            PrefabUtility.UnloadPrefabContents(root);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log($"[SceneBootstrapper] EnsurePrefabComponents 완료 — 신규 {added}개 추가" +
+                (added == 0 ? "(이미 전부 붙어 있습니다)" : string.Empty) + ".");
+        }
+
+        private static int EnsureComponent<T>(GameObject root) where T : Component
+        {
+            if (root.GetComponent<T>() != null) return 0;
+            root.AddComponent<T>();
+            Debug.Log("[SceneBootstrapper] " + typeof(T).Name + "을(를) Stickman 프리팹 루트에 추가했습니다.");
+            return 1;
+        }
+
         private static bool HasForceFlag()
         {
             string[] args = System.Environment.GetCommandLineArgs();
@@ -863,6 +908,34 @@ namespace StickMate.EditorTools
             // "바탕화면 오른쪽 상단에 기어 표시같은걸 띄워놓고 클릭하면 기어가 회전하면서 캐릭터 창이").
             // 같은 GameObject의 CharacterInfoWindow를 Awake()에서 직접 찾으므로 배선이 필요 없다.
             root.AddComponent<InfoGearIconWidget>();
+
+            // 톱니 클릭 -> 부채꼴 원버튼 3개 + 그 버튼에서 자라나는 팝오버 2종
+            // (2026-08-30 사용자 요청 "기어메뉴를 클릭했을때 집중모드/캐릭터/오늘 할일 3가지가 촤르륵",
+            // docs/UX_FLOW.md 32절). 셋 다 같은 GameObject의 StickmanAgent/FocusWatchDirector/
+            // CharacterInfoWindow를 Awake()에서 직접 찾으므로 SerializedObject 배선이 필요 없다.
+            // ★ 순서 주의: 팝오버 2종은 부채꼴이 Start()에서 GetComponent로 찾으므로 같은
+            //   GameObject에 함께 있어야 한다(없으면 버튼이 경고만 남기고 아무 일도 하지 않는다).
+            root.AddComponent<GearRadialMenuWidget>();
+            root.AddComponent<FocusSessionPopover>();
+            root.AddComponent<TodoBoardPopover>();
+
+            // ================================================================================
+            // 배선 감사 잔여 3건 — 구독자 0명 이벤트의 시각 소비자 (2026-08-30)
+            // ================================================================================
+            // 리더 전수 감사가 마지막까지 남겨둔 세 이벤트(LandingRollRequested / RivalDuelStarted /
+            // WanderAmbientMotionRequested)에 붙는 소비자들이다. 셋 다 트리거 판정 로직은 이미 완성돼
+            // 있었고 구독자만 0명이었으므로, 이 라운드에 Director는 하나도 추가되지 않았다 —
+            // **새 자율 확률이 0개**라는 뜻이다(상위 이벤트의 기존 발행 빈도를 그대로 물려받는다).
+            //
+            // SpectacleEventLock 비참여: 셋 다 ChangeState()를 호출하지 않는다(먼지/임팩트는 순수
+            // 오버레이, 유휴 동작은 Idle 포즈 위에 얹는 변주라 상태가 그대로 Idle이다). 참여 기준은
+            // 이 파일 전체와 같이 "단일 상태 슬롯을 다투는가"다.
+            //
+            // 셋 다 직렬화 필드가 없고 Awake()에서 같은 GameObject의 StickmanAgent를 직접 찾으므로
+            // SerializedObject 배선이 필요 없다(GraffitiRenderer/ArcheryRenderer와 같은 관례).
+            root.AddComponent<LandingDustRenderer>();
+            root.AddComponent<RivalDuelClashRenderer>();
+            root.AddComponent<IdleAmbientMotionRenderer>();
 
             // ================================================================================
             // 앱 제어 수단 배선 (2026-08-28 — "터미널 없이 끌 수 있어야 한다")
@@ -1453,12 +1526,30 @@ namespace StickMate.EditorTools
             // 각 컴포넌트에 "자기 GameObject의 StickmanAgent가 없으면 아무것도 하지 않는다"는 2차 방어가
             // 있지만, 애초에 배치하지 않는 것이 1차 방어다.
             DestroyComponentIfPresent<InfoGearIconWidget>(rival);
+            //   · GearRadialMenuWidget / FocusSessionPopover / TodoBoardPopover -> 각자 Canvas와
+            //     클릭관통 차단막을 통째로 한 벌 더 만든다(위 CharacterInfoWindow와 같은 위험).
+            DestroyComponentIfPresent<GearRadialMenuWidget>(rival);
+            DestroyComponentIfPresent<FocusSessionPopover>(rival);
+            DestroyComponentIfPresent<TodoBoardPopover>(rival);
             DestroyComponentIfPresent<CharacterInfoWindow>(rival);
             DestroyComponentIfPresent<CharacterAccessoryRenderer>(rival);
             DestroyComponentIfPresent<CharacterProgressionDirector>(rival);
             //   · CharacterStatsDirector -> 같은 전역 이벤트를 두 번 구독해 격파/대결/활쏘기 기록이
             //                              **두 배**로 쌓인다(2026-08-30 신설, 위 XP 두 배와 같은 함정).
             DestroyComponentIfPresent<CharacterStatsDirector>(rival);
+            // 배선 감사 잔여 3건(2026-08-30 신설) — 위 렌더러들과 **정확히 같은 함정**이다. 셋 다
+            // StickmanEventBus의 전역 정적 이벤트를 구독하므로 남겨두면:
+            //   · LandingDustRenderer       -> 착지 한 번에 먼지가 두 벌 핀다.
+            //   · RivalDuelClashRenderer    -> 대결 시작 임팩트가 두 벌 겹친다(게다가 라이벌 사본은
+            //                                  자기 자신을 상대로 찾아 중점 계산이 무의미해진다).
+            //   · IdleAmbientMotionRenderer -> 플레이어가 두리번거릴 때 **라이벌이 같이 기지개를 켠다**
+            //                                  (라이벌은 AutoWanderController를 갖지 않으므로 자기
+            //                                  신호를 발행할 일이 없는데도 남의 신호로 움직인다).
+            // 각 컴포넌트에 "자기 GameObject의 StickmanAgent가 없으면 아무것도 하지 않는다"는 2차 방어가
+            // 있지만(위 StickmanAgent 제거로 실제로 발동한다), 애초에 배치하지 않는 것이 1차 방어다.
+            DestroyComponentIfPresent<LandingDustRenderer>(rival);
+            DestroyComponentIfPresent<RivalDuelClashRenderer>(rival);
+            DestroyComponentIfPresent<IdleAmbientMotionRenderer>(rival);
             DestroyComponentIfPresent<RodeoCursorWatcher>(rival);
             DestroyComponentIfPresent<DragThrowController>(rival);
             DestroyComponentIfPresent<StickmanClickHitbox>(rival);

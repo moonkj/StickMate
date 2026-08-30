@@ -71,6 +71,10 @@ namespace StickMate.Interaction
         public static readonly Color TextTertiary = new Color(0.588f, 0.612f, 0.647f, 1f);
         public static readonly Color TextOnAccent = new Color(0.129f, 0.318f, 0.678f, 1f);
 
+        /// <summary><b>진한</b> <see cref="Accent"/> 채움 위에 얹는 글자/기호. <see cref="TextOnAccent"/>는
+        /// 옅은 <see cref="AccentSurface"/> 위 전용이라 진한 채움 위에서는 대비가 모자란다.</summary>
+        public static readonly Color OnAccentSolid = new Color(1f, 1f, 1f, 1f);
+
         public static readonly Color TrackBackground = new Color(0.867f, 0.878f, 0.898f, 1f);
         public static readonly Color Divider = new Color(0f, 0f, 0f, 0.07f);
 
@@ -148,7 +152,154 @@ namespace StickMate.Interaction
             return sprite;
         }
 
+        // ==================== 진짜 원 / 링 ====================
+
+        /// <summary>
+        /// 진짜 원과 링은 <see cref="RoundedFill"/>로 만들 수 없다 — 그쪽은 <c>size = radius*2 + 4</c>라
+        /// 가운데에 항상 4px 직선 구간이 남는 <b>둥근 사각형</b>이고, 9-슬라이스로 늘리면 그 직선이
+        /// 함께 늘어난다. 부채꼴 버튼(Ø44)처럼 원 자체가 형태인 곳에서는 그 4px이 눈에 띈다.
+        /// 그래서 원은 별도 텍스처로 굽고 <see cref="Image.Type.Simple"/>로 통째로 늘린다
+        /// (정사각 RectTransform이면 어떤 크기에서도 원을 유지한다).
+        /// </summary>
+        private const int CircleTextureSize = 128;
+
+        private static readonly Dictionary<int, Sprite> _circleCache = new Dictionary<int, Sprite>();
+
+        /// <summary>꽉 찬 원.</summary>
+        public static Sprite Circle() => CircleSprite(0.5f);
+
+        /// <summary>링. 두께는 <b>지름 대비 비율</b>이다 — 스프라이트가 통째로 늘어나므로 절대 픽셀로
+        /// 정할 수 없다(예: Ø44 버튼에 2pt 링이면 2/44 ≈ 0.045).</summary>
+        public static Sprite Ring(float thicknessFraction) => CircleSprite(thicknessFraction);
+
+        private static Sprite CircleSprite(float thicknessFraction)
+        {
+            thicknessFraction = Mathf.Clamp(thicknessFraction, 0.01f, 0.5f);
+            int key = Mathf.RoundToInt(thicknessFraction * 1000f);
+            if (_circleCache.TryGetValue(key, out Sprite cached) && cached != null) return cached;
+
+            const int size = CircleTextureSize;
+            float outer = size * 0.5f;
+            float inner = outer - thicknessFraction * size;
+
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                name = $"UiChrome_Circle_{key}",
+                hideFlags = HideFlags.HideAndDontSave,
+            };
+
+            var pixels = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = x + 0.5f - outer;
+                    float dy = y + 0.5f - outer;
+                    float d = Mathf.Sqrt(dx * dx + dy * dy);
+                    float alpha = Mathf.Clamp01(outer - d);                    // 바깥 1px 안티에일리어싱.
+                    if (inner > 0f) alpha = Mathf.Min(alpha, Mathf.Clamp01(d - inner));
+                    pixels[y * size + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(alpha * 255f));
+                }
+            }
+            tex.SetPixels32(pixels);
+            tex.Apply(false, false);
+
+            Sprite sprite = Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f),
+                100f, 0, SpriteMeshType.FullRect);
+            sprite.name = tex.name;
+            sprite.hideFlags = HideFlags.HideAndDontSave;
+            _circleCache[key] = sprite;
+            return sprite;
+        }
+
+        /// <summary>둥근 끝(캡슐) 스트로크 한 획. 심볼 아이콘이 전부 이걸로 그려진다.</summary>
+        private static Sprite _capsule;
+
+        private static Sprite Capsule()
+        {
+            if (_capsule != null) return _capsule;
+
+            const int w = 128, h = 32;
+            float r = h * 0.5f;
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                name = "UiChrome_Capsule",
+                hideFlags = HideFlags.HideAndDontSave,
+            };
+
+            var pixels = new Color32[w * h];
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 0; x < w; x++)
+                {
+                    // 선분 (r, r) - (w-r, r)까지의 거리 = 캡슐.
+                    float px = x + 0.5f, py = y + 0.5f;
+                    float cx = Mathf.Clamp(px, r, w - r);
+                    float dx = px - cx, dy = py - r;
+                    float d = Mathf.Sqrt(dx * dx + dy * dy);
+                    byte a = (byte)Mathf.RoundToInt(Mathf.Clamp01(r - d) * 255f);
+                    pixels[y * w + x] = new Color32(255, 255, 255, a);
+                }
+            }
+            tex.SetPixels32(pixels);
+            tex.Apply(false, false);
+
+            _capsule = Sprite.Create(tex, new Rect(0f, 0f, w, h), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
+            _capsule.name = tex.name;
+            _capsule.hideFlags = HideFlags.HideAndDontSave;
+            return _capsule;
+        }
+
         // ==================== 부품 공장 ====================
+
+        /// <summary>
+        /// 심볼 한 획(길이 × 두께의 둥근 스트로크, <paramref name="angleDegrees"/>만큼 회전, 부모
+        /// 중심 기준 <paramref name="center"/>에 놓는다). 아이콘 3종이 전부 이 함수의 조합이다 —
+        /// 도형을 새로 만들지 않으므로 색/모양 결정이 이 파일 한 곳에 남는다.
+        /// </summary>
+        public static Image AddStroke(Transform parent, string name, float length, float thickness,
+            float angleDegrees, Vector2 center, Color color)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(parent, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(length, thickness);
+            rt.anchoredPosition = center;
+            rt.localRotation = Quaternion.Euler(0f, 0f, angleDegrees);
+
+            var image = go.GetComponent<Image>();
+            image.sprite = Capsule();
+            image.type = Image.Type.Simple;
+            image.color = color;
+            image.raycastTarget = false;
+            return image;
+        }
+
+        /// <summary>부모 중심에 놓이는 원(꽉 찬 원 또는 링). 지름 하나로 정사각을 만든다.</summary>
+        public static Image AddCircle(Transform parent, string name, float diameter, Color color,
+            float ringThickness = 0f)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(parent, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(diameter, diameter);
+            rt.anchoredPosition = Vector2.zero;
+
+            var image = go.GetComponent<Image>();
+            image.sprite = ringThickness > 0f && diameter > 0f
+                ? Ring(ringThickness / diameter)
+                : Circle();
+            image.type = Image.Type.Simple;
+            image.color = color;
+            image.raycastTarget = false;
+            return image;
+        }
 
         /// <summary>둥근 표면 하나(카드/패널). 반환값에 색을 다시 칠해도 된다.</summary>
         public static Image AddSurface(Transform parent, string name, Color color, int radius)

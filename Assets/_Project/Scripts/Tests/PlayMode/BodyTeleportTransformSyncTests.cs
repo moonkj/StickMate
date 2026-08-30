@@ -59,8 +59,12 @@ namespace StickMate.Tests.PlayMode
         private const long DockHandle = 9201L;
         private const long RightFloorHandle = 9202L;
 
-        /// <summary>Dock 실측 낙차(월드 유닛) — Tests/PlayMode/EdgeHopDownTests.cs와 같은 값을 쓴다.</summary>
-        private const float DockDropUnits = 0.855f;
+        /// <summary>★ Dock 상단 → 바닥 안전망 상단 낙차(월드 유닛). **하드코딩하지 않는다** —
+        /// Core/DockGeometry.cs가 (tilesize + dockThicknessTilePaddingPoints − BottomSafetyNetInsetPoints)를
+        /// 월드로 환산해 주는 단일 소스다(이 개발 머신 tilesize=49 → 67pt → 1.63747유닛).
+        /// 2026-08-30 횡단 리뷰 M1: 이 값이 파일마다 0.855(안전망이 40pt 위였던 시절의 화석) / 1.6375로
+        /// 갈라져 있었고, 그 탓에 배율 불변식 테스트가 실제 시스템이 아니라 자기 상수를 지키고 있었다.</summary>
+        private static readonly float DockDropUnits = DockGeometry.ReferenceDockDropWorldUnits;
 
         private sealed class TestFootholdService : IPlatformWindowService
         {

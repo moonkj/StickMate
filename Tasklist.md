@@ -2923,3 +2923,837 @@ EditMode 4건: 좌표 저장/로드 왕복 · **구버전 v2 파일이 "옮긴 �
 
 - **실제 마우스로 길게 눌러 끄는 동작 자체는 실앱에서 육안 확인하지 못했다.** 이 개발 환경에 합성 입력 도구(`cliclick`/PyObjC Quartz)가 없고, 있더라도 사용자의 실제 커서를 움직여 남의 창 위에서 버튼을 누르는 행위가 되므로 비침해 원칙상 하지 않았다. 대신 **실제 입력이 지나가는 바로 그 함수**(`ProcessPointer`)에 버튼/커서를 먹이는 PlayMode 테스트 6건으로 대체했다(테스트 전용 분기를 만들지 않았으므로 통과 = 실경로 동작). 사용자 손으로 한 번 끌어 보고, 그때 `Player.log`에 `[톱니] 길게 누름 감지` / `[톱니] 위치 확정`이 찍히는지 확인해 주시면 확정된다.
 - 저장 파일(`~/Library/Application Support/DefaultCompany/StickMateSkeleton/stickmate_character.json`)은 이번 세션에서 **읽기만** 했다(샌드박스가 쓰기를 막았고, 굳이 우회하지 않았다). 위치 왕복 검증은 전부 테스트가 자기 손으로 백업/복원하며 수행했다.
+
+---
+
+## 2026-08-30 — 기어 부채꼴 메뉴(원버튼 3개) + 집중모드/오늘할일 세부 화면 설계 **[UX Designer]**
+
+| 작업 | 담당 | 상태 | 메모 |
+|---|---|---|---|
+| 기어 클릭 → 부채꼴 3버튼 + 세부 화면 UX 설계 | UX Designer | 완료 | `docs/UX_FLOW.md` **32절** 신설(32-1 기하 / 32-2 타이밍 / 32-3 상태·탈출구 / 32-4 심볼 3종 / 32-5 집중모드 팝오버 / 32-6 오늘할일 팝오버 / 32-7 팝오버 vs 창 판단 / 32-8 교차레이어 / 32-9 진행 중 구현 대조) |
+
+**확정 요약**: 버튼 Ø44 · 궤도 R=62pt · 간격 60°(부채꼴 폭 120°) · 기준각 = snap45(기어→화면중심), `Expand()` 시점 고정 · 펼침 0.30초(스태거 0.055, 버튼당 0.19, `easeOutBack` 오버슈트 +10%) · 접힘 0.13초(사용자) / 0.26초(6초 무반응 자동) · 슬롯 고정 [집중 모드][캐릭터][오늘 할일], **가운데는 언제나 캐릭터**.
+
+**크기 방침**: 캐릭터만 기존 창(680×520) 유지, 집중 모드 = 팝오버 244×252(대기)/244×224(진행 중), 오늘 할일 = 팝오버 300×336. **크기는 내용량에 맞추고 일관성은 `UiChrome` 시각 언어로 지킨다**(근거 32-7절 5항).
+
+### 교차 레이어 영향 로그 (리더 확인 요망)
+
+1. **`InfoGearIconWidget` 변경 2곳** — `ActivateClick()`이 창이 아니라 부채꼴을 토글, `TickSpin()` 끝의 `_window.Open(...)` 제거. 드래그 전환 순간 부채꼴 접힘 훅 필요. **`SpinSeconds`/맞물림 상수는 불변**(`InfoGearMeshingTests` 기준선 보존).
+2. **`UiChrome` 확장 4건 필요** — `Circle()`(현 `RoundedFill`은 `size=radius*2+4`라 진짜 원이 아니다) / `Ring(thickness)`(잔여시간 호, `Image.type=Filled`+`Radial360`) / `OnAccentSolid = white`(진한 `Accent` 채움 위 글자 — `TextOnAccent`는 옅은 표면 전용) / `AddStroke(len, thick, angle, center)`(심볼 3종 공용).
+3. **`FocusWatchDirector` 호출 계약** — 팝오버는 `StartFocusSession(minutes)`/`StopFocusSession()`만 부른다. **`ForceTriggerNow()` 금지**(`DemoSessionSeconds = 90초` 고정이라 "25분" 선택이 90초 세션이 되어 화면의 숫자가 거짓이 된다 = 원칙 1 직접 위반). 상태 라인은 기존 `StickmanEventBus.FocusWatchTierChanged` 구독으로 충분 — **신규 public API 0건**.
+4. **★ 선행 조건(리더 판단 필요): 할일 영속화** — `Core/TodoListModel`은 저장되지 않는다(`CharacterSaveStore` v3 스키마에 필드 없음). 지금까진 데모 문자열뿐이라 무해했지만 오늘할일 팝오버는 **사용자가 자기 일정을 처음 적는 입구**다. (a) 저장 스키마 v4에 `todos[]`/`completedArchive[]` 추가(권장) 또는 (b) 이번 라운드 메모리 유지 + 푸터에 `앱을 끄면 목록이 사라져요` **필수 표기**. (b)를 골라도 문구를 빼는 선택지는 없다.
+5. **`SweepCompleted()` 단일 소유자 유지** — `TodoPostItWidget.Update()`가 이미 0.5초 주기로 돈다(카드가 숨겨져 있어도). 신설 팝오버는 호출하지 않고 `TodoListChanged`만 구독한다.
+6. 후속 과제 — 기어를 좌하단으로 옮긴 사용자에게 캐릭터 창은 여전히 우상단에서 열린다(680×520은 기어를 따라가면 어느 모서리에서든 클램프에 걸린다). 이번 라운드 감수, 별도 앵커 규칙 라운드 권고.
+
+### Coder 진행 중 구현(`Interaction/GearRadialMenu.cs`)에 대한 반박 4건 — 근거는 32-9절
+
+| # | 현재 구현 | 반박 |
+|---|---|---|
+| ① | 회전(0.52초)이 **끝난 뒤** 펼침 | 클릭→첫 픽셀 520ms / 사용 가능까지 820ms. 100ms 안에 반응이 없으면 사용자는 다시 누르고, 그 두 번째 클릭이 토글 접힘이 되어 메뉴가 깜빡이는 **구조적 실패 모드**가 생긴다. 게다가 원문이 *"기어가 **회전하면서** 창이 나오게끔"* = 병행이 원안. → `Expand()`는 t=0. |
+| ② | 기준각 = 사분면 부호(`dx,dy = ±1`) | 언제나 45°/135°/225°/315° 넷뿐 → 화면 위쪽 한가운데 기어가 아래로 곧게 못 펼치고, 중앙선 근처에서 **1픽셀 이동에 방향이 90° 점프**. → `snap45(atan2(화면중심 − 기어중심))`. |
+| ③ | 버튼을 **개별** 화면 클램프 | 모서리에서 세 버튼이 한 점으로 뭉개져 부채꼴이 사라지고, 히트 원이 겹치면 "위치가 아니라 배열 순서"로 승자가 정해진다(=본 것과 다른 것이 눌린다). → **부채꼴 전체 회전 탐색**(±15°씩 최대 ±90°) → 세로 일렬 폴백 → 지름 축소. |
+| ④ | 잉크색 `LineRenderer` 선화만(불투명 바탕/라벨 없음) | 임의의 바탕화면 위 1.5pt 선 한 겹은 대비 보장 불가, **흰 잉크 프리셋에선 사실상 소멸**. 이 프로젝트는 이미 "읽고 눌러야 하는 것 = 불투명 표면"(우클릭 메뉴/포스트잇/캐릭터 창) vs "감상하는 것 = 선화"(캐릭터/톱니/타이머 링)로 갈라져 있고 부채꼴은 전자다. 선화로는 잔여시간 호·미완료 배지·라벨 셋 다 불가능. → **1순위: uGUI로 이관**(레이아웃/상태머신/입력 소유권은 현 설계 유지, 그리기·판정만 교체). **2순위: `LineRenderer` 유지 + 뒤에 불투명 원판**(점 2개 + `width=지름` + `numCapVertices=12`면 스프라이트 없이 꽉 찬 원) + 심볼은 `TextPrimary`, 라벨은 호버 시 1개만. |
+
+**상수 확정치(그대로 교체 가능)**: `ButtonRadiusPoints` 14 → **22**(타협선 20) · `FanRadiusPoints` 46 → **62**(타협선 58) · `FanSpreadDegrees` 90 → **120** · `ExpandSecondsPerButton` 0.16 → **0.19** · `ExpandStaggerSeconds` 0.07 → **0.055** · `CollapseSeconds` 0.12 → **0.13**(+자동 접힘 0.26 신설) · `HitPaddingPoints` 2.5 → **4**. `MinClickableProgress = 0.5`와 "버튼 밖에서 떼면 취소"는 **승인 — 유지**(후자는 호버 강조에도 같이 적용할 것).
+
+### Test Engineer 회귀 기준선(제안, 32-8절 말미와 동일)
+기어 5개 위치에서 3버튼 전부 화면 안 / 인접 중심거리 ≥ 54pt / 짧은 클릭 = 펼침·0.53초 누름 = 드래그이며 **부채꼴이 한 프레임도 안 보임** / 닫힌 프레임에 **모든 차단막 `enabled == false`** / "25분" 선택 시 `SessionDurationSeconds == 1500`(90 아님) / `IsSuspended` 동안 `RemainingSeconds` 불변 + 상태 라인 "일시정지".
+
+---
+
+## 2026-08-30 — 누적 변경사항 **횡단 리뷰**(기준선 `b2bd722`, 최근 30커밋) **[Test Engineer]**
+
+이 세션은 개별 버그를 하나씩 잡아 왔고 **전체를 가로지르는 리뷰는 처음**이다. 순수 읽기 전용(코드 무수정).
+병행 작업 중이던 3개 에이전트의 파일(`InfoGearIconWidget.cs` / `GearRadialMenu.cs` / `InfoGearDragTests.cs`)은
+HEAD 커밋본으로 대조했다.
+
+### 판정: **Blocker 0 / Major 3 / Minor 8** → 반려 **(개선 R2)**
+
+| # | 심각도 | 요약 |
+|---|---|---|
+| M1 | Major | Dock 낙차 상수가 **0.855 / 1.6375 두 값으로 갈라져** 있고, 배율 불변식 테스트가 낡은 쪽(0.855)에 고정돼 실제 시스템을 못 지킨다 |
+| M2 | Major | **전체화면 게임 감지 시 톱니/정보창/초상화가 숨지 않는다** — 절대 불변 원칙 2 위반 |
+| M3 | Major | `stepUpMaxHeight`(2.4)가 Dock `tilesize` 의존성을 못 덮는다 — 큰 Dock 아이콘 설정에서 "내려가면 못 올라옴"이 재현된다 |
+
+#### M1 — Dock 낙차 상수 이원화 + 임계 배율 계산이 2배 틀림
+- **사실**: `EdgeHopDownTests`/`BodyTeleportTransformSyncTests`/`LandingCrouchTests`/`CharacterScaleInvarianceTests` = `DockDropUnits 0.855`,
+  `DockPhysicsStepTests`/`DockSinkholeRegressionTests` = `DockDropUnits 1.6375`. **같은 물리 대상을 4:2로 다르게 모델링**한다.
+- **재검산**: Dock 두께 = `tilesize(49) + dockThicknessTilePaddingPoints(26)` = 75pt, 안전망 = `BottomSafetyNetInsetPoints` 8pt →
+  낙차 67pt. 환산 982pt / (2 x orthographicSize 12) = 40.9167pt/유닛 → **1.6375유닛**. 0.855는 안전망이 40pt였던
+  시절(35pt)의 값이다 — `stepUpMaxHeight` Tooltip 자신이 이미 그렇게 적어 두고 있는데 테스트만 안 따라왔다.
+- **결과**: `CharacterScaleInvarianceTests.DockHopDownBandSurvivesScale`의 절대조건 2·3이 **거짓 통과**한다.
+  올바른 임계 배율 = 1.6375 / 2.5072 = **0.653**인데 `MinCharacterScale`은 0.35, `DockHopDownCriticalScale` 상수는 0.341이다.
+  → 사용자가 크기 슬라이더를 0.65 아래로 내리면 Dock 단차가 '뛰어내리기'가 아니라 '매달리기'로 분류된다(문서가 금지한 그 상황).
+  현재 기본 0.75에서는 여유가 1.880 − 1.6375 = **0.243유닛(약 10pt)뿐**이다(예전 인식으로는 2.2배 여유였다).
+- **제안**: `DockDropUnits`를 테스트마다 하드코딩하지 말고 `(tilesize + dockThicknessTilePaddingPoints − BottomSafetyNetInsetPoints)`
+  단일 소스에서 파생시킨다. 그 뒤 `MinCharacterScale`/`DockHopDownCriticalScale`을 재산출한다.
+
+#### M2 — 전체화면 감지 시 정보창 계열이 안 숨는다 (원칙 2 위반)
+- **확인 방법**: `grep -rn "IsSuspended"` → 소비자 7곳(`RunawayDirector`/`FocusWatchDirector`/`StressGaugeDirector`/
+  `TodoReminderDirector`/`HardwareReactionDirector`/`WindowCrashDirector`/`RivalStickmanAgent`/`DialogueBubbleRenderer`).
+  **`InfoGearIconWidget` / `CharacterInfoWindow` / `CharacterPortraitStage`는 0곳.**
+- **왜 안 잡히나**: `StickmanAgent.Suspend()`는 `Awake`에서 캐시한 `_renderers`만 끈다. 톱니는
+  `_container.transform.SetParent(null, false)`(씬 루트), 정보창은 루트 `CharacterInfoCanvas`라 그 배열에 없다
+  (액세서리가 겪었던 "몸이 사라진 자리에 모자만 남는다"와 **정확히 같은 구조**).
+- **시나리오**: `StickmanAgent`가 `SetAlwaysOnTop(true)`를 켜므로, 전체화면 게임 위에 톱니 2개가 우상단에 계속 떠 있고
+  그때 정보창이 열려 있었다면 창까지 통째로 남는다.
+- **제안**: 세 컴포넌트가 `_agent.IsSuspended`를 폴링해 컨테이너/캔버스를 끄고(정보창은 닫고) Resume 시 복구.
+  `RunawayDirector`(단순 return)가 아니라 `WindowCrashDirector`(오버레이 취소) 패턴이 맞다.
+
+#### M3 — `stepUpMaxHeight` 2.4의 근거가 tilesize 하나에만 맞춰져 있다
+- Dock 낙차 = `tilesize + 18`pt이고 macOS `tilesize`는 16~128 범위다. 유닛 환산:
+  `tilesize 48 → 1.61` / `59 → 1.88`(= 배율 0.75의 매달리기 최소치, 여기서 매달리기로 넘어감) /
+  `80 → 2.40`(= `stepUpMaxHeight`, **여기서부터 되올라오기 실패**) / `128 → 3.57`.
+- 즉 **Dock 아이콘을 크게 쓰는 사용자에게 "한 번 내려가면 영영 못 올라온다"가 그대로 재현된다** — 이 세션이 1.5→2.4로
+  올려 고쳤다고 판단한 바로 그 버그다. Tooltip의 "큰 타일 ~2.2유닛 추정"은 tilesize 72에 해당하며 상한을 과소평가했다.
+- **tilesize를 바꿔 보는 테스트가 0건**이다(전부 개발 머신의 49로 고정).
+- **제안**: `stepUpMaxHeight`를 절대값이 아니라 `max(절대 하한, 실측 Dock 낙차 + 여유)`로 유도하거나, 최소한
+  "실측 Dock 낙차 > stepUpMaxHeight면 경고 로그"를 남긴다.
+
+### Minor 8건
+- **m1** `CharacterAccessoryRenderer.ResolveWantVisible()`에 **테스트가 0건**이다(장비 미착용 / 머리링 비활성 =
+  가출 은신·전체화면 숨김 / Ragdoll·ThrowTumble 3분기 전부). 게다가 그 문서는 "PlayMode 회귀 테스트
+  `Phase5VisualLayerTests`가 실제로 이 상태를 잡아냈다"고 적었지만 그 파일에 액세서리 단언은 없다 — **문서가 거짓 안심을 준다.**
+  → 리더가 예로 든 교차 시나리오("장비 착용 상태로 던져져 회전 착지")는 **설계상으로는 처리돼 있으나 잠겨 있지 않다.**
+- **m2** `CharacterProgressionModel.LevelProgress01()` 호출자 **0건**(테스트 포함). 문서에는 "XP 바가 그대로 쓴다"고 적혀
+  있지만 `CharacterInfoWindow.cs:380-382`가 같은 식을 손으로 재구현했다. 이 프로젝트 "호출자 없는 공개 API" 패턴의 7번째.
+- **m3** **StickConfig 코드 기본값 ↔ 배포 에셋 대조(322개 필드) 결과 불일치 1건**: `groundSnapTolerance`
+  코드 `6` / `DefaultStickConfig.asset` `20`. 실행은 에셋(20)을 쓰고 `SceneBootstrapper.CreateOrLoadConfig`가
+  매번 20으로 덮어써 실피해는 없지만, `CreateInstance<StickConfig>()`를 쓰는 테스트 10곳이 매번 손으로 20을
+  넣어 줘야 하는 지뢰다(빠뜨리면 접지 밴드가 0.489→0.147유닛으로 3.3배 좁아진다). 기본값 자체를 20으로 통일 권고.
+- **m4** `StickConfig.cs` 주석 스테일 3건 — `stepUpMaxHeight(1.5)`(실제 2.4, 1129행/1244행),
+  `Dock 단차(0.855유닛)`(실제 1.6375, 1241행/1245행/1274~1279행), `groundSnapTolerance(20 OS-pt)`(코드 기본값은 6, 1246행).
+  이 프로젝트는 주석을 근거로 값을 판단하므로 스테일 주석이 곧 다음 사고다.
+- **m5** v1→v3 마이그레이션 테스트(`CharacterStatsPersistenceTests`)가 v2 라운드에 작성된 뒤 갱신되지 않아
+  `UiLayoutModel.HasGearCenter == false`를 단언하지 않는다(v2→v3만 단언). v1 사용자의 톱니 위치 경로는 미검증.
+- **m6** `CharacterSaveStore.Load()`의 `data.version > CurrentVersion` 분기(앱 다운그레이드) 테스트 0건.
+  현재 동작은 "조용히 기본값 로드 → 다음 주기 저장이 신버전 파일을 v3로 덮어씀" = **데이터 소실**. 최소한
+  `LoadedFromFile=false`일 때 저장을 보류하거나 백업본을 남기는 판단이 필요하다.
+- **m7** 라이벌 복제 가드망 중 `CharacterAccessoryRenderer`만 씬 개수 `== 1` 단언이 없다(나머지 신규 5종은
+  `ExactlyOne<T>`로 잠겨 있다). 자체 가드(`_agent == null이면 return`)가 2차 방어로 있어 실피해는 없다.
+- **m8** `ThrowTumbleState.cs:542 / 575 / 642` 3곳이 `MoveBodyToWorld` 단일 창구를 우회해
+  `body.position` + `transform`을 손으로 쓴다. **현재 구현은 두 값을 모두 쓰므로 정확**하지만, 커밋 `dc1e62a`가
+  통일한 창구 밖의 4번째 사본이라 다음 사람이 한 줄을 빠뜨리면 `b014611`의 1프레임 desync가 재발한다.
+
+### 통과 항목 (재확인 불필요 — 다음 사람은 여기부터 건너뛰어라)
+
+- **라이벌 패리티 — 이번 리뷰에서 가장 잘 돼 있는 축.** `CreateRivalStickman()`이 신규 5종
+  (`InfoGearIconWidget`/`CharacterInfoWindow`/`CharacterAccessoryRenderer`/`CharacterProgressionDirector`/`CharacterStatsDirector`)을
+  전부 제거한다. 프리팹 루트에 붙는 컴포넌트 35종 ↔ 제거 목록 전수 대조 결과 **누락 0건**(남는 것은
+  Rigidbody2D/콜라이더/`StickmanMetrics`/`DialogueBubbleRenderer`, 문서와 일치). `RivalStickmanAgent.cs`는
+  성장/장비/기록/저장 모델을 **한 줄도 참조하지 않는다**. 특히 `CharacterStatsDirector.TickRagdollCounter()`가
+  전역 `StateTransitioned`를 일부러 구독하지 않고 자기 에이전트 상태를 직접 읽는다("라이벌이 넘어져도 내 기록이 오른다"를
+  선제 차단) — 이 프로젝트가 반복해 겪은 사고 유형에 대한 모범 대응이다.
+- **구독자 0명 이벤트 4건**(`DesktopIconMirrorOverlayChanged` / `LandingRollRequested` / `RivalDuelStarted` /
+  `WanderAmbientMotionRequested`) — 커밋 `0268cb6`의 "이벤트 11→4"와 **정확히 일치**. 신규 회귀 0건.
+  (병행 에이전트가 3건 처리 중.)
+- **씬 미배치 MonoBehaviour** — `Interaction/*.cs` MonoBehaviour 34종 중 `DesktopIconMirrorDirector` 1건뿐이며
+  이는 "디렉터 9→1"의 알려진 보류분(플랫폼 제약)이다. `CharacterPortraitStage`는 `CharacterInfoWindow.Create()`가
+  런타임 생성하므로 정상(씬 배치 대상이 아니다).
+- **호출자 없는 공개 API** — 신규 7클래스(`CharacterProgressionModel`/`EquipmentModel`/`ItemCatalog`/
+  `CharacterStatsModel`/`DockPhysicsStep`/`UiLayoutModel`/`CharacterSaveStore`) 전수 조사 결과 위 m2 1건만.
+- **`windowTheftMinTargetWidthPoints` 280 유효** — 배율 0.75에서 상한 = max(신장 79.0pt x 3 = 237, 280) = **280pt**.
+  계산기 창(230pt)이 여유 있게 들어온다. 배율을 더 내려도 280 바닥이 받쳐 "후보 0개로 조용히 죽는" 재발 없음.
+- **뛰어내리기 ↔ 매달리기 밴드 이물림** — `hopDownMaxDropHeight = 0`(에셋도 0) → `StickmanBlackboard.HopDownMaxDropHeight`가
+  `LedgeHangMinDropDepth`를 그대로 쓴다. **겹침도 틈도 구조적으로 발생 불가.** (다만 그 경계값의 위치는 위 M1/M3 참고.)
+- **`groundSnapMaxDistanceWorld` 0.6 > `groundSnapTolerance` 20pt(= 0.489유닛)** — 하한 조건 만족.
+- **`parkourMantleInset` 0.45 > `wanderEdgeStopDistance` 0.3** — `WanderEdgeConfigInvariantTests`가
+  **실제 배포 에셋을 로드해** 잠근다(테스트가 자기 값을 만들어 쓰지 않는 올바른 패턴 — M1이 이걸 안 따른 사례다).
+- **톱니 저장 위치의 좌표계 안전성** — `PlaceOnScreen()`이 매 프레임 `ClampCenterPoints` 후 모델로 되돌려 주므로
+  외장 모니터 분리/해상도 변경 시 자동 복구된다. `if (_hasCustomCenter)` 가드 덕에 **한 번도 안 옮긴 사용자에게
+  `HasGearCenter=true`가 새어 들어가지 않는다**("옮긴 적 없음" 의미 보존). Retina 대응도 `ScreenCoordinateConverter` 경유.
+- **저장 스키마** — v3 왕복 / v2→v3 / 손상 JSON / NaN 좌표 / 잠긴 슬롯 미착용은 테스트로 잠겨 있다(부족분은 m5·m6).
+- **설정 필드 322개 코드↔에셋 전수 대조** — 불일치 m3 1건 외 전부 일치. 직렬화 누락 필드 0건.
+
+### 2026-08-30 — 리더 반려 결과 라우팅
+- **M1(Dock 낙차 상수 이원화) + M3(stepUpMaxHeight 단일 tilesize 편향) + m3/m4/m5/m6/m8** → 디버거(`Teammate2`)에게 즉시 병렬 투입.
+  건드리는 파일이 `StickConfig.cs`(값/주석)·테스트 파일군·`CharacterSaveStore.cs`뿐이라 진행 중인 기어메뉴/죽은 이벤트
+  작업과 충돌 없음.
+- **M2(전체화면 숨김 시 톱니/정보창/초상화 미대응) — 원칙 2 위반** → 보류. `InfoGearIconWidget.cs`/`CharacterInfoWindow.cs`를
+  기어메뉴 코더(`GearRadialMenu` 연동)가 지금 편집 중이라 동시 수정 시 충돌 위험. **그 작업이 끝나는 대로 같은 코더에게
+  이어서 지시**(파일을 이미 열어 놓은 상태라 재탐색 비용 없음). 잊지 말 것 — 원칙 위반이므로 후순위로 미루되 누락 금지.
+- **m1(액세서리 ResolveWantVisible 테스트 0건) + m2(LevelProgress01 중복 재구현)** → 위 두 작업 완료 후 3라운드로 별도 처리
+  (건드리는 파일이 지금 두 병행 작업과 겹칠 수 있어 순서상 뒤로).
+
+### 2026-08-30 — 리더 승인: M1/M3 배정 결과 + 반증 수용
+디버거가 M1/M3/m3/m4/m5/m6/m8을 전부 수정 완료(컴파일 0에러, 테스트는 Unity 락으로 미실행). 배정서 지시("임계
+배율 재산출 후 MinCharacterScale을 그 위로 올려라")를 어기고 0.35를 유지한 것에 대한 반증 2건을 검토 후 **수용**:
+1. 임계 배율이 tilesize에 비례(16→0.331 … 128→1.423)해서, 하한을 아무리 올려도 tilesize 59+ 사용자에겐 애초에
+   무효 — 하한으로는 구조적으로 못 지키는 불변식이었다.
+2. 부등식이 깨졌을 때의 실제 결과가 고장이 아니라 "매달려 내려가기로 전환"일 뿐이며, 기존 주석의 지나침 조건
+   부등호가 반대로 적혀 있었다(반증됨).
+대신 진짜 필요한 잠금 두 개(유도 상한이 낙차를 덮을 것 / `ledgeHangChance > 0`)로 교체한 판단이 타당하므로 승인.
+`MinCharacterScale`은 0.35 유지, 사용자가 원래 요구한 배율 0.5도 계속 허용됨.
+
+**후속 백로그(비긴급, 지금 액션 없음)**: (a) `LandingCrouchState`의 "Dock 단차에서 무릎앉아 금지" 전제가
+tilesize≥64에서 깨지지만 거동 자체는 올바르므로 보류, (b) tilesize 128 등반이 `parkourClimbDuration` 0.5초 고정이라
+키의 2.1배를 순간 이동하듯 오르는 것처럼 보일 수 있음 — 등반 시간을 높이 비례로 바꾸는 건 다음 라운드 과제.
+
+**⚠ 통합 시 확인 필요**: 디버거가 작업 중 `StickConfig.cs`/`CharacterSaveStore.cs`/`ThrowTumbleState.cs`/
+`StickmanBlackboard.cs`/`FallState.cs`를 병행 에이전트(죽은 이벤트 처리)가 동시 편집 중임을 발견해 보고했다.
+본인 편집은 국소 문자열 치환이라 텍스트 비충돌이라 주장하나, **병행 에이전트 완료 후 이 5개 파일은 리더가
+직접 diff로 재확인한 뒤 스테이징한다** — 자동 병합 신뢰하지 않음. `FallState.cs:204`/`StickmanBlackboard.cs:900`의
+스테일 0.855 주석은 이번 라운드에서 의도적으로 건드리지 않음(별도 실측 필요, 후속 라운드).
+
+**테스트 실행 필요**: 신규 `DockGeometryInvariantTests`/`SaveDowngradeGuardTests`/`DockTileSizeStepUpTests` 포함
+전체 스위트를 Unity 락 해제 후 test-engineer가 돌려야 한다(3라운드 리뷰에 포함 예정).
+
+### 2026-08-30 — 리더 승인: 부채꼴 기어메뉴 확정 설계 이탈 3건
+코더가 실측 근거로 32-1절 확정 설계에서 벗어난 3곳 전부 **승인**:
+1. 평행이동 단계 신설 — 기본 기어 위치(우측 30pt)에서 클램프 각도창이 103°인데 부채꼴은 120° 필요해 순수
+   회전만으론 수학적으로 불가능함을 실측(스크린샷) 확인. (−31,−20)pt 이동, 형태 완전 보존이라 부작용 없음.
+2. 세로 일렬 폴백 간격 52→`max(52, 지름+24)` — 52pt에서 라벨이 아래 버튼과 실제로 겹치는 것을 확인했으므로 당연히 승인.
+3. 화면 상단 여백 8→40pt — 8pt면 macOS 메뉴바를 덮으므로 승인(이 기기 실측 기반이라 다른 해상도에서도 안전 방향의 여유).
+
+**의도된 동작 변경(회귀 아님)**: 기어 짧은 클릭이 이제 캐릭터 창을 직접 열지 않고 부채꼴의 [캐릭터] 버튼을 거친다 —
+새 상호작용 모델이 확정 설계 자체이므로 정상.
+
+**PopoverPanel 비침해 버그 발견·수정 확인**: 팝오버가 닫힌 뒤에도 클릭 차단막이 영구적으로 안 풀리던 버그(원칙 2 위반)를
+테스트 도중 스스로 잡아 수정 — 좋은 사례로 기록.
+
+**⚠ CharacterSaveStore.cs 3중 편집 확정** — 디버거(다운그레이드 가드)와 기어메뉴 코더(v3→v4 Todo 스키마)가
+**같은 파일을 동시에 수정**했고, 죽은 이벤트 처리 에이전트도 아직 진행 중이라 추가 충돌 가능성 있음.
+**병합 시 이 파일은 리더가 라인 단위로 직접 확인 후 스테이징** — 자동 병합 금지. `StickConfig.cs`/
+`StickmanBlackboard.cs`/`FallState.cs`도 동일하게 취급.
+
+### 2026-08-30 — 리더 라우팅: R3 반려 결과
+M1(비결정적 flaky 테스트)/M2(경계값 산술 오기)는 **제품 코드 결함이 아니라 테스트 자체의 결함**이라는 test-engineer
+판단에 동의. `DockTileSizeStepUpTests.cs` + 본 문서 표 수정 건으로 디버거에게 병렬 반송.
+**→ [Debugger, 2026-08-30] M1/M2 둘 다 완료.** 제품 코드 0줄 변경, PlayMode 5/5 x 4회 + EditMode 8/8,
+네거티브 컨트롤 3건 전부 실패 재현 확인. EditMode 기준선 87 → **88**. 상세: 이 문서 맨 아래 "R3 후속" 절.
+m1(원인 생산자 측 미수정 — GearRadialMenuWidget/CharacterPortraitStage가 여전히 캐릭터 루트 계열에 "Head"/"Torso"류
+이름을 만듦) / m2(EyeController.cs가 회귀 직전 StickmanPoseAnimator와 같은 무제한 전역 탐색+마지막 일치 패턴) /
+m3(원칙 2 — R2에서 "기어메뉴 완료 후 처리"로 미룬 항목, 이제 완료됐으니 처리할 차례이며 범위가 캔버스 3개로 늘어남) /
+m4(할당 컨벤션 위반) / m5(가드 비대칭) — 전부 코더에게 병렬 배정. 두 배정은 건드리는 파일이 겹치지 않음.
+
+### 2026-08-30 — 리더 승인: R3 M1/M2 완료
+디버거가 제품 코드 0줄로 M1(4회 반복 결정론적 통과, `IntentSource` TearDown 누수도 함께 발견·수정)/M2를 해소.
+M2는 배정한 수정안(`>= 81f`)보다 더 엄밀한 해법(교차점을 산술로 유도해 양방향 단언 + 자체 선언 허용오차 0.02
+안쪽은 판정 유보 + 정확한 80/81 경계는 오차 0인 EditMode로 이관)을 스스로 택함 — 제시안을 그대로 따르면
+해상도/DPI별로 두 번째 flaky가 될 수 있었다는 근거가 타당하므로 승인. EditMode 기준선 87→88 갱신.
+**운영 메모**: 여러 에이전트가 동시에 Unity 배치 테스트를 돌리면 "다른 인스턴스 실행 중" 충돌로 결과 XML이
+아예 안 생기고 exit 134만 남는다 — 향후 병렬 배정 시 유의(가능하면 Unity 배치 테스트 실행 구간은 순차화).
+
+### 교차 기능 시나리오 커버리지 (리더 질의 직답)
+| 시나리오 | 결과 |
+|---|---|
+| 장비 착용 + 던져져 회전 착지 시 액세서리 렌더링 | **설계는 있음**(`Ragdoll`/`ThrowTumble`이면 숨김) / **테스트 없음** → m1 |
+| 가출 은신·전체화면 숨김 중 액세서리 | 설계는 머리링 추종으로 자동 대응 / 테스트 없음 → m1 |
+| Dock 물리 계단 + 활쏘기·창도둑 등 이동 페이즈 | 물리 계단은 논리 낙차를 바꾸지 않고(발판 단일 소스 파생) 공유 물리 오브젝트라 별도 처리 불필요 — **문제 없음** |
+| Dock tilesize 변화 x 배율 x 되올라오기 | **테스트 0건** → M3 |
+| 캐릭터 배율 변화 x Dock 밴드 | 테스트는 있으나 **낡은 상수로 거짓 통과** → M1 |
+| 전체화면 감지 x 신규 UI(톱니/정보창) | **테스트 0건, 실제로 동작 안 함** → M2 |
+
+
+## 2026-08-30 — 횡단 리뷰 후속 R2: **M1 + M3 + m3/m4/m5/m6/m8** 처리 **[Debugger]**
+
+리더 배정 6건(M1·M3·m3·m4·m5·m6·m8)을 전부 수정했다. 신규 파일 3개, 수정 파일 13개, **커밋 없음**(리더 통합용).
+
+### 결론 요약 (숫자부터)
+
+| 항목 | 옛 값 | **새 값** | 근거 |
+|---|---|---|---|
+| Dock 낙차(이 개발 머신 tilesize=49) | 0.855 / 1.6375 (파일마다) | **1.63747유닛** (단일 소스) | (49+26−8)pt × 24/982 |
+| `DockHopDownCriticalScale` | 0.341 | **0.6531** | 1.63747 / 2.5072 = 0.653109 |
+| `StickConfig.MinCharacterScale` | 0.35 | **0.35 유지**(변경 안 함 — 아래 반증 2건) | — |
+| 기본 배율 0.75에서의 밴드 여유 | (2.2배로 인식) | **1.8804 − 1.6375 = 0.2429유닛(약 9.9pt)** | 2.5072×0.75 − 1.63747 |
+| `stepUpMaxHeight` | 고정 2.4 | **max(2.4, 실측 낙차 + 0.30)** 런타임 유도 | tilesize 16~128 → 낙차 0.83~3.57 |
+| `groundSnapTolerance` 코드 기본값 | 6 | **20** (배포 에셋과 일치) | 실행 경로 무변화 |
+
+### 신규 파일
+- `Assets/_Project/Scripts/Core/DockGeometry.cs` — **Dock 낙차 단일 소스**. 유도식/월드 환산/tilesize 범위/
+  임계 배율/되올라가기 상한 유도를 전부 여기 한 곳에 모았다. 런타임 실측 경로가 관계식을 건너뛰고
+  "열거된 발판 사각형" 자체를 재는 이유도 여기에 적었다(새 OS 호출 0건).
+- `Assets/_Project/Scripts/Tests/EditMode/DockGeometryInvariantTests.cs` — 상수 표류/코드↔에셋 불일치/
+  tilesize 전 구간 상한 커버/금지 조합(ledgeHangChance=0) 잠금.
+- `Assets/_Project/Scripts/Tests/PlayMode/DockTileSizeStepUpTests.cs` — **tilesize 16/48/80/128 스윕**(M3가
+  지적한 "테스트 0건" 구멍) + 최악값 128에서 자율 배회 AI 그대로 왕복 관찰.
+- `Assets/_Project/Scripts/Tests/EditMode/SaveDowngradeGuardTests.cs` — m6 다운그레이드 방어 5종.
+
+### M1 — Dock 낙차 상수 이원화 제거
+6개 테스트의 `DockDropUnits` 하드코딩(0.855 4개 / 1.6375 2개)을 전부
+`DockGeometry.ReferenceDockDropWorldUnits` 파생으로 교체했다(`EdgeHopDownTests` /
+`BodyTeleportTransformSyncTests` / `LandingCrouchTests`(`DockStepDropUnits`) / `CharacterScaleInvarianceTests` /
+`DockPhysicsStepTests` / `DockSinkholeRegressionTests`). `WanderEdgeConfigInvariantTests`와 같은 정신으로,
+상수가 배포 에셋/코드 기본값과 갈라지면 새 EditMode 테스트가 즉시 빨간불을 낸다.
+
+**연쇄 검산(전부 통과 확인, 산술 계산 기준):**
+- `LandingCrouchTests.DockStepDropDoesNotTriggerCrouch` — 1.6375 < `rollLandingHeightThreshold`(2) ✔.
+  단 여유가 1.145 → **0.363유닛**으로 줄었다(tilesize 64 이상이면 Dock 단차에서도 무릎앉아가 발동한다 —
+  낙차가 실제로 커진 것이므로 물리적으로는 옳지만 "리더 지시의 전제가 tilesize 의존"이라는 사실은 기록).
+  RAGDOLL 우려는 없다: 같은 파일이 **6유닛** 낙하에서 `SawRagdoll == false`를 이미 단언한다(충격 차단막).
+- `EdgeHopDownTests` — 1.6375 < 매달리기 최소 1.8804 ✔(뛰어내리기 밴드 유지, 여유 0.243).
+- `stepUpMaxHeight`(2.4) > 1.6375 ✔.
+
+### ★ M1의 부수 결론 — **`MinCharacterScale`을 올리지 않았다** (리더 지시에서 벗어난 부분, 근거 첨부)
+리뷰/배정 문서는 "임계 배율 0.653을 재산출하고 `MinCharacterScale`(0.35)을 그 위로 올려라"였다.
+재산출은 했고(**0.6531**), **슬라이더 하한은 올리지 않았다.** 반증 2건:
+
+- **반증 1 — 하한으로는 구조적으로 지킬 수 없다.** 임계 배율은 낙차에 비례하고 낙차는 사용자의
+  `tilesize`에 비례한다: tilesize 16 → 0.331 / 48 → 0.643 / 49 → 0.653 / **59 → 0.751** / 128 → 1.423.
+  즉 tilesize 59 이상인 사용자는 **기본 배율 0.75에서 이미 부등식이 깨져 있다.** 하한을 0.70으로
+  올려도 그 사용자들은 못 지킨다(하한을 1.43으로 올릴 수는 없다 — 기본값이 0.75다).
+- **반증 2 — 부등식이 깨졌을 때의 결과가 고장이 아니다.** Dock 단차가 '매달려 내려가기'로 분류될 뿐이고,
+  매달리기는 `낙차 ≥ 손끝~발끝 거리`일 때만 선택되므로 그 구간에서 매달린 발끝은 착지면을 **지나치지
+  않는다**. 예전 주석("발이 이미 목적지를 지나쳐 어색해진다")은 **부등호 방향이 반대**였다.
+  발이 목적지를 지나치는 것은 `낙차 < 손끝~발끝`인 경우인데, 그 경우는 `TryFindDescendTarget`이
+  애초에 매달리기 대상으로 잡지 않는다.
+- 부수 피해도 있다: 하한을 0.70으로 올리면 **사용자가 처음 요구했던 배율 0.5를 앱이 금지**하게 된다
+  ("캐릭터 사이즈가 지금의 절반정도 되어야함").
+
+**대신 진짜 금지선 2개를 테스트로 잠갔다:**
+1. 유도된 되올라가기 상한이 낙차를 덮을 것(못 덮으면 **진짜 갇힘**) — M3.
+2. **`ledgeHangChance > 0`일 것.** 배율이 임계값 아래(또는 tilesize가 커서 낙차가 매달리기 최소치를
+   넘을 때)에는 매달리기가 **유일한 하강 경로**다. 그 확률이 0이면 뛰어내리기도 매달리기도 성립하지
+   않아 캐릭터가 Dock 모서리에서 영원히 되돌아서기만 한다. 현재 0.35라 안전하지만 **누구도 잠가두지
+   않았던 조합**이었다(이번 라운드의 신규 발견).
+
+→ **리더 판단 요청**: 위 반증을 받아들이면 그대로, 받아들이지 않으면 `MinCharacterScale`을 0.70으로
+올리는 것은 한 줄 변경이다(단, 반증 1 때문에 tilesize 59+ 사용자에게는 여전히 무효).
+
+### M3 — `stepUpMaxHeight`를 실측 Dock 낙차에서 유도 (근본 수정)
+- `States/AutoWanderController.cs`: `Cfg(c => c.stepUpMaxHeight, 1.5f)` → `ResolveStepUpMaxHeight()`.
+  `max(설정 절대값, 실측 낙차 + 0.30유닛)`을 쓰고, 실측 낙차가 설정값을 넘으면 **경고 로그 1회**를 남긴다
+  (리더가 허용한 방어 로그도 근본 수정과 함께 넣었다).
+- 실측 방법: **새 OS 조회 없음.** 이미 열거된 발판 두 개의 상단 월드Y 차이다 —
+  `DockFootholdHandle(-2)` − `SyntheticFootholdHandle(-1 / -3)`. tilesize를 몰라도, 두께 관계식
+  (`tilesize + 26`, 보정점이 tilesize=49 한 점뿐이라는 알려진 한계)이 틀려도 **옳은 값**이 나온다.
+- 폴백: Dock을 못 찾으면(자동 숨김 / 좌우 세로 Dock / 비-macOS / 전체화면 감지 중) 예전과 100% 동일한
+  설정 절대값으로 되돌아간다.
+- 여유 0.30유닛의 근거: 0이면 `wallHeight <= maxHeight` 비교가 부동소수/물리 정착 오차로 뒤집혀
+  **가끔만** 못 올라오는 최악의 형태가 된다. 0.30은 `groundSnapTolerance`(20pt ≈ 0.489유닛)의 약 60%이자
+  `wanderEdgeStopDistance`(0.30)와 같은 계열이다. 실측 낙차가 **Dock 발판 하나에서만** 나오므로 이 여유가
+  일반 창을 자동 등반 대상으로 만들지 않는다.
+
+**tilesize별 검산(EditMode 테스트가 매 실행마다 재계산):**
+> ★ **2026-08-30 R3 M2로 정정된 표.** 원본은 `80 | 2.395 | ✘ 경계`로 적혀 있었으나 오기다.
+> 절대값 커버리지 교차점은 80이 아니라 **80.2**다(`2.400 ÷ 0.0244399 = 98.2pt`, 낙차pt = tilesize+18).
+> 즉 80은 아직 덮고(여유 0.00489), **81부터 못 덮는다**(부족 0.01955).
+> 실측: `[DOCK-GEOM] 절대값 커버리지 교차 tilesize = 80.20pt ... tilesize 80 → 낙차 2.39511유닛(여유 0.00489) / tilesize 81 → 낙차 2.41955유닛(부족 0.01955)` (`Logs/dbg_m2_edit.log`).
+> M3(유도) 결론 자체는 안 바뀐다 — tilesize 81~128 구간에서 여전히 참이다.
+
+| tilesize | 낙차(pt) | 낙차(유닛) | 설정값 2.4로 덮나 | 유도 상한 | 하강 갈래(배율 0.75) |
+|---|---|---|---|---|---|
+| 16 | 34 | 0.831 | ✔ | 2.400 | 뛰어내리기 |
+| 48 (macOS 기본) | 66 | 1.613 | ✔ | 2.400 | 뛰어내리기 |
+| 49 (이 머신) | 67 | 1.637 | ✔ | 2.400 | 뛰어내리기 |
+| 59 | 77 | 1.882 | ✔ | 2.400 | **매달리기로 전환** |
+| 80 | 98 | 2.395 | ✔ (여유 0.005) | 2.695 | 매달리기 |
+| **81** | 99 | **2.420** | **✘ 경계 — 여기부터 못 덮는다** | 2.720 | 매달리기 |
+| 128 | 146 | 3.568 | **✘ 완전 실패** | 3.868 | 매달리기 |
+
+### Minor
+- **m3** `StickConfig.groundSnapTolerance` 기본값 6 → **20**(배포 에셋과 통일). 실행 경로는 원래 20을
+  썼으므로 **거동 변화 0**. 코드↔에셋 일치를 EditMode 테스트로 잠갔다.
+- **m4** 스테일 주석 갱신 — `StickConfig.cs` 6곳(`stepUpMaxHeight`/`hopDownMinDropHeight`/절대값 표/
+  배율 Tooltip/`characterScale` 주석/`DockHopDownCriticalScale` 문서) + **리뷰가 놓친 3곳 추가 발견**:
+  `States/GroundSensor.cs:441`, `States/LandingCrouchState.cs:46`, `States/StickmanStateMachine.cs:22`도
+  전부 0.855로 적혀 있었다. 테스트 파일 doc 2곳(`EdgeHopDownTests`)도 갱신.
+- **m5** `UiLayoutPersistenceTests`에 **v1 → 현재 버전** 마이그레이션 테스트 추가
+  (`HasGearCenter == false` + 좌표 0 단언). v1은 기록 필드와 톱니 좌표가 **둘 다** 없는 유일한 경로다.
+- **m6** `CharacterSaveStore.Load()`의 다운그레이드 분기에 방어 추가:
+  (1) 신버전 원본을 `character_save.v{N}.backup.json`으로 **복사**(삭제/이동 API는 원칙 3 정적 감사가 금지 —
+  복사만 한다), (2) 백업이 이미 있으면 덮어쓰지 않음(첫 백업이 가장 값지다), (3) **백업 실패 시 이번
+  실행의 저장 보류**(`SaveSuspended`). 진단 속성 3개(`NewerVersionFileDetected`/`NewerVersionBackupPath`/
+  `SaveSuspended`) 신설. 테스트 5종으로 잠금(정상 경로 무영향 네거티브 컨트롤 포함).
+- **m8** `ThrowTumbleState.cs` 3곳(`ApplyRootRotation`/`RestoreUprightRoot`/`ConfirmLanding`)을
+  `MoveBodyToWorld()` 단일 창구로 통일. **회전은 창구가 다루지 않으므로 계속 직접 쓴다**(Rigidbody2D +
+  Transform 양쪽에). 이제 프로젝트 전역에 `body.position = ...` 직접 대입은 0건이다.
+
+### 검증 상태 (정직하게)
+- **컴파일: 통과.** Unity 번들 Roslyn(`DotNetSdkRoslyn/csc.dll`)으로 실제 rsp를 재사용해
+  `StickMate.Runtime` / `StickMate.Tests.EditMode` / `StickMate.Tests.PlayMode` 3개 어셈블리를
+  전부 빌드 — **에러 0 / 경고 0**(신규 파일 3개 포함).
+- **테스트 실행: 못 했다.** 다른 병행 에이전트가 같은 프로젝트로 Unity를 점유 중이라
+  (`Temp/UnityLockfile`, PID 76578, 10:58 시작) `-runTests`가 "another Unity instance is running"으로
+  중단됐다. **리더/Test Engineer가 반드시 실행해 확인할 것.**
+- **네거티브 컨트롤(산술로 검증, 실행은 위 사유로 미완):**
+  - `DockDropUnits`를 0.855로 되돌리면 → 임계 배율 0.341 vs 문서 상수 0.6531, 차이 0.312 ≫ 허용 0.005
+    → `CharacterScaleInvarianceTests` 절대조건 3 실패. 추가로 EditMode의 "화석 감지"(낙차 > 1.5)도 실패.
+  - `groundSnapTolerance` 기본값을 6으로 되돌리면 → EditMode 코드↔에셋 단언 실패(20 vs 6).
+  - `AutoWanderController.ResolveStepUpMaxHeight()`를 `Cfg(c => c.stepUpMaxHeight, 1.5f)`로 되돌리면 →
+    tilesize 128에서 `wallHeight 3.568 > maxHeight 2.4`로 되올라가기가 영구 기각 →
+    `DockTileSizeStepUpTests.LargestTileSizeStillClimbsBackOntoDock`의 `SawParkourClimb` 실패.
+  - m6의 `HandleNewerVersionFile()` 호출을 지우고 예전 `return`으로 되돌리면 → 백업 파일이 생기지 않아
+    `신버전_파일은_저장으로_덮이기_전에_백업된다` 실패.
+
+### 교차 레이어 영향 로그 (리더 확인 요망)
+1. **파일 충돌 — 배정 전제가 틀렸다.** 라우팅 메모는 "`StickConfig.cs`·테스트 파일군·`CharacterSaveStore.cs`뿐이라
+   충돌 없음"이라고 적었지만, 작업 시작 시점 `git status`에서 **`StickConfig.cs` / `CharacterSaveStore.cs` /
+   `ThrowTumbleState.cs` / `StickmanBlackboard.cs` / `FallState.cs`가 이미 병행 에이전트에 의해 수정 중**이었다
+   (mtime 기준 수 분 전). 내 편집은 전부 **국소 문자열 치환**이고 그들의 편집 영역(파일 끝 신규 섹션 / v4 저장
+   스키마 / `RaiseLandingRollRequested` 인자)과 텍스트가 겹치지 않지만, **동시 편집이 있었다는 사실 자체를
+   리더가 알고 통합해야 한다.**
+2. **`FallState.cs:204` / `StickmanBlackboard.cs:900`에 남은 0.855 스테일 주석은 손대지 않았다** —
+   두 파일 모두 병행 에이전트가 편집 중이라 회피했다. 특히 `StickmanBlackboard.cs:900`은
+   "물리 바닥(−11.02)이 논리 발판(−10.167)보다 0.855 아래"라는 **다른 측정**이라 단순 치환이 아니라
+   재실측이 필요하다(그 측정 자체가 유효한지 확인 필요). **후속 라운드로 넘긴다.**
+3. **`LandingCrouchState`의 전제가 tilesize 의존이 됐다** — "Dock 단차에서는 무릎앉아를 하지 않는다"는
+   리더 지시가 tilesize 64 이상에서는 성립하지 않는다(낙차 2.0유닛 초과). 낙차가 실제로 커진 것이므로
+   거동 자체는 옳다고 판단해 임계값을 건드리지 않았다. **리더 확인 요망.**
+4. **`stepUpMaxHeight`가 이제 "절대 상한"이 아니라 "하한"이다** — 이 값을 튜닝하는 다음 사람은
+   `AutoWanderController.ResolveStepUpMaxHeight()`를 함께 봐야 한다. `EdgeHopDownTests:372` 등
+   `cfg.stepUpMaxHeight`를 직접 읽는 단언 2곳은 tilesize 49 환경에서 유도값 == 설정값이라 그대로 유효하다.
+5. **큰 Dock에서의 등반 연출** — tilesize 128이면 3.57유닛(배율 0.75 캐릭터 키의 **2.1배**)을
+   `parkourClimbDuration`(0.5초)에 오른다. "높은 벽까지 자동으로 오르게 두면 순간이동처럼 보인다"는
+   원래 우려가 이 구간에서 현실이 된다. **"영영 못 올라옴"(하드 트랩)보다는 낫다고 판단해 이번엔 허용**했지만,
+   근본 해법은 등반 시간을 높이에 비례시키는 것이다 — **후속 과제로 남긴다.**
+
+### 과학적 토론 로그
+- **H-M1a(기각)** "임계 배율 아래에서 매달리면 발이 목적지를 지나쳐 어색하다"(기존 문서의 주장).
+  → **반증**: 발이 목적지를 지나치는 조건은 `매달리기 도달거리 > 낙차`인데, 그 경우는
+  `TryFindDescendTarget`이 매달리기 대상으로 아예 잡지 않는다(최소 낙차 조건). 임계 배율 아래에서는
+  `낙차 ≥ 도달거리`라 발이 착지면 위에 머문다. **기존 주석의 부등호 방향이 반대였다.**
+- **H-M1b(채택)** "임계 배율은 금지선이 아니라 거동 분기점이며, 진짜 금지선은 (a) 되올라가기 상한 미달과
+  (b) `ledgeHangChance == 0`이다." → 검증: `AutoWanderController.TryRollEdgeAction`의 3갈래를 전수 추적해
+  두 조건이 동시에 막히는 유일한 조합임을 확인. 테스트 2종으로 잠금.
+- **H-M3a(채택)** "실측 낙차를 OS에 다시 묻지 않고 발판 열거 결과만으로 잴 수 있다."
+  → 검증: `FallbackPlatformWindowService`가 Dock 띠와 안전망 두 조각에 **고정 합성 핸들**(−2 / −1 / −3)을
+  부여하고, `StickmanBlackboard.TryGetFootholdTopWorldY(handle)`가 이미 공개 조회 경로다. 새 네이티브 호출
+  0건으로 성립. (반대 가설 "`IDockMetricsService`를 다시 조회한다"는 권한·좌표계·폴백 경로가 늘어 기각.)
+
+---
+
+## 2026-08-30 — 기어 부채꼴 메뉴 (원버튼 3개) + 집중/할일 팝오버 + 할일 영속화 v4 [Coder]
+
+사용자 원문: **"기어메뉴를 클릭했을때 집중모드 버튼 캐릭터 버튼 오늘 할일 버튼 3가지가 촤르륵 원버튼 3개가 나오고 각 버튼을 클릭했을때 세부 메뉴로 들어가도록"**.
+UX 디자이너 확정 설계 `docs/UX_FLOW.md` **32절**(9소절) 전량 반영 + 리더가 전달한 **반박 4건** 전부 구조 변경으로 처리.
+
+### 신규 파일
+- `Interaction/GearRadialMenuWidget.cs` — 부채꼴 본체(uGUI). Ø44 / 궤도 62pt / 간격 60도(폭 120도), 펼침 0.30초(버튼당 0.19 + 스태거 0.055, easeOutBack 반지름 0.35R→R + 스케일 0.62→1), 접힘 3종(사용자 0.13 / 이동 0.08 / 자동 0.26초 — **움직임이 서로 다르다**), 6초 무반응 자동 접힘, 호버 0.09초, 누름 플래시 0.09초.
+- `Interaction/PopoverPanel.cs` — 팝오버 공통 뼈대(크롬/성장 애니메이션 0.16초/앵커 배치/차단막/전역 폴링 + `TryClaimAction` 0.35초 중복 제거).
+- `Interaction/FocusSessionPopover.cs` — 244×252(대기) / 244×224(진행 중).
+- `Interaction/TodoBoardPopover.cs` — 300×336. 추가/체크/삭제(인라인 확인 3초)/완료함 탭/[▲][▼] 레일/빈 상태.
+- `Tests/EditMode/TodoPersistenceTests.cs`(7종) · `Tests/PlayMode/InfoGearRadialMenuTests.cs`(12종).
+
+### 반박 4건 처리
+1. **회전과 펼침 동시 진행** — `ActivateClick()`이 `_spinTimer = 0`과 `ExpandMenu()`를 같은 프레임에 부른다. 클릭→첫 픽셀 0ms(기존 520ms). "안 먹었다"고 다시 눌러 메뉴가 깜빡이는 실패 모드가 구조적으로 사라졌다. `SpinSeconds`/맞물림 상수는 무수정(`InfoGearMeshingTests` 3/3 유지).
+2. **`snap45(atan2(화면중심 − 기어중심))`** — 사분면 부호(4방향) → 실제 각도 8방향 스냅. **펼치는 순간 한 번 계산해 고정**한다. 단위 테스트가 "위쪽 한가운데 → 270도"를 직접 잠근다.
+3. **부채꼴 전체 회전/평행이동** — 개별 버튼 클램프 완전 제거. 사다리: θ₀ → ±15도씩 ±90도 → **전체 평행이동(≤48pt)** → 지름 축소(44→36) 후 반복 → 세로 일렬 → 일렬+평행이동.
+4. **uGUI 이관** — `LineRenderer` 선화를 버리고 불투명 표면 + 테두리 + 그림자 + 라벨 알약. 심볼은 잉크색이 아니라 `UiChrome.TextPrimary` 고정(흰 잉크 프리셋 소멸 방지). `UiChrome`에 `Circle()`/`Ring(비율)`/`OnAccentSolid`/`AddStroke()`/`AddCircle()` 5개 프리미티브 추가(진짜 원 — 기존 `RoundedFill`은 `size=radius*2+4`라 항상 4px 직선이 남는다).
+
+### 확정 설계에서 **벗어난 2곳**(둘 다 실측 근거, 리더 확인 요망)
+- **평행이동 단계 신설(32-1에 없음)**. 실측 화면 1512×982에서 기본 기어 위치(오른쪽 30pt)는 **회전만으로는 수학적으로 불가능**하다: 클램프 상자가 들어갈 각도 창이 θ∈[153°,256°]=103°인데 부채꼴은 120°를 요구한다. 이 단계가 없을 때 **기본 위치에서 곧장 세로 일렬 폴백으로 떨어지는 것을 스크린샷으로 확인**했다(사용자가 볼 기본 화면이 폴백이 된다). 평행이동은 세 버튼의 상대 위치를 그대로 두므로 32-1이 금지한 "호를 찌그러뜨리는 개별 클램프"가 아니다. 실제 필요 이동량은 (−31, −20)pt.
+- **세로 일렬 간격 52 → `max(52, 지름+4+16+4)`**. 52pt는 Ø44에서 라벨 알약이 아래 버튼 원에 파고들어 글자가 안 읽힌다(첫 실측 스크린샷에서 실제로 겹쳤다).
+- **화면 위쪽 여백만 8 → 40pt**(`TopMarginPoints`). 8pt면 버튼이 macOS 메뉴바를 덮는다(실측 확인). 톱니 자신이 같은 이유로 위에서 58pt에 놓인다.
+
+### 리더 결정 이행 — 할일 영속화 v4
+`CharacterSaveStore` 스키마 v3 → **v4**(`todos[]` / `todoArchive[]`). `TodoListModel`에 `IsDirty` / `RestoreFromSave` / `MarkSaved` 추가(`UiLayoutModel`과 같은 관례), `CharacterProgressionDirector`의 주기 저장 조건에 합류. 복원 시 **완료 시각을 0으로 리셋**한다 — 지난 세션의 `Time.unscaledTime`을 그대로 두면 `지금 − 큰 값`이 음수라 완료 항목이 **영원히 유예 상태로 굳는다**. Id는 파일 값을 그대로 쓰고 다음 Id를 그보다 크게 올려 "한 줄 체크했는데 다른 줄이 체크되는" 사고를 막는다. v1/v2/v3 로드 호환을 테스트 3종으로 잠금.
+
+### 집중 모드 필수 계약
+팝오버는 `StartFocusSession(minutes)` / `StopFocusSession()`만 부른다. **`ForceTriggerNow()`(90초 데모) 호출 0건** — 25분을 고른 사용자에게 90초를 주면 화면 숫자가 거짓이 된다(원칙 1). PlayMode 테스트가 `SessionDurationSeconds == 1500`을 절대 조건으로 잠그고, 링 `fillAmount`와 라벨 mm:ss가 **같은 스냅샷**에서 나오는지도 확인한다. 단축키 ⌃⌥⌘F / 우클릭 메뉴는 기존 데모 경로 그대로 유지.
+
+### 테스트가 실제로 잡은 버그 1건 (네거티브 컨트롤의 성과)
+`PopoverPanel.Update()`에서 접힘이 끝난 프레임에 `Hide()`가 `_closing=false`로 되돌린 <b>뒤</b> `SyncClickBlocker()`가 이어서 돌아 `enabled = !_closing`으로 **차단막을 도로 켰다**. 팝오버가 사라진 뒤에도 그 화면 영역의 클릭관통이 영영 해제된 채 남는 비침해 위반이다. `TickAnimation()`이 bool을 반환하고 호출자가 즉시 빠져나가도록 수정. `AllClickBlockersAreDisabledWhenNothingIsOpen`이 이 사고를 그대로 재현해 잡았다.
+
+### 실측(실제 앱, 합성 CGEvent 클릭 — `CGEventSourceButtonState(CombinedSessionState)`가 합성 입력을 반영함을 이번에 확인)
+톱니 클릭 → 부채꼴 3개 안착 → **[캐릭터] → 정보창 열림**(로그 `[정보창] 열림(부채꼴 메뉴 [캐릭터])`) → **[집중 모드] → 팝오버 → 25분 [시작] → 1500초 세션 + 링/24:59 + 버튼 라벨 "집중 · 24:59"** → **[오늘 할일] → 팝오버 → 입력칸 타이핑 → [추가] → 행 렌더 → [✕] → 인라인 확인 → [삭제]**. 기어를 좌하단/우하단으로 옮긴 뒤에도 부채꼴이 화면 안쪽으로 방향을 바꿔 전부 화면 안. 검증용으로 만든 할일과 옮긴 기어 위치는 **저장 파일 백업/복원으로 원상복구**(gearPositionSaved=false, todos=[]).
+
+### 교차 레이어 영향 로그
+| # | 영향 | 내용 |
+|---|---|---|
+| 32-A | **입력** | 클릭관통 차단 콜라이더가 `IconScreenRect` → `InteractiveScreenRect`(톱니 + 펼쳐진 버튼 합집합)로 넓어진다. **메뉴가 열려 있는 동안만**이고 접히면 즉시 원래 크기다(테스트로 잠금). 그 사각형이 캐릭터와 겹치는 프레임에는 Unity의 `OnMouseDown`이 톱니 차단막에 먼저 갈 수 있으나, `StickmanClickHitbox`는 전역 폴링 + `OverlapPoint` 경로를 따로 갖고 있어 잡기/던지기는 계속 동작한다. |
+| 32-B | **씬/프리팹** | `Stickman.prefab` 루트에 컴포넌트 3개 추가. `BuildAll --force`(fileID 전체 재할당 + config 덮어쓰기)를 피하려고 **멱등 메뉴 `StickMate/Ensure Prefab Components`**를 신설해 없는 것만 붙였다 — prefab diff **39줄**. 라이벌은 언팩된 인스턴스라 영향 없고, `SceneBootstrapper`의 라이벌 정리 목록에도 3개를 추가해 다음 재생성에서도 안전하다. |
+| 32-C | **저장** | 스키마 v4. 같은 파일을 쓰는 모든 모델의 주기 저장 조건에 `TodoListModel.IsDirty`가 합류했다. |
+| 32-D | **기존 동작 변경** | 톱니 짧은 클릭이 더 이상 캐릭터 창을 열지 않는다(부채꼴 → [캐릭터]). `InfoGearDragTests` ①의 단언을 그에 맞게 갱신(드래그/이동 회귀 조건은 그대로). |
+| 32-E | **동시 작업** | 이 라운드 중 같은 워킹 트리에서 다른 에이전트가 `StickConfig`/`AutoWanderController`/`FallState`/`DockGeometry`/`EventWiringVisualTests` 등을 편집 중이었다. PlayMode 잔여 실패 4건(`StepUpCoversDrop_TileSize80`, `IdleAmbientMotionDisabledKeepsNeutralPose`, `LookAroundSignalRaisesOneArmAndShiftsHead`, `StretchSignalRaisesBothArmsOverhead`)은 **전부 그쪽 파일 소관**이며 이 라운드 변경과 무관하다(내 신규/수정 테스트는 전부 통과). |
+
+### 남은 과제(리더 판단 요망)
+1. **팝오버 앵커 vs 캐릭터 창 앵커 불일치**(32-7 5항 그대로) — 기어를 좌하단으로 옮긴 사용자가 [캐릭터]를 눌러도 창은 여전히 우상단에서 열린다. 이번 라운드 범위 밖.
+2. **오늘 할일 목록 행 높이 34 → 33, 여백 16(디자이너 14)** — 기본 크롬(제목 22 + 여백)과 6행을 300×336 안에 함께 넣기 위한 조정. 6행 유지를 우선했다.
+3. **`Strikethrough`가 유니코드 결합 문자(U+0336)** — 이 프로젝트에 TextMeshPro가 없어 레거시 `Text`에는 취소선 스타일이 없다. 폰트에 따라 두께가 달라 보일 수 있다.
+
+## 2026-08-30 — 배선 감사 잔여 3건: 구독자 0명 이벤트에 시각/모션 반응 부착 [Coder]
+
+리더 발주. 기준선 `b2bd722`. **배선 감사 결과: 구독자 0명 이벤트 4 → 1**(남은 1건 `DesktopIconMirrorOverlayChanged`는 기존대로 플랫폼 제약 보류).
+
+### 발행 조건 실측 (추측 없이 코드에서 확인한 것)
+| 이벤트 | 발행자 | 언제 / 얼마나 자주 | 페이로드 |
+|---|---|---|---|
+| `LandingRollRequested` | `FallState.ConfirmLanding` + **`ThrowTumbleState.ConfirmLanding`**(발주서에 없던 두 번째 발행자, 실측으로 발견) | 착지 확정 프레임에 낙하 높이 ≥ `rollLandingHeightThreshold`(2유닛)일 때. ThrowTumble 쪽은 기하 낙차와 충격 환산(v²/2g) 중 **큰 값**을 쓴다 | 낙하 높이 → **좌표 추가(변경, 아래 교차영향 A)** |
+| `RivalDuelStarted` | `RivalStickmanAgent.BeginDuel` | 대결 1회당 정확히 1번. 스폰 좌표로 몸을 옮긴 **뒤** 발행되므로 구독자가 두 캐릭터 좌표를 그 자리에서 읽어도 안전 | 없음 |
+| `WanderAmbientMotionRequested` | `AutoWanderController` 2곳 | `LookAround`: Idle 진입 후 `wanderLookAroundDelayMin~Max`(1.0~2.5초) 뒤 **그 Idle 구간에 1회**(구간이 먼저 끝나면 자연 취소). `SitAndYawn`: "Idle 연장"이 **연속 3회 이상**일 때만 `wanderRestExtendSitChance`(0.15) 확률로 | `WanderAmbientMotion` |
+
+### 붙인 반응 (신규 파일 3 + 라이벌 정리 목록 3)
+- `Interaction/LandingDustRenderer.cs` — **발밑 먼지** 5점이 부채꼴로 퍼지며 0.38초에 사라진다. 세기는 무릎앉아 깊이 램프와 **같은 식**(임계값 초과분 ÷ 신장 배수)이라 "깊이 앉을수록 먼지도 크다"가 두 곳을 따로 튜닝하지 않아도 성립.
+- `Interaction/RivalDuelClashRenderer.cs` — 두 캐릭터 **가슴 높이 중점**에 8갈래 임팩트 선(라이벌 잉크색)이 0.45초 퍼지며 사라진다. `BattleMinigameRenderer.CreateImpactBurst`와 같은 지그재그 폴리라인 기법.
+- `Interaction/IdleAmbientMotionRenderer.cs` + `StickmanPoseAnimator.ApplyIdleAmbientPose` — **주위 살피기**(한쪽 팔을 이마에 얹는 손차양 + 머리 좌우 1회 왕복, 0.9초) / **기지개**(두 팔 만세 + 무릎 펴짐 + 몸 솟음, 2.0초). 새 상태를 만들지 않고 Idle 중립 포즈 **위에 얹는** 변주라, 이동 의도가 생기면 상태 전이가 알아서 끊는다.
+
+**과설계 회피 판단**: `LandingRollRequested`에 대사를 붙이지 않았다 — 착지 직후의 확정 상태(LandingCrouch/Idle/Walk) 대사 경로는 이미 `AmbientChatter`가 갖고 있어, 이벤트에서 텍스트를 파생시키면 **불변 원칙 1이 금지하는 두 번째 대사 생산자**가 된다. 착지의 물리 반응도 이미 `LandingCrouch`가 담당하므로 남는 자리는 부수 연출뿐이고, `StickmanEventBus`의 LandingCrouch 문서가 이미 "먼지 파티클 같은 부수 연출용으로 남는다"고 그 자리를 지정해두었다.
+
+**새 자율 확률 0개**: 세 반응 모두 상위 이벤트의 기존 발행 빈도를 그대로 물려받는다. `StickConfig`에 마스터 스위치 3개(`landingDustEnabled` / `rivalDuelClashEnabled` / `idleAmbientMotionEnabled`)를 노출하되 **기본 ON** — 구경거리 스펙터클이 아니라 이미 일어나는 동작에 얹히는 미세 디테일이라는 리더 판단 기준을 따랐다. 거리/크기는 전부 신장 배수(`characterScale` 자동 대응), 각도/시간은 절대값.
+
+### ★★ 이 라운드가 잡은 회귀 1건 — 다른 레이어가 캐릭터 머리를 통째로 얼려놓고 있었다
+`LandingCrouchTests` 2건이 "머리 하강 = **정확히 0.000유닛**"으로 실패해 추적한 결과:
+- `GearRadialMenuWidget.Awake()`가 자기 Canvas를 **캐릭터 루트에 `SetParent`** 하고, 그 안에 미니 스틱맨 아이콘의 머리 원을 **`"Head"`라는 이름의 자손**으로 만든다.
+- `StickmanPoseAnimator` 생성자는 `GetComponentInChildren<Transform>` 로 **자손 전체**를 훑고 **마지막 일치**를 채택했다 → 캐릭터의 머리 대신 그 UI 원을 잡아, **캐릭터의 머리/몸통이 영원히 움직이지 않게 됐다**. 팔다리는 관절로 찾으므로 멀쩡해서 "포즈는 되는데 머리만 안 내려가는" 진단하기 어려운 형태였다.
+- **수정(내 파일 안에서만)**: 탐색 범위를 **루트 직속 자식**으로 좁혔다. 캐릭터의 `Torso`/`Head`는 프리팹 규약상 항상 루트 직속이므로, 어떤 UI가 어떤 이름으로 자식을 만들든 구조적으로 영향받지 않는다. 같은 위험을 가진 다른 조회부는 전수 확인함 — `StickmanMetrics`는 이미 직속 스코프, `EyeController`/`CharacterAccessoryRenderer`/`DialogueBubbleRenderer`는 이름 충돌 없음(`LeftEye`/`RightEye`, `transform.Find`). `StickmanPoseAnimator.BuildLimb`는 **첫 일치**를 쓰고 UI가 쓰는 이름(`ArmL`/`LegL` 등)과 겹치지 않아 현재는 안전하나 **같은 계열의 위험이 남아 있다**(리더 판단 요망).
+
+### 교차 레이어 영향 로그 (리더 확인 요망)
+| # | 영향 | 내용 |
+|---|---|---|
+| W3-A | **이벤트 시그니처 변경** | `LandingRollRequested`가 `Action<float>` → `Action<LandingImpactEvent>`(낙하 높이 + **착지 좌표**). 이유: 발행자 `FallState`/`ThrowTumbleState`는 **라이벌 상태머신에도 등록**되어 있어, 좌표가 없으면 라이벌 착지에 플레이어 발밑으로 먼지가 피는 오귀속이 **구조적으로** 발생한다. 발행부 2곳도 함께 갱신. 기존 구독자는 0명이었으므로 파급 없음. |
+| W3-B | **포즈/모션** | `StickmanBlackboard.TickPose()`의 Idle 분기에 유휴 앰비언트 갈래 1개 추가(비활성/스위치 OFF면 예전 경로 그대로). `SetBodyOffset`에 머리 좌우 오프셋 인자 추가 — **인자 없는 오버로드가 항상 0을 넣으므로** 다른 포즈 경로(Walk/Fall/Ragdoll 등 전부 `SetBodyOffset`을 부른다)로 넘어가는 순간 자동 원복된다. |
+| W3-C | **씬/프리팹** | `Stickman.prefab` 루트에 렌더러 3개 추가(prefab diff 78줄), `SceneBootstrapper`의 **라이벌 정리 목록에도 3개 추가** — 남겨두면 착지 먼지/임팩트가 두 벌 그려지고 라이벌이 플레이어의 유휴 신호로 같이 기지개를 켠다. |
+| W3-D | **다른 에이전트 파일과의 충돌** | 위 ★★ 항목. `GearRadialMenuWidget`이 캐릭터 루트에 `"Head"` 이름의 UI 자손을 만드는 구조 자체는 그대로 두었다(그쪽 파일 미수정). 방어는 내 쪽에서 했다. |
+
+### 검증
+- 컴파일 **에러 0 / 경고 0**, 빌드 **성공**(`Builds/macOS/StickMate.app`, 총 에러 0건·경고 0건).
+- EditMode **74/74**. PlayMode **221/223** — 신규 `Tests/PlayMode/EventWiringVisualTests.cs` **8/8 전부 통과**. 잔여 실패 2건은 `DockTileSizeStepUpTests.StepUpCoversDrop_TileSize80` / `LargestTileSizeStillClimbsBackOntoDock`으로, 둘 다 **미커밋 신규 파일**(`Core/DockGeometry.cs`, 해당 테스트 파일)을 쓰는 다른 에이전트의 진행 중 작업 소관이다(내 변경과 무관 — 이 라운드는 Dock 관련 코드를 한 줄도 만지지 않았다).
+- 테스트는 **실제 Main.unity를 로드**해 컴포넌트가 씬에 **정확히 1개씩** 있는지부터 검사하고, 이벤트도 실제 경로로 발행시킨다(6유닛 낙하 → `FallState`가 스스로 발행 / `RivalStickmanAgent.BeginDuel()` 직접 호출). **네거티브 컨트롤 3종**(스위치를 끄면 연출만 사라지고 착지·대결·Idle 포즈는 그대로)을 함께 잠갔다.
+- 실측 로그: `[착지먼지] 발밑 (0.00, -11.80) … 세기 0.49`(얕은 낙하) ↔ `세기 1.00`(깊은 낙하)로 램프 동작 확인, `[착지먼지] 발밑 (3.34, -8.40)`(다른 테스트의 던지기 착지 — 좌표가 실제로 따라간다는 증거), `[라이벌대결] 시작 임팩트 — 두 캐릭터 중점 (1.71, -10.95) 에 8갈래`, `[유휴동작] 기지개 재생 — 진행 중 상태=Idle, 2.00초`. 세 연출 모두 **콜라이더 0개**(관전 전용, 클릭관통 유지).
+
+### 테스트를 세 번 실패시켜 좁혀낸 것 (다음 사람을 위한 함정 기록)
+`AutoWanderController`는 Idle 구간에 들어갈 때 그 구간의 LookAround 지연시간을 **미리 뽑아 둔다**. 그래서 테스트가 설정값을 9999초로 올려 침묵시켜도 **이미 예약된 1건**은 그대로 터져 다른 동작을 덮어쓴다(로그에 `[유휴동작] 기지개 재생` 직후 `주위 살피기 재생`이 찍혀 확정). 고정 대기를 늘리는 것으로는 값만 바뀌고 원인이 남는다 — `wanderIdleDurationMax × (1 + wanderDurationJitterRatio)`로 **설정에서 유도한 상한**만큼 기다려 그 구간이 끝난 것을 보장해야 한다. 같은 패턴(미리 뽑아둔 지연/기간)을 쓰는 다른 자율 트리거를 테스트할 때도 동일하다.
+
+## 2026-08-30 — 3라운드 통합 후 **전체 스위트 클린 재실행 + 최종 리뷰** **[Test Engineer]**
+
+병렬 3작업(Dock 상수 재교정 / 부채꼴 기어메뉴 / 죽은 이벤트 3건) + 리더의 `BuildLimb` 수정이 전부 합쳐진
+워킹 트리 전체를 처음부터 다시 돌렸다. **커밋 없음**(리더 몫).
+
+### 판정: **Blocker 0 / Major 2 / Minor 5** → 반려 **(개선 R3)**
+
+| 구분 | 결과 |
+|---|---|
+| 컴파일 | **에러 0 / 경고 0** (실제 재컴파일 2.41초 발생 확인 — 캐시 재사용 아님) |
+| EditMode | **87 / 87 통과** (신규 13건 포함, 0.12초) |
+| PlayMode | **221 / 223 통과** (464.8초) — 실패 2건은 **둘 다 신규 `DockTileSizeStepUpTests`** |
+
+**이전 라운드가 "다른 에이전트 작업 소관"으로 넘긴 PlayMode 실패 2건은 통합 후에도 그대로 재현된다.**
+그 판단은 틀렸다 — 두 건 다 미완성 파일 탓이 아니라 **그 테스트 파일 자체의 결함**이다(아래 M1/M2).
+
+### 통과 확인 (리더가 지목한 항목 전부)
+- `DockGeometryInvariantTests` 7/7 · `SaveDowngradeGuardTests` 5/5 · `TodoPersistenceTests` 7/7 ·
+  `UiLayoutPersistenceTests`(v1 마이그레이션 추가분 포함) — 신규 EditMode 전부 통과.
+- `InfoGearRadialMenuTests` **12/12** · `EventWiringVisualTests` **8/8** · `InfoGearDragTests` 6/6.
+- `CharacterScaleInvarianceTests` **6/6** — 실측 로그로 재산출값 확정:
+  `Dock 낙차=1.6375 / 임계 배율=0.6531 / 문서 상수=0.6531 / 기본 배율 여유=0.2429유닛`. `MinCharacterScale` 0.35 유지 결정과 모순 없음.
+- `EdgeHopDownTests` 6/6 · `DockPhysicsStepTests` 6/6 · `DockSinkholeRegressionTests` 10/10 ·
+  `BodyTeleportTransformSyncTests` 3/3 — M1 상수 통일의 연쇄 영향 없음.
+- **`LandingCrouchTests` 6/6 — 리더의 `BuildLimb`/Torso·Head 직속 탐색 수정이 실제로 작동한다.**
+  실측: 머리 최대 하강 **0.117유닛(신장 6.9%)** / **0.325유닛(19.0%)**(회귀 당시에는 정확히 0.000이었다).
+  같은 프레임에 최대 무릎굽힘 63.7도/111.3도가 함께 관측되므로 **팔다리 탐색을 직속으로 좁힌 것도 안전하다**
+  (프리팹 YAML 대조로도 `LeftLeg`/`RightLeg`/`LeftArm`/`RightArm`/`Torso`/`Head`가 전부 루트 직속임을 확인).
+
+#### M1 (Major) — `LargestTileSizeStillClimbsBackOntoDock`이 **비결정적**이다 (실측 1/3 통과)
+> **[Debugger, 2026-08-30 해소]** 테스트 전용 수정으로 결정론화(4회 실행 최종 좌표가 소수점 3자리까지 동일).
+> 제품 코드 0줄 변경. 상세는 이 문서 맨 아래 "R3 후속" 절.
+- **증상**: 전체 실행에서 실패. 최종 위치 x=11.165, 전이 트레이스가 `Idle->Walk Walk->Idle …` 7건뿐 —
+  캐릭터가 Dock 모서리(x=6.400) **반대쪽으로 걸어가 25초 동안 돌아오지 않았다.**
+- **가설 검증(같은 테스트만 3회 재실행)**: **1회 통과 / 2회 실패.** 실패 2회의 최종 x = 6.738, 11.492.
+  → 원인은 `StickmanAgent.cs:247`의 `new System.Random(System.Guid.NewGuid().GetHashCode())` —
+  **매 실행 다른 시드**다. 테스트는 x=7.0(모서리에서 0.6유닛)에 세워 두고 배회 AI가 스스로 왼쪽으로 걸어와
+  걷기구간당 1회뿐인 경계 추첨에서 `stepUpChance` 0.85를 이기기를 25초간 기다린다. 어느 것도 보장되지 않는다.
+- **★ 이것이 왜 Major인가 — 제품 결함이 아니라서 더 나쁘다.** 통과한 1회의 로그가 M3 수정이 **옳게 동작함**을
+  증명한다: `[되올라가기] 실측 Dock 낙차 3.568유닛이 설정값 2.400을 넘습니다 → 상한을 3.868유닛으로` →
+  `결정 — 턱 높이=3.568(상한 3.87)` → 최종 발판핸들 **-2(Dock)**, y=-8.236(Dock 상단). 왕복이 닫힌다.
+  그러나 **223건 전체 실행 동안 이 경고는 0회** 찍혔다 — 즉 **M3의 유도 경로를 안정적으로 지키는 테스트가
+  현재 0건**이고, 유일한 잠금장치가 무작위로 빨간불을 낸다. 다음 사람은 이 빨간불을 "또 그 flaky"로 무시하게 된다.
+- **제안**: 배회 AI의 운에 맡기지 말 것. (a) 관찰 전에 진행 방향을 Dock 쪽으로 확정시키거나,
+  (b) 시드 주입 경로를 열거나(테스트 전용 생성자 인자), (c) 최소한 `stepUpChance`를 1.0으로 올린 클론 config를
+  쓰고 시작 x를 모서리에 더 붙인 뒤 관찰창을 늘린다. 지금은 (c)만으로는 방향 추첨이 남아 불충분하다.
+
+#### M2 (Major) — `StepUpCoversDrop_TileSize80`의 네거티브 컨트롤 전제가 **산술적으로 틀렸다**
+> **[Debugger, 2026-08-30 해소]** 교차점 80.20pt 실측 확정(80 ✔ / 81 ✘). 게이트를 산술 유도 + 양방향
+> 단언으로 교체하고 정확한 경계는 EditMode 산술 테스트로 이관. 위 R2 표도 정정.
+> ★ 단, 제안된 `>= 81f`도 왕복 오차 안이라 불충분했다 — 맨 아래 H-R3e 참고.
+- **단언**: `configured(2.400) <= measuredDrop(2.39511)` → 거짓. 실패 메시지가 그대로 말해 준다.
+- **재검산**: 1pt = 24/982 = 0.0244399유닛. 낙차(tilesize) = (tilesize+18)pt.
+  `2.4 / 0.0244399 = 98.2pt` → **교차점은 tilesize 80.2**다. 즉 `79→2.3707 / 80→2.3951`은 **아직 2.4가 덮고**,
+  `81→2.4196`부터 못 덮는다. 테스트의 `if (tileSizePoints >= 80f)` 게이트가 한 칸 이르다.
+- **문서도 같이 틀렸다**: R2 보고서 표의 `80 | 2.395 | ✘ 경계`는 오기다(실제로는 ✔). 이 프로젝트는 표를 근거로
+  값을 판단하므로 표만 남으면 다음 사고가 된다 — 테스트와 Tasklist 표를 함께 고칠 것.
+- **제안**: 게이트를 `>= 81f`로 올리거나, 네거티브 컨트롤 대상 tilesize를 80 → **96**(2.786)으로 바꾼다.
+  M3의 근거 자체는 무너지지 않는다(tilesize 81~128 구간에서 여전히 참).
+
+### Minor 5건
+- **m1 오늘 회귀의 근본 원인이 그대로 남아 있다(방어만 한쪽에 있다).** `GearRadialMenuWidget.BuildStickmanSymbol`은
+  여전히 캐릭터 루트 밑 Canvas 안에 **`"Head"` / `"ArmL"` / `"LegL"`** 이름의 UI 자손을 만든다. 게다가
+  `CharacterPortraitStage.cs:514-515`도 **`"Head"` / `"Torso"`**를 만들고, 그 캔버스 역시 `CharacterInfoWindow`가
+  캐릭터 루트에 붙인다 — **부채꼴 메뉴가 없었어도 정보창을 여는 것만으로 같은 회귀가 났다**는 뜻이다.
+  리더 수정은 소비자(`StickmanPoseAnimator`) 쪽 방어라 옳지만 한쪽뿐이다. 생산자 쪽 1줄 수정이 훨씬 싸다:
+  아이콘 부품 이름에 접두사를 붙이거나(`IconHead`/`IconArmL`), ScreenSpaceOverlay 캔버스를 캐릭터 루트에 달지
+  않는다(`InfoGearIconWidget`은 이미 `SetParent(null, false)`로 씬 루트에 단다 — 그쪽이 옳은 전례다).
+- **m2 같은 계열의 마지막 잔여물 — `EyeController` 생성자(`States/EyeController.cs:147-150`).**
+  `GetComponentsInChildren<Transform>(true)`로 **자손 전체**를 훑고 `break` 없이 **마지막 일치**를 채택한다 —
+  회귀 직전의 `StickmanPoseAnimator`와 **글자 그대로 같은 코드 형태**다. 게다가 `_head = _leftEye.parent`라
+  오염되면 머리 기준 좌표계까지 UI로 넘어간다. 지금은 `LeftEye`/`RightEye`를 쓰는 UI가 없어 잠재적이지만,
+  눈은 손자라 직속 스코프로 못 좁히므로 **"Head의 직속 자식"으로 좁히는** 별도 처리가 필요하다.
+- **m3 횡단 리뷰 M2(전체화면 감지 시 미숨김, 원칙 2 위반)가 처리되지 않았고 오늘 라운드가 이를 넓혔다.**
+  `grep IsSuspended` 결과 `GearRadialMenuWidget` / `PopoverPanel` / `TodoBoardPopover` 전부 **0건**
+  (`FocusSessionPopover`는 라벨 문구와 세션 시작 거부에만 쓰고 **자기 자신을 숨기지는 않는다**).
+  오늘 늘어난 상시 표면 = 부채꼴 캔버스 1 + 팝오버 캔버스 2 + **씬 루트 `BoxCollider2D` 차단막 2**.
+  `MacWindowService`의 히트테스트가 **커서 아래 픽셀 알파**를 보므로, 전체화면 게임 위에 팝오버가 떠 있으면
+  보이기만 하는 것이 아니라 **그 영역의 클릭을 실제로 먹는다.** 리더가 "후순위로 미루되 누락 금지"로 라우팅한
+  항목이며 R2/R3 어느 보고서에도 처리 기록이 없다 — **미처리 상태임을 명시적으로 기록해 둔다.**
+- **m4 `PopoverPanel.ScreenRectOf()` / `ContainsScreenPoint()`가 호출마다 `new Vector3[4]`를 할당한다.**
+  `Core/DockGeometry.cs`가 명문화한 "24시간 상주라 이런 쓰레기를 만들지 않는다"는 컨벤션과 어긋난다.
+  매 프레임은 아니지만 `TodoBoardPopover`의 행 판정이 클릭 1회에 여러 번 부른다. `static readonly Vector3[4]`
+  버퍼 하나면 끝난다(`GetWorldCorners`가 채워 주는 방식이라 재사용이 안전하다).
+- **m5 `GearRadialMenuWidget`의 공개 접근자 2개만 가드가 없다.** `MinimumCenterSpacingPoints()` /
+  `ClampBoxPoints(int)`는 `_buttons[i]`를 무조건 역참조한다 — 같은 파일의 `ButtonScreenCenter` /
+  `ButtonProgress`가 범위·null을 전부 검사하는 것과 비대칭이라 다음 사람이 안전하다고 오해한다.
+
+### 통과 항목 (다음 사람은 여기부터 건너뛰어라)
+- **`CharacterSaveStore.cs` 3중 편집 병합 — 라인 단위 확인 결과 충돌 0건.** v3→v4 스키마(`todos`/`todoArchive`)와
+  다운그레이드 가드(`HandleNewerVersionFile` + `SaveSuspended`)가 서로 다른 지점에 앉아 있고, `Load()`의
+  분기 순서(`version <= 0` 조기 반환 → `version > CurrentVersion` 가드 → 정상 복원)도 정확하다.
+  `Save()` 선두의 `if (SaveSuspended) return false;`가 v4 직렬화보다 먼저 온다(순서가 뒤바뀌면 방어가 무의미하다).
+- **`DockGeometry.cs`** — 이번 라운드 신규 코드 중 가장 잘 된 축. 낙차/환산/tilesize 범위/임계 배율/상한 유도가
+  한 파일에 모였고, "런타임은 관계식이 아니라 열거된 사각형을 잰다"는 한계와 근거가 함께 적혀 있다.
+  `ResolveStepUpMaxHeight`의 NaN·0 이하 폴백도 있다.
+- **`SceneBootstrapper` 라이벌 정리 목록** — 신규 6종(`GearRadialMenuWidget`/`FocusSessionPopover`/
+  `TodoBoardPopover`/`LandingDustRenderer`/`RivalDuelClashRenderer`/`IdleAmbientMotionRenderer`) 전부 제거 목록에
+  들어 있음을 전수 대조 확인. `EnsurePrefabComponents` 멱등 메뉴는 `BuildAll --force`의 fileID 전면 재할당
+  (BUG-SW-M3)을 피하는 옳은 선택이다.
+- **`LandingImpactEvent` 좌표 추가** — 발행자 2곳(`FallState`/`ThrowTumbleState`)이 라이벌 상태머신에도 등록된다는
+  사실에서 나온 필연적 변경이고, 기존 구독자 0명이라 파급도 없다.
+- **`StickmanBlackboard`의 유휴 앰비언트 갈래** — 새 상태를 만들지 않고 Idle 분기에만 얹었으며,
+  `TickIdleAmbientMotion`이 Idle 이탈/스위치 OFF를 매 프레임 재확인해 자동 취소된다. `SetBodyOffset`의
+  인자 없는 오버로드가 항상 headOffsetX=0을 넣으므로 다른 포즈 경로로 넘어가면 자동 원복된다(고착 불가).
+- **`ThrowTumbleState` m8 통일** — 위치는 `MoveBodyToWorld` 단일 창구, 회전만 Rigidbody2D+Transform 양쪽에
+  직접. 프로젝트 전역에 `body.position =` 직접 대입 0건 재확인.
+- **신규 StickConfig 18필드** — 전부 `DefaultStickConfig.asset`에 직렬화돼 있고 코드 기본값과 일치.
+  `[Range]` 미부착은 규약 위반이 아니다(전체 351개 Tooltip 중 `[Range]`는 11개뿐 = 이 프로젝트 관례가 아님).
+- **`UiChrome.Circle()`/`Ring()` 텍스처 캐시** — 키가 두께 비율이라 사용 조합이 소수(5개 미만)로 유계이고,
+  버튼 축소 폴백(44→36)은 `localScale`만 바꾸므로 재굽기가 일어나지 않는다.
+
+### 과학적 토론 로그
+- **H-R3a(채택)** "PlayMode 잔여 실패 2건은 병행 작업 탓이 아니라 그 테스트 자체의 결함이다."
+  → 검증: 통합 완료 트리에서 그대로 재현. M2는 산술 재검산으로 즉시 확정(교차점 80.2), M1은 **동일 테스트
+  3회 반복 실행**으로 1승 2패를 실측해 비결정성을 확정. 반대 가설("미커밋 파일이 아직 빠져 있다")은
+  `DockGeometry.cs`가 존재하고 나머지 3건이 통과한다는 사실로 기각.
+- **H-R3b(기각)** "M1 실패는 M3 유도(`ResolveStepUpMaxHeight`)가 실제로는 동작하지 않기 때문이다."
+  → **반증**: 통과한 1회의 로그에 유도 경고(2.400 → 3.868)와 `턱 높이=3.568(상한 3.87)` 결정, 그리고
+  Dock 핸들(-2) 복귀가 전부 찍혔다. 유도는 옳게 동작한다 — 실패는 AI가 그 판정 지점에 **도달하지 못한** 것이다
+  (실패 실행에서는 유도 경고 자체가 0회).
+
+## 2026-08-30 — R3 후속: **M1(flaky 테스트) + M2(경계값 산술 오기)** 처리 **[Debugger]**
+
+리더 라우팅대로 R3 Major 2건을 처리했다. **둘 다 제품 코드 결함이 아니라 테스트 자체의 결함**이라는
+test-engineer 판단이 옳았음을 재확인했고, **제품 코드는 한 줄도 건드리지 않았다**(`StickmanAgent.cs:247`의
+Guid 시드 생성도 그대로 뒀다 — 아래 근거). **커밋 없음**(리더 통합용).
+
+| 항목 | 결과 |
+|---|---|
+| 수정 파일 | `Tests/PlayMode/DockTileSizeStepUpTests.cs`, `Tests/EditMode/DockGeometryInvariantTests.cs`, `Tasklist.md`(표 정정) |
+| 제품 코드 변경 | **0줄** |
+| PlayMode `DockTileSizeStepUpTests` | **5/5 통과 × 4회 독립 실행**(`Logs/dbg_m1_play1~3.xml`, `dbg_final_play.xml`) |
+| EditMode `DockGeometryInvariantTests` | **8/8 통과**(기존 7 + 신규 1, `Logs/dbg_m2_edit.xml`, `dbg_final_edit.xml`) |
+| 컴파일 | `error CS` / `warning CS` **0건** |
+| 네거티브 컨트롤 | M1·M2 각각 실패 재현 성공(아래) |
+
+### M1 — `LargestTileSizeStillClimbsBackOntoDock` 비결정성 제거
+
+**원인(재확인)**: 테스트가 캐릭터를 Dock 모서리 0.6유닛 옆(x=7.0)에 세워 두고 **배회 AI가 스스로
+왼쪽으로 걸어와 `stepUpChance`(0.85) 추첨을 이기기를 25초 기다리는** 구조였다. 방향 추첨(50:50) ·
+즉흥 방향전환(8%) · Idle 연장(25%) · 경계 행동 추첨(85%)이 전부 `StickmanAgent.cs:247`의
+`new System.Random(System.Guid.NewGuid().GetHashCode())` — **매 실행 다른 시드** — 를 탄다.
+
+**수정(테스트 전용, 이 프로젝트의 기존 관례를 그대로 따름)**:
+`Tests/PlayMode/EdgeHopDownTests.AutoWanderHopsDownAndClimbsBackWithoutScriptedPulses`가 이미 쓰고 있던
+패턴을 그대로 가져왔다 — **가짜 IntentSource를 주입하지 않는다**(그러면 고친 판정
+`ResolveStepUpMaxHeight`를 통째로 건너뛴다). 대신 확률과 시드만 없앤다:
+1. 복제 `StickConfig`로 `new AutoWanderController(bb, _clonedConfig, new System.Random(20260830))`을
+   직접 만들어 `bb.IntentSource`에 꽂고 코루틴이 `Tick`한다(에이전트 컨트롤러는 **원본** config +
+   Guid 시드라 못 쓴다. 원본 자산 수정은 불변 원칙 3 위반).
+2. 지터 0 / 즉흥 방향전환 0 / 제자리 점프 0 / 경계 점프 0 / `postIdleWalkChance` 1 /
+   걷기 지속시간 = 관찰창 x4(도중 Idle 복귀 = 방향 재추첨 차단) /
+   `hopDownChance` 0 · `ledgeHangChance` 0(캐릭터가 이미 최하단 안전망 위라 어차피 대상 없음) /
+   `stepUpChance` 1.
+3. **진행 방향 추첨까지 제거** — 시작 위치를 `TryGetWalkableScreenBoundsWorld`가 준 오른쪽 걷기 한계에서
+   0.15유닛 안쪽에 둔다. `PickDirectionAvoidingEdge`가 "화면 끝에 붙어 있음"을 보고 안쪽(왼쪽)으로
+   강제하고, **설령 바깥쪽을 골라도** 화면 끝 경계 판정이 `wanderEdgeTurnPause`(0.15초) 만에 되돌린다
+   = 어느 쪽이든 왼쪽으로 걷는다(이중 안전장치).
+4. `TearDown`에 `IntentSource` 복원을 추가했다 — 없으면 다음 테스트의 캐릭터가 **파괴된 복제 config**를
+   든 컨트롤러의 의도를 읽는다(원본 파일에 없던 누수, 이번에 함께 막음).
+
+**+ R3가 지적한 "유도 경고 0회" 구멍도 함께 막았다.** 두 가지를 추가로 단언한다:
+- **전제**: `drop(3.568) > stepUpMaxHeight(2.400)`. 이게 성립할 때에만 등반 성공이 곧 "유도가 동작했다"의
+  증거가 된다(성립하지 않으면 유도 없이도 통과해 테스트가 M3를 하나도 잠그지 못한다).
+- **직접 증거**: `Application.logMessageReceived`로 `[되올라가기] 실측 Dock 낙차 ...` 경고를 관측했는지 단언.
+
+**결정론 실측 — 4회 독립 실행 전부 동일한 최종 좌표**:
+```
+run1 되올라옴=True 등반관측=True 유도경고관측=True  5.2초  최종핸들=-2  위치=(5.950,-8.236)
+run2 되올라옴=True 등반관측=True 유도경고관측=True  5.3초  최종핸들=-2  위치=(5.950,-8.236)
+run3 되올라옴=True 등반관측=True 유도경고관측=True  5.3초  최종핸들=-2  위치=(5.950,-8.236)
+run4 되올라옴=True 등반관측=True 유도경고관측=True  5.3초  최종핸들=-2  위치=(5.950,-8.236)
+```
+(수정 전은 test-engineer 실측 **1승 2패**, 실패 시 최종 x = 6.738 / 11.492. 시간도 25초 만료였다.)
+유도 로그도 매회 찍힌다: `실측 Dock 낙차 3.568유닛이 ... 상한을 3.868유닛으로` →
+`결정 — 방향=왼쪽, 턱 높이=3.568유닛(상한 3.87), 턱 발판핸들=-2`.
+
+**네거티브 컨트롤(M1)** — 제품 코드를 되돌리는 대신 **테스트 전용**으로 유도 경로를 끊었다.
+`DockHandle`을 -2 → -7로 바꾸면 `TryMeasureDockDropWorldUnits`가 Dock을 못 찾아 상한이 설정 절대값
+2.4로 폴백한다. 결과: **5건 중 (B) 1건만 실패**, 그것도 정확히 옳은 이유로 —
+`되올라옴=False, 등반관측=False, 유도경고관측=False, 25.0초, 최종핸들=-3`.
+즉 고친 테스트는 **여전히 M3 유도가 죽으면 반드시 빨간불**이며, 동시에 그 실패조차 결정론적이다.
+(제품 코드를 되돌리는 방식은 같은 시각 다른 에이전트가 Unity 배치 테스트를 돌리고 있어
+그쪽 실행을 오염시킬 위험이 있어 택하지 않았다 — 테스트 전용 컨트롤로 같은 결론을 얻었다.)
+
+**★ `StickmanAgent.cs:247`은 건드리지 않았다(리더 확인 요망).** 시드 주입 지점을 새로 뚫을 필요가 없었다 —
+`StickmanBlackboard.IntentSource`가 이미 public setter라 테스트가 **자기 컨트롤러를 꽂는 정식 경로**가
+존재하고, 이 프로젝트의 다른 PlayMode 테스트 6개가 이미 그 경로를 쓰고 있다. Guid 시드 자체는
+"세포분열로 여러 개체가 동시에 존재해도 같은 패턴으로 움직이지 않게"(UX 26-3)라는 제품 요구라
+테스트 편의로 약화시킬 이유가 없다.
+
+### M2 — 절대값 커버리지 교차점 정정 (80 → 80.2, 경계는 81)
+
+**재검산 확정(실측)**: `[DOCK-GEOM] 절대값 커버리지 교차 tilesize = 80.20pt (stepUpMaxHeight 2.400유닛).
+tilesize 80 → 낙차 2.39511유닛 (여유 0.00489) / tilesize 81 → 낙차 2.41955유닛 (부족 0.01955)`
+→ test-engineer의 재검산이 정확히 맞다. 옛 게이트 `if (tileSizePoints >= 80f)`는 **한 칸 일렀다.**
+
+**수정 3곳**:
+1. `DockTileSizeStepUpTests.AssertStepUpCoversDrop` — tilesize 하드코딩 게이트를 없애고 교차점을
+   그 자리에서 산술로 유도한 뒤 **양방향**으로 단언한다(교차점 아래 → "절대값이 덮는다",
+   위 → "못 덮는다"). 한 방향만 잠그던 예전보다 강해졌다.
+2. **교차점 근방 ±0.05유닛에서는 어느 쪽도 단언하지 않는다.** ★ 이게 이번 라운드에서 새로 막은 두
+   번째 지뢰다 — tilesize 80은 교차점에서 **0.00489유닛**밖에 안 떨어져 있는데, 같은 함수가 선언한
+   좌표 왕복 허용오차는 **0.02유닛**이다. 그 자리에 부등호를 거는 것은(부호가 어느 쪽이든)
+   자기가 선언한 계약보다 좁은 마진에 단언을 거는 짓이고, 곧 **두 번째 flaky**가 된다.
+   (정직한 기록: 이 개발 머신 배치모드에서 실측 왕복 오차는 `기대 2.39511 / 실측 2.39511`로
+   **0.00000**이었다. 그래도 계약이 0.02라고 적혀 있는 이상 그 안쪽에 단언을 걸지 않는다.)
+3. **정확한 경계(80 ✔ / 81 ✘)는 왕복 오차가 존재하지 않는 순수 산술 쪽에서 잠갔다** —
+   `Tests/EditMode/DockGeometryInvariantTests.설정_절대값_커버리지_교차점은_tilesize_80과_81_사이다`(신규).
+   배포 에셋을 읽어 `configured > drop(80)`, `configured < drop(81)`, 그리고 유도한 교차점이
+   80~81 구간 안에 있음을 함께 단언한다.
+4. 파일 상단 문서의 오기(`tilesize 80부터 낙차를 못 덮는다`)와 **이 문서 R2 보고서 표**
+   (`80 | 2.395 | ✘ 경계`)도 정정했다(81행 신설 + 정정 사유 각주).
+
+**네거티브 컨트롤(M2)** — 2건 전부 실패 재현 확인.
+- EditMode: `CoveredTileSize`/`NotCoveredTileSize`를 81/80으로 맞바꾸면 8건 중 1건 실패(`Logs/dbg_m2_edit_neg.xml`).
+- PlayMode: 옛 게이트(`if (tileSizePoints >= 80f) Assert.LessOrEqual(configured, measuredDrop)`)를
+  임시로 되살리면 `StepUpCoversDrop_TileSize80`이 R3 보고서와 **글자 그대로 같은 메시지**로 실패한다 —
+  `Expected: less than or equal to 2.39511108f / But was: 2.4000001f` (`Logs/dbg_m2_neg.xml`). 확인 후 원복.
+
+**M3의 결론은 안 바뀐다** — 유도가 필요한 구간이 tilesize 80~128에서 81~128로 한 칸 줄었을 뿐이고,
+`stepUpMaxHeight` 절대값이 최대 낙차(3.568)를 못 덮는다는 M3의 근거는 그대로다.
+
+### 교차 레이어 영향 로그 (리더 확인 요망)
+- **제품 코드 변경 0줄.** `StickmanAgent.cs` / `AutoWanderController.cs` / `DockGeometry.cs` / `StickConfig.cs`
+  전부 무수정 — 같은 시각 병행 중인 코더 작업(`GearRadialMenuWidget`/`PopoverPanel`/`CharacterPortraitStage`/
+  `EyeController`/`TodoBoardPopover`)과 파일 충돌 0건.
+- `DockGeometryInvariantTests.cs`에 EditMode 테스트 **+1건**(7 → 8). 전체 EditMode 기준선이 87 → **88**이 된다.
+- PlayMode 건수 변화 없음(5건 그대로). 실행 시간은 (B)가 25초 만료 → **5.3초 조기 성공**으로 줄어
+  전체 스위트가 약 20초 빨라진다.
+- **Unity 락 경합 실측** — 병행 코더가 같은 프로젝트로 배치모드 테스트를 돌리는 동안 내 실행이
+  `Fatal Error! It looks like another Unity instance is running`(exit 134)로 죽었다. 락 해제를 기다렸다가
+  재시도하는 방식으로 우회했다. **다음 사람 주의**: 병렬 에이전트가 둘 이상 Unity 배치를 돌리면
+  결과 XML이 아예 생성되지 않으므로, exit code만 보고 "실패"로 오독하지 말 것(XML 존재 여부를 먼저 볼 것).
+
+### 과학적 토론 로그
+- **H-R3c(채택)** "M1은 시드를 고정하는 것만으로는 안 되고 **진행 방향 추첨**까지 없애야 결정론이 된다."
+  → 검증: `AutoWanderController` 코드 경로 추적 결과 방향은 `PickDirectionAvoidingEdge`(50:50) →
+  `EnterMoving` → 즉흥 방향전환(8%/0.5초) → Idle 복귀 시 재추첨의 4중 확률에 걸려 있었다.
+  시작 위치를 화면 걷기 한계 안쪽에 두어 **product 로직 자신이 방향을 강제**하게 만드는 방식으로 해결.
+  4회 실행 최종 좌표가 소수점 3자리까지 동일(5.950, -8.236)한 것으로 확정.
+- **H-R3d(기각)** "테스트를 고치려면 `StickmanAgent.cs:247`에 테스트 전용 시드 주입 지점이 필요하다."
+  → **반증**: `StickmanBlackboard.IntentSource`가 이미 public setter이고 `EdgeHopDownTests`가
+  같은 목적으로 이미 그 경로를 쓰고 있다(복제 config + 고정 시드 컨트롤러 주입). 제품 코드 수정 불필요.
+- **H-R3e(신규 채택)** "M2를 `>= 81f`로 고치는 것만으로는 부족하다 — tilesize 81의 부족분(0.01955)조차
+  이 파일이 선언한 왕복 허용오차(0.02)보다 **작다**."
+  → 검증: 실측 `tilesize 81 → 2.41955` vs `configured 2.400` = 0.01955 < 0.02. 즉 `>= 81f` 게이트도
+  다른 해상도/DPI에서는 측정 노이즈로 뒤집힐 수 있다. 그래서 PlayMode에서는 교차점 ±0.05 밴드를
+  **판정 유보**로 두고, 정확한 경계는 왕복 오차가 원리적으로 0인 EditMode 산술 테스트로 옮겼다.
+  test-engineer가 제시한 두 안(`>= 81f` / 대상을 96으로 교체) 중 어느 쪽도 이 함정을 못 막는다.
+
+## 2026-08-30 — R3 반려 후속: **m1(생산자 측 이름 충돌) + m2(EyeController) + m3(원칙 2) + m4/m5** [Coder]
+
+리더 배정 5건 전부 수정. 신규 파일 2개(테스트), 수정 파일 7개, **커밋 없음**(리더 통합용).
+검증: 컴파일 **에러 0**, EditMode **88/88**, PlayMode **226/226**(신규 3건 포함, 전량 클린 재실행).
+
+### m1 — 회귀의 생산자 측 제거 + **test-engineer 진단 1건 반증**
+
+**반증(중요)**: R3 보고서의 "`CharacterPortraitStage.cs:514-515`도 `"Head"`/`"Torso"`를 만들고 그 캔버스 역시
+`CharacterInfoWindow`가 캐릭터 루트에 붙인다 → 정보창을 여는 것만으로 같은 회귀가 났다"는 **사실이 아니다**.
+코드로 재확인한 실제 부모-자식 관계:
+- `CharacterPortraitStage.Create()`는 `new GameObject("CharacterPortraitStage")` 후 **SetParent를 부르지 않는다**
+  (= 씬 루트). `CharacterInfoWindow.cs:924`는 그 결과를 받기만 하고 재부모화하지 않는다.
+- 그 "Head"/"Torso"는 `CharacterPortraitStage/MiniFigure/*`라 **캐릭터 계층 밖**이다. 이름으로 캐릭터 파츠를
+  찾는 코드는 전부 캐릭터 루트에서 출발하므로 수정 전 `GetComponentsInChildren` 코드로도 닿을 수 없었다.
+- 개명하지 않는다: `PortraitFallenFramingTests:149`가 `figure.Find("Head")`로 이 원을 실측해 액자 밖 잘림을
+  검사한다 — 이득 없이 잠금장치만 끊는다. 대신 **왜 안전한지**를 그 자리에 주석으로 못박았다.
+- 정보창 캔버스 자체도 부품 이름 전수 대조 결과 예약어(Head/Torso/LeftArm/RightArm/LeftLeg/RightLeg/
+  LeftEye/RightEye/HeadOutline)와 **충돌 0건**이었다.
+
+**진짜 생산자는 `GearRadialMenuWidget` 하나**였다(`BuildUi`가 캔버스를 `SetParent(transform)`으로 캐릭터
+루트에 달고, 그 안에 `"Head"`가 있었다). 여기에 (a)와 (b)를 **둘 다** 적용:
+- (b) `GearRadialMenuWidget` 캔버스를 `SetParent(null, false)`로 **씬 루트**에 붙였다(`InfoGearIconWidget`의
+  기존 전례와 동일). ScreenSpaceOverlay 캔버스는 화면 좌표계 물건이라 애초에 캐릭터 계보에 속할 이유가 없다.
+  정리는 기존 `OnDestroy`가 이미 책임진다.
+- (a) 미니 스틱맨 부품을 `IconHead`/`IconSpine`/`IconArmL`/`IconArmR`/`IconLegL`/`IconLegR`로 개명.
+- 같은 이유로 `PopoverPanel`(팝오버 2종의 공통 캔버스)과 `CharacterInfoWindow` 캔버스도 씬 루트로 옮겼다.
+  현재 이름 충돌은 없지만 "앞으로 아무도 Head/Torso를 안 쓴다"는 기대에 기대는 구조를 남기지 않는다.
+  `CharacterInfoWindow.OnDestroy`에 캔버스 파괴를 추가했다(캐릭터와 함께 죽지 않게 되었으므로 필수).
+
+**네거티브 컨트롤(3단 실측, LandingCrouchTests)**
+| 실행 | 소비자 방어(`StickmanPoseAnimator` 직속 탐색) | 생산자 방어(이번 수정) | 결과 | 머리 최대 하강 |
+|---|---|---|---|---|
+| A | 있음 | 있음 | **6/6 통과**(관련 43/43) | 0.117 / 0.325유닛 |
+| B | **일부러 제거**(회귀 직전 코드로 되돌림) | 있음 | **6/6 통과** | 0.117 / 0.324유닛 |
+| C | **제거** | **제거**(원래 "Head" + 캐릭터 루트 부착) | **4/6 실패** | **0.000유닛 (회귀 재현)** |
+
+→ C가 사고를 그대로 재현하고 B가 통과하므로 **생산자 측 수정만으로 회귀가 막힌다**는 것이 실측으로 확정됐다
+(소비자 측 방어는 그대로 유지 = 이중 차단). 임시 수정은 전부 원복 확인 완료.
+
+### m2 — `EyeController` 무제한 자손 탐색 제거
+`Editor/SceneBootstrapper.cs:984,996-998`에서 프리팹 규약을 먼저 확인했다: `Head`는 **루트 직속**
+(`CreateHeadAnchor(root.transform, "Head", ...)`)이고 `LeftEye`/`RightEye`는 그 **직속 자식**
+(`CreateFilledDot(head.transform, ...)`) — 즉 눈은 손자라 루트 직속으로는 못 좁힌다.
+→ **"루트 직속 Head" → "그 직속 자식"** 2단계로 좁히고 첫 일치에서 `break`. `FindDirectChild` 헬퍼 추가.
+`_head = _leftEye.parent` 정의는 일부러 유지했다(눈이 매달린 Transform이 곧 좌표계라는 불변식 보존).
+
+신규 잠금 `EyeControllerHeadScopeTests` — 캐릭터 루트 밑에 `DecoyUiCanvas/Head/LeftEye,RightEye` 미끼를
+**마지막 형제로** 실제로 심고(옛 코드였다면 반드시 미끼가 이긴다) 새 `EyeController`를 만들어 실측:
+눈동자 상한 **0.0649유닛** / 머리 배율 **0.6988**이 미끼 유무와 무관하게 동일. 미끼를 잡았다면 링
+("HeadOutline")이 없어 폴백(배율 정확히 1.0)으로 떨어지므로 반드시 값이 달라진다 = 이 단언은 실효가 있다.
+
+### m3 — 원칙 2(전체화면 감지 시 자동 숨김) 전면 적용
+`WindowCrashDirector`의 "IsSuspended 폴링 → 오버레이 취소" 패턴을 따라 **소유권을 각 컴포넌트에 분산**했다
+(한 곳에서 남의 캔버스를 끄는 구조는 이 프로젝트가 이미 여러 번 밟은 함정이다):
+- `InfoGearIconWidget.LateUpdate` — 1차 관문. 톱니 그림 `SetActive(false)` + 클릭 타깃 콜라이더 비활성 +
+  메뉴 접기 + 창 닫기 + 눌림/드래그/회전 상태 취소(`_leftInitialized=false`로 복귀 후 엣지 재획득).
+  복귀 시 **톱니만** 되살린다.
+- `GearRadialMenuWidget.LateUpdate` — 팝오버 닫고 `Hide()`(애니메이션 없이 한 프레임에).
+- `PopoverPanel.Update` — 팝오버 2종 공통. `Hide()`가 캔버스 + **씬 루트 BoxCollider2D 차단막**을 함께 끈다.
+- `CharacterInfoWindow.Update` — `Close()`가 캔버스/차단막/초상화 촬영장 렌더링을 한 번에 정리.
+- `CharacterPortraitStage`는 별도 폴링을 넣지 않았다 — 화면에 직접 그리지 않고 RT로만 렌더하며,
+  창이 닫히면 `SetRenderingEnabled(false)`로 카메라가 꺼진다(전이적으로 커버됨).
+
+접힘 연출을 쓰지 않고 즉시 숨기는 이유: 이건 사용자 동작이 아니고, 그 0.12~0.13초 동안에도 차단막이
+살아 있어 전체화면 게임의 클릭을 먹는다. 복귀 시 메뉴/창/팝오버를 **강제로 다시 열지 않는다**(확정 설계).
+
+신규 잠금 `FullscreenSuspendUiHidingTests` 2건 — 다섯 표면(톱니/부채꼴/팝오버/창)과 **차단막 3종**을
+전부 켠 상태에서 감지를 주입하고, 플래그가 아니라 GameObject/Collider의 **실제 상태**로 단언한다.
+① 숨기기 전 전부 켜져 있음 확인 → ② 감지 후 전부 꺼짐 → ③ 복귀 시 톱니만 부활, 메뉴/창/팝오버는 닫힌 채 유지.
+네거티브 컨트롤(감지 없음 → 아무것도 안 사라짐)까지 포함.
+
+### m4 / m5
+- **m4** `PopoverPanel.ScreenRectOf()`/`ContainsScreenPoint()`의 `new Vector3[4]` 제거 →
+  `static readonly Vector3[4] CornerBuffer` 재사용. 안전한 이유(즉시 소비 / 메인 스레드 전용 / 재진입 없음)를
+  주석에 명시. `GetWorldCorners`가 버퍼를 채워 주는 API라 재사용이 자연스럽다.
+- **m5** `MinimumCenterSpacingPoints()`/`ClampBoxPoints(int)`에 형제 접근자와 같은 범위·null 가드 추가.
+  같은 계열의 `SetHover(int)`도 `_buttons[index]`를 무가드로 역참조하고 있어 함께 맞췄다(R3 미지적 잔여물).
+
+### 과학적 토론 로그
+- **H-C1(채택)** "오늘 회귀의 생산자는 `GearRadialMenuWidget` **하나뿐**이고 `CharacterPortraitStage`는
+  무관하다." → 검증: 부모-자식 관계를 코드로 추적(Create가 SetParent 미호출 = 씬 루트) + 위 3단 네거티브
+  컨트롤. 소비자 방어를 제거한 B 실행이 통과한 것이 곧 "생산자가 하나뿐이었다"의 증거다.
+- **H-C2(기각)** "정보창/팝오버 캔버스에도 같은 이름 충돌이 이미 있다." → 반증: 두 파일의 문자열 리터럴을
+  전수 추출해 예약어 9개와 대조한 결과 **교집합 0건**. 그래서 개명이 아니라 계층 분리(구조적 예방)만 적용했다.
+
+### ⚠ 교차 레이어 영향 (리더 확인 필요)
+1. **씬 계층 변경** — `GearRadialMenuCanvas` / `FocusSessionPopoverCanvas` / `TodoBoardPopoverCanvas` /
+   `CharacterInfoCanvas`가 캐릭터 루트 자식 → **씬 루트**로 이동했다. 캔버스를 계층 경로로 찾는 코드는
+   전수 조사 결과 0건이며 PlayMode 226/226으로 확인했지만, 앞으로 이 캔버스들을 찾을 때
+   `transform.Find`가 아니라 `FindObjectsByType`을 써야 한다.
+2. **`CharacterInfoWindow.OnDestroy`가 캔버스를 파괴하도록 추가** — (1)의 필연적 결과다. 라이벌 정리
+   경로(`SceneBootstrapper.CreateRivalStickman`)에서 이 컴포넌트만 제거해도 캔버스가 남지 않는다.
+3. **테스트 전용 훅 필요(미이행, 의도적)** — `StickmanAgent`에는 `IsFullscreenAppActive`를 주입할 seam이
+   없어 새 테스트가 `_isSuspended`를 리플렉션으로 세운다(기존 테스트 4곳이 쓰는 관례). 정공법은
+   `StickmanAgent`에 테스트용 서비스 주입구를 만드는 것인데, **같은 시각 다른 에이전트가 그 파일을 수정
+   중**이라 손대지 않았다. 통합 후 별도 라운드 과제로 남긴다.
+4. **신규 공개 진단 API 5개** — `InfoGearIconWidget.IsIconVisible/IsClickBlockerEnabled`,
+   `PopoverPanel.IsCanvasActive/IsClickBlockerEnabled`, `CharacterInfoWindow.IsCanvasActive/IsClickBlockerEnabled`.
+   전부 기존 private 필드의 **실제 상태**를 읽기만 하며 새 로직 없음(플래그를 믿지 않기 위한 관측 창구).

@@ -488,7 +488,7 @@ namespace StickMate.States
                 && _blackboard.TryFindClimbableWall(info, _direction, out long wallHandle, out float wallTopY))
             {
                 float wallHeight = wallTopY - info.GroundWorldY;
-                float maxHeight = Cfg(c => c.stepUpMaxHeight, 1.5f);
+                float maxHeight = ResolveStepUpMaxHeight();
                 if (wallHeight <= maxHeight)
                 {
                     _stepUpRequestedThisTick = true;
@@ -500,6 +500,71 @@ namespace StickMate.States
             }
 
             return false;
+        }
+
+        // ============================================================================
+        // ★ 되올라가기 상한을 **실측 Dock 낙차**에서 유도한다 (2026-08-30 횡단 리뷰 M3)
+        // ============================================================================
+        // 리뷰가 찾아낸 사실: StickConfig.stepUpMaxHeight = 2.4는 **이 개발 머신의 tilesize(49) 하나**에
+        // 맞춰 고른 절대값이었다. macOS의 tilesize 범위는 16~128이고 낙차는 tilesize+18pt이므로,
+        //     tilesize  16 → 0.83유닛 / 48 → 1.61 / 80 → 2.40(여기서 상한과 같아짐) / 128 → 3.57
+        // tilesize 80 이상을 쓰는 사용자에게는 "한 번 Dock 아래로 내려가면 영영 못 올라온다"가
+        // **고쳤다고 믿은 뒤에도 그대로 남아 있었다**(사용자가 세 번 신고한 그 증상). 절대값 하나로는
+        // 어떤 값을 넣어도 누군가에게는 틀린다 — tilesize가 사용자 설정이기 때문이다.
+        //
+        // 그래서 상한 = max(설정 절대값, **실측 낙차** + 여유). 실측은 새 OS 조회가 아니라 이미
+        // 열거돼 있는 발판 두 개(Dock 띠 / 바닥 안전망)의 상단 Y 차이다 — 권한도, 네이티브 호출도,
+        // 좌표계 변환도 하나 늘지 않는다. Dock을 못 찾으면(자동 숨김 / 좌우 세로 Dock / 비-macOS /
+        // 전체화면 감지 중) 예전과 100% 같은 절대값으로 되돌아간다.
+
+        /// <summary>되올라갈 수 있는 최대 턱 높이(월드 유닛). 위 문단 참고.</summary>
+        private float ResolveStepUpMaxHeight()
+        {
+            float configured = Cfg(c => c.stepUpMaxHeight, 1.5f);
+            if (!TryMeasureDockDropWorldUnits(out float dockDrop)) return configured;
+
+            float resolved = DockGeometry.ResolveStepUpMaxHeight(configured, dockDrop);
+
+            // 설정값만으로는 못 올라오는 환경이라는 사실 자체를 한 번은 남긴다 — 이 로그가 뜬다는 것은
+            // "이 사용자의 Dock에서는 stepUpMaxHeight 절대값이 무의미하다"는 뜻이고, 위 유도가 없었다면
+            // 그대로 갇혔을 환경이라는 뜻이다.
+            if (dockDrop > configured && !_loggedDockDropExceedsConfiguredStepUp)
+            {
+                _loggedDockDropExceedsConfiguredStepUp = true;
+                Debug.LogWarning($"[되올라가기] 실측 Dock 낙차 {dockDrop:F3}유닛이 stepUpMaxHeight 설정값 " +
+                    $"{configured:F3}을 넘습니다(Dock 아이콘이 큰 설정). 상한을 {resolved:F3}유닛으로 올려 " +
+                    "되올라가기를 유지합니다 — 이 유도가 없으면 한 번 내려간 캐릭터가 영영 못 올라옵니다.");
+            }
+            return resolved;
+        }
+
+        private bool _loggedDockDropExceedsConfiguredStepUp;
+
+        /// <summary>Dock 발판 상단 − 바닥 안전망 상단 = 지금 이 화면의 진짜 낙차(월드 유닛).
+        /// 핸들의 의미와 이 측정을 여기 둔 이유는 Core/DockGeometry.cs 하단 주석 참고.</summary>
+        private bool TryMeasureDockDropWorldUnits(out float dropWorldUnits)
+        {
+            dropWorldUnits = 0f;
+            if (_blackboard == null) return false;
+
+            if (!_blackboard.TryGetFootholdTopWorldY(
+                    StickMate.Platform.FallbackPlatformWindowService.DockFootholdHandle, out float dockTopY)) return false;
+
+            // 안전망은 Dock 좌우로 잘린 두 조각이고 둘의 상단 Y는 같은 단일 소스에서 나오므로 어느 쪽을
+            // 재도 같다. 한쪽 조각이 폭 0으로 죽어 있는 배치(Dock이 화면 끝까지 넓은 경우)를 위해 둘 다 본다.
+            float netTopY = 0f;
+            if (!_blackboard.TryGetFootholdTopWorldY(
+                    StickMate.Platform.FallbackPlatformWindowService.SyntheticFootholdHandle, out netTopY)
+                && !_blackboard.TryGetFootholdTopWorldY(
+                    StickMate.Platform.FallbackPlatformWindowService.SyntheticFootholdHandleRight, out netTopY))
+            {
+                return false;
+            }
+
+            float drop = dockTopY - netTopY;
+            if (drop <= 0f || float.IsNaN(drop)) return false;
+            dropWorldUnits = drop;
+            return true;
         }
 
         /// <summary>26-1: 최초(또는 매 Walk 페이즈 시작 시) 진행 방향은 좌우 50:50 랜덤. 단, 지금 위치가

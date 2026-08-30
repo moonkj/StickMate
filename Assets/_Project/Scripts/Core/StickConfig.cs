@@ -232,7 +232,8 @@ namespace StickMate.Core
         //    왜 필요했나: 위 매달리기(LedgeHang)는 물리적으로 **손끝~발끝 거리(약 2.5유닛)** 이상
         //    떨어져 있는 발판으로만 내려갈 수 있다(그보다 가까우면 매달리는 순간 발이 이미 목적지를
         //    지나쳐 버린다 — GroundSensor.TryFindDescendTarget 문서 참고). 그래서 macOS Dock 상단→
-        //    화면 최하단처럼 낙차가 0.855유닛뿐인 단차에서는 매달리기 판정에 걸리지 않아, 캐릭터가
+        //    바닥 안전망처럼 낙차가 1.6375유닛뿐인 단차에서는(배율 0.75 기준 매달리기 최소치 1.880 미만)
+        //    매달리기 판정에 걸리지 않아, 캐릭터가
         //    Dock 경계에서 그냥 되돌아설 뿐 스스로 내려오지 못했다(2026-08-29 라운드의 미해결 항목).
         //
         //    설계: 발판 경계에서 "아래에 내려앉을 발판이 있다"가 확인되면 **낙차 크기로 두 갈래**로
@@ -253,8 +254,8 @@ namespace StickMate.Core
 
         [Tooltip("★ 뛰어내리기 낙차 하한(월드 유닛). 아래 발판과의 높이차가 이 값보다 작으면 그냥 " +
                  "이어진 바닥이나 다름없어 '내려간다'는 동작 자체가 성립하지 않는다(연출도 안 보이고, " +
-                 "접지 허용오차 안이라 착지 판정이 흔들린다). macOS Dock 단차(0.855유닛)는 이 값보다 " +
-                 "충분히 크므로 정상적으로 뛰어내린다.")]
+                 "접지 허용오차 안이라 착지 판정이 흔들린다). macOS Dock 단차(1.6375유닛, tilesize 49 기준. " +
+                 "가장 작은 tilesize 16에서도 0.83유닛)는 이 값보다 충분히 크므로 정상적으로 뛰어내린다.")]
         public float hopDownMinDropHeight = 0.35f;
 
         [Tooltip("★ 뛰어내리기 낙차 상한(월드 유닛) — 이 값 **이상**이면 뛰어내리지 않고 매달리기" +
@@ -324,9 +325,18 @@ namespace StickMate.Core
                  "Dock 상단 OS y=907, 안전망 상단 OS y=974, 환산 1.637유닛. 1.5로는 더 이상 이 낙차를 " +
                  "덮지 못해 TryFindClimbableWall이 실패하고, 한 번 뛰어내리면 영영 못 올라온다(뛰어내리기 " +
                  "밴드는 여전히 이 낙차를 포함해 내려가기는 계속 성립하므로 왕복의 절반만 깨진다).\n" +
-                 "Dock 타일 크기(tilesize)는 사용자 설정에 따라 달라 낙차도 함께 변하므로(작은 타일 " +
-                 "~1.2유닛 ~ 큰 타일 ~2.2유닛 추정), 한 번 더 여유를 넉넉히 둔 2.4로 올린다. 그래도 " +
-                 "일반 창 발판(수백 pt 이상)까지 순간이동처럼 자동으로 오르지는 않는다.")]
+                 "Dock 타일 크기(tilesize)는 사용자 설정에 따라 달라 낙차도 함께 변하므로 한 번 더 여유를 " +
+                 "둔 2.4로 올린다. 그래도 일반 창 발판(수백 pt 이상)까지 순간이동처럼 자동으로 오르지는 않는다.\n\n" +
+                 "★★ 2026-08-30 (횡단 리뷰 M3) — 위 괄호의 \"작은 타일 ~1.2 ~ 큰 타일 ~2.2 추정\"이 **틀렸다**. " +
+                 "실제 macOS tilesize 범위는 16~128이고 낙차 = tilesize + 18pt이므로 유닛 환산은 " +
+                 "0.83(16) / 1.61(48, macOS 기본) / 1.64(49, 이 개발 머신) / 2.40(80) / 3.57(128)이다. " +
+                 "즉 tilesize 80부터 이 값 2.4를 넘어서고, 128이면 1.5배 넘게 초과한다 — Dock 아이콘을 크게 " +
+                 "쓰는 사용자에게 \"한 번 내려가면 영영 못 올라온다\"가 그대로 남아 있었다.\n" +
+                 "그래서 이 값은 이제 **절대 상한이 아니라 하한**이다: 실제 상한 = max(이 값, 실측 Dock 낙차 " +
+                 "+ 0.30유닛)을 States/AutoWanderController.ResolveStepUpMaxHeight()가 프레임마다 유도한다. " +
+                 "실측은 새 OS 조회가 아니라 이미 열거된 발판 두 개(Dock 띠 / 바닥 안전망)의 상단 Y 차이라 " +
+                 "권한·성능·좌표계 위험이 하나도 늘지 않는다. Dock을 못 찾으면(자동 숨김 / 세로 Dock / " +
+                 "비-macOS / 전체화면 감지 중) 이 값 그대로 폴백한다. 유도식은 Core/DockGeometry.cs.")]
         public float stepUpMaxHeight = 2.4f;
 
         [Tooltip("ParkourClimb로 턱 위에 올라선 뒤, 그 발판 안쪽으로 얼마나 들어가 설지(월드 유닛). " +
@@ -414,8 +424,14 @@ namespace StickMate.Core
         //   종속성이며, SceneBootstrapper의 BUG-SW-M2 경고는 그 의미로 계속 유효하다.
 
         [Tooltip("캐릭터 발 위치(OS 좌표)와 발판 상단 사이 허용 오차(**OS 포인트**). 이 범위 안이면 접지로 판정. " +
-                 "단위 근거는 아래 \"OS-px 필드 단위 규약\" 블록 참고 — Retina를 켜도 값을 바꿀 필요가 없다.")]
-        public float groundSnapTolerance = 6f;
+                 "단위 근거는 아래 \"OS-px 필드 단위 규약\" 블록 참고 — Retina를 켜도 값을 바꿀 필요가 없다.\n\n" +
+                 "★ 2026-08-30: 코드 기본값을 6 -> 20으로 올려 배포 에셋(DefaultStickConfig.asset)과 통일했다. " +
+                 "실행 경로는 원래 에셋값 20을 썼으므로 거동 변화는 **0**이다. 고친 이유는 지뢰였기 때문이다 — " +
+                 "CreateInstance<StickConfig>()로 설정을 만드는 테스트 10곳이 매번 손으로 20을 넣어 줘야 했고, " +
+                 "한 곳이라도 빠뜨리면 접지 밴드가 0.489 -> 0.147유닛으로 3.3배 좁아져 '가끔만 접지에 실패하는' " +
+                 "재현 어려운 실패가 난다(2026-08-30 횡단 리뷰 m3). 두 값의 일치는 " +
+                 "Tests/EditMode/DockGeometryInvariantTests가 매 실행마다 잠근다.")]
+        public float groundSnapTolerance = 20f;
 
         [Header("입력")]
         [Tooltip("이동 입력(-1~1)의 불감대. 이 값 이하는 '입력 없음'으로 취급해 Idle<->Walk 떨림을 방지")]
@@ -1126,7 +1142,8 @@ namespace StickMate.Core
                  "미세 정착과 걷다 만나는 작은 단차는 **전부 이 상한 아래**다. 0.49보다 작게 잡으면 " +
                  "정상 접지가 상한에 걸려 캐릭터가 걷다 말고 덜덜거리며 낙하한다.\n" +
                  " (상한) 그러면서도 '순간이동'이라고 부를 만한 거리보다는 작아야 한다. 되올라가기 " +
-                 "상한(stepUpMaxHeight 1.5유닛)보다 작게 두어, 그 정도 높이 변화는 스냅이 아니라 " +
+                 "상한(stepUpMaxHeight 설정값 2.4, 실측 Dock 낙차가 그보다 크면 Core/DockGeometry.cs가 " +
+                 "런타임에 더 올린다)보다 작게 두어, 그 정도 높이 변화는 스냅이 아니라 " +
                  "파쿠르/낙하라는 정식 경로로만 처리되게 한다.\n\n" +
                  "위/아래 방향을 따로 두지 않은 이유: 상한을 넘었을 때의 올바른 처리가 양쪽 모두 " +
                  "똑같이 'Fall'이다(아래로 크게 내려가는 것은 스냅이 아니라 낙하여야 하고, Fall에 " +
@@ -1238,13 +1255,18 @@ namespace StickMate.Core
         //
         // ★★ 일부러 **절대값으로 남겨둔** 값들과 그 근거 (기계적 비례화 금지 — 2026-08-29 검토)
         //   · parkourDetectionRadius(0.5) / hopDownProbeOutward(0.2) / hopDownMinDropHeight(0.35)
-        //     → 판정 상대가 캐릭터가 아니라 **OS가 주는 창/Dock 사각형**이다. Dock 단차(0.855유닛)는
-        //       캐릭터 크기와 무관하게 고정이므로 이 값들이 함께 줄면 판정만 예민해진다.
+        //     → 판정 상대가 캐릭터가 아니라 **OS가 주는 창/Dock 사각형**이다. Dock 단차(1.6375유닛,
+        //       이 개발 머신 tilesize=49 기준. Core/DockGeometry.cs가 유도)는 캐릭터 크기와 무관하므로
+        //       이 값들이 함께 줄면 판정만 예민해진다.
         //   · hopDownEdgeCommitDistance(0.12) → 제약이 "walkSpeed x 한 프레임"이고 둘 다 비례하지 않는다.
-        //   · stepUpMaxHeight(1.5) → 반드시 Dock 단차 0.855를 덮어야 한다. 비례로 바꾸면 배율 0.57
-        //       아래에서 1.5*s < 0.855가 되어 **한 번 Dock에서 내려간 캐릭터가 영영 못 올라온다**.
+        //   · stepUpMaxHeight(설정값 2.4) → 반드시 Dock 단차 1.6375를 덮어야 한다. 비례로 바꾸면 배율
+        //       0.68 아래에서 2.4*s < 1.6375가 되어 **한 번 Dock에서 내려간 캐릭터가 영영 못 올라온다**.
+        //       ★ 2026-08-30: 낙차 자체가 사용자의 Dock 크기 설정(tilesize 16~128)에 따라 0.83~3.57유닛
+        //       으로 변하므로, 어떤 절대값도 모든 사용자를 덮지 못한다. 그래서 런타임 상한은
+        //       AutoWanderController가 **실측 낙차 + 여유**와 이 설정값 중 큰 쪽으로 유도한다(횡단 리뷰 M3).
         //   · groundSnapTolerance(20 OS-pt) → OS 픽셀 단위의 접지 터널링 방지 허용오차. 낙하속도 x
         //       프레임시간에서 오는 값이라 캐릭터 크기와 무관하다.
+        //       (2026-08-30: 코드 기본값도 6 -> 20으로 맞춰 이 주석과 실제가 일치하게 됐다.)
         //   · groundSnapMaxDistanceWorld(0.6) → 하한이 위 groundSnapTolerance의 월드 환산값(약 0.49).
         //       비례로 바꾸면 배율 0.82 아래에서 0.6*s < 0.49가 되어 정상 접지가 상한에 걸린다.
         //   · wanderEdgeStopDistance(0.3) → hopDownEdgeCommitDistance(절대)보다 커야 하고, 프레임당
@@ -1270,13 +1292,23 @@ namespace StickMate.Core
                  "손끝 거리/화면 클램프 반폭 같은 런타임 값은 그 프리팹을 실측하므로 자동으로 따라온다.\n\n" +
                  "★ 값을 바꾼 뒤에는 메뉴 'StickMate/Rebuild All (기존 자산 덮어씀, 주의)'로 프리팹과 " +
                  "씬을 다시 구워야 반영된다(씬의 라이벌은 프리팹 사본이라 씬까지 다시 만들어야 한다).\n\n" +
-                 "★★ 하한 경고 — 배율 약 0.341 아래에서는 **Dock 단차의 동작이 바뀐다**. 근거: " +
-                 "Dock 상단→화면 최하단 낙차는 OS에서 오는 0.855유닛 고정인데, 매달리기 최소 낙차" +
-                 "(StickmanBlackboard.LedgeHangMinDropDepth = 손끝~발끝 거리)는 팔다리에서 유도되어 " +
-                 "2.507 x 배율이다. 2.507 x 0.341 = 0.855이므로 그보다 작은 배율에서는 Dock 단차가 " +
-                 "'뛰어내리기' 밴드를 벗어나 '매달리기'로 분류되고, 그 낙차에서 매달리면 발이 이미 " +
-                 "목적지를 지나쳐 있어 어색해진다. 그래서 슬라이더 하한을 0.35로 막아뒀다" +
-                 "(현재 기본 0.75에서는 매달리기 최소 낙차가 1.880이라 0.855가 밴드 [0.35, 1.880) 안에 넉넉히 든다).\n\n" +
+                 "★★ 분기점 안내(2026-08-30 정정) — 배율 약 0.653 아래에서는 **Dock 단차의 처리 갈래가 " +
+                 "바뀐다**. 근거: Dock 상단→바닥 안전망 낙차는 OS에서 오는 1.6375유닛(이 개발 머신 " +
+                 "tilesize=49 기준)인데, 매달리기 최소 낙차(StickmanBlackboard.LedgeHangMinDropDepth = " +
+                 "손끝~발끝 거리)는 팔다리에서 유도되어 2.5072 x 배율이다. 2.5072 x 0.653 = 1.6375이므로 " +
+                 "그보다 작은 배율에서는 Dock 단차가 '뛰어내리기'가 아니라 '매달려 내려가기'로 분류된다.\n" +
+                 "★ 이것은 고장이 아니다 — 매달리기는 '낙차 >= 손끝~발끝 거리'일 때만 선택되므로 그 " +
+                 "구간에서 매달린 발끝은 착지면을 지나치지 않는다(예전 주석은 부등호 방향이 반대였다). " +
+                 "게다가 낙차 자체가 사용자의 Dock 크기 설정에 따라 움직여서(tilesize 59면 낙차 1.88 = " +
+                 "기본 배율 0.75의 매달리기 최소치와 같아진다) 이 분기점은 배율 슬라이더만으로는 고정할 수 " +
+                 "없다. 그래서 슬라이더 하한 0.35는 **이 분기점이 아니라** 시각적 가독성(작아진 획/눈)을 " +
+                 "근거로 유지한다.\n" +
+                 "진짜 금지 조합은 둘뿐이고 각각 따로 잠겨 있다: (1) 되올라가기 상한이 낙차를 못 덮는 것" +
+                 "(Core/DockGeometry.ResolveStepUpMaxHeight가 런타임에 방어), (2) ledgeHangChance = 0인 채 " +
+                 "배율이 분기점 아래인 것(그러면 내려갈 길이 하나도 없어 Dock 위에 갇힌다 — " +
+                 "Tests/PlayMode/CharacterScaleInvarianceTests가 잠근다).\n" +
+                 "(현재 기본 0.75에서는 매달리기 최소 낙차가 1.880이라 1.6375가 밴드 [0.35, 1.880) 안에 " +
+                 "들지만 여유는 0.243유닛뿐이다 — 예전 인식(0.855 기준)의 2.2배 여유가 아니다.)\n\n" +
                  "참고 — walkSpeed도 이 배율에 비례한다(ResolveWalkSpeed()). 처음에는 '화면 폭은 그대로니 " +
                  "속도는 두자'고 판단했지만, 그 상태로 WalkFootSlipTests가 실패했다(디딤발 미끄러짐 0.465, " +
                  "상한 0.30) — 보폭이 배율에 비례하는데 속도가 고정이면 보행 사이클 주파수가 배율의 역수만큼 " +
@@ -1286,9 +1318,12 @@ namespace StickMate.Core
                  "walkSpeed 자체를 올리면 된다(배율은 그 위에 곱해진다).")]
         [Range(MinCharacterScale, MaxCharacterScale)]
         // ★ 2026-08-29 사용자 요구 "캐릭터 사이즈를 지금보다는 1.5배 더 키워주고" — 0.5 -> 0.75.
-        // 전신 높이 2.2746944 x 0.75 = 약 1.7060유닛(화면상 약 60pt). 배율 0.75는 Dock 임계 배율
-        // (DockHopDownCriticalScale = 0.341)보다 한참 위라 Dock 단차 0.855유닛이 '뛰어내리기' 밴드
-        // [0.35, 2.5072 x 0.75 = 1.880) 안에 넉넉히 남는다 — 실제 빌드에서 왕복까지 육안 확인했다.
+        // 전신 높이 2.2746944 x 0.75 = 약 1.7060유닛(화면상 약 60pt). 배율 0.75는 Dock 분기 배율
+        // (DockHopDownCriticalScale = 0.6531)보다 위라 Dock 단차 1.6375유닛이 '뛰어내리기' 밴드
+        // [0.35, 2.5072 x 0.75 = 1.880) 안에 남는다 — 실제 빌드에서 왕복까지 육안 확인했다.
+        // ★ 2026-08-30 정정: 여유는 1.880 - 1.6375 = **0.243유닛(약 10pt)뿐**이다. 예전 주석이 낙차를
+        //   0.855로 잘못 알고 "넉넉히"라고 적었으나 실제 여유는 그 인식의 1/4이다. tilesize 59 이상인
+        //   사용자에게는 이 여유가 음수가 되어 매달리기로 갈린다(그 자체는 안전한 갈래 — 위 Tooltip 참고).
         public float characterScale = 0.75f;
 
         /// <summary>슬라이더 하한. Dock 단차 임계 배율(약 0.341, 위 Tooltip 유도)보다 조금 위에 둔다.</summary>
@@ -1306,11 +1341,22 @@ namespace StickMate.Core
         public const float BaselineCharacterTotalHeight = 2.2746944f;
 
         /// <summary>
-        /// Dock 상단→화면 최하단 낙차(0.855유닛, OS 실측에서 오는 고정값)가 '뛰어내리기' 밴드에 남아
-        /// 있으려면 필요한 최소 배율 = 0.855 / 2.5072(배율 1.0에서의 손끝~발끝 거리). 이 값 자체는
-        /// 코드가 소비하지 않고 Tests/PlayMode/CharacterScaleInvarianceTests.cs가 계산을 재확인한다.
+        /// Dock 상단→바닥 안전망 낙차가 '뛰어내리기' 밴드에 남아 있으려면 필요한 최소 배율
+        /// = 1.6375 / 2.5072(배율 1.0에서의 손끝~발끝 거리) = <b>0.6531</b>.
+        ///
+        /// ★ 2026-08-30 정정(횡단 리뷰 M1): 예전 값 0.341은 낙차를 0.855유닛으로 본 계산이었다. 그
+        /// 0.855는 바닥 안전망이 화면 최하단 40pt 위였던 시절의 화석이고, 안전망이 8pt로 내려가고
+        /// Dock 두께가 tilesize+26 파생으로 바뀐 뒤의 실제 낙차는 67pt = 1.6375유닛이다
+        /// (유도: Core/DockGeometry.cs).
+        ///
+        /// ★★ 이 값은 **금지선이 아니라 거동 분기점**이다. 아래에서는 Dock 단차가 '매달려 내려가기'로
+        /// 분류될 뿐이고 그 자체는 기하학적으로 안전하다. 게다가 낙차가 사용자의 tilesize에 따라
+        /// 0.83~3.57유닛으로 변하므로 이 배율도 0.331~1.423으로 함께 움직인다 — 즉 배율 슬라이더
+        /// 하한으로 지킬 수 있는 성질이 아니다(자세한 반증은 DockGeometry.HopDownCriticalScale 문서).
+        /// 코드는 이 값을 소비하지 않으며, Tests/PlayMode/CharacterScaleInvarianceTests.cs가 매 실행마다
+        /// 프리팹 실측에서 다시 계산해 이 상수와 일치하는지 확인한다.
         /// </summary>
-        public const float DockHopDownCriticalScale = 0.341f;
+        public const float DockHopDownCriticalScale = 0.6531f;
 
         /// <summary>
         /// ★ 배율이 반영된 실제 보행 속도(유닛/초). <b>walkSpeed를 직접 읽지 말고 반드시 이것을 쓸 것.</b>
@@ -2030,5 +2076,122 @@ namespace StickMate.Core
 
         [Tooltip("망토(어깨) 해제 레벨. 약 5일차 — 가장 눈에 띄는 아이템이라 가장 늦다.")]
         public int equipmentUnlockLevelShoulders = 8;
+
+        // ============================================================================
+        // 배선 감사 잔여 3건 — 구독자 0명 이벤트에 붙인 부가 연출 (2026-08-30)
+        // ============================================================================
+        // 이 세 묶음은 전부 **이미 발행되고 있던 이벤트**에 시각 반응만 붙인 것이다. 트리거 조건과
+        // 발동 빈도는 한 줄도 바뀌지 않았고(새 확률/타이머 0개), 상위 이벤트의 기존 발행 빈도를 그대로
+        // 물려받는다 — 사용자가 "요청하지 않은 연출이 뜨는 것"에 반복적으로 민감했으므로 자율 발동
+        // 확률을 새로 만드는 것을 금지한 리더 지시의 직접 구현이다. 그래서 세 스위치의 기본값은
+        // **ON**이다: 구경거리성 스펙터클(archeryChance 등 기본 0)이 아니라, 이미 일어나는 동작
+        // (착지/대결/배회)에 얹히는 미세한 생동감 디테일이기 때문이다.
+        //
+        // ★ 거리/크기는 전부 **캐릭터 신장 배수**이고 시간(초)/각도(도)는 절대값이다(이 파일 전체 규약).
+
+        [Header("착지 먼지 — StickmanEventBus.LandingRollRequested 구독 (2026-08-30)")]
+
+        [Tooltip("착지 먼지 연출의 마스터 스위치. 끄면 이벤트는 그대로 발행되지만 아무것도 그려지지 " +
+                 "않는다(Tests/PlayMode/EventWiringVisualTests.cs의 네거티브 컨트롤이 이 스위치를 끄고 " +
+                 "'먼지가 실제로 사라지는지'를 확인한다).\n\n" +
+                 "착지의 **물리적 반응**은 이 연출이 아니라 무릎앉아 착지(landingCrouchEnabled)가 " +
+                 "담당한다 — 둘은 같은 임계값(rollLandingHeightThreshold)에서 함께 발동하는 별개의 층이다.")]
+        public bool landingDustEnabled = true;
+
+        [Tooltip("한 번의 착지에 피어오르는 먼지 획의 개수. 홀수여야 좌우 대칭 배치의 가운데가 " +
+                 "비지 않는다(렌더러가 좌우로 부채꼴 배치한다).")]
+        public int landingDustPuffCount = 5;
+
+        [Tooltip("먼지가 피어올랐다가 완전히 사라지기까지의 시간(초). 착지 자체가 0.3~0.6초짜리 " +
+                 "연출이라 그보다 짧게 끝나야 '착지의 잔향'으로 읽힌다.")]
+        public float landingDustSeconds = 0.38f;
+
+        [Tooltip("먼지가 발밑에서 좌우로 퍼지는 최대 거리 — **캐릭터 신장 배수**(최대 세기 기준). " +
+                 "0.34면 배율 0.75(신장 1.71유닛)에서 약 0.58유닛, 화면상 약 20pt다.")]
+        public float landingDustSpreadRatio = 0.34f;
+
+        [Tooltip("먼지가 위로 뜨는 최대 높이 — **캐릭터 신장 배수**. 좌우 확산보다 확실히 작아야 " +
+                 "'바닥에서 튄 흙먼지'로 보인다(위로 크게 뜨면 폭발처럼 보인다).")]
+        public float landingDustRiseRatio = 0.12f;
+
+        [Tooltip("먼지 획의 두께 — **캐릭터 신장 배수**.")]
+        public float landingDustStrokeRatio = 0.022f;
+
+        [Tooltip("먼지 세기가 **최대**가 되는 낙하 높이 — rollLandingHeightThreshold 위로 신장의 몇 " +
+                 "배를 더 떨어졌을 때인가(신장 배수). 무릎앉아 깊이 램프(landingCrouchDeepFallHeights)와 " +
+                 "**같은 기준**을 쓰므로 '깊이 앉을수록 먼지도 크다'가 자동으로 성립한다.")]
+        public float landingDustFullHeights = 3f;
+
+        [Tooltip("임계값을 **갓 넘긴** 착지에서의 먼지 세기(0~1). 0이면 임계값 근처 착지에서 먼지가 " +
+                 "거의 보이지 않는다.")]
+        public float landingDustMinIntensity = 0.45f;
+
+        [Header("대결 시작 충돌 임팩트 — StickmanEventBus.RivalDuelStarted 구독 (2026-08-30)")]
+
+        [Tooltip("라이벌 대결 시작을 알리는 임팩트 선 연출의 마스터 스위치. 끄면 대결은 예전과 " +
+                 "똑같이 시작되고 연출만 사라진다(네거티브 컨트롤).\n\n" +
+                 "★ 라이벌 등장 자체의 확률/쿨다운은 Interaction/RivalEncounterDirector.cs가 정하며 " +
+                 "이 라운드에 한 줄도 건드리지 않았다 — 이 스위치는 '등장했을 때 보이는 것'만 정한다.")]
+        public bool rivalDuelClashEnabled = true;
+
+        [Tooltip("임팩트 선이 퍼졌다가 사라지기까지의 시간(초). 대결은 최대 30초짜리 사건이라 " +
+                 "시작 신호는 짧고 강해야 한다(격파 미니게임의 타격 임팩트 0.24초와 같은 계열).")]
+        public float rivalDuelClashSeconds = 0.45f;
+
+        [Tooltip("임팩트 선이 최종적으로 퍼지는 반경 — **캐릭터 신장 배수**. 두 캐릭터의 중점에 " +
+                 "그려지므로 신장의 절반 정도면 두 캐릭터 사이를 채운다.")]
+        public float rivalDuelClashRadiusRatio = 0.55f;
+
+        [Tooltip("임팩트 선의 갈래 수. 격파 미니게임의 타격 임팩트(7줄)와 같은 계열의 값이다.")]
+        public int rivalDuelClashRayCount = 8;
+
+        [Tooltip("임팩트 선의 두께 — **캐릭터 신장 배수**.")]
+        public float rivalDuelClashStrokeRatio = 0.028f;
+
+        [Header("유휴 앰비언트 동작 — StickmanEventBus.WanderAmbientMotionRequested 구독 (2026-08-30)")]
+
+        [Tooltip("유휴 중 짧은 동작 변주(주위 살피기 / 기지개)의 마스터 스위치. 끄면 Idle 포즈가 " +
+                 "100% 예전과 같아진다(네거티브 컨트롤).\n\n" +
+                 "★ 발동 조건은 이미 있던 것 그대로다(docs/UX_FLOW.md 26-3, States/AutoWanderController.cs): " +
+                 "주위 살피기는 Idle 진입 후 wanderLookAroundDelayMin~Max 초 뒤 **그 Idle 구간에 1회**, " +
+                 "기지개는 'Idle 연장'이 연속 3회 이상일 때 wanderRestExtendSitChance 확률로. " +
+                 "이 라운드에 새 확률/타이머를 하나도 더하지 않았다.")]
+        public bool idleAmbientMotionEnabled = true;
+
+        [Tooltip("'주위 살피기'(손차양 자세 + 머리 좌우 왕복) 지속 시간(초). UX 26-3이 정한 0.6~1.0초 " +
+                 "구간의 중앙값이다 — 고정값인 이유는 새 난수를 도입하지 않기 위해서다(리더 지시).")]
+        public float idleAmbientLookAroundSeconds = 0.9f;
+
+        [Tooltip("'주위 살피기'에서 이마에 손을 얹는 **어깨** 각도(도). 각도 규약은 " +
+                 "States/StickmanPoseAnimator.cs 전체와 같다(0 = 곧게 아래, +90 = 진행 방향 수평). " +
+                 "107과 아래 팔꿈치 122는 임의값이 아니라 **손끝이 어깨 기준 (앞 0.20, 위 0.95)x팔길이** " +
+                 "= 이마 높이에 오도록 역산한 쌍이다.")]
+        public float idleAmbientLookArmDegrees = 107f;
+
+        [Tooltip("'주위 살피기'의 팔꿈치 굽힘(도, 항상 0 이상). 위 어깨 각도와 한 쌍으로 유도된 값이다.")]
+        public float idleAmbientLookElbowDegrees = 122f;
+
+        [Tooltip("'주위 살피기'에서 머리가 좌우로 왕복하는 최대 거리 — **캐릭터 신장 배수**. " +
+                 "머리 링 안쪽 가장자리 안에 목선이 남아 있어야 하므로 크게 둘 수 없다" +
+                 "(0.035면 배율 0.75에서 약 0.06유닛 = 머리 반경의 약 36%).")]
+        public float idleAmbientLookHeadShiftRatio = 0.035f;
+
+        [Tooltip("'기지개' 지속 시간(초). UX 26-3이 정한 1.5~2.5초 구간의 중앙값이다.")]
+        public float idleAmbientStretchSeconds = 2f;
+
+        [Tooltip("'기지개'에서 두 팔을 머리 위로 뻗을 때의 좌우 벌림(도). 실제 어깨 각도는 " +
+                 "매달리기와 같은 규약으로 180 ∓ (이 값)이다 — 0이면 두 팔이 완전히 겹쳐 외팔로 보인다.")]
+        public float idleAmbientStretchArmSpreadDegrees = 13f;
+
+        [Tooltip("'기지개'에서의 팔꿈치 굽힘(도, 항상 0 이상). 완전히 펴면 막대기로 보이므로 조금 남긴다.")]
+        public float idleAmbientStretchElbowDegrees = 16f;
+
+        [Tooltip("'기지개'에서 무릎을 펴는 정도(0~1). 1이면 완전히 곧게 편다 — 중립 굽힘에 " +
+                 "(1 - 이 값)을 곱하는 형태라 어떤 값에서도 무릎이 반대로 꺾이지 않는다.")]
+        public float idleAmbientStretchKneeStraighten01 = 0.7f;
+
+        [Tooltip("'기지개'에서 몸이 솟는 높이 — **캐릭터 신장 배수**. 발끝으로 서는 느낌을 주는 " +
+                 "시각 전용 오프셋이라 Rigidbody2D 위치/접지 판정에는 아무 영향이 없다.")]
+        public float idleAmbientStretchRiseRatio = 0.030f;
     }
 }

@@ -19,7 +19,7 @@ namespace StickMate.States
     ///       "무릎앉아 착지"(사용자 명시 요청 2026-08-29) 연출 상태. StickConfig.landingCrouchEnabled를
     ///       끄면 이 갈래가 사라지고 아래 Fall -> Idle/Walk만 남는다(예전 거동과 100% 동일).
     /// - Fall -> Idle/Walk        : 발판 착지 감지 (StickConfig.fallGraceDuration 유예 적용).
-    ///       낙하 높이가 위 임계값 미만일 때의 갈래다(예: macOS Dock 단차 0.855유닛).
+    ///       낙하 높이가 위 임계값 미만일 때의 갈래다(예: macOS Dock 단차 1.6375유닛 — Core/DockGeometry.cs).
     /// - LandingCrouch -> Idle/Walk : 무릎앉아 진행 곡선 완료 시(이동 의도 유무로 분기).
     ///       도중 접지를 잃으면(창이 닫히거나 움직임) Fall로, 외력 임계값 초과 시 Ragdoll로 빠진다.
     /// - Dragged -> ThrowTumble   : 유저가 놓은 순간의 속도가 StickConfig.throwTumbleMinSpeedHeightsPerSecond

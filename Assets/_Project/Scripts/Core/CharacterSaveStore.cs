@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
@@ -40,8 +41,13 @@ namespace StickMate.Core
         /// (Core/UiLayoutModel.cs)가 추가된 버전. 여기서도 하위 호환은 같은 방식으로 성립한다 —
         /// v1/v2 파일에는 <c>gearPositionSaved</c>가 없어 JsonUtility가 false로 채우고, 그 false는
         /// "아직 옮긴 적 없다 = 기본 위치(우상단)를 쓴다"는 정확한 사실이다. 좌표 0,0을 "값 없음"으로
-        /// 해석하지 않는 이유는 (0,0)이 실제로 도달 가능한 좌표라서다(별도 플래그가 필요한 이유).</summary>
-        private const int CurrentVersion = 3;
+        /// 해석하지 않는 이유는 (0,0)이 실제로 도달 가능한 좌표라서다(별도 플래그가 필요한 이유).
+        /// 4 = 2026-08-30 부채꼴 메뉴 라운드에서 <b>할일 목록</b>(Core/TodoListModel.cs)이 추가된 버전.
+        /// 이 라운드에 [오늘 할일] 패널이 생기면서 사용자가 <b>자기 진짜 일정을 처음 적는 입구</b>가
+        /// 됐다 — 앱을 끄면 조용히 사라지는 할일 목록은 기능 실패다(리더 결정). v1~v3 파일에는
+        /// <c>todos</c>가 없어 JsonUtility가 null로 채우고, 그 null은 "적어둔 할일이 없다"는 정확한
+        /// 사실이라 하위 호환이 앞선 버전들과 같은 방식으로 성립한다.</summary>
+        private const int CurrentVersion = 4;
 
         /// <summary>
         /// 직렬화 스키마. JsonUtility는 프로퍼티를 직렬화하지 않으므로 public 필드로만 구성한다.
@@ -81,6 +87,50 @@ namespace StickMate.Core
             /// <summary>큰 기어 중심(창 좌상단 원점, OS 포인트). 단위 근거는 UiLayoutModel 문서 참고.</summary>
             public float gearCenterXPoints;
             public float gearCenterYPoints;
+
+            // ---- v4: 할일 목록(Core/TodoListModel.cs) ----
+
+            /// <summary>미완료/유예 중인 활성 목록. v1~v3 파일에는 없어 null이 되고, null은 "없음"이다.</summary>
+            public TodoRecord[] todos;
+
+            /// <summary>완료함(17절 데이터 보존 원칙 — 지우지 않고 모아둔다).</summary>
+            public TodoRecord[] todoArchive;
+        }
+
+        /// <summary>
+        /// 할일 1건의 직렬화 표현. <see cref="TodoItem"/>을 그대로 쓸 수 없는 이유: 그쪽 Id/Text가
+        /// <c>readonly</c>이고 JsonUtility는 readonly 필드를 채우지 못한다. 완료 시각은 <b>일부러
+        /// 저장하지 않는다</b> — <c>Time.unscaledTime</c> 기준이라 다음 실행에서는 의미가 없는 값이다.
+        /// </summary>
+        [Serializable]
+        private sealed class TodoRecord
+        {
+            public int id;
+            public string text;
+            public bool completed;
+        }
+
+        private static TodoRecord[] ToRecords(IReadOnlyList<TodoItem> items)
+        {
+            var records = new TodoRecord[items.Count];
+            for (int i = 0; i < items.Count; i++)
+            {
+                records[i] = new TodoRecord { id = items[i].Id, text = items[i].Text, completed = items[i].Completed };
+            }
+            return records;
+        }
+
+        private static TodoItem[] ToItems(TodoRecord[] records)
+        {
+            if (records == null) return null;
+            var items = new TodoItem[records.Length];
+            for (int i = 0; i < records.Length; i++)
+            {
+                TodoRecord r = records[i];
+                if (r == null) continue;
+                items[i] = new TodoItem(r.id, r.text) { Completed = r.completed };
+            }
+            return items;
         }
 
         /// <summary>저장 파일의 절대 경로. 진단 로그/테스트에서만 쓴다.</summary>
@@ -90,6 +140,36 @@ namespace StickMate.Core
         /// 진단 로그 전용.</summary>
         public static bool LoadedFromFile { get; private set; }
 
+        // ============================================================================
+        // ★ 다운그레이드 방어 (2026-08-30 횡단 리뷰 m6 — 데이터 소실 경로)
+        // ============================================================================
+        // 발견된 사실: `data.version > CurrentVersion`(= 사용자가 신버전으로 놀다가 구버전 앱을 실행)
+        // 분기가 **조용히 return**하고 있었다. 그러면 모델은 기본값(Lv.1 / 빈 할일)으로 시작하고,
+        // 다음 자동 저장이 그 기본값을 신버전 파일 **위에 덮어써** 사용자의 성장/할일이 통째로 사라진다.
+        // 테스트도 0건이었다. 조용한 전손은 이 앱에서 가장 나쁜 실패다(할일 목록은 사용자의 진짜 일정이다).
+        //
+        // 방어(둘 다 한다):
+        //   (1) 원본을 **백업 사본**으로 남긴다. 원본을 지우거나 옮기지 않고 복사만 한다 — 파일 삭제/이동
+        //       API는 절대 불변 원칙 3 정적 감사가 금지한다(Tests/EditMode/UserAssetImmutabilityAuditTests).
+        //       백업이 이미 있으면 **덮어쓰지 않는다**(가장 처음 백업이 가장 값지다).
+        //   (2) 백업에 실패했으면 이번 실행에서는 **저장을 보류**한다(Save()가 false를 돌려준다).
+        //       "구버전 앱에서 놀던 것을 못 저장한다"는 불편은 되돌릴 수 있지만, 덮어쓴 데이터는 못 되돌린다.
+        //
+        // 백업에 성공했다면 저장은 정상 진행한다 — 원본이 안전하므로 구버전 앱도 평소처럼 쓸 수 있고,
+        // 사용자는 신버전으로 돌아갈 때 백업 파일을 되돌려 놓으면 된다(경로를 경고 로그에 남긴다).
+
+        /// <summary>이번 실행이 <b>자기보다 새로운 버전</b>의 저장 파일을 만났는가. 진단/테스트용.</summary>
+        public static bool NewerVersionFileDetected { get; private set; }
+
+        /// <summary>다운그레이드로 판단해 남긴 백업 사본의 경로(없으면 null). 진단/테스트용.</summary>
+        public static string NewerVersionBackupPath { get; private set; }
+
+        /// <summary>백업까지 실패해 이번 실행의 저장을 보류하는가. 진단/테스트용.</summary>
+        public static bool SaveSuspended { get; private set; }
+
+        /// <summary>신버전 파일 백업의 파일명. 버전 번호를 넣어 여러 신버전을 만나도 서로 덮지 않는다.</summary>
+        private static string BackupFileName(int version) => $"character_save.v{version}.backup.json";
+
         /// <summary>
         /// 앱 시작 시 1회. 파일이 없거나 깨졌으면 <b>아무것도 하지 않는다</b> — 정적 모델의 초기값
         /// (Lv.1 / XP 0 / 기본 이름 / 전부 미착용)이 그대로 "새 캐릭터"가 된다.
@@ -97,6 +177,9 @@ namespace StickMate.Core
         public static void Load()
         {
             LoadedFromFile = false;
+            NewerVersionFileDetected = false;
+            NewerVersionBackupPath = null;
+            SaveSuspended = false;
             try
             {
                 string path = FilePath;
@@ -106,7 +189,15 @@ namespace StickMate.Core
                 if (string.IsNullOrWhiteSpace(json)) return;
 
                 var data = JsonUtility.FromJson<SaveData>(json);
-                if (data == null || data.version <= 0 || data.version > CurrentVersion) return;
+                if (data == null || data.version <= 0) return;
+
+                // ★ 다운그레이드 — 위 "다운그레이드 방어" 문단 참고. 스키마를 모르므로 읽지는 않되,
+                // 원본이 다음 저장에 덮여 사라지는 것만은 막는다.
+                if (data.version > CurrentVersion)
+                {
+                    HandleNewerVersionFile(path, data.version);
+                    return;
+                }
 
                 CharacterProgressionModel.RestoreFromSave(data.level, data.currentXp, data.totalXpEarned, data.characterName);
                 EquipmentModel.RestoreFromSave(EquipmentSlot.Head, data.equippedHead);
@@ -117,6 +208,7 @@ namespace StickMate.Core
                     data.archeryShots, data.archeryBullseyes, data.companionSeconds,
                     data.ragdollFalls, data.firstRunUnixSeconds);
                 UiLayoutModel.RestoreFromSave(data.gearPositionSaved, data.gearCenterXPoints, data.gearCenterYPoints);
+                TodoListModel.RestoreFromSave(ToItems(data.todos), ToItems(data.todoArchive));
                 LoadedFromFile = true;
 
                 // 복원이 끝난 뒤 한 번만 통지한다(중간 상태를 UI가 그리지 않게 — RestoreFromSave가
@@ -133,9 +225,46 @@ namespace StickMate.Core
             }
         }
 
+        /// <summary>
+        /// 자기보다 새로운 버전의 저장 파일을 만났을 때의 처리(위 "다운그레이드 방어" 문단이 유일한 근거).
+        /// 원본은 **읽기만** 하고 복사본을 하나 더 만든다 — 지우지도, 옮기지도, 고치지도 않는다.
+        /// </summary>
+        private static void HandleNewerVersionFile(string path, int fileVersion)
+        {
+            NewerVersionFileDetected = true;
+
+            string backupPath = Path.Combine(Application.persistentDataPath, BackupFileName(fileVersion));
+            try
+            {
+                // 이미 백업이 있으면 그대로 둔다(첫 백업이 가장 값지다 — 두 번째 실행이 덮으면
+                // 그 사이 구버전이 만든 내용으로 백업이 오염될 수 있다).
+                if (!File.Exists(backupPath)) File.Copy(path, backupPath);
+                NewerVersionBackupPath = backupPath;
+                SaveSuspended = false;
+
+                Debug.LogWarning($"[성장] 저장 파일이 이 앱보다 새로운 버전입니다(파일 v{fileVersion} > 앱 v{CurrentVersion}). " +
+                    $"내용을 해석할 수 없어 기본값으로 시작하지만, 원본을 백업해 두었으므로 데이터는 " +
+                    $"사라지지 않습니다: {backupPath}\n" +
+                    "최신 버전 앱으로 돌아가려면 이 백업 파일의 이름을 원래 저장 파일명으로 되돌리세요.");
+            }
+            catch (Exception e)
+            {
+                // 백업조차 실패 — 이번 실행에서는 저장을 보류해 원본을 지킨다.
+                NewerVersionBackupPath = null;
+                SaveSuspended = true;
+                Debug.LogWarning($"[성장] 저장 파일이 이 앱보다 새로운 버전인데({fileVersion} > {CurrentVersion}) " +
+                    $"백업에 실패했습니다({e.GetType().Name}: {e.Message}). " +
+                    "원본을 덮어쓰지 않도록 이번 실행에서는 **저장을 보류**합니다 — " +
+                    "이 실행에서 얻은 성장/할일은 저장되지 않습니다.");
+            }
+        }
+
         /// <summary>성공하면 true. 실패해도 예외를 밖으로 던지지 않는다(클래스 문서 참고).</summary>
         public static bool Save()
         {
+            // ★ 다운그레이드 보류(m6) — 신버전 파일을 백업조차 못 한 상태에서는 절대 덮어쓰지 않는다.
+            if (SaveSuspended) return false;
+
             try
             {
                 var data = new SaveData
@@ -159,6 +288,8 @@ namespace StickMate.Core
                     gearPositionSaved = UiLayoutModel.HasGearCenter,
                     gearCenterXPoints = UiLayoutModel.GearCenterPoints.x,
                     gearCenterYPoints = UiLayoutModel.GearCenterPoints.y,
+                    todos = ToRecords(TodoListModel.ActiveItems),
+                    todoArchive = ToRecords(TodoListModel.CompletedArchive),
                 };
 
                 string dir = Application.persistentDataPath;
@@ -167,6 +298,7 @@ namespace StickMate.Core
                 CharacterProgressionModel.MarkSaved();
                 CharacterStatsModel.MarkSaved();
                 UiLayoutModel.MarkSaved();
+                TodoListModel.MarkSaved();
                 return true;
             }
             catch (Exception e)

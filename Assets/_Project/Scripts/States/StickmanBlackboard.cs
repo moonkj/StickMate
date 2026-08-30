@@ -1182,7 +1182,88 @@ namespace StickMate.States
                 return;
             }
 
+            // ★ 유휴 앰비언트 동작(26-3, 2026-08-30 배선) — Idle 중립 포즈 **위에 얹는** 짧은 변주.
+            // 진행 중이 아니면 아래 한 줄(예전 경로)이 그대로 실행되므로, 스위치를 끄거나 신호가
+            // 오지 않으면 거동이 100% 예전과 같다.
+            if (TickIdleAmbientMotion(deltaTime))
+            {
+                pose.ApplyIdleAmbientPose(deltaTime, BuildPoseSettings(), PoseSmoothingRate,
+                    BuildIdleAmbientPoseSettings(), _idleAmbientMotion, IdleAmbientProgress01);
+                return;
+            }
+
             pose.ApplyIdlePose(deltaTime, BuildPoseSettings(), PoseSmoothingRate);
+        }
+
+        // ==================== 유휴 앰비언트 동작 (26-3) ====================
+
+        private WanderAmbientMotion _idleAmbientMotion;
+        private float _idleAmbientElapsed;
+        private float _idleAmbientDuration; // 0 = 진행 중 아님.
+
+        /// <summary>지금 유휴 앰비언트 동작이 재생 중인지(테스트/진단용).</summary>
+        public bool IsIdleAmbientMotionActive => _idleAmbientDuration > 0f;
+
+        /// <summary>재생 중인 동작 종류(테스트/진단용). 진행 중이 아니면 마지막 값이 남아 있으므로
+        /// 반드시 <see cref="IsIdleAmbientMotionActive"/>와 함께 읽어야 한다.</summary>
+        public WanderAmbientMotion CurrentIdleAmbientMotion => _idleAmbientMotion;
+
+        /// <summary>이번 동작의 총 지속 시간(초). 진행 중이 아니면 0(테스트/진단용).</summary>
+        public float IdleAmbientDurationSeconds => _idleAmbientDuration;
+
+        /// <summary>이번 동작의 진행도 0~1(테스트/진단용).</summary>
+        public float IdleAmbientProgress01 =>
+            _idleAmbientDuration > 0f ? Mathf.Clamp01(_idleAmbientElapsed / _idleAmbientDuration) : 0f;
+
+        /// <summary>
+        /// 유휴 앰비언트 동작 재생 시작. 구독자(Interaction/IdleAmbientMotionRenderer.cs)가
+        /// StickmanEventBus.WanderAmbientMotionRequested를 받아 그대로 넘긴다.
+        ///
+        /// <b>새 확률/타이머를 하나도 도입하지 않는다</b> — 언제 몇 번 나올지는 전적으로 발행자
+        /// (States/AutoWanderController.cs)의 기존 조건이 정한다(리더 지시: 상위 이벤트의 발행 빈도를
+        /// 그대로 물려받을 것). 여기서 정하는 것은 "얼마나 오래 재생할지"뿐이며 그것도 StickConfig 값이다.
+        /// </summary>
+        /// <returns>실제로 시작했으면 true. 꺼져 있거나 Idle이 아니면 false(조용히 무시).</returns>
+        public bool BeginIdleAmbientMotion(WanderAmbientMotion motion)
+        {
+            if (Config != null && !Config.idleAmbientMotionEnabled) return false;
+            // Idle이 아닌 순간에 들어온 신호는 버린다 — 걷는 중에 팔이 이마로 올라가면 그것이 곧 버그다.
+            if (Machine == null || Machine.CurrentStateId != StickmanStateId.Idle) return false;
+
+            float duration = motion == WanderAmbientMotion.SitAndYawn
+                ? (Config != null ? Config.idleAmbientStretchSeconds : 2f)
+                : (Config != null ? Config.idleAmbientLookAroundSeconds : 0.9f);
+            if (duration <= 0f) return false;
+
+            _idleAmbientMotion = motion;
+            _idleAmbientElapsed = 0f;
+            _idleAmbientDuration = duration;
+            return true;
+        }
+
+        /// <summary>재생 중인 유휴 앰비언트 동작을 즉시 중단(중립 복귀는 다음 프레임의 ApplyIdlePose가 한다).</summary>
+        public void CancelIdleAmbientMotion() => _idleAmbientDuration = 0f;
+
+        /// <summary>진행 중이면 시간을 진행시키고 true. 만료됐거나 Idle을 벗어났으면 정리하고 false.</summary>
+        private bool TickIdleAmbientMotion(float deltaTime)
+        {
+            if (_idleAmbientDuration <= 0f) return false;
+
+            // Idle을 벗어났으면 즉시 취소 — 상태 전이가 곧 취소 신호다(별도 취소 배관을 두지 않는 이유).
+            if (Machine == null || Machine.CurrentStateId != StickmanStateId.Idle
+                || (Config != null && !Config.idleAmbientMotionEnabled))
+            {
+                _idleAmbientDuration = 0f;
+                return false;
+            }
+
+            _idleAmbientElapsed += deltaTime;
+            if (_idleAmbientElapsed >= _idleAmbientDuration)
+            {
+                _idleAmbientDuration = 0f;
+                return false;
+            }
+            return true;
         }
 
         /// <summary>
@@ -1354,6 +1435,20 @@ namespace StickMate.States
 
         /// <summary>활쏘기 포즈의 지수 감쇠 계수(1/초) — LandingCrouchPoseSmoothingRate와 같은 관례.</summary>
         public float ArcheryPoseSmoothingRate => Config != null ? Config.archeryPoseSmoothingRate : 46f;
+
+        /// <summary>유휴 앰비언트 동작(26-3) 각도/거리 묶음. 거리 성분 2개만 신장을 곱해 환산한다
+        /// (BuildArcheryPoseSettings와 완전히 같은 관례).</summary>
+        public StickmanPoseAnimator.IdleAmbientPoseSettings BuildIdleAmbientPoseSettings()
+        {
+            return new StickmanPoseAnimator.IdleAmbientPoseSettings(
+                Config != null ? Config.idleAmbientLookArmDegrees : 107f,
+                Config != null ? Config.idleAmbientLookElbowDegrees : 122f,
+                CharacterHeightWorld * (Config != null ? Config.idleAmbientLookHeadShiftRatio : 0.035f),
+                Config != null ? Config.idleAmbientStretchArmSpreadDegrees : 13f,
+                Config != null ? Config.idleAmbientStretchElbowDegrees : 16f,
+                Config != null ? Config.idleAmbientStretchKneeStraighten01 : 0.7f,
+                CharacterHeightWorld * (Config != null ? Config.idleAmbientStretchRiseRatio : 0.030f));
+        }
 
         /// <summary>공중 회전(텀블링) 자세 각도 묶음(StickConfig -> StickmanPoseAnimator).
         /// BuildFallPoseSettings와 동일한 패턴 — Config가 없는 테스트/폴백 경로에서도 안전하도록

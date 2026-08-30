@@ -42,6 +42,10 @@ namespace StickMate.Core
         private static readonly ReadOnlyCollection<TodoItem> _archiveReadOnly = _completedArchive.AsReadOnly();
         private static int _nextId = 1;
 
+        /// <summary>마지막 저장 이후 목록이 바뀌었는가(Core/UiLayoutModel.IsDirty와 같은 관례).
+        /// 주기 저장이 "바뀐 게 있을 때만" 파일을 쓰게 하는 값이다 — 24시간 상주 앱.</summary>
+        public static bool IsDirty { get; private set; }
+
         /// <summary>포스트잇 카드에 표시할 미완료 항목(완료되어 유예 중인 항목은 여전히 여기 남아있다 —
         /// UI가 Completed 플래그로 취소선/반투명을 그린다). 순서는 추가된 순서(FIFO) — "1개 강조" 모드의
         /// 우선순위는 가장 오래된 항목을 우선시하는 단순 규칙이며, 유저 지정 강조는 후속 과제.</summary>
@@ -85,6 +89,7 @@ namespace StickMate.Core
         {
             if (string.IsNullOrWhiteSpace(text)) return UncompletedCount > softCap;
             _active.Add(new TodoItem(_nextId++, text.Trim()));
+            IsDirty = true;
             StickmanEventBus.RaiseTodoListChanged();
             return UncompletedCount > softCap;
         }
@@ -99,6 +104,7 @@ namespace StickMate.Core
 
             item.Completed = !item.Completed;
             item.CompletedAtUnscaledTime = item.Completed ? Time.unscaledTime : 0f;
+            IsDirty = true;
             StickmanEventBus.RaiseTodoListChanged();
         }
 
@@ -118,7 +124,9 @@ namespace StickMate.Core
                 _completedArchive.Add(item);
                 changed = true;
             }
-            if (changed) StickmanEventBus.RaiseTodoListChanged();
+            if (!changed) return;
+            IsDirty = true;
+            StickmanEventBus.RaiseTodoListChanged();
         }
 
         /// <summary>항목 삭제(우클릭/스와이프, 17절). 완료함 항목은 삭제 대상이 아니다(데이터 보존 원칙).</summary>
@@ -128,6 +136,7 @@ namespace StickMate.Core
             {
                 if (_active[i].Id != id) continue;
                 _active.RemoveAt(i);
+                IsDirty = true;
                 StickmanEventBus.RaiseTodoListChanged();
                 return;
             }
@@ -143,7 +152,46 @@ namespace StickMate.Core
             _completedArchive.Clear();
             _pendingReminderText = null;
             _nextId = 1;
+            IsDirty = false;
         }
+
+        // ==================== 영속화 (저장 스키마 v4) ====================
+
+        /// <summary>
+        /// 저장 파일에서 목록을 되살린다. <b>이벤트를 쏘지 않는다</b> — 복원 도중의 중간 상태를 UI가
+        /// 그리지 않게 하는 관례(CharacterSaveStore.Load가 전부 끝난 뒤 한 번만 통지한다).
+        /// Id는 파일에 있던 값을 그대로 쓰고 다음 Id를 그보다 크게 올려, 재시작 후 추가한 항목이
+        /// 옛 항목과 같은 Id를 갖는 사고(엉뚱한 줄이 체크되는)를 막는다.
+        /// </summary>
+        internal static void RestoreFromSave(TodoItem[] active, TodoItem[] archive)
+        {
+            _active.Clear();
+            _completedArchive.Clear();
+            _nextId = 1;
+
+            AppendRestored(_active, active);
+            AppendRestored(_completedArchive, archive);
+            IsDirty = false;
+        }
+
+        private static void AppendRestored(List<TodoItem> target, TodoItem[] source)
+        {
+            if (source == null) return;
+            for (int i = 0; i < source.Length; i++)
+            {
+                TodoItem item = source[i];
+                if (item == null || string.IsNullOrWhiteSpace(item.Text)) continue;
+
+                // 완료 시각은 지난 세션의 Time.unscaledTime이라 이번 실행에서는 의미가 없다(이번 시계는
+                // 0에서 다시 시작한다). 0으로 두면 다음 Sweep에서 정상적으로 완료함으로 넘어간다 —
+                // 그대로 두면 "지난 세션 시각 - 지금"이 음수라 영원히 유예 상태로 남는다.
+                item.CompletedAtUnscaledTime = 0f;
+                target.Add(item);
+                if (item.Id >= _nextId) _nextId = item.Id + 1;
+            }
+        }
+
+        internal static void MarkSaved() => IsDirty = false;
 
         private static TodoItem FindActive(int id)
         {

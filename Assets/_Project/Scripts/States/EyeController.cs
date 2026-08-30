@@ -142,20 +142,43 @@ namespace StickMate.States
 
             // 이름으로 찾는다 — StickmanPoseAnimator가 팔다리를 찾는 방식과 동일한 컨벤션(계층 순회
             // 순서에는 좌우 의미가 없으므로 이름이 유일하게 신뢰할 수 있는 식별자다).
-            Transform[] all = root.GetComponentsInChildren<Transform>(true);
-            for (int i = 0; i < all.Length; i++)
+            //
+            // ★★ 2026-08-30 — 탐색 범위를 <b>"Head 직속 자식"</b>으로 좁힌다(예전에는
+            // GetComponentsInChildren로 얻은 <b>자손 전체</b>를 훑고 break 없이 <b>마지막 일치</b>를
+            // 채택했다 — 같은 날 캐릭터 머리·몸통을 영원히 얼렸던 StickmanPoseAnimator의 수정 전 코드와
+            // 글자 그대로 같은 형태다). 그 사고의 원인은 캐릭터 루트에 붙는 UI 위젯이 자기 캔버스를
+            // 캐릭터 자손으로 달고 그 안에 캐릭터 파츠와 같은 이름을 쓴 것이었다.
+            //
+            // 여기가 특히 위험한 이유: 아래에서 <c>_head = _leftEye.parent</c>로 머리 좌표계를 정의하므로,
+            // 오염되면 눈동자 오프셋이 해석되는 <b>기준 좌표계 자체</b>가 UI RectTransform으로 넘어간다
+            // (눈이 안 움직이는 정도가 아니라 엉뚱한 공간에서 움직인다).
+            //
+            // 눈은 루트의 <b>손자</b>라(Editor/SceneBootstrapper.BuildStickmanPrefab이
+            // CreateFilledDot(head.transform, "LeftEye"/"RightEye", ...)로 만든다) 루트 직속으로는 좁힐 수
+            // 없다. 대신 그 실제 부모인 "Head"(= 루트 직속 앵커, CreateHeadAnchor)를 먼저 직속에서 찾고
+            // 그 자식만 본다. 프리팹 규약을 두 단계 그대로 따라가는 것이라 "우연히 같은 이름"이 끼어들
+            // 자리가 없다. 머리를 못 찾으면(구버전 프리팹/테스트 리그) 눈 없이 조용히 동작한다 —
+            // 모든 메서드가 이미 null 가드를 갖고 있다.
+            Transform head = FindDirectChild(root, "Head");
+            if (head != null)
             {
-                if (all[i] == null) continue;
-                if (all[i].name == "LeftEye") _leftEye = all[i];
-                else if (all[i].name == "RightEye") _rightEye = all[i];
+                for (int i = 0; i < head.childCount; i++)
+                {
+                    Transform c = head.GetChild(i);
+                    if (c == null) continue;
+                    if (_leftEye == null && c.name == "LeftEye") _leftEye = c;
+                    else if (_rightEye == null && c.name == "RightEye") _rightEye = c;
+                    if (_leftEye != null && _rightEye != null) break;
+                }
             }
 
             if (_leftEye != null) _leftNeutral = _leftEye.localPosition;
             if (_rightEye != null) _rightNeutral = _rightEye.localPosition;
 
-            // 머리 기준 Transform은 "눈의 부모"로 정의한다 — 이름("Head")으로 다시 찾지 않는 이유는,
-            // 눈이 실제로 매달린 그 Transform이야말로 localPosition 오프셋이 해석되는 좌표계 그 자체라
-            // 정의상 항상 옳기 때문이다(프리팹 계층이 바뀌어도 자동으로 따라간다).
+            // 머리 기준 Transform은 여전히 "눈의 부모"로 정의한다 — 눈이 실제로 매달린 그 Transform이야말로
+            // localPosition 오프셋이 해석되는 좌표계 그 자체라 정의상 항상 옳기 때문이다. 위 탐색이 이미
+            // head의 자식만 보므로 결과는 head와 같지만, 정의를 바꾸지 않아야 "눈의 좌표계 = 눈의 부모"라는
+            // 불변식이 계층 변경에도 자동으로 따라온다.
             if (_leftEye != null) _head = _leftEye.parent;
             else if (_rightEye != null) _head = _rightEye.parent;
 
@@ -179,6 +202,19 @@ namespace StickMate.States
             // 스크립트 시선 경로) 초기값도 같은 규칙으로 맞춰둔다 — 안 그러면 그 경로에서만 눈동자가
             // 배율 1.0 기준 폭으로 움직여 작은 머리를 뚫는다.
             _appliedMaxOffset = Mathf.Min(DefaultMaxPupilOffset * _geometryScale, _measuredSafeOffset);
+        }
+
+        /// <summary>이름이 일치하는 직속 자식(없으면 null). 자손 전체 탐색을 쓰지 않는 이유는 생성자
+        /// 주석 참고 — 다른 레이어가 우연히 같은 이름을 쓰면 조용히 깨지는 구조를 만들지 않는다.</summary>
+        private static Transform FindDirectChild(Transform parent, string childName)
+        {
+            if (parent == null) return null;
+            for (int i = 0; i < parent.childCount; i++)
+            {
+                Transform c = parent.GetChild(i);
+                if (c != null && c.name == childName) return c;
+            }
+            return null;
         }
 
         /// <summary>이름이 일치하는 직속 자식의 LineRenderer(없으면 null).</summary>

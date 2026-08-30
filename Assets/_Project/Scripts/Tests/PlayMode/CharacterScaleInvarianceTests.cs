@@ -26,24 +26,53 @@ namespace StickMate.Tests.PlayMode
     ///       Core/StickmanMetrics.cs(런타임 단일 조회 경로)가 그 값을 그대로 돌려준다.
     ///   (a) 발판 위에 **정확히** 선다 — 발 높이 == 발판 상단(오차 0.05유닛 이내), 몸이 발판 위로
     ///       전신 높이만큼 온전히 올라와 있다.
-    ///   (b) Dock 단차(0.855유닛)에서 **뛰어내렸다가 되올라오는 왕복**이 성립한다.
+    ///   (b) Dock 단차(**1.6375유닛**, Core/DockGeometry.cs가 유도)에서 뛰어내렸다가 되올라오는
+    ///       **왕복**이 성립한다.
     ///   (c) 화면 밖으로 나가지 않는다 — 렌더러 전체 바운즈가 화면 가로 범위 안에 남는다.
     ///
     /// ============================================================================
-    /// Dock 단차와 배율의 상호작용(이 파일의 핵심 계산) — 왜 하한이 필요한가
+    /// ★ 2026-08-30 정정 — 이 파일의 핵심 계산이 **2배 틀려 있었다**(횡단 리뷰 M1)
     /// ============================================================================
-    /// Dock 상단 -> 화면 최하단 낙차는 **OS에서 나오는 값이라 캐릭터 크기와 무관하게 0.855유닛 고정**
-    /// 이다. 반면 매달리기 최소 낙차(StickmanBlackboard.LedgeHangMinDropDepth)는 어깨 높이 + 팔 길이,
-    /// 즉 프리팹 치수에서 유도되므로 배율 s에 정확히 비례한다(배율 1.0에서 약 2.507).
-    /// 뛰어내리기 밴드는 [hopDownMinDropHeight, LedgeHangMinDropDepth)이므로:
-    ///     2.507 x s &gt; 0.855   ->   s &gt; 0.341
-    /// 즉 배율 0.341 아래에서는 Dock 단차가 '뛰어내리기'가 아니라 '매달리기'로 분류되고, 그 낙차에서
-    /// 매달리면 발이 이미 목적지를 지나쳐 있어 어색해진다. StickConfig.MinCharacterScale(0.35)이 그
-    /// 임계값 위에 있는지를 아래 DockHopDownBandSurvivesScale이 매 실행마다 재확인한다.
+    /// 이 파일은 Dock 낙차를 0.855유닛으로 하드코딩하고 있었다. 그 값은 바닥 안전망이 화면 최하단
+    /// 40pt 위였던 시절의 화석이고, 2026-08-29 라운드에 (a) 안전망이 8pt로 내려가고 (b) Dock 두께가
+    /// 하드코딩 75pt에서 tilesize+26 파생으로 바뀌면서 실제 낙차는 67pt = **1.6375유닛**이 됐다.
+    /// 낙차가 절반으로 과소평가돼 있었으므로 아래 임계 배율 계산도 절반이었다(0.341 vs 실제 0.6531).
+    /// 이제 낙차는 Core/DockGeometry.cs 한 곳에서만 유도한다.
     ///
-    /// 상한은 hopDownMinDropHeight를 **절대값으로 남겨둔 덕분에 존재하지 않는다**(0.35 &lt;= 0.855는
-    /// 배율과 무관하게 항상 참). 이 값을 캐릭터 비례로 바꾸면 0.35 x s &lt;= 0.855, 즉 s &lt;= 2.44라는
-    /// 상한이 새로 생긴다 — 그래서 절대값으로 두는 편이 안전 구간이 더 넓다.
+    /// ============================================================================
+    /// Dock 단차와 배율의 상호작용 — 이 임계값이 **무엇을 뜻하고 무엇을 뜻하지 않는가**
+    /// ============================================================================
+    /// 매달리기 최소 낙차(StickmanBlackboard.LedgeHangMinDropDepth)는 어깨 높이 + 팔 길이, 즉 프리팹
+    /// 치수에서 유도되므로 배율 s에 정확히 비례한다(배율 1.0에서 약 2.5072). 뛰어내리기 밴드는
+    /// [hopDownMinDropHeight, LedgeHangMinDropDepth)이므로 Dock 단차가 그 밴드에 남으려면
+    ///     2.5072 x s &gt; 1.6375   ->   s &gt; **0.6531**
+    ///
+    /// ★★ 그런데 이 부등식을 "슬라이더 하한(MinCharacterScale)이 반드시 넘어야 하는 금지선"으로
+    ///    쓰는 것은 **틀렸다**. 두 가지 반증이 있다(2026-08-30 디버거 검증):
+    ///   (반증 1) 낙차 자체가 사용자 설정이다. 낙차 = tilesize + 18pt이고 macOS tilesize 범위는
+    ///            16~128이라 임계 배율도 함께 움직인다:
+    ///                tilesize  16 → 낙차 0.831유닛 → 임계 배율 0.331
+    ///                tilesize  48 → 1.613 → 0.643      (macOS 기본 tilesize)
+    ///                tilesize  49 → 1.637 → 0.653      (이 개발 머신)
+    ///                tilesize  59 → 1.882 → 0.751      ← **기본 배율 0.75가 이미 여기서 깨진다**
+    ///                tilesize 128 → 3.568 → 1.423
+    ///            즉 어떤 하한을 넣어도 tilesize 59 이상인 사용자에게는 기본 배율에서 이미 부등식이
+    ///            성립하지 않는다. 슬라이더 하한으로는 구조적으로 막을 수 없는 조건이다.
+    ///   (반증 2) 부등식이 깨졌을 때 실제로 일어나는 일은 **고장이 아니다**. Dock 단차가 '매달려
+    ///            내려가기'로 분류될 뿐이고, 매달리기는 "낙차 ≥ 손끝~발끝 거리"일 때만 선택되므로
+    ///            그 구간에서 매달린 발끝은 착지면을 지나치지 않는다(기하학적으로 안전한 쪽이다).
+    ///            예전 주석의 "발이 이미 목적지를 지나쳐 어색해진다"는 부등호 방향이 반대였다.
+    ///
+    /// 그래서 아래 테스트는 임계 배율을 **문서 상수와 일치하는지 재계산해 잠그되**, 금지선으로는
+    /// 두 개의 진짜 조건만 단언한다:
+    ///   (진짜 1) 되올라가기 상한이 낙차를 덮는다 — 못 덮으면 **영영 못 올라온다**(진짜 갇힘).
+    ///            tilesize 의존성은 DockGeometry.ResolveStepUpMaxHeight가 런타임에 흡수한다(M3).
+    ///   (진짜 2) 어느 배율에서든 내려갈 길이 **최소 하나**는 열려 있다(뛰어내리기 또는 매달리기).
+    ///            둘 다 막히면 캐릭터가 Dock 모서리에서 영원히 되돌아서기만 한다.
+    ///
+    /// 상한은 hopDownMinDropHeight를 **절대값으로 남겨둔 덕분에 존재하지 않는다**(0.35 &lt;= 1.6375는
+    /// 배율과 무관하게 항상 참). 이 값을 캐릭터 비례로 바꾸면 0.35 x s &lt;= 1.6375, 즉 s &lt;= 4.68이라는
+    /// 상한이 새로 생긴다 — 그래도 슬라이더 상한 2.0보다는 위지만, 절대값으로 두는 편이 여전히 넓다.
     ///
     /// ============================================================================
     /// 네거티브 컨트롤(이 테스트가 정말 무언가를 보고 있는가)
@@ -56,9 +85,12 @@ namespace StickMate.Tests.PlayMode
     {
         private const string LogPrefix = "[SCALE-TEST]";
 
-        /// <summary>macOS 실측 — Dock 상단에서 화면 최하단까지의 낙차(월드 유닛). OS에서 오는 값이라
-        /// 캐릭터 배율과 무관하게 고정이다(Tests/PlayMode/EdgeHopDownTests.cs와 같은 상수).</summary>
-        private const float DockDropUnits = 0.855f;
+        /// <summary>★ Dock 상단 → 바닥 안전망 상단 낙차(월드 유닛). **하드코딩하지 않는다** —
+        /// Core/DockGeometry.cs가 (tilesize + dockThicknessTilePaddingPoints − BottomSafetyNetInsetPoints)를
+        /// 월드로 환산해 주는 단일 소스다(이 개발 머신 tilesize=49 → 67pt → 1.63747유닛).
+        /// 2026-08-30 횡단 리뷰 M1: 이 값이 파일마다 0.855(안전망이 40pt 위였던 시절의 화석) / 1.6375로
+        /// 갈라져 있었고, 그 탓에 배율 불변식 테스트가 실제 시스템이 아니라 자기 상수를 지키고 있었다.</summary>
+        private static readonly float DockDropUnits = DockGeometry.ReferenceDockDropWorldUnits;
 
         private const long DockHandle = 9101L;
         private const long LeftFloorHandle = 9102L;
@@ -244,34 +276,62 @@ namespace StickMate.Tests.PlayMode
             float hangPerScale = hangMin / scale;          // 배율 1.0에서의 매달리기 최소 낙차
             float criticalScale = DockDropUnits / hangPerScale;
 
-            Debug.Log($"{LogPrefix} Dock 밴드 — 배율={scale:F3}, 뛰어내리기 밴드=[{hopMin:F3}, {hangMin:F3}), " +
-                $"Dock 낙차={DockDropUnits:F3}(고정), 배율 1.0 기준 매달리기 최소={hangPerScale:F4}, " +
-                $"임계 배율={criticalScale:F4}, 슬라이더 하한={StickConfig.MinCharacterScale:F3}, " +
-                $"문서 상수={StickConfig.DockHopDownCriticalScale:F3}");
+            float minScaleHangMin = hangPerScale * StickConfig.MinCharacterScale;
+            float resolvedStepUpMax = DockGeometry.ResolveStepUpMaxHeight(cfg.stepUpMaxHeight, DockDropUnits);
 
-            // ★ 절대 조건 1 — 지금 배율에서 Dock 단차가 뛰어내리기 밴드 안에 있다.
+            Debug.Log($"{LogPrefix} Dock 밴드 — 배율={scale:F3}, 뛰어내리기 밴드=[{hopMin:F3}, {hangMin:F3}), " +
+                $"Dock 낙차={DockDropUnits:F4}(tilesize {DockGeometry.DeveloperMachineTileSizePoints:F0} 실측 파생), " +
+                $"배율 1.0 기준 매달리기 최소={hangPerScale:F4}, 임계 배율={criticalScale:F4}, " +
+                $"슬라이더 하한={StickConfig.MinCharacterScale:F3}, 문서 상수={StickConfig.DockHopDownCriticalScale:F4}, " +
+                $"기본 배율 여유={(hangMin - DockDropUnits):F4}유닛, " +
+                $"되올라가기 상한 설정값={cfg.stepUpMaxHeight:F3} -> 유도값={resolvedStepUpMax:F3}");
+
+            // ★ 절대 조건 1 — 뛰어내리기 하한이 Dock 낙차보다 작다(밴드의 아래쪽 끝).
+            // 이 조건은 배율과 무관하다(hopDownMinDropHeight가 절대값이므로). 깨지면 캐릭터가 Dock
+            // 경계에서 아무 것도 하지 않고 되돌아서기만 한다.
             Assert.LessOrEqual(hopMin, DockDropUnits,
                 $"{LogPrefix} 뛰어내리기 하한({hopMin:F3})이 Dock 낙차({DockDropUnits:F3})보다 큽니다 — " +
                 "Dock 경계에서 캐릭터가 아무 것도 하지 않고 되돌아서기만 합니다.");
-            Assert.Greater(hangMin, DockDropUnits,
-                $"{LogPrefix} 매달리기 최소 낙차({hangMin:F3})가 Dock 낙차({DockDropUnits:F3}) 이하입니다 — " +
-                $"Dock 단차가 '매달리기'로 분류됩니다. 배율({scale:F3})이 임계값 {criticalScale:F4} 아래입니다.");
 
-            // ★ 절대 조건 2 — 슬라이더 하한이 임계 배율보다 위다(사용자가 UI로 깨뜨릴 수 없다).
-            Assert.Greater(StickConfig.MinCharacterScale, criticalScale,
-                $"{LogPrefix} characterScale 슬라이더 하한({StickConfig.MinCharacterScale:F3})이 Dock 임계 배율" +
-                $"({criticalScale:F4}) 이하입니다 — 사용자가 슬라이더만 내려도 Dock 거동이 바뀝니다.");
+            // ★ 절대 조건 2 (2026-08-30 교체) — "내려갈 길이 최소 하나는 열려 있다".
+            // 예전 조건("슬라이더 하한 > 임계 배율")은 폐기했다. 근거는 클래스 문서의 반증 1·2 —
+            // 임계 배율은 tilesize에 따라 움직이므로(tilesize 59에서 이미 기본 배율 0.75를 넘어선다)
+            // 슬라이더 하한으로는 구조적으로 지킬 수 없고, 깨졌을 때의 결과도 고장이 아니라 '매달리기'
+            // 분기일 뿐이다. 진짜로 막아야 하는 것은 **양쪽 다 막히는** 경우다.
+            bool hopDownApplies = hopMin <= DockDropUnits && DockDropUnits < hangMin;
+            bool hangApplies = DockDropUnits >= hangMin && cfg.ledgeHangChance > 0f;
+            Assert.IsTrue(hopDownApplies || hangApplies,
+                $"{LogPrefix} 현재 배율({scale:F3})에서 Dock 낙차({DockDropUnits:F3})에 대해 뛰어내리기도 " +
+                $"매달리기도 성립하지 않습니다(밴드=[{hopMin:F3}, {hangMin:F3}), ledgeHangChance={cfg.ledgeHangChance:F2}) — " +
+                "캐릭터가 Dock 모서리에서 영원히 되돌아서기만 합니다.");
+
+            // ★ 절대 조건 2b — 슬라이더를 **하한까지 내려도** 위 성질이 유지된다(사용자가 UI로 깨뜨릴 수
+            // 없다는 원래 의도는 살리되, 올바른 형태로). 하한 배율에서는 매달리기가 담당하게 되므로
+            // ledgeHangChance가 0이면 여기서 빨간불이 난다 — 그것이 진짜 금지 조합이다.
+            bool hopDownAtMinScale = hopMin <= DockDropUnits && DockDropUnits < minScaleHangMin;
+            bool hangAtMinScale = DockDropUnits >= minScaleHangMin && cfg.ledgeHangChance > 0f;
+            Assert.IsTrue(hopDownAtMinScale || hangAtMinScale,
+                $"{LogPrefix} 슬라이더 하한 배율({StickConfig.MinCharacterScale:F3}, 매달리기 최소 낙차 " +
+                $"{minScaleHangMin:F3})에서 Dock 낙차({DockDropUnits:F3})를 내려갈 방법이 하나도 없습니다 — " +
+                $"ledgeHangChance({cfg.ledgeHangChance:F2})가 0이면 이 조합이 곧 'Dock 위에 갇힘'입니다.");
 
             // ★ 절대 조건 3 — 문서/Tooltip에 적어둔 임계값이 실제 계산과 일치한다.
+            // (금지선이 아니라 **거동 분기점**을 기록하는 상수다 — DockGeometry.HopDownCriticalScale 참고.)
+            float expectedCritical = DockGeometry.HopDownCriticalScale(DockDropUnits, hangPerScale);
+            Assert.AreEqual(expectedCritical, criticalScale, 0.0005f,
+                $"{LogPrefix} 임계 배율 유도식이 DockGeometry와 어긋납니다(테스트 {criticalScale:F4} / " +
+                $"헬퍼 {expectedCritical:F4}).");
             Assert.AreEqual(StickConfig.DockHopDownCriticalScale, criticalScale, 0.005f,
-                $"{LogPrefix} 문서 상수 DockHopDownCriticalScale({StickConfig.DockHopDownCriticalScale:F3})이 " +
-                $"실제 계산({criticalScale:F4})과 다릅니다 — 프리팹 비율이 바뀌었으니 Tooltip의 경고 문구도 갱신해야 합니다.");
+                $"{LogPrefix} 문서 상수 DockHopDownCriticalScale({StickConfig.DockHopDownCriticalScale:F4})이 " +
+                $"실제 계산({criticalScale:F4})과 다릅니다 — 프리팹 비율이나 Dock 기하가 바뀌었으니 " +
+                "Tooltip의 경고 문구도 갱신해야 합니다.");
 
-            // ★ 절대 조건 4 — 되올라가기 상한이 Dock 단차를 덮는다(절대값으로 남겨둔 이유 그 자체).
-            Assert.Greater(cfg.stepUpMaxHeight, DockDropUnits,
-                $"{LogPrefix} stepUpMaxHeight({cfg.stepUpMaxHeight:F3})가 Dock 낙차({DockDropUnits:F3}) 이하입니다 — " +
-                "한 번 Dock 아래로 내려간 캐릭터가 영영 못 올라옵니다(이 값을 캐릭터 비례로 바꾸면 " +
-                "배율 0.57 아래에서 정확히 이 실패가 납니다).");
+            // ★ 절대 조건 4 — 되올라가기 상한이 Dock 단차를 덮는다. **이것이 진짜 갇힘을 막는 조건이다.**
+            // 2026-08-30: 설정 절대값(stepUpMaxHeight)이 아니라 DockGeometry가 실측 낙차에서 유도한 값을
+            // 본다 — tilesize 80 이상에서는 설정 절대값 2.4가 낙차를 못 덮기 때문이다(M3).
+            Assert.Greater(resolvedStepUpMax, DockDropUnits,
+                $"{LogPrefix} 유도된 되올라가기 상한({resolvedStepUpMax:F3})이 Dock 낙차({DockDropUnits:F3}) " +
+                "이하입니다 — 한 번 Dock 아래로 내려간 캐릭터가 영영 못 올라옵니다.");
         }
 
         // ============================================================================

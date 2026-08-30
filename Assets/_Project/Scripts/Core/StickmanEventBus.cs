@@ -399,8 +399,8 @@ namespace StickMate.Core
 
     /// <summary>
     /// docs/UX_FLOW.md 26-3절 "살아있는 느낌" 디테일 — AutoWanderController가 타이밍/확률 조건만 판정해
-    /// 발행하는 유휴 연출 신호. 실제 애니메이션 재생은 Phase 2+ 렌더링 레이어가 이 이벤트를 구독해 담당한다
-    /// (지금은 아무도 구독하지 않아도 무해 — 트리거 조건 계산 자체는 지금 확정해두는 것이 목적).
+    /// 발행하는 유휴 연출 신호. 실제 동작 재생은 Interaction/IdleAmbientMotionRenderer.cs가 구독해
+    /// StickmanBlackboard.BeginIdleAmbientMotion()으로 넘긴다(2026-08-30 배선 완료).
     /// </summary>
     public enum WanderAmbientMotion
     {
@@ -409,6 +409,31 @@ namespace StickMate.Core
 
         /// <summary>"Idle 연장"이 연속 3회 이상 선택된 경우에만 15% 확률로 발동, 1.5~2.5초 지속(26-3).</summary>
         SitAndYawn,
+    }
+
+    /// <summary>
+    /// 착지 부수 연출(먼지) 신호의 페이로드.
+    ///
+    /// ★ 2026-08-30 — 예전에는 <c>Action&lt;float&gt;</c>(낙하 높이 하나)였다. 구독자를 붙이는 순간
+    /// **누구의 착지인지 알 수 없다**는 문제가 드러나 좌표를 함께 싣도록 바꿨다: 발행자가
+    /// FallState/ThrowTumbleState인데 이 두 상태는 플레이어뿐 아니라 <b>라이벌</b>의 상태머신에도
+    /// 등록되어 있어(Interaction/RivalStickmanAgent.EnsureMachineBuilt), 좌표가 없으면 라이벌이 착지할
+    /// 때 플레이어 발밑에 먼지가 피는 오귀속 버그가 구조적으로 발생한다. 좌표를 실으면 그 대신
+    /// "누가 착지했든 그 자리에" 정확히 그려진다.
+    /// </summary>
+    public readonly struct LandingImpactEvent
+    {
+        /// <summary>실제 낙하 높이(월드 유닛). StickConfig.rollLandingHeightThreshold 이상일 때만 발행된다.</summary>
+        public readonly float FallHeight;
+
+        /// <summary>착지 확정 시점의 발밑 월드 좌표(캐릭터 루트 원점 = 발바닥).</summary>
+        public readonly Vector2 FootWorldPosition;
+
+        public LandingImpactEvent(float fallHeight, Vector2 footWorldPosition)
+        {
+            FallHeight = fallHeight;
+            FootWorldPosition = footWorldPosition;
+        }
     }
 
     /// <summary>상태 전이 1건을 나타내는 불변 이벤트 페이로드 (From -> To).</summary>
@@ -476,12 +501,15 @@ namespace StickMate.Core
         public static event Action<WanderAmbientMotion> WanderAmbientMotionRequested;
 
         /// <summary>
-        /// FallState가 착지를 확정한 순간, 낙하 높이가 StickConfig.rollLandingHeightThreshold 이상이었을
-        /// 때 발생(UX_FLOW.md 4절 "구르기(ROLL)"). 페이로드는 실제 낙하 높이(월드 유닛). 실제 구르기
-        /// 파티클/애니메이션 재생은 Phase 2+ 렌더링 레이어가 이 이벤트를 구독해 담당한다 — 지금은 아무도
-        /// 구독하지 않아도 무해(트리거 조건 계산 자체가 지금 확정해두는 목적).
+        /// FallState/ThrowTumbleState가 착지를 확정한 순간, 낙하 높이가
+        /// StickConfig.rollLandingHeightThreshold 이상이었을 때 발생(UX_FLOW.md 4절 "구르기(ROLL)").
+        ///
+        /// <b>착지의 물리적 반응 자체는 이 이벤트가 아니라 StickmanStateId.LandingCrouch가 담당한다</b>
+        /// (같은 조건에서 상태가 직접 전이한다 — 그 이유 전문은 LandingCrouch 열거값 문서). 이 이벤트는
+        /// 그 위에 얹는 <b>부수 연출</b>(발밑 먼지) 전용이며, 구독자는
+        /// Interaction/LandingDustRenderer.cs다(2026-08-30 배선 완료).
         /// </summary>
-        public static event Action<float> LandingRollRequested;
+        public static event Action<LandingImpactEvent> LandingRollRequested;
 
         /// <summary>격파 미니게임(10절) 한 차례 시도의 결과가 확정되었을 때 발생 — 실제 파괴/코믹리액션
         /// 연출은 Phase 2+ 렌더링 레이어가 이 이벤트를 구독해 담당한다(지금은 트리거 조건만 계산).</summary>
@@ -494,8 +522,11 @@ namespace StickMate.Core
         /// <summary>활쏘기 한 발의 조준 시작/발사 통지 — 사전 확정된 도달점을 함께 싣는다.</summary>
         public static event Action<ArcheryShotEvent> ArcheryShotChanged;
 
-        /// <summary>라이벌 스틱맨 대결(11절)이 시작되었을 때 발생 — 등장 연출/조우 대사 트리거용
-        /// (지금은 구독자 없음, Phase 2+ 렌더링 레이어 몫).</summary>
+        /// <summary>라이벌 스틱맨 대결(11절)이 시작되었을 때 발생 — 등장 연출 트리거용.
+        /// 구독자는 Interaction/RivalDuelClashRenderer.cs(두 캐릭터 사이 중점에 짧은 충돌 임팩트 선)다
+        /// (2026-08-30 배선 완료). 페이로드가 없는 이유: 두 캐릭터의 좌표는 이 이벤트가 발행되는 시점에
+        /// 이미 씬에 확정돼 있어(BeginDuel이 몸을 먼저 옮긴 뒤 발행) 구독자가 직접 읽는 편이
+        /// 이중 진실 공급원을 만들지 않는다.</summary>
         public static event Action RivalDuelStarted;
 
         /// <summary>라이벌 스틱맨 대결이 종료되었을 때 발생(승/패/무승부). 트레이 UI의 "대결 중" 배지
@@ -569,8 +600,8 @@ namespace StickMate.Core
         public static void RaiseWanderAmbientMotionRequested(WanderAmbientMotion motion)
             => WanderAmbientMotionRequested?.Invoke(motion);
 
-        public static void RaiseLandingRollRequested(float fallHeight)
-            => LandingRollRequested?.Invoke(fallHeight);
+        public static void RaiseLandingRollRequested(float fallHeight, Vector2 footWorldPosition)
+            => LandingRollRequested?.Invoke(new LandingImpactEvent(fallHeight, footWorldPosition));
 
         public static void RaiseBattleMinigamePhaseChanged(BattleMinigamePhase phase)
             => BattleMinigamePhaseChanged?.Invoke(phase);

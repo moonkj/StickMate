@@ -58,7 +58,7 @@ namespace StickMate.Interaction
     /// 짧게 클릭 vs 길게 눌러 옮기기 (2026-08-30 사용자 요청)
     /// ============================================================================
     /// 사용자 원문: "캐릭터 설정 기어들도 길게 클릭해서 위치 옮길 수 있게 해줘".
-    ///  · <b>짧게 클릭</b> — 예전 그대로. 두 기어가 맞물려 돈 뒤 캐릭터 창이 열린다(열려 있으면 닫는다).
+    ///  · <b>짧게 클릭</b> — 두 기어가 맞물려 도는 것과 <b>동시에</b> 부채꼴 버튼 3개가 펼쳐진다.
     ///  · <b>길게 누르기</b>(<see cref="LongPressSeconds"/> 이상) 또는 누른 채
     ///    <see cref="DragMoveThresholdPoints"/> 이상 이동 — 드래그로 전환되어 커서를 따라간다.
     ///    떼면 그 자리에 확정되고 저장 파일에 남아 <b>재시작해도 유지</b>된다(Core/UiLayoutModel.cs).
@@ -77,11 +77,27 @@ namespace StickMate.Interaction
     /// 끌려 들어오고, 그 보정값이 다시 모델로 되돌아가 저장된다.
     ///
     /// ============================================================================
-    /// 클릭 -> 회전 -> 창 열림
+    /// 클릭 -> 회전 -> 부채꼴 메뉴 (2026-08-30 사용자 요청)
     /// ============================================================================
-    /// 클릭 즉시 창을 띄우지 않고 <see cref="SpinSeconds"/> 동안 두 기어를 맞물려 돌린 뒤
-    /// <see cref="CharacterInfoWindow.Open"/>을 부른다. "눌렀다"는 피드백이 먼저 오고 창이 뒤따르는
-    /// 흐름이라, 클릭이 먹었는지 알 수 없는 오버레이 앱의 고질적 불확실성이 사라진다.
+    /// 사용자 원문: "기어메뉴를 클릭했을때 집중모드 버튼 캐릭터 버튼 오늘 할일 버튼 3가지가 촤르륵
+    /// 원버튼 3개가 나오고 각 버튼을 클릭했을때 세부 메뉴로 들어가도록".
+    /// 클릭한 프레임에 <see cref="GearRadialMenuWidget"/>가 원형 버튼 3개를 펼치기 시작하고, 동시에
+    /// 두 기어가 <see cref="SpinSeconds"/> 동안 맞물려 돈다.
+    /// <b>회전과 펼침은 동시에 시작한다</b>(docs/UX_FLOW.md 32-9 (B)) — 회전이 끝나기를 기다리면
+    /// 클릭부터 첫 픽셀까지 520ms가 걸리고, 그동안 아무 변화가 없으면 사용자는 "안 먹었다"고 판단해
+    /// 한 번 더 누른다. 그 두 번째 클릭이 토글 접힘이 되어 메뉴가 깜빡이는 실패 모드가 구조적으로
+    /// 생긴다. 기어가 아직 돌고 있는 동안 버튼이 안착하므로 "톱니를 돌려 버튼을 뽑아냈다"는 인과가
+    /// 오히려 더 또렷해진다.
+    ///  · <b>기어 재클릭</b> — 펼쳐져 있으면 접는다(토글).
+    ///  · <b>부채꼴 바깥 클릭</b> — 접는다. 그 클릭을 우리가 먹지는 않는다(메뉴의 표준 관례이자 비침해).
+    ///  · <b>길게 누르기</b> — 예전 그대로 이동이다. 드래그로 전환되는 순간 메뉴는 접힌다(기어만 따라가고
+    ///    버튼들이 뒤에 남아 끌려다니는 그림을 만들지 않는다).
+    /// 톱니는 <b>이동</b>이 필요해 뗄 때 판정하고, 부채꼴 버튼은 이동이 없으므로 누른 버튼 위에서 뗐을
+    /// 때만 발동한다(버튼 밖으로 끌고 나가 떼면 취소 — 모든 OS의 버튼 관례).
+    ///
+    /// <b>클릭관통 차단 영역이 함께 넓어진다</b>: 콜라이더는 톱니 사각형이 아니라
+    /// <see cref="InteractiveScreenRect"/>(톱니 + 펼쳐진 버튼들의 합집합)로 잡는다. 안 그러면 버튼을
+    /// 눌러도 그 클릭이 밑의 앱으로 새어 나간다. 메뉴가 접히면 즉시 예전 크기로 돌아온다.
     /// </summary>
     public sealed class InfoGearIconWidget : MonoBehaviour
     {
@@ -152,6 +168,8 @@ namespace StickMate.Interaction
         private StickmanAgent _agent;
         private StickConfig _config;
         private CharacterInfoWindow _window;
+        private FocusWatchDirector _focusDirector;   // 지연 탐색 후 캐시(AppControlDirector와 같은 관례).
+        private TodoReminderDirector _todoDirector;
         private IGlobalPointerButtonService _buttonService;
         private Camera _camera;
 
@@ -178,12 +196,28 @@ namespace StickMate.Interaction
         private Vector2 _pressStartCursor;      // Unity 스크린 픽셀.
         private Vector2 _grabOffsetPoints;      // 잡은 순간의 (중심 - 커서). 기어가 커서로 순간이동하지 않게 한다.
         private float _visualScale = 1f;
+
+        // ---- 부채꼴 메뉴 ----
+        private GearRadialMenuWidget _menu;
+        private int _menuPressIndex = -1;   // 지금 누르고 있는 버튼(-1 = 없음).
+
         private bool _builtGeometry;
         private float _builtRadiusWorld = -1f;
         private Color _builtInk = new Color(-1f, -1f, -1f, -1f);
 
+        /// <summary>전체화면 감지로 <b>우리가</b> 숨긴 상태인가 — 복귀 판정과 로그 1회 출력에 쓴다.</summary>
+        private bool _hiddenBySuspend;
+
         /// <summary>지금 회전 연출 중인가(테스트/진단 전용).</summary>
         public bool IsSpinning => _spinTimer >= 0f;
+
+        /// <summary>톱니 그림이 실제로 켜져 있는가(진단/테스트 전용). <b>플래그가 아니라 GameObject의
+        /// 실제 상태</b>를 돌려준다 — "숨겼다고 기록은 됐는데 화면에는 남아 있다"를 잡기 위해서다.</summary>
+        public bool IsIconVisible => _container != null && _container.activeSelf;
+
+        /// <summary>톱니의 클릭관통 차단막이 켜져 있는가(진단/테스트 전용). 전체화면 감지 중에 이것이
+        /// 켜져 있으면 <b>보이지 않는데 클릭만 먹는</b> 최악의 형태가 된다(비침해 원칙 2).</summary>
+        public bool IsClickBlockerEnabled => _clickTarget != null && _clickTarget.enabled;
 
         /// <summary>큰 기어 중심의 Unity 스크린 좌표(픽셀). 실측 검증용.</summary>
         public Vector2 IconScreenCenter { get; private set; }
@@ -191,6 +225,31 @@ namespace StickMate.Interaction
         /// <summary>두 기어를 함께 덮는 히트 사각형(Unity 스크린 픽셀). "이 밖에서는 절대 안 걸린다"를
         /// 테스트가 직접 확인할 수 있게 노출한다.</summary>
         public Rect IconScreenRect { get; private set; }
+
+        /// <summary>톱니 + <b>펼쳐진 부채꼴 버튼</b>을 함께 덮는 사각형(Unity 스크린 픽셀). 클릭관통
+        /// 차단 콜라이더가 쓰는 값이며, 메뉴가 접혀 있으면 <see cref="IconScreenRect"/>와 같다.</summary>
+        public Rect InteractiveScreenRect { get; private set; }
+
+        /// <summary>부채꼴이 펼쳐져 있는가(펼치는 중 포함).</summary>
+        public bool IsMenuExpanded => _menu != null && _menu.IsExpanded;
+
+        /// <summary>부채꼴 그림이 화면에 남아 있는가(접히는 중 포함).</summary>
+        public bool IsMenuVisible => _menu != null && _menu.IsVisible;
+
+        /// <summary>부채꼴 버튼 중심(Unity 스크린 픽셀) — 실측/테스트가 이 좌표로 클릭을 먹인다.</summary>
+        public Vector2 MenuButtonScreenCenter(GearMenuButton button)
+            => _menu != null ? _menu.ButtonScreenCenter((int)button) : Vector2.zero;
+
+        /// <summary>버튼의 펼침 진행도(0~1).</summary>
+        public float MenuButtonProgress(GearMenuButton button)
+            => _menu != null ? _menu.ButtonProgress((int)button) : 0f;
+
+        /// <summary>세 버튼이 전부 펼쳐지는 데 걸리는 시간(초) — 테스트가 이 값만큼만 기다리면 된다.</summary>
+        public static float MenuExpandTotalSeconds => GearRadialMenuWidget.ExpandTotalSeconds;
+
+        /// <summary>클릭 후 부채꼴이 완전히 안착하기까지의 시간(초). 회전(0.52초)과 <b>동시에</b>
+        /// 진행되므로 회전 시간을 더하지 않는다 — 그것이 이번 라운드의 핵심 변경이다.</summary>
+        public static float MenuReadySeconds => GearRadialMenuWidget.ExpandTotalSeconds;
 
         /// <summary>큰 기어의 현재 회전각(도). 회귀 테스트가 방향/속도를 직접 잰다.</summary>
         public float BigGearAngleDegrees => _bigGear != null ? _bigGear.localEulerAngles.z : 0f;
@@ -248,6 +307,8 @@ namespace StickMate.Interaction
             _hasCustomCenter = false;
             _pressActive = false;
             _dragging = false;
+            _menuPressIndex = -1;
+            if (_menu != null) _menu.Collapse(GearMenuCollapseMode.User, "테스트 초기화");
         }
 
         private void Awake()
@@ -257,6 +318,7 @@ namespace StickMate.Interaction
             _agent = GetComponent<StickmanAgent>();
             _config = _agent != null ? _agent.Config : null;
             _window = GetComponent<CharacterInfoWindow>();
+            _menu = GetComponent<GearRadialMenuWidget>();
         }
 
         private void Start()
@@ -271,7 +333,10 @@ namespace StickMate.Interaction
                 $"{MarginRightPoints:F0}pt / 위 {MarginTopPoints:F0}pt, 큰 기어 반지름 {BigOuterPoints:F0}pt / " +
                 $"잇수 {BigToothCount}, 작은 기어 {SmallOuterPoints:F1}pt / 잇수 {SmallToothCount}, " +
                 $"중심 거리 {CenterDistancePoints:F1}pt). 클릭하면 두 기어가 **반대 방향으로** 돌고" +
-                $"(작은 쪽이 {MeshRatio:F2}배 빠르게) 그 뒤 캐릭터 정보창이 열립니다. " +
+                $"(작은 쪽이 {MeshRatio:F2}배 빠르게) 그 뒤 부채꼴 버튼 3개([집중 모드]/[캐릭터]/" +
+                $"[오늘 할일], Ø{GearRadialMenuWidget.ButtonDiameterPoints:F0}pt / 궤도 " +
+                $"{GearRadialMenuWidget.OrbitRadiusPoints:F0}pt / 간격 " +
+                $"{GearRadialMenuWidget.ButtonAngleStepDegrees:F0}도)가 **회전과 동시에** 촤르륵 펼쳐집니다. " +
                 $"전역 폴링 경로={(_buttonService != null ? "사용 가능" : "미지원 — 콜라이더 경로만")}. " +
                 $"★ {LongPressSeconds:F2}초 이상 누르고 있거나 누른 채 {DragMoveThresholdPoints:F0}pt 이상 끌면 " +
                 "드래그 모드로 바뀌어 커서를 따라가고, 떼면 그 자리에 고정되며 저장됩니다(재시작해도 유지). " +
@@ -287,6 +352,18 @@ namespace StickMate.Interaction
         private void LateUpdate()
         {
             if (_agent == null) return;
+
+            // ★★ 절대 불변 원칙 2(비침해) — 전체화면 게임 감지 시 상시 표면을 전부 거둔다.
+            // 여기가 이 계열의 <b>1차 관문</b>이다: 톱니는 이 앱에서 유일하게 24시간 화면에 떠 있는
+            // UI이고(StickmanAgent가 SetAlwaysOnTop(true)를 켜므로 전체화면 게임 위에도 뜬다),
+            // 히트테스트가 커서 아래 픽셀 알파를 보므로 남아 있으면 그 영역의 클릭까지 먹는다.
+            // StickmanAgent.Suspend()가 끄는 것은 Awake에서 캐시한 캐릭터 렌더러뿐인데 _container는
+            // 씬 루트라 그 배열에 없다 — 액세서리가 겪었던 "몸이 사라진 자리에 모자만 남는다"와 같은 구조.
+            // 부채꼴/팝오버/정보창은 각자 IsSuspended를 폴링해 스스로 닫지만(소유권 분리), 여기서도
+            // 메뉴를 명시적으로 접어 "톱니는 사라졌는데 버튼만 남는" 한 프레임을 없앤다.
+            if (_agent.IsSuspended) { ApplySuspendHide(); return; }
+            if (_hiddenBySuspend) ReleaseSuspendHide();
+
             if (_camera == null) _camera = _agent.Blackboard != null ? _agent.Blackboard.MainCamera : Camera.main;
             if (_camera == null) return;
 
@@ -302,6 +379,50 @@ namespace StickMate.Interaction
             if (_dragging) PlaceOnScreen();
             TickHoverAlpha();
             TickDragVisual();
+            TickMenuHover();
+        }
+
+        /// <summary>전체화면 감지 동안 톱니 그림과 클릭 차단막을 내린다. 눌림/드래그 상태도 함께
+        /// 취소한다 — 안 그러면 숨는 순간의 "누르고 있음"이 그대로 남아, 복귀하자마자 놓는 동작이
+        /// 클릭이나 위치 이동으로 오인된다. 도형은 파괴하지 않는다(복귀할 때 다시 굽지 않기 위해).</summary>
+        private void ApplySuspendHide()
+        {
+            if (_hiddenBySuspend) return;
+            _hiddenBySuspend = true;
+
+            if (_menu != null) _menu.Collapse(GearMenuCollapseMode.User, "전체화면 감지 — 자동 숨김");
+            if (_window != null) _window.Close("전체화면 감지 — 자동 숨김");
+            if (_container != null) _container.SetActive(false);
+            if (_clickTarget != null) _clickTarget.enabled = false;
+
+            _pressActive = false;
+            _dragging = false;
+            _menuPressIndex = -1;
+            _spinTimer = -1f;
+            _leftInitialized = false;   // 복귀 후 첫 폴링이 눌림 엣지를 새로 잡게 한다.
+            Debug.Log("[톱니] 전체화면 감지 — 톱니/부채꼴/정보창을 모두 거두고 클릭 차단막도 내립니다" +
+                "(비침해 원칙 2). 게임을 벗어나면 톱니만 다시 나타납니다.");
+        }
+
+        /// <summary>복귀 — 톱니만 되살린다. 숨기기 전에 열려 있던 메뉴/창은 <b>일부러</b> 복원하지 않는다
+        /// (사용자가 부르지도 않은 창이 게임을 끄자마자 튀어나오면 그 자체가 방해다).</summary>
+        private void ReleaseSuspendHide()
+        {
+            _hiddenBySuspend = false;
+            if (_container != null) _container.SetActive(true);
+            if (_clickTarget != null) _clickTarget.enabled = true;
+            Debug.Log("[톱니] 전체화면 해제 — 톱니가 다시 나타납니다(메뉴/창은 사용자가 다시 엽니다).");
+        }
+
+        /// <summary>커서가 올라간 버튼만 진하게. 메뉴가 떠 있는 동안에만 커서를 묻는다(평소에는
+        /// 추가 비용 0 — 24시간 상주 앱).</summary>
+        private void TickMenuHover()
+        {
+            if (_menu == null || !_menu.IsVisible) return;
+            if (!TryGetCursorUnityScreen(out Vector2 cursor)) { _menu.SetHover(-1); return; }
+            _menu.SetHover(_menu.HitTest(cursor));
+            // 커서가 부채꼴 안이면 6초 자동 접힘 타이머를 되돌린다(32-3).
+            if (_menu.ContainsCursor(cursor)) _menu.KeepAlive();
         }
 
         /// <summary>저장된 위치를 딱 한 번 가져온다. Start가 아니라 첫 LateUpdate인 이유: 저장 파일을
@@ -361,16 +482,32 @@ namespace StickMate.Interaction
 
             _container.transform.position = new Vector3(centerWorld.x, centerWorld.y, 0f);
 
+            // 차단막은 톱니 사각형이 아니라 <b>톱니 + 펼쳐진 버튼</b>의 합집합을 덮어야 한다 —
+            // 안 그러면 버튼을 눌러도 그 클릭이 밑의 앱으로 새어 나간다. 접히면 즉시 원래 크기다(비침해).
+            InteractiveScreenRect = _menu != null && _menu.IsVisible
+                ? Union(IconScreenRect, _menu.UnionScreenRect)
+                : IconScreenRect;
+
             if (_clickTarget != null)
             {
                 Vector3 rectCenterWorld = _camera.ScreenToWorldPoint(
-                    new Vector3(IconScreenRect.center.x, IconScreenRect.center.y, depth));
+                    new Vector3(InteractiveScreenRect.center.x, InteractiveScreenRect.center.y, depth));
                 Vector3 rectMaxWorld = _camera.ScreenToWorldPoint(
-                    new Vector3(IconScreenRect.xMax, IconScreenRect.yMax, depth));
+                    new Vector3(InteractiveScreenRect.xMax, InteractiveScreenRect.yMax, depth));
                 _clickTarget.transform.position = new Vector3(rectCenterWorld.x, rectCenterWorld.y, 0f);
                 _clickTarget.size = new Vector2(Mathf.Abs(rectMaxWorld.x - rectCenterWorld.x) * 2f,
                     Mathf.Abs(rectMaxWorld.y - rectCenterWorld.y) * 2f);
             }
+        }
+
+        /// <summary>두 사각형을 모두 덮는 최소 사각형. <see cref="Rect.Encapsulate"/>가 없어 직접 만든다.</summary>
+        private static Rect Union(Rect a, Rect b)
+        {
+            float minX = Mathf.Min(a.xMin, b.xMin);
+            float minY = Mathf.Min(a.yMin, b.yMin);
+            float maxX = Mathf.Max(a.xMax, b.xMax);
+            float maxY = Mathf.Max(a.yMax, b.yMax);
+            return new Rect(minX, minY, maxX - minX, maxY - minY);
         }
 
         // ==================== 좌표/경계 (전부 OS 포인트, 창 좌상단 원점) ====================
@@ -606,13 +743,30 @@ namespace StickMate.Interaction
             _bigGear.localRotation = Quaternion.Euler(0f, 0f, bigPhase);
             _smallGear.localRotation = Quaternion.identity;
 
-            // 회전이 끝난 <b>다음에</b> 창이 나타난다(사용자 요구: "기어가 회전하면서 캐릭터 창이 나오게끔").
-            if (_window != null) _window.Open("우상단 톱니 아이콘 클릭");
+            // 부채꼴은 <b>클릭 프레임에 이미</b> 펼쳐지기 시작했다(32-9 (B)) — 회전이 끝나기를
+            // 기다리지 않는다. 그래서 여기서는 각도만 원위치로 돌려놓고 끝난다.
+        }
+
+        private void ExpandMenu()
+        {
+            if (_menu == null)
+            {
+                Debug.LogWarning("[톱니] 부채꼴 메뉴 위젯(GearRadialMenuWidget)이 없어 펼치지 못했습니다.");
+                return;
+            }
+            _menu.Expand(IconScreenCenter);
+        }
+
+        private void CollapseMenu(GearMenuCollapseMode mode, string reason)
+        {
+            if (_menu == null || !_menu.IsExpanded) return;
+            _menu.Collapse(mode, reason);
+            _menuPressIndex = -1;
         }
 
         private void TickHoverAlpha()
         {
-            bool highlight = IsSpinning || (_window != null && _window.IsOpen) || IsCursorOverIcon();
+            bool highlight = IsSpinning || IsMenuExpanded || (_window != null && _window.IsOpen) || IsCursorOverIcon();
             // 드래그 중에는 옅게 — "지금 들려서 떠 있다"는 표시다(호버 강조보다 우선한다).
             float target = _dragging ? DragAlpha : (highlight ? ActiveAlpha : IdleAlpha);
             float next = Mathf.MoveTowards(_alpha, target, AlphaFadeSpeed * Time.unscaledDeltaTime);
@@ -671,11 +825,33 @@ namespace StickMate.Interaction
 
             if (buttonDown && !prev) BeginPress(cursorUnityScreen, hasCursor);
             else if (buttonDown && _pressActive) UpdatePress(cursorUnityScreen, hasCursor);
-            else if (!buttonDown && prev) EndPress();
+            else if (!buttonDown && prev) EndPress(cursorUnityScreen, hasCursor);
         }
 
         private void BeginPress(Vector2 cursorUnityScreen, bool hasCursor)
         {
+            _menuPressIndex = -1;
+
+            // 부채꼴이 펼쳐져 있으면 그쪽이 먼저다: 버튼 위면 그 버튼을 누른 것이고, 톱니도 버튼도
+            // 아닌 곳이면 접는다. 접기는 그 클릭을 <b>소비하지 않는다</b> — 밑에서 하려던 일은
+            // 그대로 일어난다(메뉴의 표준 관례이자 비침해 원칙).
+            if (IsMenuExpanded && hasCursor)
+            {
+                int hit = _menu.HitTest(cursorUnityScreen);
+                if (hit >= 0)
+                {
+                    _menuPressIndex = hit;
+                    return;
+                }
+                if (!IconScreenRect.Contains(cursorUnityScreen))
+                {
+                    // 팝오버가 떠 있으면 그쪽이 자기 바깥 클릭을 스스로 처리한다(팝오버가 닫히면
+                    // 부채꼴도 따라 접힌다) — 여기서 먼저 접으면 팝오버가 고아로 남는다.
+                    if (_menu.AnchoredButton < 0) CollapseMenu(GearMenuCollapseMode.User, "부채꼴 바깥 클릭");
+                    return;
+                }
+            }
+
             // ★ 비침해 — 버튼이 눌렸다는 사실만으로는 아무 일도 하지 않는다. 커서가 아이콘 사각형
             //   안일 때만 반응한다(클래스 문서 "비침해 보장").
             if (!hasCursor || !IconScreenRect.Contains(cursorUnityScreen)) return;
@@ -703,16 +879,29 @@ namespace StickMate.Interaction
                 if (heldSeconds < LongPressSeconds && movedPoints < DragMoveThresholdPoints) return;
 
                 _dragging = true;
+                // 옮기는 동안 버튼들이 뒤에 남아 끌려다니면 안 된다. 접고 나서 옮긴다.
+                CollapseMenu(GearMenuCollapseMode.Drag, "톱니를 옮기기 시작");
                 Debug.Log($"[톱니] 길게 누름 감지({heldSeconds:F2}초 / {movedPoints:F1}pt 이동) — " +
-                    "드래그 모드로 전환합니다. 이제 커서를 따라가고, 떼면 그 자리에 고정됩니다(캐릭터 창은 열리지 않습니다).");
+                    "드래그 모드로 전환합니다. 이제 커서를 따라가고, 떼면 그 자리에 고정됩니다(부채꼴 메뉴는 펼쳐지지 않습니다).");
             }
 
             _hasCustomCenter = true;
             _customCenterPoints = ClampCenterPoints(UnityScreenToLocalPoints(cursorUnityScreen) + _grabOffsetPoints);
         }
 
-        private void EndPress()
+        private void EndPress(Vector2 cursorUnityScreen, bool hasCursor)
         {
+            // 부채꼴 버튼은 이동이 없으므로 <b>누른 그 버튼 위에서 뗐을 때만</b> 발동한다.
+            // 끌고 나가서 떼면 취소 — 모든 OS의 버튼 관례이자, 잘못 누른 것을 되돌릴 유일한 방법이다.
+            if (_menuPressIndex >= 0)
+            {
+                int index = _menuPressIndex;
+                _menuPressIndex = -1;
+                if (hasCursor && _menu != null && _menu.HitTest(cursorUnityScreen) == index) ActivateMenuButton(index);
+                else Debug.Log("[톱니] 부채꼴 버튼 선택 취소 — 누른 버튼 밖에서 뗐습니다.");
+                return;
+            }
+
             if (!_pressActive) return;
             _pressActive = false;
 
@@ -730,6 +919,7 @@ namespace StickMate.Interaction
         /// 아무 일도 하지 않는다(눌린 적 없던 것으로 되돌린다 — 창이 제멋대로 열리면 안 된다).</summary>
         private void AbortPress(string reason)
         {
+            _menuPressIndex = -1;
             if (!_pressActive) return;
             _pressActive = false;
             _leftPrev = false;
@@ -756,20 +946,31 @@ namespace StickMate.Interaction
                 $"저장 {(saved ? "완료" : "실패(메모리 값 유지, 다음 주기에 재시도)")} — 재시작해도 이 자리에 뜹니다.");
         }
 
-        /// <summary>짧은 클릭의 동작 — 예전 그대로다(회전 후 창 열기 / 열려 있으면 닫기). 달라진 것은
-        /// 호출 시점뿐이다(누른 순간 -> 뗀 순간, 클래스 문서 참고).</summary>
+        /// <summary>짧은 클릭의 동작 — 부채꼴 메뉴 토글이다. 펼쳐져 있으면 접고, 아니면 회전 연출 뒤
+        /// 펼친다. 호출 시점은 예전 그대로 <b>뗀 순간</b>이다(그래야 드래그와 구분된다).</summary>
         private void ActivateClick()
         {
             if (IsSpinning) return;
 
-            if (_window != null && _window.IsOpen)
+            if (IsMenuExpanded)
             {
-                _window.Close("우상단 톱니 아이콘 클릭(토글 닫기)");
+                // 닫을 때는 회전하지 않는다 — 회전은 "기계를 여는" 신호다(32-3).
+                CollapseMenu(GearMenuCollapseMode.User, "톱니 재클릭(토글 닫기)");
                 return;
             }
 
             _spinTimer = 0f;
-            Debug.Log("[톱니] 클릭 — 큰 기어와 작은 기어가 맞물려 돈 뒤 캐릭터 정보창이 열립니다.");
+            ExpandMenu();   // ★ 회전과 <b>동시에</b> 펼친다.
+            Debug.Log("[톱니] 클릭 — 두 기어가 맞물려 도는 것과 동시에 부채꼴 버튼 3개가 펼쳐집니다.");
+        }
+
+        /// <summary>부채꼴 버튼의 동작은 <see cref="GearRadialMenuWidget"/>가 전담한다 — 그쪽이
+        /// 팝오버를 알고 "누른 버튼만 남기고 나머지를 접는" 규칙(32-3)도 갖고 있다. 여기서는 어느
+        /// 버튼이 눌렸는지만 넘긴다.</summary>
+        private void ActivateMenuButton(int index)
+        {
+            if (_menu == null) return;
+            _menu.Activate(index);
         }
 
         /// <summary>드래그 중임을 눈으로 알 수 있게 살짝 키운다. 회전(자식의 각도)과 겹치지 않는

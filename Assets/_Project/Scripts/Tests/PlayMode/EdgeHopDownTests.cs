@@ -14,7 +14,8 @@ namespace StickMate.Tests.PlayMode
     /// ★ 사용자 결정 "낙차가 작으면 (매달리지 말고) 그냥 뛰어내리게 한다"(2026-08-29)의 실측 검증.
     ///
     /// 직전 라운드가 남긴 미해결 항목이 출발점이다 — macOS Dock 상단에서 화면 최하단까지의 낙차는
-    /// 0.855유닛뿐인데 매달리기(LedgeHang)는 손끝~발끝 거리(약 2.5유닛) 이상 떨어져 있어야 성립하므로,
+    /// 1.6375유닛뿐인데(Core/DockGeometry.cs 유도) 매달리기(LedgeHang)는 손끝~발끝 거리(배율 0.75에서
+    /// 약 1.88유닛) 이상 떨어져 있어야 성립하므로,
     /// 캐릭터가 Dock 경계에서 그냥 되돌아설 뿐 스스로 내려오지 못했다. 그래서 이 파일은 **그 Dock 배치를
     /// 그대로 재현한 발판 3장**(Dock 역할의 부분 폭 발판 + 그 좌/우 바깥의 바닥 조각 2장) 위에서 다음
     /// 네 가지를 잠근다:
@@ -30,7 +31,8 @@ namespace StickMate.Tests.PlayMode
     /// 복제본을 꽂아 원본 자산(DefaultStickConfig.asset)을 절대 건드리지 않는다(CLAUDE.md 불변 원칙 3).
     ///
     /// 발판의 세로 위치는 OS 픽셀이 아니라 **월드 유닛 낙차에서 역산**한다 — 해상도/DPI가 달라져도
-    /// "낙차 0.855유닛"이라는 실측 조건이 그대로 유지되어야 매달리기 임계값과의 대소 관계가 보존된다.
+    /// "낙차 1.6375유닛"이라는 실측 조건이 그대로 유지되어야 매달리기 임계값과의 대소 관계가 보존된다
+    /// (그 값은 이제 하드코딩이 아니라 Core/DockGeometry.ReferenceDockDropWorldUnits에서 온다).
     /// </summary>
     public sealed class EdgeHopDownTests
     {
@@ -41,8 +43,12 @@ namespace StickMate.Tests.PlayMode
         private const long LeftFloorHandle = 8002L;
         private const long RightFloorHandle = 8003L;
 
-        /// <summary>실제 macOS 실측값 — Dock 상단에서 화면 최하단까지의 낙차(월드 유닛).</summary>
-        private const float DockDropUnits = 0.855f;
+        /// <summary>★ Dock 상단 → 바닥 안전망 상단 낙차(월드 유닛). **하드코딩하지 않는다** —
+        /// Core/DockGeometry.cs가 (tilesize + dockThicknessTilePaddingPoints − BottomSafetyNetInsetPoints)를
+        /// 월드로 환산해 주는 단일 소스다(이 개발 머신 tilesize=49 → 67pt → 1.63747유닛).
+        /// 2026-08-30 횡단 리뷰 M1: 이 값이 파일마다 0.855(안전망이 40pt 위였던 시절의 화석) / 1.6375로
+        /// 갈라져 있었고, 그 탓에 배율 불변식 테스트가 실제 시스템이 아니라 자기 상수를 지키고 있었다.</summary>
+        private static readonly float DockDropUnits = DockGeometry.ReferenceDockDropWorldUnits;
 
         /// <summary>"매달려야 마땅한" 낙차(월드 유닛). 손끝~발끝 거리(약 2.5유닛)보다 확실히 크게 잡는다 —
         /// 테스트 본문이 실제 LedgeHangMinDropDepth와 비교해 이 전제를 다시 확인한다.</summary>

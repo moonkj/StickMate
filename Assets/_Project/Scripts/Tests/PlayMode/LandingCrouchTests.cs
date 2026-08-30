@@ -59,9 +59,17 @@ namespace StickMate.Tests.PlayMode
         /// <summary>더 얕지만 여전히 임계값을 넘는 낙하 — 깊이/시간 램프가 실제로 작동하는지 대조군.</summary>
         private const float ModerateDropUnits = 2.4f;
 
-        /// <summary>macOS Dock 상단→화면 최하단 실측 낙차. 임계값(2유닛) 미만이라 연출이 발동하면 안 된다
-        /// (리더 지시: "Dock 단차에서는 하지 않아야 한다").</summary>
-        private const float DockStepDropUnits = 0.855f;
+        /// <summary>★ Dock 상단 → 바닥 안전망 상단 낙차(월드 유닛). **하드코딩하지 않는다** —
+        /// Core/DockGeometry.cs가 (tilesize + dockThicknessTilePaddingPoints − BottomSafetyNetInsetPoints)를
+        /// 월드로 환산해 주는 단일 소스다(이 개발 머신 tilesize=49 → 67pt → 1.63747유닛).
+        /// 2026-08-30 횡단 리뷰 M1: 이 값이 파일마다 0.855(안전망이 40pt 위였던 시절의 화석) / 1.6375로
+        /// 갈라져 있었고, 그 탓에 배율 불변식 테스트가 실제 시스템이 아니라 자기 상수를 지키고 있었다.</summary>
+        /// <remarks>★ 2026-08-30: 갱신된 실측 낙차 1.6375는 여전히 rollLandingHeightThreshold(2유닛)
+        /// **미만**이라 "Dock 단차에서는 무릎앉아 착지를 하지 않는다"는 리더 지시는 그대로 성립한다.
+        /// 다만 예전 0.855보다 임계값에 훨씬 가까워졌다(여유 1.145 → 0.363유닛) — tilesize 를 크게 쓰는
+        /// 사용자(83 이상)에게는 Dock 단차가 임계값을 넘어 연출이 실제로 발동한다. 그 자체는 물리적으로
+        /// 옳은 거동이지만(낙차가 정말 커졌다), 지시의 전제가 tilesize에 의존한다는 사실은 기록해 둔다.</remarks>
+        private static readonly float DockStepDropUnits = DockGeometry.ReferenceDockDropWorldUnits;
 
         private const float SettleWaitSeconds = 2.0f;
         private const float MaxObserveSeconds = 8f;

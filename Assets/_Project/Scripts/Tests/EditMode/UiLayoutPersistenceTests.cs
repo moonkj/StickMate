@@ -109,6 +109,45 @@ namespace StickMate.Tests.EditMode
         }
 
         [Test]
+        public void 구버전_v1_저장_파일도_옮긴_적_없음으로_읽힌다()
+        {
+            // ★ 2026-08-30 횡단 리뷰 m5 — 위 v2 경로만 단언돼 있고 **v1 경로는 미검증**이었다.
+            // v1은 기록 필드(battleWins 등)와 톱니 위치 필드가 **둘 다** 없는 가장 오래된 파일이라,
+            // JsonUtility가 두 그룹을 동시에 기본값으로 채우는 유일한 경로다. v2와 같은 코드가 도는
+            // 것처럼 보이지만 "며칠 키운 v1 사용자"는 실제로 존재하는 집합이고, 이 경로가 깨지면
+            // 그 사용자만 레벨이 날아간다 — 가장 오래된 사용자가 가장 크게 잃는 형태의 회귀다.
+            const string V1Json =
+                "{\n" +
+                "    \"version\": 1,\n" +
+                "    \"level\": 9,\n" +
+                "    \"currentXp\": 42.0,\n" +
+                "    \"totalXpEarned\": 1500.0,\n" +
+                "    \"characterName\": \"최초동료\",\n" +
+                "    \"equippedHead\": true,\n" +
+                "    \"equippedEyes\": true,\n" +
+                "    \"equippedNeck\": false,\n" +
+                "    \"equippedShoulders\": false\n" +
+                "}";
+            File.WriteAllText(CharacterSaveStore.FilePath, V1Json);
+
+            CharacterSaveStore.Load();
+
+            Assert.IsTrue(CharacterSaveStore.LoadedFromFile,
+                "가장 오래된(v1) 파일을 읽지 못했습니다 — 며칠 키운 사용자의 진행도가 날아갑니다.");
+            Assert.AreEqual(9, CharacterProgressionModel.Level, "v1 파일의 레벨이 복원되지 않았습니다.");
+            Assert.AreEqual("최초동료", CharacterProgressionModel.CharacterName);
+            Assert.IsTrue(EquipmentModel.IsEquipped(EquipmentSlot.Eyes), "v1 파일의 장비가 복원되지 않았습니다.");
+            Assert.AreEqual(0, CharacterStatsModel.BattleWins, "v1 파일에 없던 기록은 0이어야 합니다.");
+
+            // ★ m5의 핵심 단언 — v2와 **같은 결론**이 v1에서도 나와야 한다.
+            Assert.IsFalse(UiLayoutModel.HasGearCenter,
+                "v1 파일에는 톱니 위치가 없으므로 '옮긴 적 없음'이어야 합니다 — 0,0(화면 좌상단 구석)으로 " +
+                "튀면 톱니가 메뉴바 뒤에 숨어 사용자가 다시는 찾지 못합니다.");
+            Assert.AreEqual(0f, UiLayoutModel.GearCenterPoints.x, 0.001f,
+                "'옮긴 적 없음'인데 좌표가 채워져 있습니다 — 플래그와 좌표가 어긋났습니다.");
+        }
+
+        [Test]
         public void 같은_자리로_다시_세팅하면_저장_대상이_되지_않는다()
         {
             // 위젯이 매 프레임 클램프 결과를 되돌려 주므로(화면 경계 보정), 같은 값 재세팅이 IsDirty를

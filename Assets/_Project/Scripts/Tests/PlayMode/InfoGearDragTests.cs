@@ -88,8 +88,12 @@ namespace StickMate.Tests.PlayMode
 
         // ==================== ① 짧게 클릭 (네거티브 컨트롤) ====================
 
+        /// <summary>2026-08-30 부채꼴 메뉴 라운드로 <b>짧은 클릭의 결과물</b>이 바뀌었다(창 열기 ->
+        /// 부채꼴 펼치기). 이 테스트가 잠그는 것은 그대로다: 짧은 클릭은 드래그가 아니고, 회전이 돌고,
+        /// <b>아이콘이 움직이지 않는다</b>. 창이 열리는 경로는 [캐릭터] 버튼으로 옮겨가
+        /// InfoGearRadialMenuTests가 잠근다.</summary>
         [UnityTest]
-        public IEnumerator ShortClickStillOpensWindowAndDoesNotMoveIcon()
+        public IEnumerator ShortClickStillSpinsAndDoesNotMoveIcon()
         {
             yield return LoadSceneAndResolve();
 
@@ -103,13 +107,14 @@ namespace StickMate.Tests.PlayMode
             Assert.IsTrue(_gear.IsSpinning, "짧은 클릭인데 회전이 시작되지 않았습니다 — 기존 동작이 깨졌습니다.");
             Assert.IsFalse(_gear.HasCustomPosition, "짧은 클릭인데 위치가 옮겨졌습니다.");
 
-            yield return new WaitForSecondsRealtime(0.9f);   // 회전 0.52초 + 여유.
-            Assert.IsTrue(_window != null && _window.IsOpen, "회전이 끝났는데 캐릭터 창이 열리지 않았습니다.");
+            yield return new WaitForSecondsRealtime(0.9f);   // 회전 0.52초 + 펼침 0.30초(동시) + 여유.
+            Assert.IsTrue(_gear.IsMenuExpanded, "회전이 끝났는데 부채꼴 메뉴가 펼쳐지지 않았습니다.");
+            Assert.IsFalse(_window != null && _window.IsOpen,
+                "짧은 클릭만으로 캐릭터 창이 열렸습니다 — 이제 창은 [캐릭터] 버튼을 눌러야 열립니다.");
             Assert.AreEqual(start.x, _gear.IconScreenCenter.x, 1f, "짧은 클릭 후 아이콘이 가로로 움직였습니다.");
             Assert.AreEqual(start.y, _gear.IconScreenCenter.y, 1f, "짧은 클릭 후 아이콘이 세로로 움직였습니다.");
 
-            _window.Close("테스트 정리");
-            Debug.Log($"[톱니드래그테스트] 짧은 클릭 유지 확인 — 중심 {start} 그대로, 창 열림.");
+            Debug.Log($"[톱니드래그테스트] 짧은 클릭 유지 확인 — 중심 {start} 그대로, 부채꼴 펼침.");
         }
 
         // ==================== ② 길게 누르면 드래그(창이 열리면 안 된다) ====================
@@ -152,6 +157,8 @@ namespace StickMate.Tests.PlayMode
             yield return new WaitForSecondsRealtime(0.9f);
             Assert.IsFalse(_window != null && _window.IsOpen,
                 "드래그였는데 캐릭터 창이 열렸습니다 — 클릭과 드래그가 구분되지 않았습니다.");
+            Assert.IsFalse(_gear.IsMenuExpanded,
+                "드래그였는데 부채꼴 메뉴가 펼쳐졌습니다 — 옮기려고 눌렀는데 메뉴가 뜨는 실패입니다.");
             Assert.AreEqual(target.x, _gear.IconScreenCenter.x, 2f, "떼고 나서 아이콘이 제자리에 고정되지 않았습니다.");
 
             Debug.Log($"[톱니드래그테스트] 길게 누름 -> 드래그 -> 고정 확인 — {start} -> {target}, 창 열림 없음.");

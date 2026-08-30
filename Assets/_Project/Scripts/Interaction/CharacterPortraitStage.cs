@@ -511,6 +511,14 @@ namespace StickMate.Interaction
             float h = TotalHeight;
             float r = HeadRadius;
 
+            // ★ "Head"/"Torso"라는 이름을 여기서 그대로 쓰는 것이 안전한 이유(2026-08-30 R3 m1 재확인):
+            // 이 도형들은 <b>캐릭터 계층 밖</b>에 산다. Create()가 촬영장을 씬 루트 GameObject로 만들고
+            // (CharacterInfoWindow는 이걸 재부모화하지 않는다), 이 선들은 그 아래 "MiniFigure"의 자식이다
+            // (AddLine이 _figureRoot에 붙인다). 이름으로 캐릭터 파츠를 찾는 코드는 전부 캐릭터 루트에서
+            // 출발하므로 여기에 닿을 수 없다 — 같은 날의 "Head" 회귀를 낸 것은 <b>캐릭터 루트 밑에</b>
+            // 캔버스를 달았던 부채꼴 메뉴였고, 이 파일은 원인이 아니었다.
+            // 이름을 바꾸지 않는 이유: PortraitFallenFramingTests가 figure.Find("Head")로 이 원을 실측해
+            // 액자 밖으로 잘리는지 검사한다(개명은 이득 없이 그 잠금장치를 끊는다).
             AddCircle("Head", Vector2.up * HeadCenterY, r, ink, 28);
             AddLine("Torso", new[] { V(0f, HeadCenterY - r), V(0f, HipY) }, ink, loop: false);
 

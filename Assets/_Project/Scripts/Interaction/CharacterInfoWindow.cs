@@ -221,6 +221,12 @@ namespace StickMate.Interaction
 
         public bool IsOpen => _open;
 
+        /// <summary>창이 실제로 켜져 있는가(진단/테스트 전용) — 플래그가 아니라 GameObject의 실제 상태.</summary>
+        public bool IsCanvasActive => _canvas != null && _canvas.gameObject.activeSelf;
+
+        /// <summary>클릭관통 차단막이 켜져 있는가(진단/테스트 전용, 비침해 원칙 2 검증용).</summary>
+        public bool IsClickBlockerEnabled => _clickBlocker != null && _clickBlocker.enabled;
+
         private void Awake()
         {
             // 같은 GameObject의 StickmanAgent만 쓴다 — 라이벌 복제본에서 창이 두 벌 뜨지 않게 하는
@@ -260,6 +266,10 @@ namespace StickMate.Interaction
 
         private void OnDestroy()
         {
+            // 캔버스가 씬 루트로 나갔으므로(BuildUi 주석) 캐릭터가 사라져도 자동으로 따라 죽지 않는다 —
+            // 여기서 명시적으로 거둔다. 라이벌 복제본에서 이 컴포넌트만 제거하는 경로
+            // (SceneBootstrapper.CreateRivalStickman)에서도 이 OnDestroy가 돌아 캔버스가 남지 않는다.
+            if (_canvas != null) Destroy(_canvas.gameObject);
             if (_clickBlocker != null) Destroy(_clickBlocker.gameObject);
             if (_stage != null) Destroy(_stage.gameObject);
         }
@@ -304,6 +314,20 @@ namespace StickMate.Interaction
         private void Update()
         {
             if (!_open) return; // 닫혀 있으면 아무 비용도 들이지 않는다.
+
+            // ★★ 절대 불변 원칙 2(비침해) — 전체화면 게임이 감지되면 창을 닫는다.
+            // StickmanAgent.Suspend()는 Awake에서 캐시한 캐릭터 렌더러만 끄고, 이 창은 씬 루트 캔버스
+            // + 씬 루트 차단막이라 그 배열에 없다(액세서리가 겪었던 "몸이 사라진 자리에 모자만 남는다"와
+            // 같은 구조). 게다가 StickmanAgent가 SetAlwaysOnTop(true)를 켜므로 전체화면 게임 위에
+            // 680×520 창이 그대로 떠 있고, 히트테스트가 픽셀 알파 기반이라 그 영역의 클릭까지 먹는다.
+            // Close()가 캔버스/차단막/초상화 촬영장 렌더링을 한 번에 정리한다. 복귀 시 강제로 다시 열지
+            // 않는다 — 사용자가 톱니로 다시 연다(WindowCrashDirector가 오버레이를 되살리지 않는 것과
+            // 같은 판단).
+            if (_agent != null && _agent.IsSuspended)
+            {
+                Close("전체화면 감지 — 자동 숨김(비침해 원칙 2)");
+                return;
+            }
 
             ApplyCanvasScaleFactor();
             SyncClickBlocker();
@@ -951,7 +975,15 @@ namespace StickMate.Interaction
             EnsureEventSystem();
 
             var canvasGo = new GameObject("CharacterInfoCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-            canvasGo.transform.SetParent(transform, false);
+
+            // ★★ 씬 루트에 둔다(캐릭터의 자식이 아니다) — 아래 차단막과 같은 이유에 더해,
+            // 캐릭터 자손으로 두면 이 캔버스 안의 UI 이름이 <b>이름으로 캐릭터 파츠를 찾는 코드</b>
+            // (StickmanPoseAnimator / StickmanMetrics / EyeController / DialogueBubbleRenderer /
+            // CharacterAccessoryRenderer)에 걸릴 수 있다. 2026-08-30에 부채꼴 메뉴의 "Head"라는 UI
+            // 자손이 정확히 그 사고를 냈다(캐릭터 머리·몸통이 영영 안 움직임). 지금 이 창의 부품
+            // 이름에는 충돌이 없지만, 그건 "앞으로 아무도 Head/Torso라는 이름을 안 쓴다"는 기대에
+            // 기대는 것이라 계층 자체를 분리해 구조적으로 막는다. 정리는 OnDestroy가 책임진다.
+            canvasGo.transform.SetParent(null, false);
             _canvas = canvasGo.GetComponent<Canvas>();
             _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             _canvas.sortingOrder = SortingOrderTopMost;

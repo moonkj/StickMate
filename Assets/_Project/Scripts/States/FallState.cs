@@ -167,7 +167,10 @@ namespace StickMate.States
             bool crouchLanding = fallHeight >= rollThreshold;
             if (crouchLanding)
             {
-                StickmanEventBus.RaiseLandingRollRequested(fallHeight);
+                // 좌표를 함께 싣는다 — 라이벌도 같은 FallState 타입을 쓰므로(RivalStickmanAgent), 좌표가
+                // 없으면 구독자가 "누구의 착지인지" 알 수 없다(StickmanEventBus.LandingImpactEvent 문서).
+                float footX = _blackboard.Body != null ? _blackboard.Body.position.x : 0f;
+                StickmanEventBus.RaiseLandingRollRequested(fallHeight, new Vector2(footX, landingWorldY));
             }
 
             // 발판 고착 확정 — 이 시점부터 접지 판정은 이 핸들만 본다(리더 지시 3~5항).

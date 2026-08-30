@@ -119,7 +119,8 @@ namespace StickMate.Interaction
         /// <summary>같은 파일에 실리는 모델 중 하나라도 바뀌었는가 — 안 바뀌었으면 디스크를 두드리지
         /// 않는다(하루 종일 켜져 있는 앱이다).</summary>
         private static bool IsAnythingDirty()
-            => CharacterProgressionModel.IsDirty || CharacterStatsModel.IsDirty || UiLayoutModel.IsDirty;
+            => CharacterProgressionModel.IsDirty || CharacterStatsModel.IsDirty || UiLayoutModel.IsDirty
+               || TodoListModel.IsDirty;   // v4 — 사용자가 적은 할일은 반드시 남아야 한다.
 
         // ==================== 보너스 훅(전부 읽기 전용 구독) ====================
 

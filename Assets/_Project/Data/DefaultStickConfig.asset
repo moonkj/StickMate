@@ -340,3 +340,26 @@ MonoBehaviour:
   equipmentUnlockLevelEyes: 4
   equipmentUnlockLevelNeck: 6
   equipmentUnlockLevelShoulders: 8
+  landingDustEnabled: 1
+  landingDustPuffCount: 5
+  landingDustSeconds: 0.38
+  landingDustSpreadRatio: 0.34
+  landingDustRiseRatio: 0.12
+  landingDustStrokeRatio: 0.022
+  landingDustFullHeights: 3
+  landingDustMinIntensity: 0.45
+  rivalDuelClashEnabled: 1
+  rivalDuelClashSeconds: 0.45
+  rivalDuelClashRadiusRatio: 0.55
+  rivalDuelClashRayCount: 8
+  rivalDuelClashStrokeRatio: 0.028
+  idleAmbientMotionEnabled: 1
+  idleAmbientLookAroundSeconds: 0.9
+  idleAmbientLookArmDegrees: 107
+  idleAmbientLookElbowDegrees: 122
+  idleAmbientLookHeadShiftRatio: 0.035
+  idleAmbientStretchSeconds: 2
+  idleAmbientStretchArmSpreadDegrees: 13
+  idleAmbientStretchElbowDegrees: 16
+  idleAmbientStretchKneeStraighten01: 0.7
+  idleAmbientStretchRiseRatio: 0.03

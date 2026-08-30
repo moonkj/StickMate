@@ -243,14 +243,13 @@ namespace StickMate.States
             }
 
             _root = root;
-            Transform[] all = root.GetComponentsInChildren<Transform>(true);
 
-            _leftLeg = BuildLimb(all, "LeftLeg", sign: -1f, phase: 0f, isLeg: true);
-            _rightLeg = BuildLimb(all, "RightLeg", sign: 1f, phase: 0.5f, isLeg: true);
+            _leftLeg = BuildLimb(root, "LeftLeg", sign: -1f, phase: 0f, isLeg: true);
+            _rightLeg = BuildLimb(root, "RightLeg", sign: 1f, phase: 0.5f, isLeg: true);
             // 팔의 PhaseOffset은 "같은 쪽 다리"와 같게 두고, 다리와의 반대 위상은 샘플링 시점에
             // ArmPhaseOffset(0.5)을 더해 만든다 — 왼팔은 왼다리의 반대로 나간다.
-            _leftArm = BuildLimb(all, "LeftArm", sign: -1f, phase: 0f, isLeg: false);
-            _rightArm = BuildLimb(all, "RightArm", sign: 1f, phase: 0.5f, isLeg: false);
+            _leftArm = BuildLimb(root, "LeftArm", sign: -1f, phase: 0f, isLeg: false);
+            _rightArm = BuildLimb(root, "RightArm", sign: 1f, phase: 0.5f, isLeg: false);
 
             var limbs = new System.Collections.Generic.List<Limb>(4);
             var segments = new System.Collections.Generic.List<Segment>(8);
@@ -262,11 +261,27 @@ namespace StickMate.States
             _segments = segments.ToArray();
 
             // 몸통/머리는 시각 전용 오브젝트(Rigidbody2D 없음)라 관절로 찾을 수 없다 — 이름으로 찾는다.
-            for (int i = 0; i < all.Length; i++)
+            //
+            // ★★ 2026-08-30 회귀 수정 — **루트 직속 자식만** 본다(예전에는 GetComponentsInChildren로
+            // 얻은 자손 전체를 훑고 마지막 일치를 채택했다).
+            //
+            // 실측으로 확인한 사고: 같은 캐릭터 루트에 붙는 UI 위젯이 Awake에서 자기 Canvas를
+            // `SetParent(transform)` 으로 달고, 그 안에 "미니 스틱맨" 아이콘의 머리 원을 **"Head"라는
+            // 이름의 자손**으로 만든다. 그러면 이 루프가 캐릭터의 머리 대신 그 UI 원을 잡아
+            // <b>캐릭터의 머리와 몸통이 영원히 움직이지 않게 된다</b>(무릎앉아 착지에서 머리 하강이
+            // 정확히 0.000유닛이 되어 발견됐다 — 팔다리는 관절로 찾으므로 멀쩡했고, 그래서 "포즈는
+            // 되는데 머리만 안 내려가는" 진단하기 어려운 형태였다).
+            //
+            // 이름 전역 탐색은 "다른 레이어가 우연히 같은 이름을 쓰면 조용히 깨지는" 구조다.
+            // 캐릭터의 Torso/Head는 프리팹 규약상 **항상 루트 직속**이므로(Editor/SceneBootstrapper의
+            // CreateLineSegmentVisual/CreateHeadAnchor가 root.transform을 부모로 만든다) 탐색 범위를
+            // 직속으로 좁히면 어떤 UI가 어떤 이름으로 자식을 만들든 구조적으로 영향을 받지 않는다.
+            for (int i = 0; i < root.childCount; i++)
             {
-                if (all[i] == null) continue;
-                if (all[i].name == "Torso") _torso = all[i];
-                else if (all[i].name == "Head") _head = all[i];
+                Transform child = root.GetChild(i);
+                if (child == null) continue;
+                if (_torso == null && child.name == "Torso") _torso = child;
+                else if (_head == null && child.name == "Head") _head = child;
             }
             if (_torso != null) _torsoNeutral = _torso.localPosition;
             if (_head != null) _headNeutral = _head.localPosition;
@@ -317,13 +332,20 @@ namespace StickMate.States
         /// 이름으로 위 마디를 찾고(프리팹 계층의 "LeftLeg"/"RightLeg"/"LeftArm"/"RightArm"), 그 자식에서
         /// 같은 이름 + "Lower"인 아래 마디를 찾는다. 배열 순회 순서에는 좌우/상하 의미가 없으므로 이름이
         /// 유일하게 신뢰할 수 있는 식별자다(RagdollRig도 같은 이유로 순회 순서에 의존하지 않는다).
+        ///
+        /// ★★ 2026-08-30 — Torso/Head와 같은 이유로 **루트 직속 자식만** 본다(Editor/SceneBootstrapper의
+        /// CreateLimb(root.transform, ...)이 항상 루트 직속으로 만든다). Torso/Head 회귀(위 생성자 주석
+        /// 참고 — 캐릭터 루트에 붙는 UI 위젯이 "Head"라는 이름의 UI 자손을 만들어 포즈를 얼렸던 사고)와
+        /// 같은 계열의 잠재 위험이 여기도 있었다 — 팔다리 이름과 우연히 같은 이름을 쓰는 자손이 어딘가에
+        /// 생기면 이 전역 탐색이 그걸 집어 조용히 깨진다. 직속으로 좁혀 구조적으로 차단한다.
         /// </summary>
-        private static Limb BuildLimb(Transform[] all, string upperName, float sign, float phase, bool isLeg)
+        private static Limb BuildLimb(Transform root, string upperName, float sign, float phase, bool isLeg)
         {
             Transform upperTransform = null;
-            for (int i = 0; i < all.Length; i++)
+            for (int i = 0; i < root.childCount; i++)
             {
-                if (all[i] != null && all[i].name == upperName) { upperTransform = all[i]; break; }
+                Transform child = root.GetChild(i);
+                if (child != null && child.name == upperName) { upperTransform = child; break; }
             }
             if (upperTransform == null) return null;
 
@@ -419,6 +441,84 @@ namespace StickMate.States
                 float upper = NeutralUpperAngle(limb, settings);
                 if (!limb.IsLeg) upper += limb.NeutralSign * breath * settings.BreathArmDegrees;
                 ApplyLimb(limb, upper, NeutralLowerAngle(limb, settings), deltaTime, smoothingRate);
+            }
+        }
+
+        /// ============================================================================
+        /// ★ 유휴 앰비언트 동작 (docs/UX_FLOW.md 26-3 "살아있는 느낌", 2026-08-30 배선)
+        /// ============================================================================
+        /// Idle 중립 포즈 **위에 얹는** 짧은 변주다. 새 상태가 아니라 이 메서드 하나이며, 호출부
+        /// (StickmanBlackboard.TickPose)가 Idle 분기에서 ApplyIdlePose 대신 이것을 부를 뿐이다 —
+        /// 그래서 이동 의도가 생기거나 발판을 잃으면 상태 전이가 알아서 연출을 끊는다(별도 취소 배관 없음).
+        ///
+        /// 트리거는 <see cref="StickmanEventBus.WanderAmbientMotionRequested"/>이고, 그 이벤트의 발행
+        /// 조건은 States/AutoWanderController.cs가 이미 갖고 있던 것 그대로다(새 확률을 하나도 더하지
+        /// 않았다 — 사용자가 "요청하지 않은 연출"에 반복적으로 민감했으므로 상위 신호의 빈도를 그대로
+        /// 물려받는 것이 규칙이다).
+        ///
+        /// 왜 두 동작이 하필 이 모양인가(캐릭터가 화면상 약 60pt로 아주 작다는 실측 제약):
+        ///   · LookAround(주위 살피기) — <b>한쪽 팔을 이마에 얹어 멀리 보는 손차양 자세</b> + 머리가
+        ///     좌우로 한 번 왕복한다. 처음에는 "머리만 좌우로 움직이기"를 검토했으나, 머리 반경이
+        ///     화면상 약 6pt라 머리만으로는 사실상 보이지 않는다. 팔 길이는 신장의 약 1/3이라
+        ///     팔 실루엣이 바뀌는 것이 이 크기에서 유일하게 확실히 읽히는 신호다.
+        ///     각도는 손 끝이 어깨 기준 (앞 0.20, 위 0.95)·팔길이에 오도록 역산한 값이다(어깨 107도 /
+        ///     팔꿈치 122도) — 그 지점이 곧 이마 높이다.
+        ///   · SitAndYawn(기지개) — 두 팔을 머리 위로 뻗고(매달리기와 같은 180∓spread 규약) 무릎을
+        ///     펴며 몸이 살짝 솟는다. 하품/기지개의 가장 큰 시각 신호가 "만세"이므로 그것만 쓴다.
+        ///
+        /// 진행 곡선: env = smoothstep(sin(pi*p)). 양 끝에서 정확히 0이라 <b>시작과 끝이 항상 중립</b>이고
+        /// (도중에 끊겨도 튀지 않는다), 가운데에 평평한 구간이 생겨 자세가 한 장의 그림으로 남는다
+        /// (무릎앉아 착지의 hold 구간과 같은 관행).
+        ///
+        /// <param name="progress01">이번 동작의 진행도 0~1. 호출부가 시간을 센다(포즈 계산은 무상태).</param>
+        public void ApplyIdleAmbientPose(float deltaTime, in PoseSettings settings, float smoothingRate,
+            in IdleAmbientPoseSettings ambient, StickMate.Core.WanderAmbientMotion motion, float progress01)
+        {
+            _idleTime += deltaTime;
+            float breath = Mathf.Sin(_idleTime * settings.BreathFrequencyHz * Mathf.PI * 2f);
+
+            float raw = Mathf.Sin(Mathf.Clamp01(progress01) * Mathf.PI);
+            float env = raw * raw * (3f - 2f * raw); // smoothstep — 양 끝 0, 가운데에 평평한 hold.
+
+            bool stretching = motion == StickMate.Core.WanderAmbientMotion.SitAndYawn;
+
+            float headShift = stretching
+                ? 0f
+                // 좌 -> 우 한 번 왕복. env를 곱해 양 끝이 정확히 중립이다.
+                : Mathf.Sin(Mathf.Clamp01(progress01) * Mathf.PI * 2f) * env * ambient.LookHeadShiftDistance;
+            float rise = stretching ? ambient.StretchRiseDistance * env : 0f;
+            SetBodyOffset(breath * settings.BreathAmplitude + rise, headShift);
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float upper = NeutralUpperAngle(limb, settings);
+                float lower = NeutralLowerAngle(limb, settings);
+                if (!limb.IsLeg) upper += limb.NeutralSign * breath * settings.BreathArmDegrees;
+
+                if (stretching)
+                {
+                    if (limb.IsLeg)
+                    {
+                        // 무릎을 펴며 몸이 솟는다(굽힘을 줄이는 방향이라 부호가 뒤집힐 일이 없다).
+                        lower *= 1f - Mathf.Clamp01(ambient.StretchKneeStraighten01) * env;
+                    }
+                    else
+                    {
+                        upper = Mathf.LerpAngle(upper,
+                            HangArmUpperAngle(limb.NeutralSign, ambient.StretchArmSpreadDegrees), env);
+                        lower = Mathf.LerpAngle(lower,
+                            ElbowBendSign * Mathf.Max(0f, ambient.StretchElbowDegrees), env);
+                    }
+                }
+                else if (!limb.IsLeg && limb.NeutralSign > 0f)
+                {
+                    // 한쪽 팔만 올린다 — 두 팔을 다 올리면 기지개와 실루엣이 구분되지 않는다.
+                    upper = Mathf.LerpAngle(upper, ambient.LookArmDegrees, env);
+                    lower = Mathf.LerpAngle(lower, ElbowBendSign * Mathf.Max(0f, ambient.LookElbowDegrees), env);
+                }
+
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
             }
         }
 
@@ -1227,11 +1327,17 @@ namespace StickMate.States
         /// 팔다리가 몸에서 떨어지지 않는다. Rigidbody2D.position은 건드리지 않으므로 접지 판정에는
         /// 아무 영향이 없다.
         /// </summary>
-        private void SetBodyOffset(float offsetY)
+        private void SetBodyOffset(float offsetY) => SetBodyOffset(offsetY, 0f);
+
+        /// <param name="headOffsetX">머리만 좌우로 미는 시각 전용 오프셋(월드 유닛) — 유휴 앰비언트
+        /// "주위 살피기"에서만 0이 아니다. 인자 없는 오버로드가 항상 0을 넣으므로, 다른 포즈 경로로
+        /// 넘어가는 순간(Walk/Fall/Ragdoll 등 전부 SetBodyOffset을 부른다) 자동으로 원복된다 —
+        /// 연출이 중간에 끊겨도 머리가 옆으로 밀린 채 굳는 경우가 구조적으로 없다.</param>
+        private void SetBodyOffset(float offsetY, float headOffsetX)
         {
             _bodyOffsetY = offsetY;
             if (_torso != null) _torso.localPosition = new Vector3(_torsoNeutral.x, _torsoNeutral.y + offsetY, _torsoNeutral.z);
-            if (_head != null) _head.localPosition = new Vector3(_headNeutral.x, _headNeutral.y + offsetY, _headNeutral.z);
+            if (_head != null) _head.localPosition = new Vector3(_headNeutral.x + headOffsetX, _headNeutral.y + offsetY, _headNeutral.z);
         }
 
         /// <summary>스칼라용 지수 감쇠(위 SmoothTo와 같은 공식) — 보행 주파수 입력 속도 스무딩에 사용.</summary>
@@ -1433,6 +1539,35 @@ namespace StickMate.States
                 RearHipDegrees = rearHip;
                 KneeBendDegrees = kneeBend;
                 BodySinkDistance = bodySinkDistance;
+            }
+        }
+
+        /// <summary>
+        /// 유휴 앰비언트 동작(26-3) 각도/거리 묶음 — <see cref="ApplyIdleAmbientPose"/> 참고.
+        /// 각도는 크기와 무관하므로 절대값이고, 거리 성분(<see cref="LookHeadShiftDistance"/> /
+        /// <see cref="StretchRiseDistance"/>)만 호출부가 신장을 곱해 월드 유닛으로 넘긴다
+        /// (ArcheryPoseSettings.BodySinkDistance와 같은 관례 — 배율 대응의 단일 창구는 StickmanMetrics다).
+        /// </summary>
+        public readonly struct IdleAmbientPoseSettings
+        {
+            public readonly float LookArmDegrees;
+            public readonly float LookElbowDegrees;
+            public readonly float LookHeadShiftDistance;
+            public readonly float StretchArmSpreadDegrees;
+            public readonly float StretchElbowDegrees;
+            public readonly float StretchKneeStraighten01;
+            public readonly float StretchRiseDistance;
+
+            public IdleAmbientPoseSettings(float lookArm, float lookElbow, float lookHeadShiftDistance,
+                float stretchArmSpread, float stretchElbow, float stretchKneeStraighten01, float stretchRiseDistance)
+            {
+                LookArmDegrees = lookArm;
+                LookElbowDegrees = lookElbow;
+                LookHeadShiftDistance = lookHeadShiftDistance;
+                StretchArmSpreadDegrees = stretchArmSpread;
+                StretchElbowDegrees = stretchElbow;
+                StretchKneeStraighten01 = stretchKneeStraighten01;
+                StretchRiseDistance = stretchRiseDistance;
             }
         }
     }

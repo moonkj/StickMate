@@ -538,13 +538,18 @@ namespace StickMate.States
             float rotatedY = Mathf.Cos(rad) * pivotY;
             _pivotOffset = new Vector2(-rotatedX, pivotY - rotatedY);
 
+            // ★ 2026-08-30 (횡단 리뷰 m8) — 위치는 반드시 단일 창구를 통한다.
+            // 예전에는 여기서 body.position과 body.transform.position을 **손으로 따로** 썼다. 두 값을
+            // 모두 쓰고 있었으므로 그때도 결과는 정확했지만, 커밋 dc1e62a가 하나로 모아 둔 창구
+            // (StickmanBlackboard.MoveBodyToWorld) 밖의 사본이라 유지보수 중 한 줄만 빠지면 커밋
+            // b014611의 "한 프레임 desync"(Rigidbody만 갱신되고 화면은 옛 위치)가 그대로 재발한다.
+            // ★ 회전은 창구가 다루지 않으므로(호출부마다 규칙이 다르다) 여기서 계속 직접 쓴다 —
+            //   회전도 같은 이유로 Rigidbody2D와 Transform 양쪽에 함께 써야 한다.
             Vector2 pos = ballisticFoot + _pivotOffset;
-            body.position = pos;
+            _blackboard.MoveBodyToWorld(pos);
             body.rotation = _angle;
             body.angularVelocity = 0f;
-
-            Transform t = body.transform;
-            t.SetPositionAndRotation(new Vector3(pos.x, pos.y, t.position.z), Quaternion.Euler(0f, 0f, _angle));
+            body.transform.rotation = Quaternion.Euler(0f, 0f, _angle);
         }
 
         /// <summary>회전 중심의 로컬 높이(발바닥 기준). 실측 창구(StickmanMetrics.HipLocalY)가 1순위이고,
@@ -572,12 +577,11 @@ namespace StickMate.States
             _pivotOffset = Vector2.zero;
             _angle = 0f;
 
-            body.position = pos;
+            // 위치는 단일 창구, 회전만 직접(위 ApplyRootRotation의 m8 주석과 같은 이유).
+            _blackboard.MoveBodyToWorld(pos);
             body.rotation = 0f;
             body.angularVelocity = 0f;
-
-            Transform t = body.transform;
-            t.SetPositionAndRotation(new Vector3(pos.x, pos.y, t.position.z), Quaternion.identity);
+            body.transform.rotation = Quaternion.identity;
         }
 
         // ============================================================================
@@ -638,9 +642,9 @@ namespace StickMate.States
                     : 0.5f;
                 impactSpeedSq = v.y * v.y + w * v.x * v.x;
 
+                // 위치는 단일 창구(위 ApplyRootRotation의 m8 주석 참고).
                 Vector2 pos = body.position;
-                body.position = new Vector2(pos.x, landingWorldY);
-                body.transform.position = new Vector3(pos.x, landingWorldY, body.transform.position.z);
+                _blackboard.MoveBodyToWorld(new Vector2(pos.x, landingWorldY));
                 if (v.y < 0f)
                 {
                     v.y = 0f;
@@ -654,8 +658,9 @@ namespace StickMate.States
             float effectiveHeight = Mathf.Max(geometricHeight, energyHeight);
             LastLandingEffectiveHeight = effectiveHeight;
 
-            // 부수 연출(먼지 파티클 등)용 신호 — FallState와 같은 관례로 같은 값을 싣는다.
-            StickmanEventBus.RaiseLandingRollRequested(effectiveHeight);
+            // 부수 연출(발밑 먼지)용 신호 — FallState와 같은 관례로 같은 값 + 착지 좌표를 싣는다.
+            float footX = body != null ? body.position.x : 0f;
+            StickmanEventBus.RaiseLandingRollRequested(effectiveHeight, new Vector2(footX, landingWorldY));
 
             _blackboard.CurrentFootholdHandle = footholdHandle;
             _blackboard.ReportFootholdChangeIfNeeded("던지기 회전 착지");
