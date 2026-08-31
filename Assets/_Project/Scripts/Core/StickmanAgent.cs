@@ -213,6 +213,12 @@ namespace StickMate.Core
 
         private void Awake()
         {
+            // ★ 2026-08-31 R3 Blocker 2 — 세션은 언제나 **배포 기본 배율**에서 출발한다.
+            // StickConfig는 에셋이라 씬을 다시 로드해도 같은 인스턴스가 살아 있다. 앞선 씬(또는
+            // 앞선 테스트 케이스)이 지정한 런타임 배율을 여기서 지우지 않으면 그 값이 다음 씬으로
+            // 조용히 새어 들어간다 — PlayMode 스위트 전체가 0.35배로 돌던 사고의 전파 경로다.
+            if (_config != null) _config.ClearRuntimeCharacterScale();
+
             _body = GetComponent<Rigidbody2D>();
             // BUG-P1-M6 대응(Major, docs/BUG_REPORT_PHASE1.md): SetRenderersEnabled와 대칭을 맞춰
             // Suspend()/Resume()도 전신(Phase 2 다중 파츠 Active Ragdoll 대비)을 순회하도록 여기서 1회 캐싱.
@@ -235,6 +241,15 @@ namespace StickMate.Core
             // 색 프리셋 일괄 갱신용 캐시(사용자 요청 "흰색 or 검은색 선택", 2026-08-28).
             // 몸통/머리링/눈/팔다리가 전부 LineRenderer라 이 배열 하나면 캐릭터 전체를 덮는다.
             _lineRenderers = GetComponentsInChildren<LineRenderer>(true);
+            CacheBakedStrokeWidths();
+
+            // ★ "프리팹이 어떤 배율로 구워졌는가"를 <b>어떤 다이얼 조작보다 먼저</b> 한 번만 캐싱한다.
+            // 루트 localScale이 아직 1인 이 시점의 실측 배율이 정확히 그 값이다. 이걸 놓치면
+            // config.characterScale이 "구워진 배율"과 "원하는 배율" 두 의미를 겸한 채 갈라져,
+            // 두 번째 다이얼 조작부터 크기가 조용히 어긋난다(2026-08-30 디버거가 지목한 함정).
+            StickmanMetrics bakedMetrics = Metrics;
+            BakedCharacterScale = bakedMetrics != null ? bakedMetrics.Scale : 1f;
+            if (BakedCharacterScale <= 0.0001f || float.IsNaN(BakedCharacterScale)) BakedCharacterScale = 1f;
 
             _platformService = CreatePlatformService();
             _cursorService = _platformService as ICursorPositionService;
@@ -475,6 +490,12 @@ namespace StickMate.Core
             // 참고) — 여기서는 그 소스의 내부 타이머만 갱신해주면 된다.
             _autoWander.Tick(dt);
 
+            // ★ 잉크 바닥 클리어런스 리프트를 **상태 로직보다 먼저** 벗긴다(2026-08-31).
+            // 리프트는 "그 프레임의 그림"에만 존재해야 한다 — 얹힌 채로 두면 아래의 접지 센서/스냅이
+            // 발이 발판에서 떠 있는 것으로 오판해 기상 도중 Fall로 보낼 수 있다
+            // (StickmanBlackboard.ReleaseInkFloorClearanceLift 문서의 두 임계값 참고).
+            _blackboard.ReleaseInkFloorClearanceLift();
+
             _machine.Tick(dt);
 
             // ★★ 접지 유지 안전망(2026-08-30, 디버거 — 사용자 신고 "갑자기 독 아래로 떨어지면서
@@ -491,6 +512,13 @@ namespace StickMate.Core
             // 취소/외부 ChangeState 등 어떤 경로로 상태가 바뀌어도 물리 모드가 상태와 어긋난 채
             // 남을 수 없다(StickmanBlackboard.TickPose() 문서 참고).
             _blackboard.TickPose(dt);
+
+            // ★★ 잉크 바닥 클리어런스(2026-08-31, 디버거가 원인 확정한 GETUP 발판 관통).
+            // 반드시 **접지 안전망과 포즈 확정 뒤**여야 한다: (a) 안전망이 먼저 돌면 그 SnapToGround가
+            // 리프트를 도로 눌러 내리고, (b) 포즈가 확정되기 전에 재면 이번 프레임에 그려질 자세가
+            // 아니라 지난 프레임 자세의 깊이를 보정하게 된다.
+            // 위 ReleaseInkFloorClearanceLift와 짝이다(얹기/벗기기를 한 프레임 안에서 닫는다).
+            _blackboard.TickInkFloorClearance();
 
             // 화면 클램프가 쓸 "지금 몸이 실제로 얼마나 넓은가"를 갱신한다(포즈 확정 직후여야 정확하다).
             TickVisualHalfWidth(dt);
@@ -581,6 +609,163 @@ namespace StickMate.Core
                 halfWidth = Mathf.Max(halfWidth, localHalf * Mathf.Abs(c.transform.lossyScale.x));
             }
             if (halfWidth > 0f) _blackboard.CharacterPhysicalHalfWidthWorld = halfWidth;
+        }
+
+        // ============================================================================
+        // ★ 캐릭터 크기 런타임 적용 (2026-08-31 — docs/UX_FLOW.md 34-3 크기 다이얼)
+        // ============================================================================
+        //
+        // 지금까지 StickConfig.characterScale은 <b>에디터 전용</b>이었다(값을 바꾼 뒤 메뉴
+        // StickMate/Rebuild All로 프리팹과 씬을 다시 구워야 반영). 다이얼이 붙으면 그 전제가 깨진다 —
+        // 다이얼에 2.00×라고 떠 있는데 캐릭터가 그대로면 <b>절대 불변 원칙 1(행동-텍스트 싱크) 정면
+        // 위반</b>이다. 그래서 여기서 런타임 반영 경로를 연다.
+        //
+        // 물리는 배율 전 구간(0.35~2.00)에서 안전하다는 것이 2026-08-30 디버거 실측 결론이다
+        // (질량이 스케일을 안 따라가 랙돌 임계값이 배율 불변 / breakForce가 Infinity라 관절 파단 불가 /
+        // 루트 원점이 발바닥이라 접지 오차 0 / RAGDOLL 중에 바꿔도 관절 구속 오차 증가 0).
+        // 안전하지 <b>않은</b> 것은 물리가 아니라 파생 레이어였고, 그래서 아래 다섯 가지를
+        // <b>한 프레임에 원자적으로</b> 처리한다(순서까지 그 실측이 정한 것이다):
+        //
+        //   1. root.localScale = v / 구워진 배율            — 지오메트리 전체
+        //   2. config.SetRuntimeCharacterScale(v)            — ResolveWalkSpeed()의 유일한 소스.
+        //      이걸 빼먹으면 보폭은 2.67배가 되는데 보행 속도가 그대로라 <b>발이 미끄러진다</b>
+        //      (망토 흔들림/FX 크기도 같은 값을 읽는다).
+        //   3. metrics.Remeasure()                           — Measure()는 1회 캐싱이라 부르지 않으면
+        //      0.8초 내내 옛 값을 돌려준다(실측). 스케일 대입과 <b>같은 프레임</b>이어야 한다.
+        //   4. 전 LineRenderer 두께 재대입(2.0pt 하한)        — LineRenderer의 width는 Transform 스케일을
+        //      <b>따라가지 않는다</b>(실측: 배율 3종에서 두께 0.02888 고정). 안 고치면 배율 2.00에서
+        //      거미처럼 가늘어지고 0.35에서 뭉툭해진다.
+        //   5. 시각 반폭 즉시 재측정                          — 0.25초 주기 그대로 두면 화면 가장자리에서
+        //      최대 250ms 동안 옛 반폭으로 판정하다가 갱신 순간 루트가 한 프레임에 2.29유닛 순간이동한다.
+        //
+        // ★ Rigidbody2D.mass는 <b>일부러 건드리지 않는다</b>. 지금 안 따라가는 덕분에 랙돌 진입 임계가
+        //   순수 속도 임계(8유닛/s)로 축약되어 배율 불변이다. s²로 재계산하면 배율 2.00에서 임계 속도가
+        //   1.1유닛/s로 떨어져 <b>걷기만 해도 랙돌</b>이 된다(실측 근거로 "고칠 것 없음"이 정답인 항목).
+
+        /// <summary>프리팹이 <b>구워진</b> 배율. 루트 localScale이 1일 때의 실측 배율이며 앱 수명 동안
+        /// 변하지 않는다. 이 값이 필요한 이유: config의 배율은 다이얼이 덮어쓰는 순간부터
+        /// "지금 원하는 배율"이 되어 "구워진 배율"을 더 이상 말해 주지 못한다(그러면 2회차 조작부터
+        /// localScale = v / ResolveCharacterScale()이 틀린 값을 준다).</summary>
+        public float BakedCharacterScale { get; private set; }
+
+        /// <summary>지금 적용돼 있는 배율(= 구워진 배율 × 루트 localScale).</summary>
+        public float CurrentCharacterScale => BakedCharacterScale * Mathf.Abs(transform.localScale.y);
+
+        /// <summary>
+        /// 구워진 획 두께(<b>월드 유닛</b>). 배율이 바뀔 때마다 이 값에 비율을 곱해 다시 대입한다 —
+        /// 마지막에 대입한 값에 또 곱하면 오차가 누적된다.
+        ///
+        /// <para>★ <see cref="LineRenderer.widthMultiplier"/>가 아니라 <see cref="LineRenderer.startWidth"/>를
+        /// 쓰는 이유(실측으로 정한 것이다): 프리팹은 <c>startWidth</c>에 실제 두께를 굽고 multiplier는
+        /// <b>1.0 그대로</b> 남긴다. multiplier를 만지면 "화면상 최소 2.0pt"라는 하한을 <b>배수</b>와
+        /// 비교하게 되어 단위가 어긋난다 — 실제로 그렇게 짜서 배율 0.35에서 하한이 전혀 걸리지 않는
+        /// 상태를 실행으로 잡았다. 두께는 길이 단위로 다뤄야 하한도 길이 단위로 비교된다.</para>
+        /// </summary>
+        private float[] _bakedStrokeWidths;
+
+        private void CacheBakedStrokeWidths()
+        {
+            if (_lineRenderers == null) return;
+            _bakedStrokeWidths = new float[_lineRenderers.Length];
+            for (int i = 0; i < _lineRenderers.Length; i++)
+            {
+                LineRenderer lr = _lineRenderers[i];
+                _bakedStrokeWidths[i] = lr != null ? lr.startWidth : 0f;
+            }
+        }
+
+        /// <summary>
+        /// ★ 캐릭터 배율을 <b>지금 이 프레임에</b> 적용한다. 위 문단의 5단계를 순서대로 한 번에 한다.
+        /// </summary>
+        /// <param name="desiredScale">다이얼 값(StickConfig.Min/MaxCharacterScale로 clamp된다).</param>
+        /// <param name="reason">로그에 남길 출처(다이얼/복원/테스트).</param>
+        /// <returns>실제로 바뀌었으면 true(같은 값이면 아무것도 하지 않고 false).</returns>
+        public bool ApplyCharacterScale(float desiredScale, string reason)
+        {
+            if (float.IsNaN(desiredScale) || desiredScale <= 0f) return false;
+            float v = Mathf.Clamp(desiredScale, StickConfig.MinCharacterScale, StickConfig.MaxCharacterScale);
+
+            float baked = BakedCharacterScale;
+            if (baked <= 0.0001f || float.IsNaN(baked)) baked = 1f;
+
+            float factor = v / baked;
+            Vector3 current = transform.localScale;
+            bool sameTransform = Mathf.Approximately(current.x, factor) && Mathf.Approximately(current.y, factor);
+            bool sameConfig = _config == null || Mathf.Approximately(_config.ResolveCharacterScale(), v);
+            if (sameTransform && sameConfig) return false;
+
+            // (1) 지오메트리. 루트 원점이 발바닥이라 균일 스케일해도 발이 뜨거나 박히지 않는다.
+            transform.localScale = new Vector3(factor, factor, 1f);
+
+            // (2) 보행 속도/보폭/망토 흔들림의 단일 소스.
+            // ★ 2026-08-31 R3 Blocker 2 — 여기서 `_config.characterScale = v`로 **직렬화 필드**에 쓰면
+            //   그 순간 배포 에셋(DefaultStickConfig.asset)이 메모리에서 오염되고, 에디터가 그것을
+            //   저장하면 전 사용자에게 그대로 나간다. 직렬화되지 않는 런타임 필드에만 쓴다
+            //   (StickConfig의 "이번 실행의 배율은 이 에셋에 기록되지 않는다" 문단이 근거).
+            if (_config != null) _config.SetRuntimeCharacterScale(v);
+
+            // (3) 실측 치수 캐시 무효화 — 반드시 같은 프레임에.
+            StickmanMetrics metrics = Metrics;
+            if (metrics != null) metrics.Remeasure();
+
+            // (4) 획 두께(Transform 스케일을 안 따라간다).
+            ApplyStrokeWidthsForScale(v);
+
+            // (5) 화면 클램프가 쓰는 반폭을 즉시 다시 잰다(주기를 기다리지 않는다).
+            _visualHalfWidthTimer = float.MaxValue;
+            TickVisualHalfWidth(0f);
+
+            Debug.Log($"[크기] 캐릭터 배율 {v:F2}× 적용({reason}) — 구워진 배율 {baked:F3}, 루트 스케일 {factor:F3}, " +
+                $"전신 높이 {(metrics != null ? metrics.TotalHeight : 0f):F3}유닛, 보행 속도 " +
+                $"{(_config != null ? _config.ResolveWalkSpeed() : 0f):F3}유닛/s, 물리 반폭 " +
+                $"{(_blackboard != null ? _blackboard.CharacterPhysicalHalfWidthWorld : 0f):F3}, 맨틀 인셋 " +
+                $"{(_blackboard != null ? _blackboard.ParkourMantleInsetWorld : 0f):F3}.");
+            return true;
+        }
+
+        /// <summary>
+        /// 획 두께를 배율에 맞춰 다시 대입한다. <b>화면상 최소 두께</b>
+        /// (<see cref="StickConfig.MinStrokeScreenPoints"/>) 아래로는 내려가지 않는다 —
+        /// Assets/Editor/SceneBootstrapper.cs가 프리팹을 구울 때 쓰는 것과 <b>같은 상수, 같은 규칙</b>이다
+        /// (상수를 두 곳에 적지 않으려고 StickConfig로 올렸다).
+        /// </summary>
+        private void ApplyStrokeWidthsForScale(float scale)
+        {
+            if (_lineRenderers == null || _bakedStrokeWidths == null) return;
+
+            float baked = BakedCharacterScale;
+            if (baked <= 0.0001f || float.IsNaN(baked)) baked = 1f;
+            float ratio = scale / baked;
+            float floorWorld = ResolveMinStrokeWorldWidth();
+
+            for (int i = 0; i < _lineRenderers.Length && i < _bakedStrokeWidths.Length; i++)
+            {
+                LineRenderer lr = _lineRenderers[i];
+                if (lr == null || _bakedStrokeWidths[i] <= 0f) continue;
+                float width = Mathf.Max(_bakedStrokeWidths[i] * ratio, floorWorld);
+                lr.startWidth = width;
+                lr.endWidth = width;
+            }
+        }
+
+        /// <summary>화면상 최소 획 두께를 월드 유닛으로 환산한다. 카메라의 직교 크기와 화면 높이(포인트)를
+        /// 실측해서 쓰므로, 프리팹을 구울 때의 근사(창 높이 846pt 고정)보다 정확하다. 카메라가 없으면
+        /// 그 근사로 되메운다 — 0을 흘리면 하한이 조용히 사라진다.</summary>
+        private float ResolveMinStrokeWorldWidth()
+        {
+            Camera cam = _mainCamera != null ? _mainCamera : Camera.main;
+            if (cam == null || !cam.orthographic || Screen.height <= 0)
+                return StickConfig.MinStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
+
+            // 화면 높이(OS 포인트) = Unity 픽셀 높이 × (OS 포인트 / Unity 픽셀).
+            float screenHeightPoints = Screen.height * ScreenCoordinateConverter.ResolveDpiScale(_config);
+            if (screenHeightPoints <= 1f)
+                return StickConfig.MinStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
+
+            float pointsPerWorldUnit = screenHeightPoints / (2f * cam.orthographicSize);
+            if (pointsPerWorldUnit <= 0.0001f)
+                return StickConfig.MinStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
+            return StickConfig.MinStrokeScreenPoints / pointsPerWorldUnit;
         }
 
         private void TickFullscreenSuspend(float deltaTime)

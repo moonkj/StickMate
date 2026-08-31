@@ -172,11 +172,25 @@ namespace StickMate.Interaction
 
         public PortraitPose Pose => _pose;
 
+        /// <summary>
+        /// 두 번째 촬영장의 X 좌표 — 화면 좌하단 호버 패널의 미리보기 카드가 쓴다(docs/UX_FLOW.md 34-6-3).
+        ///
+        /// <para><b>왜 인스턴스를 나눠야 하는가</b>: 880 정보창과 호버 패널은 동시에 열려 있을 수 있고
+        /// 각자 다른 크기의 RenderTexture를 요구한다. 같은 인스턴스를 공유하면 RT가 서로를 밀어내며
+        /// 매 프레임 재생성되고, 두 촬영장을 <b>같은 좌표</b>에 세우면 카메라 하나가 미니 피규어 두 개를
+        /// 함께 찍는다. 두 촬영장은 200유닛 떨어져 있고 각 카메라의 직교 가시폭은 약 2.4유닛이라
+        /// 서로를 절대 볼 수 없다(메인 카메라가 10000을 못 보는 것과 같은 논리).</para>
+        /// </summary>
+        public const float SecondaryStageWorldX = 10200f;
+
         /// <summary>독립 루트 오브젝트로 촬영장을 만든다(캐릭터의 자식이 아니다 — 클래스 문서 참고).</summary>
-        public static CharacterPortraitStage Create(StickConfig config, StickmanMetrics metrics, Material lineMaterial)
+        /// <param name="stageWorldX">촬영장을 세울 X. 기본값이 있으므로 기존 호출부는 무수정이다
+        /// (두 번째 촬영장이 필요한 이유는 <see cref="SecondaryStageWorldX"/> 문서 참고).</param>
+        public static CharacterPortraitStage Create(StickConfig config, StickmanMetrics metrics, Material lineMaterial,
+            float stageWorldX = StageWorldX)
         {
             var go = new GameObject("CharacterPortraitStage");
-            go.transform.position = new Vector3(StageWorldX, 0f, 0f);
+            go.transform.position = new Vector3(stageWorldX, 0f, 0f);
             var stage = go.AddComponent<CharacterPortraitStage>();
             stage._config = config;
             stage._metrics = metrics;
@@ -365,6 +379,13 @@ namespace StickMate.Interaction
             {
                 _camera.targetTexture = _texture;
                 _camera.aspect = (float)w / h;
+                // ★ 2026-08-31 — 카메라 활성 상태를 여기서 다시 맞춘다.
+                //   SetRenderingEnabled()는 `on && _texture != null`로 카메라를 켜는데, 호출부가
+                //   <b>RT를 만들기 전에</b> 그 함수를 부르면(구석 호버 패널이 그랬다) 그 순간 텍스처가
+                //   없어 카메라가 꺼진 채 남고, 나중에 RT가 생겨도 아무도 다시 켜 주지 않는다 —
+                //   결과는 "액자는 그려지는데 안이 텅 빈" 화면이다(실제로 캡처로 확인).
+                //   두 함수의 호출 순서에 의존하지 않게 만드는 것이 옳다.
+                _camera.enabled = _renderingRequested;
             }
             _builtSignature = -1;
             return true;

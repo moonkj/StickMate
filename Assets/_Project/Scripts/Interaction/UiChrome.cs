@@ -313,6 +313,11 @@ namespace StickMate.Interaction
         /// 약 1 물리 픽셀 — 계단을 지우기에 충분하고, 더 넓히면 획이 흐려 보인다.</summary>
         private const float EdgeFeather = 0.5f;
 
+        /// <summary>위 램프 폭의 공개 이름 — <see cref="SizeDialWidget"/>이 눈금을 <b>다시 놓을 때</b>
+        /// (GameObject를 새로 만들지 않고 sizeDelta만 갱신할 때) 같은 규약을 지켜야 한다. 값을 그쪽에
+        /// 다시 적으면 눈금만 다른 획들과 두께가 달라진다.</summary>
+        public const float EdgeFeatherPoints = EdgeFeather;
+
         /// <summary>꽉 찬 원.</summary>
         public static Sprite Circle() => CircleSprite(0.5f, 1f);
 
@@ -373,6 +378,10 @@ namespace StickMate.Interaction
         private static readonly Dictionary<int, Sprite> _capsuleCache = new Dictionary<int, Sprite>();
 
         private const int CapsuleCapTexels = 16;
+
+        /// <summary>위 캡 텍셀 수의 공개 이름 — <see cref="EdgeFeatherPoints"/>와 같은 이유
+        /// (<see cref="Image.pixelsPerUnitMultiplier"/> 계산을 호출부가 재현해야 한다).</summary>
+        public const int CapsuleCapTexelsPublic = CapsuleCapTexels;
 
         private static Sprite Capsule(float coreFraction)
         {
@@ -568,6 +577,188 @@ namespace StickMate.Interaction
             image.color = new Color(PanelShadow.r, PanelShadow.g, PanelShadow.b, alpha);
             image.raycastTarget = false;
             return image;
+        }
+
+        // ====================================================================================
+        // ★ 유리(glass) 프리미티브 3종 — docs/UX_FLOW.md 34-2 (2026-08-31)
+        // ====================================================================================
+        //
+        // 릴스의 패널 뒤는 진짜 가우시안 블러(macOS NSVisualEffectView)다. 이 프로젝트는 Built-in RP에
+        // 포스트프로세싱 스택이 없고, 있어도 24시간 상주 앱에 매 프레임 blit은 과하다. 그런데
+        // <b>사람이 "유리"라고 판정하는 단서는 넷</b>이고 블러는 그중 하나일 뿐이다:
+        //   (a) 뒤가 살짝 비침      → 알파
+        //   (b) 위쪽이 더 밝음      → 세로 시인(sheen)          ← VerticalGradientFill
+        //   (c) 가장자리 얇은 밝은 선 → 상단 1px 하이라이트 + 보더
+        //   (d) 바닥에서 떠 있음    → 그림자 2겹(AddShadow가 이미 2겹이다)
+        // 넷 중 셋을 알파와 1px 선으로 만들 수 있으므로 블러 없이도 유리로 읽힌다.
+        // 셰이더 0건 / 렌더텍스처 0건 / 머티리얼 0건 — 이 파일의 기존 규약 그대로다.
+
+        private static readonly Dictionary<int, Sprite> _gradientCache = new Dictionary<int, Sprite>();
+
+        /// <summary>세로 알파 램프가 사라지는 지점(위에서부터의 비율). 34-2: 45%.
+        /// 그보다 아래까지 내려오면 "위에서 온 빛"이 아니라 "그라데이션 배경"으로 읽힌다.</summary>
+        private const float SheenFadeRatio = 0.45f;
+
+        private const int GradientTextureWidth = 64;
+        private const int GradientTextureHeight = 128;
+
+        /// <summary>
+        /// 위쪽이 밝고 45% 지점에서 완전히 투명해지는 <b>둥근 사각형</b>. 유리의 단서 (b)를 만든다.
+        ///
+        /// <para><b>왜 9-슬라이스가 아니라 <see cref="Image.Type.Simple"/>인가</b>: 9-슬라이스는 가운데를
+        /// 늘리는데, 그 가운데가 곧 그라데이션 구간이라 늘리면 램프까지 늘어나 "위 45%"라는 약속이
+        /// 깨진다. 가로 방향은 색이 균일하므로 통째로 늘려도 왜곡이 보이지 않고, 세로만 정확히
+        /// 유지하면 된다. 코너는 <b>위쪽 둘만</b> 둥글린다 — 아래쪽은 이미 완전히 투명하다.</para>
+        /// </summary>
+        /// <param name="radius">패널 모서리 반지름(pt). 텍스처 폭 기준으로 환산해 굽는다.</param>
+        public static Sprite VerticalGradientFill(int radius)
+        {
+            radius = Mathf.Clamp(radius, 2, 32);
+            if (_gradientCache.TryGetValue(radius, out Sprite cached) && cached != null) return cached;
+
+            const int w = GradientTextureWidth, h = GradientTextureHeight;
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                name = $"UiChrome_Sheen_R{radius}",
+                hideFlags = HideFlags.HideAndDontSave,
+            };
+
+            // 텍셀 단위 코너 반지름 — 가로는 통째로 늘어나므로 세로 기준(픽셀 정사각)으로 잡는다.
+            float rTexels = Mathf.Max(2f, radius * (h / 148f));   // 148 = 34-4-4의 COLLAPSED 높이(pt) 기준.
+            var pixels = new Color32[w * h];
+            for (int y = 0; y < h; y++)
+            {
+                // y = 0이 아래. 위(=y가 큰 쪽)에서 아래로 램프한다.
+                float fromTop = (h - 1 - y) / (float)(h - 1);
+                float ramp = fromTop >= SheenFadeRatio ? 0f : 1f - fromTop / SheenFadeRatio;
+                for (int x = 0; x < w; x++)
+                {
+                    float px = x + 0.5f, py = y + 0.5f;
+                    // 위쪽 코너 둘만 둥글린다.
+                    float dx = Mathf.Max(rTexels - px, px - (w - rTexels), 0f);
+                    float dy = Mathf.Max(py - (h - rTexels), 0f);
+                    float outside = Mathf.Sqrt(dx * dx + dy * dy) - rTexels;
+                    float shape = dx > 0f || dy > 0f ? Mathf.Clamp01(0.5f - outside) : 1f;
+
+                    byte a = (byte)Mathf.RoundToInt(Mathf.Clamp01(ramp * shape) * 255f);
+                    pixels[y * w + x] = new Color32(255, 255, 255, a);
+                }
+            }
+            tex.SetPixels32(pixels);
+            tex.Apply(false, false);
+
+            Sprite sprite = Sprite.Create(tex, new Rect(0f, 0f, w, h), new Vector2(0.5f, 0.5f), 100f, 0,
+                SpriteMeshType.FullRect);
+            sprite.name = tex.name;
+            sprite.hideFlags = HideFlags.HideAndDontSave;
+            _gradientCache[radius] = sprite;
+            return sprite;
+        }
+
+        private static Sprite _radialGlow;
+
+        /// <summary>
+        /// 중심이 밝고 가장자리로 <b>제곱 감쇠</b>하는 원. 다이얼 링 블룸/코너 광원에 쓴다.
+        ///
+        /// <para><b>왜 선형이 아니라 제곱인가</b>: 선형 감쇠는 가장자리에서 알파가 갑자기 끊겨
+        /// "원반"으로 보인다. 제곱이면 바깥이 길게 사라져 <b>발광</b>으로 읽힌다. 이건 이미
+        /// <see cref="AddShadow"/>가 겪은 것과 같은 문제이며, 그림자 쪽은 9-슬라이스라 이 방식을
+        /// 쓸 수 없어 알파 한 겹으로 타협했던 자리다.</para>
+        /// </summary>
+        public static Sprite RadialGlow()
+        {
+            if (_radialGlow != null) return _radialGlow;
+
+            const int size = CircleTextureSize;
+            float half = size * 0.5f;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                name = "UiChrome_RadialGlow",
+                hideFlags = HideFlags.HideAndDontSave,
+            };
+
+            var pixels = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = x + 0.5f - half, dy = y + 0.5f - half;
+                    float d = Mathf.Sqrt(dx * dx + dy * dy) / half;
+                    float a = d >= 1f ? 0f : (1f - d) * (1f - d);
+                    pixels[y * size + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(a * 255f));
+                }
+            }
+            tex.SetPixels32(pixels);
+            tex.Apply(false, false);
+
+            _radialGlow = Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), 100f, 0,
+                SpriteMeshType.FullRect);
+            _radialGlow.name = tex.name;
+            _radialGlow.hideFlags = HideFlags.HideAndDontSave;
+            return _radialGlow;
+        }
+
+        /// <summary>상단 1px 하이라이트가 코너 곡선을 피해 들어가는 안쪽 여백(pt).</summary>
+        private const float HighlightInsetPoints = 1f;
+
+        /// <summary>
+        /// ★ 34-2의 유리 6겹을 <b>한 번에</b> 만든다. 호출부가 겹 순서를 손으로 다시 적으면 창마다
+        /// 유리가 달라진다 — 그래서 순서를 아는 곳을 여기 하나로 못박는다.
+        ///
+        /// <para>반환값은 <b>컨테이너</b>(그림 없는 RectTransform)다. 호출부는 이 사각형의 크기/위치만
+        /// 정하면 되고 안쪽 6겹은 전부 <see cref="Stretch"/>로 따라온다. 그림자를 컨테이너의
+        /// <b>형제가 아니라 첫 자식</b>으로 두면 본체 위에 얹혀 패널을 검게 덮으므로, 여기서는
+        /// 그림자 → 본체 → 시인 → 하이라이트 → 보더 순으로 <b>형제 순서</b>를 만든다.</para>
+        /// </summary>
+        /// <param name="alpha">본체 알파. 34-1의 규칙: 큰 창 0.96 / 호버 패널·카드 0.86 / 다이얼 원판 0.72.</param>
+        /// <param name="body">본체 표면 — 호출부가 색을 다시 칠하거나 알파를 애니메이션할 대상.</param>
+        public static RectTransform AddGlassPanel(Transform parent, string name, float alpha, int radius,
+            out Image body)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var container = go.GetComponent<RectTransform>();
+
+            // (1) 그림자 2겹 — 넓고 옅은 앰비언트가 "떠 있음"을, 좁고 진한 키가 "가장자리"를 만든다.
+            AddShadow(container, "Shadow", radius, 14f, new Vector2(0f, -6f));
+
+            // (2) 본체.
+            body = AddSurface(container, "Body", new Color(PanelSurface.r, PanelSurface.g, PanelSurface.b, alpha), radius);
+            Stretch(body.rectTransform);
+            body.raycastTarget = false;
+
+            // (3) 세로 시인 — 위쪽이 더 밝다.
+            var sheenGo = new GameObject("Sheen", typeof(RectTransform), typeof(Image));
+            sheenGo.transform.SetParent(container, false);
+            Stretch(sheenGo.GetComponent<RectTransform>());
+            var sheen = sheenGo.GetComponent<Image>();
+            sheen.sprite = VerticalGradientFill(radius);
+            sheen.type = Image.Type.Simple;
+            sheen.color = PanelSheen;
+            sheen.raycastTarget = false;
+
+            // (4) 안쪽 상단 1px 하이라이트 — 코너 곡선 구간을 피해야 선이 곡면 위에 얹히지 않는다.
+            var hi = new GameObject("Highlight", typeof(RectTransform), typeof(Image));
+            hi.transform.SetParent(container, false);
+            var hiRt = hi.GetComponent<RectTransform>();
+            hiRt.anchorMin = new Vector2(0f, 1f);
+            hiRt.anchorMax = new Vector2(1f, 1f);
+            hiRt.pivot = new Vector2(0.5f, 1f);
+            hiRt.offsetMin = new Vector2(radius, -HighlightInsetPoints - 1f);
+            hiRt.offsetMax = new Vector2(-radius, -HighlightInsetPoints);
+            var hiImage = hi.GetComponent<Image>();
+            hiImage.sprite = RoundedFill(RadiusDot);
+            hiImage.type = Image.Type.Sliced;
+            hiImage.color = PanelHighlight;
+            hiImage.raycastTarget = false;
+
+            // (5) 보더.
+            AddOutline(container, "Border", PanelBorder, radius);
+            return container;
         }
 
         public static Text AddText(Transform parent, string name, int fontSize, TextAnchor anchor,

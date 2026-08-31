@@ -45,7 +45,7 @@ namespace StickMate.Platform
     /// 한다(UX_FLOW.md 3절/9절-7). 여기서 항상 발판이 있는 것처럼 위장하면 그 온보딩 게이트가 조용히
     /// 무력화된다 — 배선은 StickmanAgent.CreatePlatformService() 참고.
     /// </summary>
-    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService, IGlobalKeyStateService, IRawWindowRectSource
+    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService, IGlobalKeyStateService, IReservedBottomBarService, IRawWindowRectSource
     {
         private readonly IPlatformWindowService _inner;
         private readonly ICursorPositionService _innerCursor; // null이면 내부 서비스가 커서 조회를 지원하지 않음
@@ -53,6 +53,9 @@ namespace StickMate.Platform
         private readonly IDesktopIconLayoutService _innerIconLayout; // null이면 내부 서비스가 아이콘 좌표 조회를 지원하지 않음
         // null이면 내부 서비스가 Dock 실측을 지원하지 않음 -> dockFootholdWidthFraction 고정 추정 폴백.
         private readonly IDockMetricsService _innerDockMetrics;
+        // null이면 이 플랫폼이 "하단 예약 막대의 정확한 사각형"을 알려주지 못함(macOS가 그렇다).
+        // 있으면 그 값이 **절대적**이다 — 아래 TryGetDockRectOsScreen 0순위 참고.
+        private readonly IReservedBottomBarService _innerBottomBar;
 
         // ★ 사용자 신고 "마우스로 안 잡힘" 조사 중 함께 발견(2026-08-28): 이 데코레이터가
         // IGlobalPointerButtonService를 통과시키지 않아, StickmanClickHitbox의
@@ -93,6 +96,7 @@ namespace StickMate.Platform
             _innerClickCapture = inner as ILocalClickCaptureService;
             _innerIconLayout = inner as IDesktopIconLayoutService;
             _innerDockMetrics = inner as IDockMetricsService;
+            _innerBottomBar = inner as IReservedBottomBarService;
             _innerButton = inner as IGlobalPointerButtonService;
             _innerKeyState = inner as IGlobalKeyStateService;
             _innerRawWindows = inner as IRawWindowRectSource;
@@ -234,6 +238,33 @@ namespace StickMate.Platform
         {
             rect = default;
             if (_config == null) return false;
+
+            // ★★ 0순위 — 플랫폼이 하단 예약 막대의 **정확한 사각형**을 알고 있으면 그것으로 끝낸다.
+            //    (Windows 작업표시줄: GetMonitorInfo의 rcMonitor/rcWork 차. 근거와 이전 오동작은
+            //     Platform/IReservedBottomBarService.cs 문서 참고 — 사용자 신고 "작업표시줄에 걸쳐서
+            //     돌아다닌다"의 수정 지점이다.)
+            //
+            //    여기서 false는 **폴백 신호가 아니라 확정 신호**다("지금 하단 예약 막대가 없다" —
+            //    자동 숨김이거나 작업표시줄이 좌/우/상단에 있는 경우). 그런데도 아래 고정 비율 추정으로
+            //    흘려보내면 존재하지도 않는 막대 위에 캐릭터가 부양한다 — 그래서 즉시 return한다.
+            //    이 조기 반환이 macOS에 영향을 주지 않는 이유: MacWindowService는 이 인터페이스를
+            //    구현하지 않으므로 _innerBottomBar가 null이고, 이 블록 자체가 실행되지 않는다.
+            if (_innerBottomBar != null)
+            {
+                if (!_innerBottomBar.TryGetReservedBottomBarOsScreen(out Rect barRect))
+                {
+                    LogDockSpanOnce("하단 예약 막대 없음(OS 확정) — 발판을 만들지 않고 화면 최하단 " +
+                        "안전망만 전체 폭으로 둡니다.");
+                    return false;
+                }
+                if (barRect.width <= 0f || barRect.height <= 0f) return false;
+
+                LogDockSpanOnce($"하단 예약 막대 실측(OS 확정) — rect={barRect} " +
+                    $"(폭 {barRect.width:F0}, 두께 {barRect.height:F0}, 상단 y={barRect.yMin:F0}). " +
+                    "추정 공식은 사용하지 않습니다.");
+                rect = barRect;
+                return true;
+            }
 
             float dpi = Mathf.Max(0.0001f, ScreenCoordinateConverter.ResolveDpiScale(_config));
             float screenW = (Screen.width > 0 ? Screen.width : 1920f) * dpi;
@@ -522,5 +553,15 @@ namespace StickMate.Platform
 
         public IReadOnlyList<Rect> EnumerateIconRects()
             => _innerIconLayout != null ? _innerIconLayout.EnumerateIconRects() : System.Array.Empty<Rect>();
+
+        // IReservedBottomBarService — 순수 통과(ICursorPositionService와 동일한 위임 패턴).
+        // 이 데코레이터 자신은 발판/안전망 계산에서 위 TryGetDockRectOsScreen을 통해서만 이 값을 쓰고,
+        // 여기 통과 경로는 UI 배치(구석 패널의 하단 막대 회피 등) 소비자를 위한 것이다.
+        public bool TryGetReservedBottomBarOsScreen(out Rect osScreenRect)
+        {
+            if (_innerBottomBar != null) return _innerBottomBar.TryGetReservedBottomBarOsScreen(out osScreenRect);
+            osScreenRect = default;
+            return false;
+        }
     }
 }

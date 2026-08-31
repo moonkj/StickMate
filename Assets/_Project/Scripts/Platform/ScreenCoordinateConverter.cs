@@ -114,9 +114,54 @@ namespace StickMate.Platform
             }
         }
 
+        // ============================================================================
+        // ★★ UI 밀도(캔버스 배율)를 좌표 배율에서 **분리**한 이유 — 2026-08-31 Windows 신고
+        //    "캐릭터창 해상도도 엄청 낮아서 글씨도 잘 안보임"
+        // ============================================================================
+        // 위 AutoDpiScale은 "창 사각형(OS 단위) / Screen.width(Unity 픽셀)"이다. 이 비에 디스플레이
+        // 배율이 실려 오는 것은 **macOS에서만** 참이다(창 사각형이 AppKit 포인트, Screen이 백킹 픽셀).
+        // Windows에서는 GetWindowRect도 Screen.width도 둘 다 물리 픽셀이라 이 비가 **항상 1.0**이고,
+        // 디스플레이 배율(125%/150%)이 어디에도 실리지 않는다 -> 캔버스 배율 1 -> 논리 포인트로 맞춰 둔
+        // 모든 UI 상수가 물리 픽셀 크기로 그려져 실제보다 1/1.25~1/1.5로 쪼그라든다.
+        //
+        // 그래서 두 개념을 이름부터 분리한다:
+        //   · AutoDpiScale       — **좌표** 변환용. "OS 좌표 1 = Unity 픽셀 몇 개인가"의 역수.
+        //                          Windows에서 1.0인 것이 **맞다**(창 좌표와 커서 좌표가 같은 단위다).
+        //   · AutoUiDensityScale — **UI 크기** 전용. "논리 포인트 1개 = 물리 픽셀 몇 개인가".
+        //                          Windows는 GetDpiForWindow/96으로 OS에서 직접 읽어 보고한다.
+        //
+        // 아무도 보고하지 않으면(macOS/에디터/헤드리스/모바일) 예전 정의 `1 / AutoDpiScale`이 그대로
+        // 쓰인다 — 즉 **기존 플랫폼의 동작은 한 글자도 바뀌지 않는다**.
+
         /// <summary>
-        /// ScreenSpaceOverlay 캔버스(<c>CanvasScaler.scaleFactor</c>)에 넣을 값 = <b>Unity 픽셀 / OS 포인트</b>.
-        /// Retina 2x면 2, 비Retina면 1이다.
+        /// 플랫폼 계층이 보고한 UI 밀도(논리 포인트 1개당 물리 픽셀 수). 0 이하면 "미보고"이며
+        /// <see cref="ResolveCanvasScaleFactor"/>가 예전 정의(<c>1 / AutoDpiScale</c>)로 되돌아간다.
+        /// </summary>
+        public static float AutoUiDensityScale { get; private set; } = 0f;
+
+        /// <summary>
+        /// 플랫폼 계층이 UI 밀도를 보고하는 단일 진입점(<see cref="ReportOverlayWindowOsRect"/>와 같은 관례).
+        /// 0 이하/NaN/무한대는 조용히 무시한다 — 잘못된 배율을 받아들이는 것보다 직전 값을 유지하는
+        /// 편이 안전하다(UI 전체가 한 프레임 만에 화면 밖으로 날아가는 사고를 막는다).
+        /// </summary>
+        public static void ReportUiDensityScale(float physicalPixelsPerPoint)
+        {
+            if (float.IsNaN(physicalPixelsPerPoint) || float.IsInfinity(physicalPixelsPerPoint)) return;
+            if (physicalPixelsPerPoint <= 0f) return;
+            AutoUiDensityScale = physicalPixelsPerPoint;
+        }
+
+        /// <summary>테스트가 "밀도 미보고 상태"로 되돌리기 위한 통로(플랫폼 계층은 쓰지 않는다).</summary>
+        public static void ClearReportedUiDensity() => AutoUiDensityScale = 0f;
+
+        /// <summary>
+        /// ScreenSpaceOverlay 캔버스(<c>CanvasScaler.scaleFactor</c>)에 넣을 값 = <b>Unity 픽셀 / 논리 포인트</b>.
+        /// Retina 2x면 2, 비Retina면 1, Windows 디스플레이 배율 150%면 1.5다.
+        ///
+        /// 우선순위:
+        ///   1. <c>config.desktopDpiScale &gt; 0</c> — 사람이 지정한 수동 오버라이드(예전과 동일하게 그 역수).
+        ///   2. <see cref="AutoUiDensityScale"/> — 플랫폼이 OS에서 직접 읽어 보고한 값(Windows).
+        ///   3. <c>1 / AutoDpiScale</c> — 창 사각형 대 Screen 비에서 유도한 예전 값(macOS 등).
         ///
         /// 왜 이 값인가 — 이 프로젝트의 UI 상수(말풍선 폰트 크기/여백, 앱제어 메뉴 행 높이, 투두 카드 폭)는
         /// 전부 **macOS 포인트 기준으로 눈으로 맞춰진 값**이다(Dialogue/DialogueBubbleRenderer.cs 상단
@@ -129,8 +174,9 @@ namespace StickMate.Platform
         /// </summary>
         public static float ResolveCanvasScaleFactor(StickConfig config)
         {
-            float dpi = ResolveDpiScale(config);
-            return dpi > 0f ? 1f / dpi : 1f;
+            if (config != null && config.desktopDpiScale > 0f) return 1f / config.desktopDpiScale;
+            if (AutoUiDensityScale > 0f) return AutoUiDensityScale;
+            return _autoDpiScale > 0f ? 1f / _autoDpiScale : 1f;
         }
 
         /// <summary>
@@ -142,17 +188,22 @@ namespace StickMate.Platform
         /// <c>GetWorldCorners</c>는 캔버스 루트의 localScale(=scaleFactor)이 이미 곱해진 **스크린 픽셀**을
         /// 돌려준다. 그래서 히트테스트(AppControlDirector.HitTestMenuRow / TodoPostItWidget.ContainsScreenPoint)와
         /// 클릭관통 차단막(Camera.ScreenToWorldPoint)은 scaleFactor와 무관하게 예전 코드 그대로 정확하다.
+        ///
+        /// <para>★ 2026-08-31: 식을 <see cref="ResolveCanvasScaleFactor"/>로 다시 표현했다. 배율이 예전
+        /// 정의(<c>1 / ResolveDpiScale</c>)일 때는 <c>v * dpi == v / (1/dpi)</c>로 <b>완전히 같은 값</b>이고,
+        /// UI 밀도가 따로 보고된 환경(Windows)에서만 캔버스 배율을 따라간다 — 이 함수의 정의가
+        /// "캔버스 배율의 역"이어야 배치와 크기가 갈라지지 않기 때문이다.</para>
         /// </summary>
         public static float UnityScreenToCanvas(float unityScreenValue, StickConfig config)
         {
-            return unityScreenValue * ResolveDpiScale(config);
+            float scale = ResolveCanvasScaleFactor(config);
+            return scale > 0f ? unityScreenValue / scale : unityScreenValue;
         }
 
         /// <summary>캔버스 유닛 -> Unity 스크린 픽셀(<see cref="UnityScreenToCanvas"/>의 역).</summary>
         public static float CanvasToUnityScreen(float canvasValue, StickConfig config)
         {
-            float dpi = ResolveDpiScale(config);
-            return dpi > 0f ? canvasValue / dpi : canvasValue;
+            return canvasValue * ResolveCanvasScaleFactor(config);
         }
 
         /// <summary>

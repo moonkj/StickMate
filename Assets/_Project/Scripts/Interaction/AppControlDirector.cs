@@ -150,9 +150,14 @@ namespace StickMate.Interaction
             // 아이콘(Interaction/InfoGearIconWidget.cs)이고 이 행과 단축키 I는 보조 경로다.
             // 항상 [닫기] **앞에** 넣는다(위 주석의 관습).
             CharacterInfo = 15,
-            Close = 16,
+            // 구석 호버 패널 on/off(2026-08-31, docs/UX_FLOW.md 34-8 탈출구 ③) — 저장되는 **영구 설정**이다.
+            // 설계는 기어 부채꼴에 두라고 했지만 그쪽은 원버튼 3개로 확정된 구조라(32절), 다른 영구
+            // 토글들(잉크색/로데오/진단로그)이 이미 모여 있는 이 메뉴가 같은 성격의 자리다.
+            // 항상 [닫기] **앞에** 넣는다(위 주석의 관습).
+            CornerPanel = 16,
+            Close = 17,
         }
-        private const int MenuRowCount = 17;
+        private const int MenuRowCount = 18;
 
         private void Awake()
         {
@@ -404,6 +409,13 @@ namespace StickMate.Interaction
                     if (_config == null) break;
                     _config.rodeoCursorEnabled = !_config.rodeoCursorEnabled;
                     Debug.Log($"[앱제어] 로데오 커서 {(_config.rodeoCursorEnabled ? "켬" : "끔")}({source}).");
+                    RefreshMenuLabels();
+                    break;
+
+                case MenuAction.CornerPanel:
+                    UiLayoutModel.SetCornerPanelEnabled(!UiLayoutModel.CornerPanelEnabled);
+                    Debug.Log($"[앱제어] 구석 호버 패널 {(UiLayoutModel.CornerPanelEnabled ? "켬" : "끔")}({source}) — " +
+                        "끄면 화면 좌하단 감지 영역이 통째로 비활성화됩니다(저장됨).");
                     RefreshMenuLabels();
                     break;
 
@@ -857,6 +869,9 @@ namespace StickMate.Interaction
                 : "집중 모드 시작");
 
             SetRowText(MenuAction.Archery, "활쏘기");
+
+            SetRowText(MenuAction.CornerPanel,
+                $"구석 크기 패널: {(UiLayoutModel.CornerPanelEnabled ? "켬" : "끔")}");
 
             if (_infoWindow == null) _infoWindow = Object.FindFirstObjectByType<CharacterInfoWindow>();
             SetRowText(MenuAction.CharacterInfo,

@@ -53,18 +53,39 @@ namespace StickMate.Tests.EditMode
             StickConfig c = LoadDefaultConfig();
             float halfWidth = StickConfig.BaselineBodyPhysicsHalfWidth * c.ResolveCharacterScale();
             float resolvedStop = DockGeometry.ResolveEdgeStopDistance(c.wanderEdgeStopDistance, halfWidth);
-            float margin = c.parkourMantleInset - resolvedStop;
+            // ★ 2026-08-31 — 이제 인셋도 유도값이다. 설정 절대값과 비교하면 이 단언은 "지키고 있다"고
+            //   초록불을 내면서 실제 소비 값(StickmanBlackboard.ParkourMantleInsetWorld)과 어긋난다 —
+            //   그게 R3-M1 때 경계 판정 거리 쪽에서 이미 한 번 일어난 실패다.
+            float resolvedInset = DockGeometry.ResolveParkourMantleInset(c.parkourMantleInset, resolvedStop, halfWidth);
+            float margin = resolvedInset - resolvedStop;
 
             UnityEngine.Debug.Log($"[WANDER-EDGE] 배율 {c.ResolveCharacterScale():F3} → 물리 반폭 {halfWidth:F3}, " +
                 $"경계 판정 거리 설정값 {c.wanderEdgeStopDistance:F3} → 유도값 {resolvedStop:F3}, " +
-                $"맨틀 인셋 {c.parkourMantleInset:F3} (여유 {margin:F3}, 요구 {MinInsetMarginUnits:F3} 이상)");
+                $"맨틀 인셋 설정값 {c.parkourMantleInset:F3} → 유도값 {resolvedInset:F3} " +
+                $"(여유 {margin:F3}, 요구 {MinInsetMarginUnits:F3} 이상)");
 
             Assert.Greater(margin, MinInsetMarginUnits,
-                $"parkourMantleInset({c.parkourMantleInset:F3})이 **유도된** 경계 판정 거리" +
+                $"맨틀 인셋 유도값({resolvedInset:F3})이 **유도된** 경계 판정 거리" +
                 $"({resolvedStop:F3} = max(설정 {c.wanderEdgeStopDistance:F3}, 물리 반폭 {halfWidth:F3} + " +
                 $"{DockGeometry.EdgeStopWallStandoffMarginUnits:F2}))보다 {MinInsetMarginUnits:F3} 넘게 크지 " +
                 "않습니다 — 턱 위에 올라선 그 자리가 이미 '발판 경계'로 판정되어, 방향이 한 번 바깥으로 " +
                 "뒤집히면 곧바로 다시 뛰어내립니다(2026-08-29 사용자 신고의 필요조건).");
+        }
+
+        /// <summary>
+        /// ★ 2026-08-31 — 인셋 유도 스위치가 배포 에셋에서 <b>켜져</b> 있어야 한다.
+        /// 위 <see cref="되올라간_직후_되내려가기_유예가_켜져_있어야_한다"/>와 완전히 같은 성격의 단언이다:
+        /// 이 스위치를 끄면 유도가 통째로 꺼져 배율 1.125 위에서 옛 회귀가 되살아나고, 그 상태는
+        /// Tests/PlayMode/EdgeHopDownTests의 네거티브 컨트롤 <b>전용</b>이다.
+        /// </summary>
+        [Test]
+        public void 맨틀_인셋_유도가_켜져_있어야_한다()
+        {
+            StickConfig c = LoadDefaultConfig();
+            Assert.IsTrue(c.parkourMantleInsetDerived,
+                "parkourMantleInsetDerived가 false입니다 — 맨틀 인셋이 고정 절대값으로 되돌아가 " +
+                "캐릭터 크기 다이얼이 배율을 1.125 넘게 올리는 순간 '올라선 자리가 이미 경계'가 " +
+                "다시 성립합니다. false는 EdgeHopDownTests의 네거티브 컨트롤 전용 값입니다.");
         }
 
         /// <summary>

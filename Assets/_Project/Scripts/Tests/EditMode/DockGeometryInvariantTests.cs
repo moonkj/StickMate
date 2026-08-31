@@ -313,31 +313,87 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// ★ 정직한 한계의 기록 — 맨틀 인셋만은 아직 **배율 전 구간에서 안전하지 않다.**
-        /// 경계 판정 거리는 유도라 배율을 따라가지만 parkourMantleInset은 아직 고정 설정값이라,
-        /// 배율이 커지면 "올라선 자리가 이미 경계"가 다시 성립한다. 그 천장을 여기서 계산해 남긴다 —
-        /// 캐릭터 크기 다이얼을 실제로 켜는 라운드는 이 값을 반드시 보고 맨틀 인셋도 유도로 바꿔야 한다.
+        /// ★ 2026-08-31 — 맨틀 인셋도 유도값이 됐다(캐릭터 크기 다이얼 선행조건 5항).
+        /// 예전 이 자리의 테스트는 "고정값 0.60이 버티는 배율 천장 = 1.125"를 계산해 <b>기록</b>만
+        /// 하고 배포 배율이 그 아래임을 확인했다. 이제는 다이얼이 배율을 런타임에 바꾸므로
+        /// <b>전 구간(0.35~2.00)에서 불변식이 성립하는지</b>를 직접 단언한다.
+        ///
+        /// 불변식: 맨틀 인셋 유도값 − 경계 판정 거리 유도값 ≥ <see cref="RequiredClearanceUnits"/>.
+        /// 이게 깨지면 등반이 끝나 올라선 그 자리가 이미 발판 경계라, 방향이 한 번 바깥으로 뒤집히면
+        /// 곧바로 다시 뛰어내린다(2026-08-29 사용자 신고의 필요조건).
         /// </summary>
         [Test]
-        public void 맨틀_인셋이_버티는_배율_천장을_기록한다()
+        public void 맨틀_인셋이_모든_배율에서_경계_밴드를_넘어서야_한다()
         {
             StickConfig deployed = LoadDeployedConfig();
-            float scale = deployed.ResolveCharacterScale();
 
-            // parkourMantleInset > 0.4 x s + EdgeStopWallStandoffMarginUnits + RequiredClearanceUnits
+            float[] scales =
+            {
+                StickConfig.MinCharacterScale, 0.5f, 0.6531f, deployed.ResolveCharacterScale(),
+                1f, 1.125f, 1.5f, StickConfig.MaxCharacterScale
+            };
+
+            foreach (float scale in scales)
+            {
+                float halfWidth = StickConfig.BaselineBodyPhysicsHalfWidth * scale;
+                float stop = DockGeometry.ResolveEdgeStopDistance(deployed.wanderEdgeStopDistance, halfWidth);
+                float inset = DockGeometry.ResolveParkourMantleInset(deployed.parkourMantleInset, stop, halfWidth);
+                float clearance = inset - stop;
+
+                // 이 배율에서 유도가 실제로 이겼는가(= 설정 절대값이 더 이상 지배하지 않는가).
+                bool derivationWins = inset > deployed.parkourMantleInset + 1e-4f;
+
+                Debug.Log($"[DOCK-GEOM] 배율 {scale:F3} → 반폭 {halfWidth:F3}, 경계 판정 {stop:F3}, " +
+                    $"맨틀 인셋 설정 {deployed.parkourMantleInset:F3} → 유도 {inset:F3} " +
+                    $"({(derivationWins ? "유도 승" : "설정 승")}), 여유 {clearance:F4}");
+
+                Assert.GreaterOrEqual(clearance, RequiredClearanceUnits,
+                    $"배율 {scale:F3}에서 맨틀 인셋({inset:F3})이 경계 판정 거리({stop:F3})보다 " +
+                    $"{RequiredClearanceUnits:F2} 넘게 크지 않습니다(여유 {clearance:F4}) — 이 배율의 " +
+                    "사용자는 턱 위에 올라서자마자 같은 모서리로 다시 뛰어내립니다.");
+            }
+        }
+
+        /// <summary>
+        /// ★ 위 테스트의 <b>네거티브 컨트롤</b> — "유도를 끄면 실제로 깨진다"를 박제한다.
+        /// 유도 함수를 <b>거치지 않고</b> 옛 고정 상수를 그대로 쓰는 계산을 재현해, 배율 상한 1.125와
+        /// 그 위에서 여유가 음수가 되는 사실을 그대로 확인한다. 이 단언이 실패한다면 유도가 없어도
+        /// 안전하다는 뜻이므로, 위 테스트는 아무것도 지키지 않고 있는 것이다.
+        /// </summary>
+        [Test]
+        public void 네거티브컨트롤_유도를_끄면_큰_배율에서_맨틀_인셋이_경계에_먹힌다()
+        {
+            StickConfig deployed = LoadDeployedConfig();
+
+            // 유도 함수를 우회한 옛 계산: 인셋 = 설정 절대값 고정.
             float ceiling = (deployed.parkourMantleInset
                              - DockGeometry.EdgeStopWallStandoffMarginUnits
                              - RequiredClearanceUnits)
                             / StickConfig.BaselineBodyPhysicsHalfWidth;
 
-            Debug.Log($"[DOCK-GEOM] 맨틀 인셋 {deployed.parkourMantleInset:F3}이 버티는 배율 천장 = " +
-                $"{ceiling:F3} (현재 배포 배율 {scale:F3}, 다이얼 상한 {StickConfig.MaxCharacterScale:F2}). " +
-                "★ 다이얼을 켜는 라운드는 parkourMantleInset도 유도값으로 바꿔야 한다.");
+            float bigScale = StickConfig.MaxCharacterScale;
+            float halfWidth = StickConfig.BaselineBodyPhysicsHalfWidth * bigScale;
+            float stop = DockGeometry.ResolveEdgeStopDistance(deployed.wanderEdgeStopDistance, halfWidth);
+            float legacyClearance = deployed.parkourMantleInset - stop;   // 유도 없음 = 설정값 그대로.
+            float derivedClearance =
+                DockGeometry.ResolveParkourMantleInset(deployed.parkourMantleInset, stop, halfWidth) - stop;
 
-            Assert.Less(scale, ceiling,
-                $"배포 배율({scale:F3})이 맨틀 인셋이 버티는 천장({ceiling:F3})을 넘었습니다 — " +
-                "parkourMantleInset을 올리거나 유도값으로 바꾸세요(Core/DockGeometry.ResolveEdgeStopDistance " +
-                "와 같은 형태).");
+            Debug.Log($"[DOCK-GEOM] (네거티브 컨트롤) 고정 상수 {deployed.parkourMantleInset:F3}이 버티는 배율 천장 = " +
+                $"{ceiling:F3}. 배율 {bigScale:F2}에서 여유 — 유도 끔 {legacyClearance:F4} / 유도 켬 {derivedClearance:F4}. " +
+                $"(배포 배율 {deployed.ResolveCharacterScale():F3}은 천장 아래라 화면 거동은 무변경)");
+
+            Assert.Less(ceiling, StickConfig.MaxCharacterScale,
+                $"고정 상수가 버티는 천장({ceiling:F3})이 다이얼 상한({StickConfig.MaxCharacterScale:F2}) 이상입니다 — " +
+                "그렇다면 유도가 없어도 안전하다는 뜻이라 위 테스트가 아무것도 지키지 않습니다. " +
+                "parkourMantleInset을 손으로 올려 덮은 것이라면 되돌리고 유도를 유지하세요.");
+
+            Assert.Less(legacyClearance, RequiredClearanceUnits,
+                $"유도를 끈 계산에서도 배율 {bigScale:F2}의 여유가 {legacyClearance:F4}로 충분합니다 — " +
+                "네거티브 컨트롤이 성립하지 않습니다(재현 조건이 바뀌었는지 확인하세요).");
+
+            Assert.GreaterOrEqual(derivedClearance, RequiredClearanceUnits,
+                $"유도를 켰는데도 배율 {bigScale:F2}의 여유가 {derivedClearance:F4}입니다 — " +
+                "DockGeometry.ResolveParkourMantleInset의 여유 계산을 확인하세요.");
         }
 
         // ============================================================================

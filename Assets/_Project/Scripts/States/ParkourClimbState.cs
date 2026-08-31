@@ -111,9 +111,11 @@ namespace StickMate.States
             if (!_blackboard.TryGetFootholdEdgeWorld(_wallHandle, -_direction, out _, out float nearEdgeX)) return false;
             if (!_blackboard.TryGetFootholdEdgeWorld(_wallHandle, _direction, out _, out float farEdgeX)) return false;
 
-            // 폴백은 StickConfig의 코드 기본값과 같게 유지한다(2026-08-30 R3-M1: 0.25는 2026-08-29
-            // 이전 화석이라 Config가 없는 경로에서만 옛 거동으로 되돌아가는 조용한 함정이었다).
-            float inset = _blackboard.Config != null ? _blackboard.Config.parkourMantleInset : 0.6f;
+            // ★ 2026-08-31 — 설정값을 직접 읽지 않는다. 인셋은 이제 경계 판정 거리와 같은 입력에서
+            // 유도되는 값이고(StickmanBlackboard.ParkourMantleInsetWorld), 그 유도가 없으면 캐릭터
+            // 크기 다이얼로 배율을 1.125 넘게 올리는 순간 "올라선 자리가 이미 경계"가 다시 성립한다.
+            // 폴백(Config 없음)도 그 프로퍼티가 코드 기본값 0.6으로 받친다.
+            float inset = _blackboard.ParkourMantleInsetWorld;
             float desired = nearEdgeX + _direction * Mathf.Max(0f, inset);
             targetX = Mathf.Clamp(desired, Mathf.Min(nearEdgeX, farEdgeX), Mathf.Max(nearEdgeX, farEdgeX));
             return true;

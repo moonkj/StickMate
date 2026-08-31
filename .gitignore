@@ -36,3 +36,7 @@ crashlytics-build.properties
 
 # Unity Test Runner 임시 씬 (PlayMode 실행마다 생성됨)
 Assets/InitTestScene*
+
+# 배치모드 크래시 시 Mono가 프로젝트 루트에 남기는 덤프 (2026-08-31, Camera.Render() nographics
+# 크래시 조사 중 여러 라운드가 겪음 — 진단 후에는 커밋 대상이 아니다)
+mono_crash.*.json

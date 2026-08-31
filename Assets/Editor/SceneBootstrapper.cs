@@ -284,13 +284,13 @@ namespace StickMate.EditorTools
         private const float PointsPerWorldUnit = ReferenceWindowHeightPoints / (2f * OrthographicSize);
 
         /// <summary>
-        /// 획 두께의 **화면상 하한**(포인트). 캐릭터가 작아지면 선도 같이 얇아지는 것이 원칙적으로
-        /// 맞지만, 선에는 크기와 무관한 절대 조건이 하나 있다 — "보여야 한다". 배율 1.0에서 획은
-        /// 0.077유닛 = 약 2.7pt인데(리더 지시 "화면상 2~3pt는 유지"), 그대로 비례하면 배율 0.5에서
-        /// 1.36pt가 되어 안티에일리어싱에 묻힌다. 그래서 비례로 줄이되 이 값에서 바닥을 받친다.
+        /// 획 두께의 **화면상 하한**(포인트). 근거 전문은 <see cref="StickConfig.MinStrokeScreenPoints"/>에 있다.
         /// 이 하한이 실제로 걸리기 시작하는 배율은 2.0/2.7 ≒ 0.74다.
+        /// ★ 2026-08-31 — 같은 하한을 런타임(Core/StickmanAgent.ApplyCharacterScale)도 지켜야 해서
+        ///   숫자를 StickConfig로 올렸다. Editor 어셈블리 상수는 런타임에서 참조할 수 없기 때문이며,
+        ///   같은 값을 두 곳에 적으면 "구운 두께와 다이얼로 바꾼 두께가 다른" 어긋남이 조용히 생긴다.
         /// </summary>
-        private const float MinStrokeScreenPoints = 2.0f;
+        private const float MinStrokeScreenPoints = StickConfig.MinStrokeScreenPoints;
 
         /// <summary>
         /// 클릭 잡기 영역 폭의 **화면상 하한**(포인트). 잡기 영역이 존재하는 이유 자체가 "마우스로
@@ -410,6 +410,9 @@ namespace StickMate.EditorTools
             added += EnsureComponent<CharacterFxRenderer>(root);
             added += EnsureComponent<CharacterPetRenderer>(root);
             added += EnsureComponent<LongCapeTripDirector>(root);
+            // 2026-08-31 구석 호버 패널(크기 다이얼 + 미리보기 카드). 위 3종과 같은 이유로 여기에도 넣는다 —
+            // 34-9 #10이 미리 경고한 "신규 컴포넌트가 프리팹에 없어 런타임에 존재하지 않음" Blocker 방지.
+            added += EnsureComponent<CornerHoverPanel>(root);
 
             if (added > 0) PrefabUtility.SaveAsPrefabAsset(root, PrefabAssetPath);
             PrefabUtility.UnloadPrefabContents(root);
@@ -919,6 +922,14 @@ namespace StickMate.EditorTools
             root.AddComponent<GearRadialMenuWidget>();
             root.AddComponent<FocusSessionPopover>();
             root.AddComponent<TodoBoardPopover>();
+
+            // ★ 화면 좌하단 구석 호버 패널 — 크기 다이얼 + "캐릭터만 보여주는" 미리보기 카드
+            // (docs/UX_FLOW.md 34-4~34-6). 같은 GameObject의 StickmanAgent/CharacterInfoWindow를
+            // Awake()에서 직접 찾으므로 SerializedObject 배선이 필요 없다.
+            // ★★ 이 한 줄을 빠뜨리면 클래스가 런타임에 아예 존재하지 않는다 — 33-9 #10이 경고했고
+            //    실제로 Blocker B1로 터졌던 바로 그 함정이다(34-9 #10). 위 CharacterInfoWindow보다
+            //    <b>뒤에</b> 붙여야 Awake의 GetComponent<CharacterInfoWindow>()가 찾을 수 있다.
+            root.AddComponent<CornerHoverPanel>();
 
             // ================================================================================
             // 배선 감사 잔여 2건 — 구독자 0명 이벤트의 시각 소비자 (2026-08-30)

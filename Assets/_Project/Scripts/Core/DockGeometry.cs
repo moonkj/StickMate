@@ -248,6 +248,66 @@ namespace StickMate.Core
         }
 
         // ────────────────────────────────────────────────────────────────────────────
+        // ★ 맨틀 인셋 (2026-08-31) — 등반이 끝나 올라선 자리가 "이미 경계"가 되지 않게
+        // ────────────────────────────────────────────────────────────────────────────
+        //
+        // 위 <see cref="ResolveEdgeStopDistance"/>가 경계 판정 거리를 배율에서 유도하게 되면서,
+        // 그 값과 짝을 이루는 StickConfig.parkourMantleInset만 <b>고정 설정값으로 남아 있었다</b>.
+        // 불변식은 하나다 — <b>맨틀 인셋 &gt; 경계 판정 거리</b>. 이게 깨지면 턱 위에 올라선 그 자리가
+        // 이미 발판 경계로 판정되어, 진행 방향이 한 번 바깥으로 뒤집히기만 하면 곧바로 다시
+        // 뛰어내린다(2026-08-29 사용자 신고 "독위로 올라오긴 하지만 바로 다시 내려감"의 필요조건).
+        //
+        // 고정값 0.60이 버티는 천장은 <b>배율 1.125</b>였다(Tests/EditMode/DockGeometryInvariantTests가
+        // 그 값을 계산해 로그로 남겨 두었다). 캐릭터 크기 다이얼(docs/UX_FLOW.md 34-3)이 배율을
+        // 0.35~2.00 전 구간에서 <b>런타임에</b> 바꾸므로, 에셋 검사만으로는 그 천장을 지킬 수 없다.
+        // 그래서 이 값도 경계 판정 거리와 <b>정확히 같은 형태</b>(설정값은 하한, 물리 유도가 이기면
+        // 유도가 이긴다)로 바꾼다.
+        //
+        // 여유(margin)를 절대값 하나로 두지 않고 <b>몸의 물리 반폭에 비례하는 항과 절대 하한 중 큰 쪽</b>
+        // 으로 잡는 이유 — 덮어야 하는 것 세 가지 중 둘이 배율에 비례하기 때문이다:
+        //   (1) 유휴 "주위 살피기"가 머리를 미는 폭 = 신장 x idleAmbientLookHeadShiftRatio(0.035)
+        //       = 2.2747 x 배율 x 0.035 = <b>0.0796 x 배율</b> = 0.199 x 물리 반폭(0.4 x 배율).
+        //   (2) 30fps 한 프레임의 보행 이동 = ResolveWalkSpeed(2.5 x 배율) / 30 = <b>0.083 x 배율</b>
+        //       = 0.208 x 물리 반폭. 접근 도중에 밴드를 건너뛰지 않으려면 이보다 커야 한다.
+        //   (3) 좌표 왕복 오차 0.02 + "명확한 여유" 하한 0.05 — 이 둘만 <b>절대값</b>이다.
+        // (1)(2) 중 큰 쪽이 0.208 x 반폭이므로 비율 항을 <see cref="MantleInsetMarginHalfWidthRatio"/>
+        // = 0.25(약 20% 여유)로 잡고, (3)은 <see cref="MantleInsetMinMarginUnits"/> = 0.10이 덮는다.
+        //
+        // ★ 배포 배율(0.75)에서는 유도값이 0.505라 설정값 0.60이 이긴다 — 즉 <b>지금 화면의 거동은
+        //   한 픽셀도 바뀌지 않는다</b>. 유도가 실제로 이기기 시작하는 배율은 0.875부터다.
+
+        /// <summary>맨틀 인셋 여유의 절대 하한(월드 유닛). 위 (3)만 덮는다.</summary>
+        public const float MantleInsetMinMarginUnits = 0.10f;
+
+        /// <summary>맨틀 인셋 여유의 배율 비례 항 — 몸의 물리 반폭에 대한 비율. 위 (1)(2)를 덮는다.</summary>
+        public const float MantleInsetMarginHalfWidthRatio = 0.25f;
+
+        /// <summary>
+        /// ★ 등반 후 발판 안쪽으로 들어가 설 거리를 정한다 = max(설정값, 경계 판정 거리 + 여유).
+        ///
+        /// <see cref="ResolveEdgeStopDistance"/> / <see cref="ResolveStepUpMaxHeight"/>와 같은 형태다 —
+        /// 설정값은 <b>하한</b>이고, 물리 실측이 그보다 큰 값을 요구하면 실측이 이긴다.
+        /// 어느 한쪽이 실패해도 다른 쪽이 받친다:
+        ///   · 경계 판정 거리가 0/NaN(프리팹 없는 리그) → 설정값 그대로(예전 거동과 100% 동일).
+        ///   · 설정값이 0 → 유도가 받친다(맨틀이 모서리 선 위에 서지 않는다).
+        /// </summary>
+        /// <param name="configuredInset">StickConfig.parkourMantleInset.</param>
+        /// <param name="resolvedEdgeStopDistance"><see cref="ResolveEdgeStopDistance"/>의 결과. 실패 시 0 이하/NaN.</param>
+        /// <param name="bodyPhysicalHalfWidthWorld">몸의 실측 물리 반폭. 실패 시 0 이하/NaN이면 절대 하한만 쓴다.</param>
+        public static float ResolveParkourMantleInset(float configuredInset, float resolvedEdgeStopDistance,
+            float bodyPhysicalHalfWidthWorld)
+        {
+            float floor = Mathf.Max(0f, configuredInset);
+            if (float.IsNaN(resolvedEdgeStopDistance) || resolvedEdgeStopDistance <= 0f) return floor;
+
+            float scaled = float.IsNaN(bodyPhysicalHalfWidthWorld) || bodyPhysicalHalfWidthWorld <= 0f
+                ? 0f
+                : bodyPhysicalHalfWidthWorld * MantleInsetMarginHalfWidthRatio;
+            float margin = Mathf.Max(MantleInsetMinMarginUnits, scaled);
+            return Mathf.Max(floor, resolvedEdgeStopDistance + margin);
+        }
+
+        // ────────────────────────────────────────────────────────────────────────────
         // 실측 낙차 — 어디서 재는가 (런타임. 새 OS 호출 0건)
         // ────────────────────────────────────────────────────────────────────────────
         //

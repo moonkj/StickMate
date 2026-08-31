@@ -93,6 +93,11 @@ namespace StickMate.Interaction
         private float _ballAngleDegrees;
         private float _lastGroundY;
         private bool _hasGroundY;
+
+        /// <summary>마지막으로 펫이 실제로 서 있던 발판 핸들. 주인이 공중에 뜬 동안(핸들 0) 펫이
+        /// "마지막 발판 위에서 기다리게" 하는 유일한 근거다 — Y값만 캐시하면 그 사이 창이 움직여도
+        /// 펫이 옛 높이에 남는다.</summary>
+        private long _lastGroundHandle;
         private float _orbitPhase;
         private float _legPhase;
         private Vector2 _cursorVelocity;
@@ -229,7 +234,7 @@ namespace StickMate.Interaction
                 _position.x = Mathf.Lerp(_position.x, trailX, 1f - Mathf.Exp(-BallFollowRate * dt));
             }
 
-            _position.y = ResolveGroundY(bb, _position.x, bb.Body.position.y) + radius;
+            _position.y = ResolveGroundY(bb, grounded, bb.Body.position.y) + radius;
             ClampToScreen(ref _position, radius);
 
             float delta = _position.x - previousX;
@@ -288,7 +293,7 @@ namespace StickMate.Interaction
             float targetX = bb.Body.position.x - facing * h * MiniTrailInHeight;
             if (!_hasPosition) { _position = new Vector2(targetX, bb.Body.position.y); _hasPosition = true; }
             _position.x = Mathf.Lerp(_position.x, targetX, 1f - Mathf.Exp(-MiniFollowRate * dt));
-            _position.y = ResolveGroundY(bb, _position.x, bb.Body.position.y);
+            _position.y = ResolveGroundY(bb, IsOwnerGrounded(), bb.Body.position.y);
             ClampToScreen(ref _position, h * MiniScale * 0.5f);
 
             float speed = dt > 0.0001f ? Mathf.Abs(_position.x - previousX) / dt : 0f;
@@ -393,17 +398,53 @@ namespace StickMate.Interaction
                 && id != StickmanStateId.Ragdoll && id != StickmanStateId.ThrowTumble;
         }
 
-        /// <summary>발판 표면 Y. 못 찾으면 <b>마지막으로 유효했던 값</b>을 유지한다(33-6-4) —
-        /// 창이 사라져 발판을 놓친 순간 펫이 화면 밑으로 떨어지지 않게 한다.</summary>
-        private float ResolveGroundY(StickmanBlackboard bb, float x, float probeY)
+        /// <summary>
+        /// 펫이 서 있을 바닥의 월드 Y — <b>주인이 지금 딛고 있는 그 발판</b>의 상단이다.
+        ///
+        /// ============================================================================
+        /// ★ 사용자 신고 "창을 최대화하면 공은 창 위에 있고 캐릭터는 독 위에 있음"(2026-08-31)
+        /// ============================================================================
+        /// 예전 구현은 <c>TryGetGroundSurfaceWorldY(= 그 x에서 <b>가장 높은</b> 발판 상단)</c>를 물었다.
+        /// 화면을 덮는 창이 하나라도 최대화되면 그 값은 어느 x에서든 <b>화면 꼭대기</b>가 된다. 그래서
+        /// 캐릭터가 Dock 위(월드 Y ≈ -10.2)에 서 있는 동안 펫만 최대화된 창 상단(월드 Y ≈ +11.2)으로
+        /// 올라가 21유닛 떨어진 채 따라오지 않는 것처럼 보였다. 펫의 x는 정상적으로 주인을 따라가고
+        /// 있었다 — <b>어긋난 것은 y 하나뿐</b>이다.
+        ///
+        /// 이 함수가 예전에 물었어야 할 질문은 "이 x에서 딛을 수 있는 가장 높은 면은?"이 아니라
+        /// "<b>주인이 지금 딛고 있는 면은?</b>"이다. 그 답은 발판 핸들에만 있다
+        /// (<see cref="StickmanBlackboard.CurrentFootholdHandle"/>). 이 프로젝트에서 같은 API를 같은
+        /// 이유로 잘못 쓴 사고가 이미 두 번 있었다 — 드래그 순간이동(2026-08-28,
+        /// GroundSensor.TryGetFloorWorldY 문서)과 구조 안전망 순간이동(2026-08-29,
+        /// Tests/PlayMode/GroundSnapTeleportTests). "가장 높은 표면"은 <b>표면을 고르는 용도가 아니다.</b>
+        ///
+        /// 주인이 공중(Jump/Fall/Ragdoll)이면 <see cref="StickmanBlackboard.CurrentFootholdHandle"/>이
+        /// 0이 된다. 그때는 마지막으로 함께 서 있던 발판 핸들을 계속 조회한다 — 그 창이 움직이면 펫도
+        /// 함께 실려 가고(매 프레임 재조회), 창이 닫혀 발판이 사라지면 마지막 Y를 유지한다(33-6-4:
+        /// "발판을 놓친 순간 펫이 화면 밑으로 떨어지지 않게 한다").
+        /// </summary>
+        private float ResolveGroundY(StickmanBlackboard bb, bool ownerGrounded, float ownerFootY)
         {
-            if (bb.TryGetGroundSurfaceWorldY(new Vector2(x, probeY), out float surfaceY))
+            long handle = bb.CurrentFootholdHandle != 0L ? bb.CurrentFootholdHandle : _lastGroundHandle;
+            if (handle != 0L && bb.TryGetFootholdTopWorldY(handle, out float topY))
             {
-                _lastGroundY = surfaceY;
+                _lastGroundHandle = handle;
+                _lastGroundY = topY;
                 _hasGroundY = true;
-                return surfaceY;
+                return topY;
             }
-            return _hasGroundY ? _lastGroundY : probeY;
+
+            // 주인이 <b>서 있는데</b> 발판을 못 찾았다(최초 접지 전 / 그 창이 방금 사라진 프레임).
+            // 이때 옛 캐시로 버티면 펫만 없어진 창의 높이에 남는다 — 루트가 곧 발바닥이므로 주인의 y가
+            // 지면 그 자체다. 이 분기 덕분에 "주인은 서 있는데 펫은 딴 데 있다"가 한 프레임도 못 생긴다.
+            if (ownerGrounded)
+            {
+                _lastGroundY = ownerFootY;
+                _hasGroundY = true;
+                return ownerFootY;
+            }
+
+            // 주인이 공중이고 마지막 발판도 사라졌다 — 마지막 높이를 유지한다(33-6-4).
+            return _hasGroundY ? _lastGroundY : ownerFootY;
         }
 
         private bool TryGetScreenRect(out Rect rect)
@@ -621,6 +662,7 @@ namespace StickMate.Interaction
             DestroyVisuals();
             _hasPosition = false;
             _hasGroundY = false;
+            _lastGroundHandle = 0L;
             _hasCursor = false;
         }
 

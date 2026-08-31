@@ -159,6 +159,15 @@ namespace StickMate.Core
         // 각각 "널브러진 실제 각도 -> 직립 중립 각도"로 progress에 따라 직접 보간한다(100% 예측 가능,
         // 절대 실패하지 않음). getupDuration 하나로 전체 연출 시간이 결정된다.
 
+        [Tooltip("★ GETUP 바닥 클리어런스 리프트(기본 ON, 2026-08-31 디버거 원인 확정). 기상 보간 " +
+                 "중에는 팔다리가 Kinematic이라 콜라이더가 막아주지 않는데(RAGDOLL에는 있던 방어), " +
+                 "접지 규약이 루트 원점(=발바닥)을 발판 상단에 못박으므로 아직 누워 있는 몸의 반대편 " +
+                 "파츠가 발판 아래로 뚫고 나간다(실측 최악 발판 상단 아래 20.5pt). 켜면 매 프레임 " +
+                 "'지금 이 포즈의 최저 잉크가 발판 상단에 정확히 닿는 데 필요한 만큼만' 루트를 들어 " +
+                 "올린다 — 유도값이라 상수가 없고 progress->1이면 저절로 0이 된다. " +
+                 "끄면 예전 관통이 그대로 재현된다(네거티브 컨트롤: GetupFloorClearanceTests).")]
+        public bool getupFloorClearanceEnabled = true;
+
         [Header("파쿠르 (docs/UX_FLOW.md 4절)")]
         [Tooltip("ParkourClimb 진입 판정을 위한 벽/모서리 발판 감지 반경(경계 근접 거리이자, 벽으로 인정할 최소 높이차 겸용)")]
         public float parkourDetectionRadius = 0.5f;
@@ -358,6 +367,18 @@ namespace StickMate.Core
                  "0.195로 되돌린다. 화면상 약 6pt 더 안쪽에 설 뿐이고, 올라선 뒤 더 안전한 자리라 " +
                  "되내려감 방지에도 유리하다.")]
         public float parkourMantleInset = 0.6f;
+
+        [Tooltip("★ 2026-08-31 — 위 맨틀 인셋을 **유도값**으로 쓸 것인가(Core/DockGeometry." +
+                 "ResolveParkourMantleInset). 켜져 있으면 위 값은 **하한**이고, 경계 판정 거리 + 여유가 " +
+                 "그보다 크면 그쪽이 이긴다.\n" +
+                 "왜 필요한가: 캐릭터 크기 다이얼(docs/UX_FLOW.md 34-3)이 배율을 런타임에 0.35~2.00으로 " +
+                 "바꾼다. 고정값 0.60이 불변식(맨틀 인셋 > 경계 판정 거리)을 지킬 수 있는 천장은 배율 " +
+                 "1.125뿐이라, 그 위에서는 '올라선 자리가 이미 경계'가 다시 성립한다.\n" +
+                 "★ 이 스위치를 끄면 유도가 통째로 꺼져 위 절대값을 그대로 쓴다 = 유도 도입 이전 거동으로 " +
+                 "정확히 되돌아간다. postClimbDescendCooldown = 0과 같은 성격의 **네거티브 컨트롤 전용 " +
+                 "스위치**이며, Tests/PlayMode/EdgeHopDownTests가 옛 회귀를 재현할 때 이 둘을 함께 끈다. " +
+                 "배포 에셋에서 이 값이 true인지는 Tests/EditMode/WanderEdgeConfigInvariantTests가 잠근다.")]
+        public bool parkourMantleInsetDerived = true;
 
         [Tooltip("★ 되올라간 직후 **다시 내려가는 행동(뛰어내리기/매달려 내려가기)을 유예**하는 시간(초). " +
                  "0 이하면 이 기능 전체가 꺼져 2026-08-29 이전 거동으로 정확히 되돌아간다(네거티브 컨트롤용 스위치).\n" +
@@ -1300,6 +1321,42 @@ namespace StickMate.Core
         //   사용자에게는 이 여유가 음수가 되어 매달리기로 갈린다(그 자체는 안전한 갈래 — 위 Tooltip 참고).
         public float characterScale = 0.75f;
 
+        // ============================================================================
+        // ★ 이번 실행의 배율은 이 에셋에 **기록되지 않는다** (2026-08-31, R3 Blocker 2)
+        // ============================================================================
+        // 왜 필드를 둘로 쪼갰나: 위 characterScale은 프리팹에 배선된 **배포 에셋**
+        // (Assets/_Project/Data/DefaultStickConfig.asset)의 직렬화 필드다. 유니티 에디터는 씬
+        // 오브젝트와 달리 ScriptableObject 애셋에 가한 플레이 모드 중 변경을 **되돌리지 않는다**.
+        // 그래서 다이얼로 크기를 한 번 바꾸면 그 값이 그 세션 내내(씬을 다시 로드해도) 남고,
+        // 에디터가 그 애셋을 저장하는 순간 **전 사용자에게 배포되는 기본값**이 되어 버린다.
+        // 실제로 개발자 저장 파일의 0.35가 매 실행 복원되면서 하루치 PlayMode 전체가 0.35배로
+        // 돌았고(로그 146회), 아무도 그걸 눈치채지 못했다.
+        //
+        // 고친 방식: "배포 기본값"과 "이번 실행의 값"을 **물리적으로 다른 필드**에 둔다.
+        // 아래 필드는 [NonSerialized]라 직렬화 대상이 아니고, 따라서 Ctrl+S로도 AssetDatabase로도
+        // .asset 파일에 닿을 수 없다 — 오염 경로가 타입 수준에서 사라진다.
+        //
+        // 소비자는 한 줄도 안 바뀐다: 예전과 똑같이 ResolveCharacterScale() / ResolveWalkSpeed()만
+        // 부르면 되고, 그 안에서 "런타임 값이 있으면 그것, 없으면 배포 기본값"으로 갈린다.
+        // 복제본(Object.Instantiate)을 쓰지 않은 이유: 이 에셋은 프리팹의 16개 컴포넌트에 각각
+        // 배선돼 있어, 에이전트만 복제본으로 갈아타면 나머지 15개가 낡은 원본을 계속 읽는
+        // **진실이 둘인 상태**가 된다(잉크색/DPI 배율이 정확히 그렇게 갈라진다).
+        [System.NonSerialized] private float _runtimeCharacterScale; // 0 = 미설정(배포 기본값을 쓴다)
+
+        /// <summary>이번 실행에서 배율이 명시적으로 지정됐는가(다이얼/저장 복원/테스트). 진단용.</summary>
+        public bool HasRuntimeCharacterScale => _runtimeCharacterScale > 0f;
+
+        /// <summary>이번 실행의 배율(디스크에 남지 않는다). 0 이하/NaN이면 "미설정"으로 되돌린다.</summary>
+        public void SetRuntimeCharacterScale(float v)
+        {
+            _runtimeCharacterScale = (v > 0f && !float.IsNaN(v)) ? Mathf.Clamp(v, MinCharacterScale, MaxCharacterScale) : 0f;
+        }
+
+        /// <summary>런타임 배율을 지우고 배포 기본값으로 되돌린다. StickmanAgent.Awake가 매 세션
+        /// 시작에 부른다 — 에셋 인스턴스는 씬 재로드에도 살아남으므로, 이걸 안 하면 앞선 씬의
+        /// 배율이 다음 씬으로 새어 들어간다(테스트 스위트 사이 오염의 정확한 경로였다).</summary>
+        public void ClearRuntimeCharacterScale() => _runtimeCharacterScale = 0f;
+
         /// <summary>슬라이더 하한. Dock 단차 임계 배율(약 0.341, 위 Tooltip 유도)보다 조금 위에 둔다.</summary>
         public const float MinCharacterScale = 0.35f;
 
@@ -1330,6 +1387,27 @@ namespace StickMate.Core
         /// 절대 0을 돌려주지 않게 하기 위한 바닥이다(Core/DockGeometry.ResolveEdgeStopDistance).
         /// </summary>
         public const float BaselineBodyPhysicsHalfWidth = 0.4f;
+
+        /// <summary>
+        /// ★ 획 두께의 <b>화면상 하한</b>(OS 포인트) — 2026-08-31 단일 소스화.
+        ///
+        /// 캐릭터가 작아지면 선도 같이 얇아지는 것이 원칙적으로 맞지만, 선에는 크기와 무관한 절대
+        /// 조건이 하나 있다 — <b>"보여야 한다"</b>. 배율 1.0에서 획은 0.077유닛 ≈ 2.7pt인데
+        /// (리더 지시 "화면상 2~3pt는 유지"), 그대로 비례하면 배율 0.5에서 1.36pt가 되어
+        /// 안티에일리어싱에 묻힌다. 그래서 비례로 줄이되 이 값에서 바닥을 받친다.
+        ///
+        /// <b>왜 StickConfig에 있는가</b>: 이 하한을 지키는 곳이 이제 둘이다 —
+        /// (1) Assets/Editor/SceneBootstrapper.cs가 프리팹을 구울 때,
+        /// (2) Core/StickmanAgent.ApplyCharacterScale()이 다이얼로 배율을 바꿀 때.
+        /// (2)는 런타임이라 Editor 어셈블리의 상수를 참조할 수 없다. 같은 숫자를 두 곳에 적으면
+        /// 한쪽만 바뀌어 "구운 두께와 런타임 두께가 다른" 조용한 어긋남이 생긴다.
+        /// </summary>
+        public const float MinStrokeScreenPoints = 2f;
+
+        /// <summary>월드 1유닛이 몇 OS 포인트인가의 <b>근사</b>(실측 창 높이 846pt / (2 × 직교 12) = 35.25).
+        /// 위 하한을 월드 유닛으로 환산할 때, 카메라/화면을 읽을 수 없는 경로(에디터 프리팹 굽기,
+        /// 헤드리스 테스트)에서만 쓴다. 런타임은 카메라 직교 크기와 실제 화면 높이를 직접 잰다.</summary>
+        public const float ReferencePointsPerWorldUnitApprox = 846f / (2f * 12f);
 
         /// <summary>
         /// Dock 상단→바닥 안전망 낙차가 '뛰어내리기' 밴드에 남아 있으려면 필요한 최소 배율
@@ -1379,7 +1457,8 @@ namespace StickMate.Core
         /// 범위 밖으로 들어와도 지오메트리 생성이 깨지지 않게 하는 유일한 조회 경로다.</summary>
         public float ResolveCharacterScale()
         {
-            float s = characterScale;
+            // 런타임 값이 있으면 그것이 진실이고, 없으면 배포 기본값이다(위 [NonSerialized] 문단 참고).
+            float s = _runtimeCharacterScale > 0f ? _runtimeCharacterScale : characterScale;
             if (s <= 0f || float.IsNaN(s)) return 1f; // 0/음수/NaN은 "설정 안 됨"으로 보고 기존 크기 유지.
             return Mathf.Clamp(s, MinCharacterScale, MaxCharacterScale);
         }

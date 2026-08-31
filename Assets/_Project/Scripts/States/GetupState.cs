@@ -19,6 +19,13 @@ namespace StickMate.States
     /// StickmanBlackboard.TickPose()가 상태 ID를 보고 자동 처리하며, Getup 동안에는 루트 각도만
     /// 스냅하지 않고 이 상태의 보간에 맡긴다(그래야 "일어나는 모습"이 실제로 보인다).
     ///
+    /// ★ 주의(이 상태에 없는 것) — 기상 중 몸이 발판 아래로 뚫고 나가지 않게 하는 **바닥 클리어런스
+    /// 리프트는 이 클래스에 없다**(StickmanBlackboard.TickInkFloorClearance + StickmanAgent.Update).
+    /// 여기 두면 안 되는 이유가 실측으로 확인됐다: ChangeState는 Exit/Enter만 부르고 새 상태의 Tick은
+    /// **다음 프레임부터** 도는데, 최악 관통은 정확히 그 **전이 프레임**에서 난다(랙돌 스프롤 자세
+    /// 그대로 접지 안전망이 루트를 발판 상단에 못박는 프레임 — 스윕 실측 최대 6.36pt를 통째로 놓쳤다).
+    /// 게다가 상태 안에서 올린 루트는 같은 프레임 뒤에 도는 접지 안전망의 SnapToGround가 도로 누른다.
+    ///
     /// 주의(강제 재인터럽트): 기상 도중에도 새 외력이 StickConfig.ragdollForceThreshold를 넘으면
     /// StickmanAgent.ReportExternalImpact()가 현재 상태와 무관하게 즉시 Ragdoll로 재전이시킨다(단일
     /// 진입점 — 이 상태 자신은 별도의 재인터럽트 감지 로직을 두지 않는다). 이 경우 Getup 진입 시

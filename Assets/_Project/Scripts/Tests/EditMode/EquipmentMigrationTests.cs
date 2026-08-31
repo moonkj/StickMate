@@ -291,7 +291,8 @@ namespace StickMate.Tests.EditMode
             // 하나 끼워 넣는 날 전원의 착용물이 한 칸씩 밀린다.
             string json = File.ReadAllText(CharacterSaveStore.FilePath);
             StringAssert.Contains("equip.head.fedora", json, "착용 아이템이 아이디로 저장되지 않았습니다.");
-            StringAssert.Contains("\"version\": 5", json, "저장 파일이 v5로 기록되지 않았습니다.");
+            // ★ 2026-08-31 v6(구석 호버 패널: 캐릭터 크기 + 패널 on/off)로 올라갔다.
+            StringAssert.Contains("\"version\": 6", json, "저장 파일이 v6로 기록되지 않았습니다.");
 
             EquipmentModel.ResetForTesting();
             CharacterSaveStore.Load();
@@ -302,6 +303,56 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(EquipmentModel.NotWorn, EquipmentModel.WornIndex(EquipmentSlot.Eyes),
                 "벗어 둔 카테고리가 착용으로 되살아났습니다.");
             Assert.AreEqual(EquipmentModel.NotWorn, EquipmentModel.WornIndex(EquipmentSlot.Pet));
+        }
+
+        /// <summary>
+        /// ★ v6 신설 필드(캐릭터 크기 / 구석 패널 on/off)의 하위 호환 — <b>"없으면 기본값"이 저절로
+        /// 성립하지 않는 유일한 종류의 필드</b>가 여기 하나 있다.
+        ///
+        /// <c>characterScaleSaved</c>는 없으면 false로 채워지고 그 false는 "아직 크기를 고른 적 없다"는
+        /// 정확한 사실이라 v3 톱니 위치 때와 같은 방식으로 성립한다. 그런데 <c>cornerPanelEnabled</c>는
+        /// <b>기본이 true</b>라 없으면 false로 채워져 뜻이 정확히 뒤집힌다 — 업데이트만으로 옛 사용자의
+        /// 구석 패널이 조용히 꺼진다. 그래서 Load가 버전으로 분기하는지 여기서 잠근다.
+        /// </summary>
+        [Test]
+        public void v5_파일을_읽어도_구석_패널이_꺼지지_않는다()
+        {
+            string json =
+                "{\n" +
+                "    \"version\": 5,\n" +
+                "    \"level\": 7,\n" +
+                "    \"characterName\": \"옛파일\",\n" +
+                "    \"wornHead\": \"\"\n" +
+                "}";
+            File.WriteAllText(CharacterSaveStore.FilePath, json);
+            UiLayoutModel.ResetForTesting();
+            CharacterSaveStore.Load();
+
+            Assert.IsTrue(CharacterSaveStore.LoadedFromFile, "v5 파일을 통째로 버렸습니다.");
+            Assert.IsTrue(UiLayoutModel.CornerPanelEnabled,
+                "v5 파일(그 키가 애초에 없는 파일)을 읽었더니 구석 호버 패널이 꺼졌습니다 — " +
+                "JsonUtility가 채운 false를 사용자의 선택으로 오해한 것입니다(CharacterSaveStore." +
+                "FirstVersionWithCornerPanel 분기 확인).");
+            Assert.IsFalse(UiLayoutModel.HasCharacterScale,
+                "v5 파일에 없는 크기가 '사용자가 고른 값'으로 복원됐습니다.");
+        }
+
+        [Test]
+        public void v6_왕복은_사용자가_고른_크기와_패널_설정을_보존한다()
+        {
+            UiLayoutModel.ResetForTesting();
+            UiLayoutModel.SetCharacterScale(1.35f);
+            UiLayoutModel.SetCornerPanelEnabled(false);
+            Assert.IsTrue(CharacterSaveStore.Save(), "저장에 실패했습니다.");
+
+            UiLayoutModel.ResetForTesting();
+            Assert.IsTrue(UiLayoutModel.CornerPanelEnabled, "리셋 기본값 전제가 바뀌었습니다.");
+
+            CharacterSaveStore.Load();
+            Assert.IsTrue(UiLayoutModel.HasCharacterScale);
+            Assert.AreEqual(1.35f, UiLayoutModel.CharacterScale, 0.0001f);
+            Assert.IsFalse(UiLayoutModel.CornerPanelEnabled,
+                "사용자가 끈 구석 패널이 재시작 후 다시 켜졌습니다.");
         }
 
         [Test]

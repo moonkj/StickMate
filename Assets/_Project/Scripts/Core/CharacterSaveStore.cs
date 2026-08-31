@@ -55,7 +55,18 @@ namespace StickMate.Core
         /// (머리/이펙트/펫)는 옛 파일에 존재한 적이 없으므로 전부 미착용에서 시작한다. 옛 사용자의
         /// 캐릭터 생김새가 업데이트만으로 달라지지 않는다는 것이 이 마이그레이션의 유일한 목표다
         /// (회귀 테스트: Tests/EditMode/EquipmentMigrationTests.cs).</summary>
-        private const int CurrentVersion = 5;
+        /// 6 = 2026-08-31 구석 호버 패널 라운드에서 <b>사용자가 고른 캐릭터 크기 + 구석 패널 on/off</b>
+        /// (Core/UiLayoutModel.cs)가 추가된 버전. 하위 호환은 v3(톱니 위치) 때와 <b>같은 방식</b>으로
+        /// 성립한다 — v1~v5 파일에는 <c>characterScaleSaved</c>가 없어 JsonUtility가 false로 채우고,
+        /// 그 false는 "아직 크기를 고른 적 없다 = 배포 기본 배율을 쓴다"는 정확한 사실이다.
+        /// <c>cornerPanelEnabled</c>만은 <b>기본이 true인 값</b>이라 없으면 false로 채워져 뜻이 뒤집힌다.
+        /// 그래서 옛 파일에는 그 키를 읽지 않고 기본값(켜짐)을 그대로 쓴다(아래 Load의 분기).
+        private const int CurrentVersion = 6;
+
+        /// <summary>구석 호버 패널 설정이 처음 들어간 버전. 이 값보다 낮은 파일에는
+        /// <c>cornerPanelEnabled</c> 키 자체가 없으므로 그 필드를 읽으면 안 된다(false = 꺼짐으로
+        /// 오해된다 — "없으면 기본값"이 저절로 성립하지 <b>않는</b> 유일한 종류의 필드다).</summary>
+        private const int FirstVersionWithCornerPanel = 6;
 
         /// <summary>착용 상태가 아이템 아이디로 바뀐 첫 버전. 이 값보다 낮은 파일은 bool 4개를 읽는다.</summary>
         private const int FirstVersionWithWornItemIds = 5;
@@ -122,6 +133,18 @@ namespace StickMate.Core
             //
             // 아이디를 적는 이유는 Core/EquipmentModel.cs의 "인덱스 vs 문자열 아이디" 문단 참고 —
             // 숫자를 적으면 표 중간에 아이템을 하나 끼워 넣는 날 전원의 착용물이 밀린다.
+            // ---- v6: 구석 호버 패널(Core/UiLayoutModel.cs) ----
+
+            /// <summary>사용자가 크기를 한 번이라도 정했는가. false면 아래 배율을 무시하고 배포 기본값을 쓴다.
+            /// 톱니 위치의 gearPositionSaved와 정확히 같은 이유로 별도 플래그다(0.75는 실제로 도달
+            /// 가능한 값이라 "값이 0.75면 설정 안 됨"으로 해석할 수 없다).</summary>
+            public bool characterScaleSaved;
+            public float characterScale;
+
+            /// <summary>구석 호버 패널을 쓸 것인가. <b>기본이 true</b>라 v5 이하 파일에서는 읽으면 안 된다
+            /// (위 <see cref="FirstVersionWithCornerPanel"/> 문서).</summary>
+            public bool cornerPanelEnabled;
+
             public string wornHead;
             public string wornEyes;
             public string wornNeck;
@@ -171,8 +194,63 @@ namespace StickMate.Core
             return items;
         }
 
+        // ============================================================================
+        // ★ 테스트 격리 — 테스트는 개발자의 진짜 저장 파일을 절대 읽지도 쓰지도 않는다
+        //    (2026-08-31, R3 Blocker 2 동반 조치)
+        // ============================================================================
+        // 무슨 일이 있었나: PlayMode 테스트는 Stickman 프리팹을 그대로 띄우고, 그 프리팹에는
+        // CharacterProgressionDirector가 붙어 있어 Awake에서 Load()를 부른다. 그래서 스위트 전체가
+        // **그 머신에서 앱을 실제로 가지고 논 사람의 저장 파일**을 읽고 있었다. 개발자 파일에
+        // characterScale 0.35가 들어 있던 하루 동안 모든 PlayMode가 0.35배 캐릭터로 돌았고, 네 명이
+        // 같은 실패를 보고도 원인을 프리팹으로 오인했다 — "내 변경을 되돌려도 그대로다"라는 네거티브
+        // 컨트롤이 **참이지만 무의미**했기 때문이다(모두 같은 오염원을 읽었으므로).
+        //
+        // 고친 방식: 저장 경로의 **단일 조회 지점**(FilePath)에 테스트 전용 리디렉션을 둔다.
+        //   · 억제(로드 건너뛰기)가 아니라 **경로 재지정**을 택한 이유: 지속성 테스트 6종은 실제
+        //     디스크 왕복을 검증하는 것이 존재 이유다. 로드를 막으면 그 테스트들이 전부 죽는다.
+        //     경로만 옮기면 그 테스트들은 한 글자도 안 고친 채 임시 폴더에서 그대로 돌고,
+        //     프리팹이 자동으로 부르는 Load()는 **빈 폴더**를 만나 "새 캐릭터"로 출발한다.
+        //   · 개발자의 실제 파일은 읽지도 쓰지도 않는다 — 지우거나 값을 바꾸지도 않는다(원칙 3).
+        //     이 클래스에는 파일 삭제 API 자체가 없다(아래 MarkNotLoadedForTesting 문서 참고).
+        //
+        // 켜는 곳: 각 테스트 어셈블리의 전역 [SetUpFixture](Tests/*/GlobalTestIsolation.cs).
+        // 프로덕션 실행에서는 이 값이 null이라 예전과 정확히 같은 경로를 쓴다.
+        private static string s_testingDirectoryOverride;
+
+        /// <summary>저장 파일이 놓이는 디렉터리. 테스트 리디렉션이 걸려 있으면 그쪽을 쓴다.</summary>
+        private static string SaveDirectory => s_testingDirectoryOverride ?? Application.persistentDataPath;
+
+        /// <summary>테스트가 개발자의 실제 저장 파일 대신 임시 폴더를 쓰고 있는가. 진단/단언용.</summary>
+        public static bool IsRedirectedForTesting => s_testingDirectoryOverride != null;
+
+        /// <summary>
+        /// 테스트 전용 — 저장 경로를 이 실행에만 쓰이는 임시 폴더로 옮기고 그 경로를 돌려준다.
+        /// <see cref="Application.temporaryCachePath"/> 아래에만 만든다(OS가 이 앱에 배정한 자리).
+        /// <see cref="ResetForTesting"/>로 되돌린다. 프로덕션 코드에서는 절대 부르지 않는다.
+        /// </summary>
+        public static string RedirectToTemporaryDirectoryForTesting(string label)
+        {
+            string dir = Path.Combine(Application.temporaryCachePath, "StickMateTestSaves",
+                string.IsNullOrEmpty(label) ? "default" : label);
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            s_testingDirectoryOverride = dir;
+            return dir;
+        }
+
+        /// <summary>테스트 전용 완전 초기화 — 경로 리디렉션과 진단 플래그를 원래대로 돌린다
+        /// (CharacterProgressionModel.ResetForTesting / EquipmentModel.ResetForTesting과 같은 관례).
+        /// 임시 폴더는 지우지 않는다(이 앱의 프로덕션 코드에는 파일 삭제 능력이 없다는 불변식 유지).</summary>
+        public static void ResetForTesting()
+        {
+            s_testingDirectoryOverride = null;
+            LoadedFromFile = false;
+            NewerVersionFileDetected = false;
+            NewerVersionBackupPath = null;
+            SaveSuspended = false;
+        }
+
         /// <summary>저장 파일의 절대 경로. 진단 로그/테스트에서만 쓴다.</summary>
-        public static string FilePath => Path.Combine(Application.persistentDataPath, FileName);
+        public static string FilePath => Path.Combine(SaveDirectory, FileName);
 
         /// <summary>마지막 로드가 실제 파일에서 값을 읽었는가(false면 파일이 없어 기본값으로 시작).
         /// 진단 로그 전용.</summary>
@@ -243,6 +321,9 @@ namespace StickMate.Core
                     data.archeryShots, data.archeryBullseyes, data.companionSeconds,
                     data.ragdollFalls, data.firstRunUnixSeconds);
                 UiLayoutModel.RestoreFromSave(data.gearPositionSaved, data.gearCenterXPoints, data.gearCenterYPoints);
+                // v5 이하에는 cornerPanelEnabled 키가 없다 — 읽으면 false(꺼짐)로 오해되므로 기본값(켜짐)을 쓴다.
+                UiLayoutModel.RestoreCornerPanelFromSave(data.characterScaleSaved, data.characterScale,
+                    data.version >= FirstVersionWithCornerPanel ? data.cornerPanelEnabled : true);
                 TodoListModel.RestoreFromSave(ToItems(data.todos), ToItems(data.todoArchive));
                 LoadedFromFile = true;
 
@@ -302,7 +383,7 @@ namespace StickMate.Core
         {
             NewerVersionFileDetected = true;
 
-            string backupPath = Path.Combine(Application.persistentDataPath, BackupFileName(fileVersion));
+            string backupPath = Path.Combine(SaveDirectory, BackupFileName(fileVersion));
             try
             {
                 // 이미 백업이 있으면 그대로 둔다(첫 백업이 가장 값지다 — 두 번째 실행이 덮으면
@@ -360,6 +441,9 @@ namespace StickMate.Core
                     gearPositionSaved = UiLayoutModel.HasGearCenter,
                     gearCenterXPoints = UiLayoutModel.GearCenterPoints.x,
                     gearCenterYPoints = UiLayoutModel.GearCenterPoints.y,
+                    characterScaleSaved = UiLayoutModel.HasCharacterScale,
+                    characterScale = UiLayoutModel.CharacterScale,
+                    cornerPanelEnabled = UiLayoutModel.CornerPanelEnabled,
                     todos = ToRecords(TodoListModel.ActiveItems),
                     todoArchive = ToRecords(TodoListModel.CompletedArchive),
                     wornHead = WornId(EquipmentSlot.Head),
@@ -371,7 +455,7 @@ namespace StickMate.Core
                     wornPet = WornId(EquipmentSlot.Pet),
                 };
 
-                string dir = Application.persistentDataPath;
+                string dir = SaveDirectory;
                 if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
                 File.WriteAllText(FilePath, JsonUtility.ToJson(data, true));
                 CharacterProgressionModel.MarkSaved();

@@ -516,7 +516,46 @@ namespace StickMate.Tests.PlayMode
         // (6) 네거티브 컨트롤 — 수정을 끄면 (5)의 계측기가 실제로 증상을 잡아내는가
         //     StickConfig.postClimbDescendCooldown = 0 + parkourMantleInset = 0.25(수정 전 값)로
         //     되돌리면 예전 코드 경로가 그대로 복원된다(로직 분기 자체가 이 두 값에만 의존).
+        //
+        // ★ 2026-08-31 — 인셋이 <b>유도값</b>이 되면서 이 컨트롤의 복원 방식이 한 번 바뀌었다.
+        //   parkourMantleInset에 0.25를 대입하는 것만으로는 이제 아무 일도 일어나지 않는다:
+        //   StickmanBlackboard.ParkourMantleInsetWorld가 max(설정값, 경계 판정 거리 + 여유)를 돌려주므로
+        //   0.25는 조용히 0.505로 되올라가고, <b>살아 있던 네거티브 컨트롤 하나가 소리 없이 죽는다</b>
+        //   (이 프로젝트가 "값의 정확성과 소비자가 그 값을 실제로 읽는지는 별개"라며 이미 한 번 겪은
+        //   실패 유형이다). 그래서 <b>유도 스위치까지 함께 끄고</b>, 아래 (6-0)이 그 스위치가 실제로
+        //   먹혔는지를 <b>같은 소비 경로</b>(블랙보드 프로퍼티)로 확인한다 — 컨트롤이 또 조용히 죽으면
+        //   그 단언이 먼저 빨간불을 낸다.
         // ============================================================================
+
+        /// <summary>
+        /// ★ 네거티브 컨트롤의 <b>네거티브 컨트롤</b> — "0.25로 강제했다"는 말이 사실인지 확인한다.
+        /// 유도를 켠 채로는 0.25가 유도값에 먹히고, 끄면 그대로 남는다. 둘 다 단언해야
+        /// (6)이 재현하는 것이 <b>정말로 옛 조건</b>임을 보장할 수 있다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator NegativeControl_LegacyMantleInsetIsActuallyRestoredOnlyWhenDerivationIsOff()
+        {
+            yield return SetUpDockLayout(DockDropUnits, 0.60f);
+            StickmanBlackboard bb = _agent.Blackboard;
+
+            _clonedConfig.parkourMantleInset = 0.25f;
+
+            _clonedConfig.parkourMantleInsetDerived = true;
+            float derived = bb.ParkourMantleInsetWorld;
+
+            _clonedConfig.parkourMantleInsetDerived = false;
+            float legacy = bb.ParkourMantleInsetWorld;
+
+            Debug.Log($"{LogPrefix} 맨틀 인셋 복원 확인 — 설정값 0.250, 유도 켬 → {derived:F3}, 유도 끔 → {legacy:F3} " +
+                $"(경계 판정 거리 {bb.EdgeStopDistanceWorld:F3}, 물리 반폭 {bb.CharacterPhysicalHalfWidthWorld:F3}).");
+
+            Assert.Greater(derived, 0.25f + 0.001f,
+                $"{LogPrefix} 유도를 켠 채로 설정값 0.250이 그대로 나왔습니다({derived:F3}) — 유도" +
+                "(DockGeometry.ResolveParkourMantleInset)가 소비 경로에 실제로 연결돼 있지 않다는 뜻입니다.");
+            Assert.AreEqual(0.25f, legacy, 0.0005f,
+                $"{LogPrefix} 유도를 껐는데도 인셋이 {legacy:F3}입니다 — 아래 (6)의 네거티브 컨트롤이 " +
+                "옛 조건을 재현하지 못하고 조용히 무력화됩니다(2026-08-31 유도 전환 시 명시적으로 막은 실패 유형).");
+        }
 
         [UnityTest]
         public IEnumerator NegativeControl_WithoutPostClimbCooldown_LeavesDockAlmostImmediately()
@@ -566,6 +605,9 @@ namespace StickMate.Tests.PlayMode
             {
                 // 수정 전 코드 경로 복원(네거티브 컨트롤).
                 _clonedConfig.postClimbDescendCooldown = 0f;
+                // ★ 유도를 먼저 꺼야 아래 0.25가 실제로 남는다(위 (6) 주석 + (6-0) 테스트 참고).
+                //   순서를 바꿔도 결과는 같지만, "끄고 나서 옛 값을 넣는다"가 의도를 그대로 읽게 한다.
+                _clonedConfig.parkourMantleInsetDerived = false;
                 _clonedConfig.parkourMantleInset = 0.25f;
             }
 
@@ -637,7 +679,9 @@ namespace StickMate.Tests.PlayMode
             _dockHoldSeconds = hold;
 
             Debug.Log($"{LogPrefix} Dock 체류 실측(쿨다운 {(usePostClimbCooldown ? _clonedConfig.postClimbDescendCooldown.ToString("F1") + "초" : "꺼짐(네거티브 컨트롤)")}, " +
-                $"맨틀 인셋={_clonedConfig.parkourMantleInset:F2}, 경계판정거리={_clonedConfig.wanderEdgeStopDistance:F2}) — " +
+                $"맨틀 인셋 설정={_clonedConfig.parkourMantleInset:F2}/실제={bb.ParkourMantleInsetWorld:F3}" +
+                $"(유도 {(_clonedConfig.parkourMantleInsetDerived ? "켬" : "끔")}), " +
+                $"경계판정거리 설정={_clonedConfig.wanderEdgeStopDistance:F2}/실제={bb.EdgeStopDistanceWorld:F3}) — " +
                 $"되올라온 X={_climbBackWorldX:F3}(Dock {_dockLeftWorldX:F3}~{_dockRightWorldX:F3}, 폭 {_dockWidthWorldUnits:F2}유닛), " +
                 $"연속 체류={_dockHoldSeconds:F2}초(요구 {DockHoldSeconds:F0}초), " +
                 $"떠난 순간 핸들={(!_dockLost ? "(안 떠남)" : _handleWhenDockLost == 0L ? "0(공중 — 뛰어내림)" : _handleWhenDockLost.ToString())}, " +

@@ -1234,6 +1234,57 @@ namespace StickMate.States
             right = FootWorldPosition(_rightLeg);
         }
 
+        /// <summary>
+        /// ★ 지금 이 포즈에서 <b>몸이 그리는 잉크의 가장 낮은 월드 Y</b>(2026-08-31, GETUP 바닥 관통).
+        ///
+        /// 왜 필요한가: 이 프로젝트의 접지 규약은 "루트 원점 = 발바닥"이라 <b>서 있을 때만</b> 참이다.
+        /// 누워 있는 몸(RAGDOLL 직후의 GETUP 첫 프레임)에 그 규약을 그대로 강제하면 회전한 몸의
+        /// 반대편 파츠가 기하학적으로 발판 아래로 갈 수밖에 없다. 그 깊이를 알아야 "필요한 만큼만"
+        /// 들어 올릴 수 있다(States/GetupState 참고).
+        ///
+        /// 왜 렌더러 정점 전수가 아니라 이 점들인가: 팔다리는 마디 2개짜리 꺾은선이라
+        /// <b>관절 3점(부착점/무릎·팔꿈치/끝)</b>이 그 선분의 극값을 전부 지배하고, 몸통은 엉덩이~어깨
+        /// 사이라 다리·팔 부착점에 이미 포함되며, 머리는 원이라 중심에서 반지름만큼 아래가 항상 최저다
+        /// (회전과 무관 — 그래서 정수리를 따로 볼 필요가 없다). 즉 이 16점이 몸 전체의 하한을 정확히
+        /// 준다. 획 두께의 절반(약 1.25pt)은 일부러 빼지 않는다 — 안전망 여백(8pt) 안이고, 빼면
+        /// 서 있는 자세에서도 리프트가 남아 GETUP -> Idle 전이에 그만큼의 단차가 생긴다.
+        ///
+        /// 액세서리(모자/망토)는 여기 없다 — 그쪽은 자기 정점을 아는 부품이 스스로 신고한다
+        /// (Core/ICharacterInkExtentProvider).
+        /// </summary>
+        /// <param name="headRadiusWorld">머리 링의 실측 반지름(월드 유닛). 0 이하면 머리를 건너뛴다.</param>
+        public bool TryGetLowestBodyInkWorldY(float headRadiusWorld, out float worldY)
+        {
+            worldY = float.PositiveInfinity;
+            bool any = false;
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                if (limb == null) continue;
+                if (limb.Upper != null && limb.Upper.Transform != null)
+                {
+                    float y = limb.Upper.Transform.position.y;   // 엉덩이/어깨 부착점(= 몸통 양 끝).
+                    if (!any || y < worldY) { worldY = y; any = true; }
+                }
+                if (limb.Lower == null || limb.Lower.Transform == null) continue;
+                Transform lower = limb.Lower.Transform;
+                float knee = lower.position.y;                    // 무릎/팔꿈치.
+                if (!any || knee < worldY) { worldY = knee; any = true; }
+                float tip = lower.TransformPoint(new Vector3(0f, -limb.Lower.Length, 0f)).y; // 발끝/손끝.
+                if (tip < worldY) worldY = tip;
+            }
+
+            if (_head != null && headRadiusWorld > 0f)
+            {
+                float y = _head.position.y - headRadiusWorld;
+                if (!any || y < worldY) { worldY = y; any = true; }
+            }
+
+            if (!any) worldY = 0f;
+            return any;
+        }
+
         /// <summary>실측 검증/디버그용 — 현재 보행 사이클 위상(0~1)과 한 사이클 이동 거리.</summary>
         public float WalkPhase01 => _phase01;
         public float DistancePerCycle => _distancePerCycle;

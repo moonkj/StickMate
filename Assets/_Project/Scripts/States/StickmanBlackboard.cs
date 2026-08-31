@@ -285,6 +285,11 @@ namespace StickMate.States
         // 머리 안 눈동자 점 제어(States/EyeController.cs). 같은 지연 생성/캐싱 패턴.
         private EyeController _eyeController;
 
+        // 몸 바깥에서 잉크를 더 얹는 부품들(Core/ICharacterInkExtentProvider) — 지금은 액세서리
+        // 렌더러 하나뿐이다. 같은 지연 생성/캐싱 패턴(계층은 런타임에 컴포넌트가 늘지 않는다는
+        // 이 프로젝트의 전제를 따른다 — 씬 부트스트랩이 캐릭터 루트에 전부 붙여 둔다).
+        private ICharacterInkExtentProvider[] _inkExtentProviders;
+
         // 캐릭터 실측 치수 조회 창구(Core/StickmanMetrics.cs). 같은 지연 생성/캐싱 패턴 — 낙하 자세의
         // "초당 몇 신장을 떨어지는가" 무차원화와 착지 깊이 램프의 신장 배수 환산에 쓴다.
         private StickmanMetrics _metrics;
@@ -522,6 +527,138 @@ namespace StickMate.States
                 "물리 바닥에 전속력으로 부딪히고 RAGDOLL이 됩니다(2026-08-30 신고의 근본 원인).");
         }
 
+        // ================================================================================
+        // ★★ 잉크 바닥 클리어런스 (2026-08-31, 디버거가 원인 확정한 GETUP 발판 관통)
+        // ================================================================================
+        // 이 프로젝트의 접지 규약은 "**루트 원점 = 발바닥**"인데, 그 규약이 참인 것은 **서 있을 때뿐**이다.
+        // RAGDOLL에서 막 넘어온 GETUP은 몸이 아직 누워 있는데(루트 회전 최대 |90|도 이상) 접지 스냅이
+        // 루트 Y를 발판 상단에 못박으므로, 회전한 몸의 반대편 파츠가 기하학적으로 발판 아래로 갈 수밖에
+        // 없다. RAGDOLL 구간에는 콜라이더가 이걸 막아 주지만(실측: 발판 상단 아래 최대 4.6pt에서 멈춤)
+        // GETUP은 팔다리가 Kinematic이라 그 방어가 사라진다 — 실측 최악 **발판 상단 아래 20.5pt**.
+        //
+        // 처방은 상수를 키우는 것이 **아니다**(안전망 8pt를 21pt로 올리면 서 있을 때 발이 19pt = 키의
+        // 27%만큼 떠서 사용자가 세 번 신고한 "떠 있다"가 정면 재발한다). 대신 Dock 라운드와 같은
+        // **유도값**을 쓴다: "지금 이 포즈의 최저 잉크가 루트 원점 높이에 정확히 닿는 데 필요한 만큼"만
+        // 들어 올린다. 자세가 정착하면(progress->1) 그 필요량이 저절로 0이 되므로 **새 상수가 없다**
+        // (DockGeometry.ResolveEdgeStopDistance / ResolveParkourMantleInset과 같은 관례).
+
+        /// <summary>
+        /// 지금 포즈에서 "잉크가 루트 원점(=접지선) 아래로 내려간 깊이"(월드 유닛, 항상 0 이상).
+        /// 이만큼 루트를 들어 올리면 어떤 파츠도 발판 아래로 내려가지 않는다.
+        ///
+        /// <para>계산이 <b>루트 상대</b>라는 점이 중요하다 — 발판 Y도, 화면 좌표도 입력이 아니다.
+        /// 그래서 호출부가 접지 스냅 전에 부르든 후에 부르든 결과가 같고(스냅은 루트와 자식을 통째로
+        /// 옮기므로 상대 관계가 변하지 않는다), 물리 좌표(Rigidbody2D.position)와 렌더 좌표
+        /// (Transform.position)가 한 프레임 어긋나 있어도(이 프로젝트는 autoSyncTransforms가 꺼져 있다)
+        /// 두 좌표를 섞지 않는다.</para>
+        ///
+        /// <para>몸(팔다리/몸통/머리)은 StickmanPoseAnimator가, 그 바깥의 잉크(모자/망토 등)는
+        /// <see cref="ICharacterInkExtentProvider"/> 구현체가 각자 답한다 — 소비자인 여기가 부품 목록을
+        /// 들고 있지 않으므로 DLC로 부품이 늘어도 이 함수는 그대로다.</para>
+        /// </summary>
+        /// <returns>재는 데 필요한 것(포즈 드라이버/렌더러)이 하나도 없으면 false.</returns>
+        public bool TryComputeInkDropBelowRoot(out float dropWorld)
+        {
+            dropWorld = 0f;
+            if (Body == null) return false;
+
+            StickmanPoseAnimator pose = GetPoseAnimator();
+            if (pose == null || !pose.HasLimbs) return false;
+
+            StickmanMetrics metrics = Metrics;
+            float headRadius = metrics != null ? metrics.HeadRadius : 0f;
+            if (!pose.TryGetLowestBodyInkWorldY(headRadius, out float lowestY)) return false;
+
+            ICharacterInkExtentProvider[] providers = InkExtentProviders;
+            for (int i = 0; i < providers.Length; i++)
+            {
+                if (providers[i] == null) continue;
+                if (!providers[i].TryGetLowestInkWorldY(out float y)) continue;
+                if (y < lowestY) lowestY = y;
+            }
+
+            float rootY = Body.transform.position.y; // 잉크 좌표와 같은 공간(렌더 좌표)에서만 뺀다.
+            dropWorld = Mathf.Max(0f, rootY - lowestY);
+            return true;
+        }
+
+        // 지금 루트에 얹혀 있는 클리어런스 리프트(월드 유닛). **그 프레임의 그림에만 존재하고**
+        // 다음 프레임 맨 앞(StickmanAgent.Update가 상태 Tick보다 먼저 부르는 ReleaseInkFloorClearanceLift)
+        // 에서 반드시 벗겨진다 — 아래 TickInkFloorClearance의 "왜 벗겼다 다시 얹는가" 참고.
+        private float _inkClearanceLift;
+
+        /// <summary>실측/디버그용 — 지금 프레임에 루트에 얹혀 있는 클리어런스 리프트(월드 유닛).</summary>
+        public float InkClearanceLiftWorld => _inkClearanceLift;
+
+        /// <summary>
+        /// 얹어 둔 리프트를 벗긴다. StickmanAgent.Update()가 <b>상태 Tick보다 먼저</b> 무조건 부른다.
+        ///
+        /// 왜 매 프레임 벗겼다 다시 얹는가 — 리프트를 얹은 채로 두면 접지 판정이 전부 틀어진다.
+        /// GroundSensor.Sense()는 발이 발판 상단 ±groundSnapTolerance(0.49유닛) 안에 있을 때만
+        /// 접지로 보고, SnapToGround는 이동 요구가 groundSnapMaxDistanceWorld(0.6유닛)를 넘으면
+        /// **발판을 놓고 Fall로 보낸다**. 리프트 최대치가 0.5유닛(실측 최악 20.5pt)이라 두 임계 모두
+        /// 아슬아슬하게 걸린다 — "바닥을 안 뚫게 고쳤더니 기상 중에 갑자기 낙하한다"가 될 뻔한 지점이다.
+        /// 벗겼다 얹으면 물리·센서·발판 판정은 **언제나 리프트 없는 진짜 접지 좌표**만 본다.
+        /// </summary>
+        public void ReleaseInkFloorClearanceLift()
+        {
+            if (_inkClearanceLift <= 0f) return;
+            if (Body != null)
+            {
+                Vector2 p = Body.position;
+                MoveBodyToWorld(new Vector2(p.x, p.y - _inkClearanceLift));
+            }
+            _inkClearanceLift = 0f;
+        }
+
+        /// <summary>
+        /// GETUP 동안 "지금 이 포즈가 접지선 아래로 내려간 만큼"만 루트를 들어 올린다.
+        /// StickmanAgent.Update()가 <b>접지 안전망과 TickPose가 전부 끝난 뒤</b> 부른다.
+        ///
+        /// ★ 호출 순서가 이 수정의 핵심이다(디버거가 미리 경고한 함정):
+        ///   Update()는 machine.Tick() -> TickGroundKeepingSafetyNet() -> TickPose() 순서다.
+        ///   상태 안에서 루트를 들어 올리면 <b>같은 프레임 뒤에 도는 안전망의 SnapToGround가 도로
+        ///   발판 상단으로 눌러 버린다.</b> 그래서 리프트는 그 뒤에, 이 한 곳에서만 얹는다.
+        ///
+        /// ★ 왜 상태(GetupState.Tick)가 아니라 여기인가 — 상태 전이가 일어난 <b>그 프레임에는 새 상태의
+        ///   Tick이 돌지 않는다</b>(ChangeState는 Exit/Enter만 부르고 Tick은 다음 프레임부터다).
+        ///   실측으로 확인한 바, GETUP 최악 관통은 정확히 그 **첫 프레임**에서 나온다
+        ///   (스윕 spin=600: 첫 프레임 6.36pt = 그 사이클의 최악값). 상태 안에 두면 가장 깊은 한 프레임을
+        ///   통째로 놓친다. 여기(TickPose와 같은 "상태 ID만 보고 매 프레임 멱등 적용" 자리)에 두면
+        ///   전이 프레임/강제 인터럽트/외부 ChangeState 등 어떤 경로로 들어와도 빠짐이 없다.
+        ///
+        /// 이 상태에서만 적용하는 이유: Idle/Walk는 서 있는 자세라 이 보정이 0이지만, 0을 계산하는
+        /// 비용조차 24시간 상주 앱에서는 매 프레임 낭비다(GETUP은 몇 초짜리 과도 상태다).
+        /// LandingCrouch도 같은 계열 결함일 수 있다는 미검증 가설이 있다(Tasklist 참고) — 확인되면
+        /// 여기 상태 목록에 한 줄 더하면 된다.
+        /// </summary>
+        public void TickInkFloorClearance()
+        {
+            if (Machine == null || Body == null) return;
+            if (Machine.CurrentStateId != StickmanStateId.Getup) return;
+            if (Config != null && !Config.getupFloorClearanceEnabled) return;
+            if (!TryComputeInkDropBelowRoot(out float drop) || drop <= 0f) return;
+
+            Vector2 p = Body.position;
+            MoveBodyToWorld(new Vector2(p.x, p.y + drop));
+            _inkClearanceLift = drop;
+        }
+
+        /// <summary>몸 바깥 잉크 제공자 캐시 — GetPoseAnimator()와 동일한 지연 수집/캐싱 패턴.</summary>
+        private ICharacterInkExtentProvider[] InkExtentProviders
+        {
+            get
+            {
+                if (_inkExtentProviders == null)
+                {
+                    _inkExtentProviders = Body != null
+                        ? Body.GetComponentsInChildren<ICharacterInkExtentProvider>(true)
+                        : System.Array.Empty<ICharacterInkExtentProvider>();
+                }
+                return _inkExtentProviders;
+            }
+        }
+
         /// <summary>
         /// Idle/Walk의 Jump 전이가 실제로 확인해야 할 조건: "접지 중이거나, 발판을 벗어난 지
         /// StickConfig.coyoteTimeDuration 이내"(BUG-P1-M5 대응, Architect 결정 — 의도된 코요테 타임으로
@@ -705,6 +842,34 @@ namespace StickMate.States
                     halfWidth = StickConfig.BaselineBodyPhysicsHalfWidth * scale;
                 }
                 return DockGeometry.ResolveEdgeStopDistance(configured, halfWidth);
+            }
+        }
+
+        /// <summary>
+        /// ★ 등반이 끝난 뒤 발판 안쪽으로 들어가 설 거리(월드 유닛) — 위 <see cref="EdgeStopDistanceWorld"/>와
+        /// <b>같은 관례의 유도값</b>이다(2026-08-31, 캐릭터 크기 다이얼 선행조건).
+        ///
+        /// 불변식은 <b>이 값 &gt; 경계 판정 거리</b>다. 설정 절대값(0.60)만으로는 배율 1.125까지밖에 못
+        /// 지키는데 다이얼이 배율을 런타임에 2.00까지 올리므로, 경계 판정 거리와 <b>같은 입력</b>에서
+        /// 유도한다. 유도식/여유의 근거는 <see cref="DockGeometry.ResolveParkourMantleInset"/>에 있다.
+        ///
+        /// <para>StickConfig.parkourMantleInsetDerived가 false면 유도를 통째로 건너뛴다 —
+        /// Tests/PlayMode/EdgeHopDownTests의 네거티브 컨트롤이 옛 회귀를 재현하는 유일한 통로다.</para>
+        /// </summary>
+        public float ParkourMantleInsetWorld
+        {
+            get
+            {
+                float configured = Config != null ? Config.parkourMantleInset : 0.6f;
+                if (Config != null && !Config.parkourMantleInsetDerived) return Mathf.Max(0f, configured);
+
+                float halfWidth = CharacterPhysicalHalfWidthWorld;
+                if (halfWidth <= 0f || float.IsNaN(halfWidth))
+                {
+                    float scale = Config != null ? Config.ResolveCharacterScale() : 1f;
+                    halfWidth = StickConfig.BaselineBodyPhysicsHalfWidth * scale;
+                }
+                return DockGeometry.ResolveParkourMantleInset(configured, EdgeStopDistanceWorld, halfWidth);
             }
         }
 

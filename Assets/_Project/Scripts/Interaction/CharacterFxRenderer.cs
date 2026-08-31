@@ -232,6 +232,24 @@ namespace StickMate.Interaction
             return EquipmentModel.WornIndex(EquipmentSlot.Fx);
         }
 
+        /// <summary>
+        /// 발자국/먼지가 찍힐 바닥의 월드 Y — <b>주인이 지금 딛고 있는 발판</b>의 상단.
+        ///
+        /// ★ 2026-08-31 — 펫이 최대화된 창 위로 올라가던 버그(Interaction/CharacterPetRenderer.cs
+        /// ResolveGroundY 문서)와 <b>같은 원인</b>이 여기에도 있었다. 예전에는
+        /// <c>TryGetGroundSurfaceWorldY(= 그 x에서 가장 높은 발판 상단)</c>를 물었기 때문에, 창을 하나만
+        /// 최대화해도 캐릭터는 Dock 위를 걷는데 발자국과 먼지는 <b>화면 꼭대기</b>에 찍혔다. 이 프로젝트가
+        /// 반복해 온 실패 유형("같은 API 오용을 한 곳만 고치기")이라 펫과 같은 라운드에서 함께 고친다.
+        /// </summary>
+        private static float ResolveOwnerGroundWorldY(StickmanBlackboard bb)
+        {
+            long handle = bb.CurrentFootholdHandle;
+            if (handle != 0L && bb.TryGetFootholdTopWorldY(handle, out float topY)) return topY;
+            // 발판이 아직 확정되지 않았거나(최초 접지 전) 그 창이 사라진 프레임 — 루트가 곧 발바닥이므로
+            // 주인의 y가 지면에 가장 가까운 답이다. 어떤 경우에도 "화면 꼭대기"가 나올 수는 없다.
+            return bb.Body.position.y;
+        }
+
         private void TickFootprints(StickmanStateId state)
         {
             StickmanBlackboard bb = _agent.Blackboard;
@@ -244,7 +262,7 @@ namespace StickMate.Interaction
 
             float facing = bb.FacingSign >= 0f ? 1f : -1f;
             float printX = x - facing * h * FootprintBackFootRatio;
-            if (!bb.TryGetGroundSurfaceWorldY(new Vector2(printX, bb.Body.position.y), out float surfaceY)) return;
+            float surfaceY = ResolveOwnerGroundWorldY(bb);
 
             _lastFootprintX = x;
             _hasFootprint = true;
@@ -310,10 +328,7 @@ namespace StickMate.Interaction
             float facing = bb.FacingSign >= 0f ? 1f : -1f;
             float r = HeadRadius;
             float px = bb.Body.position.x - facing * r * DustBehindInR;
-            if (!bb.TryGetGroundSurfaceWorldY(new Vector2(px, bb.Body.position.y), out float surfaceY))
-            {
-                surfaceY = bb.Body.position.y;
-            }
+            float surfaceY = ResolveOwnerGroundWorldY(bb);
 
             Puff p = Take(ref _dusts, ref _dustCursor, DustCapacity, "DustCloud", SortAerial, 2);
             if (p == null) return;

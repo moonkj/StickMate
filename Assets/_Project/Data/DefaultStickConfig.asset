@@ -33,6 +33,7 @@ MonoBehaviour:
   ragdollSettleSpeedThreshold: 0.3
   ragdollSettleHoldDuration: 0.5
   getupDuration: 0.6
+  getupFloorClearanceEnabled: 1
   parkourDetectionRadius: 0.5
   parkourClimbDuration: 0.5
   rollLandingHeightThreshold: 2
@@ -58,6 +59,7 @@ MonoBehaviour:
   stepUpChance: 0.85
   stepUpMaxHeight: 2.4
   parkourMantleInset: 0.6
+  parkourMantleInsetDerived: 1
   postClimbDescendCooldown: 8
   clickThroughDefaultEnabled: 1
   footholdPollInterval: 0.3

@@ -82,6 +82,37 @@ namespace StickMate.Tests.PlayMode
             return found[0];
         }
 
+        /// <summary>
+        /// 880 정보창이 쓰는 <b>주 촬영장</b> 하나만 고른다.
+        ///
+        /// <para>★ 2026-08-31 — 씬의 촬영장이 <b>둘</b>이 됐다. 화면 좌하단 구석 호버 패널이 자기
+        /// 촬영장을 <see cref="CharacterPortraitStage.SecondaryStageWorldX"/>(10200)에 따로 세우기
+        /// 때문이다(docs/UX_FLOW.md 34-6-3: 두 창이 동시에 열릴 수 있고 각자 다른 크기의 RT를 요구해서,
+        /// 하나를 공유하면 RT가 서로를 밀어내며 매 프레임 재생성된다).</para>
+        ///
+        /// <para>그래서 "씬에 정확히 하나"라는 옛 단언은 더 이상 사실이 아니다. 다만 그 단언이 실제로
+        /// 지키려던 위험은 <b>"한 자리에 두 촬영장이 겹치는 것"</b>(카메라 하나가 미니 피규어 둘을 함께
+        /// 찍는 것)이었으므로, 같은 조건을 <b>X 좌표별</b>로 다시 세운다 — 오히려 더 정확한 단언이다.</para>
+        /// </summary>
+        private static CharacterPortraitStage PrimaryStage()
+        {
+            var found = Object.FindObjectsByType<CharacterPortraitStage>(FindObjectsSortMode.None);
+            CharacterPortraitStage primary = null;
+            int atPrimaryX = 0;
+            for (int i = 0; i < found.Length; i++)
+            {
+                if (found[i] == null) continue;
+                if (Mathf.Abs(found[i].transform.position.x - CharacterPortraitStage.StageWorldX) > 1f) continue;
+                atPrimaryX++;
+                primary = found[i];
+            }
+            Assert.AreEqual(1, atPrimaryX,
+                $"X={CharacterPortraitStage.StageWorldX:F0}에 선 촬영장이 {atPrimaryX}개입니다 — 1개여야 합니다" +
+                "(0개면 SceneBootstrapper 배치 누락, 2개 이상이면 카메라 하나가 미니 피규어 둘을 함께 찍습니다). " +
+                $"씬 전체 촬영장 수 = {found.Length}(구석 호버 패널 몫 1개가 정상적으로 더 있습니다).");
+            return primary;
+        }
+
         /// <summary>씬 로드 → 창 열기 → 자율 배회 고정(창이 포즈를 덮어쓰지 않게).</summary>
         private IEnumerator SetUpOpenWindowAndPinState()
         {
@@ -223,7 +254,7 @@ namespace StickMate.Tests.PlayMode
         {
             yield return SetUpOpenWindowAndPinState();
 
-            var stage = ExactlyOne<CharacterPortraitStage>();
+            var stage = PrimaryStage();
             stage.SetPose(PortraitPose.Fallen);
             yield return null;
             Assert.AreEqual(PortraitPose.Fallen, stage.Pose, $"{LogPrefix} 포즈가 Fallen으로 들어가지 않았습니다.");
@@ -296,7 +327,7 @@ namespace StickMate.Tests.PlayMode
         {
             yield return SetUpOpenWindowAndPinState();
 
-            var stage = ExactlyOne<CharacterPortraitStage>();
+            var stage = PrimaryStage();
             StickmanBlackboard bb = _pinnedAgent.Blackboard;
 
             var fallenStates = new[]

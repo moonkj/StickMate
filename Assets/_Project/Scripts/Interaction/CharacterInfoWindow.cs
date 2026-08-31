@@ -305,6 +305,10 @@ namespace StickMate.Interaction
         /// <summary>배타 규칙("이 창이 뜨면 부채꼴/팝오버는 접힌다")과 "창 밖 클릭" 예외가 쓰는 이웃 —
         /// 둘 다 같은 GameObject에 있고, 없을 수도 있으므로(테스트 조립) 늦게 한 번만 찾는다.</summary>
         private GearRadialMenuWidget _menu;
+
+        /// <summary>구석 호버 패널(배타적 모달의 네 번째 표면). 지연 조회 — 이 컴포넌트가 붙지 않은
+        /// 조립(테스트 씬 등)에서는 계속 null이고 <see cref="CloseOverlappingSurfaces"/>가 건너뛴다.</summary>
+        private CornerHoverPanel _cornerPanel;
         private InfoGearIconWidget _gear;
         private string _lastActionKey;
         private float _lastActionTime;
@@ -429,6 +433,14 @@ namespace StickMate.Interaction
         /// </summary>
         private void CloseOverlappingSurfaces(string reason)
         {
+            // ★ 2026-08-31 추가 — 네 번째 표면(구석 호버 패널). 이 줄이 없으면 다이얼을 <b>끌고 있는
+            // 동안</b>에는 그 패널의 자기 치유(DetectionArmed)가 통째로 멈춰 있어(끌다가 영역을 벗어나는
+            // 것이 정상 동작이라 일부러 그렇게 만들어져 있다) 액자 두 개가 겹친 채 남고 초상화 카메라가
+            // 2대 동시에 돈다. 이 메서드 문서의 "네 번째 진입점이 생기면 또 샌다"가 실제로 일어난 지점이라
+            // 아래 부채꼴 분기의 early-return **위에** 둔다(부채꼴이 있든 없든 반드시 실행되어야 한다).
+            if (_cornerPanel == null) _cornerPanel = GetComponent<CornerHoverPanel>();
+            if (_cornerPanel != null) _cornerPanel.ForceHide(reason);
+
             if (_menu == null) _menu = GetComponent<GearRadialMenuWidget>();
             if (_menu != null)
             {

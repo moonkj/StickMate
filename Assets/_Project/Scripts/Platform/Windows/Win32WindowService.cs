@@ -64,6 +64,8 @@ namespace StickMate.Platform.Windows
     ///   · 커서 좌표(GetCursorPos)                          — ICursorPositionService
     ///   · 마우스/키보드 눌림 상태(GetAsyncKeyState)        — IGlobalPointerButtonService/IGlobalKeyStateService
     ///   · 전체화면 판정(MonitorFromWindow/GetMonitorInfo)  — 비침해 원칙 2 자동 숨김
+    ///   · 작업표시줄 예약 영역(GetMonitorInfo의 rcMonitor/rcWork 차)  — IReservedBottomBarService
+    ///   · 창 DPI(GetDpiForWindow)                          — UI 밀도(캔버스 배율) 보고
     /// 어느 것도 다른 창의 상태를 바꾸지 않으며, 입력을 주입하지도 않는다.
     /// </summary>
     public sealed class Win32WindowService :
@@ -73,6 +75,7 @@ namespace StickMate.Platform.Windows
         IGlobalKeyStateService,
         ILocalClickCaptureService,
         IDesktopIconLayoutService,
+        IReservedBottomBarService,
         IRawWindowRectSource
     {
         #region Win32 선언 (이 리전 밖으로 유출 금지 — 전부 조회 전용)
@@ -159,6 +162,12 @@ namespace StickMate.Platform.Windows
         /// </summary>
         [DllImport("dwmapi.dll")]
         private static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
+
+        // 창이 놓인 모니터의 유효 DPI. 반환값 / 96 = "논리 포인트 1개가 몇 물리 픽셀인가"이며 그것이
+        // 곧 이 앱의 캔버스 배율이다(아래 CaptureUiDensity 문서 참고). Windows 10 1607+ 전용 API라
+        // 없는 환경에서는 EntryPointNotFoundException이 나는데, 그때는 96(=배율 1)로 폴백한다.
+        [DllImport("user32.dll")]
+        private static extern uint GetDpiForWindow(IntPtr hwnd);
 
         private const int DWMWA_CLOAKED = 14;
 
@@ -290,6 +299,7 @@ namespace StickMate.Platform.Windows
             var osRect = new Rect(r.Left, r.Top, width, height);
             bool originMoved = Vector2.Distance(osRect.position, ScreenCoordinateConverter.OverlayOriginOsScreen) > 0.5f;
             ScreenCoordinateConverter.ReportOverlayWindowOsRect(osRect);
+            float density = CaptureUiDensity();
 
             if (!_overlayOriginLogged || originMoved
                 || Mathf.Abs(ScreenCoordinateConverter.AutoDpiScale - _lastLoggedDpiScale) > 0.01f)
@@ -298,8 +308,76 @@ namespace StickMate.Platform.Windows
                 _lastLoggedDpiScale = ScreenCoordinateConverter.AutoDpiScale;
                 Debug.Log($"[Win32WindowService] 오버레이 창 원점/배율 갱신 — origin={osRect.position}, " +
                     $"size=({width}x{height}), Screen=({Screen.width}x{Screen.height}) " +
-                    $"-> desktopDpiScale(자동)={ScreenCoordinateConverter.AutoDpiScale:F3}.");
+                    $"-> desktopDpiScale(자동)={ScreenCoordinateConverter.AutoDpiScale:F3}, " +
+                    $"UI 밀도(캔버스 배율)={density:F3} (디스플레이 배율 {(density * 100f):F0}%).");
             }
+        }
+
+        // 직전에 보고한 UI 밀도. 값이 바뀔 때만 로그를 남기기 위한 부기다.
+        private float _lastUiDensity = -1f;
+        // GetDpiForWindow가 이 OS에 없으면(Win10 1607 미만) 다시 시도하지 않는다.
+        private bool _dpiApiUnavailable;
+
+        /// <summary>
+        /// ★ 2026-08-31 — 사용자 신고 "캐릭터창 해상도도 엄청 낮아서 글씨도 잘 안보임"의 수정.
+        ///
+        /// ============================================================================
+        /// 왜 Windows에서만 UI가 작아지는가 (macOS와의 단위 차이)
+        /// ============================================================================
+        /// 이 앱의 UI 상수는 전부 <b>논리 포인트</b> 기준으로 눈에 맞춰져 있고, 캔버스 배율은
+        /// <see cref="ScreenCoordinateConverter.ResolveCanvasScaleFactor"/> 하나가 결정한다. 그 값은
+        /// 지금까지 <c>1 / AutoDpiScale</c>, 즉 <b>창 사각형(OS 단위) 대 Screen.width(Unity 픽셀)의
+        /// 비</b>에서만 나왔다.
+        ///   · macOS: 창 사각형은 <b>AppKit 포인트</b>(1512), Screen.width는 <b>백킹 픽셀</b>(3024)
+        ///     -> 비가 0.5 -> 캔버스 배율 2. <b>디스플레이 배율이 이 비에 실려 온다.</b>
+        ///   · Windows: 창 사각형(GetWindowRect)도 Screen.width도 <b>둘 다 물리 픽셀</b>
+        ///     -> 비가 항상 1.0 -> 캔버스 배율 1. <b>디스플레이 배율이 어디에도 실리지 않는다.</b>
+        /// 그래서 디스플레이 배율 150%인 PC에서 "14pt로 보여야 할 글자"가 14 물리 픽셀로 그려진다 =
+        /// 의도한 크기의 1/1.5. 사용자가 본 "해상도가 낮고 글씨가 안 보인다"가 정확히 이것이다.
+        /// (같은 이유로 초상화 RenderTexture의 슈퍼샘플 배율도 1배에 머물러 실제로 덜 선명했다 —
+        ///  그 배율도 같은 함수에서 나온다.)
+        ///
+        /// 수정: 좌표 변환용 배율(<see cref="ScreenCoordinateConverter.AutoDpiScale"/>, Windows에서
+        /// 1.0이 맞다 — 창 좌표와 커서 좌표가 같은 물리 픽셀이다)과 <b>UI 밀도</b>를 분리하고, 밀도만
+        /// OS에서 직접 읽는다. <c>GetDpiForWindow(hwnd) / 96</c>이 정의상 "논리 포인트 1개당 물리 픽셀
+        /// 수"이므로 그것이 곧 캔버스 배율이다.
+        ///
+        /// 안전성(이 환경에서 실행 검증이 불가능하므로 특히 중요): Unity Player가 DPI 인식을 하지
+        /// <b>않는</b> 환경이면 OS가 창 좌표를 가상화하고 <c>GetDpiForWindow</c>도 96을 돌려준다
+        /// -> 밀도 1.0 -> <b>직전과 완전히 동일한 동작</b>. 즉 이 수정은 "틀릴 수 있는 상황에서는
+        /// 아무것도 바꾸지 않는" 방향으로만 개입한다.
+        /// </summary>
+        private float CaptureUiDensity()
+        {
+            float density = 1f;
+            if (!_dpiApiUnavailable)
+            {
+                try
+                {
+                    uint dpi = GetDpiForWindow(_overlayHwnd);
+                    if (dpi > 0) density = dpi / 96f;
+                }
+                catch (EntryPointNotFoundException)
+                {
+                    _dpiApiUnavailable = true;
+                    Debug.LogWarning("[Win32WindowService] GetDpiForWindow를 찾을 수 없습니다(Windows 10 1607 미만) — " +
+                        "UI 밀도를 1.0(디스플레이 배율 100%)으로 둡니다. 고배율 디스플레이에서 UI가 작게 보일 수 있습니다.");
+                }
+                catch (DllNotFoundException)
+                {
+                    _dpiApiUnavailable = true;
+                }
+            }
+
+            ScreenCoordinateConverter.ReportUiDensityScale(density);
+            if (Mathf.Abs(density - _lastUiDensity) > 0.001f)
+            {
+                _lastUiDensity = density;
+                Debug.Log($"[Win32WindowService] UI 밀도 갱신 — 캔버스 배율 {density:F3} " +
+                    $"(디스플레이 배율 {(density * 100f):F0}%). 좌표 변환용 배율(AutoDpiScale=" +
+                    $"{ScreenCoordinateConverter.AutoDpiScale:F3})과는 별개 값이다.");
+            }
+            return density;
         }
 
         #endregion
@@ -564,6 +642,71 @@ namespace StickMate.Platform.Windows
 
         public bool IsLocalClickCaptureOwnedBy(object owner)
             => _clickCaptureGate.IsOwnedBy(owner);
+
+        #region IReservedBottomBarService — 작업표시줄(하단 예약 막대) 실측
+
+        // 작업표시줄 구간 로그는 값이 바뀔 때만 남긴다(이 함수는 발판 폴링마다 불린다).
+        private Rect _lastLoggedBottomBar = new Rect(float.NaN, float.NaN, float.NaN, float.NaN);
+        private bool _loggedNoBottomBar;
+
+        /// <summary>
+        /// ★ 2026-08-31 — 사용자 신고 "작업표시줄에 걸쳐서 돌아다닌다"의 수정
+        /// (근거/이전 동작은 Platform/IReservedBottomBarService.cs 문서 참고).
+        ///
+        /// <c>rcMonitor</c>(모니터 전체, 작업표시줄 포함)와 <c>rcWork</c>(작업 영역, 작업표시줄 제외)의
+        /// <b>하단 차이</b>가 곧 화면 아래쪽에 예약된 띠의 두께다. 추정이 하나도 들어가지 않는다.
+        ///
+        /// 이 한 번의 조회가 동시에 처리하는 경우들(별도 분기가 필요 없다):
+        ///   · 작업표시줄이 화면 <b>좌/우/상단</b>에 있음 -> 하단 차이가 0 -> false(하단 막대 없음).
+        ///   · <b>자동 숨김</b>이 켜져 있음 -> Windows가 작업 영역을 줄이지 않는다 -> 차이 0 -> false.
+        ///     (macOS Dock 쪽에서 IsAutoHidden 플래그로 따로 처리하던 것과 같은 결론에 도달한다.)
+        ///   · 디스플레이 배율 125%/150% -> rcMonitor/rcWork 둘 다 물리 픽셀이라 두께가 자동으로 따라온다.
+        ///   · <b>도킹된 툴바</b>(appbar)가 아래에 붙어 있음 -> 그것도 예약 영역이므로 함께 피한다(정확).
+        ///   · 멀티 모니터 -> 오버레이 창이 실제로 놓인 모니터 기준으로 계산된다.
+        ///
+        /// 기준 창을 <c>_overlayHwnd</c>로 삼는 이유: 발판/커서/오버레이 원점이 전부 "우리 창이 놓인
+        /// 모니터"를 기준으로 하는데 여기만 주 모니터를 쓰면 보조 모니터에서 통째로 어긋난다.
+        /// </summary>
+        public bool TryGetReservedBottomBarOsScreen(out Rect osScreenRect)
+        {
+            osScreenRect = default;
+            if (_overlayHwnd == IntPtr.Zero) return false;
+
+            IntPtr monitor = MonitorFromWindow(_overlayHwnd, MONITOR_DEFAULTTONEAREST);
+            if (monitor == IntPtr.Zero) return false;
+
+            var mi = new MONITORINFO { cbSize = (uint)Marshal.SizeOf<MONITORINFO>() };
+            if (!GetMonitorInfo(monitor, ref mi)) return false;
+
+            float thickness = mi.rcMonitor.Bottom - mi.rcWork.Bottom;
+            float width = mi.rcMonitor.Right - mi.rcMonitor.Left;
+            if (thickness <= 0f || width <= 0f)
+            {
+                if (!_loggedNoBottomBar)
+                {
+                    _loggedNoBottomBar = true;
+                    _lastLoggedBottomBar = new Rect(float.NaN, float.NaN, float.NaN, float.NaN);
+                    Debug.Log("[Win32WindowService] 하단 예약 막대 없음 — 작업표시줄이 자동 숨김이거나 " +
+                        "화면 좌/우/상단에 있습니다(rcWork 하단 == rcMonitor 하단). " +
+                        "발판은 화면 최하단 안전망만 전체 폭으로 남습니다.");
+                }
+                return false;
+            }
+
+            osScreenRect = new Rect(mi.rcMonitor.Left, mi.rcWork.Bottom, width, thickness);
+
+            if (osScreenRect != _lastLoggedBottomBar)
+            {
+                _lastLoggedBottomBar = osScreenRect;
+                _loggedNoBottomBar = false;
+                Debug.Log($"[Win32WindowService] 작업표시줄 실측 — rect={osScreenRect} " +
+                    $"(모니터 {mi.rcMonitor.Right - mi.rcMonitor.Left}x{mi.rcMonitor.Bottom - mi.rcMonitor.Top}, " +
+                    $"작업영역 하단 y={mi.rcWork.Bottom}, 두께 {thickness:F0}px). 캐릭터는 이 띠 위에 섭니다.");
+            }
+            return true;
+        }
+
+        #endregion
 
         public bool IsFullscreenAppActive()
         {

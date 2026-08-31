@@ -35,6 +35,46 @@ namespace StickMate.Core
         /// <summary>마지막 저장 이후 값이 바뀌었는가(CharacterStatsModel.IsDirty와 같은 역할).</summary>
         public static bool IsDirty { get; private set; }
 
+        // ====================================================================================
+        // ★ 구석 호버 패널이 다루는 값 2종 (2026-08-31, docs/UX_FLOW.md 34-9 #8)
+        // ====================================================================================
+        // 크기와 on/off를 <b>여기</b>에 두는 이유: 둘 다 "사용자가 화면 UI를 자기 방식대로 맞춘 결과"라
+        // 톱니 위치와 정확히 같은 성격이다(캐릭터의 능력치도, 게임 진행도도 아니다).
+        //
+        // ★ 크기는 StickConfig.characterScale에도 <b>동시에</b> 들어간다(런타임 반영의 단일 소스이자
+        //   ResolveWalkSpeed의 유일한 입력이기 때문). 그런데 StickConfig는 <b>에셋</b>이라 재시작하면
+        //   에디터에 구워진 값으로 되돌아간다 — 즉 에셋만으로는 "사용자가 고른 크기"를 기억할 수 없다.
+        //   그래서 기억은 여기가, 적용은 StickmanAgent.ApplyCharacterScale이 맡는다.
+
+        /// <summary>사용자가 크기를 한 번이라도 정했는가. false면 배포 기본 배율을 그대로 쓴다.</summary>
+        public static bool HasCharacterScale { get; private set; }
+
+        /// <summary>사용자가 고른 캐릭터 배율(StickConfig.Min/MaxCharacterScale 구간).</summary>
+        public static float CharacterScale { get; private set; } = 0.75f;
+
+        /// <summary>구석 호버 패널을 쓸 것인가(34-4-6의 "거부" 상태 — 영구 설정). 기본 ON.</summary>
+        public static bool CornerPanelEnabled { get; private set; } = true;
+
+        /// <summary>배율의 "의미 있는 변화" 하한. 다이얼 스냅 단위가 0.05라 그 절반보다 작으면
+        /// 같은 눈금이다(부동소수 흔들림만으로 저장을 두드리지 않는다 — 위 MeaningfulMovePoints와 같은 이유).</summary>
+        private const float MeaningfulScaleDelta = 0.001f;
+
+        public static void SetCharacterScale(float scale)
+        {
+            if (float.IsNaN(scale) || scale <= 0f) return;
+            if (HasCharacterScale && Mathf.Abs(CharacterScale - scale) < MeaningfulScaleDelta) return;
+            CharacterScale = scale;
+            HasCharacterScale = true;
+            IsDirty = true;
+        }
+
+        public static void SetCornerPanelEnabled(bool enabled)
+        {
+            if (CornerPanelEnabled == enabled) return;
+            CornerPanelEnabled = enabled;
+            IsDirty = true;
+        }
+
         /// <summary>0.05pt 미만의 변화는 무시한다 — 클램프 결과를 매 프레임 되돌려 주는 호출 경로가
         /// 있어(위젯의 화면 경계 보정) 부동소수 흔들림만으로 IsDirty가 계속 서면 주기 저장이 매번
         /// 디스크를 두드리게 된다(하루 종일 켜져 있는 앱이다).</summary>
@@ -59,6 +99,15 @@ namespace StickMate.Core
             IsDirty = false;
         }
 
+        /// <summary>저장 파일 복원 전용 — 구석 호버 패널 몫(34-9 #8). 위 RestoreFromSave와 같은 규약.</summary>
+        internal static void RestoreCornerPanelFromSave(bool hasScale, float scale, bool cornerPanelEnabled)
+        {
+            HasCharacterScale = hasScale && !float.IsNaN(scale) && scale > 0f;
+            if (HasCharacterScale) CharacterScale = scale;
+            CornerPanelEnabled = cornerPanelEnabled;
+            IsDirty = false;
+        }
+
         internal static void MarkSaved() => IsDirty = false;
 
         /// <summary>테스트/디버그 전용 완전 초기화(정적 상태가 테스트 사이에 새지 않게).</summary>
@@ -66,6 +115,9 @@ namespace StickMate.Core
         {
             HasGearCenter = false;
             GearCenterPoints = Vector2.zero;
+            HasCharacterScale = false;
+            CharacterScale = 0.75f;
+            CornerPanelEnabled = true;
             IsDirty = false;
         }
     }

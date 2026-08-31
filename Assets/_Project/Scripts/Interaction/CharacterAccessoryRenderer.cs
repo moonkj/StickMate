@@ -66,7 +66,7 @@ namespace StickMate.Interaction
     /// 이 프리팹의 사본이 씬에 생기면 그 사본에는 이 컴포넌트를 배치하지 않는 것이 1차 방어다
     /// (장비/성장은 플레이어 하나에만 붙는 전역 상태다).
     /// </summary>
-    public sealed class CharacterAccessoryRenderer : MonoBehaviour
+    public sealed class CharacterAccessoryRenderer : MonoBehaviour, ICharacterInkExtentProvider
     {
         // ==================== 비율 상수 (전부 머리 반경 / 몸통 길이 배수) ====================
         // 월드유닛 절대값은 하나도 없다 — 클래스 문서 (1) 참고.
@@ -290,13 +290,18 @@ namespace StickMate.Interaction
             if (!_container.activeSelf) _container.SetActive(true);
             SetLinesEnabled(true);
 
+            // ★ 2026-08-31 — 루트 스케일을 컨테이너에서 상쇄한다(아래 "이중 스케일" 문단).
+            SyncContainerScale();
+
             // 몸 바운스 추종(클래스 문서 (3)) — 컨테이너를 통째로 밀면 네 아이템이 함께 따라간다.
+            // localPosition은 <b>부모(루트) 로컬 단위</b>다. ResolveBodyOffsetY도 그 단위로 돌려준다.
             _container.transform.localPosition = new Vector3(0f, ResolveBodyOffsetY(), 0f);
 
             // 머리 좌우 추종(클래스 문서 (3-1)) — 머리에 붙은 것만 따라간다.
+            // 이쪽은 <b>컨테이너 안</b>(월드 스케일 1)이므로 루트 로컬 오프셋에 배율을 곱해 월드로 올린다.
             if (_headGroup != null)
             {
-                _headGroup.localPosition = new Vector3(ResolveHeadOffsetX(), 0f, 0f);
+                _headGroup.localPosition = new Vector3(ResolveHeadOffsetX() * RootScale, 0f, 0f);
             }
 
             TickHemSway();
@@ -326,9 +331,72 @@ namespace StickMate.Interaction
             if (machine != null)
             {
                 StickmanStateId id = machine.CurrentStateId;
-                if (id == StickmanStateId.Ragdoll || id == StickmanStateId.ThrowTumble) return false;
+
+                // ★ 2026-08-31 — <b>ThrowTumble을 이 목록에서 뺐다</b>(사용자 신고 "캐릭터 회전할때도
+                //   모자착용중인데 모자가 없어짐"의 근본 원인).
+                //
+                //   위 (4)의 숨김 근거는 <b>랙돌에만</b> 성립한다: 랙돌은 전신을 물리에 위임해
+                //   머리·몸통이 루트에서 <b>독립적으로</b> 굴러가므로, 루트 로컬로 그리는 이 렌더러의
+                //   모자는 몸에서 떨어져 나간다. 그런데 ThrowTumble은 랙돌이 아니다 —
+                //   States/StickmanBlackboard.TickPose()가 이 상태에서 <c>rig.EnterActiveMode()</c>를
+                //   지나 <c>SnapRootUpright()</c> <b>직전</b>에 빠져나가고(그 자리의 주석 참고),
+                //   회전은 States/ThrowTumbleState가 <b>루트 하나의</b> 시각 회전으로 구동한다.
+                //   즉 머리·몸통·액세서리가 <b>같은 강체</b>로 함께 돈다. 숨길 이유가 없었다.
+                //
+                //   실측(Tests/PlayMode/AccessoryFacingFlipFillTests): 던져서 180도까지 도는 동안
+                //   회전 프레임의 <b>78%에서 모자 채움이 0개</b>였다 = 사용자가 본 그림 그대로다.
+                //   랙돌은 그대로 숨긴다(그쪽 근거는 여전히 유효하다).
+                if (id == StickmanStateId.Ragdoll) return false;
             }
             return true;
+        }
+
+        /// <summary>
+        /// <see cref="ICharacterInkExtentProvider"/> — 지금 그리고 있는 액세서리 잉크의 최저 월드 Y.
+        ///
+        /// GETUP 바닥 클리어런스(States/GetupState)가 유일한 호출부다. 왜 이 계산을 액세서리가 직접
+        /// 해야 하는가: 실측 스윕에서 <b>망토(CapeOutline) 하나가 8.92pt를 단독 기여</b>한 사이클이
+        /// 있었다 — 즉 몸(FK 끝점)만 보고 들어 올리면 망토만 발판 아래로 남는다. 그렇다고 소비자 쪽에
+        /// 모자챙/망토자락 좌표를 다시 적으면 32종(+DLC)이 늘어날 때마다 그 목록이 낡는다.
+        ///
+        /// 계산은 <b>지금 실제로 그리는 정점</b>에서 한다(모양 비율을 다시 유도하지 않는다 —
+        /// 도형 빌더와 두 벌이 되면 반드시 어긋난다). LineRenderer.bounds를 쓰지 않는 이유는
+        /// Tests/PlayMode/StickmanInkBounds 문서와 같다(Y로 +1.0유닛 부풀려져 있다). 반대로
+        /// 채움 면(MeshRenderer)의 bounds는 실제 메시 정점에서 나오므로 그대로 쓴다.
+        ///
+        /// 안 보이면(페이드 0 / 장비 없음 / RAGDOLL 중 숨김) false — 그리지 않는 잉크는 바닥을 뚫을
+        /// 수 없으므로 리프트를 만들면 안 된다(안 그러면 랙돌 중 숨은 망토가 몸을 계속 띄운다).
+        /// 알파가 0보다 크기만 하면 포함한다 — 반투명이어도 화면에는 보이고, 회귀 테스트의 잉크
+        /// 계측도 알파를 보지 않기 때문이다(두 기준이 어긋나면 테스트만 실패한다).
+        /// </summary>
+        public bool TryGetLowestInkWorldY(out float worldY)
+        {
+            worldY = float.PositiveInfinity;
+            if (_alpha <= 0.001f || _container == null || !_container.activeSelf) return false;
+
+            bool any = false;
+            for (int i = 0; i < _lines.Count; i++)
+            {
+                LineRenderer lr = _lines[i];
+                if (lr == null || !lr.enabled || !lr.gameObject.activeInHierarchy) continue;
+                int count = lr.positionCount;
+                for (int q = 0; q < count; q++)
+                {
+                    Vector3 p = lr.GetPosition(q);
+                    float y = (lr.useWorldSpace ? p : lr.transform.TransformPoint(p)).y;
+                    if (!any || y < worldY) { worldY = y; any = true; }
+                }
+            }
+            for (int i = 0; i < _fills.Count; i++)
+            {
+                MeshRenderer mr = _fills[i];
+                if (mr == null || !mr.enabled || !mr.gameObject.activeInHierarchy) continue;
+                float y = mr.bounds.min.y;
+                if (!any || y < worldY) { worldY = y; any = true; }
+            }
+
+            if (!any) worldY = 0f;
+            return any;
         }
 
         /// <summary>
@@ -362,11 +430,15 @@ namespace StickMate.Interaction
             _builtSignature = -1; // 좌우가 바뀌면 도형을 다시 굽는다(클래스 문서 (2)).
         }
 
-        /// <summary>클래스 문서 (3) — Head의 현재 localY에서 중립(=HeadCenterLocalY)을 빼면 바운스 오프셋.</summary>
+        /// <summary>클래스 문서 (3) — Head의 현재 localY에서 중립(=HeadCenterLocalY)을 빼면 바운스 오프셋.
+        /// <para>★ 2026-08-31 단위 정정: <c>_headTransform.localPosition</c>은 <b>루트 로컬</b> 단위인데
+        /// <c>_metrics.HeadCenterLocalY</c>는 이미 루트 스케일이 곱해진 <b>월드</b> 단위다. 루트 스케일이
+        /// 1이던 시절에는 두 단위가 같아서 우연히 맞았다 — 다이얼이 붙는 순간 바운스 오프셋이 배율만큼
+        /// 틀어지므로 중립값을 로컬로 되돌려 뺀다.</para></summary>
         private float ResolveBodyOffsetY()
         {
             if (_headTransform == null || _metrics == null) return 0f;
-            return _headTransform.localPosition.y - _metrics.HeadCenterLocalY;
+            return _headTransform.localPosition.y - _metrics.HeadCenterLocalY / RootScale;
         }
 
         /// <summary>클래스 문서 (3-1) — Head의 현재 localX에서 중립을 뺀 값. 세로(y)와 달리
@@ -456,6 +528,45 @@ namespace StickMate.Interaction
                 ? AccessoryShapeBuilder.HatCoverLocalY(EquipmentModel.WornIndex(EquipmentSlot.Head), rig)
                 : float.PositiveInfinity;
 
+        // ============================================================================
+        // ★ 이중 스케일(s²) 제거 — 캐릭터 크기 다이얼 선행조건 (2026-08-31)
+        // ============================================================================
+        // 이 렌더러가 쓰는 치수(R / HeadCenterY / ShoulderY / HipY / StrokeWidth)는 전부
+        // <see cref="StickmanMetrics"/>에서 오는데, 그쪽은 이미 <b>루트 lossyScale이 곱해진 월드 값</b>을
+        // 돌려준다. 그런데 그 좌표로 만든 도형을 <b>루트의 자식</b>인 컨테이너에 그리면 배율이 한 번 더
+        // 곱해진다 — 실측: 루트 스케일 2.6667에서 모자 꼭대기가 정수리 대비 2.839배(= 1.065 × s)로 떠올랐다.
+        // 지금까지 이게 드러나지 않은 이유는 단 하나, <b>루트 스케일이 항상 1이었기</b> 때문이다.
+        //
+        // 고치는 방법은 둘이었다: (a) 모든 치수를 lossyScale로 나눠 로컬 단위로 바꾼다,
+        // (b) 컨테이너의 localScale로 루트 스케일을 <b>상쇄</b>한다. (b)를 택했다 —
+        //  · 나눠야 할 지점이 4개 프로퍼티 + StrokeWidth + 32종 도형 빌더에 흩어져 있어 (a)는
+        //    빠뜨리기 쉽고, 빠뜨린 곳은 배율 1.0에서 여전히 정상으로 보인다(가장 나쁜 실패 유형).
+        //  · LineRenderer의 <b>두께</b>는 Transform 스케일을 따라가지 않으므로(2026-08-30 실측),
+        //    (a)로 두께까지 나누면 오히려 두 번 틀린다. (b)는 컨테이너 안의 월드 스케일이 1이라
+        //    좌표도 두께도 <b>둘 다 월드 단위 하나</b>로 통일된다.
+        //  · AccessoryShapeBuilder(32종 도형 전체)를 한 줄도 고치지 않는다.
+
+        /// <summary>루트의 현재 월드 배율(항상 &gt; 0). 다이얼이 없던 시절에는 늘 1이었다.</summary>
+        private float RootScale
+        {
+            get
+            {
+                float s = Mathf.Abs(transform.lossyScale.y);
+                return s > 0.0001f ? s : 1f;
+            }
+        }
+
+        /// <summary>컨테이너의 월드 스케일을 1로 유지한다(위 문단). 값이 실제로 달라진 프레임에만
+        /// 대입한다 — 24시간 상주 앱이라 매 프레임 Transform을 건드리지 않는다.</summary>
+        private void SyncContainerScale()
+        {
+            if (_container == null) return;
+            float inv = 1f / RootScale;
+            Vector3 current = _container.transform.localScale;
+            if (Mathf.Approximately(current.x, inv) && Mathf.Approximately(current.y, inv)) return;
+            _container.transform.localScale = new Vector3(inv, inv, 1f);
+        }
+
         private void Rebuild()
         {
             if (_container != null) Destroy(_container);
@@ -468,6 +579,7 @@ namespace StickMate.Interaction
             _lineMaterial = ResolveLineMaterial();
             _container = new GameObject("EquipmentAccessories");
             _container.transform.SetParent(transform, false);
+            SyncContainerScale();   // 첫 프레임부터 월드 스케일 1(위 "이중 스케일" 문단).
 
             // ★ 머리에 붙는 것만 따로 담는 자식. 유휴 앰비언트 "주위 살피기"가 머리만 좌우로 미는데
             //   (AccessoryShapeBuilder.IsHeadAttached 문서), 컨테이너 하나로는 그 오프셋을 모자에만
