@@ -198,11 +198,33 @@ namespace StickMate.Platform.Windows
         // 재할당하지 않는다 (24시간 상주 앱, GC 압박 방지 컨벤션).
         private readonly EnumWindowsProc _enumWindowsCallback;
 
-        // 열거 결과 버퍼. 매 호출 시 새 List를 만들지 않고 Clear 후 재사용한다.
+        // 최종 발판 버퍼 = "다른 창에 가려지지 않고 실제로 눈에 보이는 상단 테두리 조각"들.
+        // 매 호출 시 새 List를 만들지 않고 Clear 후 재사용한다.
         private readonly List<PlatformFoothold> _footholdBuffer = new List<PlatformFoothold>(64);
 
+        // ★ 2026-08-31 — 가려짐 필터 이전의 원본 창 목록(창 전체 사각형, z-order 앞->뒤).
+        // 이전에는 _footholdBuffer가 곧 원본 목록이어서 이 버퍼가 없었다. 이제 발판은 조각으로
+        // 잘리므로 둘이 다른 목록이 된다: 창 도둑(IRawWindowRectSource)은 "딛는" 것이 아니라
+        // "미는" 연출이라 가려진 창도 대상이 될 수 있어야 하므로 반드시 이 원본 쪽을 봐야 한다.
+        private readonly List<PlatformFoothold> _rawBuffer = new List<PlatformFoothold>(64);
+
         // IRawWindowRectSource용 살아있는 읽기 전용 뷰 — 매 폴링마다 재생성하지 않는다(할당 0).
-        private readonly ReadOnlyCollection<PlatformFoothold> _readOnlyFootholds;
+        private readonly ReadOnlyCollection<PlatformFoothold> _readOnlyRawWindows;
+
+        // 가려짐(오클루전) 계산 본체. macOS 구현체와 <b>같은 클래스를 공유</b>한다
+        // (Platform/VisibleTopEdgeSolver.cs — 왜 공유하는지는 그 파일 문서 참고).
+        private readonly VisibleTopEdgeSolver _topEdgeSolver = new VisibleTopEdgeSolver();
+
+        /// <summary>
+        /// 가려짐 계산 후 남은 상단 테두리 조각이 이보다 좁으면 버린다(픽셀). macOS판과 같은 값이며
+        /// 이유도 같다: 캐릭터 몸통 폭보다 훨씬 좁은 조각 위에 서 있게 하면 "허공에 떠 있다"는
+        /// 사용자 인식이 그대로 재발한다.
+        /// </summary>
+        private const float MinVisibleFootholdWidth = 24f;
+
+        // 이번 열거 패스의 포그라운드 창. 예전에는 창마다 GetForegroundWindow()를 불렀는데
+        // 한 패스 안에서는 값이 같으므로 패스당 1회만 조회한다(의미 동일, OS 호출 n회 -> 1회).
+        private IntPtr _foregroundHwndThisPass;
 
         // 오버레이 원점 보고용 부기(아래 CaptureOverlayOrigin 참고).
         private bool _overlayOriginLogged;
@@ -211,7 +233,7 @@ namespace StickMate.Platform.Windows
         public Win32WindowService()
         {
             _enumWindowsCallback = OnEnumWindow;
-            _readOnlyFootholds = _footholdBuffer.AsReadOnly();
+            _readOnlyRawWindows = _rawBuffer.AsReadOnly();
             using (var self = System.Diagnostics.Process.GetCurrentProcess())
             {
                 _currentProcessId = (uint)self.Id;
@@ -256,27 +278,87 @@ namespace StickMate.Platform.Windows
             int height = rect.Bottom - rect.Top;
             if (width <= 0 || height <= 0) return true;
 
-            bool isTopmost = hWnd == GetForegroundWindow();
+            bool isTopmost = hWnd == _foregroundHwndThisPass;
             var screenRect = new Rect(rect.Left, rect.Top, width, height);
-            _footholdBuffer.Add(new PlatformFoothold(hWnd.ToInt64(), screenRect, isTopmost));
+            // ★ 여기서 바로 발판으로 만들지 않는다(2026-08-31 수정). EnumWindows는 z-order
+            // 앞->뒤 순서로 콜백하므로, 일단 그 순서 그대로 원본 목록에 쌓아두고 열거가 끝난 뒤
+            // 가려짐 계산을 한 번에 수행해야 "앞 창에 덮인 상단 테두리"를 뺄 수 있다.
+            _rawBuffer.Add(new PlatformFoothold(hWnd.ToInt64(), screenRect, isTopmost));
             return true; // true = 열거 계속. 다른 창을 이동/조작하는 코드는 여기 절대 추가하지 않는다.
         }
 
+        /// <summary>
+        /// ★ 사용자 신고 버그(2026-08-31): "창이 겹쳐있을때 창이 뒤에 있음에도 그 경계면을 따라 걸음."
+        ///
+        /// 원인(코드로 확정, 추측 아님): 이 메서드는 <b>EnumWindows가 돌려준 창 전체 사각형을 그대로
+        /// 발판으로 내보내고 있었다.</b> 즉 앞 창에 완전히 덮여 사용자 눈에 한 픽셀도 보이지 않는 창의
+        /// 상단선도 유효한 발판으로 남았다. macOS는 2026-08-28 라운드에서 이미 이 결함을 고쳤지만,
+        /// 그 수정이 MacWindowService의 private 메서드 안에 갇혀 있어 이 구현체가 재사용하지
+        /// 못했다(중복이 아니라 <b>누락</b>이었다).
+        ///
+        /// 수정: 열거를 2패스로 나눈다.
+        ///   1패스 — OnEnumWindow가 필터를 통과한 창을 z-order 앞->뒤 순서 그대로 _rawBuffer에 쌓는다.
+        ///   2패스 — VisibleTopEdgeSolver가 "앞 창에 덮이지 않고 실제로 보이는 상단 테두리 조각"만
+        ///          남기고, 그 조각들만 발판이 된다. 한 조각도 남지 않은 창은 발판을 내지 않으므로
+        ///          그 위에 서 있던 캐릭터는 낙하한다(의도된 동작).
+        ///
+        /// z-order 전제: EnumWindows는 최상위 창을 z-order 앞->뒤로 콜백한다(GetTopWindow +
+        /// GetWindow(GW_HWNDNEXT) 순회와 같은 순서). 이 전제가 깨지면 가려짐 판정이 정반대가 되므로,
+        /// 순서에 의존한다는 사실을 여기 명시해 둔다 — macOS판이 CGWindowListCopyWindowInfo의
+        /// 순서에 의존하는 것과 정확히 같은 계약이다.
+        ///
+        /// 화면 밖 클리핑(macOS판의 hasDisplay 인자)은 여기서 쓰지 않는다(hasClipBounds=false):
+        /// Windows는 멀티 모니터 배치가 자유로워 "주 디스플레이 사각형"으로 자르면 보조 모니터 위의
+        /// 멀쩡한 발판이 통째로 사라진다. 이번 신고와 무관한 별개 사안이므로 손대지 않는다.
+        /// </summary>
         public IReadOnlyList<PlatformFoothold> EnumerateFootholds()
         {
             _footholdBuffer.Clear();
+            _rawBuffer.Clear();
+            _foregroundHwndThisPass = GetForegroundWindow();
             EnumWindows(_enumWindowsCallback, IntPtr.Zero);
+            BuildVisibleTopEdgeFootholds();
             CaptureOverlayOrigin();
             return _footholdBuffer;
         }
 
         /// <summary>
-        /// IRawWindowRectSource — 창 도둑(UX_FLOW.md 27-1)이 쓰는 "가려짐 필터 이전" 원본 목록.
-        /// 이 구현체는 macOS와 달리 애초에 가려짐(오클루전) 분할을 하지 않으므로 발판 목록이 곧
-        /// 원본 목록이다(창 전체 사각형, z-order 앞->뒤). 그래서 새 컬렉션을 만들지 않고 같은 버퍼의
-        /// 읽기 전용 뷰를 그대로 노출한다(계약이 요구하는 "재사용 뷰" 그대로).
+        /// _rawBuffer(z-order 앞->뒤)에서 "다른 창에 가려지지 않은 상단 테두리 조각"만 골라
+        /// _footholdBuffer를 채운다. 계산 본체는 macOS와 공유하는 VisibleTopEdgeSolver다.
         /// </summary>
-        public IReadOnlyList<PlatformFoothold> RawWindows => _readOnlyFootholds;
+        private void BuildVisibleTopEdgeFootholds()
+        {
+            _topEdgeSolver.Begin();
+            for (int i = 0; i < _rawBuffer.Count; i++)
+            {
+                _topEdgeSolver.AddWindow(_rawBuffer[i].ScreenRect);
+            }
+            _topEdgeSolver.Solve(MinVisibleFootholdWidth, false, default);
+
+            for (int s = 0; s < _topEdgeSolver.SegmentCount; s++)
+            {
+                int i = _topEdgeSolver.GetSegmentWindowIndex(s);
+                PlatformFoothold src = _rawBuffer[i];
+                Rect r = src.ScreenRect;
+                // 핸들과 IsTopmost(=포그라운드 창인가)는 원본 창 그대로 유지한다. FocusWatchDirector가
+                // 이 플래그로 "지금 포커스된 창"을 관찰하므로 의미를 바꾸면 안 된다. 바뀌는 것은
+                // 사각형의 좌/폭뿐이고, 발판 판정이 쓰는 상단선 높이(r.y)는 그대로다.
+                _footholdBuffer.Add(new PlatformFoothold(src.Handle,
+                    new Rect(_topEdgeSolver.GetSegmentStartX(s), r.y, _topEdgeSolver.GetSegmentWidth(s), r.height),
+                    src.IsTopmost));
+            }
+        }
+
+        /// <summary>
+        /// IRawWindowRectSource — 창 도둑(UX_FLOW.md 27-1)이 쓰는 "가려짐 필터 이전" 원본 목록.
+        /// 창 전체 사각형이며 z-order 앞->뒤 순서다.
+        ///
+        /// ★ 2026-08-31 이전에는 이 구현체에 가려짐 분할이 아예 없어서 "발판 목록 == 원본 목록"이었고
+        /// 이 프로퍼티가 _footholdBuffer를 그대로 돌려줬다. 이제 발판은 보이는 조각으로 잘리므로 둘이
+        /// 갈라졌다 — 창 도둑은 "딛는" 것이 아니라 "미는" 연출이라 가려진 창도 대상이 되어야 하므로
+        /// 반드시 이 원본 쪽을 봐야 한다(macOS판과 동일한 이유·동일한 계약).
+        /// </summary>
+        public IReadOnlyList<PlatformFoothold> RawWindows => _readOnlyRawWindows;
 
         /// <summary>
         /// 우리 오버레이 창의 화면상 좌상단/폭을 ScreenCoordinateConverter에 보고한다

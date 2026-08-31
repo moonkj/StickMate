@@ -106,6 +106,15 @@ namespace StickMate.Platform.Windows
         {
             if (_controller == null) return;
 
+            // 창 부착 여부와 무관하게 가장 먼저 — 시작 구간(부착 대기 몇 초)이 오히려 프레임이 가장
+            // 많이 낭비되는 구간이다. 설정이 아직 없으면 내부적으로 다음 프레임에 다시 시도한다.
+            // IsApplied를 먼저 본다 — 적용이 끝난 뒤에는 ResolveConfig() 호출조차 하지 않는다.
+            if (!FramePacing.IsApplied) FramePacing.ApplyOnce(ResolveConfig());
+            // 캐릭터가 제자리에 서 있는지를 넘긴다 — 적응형 프레임 등급의 입력이다(판정 자체는
+            // 양 플랫폼 공용 FramePacing.ResolveCharacterIdle 한 곳에만 있다).
+            if (_agent == null) _agent = UnityEngine.Object.FindAnyObjectByType<Core.StickmanAgent>();
+            FramePacing.Tick(FramePacing.ResolveCharacterIdle(_agent));
+
             _elapsed += Time.unscaledDeltaTime;
 
             // 부착 판정: 부착 전에는 네이티브가 크기를 (0,0)으로 보고한다(macOS와 동일한 계약).
@@ -145,12 +154,32 @@ namespace StickMate.Platform.Windows
 
             // 순서 주의(macOS와 동일): 히트테스트 자동 제어를 먼저 목표값으로 맞춘 뒤 나머지를 적용한다.
             // 반대로 하면 라이브러리의 매 프레임 자동 제어(UpdateClickThrough)가 우리 값을 덮어쓴다.
+            //
+            // ★ 2026-08-31 — isTopmost만 "이미 목표값이면 대입하지 않는다"(시작 시 깜박임 대응).
+            //
+            // UniWindowController의 세터에는 동등성 가드가 없다. isTopmost 대입 한 번마다 네이티브가
+            // 자기 창의 Z-order를 HWND_TOPMOST로 다시 지정하고, 레이어드 창에서는 그때마다 DWM 합성이 한 번
+            // 무효화되어 화면이 순간 비칠 수 있다. 지금까지 이 루프는 값이 이미 맞아도 0.5초 간격으로
+            // 5번을 무조건 다시 걸었고, 그것이 사용자가 신고한 "처음 실행시 캐릭터와 나사 버튼이
+            // 깜박깜박"의 후보 중 하나다(확정된 원인 아님 — Tasklist 참고).
+            //
+            // ★ 왜 isTopmost <b>만</b> 가드하는가 (나머지는 일부러 무조건 대입한다)
+            //   · isTopmost 게터는 `_isTopmost = _uniWinCore.IsTopmost`로 <b>네이티브 진실을 되읽는다</b>.
+            //     따라서 "이미 맞다"는 판정이 실제 창 상태에 근거한다 — 버려진 값은 여전히 복구된다.
+            //   · isTransparent / isClickThrough 게터는 <b>캐시된 C# 필드</b>를 그대로 돌려준다
+            //     (UniWindowController.cs:136-141, :126-131). 네이티브가 값을 조용히 버려도 캐시는
+            //     목표값 그대로다. 여기에 같은 가드를 걸면 "투명이 실제로는 안 걸렸는데 걸린 줄 알고
+            //     재적용을 건너뛰는" 최악의 경우가 생긴다 — 회색 불투명 전체화면 창이다.
+            //     이 enforcer가 존재하는 이유 자체가 그 사고를 막는 것이므로 절대 가드하지 않는다.
+            //   · isHitTestEnabled는 네이티브 부작용이 없는 평범한 public 필드라 대입 비용이 0이다.
             _controller.isHitTestEnabled = DesiredHitTest;
             _controller.isTransparent = DesiredTransparent;
-            _controller.isTopmost = DesiredTopmost;
+            bool topmostSkipped = _controller.isTopmost == DesiredTopmost;
+            if (!topmostSkipped) _controller.isTopmost = DesiredTopmost;
             _controller.isClickThrough = DesiredClickThrough;
 
-            Debug.Log($"[WindowsOverlayStateEnforcer] 재적용 {_appliedCount}/{ReapplyAttempts} — " +
+            Debug.Log($"[WindowsOverlayStateEnforcer] 재적용 {_appliedCount}/{ReapplyAttempts} " +
+                $"(isTopmost 재적용={(topmostSkipped ? "생략(이미 목표값)" : "실행")}) — " +
                 $"목표(transparent={DesiredTransparent}, topmost={DesiredTopmost}, " +
                 $"clickThrough={DesiredClickThrough}, hitTest={DesiredHitTest}) / " +
                 $"되읽음(isTransparent={_controller.isTransparent}, isTopmost={_controller.isTopmost}, " +
@@ -209,8 +238,12 @@ namespace StickMate.Platform.Windows
                 && Mathf.Abs(posAfter.x - monitor.x) <= 1f && Mathf.Abs(posAfter.y - monitor.y) <= 1f;
             if (ok) _fullScreenBoundsApplied = true;
 
+            // clientSize를 함께 남긴다: Unity가 실제로 그리는 백버퍼 크기(= clientSize)와 Screen.width/height가
+            // 어긋나면 표시 단계에서 전체 화면이 한 번 리샘플링되고, 그러면 <b>모든 표면</b>의 획이
+            // 두 겹으로 번져 보인다(2026-08-31 신고와 같은 모양). 실기 로그 한 줄로 그 가설이 갈린다.
             Debug.Log($"[WindowsOverlayStateEnforcer] 전체화면 확장 시도 {_fullScreenApplyAttempts}/{MaxFullScreenApplyAttempts} — " +
                 $"모니터={monitor}, 이전(size={sizeBefore}, pos={posBefore}) -> 이후(size={sizeAfter}, pos={posAfter}), " +
+                $"clientSize={_controller.clientSize}, " +
                 $"Screen=({Screen.width}x{Screen.height}) [목표 {targetPixelW}x{targetPixelH} 픽셀, dpi배율={dpi:F3}], " +
                 $"결과={(ok ? "성공(오차 1px 이내)" : "미달 — 다음 시도에서 재적용")}.");
         }

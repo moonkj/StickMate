@@ -184,6 +184,16 @@ namespace StickMate.Platform.MacOS
 
         private void Update()
         {
+            // ★ 창 부착 여부와 무관하게 가장 먼저 건다(2026-08-31 성능 라운드). 시작 직후 몇 초는
+            //   UniWindowController가 NSWindow를 붙잡기를 기다리는 구간이라 오히려 프레임을 가장
+            //   헛되이 태우는 구간이다. 설정이 아직 없으면 내부적으로 다음 프레임에 다시 시도한다.
+            //   (Platform/FramePacing.cs가 플랫폼 공통 진입점이다 — Windows 쪽 Enforcer도 같은 자리에서 같은 함수를 부른다.)
+            if (!FramePacing.IsApplied) FramePacing.ApplyOnce(ResolveConfig());
+            // 캐릭터가 제자리에 서 있는지를 넘긴다 — 적응형 프레임 등급의 입력이다(판정 자체는
+            // 양 플랫폼 공용 FramePacing.ResolveCharacterIdle 한 곳에만 있다).
+            if (_agent == null) _agent = UnityEngine.Object.FindAnyObjectByType<Core.StickmanAgent>();
+            FramePacing.Tick(FramePacing.ResolveCharacterIdle(_agent));
+
             if (_controller == null)
             {
                 return;

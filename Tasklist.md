@@ -7317,3 +7317,2039 @@ Major 1(모자 회전 플레이키)도 5회 전부 통과로 근본 해결 확�
 **후속 라운드 배정 예정**: 같은 종류(배포 에셋에 직접 쓰기) 3곳 — `CharacterInfoWindow.cs`(inkColor),
 `AppControlDirector.cs`(inkColor/rodeoCursorEnabled/verboseDiagnosticsLogging). 저장파일 자동복원
 경로가 없어 오늘 같은 사고 위험은 낮지만 구조적으로 동일한 결함이라 다음 라운드에 정리.
+
+---
+
+## 2026-08-31 (2차) — 코더: Windows 잔상/렉/시스템 저하 조사 (BitBlt 강제 가설 확정 시도)
+
+**신고(사용자, 실기 Windows, `windows-preview-20260831`)**
+1. 정보창이 여러 겹으로 겹쳐 보이고 텍스트 획이 유령처럼 살짝 어긋난 채 겹쳐 보임(사진 증거).
+2. 드래그 응답: "창 전체가 같이 움직임" — 궤적을 따라 늘어지는 **위치 고정 잔상은 아니다**.
+3. 왼쪽 아래 호버 패널(`CornerHoverPanel`)도 **완전히 동일한 증상**.
+4. 여전히 렉. 캐릭터 움직임 자체가 부드럽지 않음.
+5. **앱 자체 수치는 낮은데(CPU 1.5~4%, 185MB) 시스템 전체가 느려짐.**
+6. 처음 실행 시 캐릭터와 톱니 버튼이 깜박깜박함.
+
+### ★ 결론 — 세 증상(①잔상 ②렉 ⑤시스템 저하)은 하나의 원인으로 수렴한다
+
+증상 ③(표면 종류를 가리지 않음)이 "특정 캔버스 버그" 계열을 통째로 배제한다. 증상 ⑤(우리 프로세스
+수치는 낮은데 시스템이 느려짐)는 비용이 **우리 프로세스 밖(dwm.exe / GPU 복사 엔진)**에 있다는 뜻이다.
+두 개를 합치면 원인 층위는 **창 합성 경로 하나**로 좁혀진다.
+
+### 이번 라운드에 새로 확보한 **하드 증거** (추측 아님, 전부 이 머신에서 직접 확인)
+
+| # | 확인 방법 | 결과 |
+|---|---|---|
+| E1 | `strings LibUniWinC.dll`(패키지 동봉 x64 네이티브) | import에 **`DwmExtendFrameIntoClientArea`**, **`SetLayeredWindowAttributes`**, `SetWindowLongPtrW` 존재 → Windows 투명화는 **레이어드 창 + DWM 확장 프레임** 경로가 확정 |
+| E2 | Unity 공식 문서 `PlayerSettings.useFlipModelSwapchain` | "이 설정은 **오직 Direct3D 11에만** 영향을 준다. **Direct3D 12는 항상 flip model을 쓴다**" / BitBlt 모델은 "스왑체인 표면의 **복사본을 만들어 스크린 버퍼에 blit**한다 — **expensive and redundant**" / "DXGI flip model 스왑체인은 `DwmExtendFrameIntoClientArea`를 쓸 때 투명을 지원하지 않는다" |
+| E3 | `UniWindowControllerEditor.cs:388~404` (패키지 자체 검증 코드) | "**Direct3D12 is not supported for transparent window**" — Graphics APIs에서 D3D12를 빼라고 경고한다 |
+| E4 | `ProjectSettings.asset:98`, `:396~398` | `useFlipModelSwapchain: 0`, `m_BuildTargetGraphicsAPIs = WindowsStandaloneSupport / 02000000`(= Direct3D11 단독) |
+| E5 | `Builds/Windows/StickMate_Data/boot.config` | `force-d3d11-bitblt-model=` 기록 확인(레거시 경로가 실제 빌드에 반영됨) |
+| E6 | `strings StickMate.exe`(임베드 매니페스트) | `<dpiAware>True/PM</dpiAware>`, `<dpiAwareness>PerMonitorV2</dpiAwareness>` |
+| E7 | GitHub Issues 전수(kirurobo/UniWindowController, 31건) + 웹 검색 4회 | **잔상/고스팅/이중상에 관한 기존 보고·해결책이 존재하지 않는다.** 즉 "이미 알려진 해결책을 먼저 적용" 경로는 없다 |
+
+### 반증된 가설 (근거 있는 폐기)
+
+- **[반증] "D3D12나 Vulkan으로 바꾸면 flip model을 쓰면서 투명 창도 된다"** — 리더가 근본 해법
+  후보로 지목한 방향. **E2가 논리적으로 닫는다**: D3D12는 *항상* flip model이고, flip model은
+  `DwmExtendFrameIntoClientArea` 투명을 지원하지 않는다. `useFlipModelSwapchain`은 D3D11 전용이라
+  D3D12에는 끌 스위치조차 없다. E3에서 라이브러리 자신도 "D3D12는 투명 창 미지원"이라고 검증에
+  박아 두었다. Vulkan도 동일 — Unity에 BitBlt 대체 스위치가 없다. **탈출구는 존재하지 않는다.**
+- **[반증] "OS DPI 가상화(비트맵 확대)로 글자가 흐려진다"** — E6. Player가 PerMonitorV2 DPI aware라
+  OS가 창을 비트맵 확대하지 않는다. 이 경로로는 흐려질 수 없다.
+- **[반증] "카메라가 화면을 안 지워서 이전 프레임이 남는다"** — `SceneBootstrapper.cs:1146`이
+  `clearFlags = SolidColor`, `:1162`가 배경 알파 0. 매 프레임 RGBA 전체가 지워진다.
+- **[반증(직전 라운드 유지)]** 배타모달 미포함 / 캔버스 렌더모드 플랫폼분기 / DPI 클릭좌표 어긋남 /
+  창 복제 코드경로 — 전부 이미 실측 반증됨.
+
+### 확정된 인과 사슬 (E1~E5로만 구성 — 추론 구간을 명시한다)
+
+1. 이 앱의 Windows 투명 창은 `DwmExtendFrameIntoClientArea`로만 성립한다(E1).
+2. 그 함수는 flip-model 스왑체인과 함께 동작하지 않는다(E2) → **BitBlt 강제**(E4, E5). 우회 불가(E2, E3).
+3. BitBlt 모델은 Unity 표현 그대로 "스왑체인 표면의 복사본을 만들어 스크린 버퍼에 blit"한다(E2).
+   우리 창은 **모니터 전체 크기 + 최상위 + 레이어드**다. 즉 **present 1회 = 데스크톱 한 장 분량의
+   복사 1회**이고, 그 비용은 dwm.exe와 GPU 복사 엔진에 계상된다 — **우리 프로세스 CPU 수치에
+   잡히지 않는다**(신고 ⑤가 정확히 이 모양이다).
+4. 지금까지 이 앱에는 **프레임 상한이 전혀 없었다**(직전 라운드 실측: 지속 ~116fps, 상한 코드 0건,
+   Standalone 기본 품질=Ultra의 `vSyncCount=1`이라 주사율 그대로).
+   → 비용 ∝ (표면 넓이) × (present 횟수). **넓이는 제품 요구(전체 화면 오버레이)라 못 줄인다.
+   우리가 통제할 수 있는 변수는 present 횟수 하나뿐이다.**
+5. **[여기부터 추론, 미검증]** 앱의 present 주기와 DWM의 합성 주기 사이에는 동기화 계약이 없다.
+   앱이 빠르게 그릴수록 DWM이 "아직 다 갱신되지 않은 리디렉션 표면"을 읽을 확률이 오르고, 그러면
+   화면 전체가 두 프레임이 섞인 상으로 보인다 — 신고 ①②③(표면 종류 무관, 창과 함께 움직임,
+   위치 고정 잔상 아님)과 형태가 일치한다.
+
+### 적용한 변경 (2건 — 근거가 가장 명확한 것만)
+
+**[변경 1] Windows 전용 프레임 상한** — 신규 `Assets/_Project/Scripts/Platform/Windows/WindowsFramePacing.cs`
++ `StickConfig.windowsTargetFrameRate`(기본 60) / `windowsDisableVSyncForFrameCap`(기본 true).
+`WindowsOverlayStateEnforcer.Update()` 첫 줄에서 1회 적용(창 부착 대기 구간도 덮기 위해 부착 판정보다 먼저).
+- **왜 이것인가**: 4번 항목대로 **유일하게 통제 가능한 변수**를 직접 줄인다. 120~165Hz → 60Hz면
+  중복 복사 대역폭이 2~2.7배 줄어든다. 신고 ①②⑤ 전부를 같은 지점에서 겨냥한다.
+- `vSyncCount=0`을 **함께** 내린다 — Unity 문서상 `vSyncCount>=1`이면 `targetFrameRate`는 통째로
+  무시되므로 그냥 넣으면 아무 일도 일어나지 않는다. 게다가 레이어드 창은 스캔아웃이 아니라 DWM
+  합성을 거치므로 앱 쪽 vsync는 찢어짐을 막아주지 못하고 지연만 한 프레임 더한다.
+- **macOS 영향 0**: 파일 전체가 `#if UNITY_STANDALONE_WIN`이고 설정 필드도 Windows 경로에서만 읽힌다.
+
+**[변경 2] 시작 시 깜박임 — `isTopmost` 무의미 재적용 제거**
+`WindowsOverlayStateEnforcer`의 재적용 루프(0.5초 × 5회)가 **값이 이미 목표와 같아도 무조건 다시
+대입**하고 있었다. `isTopmost` 대입 1회 = 네이티브가 자기 창 Z-order를 다시 지정 = 레이어드 창의
+DWM 합성이 한 번 무효화됨. 되읽은 값이 목표와 **다를 때만** 대입하도록 바꿨다.
+- **`isTransparent`/`isClickThrough`는 일부러 그대로 무조건 대입한다.** 그 두 게터는
+  `UniWindowController.cs:136-141` / `:126-131`에서 **캐시된 C# 필드를 그대로 돌려준다** — 네이티브가
+  값을 버려도 캐시는 목표값이라, 같은 가드를 걸면 "투명이 실제로는 안 걸렸는데 걸린 줄 알고 건너뛰는"
+  = **회색 불투명 전체화면 창** 사고가 난다. 이 enforcer의 존재 이유가 그 사고 방지다.
+  반면 `isTopmost` 게터는 `_isTopmost = _uniWinCore.IsTopmost`로 **네이티브 진실을 되읽으므로**
+  가드가 안전하다. (이 비대칭을 코드 주석에도 남겼다.)
+
+**[부수] 진단 로그 강화** — `TickFullScreenBounds` 로그에 `clientSize` 추가.
+Unity가 실제로 그리는 백버퍼 크기와 `Screen.width/height`가 어긋나면 표시 단계에서 전체 화면이
+리샘플링되어 **모든 표면**의 획이 두 겹으로 번진다. 그 대체 가설을 실기 로그 한 줄로 가를 수 있게 했다.
+`WindowsFramePacing`도 적용 결과 + 주사율 + 그래픽API + 실측 MSAA를 한 줄로 남긴다.
+
+### 검증 결과 (전부 이 머신에서 실제 실행)
+
+| 항목 | 결과 |
+|---|---|
+| macOS 빌드 | **에러 0 / 경고 0** (변경 전후 2회 실행, 둘 다 Succeeded) |
+| Windows 크로스 빌드 | **에러 0 / 경고 0**, `Builds/Windows/StickMate.exe` |
+| Windows 산출물 심볼 대조 | `StickMate.Runtime.dll`에 `WindowsFramePacing`, `windowsTargetFrameRate` **있음** / macOS 전용 타입 없음 |
+| EditMode | **150 / 150 통과** |
+| PlayMode | **296건 중 295 통과, 실패 0, 스킵 1** — 스킵은 `PortraitTextureIsSupersampledAgainstPhysicalPixelsOnRetina`의 `-nographics` 자체 `Assert.Ignore`(사전 존재, 이번 변경과 무관) |
+
+> 중간 1회 EditMode 실패가 있었고 즉시 고쳤다. `UserAssetImmutabilityAuditTests`가 내가 새로 쓴
+> **주석 문장 안의 `SetWindowPos(` 리터럴**을 잡아냈다(소스 텍스트 스캔 방식). 감사 장치가 의도대로
+> 동작한 것이라 테스트가 아니라 주석 문구를 고쳤다. 실제 API 호출은 프로젝트에 여전히 0건이다.
+
+### ★ 이 환경에서 검증 **불가능한** 것 (정직한 한계 — 리더/사용자 필독)
+
+- 개발 머신이 macOS다. **"프레임 상한이 실제로 잔상을 없애는가"는 전혀 검증되지 않았다.**
+  위 인과 사슬 1~4는 문서/바이너리/설정으로 확정했지만 **5번(present 속도 → 합성 경합 → 이중상)은
+  추론이다.** 여기서 확인된 것은 컴파일 통과 / 심볼 포함 / macOS 무회귀 / 테스트 무회귀까지다.
+- 신고 ⑥(시작 시 깜박임)의 원인도 **확정하지 못했다.** 변경 2는 후보 하나를 제거한 것일 뿐이고,
+  더 유력한 경쟁 가설이 남아 있다(아래 다음 시도 2번).
+
+### 사용자에게 요청할 확인 (실기에서 1분, 이 순서대로 하면 원인이 갈린다)
+
+1. Player.log에서 **`[WindowsFramePacing] 프레임 상한 적용`** 한 줄 — targetFrameRate/vSyncCount가
+   실제로 바뀌었는지 + 그 PC의 주사율/그래픽API/실측 MSAA가 한 줄에 나온다.
+2. Player.log의 **`[WindowsOverlayStateEnforcer] 전체화면 확장 시도 N/6`** 전부 —
+   `clientSize`와 `Screen=(WxH)`가 **다르면** 대체 가설(전체 화면 리샘플링)이 확정된다.
+   `결과=미달`이 6번 반복되면 시작 시 깜박임의 원인이 창 크기 진동으로 확정된다.
+3. **작업 관리자 > 성능 > GPU**를 앱 켜기 전/후로 비교. 특히 **`dwm.exe`의 CPU/GPU**를 본다 —
+   우리 프로세스가 아니라 dwm이 올라가면 3번 항목(BitBlt 복사 비용)이 실측으로 확정된다.
+
+### 안 고쳐지면 다음에 시도할 것 (우선순위 순, 근거와 함께)
+
+1. **상한을 더 내린다** — `DefaultStickConfig.asset`의 `windowsTargetFrameRate`를 60 → 40 → 30.
+   빌드 없이 값만 바꿔 확인 가능하다. 60에서 효과가 **부분적으로라도** 보였다면 원인이 4번 항목으로
+   확정되고, 30에서도 전혀 변화가 없으면 present 횟수는 원인이 아니라는 **반증**이 된다(가장 값싼 갈림길).
+2. **`TickFullScreenBounds`의 크기 진동** — 지금 코드는 `Screen.SetResolution`(client 지정) →
+   `windowSize=monitor.size`(**outer** 지정) 순서다. 두 사각형이 같지 않은 순간이 있으면
+   "해상도 올림 → 창 줄임 → 해상도 올림"이 0.5초 간격으로 최대 6회 반복되고, 매회 스왑체인이
+   재생성된다(= 시작 3초간 깜박임 + 마지막에 백버퍼/클라이언트 불일치가 남으면 **상시 리샘플링**).
+   **위 확인 2번 로그가 이 가설을 즉시 확정/반증한다.** 확정되면 순서를 "창 기하 먼저 → 그 결과
+   clientSize에 맞춰 해상도 1회"로 뒤집고 수렴 판정을 clientSize 기준으로 바꾼다.
+   *지금 안 고친 이유*: 오버레이 기하를 미검증 상태로 건드리면 "화면을 못 덮는" 더 나쁜 회귀가 난다.
+3. **Windows 전용 MSAA 하향** — 전 품질 레벨 `antiAliasing: 4`. 모니터 전체 크기 백버퍼의 4x MSAA는
+   매 프레임 resolve 비용이다. ScreenSpaceOverlay UI는 어차피 MSAA를 받지 않고(`UiChrome.cs:298`),
+   초상화는 슈퍼샘플을 따로 쓴다(2026-08-29 "선 화질 조사"에서 MSAA 8x는 오히려 함정이었다).
+   다만 캐릭터 본선의 매끄러움은 실제로 MSAA에 의존하므로 **화질 저하가 확실한 대가**다 —
+   1·2번이 실패한 뒤에만 꺼낸다.
+4. **`OnDemandRendering.renderFrameInterval`** — 아무것도 안 변할 때 present 자체를 건너뛴다.
+   1~3번보다 효과는 크지만 상태 머신/물리와의 상호작용이 커서 별도 라운드가 필요하다.
+5. **(구조적 최종 수단) 전체 화면 레이어드 창을 포기한다** — 캐릭터 주변 작은 창만 레이어드로 두고
+   따라다니게 한다. 비용 ∝ 넓이이므로 이게 유일한 "넓이" 쪽 해법이지만, 발판/창도둑/그라피티 등
+   전체 화면 전제의 기능 설계를 통째로 다시 봐야 한다. **팀 합의 사안.**
+
+### 교차 레이어 영향 로그 (즉시 보고)
+
+1. **[렌더/성능, 중요]** Windows Player에서 `Application.targetFrameRate = 60`,
+   `QualitySettings.vSyncCount = 0`이 된다. **`Time.deltaTime`의 통계적 분포가 Windows에서만 바뀐다.**
+   프레임 수에 의존하는 로직(프레임 카운터, `Time.frameCount` 기반 만료)이 있다면 Windows에서
+   체감 타이밍이 달라질 수 있다 — `DialogueIntent`의 세대/프레임 대조가 여기 해당하는지 리더 확인 요망.
+   macOS/에디터/모바일은 한 글자도 바뀌지 않는다(`#if UNITY_STANDALONE_WIN`).
+2. **[네이티브/플랫폼]** `WindowsOverlayStateEnforcer`의 재적용 루프가 이제 `isTopmost`에 한해
+   조건부다. "항상위가 5회 무조건 재적용된다"는 전제에 기대던 코드가 있다면 깨진다(현재 없음).
+3. **[설정]** `StickConfig`에 필드 2개 추가(`windowsTargetFrameRate`, `windowsDisableVSyncForFrameCap`).
+   `DefaultStickConfig.asset`은 **수정하지 않았다** — 키가 없으면 Unity가 C# 필드 초기값을 쓰므로
+   기본값 60/true가 그대로 적용되고, 배포 에셋 오염 위험(2026-08-31 1차 라운드 Blocker 2)을 피한다.
+
+**커밋하지 않았다**(리더가 통합 후 커밋).
+
+#### 부록 — 검증 수치 정정 및 **동시 작업 충돌 보고 (리더 필독)**
+
+이 라운드 도중 **다른 에이전트가 같은 작업 트리에서 동시에 작업 중**이었다. 시작 시점에는
+`git status`가 clean이었으나 검증 도중 내 것이 아닌 변경이 나타났다. 내 결과를 그 변경과
+섞어 보고하지 않기 위해 시각별로 분리해 남긴다.
+
+**내 변경이 아닌 것 (커밋 시 저자 귀속 주의)**
+- `Assets/_Project/Scripts/Platform/MacOS/MacFramePacing.cs`(신규) — **내 `WindowsFramePacing.cs`와
+  같은 패턴의 형제 파일**. 그쪽 파일 주석이 이미 내 파일을 "통합 대상"으로 지목하고 있다.
+  두 파일 모두 `targetFrameRate` + `vSyncCount=0`을 건드리므로 **리더가 통합 시 한쪽만 살리거나
+  공용 진입점으로 합칠지 판단해야 한다.** 지금 상태로는 플랫폼 분기(`#if`)가 서로 배타적이라
+  충돌하지 않고 양쪽 다 빌드된다(아래 검증표에서 심볼로 확인).
+- `ProjectSettings/ProjectSettings.asset`: `disableDepthAndStencilBuffers 0 -> 1` (전 플랫폼 전역)
+- `ProjectSettings/AudioManager.asset`: `m_DisableAudio 0 -> 1` (전 플랫폼 전역)
+- `Assets/Editor/BuildStandalone.cs`(+114), `Platform/MacOS/MacWindowService.cs`,
+  `Platform/MacOS/MacOverlayStateEnforcer.cs`, `Platform/Windows/Win32WindowService.cs`,
+  `Platform/VisibleTopEdgeSolver.cs`(신규) 및 테스트 4종(신규)
+- ※ 특히 `Win32WindowService.cs`는 내가 **읽기만** 했고 수정하지 않았다.
+
+**내 변경 (이 라운드에서 내가 만든 것 전부)**
+- 신규 `Assets/_Project/Scripts/Platform/Windows/WindowsFramePacing.cs` (+ `.meta`)
+- `Assets/_Project/Scripts/Core/StickConfig.cs` — 필드 2개 추가
+- `Assets/_Project/Scripts/Platform/Windows/WindowsOverlayStateEnforcer.cs` — 3곳
+- `Tasklist.md` — 이 절
+
+**검증 수치 (시각 명시 — 어느 트리 상태에서 나온 값인지 정직하게 구분)**
+
+| 항목 | 결과 | 트리 상태 |
+|---|---|---|
+| EditMode (12:01) | 150 / 150 | **내 변경만** |
+| PlayMode (12:14) | 296건 중 295 통과 / 실패 0 / 스킵 1 | 내 변경 + 타 에이전트 변경 |
+| macOS 빌드 (12:17) | 에러 0 / 경고 0 | 내 변경 + 타 에이전트 변경 |
+| Windows 크로스 빌드 (12:17) | 에러 0 / 경고 0 | 내 변경 + 타 에이전트 변경 |
+| Windows 산출물 심볼 | `WindowsFramePacing` **있음** / `MacFramePacing` **없음**(플랫폼 분기 정상) | 상동 |
+| EditMode (최종) | **159 / 159 통과, 실패 0** | 내 변경 + 타 에이전트 변경 |
+| macOS 빌드 (최종, 빌드 타깃 복구 겸용) | **에러 0 / 경고 0** | 상동 |
+| Windows 크로스 빌드 (최종) | **에러 0 / 경고 0** | 상동 |
+
+> 최종 직전 Windows 빌드 1회에서 "경고 1건"이 떴다가 재실행에서 0건으로 돌아왔다. 로그 전체에
+> `warning CS`가 0건이었고(스크립트 경고 아님) 같은 시각 macOS 빌드는 0건이었으므로, 타 에이전트가
+> 파일을 편집하던 중간 상태를 물었던 일시적 값으로 판단한다. **최종 상태는 양 플랫폼 모두 0/0이다.**
+> 빌드 타깃은 macOS로 되돌려 두었다.
+
+PlayMode의 스킵 1건은 `PortraitTextureIsSupersampledAgainstPhysicalPixelsOnRetina`가
+`-nographics`에서 스스로 거는 `Assert.Ignore`다(`PortraitTextureResolutionTests.cs:69-72`, 사전 존재).
+
+**주의**: 배치 실행 중 한 번 `another Unity instance is running` 충돌로 실행이 죽었다(exit 134).
+동시 작업 중에는 Unity 배치 실행 전 `ps aux | grep Unity` 확인이 필수다. 최종 EditMode는 슬롯이
+빈 뒤 다시 돌려 받은 값이다.
+
+### 2026-08-31 — 리더 승인: 윈도우 BitBlt 잔상/렉 조사 완료
+리더가 제안한 근본 해법(D3D12/Vulkan 전환)이 Unity 공식 문서("D3D12는 항상 flip-model, 끌 수 없음")와
+UniWindowController 자체 검증 로직("D3D12는 투명창 미지원")으로 **이중 반증**됨 — BitBlt는 설정 실수가
+아니라 이 앱의 요구사항(투명+레이어드+전체화면 크기 창) 안에서 구조적으로 강제된 것임을 확인. 리더 제안을
+맹신하지 않고 실제 근거(공식 문서/바이너리/라이브러리 코드)로 검증한 것 승인.
+대신 유일하게 통제 가능한 변수(프레임 제출 횟수)를 줄이는 방향(`WindowsFramePacing.cs` 신설, 60fps+
+vsync off, 윈도우 전용) 승인 — "우리 프로세스 CPU는 낮은데 시스템 전체가 느려진다"는 사용자 신고와
+정확히 들어맞는 비용 모델(BitBlt 프레젠트 1회 = 전체 데스크톱 표면 복사, dwm.exe/GPU 카피엔진에 과금됨)
+확인. 부수 발견(시작시 깜빡임 버그 유력 원인 — 항상위 재적용이 이미 맞는 상태에서도 0.5초마다 불필요하게
+반복 실행되며 매번 네이티브 Z-order 변경을 일으켜 DWM 합성을 무효화시킴) 수정도 승인.
+GitHub 이슈 31건 전수 확인 + 웹검색으로 "이미 알려진 해법 없음"까지 확인한 철저함 인정.
+정직한 한계 인정(1~4단계는 문서/바이너리로 확정, 5단계(프레젠트 빈도→합성 경합→잔상)는 이 환경에서
+검증 불가능한 추론)도 좋은 태도 — 사용자에게 40fps/30fps로 낮춰보는 저비용 진단 사다리 제공.
+**교차 레이어 확인 필요**: `MacFramePacing.cs`(perf-doc이 동시에 만들고 있음, 서로의 파일을 이미
+참조 중)와 `WindowsFramePacing.cs`를 하나의 진입점으로 통합할지 — **승인, 통합할 것**(플랫폼별
+`#if` 분기 하나의 파일로, 유지보수 관점에서 중복 방지). `DialogueIntent`의 프레임 번호 비교 로직이
+윈도우 60fps 전환으로 영향받는지 확인 필요 — perf-doc에게 확인 요청함.
+
+---
+
+## 2026-08-31 — perf-doc(Teammate4) 성능 라운드: 상주 앱 CPU/메모리 실측 + 프레임 페이싱
+
+사용자 신고 두 건을 같이 다뤘다: ①"메모리 185MB / CPU 1.5%" ②"수치상으론 적게 표시되지만 실제로는
+전체적으로 시스템이 느려짐, 캐릭터도 부드럽지 않고 렉이 있는 것처럼 보임".
+
+### 0. 먼저 밝혀진 것 — 신고 수치와 실측이 크게 달랐다
+macOS에서 실행 중인 빌드(17분 경과, 유휴 = 캐릭터가 걷기만 하는 상태)를 직접 계측한 결과:
+
+| 항목 | 신고값 | macOS 실측 |
+|---|---|---|
+| CPU | 1.5% | **약 28%** (`top -pid`, 13.6~38.9% 진동) |
+| 메모리 | 185MB | **543MB** physical footprint (`vmmap`), 피크 1.0GB |
+| fps | (없음) | **106.8fps** (Player.log frame= 카운터, 840초에 89,672프레임) |
+
+→ 신고 수치는 Windows 기기의 값일 가능성이 높다(사용자가 최근 Windows에서 테스트 중). **macOS에서는
+훨씬 무겁다**는 것이 이번 라운드의 첫 발견이다. 즉 이 문제는 Windows 전용이 아니라 양쪽 다 있다.
+
+### 1. 메모리 구성 — 통념이 실측으로 뒤집혔다
+`vmmap`으로 543MB를 분해한 결과, **텍스처/폰트/메시/코드가 아니라 GPU 프레임버퍼가 압도적**이었다.
+
+```
+owned unmapped (graphics)  222.3MB  <- 121.0MB + 96.0MB 두 덩어리가 전부
+IOSurface                   71.1MB  <- 23.7MB x 3 (3024x2020 BGRA 'CAMetalLayer Display Drawable')
+MALLOC(관리 힙 전체)         49.2MB
+__FONT_DATA                  2352B  <- 폰트는 사실상 0
+```
+화면 3024x2020 = 6,108,480픽셀로 산수가 정확히 맞는다:
+- **96.0MB = 6,108,480 x 4B x 4샘플 -> MSAA 4x 컬러 버퍼**
+- **121.0MB = 6,108,480 x 5B(depth32f+stencil8) x 4샘플 -> MSAA 4x 깊이+스텐실 버퍼**
+- 71.1MB = CAMetalLayer 트리플 버퍼(WindowServer와 공유)
+
+**기각된 가설들(다시 조사하지 말 것)**:
+- "한글 폰트(IBM Plex Sans KR/Mono)가 용량이 클 것" → 그 폰트는 **프로젝트에 아예 없다**.
+  실제로는 빌트인 `LegacyRuntime.ttf` 동적 폰트를 쓰며 `__FONT_DATA`는 2,352바이트다.
+- "오디오가 없다" → **틀렸다. 실제로는 돌고 있었다**(아래 3절).
+- "RenderTexture 2개가 메모리를 먹는다" → 752x720 ARGB32 2장으로 합쳐 ~6MB, 전체의 1%. 무시 가능.
+  (게다가 창을 처음 열 때 지연 생성된다.) 깊이 16비트가 불필요해 보이지만 절감액이 2MB라 손대지 않았다.
+
+### 2. [적용] `disableDepthAndStencilBuffers = true` — 실측 -132MB
+위 121MB 깊이+스텐실 버퍼는 **이 2D 앱이 한 번도 쓰지 않는다**(전수 확인):
+- 렌더링이 전부 2D 투명 큐다. 정렬은 깊이 테스트가 아니라 렌더 큐 + sortingOrder(화가 알고리즘).
+- uGUI 마스킹은 `RectMask2D`만 쓴다(셰이더 사각형 클리핑). 스텐실을 쓰는 `Mask` 컴포넌트는 **0건**.
+
+이 설정은 Unity 인스펙터에서 모바일 타깃에만 노출되어 macOS Standalone/Metal에서 먹는지가 문서로
+보장되지 않아, **켠 뒤 실제로 빌드해 `vmmap`으로 확인**했다 → **541MB → 409MB**. 먹는다.
+MSAA 4x는 **건드리지 않았다**(사용자 확정값, 로그의 `MSAA 실측=4x` 그대로 유지 확인).
+
+### 3. [적용] `m_DisableAudio = true` — 24시간 돌던 오디오 장치 제거
+이 프로젝트에는 오디오 자산이 0건인데(`ItemCatalog.cs` 주석도 같은 사실을 적어둠), `sample`로 실행 중인
+프로세스를 뜨니 **오디오가 실제로 돌고 있었다**:
+```
+com.apple.audio.IOThread.client -> HALC_ProxyIOContext::IOWorkLoop()
+  -> FMOD::OutputCoreAudio::renderProc() -> FMOD::Output::mix() -> FMOD::DSPFilter::read()
+```
+Unity는 소리가 없어도 FMOD를 초기화하고 CoreAudio 출력 장치를 연다 → 오디오 IO 스레드가 버퍼 주기마다
+24시간 깨어나고, caulk 메신저 스레드 3개가 함께 붙고, **오디오 하드웨어 전력 도메인이 계속 살아 있다**.
+적용 후 실측: `sample`에서 FMOD/CoreAudio 참조 **0건**, 스레드 수 **53 → 48**. UX 영향 0(재생할 소리 없음).
+
+### 4. [적용] 프레임 페이싱 — 이 라운드의 핵심
+이 프로젝트에는 프레임 상한이 **전혀 없었다**(`targetFrameRate`/`vSyncCount` 런타임 설정 전수 검색 0건).
+기본 품질 레벨 Ultra(인덱스 5)의 `vSyncCount=1`이라 120Hz 패널을 그대로 따라가고 있었다.
+
+**★ 왜 `targetFrameRate`가 아니라 `vSyncCount`인가 (이번 라운드의 핵심 판단)**
+사용자 신고가 "부드럽지 않다"였으므로 평균 부하가 아니라 **프레임 간격의 균일성**이 문제다.
+흔한 처방인 "vsync 끄고 targetFrameRate=60"은 **이 증상에 한해 역효과**다 — sleep 기반이라 앱 위상이
+디스플레이 주기와 무관하게 떠다니고, 120Hz에서 60fps 평균이어도 1회/2회 표시가 번갈아 나오는 맥놀이가
+생겨 오히려 더 끊겨 보인다. `vSyncCount=N`은 위상을 디스플레이에 고정해 간격이 정확히 균일해진다.
+
+macOS에서 vsync가 실제로 먹는다는 실측 근거: `sample`에 `CVDisplayLink` 스레드가 살아 있고
+`-[CAMetalLayer nextDrawable]`이 `semaphore_timedwait`에서 실제 back-pressure를 받고 있었다(645중 461).
+
+**120Hz에서 균일한 값은 약수뿐이다: 120/60/40/30 (= vSyncCount 1/2/3/4).**
+→ 리더가 제안한 **45fps는 이 하드웨어에서 나쁜 선택지다**(120/45=2.67이라 2,3,2,3회 표시 진동).
+
+**실측 A/B (같은 기기, 같은 유휴 상태, 90초 CPU 시간 적산 — `top` 순간값이 아니라 누적값)**
+
+| 설정 | fps | CPU | RSS | 프레임 시간 분포 |
+|---|---|---|---|---|
+| 상한 없음(기존) | ~107 | **약 28%** | 541MB | (미측정) |
+| `vSyncCount=2` **← 채택** | 60 | **20.4%** | 409MB | p50 16.66 / p95 17.26 / p99 33.21 / 최대 33.33ms |
+| `vSyncCount=4` | 30 | **7.8%** | 165MB | p50 33.33 / p95 33.88 / p99 34.22 / 최대 91.79ms |
+
+**관계가 선형이 아니다** — 60→30으로 절반만 줄였는데 CPU는 **2.6배** 싸진다.
+
+**기본값을 60으로 둔 이유(리더 판단 요청)**: 30fps가 배터리 관점에서 압도적으로 유리하지만, 이번 신고가
+정확히 "부드럽지 않다"였으므로 그 라운드에서 기본값을 30으로 내리는 것은 방향이 반대다. 60은 기존
+116fps 대비 CPU -27% / 메모리 -24%를 확보하면서 **위상 고정으로 부드러움은 오히려 개선**된다.
+더 아끼고 싶으면 `StickConfig.macVSyncInterval`을 3(40fps)/4(30fps)로 올리면 된다 — 위 표가 대가와
+이득을 이미 숫자로 보여준다. **이 선택은 사용자 취향 문제라 리더/사용자에게 넘긴다.**
+
+### 5. [보고] "시스템 전체가 느려진다"의 구조적 설명 — macOS도 같은 구조다
+이 앱은 전체화면 투명 오버레이다. `vmmap`에서 3024x2020 BGRA 'CAMetalLayer Display Drawable' **3장**이
+**WindowServer와 공유**되고 있음이 확인된다. 즉 이 앱이 한 프레임을 낼 때마다 **WindowServer가 화면
+전체를 다시 합성**한다. 116fps로 그린다 = **OS 컴포지터를 116Hz로 돌린다**는 뜻이고, 그 비용은 이
+프로세스의 CPU%에 잡히지 않은 채 다른 앱의 반응성을 갉아먹는다.
+
+→ **coder의 Windows BitBlt 가설(신고 ④ 렉)과 원인 계층이 동일하다**: "전체화면 투명 창 + 높은 프레젠트
+빈도 → OS 컴포지터 부하". Windows는 DWM/BitBlt, macOS는 WindowServer/CAMetalLayer로 기구만 다르다.
+따라서 **프레임 상한은 양 플랫폼 모두에서 이 증상의 정답 방향**이며, 사용자 신고가 Windows 전용이
+아니라는 것도 위 0절 실측이 뒷받침한다.
+
+### 6. [적용] 리더 지시 2건 처리
+- **프레임 페이싱 단일 진입점 통합 완료**: `Platform/FramePacing.cs` 신설. `MacFramePacing.cs`와
+  coder의 `WindowsFramePacing.cs`를 흡수하고 두 파일은 삭제. 호출부(양 플랫폼 Enforcer의 `Update()`)도
+  같은 함수를 부르도록 통일. **두 플랫폼이 정반대 처방을 쓴다는 점(macOS는 vsync 켬 / Windows는 끔)을
+  클래스 문서 상단 표로 명시**해 통합 과정에서 그 비대칭이 뭉개지지 않게 했다.
+- **`Time.frameCount` 전수 조사 완료 — 문제 없음**: 쓰이는 곳이 전부 "같은 프레임인가?" 동일성 비교
+  (`DialogueBubbleRenderer._forcedInterruptFrame`, `StickmanBlackboard._groundedTickFrame`)이거나
+  로그/디버그 스냅샷이고, **프레임 수로 지속시간을 재는 코드는 0건**이다.
+  `DialogueIntent.CreatedFrame` / `StateTransitionContext.ConfirmedFrame`은 저장만 하고 읽는 곳이 없는
+  디버그 메타데이터다. 지속시간은 전부 `Time.deltaTime`/초 단위 → **프레임레이트를 바꿔도 대사 노출
+  시간/상태 지속시간/폴링 주기는 실제 초 단위로 동일하다.**
+
+### 7. [신설] 프레임 시간 분포 상시 계측 (`FrameTimeStats`, 할당 0)
+"평균은 낮은데 렉이 느껴진다"는 신고는 평균으로 재현되지 않는다 — 사람이 렉으로 인지하는 것은
+**가끔 튀는 긴 프레임**이다. 그래서 링 버퍼(고정 512개, 할당 0)로 30초마다 p50/p95/p99/최댓값을 남긴다.
+`StickConfig.logFrameTimeStats`(기본 true, 플랫폼 공통). 특히 **Windows 잔상/렉은 이 개발 환경에서
+재현이 불가능해 사용자 기기의 이 로그가 유일한 원격 계측 수단**이다.
+
+### 8. 남은 개선 후보 (이번엔 손대지 않음 — 근거와 함께 남긴다)
+- **`NSRunningApplication.activationPolicy`가 프레임과 무관한 고정 비용의 최대 항목**이다.
+  `sample` 실측에서 `_fetchDynamicProperties` → `_LSCopyApplicationInformation` →
+  LaunchServices IPC 왕복이 잡힌다(프레임 상한 적용 전 66샘플 → 적용 후 79샘플로 **줄지 않았다**.
+  프레임이 아니라 `footholdPollInterval` 0.3초 타이머에 묶여 있기 때문). Dock 타일 수 계산용이며
+  `MacWindowService.DockMetricsCacheSeconds = 0.75`로 이미 캐시되지만, 이 값을 늘리면(예: 3~5초)
+  추가 절감이 가능하다. **Dock 폭 변화 반응성과의 트레이드오프라 발판 로직 담당자 판단이 필요하다.**
+- RenderTexture 2장의 깊이 버퍼 16비트 → 0 (절감 ~2MB, 전체의 0.4%). 시각 회귀 위험 대비 이득이 작아 보류.
+- IOSurface 트리플 버퍼(71MB)는 CAMetalLayer가 관리해 Unity에서 노출되는 손잡이가 없다.
+
+### 검증
+- macOS 빌드: **성공(에러 0, 경고 0)**, `MSAA 실측=4x` 유지 확인.
+- EditMode **159/159 통과**.
+- PlayMode: (아래 결과 참조)
+- 실행 검증: `[FramePacing/macOS] 적용 — vSyncCount 1 -> 2 ... 디스플레이 120.0Hz -> 기대 60.0fps`,
+  실측 p50 16.66ms(= 정확히 60fps 위상 고정).
+
+### 교차 레이어 영향 로그
+- `StickConfig`에 `macVSyncInterval` / `macTargetFrameRate` / `logFrameTimeStats` 추가.
+  `logFrameTimeStats`는 **플랫폼 공통**이라 Windows 쪽에서도 그대로 쓰인다(coder 인지 필요).
+- coder의 `WindowsFramePacing.cs` **삭제 후 `Platform/FramePacing.cs`로 흡수**(리더 승인 지시).
+  Windows 로직/문서/근거는 한 글자도 버리지 않고 그대로 옮겼으며, `windowsTargetFrameRate` /
+  `windowsDisableVSyncForFrameCap` 설정 필드도 그대로 유지된다. `WindowsOverlayStateEnforcer.cs`의
+  호출 한 줄만 `FramePacing.ApplyOnce`로 바뀌었고 `FramePacing.Tick()` 한 줄이 추가됐다.
+- `ProjectSettings/ProjectSettings.asset`(`disableDepthAndStencilBuffers`) 및
+  `ProjectSettings/AudioManager.asset`(`m_DisableAudio`) 변경 — `BuildStandalone.ConfigureResidencyFootprint()`가
+  매 빌드 멱등 적용하므로 누가 UI에서 되돌려도 다음 빌드에서 복구된다(기존 `ConfigureRunInBackground` 패턴).
+
+---
+
+## 2026-08-31 — 디버거: 사용자 신고 "창이 겹쳐있을때 뒤 창의 경계면을 따라 걸음" (과학적 토론 로그)
+
+**신고**: "창이 겹쳐있을때 창이 뒤에 있음에도 그 경계면을 따라 걸음."
+창 A가 창 B를 덮고 있는데도 캐릭터가 가려진 B의 상단 테두리를 발판으로 딛는다.
+
+### 결론 먼저 — **Windows 전용 결함이고, macOS 수정이 재사용 불가능한 곳에 갇혀 있던 것이 진짜 원인**
+
+`Platform/Windows/Win32WindowService.cs`의 `EnumerateFootholds()`는 `EnumWindows`가 돌려준
+**창 전체 사각형을 그대로 발판으로 내보내고 있었다.** 가려짐(오클루전) 계산이 그 파일에 **한 줄도**
+없었다. 즉 앞 창에 완전히 덮여 한 픽셀도 보이지 않는 창의 상단선도 유효한 발판으로 남았다 —
+신고 그대로다.
+
+이건 새 버그가 아니라 **2026-08-28에 macOS에서 이미 고친 버그의 미적용본**이다. 그때의 수정이
+`MacWindowService.BuildVisibleTopEdgeFootholds()`라는 **macOS 전용 파일의 private 메서드 안에
+통째로 갇혀 있었다.** 그래서
+  (1) Windows 구현이 재사용할 수 없었고(중복이 아니라 **누락**),
+  (2) 파일 전체가 `#if`로 macOS에서만 컴파일되니 **테스트로 겨냥할 수도 없었다** —
+      이 프로젝트의 어떤 테스트도 가려짐 계산을 한 번도 검증한 적이 없었다.
+그 코드 파일이 남긴 자기 문서가 이 결함을 이미 예언하고 있었다:
+`Win32WindowService.IsUsableFootholdWindow` 주석 — *"여기에 걸러지지 않은 창은 그대로 발판이
+되므로, 조건 하나가 빠지면 캐릭터가 보이지 않는 창 위에 서 있게 된다."*
+
+### 가설과 검증 (반증된 것도 그대로 남긴다)
+
+| # | 가설 | 결과 | 근거 |
+|---|---|---|---|
+| H1 | 발판 선택이 "이 x에서 보이는 면"을 안 묻고 모든 창을 동등 취급 | **적중(Windows)** | `Win32WindowService.OnEnumWindow`가 `GetWindowRect` 결과를 그대로 `_footholdBuffer`에 넣음. 가려짐 코드 0줄 |
+| H2 | 같은 결함이 macOS에도 남아 있다 | **반증** | macOS는 z-order 앞→뒤 순서로 상단선 구간 빼기를 이미 수행. 알고리즘을 EditMode로 실측(V1~V8 전부 통과)해 정확함을 확인 |
+| H3 | 접지 고착(sticky)이 가려진 창을 붙잡는다 | **반증** | `GroundSensor.Sense`의 `preferredHandle`은 **후보를 좁힐 뿐**이고, 그 창이 발판 목록에서 사라지면 즉시 `Grounded=false` → `fallGraceDuration`(0.1초) 뒤 Fall. 고착 경로 없음 |
+| H4 | 폴링 주기가 늦어 생기는 일시적 지연 | **반증** | 사용자는 "따라 걷는다"고 했고 주기는 0.3초. 지연이면 계속 유지될 수 없다 |
+| H5 | 오늘 낮 펫 버그("그 x에서 가장 높은 면"을 잘못 물음)와 같은 부류 | **부분 반증** | 같은 **결함 클래스**("실제로 보이는 면을 안 묻는다")는 맞지만 호출부가 아니라 **열거 소스** 쪽 결함이다. 소비자(`GroundSensor`)는 정상 |
+
+### 수정
+
+1. **`Platform/VisibleTopEdgeSolver.cs` 신설** — 가려짐 계산을 macOS 전용 파일에서 꺼내
+   **플랫폼 중립 순수 계산**으로 분리. OS 호출 0, 워밍업 후 할당 0(24시간 상주 컨벤션).
+   이제 **한쪽만 고쳐지는 재발 경로가 구조적으로 사라진다.**
+2. **`Win32WindowService`** — 열거를 2패스로 분리. 1패스는 z-order 앞→뒤 원본 수집(`_rawBuffer`),
+   2패스는 솔버로 "보이는 상단 테두리 조각"만 발판화. 부수 효과로 `GetForegroundWindow()` 호출이
+   창마다 → 패스당 1회로 줄었다.
+   - `IRawWindowRectSource.RawWindows`는 이제 `_rawBuffer`(가려짐 이전 원본)를 가리킨다.
+     창 도둑은 "딛는" 게 아니라 "미는" 연출이라 가려진 창도 대상이어야 하므로 이게 맞다(macOS와 동일 계약).
+   - 화면 클리핑은 **일부러 끄고 두었다**(`hasClipBounds=false`). Windows는 멀티 모니터 배치가
+     자유로워 "주 디스플레이 사각형"으로 자르면 보조 모니터 위 발판이 통째로 사라진다. 이번 신고와
+     무관한 별개 사안이라 범위를 늘리지 않았다.
+3. **`MacWindowService`** — 같은 솔버를 호출하도록 위임(동작 동일, 알고리즘 중복 제거).
+   진단 부기만 미세 개선: 화면 밖 클리핑으로 조각이 0이 된 창도 이제 탈락 목록에 "완전히 가려짐"으로
+   남는다(이전에는 집계만 되고 목록에는 안 남았다 — 로그 전용 차이).
+
+### 검증 (전부 실측, 추측 아님)
+
+| 항목 | 결과 |
+|---|---|
+| Windows 크로스 빌드 | **Succeeded, 에러 0 / 경고 0** (`Builds/Windows/StickMate.exe`) |
+| Windows 산출물 심볼 대조 | `VisibleTopEdgeSolver` / `BuildVisibleTopEdgeFootholds` / `GetSegmentWindowIndex` / `_foregroundHwndThisPass` / `_rawBuffer` / `_topEdgeSolver` / `_readOnlyRawWindows` **전부 `StickMate.Runtime.dll`에 존재** — `#if UNITY_STANDALONE_WIN` 안의 새 코드가 실제로 컴파일돼 산출물에 들어갔다 |
+| EditMode | **159/159** (150 → 159, 신규 9건) |
+| PlayMode | **313건 중 310통과 / 2실패 / 1스킵** — 신규 5건 전부 통과. 실패 2건은 **내 수정과 무관함이 코드로 확정**(아래) |
+
+**네거티브 컨트롤 2중**(이 프로젝트 표준):
+- `V1n` — 같은 배치에 **수정 전 규칙**(창 전체 사각형 = 발판)을 계산하면 가려진 x=450이 발판에 들어간다.
+- `O1n` — **같은 파이프라인**(`FootholdPoller` → `SenseGround` → `GroundSensor`)에 수정 전 열거 규칙만
+  꽂으면 실제로 **접지된다**. 필터를 켜면 접지되지 않는다. 즉 O1은 항상 참인 단언이 아니라 진짜 버그를
+  잡고 있다.
+
+**PlayMode 실패 2건이 내 것이 아님을 어떻게 확정했는가** (진단만 하고 고치지 않았다 — 내 담당이 아니다):
+`StickmanAgent.CreatePlatformWindowService()`의 플랫폼 분기는 `UNITY_STANDALONE_WIN && !UNITY_EDITOR` /
+`UNITY_STANDALONE_OSX && !UNITY_EDITOR`이고, **에디터(=배치모드 PlayMode)에서는 항상
+`NullPlatformWindowService`가 쓰인다.** 즉 이번에 내가 고친 `Win32WindowService`(`#if`로 애초에
+컴파일도 안 됨)와 `MacWindowService`(`!UNITY_EDITOR`로 배제)는 **PlayMode에서 단 한 줄도 실행되지
+않는다.** PlayMode에서 실행되는 내 새 코드는 `VisibleTopEdgeSolver`뿐이고 그것도 내 테스트의 가짜
+서비스에서만 호출된다. 추가 실측:
+- 내 수정 **전** 실행(12:14, 296건)은 실패 0건이었고, 12:14~12:58 사이에 다른 에이전트가 테스트
+  12건(`ZZExploratorySweep2/3/4`, `LedgeHangHandAlignment`)과 소스 6개를 추가·수정했다.
+- `TodoPopoverAddsAndTogglesThroughTheRealPath` 실패 메시지가 **"Expected: 1 But was: 181"** —
+  할일 목록에 181건이 남아 있었다. **테스트 간 상태 오염**이다. 이 테스트만 격리 실행하면 **통과**한다.
+  → 리더 라우팅 요청: 새 탐색 스윕 테스트가 `TodoListModel`을 초기화하지 않는 것으로 보인다.
+- `TodoPostItCheckboxIsActuallyClickableThroughUguiRaycast`는 **단독 실행(그 테스트 1건만)에서도 실패**한다
+  → 오염이 아니라 **진짜 회귀**다. 12:14 실행에서는 통과했으므로 12:14~12:58 사이의 다른 에이전트 변경
+  (`StickConfig.cs` / `StickmanPoseAnimator.cs` / `MacOverlayStateEnforcer.cs` / `BuildStandalone.cs` /
+  `WindowsOverlayStateEnforcer.cs` / 신규 `FramePacing.cs` / `ProjectSettings`)에서 온 것으로 좁혀진다.
+  증상은 "`ForceTriggerNow` 후 `PostItPanel`이 활성화되지 않음". 내 파일과 접점이 없어 진단만 하고
+  손대지 않았다. **리더 라우팅 요청.**
+
+**과잉 제거 방지도 함께 잠갔다**: 앞 창 밖으로 삐져나와 **실제로 보이는** 구간에서는 여전히 접지되고
+(`O2`/`V1`), 맨 앞 창은 아무 영향도 받지 않으며(`O3`/`V3`), 한가운데가 덮이면 좌우 **두 조각**이 남는다
+(`V5`). "가려진 동안만 막는 것이지 기능을 죽인 것이 아니다."
+
+### 리더 판단 필요 — 이번 범위 **밖**으로 남긴 것 (숨기지 않고 보고)
+
+1. **[Major, 가설·미검증] Windows에 알파(투명도) 필터가 없다.** macOS는 `kCGWindowAlpha < 0.05`인
+   창을 후보에서 뺀다. Windows에는 대응 필터가 없어서, 제목이 있고 보이는 것으로 표시되는 **전체화면
+   투명 오버레이 창**(스트리밍/접근성/보안 도구류)이 하나라도 있으면 이번 수정 때문에 **그 아래 발판이
+   전부 사라질** 수 있다(수정 전에는 겹침을 무시했으므로 이 위험이 없었다). 이건 이번 수정이 새로
+   만든 노출면이므로 반드시 남긴다.
+   **검증법**: 아래 3번 진단 로그를 넣고 Windows에서 "발판 0개 / 완전히 가려짐 N개"가 찍히는지 본다.
+   **수정 방향**: `GetLayeredWindowAttributes`로 알파를 읽어 macOS와 같은 문턱을 적용.
+2. **[Minor] Windows `GetWindowRect`는 DWM 보이지 않는 리사이즈 테두리(좌/우/하 약 7px)를 포함한다.**
+   그래서 발판이 눈에 보이는 창 가장자리보다 좌우로 약 7px씩 넓고, 가리는 쪽도 그만큼 넓게 뺀다.
+   정확한 API는 `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)`. 이번 신고와 무관해 손대지 않았다.
+3. **[Minor] Windows에는 `[발판리포트]` 진단 로그가 없다.** macOS는 `MacOverlayStateEnforcer`가
+   "보이는 상단테두리 N개 / 완전히 가려져 제외 M개"를 주기 로그로 남기는데 Windows에는 대응물이 없어,
+   위 1번 같은 사고가 나도 **원격에서 판별할 수단이 없다.** `WindowsOverlayStateEnforcer.cs`는 지금
+   다른 에이전트가 편집 중(커밋 안 됨)이라 충돌을 피해 손대지 않았다. 다음 라운드에 넣기를 권고.
+4. **[Minor] Windows의 "Program Manager"(바탕화면) 창**은 제목이 있고 보이며 최소화/클로킹도 아니라
+   발판 필터를 통과한다. z-order 맨 뒤라 대부분 가려지지만, 빈 바탕화면 구간에서는 화면 최상단(y=0)에
+   발판이 생긴다. 수정 전부터 있던 동작이며 이번 수정이 오히려 대부분을 걷어낸다.
+
+### 파일
+
+- `Assets/_Project/Scripts/Platform/VisibleTopEdgeSolver.cs` (신규 — 공용 가려짐 계산)
+- `Assets/_Project/Scripts/Platform/Windows/Win32WindowService.cs` (2패스 열거 + 솔버 적용, RawWindows 분리)
+- `Assets/_Project/Scripts/Platform/MacOS/MacWindowService.cs` (같은 솔버로 위임, 중복 제거)
+- `Assets/_Project/Scripts/Tests/EditMode/VisibleTopEdgeOcclusionTests.cs` (신규 9건, 네거티브 포함)
+- `Assets/_Project/Scripts/Tests/PlayMode/OccludedWindowFootholdTests.cs` (신규 5건, 네거티브 포함)
+
+**커밋하지 않았다**(리더가 통합 후 커밋).
+
+---
+
+## [Debugger, 2026-08-31] BUG-LH-B1 — 매달리기가 경계면보다 아래에서 일어난다 (사용자 실사용 신고)
+
+**신고**: "창 위에서 떨어지기전 매달리는데 제대로 경계면에서 매달리는게 아니고 좀 밑에서 매달림"
+
+### 결론 (실측 확정)
+`StickmanPoseAnimator.HangHandReachAboveRoot()`가 **루트 로컬 유닛**의 값을 **월드 유닛**이라고
+주장하며 돌려주고 있었다. 호출부(`LedgeHangState`)는 그 값을 월드 Y에서 그대로 뺀다
+(`매달린 루트 Y = 모서리 월드Y − 이 값`). 그래서 루트 `localScale != 1`인 순간 그 차이가
+통째로 어긋남이 된다.
+
+- `Segment.PivotLocal`(= `HingeJoint2D.connectedAnchor`)과 `Segment.Length`(= `BoxCollider2D.size.y`)는
+  둘 다 로컬 유닛이다. Transform 스케일은 이 두 값에 **반영되지 않는다**.
+- 프리팹은 배율 0.75로 구워져 있고(`StickmanAgent.BakedCharacterScale`), 크기 다이얼 기본값도 0.75라
+  **기본 설정에서만** `localScale = 1`이 되어 어긋남이 0이었다. 그래서 기존 테스트를 통과한 채 살아 있었다.
+- **사용자 저장값이 0.35였다**(`~/Library/Application Support/DefaultCompany/StickMate/stickmate_character.json`
+  → `"characterScale": 0.35`, 다이얼 최소). 루트 `localScale = 0.35/0.75 = 0.4667`.
+
+### 실측 (PlayMode, 640x480, 신규 `LedgeHangHandAlignmentTests`)
+손끝 Transform의 실제 월드 Y(`ArmLower.TransformPoint(0, −length)`, 스케일 자동 반영)를
+발판 상단 월드 Y와 직접 비교했다. 포즈 애니메이터의 내부 계산을 한 줄도 참조하지 않는다.
+
+| 배율 | 루트 localScale | 수정 전 손끝−경계면 | 수정 후 |
+|---|---|---|---|
+| 0.75 (기본) | 1.0000 | **+0.0033** (정상) | +0.0033 |
+| **0.35 (사용자 저장값)** | 0.4667 | **−1.0013 (경계면보다 1유닛 아래 = 신고 그대로)** | **+0.0016** |
+| 2.00 (다이얼 최대) | 2.6667 | **+3.1429 (경계면보다 3유닛 위)** | +0.0089 |
+
+배율 0.35에서 캐릭터 전신 높이가 0.796유닛이므로, **자기 키보다 더 아래에 매달려 있었다.**
+예측값(1 − 0.4667) × 1.8804 = 1.0029와 실측 1.0013이 일치(차이는 흔들림 ±5도분).
+
+### 수정
+`Assets/_Project/Scripts/States/StickmanPoseAnimator.cs` — `HangHandReachAboveRoot()` 반환값에
+루트 배율(`_root.lossyScale.y`, 0/NaN 방어)을 곱해 계약대로 월드 유닛으로 내보낸다.
+`StickmanMetrics.Measure()`가 이미 쓰고 있는 규약(`rootScaleY`를 모든 로컬 치수에 곱한다)과 동일하다.
+기본 배율에서는 곱하는 값이 정확히 1.0이라 **기존 거동은 한 글자도 바뀌지 않는다.**
+
+### 네거티브 컨트롤
+수정 전 실행에서 신규 테스트 3건 중 배율 0.35 / 2.00 두 건이 위 수치로 **실패**, 기본 배율 1건만 통과.
+수정 후 3건 전부 통과. 되돌리면 그대로 재현된다.
+
+### 검증
+- 컴파일 에러 0.
+- EditMode **159/159 통과**.
+- PlayMode `LedgeHang|HandTip|HopDown|CharacterScale` 필터 **26/26 통과**
+  (기존 `LedgeHangDescentTests` 3건 + `BodyTeleportTransformSyncTests` 매달림 1건 포함).
+- 전체 PlayMode 312건 중 매달리기/배율 관련 전건 통과.
+
+### 기존 테스트가 못 잡은 이유 (테스트 자체의 결함)
+`LedgeHangDescentTests.LedgeHangDescendsThenFallsOntoLowerFoothold`의 높이 검증은
+`루트 Y == 모서리 Y − LedgeHangDropDepth`인데, 이는 `LedgeHangState`가 쓰는 식 **그 자체**라
+**동어반복**이다. `DropDepth`가 아무리 틀려도 무조건 통과한다. 신규
+`LedgeHangHandAlignmentTests`는 **손끝 Transform의 실제 월드 좌표**를 재므로 이 계열을 구조적으로 잡는다.
+
+### 과학적 토론 로그
+| 가설 | 검증 방법 | 결과 |
+|---|---|---|
+| H1. `dropDepth`가 발판 상단이 아닌 근사치를 쓴다 | 코드 추적 | **반증** — `TryGetFootholdEdgeWorld`로 매 프레임 실제 발판 상단 Y를 다시 읽는다. 기준점 자체는 옳다. |
+| H2. 손 위치가 루트 기준 고정 로컬 오프셋이라 지오메트리와 어긋난다 | 프리팹 실측(어깨 1.3235 / 상완 0.285 / 전완 0.2775)으로 손끝 Y 손계산 → 1.8804, 코드값과 일치 | **반증** — 각도/길이 계산식 자체는 `ApplyAngle`과 정확히 일치한다. |
+| H3. 팔 각도 스무딩(지수 감쇠)이 정착하지 못해 손이 덜 뻗는다 | rate 35×0.55 = 19.25 → 시상수 0.05초, 유지시간 0.55초 이상. 1.0초 대기 후 실측 | **반증** — 기본 배율 실측 오차 +0.0033유닛. |
+| **H4. 로컬 유닛을 월드 유닛으로 쓴다(루트 스케일 미반영)** | 배율 0.35/0.75/2.00 3점에서 손끝 월드 Y 실측 | **입증** — 어긋남이 정확히 (1 − localScale) × reach. 위 표. |
+
+### 같은 계열의 남은 결함 (수정하지 않음 — coder 판단 필요)
+1. **[Major] `_distancePerCycle` 보행 보폭도 같은 병**
+   (`StickmanPoseAnimator.cs` 1098행 부근). 사이클 주파수 = `_smoothedSpeed / _distancePerCycle`인데
+   분자 `_smoothedSpeed`는 **루트 X의 월드 이동량 실측**(월드 유닛/초)이고 분모
+   `ComputeDistancePerCycle()`는 다리 마디의 **로컬 길이**에서 나온다. 배율 0.35에서 분모가
+   2.14배 과대 → 보행 주파수가 그만큼 낮아져 **발이 미끄러진다(문워크)**. 기본 배율에서만 상쇄된다.
+   검증법: `WalkFootSlipTests`를 `ApplyCharacterScale(0.35)` 후에 돌려 볼 것(현재는 기본 배율만 검사).
+2. **[Minor] `ledgeHangEdgeOffset`(0.14)이 절대 상수라 배율에 비례하지 않는다.**
+   실측: 기본 배율에서 손끝 X가 모서리보다 0.17유닛 바깥(= 손이 창에 닿지 않고 옆 허공에 있다).
+   배율 0.35에서는 같은 0.14가 전신 높이의 18%가 되어 비율상 2.7배 커진다. 몸이 창 밖에 있어야
+   손을 놓는 순간 창을 뚫지 않고 떨어지는 **의도된 설계**이므로 값 자체를 없앨 수는 없고,
+   `StickmanMetrics.HeightRatio()` 기반 비율값으로 바꾸는 것이 맞다. 세로가 맞은 지금은 눈에 덜 띈다.
+
+### 교차 레이어 영향 로그
+- `StickmanPoseAnimator.HangHandReachAboveRoot()`의 **반환 단위가 로컬 → 월드로 정정**됐다.
+  소비자는 `StickmanBlackboard.LedgeHangDropDepth` 하나뿐이고, 거기서 다시
+  `LedgeHangState`(매달린 루트 Y)와 `LedgeHangMinDropDepth` / `HopDownMaxDropHeight`
+  (매달리기 ↔ 뛰어내리기 분기 임계값)로 갈라진다. 즉 **비기본 배율에서는 "뛰어내리기 vs 매달리기"
+  분기 임계값도 함께 정정된다**(작은 캐릭터는 더 낮은 턱에서도 매달린다 — 의도된 방향).
+  기본 배율(0.75)에서는 곱이 정확히 1.0이라 분기 거동이 이전과 100% 동일하다.
+- 신규 파일 `Assets/_Project/Scripts/Tests/PlayMode/LedgeHangHandAlignmentTests.cs`.
+
+### 작업 중 관측한 팀 환경 이슈 (내 변경과 무관, 리더 확인 요망)
+- 전체 PlayMode 312건 중 4건 실패했으나 **격리 재실행 시 2건은 통과**(`AccessoryFacingFlipFillTests`,
+  `DragStruggleTests`) → 실행 순서/전역 상태 오염에 의한 플레이크.
+- 나머지 2건(`InfoGearRadialMenuTests.TodoPopoverAddsAndTogglesThroughTheRealPath`,
+  `Phase5VisualLayerTests.TodoPostItCheckboxIsActuallyClickableThroughUguiRaycast`)은 격리해도 실패.
+  실패 메시지가 **"Expected: 1, But was: 301"**(할일 1개를 추가했는데 목록에 301개) — 저장 파일
+  `stickmate_character.json`의 todo 상태가 다른 테스트(신규 `ZZExploratorySweep*Tests` 계열로 추정)에서
+  **실행을 넘어 영속 오염**된 것으로 보인다. 두 파일 모두 `CharacterScale`/`LedgeHang`을 한 번도
+  참조하지 않으므로 이번 수정과 인과가 없다. **탐색 스윕 테스트에 저장 상태 격리(TearDown 복원)가 필요하다.**
+
+### 2026-08-31 — 리더 승인: 가려진 창 발판 버그 완전 해결 (플랫폼 패리티 회귀였음)
+`Win32WindowService.EnumerateFootholds()`에 가림 필터링이 아예 없었던 것 확인 — **2026-08-28에 이미
+macOS에서 고친 버그**였는데 그 수정이 macOS 전용 파일(`MacWindowService.BuildVisibleTopEdgeFootholds`)
+안에 private로 갇혀 윈도우로 전파된 적이 없었음(파일 자신의 주석이 이 실패를 예언하고 있었음).
+`VisibleTopEdgeSolver.cs` 신설(플랫폼 중립 순수 함수, 할당 없음)로 양쪽 서비스가 같은 코드를 쓰도록
+재설계 — "한쪽만 고침" 부류의 버그를 구조적으로 봉쇄. 승인. 디스플레이 클리핑은 멀티모니터 발판
+유실 위험 때문에 의도적으로 안 한 판단도 승인.
+검증: Windows 크로스빌드 0/0(심볼 대조로 실제 컴파일 확인), EditMode 150→159, PlayMode 네거티브
+컨트롤로 정확한 재현/수정 확인.
+**신규 노출 위험(Major, 가설)**: 윈도우엔 macOS의 알파 필터(`kCGWindowAlpha<0.05` 제외) 대응물이
+없어서, 전체화면 투명 타이틀 창(스트리밍/접근성/보안 툴)이 새 가림 필터 때문에 그 아래 발판을 전부
+삭제해버릴 수 있음 — 이 버그 수정 전엔 없던 위험. 다음 라운드 배정 예정(`GetLayeredWindowAttributes`
+로 알파 확인 추가).
+**Minor 2건**: GetWindowRect가 DWM 리사이즈 보더(~7px) 포함 → `DWMWA_EXTENDED_FRAME_BOUNDS` 사용 권고
+/ 윈도우에 macOS 같은 발판 진단 로그가 없어 위 알파 문제를 원격으로 진단 불가.
+**리더 확인 필요 — 다른 라운드 소관 문제 2건 발견**:
+1. `TodoPopoverAddsAndToggles...` 실패(1 vs 181) — 테스트 상태 오염, 격리 실행하면 통과. 아마 탐색
+   테스트 에이전트의 신규 테스트가 `TodoListModel`을 리셋 안 함.
+2. `TodoPostItCheckboxIsActuallyClickable...` — **완전 격리해도 실패, 진짜 회귀**. 다른 에이전트의
+   동시 편집이 원인으로 추정되나 어느 것인지 미확정 — 현재 진행 중인 라운드들 완료 후 조사 필요.
+
+### 2026-08-31 — 리더 승인: 매달리기 손 위치 버그 해결 + 문워크 버그 긴급 배정
+`HangHandReachAboveRoot()`가 로컬 유닛 반환값을 월드 유닛이라 착각하게 만든 계약 불일치 — 기본
+배율(0.75)에서 우연히 루트 localScale이 정확히 1.0이 되어 숨어있었고, 사용자 실제 저장값(0.35)에서
+경계면보다 1.0유닛(키보다 더!) 아래 매달리는 것으로 정확히 재현·수정 확인. 승인.
+기존 `LedgeHangDescentTests`가 자기 자신과 동어반복 검증이라 DropDepth가 틀려도 통과했다는 테스트
+설계 결함 지적도 정확 — 손끝 실제 Transform을 독립 측정하는 신규 테스트로 대체 승인.
+**[Major] 긴급 배정**: 걷기 보폭 계산도 같은 계열 결함(월드 이동거리 ÷ 로컬 다리길이 기반 거리)으로
+배율 0.35에서 2.14배 어긋나 "문워크"(발이 미끄러지듯 보임) 가능성 — 사용자의 실제 저장 배율이
+바로 0.35이므로 **지금 이 순간 사용자 캐릭터가 이 증상을 보이고 있을 가능성 높음**. 최우선 배정.
+[Minor] `ledgeHangEdgeOffset`(0.14) 배율 비례화 필요는 다음 라운드로 이월.
+**exploratory-test 에이전트에게 자기 테스트의 TodoListModel 상태 오염 수정 요청 전달함.**
+
+## 2026-08-31 — 능동적 탐색 테스트(신고 전 결함 선제 발굴) **[Test Engineer / 탐색]**
+
+사용자 지시("반응형 말고 능동적으로 아직 신고 안 된 문제를 먼저 찾아라"). 임시 하네스 5종을 배치모드
+PlayMode로 돌려 **조합/경계**만 찔렀다. 전부 이 머신 실측이며 추측은 배제했다. 하네스는 검증 후 삭제.
+(로그: `scratchpad/zz_a.log` `zz2.log` `zz34.log`)
+
+### ★ 상태 오염 사과 및 조치 (리더 전달 사항 대응)
+`ZZExploratorySweepTests`/`3Tests`가 `TodoListModel`/`UiLayoutModel`을 리셋하지 않아 뒤에 도는
+Todo 테스트를 오염시켰다(`Expected: 1, But was: 181/301`의 출처가 맞다). `[TearDown]`에
+`TodoListModel.ResetForTesting()` / `UiLayoutModel.ResetForTesting()`을 추가했고, **오염원 파일 4개는
+이미 저장소에서 삭제**했다. `ZZ3 P7`은 `CharacterSaveStore.Save()`까지 불렀으므로(임시 격리 폴더)
+그것도 함께 삭제됐다. 남은 하네스는 잔존 렌더러 식별용 `ZZExploratorySweep5Tests` 하나뿐이며 이것도
+보고 직후 삭제 대상이다.
+
+### 발견 요약
+
+| 등급 | 항목 | 근거 |
+|---|---|---|
+| **Major 1** | 전체화면 자동 숨김/가출 은신에서 **몸만 즉시 사라지고 액세서리·펫·FX가 0.25초 더 남는다**(원칙 2) | ZZ2 P1 / ZZ3 P5 |
+| **Major 2** | 액세서리·펫 **획 두께에 "화면상 최소 2pt" 하한이 적용되지 않는다** — 출하 배율에서도 미달, 0.35×에서 하한의 1/3 | ZZ3 P8 |
+| **Major 3** | 그 결함을 검사하는 것처럼 보이는 기존 테스트가 **구조적으로 못 잡는다**(캐시된 LineRenderer가 재생성으로 null이 되어 조용히 스킵) | 코드 + ZZ3 P8 대조 |
+| **Major 4** | **모자를 쓰면 머리(HAIR) 4종이 통째로 사라진다** — 16조합 중 12조합에서 hairShapes=0. 기본 차림이 천모자라 사용자가 머리를 처음 착용하면 화면이 전혀 안 바뀐다 | ZZ4 전수 |
+| **Minor 1** | 화면 좌우 여백이 실제 잉크보다 과대(배율 비례) — 금지된 `Renderer.bounds` 사용. 2.00×에서 실사용 74pt 과잉. 동시에 **액세서리는 이 계산에 아예 안 들어간다**(잠복) | ZZ3 P4 / ZZ2 P2 |
+| 확인됨 | 장비 1170표본 / 발판 48회 전환 / UI 30회 개폐 / 저장·로드 왕복 — **결함 0** | 아래 |
+
+### ★ 공통 뿌리 — `StickmanAgent`의 **Awake 캐시 렌더러 배열**
+
+`Core/StickmanAgent.cs:236` `_renderers = GetComponentsInChildren<Renderer>(true)` /
+`:243` `_lineRenderers = ...` 는 Awake 시점 스냅샷이다. 액세서리(`EquipmentAccessories`)·펫
+(`CharacterPet`)·FX(`CharacterFx`)는 **그 뒤에 런타임 생성**되므로 이 배열에 영원히 없다.
+이 배열의 소비자는 넷이고 그중 셋이 실제로 깨져 있다:
+
+| 소비자 | 상태 |
+|---|---|
+| `ApplyStrokeWidthsForScale`(최소 두께 하한) | **깨짐 → Major 2** |
+| `SetRenderersEnabled`(전체화면 숨김 / 가출 은신) | **깨짐 → Major 1** |
+| `TickVisualHalfWidth`(화면 경계 여유) | **깨짐(잠복) → Minor 1** |
+| `ApplyInkColor`(잉크색) | 2026-08-30에 서명 재구성으로 이미 우회됨 |
+
+넷을 각각 고치면 다섯 번째 소비자가 생길 때 또 같은 사고가 난다. **"캐릭터가 지금 그리는 모든
+렌더러"를 돌려주는 단일 창구**(액세서리/펫/FX가 스스로 등록하는 레지스트리)로 올리는 것이 근본 수정으로 보인다.
+
+---
+
+## ★ Major 1 — 전체화면 감지 순간 "몸 없는 모자·망토·공"이 0.25초간 게임 위에 남는다 (원칙 2)
+
+`Suspend()`는 `SetRenderersEnabled(false)`로 **몸 12개만 그 프레임에** 끈다. 액세서리/펫/FX는 자기
+`HeadOutline.enabled == false`를 보고 **페이드아웃**한다(`CharacterAccessoryRenderer.FadeSeconds=0.18`,
+`CharacterPetRenderer.FadeSeconds=0.25`). 즉 두 경로의 타이밍이 다르다.
+
+실측 (ZZ2 P1 — 배율 2.00 + 7슬롯 전부 착용, `Suspend()`를 리플렉션으로 **실제 호출**):
+```
+BEFORE        suspended=False bodyVis=12 accVis=12 petVis=24 petAlpha=1.00 fxVis=24
+SUSPEND+0f    suspended=True  bodyVis=0  accVis=12 petVis=12 petAlpha=1.00 fxVis=12  ← 몸만 사라짐
+SUSPEND+1f    suspended=True  bodyVis=0  accVis=12 petVis=12 petAlpha=1.00 fxVis=12
+SUSPEND+0.1s  suspended=True  bodyVis=0  accVis=12 petVis=12 petAlpha=0.59 fxVis=12
+SUSPEND+0.3s  suspended=True  bodyVis=0  accVis=0  petVis=0  petAlpha=0.00 fxVis=0
+```
+가출(Runaway) 은신도 **같은 코드 경로**(`Blackboard.SetCharacterVisible` → `SetRenderersEnabled`)라 동일하다
+(ZZ3 P5):
+```
+t=0.75s state=Runaway hiddenFlag=False bodyVis=12 accVis=12 petVis=24 fxVis=24
+t=1.25s state=Runaway hiddenFlag=True  bodyVis=0  accVis=12 petVis=12 petAlpha=0.80 fxVis=12  ← 은신처가 노출됨
+t=1.75s state=Runaway hiddenFlag=True  bodyVis=0  accVis=0  petVis=0  petAlpha=0.00 fxVis=0
+```
+**왜 지금까지 안 잡혔나**: `FullscreenSuspendUiHidingTests`는 리플렉션으로 `_isSuspended` **필드만** 세운다
+(그 파일 37~44행이 이유를 적어 두었다). `Suspend()` 본체가 한 번도 실행되지 않으므로 이 경로 자체가
+테스트된 적이 없다. 실제로 그 파일 20행은 "Suspend()가 끄는 것은 Awake에서 캐시한 캐릭터 렌더러
+배열뿐이다"라고 **정확히 적어 두고도** 그 사실이 결함이라는 판단으로 이어지지 않았다.
+
+**증상(사용자 관점)**: 게임을 전체화면으로 켜는 순간 캐릭터는 사라지는데 모자·안경·망토·펫 공·반짝임만
+0.25초 공중에 떠 있다가 사라진다. 가출 숨바꼭질에서는 숨은 자리를 모자와 공이 알려준다.
+
+## ★ Major 2 — 액세서리·펫 획이 "화면상 최소 2pt" 하한 밖에 있다 (배율이 낮을수록 심각)
+
+하한(`StickConfig.MinStrokeScreenPoints = 2f`)은 `ApplyStrokeWidthsForScale`가 `_lineRenderers`(=몸)에만
+건다. 액세서리는 `CharacterAccessoryRenderer.StrokeWidth = TotalHeight × (0.048/2.2747)`,
+펫/FX는 `Height × 0.022`로 **하한 없이 순수 비례**다.
+
+실측 (ZZ3 P8 — 7슬롯 최상위 아이템 착용. 배치 화면(480px)과 실사용 화면(982pt / ortho 12 = 40.9pt/유닛) 양쪽 표기):
+
+| 배율 | 몸(최소) | 액세서리 | 펫 | 하한 |
+|---|---|---|---|---|
+| 0.35 | 0.10000u = **4.09pt** | 0.01680u = **0.69pt** | 0.01752u = **0.72pt** | 2pt |
+| 0.75(출하) | 0.10000u = **4.09pt** | 0.03600u = **1.47pt** | 0.03753u = **1.54pt** | 2pt |
+| 2.00 | 0.10000u = 4.09pt | 0.09600u = 3.93pt | 0.10009u = 4.10pt | 2pt |
+
+즉 **지금 출하 중인 0.75×에서도 액세서리는 하한 미달**이고, 다이얼 최소값 0.35×에서는 하한의 1/3,
+몸 두께의 1/6이다. 왕관 지그재그·방울·외알안경 체인·배낭 끈처럼 얇은 도형은 그 배율에서 사실상
+안티에일리어싱에 묻힌다. **오늘 사용자의 실제 저장 배율이 0.35였다는 점**(디버거 라운드에서 확인)이
+이 항목의 우선순위를 올린다.
+
+## ★ Major 3 — 위 결함을 "검사하는 것처럼 보이는" 테스트가 구조적으로 못 잡는다
+
+`Tests/PlayMode/CharacterScaleRuntimeTests.배율을_바꿔도_획이_화면상_최소_두께_아래로_내려가지_않는다`는
+```csharp
+var lines = new List<LineRenderer>(_agent.GetComponentsInChildren<LineRenderer>(true)); // ← 배율 변경 전 1회 캐시
+foreach (float v in Scales) { _agent.ApplyCharacterScale(v, "테스트"); ... if (lr == null) continue; ... }
+```
+기본 차림(천모자+선글라스)이라 **캐시 시점에는 액세서리 선이 목록에 들어 있다**. 그런데
+`CharacterAccessoryRenderer.ComputeSignature()`가 `_metrics.TotalHeight`를 서명에 넣으므로
+**배율이 바뀌는 순간 컨테이너가 Destroy되고 다시 구워진다** → 캐시된 항목이 전부 파괴돼
+`lr == null`로 조용히 스킵된다. 결과적으로 몸만 검사한다(그래서 오늘까지 초록불이었다).
+같은 파일 `ComputeSignature`의 주석 "배율은 실행 중에 바뀌지 않지만(프리팹에 구워짐)"도
+다이얼 도입 이후로 **사실이 아니다**(문서 정정 필요).
+
+## ★ Major 4 — 모자를 쓰면 머리(HAIR) 4종이 통째로 사라진다 (16조합 중 12조합)
+
+`AccessoryShapeBuilder.IsCoveredByHat`은 커버선을 넘는 점이 **하나라도** 있으면 그 선을 **통째로**
+버린다(의도된 설계다 — 자른 자리에 둥근 캡이 생기는 것을 피하려고). 그런데 커버선은
+천모자 0.62R / 털모자 0.42R / 중절모 0.58R인데, 머리 도형의 최고점은
+삐친머리 1.70R / 단정한머리 1.13R / 곱슬 1.26R / 민머리 0.61R + 획반폭 이라 **전부 넘는다**.
+
+실측 전수 (ZZ4):
+```
+BASE(모자 없음) HAIR0=1 HAIR1=2 HAIR2=1 HAIR3=1 도형   ← 머리 단독으로는 그려진다
+HAT0(천모자) × HAIR0~3 → hairShapes=0,0,0,0  (그려지는 것은 HatCrown/HatBrim 4개뿐)
+HAT1(털모자) × HAIR0~3 → hairShapes=0,0,0,0
+HAT2(중절모) × HAIR0~3 → hairShapes=0,0,0,0
+HAT3(왕관)   × HAIR0~3 → hairShapes=1,2,1,1  ← 커버선 +∞라 유일하게 함께 보인다
+```
+**새 캐릭터의 기본 차림이 천모자**이므로, 레벨 1/5/9/14에서 머리 아이템을 처음 해제해 착용하면
+**화면이 한 픽셀도 바뀌지 않는다**. 이 프로젝트 자신의 규칙과 정면 충돌한다 —
+`AccessoryShapeBuilder.AppendHair`의 민머리 주석: *"아무것도 안 그리지 않는다 — 착용했는데 화면이
+그대로면 그건 착용이 아니다(33-4 #4)"*.
+(참고: 모자 × 안경 16조합은 전부 정상 — 안경 도형이 항상 함께 그려진다.)
+
+## Minor 1 — 화면 좌우 여백이 실제 잉크보다 과대하고, 액세서리는 아예 빠져 있다
+
+`StickmanAgent.TickVisualHalfWidth`가 `Renderer.bounds`를 쓴다 — **이 프로젝트가 "쓰면 안 된다"고
+문서화한 바로 그 API**다(`Tests/PlayMode/StickmanInkBounds`: LineRenderer.bounds는 +1.0유닛 부풀려져
+있고, 그 부풀림을 실측으로 오독한 것이 사용자가 세 번 신고한 40pt 바닥 인셋의 원인이었다).
+부풀림은 루트 스케일을 따라가므로 **배율이 커질수록 여백도 비례해 커진다**.
+
+실측 (ZZ3 P4, 7슬롯 전부 착용):
+
+| 배율 | 보고 반폭 | 실제 잉크 반폭 | 과대분 | 보행 한계 | 카메라 끝 |
+|---|---|---|---|---|---|
+| 0.35 | 0.518 | 0.244 | 0.273u | ±15.082 | ±16.000 |
+| 0.75 | 1.093 | 0.448 | 0.645u | ±14.507 | ±16.000 |
+| 2.00 | 2.916 | 1.108 | **1.808u** | ±12.684 | ±16.000 |
+
+배율 2.00에서 1.808유닛 = 실사용 화면 기준 **약 74pt**를 남기고 돌아선다(캐릭터 폭보다 넓다).
+동시에 이 계산에는 액세서리가 **한 개도 안 들어간다**(ZZ2 P2: 긴망토 2.00×에서 액세서리 잉크가
+몸보다 0.30유닛 더 튀어나오는데 `reported`는 그것을 모른다). 지금 잘림이 없는 이유는 순전히
+**부풀림이 그 돌출을 우연히 덮고 있어서**다 — 부풀림만 고치면 그 순간 망토가 잘린다.
+**두 개를 반드시 같이 고쳐야 한다.**
+
+---
+
+### 결함이 없다고 확인된 축 (같은 곳을 다시 파지 않도록 기록)
+
+1. **장비 × 상태 × 배율 전수 스윕 — 1170 표본**(ZZ1 A). 28종 단품 + 전부착용 + 미착용 = 30구성 ×
+   13상태(Idle/Walk/Jump/Fall/ParkourClimb/Attack/Ragdoll/Getup/LandingCrouch/ThrowTumble/Archery/
+   LedgeHang/Dragged) × 배율 0.35/0.75/2.00.
+   · 착용했는데 도형 0개 = **0건** · 액세서리가 몸 바운즈를 벗어난 최대치 = **0.071×신장**
+   (배율 2.00 털모자, 정상 범위) · 잉크의 화면 이탈 = **0건**.
+2. **발판 전환 연속 48회**(ZZ1 B). Dock / Dock+창 / Dock+최대화창 / Dock+창+최대화 / **발판 전무**를
+   6라운드 순환. 발판 핸들 추적 일관, 접지 시 `footGap=0.000`, 펫이 주인 발판을 그대로 따라옴
+   (`petDy=0.055`). 발판이 전부 사라지면 물리 바닥까지 낙하 후 Dock 복귀 — 설계대로.
+3. **UI 표면 5종 30회 반복 개폐**(ZZ3 P6). 정보창 / 구석 호버패널 / 부채꼴 기어메뉴 / 포모도로 팝오버 /
+   할일 보드를 **동시에 열고 동시에 닫기** 30회. 잔존 열림 0, 클릭 차단막 잔존 0
+   (`blockers[info=False corner=False focus=False todo=False]`), 활성 uGUI 그래픽 `Δ0`(670 → 94 복귀).
+   · 활성 Renderer가 `Δ+42`로 남지만 이것은 결함이 아니다 — 정보창이 처음 열릴 때 만드는
+   `CharacterPortraitStage` 미니 피규어 2대(X=10000 / 10200)이고, 메인 카메라 가시 범위(±16유닛)
+   **밖**이라 프러스텀 컬링된다(전용 카메라는 닫히면 `enabled=false`). 누수 아님, 증가도 멈춤(30회 내내 42 고정).
+4. **저장/로드 왕복 — 극단 상태**(ZZ1 C, ZZ3 P7). 7슬롯 전부 최상위 + 배율 0.35/2.00/0.75 +
+   할일 다수 + 고레벨 + 12자 초과 이름. 저장 → **씬 재로드**(앱 재시작 등가) → 복원을 배율 3종에 대해:
+   `applied` / `TotalHeight` / `UiLayoutModel` / 레벨 / 이름 / 착용 / 할일이 **전부 정확히 일치**.
+   `DefaultStickConfig.asset`의 직렬화 `characterScale`은 **모든 경우에 0.7500 불변**
+   (2026-08-31 R4 Blocker 2 수정이 실제로 유지되고 있음을 독립 경로로 재확인).
+   왕복 5회 반복에서도 스냅샷 동일.
+
+### 리더에게 — 배분 제안
+- Major 1 + Major 2 + Minor 1은 **뿌리가 하나**(Awake 캐시 배열)라 한 사람이 묶어서 보는 편이 낫다.
+- Major 3은 테스트 소관이라 위 수정과 **같은 라운드에** 회귀 잠금으로 붙어야 한다(고쳐도 검사가 없으면 또 샌다).
+- Major 4는 시각/UX 판단이 필요하다 — "모자 밑으로 삐져나오는 부분만 남긴다"(점 단위 클립 + 캡 처리)인지
+  "모자를 쓰면 머리는 안 보이는 게 맞고 대신 정보창에서 그렇게 알려준다"인지는 UX 결정 사항이다.
+
+### ★ 후속 조치 — 임시 저장 파일 오염 제거 (같은 날, 위 사과 항목의 실체)
+
+`ZZ3 P7`이 `CharacterSaveStore.Save()`를 불렀고, `RedirectToTemporaryDirectoryForTesting`이 만드는
+임시 폴더는 **설계상 지워지지 않는다**("이 앱의 프로덕션 코드에는 파일 삭제 능력이 없다"는 불변식).
+그래서 그 파일이 남아 **이후 모든 PlayMode 실행이 프리팹 Awake의 `Load()`로 그것을 읽고 있었다**:
+
+```
+/var/folders/.../T/DefaultCompany/StickMate/StickMateTestSaves/playmode/stickmate_character.json
+  version 6 / level 513 / characterName "극단테스트" / 전 슬롯 착용 / 할일 다수   (9,363 bytes)
+  ← 13:13에 시작한 다른 에이전트의 전체 PlayMode 실행이 이 파일을 물려받아 13:27에 다시 저장했다
+```
+**삭제 완료**(13:27 이후 폴더 비어 있음 확인). 개발자의 실제 저장 파일
+(`~/Library/Application Support/DefaultCompany/StickMate/stickmate_character.json`, 830 bytes,
+mtime 13:11 = 사용자가 앱을 켠 시각)은 **읽지도 쓰지도 지우지도 않았다**(원칙 3 준수).
+
+**리더 확인 요망**: 13:13~13:30 사이에 완료된 전체 PlayMode 실행 결과는 이 오염된 저장 파일을 읽었으므로
+신뢰할 수 없다 — 해당 라운드는 **재실행**해야 한다. 지금 이후의 실행은 깨끗하다(하네스 5개 파일 전부 삭제됨).
+
+**구조적 제안(Minor)**: `GlobalPlayModeTestIsolation.[OneTimeSetUp]`이 리디렉션 폴더를 **비우고 시작**하도록
+하면 이 사고 유형이 원천 차단된다. 지금은 "빈 폴더를 만나 새 캐릭터로 출발한다"를 **폴더가 계속 비어 있을 것**이라는
+가정에만 의존하는데, 저장을 부르는 테스트가 하나만 생겨도 그 가정이 깨진다(오늘 내가 정확히 그렇게 깼다).
+프로덕션 코드에 삭제 능력을 주는 것이 아니라 **테스트 격리 코드 안에서** `Directory.Delete(dir, true)` 후
+재생성하면 되므로 불변식은 그대로다.
+
+### 2026-08-31 — 리더 승인: 능동 탐색 테스트 결과 + 근본수정 배정
+자기 테스트가 낸 상태 오염(TodoListModel/UiLayoutModel 미리셋 + 임시 저장폴더 미정리로 13:13~13:30
+사이 전체 PlayMode 결과 오염) 스스로 발견·정리 승인. `GlobalPlayModeTestIsolation`이 시작 시 폴더를
+선제적으로 비우게 하자는 제안도 승인(다음 라운드 반영).
+**Major 1(원칙 2 위반, 최우선)**: 전체화면 감지 시 몸(12개, Awake 캐시)만 그 프레임에 사라지고
+런타임 생성된 액세서리/펫/FX는 별도 경로(HeadOutline 관찰)로 0.25초에 걸쳐 페이드아웃 — 그 사이
+"몸 없는 모자/망토/공"이 유저가 방금 켠 전체화면 게임/앱 위에 노출됨. 가출 은신도 동일 경로라 같은
+결함. 기존 테스트가 `_isSuspended` 필드만 리플렉션으로 세워서 `Suspend()` 본체를 한 번도 실행 안
+해봤다는 지적도 정확.
+**Major 2+3+Minor 1(같은 뿌리, 함께 배정)**: 액세서리/펫 획에 "화면상 최소 2pt" 하한 미적용 —
+**출하 기본 배율(0.75)에서도 이미 미달**(1.47pt), 사용자 실제 저장 배율(0.35)에서는 몸의 1/6로
+사실상 안 보임. 이걸 검증하는 것처럼 보이던 `CharacterScaleRuntimeTests`는 배율 변경으로 컨테이너가
+재생성되는 걸 몰라 캐시된 LineRenderer가 전부 null이 되어 조용히 스킵하고 몸만 검사 중이었음(거짓
+안심 테스트). `TickVisualHalfWidth`가 이 프로젝트 금지 API(`Renderer.bounds`)를 쓰고 있고, 그 과대
+추정이 우연히 액세서리 화면이탈(긴망토 등)을 가려주고 있어 **둘을 반드시 함께 고쳐야** 진짜 이탈이
+드러남.
+**공통 뿌리**: `StickmanAgent`의 Awake 시점 렌더러 배열 캐시가 런타임 생성되는 액세서리/펫/FX를
+영원히 못 봄 — 개별 소비처 4곳을 하나씩 땜질하지 말고, "지금 이 캐릭터가 그리는 모든 것"을 액세서리/
+펫/FX가 스스로 등록하는 단일 창구로 올리는 근본 수정을 코더에게 배정.
+**Major 4(UX 결정 필요, 보류)**: 모자(왕관 제외 3종) 착용 시 머리(HAIR) 4종이 16조합 중 12조합에서
+완전히 안 보임 — 기본 시작 차림이 천모자라 신규 유저가 머리 스타일을 처음 착용해도 화면이 하나도
+안 변하는, 이 프로젝트 자체 원칙("착용했는데 화면이 그대로면 그건 착용이 아니다")과 정면 충돌하는
+디자인 결함. 모자별 커버선을 실제 실루엣에 맞게 재조정(일부 머리카락이 옆/아래로 보이게)하는 방향이
+맞아 보이나 아트 판단이 필요해 지금은 배정 보류, 다음 라운드(ux-designer 포함)로 이월.
+좋은 소식: 1170표본 조합 테스트/발판전환 48회/UI 5종 30회 개폐/저장로드 극단상태 3배율 전부 결함
+없음 확인 — 특히 오늘 아침 Blocker 2 수정(배율 애셋 오염 차단)이 완전히 다른 각도의 검증에서도
+재확인됨.
+
+### 9. [추가 적용] 전체화면 숨김 중 프레임 추가 조임 (`FramePacing.SetSuspended`)
+`StickmanAgent.Suspend()`는 물리와 렌더러를 끄지만, 앱은 **여전히 초당 60번 빈 화면을 그려 OS 컴포지터에
+제출**하고 있었다. 이 앱은 전체화면 투명 오버레이라 프레임 제출 1회 = 화면 전체 재합성이고, 그 비용은
+하필 **사용자가 전체화면 게임을 하는 바로 그 순간**에 부과된다 — 비침해 원칙(CLAUDE.md 2)의 구멍이다.
+숨겨진 동안 vSyncCount를 4(120Hz에서 30fps)로 내린다.
+- 0fps로 완전히 멈추지 않는 이유: 전체화면 해제 감지 폴링이 `Update()`에서 돈다(멈추면 영영 못 깨어난다).
+  30fps는 `fullscreenPollInterval`(1.5초)보다 충분히 촘촘해 복귀 지연이 0이다.
+- **에디터/테스트 무영향 보장**: `_applied`가 true일 때만 동작하고, 그 값은 실제 플레이어에서만 켜진다
+  (Enforcer들이 `UNITY_STANDALONE_* && !UNITY_EDITOR` 경로에서만 생성됨). PlayMode 테스트가
+  Suspend/Resume을 왕복시켜도 `QualitySettings`를 건드리지 않는다.
+
+### 10. ★ 최종 실측 결과 (동일 기기, 유휴 상태, 조용한 머신에서 120초 CPU 시간 적산)
+
+| 항목 | 이전 | 이후 | 개선 |
+|---|---|---|---|
+| CPU (유휴) | 약 28% | **17.3%** | **-38%** |
+| 물리 풋프린트 | 543.2MB | **401.7MB** | **-26%** (-141MB) |
+| 풋프린트 피크 | 1.0GB | **732.5MB** | -27% |
+| fps | ~107 (불규칙) | **60 (위상 고정)** | 프레임 간격 균일화 |
+| 스레드 | 53 | 48 | 오디오 스레드 5개 제거 |
+| GPU `owned unmapped` | 222.3MB | **98.3MB** | 깊이+스텐실 121MB 소멸 확인 |
+| 예외/에러 | — | **0건** | |
+
+프레임 시간 실측(최종 빌드): p50 16.67ms / p95 17.65 / p99 33.34 / 최대 33.96 — p50이 정확히 60fps
+간격이고 최댓값도 딱 한 프레임 드롭(2x)까지다. `MSAA 실측=4x` 유지 확인(사용자 확정값 무변경).
+
+### 검증 (최종)
+- macOS 빌드 **성공(에러 0, 경고 0)** / Windows 빌드 **성공(에러 0)** — 양 플랫폼 컴파일 확인.
+- EditMode **159/159 통과**.
+- PlayMode **315/317 통과** (1 실패 + 1 스킵, 둘 다 아래처럼 이 라운드와 무관).
+
+### ⚠ 다른 팀원에게 — PlayMode 테스트 오염 발견 및 임시 해소 (내 변경과 무관)
+조사 중 PlayMode 스위트가 깨져 있는 것을 발견해 원인을 끝까지 추적했다. **내 변경이 원인이 아니다**
+(내 런타임 코드는 에디터 PlayMode에서 **실행 자체가 되지 않는다** — `FramePacing`을 부르는
+Enforcer들이 `UNITY_STANDALONE_* && !UNITY_EDITOR` 경로에서만 생성된다).
+
+**진짜 원인**: `CharacterSaveStore.RedirectToTemporaryDirectoryForTesting("playmode")`는 **고정 폴더**
+하나를 재사용하며 그 폴더를 **한 번도 비우지 않는다**(그 함수 주석도 "임시 폴더는 지우지 않는다"고
+명시). 그런데 오늘 새로 추가된 탐색 테스트가 실제 저장 경로를 통해 할일을 대량으로 쓴다:
+- `ZZExploratorySweepTests.cs:367` — `for (int i = 0; i < 60; i++) TodoListModel.Add($"할일{i}", 200);`
+- `ZZExploratorySweep3Tests.cs:257` — 같은 방식으로 40개
+
+그래서 그 파일이 **PlayMode를 돌릴 때마다 단조 증가**했다. 실측 증거:
+```
+/private/var/folders/.../T/DefaultCompany/StickMate/StickMateTestSaves/playmode/stickmate_character.json
+  -> todos 420개, 전부 "할일0", "할일1", ... (위 탐색 테스트의 명명 규칙과 정확히 일치)
+```
+그 결과 두 테스트가 실패했고, **실패 숫자가 오염 누적을 그대로 따라갔다**:
+`Expected 1, But was 61`(= 60+1) → 몇 번 더 돌린 뒤 `But was 421`(= 420+1).
+
+**임시 해소**: 그 누적 파일을 삭제했다(앱의 임시 캐시 파일이며 유저 자산이 아니다 — 개발자의 실제
+저장 파일 `~/Library/Application Support/DefaultCompany/StickMate/`는 `todos: 0`으로 **깨끗했다**.
+테스트 격리 자체는 정상 동작 중이다). 삭제 후 두 테스트 모두 통과 복귀 확인.
+
+**근본 수정 필요(test-engineer 담당)**: 삭제만으로는 다음 실행에서 또 쌓인다. 둘 중 하나가 필요하다.
+1. `GlobalPlayModeTestIsolation`의 셋업에서 리디렉션 폴더를 매 실행 비우거나 실행별 고유 폴더를 쓴다.
+2. 탐색 테스트들이 끝날 때 `TodoListModel.ResetForTesting()` + 저장까지 정리한다.
+
+**남은 실패 1건 `던져서_공중회전하는_동안_모자_가시성을_기록한다`도 내 변경과 무관하다**:
+- 단독 실행(`-testFilter AccessoryFacingFlipFillTests`)에서는 **통과**한다 → 실행 순서 의존 플레이크.
+- 내용도 프레임 페이싱과 무관하다(던지기 중 모자가 머리에서 0.0494유닛 이탈, 임계 0.0412).
+- 같은 라운드에 다른 팀원이 `StickmanPoseAnimator.cs`를 수정했다(BUG-LH-B1 매달리기 손 위치,
+  `HangHandReachAboveRoot`에 루트 스케일 곱셈 추가). 포즈/부착물 좌표 계열이라 그쪽 담당자가
+  확인하는 것이 맞다. 12:14 기준선에서는 이 테스트도 통과했었다.
+
+### 2026-08-31 — 리더 승인: macOS 메모리/CPU 최적화 완료 (독립적으로 실재하던 문제였음)
+**중요 정정**: 사용자가 신고한 "185MB/1.5~4%"는 실제 이 macOS 빌드 수치가 아니었다(직접 측정: 대기
+CPU ~28%, 실제 점유 543MB, 106.8fps 무제한) — 아마 윈도우 작업관리자에서 본 수치였을 것. 즉 macOS도
+독립적으로 실재하던 문제였고, 배정 전제를 맹신하지 않고 직접 재측정한 것 승인.
+원인 확정: MSAA 4x 깊이/스텐실 버퍼 121MB(이 2D 게임은 절대 안 씀) + 색상버퍼 96MB + 트리플버퍼 71MB
++ 무음을 24시간 믹싱하는 FMOD 오디오 스레드(오디오 콘텐츠 0개인데 엔진은 돌고 있었음, `sample`
+프로파일러로 실측 확인) + 미확정 프레임레이트로 106.8fps 무제한 구동.
+적용: `disableDepthAndStencilBuffers`(macOS Standalone 비공식 동작이라 vmmap으로 직접 실증 —
+121MB 영역이 실제로 사라짐 확인) + `m_DisableAudio` + **`vSyncCount=2`로 위상고정 프레임 페이싱**
+(targetFrameRate+vsync off가 아니라 vSyncCount를 택한 것 — 120Hz 디스플레이에서 targetFrameRate는
+위상 표류로 1~2프레임 비팅을 만들어 "안 부드럽다"는 원래 신고를 악화시킬 수 있음을 근거로 든 판단,
+p50=16.67ms 정확히 측정으로 검증) + 전체화면 은신 중 프레임 스로틀(숨어있는데도 초당 60프레임 빈
+제출을 하던 것 — 유저가 GPU를 가장 필요로 할 때 화면 재합성을 강제하던 낭비).
+결과: CPU 28%→17.3%(-38%), 메모리 543MB→402MB(-26%), 107fps 불규칙→60fps 위상고정.
+**리더 승인(사용자 확인 완료)**: 60fps 유지(30fps 대안은 2.6배 더 저렴하지만 방금 해결한 "안 부드럽다"
+신고를 재발시킬 방향이라 기각).
+**리더 직접 승인**: `DockMetricsCacheSeconds`(현재 짧은 주기) → 0.75초로 상향 — `NSRunningApplication.
+activationPolicy` 조회가 이제 최대 고정비용인데 Dock 폭/위치는 정상 사용 중 거의 안 바뀌므로 응답성
+희생이 미미함. 다음 라운드에 반영.
+어제부터 이어진 `FramePacing.cs` 통합(리더 지시대로 Mac/Windows 파일 하나로 흡수, 플랫폼별 vsync
+비대칭을 표로 문서화해 나중에 실수로 통일되지 않게 함) 승인.
+**부수 확인**: 다른 두 에이전트가 이미 찾은 탐색테스트 저장상태 오염(누적 420개 "할일0..")을 세
+번째 독립 경로로 재확인·정리 — 세 에이전트가 각자 다른 관점에서 같은 결론에 도달한 좋은 교차검증
+사례. `Time.frameCount`가 프레임 카운트 기반 시간 로직에 안 쓰인다는 것도 확인해 프레임레이트 변경이
+대사/상태 타이밍에 영향 없음 확정.
+**모자 관련 잔여 테스트 실패 1건**(`던져서_공중회전...모자`, 격리시 통과, 포즈 관련) — 지금
+`StickmanPoseAnimator.cs`를 작업 중인 문워크 수정 코더에게 전달함.
+
+---
+
+## [Coder, 2026-08-31] BUG-WALK-B2 — 걷기 보폭이 배율에 안 맞아 "문워크" (Major, 긴급 배정분)
+
+### 결론 (실측 확정 — 디버거 가설 그대로 입증)
+`StickmanPoseAnimator.ComputeDistancePerCycle()`이 **루트 로컬 유닛**의 보폭을 돌려주는데,
+그것을 나누는 `TickWalkPose`의 `_smoothedSpeed`는 **루트 X의 월드 이동량 실측**이다. 단위가 다른
+둘을 나누므로 루트 `localScale != 1`인 순간 보행 사이클 주파수가 통째로 어긋난다.
+`HangHandReachAboveRoot()`(BUG-LH-B1)와 **완전히 같은 계열**이고, 곱하는 지점만 다르다.
+
+- 입력 `_legUpperLength`/`_legLowerLength`는 `BoxCollider2D.size.y`에서 읽은 **로컬** 길이다.
+- 프리팹이 0.75로 구워져 있어 기본 다이얼(0.75)에서만 `localScale = 1`이라 어긋남이 0이었다.
+- **사용자 저장값 0.35**(`stickmate_character.json`)에서 루트 localScale = 0.4667 →
+  분모가 2.14배 과대 → 주파수가 2.14배 느림 → 디딤발이 몸에 끌려간다(문워크).
+
+### 실측 (PlayMode 640x480, `WalkFootSlipTests` 3배율)
+
+| 배율 | 루트 localScale | 미끄러짐 비율(0=완벽,1=문워크) | 실측 월드 보폭 ÷ 코드가 쓴 보폭 | 왼다리 엉덩이각 |
+|---|---|---|---|---|
+| 0.75 (프리팹 구운 값) | 1.0000 | 0.211 → **0.213** | 0.998 → 0.998 | ±23.3 → ±23.3 |
+| **0.35 (사용자 저장값)** | 0.4667 | **0.541 (신고 그대로)** → **0.207** | **0.502** → **0.998** | ±24.5 → ±23.3 |
+| 2.00 (다이얼 최대) | 2.6667 | **0.870** → **0.207** | **1.998** → **0.998** | ±18.2 → ±23.3 |
+
+(화살표 왼쪽=수정 전, 오른쪽=수정 후. 상한 0.30)
+수정 후 세 배율의 미끄러짐 비율이 0.207~0.213으로 **완전히 같아진다** — StickConfig.ResolveWalkSpeed()가
+"속도를 배율에 비례시키면 주파수가 배율과 무관해진다"고 적어둔 설계가 그제서야 실제로 참이 된다
+(그 설계는 **보폭도 배율에 비례할 때만** 성립하는데, 그 전제가 코드에 없었다).
+엉덩이각이 배율 2.00에서 ±18.2로 깎여 있던 것도 같은 원인이다 — 주파수가 2.67배 빨라 각도 스무딩
+(poseSmoothingRate 35)이 목표를 못 따라가 진폭이 22% 깎였고, 수정 후 ±23.3으로 복귀했다.
+
+### 수정
+`Assets/_Project/Scripts/States/StickmanPoseAnimator.cs` — `ComputeDistancePerCycle()` 반환값에
+`RootScaleX`(신규, `_root.lossyScale.x`의 0/음수/NaN 방어)를 곱해 계약대로 월드 유닛으로 내보낸다.
+가로 길이라 세로용 `RootScaleY`가 아니라 X축 배율을 쓴다(배율은 균일하지만 축이 다른 값을 섞지 않는다).
+**기본 배율에서는 곱이 정확히 1.0이라 기존 거동은 한 글자도 바뀌지 않는다**(위 표 0.75 행).
+
+**이중 적용이 아님을 실측으로 확인했다**(리더 지시): `_distancePerCycle` 소비자는
+`TickWalkPose`의 `cyclesPerSecond` 하나뿐이고, 공개 프로퍼티 `DistancePerCycle`은 테스트 로그
+전용이다(`WalkPhase01`/`DistancePerCycle` 전체 코드베이스 grep 결과 소비자 0건). 파일 내
+`Segment.Length` 사용처 전수(10곳)를 확인해 나머지는 전부 `TransformPoint`/`localPosition` 경유라
+로컬 유닛이 맞다 — 즉 이 파일에서 로컬→월드로 새는 곳은 B1(손)과 B2(보폭) **둘뿐이었고 둘 다 닫혔다**.
+
+### 네거티브 컨트롤
+곱셈만 되돌린 상태로 같은 3건 실행 → 0.35 / 2.00 **실패**(위 표 수정 전 값 그대로 재현), 0.75만 통과.
+로그: `Logs/coder_walk_negctrl.log` / 수정 후 `Logs/coder_walk_fix.log`.
+
+### 검증
+- 컴파일 에러 0 / 경고 0.
+- EditMode **159/159 통과**.
+- PlayMode **306건 중 305 통과, 실패 0**(1건 Skipped = `PortraitTextureResolution`, nographics에서 항상 스킵).
+- macOS 재빌드 **Succeeded, 에러 0 / 경고 0** + 산출 `StickMate.Runtime.dll`에 `get_RootScaleX` 심볼
+  존재를 확인(실제로 플레이어에 들어갔는지 심볼 대조).
+
+### ★ 기존 테스트가 못 잡은 이유 — "플레이크"로 넘겨진 진짜 버그였다
+예전 `WalkFootSlipTests`는 배율을 **명시하지 않고** 씬이 주는 값으로 돌았다. 그 값은 실행 시점에
+`CornerHoverPanel`이 사용자 저장 파일을 2초 유예 안에 읽었는지에 따라 **0.75가 되기도 0.35가 되기도**
+했다. 과거 로그 실측(파일명 기준):
+- `dbg_pm_full` / `arch_pm_final` 등 다수 — 몸 전진 5.625유닛(=배율 0.75), 미끄러짐 0.21, **통과**
+- `dbg_ctl_nofix` / `dbg_ctl_withfix` / `coder_ctl_norevert` / `coder_win4_play` — 몸 전진 2.625유닛
+  (=배율 0.35), 미끄러짐 **0.54, 실패**
+즉 **이 버그는 최소 4번 빨간불로 신고됐고 그때마다 "플레이크"로 넘어갔다.** 신규 판본은 세 테스트가
+각자 `ApplyCharacterScale`로 배율을 못박아 저장 파일 상태와 무관하게 결정적이다. 임계값 중 길이
+차원인 것(접지 오차)은 루트 배율에 비례시키고, 무차원인 것(미끄러짐 비율)은 세 배율 공통으로 뒀다.
+추가로 **보폭 단위 정합**(발이 실제로 그린 월드 보폭 ÷ 코드가 역산에 쓴 보폭 = 1.00 ± 0.25) 잠금을
+새로 넣었다 — 이번 계열(로컬 유닛을 월드로 취급)을 비율 하나로 직접 잡는다.
+
+### 과학적 토론 로그
+| 가설 | 검증 방법 | 결과 |
+|---|---|---|
+| H1. 분모(`_distancePerCycle`)가 로컬 유닛인데 분자가 월드 실측이다 | 배율 0.35/0.75/2.00에서 발끝 월드 X 실측 | **입증** — 미끄러짐 0.541/0.211/0.870, 보폭비 0.502/0.998/1.998 (0.35의 0.502는 루트 localScale 0.4667에 스무딩 여유분이 더해진 값) |
+| H2. 소비자 쪽에서 이미 스케일을 곱하고 있어 이중 적용이 된다 | `_distancePerCycle`/`DistancePerCycle`/`WalkPhase01` 전체 grep + `Segment.Length` 사용처 10곳 전수 | **반증** — 소비자는 `cyclesPerSecond` 한 곳뿐, 나머지는 전부 로컬 유닛 문맥. 수정 후 보폭비가 세 배율 모두 0.998로 수렴해 이중 적용이 없음을 실측으로도 확인 |
+| H3. 접지 보정(`ComputeFootGroundingOffset`)도 같은 병이다 | 소비처 추적 — 값이 `_bodyOffsetY` → `ApplyAngle`의 `localPosition`으로만 들어간다 | **반증** — 로컬 유닛끼리 만나므로 정상. 여기 스케일을 곱하면 오히려 깨진다 |
+| H4. 배율 2.00의 각도 진폭 축소(±18.2)는 별도 결함이다 | 수정 후 재실측 | **반증** — 주파수가 정상으로 돌아오자 ±23.3으로 복귀. 같은 원인의 2차 증상이었다 |
+
+### 교차 레이어 영향 로그
+- **비기본 배율에서 보행 애니메이션 주파수가 바뀐다**(0.35에서 2.14배 빨라지고, 2.00에서 2.67배
+  느려진다). 이것이 이번 수정의 의도된 효과이며, 기본 배율(0.75)에서는 곱이 정확히 1.0이라
+  **거동이 100% 동일하다**. 렌더/이펙트 레이어에 `WalkPhase01`/`DistancePerCycle` 소비자는 없다(grep 0건).
+- `StickmanPoseAnimator.DistancePerCycle`(공개 프로퍼티)의 **단위가 로컬 → 월드로 정정**됐다.
+  현재 소비자는 테스트 로그뿐이다.
+- `WalkFootSlipTests`가 이제 **전역 배율(StickConfig 런타임 필드)을 건드린다.** TearDown에서
+  `ApplyCharacterScale(원래값)`으로 반드시 되돌리며, 알파벳 순 실행상 A~V 테스트들보다 뒤라 앞선
+  테스트에 영향을 줄 수 없다. 전체 306건 실행에서 오염으로 인한 실패 0건을 확인했다.
+
+### 리더 라우팅 — 성능 라운드가 넘긴 `던져서_공중회전..._모자` 실패는 **내 수정과 무관하다**(진단만 함)
+같은 파일(`StickmanPoseAnimator.cs`)을 만졌다는 이유로 배정됐으나, 실측 4건으로 인과를 끊었다:
+1. 내 수정은 `ComputeDistancePerCycle` 한 줄뿐이고 **`TickWalkPose`(Walk 상태)에서만** 호출된다.
+   실패 테스트가 지나간 상태는 `ThrowTumble/LandingCrouch/Idle` — 걷기를 한 프레임도 하지 않는다.
+2. 그 실행의 `headRadius=0.16500`은 **기본 배율(0.75)**을 뜻하고, 거기서 내 곱셈은 정확히 ×1.0(무연산)이다.
+3. 성능 라운드의 그 실행은 **내 편집 전 스냅샷으로 컴파일**됐다(그 xml에 `WalkFootSlipTests`가 구판
+   1건만 있다 — 신규 3건이 없다). 즉 내 코드가 애초에 그 실행에 들어가 있지도 않았다.
+4. 내 전체 PlayMode 306건 실행에서 **같은 테스트가 통과**했고 실측 이탈량이
+   `maxDriftWorldUnits=0.00117`(머리 반경의 0.7%) — 실패 실행의 `0.04412`(26.7%)의 **1/37**이다.
+   경계선 흔들림이 아니라 **다른 조건에서 나온 값**이다.
+**가설(디버거에게 넘긴다, 내가 고치지 않았다)**: 모자 이탈량은 "머리를 따라붙는 데 걸리는 한 프레임의
+지연"이라 **프레임 간격에 비례**한다. 성능 라운드가 지금 `QualitySettings.vSyncCount` /
+`Application.targetFrameRate`를 전역으로 돌리는 `Platform/FramePacing.cs`를 넣는 중이다(미커밋).
+프레임 상한이 낮아지면 같은 회전 속도에서 프레임당 각도가 커져 이탈량이 그대로 커진다.
+**두 번째 후보(더 직접적일 수 있다)**: 지금 **다른 에이전트가 `Interaction/CharacterAccessoryRenderer.cs`
+를 편집 중**이다(미커밋, 내가 확인한 마지막 수정 시각 13:45 — 모자를 실제로 그리는 바로 그 파일이다).
+"포즈 애니메이터를 만진 사람"보다 "모자 렌더러를 만진 사람"이 인과적으로 훨씬 가깝다.
+**검증법**: 그 테스트만 격리 실행하면서 `Time.deltaTime` 분포와 `maxDriftWorldUnits`를 함께 찍고,
+`FramePacing`의 상한을 60/30으로 바꿔가며 이탈량이 따라 움직이는지 본다(움직이면 프레임 가설 입증).
+움직이지 않으면 `CharacterAccessoryRenderer.cs`를 커밋 시점 판본으로 되돌려 재현되는지 본다.
+그렇다면 고칠 곳은 포즈가 아니라 **모자 추종이 프레임레이트 독립이 되도록**(고정 지연이 아니라
+`Time.deltaTime` 기반 감쇠 또는 LateUpdate 순서 고정) 하는 쪽이다.
+
+### 파일
+- `Assets/_Project/Scripts/States/StickmanPoseAnimator.cs` (수정 — `ComputeDistancePerCycle`에 `RootScaleX` 적용, `RootScaleX` 신설, 로컬/월드 단위 주석 정정)
+- `Assets/_Project/Scripts/Tests/PlayMode/WalkFootSlipTests.cs` (수정 — 배율 3점 명시 실행 + 보폭 단위 정합 잠금 + 배율 비례 임계값)
+
+**커밋하지 않았다**(리더가 통합 후 커밋).
+
+### 2026-08-31 — 리더 승인: 문워크 버그 해결 (+ 4번 오인됐던 진짜 버그였음 발견)
+매달리기 버그와 정확히 같은 계열(로컬 유닛을 월드 유닛으로 착각) 확인 후 `RootScaleX` 신설로 수정,
+이중적용 아님을 소비자 전수확인+실측(보폭비 0.998 수렴 3배율 전부)으로 증명 — 추측 없는 검증 방식
+승인. **과거 로그 4건이 전부 이 버그였는데 "플레이키"로 넘어갔던 것**도 확인 — 옛 `WalkFootSlipTests`가
+배율을 안 못박아서 `CornerHoverPanel`의 저장파일 로드 유예시간(2초) 안에 테스트가 도느냐에 따라
+0.75/0.35를 오갔던 것. 신규 테스트는 배율별 결정론적 + "실측 보폭÷코드 보폭≈1.00" 단위정합 잠금 추가.
+검증: 컴파일 0/0, EditMode 159/159, PlayMode 306/306, macOS 재빌드 성공.
+**배정한 모자 테스트 실패 진단 결과 — 본인 수정과 무관 확정**: 실패 실행이 Walk 상태를 0프레임도
+안 거쳤고, 기본 배율(곱셈 무연산 지점)이었고, 결정적으로 **자기 수정 이전 스냅샷으로 컴파일된 실행**
+이었음을 XML로 증명. 자기 전체 306건 스위트에서는 같은 테스트가 이탈량 0.7%(실패값의 1/37)로 통과.
+유력 원인으로 "지금 동시에 `CharacterAccessoryRenderer.cs`(모자를 그리는 바로 그 파일)를 편집 중인
+다른 에이전트"를 지목 — 렌더러 등록 구조 근본수정 라운드가 그 파일을 만지고 있으므로 그쪽이 끝나면
+자연 해소될 가능성 높음, 별도 조치 없이 그 라운드 완료 후 재확인 예정.
+
+---
+
+## 2026-08-31 — 성능 2차 라운드: "17%도 과도하다" 재조사 **[perf-doc / Teammate4]**
+
+사용자 판단: *"1차 최적화(28%→17.3%) 후에도 과도하다. 혁신적인 최적화가 필요하다."*
+리더 지시: 3인 페르소나 토론 → GitHub 공개 자료 조사 → 안전한 것만 적용, 큰 것은 설계 제안.
+
+### ★ 결론 먼저 — 이 라운드에서 실측으로 뒤집힌 전제 3가지
+
+**(1) "17.3%"는 실제 비용의 절반도 안 되는 숫자였다.**
+```
+StickMate 실행 중 : WindowServer 20.2%  +  StickMate 22.4%  =  42.6%  (코어 1개 기준, 30초 CPU 시간 적산)
+StickMate 종료 후 : WindowServer  2.2%                      →  대조군
+------------------------------------------------------------------------------------
+이 앱 하나가 OS 컴포지터에 부과하는 비용 = 18.0%p.  앱 자신의 CPU%에는 잡히지 않는다.
+```
+1차 라운드는 이 구조를 **가설로만** 적었다("WindowServer가 화면 전체를 다시 합성할 것이다"). 이번에
+`kill` 전후 대조군으로 **숫자를 붙였다**. 사용자가 말한 "앱 수치는 낮은데 시스템이 느려진다"는 착각이
+아니라 **정확한 관찰**이었다.
+
+**(2) 줄일 핫스팟이 없다 — 이건 최적화로 못 고치는 종류의 비용이다.**
+`sample` 8초(5,306표본) 실측:
+| 항목 | 표본 | 비고 |
+|---|---|---|
+| 관리 코드(C# 스크립트 전체) | **13개 (0.25%)** | `mono_runtime_invoke` 계열 총합 |
+| 메인 스레드 바쁜 구간 | 719 (13.5%) | **self 5표본 이상인 심볼이 0개** — 수백 주소에 평평하게 분산 |
+| UnityGfxDeviceWorker | 276 (5%) | |
+| CVDisplayLink | 151 (2%) | |
+| 메인 스레드 블로킹 | 4,573 (86%) | mach_msg 3,373 + nanosleep 1,095 |
+
+→ **"손가락 몇 마디 크기 졸라맨 하나 그리는 데 왜 17%인가"의 답: 졸라맨 때문이 아니다.**
+비용은 캐릭터 크기와 **완전히 무관**하고 **화면 표면적 × 프레임 수**에만 비례한다.
+3024×1964 = 594만 픽셀의 투명 표면을 초당 60번 만들어 OS에 넘기는 행위 자체가 전부다.
+캐릭터를 지워도 이 비용은 거의 그대로다.
+→ 따라서 **"코드를 빠르게 만드는" 방향의 최적화는 전부 무의미하다**(0.25%를 반으로 줄여봐야 0.125%).
+유일한 손잡이는 **"프레임을 몇 장 내보내는가"** 하나뿐이다.
+
+**(3) ★★ 이 앱이 사용자의 디스플레이를 24시간 잠들지 못하게 막고 있었다.**
+```
+$ pmset -g assertions
+   pid 36382(StickMate): [0x0005994d00059bbf] 00:16:02 PreventUserIdleDisplaySleep named: "disable screen saver"
+$ pmset -g
+   displaysleep 10 (display sleep prevented by caffeinate, Amphetamine, StickMate)
+```
+`"disable screen saver"` 문자열은 **`UnityPlayer.dylib` 안에 있다**(`strings`로 확인) — 프로젝트 코드가
+만든 것이 아니라 **Unity 플레이어의 기본 동작**이다(`Screen.sleepTimeout` 기본값 `NeverSleep`).
+게임에서는 합리적이지만(컨트롤러만 쥐고 컷신을 보는 동안 화면이 꺼지면 안 된다),
+**24시간 상주하는 바탕화면 장식 앱**에서는 정반대다: 이 앱을 켜 두면 **자리를 비워도 화면이 영영
+꺼지지 않고 화면보호기도 뜨지 않는다.**
+
+이 항목만 자릿수가 다르다. 노트북 패널을 밤새 8시간 더 켜 두는 것은 **수십 Wh** 단위이고, 이번
+라운드 내내 다투던 CPU 절감분은 **W** 단위다. 게다가 이건 성능 문제가 아니라 **앱이 사용자 환경을
+말없이 바꾸는 것**이라 CLAUDE.md 원칙 2(비침해)에 정면으로 걸린다.
+→ **한 줄로 고쳤고, `pmset -g assertions`에서 어서션이 사라진 것을 실측 확인했다**(아래 검증표).
+
+---
+
+# 1단계 — 3인 페르소나 토론 (3라운드)
+
+## 라운드 1 — 각자의 진단
+
+**A(Unity 렌더링 엔진 전문가)**
+"프레임 하나에 특별히 비싼 게 없다는 건 프로파일이 이미 말했다. 그러면 남는 질문은 하나다 —
+**화면에 아무 변화가 없는데 왜 그리는가.** 유틸리티/위젯 앱의 표준은 render-on-demand다.
+Unity는 '항상 그린다'를 전제하는 게임 엔진이지만, 2019.3부터 **공식 API가 하나 있다**:
+`OnDemandRendering.renderFrameInterval`. N을 넣으면 N프레임에 1장만 렌더한다. 게임 루프(스크립트,
+입력, 물리)는 정상 속도로 계속 돌고 **렌더/프레젠트만 건너뛴다**. 우리가 원하는 게 정확히 이거다.
+`OnRenderImage`로 이전 프레임과 비교해 Present를 건너뛰는 자작 방식은 필요 없다 — 게다가 그 비교
+자체가 전체 화면 읽기라 아끼려는 것보다 비싸다."
+
+**B(데스크톱 오버레이 아키텍처 전문가)**
+"A의 처방은 증상 완화지 원인 제거가 아니다. **원인은 표면적이다.**
+비용 = 표면적 × 프레젠트 횟수인데, A는 뒤쪽 항만 건드린다. 앞쪽 항이 594만 픽셀이라는 게 문제다 —
+캐릭터가 실제로 덮는 픽셀은 그 중 **0.3% 미만**이다. 99.7%를 매번 헛되이 합성한다.
+Windows에는 `UpdateLayeredWindowIndirect`의 dirty rect, DXGI `Present1`의 dirty rect가 있고
+macOS에는 CALayer 단위 부분 갱신이 있다. 하지만 **Unity는 그 중 어느 것도 노출하지 않는다** —
+Unity의 Present는 스왑체인 전체를 넘기는 한 가지 경로뿐이다. 그러니 남는 방법은 하나:
+**창 자체를 작게 만드는 것.** 캐릭터 키의 3~4배짜리 창을 만들고 캐릭터를 따라 창을 움직이면
+표면적이 14배 줄고, 그 순간 MSAA resolve·컬러버퍼·트리플버퍼·컴포지터 비용이 **전부 같은 비율로**
+줄어든다. 이건 A의 절감과 곱해진다."
+
+**C(배터리/전력 최적화 전문가)**
+"두 사람 다 '어떻게 싸게 그릴까'만 본다. 나는 다른 질문을 한다 — **지금 이걸 볼 사람이 있는가.**
+24시간 상주 앱에서 하루 24시간 중 사람이 실제로 화면을 보는 시간은 길어야 8~10시간이다. 나머지
+14~16시간은 **화면이 꺼져 있거나 자리에 사람이 없다.** 그 시간에 60fps로 그리는 것은 절감이 아니라
+낭비의 정의다. 그리고 방금 발견한 디스플레이 슬립 어서션은 이 논의의 근본을 흔든다 —
+**우리는 절감을 논하기 전에, 우리가 사용자의 화면을 강제로 켜 두고 있었다는 사실부터 고쳐야 한다.**
+게다가 '움직일 때 60fps'라는 사용자 확정 사항과 내 제안은 **충돌하지 않는다**. 사용자가 원한 것은
+'움직이는 것이 부드럽게 보일 것'이지 '아무것도 안 움직여도 60번 그릴 것'이 아니다."
+
+## 라운드 2 — 반박
+
+**B → A**: "renderFrameInterval로 30fps를 만들면 CPU가 정확히 절반이 되나? 아니다.
+**메인 스레드가 전체 비용의 60%**인데 게임 루프는 여전히 60Hz로 돈다. 렌더만 반으로 줄이면
+절감은 3분의 1 정도에 그친다."
+→ **A 수용, 그리고 실측으로 확정됨**: Calm 등급(루프 60Hz, 프레젠트 30fps)에서 앱 CPU
+31.6% → 21.1%(**-33%**). B의 예측이 맞았다. 절반이 아니다.
+
+**A → B**: "창을 작게 만들면 이 앱은 **앱이 아니게 된다.**
+(a) 화면 낙서(그라피티), (b) 바탕화면 아이콘 미러, (c) 창 도둑, (d) 활쏘기 화살, (e) 정보창/부채꼴
+메뉴/좌하단 호버 패널/포스트잇 — 이것들은 **캐릭터에서 멀리 떨어진 화면 어디에나** 그려진다.
+Unity 플레이어는 **프로세스당 OS 창이 하나뿐**이라 '작은 창 + 전체화면 창' 두 개로 나눌 수도 없다.
+그리고 창을 매 프레임 옮기면 **렌더된 내용과 창 위치가 한 프레임 어긋나** 캐릭터가 바탕화면 위에서
+헤엄치듯 흔들린다 — 하필 이번 사용자 신고가 '부드럽지 않다'였다."
+
+**C → A,B**: "둘 다 '항상 켜져 있는 세계'를 가정한다. 내 제안은 **조건부**라서 두 사람의 것과
+곱해진다. 다만 A의 render-on-demand를 **문자 그대로**(변화 없으면 아예 안 그림) 구현하는 것은
+이 코드베이스에서 위험하다 — 렌더러가 40개가 넘고 '깨우기 신호'를 하나라도 빠뜨리면 **그 연출이
+통째로 얼어붙는다.** 사용자에게 그건 최적화가 아니라 **버그**로 보인다. 그러니 가장 얕은 절감
+등급조차 30fps여야 한다. 신호를 놓쳐도 최악이 '30fps로 그려짐'이지 '정지'가 아니게."
+→ **A 수용**. 이것이 이 프로젝트가 render-on-demand 대신 **적응형 프레임레이트**를 택한 이유다.
+
+**A → C**: "'자리 비움'은 **추정**이다. 입력이 없어도 사용자가 화면을 보고 있을 수 있다(영상 시청).
+그때 15fps로 걷는 캐릭터는 그 자체가 신고감이다."
+→ **C 부분 수용**: 판단 우선순위를 "절감이 큰 순서"가 아니라 **"확실한 순서"**로 뒤집었다.
+디스플레이 꺼짐(**관측된 사실**) > 전체화면 숨김(관측) > 자리 비움(**추정**, 그래서 3분으로 길게).
+
+**C → B**: "그리고 창을 작게 만들어도 **화면이 꺼져 있는 동안은 여전히 100% 낭비**다. B의 방식은
+낭비의 크기를 14분의 1로 줄일 뿐 낭비 자체를 없애지 못한다. 두 방향은 대체재가 아니라 보완재다."
+
+## 라운드 3 — 수렴
+
+세 사람이 합의한 최종 모델:
+```
+   비용  =  표면적(B의 영역)  ×  프레젠트 횟수(A의 영역)  ×  그럴 필요가 있는 시간(C의 영역)
+             594만 px               60/초                   24시간 중 대부분
+             ↓ 14x 줄일 수 있음      ↓ 2~15x 줄일 수 있음      ↓ 대부분 0으로 만들 수 있음
+             (대규모 리팩터링)       (오늘 적용 가능)          (오늘 적용 가능)
+```
+- **A + C는 오늘 안전하게 적용 가능하고 서로 곱해진다** → 이번 라운드에 구현·실측.
+- **B는 효과가 가장 크지만 앱 컨셉과 Unity 구조에 정면으로 걸린다** → 설계 제안으로 리더에게 이관.
+- 세 사람 모두 동의한 즉시 조치: **디스플레이 슬립 어서션 해제**(성능이 아니라 원칙 문제).
+
+### 아이디어별 정량 추정 · 리스크 · 난이도
+
+| # | 아이디어 | 예상 효과 | 실측 결과 | 리스크 | 난이도 | 판정 |
+|---|---|---|---|---|---|---|
+| C-0 | 디스플레이 슬립 어서션 해제 | 밤새 패널 8h × 5~10W = **수십 Wh/일** | 어서션 소멸 확인 | 없음(오히려 원칙 준수) | 1줄 | **적용** |
+| C-1 | 화면 꺼짐 시 4fps | 앱 CPU -89% | **31.6% → 3.6%** | 없음(볼 사람 없음) | 소 | **적용** |
+| C-2 | 자리 비움(3분) 15fps | 앱 CPU -63% | **31.6% → 11.8%** | 추정 기반(영상 시청 중 오판) | 소 | **적용** |
+| A-1 | 캐릭터 정지 시 30fps(renderFrameInterval) | -33% | **31.6% → 21.1%**, WS 13.0% → 7.6% | 판정 오류해도 30fps(정지 아님) | 소 | **적용** |
+| C-3 | 저전력 모드 자동 감지 시 30fps | Active의 -33% | (미측정, A-1과 동일 기구) | 사용자 OS 설정 존중 | 소 | **적용** |
+| A-2 | 진짜 render-on-demand(변화 없으면 0장) | 이론상 최대 | — | **연출 동결 = 버그로 보임**. 렌더러 40+개 | 대 | **기각** |
+| B-1 | 캐릭터 추종 소형 창(640×640) | 표면적 **14.5배** 감소 → WS 18%p → ~1.2%p, 메모리 402MB → ~250MB | — | 컨셉·Unity 단일창·1프레임 어긋남 | **특대** | **리더 판단** |
+| B-2 | dirty-rect 부분 갱신 | 이론상 B-1과 동급 | — | **Unity가 API를 노출하지 않음** | — | **기각(불가)** |
+| B-3 | MSAA 4x 전체화면 resolve 제거 | 프레임당 118MB 대역폭 제거 | — | **선 화질 저하(사용자 확정값)** | 소 | **리더 판단** |
+| B-4 | Retina 렌더 해상도 1x | 픽셀 4배 감소 | — | 선이 흐려짐(오늘 하루 종일 다툰 축) | 소 | **리더 판단** |
+
+---
+
+# 2단계 — 공개 자료 조사 (실제 검색, 추측 아님)
+
+### ① 같은 문제가 업계 전체에서 미해결이다 — 우리 앱만의 결함이 아님이 확인됐다
+
+| 프로젝트 | 무엇 | 보고된 수치 | 그들의 해법 |
+|---|---|---|---|
+| **Rusty's Retirement** (2024, Unity, 데스크톱 오버레이 게임 중 상업적으로 가장 성공) | DWM 투명 전체화면 오버레이 | *"Desktop Window Manager가 CPU 20%를 먹고 PC 전체가 굼떠진다"* (Steam 토론) | **"Low Power Mode" 버튼을 그래픽 설정에 추가** — 즉 근본 해결이 아니라 **사용자에게 선택지를 준다** |
+| **OpenAI Codex 데스크톱 펫** (2026, Electron) | 오버레이 펫 | GPU helper **24~30%**, 렌더러 12% (유휴) | 이슈에 **해법이 없다**(#20680, 열려 있음) |
+| **Shimeji / Shimeji-ee** (데스크톱 펫의 원형, 20년) | 마스코트당 **작은 투명 창**(JWindow) | — | **프레임 자체를 6.7~25fps로 설계**(Clover Shimeji 기본 150ms/frame) |
+
+**세 사례가 우리 상황을 정확히 삼각측량한다:**
+- Rusty's Retirement = **우리와 완전히 같은 구조**(Unity + 전체화면 투명 오버레이) → 같은 증상,
+  그리고 **업계 최선의 답이 "사용자 토글"이었다.** 우리는 그것을 **자동화**하는 셈이라 한 발 앞선다.
+- Codex = 구조가 달라도(Electron) 같은 병 → **엔진 문제가 아니라 "전체화면 오버레이"라는 형태의 문제**.
+- Shimeji = **B 페르소나의 소형 창 방식이 실재하고 20년간 작동해 왔다는 증거**. 다만 Shimeji는
+  스프라이트 마스코트라 화면 전역 연출(낙서/아이콘 미러/창 도둑)이 애초에 없다 —
+  **우리가 그 방식을 그대로 못 쓰는 이유이기도 하다.**
+
+### ② Unity 공식 — `OnDemandRendering.renderFrameInterval`은 실재하고 데스크톱에서도 동작한다
+
+- 공식 문서: *"Application.targetFrameRate 또는 QualitySettings.vSyncCount의 **나눗수**"*. targetFrameRate
+  60 + interval 2 = 30fps. **플랫폼 제한이 문서에 없다**(모바일 전용이 아니다).
+- 공식 블로그(*How on-demand rendering can improve mobile performance*): 렌더를 건너뛴 프레임에도
+  **이벤트/스크립트는 정상 속도로 전달**된다 → 입력 지연이 생기지 않는다. 다만 **입력 중에는
+  interval=1로 되돌리라**고 명시적으로 권고한다.
+  → 우리 구현이 그 권고를 그대로 따른다: **최근 2초 안에 입력이 있으면 무조건 Active**.
+- Unity Issue Tracker에 `OnDemandRendering` + `vSyncCount` 병용 이슈가 존재한다(모니터를 옮기면 스킵이
+  안 되는 버그) — **역설적으로 "스탠드얼론 플레이어에서 둘을 같이 쓰는 것이 지원되는 조합"이라는 증거**다.
+- **실측으로 직접 확인**: Calm 등급에서 `renderFrameInterval=2`를 걸자 WindowServer 부하가
+  13.0% → 7.6%로 떨어졌다 → **Present가 실제로 건너뛰어진다**(안 그러면 컴포지터 부하가 안 줄어든다).
+
+### ③ UniWindowController(kirurobo) 저장소 — 성능 자료 없음(정직한 공백)
+
+`CPU / performance / idle / framerate` 키워드로 이슈를 다시 훑었다. **성능 관련 이슈·PR·예제가 0건**이다.
+README에서 성능을 언급하는 곳은 단 두 군데뿐이고 둘 다 우리 문제와 무관하다:
+(a) 클릭 판정은 `Raycast`가 픽셀 알파 판정보다 빠르다, (b) 단색 투명(monochromatic)은 성능이 나쁘다.
+→ **결론: 이 라이브러리는 "창을 투명하게 만드는 법"만 다루고 "그 창을 24시간 켜 두는 비용"은
+다루지 않는다.** 우리가 지금 서 있는 곳에 참고할 선례가 이 저장소에는 없다.
+
+### ④ Unity 공식 문서/포럼에 "always-on-top 오버레이 앱"의 표준 최적화 패턴이 있는가 → **없다**
+
+검색 결과 나온 것은 전부 *"투명 창을 만드는 법"* 튜토리얼(Code Monkey, Sunny Valley Studio,
+pheonise/Unity3D-Desktop-Overlay)이고, **하나같이 "카메라 배경 알파 0, 포스트프로세싱 끄기, HDR 끄기"에서
+끝난다.** 상주 비용을 다루는 공식 가이드는 존재하지 않는다.
+→ 이 프로젝트가 이번에 남기는 문서(FramePacing / ViewerPresence 클래스 문서)가 사실상
+**우리가 아는 한 이 주제에 대한 가장 정량적인 자료**다. 다음 사람을 위해 숫자를 다 남겨 뒀다.
+
+---
+
+# 3단계 — 사용자가 추가로 전달한 검색 자료 4배치(16항목) 전수 매핑
+
+리더 지시대로 **별도 라운드로 쪼개지 않고** 위 토론에 흡수했다. 각 항목의 처리 결과:
+
+| 항목 | 처리 | 근거 |
+|---|---|---|
+| 창 크기 최소화 + `UpdateLayeredWindow` 부분 갱신 | **B-1로 흡수, 리더 판단** | 아래 설계 제안 |
+| 바운딩 박스 + **디스플레이 토폴로지 변경 감지** + 클립 리전 | **B-1 설계에 반영** | 아래 설계 제안 4-b에 필수 디테일로 명시 |
+| 가변 프레임레이트(움직일 때 60, 정지 1~5fps) | **적용(C-1/C-2/A-1)** | 페르소나 C와 동일 항목 |
+| 행동 상태별 가변 FPS(격렬 45~60 / 대기 8~12 / 정적 1~3) | **적용(같은 항목)** | 다만 최하 등급을 1~3fps가 아니라 **화면이 꺼졌을 때만 4fps**로 뒀다 — 사람이 보고 있을 때 3fps는 "죽은 앱"으로 보인다 |
+| AI 루프와 렌더 루프 분리 | **로직 쪽 이미 완료** | `footholdPollInterval=0.3`, 배회 판단 타이머, Dock 캐시 0.75초 등 이미 저빈도 폴링. 렌더 쪽만 남아 있었고 그게 이번 A-1이다 |
+| 틱리스 스케줄링(프로세스 자체 Sleep) | **A로 흡수** | Unity는 PlayerLoop 위에서만 도는 구조라 프로세스 전체 Sleep 불가. "그 사이 Present를 건너뛴다"가 실현 가능한 최대치이며 그게 A-1이다 |
+| GC 제로화 / 오브젝트 풀링 | **이미 확인, 문제 아님** | 오늘 실측 `Update()` 순수 할당 ~41B/frame. 이번 `sample`에서도 관리 코드 전체가 0.25% |
+| 전체화면 게임 감지 시 서스펜드(Desktop Goose 사례) | **이미 구현되어 있음** | `StickmanAgent.Suspend()` + `FramePacingTier.Suspended`. 이번 라운드에 등급 체계로 편입되며 숫자는 그대로 보존(테스트로 잠금) |
+| 하드웨어 커서로 렌더링 위임 | **기각** | OS 커서는 (a) 크기가 작고 고정(대개 ≤128px, 우리는 망토/모자/펫/말풍선이 몸 밖으로 나간다), (b) **화면에 하나뿐**이라 세포분열 다개체와 양립 불가, (c) 커서를 바꾸면 **사용자의 실제 커서를 빼앗는다** — CLAUDE.md 원칙 2(비침해) 정면 위반. (d) 애초에 캐릭터가 커서를 **타고 노는**(RodeoCursor) 연출이 있어 둘이 같은 것이 되면 그 연출이 성립하지 않는다 |
+| 크로스 프로세스 분리(UI/로직 프로세스 격리) | **범위 밖** | Unity 단일 프로세스 구조를 갈아엎는 별도 대규모 프로젝트. 게다가 이번 실측상 **로직 CPU가 0.25%**라 로직을 다른 프로세스로 옮겨도 절감이 0.25% 이하다 — 비용 대비 효과가 없다 |
+| 텍스처 아틀라스 + UV 오프셋 | **해당 없음** | 이 프로젝트는 스프라이트가 아니라 **LineRenderer 절차적 선화**다. 아틀라스로 바꾸면 배율 자유도(0.35~2.0 다이얼)와 액티브 랙돌 관절 각도가 성립하지 않는다 |
+| 베이크 앤 캐시(대기 동작 비트맵 시퀀스) | **해당 없음(부분만 유효)** | 포즈가 연속 보간(호흡 사인파 + IK 워크사이클)이라 고정 프레임 반복 전제와 맞지 않는다. LUT과 겹치는 부분은 아래 항목과 동일한 이유로 저순위 |
+| 레이어드 아키텍처 + Dirty Rectangle | **해당 없음** | 비트맵 캔버스 합성 전제. Unity에서는 각 파츠가 이미 독립 GameObject/메시라 개념이 대응되지 않고, 창 단위 dirty rect는 Unity가 API를 안 준다(B-2) |
+| 정점 연산을 버텍스 셰이더로 이관 | **효과 있을 수 있으나 범위 밖 — 다만 우선순위 매우 낮음** | 방향은 옳지만 **최대 절감 상한이 0.25%**다(관리 코드 전체 비중). LineRenderer 기반을 커스텀 메시/셰이더로 갈아엎는 대공사 대비 효과가 자릿수로 부족하다. 기록만 남긴다 |
+| LUT로 sin/cos 대체 + 정밀도 하향 | **저순위** | 같은 이유. `Mathf.Sin`을 전부 없애도 상한이 0.25% 안쪽이다 |
+| GPU 가속 활용 | **이미 그렇다** | Metal/D3D12로 이미 GPU 렌더. 문제는 GPU 연산이 아니라 **표면 전송/합성** |
+
+---
+
+# 4단계 — 적용한 것 (구현 + 실측)
+
+### 4-1. `Screen.sleepTimeout = SleepTimeout.SystemSetting` (1줄, 최대 효과)
+`FramePacing.ApplyDisplaySleepPolicy()`. 위 결론 (3) 참고.
+**검증**: 수정 전 `pmset -g assertions`에 `pid N(StickMate) PreventUserIdleDisplaySleep "disable screen
+saver"`가 있었고, 수정 후 **정규식 `pid \d+\(StickMate\):.*Prevent`로 검사해 0건**임을 4회 연속 확인.
+로그 한 줄로도 남는다: `[FramePacing] 디스플레이 슬립 정책 — sleepTimeout -1 -> -2 (SystemSetting)`.
+
+> 이 발견은 **화면 꺼짐 등급(4-2)과 반드시 한 쌍**이다. "화면이 꺼질 수 있게 만들고, 꺼져 있는 동안은
+> 그리지 않는다." 둘 중 하나만 하면 반쪽이다 — 어서션만 풀면 화면이 꺼진 뒤에도 60fps로 계속 그리고,
+> 등급만 넣으면 화면이 애초에 안 꺼져서 그 등급에 영영 도달하지 못한다.
+
+### 4-2. 적응형 프레임 등급 — "아무도 안 볼 때는 그리지 않는다"
+
+신규 파일 3개 + 기존 1개 확장. **판단 로직은 플랫폼 중립 순수 함수 한 곳**(`FramePacingPolicy`)이고,
+OS 조회만 플랫폼별 구현으로 갈린다 — 오늘 오전의 "한쪽만 고쳐지는 버그"(VisibleTopEdgeSolver 사고)를
+구조적으로 봉쇄하는 배치이며, **macOS/Windows 구현을 같은 라운드에 함께** 작성했다.
+
+| 등급 | 조건 | 기구 | 프레젠트 fps(120Hz 기준) |
+|---|---|---|---|
+| **Active** | 기본 | (변경 없음) | 60 — **사용자 확정값, 손대지 않음** |
+| **Calm** | 캐릭터 Idle 0.75초 + 최근 입력 2초 없음 | `renderFrameInterval=2` | 30 |
+| **Away** | 무입력 180초 | `vSyncCount=4` + `interval=2` | 15 |
+| **Suspended** | 전체화면 게임 감지(기존) | `vSyncCount=4` | 30 (**숫자 무변경**) |
+| **DisplayOff** | `CGDisplayIsAsleep` | `vSync=0`, `target=4` | 4 |
+| 저전력 모드 | OS 저전력 모드 ON | Active만 한 칸 하향 | 30 |
+
+**★ 이 설계의 핵심 규칙 하나 — "보는 사람이 있으면 표시 동기화 기구를 바꾸지 않는다."**
+Active/Calm에서는 `vSyncCount`를 **절대 건드리지 않고** `renderFrameInterval`만 조정한다.
+vSyncCount를 바꾸는 것은 디스플레이 위상 고정을 다시 잡는 일이라 전환 순간 한 프레임이 튈 수 있는데,
+이번 사용자 신고가 하필 "부드럽지 않다"였다. `renderFrameInterval`은 위상을 그대로 둔 채 "이번 프레임은
+안 그린다"만 정하므로 **남는 프레임의 간격이 여전히 정확히 균일하다**(60fps 위상 위의 30fps).
+사람이 볼 수 없는 등급(Away/Suspended/DisplayOff)에서만 vSyncCount/targetFrameRate까지 내려
+**게임 루프 자체를 늦춘다**(메인 스레드가 전체의 60%라 렌더만 건너뛰면 절반밖에 못 줄인다 — B의 지적).
+이 두 불변식은 EditMode 테스트가 **네거티브 컨트롤과 함께** 잠근다.
+
+**안전 설계 — 신호를 놓쳐도 절대 얼지 않는다**: 가장 얕은 절감 등급조차 30fps다. "캐릭터가 Idle"
+판정이 틀려도 최악이 **30fps로 그려지는 것**이지 정지 화면이 아니다. 이것이 진짜 render-on-demand를
+기각한 이유다(렌더러 40+개 중 하나라도 깨우기 신호를 빠뜨리면 그 연출이 통째로 얼어붙고, 사용자에게
+그건 최적화가 아니라 **버그**로 보인다).
+
+**UI 상호작용 보호를 UI 코드와 결합 없이 해결**: "최근 2초 안에 입력이 있으면 무조건 Active" 규칙
+하나로 정보창/부채꼴 메뉴/포스트잇/드래그를 전부 덮는다. UI 쪽에 `Poke()` 호출을 심을 필요가 없어
+**빠뜨릴 수 있는 자리 자체가 생기지 않는다.** (Unity 공식 블로그의 on-demand rendering 권고와 동일한 처방)
+
+### 4-3. 실측 결과 (같은 기기, 유휴 상태, 등급마다 **직전 25초 대조군을 따로 측정**해 머신 드리프트 보정)
+
+```
+등급              앱CPU    WS(앱실행중)  WS(대조군)   WS증가분   시스템합계
+Active           31.6%      13.0%       13.4%      (대조오염)   ~40%*
+Calm             21.1%       7.6%        0.8%       +6.7%p      27.8%
+Away             11.8%       4.5%        0.8%       +3.7%p      15.5%
+DisplayOff        3.6%       5.2%        1.4%       +3.8%p       7.4%
+```
+\* Active의 시스템 합계는 **조용한 머신에서 잰 1차 표본**이 정확하다: 앱 22.4% + WS증가 18.0%p = **40.4%**.
+(위 표의 Active 행은 대조군 구간에 다른 앱이 화면을 갱신하고 있어 WS 증가분을 못 뽑았다 —
+숨기지 않고 그대로 남긴다.)
+
+**앱 CPU 기준 절감률(대조군 오염과 무관한 지표):**
+`Active 31.6% → Calm 21.1%(-33%) → Away 11.8%(-63%) → DisplayOff 3.6%(-89%)`
+
+**WindowServer 쪽이 실제로 함께 줄어든다는 것도 확인**: Calm에서 WS 13.0% → 7.6%.
+`renderFrameInterval`이 진짜로 **Present를 건너뛴다**는 증거다(안 그러면 컴포지터 부하가 안 줄어든다).
+
+**하루 24시간으로 환산한 추정**(사용자 사용 패턴 가정: 화면 켜짐 9h 중 상호작용 3h / 정지 관람 4h /
+자리비움 2h, 화면 꺼짐 15h):
+```
+기존:  40.4% × 24h                                                       = 100 (기준)
+개선:  40.4%×3h + 27.8%×4h + 15.5%×2h + 7.4%×15h  →  하루 총합 기준 약 -75%
+       ※ 게다가 디스플레이 슬립이 정상 동작하므로 패널 전력(수십 Wh/일)이 별도로 절감된다.
+```
+
+### 4-4. 계측 전용 환경변수(제품 동작 영향 0)
+- `STICKMATE_FORCE_TIER=Active|Calm|Away|Suspended|DisplayOff` — 등급 강제(위 A/B가 이걸로 측정됐다).
+- `STICKMATE_ADAPTIVE_PACING=0` — 적응형 전체 비활성(회귀 의심 시 즉시 원복 확인용).
+지정하지 않으면 아무 효과가 없다. 사용자 기기에서 문제가 재현될 때 **재빌드 없이** 원인을 가를 수 있게
+남겨 뒀다(Windows 잔상처럼 개발 환경에서 재현 불가능한 사안의 원격 계측 수단).
+
+---
+
+# 5단계 — 리더 판단 필요 (구현하지 않음)
+
+### 제안 B-1. 캐릭터 추종 소형 창 — **효과 최대, 위험 최대**
+
+**정량 근거(이번 라운드 실측 모델 기반):**
+| 항목 | 지금(3024×1964) | 640×640 창 | 배율 |
+|---|---|---|---|
+| 표면 픽셀 | 5,939,136 | 409,600 | **14.5배** |
+| MSAA 4x 컬러버퍼 | 96MB | 6.6MB | 14.5배 |
+| CAMetalLayer 트리플버퍼 | 71MB | 4.9MB | 14.5배 |
+| WindowServer 부하 | +18.0%p | ~1.2%p | 14.5배 |
+| 프레임당 MSAA resolve 대역폭 | ~118MB | ~8MB | 14.5배 |
+
+**컨셉과 양립 가능한가 — 조건부로 가능하지만 다음 5개가 전부 해결돼야 한다:**
+1. **Unity는 프로세스당 OS 창이 하나다.** "작은 창 + 전체화면 창" 2개로 나눌 수 없다. 따라서
+   화면 전역 연출(그라피티 / 바탕화면 아이콘 미러 / 창 도둑 / 활쏘기 / 좌하단 호버 패널 / 정보창 /
+   부채꼴 메뉴 / 포스트잇)은 **그 순간만 창을 전체화면으로 키웠다가 되돌리는** 방식이어야 한다.
+   그런데 `Screen.SetResolution`은 **스왑체인을 재생성**해 눈에 보이는 끊김을 만든다 →
+   **연출이 시작될 때마다 한 번씩 튄다.** 이걸 감수할지가 첫 번째 판단이다.
+2. **창 이동과 렌더 내용의 1프레임 동기 문제.** 매 프레임 창을 옮기면 "이번 프레임에 그린 그림"과
+   "OS가 창을 놓은 위치"가 어긋나 캐릭터가 바탕화면 위에서 헤엄치듯 흔들린다.
+   → 완화책: 창을 **매 프레임 옮기지 않고**, 캐릭터가 창 가장자리 안쪽 여유(예: 25%)에 닿을 때만
+   큰 폭으로 점프시키고 그 순간 카메라를 정확히 반대로 보정한다(스크롤 청크 기법). 점프가 드물어지고
+   그때만 위험이 남는다. **실기 검증 없이는 이게 될지 확신할 수 없다.**
+3. **디스플레이 토폴로지 변경 감지가 필수**(사용자 자료가 정확히 짚은 부분).
+   모니터 추가/제거/해상도 변경/스케일 변경 시 캐시된 화면 경계가 무효화되면 창이 화면 밖으로
+   나가거나 좌표계가 어긋난다. macOS `NSApplicationDidChangeScreenParametersNotification` /
+   `CGDisplayRegisterReconfigurationCallback`, Windows `WM_DISPLAYCHANGE`가 필요하다.
+   **지금은 이 훅이 프로젝트에 없다** — 전체화면 창이라 필요가 없었기 때문이다.
+4. **클릭 관통/히트테스트가 창 단위**라 창이 작아지면 오히려 유리하다(부수 이득).
+5. **세포분열 다개체(Phase 5)**: 개체마다 창이 필요한데 Unity는 창이 하나다 →
+   **개체들을 다 포함하는 바운딩 박스 창**으로 확장해야 하고, 개체가 화면 양끝에 있으면 결국
+   전체화면으로 되돌아간다. **컨셉 확장과 정면 충돌한다.**
+
+**perf-doc 권고**: 효과는 이 라운드에서 발견한 어떤 항목보다 크지만(14.5배), 1·2·5번이 각각 독립적으로
+앱을 망가뜨릴 수 있다. **별도 Phase로 프로토타입 먼저**(캐릭터+말풍선만 있는 최소 빌드에서 2번의
+흔들림이 실제로 보이는지부터 확인) 하는 것을 권한다. 지금 본선에 넣을 변경이 아니다.
+
+### 제안 B-3. MSAA 4x — 전체화면 resolve 비용을 처음으로 정량화했다
+MSAA resolve는 **그린 픽셀이 아니라 렌더 타깃 전체**에 걸린다. 캐릭터가 덮는 픽셀이 0.3%여도
+594만 픽셀 전부를 4샘플에서 1샘플로 접는다: 프레임당 약 118MB, 60fps에서 **약 7.1GB/s**.
+- 끄면: 그 비용이 통째로 사라진다. **대가는 선 화질**(사용자 확정값이라 손대지 않았다).
+- 중간안: 커스텀 라인 셰이더에서 **해석적 안티에일리어싱**(거리 기반 smoothstep)을 하면 MSAA 없이도
+  가장자리가 매끄럽다. LineRenderer → 커스텀 메시/셰이더 전환이 필요해 B-1급 공사다.
+- **B-1을 하면 이 비용도 14.5배 줄어든다** — 두 제안은 같은 뿌리(표면적)를 공유한다.
+
+### 제안 B-4. Retina 렌더 해상도 1x (`macRetinaSupport` off)
+픽셀이 4배 줄어 위 모든 항목이 4배 싸진다. 대가는 선이 흐려지는 것 — 오늘 하루 종일 다툰 축과 정면
+충돌하므로 **추천하지 않는다.** 다만 "배터리 우선" 사용자 옵션으로는 후보가 될 수 있다.
+
+### 그 외 소소한 후보 (측정만 하고 손대지 않음)
+- **Job 워커 스레드 27개**(`Job.Worker` 9 + `Background Job.Worker` 9 + `AssetGarbageCollectorHelper` 9).
+  전부 세마포어 대기 상태라 CPU는 안 먹지만 스택만으로 수십 MB다. `JobsUtility.JobWorkerCount`를
+  런타임에 낮출 수 있다. **효과 추정 -20~30MB, 리스크: 물리 2D가 잡을 쓰는지 확인 필요.**
+- 1차 라운드에서 보류한 `NSRunningApplication.activationPolicy`(Dock 타일 수 조회):
+  리더가 이미 `DockMetricsCacheSeconds = 0.75`를 승인했다. 이번 `sample`에서는 그 경로가
+  **더 이상 상위 비용이 아니다**(전체가 0.25%인 관리 코드 안쪽) — **1차 라운드의 "최대 고정비용"이라는
+  평가는 이번 실측으로 반증됐다.** 프레임 비용이 워낙 커서 상대적으로 묻혔던 것이며, 지금은 더 낮출
+  실익이 없다. 반응성을 위해 0.75초를 더 늘리지 않기를 권고한다.
+
+---
+
+# 검증
+
+| 항목 | 결과 |
+|---|---|
+| macOS 빌드 | **Succeeded, 에러 0건 / 경고 0건** (`Logs/perf_r2_macbuild.log:786`) |
+| 실행 로그 | `[FramePacing] 디스플레이 슬립 정책 — sleepTimeout -1 -> -2` / `[FramePacing/적응형] 활성` / 등급 전이 로그 정상 |
+| 디스플레이 슬립 어서션 | **소멸 확인**(`pmset -g assertions`에 StickMate의 Prevent* 0건, 4회 반복 확인) |
+| `MSAA 실측=4x` | **유지**(사용자 확정값 무변경) |
+| `vSyncCount 1 -> 2` (Active 기준값) | **유지**(1차 라운드 결정 무변경) |
+| EditMode | (아래 후속 기록) — 신규 `AdaptiveFramePacingPolicyTests` 13건 포함 |
+| PlayMode | (아래 후속 기록) |
+| 등급별 CPU A/B | 위 4-3 표(대조군 인터리브 방식) |
+
+### 교차 레이어 영향 로그
+- **신규**: `Platform/ViewerPresence.cs`(인터페이스 + 순수 판단 `FramePacingPolicy`),
+  `Platform/MacOS/MacViewerPresenceService.cs`, `Platform/Windows/WindowsViewerPresenceService.cs`,
+  `Tests/EditMode/AdaptiveFramePacingPolicyTests.cs`.
+- **변경**: `Platform/FramePacing.cs` — 적응형 거버너 추가. `Tick()`에 **선택적 인자**
+  `characterIdle`을 추가했으므로 **기존 호출부는 그대로 컴파일된다**(동시 편집 충돌 방지).
+  `SetSuspended()`는 이제 손잡이를 직접 돌리지 않고 등급 판단에 사실 하나를 넘긴다 —
+  **손잡이를 돌리는 지점이 `ApplyPlan()` 한 곳으로 못 박혔다**(두 곳이 서로 덮어쓰는 버그 봉쇄).
+  숫자는 이전과 동일하며 EditMode 테스트가 그 동일성을 잠근다.
+- **변경(각 1줄+주석)**: `Platform/MacOS/MacOverlayStateEnforcer.cs`,
+  `Platform/Windows/WindowsOverlayStateEnforcer.cs` — `FramePacing.Tick()` →
+  `FramePacing.Tick(FramePacing.ResolveCharacterIdle(_agent))`. 판정 함수는 **양 플랫폼 공용 한 곳**.
+- **`StickConfig`를 건드리지 않았다**(의도적): 이 라운드 내내 다른 두 에이전트가 그 파일을 편집 중이라
+  동시 쓰기로 서로의 변경을 잃을 위험이 있었다. 튜닝 상수는 `FramePacingPolicy`의 `public const`로
+  두었고(`AwaySeconds`, `RecentInputSeconds`, `DisplayOffTargetFps`), **StickConfig로 승격하는 것은
+  다음 라운드 후보**다. 승격해도 판단 함수 시그니처는 그대로다.
+- **Windows 정직한 한계**: `CGDisplayIsAsleep`에 대응하는 폴링 API가 Windows에 없어
+  `DisplayAsleep=false`로 **보수적으로 보고**한다(절감을 포기하고 정상 동작을 택함).
+  Away/저전력/배터리 등급은 양 플랫폼 동일하게 동작한다. 모니터 꺼짐 감지에는
+  `RegisterPowerSettingNotification(GUID_MONITOR_POWER_ON)` + `WM_POWERBROADCAST`가 필요한데
+  창을 UniWindowController 네이티브가 소유해 이번 범위를 넘는다 → **다음 라운드 후보로 명시**.
+
+**커밋하지 않았다**(리더가 통합 후 커밋).
+
+---
+
+## 2026-08-31 — 근본수정: "지금 캐릭터가 그리는 모든 것"의 단일 창구 **[Coder]**
+
+리더 배정(Major 1 + Major 2 + Major 3 + Minor 1, 공통 뿌리 하나). 개별 소비처 4곳을 땜질하지 않고
+창구를 하나 만들어 전부 그것만 보게 했다. 아래 수치는 전부 이 머신 배치모드 실측이다.
+
+### 공통 뿌리와 그 해결
+
+`Core/StickmanAgent.cs`의 `_renderers`/`_lineRenderers`는 **Awake 시점 스냅샷**이라 런타임 생성되는
+액세서리/펫/FX를 영원히 못 본다(펫/FX는 캐릭터의 **자식조차 아니라** 다시 조회해도 안 잡힌다).
+신규 `Core/CharacterVisualRegistry.cs` — 잉크를 더하는 쪽이 `ICharacterVisualSource.CollectVisuals(sink)`로
+**스스로 신고**한다(오늘 확립된 `ICharacterInkExtentProvider`와 같은 방향). 소비자 셋이 전부 이것만 본다.
+
+**★ 등록/해제(push)가 아니라 매번 물어보기(pull)로 만든 이유** — 리더 확인 요망:
+액세서리는 착용 변경뿐 아니라 **좌우가 바뀔 때마다** 컨테이너를 통째로 다시 굽는다(걷는 동안 수시).
+해제를 한 곳이라도 빠뜨리면 24시간 상주 앱에서 목록이 무한히 자라고, 파괴된 Unity 오브젝트가 섞인
+목록은 **조용히 스킵**된다 — 그것이 정확히 Major 3(거짓 안심 테스트)의 실패 기전이다. pull은 그
+실패 유형 자체가 존재하지 않는다. 호출 빈도는 숨기기/재개 · 배율 변경 · 시각반폭 갱신(0.25초)뿐이고
+버퍼 재사용으로 정상 상태 할당 0이다.
+
+| 소비자 | 전 | 후 |
+|---|---|---|
+| `SetRenderersEnabled`(전체화면/가출 숨김) | 몸 12개만 | 몸 + 창구 전체(**숨길 때만**, 아래 비대칭 참고) |
+| `ApplyStrokeWidthsForScale`(획 하한) | 몸만 | 몸 + 창구 훑기 + **소유자가 스스로 하한 적용** |
+| `TickVisualHalfWidth`(화면 여백) | 몸의 `Renderer.bounds` | 몸+액세서리의 **정점 실측**(금지 API 제거) |
+
+### Major 1 (원칙 2 위반) — 실측
+
+수정 전(test-engineer ZZ2 P1): `SUSPEND+0f  body=0 acc=12 pet=12 fx=12` → 0.25초간 게임 위에 노출.
+수정 후(신규 `Tests/PlayMode/FullscreenSuspendCharacterInkTests`, **진짜 `Suspend()` 실행**):
+```
+BEFORE        suspended=False body=12 acc=15 pet=2 fx=1
+SUSPEND+0f    suspended=True  body=0  acc=0  pet=0 fx=0
+SUSPEND+1f/2f/3f/0.3s                 전부 0
+가출 은신     HIDE+1f body=0 acc=0 pet=0 fx=0 → 발견 후 복귀 body=12 acc=15 pet=2 fx=1
+```
+고친 곳은 **두 겹**이다. 창구만으로는 부족했다 — 에이전트가 그 프레임에 꺼도 소유자의 LateUpdate가
+바로 뒤에 돌면서 다시 켜기 때문이다. 그래서 소유자 쪽도 함께 고쳤다: **"몸이 이미 사라졌으면
+페이드 금지, 알파를 그 프레임에 0으로"**(액세서리/펫), **"이미 떠 있던 조각도 즉시 끈다"**(FX —
+예전에는 `CanSpawn()` false로 '새로 만들지 않는다'에서 멈춰 수명 수 초 동안 계속 그려졌다).
+페이드 자체는 남겨 뒀다 — 랙돌 진입/복귀의 깜빡임 방지라는 원래 근거는 여전히 유효하다.
+
+**의도된 비대칭(리더 확인 요망)**: 숨길 때는 창구까지 끄고, **다시 보이게 할 때는 몸만** 켠다.
+"지금 무엇을 그려야 하는가"(착용/해금/랙돌/펫 아이템)는 소유자가 우리보다 정확히 알기 때문이다 —
+여기서 무조건 켜면 벗어 둔 장비의 옛 렌더러가 한 프레임 번쩍인다. 숨김만 즉시여야 원칙 2다.
+
+**네거티브 컨트롤 2중**: ① 숨기기 직전 네 종류가 실제로 그려지고 있음을 절대 조건으로 단언.
+② **수정 전 규칙을 같은 실행에서 계산** — 실제 `Time.deltaTime`과 각 렌더러의 실제 `FadeSeconds`
+상수(리플렉션)로 "페이드였다면 이 프레임의 알파"를 구하면 **액세서리 1.00 / 펫 1.00**이었다.
+즉 항상 참인 단언이 아니라 실제로 존재했던 **완전 노출** 구간을 잡고 있다.
+
+### Major 2 (획 두께 하한) — 실측
+
+하한의 단일 소스를 `StickmanAgent.MinStrokeWorldWidth`(public)로 올리고 액세서리/펫/FX가 그것을 읽는다.
+**도형과 두께를 분리**했다(몸이 이미 쓰는 규칙과 동일): `StrokeWidth`/`Stroke`(비례, 도형 유도용)은
+그대로 두고 `RenderStrokeWidth`/`RenderStroke`(하한 적용)만 LineRenderer 두께에 대입한다.
+도형 좌표까지 하한을 태우면 낮은 배율에서 모자 커버선/펫 실루엣이 달라지고, 기존 비례 회귀 테스트
+(`CharacterAccessoryScaleTests`)와도 정면 충돌한다. 발자국 **점 지름**도 같은 하한을 받는다.
+· 재구성 서명(액세서리/펫)에 `RenderStroke`를 넣어 창 크기/DPI가 바뀌어도 옛 두께가 남지 않게 했다.
+
+### Major 3 (거짓 안심 테스트) — 무엇이 무력했고 무엇으로 바꿨나
+
+`CharacterScaleRuntimeTests.배율을_바꿔도_획이_..._않는다`가 `LineRenderer` 목록을 **배율 변경 전
+1회만** 캐시했다. 배율이 바뀌면 컨테이너가 Destroy 후 재생성돼 캐시가 전부 null → `continue`로
+조용히 스킵 → **몸만 검사**. (a) 매 배율 재조회가 아니라 (b) **창구 조회**로 바꿨다 —
+`GetComponentsInChildren`은 캐릭터의 자식이 아닌 펫/FX를 여전히 못 보기 때문이다.
+· `Assert.Greater(dynamicCount, 0)`을 넣어 **"몸 바깥 선을 하나도 못 봤으면 즉시 실패"**로 잠갔다.
+  이 한 줄이 없으면 같은 사고가 그대로 재발한다.
+· 7슬롯 전부 착용시킨다(기본 차림만으로는 펫/FX가 없어 창구가 절반만 검증된다).
+· 신규 `NegativeControl_하한을_빼면_액세서리_획이_실제로_하한_아래로_내려간다` — 같은 실행에서
+  수정 전 규칙(순수 비례)을 계산해 낮은 배율에서 하한 미만임을 보인다(하한 단언이 항상 참이 아님을 증명).
+· `ComputeSignature`의 주석 "배율은 실행 중에 바뀌지 않는다(프리팹에 구워짐)"를 **사실 정정**했다.
+
+### Minor 1 (화면 여백) — 두 결함을 함께 고쳤다
+
+금지 API(`Renderer.bounds`) 제거 + 액세서리 포함. 신규 `Tests/PlayMode/CharacterVisualHalfWidthTests` 실측:
+
+| 배율 | 수정 후 보고 | 실제 잉크(정점+획반두께) | 수정 전 규칙(bounds) | 수정 전 과대분 |
+|---|---|---|---|---|
+| 0.35 | 0.3168 | 0.3168 | 0.5110 | **0.1942u** |
+| 0.75 | 0.6025 | 0.6025 | 1.0942 | **0.4917u** |
+| 2.00 | 1.6035 | 1.6035 | 2.9145 | **1.3110u** |
+
+액세서리 포함 증명(망토 4종 전수 → 가장 길게 뻗는 것으로 900프레임 실측):
+`몸 1.2468 / 액세서리 1.4140 / 보고 1.4140 → 돌출 0.1672u`, 전 표본에서 `(보고 − 액세서리)` 최소 `0.0000`.
+**즉 부풀림을 걷어낸 뒤에도 망토가 잘리지 않는다** — 둘을 함께 고쳤기 때문이다. 하나만 고쳤다면
+그 순간 0.17유닛이 화면 밖으로 나갔다.
+· 펫/FX는 `CharacterVisualAnchor.Detached`라 이 계산에서 **제외**한다 — 커서 친구가 화면 끝에 가면
+  캐릭터가 "내가 그만큼 넓다"고 오판해 안쪽으로 밀린다. 숨김/획 하한에는 물론 포함된다.
+
+### 검증
+
+| 항목 | 결과 |
+|---|---|
+| 컴파일 | **에러 0 / 경고 0** |
+| EditMode | **174/174** |
+| PlayMode | **314건 중 313통과 / 0실패 / 1스킵**(스킵은 헤드리스 전용 초상화 해상도 테스트) |
+| macOS 빌드 | **Succeeded, 에러 0 / 경고 0** (`Builds/macOS/StickMate.app`) |
+| 산출물 심볼 대조 | `CharacterVisualRegistry` / `ICharacterVisualSource` / `CollectVisuals` / `MinStrokeWorldWidth` / `RenderStrokeWidth` / `MeasureInkHalfWidth` **전부 `StickMate.Runtime.dll`에 존재** |
+
+배치모드 함정 하나 기록: `-nographics`에서 실측 `Time.deltaTime ≈ 0.0001초`라 **프레임 수로 기다리면
+초 단위 주기가 영원히 안 온다**(300프레임 = 0.03초). 전체화면 감지 대기를 게임 시간 기준으로 바꿨다.
+다른 테스트에서 "주기가 안 돈다"가 나오면 같은 원인을 먼저 의심할 것.
+
+### 교차 레이어 영향 로그
+
+1. **네이티브/플랫폼 — 없음**. 읽기 전용 열거만 쓰며 남의 창을 만지는 API는 추가하지 않았다(원칙 3).
+2. **렌더 계층 — 액세서리/펫/FX 획이 낮은 배율에서 굵어진다**(하한 적용). 출하 기본 0.75에서
+   액세서리 1.47pt → 2pt. 의도된 변화이며 육안 확인은 사용자/리더 몫.
+3. **상태/이동 계층 — 화면 좌우 여백이 줄어든다**(배율 2.00에서 1.31유닛 = 실사용 약 54pt 더 가장자리로
+   간다). `EnforceScreenBoundsAndRescue`의 클램프 지점이 바뀌므로 보행 반환점이 화면 끝에 더 가까워진다.
+   전 PlayMode 무회귀지만 **육안 체감이 달라지는 변경**이라 리더 판단 대상으로 올린다.
+4. **테스트 계층** — `StickmanAgent`에 public `DynamicVisuals` / `MinStrokeWorldWidth`가 생겼다.
+   앞으로 "캐릭터가 지금 그리는 것"을 세는 테스트는 계층 순회 대신 이 창구를 쓸 것.
+5. **파일 겹침 주의** — 같은 시간대에 다른 라운드가 `Core/StickConfig.cs` / `States/StickmanPoseAnimator.cs` /
+   `Platform/FramePacing.cs` / `Platform/MacOS/*` 를 편집 중이었다. `StickmanAgent.cs`는 그쪽의
+   `FramePacing.SetSuspended` 2줄과 **같은 파일**을 공유하지만 서로 다른 자리라 충돌 없이 보존했다.
+   작업 도중 `FramePacing.cs`가 일시적으로 컴파일 불가 상태였다(그쪽 편집 중) — 안정될 때까지 기다렸고
+   내 파일에는 에러가 없었다. 최종 전 스위트는 그쪽 변경이 반영된 상태에서 돌린 결과다.
+
+### 남긴 것(내 담당 아님)
+
+`AccessoryShapeBuilder.IsCoveredByHat` 관련 Major 4(모자 쓰면 머리 4종이 통째로 사라짐)는 UX 판단
+대기라 손대지 않았다. 다만 이번 하한 적용으로 **낮은 배율에서 획이 굵어지면 커버선 판정이 더
+엄격해지는 방향**이라는 점만 적어 둔다(도형 유도용 `StrokeWidth`는 비례 그대로 두었으므로 커버선
+자체는 불변이지만, 그 라운드에서 커버선을 만질 때 두 값이 나뉘어 있다는 사실을 알고 시작해야 한다).
+
+### 2026-08-31 — 리더 승인: 렌더러 등록 구조 근본수정 완료 (Major 1+2+3+Minor1)
+**설계 이탈 승인**: 리더 제안(등록/해제 패턴) 대신 pull 방식(`ICharacterVisualSource.CollectVisuals`) 채택
+— 액세서리 컨테이너가 걷는 동안 방향전환마다 통째로 재생성되는데, 해제 호출 하나만 빠져도 24시간
+상주 앱에서 무한 누수되고 파괴된 오브젝트가 든 리스트는 조용히 스킵되는(Major 3를 만들었던 바로 그
+실패 패턴) 위험이 있어 pull 방식이 이 실패모드 자체를 구조적으로 차단한다는 근거 — 승인.
+Major 1이 실제로는 2단 방어가 필요했던 것(단일 창구만으로는 부족, Update에서 끄면 같은 프레임
+LateUpdate가 되살림 → 소유자 쪽도 몸이 이미 없으면 알파를 즉시 0으로 스냅) 확인, FX는 이미 살아있는
+잔여 이펙트까지 강제 종료(기존엔 새 생성만 막고 기존 건 수명 끝까지 그려지고 있었음) — 승인.
+**비대칭 설계 승인**: 숨김은 즉시(원칙 2 무예외), 복귀는 몸만 즉시 켜고 액세서리는 서서히 페이드인
+— 전부 강제 즉시 켜면 아직 안 맞춘 아이템의 낡은 렌더러가 한 프레임 번쩍일 위험 때문. 타당함.
+**Major 2 분리 승인**: 기하 계산용 획두께(비례 유지, 모자 커버선 등에 씀)와 렌더링용 획두께(최소
+2pt 하한 적용)를 분리 — 하한을 기하값에 적용하면 `CharacterAccessoryScaleTests`의 비례성 단언이
+깨지므로 몸이 이미 쓰는 방식과 동일하게 분리한 것.
+검증: EditMode 159→174, PlayMode 313/313(1 스킵), macOS 빌드 무회귀, 네거티브 컨트롤로 원칙2 위반이
+실제로는 기존 추정(0.25초 노출)보다 더 심각했음(감지 프레임에 알파 1.00, 즉 100% 노출)까지 확인.
+**리더 확인 사항**: 배율 2.00에서 화면 여백이 줄어드는 것(≈54pt)은 회귀가 아니라 **버그였던 과대
+여백이 정상화**된 것 — 승인, 문제 없음. 저배율에서 액세서리 획이 두꺼워지는 것(의도된 하한 적용)은
+다음 육안 검증 때 확인.
+**운영 메모(중요, 전파 필요)**: `-nographics` 배치모드에서 `Time.deltaTime≈0.0001초`(정상 프레임의
+1/1000) — "300프레임 대기"가 실제 0.03초라서, 초 단위 간격을 프레임 수로 기다리는 테스트는 영원히
+멈춘다. 이 코더는 게임시간 기반 대기로 전환해 회피 — 앞으로 유사 테스트 작성 시 주의.
+FramePacing 라운드와 `StickmanAgent.cs` 공유, 그쪽이 15분간 컴파일 불가 상태였을 때 기다렸다가
+진행한 것도 좋은 판단.
+
+### ★ 최종 실측표 (위 4-3을 대체한다 — 최종 빌드, 등급마다 직전 25초 대조군, 대조군 편차 1.9~2.4%로 안정)
+
+| 등급 | 앱 CPU | WindowServer(앱 실행중) | WS 대조군 | **WS 증가분** | **시스템 합계** | Active 대비 |
+|---|---|---|---|---|---|---|
+| **Active** (현행 유지) | 27.1% | 12.3% | 2.0% | +10.3%p | **37.4%** | — |
+| **Calm** (정지 30fps) | 17.8% | 6.9% | 2.4% | +4.6%p | **22.4%** | **-40%** |
+| **Away** (자리비움 15fps) | 10.4% | 4.2% | 1.9% | +2.2%p | **12.7%** | **-66%** |
+| **DisplayOff** (화면꺼짐 4fps) | 3.2% | 4.9% | 2.0% | +2.9%p | **6.1%** | **-84%** |
+
+앱 CPU와 **컴포지터 부하가 함께** 내려간다는 점이 핵심이다(Active 10.3%p → Calm 4.6%p).
+`renderFrameInterval`이 실제로 **Present를 건너뛴다**는 직접 증거다 — 안 그러면 WindowServer는 줄지 않는다.
+
+**부드러움이 손상되지 않았다는 증거**(Calm 등급 실행 중 프레임 시간 로그):
+```
+[프레임시간] 루프 평균 16.86ms(59.3fps) p50 16.66ms / p95 22.95 / p99 33.01 / 최대 33.22.
+             vSyncCount=2, renderFrameInterval=2 -> 실제 프레젠트 약 29.7fps (적응형 절감 중)
+```
+`p50 = 16.66ms` — **절감 중에도 디스플레이 위상 고정이 그대로다**(1차 라운드가 확보한 균일성이
+훼손되지 않았다). vSyncCount를 건드리지 않고 renderFrameInterval만 쓴 설계 선택의 직접 검증이다.
+
+### 추가 실측 3건 (설계 판단의 근거)
+
+**(a) 무입력 시간 API를 두 소스에서 읽어 작은 쪽을 쓰도록 바꿨다 — 오판 위험을 실측으로 발견했다.**
+같은 순간에 두 값이 크게 갈렸다: `combined(0) = 23,979초(6.7시간)` vs `hid(1) = 403.7초(6.7분)`.
+한쪽만 읽었다면 **"6.7시간 자리 비움"으로 오판**해 사용자가 보고 있는데 15fps로 그렸을 것이다.
+대가가 비대칭이므로(오판 A = 신고 재발 / 오판 B = 전기 조금 더 씀) **항상 작은 값**을 쓴다.
+또한 **제자리 마우스 이벤트 1회 주입 후 두 값 모두 0.5초로 리셋**되는 것을 확인했다 —
+자리 비움 등급에서 사용자가 돌아오면 다음 폴링(≤0.2초) 안에 반드시 깨어난다.
+
+**(b) 등급 전이가 분당 약 10회다 → 로그를 요약으로 바꿨다.**
+자율 배회가 Idle 2~6초 / Walk 1.5~4초를 반복하므로 Active↔Calm 전이가 매우 잦다. 전이마다 로그를
+남기면 **하루 약 14,000줄 + 매번 문자열 할당**이다. `Update()` 할당을 41B까지 따지는 프로젝트에서
+로그로 그걸 되돌릴 수는 없다 → **처음 6회만 자세히, 이후 5분마다 등급별 체류 비율 한 줄 요약**.
+그 요약은 사용자 기기에서 "실제로 어느 등급에 얼마나 머무는가"를 아는 **유일한 원격 계측 수단**이다.
+실행 검증: 6회 후 개별 로그가 정확히 멈추는 것을 확인했다.
+
+**(c) ⚠ 소형 창(B-1) 가설은 이 코드베이스에서 측정에 실패했다 — 정직하게 남긴다.**
+`-screen-fullscreen 0 -screen-width 640 -screen-height 640`으로 띄워 표면적 효과를 재려 했으나,
+로그의 `Screen=(3024x1964)`가 그대로였다(UniWindowController/Enforcer가 전체화면을 강제한다).
+두 실행의 수치도 앱 26.7% vs 26.9%로 동일 — **창이 실제로 작아지지 않았다는 증거**다.
+→ **"비용 ∝ 표면적"은 여전히 모델이며 이 앱에서 실증되지 않았다.** 컴포지터 비용이 픽셀 수에
+비례한다는 것은 일반론으로 확실하지만, **B-1을 채택하기 전에 반드시 프로토타입으로 실측해야 한다**는
+근거가 하나 더 생긴 셈이다.
+
+### 검증 (최종)
+| 항목 | 결과 |
+|---|---|
+| macOS 빌드 (3회: 초안/정제/로그요약) | 전부 **Succeeded, 에러 0 / 경고 0** (`perf_r2_macbuild{,2,3}.log`) |
+| EditMode | **174/174 통과**(기존 161 + 신규 13). 재실행 결과는 아래 |
+| PlayMode | **314건 중 313 통과 / 0 실패 / 1 스킵**. 재실행 결과는 아래 |
+| 디스플레이 슬립 어서션 | **소멸 확인** (`pid \d+\(StickMate\):.*Prevent` 정규식 0건, 5회 반복) |
+| 등급 자동 전이 | 실행 로그로 Active↔Calm 왕복 확인, 관측값(`무입력=N초`) 정상 |
+| `MSAA 실측=4x` / `vSyncCount 1 -> 2` | **무변경**(사용자·리더 확정값 보존) |
+
+### 최종 재검증 (모든 수정 반영 후 전체 재실행 — 이 라운드의 확정 결과)
+
+| 항목 | 결과 | 로그 |
+|---|---|---|
+| macOS 빌드 | **Succeeded, 에러 0 / 경고 0** | `Logs/perf_r2_macbuild3.log` |
+| **EditMode 전체** | **174 / 174 통과, 실패 0** | `Logs/perf_r2_editmode2.xml` |
+| **PlayMode 전체** | **314건 중 313 통과 / 실패 0 / 스킵 1** | `Logs/perf_r2_playmode2.xml` |
+| 스킵 1건 정체 | `PortraitTextureResolutionTests.PortraitTextureIsSupersampledAgainstPhysicalPixelsOnRetina` — 소스에 `Assert.Ignore("헤드리스(-nographics)에서는 오프스크린 카메라를 켜지 않습니다.")`가 **원래부터** 박혀 있는 의도적 스킵. **이번 변경과 무관**하며 배치 모드에서는 항상 스킵된다 | — |
+
+> **이 라운드가 남긴 실패는 0건이다.** 1차 라운드에서 다른 에이전트들이 보고했던 PlayMode 오염
+> (`할일0..` 누적 / 모자 가시성 플레이크)도 이번 두 번의 전체 실행에서 **재발하지 않았다**(313/313).
+
+### 최종 산출물 목록
+
+**신규 (4)**
+- `Assets/_Project/Scripts/Platform/ViewerPresence.cs` — 관측 인터페이스 + **플랫폼 중립 순수 판단**(`FramePacingPolicy`)
+- `Assets/_Project/Scripts/Platform/MacOS/MacViewerPresenceService.cs` — CoreGraphics/IOKit/ObjC **읽기 전용** 조회
+- `Assets/_Project/Scripts/Platform/Windows/WindowsViewerPresenceService.cs` — 같은 라운드에 **동시 작성**(패리티)
+- `Assets/_Project/Scripts/Tests/EditMode/AdaptiveFramePacingPolicyTests.cs` — 13건, 네거티브 컨트롤 포함
+
+**변경 (3)**
+- `Assets/_Project/Scripts/Platform/FramePacing.cs` — 적응형 거버너 + 디스플레이 슬립 정책 + 로그 요약.
+  `Tick()`에 **선택적 인자**를 더해 기존 호출부는 무수정 컴파일된다.
+- `Assets/_Project/Scripts/Platform/MacOS/MacOverlayStateEnforcer.cs` — 1줄(+주석)
+- `Assets/_Project/Scripts/Platform/Windows/WindowsOverlayStateEnforcer.cs` — 1줄(+주석, macOS와 동일)
+
+**건드리지 않은 것(의도적)**: `StickConfig` / `ProjectSettings` / `QualitySettings` / MSAA / 기준 vSyncCount /
+캐릭터·포즈·렌더러 코드 — 이 라운드 내내 다른 에이전트들이 편집 중이었고, 이번 변경은 그 어느 것도
+필요로 하지 않는다.
+
+### 리더에게 — 이 라운드의 한 줄 요약
+
+> **"17%가 과도하다"는 사용자 판단이 옳았다. 다만 실제 숫자는 17%가 아니라 37~40%였고(절반이
+> WindowServer에 숨어 있었다), 그 비용은 졸라맨과 무관하게 화면 표면적 × 프레임 수에만 비례한다.
+> 코드를 빠르게 만드는 방향의 최적화는 상한이 0.25%라 의미가 없다. 그래서 "아무도 보지 않는 시간에는
+> 그리지 않는다"로 방향을 틀었고, 부수적으로 이 앱이 사용자의 화면을 24시간 강제로 켜 두고 있었다는
+> 원칙 위반(CLAUDE.md 2)을 발견해 함께 고쳤다.**
+
+**리더 결정이 필요한 것은 3개뿐이다:**
+1. `Away` 등급 진입 시간 **180초**가 적절한가(짧으면 절감↑ 오판 위험↑).
+2. 소형 창(B-1) — **프로토타입을 별도 Phase로 승인할 것인가**(효과 최대, 컨셉 위험 최대, 이번에
+   측정 시도가 실패해 근거가 모델뿐이다).
+3. 튜닝 상수를 `StickConfig`로 승격할 것인가(지금은 `FramePacingPolicy`의 `public const`).
+
+
+### 2026-08-31 — 리더 승인: 3인 페르소나 최적화 브레인스토밍 완료 (Principle 2 위반 발견 + 적응형 프레임레이트)
+**최대 성과 — 성능이 아니라 원칙 위반 발견**: `pmset -g assertions`로 이 앱이 `PreventUserIdleDisplaySleep`
+어서션을 걸어 24시간 디스플레이 절전을 막고 있었음을 확인 — Unity 엔진 기본값(`sleepTimeout=NeverSleep`,
+게임엔 합리적이나 상주 장식 앱엔 정반대)이 원인, 프로젝트 코드 결함 아님. 1줄 수정 + 5회 반복 확인.
+"밤새 패널 8시간 = 수십 Wh/일"이라는 규모 비교가 정확 — 오늘 다투던 CPU% 절감분과 자릿수가 다른
+절대적 낭비였음. 절대 불변 원칙 2(비침해) 위반으로 최우선 승인.
+**측정 정정**: "17.3%"는 앱 자체 CPU만 잡은 수치였고, WindowServer(합성기) 증가분을 포함한 실제
+시스템 총비용은 대조군 실측(앱 종료 전/후)으로 42.6%였음 확인 — 사용자의 "시스템 전체가 느려진다"는
+체감이 착각이 아니라 정확한 관측이었음을 재확인.
+**병목 재확인**: `sample` 프로파일링으로 관리 코드(C# 전체)가 표본의 0.25%뿐임을 실측 — 코드
+최적화의 상한이 0.25%로 사실상 무의미, 유일한 레버는 "프레임을 얼마나 자주 내보내는가"뿐임을 정량
+확정(어제부터의 가설을 숫자로 마무리).
+**적응형 프레임레이트(ViewerPresence) 승인**: Active(현행)/Calm(정지 30fps)/Away(자리비움 15fps)/
+DisplayOff(4fps) 4단계, 시스템 총비용 -40%/-66%/-84%. 설계 원칙 "보는 사람이 있으면 표시 동기화
+기구(vSyncCount)는 안 건드리고 렌더 간격만 조정, 확실히 안 보는 상황에서만 루프 자체를 늦춘다"가
+어제 확보한 위상고정 매끄러움을 안 건드리면서 절전 — 승인. 가장 얕은 단계도 30fps 하한(오판 시
+최악이 "느리게 그려짐"이지 정지 아님)이라는 안전설계도 승인.
+**외부 조사 확인**: 같은 구조(Unity+전체화면 투명 오버레이)의 "Rusty's Retirement"도 동일 증상(WS 20%)에
+업계 최선의 답이 "저전력 모드 수동 토글"이었다는 것 — 이번 자동화가 업계 관행보다 앞서 있다는 뜻으로
+해석 가능. Electron 기반 다른 데스크톱 펫(#20680)도 같은 병 → 엔진 문제가 아니라 "전체화면 오버레이"
+형태 자체의 구조적 비용이라는 것 재확인. 20년 된 Shimeji가 마스코트당 소형 창+저프레임(6.7~25fps)
+설계라는 선례 확인도 유의미.
+**정직한 실패 인정**: 소형 창(B-1) 가설은 이번 세션에서 실제로 측정 실패(강제 전체화면 로직 때문에
+`-screen-width 640` 인자가 무시됨, 두 실행 결과 동일) — "비용∝표면적" 모델은 여전히 가설일 뿐 실증
+안 됨을 솔직히 보고. 채택 전 별도 프로토타입 필수라는 판단 승인(효과를 확신하는 척하지 않은 태도 좋음).
+검증: macOS 빌드 3회 전부 0/0, EditMode 174/174, PlayMode 313/314(1 기존 헤드리스 스킵), MSAA/vSyncCount
+기준값 무변경.
+**리더 결정 3건**:
+1. Away 진입 180초 — 승인(초기값으로 적절, 추후 실사용 피드백으로 조정 가능).
+2. **소형 창 프로토타입을 별도 Phase로 승인** — 효과 추정 14.5배로 크지만 위험도 최대(창 도둑/화면
+   전역 낙서 등 기존 기능과 충돌 가능)라, 정식 프로토타입 라운드(설계+구현+실측)를 별도로 편성할
+   가치가 있다고 판단, 승인. 단, 오늘 바로 착수하지 않고 다음 대규모 계획(사용자가 전달한 기획서
+   처리) 우선순위 안에서 위치 정할 것.
+3. 튜닝 상수의 `StickConfig` 승격 — 오늘의 동시편집 회피 목적은 이제 소멸했으니 승인, 다음 정리
+   라운드에 반영.
+
+---
+
+## 2026-08-31 — 오늘 전체 통합 **클린 전체 검증 + 최종 리뷰** **[Test Engineer]** — `(개선 R5)`
+
+오늘 하루치 8개 라운드(가려진 창 발판 / 매달리기 손 위치 / 문워크 / 렌더러 등록 구조 / 윈도우
+BitBlt 조사 / macOS 메모리·CPU / 적응형 프레임레이트 + 디스플레이 절전)가 **전부 합쳐진 상태**를
+한 번에 검증했다. 변경 파일 40개(수정 16 + 신규 24).
+
+### 1단계 — 클린 전체 실행 (전부 이 머신에서 실제 실행)
+
+| 항목 | 명령 | 결과 | 로그 |
+|---|---|---|---|
+| 클린 재컴파일 | `Library/ScriptAssemblies` 삭제 후 `-batchmode -nographics -quit` | **error CS 0건 / warning CS 0건**, EXIT=0 | `Logs/te_final_compile.log` |
+| EditMode 전체 | 표준 `-runTests -testPlatform EditMode` | **174 / 174 통과, 실패 0, 스킵 0** | `Logs/te_final_editmode.xml` |
+| PlayMode 전체 | 표준 `-runTests -testPlatform PlayMode` | **314건 중 313 통과 / 실패 0 / 스킵 1** (실행 800.7초) | `Logs/te_final_playmode.xml` |
+| macOS 빌드 | `PerformBuild` | **Succeeded, 에러 0 / 경고 0** (103,316,044 bytes) | `Logs/te_final_macbuild.log` |
+| Windows 크로스빌드 | `PerformBuildWindows` | **Succeeded, 에러 0 / 경고 0** (88,067,713 bytes) | `Logs/te_final_winbuild.log` |
+
+- **스킵 1건 정체**: `PortraitTextureResolutionTests.PortraitTextureIsSupersampledAgainstPhysicalPixelsOnRetina`
+  — 소스에 `Assert.Ignore`가 원래부터 박힌 의도적 헤드리스 스킵. 이번 변경과 무관.
+- `The referenced script ... is missing!` **0건**, `NullReferenceException` **0건**(EditMode/PlayMode 로그 전수),
+  에디터 크래시 0건(4회 실행 전부 EXIT=0).
+- **빌드 산출물 심볼 대조로 크로스 컴파일 실증**(빌드 성공 문자열만 믿지 않았다):
+  - `Builds/Windows/.../StickMate.Runtime.dll` → `WindowsViewerPresenceService` 있음 / `MacViewerPresenceService` **없음** / `VisibleTopEdgeSolver`·`Win32WindowService` 있음.
+  - `Builds/macOS/.../StickMate.Runtime.dll` → `MacViewerPresenceService` 있음 / `WindowsViewerPresenceService` **없음** / `VisibleTopEdgeSolver`·`CharacterVisualRegistry` 있음.
+  - 두 DLL 모두 `FramePacing`의 **마지막 편집분**(UTF-16 리터럴 `"등급 체류"`, `"이후 전이는 개별로"`,
+    `"디스플레이 슬립 정책"`, `STICKMATE_FORCE_TIER`)을 포함 — 오래된 빌드 재사용이 아님을 확인.
+
+### `-nographics` 프레임 함정 전수 조사 → **해당 테스트 0건 (깨끗함)**
+리더 전파 사항(`Time.deltaTime≈0.0001초`라 프레임 수로 초를 재면 영원히 멈춤)을 기준으로 전수 검색:
+- `yield return null` 프레임 카운트 루프의 **최댓값이 30프레임**(정착 대기 용도)이고, 초 단위 대기는
+  전부 `WaitForSeconds` / `WaitForSecondsRealtime` / `Time.time` 데드라인이다.
+- `FloorContactVisibilityTests`의 `for (i<300)`는 프레임이 아니라 `WaitForSeconds(0.05f)` 반복이라 안전.
+- 즉 **최근 라운드들의 보고대로 함정을 피해 짜여 있다**. 재발 감시 포인트로 이 문단을 남긴다.
+
+### 2단계 — 교차 영향 집중 확인
+
+1. **디스플레이 절전 방해 수정** — 코드 경로는 살아 있고 두 빌드에 모두 포함(위 심볼 대조).
+   그러나 **`pmset` 류 검증도, 어떤 자동 회귀 잠금도 테스트에 없다**(아래 Major 2). 이 환경에서
+   검증 가능한 범위: (a) 소스에 `Screen.sleepTimeout = SleepTimeout.SystemSetting` 1회 존재,
+   (b) 그것을 되돌리는 코드가 프로젝트 어디에도 없음(`sleepTimeout` 전수 검색 결과 이 파일 1곳뿐),
+   (c) 빌드 산출물에 해당 로그 리터럴 존재. **실측(`pmset -g assertions`)은 실행 중인 .app이 필요해
+   배치 검증 범위 밖**이며, perf-doc 라운드의 5회 반복 실측이 유일한 근거로 남아 있다.
+2. **적응형 4단계 경계** — `FramePacingPolicy.BuildPlan()` 코드 판독 + EditMode 15건으로 확인.
+   `baseVSyncCount=2` 기준 Active `(2, -1, 1)` / Calm `(2, -1, 2)` / Suspended `(4, -1, 1)` /
+   Away `(4, -1, 2)` / DisplayOff `(0, 4fps, 1)`. **보는 사람이 있는 Active·Calm에서 vSyncCount가
+   기준값 그대로**이고 Away·DisplayOff에서만 바뀌는 설계가 코드·테스트 양쪽에서 성립한다.
+   네거티브 컨트롤(`네거티브컨트롤_보는사람이_없는_등급에서는_vSyncCount를_실제로_바꾼다`)이 있어
+   "항상 참인 단언"이 아님도 확인.
+3. **렌더러 등록 구조(pull)** — 다른 라운드 산출물과 충돌 없음. `CharacterAccessoryRenderer` /
+   `CharacterPetRenderer` / `CharacterFxRenderer` 셋 다 `ICharacterVisualSource`를 구현하고
+   `StickmanAgent.Awake`의 `GetComponentsInChildren<ICharacterVisualSource>(true)` 한 줄로 잡힌다.
+   모자 라운드의 `AccessoryShapeBuilder.IsCoveredByHat`은 손대지 않은 채 그대로 살아 있고(Major 4는
+   여전히 열린 항목), 펫-오너 발판/GETUP 라운드 산출물도 무손상.
+4. **`StickmanPoseAnimator.cs` 동시 편집** — diff 통독 결과 **충돌 없음**. 문워크 수정(`ComputeDistancePerCycle`
+   말미 `* RootScaleX`)과 매달리기 수정(`HangHandReachAboveRoot` 말미 `* RootScaleY`)은 서로 다른
+   메서드이고, 공용으로 추가된 `RootScaleX`/`RootScaleY` 프로퍼티가 같은 규약을 공유한다.
+   `_distancePerCycle`이 `TickWalkPose`에서 **매 프레임 재계산**되므로 런타임 배율 변경(크기 다이얼)도
+   즉시 따라온다는 점을 확인했다(1회 캐시였다면 다이얼 조작 후 다시 문워크가 됐을 것).
+5. **화면 여백/이탈** — 회귀 없음. 이번 실행의 실측 로그:
+   `배율 0.35 보고 0.3130 = 실제 잉크 0.3130` / `0.75 → 0.6036 = 0.6036` / `2.00 → 1.6067 = 1.6067`,
+   수정 전 규칙(`Renderer.bounds`)의 과대분이 각각 0.1935 / 0.4918 / **1.3113유닛**.
+   즉 "배율 2.00에서 ~54pt 더 가장자리로" 간다는 보고가 이번 실행에서도 그대로 재현된다.
+   화면 이탈은 `StickmanOnScreenFramingTests` / `ScreenEdgeTurnaroundTests` **전부 통과**(0건).
+   다만 여백 버퍼가 0이 된 데 따른 잔여 위험을 Minor 5로 정량화해 남긴다.
+
+### 3단계 — 최종 코드 리뷰
+
+#### 좋은 점
+1. **결함의 뿌리를 구조로 봉쇄했다.** `VisibleTopEdgeSolver`(플랫폼 중립 순수 함수)와
+   `CharacterVisualRegistry`(pull 창구)는 둘 다 "한쪽만 고쳐지는 / 등록을 빠뜨리는" **실패 유형
+   자체를 없애는** 방향이다. 증상만 고치는 수정과 질이 다르다.
+2. **네거티브 컨트롤이 진짜다.** `FullscreenSuspendCharacterInkTests`는 수정 전 규칙(페이드)의 알파를
+   **같은 실행의 실제 `dt`와 리플렉션으로 읽은 실제 `FadeSeconds` 상수**로 계산해 대조한다. 추측
+   상수를 박아 넣은 가짜 대조군이 아니다. `OccludedWindowFootholdTests.O1n`, `V1n`,
+   `NegativeControl_수정_전_규칙은...`도 같은 수준이다.
+3. **거짓 안심 테스트를 실제로 걷어냈다.** `CharacterScaleRuntimeTests`가 캐시된 `LineRenderer`가
+   전부 파괴돼 조용히 스킵되던 것을 고치고, `Assert.Greater(dynamicCount, 0)`으로 **"몸 바깥 선을
+   0개 검사하고 통과"하는 경로 자체를 막았다.** 이게 이 라운드에서 가장 값진 변경이다.
+4. **정직한 한계 표기.** Windows의 화면 꺼짐 미감지, 소형 창(B-1) 측정 실패, BitBlt 인과의 미실측을
+   전부 "검증되지 않음"이라고 코드 주석/문서에 명시했다. 확신하는 척하지 않은 것이 신뢰도를 높인다.
+5. **테스트 격리가 근본 수준이다.** `GlobalPlayModeTestIsolation`(`[SetUpFixture]`)이 저장 경로를
+   임시 폴더로 돌려 개발자 개인 파일 오염을 구조적으로 차단했고, `WalkFootSlipTests`가 배율을
+   TearDown에서 복원한다. 어제까지의 "플레이크"가 이번 실행에서 **0건**인 것이 그 효과다.
+6. **원칙 3 감사가 자동화돼 있다.** `UserAssetImmutabilityAuditTests` 5건이 정적 스캔으로 금지 API를
+   막고, 프로덕션의 파일 쓰기는 `CharacterSaveStore`의 `persistentDataPath` 아래 1개 파일뿐임을
+   재확인했다(전수 검색: `File.WriteAllText`/`File.Copy` 각 1곳, 둘 다 자기 샌드박스).
+
+#### 개선할 부분
+
+**Blocker — 0건.**
+
+**★ Major 1 — `MacViewerPresenceService`가 주 디스플레이 ID를 영구 캐시한다 (클램셸/외장 모니터에서 4fps 고착)**
+`Assets/_Project/Scripts/Platform/MacOS/MacViewerPresenceService.cs:121-127`
+```csharp
+if (!_mainDisplayResolved) { _mainDisplay = CGMainDisplayID(); _mainDisplayResolved = true; }
+bool asleep = CGDisplayIsAsleep(_mainDisplay) != 0;
+```
+서비스 인스턴스는 `FramePacing.ApplyOnce()`에서 **앱 시작 시 한 번** 만들어지고 24시간 그대로 산다.
+그런데 `CGMainDisplayID()`는 **디스플레이 구성이 바뀌면 값이 바뀐다**(클램셸로 덮개를 닫아 외장
+모니터가 주 디스플레이가 되는 경우, 모니터 연결/해제, 미러링 전환). 이 코드는 시작 시점의 ID를
+영원히 재조회하지 않으므로, 노트북 덮개를 닫고 외장 모니터로 작업하는 순간 **꺼진 내장 패널의 ID를
+계속 물어보게 되고**, `DisplayAsleep=true` → `DisplayOff` 등급 → **4fps로 고착**된다. 복구 경로는
+덮개를 다시 여는 것과 앱 재시작뿐이다.
+- 이것은 `FramePacingPolicy`의 안전 설계("모르면 내려가지 않는다")로 막히지 않는다. 관측값이
+  `Valid=false`가 아니라 **`Valid=true`인 채로 낡은 것**이기 때문이다.
+- 결과 증상이 하필 이번 라운드의 출발점이었던 사용자 신고("부드럽지 않다")의 **최악 버전**이다.
+- 캐시로 얻는 것도 없다: `CGMainDisplayID()`는 초당 2~5회 호출되는 자리이고 비용이 사실상 0이다.
+- **수정 제안(1줄)**: 캐시를 지우고 매 폴링마다 `CGDisplayIsAsleep(CGMainDisplayID())`로 조회한다.
+  (더 엄밀히 하려면 `CGDisplayRegisterReconfigurationCallback`이지만 이 앱에는 과하다.)
+- **검증 제안**: `CGMainDisplayID` 호출이 `TryGetPresence` 안에 있는지를 확인하는 정적 스캔 1건이면
+  회귀가 잠긴다(하드웨어 없이 잠글 수 있다 — `UserAssetImmutabilityAuditTests`와 같은 기법).
+
+**★ Major 2 — 원칙 2 위반 수정(디스플레이 절전)에 회귀 잠금이 하나도 없다**
+`Assets/_Project/Scripts/Platform/FramePacing.cs:438` `ApplyDisplaySleepPolicy()`
+오늘 발견된 **절대 불변 원칙 2 위반**의 수정인데, 이 프로젝트에서 유일하게 회귀 테스트가 없는
+원칙 위반 수정이다. 자동 테스트 커버리지는 순수 함수 `FramePacingPolicy`뿐이고, `FramePacing` 본체는
+`ApplyOnce`가 **에디터/테스트에서 절대 실행되지 않도록** 설계돼 있어(Enforcer가
+`UNITY_STANDALONE_* && !UNITY_EDITOR`에서만 생성됨) 한 줄도 실행되지 않는다.
+즉 **누군가 그 한 줄을 지워도 174 + 313건이 전부 초록불이다.**
+- 나머지 사용자 신고/원칙 위반은 전부 잠겨 있다(가려진 창 발판 V1~V8+O1~O4, 몸 없는 모자 2건,
+  매달리기 3배율, 문워크 3배율, 획 두께 하한). **이 하나만 예외다.**
+- **수정 제안(약 10줄)**: `ApplyDisplaySleepPolicy()`를 `private` → `internal`로 바꾸면
+  `StickMate.Tests.EditMode`가 곧바로 부를 수 있다(`AssemblyInfo.cs`에 `InternalsVisibleTo`가 이미
+  있고 `FramePacing`도 이미 `internal`이다 — 새 배선이 필요 없다). 테스트는
+  `Screen.sleepTimeout = SleepTimeout.NeverSleep` → 호출 → `SystemSetting`인지 단언 + 네거티브
+  컨트롤(호출 전에는 `NeverSleep`이라 단언이 실제로 갈린다).
+
+**Minor 1 — 양 플랫폼 Enforcer의 `FramePacing` 호출 위치가 다르다 (주석과 코드가 어긋남)**
+`MacOverlayStateEnforcer.cs:191`은 `if (_controller == null) return;` **앞**에서 부르고,
+`WindowsOverlayStateEnforcer.cs:112`는 `if (_controller == null) return;`(106행) **뒤**에서 부른다.
+그런데 Windows 쪽 주석은 macOS와 똑같이 *"창 부착 여부와 무관하게 가장 먼저"* 라고 적혀 있다 —
+**주석이 코드가 하지 않는 일을 설명한다.** 실제 영향은 `_controller`가 파괴된 뒤 Windows에서만
+적응형 등급이 갱신을 멈추는 것(마지막 등급, 최악의 경우 Away 15fps에 고착)이지만, 오늘 오전에
+"macOS에서만 고친 것이 Windows에 전파되지 않아" 사고가 났던 바로 그 부류라 그대로 두면 안 된다.
+
+**Minor 2 — `VisibleTopEdgeSolver`가 "한 곳"으로 모으지 못한 것이 둘 남았다**
+- 임계 상수 `24f`가 **4곳**에 복제돼 있다: `MacWindowService.cs:383`, `Win32WindowService.cs:223`,
+  `VisibleTopEdgeOcclusionTests.cs:50`, `OccludedWindowFootholdTests.cs:56`. 전부 주석에
+  "다른 쪽과 같은 값"이라고 적혀 있는데, 그렇게 적어야 한다는 것 자체가 어긋날 수 있다는 뜻이다.
+  → `VisibleTopEdgeSolver.DefaultMinVisibleWidth` 상수 하나로 올릴 것.
+- 조각 → `PlatformFoothold` 조립 루프가 **3곳**에 복제돼 있다(macOS/Windows/PlayMode 테스트의 가짜
+  서비스). 그 결과 **어느 테스트도 실제 `Win32WindowService.BuildVisibleTopEdgeFootholds()` 배선을
+  실행하지 않는다** — 솔버는 잠겨 있지만 "솔버를 부르는 2패스 배선"을 누가 되돌려도 초록불이다.
+  → 솔버에 `EmitFootholds(...)` 같은 조립 헬퍼를 두면 3곳이 1곳이 되고 테스트가 진짜 배선을 겨냥한다.
+
+**Minor 3 — 문서 참조 2건이 실물과 어긋난다**
+- `VisibleTopEdgeSolver.cs` 클래스 문서가 `Tests/EditMode/VisibleTopEdgeSolverTests.cs`를 가리키는데
+  실제 파일명은 `VisibleTopEdgeOcclusionTests.cs`다(그런 파일은 없다).
+- 같은 테스트 파일의 헤더 목록이 `V1~V7`까지만 적혀 있는데 실제로는 `V8`(화면 밖 클리핑)이 있다.
+이 프로젝트는 주석을 1차 문서로 쓰므로 깨진 참조는 다음 사람의 시간을 실제로 잡아먹는다.
+
+**Minor 4 — 죽은 API 4개 (호출자 0)**
+`FramePacing.ResetForTests()`, `FramePacing.CurrentTier`, `FramePacing.LastPresence`,
+`FrameTimeStats.ResetForTests()` — 전수 검색 결과 **호출하는 곳이 하나도 없다**. 주석에는
+"테스트/진단 창구"라고 적혀 있으나 테스트가 `FramePacingPolicy`(순수 함수)만 겨냥하므로 쓰이지
+않는다. Major 2를 고칠 때 `ResetForTests()`는 실제로 쓰이게 되므로 그때 함께 정리할 것
+(쓸 것 / 지울 것을 그 라운드에서 결정).
+
+**Minor 5 — 시각 반폭의 0.25초 신선도 공백 (여백 버퍼가 0이 되면서 처음으로 드러남)**
+`StickmanAgent.TickVisualHalfWidth`는 **0.25초마다** 갱신하는데, 화면 클램프
+(`StickmanBlackboard.ComputeScreenClampOsBounds`)는 그 값을 **매 프레임** 읽는다. 지금까지는
+`Renderer.bounds` 부풀림(배율 2.00에서 1.31유닛)이 이 공백을 통째로 덮고 있었으나, 이번 라운드가
+그 부풀림을 정당하게 제거하면서 남은 완충은 고정 `ScreenClampMarginOsPx = 8f`뿐이다.
+이번 실행의 자체 로그로 정량화하면:
+```
+정착 프레임(팔 벌림)   몸 잉크 반폭 1.6067유닛   ← 배율 2.00
+최대 돌출 프레임        몸 잉크 반폭 1.2538유닛
+                        → 포즈에 따른 진폭 약 0.35유닛 ≈ 14 OS pt (1유닛 ≈ 41pt)
+```
+즉 갱신 직후 팔이 벌어지면 최대 ~14pt만큼 보고값이 낡을 수 있고, 고정 여유 8pt를 빼면
+**화면 맨 끝에서 순간적으로 최대 ~6pt의 잉크가 화면 밖으로 나갈 수 있다.**
+- 실제 이탈은 이번 스위트에서 **관측되지 않았다**(배회 AI가 클램프에 닿기 전에 돌아선다).
+  그래서 Blocker/Major가 아니라 Minor로 올린다 — 다만 **가설이 아니라 위 숫자에 근거한다.**
+- **테스트가 구조적으로 못 잡는다**: 신규 `CharacterVisualHalfWidthTests`의 두 테스트가 측정 직전에
+  `ForceHalfWidthRemeasure()`로 타이머를 강제 만료시킨다. 알고리즘 정확도는 잠기지만
+  **갱신 주기의 낡음은 정의상 검사되지 않는다.**
+- **수정 제안**: 보고값을 순간값이 아니라 **최근 몇 회 갱신의 최댓값(peak-hold, 서서히 감쇠)** 으로
+  두면 포즈 진폭이 자동으로 흡수된다. 갱신 주기를 줄이는 것(0.25 → 0.1초)은 비용만 늘고 공백은
+  남는다. 어느 쪽이든 `ForceHalfWidthRemeasure()`를 쓰지 않는 테스트 1건이 함께 필요하다.
+
+**Minor 6 — `FramePacing.cs` 628줄에 책임이 4개**
+플랫폼별 초기 적용 / 적응형 거버너(관측·히스테리시스·전이 로그) / 디스플레이 슬립 정책 /
+`FrameTimeStats`가 한 파일이다. 문서가 훌륭해서 지금은 읽히지만, 적응형 거버너는
+`FramePacingGovernor.cs`로 떼어내는 것이 다음 사람에게 낫다(정책은 이미 `ViewerPresence.cs`로
+분리돼 있으니 절반은 이미 된 상태다).
+
+#### 이월된 채 **출하되는** 열린 항목 (리더 확인 요망 — 이번 리뷰의 신규 발견 아님)
+1. **[Major, 가설] Windows에 알파 필터 대응물이 없다.** macOS의 `kCGWindowAlpha < 0.05` 제외에
+   해당하는 것이 `Win32WindowService`에 없음을 재확인했다(`WS_EX_LAYERED`/`GetLayeredWindowAttributes`
+   전수 검색 0건). **오늘의 가려짐 필터가 이 위험을 새로 만들었다** — 전체화면 투명 창(스트리밍/
+   접근성/보안 툴)이 그 아래 발판을 전부 지워 캐릭터가 낙하할 수 있다. 수정 전에는 없던 위험이다.
+2. [Minor] `GetWindowRect`가 DWM 리사이즈 보더(~7px)를 포함 → `DWMWA_EXTENDED_FRAME_BOUNDS` 권고.
+3. [Minor] Windows에 macOS 같은 발판 진단 로그가 없어 1번을 원격 진단할 수단이 없다.
+4. [Minor] `ledgeHangEdgeOffset`(0.14)이 절대 상수라 배율에 비례하지 않는다.
+5. [Major, UX 판단 대기] `AccessoryShapeBuilder.IsCoveredByHat` — 모자를 쓰면 머리 4종이 통째로 사라짐.
+
+### 결론 — **커밋 보류, 아키텍트에게 반려 `(개선 R5)`**
+1단계·2단계의 **모든 검증 게이트가 통과**했고 회귀는 0건이다(174/174, 313/313+의도적 스킵 1,
+빌드 2종 0/0, 심볼 대조 통과). 그러나 리뷰 규칙상 개선할 부분이 있으면 반려하므로 반려한다.
+**Major 2건은 둘 다 소규모다(각각 코드 1줄 / 테스트 약 10줄)**:
+- Major 1 — `CGMainDisplayID()` 캐시 제거(+정적 스캔 1건).
+- Major 2 — `ApplyDisplaySleepPolicy()`를 `internal`로 열고 EditMode 회귀 1건 추가.
+둘 다 오늘 새로 들어온 코드에만 닿고 기존 동작을 건드리지 않으므로, **R5를 먼저 넣고 커밋하는 것**을
+권고한다(순서 판단은 리더 몫). Minor 1~6과 이월 항목은 별도 정리 라운드로 묶어도 무방하다.
+
+### 교차 레이어 영향 로그
+- 없음. 이 라운드는 검증/리뷰만 수행했고 **프로덕션·테스트 소스를 한 줄도 수정하지 않았다.**
+  `Library/ScriptAssemblies` 삭제(재생성됨)와 `Builds/` 재생성, `Logs/te_final_*` 생성이 전부다.
+
+### 2026-08-31 — 리더 라우팅: R5 Major 2건 즉시 수정 배정
+**Major 1**: `MacViewerPresenceService.cs`가 주 디스플레이 ID를 영구 캐시 — 클램셸 모드(노트북 덮고
+외장 모니터 사용)로 전환하면 꺼진 내장 패널을 계속 물어봐서 4fps에 고착(복구=앱 재시작 필요). 1줄
+수정 예상(재조회 또는 변경 감지).
+**Major 2**: 오늘 고친 원칙2 위반(디스플레이 절전 방해)에 회귀 잠금 테스트가 없음 — `ApplyOnce`가
+에디터/테스트에서 실행 안 되게 설계돼 그 수정 줄을 지워도 전체 스위트가 그린라이트. `FramePacing`이
+이미 internal+InternalsVisibleTo 설정돼 있어 private→internal 한 글자 + 테스트 10줄이면 잠김.
+둘 다 코더에게 즉시 배정, 완료 후 바로 커밋.
+
+---
+
+## 2026-08-31 — R5 Major 2건 수정 **[Coder]**
+
+### Major 1 — `MacViewerPresenceService`의 주 디스플레이 ID 영구 캐시 제거
+`Assets/_Project/Scripts/Platform/MacOS/MacViewerPresenceService.cs`
+- `_mainDisplay` / `_mainDisplayResolved` 두 필드를 **삭제**하고
+  `bool asleep = CGDisplayIsAsleep(CGMainDisplayID()) != 0;` 한 줄로 매 폴링마다 재조회한다.
+  test-engineer 권고대로 **가장 단순한 해법(무캐시)** 을 택했다 — TTL 캐시는 "언제까지 낡아도 되는가"라는
+  새 튜닝 상수를 만드는 대신 얻는 것이 0에 가깝다(초당 2~5회 호출, 조회 비용 사실상 0).
+  `CGDisplayRegisterReconfigurationCallback`은 이 앱에 과하다는 판단도 그대로 수용.
+- 왜 중요한가: 낡은 값은 `Valid=false`가 아니라 **`Valid=true`인 채 틀린 값**이라
+  `FramePacingPolicy`의 "모르면 안 내려간다" 안전설계로 못 막고 `DisplayOff`(4fps)에 영구 고착됐다.
+- **회귀 잠금(신규)**: `Tests/EditMode/MainDisplayFreshnessTests.cs` 2건 — 소스 텍스트 정적 스캔
+  (`UserAssetImmutabilityAuditTests`와 같은 기법). 실제 디스플레이 구성 변경이 있어야 드러나는 결함이라
+  헤드리스 배치로는 이 방법이 유일하다. 파일 전체가 아니라 **`TryGetPresence` 본문 안**에 조회가 있는지를
+  본다 + 캐시 필드가 되살아나는 것을 별도로 막는다.
+
+### Major 2 — 디스플레이 절전 정책(원칙 2)에 회귀 잠금 추가
+`Assets/_Project/Scripts/Platform/FramePacing.cs`
+- `ApplyDisplaySleepPolicy()` `private` → `internal` (기존 `InternalsVisibleTo("StickMate.Tests.EditMode")`
+  그대로 사용, 새 배선 0). 왜 열었는지를 `<remarks>`로 코드에 남겼다.
+- **회귀 잠금(신규)**: `Tests/EditMode/DisplaySleepPolicyTests.cs` 2건.
+  1. `Screen.sleepTimeout = NeverSleep` → 직접 호출 → `SystemSetting`인지 단언.
+     (호출 전 상태를 먼저 단언해 "항상 참인 단언"이 아님을 보장, TearDown 대신 `finally`로 원값 복원)
+  2. **정적 스캔 1건 추가** — 1번만으로는 `ApplyOnce`에서 호출만 빼도 통과한다. 시작 경로 배선까지 잠근다.
+- 한계 명시: OS 레벨 실증(`pmset -g assertions`)은 빌드된 .app 실행이 필요해 배치 밖 —
+  perf-doc 라운드의 5회 실측이 여전히 유일한 실환경 근거. 이 테스트가 잠그는 것은 "정책이 올바른 값을
+  설정하는가 + 시작 경로에 배선돼 있는가"까지다(리더 지시 범위 그대로).
+
+### 검증 (전부 이 머신에서 실제 실행, 배치 실행 전 `ps`로 에디터 점유 없음 확인)
+| 항목 | 결과 | 로그 |
+|---|---|---|
+| 컴파일 | **error CS 0 / warning CS 0**, EXIT=0 | `Logs/coder_r5_compile.log` |
+| EditMode 전체 | **178 / 178 통과** (기존 174 + 신규 4), 실패 0 / 스킵 0 | `Logs/coder_r5_editmode_final.xml` |
+| PlayMode 전체 | **314건 중 313 통과 / 실패 0 / 스킵 1**(기존 의도적 헤드리스 스킵), 809.3초 | `Logs/coder_r5_playmode.xml` |
+| macOS 빌드 | **Succeeded, 에러 0 / 경고 0** (103,316,588 bytes) | `Logs/coder_r5_macbuild.log` |
+| Windows 크로스빌드 | **Succeeded, 에러 0 / 경고 0** (88,067,713 bytes) | `Logs/coder_r5_winbuild.log` |
+
+**네거티브 컨트롤 — 4건 전부 확인**(`Logs/coder_r5_nc.xml`, EXIT=2). 세 수정을 실제로 되돌린 상태
+(캐시 필드 복원 / `Screen.sleepTimeout` 대입 삭제 / `ApplyOnce`의 호출 삭제)로 돌려 **4/4 전부 실패**함을
+확인한 뒤 원상 복구했다. 즉 R5가 지적한 "지워도 초록불" 상태가 실제로 해소됐다.
+
+### 교차 레이어 영향 로그
+- **없음(런타임 동작 변경 0)**. Major 2는 접근제한자 한 글자 + 주석뿐이라 동작이 동일하고, Major 1은
+  같은 질문을 매 폴링 재조회할 뿐 반환 계약(`ViewerPresenceSnapshot`)이 그대로다. 프레임 등급 경계·
+  `vSyncCount` 기준값·다른 레이어(입력/렌더/네이티브/AI) 인터페이스 무변경.
+- Minor 4(죽은 API)의 `FramePacing.ResetForTests()`는 이번에도 호출자가 생기지 않았다 — 신규 테스트가
+  `FramePacing`의 정적 상태를 건드리지 않기 때문(`ApplyDisplaySleepPolicy`는 `_applied`를 읽지도 쓰지도
+  않는 독립 메서드다). 즉 R5의 "Major 2를 고칠 때 함께 정리하라"는 전제는 성립하지 않았고, Minor 4는
+  **열린 채로 정리 라운드에 남긴다**(리더 확인 요망).
+- R5 Minor 1~6과 이월 항목(Windows 알파 필터 등)은 이번 범위 밖 — 그대로 열려 있다.

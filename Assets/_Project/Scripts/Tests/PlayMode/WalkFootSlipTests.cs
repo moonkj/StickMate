@@ -20,17 +20,30 @@ namespace StickMate.Tests.PlayMode
     /// 지금까지 이 값은 **실행 로그를 사람이 읽어** 확인해왔는데, 그러면 다음 사람이 각도 표나 다리
     /// 길이나 스무딩 계수를 건드렸을 때 조용히 되돌아간다. 여기서 수치로 잠근다.
     ///
+    /// ★★ 2026-08-31 BUG-WALK-B2 — <b>배율 3점에서 각각 잰다</b>(예전에는 1점뿐이었다).
+    /// 예전 판본은 배율을 명시하지 않고 "씬이 주는 배율"로 돌았는데, 그 배율은 실행 시점에
+    /// Interaction/CornerHoverPanel이 <b>사용자의 저장 파일</b>(stickmate_character.json)을 제때
+    /// 읽었는지에 따라 0.75(프리팹 구운 값)가 되기도 하고 0.35(사용자 저장값)가 되기도 했다.
+    /// 그래서 같은 코드가 실행마다 통과/실패를 오갔고(로그 증거: 몸 전진 5.625유닛=배율 0.75 통과 /
+    /// 2.625유닛=배율 0.35 실패, 미끄러짐 0.54), 그 실패가 "플레이크"로 넘겨져 <b>진짜 버그가
+    /// 여러 라운드 살아남았다</b>. 이제는 세 테스트가 각자 배율을 명시적으로 적용하므로
+    /// 저장 파일 상태와 무관하게 결정적이다.
+    ///
     /// 측정 정의:
     ///   · 디딤발은 **보행 위상으로** 정한다(왼다리 위상 &lt; 0.5 = 왼발 디딤). 이것이 키포즈 표가
     ///     설계한 디딤 국면이자 보폭 역산이 기준으로 삼는 바로 그 구간이므로, 역산의 정합성을 재려면
     ///     반드시 이 정의를 써야 한다.
     ///   · 한 디딤 국면에서 (a) 디딤발 월드 X가 움직인 폭과 (b) 몸이 전진한 거리를 각각 잰다.
     ///   · 미끄러짐 비율 = (a)/(b). 0이면 발이 땅에 박혀 있고 몸만 지나간 것, 1이면 발이 몸과 똑같이
-    ///     끌려간 것(= 완전한 문워크).
+    ///     끌려간 것(= 완전한 문워크). 배율과 무관한 무차원 수라 세 배율을 같은 임계값으로 잠근다.
     ///
-    /// 함께 재는 두 가지(둘 다 2026-08-28 라운드에서 새로 드러난 항목):
+    /// 함께 재는 세 가지:
     ///   · **접지 오차** — 디딤발의 월드 Y가 지면(루트 Y)에서 얼마나 떠 있거나 파고드는가.
     ///     StickmanPoseAnimator.ComputeFootGroundingOffset()이 이 값을 0에 붙이는 역할을 한다.
+    ///     길이 차원이라 임계값을 루트 배율에 비례시킨다.
+    ///   · **보폭 단위 정합** — 발이 실제로 그리는 <b>월드</b> 보폭(발의 몸 기준 X 범위)과 코드가 역산에
+    ///     쓴 DistancePerCycle/2가 같은가. 이게 어긋나면 정의상 주파수가 틀린 것이므로, 배율이 섞여도
+    ///     단위 계약을 직접 잡아낸다(BUG-WALK-B2가 정확히 이 어긋남이었다).
     ///   · **디딤발 불일치율** — 화면에서 더 낮은(=닿아 보이는) 발이 위상상의 디딤발과 다른 시간 비율.
     ///     0이 아니면 그 시간 동안 관객은 "흔드는 발이 땅을 긁는다"고 인지한다(알려진 잔여 과제).
     /// </summary>
@@ -41,8 +54,11 @@ namespace StickMate.Tests.PlayMode
         private const long FloorHandle = 8001L;
         private const float SettleWaitSeconds = 2.5f;
         private const float WarmupSeconds = 0.8f;   // 속도 측정 창(0.1초)과 각도 스무딩이 자리잡을 시간.
-        private const float MeasureSeconds = 3.0f;
+        private const float MeasureSeconds = 4.0f;  // 배율 0.35에서도 디딤 국면이 넉넉히 나오도록.
         private const int MinSamplesPerStance = 4;  // 너무 짧은 구간(발 교대 순간)은 통계에서 제외.
+
+        /// <summary>프리팹이 구워진 배율 = 크기 다이얼의 기본값. 여기서 루트 localScale이 정확히 1이다.</summary>
+        private const float DefaultScale = 0.75f;
 
         /// <summary>결정론적 평지 하나만 돌려주는 최소 스텁(LedgeHangDescentTests와 같은 컨벤션).</summary>
         private sealed class FlatFloorService : IPlatformWindowService
@@ -68,21 +84,64 @@ namespace StickMate.Tests.PlayMode
         private IMovementIntentSource _originalIntent;
         private FootholdPoller _originalPoller;
         private Vector2 _savedOrigin;
+        private float _savedScale = -1f;
 
         [TearDown]
         public void TearDown()
         {
-            if (_agent != null && _agent.Blackboard != null)
+            // 배율은 StickConfig의 런타임 필드(전역)에 남으므로 반드시 되돌린다 — 안 그러면 다음
+            // 테스트가 이 테스트의 배율로 돌아간다(팀에서 이미 겪은 "테스트 간 상태 오염").
+            if (_agent != null)
             {
-                if (_originalIntent != null) _agent.Blackboard.IntentSource = _originalIntent;
-                if (_originalPoller != null) _agent.Blackboard.FootholdPoller = _originalPoller;
+                if (_savedScale > 0f) _agent.ApplyCharacterScale(_savedScale, "테스트 복원");
+                if (_agent.Blackboard != null)
+                {
+                    if (_originalIntent != null) _agent.Blackboard.IntentSource = _originalIntent;
+                    if (_originalPoller != null) _agent.Blackboard.FootholdPoller = _originalPoller;
+                }
             }
             ScreenCoordinateConverter.OverlayOriginOsScreen = _savedOrigin;
             _agent = null;
+            _savedScale = -1f;
         }
+
+        // ============================================================================
+        // (1) 기본 배율 0.75 — 루트 localScale이 정확히 1이라 단위 버그가 숨는 지점
+        // ============================================================================
 
         [UnityTest]
         public IEnumerator StanceFootStaysPlantedWhileBodyMovesForward()
+        {
+            yield return RunSlipMeasurement(DefaultScale);
+        }
+
+        // ============================================================================
+        // (2) ★ 사용자 실제 저장 배율 0.35(다이얼 최소) — 루트 localScale 0.4667.
+        //     로컬 보폭을 월드 속도로 나누면 분모가 2.14배 과대 -> 주파수가 그만큼 느려
+        //     디딤발이 몸에 끌려간다(= 문워크). 사용자가 지금 실제로 쓰는 배율이다.
+        // ============================================================================
+
+        [UnityTest]
+        public IEnumerator StanceFootStaysPlantedAtUserSavedMinScale()
+        {
+            yield return RunSlipMeasurement(StickConfig.MinCharacterScale);
+        }
+
+        // ============================================================================
+        // (3) 반대편 극단 배율 2.00 — 같은 단위 버그가 반대 방향(주파수 과다)으로 나타난다
+        // ============================================================================
+
+        [UnityTest]
+        public IEnumerator StanceFootStaysPlantedAtMaxScale()
+        {
+            yield return RunSlipMeasurement(StickConfig.MaxCharacterScale);
+        }
+
+        /// <summary>
+        /// 주어진 배율에서 평지를 걷게 하고 디딤발 미끄러짐을 실측한다. 세 테스트가 이 한 벌만 쓴다 —
+        /// 배율마다 측정 코드를 복사하면 그중 하나만 고쳐지는 사고가 난다.
+        /// </summary>
+        private IEnumerator RunSlipMeasurement(float characterScale)
         {
             SceneManager.LoadScene("Main", LoadSceneMode.Single);
             yield return null;
@@ -96,9 +155,19 @@ namespace StickMate.Tests.PlayMode
             _originalIntent = bb.IntentSource;
             _originalPoller = bb.FootholdPoller;
             _savedOrigin = ScreenCoordinateConverter.OverlayOriginOsScreen;
+            _savedScale = _agent.CurrentCharacterScale;
             ScreenCoordinateConverter.OverlayOriginOsScreen = Vector2.zero;
 
-            // 화면 전폭 평지 하나 — 걷는 3초 동안 경계/낙하가 개입하지 않게 한다.
+            // ★ 배율을 명시적으로 못박는다(위 클래스 문서의 "저장 파일 의존" 문단). 저장 복원은
+            //   씬 로드 후 2초 안에만 시도되므로(CornerHoverPanel.RestoreGraceSeconds) 여기서 적용한
+            //   값이 나중에 덮이지 않는다.
+            _agent.ApplyCharacterScale(characterScale, "발 미끄러짐 실측");
+            yield return null;
+
+            float rootScale = Mathf.Abs(_agent.transform.localScale.x);
+            float walkSpeedExpected = bb.Config != null ? bb.Config.ResolveWalkSpeed() : 0f;
+
+            // 화면 전폭 평지 하나 — 걷는 동안 경계/낙하가 개입하지 않게 한다.
             float w = Screen.width;
             float h = Screen.height;
             var service = new FlatFloorService();
@@ -108,9 +177,12 @@ namespace StickMate.Tests.PlayMode
             var intent = new ScriptedIntentSource { MoveInputX = 1f };
             bb.IntentSource = intent;
 
-            // 화면 왼쪽 1/4 지점에서 출발해 오른쪽으로 걷는다(측정 구간 내내 평지 위에 머문다).
+            // 화면 왼쪽에서 출발해 오른쪽으로 걷는다. 배율 2.0에서는 보행 속도도 2배라 4초면 화면을
+            // 벗어나므로, 화면 클램프가 개입하기 전에(=측정 전제가 깨지기 전에) 멈출 X를 미리 잡아둔다.
             Vector3 startWorld = ScreenCoordinateConverter.OsScreenToWorld(bb.MainCamera,
-                new Vector2(w * 0.20f, h * 0.55f), 10f, bb.Config);
+                new Vector2(w * 0.12f, h * 0.55f), 10f, bb.Config);
+            Vector3 limitWorld = ScreenCoordinateConverter.OsScreenToWorld(bb.MainCamera,
+                new Vector2(w * 0.85f, h * 0.55f), 10f, bb.Config);
             bb.Body.position = new Vector2(startWorld.x, startWorld.y);
             bb.Body.transform.position = new Vector3(startWorld.x, startWorld.y, bb.Body.transform.position.z);
             bb.Body.linearVelocity = Vector2.zero;
@@ -121,6 +193,10 @@ namespace StickMate.Tests.PlayMode
             StickmanPoseAnimator pose = bb.GetPoseAnimator();
             Assert.IsNotNull(pose, $"{LogPrefix} 포즈 애니메이터가 없습니다.");
             Assert.IsTrue(pose.HasLimbs, $"{LogPrefix} 프리팹에서 팔다리를 찾지 못했습니다 — 측정 자체가 불가능합니다.");
+
+            Debug.Log($"{LogPrefix} 준비 — 요청 배율={characterScale:F2}, 실제 배율={_agent.CurrentCharacterScale:F4}, " +
+                $"루트 localScale={rootScale:F4}, 보행 속도(설정)={walkSpeedExpected:F3}유닛/s, " +
+                $"출발 X={startWorld.x:F3}, 측정 종료 X={limitWorld.x:F3}");
 
             yield return new WaitForSeconds(WarmupSeconds);
             Assert.AreEqual(StickmanStateId.Walk, bb.Machine.CurrentStateId,
@@ -153,6 +229,7 @@ namespace StickMate.Tests.PlayMode
                 yield return null;
                 elapsed += Time.deltaTime;
                 if (bb.Machine.CurrentStateId != StickmanStateId.Walk) break;
+                if (bb.Body.position.x >= limitWorld.x) break; // 화면 클램프 전에 스스로 멈춘다.
 
                 pose.GetFootWorldPositions(out Vector2 left, out Vector2 right);
                 // ★ 디딤발은 "더 낮은 발"이 아니라 **보행 위상**으로 정한다 — 왼다리의 위상 오프셋이 0이고
@@ -182,7 +259,7 @@ namespace StickMate.Tests.PlayMode
                     {
                         float drift = stanceMaxX - stanceMinX;
                         float bodyMove = Mathf.Abs(bodyX - stanceStartBodyX);
-                        if (bodyMove > 0.01f)
+                        if (bodyMove > 0.01f * rootScale)
                         {
                             totalStanceDrift += drift;
                             totalStanceBodyMove += bodyMove;
@@ -210,34 +287,46 @@ namespace StickMate.Tests.PlayMode
             float bodyTravel = bb.Body.position.x - measureStartBodyX;
             float slipRatio = totalStanceBodyMove > 0.0001f ? totalStanceDrift / totalStanceBodyMove : 1f;
             float mismatchRatio = totalFrames > 0 ? (float)mismatchFrames / totalFrames : 1f;
+            float measuredStride = relMax - relMin;                 // 발이 실제로 그린 월드 보폭
+            float codeStride = pose.DistancePerCycle * 0.5f;        // 코드가 주파수 역산에 쓴 보폭
+            float strideRatio = codeStride > 0.0001f ? measuredStride / codeStride : 0f;
 
-            Debug.Log($"{LogPrefix} 종합 — 측정 {elapsed:F2}초, 몸 전진 {bodyTravel:F3}유닛, 디딤 국면 {stanceRuns}회, " +
+            Debug.Log($"{LogPrefix} 종합 — 배율 {_agent.CurrentCharacterScale:F2}(루트 localScale {rootScale:F4}), " +
+                $"측정 {elapsed:F2}초, 몸 전진 {bodyTravel:F3}유닛, 디딤 국면 {stanceRuns}회, " +
                 $"평균 미끄러짐 비율={slipRatio:F3} (0=완벽, 1=완전 문워크), 최악 구간={worstRunRatio:F3}, " +
                 $"한 사이클 이동거리={pose.DistancePerCycle:F3}유닛, 바라보는 방향={pose.FacingSign:F0}");
             Debug.Log($"{LogPrefix} 접지 — 디딤발 월드Y − 지면 범위 [{groundErrMin:+0.0000;-0.0000}, {groundErrMax:+0.0000;-0.0000}]유닛 " +
                 $"(음수=지면 파고듦 / 양수=떠 있음, 0에 가까울수록 좋다) | 디딤발 불일치율={mismatchRatio * 100f:F1}% " +
                 "(화면상 더 낮은 발이 위상상의 디딤발과 다른 시간 — 남은 잔여 과제)");
             Debug.Log($"{LogPrefix} 진단 — 왼다리 엉덩이각 [{hipMin:F1}, {hipMax:F1}]도(표 기대 ±25), " +
-                $"왼발의 몸 기준 X 범위 [{relMin:F3}, {relMax:F3}]유닛 (폭 {relMax - relMin:F3} — 실제 한 걸음 보폭이며, " +
-                $"사이클 이동거리의 절반({pose.DistancePerCycle * 0.5f:F3})과 같아야 발이 붙는다)");
+                $"왼발의 몸 기준 X 범위 [{relMin:F3}, {relMax:F3}]유닛 " +
+                $"(실측 월드 보폭 {measuredStride:F3} vs 코드가 쓴 보폭 {codeStride:F3} -> 비율 {strideRatio:F3}, " +
+                "1에서 멀어지면 보폭의 단위가 어긋난 것이다)");
 
             Assert.Greater(stanceRuns, 3,
                 $"{LogPrefix} 측정 구간에서 디딤 국면이 {stanceRuns}회뿐입니다 — 걷기 사이클이 거의 돌지 않았습니다.");
-            Assert.Greater(bodyTravel, 1f,
-                $"{LogPrefix} 몸이 {bodyTravel:F3}유닛밖에 전진하지 않았습니다 — 측정 전제가 깨졌습니다.");
+            Assert.Greater(bodyTravel, 0.5f * walkSpeedExpected * elapsed,
+                $"{LogPrefix} 몸이 {bodyTravel:F3}유닛밖에 전진하지 않았습니다(기대 {walkSpeedExpected * elapsed:F3}) — 측정 전제가 깨졌습니다.");
 
             // 임계값의 의미: 디딤발이 그 구간의 몸 이동 거리의 30% 넘게 함께 끌려가면 육안으로 명확한
-            // 문워크로 보인다. 현재 구현의 실측값은 이보다 한참 아래이며(위 종합 로그 참고), 이 잠금은
-            // "각도 표/다리 길이/스무딩 계수를 건드려 역산이 깨지면 즉시 빨간불"을 위한 것이다.
+            // 문워크로 보인다. 비율이라 배율과 무관하게 같은 값을 쓴다.
             Assert.Less(slipRatio, 0.30f,
-                $"{LogPrefix} 디딤발이 미끄러집니다(문워크) — 평균 미끄러짐 비율 {slipRatio:F3}. " +
+                $"{LogPrefix} 디딤발이 미끄러집니다(문워크) — 배율 {_agent.CurrentCharacterScale:F2}에서 " +
+                $"평균 미끄러짐 비율 {slipRatio:F3}. " +
                 "보행 사이클 주파수 역산(StickmanPoseAnimator._distancePerCycle)이 실제 보폭과 어긋났을 가능성이 큽니다.");
+
+            // ★ 단위 계약 직접 잠금 — 코드가 역산에 쓴 보폭이 발이 실제로 그리는 **월드** 보폭과 같은가.
+            //   BUG-WALK-B2에서는 배율 0.35에서 이 비율이 0.47(≈루트 localScale)로 떨어졌다.
+            Assert.AreEqual(1f, strideRatio, 0.25f,
+                $"{LogPrefix} 코드가 쓴 보폭({codeStride:F3})과 발이 실제로 그린 월드 보폭({measuredStride:F3})이 " +
+                $"{strideRatio:F3}배 어긋납니다 — 로컬 유닛을 월드 유닛으로 쓰고 있을 가능성이 큽니다(BUG-WALK-B2).");
 
             // 접지 보정(ComputeFootGroundingOffset)이 살아 있는지 잠근다 — 이 값이 커지면 디딤발이
             // 지면을 들락거려 "발이 땅에 안 붙은" 느낌이 난다(보정 도입 전 실측: 파고듦 0.025 / 뜸 0.070).
+            // 길이 차원이라 임계값을 루트 배율에 비례시킨다(0.06은 루트 localScale 1에서 잰 값).
             float worstGroundErr = Mathf.Max(Mathf.Abs(groundErrMin), Mathf.Abs(groundErrMax));
-            Assert.Less(worstGroundErr, 0.06f,
-                $"{LogPrefix} 디딤발이 지면에서 {worstGroundErr:F4}유닛 벗어납니다 — " +
+            Assert.Less(worstGroundErr, 0.06f * rootScale,
+                $"{LogPrefix} 디딤발이 지면에서 {worstGroundErr:F4}유닛 벗어납니다(허용 {0.06f * rootScale:F4}) — " +
                 "StickmanPoseAnimator.ComputeFootGroundingOffset()의 접지 보정이 깨졌을 가능성이 큽니다.");
         }
     }

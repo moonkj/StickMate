@@ -35,6 +35,17 @@ namespace StickMate.Core
         private StickmanBlackboard _blackboard;
         private Renderer[] _renderers;
 
+        /// <summary>
+        /// ★ 몸 바깥에서 잉크를 얹는 부품(액세서리/펫/FX)의 <b>단일 창구</b>(2026-08-31).
+        /// 위 <see cref="_renderers"/>는 Awake 시점 스냅샷이라 <b>런타임 생성되는 것을 영원히 못 본다</b> —
+        /// 그 하나의 뿌리에서 원칙 2 위반(전체화면 감지 시 몸 없는 모자가 남는다) / 획 두께 하한 미적용 /
+        /// 화면 여백 누락이 동시에 나왔다. 소비자 셋(숨기기·획두께·시각반폭)은 전부 이 창구를 본다.
+        /// </summary>
+        private readonly CharacterVisualRegistry _dynamicVisuals = new CharacterVisualRegistry();
+
+        /// <summary>테스트/진단용 — 위 단일 창구. 읽는 쪽은 <c>Refresh()</c>를 먼저 부른다.</summary>
+        public CharacterVisualRegistry DynamicVisuals => _dynamicVisuals;
+
         /// <summary>물리 반폭 실측용 콜라이더 캐시(2026-08-30 R3-M1). Awake에서 한 번만 모은다.</summary>
         private Collider2D[] _colliders;
         private LineRenderer[] _lineRenderers; // 색 프리셋 일괄 갱신(ApplyInkColor) 대상 캐시.
@@ -242,6 +253,14 @@ namespace StickMate.Core
             // 몸통/머리링/눈/팔다리가 전부 LineRenderer라 이 배열 하나면 캐릭터 전체를 덮는다.
             _lineRenderers = GetComponentsInChildren<LineRenderer>(true);
             CacheBakedStrokeWidths();
+
+            // ★ 단일 창구 배선(_dynamicVisuals 문서). 부품 목록을 여기 적지 않는다 —
+            //   ICharacterVisualSource를 구현한 것이 스스로 잡힌다(StickmanBlackboard의
+            //   ICharacterInkExtentProvider 수집과 같은 관례). 그래야 다섯 번째 부품이 생겨도
+            //   이 줄을 고칠 필요가 없다.
+            _dynamicVisuals.BindSources(GetComponentsInChildren<ICharacterVisualSource>(true));
+            // 하한은 카메라/화면에서 나오므로 첫 프레임(액세서리가 굽기 전)부터 유효해야 한다.
+            _minStrokeWorldWidth = ResolveMinStrokeWorldWidth();
 
             // ★ "프리팹이 어떤 배율로 구워졌는가"를 <b>어떤 다이얼 조작보다 먼저</b> 한 번만 캐싱한다.
             // 루트 localScale이 아직 1인 이 시점의 실측 배율이 정확히 그 값이다. 이걸 놓치면
@@ -541,26 +560,92 @@ namespace StickMate.Core
         private const float VisualHalfWidthRefreshInterval = 0.25f;
         private float _visualHalfWidthTimer = float.MaxValue;
 
+        // ★★ 2026-08-31 — 이 계산에는 <b>두 개의 결함이 동시에</b> 있었고, 서로를 가리고 있었다.
+        //
+        // (1) <c>Renderer.bounds</c>를 썼다 — 이 프로젝트가 "쓰면 안 된다"고 문서화한 바로 그 API다
+        //     (Tests/PlayMode/StickmanInkBounds: LineRenderer.bounds는 실제 잉크보다 약 1.0유닛
+        //     부풀려져 있고, 그 부풀림을 실측으로 오독한 것이 사용자가 세 번 신고한 40pt 바닥 인셋의
+        //     원인이었다). 부풀림은 루트 스케일을 따라가므로 배율 2.00에서 반폭이 실제 잉크의 2.6배
+        //     (과대분 1.81유닛 ≈ 실사용 74pt)였다 — 캐릭터 폭보다 넓은 여백을 남기고 돌아섰다.
+        // (2) 이 계산에 <b>액세서리가 한 개도 안 들어갔다</b>(Awake 캐시 배열 문제). 긴 망토는 배율
+        //     2.00에서 몸보다 0.30유닛 더 튀어나오는데 아무도 그것을 몰랐다.
+        //
+        // 지금까지 망토가 잘리지 않은 이유는 순전히 (1)의 부풀림이 (2)의 돌출을 우연히 덮고 있어서다.
+        // <b>둘을 반드시 함께 고쳐야 한다</b> — (1)만 고치면 그 순간 망토가 잘리고, (2)만 고치면
+        // 과대 여백이 그대로 남는다.
+        //
+        // 대신 쓰는 방법: <b>지금 실제로 그리는 정점</b>에서 잰다. 액세서리가 자기 잉크 최저 Y를 답할
+        // 때 쓰는 것과 같은 기법이며(Interaction/CharacterAccessoryRenderer.TryGetLowestInkWorldY),
+        // 정점은 중심선이므로 획 반두께를 더해야 실제 잉크 가장자리가 된다.
         private void TickVisualHalfWidth(float deltaTime)
         {
             _visualHalfWidthTimer += deltaTime;
             if (_visualHalfWidthTimer < VisualHalfWidthRefreshInterval) return;
             _visualHalfWidthTimer = 0f;
-            if (_renderers == null || _body == null || _blackboard == null) return;
+
+            // 화면/카메라에서 나오는 값이라 여기서 함께 갱신한다(획 두께 하한의 단일 소스).
+            _minStrokeWorldWidth = ResolveMinStrokeWorldWidth();
+
+            if (_body == null || _blackboard == null) return;
 
             float centerX = _body.position.x;
             float halfWidth = 0f;
-            for (int i = 0; i < _renderers.Length; i++)
+
+            if (_lineRenderers != null)
             {
-                Renderer r = _renderers[i];
-                if (r == null || !r.enabled) continue;
+                for (int i = 0; i < _lineRenderers.Length; i++)
+                {
+                    halfWidth = Mathf.Max(halfWidth, MeasureInkHalfWidth(_lineRenderers[i], centerX));
+                }
+            }
+
+            // 몸 바깥의 잉크 — 단일 창구(_dynamicVisuals 문서). <b>몸에 붙은 것만</b> 센다:
+            // 펫/FX는 몸과 독립으로 돌아다니거나 땅에 남으므로 "내 몸이 얼마나 넓은가"가 아니다
+            // (Core/CharacterVisualRegistry.CharacterVisualAnchor 참고).
+            _dynamicVisuals.Refresh();
+            for (int i = 0; i < _dynamicVisuals.Count; i++)
+            {
+                CharacterVisualRegistry.Entry e = _dynamicVisuals[i];
+                if (e.Anchor != CharacterVisualAnchor.BodyAttached) continue;
+                if (e.Line != null)
+                {
+                    halfWidth = Mathf.Max(halfWidth, MeasureInkHalfWidth(e.Line, centerX));
+                    continue;
+                }
+                // 채움 면(MeshRenderer)의 bounds는 <b>실제 메시 정점</b>에서 나오므로 부풀지 않는다
+                // — LineRenderer.bounds와 달리 그대로 쓸 수 있다(액세서리의 최저 Y 계산과 같은 판단).
+                Renderer r = e.Renderer;
+                if (r == null || !r.enabled || !r.gameObject.activeInHierarchy) continue;
                 Bounds b = r.bounds;
                 halfWidth = Mathf.Max(halfWidth, Mathf.Abs(b.max.x - centerX));
                 halfWidth = Mathf.Max(halfWidth, Mathf.Abs(centerX - b.min.x));
             }
+
             _blackboard.CharacterVisualHalfWidthWorld = halfWidth;
 
             TickPhysicalHalfWidth();
+        }
+
+        /// <summary>선 하나가 <paramref name="centerX"/>에서 좌우로 뻗은 <b>실제 잉크</b> 반폭.
+        /// 정점은 중심선이라 획 반두께를 더한다. 두께는 Transform 스케일을 따라가지 않으므로
+        /// (2026-08-30 실측) 월드 단위 그대로다.</summary>
+        private static float MeasureInkHalfWidth(LineRenderer lr, float centerX)
+        {
+            if (lr == null || !lr.enabled || !lr.gameObject.activeInHierarchy) return 0f;
+            int count = lr.positionCount;
+            if (count <= 0) return 0f;
+
+            float maxDx = 0f;
+            bool world = lr.useWorldSpace;
+            Transform t = lr.transform;
+            for (int q = 0; q < count; q++)
+            {
+                Vector3 p = lr.GetPosition(q);
+                float x = world ? p.x : t.TransformPoint(p).x;
+                float dx = Mathf.Abs(x - centerX);
+                if (dx > maxDx) maxDx = dx;
+            }
+            return maxDx + Mathf.Max(lr.startWidth, lr.endWidth) * 0.5f;
         }
 
         // ============================================================================
@@ -736,7 +821,9 @@ namespace StickMate.Core
             float baked = BakedCharacterScale;
             if (baked <= 0.0001f || float.IsNaN(baked)) baked = 1f;
             float ratio = scale / baked;
-            float floorWorld = ResolveMinStrokeWorldWidth();
+            // 액세서리/펫/FX가 이 프레임에 다시 구우면서 읽어갈 값이므로 여기서 먼저 최신화한다.
+            _minStrokeWorldWidth = ResolveMinStrokeWorldWidth();
+            float floorWorld = _minStrokeWorldWidth;
 
             for (int i = 0; i < _lineRenderers.Length && i < _bakedStrokeWidths.Length; i++)
             {
@@ -746,7 +833,41 @@ namespace StickMate.Core
                 lr.startWidth = width;
                 lr.endWidth = width;
             }
+
+            // ★ 2026-08-31 — 몸 바깥의 잉크에도 <b>같은 하한</b>을 건다(단일 창구).
+            //   여기서는 <b>올리기만</b> 한다(비율 재계산 금지): 액세서리/펫/FX의 두께는 각자
+            //   StickmanMetrics에서 비례로 유도하고 있고, 그 비례값은 소유자가 다시 구울 때
+            //   자기 하한(MinStrokeWorldWidth)을 이미 반영한다. 여기서 비율까지 다시 곱하면
+            //   같은 배율이 두 번 걸린다. 이 훑기는 "다시 굽기 전까지의 한 프레임"을 메우는 안전망이다.
+            _dynamicVisuals.Refresh();
+            for (int i = 0; i < _dynamicVisuals.Count; i++)
+            {
+                LineRenderer lr = _dynamicVisuals[i].Line;
+                if (lr == null) continue;
+                if (lr.startWidth < floorWorld) lr.startWidth = floorWorld;
+                if (lr.endWidth < floorWorld) lr.endWidth = floorWorld;
+            }
         }
+
+        /// <summary>
+        /// ★ 화면상 최소 획 두께(<see cref="StickConfig.MinStrokeScreenPoints"/>)를 월드 유닛으로
+        /// 환산한 값 — <b>몸/액세서리/펫/FX가 공유하는 단일 소스</b>(2026-08-31).
+        ///
+        /// <para>왜 공개하는가: 이 하한은 지금까지 몸에만 걸려 있었고, 액세서리(전신높이×0.0211)와
+        /// 펫/FX(전신높이×0.022)는 <b>하한 없는 순수 비례</b>였다. 그래서 출하 기본 배율 0.75에서도
+        /// 액세서리 획이 1.47pt로 하한(2pt) 미달이었고, 다이얼 최소값 0.35에서는 0.69pt —
+        /// 몸의 1/6이라 왕관 지그재그·방울·외알안경 체인·배낭 끈이 안티에일리어싱에 묻혔다.
+        /// 부품마다 하한을 따로 적으면 반드시 어긋나므로 여기 하나만 읽게 한다.</para>
+        ///
+        /// <para>값은 카메라 직교 크기/화면 높이/DPI에서만 나오므로 사실상 상수다 —
+        /// 매 호출 재계산하지 않고 <see cref="VisualHalfWidthRefreshInterval"/> 주기로 갱신한 값을
+        /// 돌려준다(FX 조각 생성처럼 자주 도는 경로에서 Camera.main/Screen을 반복해 읽지 않기 위해).</para>
+        /// </summary>
+        public float MinStrokeWorldWidth => _minStrokeWorldWidth > 0f
+            ? _minStrokeWorldWidth
+            : StickConfig.MinStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
+
+        private float _minStrokeWorldWidth;
 
         /// <summary>화면상 최소 획 두께를 월드 유닛으로 환산한다. 카메라의 직교 크기와 화면 높이(포인트)를
         /// 실측해서 쓰므로, 프리팹을 구울 때의 근사(창 높이 846pt 고정)보다 정확하다. 카메라가 없으면
@@ -811,13 +932,21 @@ namespace StickMate.Core
             SetBodiesSimulated(false); // 물리 시뮬레이션도 함께 멈춰 숨겨진 동안 위치가 흐트러지지 않게 함.
             SetRenderersEnabled(false);
 
+            // 2026-08-31 성능 라운드: 물리/렌더러를 껐어도 앱은 여전히 초당 60번 "빈 화면"을 그려 OS
+            // 컴포지터에 제출한다. 이 앱은 전체화면 투명 오버레이라 프레임 제출 1회 = 화면 전체 재합성이고,
+            // 그 비용은 하필 사용자가 전체화면 게임을 하는 바로 그 순간에 부과된다(비침해 원칙 2의 구멍).
+            // 숨겨져 있는 동안에는 부드러움이 아무 의미가 없으므로 프레임을 더 깊게 조인다.
+            // 에디터/테스트에서는 FramePacing이 적용된 적이 없어 이 호출이 통째로 no-op이다.
+            Platform.FramePacing.SetSuspended(true);
+
             // ★ 2026-08-29 (리더 지시) — 여기에 로그가 **한 줄도 없었다**. 사용자 신고 "캐릭터가 안
             // 보이다가 클릭하면 나타난다"를 조사할 때 "전체화면 Suspend 때문인가?"를 가릴 수단이
             // 전혀 없어서 Player.log 전수를 뒤져야 했다. 캐릭터가 화면에서 사라지는 것은 이 앱에서
             // 가장 눈에 띄는 사건이므로 사유와 함께 반드시 남긴다(판정 근거 창 이름/bounds는 바로 앞
             // 줄에 [전체화면판정] 로그로 남는다 — Platform/MacOS/MacWindowService.cs 참고).
             Debug.Log($"[전체화면숨김] 전체화면 앱이 감지되어 캐릭터를 숨기고 물리를 멈춥니다(비침해 원칙 2) — " +
-                $"숨기기 직전 상태={current}, 렌더러 {( _renderers != null ? _renderers.Length : 0)}개 비활성화. " +
+                $"숨기기 직전 상태={current}, 몸 렌더러 {( _renderers != null ? _renderers.Length : 0)}개 + " +
+                $"액세서리/펫/FX {_dynamicVisuals.Count}개 비활성화. " +
                 "직전 [전체화면판정] 줄에 어느 창 때문인지가 적혀 있습니다.");
             // TODO(Phase 2 렌더링 레이어): 즉시 on/off 대신 ≤200ms 페이드 아웃/인 연출 추가.
         }
@@ -838,6 +967,9 @@ namespace StickMate.Core
             {
                 SetRenderersEnabled(true);
             }
+
+            // Suspend()에서 조였던 프레임 상한을 평소 값으로 되돌린다(위 주석 참고).
+            Platform.FramePacing.SetSuspended(false);
 
             // Suspend()와 짝을 이루는 로그(위 주석 참고). 가출 은신 중이라 일부러 감춰둔 경우를
             // 명시적으로 구분해 적는다 — 그러지 않으면 "Resume 했는데도 캐릭터가 안 보인다"가
@@ -864,12 +996,39 @@ namespace StickMate.Core
             }
         }
 
+        /// <summary>
+        /// 캐릭터를 그 프레임에 보이게/안 보이게 한다. 전체화면 자동 숨김(원칙 2)과 가출 은신이
+        /// 공유하는 유일한 통로다(<see cref="StickmanBlackboard.SetCharacterVisible"/>).
+        ///
+        /// ★ 2026-08-31 — <b>숨기기는 몸 바깥의 잉크까지 같은 프레임에</b> 끈다.
+        /// 예전에는 Awake에서 캐시한 몸 12개만 껐고, 액세서리/펫/FX는 자기 HeadOutline을 관찰해
+        /// 0.18~0.25초에 걸쳐 <b>페이드아웃</b>했다. 그 사이 사용자가 방금 켠 전체화면 게임 위에
+        /// "몸 없는 모자·망토·펫 공·반짝임"이 그대로 떠 있었다(실측: SUSPEND+0f에서 몸 0개 / 액세서리
+        /// 12개 / 펫 12개 / FX 12개). 가출 숨바꼭질에서는 그것들이 숨은 자리를 알려줬다.
+        /// 원칙 2는 "감지 시 자동 숨김"이지 "감지 후 0.25초 뒤 숨김"이 아니다.
+        ///
+        /// <para>★ 반대로 <b>다시 보이게 할 때는 몸만</b> 켠다(의도된 비대칭). 지금 무엇을 그려야 하는가
+        /// (장비를 착용 중인가/해금됐는가/랙돌인가/펫 아이템이 무엇인가)는 각 소유자가 우리보다 정확히
+        /// 안다 — 여기서 무조건 켜면 벗어 둔 장비의 옛 렌더러까지 한 프레임 번쩍인다. 소유자의
+        /// 페이드인은 원칙 위반이 아니다(숨기는 쪽만 즉시여야 한다).</para>
+        /// </summary>
         private void SetRenderersEnabled(bool enabled)
         {
-            if (_renderers == null) return;
-            for (int i = 0; i < _renderers.Length; i++)
+            if (_renderers != null)
             {
-                if (_renderers[i] != null) _renderers[i].enabled = enabled;
+                for (int i = 0; i < _renderers.Length; i++)
+                {
+                    if (_renderers[i] != null) _renderers[i].enabled = enabled;
+                }
+            }
+
+            if (enabled) return;
+
+            _dynamicVisuals.Refresh();
+            for (int i = 0; i < _dynamicVisuals.Count; i++)
+            {
+                Renderer r = _dynamicVisuals[i].Renderer;
+                if (r != null) r.enabled = false;
             }
         }
 

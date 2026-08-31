@@ -184,7 +184,9 @@ namespace StickMate.States
         /// </summary>
         private float _distancePerCycle;
 
-        // 다리 마디 길이 캐시(월드 유닛) — 보폭 계산 입력. 프리팹 지오메트리에서 1회만 읽는다.
+        // 다리 마디 길이 캐시(<b>루트 로컬 유닛</b>) — 보폭 계산 입력. 프리팹 지오메트리에서 1회만 읽는다.
+        // Transform 스케일은 여기 반영되지 않는다(BoxCollider2D.size는 스케일을 곱해 저장되지 않는다).
+        // 월드 유닛이 필요한 곳은 ComputeDistancePerCycle처럼 RootScaleX/Y를 곱해서 쓴다.
         private readonly float _legUpperLength;
         private readonly float _legLowerLength;
 
@@ -295,7 +297,23 @@ namespace StickMate.States
             _distancePerCycle = ComputeDistancePerCycle(1f);
         }
 
-        /// <summary>보폭(한 걸음) × 2 = 한 사이클 이동 거리. <see cref="_distancePerCycle"/> 문서 참고.</summary>
+        /// <summary>
+        /// 보폭(한 걸음) × 2 = 한 사이클 이동 거리(<b>월드 유닛</b>). <see cref="_distancePerCycle"/> 문서 참고.
+        ///
+        /// ★★ 2026-08-31 BUG-WALK-B2 (문워크) — 마지막에 <see cref="RootScaleX"/>를 곱하는 것이 핵심이다.
+        /// 입력인 <see cref="_legUpperLength"/>/<see cref="_legLowerLength"/>는 BoxCollider2D.size에서
+        /// 읽은 <b>로컬</b> 길이라 Transform 스케일이 빠져 있는데, 이 값을 나누는 쪽
+        /// (<see cref="TickWalkPose"/>의 _smoothedSpeed)은 루트의 <b>월드</b> X 이동량 실측이다.
+        /// 단위가 다른 둘을 나누면 루트 localScale이 1이 아닌 순간 사이클 주파수가 통째로 어긋난다:
+        ///   · 배율 0.35(사용자 저장값, 루트 localScale 0.4667) -> 분모가 2.14배 과대 -> 주파수가
+        ///     2.14배 느려 디딤발이 몸에 끌려간다 = 문워크(실측 미끄러짐 비율 0.54, 상한 0.30).
+        ///   · 배율 2.00 -> 반대로 주파수가 2.67배 빨라 발이 앞뒤로 종종거린다.
+        /// 프리팹이 0.75로 구워져 있어 기본 다이얼(0.75)에서만 localScale이 정확히 1이라 어긋남이 0이었고,
+        /// 그래서 기본 배율 테스트를 통과한 채 살아 있었다(<see cref="HangHandReachAboveRoot"/>와 같은 계열).
+        ///
+        /// StickConfig.ResolveWalkSpeed()의 "속도를 배율에 비례시키면 주파수가 배율과 무관해진다"는 설계는
+        /// <b>보폭도 배율에 비례할 때만</b> 성립한다 — 이 곱셈이 그 전제를 실제로 참으로 만든다.
+        /// </summary>
         private float ComputeDistancePerCycle(float amplitudeScale)
         {
             if (_legUpperLength <= 0f || _legLowerLength <= 0f) return 0f;
@@ -306,7 +324,7 @@ namespace StickMate.States
                 _legUpperLength, _legLowerLength);
             float toeOff = FootHorizontalOffset(LegHipKeys[4] * amplitudeScale, LegKneeKeys[4] * amplitudeScale,
                 _legUpperLength, _legLowerLength);
-            return Mathf.Abs(contact - toeOff) * 2f;
+            return Mathf.Abs(contact - toeOff) * 2f * RootScaleX;
         }
 
         /// <summary>
@@ -583,6 +601,23 @@ namespace StickMate.States
         /// 어깨 위치(목 길이)나 팔 길이를 바꿔도 손이 모서리에서 떨어지거나 파묻히지 않는다.
         /// 계산은 ApplyAngle이 실제로 쓰는 것과 같은 회전식이다(각도 θ의 마디 끝 방향 = (sinθ, −cosθ)).
         /// 좌우 대칭이라 오른팔 하나만 계산하면 충분하다(팔이 없으면 0).
+        ///
+        /// ★★ 2026-08-31 BUG-LH-B1 (사용자 신고 "제대로 경계면에서 매달리는게 아니고 좀 밑에서 매달림")
+        /// ── 반드시 **루트 스케일을 곱해** 월드 유닛으로 내보내야 한다.
+        /// <see cref="Segment.PivotLocal"/>(= HingeJoint2D.connectedAnchor)와 <see cref="Segment.Length"/>
+        /// (= BoxCollider2D.size.y)는 둘 다 **루트 로컬 유닛**이다. Transform 스케일은 이 두 값에
+        /// 반영되지 않는다(콜라이더 size/조인트 anchor는 스케일을 곱해 저장되지 않는다). 반면 호출부인
+        /// LedgeHangState는 이 값을 그대로 **월드 Y에서 빼서**(모서리 월드Y − 이 값) 루트를 배치한다.
+        /// 그래서 루트 localScale이 1이 아닌 순간 그 차이가 통째로 어긋남이 된다:
+        ///   · 실측(2026-08-31, 640x480 PlayMode) 배율 0.35(= 사용자 저장값, 루트 localScale 0.4667)
+        ///     -> 손끝이 경계면보다 **1.0013유닛 아래**(캐릭터 키보다 더 아래에 매달렸다).
+        ///   · 배율 2.00(루트 localScale 2.6667) -> 손끝이 경계면보다 3.1429유닛 **위**.
+        /// 프리팹이 0.75로 구워져 있어 기본 다이얼(0.75)에서만 localScale = 1이라 어긋남이 0이었고,
+        /// 그래서 이 버그가 기본값 테스트를 통과한 채 살아 있었다.
+        ///
+        /// 같은 함정을 이미 <see cref="StickMate.Core.StickmanMetrics"/>.Measure()가 rootScaleY를 곱해
+        /// 막고 있다("아래 모든 로컬 치수에 곱해 '월드 유닛'이라는 이 클래스의 계약을 지킨다"). 여기도
+        /// 정확히 같은 규약을 따른다 — 로컬 유닛을 월드 유닛이라 부르지 않는다.
         /// </summary>
         public float HangHandReachAboveRoot(in LedgeHangPoseSettings settings)
         {
@@ -596,7 +631,34 @@ namespace StickMate.States
             float y = arm.Upper.PivotLocal.y;
             y += arm.Upper.Length * -Mathf.Cos(upperAngle * Mathf.Deg2Rad);
             if (arm.Lower != null) y += arm.Lower.Length * -Mathf.Cos(lowerAngle * Mathf.Deg2Rad);
-            return y;
+            return y * RootScaleY;
+        }
+
+        /// <summary>루트의 월드 배율(X). 가로 길이(보폭)를 월드 유닛으로 바꿀 때 곱한다 — 세로를 다루는
+        /// <see cref="RootScaleY"/>와 같은 규약이며, 배율은 균일하지만 축이 다른 값을 섞지 않으려고
+        /// 가로는 가로 배율로 환산한다. 좌우 반전은 스케일이 아니라 각도 부호(_facingSign)로 하므로
+        /// 이 값은 음수가 될 일이 없지만, 외부에서 뒤집어도 보폭이 음수가 되지 않도록 절댓값을 쓴다.</summary>
+        private float RootScaleX
+        {
+            get
+            {
+                if (_root == null) return 1f;
+                float s = Mathf.Abs(_root.lossyScale.x);
+                return (s > 0.0001f && !float.IsNaN(s)) ? s : 1f;
+            }
+        }
+
+        /// <summary>루트의 월드 배율(Y). 로컬 지오메트리(PivotLocal / Length)를 월드 길이로 바꿀 때
+        /// 곱한다. 0/음수/NaN은 1로 막는다 — 배율이 잘못 들어와도 "매달림 높이 0"(= 발판 위에 서 있는
+        /// 것처럼 보임) 같은 조용한 파손을 만들지 않기 위해서다.</summary>
+        private float RootScaleY
+        {
+            get
+            {
+                if (_root == null) return 1f;
+                float s = Mathf.Abs(_root.lossyScale.y);
+                return (s > 0.0001f && !float.IsNaN(s)) ? s : 1f;
+            }
         }
 
         /// <summary>

@@ -47,6 +47,7 @@ namespace StickMate.EditorTools
         {
             ConfigureRunInBackground();
             ConfigureAntiAliasing();
+            ConfigureResidencyFootprint();
 
             string[] scenes = GetEnabledScenePaths();
             if (scenes.Length == 0)
@@ -173,6 +174,118 @@ namespace StickMate.EditorTools
                 $"(전체 {names.Length}개 품질 레벨) — 투명 창에서 캐릭터 윤곽선 계단 현상 제거용.");
         }
 
+        /// <summary>
+        /// 24시간 상주 앱의 **메모리/CPU 상시 점유**를 줄이는 프로젝트 설정 2종을 강제한다
+        /// (2026-08-31 성능 라운드, 사용자 신고 "메모리 185MB / CPU 1.5%" 대응).
+        /// ConfigureRunInBackground/ConfigureAntiAliasing과 같은 멱등 패턴이다.
+        ///
+        /// ============================================================================
+        /// 왜 이 두 개인가 — 추측이 아니라 실행 중인 .app을 계측해서 골랐다
+        /// ============================================================================
+        /// 실행 중인 빌드(17분 경과, 유휴 = 캐릭터가 걷기만 하는 상태)를 `vmmap`으로 뜯어보니
+        /// 물리 풋프린트 543MB 중 **압도적 다수가 GPU 프레임버퍼**였다. 텍스처/폰트/메시/코드가
+        /// 아니다(이 라운드 이전의 통념을 실측이 뒤집었다):
+        ///
+        ///   owned unmapped (graphics)  222.3MB  <- 이 중 121.0MB + 96.0MB 두 덩어리가 전부다
+        ///   IOSurface                   71.1MB  <- 3024x2020 BGRA 'CAMetalLayer Display Drawable' x3
+        ///   MALLOC(관리 힙 전체)         49.2MB
+        ///   __FONT_DATA                  2352B  <- 폰트는 사실상 0이다. 한글 폰트 용량 가설은 기각.
+        ///
+        /// 화면은 3024x2020 = 6,108,480픽셀이다. 여기서 두 덩어리의 정체가 산수로 확정된다:
+        ///   · 96.0MB  = 6,108,480 x 4바이트(BGRA) x **4샘플** = 97.7MB -> MSAA 4x **컬러** 버퍼
+        ///   · 121.0MB = 6,108,480 x 5바이트(depth32f+stencil8) x **4샘플** = 116.5MB(+타일 정렬)
+        ///               -> MSAA 4x **깊이+스텐실** 버퍼
+        ///   · 71.1MB  = 23.7MB x 3 -> CAMetalLayer 트리플 버퍼(WindowServer와 공유, 투명 합성용)
+        ///
+        /// 즉 **앱 메모리의 40%가 MSAA 4x 전체화면 프레임버퍼**이고, 그 중 121MB는 이 2D 앱이
+        /// 한 번도 쓰지 않는 깊이/스텐실이다.
+        ///
+        /// ----------------------------------------------------------------------------
+        /// (1) disableDepthAndStencilBuffers = true — 위 121MB를 겨냥한다
+        /// ----------------------------------------------------------------------------
+        /// 이 앱이 깊이/스텐실을 쓰지 않는다는 근거(전수 확인):
+        ///   · 렌더링이 전부 2D 투명 큐다(LineRenderer / Sprite / uGUI). 정렬은 깊이 테스트가 아니라
+        ///     화가 알고리즘(렌더 큐 + sortingOrder)으로 이뤄진다.
+        ///   · uGUI 마스킹은 <c>RectMask2D</c>만 쓴다(전수 검색 확인). RectMask2D는 스텐실이 아니라
+        ///     셰이더 사각형 클리핑이다. 스텐실을 쓰는 <c>Mask</c> 컴포넌트는 **0건**이다.
+        ///
+        /// ★ 주의: 이 설정은 Unity 인스펙터에서 모바일 타깃에만 노출된다. macOS Standalone/Metal에서
+        ///   실제로 먹는지는 **문서로 보장되지 않는다**. 그래서 이 라운드는 켠 뒤 빌드해서
+        ///   `vmmap`으로 121MB 영역이 사라졌는지 직접 확인했다 — 결과는 Tasklist.md에 기록.
+        ///   먹지 않는다면 이 줄은 무해한 no-op이다(2D 앱이라 어차피 깊이를 안 쓴다).
+        ///
+        /// ----------------------------------------------------------------------------
+        /// (2) m_DisableAudio = true — 24시간 돌아가던 오디오 장치를 끈다
+        /// ----------------------------------------------------------------------------
+        /// 이 프로젝트에는 **오디오 자산이 하나도 없다**(AudioSource/AudioClip/PlayOneShot 전수 검색
+        /// 0건 — Core/ItemCatalog.cs 주석도 같은 사실을 적어두고 있다). 그런데 `sample`로 실행 중인
+        /// 프로세스의 스레드를 뜯어보니 오디오가 **실제로 돌고 있었다**:
+        ///
+        ///   Thread: com.apple.audio.IOThread.client
+        ///     -> HALC_ProxyIOContext::IOWorkLoop()
+        ///        -> FMOD::OutputCoreAudio::renderProc()
+        ///           -> FMOD::Output::mix()  ...  FMOD::DSPFilter::read() (무음을 계속 믹싱 중)
+        ///
+        /// Unity는 씬에 소리가 없어도 FMOD를 초기화하고 CoreAudio 출력 장치를 연다. 그 결과
+        /// (a) 오디오 IO 스레드가 버퍼 주기마다(512샘플) 24시간 깨어나고, (b) caulk 메신저 스레드 3개가
+        /// 함께 붙고, (c) **오디오 하드웨어 전력 도메인이 계속 살아 있다**. 상주 앱에서 이건 순수 낭비다.
+        /// CPU 지분 자체는 작지만(측정 0.2%), 배터리에서 오디오 장치를 붙잡고 있는 비용은 CPU%로
+        /// 드러나지 않는 종류의 비용이다.
+        ///
+        /// UX 영향 0: 재생할 소리가 애초에 없다. 나중에 효과음을 넣게 되면 이 줄을 되돌려야 한다
+        /// (그때는 이 주석이 그 사실을 알려줄 것이다).
+        ///
+        /// <para>구현 메모: 둘 다 <c>PlayerSettings</c>/<c>AudioSettings</c>에 안정적인 공개 세터가
+        /// 없어서 <see cref="SerializedObject"/>로 직접 쓴다. 이 프로젝트가 이미 쓰는 "추측하지 말고
+        /// 있는 API만 쓴다" 원칙에 맞추기 위해, 프로퍼티를 못 찾으면 조용히 실패하는 대신
+        /// <b>경고를 남기고</b> 빌드는 계속한다(설정 하나 때문에 빌드가 깨지면 안 된다).</para>
+        /// </summary>
+        public static void ConfigureResidencyFootprint()
+        {
+            bool depthOk = TrySetProjectSettingsBool(
+                "ProjectSettings/ProjectSettings.asset", "disableDepthAndStencilBuffers", true);
+            bool audioOk = TrySetProjectSettingsBool(
+                "ProjectSettings/AudioManager.asset", "m_DisableAudio", true);
+
+            Debug.Log($"[BuildStandalone] 상주 앱 풋프린트 설정 적용 — " +
+                $"disableDepthAndStencilBuffers=true({(depthOk ? "성공" : "실패")}), " +
+                $"m_DisableAudio=true({(audioOk ? "성공" : "실패")}). " +
+                "전자는 실측 121MB(MSAA 4x 깊이+스텐실, 이 2D 앱은 미사용)를, 후자는 24시간 도는 " +
+                "FMOD/CoreAudio 출력 스레드(오디오 자산 0건)를 겨냥한다.");
+        }
+
+        /// <summary>
+        /// ProjectSettings 폴더의 설정 에셋 하나에서 bool 프로퍼티를 멱등적으로 쓴다.
+        /// 값이 이미 원하는 값이면 아무것도 하지 않는다(불필요한 파일 dirty 방지).
+        /// </summary>
+        private static bool TrySetProjectSettingsBool(string assetPath, string propertyPath, bool value)
+        {
+            UnityEngine.Object[] assets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
+            if (assets == null || assets.Length == 0 || assets[0] == null)
+            {
+                Debug.LogWarning($"[BuildStandalone] {assetPath}를 열지 못했습니다 — " +
+                    $"{propertyPath} 설정을 건너뜁니다(빌드는 계속합니다).");
+                return false;
+            }
+
+            var so = new SerializedObject(assets[0]);
+            SerializedProperty prop = so.FindProperty(propertyPath);
+            if (prop == null)
+            {
+                Debug.LogWarning($"[BuildStandalone] {assetPath}에 '{propertyPath}' 프로퍼티가 없습니다 " +
+                    "(Unity 버전에 따라 이름이 다를 수 있음) — 설정을 건너뜁니다(빌드는 계속합니다).");
+                return false;
+            }
+
+            if (prop.boolValue != value)
+            {
+                prop.boolValue = value;
+                so.ApplyModifiedPropertiesWithoutUndo();
+                AssetDatabase.SaveAssets();
+            }
+            return true;
+        }
+
         // ============================================================================
         // Windows Standalone 빌드 (2026-08-30 윈도우 지원 라운드)
         // ============================================================================
@@ -203,6 +316,7 @@ namespace StickMate.EditorTools
         {
             ConfigureRunInBackground();
             ConfigureAntiAliasing();
+            ConfigureResidencyFootprint();
             ConfigureWindowsTransparencySettings();
 
             string[] scenes = GetEnabledScenePaths();

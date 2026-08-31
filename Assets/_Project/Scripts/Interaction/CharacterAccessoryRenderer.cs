@@ -66,7 +66,8 @@ namespace StickMate.Interaction
     /// 이 프리팹의 사본이 씬에 생기면 그 사본에는 이 컴포넌트를 배치하지 않는 것이 1차 방어다
     /// (장비/성장은 플레이어 하나에만 붙는 전역 상태다).
     /// </summary>
-    public sealed class CharacterAccessoryRenderer : MonoBehaviour, ICharacterInkExtentProvider
+    public sealed class CharacterAccessoryRenderer : MonoBehaviour, ICharacterInkExtentProvider,
+        ICharacterVisualSource
     {
         // ==================== 비율 상수 (전부 머리 반경 / 몸통 길이 배수) ====================
         // 월드유닛 절대값은 하나도 없다 — 클래스 문서 (1) 참고.
@@ -169,8 +170,34 @@ namespace StickMate.Interaction
         private float HipY => _metrics != null ? _metrics.HipLocalY
             : StickConfig.BaselineCharacterTotalHeight * FallbackHipRatio;
 
-        /// <summary>획 두께(월드 유닛).</summary>
+        /// <summary>획의 <b>비례 두께</b>(월드 유닛). 도형 유도(AccessoryShapeBuilder.Append의 획 반폭
+        /// 인자, 모자 커버선)는 이 값을 쓴다 — 배율에 정확히 비례해야 낮은 배율에서 모양이 달라지지
+        /// 않는다(Tests/PlayMode/CharacterAccessoryScaleTests가 이 비례를 잠근다).</summary>
         public float StrokeWidth => (_metrics != null ? _metrics.TotalHeight : StickConfig.BaselineCharacterTotalHeight) * StrokeWidthRatio;
+
+        /// <summary>
+        /// ★ 실제로 <b>그려지는</b> 두께 — 화면상 최소 두께(<see cref="StickConfig.MinStrokeScreenPoints"/>
+        /// = 2pt) 아래로 내려가지 않는다(2026-08-31).
+        ///
+        /// <para>하한이 빠져 있었다. 순수 비례라 <b>출하 기본 배율 0.75에서도 1.47pt로 미달</b>이었고,
+        /// 다이얼 최소값 0.35에서는 0.69pt — 몸 획(4.09pt)의 <b>1/6</b>이었다. 왕관 지그재그·방울·
+        /// 외알안경 체인·배낭 끈처럼 얇은 도형이 그 배율에서 안티에일리어싱에 묻혔다.</para>
+        ///
+        /// <para>왜 <see cref="StrokeWidth"/>와 나누는가: 몸이 쓰는 규칙과 같게 하기 위해서다 —
+        /// Core/StickmanAgent.ApplyStrokeWidthsForScale도 <b>구워진 도형은 그대로 두고 LineRenderer
+        /// 두께만</b> 하한으로 올린다. 도형 좌표까지 하한을 태우면 낮은 배율에서 모자 커버선이 함께
+        /// 움직여 실루엣이 달라진다.</para>
+        ///
+        /// <para>하한 값 자체는 <see cref="StickmanAgent.MinStrokeWorldWidth"/>가 단일 소스다
+        /// (여기 다시 적으면 몸과 액세서리의 하한이 어긋난다).</para>
+        /// </summary>
+        private float RenderStrokeWidth => Mathf.Max(StrokeWidth, MinStrokeWorld);
+
+        /// <summary>이 렌더러가 쓰는 화면상 최소 두께(월드). 에이전트가 없는 사본/스텁에서는
+        /// StickConfig의 근사 환산으로 되메운다 — 0을 흘리면 하한이 조용히 사라진다.</summary>
+        private float MinStrokeWorld => _agent != null
+            ? _agent.MinStrokeWorldWidth
+            : StickConfig.MinStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
 
         /// <summary>지금 치수/방향으로 만든 도형 리그 — 이 렌더러와 초상화가 같은 값을 쓴다.</summary>
         internal AccessoryShapeBuilder.Rig BuildRig()
@@ -274,8 +301,19 @@ namespace StickMate.Interaction
             if (_agent == null) return; // 복제본 방어(클래스 문서).
 
             bool wantVisible = ResolveWantVisible();
+
+            // ★★ 2026-08-31 (원칙 2) — <b>몸이 이미 사라졌다면 페이드는 금지</b>다.
+            // 페이드(FadeSeconds)의 목적은 랙돌 진입/복귀에서 모자가 깜빡이지 않게 하는 것이고, 그
+            // 근거는 "몸은 그대로 있는데 액세서리만 순간적으로 사라진다"에만 성립한다. 전체화면 감지와
+            // 가출 은신은 <b>몸이 그 프레임에 통째로 없어지는</b> 경우라, 여기서 0.18초를 더 끌면
+            // 사용자가 방금 켠 전체화면 게임 위에 "몸 없는 모자·망토"가 남는다(실측으로 확인된 원칙 2
+            // 위반). StickmanAgent.SetRenderersEnabled(false)가 같은 프레임에 우리 선도 끄지만,
+            // 그것만으로는 부족하다 — 이 LateUpdate가 바로 뒤에 돌면서 다시 켜 버리기 때문이다.
+            bool bodyHidden = _headOutline != null && !_headOutline.enabled;
             float target = wantVisible ? 1f : 0f;
-            _alpha = Mathf.MoveTowards(_alpha, target, Time.deltaTime / Mathf.Max(0.01f, FadeSeconds));
+            _alpha = bodyHidden
+                ? 0f
+                : Mathf.MoveTowards(_alpha, target, Time.deltaTime / Mathf.Max(0.01f, FadeSeconds));
 
             if (_alpha <= 0.001f)
             {
@@ -400,6 +438,24 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
+        /// <see cref="ICharacterVisualSource"/> — 지금 그리고 있는 액세서리 선/채움면을 단일 창구에 신고한다.
+        ///
+        /// <para>왜 필요한가: StickmanAgent가 Awake에서 캐시한 렌더러 배열에는 이 컨테이너가
+        /// <b>영원히 없다</b>(우리는 그 뒤에 만들어진다). 그래서 전체화면 자동 숨김 / 획 두께 하한 /
+        /// 화면 여백 계산이 셋 다 액세서리를 못 보고 있었다.</para>
+        ///
+        /// <para><see cref="CharacterVisualAnchor.BodyAttached"/>인 이유: 컨테이너가 캐릭터 루트의
+        /// 자식이라 몸을 그대로 따라다닌다 — 화면 여백(시각 반폭)에 반드시 포함돼야 한다
+        /// (긴 망토는 배율 2.00에서 몸보다 0.30유닛 더 튀어나온다).</para>
+        /// </summary>
+        public void CollectVisuals(CharacterVisualRegistry sink)
+        {
+            if (sink == null || _container == null || !_container.activeSelf) return;
+            sink.AddRange(_lines, CharacterVisualAnchor.BodyAttached);
+            sink.AddRange(_fills, CharacterVisualAnchor.BodyAttached);
+        }
+
+        /// <summary>
         /// 액세서리 LineRenderer의 <c>enabled</c>를 직접 켜고 끈다.
         /// GameObject를 비활성화하는 것만으로는 부족하다 — 이 앱의 "캐릭터가 지금 보이는가" 판정은
         /// 여러 곳에서 <c>GetComponentsInChildren&lt;LineRenderer&gt;(true).enabled</c>로 이루어지고
@@ -494,9 +550,15 @@ namespace StickMate.Interaction
             //   이유는, 그 경로가 재구성 경로와 어긋나 또 하나의 이중 정의가 되기 때문이다.
             hash = hash * 31 + ResolveInkColor().GetHashCode();
 
-            // 배율은 실행 중에 바뀌지 않지만(프리팹에 구워짐), 에디터에서 Remeasure를 부르는 경로가
-            // 있으므로 치수도 서명에 넣어 조용히 어긋나는 경우를 없앤다.
+            // ★ 2026-08-31 문서 정정 — 예전 주석은 "배율은 실행 중에 바뀌지 않는다(프리팹에 구워짐)"
+            //   였는데 크기 다이얼(UX_FLOW.md 34-3)이 붙은 뒤로 <b>사실이 아니다</b>. 실행 중에 바뀌고,
+            //   바뀌면 이 서명 때문에 컨테이너가 Destroy된 뒤 다시 구워진다 — 그 사실을 모른 채
+            //   LineRenderer 참조를 캐시해 둔 테스트가 전부 null이 되어 조용히 스킵됐다(거짓 안심).
             hash = hash * 31 + Mathf.RoundToInt((_metrics != null ? _metrics.TotalHeight : 1f) * 10000f);
+
+            // 실제로 그려질 두께 — 화면상 하한에 걸리면 배율이 그대로여도 두께가 달라진다
+            // (창 크기/DPI 변화). 서명에 없으면 그 프레임에 다시 굽지 않아 옛 두께가 남는다.
+            hash = hash * 31 + Mathf.RoundToInt(RenderStrokeWidth * 10000f);
 
             // 33-2-5 (D) 줄무늬 타이는 월요일에 조금 느슨해진다 — 자정을 넘기면 다시 구워야 한다.
             hash = hash * 31 + DayOfWeekIndex;
@@ -693,8 +755,8 @@ namespace StickMate.Interaction
             lr.material = _lineMaterial;
             lr.startColor = color;
             lr.endColor = color;
-            lr.startWidth = StrokeWidth;
-            lr.endWidth = StrokeWidth;
+            lr.startWidth = RenderStrokeWidth;
+            lr.endWidth = RenderStrokeWidth;
             lr.numCapVertices = 4;
             lr.numCornerVertices = 4;
             lr.sortingOrder = sortingOrder;

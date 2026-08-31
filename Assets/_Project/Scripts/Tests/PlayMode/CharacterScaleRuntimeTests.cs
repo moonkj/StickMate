@@ -140,13 +140,27 @@ namespace StickMate.Tests.PlayMode
             }
         }
 
+        /// <summary>
+        /// ★ 2026-08-31 <b>이 테스트는 오늘까지 몸만 검사하고 있었다</b>(거짓 안심).
+        ///
+        /// <para>예전 코드는 <c>GetComponentsInChildren&lt;LineRenderer&gt;(true)</c>를 <b>배율 변경 전에
+        /// 1회만</b> 캐시했다. 기본 차림이 천모자+선글라스라 캐시 시점에는 액세서리 선이 목록에 들어
+        /// 있었지만, <see cref="CharacterAccessoryRenderer"/>의 재구성 서명에
+        /// <c>metrics.TotalHeight</c>가 들어 있어서 <b>배율이 바뀌는 순간 컨테이너가 Destroy되고 다시
+        /// 구워진다</b> → 캐시된 항목이 전부 파괴돼 <c>if (lr == null) continue;</c>로 조용히 스킵됐다.
+        /// 그래서 액세서리 획이 출하 배율에서도 하한 미달(1.47pt / 하한 2pt)인 채로 초록불이었다.</para>
+        ///
+        /// <para>고치는 방법은 두 가지다: (a) 배율마다 다시 조회한다, (b) "지금 그리고 있는 것"을 물어보는
+        /// 단일 창구에서 받는다. <b>(b)를 쓴다</b> — (a)는 <c>GetComponentsInChildren</c>이라 캐릭터의
+        /// <b>자식이 아닌</b> 펫/FX를 여전히 못 보기 때문이다(그 둘도 같은 하한을 받아야 한다).
+        /// 창구는 <see cref="StickmanAgent.DynamicVisuals"/>이고, 그것을 여기서 쓰는 것 자체가
+        /// "창구가 실제로 채워진다"는 회귀 잠금이기도 하다.</para>
+        /// </summary>
         [UnityTest]
         public IEnumerator 배율을_바꿔도_획이_화면상_최소_두께_아래로_내려가지_않는다()
         {
             yield return SetUp();
-
-            var lines = new List<LineRenderer>(_agent.GetComponentsInChildren<LineRenderer>(true));
-            Assert.Greater(lines.Count, 0, $"{LogPrefix} 캐릭터에서 LineRenderer를 찾지 못했습니다.");
+            yield return EquipEverySlot();
 
             // 화면상 하한을 월드로 환산 — 프리팹을 구울 때와 같은 상수/같은 규칙(StickConfig에 단일 소스).
             Camera cam = _agent.Blackboard.MainCamera;
@@ -156,30 +170,62 @@ namespace StickMate.Tests.PlayMode
                 : StickConfig.ReferencePointsPerWorldUnitApprox;
             float floorWorld = StickConfig.MinStrokeScreenPoints / pointsPerWorldUnit;
 
+            Assert.AreEqual(floorWorld, _agent.MinStrokeWorldWidth, floorWorld * 0.02f,
+                $"{LogPrefix} 에이전트가 쓰는 하한({_agent.MinStrokeWorldWidth:F5})이 이 테스트가 손계산한 " +
+                $"하한({floorWorld:F5})과 다릅니다 — 하한의 단일 소스가 갈라졌습니다.");
+
             // ★ 단조 증가를 <b>엄격</b>하게 요구하면 안 된다 — 화면이 작은 환경(배치 모드 창)에서는
             //   작은 배율들이 전부 하한에 걸려 같은 값이 나오는 것이 <b>정상</b>이다. 그래서
             //   (a) 모든 배율에서 하한 이상, (b) 비감소, (c) 최대 배율은 최소 배율보다 <b>실제로 굵다</b>
             //   (= 재대입이 실제로 일어난다)를 나눠서 단언한다.
             float previousMax = -1f;
             float firstMax = -1f, lastMax = -1f;
+            int minAccessoryLinesSeen = int.MaxValue;
             foreach (float v in Scales)
             {
                 _agent.ApplyCharacterScale(v, "테스트");
-                yield return null;
+                // 재구성(파괴 + 재생성)이 소유자들의 LateUpdate에서 일어난다 — 몇 프레임 준다.
+                for (int f = 0; f < 5; f++) yield return null;
 
+                // ★ 매번 다시 조회한다(캐시 금지 — 위 문서). 몸은 계층에서, 몸 바깥의 잉크는 창구에서.
                 float min = float.MaxValue, max = 0f;
-                for (int i = 0; i < lines.Count; i++)
+                int bodyCount = 0, dynamicCount = 0;
+                LineRenderer[] bodyLines = _agent.GetComponentsInChildren<LineRenderer>(true);
+                for (int i = 0; i < bodyLines.Length; i++)
                 {
-                    LineRenderer lr = lines[i];
+                    LineRenderer lr = bodyLines[i];
                     if (lr == null) continue;
                     float w = lr.startWidth;   // 실제 월드 두께(widthMultiplier는 프리팹에서 1.0 그대로다).
                     if (w <= 0f) continue;
+                    bodyCount++;
                     min = Mathf.Min(min, w);
                     max = Mathf.Max(max, w);
                 }
 
+                CharacterVisualRegistry registry = _agent.DynamicVisuals;
+                registry.Refresh();
+                for (int i = 0; i < registry.Count; i++)
+                {
+                    LineRenderer lr = registry[i].Line;
+                    if (lr == null) continue;
+                    float w = lr.startWidth;
+                    if (w <= 0f) continue;
+                    dynamicCount++;
+                    min = Mathf.Min(min, w);
+                    max = Mathf.Max(max, w);
+                }
+
+                minAccessoryLinesSeen = Mathf.Min(minAccessoryLinesSeen, dynamicCount);
+
                 Debug.Log($"{LogPrefix} 배율 {v:F2} — 획 두께 {min:F5}~{max:F5}(화면상 하한 {floorWorld:F5}유닛 " +
-                    $"= {StickConfig.MinStrokeScreenPoints:F1}pt).");
+                    $"= {StickConfig.MinStrokeScreenPoints:F1}pt), 검사한 선 = 몸 {bodyCount}개 + " +
+                    $"액세서리/펫/FX {dynamicCount}개.");
+
+                // ★★ 이 단언이 없으면 예전과 똑같이 "액세서리를 하나도 못 보고 통과"가 다시 가능해진다.
+                Assert.Greater(dynamicCount, 0,
+                    $"{LogPrefix} 배율 {v:F2}에서 몸 바깥의 선을 <b>하나도</b> 검사하지 못했습니다 — " +
+                    "액세서리/펫/FX가 단일 창구(StickmanAgent.DynamicVisuals)에 신고하지 않고 있습니다. " +
+                    "이 상태로는 아래 하한 단언이 몸만 검사하는 거짓 안심이 됩니다.");
 
                 Assert.GreaterOrEqual(min, floorWorld - 1e-4f,
                     $"{LogPrefix} 배율 {v:F2}에서 가장 얇은 획이 {min:F5}유닛으로 화면상 하한" +
@@ -202,6 +248,81 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 배율 {Scales[0]:F2} → {Scales[Scales.Length - 1]:F2}인데 가장 굵은 획이 " +
                 $"{firstMax:F5} → {lastMax:F5}로 전혀 굵어지지 않았습니다 — 획 두께 재대입이 빠졌습니다" +
                 "(Transform 스케일은 LineRenderer의 두께를 따라가게 하지 않습니다).");
+
+            Debug.Log($"{LogPrefix} 전 배율에서 검사한 몸 바깥 선의 최소 개수 = {minAccessoryLinesSeen}개.");
+        }
+
+        /// <summary>
+        /// ★ 네거티브 컨트롤 — <b>하한이 실제로 일을 하고 있는가</b>.
+        ///
+        /// <para>위 테스트는 "모든 선이 하한 이상"만 본다. 그런데 만약 비례값이 애초에 전부 하한보다
+        /// 굵었다면 그 단언은 <b>항상 참</b>이라 아무것도 잡지 못한다. 여기서는 같은 실행에서
+        /// <b>수정 전 규칙(순수 비례)</b>을 그대로 계산해, 낮은 배율에서 그 값이 하한 <b>미만</b>임을
+        /// 보인다 — 즉 하한을 빼면 실제로 결함이 되돌아온다.</para>
+        ///
+        /// <para>실측 근거(2026-08-31, 실사용 화면 982pt / ortho 12 = 40.9pt/유닛):
+        /// 액세서리는 배율 0.35에서 0.69pt, <b>출하 기본 배율 0.75에서도 1.47pt</b>로 하한(2pt) 미달이었다.</para>
+        /// </summary>
+        [UnityTest]
+        public IEnumerator NegativeControl_하한을_빼면_액세서리_획이_실제로_하한_아래로_내려간다()
+        {
+            yield return SetUp();
+            yield return EquipEverySlot();
+
+            var accessory = _agent.GetComponent<CharacterAccessoryRenderer>();
+            Assert.IsNotNull(accessory, $"{LogPrefix} CharacterAccessoryRenderer가 없습니다.");
+
+            float floorWorld = _agent.MinStrokeWorldWidth;
+            float pointsPerWorldUnit = StickConfig.MinStrokeScreenPoints / Mathf.Max(1e-6f, floorWorld);
+
+            bool sawBelowFloor = false;
+            foreach (float v in Scales)
+            {
+                _agent.ApplyCharacterScale(v, "테스트");
+                for (int f = 0; f < 5; f++) yield return null;
+
+                // 수정 전 규칙 = 순수 비례(StrokeWidth). 지금 실제로 그려지는 두께와 나란히 찍는다.
+                float proportional = accessory.StrokeWidth;
+                float drawnMin = float.MaxValue;
+                CharacterVisualRegistry registry = _agent.DynamicVisuals;
+                registry.Refresh();
+                for (int i = 0; i < registry.Count; i++)
+                {
+                    LineRenderer lr = registry[i].Line;
+                    if (lr == null || lr.startWidth <= 0f) continue;
+                    drawnMin = Mathf.Min(drawnMin, lr.startWidth);
+                }
+
+                Debug.Log($"{LogPrefix} [네거티브] 배율 {v:F2} — 수정 전 규칙(순수 비례) " +
+                    $"{proportional:F5}유닛 = {proportional * pointsPerWorldUnit:F2}pt / " +
+                    $"지금 그려지는 최소 두께 {drawnMin:F5}유닛 = {drawnMin * pointsPerWorldUnit:F2}pt / " +
+                    $"하한 {floorWorld:F5}유닛 = {StickConfig.MinStrokeScreenPoints:F1}pt.");
+
+                if (proportional < floorWorld - 1e-5f) sawBelowFloor = true;
+            }
+
+            Assert.IsTrue(sawBelowFloor,
+                $"{LogPrefix} 다이얼 전 구간({Scales[0]:F2}~{Scales[Scales.Length - 1]:F2})에서 액세서리의 " +
+                "순수 비례 두께가 <b>한 번도</b> 하한 아래로 내려가지 않았습니다 — 그렇다면 위 하한 단언은 " +
+                "항상 참이라 아무 결함도 잡지 못합니다(이 환경에서는 이 회귀 잠금이 무의미하므로 " +
+                "화면 크기/카메라 설정을 확인하세요).");
+        }
+
+        /// <summary>7슬롯을 전부 착용시킨다 — 액세서리/펫/FX가 <b>실제로 존재하는</b> 상태를 만든다.
+        /// 기본 차림(모자+안경)만으로는 펫/FX가 없어 창구가 절반만 검증된다.</summary>
+        private IEnumerator EquipEverySlot()
+        {
+            CharacterProgressionModel.AddXp(1000000f, _clonedConfig);
+            for (int i = 0; i < EquipmentModel.SlotCount; i++)
+            {
+                var slot = (EquipmentSlot)i;
+                if (!EquipmentModel.IsUnlocked(slot)) continue;
+                if (!EquipmentModel.IsEquipped(slot)) EquipmentModel.TryWear(slot, 0, _clonedConfig);
+            }
+            for (int f = 0; f < 30; f++) yield return null;
+
+            Assert.IsNotNull(_agent.transform.Find("EquipmentAccessories"),
+                $"{LogPrefix} 액세서리 컨테이너가 만들어지지 않았습니다 — 이 테스트의 전제가 성립하지 않습니다.");
         }
 
         /// <summary>

@@ -26,7 +26,7 @@ namespace StickMate.Interaction
     /// ============================================================================
     /// 같은 GameObject의 <see cref="StickmanAgent"/>가 없으면 즉시 손을 뗀다(LandingDustRenderer 규약).
     /// </summary>
-    public sealed class CharacterPetRenderer : MonoBehaviour
+    public sealed class CharacterPetRenderer : MonoBehaviour, ICharacterVisualSource
     {
         // ---- 아이템 자리 / 공용 치수는 Interaction/AppearanceShapeBuilder.cs가 소유한다
         //      (초상화 미리보기가 같은 값을 읽어야 "미리보기"가 성립한다).
@@ -168,10 +168,18 @@ namespace StickMate.Interaction
             if (_agent == null) return; // 자기 캐릭터가 없는 사본.
 
             int item = ResolveActiveItem();
-            bool visible = item >= 0 && IsCharacterVisible();
+            bool bodyHidden = !IsCharacterVisible();
+            bool visible = item >= 0 && !bodyHidden;
 
+            // ★★ 2026-08-31 (원칙 2) — 주인이 그 프레임에 사라졌으면 펫도 그 프레임에 사라진다.
+            // 페이드(0.25초)는 "펫만 바뀌는" 경우(아이템 해제/교체)를 위한 것이다. 전체화면 감지와
+            // 가출 은신은 <b>주인이 통째로 없어지는</b> 경우라, 여기서 0.25초를 더 끌면 방금 켠
+            // 전체화면 게임 위에 주인 없는 공/종이비행기가 떠 있고, 숨바꼭질에서는 펫이 은신처를
+            // 그대로 가리킨다(실측 확인된 원칙 2 위반).
             float target = visible ? 1f : 0f;
-            _alpha = Mathf.MoveTowards(_alpha, target, Time.deltaTime / Mathf.Max(0.01f, FadeSeconds));
+            _alpha = bodyHidden
+                ? 0f
+                : Mathf.MoveTowards(_alpha, target, Time.deltaTime / Mathf.Max(0.01f, FadeSeconds));
 
             if (!visible && _alpha <= 0.001f)
             {
@@ -500,6 +508,8 @@ namespace StickMate.Interaction
         {
             int signature = item * 397 + (ResolveInk().GetHashCode() & 0xFFFF) * 31
                 + Mathf.RoundToInt(Height * 10000f)
+                // 실제로 그려질 두께 — 화면상 하한에 걸리면 배율이 그대로여도 달라진다(창 크기/DPI).
+                + Mathf.RoundToInt(RenderStroke * 10000f) * 7
                 + (item == PetMini && FacingSign < 0f ? 1 : 0);
             if (_builtItem == item && signature == _builtSignature && _container != null) return;
 
@@ -611,8 +621,8 @@ namespace StickMate.Interaction
             lr.numCapVertices = 4;
             lr.numCornerVertices = 4;
             lr.sortingOrder = sortingOrder;
-            lr.startWidth = Stroke;
-            lr.endWidth = Stroke;
+            lr.startWidth = RenderStroke;
+            lr.endWidth = RenderStroke;
             lr.loop = loop;
             lr.positionCount = points.Length;
             for (int i = 0; i < points.Length; i++) lr.SetPosition(i, points[i] - pivot);
@@ -645,6 +655,20 @@ namespace StickMate.Interaction
             }
         }
 
+        /// <summary>
+        /// <see cref="ICharacterVisualSource"/> — 지금 그리는 펫 선을 단일 창구에 신고한다.
+        ///
+        /// <para><see cref="CharacterVisualAnchor.Detached"/>인 이유: 펫 컨테이너는 캐릭터의 자식이
+        /// <b>아니고</b>(독립 GameObject) 커서 친구는 커서까지 따라간다. 이걸 몸의 시각 반폭에 넣으면
+        /// 펫이 화면 끝에 갈 때마다 캐릭터가 "내가 그만큼 넓다"고 오판해 안쪽으로 밀린다.
+        /// 숨김/획 두께 하한에는 물론 포함된다.</para>
+        /// </summary>
+        public void CollectVisuals(CharacterVisualRegistry sink)
+        {
+            if (sink == null || _container == null) return;
+            sink.AddRange(_lines, CharacterVisualAnchor.Detached);
+        }
+
         /// <summary>그림만 지운다(위치/굴린 각도 같은 진행 상태는 유지).</summary>
         private void DestroyVisuals()
         {
@@ -671,7 +695,28 @@ namespace StickMate.Interaction
         private float Height => _metrics != null ? _metrics.TotalHeight : StickConfig.BaselineCharacterTotalHeight;
         private float HeadRadius => _metrics != null ? _metrics.HeadRadius : 0.22f;
         private float HeadCenterLocalY => _metrics != null ? _metrics.HeadCenterLocalY : Height - HeadRadius;
+
+        /// <summary>펫 획의 <b>비례 두께</b>(월드 유닛). 도형 유도는 이 값을 쓴다 — 배율에 정확히
+        /// 비례해야 회귀 테스트(배율 비례 단언)와 그림체가 함께 성립한다.</summary>
         private float Stroke => Height * StrokeRatio;
+
+        /// <summary>
+        /// ★ 실제로 <b>그려지는</b> 두께 — 화면상 최소 두께(<see cref="StickConfig.MinStrokeScreenPoints"/>)
+        /// 아래로 내려가지 않는다(2026-08-31).
+        ///
+        /// <para>왜 <see cref="Stroke"/>와 나누는가: 몸이 쓰는 규칙과 같게 하기 위해서다
+        /// (Core/StickmanAgent.ApplyStrokeWidthsForScale도 <b>도형은 그대로 두고 LineRenderer 두께만</b>
+        /// 하한으로 올린다). 도형 좌표까지 하한을 태우면 낮은 배율에서 펫의 <b>모양</b>이 달라진다.</para>
+        ///
+        /// <para>하한이 없던 시절의 실측: 출하 기본 배율 0.75에서 1.54pt, 다이얼 최소값 0.35에서
+        /// 0.72pt — 하한(2pt)의 1/3이자 몸 획의 1/6이라 방울/눈 같은 작은 획이 안티에일리어싱에
+        /// 묻혔다. 하한 값의 단일 소스는 <see cref="StickmanAgent.MinStrokeWorldWidth"/>다.</para>
+        /// </summary>
+        private float RenderStroke => Mathf.Max(Stroke, MinStrokeWorld);
+
+        private float MinStrokeWorld => _agent != null
+            ? _agent.MinStrokeWorldWidth
+            : StickConfig.MinStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
 
         private float FacingSign
         {

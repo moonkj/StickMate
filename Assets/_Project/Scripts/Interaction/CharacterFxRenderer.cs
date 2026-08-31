@@ -35,7 +35,7 @@ namespace StickMate.Interaction
     /// 하루 종일 켜져 있는 앱이라 발자국 12개 / 반짝임 2개 / 먼지 2회분을 <b>원형 버퍼</b>로 미리
     /// 만들어 두고 재사용한다(수명이 끝나면 비활성이 아니라 알파 0으로 두고 다음 발동에서 되살린다).
     /// </summary>
-    public sealed class CharacterFxRenderer : MonoBehaviour
+    public sealed class CharacterFxRenderer : MonoBehaviour, ICharacterVisualSource
     {
         // ---- 아이템 자리 / 공용 치수는 Interaction/AppearanceShapeBuilder.cs가 소유한다
         //      (초상화 미리보기가 같은 값을 읽어야 "미리보기"가 성립한다).
@@ -179,6 +179,21 @@ namespace StickMate.Interaction
             float dt = Time.deltaTime;
             TickLifetimes(dt);
 
+            // ★★ 2026-08-31 (원칙 2) — 캐릭터가 그 프레임에 사라졌으면 <b>이미 떠 있던 조각도</b>
+            // 그 프레임에 사라진다. 예전에는 CanSpawn()이 false가 되어 "새로 만들지 않는다"에서
+            // 멈췄고, 이미 떠 있던 발자국/반짝임/먼지는 자기 수명(최대 수 초)대로 계속 그려졌다 —
+            // 사용자가 방금 켠 전체화면 게임 위에 주인 없는 반짝임이 남고, 가출 숨바꼭질에서는
+            // 발자국이 숨은 자리를 그대로 가리켰다. 수명은 숨은 동안에도 계속 흐르게 둔다(위
+            // TickLifetimes) — 그래야 재개했을 때 낡은 발자국이 되살아나지 않는다.
+            if (!IsCharacterVisible())
+            {
+                if (!_hiddenApplied) { SetAllPiecesEnabled(false); _hiddenApplied = true; }
+                _lastStateId = CurrentState();
+                _idleSeconds = 0f;
+                return;
+            }
+            if (_hiddenApplied) { SetAllPiecesEnabled(true); _hiddenApplied = false; }
+
             StickmanStateId state = CurrentState();
             StickmanStateId previous = _lastStateId;
             // ★ 어떤 경로로 빠져나가든 직전 상태는 항상 갱신한다. 조기 반환 안쪽에 두면 FX를 껐다 켜는
@@ -213,9 +228,66 @@ namespace StickMate.Interaction
         /// </summary>
         private bool CanSpawn()
         {
-            if (_headOutline != null && !_headOutline.enabled) return false;
+            if (!IsCharacterVisible()) return false;
             StickmanStateId id = CurrentState();
             return id != StickmanStateId.Ragdoll && id != StickmanStateId.ThrowTumble;
+        }
+
+        /// <summary>캐릭터가 지금 화면에 있는가. 상태 목록을 새로 만들지 않고 <b>머리 링이 지금 켜져
+        /// 있는가</b>를 따라간다 — 가출 은신이든 전체화면 자동 숨김이든 앞으로 생길 새 경로든 자동으로
+        /// 함께 따라오는 유일한 규칙이다(액세서리/펫 렌더러와 같은 규약).</summary>
+        private bool IsCharacterVisible() => _headOutline == null || _headOutline.enabled;
+
+        /// <summary>숨김을 이미 반영했는가(전이 프레임에만 렌더러를 훑기 위한 래치).</summary>
+        private bool _hiddenApplied;
+
+        /// <summary>풀에 있는 모든 조각의 <c>enabled</c>를 한 번에 바꾼다. GameObject 비활성화가 아니라
+        /// <c>enabled</c>인 이유는 액세서리와 같다 — 이 앱의 "지금 보이는가" 판정이 전부
+        /// <c>Renderer.enabled</c>를 읽는다.</summary>
+        private void SetAllPiecesEnabled(bool on)
+        {
+            SetGroupEnabled(_footprints, on);
+            SetGroupEnabled(_sparkles, on);
+            SetGroupEnabled(_dusts, on);
+        }
+
+        private static void SetGroupEnabled(Puff[] group, bool on)
+        {
+            if (group == null) return;
+            for (int i = 0; i < group.Length; i++)
+            {
+                Puff p = group[i];
+                if (p == null || p.Lines == null) continue;
+                for (int k = 0; k < p.Lines.Length; k++)
+                {
+                    LineRenderer lr = p.Lines[k];
+                    if (lr != null && lr.enabled != on) lr.enabled = on;
+                }
+            }
+        }
+
+        /// <summary>
+        /// <see cref="ICharacterVisualSource"/> — 지금 살아 있는 이펙트 조각을 단일 창구에 신고한다.
+        /// 컨테이너가 캐릭터의 자식이 아니고(월드 고정) 발자국은 지나온 자리에 남으므로
+        /// <see cref="CharacterVisualAnchor.Detached"/>다 — 몸의 시각 반폭에 넣으면 안 된다.
+        /// </summary>
+        public void CollectVisuals(CharacterVisualRegistry sink)
+        {
+            if (sink == null || _container == null) return;
+            CollectGroup(sink, _footprints);
+            CollectGroup(sink, _sparkles);
+            CollectGroup(sink, _dusts);
+        }
+
+        private static void CollectGroup(CharacterVisualRegistry sink, Puff[] group)
+        {
+            if (group == null) return;
+            for (int i = 0; i < group.Length; i++)
+            {
+                Puff p = group[i];
+                if (p == null || !p.Alive || p.Lines == null) continue;
+                sink.AddRange(p.Lines, CharacterVisualAnchor.Detached);
+            }
         }
 
         private StickmanStateId CurrentState()
@@ -436,8 +508,8 @@ namespace StickMate.Interaction
             lr.numCapVertices = 4;
             lr.numCornerVertices = 4;
             lr.sortingOrder = sortingOrder;
-            lr.startWidth = Stroke;
-            lr.endWidth = Stroke;
+            lr.startWidth = RenderStroke;
+            lr.endWidth = RenderStroke;
             Color ink = ResolveInk();
             ink.a = 0f;
             lr.startColor = ink;
@@ -448,12 +520,14 @@ namespace StickMate.Interaction
 
         /// <summary>채운 점 하나 — 짧은 선을 굵은 캡으로 그리면 원이 된다(점 도형을 따로 만들지 않는다).
         /// 점 좌표는 Interaction/AppearanceShapeBuilder.cs가 소유한다(초상화 미리보기와 같은 그림).</summary>
-        private static void BuildDot(LineRenderer lr, float radius)
+        private void BuildDot(LineRenderer lr, float radius)
         {
             if (lr == null) return;
             lr.loop = false;
-            lr.startWidth = radius * 2f;
-            lr.endWidth = radius * 2f;
+            // 점의 지름도 화면상 하한을 받는다 — 2pt 미만의 점은 안티에일리어싱에 그대로 묻힌다.
+            float diameter = Mathf.Max(radius * 2f, MinStrokeWorld);
+            lr.startWidth = diameter;
+            lr.endWidth = diameter;
             Vector3[] pts = AppearanceShapeBuilder.DotSegment(radius);
             lr.positionCount = pts.Length;
             lr.SetPositions(pts);
@@ -467,8 +541,8 @@ namespace StickMate.Interaction
                 LineRenderer lr = lines[i];
                 if (lr == null) continue;
                 lr.loop = false;
-                lr.startWidth = Stroke;
-                lr.endWidth = Stroke;
+                lr.startWidth = RenderStroke;
+                lr.endWidth = RenderStroke;
                 Vector3[] pts = AppearanceShapeBuilder.SparkleStroke(arm, i);
                 lr.positionCount = pts.Length;
                 lr.SetPositions(pts);
@@ -483,8 +557,8 @@ namespace StickMate.Interaction
                 LineRenderer lr = lines[i];
                 if (lr == null) continue;
                 lr.loop = false;
-                lr.startWidth = Stroke;
-                lr.endWidth = Stroke;
+                lr.startWidth = RenderStroke;
+                lr.endWidth = RenderStroke;
                 Vector3[] pts = AppearanceShapeBuilder.DustCrescent(radius, i);
                 lr.positionCount = pts.Length;
                 lr.SetPositions(pts);
@@ -575,6 +649,7 @@ namespace StickMate.Interaction
             _sparkleCursor = 0;
             _dustCursor = 0;
             _hasFootprint = false;
+            _hiddenApplied = false;   // 풀이 통째로 사라졌으므로 래치도 함께 초기화한다.
             _idleSeconds = 0f;
             _nextSparkleIn = 0f;
             _dustCooldown = 0f;
@@ -586,7 +661,22 @@ namespace StickMate.Interaction
         private float HeadRadius => _metrics != null ? _metrics.HeadRadius
             : Height * (AccessoryShapeBuilder.BaselineHeadVisualRadius / StickConfig.BaselineCharacterTotalHeight);
         private float HeadCenterLocalY => _metrics != null ? _metrics.HeadCenterLocalY : Height - HeadRadius;
+
+        /// <summary>이펙트 획의 <b>비례 두께</b>(월드 유닛). 조각의 크기/위치 유도는 이 값을 쓴다
+        /// (발자국 점 반지름, 지면에서 띄우는 높이) — 배율에 정확히 비례해야 한다.</summary>
         private float Stroke => Height * StrokeRatio;
+
+        /// <summary>
+        /// ★ 실제로 <b>그려지는</b> 두께 — 화면상 최소 두께 아래로 내려가지 않는다(2026-08-31).
+        /// 몸과 같은 규칙이다(도형은 그대로, LineRenderer 두께만 하한으로 올린다).
+        /// 하한이 없던 시절 다이얼 최소값 0.35에서 0.72pt(하한 2pt의 1/3)라 반짝임 십자 획이
+        /// 사실상 보이지 않았다. 하한 값의 단일 소스는 <see cref="StickmanAgent.MinStrokeWorldWidth"/>다.
+        /// </summary>
+        private float RenderStroke => Mathf.Max(Stroke, MinStrokeWorld);
+
+        private float MinStrokeWorld => _agent != null
+            ? _agent.MinStrokeWorldWidth
+            : StickConfig.MinStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
 
         private Color ResolveInk()
         {

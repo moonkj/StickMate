@@ -360,10 +360,12 @@ namespace StickMate.Platform.MacOS
         private readonly List<string> _rejNames = new List<string>(32);
         private readonly List<int> _rejPids = new List<int>(32);
         private readonly List<string> _rejReasons = new List<string>(32);
-        private readonly List<float> _segStarts = new List<float>(16);
-        private readonly List<float> _segEnds = new List<float>(16);
-        private readonly List<float> _tmpStarts = new List<float>(16);
-        private readonly List<float> _tmpEnds = new List<float>(16);
+        // ★ 2026-08-31 — 가려짐 계산 본체는 Platform/VisibleTopEdgeSolver.cs로 이관됐다.
+        // 이유: 같은 알고리즘이 이 macOS 전용 파일 안에 갇혀 있어서 Windows 구현이 재사용하지
+        // 못했고(그 결과 Windows에는 가려짐 필터가 아예 없어 2026-08-31 신고 버그가 났다),
+        // macOS가 아닌 환경에서는 컴파일조차 안 돼 테스트로 겨냥할 수도 없었다.
+        // 구간 작업 버퍼(_segStarts/_segEnds/_tmpStarts/_tmpEnds)도 그 클래스가 함께 소유한다.
+        private readonly VisibleTopEdgeSolver _topEdgeSolver = new VisibleTopEdgeSolver();
 
         /// <summary>이번 열거에서 필터를 통과한 "원본 창" 개수(가려짐 판정 전). 진단 로그 전용.</summary>
         public int LastRawWindowCount { get; private set; }
@@ -759,74 +761,38 @@ namespace StickMate.Platform.MacOS
         /// </summary>
         private void BuildVisibleTopEdgeFootholds(bool hasDisplay, Rect displayBounds)
         {
+            // 1) z-order 앞->뒤 순서 그대로 솔버에 넣는다(그 순서가 이 계산의 전부다).
+            _topEdgeSolver.Begin();
             for (int i = 0; i < _rawRects.Count; i++)
             {
+                _topEdgeSolver.AddWindow(_rawRects[i]);
+            }
+            // 리더 지시 6항(화면 밖 소실 방지)의 발판 쪽 절반도 솔버가 함께 처리한다: 창이 화면
+            // 경계를 넘어가 있어도 발판은 화면 안쪽까지만 뻗는다.
+            _topEdgeSolver.Solve(MinVisibleFootholdWidth, hasDisplay, displayBounds);
+
+            // 2) 채택된 조각마다 발판을 하나씩 낸다. 핸들은 원본 창 그대로 유지한다
+            //    (ParkourClimb의 핸들 추적과 진단 로그가 그대로 동작해야 하므로).
+            for (int s = 0; s < _topEdgeSolver.SegmentCount; s++)
+            {
+                int i = _topEdgeSolver.GetSegmentWindowIndex(s);
                 Rect r = _rawRects[i];
+                // isTopmost: 목록 전체에서 처음 채택되는 조각이 곧 "가장 앞에서 실제로 보이는" 발판.
+                _footholdBuffer.Add(new PlatformFoothold(_rawHandles[i],
+                    new Rect(_topEdgeSolver.GetSegmentStartX(s), r.y, _topEdgeSolver.GetSegmentWidth(s), r.height),
+                    _footholdBuffer.Count == 0));
+                _footholdOwnerNames.Add(_rawNames[i]);
+            }
 
-                _segStarts.Clear();
-                _segEnds.Clear();
-                // 리더 지시 6항(화면 밖 소실 방지)의 발판 쪽 절반: 창이 화면 경계를 넘어가 있어도
-                // **발판은 화면 안쪽까지만** 뻗게 잘라낸다. 그러면 배회 AI가 "발판 끝"으로 인식하는
-                // 지점이 항상 화면 안이라, 캐릭터가 걸어서 화면 밖으로 나가는 경로 자체가 사라진다.
-                float left = r.x;
-                float right = r.x + r.width;
-                if (hasDisplay)
-                {
-                    left = Mathf.Max(left, displayBounds.x);
-                    right = Mathf.Min(right, displayBounds.x + displayBounds.width);
-                    if (right - left < MinVisibleFootholdWidth) { _rawVisibleWidth[i] = 0f; LastFullyOccludedWindowCount++; continue; }
-                }
-                _segStarts.Add(left);
-                _segEnds.Add(right);
-
-                // 나보다 앞(작은 인덱스)에 있는 창만 나를 가릴 수 있다.
-                for (int j = 0; j < i && _segStarts.Count > 0; j++)
-                {
-                    Rect o = _rawRects[j];
-                    // 가리는 창이 내 상단선 높이를 세로로 포함하지 않으면 내 발판에 영향이 없다.
-                    if (r.y < o.y || r.y > o.y + o.height) continue;
-
-                    float oL = o.x;
-                    float oR = o.x + o.width;
-
-                    _tmpStarts.Clear();
-                    _tmpEnds.Clear();
-                    for (int k = 0; k < _segStarts.Count; k++)
-                    {
-                        float sx = _segStarts[k];
-                        float ex = _segEnds[k];
-                        if (oR <= sx || oL >= ex)
-                        {
-                            _tmpStarts.Add(sx); _tmpEnds.Add(ex); // 겹치지 않음 — 그대로 통과
-                            continue;
-                        }
-                        if (sx < oL) { _tmpStarts.Add(sx); _tmpEnds.Add(oL); } // 왼쪽 잔여
-                        if (oR < ex) { _tmpStarts.Add(oR); _tmpEnds.Add(ex); } // 오른쪽 잔여
-                    }
-
-                    _segStarts.Clear(); _segEnds.Clear();
-                    for (int k = 0; k < _tmpStarts.Count; k++) { _segStarts.Add(_tmpStarts[k]); _segEnds.Add(_tmpEnds[k]); }
-                }
-
-                bool emittedAny = false;
-                float visibleWidthTotal = 0f;
-                for (int k = 0; k < _segStarts.Count; k++)
-                {
-                    float width = _segEnds[k] - _segStarts[k];
-                    if (width < MinVisibleFootholdWidth) continue;
-                    visibleWidthTotal += width;
-                    // isTopmost: 목록 전체에서 처음 채택되는 조각이 곧 "가장 앞에서 실제로 보이는" 발판.
-                    _footholdBuffer.Add(new PlatformFoothold(_rawHandles[i],
-                        new Rect(_segStarts[k], r.y, width, r.height), _footholdBuffer.Count == 0));
-                    _footholdOwnerNames.Add(_rawNames[i]);
-                    emittedAny = true;
-                }
-                _rawVisibleWidth[i] = visibleWidthTotal;
-                if (!emittedAny)
-                {
-                    LastFullyOccludedWindowCount++;
-                    _rejRects.Add(r); _rejNames.Add(_rawNames[i]); _rejPids.Add(_rawPids[i]); _rejReasons.Add(RejectFullyOccluded);
-                }
+            // 3) 진단 부기 — 조각을 하나도 내지 못한 창이 곧 "완전히 가려진 창"이다.
+            for (int i = 0; i < _rawRects.Count; i++)
+            {
+                float visible = _topEdgeSolver.GetVisibleWidth(i);
+                _rawVisibleWidth[i] = visible;
+                if (visible > 0f) continue;
+                LastFullyOccludedWindowCount++;
+                _rejRects.Add(_rawRects[i]); _rejNames.Add(_rawNames[i]); _rejPids.Add(_rawPids[i]);
+                _rejReasons.Add(RejectFullyOccluded);
             }
         }
 

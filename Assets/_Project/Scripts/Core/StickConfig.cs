@@ -2239,5 +2239,71 @@ namespace StickMate.Core
         [Tooltip("'기지개'에서 몸이 솟는 높이 — **캐릭터 신장 배수**. 발끝으로 서는 느낌을 주는 " +
                  "시각 전용 오프셋이라 Rigidbody2D 위치/접지 판정에는 아무 영향이 없다.")]
         public float idleAmbientStretchRiseRatio = 0.030f;
+
+        [Header("Windows 프레임 페이싱 (2026-08-31 — 잔상/렉 대응, Windows 전용)")]
+
+        [Tooltip("[Windows 전용] 초당 프레임 상한. 0 이하면 상한을 걸지 않고 지금까지의 동작(주사율 그대로)을 " +
+                 "유지한다.\n" +
+                 "왜 Windows에만 거는가: Windows 투명 오버레이는 UniWindowController가 요구하는 " +
+                 "useFlipModelSwapchain=false, 즉 **레거시 BitBlt 스왑체인**으로만 성립한다. 그 경로에서 " +
+                 "Present()는 화면을 직접 넘기는 것이 아니라 DWM의 리디렉션 표면에 복사되고, DWM은 그것을 " +
+                 "자기 주기로 따로 읽어 레이어드 창으로 합성한다. 두 주기가 동기화되지 않으므로 앱이 " +
+                 "빠르게 그릴수록 DWM이 '아직 다 갱신되지 않은 표면'을 읽을 확률이 올라간다 — 이때 화면 " +
+                 "전체가 두 프레임이 섞인 상으로 보인다(사용자 신고: 글자 획이 유령처럼 겹쳐 보임).\n" +
+                 "macOS(Metal/Quartz)에는 이 복사 경로 자체가 없어 이 값은 macOS에서 **읽히지 않는다**.")]
+        public int windowsTargetFrameRate = 60;
+
+        [Tooltip("[Windows 전용] 프레임 상한을 걸 때 QualitySettings.vSyncCount를 0으로 내릴지 여부.\n" +
+                 "vSyncCount가 1 이상이면 Application.targetFrameRate는 **통째로 무시된다**(Unity 공식 문서). " +
+                 "게다가 레이어드 창은 스캔아웃이 아니라 DWM 합성을 거치므로 앱 쪽 vsync는 지연만 더할 뿐 " +
+                 "찢어짐을 막아주지 못한다. 그래서 Windows에서는 vsync를 끄고 명시적 상한으로 대체한다.")]
+        public bool windowsDisableVSyncForFrameCap = true;
+
+        [Header("macOS 프레임 페이싱 (2026-08-31 성능 라운드 — 상주 앱 CPU/배터리/체감 렉)")]
+
+        [Tooltip("[macOS 전용] **몇 번의 디스플레이 새로고침마다 한 프레임을 낼 것인가**" +
+                 "(QualitySettings.vSyncCount). 0이면 이 항목을 건드리지 않는다.\n" +
+                 "  1 = 주사율 그대로(120Hz 패널에서 120fps)\n" +
+                 "  2 = 60fps   3 = 40fps   4 = 30fps   (120Hz 패널 기준)\n" +
+                 "\n" +
+                 "왜 targetFrameRate가 아니라 이 방식인가 — 이게 이번 라운드의 핵심이다.\n" +
+                 "사용자 신고는 '평균 수치는 낮은데 캐릭터가 부드럽지 않고 렉처럼 보인다'였다. 그건 " +
+                 "평균 부하 문제가 아니라 **프레임이 화면에 나가는 간격이 불규칙**하다는 뜻이다. " +
+                 "그런데 Application.targetFrameRate는 vsync를 끈 뒤 sleep으로 속도를 맞추는 방식이라, " +
+                 "앱의 프레임 위상이 디스플레이 주기와 어긋난 채 자유롭게 떠다닌다 — 60fps 평균이어도 " +
+                 "120Hz 화면에는 어떤 프레임은 1번, 어떤 프레임은 2번 표시되는 맥놀이(beat)가 생겨 " +
+                 "**오히려 더 끊겨 보인다**. vSyncCount는 반대로 디스플레이 주기에 위상을 고정하므로 " +
+                 "간격이 정확히 균일하다.\n" +
+                 "\n" +
+                 "macOS에서 이게 실제로 동작한다는 실측 근거: 실행 중인 .app을 `sample`로 뜬 결과 " +
+                 "CVDisplayLink 스레드가 살아 있고 -[CAMetalLayer nextDrawable]에서 " +
+                 "semaphore_timedwait으로 실제 back-pressure를 받고 있었다(645샘플 중 461). 즉 이 앱은 " +
+                 "이미 디스플레이 링크를 통해 표시되고 있어 vsync 간격이 그대로 먹는다.\n" +
+                 "\n" +
+                 "왜 기본값 2(=60fps)인가: 120Hz의 정확한 약수라 프레임 간격이 완벽히 균일하고, " +
+                 "육안으로 120fps와 구분되지 않으면서 렌더/합성 작업량을 절반으로 줄인다. 더 아끼려면 " +
+                 "3(40fps) 또는 4(30fps)를 써라 — 이 셋만이 120Hz의 약수라 균일하다. " +
+                 "**45fps 같은 비약수 값을 targetFrameRate로 주는 것은 피하라**(120/45=2.67이라 " +
+                 "2번,3번,2번,3번 표시되는 진동이 생겨 60fps보다 더 끊겨 보인다).")]
+        [Range(0, 4)]
+        public int macVSyncInterval = 2;
+
+        [Tooltip("[macOS 전용] 위 macVSyncInterval이 0일 때만 쓰이는 **보조** 프레임 상한" +
+                 "(Application.targetFrameRate). 0 이하면 상한을 걸지 않는다.\n" +
+                 "기본이 0인 이유: 이 앱에서는 vsync 간격 방식(macVSyncInterval)이 프레임 간격을 " +
+                 "균일하게 만들어 주므로 언제나 그쪽이 낫다. 이 항목은 외장 모니터 등에서 vsync가 " +
+                 "예상대로 동작하지 않는 것이 실측으로 확인됐을 때를 위한 탈출구다.\n" +
+                 "주의: 이 값을 쓰려면 vSyncCount가 0이어야 한다(1 이상이면 Unity가 targetFrameRate를 " +
+                 "통째로 무시한다). macVSyncInterval=0으로 두면 이 클래스가 자동으로 그렇게 맞춘다.")]
+        public int macTargetFrameRate = 0;
+
+        [Tooltip("프레임 시간 통계(p50/p95/p99/최댓값)를 30초마다 로그에 남길지 여부. **플랫폼 공통**.\n" +
+                 "'평균은 낮은데 렉이 느껴진다'는 종류의 신고는 평균이 아니라 **분산과 최댓값**을 봐야 " +
+                 "판별된다. 켜면 링 버퍼(할당 0)로 프레임 간격을 모아 30초에 한 줄 남긴다 — 로그 부담은 " +
+                 "사실상 없다.\n" +
+                 "기본값이 true인 이유: 지금 이 라운드가 바로 그 '체감 렉' 신고를 쫓는 중이고, 특히 " +
+                 "Windows 잔상/렉은 이 개발 환경(macOS)에서 재현이 불가능해 **사용자 기기의 로그가 유일한 " +
+                 "계측 수단**이다. 렉 문제가 종결되면 false로 내려도 된다.")]
+        public bool logFrameTimeStats = true;
     }
 }
