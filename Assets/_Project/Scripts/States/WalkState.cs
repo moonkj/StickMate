@@ -128,16 +128,29 @@ namespace StickMate.States
                         : 0.25f;
                     _blackboard.BeginDropThroughIgnore(info.GroundedFootholdHandle, ignoreDuration);
 
-                    // ── (2) "살짝 앞으로 내딛는" 느낌 — 수평 속도 한 번. FallState는 x속도를 건드리지
-                    // 않으므로(중력만 y에 작용) 이 한 번의 부여가 착지까지 그대로 유지되고, 몸은 이 속도로
-                    // **걸어서** 모서리를 넘는다(순간이동 없음). y는 0으로 확정한다: 걸어 나가듯 떨어져야지
-                    // 위로 뛰어오르면 "점프"가 되어버린다.
+                    // ── (2) "살짝 앞으로 내딛는" 느낌 — 수평 속도. 몸은 이 속도로 **걸어서** 모서리를
+                    // 넘는다(순간이동 없음). y는 0으로 확정한다: 걸어 나가듯 떨어져야지 위로 뛰어오르면
+                    // "점프"가 되어버린다.
+                    // ★ 2026-09-02 정정 — 예전 주석은 "FallState는 x속도를 건드리지 않으므로 이 한 번의
+                    //   부여가 착지까지 그대로 유지된다"였다. 그 문장은 **콜라이더가 없는 논리 발판
+                    //   위에서만** 참이다. 아래 (2b)가 그 전제를 실제로 성립시킨다.
                     // ★ 배율 반영 속도(StickConfig.ResolveWalkSpeed 문서 — 보폭이 배율에 비례하므로 속도도 함께
                     // 비례해야 보행 사이클 주파수가 유지되고 디딤발이 미끄러지지 않는다).
                     float walkSpeed = _blackboard.Config != null ? _blackboard.Config.ResolveWalkSpeed() : 2.5f;
                     float scale = _blackboard.Config != null ? _blackboard.Config.hopDownStepOffSpeedScale : 0.8f;
                     Vector2 before = _blackboard.Body.position;
-                    _blackboard.Body.linearVelocity = new Vector2(hopDirection * walkSpeed * scale, 0f);
+                    float stepOffVelocityX = hopDirection * walkSpeed * scale;
+                    _blackboard.Body.linearVelocity = new Vector2(stepOffVelocityX, 0f);
+
+                    // ── (2b) ★ 그 속도를 유예 창 동안 **유지**시킨다(2026-09-02 회귀 수정).
+                    // 위 (2)의 주석은 "FallState는 x속도를 건드리지 않으므로 이 한 번의 부여가 착지까지
+                    // 그대로 유지된다"고 적혀 있는데, 그 문장은 **논리 발판 위에서만** 참이었다. Dock에는
+                    // Platform/DockPhysicsStep의 실제 콜라이더가 있어 몸에 쿨롱 마찰이 걸리고, 실측
+                    // 정지 거리(배율 0.60에서 0.061유닛)가 모서리까지 남은 거리(0.090~0.117유닛)보다
+                    // 짧아 **모서리에 닿기 전에 멈췄다**(신빌드 111분 관측: 발 떼기 64회 / 하강 0회).
+                    // 유도와 네거티브 컨트롤은 StickConfig.hopDownStepOffCarryEnabled의 Tooltip 참고.
+                    _blackboard.BeginStepOffCarry(stepOffVelocityX);
+                    bool carryOn = _blackboard.TryGetStepOffCarryVelocityX(out _);
 
                     float edgeWorldX = hopDirection > 0 ? info.CurrentFootholdRightWorldX : info.CurrentFootholdLeftWorldX;
                     Debug.Log($"[뛰어내리기] 발을 뗍니다 — 방향={(hopDirection > 0 ? "오른쪽" : "왼쪽")}, " +
@@ -146,7 +159,12 @@ namespace StickMate.States
                         $"(순간이동 없음 — drop-through {ignoreDuration:F2}초로 발판핸들 {info.GroundedFootholdHandle} 통과), " +
                         $"월드Y={before.y:F3}, 낙차={(info.GroundWorldY - hopTopY):F3}유닛, " +
                         $"예상 착지 발판핸들={hopHandle}(상단 Y={hopTopY:F3}), " +
-                        $"내딛는 수평속도={(hopDirection * walkSpeed * scale):F2}유닛/초.");
+                        $"내딛는 수평속도={stepOffVelocityX:F2}유닛/초" +
+                        // ★ 이 두 수가 이번 회귀의 판별식이다 — 필요시간이 유예보다 길면(또는 이송이
+                        //   꺼져 있으면) 몸이 모서리에 닿기 전에 마찰로 멈춰 제자리 착지가 된다.
+                        $", 발떼기이송={(carryOn ? "켜짐" : "꺼짐")}(모서리까지 " +
+                        $"{(Mathf.Abs(stepOffVelocityX) > 0.0001f ? Mathf.Abs(edgeWorldX - before.x) / Mathf.Abs(stepOffVelocityX) : float.PositiveInfinity):F3}초 필요 / " +
+                        $"유예 {ignoreDuration:F2}초).");
 
                     _blackboard.Machine.ChangeState(StickmanStateId.Fall);
                     return;

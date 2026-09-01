@@ -49,11 +49,26 @@ namespace StickMate.Platform
     /// [스톨귀인] 프레임#7160 직전 128.4ms(기대 16.7ms) — 로직 3.1ms(24%) : 창열거 0.4ms/0회,
     ///   로그 0.2ms/2줄, 기타로직 2.5ms | 로직밖 125.3ms(76%). 판정: **로직밖(렌더/프레젠트/합성)**
     /// </code>
-    /// · "판정: 창열거"  -> 후보 A 확정. <c>footholdPollInterval</c>과 Win32 열거 경로를 본다.
+    /// · "판정: 창열거경로" -> 후보 A 확정. <b>다음에 볼 것은 같은 줄의 세 조각이다</b>:
+    ///   <c>발판열거</c> / <c>전체화면판정</c> / <c>그중 OS창목록</c>. 앞 둘은 주기가 다른 별개
+    ///   경로이고(0.3초 vs <c>fullscreenPollInterval</c> 1.5초), 셋째는 앞 둘의 <b>부분집합</b>이라
+    ///   <c>(발판열거+전체화면판정) − OS창목록 = 우리 후처리</c>다. OS창목록이 크면 WindowServer/DWM
+    ///   왕복이고, 차이가 크면 가려짐 솔버·Dock 실측·안전망 합성 쪽이다.
     /// · "판정: 로그쓰기" -> 후보 B 확정. 스택트레이스/로그 양을 줄인다.
     /// · "판정: 기타로직" -> 우리 Update 안의 다른 코드. 60초 요약의 후보창 수와 함께 본다.
     /// · "판정: 로직밖"  -> **A도 B도 아니다.** 렌더/프레젠트/DWM 합성 대기다. 이 앱의 CPU%에는
     ///                     잡히지 않는 종류의 비용이므로, 다음 라운드는 렌더 쪽을 봐야 한다.
+    ///
+    /// ============================================================================
+    /// ★★ 2026-09-02 — 원장의 <b>17%가 통째로 비어 있었다</b>(이제 아니다)
+    /// ============================================================================
+    /// <c>FootholdPoller</c>가 자기 주석에서 "네이티브 창 열거가 일어나는 <b>유일한</b> 지점"이라고
+    /// 단언했지만 거짓이었다. 전체화면 판정 경로가 창 목록을 <b>따로</b> 조회한다 — 초당 0.67회,
+    /// 발판 폴링 3.33회와 합쳐 <b>초당 4회 중 17%</b>가 계측 밖이었다. 그 호출이 200ms 블로킹되면
+    /// 장부는 <c>창열거 0.0ms/0회 + 기타로직 200ms</c>로 찍혀 <b>원인이 창 목록 조회인데 원장이
+    /// "아니다"라고 말한다.</b> 세 창구가 그 구멍을 메운다:
+    /// <see cref="RecordWindowEnumeration"/>(발판) / <see cref="RecordFullscreenProbe"/>(전체화면) /
+    /// <see cref="RecordNativeWindowListQuery"/>(OS 왕복 단독 — 앞 둘의 부분집합).
     ///
     /// ============================================================================
     /// ★ 2차 라운드(2026-09-01) — <c>[스톨구간]</c> 줄이 생겼다. 그쪽을 먼저 봐라.
@@ -127,6 +142,18 @@ namespace StickMate.Platform
             public int EnumeratedWindowCount;
             public int DwmProbeCount;
             public int FootholdCount;
+
+            // ★★ 2026-09-02 — **미계측 17%를 되찾는 칸.** 아래 RecordFullscreenProbe 문서 참고.
+            //   EnumMs는 발판 폴링(0.3초) 경로만 쟀고, 전체화면 판정(1.5초) 경로가 따로 부르는
+            //   네이티브 창 목록 조회는 장부 **밖**이었다. 주기가 다르므로 칸도 나눈다.
+            public double FullscreenProbeMs;
+            public int FullscreenProbeCount;
+
+            // ★ OS 왕복만 따로 재는 칸 — 위 두 칸의 **부분집합**이다(합산 금지, 이중계산).
+            //   이게 있어야 "WindowServer 왕복이 느린가 / 그 뒤 우리 후처리가 느린가"가 한 줄에서 갈린다.
+            public double OsListMs;
+            public int OsListCount;
+
             public double LogMs;
             public int LogCount;
             public double LogicMs;
@@ -156,17 +183,41 @@ namespace StickMate.Platform
         private static double _baseTotalMs, _baseMaxMs;
         private static int _baseCount, _baseMaxEnumerated, _baseMaxDwm;
 
+        // ★★ 2026-09-02 — 전체화면 판정 경로. 이 세 줄이 없어서 초당 0.67회의 블로킹 창 목록
+        //   조회(= 초당 총 4회 중 17%)가 원장에 **한 번도** 나타나지 않았다.
+        private static double _baseFsTotalMs, _baseFsMaxMs;
+        private static int _baseFsCount;
+
+        // ★ OS 창목록 왕복만(발판/전체화면 양쪽의 부분집합) + 같은 구간의 스레드 CPU 시간.
+        //   벽시계 ≫ CPU 면 블로킹/스케줄링 대기, CPU가 함께 크면 우리 관리 코드다 —
+        //   "C 프로세스 1.6ms vs Unity 메인스레드 4.3~5.3ms" 3ms 갭의 남은 두 가설을 이 한 쌍이 가른다.
+        private static double _baseOsListTotalMs, _baseOsListMaxMs;
+        private static int _baseOsListCount;
+        private static double _baseOsListCpuTotalMs;
+        private static int _baseOsListCpuCount;
+
         // 60초 요약용 누적치(할당 0)
         private static double _winEnumTotalMs, _winEnumMaxMs;
         private static int _winEnumCount;
+        private static double _winFsTotalMs, _winFsMaxMs;
+        private static int _winFsCount;
         private static double _logTotalMs, _logMaxMs;
         private static int _logCount;
         private static double _logicMaxMs;
         private static int _spikeCount, _spikeSinceSummary;
+
+        // ★ 2026-09-02 R2-3 — 이 파일에는 FramePacingTier 참조가 **0건**이었다. 두 줄을 같은
+        //   프레임#으로 짝지어 놓고 한쪽만 등급을 모르면, 사용자가 [프레임스파이크]에서 "절감등급"을
+        //   읽고 [스톨귀인]으로 눈을 옮기는 순간 그 축이 사라진다. 같은 장부를 함께 쓴다.
+        private static SpikeTierLedger _spikeTiers;
+
+        // ★ R2-1 — 고정 5초 쿨다운을 적응형 백오프로. 가려진 452초 동안 이 줄만 137.5 B/s였다.
+        private static SpikeLogBackoff _spikeBackoff;
         private static int _lastEnumeratedCount, _maxEnumeratedCount;
         private static int _lastDwmProbeCount, _maxDwmProbeCount, _lastFootholdCount;
 
         private static float _spikeCooldownLeft;
+        private static FramePacingTier _lastTierSeen = FramePacingTier.Active;
         private static float _summaryTimer;
         private static float _enumSummaryTimer;
         private static bool _enabled = true;
@@ -310,6 +361,18 @@ namespace StickMate.Platform
         public static int WindowSectionCount(StallSection section) => SectionWindowCount[(int)section];
 
         // ------------------------------------------------------------------------------------
+        // ★ 2026-09-02 — 테스트가 "이번 프레임 장부"를 **실행으로** 확인하는 창구.
+        // 이게 없으면 "전체화면 판정 경로가 정말 원장에 쌓이는가"를 확인할 수단이 소스 문자열
+        // 검사뿐이다. 그건 배선이 아니라 글자를 잠그는 것이라 거짓 초록이 나기 쉽다 —
+        // 이 저장소가 오늘 밤에만 일곱 번 겪은 실패다.
+        // ------------------------------------------------------------------------------------
+        internal static double CurrentFrameFootholdEnumMs => Buckets[_current].EnumMs;
+        internal static double CurrentFrameFullscreenProbeMs => Buckets[_current].FullscreenProbeMs;
+        internal static int CurrentFrameFullscreenProbeCount => Buckets[_current].FullscreenProbeCount;
+        internal static double CurrentFrameOsListMs => Buckets[_current].OsListMs;
+        internal static int CurrentFrameOsListCount => Buckets[_current].OsListCount;
+
+        // ------------------------------------------------------------------------------------
         // 성장 관측치 — "켜놓을수록 심해진다"를 로그가 스스로 증명하게 하는 값들
         // ------------------------------------------------------------------------------------
         private static int _summaryIndex;                 // 몇 번째 60초 창인가(1부터)
@@ -358,10 +421,19 @@ namespace StickMate.Platform
             _winEnumCount = 0;
             _baseTotalMs = _baseMaxMs = 0;
             _baseCount = _baseMaxEnumerated = _baseMaxDwm = 0;
+            _baseFsTotalMs = _baseFsMaxMs = 0;
+            _baseFsCount = 0;
+            _baseOsListTotalMs = _baseOsListMaxMs = _baseOsListCpuTotalMs = 0;
+            _baseOsListCount = _baseOsListCpuCount = 0;
+            _winFsTotalMs = _winFsMaxMs = 0;
+            _winFsCount = 0;
             _logTotalMs = _logMaxMs = 0;
             _logCount = 0;
             _logicMaxMs = 0;
             _spikeCount = _spikeSinceSummary = 0;
+            _spikeTiers.Reset();
+            _spikeBackoff.Reset();
+            _lastTierSeen = FramePacingTier.Active;
             _lastEnumeratedCount = _maxEnumeratedCount = 0;
             _lastDwmProbeCount = _maxDwmProbeCount = _lastFootholdCount = 0;
             _spikeCooldownLeft = 0f;
@@ -451,6 +523,87 @@ namespace StickMate.Platform
         }
 
         // ====================================================================================
+        // 계측 입력 (1-b) — ★★ 전체화면 판정 경로. FallbackPlatformWindowService가 부른다.
+        // ====================================================================================
+
+        /// <summary>
+        /// <c>IPlatformWindowService.IsFullscreenAppActive()</c> 한 번이 걸린 시간.
+        ///
+        /// ============================================================================
+        /// ★★ 2026-09-02 — 왜 이 창구가 생겼나: 원장의 17%가 통째로 비어 있었다
+        /// ============================================================================
+        /// <c>FootholdPoller</c>는 자기 주석에서 스스로를 "네이티브 창 열거가 일어나는 <b>유일한</b>
+        /// 지점"이라고 단언했지만 <b>사실이 아니었다</b>. macOS의 <c>EvaluateFullscreen()</c>이
+        /// <c>CGWindowListCopyWindowInfo</c>를 <b>따로</b> 부른다(Windows도 같은 구조로 전경 창을
+        /// 조회한다). 주기는 <c>StickConfig.fullscreenPollInterval</c> = 1.5초 → 초당 0.67회.
+        /// 발판 폴링 0.3초 = 초당 3.33회와 합치면 <b>초당 4회 중 0.67회 = 17%가 미계측</b>이었다.
+        ///
+        /// <para><b>왜 심각한가.</b> 그 호출이 200ms 블로킹되면 같은 프레임의 장부는
+        /// <c>창열거 0.0ms/0회</c> + <c>기타로직 200ms</c>로 찍힌다 — <b>원인이 창 목록 조회인데
+        /// 원장이 "아니다"라고 말한다.</b> 진단이 통째로 엉뚱한 곳으로 간다.</para>
+        ///
+        /// <para><b>왜 플랫폼 중립 위치(데코레이터)에서 재는가.</b> macOS 안에 넣으면 Windows가
+        /// 물리적으로 같은 계측을 못 받는다 — 이 저장소가 <c>FullscreenSuspendPolicy.cs</c>로 이미
+        /// 겪은 사고다. 데코레이터는 Mac/Win 양쪽 서비스를 모두 감싸므로 한 곳이 두 플랫폼을 덮는다.</para>
+        ///
+        /// <para>비용: 판정당(1.5초) 타임스탬프 2회. <b>할당 0.</b></para>
+        /// </summary>
+        public static void RecordFullscreenProbe(long elapsedTicks)
+        {
+            double ms = elapsedTicks * TicksToMs;
+            Buckets[_current].FullscreenProbeMs += ms;
+            Buckets[_current].FullscreenProbeCount++;
+
+            _baseFsTotalMs += ms;
+            _baseFsCount++;
+            if (ms > _baseFsMaxMs) _baseFsMaxMs = ms;
+
+            _winFsTotalMs += ms;
+            _winFsCount++;
+            if (ms > _winFsMaxMs) _winFsMaxMs = ms;
+        }
+
+        // ====================================================================================
+        // 계측 입력 (1-c) — ★ OS 창목록 왕복 **단독**. 위 두 구간의 부분집합이다.
+        // ====================================================================================
+
+        /// <summary>
+        /// 네이티브 창 목록 조회 <b>그 자체</b>(macOS <c>CGWindowListCopyWindowInfo</c>)만 감싼
+        /// 중첩 타이머의 결과.
+        ///
+        /// <para><b>왜 필요한가(2026-09-02).</b> <c>[발판열거]</c>라는 라벨이 재는 구간에는 OS 왕복
+        /// 말고도 <b>Dock 실측</b>(<c>TryGetDockFoothold</c>)과 <b>바닥 안전망 합성</b>
+        /// (<c>AppendBottomSafetyNet</c>)이 들어 있다. 오늘 실측으로 Dock 경로는 p50 0.105ms라
+        /// 숫자상 무해하지만, <b>라벨만 보고 원인을 특정하는 순간 오도한다</b>. 이 칸이 그 둘을 가른다:
+        /// <c>발판열거 − OS창목록 = 우리 후처리</c>.</para>
+        ///
+        /// <para><b>같은 구간의 스레드 CPU 시간을 함께 받는 이유</b>(7절 미해결 잔차): 같은 OS
+        /// 작업이 C 프로세스에서 1.6ms인데 Unity 메인스레드에서 4.3~5.3ms다(3ms 갭). 후처리·해체·
+        /// Dock·창수·경합·QoS·창소유 <b>7개 후보가 전부 반증</b>됐고 남은 가설은 두 개뿐이다 —
+        /// (a) Mono 관리↔네이티브 전이 비용, (b) 메인스레드 RPC 복귀 지연. 이 한 쌍이 그것을 가른다:
+        /// <b>벽시계 ≫ CPU</b>면 블로킹/스케줄링(b), <b>CPU가 함께 크면</b> 우리 관리 코드(a).</para>
+        /// </summary>
+        /// <param name="elapsedTicks"><see cref="Stopwatch"/> 틱 단위 벽시계 경과.</param>
+        /// <param name="cpuNanoseconds">같은 구간의 <b>스레드</b> CPU 시간(ns).
+        /// <b>음수면 그 플랫폼이 스레드 CPU 시계를 지원하지 않는다</b> — 0으로 위장하지 않는다.</param>
+        public static void RecordNativeWindowListQuery(long elapsedTicks, long cpuNanoseconds)
+        {
+            double ms = elapsedTicks * TicksToMs;
+            Buckets[_current].OsListMs += ms;
+            Buckets[_current].OsListCount++;
+
+            _baseOsListTotalMs += ms;
+            _baseOsListCount++;
+            if (ms > _baseOsListMaxMs) _baseOsListMaxMs = ms;
+
+            if (cpuNanoseconds >= 0)
+            {
+                _baseOsListCpuTotalMs += cpuNanoseconds / 1000000.0;
+                _baseOsListCpuCount++;
+            }
+        }
+
+        // ====================================================================================
         // 계측 입력 (2) — 로그 쓰기. StallProfilingLogHandler가 부른다.
         // ====================================================================================
 
@@ -515,7 +668,15 @@ namespace StickMate.Platform
         internal static void BeginFrame()
         {
             float dtMs = Time.unscaledDeltaTime * 1000f;
-            if (_spikeCooldownLeft > 0f) _spikeCooldownLeft -= Time.unscaledDeltaTime;
+            float unscaledDt = Time.unscaledDeltaTime;
+            if (_spikeCooldownLeft > 0f) _spikeCooldownLeft -= unscaledDt;
+            _spikeBackoff.Tick(unscaledDt);
+            // 등급 전환 부기는 스파이크가 없는 프레임에서도 굴러야 소급 재분류가 성립한다(R2-2).
+            // ★ 유예 사유는 **절감 경계를 넘는 전환**뿐이다 — FramePacing 쪽과 같은 규칙을 쓴다
+            //   (미세 전환까지 유예로 치면 진짜 히치가 전환 칸으로 삼켜진다. 2026-09-02 실측).
+            FramePacingTier tierNow = FramePacing.CurrentTier;
+            _spikeTiers.Tick(unscaledDt, SpikeTierLedger.CrossesThrottleBoundary(_lastTierSeen, tierNow));
+            _lastTierSeen = tierNow;
             _summaryTimer += Time.unscaledDeltaTime;
             _enumSummaryTimer += Time.unscaledDeltaTime;
 
@@ -620,14 +781,25 @@ namespace StickMate.Platform
             // 절감 등급(Away 15fps / DisplayOff 4fps)에서는 긴 프레임이 정상이다 —
             // FramePacing의 [프레임스파이크]와 **같은 함수**로 같은 상대 조건을 건다.
             float expectedMs = ExpectedFrameMs();
-            if (dtMs < expectedMs * SpikeRelativeFactor) return;
 
+            // ★★ R2-1/R2-6 — 계획값만 보면 "가려진 앱을 OS가 조인" 상황(실측 계획 16.7ms / 실제
+            //    p50 105ms)을 통째로 스파이크로 센다. FramePacing과 **같은 함수·같은 기준선**을 쓴다.
+            float medianMs = FrameTimeStats.RecentMedianMs();
+            float thresholdMs = SpikeThresholdMs(expectedMs, medianMs);
+            if (dtMs < thresholdMs) return;
+
+            FramePacingTier tier = FramePacing.CurrentTier;
+            SpikeTierLedger.SpikeClass spikeClass = _spikeTiers.Classify(tier);
             _spikeCount++;
             _spikeSinceSummary++;
+            _spikeTiers.Count(tier);
 
             FrameBucket b = Buckets[previousBucket];
             float logicMs = (float)b.LogicMs;
-            float enumMs = (float)b.EnumMs;
+            // ★★ 2026-09-02 — 전체화면 판정 경로를 **여기 더한다**. 이 한 줄이 없던 동안 창 목록
+            //   조회의 17%가 "기타로직"으로 잘못 귀속돼, 원인이 창 열거인 프레임에서도 원장이
+            //   "창열거 0.0ms/0회"라고 말했다(RecordFullscreenProbe 문서 참고).
+            float enumMs = (float)(b.EnumMs + b.FullscreenProbeMs);
             float logMs = (float)b.LogMs;
             float fixedMs = (float)b.FixedMs;
             float otherLogicMs = Mathf.Max(0f, logicMs - enumMs - logMs);
@@ -649,12 +821,17 @@ namespace StickMate.Platform
             }
 
             if (!_enabled) return;
-            if (_spikeCooldownLeft > 0f) return;
-            _spikeCooldownLeft = SpikeLogCooldownSeconds;
+            if (!_spikeBackoff.ShouldLog((int)spikeClass,
+                    spikeClass == SpikeTierLedger.SpikeClass.Actionable)) return;
 
-            Debug.Log($"[스톨귀인] 프레임#{Time.frameCount} 직전 {dtMs:F1}ms(기대 {expectedMs:F1}ms, 누적 {_spikeCount}회) — " +
-                $"로직 {logicMs:F1}ms({Share(logicMs, dtMs):F0}%) : 창열거 {enumMs:F1}ms/{b.EnumCount}회" +
-                $"(열거창 {b.EnumeratedWindowCount}개 -> 정밀검사 {b.DwmProbeCount}회 -> 발판 {b.FootholdCount}조각), " +
+            Debug.Log($"[스톨귀인] 프레임#{Time.frameCount} 직전 {dtMs:F1}ms" +
+                $"(계획 {expectedMs:F1} / 관측 p50 {medianMs:F1} -> 문턱 {thresholdMs:F0}ms, " +
+                $"등급={tier}, 누적 {_spikeCount}회 = {_spikeTiers}) — " +
+                $"로직 {logicMs:F1}ms({Share(logicMs, dtMs):F0}%) : 창열거경로 {enumMs:F1}ms " +
+                $"[발판열거 {b.EnumMs:F1}/{b.EnumCount}회(열거창 {b.EnumeratedWindowCount}개 -> " +
+                $"정밀검사 {b.DwmProbeCount}회 -> 발판 {b.FootholdCount}조각) + 전체화면판정 " +
+                $"{b.FullscreenProbeMs:F1}/{b.FullscreenProbeCount}회 | 그중 OS창목록 " +
+                $"{b.OsListMs:F1}ms/{b.OsListCount}회], " +
                 $"로그 {logMs:F1}ms/{b.LogCount}줄, " +
                 $"기타로직 {otherLogicMs:F1}ms | 물리 {fixedMs:F1}ms/{b.FixedSteps}스텝 | " +
                 $"로직밖 {outsideMs:F1}ms({Share(outsideMs, dtMs):F0}%). " +
@@ -690,6 +867,43 @@ namespace StickMate.Platform
             => ExpectedFrameMs(QualitySettings.vSyncCount,
                                Screen.currentResolution.refreshRateRatio.value,
                                Application.targetFrameRate);
+
+        /// <summary>
+        /// **스파이크 판정 문턱.** 계획값이 아니라 <b>실제로 관측된 최근 프레임 주기</b>까지 함께 본다.
+        ///
+        /// ============================================================================
+        /// ★ 왜 계획값만으로는 안 되는가 (2026-09-02 R2-6, 452초 실측으로 확정)
+        /// ============================================================================
+        /// 전체화면 게임에 가려진 동안 우리 앱의 루프는 <b>계획과 무관하게</b> 느려진다:
+        /// <code>
+        ///   계획: vSyncCount=2 @120Hz -> 기대 16.7ms
+        ///   실측: p50 105ms / p95 197ms / p99 215ms  (13개 창, 등급은 내내 Active/Calm/Still)
+        /// </code>
+        /// <b>등급이 Suspended가 아니었는데도</b> 9.5fps로 떨어졌다 — 즉 이건 우리 vSync 계획이
+        /// 만든 것이 아니라 <b>OS가 가려진 앱을 조인 결과</b>다(R2-6 가설 A 확정. 분포가 p50≈평균으로
+        /// 촘촘한 <b>규칙적 박자</b>라 "불규칙 스톨만 남는다"는 가설 B는 반증됐다 — 200ms대 꼬리는
+        /// 그 박자를 한 번 거른 배수다).
+        ///
+        /// <para>그래서 계획값 기반 문턱은 <b>어떤 상수를 넣어도</b> 이 상황을 못 맞춘다. 105ms를
+        /// 예측할 수 있는 값은 계획에 존재하지 않는다 — <b>관측만이 안다.</b></para>
+        ///
+        /// ============================================================================
+        /// 이 문턱이 눈을 감지 않는 이유
+        /// ============================================================================
+        /// 기준선은 <b>중앙값</b>이다. 평상시 p50이 16.7ms면 문턱은 그대로 100ms이고, 400ms짜리
+        /// 진짜 히치는 변함없이 잡힌다. 반대로 앱이 <b>지속적으로</b> 느려진 상황(p50 자체가 큰 상황)은
+        /// 스파이크 로그가 아니라 <c>[프레임시간]</c> 줄이 30초마다 p50으로 보고하는 영역이다 —
+        /// 두 계기가 서로 다른 질문에 답하도록 나눈 것이지 하나를 끈 것이 아니다.
+        /// </summary>
+        /// <param name="expectedMs">계획값(<see cref="ExpectedFrameMs()"/>).</param>
+        /// <param name="observedMedianMs">최근 프레임 주기의 중앙값. 0 이하면 무시한다.</param>
+        public static float SpikeThresholdMs(float expectedMs, float observedMedianMs)
+        {
+            float baseline = expectedMs;
+            if (observedMedianMs > baseline) baseline = observedMedianMs;
+            float relative = baseline * SpikeRelativeFactor;
+            return relative > SpikeAbsoluteMs ? relative : SpikeAbsoluteMs;
+        }
 
         /// <summary>
         /// 위 함수의 <b>순수 산술</b>. 네이티브 상태를 읽지 않으므로 EditMode에서 그대로 검증된다
@@ -766,18 +980,31 @@ namespace StickMate.Platform
             float window = _enumSummaryTimer;
             _enumSummaryTimer = 0f;
 
-            if (_enabled && _baseCount > 0)
+            if (_enabled && (_baseCount > 0 || _baseFsCount > 0))
             {
-                double mean = _baseTotalMs / _baseCount;
+                double mean = _baseCount > 0 ? _baseTotalMs / _baseCount : 0.0;
                 double perSecond = _baseTotalMs / Mathf.Max(0.001f, window);
+                double fsMean = _baseFsCount > 0 ? _baseFsTotalMs / _baseFsCount : 0.0;
+                double fsPerSecond = _baseFsTotalMs / Mathf.Max(0.001f, window);
+                double osMean = _baseOsListCount > 0 ? _baseOsListTotalMs / _baseOsListCount : 0.0;
+                double osCpuMean = _baseOsListCpuCount > 0 ? _baseOsListCpuTotalMs / _baseOsListCpuCount : -1.0;
+                double ourPost = _baseTotalMs + _baseFsTotalMs - _baseOsListTotalMs;
                 Debug.Log($"[발판열거] 1회 평균 {mean:F2}ms / 최대 {_baseMaxMs:F2}ms, {_baseCount}회/{window:F0}초 " +
                     $"(초당 {perSecond:F2}ms = 실행 시간의 {perSecond / 10.0:F2}%), " +
                     $"전체 창 {_lastEnumeratedCount}개(최대 {_baseMaxEnumerated}), " +
                     $"정밀검사 {_lastDwmProbeCount}회(최대 {_baseMaxDwm}), 발판 {_lastFootholdCount}조각. " +
+                    $"★전체화면판정 평균 {fsMean:F2}ms / 최대 {_baseFsMaxMs:F2}ms, {_baseFsCount}회 " +
+                    $"(초당 {fsPerSecond:F2}ms). " +
+                    $"★OS창목록(왕복만) 평균 {osMean:F2}ms / 최대 {_baseOsListMaxMs:F2}ms, {_baseOsListCount}회, " +
+                    $"같은 구간 스레드CPU 평균 {osCpuMean:F2}ms({_baseOsListCpuCount}회 측정) " +
+                    $"-> 우리 후처리 합계 {ourPost:F1}ms. " +
                     "(-1 = 그 플랫폼이 보고하지 않는 값. '정밀검사'는 값싼 필터를 통과해 창 하나당 비싼 " +
                     "처리까지 간 횟수다 — Windows는 크로스 프로세스 DWM 조회, macOS는 창별 속성 복사. " +
                     "'초당 ms'가 이 기능이 실제로 가져가는 몫이다 — 60fps 예산 16.7ms/프레임 x 60 = " +
-                    "초당 1000ms이므로 초당 10ms면 1%다.)");
+                    "초당 1000ms이므로 초당 10ms면 1%다. " +
+                    "★'발판열거'는 OS 왕복만이 아니라 가려짐 솔버·Dock 실측·바닥 안전망 합성까지 포함한다 — " +
+                    "'OS창목록'과의 차이가 곧 우리 후처리다. 벽시계 >> CPU면 블로킹/스케줄링 대기이고, " +
+                    "CPU가 함께 크면 우리 관리 코드다.)");
             }
 
             // 로그를 껐을 때도 누적치는 반드시 비운다 — 24시간 상주 앱에서 '최대값'이 실행 전체의
@@ -786,6 +1013,10 @@ namespace StickMate.Platform
             _baseCount = 0;
             _baseMaxEnumerated = _lastEnumeratedCount;
             _baseMaxDwm = _lastDwmProbeCount;
+            _baseFsTotalMs = _baseFsMaxMs = 0;
+            _baseFsCount = 0;
+            _baseOsListTotalMs = _baseOsListMaxMs = _baseOsListCpuTotalMs = 0;
+            _baseOsListCount = _baseOsListCpuCount = 0;
         }
 
         private static void EmitSummary()
@@ -794,18 +1025,21 @@ namespace StickMate.Platform
             _summaryTimer = 0f;
             _summaryIndex++;
 
-            if (_enabled && (_winEnumCount > 0 || _logCount > 0))
+            if (_enabled && (_winEnumCount > 0 || _winFsCount > 0 || _logCount > 0))
             {
                 double enumMean = _winEnumCount > 0 ? _winEnumTotalMs / _winEnumCount : 0.0;
+                double fsMean = _winFsCount > 0 ? _winFsTotalMs / _winFsCount : 0.0;
                 double logMean = _logCount > 0 ? _logTotalMs / _logCount : 0.0;
                 Debug.Log($"[스톨귀인] 최근 {window:F0}초 요약 — " +
                     $"창열거 {_winEnumCount}회 평균 {enumMean:F2}ms 최대 {_winEnumMaxMs:F1}ms " +
                     $"(초당 {_winEnumTotalMs / Mathf.Max(0.001f, window):F2}ms | " +
                     $"열거창 최근 {_lastEnumeratedCount}/최대 {_maxEnumeratedCount}개, " +
                     $"정밀검사 최근 {_lastDwmProbeCount}/최대 {_maxDwmProbeCount}회, 발판 {_lastFootholdCount}조각) | " +
+                    $"전체화면판정 {_winFsCount}회 평균 {fsMean:F2}ms 최대 {_winFsMaxMs:F1}ms " +
+                    $"(초당 {_winFsTotalMs / Mathf.Max(0.001f, window):F2}ms) | " +
                     $"로그 {_logCount}줄 평균 {logMean:F3}ms 최대 {_logMaxMs:F1}ms " +
                     $"(초당 {_logCount / Mathf.Max(0.001f, window):F1}줄 / {_logTotalMs / Mathf.Max(0.001f, window):F2}ms) | " +
-                    $"로직구간 최대 {_logicMaxMs:F1}ms | 스파이크 {_spikeSinceSummary}회. " +
+                    $"로직구간 최대 {_logicMaxMs:F1}ms | 스파이크 {_spikeSinceSummary}회(생애 {_spikeTiers}). " +
                     $"가장 많이 찍은 로그: {TopTags()}. " +
                     $"정보로그 스택트레이스={(PlayerLogPolicy.InfoStackTracesSuppressed ? "꺼짐" : "켜짐")}. " +
                     "(창열거와 로그, 두 '초당 ms'를 비교하면 어느 쪽이 프레임 예산을 먹는지 바로 갈린다 — " +
@@ -816,6 +1050,8 @@ namespace StickMate.Platform
 
             _winEnumTotalMs = _winEnumMaxMs = 0;
             _winEnumCount = 0;
+            _winFsTotalMs = _winFsMaxMs = 0;
+            _winFsCount = 0;
             _logTotalMs = _logMaxMs = 0;
             _logCount = 0;
             _logicMaxMs = 0;
@@ -967,7 +1203,10 @@ namespace StickMate.Platform
         {
             switch (culprit)
             {
-                case StallCulprit.WindowEnumeration: return "창열거(네이티브)";
+                // ★ 2026-09-02 — 라벨을 넓혔다. 이 구간이 재는 것은 "네이티브 창 열거"만이 아니다:
+                //   OS 창목록 왕복 + 우리 후처리(가려짐 솔버) + Dock 실측 + 바닥 안전망 합성 +
+                //   전체화면 판정이 전부 여기 들어 있다. 옛 라벨은 원인을 OS 쪽으로 단정해 오도했다.
+                case StallCulprit.WindowEnumeration: return "창열거경로(OS창목록+발판합성+전체화면판정)";
                 case StallCulprit.LogWrite: return "로그쓰기(파일 IO)";
                 case StallCulprit.OtherLogic: return "기타로직(우리 Update 안)";
                 case StallCulprit.OutsideLogic: return "로직밖(렌더/프레젠트/OS 합성)";

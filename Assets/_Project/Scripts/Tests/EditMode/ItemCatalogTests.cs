@@ -237,7 +237,9 @@ namespace StickMate.Tests.EditMode
                     {
                         Assert.IsNotNull(part.Values, $"[{entry.DisplayName}] 아이콘 파츠에 좌표가 없습니다.");
 
-                        if (part.Kind == ItemIconPartKind.Polyline)
+                        // ★ Polygon(채운 다각형)도 좌표가 <b>점 목록</b>이다 — Polyline과 같은 규약.
+                        //   여기서 종류를 하나하나 나열하면 새 종류가 생길 때마다 '원'으로 오분류된다.
+                        if (part.HasPoints)
                         {
                             Assert.AreEqual(0, part.Values.Length % 2,
                                 $"[{entry.DisplayName}] 꺾은선의 좌표 개수가 홀수입니다.");
@@ -251,7 +253,20 @@ namespace StickMate.Tests.EditMode
                             Assert.Greater(part.Values[2], 0f, $"[{entry.DisplayName}] 원의 반지름이 0입니다.");
                         }
 
-                        int coords = part.Kind == ItemIconPartKind.Polyline ? part.Values.Length : 2;
+                        // ★ 채운 다각형은 <b>닫혀</b> 있어야 한다(마지막 점 = 첫 점). 안 닫히면
+                        //   삼각분할이 마지막 변을 임의로 이어 붙여 몸과 다른 덩어리가 된다.
+                        if (part.Kind == ItemIconPartKind.Polygon)
+                        {
+                            int n = part.PointCount;
+                            Assert.GreaterOrEqual(n, 4,
+                                $"[{entry.DisplayName}] 채운 다각형이 {n}점입니다 — 닫는 점을 포함해 4점 이상이어야 면이 생깁니다.");
+                            Assert.AreEqual(part.Values[0], part.Values[(n - 1) * 2], 1e-4f,
+                                $"[{entry.DisplayName}] 채운 다각형의 마지막 점이 첫 점과 다릅니다(x).");
+                            Assert.AreEqual(part.Values[1], part.Values[(n - 1) * 2 + 1], 1e-4f,
+                                $"[{entry.DisplayName}] 채운 다각형의 마지막 점이 첫 점과 다릅니다(y).");
+                        }
+
+                        int coords = part.HasPoints ? part.Values.Length : 2;
                         for (int v = 0; v < coords; v++)
                         {
                             Assert.That(part.Values[v], Is.InRange(-Slack, 40f + Slack),

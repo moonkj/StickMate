@@ -44,8 +44,16 @@ namespace StickMate.Interaction
     {
         // ==================== 치수 (시안 그대로) ====================
 
-        /// <summary>그룹 카드 폭(창 720 − 좌우 패딩 20×2).</summary>
-        public const float CardWidth = 680f;
+        /// <summary>
+        /// 그룹 카드 폭. ★ 2026-09-02 (41-2 결정 3) — 680 → <b>656</b>.
+        /// <para>창 720 − 좌 20 − 우 20 = 680이었는데, 그러면 본문이 뷰포트를 꽉 채워
+        /// <b>세로 스크롤 레일이 앉을 자리가 0pt</b>였다. 그래서 [▲][▼]가 탭 줄에 얹혀 있었고,
+        /// 탭 5개와 같은 줄·같은 높이라 <b>"탭 넘기는 버튼"</b>으로 읽혔다(민지 M12).
+        /// 656으로 줄이면 x 680~700이 레일 자리가 되고 좌 20 / 우 20 대칭이 된다.</para>
+        /// <para>카드 안쪽 폭 656 − <see cref="CardPadX"/>×2 = 628 ≥ 캡션 상자 480 / 라벨 상자 420
+        /// → <b>잘리는 글자 없음</b>.</para>
+        /// </summary>
+        public const float CardWidth = 656f;
 
         /// <summary>카드 안쪽 좌우 여백.</summary>
         public const float CardPadX = 14f;
@@ -85,14 +93,34 @@ namespace StickMate.Interaction
         public static Color DividerOnCard => UiChrome.Flatten(UiChrome.Divider, UiChrome.CardSurface);
         public static Color DividerOnPanel => UiChrome.Flatten(UiChrome.Divider, UiChrome.PanelSurface);
         public static Color TrackOnCard => UiChrome.Flatten(UiChrome.TrackBackground, UiChrome.CardSurface);
+
+        /// <summary>같은 트랙을 <b>창 바탕에 직접</b> 깔 때(2026-09-02: 본문 오른쪽 스크롤 레일).</summary>
+        public static Color TrackOnPanel => UiChrome.Flatten(UiChrome.TrackBackground, UiChrome.PanelSurface);
         public static Color OutlineOnCard => UiChrome.Flatten(UiChrome.PanelBorder, UiChrome.CardSurface);
 
         /// <summary>카드보다 <b>밝은</b> 버튼 표면. 시안의 <c>rgba(255,255,255,0.06)</c> 자리인데,
         /// 새 색을 만들지 않으려고 기존 토큰(CardBorder = 흰색 α0.10)을 카드 위에 합성해 만든다.</summary>
         public static Color ButtonSurfaceOnCard => UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface);
 
+        /// <summary>같은 버튼 표면을 <b>창 바탕에 직접</b> 얹을 때(2026-09-02: 푸터로 올라간 [지금 종료]).
+        /// 밑에 깔린 색이 CardSurface가 아니라 PanelSurface이므로 합성 상대가 다르다 — 위 "두 벌이다"
+        /// 규칙 그대로다. 카드용 값을 그대로 쓰면 창 바탕 위에서 버튼이 <b>한 단 어둡게</b> 앉는다.</summary>
+        public static Color ButtonSurfaceOnPanel => UiChrome.Flatten(UiChrome.CardBorder, UiChrome.PanelSurface);
+
+        /// <summary>창 바탕에 직접 얹히는 버튼의 테두리.</summary>
+        public static Color OutlineOnPanel => UiChrome.Flatten(UiChrome.PanelBorder, UiChrome.PanelSurface);
+
         /// <summary>선택된 세그먼트/스위치가 켜졌을 때의 강조 면. Accent는 α=1이라 합성이 필요 없다.</summary>
         public static Color AccentSolid => UiChrome.Accent;
+
+        /// <summary>비활성 컨트롤의 <b>색이 곧 내용인</b> 면(색 견본)을 얼마나 남길 것인가.
+        /// 0.45 = 원본에서 <b>2.67 : 1</b>만큼 물러난다(실측) — "꺼졌다"는 한눈에 읽히고
+        /// "무슨 색이었나"는 여전히 읽힌다.</summary>
+        public const float DisabledFillOpacity = 0.45f;
+
+        /// <summary>견본/채움을 카드 바탕 쪽으로 접는다. 색상은 남기고 채도·밝기만 죽인다.</summary>
+        public static Color Dimmed(Color fill)
+            => UiChrome.Flatten(new Color(fill.r, fill.g, fill.b, DisabledFillOpacity), UiChrome.CardSurface);
 
         // ==================== 작은 도구 ====================
 
@@ -472,29 +500,56 @@ namespace StickMate.Interaction
             Changed?.Invoke(next);
         }
 
+        /// <summary>
+        /// ★★ 2026-09-02 — 이 함수가 <b>이 앱 최저 대비 1.28 : 1</b>을 만들고 있었다.
+        ///
+        /// <para><b>무엇이 뒤집혀 있었나</b>: 옛 코드는 면을 <c>active</c>만 보고 칠하고
+        /// (<c>Interactable</c>을 <b>보지 않았다</b>) 글자만 <c>!Interactable</c>일 때 흐리게 내렸다.
+        /// 그 결과 비활성 칩이 <b>강조색 면 그대로 밝게</b> 남아 "눌러도 될 것처럼" 보이고, 그 위에
+        /// 얹힌 어두운-바탕용 잉크(<c>#AEB4BF</c>)가 밝은 파랑(<c>#5DA1F5</c>) 위에서 <b>1.28 : 1</b>로
+        /// 지워졌다. [설정] &gt; [캐릭터] &gt; <c>말투</c>의 <c>[반말]</c>, 그리고 <c>말풍선 표시</c>를 끈
+        /// 순간의 <c>대사 표시 시간</c> <c>[기본]</c> 칩이 그 자리다.</para>
+        ///
+        /// <para><b>규칙은 정반대여야 한다</b> — 이 앱의 다른 컨트롤은 전부 <b>면을 죽이고 글자는
+        /// 그대로 둔다</b>: 스위치 트랙(<c>DividerOnCard</c>), 슬라이더 채움
+        /// (<c>DisabledControlInk</c>), <see cref="FocusSessionPopover"/>의 시작 버튼
+        /// (<c>CardSurfaceMuted</c> + <c>TextTertiary</c>). "못 쓴다"를 <b>글자로 말하지 않는 것</b>이
+        /// 규칙이고, 면을 안 죽이는 컨트롤은 세그먼트 하나뿐이었으며 하필 그 하나만 글자가
+        /// <b>면 위에</b> 얹혀 있었다.</para>
+        ///
+        /// <para><b>그래서 잉크를 면에서 파생시킨다</b>(<see cref="UiChrome.InkOnSurface"/>). 면과 글자를
+        /// 각자 고르는 한 둘은 언젠가 반드시 어긋난다 — 지금까지가 그 증거다. 한 번의 계산에서 둘 다
+        /// 나오면 어긋나는 것이 <b>물리적으로 불가능</b>해진다.</para>
+        ///
+        /// <para>비활성일 때 <b>어느 것이 골라져 있었는지</b>는 사라지지 않는다: 면이 한 단 들뜨고
+        /// (<c>ButtonSurfaceOnCard</c>) 글자가 굵어진다. 스위치가 꺼진 채로도 손잡이 <b>위치</b>로
+        /// 값을 말하는 것과 같은 규칙이다.</para>
+        /// </summary>
         public void Apply()
         {
             if (Surfaces == null) return;
             for (int i = 0; i < Surfaces.Length; i++)
             {
                 bool active = i == Index;
-                if (Surfaces[i] != null)
-                {
-                    Surfaces[i].color = active
-                        ? SettingsControls.AccentSolid
-                        : UiChrome.CardSurface;   // 카드와 같은 색 = "비어 있음"(시안의 transparent와 같은 그림).
-                }
+
+                // ① 면을 먼저 정한다. 비활성이면 강조색은 <b>어디에도 남지 않는다</b>.
+                Color face = Interactable
+                    ? (active ? SettingsControls.AccentSolid : UiChrome.CardSurface)
+                    : (active ? SettingsControls.ButtonSurfaceOnCard : UiChrome.CardSurface);
+
+                if (Surfaces[i] != null) Surfaces[i].color = face;
+
                 if (Outlines[i] != null)
                 {
-                    Outlines[i].color = active
+                    Outlines[i].color = Interactable && active
                         ? SettingsControls.AccentSolid
                         : SettingsControls.OutlineOnCard;
                 }
+
+                // ② 글자는 <b>그 면에서</b> 나온다. 콜사이트가 색을 고르지 않는다.
                 if (Labels[i] != null)
                 {
-                    Labels[i].color = !Interactable
-                        ? UiChrome.InkTitle(false)
-                        : active ? UiChrome.OnAccentSolid : UiChrome.TextSecondary;
+                    Labels[i].color = UiChrome.InkOnSurface(face, UiChrome.InkRole.Body, enabled: true);
                     Labels[i].fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
                 }
             }
@@ -509,6 +564,15 @@ namespace StickMate.Interaction
     {
         public RectTransform[] Rects;
         public Image[] Borders;
+
+        /// <summary>견본 <b>면</b> 자체(2026-09-02 신설). 옛 코드는 테두리만 들고 있어서
+        /// <c>Interactable</c>을 알아도 <b>죽일 것이 없었다</b>.</summary>
+        public Image[] Surfaces;
+
+        /// <summary>사용자가 고를 수 있을 때의 원래 색. 감쇠는 <b>여기서</b> 다시 계산한다 —
+        /// 현재 색을 거듭 깎으면 껐다 켰다 할 때마다 색이 점점 죽는다.</summary>
+        public Color[] BaseColors;
+
         public Action<int> Changed;
         public bool Interactable = true;
 
@@ -528,14 +592,36 @@ namespace StickMate.Interaction
             Changed?.Invoke(index);
         }
 
+        /// <summary>
+        /// ★ 2026-09-02 — 옛 코드는 <c>Interactable</c>을 <b>한 번도 보지 않았다</b>. 그래서
+        /// <c>포인트 컬러 (준비 중)</c> 행의 견본이 바로 위 <b>실제로 동작하는</b> <c>잉크색</c> 행의
+        /// 견본과 <b>픽셀 단위로 같은 채도</b>로 빛났다 — 세그먼트 칩(1.28:1)과 같은 뿌리다:
+        /// <b>면이 거짓말을 한다.</b>
+        ///
+        /// <para>고르는 색이 곧 내용인 컨트롤이라 "회색으로 칠한다"는 답이 될 수 없다(무슨 색인지
+        /// 못 읽게 된다). 대신 <b>카드 바탕 쪽으로 접는다</b> — 색상은 남고 채도/밝기만 죽는다.
+        /// 강조색 견본 기준 원본 대비 <b>2.67 : 1</b>만큼 물러난다(실측).</para>
+        ///
+        /// <para>비텍스트 하한 3:1을 적용하지 않는 것은 의도다 — WCAG 2.2 §1.4.11이
+        /// <b>비활성 컴포넌트를 명시적으로 면제</b>한다. 이 앱의 꺼진 스위치 손잡이가 1.70:1로
+        /// 남아 있는 것과 같은 근거다.</para>
+        /// </summary>
         public void Apply()
         {
             if (Borders == null) return;
             for (int i = 0; i < Borders.Length; i++)
             {
+                if (Surfaces != null && i < Surfaces.Length && Surfaces[i] != null
+                    && BaseColors != null && i < BaseColors.Length)
+                {
+                    Surfaces[i].color = Interactable
+                        ? BaseColors[i]
+                        : SettingsControls.Dimmed(BaseColors[i]);
+                }
+
                 if (Borders[i] == null) continue;
                 Borders[i].color = i == Index
-                    ? UiChrome.TextPrimary                 // 선택 = 흰 테두리(시안 그대로).
+                    ? (Interactable ? UiChrome.TextPrimary : SettingsControls.OutlineOnCard)
                     : SettingsControls.OutlineOnCard;
             }
         }
@@ -1006,6 +1092,8 @@ namespace StickMate.Interaction
             {
                 Rects = new RectTransform[colors.Length],
                 Borders = new Image[colors.Length],
+                Surfaces = new Image[colors.Length],
+                BaseColors = (Color[])colors.Clone(),   // 호출부가 나중에 배열을 고쳐도 원본이 흔들리지 않는다.
                 Changed = changed,
                 Interactable = enabled,
             };
@@ -1022,6 +1110,7 @@ namespace StickMate.Interaction
 
                 swatches.Rects[i] = surface.rectTransform;
                 swatches.Borders[i] = border;
+                swatches.Surfaces[i] = surface;
 
                 int captured = i;
                 _host?.Register(surface.rectTransform, surface, key + "." + i,

@@ -15,9 +15,10 @@ for r in C.rows:
     bodyacc=[s for s in r["body"] if s.tone==1]
     fbacc=[(p,s) for p,s in zip(r["parts"], r["fb"]) if p["tone"]==1]
     nb, nf = len(bodyacc), len(fbacc)
-    # 꼭짓점: 원/점(kind 1,2,3)은 세지 않는다
+    # 꼭짓점: 원/점(kind 1,2,3)은 세지 않는다. ★ 2026-09-02: kind 4(Polygon)는 <b>센다</b> —
+    # 빠뜨리면 채운 보조색이 전부 "폴백 0점"으로 보여 없는 결함 21건을 만든다(실제로 그랬다).
     vb = sum(len(s.pts) for s in bodyacc)
-    vf = sum(len(s.pts) for p,s in fbacc if p["kind"]==0)
+    vf = sum(len(s.pts) for p,s in fbacc if p["kind"] in (0, 4))
     circ = any(p["kind"] in (1,2,3) for p,s in fbacc)
     v = []
     if nf != 1: v.append("축1 위반(폴백 %d개)"%nf)

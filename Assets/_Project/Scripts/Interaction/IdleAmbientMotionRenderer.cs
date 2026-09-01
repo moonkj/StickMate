@@ -76,21 +76,69 @@ namespace StickMate.Interaction
             // 상태=Idle"). 스위치 판정은 조립 **전에** 한다 — 뒤에 두면 꺼져 있어도 보간 문자열이
             // 만들어져 24시간 상주 앱의 GC 압박 금지 컨벤션과 충돌한다.
             // (Platform/PlayerLogPolicy.RoutineNarrationEnabled = StickConfig.verboseDiagnosticsLogging)
-            if (!Platform.PlayerLogPolicy.RoutineNarrationEnabled) return;
+            // ★★ 2026-09-02 R2-4 — 접기 판정은 **로그 스위치와 무관하게 항상** 돈다.
+            //   직전 라운드에는 스위치 조기 반환이 접기보다 앞에 있어서 접기 코드가 **한 번도
+            //   실행되지 않았다**(실측: 진단 로그를 켜고 3분 대기 -> [유휴동작] 0줄 / 접음 0줄).
+            //   조립은 여전히 스위치 뒤다 — 접기가 **키**로 판정하므로 할당이 필요 없기 때문이다.
+            var machine = blackboard.Machine;
+            IdleLogDecision decision = DecideIdleLog(
+                ref _logFolder, ref _narrationWasEnabled,
+                Platform.PlayerLogPolicy.RoutineNarrationEnabled,
+                Describe(motion),
+                machine != null ? (int)machine.CurrentStateId : NoStateKey,
+                blackboard.IdleAmbientDurationSeconds,
+                Time.realtimeSinceStartupAsDouble, IdleLogFoldHoldSeconds);
 
-            string line = $"[유휴동작] {Describe(motion)} 재생 — " +
-                $"진행 중 상태={blackboard.Machine?.CurrentStateId}, " +
+            if (decision.FoldedRepeats > 0)
+            {
+                Debug.Log(Platform.RepeatedLogFolder.Describe(LogTag, decision.FoldedRepeats));
+            }
+            if (!decision.EmitLine) return;
+
+            Debug.Log($"[유휴동작] {Describe(motion)} 재생 — " +
+                $"진행 중 상태={machine?.CurrentStateId}, " +
                 $"{blackboard.IdleAmbientDurationSeconds:F2}초. " +
-                "(트리거는 26-3 그대로 + 발행자 최소 간격, 이 구독자에는 새 확률 0개)";
+                "(트리거는 26-3 그대로 + 발행자 최소 간격, 이 구독자에는 새 확률 0개)");
+        }
 
-            // ★ 2026-09-02 로그 감량 — 연속 동일 줄 접기. 실측에서 이 태그가 71.5분 세션의 26%를
-            //   차지했고 661/662줄이 **글자 하나 다르지 않았다**. 접어도 횟수는 보존되므로
-            //   불변 원칙 1(행동-텍스트 싱크) 원격 검증에 필요한 정보는 하나도 잃지 않는다.
-            //   판정 규칙 자체는 Platform/RepeatedLogFolder.cs(순수 정책, EditMode에서 검증)에 있다.
-            double now = Time.realtimeSinceStartupAsDouble;
-            bool emit = _logFolder.ShouldEmit(line, now, IdleLogFoldHoldSeconds, out int folded);
-            if (folded > 0) Debug.Log(Platform.RepeatedLogFolder.Describe(LogTag, folded));
-            if (emit) Debug.Log(line);
+        /// <summary>이번 이벤트에서 무엇을 찍을지에 대한 결정. 값 타입이라 할당이 없다.</summary>
+        internal struct IdleLogDecision
+        {
+            /// <summary>완성된 <c>[유휴동작]</c> 줄을 찍어야 하는가.</summary>
+            public bool EmitLine;
+
+            /// <summary>0보다 크면 그 횟수로 접힘 요약 한 줄을 <b>먼저</b> 찍는다.</summary>
+            public int FoldedRepeats;
+        }
+
+        /// <summary>
+        /// **접기 + 로그 스위치 판정을 한곳에 모은 결정 함수.** Unity 객체를 만지지 않으므로
+        /// EditMode가 이 함수를 직접 몰아 <b>"접기가 실제로 도는가"</b>를 확인할 수 있다.
+        ///
+        /// <para>★ 이 함수가 따로 있는 이유는 2026-09-02 검증 R2-4다. 그때는 배선이
+        /// <c>if (!스위치) return;</c> 뒤에 접기를 두는 형태였고, 스위치가 부팅 스냅샷이라
+        /// <b>접기가 도달 불가</b>였다. 그런데 당시의 검사는 소스 문자열 순서만 봤기 때문에
+        /// <b>도달 불가 경로를 초록으로 통과시켰다</b>. 구조 검사만으로는 같은 실수를 또 놓친다 —
+        /// 그래서 실제로 돌려 보는 검사가 붙을 수 있게 순수 함수로 떼어냈다.</para>
+        ///
+        /// <para><b>스위치가 꺼져 있어도 접기는 돈다</b>(반복 횟수는 로그 설정과 무관한 사실이다).
+        /// 다만 스위치가 넘나든 순간에는 접기 상태를 비운다 — 그러지 않으면 로그를 켜자마자
+        /// "직전과 동일 5,000회 반복"처럼 <b>아무도 본 적 없는 줄</b>의 횟수가 튀어나온다.</para>
+        /// </summary>
+        internal static IdleLogDecision DecideIdleLog(
+            ref Platform.RepeatedLogFolder folder, ref bool narrationWasEnabled, bool narrationEnabled,
+            string motionName, int stateKey, float seconds, double now, double holdSeconds)
+        {
+            if (narrationEnabled != narrationWasEnabled)
+            {
+                narrationWasEnabled = narrationEnabled;
+                folder.Reset();
+            }
+
+            bool emit = folder.ShouldEmit(motionName, stateKey, seconds, now, holdSeconds, out int folded);
+
+            if (!narrationEnabled) return default;
+            return new IdleLogDecision { EmitLine = emit, FoldedRepeats = folded };
         }
 
         /// <summary>접힌 채로 침묵하는 최대 시간(초). 이보다 길어지면 "몇 번 반복 중"을 한 줄로 낸다 —
@@ -99,7 +147,11 @@ namespace StickMate.Interaction
 
         private const string LogTag = "[유휴동작]";
 
+        /// <summary>상태 기계가 아직 없을 때의 상태 키. 실제 열거값과 겹치지 않는 음수를 쓴다.</summary>
+        private const int NoStateKey = -1;
+
         private Platform.RepeatedLogFolder _logFolder;
+        private bool _narrationWasEnabled = true;
 
         /// <summary>로그 문구는 <b>확정된 신호 값에서만</b> 파생한다(불변 원칙 1의 텍스트-액션 싱크 규약을
         /// 진단 로그에도 그대로 적용 — 문구를 먼저 정하고 동작을 끼워 맞추지 않는다).</summary>

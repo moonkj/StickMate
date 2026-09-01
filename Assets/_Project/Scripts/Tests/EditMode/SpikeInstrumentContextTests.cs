@@ -118,18 +118,24 @@ namespace StickMate.Tests.EditMode
         {
             string src = ReadScript("Platform", "FramePacing.cs");
 
-            StringAssert.Contains("_spikeCountActionable", src,
+            StringAssert.Contains("_spikeTiers", src,
                 "등급 축 분해가 없으면 '조인 구간의 정상적인 긴 프레임'이 '진짜 히치'를 덮는다.");
-            StringAssert.Contains("_spikeCountThrottled", src);
 
             int log = src.IndexOf("[프레임스파이크]", System.StringComparison.Ordinal);
             Assert.Greater(log, 0, "스파이크 로그가 사라졌다.");
             int end = src.IndexOf("\");", log, System.StringComparison.Ordinal);
             string line = src.Substring(log, end - log);
 
-            StringAssert.Contains("_spikeCountActionable", line, "로그가 두 숫자를 함께 찍어야 한다.");
-            StringAssert.Contains("_spikeCountThrottled", line);
+            StringAssert.Contains("_spikeTiers", line, "로그가 등급 축 세 숫자를 함께 찍어야 한다.");
             StringAssert.Contains("분당", line, "누적만 있고 발생률이 없으면 '망가졌다'로만 읽힌다.");
+            StringAssert.Contains("문턱", line,
+                "문턱이 계획/관측 중 어디서 나왔는지 안 찍으면 '왜 이건 잡히고 저건 안 잡히나'를 알 수 없다.");
+
+            // 세 칸의 사람이 읽는 라벨은 장부의 ToString이 계약이다.
+            var ledger = new SpikeTierLedger();
+            StringAssert.Contains("실사용", ledger.ToString());
+            StringAssert.Contains("전환", ledger.ToString());
+            StringAssert.Contains("절감", ledger.ToString());
         }
 
         /// <summary>
@@ -141,10 +147,15 @@ namespace StickMate.Tests.EditMode
         {
             string src = ReadScript("Platform", "FramePacing.cs");
             int count = src.IndexOf("_spikeCount++;", System.StringComparison.Ordinal);
-            int cooldown = src.IndexOf("if (_spikeCooldownLeft > 0f) return;", System.StringComparison.Ordinal);
-            Assert.Greater(count, 0);
-            Assert.Greater(cooldown, count,
-                "카운트가 쿨다운 뒤로 가면 누적값이 실제 발생의 1/20이 된다.");
+            int suppress = src.IndexOf("_spikeBackoff.ShouldLog(", System.StringComparison.Ordinal);
+            Assert.Greater(count, 0, "누적 카운트가 사라졌다.");
+            Assert.Greater(suppress, count,
+                "카운트가 억제 뒤로 가면 누적값이 실제 발생의 일부만 세게 된다.");
+
+            // 등급 장부도 억제 앞에 있어야 한다 — 총합과 세 칸이 어긋나면 판독이 무너진다.
+            int ledgerAt = src.IndexOf("_spikeTiers.Count(", System.StringComparison.Ordinal);
+            Assert.Greater(ledgerAt, count);
+            Assert.Greater(suppress, ledgerAt);
         }
 
         /// <summary>

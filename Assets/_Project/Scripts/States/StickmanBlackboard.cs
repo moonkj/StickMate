@@ -476,6 +476,61 @@ namespace StickMate.States
             _dropThroughIgnoreUntilTime = Time.time + durationSeconds;
         }
 
+        // ============================================================================
+        // ★★ 발 떼기 수평 이송 (2026-09-02 — "Dock에서 뛰어내리기가 64회 전부 실패" 회귀 수정)
+        // ============================================================================
+        // 위 drop-through는 **논리** 발판만 다룬다. 그 설계는 한 가지를 참으로 가정했다 —
+        // StickConfig.hopDownDropThroughIgnoreDuration의 Tooltip이 그대로 적어 둔 문장이다:
+        //     "필요한 최소 시간 = hopDownEdgeCommitDistance / (walkSpeed x hopDownStepOffSpeedScale)"
+        // 즉 **한 번 준 수평 속도가 모서리를 넘을 때까지 유지된다**는 가정이다. 창 상단(논리 발판만
+        // 있고 콜라이더가 없다)에서는 참이지만, **Dock에서는 거짓이다** — Platform/DockPhysicsStep이
+        // Dock 구간에 실제 BoxCollider2D를 깔아 두었고, 그 위에 얹힌 몸에는 쿨롱 마찰이 걸린다.
+        //
+        // 실측 유도(배율 0.60, 배포 형상):
+        //     감속 a = 마찰계수 x 중력 = 0.4(Unity 2D 기본 재질) x 9.81 x gravityScale 3 = 11.77유닛/초²
+        //     내딛는 속도 v = walkSpeed(2.5 x 0.60) x hopDownStepOffSpeedScale(0.8) = 1.20유닛/초
+        //     정지 거리 = v² / 2a = 1.44 / 23.54 = **0.061유닛**
+        //     실측 남은 거리(로그 64건) = 0.090 ~ 0.117유닛   ← 전부 정지 거리보다 멀다
+        // 그래서 몸은 **모서리에 닿기 전에 멈추고**, 유예가 끝나면 같은 Dock에 낙차 0으로 다시 착지한다
+        // (로그: "[FallState] 착지 확정 — 발판핸들=-2(Dock), 낙하높이=0.00유닛").
+        //
+        // ★ 왜 콜라이더를 통과시키지 않는가: 통과는 필요 없다. 캐릭터는 계단을 **뚫는** 것이 아니라
+        //   **옆으로 걸어 나가야** 한다(그것이 원래 설계다). 콜라이더를 한 순간이라도 끄면 그 사이에
+        //   Dock을 밟을 수 없게 되고, 그 콜라이더는 Dock 사각지대를 없애는 심장이다. 그래서 물리
+        //   충돌 상태는 **한 톨도 건드리지 않고**, 원설계가 참이라고 가정했던 그 한 줄
+        //   ("속도가 유지된다")을 유예 창 동안 실제로 참으로 만든다.
+        //
+        // 어법은 위 drop-through와 같다: **같은 타이머**를 쓰고(창이 둘로 갈릴 수 없다), 시간이 지나면
+        // 스스로 풀리며, 세팅하는 곳은 WalkState의 뛰어내리기 블록 한 곳뿐이다.
+        // ★ 네거티브 컨트롤: 공중에서는 이 재확정이 **아무 것도 바꾸지 않는다**(루트 linearDamping=0,
+        //   공기 저항 없음) — 즉 콜라이더가 없는 창 위 뛰어내리기에서는 비트 단위로 기존 거동이다.
+
+        private float _stepOffCarryVelocityX;
+
+        /// <summary>
+        /// 지금 프레임에 다시 실어 줘야 할 발 떼기 수평 속도. drop-through 유예와 <b>같은 타이머</b>를
+        /// 쓴다 — 두 창이 갈라지면 "논리적으로는 통과인데 물리적으로는 멈춰 있는" 지금의 사고가
+        /// 다른 형태로 되돌아온다.
+        /// </summary>
+        /// <returns>유예가 살아 있고 실제 이송 속도가 있으면 true.</returns>
+        public bool TryGetStepOffCarryVelocityX(out float velocityX)
+        {
+            velocityX = 0f;
+            if (Config != null && !Config.hopDownStepOffCarryEnabled) return false;
+            if (_stepOffCarryVelocityX == 0f || Time.time > _dropThroughIgnoreUntilTime) return false;
+            velocityX = _stepOffCarryVelocityX;
+            return true;
+        }
+
+        /// <summary>
+        /// 발 떼기 수평 속도를 유예 창 동안 매 프레임 다시 싣도록 등록한다(뛰어내리기 전용).
+        /// <see cref="BeginDropThroughIgnore"/> 직후에 같은 블록에서만 부른다.
+        /// </summary>
+        public void BeginStepOffCarry(float velocityX)
+        {
+            _stepOffCarryVelocityX = velocityX;
+        }
+
         /// <summary>
         /// probeWorldPos의 x에서 딛을 수 있는 지면(가장 높은 발판 상단)의 월드 Y.
         /// GroundSensor.TryGetSurfaceWorldY 문서 참고 — 커서가 지면보다 아래에 있을 때 캐릭터를 그리로

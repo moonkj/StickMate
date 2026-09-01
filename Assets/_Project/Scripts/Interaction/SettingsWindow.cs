@@ -51,10 +51,32 @@ namespace StickMate.Interaction
         public const float PanelHeight = 560f;
         public const float HeaderHeight = 48f;
         public const float TabBarHeight = 40f;
-        public const float FooterHeight = 34f;
-        public const float ContentHeight = PanelHeight - HeaderHeight - TabBarHeight - FooterHeight; // 438
+        /// <summary>
+        /// ★ 2026-09-02 (41-2 결정 2) — 34 → <b>46</b>. 푸터가 2단이 되면서 <c>[지금 종료]</c>가
+        /// <b>스크롤 영역 밖</b>(창 크롬)으로 올라왔다.
+        ///
+        /// <para><b>왜 카드를 재배치하지 않았나 — 산술로 기각됐다.</b> [일반] 페이지는 이미 92pt
+        /// 넘치고 넘친 92pt 안에 <c>[지금 종료]</c>가 통째로 들어 있었는데, 같은 라운드가 그 탭에
+        /// <b>더해야 하는</b> 것만 +112pt다(톱니 설명 16 + 경고 2줄 18 + 톱니 위치 행 60 + 안내 캡션 18).
+        /// 넘침을 0으로 만들어도 다시 112pt 넘친다. <b>[일반] 탭은 앞으로도 항상 넘친다</b> —
+        /// 그러므로 탈출구를 "안 넘치는 자리"에 두는 것 말고는 답이 없다. 취향이 아니라 산술이다.</para>
+        ///
+        /// <para>덤: 종료가 크롬으로 올라가면 <b>5개 탭 전부</b>에서 보인다. 죽은 탭에 들어가 있어도
+        /// 끌 수 있다(예전에는 [일반] 탭에서만 존재했다).</para>
+        /// </summary>
+        public const float FooterHeight = 46f;
+
+        /// <summary>푸터 윗줄(안내 2줄) 높이 — 아랫줄은 <c>FooterHeight - FooterTopRowHeight</c>다.</summary>
+        public const float FooterTopRowHeight = 18f;
+
+        public const float ContentHeight = PanelHeight - HeaderHeight - TabBarHeight - FooterHeight; // 426
         public const float ContentPadX = 20f;
         public const float ContentPadTop = 16f;
+
+        /// <summary>내용이 잘리는 위/아래 끝에서 이만큼(pt) 서서히 사라진다. 한글 대문자 높이(약 10pt)보다
+        /// 작으면 "반쯤 잘린 글자"가 그대로 남고, 크면 멀쩡한 행까지 흐려진다. 8pt = 캡션 한 줄(14pt)의
+        /// 절반을 조금 넘는 값이라 잘린 글자는 확실히 녹고 온전한 행은 건드리지 않는다.</summary>
+        public const int ClipFadePoints = 8;
 
         /// <summary>정보창(31900) 바로 위, 앱 제어 메뉴(32760) 아래. 설정창과 정보창은 상호 배타라
         /// 실제로 겹치지 않지만, 한 프레임의 전환 구간에서 설정창이 뒤로 숨지 않게 한다.</summary>
@@ -71,6 +93,80 @@ namespace StickMate.Interaction
         /// <summary>[지금 종료]의 2단 확인 시간 — <see cref="ActionCommandPopover"/>와 같은 값, 같은 이유
         /// (한 번의 오조준으로 앱이 꺼지면 안 된다).</summary>
         private const float QuitConfirmSeconds = 3f;
+
+        /// <summary>
+        /// ★★ 2026-09-02 — 전체화면이 <b>지나간</b> 뒤 이 창을 돌려놓는 유예(초).
+        ///
+        /// <para><b>고친 증상</b>: 설정을 만지던 중 전체화면이 감지되면 창이 <b>예고 없이</b> 닫히고,
+        /// 게임을 끄고 돌아와도 복구되지 않고, <b>아무 흔적도 없었다</b>. 검증 중 3번 발생했고
+        /// 읽히는 뜻은 하나다 — <i>"설정창이 자꾸 혼자 꺼진다 = 고장"</i>.</para>
+        ///
+        /// <para><b>왜 '되살린다'로 판정했나</b>: 우리는 그 창을 <b>닫은 게 아니라 빼앗았다</b>.
+        /// 빼앗은 것을 돌려주는 것은 "부르지 않은 창을 띄우는 것"이 아니라 <b>되돌리기</b>다.
+        /// 이 앱은 이미 같은 판단을 두 번 했다 — 톱니는 전체화면이 끝나면 스스로 돌아오고,
+        /// 설정창은 자기가 밀어낸 정보창을 닫힐 때 돌려놓는다(M8 시트 복귀). 게다가 이 창의
+        /// 마우스 재진입 경로는 <b>3홉</b>(톱니 → 부채꼴 [캐릭터] → 정보창 [설정])이라, 되돌려주지
+        /// 않으면 대가가 가장 크다.</para>
+        ///
+        /// <para><b>왜 무제한이 아닌가</b>: 예전 주석의 우려(<i>"게임을 끄자마자 창이 튀어나오면
+        /// 그 자체가 방해다"</i>)는 <b>긴</b> 전체화면에 대해서는 옳다. 30초 영상이 지나간 것과
+        /// 두 시간 게임을 한 것은 다른 사건이다. 그래서 <b>짧게 지나간 경우에만</b> 되돌린다 —
+        /// 그 사이 사용자가 하던 일을 기억하고 있을 시간이다.</para>
+        ///
+        /// <para><b>원칙 2는 구조적으로 안 깨진다</b>: 복귀 조건이 <c>!IsSuspended</c>이므로
+        /// 게임이 아직 전체화면이면 <b>실행될 수 없다</b>(문자열 사유가 아니라 상태를 본다 —
+        /// <see cref="RestoreInfoWindowIfNeeded"/>와 같은 관례).</para>
+        /// </summary>
+        public const float DefaultReopenAfterSuspendGraceSeconds = 20f;
+
+        private static float _reopenGraceSeconds = DefaultReopenAfterSuspendGraceSeconds;
+
+        /// <summary>지금 쓰이는 유예(초). 제품은 기본값을 그대로 쓰고 <b>테스트만</b> 낮춘다 —
+        /// 20초를 진짜로 기다리는 테스트는 만들지 않는다(<see cref="PopoverPanel.IdleAutoCloseSeconds"/>와
+        /// 같은 관례).</summary>
+        public static float ReopenAfterSuspendGraceSeconds => _reopenGraceSeconds;
+
+        public static void SetReopenGraceForTests(float seconds)
+            => _reopenGraceSeconds = Mathf.Max(0f, seconds);
+
+        public static void ResetReopenGraceForTests()
+            => _reopenGraceSeconds = DefaultReopenAfterSuspendGraceSeconds;
+
+        private bool _reopenArmed;
+        private float _suspendClosedAt;
+
+        /// <summary>지금 "전체화면이 지나가면 돌아온다" 예약이 걸려 있는가(진단/테스트 창구).</summary>
+        public bool IsReopenAfterSuspendArmed => _reopenArmed;
+
+        private void ArmReopenAfterSuspend()
+        {
+            _reopenArmed = true;
+            _suspendClosedAt = Time.unscaledTime;
+        }
+
+        /// <summary>사용자가 직접 이 창을 열거나 닫았다 — 예약은 그 순간 뜻을 잃는다.</summary>
+        private void DisarmReopenAfterSuspend() => _reopenArmed = false;
+
+        private void TickReopenAfterSuspend()
+        {
+            if (!_reopenArmed) return;
+            if (_open) { _reopenArmed = false; return; }               // 사용자가 이미 다시 열었다.
+            if (_agent == null) { _reopenArmed = false; return; }
+            if (_agent.IsSuspended) return;                            // 아직 전체화면 — 원칙 2.
+
+            _reopenArmed = false;
+            float away = Time.unscaledTime - _suspendClosedAt;
+            if (away > ReopenAfterSuspendGraceSeconds)
+            {
+                Debug.Log($"[설정창] 전체화면이 {away:F0}초 이어져 자동 복귀를 포기합니다" +
+                    $"(유예 {ReopenAfterSuspendGraceSeconds:F0}초). 그만큼 지났으면 사용자는 다른 일을 " +
+                    "하고 있고, 부르지 않은 창이 뒤늦게 튀어나오는 것이 더 방해입니다.");
+                return;
+            }
+
+            Open($"전체화면이 {away:F0}초 만에 지나가 자동으로 닫혔던 창을 돌려놓습니다 " +
+                "(우리가 닫은 게 아니라 빼앗은 것이므로 되돌립니다)");
+        }
 
         /// <summary>[▲][▼] 한 번에 넘기는 양. 화면 높이에서 한 행쯤 겹쳐 남겨 맥락이 끊기지 않게 한다.</summary>
         private const float PageStep = ContentHeight - SettingsControls.RowHeight;
@@ -171,6 +267,7 @@ namespace StickMate.Interaction
         private SettingsRowGate _speechGate;
         private Text _gearWarnCaption;
         private Image _quitSurface;
+        private RectTransform _quitRect;
         private Text _quitLabel;
         private Text _footerLeft;
 
@@ -249,6 +346,10 @@ namespace StickMate.Interaction
 
         /// <summary>[▲]/[▼] 페이지 칩과 내용 영역의 화면 사각형 — "칩이 내용 위에 앉지 않는다"(소은 #7-b)를
         /// 회귀 테스트가 좌표로 확인하는 창구다. 칩이 꺼져 있어도 사각형은 나온다(그 자리를 재는 것이 목적).</summary>
+        /// <summary>푸터 [지금 종료] 버튼의 화면 사각형 — <b>탈출구가 지금 화면에 있는가</b>를 재는
+        /// 유일한 창구(원칙 4). 좌표를 손으로 적어 두면 푸터가 한 번 움직일 때 조용히 엉뚱한 곳을 잰다.</summary>
+        public Rect QuitButtonScreenRect => SettingsControlHost.ScreenRectOf(_quitRect);
+
         public Rect PageUpScreenRect => SettingsControlHost.ScreenRectOf(_pageUpRect);
 
         public Rect PageDownScreenRect => SettingsControlHost.ScreenRectOf(_pageDownRect);
@@ -362,6 +463,7 @@ namespace StickMate.Interaction
         {
             if (_open) return;
             _open = true;
+            DisarmReopenAfterSuspend();
             _leftInitialized = false;   // 창을 여는 그 클릭이 곧바로 행 클릭으로 오인되지 않게.
             // 여는 그 순간은 정의상 조작 중이다 — 첫 커서 폴링(최대 0.05초)까지의 공백을 메운다.
             _lastSurfaceTouchTime = Time.unscaledTime;
@@ -380,6 +482,9 @@ namespace StickMate.Interaction
             if (!_open) return;
             _open = false;
             _dragIndex = -1;
+            // 사용자가 직접 닫았으면 "전체화면이 지나가면 돌려놓는다" 예약은 뜻을 잃는다.
+            // (전체화면 경로는 이 호출 <b>뒤에</b> 다시 무장한다.)
+            DisarmReopenAfterSuspend();
             DisarmQuit();
             FlushPendingSave();
             if (_canvas != null) _canvas.gameObject.SetActive(false);
@@ -445,6 +550,10 @@ namespace StickMate.Interaction
         private void Update()
         {
             using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.UiWindows);   // [스톨구간] 계측
+
+            // ★ 닫혀 있을 때도 <b>이 한 줄</b>은 돈다 — 무장돼 있지 않으면 즉시 빠진다(float 비교 1회).
+            TickReopenAfterSuspend();
+
             if (!_open) return;
 
             // ★★ 원칙 2 — 전체화면 게임이 감지되면 창과 차단막을 그 프레임에 거둔다. 복귀 시 자동으로
@@ -456,6 +565,9 @@ namespace StickMate.Interaction
                 // 이중이지만, 둘 중 하나가 사라져도 게임 위에 창이 되살아나지 않는다(원칙 2).
                 _restoreInfoWindowOnClose = false;
                 Close("전체화면 감지 — 자동 숨김(비침해 원칙 2)");
+                // ★ 무장은 Close <b>뒤에</b> — Close()가 "사용자가 닫았다"로 보고 예약을 지운다.
+                //   순서를 뒤집으면 이 기능은 <b>영원히 발동하지 않으면서 컴파일도 테스트도 통과</b>한다.
+                ArmReopenAfterSuspend();
                 return;
             }
 
@@ -589,14 +701,22 @@ namespace StickMate.Interaction
                 return;
             }
 
+            // 푸터 [지금 종료]는 카드 행이 아니라 <b>창 크롬</b>이라 _host가 모른다 — [✕]/탭과 같은
+            // 층에서 직접 검사한다. 이게 빠지면 비활성 앱의 첫 클릭 경로에서만 종료가 안 먹는다.
+            if (ContainsScreenPoint(_quitRect, cursor))
+            {
+                if (TryClaimAction("quit")) OnQuitClicked();
+                return;
+            }
+
             if (ContainsScreenPoint(_pageUpRect, cursor))
             {
-                if (TryClaimAction("pageUp")) ScrollPage(-1);
+                if (CanScroll(-1) && TryClaimAction("pageUp")) ScrollPage(-1);
                 return;
             }
             if (ContainsScreenPoint(_pageDownRect, cursor))
             {
-                if (TryClaimAction("pageDown")) ScrollPage(+1);
+                if (CanScroll(+1) && TryClaimAction("pageDown")) ScrollPage(+1);
                 return;
             }
 
@@ -740,6 +860,16 @@ namespace StickMate.Interaction
             closeButton.targetGraphic = close;
             closeButton.onClick.AddListener(() => { if (TryClaimAction("close")) Close("[✕] 클릭"); });
 
+            // ★ 2026-09-02 (41-3 / C2) — [✕] 바로 왼쪽 12pt. 720 폭에서 상자는 x 380~664에 앉는다.
+            //   푸터에도 더 긴 문장(C4)이 있지만 <b>중복이 아니다</b>: 헤더는 닫으려고 오른쪽 위를
+            //   볼 때, 푸터는 창을 다 훑고 나서 읽힌다 — 시선 경로가 다르다.
+            Text hint = UiChrome.AddText(bar, "CloseHint", UiChrome.FontCaption,
+                TextAnchor.MiddleRight, UiChrome.InkMeta);
+            hint.raycastTarget = false;
+            SettingsControls.PlaceTopRight(hint.rectTransform, ContentPadX + 24f + UiChrome.CloseHintGap,
+                -(HeaderHeight - 14f) * 0.5f, 284f, 14f);
+            hint.text = UiChrome.CloseHintText;
+
             AddHorizontalDivider(_panel, -HeaderHeight);
         }
 
@@ -818,8 +948,26 @@ namespace StickMate.Interaction
             var viewGo = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
             viewGo.transform.SetParent(_panel, false);
             _viewport = viewGo.GetComponent<RectTransform>();
+
+            // ★★ 2026-09-02 — 자르는 선이 <b>글자 한가운데</b>를 지나고 있었다.
+            //   [캐릭터] 탭 첫 화면 맨 아래에서 `대사 표시 시간`이 한글 높이의 약 60% 지점에서 잘려
+            //   <b>"밑에 더 있다"가 아니라 "글꼴이 깨졌다"</b>로 읽혔다. 정보창 캐러셀이 이미 같은
+            //   교훈을 가로 방향에서 배웠다(CharacterInfoWindow: "자르는 선의 위치가 틀렸다").
+            //
+            //   ★ 왜 "행 사이 빈 틈에 맞춘다"가 아니라 페이드인가: 이 창은 <b>페이지가 아니라 연속
+            //     스크롤</b>이라 자르는 선이 어느 행에 걸릴지 미리 알 수 없다. 행 높이(44/60)와
+            //     스크롤량(PageStep 382)이 서로 배수가 아니므로 "빈 틈에 맞추기"는 스크롤 위치마다
+            //     다시 어긋난다. 반면 마지막 8pt 페이드는 <b>어디서 잘리든</b> 참이다.
+            //   ★ RectMask2D.softness는 uGUI가 마스크 셰이더에서 직접 처리한다 — 새 그래픽도,
+            //     매 프레임 비용도 없다(하루 종일 켜져 있는 앱).
+            var mask = viewGo.GetComponent<RectMask2D>();
+            mask.softness = new Vector2Int(0, ClipFadePoints);
+            // ★ 2026-09-02 (41-2 결정 3) — 뷰포트 폭이 <b>카드 폭과 같다</b>(680 → 656).
+            //   예전에는 뷰포트(x 20~700)를 카드가 꽉 채워 스크롤 레일이 앉을 자리가 0pt였다.
+            //   656으로 줄이면 좌 20 / 우 20 대칭이 되고 그 사이 x 680~700이 레일 자리가 된다.
+            //   카드 안쪽 폭 656−28 = 628 ≥ 캡션 상자 480 / 라벨 상자 420 → 잘리는 글자 없음.
             UiChrome.PlaceTopLeft(_viewport, ContentPadX, -(HeaderHeight + TabBarHeight),
-                PanelWidth - ContentPadX * 2f, ContentHeight);
+                SettingsControls.CardWidth, ContentHeight);
 
             for (int i = 0; i < TabCount; i++)
             {
@@ -916,15 +1064,17 @@ namespace StickMate.Interaction
             _gearWarnCaption.gameObject.SetActive(false);
             y = screenUi.Finish(y);
 
-            var startStop = new SettingsCardBuilder(page, "시작 / 종료", y, _host);
+            // ★ 2026-09-02 (41-2 / C9) — 카드 이름이 <c>시작 / 종료</c>에서 <b><c>시작할 때</c></b>로
+            //   바뀌었다. 종료 버튼이 푸터로 올라갔으므로 이름이 절반만 참이 됐기 때문이다.
+            //   같은 창에 종료 버튼이 두 개면 그게 더 나쁘다 — 여기서는 <b>뺀다</b>.
+            var startStop = new SettingsCardBuilder(page, "시작할 때", y, _host);
             startStop.AddToggle("general.autoLaunch", "로그인할 때 자동 실행", false, null,
                 enabled: false,
                 disabledNote: DisabledReason.NotBuilt("이 기능은 다음 업데이트에 들어옵니다."));
 
-            Image[] quitButtons = startStop.AddButtons("general.quit", "종료",
-                new[] { QuitLabelText }, _ => OnQuitClicked());
-            _quitSurface = quitButtons.Length > 0 ? quitButtons[0] : null;
-            _quitLabel = _quitSurface != null ? _quitSurface.GetComponentInChildren<Text>() : null;
+            // C8. 버튼을 옮겼으면 <b>옮겼다고 말한다</b>. 안 그러면 예전 자리를 아는 사용자가
+            //     "없어졌다"로 읽는다(이 라운드가 고치려는 바로 그 증상의 거울상이다).
+            startStop.AddCaptionLine("QuitMoved", "앱을 끄는 버튼은 이 창 맨 아래에 있어요.", UiChrome.InkMeta);
             y = startStop.Finish(y);
 
             return y;
@@ -983,10 +1133,11 @@ namespace StickMate.Interaction
         {
             if (_quitLabel == null || _quitSurface == null) return;
             _quitLabel.text = _quitArmed ? "정말 종료?" : QuitLabelText;
-            _quitLabel.color = _quitArmed ? UiChrome.WarmAccent : UiChrome.TextPrimary;
+            _quitLabel.color = _quitArmed ? UiChrome.WarmAccent : UiChrome.InkTitle(true);
+            // 푸터는 창 바탕(PanelSurface) 위다 — 카드용 합성값을 쓰면 한 단 어둡게 앉는다.
             _quitSurface.color = _quitArmed
-                ? UiChrome.Flatten(UiChrome.AccentSurface, UiChrome.CardSurface)
-                : SettingsControls.ButtonSurfaceOnCard;
+                ? UiChrome.Flatten(UiChrome.AccentSurface, UiChrome.PanelSurface)
+                : SettingsControls.ButtonSurfaceOnPanel;
         }
 
         // -------------------- [캐릭터] --------------------
@@ -1135,6 +1286,16 @@ namespace StickMate.Interaction
 
         // -------------------- 푸터 / 페이지 --------------------
 
+        /// <summary>
+        /// ★ 2026-09-02 (41-2) — <b>2단 푸터</b>. 윗줄은 예전 안내 두 개 그대로, 아랫줄에
+        /// "닫는 법"(C4)과 <c>[지금 종료]</c>가 온다.
+        ///
+        /// <para><b>왜 종료가 여기로 왔나</b>: 예전에는 [일반] 탭 <c>시작 / 종료</c> 카드 안에 있었고,
+        /// 그 카드는 넘친 92pt 구간(뷰포트 하단보다 24~48pt 아래)에 앉아 <b>첫 화면에서 안 보였다</b>.
+        /// 반면 잘 보이는 종료 버튼은 [행동 명령] 창 푸터에 있었는데 그 창은 스스로
+        /// <i>"캐릭터에게 지금 시킬 수 있어요"</i>라고 선언한다 — 종료 경로가 둘로 갈라져 있고
+        /// <b>제자리에 있는 쪽이 안 보였다</b>. 탈출구는 스크롤·호버·기억에 의존하면 안 된다(원칙 4).</para>
+        /// </summary>
         private void BuildFooter()
         {
             AddHorizontalDivider(_panel, -(PanelHeight - FooterHeight));
@@ -1145,58 +1306,132 @@ namespace StickMate.Interaction
             UiChrome.PlaceTopLeft(foot, 0f, -(PanelHeight - FooterHeight), PanelWidth, FooterHeight);
 
             _footerLeft = UiChrome.AddText(foot, "SaveHint", UiChrome.FontCaption, TextAnchor.MiddleLeft,
-                UiChrome.TextTertiary);
-            UiChrome.PlaceTopLeft(_footerLeft.rectTransform, ContentPadX, -(FooterHeight - 14f) * 0.5f, 300f, 14f);
+                UiChrome.InkMeta);
+            UiChrome.PlaceTopLeft(_footerLeft.rectTransform, ContentPadX, 0f, 300f, FooterTopRowHeight);
             _footerLeft.text = "변경은 즉시 저장됩니다.";
 
             Text right = UiChrome.AddText(foot, "HowToOpen", UiChrome.FontCaption, TextAnchor.MiddleRight,
-                UiChrome.TextTertiary);
-            SettingsControls.PlaceTopRight(right.rectTransform, ContentPadX, -(FooterHeight - 14f) * 0.5f, 380f, 14f);
+                UiChrome.InkMeta);
+            SettingsControls.PlaceTopRight(right.rectTransform, ContentPadX, 0f, 380f, FooterTopRowHeight);
             // 시안의 문구는 "톱니 아이콘 클릭 · ⌃⌥⌘,"였지만, <b>실제로 존재하는 경로</b>만 적는다 —
             // 없는 문을 알려 주는 것은 이 프로젝트가 원칙 1로 금지한 "표시와 실제의 불일치"다.
             // ★ 그 시안의 쉼표도 지금은 죽은 표기다 — 2026-09-01에 P로 옮겼다(⌃⌥⌘,는 macOS 접근성
             //   "대비 줄이기" 예약 조합이라 우리가 누를 때마다 사용자 OS 설정이 바뀌었다).
             // 부채꼴 5번째 버튼은 36-11이 "만들지 않는다"로 결론지어 두었으므로 리더 판단 사항으로 남겼다.
             right.text = $"이 창을 여는 방법: 캐릭터 정보창 [설정] · {ShortcutLabel.Chord("P")}";
+
+            // ---- 아랫줄 ----
+            // C4. 이 창은 머무는 시간이 가장 긴 창이고, 바로 윗줄이 이미 "여는 방법"을 적고 있어
+            //     <b>여는 법 ↔ 닫는 법</b>이 한 자리에서 짝을 이룬다.
+            Text closeHint = UiChrome.AddText(foot, "CloseHint", UiChrome.FontCaption,
+                TextAnchor.MiddleLeft, UiChrome.InkMeta);
+            closeHint.raycastTarget = false;
+            UiChrome.PlaceTopLeft(closeHint.rectTransform, ContentPadX, -(FooterTopRowHeight + 6f), 536f, 14f);
+            closeHint.text = "[✕]를 누르거나 창 밖 아무 곳이나 클릭하면 닫혀요.";
+
+            // 2단 확인은 <b>그대로</b>다 — 창 크롬으로 올라갔다고 위험도가 내려가지 않는다.
+            _quitSurface = UiChrome.AddSurface(foot, "Quit", SettingsControls.ButtonSurfaceOnPanel,
+                UiChrome.RadiusChip);
+            SettingsControls.PlaceTopRight(_quitSurface.rectTransform, ContentPadX,
+                -(FooterTopRowHeight + 2f), QuitButtonWidth, SettingsControls.ButtonHeight);
+            _quitRect = _quitSurface.rectTransform;
+            UiChrome.AddOutline(_quitRect, "Outline", SettingsControls.OutlineOnPanel, UiChrome.RadiusChip);
+            // 색은 사다리를 경유한다(직접 고르지 않는다) — 탈출구는 이 창에서 가장 높은 단이다.
+            _quitLabel = UiChrome.AddText(_quitRect, "Label", UiChrome.FontBody,
+                TextAnchor.MiddleCenter, UiChrome.InkTitle(true), bold: true);
+            UiChrome.Stretch(_quitLabel.rectTransform);
+            _quitLabel.text = QuitLabelText;
+            var quitButton = _quitSurface.gameObject.AddComponent<Button>();
+            quitButton.targetGraphic = _quitSurface;
+            quitButton.onClick.AddListener(() => { if (TryClaimAction("quit")) OnQuitClicked(); });
         }
 
-        /// <summary>
-        /// [▲][▼] 페이지 넘김 — 33-7-8 보관함과 <b>같은 방식</b>이다. 휠/드래그 스크롤을 쓰지 않는 이유:
-        /// 이 창 밖은 클릭관통이라 휠이 <b>밑에 있는 남의 앱</b>으로 새는 경계가 생긴다(비침해).
-        /// </summary>
+        /// <summary>푸터 [지금 종료] 버튼 폭(pt). <c>지금 종료 (⌃⌥⌘Q)</c>가 들어가고, Windows에서
+        /// <c>Ctrl+Alt+Win+Q</c>로 늘어나도 담기는 값이다.</summary>
+        private const float QuitButtonWidth = 132f;
+
+        // ==================== 오른쪽 세로 스크롤 레일 (41-2 결정 3) ====================
+        //
+        // ★ 2026-09-02 — [▲][▼]를 <b>탭 줄에서 뺐다</b>. 예전 자리는 탭바 안, 탭 5개와 같은 줄·같은
+        //   높이였고 그래서 <b>"탭 넘기는 버튼"</b>으로 읽혔다(민지). 직전 라운드가 칩을 "내용 위에
+        //   떠 있어서" 그리로 옮겼는데, 한 오독(미세조정 버튼)을 다른 오독(탭 페이저)으로 바꿨을 뿐이다.
+        //   본문 오른쪽 세로 열로 내려가면 그 오독이 <b>성립할 수 없다</b> — 세상의 모든 세로 레일은
+        //   스크롤이다.
+        //
+        // ★ "1 / 2" 같은 <b>페이지 표기는 넣지 않는다</b>. 썸 하나가 (a) 더 있다 (b) 얼마나 남았다
+        //   (c) 지금 어디다 를 동시에 말한다. 숫자는 (c)만 말하고 (b)를 못 말하며, 무엇보다
+        //   <b>이 창은 페이지가 아니라 연속 스크롤이다</b> — 적는 순간 없는 개념(페이지 경계)을
+        //   사용자에게 가르치게 된다. 41-9가 `1 / 6`을 지운 것과 같은 종류의 거짓말이다.
+        //
+        // ★ 버튼을 <b>남기는</b> 이유: 휠이 실제로 동작하는지가 아직 미확인이다(41-12 U2 — 이 저장소에
+        //   `mouseScrollDelta`/`ScrollWheel` 참조가 0건이라 지금은 휠 핸들러 자체가 없다). 막대만
+        //   그려 놓고 휠이 안 되면 <b>보이는데 못 움직이는 UI</b>가 된다. 칩은 막대의 양 끝에 붙어
+        //   막대의 일부로 읽힌다(macOS 10.6 이전 / Windows 표준 배치).
+        //
+        // ※ 옛 주석의 기각 사유("휠이 밑에 있는 남의 앱으로 새는 경계가 생긴다")는 <b>틀렸다</b> —
+        //   창 밖의 휠이 밑으로 가는 것은 결함이 아니라 모든 앱의 정상 동작이다. 결론(지금은 휠을
+        //   안 쓴다)은 맞지만 이유가 틀렸고, 틀린 이유는 다음 사람을 잘못된 곳으로 보낸다.
+
+        /// <summary>레일 세로 열의 왼쪽 x(패널 기준). 카드 오른쪽 끝(676)에서 4pt 띄운 자리다.</summary>
+        private const float RailX = ContentPadX + SettingsControls.CardWidth + UiChrome.Space1;   // 680
+
+        /// <summary>레일 폭. 오른쪽 여백 20pt와 합쳐 창 오른쪽 끝까지가 정확히 40pt다.</summary>
+        private const float RailWidth = 20f;
+
+        /// <summary>칩 한 변(pt) — 레일 폭과 같다(정사각형이라 위/아래 대칭).</summary>
+        private const float PageButtonSize = RailWidth;
+
+        /// <summary>트랙/썸의 굵기(pt).</summary>
+        private const float RailBarWidth = 6f;
+
+        /// <summary>레일 상단(= 콘텐츠 상단).</summary>
+        private const float RailTop = HeaderHeight + TabBarHeight;                    // 88
+
+        /// <summary>트랙 세로 길이 — 두 칩 사이에서 위아래로 4pt씩 뗀 값.</summary>
+        private const float TrackLength = ContentHeight - (PageButtonSize + UiChrome.Space1) * 2f;  // 378
+
+        /// <summary>썸이 아무리 짧아져도 이보다 짧아지지 않는다(잡을 수 없는 실오라기가 된다).</summary>
+        private const float ThumbMinLength = 32f;
+
+        private RectTransform _trackRect;
+        private RectTransform _thumbRect;
+        private Image _pageUpOutline, _pageDownOutline;
+        private Text _pageUpLabel, _pageDownLabel;
+
+        /// <summary>스크롤 썸의 화면 사각형(진단/테스트 창구). 레일이 숨겨져 있으면 빈 사각형이다.</summary>
+        public Rect ScrollThumbScreenRect => SettingsControlHost.ScreenRectOf(_thumbRect);
+
         private void BuildPageButtons()
         {
-            // 오른쪽 끝이 [▼]가 되도록 <b>▲가 왼쪽</b>이다(시안의 [▲][▼] 순서).
-            _pageDownRect = AddPageButton("PageDown", "▼", 0f);
-            _pageUpRect = AddPageButton("PageUp", "▲", 30f);
+            _pageUpRect = AddPageButton("PageUp", "▲", RailTop, out _pageUpOutline, out _pageUpLabel);
+            _pageDownRect = AddPageButton("PageDown", "▼", RailTop + ContentHeight - PageButtonSize,
+                out _pageDownOutline, out _pageDownLabel);
+
+            Image track = UiChrome.AddSurface(_panel, "ScrollTrack", SettingsControls.TrackOnPanel,
+                Mathf.RoundToInt(RailBarWidth * 0.5f));
+            _trackRect = track.rectTransform;
+            UiChrome.PlaceTopLeft(_trackRect, RailX + (RailWidth - RailBarWidth) * 0.5f,
+                -(RailTop + PageButtonSize + UiChrome.Space1), RailBarWidth, TrackLength);
+            track.raycastTarget = false;
+
+            Image thumb = UiChrome.AddSurface(_panel, "ScrollThumb", UiChrome.TextTertiary,
+                Mathf.RoundToInt(RailBarWidth * 0.5f));
+            _thumbRect = thumb.rectTransform;
+            UiChrome.PlaceTopLeft(_thumbRect, RailX + (RailWidth - RailBarWidth) * 0.5f,
+                -(RailTop + PageButtonSize + UiChrome.Space1), RailBarWidth, ThumbMinLength);
+            thumb.raycastTarget = false;
+
             SyncPageButtons();
         }
 
-        /// <summary>페이지 칩의 한 변(pt) — 탭바(40pt) 안에 8pt 여백을 남기고 앉는다.</summary>
-        private const float PageButtonSize = 24f;
-
-        /// <summary>
-        /// ★ 2026-09-01(페르소나 소은 #7-b / 민지 M12) — 칩을 <b>탭바 오른쪽 끝</b>으로 옮겼다.
-        ///
-        /// <para>예전 자리는 패널 y 496~520pt였는데 <b>콘텐츠 뷰포트가 88~526pt</b>다. 즉 칩이
-        /// 내용 <b>위에</b> 떠 있었고 그 자리를 비워 두는 여백이 없었다. 실물에서 [▼]가 "잡담 빈도"의
-        /// "100%" 값 라벨을 덮었고, [▲]는 그 행의 [+] 스텝 버튼과 거의 붙어 <c>[−] ▬▬ [+] [▲] [▼]</c>로
-        /// <b>같은 줄의 미세 조정 버튼</b>처럼 읽혔다(실제로는 페이지 스크롤이다 — 표시와 실제의 불일치).</para>
-        ///
-        /// <para>탭바는 오른쪽이 비어 있다(탭 5개가 x 20~489 — 미구현 탭 3개의 `준비 중` 배지를 포함한
-        /// 값이고, 칩은 x 646~700이라 사이가 157pt 남는다). 콘텐츠 밖이면서 사용자가 이미
-        /// 보는 자리라 거터를 새로 만들 필요도, 카드 폭(680)을 건드릴 필요도 없다 — 이 창의 세로
-        /// 예산은 이미 꽉 차 있어서 거터를 만들려면 모든 행이 다시 계산된다.</para>
-        /// </summary>
-        private RectTransform AddPageButton(string name, string glyph, float xOffsetFromRight)
+        private RectTransform AddPageButton(string name, string glyph, float y, out Image outlineOut, out Text labelOut)
         {
             Image surface = UiChrome.AddSurface(_panel, name, UiChrome.CardSurfaceMuted, UiChrome.RadiusChip);
-            SettingsControls.PlaceTopRight(surface.rectTransform, ContentPadX + xOffsetFromRight,
-                -(HeaderHeight + (TabBarHeight - PageButtonSize) * 0.5f), PageButtonSize, PageButtonSize);
-            UiChrome.AddOutline(surface.rectTransform, "Outline",
+            UiChrome.PlaceTopLeft(surface.rectTransform, RailX, -y, PageButtonSize, PageButtonSize);
+            Image outline = UiChrome.AddOutline(surface.rectTransform, "Outline",
                 UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurfaceMuted), UiChrome.RadiusChip);
             Text label = UiChrome.AddText(surface.rectTransform, "Label", UiChrome.FontCaption,
-                TextAnchor.MiddleCenter, UiChrome.TextSecondary);
+                TextAnchor.MiddleCenter, UiChrome.InkIcon(true));
             UiChrome.Stretch(label.rectTransform);
             label.text = glyph;
 
@@ -1204,8 +1439,24 @@ namespace StickMate.Interaction
             button.targetGraphic = surface;
             int direction = glyph == "▲" ? -1 : +1;
             string key = name;
-            button.onClick.AddListener(() => { if (TryClaimAction(key)) ScrollPage(direction); });
+            button.onClick.AddListener(() =>
+            {
+                if (!CanScroll(direction)) return;   // 끝에 닿은 칩은 <b>아무 일도 하지 않는다</b>.
+                if (TryClaimAction(key)) ScrollPage(direction);
+            });
+            outlineOut = outline;
+            labelOut = label;
             return surface.rectTransform;
+        }
+
+        /// <summary>지금 탭에서 그 방향으로 <b>실제로 움직일 수 있는가</b>. 칩의 겉모습과 클릭 처리가
+        /// <b>같은 하나</b>를 본다 — 두 벌로 두면 반드시 한쪽만 갱신되고, 그게 곧 표시-실제 불일치다.</summary>
+        private bool CanScroll(int direction)
+        {
+            int i = (int)_tab;
+            float max = Mathf.Max(0f, _pageHeights[i] - ContentHeight);
+            if (max <= 0f) return false;
+            return direction < 0 ? _pageScroll[i] > 0.5f : _pageScroll[i] < max - 0.5f;
         }
 
         private void ScrollPage(int direction)
@@ -1216,6 +1467,7 @@ namespace StickMate.Interaction
             if (Mathf.Approximately(next, _pageScroll[i])) return;
             _pageScroll[i] = next;
             ApplyScroll();
+            SyncPageButtons();   // 방금 끝에 닿았을 수 있다.
         }
 
         private void ApplyScroll()
@@ -1223,15 +1475,74 @@ namespace StickMate.Interaction
             RectTransform page = _pages[(int)_tab];
             if (page == null) return;
             page.anchoredPosition = new Vector2(0f, _pageScroll[(int)_tab]);
+            SyncScrollThumb();
         }
 
+        /// <summary>썸의 길이와 자리를 지금 페이지에 맞춘다. <b>값이 바뀔 때만</b> 부른다 —
+        /// 이 창은 매 프레임 레이아웃을 다시 계산하지 않는다(하루 종일 켜져 있는 앱).</summary>
+        private void SyncScrollThumb()
+        {
+            if (_thumbRect == null) return;
+            int i = (int)_tab;
+            float pageHeight = Mathf.Max(1f, _pageHeights[i]);
+            float overflow = pageHeight - ContentHeight;
+            if (overflow <= 0f) return;   // 레일 자체가 꺼져 있다.
+
+            float length = Mathf.Clamp(TrackLength * ContentHeight / pageHeight, ThumbMinLength, TrackLength);
+            float travel = Mathf.Max(0f, TrackLength - length);
+            float y = travel * Mathf.Clamp01(_pageScroll[i] / overflow);   // 0으로 나누지 않는다(overflow>0).
+
+            _thumbRect.sizeDelta = new Vector2(RailBarWidth, length);
+            UiChrome.PlaceTopLeft(_thumbRect, RailX + (RailWidth - RailBarWidth) * 0.5f,
+                -(RailTop + PageButtonSize + UiChrome.Space1 + y), RailBarWidth, length);
+        }
+
+        /// <summary>페이지가 안 넘치는 탭(지금은 죽은 탭 3개)에서는 <b>레일 전체</b>를 숨긴다 —
+        /// 썸이 트랙을 꽉 채운 모습은 "고장"으로 읽힌다.</summary>
         private void SyncPageButtons()
         {
             bool scrollable = _pageHeights[(int)_tab] > ContentHeight + 0.5f;
-            if (_pageUpRect != null && _pageUpRect.gameObject.activeSelf != scrollable)
-                _pageUpRect.gameObject.SetActive(scrollable);
-            if (_pageDownRect != null && _pageDownRect.gameObject.activeSelf != scrollable)
-                _pageDownRect.gameObject.SetActive(scrollable);
+            SetRailPartActive(_pageUpRect, scrollable);
+            SetRailPartActive(_pageDownRect, scrollable);
+            SetRailPartActive(_trackRect, scrollable);
+            SetRailPartActive(_thumbRect, scrollable);
+            if (!scrollable) return;
+
+            SyncScrollThumb();
+
+            // ★ 2026-09-02 — 옛 코드는 "스크롤 가능하면 <b>둘 다</b> 보이기"에서 멈췄다. 그래서
+            //   맨 위에서 [▲]가, 맨 아래에서 [▼]가 <b>완전히 활성으로 보이면서 아무 일도 안 했다</b>.
+            //   보관함이 앓던 같은 병이 이 새 레일에 그대로 복제된 것이다. 칩을 숨기지는 않는다 —
+            //   레일의 양 끝 캡이라 하나가 사라지면 막대가 <b>고장 난 것처럼</b> 보인다. 대신 죽인다.
+            //   ★ 여기서도 규칙은 같다: <b>면을 죽이고 글자는 그 면에서 파생시킨다</b>(A와 같은 뿌리).
+            ApplyPageChipEnabled(_pageUpOutline, _pageUpLabel, CanScroll(-1));
+            ApplyPageChipEnabled(_pageDownOutline, _pageDownLabel, CanScroll(+1));
+        }
+
+        /// <summary>
+        /// 끝에 닿은 칩을 죽인다. <b>숨기지 않는다</b> — 레일 양 끝 캡이라 하나가 사라지면 막대 자체가
+        /// 고장 난 것처럼 보인다.
+        ///
+        /// <para>여기서 바꾸는 것은 <b>화살표(그래픽)</b>와 <b>테두리</b>다. 산문이 아니라 기호이므로
+        /// <see cref="UiChrome.InkIcon"/>(아이콘 사다리)를 쓴다 — A에서 고친 "산문을 지워서 못 쓴다를
+        /// 말하는" 패턴과 다른 종류다. 그리고 이 칩에는 <b>애초에 거짓말할 밝은 면이 없다</b>
+        /// (강조색을 쓰지 않는다).</para>
+        /// </summary>
+        private static void ApplyPageChipEnabled(Image outline, Text glyph, bool enabled)
+        {
+            if (outline == null || glyph == null) return;
+
+            Color edge = UiChrome.Flatten(enabled ? UiChrome.CardBorder : UiChrome.Divider,
+                UiChrome.CardSurfaceMuted);
+            if (outline.color != edge) outline.color = edge;
+
+            Color ink = UiChrome.InkIcon(enabled);
+            if (glyph.color != ink) glyph.color = ink;
+        }
+
+        private static void SetRailPartActive(RectTransform rt, bool active)
+        {
+            if (rt != null && rt.gameObject.activeSelf != active) rt.gameObject.SetActive(active);
         }
 
         private void SetTab(Tab tab, string source)

@@ -524,21 +524,29 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// ★ 앞 라운드의 함정 재발 방지. 개별 스파이크 줄은 5초 쿨다운으로 억제되는데, 실기에서
-        /// <b>가장 심한 프레임이 바로 그 억제된 줄</b>이었다. 그래서 "남은 줄이 전부 판정: 로직밖"이
-        /// "로직 안은 무죄"로 잘못 읽혔다. 최악 프레임 스냅샷은 <b>쿨다운 검사보다 먼저</b> 있어야 한다.
+        /// ★ 앞 라운드의 함정 재발 방지. 개별 스파이크 줄은 억제되는데, 실기에서 <b>가장 심한
+        /// 프레임이 바로 그 억제된 줄</b>이었다. 그래서 "남은 줄이 전부 판정: 로직밖"이 "로직 안은
+        /// 무죄"로 잘못 읽혔다. 최악 프레임 스냅샷은 <b>억제 검사보다 먼저</b> 있어야 한다.
+        ///
+        /// <para>★ 2026-09-02 R2-1 — 억제 수단이 고정 5초 쿨다운에서
+        /// <see cref="StickMate.Platform.SpikeLogBackoff"/>(같은 등급이 이어지면 5→60초로 확대)로
+        /// 바뀌었다. <b>불변식은 그대로다</b>: 억제가 무엇이든 스냅샷이 그보다 앞이어야 한다.
+        /// 오히려 간격이 최대 60초까지 벌어지므로 이 순서는 <b>전보다 더 중요해졌다</b>.</para>
         /// </summary>
         [Test]
-        public void 최악_프레임_스냅샷은_로그_쿨다운보다_먼저_기록된다()
+        public void 최악_프레임_스냅샷은_로그_억제보다_먼저_기록된다()
         {
             string src = ReadScript("Platform", "StallAttribution.cs");
             int snapshot = src.IndexOf("if (dtMs > _worstDtMs)", System.StringComparison.Ordinal);
-            int cooldown = src.IndexOf("if (_spikeCooldownLeft > 0f) return;", System.StringComparison.Ordinal);
+            int suppress = src.IndexOf("_spikeBackoff.ShouldLog(", System.StringComparison.Ordinal);
             Assert.Greater(snapshot, 0, "최악 프레임 스냅샷이 사라졌다.");
-            Assert.Greater(cooldown, 0, "쿨다운 조기 반환이 사라졌다.");
-            Assert.Less(snapshot, cooldown,
-                "쿨다운 뒤에서 스냅샷하면 억제된 프레임(=대개 가장 심한 프레임)의 귀인을 통째로 잃는다 — " +
+            Assert.Greater(suppress, 0, "로그 억제 지점이 사라졌다 — 억제가 없으면 로그가 폭주한다.");
+            Assert.Less(snapshot, suppress,
+                "억제 뒤에서 스냅샷하면 억제된 프레임(=대개 가장 심한 프레임)의 귀인을 통째로 잃는다 — " +
                 "실기 로그에서 실제로 벌어졌던 오독이다.");
+
+            // 억제가 다시 고정 쿨다운으로 되돌아가면 R2-1(가려진 동안 230 B/s)이 재발한다.
+            StringAssert.DoesNotContain("_spikeCooldownLeft = SpikeLogCooldownSeconds;", src);
         }
 
         /// <summary>

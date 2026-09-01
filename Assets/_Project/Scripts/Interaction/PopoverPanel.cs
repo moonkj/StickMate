@@ -44,8 +44,11 @@ namespace StickMate.Interaction
         /// <summary>누른 버튼 원 가장자리에서 이만큼 띄운다.</summary>
         protected const float AnchorGapPoints = 10f;
 
-        /// <summary>화면 여백 — 팝오버 전체가 이 안에 들어온다.</summary>
-        protected const float ScreenMarginPoints = 12f;
+        /// <summary>화면 여백 — 팝오버 전체가 이 안에 들어온다.
+        /// <para>★ <b>public</b>인 이유: 안전영역 클램프를 검증하는 테스트가 이 값을 <b>숫자로 베끼지
+        /// 않고</b> 참조해야 한다(CLAUDE.md — 프로덕션 상수 하드코딩 금지). <c>ActionDedupSeconds</c>가
+        /// 같은 사정으로 public이다.</para></summary>
+        public const float ScreenMarginPoints = 12f;
 
         protected const float ClickPollInterval = 0.05f;
         protected const float ActionDedupSeconds = 0.35f;
@@ -394,9 +397,14 @@ namespace StickMate.Interaction
 
             float margin = ScreenMarginPoints * pxPerPoint;
             float minX = margin + size.x * 0.5f;
-            float minY = margin + size.y * 0.5f;
             center.x = Mathf.Clamp(center.x, minX, Mathf.Max(minX, Screen.width - minX));
-            center.y = Mathf.Clamp(center.y, minY, Mathf.Max(minY, Screen.height - minY));
+
+            // ★ 2026-09-02 — 세로는 <b>대칭이 아니다</b>. 옛 코드는 네 변에 똑같이 12pt를 줘서 팝오버를
+            //   상단 y=12pt에 앉혔고, macOS 메뉴바(y 0~33pt)를 <b>21pt 덮었다</b>(원칙 2 위반).
+            //   위쪽만 OS 예약 띠만큼 더 밀어낸다 — 아래쪽은 그대로다(Dock은 캐릭터의 발판이다).
+            float topInsetPx = ReservedTopBarProbe.TopInsetPoints(Agent != null ? Agent.PlatformService : null)
+                * pxPerPoint;
+            center.y = SurfaceSafeAreaPolicy.ClampCenterY(center.y, size.y, Screen.height, topInsetPx, margin);
 
             PanelScreenRect = new Rect(center.x - size.x * 0.5f, center.y - size.y * 0.5f, size.x, size.y);
             _panel.anchoredPosition = new Vector2(
@@ -555,16 +563,37 @@ namespace StickMate.Interaction
             _panel.pivot = new Vector2(0.5f, 0.5f);
             _panel.sizeDelta = PanelSizePoints;
 
+            // ★ 2026-09-02 (41-3 / C3) — 타이틀 줄의 가로 예산을 <b>여기 한 곳</b>에서 나눈다.
+            //   이 베이스에 넣으면 팝오버 3종이 자동으로 닫기 힌트를 얻는다(ExclusiveSurfaces가
+            //   인터페이스로 자동 등록한 것과 같은 정신 — "잊을 자리를 안 만든다").
+            float closeLeft = PanelSizePoints.x - UiChrome.Space4 - 22f;
+            float hintRight = closeLeft - UiChrome.CloseHintGap;
+            float hintRoom = hintRight - (UiChrome.Space4 + TitleReservePoints + UiChrome.Space1);
+            bool showCloseHint = hintRoom >= UiChrome.CloseHintMinWidth;
+            float hintWidth = showCloseHint ? Mathf.Min(UiChrome.CloseHintWidth, hintRoom) : 0f;
+            // 힌트를 지운 경우의 제목 폭은 <b>예전과 한 픽셀도 다르지 않다</b>(closeLeft - 16 - 4 = 422 @480).
+            float titleWidth = showCloseHint
+                ? hintRight - hintWidth - UiChrome.Space1 - UiChrome.Space4
+                : closeLeft - UiChrome.Space1 - UiChrome.Space4;
+
             Text title = UiChrome.AddText(_panel, "Title", UiChrome.FontTitle, TextAnchor.MiddleLeft,
                 UiChrome.TextPrimary, bold: true);
             _titleText = title;
-            UiChrome.PlaceTopLeft(title.rectTransform, UiChrome.Space4, -UiChrome.Space3,
-                PanelSizePoints.x - UiChrome.Space4 * 2f - 26f, 22f);
+            UiChrome.PlaceTopLeft(title.rectTransform, UiChrome.Space4, -UiChrome.Space3, titleWidth, 22f);
             title.text = TitleText;
 
+            if (showCloseHint)
+            {
+                _closeHint = UiChrome.AddText(_panel, "CloseHint", UiChrome.FontCaption,
+                    TextAnchor.MiddleRight, UiChrome.InkMeta);
+                UiChrome.PlaceTopLeft(_closeHint.rectTransform, hintRight - hintWidth, -UiChrome.Space3,
+                    hintWidth, 22f);
+                _closeHint.text = UiChrome.CloseHintText;
+                _closeHint.raycastTarget = false;   // 글자는 버튼이 아니다 — 눌러도 창 밖 클릭 판정을 가리지 않는다.
+            }
+
             Image close = UiChrome.AddSurface(_panel, "Close", UiChrome.CardSurface, UiChrome.RadiusChip);
-            UiChrome.PlaceTopLeft(close.rectTransform, PanelSizePoints.x - UiChrome.Space4 - 22f,
-                -UiChrome.Space3, 22f, 22f);
+            UiChrome.PlaceTopLeft(close.rectTransform, closeLeft, -UiChrome.Space3, 22f, 22f);
             UiChrome.AddOutline(close.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
             Text closeLabel = UiChrome.AddText(close.rectTransform, "Label", UiChrome.FontBody,
                 TextAnchor.MiddleCenter, UiChrome.TextSecondary);
@@ -591,6 +620,32 @@ namespace StickMate.Interaction
 
         /// <summary>[✕] 버튼 사각형 — 전역 폴링 경로가 이 사각형을 직접 검사한다.</summary>
         protected RectTransform CloseButtonRect { get; private set; }
+
+        /// <summary>
+        /// 닫기 힌트를 얹기 전에 <b>제목에 먼저 떼어 주는</b> 가로 폭(pt).
+        ///
+        /// <para>★ 41-3 ③은 "팝오버 3종 중 가장 좁은 것"을 480(행동창)으로 적었지만 <b>사실이 아니다</b> —
+        /// 실제 최소는 <see cref="FocusSessionPopover"/> 244pt이고 <see cref="TodoBoardPopover"/>가 300pt다.
+        /// 그래서 41-3 ④가 규칙만 정해 두고 "실제로 발생하지 않는다"고 적은 예외가 <b>실제로 발생한다</b>.
+        /// 그 예외 그대로 처리한다: 자리가 모자라면 <b>힌트를 먼저 지운다</b>(제목이 우선).</para>
+        ///
+        /// <para>84 = 한글 6자(FontTitle 14pt). 이 값에서 [행동 명령](480)과 [오늘 할일](300)은 힌트를
+        /// 얻고, [집중 모드](244)는 못 얻는다 — 그쪽 제목은 진행 중일 때 <c>집중 모드 · 진행 중</c>으로
+        /// 늘어나 140pt를 쓰므로 애초에 남는 자리가 없다.</para>
+        /// </summary>
+        private const float TitleReservePoints = 84f;
+
+        private Text _closeHint;
+
+        /// <summary>닫기 힌트 글자(없으면 null) — 진단/테스트 창구.</summary>
+        public Text CloseHintTextForTests => _closeHint;
+
+        /// <summary>제목 글자 — 힌트와 제목이 <b>겹치지 않는가</b>를 재는 창구(좌표를 손으로 적으면
+        /// 팝오버 폭이 한 번 바뀔 때 조용히 엉뚱한 곳을 잰다).</summary>
+        public Text TitleTextForTests => _titleText;
+
+        /// <summary>[✕] 버튼의 화면 사각형 — 힌트가 그 <b>왼쪽</b>에 있는지 재는 창구.</summary>
+        public Rect CloseButtonScreenRectForTests => ScreenRectOf(CloseButtonRect);
 
         private Text _titleText;
 

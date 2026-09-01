@@ -903,19 +903,16 @@ namespace StickMate.Platform
             _reportTimer = 0f;
             _logEnabled = false;
             _sampling = false;
-            _spikeCooldownLeft = 0f;
+            _spikeBackoff.Reset();
             _spikeCount = 0;
-            _spikeCountActionable = 0;
-            _spikeCountThrottled = 0;
-            _rateWindowElapsed = 0f;
-            _rateWindowCount = 0;
-            _ratePrevElapsed = 0f;
-            _ratePrevCount = 0;
+            _spikeTiers.Reset();
+            _spikeRate.Reset();
             _lastGc0 = 0;
             _lastGc1 = 0;
             _spikeLastWidth = 0;
             _spikeLastHeight = 0;
             _lastTransitionCountSeen = 0;
+            _lastTierSeen = FramePacingTier.Active;
         }
 
         internal static void Configure(Core.StickConfig config)
@@ -992,44 +989,62 @@ namespace StickMate.Platform
         /// 밤새 "스파이크" 로그가 쌓인다.</summary>
         private const float SpikeRelativeFactor = 2.5f;
 
-        /// <summary>스파이크 로그 사이의 최소 간격(초). 재생성 루프가 돌면 초당 여러 번 날 수 있는데,
-        /// 24시간 상주 앱에서 그걸 전부 찍으면 로그가 자원을 먹는다.</summary>
-        private const float SpikeLogCooldownSeconds = 5f;
+        // (예전의 고정 SpikeLogCooldownSeconds = 5f는 2026-09-02 R2-1에서 적응형 백오프로 바뀌었다.
+        //  최소/최대 간격은 SpikeLogBackoff.MinSeconds / MaxSeconds가 갖는다.)
 
         /// <summary>
         /// **발생률 창**(초). 누적 단조증가 숫자는 24시간 상주 앱에서 언제나 "망가졌다"로 읽힌다 —
-        /// "누적 4,222회"는 그게 3분에 쌓였는지 20시간에 쌓였는지 말해 주지 않는다. 그래서 같은 줄에
-        /// **분당 발생률**을 함께 찍고, 그 분모가 되는 창을 이만큼마다 굴린다(텀블링).
+        /// "누적 4,222회"는 그게 3분에 쌓였는지 20시간에 쌓였는지 말해 주지 않는다.
+        ///
+        /// <para>★ 2026-09-02 R2-5 — 이 창은 <b>슬라이딩</b>이다. 예전에는 텀블링(통째로 굴리기)
+        /// 이었는데, 그러면 실제 발생률이 일정한데도 로그의 숫자가 <b>창이 자라는 동안 단조 상승</b>
+        /// 하다가 굴리는 순간 <b>2.4배 점프</b>했다(실측 53.3 -> 129.4). 두 줄을 나란히 읽는 사람은
+        /// 그걸 "갑자기 나빠졌다"로 읽는다 — 계기가 사건이 아니라 자기 구조를 보고한 셈이다.
+        /// 버킷을 하나씩 은퇴시키면 한 번에 바뀌는 몫이 최대 1/<see cref="RateBucketCount"/>이라
+        /// 값이 실제 발생률을 <b>따라간다</b>.</para>
         /// </summary>
-        private const float SpikeRateWindowSeconds = 300f;
+        /// (수치와 규칙은 <see cref="SpikeRateWindow"/>가 갖는다 — 두 플랫폼 공용.)
 
-        /// <summary>새 창이 이 시간보다 어리면 **직전 창을 합쳐서** 비율을 낸다. 없으면 창이 굴린
-        /// 직후 "0.3초에 1회 = 분당 200회" 같은 숫자가 나와, 계기를 고치려다 다시 못 읽게 만든다.</summary>
-        private const float SpikeRateMinSpanSeconds = 60f;
+        // ★ 2026-09-02 R2-1 — 고정 5초 쿨다운을 적응형 백오프로 바꿨다. 가려진 452초 동안
+        //   이 줄과 [스톨귀인]이 전체 로그 바이트의 70.7%를 먹었다(230 B/s). 규칙은
+        //   Platform/SpikeLogBackoff.cs에 있고 StallAttribution도 같은 것을 쓴다.
+        private static SpikeLogBackoff _spikeBackoff;
 
-        private static float _spikeCooldownLeft;
         private static int _spikeCount;
 
         // ★ 등급 축 분해 — 이것 하나로 "조인 구간의 정상적인 긴 프레임"과 "진짜 히치"가 갈린다.
-        //   Away/Suspended/DisplayOff에서 200ms 프레임은 **설계대로**이고, Active/Calm/Still에서
-        //   200ms 프레임은 사용자가 렉으로 느끼는 바로 그것이다. 두 숫자를 한 칸에 합쳐 두면
-        //   전자가 후자를 덮어 버려 로그가 "4,222회 망가짐"으로만 읽힌다.
-        private static int _spikeCountActionable;   // Active / Calm / Still
-        private static int _spikeCountThrottled;    // Away / Suspended / DisplayOff
+        //   규칙과 소급 재분류는 Platform/SpikeTierLedger.cs에 있다(두 플랫폼 공용).
+        private static SpikeTierLedger _spikeTiers;
 
-        private static float _rateWindowElapsed;
-        private static int _rateWindowCount;
-        private static float _ratePrevElapsed;
-        private static int _ratePrevCount;
+        // ★ 2026-09-02 R2-5 — 발생률 창을 텀블링에서 **슬라이딩**으로 바꿨다. 텀블링은
+        //   (a) 창이 자라는 동안 값이 단조 상승만 하고 (b) 창이 굴리는 순간 2.4배 점프해서,
+        //   두 줄을 나란히 읽는 사람이 "갑자기 나빠졌다"로 오독했다(실측 53.3 -> 129.4).
+        private static SpikeRateWindow _spikeRate;
 
         private static int _lastGc0;
         private static int _lastGc1;
         private static int _spikeLastWidth;
         private static int _spikeLastHeight;
         private static int _lastTransitionCountSeen;
+        private static FramePacingTier _lastTierSeen = FramePacingTier.Active;
 
-        /// <summary>이 등급의 긴 프레임은 <b>설계된 절감</b>이지 히치가 아니다.</summary>
-        private static bool IsThrottledTier(FramePacingTier tier) => tier >= FramePacingTier.Away;
+        /// <summary>
+        /// 최근 프레임 주기의 **중앙값**(관측). 스파이크 문턱의 기준선으로 쓴다.
+        /// 정렬 비용이 있으므로 <b>스파이크 후보일 때만</b>, 그것도 이 주기로만 다시 잰다.
+        /// </summary>
+        private const float BaselineRefreshSeconds = 2f;
+
+        private static float _baselineMs;
+        private static float _baselineAgeSeconds;
+
+        internal static float RecentMedianMs()
+        {
+            if (_baselineMs > 0f && _baselineAgeSeconds < BaselineRefreshSeconds) return _baselineMs;
+            if (!TrySummarize(out FrameTimeSummary s)) return 0f;
+            _baselineMs = s.P50Ms;
+            _baselineAgeSeconds = 0f;
+            return _baselineMs;
+        }
 
         /// <summary>
         /// ============================================================================
@@ -1043,22 +1058,17 @@ namespace StickMate.Platform
         /// <item>GC 증가분이 0이고 백버퍼도 그대로면 <c>[스톨귀인]</c>/<c>[스톨구간]</c> 줄을 본다 —
         ///   같은 프레임#으로 짝이 맞춰져 있고, 그쪽이 "어디서 시간이 갔는가"를 계측으로 답한다.</item>
         /// </list>
-        /// 로그는 <see cref="SpikeLogCooldownSeconds"/>초에 한 줄로 억제되지만 <b>카운트는 전부</b>
-        /// 센다(쿨다운 앞에서 증가시키는 것이 의도다 — 뒤로 옮기면 누적이 실제의 1/20이 된다).
+        /// 로그는 <see cref="SpikeLogBackoff"/>가 억제하지만(같은 등급이 이어지면 5초에서 최대 60초까지
+        /// 간격을 벌린다) <b>카운트는 전부</b> 센다 — 억제 앞에서 증가시키는 것이 의도다.
         /// </summary>
         private static void WatchSpike(float dtMs)
         {
-            if (_spikeCooldownLeft > 0f) _spikeCooldownLeft -= Time.unscaledDeltaTime;
+            float dt = Time.unscaledDeltaTime;
+            _spikeBackoff.Tick(dt);
+            _baselineAgeSeconds += dt;
 
-            // 발생률 창 굴리기 — 벽시계 조회 없이 이미 읽은 dt만 누산한다(프레임당 float 덧셈 1회).
-            _rateWindowElapsed += Time.unscaledDeltaTime;
-            if (_rateWindowElapsed >= SpikeRateWindowSeconds)
-            {
-                _ratePrevElapsed = _rateWindowElapsed;
-                _ratePrevCount = _rateWindowCount;
-                _rateWindowElapsed = 0f;
-                _rateWindowCount = 0;
-            }
+            // 발생률 슬라이딩 창 — 벽시계 조회 없이 이미 읽은 dt만 누산한다(규칙은 SpikeRateWindow).
+            _spikeRate.Tick(dt);
 
             int gc0 = System.GC.CollectionCount(0);
             int gc1 = System.GC.CollectionCount(1);
@@ -1071,23 +1081,41 @@ namespace StickMate.Platform
             int transitionDelta = transitions - _lastTransitionCountSeen;
             _lastTransitionCountSeen = transitions;
 
+            // ★ R2-2 — 전환 시각 부기는 **스파이크가 아닌 프레임에서도** 굴러야 소급 재분류가 된다.
+            //   ★★ 2026-09-02 실측 정정: "모든 등급 전환"이 아니라 **절감 경계를 넘는 전환**만
+            //   유예 사유다. Active↔Calm↔Still 미세 전환은 캐릭터가 서고 걷기만 해도 수 초마다
+            //   일어나서, 그것까지 유예로 치면 3초 창이 타임라인을 덮어 **진짜 히치를 전환 칸으로
+            //   삼킨다**(실측: 유도한 192ms/434ms 히치가 둘 다 전환 칸으로 갔다).
+            FramePacingTier tierNow = FramePacing.CurrentTier;
+            bool crossed = SpikeTierLedger.CrossesThrottleBoundary(_lastTierSeen, tierNow);
+            _lastTierSeen = tierNow;
+            _spikeTiers.Tick(dt, crossed);
+
             if (dtMs < SpikeAbsoluteMs) return;
 
             // 기대 프레임 시간 — 절감 등급의 "긴 프레임"은 스파이크가 아니다.
             // ★ 계산은 StallAttribution 한 곳에만 있다. 두 로그가 같은 프레임#으로 1:1 짝을 이루려면
             //   분모가 같아야 하는데, 값을 복사해 두면 한쪽만 고쳤을 때 조용히 어긋난다.
             float expectedMs = StallAttribution.ExpectedFrameMs();
-            if (dtMs < expectedMs * SpikeRelativeFactor) return;
 
-            // ★ 카운트는 쿨다운 **앞**에 있는 것이 옳다 — 전부 세고 일부만 찍는 의도된 설계다.
-            //   뒤로 옮기면 누적값이 실제 발생의 1/20만 세게 된다(5초 쿨다운).
-            FramePacingTier tier = FramePacing.CurrentTier;
+            // ★★ R2-1/R2-6 — 계획값만으로는 "가려진 앱을 OS가 조인" 상황을 절대 못 맞춘다
+            //    (실측: 계획 16.7ms인데 실제 p50 105ms). 관측된 중앙값을 기준선에 함께 넣는다.
+            float medianMs = RecentMedianMs();
+            float thresholdMs = StallAttribution.SpikeThresholdMs(expectedMs, medianMs);
+            if (dtMs < thresholdMs) return;
+
+            // ★ 카운트는 억제 **앞**에 있는 것이 옳다 — 전부 세고 일부만 찍는 의도된 설계다.
+            //   뒤로 옮기면 누적값이 실제 발생의 일부만 세게 된다.
+            FramePacingTier tier = tierNow;
+            SpikeTierLedger.SpikeClass spikeClass = _spikeTiers.Classify(tier);
             _spikeCount++;
-            if (IsThrottledTier(tier)) _spikeCountThrottled++; else _spikeCountActionable++;
-            _rateWindowCount++;
+            _spikeTiers.Count(tier);
+            _spikeRate.Count1();
 
-            if (_spikeCooldownLeft > 0f) return;
-            _spikeCooldownLeft = SpikeLogCooldownSeconds;
+            // 적응형 백오프 — 억제를 뚫는 것은 **실사용 히치**뿐이다(등급 변화만으로 뚫으면
+            // 전체화면 왕복에서 억제가 무력화된다 — SpikeLogBackoff 문서의 실측 근거 참고).
+            if (!_spikeBackoff.ShouldLog((int)spikeClass,
+                    spikeClass == SpikeTierLedger.SpikeClass.Actionable)) return;
 
             // ★ 여기서만 Screen을 읽는다(네이티브 조회라 평상시에는 아깝다).
             int w = Screen.width;
@@ -1101,27 +1129,22 @@ namespace StickMate.Platform
             _spikeLastWidth = w;
             _spikeLastHeight = h;
 
-            // 발생률 — 창이 어리면 직전 창을 합쳐서 낸다(창을 막 굴린 직후의 허수 방지).
-            float rateSpan = _rateWindowElapsed;
-            int rateCount = _rateWindowCount;
-            if (rateSpan < SpikeRateMinSpanSeconds && _ratePrevElapsed > 0f)
-            {
-                rateSpan += _ratePrevElapsed;
-                rateCount += _ratePrevCount;
-            }
-            float perMinute = rateSpan > 0.001f ? rateCount * 60f / rateSpan : 0f;
+            // 발생률 — 슬라이딩 창. 창이 짧으면 그 사실을 숫자 옆에 적는다.
+            string rateNote = _spikeRate.SpanTooShort ? "(관측 짧음)" : string.Empty;
 
-            Debug.LogWarning($"[프레임스파이크] {dtMs:F0}ms 멈춤 (기대 {expectedMs:F1}ms) — " +
-                // ★ 누적 하나만 찍던 시절의 로그는 "4,222회"만 말하고 그게 언제/어느 등급에서 쌓였는지
-                //   말하지 않아, 24시간 상주 앱에서 언제나 "망가졌다"로 읽혔다. 두 축을 함께 찍는다.
-                $"누적 {_spikeCount}회 = 실사용등급 {_spikeCountActionable}회 + 절감등급 {_spikeCountThrottled}회, " +
-                $"최근 {rateSpan:F0}초에 {rateCount}회 = 분당 {perMinute:F1}회. " +
+            Debug.LogWarning($"[프레임스파이크] {dtMs:F0}ms 멈춤 " +
+                // ★ 문턱은 계획값과 **관측 중앙값** 중 큰 쪽에서 나온다. 둘을 함께 찍지 않으면
+                //   "왜 이건 잡히고 저건 안 잡히나"를 로그만 보고는 영영 알 수 없다.
+                $"(계획 {expectedMs:F1}ms / 관측 p50 {medianMs:F1}ms -> 문턱 {thresholdMs:F0}ms) — " +
+                $"누적 {_spikeCount}회 = {_spikeTiers}, " +
+                $"최근 {_spikeRate.SpanSeconds:F0}초에 {_spikeRate.Count}회 = " +
+                $"분당 {_spikeRate.PerMinute:F1}회{rateNote}. " +
                 $"백버퍼: {sizeNote}. " +
                 $"GC: gen0 +{gc0Delta} / gen1 +{gc1Delta}. " +
                 $"페이싱: 등급={tier}, 이번 프레임 전이 {transitionDelta}회, " +
                 $"vSyncCount={QualitySettings.vSyncCount}, targetFrameRate={Application.targetFrameRate}, " +
                 $"renderFrameInterval={OnDemandRendering.renderFrameInterval}. " +
-                $"프레임#{Time.frameCount}.");
+                $"프레임#{Time.frameCount}. 다음 억제 {_spikeBackoff.CurrentIntervalSeconds:F0}초.");
         }
 
         /// <summary>

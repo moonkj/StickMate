@@ -51,6 +51,13 @@ namespace StickMate.Platform
         private double _lastEmitAt;
         private bool _hasLast;
 
+        // ★ 2026-09-02 — 합성 키(문자열 1 + 정수 1 + 실수 1)용 필드.
+        //   완성된 줄을 만들어 비교하면 "verbose가 꺼져 있어도 보간 문자열이 만들어지는" 문제가 생겨
+        //   접기를 게이트 뒤로 밀 수밖에 없었고, 그래서 이 장치가 **한 번도 실행되지 않았다**
+        //   (2026-09-02 검증 R2-4). 키로 접으면 조립 없이 접을 수 있어 게이트 앞에 놓을 수 있다.
+        private int _lastKeyInt;
+        private float _lastKeyFloat;
+
         /// <summary>아직 방출되지 않고 접혀 있는 반복 횟수(진단/테스트용).</summary>
         public int PendingRepeats => _repeats;
 
@@ -109,6 +116,54 @@ namespace StickMate.Platform
             return true;
         }
 
+        /// <summary>
+        /// **할당 없이** 접는다 — 완성된 줄 대신 그 줄을 결정하는 <b>키</b>로 동일성을 판정한다.
+        ///
+        /// <para><b>왜 이 오버로드가 필요한가</b>(2026-09-02 검증 R2-4): 줄 전체로 접으려면 먼저
+        /// 보간 문자열을 만들어야 하는데, 그러면 "로그가 꺼져 있어도 문자열이 만들어진다"는 이
+        /// 저장소의 컨벤션과 충돌한다. 그 충돌을 피하려고 접기를 <b>로그 스위치 뒤</b>로 밀었더니
+        /// 정작 스위치가 부팅 스냅샷이라 <b>접기 코드가 한 번도 실행되지 않았다</b>. 키로 접으면
+        /// 조립이 필요 없으므로 접기를 <b>스위치 앞</b>에 둘 수 있고, 도달 불가 문제가 구조적으로
+        /// 사라진다.</para>
+        ///
+        /// <para>키 설계 원칙: <b>완성된 줄에서 값이 변할 수 있는 자리를 빠짐없이</b> 키에 넣는다.
+        /// 하나라도 빠뜨리면 서로 다른 줄이 같은 줄로 접혀 정보가 사라진다 — 그건 감량이 아니라
+        /// 실명이다.</para>
+        /// </summary>
+        public bool ShouldEmit(string keyText, int keyInt, float keyFloat,
+            double now, double holdSeconds, out int foldedRepeats)
+        {
+            foldedRepeats = 0;
+            if (keyText == null) return false;
+
+            bool same = _hasLast
+                && string.Equals(_last, keyText, System.StringComparison.Ordinal)
+                && _lastKeyInt == keyInt
+                // 비트 비교 — 부동소수 오차 허용치를 두면 "거의 같은" 줄이 접혀 값이 왜곡된다.
+                && _lastKeyFloat.Equals(keyFloat);
+
+            if (!same)
+            {
+                foldedRepeats = _repeats;
+                _repeats = 0;
+                _last = keyText;
+                _lastKeyInt = keyInt;
+                _lastKeyFloat = keyFloat;
+                _hasLast = true;
+                _lastEmitAt = now;
+                return true;
+            }
+
+            _repeats++;
+            if (holdSeconds > 0.0 && now - _lastEmitAt >= holdSeconds)
+            {
+                foldedRepeats = _repeats;
+                _repeats = 0;
+                _lastEmitAt = now;
+            }
+            return false;
+        }
+
         /// <summary>테스트/재시작용.</summary>
         public void Reset()
         {
@@ -116,6 +171,8 @@ namespace StickMate.Platform
             _hasLast = false;
             _repeats = 0;
             _lastEmitAt = 0.0;
+            _lastKeyInt = 0;
+            _lastKeyFloat = 0f;
         }
 
         /// <summary>

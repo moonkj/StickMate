@@ -334,6 +334,9 @@ namespace StickMate.Interaction
 
         private RectTransform _closeRect;
         private RectTransform _settingsRect;   // 헤더의 작은 [설정] 칩 — 설정창의 주 진입점(36-11).
+
+        /// <summary>타이틀바의 닫기 힌트(41-3 / C1). 좁은 화면에서는 꺼진다.</summary>
+        private Text _closeHint;
         private RectTransform _titleBarRect;   // 드래그 손잡이(2026-08-30).
         private readonly Image[] _tabUnderlines = new Image[TabCount];
         private readonly Text[] _tabLabels = new Text[TabCount];
@@ -2159,6 +2162,7 @@ namespace StickMate.Interaction
             {
                 _panel.sizeDelta = new Vector2(width, height);
                 SyncActionReachability();
+                SyncCloseHintVisibility();
             }
 
             Vector2 clamped = ClampPanelPosition(_panel.anchoredPosition, scaleFactor);
@@ -2203,8 +2207,15 @@ namespace StickMate.Interaction
             float sf = scaleFactor;
             Vector2 size = _panel.sizeDelta;
             float maxX = Mathf.Max(0f, (Screen.width / sf - size.x) * 0.5f - ScreenMargin);
-            float maxY = Mathf.Max(0f, (Screen.height / sf - size.y) * 0.5f - ScreenMargin);
-            return new Vector2(Mathf.Clamp(desired.x, -maxX, maxX), Mathf.Clamp(desired.y, -maxY, maxY));
+
+            // ★ 2026-09-02 (41-1) — 세로는 <b>대칭이 아니다</b>. 옛 코드의 대칭 클램프는 이 창을 위로
+            //   44.5pt 끌어올리게 허용했고, 그러면 창 위쪽이 OS y=16pt에 앉아 macOS 메뉴바(0~33)를
+            //   17pt 덮는다(팝오버와 같은 결함, 같은 원인). 아래쪽 한계는 건드리지 않는다 —
+            //   Dock을 덮는 것은 macOS의 모든 앱이 하는 표준 동작이고, 이 앱은 그 위를 발판으로도 쓴다.
+            float topInset = ReservedTopBarProbe.TopInsetPoints(_agent != null ? _agent.PlatformService : null);
+            float y = SurfaceSafeAreaPolicy.ClampCenterOriginOffsetY(
+                desired.y, size.y, Screen.height / sf, topInset, ScreenMargin);
+            return new Vector2(Mathf.Clamp(desired.x, -maxX, maxX), y);
         }
 
         /// <summary>
@@ -2447,6 +2458,34 @@ namespace StickMate.Interaction
             {
                 if (TryClaimAction("settings")) OpenSettings("정보창 헤더 [설정]");
             });
+
+            // ★ 2026-09-02 (41-3 / C1) — 닫는 법을 화면에 적는다. 자리는 <b>[설정]의 왼쪽</b>이다:
+            //   힌트가 가리키는 것은 [✕]지만, 두 버튼 <b>사이</b>에 글자를 끼우면 셋 다 버튼처럼 읽힌다.
+            //   민지는 Cmd+W를 눌렀고 그 순간 시선은 창의 오른쪽 위에 있었다 — 답이 거기 있어야 한다.
+            _closeHint = UiChrome.AddText(barGo.transform, "CloseHint", UiChrome.FontCaption,
+                TextAnchor.MiddleRight, UiChrome.InkMeta);
+            _closeHint.raycastTarget = false;   // 글자는 버튼이 아니다(드래그 손잡이도 가리지 않는다).
+            RectTransform hintRect = _closeHint.rectTransform;
+            hintRect.anchorMin = hintRect.anchorMax = hintRect.pivot = new Vector2(1f, 1f);
+            hintRect.sizeDelta = new Vector2(CloseHintBoxWidth, 12f);
+            // 오른쪽 끝 = [설정] 칩 왼쪽에서 6pt. 880 폭에서 상자는 x 582~782에 앉는다.
+            hintRect.anchoredPosition = new Vector2(-(48f + 44f + 6f), -(TitleHeight - 12f) * 0.5f);
+            _closeHint.text = UiChrome.CloseHintText;
+            SyncCloseHintVisibility();
+        }
+
+        /// <summary>닫기 힌트 상자 폭(pt). 문장 실측 109pt에 여유를 얹은 값이며, 이 상자가 제목
+        /// 상자(x16 w200)에 닿는 좁은 화면에서는 <b>힌트를 먼저 지운다</b>(제목이 우선 — 41-3 ④).</summary>
+        private const float CloseHintBoxWidth = 200f;
+
+        /// <summary>이 폭 미만에서는 힌트를 숨긴다 = 오른쪽 여백 98 + 힌트 200 + 간격 4 + 제목 216.</summary>
+        private const float CloseHintMinPanelWidth = 98f + CloseHintBoxWidth + 4f + 216f;
+
+        private void SyncCloseHintVisibility()
+        {
+            if (_closeHint == null || _panel == null) return;
+            bool show = _panel.sizeDelta.x >= CloseHintMinPanelWidth;
+            if (_closeHint.gameObject.activeSelf != show) _closeHint.gameObject.SetActive(show);
         }
 
         /// <summary>
@@ -2936,6 +2975,25 @@ namespace StickMate.Interaction
                             _iconPoints[i] = FromViewBox(v[i * 2], v[i * 2 + 1], 40f, 40f, IconSize, IconSize);
                         }
                         UiChrome.AddPolyline(root, "Seg", _iconPoints, count, IconStroke, part.Color);
+                        break;
+                    }
+                    case ItemIconPartKind.Polygon:
+                    {
+                        // 몸 경로(AccessoryCardIcon)와 <b>같은 순서</b>로 그린다: 면을 먼저 깔고 그 위에
+                        // 윤곽선. 순서를 바꾸면 채움이 획을 반쯤 덮어 도형이 가늘어 보인다.
+                        int count = Mathf.Min(part.PointCount, _iconPoints.Length);
+                        for (int i = 0; i < count; i++)
+                        {
+                            _iconPoints[i] = FromViewBox(v[i * 2], v[i * 2 + 1], 40f, 40f, IconSize, IconSize);
+                        }
+
+                        // 규약상 마지막 점이 첫 점과 같다. 삼각분할에 중복점을 넣으면 퇴화 삼각형이 생긴다.
+                        int fillCount = count;
+                        if (fillCount > 1 && _iconPoints[fillCount - 1] == _iconPoints[0]) fillCount--;
+
+                        AccessoryCardIcon.AddFill(root, "Fill", _iconPoints, fillCount, part.Color);
+                        UiChrome.AddPolyline(root, "Seg", _iconPoints, count, IconStroke,
+                            AccessoryShapeBuilder.FillOutlineColor(part.Color));
                         break;
                     }
                     case ItemIconPartKind.Ring:

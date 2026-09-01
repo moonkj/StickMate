@@ -122,10 +122,14 @@ namespace StickMate.Tests.PlayMode
         private float _groundWorldY;
         private float _standingHeadY;
         private float _characterHeight;
+        private float _restoreScale;
 
         [TearDown]
         public void TearDown()
         {
+            // 배율 루프가 도는 파일이므로 원래 배율로 반드시 되돌린다(다음 테스트로 새어 나가면
+            // 그 테스트는 "리그 기본 배율"이라고 믿는 값과 다른 값에서 돌게 된다).
+            if (_agent != null && _restoreScale > 0f) _agent.ApplyCharacterScale(_restoreScale, "무릎앉아 테스트 정리");
             if (_agent != null && _agent.Blackboard != null)
             {
                 if (_originalConfig != null) _agent.Blackboard.Config = _originalConfig;
@@ -137,6 +141,7 @@ namespace StickMate.Tests.PlayMode
             _clonedConfig = null;
             _agent = null;
             _head = null;
+            _restoreScale = 0f;
         }
 
         // ============================================================================
@@ -216,6 +221,7 @@ namespace StickMate.Tests.PlayMode
             // 루트 Transform 기준으로 재면 남는 것은 순수하게 포즈가 만든 높이뿐이다.
             _standingHeadY = _head.position.y - bb.Body.transform.position.y;
             _characterHeight = bb.CharacterHeightWorld;
+            if (_restoreScale <= 0f) _restoreScale = _agent.CurrentCharacterScale;
 
             Assert.AreEqual(_groundWorldY, bb.Body.position.y, 0.05f,
                 $"{LogPrefix} 준비 실패 — 캐릭터가 물리 바닥 상단에 서 있지 않습니다.");
@@ -393,51 +399,216 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
-        // (2) Dock 단차 — "무릎을 꿇지는 않지만 무반응도 아니다"(T0.5)
-        //
-        // ★ 2026-09-01 계약 변경(MOTION_SPEC 4-3). 이 테스트는 원래 "Dock 단차에서는 연출이 전혀
-        //   발동하지 않는다"를 잠갔다. 그 계약이 막으려던 것은 **무릎 꿇기 실루엣**이었는데, 구현이
-        //   그것을 "완전 무반응"으로 과잉 달성해 캐릭터가 1분에 열 번 넘게 Dock에서 내려오면서
-        //   무릎이 1도도 굽지 않았다(발이 바닥에 스며드는 그림).
-        //
-        //   그래서 잠그는 대상을 바꾼다: **연출이 도는가**가 아니라 **무릎을 꿇는가**다.
-        //   Dock 단차는 T0.5(가벼운 흡수)로 들어가되 깊이가 landingCrouchMinDepth01(= T1의 최저 깊이)
-        //   **미만**이어야 한다 — 그 위로 올라가는 순간 "한 계단마다 무릎 꿇기"가 되기 때문이다.
+        // (2) ★★ Dock 단차 — **"무릎을 꿇었다"는 실루엣으로 잰다** (2026-09-02 전면 재작성)
         // ============================================================================
+        //
+        // 이 테스트는 두 번 다시 쓰였다. 그 이력 자체가 이 파일의 교훈이다:
+        //
+        //  · 초판(2026-08-29) : "Dock 단차에서는 연출이 **전혀** 발동하지 않는다"를 잠갔다.
+        //      막으려던 것은 무릎 꿇기 실루엣이었는데, 구현이 그것을 "완전 무반응"으로 과잉 달성해
+        //      캐릭터가 1분에 열 번 넘게 Dock에서 내려오면서 무릎이 1도도 굽지 않았다.
+        //  · 2판(2026-09-01) : 잠글 대상을 **티어 이름**(SoftAbsorb)과 깊이 비율로 바꿨다.
+        //      ★ 그 판은 **2026-09-02에 스스로 빨간불이 됐다** — 착지 임계가 절대 유닛에서
+        //      신장 배수(0.88 H)로 옮겨가면서, 배포 배율 0.75의 리그에서
+        //      `Dock 단차 1.63747 < 무릎앉아 임계 0.88 x 1.70602 = 1.50130`이 **거짓**이 됐다.
+        //      즉 전제 assert가 깨졌다.
+        //
+        //  ★ 3판(지금) — docs/MOTION_SPEC.md 23-3의 설계 판정을 그대로 따른다:
+        //
+        //    (가) **티어 이름은 계약이 아니다.** T0.5/T1은 배율에 따라 정당하게 바뀌는 구현 세부이고,
+        //         실제로 배율 0.8180(StickConfig.DockKneelCriticalScale) 아래에서는 Dock이 T1 램프에
+        //         들어가는 것이 **정상**이다. 티어를 잠그면 정상 변화가 빨간불이 된다.
+        //    (나) **계약은 그림이다** — "무릎을 꿇은 것처럼 보이는가". 그 단일 정의는
+        //         `몸(머리) 하강 >= StickConfig.LandingSitDownBodyDropHeights (0.12 H)`다.
+        //         관절 내부각(앞무릎 45도 등)은 아래 (1)의 **보조 정합 검사**이지 이 케이스의 상한이
+        //         아니다 — 둘은 실루엣으로 3.25배 차이나고, 45도를 Dock의 상한으로 읽은 것이
+        //         이 프로젝트가 실제로 저지른 범주 오류다.
+        //    (다) **배율 6점 루프로 돈다.** 2판은 리그 기본 배율 한 점만 봤고, 그래서 사용자가 실제로
+        //         쓰는 0.60을 **한 번도 보지 않았다** — 이 라운드의 회귀가 조용히 통과한 구조적 이유다.
+
+        /// <summary>★ 배율 6점. 프로덕션 상수는 <b>참조</b>하고, 현장 관측값(사용자 저장 배율)만
+        /// 테스트 입력으로 적는다.</summary>
+        private static float[] ScaleSweep => new[]
+        {
+            StickConfig.MinCharacterScale,          // 0.35   슬라이더 하한(여유가 가장 적은 점)
+            StickConfig.DockHopDownCriticalScale,   // 0.4493 뛰어내리기 <-> 매달리기 분기점
+            UserSavedScale,                         // 0.60   이번 라운드 회귀가 터진 현장 배율
+            StickConfig.DockKneelCriticalScale,     // 0.8180 T0.5 <-> T1 분기점(정확히 경계 위)
+            0.9f,                                   // 경계에만 몰리지 않게 한 점
+            StickConfig.MaxCharacterScale,          // 1.00   슬라이더 상한
+        };
+
+        /// <summary>사용자가 실제로 저장해 쓰던 배율. 현장 로그에서 관측된 <b>테스트 입력</b>이지
+        /// 프로덕션 상수가 아니다(그래서 여기 숫자로 적는다).</summary>
+        private const float UserSavedScale = 0.60f;
 
         [UnityTest]
-        public IEnumerator DockStepDropAbsorbsSoftlyWithoutKneeling()
+        public IEnumerator DockStepDropNeverLooksLikeKneelingAtAnySelectableScale()
         {
             yield return SetUpFlatGround();
 
-            float softThreshold = _clonedConfig.ResolveLandingSoftAbsorbThreshold(_characterHeight);
-            float kneelThreshold = _clonedConfig.ResolveLandingReactionThreshold(_characterHeight);
+            float limit = StickConfig.LandingSitDownBodyDropHeights;
+            var rows = new List<string>();
+            var failures = new List<string>();
 
-            Assert.Greater(DockStepDropUnits, softThreshold,
-                $"{LogPrefix} 전제 실패 — Dock 단차({DockStepDropUnits:F3})가 T0.5 진입 임계값" +
-                $"({softThreshold:F3}) 이하입니다. 그러면 계단을 내려서도 완전 무반응이 됩니다.");
-            Assert.Less(DockStepDropUnits, kneelThreshold,
-                $"{LogPrefix} 전제 실패 — Dock 단차({DockStepDropUnits:F3})가 무릎앉아(T1) 임계값" +
-                $"({kneelThreshold:F3}) 이상이 되어버렸습니다. " +
-                "이 경우 한 계단 내려올 때마다 무릎을 꿇게 됩니다(리더가 명시적으로 금지한 거동).");
+            float[] scales = ScaleSweep;
+            for (int i = 0; i < scales.Length; i++)
+            {
+                yield return ApplyScaleAndRecapture(scales[i]);
 
-            var crouchState = ResolveLandingCrouchState();
+                // ── 전제 (배율마다 다시 확인) — Dock 단차는 T0.5 진입 임계 위에 있어야 한다.
+                //    아래이면 "완전 무반응"(T0)이 되어 발이 바닥에 스며드는 초판의 오답으로 되돌아간다.
+                float softThreshold = _clonedConfig.ResolveLandingSoftAbsorbThreshold(_characterHeight);
+                Assert.Greater(DockStepDropUnits, softThreshold,
+                    $"{LogPrefix} 배율 {scales[i]:F4} 전제 실패 — Dock 단차({DockStepDropUnits:F4})가 T0.5 진입 임계값" +
+                    $"({softThreshold:F4}) 이하입니다. 그 배율에서는 계단을 내려서도 완전 무반응이 됩니다. " +
+                    $"(교차 배율 StickConfig.DockSoftAbsorbCriticalScale={StickConfig.DockSoftAbsorbCriticalScale:F4} 위여야 합니다.)");
+
+                var obs = new DropObservation();
+                yield return DropAndObserve(DockStepDropUnits, obs);
+
+                float heightsFallen = DockStepDropUnits / _characterHeight;
+                float bodyDropHeights = obs.MaxHeadDrop / _characterHeight;
+                rows.Add($"배율 {scales[i]:F4}: 신장 {_characterHeight:F4}, 낙차 {heightsFallen:F3} H, " +
+                    $"몸하강 {bodyDropHeights * 100f:F2} %H(상한 {limit * 100f:F0}), 앞무릎 {obs.MaxKneeBendAbs:F1}도, " +
+                    $"연출 {obs.CrouchSeconds:F3}초, 랙돌={obs.SawRagdoll}");
+
+                // ★ 계약 (나) — 그림이 "앉았다"로 읽히면 안 된다.
+                if (bodyDropHeights >= limit)
+                {
+                    failures.Add($"배율 {scales[i]:F4}에서 몸이 {bodyDropHeights * 100f:F2} %H 내려갔습니다" +
+                        $"(상한 {limit * 100f:F0} %H) — Dock 한 계단마다 무릎을 꿇는 그림입니다.");
+                }
+                // 무반응도 아니어야 한다(초판의 과잉 달성 재발 방지). 티어 **이름**은 보지 않는다.
+                if (!obs.SawLandingCrouch)
+                {
+                    failures.Add($"배율 {scales[i]:F4}에서 착지 연출이 전혀 돌지 않았습니다 — 완전 무반응(T0)입니다.");
+                }
+                if (obs.SawRagdoll)
+                {
+                    failures.Add($"배율 {scales[i]:F4}에서 Dock 단차 착지가 랙돌이 됐습니다.");
+                }
+
+                yield return new WaitForSeconds(0.3f);
+            }
+
+            Debug.Log($"{LogPrefix} Dock 단차 실루엣 배율 6점 —\n  " + string.Join("\n  ", rows));
+            Assert.IsEmpty(failures,
+                $"{LogPrefix} ★ Dock 단차의 실루엣 계약이 깨졌습니다(단일 정의: 몸 하강 < " +
+                $"StickConfig.LandingSitDownBodyDropHeights = {limit * 100f:F0} %H).\n  " +
+                string.Join("\n  ", failures) +
+                $"\n  전 배율 실측:\n  " + string.Join("\n  ", rows));
+        }
+
+        // ============================================================================
+        // (2b) ★ 그 안전이 **어디서 깨지는지**를 함께 잠근다 — tilesize 상한(128)
+        // ============================================================================
+        //
+        // 위 (2)의 초록불은 "이 개발 머신의 Dock 크기(tilesize=49)"에서만 참이다. macOS의 Dock 크기
+        // 슬라이더는 16~128이고, 낙차 = (tilesize + 26 − 8)pt이므로 사용자가 Dock을 키우면 같은
+        // 배율에서도 앉기 시작한다. **그것은 물리적으로 옳은 거동이지 버그가 아니다** — 낙차가 정말
+        // 커졌기 때문이다. 그래서 Assert.Fail로 막지 않고 **그 사실 자체를 명시적으로 잠근다.**
+        // 이 검사가 없으면 (2)의 초록불이 "어떤 Dock 크기에서도 안전하다"는 거짓말로 읽힌다.
+        //
+        // ★ 그리고 이 검사는 (2)의 **네거티브 컨트롤**이기도 하다: 같은 측정 장치로 같은 배율에서
+        //   낙차만 키웠을 때 실제로 12 %H를 넘어야, (2)의 "전부 미달"이 "측정기가 늘 0을 준다"가
+        //   아님이 증명된다.
+
+        [UnityTest]
+        public IEnumerator 네거티브_Dock이_커지면_최소_배율에서는_실제로_앉는다()
+        {
+            yield return SetUpFlatGround();
+            yield return ApplyScaleAndRecapture(StickConfig.MinCharacterScale);
+
+            float bigDrop = DockGeometry.DockDropWorldUnits(DockGeometry.MaxTileSizePoints,
+                _clonedConfig.dockThicknessTilePaddingPoints);
 
             var obs = new DropObservation();
-            yield return DropAndObserve(DockStepDropUnits, obs);
+            yield return DropAndObserve(bigDrop, obs);
 
-            Assert.IsTrue(obs.SawLandingCrouch,
-                $"{LogPrefix} 낙차 {DockStepDropUnits:F3}유닛(Dock 단차)에서 착지 연출이 전혀 돌지 " +
-                "않았습니다 — T0.5(가벼운 흡수)가 무력화됐습니다.");
-            Assert.AreEqual(LandingCrouchState.LandingTier.SoftAbsorb, crouchState.Tier,
-                $"{LogPrefix} Dock 단차의 티어가 T0.5(SoftAbsorb)가 아닙니다(실측 {crouchState.Tier}, " +
-                $"낙차 {crouchState.HeightsFallen:F3} H).");
-            Assert.Less(crouchState.Depth01, _clonedConfig.landingCrouchMinDepth01,
-                $"{LogPrefix} Dock 단차의 앉는 깊이({crouchState.Depth01:F3})가 무릎앉아 최저 깊이" +
-                $"({_clonedConfig.landingCrouchMinDepth01:F3}) 이상입니다 — 한 계단마다 무릎을 꿇는 " +
-                "그림이 됩니다.");
-            Assert.IsFalse(obs.SawRagdoll, $"{LogPrefix} 작은 낙차에서 랙돌로 전이했습니다.");
-            Assert.IsTrue(obs.Settled, $"{LogPrefix} 작은 낙차에서 Idle/Walk로 복귀하지 못했습니다(최종 {obs.FinalState}).");
+            float bodyDropHeights = obs.MaxHeadDrop / _characterHeight;
+            float limit = StickConfig.LandingSitDownBodyDropHeights;
+            Debug.Log($"{LogPrefix} tilesize 상한 대조 — tilesize {DockGeometry.MaxTileSizePoints:F0} -> 낙차 {bigDrop:F4}유닛 " +
+                $"({bigDrop / _characterHeight:F3} H, 배율 {StickConfig.MinCharacterScale:F2} / 신장 {_characterHeight:F4}), " +
+                $"몸하강 {bodyDropHeights * 100f:F2} %H(문턱 {limit * 100f:F0}), 앞무릎 {obs.MaxKneeBendAbs:F1}도. " +
+                $"참고 — 이 머신의 tilesize는 {DockGeometry.DeveloperMachineTileSizePoints:F0}이고 " +
+                $"배율 {StickConfig.MinCharacterScale:F2}의 앉기 시작 tilesize는 49.5다(0.5pt 여유).");
+
+            Assert.GreaterOrEqual(bodyDropHeights, limit,
+                $"{LogPrefix} 낙차를 tilesize 상한({bigDrop:F4}유닛 = {bigDrop / _characterHeight:F2} H)까지 키웠는데도 " +
+                $"몸이 {bodyDropHeights * 100f:F2} %H밖에 안 내려갔습니다 — 그렇다면 위 (2)의 '전 배율 미달'은 " +
+                "이 측정 장치가 언제나 작은 값을 준다는 뜻일 뿐, 아무것도 증명하지 못합니다.");
+        }
+
+        // ============================================================================
+        // (2c) 교차 배율 3종이 **지금 설정값에서 다시 계산해도** 그 값인가
+        // ============================================================================
+        //
+        // DockHopDownCriticalScale이 이미 쓰는 어법 그대로다(CharacterScaleInvarianceTests) —
+        // 상수는 계약 문서일 뿐이고, 진짜 값은 매 실행 설정에서 파생된다. 램프 상수를 누가 바꾸면
+        // 여기서 빨간불이 나서 상수와 문서를 함께 고치게 만든다.
+
+        [UnityTest]
+        public IEnumerator 교차_배율_3종이_설정값에서_다시_계산된다()
+        {
+            yield return SetUpFlatGround();
+
+            float baseline = StickConfig.BaselineCharacterTotalHeight;
+            float drop = DockGeometry.ReferenceDockDropWorldUnits;
+
+            float soft = drop / (_clonedConfig.landingSoftAbsorbThresholdHeights * baseline);
+            float kneel = drop / (_clonedConfig.landingReactionThresholdHeights * baseline);
+            float sit = drop / (StickConfig.LandingSitDownFallHeights * baseline);
+
+            Debug.Log($"{LogPrefix} 교차 배율 재계산 — Dock 낙차 {drop:F5} / 기준신장 {baseline:F5}:\n" +
+                $"  T0.5 교차 {soft:F4}(상수 {StickConfig.DockSoftAbsorbCriticalScale:F4}) — 상한 {StickConfig.MaxCharacterScale:F2}보다 크면 '무반응 없음'\n" +
+                $"  T1   교차 {kneel:F4}(상수 {StickConfig.DockKneelCriticalScale:F4}) — 상한보다 작으면 '출하 배율은 T1 쪽'\n" +
+                $"  앉기 교차 {sit:F4}(상수 {StickConfig.DockSitDownCriticalScale:F4}) — 하한 {StickConfig.MinCharacterScale:F2}보다 작으면 '어떤 배율에서도 안 앉음'" +
+                $"(여유 {(StickConfig.MinCharacterScale - sit):F4} = {((StickConfig.MinCharacterScale - sit) / StickConfig.MinCharacterScale * 100f):F1}%)");
+
+            Assert.AreEqual(StickConfig.DockSoftAbsorbCriticalScale, soft, 0.001f,
+                $"{LogPrefix} landingSoftAbsorbThresholdHeights가 움직였는데 StickConfig.DockSoftAbsorbCriticalScale이 낡았습니다.");
+            Assert.AreEqual(StickConfig.DockKneelCriticalScale, kneel, 0.001f,
+                $"{LogPrefix} landingReactionThresholdHeights가 움직였는데 StickConfig.DockKneelCriticalScale이 낡았습니다.");
+            Assert.AreEqual(StickConfig.DockSitDownCriticalScale, sit, 0.001f,
+                $"{LogPrefix} LandingSitDownFallHeights가 움직였는데 StickConfig.DockSitDownCriticalScale이 낡았습니다.");
+
+            // ★ 세 줄이 말하는 계약 자체도 함께 잠근다(숫자가 아니라 부등호가 계약이다).
+            Assert.Greater(StickConfig.DockSoftAbsorbCriticalScale, StickConfig.MaxCharacterScale,
+                $"{LogPrefix} T0.5 교차 배율이 슬라이더 상한 아래로 내려왔습니다 — 어떤 배율에서 Dock이 " +
+                "**완전 무반응**이 된다는 뜻입니다(계단을 내려서도 발이 바닥에 스며듭니다).");
+            Assert.Less(StickConfig.DockSitDownCriticalScale, StickConfig.MinCharacterScale,
+                $"{LogPrefix} 앉기 교차 배율이 슬라이더 하한 위로 올라왔습니다 — 선택 가능한 배율에서 " +
+                "Dock 한 계단마다 무릎을 꿇게 됩니다(리더가 명시적으로 금지한 거동).");
+        }
+
+        /// <summary>
+        /// 배율을 런타임에 적용하고, 그 배율 기준으로 <b>서 있을 때의 머리 높이/신장</b>을 다시 잰다.
+        /// 이 재측정이 없으면 실루엣 측정이 옛 배율의 기준선과 비교돼 통째로 무의미해진다.
+        /// </summary>
+        private IEnumerator ApplyScaleAndRecapture(float scale)
+        {
+            StickmanBlackboard bb = _agent.Blackboard;
+            _agent.ApplyCharacterScale(scale, $"{LogPrefix} 배율 루프");
+            // ★ ApplyCharacterScale은 에이전트가 배선해 둔 **원본 에셋**에 런타임 배율을 쓴다.
+            //   블랙보드는 복제본을 읽으므로 이 한 줄이 없으면 ResolveWalkSpeed/ResolveCharacterScale이
+            //   옛 배율을 계속 돌려준다(리그가 프로덕션과 다른 값으로 도는 조용한 오차).
+            _clonedConfig.SetRuntimeCharacterScale(scale);
+
+            Vector2 start = new Vector2(0f, _groundWorldY);
+            bb.MoveBodyToWorld(start);
+            bb.Body.linearVelocity = Vector2.zero;
+            bb.CurrentFootholdHandle = FlatGroundHandle;
+            bb.ResetGroundLossTimer();
+            bb.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+
+            // 중립 포즈가 새 배율에서 다시 자리를 잡을 시간(지수 감쇠 보간).
+            yield return new WaitForSeconds(0.6f);
+
+            _characterHeight = bb.CharacterHeightWorld;
+            _standingHeadY = _head.position.y - bb.Body.transform.position.y;
+            Assert.Greater(_characterHeight, 0.0001f,
+                $"{LogPrefix} 배율 {scale:F4}에서 신장을 읽지 못했습니다(StickmanMetrics 재측정 실패).");
         }
 
         /// <summary>지금 상태머신에 등록된 LandingCrouchState 인스턴스(티어/깊이 스냅샷 조회용).</summary>

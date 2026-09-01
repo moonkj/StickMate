@@ -17,6 +17,15 @@ namespace StickMate.Core
 
         /// <summary>꽉 찬 점. 값 = cx,cy,r.</summary>
         Dot = 3,
+
+        /// <summary>★ <b>채운</b> 다각형. 값은 <see cref="Polyline"/>과 같고(마지막 점 = 첫 점),
+        /// 그리는 쪽이 윤곽선 위에 면을 채운다.
+        /// <para>2026-09-02에 생겼다. 그 전까지 폴백 형식에는 <b>채운 면이 없어서</b>, 몸 도형의
+        /// 좌표를 그대로 옮겨도 폴백만 "속 빈 윤곽선"이 됐다 — v2 스펙 원칙 2("채움이 덩어리를
+        /// 만든다")를 폴백이 <b>원리적으로</b> 표현할 수 없었다는 뜻이다.
+        /// 그리는 코드는 <c>CharacterInfoWindow.BuildIcon</c>, 면 그래픽은
+        /// 카드 본경로가 이미 쓰는 <c>AccessoryFillGraphic</c>을 그대로 쓴다(분할을 두 벌 만들지 않는다).</para></summary>
+        Polygon = 4,
     }
 
     /// <summary>
@@ -70,7 +79,11 @@ namespace StickMate.Core
             => new ItemIconPart(Kind, Values, Tone == 0 ? primary : secondary, Tone);
 
         /// <summary>꺾은선의 점 개수.</summary>
-        public int PointCount => Kind == ItemIconPartKind.Polyline && Values != null ? Values.Length / 2 : 0;
+        public int PointCount => HasPoints && Values != null ? Values.Length / 2 : 0;
+
+        /// <summary>좌표가 <b>점 목록</b>인가(원처럼 cx,cy,r가 아니라). 새 종류가 생길 때마다
+        /// 호출부 여러 곳에서 <c>== Polyline</c>을 각자 고치다 빠뜨리는 것을 막는다.</summary>
+        public bool HasPoints => Kind == ItemIconPartKind.Polyline || Kind == ItemIconPartKind.Polygon;
     }
 
     /// <summary>보관함 항목의 종류. 지금은 둘뿐이고, 훗날 소모품/테마가 생기면 여기에 더한다.</summary>

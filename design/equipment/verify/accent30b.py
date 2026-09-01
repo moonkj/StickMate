@@ -14,7 +14,8 @@ for r in C.rows:
     if r["live"] or not r["body"]: continue
     bodyacc=[s for s in r["body"] if s.tone==1]
     pairs=[(p,s) for p,s in zip(r["parts"], r["fb"]) if p["tone"]==1]
-    if len(pairs)!=1 or pairs[0][0]["kind"]!=0: continue
+    # ★ 2026-09-02: Polygon(4)도 꼭짓점을 가진 종류다(빠뜨리면 채운 보조색이 통째로 침묵한다).
+    if len(pairs)!=1 or pairs[0][0]["kind"] not in (0, 4): continue
     p,s=pairs[0]
     raw=len(p["values"])//2                    # 에셋에 적힌 그대로
     norm=len(s.pts)                            # 닫는 중복점 제거

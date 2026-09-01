@@ -5,9 +5,10 @@
    잉크 사각형을 0.86·40 = 34.4에 담고 40×40 한가운데 정렬.
 그래서 폴백은 '카드가 지금 그리는 그림'과 **같은 좌표**가 되고, 둘이 갈라질 자리가 사라진다.
 
-한계(반드시 읽어라): 폴백 형식에는 **채운 다각형이 없다**
-   (ItemIconPartKind = Polyline / Ring / DashedRing / Dot — CharacterInfoWindow.BuildIcon).
-   그래서 유도된 폴백은 같은 좌표의 **속 빈 윤곽선**이다. 같은 물건이지만 덩어리가 아니다.
+★ 2026-09-02 정정: 그 한계가 사라졌다. `ItemIconPartKind.Polygon`(4)이 생겨 폴백도 **채운 면**을
+   표현한다(CharacterInfoWindow.BuildIcon이 카드 본경로와 **같은** AccessoryFillGraphic으로 채운다).
+   그래서 아래 dump는 몸의 `filled` 여부를 그대로 kind로 옮긴다 — filled면 4(Polygon), 아니면 0(Polyline).
+   (옛 한계: Polyline/Ring/DashedRing/Dot뿐이라 유도된 폴백이 같은 좌표의 **속 빈 윤곽선**이었다.)
 """
 import sys, os, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -49,12 +50,13 @@ for cat, table in CATS:
 print("╚══ 위반 %d건 ══╝"%bad)
 
 if "--dump" in sys.argv:
-    print(); print("── 유도된 폴백 좌표 전문 (icon: kind 0 = Polyline / values / tone) ──")
+    print(); print("── 유도된 폴백 좌표 전문 (icon: kind 0 = Polyline / 4 = Polygon(채움) / values / tone) ──")
     for (cat,nm),P in DERIVED.items():
         print("  %s %s"%(cat,nm))
         for s in P:
             v=[]
             for x,y in s.pts: v+=[x,y]
             if s.loop: v+=[s.pts[0][0], s.pts[0][1]]
-            print("    %-18s tone %d(%s)  %d점  values [%s]"
-                  %(s.name, s.tone, TONE[s.tone], len(v)//2, ", ".join("%.2f"%t for t in v)))
+            print("    %-18s kind %d(%s)  tone %d(%s)  %d점  values [%s]"
+                  %(s.name, 4 if s.filled else 0, "Polygon" if s.filled else "Polyline",
+                    s.tone, TONE[s.tone], len(v)//2, ", ".join("%.2f"%t for t in v)))

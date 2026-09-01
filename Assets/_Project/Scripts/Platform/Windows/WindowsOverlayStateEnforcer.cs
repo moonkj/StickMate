@@ -711,8 +711,57 @@ namespace StickMate.Platform.Windows
 
             Debug.Log($"[WindowsOverlayStateEnforcer] 투명 확인됨 — 카메라 배경 RGB를 검정으로 교정 " +
                 $"({before.r:F2},{before.g:F2},{before.b:F2},{before.a:F2}) -> (0.00,0.00,0.00,{before.a:F2}). " +
-                $"MSAA 요청={QualitySettings.antiAliasing}x, 실측 Screen.msaaSamples={Screen.msaaSamples}x, " +
-                $"allowMSAA={cam.allowMSAA}, GPU={SystemInfo.graphicsDeviceName} ({SystemInfo.graphicsDeviceType}).");
+                "알파는 그대로 유지. 렌더 품질 실측은 바로 아래 [렌더품질] 줄에 있습니다.");
+
+            LogRenderQualityDiagnostics(cam);
+        }
+
+        /// <summary>[렌더품질] 줄은 프로세스당 한 번이면 충분하다 — 24시간 상주 앱이라 반복 금지.</summary>
+        private bool _renderQualityDiagnosticsLogged;
+
+        /// <summary>
+        /// ★ 2026-09-02 — 렌더 품질 <b>실측</b> 진단. macOS(<c>MacOverlayStateEnforcer</c>)에만 있던 것을
+        /// Windows에도 붙였다. <b>태그·필드 순서·문구를 macOS와 같게</b> 맞춘 것이 핵심이다 —
+        /// 사용자에게 "Player.log에서 <c>[렌더품질]</c> 줄을 찾아 보내 주세요"라고 말할 때 그 지시가
+        /// 두 플랫폼에서 <b>같은 문장</b>이어야 하고, 돌아온 두 줄을 나란히 놓고 비교할 수 있어야 한다.
+        /// (Windows 실기 측정이 이 개발 머신에서 불가능하다는 제약이 바로 이 줄의 존재 이유다.)
+        ///
+        /// <para>직전까지 Windows는 위 배경 교정 로그에 MSAA 요청/실측만 끼워 넣고 있었고
+        /// <b>획 두께는 한 번도 재지 않았다</b>. 그래서 "선이 얇아서 계단이 보이는가(획 하한 미달),
+        /// 아니면 렌더 해상도가 낮은가(MSAA/DPI)"를 Windows에서는 구분할 수 없었다.</para>
+        ///
+        /// <para><b>계산은 여기 없다.</b> 월드→물리픽셀→OS 포인트 환산과 하한
+        /// (<c>StickConfig.MinStrokeScreenPoints</c>) 대비 판정은 전부 플랫폼 중립
+        /// <see cref="StrokeWidthDiagnostics"/>가 한다. 이 메서드가 하는 일은 사실 조회와 출력뿐이다
+        /// (CLAUDE.md: "정책 판정 로직은 플랫폼 중립 위치에, 플랫폼 전용 코드는 사실 조회만").
+        /// 여기에 환산을 인라인하면 그 순간 두 플랫폼이 다른 숫자를 내기 시작한다 —
+        /// <c>FullscreenSuspendPolicy</c> 사고와 같은 형태다.</para>
+        /// </summary>
+        private void LogRenderQualityDiagnostics(Camera cam)
+        {
+            if (_renderQualityDiagnosticsLogged) return;
+            _renderQualityDiagnosticsLogged = true;
+
+            StrokeWidthDiagnostics.Report strokes = StrokeWidthDiagnostics.Measure(cam, ResolveConfig());
+
+            int requested = QualitySettings.antiAliasing;
+            int actual = Screen.msaaSamples;
+            string verdict = actual <= 1
+                ? "MSAA 꺼짐(계단 현상 그대로 노출)"
+                : (actual == requested
+                    ? $"요청대로 적용됨 — 가장자리 알파 단계 {actual + 1}개(0 포함)"
+                    : $"★ 요청({requested})과 실측({actual})이 다름 — 하드웨어/렌더경로가 낮춘 것");
+
+            Debug.Log("[렌더품질] MSAA 요청=" + requested + "x, **실측 Screen.msaaSamples=" + actual + "x** -> " + verdict +
+                $" | 품질레벨={QualitySettings.names[QualitySettings.GetQualityLevel()]}" +
+                $" | allowMSAA={cam.allowMSAA}, allowHDR={cam.allowHDR}, targetTexture={(cam.targetTexture == null ? "없음(백버퍼 직접)" : "있음(RT 우회 — MSAA 경로 이탈 의심)")}" +
+                $" | 카메라픽셀=({cam.pixelWidth}x{cam.pixelHeight}), Screen=({Screen.width}x{Screen.height}), dpi={Screen.dpi:F0}" +
+                $" | orthographicSize={cam.orthographicSize:F2} -> {strokes.PixelsPerWorldUnit:F1} 물리픽셀/유닛" +
+                $" | {StrokeWidthDiagnostics.Describe(strokes)}" +
+                // ★ Windows에만 있는 항목: 표시 배율(GetDpiForWindow/96). macOS는 이 값이 창 폭 비에
+                //   실려 오지만 Windows는 별도 조회라, 획 두께 pt 환산의 근거로 함께 남긴다.
+                $" | UI 밀도(표시 배율)={ScreenCoordinateConverter.AutoUiDensityScale:F3}" +
+                $" | GPU={SystemInfo.graphicsDeviceName} ({SystemInfo.graphicsDeviceType})");
         }
     }
 }

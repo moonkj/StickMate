@@ -79,9 +79,11 @@ namespace StickMate.Platform
         /// </summary>
         public IReadOnlyList<PlatformFoothold> CachedRawWindows => _readOnlyRawCache;
 
-        // ★ 2026-09-01 스파이크 라운드 — 열거 비용 실측용. 창 열거는 이 클래스가 **유일한 호출자**라
-        // (클래스 상단 컨벤션: States/*는 절대 직접 호출하지 않는다) 여기 스톱워치 하나면 앱 전체의
-        // 네이티브 창 열거 비용이 빠짐없이 잡힌다. 비용은 폴링당(0.3초) 타임스탬프 2회다.
+        // ★ 2026-09-01 스파이크 라운드 — 열거 비용 실측용. 비용은 폴링당(0.3초) 타임스탬프 2회다.
+        // ★★ 2026-09-02 정정 — 예전 주석은 "창 열거는 이 클래스가 유일한 호출자라 여기 스톱워치
+        //    하나면 앱 전체가 빠짐없이 잡힌다"고 적혀 있었다. **거짓이었다.** 전체화면 판정 경로가
+        //    네이티브 창 목록을 따로 조회한다(아래 Poll() 주석 참고). 그쪽은 데코레이터
+        //    FallbackPlatformWindowService가 StallAttribution.RecordFullscreenProbe로 따로 잰다.
         private readonly IWindowEnumerationCostSource _costSource;
 
         public FootholdPoller(IPlatformWindowService service, StickConfig config)
@@ -129,8 +131,19 @@ namespace StickMate.Platform
             ScreenCoordinateConverter.OverlayOriginSanityCheckEnabled =
                 _config == null || _config.overlayOriginSanityCheckEnabled;
 
-            // ★ 2026-09-01 — 여기가 앱 전체에서 네이티브 창 열거가 일어나는 **유일한** 지점이다.
-            // 스파이크 라운드의 후보 A("네이티브 창 열거")를 확정/반증할 실측치가 이 두 줄에서 나온다.
+            // ★★ 2026-09-02 — **여기는 창 목록 조회의 "유일한" 지점이 아니다.** 그렇게 적혀 있던
+            //    예전 주석이 조사를 통째로 한 라운드 잡아먹었다. 실제 경로는 최소 셋이다:
+            //      (1) 여기(발판 폴링, footholdPollInterval 0.3초 = 초당 3.33회)
+            //      (2) IsFullscreenAppActive()(fullscreenPollInterval 1.5초 = 초당 0.67회)
+            //          -> FallbackPlatformWindowService가 RecordFullscreenProbe로 잰다.
+            //      (3) 오버레이 재적합 직후 단발(MacWindowService.ReportOverlayRectNow) — 상주 아님.
+            //    (2)가 계측 밖에 있던 동안 **초당 4회 중 17%가 원장에 나타나지 않았다.**
+            //
+            // 그리고 아래 스톱워치가 재는 구간은 **OS 창 열거만이 아니다**: 데코레이터의
+            // EnumerateFootholds()에는 Dock 실측(TryGetDockFoothold)과 바닥 안전망 합성
+            // (AppendBottomSafetyNet)도 들어 있다. OS 왕복만의 비용은 플랫폼 구현체 안쪽의 중첩
+            // 타이머(StallAttribution.RecordNativeWindowListQuery)가 따로 보고한다 — 두 값의 차이가
+            // 곧 "우리 후처리"다.
             long enumStart = Stopwatch.GetTimestamp();
             IReadOnlyList<PlatformFoothold> latest = _service.EnumerateFootholds();
             long enumTicks = Stopwatch.GetTimestamp() - enumStart;

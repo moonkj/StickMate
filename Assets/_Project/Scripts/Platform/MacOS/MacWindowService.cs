@@ -462,6 +462,29 @@ namespace StickMate.Platform.MacOS
         private readonly int _currentProcessId;
         private readonly string _currentProcessName;
 
+        // ============================================================================
+        // ★★ 2026-09-02 — 창당 문자열 할당 제거(초당 60개 ≈ 250MB/일 gen0 쓰레기)
+        // ============================================================================
+        // IsOwnAppWindow()는 **레이어 필터보다 먼저**, **모든 창**에 대해 돈다(EnumerateFootholds
+        // 루프 참고). 그 안에서 TryGetString()이 창마다 새 string을 만들었다:
+        //   18창 x 3.33패스/초 = 초당 60개 ≈ 2.9KB/s ≈ 250MB/일.
+        // 계측상 `정밀검사 0회`라 이 비용은 원장에 **전혀 안 잡혔다**(그 카운터는 레이어 필터
+        // 뒤에 있다). 사용자 신고의 원인은 아니지만(스파이크 시점 GC gen0 +0), 24시간 상주 앱에서
+        // 낼 이유가 없는 비용이다.
+        //
+        // 대신 프로세스 이름을 UTF-8 바이트로 **1회** 캐시해 CFStringGetCString이 채운 버퍼와
+        // 바이트로 비교한다. 의미는 동일하다:
+        //   · 유효한 UTF-8은 문자열 <-> 바이트열이 1:1이므로 오탐(다른 이름을 같다고 판정)이 없다.
+        //   · NUL 종단까지 확인하므로 접두사 일치("StickMate" vs "StickMateX")도 걸러진다.
+        //   · 이름이 비었거나 버퍼(256B)보다 길면 캐시를 비워 둔다 -> 항상 false. 예전 코드도
+        //     그 경우 CFStringGetCString이 실패해 string.Empty -> false였다(동일).
+        //
+        // ★ 왜 조심해서 다뤘나: 이 함수는 2026-09-01 좌표계 오염 사고(IsSelfWindow의 이름 매칭)의
+        //   현장이다. **판정 규칙은 한 글자도 바꾸지 않았다** — 같은 두 문자열을 비교하되 비교를
+        //   바이트로 할 뿐이다. 좌표계 출처는 여전히 IsSelfProcessWindow(PID 단독)만 결정한다.
+        private readonly byte[] _currentProcessNameUtf8 = new byte[0];
+        private readonly int _currentProcessNameUtf8Length; // 0 = 비교 불가(항상 false).
+
         // 클릭관통/항상위의 "우리가 마지막으로 의도한" 목표 상태. UniWindowController는 프로퍼티마다
         // 독립적으로 적용되므로(자체 플러그인처럼 한 함수에 두 값을 함께 넘길 필요가 없다) 이 값들은
         // 이제 상태 재적용용이 아니라 로그/진단과 CreateOverlayWindow() 재호출 시의 초기화 기준으로만
@@ -530,6 +553,18 @@ namespace StickMate.Platform.MacOS
             {
                 _currentProcessId = self.Id;
                 _currentProcessName = self.ProcessName;
+            }
+
+            // 위 _currentProcessNameUtf8 문서 참고 — 프로세스 전체에서 딱 한 번 하는 인코딩이다.
+            // 버퍼보다 짧아야 NUL 종단(_ownerNameBuffer[len])을 안전하게 읽을 수 있다.
+            if (!string.IsNullOrEmpty(_currentProcessName))
+            {
+                byte[] encoded = System.Text.Encoding.UTF8.GetBytes(_currentProcessName);
+                if (encoded.Length > 0 && encoded.Length < _ownerNameBuffer.Length)
+                {
+                    _currentProcessNameUtf8 = encoded;
+                    _currentProcessNameUtf8Length = encoded.Length;
+                }
             }
         }
 
@@ -620,12 +655,88 @@ namespace StickMate.Platform.MacOS
         /// <summary>
         /// 화면에 보이는 창 목록을 원시(raw) CFArray로 확보해 안전하게 순회하는 공용 루틴. 호출자가
         /// try/finally로 CFRelease를 보장하도록 IntPtr을 그대로 반환한다(가공은 호출부 책임).
+        ///
+        /// <para><b>직접 부르지 마라 — <see cref="CopyOnScreenWindowListMeasured"/>를 써라.</b>
+        /// 이 함수를 감싸지 않고 부르면 그 왕복이 원장에서 사라진다(2026-09-02 이전에 실제로 그랬다).</para>
         /// </summary>
         private static IntPtr CopyOnScreenWindowList()
         {
             return CGWindowListCopyWindowInfo(
                 kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
                 kCGNullWindowID);
+        }
+
+        // ============================================================================
+        // ★★ 2026-09-02 — WindowServer 왕복 **단독** 계측(중첩 타이머)
+        // ============================================================================
+        // 왜: [발판열거] 라벨이 재는 구간에는 OS 왕복 말고도 가려짐 솔버·Dock 실측·바닥 안전망
+        // 합성이 들어 있다. 라벨만 보고 "OS가 느리다"고 단정하면 오도한다(조사 담당: "이게
+        // 있었으면 이번 라운드는 5분이면 끝났다"). 이 타이머가 **OS 왕복 / 우리 후처리**를 가른다.
+        //
+        // 그리고 같은 구간의 **스레드 CPU 시간**을 함께 남긴다 — 7절 미해결 잔차(같은 OS 작업이
+        // C 프로세스 1.6ms vs Unity 메인스레드 4.3~5.3ms, 3ms 갭)에서 후처리·해체·Dock·창수·
+        // 경합·QoS·창소유 7개 후보가 전부 반증되고 남은 두 가설을 이 한 쌍이 가른다:
+        //   벽시계 >> CPU  -> 블로킹/스케줄링(메인스레드 RPC 복귀 지연)
+        //   CPU가 함께 큼  -> 우리 관리 코드(Mono 관리<->네이티브 전이 비용)
+        //
+        // 비용: 호출당 Stopwatch 2회 + clock_gettime 2회. 왕복 자체가 밀리초 단위라 무시 가능하고,
+        // **할당 0**이다.
+        private static IntPtr CopyOnScreenWindowListMeasured()
+        {
+            long wall0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            long cpu0 = ThreadCpuNanoseconds();
+            IntPtr list = CopyOnScreenWindowList();
+            long wallTicks = System.Diagnostics.Stopwatch.GetTimestamp() - wall0;
+            long cpu1 = ThreadCpuNanoseconds();
+            StallAttribution.RecordNativeWindowListQuery(
+                wallTicks,
+                (cpu0 >= 0 && cpu1 >= 0) ? cpu1 - cpu0 : -1);
+            return list;
+        }
+
+        /// <summary>libSystem. 절대 경로는 이 파일의 다른 DllImport(CoreGraphics/CoreFoundation)와 같은 규약.</summary>
+        private const string LibSystemLib = "/usr/lib/libSystem.dylib";
+
+        /// <summary>&lt;time.h&gt;의 <c>CLOCK_THREAD_CPUTIME_ID</c>. macOS 10.12+에서 16 고정(헤더 리터럴).</summary>
+        private const int kClockThreadCpuTimeId = 16;
+
+        /// <summary>64비트 macOS의 <c>struct timespec</c>(<c>time_t</c>/<c>long</c> 둘 다 64비트).</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        private struct Timespec
+        {
+            public long Seconds;
+            public long Nanoseconds;
+        }
+
+        [DllImport(LibSystemLib, EntryPoint = "clock_gettime")]
+        private static extern int clock_gettime(int clockId, out Timespec ts);
+
+        // 0 = 아직 안 해봄 / 1 = 쓸 수 있음 / 2 = 못 씀(영구 포기).
+        // ★ 계측이 앱을 죽이면 안 된다: 심볼 해석 실패(DllNotFoundException/EntryPointNotFoundException)는
+        //   **첫 호출에서만** 나므로 한 번 잡고 영구히 끈다. 그 뒤로는 -1(= "모르는 값")을 정직하게 낸다.
+        //   0으로 위장하지 않는다 — 이 저장소의 -1 규약(IWindowEnumerationCostSource 문서)과 같다.
+        private static int _threadCpuClockState;
+
+        private static long ThreadCpuNanoseconds()
+        {
+            if (_threadCpuClockState == 2) return -1;
+            try
+            {
+                if (clock_gettime(kClockThreadCpuTimeId, out Timespec ts) != 0)
+                {
+                    _threadCpuClockState = 2;
+                    return -1;
+                }
+                _threadCpuClockState = 1;
+                return ts.Seconds * 1000000000L + ts.Nanoseconds;
+            }
+            catch (System.Exception e)
+            {
+                _threadCpuClockState = 2;
+                Debug.Log($"[스레드CPU시계] clock_gettime(CLOCK_THREAD_CPUTIME_ID)을 쓸 수 없어 " +
+                    $"CPU 시간 계측을 끕니다(벽시계는 그대로 남습니다) — {e.GetType().Name}");
+                return -1;
+            }
         }
 
         private bool TryGetInt(IntPtr windowDict, IntPtr key, out int value)
@@ -704,8 +815,9 @@ namespace StickMate.Platform.MacOS
                 return ownerPid == _currentProcessId;
             }
             // PID 키가 아예 없는 경우에만 이름 안전망(이론상 도달하지 않는다).
-            string ownerName = TryGetString(windowDict, _keyWindowOwnerName);
-            return !string.IsNullOrEmpty(ownerName) && ownerName == _currentProcessName;
+            // ★ 2026-09-02 — 아래 IsOwnAppWindow와 **같은 비교 함수**를 쓴다. 예전에는 두 곳이 각각
+            //   TryGetString + string 비교를 복제하고 있었다 — 한쪽만 고치면 조용히 갈라지는 형태다.
+            return OwnerNameEqualsCurrentProcess(windowDict);
         }
 
         /// <summary>
@@ -724,8 +836,39 @@ namespace StickMate.Platform.MacOS
         private bool IsOwnAppWindow(IntPtr windowDict)
         {
             if (IsSelfProcessWindow(windowDict)) return true;
-            string ownerName = TryGetString(windowDict, _keyWindowOwnerName);
-            return !string.IsNullOrEmpty(ownerName) && ownerName == _currentProcessName;
+            return OwnerNameEqualsCurrentProcess(windowDict);
+        }
+
+        /// <summary>
+        /// <c>kCGWindowOwnerName</c>이 이 프로세스의 이름과 <b>정확히</b> 같은가 — <b>할당 0</b>.
+        ///
+        /// <para>예전에는 <c>TryGetString()</c>이 창마다 새 <c>string</c>을 만들어 비교했다.
+        /// <see cref="IsOwnAppWindow"/>가 레이어 필터보다 먼저 <b>모든 창</b>에 대해 도는 탓에
+        /// 초당 60개(≈250MB/일)의 gen0 쓰레기가 나왔다 — 위 <c>_currentProcessNameUtf8</c> 문서 참고.</para>
+        ///
+        /// <para>같은 두 문자열을 비교하되 UTF-8 바이트로 비교한다. 유효한 UTF-8은 문자열과 1:1이라
+        /// 결과가 달라지지 않고, 마지막의 NUL 확인이 접두사 일치를 막는다.</para>
+        /// </summary>
+        private bool OwnerNameEqualsCurrentProcess(IntPtr windowDict)
+        {
+            int want = _currentProcessNameUtf8Length;
+            if (want <= 0) return false;
+
+            IntPtr stringRef = CFDictionaryGetValue(windowDict, _keyWindowOwnerName);
+            if (stringRef == IntPtr.Zero) return false;
+            if (!CFStringGetCString(stringRef, _ownerNameBuffer, _ownerNameBuffer.Length, kCFStringEncodingUTF8))
+            {
+                return false; // 버퍼보다 긴 이름 등 — 예전 TryGetString도 여기서 string.Empty를 냈다.
+            }
+
+            byte[] name = _currentProcessNameUtf8;
+            for (int i = 0; i < want; i++)
+            {
+                if (_ownerNameBuffer[i] != name[i]) return false;
+            }
+            // 버퍼는 재사용되지만 CFStringGetCString이 항상 NUL을 쓴다 — 그 자리가 딱 want여야
+            // "같은 이름"이다(그렇지 않으면 우리 이름을 접두사로 갖는 남의 앱까지 통과한다).
+            return _ownerNameBuffer[want] == 0;
         }
 
         /// <summary>
@@ -792,7 +935,7 @@ namespace StickMate.Platform.MacOS
             //   네이티브를 두드릴 이유가 없다. 부착 전에는 (0,0)이고 그러면 규칙이 보정을 포기한다.
             _overlayContentSizeThisPass = ReadControllerContentSize();
 
-            IntPtr windowArray = CopyOnScreenWindowList();
+            IntPtr windowArray = CopyOnScreenWindowListMeasured();
             if (windowArray == IntPtr.Zero) return _footholdBuffer; // 조회 실패 — FallbackPlatformWindowService 안전망이 감싸므로 빈 리스트로도 안전.
 
             try
@@ -1185,7 +1328,7 @@ namespace StickMate.Platform.MacOS
         /// </summary>
         private bool EvaluateFullscreen(out string reason)
         {
-            IntPtr windowArray = CopyOnScreenWindowList();
+            IntPtr windowArray = CopyOnScreenWindowListMeasured();
             if (windowArray == IntPtr.Zero)
             {
                 reason = "창 목록 조회 실패(CGWindowListCopyWindowInfo == null) — 안전하게 '전체화면 아님'으로 처리.";
@@ -1951,7 +2094,7 @@ namespace StickMate.Platform.MacOS
         private bool TryGetSelfWindowRect(out Rect rect)
         {
             rect = default;
-            IntPtr windowArray = CopyOnScreenWindowList();
+            IntPtr windowArray = CopyOnScreenWindowListMeasured();
             if (windowArray == IntPtr.Zero) return false;
 
             bool found = false;

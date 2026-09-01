@@ -462,5 +462,51 @@ namespace StickMate.Tests.PlayMode
             Assert.IsFalse(info.IsClickBlockerEnabled,
                 $"{LogPrefix} 정보창은 닫혔는데 그 차단막이 남았습니다(비침해).");
         }
+
+        // ==================== 자르는 선이 글자 한가운데를 지나지 않는다 (2026-09-02) ====================
+
+        /// <summary>
+        /// ★ [캐릭터] 탭 첫 화면 맨 아래에서 <c>대사 표시 시간</c>이 <b>한글 높이의 약 60% 지점</b>에서
+        /// 잘려 <c>ㄷㅐㅅㅏ ㅍㅅㅣ ㅅㅣ간</c>처럼 보였다. 사용자가 읽는 뜻은 "밑에 더 있다"가 아니라
+        /// <b>"글꼴이 깨졌다"</b>였다. 정보창 캐러셀이 가로 방향에서 이미 배운 교훈
+        /// (<i>"자르는 선의 위치가 틀렸다"</i>)을 세로에 적용한 것이 이 페이드다.
+        ///
+        /// <para><b>이 검사가 잡는 진짜 실패</b>는 "상수가 8인가"가 아니라 <b>그 값이 마스크까지
+        /// 배선됐는가</b>다 — 뷰포트를 다시 만들면서 <c>softness</c> 대입을 빠뜨리는 것이 실제로
+        /// 일어나는 회귀이고, 그때 화면은 <b>조용히</b> 옛날로 돌아간다.</para>
+        /// </summary>
+        [UnityTest]
+        [Timeout(120000)]
+        public IEnumerator ClippedContentFadesInsteadOfSlicingGlyphsInHalf()
+        {
+            yield return LoadAndOpen();
+
+            GameObject canvas = GameObject.Find("SettingsCanvas");
+            Assert.IsNotNull(canvas, $"{LogPrefix} SettingsCanvas를 찾지 못했습니다.");
+
+            RectMask2D viewportMask = null;
+            foreach (RectMask2D m in canvas.GetComponentsInChildren<RectMask2D>(true))
+            {
+                if (m.gameObject.name == "Viewport") { viewportMask = m; break; }
+            }
+            Assert.IsNotNull(viewportMask,
+                $"{LogPrefix} 본문 뷰포트의 RectMask2D를 찾지 못했습니다 — 이름이 바뀌었다면 이 " +
+                "테스트도 함께 고쳐야 합니다.");
+
+            Assert.AreEqual(SettingsWindow.ClipFadePoints, viewportMask.softness.y,
+                $"{LogPrefix} 뷰포트 마스크의 세로 페이드가 {viewportMask.softness.y}pt입니다 — " +
+                $"프로덕션 상수({SettingsWindow.ClipFadePoints}pt)가 마스크까지 배선되지 않았습니다. " +
+                "0이면 자르는 선이 다시 글자 한가운데를 지납니다.");
+
+            // 페이드가 <b>글자를 녹일 만큼</b> 두꺼운가 — 캡션 글자 높이의 절반은 넘어야
+            // "반쯤 잘린 글자"가 온전한 획으로 남지 않는다. 숫자를 베끼지 않고 폰트 상수를 참조한다.
+            Assert.GreaterOrEqual(SettingsWindow.ClipFadePoints, UiChrome.FontCaption / 2,
+                $"{LogPrefix} 페이드 {SettingsWindow.ClipFadePoints}pt가 캡션 글자" +
+                $"({UiChrome.FontCaption}pt)의 절반보다 얇습니다 — 잘린 글자가 또렷하게 남습니다.");
+
+            // 가로는 건드리지 않는다 — 카드 좌우는 원래 여백 안에 있고, 흐리게 만들 이유가 없다.
+            Assert.AreEqual(0, viewportMask.softness.x,
+                $"{LogPrefix} 가로 페이드가 켜졌습니다 — 좌우는 잘리지 않으므로 흐려질 이유가 없습니다.");
+        }
     }
 }

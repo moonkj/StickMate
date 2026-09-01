@@ -48,7 +48,9 @@ def parse_asset(path):
         if m: cur["tone"] = int(m.group(1))
     return name, slot, idx, parts
 
-KIND = {0:"Polyline", 1:"Ring", 2:"DashedRing", 3:"Dot"}
+# ★ 2026-09-02: ItemIconPartKind에 Polygon(4)이 생겼다 — 폴백도 <b>채운 다각형</b>을 표현한다.
+#   이 표에 없는 kind는 fallback_shapes가 통째로 버리므로, 빠뜨리면 실루엣 비교가 조용히 거짓말한다.
+KIND = {0:"Polyline", 1:"Ring", 2:"DashedRing", 3:"Dot", 4:"Polygon"}
 
 def ngon(cx, cy, r, n=24):
     return [(cx + math.cos(2*math.pi*i/n)*r, cy + math.sin(2*math.pi*i/n)*r) for i in range(n)]
@@ -58,11 +60,11 @@ def fallback_shapes(parts):
     out = []
     for i, p in enumerate(parts):
         v, k = p["values"], p["kind"]
-        if k == 0:
+        if k in (0, 4):
             pts = [(v[j], v[j+1]) for j in range(0, len(v)-1, 2)]
             loop = len(pts) > 3 and abs(pts[0][0]-pts[-1][0]) < 1e-6 and abs(pts[0][1]-pts[-1][1]) < 1e-6
             if loop: pts = pts[:-1]
-            out.append(Shape("p%d"%i, pts, loop=loop, filled=False, tone=p["tone"]))
+            out.append(Shape("p%d"%i, pts, loop=loop or k == 4, filled=(k == 4), tone=p["tone"]))
         elif k in (1, 2):
             out.append(Shape("p%d"%i, ngon(v[0], v[1], v[2]), loop=True, filled=False, tone=p["tone"]))
         elif k == 3:
@@ -166,7 +168,11 @@ for r in rows:
         continue
     body_v = to_viewbox(r["body"])
     d_as = rig.max_delta(profile_at_center(body_v), profile_at_center(r["fb"])) / STROKE_V
-    d_sh = rig.max_delta(profile_at_center(refit(r["body"])), profile_at_center(refit(r["fb"]))) / STROKE_V
+    # ★ 2026-09-02 정정 — 예전엔 refit(몸)을 <b>R 공간(y 위로)</b> 그대로 넣고 폴백은
+    #   viewBox 공간(y 아래로)이라, 이 열이 늘 <b>상하 뒤집힌 쌍</b>을 재고 있었다(모든 항목이
+    #   "다른 물건"으로 나오던 원인). 몸도 같은 공간으로 옮긴 뒤 다시 담는다.
+    d_sh = rig.max_delta(profile_at_center(refit(to_viewbox(r["body"]))),
+                         profile_at_center(refit(r["fb"]))) / STROKE_V
     tag = "같은 물건" if d_sh < 1.0 else ("다른 물건" if d_sh >= 2.0 else "경계")
     if r["live"]:
         tag += " ★카드에 보임"

@@ -372,6 +372,38 @@ namespace StickMate.Interaction
         //   위계로 읽히지 않았다. 이름을 합치지 않는 이유는 호출부 26곳의 <i>의도</i>를 지우지 않기
         //   위해서다(WarmAccent가 Accent와 같은 값이면서 이름이 남아 있는 것과 같은 이유).
 
+        // ==================== 창을 닫는 법 (41-3 / 카피 원장 C1~C3) ====================
+        //
+        // ★ 2026-09-02 — 실측: 정보창을 연 상태에서 <c>Cmd+W</c>를 누르면 <b>뒤에 있던 Finder 창이
+        //   닫혔다</b>. 우리 창은 layer=101 전체화면 <b>1장뿐</b>이고 정보창/설정창/팝오버는 그 안에
+        //   그려진 그림이라 키보드 포커스를 못 받는다 — 키는 밑에 있는 남의 앱으로 간다.
+        //   키를 가로채는 방향은 <b>검토하지 않는다</b>(포커스를 받으면 클릭관통이 깨져 원칙 2가 무너진다).
+        //
+        //   <b>닫는 법은 이미 둘 다 동작한다</b>([✕] / 창 밖 클릭). 화면이 그걸 말하지 않았을 뿐이다
+        //   — 앱은 알고 있었고 <c>Debug.Log</c>에만 적었다. 사용자는 로그를 안 읽는다.
+        //
+        //   ★ "Esc는 안 됩니다"는 <b>적지 않는다</b>. 안 되는 키를 화면에 적으면 사용자는 그 키를
+        //     시도한다 — 문장을 읽고 나서. 되는 것만 적는다(SettingsWindow.BuildFooter의 선례).
+        //   ★ 문장의 <b>'도'</b>가 [✕]를 전제한다. 바로 옆에 그 버튼이 있으므로 한 문장이 두 경로를
+        //     다 가르친다. 두 줄을 쓰면 잔소리가 되고, "[✕] 또는 창 밖 클릭"이라고 쓰면 이미 그 자리에
+        //     있는 버튼의 이름을 글자로 다시 그리는 낭비다.
+
+        /// <summary>세 표면(정보창 · 설정창 · 팝오버 3종)이 <b>같은 문장</b>을 쓴다. 문구가 갈리면
+        /// 그 순간 사용자는 "다른 규칙인가"를 의심한다.</summary>
+        public const string CloseHintText = "창 밖을 클릭해도 닫혀요";
+
+        /// <summary>닫기 힌트가 <see cref="CloseHintText"/>를 담기 위해 최소한 필요로 하는 폭(pt).
+        /// <para>FontCaption 10pt · 한글 10 / 공백 3 기준 실측 폭 109pt + 여유 7. 이보다 좁으면
+        /// <b>힌트를 먼저 지운다</b>(제목이 우선) — 41-3 ④.</para></summary>
+        public const float CloseHintMinWidth = 116f;
+
+        /// <summary>자리가 넉넉할 때 쓰는 상자 폭(pt). MiddleRight 정렬이라 남는 폭은 글자를 밀지 않는다.</summary>
+        public const float CloseHintWidth = 230f;
+
+        /// <summary>힌트 오른쪽 끝과 [✕] 왼쪽 끝 사이(pt) — 글자가 자기가 설명하는 버튼을
+        /// <b>손가락으로 가리키는</b> 거리다.</summary>
+        public const float CloseHintGap = 12f;
+
         private static Font _font;
 
         /// <summary>이 프로젝트에는 TextMeshPro가 없다 — 내장 폰트를 한 번만 찾아 캐시한다.</summary>
@@ -1314,6 +1346,90 @@ namespace StickMate.Interaction
             CardSurfaceMuted,    // 잠긴/비활성 카드 바탕
             SubtleSurface,       // 상세 패널
         };
+
+        // ================================================================================
+        // ★★ 2026-09-02 — 바탕 목록이 <b>한 종류뿐</b>이었던 것이 이 앱 최저 대비를 만들었다
+        // ================================================================================
+        //
+        // 실측 사고: [설정] > [캐릭터] > `말투` 행이 비활성일 때 `[반말]` 칩이
+        //   면 <b>#5DA1F5</b>(강조색, 활성과 똑같다) + 글자 <b>#AEB4BF</b> = <b>1.28 : 1</b>.
+        // 페르소나가 "한 글자도 없다"고 적게 만든 값이 2.35였다. <b>그보다 낮다.</b>
+        //
+        // 왜 위 사다리 검사가 못 잡았나 — <see cref="TextBackdrops"/>에 담긴 넷이 <b>전부 어두운 면</b>이라
+        // "이 잉크가 밝은 면 위에 놓이면?"이라는 질문 자체가 존재하지 않았다. 검사는 통과했고 화면은 지워졌다.
+        //
+        // 그래서 바탕을 <b>세 종류</b>로 나누고, 각각 <b>어떤 잉크가 합법인지</b>를 값으로 적는다.
+        // 새 표면을 만드는 사람은 목록에 한 줄 넣기만 하면 <see cref="InkOnSurface"/>가 알아서 고른다.
+
+        /// <summary>
+        /// 버튼·칩처럼 <b>한 단 들뜬 중성 면</b>(흰색 α0.10을 얹은 결과).
+        /// <para>★ 실측: 이 면 위에서 <see cref="InkRole.Meta"/>(<see cref="TextTertiary"/>)는
+        /// 카드 위 <b>3.94 : 1</b> / 창 위 <b>4.38 : 1</b>로 <b>둘 다 AA 미달</b>이다. 지금 이 면에
+        /// 놓이는 글자는 전부 <see cref="InkRole.Title"/> 단(5.87 / 6.52 ✔)이라 사고는 없었지만,
+        /// <b>선언되지 않은 바탕은 다음에 반드시 사고를 낸다</b>. 이제 선언되어 있고
+        /// <see cref="InkOnSurface"/>가 자동으로 한 단 올려 준다.</para>
+        /// </summary>
+        public static readonly Color[] RaisedTextBackdrops =
+        {
+            Flatten(CardBorder, CardSurface),    // SettingsControls.ButtonSurfaceOnCard
+            Flatten(CardBorder, PanelSurface),   // SettingsControls.ButtonSurfaceOnPanel
+        };
+
+        /// <summary>
+        /// <b>강조색으로 가득 찬 면</b> — 선택된 세그먼트 칩, 채워진 버튼, 밝은 스와치.
+        ///
+        /// <para>★ 이 면 위에서 사다리 <b>3단이 전부 무너진다</b>(실측):
+        /// Title 2.42 / Body 1.28 / Meta 1.16. 합법 잉크는 <see cref="OnAccentSolid"/> <b>하나</b>
+        /// (7.16 ✔)뿐이다. 그래서 이건 "한 단 올리면 되는" 문제가 아니라 <b>다른 잉크 계열</b>이며,
+        /// <see cref="TextBackdrops"/>와 같은 목록에 넣으면 안 된다(넣는 순간 사다리 검사가
+        /// 영원히 빨간불이 되고, 그 빨간불을 끄는 유일한 방법은 사다리를 망가뜨리는 것이다).</para>
+        /// </summary>
+        public static readonly Color[] BrightTextBackdrops =
+        {
+            Accent,        // 채워진 강조 면(선택된 칩 / 켜진 스위치 트랙 / 슬라이더 채움)
+            TextPrimary,   // 흰 채움 위에 기호를 얹는 자리
+        };
+
+        /// <summary>
+        /// ★ <b>글자 색을 고르는 단 하나의 문</b>. 콜사이트는 <b>자기가 올라앉은 면</b>과 역할만 말하고,
+        /// 색은 여기서 정한다(<see cref="Ink"/>의 "콜사이트는 색을 고르지 않는다" 규칙의 확장판).
+        ///
+        /// <para>규칙은 한 줄이다: <b>사다리 잉크가 그 면에서 AA를 넘으면 그것을 쓰고, 못 넘으면
+        /// 넘는 것으로 바꾼다.</b> 목록에 없는 새 색이 와도 동작한다 — 값으로 판정하기 때문이다.</para>
+        ///
+        /// <para><b>위계가 사라지는 것 아닌가</b>: 밝은 면 위에서는 3단이 하나로 접힌다. 맞다.
+        /// 그리고 그게 옳다 — 강조색으로 칠해진 칩은 <b>면 자체가</b> "이게 골라진 것"을 이미 말하고
+        /// 있으므로 글자가 위계를 또 말할 이유가 없다. 위계를 글자로 유지하려다 <b>글자를 지운 것</b>이
+        /// 정확히 이 함수가 고치는 사고다.</para>
+        /// </summary>
+        public static Color InkOnSurface(Color backdrop, InkRole role, bool enabled)
+        {
+            Color ladder = Ink(role, enabled);
+            if (ContrastRatio(ladder, backdrop) >= MinTextContrast) return ladder;
+
+            // (1) 밝은 면 — 어두운 잉크로 뒤집는다.
+            if (ContrastRatio(OnAccentSolid, backdrop) >= MinTextContrast) return OnAccentSolid;
+
+            // (2) 한 단 들뜬 중성 면 — 사다리 위쪽으로 올린다.
+            if (ContrastRatio(TextSecondary, backdrop) >= MinTextContrast) return TextSecondary;
+            if (ContrastRatio(TextPrimary, backdrop) >= MinTextContrast) return TextPrimary;
+
+            // (3) 여기까지 왔으면 그 면 위에 읽히는 글자가 <b>존재하지 않는다</b>. 가장 나은 것을
+            //     돌려주되 조용히 넘기지 않는다 — 면을 바꿔야 하는 상황이기 때문이다.
+            Color best = ContrastRatio(TextPrimary, backdrop) >= ContrastRatio(OnAccentSolid, backdrop)
+                ? TextPrimary : OnAccentSolid;
+            WarnUnreadableBackdrop(backdrop, best);
+            return best;
+        }
+
+        [System.Diagnostics.Conditional("UNITY_EDITOR")]
+        [System.Diagnostics.Conditional("DEVELOPMENT_BUILD")]
+        private static void WarnUnreadableBackdrop(Color backdrop, Color best)
+        {
+            Debug.LogError($"[잉크] 바탕 #{ColorUtility.ToHtmlStringRGB(backdrop)} 위에서는 어떤 잉크도 " +
+                $"{MinTextContrast:F1}:1을 넘지 못합니다(최선 #{ColorUtility.ToHtmlStringRGB(best)} = " +
+                $"{ContrastRatio(best, backdrop):F2}:1). 글자를 바꿀 게 아니라 <b>면</b>을 바꿔야 합니다.");
+        }
 
         /// <summary>
         /// WCAG 상대 휘도. <b>우리가 발명한 식이 아니다</b> — 출처는

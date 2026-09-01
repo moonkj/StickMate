@@ -149,7 +149,10 @@ namespace StickMate.Interaction
             return primary;
         }
 
-        private static void AddFill(RectTransform parent, string name, Vector2[] points, int count, Color color)
+        /// <summary>채운 면 하나. <c>CharacterInfoWindow.BuildIcon</c>의
+        /// <see cref="ItemIconPartKind.Polygon"/> 경로도 <b>같은 분할</b>을 쓰라고 internal이다 —
+        /// 분할을 두 벌 만들면 오목한 챙에서 폴백과 본경로의 실루엣이 갈린다.</summary>
+        internal static void AddFill(RectTransform parent, string name, Vector2[] points, int count, Color color)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(AccessoryFillGraphic));
             go.transform.SetParent(parent, false);

@@ -348,7 +348,11 @@ namespace StickMate.Interaction
                 TextAnchor.MiddleLeft, UiChrome.InkMeta);
             UiChrome.PlaceTopLeft(_footerHint.rectTransform, 0f, FooterY,
                 ContentWidth - QuitButtonWidth - UiChrome.Space4, QuitButtonHeight);
-            _footerHint.text = "내가 누를 때만 실행돼요.";
+            // ★ 2026-09-02 (41-2 / C19) — 뒷문장을 붙인다. 민지가 [✕]를 누르기 전에 망설인 이유가
+            //   "닫으면 시킨 일도 취소되나?"였고, <b>실제로는 취소되지 않는다</b>(명령은 창과 무관하게
+            //   디렉터가 돌린다). 실제로 참인 사실만 적는다.
+            //   상자 폭 340pt / 이 문장 실측 약 251pt(FontCaption 10, 한글 10·공백 3) — 넘치지 않는다.
+            _footerHint.text = "내가 누를 때만 실행돼요. 창을 닫아도 하던 건 계속해요.";
 
             // ★ 36-10 — 우클릭 메뉴가 폐지되면서 <b>마우스만으로 도달하는 유일한 종료 경로</b>가 됐다.
             //   이 앱에는 Dock 아이콘도 메뉴바 아이콘도 트레이도 없다. 이 버튼이 없으면 전역 단축키가

@@ -661,8 +661,15 @@ public void StartSpinForTests() => _spinTimer = 0f;
             float r = VisualRadiusPoints + HitPaddingPoints;   // 방사 대칭 — 네 방향이 같다.
 
             float minX = r, maxX = Mathf.Max(r, screen.x - r);
-            float minY = r, maxY = Mathf.Max(r, screen.y - r);   // y는 위에서 아래로 자란다.
-            return new Vector2(Mathf.Clamp(centerPoints.x, minX, maxX), Mathf.Clamp(centerPoints.y, minY, maxY));
+
+            // ★ 2026-09-02 (41-1 ③) — 세로만 대칭이 아니다. 옛 코드의 minY = r 은 톱니를 드래그해서
+            //   히트 사각형을 <b>macOS 메뉴바(0~33pt) 안에 통째로 집어넣게</b> 허용했고, 그 자리는
+            //   저장되어 재부팅해도 유지된다(41-8과 같은 뿌리). 위쪽만 OS 예약 띠만큼 밀어낸다.
+            //   여백은 0이다 — 여기서 12pt를 더하면 "화면 끝까지 붙일 수 있다"는 이 위젯의 성질이
+            //   이유 없이 바뀐다. 지금 고치는 것은 <b>남의 띠를 덮는 것</b>뿐이다.
+            float topInset = ReservedTopBarProbe.TopInsetPoints(_agent != null ? _agent.PlatformService : null);
+            float y = SurfaceSafeAreaPolicy.ClampTopDownCenterY(centerPoints.y, r * 2f, screen.y, topInset, 0f);
+            return new Vector2(Mathf.Clamp(centerPoints.x, minX, maxX), y);
         }
 
         /// <summary>배율(화면 해상도/DPI)이나 잉크색이 바뀌지 않으면 도형을 다시 만들지 않는다 —

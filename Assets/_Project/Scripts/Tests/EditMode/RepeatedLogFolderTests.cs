@@ -1,5 +1,7 @@
 using System.IO;
 using NUnit.Framework;
+using StickMate.Core;
+using StickMate.Interaction;
 using StickMate.Platform;
 using UnityEngine;
 
@@ -140,22 +142,153 @@ namespace StickMate.Tests.EditMode
         // 배선 잠금 — 정책만 있고 아무도 안 쓰면 로그는 그대로 자란다
         // ====================================================================================
 
+        // ====================================================================================
+        // ★★ R2-4 회귀 잠금 — "접기가 한 번도 실행되지 않는다"
+        // ====================================================================================
+        // 2026-09-02 검증: 직전 라운드의 배선은
+        //     if (!PlayerLogPolicy.RoutineNarrationEnabled) return;   // 여기서 끝
+        //     ... _logFolder.ShouldEmit(...)                          // 도달 불가
+        // 였고, PlayerLogPolicy가 부팅 스냅샷이라 진단 로그를 켜도 이 조기 반환을 넘지 못했다.
+        // 실측: 토글 ON 후 3분 -> [유휴동작] 0줄 / 접음 0줄 (같은 3분에 [발판리포트] 84, [눈추적] 106).
+        //
+        // ★ 그리고 그때의 검사는 **소스 문자열 순서만** 보고 "gate < fold"를 오히려 요구했다 —
+        //   즉 검사 자신이 도달 불가 배선을 초록으로 통과시켰다. 이 저장소가 반복해 당한 유형이라,
+        //   여기서는 순서 검사를 **뒤집는 것으로 끝내지 않고 실제로 돌려 본다.**
+
+        /// <summary>
+        /// ★ 실행 검사 — 로그 스위치가 <b>꺼져 있어도</b> 접기 상태가 실제로 전진한다.
+        /// 소스 순서가 아니라 <b>동작</b>으로 도달 가능성을 증명한다.
+        /// </summary>
         [Test]
-        public void 가장_시끄러운_로그가_접기를_실제로_쓴다()
+        public void 접기는_로그스위치가_꺼져있어도_실제로_돈다()
+        {
+            var folder = new RepeatedLogFolder();
+            bool was = false;
+
+            for (int i = 0; i < 5; i++)
+            {
+                var d = IdleAmbientMotionRenderer.DecideIdleLog(
+                    ref folder, ref was, narrationEnabled: false,
+                    motionName: "주위 살피기", stateKey: 3, seconds: 2.40f,
+                    now: i, holdSeconds: 60.0);
+
+                Assert.IsFalse(d.EmitLine, "스위치가 꺼져 있으면 아무것도 찍지 않는다.");
+                Assert.AreEqual(0, d.FoldedRepeats);
+            }
+
+            Assert.AreEqual(4, folder.PendingRepeats,
+                "접기 상태가 전진하지 않았다 = 접기 코드가 도달 불가다(R2-4 재발).");
+        }
+
+        /// <summary>
+        /// ★ 실행 검사 — 스위치가 켜져 있으면 반복이 진짜로 접힌다(줄이 실제로 줄어든다).
+        /// </summary>
+        [Test]
+        public void 스위치가_켜지면_반복이_실제로_접힌다()
+        {
+            var folder = new RepeatedLogFolder();
+            bool was = true;
+            int emitted = 0, foldSummaries = 0;
+
+            for (int i = 0; i < 30; i++)
+            {
+                var d = IdleAmbientMotionRenderer.DecideIdleLog(
+                    ref folder, ref was, narrationEnabled: true,
+                    "주위 살피기", 3, 2.40f, i, 60.0);
+                if (d.EmitLine) emitted++;
+                if (d.FoldedRepeats > 0) foldSummaries++;
+            }
+
+            Assert.AreEqual(1, emitted, "30번의 동일 이벤트에서 줄은 딱 1개만 나와야 한다.");
+            Assert.AreEqual(0, foldSummaries, "홀드(60초) 전에는 요약도 없다.");
+            Assert.AreEqual(29, folder.PendingRepeats, "접힌 29회가 보존되어야 한다.");
+        }
+
+        /// <summary>
+        /// 스위치를 넘나들면 접기 상태를 비운다 — 그러지 않으면 로그를 켜자마자
+        /// "직전과 동일 N회 반복"으로 <b>아무도 본 적 없는 줄</b>의 횟수가 튀어나온다.
+        /// </summary>
+        [Test]
+        public void 스위치_전환에서_묵은_카운트가_새_구간으로_넘어오지_않는다()
+        {
+            var folder = new RepeatedLogFolder();
+            bool was = true;
+
+            for (int i = 0; i < 50; i++)
+            {
+                IdleAmbientMotionRenderer.DecideIdleLog(ref folder, ref was, false,
+                    "주위 살피기", 3, 2.40f, i, 60.0);
+            }
+            Assert.AreEqual(49, folder.PendingRepeats);
+
+            var first = IdleAmbientMotionRenderer.DecideIdleLog(ref folder, ref was, true,
+                "주위 살피기", 3, 2.40f, 50, 60.0);
+
+            Assert.IsTrue(first.EmitLine, "켠 직후 첫 줄은 반드시 보여야 한다.");
+            Assert.AreEqual(0, first.FoldedRepeats,
+                "꺼져 있던 구간의 49회가 새 구간의 첫 줄로 새어 나왔다.");
+        }
+
+        /// <summary>
+        /// 배선 검사(동작 검사의 보조) — 조기 반환으로 접기를 건너뛰는 형태가 되살아나지 않게 한다.
+        /// ★ 이것만으로는 부족하다는 것이 R2-4의 교훈이라, 위 실행 검사들과 <b>함께</b>만 의미가 있다.
+        /// </summary>
+        [Test]
+        public void 로그스위치_조기반환이_접기_앞을_막지_않는다()
         {
             string src = File.ReadAllText(Path.Combine(
                 Application.dataPath, "_Project", "Scripts", "Interaction", "IdleAmbientMotionRenderer.cs"));
 
-            StringAssert.Contains("RepeatedLogFolder", src,
-                "실측 71.5분 세션의 26%를 차지하던 줄이 접기를 쓰지 않으면 이 라운드의 감량은 0이다.");
-            StringAssert.Contains("ShouldEmit(", src);
+            StringAssert.DoesNotContain("if (!Platform.PlayerLogPolicy.RoutineNarrationEnabled) return;", src,
+                "스위치 조기 반환이 돌아왔다 — 그 뒤의 접기는 다시 도달 불가가 된다(R2-4).");
+            StringAssert.Contains("DecideIdleLog(", src,
+                "접기/스위치 판정이 실행 검사가 닿는 결정 함수를 거치지 않는다.");
 
+            // 조립은 여전히 스위치 뒤여야 한다 — 접기가 '키'로 판정하므로 둘 다 만족할 수 있다.
             int gate = src.IndexOf("PlayerLogPolicy.RoutineNarrationEnabled", System.StringComparison.Ordinal);
-            int fold = src.IndexOf("ShouldEmit(", System.StringComparison.Ordinal);
+            int build = src.IndexOf("$\"[유휴동작]", System.StringComparison.Ordinal);
             Assert.Greater(gate, 0);
-            Assert.Greater(fold, gate,
-                "verbose 스위치보다 접기가 앞에 오면, 로그를 꺼 둔 세션에서도 접기 상태가 굴러 " +
-                "다시 켰을 때 엉뚱한 반복 횟수가 나온다.");
+            Assert.Greater(build, gate, "꺼져 있어도 보간 문자열이 만들어지면 24시간 상주 컨벤션 위반이다.");
+        }
+
+        // ====================================================================================
+        // ★★ R2-4 근본 원인 — 로그 스위치가 **부팅 스냅샷**이라 런타임 토글이 도달하지 못했다
+        // ====================================================================================
+
+        /// <summary>
+        /// <c>PlayerLogPolicy.Configure</c>의 호출처는 <c>Platform/FootholdPoller.cs</c> 생성자
+        /// <b>한 곳뿐</b>이다. 그런데 개발자 도구의 진단 로그 토글
+        /// (<c>Interaction/AppControlDirector.cs</c>)은 <c>StickConfig.verboseDiagnosticsLogging</c>을
+        /// <b>런타임에 직접 뒤집는다</b>. 스위치를 복사해 두면 그 토글이 영원히 도달하지 못한다 —
+        /// 실측으로 <c>[유휴동작]</c>만 0줄이었고 <c>[발판리포트]</c>/<c>[눈추적]</c>은 멀쩡했는데,
+        /// 그 둘은 설정을 <b>매번 읽기</b> 때문이었다.
+        ///
+        /// <para>그래서 이 테스트는 <b>Configure를 다시 부르지 않는다</b>. 그게 실기 조건이다.</para>
+        /// </summary>
+        [Test]
+        public void 진단로그_런타임_토글이_Configure_재호출_없이_반영된다()
+        {
+            var config = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                config.verboseDiagnosticsLogging = false;
+                PlayerLogPolicy.Configure(config);          // 부팅 시 단 한 번(실기와 동일)
+                Assert.IsFalse(PlayerLogPolicy.RoutineNarrationEnabled);
+
+                // ★ 개발자 도구가 하는 일은 이것뿐이다 — Configure를 다시 부르지 않는다.
+                config.verboseDiagnosticsLogging = true;
+
+                Assert.IsTrue(PlayerLogPolicy.RoutineNarrationEnabled,
+                    "런타임 토글이 반영되지 않는다 = 진단 수단이 조용히 죽어 있다(R2-4의 근본 원인).");
+
+                config.verboseDiagnosticsLogging = false;
+                Assert.IsFalse(PlayerLogPolicy.RoutineNarrationEnabled, "끄는 방향도 즉시 반영되어야 한다.");
+            }
+            finally
+            {
+                PlayerLogPolicy.ResetForTests();
+                Object.DestroyImmediate(config);
+            }
         }
 
         /// <summary>
@@ -168,7 +301,11 @@ namespace StickMate.Tests.EditMode
             string src = File.ReadAllText(Path.Combine(
                 Application.dataPath, "_Project", "Scripts", "Interaction", "IdleAmbientMotionRenderer.cs"));
             StringAssert.Contains("$\"[유휴동작]", src, "태그 줄 자체가 사라지면 감량이 아니라 실명이다.");
-            StringAssert.Contains("Debug.Log(line)", src, "첫 줄은 여전히 그대로 찍혀야 한다.");
+            StringAssert.Contains("Debug.Log($\"[유휴동작]", src,
+                "첫 줄은 여전히 **원문 그대로** 찍혀야 한다 — 접기는 반복만 접는 것이지 요약으로 " +
+                "바꿔치기하는 것이 아니다.");
+            StringAssert.Contains("RepeatedLogFolder.Describe(", src,
+                "접힌 횟수를 방출하는 줄이 없으면 접힌 정보가 통째로 사라진다.");
         }
     }
 }

@@ -42,7 +42,10 @@ namespace StickMate.Tests.EditMode
 
         /// <summary>옛 폴백에서의 관 밑변 y(박제). 컨트롤이 재는 <b>쌍의 양쪽</b>을 다 얼린다 —
         /// 한쪽만 박제하면 훗날 관이 움직였을 때 "역사상 존재한 적 없는 쌍"을 재게 된다
-        /// (2026-09-01 방울 라운드가 실제로 겪은 실패).</summary>
+        /// (2026-09-01 방울 라운드가 실제로 겪은 실패).
+        /// <para>★ 2026-09-02부터 이 값은 <b>순수 역사</b>다 — 살아 있는 폴백은 몸에서 유도되고,
+        /// 몸은 챙이 기울어 밑변 두 발의 y가 애초에 하나가 아니다. 그래서 위 검사는 더 이상
+        /// 이 값을 살아 있는 좌표와 맞춰 보지 않는다(맞춰 보던 단언이 유도를 막고 있었다).</para></summary>
         private const float OldCardCrownBaseY = 23f;
 
         private readonly List<GameObject> _spawned = new List<GameObject>();
@@ -116,17 +119,27 @@ namespace StickMate.Tests.EditMode
             ItemCatalogEntry entry = ItemCatalog.Item(EquipmentSlot.Head, AccessoryShapeBuilder.HeadFedora);
             Assert.IsNotNull(entry.Icon, "중절모의 폴백 아이콘이 사라졌습니다.");
 
-            ItemIconPart crown = entry.Icon[0];
+            // ★ 2026-09-02 — 관은 폴백의 <b>0번이 아니다</b>(0번은 챙이다). 몸 도형 순서에서
+            //   그늘을 뺀 자리가 곧 폴백의 자리이므로, 여기서 그 자리를 <b>유도</b>한다.
+            //   예전에는 icon[0]을 관이라고 가정했고, 유도 폴백으로 바뀌자 챙을 재고 있었다.
+            ItemIconPart crown = Piece(AccessoryShapeBuilder.HeadFedora, "FedoraCrown");
+
+            // 관은 <b>채운 다각형</b>이라 마지막 점이 첫 점의 되풀이다 — 밑변의 앞 끝은
+            // 마지막 <b>실재</b> 점이다.
+            int crownPoints = crown.PointCount;
             float baseBackX = crown.Values[0];
             float baseBackY = crown.Values[1];
-            float baseFrontX = crown.Values[crown.Values.Length - 2];
-            float baseFrontY = crown.Values[crown.Values.Length - 1];
+            float baseFrontX = crown.Values[(crownPoints - 2) * 2];
+            float baseFrontY = crown.Values[(crownPoints - 2) * 2 + 1];
 
-            Assert.AreEqual(baseBackY, baseFrontY, 1e-4f,
-                "폴백 관의 밑변 두 끝 높이가 다릅니다 — 아래 비교의 전제가 깨집니다.");
-            Assert.AreEqual(OldCardCrownBaseY, baseBackY, 1e-4f,
-                $"폴백 관의 밑변이 y={baseBackY}로 옮겨졌습니다(옛 값 {OldCardCrownBaseY}). " +
-                "아래 네거티브 컨트롤이 박제한 값과 어긋나므로 컨트롤도 함께 갱신해야 합니다.");
+            // ★ 옛 검사는 "밑변 두 끝의 높이가 같다"와 "그 높이가 23이다"를 잠갔다. 둘 다
+            //   <b>손으로 그린 옛 폴백</b>의 성질이지 몸의 규약이 아니다 — 몸은 챙이 앞뒤로
+            //   기울어 있어 두 발의 y를 <b>일부러</b> 갈라 놓는다(도형 주석: "두 발의 y가
+            //   커버선을 사이에 두고 갈린다"). 그래서 그 두 단언을 지우고, 몸이 실제로 그렇다는
+            //   사실 쪽을 잠근다.
+            Assert.AreNotEqual(baseBackY, baseFrontY,
+                "폴백 관의 밑변 두 끝 높이가 같습니다 — 몸은 챙이 기울어 두 발의 y가 갈립니다. " +
+                "같아졌다면 폴백이 몸에서 유도된 값이 아닙니다.");
 
             ItemIconPart band = FindAccent(entry.Icon);
             Assert.AreEqual(4, band.Values.Length,
@@ -168,6 +181,30 @@ namespace StickMate.Tests.EditMode
             ItemIconPart band = FindAccent(entry.Icon);
             Assert.AreNotEqual(OldCardBand.Length, band.Values.Length,
                 "지금 폴백 띠가 옛 좌표 그대로입니다 — 수정이 반영되지 않았습니다.");
+        }
+
+        /// <summary>몸 도형 <paramref name="shapeName"/>에 대응하는 폴백 조각.
+        /// 폴백은 몸 도형 순서를 그대로 옮기되 그늘(Shade)만 빠진다.</summary>
+        private static ItemIconPart Piece(int item, string shapeName)
+        {
+            List<AccessoryShapeBuilder.Shape> body = AccessorySilhouetteMetrics.Build(
+                AccessorySilhouetteMetrics.Rig(), EquipmentSlot.Head, item);
+            ItemIconPart[] icon = ItemCatalog.Item(EquipmentSlot.Head, item).Icon;
+
+            int index = 0;
+            for (int i = 0; i < body.Count; i++)
+            {
+                if (body[i].Tone == AccessoryShapeBuilder.Shade) continue;
+                if (body[i].Name == shapeName)
+                {
+                    Assert.Less(index, icon.Length,
+                        $"몸의 '{shapeName}'이 폴백 {index}번이어야 하는데 조각이 {icon.Length}개뿐입니다.");
+                    return icon[index];
+                }
+                index++;
+            }
+            Assert.Fail($"몸 도형에 '{shapeName}'이 없습니다.");
+            return default;
         }
 
         private static ItemIconPart FindAccent(ItemIconPart[] icon)

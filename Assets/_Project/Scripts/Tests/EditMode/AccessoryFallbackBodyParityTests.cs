@@ -120,69 +120,20 @@ namespace StickMate.Tests.EditMode
         /// </summary>
         private static readonly Debt[] Ledger =
         {
-            // ---------------------------------------------------------------
-            // (1) 결함 — 보조색 조각을 쪼갰다 (규칙 3-2: 아이템당 정확히 1개)
-            //     폴백이 뜨는 순간 "다른 아이템"이 그려진다. 단순화가 아니다.
-            // ---------------------------------------------------------------
-            new Debt(EquipmentSlot.Head, 0, Axis.AccentPartCount, 1, 2,
-                "천모자 — 몸은 챙(HatBrim) 하나가 보조색인데 폴백은 보조색 조각이 2개다."),
-            new Debt(EquipmentSlot.Eyes, 1, Axis.AccentPartCount, 1, 3,
-                "동그란안경 — 몸은 다리(RoundBridge) 하나인데 폴백은 3개로 쪼갰다."),
-            new Debt(EquipmentSlot.Eyes, 2, Axis.AccentPartCount, 1, 2,
-                "고글 — 몸은 끈(GoggleStrap) 하나인데 폴백은 2개."),
-            new Debt(EquipmentSlot.Eyes, 3, Axis.AccentPartCount, 1, 2,
-                "외알안경 — 몸은 눈(MonocleEye) 하나인데 폴백은 2개."),
-            new Debt(EquipmentSlot.Eyes, 5, Axis.AccentPartCount, 1, 2,
-                "안대 — 몸은 눈(PatchEye) 하나인데 폴백은 2개."),
-            new Debt(EquipmentSlot.Neck, 1, Axis.AccentPartCount, 1, 2,
-                "줄무늬타이 — 몸은 2026-09-01 재설계로 줄무늬를 '채운 띠 1개'(TieStripe)로 합쳤는데 " +
-                "폴백에는 그 전의 줄 2개가 남아 있다. 규칙 3-2를 몸만 닫고 폴백을 안 따라온 사례다."),
-            new Debt(EquipmentSlot.Neck, 2, Axis.AccentPartCount, 1, 2,
-                "목도리 — 몸은 감은 부분(ScarfWrap) 하나인데 폴백은 2개."),
-            new Debt(EquipmentSlot.Shoulders, 1, Axis.AccentPartCount, 1, 2,
-                "긴망토 — 몸은 깃(CapeCollar) 하나인데 폴백은 2개."),
-            new Debt(EquipmentSlot.Shoulders, 3, Axis.AccentPartCount, 1, 3,
-                "배낭 — 몸은 버클(PackBuckle) 하나인데 폴백은 3개로 쪼갰다."),
-
-            // ---------------------------------------------------------------
-            // (2) 결함 — 폴백이 몸보다 <b>복잡</b>하다. 단순화의 정의상 있을 수 없는 방향이다.
-            // ---------------------------------------------------------------
-            // ※ 나비넥타이·펜던트·반다나가 여기 있었다(각 4↔5 / 4↔5 / 3↔4). <b>전부 유령이었다</b> —
-            //   닫힌 폴백 꺾은선이 첫 점을 되풀이하는 규약을 정규화하지 않고 셌기 때문이다.
-            //   셋 다 실제로는 몸과 정확히 일치한다(DistinctPointCount 문서 참고).
-            new Debt(EquipmentSlot.Hair, 0, Axis.AccentVertexCount, 3, 5,
-                "삐친머리 — 몸 3점(HairCrest)인데 폴백이 5점."),
-            new Debt(EquipmentSlot.Hair, 1, Axis.AccentVertexCount, 4, 5,
-                "단정한머리 — 몸 4점(HairPart)인데 폴백이 5점."),
-            new Debt(EquipmentSlot.Hair, 2, Axis.AccentVertexCount, 5, 16,
-                "★ 곱슬머리 — 몸 5점(HairCoil)인데 폴백이 16점이다. 폴백이 <b>몸에 없는 곱슬</b>을 " +
-                "그린다. 22건 중 격차가 가장 크다."),
-
-            // ---------------------------------------------------------------
-            // (3) 폴백이 몸보다 단순하다 — 40×40 격자에서는 정당한 방향이다.
-            //     ★ 베레모만 결함으로 본다(줄어든 그 한 점이 아이템의 정체다).
-            //     나머지는 리더 판단 대기.
-            // ---------------------------------------------------------------
-            new Debt(EquipmentSlot.Head, 4, Axis.AccentVertexCount, 3, 2,
-                "★ 베레모 테 — 몸은 3점(frontFoot→innerFoot→backTip = 밑변 전체)인데 폴백은 2점 직선. " +
-                "줄어든 점이 innerFoot(밑변 안쪽 꺾임)이고, 그것이 베레모를 '띠 두른 정모'와 가르는 " +
-                "정체다(도형 주석: \"테 = 밑변 그 자체(간격 0)\"). 단순화가 아니라 <b>정체의 소실</b>이다. " +
-                "원 신고 건이며 옛 검사가 2점을 강제해 <b>고치는 것을 막고 있었다</b>."),
-            new Debt(EquipmentSlot.Head, 3, Axis.AccentVertexCount, 4, 2,
-                "왕관 테 — 몸 4점(밑변 네 점)인데 폴백 2점. 단순화 방향이라 리더 판단 대기."),
-            new Debt(EquipmentSlot.Eyes, 0, Axis.AccentVertexCount, 3, 2,
-                "선글라스 다리 — 몸 3점(꺾임 있음)인데 폴백 2점 직선. 단순화 방향, 판단 대기."),
-            new Debt(EquipmentSlot.Eyes, 4, Axis.AccentVertexCount, 6, 2,
-                "뿔테 안경 바 — 몸 6점(채운 띠)인데 폴백 2점 선. 단순화 방향, 판단 대기."),
-            new Debt(EquipmentSlot.Shoulders, 0, Axis.AccentVertexCount, 4, 2,
-                "짧은망토 깃 — 몸 4점인데 폴백 2점. 단순화 방향, 판단 대기."),
-            new Debt(EquipmentSlot.Shoulders, 4, Axis.AccentVertexCount, 4, 3,
-                "판초 깃 — 몸 4점인데 폴백 3점. 단순화 방향, 판단 대기."),
-            new Debt(EquipmentSlot.Hair, 3, Axis.AccentVertexCount, 10, 5,
-                "민머리 앞 테 — 몸 10점(호)인데 폴백 5점. 단순화 방향, 판단 대기."),
-            new Debt(EquipmentSlot.Hair, 5, Axis.AccentVertexCount, 6, 5,
-                "포니테일 꼬리 — 몸 6점인데 폴백 5점. ★ 닫힘 정규화를 넣고 나서야 드러난 갈라짐이다 " +
-                "(정규화 전에는 6↔6으로 보여 통과하고 있었다). 단순화 방향, 판단 대기."),
+            // ★ 2026-09-02 — <b>비었다.</b> 20줄 전부 한 번에 갚혔다.
+            //
+            // 방법은 좌표를 21번 손으로 고치는 것이 아니라 <b>한 번 유도</b>하는 것이었다:
+            // 30종 폴백을 카드 본경로(AccessoryCardIcon.TryBuild)와 <b>같은 투영식</b>으로
+            // 몸 도형에서 구워 Resources/Items/*.asset에 눕혔다. 그래서 축1(보조색 조각 수)과
+            // 축2(보조색 꼭짓점 수)가 <b>정의상</b> 몸과 같아졌다 — 갈라질 자리가 없다.
+            // 함께 닫힌 것: 베레모 테 3점, 펜던트 종횡비(2.2143 -> 몸과 같은 2.1333),
+            // 그리고 "폴백은 속이 빈 윤곽선"이라는 근본 한계
+            // (ItemIconPartKind.Polygon이 생겨 채운 면을 표현한다).
+            //
+            // 비어 있다는 것이 "검사가 잠들었다"는 뜻이 아니다 — 기본이 <b>검사</b>이므로
+            // 새 갈라짐은 아무것도 안 적어도 아래 첫 테스트가 잡는다. 못 고칠 것이 다시 생기면
+            // 실측값 두 개와 사유를 달아 여기 등재한다:
+            //     new Debt(슬롯, 번호, Axis.…, 몸실측, 폴백실측, "왜 아직 못 고쳤는가")
         };
 
         internal readonly struct Debt
@@ -259,8 +210,11 @@ namespace StickMate.Tests.EditMode
 
             if (bodyAccents.Count != 1) return gaps;
 
-            // 폴백 보조색이 원/점이면 꼭짓점 개념이 없다 — 이 축의 대상이 아니다(털모자 폼폼, 방울).
-            if (fallbackAccents[0].Kind != ItemIconPartKind.Polyline) return gaps;
+            // 폴백 보조색이 원/점이면 꼭짓점 개념이 없다 — 이 축의 대상이 아니다.
+            // ★ 2026-09-02: Polygon(채운 다각형)이 생겼다. <b>이건 꼭짓점을 가진다</b> —
+            //   여기서 빠뜨리면 폼폼·방울·매듭처럼 채운 보조색을 가진 아이템에서 이 축이
+            //   통째로 침묵한다(대장을 닫자마자 검사가 조용해지는, 가장 위험한 형태의 거짓 초록).
+            if (!fallbackAccents[0].HasPoints) return gaps;
 
             int bodyVerts = bodyAccents[0].Points.Length;
             int fallbackVerts = DistinctPointCount(fallbackAccents[0]);
@@ -551,24 +505,58 @@ namespace StickMate.Tests.EditMode
         }
 
         [Test]
-        public void 네거티브_컨트롤_실제_베레모가_지금도_3점_대_2점이다()
+        public void 실제_베레모_폴백_테는_이제_몸과_같은_점수다()
         {
-            // ★ 원 신고 건의 재현. 옛 검사는 이 자리에 <b>2점을 상수로 박아</b> 두어
-            //   장비 담당이 폴백에 innerFoot을 추가하는 것을 막고 있었다.
-            //   이제 기대값은 <b>몸에서 읽는다</b> — 몸이 바뀌면 기대값도 함께 바뀐다.
+            // ★ 원 신고 건. 옛 검사는 이 자리에 <b>2점을 상수로 박아</b> 두어 장비 담당이 폴백에
+            //   innerFoot을 추가하는 것을 막고 있었고, 그 뒤에는 "3점 대 2점으로 아직 갈라져 있다"를
+            //   잠갔다. 2026-09-02에 폴백을 몸에서 유도해 다시 구워 그 빚을 갚았다.
+            //   기대값은 여전히 <b>몸에서 읽는다</b> — 몸이 바뀌면 기대값도 함께 바뀐다.
             List<AccessoryShapeBuilder.Shape> body = BodyShapes(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret);
             AccessoryShapeBuilder.Shape rim = AccessorySilhouetteMetrics.Find(body, "BeretRim");
 
-            Assert.AreEqual(1, rim.Tone, "BeretRim이 보조색이 아니게 됐습니다 — 대장 전제가 깨집니다.");
+            Assert.AreEqual(1, rim.Tone, "BeretRim이 보조색이 아니게 됐습니다 — 이 검사의 전제가 깨집니다.");
 
-            List<Gap> gaps = Compare(body, Fallback(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret));
-            Assert.AreEqual(1, gaps.Count, "베레모에서 정확히 한 축만 갈라져 있어야 합니다.");
+            ItemIconPart[] fallback = Fallback(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret);
+            Assert.IsEmpty(Compare(body, fallback),
+                "베레모 폴백이 다시 몸과 갈라졌습니다 — 유도한 값을 누가 손으로 덮어썼는지 확인하십시오.");
+
+            ItemIconPart fallbackRim = default;
+            for (int i = 0; i < fallback.Length; i++)
+            {
+                if (fallback[i].Tone == 1) fallbackRim = fallback[i];
+            }
+            Assert.AreEqual(rim.Points.Length, DistinctPointCount(fallbackRim),
+                "기대값이 몸에서 오지 않았습니다 — 그게 이 파일이 처음 잡은 버그입니다.");
+
+            Debug.Log($"{LogPrefix} 베레모 — 몸 BeretRim {rim.Points.Length}점 = 폴백 " +
+                      $"{DistinctPointCount(fallbackRim)}점. innerFoot(밑변 안쪽 꺾임 = 베레모의 정체)이 살아 있다.");
+        }
+
+        /// <summary>★ 대장이 <b>비어서</b> 초록인 것과 <b>검사가 죽어서</b> 초록인 것을 가른다.
+        /// <para>이 라운드에 <see cref="ItemIconPartKind.Polygon"/>이 생겼고, 비교기가 그 종류를
+        /// "꼭짓점 개념이 없는 원시도형"으로 흘려보내면 채운 보조색을 가진 아이템 전부에서 축2가
+        /// <b>통째로 침묵</b>한다(대장을 비운 직후가 그 사고가 가장 눈에 안 띄는 순간이다).</para></summary>
+        [Test]
+        public void 네거티브_컨트롤_채운_다각형_보조색도_꼭짓점_축이_산다()
+        {
+            var body = new List<AccessoryShapeBuilder.Shape> { Fake("Main", 3, 0), Fake("Accent", 4, 1) };
+
+            // 같은 4각형을 닫아서 적은 채운 다각형 — 갈라진 것이 아니다.
+            var samePolygon = new ItemIconPart(ItemIconPartKind.Polygon,
+                new[] { 0f, 0f, 1f, 0f, 1f, 1f, 0f, 1f, 0f, 0f }).AsSecondary();
+            Assert.IsEmpty(Compare(body, new[] { FakePart(3, 0), samePolygon }),
+                "채운 다각형에서 닫힘 규약 차이를 갈라짐으로 세고 있습니다.");
+
+            // 진짜로 한 점이 더 있는 채운 다각형 — 반드시 잡혀야 한다.
+            var fatterPolygon = new ItemIconPart(ItemIconPartKind.Polygon,
+                new[] { 0f, 0f, 1f, 0f, 1f, 1f, 0.5f, 1.5f, 0f, 1f, 0f, 0f }).AsSecondary();
+            List<Gap> gaps = Compare(body, new[] { FakePart(3, 0), fatterPolygon });
+            Assert.AreEqual(1, gaps.Count,
+                "채운 다각형 보조색의 꼭짓점 축이 죽어 있습니다 — Polygon이 원/점 취급으로 빠지면 " +
+                "이 파일의 축2가 절반 이상의 아이템에서 아무것도 재지 않습니다.");
             Assert.AreEqual(Axis.AccentVertexCount, gaps[0].Axis);
-            Assert.AreEqual(rim.Points.Length, gaps[0].Body,
-                "기대값이 몸에서 오지 않았습니다 — 그게 이번에 고친 버그입니다.");
-
-            Debug.Log($"{LogPrefix} 베레모 재현 — 몸 BeretRim {gaps[0].Body}점 vs 폴백 {gaps[0].Fallback}점 " +
-                      "(줄어든 점이 innerFoot: 밑변 안쪽 꺾임 = 베레모의 정체).");
+            Assert.AreEqual(4, gaps[0].Body);
+            Assert.AreEqual(5, gaps[0].Fallback);
         }
     }
 }

@@ -282,7 +282,13 @@ namespace StickMate.Platform.Windows
                 if (!_staleHandleLogged)
                 {
                     _staleHandleLogged = true;
-                    Debug.LogWarning($"[Z-ORDER] 오버레이 창 핸들 0x{overlayHwnd.ToInt64():X}이(가) 더 이상 " +
+                    // 16진수 꼬리표는 끝 글자가 0~9/A~F로 매번 달라져 조사가 고정될 수 없다
+                    // (0x...8 -> "이", 0x...5 -> "가"). Core/KoreanParticle이 정확히 이 경우를
+                    // 위해 숫자·알파벳 종성 표를 갖고 있다. 이 줄은 핸들이 죽었을 때 딱 한 번만
+                    // 찍히므로(_staleHandleLogged) 문자열 할당은 상주 비용이 아니다.
+                    string handleHex = $"0x{overlayHwnd.ToInt64():X}";
+                    Debug.LogWarning($"[Z-ORDER] 오버레이 창 핸들 {handleHex}" +
+                        $"{Core.KoreanParticle.Subject(handleHex)} 더 이상 " +
                         "유효한 창이 아닙니다(IsWindow=false). 창이 재생성됐다는 뜻이며 항상위 감시가 " +
                         "엉뚱한 핸들을 보고 있습니다 — 이 줄이 보이면 핸들 재확보가 필요합니다.");
                 }

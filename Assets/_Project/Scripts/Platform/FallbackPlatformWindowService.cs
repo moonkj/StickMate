@@ -562,7 +562,38 @@ namespace StickMate.Platform
 
         public void SetAlwaysOnTop(bool enabled) => _inner.SetAlwaysOnTop(enabled);
 
-        public bool IsFullscreenAppActive() => _inner.IsFullscreenAppActive();
+        /// <summary>
+        /// ============================================================================
+        /// ★★ 2026-09-02 — 여기가 <b>원장의 17%</b>가 새던 구멍이다
+        /// ============================================================================
+        /// <c>FootholdPoller</c>는 발판 열거를 스톱워치로 감싸고 스스로를 "네이티브 창 열거가
+        /// 일어나는 <b>유일한</b> 지점"이라 단언했지만 거짓이었다. 이 호출도 네이티브 창 목록을
+        /// <b>따로</b> 조회한다 — macOS는 <c>CGWindowListCopyWindowInfo</c>, Windows는 전경 창
+        /// 조회 + 프로세스 이미지 경로 조회다. 주기는 <c>StickConfig.fullscreenPollInterval</c>
+        /// 1.5초(초당 0.67회)이고, 발판 폴링 0.3초(초당 3.33회)와 합치면
+        /// <b>초당 4회 중 0.67회 = 17%가 계측 밖</b>이었다.
+        ///
+        /// <para>그 결과가 무엇이었나: 이 호출이 200ms 블로킹되면 같은 프레임의 장부가
+        /// <c>창열거 0.0ms/0회</c> + <c>기타로직 200ms</c>로 찍힌다 — <b>원인이 창 목록 조회인데
+        /// 원장이 "아니다"라고 말한다.</b></para>
+        ///
+        /// <para><b>왜 여기(데코레이터)인가.</b> 이 클래스는 <c>MacWindowService</c>와
+        /// <c>Win32WindowService</c>를 <b>둘 다</b> 감싼다(<c>StickmanAgent.CreatePlatformService()</c>).
+        /// 계측을 플랫폼 구현체 안에 넣으면 한쪽만 고쳐지고 반대쪽은 이 개발 머신에서 영원히
+        /// 검증되지 않는다 — <c>FullscreenSuspendPolicy.cs</c>로 이미 겪은 사고다. 감싸지 않는
+        /// 서비스(Null/모바일)는 <c>IsFullscreenAppActive()</c>가 상수 <c>false</c>라 잴 것이 없다.</para>
+        ///
+        /// <para>비용: 판정당(1.5초) <c>Stopwatch.GetTimestamp()</c> 2회. <b>할당 0</b>, 동작 무변화.</para>
+        /// </summary>
+        public bool IsFullscreenAppActive()
+        {
+            // System.Diagnostics를 using으로 열지 않는다 — 이 파일의 Debug.Log가 UnityEngine.Debug와
+            // System.Diagnostics.Debug 사이에서 모호해진다(CS0104).
+            long start = System.Diagnostics.Stopwatch.GetTimestamp();
+            bool active = _inner.IsFullscreenAppActive();
+            StallAttribution.RecordFullscreenProbe(System.Diagnostics.Stopwatch.GetTimestamp() - start);
+            return active;
+        }
 
         // IGlobalPointerButtonService — 위 _innerButton 선언부의 사고 기록 참고. 순수 통과.
         public bool TryGetPrimaryButtonPressed(out bool pressed)

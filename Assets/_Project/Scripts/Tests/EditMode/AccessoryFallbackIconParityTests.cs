@@ -81,9 +81,49 @@ namespace StickMate.Tests.EditMode
         private static Vector2 Last(ItemIconPart part)
             => new Vector2(part.Values[part.Values.Length - 2], part.Values[part.Values.Length - 1]);
 
+        /// <summary>닫는 점을 뺀 <b>마지막 실재 점</b>. 채운 다각형(<see cref="ItemIconPartKind.Polygon"/>)은
+        /// 마지막 점이 첫 점의 되풀이라, 그냥 <see cref="Last"/>를 쓰면 "밑변의 앞 끝"이 아니라
+        /// <b>뒤 끝</b>이 잡힌다(2026-09-02 유도 폴백 전환에서 실제로 걸린 자리).</summary>
+        private static Vector2 LastDistinct(ItemIconPart part)
+        {
+            Vector2 last = Last(part);
+            if (!Mathf.Approximately(last.x, part.Values[0]) || !Mathf.Approximately(last.y, part.Values[1]))
+            {
+                return last;
+            }
+            int n = part.PointCount;
+            return new Vector2(part.Values[(n - 2) * 2], part.Values[(n - 2) * 2 + 1]);
+        }
+
+        /// <summary>몸 도형 <paramref name="shapeName"/>에 대응하는 폴백 조각. 폴백은 몸 도형 순서를
+        /// 그대로 옮기되 <b>그늘(Shade)만 빠지므로</b>, 그늘을 뺀 목록에서의 자리가 곧 폴백의 자리다.
+        /// <para>★ 예전에는 <c>icon[0]</c>을 "관"이라고 가정했다. 유도 폴백에서는 0번이 <b>챙</b>이라
+        /// 그 가정이 조용히 다른 조각을 재게 된다.</para></summary>
+        private static ItemIconPart Piece(EquipmentSlot slot, int item, string shapeName)
+        {
+            List<AccessoryShapeBuilder.Shape> body =
+                AccessorySilhouetteMetrics.Build(AccessorySilhouetteMetrics.Rig(), slot, item);
+            ItemIconPart[] icon = Icon(slot, item);
+
+            int index = 0;
+            for (int i = 0; i < body.Count; i++)
+            {
+                if (body[i].Tone == AccessoryShapeBuilder.Shade) continue;
+                if (body[i].Name == shapeName)
+                {
+                    Assert.Less(index, icon.Length,
+                        $"몸의 '{shapeName}'이 폴백 {index}번이어야 하는데 폴백 조각이 {icon.Length}개뿐입니다.");
+                    return icon[index];
+                }
+                index++;
+            }
+            Assert.Fail($"몸 도형에 '{shapeName}'이 없습니다 — 이름이 바뀌었다면 이 검사도 함께 갱신하십시오.");
+            return default;
+        }
+
         private static void AssertInsideViewBox(ItemIconPart part, string label)
         {
-            int coords = part.Kind == ItemIconPartKind.Polyline ? part.Values.Length : 2;
+            int coords = part.HasPoints ? part.Values.Length : 2;
             for (int i = 0; i < coords; i++)
             {
                 Assert.That(part.Values[i], Is.InRange(0f, ViewBox), $"{label}이 40×40 격자를 벗어났습니다.");
@@ -98,7 +138,7 @@ namespace StickMate.Tests.EditMode
         public void 밀짚모자_폴백_띠는_관_밑변의_두_끝점이다()
         {
             ItemIconPart[] icon = Icon(EquipmentSlot.Head, AccessoryShapeBuilder.HeadStraw);
-            ItemIconPart crown = icon[0];
+            ItemIconPart crown = Piece(EquipmentSlot.Head, AccessoryShapeBuilder.HeadStraw, "StrawCrown");
             ItemIconPart band = Accent(icon);
 
             // ★ 기대값을 숫자로 적지 않는다 — 몸의 StrawBand가 몇 점인지 지금 읽어서 쓴다.
@@ -111,7 +151,7 @@ namespace StickMate.Tests.EditMode
                 $"폴백 띠가 {band.PointCount}점인데 몸의 StrawBand는 {bodyBandPoints}점입니다 — " +
                 "폴백은 몸과 같은 계열이어야 합니다(몸: crownBackFoot·crownFrontFoot).");
             Assert.AreEqual(First(crown), First(band), "띠의 뒤 끝이 관 밑변의 뒤 끝과 다릅니다.");
-            Assert.AreEqual(Last(crown), Last(band), "띠의 앞 끝이 관 밑변의 앞 끝과 다릅니다.");
+            Assert.AreEqual(LastDistinct(crown), Last(band), "띠의 앞 끝이 관 밑변의 앞 끝과 다릅니다.");
             AssertInsideViewBox(band, "밀짚모자 폴백 띠");
         }
 
@@ -148,10 +188,25 @@ namespace StickMate.Tests.EditMode
             ItemIconPart rim = Accent(icon);
 
             Assert.GreaterOrEqual(rim.PointCount, 2, "폴백 테가 선이 아닙니다.");
-            Assert.AreEqual(First(crown), First(rim),
-                "테의 한쪽 끝이 관 폴리라인의 첫 점과 다릅니다 — 몸에서는 BeretRim이 " +
-                "관의 밑변 점들을 그대로 받습니다.");
-            Assert.AreEqual(Last(crown), Last(rim), "테의 다른 끝이 관 폴리라인의 끝 점과 다릅니다.");
+
+            // ★ 2026-09-02 — 예전에는 "테의 첫 점 = 관의 첫 점 / 테의 끝 점 = 관의 끝 점"으로 잠갔다.
+            //   그건 손으로 그린 옛 폴백(관이 뒷발에서 앞발로 <b>열린</b> 선이던 시절)의 성질이지
+            //   몸의 규약이 아니다. 몸의 BeretRim은 관 다각형의 [5][6][0]을 받으므로 <b>관의 마지막
+            //   구간에서 시작해 첫 점에서 끝난다</b>. 잠글 것은 순서가 아니라 <b>"테의 모든 점이 곧
+            //   관의 꼭짓점"</b>이라는 사실이다 — 그것이 "테 = 밑변 그 자체(간격 0)"의 정의다.
+            for (int i = 0; i < rim.PointCount; i++)
+            {
+                var q = new Vector2(rim.Values[i * 2], rim.Values[i * 2 + 1]);
+                bool onCrown = false;
+                for (int k = 0; k < crown.PointCount && !onCrown; k++)
+                {
+                    onCrown = Mathf.Approximately(q.x, crown.Values[k * 2])
+                           && Mathf.Approximately(q.y, crown.Values[k * 2 + 1]);
+                }
+                Assert.IsTrue(onCrown,
+                    $"폴백 테의 {i}번 점 {q}이 관 폴리라인의 꼭짓점이 아닙니다 — 몸에서는 BeretRim이 " +
+                    "관의 밑변 점들을 <b>그대로</b> 받습니다(좌표를 새로 적으면 어긋날 자리가 생깁니다).");
+            }
             AssertInsideViewBox(rim, "베레모 폴백 테");
         }
 
@@ -236,12 +291,15 @@ namespace StickMate.Tests.EditMode
         public void 방울_폴백은_줄_최저점에_매달린_채운_원이다()
         {
             ItemIconPart[] icon = Icon(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell);
-            ItemIconPart chain = icon[0];
+            ItemIconPart chain = Piece(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell, "Collar");
             ItemIconPart bell = Accent(icon);
 
-            Assert.AreEqual(ItemIconPartKind.Dot, bell.Kind,
-                "폴백 방울이 채운 원(Dot)이 아닙니다 — 몸의 방울은 filled 다각형이라 " +
-                "윤곽선으로 그리면 카드만 '속이 빈 고리'가 됩니다(규칙 2).");
+            // ★ 2026-09-02 — 옛 폴백은 <b>Dot</b>(채운 원)이었다. 그때는 그것이 최선이었다:
+            //   폴백 형식에 <b>채운 다각형이 없어서</b> 몸의 filled 다각형을 흉내낼 수단이 원뿐이었다.
+            //   Polygon이 생긴 지금은 몸과 <b>같은 10각형</b>을 같은 좌표로 그린다 — 흉내가 아니라 그 도형이다.
+            Assert.AreEqual(ItemIconPartKind.Polygon, bell.Kind,
+                "폴백 방울이 채운 도형이 아닙니다 — 몸의 방울은 filled 다각형이라 " +
+                "윤곽선으로만 그리면 카드만 '속이 빈 고리'가 됩니다(규칙 2).");
 
             float chainLowY = float.MinValue;   // 카드 격자는 y가 아래로 자란다
             for (int i = 1; i < chain.Values.Length; i += 2)
@@ -249,14 +307,19 @@ namespace StickMate.Tests.EditMode
                 chainLowY = Mathf.Max(chainLowY, chain.Values[i]);
             }
 
-            float cy = bell.Values[1];
-            float radius = bell.Values[2];
-            Assert.AreEqual(chainLowY, cy - radius, 1e-4f,
-                $"방울의 위 끝이 y={cy - radius}인데 줄 최저점은 y={chainLowY}입니다 — 매달린 지점이 " +
+            float bellTopY = float.MaxValue, bellLowY = float.MinValue;
+            for (int i = 1; i < bell.Values.Length; i += 2)
+            {
+                bellTopY = Mathf.Min(bellTopY, bell.Values[i]);
+                bellLowY = Mathf.Max(bellLowY, bell.Values[i]);
+            }
+
+            Assert.AreEqual(chainLowY, bellTopY, 1e-4f,
+                $"방울의 위 끝이 y={bellTopY}인데 줄 최저점은 y={chainLowY}입니다 — 매달린 지점이 " +
                 "보여야 물건이 공중에 뜨지 않습니다(37-6 규칙 4). 몸은 이미 CollarLowLocalY에서 유도합니다.");
 
             AssertInsideViewBox(bell, "방울 폴백");
-            Assert.LessOrEqual(cy + radius, ViewBox, "방울 아래 끝이 격자를 넘습니다.");
+            Assert.LessOrEqual(bellLowY, ViewBox, "방울 아래 끝이 격자를 넘습니다.");
         }
 
         // ============================================================================
@@ -287,40 +350,13 @@ namespace StickMate.Tests.EditMode
                 $"폴백 마름모가 {cardAspect:F2}배로는 원과 갈리지 않습니다.");
             AssertInsideViewBox(diamond, "펜던트 폴백 마름모");
 
-            // ================================================================
-            // ★ 2026-09-01 — 몸이 움직였고 폴백이 안 따라왔다 (사유 있는 건너뜀)
-            // ================================================================
-            // 이 라운드에 몸 상수가 바뀌었다: PendantHalfWidthRatio 0.28 -> 0.30,
-            // PendantHalfHeightRatio 0.62 -> 0.64. 옛 종횡비 0.62/0.28 = 2.2143이 <b>폴백의 지금
-            // 값과 정확히 같다</b> — 즉 폴백은 옛 몸에서 정확히 구워졌고, 몸만 앞서 나갔다.
-            // <b>설정 드리프트(parkourClimbDuration)와 완전히 같은 사고</b>이고, 폴백 에셋을 다시
-            // 굽는 것은 장비 담당 소유라 테스트가 대신 고치지 않는다.
-            //
-            // 그래서 PlatformParityAuditTests의 관례를 따른다 — 못 고친 갭은 Assert.Fail이 아니라
-            // 사유를 붙인 Assert.Ignore로 남겨 러너에 "건너뜀"으로 계속 보이게 한다(잊히지 않게).
-            // 다만 <b>무조건</b> 건너뛰지는 않는다: 지금 실측이 기록과 다르면 새 드리프트이므로 실패시키고,
-            // 이미 고쳐졌다면 이 유예가 낡은 것이므로 역시 실패시킨다(스스로 만료된다).
-            const float RecordedStaleFallbackAspect = 2.2143f;   // 옛 몸(0.62/0.28)에서 구워진 값
-            const float AspectTolerance = 0.01f;
-
-            if (Mathf.Abs(cardAspect - bodyAspect) <= AspectTolerance)
-            {
-                Assert.Fail($"폴백 종횡비({cardAspect:F4})가 몸({bodyAspect:F4})과 이미 맞습니다 — " +
-                    "누군가 폴백을 다시 구웠습니다. 위 유예 블록을 지우고 " +
-                    "Assert.AreEqual(bodyAspect, cardAspect, 0.01f) 한 줄로 되돌리십시오.");
-            }
-
-            Assert.AreEqual(RecordedStaleFallbackAspect, cardAspect, AspectTolerance,
-                $"폴백 종횡비가 {cardAspect:F4}입니다 — 기록된 낡은 값 " +
-                $"{RecordedStaleFallbackAspect:F4}도, 지금 몸 값 {bodyAspect:F4}도 아닙니다. " +
-                "새로운 드리프트이므로 건너뛰지 않고 실패시킵니다.");
-
-            Assert.Ignore($"[폴백 빚] 펜던트 종횡비 — 몸 {bodyAspect:F4} vs 폴백 {cardAspect:F4} " +
-                $"(차이 {Mathf.Abs(cardAspect - bodyAspect) / bodyAspect * 100f:F1}%).\n" +
-                "원인: 이 라운드에 몸 상수가 0.28->0.30 / 0.62->0.64로 움직였고 폴백이 안 따라왔습니다 " +
-                "(옛 몸 종횡비 0.62/0.28 = 2.2143 = 지금 폴백 값).\n" +
-                "조치: 장비 담당이 equip_neck_pendant.asset의 마름모를 새 비율로 다시 굽습니다. " +
-                "그 뒤 이 유예 블록을 지우십시오 — 안 지우면 위 첫 단언이 빨간불로 알려 줍니다.");
+            // ★ 2026-09-02 — 빚이 갚혔다. 폴백을 <b>몸에서 유도</b>해 다시 구웠으므로 종횡비가
+            //   몸과 같은 값(0.64/0.30 = 2.1333)이 됐다. 유예 블록이 스스로 지시한 대로,
+            //   그 블록을 지우고 이 한 줄로 되돌린다.
+            Assert.AreEqual(bodyAspect, cardAspect, 0.01f,
+                $"폴백 마름모 종횡비 {cardAspect:F4} vs 몸 {bodyAspect:F4}. 몸 상수" +
+                "(PendantHalfHeightRatio / PendantHalfWidthRatio)가 움직였다면 폴백도 다시 구워야 합니다 — " +
+                "옛 사고: 몸이 0.28->0.30 / 0.62->0.64로 가고 폴백만 2.2143에 남았습니다.");
         }
 
         /// <summary>펜던트는 몸에서 <b>목줄 최저점</b>에 매달린다(규칙 4-a). 폴백도 그렇다.</summary>

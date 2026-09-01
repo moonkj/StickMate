@@ -80,6 +80,20 @@ namespace StickMate.States
 
         public void Tick(float deltaTime)
         {
+            // ★ 발 떼기 수평 이송(2026-09-02) — drop-through 유예와 **같은 창** 동안 뛰어내리기의
+            // 내딛는 속도를 다시 싣는다. 공중에서는 아무 것도 바꾸지 않고(루트 linearDamping=0),
+            // Dock 물리 계단 위에서만 마찰이 먹어치운 만큼을 되돌린다.
+            // 유도/네거티브 컨트롤: StickmanBlackboard.TryGetStepOffCarryVelocityX 문서.
+            if (_blackboard.Body != null && _blackboard.TryGetStepOffCarryVelocityX(out float carryX))
+            {
+                Vector2 cv = _blackboard.Body.linearVelocity;
+                if (cv.x != carryX)
+                {
+                    cv.x = carryX;
+                    _blackboard.Body.linearVelocity = cv;
+                }
+            }
+
             GroundSensor.GroundInfo info = _blackboard.SenseGround();
             if (_blackboard.CheckScreenBoundsOrFall(info)) return; // 이미 Fall이라 사실상 no-op이지만 안전하게 유지
 

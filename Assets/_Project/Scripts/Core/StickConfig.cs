@@ -596,6 +596,26 @@ namespace StickMate.Core
                  "발판을 벗어나기 전에 아래로 가라앉아 제자리 착지가 될 수 있다(0.5 미만 비권장).")]
         public float hopDownStepOffSpeedScale = 0.8f;
 
+        [Tooltip("★ 발을 뗀 뒤 drop-through 유예가 끝날 때까지 **위 수평 속도를 매 프레임 다시 싣는다** " +
+                 "(2026-09-02 — \"Dock에서 뛰어내리기 64회 전부 하강 실패\" 회귀 수정).\n\n" +
+                 "왜 필요한가: hopDownDropThroughIgnoreDuration의 Tooltip이 적어 둔 계산" +
+                 "('필요한 최소 시간 = hopDownEdgeCommitDistance / (walkSpeed x hopDownStepOffSpeedScale)')은 " +
+                 "**한 번 준 속도가 모서리를 넘을 때까지 유지된다**를 전제한다. 창 상단(논리 발판뿐, " +
+                 "콜라이더 없음)에서는 참이지만 Dock에서는 거짓이다 — Platform/DockPhysicsStep이 Dock " +
+                 "구간에 실제 BoxCollider2D를 깔아 두었고 그 위의 몸에는 쿨롱 마찰이 걸린다.\n" +
+                 "  감속 = 마찰 0.4(Unity 2D 기본 재질) x 9.81 x gravityScale 3 = 11.77유닛/초²\n" +
+                 "  배율 0.60의 내딛는 속도 1.20유닛/초 -> 정지 거리 1.20²/(2x11.77) = 0.061유닛\n" +
+                 "  실측 남은 거리(로그 64건) 0.090~0.117유닛 > 0.061 -> **모서리에 닿기도 전에 멈춘다**\n" +
+                 "그래서 유예 창 동안 그 속도를 다시 실어 '걸어서 모서리를 넘는다'는 원설계를 실제로 " +
+                 "성립시킨다. 물리 콜라이더는 한 톨도 건드리지 않는다(계단을 뚫는 것이 아니라 옆으로 " +
+                 "걸어 나가는 것이 원래 그림이고, 콜라이더를 잠깐이라도 끄면 그 사이에 Dock을 밟을 수 " +
+                 "없게 된다).\n\n" +
+                 "★ 이 스위치를 끄면 2026-09-02 이전 거동(= Dock에서 하강 실패)으로 정확히 돌아간다 — " +
+                 "Tests/PlayMode/DockHopDownPhysicsStepTests의 네거티브 컨트롤이 이 스위치로 대조한다. " +
+                 "콜라이더가 없는 발판(실제 창 상단)에서는 켜든 끄든 결과가 같다(루트 linearDamping=0이라 " +
+                 "공중에서는 속도가 어차피 그대로 유지된다).")]
+        public bool hopDownStepOffCarryEnabled = true;
+
         [Tooltip("★ 뛰어내린 뒤 **다시 올라오기** — 발판 경계 앞에 낮은 턱(벽)이 있을 때 스스로 기어오를 " +
                  "확률(0~1). 이 값이 0이면 한 번 Dock 아래로 내려간 캐릭터가 영영 못 올라온다(경계 점프 " +
                  "확률 wanderEdgeJumpAttemptChance가 기본 0이라 ParkourClimb를 유발할 다른 경로가 없다). " +
@@ -1901,6 +1921,72 @@ namespace StickMate.Core
         /// 프리팹 실측에서 다시 계산해 이 상수와 일치하는지 확인한다.
         /// </summary>
         public const float DockHopDownCriticalScale = 0.4493f;
+
+        // ============================================================================
+        // ★★ Dock 단차의 **착지 무게감** 교차 배율 3종 (2026-09-02, docs/MOTION_SPEC.md 23-4)
+        // ============================================================================
+        // 위 DockHopDownCriticalScale이 이미 만들어 둔 패턴을 그대로 확장한다 — "Dock 단차가 어느
+        // 배율에서 어떤 갈래로 넘어가는가"를 **이름 붙은 한 줄**로 드러낸다. 세 값 모두 코드가
+        // 소비하지 않으며(계약 문서), Tests/PlayMode/DockLandingSilhouetteTests가 매 실행마다
+        // 배포 설정값에서 다시 계산해 이 상수와 일치하는지 확인한다.
+        //
+        // 공통 유도:  교차 배율 = Dock 낙차 / (문턱[H] x BaselineCharacterTotalHeight)
+        //   Dock 낙차 = Core/DockGeometry.ReferenceDockDropWorldUnits(이 개발 머신 tilesize=49 -> 1.63747)
+        //
+        // ★ 세 줄이 함께 말하는 것:
+        //   · 2.0568 > MaxCharacterScale(1.00)  -> Dock은 **어떤 배율에서도 무반응(T0)이 아니다.**
+        //   · 0.8180 < MaxCharacterScale(1.00)  -> 출하 기본 0.75와 사용자 저장 0.60은 **T1 쪽이다**(정상).
+        //   · 0.3473 < MinCharacterScale(0.35)  -> **어떤 배율에서도 실제로 앉지는 않는다.**
+        //     여유는 0.0027(0.8%)뿐이다 — 이 줄이 그 벼랑을 계속 보이게 하려고 존재한다.
+        //
+        // ★★ 낙차는 사용자의 macOS Dock 크기(tilesize 16~128)에 따라 움직이므로 이 세 배율도 함께
+        //   움직인다. 이 개발 머신은 tilesize=49이고, **50이면 배율 0.35에서 실제로 앉기 시작한다**
+        //   (0.5pt 차이). 그래서 위 세 번째 줄은 "고정된 안전"이 아니라 "지금 이 머신의 여유"다.
+        //   Windows(작업표시줄)는 낙차 자체가 달라 세 값이 전부 다르다 — 그대로 복사하지 말 것.
+
+        /// <summary>
+        /// "무릎을 꿇었다"의 **단일 정의**(docs/MOTION_SPEC.md 23-3) — 착지 연출 중 몸(머리)이
+        /// 신장의 이 비율만큼 내려가면 관객은 "앉았다"로 읽는다. 관절 내부각(앞무릎 45도 등)은
+        /// **보조 정합 검사**일 뿐이며 이 정의를 대신하지 못한다(둘은 실루엣으로 3.25배 차이난다 —
+        /// 45도를 Dock 케이스의 상한으로 읽은 것이 이 프로젝트가 실제로 저지른 범주 오류다).
+        /// </summary>
+        public const float LandingSitDownBodyDropHeights = 0.12f;
+
+        /// <summary>
+        /// 위 실루엣 문턱(<see cref="LandingSitDownBodyDropHeights"/>)에 도달하는 **낙차**(신장 배수).
+        /// 배포 램프(landingSoftAbsorb/Reaction/DeepFall + landingCrouch 깊이 곡선 + 다리 기하)를
+        /// 그대로 적분해 얻은 design-motion의 실측 지점이며, 근거는 docs/MOTION_SPEC.md 23-3 표다.
+        /// <para>램프 상수를 하나라도 바꾸면 이 값이 낡는다 — 그래서 테스트는 이 숫자를 믿지 않고
+        /// <b>실제 포즈의 몸 하강</b>을 재서 <see cref="LandingSitDownBodyDropHeights"/>와 비교한다.
+        /// 이 상수는 아래 <see cref="DockSitDownCriticalScale"/>의 유도를 재현할 때만 쓴다.</para>
+        /// </summary>
+        public const float LandingSitDownFallHeights = 2.073f;
+
+        /// <summary>
+        /// Dock 단차가 <b>T0.5(가벼운 흡수)</b> 이상이 되는 최대 배율
+        /// = 1.63747 / (<see cref="landingSoftAbsorbThresholdHeights"/> 0.35 x Baseline) = <b>2.0568</b>.
+        /// <see cref="MaxCharacterScale"/>(1.00)보다 크므로 <b>Dock은 어떤 배율에서도 무반응이 아니다.</b>
+        /// </summary>
+        public const float DockSoftAbsorbCriticalScale = 2.0568f;
+
+        /// <summary>
+        /// Dock 단차가 <b>T1(무릎앉아 램프)</b>로 넘어가는 최대 배율
+        /// = 1.63747 / (<see cref="landingReactionThresholdHeights"/> 0.88 x Baseline) = <b>0.8180</b>.
+        /// <see cref="MaxCharacterScale"/>(1.00)보다 작으므로 출하 기본 0.75와 사용자 저장 0.60은
+        /// <b>T1 쪽이 정상</b>이다. ★ T1 램프에 들어가는 것과 "실제로 앉는 그림"은 다르다 —
+        /// 후자는 <see cref="DockSitDownCriticalScale"/>이 따로 잠근다.
+        /// </summary>
+        public const float DockKneelCriticalScale = 0.8180f;
+
+        /// <summary>
+        /// Dock 단차에서 <b>실제로 앉는 그림</b>(몸 하강 &gt;= <see cref="LandingSitDownBodyDropHeights"/>)이
+        /// 되는 최대 배율 = 1.63747 / (<see cref="LandingSitDownFallHeights"/> 2.073 x Baseline) = <b>0.3473</b>.
+        /// <see cref="MinCharacterScale"/>(0.35)보다 작으므로 <b>선택 가능한 어떤 배율에서도 앉지 않는다</b> —
+        /// 리더의 원래 지시("Dock에서는 무릎을 꿇지 않는다")는 지켜지고 있다.
+        /// <para>★ 여유는 0.0027(0.8%)뿐이고, tilesize 50이면 배율 0.35에서 깨진다. 이 좁은 여유는
+        /// 회귀가 만든 것이 아니라 원래 있던 벼랑이며, H 축으로 옮기면서 처음으로 계산 가능해졌다.</para>
+        /// </summary>
+        public const float DockSitDownCriticalScale = 0.3473f;
 
         /// <summary>
         /// ★ 배율이 반영된 실제 보행 속도(유닛/초). <b>walkSpeed를 직접 읽지 말고 반드시 이것을 쓸 것.</b>

@@ -49,6 +49,93 @@ namespace StickMate.Tests.EditMode
         private static string WinEnforcerPath =>
             Path.Combine(PlatformRoot, "Windows", "WindowsOverlayStateEnforcer.cs");
 
+        // ==================== 상단 예약 띠(메뉴바 / 상단 도킹 작업표시줄) ====================
+
+        /// <summary>
+        /// ★ 2026-09-02 신설 분기 — <c>Platform/IReservedTopBarService</c> + <c>SurfaceSafeAreaPolicy</c>.
+        ///
+        /// <para><b>정책은 이미 플랫폼 중립이다</b>(<c>SurfaceSafeAreaPolicy</c> = OS 호출 0줄). 갈라진
+        /// 것은 <b>사실 조회</b>뿐이며, 그것이 이 감사가 존재하는 이유다 —
+        /// <c>FullscreenSuspendPolicy</c> 사고(정책이 <c>Platform/MacOS/</c> 안에 있어 Windows가
+        /// 물리적으로 호출할 수 없었다)를 되풀이하지 않았는지 여기서 확인한다.</para>
+        ///
+        /// <para>① macOS 구현이 실제로 있는가 ② 정책이 중립 위치에 있는가 — 둘은 <b>정식 검사</b>다.
+        /// ③ Windows 사실 조회가 없다는 사실만 <c>Assert.Ignore</c>로 러너에 계속 띄운다.</para>
+        /// </summary>
+        [Test]
+        public void 미해결_Windows에는_상단_예약띠_조회가_없다()
+        {
+            string policy = Path.Combine(PlatformRoot, "SurfaceSafeAreaPolicy.cs");
+            string contract = Path.Combine(PlatformRoot, "IReservedTopBarService.cs");
+
+            // ① 정책과 계약은 <b>중립 위치</b>(Platform/ 바로 아래)에 있어야 한다.
+            Assert.IsTrue(File.Exists(policy),
+                "SurfaceSafeAreaPolicy가 Platform/ 중립 위치에 없습니다 — 정책이 플랫폼 폴더 안으로 " +
+                "들어가면 반대편 플랫폼이 물리적으로 호출할 수 없습니다(FullscreenSuspendPolicy 사고).");
+            Assert.IsTrue(File.Exists(contract),
+                "IReservedTopBarService가 Platform/ 중립 위치에 없습니다.");
+
+            string policySource = StripLineComments(ReadSource(policy));
+            StringAssert.DoesNotContain("UNITY_STANDALONE_", policySource,
+                "정책 파일에 플랫폼 분기가 들어왔습니다 — 이 파일은 순수 산술이어야 하고, 그래야 " +
+                "양쪽 플랫폼이 같은 규칙을 씁니다.");
+
+            // ② macOS 사실 조회가 실제로 있는가.
+            string macProbe = Path.Combine(PlatformRoot, "MacOS", "MacReservedTopBarService.cs");
+            Assert.IsTrue(File.Exists(macProbe),
+                "macOS 상단 인셋 조회가 사라졌습니다 — 팝오버가 다시 메뉴바를 덮습니다(원칙 2).");
+
+            // ③ ★ 2026-09-02 승격 — 사용자 지시가 "맥에 적용한 사항 윈도우에도 모두 적용"으로 바뀌면서
+            //    Win32WindowService가 이 인터페이스를 구현했다. 이제 <b>정식 검사</b>다.
+            //    (이 자리는 하루 전만 해도 Assert.Ignore였다. Ignore로 러너에 계속 띄워 둔 것이
+            //     실제로 다음 라운드에 배정되어 닫혔다 — 그게 Ignore를 쓰는 이유다.)
+            string win = StripLineComments(ReadSource(WinWindowServicePath));
+            Assert.IsTrue(win.Contains("IReservedTopBarService"),
+                "Win32WindowService가 IReservedTopBarService를 더 이상 구현하지 않습니다 — " +
+                "Windows에서 상단 인셋이 0으로 떨어지고, 상단 도킹 작업표시줄 아래에 팝오버가 " +
+                "다시 겹칩니다. 필요한 값은 GetMonitorInfo의 rcWork.Top − rcMonitor.Top 한 줄이며 " +
+                "IReservedBottomBarService 구현이 이미 같은 호출에서 rcWork/rcMonitor를 읽습니다.");
+            Assert.IsTrue(win.Contains("TryGetReservedTopInsetPoints"),
+                "Windows 구현에 TryGetReservedTopInsetPoints 본문이 없습니다 — 인터페이스 이름만 " +
+                "달려 있고 조회가 비어 있으면 그건 구현이 아니라 서명입니다.");
+
+            // ④ 양쪽이 <b>같은 중립 정책</b>을 부르는가 — 갈라지면 그 순간 규칙이 두 벌이 된다.
+            string macProbeSource = StripLineComments(ReadSource(macProbe));
+            StringAssert.DoesNotContain("ClampCenterY", macProbeSource,
+                "macOS 사실 조회 안에 클램프 산술이 들어왔습니다 — 정책이 플랫폼 폴더로 새면 " +
+                "Windows가 물리적으로 호출할 수 없습니다(FullscreenSuspendPolicy 사고).");
+            StringAssert.DoesNotContain("ClampCenterY", win,
+                "Windows 사실 조회 안에 클램프 산술이 들어왔습니다 — 같은 이유로 금지입니다.");
+        }
+
+        /// <summary>
+        /// ★ 상단은 양쪽 다 닫혔지만 <b>하단</b>은 아직 판단이 안 났다 — 잊히지 않게 러너에 띄워 둔다.
+        /// </summary>
+        [Test]
+        public void 미해결_하단_예약띠를_Windows에서도_강제할지_판단되지_않았다()
+        {
+            string neutral = StripLineComments(
+                ReadSource(Path.Combine(PlatformRoot, "SurfaceSafeAreaPolicy.cs")));
+
+            // 정책이 하단까지 강제하기 시작하면(= 아래쪽 한계에 인셋이 들어가면) 자동 승격시킨다.
+            if (neutral.Contains("bottomInset"))
+            {
+                Assert.Pass("하단 인셋이 정책에 들어왔습니다 — 이 테스트를 정식 검사로 승격하고 " +
+                    "macOS Dock 발판(Core/DockGeometry)과 충돌하지 않는지 반드시 함께 확인하세요.");
+            }
+
+            Assert.Ignore("【알려진 미판단 항목 · 리더 배정 대기】\n" +
+                "항목: 화면 <b>하단</b> 예약 띠를 표면 배치에서 강제할 것인가.\n" +
+                "macOS: 일부러 강제하지 않는다 — Dock은 자동 숨김이 흔하고, 이 앱은 그 위를 " +
+                "의도적으로 캐릭터 발판으로 쓴다(Core/DockGeometry). 창이 Dock을 덮는 것은 " +
+                "macOS의 모든 앱이 하는 표준 동작이기도 하다.\n" +
+                "Windows: 사정이 다르다 — 작업표시줄은 가로 전체를 점유하고, " +
+                "'작업표시줄에 걸쳐서 돌아다닌다'는 실제 사용자 신고 이력이 있다(2026-08-31). " +
+                "하단도 강제해야 할 수 있다.\n" +
+                "★ 지금 막혀 있는 것은 코드가 아니라 <b>판정</b>이다. 조회는 이미 양쪽 다 있다 " +
+                "(IReservedBottomBarService). 실기 확인이 필요하다.");
+        }
+
         private static string ReadSource(string path)
         {
             Assert.IsTrue(File.Exists(path), $"플랫폼 소스를 찾지 못했습니다: {path}");

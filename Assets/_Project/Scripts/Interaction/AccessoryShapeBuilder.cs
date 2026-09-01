@@ -296,11 +296,29 @@ namespace StickMate.Interaction
 
         // ---- 털모자(33-2-1 #2). ★ 2026-09-01(2차) — "띠(band)"가 <b>접힌 단(cuff)</b>이 됐다.
         //      옛 띠는 머리 위쪽(0.42~0.62R)을 가로지르는 납작한 사각형이라 <b>얹혀</b> 있었고,
-        //      이 카테고리에서 가장 깊이 눌러쓰는 모자라는 정체와 정반대였다. 지금은 단이 −0.52R까지
+        //      이 카테고리에서 가장 깊이 눌러쓰는 모자라는 정체와 정반대였다. 지금은 단이 −0.64R까지
         //      내려와 귀를 덮는다 — 그것이 이 모자의 감쌈(|x| ≥ 0.85R · y ≤ 0.05R)을 만든다.
 
+        // ★ 2026-09-02 배율 0.60 실루엣 수정(스펙 12-3-a, 안 A "깊게").
+        //    옆벽 변 1→2 / 5→0이 0.3622R이라 배율 0.60(획 0.4298R)에서 <b>0.84획</b>이었다 —
+        //    획보다 짧은 변은 둥근 캡에 먹혀 <b>모서리가 통째로 뭉갠다</b>(발 사고와 같은 계열).
+        //    이건 [선택] 디테일이 아니라 <b>실루엣 조각의 꼭짓점</b>이라 LOD로 끌 수 없다.
+        //    단을 더 내리고(−0.52 → −0.64) 더 벌려(1.00 → 1.04) 옆벽을 0.4866R = 1.13획으로 만든다.
+        //    ★ 관 밑변 두 점(±<see cref="BeanieBandHalfWidthRatio"/>, <see cref="BeanieBandTopRatio"/>)은
+        //    <b>커버선</b>이라 손대지 않았다 — 움직이면 머리카락 자르기가 따라 움직인다(9-1절).
+
         /// <summary>접힌 단의 <b>아래</b> 끝. 카테고리에서 가장 깊이 내려온다.</summary>
-        internal const float BeanieBandBottomRatio = -0.52f;
+        internal const float BeanieBandBottomRatio = -0.64f;
+
+        /// <summary>접힌 단이 가장 넓어지는 <b>어깨</b>의 반폭. 관 밑변(0.96R)보다 밖으로 나가야
+        /// 단이 관에 얹힌 게 아니라 <b>귀를 감싼</b> 것으로 읽힌다(감쌈 판정 |x| ≥ 0.85R).</summary>
+        internal const float BeanieCuffFlareHalfWidthRatio = 1.04f;
+
+        /// <summary>그 어깨점의 y. <see cref="BeanieBandBottomRatio"/>와 이 값의 차가 곧 옆벽 길이다.</summary>
+        internal const float BeanieCuffFlareBottomRatio = -0.54f;
+
+        /// <summary>단 밑변의 반폭. 어깨보다 좁아 단이 안쪽으로 말려 들어간다.</summary>
+        internal const float BeanieCuffBottomHalfWidthRatio = 0.64f;
 
         /// <summary>접힌 단의 <b>위</b> 끝 = 관의 밑변 = <b>이 모자의 <see cref="HatCoverLocalY"/></b>.
         /// 세 사실이 한 값이라 어긋날 자리가 없다(규칙 4-a).</summary>
@@ -558,6 +576,14 @@ namespace StickMate.Interaction
         internal const float BeretCrownHeightRatio = 1.04f;
         internal const float BeretBackDroopRatio = 1.46f;   // 뒤로 늘어진 끝
         internal const float BeretFrontRatio = 0.92f;
+
+        /// <summary>앞 어깨 꼭짓점의 반폭. 밑변 앞발(<see cref="BeretFrontRatio"/>)보다 살짝 밖으로
+        /// 나가 앞이 부푼 덩어리로 읽힌다.</summary>
+        internal const float BeretFrontShoulderRatio = 0.98f;
+
+        /// <summary>그 어깨점의 y. 밑변(<see cref="BeretBrimLineRatio"/>)과의 거리가 곧 앞 옆변 길이라
+        /// 배율이 낮을 때 가장 먼저 뭉개는 자리다.</summary>
+        internal const float BeretFrontShoulderTopRatio = 0.54f;
 
         /// <summary>뒤로 늘어진 끝이 밑변보다 더 내려가는 깊이. 밑변(= 보조색 테)의 기울기를 만든다.</summary>
         internal const float BeretBackDroopDropRatio = 0.12f;
@@ -1126,15 +1152,15 @@ namespace StickMate.Interaction
                         cuffFront,
                     }, true, SortHead, filled: true));
 
-                    // 접힌 단(cuff) — 귀를 덮고 −0.52R까지 내려온다. 이 모자의 감쌈은 여기서 나온다.
+                    // 접힌 단(cuff) — 귀를 덮고 −0.64R까지 내려온다. 이 모자의 감쌈은 여기서 나온다.
                     sink.Add(new Shape("BeanieCuff", new[]
                     {
                         cuffBack,
                         cuffFront,
-                        rig.F(r * 1.00f, hc - r * 0.42f),
-                        rig.F(r * 0.62f, hc + r * BeanieBandBottomRatio),
-                        rig.F(-r * 0.62f, hc + r * BeanieBandBottomRatio),
-                        rig.F(-r * 1.00f, hc - r * 0.42f),
+                        rig.F(r * BeanieCuffFlareHalfWidthRatio, hc + r * BeanieCuffFlareBottomRatio),
+                        rig.F(r * BeanieCuffBottomHalfWidthRatio, hc + r * BeanieBandBottomRatio),
+                        rig.F(-r * BeanieCuffBottomHalfWidthRatio, hc + r * BeanieBandBottomRatio),
+                        rig.F(-r * BeanieCuffFlareHalfWidthRatio, hc + r * BeanieCuffFlareBottomRatio),
                     }, true, SortHead, filled: true));
 
                     sink.Add(new Shape("BeaniePom",
@@ -1229,7 +1255,11 @@ namespace StickMate.Interaction
                         rig.F(-r * 1.02f, hc + r * 0.62f),
                         rig.F(-r * 0.20f, brimY + r * BeretCrownHeightRatio),
                         rig.F(r * 0.62f, hc + r * 0.90f),
-                        rig.F(r * 0.98f, hc + r * 0.44f),
+                        // ★ 2026-09-02 배율 0.60 실루엣 수정(스펙 12-3-b). y를 0.44 → 0.54로만 올린다.
+                        //    아래 변(→ frontFoot)이 0.4243R이라 배율 0.60에서 0.99획 = 획보다 짧아
+                        //    앞 어깨 모서리가 뭉갰다. 0.5235R = 1.22획. x·뒤쪽 처짐은 그대로 —
+                        //    <b>테(BeretRim)는 [5][6][0]만 받으므로 이 점이 안 들어가 그림이 안 바뀐다.</b>
+                        rig.F(r * BeretFrontShoulderRatio, hc + r * BeretFrontShoulderTopRatio),
                         frontFoot,
                         innerFoot,
                     }, true, SortHead, filled: true));

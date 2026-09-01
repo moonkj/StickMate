@@ -77,7 +77,8 @@ namespace StickMate.Platform.Windows
     ///   · 마우스/키보드 눌림 상태(GetAsyncKeyState)        — IGlobalPointerButtonService/IGlobalKeyStateService
     ///   · 전체화면 판정(MonitorFromWindow/GetMonitorInfo)  — 비침해 원칙 2 자동 숨김의 기하 조건.
     ///     "그 앱이 게임인가"라는 두 번째 조건은 WindowsGameProcessProbe.cs가 읽기 전용으로 조회한다.
-    ///   · 작업표시줄 예약 영역(GetMonitorInfo의 rcMonitor/rcWork 차)  — IReservedBottomBarService
+    ///   · 작업표시줄 예약 영역(GetMonitorInfo의 rcMonitor/rcWork 차)  — IReservedBottomBarService(하단),
+    ///     IReservedTopBarService(상단 도킹 작업표시줄). 같은 한 번의 조회에서 둘 다 나온다.
     ///   · 창 DPI(GetDpiForWindow)                          — UI 밀도(캔버스 배율) 보고
     /// 어느 것도 다른 창의 상태를 바꾸지 않으며, 입력을 주입하지도 않는다.
     /// </summary>
@@ -89,6 +90,7 @@ namespace StickMate.Platform.Windows
         ILocalClickCaptureService,
         IDesktopIconLayoutService,
         IReservedBottomBarService,
+        IReservedTopBarService,
         IRawWindowRectSource,
         IWindowEnumerationCostSource
     {
@@ -1025,14 +1027,42 @@ namespace StickMate.Platform.Windows
             {
                 ScreenCoordinateConverter.ReportOverlayWindowOsRect(osRect);
             }
+            // ★ UI 밀도는 원점 보고의 채택/거부와 **무관하게** 항상 갱신한다.
+            //   CaptureUiDensity()는 로그만 찍는 함수가 아니라 ReportUiDensityScale()로 캔버스 배율을
+            //   실제로 바꾸는 부수효과가 있다(macOS에는 이 함수 자체가 없다 — Retina 배율이 창 폭 비에
+            //   실려 오기 때문). 아래 조기 반환보다 먼저 두지 않으면 원점이 거부되는 동안 표시 배율
+            //   변경이 반영되지 않는다.
             float density = CaptureUiDensity();
+
+            // ============================================================================
+            // ★★ 2026-09-02 계측 정직성 수정 — macOS와 **글자 그대로 같은 결함**이 여기에도 있었다
+            // ============================================================================
+            // 이 줄은 바로 위 ReportOverlayWindowOsRect가 **거부한 보고까지** "갱신"으로 찍고 있었다.
+            // macOS 실기 로그(/tmp/stickmate-run/stickmate.log)에서 정확히 이 모양이 21번 나왔다:
+            //     874: [원점위생] ... 버렸습니다 — 보고=(x:-1007 ...), 유지 중인 원점=(0.00, 0.00)
+            //     875: [MacWindowService] ... 갱신 — origin=(-1007.00, 0.00) ...   <- 갱신된 적 없다
+            // 그 결과 **로그만 읽은 사람이 "원점이 -1007로 튀었다"고 판단**했고, 그 틀린 숫자가 리더
+            // 브리핑과 페르소나 보고서로 그대로 흘러갔다. Windows에서 같은 사고가 일어날 경로도 이미
+            // 있다 — Win+D/최소화 시 GetWindowRect가 (-32000,-32000)을 돌려주고, 그 값은 위생 검사가
+            // 거부한다(ScreenCoordinateConverter 문서의 Windows 항목).
+            //
+            // 좌표계의 **진실**은 ScreenCoordinateConverter.OverlayOriginOsScreen 하나뿐이므로 그 값을
+            // 찍고, 이번 보고가 반영됐는지를 같은 줄에 명시한다.
+            // ★ 거부된 보고는 여기서 **아예 찍지 않는다**(침묵이 아니다 — 거부는 [원점위생]이 연속
+            //   1,2,4,8...회째로 이미 남긴다). 이 줄까지 거부마다 찍으면 최소화 한 번에 같은 사건이
+            //   두 태그로 두 번씩 쌓인다(24시간 상주 앱 — 로그 예산을 늘리지 않는다).
+            Vector2 effectiveOrigin = ScreenCoordinateConverter.OverlayOriginOsScreen;
+            bool reportAccepted = Vector2.Distance(effectiveOrigin, osRect.position) <= 0.5f;
+            if (!reportAccepted && _overlayOriginLogged) return;
 
             if (!_overlayOriginLogged || originMoved
                 || Mathf.Abs(ScreenCoordinateConverter.AutoDpiScale - _lastLoggedDpiScale) > 0.01f)
             {
                 _overlayOriginLogged = true;
                 _lastLoggedDpiScale = ScreenCoordinateConverter.AutoDpiScale;
-                Debug.Log($"[Win32WindowService] 오버레이 창 원점/배율 갱신 — origin={osRect.position}, " +
+                Debug.Log($"[Win32WindowService] 오버레이 창 원점/배율 " +
+                    $"{(reportAccepted ? "갱신" : "보고 **거부됨**(위생 검사) — 좌표계는 직전 값 유지")} — " +
+                    $"실효 원점={effectiveOrigin}, 이번 보고={osRect.position}, " +
                     $"size=({width}x{height}), Screen=({Screen.width}x{Screen.height}) " +
                     $"-> desktopDpiScale(자동)={ScreenCoordinateConverter.AutoDpiScale:F3}, " +
                     $"UI 밀도(캔버스 배율)={density:F3} (디스플레이 배율 {(density * 100f):F0}%).");
@@ -1449,6 +1479,85 @@ namespace StickMate.Platform.Windows
                 Debug.Log($"[Win32WindowService] 작업표시줄 실측 — rect={osScreenRect} " +
                     $"(모니터 {mi.rcMonitor.Right - mi.rcMonitor.Left}x{mi.rcMonitor.Bottom - mi.rcMonitor.Top}, " +
                     $"작업영역 하단 y={mi.rcWork.Bottom}, 두께 {thickness:F0}px). 캐릭터는 이 띠 위에 섭니다.");
+            }
+            return true;
+        }
+
+        #endregion
+
+        #region IReservedTopBarService — 상단 도킹 작업표시줄/툴바 두께 실측
+
+        // 값이 바뀔 때만 로그. 이 함수는 UI 표면 4곳이 ReservedTopBarProbe를 통해 0.5초마다 부른다.
+        private float _lastLoggedTopInsetPoints = float.NaN;
+
+        /// <summary>
+        /// ★ 2026-09-02 — docs/UX_FLOW.md 41-1 ③의 <b>Windows 쪽 사실 조회</b>.
+        /// macOS(<c>MacReservedTopBarService</c>)와 <b>같은 정책 / 다른 조회</b>다 — 이 값을 가지고
+        /// 무엇을 할지는 전부 플랫폼 중립 <see cref="SurfaceSafeAreaPolicy"/>가 정한다.
+        ///
+        /// ============================================================================
+        /// 조회는 이미 하고 있던 그 한 번이다 (새 P/Invoke 0줄)
+        /// ============================================================================
+        /// <c>rcWork.Top − rcMonitor.Top</c>이 곧 화면 <b>위쪽</b>에 예약된 띠의 두께다.
+        /// 바로 위 <see cref="TryGetReservedBottomBarOsScreen"/>이 같은 <c>MONITORINFO</c>에서
+        /// <b>아래쪽</b> 차이를 쓰고 있다. 한 번의 <c>GetMonitorInfo</c>에 두 사실이 함께 들어 있다.
+        ///
+        /// 이 한 줄이 동시에 처리하는 경우들(별도 분기가 필요 없다):
+        ///   · 작업표시줄이 <b>하단/좌/우</b>에 있음  -> 상단 차이 0 -> false(상단 예약 띠 없음).
+        ///   · <b>자동 숨김</b>                        -> Windows가 작업 영역을 줄이지 않는다 -> 0 -> false.
+        ///   · 상단에 도킹된 <b>서드파티 툴바</b>(appbar) -> 그것도 예약 영역이므로 정확히 함께 잡힌다.
+        ///   · 멀티 모니터                              -> 우리 창이 실제로 놓인 모니터 기준.
+        ///
+        /// ============================================================================
+        /// ★ 단위 — 여기가 macOS와 유일하게 갈라지는 지점이다
+        /// ============================================================================
+        /// 이 인터페이스의 계약 단위는 <b>논리 포인트</b>(= 소비 측이
+        /// <c>ScreenCoordinateConverter.CanvasToUnityScreen</c>으로 Unity 픽셀로 되돌리는 그 단위)다.
+        ///   · macOS: <c>visibleFrame</c>이 애초에 AppKit 포인트라 변환이 필요 없다.
+        ///   · Windows: <c>rcMonitor</c>/<c>rcWork</c>는 <b>물리 픽셀</b>이고 <c>Screen.width</c>도 물리
+        ///     픽셀이라(이 파일 <see cref="CaptureUiDensity"/> 문서의 단위 비교표) 표시 배율 150%에서
+        ///     그대로 넘기면 <b>1.5배 두꺼운 인셋</b>이 되어 팝오버가 이유 없이 아래로 밀린다.
+        /// 그래서 <b>중립 변환기 한 곳</b>(<c>UnityScreenToCanvas</c>)을 통과시킨다 — 여기서 96으로
+        /// 나누는 산술을 새로 쓰지 않는다(두 벌이 되면 반드시 한쪽만 고쳐진다).
+        ///
+        /// <para><b>알려진 한계</b>: <c>config</c>를 null로 넘긴다. 이 서비스는 <c>StickConfig</c>를 들고
+        /// 있지 않기 때문이다(<c>new Win32WindowService()</c>). 사람이 <c>desktopDpiScale</c> 수동
+        /// 오버라이드를 <b>0이 아닌 값</b>으로 지정한 경우에만 소비 측 배율과 어긋난다. 기본값 0에서는
+        /// 자동 밀도(<c>AutoUiDensityScale</c>)를 쓰므로 소비 측과 완전히 같은 값이다.</para>
+        ///
+        /// <para><b>macOS에 있는 "상식 범위 클램프"(화면 높이의 25%)를 여기에는 두지 않는다.</b>
+        /// 그 클램프는 macOS가 <b>서로 다른 두 API</b>(CGDisplayBounds + GetMonitorRect)를 빼서 값을
+        /// 만들기 때문에 생기는 <b>유도 오차</b>를 막는 장치다. 여기는 <b>같은 구조체 안의 두 필드</b>라
+        /// 그 오차가 발생할 경로 자체가 없고, 반대로 Windows에는 두꺼운 상단 도킹 툴바가 실제로 존재해
+        /// 클램프를 켜면 <b>진짜 예약 띠를 0으로 지워 그 위를 덮게 된다</b>(원칙 2 위반 방향).</para>
+        /// </summary>
+        public bool TryGetReservedTopInsetPoints(out float insetPoints)
+        {
+            insetPoints = 0f;
+            if (_overlayHwnd == IntPtr.Zero) return false;
+
+            IntPtr monitor = MonitorFromWindow(_overlayHwnd, MONITOR_DEFAULTTONEAREST);
+            if (monitor == IntPtr.Zero) return false;
+
+            var mi = new MONITORINFO { cbSize = (uint)Marshal.SizeOf<MONITORINFO>() };
+            if (!GetMonitorInfo(monitor, ref mi)) return false;
+
+            float thicknessPx = mi.rcWork.Top - mi.rcMonitor.Top;
+            // rcWork는 정의상 rcMonitor 안에 있다. 0 이하 = 상단에 예약된 띠가 없다는 확정 신호다.
+            if (thicknessPx <= 0f) return false;
+
+            float points = ScreenCoordinateConverter.UnityScreenToCanvas(thicknessPx, null);
+            if (float.IsNaN(points) || float.IsInfinity(points) || points <= 0f) return false;
+
+            insetPoints = points;
+
+            if (float.IsNaN(_lastLoggedTopInsetPoints)
+                || Mathf.Abs(points - _lastLoggedTopInsetPoints) > 0.5f)
+            {
+                _lastLoggedTopInsetPoints = points;
+                Debug.Log($"[Win32WindowService] 상단 예약 띠 실측 — 두께 {thicknessPx:F0}물리px " +
+                    $"= {points:F1}논리pt (rcMonitor.Top={mi.rcMonitor.Top}, rcWork.Top={mi.rcWork.Top}). " +
+                    "작업표시줄/툴바가 화면 위쪽에 도킹돼 있습니다 — 팝오버·정보창·설정창·톱니가 이 띠를 피합니다.");
             }
             return true;
         }

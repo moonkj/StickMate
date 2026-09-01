@@ -88,6 +88,7 @@ MonoBehaviour:
   hopDownDropThroughIgnoreDuration: 0.25
   hopDownEdgeCommitDistance: 0.12
   hopDownStepOffSpeedScale: 0.8
+  hopDownStepOffCarryEnabled: 1
   stepUpChance: 0.85
   stepUpMaxHeights: 1.0551
   parkourMantleInset: 0.6

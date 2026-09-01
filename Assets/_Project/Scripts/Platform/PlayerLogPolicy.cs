@@ -49,7 +49,22 @@ namespace StickMate.Platform
     {
         private static bool _applied;
         private static bool _suppressing;
-        private static bool _routineNarration = true;
+
+        /// <summary>
+        /// ★ 2026-09-02 — <b>스냅샷이 아니라 설정 자산 참조를 들고 있는다.</b>
+        ///
+        /// <para>예전에는 <see cref="Configure"/>가 <c>bool</c> 하나를 복사해 뒀는데, 그 함수의
+        /// 호출처가 <c>Platform/FootholdPoller.cs</c> 생성자 <b>단 한 곳</b>이라 값이 부팅 시점에
+        /// 얼어붙었다. 그래서 개발자 도구의 진단 로그 토글(<c>AppControlDirector</c>가
+        /// <c>StickConfig.verboseDiagnosticsLogging</c>을 런타임에 뒤집는다)이
+        /// <b>이 스위치에만 도달하지 못했다</b> — 실측: 토글을 켜고 3분을 기다려도
+        /// <c>[유휴동작]</c> 0줄인데 같은 3분에 <c>[발판리포트] 84줄 / [눈추적] 106줄</c>이 쏟아졌다.</para>
+        ///
+        /// <para>그 두 태그가 멀쩡했던 이유는 <c>MacOverlayStateEnforcer.VerboseDiagnostics</c>가
+        /// <b>설정을 매번 읽기</b> 때문이다. 여기도 같은 방식으로 맞춘다 — 스위치의 단일 진실 원천은
+        /// <c>StickConfig</c> 자산 하나이고, 복사본을 만들지 않는다.</para>
+        /// </summary>
+        private static Core.StickConfig _config;
 
         /// <summary>
         /// **상시 반복되는 동작 서술 로그**를 낼지 여부(= <c>StickConfig.verboseDiagnosticsLogging</c>).
@@ -70,7 +85,10 @@ namespace StickMate.Platform
         /// 되면 안 된다. 이 프로젝트는 2026-08-28에 같은 판단을 이미 한 적이 있고
         /// (<c>verboseDiagnosticsLogging</c> 도입), 이건 그 스위치의 재사용이다.</para>
         /// </summary>
-        public static bool RoutineNarrationEnabled => _routineNarration;
+        public static bool RoutineNarrationEnabled
+            // Unity Object의 == null은 파괴된 오브젝트까지 잡아 주므로 의도적으로 그대로 쓴다.
+            // 설정이 아직 배선되지 않은 기동 직후에는 true = "로그를 잃지 않는다"가 기본값이다.
+            => _config == null || _config.verboseDiagnosticsLogging;
 
         /// <summary>현재 정보성 로그(Log/Warning)의 스택트레이스가 꺼져 있는가(진단 로그가 함께 찍는다).</summary>
         public static bool InfoStackTracesSuppressed => _suppressing;
@@ -89,8 +107,8 @@ namespace StickMate.Platform
         /// <summary>StickConfig가 배선된 뒤 실제 설정값으로 다시 건다(Platform/FootholdPoller.cs가 부른다).</summary>
         public static void Configure(Core.StickConfig config)
         {
+            _config = config;
             Apply(config == null || config.suppressInfoLogStackTraces);
-            _routineNarration = config == null || config.verboseDiagnosticsLogging;
         }
 
         /// <summary>테스트가 상태를 되돌릴 때 쓴다.</summary>
@@ -98,7 +116,7 @@ namespace StickMate.Platform
         {
             _applied = false;
             _suppressing = false;
-            _routineNarration = true;
+            _config = null;
         }
 
         private static void Apply(bool suppress)
