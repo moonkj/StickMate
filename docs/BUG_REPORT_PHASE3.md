@@ -66,7 +66,7 @@
 
 ## Minor
 
-1. **`AttackState.ShotsRemaining`이 상시 0으로 고정되어 `>=1` 분기가 죽은 코드 + 라이벌 대결 맥락에서 의미상 어색함** — `States/AttackState.cs:54`. Phase 2 Minor 1(데모 텍스트 불일치)은 해소됐지만, 이번엔 반대 방향으로 파라미터 쪽이 편향됐다. 라이벌 스틱맨이 근접전 중 몇 번을 타격에 성공하든(각 타격이 독립된 단발 `Attack` 진입) 매번 "오늘은 여기까지"(원래 "탄약/기회 소진"을 뜻하는 대사)만 나와 "한창 싸우는 중"이라는 상황과 어울리지 않는다. 31-1 원칙(같은 함수·같은 스냅샷) 자체는 위반하지 않으므로 급하지 않지만, Phase 3+에서 라이벌 전투에 어울리는 별도 텍스트 매핑(또는 파라미터 갱신 로직)으로 교체를 권고.
+1. **`AttackState.ShotsRemaining`이 상시 0으로 고정되어 `>=1` 분기가 죽은 코드 + 라이벌 대결 맥락에서 의미상 어색함** — `States/AttackState.cs:54`. Phase 2 Minor 1(데모 텍스트 불일치)은 해소됐지만, 이번엔 반대 방향으로 파라미터 쪽이 편향됐다. 라이벌 스틱메이트이 근접전 중 몇 번을 타격에 성공하든(각 타격이 독립된 단발 `Attack` 진입) 매번 "오늘은 여기까지"(원래 "탄약/기회 소진"을 뜻하는 대사)만 나와 "한창 싸우는 중"이라는 상황과 어울리지 않는다. 31-1 원칙(같은 함수·같은 스냅샷) 자체는 위반하지 않으므로 급하지 않지만, Phase 3+에서 라이벌 전투에 어울리는 별도 텍스트 매핑(또는 파라미터 갱신 로직)으로 교체를 권고.
 2. **라이벌 대결 중 플레이어 쪽은 `Attack` 상태에 전혀 진입하지 않아 "서로 주먹질" 인상이 비대칭적** — `Interaction/RivalStickmanAgent.cs:135-166`(`TickCombatExchange`)의 `rivalStrikes` 분기 중 `true`(라이벌이 선타)일 때만 `TryPlayAttackAnimation()`(`:168-177`, 라이벌 자신의 `_machine.ChangeState(Attack)`)이 호출되고, `false`(플레이어가 선타, 즉 라이벌이 맞는 쪽)일 때는 `RagdollImpactResolver.TryApplyImpact()`만 호출될 뿐 플레이어의 `Blackboard.Machine.ChangeState(StickmanStateId.Attack)`은 코드 전체에서 단 한 번도 호출되지 않는다(grep 확인). UX 11절이 묘사하는 "서로 달려들어... 주먹질·발차기 오가는" 장면과 달리, 지금 로직상 라이벌만 시각적으로/상태적으로 공격 동작을 하고 플레이어는 (렌더링이 아직 없어 눈에 띄지 않지만) 상태머신 레벨에서도 절대 공격하지 않는다. 렌더링 레이어가 붙기 전에 상태머신 레벨에서 먼저 대칭을 맞춰두는 편(플레이어가 선타를 낼 때도 `_opponent.Blackboard.Machine.ChangeState(StickmanStateId.Attack)` 호출)을 권고 — 지금 고쳐두면 이후 애니메이션 작업이 두 배로 늘지 않는다.
 
 ---

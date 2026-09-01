@@ -99,7 +99,7 @@ Minor 8건은 즉시 반려 사유는 아니나 Phase 1 각 작업 착수 시 �
 
 ### BUG-M8 — `StateTransitionEvent`/`DialogueIntent`에 캐릭터(소스) 식별자가 없음 — 다중 캐릭터 시점에 필터링 불가
 - **파일:라인**: `Assets/_Project/Scripts/Core/StickmanEventBus.cs:21-41`, `Assets/_Project/Scripts/Dialogue/DialogueIntent.cs:47` (`_originMachine`이 private)
-- **재현 시나리오**: `StickmanEventBus`는 정적 클래스이므로 앱에 존재하는 **모든** `StickmanStateMachine` 인스턴스(플레이어 캐릭터 + Phase 3 라이벌 스틱맨들)가 같은 전역 이벤트를 공유한다. 그런데 `StateTransitionEvent`는 `From`/`To`/`IsForcedInterrupt`만 담고 "어느 캐릭터의 전이인가"를 담지 않는다. `DialogueIntent`도 `_originMachine`을 갖고 있지만 `private`이라 외부에서 "이 대사가 어느 캐릭터 것인지" 알 수 없다. Phase 3에서 "플레이어가 Ragdoll에 들어갈 때만 피격 효과음 재생"처럼 캐릭터별로 반응을 분기하려는 순간 이 설계로는 불가능해 이벤트 구조를 다시 뜯어고쳐야 한다.
+- **재현 시나리오**: `StickmanEventBus`는 정적 클래스이므로 앱에 존재하는 **모든** `StickmanStateMachine` 인스턴스(플레이어 캐릭터 + Phase 3 라이벌 스틱메이트들)가 같은 전역 이벤트를 공유한다. 그런데 `StateTransitionEvent`는 `From`/`To`/`IsForcedInterrupt`만 담고 "어느 캐릭터의 전이인가"를 담지 않는다. `DialogueIntent`도 `_originMachine`을 갖고 있지만 `private`이라 외부에서 "이 대사가 어느 캐릭터 것인지" 알 수 없다. Phase 3에서 "플레이어가 Ragdoll에 들어갈 때만 피격 효과음 재생"처럼 캐릭터별로 반응을 분기하려는 순간 이 설계로는 불가능해 이벤트 구조를 다시 뜯어고쳐야 한다.
 - **근본 원인**: Phase 0 설계 시점에 단일 캐�릭터만 가정하고 캐릭터 식별자 필드를 예약해두지 않음.
 - **판단**: Phase 1/2를 막을 사안은 아니다(아직 단일 캐릭터). 다만 나중에 struct에 필드를 추가하는 비용은 지금 추가하는 비용보다 훨씬 크므로(모든 구독자 코드가 이미 옛 시그니처에 맞춰 작성된 뒤 변경해야 함), Phase 3 착수 훨씬 전인 지금 필드만 예약해두는 것을 권고.
 - **수정 제안**: `StateTransitionEvent`에 `object OwnerId`(또는 `StickmanStateMachine OwnerMachine`) 필드를 추가하고, `DialogueIntent`에 `public StickmanStateMachine OriginMachine`처럼 읽기 전용 공개 프로퍼티를 하나 노출한다(단, BUG-M1 수정과 함께 캡슐화 수준을 맞출 것).

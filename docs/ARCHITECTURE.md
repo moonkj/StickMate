@@ -7,7 +7,7 @@
 - Active Ragdoll: Rigidbody2D 관절 구조에 목표 포즈로의 토크를 가해 평소엔 "걷는 것처럼" 보이되, 외력(던짐/피격/낙하)이 가해지면 그대로 물리에 맡겨 자연스럽게 널브러지고, 힘이 잦아들면 다시 일어나 걷는 상태로 복귀.
 - **결정: 하이브리드.** 상태 머신이 `IDLE/WALK/JUMP/FALL/PARKOUR_CLIMB/ATTACK` 등 "능동 상태"일 때는 IK/모터로 포즈 제어, `RAGDOLL`(피격/던짐/낙하 충격) 상태로 전이되면 전신 물리에 위임하고 일정 속도 이하로 감속되면 자동으로 `GETUP` → 능동 상태로 복귀.
 - 근거 링크:
-  - [Pivot Animator 스틱맨 애니메이션 가이드](https://www.vidnoz.com/ai-solutions/stickman-walking.html)
+  - [Pivot Animator 스틱메이트 애니메이션 가이드](https://www.vidnoz.com/ai-solutions/stickman-walking.html)
   - [Alan Zucconi — Procedural Animation 개론](https://www.alanzucconi.com/2017/04/17/procedural-animations/)
   - [Sergio Abreu — Unity Active Ragdoll 제작기](https://sergioabreu-g.medium.com/how-to-make-active-ragdolls-in-unity-35347dcb952d)
   - [2D Stickman Active Ragdoll (Unity, 유튜브 튜토리얼)](https://www.youtube.com/watch?v=q_enFap8Pr8)
@@ -34,7 +34,7 @@ iOS/iPadOS는 앱 샌드박스 정책상 "다른 앱 창 열거"·"시스템 전
 | 비침해 | 클릭 관통 기본 ON / 대결모드 시 전환 | P0 |
 | 비침해 | 전체화면 게임 감지 → 자동 숨김 | P0 |
 | 전투 | 격파 미니게임(기 모으기+타이밍 클릭) | P1 |
-| 전투 | 라이벌 스틱맨 AI 추적/공격 | P1 |
+| 전투 | 라이벌 스틱메이트 AI 추적/공격 | P1 |
 | OS 장난 | 창 끌기 시늉/아이콘 정렬 시늉/그라피티 (전부 read-only 시각 연출) | P1 |
 | 파괴효과 | 윈도우 크래시(3초 원복)/블랙홀 | P2 |
 | 커서 상호작용 | 로데오 커서/커서 공격/드래그&던지기 | P1 |

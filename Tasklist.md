@@ -43,11 +43,11 @@
 | 작업 | 담당 | 상태 | 메모 |
 |---|---|---|---|
 | UX: 격파 미니게임 플로우/와이어프레임 | UX Designer | 완료 | UX_FLOW.md 10절 — 기 모으기 게이지/스위트스팟/실패 재도전 3회 정의 |
-| UX: 라이벌 스틱맨 조우 연출/탈출 규칙 | UX Designer | 완료 | UX_FLOW.md 11절 — 관전 전용 확정, 스폰확률/쿨다운/최대30초 정의 |
+| UX: 라이벌 스틱메이트 조우 연출/탈출 규칙 | UX Designer | 완료 | UX_FLOW.md 11절 — 관전 전용 확정, 스폰확률/쿨다운/최대30초 정의 |
 | UX: 드래그&던지기 상호작용 규칙 | UX Designer | 완료 | UX_FLOW.md 12절 — 속도 clamp/스무딩, 부분적 클릭관통 해제 요구사항 포함 |
 | UX: 로데오 커서 / 인질극 긴급탈출 상세 | UX Designer | 완료 | UX_FLOW.md 13절(로데오)·14절(인질극 4중 안전망)·15절(부분적 클릭관통 해제 통합), 6-5절과 정합 확인 완료 |
 | 격파 미니게임(기 모으기+타이밍) | Coder | 완료 | **[Coder, 2026-08-27, Phase 3 구현 완료]** 신규 `States/BattleMinigameState.cs`(`StickmanStateId.BattleMinigame` 추가) — Charging(1.5~2s 랜덤, 재시도마다 재추첨)/Resolving 2단계 내부 상태머신. 클릭 판정 대상은 실제 오브젝트 스프라이트 대신 캐릭터 자신의 히트박스를 재사용(UX 10절 "캐릭터/오브젝트의 화면 히트박스" 중 "캐릭터" 쪽 — 소환 오브젝트 렌더링은 Phase 2+ 담당, WanderAmbientMotionRequested류 "트리거 조건은 지금, 비주얼은 나중" 패턴 재사용). 스위트스팟 70~85%(`StickConfig.battleSweetSpotStart/End`), 실패 시 1.5초 후 자동 재시작, 최대 3회(`battleMaxRetries`) 초과 시 소진 종료, 이벤트 시작 후 5초(`battleInputTimeoutSeconds`) 무클릭이면 자동 취소. Enter() 고정 대사 "좋아, 간다"(10절 원문 그대로) 구현, 성공/실패/소진 결과는 신규 `StickmanEventBus.BattleMinigamePhaseChanged`로만 통지(**알려진 설계 한계**: UX_FLOW.md 31-2 표 #5의 "릴리즈 순간 chargeRatio 기반 대사"는 그 스냅샷 시점이 `Enter()`가 아니라 `Tick()` 도중이라 "DialogueIntent는 Enter() 안에서만" 원칙(9절-1/31-1)과 구조적으로 충돌 — 표 자체도 "지금 구현 대상 아님"이라 명시했으므로 이번 라운드엔 텍스트를 만들지 않고 이벤트만 발행, Architect/UX 조율 요청 아래 교차 레이어 로그 참고). 클릭 입력/자동발동/유휴판정/락 획득은 신규 `Interaction/BattleMinigameDirector.cs`(MonoBehaviour)가 전담 — `Interaction/StickmanClickHitbox.MouseDown`을 구독해 `blackboard.BattleClickSignaled` 펄스로 상태에 전달, `SpectacleEventLock`+`Platform.ILocalClickCaptureService`를 함께 획득한 뒤에만 `ChangeState(BattleMinigame)` 호출, `StateTransitioned(From==BattleMinigame)` 구독으로 두 락을 자동 해제. 트레이 긴급정지(`GlobalEmergencyStopRequested`) 구독해 소유 중이면 즉시 강제 Idle 전이. `TriggerManually()` 공개 메서드로 트레이 메뉴 수동 발동 지점 마련. **[Debugger, 2026-08-27]** 격파 미니게임 self-transition(Architect 지시, 위 교차 레이어 로그) 미반영 확인 — `BattleMinigameState.ResolveOutcome()`이 여전히 `Tick()` 도중 이벤트만 발행하고 자기-전이/`chargeRatio` 대사를 만들지 않는다. 커밋 메시지가 "다음 라운드"로 명시했으므로 버그는 아니나 다음 라운드 최우선 이월 확인. `BattleMinigameDirector`는 BUG-P3-M1(Major, `OnDisable()`에서 SpectacleEventLock/ILocalClickCaptureService 미반환)의 대상 중 하나 — 상세: `docs/BUG_REPORT_PHASE3.md`. **[Coder, 2026-08-27, 2차 반영]** BUG-P3-M1 반영 — `BattleMinigameDirector.OnDisable()`에 `ReleaseOwnedLocks()` 추가(소유 중이면 캐릭터를 Idle로 강제 복귀시킨 뒤 `SpectacleEventLock`+`ILocalClickCaptureService` 둘 다 해제, 두 Release 계열 메서드 모두 소유자 확인 후 no-op이라 중복 호출해도 안전). Architect 지시(self-transition, 위 교차 레이어 로그) 반영 — `BattleMinigameState.TickCharging()`이 판정을 직접 내리지 않고 `TriggerResolution()`으로 `chargeRatio` 스냅샷만 기록한 뒤 `Machine.ChangeState(BattleMinigame, isForcedInterrupt:false)`로 자기 자신에게 재전이시키며, 재실행된 `Enter()`의 신규 `ResolveOutcome()`이 성공/실패/재도전/소진 판정과 `StickmanEventBus.BattleMinigamePhaseChanged` 통지, `chargeRatio` 기반 `DialogueIntent`(≥0.9 "필살기다!"/미만 "어... 어라?", UX 31-2 표 #5 원문)를 함께 만든다 — RagdollState의 반복 피격 self-transition과 동일 컨벤션(`BattleMinigameState`에 `IHasDialogueParams` 구현 추가). **부수 발견 및 수정**: self-transition은 From==To==BattleMinigame인 `StateTransitioned`도 발행하므로, 기존 `BattleMinigameDirector.OnStateTransitioned()`가 이를 "빠져나감"으로 오판해 릴리즈 순간마다 락을 조기 해제하는 신규 결함을 유발할 뻔했음 — `evt.To==BattleMinigame`이면 조기 반환하도록 함께 수정해 예방. Unity 배치모드 클린 재빌드(Library/ScriptAssemblies·Bee·PlayerDataCache 삭제 후 재컴파일 확인) 에러0/경고0 + EditMode 8/8 통과 재확인. |
-| 라이벌 스틱맨 AI | Coder | 완료 | **[Coder, 2026-08-27, Phase 3 구현 완료]** 지시대로 플레이어의 `AutoWanderController`를 재사용하지 않고 완전히 별도로 구현. 신규 `Interaction/RivalStickmanAgent.cs`(MonoBehaviour, `[RequireComponent(Rigidbody2D)]`) — 플레이어(`StickmanAgent`)와 **별개의 `StickmanBlackboard`/`StickmanStateMachine` 인스턴스**를 갖되 `FootholdPoller`/`MainCamera`는 참조 공유(발판 재열거 없이 "두 캐릭터가 발판을 공유" 요구사항 충족). `Idle/Walk/Fall/Attack/Ragdoll/Getup` 6종만 등록(점프/파쿠르는 최소 스코프 제외 — `RivalPursuitIntentSource.JumpRequested`가 항상 false). 신규 `Interaction/RivalPursuitIntentSource.cs`(`IMovementIntentSource` 구현, 목표=플레이어 위치, `rivalStopDistance` 이내면 정지)가 유일한 추적 로직. 스폰 확률(3~5%, `rivalSpawnChance`)/쿨다운(20분, `rivalSpawnCooldownSeconds`)/최대지속(30초, `rivalMaxDurationSeconds`)/유효발판 부족 시 이연(`rivalSpawnMinFootholds`)/10절과 상호배제는 신규 `Interaction/RivalEncounterDirector.cs`(MonoBehaviour)가 전담 — `SpectacleEventLock`만 사용(11절 "관전 전용, 부분적 클릭관통 해제 불필요"를 코드로도 강제 — `ILocalClickCaptureService` 참조가 이 기능 전체에 단 한 줄도 없음). 근접 시 전투 교환은 `RivalStickmanAgent`가 "심판" 역할로 직접 판정(무작위 50:50 선타, `rivalAttackCooldownSeconds` 쿨다운) — 라이벌이 맞을 때는 `States.RagdollImpactResolver`(신규 공용 헬퍼, 아래 참고)로 자기 자신에게, 플레이어가 맞을 때는 반드시 `StickmanAgent.ReportExternalImpact()`(공개 메서드, Suspended 가드 유지) 경유. 충격량은 `ragdollForceThreshold * rivalAttackImpactMultiplier`로 계산해 항상 RAGDOLL 전이를 보장. `rivalDuelHitsToLose`(기본 2회) 피격 시 해당 진영 패배, 최대지속 도달 시 무승부 — `StickmanEventBus.RivalDuelStarted/Ended(RivalDuelResult)` 발행. **UX 11절 "전체화면 감지 시 즉시 취소" 준수**: 라이벌은 플레이어 `StickmanStateMachine`에 속하지 않아 `StickmanAgent.Suspend()`의 일반 처리 대상이 아니므로, 신규 공개 게터 `StickmanAgent.IsSuspended`를 매 프레임 직접 폴링해 true면 즉시 무승부 종료(`Draw`)로 구현. `AttackState`도 이 기능의 유일한 실사용처라 이번에 완성(아래 "DialogueIntent" 관련 별도 기재 없이 이 행에서 함께 보고: 파라미터 없는 생성자를 블랙보드 주입형으로 전환, `Tick()`에 `attackDuration` 경과 시 `context.From`으로 기억해둔 진입 직전 상태로 복귀하는 로직을 신규 구현 — 예전엔 Tick()이 완전히 비어 있어 한 번 Attack에 들어가면 영원히 못 나오는 상태였음, `docs/BUG_REPORT_PHASE2.md` Minor 1 지적사항(데모 텍스트가 UX 31-2 표와 다름)도 함께 해소해 대사 리터럴을 "한 발 더!"/"오늘은 여기까지"로 표와 일치시킴). **[Debugger, 2026-08-27]** 별도 StickmanBlackboard/StickmanStateMachine 인스턴스로 완전히 독립됨을 확인 — `DialogueIntent`의 만료 판정이 인스턴스별 `_originMachine.CurrentTransitionGeneration`만 비교해 정적 `StickmanEventBus`를 공유해도 라이벌↔플레이어 대사 상호오염 없음(코드로 직접 검증). `IsSuspended` 폴링도 정확히 플레이어(`_opponent`)를 참조. 다만 (1) `RivalEncounterDirector`도 BUG-P3-M1(Major) 대상 — `OnDisable()`에서 SpectacleEventLock 미반환. (2) Minor 2 — `TickCombatExchange()`가 라이벌 선타일 때만 `TryPlayAttackAnimation()`으로 라이벌 자신의 Attack을 트리거하고, 플레이어가 선타일 때는 플레이어 쪽 `Blackboard.Machine.ChangeState(Attack)`을 전혀 호출하지 않아(grep 확인) 대결이 시각적으로 비대칭("라이벌만 공격한다"). 상세: `docs/BUG_REPORT_PHASE3.md`. **[Coder, 2026-08-27, 2차 반영]** BUG-P3-M1 반영 — `RivalEncounterDirector.OnDisable()`에 `ReleaseOwnedLock()` 추가(소유 중이면 `_rival.ForceEndDuel()`로 대결을 무승부 종료시킨 뒤 `SpectacleEventLock` 해제, 멱등). Minor 1(ShotsRemaining 상시 0) 반영 — 신규 `StickmanBlackboard.AttackShotsRemaining` 필드를 추가해 `AttackState.Enter()`가 하드코딩 0 대신 이 값을 읽게 하고, `RivalStickmanAgent.TryPlayAttackAnimation()`이 `ChangeState(Attack)` 직전에 `rivalDuelHitsToLose - (지금까지 맞은 횟수) - 1`을 계산해 채워 넣는다 — 결정타가 아니면 "한 발 더!", 결정타면 "오늘은 여기까지"로 대결 진행 상황에 맞게 갈린다(31-1 스냅샷 원칙 그대로 유지, 값은 ChangeState 호출 직전 한 번만 기록). Minor 2(플레이어 쪽 Attack 미발동 비대칭) 반영 — 신규 `TryPlayOpponentAttackAnimation()` 추가: 플레이어가 선타를 낼 때(현재 Idle/Walk일 때만, 라이벌 쪽 가드와 동일) `_opponent.Blackboard.Machine.ChangeState(StickmanStateId.Attack)`을 호출해 플레이어도 대칭으로 Attack 모션 상태에 진입시킨다(같은 ShotsRemaining 스냅샷 규칙 적용, `attackDuration` 경과 후 플레이어 AttackState가 스스로 원복하므로 별도 후처리 불필요). Unity 배치모드 클린 재빌드 에러0/경고0 + EditMode 8/8 통과 재확인. |
+| 라이벌 스틱메이트 AI | Coder | 완료 | **[Coder, 2026-08-27, Phase 3 구현 완료]** 지시대로 플레이어의 `AutoWanderController`를 재사용하지 않고 완전히 별도로 구현. 신규 `Interaction/RivalStickmanAgent.cs`(MonoBehaviour, `[RequireComponent(Rigidbody2D)]`) — 플레이어(`StickmanAgent`)와 **별개의 `StickmanBlackboard`/`StickmanStateMachine` 인스턴스**를 갖되 `FootholdPoller`/`MainCamera`는 참조 공유(발판 재열거 없이 "두 캐릭터가 발판을 공유" 요구사항 충족). `Idle/Walk/Fall/Attack/Ragdoll/Getup` 6종만 등록(점프/파쿠르는 최소 스코프 제외 — `RivalPursuitIntentSource.JumpRequested`가 항상 false). 신규 `Interaction/RivalPursuitIntentSource.cs`(`IMovementIntentSource` 구현, 목표=플레이어 위치, `rivalStopDistance` 이내면 정지)가 유일한 추적 로직. 스폰 확률(3~5%, `rivalSpawnChance`)/쿨다운(20분, `rivalSpawnCooldownSeconds`)/최대지속(30초, `rivalMaxDurationSeconds`)/유효발판 부족 시 이연(`rivalSpawnMinFootholds`)/10절과 상호배제는 신규 `Interaction/RivalEncounterDirector.cs`(MonoBehaviour)가 전담 — `SpectacleEventLock`만 사용(11절 "관전 전용, 부분적 클릭관통 해제 불필요"를 코드로도 강제 — `ILocalClickCaptureService` 참조가 이 기능 전체에 단 한 줄도 없음). 근접 시 전투 교환은 `RivalStickmanAgent`가 "심판" 역할로 직접 판정(무작위 50:50 선타, `rivalAttackCooldownSeconds` 쿨다운) — 라이벌이 맞을 때는 `States.RagdollImpactResolver`(신규 공용 헬퍼, 아래 참고)로 자기 자신에게, 플레이어가 맞을 때는 반드시 `StickmanAgent.ReportExternalImpact()`(공개 메서드, Suspended 가드 유지) 경유. 충격량은 `ragdollForceThreshold * rivalAttackImpactMultiplier`로 계산해 항상 RAGDOLL 전이를 보장. `rivalDuelHitsToLose`(기본 2회) 피격 시 해당 진영 패배, 최대지속 도달 시 무승부 — `StickmanEventBus.RivalDuelStarted/Ended(RivalDuelResult)` 발행. **UX 11절 "전체화면 감지 시 즉시 취소" 준수**: 라이벌은 플레이어 `StickmanStateMachine`에 속하지 않아 `StickmanAgent.Suspend()`의 일반 처리 대상이 아니므로, 신규 공개 게터 `StickmanAgent.IsSuspended`를 매 프레임 직접 폴링해 true면 즉시 무승부 종료(`Draw`)로 구현. `AttackState`도 이 기능의 유일한 실사용처라 이번에 완성(아래 "DialogueIntent" 관련 별도 기재 없이 이 행에서 함께 보고: 파라미터 없는 생성자를 블랙보드 주입형으로 전환, `Tick()`에 `attackDuration` 경과 시 `context.From`으로 기억해둔 진입 직전 상태로 복귀하는 로직을 신규 구현 — 예전엔 Tick()이 완전히 비어 있어 한 번 Attack에 들어가면 영원히 못 나오는 상태였음, `docs/BUG_REPORT_PHASE2.md` Minor 1 지적사항(데모 텍스트가 UX 31-2 표와 다름)도 함께 해소해 대사 리터럴을 "한 발 더!"/"오늘은 여기까지"로 표와 일치시킴). **[Debugger, 2026-08-27]** 별도 StickmanBlackboard/StickmanStateMachine 인스턴스로 완전히 독립됨을 확인 — `DialogueIntent`의 만료 판정이 인스턴스별 `_originMachine.CurrentTransitionGeneration`만 비교해 정적 `StickmanEventBus`를 공유해도 라이벌↔플레이어 대사 상호오염 없음(코드로 직접 검증). `IsSuspended` 폴링도 정확히 플레이어(`_opponent`)를 참조. 다만 (1) `RivalEncounterDirector`도 BUG-P3-M1(Major) 대상 — `OnDisable()`에서 SpectacleEventLock 미반환. (2) Minor 2 — `TickCombatExchange()`가 라이벌 선타일 때만 `TryPlayAttackAnimation()`으로 라이벌 자신의 Attack을 트리거하고, 플레이어가 선타일 때는 플레이어 쪽 `Blackboard.Machine.ChangeState(Attack)`을 전혀 호출하지 않아(grep 확인) 대결이 시각적으로 비대칭("라이벌만 공격한다"). 상세: `docs/BUG_REPORT_PHASE3.md`. **[Coder, 2026-08-27, 2차 반영]** BUG-P3-M1 반영 — `RivalEncounterDirector.OnDisable()`에 `ReleaseOwnedLock()` 추가(소유 중이면 `_rival.ForceEndDuel()`로 대결을 무승부 종료시킨 뒤 `SpectacleEventLock` 해제, 멱등). Minor 1(ShotsRemaining 상시 0) 반영 — 신규 `StickmanBlackboard.AttackShotsRemaining` 필드를 추가해 `AttackState.Enter()`가 하드코딩 0 대신 이 값을 읽게 하고, `RivalStickmanAgent.TryPlayAttackAnimation()`이 `ChangeState(Attack)` 직전에 `rivalDuelHitsToLose - (지금까지 맞은 횟수) - 1`을 계산해 채워 넣는다 — 결정타가 아니면 "한 발 더!", 결정타면 "오늘은 여기까지"로 대결 진행 상황에 맞게 갈린다(31-1 스냅샷 원칙 그대로 유지, 값은 ChangeState 호출 직전 한 번만 기록). Minor 2(플레이어 쪽 Attack 미발동 비대칭) 반영 — 신규 `TryPlayOpponentAttackAnimation()` 추가: 플레이어가 선타를 낼 때(현재 Idle/Walk일 때만, 라이벌 쪽 가드와 동일) `_opponent.Blackboard.Machine.ChangeState(StickmanStateId.Attack)`을 호출해 플레이어도 대칭으로 Attack 모션 상태에 진입시킨다(같은 ShotsRemaining 스냅샷 규칙 적용, `attackDuration` 경과 후 플레이어 AttackState가 스스로 원복하므로 별도 후처리 불필요). Unity 배치모드 클린 재빌드 에러0/경고0 + EditMode 8/8 통과 재확인. |
 | 드래그&던지기(커서 물리 상호작용) | Coder | 완료 | **[Coder, 2026-08-27, Phase 3 구현 완료]** 신규 `States/DragThrowState.cs`(`StickmanStateId.Dragged` 추가) — `Enter()`에서 `Rigidbody2D.bodyType`을 Kinematic으로 전환(지시대로 "Kinematic 전환 고려"), `Vector2.SmoothDamp`(`dragFollowSmoothTime`)로 커서를 스프링·댐퍼 관성감 있게 추종. 원형 버퍼(32슬롯, 매 프레임 할당 없음)에 (위치,시각) 표본을 쌓아 놓치는 순간 `dragThrowVelocitySampleWindowSeconds`(0.12초, UX 명시값) 구간 평균 속도를 계산 → `dragThrowMaxSpeed`로 clamp(**"실종 버그" 방지** — 기획서 0번 항목이 지목한 버그 유형과 같은 계열, 상한 없이 던지면 화면 밖으로 사라져 안 돌아오는 신뢰 문제로 직결) → Dynamic 복귀 + 그 속도로 던짐. 던진 속도(질량 곱=충격량)가 `ragdollForceThreshold` 이상이면 즉시 Ragdoll로 자연 전이, 미만이면 평범한 Fall(포물선 낙하) — 신규 공용 헬퍼 `States/RagdollImpactResolver.cs`로 이 판정식을 통일(아래 교차 레이어 로그 참고). 종료 경로 3가지 모두 구현: (1) `DragReleaseSignaled` 펄스(마우스업/트레이긴급정지 공용), (2) `dragThrowMaxHoldSeconds`(10초) 초과, (3) 커서 좌표 조회 실패(화면/모니터 경계 이탈로 간주 → 마지막 유효 위치에서 자유낙하). 진입/해제/락 배선은 신규 `Interaction/DragThrowController.cs`가 전담(`StickmanClickHitbox`+`ILocalClickCaptureService`+`SpectacleEventLock`, 매 프레임 히트박스 영역 갱신으로 15절 제약1 "동적 히트박스 추적" 충족). **알려진 한계**: 창(발판) 충돌 시 국소 충격 파티클/흔들림(12절)은 발판이 가상 판정(Collider2D 없음, Phase 2에서 이미 기록된 한계)이라 이번에 구현하지 못함 — 렌더링 레이어가 붙을 때 발판 사각형과의 거리 기반 근사 판정 추가 설계 필요(코드 주석에 명시). **[Debugger, 2026-08-27]** `Enter()`/`Exit()`의 Kinematic↔Dynamic 페어링이 SpectacleEventLock 해제/`Suspend()`의 강제 Idle 전이/RAGDOLL 강제인터럽트 세 경로 모두에서 `StickmanStateMachine.ChangeState()`의 Exit-먼저-Enter-나중 순서 덕에 항상 정확히 복구됨을 코드로 확인 — 드래그 도중 전체화면 감지/외력 초과 둘 다 안전. Kinematic 바디는 gravityScale 영향을 받지 않아 BUG-P2-M1류 속도 누적 위험도 없음. `DragThrowController`도 BUG-P3-M1(Major) 대상 — 상세: `docs/BUG_REPORT_PHASE3.md`. **[Coder, 2026-08-27, 2차 반영]** BUG-P3-M1 반영 — `DragThrowController.OnDisable()`에 `ReleaseOwnedLocks()` 추가(소유 중이면 캐릭터를 Idle로 강제 복귀시켜 `Exit()`의 Kinematic→Dynamic 방어적 복구를 그대로 태운 뒤 `SpectacleEventLock`+`ILocalClickCaptureService` 둘 다 해제, 멱등). Unity 배치모드 클린 재빌드 에러0/경고0 + EditMode 8/8 통과 재확인. |
 | 로데오 커서 | Coder | 완료 | **[Coder, 2026-08-27, Phase 3 구현 완료]** 지시대로 클릭 불필요 — 신규 `States/RodeoCursorState.cs`(`StickmanStateId.RodeoCursor` 추가)는 `ILocalClickCaptureService`를 전혀 참조하지 않는다(13절 "부분적 클릭관통 해제 대상 아님" 명시를 코드 구조로도 강제). 트리거 감시는 신규 `Interaction/RodeoCursorWatcher.cs`가 9절-3 기존 전역 커서 폴링 채널(`StickmanAgent.TryGetCursorPosition`)만 재사용해 담당(신규 폴링 채널 없음) — 커서가 `rodeoStillRadiusPx`(5px) 안에서 `rodeoStillTriggerSeconds`(5초) 이상 정지 + 캐릭터와의 OS화면거리가 `rodeoReachDistancePx` 이내(도달 가능)일 때만 발동. 상태는 Mounting(`rodeoMountDurationSeconds` 동안 Lerp 접근, ParkourClimbState 등반 Lerp와 동일 컨벤션)→Mounted(Kinematic으로 커서 위치 직접 추종) 2단계. **3중 안전망 전부 구현**: (1) 암묵적 — 커서 이동속도가 `rodeoShakeSpeedThresholdWorldPerSec` 이상이면 "거친 흔들기"로 판정, `RagdollImpactResolver`에 `ragdollForceThreshold * rodeoShakeImpactMultiplier`(확정적으로 임계값 초과)를 흘려 반드시 Ragdoll 전이(13절 "낙하→RAGDOLL→GETUP", 실패 아닌 코믹 리액션 톤은 기존 RagdollState 충격강도별 대사가 그대로 담당). (2) 타임아웃 — `rodeoMaxDurationSeconds`(10초) 도달 시 정상 종료(5절 (a) 경로). (3) 트레이 긴급정지 — `RodeoCursorWatcher`가 `GlobalEmergencyStopRequested`를 구독해 소유 중이면 즉시 Idle 강제 전이(Phase 0에서 예약해둔 이벤트 슬롯을 Phase 3에서 처음 실제로 구독/발행하는 사례). **[Debugger, 2026-08-27]** 3중 안전망 전부 실제로 동작함을 확인. `RodeoCursorWatcher`도 BUG-P3-M1(Major) 대상 — `OnDisable()`에서 SpectacleEventLock 미반환. 상세: `docs/BUG_REPORT_PHASE3.md`. **[Coder, 2026-08-27, 2차 반영]** BUG-P3-M1 반영 — `RodeoCursorWatcher.OnDisable()`에 `ReleaseOwnedLock()` 추가(기존 `OnEmergencyStop()`과 동일한 판정을 재사용 — 소유 중이면서 아직 RodeoCursor 상태면 Idle로 강제 복귀시킨 뒤 `SpectacleEventLock` 해제, 멱등). Unity 배치모드 클린 재빌드 에러0/경고0 + EditMode 8/8 통과 재확인. |
 | 부분적 클릭관통 해제 (선행 인프라) | Coder | 완료 | **[Coder, 2026-08-27]** UX_FLOW.md 15절 계약 구현 — 상세는 아래 교차 레이어 로그 "부분적 클릭관통 해제 실제 구현 한계" 항목 참고. 요약: OS 레벨 히트테스트는 BUG-B1(진짜 분리 오버레이 미구현)에 가로막혀 아직 불가능하고 그 사실을 `Platform/ILocalClickCaptureService.cs` 문서 상단에 명시적으로 기록, 대신 (a) 단일 소유자 락 + 동적 영역 부기(`Platform/LocalClickCaptureGate.cs`, Win32/Null/Fallback 3개 구현체)와 (b) Unity 게임 오브젝트 레벨 클릭 감지(`Interaction/StickmanClickHitbox.cs`, `OnMouseDown`/`OnMouseUp`)를 완성해 격파 미니게임/드래그&던지기 두 기능이 실제로 동작하게 함. 4개 스펙터클 이벤트(격파/라이벌/드래그/로데오) 간 상호배제는 별도의 `Core/SpectacleEventLock.cs`로 구현(15절-4/16절-10/15 요구사항 통합 충족). **[Debugger, 2026-08-27]** 단일 소유자 락 자체(동시 요청 시 하나만 성공)는 Unity 단일 스레드 실행 특성상 결정론적으로 정확함을 확인. 클릭관통이 실제로는 지금 전역적으로 꺼져 있는 상태(`Win32WindowService.SetClickThrough`가 `NotSupportedException`으로 항상 차단됨, `StickmanAgent.Start()`가 이를 잡아 로그만 남김)임을 코드로 재확인 — "영역 밖 100% 관통" 요구사항이 지금 당장 깨질 위험은 실질적으로 없다는 문서 주장은 사실. 단, 이 락도 소유자(Director)가 `OnDisable()`/`OnDestroy()`될 때 반환되지 않는 BUG-P3-M1(Major)의 대상 — 상세: `docs/BUG_REPORT_PHASE3.md`. **[Coder, 2026-08-27, 2차 반영]** BUG-P3-M1은 이 공용 락 클래스(`SpectacleEventLock`/`LocalClickCaptureGate`) 자체의 결함이 아니라 4개 Director 호출부의 누락이었음을 재확인 — `Release()`/`ReleaseCapture()`가 이미 소유자 확인 후 no-op하는 멱등 가드를 갖고 있어 클래스는 무수정, 4개 Director(격파/라이벌/드래그/로데오) 각각의 `OnDisable()`에 해제 호출을 추가하는 것으로 해결했다(각 행 참고). |
@@ -141,7 +141,7 @@
   - **(BUG-M1, Major)** Coder가 98번 로그에서 스스로 지목한 `default(StateTransitionContext)` 우회는 실제 위험의 일부에 불과함 — `StateTransitionContext` 생성자와 `StickmanStateMachine.CurrentTransitionGeneration`이 모두 `public`이라, `default()`가 아니라 **머신 참조 하나만 있으면 `Enter()` 밖 어디서든 "진짜처럼 통과하는" 컨텍스트를 위조**할 수 있어 원칙 1(행동-텍스트 싱크) 방어선이 실질적으로 뚫려 있음. Phase 2까지 기다리지 말고 지금 생성자/프로퍼티 접근 제한자를 좁히는 최소 수정을 권고(상세: 리포트 BUG-M1).
   - **(BUG-M2, Major)** `ChangeState()`가 `_states[next]` 조회를 `Exit()`/세대 증가 이후에 수행해 원자적이지 않음 — 미등록 키 호출 시 상태머신이 "좀비" 상태로 영구 고착되는 상태머신 데드락 위험(상세: 리포트 BUG-M2). Phase 1 IDLE/WALK/JUMP/FALL 배선 전 `TryGetValue` 선검증 추가 권고.
   - **(BUG-M4, Major)** `ScreenshotBackdropPlatformService.SetBackdropScreenshot()`이 "새 배경으로 교체"와 "이전 세션 상태 복원"을 구분하지 못해 무조건 발판을 초기화함 — 모바일 영속화(재실행 시 이전 배경/발판 복원)가 붙는 순간 앱을 켤 때마다 발판 재지정 온보딩이 강제로 뜨는 심각한 UX 회귀가 될 수 있음(상세: 리포트 BUG-M4). Phase 1에서 모바일 영속화를 다루게 되면 착수 전 필수 확인.
-  - **(BUG-M8, Major, 정보 공유)** `StateTransitionEvent`/`DialogueIntent`에 캐릭터(소스) 식별자가 전혀 없음 — 위 UX Designer의 "라이벌 스틱맨 조우"(Phase 3) 설계와 맞물려, 다중 `StickmanStateMachine`이 공존하는 시점에 "이 전이/대사가 어느 캐릭터 것인지" 구분이 구조적으로 불가능함. 필드 추가 비용이 지금이 가장 싸므로 Phase 3 착수 훨씬 전인 지금 자리만 예약해둘 것을 제안(상세: 리포트 BUG-M8).
+  - **(BUG-M8, Major, 정보 공유)** `StateTransitionEvent`/`DialogueIntent`에 캐릭터(소스) 식별자가 전혀 없음 — 위 UX Designer의 "라이벌 스틱메이트 조우"(Phase 3) 설계와 맞물려, 다중 `StickmanStateMachine`이 공존하는 시점에 "이 전이/대사가 어느 캐릭터 것인지" 구분이 구조적으로 불가능함. 필드 추가 비용이 지금이 가장 싸므로 Phase 3 착수 훨씬 전인 지금 자리만 예약해둘 것을 제안(상세: 리포트 BUG-M8).
   - 나머지(BUG-M3/M5/M6/M7, Minor 8건)는 위 Phase 1 표의 각 작업 행에 개별 메모로 남겨두었음.
 - **[Debugger → Coder/Architect/UX Designer, 2026-08-27]** Phase 1 산출물(실제 Unity 6 LTS 프로젝트 기준) 2차 적대적 검증 완료. 전체 리포트: `docs/BUG_REPORT_PHASE1.md` (Blocker 2 / Major 6 / Minor 4, **Coder로 반려 필요** 판정). 교차 레이어 영향이 큰 항목만 요약:
   - **(BUG-P1-B2, Blocker, UX/Architect 결정 필요)** `IdleState`/`WalkState`의 이동 트리거가 `StickmanAgent.Update()`의 `Input.GetAxisRaw("Horizontal")`/`GetButtonDown("Jump")`(키보드) 뿐이고, 자율 배회/행동 결정 로직이 프로젝트 전체에 전무함(`Random`/`Wander`/`AI` grep 결과 0건). `docs/UX_FLOW.md` 2절/8절이 못박은 "P0 — 아무것도 안 해도 재미있어야 함" 원칙을 정면 위반하며, 더 심각하게는 BUG-B1(Phase0)이 올바르게 해결되어 진짜 `WS_EX_NOACTIVATE` 오버레이가 완성되는 순간 그 창은 키보드 포커스를 받을 수 없어(가설 H6) 이 입력 경로 자체가 영구히 죽고 캐릭터가 Idle에 고착된다 — "지금은 우연히 동작"하는 구조. UX Designer/Architect가 "자율 배회 AI"를 Phase 1.5/2 필수 선행 태스크로 Tasklist에 신규 등재할지 결정 필요(현재 어느 Phase 정의에도 이 태스크가 명시된 적이 없어 아무도 지목하지 않고 넘어갈 뻔했음).
@@ -182,7 +182,7 @@
   - **UX 30-1(벽 근접 예고 UI 없음)/30-2(HANG 손떨림 진폭 연출)**: 상충 없음 — 30-1은 "하지 말라"는 지시라 구현 자체가 없고(원래 안 넣었음), 30-2는 순수 렌더링 레이어(Perlin 노이즈 진폭 곡선) 몫이라 이번 상태머신 구현과 무관.
   - Ragdoll/Getup/ParkourClimb 상태 생성자가 전부 `StickmanBlackboard` 주입형으로 바뀌어(`Idle/Walk/Jump/Fall`과 동일 패턴) `StickmanAgent.Awake()`의 상태 등록 딕셔너리가 갱신됨 — `AttackState`만 아직 파라미터 없는 생성자(Phase 3 전투 로직 붙을 때 함께 갱신 예정). Unity 배치모드 컴파일 재검증 2회(중간/최종) 모두 에러 0건/경고 0건(기존 2건이던 `RagdollState`/`GetupState` 미사용 필드 경고가 `_settleTimer`/`_getupProgress`를 실제로 소비하게 되며 예상대로 자연 소멸).
 
-- **[Coder, 2026-08-27, Phase 3 완료 보고]** 격파 미니게임(10절)/라이벌 스틱맨 AI(11절)/드래그&던지기(12절)/로데오 커서(13절) + 선행 인프라 "부분적 클릭관통 해제"(15절) 구현 완료. 신규 폴더 `Assets/_Project/Scripts/Interaction/`(Phase 3 전용 컨트롤러 레이어, StickmanAgent/States는 이 폴더의 존재를 전혀 모른다 — Core→States는 기존처럼 참조하되 Interaction→Core/States만 참조하는 단방향 유지) — `StickmanClickHitbox`/`ClickHitboxRectUtility`/`DragThrowController`/`BattleMinigameDirector`/`RodeoCursorWatcher`/`RivalPursuitIntentSource`/`RivalStickmanAgent`/`RivalEncounterDirector` 8개 신규 파일. `StickmanStateId`에 `BattleMinigame`/`Dragged`/`RodeoCursor` 3종 추가(총 11종), 각각 신규 `States/BattleMinigameState.cs`/`DragThrowState.cs`/`RodeoCursorState.cs`로 구현하고 `StickmanAgent.Awake()`의 상태 딕셔너리에 등록. `AttackState`도 이번에 파라미터 없는 생성자에서 블랙보드 주입형으로 전환하며 `Tick()`을 처음으로 완성(라이벌 대결의 유일한 실사용처, 상세는 위 "라이벌 스틱맨 AI" 행 참고).
+- **[Coder, 2026-08-27, Phase 3 완료 보고]** 격파 미니게임(10절)/라이벌 스틱메이트 AI(11절)/드래그&던지기(12절)/로데오 커서(13절) + 선행 인프라 "부분적 클릭관통 해제"(15절) 구현 완료. 신규 폴더 `Assets/_Project/Scripts/Interaction/`(Phase 3 전용 컨트롤러 레이어, StickmanAgent/States는 이 폴더의 존재를 전혀 모른다 — Core→States는 기존처럼 참조하되 Interaction→Core/States만 참조하는 단방향 유지) — `StickmanClickHitbox`/`ClickHitboxRectUtility`/`DragThrowController`/`BattleMinigameDirector`/`RodeoCursorWatcher`/`RivalPursuitIntentSource`/`RivalStickmanAgent`/`RivalEncounterDirector` 8개 신규 파일. `StickmanStateId`에 `BattleMinigame`/`Dragged`/`RodeoCursor` 3종 추가(총 11종), 각각 신규 `States/BattleMinigameState.cs`/`DragThrowState.cs`/`RodeoCursorState.cs`로 구현하고 `StickmanAgent.Awake()`의 상태 딕셔너리에 등록. `AttackState`도 이번에 파라미터 없는 생성자에서 블랙보드 주입형으로 전환하며 `Tick()`을 처음으로 완성(라이벌 대결의 유일한 실사용처, 상세는 위 "라이벌 스틱메이트 AI" 행 참고).
 
   - **핵심 설계 결정 1 — 부분적 클릭관통 해제(15절)를 `IPlatformWindowService` 확장이 아니라 별도 `ILocalClickCaptureService`로 분리.** UX Designer가 예시로 제안한 `RequestLocalClickCapture(hitboxOsScreen, owner)`/`ReleaseLocalClickCapture(owner)` API 형태는 그대로 채택했지만, 인터페이스 자체는 `ICursorPositionService`(Phase 1)와 똑같은 이유로 분리했다 — 모바일(`ScreenshotBackdropPlatformService`)에는 "전역 클릭관통"이라는 개념 자체가 없어(9절 코멘트 그대로) "그 일부를 국소 해제"한다는 개념도 성립하지 않기 때문. `Platform/LocalClickCaptureGate.cs`(단일 소유자 락 + 동적 영역 부기 순수 로직)를 `Win32WindowService`/`NullPlatformWindowService`가 각자 인스턴스로 들고 위임하고, `FallbackPlatformWindowService`는 내부 서비스로 그대로 delegate — `ICursorPositionService` 캐스팅 패턴을 그대로 재사용해 새 캐스팅 관례를 만들지 않았다.
   - **핵심 설계 결정 2 — "부분적 클릭관통 해제"의 실제 구현 한계(이번 작업 지시의 최우선 기록 요구사항).** `Platform/ILocalClickCaptureService.cs` 파일 상단에 상세히 문서화했고 요지는 다음과 같다:
@@ -504,15 +504,15 @@
 ### 정직한 한계(사용자 직접 확인 필요)
 
 - **클릭관통 자체(실제로 마우스 클릭이 창을 통과하는가)는 이번 라운드에서 프로그래밍적으로 검증하지 못했다** — Accessibility 권한 없이는 합성 클릭 이벤트를 만들어 "정말 아래 창이 클릭됐는지" 확인할 신뢰 가능한 방법이 없다. `NSWindow.ignoresMouseEvents=YES`가 네이티브 코드에서 실제로 호출됐다는 로그(`SM_ConfigureOverlayWindow 적용 완료: clickThrough=1 ...`)까지만 확인했고, 이는 Apple 공식 API 계약상 클릭관통을 보장하지만 최종 체감은 사용자가 데스크톱에서 직접 다른 창을 클릭해 확인해야 한다.
-- **화면 투명도(스틱맨 뒤 데스크톱 배경이 실제로 완전히 비쳐 보이는지)도 육안 확인이 필요하다** — 카메라 알파=0 + `setOpaque:NO`+`backgroundColor=clearColor`까지는 확인했지만, Unity Standalone Mac Player의 렌더 서페이스(Metal 레이어)가 기본적으로 불투명 합성을 가정하고 있어 이 조합만으로 100% 완전 투명이 보장되는지는 이번 라운드에서 실측하지 못했다(`StickMateOverlayPlugin.m` 문서 주석에 이 한계를 그대로 남겨둠). 리더가 이미 확인한 대로 이 환경에는 Screen Recording 권한이 없어 스크린샷으로 직접 확인할 수도 없었다.
+- **화면 투명도(스틱메이트 뒤 데스크톱 배경이 실제로 완전히 비쳐 보이는지)도 육안 확인이 필요하다** — 카메라 알파=0 + `setOpaque:NO`+`backgroundColor=clearColor`까지는 확인했지만, Unity Standalone Mac Player의 렌더 서페이스(Metal 레이어)가 기본적으로 불투명 합성을 가정하고 있어 이 조합만으로 100% 완전 투명이 보장되는지는 이번 라운드에서 실측하지 못했다(`StickMateOverlayPlugin.m` 문서 주석에 이 한계를 그대로 남겨둠). 리더가 이미 확인한 대로 이 환경에는 Screen Recording 권한이 없어 스크린샷으로 직접 확인할 수도 없었다.
 - **긴급 종료 안전장치(5초 지연 + Escape 키)는 우리 창이 키보드 포커스를 유지하는 동안만 유효**하다 — 전역 핫키가 아니므로 클릭관통 상태에서 포커스가 다른 앱으로 넘어가면 앱 내부에서 되돌릴 방법이 없다(위 "적용한 수정" 5번 참고). 실사용 배포판이라면 메뉴바 아이콘 등 별도 UX가 필요 — 이번 라운드 범위 밖으로 남겨둔다.
 - **Player Settings 아키텍처를 코드로 강제하지 않았다** — Unity 6에서 `EditorUserBuildSettings.macOSXArchitecture` 공개 필드를 찾지 못해(컴파일 에러로 확인) 추측성 API 호출 대신 프로젝트 기본값에 맡겼다. 다행히 기본값이 이미 유니버설(`arm64+x86_64`, 실측 `file` 명령으로 확인)이라 이번 검증에는 영향 없었지만, Intel Mac 배포 시에는 Xcode Build Settings UI로 재확인 권고.
 
 **결론**: 사용자가 지금 데스크톱에서 직접 확인 가능한 실제 `.app`이 PID **49739**로 백그라운드에서 계속 실행 중이다(이 세션이 종료돼도 살아있음, `kill 49739`로 언제든 종료 가능). 네이티브 플러그인의 실제 호출/윈도우 레벨 변경은 프로세스 내부 로그와 외부 독립 도구 양쪽에서 이중 확증했다. 클릭관통 체감/완전 투명 여부는 사용자 육안 확인이 필요한 항목으로 명확히 남겨둔다. Debugger/Architect 재확인 대상.
 
-## "고전적 졸라맨" 시각 교체 + 오버레이 타이틀바 보수적 조정 (Coder, 2026-08-28)
+## "고전적 스틱메이트" 시각 교체 + 오버레이 타이틀바 보수적 조정 (Coder, 2026-08-28)
 
-**배경**: 리더가 실행 중인 앱을 사용자에게 직접 보여줬고, 사용자가 캐릭터가 "이상하게 나온다"고 지적했다. 두 스타일 중 고르게 했더니 **"고전적 졸라맨 느낌(가는 선만으로)"**을 확정 선택 — 동그란 머리(테두리만) + 얇은 단일 선 몸통/팔다리(참고 이미지: `O` / `|` / `/|\ ` / `/ \`). 기존에는 `Assets/Editor/SceneBootstrapper.cs`가 채워진 흰색 사각형(몸통/팔다리)+원(머리) `SpriteRenderer` 스프라이트로 블록 형태를 만들고 있었다.
+**배경**: 리더가 실행 중인 앱을 사용자에게 직접 보여줬고, 사용자가 캐릭터가 "이상하게 나온다"고 지적했다. 두 스타일 중 고르게 했더니 **"고전적 스틱메이트 느낌(가는 선만으로)"**을 확정 선택 — 동그란 머리(테두리만) + 얇은 단일 선 몸통/팔다리(참고 이미지: `O` / `|` / `/|\ ` / `/ \`). 기존에는 `Assets/Editor/SceneBootstrapper.cs`가 채워진 흰색 사각형(몸통/팔다리)+원(머리) `SpriteRenderer` 스프라이트로 블록 형태를 만들고 있었다.
 
 ### 적용한 수정
 
@@ -520,7 +520,7 @@
    - 머리: `CreateHeadRingVisual()` 신설 — `HeadRingSegments=24`개 점을 원주 위에 찍고 `loop=true`로 닫아 "속이 빈 동그라미"를 그린다. 시각 반경은 `HeadVisualRadius=0.25`(신규 상수)이고, 물리 `CircleCollider2D.radius=0.4`는 BUG-SW-M1 이후 값 그대로 유지(판정 크기 무변경, 시각만 교체).
    - 몸통: `CreateLineSegmentVisual()` 신설 — 기존 사각형과 동일한 세로 범위(로컬 y 0.6~1.4)를 유지하는 얇은 세로 선 하나로 교체(화면 프레이밍 BUG-P1-R4-B1에 영향 없음).
    - 팔다리(4개): 기존 `CreateLimb()`의 "Visual" 자식+`SpriteRenderer`를 제거하고, limb 오브젝트 자신에 `LineRenderer`를 직접 붙여 `useWorldSpace=false`로 관절(anchor) 쪽 끝~반대쪽 끝(손/발)을 잇는 선을 그린다. limb는 이미 `localScale=1`(조인트 anchor 계산 때문)이라, **로컬 좌표 LineRenderer는 HingeJoint2D가 매 프레임 회전/이동시켜도 별도의 "매프레임 추종 스크립트" 없이 자동으로 따라간다**(Renderer가 매 프레임 자신이 속한 Transform의 world 행렬로 로컬 정점을 다시 그리는 표준 동작 — MeshRenderer/SpriteRenderer와 동일 원리). 지시서가 제안한 `LimbLineVisual.cs`류의 별도 Update() 컴포넌트는 이 방식이면 불필요해 만들지 않았다.
-   - 손/발 표현(보너스, 지시서상 선택사항): `CreateEndMark()` 신설 — 각 limb 끝(손/발 위치)에 짧은 가로선을 하나 더 그려 "졸라맨" 느낌을 강화(4개 limb 전부 적용).
+   - 손/발 표현(보너스, 지시서상 선택사항): `CreateEndMark()` 신설 — 각 limb 끝(손/발 위치)에 짧은 가로선을 하나 더 그려 "스틱메이트" 느낌을 강화(4개 limb 전부 적용).
    - 공통 헬퍼 `ConfigureLine()`/`GetLineMaterial()` 신설 — `startWidth=endWidth=0.05`(`LineWidth`), `numCapVertices=numCornerVertices=4`(`LineCapVertices`, 끝을 살짝 둥글려 손그림 느낌), 색상은 기존 컨벤션 그대로 `config.primaryOutlineColor`(기본 검정)를 재사용. 머티리얼은 새 에셋을 만들지 않고 `AssetDatabase.GetBuiltinExtraResource<Material>("Sprites-Default.mat")`(SpriteRenderer가 기본으로 쓰던 것과 동일한 Unity 내장 머티리얼)를 그대로 재사용 — 프로젝트가 Built-in 렌더 파이프라인(`ProjectSettings/GraphicsSettings.asset`의 `m_CustomRenderPipeline: {fileID: 0}` 확인)임을 먼저 확인하고 결정.
    - 더 이상 쓰지 않는 `GetOrCreateSprite()`/`SpriteTextureSize`/`SpritesFolder`/`CreateStaticVisual()` 제거, 이제 고아가 된 `Assets/_Project/Data/Sprites/{Rect,Circle}Sprite.asset`(+`.meta`)와 빈 `Sprites/` 폴더도 삭제.
    - `-executeMethod StickMate.EditorTools.SceneBootstrapper.BuildAll --force`로 `Stickman.prefab`/`Main.unity` 재생성해 반영.
@@ -536,13 +536,13 @@
 - **네이티브 플러그인 재빌드**: `build.sh`로 `.bundle` 재컴파일(universal `x86_64 arm64` 확인). `otool -arch arm64 -tV`로 재컴파일된 원본과 `BuildStandalone`이 앱 안에 패키징한 사본을 디스어셈블 비교 — 파일 경로 헤더 줄만 다르고 나머지 어셈블리 명령어는 완전히 동일(`__TEXT` 세그먼트 파일크기도 양쪽 아키텍처 슬라이스 각각 정확히 일치) — 코드 레벨 동일성 확증(SHA-256 해시 자체는 Unity의 앱 내 재서명으로 인해 달라짐 — `codesign -dvvv` 비교로 원인 확인: 소스 사본은 `Info.plist=not bound`, 앱 내 사본은 `Info.plist entries=10`로 바인딩됨).
 - **빌드**: `Logs/coder_visual_build.log` — `[BuildStandalone] 빌드 결과: Succeeded, 총 에러 0건, 총 경고 0건`, 산출물 `Builds/macOS/StickMate.app`.
 - **실행**: 이전 프로세스(PID 49739)는 이번 라운드 시작 전 리더가 이미 종료했음을 `ps`로 확인(잔여 프로세스 없음). 새로 빌드한 앱을 백그라운드로 실행 — **새 PID 57301**(`nohup ... & disown`, `ps`로 `PPID=1` 정상 detach 재확인). `Player.log`에 에러/경고/예외 없음, 오버레이 플러그인 로그가 기존과 동일한 순서로 정상 출력됨(`transparent=1` 즉시 적용 → `alwaysOnTop` 즉시 → 5초 지연 후 `clickThrough=1`, `windowLevel=3` 유지). 외부 독립 도구(`CGWindowListCopyWindowInfo`, 공개 API)로 PID 57301의 메인 창을 재조회 — `layer=3`(`NSFloatingWindowLevel`), `bounds=(0,33,1512,949)`로 이전 검증(PID 49739)과 동일한 패턴 확인.
-- **정직한 한계**: 이번 세션에도 Screen Recording 권한이 없어(기존에 문서화된 환경 제약과 동일) `kCGWindowListOptionOnScreenOnly` 필터로는 창이 조회되지 않았다(권한 없이는 On-screen 여부 자체를 WindowServer가 알려주지 않는 것으로 보임) — `kCGWindowListOptionAll`로는 정상적으로 창 메타데이터(bounds/layer)가 조회되어 창 자체는 확실히 존재/등록돼 있음을 확인했지만, 새 타이틀바 조정과 새 졸라맨 모양이 실제로 사용자 화면에 "정상적으로 보이는지"의 최종 육안 확인은 여전히 사용자 몫으로 남는다.
+- **정직한 한계**: 이번 세션에도 Screen Recording 권한이 없어(기존에 문서화된 환경 제약과 동일) `kCGWindowListOptionOnScreenOnly` 필터로는 창이 조회되지 않았다(권한 없이는 On-screen 여부 자체를 WindowServer가 알려주지 않는 것으로 보임) — `kCGWindowListOptionAll`로는 정상적으로 창 메타데이터(bounds/layer)가 조회되어 창 자체는 확실히 존재/등록돼 있음을 확인했지만, 새 타이틀바 조정과 새 스틱메이트 모양이 실제로 사용자 화면에 "정상적으로 보이는지"의 최종 육안 확인은 여전히 사용자 몫으로 남는다.
 
-**결론**: 캐릭터 시각을 사용자가 확정 선택한 "고전적 졸라맨"(가는 선 + 속이 빈 원) 스타일로 교체했고 물리 동작은 전혀 손대지 않았다. 오버레이 타이틀바는 신호등 버튼/구조를 보존하면서 타이틀 텍스트만 숨기는 보수적 조합으로 되돌렸다. 새 빌드가 PID 57301로 백그라운드 실행 중이다(`kill 57301`로 종료 가능). git commit은 하지 않음. Debugger/Architect/사용자 재확인 대상.
+**결론**: 캐릭터 시각을 사용자가 확정 선택한 "고전적 스틱메이트"(가는 선 + 속이 빈 원) 스타일로 교체했고 물리 동작은 전혀 손대지 않았다. 오버레이 타이틀바는 신호등 버튼/구조를 보존하면서 타이틀 텍스트만 숨기는 보수적 조합으로 되돌렸다. 새 빌드가 PID 57301로 백그라운드 실행 중이다(`kill 57301`로 종료 가능). git commit은 하지 않음. Debugger/Architect/사용자 재확인 대상.
 
 ## "까만 화면에 이상하게 나온다" 2연속 재발 대응 — 방어적 배경색 + 실측으로 찾은 진짜 이동불가 버그 수정 (Coder, 2026-08-28)
 
-**배경**: 사용자가 두 라운드 연속 "까만 화면에 제대로 움직이지도 않는다", "엄청 이상한데 졸라맨같지도 않다"고 보고. Architect 진단: (1) 진짜 투명 창이 실패하면 카메라 배경(당시 알파만 0, RGB는 기본 검정)이 불투명 검정으로 렌더링되어 검정 선 캐릭터와 겹쳐 안 보였을 가능성, (2) "제대로 움직이지 않는다"는 별도 재확인 필요. 이번 라운드는 진짜 투명 창은 포기하고 "확실히 보이는 졸라맨"을 최우선으로 확정한다.
+**배경**: 사용자가 두 라운드 연속 "까만 화면에 제대로 움직이지도 않는다", "엄청 이상한데 스틱메이트같지도 않다"고 보고. Architect 진단: (1) 진짜 투명 창이 실패하면 카메라 배경(당시 알파만 0, RGB는 기본 검정)이 불투명 검정으로 렌더링되어 검정 선 캐릭터와 겹쳐 안 보였을 가능성, (2) "제대로 움직이지 않는다"는 별도 재확인 필요. 이번 라운드는 진짜 투명 창은 포기하고 "확실히 보이는 스틱메이트"을 최우선으로 확정한다.
 
 ### 1) 방어적 배경색 — StickConfig.backgroundFallbackColor 신설
 
@@ -576,7 +576,7 @@
 
 ### 사용자 확인 포인트(정확한 기대값)
 
-- **정상이라면 화면에 밝은 회색(`#F0F0F0` 근처) 배경 위에 검정 선으로 그려진 졸라맨(속이 빈 원 머리 + 가는 선 몸통/팔다리)이 보여야 한다** — 만약 여전히 완전히 까맣게 보인다면 이번 방어적 배경색 자체가 적용 안 된 것(빌드 미갱신 등)이므로 그건 별도 버그.
+- **정상이라면 화면에 밝은 회색(`#F0F0F0` 근처) 배경 위에 검정 선으로 그려진 스틱메이트(속이 빈 원 머리 + 가는 선 몸통/팔다리)이 보여야 한다** — 만약 여전히 완전히 까맣게 보인다면 이번 방어적 배경색 자체가 적용 안 된 것(빌드 미갱신 등)이므로 그건 별도 버그.
 - 캐릭터가 몇 초 간격으로 가만히 서 있다가(Idle) 좌우로 걷다가(Walk) 다시 멈추는 동작을 반복해야 정상 — 위 2)에서 확인했듯 실측으로 실제 좌우 이동을 재확인했다.
 - 진짜 데스크톱이 캐릭터 뒤로 비쳐 보이는지(완전 투명)는 이번 라운드에서 여전히 미해결/미검증 — 안 비치고 밝은 회색 배경이 보여도 "설계대로"이며 버그 아님(다음 라운드 과제로 명시 이월).
 
@@ -584,12 +584,12 @@
 
 ## Architect 실측 지적 후속 대응 — Retina 낙하고착/랙돌 폭주 Blocker + 손발 표현 레퍼런스 반영 (Coder, 2026-08-28)
 
-**배경**: Architect가 사용자에게 보여준 임시 진단 빌드(PID 58459 추정)의 Player.log를 직접 읽고 두 가지를 지적: (1) 실제 Retina 화면(`1512x949` 포인트 vs `3024x1898` 백킹 픽셀)에서 한참 잘 걷다가(`t=30.1 state=Walk grounded=True`) 갑자기 `grounded=False`가 6초 넘게 지속되는(`t=31.2~37.3`) 낙하 고착이 재발했고, 이것이 뒤이은 격렬한 랙돌 폭주(2번째 스크린샷의 팔다리가 뒤엉킨 모습)로 이어졌을 것으로 추정 — Retina DPI 배율 미보정을 유력한 원인 가설로 제시. (2) 사용자가 "먼저 졸라맨 레퍼런스를 확인하고 다시 구현하라"고 지적, Architect가 웹 조사한 결과 손/발은 "짧은 직각선(hook)"이 아니라 "작은 점(채워진 원)"으로 그리는 게 표준(봉선화/棒線畵).
+**배경**: Architect가 사용자에게 보여준 임시 진단 빌드(PID 58459 추정)의 Player.log를 직접 읽고 두 가지를 지적: (1) 실제 Retina 화면(`1512x949` 포인트 vs `3024x1898` 백킹 픽셀)에서 한참 잘 걷다가(`t=30.1 state=Walk grounded=True`) 갑자기 `grounded=False`가 6초 넘게 지속되는(`t=31.2~37.3`) 낙하 고착이 재발했고, 이것이 뒤이은 격렬한 랙돌 폭주(2번째 스크린샷의 팔다리가 뒤엉킨 모습)로 이어졌을 것으로 추정 — Retina DPI 배율 미보정을 유력한 원인 가설로 제시. (2) 사용자가 "먼저 스틱메이트 레퍼런스를 확인하고 다시 구현하라"고 지적, Architect가 웹 조사한 결과 손/발은 "짧은 직각선(hook)"이 아니라 "작은 점(채워진 원)"으로 그리는 게 표준(봉선화/棒線畵).
 
 ### 1) 손/발 표현 — 채워진 작은 점으로 교체
 
 - **`Assets/Editor/SceneBootstrapper.cs`**: `CreateEndMark()`를 "짧은 가로선"에서 "작은 채워진 원"으로 교체. `HandFootDotRadius=0.04`(Architect 지시 범위 0.03~0.05의 중간값), `HandFootDotSegments=8`, `HandFootDotLineWidth=반지름×2.4`(반지름보다 두꺼운 선으로 작은 원 경로를 그려 "속이 빈 원"이 아니라 "채워진 점"처럼 보이게 함 — `SpriteRenderer`를 재도입하지 않고 이번 라운드에서 확립한 "LineRenderer만 사용" 컨벤션 유지). 더 이상 쓰지 않는 `EndMarkHalfWidth` 상수 제거.
-- 비율 재점검(사용자 요청 대응): 머리 지름(0.5)/전신 높이(1.85) ≈ 27%, 팔(0.5)<다리(0.6)<몸통(0.7) — 일반적인 단순 졸라맨 비율 범위 안에 있음을 산술로 확인, 별도 조정 불필요로 판단.
+- 비율 재점검(사용자 요청 대응): 머리 지름(0.5)/전신 높이(1.85) ≈ 27%, 팔(0.5)<다리(0.6)<몸통(0.7) — 일반적인 단순 스틱메이트 비율 범위 안에 있음을 산술로 확인, 별도 조정 불필요로 판단.
 - `--force` 재생성 후 프리팹 실측: `EndMark` 4개 전부 `m_Loop: 1`(닫힌 원), `widthCurve.value=0.096`(=0.04×2.4), 반지름 0.04 원주 8점 좌표 확인.
 
 ### 2) Retina 낙하고착/랙돌 폭주 Blocker — 조사 결과 원인은 DPI가 아니라 안전망 발판의 "폭"이었음
@@ -669,7 +669,7 @@
 
 `Editor/SceneBootstrapper.CreateLimb()`를 재작성해 기하학 레벨에서 문제를 제거했다: 팔다리 GameObject `localPosition = attachLocal`(관절 부착점 그 자체), LineRenderer는 `(0,0) → (0,-length)`, EndMark(손/발 점)는 `(0,-length)`, `BoxCollider2D.offset = (0,-length/2)`, `HingeJoint2D.anchor = (0,0)`, `connectedAnchor = attachLocal`. 시그니처도 `worldSize/localPos/anchor/connectedAnchor` 4개에서 `attachLocal/length/thickness` 3개로 줄여, **시각·물리·회전축이 전부 하나의 값(`attachLocal`)에서 파생**되므로 서로 어긋나는 것 자체가 불가능해졌다.
 
-추가로 리더 지적대로 `hipX`를 `0.12 → 0.05`로 줄였다 — 고전 졸라맨은 다리가 몸통 끝 한 점에서 갈라져 나오는 형태(`/ \`)인데, ±0.12는 몸통 선(x=0)과 다리 사이에 가로 틈을 만들어 스크린샷에서 눈에 띄었다. 벌어짐은 이제 위치가 아니라 각도가 만든다. 중립 벌림각도 리더 제시 범위에 맞춰 `idleLegSpreadDegrees` 13→**12**, `idleArmSpreadDegrees` 32→**30**으로 조정(`.asset`도 함께 갱신).
+추가로 리더 지적대로 `hipX`를 `0.12 → 0.05`로 줄였다 — 고전 스틱메이트은 다리가 몸통 끝 한 점에서 갈라져 나오는 형태(`/ \`)인데, ±0.12는 몸통 선(x=0)과 다리 사이에 가로 틈을 만들어 스크린샷에서 눈에 띄었다. 벌어짐은 이제 위치가 아니라 각도가 만든다. 중립 벌림각도 리더 제시 범위에 맞춰 `idleLegSpreadDegrees` 13→**12**, `idleArmSpreadDegrees` 32→**30**으로 조정(`.asset`도 함께 갱신).
 
 `StickmanPoseAnimator.ApplyAngle()`의 보정식은 **그대로 유지**했다. 새 기하학에서는 `anchor=(0,0)`이라 결과가 상수(`connectedAnchor`)로 축약되지만, (a) RAGDOLL 도중 물리가 팔다리를 끌고 다닌 뒤 GETUP 복귀 시 위치를 부착점으로 확실히 되돌려주고, (b) 나중에 프리팹 기하학이 다시 바뀌어도 시각이 조용히 깨지지 않게 하는 이중 안전장치이기 때문이다.
 
@@ -677,7 +677,7 @@
 
 최초 구현은 Idle 중립각(바깥으로 벌린 `±spread`)을 기준으로 좌우 **대칭**으로 흔들었다(`left = -(spread+swing)`, `right = +(spread+swing)`). 수학적으로는 반대 위상이 맞지만, 시각적으로는 두 다리가 "벌어졌다 오므렸다"를 반복해 **걷는 게 아니라 제자리 점핑잭**처럼 보인다(실측 로그: `legs=(-27.5,27.5) → (1.5,-1.5) → (-35.0,35.0)`, 항상 좌우 대칭).
 
-졸라맨의 `/ \` 벌림은 정면을 향한 **정지 자세**이고 보행 사이클은 측면도로 읽히는 게 표준이므로(한쪽 다리는 앞, 반대쪽은 뒤), Walk 중에는 중립각 0을 기준으로 순수하게 앞뒤 교차시키도록 바꿨다: `leftLeg=+stride`, `rightLeg=-stride`, `leftArm=-stride*ratio`, `rightArm=+stride*ratio`(같은 쪽 팔은 다리와 반대 — 실제 보행 반동). Idle↔Walk 전환 시 각도가 순간이동하지 않도록 `WalkPoseBlendSeconds=0.18`초 선형 보간(`_walkBlend`)을 추가했다. 재실측 로그: `legs=(17.0,-17.0) → (-2.6,2.6) → (-21.8,21.8)`, `arms=(-14.6,14.6) → (1.4,-1.4) → (12.0,-12.0)` — 다리가 0을 통과하며 앞뒤로 교차하고 팔이 반대로 흔들리는 정상 보행 패턴.
+스틱메이트의 `/ \` 벌림은 정면을 향한 **정지 자세**이고 보행 사이클은 측면도로 읽히는 게 표준이므로(한쪽 다리는 앞, 반대쪽은 뒤), Walk 중에는 중립각 0을 기준으로 순수하게 앞뒤 교차시키도록 바꿨다: `leftLeg=+stride`, `rightLeg=-stride`, `leftArm=-stride*ratio`, `rightArm=+stride*ratio`(같은 쪽 팔은 다리와 반대 — 실제 보행 반동). Idle↔Walk 전환 시 각도가 순간이동하지 않도록 `WalkPoseBlendSeconds=0.18`초 선형 보간(`_walkBlend`)을 추가했다. 재실측 로그: `legs=(17.0,-17.0) → (-2.6,2.6) → (-21.8,21.8)`, `arms=(-14.6,14.6) → (1.4,-1.4) → (12.0,-12.0)` — 다리가 0을 통과하며 앞뒤로 교차하고 팔이 반대로 흔들리는 정상 보행 패턴.
 
 **재검증**: 컴파일 `error CS`/`warning CS` 0건 / EditMode 13-13 / PlayMode 3-3 / Standalone 빌드 에러0·경고0 / 프리팹 실측(팔다리 `m_LocalPosition {x:±0.05, y:0.6 또는 1.3}`, `m_Anchor {0,0}`, `m_Offset {0,-0.3 또는 -0.25}`, 루트 `m_Constraints: 4`) / 실제 `.app` 90초+ 실행에서 `rootRotZ` 전 구간 `0.00` 유지.
 
@@ -687,7 +687,7 @@
 
 **(1) 지오메트리 — 리더 지정 좌표 그대로 + 접지 보정**
 
-리더 지정(루트 로컬): 머리 중심 `(0,1.60)` 반경 `0.25` / 몸통 `(0,1.35)→(0,0.45)` / 어깨 `(0,1.15)` / 엉덩이 `(0,0.45)` / 팔 길이 `0.5` 중립 `±40°` / 다리 길이 `0.6` 중립 `±18°`. **좌우 팔다리가 모두 x=0인 같은 점에서 시작**한다 — 직전 라운드에 어깨를 `±0.05`로 두었더니 팔이 거의 수직인 순간 몸통 선과 완전히 겹쳐 **팔이 아예 안 보였다**. 레퍼런스 졸라맨은 팔다리가 몸통 위 한 점에서 갈라져 나오고 벌어짐은 전적으로 **각도**가 만든다.
+리더 지정(루트 로컬): 머리 중심 `(0,1.60)` 반경 `0.25` / 몸통 `(0,1.35)→(0,0.45)` / 어깨 `(0,1.15)` / 엉덩이 `(0,0.45)` / 팔 길이 `0.5` 중립 `±40°` / 다리 길이 `0.6` 중립 `±18°`. **좌우 팔다리가 모두 x=0인 같은 점에서 시작**한다 — 직전 라운드에 어깨를 `±0.05`로 두었더니 팔이 거의 수직인 순간 몸통 선과 완전히 겹쳐 **팔이 아예 안 보였다**. 레퍼런스 스틱메이트은 팔다리가 몸통 위 한 점에서 갈라져 나오고 벌어짐은 전적으로 **각도**가 만든다.
 
 **접지 보정(`footLift`)**: 지정 좌표를 그대로 쓰면 중립 발끝 y = `0.45 - 0.6·cos(18°) = -0.12`로 루트 원점보다 아래로 내려가는데, 이 프로젝트는 `GroundSensor`/`SnapToGround()`가 **"루트 원점 = 발 높이"**를 전제로 접지를 계산한다. 실루엣(상대 거리·각도)은 지정값 그대로 두고 **전체를 낙차만큼 위로 평행이동**했다(`footLift = legLength·cos(idleLegSpread) - specHipY ≈ 0.1206`). 하드코딩이 아니라 실제 다리 길이/각도에서 유도하므로 나중에 값이 바뀌어도 접지가 자동으로 맞는다. 프리팹 실측: 엉덩이 `y=0.5706`, 어깨 `y=1.2706`, 머리 `y=1.7206`, 몸통 중심 `y=1.0206`(길이 0.9 = 머리 지름의 1.8배, "몸통이 짧다" 지적 반영).
 
@@ -728,7 +728,7 @@ Walk 이탈 시 즉시 리셋하던 문제도 자동 해소됐다: `TickPose()`�
 
 ### 팔다리 2분절(무릎/팔꿈치) + Alan Becker 레퍼런스 시각 스타일 전면 교체 (같은 라운드 5차, 2026-08-28)
 
-사용자가 **"손이랑 다리가 다 그냥 막대기 같음"**이라고 지적했고, 이어서 **정확한 시각 레퍼런스 이미지**(Alan Becker "Animator vs Animation" 계열 스틱맨)를 제시했다. 리더가 두 건을 합쳐 지시했고, 이 지시가 이전 모든 시각 관련 지시보다 우선한다.
+사용자가 **"손이랑 다리가 다 그냥 막대기 같음"**이라고 지적했고, 이어서 **정확한 시각 레퍼런스 이미지**(Alan Becker "Animator vs Animation" 계열 스틱메이트)를 제시했다. 리더가 두 건을 합쳐 지시했고, 이 지시가 이전 모든 시각 관련 지시보다 우선한다.
 
 **(1) 팔다리 2분절 재구성 — 뻣뻣함의 진짜 근본 원인**
 
@@ -1477,7 +1477,7 @@ owner='Dock' name='Wallpaper-' layer=-2147483624    rect=(0, 0, 1512, 982)
 
 ---
 
-## 말풍선 렌더링(원칙 1의 산출물을 처음으로 화면에 띄움) + 라이벌 스틱맨 실배선 (2026-08-29, Coder)
+## 말풍선 렌더링(원칙 1의 산출물을 처음으로 화면에 띄움) + 라이벌 스틱메이트 실배선 (2026-08-29, Coder)
 
 ### ① 문제 — 파이프라인은 있는데 그리는 사람이 없었다
 
@@ -1508,7 +1508,7 @@ owner='Dock' name='Wallpaper-' layer=-2147483624    rect=(0, 0, 1512, 982)
 
 신규 설정 7개: `dialogueBubbleEnabled` / `dialogueMinVisibleSeconds`(0.7) / `dialogueMaxVisibleSeconds`(4) / `dialogueFontSize`(16) / `idleChatterChance`(0.28) / `walkChatterChance`(0.14) / `ambientChatterCooldownSeconds`(11, Idle·Walk 공유). 확률 0으로 두면 직전 라운드와 100% 동일한 거동.
 
-### ④ 라이벌 스틱맨(11절) 실배선 — 역시 "한 번도 스폰된 적 없음"이었다
+### ④ 라이벌 스틱메이트(11절) 실배선 — 역시 "한 번도 스폰된 적 없음"이었다
 
 `RivalStickmanAgent`/`RivalEncounterDirector`는 Phase 3에 완성됐지만 **씬 어디에도 배치되지 않았다**(확인 결과 사실). `SceneBootstrapper.CreateRivalStickman()`이 플레이어 프리팹을 인스턴스화 → 언팩 → **플레이어 전용 컴포넌트만 제거**(AppControlDirector/RodeoCursorWatcher/DragThrowController/StickmanClickHitbox/StickmanAgent) 후 `RivalStickmanAgent`+`RivalEncounterDirector`를 붙인다. 별도 프리팹을 새로 만들지 않은 이유: 지오메트리(footLift/totalHeight/관절 제한)가 `BuildStickmanPrefab` 안에서 서로 얽혀 계산되므로 두 벌로 나누면 한쪽이 조용히 어긋난다 — **단일 진실 소스 유지**.
 - **붉은색**: `StickConfig.rivalInkColor`(0.85,0.13,0.13) 신설. 씬에도 굽고 런타임에도 `RivalStickmanAgent.Awake()`가 다시 적용(에셋만 바꿔도 반영). 플레이어의 잉크색 프리셋(검정/흰색)과 **독립** — 같은 색이 되면 구분이 안 된다.
@@ -1573,7 +1573,7 @@ owner='Dock' name='Wallpaper-' layer=-2147483624    rect=(0, 0, 1512, 982)
 
 ### 신규 파일
 - `Assets/_Project/Scripts/Interaction/BattleMinigameRenderer.cs` — 소환 판자 2장(흰 채움 + 굵은 검은 테두리, 순차 낙하 + 착지 후 미세 흔들림), 기 모으기 게이지(흰 트랙 / 검은 채움 / **스위트스팟 밴드** / 검은 테두리 4겹), 성공 시 파편 14조각 + 타격점 임팩트 선 7줄, 실패 시 감쇠 흔들림, 소진·타임아웃 시 축소 페이드 퇴장.
-- `Assets/_Project/Scripts/Interaction/GraffitiRenderer.cs` — 낙서 4종(웃는 얼굴/별/졸라맨/하트)을 **전체 경로 길이 기준 진행률**로 스프레이하듯 순차 등장시키고, 정상 종료 0.8초 / 창 침범 취소 0.18초 페이드아웃.
+- `Assets/_Project/Scripts/Interaction/GraffitiRenderer.cs` — 낙서 4종(웃는 얼굴/별/스틱메이트/하트)을 **전체 경로 길이 기준 진행률**로 스프레이하듯 순차 등장시키고, 정상 종료 0.8초 / 창 침범 취소 0.18초 페이드아웃.
 
 두 렌더러 모두 스프라이트·셰이더를 새로 도입하지 않는다. 캐릭터와 같은 `LineRenderer`를 쓰고 **머티리얼조차 캐릭터의 것을 빌려 쓴다**(`Shader.Find`는 빌드 스트리핑 위험이 있어 쓰지 않았다). "흰 채움"은 메시가 아니라 **두께를 사각형 높이만큼 준 흰 선분 1개**로 만든다.
 
@@ -1593,7 +1593,7 @@ owner='Dock' name='Wallpaper-' layer=-2147483624    rect=(0, 0, 1512, 982)
 | 캐릭터 우클릭 → `[격파 놀이 시작]` / `[그라피티 그리기]` | 같은 동작(메뉴 7행 → 9행) |
 
 ### 실행 중 발견해 고친 버그 — 라이벌이 소환물을 한 벌 더 그린다
-첫 실행에서 `[격파] 소환` 로그가 **정확히 2번** 찍혔다. 원인: 라이벌 스틱맨은 플레이어 프리팹의 복제본이라 신규 컴포넌트 4개를 그대로 물려받는데, 렌더러는 `StickmanEventBus`의 **전역 정적 이벤트**를 구독하므로 라이벌 쪽 렌더러도 같은 이벤트를 받아 판자를 한 벌 더 소환했다. 게다가 렌더러의 원래 `Awake()`에는 `FindFirstObjectByType<StickmanAgent>()` 폴백이 있어, StickmanAgent가 제거된 라이벌이 **플레이어의 에이전트를 자기 것으로 착각**하기까지 했다.
+첫 실행에서 `[격파] 소환` 로그가 **정확히 2번** 찍혔다. 원인: 라이벌 스틱메이트은 플레이어 프리팹의 복제본이라 신규 컴포넌트 4개를 그대로 물려받는데, 렌더러는 `StickmanEventBus`의 **전역 정적 이벤트**를 구독하므로 라이벌 쪽 렌더러도 같은 이벤트를 받아 판자를 한 벌 더 소환했다. 게다가 렌더러의 원래 `Awake()`에는 `FindFirstObjectByType<StickmanAgent>()` 폴백이 있어, StickmanAgent가 제거된 라이벌이 **플레이어의 에이전트를 자기 것으로 착각**하기까지 했다.
 - 1차 방어: `SceneBootstrapper.CreateRivalStickman()`이 4개를 모두 제거(`DragThrowController`/`RodeoCursorWatcher`를 지우는 것과 같은 이유).
 - 2차 방어: 두 렌더러의 씬 전체 탐색 폴백을 제거하고 **같은 GameObject의 `StickmanAgent`가 없으면 아무것도 하지 않는다**(`DialogueBubbleRenderer._requireBoundSpeaker`와 같은 취지).
 
@@ -3402,7 +3402,7 @@ UX 디자이너 확정 설계 `docs/UX_FLOW.md` **32절**(9소절) 전량 반영
 
 ### ★★ 이 라운드가 잡은 회귀 1건 — 다른 레이어가 캐릭터 머리를 통째로 얼려놓고 있었다
 `LandingCrouchTests` 2건이 "머리 하강 = **정확히 0.000유닛**"으로 실패해 추적한 결과:
-- `GearRadialMenuWidget.Awake()`가 자기 Canvas를 **캐릭터 루트에 `SetParent`** 하고, 그 안에 미니 스틱맨 아이콘의 머리 원을 **`"Head"`라는 이름의 자손**으로 만든다.
+- `GearRadialMenuWidget.Awake()`가 자기 Canvas를 **캐릭터 루트에 `SetParent`** 하고, 그 안에 미니 스틱메이트 아이콘의 머리 원을 **`"Head"`라는 이름의 자손**으로 만든다.
 - `StickmanPoseAnimator` 생성자는 `GetComponentInChildren<Transform>` 로 **자손 전체**를 훑고 **마지막 일치**를 채택했다 → 캐릭터의 머리 대신 그 UI 원을 잡아, **캐릭터의 머리/몸통이 영원히 움직이지 않게 됐다**. 팔다리는 관절로 찾으므로 멀쩡해서 "포즈는 되는데 머리만 안 내려가는" 진단하기 어려운 형태였다.
 - **수정(내 파일 안에서만)**: 탐색 범위를 **루트 직속 자식**으로 좁혔다. 캐릭터의 `Torso`/`Head`는 프리팹 규약상 항상 루트 직속이므로, 어떤 UI가 어떤 이름으로 자식을 만들든 구조적으로 영향받지 않는다. 같은 위험을 가진 다른 조회부는 전수 확인함 — `StickmanMetrics`는 이미 직속 스코프, `EyeController`/`CharacterAccessoryRenderer`/`DialogueBubbleRenderer`는 이름 충돌 없음(`LeftEye`/`RightEye`, `transform.Find`). `StickmanPoseAnimator.BuildLimb`는 **첫 일치**를 쓰고 UI가 쓰는 이름(`ArmL`/`LegL` 등)과 겹치지 않아 현재는 안전하나 **같은 계열의 위험이 남아 있다**(리더 판단 요망).
 
@@ -3699,7 +3699,7 @@ tilesize 80 → 낙차 2.39511유닛 (여유 0.00489) / tilesize 81 → 낙차 2
 - (b) `GearRadialMenuWidget` 캔버스를 `SetParent(null, false)`로 **씬 루트**에 붙였다(`InfoGearIconWidget`의
   기존 전례와 동일). ScreenSpaceOverlay 캔버스는 화면 좌표계 물건이라 애초에 캐릭터 계보에 속할 이유가 없다.
   정리는 기존 `OnDestroy`가 이미 책임진다.
-- (a) 미니 스틱맨 부품을 `IconHead`/`IconSpine`/`IconArmL`/`IconArmR`/`IconLegL`/`IconLegR`로 개명.
+- (a) 미니 스틱메이트 부품을 `IconHead`/`IconSpine`/`IconArmL`/`IconArmR`/`IconLegL`/`IconLegR`로 개명.
 - 같은 이유로 `PopoverPanel`(팝오버 2종의 공통 캔버스)과 `CharacterInfoWindow` 캔버스도 씬 루트로 옮겼다.
   현재 이름 충돌은 없지만 "앞으로 아무도 Head/Torso를 안 쓴다"는 기대에 기대는 구조를 남기지 않는다.
   `CharacterInfoWindow.OnDestroy`에 캔버스 파괴를 추가했다(캐릭터와 함께 죽지 않게 되었으므로 필수).
@@ -3785,7 +3785,7 @@ tilesize 80 → 낙차 2.39511유닛 (여유 0.00489) / tilesize 81 → 낙차 2
 - `EyeController.cs` + `Editor/SceneBootstrapper.cs:984~998` — 머리에는 **링 + 눈동자 점 2개뿐, 입 없음**. 눈동자는 `EyeController` 단독 소유.
 - `HardwareReactionRenderer.cs` — 그리는 것은 **머리 주변 이모트 아이콘**(배터리/와이파이/땀방울)이지 얼굴이 아님 → **상태별 표정 시스템은 존재하지 않는다 = FACE 4종과 충돌 없음.**
 - `LandingDustRenderer.cs` — FX/PET의 참고 패턴(자기 `StickmanAgent` 전용 / 월드 고정 / 콜라이더 0 / `OnDisable` 정리)으로 채택.
-- `RivalStickmanAgent.cs` — 펫 "작은 졸라맨"과 8개 축에서 전부 다름 → 별개 서브시스템 확정.
+- `RivalStickmanAgent.cs` — 펫 "작은 스틱메이트"과 8개 축에서 전부 다름 → 별개 서브시스템 확정.
 - 오디오 전수 검색(`AudioSource`/`AudioClip`/`PlayOneShot`) → **0건**.
 
 ### 33절이 확정한 것
@@ -4367,7 +4367,7 @@ Major 2건**이 새로 나왔다. 그 3건을 보정하지 않고 다이얼을 �
 **걷기만 해도 랙돌**이 되고, 0.35에서는 36.7유닛/s가 되어 **던져도 거의 안 넘어진다**. UX 문서 (α)가
 제안하는 방향의 보정은 정확히 반대로 상황을 망가뜨린다 — 이 항목은 **"고칠 것 없음"이 정답**이다.
 
-또한 라이벌 스틱맨은 프리팹을 복제해 언팩한 사본이므로(`StickConfig.cs` 1249행 주석), 다이얼이 플레이어만
+또한 라이벌 스틱메이트은 프리팹을 복제해 언팩한 사본이므로(`StickConfig.cs` 1249행 주석), 다이얼이 플레이어만
 스케일하면 **둘의 크기가 갈린다**. 라이벌에도 같은 배율을 적용할지 리더 결정이 필요하다.
 
 ### 추가 발견 2건 (보고서 제출 직전, 같은 조사에서)
@@ -5403,7 +5403,7 @@ UI를 또 들이미는 건 같은 실수 반복이라는 근거가 타당함. so
   "구분이 안 감"이 남는다: 카드 색은 34-1 다크 카드 위 기준이라 아이보리/종이/은이 흰 잉크와
   구별되지 않는다(실측 스크린샷에서 머리·털모자·나비넥타이가 흰 덩어리 하나였다). 그래서 몸 위에서만
   **채도 하한 0.42 / 명도 창 0.55~0.80**을 강제한다. 잉크 표식색(`InkTone`/`InkDimTone`)은 변환하지
-  않고 캐릭터 잉크색을 그대로 쓴다(작은 졸라맨 펫이 그 경우).
+  않고 캐릭터 잉크색을 그대로 쓴다(작은 스틱메이트 펫이 그 경우).
 - `AccessoryShapeBuilder.Shape`에 **역할 톤**(`Tone`: 주색/보조색/그림자)을 추가하고 도형 60여 개에
   표시. 도형 정의가 색을 모르는 구조를 유지했다.
 - 실시간 펫(`CharacterPetRenderer`)도 아이템 색으로 칠한다(빨간 공 + 종이 비행기).
@@ -6187,7 +6187,7 @@ GETUP으로 넘어오는 순간 그 방어가 사라진다**
 1. `CharacterPetRenderer.ResolveGroundY(bb, ownerGrounded, ownerFootY)` — 주인의 발판 핸들 상단을 매
    프레임 재조회. 주인이 공중이면 마지막 발판 핸들을 계속 조회하고(그 창이 움직이면 공도 실려 간다),
    그마저 사라지면 마지막 Y 유지(33-6-4). 주인이 접지 중인데 발판을 못 찾으면 **주인 발밑**으로
-   폴백해 "주인은 서 있는데 펫은 딴 데"가 한 프레임도 생기지 않게 한다. 공/작은 졸라맨 둘 다 적용.
+   폴백해 "주인은 서 있는데 펫은 딴 데"가 한 프레임도 생기지 않게 한다. 공/작은 스틱메이트 둘 다 적용.
 2. **부수 발견 — 같은 원인, 같은 라운드에서 함께 수정**: `CharacterFxRenderer`의 발자국/먼지도
    `TryGetGroundSurfaceWorldY`를 써서, 창 하나만 최대화하면 캐릭터는 Dock을 걷는데 **발자국이 화면
    꼭대기에 찍혔다**. `ResolveOwnerGroundWorldY()`(주인 발판 상단 → 없으면 주인 발밑)로 통일.
@@ -8439,7 +8439,7 @@ StickMate 종료 후 : WindowServer  2.2%                      →  대조군
 | CVDisplayLink | 151 (2%) | |
 | 메인 스레드 블로킹 | 4,573 (86%) | mach_msg 3,373 + nanosleep 1,095 |
 
-→ **"손가락 몇 마디 크기 졸라맨 하나 그리는 데 왜 17%인가"의 답: 졸라맨 때문이 아니다.**
+→ **"손가락 몇 마디 크기 스틱메이트 하나 그리는 데 왜 17%인가"의 답: 스틱메이트 때문이 아니다.**
 비용은 캐릭터 크기와 **완전히 무관**하고 **화면 표면적 × 프레임 수**에만 비례한다.
 3024×1964 = 594만 픽셀의 투명 표면을 초당 60번 만들어 OS에 넘기는 행위 자체가 전부다.
 캐릭터를 지워도 이 비용은 거의 그대로다.
@@ -9051,7 +9051,7 @@ FramePacing 라운드와 `StickmanAgent.cs` 공유, 그쪽이 15분간 컴파일
 ### 리더에게 — 이 라운드의 한 줄 요약
 
 > **"17%가 과도하다"는 사용자 판단이 옳았다. 다만 실제 숫자는 17%가 아니라 37~40%였고(절반이
-> WindowServer에 숨어 있었다), 그 비용은 졸라맨과 무관하게 화면 표면적 × 프레임 수에만 비례한다.
+> WindowServer에 숨어 있었다), 그 비용은 스틱메이트과 무관하게 화면 표면적 × 프레임 수에만 비례한다.
 > 코드를 빠르게 만드는 방향의 최적화는 상한이 0.25%라 의미가 없다. 그래서 "아무도 보지 않는 시간에는
 > 그리지 않는다"로 방향을 틀었고, 부수적으로 이 앱이 사용자의 화면을 24시간 강제로 켜 두고 있었다는
 > 원칙 위반(CLAUDE.md 2)을 발견해 함께 고쳤다.**
@@ -10855,8 +10855,8 @@ debugger가 정보창에서 확정한 결함(`dstA' = srcA² + dstA(1−srcA)` �
 
 ## [debugger] 리틀스틱메이트 — 낙하 동기화 + 발판 범위 이탈 + 이름 변경 (2026-09-01)
 
-**신고 A** "높은 곳에서 떨어질 때 작은 졸라맨도 캐릭터와 동일한 형태로 떨어져야 하는데 안 됨"
-**신고 B** "작은 졸라맨도 창 위에 있을 때 창 범위 안에 있어야 하는데 공중에 떠 있음"
+**신고 A** "높은 곳에서 떨어질 때 작은 스틱메이트도 캐릭터와 동일한 형태로 떨어져야 하는데 안 됨"
+**신고 B** "작은 스틱메이트도 창 위에 있을 때 창 범위 안에 있어야 하는데 공중에 떠 있음"
 
 **확정 원인(코드 경로로 확정, 추측 아님)** — 둘 다 `Interaction/CharacterPetRenderer.cs`.
 리더가 지목한 `CharacterAccessoryRenderer.cs` / `AccessoryShapeBuilder.cs`에는 **PET 코드가 한 줄도 없다**(grep 0건).
@@ -10874,11 +10874,11 @@ debugger가 정보창에서 확정한 결함(`dstA' = srcA² + dstA(1−srcA)` �
 PlayMode 신규 `PetFallSyncTests` F1/F1n/F2/F3/F4/F4n + 기존 `PetFollowsOwnerFootholdTests` P1~P3 무회귀.
 ※ 첫 실행의 F2/F3 실패는 **batchmode 프레임이 1ms 미만**이라 고정 프레임 반복이 연출 구간에 도달조차 못 한 harness 결함이었다(제품 결함 아님, 로그로 확정) → 표본을 흘러간 게임 시간 기준으로 교체.
 
-**이름 변경**: `look_pet_mini.asset` displayName "작은졸라맨" → **"리틀스틱메이트"**. 아이디 `look.pet.mini`는 **불변**(바꾸면 저장된 차림이 사라진다). 골든 `ItemCatalogGolden.txt` 253행 1줄만 갱신.
+**이름 변경**: `look_pet_mini.asset` displayName "작은스틱메이트" → **"리틀스틱메이트"**. 아이디 `look.pet.mini`는 **불변**(바꾸면 저장된 차림이 사라진다). 골든 `ItemCatalogGolden.txt` 253행 1줄만 갱신.
 
 **교차 레이어 영향**: `Interaction/CharacterPetRenderer.cs`(펫 전용) / `Interaction/AppearanceShapeBuilder.cs`(미니 치수 상수 2개 추출, 좌표값 무변경) / `Resources/Items/look_pet_mini.asset` / 골든 1줄 / 신규 테스트 2파일. **상태 머신·몸통 포즈·다른 펫 3종은 무변경.**
 
-**리더 확인 요청**: `docs/UX_FLOW.md` 33-6-2/33-6-4는 "공·작은 졸라맨은 마지막 발판 Y를 유지한 채 x만 따라온다"라고 적혀 있다. 이번 사용자 지시가 **미니에 한해** 그 규약을 뒤집었다(공은 그대로 — P3로 잠금). 문서 반영은 ux-designer 소관이라 손대지 않았다.
+**리더 확인 요청**: `docs/UX_FLOW.md` 33-6-2/33-6-4는 "공·작은 스틱메이트은 마지막 발판 Y를 유지한 채 x만 따라온다"라고 적혀 있다. 이번 사용자 지시가 **미니에 한해** 그 규약을 뒤집었다(공은 그대로 — P3로 잠금). 문서 반영은 ux-designer 소관이라 손대지 않았다.
 
 ---
 
@@ -11127,7 +11127,7 @@ perf-doc 레버 1: *"무입력 30~60초면 **캐릭터 상태와 무관하게** 
 ⑥ **액세서리 획 위계 재계산** — 몸 획 ×2.5면 액세서리/몸 비율이 0.98→0.35로 붕괴.
 37-4 **P6을 재정의**해야 하고 28종 예산 재검산을 유발한다(별도 Phase로 분리해 뒤로 미룸)
 ⑨ **`widthCurve` 금지 규약 신설** — `ApplyStrokeWidthsForScale`가 배율 변경마다 커브를 파괴한다
-⑩ 초상화 이중 정의 ⑪ 펫 미니 졸라맨(4번째 몸 렌더링)도 같이 바꿔야 한다.
+⑩ 초상화 이중 정의 ⑪ 펫 미니 스틱메이트(4번째 몸 렌더링)도 같이 바꿔야 한다.
 
 ### coder에게 넘기는 것 (P1은 승인 없이 착수 가능)
 
