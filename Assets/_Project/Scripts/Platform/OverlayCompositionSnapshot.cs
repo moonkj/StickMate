@@ -32,10 +32,27 @@ namespace StickMate.Platform
     ///   (2) 백버퍼 크기 != 창 클라이언트 크기        -> 표시 단계 리샘플 = <b>모든 획이 두 겹으로 번짐</b>
     ///   (3) 캔버스 배율이 정수가 아님                -> 레거시 uGUI 글리프가 비정수 배율로 확대 = 흐린 글자
     ///   (4) WS_EX_LAYERED 가 DWM 유리와 함께 걸림    -> 합성 경로가 둘로 갈림(레이어드 + 확장 프레임)
-    /// (4)는 우리가 <b>의도적으로</b> 만든 상태다: 원칙 2의 클릭 관통(ON 기본)이 네이티브
+    /// (4)는 우리가 <b>의도한 적 없는</b> 부작용이다: 원칙 2의 클릭 관통(ON 기본)이 네이티브
     /// <c>SetClickThrough(TRUE)</c>에서 <c>WS_EX_TRANSPARENT | WS_EX_LAYERED</c>를 함께 켠다.
     /// macOS의 클릭 관통(<c>ignoresMouseEvents</c>)은 합성 경로를 <b>건드리지 않는다</b> —
     /// 두 플랫폼이 갈리는 지점이 바로 여기다.
+    ///
+    /// ============================================================================
+    /// ★ 2026-09-01 (debugger) — 이 판정기가 <b>스스로 틀렸던</b> 두 곳
+    /// ============================================================================
+    /// 이 파일의 판정이 팀을 잘못된 원인으로 한 라운드 끌고 갔다. 두 결함 모두 "관측을 덜 하고
+    /// 결론을 더 냈다"는 같은 모양이다:
+    ///   · <b>[LAYERED-ALPHA]</b> — <c>GetLayeredWindowAttributes</c>의 <c>dwFlags</c>를 버리고
+    ///     <c>bAlpha</c>만 읽어 "창 전체가 100% 비칩니다"를 단정했다. bAlpha는 <c>LWA_ALPHA</c>가
+    ///     dwFlags에 있을 때만 합성에 쓰인다. 그리고 그 결론이 참이었다면 <b>화면에 앱이 아예 보이지
+    ///     않아야 하는데</b> 사용자는 캐릭터를 보고 있었다 — 판정이 관측과 모순이었다.
+    ///     → dwFlags/crKey를 함께 읽고, 적용되지 않는 속성은 <c>[LAYERED-INERT]</c>로 <b>무해</b>하다고
+    ///       명시한다.
+    ///   · <b>[GLYPH-SCALE]</b> — "배율이 정수가 아니면 번짐"으로 판정했다. 배율 1.5에서도 짝수 pt는
+    ///     잔차가 0이다. → 잔차 자체를 판정하고, 처방도 "배율을 정수로"가 아니라 "pt를 배율에 맞춰"로
+    ///     바꿨다(전자는 UI 물리 크기를 33% 바꿔 이미 해결된 신고를 되살린다).
+    /// 그리고 관측 대상이 <b>정말 그 창인지</b>를 <see cref="OverlayHandleSource"/>로 처음 기록한다 —
+    /// 네이티브와 .NET이 서로 다른 규칙으로 창을 고르므로 같은 창이라는 보장이 없었다.
     /// </summary>
     public struct OverlayCompositionSnapshot
     {
@@ -73,6 +90,33 @@ namespace StickMate.Platform
         public bool LayeredAttributesInEffect;
         /// <summary>레이어드 속성이 있을 때의 알파 바이트(0~255). 없으면 -1.</summary>
         public int LayeredAlphaByte;
+        /// <summary>
+        /// <b>GetLayeredWindowAttributes의 dwFlags</b>(1=LWA_COLORKEY, 2=LWA_ALPHA, 조합 가능). 미관측이면 -1.
+        ///
+        /// <para>★ 2026-09-01 (debugger) — 이 필드가 없어서 판정이 틀렸다. 이전 버전은 <c>bAlpha</c>만 읽고
+        /// "레이어드 알파=0/255 — 창 전체가 100% 비칩니다"를 단정했는데, <b>bAlpha는 dwFlags에
+        /// LWA_ALPHA가 없으면 합성에 아무 영향을 주지 않는다</b>(설정되지 않은 값이 0으로 돌아오는 것이
+        /// 정상이다). 실기 로그가 정확히 그 모양이었고, 그 판정이 사실이라면 <b>화면에 앱이 아예 보이지
+        /// 않아야 하는데</b> 사용자는 캐릭터를 보고 있었다 — 판정이 자기 자신과 모순이었다.
+        /// 지표를 고치지 않고 결론만 반복하는 것이 이 저장소가 오늘 네 번 겪은 실패 패턴이다.</para>
+        /// </summary>
+        public int LayeredFlags;
+        /// <summary>레이어드 색 키(COLORREF). 미관측이면 -1.</summary>
+        public int LayeredColorKey;
+        /// <summary>
+        /// 이 관측이 <b>어느 창</b>의 것인가. 0=핸들 미확보, 1=네이티브(LibUniWinC)와 .NET이 같은 창,
+        /// 2=<b>두 값이 다름</b>(네이티브 창을 쟀다), 3=네이티브를 못 얻어 .NET 창을 쟀다.
+        ///
+        /// <para>2번이면 <b>지금까지의 모든 스타일/알파 판정이 라이브러리가 투명화한 창이 아닌 다른 창의
+        /// 것</b>이었다는 뜻이다. LibUniWinC는 우리 PID의 첫 최상위 창의 <c>GW_OWNER</c>를 붙잡고,
+        /// .NET <c>MainWindowHandle</c>은 "보이고 오너 없는" 첫 창을 고른다 — 같은 창이라는 보장이 없다.</para>
+        /// </summary>
+        public int OverlayHandleSource;
+        /// <summary>레이어드/DWM 하이브리드 해소기의 상태(<see cref="LayeredHybridResolverState"/>).</summary>
+        public int HybridResolverState;
+        /// <summary>해소기가 지금까지 WS_EX_LAYERED를 떼어낸 횟수. <b>지문에는 넣지 않는다</b> —
+        /// 커서가 캐릭터를 벗어날 때마다 늘어나므로 지문에 넣으면 로그가 폭주한다.</summary>
+        public int HybridStripCount;
         /// <summary>DwmIsCompositionEnabled. false면 DWM 투명화 자체가 성립하지 않는다.</summary>
         public bool DwmCompositionEnabled;
         /// <summary>OS 실측 조회에 성공했는가. false면 위 4개 필드는 의미가 없다.</summary>
@@ -111,7 +155,8 @@ namespace StickMate.Platform
             sb.Append(HasLayeredStyle ? '1' : '0');
             sb.Append(HasClickThroughStyle ? '1' : '0');
             sb.Append(LayeredAttributesInEffect ? '1' : '0').Append('|');
-            sb.Append(LayeredAlphaByte).Append('|');
+            sb.Append(LayeredAlphaByte).Append('/').Append(LayeredFlags).Append('|');
+            sb.Append(OverlayHandleSource).Append('/').Append(HybridResolverState).Append('|');
             sb.Append(DwmCompositionEnabled ? '1' : '0').Append('|');
             sb.Append(CameraClearFlags).Append('|');
             sb.Append(((Color32)CameraBackground).r).Append(',')
@@ -149,6 +194,20 @@ namespace StickMate.Platform
         public const int TransparentTypeColorKey = 2;
         public const int ClearFlagsSolidColor = 2;
         public const int FullScreenModeWindowed = 3;
+
+        /// <summary>GetLayeredWindowAttributes의 dwFlags 비트. <b>이 비트가 없으면 그 값은 합성에
+        /// 아무 영향이 없다</b> — 2026-09-01에 이 사실을 무시한 판정이 팀 전체를 잘못된 원인으로
+        /// 끌고 갔다(위 <see cref="OverlayCompositionSnapshot.LayeredFlags"/> 문서 참고).</summary>
+        public const int LwaColorKey = 0x00000001;
+        public const int LwaAlpha = 0x00000002;
+        /// <summary>dwFlags를 읽지 못한(구 빌드/조회 실패) 상태.</summary>
+        public const int LayeredFlagsUnknown = -1;
+
+        /// <summary>오버레이 핸들 출처(<see cref="OverlayCompositionSnapshot.OverlayHandleSource"/>).</summary>
+        public const int HandleSourceNone = 0;
+        public const int HandleSourceNativeAgrees = 1;
+        public const int HandleSourceNativeDiffers = 2;
+        public const int HandleSourceManagedFallback = 3;
 
         /// <summary>배율/크기 비교 허용 오차. 1픽셀 어긋나도 표시 단계 리샘플이 일어나므로 좁게 잡는다.</summary>
         private const float SizeEpsilon = 0.5f;
@@ -264,25 +323,39 @@ namespace StickMate.Platform
             }
 
             // ---------- (D) 캔버스 배율 — "번짐"의 2순위(폰트 래스터화) ----------
+            //
+            // ★ 2026-09-01 (debugger) — 판정 기준을 "배율이 정수인가"에서 <b>"이 폰트 크기의 잔차가
+            //   0인가"</b>로 바꿨다. 둘은 같은 질문이 아니다: 배율 1.5에서도 <b>짝수 pt</b>는
+            //   pt×1.5가 정수라 리샘플이 <b>전혀 없다</b>(14pt -> 21.0px). 예전 판정은 배율만 보고
+            //   그런 경우까지 "번짐"으로 찍어, 실제로는 멀쩡한 텍스트를 원인 후보로 올렸다.
             if (s.CanvasScaleFactor > 0f && s.SampleFontSizePoints > 0)
             {
                 float requestedPixels = s.SampleFontSizePoints * s.CanvasScaleFactor;
                 int atlasPixels = Mathf.Max(1, Mathf.RoundToInt(requestedPixels));
                 float glyphRatio = requestedPixels / atlasPixels;
                 bool integerScale = Mathf.Abs(s.CanvasScaleFactor - Mathf.Round(s.CanvasScaleFactor)) <= RatioEpsilon;
-                if (!integerScale || Mathf.Abs(glyphRatio - 1f) > RatioEpsilon)
+                bool exactAtThisSize = Mathf.Abs(glyphRatio - 1f) <= RatioEpsilon;
+
+                if (!exactAtThisSize)
                 {
                     Add(lines, "GLYPH-SCALE", CompositionFault.Blur,
-                        $"캔버스 배율={s.CanvasScaleFactor:F3}(정수 아님: {!integerScale}). 대표 폰트 " +
+                        $"캔버스 배율={s.CanvasScaleFactor:F3}(정수: {integerScale}). 대표 폰트 " +
                         $"{s.SampleFontSizePoints}pt는 아틀라스에 {atlasPixels}px로 구워진 뒤 " +
                         $"{glyphRatio:F4}배로 <비정수 확대>되어 화면에 올라갑니다 — 레거시 uGUI Text의 " +
                         "글자가 흐려지는 구조적 원인입니다(알파 문제가 아닙니다). " +
-                        "디스플레이 배율 125%/150%에서 특히 두드러집니다.");
+                        "★ 처방은 <캔버스 배율을 정수로 바꾸는 것이 아닙니다> — 그러면 UI의 물리적 크기가 " +
+                        $"{(Mathf.Round(s.CanvasScaleFactor) / s.CanvasScaleFactor - 1f) * 100f:F0}% 바뀌어 " +
+                        "2026-08-31에 이미 해결된 신고(글씨가 너무 작다/크다)가 되살아납니다. " +
+                        $"옳은 처방은 <폰트 pt를 배율에 맞추는 것>입니다: 배율 {s.CanvasScaleFactor:F3}에서는 " +
+                        $"pt×{s.CanvasScaleFactor:F3}가 정수인 크기(예: {NearestExactPoints(s.SampleFontSizePoints, s.CanvasScaleFactor)}pt)만 " +
+                        "잔차 0으로 구워집니다.");
                 }
                 else
                 {
                     Add(lines, "GLYPH-SCALE", CompositionFault.None,
-                        $"캔버스 배율={s.CanvasScaleFactor:F3}(정수) — 글리프 리샘플 없음.");
+                        $"캔버스 배율={s.CanvasScaleFactor:F3}에서 대표 폰트 {s.SampleFontSizePoints}pt는 " +
+                        $"정확히 {atlasPixels}px로 구워집니다 — 글리프 리샘플 없음" +
+                        (integerScale ? "(배율도 정수)." : "(배율은 정수가 아니지만 이 크기에서는 잔차가 0이다)."));
                 }
             }
 
@@ -295,46 +368,69 @@ namespace StickMate.Platform
                     "백버퍼와 창 크기를 어긋나게 만들 수 있습니다(위 RESAMPLE 줄과 함께 보세요).");
             }
 
-            // ---------- (E) 합성 경로 이중화 — "겹침"의 유력 후보 ----------
+            // ---------- (E) 관측 대상이 <그 창>이 맞는가 — 다른 모든 스타일 판정의 전제 ----------
+            if (s.OverlayHandleSource == HandleSourceNativeDiffers)
+            {
+                Add(lines, "HWND-MISMATCH", CompositionFault.Both,
+                    "네이티브(LibUniWinC.GetWindowHandle)와 .NET(Process.MainWindowHandle)이 <서로 다른 창>을 " +
+                    "가리킵니다. 아래 스타일/알파 판정은 이제 네이티브가 지목한 창(= 라이브러리가 실제로 " +
+                    "투명화·클릭관통을 건 창)의 것이지만, 좌표 원점 보고와 전체화면 판정 등 <다른 코드가 " +
+                    "여전히 .NET 핸들을 쓰고 있습니다>. 두 창이 갈린 채로는 어떤 창 진단도 신뢰할 수 없으니 " +
+                    "이 줄이 보이면 핸들 단일화가 최우선입니다.");
+            }
+            else if (s.OverlayHandleSource == HandleSourceManagedFallback)
+            {
+                Add(lines, "HWND", CompositionFault.None,
+                    "LibUniWinC.GetWindowHandle을 쓸 수 없어 .NET MainWindowHandle을 쟀습니다 — " +
+                    "이 관측이 라이브러리가 조작한 창과 같다는 보장은 없습니다(예전과 동일한 상태).");
+            }
+
+            // ---------- (F) 합성 경로 이중화 — "겹침"의 후보 ----------
             if (s.OsStyleReadOk)
             {
+                bool resolverActive = s.HybridResolverState == (int)LayeredHybridResolverState.Verified;
+
                 if (s.HasLayeredStyle && s.TransparentType == TransparentTypeAlpha)
                 {
-                    Add(lines, "LAYERED+DWM", CompositionFault.Both,
-                        "창에 WS_EX_LAYERED가 걸려 있는데 투명화는 DWM 확장 프레임(Alpha) 경로입니다 — " +
-                        "합성 경로가 둘로 갈린 하이브리드 상태입니다. 이 스타일은 우리가 직접 걸지 않았고 " +
-                        "네이티브 SetClickThrough(TRUE)가 WS_EX_TRANSPARENT와 함께 켭니다(원칙 2: 클릭 관통 " +
-                        "기본 ON). 그리고 <한 번 켜지면 다시 꺼지지 않습니다>(disable 분기가 " +
-                        "WS_EX_TRANSPARENT만 지웁니다). macOS의 클릭 관통(ignoresMouseEvents)은 합성 경로를 " +
-                        "전혀 건드리지 않으므로 <이 상태는 Windows에만 존재합니다>.");
+                    if (resolverActive)
+                    {
+                        // 해소기가 정상 가동 중이면 레이어드는 <다음 틱(0.25초)에 사라질 일시 상태>다.
+                        // 라이브러리는 커서가 캐릭터를 벗어날 때마다 다시 켜므로 이 순간 포착은 정상이다.
+                        Add(lines, "LAYERED+DWM", CompositionFault.None,
+                            $"WS_EX_LAYERED가 관측됐지만 하이브리드 해소기가 가동 중입니다(제거 {s.HybridStripCount}회, " +
+                            "관통 유지 실측 확인됨) — 라이브러리가 커서 이동마다 다시 켜는 것을 0.25초 안에 " +
+                            "떼어내므로 <일시 상태>입니다.");
+                    }
+                    else
+                    {
+                        Add(lines, "LAYERED+DWM", CompositionFault.Both,
+                            "창에 WS_EX_LAYERED가 걸려 있는데 투명화는 DWM 확장 프레임(Alpha) 경로입니다 — " +
+                            "합성 경로가 둘로 갈린 하이브리드 상태입니다. 이 스타일은 우리가 직접 걸지 않았고 " +
+                            "네이티브 SetClickThrough(TRUE)가 WS_EX_TRANSPARENT와 함께 켭니다(원칙 2: 클릭 관통 " +
+                            "기본 ON). 그리고 <한 번 켜지면 다시 꺼지지 않습니다>(disable 분기가 " +
+                            "WS_EX_TRANSPARENT만 지웁니다). macOS의 클릭 관통(ignoresMouseEvents)은 합성 경로를 " +
+                            "전혀 건드리지 않으므로 <이 상태는 Windows에만 존재합니다>. " +
+                            $"해소기 상태={(LayeredHybridResolverState)s.HybridResolverState} — " +
+                            "왜 해소되지 않았는지는 [레이어드해소] 줄에 사유가 있습니다.");
+                    }
 
-                    if (!s.LayeredAttributesInEffect)
-                    {
-                        Add(lines, "LAYERED-NOATTR", CompositionFault.SeeThrough,
-                            "게다가 GetLayeredWindowAttributes가 실패했습니다 — 레이어드 창인데 " +
-                            "SetLayeredWindowAttributes/UpdateLayeredWindow가 <한 번도 성립하지 않은> 상태입니다. " +
-                            "네이티브 applyWindowAlphaValue()는 알파가 255면 스타일을 걸지 않고 호출만 하는데, " +
-                            "그 호출은 창이 아직 레이어드가 아니라 실패하고, 나중에 클릭 관통이 " +
-                            "레이어드만 켭니다. 이 조합의 합성 결과는 OS/드라이버 정의에 맡겨져 있습니다.");
-                    }
-                    else if (s.LayeredAlphaByte >= 0 && s.LayeredAlphaByte < 255)
-                    {
-                        Add(lines, "LAYERED-ALPHA", CompositionFault.SeeThrough,
-                            $"레이어드 알파={s.LayeredAlphaByte}/255 — 창 전체가 " +
-                            $"{(1f - s.LayeredAlphaByte / 255f) * 100f:F0}% 균일하게 비칩니다. " +
-                            "이건 uGUI 알파와 무관한 <창 단위> 반투명이라 UiChrome을 아무리 고쳐도 안 사라집니다.");
-                    }
+                    AppendLayeredAttributeVerdict(lines, s);
                 }
                 else if (!s.HasLayeredStyle)
                 {
                     Add(lines, "LAYERED+DWM", CompositionFault.None,
-                        "WS_EX_LAYERED 없음 — DWM 확장 프레임 단일 경로(정상).");
+                        "WS_EX_LAYERED 없음 — DWM 확장 프레임 단일 경로(정상)." +
+                        (s.HybridStripCount > 0
+                            ? $" 하이브리드 해소기가 {s.HybridStripCount}회 떼어낸 결과입니다."
+                            : string.Empty));
                 }
 
                 if (!s.HasClickThroughStyle)
                 {
                     Add(lines, "CLICKTHROUGH", CompositionFault.None,
-                        "WS_EX_TRANSPARENT 없음 — 클릭 관통이 OS 수준에서 꺼져 있습니다(원칙 2 확인 필요).");
+                        "WS_EX_TRANSPARENT 없음 — 클릭 관통이 OS 수준에서 꺼져 있습니다(원칙 2 확인 필요). " +
+                        "커서가 캐릭터 실루엣 위에 있으면 라이브러리가 의도적으로 잠시 끄므로 이 줄 하나로 " +
+                        "회귀를 단정하지 마세요.");
                 }
             }
             else
@@ -343,7 +439,7 @@ namespace StickMate.Platform
                     "창 스타일 실측에 실패했습니다(핸들 미확보). 위 LAYERED 판정은 보류입니다.");
             }
 
-            // ---------- (F) 샘플링 ----------
+            // ---------- (G) 샘플링 ----------
             if (s.RequestedMsaa > 1 && s.ActualMsaa != s.RequestedMsaa)
             {
                 Add(lines, "MSAA", CompositionFault.Blur,
@@ -352,6 +448,77 @@ namespace StickMate.Platform
             }
 
             return lines;
+        }
+
+        /// <summary>
+        /// 레이어드 <b>속성</b>(SetLayeredWindowAttributes) 판정.
+        ///
+        /// <para>★ 2026-09-01 (debugger) — <b>이 함수가 이번 라운드에서 고쳐진 판정 그 자체다.</b>
+        /// 예전 코드는 <c>bAlpha &lt; 255</c>만 보고 "창 전체가 (1-α)만큼 비칩니다"를 단정했다. 그러나
+        /// <c>bAlpha</c>는 <c>dwFlags</c>에 <c>LWA_ALPHA</c>가 있을 때만 합성에 쓰인다 — 없으면 그냥
+        /// 저장돼 있지 않은 값이고 0으로 돌아오는 것이 정상이다. 실기 로그의 <c>알파=0/255</c>가 정말로
+        /// 적용 중이었다면 <b>창이 완전히 투명해 아무것도 보이지 않아야 하는데</b> 사용자는 캐릭터를
+        /// 보고 있었다. 즉 그 판정은 관측과 모순이었고, 팀은 그 줄을 근거로 한 라운드를 썼다.</para>
+        /// </summary>
+        private static void AppendLayeredAttributeVerdict(System.Collections.Generic.List<Line> lines,
+            OverlayCompositionSnapshot s)
+        {
+            if (!s.LayeredAttributesInEffect)
+            {
+                Add(lines, "LAYERED-NOATTR", CompositionFault.None,
+                    "GetLayeredWindowAttributes 실패 — 레이어드 스타일은 걸려 있지만 레이어드 <속성>은 " +
+                    "한 번도 설정된 적이 없습니다. 네이티브 applyWindowAlphaValue()가 알파 255로 호출될 때는 " +
+                    "스타일을 걸지 않고 호출만 하는데, 그 시점의 창은 아직 레이어드가 아니라 그 호출이 " +
+                    "실패하기 때문입니다(그 뒤 클릭 관통이 스타일만 켭니다). " +
+                    "<b>속성이 없으므로 창 단위 알파/색키는 적용되지 않습니다</b> — 즉 이 항목은 " +
+                    "비침의 원인이 아닙니다. (겹침의 실제 원인 후보는 uGUI 패널 알파 쪽입니다.)");
+                return;
+            }
+
+            bool flagsKnown = s.LayeredFlags >= 0;
+            bool alphaApplied = flagsKnown ? (s.LayeredFlags & LwaAlpha) != 0 : s.LayeredAlphaByte >= 0;
+            bool keyApplied = flagsKnown && (s.LayeredFlags & LwaColorKey) != 0;
+
+            if (keyApplied)
+            {
+                Add(lines, "LAYERED-COLORKEY", CompositionFault.SeeThrough,
+                    $"레이어드 색 키가 적용 중입니다(crKey=0x{s.LayeredColorKey:X6}, dwFlags=0x{s.LayeredFlags:X}). " +
+                    "DWM 확장 프레임(Alpha) 경로에서는 색 키를 쓰지 않으므로 이건 남아 있으면 안 되는 값이며, " +
+                    "우리 UI 색이 우연히 키 색과 같은 화소마다 <구멍>이 납니다.");
+            }
+
+            if (alphaApplied && s.LayeredAlphaByte >= 0 && s.LayeredAlphaByte < 255)
+            {
+                Add(lines, "LAYERED-ALPHA", CompositionFault.SeeThrough,
+                    $"레이어드 알파={s.LayeredAlphaByte}/255이고 dwFlags에 LWA_ALPHA가 <실제로> 들어 있습니다" +
+                    (flagsKnown ? $"(0x{s.LayeredFlags:X})" : "(dwFlags 미관측 — 구 빌드)") + " — 창 전체가 " +
+                    $"{(1f - s.LayeredAlphaByte / 255f) * 100f:F0}% 균일하게 비칩니다. " +
+                    "이건 uGUI 알파와 무관한 <창 단위> 반투명이라 UiChrome을 아무리 고쳐도 안 사라집니다. " +
+                    "★ 자기검증: 이 판정이 맞다면 알파 0에서는 <화면에 앱이 전혀 보이지 않아야> 합니다. " +
+                    "캐릭터가 보이는데 이 줄이 떴다면 판정이 아니라 <관측 대상 창>을 의심하세요(위 HWND 줄).");
+            }
+            else if (!keyApplied)
+            {
+                Add(lines, "LAYERED-INERT", CompositionFault.None,
+                    $"레이어드 속성은 있으나 합성에 적용되지 않습니다(알파 바이트={s.LayeredAlphaByte}, " +
+                    (flagsKnown ? $"dwFlags=0x{s.LayeredFlags:X}" : "dwFlags 미관측") +
+                    ") — LWA_ALPHA도 LWA_COLORKEY도 켜져 있지 않으므로 창 단위 반투명이 <없습니다>. " +
+                    "겹침의 원인이 아닙니다.");
+            }
+        }
+
+        /// <summary>주어진 배율에서 <c>pt × 배율</c>이 정수가 되는 가장 가까운 pt(같은 값이면 그대로).
+        /// "폰트를 몇 pt로 바꾸면 되는가"를 로그가 직접 답하게 하려고 둔다.</summary>
+        private static int NearestExactPoints(int points, float scale)
+        {
+            if (scale <= 0f) return points;
+            for (int d = 0; d <= 8; d++)
+            {
+                int up = points + d, down = points - d;
+                if (up > 0 && Mathf.Abs(up * scale - Mathf.Round(up * scale)) <= RatioEpsilon) return up;
+                if (down > 0 && Mathf.Abs(down * scale - Mathf.Round(down * scale)) <= RatioEpsilon) return down;
+            }
+            return points;
         }
 
         private static void Add(System.Collections.Generic.List<Line> lines, string code,

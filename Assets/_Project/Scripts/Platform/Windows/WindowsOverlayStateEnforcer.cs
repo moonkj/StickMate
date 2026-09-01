@@ -127,6 +127,11 @@ namespace StickMate.Platform.Windows
         /// <summary>항상위 강등 감시 + 진단 로그. 아래 <see cref="TickTopmostWatchdog"/> 참고.</summary>
         private readonly WindowsTopmostWatchdog _topmostWatchdog = new WindowsTopmostWatchdog();
 
+        /// <summary>레이어드/DWM 하이브리드 해소기(2026-09-01). 자기 HWND를 스스로 해석하므로
+        /// <see cref="OverlayHandle"/>에 의존하지 않는다 — 그 핸들이 <b>라이브러리가 붙잡은 창과
+        /// 같다는 보장이 없다</b>는 것이 이 라운드의 발견 중 하나다(UniWinCNativeHandle 문서 참고).</summary>
+        private readonly WindowsLayeredHybridResolver _layeredHybridResolver = new WindowsLayeredHybridResolver();
+
         // 목표 상태 — Win32WindowService가 자기 API 호출 때마다 갱신한다.
         internal bool DesiredTransparent = true;
         internal bool DesiredTopmost;
@@ -238,6 +243,13 @@ namespace StickMate.Platform.Windows
             TickDisplayTopology();
             TickFullScreenBounds();
             TickTopmostWatchdog();
+            // ★ 2026-09-01 (debugger) — "레이어드 + DWM 확장 프레임" 하이브리드 해소.
+            //   네이티브 SetClickThrough(TRUE)가 WS_EX_TRANSPARENT와 함께 켜고 <다시는 끄지 않는>
+            //   WS_EX_LAYERED를, 클릭 관통이 유지되는지 OS에게 직접 확인한 뒤에만 떼어낸다.
+            //   판정 규칙/근거 전문은 Platform/LayeredHybridPolicy.cs, 실행은 WindowsLayeredHybridResolver.
+            //   TickTopmostWatchdog와 마찬가지로 재적용 상한과 무관하게 앱 수명 내내 돈다 —
+            //   라이브러리가 커서 이동마다 레이어드를 다시 켜기 때문이다.
+            _layeredHybridResolver.Tick(Time.unscaledDeltaTime, (int)_controller.transparentType);
 
             // ★ 위 TickTopmostWatchdog()이 이 return **위에** 있는 것이 핵심이다(2026-09-01).
             //   아래 재적용 루프는 ReapplyAttempts(5) x 0.5초 = 2.5초로 상한이 걸려 있어, 기동 몇 초 뒤엔

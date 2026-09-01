@@ -66,6 +66,7 @@ namespace StickMate.Platform.Windows
         private string _lastSignature;
         private IntPtr _hwnd = IntPtr.Zero;
         private bool _hwndLookupFailedLogged;
+        private int _handleSource = OverlayCompositionVerdict.HandleSourceNone;
 
         internal static WindowsCompositionProbe EnsureExists(UniWindowController controller, Core.StickConfig config)
         {
@@ -151,7 +152,10 @@ namespace StickMate.Platform.Windows
             sb.Append($"    합성: transparentType={(s.TransparentType == 1 ? "Alpha(DWM확장프레임)" : s.TransparentType == 2 ? "ColorKey" : s.TransparentType.ToString())}, ")
               .Append($"DWM합성={s.DwmCompositionEnabled}, 스타일실측={s.OsStyleReadOk}, ")
               .Append($"WS_EX_LAYERED={s.HasLayeredStyle}, WS_EX_TRANSPARENT={s.HasClickThroughStyle}, ")
-              .Append($"레이어드속성={(s.LayeredAttributesInEffect ? $"있음(알파 {s.LayeredAlphaByte}/255)" : "없음")}\n");
+              .Append($"레이어드속성={(s.LayeredAttributesInEffect ? $"있음(알파 {s.LayeredAlphaByte}/255, dwFlags=0x{s.LayeredFlags:X}, crKey=0x{s.LayeredColorKey:X6})" : "없음")}\n");
+            sb.Append($"    핸들/해소기: 관측대상={HandleSourceText(s.OverlayHandleSource)}, ")
+              .Append($"하이브리드해소기={(LayeredHybridResolverState)s.HybridResolverState}")
+              .Append($"(제거 {s.HybridStripCount}회, {WindowsLayeredHybridResolver.SharedNote})\n");
             sb.Append($"    카메라: clearFlags={(CameraClearFlags)s.CameraClearFlags}, ")
               .Append($"배경=({s.CameraBackground.r:F3},{s.CameraBackground.g:F3},{s.CameraBackground.b:F3},{s.CameraBackground.a:F3}), ")
               .Append($"HDR={s.CameraAllowHdr}, MSAA허용={s.CameraAllowMsaa}\n");
@@ -159,6 +163,14 @@ namespace StickMate.Platform.Windows
               .Append($"UI스프라이트 필터={(FilterMode)s.UiSpriteFilterMode}, ")
               .Append($"GPU={SystemInfo.graphicsDeviceName} ({SystemInfo.graphicsDeviceType})\n");
         }
+
+        private static string HandleSourceText(int code) => code switch
+        {
+            OverlayCompositionVerdict.HandleSourceNativeAgrees => "네이티브==.NET(같은 창)",
+            OverlayCompositionVerdict.HandleSourceNativeDiffers => "★네이티브(.NET과 다름)",
+            OverlayCompositionVerdict.HandleSourceManagedFallback => ".NET 폴백(네이티브 조회 불가)",
+            _ => "미확보",
+        };
 
         private OverlayCompositionSnapshot Capture()
         {
@@ -174,6 +186,10 @@ namespace StickMate.Platform.Windows
                 RequestedMsaa = QualitySettings.antiAliasing,
                 ActualMsaa = Screen.msaaSamples,
                 LayeredAlphaByte = -1,
+                LayeredFlags = OverlayCompositionVerdict.LayeredFlagsUnknown,
+                LayeredColorKey = -1,
+                HybridResolverState = (int)WindowsLayeredHybridResolver.SharedState,
+                HybridStripCount = WindowsLayeredHybridResolver.SharedStripCount,
                 UiSpriteFilterMode = (int)FilterMode.Bilinear,
             };
 
@@ -210,6 +226,7 @@ namespace StickMate.Platform.Windows
         private void CaptureOsStyles(ref OverlayCompositionSnapshot s)
         {
             if (_hwnd == IntPtr.Zero) _hwnd = ResolveOverlayHandle();
+            s.OverlayHandleSource = _handleSource;
             if (_hwnd == IntPtr.Zero) return;
 
             try
@@ -219,10 +236,16 @@ namespace StickMate.Platform.Windows
                 s.HasLayeredStyle = (exStyle & WsExLayered) != 0;
                 s.HasClickThroughStyle = (exStyle & WsExTransparent) != 0;
 
-                if (GetLayeredWindowAttributes(_hwnd, out uint _, out byte alpha, out uint _))
+                // ★ 2026-09-01 (debugger) — dwFlags를 <반드시> 함께 읽는다.
+                //   예전에는 `out uint _`로 버렸고, 그래서 판정이 "bAlpha < 255 = 창이 비친다"를 단정했다.
+                //   bAlpha는 dwFlags에 LWA_ALPHA가 있을 때만 합성에 쓰이는 값이다 — 이 한 줄이 없어서
+                //   팀 전체가 잘못된 원인을 한 라운드 동안 쫓았다(OverlayCompositionSnapshot.LayeredFlags 참고).
+                if (GetLayeredWindowAttributes(_hwnd, out uint crKey, out byte alpha, out uint flags))
                 {
                     s.LayeredAttributesInEffect = true;
                     s.LayeredAlphaByte = alpha;
+                    s.LayeredFlags = unchecked((int)flags);
+                    s.LayeredColorKey = unchecked((int)crKey);
                 }
 
                 s.DwmCompositionEnabled = DwmIsCompositionEnabled(out bool enabled) == 0 && enabled;
@@ -262,17 +285,37 @@ namespace StickMate.Platform.Windows
         {
             try
             {
-                IntPtr h = System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle;
-                if (h == IntPtr.Zero && !_hwndLookupFailedLogged)
+                IntPtr native = UniWinCNativeHandle.TryGetNative();
+                IntPtr managed = UniWinCNativeHandle.Fallback();
+
+                if (native != IntPtr.Zero)
+                {
+                    _handleSource = (managed != IntPtr.Zero && native != managed)
+                        ? OverlayCompositionVerdict.HandleSourceNativeDiffers
+                        : OverlayCompositionVerdict.HandleSourceNativeAgrees;
+                    // 불일치 경고는 UniWinCNativeHandle.Resolve()가 한 번만 남긴다(중복 방지).
+                    UniWinCNativeHandle.Resolve();
+                    return native;
+                }
+
+                if (managed != IntPtr.Zero)
+                {
+                    _handleSource = OverlayCompositionVerdict.HandleSourceManagedFallback;
+                    return managed;
+                }
+
+                _handleSource = OverlayCompositionVerdict.HandleSourceNone;
+                if (!_hwndLookupFailedLogged)
                 {
                     _hwndLookupFailedLogged = true;
                     Debug.LogWarning($"{LogPrefix} 오버레이 HWND를 아직 확보하지 못했습니다 " +
-                        "(MainWindowHandle=0) — 창 스타일 실측 항목은 보류로 남습니다.");
+                        "(네이티브/.NET 둘 다 0) — 창 스타일 실측 항목은 보류로 남습니다.");
                 }
-                return h;
+                return IntPtr.Zero;
             }
             catch (Exception e)
             {
+                _handleSource = OverlayCompositionVerdict.HandleSourceNone;
                 if (!_hwndLookupFailedLogged)
                 {
                     _hwndLookupFailedLogged = true;

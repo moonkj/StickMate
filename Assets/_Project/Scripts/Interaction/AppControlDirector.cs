@@ -151,13 +151,18 @@ namespace StickMate.Interaction
         /// </summary>
         private void LogStartupBanner()
         {
+            // ★ 2026-09-01 — 여기가 "Windows 실기 로그에 macOS 단축키가 찍힌다"의 진원지였다.
+            //   표기를 손으로 적으면 Windows 사용자에게 **존재하지 않는 조합**이 안내된다
+            //   (Win32WindowService는 GlobalKey.Command를 VK_LWIN으로 읽는다 = Windows 키).
+            //   글리프가 아니라 "Control+Option+Command"처럼 **낱말**로 적혀 있었던 탓에
+            //   Tests/EditMode/PlatformParityAuditTests의 글리프 스캐너도 잡지 못했다.
             string quitLine = "[앱제어] 준비 완료 — 종료 방법 2가지: " +
-                "(1) 전역 단축키 **Control+Option+Command+Q**, " +
+                "(1) 전역 단축키 **" + ShortcutLabel.Chord("Q") + "**, " +
                 "(2) **기어 아이콘 → 부채꼴 ④[행동] → 창 푸터 [✕ 앱 종료]**(2단 확인 3초). " +
                 "★ 캐릭터 우클릭 메뉴는 2026-08-31에 폐지됐습니다 — 우클릭은 이제 밑에 있는 앱으로 " +
                 "그대로 관통합니다(비침해 개선, UX_FLOW 36-9). ";
 
-            string userKeys = "사용자 단축키: Ctrl+Opt+Cmd+C(잉크색 전환) / R(로데오 커서 on-off) / " +
+            string userKeys = "사용자 단축키: " + ShortcutLabel.Chord("C") + "(잉크색 전환) / R(로데오 커서 on-off) / " +
                 "**B(말 걸기)** / **K(격파 놀이)** / **G(그라피티)** / **T(창 도둑)** / " +
                 "**X(창 부수기)** / **A(활쏘기)** / **N(가출 중이면 돌아오라고 부르기)** / " +
                 "**I(캐릭터 정보/장비 창)** / **,(설정창)**. 이 명령들의 주 경로는 부채꼴 ④ [행동] 창이고, \n" +
@@ -264,24 +269,34 @@ namespace StickMate.Interaction
             _prevI = iKey;
             _prevComma = comma;
 
-            if (qRise) Invoke(ControlAction.Quit, "전역 단축키 Ctrl+Opt+Cmd+Q");
-            else if (cRise) Invoke(ControlAction.InkColor, "전역 단축키 Ctrl+Opt+Cmd+C");
-            else if (rRise) Invoke(ControlAction.Rodeo, "전역 단축키 Ctrl+Opt+Cmd+R");
-            else if (dRise) Invoke(ControlAction.Diagnostics, "전역 단축키 Ctrl+Opt+Cmd+D");
-            else if (bRise) Invoke(ControlAction.SayNow, "전역 단축키 Ctrl+Opt+Cmd+B");
-            else if (kRise) Invoke(ControlAction.BattleMinigame, "전역 단축키 Ctrl+Opt+Cmd+K");
-            else if (gRise) Invoke(ControlAction.Graffiti, "전역 단축키 Ctrl+Opt+Cmd+G");
-            else if (tRise) Invoke(ControlAction.WindowTheft, "전역 단축키 Ctrl+Opt+Cmd+T");
-            else if (xRise) Invoke(ControlAction.WindowCrash, "전역 단축키 Ctrl+Opt+Cmd+X");
-            else if (hRise) Invoke(ControlAction.HardwareReaction, "전역 단축키 Ctrl+Opt+Cmd+H");
-            else if (sRise) Invoke(ControlAction.StressGauge, "전역 단축키 Ctrl+Opt+Cmd+S");
-            else if (nRise) Invoke(ControlAction.Runaway, "전역 단축키 Ctrl+Opt+Cmd+N");
-            else if (jRise) Invoke(ControlAction.TodoReminder, "전역 단축키 Ctrl+Opt+Cmd+J");
-            else if (fRise) Invoke(ControlAction.FocusWatch, "전역 단축키 Ctrl+Opt+Cmd+F");
-            else if (aRise) Invoke(ControlAction.Archery, "전역 단축키 Ctrl+Opt+Cmd+A");
-            else if (iRise) Invoke(ControlAction.CharacterInfo, "전역 단축키 Ctrl+Opt+Cmd+I");
-            else if (commaRise) Invoke(ControlAction.Settings, "전역 단축키 Ctrl+Opt+Cmd+,");
+            if (qRise) Invoke(ControlAction.Quit, HotkeySource("Q"));
+            else if (cRise) Invoke(ControlAction.InkColor, HotkeySource("C"));
+            else if (rRise) Invoke(ControlAction.Rodeo, HotkeySource("R"));
+            else if (dRise) Invoke(ControlAction.Diagnostics, HotkeySource("D"));
+            else if (bRise) Invoke(ControlAction.SayNow, HotkeySource("B"));
+            else if (kRise) Invoke(ControlAction.BattleMinigame, HotkeySource("K"));
+            else if (gRise) Invoke(ControlAction.Graffiti, HotkeySource("G"));
+            else if (tRise) Invoke(ControlAction.WindowTheft, HotkeySource("T"));
+            else if (xRise) Invoke(ControlAction.WindowCrash, HotkeySource("X"));
+            else if (hRise) Invoke(ControlAction.HardwareReaction, HotkeySource("H"));
+            else if (sRise) Invoke(ControlAction.StressGauge, HotkeySource("S"));
+            else if (nRise) Invoke(ControlAction.Runaway, HotkeySource("N"));
+            else if (jRise) Invoke(ControlAction.TodoReminder, HotkeySource("J"));
+            else if (fRise) Invoke(ControlAction.FocusWatch, HotkeySource("F"));
+            else if (aRise) Invoke(ControlAction.Archery, HotkeySource("A"));
+            else if (iRise) Invoke(ControlAction.CharacterInfo, HotkeySource("I"));
+            else if (commaRise) Invoke(ControlAction.Settings, HotkeySource(","));
         }
+
+        /// <summary>
+        /// 단축키 발동 출처 문구. 조합키 <b>표기</b>는 <see cref="ShortcutLabel"/>에서만 나온다 —
+        /// 이 17줄이 <c>"Ctrl+Opt+Cmd+X"</c>를 손으로 들고 있었고, 그래서 Windows 실기 로그에도
+        /// macOS 표기가 그대로 찍혔다(2026-09-01 사용자 로그로 확인).
+        ///
+        /// <para>매 프레임 할당이 아니다: 이 함수는 <b>상승 에지</b>(사용자가 실제로 조합을 누른 순간)
+        /// 에서만 불린다. 20Hz 폴링 자체는 문자열을 만들지 않는다.</para>
+        /// </summary>
+        private static string HotkeySource(string key) => "전역 단축키 " + ShortcutLabel.Chord(key);
 
         private bool IsKeyDown(GlobalKey key)
             => _keyService != null && _keyService.TryGetKeyPressed(key, out bool pressed) && pressed;

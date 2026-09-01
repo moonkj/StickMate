@@ -48,6 +48,11 @@ namespace StickMate.Tests.EditMode
             HasClickThroughStyle = true,
             LayeredAttributesInEffect = false,
             LayeredAlphaByte = -1,
+            LayeredFlags = OverlayCompositionVerdict.LayeredFlagsUnknown,
+            LayeredColorKey = -1,
+            OverlayHandleSource = OverlayCompositionVerdict.HandleSourceNativeAgrees,
+            HybridResolverState = (int)LayeredHybridResolverState.NotPresent,
+            HybridStripCount = 0,
             DwmCompositionEnabled = true,
             OsStyleReadOk = true,
 
@@ -150,6 +155,23 @@ namespace StickMate.Tests.EditMode
             AssertFault(Diagnose(s), "GLYPH-SCALE", CompositionFault.Blur);
         }
 
+        /// <summary>
+        /// ★ 2026-09-01 (debugger) — 예전 판정은 "배율이 정수가 아니면 번짐"이었다. 그건 <b>과잉 판정</b>이다:
+        /// 배율 1.5에서도 <b>짝수 pt</b>는 pt×1.5가 정수라 아틀라스 -> 화면 배율이 정확히 1.0이다.
+        /// 이 네거티브 컨트롤이 없으면 멀쩡한 텍스트가 계속 원인 후보로 올라온다.
+        /// </summary>
+        [Test]
+        public void FractionalScaleWithAMatchingFontSizeHasNoResample()
+        {
+            var s = Healthy();
+            s.CanvasScaleFactor = 1.5f;
+            s.UiDensityScale = 1.5f;
+            s.SampleFontSizePoints = 14;     // 14 x 1.5 = 21.0 (정확)
+            Assert.IsTrue(Has(Diagnose(s), "GLYPH-SCALE", out var line));
+            Assert.AreEqual(CompositionFault.None, line.Fault,
+                "배율이 정수가 아니어도 pt x 배율이 정수면 리샘플이 없습니다 — 여기서 경고가 뜨면 오탐입니다.");
+        }
+
         [Test]
         public void RetinaLikeIntegerScaleIsNotReported()
         {
@@ -202,7 +224,14 @@ namespace StickMate.Tests.EditMode
             var lines = Diagnose(s);
             AssertFault(lines, "LAYERED+DWM", CompositionFault.Both);
             // 레이어드인데 속성이 없다는 두 번째 줄까지 함께 떠야 한다(원인 사슬이 로그에 다 남는다).
-            AssertFault(lines, "LAYERED-NOATTR", CompositionFault.SeeThrough);
+            //
+            // ★ 2026-09-01 (debugger) — 이 줄의 <심각도가 바뀌었다>. 예전에는 SeeThrough(겹침 원인)였다.
+            //   근거가 없었다: SetLayeredWindowAttributes가 한 번도 성립하지 않았다는 것은
+            //   <창 단위 알파/색키가 적용되지 않는다>는 뜻이고, 그러면 비침에 기여할 수 없다.
+            //   "모르는 상태 = 나쁜 상태"로 찍으면 진짜 원인(uGUI 패널 알파)에서 눈을 돌리게 된다.
+            Assert.IsTrue(Has(lines, "LAYERED-NOATTR", out var noAttr));
+            Assert.AreEqual(CompositionFault.None, noAttr.Fault,
+                "레이어드 속성이 <설정된 적 없음>은 창 단위 반투명이 없다는 뜻이므로 겹침 원인이 아닙니다.");
         }
 
         [Test]
@@ -212,10 +241,100 @@ namespace StickMate.Tests.EditMode
             s.HasLayeredStyle = true;
             s.LayeredAttributesInEffect = true;
             s.LayeredAlphaByte = 200;
+            s.LayeredFlags = OverlayCompositionVerdict.LwaAlpha;   // ★ 이 비트가 있어야 알파가 <적용>된다
             var lines = Diagnose(s);
             AssertFault(lines, "LAYERED-ALPHA", CompositionFault.SeeThrough);
             Assert.IsFalse(Has(lines, "LAYERED-NOATTR", out _),
                 "레이어드 속성이 실제로 걸려 있으면 '속성 없음' 줄은 뜨면 안 됩니다(상호 배타적 원인).");
+        }
+
+        /// <summary>
+        /// ★★ 이 라운드의 핵심 회귀 잠금 — <b>2026-09-01 실기 로그가 정확히 이 모양이었다.</b>
+        ///
+        /// <c>GetLayeredWindowAttributes</c>는 성공했지만 <c>dwFlags</c>에 <c>LWA_ALPHA</c>도
+        /// <c>LWA_COLORKEY</c>도 없으면 <c>bAlpha</c>는 <b>합성에 쓰이지 않는 값</b>이다(설정되지 않은
+        /// 값이 0으로 돌아오는 것이 정상). 예전 판정은 이 경우에도 "창 전체가 100% 비칩니다"를 단정했고,
+        /// 팀 전체가 그 한 줄을 근거로 한 라운드를 썼다. <b>그 판정이 참이면 화면에 앱이 아예 보이지
+        /// 않아야 하는데 사용자는 캐릭터를 보고 있었다</b> — 관측과 모순인 결론이었다.
+        /// </summary>
+        [Test]
+        public void LayeredAlphaZeroWithoutLwaAlphaFlagIsNotSeeThrough()
+        {
+            var s = Healthy();
+            s.HasLayeredStyle = true;
+            s.LayeredAttributesInEffect = true;
+            s.LayeredAlphaByte = 0;                 // 실기 로그의 그 값
+            s.LayeredFlags = 0;                     // 그러나 어떤 플래그도 적용되지 않았다
+            var lines = Diagnose(s);
+
+            Assert.IsFalse(Has(lines, "LAYERED-ALPHA", out _),
+                "dwFlags에 LWA_ALPHA가 없으면 bAlpha는 합성에 영향이 없습니다. 여기서 [LAYERED-ALPHA]가 " +
+                "뜨면 '창이 100% 비친다'는 <거짓 경보>가 다시 살아난 것이고, 그 경보 하나가 " +
+                "2026-09-01에 팀을 잘못된 원인으로 끌고 갔습니다.");
+            Assert.IsTrue(Has(lines, "LAYERED-INERT", out var inert),
+                "판정을 지우기만 하면 안 됩니다 — '속성은 있으나 적용되지 않는다'는 사실 자체가 " +
+                "로그에 남아야 다음 사람이 같은 곳을 다시 파지 않습니다.");
+            Assert.AreEqual(CompositionFault.None, inert.Fault);
+        }
+
+        /// <summary>dwFlags를 못 읽은 구 빌드 호환 — 그때는 예전 규칙(알파 &lt; 255 = 비침)을 유지한다.
+        /// 새 판정이 "모르면 무해"로 흘러 진짜 결함을 놓치는 반대 방향 실패를 막는다.</summary>
+        [Test]
+        public void UnknownFlagsFallsBackToTheOldAlphaRule()
+        {
+            var s = Healthy();
+            s.HasLayeredStyle = true;
+            s.LayeredAttributesInEffect = true;
+            s.LayeredAlphaByte = 128;
+            s.LayeredFlags = OverlayCompositionVerdict.LayeredFlagsUnknown;
+            AssertFault(Diagnose(s), "LAYERED-ALPHA", CompositionFault.SeeThrough);
+        }
+
+        /// <summary>색 키가 실제로 적용 중이면(Alpha 경로에서는 있으면 안 되는 값) 화소 단위 구멍이 난다.</summary>
+        [Test]
+        public void LayeredColorKeyOnTheAlphaPathIsReported()
+        {
+            var s = Healthy();
+            s.HasLayeredStyle = true;
+            s.LayeredAttributesInEffect = true;
+            s.LayeredAlphaByte = 255;
+            s.LayeredFlags = OverlayCompositionVerdict.LwaColorKey;
+            s.LayeredColorKey = 0x010001;
+            AssertFault(Diagnose(s), "LAYERED-COLORKEY", CompositionFault.SeeThrough);
+        }
+
+        /// <summary>해소기가 정상 가동 중이면 순간 포착된 WS_EX_LAYERED는 <b>일시 상태</b>다 —
+        /// 라이브러리가 커서 이동마다 다시 켜는 것을 0.25초 안에 떼어내기 때문. 여기서 경고가 뜨면
+        /// 사용자가 "아직도 안 고쳐졌다"고 오해한다.</summary>
+        [Test]
+        public void LayeredSeenWhileResolverVerifiedIsTransientNotAFault()
+        {
+            var s = Healthy();
+            s.HasLayeredStyle = true;
+            s.HybridResolverState = (int)LayeredHybridResolverState.Verified;
+            s.HybridStripCount = 7;
+            Assert.IsTrue(Has(Diagnose(s), "LAYERED+DWM", out var line));
+            Assert.AreEqual(CompositionFault.None, line.Fault);
+        }
+
+        /// <summary>해소기가 되돌렸거나(RolledBack) 아예 없으면 하이브리드는 그대로 결함이다 —
+        /// 위 테스트가 "무조건 무해"로 새지 않는지 확인하는 네거티브 컨트롤.</summary>
+        [Test]
+        public void LayeredSeenWhileResolverRolledBackIsStillAFault()
+        {
+            var s = Healthy();
+            s.HasLayeredStyle = true;
+            s.HybridResolverState = (int)LayeredHybridResolverState.RolledBack;
+            AssertFault(Diagnose(s), "LAYERED+DWM", CompositionFault.Both);
+        }
+
+        /// <summary>네이티브와 .NET이 다른 창을 가리키면 <b>아래 모든 창 판정의 전제</b>가 무너진다.</summary>
+        [Test]
+        public void HandleMismatchIsReportedBeforeAnyStyleVerdict()
+        {
+            var s = Healthy();
+            s.OverlayHandleSource = OverlayCompositionVerdict.HandleSourceNativeDiffers;
+            AssertFault(Diagnose(s), "HWND-MISMATCH", CompositionFault.Both);
         }
 
         [Test]
@@ -306,6 +425,9 @@ namespace StickMate.Tests.EditMode
             var q = Healthy(); q.RequestedMsaa = 8; mutations.Add(("요청MSAA", q));
             var r = Healthy(); r.UiSpriteFilterMode = (int)FilterMode.Point; mutations.Add(("스프라이트필터", r));
             var t = Healthy(); t.OsStyleReadOk = false; mutations.Add(("스타일실측", t));
+            var u = Healthy(); u.LayeredFlags = OverlayCompositionVerdict.LwaAlpha; mutations.Add(("레이어드플래그", u));
+            var v = Healthy(); v.OverlayHandleSource = OverlayCompositionVerdict.HandleSourceNativeDiffers; mutations.Add(("핸들출처", v));
+            var w = Healthy(); w.HybridResolverState = (int)LayeredHybridResolverState.RolledBack; mutations.Add(("해소기상태", w));
 
             for (int idx = 0; idx < mutations.Count; idx++)
             {
@@ -313,6 +435,20 @@ namespace StickMate.Tests.EditMode
                     $"'{mutations[idx].name}'이(가) 바뀌었는데 지문이 그대로입니다 — 그 전이는 실기 로그에 " +
                     "영원히 남지 않습니다(진단이 그 원인을 놓친다는 뜻).");
             }
+        }
+
+        /// <summary>
+        /// <b>제거 횟수는 지문에 들어가면 안 된다.</b> 커서가 캐릭터를 벗어날 때마다 늘어나는 값이라
+        /// 지문에 넣으면 2초마다 1KB 경고가 영원히 찍힌다 — 오늘 이미 한 번 겪은 사고 유형이다
+        /// (진단 자체가 비용이 되는 것).
+        /// </summary>
+        [Test]
+        public void StripCountDoesNotChangeTheSignature()
+        {
+            var a = Healthy();
+            var b = Healthy(); b.HybridStripCount = 137;
+            Assert.AreEqual(a.Signature(), b.Signature(),
+                "해소기 제거 횟수가 지문을 바꾸면 상주 앱의 로그가 폭주합니다.");
         }
 
         // ============================================================================

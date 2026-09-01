@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using UnityEngine;
 using StickMate.Core;
 
@@ -71,6 +72,11 @@ namespace StickMate.Platform
         /// </summary>
         public IReadOnlyList<PlatformFoothold> CachedRawWindows => _readOnlyRawCache;
 
+        // ★ 2026-09-01 스파이크 라운드 — 열거 비용 실측용. 창 열거는 이 클래스가 **유일한 호출자**라
+        // (클래스 상단 컨벤션: States/*는 절대 직접 호출하지 않는다) 여기 스톱워치 하나면 앱 전체의
+        // 네이티브 창 열거 비용이 빠짐없이 잡힌다. 비용은 폴링당(0.3초) 타임스탬프 2회다.
+        private readonly IWindowEnumerationCostSource _costSource;
+
         public FootholdPoller(IPlatformWindowService service, StickConfig config)
         {
             _service = service;
@@ -78,7 +84,14 @@ namespace StickMate.Platform
             _timer = 0f;
             _readOnlyCache = _cache.AsReadOnly();
             _rawSource = service as IRawWindowRectSource;
+            _costSource = service as IWindowEnumerationCostSource;
             _readOnlyRawCache = _rawCache.AsReadOnly();
+
+            // 설정이 배선되는 유일한 지점이 여기다(이 클래스가 이미 StickConfig를 들고 있고,
+            // 아래 Poll() 직전에 ScreenCoordinateConverter 스위치를 미는 것과 같은 이유).
+            StallAttribution.Configure(config);
+            PlayerLogPolicy.Configure(config);
+
             Poll(); // 첫 프레임부터 발판 정보가 있어야 "빈 화면에 멈춰 보임"을 피할 수 있다 (UX_FLOW.md 6-1절).
         }
 
@@ -109,7 +122,15 @@ namespace StickMate.Platform
             ScreenCoordinateConverter.OverlayOriginSanityCheckEnabled =
                 _config == null || _config.overlayOriginSanityCheckEnabled;
 
+            // ★ 2026-09-01 — 여기가 앱 전체에서 네이티브 창 열거가 일어나는 **유일한** 지점이다.
+            // 스파이크 라운드의 후보 A("네이티브 창 열거")를 확정/반증할 실측치가 이 두 줄에서 나온다.
+            long enumStart = Stopwatch.GetTimestamp();
             IReadOnlyList<PlatformFoothold> latest = _service.EnumerateFootholds();
+            long enumTicks = Stopwatch.GetTimestamp() - enumStart;
+            StallAttribution.RecordWindowEnumeration(enumTicks,
+                _costSource != null ? _costSource.LastEnumeratedWindowCount : -1,
+                _costSource != null ? _costSource.LastDwmProbeCount : -1,
+                latest != null ? latest.Count : 0);
 
             // 원본 창 캐시는 발판 변경 여부와 무관하게 매 폴링 갱신한다 — 아래 HasChanged 조기 반환보다
             // **먼저** 해야 한다. 발판 목록이 그대로여도(예: 맨 앞 큰 창 하나만 계속 보이는 상황) 그 뒤에

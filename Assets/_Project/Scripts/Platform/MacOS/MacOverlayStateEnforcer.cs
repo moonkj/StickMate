@@ -152,6 +152,28 @@ namespace StickMate.Platform.MacOS
         private int _fullScreenApplyAttempts;
         private const int MaxFullScreenApplyAttempts = 6;
 
+        /// <summary>
+        /// 창 <b>기하</b>(크기/위치) 판정 불감대. 단위는 <b>OS 포인트</b> — 이 파일의 monitor/windowSize/
+        /// windowPosition이 전부 포인트이기 때문이다. 해상도 판정은 단위가 달라서 같은 값을 쓰지 않는다
+        /// (<see cref="OverlayBoundsFitPolicy.ResolutionEpsilonPixels"/>가 배율로 유도한다).
+        ///
+        /// <para>값과 근거는 플랫폼 중립 순수 규칙
+        /// <see cref="OverlayBoundsFitPolicy.DefaultEpsilonPixels"/> 한 곳에 있다 — Windows판 Enforcer가
+        /// 같은 상수를 쓰므로 값이 두 벌로 갈라지면 한쪽만 고쳐지는 이 저장소의 단골 실패가 된다.</para>
+        /// </summary>
+        private const float BoundsEpsilonPoints = OverlayBoundsFitPolicy.DefaultEpsilonPixels;
+
+        /// <summary>
+        /// 이 프로세스에서 <c>Screen.SetResolution</c>을 부른 누적 횟수.
+        /// <b><see cref="TickDisplayTopology"/>의 재무장에서 절대 0으로 되돌리지 않는다</b> —
+        /// 그것이 "프로세스 수명 상한"이라는 말의 전부다. 되돌리면 디스플레이 통지가 진동할 때
+        /// 상한이 사실상 사라진다.
+        /// </summary>
+        private int _setResolutionCalls;
+
+        /// <summary>창 크기를 실제로 재대입한 누적 횟수(로그 전용). 백버퍼 재할당 횟수와 1:1이다.</summary>
+        private int _windowResizeCalls;
+
         // 실행 중 디스플레이 구성 변경 추적(2026-08-31). 판단 로직은 플랫폼 공용
         // Platform/DisplayTopologyWatcher.cs 한 곳에 있고 여기서는 관측만 한다 — Windows판도 같은 클래스를
         // 같은 방식으로 쓴다(오늘 VisibleTopEdgeSolver에서 한쪽만 고쳐 재발한 사례의 재발 방지).
@@ -384,22 +406,74 @@ namespace StickMate.Platform.MacOS
             float dpi = Mathf.Max(0.0001f, ScreenCoordinateConverter.ResolveDpiScale(ResolveConfig()));
             int targetPixelW = Mathf.RoundToInt(monitor.width / dpi);
             int targetPixelH = Mathf.RoundToInt(monitor.height / dpi);
-            if (Screen.width != targetPixelW || Screen.height != targetPixelH)
+
+            // ★★★ 2026-09-01 — Windows에서 잡은 래칫과 **완전히 같은 결함**이 여기에도 있었다.
+            //
+            // 직전까지 이 판정은 `Screen.width != targetPixelW`, 즉 **완전일치**였고, 아래 windowSize/
+            // windowPosition은 **무조건 대입**이었다. Windows판이 그 모양 그대로 세션이 갈수록 나빠지는
+            // 407ms 멈춤을 만들었다(되읽기 1px 상수 오차 -> 영원히 "불일치" -> 매 에피소드
+            // Screen.SetResolution + 창 리사이즈 -> 스왑체인/백버퍼 재생성).
+            //
+            // ---- macOS는 "지금" 발현 중인가: 아니다 (실측, 추측 아님) ------------------------------
+            // 사용자 실기 로그(~/Library/Logs/DefaultCompany/StickMate/Player.log, 09-01 07:23)에
+            // 이 함수의 로그는 **딱 한 줄**이었고 되읽기가 대입값과 정확히 같았다:
+            //   `이전(size=(1512,982)) -> 이후(size=(1512,982))`, `Screen=(3024x1964) [목표 3024x1964]`,
+            //   `결과=성공` -> _fullScreenBoundsApplied=true로 루프 종료.
+            // Cocoa의 setFrame/frame은 같은 사각형을 돌려주므로 Windows의 GetWindowRect vs SetWindowPos
+            // 불일치(레이어드+DWM 확장 프레임)에 해당하는 것이 없다. **즉 1px 래칫은 macOS 미발현이다.**
+            //
+            // ---- 그래도 가드를 넣는 이유: 구조적 위험은 발현 여부와 무관하다 ------------------------
+            //   (1) 상한이 아예 없었다. TickDisplayTopology가 재무장할 때 _fullScreenApplyAttempts를 0으로
+            //       되돌리므로, 디스플레이 통지가 진동하면 SetResolution 호출은 **무제한**이었다.
+            //   (2) `ok`가 어떤 이유로든 한 번 실패하면 6회 재시도가 전부 실행되고, 그 6회가 **매번**
+            //       SetResolution + 창 크기/위치 재대입이었다 = 백버퍼 재할당 6회.
+            //   (3) dpi 배율은 상수가 아니라 **실측값**이다(AutoDpiScale = 창 폭 / Screen.width). 그 값이
+            //       0.5에서 아주 조금만 흔들려도 RoundToInt 결과가 1픽셀 어긋나고, 완전일치 판정에서는
+            //       그 1픽셀이 곧 영구 불일치다 — Windows에서 실제로 일어난 일이 그것이다.
+            //
+            // ---- 단위 함정: 여기서 2px을 그대로 쓰면 안 된다 ---------------------------------------
+            // 이 함수의 두 판정은 좌표계가 다르다. 창 기하는 **OS 포인트**(1512x982), 해상도는
+            // **Unity 픽셀**(3024x1964)이다. Retina에서 포인트 1 = 픽셀 2이므로 2px 상수를 해상도
+            // 판정에 쓰면 실효 불감대가 1포인트로 반토막 난다. 그래서 불감대는 포인트로 정의하고
+            // 픽셀 단위는 규칙이 배율로 **유도**한다(OverlayBoundsFitPolicy.ResolutionEpsilonPixels).
+            // 숫자를 플랫폼마다 흩뿌리지 않는다.
+            float resolutionEpsilon = OverlayBoundsFitPolicy.ResolutionEpsilonPixels(dpi);
+            bool resolutionMismatch = !OverlayBoundsFitPolicy.Within(
+                Screen.width, Screen.height, targetPixelW, targetPixelH, resolutionEpsilon);
+            // 해상도가 맞아도 전체화면 계열 모드로 남아 있으면 반드시 한 번 내려야 한다 — Unity는 그
+            // 모드에서 포커스를 잃으면 창을 z-order 뒤로 보낸다(Windows판이 실기로 확인한 경로).
+            bool modeMismatch = Screen.fullScreenMode != FullScreenMode.Windowed;
+            bool resolutionCapped = _setResolutionCalls >= OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls;
+            if (OverlayBoundsFitPolicy.ShouldSetResolution(Screen.width, Screen.height,
+                    targetPixelW, targetPixelH, !modeMismatch, resolutionEpsilon,
+                    _setResolutionCalls, OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls))
             {
+                _setResolutionCalls++;
                 Screen.SetResolution(targetPixelW, targetPixelH, FullScreenMode.Windowed);
             }
 
             // (b) 메뉴바/Dock 영역 위로도 창을 놓을 수 있게 한다.
             if (!_controller.isFreePositioningEnabled) _controller.isFreePositioningEnabled = true;
 
-            // (c) 크기 -> 위치.
-            _controller.windowSize = monitor.size;
-            _controller.windowPosition = monitor.position;
+            // (c) 크기 -> 위치. **이미 불감대 안이면 대입 자체를 하지 않는다** — 대입 한 번이 곧 OS
+            // 창 리사이즈 한 번이고, 그것이 백버퍼 재할당 한 번이다.
+            bool needsResize = OverlayBoundsFitPolicy.ShouldResize(sizeBefore.x, sizeBefore.y,
+                monitor.width, monitor.height, BoundsEpsilonPoints);
+            bool needsMove = OverlayBoundsFitPolicy.ShouldMove(posBefore.x, posBefore.y,
+                monitor.x, monitor.y, BoundsEpsilonPoints);
+            if (needsResize)
+            {
+                _windowResizeCalls++;
+                _controller.windowSize = monitor.size;
+            }
+            if (needsMove) _controller.windowPosition = monitor.position;
 
             Vector2 sizeAfter = _controller.windowSize;
             Vector2 posAfter = _controller.windowPosition;
-            bool ok = Mathf.Abs(sizeAfter.x - monitor.width) <= 1f && Mathf.Abs(sizeAfter.y - monitor.height) <= 1f
-                && Mathf.Abs(posAfter.x - monitor.x) <= 1f && Mathf.Abs(posAfter.y - monitor.y) <= 1f;
+            bool ok = OverlayBoundsFitPolicy.Within(sizeAfter.x, sizeAfter.y,
+                    monitor.width, monitor.height, BoundsEpsilonPoints)
+                && OverlayBoundsFitPolicy.Within(posAfter.x, posAfter.y,
+                    monitor.x, monitor.y, BoundsEpsilonPoints);
             if (ok)
             {
                 _fullScreenBoundsApplied = true;
@@ -410,11 +484,19 @@ namespace StickMate.Platform.MacOS
                 OverlayRectReporter?.Invoke();
             }
 
+            // ★ 재생성 누적/이번 틱 실행 여부를 Windows판과 **같은 모양**으로 남긴다. 불감대가 진짜
+            //   어긋남을 덮고 있지 않은지 사람이 로그만 보고 판정할 수 있어야 하고, 두 플랫폼 로그를
+            //   나란히 놓고 비교할 수 있어야 한다(오늘만 세 번 반복된 "한쪽만 고침"의 재발 방지).
             Debug.Log($"[MacOverlayStateEnforcer] 전체화면 확장 시도 {_fullScreenApplyAttempts}/{MaxFullScreenApplyAttempts} — " +
                 $"모니터={monitor}, 이전(size={sizeBefore}, pos={posBefore}) -> 이후(size={sizeAfter}, pos={posAfter}), " +
+                $"재생성 누적(SetResolution {_setResolutionCalls}/{OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls}회" +
+                $"{(resolutionCapped ? " ★상한 도달 — 더는 부르지 않는다" : "")}, 창리사이즈 {_windowResizeCalls}회), " +
+                $"이번 틱 실행(SetResolution={(resolutionMismatch || modeMismatch) && !resolutionCapped}, " +
+                $"리사이즈={needsResize}, 이동={needsMove}, 불감대={BoundsEpsilonPoints:F0}pt/{resolutionEpsilon:F1}px), " +
                 $"Screen=({Screen.width}x{Screen.height}) [목표 {targetPixelW}x{targetPixelH} 픽셀, dpi배율={dpi:F3}], " +
+                $"fullScreenMode={Screen.fullScreenMode}(직전 불일치: 해상도={resolutionMismatch}, 모드={modeMismatch}), " +
                 $"isFreePositioningEnabled={_controller.isFreePositioningEnabled}, " +
-                $"덮는범위={coverageMode}, 결과={(ok ? "성공(오차 1pt 이내)" : "미달 — 다음 시도에서 재적용")}.");
+                $"덮는범위={coverageMode}, 결과={(ok ? $"성공(오차 {BoundsEpsilonPoints:F0}pt 이내)" : "미달 — 다음 시도에서 재적용")}.");
         }
 
         private float _timerFullScreen;
@@ -460,6 +542,9 @@ namespace StickMate.Platform.MacOS
             _fullScreenApplyAttempts = 0;
             _timerFullScreen = ReapplyIntervalSeconds; // 다음 TickFullScreenBounds에서 곧바로 1회.
             _topologyBaselineSynced = false;
+            // ★ _setResolutionCalls는 **일부러 되돌리지 않는다**. 그것이 "프로세스 수명 상한"이라는
+            //   말의 전부다 — 여기서 0으로 돌리면 디스플레이 통지가 진동할 때 상한이 사실상 사라지고,
+            //   래칫을 막으려고 넣은 가드가 무력해진다.
 
             Debug.Log("[MacOverlayStateEnforcer] 디스플레이 구성 변경이 안정됐습니다 — " +
                 $"{_topologyWatcher.Baseline}. 전체화면 재적합 루프를 다시 무장합니다" +

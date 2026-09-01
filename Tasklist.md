@@ -16550,3 +16550,488 @@ topmost 비트만 읽고 **순회 0회**로 결론낸다. 같은 밴드일 때�
 3. `[Z-ORDER] 최근 60초 요약` 검색 → **`감시 비용 ... 창시간의 X%`**를 적어 보낸다.
    0.5% 미만이면 이 감시자는 렉의 원인이 아니다(H2가 완전히 닫힌다).
 4. `[프레임시간]` 줄의 **최대**가 100ms 아래로 내려갔는지 확인.
+
+---
+
+## 2026-09-01 — coder: macOS 래칫 제거 (Windows 라운드의 반대 방향 이행) ✅
+
+**규칙 이행**: "macOS를 고치면 Windows도 함께 검토한다"의 반대 방향. Windows에서 스왑체인 무한
+재생성을 잡았으므로, 같은 라운드가 "macOS에도 그대로 있다"고 넘긴 지적(위 *다른 소유자에게* 1·3번)을
+이번 라운드가 받았다.
+
+### ★ 가장 중요한 실측 — macOS에서 이 결함은 "지금" 발현하고 있지 않다 (정직한 구분)
+
+추측하지 않고 실기로 확인했다. 근거 2건:
+
+| 출처 | 결과 |
+|---|---|
+| 사용자 인스턴스 로그 `Player.log` (09-01 07:23, 472KB) | `전체화면 확장` 로그 **1줄**. 되읽기 = 대입값 (size 1512 -> 1512), `Screen=(3024x1964)` = `목표 3024x1964`, `결과=성공` |
+| 수정 전 빌드 직접 구동 (16:31, 45초) | 동일. **1회, 성공, 반복 없음** |
+
+Windows의 1px 언더슈트(`GetWindowRect` vs `SetWindowPos`, 레이어드+DWM 확장 프레임)에 해당하는 것이
+Cocoa `setFrame`/`frame`에는 없다. **즉 래칫은 macOS 미발현이다.**
+
+그래도 고친 이유 — **발현 여부와 무관한 구조적 위험 3건**:
+1. `SetResolution` **수명 상한이 아예 없었다**. `TickDisplayTopology`가 재무장할 때
+   `_fullScreenApplyAttempts = 0`으로 되돌리므로 디스플레이 통지가 진동하면 호출은 무제한이었다.
+2. `ok`가 한 번이라도 실패하면 6회 재시도가 전부 실행되고, 그 6회가 **매번** SetResolution +
+   창 크기/위치 **무조건** 재대입이었다 = 백버퍼 재할당 6회.
+3. dpi 배율은 상수가 아니라 **실측값**(`AutoDpiScale = 창 폭 / Screen.width`)이다. 조금만 흔들려도
+   `RoundToInt`가 1픽셀 어긋나고, 완전일치 판정에서 그 1픽셀은 곧 영구 불일치다 —
+   Windows에서 실제로 일어난 일이 그것이다.
+
+### ★ macOS 고유 사정 — 2px 상수를 그대로 쓰면 안 됐다 (이 라운드의 발견)
+
+규칙 안의 두 판정은 **좌표계가 다르다**:
+
+| 판정 | 단위 | 실측값 |
+|---|---|---|
+| `ShouldResize` / `ShouldMove` (창 기하) | **OS 포인트** | 1512x982 |
+| `ShouldSetResolution` (`Screen.width`) | **Unity 픽셀** | 3024x1964 |
+
+Windows는 배율 1이라 두 단위가 같아 구분이 필요 없었다. Retina는 배율 2라 **포인트 1 = 픽셀 2**다.
+2px을 픽셀 판정에 그대로 쓰면 실효 불감대가 **1포인트로 반토막** 난다. 실제로 계산해 확인했다
+(창 폭 1512pt 기준, `dpi = 실제 폭 / 3024`, `목표 = RoundToInt(1512/dpi)`):
+
+| 창 기하 오차 | 해상도 차이 | 상수 2px | 유도 불감대 | 유도+반올림여유 |
+|---|---|---|---|---|
+| ±1pt | 2px | 통과 | 통과 | 통과 |
+| **±2pt (기하 불감대의 끝)** | **4px** | **재적용 발생** | −2pt만 통과(칼날) | **통과** |
+| ±4pt (진짜 어긋남) | 8px | 재적용 | 재적용 | **재적용 (덮지 않음)** |
+
+**±2pt 행이 핵심**: 기하 판정은 "맞았다"는데 해상도 판정만 홀로 "틀렸다"고 해서 `SetResolution`이
+다시 불린다 — 한쪽이 다른 쪽을 영원히 되살리는 래칫의 정의 그대로다.
+
+처방: 불감대의 **정의 단위를 OS 포인트**로 두고 픽셀 판정은 배율로 **유도**한다(숫자를 플랫폼마다
+흩뿌리지 않는다). `RoundToInt`가 목표에 넣는 ±0.5px 양자화 여유도 규칙 안에 명시적 상수로 뒀다 —
+없으면 위 표의 ±2pt가 소수점 셋째 자리에서 갈리는 칼날 판정이 된다.
+`ResolutionEpsilonPixels(dpi) = 2 * clamp(1/dpi, 1, 4) + 0.5` → Windows 2.5px / Retina **4.5px**.
+`MaxDeviceScale=4` 클램프는 배율 측정이 깨졌을 때 불감대가 무한히 넓어져 **은폐**가 되는 것을 막는다.
+
+### 실측 결과 (수정 후 빌드, 이 머신에서 직접 구동 — 추측 없음)
+
+```
+[MacOverlayStateEnforcer] 전체화면 확장 시도 1/6 — ...
+  재생성 누적(SetResolution 0/4회, 창리사이즈 0회),
+  이번 틱 실행(SetResolution=False, 리사이즈=False, 이동=True, 불감대=2pt/4.5px),
+  Screen=(3024x1964) [목표 3024x1964 픽셀, dpi배율=0.500],
+  fullScreenMode=Windowed(직전 불일치: 해상도=False, 모드=False), 결과=성공(오차 2pt 이내).
+```
+
+| 항목 | 수정 전 | 수정 후 |
+|---|---|---|
+| 확장 시도(2.5분 소크) | 1회 | **1회** (변화 없음 — 원래 정상) |
+| **창 리사이즈(백버퍼 재할당)** | **1회** (크기가 이미 맞는데 무조건 대입) | **0회** |
+| SetResolution | 0회 | 0회 (`0/4` 상한 표시) |
+| 위치 이동 | 1회 | 1회 (**-61pt는 진짜 어긋남 — 불감대가 삼키지 않았다**) |
+
+- **`fullScreenMode=Windowed` 실측 확인**: 새로 넣은 모드 조건이 macOS에서 **추가 호출을 만들지 않음**을
+  확인했다(이 라운드의 유일한 회귀 위험 지점이었다. 추측 대신 로그로 갈랐다).
+- 프레임시간 소크: 최대 33.4ms, p99 32ms — 증가 없음. 스크린샷으로 캐릭터 정상 렌더 확인.
+- 세이브: 실행 전 백업 → 실행 후 **SHA 대조 후 원복 완료**
+  (`dfddbe12…5c1025` 일치). 사용자 인스턴스는 없었고 `Q`(전역 종료)는 쓰지 않았다.
+
+### 부팅 배너 단축키 하드코딩 — "1곳"이 아니라 **19곳**이었다
+
+지적은 `AppControlDirector.cs:154` 1곳이었으나 전수 스캔 결과 같은 파일에 **19곳**이었다
+(오늘 "12곳 → 실제 17곳" 전례가 그대로 반복됐다):
+
+- 부팅 배너 2곳 — `Control+Option+Command+Q`, `Ctrl+Opt+Cmd+C`
+- **단축키 발동 로그 17곳** — `Invoke(..., "전역 단축키 Ctrl+Opt+Cmd+Q")` 형태 (Q C R D B K G T X H S N J F A I `,`)
+
+**왜 기존 감사가 못 잡았는가 (근본 원인)**: `PlatformParityAuditTests`는 문자열 리터럴 안의
+**글리프(⌃⌥⌘)만** 스캔한다. 이 19곳은 전부 `Ctrl+Opt+Cmd`처럼 **낱말**로 적혀 있어서 스캐너를
+그대로 통과했다. 글리프만 막으면 낱말 표기로 우회된다.
+
+조치: 전부 `Core.ShortcutLabel.Chord(key)` 경유. 17곳은 `HotkeySource(key)` 헬퍼 하나로 모았다
+(상승 에지에서만 불리므로 20Hz 폴링 자체는 문자열을 만들지 않는다 — 매 프레임 할당 금지 준수).
+
+실측 확인(구동 로그):
+```
+[앱제어] 준비 완료 — ... (1) 전역 단축키 **⌃⌥⌘Q**, ... 사용자 단축키: ⌃⌥⌘C(잉크색 전환) / ...
+[앱제어] 말 걸기(전역 단축키 ⌃⌥⌘B) — Idle 재진입으로 대사를 파생시켰습니다.
+```
+Windows 빌드에서는 같은 자리에 `Ctrl+Alt+Win+Q` / `Ctrl+Alt+Win+B`가 나온다(컴파일 타임 분기).
+
+### 변경한 파일
+
+| 파일 | 변경 |
+|---|---|
+| `Platform/OverlayBoundsFitPolicy.cs` | `ResolutionEpsilonPixels(dpi)` 유도 함수 + `DefaultMaxSetResolutionCalls`(4) + `MaxDeviceScale`(4) + `TargetRoundingSlackPixels`(0.5) 신설. **Windows 경로는 한 줄도 건드리지 않음** |
+| `Platform/MacOS/MacOverlayStateEnforcer.cs` | 완전일치 판정 → 규칙 위임. 무조건 대입 → `needsResize`/`needsMove` 가드. `SetResolution` 수명 상한 + 누적 카운터(재무장에서 **되돌리지 않음**). `fullScreenMode` 조건 추가. 로그를 Windows판과 같은 모양으로 |
+| `Interaction/AppControlDirector.cs` | 하드코딩 19곳 → `ShortcutLabel` 경유 + `HotkeySource` 헬퍼 |
+| `Tests/EditMode/OverlayResizeRatchetTests.cs` | macOS 6건 추가(총 18건) |
+
+### 검증
+
+- **크로스 컴파일 6종 전부 에러 0**: 런타임 osx/win, EditMode osx/win, PlayMode osx/win.
+  - 함정 1(기록됨): 테스트 rsp의 참조가 `StickMate.Runtime.ref.dll` → 그 이름으로 바꿔치기해야 함.
+  - **함정 2(이번에 새로 밟음)**: 그 참조를 **플레이어 dag**로 만들면 `#if UNITY_EDITOR` 코드
+    (`ItemCatalogDigest` 등)가 빠져 "그런 이름 없음" **유령 에러 9건**이 난다.
+    테스트 어셈블리는 **에디터 dag**(`200b0aE`/`1900b0aE`)로 만든 런타임에 붙여야 한다.
+- **EditMode 763건: 761 통과 / 1 스킵 / 1 실패**. `OverlayResizeRatchetTests` **18/18 통과**.
+- **Windows 영향: 없음(코드 무변경).** `WindowsOverlayStateEnforcer.cs`는 읽기만 했고,
+  Windows가 쓰는 `DefaultEpsilonPixels`(2f)와 기존 함수 시그니처는 그대로다. Windows는 새 유도 함수를
+  **호출하지 않으므로** 판정이 비트 단위로 동일하다. `SetResolution_상한은_두_플랫폼에서_같은_값이다`
+  테스트가 Windows 소스의 `MaxSetResolutionCalls = 4` 리터럴을 **실제로 읽어** 규칙 상수와 대조한다.
+
+### 리더에게 — 다른 소유자 / 미해결 (숨기지 않는다)
+
+1. **`WindowsMsaaDefaultTests.Windows_기본_MSAA는_2x다` 실패는 이 라운드와 무관하다.**
+   `git show HEAD:Platform/RenderQualityTuner.cs` → `WindowsDefaultSamples = 4`인데 테스트는 2를 기대한다.
+   두 파일 모두 내가 건드리지 않았고 `git status`에도 없다 → **HEAD 자체가 불일치**(선행 실패).
+   MSAA 라운드 소유자가 값과 테스트 중 어느 쪽이 옳은지 판정해야 한다.
+2. **낱말 표기 하드코딩이 다른 파일에도 4곳 남아 있다**(내 소유가 아니라 보고만):
+   `Interaction/ArcheryDirector.cs:552`, `Interaction/HardwareReactionDirector.cs:125` (둘 다 런타임
+   `Debug.Log` → **Windows 로그에 그대로 샌다**), `Core/StickConfig.cs:1646,2063` (Inspector 툴팁),
+   `Platform/MacOS/MacSpaceBehaviorNative.cs:191` (mac 전용 파일이라 새지는 않음).
+   → 근본 대책은 `PlatformParityAuditTests`의 스캐너를 **글리프뿐 아니라 낱말 표기까지** 보게 넓히는 것.
+     그 파일은 내 소유가 아니라 제안만 남긴다.
+3. **`WindowsOverlayStateEnforcer`가 상한 값 사본(`MaxSetResolutionCalls = 4`)을 여전히 들고 있다.**
+   Windows 파일이 읽기 전용이라 손대지 않았다. 위 대조 테스트가 드리프트를 막고 있지만,
+   한 줄(`= OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls`)로 사본을 없애는 것이 옳다.
+4. **라운드 중 다른 에이전트가 동시에 작업했다**("다른 에이전트 없음"이라는 전제와 달랐다).
+   16:39에 `Platform/StallAttribution.cs`가 생겼고 `StickConfig.logStallAttribution`이 아직 없어
+   전체 트리가 1분간 컴파일 불가였다. 내 scratchpad의 `xcheck.sh`/`xcheck_tests.sh`도 덮어써졌다.
+   → 내 검증은 그 파일을 격리해 수행했고(내 파일만 에러 0), 그쪽이 필드를 추가한 뒤 전체 트리도 에러 0으로 복구됐다.
+   **동시 라운드 중에는 scratchpad 스크립트를 라운드 고유 이름으로 두는 것이 안전하다.**
+
+---
+
+## 과학적 토론 로그 — "실행하자마자 렉" 스파이크 귀인 (debugger / Teammate2, 2026-09-01 3차)
+
+**신고**: 사용자 실기 로그(릴리즈 20260901c) + 사용자 관찰
+> "근데 프로그램을 실행하자마자부터 바로 렉이 생기는데.. 바로 화면 스캔을 계속해서 그런거야?"
+> "캐릭터 등장하자마자부터 렉이 생긴거니까 그걸 해결해야지"
+
+```
+[프레임스파이크] 누적 55회 — 109/116/140/171/276/315/332ms
+  백버퍼: 3831x2160(변화 없음). GC: gen0 +0 / gen1 +0.
+[프레임시간] 루프 평균 30.98ms p95 89.81ms p99 277.95ms 최대 815.95ms
+```
+
+### 이 라운드의 결론을 한 줄로
+
+**후보 A(창 열거)도 후보 B(로그 IO)도 아직 확정되지 않았고, 지금 코드에는 그 둘을 가를 계측이
+하나도 없었다.** 그래서 이 라운드는 **고치지 않고 재는 장치**를 만들었다. 다만 재는 김에 드러난
+**명백한 낭비 2건**(릴리즈 스택트레이스, 정보량 0인 반복 로그)은 함께 없앴다.
+
+---
+
+### 가설 H0 — `[프레임스파이크]`의 자기 결론 문장은 **거짓 이분법이다** (★ 반증, 코드로 확정)
+
+`Platform/FramePacing.cs:1020`의 스파이크 로그가 남기는 문장:
+> "GC 증가분이 0이고 백버퍼도 그대로면 **네이티브 창 열거/파일 IO 쪽이다.**"
+
+**이건 계측이 아니라 추론이다.** GC를 만들지 않고 백버퍼도 바꾸지 않으면서 프레임을 수백 ms
+멈추는 원인은 최소 넷이다:
+
+| | 후보 | GC? | 백버퍼? | 지금까지 계측? |
+|---|---|---|---|---|
+| A | 네이티브 창 열거(EnumWindows + DWM 조회) | 0 | 불변 | **없음** |
+| B | 파일 IO(스택트레이스 + Player.log 동기 쓰기) | 0 | 불변 | **없음** |
+| C | 우리 Update 안의 다른 관리 코드(가려짐 솔버 O(n²) 등) | 0 | 불변 | **없음** |
+| D | **우리 Update 밖** — 렌더/프레젠트/DWM 합성 대기 | 0 | 불변 | **없음** |
+
+D가 특히 위험하다. 이 앱은 3840x2160 전체화면 투명 오버레이라 프레젠트가 OS 컴포지터에
+직렬화되면 **우리 프로세스 CPU에는 아무것도 잡히지 않는다**(이미 이 저장소가
+`docs/PERFORMANCE_REPORT.md` / MSAA 라운드에서 확인한 성질이다). "실행하자마자 렉"이라는 사용자
+관찰도 A만큼이나 D에 잘 맞는다 — **투명 전체화면 합성은 프레임 1부터 상시다.**
+
+→ **네 후보를 한 줄로 가르는 계측을 넣었다.** 프레임을 `로직 구간`(모든 Update+LateUpdate)과
+`그 밖`으로 쪼개고, 로직 구간 안에서 다시 A와 B를 각각 ms로 실측한다.
+
+### 가설 H1 — 스파이크 간격(200~400프레임)이 폴링 주기와 안 맞으니 폴러는 무죄다 (★ 반증)
+
+리더가 준 스파이크 프레임 번호 `#7160/7400/7556/7677/8002/8641/8929/9296`은 **3~6초 간격**이고,
+`footholdPollInterval=0.3s`와 안 맞아 보였다. **그러나 그 간격은 트리거 주기가 아니라
+로그 쿨다운이다** — `FramePacing.cs:975 SpikeLogCooldownSeconds = 5f`.
+
+증거: 같은 줄이 **"누적 55회"**라고 말하는데 **찍힌 줄은 8줄뿐**이다. 즉 47회가 쿨다운에 삼켜졌다.
+평균 프레임 30.98ms 기준 9,296프레임 ≈ 288초, 55회 ÷ 288초 = **평균 5.2초에 1회** = 쿨다운과 같다.
+→ **로그된 간격에서 트리거 주기를 읽을 수 없다. 폴러는 이 근거로는 무죄가 되지 않는다.**
+
+### 가설 H2 — 로그 IO가 스파이크의 주범이다 (★ 크게 약화, 실측 근거)
+
+**실측**: `~/Library/Logs/DefaultCompany/StickMate/Player.log` 전수 집계(71.5분 세션 = 2,564줄).
+세션 길이는 `[프레임시간]`이 30초 주기로 143줄 찍힌 것에서 나온다(143 × 30초 = 4,290초).
+
+```
+ 662 [유휴동작]  <- 그 중 661줄이 글자 하나 다르지 않은 같은 문장
+ 492 [MacWindowService](오버레이 원점 갱신, macOS 전용)
+ 415 [말풍선]
+ 143 [프레임시간] / 143 [발판변경] / 127 [Dock계단](mac) / 96 [되올라가기] / 95 [뛰어내리기] / 84 [벽타기]
+```
+
+| 지표 | 값 |
+|---|---|
+| 전체 로그 밀도 | **0.60줄/초** |
+| Windows에 해당하는 부분만 | **0.42줄/초** |
+| 300ms를 로그로 채우려면 (한 줄 0.3ms 가정) | **한 프레임에 1,000줄** |
+
+→ **정상 경로의 로그 양으로는 100~800ms 스파이크가 물리적으로 설명되지 않는다.**
+살아남는 유일한 기전은 **한 줄의 쓰기가 통째로 블록되는 경우**(Windows Defender 실시간 검사가
+Player.log 추가 쓰기를 가로채는 등)다. 그래서 계측에 **로그 한 줄의 최대 ms**를 넣었다 —
+그 값이 100ms를 넘으면 이 기전이 실측으로 확정되고, 한 자리 μs면 후보 B는 완전히 닫힌다.
+
+### 가설 H3 — 창 열거가 기동 즉시 상시로 비싸다 (미확정, 반대 증거 1건 있음)
+
+리더/사용자 가설. 코드상 구조는 다음과 같다(읽기만 했고 동작은 바꾸지 않았다):
+
+```
+EnumWindows  →  창마다 IsWindowVisible → IsIconic → GetWindowTextLength
+                → IsCloaked(**DwmGetWindowAttribute**, 크로스 프로세스)
+                → GetWindowLong(EXSTYLE) → GetWindowThreadProcessId
+                → [레이어드면] GetLayeredWindowAttributes
+                → TryGetVisualWindowRect(**DwmGetWindowAttribute**)
+```
+
+**반대 증거**: 같은 릴리즈(20260901c)의 다른 구간이 **`루프 평균 16.70ms(59.9fps) p95 16.80ms`**였다.
+그 구간에도 폴링 주기와 로그 양은 **완전히 동일**했다. 열거가 구조적으로 수백 ms라면 그 구간이
+존재할 수 없다. → **열거 비용은 (있다면) 환경 의존적/간헐적이다.** 다만 창 수가 늘면(실기 관측
+16 → 54 → 57 → 60 → **818**) 선형으로 커지므로, 두 구간의 차이가 창 수 차이일 가능성은 남아 있다.
+**이 반대 증거는 H3을 기각하지 않는다. 다음 실기 로그가 가른다.**
+
+**부수 발견(다음 라운드 참고, 이번에 고치지 않음)**: `ClassifyWindowStyle`에서 **가장 비싼 호출인
+`IsCloaked`(DWM 크로스 프로세스)가 가장 싼 필터들(`WS_EX_TOOLWINDOW` 스타일 비트 검사,
+자기 프로세스 검사)보다 먼저** 온다. 순서만 바꿔도 DWM 호출 수가 줄어든다. **열거 로직 변경은
+구조 변경 라운드 소유이므로 손대지 않았다** — 계측 결과가 DWM을 지목하면 그 라운드가 쓸 재료다.
+
+---
+
+### 검증 방법 (이번에 넣은 계측)
+
+| 로그 | 주기 | 답하는 질문 |
+|---|---|---|
+| `[발판열거]` | 30초 | **구조 변경 라운드의 기준선.** 1회 평균/최대 ms, 초당 ms(=실행 시간의 %), 전체 창 개수, 정밀검사(DWM 조회) 횟수, 발판 조각 수 |
+| `[스톨귀인] ...스파이크...` | 스파이크 시(쿨다운 5초) | 그 긴 프레임의 시간이 **로직 안 / 밖** 중 어디서 갔는가. 로직 안이면 창열거 / 로그 / 기타 중 무엇인가. `[프레임스파이크]`와 **같은 프레임#·같은 문턱**이라 눈으로 짝지어 읽는다 |
+| `[스톨귀인] 최근 60초 요약` | 60초 | 창열거 초당 ms **vs** 로그 초당 ms의 직접 대조 + 가장 많이 찍힌 로그 태그 3개 + 스택트레이스 on/off |
+
+**계측이 증상을 만들지 않게 한 방법**(직전 z-order 라운드에서 "진단 장치가 초당 10회 전체 창을
+열거해 증상을 키운" 사고를 겪었다):
+상시 비용 = 프레임당 `Stopwatch.GetTimestamp()` **2회**(Windows QPC, 각 ~25ns) + 폴링당 2회 +
+로그 한 줄당 2회. **힙 할당 0, OS 창 조회 0.** `Application.targetFrameRate` 조회는 100ms 문턱을
+넘은 뒤에만 한다(테스트가 이 순서를 잠근다). 태그 히스토그램은 태그 **종류당 최초 1회**만
+`Substring`한다(프로세스 전체에서 최대 24회).
+
+### 함께 고친 명백한 낭비 2건 (측정과 무관하게 그 자체로 옳다)
+
+**(1) 릴리즈 빌드의 스택트레이스** — `ProjectSettings.asset`의
+`m_StackTraceTypes: 0100...0100`(int32 6칸 전부 `1`=ScriptOnly)이었다. **정보성 로그 한 줄마다
+관리 스택을 캡처**하고 있었다. Log/Warning만 끄고 **Error/Assert/Exception은 ScriptOnly 유지**
+(예외 추적을 잃으면 원격 진단이 죽는다). 3중으로 건다:
+- `Assets/Editor/BuildStandalone.cs`의 `ConfigureLogStackTraces()` — macOS/Windows **양쪽** 빌드에서 호출.
+  YAML 바이트 순서를 추측하지 않고 `PlayerSettings.SetStackTraceLogType(LogType, ...)` 타입 API만 쓴다.
+- `Platform/PlayerLogPolicy.cs` — 런타임에서 한 번 더 강제 + `StickConfig`로 되돌릴 수 있는 스위치.
+- `ProjectSettings.asset` 기본값(Warning/Log 칸만 `00000000`).
+
+**(2) 정보량 0인 반복 로그** — `[유휴동작]`이 실측 2,564줄 중 **661줄(26%)**을 같은 문장으로 채웠다.
+기존 스위치 `verboseDiagnosticsLogging`(2026-08-28에 같은 판단으로 만든 것)에 물렸다.
+**`[말풍선]`과 상태 전이 로그는 남겼다** — CLAUDE.md 불변 원칙 1(행동-텍스트 싱크)을 원격에서
+검증하는 유일한 수단이라 "로그를 줄인다"가 "눈을 감는다"가 되면 안 된다.
+
+### 결론 / 다음 실기 로그가 확정할 것
+
+1. `[발판열거]`의 **초당 ms**가 한 자리 ms면 → **후보 A 기각.** 수십 ms면 → **A 확정.**
+2. `[스톨귀인] 요약`의 **로그 초당 ms**와 **로그 최대 ms**가 작으면 → **후보 B 기각.**
+   한 줄 최대가 100ms를 넘으면 → **B 확정(디스크/AV 블로킹)** → 구조 변경 없이 해결 가능.
+3. 둘 다 작은데 스파이크가 계속 나면 → **판정: 로직밖.** 원인은 렌더/프레젠트/DWM 합성이며
+   폴링→이벤트 구조 변경은 이 증상을 고치지 못한다(다만 상시 비용 절감으로는 여전히 옳다).
+
+### 산출물
+
+| 파일 | 내용 |
+|---|---|
+| `Platform/StallAttribution.cs` **(신설)** | 귀인 계측 본체. 판정은 순수 함수라 EditMode가 실측 |
+| `Platform/StallAttributionProbe.cs` **(신설)** | 프레임 경계 2개(실행순서 ±30000) + `ILogHandler` 래퍼. 씬을 건드리지 않는 `RuntimeInitializeOnLoadMethod` 자가 배선(`RenderQualityTuner` 선례) |
+| `Platform/IWindowEnumerationCostSource.cs` **(신설)** | 열거 규모 보고 창구(선택적). 미지원 플랫폼은 **-1**을 그대로 찍는다(모르는 값을 0으로 위장하지 않는다) |
+| `Platform/PlayerLogPolicy.cs` **(신설)** | 스택트레이스 정책 + 상시 서술 로그 게이트 |
+| `Platform/FootholdPoller.cs` | 열거 호출을 스톱워치로 감쌈(앱 전체의 **유일한** 열거 지점) + 설정 배선 |
+| `Platform/Windows/Win32WindowService.cs` | **계측 카운터만 추가**(전체 열거 수 / DWM 조회 수). 열거 **동작은 한 줄도 바꾸지 않았다** — 테스트가 이를 잠근다 |
+| `Core/StickConfig.cs` | `logStallAttribution`, `suppressInfoLogStackTraces`(파일 맨 끝 신규 섹션 관례) |
+| `Editor/BuildStandalone.cs` | `ConfigureLogStackTraces()` + 양쪽 빌드 경로에서 호출 |
+| `Interaction/IdleAmbientMotionRenderer.cs` | 최다 반복 로그를 스위치에 물림(**조립 앞**에서 판정 — 꺼도 할당 0) |
+| `Tests/EditMode/StallAttributionTests.cs` **(신설)** | 판정표 7건 + 태그 히스토그램 5건 + 계측 자체 비용 2건 + 문턱 동기화 1건 + 배선 3건 + 낭비 제거 5건 |
+
+**검증**: 크로스 컴파일 `win`/`osx` **에러 0 / 경고 0**, EditMode 테스트 어셈블리 **에러 0**.
+추가로 **판정표와 태그 히스토그램은 컴파일 산출물을 리플렉션으로 실제 실행해 확인**했다
+(16개 체크 전부 PASS — 컴파일만 믿지 않는다는 이 저장소의 관례).
+
+**Windows 영향**: 계측 3종(전체 열거 창 수 / DWM 조회 횟수 / 열거 1회 ms)은 **Windows에서만**
+실값이 나온다(`Win32WindowService`만 `IWindowEnumerationCostSource`를 구현 — macOS/모바일은 -1).
+`Win32WindowService`에 추가된 것은 `int` 증가 3줄과 프로퍼티 2개뿐이며 **P/Invoke 횟수·순서·필터
+판정은 전혀 바뀌지 않았다**(테스트 `계측은_열거_동작을_바꾸지_않았다`가 잠금). 스택트레이스 정책과
+로그 감량은 Windows/macOS 공통이며, Windows 쪽 이득이 더 크다(Player.log 동기 쓰기 + NTFS/AV 경로).
+**실기 실행 검증 불가** — 다음 Windows 릴리즈의 `[발판열거]` / `[스톨귀인]` 두 줄이 확정한다.
+
+---
+
+## 과학적 토론 로그 — "레이어드+DWM 하이브리드가 겹침과 렉의 공통 원인인가" (debugger, 2026-09-01 3차)
+
+**리더 가설**: 창 하나가 레이어드 경로와 DWM 확장 프레임 경로에 동시에 걸려 Windows가 같은 창을 두
+경로로 합성한다 → (a) 창 겹침/반투명의 직접 원인이고 (b) dwm GPU 40%·잔여 렉의 원인일 수도 있다.
+**즉 한 결함이 두 신고를 동시에 설명한다**는 가설.
+
+### 결론 먼저 — 가설의 <b>기구(mechanism)는 반증됐다</b>. 그러나 하이브리드 자체는 제거했고, 그 제거가 실기에서 스스로를 증명한다.
+
+| 가설 | 결과 |
+|---|---|
+| H1 `_alphaValue`가 0으로 역직렬화되어 네이티브가 알파 0을 걸었다 | **반증** |
+| H2 `[LAYERED-ALPHA] 알파=0/255`는 실제로 적용 중인 창 단위 반투명이다 | **반증(자기모순)** |
+| H3 진단이 잰 창이 라이브러리가 고친 창이 아닐 수 있다 | **미확정 — 실기 1줄로 갈리게 계측 추가** |
+| H4 하이브리드가 렉(CPU)의 원인이다 | **근거 없음 — 기각 권고** |
+| H5 `WS_EX_TRANSPARENT` 단독으로 클릭 관통이 성립한다 | **미확정 — 실기가 스스로 판정하도록 자가검증 실험 탑재** |
+
+---
+
+### H1 — `_alphaValue = 0` 가설 (**반증**)
+
+| 항목 | 내용 |
+|---|---|
+| 근거 경로 | 패키지 C++ 원본(`kirurobo/UniWindowController` `VisualStudio/LibUniWinC/libuniwinc.cpp`)을 내려받아 직접 읽음. `SetAlphaValue(alpha)` → `byAlpha_ = 0xFF*alpha` → `applyWindowAlphaValue()`가 **`byAlpha_ < 0xFF`일 때만** `WS_EX_LAYERED`를 스스로 켜고, 마지막에 항상 `SetLayeredWindowAttributes(hWnd, 0, byAlpha_, LWA_ALPHA)`를 부른다. |
+| 의심 지점 | 패키지 프리팹 `UniWindowController.prefab`의 직렬화 YAML에 **`_alphaValue` 키가 아예 없다**(옛 스크립트로 저장된 프리팹). 역직렬화 결과가 0이면 알파 0이 실제로 걸린다. |
+| 검증 방법 | **크로스 플랫폼 반증.** `_alphaValue`는 플랫폼 공통 필드이고 macOS 네이티브도 같은 값을 쓴다(`LibUniWinC.bundle` 심볼에 `setAlphaValue:` = `NSWindow.alphaValue` 존재). 0이면 **macOS 창도 완전히 투명해 아무것도 안 보여야** 한다. |
+| 결과 | 사용자는 macOS에서 몇 주째 캐릭터를 보고 있다. → **`_alphaValue`는 0이 아니다.** |
+| 결론 | **반증.** Unity 실행 없이, 이미 있는 사실만으로 닫혔다. |
+
+### H2 — `[LAYERED-ALPHA] 알파=0/255`가 진짜 원인이다 (**반증 — 판정이 자기모순이었다**)
+
+| 항목 | 내용 |
+|---|---|
+| 검증 방법 | (1) `GetLayeredWindowAttributes` 계약 확인 — `bAlpha`는 `dwFlags`에 **`LWA_ALPHA`가 있을 때만** 합성에 쓰인다. (2) 우리 프로브가 그 `dwFlags`를 **버리고 있었다**: `GetLayeredWindowAttributes(_hwnd, out uint _, out byte alpha, out uint _)`. (3) 판정문의 자체 산술 — 알파 0이면 비침 **100%**. |
+| 결과 | **판정이 참이라면 화면에 앱이 아무것도 보이지 않아야 한다.** 사용자는 캐릭터를 보고 있었다. 즉 `[LAYERED-ALPHA]`는 관측과 모순인 결론이었고, `dwFlags`에 `LWA_ALPHA`가 없어(=속성이 적용되지 않아) `bAlpha`가 0으로 돌아온 상태와 완전히 일관된다. |
+| 결론 | **반증.** "알파 0이 겹침의 직접 원인"은 성립하지 않는다. 그리고 이것은 오늘 **네 번째** "지표가 깨진 것을 잰 적 없음" 사례다 — 다만 이번에는 **판정기 자신**이 범인이었다. |
+| 겹침의 실제 원인 | 이 저장소가 **이미 확정해 둔 것**이 따로 있다(2026-08-31 debugger 라운드): 투명 오버레이에서 `Blend SrcAlpha OneMinusSrcAlpha`가 알파 채널에도 적용되어 `dstA' = srcA² + dstA(1−srcA)` — 반투명 겹을 쌓을수록 **창 알파가 내려간다**(0.92→0.72→0.59). 정보창은 고쳤고 그 라운드가 **`PopoverPanel.cs:416`(38% 비침)과 `CornerHoverPanel`의 `AddGlassPanel(alpha:0.86)`(28% 비침)이 남았다**고 명시적으로 인계했다. **그 인계가 아직 처리되지 않았다.** 신고 문구("창이 여러 개로 겹쳐 보인다")도 창 전체가 아니라 **패널 뒤가 비친다**는 뜻이다. |
+
+### H3 — 진단이 잰 창이 라이브러리가 고친 창이 아닐 수 있다 (**미확정 · 계측 추가**)
+
+| 항목 | 내용 |
+|---|---|
+| 근거 | 두 주체가 **서로 다른 규칙**으로 창을 고른다. .NET `Process.MainWindowHandle` = 우리 PID의 "보이고 오너 없는" 첫 최상위 창. LibUniWinC `attachOwnerWindowProc` = 우리 PID의 **첫** 최상위 창(가시성 무관)을 찾아 `GW_OWNER`가 있으면 **그 오너**. 프로세스에는 우리가 만들지 않은 최상위 창(IME 등)이 존재한다. |
+| 왜 중요한가 | 두 값이 갈리면 **진단은 A 창을 재고 라이브러리는 B 창을 고친다**. 그러면 `[합성진단]`의 스타일/알파 판정 전체가 무의미하고, H2의 모순도 이걸로 설명된다. 게다가 `WindowsTopmostWatchdog`의 "OS 실측 topmost"도 같은 핸들을 쓴다 — 틀리면 **z-order 감시가 엉뚱한 창을 보고 있다는 뜻**이다. |
+| 검증 방법 | 동봉 DLL의 export에 `GetWindowHandle`이 실제로 있음을 확인(`strings`)하고 P/Invoke 추가. 두 값을 비교해 **다르면 경고 한 줄**을 남긴다. |
+| 상태 | **실기 1줄로 갈린다.** `[오버레이핸들] ★ ... 서로 다른 창을 가리킵니다`가 뜨면 확정, 안 뜨면 반증. |
+
+### H4 — 하이브리드가 렉의 원인이다 (**근거 없음 — 기각 권고**)
+
+- 동봉 DLL에 `UpdateLayeredWindow` / `GetDIBits` / `CreateDIBSection`이 **0건**(앞 라운드 확인, 재확인함).
+  즉 GPU→CPU 리드백 경로가 없다. Windows 8 이후 `SetLayeredWindowAttributes` 계열 레이어드 창은 DWM이
+  다른 창과 같은 방식으로 합성한다.
+- 같은 날 실기 로그가 **GPU 프레임시간 평균 0.01ms**를 보였다. 렉은 CPU였고, 그 CPU 스파이크의 원인은
+  이미 **스왑체인 재생성 래칫**으로 확정·수정됐다.
+- **"한 결함이 두 신고를 설명한다"는 매력적이지만, 이 사건에서는 그 연결을 지지하는 측정이 하나도 없다.**
+  잔여 렉은 `[프레임시간]` 루프 평균 수치가 오면 그 줄로 판단해야 하며, 레이어드 라운드를 더 파는 것은
+  권하지 않는다.
+
+### H5 — `WS_EX_TRANSPARENT` 단독으로 클릭 관통이 성립하는가 (**미확정 → 실기가 스스로 판정한다**)
+
+이것이 리더 지시 2항의 핵심 질문이고, **이 머신에서는 확정할 수 없다.**
+- 확정된 사실(패키지 C++ 원본): `SetClickThrough(TRUE)`는 `WS_EX_TRANSPARENT |= WS_EX_LAYERED`를 함께 켜고,
+  `FALSE` 분기는 `WS_EX_TRANSPARENT`만 지운다(레이어드를 지우는 줄이 **주석 처리되어** 있다 —
+  "반투명을 유지하기 위해"라는 저자 주석). 원칙 2 때문에 Windows 출하 형상은 항상 하이브리드다.
+- 확정되지 않은 것: 비-레이어드 창에서 `WS_EX_TRANSPARENT` 단독의 히트테스트 통과. 마이크로소프트
+  "Layered Windows" 문서는 **레이어드 창 문맥**에서만 이를 보증하고, 공개 자료는 갈린다
+  (일부는 "WS_EX_TRANSPARENT는 DWM에서 클릭이 통과하지 않는다"고까지 주장한다).
+- **그래서 추측으로 지우지 않았다.** 대신 사용자의 실기에서 **OS에게 직접 묻고, 답이 나쁘면 같은 프레임에
+  되돌리는** 실험을 탑재했다(아래).
+
+---
+
+### 적용한 변경
+
+| 파일 | 변경 |
+|---|---|
+| `Platform/LayeredHybridPolicy.cs` **(신설)** | 순수 판정 규칙 + 근거 전문. 게이트 8분기 / 대조군 / 되돌림 규칙. OS 호출 0 → macOS EditMode가 전 분기 검증 |
+| `Platform/Windows/WindowsLayeredHybridResolver.cs` **(신설)** | 실행부. **대조군 → 제거 → 실험군 → (실패 시) 같은 프레임 되돌림 + 영구 비활성**. 제거 성공 후에도 2초마다 **상시 재검증**. 별개 수리로, 레이어드 <b>속성</b>이 실제로 적용 중이면(LWA_ALPHA<255 / LWA_COLORKEY) 완전 불투명으로 무해화 |
+| `Platform/Windows/UniWinCNativeHandle.cs` **(신설)** | `LibUniWinC.GetWindowHandle()` P/Invoke. 네이티브 vs .NET 핸들 비교 후 **다르면 경고 1줄** |
+| `Platform/OverlayCompositionSnapshot.cs` | `LayeredFlags`/`LayeredColorKey`/`OverlayHandleSource`/`HybridResolverState`/`HybridStripCount` 신설. `[LAYERED-ALPHA]`를 **LWA_ALPHA가 있을 때만** 내고, 없으면 `[LAYERED-INERT]`(무해)로. `[LAYERED-COLORKEY]` 신설. `[LAYERED-NOATTR]`을 SeeThrough → **None**으로 강등(근거: 속성이 없으면 창 단위 알파가 없다). `[HWND-MISMATCH]` 신설. `[GLYPH-SCALE]` 판정을 "배율이 정수인가"에서 **"이 pt의 잔차가 0인가"**로 교정 |
+| `Platform/Windows/WindowsCompositionProbe.cs` | `dwFlags`/`crKey` 관측, 핸들을 네이티브 우선으로, 해소기 상태를 관측 줄에 표기 |
+| `Platform/Windows/WindowsOverlayStateEnforcer.cs` | 해소기 틱 배선(재적용 상한과 무관하게 상시) |
+| `Tests/EditMode/LayeredHybridPolicyTests.cs` **(신설 15건)** | 원칙 2 잠금 + **자기창 스타일 쓰기 API가 해소기 한 파일 밖에 없는지** 소스 스캔 |
+| `Tests/EditMode/OverlayCompositionDiagnosticsTests.cs` | 신규 7건(알파0+플래그0 = 무해 / 구빌드 폴백 / 색키 / 해소기 가동 중 일시상태 + 네거티브 컨트롤 / 핸들 불일치 / 비정수 배율인데 잔차 0 / 제거횟수는 지문 불변) + 기존 3건 기대치 교정 |
+
+### 원칙 2를 어떻게 "깨지 않는다"로 잠갔는가 (리더 red line)
+
+1. **대조군 없이는 손대지 않는다.** 제거 <b>전에</b> `WindowFromPoint(창 중앙)`가 우리 HWND가 아닌 것을
+   돌려주는지 먼저 본다. 우리 HWND가 나오면 "관통을 관측할 수단 자체가 없다"이므로 **실험을 포기**한다.
+   이 대조군이 없으면 "지운 뒤에도 관통된다"는 관측이 무의미하다(원래부터 그렇게 보였을 수 있다).
+2. **실패하면 같은 프레임에 되돌린다.** 라이브러리의 클릭관통 자동 토글도 메인 스레드에서만 돌므로
+   이 사이에 경합이 없다(같은 `Update` 안에서 읽기→쓰기→검증→되돌림이 끝난다).
+3. **판정할 수 없으면 되돌린다.** 비대칭이 명백하다 — 되돌림의 비용은 "예전 상태", 안 되돌림의 비용은
+   "화면 전체를 덮는 창이 모든 클릭을 먹는 데스크톱".
+4. **한 번 통과했다고 영원히 믿지 않는다.** 2초마다 같은 질문을 다시 하고, 한 번이라도 답이 나빠지면
+   즉시 복구 + 영구 비활성.
+5. **ColorKey 경로는 손대지 않는다**(그 경로는 레이어드를 **필요로** 한다).
+6. **긴급 차단**: `STICKMATE_KEEP_LAYERED=1`로 재빌드 없이 예전 형상으로 되돌린다.
+7. **회귀 테스트 15건**이 위 1~6을 전부 고정하고, 소스 스캔이 스타일 쓰기의 확산을 막는다.
+
+### 진단이 결과를 증명한다 (리더 지시)
+
+수정이 먹으면 다음 실기 로그에서:
+- `[레이어드해소] ★ WS_EX_LAYERED 제거 성공 — WS_EX_TRANSPARENT 단독으로 클릭 관통이 유지됨을 실측 확인` **1줄**
+- `[합성진단]`의 `[LAYERED+DWM!겹침+번짐]` → `[LAYERED+DWM] WS_EX_LAYERED 없음 — DWM 단일 경로(정상)`
+- `[LAYERED-ALPHA!겹침]` **소멸**(구조적으로 발생 불가)
+
+먹지 않으면 **사유가 로그에 이름으로 남는다**: `[레이어드해소] 보류 — 대조군에서 관통이 관측되지 않았다…`
+또는 `[레이어드해소] ★ 되돌림 — …`. 후자는 **"WS_EX_TRANSPARENT 단독으로는 관통이 성립하지 않는다"는
+실측 사실**이므로 그 자체가 이 프로젝트의 영구 자산이다.
+
+**진단 비용**: 평상시 틱은 `GetWindowLongPtrW` **1회 / 0.25초**(기존 z-order 감시가 같은 API를 초당
+10회 부른다 — 증분은 그 40%). 관통 재검증은 2초에 `GetWindowRect`+`WindowFromPoint` 2회. 매 프레임
+할당 0. 제거 횟수는 **지문에서 제외**했다(넣었으면 커서가 캐릭터를 벗어날 때마다 1KB 경고가 찍혔을 것 —
+오늘 이미 겪은 사고 유형이라 테스트로 잠갔다).
+
+### 텍스트 번짐(`[GLYPH-SCALE]`) — 리더가 제시한 처방을 **반증**한다
+
+- 지시는 "캔버스 배율을 정수로 맞추거나 폰트를 실제 표시 크기로 굽는 방향"이었다.
+  **앞쪽은 하면 안 된다**: Windows의 캔버스 배율 1.5는 `GetDpiForWindow/96`(디스플레이 150%)에서 오고,
+  이를 1이나 2로 스냅하면 **UI 물리 크기가 33% 바뀐다** — 2026-08-31에 이미 해결한 신고
+  ("캐릭터창 해상도도 엄청 낮아서 글씨도 잘 안보임")를 그대로 되살린다.
+- 옳은 처방은 **폰트 pt를 배율에 맞추는 것**이다. 배율 1.5에서는 `pt × 1.5`가 정수인 크기, 즉
+  **짝수 pt**만 잔차 0으로 구워진다(14pt → 21.0px 정확). 13pt는 19.5 → 20px에 구워진 뒤 0.975배.
+- 그리고 **예전 판정 자체가 과잉이었다**: "배율이 정수가 아니면 번짐"이라 짝수 pt도 결함으로 찍었다.
+  잔차 기준으로 바꾸고, 로그가 **"몇 pt로 바꾸면 되는지"를 직접 답하게** 했다.
+- **남은 작업(코더 라운드)**: UI 폰트 pt를 짝수로 정렬. 배선이 `Interaction/*` 20여 파일에 흩어져 있어
+  이 라운드 소유 범위 밖이다. 잔차는 2.5%로 **겹침보다 우선순위가 낮다**(리더 판단과 동일).
+
+### 검증
+
+- **EditMode 809건 실행: 807 통과 / 1 스킵 / 1 실패.**
+  · 신규·수정 대상 2파일만 따로 돌린 결과 **43/43 통과**(`LayeredHybridPolicyTests` 15,
+    `OverlayCompositionDiagnosticsTests` 28).
+  · 유일한 실패 `StallAttributionTests.계측코드_자체에는_OS_창조회가_없다`는 **다른 라운드의 in-flight
+    신규 파일**(`Platform/StallAttribution.cs`, untracked)이 자기 테스트를 깨고 있는 것이다 —
+    `EnumWindows`가 **문서 주석**에 등장해 자기 스캔에 걸렸다. 내 변경과 무관(그 파일을 읽지도 않았다).
+  · `PlatformParityAuditTests.미해결_Windows에는_가상데스크톱_동행_배선이_없다`는 **의도된 미해결 표식**.
+- **크로스 컴파일 에러 0 / 경고 0**: `xcheck.sh win`(`-define:UNITY_STANDALONE_WIN`) / `xcheck.sh osx`.
+- **macOS 무영향 증명(코드 수준)**: 신규 파일 2개가 전부 `#if UNITY_STANDALONE_WIN`으로 감싸여 있고,
+  플랫폼 중립 `LayeredHybridPolicy`는 **macOS 경로에서 호출되는 곳이 0곳**이다(전수 검색).
+  `MacOverlayStateEnforcer`/`MacWindowService`는 한 글자도 바뀌지 않았다. 원리적으로도 macOS의
+  `ignoresMouseEvents`는 합성 경로를 건드리지 않으므로 **이 하이브리드 상태 자체가 macOS에 존재하지 않는다.**
+
+### 리더에게 — 다른 소유자 / 미해결 (숨기지 않는다)
+
+1. **★ 겹침의 실제 원인 인계가 8-31부터 방치돼 있다.** `Interaction/PopoverPanel.cs:416`(그림자를 패널
+   Image의 **자식**으로 부착 → 창 알파 0.62, **38% 비침**), `Interaction/CornerHoverPanel.cs:926/965`
+   (`AddGlassPanel(alpha:0.86)` → 창 알파 ≈0.72, **28% 비침**). 둘 다 `UiChrome.AddOpaquePanel()`로
+   바꾸면 끝난다(각 6줄). **레이어드보다 이쪽이 겹침 신고에 훨씬 직접적이다** — 코더 라운드 배정 요망.
+2. **`Win32WindowService._overlayHwnd`와 `WindowsOverlayStateEnforcer.OverlayHandle`이 여전히
+   `Process.MainWindowHandle`이다.** 좌표 원점 보고 / 전체화면 판정 / **z-order 감시의 OS 실측**이
+   그 핸들을 쓴다. 네이티브 핸들과 다르면 그 셋이 전부 엉뚱한 창을 보고 있다는 뜻이다.
+   이번엔 회귀 위험 때문에 **진단(프로브)과 해소기만** 네이티브 핸들로 바꿨다.
+   `[오버레이핸들]` 경고가 실기에서 뜨면 **핸들 단일화가 최우선 라운드**가 된다.
+3. **`SetLayeredWindowAttributes`가 알파 255로도 항상 호출된다**(네이티브 `applyWindowAlphaValue`).
+   창이 아직 레이어드가 아니면 실패하는데, 라이브러리는 반환값을 보지 않는다 — 우리가 고칠 수 없는
+   상류 동작이므로 관측으로만 남긴다.
+4. **동시 라운드 경합**: 이 라운드 중 다른 에이전트가 `Win32WindowService.cs`(내 소유 목록에 있던 파일),
+   `StickConfig.cs`, `FootholdPoller.cs` 등을 편집했고 scratchpad의 `xcheck.sh`/`xcheck_tests.sh`도
+   덮어썼다. 나는 `Win32WindowService.cs`를 **한 글자도 바꾸지 않았다**(그쪽 변경이다).
+   Unity 배치모드는 `pgrep -x Unity` 확인 후 2회 실행했고 충돌 없었다.
+
+**Windows 영향**: 이 라운드의 대상이 Windows다. (1) 클릭 관통을 켜면 따라오던 `WS_EX_LAYERED`가
+**검증 후에만** 제거되어 합성 경로가 DWM 단일 경로가 된다(실패 시 자동 복구 + 영구 비활성).
+(2) 레이어드 속성이 실제로 적용 중이면 완전 불투명으로 무해화한다. (3) `[합성진단]`의 알파/글리프 판정이
+교정되어 **거짓 경보 2종이 사라진다**. (4) 오버레이 HWND를 네이티브에게 직접 묻고 불일치 시 경고한다.
+클릭 관통(원칙 2)·항상위·투명화·좌표계·프레임 페이싱은 **동작 변경 없음**.
+**macOS 영향: 없음** — 신규 실행 코드는 전부 `#if UNITY_STANDALONE_WIN` 안이고, macOS는
+`ignoresMouseEvents`가 합성 경로를 건드리지 않아 이 하이브리드 상태 자체가 존재하지 않는다.

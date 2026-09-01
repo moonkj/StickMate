@@ -47,6 +47,88 @@ namespace StickMate.Platform
         /// </summary>
         public const float DefaultEpsilonPixels = 2f;
 
+        /// <summary>
+        /// 프로세스 수명 전체에서 <c>Screen.SetResolution</c>을 부를 수 있는 기본 상한.
+        ///
+        /// <para>정상 경로는 기동 시 1회다. 디스플레이 구성 변경(모니터 착탈/해상도 변경)이 세션당
+        /// 몇 번 일어나도 감당하면서, 판정이 진동하면 즉시 멈춘다. 24시간 상주 앱에서 이 호출이
+        /// 무제한이면 사용자는 몇 초마다 수백 ms씩 얼어붙는 앱을 보게 된다.</para>
+        ///
+        /// <para><b>주의</b>: <c>Platform/Windows/WindowsOverlayStateEnforcer</c>는 아직 같은 값을
+        /// 자기 파일의 <c>private const int MaxSetResolutionCalls = 4</c>로 들고 있다(이번 라운드는
+        /// 그 파일을 읽기 전용으로 다뤘다). 두 값이 갈라지지 않도록
+        /// <c>Tests/EditMode/OverlayResizeRatchetTests</c>가 Windows 소스의 리터럴을 실제로 읽어
+        /// 이 상수와 대조한다 — 한쪽만 바꾸면 테스트가 깨진다.</para>
+        /// </summary>
+        public const int DefaultMaxSetResolutionCalls = 4;
+
+        /// <summary>
+        /// 유효하다고 인정하는 최대 백킹 배율(OS 포인트 1 = Unity 픽셀 몇 개). 4x를 넘는 디스플레이는
+        /// 존재하지 않으므로, 그보다 큰 값이 들어오면 <b>배율 측정이 깨진 것</b>으로 보고 불감대를
+        /// 넓히지 않는다 — 깨진 측정값으로 불감대를 키우면 진짜 어긋남까지 덮게 된다.
+        /// </summary>
+        public const float MaxDeviceScale = 4f;
+
+        /// <summary>
+        /// 목표 픽셀값의 <b>양자화 여유</b>(픽셀). 호출자는 목표를 <c>RoundToInt(포인트 / 배율)</c>로
+        /// 만들므로 목표 자체에 최대 0.5px의 반올림 오차가 들어 있다.
+        ///
+        /// <para>이 항이 없으면 불감대가 <b>칼날 위</b>에 선다: 창 기하가 허용 오차의 정확히 끝(2pt)에
+        /// 있을 때 해상도 차이가 불감대와 소수점 셋째 자리에서 갈린다(실측 계산:
+        /// 창 1514pt에서 차이 4.000 vs 불감대 3.995 -> 재적용). 그러면 <b>기하 판정은 "맞았다"고 하는데
+        /// 해상도 판정만 홀로 "틀렸다"</b>고 해서 <c>Screen.SetResolution</c>이 다시 불린다 —
+        /// 이 파일이 없애려는 바로 그 재적용이다.</para>
+        ///
+        /// <para>0.5를 더해도 불감대가 진짜 어긋남을 덮지 않는다: 같은 계산에서 창이 4pt 어긋나면
+        /// 차이 8.0 vs 불감대 4.5로 <b>여전히 재적용이 걸린다</b>.</para>
+        /// </summary>
+        public const float TargetRoundingSlackPixels = 0.5f;
+
+        /// <summary>
+        /// <b>해상도</b> 판정에 쓸 불감대를 <c>Screen.width</c>와 같은 단위(Unity 픽셀)로 유도한다.
+        ///
+        /// ============================================================================
+        /// 왜 상수 2px을 그대로 쓰면 안 되는가 (2026-09-01 macOS 확장 라운드)
+        /// ============================================================================
+        /// 이 규칙 안에서 두 판정은 <b>서로 다른 좌표계</b>를 본다:
+        /// <list type="bullet">
+        ///   <item><see cref="ShouldResize"/>/<see cref="ShouldMove"/> — 창 사각형. 단위는 <b>OS 포인트</b>
+        ///         (macOS 실측 1512x982).</item>
+        ///   <item><see cref="ShouldSetResolution"/> — <c>Screen.width/height</c>. 단위는 <b>Unity 픽셀</b>
+        ///         (같은 화면에서 3024x1964).</item>
+        /// </list>
+        /// Windows는 배율이 1이라 두 단위가 같아서 이 구분이 필요 없었다. macOS Retina는 배율이 2라
+        /// <b>포인트 1 = 픽셀 2</b>이고, 그래서 2px 상수를 해상도 판정에 그대로 쓰면 실효 불감대가
+        /// 1포인트로 <b>절반</b>이 된다 — 창 기하가 1포인트 어긋나는 순간 해상도 판정만 홀로 "불일치"가
+        /// 되어 <c>Screen.SetResolution</c>이 다시 불린다. 그것이 바로 이 파일이 없애려는 래칫이다.
+        ///
+        /// 그래서 불감대의 <b>정의 단위는 OS 포인트</b>(사람이 보는 크기)로 두고, 픽셀 단위 판정에는
+        /// 배율을 곱해 <b>유도</b>한다. 숫자를 플랫폼마다 흩뿌리지 않는 이유다.
+        ///
+        /// <para><b>지켜야 할 불변식</b>: 창 기하가 <see cref="ShouldResize"/>의 불감대 안에 있으면
+        /// <see cref="ShouldSetResolution"/>도 반드시 조용해야 한다. 두 판정이 갈리는 순간 한쪽이
+        /// 다른 쪽을 영원히 되살리는 래칫이 된다. <c>OverlayResizeRatchetTests</c>가 이 불변식을
+        /// Retina 배율에서 실제로 계산해 잠근다.</para>
+        /// </summary>
+        /// <param name="osPointsPerUnityPixel">
+        /// <c>ScreenCoordinateConverter.ResolveDpiScale</c>의 값 — "OS 포인트 / Unity 픽셀"이다
+        /// (Windows 1.0 · macOS Retina 0.5). 값이 이상하면(0 이하/NaN/무한대) 배율을 모르는 것이므로
+        /// <b>넓히지 않고</b> <see cref="DefaultEpsilonPixels"/>를 그대로 돌려준다.
+        /// </param>
+        public static float ResolutionEpsilonPixels(float osPointsPerUnityPixel)
+        {
+            if (float.IsNaN(osPointsPerUnityPixel) || float.IsInfinity(osPointsPerUnityPixel)
+                || osPointsPerUnityPixel <= 0f)
+            {
+                return DefaultEpsilonPixels;
+            }
+
+            float deviceScale = 1f / osPointsPerUnityPixel;
+            if (deviceScale < 1f) deviceScale = 1f;                       // 픽셀이 포인트보다 성기면 넓힐 이유가 없다.
+            if (deviceScale > MaxDeviceScale) deviceScale = MaxDeviceScale;
+            return DefaultEpsilonPixels * deviceScale + TargetRoundingSlackPixels;
+        }
+
         /// <summary>두 값이 불감대 안에 있는가(둘 다 만족해야 한다).</summary>
         public static bool Within(float aX, float aY, float bX, float bY, float epsilonPixels)
         {

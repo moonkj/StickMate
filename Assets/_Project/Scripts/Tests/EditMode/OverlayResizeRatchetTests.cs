@@ -59,6 +59,44 @@ namespace StickMate.Tests.EditMode
             => File.ReadAllText(Path.Combine(WindowsPlatformDir, "WindowsOverlayStateEnforcer.cs"));
 
         // ────────────────────────────────────────────────────────────────────────
+        // macOS 쪽 (2026-09-01 확장) — 같은 래칫이 그대로 있었다
+        // ────────────────────────────────────────────────────────────────────────
+
+        private static string ReadMacEnforcer()
+            => File.ReadAllText(Path.Combine(Application.dataPath, "_Project", "Scripts",
+                "Platform", "MacOS", "MacOverlayStateEnforcer.cs"));
+
+        /// <summary>
+        /// 주석을 걷어낸 소스. <b>"이 코드가 지금 무엇을 하는가"를 물을 때만</b> 쓴다.
+        ///
+        /// <para>이 함수가 필요한 이유는 이 테스트를 쓰면서 <b>실제로 밟았기</b> 때문이다:
+        /// MacOverlayStateEnforcer에 "직전까지 이 판정은 <c>Screen.width != targetPixelW</c>였다"고
+        /// 결함의 역사를 정직하게 적어 두었더니, 그 주석이 <b>구현으로 오인</b>되어
+        /// "완전일치 판정이 돌아왔다"는 거짓 실패가 났다.
+        /// <c>PlatformParityAuditTests.StripLineComments</c>가 같은 함정을 반대 방향(거짓 통과)으로
+        /// 겪고 남긴 규칙과 동일하다 — 결함을 정직하게 적을수록 감사가 눈머는 것을 막는다.</para>
+        /// </summary>
+        private static string StripComments(string source)
+        {
+            var sb = new System.Text.StringBuilder(source.Length);
+            foreach (string line in source.Split('\n'))
+            {
+                string t = line.TrimStart();
+                if (t.StartsWith("//", StringComparison.Ordinal)) continue;
+                if (t.StartsWith("*", StringComparison.Ordinal)) continue;
+                sb.Append(line).Append('\n');
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>실측 Retina 배율(OS 포인트 / Unity 픽셀). 사용자 실기 로그의 `dpi배율=0.500`.</summary>
+        private const float RetinaPointsPerPixel = 0.5f;
+
+        /// <summary>실측 화면: 1512x982 포인트 = 3024x1964 Unity 픽셀.</summary>
+        private const float MacMonitorWidthPoints = 1512f;
+        private const int MacScreenWidthPixels = 3024;
+
+        // ────────────────────────────────────────────────────────────────────────
         // 1. 래칫 재현/차단 (순수 규칙 실행)
         // ────────────────────────────────────────────────────────────────────────
 
@@ -255,6 +293,183 @@ namespace StickMate.Tests.EditMode
             Assert.Greater(fallback, 0,
                 "창 중심이 어느 모니터에도 안 속할 때 0번으로 튀면, '잠깐 좌표를 못 읽었다'를 " +
                 "'사용자가 창을 다른 모니터로 옮겼다'로 오인해 재적합을 부른다.");
+        }
+
+        // ════════════════════════════════════════════════════════════════════════
+        // 4. macOS — Windows를 고쳤으니 여기도 고친다 (CLAUDE.md 협업 프로토콜)
+        //
+        //    ★ 정직한 구분: macOS에서 1px 래칫은 **지금 발현하고 있지 않다**.
+        //      실기 로그(Player.log, 09-01 07:23)에 이 함수의 로그는 딱 한 줄이었고 되읽기가
+        //      대입값과 정확히 같았다(size 1512 -> 1512, Screen 3024 == 목표 3024, 결과=성공).
+        //      아래 테스트들이 잠그는 것은 "지금 아픈 곳"이 아니라 **구조적 위험**이다:
+        //      상한 없는 SetResolution, 무조건 대입, 그리고 Retina 단위 함정.
+        // ════════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// ★ 이 라운드의 핵심 발견 — <b>2px 상수를 macOS에 그대로 쓰면 안 된다</b>.
+        ///
+        /// 이 규칙의 두 판정은 좌표계가 다르다. 창 기하는 <b>OS 포인트</b>, 해상도는
+        /// <b>Unity 픽셀</b>이고 Retina에서는 포인트 1 = 픽셀 2다. 그래서 픽셀 판정에 2를 그대로
+        /// 쓰면 실효 불감대가 1포인트로 반토막 나고, <b>기하 판정은 "맞았다"는데 해상도 판정만 홀로
+        /// "틀렸다"</b>고 해서 <c>Screen.SetResolution</c>이 다시 불린다 — 정확히 래칫의 모양이다.
+        /// </summary>
+        [Test]
+        public void Retina에서_기하_불감대_안이면_해상도_판정도_조용해야_한다()
+        {
+            float epsilon = OverlayBoundsFitPolicy.ResolutionEpsilonPixels(RetinaPointsPerPixel);
+
+            // 창 폭이 기하 불감대(2pt) 안에서 흔들리는 모든 경우.
+            for (int errPoints = -2; errPoints <= 2; errPoints++)
+            {
+                float actualWidthPoints = MacMonitorWidthPoints + errPoints;
+
+                // 기하 판정은 이 오차를 "맞았다"고 본다 — 그것이 불감대의 정의다.
+                Assert.IsFalse(
+                    OverlayBoundsFitPolicy.ShouldResize(actualWidthPoints, 982f,
+                        MacMonitorWidthPoints, 982f, OverlayBoundsFitPolicy.DefaultEpsilonPixels),
+                    $"전제가 깨졌다: {errPoints:+#;-#;0}pt는 기하 불감대 안이어야 한다.");
+
+                // 배율은 상수가 아니라 실측값이다(AutoDpiScale = 창 폭 / Screen.width).
+                float measuredDpi = actualWidthPoints / MacScreenWidthPixels;
+                int targetPixelW = Mathf.RoundToInt(MacMonitorWidthPoints / measuredDpi);
+
+                Assert.IsFalse(
+                    OverlayBoundsFitPolicy.ShouldSetResolution(
+                        MacScreenWidthPixels, 1964, targetPixelW, 1964,
+                        fullScreenModeIsWindowed: true,
+                        epsilonPixels: OverlayBoundsFitPolicy.ResolutionEpsilonPixels(measuredDpi),
+                        callsSoFar: 0, maxCalls: OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls),
+                    $"창 폭 {actualWidthPoints}pt(오차 {errPoints:+#;-#;0}pt)에서 해상도 판정만 홀로 " +
+                    $"재적용을 걸었다. 기하 판정은 같은 오차를 통과시키므로, 이 상태는 " +
+                    $"'영원히 한쪽이 다른 쪽을 되살리는' 래칫이다. " +
+                    $"(목표={targetPixelW}px, 현재={MacScreenWidthPixels}px, 불감대={epsilon:F3}px)");
+            }
+        }
+
+        /// <summary>
+        /// 불감대가 <b>진짜 어긋남까지 덮으면</b> 처방이 아니라 은폐다. 기하 불감대의 두 배(4pt)로
+        /// 어긋나면 해상도 판정은 반드시 다시 걸려야 한다.
+        /// </summary>
+        [Test]
+        public void Retina_불감대는_진짜_어긋남까지_덮지는_않는다()
+        {
+            foreach (int errPoints in new[] { -4, 4 })
+            {
+                float actualWidthPoints = MacMonitorWidthPoints + errPoints;
+                float measuredDpi = actualWidthPoints / MacScreenWidthPixels;
+                int targetPixelW = Mathf.RoundToInt(MacMonitorWidthPoints / measuredDpi);
+
+                Assert.IsTrue(
+                    OverlayBoundsFitPolicy.ShouldSetResolution(
+                        MacScreenWidthPixels, 1964, targetPixelW, 1964,
+                        fullScreenModeIsWindowed: true,
+                        epsilonPixels: OverlayBoundsFitPolicy.ResolutionEpsilonPixels(measuredDpi),
+                        callsSoFar: 0, maxCalls: OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls),
+                    $"{errPoints:+#;-#;0}pt 어긋남을 불감대가 삼켰다. 그러면 이 규칙은 결함을 고치는 " +
+                    "것이 아니라 덮는 것이 된다.");
+            }
+        }
+
+        [Test]
+        public void 불감대는_배율에서_유도되고_이상한_배율에는_넓어지지_않는다()
+        {
+            Assert.AreEqual(2f + OverlayBoundsFitPolicy.TargetRoundingSlackPixels,
+                OverlayBoundsFitPolicy.ResolutionEpsilonPixels(1f), 0.0001f,
+                "배율 1(Windows)에서는 포인트와 픽셀이 같으므로 기본값 그대로여야 한다.");
+
+            Assert.AreEqual(4f + OverlayBoundsFitPolicy.TargetRoundingSlackPixels,
+                OverlayBoundsFitPolicy.ResolutionEpsilonPixels(0.5f), 0.0001f,
+                "Retina(배율 2)에서는 포인트 1 = 픽셀 2이므로 픽셀 불감대도 2배여야 한다.");
+
+            // 깨진 측정값으로 불감대를 무한히 키우면 진짜 어긋남까지 덮는다.
+            Assert.AreEqual(
+                OverlayBoundsFitPolicy.DefaultEpsilonPixels * OverlayBoundsFitPolicy.MaxDeviceScale
+                    + OverlayBoundsFitPolicy.TargetRoundingSlackPixels,
+                OverlayBoundsFitPolicy.ResolutionEpsilonPixels(0.0001f), 0.0001f,
+                "존재하지 않는 배율(1만 배)에서 불감대가 그대로 커지면 은폐가 된다.");
+
+            foreach (float bad in new[] { 0f, -1f, float.NaN, float.PositiveInfinity })
+            {
+                Assert.AreEqual(OverlayBoundsFitPolicy.DefaultEpsilonPixels,
+                    OverlayBoundsFitPolicy.ResolutionEpsilonPixels(bad), 0.0001f,
+                    $"배율을 모를 때({bad})는 넓히지 않고 기본값으로 떨어져야 한다 — " +
+                    "모르는 상태에서 관대해지는 것이 가장 나쁘다.");
+            }
+        }
+
+        /// <summary>
+        /// macOS에는 <c>SetResolution</c> 수명 상한이 <b>아예 없었다</b>. 발현 여부와 무관하게
+        /// 그 자체가 위험이다 — <c>TickDisplayTopology</c>가 재무장할 때 시도 횟수를 0으로 되돌리므로
+        /// 디스플레이 통지가 진동하면 호출이 무제한이 된다.
+        /// </summary>
+        [Test]
+        public void macOS도_SetResolution_수명_상한을_가진다()
+        {
+            string src = StripComments(ReadMacEnforcer());
+
+            StringAssert.Contains("OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls", src,
+                "24시간 상주 앱에서 백버퍼 재할당은 절대 무제한이면 안 된다.");
+            StringAssert.Contains("_setResolutionCalls++", src,
+                "상한을 세려면 실제로 세어야 한다.");
+
+            Assert.IsFalse(src.Contains("_setResolutionCalls = 0"),
+                "누적 횟수를 어디선가 0으로 되돌리면 '프로세스 수명 상한'이 아니게 된다. " +
+                "특히 TickDisplayTopology의 재무장 블록에서 되돌리면 상한이 사실상 사라진다.");
+
+            int reArm = src.IndexOf("_fullScreenApplyAttempts = 0;", StringComparison.Ordinal);
+            Assert.Greater(reArm, 0, "재무장 블록을 찾지 못했다 — 테스트가 낡았다.");
+        }
+
+        [Test]
+        public void macOS_Enforcer도_판정을_같은_순수_규칙에_위임한다()
+        {
+            string src = StripComments(ReadMacEnforcer());
+
+            StringAssert.Contains("OverlayBoundsFitPolicy.ShouldSetResolution", src,
+                "한쪽 플랫폼만 규칙을 지나면, 고친 쪽이 아닌 쪽에서 같은 결함이 그대로 재발한다 — " +
+                "이 저장소에서 오늘만 세 번 반복된 패턴이다.");
+            StringAssert.Contains("OverlayBoundsFitPolicy.ShouldResize", src);
+            StringAssert.Contains("OverlayBoundsFitPolicy.ShouldMove", src);
+            StringAssert.Contains("OverlayBoundsFitPolicy.ResolutionEpsilonPixels", src,
+                "Retina에서는 해상도 판정 단위가 창 기하와 다르다 — 상수 2px을 그대로 쓰면 안 된다.");
+
+            Assert.IsFalse(src.Contains("Screen.width != targetPixelW"),
+                "완전일치 판정이 돌아왔다. 그것이 Windows에서 407ms 멈춤을 만든 바로 그 조건이다.");
+        }
+
+        [Test]
+        public void macOS_Enforcer도_이미_맞은_창을_다시_대입하지_않는다()
+        {
+            string src = StripComments(ReadMacEnforcer());
+
+            int resizeGuard = src.IndexOf("if (needsResize)", StringComparison.Ordinal);
+            int assign = src.IndexOf("_controller.windowSize = monitor.size;", StringComparison.Ordinal);
+
+            Assert.Greater(resizeGuard, 0,
+                "창 크기 대입이 무조건 실행으로 돌아갔다 — 대입 한 번이 곧 백버퍼 재할당 한 번이다.");
+            Assert.Greater(assign, resizeGuard,
+                "windowSize 대입은 반드시 needsResize 가드 **안**에 있어야 한다.");
+            StringAssert.Contains("if (needsMove) _controller.windowPosition = monitor.position;", src);
+        }
+
+        /// <summary>
+        /// 상한 값이 두 플랫폼에서 갈라지지 않게 잠근다. Windows판은 아직 자기 파일에 사본
+        /// (<c>private const int MaxSetResolutionCalls = 4</c>)을 들고 있으므로, 그 리터럴을
+        /// <b>실제로 읽어</b> 규칙의 상수와 대조한다 — 한쪽만 바꾸면 여기서 깨진다.
+        /// </summary>
+        [Test]
+        public void SetResolution_상한은_두_플랫폼에서_같은_값이다()
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(
+                ReadEnforcer(), @"MaxSetResolutionCalls\s*=\s*(\d+)");
+
+            Assert.IsTrue(m.Success,
+                "Windows판의 상한 선언을 찾지 못했다. 상한이 사라졌다면 그쪽이 결함이고, " +
+                "이름만 바뀌었다면 이 테스트를 함께 갱신해야 한다.");
+            Assert.AreEqual(OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls,
+                int.Parse(m.Groups[1].Value),
+                "Windows와 macOS가 서로 다른 상한을 쓰면, 한쪽에서 검증한 결론이 다른 쪽에서 " +
+                "성립하지 않는다. 값은 OverlayBoundsFitPolicy 한 곳에서만 정한다.");
         }
     }
 }

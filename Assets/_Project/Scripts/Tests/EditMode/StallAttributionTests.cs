@@ -1,0 +1,398 @@
+using System.IO;
+using NUnit.Framework;
+using StickMate.Core;
+using StickMate.Platform;
+using UnityEngine;
+
+namespace StickMate.Tests.EditMode
+{
+    /// <summary>
+    /// **스톨 귀인 계측**(2026-09-01 프레임스파이크 라운드)을 잠그는 테스트.
+    ///
+    /// ============================================================================
+    /// 이 라운드가 풀어야 했던 문제
+    /// ============================================================================
+    /// 사용자 실기 로그(릴리즈 20260901c)는 스파이크의 존재까지만 말했다:
+    /// <code>
+    /// [프레임스파이크] 누적 55회 — 109/116/140/171/276/315/332ms
+    ///   백버퍼: 3831x2160(변화 없음). GC: gen0 +0 / gen1 +0.
+    /// [프레임시간] 루프 평균 30.98ms p95 89.81ms p99 277.95ms 최대 815.95ms
+    /// </code>
+    /// 백버퍼 불변 + GC 0으로 스왑체인 재생성과 관리 힙 GC는 배제됐지만, 남은 후보
+    /// (네이티브 창 열거 / 파일 IO / 그 밖)를 <b>가를 계측이 하나도 없었다</b>.
+    ///
+    /// 이 파일은 그 계측이 (a) 올바르게 판정하고 (b) <b>스스로 비싸지 않으며</b>
+    /// (c) 나중 리팩터링에 조용히 빠지지 않도록 잠근다. (c)가 특히 중요하다 — 계측 배선은
+    /// 기능이 아니라서 삭제돼도 아무 테스트도 깨지지 않는 것이 보통이다.
+    /// </summary>
+    public class StallAttributionTests
+    {
+        private static string ScriptsDir => Path.Combine(Application.dataPath, "_Project", "Scripts");
+        private static string ReadScript(params string[] parts)
+            => File.ReadAllText(Path.Combine(ScriptsDir, Path.Combine(parts)));
+
+        [SetUp]
+        public void SetUp()
+        {
+            StallAttribution.ResetForTests();
+            PlayerLogPolicy.ResetForTests();
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            StallAttribution.ResetForTests();
+            PlayerLogPolicy.ResetForTests();
+        }
+
+        // ====================================================================================
+        // A. 판정표 — "한 줄로 갈린다"의 본체
+        // ====================================================================================
+
+        /// <summary>
+        /// 로직 구간이 프레임의 절반도 안 되면 원인은 우리 Update 밖이다.
+        /// <b>이 케이스가 이 라운드의 핵심 반례다</b>: [프레임스파이크]가 남기던 문장
+        /// ("GC 0 + 백버퍼 그대로면 네이티브 창 열거/파일 IO 쪽이다")은 거짓 이분법이며,
+        /// 렌더/프레젠트/OS 합성 대기도 GC를 만들지 않고 백버퍼도 바꾸지 않는다.
+        /// </summary>
+        [Test]
+        public void 로직밖이_대부분이면_렌더프레젠트로_판정한다()
+        {
+            // 300ms 프레임인데 우리 Update+LateUpdate는 5ms밖에 안 썼다.
+            var verdict = StallAttribution.Attribute(frameMs: 300f, logicMs: 5f, enumMs: 0.4f, logMs: 0.2f);
+            Assert.AreEqual(StallCulprit.OutsideLogic, verdict,
+                "로직 구간이 5/300ms(1.7%)인데도 우리 코드를 범인으로 지목하면 다음 라운드가 " +
+                "엉뚱한 곳을 판다. 이 케이스가 정확히 오늘 4번 헛나간 추측 수정의 재발 방지선이다.");
+        }
+
+        [Test]
+        public void 창열거가_지배적이면_창열거로_판정한다()
+        {
+            var verdict = StallAttribution.Attribute(frameMs: 200f, logicMs: 190f, enumMs: 180f, logMs: 1f);
+            Assert.AreEqual(StallCulprit.WindowEnumeration, verdict);
+        }
+
+        [Test]
+        public void 로그쓰기가_지배적이면_로그쓰기로_판정한다()
+        {
+            var verdict = StallAttribution.Attribute(frameMs: 200f, logicMs: 190f, enumMs: 1f, logMs: 180f);
+            Assert.AreEqual(StallCulprit.LogWrite, verdict);
+        }
+
+        [Test]
+        public void 로직_안이지만_열거도_로그도_아니면_기타로직이다()
+        {
+            var verdict = StallAttribution.Attribute(frameMs: 200f, logicMs: 190f, enumMs: 2f, logMs: 2f);
+            Assert.AreEqual(StallCulprit.OtherLogic, verdict,
+                "가려짐 솔버(O(n^2))/렌더러 갱신 같은 세 번째 부류가 존재한다 — 이걸 창열거로 " +
+                "뭉뚱그리면 구조 변경 라운드가 헛수고한다.");
+        }
+
+        [Test]
+        public void 지배적_기여자가_없으면_혼합으로_정직하게_보고한다()
+        {
+            // 로직 60% / 그 밖 40%, 로직 안에서도 셋이 고루 나눠 가진 경우.
+            var verdict = StallAttribution.Attribute(frameMs: 100f, logicMs: 60f, enumMs: 20f, logMs: 20f);
+            Assert.AreEqual(StallCulprit.Mixed, verdict,
+                "확정하지 못했다는 사실을 숨기고 아무 이름이나 붙이면 그게 바로 '추측 수정'이다.");
+        }
+
+        [Test]
+        public void 프레임시간이_0이면_판정불가다()
+        {
+            Assert.AreEqual(StallCulprit.Unknown, StallAttribution.Attribute(0f, 0f, 0f, 0f));
+        }
+
+        [Test]
+        public void 로직시간이_프레임시간을_넘겨도_음수나_100퍼센트초과가_되지_않는다()
+        {
+            // 측정 시점 차이로 로직 ms가 프레임 ms보다 크게 나올 수 있다(경계 케이스).
+            var verdict = StallAttribution.Attribute(frameMs: 100f, logicMs: 140f, enumMs: 130f, logMs: 0f);
+            Assert.AreEqual(StallCulprit.WindowEnumeration, verdict,
+                "클램프가 없으면 '로직밖'이 음수가 되어 판정이 뒤집힌다.");
+        }
+
+        // ====================================================================================
+        // B. 태그 히스토그램 — "어떤 로그가 제일 많이 찍히는가"를 앱이 스스로 센다
+        // ====================================================================================
+
+        [Test]
+        public void 태그별로_세고_상위_3개를_보고한다()
+        {
+            for (int i = 0; i < 10; i++) StallAttribution.CountTag("[유휴동작] 주위 살피기 재생 — 상태=Idle");
+            for (int i = 0; i < 5; i++) StallAttribution.CountTag("[말풍선] 제거 — 정상 종료");
+            for (int i = 0; i < 3; i++) StallAttribution.CountTag("[발판변경] 1 -> 2");
+            StallAttribution.CountTag("[벽타기] 진입");
+
+            string top = StallAttribution.TopTags();
+            StringAssert.Contains("[유휴동작] x10", top);
+            StringAssert.Contains("[말풍선] x5", top);
+            StringAssert.Contains("[발판변경] x3", top);
+            StringAssert.DoesNotContain("[벽타기]", top, "상위 3개만 보고해야 한 줄에 들어간다.");
+        }
+
+        [Test]
+        public void 태그가_비슷해도_서로_섞이지_않는다()
+        {
+            StallAttribution.CountTag("[벽타기] 진입");
+            StallAttribution.CountTag("[벽타기] 완료");
+            StallAttribution.CountTag("[뛰어내리기] 결정");
+
+            string top = StallAttribution.TopTags();
+            StringAssert.Contains("[벽타기] x2", top);
+            StringAssert.Contains("[뛰어내리기] x1", top);
+        }
+
+        [Test]
+        public void 태그가_없는_줄도_잃지_않고_따로_센다()
+        {
+            StallAttribution.CountTag("Unloading 3 unused Assets");
+            StallAttribution.CountTag(null);
+            StallAttribution.CountTag(string.Empty);
+
+            StringAssert.Contains("3", StallAttribution.TopTags(),
+                "Unity 엔진 자신이 찍는 줄(Unloading 등)도 파일 IO 비용을 낸다 — 세지 않으면 " +
+                "'로그가 적다'는 잘못된 결론이 나온다.");
+        }
+
+        [Test]
+        public void 여는_대괄호로_시작해도_닫히지_않으면_태그로_보지_않는다()
+        {
+            StallAttribution.CountTag("[닫히지 않은 태그 — 아주 긴 문장이 계속 이어지는데 닫는 괄호가 없다");
+            StringAssert.Contains("태그 없", StallAttribution.TopTags(),
+                "닫는 괄호를 문장 끝까지 찾으면 긴 로그마다 O(n) 스캔이 되어 계측이 비싸진다.");
+        }
+
+        // ====================================================================================
+        // C. 계측이 증상을 만들지 않는다 — 오늘 이미 겪은 사고의 재발 방지
+        // ====================================================================================
+
+        /// <summary>
+        /// 직전 z-order 라운드에서 "진단 장치가 초당 10회 전체 창을 열거해 증상을 키운" 사고가 있었다.
+        /// 이 계측 코드에는 <b>OS 창 조회가 한 줄도 없어야 한다.</b>
+        /// </summary>
+        [Test]
+        public void 계측코드_자체에는_OS_창조회가_없다()
+        {
+            foreach (string file in new[] { "StallAttribution.cs", "StallAttributionProbe.cs", "PlayerLogPolicy.cs" })
+            {
+                string src = ReadScript("Platform", file);
+                foreach (string banned in new[] { "EnumWindows", "DllImport", "GetWindowRect", "DwmGetWindowAttribute",
+                                                  "FindObjectsByType", "FindAnyObjectByType", "GetComponentsInChildren" })
+                {
+                    StringAssert.DoesNotContain(banned, src,
+                        $"{file}에 {banned}가 들어갔다 — 진단 장치가 증상을 만드는 그 사고의 재발이다.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 프레임마다 도는 경로에서 <c>Screen</c>/<c>Application</c> 같은 네이티브 프로퍼티를
+        /// 무조건 읽으면 안 된다. <c>Application.targetFrameRate</c>는 <b>스파이크 후보일 때만</b>
+        /// 읽어야 한다(=100ms 절대 문턱 검사보다 뒤에 있어야 한다).
+        /// </summary>
+        [Test]
+        public void targetFrameRate는_절대문턱_검사_뒤에서만_읽는다()
+        {
+            string src = ReadScript("Platform", "StallAttribution.cs");
+            int guard = src.IndexOf("if (dtMs < SpikeAbsoluteMs) return;", System.StringComparison.Ordinal);
+            int read = src.IndexOf("Application.targetFrameRate", System.StringComparison.Ordinal);
+            Assert.Greater(guard, 0, "절대 문턱 조기 반환이 사라졌다.");
+            Assert.Greater(read, guard,
+                "평상시 프레임마다 Application.targetFrameRate를 읽으면 계측 자체가 비용이 된다.");
+        }
+
+        // ====================================================================================
+        // D. 두 로그가 같은 프레임#으로 짝을 이룬다 — 사용자가 눈으로 대조할 수 있어야 한다
+        // ====================================================================================
+
+        /// <summary>
+        /// <c>[스톨귀인]</c>은 <c>FramePacing</c>의 <c>[프레임스파이크]</c>와 <b>같은 문턱</b>을 써야
+        /// 한 프레임에 두 줄이 함께 나온다. FramePacing.cs는 이번 라운드 소유가 아니라 그쪽에 필드를
+        /// 넣을 수 없어 <b>값 동기화</b>로 대신했다 — 그 동기화가 깨지면 두 로그가 어긋나고 대조가
+        /// 불가능해지므로 여기서 잠근다.
+        /// </summary>
+        [Test]
+        public void 스파이크_문턱이_FramePacing과_같다()
+        {
+            string pacing = ReadScript("Platform", "FramePacing.cs");
+            StringAssert.Contains("SpikeAbsoluteMs = 100f", pacing);
+            StringAssert.Contains("SpikeRelativeFactor = 2.5f", pacing);
+            Assert.AreEqual(100f, StallAttribution.SpikeAbsoluteMs, 0.001f);
+            Assert.AreEqual(2.5f, StallAttribution.SpikeRelativeFactor, 0.001f);
+        }
+
+        // ====================================================================================
+        // E. 배선이 조용히 빠지지 않게 잠근다
+        // ====================================================================================
+
+        /// <summary>
+        /// 창 열거는 <see cref="FootholdPoller"/>가 <b>유일한 호출자</b>라(클래스 상단 컨벤션)
+        /// 거기 스톱워치 하나면 앱 전체의 열거 비용이 빠짐없이 잡힌다. 그 배선이 사라지면
+        /// 다음 실기 로그에서 창열거 항목이 영원히 0.0ms로 나와 <b>후보 A가 거짓으로 무죄가 된다.</b>
+        /// </summary>
+        [Test]
+        public void 발판폴러가_열거_소요시간을_실측해_보고한다()
+        {
+            string src = ReadScript("Platform", "FootholdPoller.cs");
+            StringAssert.Contains("Stopwatch.GetTimestamp()", src);
+            StringAssert.Contains("StallAttribution.RecordWindowEnumeration(", src);
+
+            int start = src.IndexOf("long enumStart = Stopwatch.GetTimestamp();", System.StringComparison.Ordinal);
+            int call = src.IndexOf("_service.EnumerateFootholds();", System.StringComparison.Ordinal);
+            int stop = src.IndexOf("long enumTicks = Stopwatch.GetTimestamp() - enumStart;", System.StringComparison.Ordinal);
+            Assert.Greater(start, 0, "열거 직전 타임스탬프가 없다.");
+            Assert.Greater(call, start, "타임스탬프가 열거 호출보다 뒤에 있다 — 0ms만 찍힌다.");
+            Assert.Greater(stop, call, "종료 타임스탬프가 열거 호출을 감싸지 않는다.");
+        }
+
+        /// <summary>
+        /// 리더가 지정한 세 측정값이 전부 배선돼 있는가:
+        /// (1) 1회 소요 ms (2) 비싼 호출(DWM) 횟수 (3) 전체 열거 창 개수.
+        /// </summary>
+        [Test]
+        public void 리더가_요청한_세_측정값이_전부_배선돼_있다()
+        {
+            string win32 = ReadScript("Platform", "Windows", "Win32WindowService.cs");
+            StringAssert.Contains("IWindowEnumerationCostSource", win32, "(3) 전체 열거 개수 창구가 없다.");
+            StringAssert.Contains("LastEnumeratedWindowCount", win32);
+            StringAssert.Contains("LastDwmProbeCount", win32, "(2) 비싼 호출 횟수 창구가 없다.");
+            StringAssert.Contains("_enumeratedWindowCount++;", win32);
+
+            string poller = ReadScript("Platform", "FootholdPoller.cs");
+            StringAssert.Contains("LastEnumeratedWindowCount", poller);
+            StringAssert.Contains("LastDwmProbeCount", poller);
+
+            string attribution = ReadScript("Platform", "StallAttribution.cs");
+            StringAssert.Contains("[발판열거]", attribution,
+                "구조 변경(폴링 -> 이벤트) 라운드의 before/after 기준선 줄이 없다 — 리더 지시 항목이다.");
+        }
+
+        /// <summary>
+        /// 계측을 넣으면서 <b>열거 동작 자체를 바꾸면 안 된다</b>(리더 지시: 읽기·계측만).
+        /// 콜백에 추가된 것이 int 증가뿐인지, 새 OS 호출이나 로그가 끼어들지 않았는지 확인한다.
+        /// </summary>
+        [Test]
+        public void 계측은_열거_동작을_바꾸지_않았다()
+        {
+            string win32 = ReadScript("Platform", "Windows", "Win32WindowService.cs");
+            int cb = win32.IndexOf("private bool OnEnumWindow(", System.StringComparison.Ordinal);
+            Assert.Greater(cb, 0);
+            int end = win32.IndexOf("private void BuildVisibleTopEdgeFootholds", System.StringComparison.Ordinal);
+            Assert.Greater(end, cb);
+            string body = win32.Substring(cb, end - cb);
+
+            StringAssert.DoesNotContain("Debug.Log", body,
+                "열거 콜백(창 수백 개 x 초당 3.3회)에 로그가 들어가면 계측이 곧 증상이 된다.");
+            Assert.AreEqual(1, CountOccurrences(body, "_enumeratedWindowCount++"),
+                "콜백당 정확히 1회만 세야 전체 창 수가 맞는다.");
+        }
+
+        private static int CountOccurrences(string haystack, string needle)
+        {
+            int n = 0, i = 0;
+            while ((i = haystack.IndexOf(needle, i, System.StringComparison.Ordinal)) >= 0) { n++; i += needle.Length; }
+            return n;
+        }
+
+        // ====================================================================================
+        // F. 명백한 낭비 제거 — 스택트레이스 / 상시 로그 양
+        // ====================================================================================
+
+        /// <summary>
+        /// 릴리즈 빌드에서 Log/Warning의 스택트레이스를 끈다. 그러나
+        /// <b>Error/Assert/Exception은 절대 끄지 않는다</b> — 예외 추적을 잃으면 원격 진단이 죽는다.
+        /// </summary>
+        [Test]
+        public void 빌드스크립트가_정보로그_스택만_끄고_예외스택은_남긴다()
+        {
+            string build = File.ReadAllText(Path.Combine(Application.dataPath, "Editor", "BuildStandalone.cs"));
+            StringAssert.Contains("SetStackTraceLogType(LogType.Log, StackTraceLogType.None)", build);
+            StringAssert.Contains("SetStackTraceLogType(LogType.Warning, StackTraceLogType.None)", build);
+            StringAssert.Contains("SetStackTraceLogType(LogType.Error, StackTraceLogType.ScriptOnly)", build);
+            StringAssert.Contains("SetStackTraceLogType(LogType.Assert, StackTraceLogType.ScriptOnly)", build);
+            StringAssert.Contains("SetStackTraceLogType(LogType.Exception, StackTraceLogType.ScriptOnly)", build);
+
+            StringAssert.DoesNotContain("SetStackTraceLogType(LogType.Error, StackTraceLogType.None)", build);
+            StringAssert.DoesNotContain("SetStackTraceLogType(LogType.Exception, StackTraceLogType.None)", build);
+            StringAssert.DoesNotContain("SetStackTraceLogType(LogType.Assert, StackTraceLogType.None)", build);
+
+            // macOS/Windows **양쪽** 빌드 경로에서 불려야 한다(한쪽만 고치는 사고를 막는다).
+            Assert.AreEqual(3, CountOccurrences(build, "ConfigureLogStackTraces"),
+                "정의 1회 + macOS 빌드 1회 + Windows 빌드 1회여야 한다.");
+        }
+
+        /// <summary>
+        /// 런타임에서도 같은 정책이 걸린다(다른 빌드 경로/에디터 UI로 되돌아가도 지켜지게).
+        /// </summary>
+        [Test]
+        public void 런타임_정책도_예외스택을_남긴다()
+        {
+            string src = ReadScript("Platform", "PlayerLogPolicy.cs");
+            StringAssert.Contains("Application.SetStackTraceLogType(LogType.Error, StackTraceLogType.ScriptOnly)", src);
+            StringAssert.Contains("Application.SetStackTraceLogType(LogType.Exception, StackTraceLogType.ScriptOnly)", src);
+            StringAssert.DoesNotContain("LogType.Exception, StackTraceLogType.None", src);
+        }
+
+        [Test]
+        public void 프로젝트설정의_스택트레이스가_정보로그만_꺼져있다()
+        {
+            string root = Directory.GetParent(Application.dataPath).FullName;
+            string settings = File.ReadAllText(Path.Combine(root, "ProjectSettings", "ProjectSettings.asset"));
+            int at = settings.IndexOf("m_StackTraceTypes:", System.StringComparison.Ordinal);
+            Assert.Greater(at, 0);
+            string value = settings.Substring(at + "m_StackTraceTypes:".Length).Trim();
+            value = value.Split('\n')[0].Trim();
+
+            Assert.AreEqual(48, value.Length, "int32 6칸(각 8자리 hex)이어야 한다.");
+            // LogType 열거 순서: Error=0, Assert=1, Warning=2, Log=3, Exception=4 (Unity 공식 문서).
+            Assert.AreEqual("01000000", value.Substring(0, 8), "Error 스택은 남겨야 한다.");
+            Assert.AreEqual("01000000", value.Substring(8, 8), "Assert 스택은 남겨야 한다.");
+            Assert.AreEqual("00000000", value.Substring(16, 8), "Warning 스택을 껐어야 한다.");
+            Assert.AreEqual("00000000", value.Substring(24, 8), "Log 스택을 껐어야 한다.");
+            Assert.AreEqual("01000000", value.Substring(32, 8), "Exception 스택은 남겨야 한다.");
+        }
+
+        [Test]
+        public void 상시_동작서술_로그는_verbose_스위치를_따른다()
+        {
+            var config = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                config.verboseDiagnosticsLogging = false;
+                PlayerLogPolicy.Configure(config);
+                Assert.IsFalse(PlayerLogPolicy.RoutineNarrationEnabled);
+
+                config.verboseDiagnosticsLogging = true;
+                PlayerLogPolicy.Configure(config);
+                Assert.IsTrue(PlayerLogPolicy.RoutineNarrationEnabled);
+            }
+            finally
+            {
+                Object.DestroyImmediate(config);
+            }
+        }
+
+        [Test]
+        public void 설정이_없으면_로그를_잃지_않는다()
+        {
+            PlayerLogPolicy.Configure(null);
+            Assert.IsTrue(PlayerLogPolicy.RoutineNarrationEnabled,
+                "설정 배선 전(기동 직후)에 로그를 삼키면 기동 문제를 원격에서 볼 수 없게 된다.");
+        }
+
+        /// <summary>
+        /// 스위치 검사는 <b>보간 문자열 조립보다 먼저</b> 와야 한다 — 뒤에 두면 꺼져 있어도
+        /// 문자열이 만들어져 24시간 상주 앱의 "매 프레임 할당 금지" 컨벤션과 충돌한다.
+        /// </summary>
+        [Test]
+        public void 로그_스위치는_문자열_조립_앞에_있다()
+        {
+            string src = ReadScript("Interaction", "IdleAmbientMotionRenderer.cs");
+            int gate = src.IndexOf("PlayerLogPolicy.RoutineNarrationEnabled", System.StringComparison.Ordinal);
+            int build = src.IndexOf("$\"[유휴동작]", System.StringComparison.Ordinal);
+            Assert.Greater(gate, 0, "가장 많이 찍히던 로그(실측 2,564줄 중 661줄)의 스위치가 사라졌다.");
+            Assert.Greater(build, gate, "스위치가 문자열 조립 뒤에 있으면 꺼도 할당은 그대로다.");
+        }
+    }
+}

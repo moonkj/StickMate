@@ -49,6 +49,7 @@ namespace StickMate.EditorTools
             ConfigureAntiAliasing();
             ConfigureResidencyFootprint();
             ConfigureRenderDiagnostics();
+            ConfigureLogStackTraces();
 
             string[] scenes = GetEnabledScenePaths();
             if (scenes.Length == 0)
@@ -239,6 +240,48 @@ namespace StickMate.EditorTools
         /// <para>두 빌드 경로가 모두 부른다 — 플랫폼 간 진단 능력이 갈리면 "한쪽에서만 재현되는 문제"를
         /// 비교할 수 없게 되기 때문이다(이번 라운드가 정확히 그 상황이었다).</para>
         /// </summary>
+        /// <summary>
+        /// **정보성 로그의 스택트레이스를 끈다**(2026-09-01 스파이크 라운드, 후보 B "파일 IO").
+        /// <see cref="ConfigureRunInBackground"/>와 같은 멱등 패턴이며 호출 지점도 같다.
+        ///
+        /// ============================================================================
+        /// 무엇이 잘못돼 있었나 — 추측이 아니라 파일에서 읽었다
+        /// ============================================================================
+        /// <c>ProjectSettings/ProjectSettings.asset</c>:
+        /// <code>m_StackTraceTypes: 010000000100000001000000010000000100000001000000</code>
+        /// = int32 6칸이 전부 1(=ScriptOnly). 즉 <b>Log/Warning까지 전부 스택트레이스를 캡처</b>한다.
+        /// 이 앱은 던지기 한 번에 8줄 이상을 쏟고, 실측 Player.log(71.5분/2,564줄)에서는 한 태그가
+        /// 26%를 같은 문장으로 채웠다. 정보성 로그의 스택은 낭비다 — 이 프로젝트는 모든 로그에
+        /// <c>[태그]</c>를 붙이는 컨벤션이 있어서 "누가 찍었는가"는 태그가 이미 말한다.
+        ///
+        /// ============================================================================
+        /// 절충 — 끄는 것과 남기는 것
+        /// ============================================================================
+        /// Log/Warning만 <see cref="StackTraceLogType.None"/>으로 내리고
+        /// <b>Error/Assert/Exception은 ScriptOnly로 유지</b>한다. 예외 스택을 잃으면 원격 진단이
+        /// 불가능해지므로, "싸졌지만 사고를 못 고치는" 상태와 맞바꾸지 않는다.
+        ///
+        /// <para><b>왜 YAML을 직접 쓰지 않는가</b>: <c>m_StackTraceTypes</c>의 6칸이 어느 LogType에
+        /// 대응하는지는 문서화돼 있지 않다. 이 프로젝트의 "추측하지 말고 있는 API만 쓴다" 원칙에 따라
+        /// <see cref="PlayerSettings.SetStackTraceLogType"/>(LogType 열거로 지정)만 쓴다 — 바이트
+        /// 순서를 추측하다 Error의 스택을 실수로 끄는 사고가 원천적으로 불가능해진다.</para>
+        ///
+        /// <para>런타임에서도 <c>Platform/PlayerLogPolicy.cs</c>가 같은 정책을 한 번 더 건다(에디터 UI로
+        /// 되돌아가거나 다른 빌드 경로를 타도 지켜지게, 그리고 <c>StickConfig</c>로 되돌릴 수 있게).</para>
+        /// </summary>
+        public static void ConfigureLogStackTraces()
+        {
+            PlayerSettings.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
+            PlayerSettings.SetStackTraceLogType(LogType.Warning, StackTraceLogType.None);
+            PlayerSettings.SetStackTraceLogType(LogType.Error, StackTraceLogType.ScriptOnly);
+            PlayerSettings.SetStackTraceLogType(LogType.Assert, StackTraceLogType.ScriptOnly);
+            PlayerSettings.SetStackTraceLogType(LogType.Exception, StackTraceLogType.ScriptOnly);
+
+            Debug.Log("[BuildStandalone] 로그 스택트레이스 정책 적용 — Log/Warning=None(끔), " +
+                "Error/Assert/Exception=ScriptOnly(유지). 정보성 로그 한 줄마다 하던 스택 캡처를 없애 " +
+                "Player.log 동기 쓰기 비용을 줄인다(2026-09-01 프레임스파이크 라운드 후보 B).");
+        }
+
         public static void ConfigureRenderDiagnostics()
         {
             if (!PlayerSettings.enableFrameTimingStats)
@@ -395,6 +438,7 @@ namespace StickMate.EditorTools
             ConfigureAntiAliasing();
             ConfigureResidencyFootprint();
             ConfigureRenderDiagnostics();
+            ConfigureLogStackTraces();
             ConfigureWindowsTransparencySettings();
 
             string[] scenes = GetEnabledScenePaths();

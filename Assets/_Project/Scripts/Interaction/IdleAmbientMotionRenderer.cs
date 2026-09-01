@@ -70,6 +70,14 @@ namespace StickMate.Interaction
             // 로그 문구는 확정된 상태에서만 파생한다(불변 원칙 1). "무수정"이라고 쓰던 예전 문구는
             // 2026-08-31에 발행자 쪽 최소 간격이 생기면서 사실이 아니게 됐으므로 함께 고쳤다 —
             // 진단 로그가 코드보다 낡으면 다음 사람이 그 문구를 믿고 엉뚱한 데를 판다.
+            //
+            // ★ 2026-09-01 스파이크 라운드 — 상시 로그 감량. 실측 Player.log 71.5분 세션에서 이 한 줄이
+            // **2,564줄 중 661줄(26%)**을 차지했고, 661줄이 전부 같은 문장이었다("주위 살피기 재생 —
+            // 상태=Idle"). 스위치 판정은 조립 **전에** 한다 — 뒤에 두면 꺼져 있어도 보간 문자열이
+            // 만들어져 24시간 상주 앱의 GC 압박 금지 컨벤션과 충돌한다.
+            // (Platform/PlayerLogPolicy.RoutineNarrationEnabled = StickConfig.verboseDiagnosticsLogging)
+            if (!Platform.PlayerLogPolicy.RoutineNarrationEnabled) return;
+
             Debug.Log($"[유휴동작] {Describe(motion)} 재생 — " +
                 $"진행 중 상태={blackboard.Machine?.CurrentStateId}, " +
                 $"{blackboard.IdleAmbientDurationSeconds:F2}초. " +

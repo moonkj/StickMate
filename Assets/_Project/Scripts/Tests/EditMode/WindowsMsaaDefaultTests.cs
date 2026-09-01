@@ -48,13 +48,24 @@ namespace StickMate.Tests.EditMode
         }
 
         [Test]
-        public void Windows_기본_MSAA는_2x다()
+        public void Windows_기본_MSAA는_macOS와_같은_4x다()
         {
-            Assert.AreEqual(2, RenderQualityTuner.WindowsDefaultSamples,
-                "Windows 기본 MSAA가 바뀌었습니다. 이 값은 사용자 실기 A/B로 정해진 절충점입니다 " +
-                "(4x=렉 심함 / 2x=봐줄만함 / 0x=지저분함). 성능 때문에 내리거나 화질 때문에 올리기 " +
-                "전에, 반드시 Windows 실기에서 STICKMATE_FORCE_MSAA로 콜드 스타트 A/B를 하고 " +
-                "[렌더진단] ★A/B 요약의 GPU 프레임시간을 근거로 남기세요. " +
+            // 2026-09-01 사용자 실기 측정으로 확정: MSAA는 이 앱의 GPU 비용과 **무관**하다.
+            // 4x / 2x / 0x 세 경우 모두 작업 관리자 GPU 사용률이 약 30%로 동일했고, 그 뒤 도착한
+            // [렌더진단] 로그가 이유를 밝혔다 — GPU 프레임시간이 평균 0.01~0.71ms로 GPU는 사실상
+            // 놀고 있었다(작업 관리자 %는 GPU 다운클럭 상태의 착시였다). 렉의 실체는 CPU였다.
+            //
+            // 비용이 같다면 화질이 가장 좋은 값을 쓰는 것이 옳다. 사용자 판정은
+            // 4x=좋음 / 2x="봐줄만함" / 0x="지저분함"이었으므로 4로 되돌렸다(= macOS와 동일, 분기 없음).
+            //
+            // 다시 내리려는 사람에게: **작업 관리자 GPU %를 근거로 쓰지 마라.** 반드시 Windows 실기에서
+            // STICKMATE_FORCE_MSAA로 콜드 스타트 A/B를 하고 [렌더진단] ★A/B 요약의
+            // **GPU 프레임시간(ms)**을 근거로 남겨라. 오늘 이 함정으로 세 번 헛수고했다.
+            Assert.AreEqual(4, RenderQualityTuner.WindowsDefaultSamples,
+                "Windows 기본 MSAA가 바뀌었습니다. 2026-09-01 실기 측정에서 MSAA는 이 앱의 GPU 비용과 " +
+                "무관함이 확인됐고(4x/2x/0x 전부 동일, GPU 프레임시간 0.01~0.71ms), 비용이 같으므로 " +
+                "화질이 가장 좋은 4x를 씁니다. 내리기 전에 반드시 GPU 프레임시간(ms) 근거를 남기세요 — " +
+                "작업 관리자 GPU %는 다운클럭 때문에 착시가 납니다. " +
                 "8은 어느 플랫폼에도 주지 마세요(Apple GPU가 조용히 4로 낮추면서 Screen.msaaSamples는 " +
                 "8을 계속 보고하는 함정 — BuildStandalone.ConfigureAntiAliasing 문서).");
         }

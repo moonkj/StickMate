@@ -84,7 +84,8 @@ namespace StickMate.Platform.Windows
         ILocalClickCaptureService,
         IDesktopIconLayoutService,
         IReservedBottomBarService,
-        IRawWindowRectSource
+        IRawWindowRectSource,
+        IWindowEnumerationCostSource
     {
         #region Win32 선언 (이 리전 밖으로 유출 금지 — 전부 조회 전용)
         [StructLayout(LayoutKind.Sequential)]
@@ -303,6 +304,25 @@ namespace StickMate.Platform.Windows
         /// <summary>그 중 다른 창에 완전히 가려져 발판을 하나도 내지 못한 창 수(macOS와 같은 의미).</summary>
         public int LastFullyOccludedWindowCount { get; private set; }
 
+        // ★ 2026-09-01 스파이크 라운드 — IWindowEnumerationCostSource. 열거 **규모**의 실측치다.
+        // LastRawWindowCount("필터를 다 통과한 창")와 혼동하지 말 것: 이 값은 그보다 훨씬 크며
+        // (실기 관측 최대 818개) OS가 콜백한 최상위 창 전체다. 두 값의 비(818 -> 6~10)가
+        // "비싼 호출이 실제로 몇 번 일어났는가"를 말해 준다.
+        // 비용: 콜백당 int 증가 1회.
+        private int _enumeratedWindowCount;
+        private int _dwmProbeCount;
+
+        /// <summary>마지막 패스에서 <c>EnumWindows</c> 콜백이 불린 총 횟수(필터 이전 전체 창 수).</summary>
+        public int LastEnumeratedWindowCount { get; private set; }
+
+        /// <summary>
+        /// 마지막 패스에서 <b>크로스 프로세스 DWM 조회</b>(<c>DwmGetWindowAttribute</c>)가 실제로
+        /// 몇 번 일어났는가. 값싼 필터를 뚫고 온 창만 이 비용을 낸다 —
+        /// <c>IsCloaked</c> 1회 + <c>TryGetVisualWindowRect</c> 1회이므로 보통 "제목 있는 보이는 창 x2"다.
+        /// <b>이 값이 작으면 DWM 호출은 스파이크의 범인이 아니다</b>가 실측으로 확정된다.
+        /// </summary>
+        public int LastDwmProbeCount { get; private set; }
+
 
         // 오버레이 원점 보고용 부기(아래 CaptureOverlayOrigin 참고).
         private bool _overlayOriginLogged;
@@ -341,6 +361,7 @@ namespace StickMate.Platform.Windows
             if (!IsWindowVisible(hWnd)) return WindowsFootholdRejection.NotVisible;
             if (IsIconic(hWnd)) return WindowsFootholdRejection.Minimized;   // 최소화 = 화면에 없음
             if (GetWindowTextLength(hWnd) == 0) return WindowsFootholdRejection.NoTitle;
+            _dwmProbeCount++;                                                // 계측 전용(아래는 크로스 프로세스 DWM 호출이다)
             if (IsCloaked(hWnd)) return WindowsFootholdRejection.Cloaked;    // DWM 수준에서 숨겨진 UWP 껍데기
 
             int exStyle = GetWindowLong(hWnd, GWL_EXSTYLE);
@@ -438,6 +459,7 @@ namespace StickMate.Platform.Windows
 
         private bool OnEnumWindow(IntPtr hWnd, IntPtr lParam)
         {
+            _enumeratedWindowCount++; // 계측 전용(IWindowEnumerationCostSource) — int 증가 1회.
             WindowsFootholdRejection rejection = ClassifyWindowStyle(hWnd, out float alpha);
             if (rejection != WindowsFootholdRejection.None)
             {
@@ -447,6 +469,7 @@ namespace StickMate.Platform.Windows
                 return true;
             }
 
+            _dwmProbeCount++;                                                // 계측 전용(DWMWA_EXTENDED_FRAME_BOUNDS)
             if (!TryGetVisualWindowRect(hWnd, out Rect screenRect)) return true;
 
             rejection = WindowsFootholdFilter.ClassifyGeometry(screenRect, alpha,
@@ -519,11 +542,15 @@ namespace StickMate.Platform.Windows
             System.Array.Clear(_rejectCounts, 0, _rejectCounts.Length);
             LastRawWindowCount = 0;
             LastFullyOccludedWindowCount = 0;
+            _enumeratedWindowCount = 0;
+            _dwmProbeCount = 0;
 
             _foregroundHwndThisPass = GetForegroundWindow();
             _hasVirtualScreenThisPass = TryGetVirtualScreenBounds(out _virtualScreenThisPass);
 
             EnumWindows(_enumWindowsCallback, IntPtr.Zero);
+            LastEnumeratedWindowCount = _enumeratedWindowCount;
+            LastDwmProbeCount = _dwmProbeCount;
             LastRawWindowCount = _rawBuffer.Count;
             BuildVisibleTopEdgeFootholds();
             ReportFootholdAnomaly();
