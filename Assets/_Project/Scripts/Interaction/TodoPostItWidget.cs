@@ -85,7 +85,7 @@ namespace StickMate.Interaction
         // 정보창·설정창·팝오버는 2026-08-31에 정확히 이 이유로 전부 α=1이 됐는데, 포스트잇만
         // 그 라운드에서 빠져 <b>폐기된 알파 유리 규약이 여기만 살아남았다</b>.
         //
-        // 이제 다른 창과 같은 <see cref="UiChrome.AddOpaquePanel"/> 구조[그림자 → 본체(α1) → 보더]를
+        // 이제 다른 창과 같은 <see cref="UiChrome.AddOpaquePanel"/> 구조[본체(α1) → 보더]를
         // 쓴다. "노란 포스트잇"이라는 정체성은 표면 전체가 아니라 <b>왼쪽 4pt 띠</b>가 진다 —
         // 색은 남고 알파 문제는 사라진다.
 
@@ -101,9 +101,6 @@ namespace StickMate.Interaction
 
         /// <summary>그림자 등급은 팝오버 3종과 같다 — 같은 위계(작고 화면에 떠 있는 카드)이므로
         /// 같은 값이어야 한다. <see cref="PopoverPanel"/>이 이 두 값을 바꾸면 여기도 함께 바꾼다.</summary>
-        private const float ShadowSpread = 6f;
-        private static readonly Vector2 ShadowOffset = new Vector2(0f, -2f);
-
         /// <summary>헤더의 [숨기기] 칩. 32-1 최소 클릭 타깃보다 작지만 <b>파괴적이지 않은</b> 행동이고
         /// (그 세션 동안만 숨긴다) 카드 폭이 220pt뿐이라 여기서는 칩 크기로 둔다.</summary>
         private const float ChipWidth = 52f;
@@ -536,10 +533,10 @@ namespace StickMate.Interaction
             _scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
             ApplyCanvasScaleFactor();
 
-            // ★ P0-2 — 다른 창과 <b>같은 구조</b>[그림자 → 본체(α1) → 보더]. 컨테이너에는 Graphic이
-            //   없어야 그림자가 본체 뒤로 간다(UiChrome.AddOpaquePanel 문서).
+            // ★ P0-2 — 다른 창과 <b>같은 구조</b>[본체(α1) → 보더]. 컨테이너에는 Graphic을 붙이지
+            //   않는다(UiChrome.AddOpaquePanel 문서). ★ 2026-09-02: 그림자 겹은 전부 삭제됐다.
             _panelRoot = UiChrome.AddOpaquePanel(canvasGo.transform, "PostItPanel", UiChrome.RadiusPanel,
-                ShadowSpread, ShadowOffset, out _);
+                out _);
             GameObject panelGo = _panelRoot.gameObject;
             _panelRoot.anchorMin = new Vector2(1f, 1f);
             _panelRoot.anchorMax = new Vector2(1f, 1f);

@@ -262,7 +262,10 @@ namespace StickMate.Dialogue
         private const float ComicFontScale = 0.875f;
         /// <summary>텍스트 전용 모드의 줄바꿈 최대 폭(배율 1.0 기준). 말풍선 시절(220)보다 좁다 —
         /// 만화 레터링은 가로로 긴 한 줄보다 짧은 여러 줄로 쌓이는 쪽이 자연스럽다.</summary>
-        private const float ComicMaxTextWidth = 170f;
+        /// <para>★ public인 이유: 이 값이 <b>교정된 기준 폰트</b>가 따로 있고
+        /// (<see cref="ComicWrapWidthPoints"/>), 회귀 테스트가 "기준 폰트에서는 종전 식과 완전히 같다"
+        /// 를 <b>숫자를 베끼지 않고</b> 확인해야 하기 때문이다(CLAUDE.md).</para>
+        public const float ComicMaxTextWidth = 170f;
         /// <summary>글자 블록과 머리 사이의 대각선 간격(전신 높이 대비 비율). 가로 / 세로.
         /// ★ 절대 유닛이 아니라 비율인 이유는 HeadTopOffsetRatio와 완전히 같다 — 사용자가
         /// characterScale을 계속 바꾸므로(현재 0.75) 절대값은 그 순간 전부 틀린 값이 된다.</summary>
@@ -398,8 +401,49 @@ namespace StickMate.Dialogue
         /// <summary>글자 외곽선 두께(캔버스 유닛). **글자 크기에 비례**하되 화면상 하한을 받친다
         /// (<see cref="TextOutlineEmRatio"/> 문서 참고 — 고정 두께면 작은 글자를 잡아먹는다).</summary>
         private float ScaledTextOutline => Mathf.Max(MinTextOutlineThickness, ResolveFontSize() * TextOutlineEmRatio);
-        /// <summary>텍스트 전용 모드의 줄바꿈 최대 폭(캔버스 유닛).</summary>
-        private float ScaledComicMaxTextWidth => ComicMaxTextWidth * BubbleScale;
+
+        /// <summary>그림자 분기의 막 두께(캔버스 유닛) = 링이 양쪽에 <c>t</c>씩 쓰던 <b>같은 예산</b>을
+        /// 한 대각선에 몰아준 값. <see cref="ScaledTextOutline"/>을 곱해 쓰므로 화면상 하한
+        /// (<see cref="MinTextOutlineThickness"/>)도 자동으로 따라오고, <b>속공간 총 소모량은 두 분기가
+        /// 정확히 같다</b>(2t) — 예산이 갈라지는 경로가 원리적으로 생기지 않는다.</summary>
+        private float ScaledTextShadow => ScaledTextOutline * ShadowBudgetMultiplier;
+
+        /// <summary>지금 이 화면의 캔버스 배율. 분기/하한/스냅이 <b>같은 값</b>을 봐야 하므로 조회를
+        /// 한 곳에 모은다(두 번 부르면 그 사이 모니터가 바뀌었을 때 서로 다른 배율로 계산된다).</summary>
+        private float ResolveCanvasScale() => ScreenCoordinateConverter.ResolveCanvasScaleFactor(_config);
+
+        /// <summary>막이 글자 상자 <b>바깥으로</b> 넘는 최대 거리(캔버스 유닛). 링은 사방 <c>t</c>,
+        /// 그림자는 오른쪽·아래로만 <c>2t</c>다. 화면 클램프가 감싸야 할 여백이 이 값에서 나온다 —
+        /// 링 기준으로 굳혀 두면 그림자 분기에서 막의 절반이 화면 끝에 잘린다.</summary>
+        private float ScaledTextEffectReach
+            => UseOutlineRing(ResolveFontSize(), ResolveCanvasScale()) ? ScaledTextOutline : ScaledTextShadow;
+
+        /// <summary>
+        /// 텍스트 전용 모드의 줄바꿈 최대 폭(캔버스 유닛).
+        ///
+        /// <para>★ 2026-09-02 — <b>폰트에 연동한다</b>(UX_FLOW §44-2 ③). 종전 식은
+        /// <c>170 x 캐릭터배율</c>이라 <b>랩 폭이 폰트에 비례하지 않았다</b>: 하한/스냅이 폰트만 밀어
+        /// 올리면 <b>줄당 글자 수가 줄어 줄 수가 늘어난다</b>. 배율 0.60 검산 — 랩 폭 102pt에서
+        /// 13pt는 7글자/줄이지만 16pt는 6글자/줄이라 5줄이 6줄이 되고, 블록 높이가
+        /// <c>(6/5) x (16/13) = 1.477</c>배로 뛴다(캐릭터 키의 157%). 리더 추정 "128%"는 <b>하한</b>이었다.</para>
+        ///
+        /// <para>기준 폰트를 <see cref="ComicWrapReferenceFontSize"/>(=검증 운용점의 하한)로 잡는 이유:
+        /// <c>170</c>이라는 숫자가 교정된 지점이 바로 거기이고, 그래서 <b>그 지점에서 이 식은 항등</b>
+        /// 이다 — macOS 출하 조합의 랩 폭이 한 픽셀도 바뀌지 않는다. 폰트가 그 기준에서 벗어난
+        /// 만큼만 랩 폭이 따라가 <b>줄당 글자 수가 보존</b>되고, 그래야 블록 높이 상한이 130%로 닫힌다.</para>
+        /// </summary>
+        private float ScaledComicMaxTextWidth => ComicWrapWidthPoints(ResolveFontSize(), BubbleScale);
+
+        /// <summary>위 식의 <b>순수 함수</b> 형태(캔버스 유닛). 회귀 테스트가 "줄당 글자 수가 폰트와
+        /// 무관하게 보존되는가"를 인스턴스 없이 물을 수 있어야 한다 — 그것이 이 라운드가 실제로 사는
+        /// 성질이고, 렌더러를 띄워야만 확인되는 성질로 두면 다음 라운드에 조용히 깨진다.</summary>
+        public static float ComicWrapWidthPoints(int fontSize, float bubbleScale)
+            => ComicMaxTextWidth * bubbleScale * (fontSize / (float)ComicWrapReferenceFontSize);
+
+        /// <summary><see cref="ComicMaxTextWidth"/>가 교정된 기준 폰트(pt). 숫자로 적지 않는 이유는
+        /// 이 저장소가 반복해 겪은 사고와 같다 — 하한 유도식을 다시 재는 날 이 값이 자동으로 따라와야 한다.</summary>
+        private static int ComicWrapReferenceFontSize
+            => Mathf.Max(1, ResolveMinComicFontSize(VerifiedCanvasScale));
 
         /// <summary>
         /// 말풍선 글자 크기(캔버스 유닛 = OS 포인트). **여기만 단순 비례가 아니다.**
@@ -421,14 +465,14 @@ namespace StickMate.Dialogue
             int configured = Mathf.Max(8, StickMate.Core.AppSettingsModel.ResolveDialogueFontSize(_config));
             // ★ 배율을 여기서 한 번만 조회해 아래 하한과 글리프 스냅이 <b>같은 값</b>을 본다 —
             //   두 번 부르면 그 사이에 모니터가 바뀌었을 때 하한과 스냅이 서로 다른 배율로 계산된다.
-            float canvasScale = ScreenCoordinateConverter.ResolveCanvasScaleFactor(_config);
+            float canvasScale = ResolveCanvasScale();
             // 말풍선 모드로 되돌리면 종전 크기(하한 12pt)가 그대로 복원된다.
+            // 만화 레터링 모드 — 기준값은 ComicFontScale이 내리고, 하한은 <b>외곽선 링이 1 물리
+            // 픽셀이 되는 크기</b>에서 유도한다(ResolveMinComicFontSize 문서의 부등식).
+            int floor = DrawBubbleShapes ? MinReadableFontSize : ResolveMinComicFontSize(canvasScale);
             int points = DrawBubbleShapes
-                ? Mathf.Max(MinReadableFontSize, Mathf.RoundToInt(configured * BubbleScale))
-                // 만화 레터링 모드 — 기준값은 ComicFontScale이 내리고, 하한은 <b>외곽선 링이 1 물리
-                // 픽셀이 되는 크기</b>에서 유도한다(ResolveMinComicFontSize 문서의 부등식).
-                : Mathf.Max(ResolveMinComicFontSize(canvasScale),
-                            Mathf.RoundToInt(configured * BubbleScale * ComicFontScale));
+                ? Mathf.Max(floor, Mathf.RoundToInt(configured * BubbleScale))
+                : Mathf.Max(floor, Mathf.RoundToInt(configured * BubbleScale * ComicFontScale));
 
             // ★ 2026-09-01 — 마지막에 <글리프 잔차 0>으로 스냅한다(사용자 신고 "텍스트도 다 번져보임").
             //   여기만 정적 상수로 못 고치는 이유: 이 pt는 (사용자 설정 8~28) x (캐릭터 배율) x (만화 배율)의
@@ -440,7 +484,50 @@ namespace StickMate.Dialogue
             //   · 배율 1.5(Windows 150%)에서만 홀수가 +1로 올라간다(최대 변화 1pt).
             //   ResolveFontSize()는 말풍선을 그릴 때마다 다시 호출되므로, 창을 배율이 다른 모니터로
             //   옮겨도 다음 대사부터 자동으로 따라간다(생성 시점에 한 번 굳는 UI 창들과 다른 점이다).
-            return UiGlyphScalePolicy.SnapPoints(points, canvasScale);
+            //
+            // ★ 2026-09-02 — <b>스냅이 방금 건 하한을 스스로 깨고 있었다</b>(UX_FLOW §44-2).
+            //   UiGlyphScalePolicy.SnapPoints는 "가장 가까운 잔차 0"이라 하한을 모른다:
+            //   배율 1.25 / 1.75에서 하한 13pt가 <b>12pt로 내려갔다</b>. 그래서 하한을 아는
+            //   SnapPointsNotBelow로 바꾼다(그 함수 문서에 (a)/(b)/(b') 판정 근거).
+            return SnapPointsNotBelow(points, floor, canvasScale);
+        }
+
+        /// <summary>
+        /// ★ 2026-09-02 (b′) — <b>하한 이상인 "잔차 0" 후보 중 가장 가까운 값</b>(동률이면 위).
+        /// <see cref="UiGlyphScalePolicy.SnapPoints"/>와 <b>하한이 물지 않는 구간에서는 완전히 같다</b>.
+        ///
+        /// <para>왜 "위로만 스냅"이 아닌가 — 그 형태는 <b>하한과 무관한 큰 폰트까지 부풀린다</b>:
+        /// 배율 1.25에서 25pt가 위로만 스냅이면 28pt(+3)가 되지만 가장 가까움은 24pt다. 하한이 물 때만
+        /// 위로 밀고 그 밖에서는 <b>한 톨도</b> 달라지지 않아야 한다.</para>
+        ///
+        /// <para>왜 "스냅을 아예 하지 말자"(a)가 아닌가 — 그쪽의 어긋남은 <c>|pt x 배율 − round(pt x 배율)|</c>
+        /// 로 최대 0.25px이고 신고된 병(배율 1.5, 0.50px)의 <b>절반</b>이라, 기각 사유를 흐림으로 적으면
+        /// 과장이 된다. 진짜 기각 사유는 <b>배율 1.75가 미해결로 남는 것</b>이다: 그 칸의 16pt는
+        /// em 28물리px로 <b>검증 운용점 26을 넘는 첫 Windows 칸</b>이고, 거기서 C1·C2가 <b>둘 다</b>
+        /// 처음으로 동시에 충족된다.</para>
+        ///
+        /// <para>★ 이 함수가 사는 자리에 대하여 — 내용상 <see cref="UiGlyphScalePolicy"/>의 이웃이지만
+        /// 이번 라운드는 <c>Platform/</c>이 편집 잠금이라 여기 둔다. 잠금이 풀리면 그쪽으로 옮길 것.
+        /// 판정에 쓰는 사실("이 배율에서 잔차 0인 pt는 무엇인가")은 전부 그 클래스의 공개 API로만
+        /// 묻는다 — 규칙을 복사하지 않았으므로 두 벌로 갈라지지 않는다.</para>
+        /// </summary>
+        public static int SnapPointsNotBelow(int points, int minimumPoints, float canvasScale)
+        {
+            int floor = Mathf.Max(1, minimumPoints);
+            int start = Mathf.Max(points, floor);
+            if (float.IsNaN(canvasScale) || float.IsInfinity(canvasScale) || canvasScale <= 0f) return start;
+
+            // 이 배율에서 잔차 0인 pt는 정확히 step의 배수다(배율 1이면 1, 1.5면 2, 1.25/1.75면 4).
+            int step = UiGlyphScalePolicy.ExactPointStep(canvasScale);
+            if (step <= 0) return start;   // 무리수 배율 — 근처에 잔차 0이 없다. 하한만은 반드시 지킨다.
+
+            int up = ((start + step - 1) / step) * step;   // start 이상인 가장 작은 후보
+            int down = (start / step) * step;              // start 이하인 가장 큰 후보
+
+            // 방어: step 특성이 성립하지 않는 배율이면 스냅을 포기한다(하한은 이미 start가 지킨다).
+            if (!UiGlyphScalePolicy.IsExact(up, canvasScale)) return start;
+            if (down < floor || down <= 0 || !UiGlyphScalePolicy.IsExact(down, canvasScale)) return up;
+            return (start - down) < (up - start) ? down : up;   // 동률이면 위(글자를 줄이는 쪽으로 안 기운다).
         }
 
         /// <summary>말풍선(도형) 모드 글자의 화면상 하한(캔버스 유닛 = OS 포인트). 위 ResolveFontSize() 참고.</summary>
@@ -466,9 +553,20 @@ namespace StickMate.Dialogue
         //   외곽선 비율(=속공간 실측 × 예산)을 다시 재는 날 하한이 <b>자동으로</b> 따라온다.
 
         /// <summary>
-        /// 외곽선 링이 "있다"고 보이기 위한 최소 두께(<b>물리 픽셀</b>). 1보다 작으면 GPU가 한 픽셀을
-        /// 부분 커버리지로 섞어 <b>반투명 얼룩</b>이 되고, 그건 글자와 바탕화면 사이의 분리막이 되지
-        /// 못한다(말풍선 도형을 없앤 뒤로 이 링이 <b>유일한</b> 분리막이다).
+        /// 분리막이 "있다"고 보이기 위한 최소 두께(<b>물리 픽셀</b>). 말풍선 도형을 없앤 뒤로 이 막이
+        /// 글자와 바탕화면 사이의 <b>유일한</b> 분리막이다.
+        ///
+        /// <para>★ 2026-09-02 <b>근거 정정</b>(UX_FLOW §44-1 ③ / UI_SURFACE_SPEC §13.2). 종전 주석은
+        /// <i>"1보다 작으면 GPU가 부분 커버리지로 섞어 반투명 얼룩이 되고, 그건 분리막이 되지 못한다"</i>
+        /// 고 적었는데 <b>대비 측면에서는 틀렸다</b> — 커버리지 0.529의 흰 띠는 검은 배경 위에서 휘도
+        /// 약 0.53, 대비 <b>11.6 : 1</b>로 또렷이 보인다. 서브픽셀 막이 실제로 실패하는 이유는
+        /// <b>위상 의존성</b>이다: 막의 경계가 픽셀 격자 어디에 떨어지느냐에 따라 같은 획인데도 어떤
+        /// 곳은 53%로 한 픽셀에 뭉치고 어떤 곳은 26%+27%로 두 픽셀에 갈라진다. 게다가 글자 블록이
+        /// 6~10도 기울어 있어 <b>한 획의 길이를 따라 위상이 연속으로 변한다</b> → 막이 획을 따라
+        /// 밝아졌다 어두워졌다 한다. 사용자가 말한 "깔끔한 게 하나도 없다"의 한 조각이 이것이다.</para>
+        ///
+        /// <para>근거를 이렇게 적어 두지 않으면 다음 사람이 <i>"대비가 11:1이나 나오는데 0.9px도
+        /// 되지 않나"</i> 로 <b>잘못 완화한다</b>(대비만 재면 실제로 그렇게 보인다).</para>
         /// </summary>
         public const float OutlineRingMinPhysicalPixels = 1f;
 
@@ -510,8 +608,23 @@ namespace StickMate.Dialogue
         /// <see cref="ResolveMinComicFontSize"/>가 얹는다.
         /// </summary>
         public static int OutlineLegibleFontFloor(float canvasScale)
-            => Mathf.CeilToInt(OutlineRingMinPhysicalPixels * PointsPerPhysicalPixel(canvasScale)
-                               / TextOutlineEmRatio);
+            => OutlineLegibleFontFloor(canvasScale, TextOutlineEmRatio);
+
+        /// <summary>
+        /// 위 식의 <b>em 비율 주입형</b>. 프로덕션은 언제나 <see cref="TextOutlineEmRatio"/>로 부르고,
+        /// 이 오버로드는 <b>회귀 테스트의 네거티브 컨트롤 전용</b>이다.
+        ///
+        /// <para>왜 필요한가: <see cref="UseOutlineRing(int,float)"/>의 검증 배율 경계가 <b>등식</b>
+        /// (하한 13pt ≥ 링 요구 13pt, 여유 <b>0pt</b>)이라 비율을 조금만 내려도 macOS가 조용히 그림자
+        /// 분기로 넘어간다. 그 사실을 "변이시켰더니 실제로 넘어간다"로 증명하려면 상수를 파라미터로
+        /// 뽑아 두는 수밖에 없다(<c>const</c>는 테스트가 못 바꾼다). 경계가 등식이라는 성질 자체를
+        /// 테스트가 지키게 하는 장치다.</para>
+        /// </summary>
+        public static int OutlineLegibleFontFloor(float canvasScale, float outlineEmRatio)
+            => outlineEmRatio > 0f && !float.IsNaN(outlineEmRatio) && !float.IsInfinity(outlineEmRatio)
+                ? Mathf.CeilToInt(OutlineRingMinPhysicalPixels * PointsPerPhysicalPixel(canvasScale)
+                                  / outlineEmRatio)
+                : int.MaxValue;   // 막이 0이면 어떤 글자 크기로도 1물리픽셀을 못 채운다.
 
         /// <summary>
         /// 만화 레터링 모드 글자의 화면상 하한(pt). <see cref="OutlineLegibleFontFloor"/>(물리 요구)를
@@ -530,6 +643,91 @@ namespace StickMate.Dialogue
             => Mathf.Clamp(OutlineLegibleFontFloor(canvasScale),
                            LegacyComicFontFloor,
                            OutlineLegibleFontFloor(VerifiedCanvasScale));
+
+        // ============================================================================
+        // ★★ 2026-09-02 — 분리막을 <b>링으로 그릴 것인가, 한 방향 그림자로 그릴 것인가</b>
+        //     (UX_FLOW.md §44-1 / UI_SURFACE_SPEC.md §13.2. 설계는 ux-designer, 구현만 여기)
+        // ============================================================================
+        // 예산식 한 줄이 이 아래 모든 수치를 낳는다:
+        //
+        //     0.113 x em물리px  =  막두께 x N  +  남는구멍        (N = 2 링 / 1 그림자)
+        //
+        // 합격선이 <b>둘</b>이고 이름을 붙여 두지 않으면 판정이 섞인다(실제로 섞여 있었다):
+        //     C1 분리막 가시성 = 막 >= 1.000 물리픽셀   (OutlineRingMinPhysicalPixels)
+        //     C2 속공간 개방   = 구멍 >= 0.823 물리픽셀 (CounterClosureBudget을 검증 운용점에서 환산)
+        //
+        // ★ 그림자로 바꿔도 <b>C2는 한 픽셀의 천분의 일도 나아지지 않는다.</b> 예산이 <b>총 소모량</b>
+        //   으로 정의돼 있어 한쪽에 몰든 양쪽으로 쪼개든 속공간이 잃는 양은 같기 때문이다
+        //   (배율 1.00/13pt에서 남는 구멍은 양쪽 다 0.411물리px). 사용자 불만의 물리적 실체는 C2이며,
+        //   이 분기는 그것을 고치지 못한다 — 다음 사람이 "그림자로 바꿨는데 왜 아직 번지냐"를
+        //   다시 조사하지 않도록 여기 적어 둔다.
+        //
+        // 그럼 왜 채택하는가 — <b>서브픽셀 구간에서 같은 잉크를 둘로 쪼개는 것이 순손해</b>여서다.
+        // 배율 1.00 / 13pt에서 픽셀 격자에 요청되는 특징의 폭을 나열하면:
+        //
+        //     링    : 0.529(막) | 0.411(구멍) | 0.529(막)   -> 셋 다 1px 미만. 흰-검-흰이 한 픽셀 반
+        //                                                     안에서 섞여 <b>균일한 중간 회색</b>이 된다.
+        //     그림자: 1.058(막) | 0.411(구멍)               -> 막이 픽셀 하나를 온전히 차지한다.
+        //
+        //   격자가 해상할 수 있는 특징 수가 <b>0개 -> 1개</b>. 이것이 이 교환의 진짜 이득이다.
+
+        /// <summary>
+        /// 분리막을 <b>4방향 링</b>으로 그릴지(<c>true</c>), <b>한 대각선 그림자</b>로 그릴지(<c>false</c>).
+        ///
+        /// <para>규칙 한 줄: <b>링의 막이 1 물리픽셀을 채우면 링을 그대로 쓰고, 못 채우면 같은 예산
+        /// 전부를 한 대각선에 싣는다.</b> 자기모순이 아닌 이유가 유도된다 — 그림자는 예산을 반으로
+        /// 쪼개지 않으므로 요구 폰트가 정확히 절반(<c>ceil(링요구 / 2)</c>)이고, 따라서
+        /// <b>링이 못 서는 배율에서는 그림자가 반드시 선다</b>.</para>
+        ///
+        /// <para>★ <b>전역 교체가 아니라 분기여야 한다.</b> 그림자는 획 둘레의 50%만 보장하고 나머지
+        /// 50%는 <c>CR(잉크, 바탕화면)</c>에 맡긴다(링은 바탕화면을 몰라도 21:1이었다). 그 손실을
+        /// 감수하는 <b>유일한</b> 근거가 "링이 이미 서브픽셀로 무너진 배율에서만 켠다"이다 —
+        /// 멀쩡한 링을 그림자로 바꾸는 거래가 아니다.</para>
+        ///
+        /// <para>★ <b>플랫폼 중립 순수 함수</b>다(OS 호출 0줄, 입력은 두 개뿐). 정책을
+        /// <c>Platform/MacOS/</c>에 넣어 Windows가 물리적으로 못 부르던 <c>FullscreenSuspendPolicy.cs</c>
+        /// 사고를 반복하지 않는다(CLAUDE.md).</para>
+        ///
+        /// <para>★ <b>배율 2.00(macOS 전부 · Windows 200%)은 언제나 링이다</b> — 그 칸의 폰트 하한이
+        /// 링 요구와 <b>같기</b> 때문이다. 즉 이 분기는 macOS 화면을 한 픽셀도 바꾸지 않는다.</para>
+        ///
+        /// <para>★ <b>왜 그 등식이 우연이 아닌가</b>(2026-09-02 실측 정정). 등식은 <c>pt</c> 단위로
+        /// 여유 0이지만, 그렇다고 <see cref="TextOutlineEmRatio"/>를 조금 내렸을 때 macOS가 조용히
+        /// 그림자로 넘어가지는 <b>않는다</b>: <see cref="ResolveMinComicFontSize"/>의 상한이 바로
+        /// <c>OutlineLegibleFontFloor(VerifiedCanvasScale)</c>라, 검증 배율에서는
+        /// <b>하한과 요구가 같은 식</b>이고 비율이 바뀌면 <b>둘이 함께</b> 움직인다(비율을 반으로 줄이면
+        /// 하한이 13 → 25pt로 같이 올라가 여전히 링). 실제 위험은 비율이 아니라 <b>그 상한 한 줄</b>이며,
+        /// 상한을 <see cref="LegacyComicFontFloor"/> 같은 다른 것으로 바꾸면 그때 macOS가 넘어간다.
+        /// <c>Tests/EditMode/ComicShadowBranchTests</c>가 비율 변이 스윕과 하한 정책 컨트롤 <b>양쪽</b>을
+        /// 돌려 이 성질을 지킨다.</para>
+        /// </summary>
+        public static bool UseOutlineRing(int fontSize, float canvasScale)
+            => UseOutlineRing(fontSize, canvasScale, TextOutlineEmRatio);
+
+        /// <summary>위 판정의 <b>em 비율 주입형</b> — 네거티브 컨트롤 전용
+        /// (<see cref="OutlineLegibleFontFloor(float,float)"/> 문서 참고).</summary>
+        public static bool UseOutlineRing(int fontSize, float canvasScale, float outlineEmRatio)
+            => fontSize >= OutlineLegibleFontFloor(canvasScale, outlineEmRatio);
+
+        /// <summary>
+        /// 분기가 실제로 그리는 <b>막 두께</b>(캔버스 유닛). 링은 사방 <c>t</c>, 그림자는 한 대각선에
+        /// <c>2t</c>. <b>어느 쪽이든 속공간 총 소모량은 2t로 같다</b>(위 블록 주석의 보존식).
+        /// 진단 로그와 회귀 테스트가 "화면에 실제로 선 막"을 <b>산수를 다시 하지 않고</b> 읽는 창구다.
+        /// </summary>
+        public static float MembranePointsFor(int fontSize, float canvasScale)
+        {
+            float t = fontSize * TextOutlineEmRatio;
+            return UseOutlineRing(fontSize, canvasScale) ? t : t * ShadowBudgetMultiplier;
+        }
+
+        /// <summary>속공간에서 <b>남는 구멍</b>(캔버스 유닛). 분기와 무관하게 총 소모가 2t라 식이 하나다 —
+        /// 그림자로 바꿔도 C2가 나아지지 않는다는 사실이 여기 식으로 박혀 있다.</summary>
+        public static float RemainingCounterPointsFor(int fontSize)
+            => fontSize * (NarrowestHangulCounterEmRatio - TextOutlineEmRatio * ShadowBudgetMultiplier);
+
+        /// <summary>그림자가 한 방향에 싣는 배수. 링이 양쪽으로 <c>t</c>씩 쓰던 <b>같은 예산</b>을
+        /// 한쪽에 모으는 것이므로 2다. 숫자가 아니라 "링의 방향 수"라는 뜻이라 이름을 붙여 둔다.</summary>
+        public const float ShadowBudgetMultiplier = 2f;
 
         /// <summary>
         /// 이 캐릭터의 전신 높이(월드 유닛). 캐릭터 기준 오프셋의 유일한 기준값.
@@ -619,6 +817,7 @@ namespace StickMate.Dialogue
         private Image _tailFillImage;
         private Text _label;
         private Outline _labelOutline;   // 만화 레터링 외곽선(잉크색의 반대색). 텍스트 전용 모드에서만 붙는다.
+        private Shadow _labelShadow;     // 같은 예산을 한 대각선에 실은 그림자 분기. 둘 중 <b>하나만</b> 켜진다.
         private RectTransform _labelRect;
         private Camera _camera;
 
@@ -875,7 +1074,10 @@ namespace StickMate.Dialogue
                       $"노출상한={ResolveMaxVisibleSeconds():F2}초, " +
                       $"진행방향={(_latchedTextSide < 0f ? "오른쪽" : "왼쪽")}, " +
                       $"글자쪽={(_latchedTextSide < 0f ? "왼쪽위" : "오른쪽위")}, " +
-                      $"글자크기={ResolveFontSize()}pt, 외곽선={ScaledTextOutline:F2}pt, " +
+                      $"글자크기={ResolveFontSize()}pt, " +
+                      $"분리막={(UseOutlineRing(ResolveFontSize(), ResolveCanvasScale()) ? "링" : "그림자")}" +
+                      $" {MembranePointsFor(ResolveFontSize(), ResolveCanvasScale()) * ResolveCanvasScale():F3}물리px" +
+                      $"(구멍 {RemainingCounterPointsFor(ResolveFontSize()) * ResolveCanvasScale():F3}물리px), " +
                       $"기울기={_tiltDegrees:F1}도({(_tiltMagnitudeDegrees <= 0f ? "꺼짐" : _tiltDegrees > 0f ? "반시계" : "시계")}), " +
                       $"frame={Time.frameCount}");
         }
@@ -1478,6 +1680,7 @@ namespace StickMate.Dialogue
             if (_tailFillImage != null) _tailFillImage.color = bubble;
             if (_label != null) _label.color = ink;
             if (_labelOutline != null) _labelOutline.effectColor = ResolveTextOutlineColor();
+            if (_labelShadow != null) _labelShadow.effectColor = ResolveTextOutlineColor();
         }
 
         // ==================== UI 구성 (런타임 생성 — 씬/프리팹 수동 배선 불필요) ====================
@@ -1511,7 +1714,9 @@ namespace StickMate.Dialogue
                 // ★ 만화 레터링: 몸통/여백/테두리가 없으므로 **글자 블록 자체가 곧 배치 단위**다.
                 //   유일한 고정분은 외곽선이 글자 바깥으로 번지는 두께다 — 그만큼 넓혀야 화면 클램프가
                 //   외곽선까지 감싸고, 그러지 않으면 화면 끝에서 선만 잘려 글자가 잘린 것처럼 보인다.
-                float outlinePad = ScaledTextOutline * 2f;
+                // ★ 2026-09-02 — 링 두께로 굳혀 두면 안 된다. 그림자 분기의 막은 <b>한쪽으로만
+                //   2t</b> 뻗으므로, 링 기준(사방 t)의 여백으로는 화면 끝에서 막의 절반이 잘린다.
+                float outlinePad = ScaledTextEffectReach * 2f;
                 _panel.sizeDelta = new Vector2(
                     Mathf.Ceil(textW + outlinePad),
                     Mathf.Ceil(textH + outlinePad));
@@ -1621,16 +1826,58 @@ namespace StickMate.Dialogue
                 _labelOutline = labelGo.AddComponent<Outline>();
                 _labelOutline.useGraphicAlpha = false;
                 _labelOutline.effectColor = ResolveTextOutlineColor();
+
+                // ★ 2026-09-02 그림자 분기(UseOutlineRing 문서). 두 컴포넌트를 <b>둘 다 만들어 두고
+                //   켜기만 바꾼다</b> — 창이 배율이 다른 모니터로 옮겨가면 분기가 바뀌는데, 그때마다
+                //   AddComponent/Destroy를 하면 24시간 상주 앱에 GC를 심는다. enabled 토글은
+                //   BaseMeshEffect가 자기 Graphic에 SetVerticesDirty만 걸고 끝난다.
+                //   Outline은 Shadow 파생이라 둘 다 켜지면 팽창이 겹친다 — ApplyOutlineStyle이
+                //   <b>정확히 하나만</b> 켠다는 것이 이 배선의 유일한 불변식이다.
+                _labelShadow = labelGo.AddComponent<Shadow>();
+                _labelShadow.useGraphicAlpha = false;
+                _labelShadow.effectColor = ResolveTextOutlineColor();
+
                 ApplyOutlineStyle();
             }
         }
 
-        /// <summary>외곽선 두께를 현재 캐릭터 배율에 맞춘다(폰트 크기와 함께 매 대사마다 갱신된다).</summary>
+        /// <summary>
+        /// 분리막의 <b>분기·두께·방향</b>을 지금의 글자 크기와 화면 배율에 맞춘다(폰트와 함께 매 대사마다).
+        ///
+        /// <para>★ 그림자는 <b>반드시 대각선</b>이다 — 선택지가 아니라 유도 결과다. 한글 획은 사실상
+        /// 축정렬 직사각형이라, 대각선 오프셋만이 <b>획의 종횡비와 무관하게 정확히 둘레의 50%</b> 를
+        /// 지킨다. 축정렬로 두면 가로 획 보호율이 <b>7.1%</b>로 무너진다(세로 획은 43.8%인데 가로 획이
+        /// 그렇게 된다 — 한글의 절반쯤 되는 획이 사실상 무보호가 된다).</para>
+        ///
+        /// <para>★ 그림자는 글자와 <b>함께 돈다</b>. <c>Shadow</c>/<c>Outline</c>은 <c>BaseMeshEffect</c>라
+        /// 자기 Graphic의 <b>로컬</b> 좌표계에서 정점을 옮기고, 그 좌표계는 몸통의 기울기를 상속한다.
+        /// 보호 기하(어느 변이 지켜지는가)는 <b>회전 불변</b>이고 화면상 광원 방향만 한 사분면 안에서
+        /// 20도 흔들린다. <b>화면 고정으로 만들지 말 것</b> — <c>effectDistance</c>에 매 프레임
+        /// <c>R(−θ)</c>를 곱하면 텍스트 메시가 통째로 재빌드되고, 화면 끝 좌우 뒤집기 중에는 약 0.4초
+        /// 동안 계속 그렇게 된다. 얻는 것은 "광원 방향 20도 흔들림 제거"뿐이다.</para>
+        /// </summary>
         private void ApplyOutlineStyle()
         {
-            if (_labelOutline == null) return;
-            float thickness = ScaledTextOutline * Mathf.Max(1, TextSupersample);
-            _labelOutline.effectDistance = new Vector2(thickness, thickness);
+            if (_labelOutline == null && _labelShadow == null) return;
+
+            float ss = Mathf.Max(1, TextSupersample);
+            bool useRing = UseOutlineRing(ResolveFontSize(), ResolveCanvasScale());
+
+            if (_labelOutline != null)
+            {
+                // 꺼져 있어도 값은 최신으로 유지한다 — 모니터를 옮겨 분기가 되돌아온 첫 프레임에
+                // 옛 두께로 한 번 그려지는 일이 없게.
+                float t = ScaledTextOutline * ss;
+                _labelOutline.effectDistance = new Vector2(t, t);
+                if (_labelOutline.enabled != useRing) _labelOutline.enabled = useRing;
+            }
+
+            if (_labelShadow != null)
+            {
+                float t = ScaledTextShadow * ss;
+                _labelShadow.effectDistance = new Vector2(t, -t);   // 오른쪽 아래 대각선(위 문서의 유도).
+                if (_labelShadow.enabled == useRing) _labelShadow.enabled = !useRing;
+            }
         }
 
         private RectTransform CreatePanel(Transform parent, Color ink, Color bubble)

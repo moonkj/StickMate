@@ -28,8 +28,8 @@ namespace StickMate.Interaction
     /// 톤 — "깔끔하고 정돈된" 쪽에 방점 (리더 지시)
     /// ============================================================================
     /// 이 앱 전체가 손그림 톤이라 UI가 화려하면 붕 뜬다. 그래서 채도가 낮은 표면에
-    /// <b>강조색 하나</b>(<see cref="Accent"/>)만 쓰고, 입체감은 아주 옅은 그림자 한 겹과 1px 테두리로만
-    /// 낸다. 그라데이션/광택/네온은 쓰지 않는다.
+    /// <b>강조색 하나</b>(<see cref="Accent"/>)만 쓰고, 층은 1px 테두리와 표면 밝기 차로만 낸다.
+    /// 그라데이션/광택/네온은 쓰지 않는다. 그림자도 쓰지 않는다(2026-09-02 사용자 지시 — 아래 제거 노트).
     ///
     /// <b>2026-08-30 2차 팔레트 교체(docs/UX_FLOW.md 34-1)</b>: 오전에 넣은 33-1 팔레트(종이빛 회색 +
     /// 테라코타)는 <b>폐기</b>하고 <b>다크 글로스</b>(#14171c 유리 + #5da1f5 파랑 강조)로 전면 교체했다.
@@ -83,10 +83,10 @@ namespace StickMate.Interaction
         //   · <b>큰 창의 바탕(PanelSurface)은 α=1이다.</b> α<1 유리는 "내 앱의 다른 부분"이 뒤에 있을
         //     때만 성립하는 연출인데, 우리 패널 뒤에는 유저의 다른 창이 있다(원칙 2의 관점에서도
         //     "남의 창을 반투명 필터로 덮은 화면"은 우리가 팔 그림이 아니다).
-        //   · <b>그림자는 절대로 본체 위에 그리지 않는다.</b> 위 (2) 때문에 그림자 한 겹이 창 알파를
-        //     통째로 무너뜨린다. uGUI는 <b>부모 Graphic을 자식보다 먼저</b> 그리므로,
-        //     "Image가 붙은 오브젝트의 자식으로 그림자를 넣으면 그림자가 본체 <b>위</b>로 간다".
-        //     <see cref="AddShadow"/>가 그 배치를 감지해 경고 로그를 남긴다(그 메서드 문서 참고).
+        //   · <b>어두운 반투명 겹을 본체 위에 깔지 않는다.</b> 위 (2) 때문에 그런 겹 하나가 창 알파를
+        //     통째로 무너뜨린다. uGUI는 <b>부모 Graphic을 자식보다 먼저</b> 그리므로 "Image가 붙은
+        //     오브젝트의 자식으로 넣으면 본체 <b>위</b>로 간다". 이 함정의 유일한 실사용처였던 그림자는
+        //     2026-09-02에 전부 삭제됐다(아래 제거 노트).
         //
         // ==================== 색 — 2026-08-30 다크 글로스 팔레트 (docs/UX_FLOW.md 34-1) ==========
         // ★ 같은 날 오전의 33-1 팔레트(종이빛 회색 + 테라코타)는 <b>폐기</b>했다. 이 파일을 쓰는 모든
@@ -108,7 +108,7 @@ namespace StickMate.Interaction
         /// <b>이 앱에서는 패널 뒤에 우리 콘텐츠가 없다 — 유저의 진짜 데스크톱이 있다.</b>
         /// 일반 앱에서 유리는 "내 앱의 다른 부분"을 비추지만, 전체화면 투명 오버레이에서는
         /// 곧바로 <b>남의 창이 비친다</b>. 즉 알파 유리는 이 아키텍처에서 성립하지 않는다.
-        /// (b)(c)(d) 시인/하이라이트/그림자 2겹은 그대로 남으므로 유리 느낌은 유지된다.</para>
+        /// (b)(c) 시인/하이라이트는 그대로 남는다((d) 그림자는 2026-09-02에 삭제됐다).</para>
         ///
         /// <para>왜 오전 팔레트(α0.985, 밝은 회색)에서는 아무도 못 봤나: 비침 자체는 그때도 있었다
         /// (실측 시뮬레이션 결과 약 16%). 다만 <b>밝은 표면</b>은 뒤에서 새어 들어온 밝은 화소를 거의
@@ -126,9 +126,6 @@ namespace StickMate.Interaction
 
         /// <summary>패널 안쪽 상단 1px 하이라이트 rgba(255,255,255,0.30) — 34-2 (4)겹(굴절 테두리).</summary>
         public static readonly Color PanelHighlight = new Color(1f, 1f, 1f, 0.30f);
-
-        /// <summary>패널 그림자 rgba(0,0,0,0.55) — 34-2에 따라 <see cref="AddShadow"/>가 2겹으로 쌓는다.</summary>
-        public static readonly Color PanelShadow = new Color(0f, 0f, 0f, 0.55f);
 
         /// <summary>패널 보더 rgba(255,255,255,0.16).</summary>
         public static readonly Color PanelBorder = new Color(1f, 1f, 1f, 0.16f);
@@ -749,326 +746,27 @@ namespace StickMate.Interaction
             return image;
         }
 
-        /// <summary>
-        /// 패널 뒤 그림자 — <b>2겹</b>(34-2). 넓고 옅은 앰비언트가 "떠 있음"을, 좁고 진한 키가
-        /// "가장자리"를 만든다.
-        /// <para>왜 2겹인가: 33-1의 1겹(밝은 바탕 전용)은 <b>어두운 패널이 어두운 바탕화면 위에 놓이면
-        /// 경계가 통째로 사라진다</b>. 겹을 늘리는 대신 알파를 올리면 밝은 바탕에서 검은 테가 두꺼워
-        /// 보인다 — 두 배경 모두에서 성립하는 해가 2겹이다.
-        /// <b>다만 어두운 바탕에서 실제로 경계를 만드는 것은 검은 그림자가 아니라 보더</b>
-        /// (<see cref="AddOpaquePanel"/>의 <see cref="Flatten"/>된 밝은 1px 선)다 — 검정 위의 검정은
-        /// 원리상 대비를 만들 수 없다. 그림자 2겹의 몫은 밝은 바탕에서의 분리와 "떠 있음"이다.
-        /// 이 문장을 남기는 이유: 다음 사람이 "어두운 바탕이 안 보인다"를 그림자 알파를 올려서
-        /// 고치려 들면 밝은 바탕에서만 검은 테가 두꺼워지고 정작 목표는 하나도 못 고친다.</para>
-        ///
-        /// <para><b>★ 2026-09-01 회귀 수정 — 사용자 신고 "설정창이 두 겹으로 보인다".</b>
-        /// 옛 <see cref="AddShadowLayer"/>는 <see cref="RoundedFill"/>(= 모서리만 둥근 <b>균일 알파
-        /// 채움</b>)을 그림자 스프라이트로 썼다. 그래서 결과물은 그림자가 아니라 "패널보다
-        /// <c>spread</c>만큼 큰 반투명 판"이었고, 그 판이 2겹이라 <b>창 아래에 딱딱한 모서리를 가진
-        /// 사각형이 둘</b> 더 생겼다. 오프라인 래스터 검산(실측): 패널 아래로 화면 알파가 33.8%로
-        /// <b>32pt 동안 평평하게</b> 유지되다가 <b>25.9%/px의 절벽</b>으로 7.8%로 떨어지고 다시
-        /// 평평했다 — 사람 눈이 "판의 가장자리"라고 읽는 바로 그 신호다. 불투명 UI였다면 "좀 진한
-        /// 그림자"로 넘어갔겠지만, 이 앱은 투명 오버레이라 그림자가 드리울 바닥이 없어서 그 판이
-        /// 데스크톱 위에 그대로 합성된다. 이제 <see cref="SoftShadowFill"/>이 알파를 0까지 굽고,
-        /// 같은 측정에서 최대 기울기가 <b>0.66%/px</b>(39배 완만)이 됐다 — 진하기(최대 32.8%)는
-        /// 거의 그대로이고 <b>딱딱한 경계만</b> 사라졌다.</para>
-        ///
-        /// 반환값은 <b>키 그림자</b>(위 겹)다. 호출부가 색/알파를 다시 칠할 대상이 그쪽이기 때문이다.
-        /// </summary>
-        /// <param name="spread">그림자의 <b>번짐 폭</b>(pt). 도형 실루엣에서 바깥으로 이만큼 가서 알파가
-        /// 0이 된다(CSS의 blur에 해당). 옛 의미("판을 이만큼 부풀린다")와 기하는 같지만 결과가 다르다.</param>
-        /// <param name="offset">그림자를 미는 방향(pt). <b><paramref name="spread"/>보다 한참 작게 잡을 것</b> —
-        /// 오프셋이 번짐 폭에 가까워지면 실루엣과 어긋난 자리에 <b>알파 1짜리 코어</b>가 통째로 드러나
-        /// 다시 "두 번째 판"으로 읽힌다(위 회귀의 두 번째 원인이었다).</param>
-        public static Image AddShadow(Transform parent, string name, int radius, float spread, Vector2 offset)
-        {
-            FailIfShadowWouldCoverParentSurface(parent, name);
-            WarnIfShadowOffsetExposesTheCore(name, spread, offset);
-
-            // 앰비언트를 먼저 붙여야 형제 순서상 뒤(아래)에 깔린다.
-            AddShadowLayer(parent, name + "Ambient", radius, spread * AmbientSpreadFactor,
-                offset * AmbientOffsetFactor, AmbientShadowAlpha);
-            return AddShadowLayer(parent, name, radius, spread, offset, PanelShadow.a);
-        }
-
-        // ★ 2026-09-01 재조정 — 감쇠가 생기기 <b>전</b>의 값(2.4 / 2.3 / 0.28)은 "판이 두 장"을 전제로
-        //   한 보정이었다. 오프셋 2.3배는 앰비언트 코어를 패널에서 41pt나 밀어내는데, 균일 채움에서는
-        //   그게 "넓게 퍼진 느낌"으로 위장됐지만 감쇠 램프에서는 <b>알파 1짜리 판이 아래로 삐져나온</b>
-        //   그림 그대로다. 번짐이 실제로 번지므로 배율을 낮춰도 "떠 있음"은 유지된다.
-        //   실측(패널 아래 화면 알파가 0.2% 미만이 되는 거리): 옛 값 85pt → 새 값 42pt.
-        //   즉 창 밖으로 번지는 면적이 절반 이하로 줄고도 "떠 있음"은 유지된다.
-        private const float AmbientSpreadFactor = 1.9f;
-        private const float AmbientOffsetFactor = 1.7f;
-        private const float AmbientShadowAlpha = 0.24f;
-
-        /// <summary>
-        /// ★ 2026-08-31 — "창 뒤가 비쳐 보인다" 회귀를 <b>구조적으로</b> 재발 방지한다.
-        ///
-        /// <para>uGUI는 <b>부모의 Graphic을 자식들보다 먼저</b> 그린다. 그래서 <c>Image</c>가 붙어 있는
-        /// 오브젝트를 <paramref name="parent"/>로 주면 그림자는 <see cref="Transform.SetAsFirstSibling"/>을
-        /// 아무리 불러도 <b>본체 위</b>에 올라간다(형제 순서는 형제끼리만 정한다). 눈으로는 "패널이 좀
-        /// 어둡네" 정도로만 보여서 여러 라운드 동안 아무도 못 잡았지만, 파일 머리의 <b>알파 채널의 법칙
-        /// (2)</b>에 따라 창 알파가 0.92 -> 0.59로 무너져 데스크톱이 40% 비쳐 들었다.</para>
-        ///
-        /// <para>여기서 <b>고쳐 줄 수는 없다</b> — 부모를 마음대로 재구성하면 호출부가 붙잡고 있는
-        /// 레이아웃 참조가 통째로 깨진다. 대신 반드시 눈에 띄게 만든다. 이 로그가 뜨면 호출부를
-        /// "그림 없는 컨테이너 → [그림자, 본체, 보더] 형제 배치"로 바꿔야 한다
-        /// (<see cref="AddOpaquePanel"/> / <see cref="AddGlassPanel"/>이 그 정답 형태다).</para>
-        ///
-        /// <para><b>2026-08-31 2차: Warning → Error로 승격했다.</b> 앞 라운드에서 Warning으로 둔 이유는
-        /// 마지막 위반 호출부(<c>PopoverPanel.cs</c>)가 아직 남아 있어 Error로 올리면 그 창을 만드는
-        /// PlayMode 테스트가 버그와 무관하게 전부 빨개지기 때문이었다. 그 호출부를 <see cref="AddOpaquePanel"/>로
-        /// 옮겼으므로 이제 <b>제품 코드에 위반이 0건</b>이고, Error는 곧 <b>테스트 실패</b>다
-        /// (Unity 테스트 러너는 예상하지 못한 <c>LogError</c>를 실패로 처리한다). 즉 이 버그 클래스는
-        /// 다시 들어오는 순간 CI에서 멈춘다 — 컴파일 타임 봉인은 불가능하지만(부모의 Graphic 유무는
-        /// 런타임 정보다) 이것이 실질적으로 같은 효과를 낸다.</para>
-        /// </summary>
-        private static void FailIfShadowWouldCoverParentSurface(Transform parent, string name)
-        {
-            if (parent == null) return;
-            var parentGraphic = parent.GetComponent<Graphic>();
-            if (parentGraphic == null) return;
-
-            Debug.LogError(
-                $"[UiChrome] 그림자 '{name}'의 부모 '{parent.name}'에 이미 Graphic({parentGraphic.GetType().Name})이 " +
-                "붙어 있습니다 — uGUI는 부모를 자식보다 먼저 그리므로 이 그림자는 본체 <위>에 얹힙니다. " +
-                "투명 오버레이에서는 그 한 겹이 창 알파를 무너뜨려 데스크톱이 비쳐 보입니다" +
-                "(UiChrome 파일 머리의 '알파 채널의 법칙' 참고). " +
-                "부모를 그림 없는 컨테이너로 바꾸고 [그림자 → 본체 → 보더]를 형제로 배치하세요" +
-                "(UiChrome.AddOpaquePanel이 정답 형태입니다).");
-        }
-
-        /// <summary>오프셋이 번짐 폭에 비해 이만큼 넘으면 코어가 실루엣 밖으로 드러난다고 본다.</summary>
-        public const float MaxShadowOffsetToSpreadRatio = 0.6f;
-
-        /// <summary>
-        /// ★ 2026-09-01 — "창이 두 겹으로 보인다"의 <b>두 번째</b> 원인을 구조적으로 막는다.
-        ///
-        /// <para>감쇠 그림자의 코어는 알파 1이다. 그래서 오프셋이 번짐 폭에 가까워지면 실루엣 밖으로
-        /// <b>알파 1짜리 판이 통째로 드러난다</b> — 램프를 아무리 잘 구워도 그 판의 가장자리가 다시
-        /// 보인다. 실제로 옛 설정창/정보창이 <c>spread 18 / offset -18</c>(비율 1.0)이었고, 그것이
-        /// 사용자 스크린샷의 "아래로 크게 삐져나온 판"이다.</para>
-        ///
-        /// <para>Error가 아니라 Warning인 이유: 이건 "틀림"이 아니라 "과함"이라 의도적으로 강한
-        /// 그림자를 원하는 자리가 생길 수 있다. 다만 <b>조용히</b> 지나가지는 않게 한다
-        /// (<see cref="FailIfShadowWouldCoverParentSurface"/>가 Error인 것은 그쪽이 창 알파를
-        /// 무너뜨리는 명백한 결함이기 때문이다 — 등급을 나눠 둔다).</para>
-        /// </summary>
-        private static void WarnIfShadowOffsetExposesTheCore(string name, float spread, Vector2 offset)
-        {
-            float reach = Mathf.Max(Mathf.Abs(offset.x), Mathf.Abs(offset.y));
-            if (spread <= 0.0001f || reach <= spread * MaxShadowOffsetToSpreadRatio) return;
-
-            Debug.LogWarning(
-                $"[UiChrome] 그림자 '{name}'의 오프셋({reach:F1}pt)이 번짐 폭({spread:F1}pt)의 " +
-                $"{MaxShadowOffsetToSpreadRatio:P0}를 넘습니다 — 감쇠 그림자의 코어(알파 1)가 본체 실루엣 " +
-                "밖으로 드러나 '두 번째 창'으로 읽힙니다. 오프셋을 줄이거나 번짐을 키우세요.");
-        }
-
-        private static Image AddShadowLayer(Transform parent, string name, int radius, float spread,
-            Vector2 offset, float alpha)
-        {
-            int feather = Mathf.Clamp(Mathf.RoundToInt(spread), MinShadowFeatherTexels, MaxShadowFeatherTexels);
-            float reach = feather + ShadowClearTexels;   // 스프라이트 실루엣이 실제로 차지하는 바깥 여유(pt)
-
-            var go = new GameObject(name, typeof(RectTransform), typeof(Image));
-            go.transform.SetParent(parent, false);
-            var rt = go.GetComponent<RectTransform>();
-            Stretch(rt);
-            rt.offsetMin = new Vector2(-reach + offset.x, -reach + offset.y);
-            rt.offsetMax = new Vector2(reach + offset.x, reach + offset.y);
-            var image = go.GetComponent<Image>();
-            image.sprite = SoftShadowFill(radius, feather);
-            image.type = Image.Type.Sliced;
-            image.color = new Color(PanelShadow.r, PanelShadow.g, PanelShadow.b, alpha);
-            image.raycastTarget = false;
-            return image;
-        }
-
         // ====================================================================================
-        // ★ 감쇠하는 그림자 스프라이트 — 2026-09-01
+        // ★ 2026-09-02 — UI 그림자 <b>전면 제거</b>(사용자 지시: "캐릭터창 둘레로도 그림자들이 있는데
+        //   다 없애줘 깔끔하게"). 여기에 AddShadow / AddShadowLayer / AddSoftShadowCircle /
+        //   SoftShadowFill / SoftShadowCircle과 PanelShadow가 있었다.
+        //
+        //   <b>왜 함수를 no-op으로 남기지 않았나</b>: "있는데 아무것도 안 만드는 API"는 다음 사람에게
+        //   "왜 안 나오지"를 만든다. 되살릴 일이 생기면 이 커밋을 되짚는 편이 정확하다.
+        //
+        //   <b>지우기 전에 쟀다</b> — 그림자는 이 앱에서 장식이 아니라 "패널과 임의의 바탕화면 사이
+        //   분리막"이기도 했기 때문이다(<see cref="MinNonTextContrast"/> 기준):
+        //     · 패널 가장자리 Flatten(PanelBorder, PanelSurface) = rgb(0.226, 0.236, 0.252)
+        //       → 흰 바탕화면 11.05:1 / 중간 회색 2.78:1 / 검정 1.90:1
+        //     · 불투명 패널 본체(PanelSurface) 자체가 흰 바탕화면에서 17.97:1
+        //     · 옛 그림자 코어(검정 α0.55)는 <b>검은 바탕화면에서 1.00:1</b> — 원리상 0이다.
+        //   즉 어두운 바탕에서 경계를 만들던 것은 처음부터 그림자가 아니라 보더였고(삭제된 AddShadow
+        //   주석도 같은 말을 했다), 밝은 바탕에서는 패널 자신이 이미 압도적으로 분리된다.
+        //   <b>그림자가 유일한 분리막이던 표면은 하나도 없다</b> — 전 호출부(창/팝오버/포스트잇/부채꼴
+        //   버튼)가 예외 없이 보더 또는 불투명 표면을 함께 갖는다. 그래서 지워도 배경에 녹지 않는다.
+        //   (어두운 바탕에서 보더가 3.0에 못 미치는 것은 그림자를 지우기 <b>전부터</b> 그랬다. 검정 위의
+        //    검정은 대비를 만들 수 없으므로 그림자로는 고칠 수 없는 문제이고, 고치려면 보더를 올려야 한다.)
         // ====================================================================================
-        //
-        // 진짜 그림자는 <b>가장자리로 갈수록 알파가 0으로 떨어진다</b>. 이 파일에는 이미 같은 기법이
-        // 있다: <see cref="RoundedFill"/>은 경계 1px을, <see cref="Capsule"/>은 획 가장자리를 알파에
-        // 굽는다. 다른 것은 <b>램프 폭</b>뿐이다(1텍셀 -> feather텍셀). 그래서 셰이더도 렌더텍스처도
-        // 필요 없다 — 텍스처 알파에 굽는 이 파일의 기존 규약 그대로다.
-        //
-        // <b>9-슬라이스 함정</b>(<see cref="Capsule"/>/<see cref="VerticalGradientFill"/> 주석이 이미
-        // 다룬 그것): 가운데가 늘어나면서 램프까지 함께 늘어나면 폭 약속이 깨진다. 그래서 보더를
-        // <c>radius + feather + 여백</c>으로 잡아 <b>램프 전체가 늘어나지 않는 코너/변 슬라이스 안</b>에
-        // 들어가게 한다. 가운데 슬라이스는 알파 1짜리 2텍셀뿐이라 아무리 늘려도 왜곡될 것이 없다.
-
-        private static readonly Dictionary<int, Sprite> _softShadowCache = new Dictionary<int, Sprite>();
-
-        /// <summary>램프 바깥에 두는 <b>완전 투명</b> 여백(텍셀). 텍셀 중심이 경계에서 0.5 안쪽이라
-        /// 여백이 없으면 최외곽 텍셀 알파가 딱 0이 아니라 0.4~2%로 남는다 — 바이리니어로 늘리면
-        /// 그 값이 그대로 화면 끝단 알파가 되고, "0으로 떨어진다"는 계약을 테스트로 잠글 수 없다.</summary>
-        private const int ShadowClearTexels = 1;
-
-        /// <summary>번짐 폭의 하한/상한(텍셀 = pt). ★ <b>캐시 키 상한</b>이기도 하다 — 이 파일의 기존
-        /// 캐시 4종과 같은 규약이고, 상한 없는 캐시는 이 앱에 실제 사고 이력이 있다.
-        /// 조합 수는 <c>(반지름 33) × (번짐 48) = 1,584</c>개로 유계이며, 실제로 구워지는 것은
-        /// 창/팝오버/유리 3종 × 2겹 = <b>6개 이하</b>다.</summary>
-        private const int MinShadowFeatherTexels = 1;
-
-        private const int MaxShadowFeatherTexels = 48;
-
-        /// <summary>위 상한의 공개 이름 — 회귀 테스트가 <b>상수를 참조해</b> 클램프를 검증한다
-        /// (CLAUDE.md: 테스트에 프로덕션 상수를 숫자로 베끼지 않는다).</summary>
-        public const int MaxShadowFeatherPoints = MaxShadowFeatherTexels;
-
-        /// <summary>그림자 코어 반지름의 상한 — <see cref="RoundedFill"/>과 같은 값(32).</summary>
-        public const int MaxShadowRadius = 32;
-
-        /// <summary>
-        /// 그림자 전용 둥근 사각형(9-슬라이스). 코어는 알파 1, 코어 경계에서 바깥으로
-        /// <paramref name="featherTexels"/>만큼 가면서 알파가 <b>0까지</b> 부드럽게 떨어진다.
-        ///
-        /// <para><b>왜 smoothstep인가</b>: 선형 램프는 양 끝에서 기울기가 꺾여 그 자리에 희미한 선이
-        /// 보인다(마하 밴드) — 우리가 지우려는 것이 바로 "판의 가장자리"라 그 선이 남으면 의미가 없다.
-        /// <c>t²(3-2t)</c>는 양 끝 도함수가 0이라 코어에서도 바깥 끝에서도 이음매가 없다. 가우시안 블러의
-        /// 누적분포와도 비슷한 모양이다. <see cref="RadialGlow"/>의 제곱 감쇠를 쓰지 않는 이유는
-        /// 그쪽은 <b>중심에서</b> 떨어지는 발광용이라 코어가 평평하지 않기 때문이다.</para>
-        ///
-        /// <para>렌더 크기 규약: 이 스프라이트도 PPU 100이라 <b>1텍셀 = 1pt</b>다. 즉 호출부는
-        /// 사각형을 <c>featherTexels + <see cref="ShadowClearTexels"/></c>만큼 부풀려 붙이면
-        /// 코어가 정확히 원래 실루엣이 된다(<see cref="AddShadowLayer"/>가 그렇게 한다).</para>
-        /// </summary>
-        public static Sprite SoftShadowFill(int radius, int featherTexels)
-        {
-            radius = Mathf.Clamp(radius, 0, MaxShadowRadius);
-            featherTexels = Mathf.Clamp(featherTexels, MinShadowFeatherTexels, MaxShadowFeatherTexels);
-
-            int key = radius * (MaxShadowFeatherTexels + 1) + featherTexels;
-            if (_softShadowCache.TryGetValue(key, out Sprite cached) && cached != null) return cached;
-
-            int inset = featherTexels + ShadowClearTexels;      // 코어가 텍스처 가장자리에서 떨어진 거리
-            int size = (radius + inset) * 2 + 4;                // 코너 둘 + 9-슬라이스 중앙 4텍셀
-            float lo = inset + radius, hi = size - inset - radius;
-
-            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
-            {
-                filterMode = FilterMode.Bilinear,
-                wrapMode = TextureWrapMode.Clamp,
-                name = $"UiChrome_Shadow_R{radius}_F{featherTexels}",
-                hideFlags = HideFlags.HideAndDontSave,
-            };
-
-            var pixels = new Color32[size * size];
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    float px = x + 0.5f, py = y + 0.5f;
-                    // 3인자 Mathf.Max는 params 배열을 할당한다 — 여기는 size² 루프라 중첩 호출로 피한다.
-                    float dx = Mathf.Max(Mathf.Max(lo - px, px - hi), 0f);
-                    float dy = Mathf.Max(Mathf.Max(lo - py, py - hi), 0f);
-                    float outside = Mathf.Sqrt(dx * dx + dy * dy) - radius;   // >0 이면 코어 바깥
-
-                    float t = Mathf.Clamp01(outside / featherTexels);
-                    float alpha = 1f - t * t * (3f - 2f * t);
-                    pixels[y * size + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(alpha * 255f));
-                }
-            }
-            tex.SetPixels32(pixels);
-            tex.Apply(false, false);
-
-            // 램프 전체(= inset)와 코너 곡선(= radius)을 늘어나지 않는 슬라이스 안에 가둔다.
-            // 중앙에 남는 것은 알파 1짜리 2텍셀뿐이다.
-            float border = inset + radius + 1f;
-            Sprite sprite = Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f),
-                100f, 0, SpriteMeshType.FullRect, new Vector4(border, border, border, border));
-            sprite.name = tex.name;
-            sprite.hideFlags = HideFlags.HideAndDontSave;
-            _softShadowCache[key] = sprite;
-            return sprite;
-        }
-
-        // ==================== 감쇠하는 원형 그림자 ====================
-
-        private static readonly Dictionary<int, Sprite> _softCircleCache = new Dictionary<int, Sprite>();
-
-        /// <summary>캐시 키 해상도 — <c>coreFraction</c>을 백분율로 양자화한다(5~95, <b>91칸 유계</b>).
-        /// 1%는 Ø128 텍스처에서 0.6텍셀이라 눈에 보이지 않는다.</summary>
-        private const int SoftCircleKeySteps = 100;
-
-        /// <summary>
-        /// 꽉 찬 원 + 가장자리에서 <b>0까지 떨어지는</b> 램프. 사각형 쪽 <see cref="SoftShadowFill"/>과
-        /// 같은 smoothstep을 쓴다.
-        /// <para><see cref="CircleSprite"/>를 쓰지 않는 이유: 그쪽 램프는 <b>선형</b>이고 알파 0.5
-        /// 등고선이 도형 경계에 놓이도록 설계돼 있다(안티에일리어싱용). 램프 폭을 그림자만큼 넓히면
-        /// 그 규약이 곧 "가장자리가 반쯤 잘린 원반"이 되고, 선형이라 끝에서 기울기가 꺾여 원반의
-        /// 테두리가 다시 보인다.</para>
-        /// </summary>
-        /// <param name="coreFraction">스프라이트 지름 중 <b>알파 1인 코어</b>가 차지하는 비율.</param>
-        private static Sprite SoftShadowCircle(float coreFraction)
-        {
-            int key = Mathf.Clamp(Mathf.RoundToInt(coreFraction * SoftCircleKeySteps), 5, 95);
-            if (_softCircleCache.TryGetValue(key, out Sprite cached) && cached != null) return cached;
-
-            const int size = CircleTextureSize;
-            float half = size * 0.5f;
-            float outer = half * (key / (float)SoftCircleKeySteps);
-            // 최외곽 텍셀 중심(half - 0.5)에서 t가 정확히 1이 되게 한다 — "끝이 진짜 0"을 위해서다.
-            float feather = Mathf.Max(0.5f, half - 0.5f - outer);
-
-            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
-            {
-                filterMode = FilterMode.Bilinear,
-                wrapMode = TextureWrapMode.Clamp,
-                name = $"UiChrome_SoftCircle_{key}",
-                hideFlags = HideFlags.HideAndDontSave,
-            };
-
-            var pixels = new Color32[size * size];
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    float dx = x + 0.5f - half, dy = y + 0.5f - half;
-                    float t = Mathf.Clamp01((Mathf.Sqrt(dx * dx + dy * dy) - outer) / feather);
-                    float alpha = 1f - t * t * (3f - 2f * t);
-                    pixels[y * size + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(alpha * 255f));
-                }
-            }
-            tex.SetPixels32(pixels);
-            tex.Apply(false, false);
-
-            Sprite sprite = Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f),
-                100f, 0, SpriteMeshType.FullRect);
-            sprite.name = tex.name;
-            sprite.hideFlags = HideFlags.HideAndDontSave;
-            _softCircleCache[key] = sprite;
-            return sprite;
-        }
-
-        /// <summary>
-        /// 원형 부품(부채꼴 버튼 등) 뒤에 까는 <b>감쇠하는</b> 그림자. 코어 지름이
-        /// <paramref name="diameter"/>이고 거기서 <paramref name="feather"/>pt만큼 가면 알파가 0이다.
-        /// <para><see cref="AddCircle"/>로 "조금 더 큰 검은 원"을 까는 옛 방식은 사각형 쪽과 <b>같은
-        /// 결함</b>이었다 — 딱딱한 테가 이웃 버튼과의 틈을 먹어 버튼들이 붙어 보인다.</para>
-        /// </summary>
-        public static Image AddSoftShadowCircle(Transform parent, string name, float diameter,
-            float feather, Color color, Vector2 center = default)
-        {
-            var go = new GameObject(name, typeof(RectTransform), typeof(Image));
-            go.transform.SetParent(parent, false);
-            var rt = go.GetComponent<RectTransform>();
-            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
-
-            float box = diameter + Mathf.Max(0f, feather) * 2f;
-            rt.sizeDelta = new Vector2(box, box);
-            rt.anchoredPosition = center;
-
-            var image = go.GetComponent<Image>();
-            image.sprite = SoftShadowCircle(box > 0.0001f ? diameter / box : 1f);
-            image.type = Image.Type.Simple;   // 정사각이므로 통째로 늘려도 원이 유지된다.
-            image.color = color;
-            image.raycastTarget = false;
-            return image;
-        }
-
         // ====================================================================================
         // ★ 유리(glass) 프리미티브 3종 — docs/UX_FLOW.md 34-2 (2026-08-31)
         // ====================================================================================
@@ -1079,8 +777,8 @@ namespace StickMate.Interaction
         //   (a) 뒤가 살짝 비침      → 알파
         //   (b) 위쪽이 더 밝음      → 세로 시인(sheen)          ← VerticalGradientFill
         //   (c) 가장자리 얇은 밝은 선 → 상단 1px 하이라이트 + 보더
-        //   (d) 바닥에서 떠 있음    → 그림자 2겹(AddShadow가 이미 2겹이다)
-        // 넷 중 셋을 알파와 1px 선으로 만들 수 있으므로 블러 없이도 유리로 읽힌다.
+        //   (d) 바닥에서 떠 있음    → 그림자                    ★ 2026-09-02 사용자 지시로 삭제됨
+        // 이제 (c)만 남는다 — 그래도 유리로 읽히는지는 사용자 판정 사항이고, 되살리려면 위 제거 노트를 볼 것.
         // 셰이더 0건 / 렌더텍스처 0건 / 머티리얼 0건 — 이 파일의 기존 규약 그대로다.
 
         private static readonly Dictionary<int, Sprite> _gradientCache = new Dictionary<int, Sprite>();
@@ -1160,14 +858,12 @@ namespace StickMate.Interaction
         /// 중심이 밝고 가장자리로 <b>제곱 감쇠</b>하는 원. 다이얼 링 블룸/코너 광원에 쓴다.
         ///
         /// <para><b>왜 선형이 아니라 제곱인가</b>: 선형 감쇠는 가장자리에서 알파가 갑자기 끊겨
-        /// "원반"으로 보인다. 제곱이면 바깥이 길게 사라져 <b>발광</b>으로 읽힌다. 이건 이미
-        /// <see cref="AddShadow"/>가 겪은 것과 같은 문제다.</para>
+        /// "원반"으로 보인다. 제곱이면 바깥이 길게 사라져 <b>발광</b>으로 읽힌다. 삭제된 그림자
+        /// 스프라이트도 같은 문제를 겪었다(그쪽은 smoothstep으로 풀었다).</para>
         ///
-        /// <para>★ 2026-09-01 정정: 이 자리에 있던 "그림자 쪽은 9-슬라이스라 이 방식을 쓸 수 없어
-        /// 알파 한 겹으로 타협했다"는 문장은 <b>틀렸고, 그 오해가 실제로 회귀를 낳았다</b>(사용자
-        /// 신고 "창이 두 겹으로 보인다"). 9-슬라이스가 막는 것은 "가운데가 늘어나는" 램프뿐이고,
-        /// 램프를 <b>보더 안</b>에 가두면 감쇠와 9-슬라이스는 함께 성립한다 —
-        /// <see cref="SoftShadowFill"/>이 그 방법이다.</para>
+        /// <para>★ 램프를 9-슬라이스에 태워야 한다면 "가운데가 늘어나는" 부분만 피하면 된다 — 램프를
+        /// <b>보더 안</b>에 가두면 감쇠와 9-슬라이스는 함께 성립한다. 2026-09-01의 그림자 스프라이트가
+        /// 그 방법을 썼고, 그 코드는 2026-09-02 그림자 제거와 함께 사라졌다(필요하면 그 커밋 참조).</para>
         /// </summary>
         public static Sprite RadialGlow()
         {
@@ -1238,8 +934,7 @@ namespace StickMate.Interaction
         /// <param name="body">본체 표면 — 호출부가 색을 다시 칠할 대상. <b>알파는 1로 유지할 것.</b></param>
         public static RectTransform AddGlassPanel(Transform parent, string name, int radius, out Image body)
         {
-            RectTransform container = AddOpaquePanel(parent, name, radius, GlassShadowSpread,
-                GlassShadowOffset, out body);
+            RectTransform container = AddOpaquePanel(parent, name, radius, out body);
 
             // 유리는 큰 창과 달리 바탕이 클릭을 먹지 않는다 — 호버 패널/카드는 전역 폴링과 차단막이
             // 클릭을 처리하고, uGUI 레이캐스트까지 이 판이 가로채면 두 경로가 같은 클릭을 다툰다.
@@ -1265,38 +960,32 @@ namespace StickMate.Interaction
             return container;
         }
 
-        /// <summary>유리 패널의 그림자 — 34-2가 정한 값(스프레드 14 / 아래로 6). 큰 창보다 넓게 뜬다.</summary>
-        private const float GlassShadowSpread = 14f;
-
-        private static readonly Vector2 GlassShadowOffset = new Vector2(0f, -6f);
-
         /// <summary>
         /// ★ <b>큰 창</b>(캐릭터 창 / 팝오버)의 바탕 — 2026-08-31 "뒤가 비쳐 보인다" 회귀 수정.
         ///
-        /// <para><see cref="AddGlassPanel"/>과 <b>겹 순서 규약이 같고</b>(그림자 → 본체 → 보더) 차이는
-        /// 딱 둘이다: 본체가 <b>α=1</b>이고, 유리 연출(시인/하이라이트)이 없다. 큰 창은 글을 읽는
-        /// 표면이라 위쪽만 밝아지는 시인이 오히려 본문 대비를 흔든다.</para>
+        /// <para><see cref="AddGlassPanel"/>과 <b>겹 순서 규약이 같고</b>(본체 → 보더) 차이는 딱 둘이다:
+        /// 본체가 <b>α=1</b>이고, 유리 연출(시인/하이라이트)이 없다. 큰 창은 글을 읽는 표면이라
+        /// 위쪽만 밝아지는 시인이 오히려 본문 대비를 흔든다.</para>
         ///
         /// <para><b>반환값은 컨테이너</b>(그림 없는 <see cref="RectTransform"/>)다. 호출부는 이 사각형의
         /// 크기/위치만 정하고 내용물을 여기에 붙이면 된다. <b>컨테이너에 Graphic을 붙이지 말 것</b> —
-        /// 그 순간 그림자가 본체 위로 올라간다(<see cref="AddShadow"/>가 Error로 막는다).</para>
+        /// 그 순간 본체가 그 그림 위에 그려져 겹 순서가 뒤집힌다.</para>
         /// </summary>
         /// <param name="body">본체 표면. 클릭을 받는 판이기도 하다(창 바탕을 눌러도 뒤로 새지 않게).</param>
         public static RectTransform AddOpaquePanel(Transform parent, string name, int radius,
-            float shadowSpread, Vector2 shadowOffset, out Image body)
+            out Image body)
         {
             var go = new GameObject(name, typeof(RectTransform));
             go.transform.SetParent(parent, false);
             var container = go.GetComponent<RectTransform>();
 
-            // (1) 그림자 2겹 — 컨테이너에 Graphic이 없으므로 <b>본체보다 먼저</b> 그려진다(= 뒤에 깔린다).
-            AddShadow(container, name + "Shadow", radius, shadowSpread, shadowOffset);
-
-            // (2) 본체 — α=1. 투명 오버레이에서 창 알파를 1로 만드는 유일한 겹이다.
+            // (1) 본체 — α=1. 투명 오버레이에서 창 알파를 1로 만드는 유일한 겹이다.
             body = AddSurface(container, name + "Body", PanelSurface, radius);
             Stretch(body.rectTransform);
 
-            // (3) 보더 — <b>미리 합성한 불투명색</b>으로 그린다.
+            // (2) 보더 — <b>미리 합성한 불투명색</b>으로 그린다. ★ 2026-09-02에 그림자를 전부 없앤
+            //   뒤로는 이 1px 선이 <b>어두운 바탕화면에서 창 실루엣을 만드는 유일한 겹</b>이다
+            //   (위 제거 노트의 대비 실측 참고). 색을 낮출 때는 그 사실을 먼저 고려할 것.
             //   PanelBorder(흰색 α0.16)를 그대로 얹으면 그 1px 위에서만 창 알파가 0.87로 내려간다
             //   (파일 머리 "알파 채널의 법칙" (2)). 보더 아래에 있는 것은 <b>항상 방금 그린 불투명 본체</b>
             //   이므로, 같은 블렌드 결과를 미리 계산해 α=1로 칠하면 <b>색은 완전히 같고 알파만 1로 남는다</b>.

@@ -214,10 +214,9 @@ namespace StickMate.Tests.PlayMode
             {
                 Graphic g = order[i];
                 if (g is Text) continue;                 // 글자는 획 가장자리에서만 알파가 낀다(구조상 불가피).
-                // 그림자는 <b>일부러</b> 반투명이다 — 창 <b>바깥</b>에 깔려 데스크톱을 어둡게 물들이는 것이
-                // 그 목적이고, 창 본체(α=1)가 그 위에 그려지므로 창 안쪽 알파에는 영향이 없다
-                // (AddOpaquePanel의 겹 순서: 그림자 → 본체 → 보더).
-                if (g.name.Contains("Shadow")) continue;
+                // ★ 2026-09-02 — 여기 있던 "그림자는 일부러 반투명이니 건너뛴다" 예외를 <b>없앴다</b>.
+                //   UI 그림자를 전부 삭제했으므로 예외 대상이 존재하지 않고, 예외가 없어야 이 검사가
+                //   "창에 반투명 겹이 하나도 없다"를 <b>빠짐없이</b> 말한다.
                 float a = g.color.a;
                 if (a <= 0.001f) continue;               // 완전 투명 히트 영역 — 프레임버퍼를 건드리지 않는다.
                 if (a >= 0.999f) continue;

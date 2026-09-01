@@ -38,17 +38,15 @@ namespace StickMate.Tests.PlayMode
     /// 이 파일이 지키는 절대 조건
     /// ============================================================================
     ///  ① 큰 창 바탕 토큰 <see cref="UiChrome.PanelSurface"/>의 알파는 <b>정확히 1</b>이다.
-    ///  ② 정보창 패널 컨테이너에는 <b>Graphic이 없다</b>(있으면 그림자가 본체 위로 올라간다).
+    ///  ② 정보창 패널 컨테이너에는 <b>Graphic이 없다</b>(있으면 본체가 그 위에 그려져 겹 순서가 뒤집힌다).
     ///  ③ 패널 전체를 덮는 겹만 모아 위 공식으로 합성한 <b>창 알파가 1</b>이다
     ///     (= 뒤 창이 단 1%도 비치지 않는다).
     ///  ④ (네거티브 컨트롤) 옛 구조를 그대로 다시 만들면 ③이 <b>실제로 깨진다</b> —
     ///     이 테스트가 이 버그를 진짜로 잡는다는 증명이다.
-    ///  ⑤ <see cref="UiChrome.AddShadow"/>는 Graphic이 붙은 부모에 그림자를 달면 <b>Error</b>를 남긴다
-    ///     (같은 실수를 다음 창에서 반복하지 못하게 하는 구조적 잠금).
-    ///     <b>2026-08-31 2차에 Warning → Error로 승격했다</b> — 마지막 위반 호출부였던
-    ///     <c>PopoverPanel.cs</c>가 <see cref="UiChrome.AddOpaquePanel"/>로 정리되어 제품 코드의
-    ///     위반이 0건이 됐기 때문이다. 이제 이 조건에 걸리면 Unity 테스트 러너가 <b>예상 못한 Error</b>로
-    ///     그 테스트를 실패시킨다 = 이 버그 클래스는 CI에서 멈춘다.
+    ///  ⑤ <b>(삭제됨, 2026-09-02)</b> 여기에 "그림자를 Graphic 부모에 달면 Error" 구조적 잠금이 있었다.
+    ///     사용자 지시로 UI 그림자를 전부 없애면서 <see cref="UiChrome"/>의 그림자 API 자체가 사라졌고,
+    ///     함께 지웠다. 같은 실수(반투명 겹을 본체 위에 얹기)는 ③의 <b>실측</b>이 여전히 잡는다 —
+    ///     구조적 잠금보다 늦게 잡지만, 잡는 것은 같은 결함이다.
     ///
     /// ============================================================================
     /// 측정 방식 — 프로덕션 공식을 베끼지 않는다
@@ -254,8 +252,9 @@ namespace StickMate.Tests.PlayMode
         {
             yield return SetUpOpenWindow();
 
-            // 커밋 b6755f4 시점의 구조를 손으로 다시 만든다(UiChrome.AddShadow를 쓰면 이제 경고를
-            // 남기므로, 그 방어막이 없다고 가정한 <b>순수한 옛 계층</b>을 직접 세운다).
+            // 커밋 b6755f4 시점의 구조를 손으로 다시 만든다. ★ 2026-09-02에 UiChrome의 그림자 API가
+            // 통째로 삭제됐으므로, 이 컨트롤이 재현하는 <b>옛 계층</b>은 이제 여기 로컬 코드가 유일하다.
+            // (이 파일이 잡으려는 결함은 "그림자"가 아니라 <b>반투명 겹이 본체 위에 오는 구조</b>다.)
             _syntheticRoot = new GameObject("SyntheticOldPanelCanvas", typeof(Canvas), typeof(CanvasScaler));
             var canvas = _syntheticRoot.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -298,30 +297,7 @@ namespace StickMate.Tests.PlayMode
             image.raycastTarget = false;
         }
 
-        // ============================================================================
-        // (4) 구조적 잠금 — 같은 실수를 다음 창에서 반복하면 즉시 <b>Error</b>로 멈춘다
-        // ============================================================================
-        [Test]
-        public void AddShadowShoutsWhenItWouldBeDrawnOnTopOfTheParentSurface()
-        {
-            var root = new GameObject("ShadowGuardProbe", typeof(Canvas));
-            try
-            {
-                Image surface = UiChrome.AddSurface(root.transform, "Surface", UiChrome.PanelSurface, UiChrome.RadiusPanel);
-
-                LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("uGUI는 부모를 자식보다 먼저 그리므로"));
-                UiChrome.AddShadow(surface.rectTransform, "Shadow", UiChrome.RadiusPanel, 8f, new Vector2(0f, -4f));
-
-                // 그림 없는 컨테이너에 달면 아무 소리도 나지 않아야 한다(오탐 방지 — 정상 사용을 막으면 안 된다).
-                var container = new GameObject("Container", typeof(RectTransform));
-                container.transform.SetParent(root.transform, false);
-                UiChrome.AddShadow(container.transform, "Shadow", UiChrome.RadiusPanel, 8f, new Vector2(0f, -4f));
-                LogAssert.NoUnexpectedReceived();
-            }
-            finally
-            {
-                Object.DestroyImmediate(root);
-            }
-        }
+        // ★ (4) 구조적 잠금(UiChrome.AddShadow의 Error 가드)은 2026-09-02 그림자 전면 삭제와 함께
+        //   사라졌다 — 가드가 지키던 함수가 없다. 파일 머리 ⑤ 참고.
     }
 }

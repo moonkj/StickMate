@@ -803,13 +803,11 @@ namespace StickMate.Interaction
             _scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
             ApplyCanvasScaleFactor();
 
-            // 그림 없는 컨테이너 + [그림자 → 본체(α1) → 보더] 형제 배치. 컨테이너에 Graphic을 붙이면
-            // 그림자가 본체 위로 올라가 창 알파가 무너진다(InfoWindowPanelOpacityTests가 잠근 규칙).
-            // 번짐 22 / 오프셋 -7. ★ 2026-09-01: 옛 값은 (18, -18)로 <b>오프셋이 번짐과 같았다</b> —
-            // 감쇠 그림자에서 그 비율은 패널 실루엣과 어긋난 자리에 알파 1짜리 코어를 통째로 드러내
-            // 다시 "두 번째 창"이 된다(UiChrome.AddShadow의 offset 문서).
+            // 그림 없는 컨테이너 + [본체(α1) → 보더] 형제 배치. 컨테이너에 Graphic을 붙이면 본체가
+            // 그 위에 그려져 겹 순서가 뒤집힌다(InfoWindowPanelOpacityTests가 잠근 규칙).
+            // ★ 2026-09-02 — 그림자 겹은 전부 삭제됐다(사용자 지시). 창 둘레는 보더 1px뿐이다.
             _panel = UiChrome.AddOpaquePanel(canvasGo.transform, "SettingsPanel", UiChrome.RadiusPanel,
-                22f, new Vector2(0f, -7f), out Image panelImage);
+                out Image panelImage);
             _panel.anchorMin = _panel.anchorMax = _panel.pivot = new Vector2(0.5f, 0.5f);
             _panel.anchoredPosition = Vector2.zero;
             _panel.sizeDelta = new Vector2(PanelWidth, PanelHeight);

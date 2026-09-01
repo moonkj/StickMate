@@ -5,6 +5,7 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
+using StickMate.Dialogue;
 using StickMate.Platform;
 using UnityEngine;
 
@@ -259,11 +260,37 @@ namespace StickMate.Tests.EditMode
             Assert.Greater(end, decl, $"{LogPrefix} ResolveFontSize() 본문 끝을 찾지 못했습니다.");
             string body = src.Substring(decl, end - decl);
 
-            StringAssert.Contains(nameof(UiGlyphScalePolicy) + "." + nameof(UiGlyphScalePolicy.SnapPoints), body,
+            // ★ 2026-09-02 — 요구를 <b>UiGlyphScalePolicy.SnapPoints 호출</b>에서
+            //   <b>하한을 아는 스냅</b>으로 바꾼다(UX_FLOW §44-2).
+            //   이유: 종전 요구는 <b>결함을 잠그고 있었다</b>. UiGlyphScalePolicy.SnapPoints는 하한을
+            //   모르기 때문에 배율 1.25 / 1.75에서 방금 건 하한 13pt를 <b>12pt로 내렸다</b> —
+            //   즉 이 감사를 통과하는 유일한 배선이 곧 신고된 결함이었다. 감사는 "그 함수를 불러라"가
+            //   아니라 "그 규칙을 거쳐라"를 요구해야 한다.
+            string snapCall = nameof(DialogueBubbleRenderer.SnapPointsNotBelow) + "(";
+            StringAssert.Contains(snapCall, body,
                 $"{LogPrefix} ★ 말풍선 폰트 크기가 스냅 정책을 거치지 않고 반환됩니다. 이 값은 " +
                 "(사용자 설정) × (캐릭터 배율) × (만화 배율)의 런타임 곱이라 어떤 홀수든 나올 수 있고, " +
                 "정적 상수로는 막을 수 없습니다 — 반드시 마지막에 " +
-                $"{nameof(UiGlyphScalePolicy)}.{nameof(UiGlyphScalePolicy.SnapPoints)}로 스냅하세요.");
+                $"{nameof(DialogueBubbleRenderer)}.{nameof(DialogueBubbleRenderer.SnapPointsNotBelow)}" +
+                "(하한을 아는 스냅)로 스냅하세요.");
+
+            // ★ 그리고 그 스냅이 <b>규칙을 다시 구현하지 않았는지</b>까지 본다 — 규칙이 두 벌이 되면
+            //   반드시 갈라진다(이 저장소가 반복해 겪은 사고). 사실 조회는 UiGlyphScalePolicy만 한다.
+            int snapDecl = src.IndexOf("int " + nameof(DialogueBubbleRenderer.SnapPointsNotBelow) + "(",
+                StringComparison.Ordinal);
+            Assert.Greater(snapDecl, 0, $"{LogPrefix} {nameof(DialogueBubbleRenderer.SnapPointsNotBelow)} " +
+                "선언을 찾지 못했습니다 — 이름이 바뀌었다면 이 감사도 함께 고쳐야 합니다(허위 통과 방지).");
+            int snapEnd = src.IndexOf("\n        }", snapDecl, StringComparison.Ordinal);
+            Assert.Greater(snapEnd, snapDecl, $"{LogPrefix} 스냅 함수 본문 끝을 찾지 못했습니다.");
+            StringAssert.Contains(nameof(UiGlyphScalePolicy) + ".", src.Substring(snapDecl, snapEnd - snapDecl),
+                $"{LogPrefix} ★ 하한을 아는 스냅이 {nameof(UiGlyphScalePolicy)}를 한 번도 묻지 않습니다 — " +
+                "\"이 배율에서 잔차 0인 pt는 무엇인가\"라는 규칙을 <b>복사</b>한 것입니다. " +
+                "규칙이 두 벌이 되면 다음 라운드에 반드시 한 벌만 고쳐집니다.");
+
+            // 네거티브 컨트롤 — 하한이 실제로 인자로 넘어가는가(상수 0을 넘기면 감사가 무의미해진다).
+            StringAssert.Contains("floor", body,
+                $"{LogPrefix} 스냅에 하한이 넘어가지 않습니다 — 하한을 아는 스냅에 하한을 안 주면 " +
+                "종전 결함(하한이 스냅에 뚫림)이 그대로 돌아옵니다.");
         }
 
         // ============================================================================

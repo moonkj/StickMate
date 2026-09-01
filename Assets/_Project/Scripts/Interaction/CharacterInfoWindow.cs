@@ -2331,7 +2331,7 @@ namespace StickMate.Interaction
             //   날씨 위젯의 파란 그라데이션과 24°가 그대로 읽힘).
             //
             //   예전 구조는 이랬다:  InfoPanel(Image, α0.96)
-            //                          └ PanelShadow(검정 α0.55) / PanelShadowAmbient(검정 α0.28)
+            //                          └ 그림자 2겹(검정 α0.55 / α0.28)
             //   그런데 uGUI는 <b>부모 Graphic을 자식보다 먼저</b> 그린다. SetAsFirstSibling()은 형제
             //   순서만 정할 뿐이라, 두 그림자는 <b>패널 본체 위</b>에 얹혀 있었다. 그리고 투명 오버레이의
             //   프레임버퍼 알파는 UI/Default의 `Blend SrcAlpha OneMinusSrcAlpha`가 알파 채널에도 그대로
@@ -2340,13 +2340,14 @@ namespace StickMate.Interaction
             //   = 유저의 데스크톱이 <b>40.5%</b> 비쳐 들었다. 어두운 팔레트(34-1)에서는 가릴 밝기가
             //   없어 체감 밝기가 549% 튀었고, 그래서 밝은 팔레트 시절에는 같은 결함이 보이지 않았다.
             //
-            //   이제 패널은 <b>그림 없는 컨테이너</b>이고 [그림자 → 본체(α1) → 보더]가 형제로 놓인다.
+            //   이제 패널은 <b>그림 없는 컨테이너</b>이고 [본체(α1) → 보더]가 형제로 놓인다.
             //   _panel이 여전히 "움직이고 크기가 정해지는 사각형"이라는 계약은 그대로다 —
             //   드래그/클램프/히트테스트/차단막 코드는 한 줄도 바뀌지 않는다.
-            // 번짐 22 / 오프셋 -7 — 설정창과 같은 값(두 창은 같은 위계라 그림자도 같아야 한다).
-            // 옛 (18, -18)이 왜 틀렸는지는 UiChrome.AddShadow의 offset 문서에 있다.
+            //
+            // ★ 2026-09-02 — 그림자 겹은 사라졌다(사용자 지시 "캐릭터창 둘레로도 그림자들이 있는데
+            //   다 없애줘 깔끔하게"). 이 창 둘레를 만드는 것은 이제 보더 1px뿐이다.
             _panel = UiChrome.AddOpaquePanel(canvasGo.transform, "InfoPanel", UiChrome.RadiusPanel,
-                22f, new Vector2(0f, -7f), out Image panelImage);
+                out Image panelImage);
             // 33-7-7: 화면 중앙 모달. 배경 딤은 깔지 않는다(클래스 문서 참고).
             _panel.anchorMin = _panel.anchorMax = _panel.pivot = new Vector2(0.5f, 0.5f);
             _panel.anchoredPosition = Vector2.zero;

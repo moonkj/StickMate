@@ -390,9 +390,11 @@ namespace StickMate.Tests.PlayMode
         {
             yield return null;
 
-            // 겹 순서는 <b>옳게</b> 세운다(컨테이너에 Graphic 없음, 그림자가 본체보다 먼저).
-            // 즉 여기서 알파가 무너진다면 원인은 순서가 아니라 <b>알파값 그 자체</b>다 — 옛 호버 패널의
-            // 결함이 팝오버/정보창과 <b>다른 종류</b>였음을 이 컨트롤이 분리해 보여 준다.
+            // 겹 순서는 <b>옳게</b> 세운다(컨테이너에 Graphic 없음). 즉 여기서 알파가 무너진다면 원인은
+            // 순서가 아니라 <b>알파값 그 자체</b>다 — 옛 호버 패널의 결함이 팝오버/정보창과 <b>다른
+            // 종류</b>였음을 이 컨트롤이 분리해 보여 준다.
+            // ★ 2026-09-02: 옛 재현에 있던 그림자 겹은 뺐다(그림자 API가 삭제됐고, 이 컨트롤이 잡으려는
+            //   것은 그림자가 아니라 α0.86 본체다 — 없어도 판정은 그대로 성립한다).
             _syntheticRoot = new GameObject("SyntheticOldGlassCanvas", typeof(Canvas), typeof(CanvasScaler));
             _syntheticRoot.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
 
@@ -402,8 +404,6 @@ namespace StickMate.Tests.PlayMode
             container.anchorMin = container.anchorMax = container.pivot = new Vector2(0.5f, 0.5f);
             container.anchoredPosition = Vector2.zero;
             container.sizeDelta = new Vector2(240f, 392f);
-
-            UiChrome.AddShadow(container, "Shadow", UiChrome.RadiusPanel, 14f, new Vector2(0f, -6f));
 
             const float OldGlassAlpha = 0.86f;
             Image body = UiChrome.AddSurface(container, "Body",

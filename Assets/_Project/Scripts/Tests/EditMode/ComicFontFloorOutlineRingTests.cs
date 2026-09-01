@@ -71,8 +71,10 @@ namespace StickMate.Tests.EditMode
 
             Assert.GreaterOrEqual(actual, required,
                 $"{LogPrefix} ★ 하한 {floor}pt에서 외곽선이 {actual * Retina:F3}물리픽셀입니다 — " +
-                "1픽셀에 못 미치면 GPU가 부분 커버리지로 섞어 <반투명 얼룩>이 되고, 말풍선 도형을 " +
-                "없앤 지금 그 링은 글자와 바탕화면 사이의 <유일한> 분리막입니다. " +
+                "1픽셀에 못 미치는 막은 <위상 의존성>으로 실패합니다 — 대비는 11:1로 또렷하지만, " +
+                "막의 경계가 픽셀 격자 어디에 떨어지느냐에 따라 같은 획인데도 한 픽셀에 뭉치거나 " +
+                "두 픽셀로 갈라지고, 블록이 기울어 있어 획을 따라 밝아졌다 어두워졌다 합니다. " +
+                "말풍선 도형을 없앤 지금 이 막은 글자와 바탕화면 사이의 <유일한> 분리막입니다. " +
                 $"처방: {nameof(DialogueBubbleRenderer)}.{nameof(DialogueBubbleRenderer.TextOutlineEmRatio)}를 " +
                 "키우거나(속공간 예산과 상충) 하한 유도식을 다시 보세요.");
         }
@@ -172,26 +174,54 @@ namespace StickMate.Tests.EditMode
         // (5) ★ 아직 못 고친 갭 — 러너에 "건너뜀"으로 계속 보이게 남긴다 (CLAUDE.md)
         // ========================================================================
 
+        /// <summary>
+        /// ★ 2026-09-02 <b>보류 사유를 C1에서 C2로 다시 썼다</b>(UX_FLOW §44-1 ⑦ / §44-2 ⑤).
+        ///
+        /// <para>종전 보류 사유였던 <b>C1(분리막 가시성)</b>은 이 라운드에 해소됐다 — 링이 서브픽셀로
+        /// 무너지는 배율에서는 같은 예산 전부를 한 대각선 그림자에 실어 막이 1물리픽셀을 넘긴다
+        /// (<see cref="DialogueBubbleRenderer.UseOutlineRing"/>). 그래서 C1은 아래에서 <b>실단언</b>이다.</para>
+        ///
+        /// <para>남는 것은 <b>C2(속공간 개방)</b>다. 예산은 <b>총 소모량</b>으로 정의돼 있어 한쪽에
+        /// 몰든 양쪽으로 쪼개든 속공간이 잃는 양이 같다 — 분기를 바꿔도 구멍은 <b>한 픽셀의 천분의
+        /// 일도</b> 나아지지 않는다. 유일한 해는 폰트를 더 키우는 것이고(배율 1에서 18pt 이상),
+        /// 그러면 대사 블록이 캐릭터 키의 130~157%가 되어 <b>캐릭터를 삼킨다</b> → 하지 않는다.
+        /// 분기별 검산은 <see cref="ComicShadowBranchTests"/>.</para>
+        /// </summary>
         [Test]
-        public void 배율1에서는_두_요구가_양립하지_않는다_보류()
+        public void 배율1에서는_속공간이_검증_운용점에_못_미친다_보류()
         {
             float scale = 1f;
             int floor = DialogueBubbleRenderer.ResolveMinComicFontSize(scale);
-            int need = DialogueBubbleRenderer.OutlineLegibleFontFloor(scale);
-            float got = OutlinePointsAt(floor) * scale;
+            int font = DialogueBubbleRenderer.SnapPointsNotBelow(floor, floor, scale);
 
-            if (got + 1e-4f >= DialogueBubbleRenderer.OutlineRingMinPhysicalPixels)
+            // C1 — 해소됐으므로 실단언이다(보류 사유에서 뺀다).
+            float membrane = DialogueBubbleRenderer.MembranePointsFor(font, scale) * scale;
+            Assert.GreaterOrEqual(membrane, DialogueBubbleRenderer.OutlineRingMinPhysicalPixels - 1e-4f,
+                $"{LogPrefix} ★ 배율 1의 분리막이 {membrane:F3}물리픽셀로 되돌아갔습니다 — " +
+                $"{nameof(DialogueBubbleRenderer.UseOutlineRing)} 분기가 배선에서 빠졌거나 " +
+                "하한 스냅이 하한을 다시 깨고 있습니다(둘은 독립이 아닙니다).");
+
+            // C2 — 아직 못 고친 갭.
+            float counter = DialogueBubbleRenderer.RemainingCounterPointsFor(font) * scale;
+            int verifiedFloor = DialogueBubbleRenderer.ResolveMinComicFontSize(Retina);
+            float verified = DialogueBubbleRenderer.RemainingCounterPointsFor(verifiedFloor) * Retina;
+
+            if (counter + 1e-4f >= verified)
             {
-                Assert.Pass($"{LogPrefix} 배율 1에서도 링이 {got:F3}물리px로 요구를 채웁니다 — " +
-                            "갭이 해소됐습니다. 이 테스트를 실단언으로 바꾸세요.");
+                Assert.Pass($"{LogPrefix} 배율 1의 속공간이 {counter:F3}물리px로 검증 운용점 " +
+                            $"{verified:F3}물리px을 채웁니다 — 갭이 해소됐습니다. 이 테스트를 실단언으로 " +
+                            "바꾸고 UI_SURFACE_SPEC §13.3의 'C2 미달 3칸'을 갱신하세요.");
             }
 
-            Assert.Ignore($"{LogPrefix} [보류] 배율 1(Windows 100%·비Retina)에서는 링 요구가 {need}pt를 " +
-                          $"부르는데 실제 하한은 {floor}pt라 링이 {got:F3}물리px에 그칩니다. " +
-                          $"{need}pt는 배율 0.35 캐릭터(화면상 약 28pt)보다 글자가 커지는 크기라 " +
-                          "신고 하나를 고치고 다른 하나를 만드는 교환입니다. " +
-                          "사용자 지시(2026-09-01 \"윈도우는 일단 미루고 맥만\")로 보류 — " +
-                          "해소하려면 그 환경 전용 폰트 정책(또는 외곽선을 링이 아닌 그림자로 바꾸기)이 필요합니다.");
+            Assert.Ignore($"{LogPrefix} [보류 · C2 속공간] 배율 1.00(Windows 100%·비Retina)에서 " +
+                          $"{font}pt 글자의 남는 속공간이 {counter:F3}물리픽셀로, 검증 운용점" +
+                          $"(배율 {Retina:F2} · {verifiedFloor}pt)의 {verified:F3}물리픽셀에 못 미칩니다. " +
+                          "배율 1.25 / 1.50도 같은 이유로 미달입니다. " +
+                          "★ C1(분리막 1물리픽셀)은 이 라운드에 그림자 분기로 해소됐고 위에서 실단언으로 " +
+                          "지킵니다 — 남은 것은 C2뿐입니다. " +
+                          "C2의 유일한 해는 폰트를 더 키우는 것인데(배율 1에서 18pt 이상), 그러면 대사 " +
+                          "블록이 캐릭터 키의 130~157%가 되어 캐릭터를 삼킵니다(UX_FLOW §44-2 ③ 검산). " +
+                          "예산이 <총 소모량>이라 분기를 어떻게 바꿔도 이 값은 나아지지 않습니다.");
         }
     }
 }

@@ -18,7 +18,11 @@ namespace StickMate.Interaction
     ///    자동접힘 정지)이 <b>전부 공짜로 상속된다</b>.
     /// ② 전체 화면을 덮는 <c>ScreenScrim</c>이 없다 — 이 창은 하루에 여러 번 열리는 런처이고, 열 때마다
     ///    바탕화면을 어둡게 덮는 것은 비침해 원칙(CLAUDE.md 2)에 대한 과청구다.
-    /// ③ 명령을 내린 뒤 <b>봐야 할 것은 캐릭터</b>다. 그래서 성공하면 창이 스스로 비켜준다(아래).
+    /// ③ 명령을 내린 뒤 <b>봐야 할 것은 캐릭터</b>다. 다만 그것이 "창이 스스로 닫힌다"를 뜻하지는
+    ///    <b>않는다</b> — 2026-09-02 사용자 신고("활쏘기 한번 누르면 메뉴가 사라져버리는데 유지되어야함")
+    ///    이후 <b>성공해도 창은 남는다</b>. 창은 톱니 자리에 뜨고 연출은 캐릭터 자리에서 일어나며 둘 다
+    ///    사용자가 옮길 수 있다(근거 전문: <see cref="OnCommandClicked"/>). 비켜야 할 때는
+    ///    <b>사용자가</b> 창 바깥 아무 곳이나 한 번 누르면 된다.
     ///
     /// ============================================================================
     /// ★★ 원칙 1 — "요청 안 한 연출 금지"의 <b>정확히 반대편</b>이다 (36-8)
@@ -103,9 +107,32 @@ namespace StickMate.Interaction
         public const float ShakeSeconds = 0.18f;
         public const float ShakeAmplitudePoints = 3f;
 
-        /// <summary>성공 후 창이 비켜주기까지. 명령을 내린 목적은 "보는 것"이라 창이 시야를 덮고 있으면
-        /// 목적이 실패한다(36-7).</summary>
+        /// <summary>
+        /// ★ 2026-09-02 사용자 신고 — "행동 메뉴에서 활쏘기 한번 누르면 메뉴가 사라져버리는데
+        /// 유지되어야함". <b>명령 타일 실행은 더 이상 이 창을 닫지 않는다</b>(아래
+        /// <see cref="OnCommandClicked"/> 문서에 근거 전문).
+        ///
+        /// <para>그래서 이 지연은 이제 <b>[돌아와!] 칩 하나</b>만 쓴다 — 그쪽은 "명령을 고르는 목록"이
+        /// 아니라 가출이라는 <b>특정 상태에서만 존재하는 일회성 응답</b>이고, 누르는 즉시 칩 자신이
+        /// 사라져 창에 남을 이유가 없다.</para>
+        /// </summary>
         public const float SuccessCloseDelaySeconds = 0.12f;
+
+        /// <summary>
+        /// 명령이 <b>접수됐다</b>는 순간 신호 — 눌린 타일 바닥이 액센트로 한 번 밝아졌다 꺼진다.
+        ///
+        /// <para>★ 왜 필요한가: 종전에는 <b>창이 닫히는 것</b>이 곧 "눌렸다"는 신호였다. 창을 유지하기로
+        /// 한 이상 그 신호가 통째로 사라진다. 대부분의 명령은 실행 즉시 상호배제 락이 잡혀 여섯 타일이
+        /// 전부 "지금 ○○ 중이에요"로 바뀌므로 화면이 크게 변하지만, <b>[말 걸기]는 그렇지 않다</b> —
+        /// <c>AppControlDirector.ForceSayNow</c>가 <b>같은 상태로 재진입</b>할 뿐이라 가용성이 Ready
+        /// 그대로고, 창에는 아무 변화도 남지 않는다. 그 한 칸 때문에 "눌렀는데 반응이 없다"가 생긴다.</para>
+        ///
+        /// <para>★ 이 플래시는 <b>결과를 말하지 않는다</b> — "접수했다"만 말한다. 결과(지금 무엇을 하는
+        /// 중인가)는 여전히 상태에서 파생된 타일 문구와 헤더 캡션이 말한다(원칙 1: 텍스트는 확정된
+        /// 상태에서만 나온다). 실패 흔들림과 <b>같은 0.18초 박자</b>를 쓴다 — 같은 클릭에 대한 응답이
+        /// 성공/실패에 따라 다른 속도로 오면 사용자는 그것을 리듬이 아니라 지연으로 읽는다.</para>
+        /// </summary>
+        public const float AcceptFlashSeconds = ShakeSeconds;
 
         // ==================== 명령 정의 ====================
 
@@ -150,10 +177,23 @@ namespace StickMate.Interaction
             public string Reason;        // 불가 사유(미리 만들어진 문자열 — 매 폴링 할당 금지).
             public float ShakeTimer = -1f;
             public float NoticeTimer = -1f;
+            public float AcceptTimer = -1f;   // 접수 플래시(-1 = 꺼짐).
             public float BaseX;
         }
 
         private readonly TileView[] _tiles = new TileView[CommandCount];
+
+        /// <summary>평소 타일 바닥 — <b>칠하지 않음</b>(그룹 카드가 그대로 비친다). 팔레트 값이 아니라
+        /// "채움 없음"이라 <see cref="UiChrome"/> 토큰이 아니다. 접수 플래시가 여기로 되돌아오므로
+        /// 값이 두 벌이 되지 않게 한 곳에 둔다.</summary>
+        private static readonly Color IdleTileSurface = new Color(0f, 0f, 0f, 0f);
+
+        /// <summary>접수 플래시의 처음과 끝. <b>알파만 움직인다</b> — 투명한 검정으로 보간하면 사라지는
+        /// 동안 색이 탁해져 "밝아졌다 꺼진다"가 "어두워졌다 꺼진다"로 읽힌다. 색상값은
+        /// <see cref="UiChrome.AccentSurface"/> 하나에서만 온다(팔레트 사본 금지).</summary>
+        private static readonly Color AcceptFlashPeak = UiChrome.AccentSurface;
+        private static readonly Color AcceptFlashEnd = new Color(
+            UiChrome.AccentSurface.r, UiChrome.AccentSurface.g, UiChrome.AccentSurface.b, 0f);
 
         private AppControlDirector _appControl;
         private ArcheryDirector _archery;
@@ -173,6 +213,9 @@ namespace StickMate.Interaction
 
         private bool _quitArmed;
         private float _quitArmTimer;
+
+        /// <summary>닫기 예약(-1 = 없음). <b>[돌아와!] 칩만</b> 세운다 — 명령 타일은 2026-09-02부터
+        /// 창을 닫지 않는다.</summary>
         private float _closeDelayTimer = -1f;
 
         protected override Vector2 PanelSizePoints => new Vector2(Width, Height);
@@ -186,6 +229,19 @@ namespace StickMate.Interaction
 
         /// <summary>타일에 지금 붙어 있는 불가 사유(가능하면 null).</summary>
         public string CommandReason(Command command) => _tiles[(int)command].Reason;
+
+        /// <summary>이 타일이 지금 <b>접수 플래시</b> 중인가(진단/테스트 창구). 창이 닫히지 않게 된 뒤
+        /// "눌렸다"를 말하는 유일한 신호라, 이것이 죽으면 그대로 무반응 버튼이 된다.</summary>
+        public bool IsCommandAcceptFlashing(Command command) => _tiles[(int)command].AcceptTimer >= 0f;
+
+        /// <summary>이 타일이 지금 <b>거절 흔들림</b> 중인가(진단/테스트 창구).</summary>
+        public bool IsCommandRejectShaking(Command command) => _tiles[(int)command].ShakeTimer >= 0f;
+
+        /// <summary>성공 실행이 <b>창 닫기를 예약했는가</b>(진단/테스트 창구).
+        /// <para>★ 네거티브 컨트롤용이다: "닫히지 않는다"를 <c>IsOpen</c>만으로 재면 닫기 예약이 서 있어도
+        /// 관측 시점이 <see cref="SuccessCloseDelaySeconds"/>보다 이르면 <b>초록으로 보인다</b>. 예약 자체가
+        /// 서지 않았음을 직접 본다.</para></summary>
+        public bool IsCloseScheduled => _closeDelayTimer >= 0f;
 
         /// <summary>타일의 화면 사각형(Unity 스크린 픽셀) — 테스트가 실제 클릭 경로로 누른다.</summary>
         public Rect CommandScreenRect(Command command) => ScreenRectOf(_tiles[(int)command].Rect);
@@ -314,7 +370,7 @@ namespace StickMate.Interaction
                 UiChrome.PlaceTopLeft(divider.rectTransform, CardPadding, y, RowWidth, 1f);
             }
 
-            view.Surface = UiChrome.AddSurface(card, "Tile" + index, new Color(0f, 0f, 0f, 0f), UiChrome.RadiusChip);
+            view.Surface = UiChrome.AddSurface(card, "Tile" + index, IdleTileSurface, UiChrome.RadiusChip);
             view.Rect = view.Surface.rectTransform;
             UiChrome.PlaceTopLeft(view.Rect, CardPadding, y, RowWidth, RowHeight);
             view.BaseX = view.Rect.anchoredPosition.x;
@@ -415,10 +471,35 @@ namespace StickMate.Interaction
         // ==================== 동작 ====================
 
         /// <summary>
-        /// 성공하면 창이 비켜주고, 실패하면 창이 남아서 이유를 말한다(36-7).
+        /// <b>성공해도 실패해도 창은 남는다.</b> 실패는 그 자리에서 이유를 말하고(36-7), 성공은 접수
+        /// 플래시를 한 번 내고 이어서 <b>상태에서 파생된</b> 문구로 스스로를 갱신한다.
         ///
-        /// 실패 시 <b>닫지 않는 것</b>이 핵심이다 — 창이 닫히면서 아무 일도 안 일어나면 사용자는 자기가
-        /// 잘못 눌렀다고 생각하고 같은 실패를 반복한다. 조용한 실패는 금지다.
+        /// <para>★★ 2026-09-02 사용자 신고 — "행동 메뉴에서 활쏘기 한번 누르면 메뉴가 사라져버리는데
+        /// 유지되어야함". 종전에는 성공 시 창과 부채꼴을 함께 접었고, 그 사유가 "명령을 내린 목적은
+        /// 보는 것이라 창이 시야를 덮으면 목적이 실패한다"였다. <b>그 전제를 실측으로 검증했고 성립하지
+        /// 않았다</b>:</para>
+        ///
+        /// <para>(1) <b>연출은 캐릭터가 서 있는 자리에서 일어나고, 이 창은 톱니가 있는 자리에 뜬다.</b>
+        /// 둘은 서로 독립이며 <b>둘 다 사용자가 옮길 수 있다</b>(캐릭터는 드래그, 톱니는 자기 자리를
+        /// 저장한다). 활쏘기는 발판 위 <b>가로</b> 밴드다 — 과녁 top이 정확히 신장 1H이다
+        /// (<see cref="ArcheryDirector.TargetCenterHeight"/> = H − r, 반지름 r = 0.40H). 그래서 기본
+        /// 배치(톱니 우상단 → 창이 화면 상단에서 아래로 560pt)에서는 바닥/Dock 발판 위의 활쏘기와
+        /// <b>세로로 만나지 않는다</b>.</para>
+        ///
+        /// <para>(2) <b>명령별로 가를 근거가 없다.</b> 오히려 활쏘기가 <b>가장 안 겹치는</b> 축에 속한다 —
+        /// [그라피티]는 캐릭터 기준 <b>360° 임의 방위</b> 200~300px 거리에 96px 영역을 잡고
+        /// (<c>GraffitiDirector.TryFindEmptyRegion</c>), [창 부수기]는 <b>남의 창 사각형 전체</b>를
+        /// 덮는다. 활쏘기만 특별 취급하면 더 크게 겹치는 두 명령이 조용히 반대 규칙을 갖게 된다.</para>
+        ///
+        /// <para>(3) 겹치더라도 <b>탈출 비용이 1클릭</b>이다 — 창 바깥 아무 곳이나 누르면
+        /// <c>PopoverPanel.FeedClick</c>이 닫는다. 그 클릭은 차단막 밖이라 아래 앱에도 그대로 전달된다.
+        /// 반대로 종전 동작은 <b>매번</b> 다시 톱니 → [행동]을 거치게 했다.</para>
+        ///
+        /// <para>★ "연출 동안만 투명하게"는 <b>채택하지 않았다</b>. 알파를 낮춰도 차단막
+        /// (<c>PopoverPanel.SyncClickBlocker</c>의 <c>enabled = !_closing</c>)은 그대로 남아, 사용자가
+        /// <b>보이지 않는 480×560 클릭 차단막</b>을 밟게 된다 — 그 베이스가 주석까지 달아 막고 있는 바로
+        /// 그 실패 모양(비침해 원칙 2)이고, 게다가 베이스의 <c>SetGrow</c>가 매 프레임 알파를 1로 되돌려
+        /// 베이스 수정 없이는 구현 자체가 불가능하다.</para>
         /// </summary>
         private void OnCommandClicked(Command command)
         {
@@ -427,9 +508,13 @@ namespace StickMate.Interaction
 
             if (availability.IsReady && Execute(command, $"행동 명령창 [{CommandNames[i]}]"))
             {
-                Debug.Log($"[행동창] [{CommandNames[i]}] 실행 — {SuccessCloseDelaySeconds:F2}초 뒤 창과 부채꼴을 " +
-                    "함께 접습니다(명령을 내린 목적은 '보는 것'이라 창이 시야를 덮고 있으면 목적이 실패한다).");
-                _closeDelayTimer = 0f;
+                // ★ 실행이 상태 전이를 일으켰다면 StateTransitioned가 이미 RefreshContent를 돌려 여섯 타일을
+                //   "지금 ○○ 중이에요"로 바꿔 놓았다. 접수 플래시는 그 위에 "이 칸을 눌렀다"만 얹는다.
+                _tiles[i].AcceptTimer = 0f;
+                Debug.Log($"[행동창] [{CommandNames[i]}] 실행 — 창은 닫지 않습니다" +
+                    "(2026-09-02 사용자 지시: \"메뉴가 유지되어야함\"). " +
+                    $"{AcceptFlashSeconds:F2}초 접수 플래시로 눌림을 알리고, 지금 무엇을 하는 중인지는 " +
+                    "상태에서 파생된 타일 문구와 헤더 캡션이 계속 말합니다.");
                 return;
             }
 
@@ -451,7 +536,12 @@ namespace StickMate.Interaction
         {
             ResolveDirectors();
             if (_runaway == null || !_runaway.TryRecallNow("행동 명령창 [돌아와!]")) { RefreshContent(); return; }
-            Debug.Log("[행동창] [돌아와!] — 수동 소환 신호를 세웠습니다(20절 상시 탈출구). 창을 접습니다.");
+            // ★ 2026-09-02 — 명령 타일은 이제 창을 닫지 않지만 <b>이 칩은 닫는다</b>. 사용자 신고는
+            //   "행동 메뉴에서 (명령을) 한번 누르면"이었고, [돌아와!]는 명령 타일이 아니라 가출 중에만
+            //   존재하는 일회성 응답이다 — 누른 즉시 칩 자신이 사라지므로 그 자리에 남아 봐야 고를 것이
+            //   없다. (이 판단은 사용자 지시 문면 밖이라 리더 보고 대상이다.)
+            Debug.Log("[행동창] [돌아와!] — 수동 소환 신호를 세웠습니다(20절 상시 탈출구). 창을 접습니다 " +
+                "(명령 타일과 달리 이 칩은 누른 즉시 사라지는 일회성 응답이라 창에 남을 이유가 없습니다).");
             _closeDelayTimer = 0f;
         }
 
@@ -506,6 +596,8 @@ namespace StickMate.Interaction
             {
                 _tiles[i].ShakeTimer = -1f;
                 _tiles[i].NoticeTimer = -1f;
+                _tiles[i].AcceptTimer = -1f;
+                _tiles[i].Surface.color = IdleTileSurface;
                 _tiles[i].Rect.anchoredPosition = new Vector2(_tiles[i].BaseX, _tiles[i].Rect.anchoredPosition.y);
             }
         }
@@ -537,7 +629,8 @@ namespace StickMate.Interaction
             CollapseFanAndClose();
         }
 
-        /// <summary>성공 후에는 창만이 아니라 <b>부채꼴도 함께</b> 접는다 — 화면에 캐릭터만 남아야 한다(36-7).
+        /// <summary>창과 <b>부채꼴을 함께</b> 접는다. <b>남은 호출자는 [돌아와!] 하나뿐</b>이다 —
+        /// 명령 타일은 2026-09-02부터 창을 닫지 않는다(<see cref="OnCommandClicked"/> 문서).
         /// <para>★ 2026-09-01 — 종전 구현은
         /// <c>if (fan != null) { fan.ForceCloseAll(...); return; }</c>였다. 부채꼴이 있는 <b>정식
         /// 조립에서는 아래 Close()가 한 번도 실행되지 않고</b>, 이 창이 닫히는 일이 "부채꼴이 자기
@@ -546,8 +639,8 @@ namespace StickMate.Interaction
         /// 자기 자신을 먼저 닫고, 나머지는 배타 규칙의 단일 집행 지점에 맡긴다.</para></summary>
         private void CollapseFanAndClose()
         {
-            Close("행동 명령 실행");
-            ExclusiveSurfaces.CloseAllExcept(this, "행동 명령 실행 — 화면을 비운다");
+            Close("[돌아와!] 소환");
+            ExclusiveSurfaces.CloseAllExcept(this, "[돌아와!] 소환 — 일회성 응답이라 창에 남을 것이 없다");
         }
 
         private void TickTileFeedback(float dt)
@@ -567,6 +660,20 @@ namespace StickMate.Interaction
                     {
                         tile.ShakeTimer = -1f;
                         tile.Rect.anchoredPosition = new Vector2(tile.BaseX, tile.Rect.anchoredPosition.y);
+                    }
+                }
+
+                if (tile.AcceptTimer >= 0f)
+                {
+                    tile.AcceptTimer += dt;
+                    float k = Mathf.Clamp01(tile.AcceptTimer / AcceptFlashSeconds);
+                    // 켜지는 것이 아니라 <b>꺼지는</b> 곡선이다 — 사용자가 손을 뗀 뒤에 밝아지면 그건
+                    // 응답이 아니라 지연으로 읽힌다. 첫 프레임이 가장 밝고 그대로 사라진다.
+                    tile.Surface.color = Color.Lerp(AcceptFlashPeak, AcceptFlashEnd, k);
+                    if (tile.AcceptTimer >= AcceptFlashSeconds)
+                    {
+                        tile.AcceptTimer = -1f;
+                        tile.Surface.color = IdleTileSurface;
                     }
                 }
 

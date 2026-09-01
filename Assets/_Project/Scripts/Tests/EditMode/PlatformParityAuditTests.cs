@@ -1535,12 +1535,18 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// <b>[갭추적 F] 만화 텍스트 외곽선 하한은 배율 1(Windows 100% · 비Retina)에서 아직 양립하지 않는다.</b>
+        /// <b>[갭추적 F] 만화 텍스트 <u>속공간</u>은 배율 1(Windows 100% · 비Retina)에서 아직 검증
+        /// 운용점에 못 미친다.</b>
+        ///
+        /// <para>★ 2026-09-02 <b>갭의 내용이 바뀌었다</b>(UX_FLOW §44-1/§44-2). 종전 갭은
+        /// <b>C1(분리막 1물리픽셀)</b>이었고 그것은 <b>해소됐다</b> — 링이 서브픽셀로 무너지는 배율에서는
+        /// 같은 예산 전부를 한 대각선 그림자에 실어 막이 1물리픽셀을 넘긴다
+        /// (<see cref="DialogueBubbleRenderer.UseOutlineRing"/>). 남은 갭은 <b>C2(속공간 개방)</b>이며,
+        /// 예산이 <b>총 소모량</b>으로 정의돼 있어 분기를 어떻게 바꿔도 나아지지 않는다.</para>
         ///
         /// <para><b>왜 여기서 Ignore를 또 걸지 않는가</b>: 이 갭은 이미 러너에 떠 있다
-        /// (<c>ComicFontFloorOutlineRingTests.배율1에서는_두_요구가_양립하지_않는다_보류</c>).
-        /// 같은 것을 여기서 한 번 더 건너뛰면 <b>목록만 두 배가 되고 뜻은 그대로다</b> — 리더가
-        /// 경계한 "전부 Ignore로 뭉치면 목록이 의미를 잃는다"가 정확히 그 모양이다. 그래서 이 자리는
+        /// (<c>ComicFontFloorOutlineRingTests.배율1에서는_속공간이_검증_운용점에_못_미친다_보류</c>).
+        /// 같은 것을 여기서 한 번 더 건너뛰면 <b>목록만 두 배가 되고 뜻은 그대로다</b>. 그래서 이 자리는
         /// <b>플랫폼 관점의 사실</b>만 정식으로 잠근다: ① 갭이 아직 살아 있는가(숫자로),
         /// ② 검증된 캔버스 배율이 Retina 쪽뿐인가, ③ 추적자가 사라지지 않았는가.</para>
         ///
@@ -1548,19 +1554,33 @@ namespace StickMate.Tests.EditMode
         /// 이 항목이 그것을 막는 유일한 장치다.</para>
         /// </summary>
         [Test]
-        public void 갭추적_만화텍스트_외곽선_하한은_배율1에서_아직_양립하지_않는다()
+        public void 갭추적_만화텍스트_속공간은_배율1에서_아직_검증운용점에_못미친다()
         {
             const float nonRetinaCanvasScale = 1f;   // Windows 100% 표시 배율 = 논리 1pt가 물리 1px.
 
             int floor = DialogueBubbleRenderer.ResolveMinComicFontSize(nonRetinaCanvasScale);
-            int need = DialogueBubbleRenderer.OutlineLegibleFontFloor(nonRetinaCanvasScale);
+            int font = DialogueBubbleRenderer.SnapPointsNotBelow(floor, floor, nonRetinaCanvasScale);
+            float counter = DialogueBubbleRenderer.RemainingCounterPointsFor(font) * nonRetinaCanvasScale;
 
-            // ① 갭이 아직 살아 있는가. 닫혔으면 두 파일을 함께 정리하라고 알린다.
-            if (need <= floor)
+            int verifiedFloor = DialogueBubbleRenderer.ResolveMinComicFontSize(
+                DialogueBubbleRenderer.VerifiedCanvasScale);
+            float verified = DialogueBubbleRenderer.RemainingCounterPointsFor(verifiedFloor)
+                             * DialogueBubbleRenderer.VerifiedCanvasScale;
+
+            // ★ C1은 해소됐다 — 갭 항목이 아니라 <실단언>으로 지킨다. 되돌아가면 여기서 즉시 빨개진다.
+            float membrane = DialogueBubbleRenderer.MembranePointsFor(font, nonRetinaCanvasScale)
+                             * nonRetinaCanvasScale;
+            Assert.GreaterOrEqual(membrane, DialogueBubbleRenderer.OutlineRingMinPhysicalPixels - 1e-4f,
+                $"배율 1의 분리막이 {membrane:F3}물리픽셀로 되돌아갔습니다 — 2026-09-02에 닫은 C1 갭이 " +
+                "다시 열렸습니다(그림자 분기가 빠졌거나 하한 스냅이 하한을 다시 깹니다).");
+
+            // ① 갭(C2)이 아직 살아 있는가. 닫혔으면 두 파일을 함께 정리하라고 알린다.
+            if (counter + 1e-4f >= verified)
             {
-                Assert.Pass($"배율 1에서 요구 하한({need}pt)이 실제 하한({floor}pt) 이하가 됐습니다 — " +
-                    "갭이 닫혔습니다. 이 항목과 ComicFontFloorOutlineRingTests의 보류 항목을 " +
-                    "**함께** 정리하세요(한쪽만 지우면 다른 쪽이 유령으로 남습니다).");
+                Assert.Pass($"배율 1의 남는 속공간({counter:F3}물리px)이 검증 운용점" +
+                    $"({verified:F3}물리px)을 채웁니다 — 갭이 닫혔습니다. 이 항목과 " +
+                    "ComicFontFloorOutlineRingTests의 보류 항목을 **함께** 정리하세요" +
+                    "(한쪽만 지우면 다른 쪽이 유령으로 남습니다).");
             }
 
             // ② 검증된 캔버스 배율이 Retina 쪽뿐이라는 사실 = 이 갭이 '플랫폼' 항목인 이유.
@@ -1574,7 +1594,7 @@ namespace StickMate.Tests.EditMode
             Assert.IsTrue(File.Exists(tracker),
                 $"이 갭을 러너에 띄우던 테스트 파일이 사라졌습니다({tracker}) — 지금 이 갭은 " +
                 "**아무 데도 안 보입니다**. 여기서 Ignore를 다시 걸든지, 그 파일을 되살리세요.");
-            StringAssert.Contains("배율1에서는_두_요구가_양립하지_않는다_보류", ReadSource(tracker),
+            StringAssert.Contains("배율1에서는_속공간이_검증_운용점에_못_미친다_보류", ReadSource(tracker),
                 "추적 테스트의 보류 항목이 사라졌습니다 — 갭이 닫혀서 지운 것이라면 위 ①이 " +
                 "Assert.Pass로 먼저 알려 줬을 것입니다. ①이 통과하지 못했다는 것은 갭이 아직 " +
                 "살아 있는데 감시만 사라졌다는 뜻입니다.");

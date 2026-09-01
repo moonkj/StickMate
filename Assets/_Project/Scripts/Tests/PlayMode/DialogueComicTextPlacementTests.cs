@@ -421,32 +421,75 @@ namespace StickMate.Tests.PlayMode
             Assert.AreEqual(1, texts.Length, "글자는 정확히 하나여야 한다.");
             Assert.AreEqual(TalkText, texts[0].text, "표시된 글자가 대사와 다르다.");
 
-            // 만화 레터링의 핵심 + 가독성 대책: 잉크색 글자 + **반대색** 외곽선.
-            var outline = texts[0].GetComponent<Outline>();
-            Assert.IsNotNull(outline,
-                "글자 외곽선이 없다 — 배경이 사라진 뒤 글자와 바탕화면을 가르는 유일한 수단이다 " +
-                "(검은 글자 + 어두운 바탕화면에서 글자가 그대로 사라진다).");
-            Assert.Greater(outline.effectDistance.x, 0.3f, "외곽선 두께가 0에 가깝다.");
+            // 만화 레터링의 핵심 + 가독성 대책: 잉크색 글자 + **반대색** 분리막.
+            // ★ 2026-09-02 — 분리막은 링(Outline)일 수도 한 방향 그림자(Shadow)일 수도 있다
+            //   (DialogueBubbleRenderer.UseOutlineRing). <b>지금 켜져 있는 쪽</b>을 봐야 한다 —
+            //   Outline을 무조건 읽으면 그림자 배율에서 <꺼진 컴포넌트>를 재는 거짓 초록이 된다.
+            Shadow outline = ActiveTextMembrane(texts[0]);
+            Assert.Greater(outline.effectDistance.magnitude, 0.3f, "분리막 두께가 0에 가깝다.");
+
             // ★ 2026-09-01 상한을 실측 기반으로 조인다(사용자 신고 "텍스트들도 선명하지 않고").
             //   종전 상한은 `fontSize x 0.2`였는데, 실제로 뭉개진 값(0.06em)이 그 상한의 <b>1/3</b>이라
-            //   이 단언은 결함을 통과시켰다. 진짜 상한은 <b>한글 속공간</b>이다: uGUI Outline은 사방으로
-            //   t만큼 팽창하므로 속공간은 2t만큼 줄고, 2t가 속공간을 넘으면 ㅇ/ㅁ의 속이 메워진다.
+            //   이 단언은 결함을 통과시켰다. 진짜 상한은 <b>한글 속공간</b>이다.
+            // ★ 2026-09-02 — 상한을 <b>속공간 총 소모량</b>으로 다시 쓴다. 링은 사방 t라 2t를,
+            //   그림자는 한쪽 2t라 역시 2t를 먹는다(예산은 총 소모량으로 정의돼 있다). 그래서 두 분기를
+            //   같은 한 줄로 잴 수 있고, 어느 한쪽이 몰래 예산을 늘리면 여기서 잡힌다.
             //   숫자를 베끼지 않고 프로덕션 상수를 참조한다(CLAUDE.md).
-            float counterBudgetPoints =
-                texts[0].fontSize * DialogueBubbleRenderer.NarrowestHangulCounterEmRatio * 0.5f;
-            Assert.Less(outline.effectDistance.x, counterBudgetPoints,
-                $"외곽선({outline.effectDistance.x:F2}pt)이 글자 크기({texts[0].fontSize}pt)의 한글 속공간 " +
-                $"예산({counterBudgetPoints:F2}pt)을 넘는다 — 속공간이 양쪽에서 2t만큼 좁아지므로 " +
-                "ㅇ/ㅁ의 속이 원리적으로 메워진다(2026-09-01 실측: 0.06em에서 속공간 열림 0.000).");
+            float consumedPoints = ConsumedCounterPoints(outline);
+            float counterPoints =
+                texts[0].fontSize * DialogueBubbleRenderer.NarrowestHangulCounterEmRatio;
+            Assert.Less(consumedPoints, counterPoints,
+                $"분리막이 속공간을 {consumedPoints:F2}pt 먹는데 글자 크기({texts[0].fontSize}pt)의 " +
+                $"한글 속공간은 {counterPoints:F2}pt다 — ㅇ/ㅁ의 속이 원리적으로 메워진다 " +
+                "(2026-09-01 실측: 0.06em에서 속공간 열림 0.000).");
 
-            // 기본 프리셋은 검은 잉크 -> 외곽선은 흰색이어야 한다(반대색).
+            // 기본 프리셋은 검은 잉크 -> 분리막은 흰색이어야 한다(반대색).
             float inkLuma = texts[0].color.grayscale;
             float outlineLuma = outline.effectColor.grayscale;
             Assert.Greater(Mathf.Abs(inkLuma - outlineLuma), 0.5f,
                 $"글자({inkLuma:F2})와 외곽선({outlineLuma:F2})의 명도가 비슷하다 — 외곽선이 대비를 " +
                 "만들지 못하면 밝은/어두운 바탕화면 어느 한쪽에서 글자가 사라진다.");
             Assert.AreEqual(1f, outline.effectColor.a, 1e-3f,
-                "외곽선 알파가 1이 아니다 — 이 선은 글자와 바탕화면 사이의 유일한 분리막이다.");
+                "분리막 알파가 1이 아니다 — 이 막은 글자와 바탕화면 사이의 유일한 분리막이다.");
+        }
+
+        /// <summary>
+        /// ★ 2026-09-02 — 지금 <b>실제로 그려지는</b> 분리막을 돌려준다. 링(<c>Outline</c>)과
+        /// 그림자(<c>Shadow</c>)가 둘 다 붙어 있고 배율에 따라 하나만 켜지므로, 여기서 <b>정확히
+        /// 하나만 켜져 있다</b>는 불변식도 함께 지킨다.
+        ///
+        /// <para>둘 다 켜지면 팽창이 겹쳐 속공간 예산을 조용히 두 배로 먹고(=사용자 신고 재발),
+        /// 둘 다 꺼지면 글자가 바탕화면에 직접 닿는다. 둘 중 어느 실패도 화면을 봐야만 보이는
+        /// 종류라 단언으로 잠근다.</para>
+        /// </summary>
+        private static Shadow ActiveTextMembrane(Text label)
+        {
+            Shadow[] all = label.GetComponents<Shadow>();
+            Assert.Greater(all.Length, 0,
+                "글자에 분리막이 하나도 없다 — 배경이 사라진 뒤 글자와 바탕화면을 가르는 유일한 수단이다 " +
+                "(검은 글자 + 어두운 바탕화면에서 글자가 그대로 사라진다).");
+
+            Shadow active = null;
+            int enabled = 0;
+            for (int i = 0; i < all.Length; i++)
+            {
+                if (!all[i].enabled) continue;
+                enabled++;
+                active = all[i];
+            }
+
+            Assert.AreEqual(1, enabled,
+                $"켜져 있는 분리막이 {enabled}개다(붙어 있는 것은 {all.Length}개) — 정확히 하나여야 한다. " +
+                "둘 다 켜지면 팽창이 겹쳐 속공간을 두 배로 먹고, 둘 다 꺼지면 분리막이 사라진다.");
+            return active;
+        }
+
+        /// <summary>분리막이 <b>속공간에서 실제로 먹는 총량</b>(pt). 링은 양쪽에서 t씩(=2t),
+        /// 그림자는 한쪽에서 2t. 예산은 총 소모량으로 정의돼 있어 두 분기가 같은 값이어야 한다.</summary>
+        private static float ConsumedCounterPoints(Shadow membrane)
+        {
+            float dx = Mathf.Abs(membrane.effectDistance.x);
+            return membrane is Outline ? dx * 2f : dx;
         }
 
         /// <summary>
@@ -470,8 +513,8 @@ namespace StickMate.Tests.PlayMode
             Canvas canvas = FindRendererCanvas(renderer);
             Assert.IsNotNull(canvas);
             Text label = canvas.GetComponentInChildren<Text>(true);
-            Outline outline = label != null ? label.GetComponent<Outline>() : null;
-            Assert.IsNotNull(outline, "글자 외곽선이 없다.");
+            Assert.IsNotNull(label, "글자를 찾지 못했다.");
+            Shadow outline = ActiveTextMembrane(label);   // 켜져 있는 쪽(링 또는 그림자)을 본다.
 
             // 프리팹/에셋을 건드리지 않도록 테스트 전용 StickConfig를 만들어 주입한다.
             // (_config는 [SerializeField] private이라 리플렉션이 유일한 주입 경로다 —

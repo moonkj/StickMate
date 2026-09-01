@@ -6,6 +6,7 @@ using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using StickMate.Core;
 using StickMate.Interaction;
+using StickMate.Platform;
 
 namespace StickMate.Tests.PlayMode
 {
@@ -260,6 +261,68 @@ namespace StickMate.Tests.PlayMode
             AssertRectFullyOnScreen("화면 밖 좌표가 저장돼 있던 채로 시작했을 때");
             Debug.Log($"[톱니드래그테스트] 화면 밖 저장값 복구 확인 — 사각형 {_gear.IconScreenRect}.");
         }
+
+        /// <summary>
+        /// ★ 2026-09-02 — <b>저장된 위치가 OS 상단 예약 띠(macOS 메뉴바 / Windows 상단 도킹 작업표시줄)
+        /// 안에 들어 있을 때 복원되면서 밖으로 끌려 나오는가.</b>
+        ///
+        /// <para>왜 이 한 건이 따로 필요한가: 톱니는 팝오버와 달리 <b>드래그한 자리가 저장된다.</b>
+        /// 팝오버가 남의 띠를 덮는 것은 열려 있는 동안뿐이지만, 톱니는 재부팅해도 그 자리에 남아
+        /// <b>24시간 상주 입력 강탈</b>이 된다. 그래서 "클램프가 걸리는가"만으로는 부족하고
+        /// <b>"저장된 나쁜 위치가 복원 경로에서도 걸리는가"</b>를 따로 물어야 한다 —
+        /// 이미 저장된 나쁜 위치가 그대로 복원되면 클램프는 무의미하다.</para>
+        ///
+        /// <para>판정을 <b>상대 비교</b>로 한 이유: 인셋 0으로 같은 저장값을 복원한 결과와 비교하면
+        /// pt ↔ 픽셀 환산(Retina 배율)을 테스트가 다시 계산할 필요가 없다. 그리고 인셋 0 쪽이
+        /// <b>내장 네거티브 컨트롤</b>이 된다 — 두 결과가 같으면 인셋이 배선되지 않은 것이다.</para>
+        /// </summary>
+        [UnityTest]
+        public IEnumerator SavedPositionInsideTheReservedTopBarIsPulledOutOnStartup()
+        {
+            // 창 좌상단 원점에서 y가 아주 작다 = 히트 사각형이 예약 띠 안에 통째로 들어가 있다.
+            Vector2 savedInsideTopBar = new Vector2(Screen.width * 0.5f, 1f);
+
+            ReservedTopBarProbe.ResetForTests();
+            try
+            {
+                // ① 인셋 0(= 예약 띠를 못 물은 환경) — 이 라운드 이전과 같은 배치. 기준선이자 컨트롤.
+                ReservedTopBarProbe.SetInsetPointsForTests(0f);
+                UiLayoutModel.ResetForTesting();
+                UiLayoutModel.SetGearCenter(savedInsideTopBar);
+                Assert.IsTrue(CharacterSaveStore.Save(), "준비 단계 저장에 실패했습니다(인셋 0).");
+                yield return LoadSceneAndResolve();
+                yield return null;
+                AssertRectFullyOnScreen("인셋 0으로 복원했을 때");
+                float noInsetTop = _gear.IconScreenRect.yMax;
+
+                // ② 예약 띠가 있는 환경 — 같은 저장값인데 톱니가 띠 아래로 밀려나야 한다.
+                ReservedTopBarProbe.SetInsetPointsForTests(TestTopInsetPoints);
+                UiLayoutModel.ResetForTesting();
+                UiLayoutModel.SetGearCenter(savedInsideTopBar);
+                Assert.IsTrue(CharacterSaveStore.Save(), "준비 단계 저장에 실패했습니다(인셋 주입).");
+                yield return LoadSceneAndResolve();
+                yield return null;
+                AssertRectFullyOnScreen("예약 띠가 있는 채로 복원했을 때");
+                float insetTop = _gear.IconScreenRect.yMax;
+
+                Debug.Log($"[톱니드래그테스트] 예약 띠 복원 클램프 — 윗변 {noInsetTop:F1}px(인셋 0) " +
+                          $"→ {insetTop:F1}px(인셋 {TestTopInsetPoints}pt), 밀려난 양 {noInsetTop - insetTop:F1}px.");
+
+                Assert.Less(insetTop, noInsetTop - 1f,
+                    "저장된 위치가 OS 상단 예약 띠 안이었는데 복원 뒤에도 그 자리에 남았습니다 " +
+                    $"(윗변 {insetTop:F1}px vs 인셋 0일 때 {noInsetTop:F1}px). 톱니의 자리는 저장되므로 " +
+                    "이 실패는 <재부팅해도 계속되는 메뉴바 입력 강탈>이 됩니다 — 팝오버와 달리 " +
+                    "열려 있는 동안만의 문제가 아닙니다.");
+            }
+            finally
+            {
+                ReservedTopBarProbe.ResetForTests();
+            }
+        }
+
+        /// <summary>테스트가 주입하는 상단 예약 띠 두께(OS 포인트). 프로덕션 상수가 아니라 <b>입력</b>이다 —
+        /// 실제 메뉴바 두께가 몇이든 클램프가 그 값을 따라가는지만 본다.</summary>
+        private const float TestTopInsetPoints = 33f;
 
         private void AssertRectFullyOnScreen(string context)
         {

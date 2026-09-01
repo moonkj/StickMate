@@ -139,18 +139,16 @@ namespace StickMate.Interaction
         /// <summary>36-3-3: 60 → 30°. 4개 × 30° = 스팬 90°(기존 3개 × 60° = 120°보다 <b>좁다</b>).</summary>
         public const float ButtonAngleStepDegrees = 30f;
 
-        /// <summary>
-        /// 원버튼 그림자의 번짐 폭(pt). 코어가 버튼과 같은 지름이므로 그림자가 차지하는 바깥 여유가
-        /// 곧 이 값이다.
-        /// <para><b>왜 3인가 — 오프라인 래스터 실측으로 골랐다.</b> 이웃 중심 간격은
-        /// <c>2·R·sin(step/2)</c> = 57.5pt이고 버튼이 44pt라 틈은 13.5pt뿐이다. 두 버튼 사이에서
-        /// 바탕 밝기가 97% 이상 회복되는 "깨끗한 틈"의 폭을 재면:
-        /// 옛 하드 링(d+4) <b>9.0pt</b> / feather 2 → 10.5 / <b>3 → 10.0</b> / 4 → 8.5 / 5 → 7.5.
-        /// 버튼 바로 아래의 "떠 있음"(어두워짐 30.3%)은 <b>알파가 정하지 폭이 정하지 않아서</b> 셋 다 같다.
-        /// 즉 3은 옛 값보다 <b>틈이 넓으면서</b> 딱딱한 테가 없는 유일한 구간의 안쪽이다.
-        /// 더 키우면 램프가 틈을 도로 먹고, 더 줄이면 램프가 1~2px이라 다시 테로 보인다.</para>
-        /// </summary>
-        public const float ButtonShadowFeatherPoints = 3f;
+        // ★ 2026-09-02 — <b>원버튼 그림자와 그 번짐 상수(3pt)가 여기 있었다.</b> 사용자 지시
+        //   "캐릭터창 둘레로도 그림자들이 있는데 다 없애줘 깔끔하게"로 UI 그림자를 전부 걷어냈다
+        //   (UiChrome의 제거 노트 참고). 이웃 버튼 사이 틈은 이제 램프가 하나도 먹지 않아
+        //   13.5pt 전부가 빈 공간이다 — "원 메뉴가 겹쳐 보인다"의 여지가 더 줄었다.
+        //
+        //   ★ 부수 효과로 <b>직전 신고가 함께 사라진다</b>: "오늘할일 등을 클릭했을 때 나머지 3메뉴가
+        //   이상한 그림자로 남겨있음". 원인은 조립부가 그림자 Image의 반환값을 받지 않아 ButtonView에
+        //   참조가 없었고, 그래서 접힘(=알파 페이드) 대상 목록에서 그림자만 빠져 있었던 것이다.
+        //   스케일은 0.72까지만 줄어들어 알파 1.0짜리 검은 원 3개가 그대로 남았다. 그림자가 없으면
+        //   남을 것도 없다. <b>그림자를 되살릴 때는 반드시 ApplyButtonStyle의 페이드 목록에 넣을 것.</b>
 
         public const float HitPaddingPoints = 4f;
         public const float ScreenMarginPoints = 8f;
@@ -1507,13 +1505,6 @@ namespace StickMate.Interaction
             view.Root.anchorMin = view.Root.anchorMax = view.Root.pivot = new Vector2(0.5f, 0.5f);
             view.Root.sizeDelta = new Vector2(d, d);
 
-            // ★ 2026-09-01 — 옛 코드는 <c>AddCircle(d + 4f, PanelShadow)</c>였다. 즉 버튼보다 사방 2pt
-            // 큰 <b>딱딱한 검은 링</b>이고, 이웃 버튼과의 시각 여백 13.5pt 중 4pt를 그냥 먹었다
-            // (남는 9.5pt마저 양쪽이 진한 테라 "붙어 보인다"로 읽힌다 — 사용자 신고 "원 메뉴도 뭔가
-            // 겹쳐있는거 같이 되어있음"). 코어를 버튼과 <b>같은 지름</b>으로 두고 바깥으로만 감쇠시키면
-            // 눈에 보이는 경계가 사라져 같은 자리에서 틈이 넓어 보인다.
-            UiChrome.AddSoftShadowCircle(view.Root, "Shadow", d, ButtonShadowFeatherPoints,
-                UiChrome.PanelShadow, new Vector2(0f, -1.5f));
             view.Surface = UiChrome.AddCircle(view.Root, "Surface", d, UiChrome.CardSurface);
             view.Border = UiChrome.AddCircle(view.Root, "Border", d, UiChrome.CardBorder, 1.2f);
             view.Flash = UiChrome.AddCircle(view.Root, "Flash", d, new Color(0f, 0f, 0f, 0f));

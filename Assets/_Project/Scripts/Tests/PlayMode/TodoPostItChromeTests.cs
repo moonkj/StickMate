@@ -175,13 +175,19 @@ namespace StickMate.Tests.PlayMode
             Assert.IsNotNull(stripe, $"{LogPrefix} 좌측 강조 띠가 없습니다 — '이건 메모다'라는 단서가 사라집니다.");
             Assert.AreEqual(1f, stripe.color.a, 0.001f, $"{LogPrefix} 강조 띠까지 반투명이면 같은 결함이 남습니다.");
 
-            // (3) 그림자가 있다 — 데스크톱 위에 떠 있는 카드는 바닥에서 떨어져야 읽힌다.
-            bool hasShadow = false;
+            // (3) ★ 2026-09-02 뒤집힘 — 사용자 지시 "그림자들이 있는데 다 없애줘 깔끔하게".
+            //   <b>이름으로 세지 않는다</b>: 이름만 바꾼 잔재를 못 잡기 때문이다. 그림자를 그 <b>생김새</b>
+            //   (거의 검은 반투명 겹)로 판정한다 — 실제 그림자는 예외 없이 이 모양이다.
+            var shadowLike = new List<string>();
             foreach (Image img in panel.GetComponentsInChildren<Image>(true))
             {
-                if (img.name.Contains("Shadow")) { hasShadow = true; break; }
+                Color c = img.color;
+                if (c.a <= 0.02f || c.a >= 0.999f) continue;       // 투명 히트영역/불투명 면은 그림자가 아니다
+                if (UiChrome.RelativeLuminance(c) > 0.05f) continue; // 어두운 겹만
+                shadowLike.Add($"{img.name}(α={c.a:F2})");
             }
-            Assert.IsTrue(hasShadow, $"{LogPrefix} 그림자 겹이 없습니다.");
+            Assert.IsEmpty(shadowLike,
+                $"{LogPrefix} 그림자로 보이는 어두운 반투명 겹이 남아 있습니다: {string.Join(", ", shadowLike)}");
 
             // (4) 글자 크기는 전부 UiChrome 계단 위에 있어야 한다(생 14/12 리터럴 금지).
             var ladder = new HashSet<int>

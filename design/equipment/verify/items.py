@@ -27,7 +27,10 @@ def beanie():
              ( 0.62, 1.14), ( 1.06, 0.50), (0.96,-0.06)]
     cuff  = [(-0.96,-0.06), (0.96,-0.06), (1.04,-0.54), (0.64,-0.64),
              (-0.64,-0.64), (-1.04,-0.54)]
-    pom   = rig.poly(-0.10, 1.62, 0.30, 10, 90.0)
+    # ★ 2026-09-02 거울 어긋남 수정 — 이 줄만 프로덕션과 달랐다(중심 1.62·반지름 0.30).
+    #   프로덕션은 폼폼 **꼭대기**를 고정하고 중심을 유도한다(BeaniePomCrestRiseRatio=0.40):
+    #   관 꼭대기 1.32 + (0.40 − 0.28) = 중심 1.44, 반지름 0.28, 꼭대기 1.72.
+    pom   = rig.poly(-0.10, 1.44, 0.28, 10, 90.0)
     return [Shape("BeanieCrown", crown, filled=True),
             Shape("BeanieCuff",  cuff,  filled=True),
             Shape("BeaniePom",   pom,   filled=True, tone=1)]

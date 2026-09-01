@@ -554,10 +554,10 @@ namespace StickMate.Interaction
             //   그리므로 형제 순서를 어떻게 바꿔도 그림자는 본체 <b>위</b>를 벗어나지 못한다. 그 결과
             //   창 알파가 1 → 0.7525(키 α0.55) → <b>0.6202</b>(앰비언트 α0.28)로 무너져 사용자의
             //   데스크톱이 <b>38% 비쳐 들었다</b>(UiChrome 파일 머리 "알파 채널의 법칙" (2)).
-            //   AddOpaquePanel은 그림 없는 컨테이너에 [그림자 → 본체 → 보더]를 <b>형제로</b> 배치해
-            //   같은 그림을 창 알파 1.0으로 만든다. 반환값이 컨테이너이므로 아래 배치 코드는 그대로다.
-            _panel = UiChrome.AddOpaquePanel(canvasGo.transform, "Panel", UiChrome.RadiusPanel,
-                6f, new Vector2(0f, -2f), out _);
+            //   AddOpaquePanel은 그림 없는 컨테이너에 [본체 → 보더]를 <b>형제로</b> 배치해 같은 그림을
+            //   창 알파 1.0으로 만든다. 반환값이 컨테이너이므로 아래 배치 코드는 그대로다.
+            //   ★ 2026-09-02 — 그림자 겹은 전부 삭제됐다(사용자 지시). 이 창의 둘레는 보더 1px뿐이다.
+            _panel = UiChrome.AddOpaquePanel(canvasGo.transform, "Panel", UiChrome.RadiusPanel, out _);
             // 앵커를 좌하단에 두고 피벗을 가운데로 — anchoredPosition이 곧 "캔버스 포인트 좌표의 중심"이 된다.
             _panel.anchorMin = _panel.anchorMax = Vector2.zero;
             _panel.pivot = new Vector2(0.5f, 0.5f);
