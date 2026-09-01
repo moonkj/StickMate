@@ -251,9 +251,22 @@ namespace StickMate.States
                 Debug.Log($"[벽타기] 완료 — 올라선 월드=({pos.x:F3},{pos.y:F3}), 발판핸들={_wallHandle}, " +
                     $"올라선 방향={(_direction > 0 ? "오른쪽" : "왼쪽")}(맨틀 신호 #{_blackboard.ClimbMantleSequence}).");
 
-                float deadzone = _blackboard.Config != null ? _blackboard.Config.moveInputDeadzone : 0.15f;
-                StickmanStateId next = Mathf.Abs(_blackboard.MoveInputX) > deadzone ? StickmanStateId.Walk : StickmanStateId.Idle;
-                _blackboard.Machine.ChangeState(next);
+                // ★★ 2026-09-02 (절대 불변 원칙 1 위반 수정) — 다음 상태는 **바로 윗줄에서 내가 방금
+                // 확정한 사실**에서 파생한다. 예전에는 여기서 MoveInputX를 읽었는데, 그 값은 이 시점에
+                // 아직 0이다: StickmanAgent.Update의 순서가 `_autoWander.Tick -> _machine.Tick`이라
+                // 배회 AI는 **다음 프레임**에야 맨틀 신호를 소비해 EnterMoving(inward)을 부른다.
+                // 그래서 "곧 턱 안쪽으로 걸어 들어간다"가 이미 블랙보드에 기록됐는데도 Idle을 골랐고,
+                // 그 1프레임짜리 Idle에서 대사가 파생돼 0.02초 만에 잘렸다(실측 벽타기 완료 11회 중 2회).
+                //
+                // 맨틀 신호의 소비자(AutoWanderController)는 그 신호를 보면 **조건 없이**
+                // EnterMoving(ClimbMantleDirection)을 부른다 — 즉 "걸어 들어간다"는 추정이 아니라
+                // 확정 사실이고, 이 상태가 그 사실의 출처다. 그러므로 다음 상태는 Walk 하나뿐이다.
+                //
+                // ★ 배회 AI가 아닌 의도 소스가 물려 있어 이동 의도가 끝내 0이면 WalkState가 다음 틱에
+                //   스스로 Idle로 나간다(기존 탈출 조건 그대로). 그 1프레임 Walk에서는 대사가 나오지
+                //   않는다 — PlannedDwellRemainingSecondsFor(Walk)가 이미 0을 답하기 때문이다.
+                //   즉 어느 쪽으로도 "1프레임짜리 상태에서 대사가 파생되는" 경로가 남지 않는다.
+                _blackboard.Machine.ChangeState(StickmanStateId.Walk);
             }
         }
 

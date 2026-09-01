@@ -278,12 +278,59 @@ namespace StickMate.Dialogue
         /// <param name="replacesItself">새 대사가 <b>지금 떠 있는 것과 같은 글자</b>인가. 그러면 노출
         /// 시계와 팝인이 리셋돼 화면상 같은 글자가 다시 튀어오른다 — 사용자에게는 렌더 글리치로 읽힌다
         /// (위 frame=11110 건).</param>
-        public static bool CanReplaceVisible(float activeVisibleSeconds, float popInSeconds, bool replacesItself)
+        /// <param name="visibleWillBeCutAnyway">
+        /// ★★ 2026-09-02 <b>보호 범위 정정</b>(리더 실측: <i>"막았으면 이전 것이 계속 떠 있어야 하는데
+        /// 그것도 컷된다 — 그러면 막은 의미가 없다"</i>, 2회 관측).
+        ///
+        /// <para><b>관측</b>: 팝인 가드가 새 대사를 버렸는데(노출 0.17초 &lt; 팝인 0.18초)
+        /// <b>이전 대사도 같은 프레임 뒤에 상태 종료로 컷됐다.</b> 결과는 <b>순손해</b>다 —
+        /// 사용자는 0.17초 번쩍임을 <b>그대로 보고</b>, 그 대가로 새 대사까지 잃는다.
+        /// 가드는 그 번쩍임을 애초에 막은 적이 없다(이전 대사의 수명은 가드가 정하지 않는다).</para>
+        ///
+        /// <para><b>두 갈래 중 무엇이 맞는가</b> — 리더가 판단을 요구한 지점이다.
+        /// <list type="bullet">
+        ///   <item>(가) 막았으면 <b>이전 대사의 만료도 함께 미룬다</b>(팝인이 끝날 때까지).
+        ///         → <b>기각한다.</b> 서술(Narrative)은 자기 상태가 끝나는 순간 <b>문장 자체가 거짓</b>이
+        ///         된다(규칙 4-c ③). 팝인 애니메이션을 지키려고 거짓 문장을 0.18초 더 띄우는 것은
+        ///         <b>불변 원칙 1(행동-텍스트 싱크)</b>을 렌더 글리치 완화 규칙에 양보하는 것이다.
+        ///         두 규칙의 등급이 다르다.</item>
+        ///   <item>(나) 상태 종료 컷이 정당하다 → <b>그러면 그 경우에는 막는 것 자체가 무의미하다.</b>
+        ///         → <b>채택한다.</b> 다만 가드를 없애지는 않는다 — 가드는 <b>이전 대사가 실제로
+        ///         살아남을 때</b>만 값이 있고, 그때는 여전히 유효하다(frame=11110의 반응 대사 건).</item>
+        /// </list></para>
+        ///
+        /// <para><b>이 사실을 렌더러가 어떻게 아는가</b>: 대사는 상태의 <c>Enter()</c>에서만 만들어지므로,
+        /// <b>새 대사의 상태 ID가 지금 떠 있는 대사의 상태 ID와 다르다</b>는 것이 곧 "그 서술의 상태가
+        /// 끝났다"는 뜻이다. 추정이 아니라 대사 생성 경로의 성질이다. <b>반응(Reaction)에는 적용하지
+        /// 않는다</b> — 반응은 상태가 끝나도 참이라 가독예산을 채우고 나가므로(규칙 4-c ④)
+        /// <b>죽지 않는다</b>.</para>
+        /// </param>
+        public static bool CanReplaceVisible(float activeVisibleSeconds, float popInSeconds, bool replacesItself,
+            bool visibleWillBeCutAnyway = false)
         {
-            if (replacesItself) return false;
+            if (replacesItself) return false;   // 같은 글자 재점화는 어떤 경우에도 렌더 글리치다.
+            // ★ 이미 죽은 서술을 지키느라 새 대사를 버리지 않는다 — 지켜지지 않는 보호는 손해다.
+            if (visibleWillBeCutAnyway) return true;
             if (float.IsNaN(activeVisibleSeconds)) return true; // 알 수 없으면 막지 않는다(침묵보다 안전).
             return activeVisibleSeconds >= Mathf.Max(0f, popInSeconds);
         }
+
+        /// <summary>
+        /// 지금 떠 있는 대사가 <b>새 대사가 도착한 그 사실만으로 이미 죽었는가</b>(순수 함수).
+        /// <see cref="CanReplaceVisible"/>의 <c>visibleWillBeCutAnyway</c> 인자를 만드는 유일한 곳이다.
+        ///
+        /// <para>근거는 <b>대사 생성 경로의 성질</b>이다: 대사는 상태의 <c>Enter()</c>에서만 만들어지므로,
+        /// 새 대사의 상태 ID가 다르면 <b>다른 상태가 들어왔다</b> = 떠 있던 대사의 상태는 끝났다.
+        /// 그리고 <b>서술</b>은 자기 상태가 끝나는 순간 문장이 거짓이 되어 그 프레임에 컷된다(규칙 4-c ③).
+        /// <b>반응</b>은 상태가 끝나도 참이라 가독예산을 채우고 나가므로(규칙 4-c ④) 죽지 않는다 —
+        /// 그래서 종류 축이 조건에 반드시 들어간다.</para>
+        ///
+        /// <para>상태 ID를 <c>int</c>로 받는 이유: 이 어셈블리의 다른 순수 판정들과 같이
+        /// <b>상태 열거형에 의존하지 않기 위해서</b>다(대사 레이어가 상태 목록을 알 필요가 없다).
+        /// 호출부가 <c>(int)stateId</c>로 넘긴다.</para>
+        /// </summary>
+        public static bool VisibleIsDoomedByIncoming(DialogueKind visibleKind, int visibleStateId, int incomingStateId)
+            => visibleKind == DialogueKind.Narrative && visibleStateId != incomingStateId;
     }
 
     /// <summary>

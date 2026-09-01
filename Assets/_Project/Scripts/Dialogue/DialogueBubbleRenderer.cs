@@ -1010,7 +1010,15 @@ namespace StickMate.Dialogue
                 bool replacesItself = intent.Text == _activeText
                                       && intent.StateId == _active.StateId
                                       && intent.Kind == _activeKind;
-                if (!DialogueBudget.CanReplaceVisible(activeVisible, DialogueTiming.PopInSeconds, replacesItself))
+                // ★★ 2026-09-02 — 지금 떠 있는 것이 <b>이미 죽은 서술</b>인가(DialogueBudget의
+                //   visibleWillBeCutAnyway 문서에 판단 근거). 대사는 상태의 Enter()에서만 만들어지므로
+                //   <b>새 대사의 상태 ID가 다르다</b>는 사실이 곧 "그 서술의 상태가 끝났다"는 뜻이다 —
+                //   추정이 아니라 대사 생성 경로의 성질이고, 렌더러가 상태 머신을 다시 묻지 않아도 된다.
+                //   반응(Reaction)은 상태가 끝나도 가독예산을 채우고 나가므로 여기서 제외한다.
+                bool visibleWillBeCutAnyway = DialogueBudget.VisibleIsDoomedByIncoming(
+                    _activeKind, (int)_active.StateId, (int)intent.StateId);
+                if (!DialogueBudget.CanReplaceVisible(activeVisible, DialogueTiming.PopInSeconds, replacesItself,
+                        visibleWillBeCutAnyway))
                 {
                     // 침묵이 정상 결과일수록 로그가 유일한 계기판이다 — 규칙 8의 "발화 보류"와 같은 어법.
                     Debug.Log($"[말풍선] 발화 보류 ({intent.StateId}) \"{intent.Text}\" — " +

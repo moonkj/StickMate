@@ -121,6 +121,78 @@ namespace StickMate.Platform.Windows
         [DllImport("user32.dll")]
         private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
+        // ============================================================================
+        // ★★ 2026-09-02 — 창 열거 비용의 **스레드 CPU 시간**(macOS clock_gettime의 Windows 대응물)
+        // ============================================================================
+        // macOS는 clock_gettime(CLOCK_THREAD_CPUTIME_ID)로 "같은 구간에서 이 스레드가 실제로 CPU를
+        // 쓴 시간"을 잰다. Windows의 대응물은 GetThreadTimes다 — 다만 두 가지가 다르다:
+        //   · 단위가 100ns 틱이고(FILETIME), 커널/유저를 **따로** 준다. 우리는 둘을 더한다
+        //     (macOS의 CLOCK_THREAD_CPUTIME_ID도 커널+유저 합이다 — 같은 뜻으로 맞춘다).
+        //   · 해상도가 스케줄러 틱(보통 15.6ms)에 묶여 있다. 즉 한 번의 열거(수 ms)에서는 대개
+        //     **0으로 나온다.** 그래도 의미가 있다: 30초 요약은 수천 회의 누적을 평균하므로
+        //     "벽시계는 큰데 CPU는 0에 가깝다"(= 블로킹/스케줄링 대기)와 "CPU가 함께 크다"
+        //     (= 우리 관리 코드)가 그대로 갈린다. 이 한계는 로그가 아니라 여기 소스에 적어 둔다.
+        //   · 실패하면 **-1**을 낸다. 0으로 위장하지 않는다(이 저장소의 -1 규약).
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr GetCurrentThread();
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetThreadTimes(IntPtr hThread, out long lpCreationTime,
+            out long lpExitTime, out long lpKernelTime, out long lpUserTime);
+
+        // 0 = 아직 안 해봄 / 1 = 쓸 수 있음 / 2 = 못 씀(영구 포기). macOS판과 같은 상태 기계다.
+        private static int _threadCpuClockState;
+
+        /// <summary>이 스레드가 지금까지 쓴 CPU 시간(ns). 조회 불가면 -1.</summary>
+        private static long ThreadCpuNanoseconds()
+        {
+            if (_threadCpuClockState == 2) return -1;
+            try
+            {
+                if (!GetThreadTimes(GetCurrentThread(), out _, out _, out long kernel, out long user))
+                {
+                    _threadCpuClockState = 2;
+                    return -1;
+                }
+                _threadCpuClockState = 1;
+                return (kernel + user) * 100L;   // FILETIME 틱(100ns) -> ns
+            }
+            catch (System.Exception e)
+            {
+                _threadCpuClockState = 2;
+                Debug.Log($"[스레드CPU시계] GetThreadTimes를 쓸 수 없어 CPU 시간 계측을 끕니다" +
+                    $"(벽시계는 그대로 남습니다) — {e.GetType().Name}");
+                return -1;
+            }
+        }
+
+        /// <summary>
+        /// ★★ <c>EnumWindows</c> 전체를 감싼 계측판. <b>macOS의 <c>CopyOnScreenWindowListMeasured</c>와
+        /// 같은 원장 칸(<c>OS창목록</c>)에 들어가지만 재는 범위는 다르다</b> — 무엇이 왜 다른지는
+        /// <see cref="StallAttribution.RecordNativeWindowListQuery"/> 문서에 유도까지 적어 두었다.
+        /// 요약하면 Windows에는 "왕복 1회"가 없다: 목록은 콜백 N회로 나눠 도착하고, 창당 OS 조회
+        /// (크로스 프로세스 DWM 포함)와 우리 필터 산술이 그 안에서 교대로 돈다. 그래서 이 칸은
+        /// <b>열거 호출 전체</b>이고, 열거가 끝난 뒤의 가려짐 솔버/진단은 들어가지 않는다
+        /// (= "우리 후처리" 뺄셈의 뜻은 두 플랫폼에서 같다).
+        ///
+        /// <para>이 계측이 없던 동안 Windows 로그는 이렇게 찍혔다:
+        /// <c>★OS창목록 평균 0.00ms, 0회 -> 우리 후처리 &lt;발판열거 전액&gt;</c>.
+        /// DWM 왕복이 원인이어도 원장이 "전부 우리 후처리"라고 말하는, 이 라운드가 없애려던
+        /// 바로 그 오도다. 하필 Windows가 크로스 프로세스 DWM 때문에 왕복이 더 비싼 쪽이다.</para>
+        /// </summary>
+        private void EnumWindowsMeasured()
+        {
+            long wall0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            long cpu0 = ThreadCpuNanoseconds();
+            EnumWindows(_enumWindowsCallback, IntPtr.Zero);
+            long wallTicks = System.Diagnostics.Stopwatch.GetTimestamp() - wall0;
+            long cpu1 = ThreadCpuNanoseconds();
+            StallAttribution.RecordNativeWindowListQuery(
+                wallTicks,
+                (cpu0 >= 0 && cpu1 >= 0) ? cpu1 - cpu0 : -1,
+                insideEnumerationPass: true);
+        }
+
         [DllImport("user32.dll")]
         private static extern bool IsWindowVisible(IntPtr hWnd);
 
@@ -392,9 +464,20 @@ namespace StickMate.Platform.Windows
         private long _titleProbeTicksThisPass;
         private int _titleProbeCountThisPass;
 
+        // ★ 2026-09-02 — 같은 관례의 **크로스 프로세스 DWM 조회** 누적(IsCloaked +
+        //   DWMWA_EXTENDED_FRAME_BOUNDS). 왜 따로 재는가: 이 패스에서 원장 칸 'OS창목록'은
+        //   EnumWindows **전체**라 우리 필터 산술까지 품는다(플랫폼 구조상 분리 불가 —
+        //   StallAttribution.RecordNativeWindowListQuery 문서). 그 안에서 유일하게 "다른 프로세스를
+        //   기다리는" 부분이 이 둘이므로, 이 값이 크면 범인이 DWM이고 작으면 범인은 우리 쪽이다.
+        //   비용은 제목 조회와 같은 형태(호출당 Stopwatch 2회, 할당 0)이고 횟수도 같은 자릿수다.
+        private long _dwmProbeTicksThisPass;
+
         // 30초 창(window)의 최악값. "이 수정이 먹었는가"를 한 숫자로 답하는 값이다.
         private float _titleProbeWorstMsInWindow;
         private float _titleProbeWindowStartTime = float.NegativeInfinity;
+
+        // 같은 창의 DWM 조회 최악값(2026-09-02). 두 값을 같은 주기로 보고 같은 예산으로 판정한다.
+        private float _dwmProbeWorstMsInWindow;
 
         private static readonly double TitleProbeTicksToMs =
             1000.0 / System.Diagnostics.Stopwatch.Frequency;
@@ -426,6 +509,13 @@ namespace StickMate.Platform.Windows
         /// <b>이 값이 작으면 DWM 호출은 스파이크의 범인이 아니다</b>가 실측으로 확정된다.
         /// </summary>
         public int LastDwmProbeCount { get; private set; }
+
+        /// <summary>
+        /// 마지막 패스에서 그 크로스 프로세스 DWM 조회에만 쓴 시간(ms). <c>LastTitleProbeMs</c>와
+        /// 같은 목적이다 — 원장의 <c>OS창목록</c>(= EnumWindows 전체) 안에서 <b>남의 프로세스를
+        /// 기다린 몫</b>을 분리한다.
+        /// </summary>
+        public float LastDwmProbeMs { get; private set; }
 
 
         // 오버레이 원점 보고용 부기(아래 CaptureOverlayOrigin 참고).
@@ -502,7 +592,10 @@ namespace StickMate.Platform.Windows
 
             // 여기부터가 비싼 구간 — 값싼 필터를 전부 통과한 창만 도달한다.
             _dwmProbeCount++;                                                // 계측 전용(바로 아래가 크로스 프로세스 DWM 호출이다)
-            if (IsCloaked(hWnd)) return WindowsFootholdRejection.Cloaked;    // DWM 수준에서 숨겨진 UWP 껍데기
+            long cloakStart = System.Diagnostics.Stopwatch.GetTimestamp();
+            bool cloaked = IsCloaked(hWnd);
+            _dwmProbeTicksThisPass += System.Diagnostics.Stopwatch.GetTimestamp() - cloakStart;
+            if (cloaked) return WindowsFootholdRejection.Cloaked;            // DWM 수준에서 숨겨진 UWP 껍데기
 
             alpha = ReadWindowAlpha(hWnd, exStyle);
             return WindowsFootholdRejection.None;
@@ -701,7 +794,10 @@ namespace StickMate.Platform.Windows
             }
 
             _dwmProbeCount++;                                                // 계측 전용(DWMWA_EXTENDED_FRAME_BOUNDS)
-            if (!TryGetVisualWindowRect(hWnd, out Rect screenRect)) return true;
+            long dwmStart = System.Diagnostics.Stopwatch.GetTimestamp();
+            bool gotRect = TryGetVisualWindowRect(hWnd, out Rect screenRect);
+            _dwmProbeTicksThisPass += System.Diagnostics.Stopwatch.GetTimestamp() - dwmStart;
+            if (!gotRect) return true;
 
             rejection = WindowsFootholdFilter.ClassifyGeometry(screenRect, alpha,
                 _hasVirtualScreenThisPass, _virtualScreenThisPass);
@@ -777,14 +873,16 @@ namespace StickMate.Platform.Windows
             _dwmProbeCount = 0;
             _titleProbeTicksThisPass = 0;
             _titleProbeCountThisPass = 0;
+            _dwmProbeTicksThisPass = 0;
 
             _foregroundHwndThisPass = GetForegroundWindow();
             ResolveTitleProbeApi();   // 최초 1회만 실제 작업을 한다(위 핸들을 쓰므로 순서 유지)
             _hasVirtualScreenThisPass = TryGetVirtualScreenBounds(out _virtualScreenThisPass);
 
-            EnumWindows(_enumWindowsCallback, IntPtr.Zero);
+            EnumWindowsMeasured();   // ★ 원장의 OS창목록 칸(위 문서 참고) — 감싸지 않으면 0회로 찍힌다.
             LastEnumeratedWindowCount = _enumeratedWindowCount;
             LastDwmProbeCount = _dwmProbeCount;
+            LastDwmProbeMs = (float)(_dwmProbeTicksThisPass * TitleProbeTicksToMs);
             LastTitleProbeCount = _titleProbeCountThisPass;
             LastTitleProbeMs = (float)(_titleProbeTicksThisPass * TitleProbeTicksToMs);
             LastRawWindowCount = _rawBuffer.Count;
@@ -913,6 +1011,7 @@ namespace StickMate.Platform.Windows
 
             float now = Time.realtimeSinceStartup;
             if (LastTitleProbeMs > _titleProbeWorstMsInWindow) _titleProbeWorstMsInWindow = LastTitleProbeMs;
+            if (LastDwmProbeMs > _dwmProbeWorstMsInWindow) _dwmProbeWorstMsInWindow = LastDwmProbeMs;
 
             if (_titleProbeWindowStartTime < 0f) _titleProbeWindowStartTime = now;
             if (now - _titleProbeWindowStartTime < AnomalyLogMinIntervalSeconds) return;
@@ -920,15 +1019,23 @@ namespace StickMate.Platform.Windows
 
             float worst = _titleProbeWorstMsInWindow;
             _titleProbeWorstMsInWindow = 0f;
+            float worstDwm = _dwmProbeWorstMsInWindow;
+            _dwmProbeWorstMsInWindow = 0f;
 
             // 여기서만 Application을 조회한다(30초에 1회) — 열거 경로의 비용이 아니다.
             float budgetMs = WindowsFootholdFilter.DeriveTitleProbeBudgetMs(Application.targetFrameRate);
-            if (worst <= budgetMs) return;
+            // ★ 2026-09-02 — DWM도 같은 예산으로 본다. 원장 칸 'OS창목록'은 Windows에서 EnumWindows
+            //   **전체**라(플랫폼 구조상 분리 불가) 그 안에서 "남의 프로세스를 기다린 몫"을 가려내는
+            //   유일한 숫자가 이것이다. 둘 중 하나만 넘어도 남긴다 — 넘지 않으면 침묵이 기본이다.
+            if (worst <= budgetMs && worstDwm <= budgetMs) return;
 
-            Debug.LogWarning($"[Win32WindowService][제목조회] 30초 최악 {worst:F2}ms > 예산 {budgetMs:F2}ms " +
-                $"({DescribeTitleProbeApi()}, 마지막 패스 {LastTitleProbeCount}회/{LastTitleProbeMs:F2}ms). " +
-                "제목 조회는 커널 구조체 읽기라 창 수에 비례하는 상수 시간이어야 한다 — 예산을 넘었다면 " +
-                "이 단계에 다시 크로스 프로세스 대기가 들어왔다는 뜻이다. [발판열거]의 '최대' 값과 함께 볼 것.");
+            Debug.LogWarning($"[Win32WindowService][열거비용] 30초 최악 — 제목조회 {worst:F2}ms / " +
+                $"DWM조회 {worstDwm:F2}ms (예산 {budgetMs:F2}ms). " +
+                $"마지막 패스: 제목 {LastTitleProbeCount}회/{LastTitleProbeMs:F2}ms({DescribeTitleProbeApi()}), " +
+                $"DWM {LastDwmProbeCount}회/{LastDwmProbeMs:F2}ms(IsCloaked + EXTENDED_FRAME_BOUNDS). " +
+                "제목 조회는 커널 구조체 읽기라 창 수에 비례하는 상수 시간이어야 하고, DWM 조회만이 " +
+                "이 경로에서 유일하게 다른 프로세스를 기다린다 — 어느 쪽이 예산을 넘었는지가 곧 범인이다. " +
+                "[발판열거]의 'OS창목록'/'최대' 값과 함께 볼 것.");
         }
 
         /// <summary>

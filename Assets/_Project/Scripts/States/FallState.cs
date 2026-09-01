@@ -83,16 +83,13 @@ namespace StickMate.States
             // ★ 발 떼기 수평 이송(2026-09-02) — drop-through 유예와 **같은 창** 동안 뛰어내리기의
             // 내딛는 속도를 다시 싣는다. 공중에서는 아무 것도 바꾸지 않고(루트 linearDamping=0),
             // Dock 물리 계단 위에서만 마찰이 먹어치운 만큼을 되돌린다.
-            // 유도/네거티브 컨트롤: StickmanBlackboard.TryGetStepOffCarryVelocityX 문서.
-            if (_blackboard.Body != null && _blackboard.TryGetStepOffCarryVelocityX(out float carryX))
-            {
-                Vector2 cv = _blackboard.Body.linearVelocity;
-                if (cv.x != carryX)
-                {
-                    cv.x = carryX;
-                    _blackboard.Body.linearVelocity = cv;
-                }
-            }
+            //
+            // ★★ 여기는 **보조 경로**다. 본 경로는 StickmanAgent.FixedUpdate()이며, 그래야 마찰과
+            //    같은 주기로 돈다 — 프레임 하나가 유예(0.25초)보다 길면 이 프레임 경로는 0회가 되고
+            //    수정이 통째로 무효가 된다(절전 등급 DisplayOff = 4fps에서는 결정적으로 그렇다).
+            //    두 경로가 부르는 구현은 하나뿐이라 갈라질 수 없다.
+            //    유도/네거티브 컨트롤: StickmanBlackboard.TickStepOffCarry 문서.
+            _blackboard.TickStepOffCarry();
 
             GroundSensor.GroundInfo info = _blackboard.SenseGround();
             if (_blackboard.CheckScreenBoundsOrFall(info)) return; // 이미 Fall이라 사실상 no-op이지만 안전하게 유지
@@ -235,6 +232,12 @@ namespace StickMate.States
             _blackboard.Machine.ChangeState(next);
         }
 
-        public void Exit() { }
+        public void Exit()
+        {
+            // 발 떼기 이송은 "이 발 떼기가 만든 이 Fall 구간"의 장치다 — 구간이 끝나면 즉시 끝난다.
+            // 시간 조건만으로는 유예 창 안의 Fall -> 다른 상태 -> Fall 왕복을 못 막는다
+            // (StickmanBlackboard.EndStepOffCarry 문서에 도달 경로와 안전성 논증이 있다).
+            _blackboard.EndStepOffCarry();
+        }
     }
 }

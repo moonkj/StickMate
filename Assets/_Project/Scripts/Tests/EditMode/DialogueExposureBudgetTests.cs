@@ -160,6 +160,65 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
+        /// ★★ 2026-09-02 — <b>지켜지지 않는 보호는 손해다</b>(리더 실측 2회).
+        ///
+        /// <para>관측: 팝인 가드가 새 대사를 버렸는데(노출 0.17초 &lt; 팝인 0.18초)
+        /// <b>이전 대사도 상태 종료로 컷됐다.</b> 사용자는 번쩍임을 <b>그대로 보고</b> 새 대사까지 잃는다.
+        /// 가드가 "들어오는 쪽만" 막고 "이전 것을 살리지는" 못한 것이다.</para>
+        ///
+        /// <para>판단: 이전 대사의 만료를 함께 미루는 갈래는 <b>기각</b>했다 — 서술은 상태가 끝나는
+        /// 순간 거짓이 되므로(규칙 4-c ③) 팝인 애니메이션을 위해 거짓 문장을 더 띄우는 것은
+        /// <b>불변 원칙 1</b>을 렌더 글리치 완화에 양보하는 것이다. 대신 <b>그 경우에는 막지 않는다</b>.
+        /// 가드는 이전 대사가 실제로 살아남을 때만 값이 있고, 그때는 그대로 유효하다.</para>
+        /// </summary>
+        [Test]
+        public void 이미_죽은_서술을_지키느라_새_대사를_버리지_않는다()
+        {
+            float popIn = DialogueTiming.PopInSeconds;
+            float halfPopIn = popIn * 0.5f;   // 실측 0.17초 < 팝인 0.18초와 같은 자리.
+
+            // ★ 네거티브 컨트롤(같은 줄) — 이전 대사가 살아남는 경우에는 <b>여전히</b> 막아야 한다.
+            //   이 단언이 없으면 아래 초록은 "가드를 통째로 없앴다"와 구별되지 않는다.
+            Assert.IsFalse(DialogueBudget.CanReplaceVisible(halfPopIn, popIn, replacesItself: false,
+                    visibleWillBeCutAnyway: false),
+                "이전 대사가 살아남는데도 교체가 허용됐다 — 가드가 통째로 죽었습니다.");
+
+            Assert.IsTrue(DialogueBudget.CanReplaceVisible(halfPopIn, popIn, replacesItself: false,
+                    visibleWillBeCutAnyway: true),
+                "이미 컷될 서술을 지키느라 새 대사를 버렸습니다 — 사용자는 번쩍임을 그대로 보고 " +
+                "대사까지 잃습니다(순손해). 지켜지지 않는 보호는 보호가 아닙니다.");
+
+            // 같은 글자 재점화는 <b>어떤 경우에도</b> 막는다 — 이쪽은 화면의 사실(글자가 다시 튀어오름)이라
+            // 이전 대사가 죽든 말든 달라지지 않는다.
+            Assert.IsFalse(DialogueBudget.CanReplaceVisible(halfPopIn, popIn, replacesItself: true,
+                    visibleWillBeCutAnyway: true),
+                "죽은 서술이라는 이유로 같은 글자의 자기 교체까지 열렸습니다 — 두 보호는 근거가 다릅니다.");
+        }
+
+        /// <summary>
+        /// ★ "이미 죽었는가"를 판정하는 순수 함수. <b>종류 축이 조건에 들어가야</b> 한다 —
+        /// 반응(Reaction)은 상태가 끝나도 가독예산을 채우고 나가므로(규칙 4-c ④) 죽지 않는다.
+        /// 실기 로그 frame=11111의 이전 대사가 정확히 <b>반응</b>이었고, 그 건은 계속 막혀야 한다.
+        /// </summary>
+        [Test]
+        public void 죽음_판정은_서술에만_적용된다()
+        {
+            const int stateA = 1, stateB = 2;
+
+            Assert.IsTrue(DialogueBudget.VisibleIsDoomedByIncoming(DialogueKind.Narrative, stateA, stateB),
+                "다른 상태의 대사가 들어왔는데 서술이 죽지 않았다고 판정했습니다 — 대사는 상태의 " +
+                "Enter()에서만 만들어지므로 상태 ID가 다르다는 것이 곧 그 상태가 끝났다는 뜻입니다.");
+
+            Assert.IsFalse(DialogueBudget.VisibleIsDoomedByIncoming(DialogueKind.Reaction, stateA, stateB),
+                "반응을 죽었다고 판정했습니다 — 반응은 상태가 끝나도 참이라 가독예산을 채우고 나갑니다" +
+                "(규칙 4-c ④). 실기 frame=11111의 이전 대사가 반응이었고 그 건은 계속 막혀야 합니다.");
+
+            Assert.IsFalse(DialogueBudget.VisibleIsDoomedByIncoming(DialogueKind.Narrative, stateA, stateA),
+                "같은 상태가 낸 대사인데 죽었다고 판정했습니다 — 한 상태가 살아 있는 동안 두 번째 " +
+                "대사를 낼 수 있으므로 이 경우는 <보수적으로> 죽지 않았다고 봐야 합니다.");
+        }
+
+        /// <summary>
         /// ★ 네거티브 컨트롤 — 보호를 빼면(= 옛 거동: 언제나 교체) 실제로 빨개지는가.
         /// 옛 구현을 그대로 적어 두고 <b>둘의 판정이 갈리는 점이 실재</b>함을 보인다. 이 짝이 없으면
         /// 위 두 초록은 "구조적으로 항상 참"일 수도 있다.

@@ -325,6 +325,7 @@ MonoBehaviour:
   archeryTargetDistanceRatio: 4.6
   archeryMinTargetDistanceRatio: 2.6
   archeryMaxTargetDistanceRatio: 6.6
+  archeryMinDistanceSpanFraction: 0.55
   archeryTargetRadiusRatio: 0.4
   archeryMissShortfallRadii: 1.5
   archeryArrowFlightSeconds: 0.62

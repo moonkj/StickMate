@@ -148,6 +148,10 @@ namespace StickMate.States
                     // Platform/DockPhysicsStep의 실제 콜라이더가 있어 몸에 쿨롱 마찰이 걸리고, 실측
                     // 정지 거리(배율 0.60에서 0.061유닛)가 모서리까지 남은 거리(0.090~0.117유닛)보다
                     // 짧아 **모서리에 닿기 전에 멈췄다**(신빌드 111분 관측: 발 떼기 64회 / 하강 0회).
+                    // ★ 재적용은 **물리 주기**로 돈다(StickmanAgent.FixedUpdate -> TickStepOffCarry).
+                    //   마찰과 같은 주기가 아니면 긴 프레임 하나에 그대로 진다 — 그 유도가 이 수정의 본질이다.
+                    // ★ 이 호출은 바로 위 BeginDropThroughIgnore와 **같은 프레임**이어야 유효하다
+                    //   (BeginStepOffCarry가 그 조건을 실제로 강제한다 — 직전 창 물려받기 차단).
                     // 유도와 네거티브 컨트롤은 StickConfig.hopDownStepOffCarryEnabled의 Tooltip 참고.
                     _blackboard.BeginStepOffCarry(stepOffVelocityX);
                     bool carryOn = _blackboard.TryGetStepOffCarryVelocityX(out _);

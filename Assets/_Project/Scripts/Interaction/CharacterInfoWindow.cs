@@ -273,6 +273,11 @@ namespace StickMate.Interaction
         private const float InventoryRowGap = 3f;
         private const int InventoryVisibleRows = 20;
         private const float InventoryRailWidth = 24f;
+
+        /// <summary>페이지 지시자 상자 높이. ★ 2026-09-02 — 예전에는 <b>레일 전체(473pt)</b>가 상자였고
+        /// MiddleCenter라 숫자가 [▲]에서 219pt 떨어진 <b>허공</b>에 떴다(45-9-a). 위에서 아래로 읽으므로
+        /// [▲] 바로 밑에 붙인다 — "[▲]를 누르면 이 숫자가 준다"는 인과가 그제서야 붙는다.</summary>
+        private const float InventoryPageIndicatorHeight = 16f;
         private const float StatusSlotWidth = 96f;   // 훗날 가격표가 들어올 자리(디자이너 확정 최소 폭).
         private const float InventoryListWidth = RightContentWidth - InventoryRailWidth - UiChrome.Space2;
 
@@ -465,6 +470,10 @@ namespace StickMate.Interaction
         private readonly InventoryRowView[] _inventoryViews = new InventoryRowView[InventoryVisibleRows];
         private RectTransform _pageUpRect;
         private RectTransform _pageDownRect;
+        private Image _pageUpOutline;
+        private Text _pageUpLabel;
+        private Image _pageDownOutline;
+        private Text _pageDownLabel;
         private Text _pageIndicator;
         private Text _inventoryDetailName;
         private Text _inventoryDetailBody;
@@ -512,6 +521,9 @@ namespace StickMate.Interaction
         private float _lastActionTime;
         private StickmanStateId _lastShownState = (StickmanStateId)(-1);
         private bool _hasShownState;
+
+        /// <summary>이 시각(unscaled)까지는 프레즌스 문구를 바꾸지 않는다 — <see cref="TickPresenceLine"/>.</summary>
+        private float _presenceHoldUntil;
         private float _lastDpiScale = -1f;
 
         /// <summary>히트테스트/호버 폴링이 돌려쓰는 코너 버퍼 — 이 앱은 하루 종일 켜져 있어서
@@ -691,8 +703,45 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// 프레즌스 라인 + 초상화 포즈를 <b>같은 상태 스냅샷</b>에서 파생시킨다(그림과 문구가 어긋날
-        /// 경우의 수를 없앤다). 상태가 실제로 바뀐 프레임에만 문자열을 만든다.
+        /// 프레즌스 줄 — <b>좌측 컬럼에서 유일하게 움직이는 것</b>(2026-09-02부터).
+        ///
+        /// ============================================================================
+        /// ★★ 여기 있던 초상화 포즈 갱신 한 줄을 걷어냈다 (docs/UX_FLOW.md 45-1)
+        /// ============================================================================
+        /// 사용자 신고: "캐릭터창에서 보이는 캐릭터는 장비 착용 모습<b>만</b> 적용되서 보여줘야하는데
+        /// 가끔 움직임". "만"이 범위를 닫는다 — 액자의 주제는 "무엇을 걸쳤는가" 하나다.
+        /// 옛 근거("그림과 문구를 같은 스냅샷에서 파생시켜 어긋남을 막는다")는 전수 대조로 반증됐다:
+        /// 4버킷 그림이 28행 문구를 <b>실제로 그리는</b> 상태는 3개(10.7%)뿐이었다.
+        /// 이제 <b>일치는 전부 글자가 진다</b> — 액자는 장비/해금/잉크/키에만 반응한다.
+        ///
+        /// ============================================================================
+        /// ★ 그래서 이 줄에 최소 노출(hold)이 필요해졌다 — 그림을 멈춘 것의 직접 결과다
+        /// ============================================================================
+        /// 실측(45-3-b): 이 줄은 <b>분당 17.4~21.7회</b> 바뀌고, 폭주 구간에서는 2.11초 동안 문구가
+        /// 4개 지나갔다(최단 노출 <b>0.22초</b>). 그림이 멈추면 사용자가 장비를 비교하며 쳐다보는
+        /// 자리에서 <b>유일하게 깜빡이는 것</b>이 이 줄이 된다.
+        ///
+        /// 규칙은 셋뿐이다:
+        /// <list type="number">
+        ///   <item>상태가 바뀌면 <b>즉시</b> 쓴다(지연 0 — 거짓말을 만들지 않는다).</item>
+        ///   <item>쓴 순간부터 <c>T_hold</c> 동안 바꾸지 않는다.</item>
+        ///   <item>만료되면 <b>그 순간의 현재 상태를 다시 읽어</b> 필요하면 갱신한다
+        ///         (놓치지 않는다 — 45-3-c의 검산에서 벽 타기 1.12초는 그대로 표시됐다).</item>
+        /// </list>
+        ///
+        /// <c>T_hold</c>는 <b>새 상수를 만들지 않는다</b> — 말풍선이 이미 쓰는 가독예산
+        /// (<see cref="StickMate.Dialogue.DialogueBudget.ReadingSeconds"/>)을 그대로 재사용한다.
+        /// 새 숫자를 여기 적으면 "몇 초면 읽히는가"의 정의가 두 곳으로 갈라진다.
+        /// 재는 대상은 <b>바뀌는 부분(상태 한 마디)</b>이다 — "지금  ·  " 접두는 한 번도 변하지 않아
+        /// 눈이 다시 읽지 않는다.
+        ///
+        /// <para><b>원칙 1 위반이 아니다.</b> hold는 <b>확정된 과거 상태만</b> 쓰고 미래를 예고하지
+        /// 않는다. 원칙 1이 금지하는 것은 "말해 놓고 안 하기"이지 "하고 나서 말하기"가 아니며,
+        /// <see cref="StateLabel"/>은 그 자신의 문서가 밝히듯 <b>대사가 아니다</b>
+        /// (<c>DialogueIntent</c>를 만들지 않는다).</para>
+        ///
+        /// <para><b>남는 대가(숨기지 않는다)</b>: hold 중에는 문구가 최대 <c>T_hold</c>만큼 낡는다.
+        /// 그 대가는 <b>읽을 수 없는 문구</b>보다 작다 — 0.22초짜리 문구의 정보량은 0이다.</para>
         /// </summary>
         private void TickPresenceLine()
         {
@@ -701,17 +750,27 @@ namespace StickMate.Interaction
             var machine = _agent != null && _agent.Blackboard != null ? _agent.Blackboard.Machine : null;
             if (machine == null)
             {
-                if (!_hasShownState) { _presenceText.text = "지금  ·  —"; _hasShownState = true; }
+                if (!_hasShownState) { WritePresence("—"); }
                 return;
             }
 
             StickmanStateId id = machine.CurrentStateId;
             if (_hasShownState && id == _lastShownState) return;
-            _lastShownState = id;
-            _hasShownState = true;
+            // hold가 살아 있으면 <b>아무것도 하지 않는다</b> — _lastShownState도 건드리지 않는다.
+            // 만료되는 프레임에 이 함수가 다시 와서 그때의 현재 상태를 읽는 것이 규칙 3이다.
+            if (_hasShownState && Time.unscaledTime < _presenceHoldUntil) return;
 
-            _presenceText.text = $"지금  ·  {StateLabel(id)}";
-            if (_stage != null) _stage.SetPose(CharacterPortraitStage.PoseForState(id));
+            _lastShownState = id;
+            WritePresence(StateLabel(id));
+        }
+
+        /// <summary>프레즌스 줄에 실제로 쓰는 곳 <b>한 군데</b>. 여기서만 hold 시계를 다시 감는다 —
+        /// 쓰는 곳과 시계를 감는 곳이 갈라지면 반드시 한쪽만 갱신된다.</summary>
+        private void WritePresence(string label)
+        {
+            _presenceText.text = $"지금  ·  {label}";
+            _hasShownState = true;
+            _presenceHoldUntil = Time.unscaledTime + StickMate.Dialogue.DialogueBudget.ReadingSeconds(label);
         }
 
         private void OnProgressionChanged()
@@ -734,6 +793,7 @@ namespace StickMate.Interaction
         private void RefreshAll()
         {
             _hasShownState = false;
+            _presenceHoldUntil = 0f;   // 방금 연 창의 첫 문구는 지난 세션의 시계에 막히지 않는다.
             // ★ 가시성이 <b>먼저</b>다. RefreshCards가 캐러셀 폭을 즉시 다시 재는데
             //   (LayoutRebuilder.ForceRebuildLayoutImmediate), 꺼져 있는 페이지에서는 그 계산이 돌지 않아
             //   스크롤 한계가 옛 값으로 남는다.
@@ -1091,11 +1151,15 @@ namespace StickMate.Interaction
 
         // ==================== 보관함(가상 목록) ====================
 
-        /// <summary>목록의 논리적 줄 수 = 헤더 2줄 + 카탈로그 전체(장비 32 + 행동 13).</summary>
+        /// <summary>목록의 논리적 줄 수 = 헤더 2줄 + 카탈로그 전체(장비 42 + 행동 13 = 55).
+        /// <para>★ 2026-09-02 — 여기 "장비 32"라고 적혀 있었다. 실제는 <b>42종</b>이고
+        /// (<c>Resources/Items/*.asset</c> 42개), 페이지 수가 32든 42든 3이라 <b>화면에는 티가 나지
+        /// 않았다</b>. 숫자를 손으로 적지 않는 것이 원칙이지만 주석은 예외가 없어 이렇게 샌다 —
+        /// 다음 사람이 이 숫자로 계산하면 10종을 잃는다.</para></summary>
         private static int InventoryLineCount => ItemCatalog.Count + 2;
 
         /// <summary>논리적 줄 번호 -> 카탈로그 인덱스. 헤더면 -1.
-        /// 순서: [걸치는 것] 헤더 → 장비 32종 → [할 줄 아는 것] 헤더 → 행동 13종.
+        /// 순서: [걸치는 것] 헤더 → 장비 전부 → [할 줄 아는 것] 헤더 → 행동 전부.
         /// 카탈로그가 이미 그 순서로 정의되어 있어 재정렬하지 않는다(정렬 규칙이 두 곳에 생기지 않게).</summary>
         private static int CatalogIndexForLine(int line)
         {
@@ -1186,8 +1250,17 @@ namespace StickMate.Interaction
                 // (나눗셈으로만 세면 마지막 페이지에서 "2/3"처럼 어긋난다 — 육안 검증에서 확인).
                 int page = Mathf.CeilToInt(_inventoryScroll / (float)InventoryVisibleRows) + 1;
                 int pages = Mathf.Max(1, Mathf.CeilToInt((float)InventoryLineCount / InventoryVisibleRows));
-                _pageIndicator.text = $"{page}\n/\n{pages}";
+                // ★ 2026-09-02 — 예전에는 $"{page}\n/\n{pages}"였다. 폭 부족 줄바꿈이 아니라
+                //   <b>명시적 개행</b>이었고(이 Text는 HorizontalWrapMode.Overflow라 애초에 줄바꿈을
+                //   하지 않는다), 세로로 쌓인 1 / 3은 "3 중 1"이 아니라 <b>분수 ⅓</b>으로 읽혔다.
+                //   깨진 글자가 아니라 <b>다른 뜻</b>이라 더 나쁘다(45-9-a).
+                _pageIndicator.text = $"{page} / {pages}";
             }
+
+            // 칩의 겉모습과 클릭 처리가 <b>같은 하나</b>(CanScrollInventory)를 본다 — 두 벌로 두면
+            // 반드시 한쪽만 갱신되고, 그게 곧 표시-실제 불일치다(SettingsWindow.SyncPageButtons와 같은 규칙).
+            ApplyPagerEnabled(_pageUpOutline, _pageUpLabel, CanScrollInventory(-1));
+            ApplyPagerEnabled(_pageDownOutline, _pageDownLabel, CanScrollInventory(+1));
 
             RefreshInventoryDetail();
         }
@@ -1227,6 +1300,39 @@ namespace StickMate.Interaction
             if (next == _inventoryScroll) return;
             _inventoryScroll = next;
             RefreshInventoryList();
+        }
+
+        /// <summary>그 방향으로 <b>실제로 움직일 수 있는가</b>. 겉모습과 클릭 처리가 이 하나를 본다.
+        ///
+        /// <para>★ 설정창(<c>SettingsWindow.CanScroll</c>)에서 그대로 베끼지 <b>않았다</b>: 그쪽은
+        /// 연속 스크롤(<c>float</c>)이라 <c>0.5f</c> 여유를 두지만 여기는 <b>줄 단위 정수</b>다.
+        /// 정수에는 부동소수 경계가 없으므로 그 여유를 옮겨 적으면 뜻 없는 마법수가 하나 는다.</para>
+        ///
+        /// <para>레일을 <b>숨기는 분기도 넣지 않았다</b>. 카탈로그가 <see cref="InventoryVisibleRows"/>줄
+        /// 이하로 줄면 양쪽 칩이 죽고 지시자가 <c>1 / 1</c>이 되는 것으로 충분하고, 그게 더 정직하다
+        /// (레일 양 끝 캡이라 하나가 사라지면 막대 자체가 고장 난 것처럼 보인다).</para></summary>
+        private bool CanScrollInventory(int direction)
+            => direction < 0 ? _inventoryScroll > 0 : _inventoryScroll < MaxInventoryScroll;
+
+        /// <summary>끝에 닿은 칩을 <b>죽이되 지우지 않는다</b>.
+        ///
+        /// <para>바꾸는 것은 <b>테두리와 글리프</b>뿐이고 <b>면은 그대로</b>다. 그리고 합성 바탕이
+        /// 설정창과 <b>다르다</b> — 저쪽 칩 면은 <c>CardSurfaceMuted</c>, 이쪽은 <c>CardSurface</c>다.
+        /// <c>CardBorder</c>/<c>Divider</c>는 알파 색이라 <b>어느 면 위에 올리느냐로 결과가 달라진다</b>.
+        /// 설정창의 결과색을 그대로 옮기면 테두리만 미묘하게 어긋난다(14.5-a).</para>
+        ///
+        /// <para>글리프는 산문이 아니라 <b>기호</b>이므로 아이콘 사다리(<see cref="UiChrome.InkIcon"/>)를
+        /// 쓴다.</para></summary>
+        private static void ApplyPagerEnabled(Image outline, Text glyph, bool enabled)
+        {
+            if (outline == null || glyph == null) return;
+
+            Color edge = UiChrome.Flatten(enabled ? UiChrome.CardBorder : UiChrome.Divider,
+                UiChrome.CardSurface);
+            if (outline.color != edge) outline.color = edge;
+
+            Color ink = UiChrome.InkIcon(enabled);
+            if (glyph.color != ink) glyph.color = ink;
         }
 
         private void RefreshInkSwatches()
@@ -1780,14 +1886,16 @@ namespace StickMate.Interaction
 
             if (_tab == Tab.Inventory)
             {
+                // ★ 클릭 경로가 <b>둘</b>이다(Button.onClick + 이 폴링). 한쪽만 가드하면 다른 쪽이
+                //   그대로 뚫린다 — 두 경로가 같은 CanScrollInventory를 본다(45-9-b ④).
                 if (ContainsScreenPoint(_pageUpRect, cursor))
                 {
-                    if (TryClaimAction("pageUp")) ScrollInventory(-1);
+                    if (CanScrollInventory(-1) && TryClaimAction("pageUp")) ScrollInventory(-1);
                     return;
                 }
                 if (ContainsScreenPoint(_pageDownRect, cursor))
                 {
-                    if (TryClaimAction("pageDown")) ScrollInventory(1);
+                    if (CanScrollInventory(+1) && TryClaimAction("pageDown")) ScrollInventory(+1);
                     return;
                 }
                 for (int i = 0; i < _inventoryViews.Length; i++)
@@ -2091,6 +2199,53 @@ namespace StickMate.Interaction
             => MaxCarouselScroll(section >= 0 && section < _sections.Length ? _sections[section] : null);
 
         // ==================== P0-1 회귀용 관측 창구 ====================
+
+        // ==================== 진단/테스트 전용 — 프레즌스 줄 / 보관함 레일 (2026-09-02) ====================
+
+        /// <summary>프레즌스 줄이 <b>지금 화면에 쓰고 있는</b> 문자열. hold 회귀가 이 값의 변화 횟수를 센다.</summary>
+        public string PresenceTextForTests => _presenceText != null ? _presenceText.text : null;
+
+        /// <summary>이 창이 쓰는 초상화 촬영장. "액자에 상태가 도달하지 않는다"를 재는 창구다 —
+        /// 테스트가 씬 전체를 뒤져 촬영장 두 개(정보창/호버 패널) 중 어느 쪽인지 헷갈릴 일이 없다.</summary>
+        public CharacterPortraitStage PortraitStageForTests => _stage;
+
+        /// <summary>보관함 페이지 지시자 문자열.</summary>
+        public string PageIndicatorTextForTests => _pageIndicator != null ? _pageIndicator.text : null;
+
+        /// <summary>지시자가 <b>실제로 그려질 때</b> 차지하는 폭(캔버스 포인트) — 폰트가 잰 값이다.
+        /// 설계가 Arial advance 0.556em을 가정해 19.46pt로 계산했는데, 그 가정을 여기서 <b>실제 폰트로</b>
+        /// 확인한다(레일 폭 <see cref="InventoryRailWidthPoints"/>를 넘으면 그때가 진짜 줄바꿈 문제다).</summary>
+        public float PageIndicatorInkWidthPoints => _pageIndicator != null ? _pageIndicator.preferredWidth : 0f;
+
+        /// <summary>지시자 상자의 화면 사각형(잘리기 전). "허공에 뜨지 않았는가"를 [▲]와의 거리로 잰다.</summary>
+        public Rect PageIndicatorRawScreenRect
+            => RawScreenRectOf(_pageIndicator != null ? _pageIndicator.rectTransform : null);
+
+        /// <summary>페이지 칩의 화면 사각형. <paramref name="direction"/>이 음수면 [▲], 양수면 [▼].</summary>
+        public Rect PagerChipRawScreenRect(int direction)
+            => RawScreenRectOf(direction < 0 ? _pageUpRect : _pageDownRect);
+
+        /// <summary>페이지 칩 글리프 색 — 죽은 칩과 산 칩이 <b>실제로 다른지</b>를 재는 창구.</summary>
+        public Color PagerGlyphColorForTests(int direction)
+        {
+            Text t = direction < 0 ? _pageUpLabel : _pageDownLabel;
+            return t != null ? t.color : Color.clear;
+        }
+
+        /// <summary>페이지 칩 테두리 색.</summary>
+        public Color PagerOutlineColorForTests(int direction)
+        {
+            Image i = direction < 0 ? _pageUpOutline : _pageDownOutline;
+            return i != null ? i.color : Color.clear;
+        }
+
+        /// <summary>레일 폭(캔버스 포인트). 테스트가 24를 베껴 적지 않게 하는 창구다.</summary>
+        public float InventoryRailWidthPoints => InventoryRailWidth;
+
+        /// <summary>지금 보관함 스크롤(줄 단위)과 그 상한 — 칩의 겉모습이 <b>이 값에서</b> 나오는지 확인한다.</summary>
+        public int InventoryScrollForTests => _inventoryScroll;
+
+        public int MaxInventoryScrollForTests => MaxInventoryScroll;
 
         /// <summary>탭 버튼의 화면 사각형 — 테스트가 <b>실제 클릭 경로</b>로 탭을 누를 수 있게 연다
         /// (<c>_tabRects</c>를 리플렉션으로 뒤지던 관례를 대체한다).</summary>
@@ -3155,13 +3310,15 @@ namespace StickMate.Interaction
             float listHeight = InventoryVisibleRows * rowStep - InventoryRowGap;
             float railX = RightPadX + InventoryListWidth + UiChrome.Space2;
 
-            _pageUpRect = BuildPagerButton(page, "PageUp", "▲", railX, SectionsTopY, () => ScrollInventory(-1), "pageUp");
+            _pageUpRect = BuildPagerButton(page, "PageUp", "▲", railX, SectionsTopY, -1, "pageUp",
+                out _pageUpOutline, out _pageUpLabel);
             _pageDownRect = BuildPagerButton(page, "PageDown", "▼", railX,
-                SectionsTopY - (listHeight - InventoryRailWidth), () => ScrollInventory(1), "pageDown");
+                SectionsTopY - (listHeight - InventoryRailWidth), +1, "pageDown",
+                out _pageDownOutline, out _pageDownLabel);
 
             _pageIndicator = Label(page, "PageIndicator", UiChrome.FontCaption, TextAnchor.MiddleCenter,
                 UiChrome.InkMeta, railX, SectionsTopY - (InventoryRailWidth + UiChrome.Space2),
-                InventoryRailWidth, listHeight - InventoryRailWidth * 2f - UiChrome.Space2 * 2f, "1\n/\n1");
+                InventoryRailWidth, InventoryPageIndicatorHeight, "1 / 1");
 
             Image detail = UiChrome.AddSurface(page, "InventoryDetail", UiChrome.SubtleSurface, UiChrome.RadiusCard);
             var drt = detail.rectTransform;
@@ -3182,21 +3339,32 @@ namespace StickMate.Interaction
                 RightContentWidth - 215f, -DetailHeight + 26f, 200f, 14f, "지금은 파는 것이 없습니다");
         }
 
+        /// <summary>페이지 칩 하나. ★ 2026-09-02 — 테두리와 글리프를 <b>밖으로 내보낸다</b>.
+        /// 예전에는 둘을 지역 변수로 버려서 "끝에 닿았다"를 칠할 대상 자체가 없었고, 그래서 1페이지의
+        /// [▲]가 [▼]와 <b>픽셀 단위로 동일</b>한 채 눌러도 조용히 아무 일도 안 했다(45-9-b).</summary>
         private RectTransform BuildPagerButton(RectTransform page, string name, string glyph, float x, float y,
-            UnityEngine.Events.UnityAction action, string dedupKey)
+            int direction, string dedupKey, out Image outlineOut, out Text labelOut)
         {
             Image surface = UiChrome.AddSurface(page, name, UiChrome.CardSurface, UiChrome.RadiusChip);
             var rt = surface.rectTransform;
             UiChrome.PlaceTopLeft(rt, x, y, InventoryRailWidth, InventoryRailWidth);
-            UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+            Image outline = UiChrome.AddOutline(rt, "Outline",
+                UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface), UiChrome.RadiusChip);
 
-            Text label = UiChrome.AddText(rt, "Label", UiChrome.FontCaption, TextAnchor.MiddleCenter, UiChrome.TextTertiary);
+            Text label = UiChrome.AddText(rt, "Label", UiChrome.FontCaption, TextAnchor.MiddleCenter,
+                UiChrome.InkIcon(true));
             UiChrome.Stretch(label.rectTransform);
             label.text = glyph;
 
             var button = surface.gameObject.AddComponent<Button>();
             button.targetGraphic = surface;
-            button.onClick.AddListener(() => { if (TryClaimAction(dedupKey)) action(); });
+            button.onClick.AddListener(() =>
+            {
+                if (!CanScrollInventory(direction)) return;   // 죽은 칩은 <b>아무 일도 하지 않는다</b>.
+                if (TryClaimAction(dedupKey)) ScrollInventory(direction);
+            });
+            outlineOut = outline;
+            labelOut = label;
             return rt;
         }
 

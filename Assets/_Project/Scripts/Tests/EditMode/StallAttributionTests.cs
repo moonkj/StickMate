@@ -733,13 +733,66 @@ namespace StickMate.Tests.EditMode
             // 주석을 걷어내고 **실행 코드**만 본다(결함을 설명하는 주석 자체가 구현으로 오인되던 함정).
             string exec = StripComments(mac);
             int declared = CountOccurrences(exec, "CopyOnScreenWindowList()");
-            int measured = CountOccurrences(exec, "CopyOnScreenWindowListMeasured()");
+            int measured = CountOccurrences(exec, "CopyOnScreenWindowListMeasured(");
             // 남아야 하는 원시 호출은 딱 둘: 정의 한 줄 + 계측 래퍼 안의 실제 호출 한 줄.
             Assert.AreEqual(2, declared,
                 $"계측을 우회하는 원시 CopyOnScreenWindowList() 호출이 {declared - 2}개 남아 있다 — " +
                 "그 왕복은 원장에 잡히지 않는다.");
             Assert.GreaterOrEqual(measured, 4,
                 "계측판 호출부(정의 1 + 발판열거/전체화면판정/자기창조회 3)가 모자란다.");
+
+            // ★ 2026-09-02 2차 — **부모 구간이 없는** 세 번째 호출자(TryGetSelfWindowRect ->
+            //   DetectDesktopDpiScale / ReportOverlayRectNow)가 부모 있는 칸에 섞이면
+            //   프레임 단위로 자식이 부모보다 커져 '우리 후처리'가 음수가 된다
+            //   (실측: 창열거경로 12.3ms인데 그중 OS창목록 15.0ms/2회 -> −2.7ms).
+            //   그 호출자만 insideEnumerationPass: false여야 한다.
+            Assert.AreEqual(1, CountOccurrences(exec, "CopyOnScreenWindowListMeasured(insideEnumerationPass: false)"),
+                "부모 없는 창목록 조회(TryGetSelfWindowRect)가 부모 있는 칸에 섞여 있거나 둘 이상으로 늘었다 — " +
+                "그러면 '발판열거 + 전체화면판정 − OS창목록 = 우리 후처리' 뺄셈이 음수가 된다.");
+
+            int selfRect = exec.IndexOf("private bool TryGetSelfWindowRect(", System.StringComparison.Ordinal);
+            Assert.Greater(selfRect, 0, "TryGetSelfWindowRect가 사라졌다 — 이 검사의 대상이 없다.");
+            int orphanCall = exec.IndexOf("CopyOnScreenWindowListMeasured(insideEnumerationPass: false)",
+                System.StringComparison.Ordinal);
+            Assert.Greater(orphanCall, selfRect,
+                "부모 없음 표시가 TryGetSelfWindowRect 밖에 붙어 있다 — 다른 경로가 잘못 표시됐다.");
+        }
+
+        /// <summary>
+        /// ★★ Windows도 <b>같은 계측기</b>를 거치는가(2026-09-02 — 사용자 상시 지시 "맥에 적용한 사항
+        /// 윈도우에도 모두 적용").
+        ///
+        /// <para>이 배선이 없던 동안 Windows 로그는 <c>★OS창목록 평균 0.00ms, 0회 -> 우리 후처리
+        /// &lt;발판열거 전액&gt;</c>으로 찍혔다. <b>이번 라운드가 없애려던 것과 정확히 같은 오도</b>이고,
+        /// 하필 Windows가 크로스 프로세스 DWM 때문에 왕복이 더 비싼 플랫폼이다.</para>
+        ///
+        /// <para>구조가 다르다는 사실 자체는 갭이 아니다(macOS는 왕복 1회, Windows는 콜백 N회) —
+        /// 그래서 "같은 이름의 함수가 있는가"가 아니라 <b>같은 원장 창구를 부르는가</b>와
+        /// <b>스레드 CPU를 -1로 정직하게 다루는가</b>를 본다.</para>
+        /// </summary>
+        [Test]
+        public void Windows_창열거도_같은_계측기를_거친다()
+        {
+            string exec = StripComments(ReadScript("Platform", "Windows", "Win32WindowService.cs"));
+
+            StringAssert.Contains("StallAttribution.RecordNativeWindowListQuery(", exec,
+                "Windows 창 열거가 원장에 한 번도 잡히지 않는다 — 로그가 'OS창목록 0.00ms/0회'라고 말하고 " +
+                "DWM 왕복이 원인일 때조차 '전부 우리 후처리'로 오도한다.");
+
+            // 열거 호출은 반드시 계측판을 거친다. 원시 호출이 남으면 그 왕복이 원장에서 사라진다.
+            Assert.AreEqual(2, CountOccurrences(exec, "EnumWindowsMeasured()"),
+                "계측판(정의 1 + 호출 1)이 아니다 — 열거는 패스당 1회이고 그 1회가 계측을 거쳐야 한다.");
+            Assert.AreEqual(1, CountOccurrences(exec, "EnumWindows(_enumWindowsCallback"),
+                "계측을 우회하는 원시 열거 호출이 남아 있다(남아야 하는 것은 계측판 안의 1회뿐).");
+
+            // 스레드 CPU 시간 — macOS는 clock_gettime, Windows는 GetThreadTimes. 없으면 -1로 정직하게.
+            StringAssert.Contains("GetThreadTimes", exec,
+                "Windows에 스레드 CPU 시계 대응물이 없다 — '벽시계 >> CPU면 블로킹'이라는 판별을 " +
+                "Windows에서만 할 수 없게 된다.");
+            StringAssert.Contains("ThreadCpuNanoseconds()", exec,
+                "CPU 시간을 재는 헬퍼가 없다 — 계측 창구에 -1만 넘기고 있을 가능성이 높다.");
+            StringAssert.Contains("_threadCpuClockState = 2", exec,
+                "조회 실패를 영구히 끄는 상태 기계가 없다 — macOS판과 같은 규약(-1, 0으로 위장 금지)이어야 한다.");
         }
 
         /// <summary>

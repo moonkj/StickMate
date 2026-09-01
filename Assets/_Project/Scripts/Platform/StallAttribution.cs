@@ -154,6 +154,15 @@ namespace StickMate.Platform
             public double OsListMs;
             public int OsListCount;
 
+            // ★★ 2026-09-02 — **부모 없는** 창목록 조회(발판열거도 전체화면판정도 아닌 단발성 경로).
+            //   macOS의 TryGetSelfWindowRect(-> DetectDesktopDpiScale / ReportOverlayRectNow)가 그것이다.
+            //   위 OsListMs에 같이 넣으면 자식이 부모보다 커져 '우리 후처리'가 **음수**가 된다
+            //   (실측: 창열거경로 12.3ms인데 그중 OS창목록 15.0ms/2회 -> 후처리 −2.7ms).
+            //   하필 ReportOverlayRectNow는 창 재적합 성공 직후 = 해상도 변경/모니터 분리/전체화면
+            //   전환 직후에 불린다 — 스톨이 가장 잘 나는 바로 그 순간에 원장이 어긋났다.
+            public double OsListOrphanMs;
+            public int OsListOrphanCount;
+
             public double LogMs;
             public int LogCount;
             public double LogicMs;
@@ -195,6 +204,13 @@ namespace StickMate.Platform
         private static int _baseOsListCount;
         private static double _baseOsListCpuTotalMs;
         private static int _baseOsListCpuCount;
+
+        // 같은 값의 "부모 없음" 판(위 FrameBucket.OsListOrphanMs 문서 참고). 원장에는 남기되
+        // '우리 후처리' 뺄셈에는 넣지 않는다 — 부모 구간 밖에서 일어난 왕복이기 때문이다.
+        private static double _baseOsListOrphanTotalMs, _baseOsListOrphanMaxMs;
+        private static int _baseOsListOrphanCount;
+        private static double _baseOsListOrphanCpuTotalMs;
+        private static int _baseOsListOrphanCpuCount;
 
         // 60초 요약용 누적치(할당 0)
         private static double _winEnumTotalMs, _winEnumMaxMs;
@@ -371,6 +387,8 @@ namespace StickMate.Platform
         internal static int CurrentFrameFullscreenProbeCount => Buckets[_current].FullscreenProbeCount;
         internal static double CurrentFrameOsListMs => Buckets[_current].OsListMs;
         internal static int CurrentFrameOsListCount => Buckets[_current].OsListCount;
+        internal static double CurrentFrameOsListOrphanMs => Buckets[_current].OsListOrphanMs;
+        internal static int CurrentFrameOsListOrphanCount => Buckets[_current].OsListOrphanCount;
 
         // ------------------------------------------------------------------------------------
         // 성장 관측치 — "켜놓을수록 심해진다"를 로그가 스스로 증명하게 하는 값들
@@ -425,6 +443,8 @@ namespace StickMate.Platform
             _baseFsCount = 0;
             _baseOsListTotalMs = _baseOsListMaxMs = _baseOsListCpuTotalMs = 0;
             _baseOsListCount = _baseOsListCpuCount = 0;
+            _baseOsListOrphanTotalMs = _baseOsListOrphanMaxMs = _baseOsListOrphanCpuTotalMs = 0;
+            _baseOsListOrphanCount = _baseOsListOrphanCpuCount = 0;
             _winFsTotalMs = _winFsMaxMs = 0;
             _winFsCount = 0;
             _logTotalMs = _logMaxMs = 0;
@@ -568,8 +588,26 @@ namespace StickMate.Platform
         // ====================================================================================
 
         /// <summary>
-        /// 네이티브 창 목록 조회 <b>그 자체</b>(macOS <c>CGWindowListCopyWindowInfo</c>)만 감싼
-        /// 중첩 타이머의 결과.
+        /// 네이티브 창 목록 조회 <b>그 자체</b>만 감싼 중첩 타이머의 결과.
+        ///
+        /// <para>★★ <b>두 플랫폼에서 이 칸이 재는 것은 구조가 다르다</b>(2026-09-02, Windows 배선 라운드).
+        /// "왕복 1회"라는 개념이 Windows에는 없기 때문이며, 그 사실을 숨기면 이 칸 자체가 오도한다:
+        /// <list type="bullet">
+        ///  <item><description><b>macOS</b> — <c>CGWindowListCopyWindowInfo</c> 호출 <b>하나</b>.
+        ///   WindowServer로 가는 동기 IPC 왕복 1회로 목록 전체가 도착하고, 그 뒤가 전부 우리 코드다.
+        ///   따라서 이 칸은 <b>순수한 OS 왕복</b>이다.</description></item>
+        ///  <item><description><b>Windows</b> — <c>EnumWindows</c> 호출 <b>전체</b>(커널 창 목록 순회 +
+        ///   우리 콜백 N회). 목록이 한 번에 오지 않고 창마다 콜백으로 오며, 그 콜백 안에서 다시
+        ///   <c>GetWindowLongPtr/IsWindowVisible/InternalGetWindowText/GetLayeredWindowAttributes</c>와
+        ///   <b>크로스 프로세스 DWM 조회</b>(<c>DwmGetWindowAttribute</c> x2)가 우리 필터 산술과
+        ///   교대로 실행된다. 이 둘은 P/Invoke를 하나하나 감싸지 않는 한 분리할 수 없다.
+        ///   <b>그래서 이 칸에는 콜백 안의 우리 필터 산술이 함께 들어간다</b> — 비트마스크/사각형 비교뿐인
+        ///   순수 관리 코드라 무해하다고 판단했고, 정말 그런지는 Win32WindowService가 같은 패스에서
+        ///   따로 재는 <c>LastDwmProbeMs</c>/<c>LastTitleProbeMs</c>가 답한다.
+        ///   Windows에서 이 칸이 재지 <b>않는</b> 것은 <c>EnumWindows</c> 이후의 가려짐 솔버
+        ///   (<c>BuildVisibleTopEdgeFootholds</c>)와 진단/보고다 — 즉 "우리 후처리" 뺄셈의 의미는
+        ///   두 플랫폼에서 여전히 같다.</description></item>
+        /// </list></para>
         ///
         /// <para><b>왜 필요한가(2026-09-02).</b> <c>[발판열거]</c>라는 라벨이 재는 구간에는 OS 왕복
         /// 말고도 <b>Dock 실측</b>(<c>TryGetDockFoothold</c>)과 <b>바닥 안전망 합성</b>
@@ -585,10 +623,37 @@ namespace StickMate.Platform
         /// </summary>
         /// <param name="elapsedTicks"><see cref="Stopwatch"/> 틱 단위 벽시계 경과.</param>
         /// <param name="cpuNanoseconds">같은 구간의 <b>스레드</b> CPU 시간(ns).
-        /// <b>음수면 그 플랫폼이 스레드 CPU 시계를 지원하지 않는다</b> — 0으로 위장하지 않는다.</param>
-        public static void RecordNativeWindowListQuery(long elapsedTicks, long cpuNanoseconds)
+        /// <b>음수면 그 플랫폼이 스레드 CPU 시계를 지원하지 않는다</b> — 0으로 위장하지 않는다.
+        /// (macOS <c>clock_gettime(CLOCK_THREAD_CPUTIME_ID)</c> / Windows <c>GetThreadTimes</c>.)</param>
+        /// <param name="insideEnumerationPass">
+        /// 이 왕복이 <b>발판열거 / 전체화면판정</b>이라는 부모 구간 안에서 일어났는가.
+        /// <c>false</c>면 부모가 없는 단발성 경로(macOS <c>TryGetSelfWindowRect</c> — 해상도 변경/
+        /// 모니터 분리/전체화면 전환 직후의 좌표계 재측정)라는 뜻이고, 별도 칸에 쌓아
+        /// <c>발판열거 + 전체화면판정 − OS창목록 = 우리 후처리</c> 뺄셈을 <b>음수로 만들지 않는다</b>.
+        /// </param>
+        public static void RecordNativeWindowListQuery(long elapsedTicks, long cpuNanoseconds,
+            bool insideEnumerationPass = true)
         {
             double ms = elapsedTicks * TicksToMs;
+            double cpuMs = cpuNanoseconds >= 0 ? cpuNanoseconds / 1000000.0 : -1.0;
+
+            if (!insideEnumerationPass)
+            {
+                Buckets[_current].OsListOrphanMs += ms;
+                Buckets[_current].OsListOrphanCount++;
+
+                _baseOsListOrphanTotalMs += ms;
+                _baseOsListOrphanCount++;
+                if (ms > _baseOsListOrphanMaxMs) _baseOsListOrphanMaxMs = ms;
+
+                if (cpuMs >= 0.0)
+                {
+                    _baseOsListOrphanCpuTotalMs += cpuMs;
+                    _baseOsListOrphanCpuCount++;
+                }
+                return;
+            }
+
             Buckets[_current].OsListMs += ms;
             Buckets[_current].OsListCount++;
 
@@ -596,9 +661,9 @@ namespace StickMate.Platform
             _baseOsListCount++;
             if (ms > _baseOsListMaxMs) _baseOsListMaxMs = ms;
 
-            if (cpuNanoseconds >= 0)
+            if (cpuMs >= 0.0)
             {
-                _baseOsListCpuTotalMs += cpuNanoseconds / 1000000.0;
+                _baseOsListCpuTotalMs += cpuMs;
                 _baseOsListCpuCount++;
             }
         }
@@ -831,7 +896,8 @@ namespace StickMate.Platform
                 $"[발판열거 {b.EnumMs:F1}/{b.EnumCount}회(열거창 {b.EnumeratedWindowCount}개 -> " +
                 $"정밀검사 {b.DwmProbeCount}회 -> 발판 {b.FootholdCount}조각) + 전체화면판정 " +
                 $"{b.FullscreenProbeMs:F1}/{b.FullscreenProbeCount}회 | 그중 OS창목록 " +
-                $"{b.OsListMs:F1}ms/{b.OsListCount}회], " +
+                $"{b.OsListMs:F1}ms/{b.OsListCount}회] + 부모없는OS창목록 " +
+                $"{b.OsListOrphanMs:F1}ms/{b.OsListOrphanCount}회, " +
                 $"로그 {logMs:F1}ms/{b.LogCount}줄, " +
                 $"기타로직 {otherLogicMs:F1}ms | 물리 {fixedMs:F1}ms/{b.FixedSteps}스텝 | " +
                 $"로직밖 {outsideMs:F1}ms({Share(outsideMs, dtMs):F0}%). " +
@@ -988,6 +1054,11 @@ namespace StickMate.Platform
                 double fsPerSecond = _baseFsTotalMs / Mathf.Max(0.001f, window);
                 double osMean = _baseOsListCount > 0 ? _baseOsListTotalMs / _baseOsListCount : 0.0;
                 double osCpuMean = _baseOsListCpuCount > 0 ? _baseOsListCpuTotalMs / _baseOsListCpuCount : -1.0;
+                double orphanMean = _baseOsListOrphanCount > 0 ? _baseOsListOrphanTotalMs / _baseOsListOrphanCount : 0.0;
+                double orphanCpuMean = _baseOsListOrphanCpuCount > 0
+                    ? _baseOsListOrphanCpuTotalMs / _baseOsListOrphanCpuCount : -1.0;
+                // ★ 부모 없는 왕복은 빼지 않는다 — 애초에 부모 구간 안에서 일어나지 않았으므로
+                //   빼면 후처리가 음수가 된다(FrameBucket.OsListOrphanMs 문서의 실측 참고).
                 double ourPost = _baseTotalMs + _baseFsTotalMs - _baseOsListTotalMs;
                 Debug.Log($"[발판열거] 1회 평균 {mean:F2}ms / 최대 {_baseMaxMs:F2}ms, {_baseCount}회/{window:F0}초 " +
                     $"(초당 {perSecond:F2}ms = 실행 시간의 {perSecond / 10.0:F2}%), " +
@@ -995,11 +1066,15 @@ namespace StickMate.Platform
                     $"정밀검사 {_lastDwmProbeCount}회(최대 {_baseMaxDwm}), 발판 {_lastFootholdCount}조각. " +
                     $"★전체화면판정 평균 {fsMean:F2}ms / 최대 {_baseFsMaxMs:F2}ms, {_baseFsCount}회 " +
                     $"(초당 {fsPerSecond:F2}ms). " +
-                    $"★OS창목록(왕복만) 평균 {osMean:F2}ms / 최대 {_baseOsListMaxMs:F2}ms, {_baseOsListCount}회, " +
+                    $"★OS창목록(부모구간 안) 평균 {osMean:F2}ms / 최대 {_baseOsListMaxMs:F2}ms, {_baseOsListCount}회, " +
                     $"같은 구간 스레드CPU 평균 {osCpuMean:F2}ms({_baseOsListCpuCount}회 측정) " +
                     $"-> 우리 후처리 합계 {ourPost:F1}ms. " +
+                    $"★부모없는OS창목록(좌표계 재측정) 평균 {orphanMean:F2}ms / 최대 {_baseOsListOrphanMaxMs:F2}ms, " +
+                    $"{_baseOsListOrphanCount}회, 스레드CPU 평균 {orphanCpuMean:F2}ms({_baseOsListOrphanCpuCount}회). " +
                     "(-1 = 그 플랫폼이 보고하지 않는 값. '정밀검사'는 값싼 필터를 통과해 창 하나당 비싼 " +
                     "처리까지 간 횟수다 — Windows는 크로스 프로세스 DWM 조회, macOS는 창별 속성 복사. " +
+                    "★'OS창목록'이 두 플랫폼에서 재는 범위는 다르다(macOS = 왕복 1회 / Windows = " +
+                    "창 열거 호출 전체) — 근거와 한계는 RecordNativeWindowListQuery 문서에 있다. " +
                     "'초당 ms'가 이 기능이 실제로 가져가는 몫이다 — 60fps 예산 16.7ms/프레임 x 60 = " +
                     "초당 1000ms이므로 초당 10ms면 1%다.)");
                 // ★ 새 세 항목(전체화면판정 / OS창목록 / 우리 후처리)을 읽는 법은 이 클래스 문서와
@@ -1019,6 +1094,8 @@ namespace StickMate.Platform
             _baseFsCount = 0;
             _baseOsListTotalMs = _baseOsListMaxMs = _baseOsListCpuTotalMs = 0;
             _baseOsListCount = _baseOsListCpuCount = 0;
+            _baseOsListOrphanTotalMs = _baseOsListOrphanMaxMs = _baseOsListOrphanCpuTotalMs = 0;
+            _baseOsListOrphanCount = _baseOsListOrphanCpuCount = 0;
         }
 
         private static void EmitSummary()

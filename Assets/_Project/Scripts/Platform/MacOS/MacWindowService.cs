@@ -681,7 +681,16 @@ namespace StickMate.Platform.MacOS
         //
         // 비용: 호출당 Stopwatch 2회 + clock_gettime 2회. 왕복 자체가 밀리초 단위라 무시 가능하고,
         // **할당 0**이다.
-        private static IntPtr CopyOnScreenWindowListMeasured()
+        /// <param name="insideEnumerationPass">
+        /// ★ 2026-09-02 2차 — 이 왕복에 <b>부모 구간</b>(발판열거 / 전체화면판정)이 있는가.
+        /// <see cref="TryGetSelfWindowRect"/>는 둘 중 어느 것도 아닌 <b>세 번째 호출자</b>이며,
+        /// 그것을 부모 있는 칸에 같이 넣었더니 프레임 단위로 <b>자식이 부모보다 커졌다</b>
+        /// (실측: <c>창열거경로 12.3ms [발판열거 12.3 + 전체화면판정 0.0 | 그중 OS창목록 15.0ms/2회]</c>
+        /// -> 후처리 −2.7ms). 하필 그 호출자(<see cref="ReportOverlayRectNow"/>)는 창 재적합 성공
+        /// 직후 = 해상도 변경 / 모니터 분리 / 전체화면 전환 직후에 불린다 — 스톨이 가장 잘 나는
+        /// 바로 그 순간에 원장이 어긋났다는 뜻이다.
+        /// </param>
+        private static IntPtr CopyOnScreenWindowListMeasured(bool insideEnumerationPass)
         {
             long wall0 = System.Diagnostics.Stopwatch.GetTimestamp();
             long cpu0 = ThreadCpuNanoseconds();
@@ -690,7 +699,8 @@ namespace StickMate.Platform.MacOS
             long cpu1 = ThreadCpuNanoseconds();
             StallAttribution.RecordNativeWindowListQuery(
                 wallTicks,
-                (cpu0 >= 0 && cpu1 >= 0) ? cpu1 - cpu0 : -1);
+                (cpu0 >= 0 && cpu1 >= 0) ? cpu1 - cpu0 : -1,
+                insideEnumerationPass);
             return list;
         }
 
@@ -935,7 +945,7 @@ namespace StickMate.Platform.MacOS
             //   네이티브를 두드릴 이유가 없다. 부착 전에는 (0,0)이고 그러면 규칙이 보정을 포기한다.
             _overlayContentSizeThisPass = ReadControllerContentSize();
 
-            IntPtr windowArray = CopyOnScreenWindowListMeasured();
+            IntPtr windowArray = CopyOnScreenWindowListMeasured(insideEnumerationPass: true);
             if (windowArray == IntPtr.Zero) return _footholdBuffer; // 조회 실패 — FallbackPlatformWindowService 안전망이 감싸므로 빈 리스트로도 안전.
 
             try
@@ -1328,7 +1338,7 @@ namespace StickMate.Platform.MacOS
         /// </summary>
         private bool EvaluateFullscreen(out string reason)
         {
-            IntPtr windowArray = CopyOnScreenWindowListMeasured();
+            IntPtr windowArray = CopyOnScreenWindowListMeasured(insideEnumerationPass: true);
             if (windowArray == IntPtr.Zero)
             {
                 reason = "창 목록 조회 실패(CGWindowListCopyWindowInfo == null) — 안전하게 '전체화면 아님'으로 처리.";
@@ -2094,7 +2104,8 @@ namespace StickMate.Platform.MacOS
         private bool TryGetSelfWindowRect(out Rect rect)
         {
             rect = default;
-            IntPtr windowArray = CopyOnScreenWindowListMeasured();
+            // ★ 부모 없는 조회다(위 파라미터 문서 참고) — 발판열거도 전체화면판정도 아니다.
+            IntPtr windowArray = CopyOnScreenWindowListMeasured(insideEnumerationPass: false);
             if (windowArray == IntPtr.Zero) return false;
 
             bool found = false;

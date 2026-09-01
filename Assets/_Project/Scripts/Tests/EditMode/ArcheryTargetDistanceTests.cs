@@ -46,9 +46,16 @@ namespace StickMate.Tests.EditMode
         /// <summary>쏘기 전에 물러서는 한 걸음(신장 1배) — ArcheryDirector.BackStepRatio와 같은 값.</summary>
         private const float BackStep = Height * ArcheryDirector.BackStepRatio;
 
-        private static ArcheryDirector.Placement Place(float footX, float lo, float hi, float roll01)
+        /// <summary>
+        /// ★ 이 헬퍼는 폭 비례 하한을 <b>0으로 고정</b>한다. 아래 ①②의 기존 테스트가 잠그는 것은
+        /// 2026-08-31 계약(절대 밴드 / 균등 분포 / 구간 침범 금지)이고, 그 계약은 2026-09-02
+        /// <c>archeryMinDistanceSpanFraction</c> 도입 뒤에도 <b>f=0에서 비트 단위로 그대로</b> 살아 있어야
+        /// 한다 — 그게 이 필드가 안전한 킬 스위치라는 뜻이다. 출하 비율(0.55)의 동작은 ④가 따로 잠근다.
+        /// </summary>
+        private static ArcheryDirector.Placement Place(float footX, float lo, float hi, float roll01,
+            float spanFraction = 0f)
             => ArcheryDirector.ResolvePlacement(footX, lo, hi, CharInset, TargetInset, BackStep,
-                MinDistance, MaxDistance, roll01);
+                MinDistance, MaxDistance, spanFraction, roll01);
 
         /// <summary>시드 고정 난수 — 실행할 때마다 같은 표본을 본다(플레이키 금지).</summary>
         private static float[] Rolls(int seed, int count)
@@ -326,6 +333,384 @@ namespace StickMate.Tests.EditMode
                     "기준 사거리가 밴드 하한보다 짧습니다 — 모든 사격이 기준보다 멀어져 느려집니다.");
                 Assert.LessOrEqual(cfg.archeryTargetDistanceRatio, cfg.archeryMaxTargetDistanceRatio,
                     "기준 사거리가 밴드 상한보다 깁니다 — 모든 사격이 기준보다 가까워 빨라집니다.");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(cfg); }
+        }
+
+        // ============================================================================
+        // ④ 2026-09-02 신고 — "너무 가까이 과녁이 생기는 경향 / 창위에서는 창길이에 따라"
+        // ============================================================================
+        //
+        // 처방: archeryMinDistanceSpanFraction(f). 밴드 하한 = max(절대하한, f × 밴드상한).
+        //   · 넓은 발판  → 하한이 f×6.6H = 3.63H로 올라간다("너무 가까이"의 해소)
+        //   · 좁은 발판  → 상한이 폭에 눌리는 만큼 하한도 함께 내려간다("창길이에 따라 변한다")
+        //   · 상한/절대하한 → 한 값도 안 바뀐다(2026-08-31 결정 ②와 무충돌, 포기 빈도 변화 0)
+        //
+        // ★ 아래 테스트는 프로덕션 상수를 숫자로 베끼지 않는다 — 전부 StickConfig 필드와
+        //   ArcheryDirector의 internal 상수를 읽어서 검산한다(협업 프로토콜).
+
+        /// <summary>실측 좌표 기준(1512pt 화면 ↔ 가시 폭 2×18.48유닛)에서 유도한 환산비.
+        /// 새 숫자가 아니라 위 <see cref="VisibleHalfWidth"/>에서 나온 값이다.</summary>
+        private const float PtPerUnit = 1512f / (2f * VisibleHalfWidth); // ≈ 40.91 pt/유닛
+
+        /// <summary>★ 한 배율만 보면 안 된다 — 설정창이 실제로 노출하는 범위 전체를 훑는다.</summary>
+        private static readonly float[] Scales = { 0.35f, 0.60f, 0.75f, 1.00f };
+
+        /// <summary>
+        /// 실측 발판 폭 표본(pt, macOS 2026-09-02 로그).
+        /// ★ <b>227pt는 바닥 안전망 조각</b>이다 — Dock(x227~1285)에 잘려 좌·우로 나뉜 두 조각이고,
+        /// 이 앱에서 <b>가장 좁은 상시 발판</b>이다. "바닥 안전망 = 화면 전폭"이라는 통념이 틀렸다는
+        /// 것이 이번 라운드에 실측으로 확인됐으므로, 표본에서 절대 빼지 않는다.
+        /// </summary>
+        private static readonly float[] FootholdWidthsPt =
+            { 227f, 300f, 400f, 422f, 500f, 501f, 600f, 935f, 1058f, 1280f, 1490f, 1512f };
+
+        private static ArcheryDirector.Placement PlaceScaled(StickConfig cfg, float scale, float footX,
+            float lo, float hi, float spanFraction, float roll01)
+        {
+            float h = StickConfig.BaselineCharacterTotalHeight * scale;
+            return ArcheryDirector.ResolvePlacement(footX, lo, hi,
+                h * ArcheryDirector.CharacterEdgeInsetRatio,
+                h * cfg.archeryTargetRadiusRatio + h * ArcheryDirector.TargetEdgeInsetRatio,
+                h * ArcheryDirector.BackStepRatio,
+                h * cfg.archeryMinTargetDistanceRatio,
+                h * cfg.archeryMaxTargetDistanceRatio,
+                spanFraction, roll01);
+        }
+
+        [Test]
+        public void 넓은_발판에서는_밴드_하한이_폭비례로_올라간다(
+            [Values(0.35f, 0.60f, 0.75f, 1.00f)] float scale)
+        {
+            var cfg = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                float h = StickConfig.BaselineCharacterTotalHeight * scale;
+                float f = cfg.archeryMinDistanceSpanFraction;
+                float absFloor = h * cfg.archeryMinTargetDistanceRatio;
+                float bandHi = h * cfg.archeryMaxTargetDistanceRatio; // 화면 전폭이라 절대 상한으로 포화.
+                float expectedLo = Mathf.Max(absFloor, f * bandHi);
+
+                float lo = -VisibleHalfWidth, hi = VisibleHalfWidth;
+
+                // 경계는 표본이 아니라 roll 0/1로 직접 본다(표본 최소값은 하한에 정확히 닿지 않는다).
+                ArcheryDirector.Placement atFloor = PlaceScaled(cfg, scale, 0f, lo, hi, f, 0f);
+                ArcheryDirector.Placement atCeil = PlaceScaled(cfg, scale, 0f, lo, hi, f, 1f);
+                ArcheryDirector.Placement legacyFloor = PlaceScaled(cfg, scale, 0f, lo, hi, 0f, 0f);
+                ArcheryDirector.Placement legacyCeil = PlaceScaled(cfg, scale, 0f, lo, hi, 0f, 1f);
+                Assert.IsTrue(atFloor.Ok && atCeil.Ok, $"배율 {scale}: 화면 전폭에서 배치에 실패했습니다.");
+
+                Assert.AreEqual(expectedLo, atFloor.Distance, Eps,
+                    $"배율 {scale}: 밴드 하한이 {atFloor.Distance / h:F3}H입니다. 폭 비례 하한 " +
+                    $"{expectedLo / h:F3}H(= {f:F2} × {cfg.archeryMaxTargetDistanceRatio}H)가 안 걸렸습니다.");
+                Assert.AreEqual(expectedLo, atFloor.BandLo, Eps, $"배율 {scale}: 보고된 밴드 하한이 다릅니다.");
+
+                // ★ 하한이 실제로 올라갔다 — f=0(구동작)과 직접 대조한다.
+                Assert.AreEqual(absFloor, legacyFloor.Distance, Eps,
+                    $"배율 {scale}: f=0이 구동작 하한을 재현하지 못합니다(대조군이 깨졌습니다).");
+                Assert.Greater(atFloor.Distance, absFloor + Eps,
+                    $"배율 {scale}: 하한이 여전히 절대 하한 {cfg.archeryMinTargetDistanceRatio}H에 " +
+                    "머물러 있습니다 — 신고('너무 가까이 생기는 경향')가 그대로입니다.");
+
+                // ★ 상한은 한 값도 안 움직인다(2026-08-31 결정 ②).
+                Assert.AreEqual(bandHi, atCeil.Distance, Eps,
+                    $"배율 {scale}: 밴드 상한이 {atCeil.Distance / h:F3}H로 움직였습니다 — " +
+                    "'적당히 먼 거리만 되도 된다'는 요구를 넘어 다시 화면 끝으로 갑니다.");
+                Assert.AreEqual(legacyCeil.Distance, atCeil.Distance, Eps,
+                    $"배율 {scale}: 폭 비례 하한이 상한을 건드렸습니다.");
+
+                // 표본 전체가 새 밴드 안에 있고, 그 안에서 여전히 흩어진다.
+                float min = float.MaxValue, max = float.MinValue;
+                double sum = 0.0;
+                float[] rolls = Rolls(2026, 1500);
+                foreach (float roll in rolls)
+                {
+                    ArcheryDirector.Placement p = PlaceScaled(cfg, scale, 0f, lo, hi, f, roll);
+                    Assert.IsTrue(p.Ok, $"배율 {scale}: 화면 전폭에서 배치에 실패했습니다(roll {roll:F4}).");
+                    min = Mathf.Min(min, p.Distance);
+                    max = Mathf.Max(max, p.Distance);
+                    sum += p.Distance;
+                }
+                Assert.GreaterOrEqual(min, expectedLo - Eps,
+                    $"배율 {scale}: 새 하한 {expectedLo / h:F3}H보다 가까운 표본 {min / h:F3}H가 나왔습니다.");
+                Assert.LessOrEqual(max, bandHi + Eps,
+                    $"배율 {scale}: 밴드 상한을 넘은 표본 {max / h:F3}H가 나왔습니다.");
+                Assert.Greater(max - min, h,
+                    $"배율 {scale}: 표본 폭이 {(max - min) / h:F2}H뿐입니다 — 랜덤이 죽었습니다.");
+                Assert.AreEqual((expectedLo + bandHi) * 0.5f, (float)(sum / rolls.Length), h * 0.15f,
+                    $"배율 {scale}: 표본 평균이 밴드 중앙에서 벗어났습니다 — 분포가 한쪽으로 쏠렸습니다.");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(cfg); }
+        }
+
+        [Test]
+        public void 좁은_발판에서는_하한이_저절로_내려간다()
+        {
+            var cfg = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                float f = cfg.archeryMinDistanceSpanFraction;
+                int narrowedCases = 0, saturatedCases = 0;
+
+                foreach (float scale in Scales)
+                {
+                    float h = StickConfig.BaselineCharacterTotalHeight * scale;
+                    float absFloor = h * cfg.archeryMinTargetDistanceRatio;
+                    float absCeil = h * cfg.archeryMaxTargetDistanceRatio;
+                    float prevFloor = 0f;
+
+                    foreach (float widthPt in FootholdWidthsPt)
+                    {
+                        float half = widthPt / PtPerUnit * 0.5f;
+                        ArcheryDirector.Placement atFloor = PlaceScaled(cfg, scale, 0f, -half, half, f, 0f);
+                        if (!atFloor.Ok) continue; // 포기는 ④-3이 따로 잠근다.
+
+                        // 이 발판에서 물리적으로 가능한 최대 = MaxAvailableDistance(span).
+                        float bandHi = Mathf.Min(absCeil, atFloor.MaxAvailableDistance);
+                        float expectedLo = Mathf.Max(absFloor, f * bandHi);
+                        string ctx = $"배율 {scale}, 발판 {widthPt:F0}pt";
+
+                        Assert.AreEqual(expectedLo, atFloor.BandLo, Eps, $"{ctx}: 밴드 하한이 어긋났습니다.");
+                        Assert.AreEqual(expectedLo, atFloor.Distance, Eps,
+                            $"{ctx}: roll 0이 밴드 하한이 아닙니다(선형성 파손).");
+                        Assert.LessOrEqual(atFloor.BandLo, atFloor.BandHi + Eps,
+                            $"{ctx}: 하한이 상한을 넘었습니다 — 밴드가 뒤집혔습니다.");
+
+                        // ★ "창길이에 따라 변한다" — 폭이 넓어질수록 하한은 단조 증가하고, 어느 지점부터
+                        //    절대 밴드로 포화한다. 좁은 쪽에서는 절대 하한까지 내려와야 한다.
+                        Assert.GreaterOrEqual(atFloor.BandLo, prevFloor - Eps,
+                            $"{ctx}: 발판이 넓어졌는데 하한이 내려갔습니다(단조성 파손).");
+                        prevFloor = atFloor.BandLo;
+
+                        if (atFloor.BandLo < f * absCeil - Eps) narrowedCases++;
+                        else saturatedCases++;
+                    }
+                }
+
+                Assert.Greater(narrowedCases, 0,
+                    "어느 발판에서도 하한이 폭에 눌려 내려가지 않았습니다 — 사용자가 양보절로 말한 " +
+                    "'창위에서는 창길이에 따라 변해야겠지만'이 성립하지 않습니다.");
+                Assert.Greater(saturatedCases, 0,
+                    "어느 발판에서도 절대 밴드로 포화하지 않았습니다 — 표본이 좁은 쪽에만 쏠려 있습니다.");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(cfg); }
+        }
+
+        /// <summary>
+        /// ★★ 이번 라운드의 핵심 약속 — <b>포기 빈도 변화 정확히 0%</b>.
+        /// 발동 가부는 절대 하한만으로 갈리므로 f를 어떻게 두든 <see cref="ArcheryDirector.Placement.Ok"/>가
+        /// 한 건도 뒤집히면 안 된다. 발판 폭 12종(★ 안전망 227pt 포함) × 배율 4종 × 발 위치 3종 ×
+        /// 추첨 200회를 전수 비교한다.
+        /// </summary>
+        [Test]
+        public void 폭_비례_하한은_포기_빈도를_늘리지_않는다()
+        {
+            var cfg = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                float f = cfg.archeryMinDistanceSpanFraction;
+                float[] rolls = Rolls(4242, 200);
+                int legacyGiveUps = 0, proposedGiveUps = 0, cases = 0;
+
+                foreach (float scale in Scales)
+                foreach (float widthPt in FootholdWidthsPt)
+                {
+                    float half = widthPt / PtPerUnit * 0.5f;
+                    foreach (float footFrac in new[] { -0.45f, 0f, 0.45f })
+                    {
+                        float footX = half * 2f * footFrac;
+                        foreach (float roll in rolls)
+                        {
+                            bool legacyOk = PlaceScaled(cfg, scale, footX, -half, half, 0f, roll).Ok;
+                            bool proposedOk = PlaceScaled(cfg, scale, footX, -half, half, f, roll).Ok;
+                            cases++;
+                            if (!legacyOk) legacyGiveUps++;
+                            if (!proposedOk) proposedGiveUps++;
+                            Assert.AreEqual(legacyOk, proposedOk,
+                                $"배율 {scale}, 발판 {widthPt:F0}pt, 발 x={footX:F2}, roll={roll:F4}: " +
+                                $"발동 가부가 뒤집혔습니다(구 {legacyOk} -> 신 {proposedOk}). " +
+                                "폭 비례 하한은 '발동할 수 있는가' 판정을 건드리면 안 됩니다.");
+                        }
+                    }
+                }
+
+                Assert.AreEqual(legacyGiveUps, proposedGiveUps,
+                    $"표본 {cases}건에서 포기 수가 {legacyGiveUps} -> {proposedGiveUps}로 변했습니다.");
+                // 표본에 실제로 포기가 섞여 있어야 위 비교가 의미를 갖는다(빈 집합 비교 방지).
+                Assert.Greater(legacyGiveUps, 0,
+                    "표본에 포기 사례가 하나도 없습니다 — '포기가 안 늘었다'가 공허하게 참이 됩니다. " +
+                    "좁은 발판(안전망 227pt 등)이 표본에서 빠졌는지 확인하십시오.");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(cfg); }
+        }
+
+        /// <summary>
+        /// ★ 네거티브 컨트롤 2건 — 이 파일의 판정이 <b>정말로 f를 보고 있다</b>는 증명.
+        /// (가) f=1이면 하한이 상한과 같아져 <b>밴드가 한 점으로 붕괴</b>한다(= 랜덤이 죽는다).
+        ///      그래서 프로덕션 접근자가 0.9로 클램프한다.
+        /// (나) f=0이면 2026-09-02 이전 동작과 <b>비트 단위로</b> 같다(= 안전한 킬 스위치).
+        /// </summary>
+        [Test]
+        public void 네거티브_컨트롤_f가_1이면_밴드가_붕괴하고_0이면_구동작이다(
+            [Values(0.35f, 0.60f, 0.75f, 1.00f)] float scale)
+        {
+            var cfg = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                float h = StickConfig.BaselineCharacterTotalHeight * scale;
+                float lo = -VisibleHalfWidth, hi = VisibleHalfWidth;
+                float absFloor = h * cfg.archeryMinTargetDistanceRatio;
+                float absCeil = h * cfg.archeryMaxTargetDistanceRatio;
+                float[] rolls = Rolls(7, 400);
+
+                float collapsedMin = float.MaxValue, collapsedMax = float.MinValue;
+                float shippingMin = float.MaxValue, shippingMax = float.MinValue;
+                foreach (float roll in rolls)
+                {
+                    ArcheryDirector.Placement collapsed = PlaceScaled(cfg, scale, 0f, lo, hi, 1f, roll);
+                    Assert.IsTrue(collapsed.Ok, "f=1이 발동을 죽였습니다 — 붕괴는 밴드에서만 일어나야 합니다.");
+                    collapsedMin = Mathf.Min(collapsedMin, collapsed.Distance);
+                    collapsedMax = Mathf.Max(collapsedMax, collapsed.Distance);
+
+                    ArcheryDirector.Placement legacy = PlaceScaled(cfg, scale, 0f, lo, hi, 0f, roll);
+                    // (나) 구 알고리즘의 정의를 여기서 다시 계산해 대조한다(코드를 믿지 않는다).
+                    float expectedLegacy = Mathf.Lerp(absFloor, absCeil, Mathf.Clamp01(roll));
+                    Assert.AreEqual(expectedLegacy, legacy.Distance, Eps,
+                        $"배율 {scale}: f=0이 구동작(절대 밴드 균등 추첨)을 재현하지 못합니다 — " +
+                        "킬 스위치가 안전하지 않다는 뜻입니다.");
+
+                    ArcheryDirector.Placement shipping =
+                        PlaceScaled(cfg, scale, 0f, lo, hi, cfg.archeryMinDistanceSpanFraction, roll);
+                    shippingMin = Mathf.Min(shippingMin, shipping.Distance);
+                    shippingMax = Mathf.Max(shippingMax, shipping.Distance);
+                }
+
+                // (가) 붕괴 확인 — 400회 추첨의 폭이 0이다.
+                Assert.AreEqual(0f, collapsedMax - collapsedMin, Eps,
+                    $"배율 {scale}: f=1인데 사거리가 {collapsedMin:F3}~{collapsedMax:F3}유닛으로 " +
+                    "여전히 흩어집니다 — 하한이 상한에 안 붙었다는 뜻이고, 그러면 이 파일의 다른 " +
+                    "'하한이 올라갔다' 판정도 f를 안 보고 있을 수 있습니다.");
+                Assert.AreEqual(absCeil, collapsedMax, Eps,
+                    $"배율 {scale}: f=1의 붕괴점이 밴드 상한이 아닙니다.");
+
+                // 출하 비율은 반대로 밴드가 살아 있어야 한다(붕괴 방어선이 실제로 작동).
+                Assert.Greater(shippingMax - shippingMin, h,
+                    $"배율 {scale}: 출하 비율 {cfg.archeryMinDistanceSpanFraction:F2}에서 밴드 폭이 " +
+                    $"{(shippingMax - shippingMin) / h:F2}H뿐입니다 — '거리는 항상 랜덤'이 죽습니다.");
+                Assert.Less(cfg.archeryMinDistanceSpanFraction, ArcheryDirector.MaxMinDistanceSpanFraction,
+                    "출하 비율이 붕괴 방어선에 닿아 있습니다.");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(cfg); }
+        }
+
+        /// <summary>
+        /// ★ 임무 3-1 검증 — <b>가용성 조회가 난수를 안 먹어도 판정이 안 뒤집힌다</b>.
+        /// <see cref="ArcheryDirector.GetAvailability"/>가 고정 roll 0.5를 쓰게 바뀌었으므로,
+        /// "어떤 roll에서든 <c>Ok</c>가 같다"가 <b>구조적 사실</b>이어야 한다. 설계자 주장이 아니라
+        /// 전수 스윕으로 확인한다 — 경계(roll = 0, 1, 1-ε)를 반드시 포함한다.
+        /// </summary>
+        [Test]
+        public void 가용성_고정roll은_발동_가부를_뒤집지_않는다()
+        {
+            var cfg = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                float f = cfg.archeryMinDistanceSpanFraction;
+                var rollList = new System.Collections.Generic.List<float>
+                    { 0f, 1f, 1f - 1e-7f, 1f - 1e-4f, 1e-7f, 0.5f };
+                rollList.AddRange(Rolls(31337, 150));
+
+                // 프로덕션 폴링과 같은 고정값. 숫자를 베끼지 않고 "0.5"라는 성질만 쓴다.
+                const float probe = 0.5f;
+                int flips = 0, okCases = 0, giveUpCases = 0;
+
+                foreach (float scale in Scales)
+                foreach (float widthPt in FootholdWidthsPt)
+                {
+                    float half = widthPt / PtPerUnit * 0.5f;
+                    foreach (float footFrac in new[] { -0.49f, -0.2f, 0f, 0.2f, 0.49f })
+                    {
+                        float footX = half * 2f * footFrac;
+                        bool probeOk = PlaceScaled(cfg, scale, footX, -half, half, f, probe).Ok;
+                        if (probeOk) okCases++; else giveUpCases++;
+
+                        foreach (float roll in rollList)
+                        {
+                            bool actualOk = PlaceScaled(cfg, scale, footX, -half, half, f, roll).Ok;
+                            if (actualOk != probeOk)
+                            {
+                                flips++;
+                                Assert.Fail($"배율 {scale}, 발판 {widthPt:F0}pt, 발 x={footX:F2}: " +
+                                    $"roll {roll:F7}에서 Ok={actualOk}인데 고정 roll {probe}에서는 " +
+                                    $"Ok={probeOk}입니다. 회색 처리와 실제 실행이 어긋납니다 — " +
+                                    "GetAvailability를 다시 난수로 되돌려야 합니다.");
+                            }
+                        }
+                    }
+                }
+
+                Assert.AreEqual(0, flips);
+                Assert.Greater(okCases, 0, "표본에 발동 가능한 경우가 없습니다.");
+                Assert.Greater(giveUpCases, 0,
+                    "표본에 포기 사례가 없습니다 — 'Ok가 안 뒤집힌다'가 공허하게 참이 됩니다.");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(cfg); }
+        }
+
+        /// <summary>
+        /// 출하 비율 0.55가 <b>설계 근거 두 축</b>을 실제로 만족하는지 — 값만 보지 않고 근거를 재계산한다.
+        ///
+        /// <para>★ <b>설계서(docs/MOTION_SPEC.md 24-4-2)의 산수 하나를 여기서 정정한다.</b>
+        /// 위쪽 요구 "(1−f)·M/3 ≥ 1.0H"를 풀면 <c>f ≤ 1 − 3/6.6 = <b>0.5455</b></c>인데 설계서에는
+        /// <c>0.5545</c>로 적혀 있다(자릿수가 뒤바뀐 것으로 보인다). 그래서 채택값 0.55는 설계서 주장과
+        /// 달리 그 상한 <b>바로 바깥</b>이고, 연속 2회 평균 사거리 차가 1.000H가 아니라 <b>0.990H</b>다
+        /// (설계서 24-4-2 표 자신도 0.55 행에 0.99H로 적고 있어 문서가 자기모순이다).
+        /// 1.0% 미달이라 육안 판정에는 영향이 없다고 보고 리더 지시대로 0.55를 구현했으나,
+        /// <b>테스트에 틀린 상한 0.5545를 박제하지는 않는다</b> — 그 숫자를 근거로 다음 사람이
+        /// 값을 더 올리는 것이 이 저장소가 반복해 온 사고이기 때문이다.</para>
+        /// </summary>
+        [Test]
+        public void 출하_폭비례_비율이_설계_근거_두_축을_만족한다()
+        {
+            var cfg = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                float f = cfg.archeryMinDistanceSpanFraction;
+                float maxRatio = cfg.archeryMaxTargetDistanceRatio;
+                float radius = cfg.archeryTargetRadiusRatio;
+
+                Assert.Greater(f, 0f, "폭 비례 하한이 꺼져 있습니다(킬 스위치가 켜진 상태로 출하).");
+                Assert.LessOrEqual(f, ArcheryDirector.MaxMinDistanceSpanFraction);
+
+                // (축 1) 아래에서 조인다 — 활끝과 과녁 앞 테두리 사이 빈 공간 ≥ 과녁 지름 2.5배.
+                //   0.645H는 활 실루엣 앞끝(뽑은 화살촉) 위치의 **픽셀 실측**이다
+                //   (design/motion/2026-09-02_활쏘기_활끝실측_확대.png). 프로덕션 상수가 아니라 계측값.
+                const float bowTipAheadRatio = 0.645f;
+                const float requiredClearAirDiameters = 2.5f;
+                float floorRatio = f * maxRatio;
+                float clearAirDiameters = (floorRatio - bowTipAheadRatio - radius) / (2f * radius);
+                Assert.GreaterOrEqual(clearAirDiameters, requiredClearAirDiameters,
+                    $"넓은 발판 하한 {floorRatio:F3}H에서 활끝~과녁 빈 공간이 과녁 지름의 " +
+                    $"{clearAirDiameters:F2}배뿐입니다(요구 {requiredClearAirDiameters}). " +
+                    "실측 부적합 사례(2.60H, 1.94지름)와 같은 그림이 다시 나옵니다.");
+
+                // (축 2) 위에서 조인다 — 연속 2회 사거리 차의 기댓값 = (1−f)·M/3 ≥ 신장 1배.
+                //   ★ 위 문서 주석 참고: 채택값 0.55는 이 요구를 1.0% 미달(0.990H)한다. 리더 승인
+                //   범위 안이라 통과시키되, 여기서 더 나빠지는 것은 막는다.
+                const float designMeanGapH = 1.0f;      // 설계 목표("적어도 캐릭터 한 몸")
+                const float acceptedShortfall = 0.02f;  // 0.990H까지만 허용(현행 미달분 1.0%의 2배)
+                float meanGapH = (1f - f) * maxRatio / 3f;
+                Assert.GreaterOrEqual(meanGapH, designMeanGapH - acceptedShortfall,
+                    $"연속 2회 사거리 차의 기댓값이 {meanGapH:F4}H입니다(설계 목표 {designMeanGapH}H). " +
+                    "이보다 좁아지면 '거리는 항상 랜덤으로 변경'(2026-08-31 사용자 명시)이 육안으로 " +
+                    $"안 읽힙니다. 참고: 이 요구의 정확한 상한은 f ≤ 1 − 3/{maxRatio} = " +
+                    $"{1f - 3f / maxRatio:F4}이며, 설계서의 0.5545는 오기입니다.");
+
+                // 상·하한과의 관계 — 폭 비례 하한은 언제나 그 둘 사이에 있어야 한다.
+                Assert.Greater(floorRatio, cfg.archeryMinTargetDistanceRatio,
+                    "폭 비례 하한이 절대 하한보다 낮아 아무 효과가 없습니다.");
+                Assert.Less(floorRatio, maxRatio,
+                    "폭 비례 하한이 밴드 상한 이상입니다 — 밴드가 붕괴합니다.");
             }
             finally { UnityEngine.Object.DestroyImmediate(cfg); }
         }

@@ -161,6 +161,18 @@ namespace StickMate.States
 
             float deadzone = Config != null ? Config.moveInputDeadzone : 0.15f;
             bool intentWantsMove = Mathf.Abs(MoveInputX) > deadzone;
+
+            // ★★ 2026-09-02 — 맨틀이 **이번 프레임에 확정**됐으면 MoveInputX는 그 사실보다 낡았다.
+            // StickmanAgent.Update의 순서가 `_autoWander.Tick -> _machine.Tick`이라, 벽타기가 맨틀을
+            // 보고한 프레임의 이동 의도는 아직 0이고 배회 AI는 **다음 프레임**에야 그 신호를 소비해
+            // EnterMoving(ClimbMantleDirection)을 부른다. 그 한 프레임 동안 게이트가 낡은 0을 보고
+            // "정지 계획이 2.8초 남았다"고 답해 1프레임짜리 상태에서 대사가 파생됐다(원칙 1 위반).
+            //
+            // 근본 수정은 ParkourClimbState가 그 사실에서 직접 Walk를 고르는 것이고(그래서 1프레임
+            // Idle 자체가 사라졌다), 이 줄은 **같은 사실을 읽는 두 번째 소비자**를 같은 진실에 맞춘다 —
+            // 게이트가 어떤 경로로 불리든 "확정된 사실"이 "낡은 관측"을 이긴다.
+            if (Time.frameCount == _climbMantleFrame) intentWantsMove = true;
+
             return intentWantsMove == stateWantsMove ? phaseRemaining : 0f;
         }
 
@@ -451,6 +463,20 @@ namespace StickMate.States
         private long _dropThroughIgnoredHandle;
         private float _dropThroughIgnoreUntilTime = float.NegativeInfinity;
 
+        // ★★ 2026-09-02 — 이 기한은 States/Core를 통틀어 **유일한 절대 기한**(Time.time + duration)이다.
+        // 다른 모든 상태 타이머는 deltaTime 누적이라 Tick을 건너뛰면 저절로 멈추지만, 이것만은 벽시계라
+        // 전체화면 Suspend 동안에도 계속 흘러간다. StickmanAgent.Suspend()의 계약("진행 중이던 상태의
+        // 내부 타이머가 그대로 멈춰 있다가 Resume 이후 이어서 진행된다")이 이 한 값에서만 거짓이었고,
+        // 하강 도중 전체화면이 겹치면 Resume 시점에 drop-through와 발떼기이송이 **둘 다 만료**돼
+        // 그 하강이 조용히 무효가 됐다. 아래 Suspend/ResumeAbsoluteTimeWindows()가 잔여 시간을
+        // 보관했다 재기점(re-base)해 계약을 실제로 참으로 만든다.
+        private bool _absoluteWindowsSuspended;
+        private float _suspendedDropThroughRemaining;
+
+        // BeginDropThroughIgnore()가 **실제로 창을 열었을 때만** 갱신되는 프레임 번호.
+        // BeginStepOffCarry()가 이 값으로 "직전 창을 물려받는" 경로를 구조적으로 막는다(아래 참고).
+        private int _dropThroughArmedFrame = -1;
+
         /// <summary>
         /// 지금 착지 후보에서 제외해야 할 발판 핸들(유예가 끝났거나 애초에 없으면 0 = 제외 없음).
         /// 0은 이 프로젝트 전체에서 "발판 없음"을 뜻하는 관례값이라 그대로 재사용한다.
@@ -474,6 +500,39 @@ namespace StickMate.States
             if (footholdHandle == 0L || durationSeconds <= 0f) return;
             _dropThroughIgnoredHandle = footholdHandle;
             _dropThroughIgnoreUntilTime = Time.time + durationSeconds;
+            _dropThroughArmedFrame = Time.frameCount;
+        }
+
+        /// <summary>
+        /// 전체화면 Suspend 진입 시 <b>절대 기한을 얼려</b> 잔여 시간만 보관한다(위 필드 문서 참고).
+        /// 멈춰 있는 동안 기한은 닫힌 것으로 읽힌다 — 어떤 경로가 끼어들어도 "만료되지 않은 척"이
+        /// 아니라 "창 없음"(= 수정 이전의 기본 거동)으로 보이는 쪽이 항상 안전하다.
+        /// </summary>
+        public void SuspendAbsoluteTimeWindows()
+        {
+            if (_absoluteWindowsSuspended) return;
+            _absoluteWindowsSuspended = true;
+            _suspendedDropThroughRemaining = Mathf.Max(0f, _dropThroughIgnoreUntilTime - Time.time);
+            _dropThroughIgnoreUntilTime = float.NegativeInfinity;
+        }
+
+        /// <summary>
+        /// Resume 시 기한을 <b>지금</b>을 기준으로 다시 세운다 — 숨어 있던 시간만큼 창이 뒤로 밀린다.
+        /// 잔여가 0이면(애초에 창이 없었거나 숨기 직전에 끝났다) 이송 속도까지 함께 버린다.
+        /// </summary>
+        public void ResumeAbsoluteTimeWindows()
+        {
+            if (!_absoluteWindowsSuspended) return;
+            _absoluteWindowsSuspended = false;
+            float remaining = _suspendedDropThroughRemaining;
+            _suspendedDropThroughRemaining = 0f;
+            if (remaining <= 0f)
+            {
+                _dropThroughIgnoreUntilTime = float.NegativeInfinity;
+                _stepOffCarryVelocityX = 0f;
+                return;
+            }
+            _dropThroughIgnoreUntilTime = Time.time + remaining;
         }
 
         // ============================================================================
@@ -508,7 +567,7 @@ namespace StickMate.States
         private float _stepOffCarryVelocityX;
 
         /// <summary>
-        /// 지금 프레임에 다시 실어 줘야 할 발 떼기 수평 속도. drop-through 유예와 <b>같은 타이머</b>를
+        /// 지금 다시 실어 줘야 할 발 떼기 수평 속도. drop-through 유예와 <b>같은 타이머</b>를
         /// 쓴다 — 두 창이 갈라지면 "논리적으로는 통과인데 물리적으로는 멈춰 있는" 지금의 사고가
         /// 다른 형태로 되돌아온다.
         /// </summary>
@@ -523,12 +582,97 @@ namespace StickMate.States
         }
 
         /// <summary>
-        /// 발 떼기 수평 속도를 유예 창 동안 매 프레임 다시 싣도록 등록한다(뛰어내리기 전용).
-        /// <see cref="BeginDropThroughIgnore"/> 직후에 같은 블록에서만 부른다.
+        /// 발 떼기 수평 속도를 유예 창 동안 다시 싣도록 등록한다(뛰어내리기 전용).
+        /// <see cref="BeginDropThroughIgnore"/> <b>직후에 같은 프레임에서만</b> 부른다.
+        ///
+        /// <para>★ 2026-09-02 — 같은 프레임 조건을 <b>실제로 강제한다</b>. 앞의
+        /// <see cref="BeginDropThroughIgnore"/>는 핸들 0 / 유예 0이면 조기 return이라 창을 열지 않는데,
+        /// 이 메서드는 무조건 실행됐다. 그래서 "직전 뛰어내리기의 창이 아직 살아 있는데 새 이송 속도만
+        /// 갈아끼우는" 조합이 원리적으로 가능했다 — 창을 물려받는 형태다. 창을 열지 못한 호출은
+        /// 이송도 열지 않고 <b>남은 값을 지운다</b>(= 수정 이전 기본 거동으로 폴백).</para>
         /// </summary>
         public void BeginStepOffCarry(float velocityX)
         {
+            if (_dropThroughArmedFrame != Time.frameCount)
+            {
+                _stepOffCarryVelocityX = 0f;
+                return;
+            }
             _stepOffCarryVelocityX = velocityX;
+            _stepOffCarryPhysicsTicks = 0;
+            _stepOffCarryFrameTicks = 0;
+        }
+
+        /// <summary>
+        /// 이송을 <b>즉시</b> 끝낸다. <see cref="States.FallState.Exit"/>가 부른다 — 이송은 "이 발 떼기가
+        /// 만든 그 Fall 구간" 안에서만 의미가 있기 때문이다.
+        ///
+        /// <para>왜 필요했나(2026-09-02): 유예는 시간이 지나면 스스로 풀리지만 <see cref="_stepOffCarryVelocityX"/>는
+        /// 어디서도 0으로 돌아가지 않았다. 그래서 창이 살아 있는 동안 <c>Fall → 다른 상태 → Fall</c> 왕복이
+        /// 생기면 <b>낡은 이송 속도가 새 낙하의 x를 덮어썼다</b>(예: 낮은 단에 곧바로 착지한 뒤
+        /// 스냅 상한 초과/발판 상실로 0.25초 안에 다시 Fall). 시간 조건 하나로는 이 왕복을 못 막는다 —
+        /// 구간(episode)에도 묶어야 한다.</para>
+        ///
+        /// <para>Fall에 머무는 동안 <c>ChangeState(Fall)</c>가 다시 불리는 경로는 없다:
+        /// <see cref="CheckScreenBoundsOrFall"/>은 이미 Fall이면 재전이를 걸지 않고,
+        /// <see cref="GroundedTick"/>의 두 전이 경로는 <see cref="IsGroundKeepingSelfManaged"/>가
+        /// Fall을 제외하므로 안전망이 Fall 중에는 아예 돌지 않는다. 즉 이 해제가 진행 중인 하강을
+        /// 끊을 수 없다.</para>
+        /// </summary>
+        public void EndStepOffCarry()
+        {
+            _stepOffCarryVelocityX = 0f;
+        }
+
+        // ★★ 이송 재적용의 **주기** — 이 수정의 본질(2026-09-02 2차).
+        //
+        // 1차 수정은 재적용을 FallState.Tick(= StickmanAgent.Update, 프레임당 1회)에만 실었다.
+        // 그런데 이 이송이 되돌리려는 마찰은 **FixedUpdate마다** 걸린다(고정 스텝 0.02초). 즉
+        //   마찰 : 이송 = (프레임당 물리 스텝 수) : 1
+        // 이라 한 프레임이 길어질수록 이송이 지고, 프레임이 유예(0.25초)를 통째로 삼키면 재적용이
+        // **0회**가 되어 수정 자체가 없던 것이 된다. 그 프레임 안에서 몸은 정지 거리 0.061유닛만 가고
+        // 멈추며(필요 0.090~0.119), Time.time 기준 유예도 함께 만료돼 제자리 착지 = 회귀 전 거동이다.
+        //
+        // ★ 그 조건은 가정이 아니라 **절전 등급의 정상 동작**이다: FramePacingTier.DisplayOff는
+        //   FramePacingPolicy.DisplayOffTargetFps = 4fps(= 250ms/프레임)라 0.25초 창에 Update가
+        //   1회(경계에 따라 0회) 실린다. Away(30fps)는 0.148초라 통과한다.
+        //
+        // 그래서 이제 **StickmanAgent.FixedUpdate()가 같은 메서드를 물리 주기로 부른다**(엔진 최대
+        // timestep 0.333초 / 고정 스텝 0.02초 -> 250ms 프레임 하나에 12~13스텝). 프레임 경로도
+        // 그대로 남겨 둔다: 두 경로가 **같은 한 구현**을 부르므로 갈릴 수 없고, 물리 배선이 어떤
+        // 이유로 죽어도 이송이 통째로 사라지지는 않는다.
+        //
+        // ★ Time.time은 FixedUpdate 안에서 Time.fixedTime을 돌려준다(Unity 계약). 즉 유예 만료 판정도
+        //   물리 해상도로 진행돼, 긴 프레임 하나가 창을 "건너뛰는" 일이 없다.
+        private int _stepOffCarryPhysicsTicks;
+        private int _stepOffCarryFrameTicks;
+
+        /// <summary>이번 발 떼기 이후 이송이 <b>물리 스텝</b>에서 살아 있는 채로 평가된 횟수(진단/테스트용).</summary>
+        public int StepOffCarryPhysicsTicks => _stepOffCarryPhysicsTicks;
+
+        /// <summary>같은 값의 <b>렌더 프레임</b> 경로 횟수. 이 둘의 비가 곧 "마찰 : 이송"이다.</summary>
+        public int StepOffCarryFrameTicks => _stepOffCarryFrameTicks;
+
+        /// <summary>
+        /// 유예 창이 살아 있는 동안 발 떼기 수평 속도를 다시 싣는다. <b>물리 주기와 프레임 주기가
+        /// 공유하는 유일한 구현</b>(위 주석 참고).
+        ///
+        /// <para>상태가 Fall일 때만 동작한다 — 이송은 "발을 떼고 떨어지는 동안"의 장치이고, 다른
+        /// 상태(매달리기/드래그/랙돌)의 x속도를 대신 정해 주면 그 상태의 계약을 침범한다.</para>
+        /// </summary>
+        public void TickStepOffCarry()
+        {
+            if (Body == null || Machine == null) return;
+            if (Machine.CurrentStateId != StickmanStateId.Fall) return;
+            if (!TryGetStepOffCarryVelocityX(out float carryX)) return;
+
+            if (Time.inFixedTimeStep) _stepOffCarryPhysicsTicks++;
+            else _stepOffCarryFrameTicks++;
+
+            Vector2 v = Body.linearVelocity;
+            if (v.x == carryX) return;
+            v.x = carryX;
+            Body.linearVelocity = v;
         }
 
         /// <summary>
@@ -1556,11 +1700,16 @@ namespace StickMate.States
         /// <summary>마지막 맨틀에서 캐릭터가 **올라선 방향**(+1 오른쪽 / -1 왼쪽). 턱 안쪽을 가리킨다.</summary>
         public int ClimbMantleDirection { get; private set; } = 1;
 
+        /// <summary>이 사실이 기록된 프레임 번호. <see cref="PlannedDwellRemainingSecondsFor"/>가
+        /// "이동 의도가 이 사실보다 낡았는가"를 이 값으로 판정한다(그 메서드의 주석 참고).</summary>
+        private int _climbMantleFrame = -1;
+
         /// <summary>ParkourClimbState가 등반을 마치고 턱 위에 실제로 올라선 프레임에 1회 호출한다.</summary>
         public void ReportClimbMantleCompleted(int direction)
         {
             ClimbMantleDirection = direction >= 0 ? 1 : -1;
             ClimbMantleSequence++;
+            _climbMantleFrame = Time.frameCount;
         }
 
         /// <summary>딛고 있는 발판이 바뀔 때마다 이전->이후를 한 줄로 남긴다(리더 지시: 순간이동 추적용).</summary>

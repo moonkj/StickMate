@@ -6,7 +6,13 @@ using StickMate.States;
 
 namespace StickMate.Interaction
 {
-    /// <summary>초상화 포즈 3버킷 + 숨김. 상태 ID에서 <b>파생</b>되며 이 목록 밖의 값은 없다.</summary>
+    /// <summary>초상화 포즈 3버킷 + 숨김.
+    /// <para>★★ 2026-09-02 — <b>프로덕션에서 이 값을 바꾸는 곳이 하나도 없다</b>(액자 불변식,
+    /// docs/UX_FLOW.md 45-1). 액자는 언제나 <see cref="Standing"/>이다. 이 열거형과
+    /// <see cref="CharacterPortraitStage.PoseForState"/>는 <b>지우지 않고 남긴</b> 것이다 —
+    /// 2026-08-30 "잡으면 옆으로 눕는다" 신고의 판단 근거가 그 매핑 주석에 있고, 그 판단은
+    /// 되살아날 수 있다. 되살리려면 45-1의 전수 대조표(그림이 문구를 실제로 그리는 상태 3/28)를
+    /// 먼저 반박해야 한다.</para></summary>
     public enum PortraitPose
     {
         /// <summary>서 있음(중립).</summary>
@@ -20,7 +26,10 @@ namespace StickMate.Interaction
         /// "작업 중 / 들려 있는 중"으로 읽힌다.</summary>
         Busy = 2,
 
-        /// <summary>가출 중 — 액자를 <b>비운다</b>(없는 사람을 그리지 않는다).</summary>
+        /// <summary>가출 중 — 액자를 <b>비운다</b>(없는 사람을 그리지 않는다).
+        /// <para>★ 2026-09-02 리더 결정으로 <b>도달하지 않는다</b>: 액자가 거울이 아니라 옷장 마네킹이
+        /// 되면서, 사람이 방을 나가도 마네킹은 그 자리에 있다. 그리고 <b>빈 액자는 이미 RT 실패에
+        /// 예약</b>돼 있어 뜻이 충돌한다(45-5-a). 가출 사실은 프레즌스 줄이 말한다.</para></summary>
         Hidden = 3,
     }
 
@@ -57,7 +66,8 @@ namespace StickMate.Interaction
     /// · Rigidbody도 없다 — 포즈는 전부 정적 좌표다.
     /// · 카메라는 <b>창이 열려 있는 동안만</b> enabled=true다(닫히면 렌더 비용 0).
     /// · 이 오브젝트는 캐릭터의 자식이 <b>아니다</b>. 가출 은신/전체화면 자동 숨김은 캐릭터의 렌더러만
-    ///   끄므로 초상화와 무관하다 — 초상화는 오직 창 개폐와 <see cref="SetPose"/>로만 켜고 끈다.
+    ///   끄므로 초상화와 무관하다 — 초상화는 오직 <b>창 개폐</b>로만 켜고 끈다
+    ///   (2026-09-02 이전에는 <see cref="SetPose"/>도 그 목록에 있었다 — 액자 불변식 참고).
     /// </summary>
     public sealed class CharacterPortraitStage : MonoBehaviour
     {
@@ -128,9 +138,26 @@ namespace StickMate.Interaction
         private const float IdleElbowBendDegrees = 10f;
         private const float IdleKneeBendDegrees = -4f;
 
-        /// <summary>숨쉬기 — 2초 주기로 ±1pt 남짓. 정지 화면이 아니라 "지금 살아 있는 동료"로 읽히게.</summary>
+        /// <summary>숨쉬기 — 2초 주기로 ±1pt 남짓. 정지 화면이 아니라 "지금 살아 있는 동료"로 읽히게.
+        /// <b>지금은 꺼져 있다</b> — <see cref="Breathing"/> 참고.</summary>
         private const float BreathPeriodSeconds = 2f;
         private const float BreathAmplitudeRatio = 0.006f;
+
+        // ============================================================================
+        // ★ 2026-09-02 — 액자 안에서는 시간이 흐르지 않는다 (docs/UX_FLOW.md 45-2-a)
+        // ============================================================================
+        // 사용자 신고: "캐릭터창에서 보이는 캐릭터는 장비 착용 모습만 적용되서 보여줘야하는데 가끔 움직임".
+        // 실측(45-0-1): 창이 열려 있는 <b>내내</b> 주기 2.004초 / peak-to-peak 1.898pt로 몸 전체가
+        // 통째로 오르내렸다(가로 이동 0, 잉크 화소 수 불변 = 강체 병진).
+        //
+        // 왜 끄는가: 이 액자의 유일한 임무는 "[천모자]와 [털모자]를 <b>겹쳐</b> 비교"다. 그림 전체가
+        // 1.9pt 오르내리면 그 겹쳐보기가 불가능해진다. 원래 의도("살아 있는 동료로 읽히게")는 진짜지만
+        // 같은 창 안에서 이미 넷이 그 일을 한다 — 바탕화면의 실제 캐릭터 / 프레즌스 줄 / STRESS·EXP
+        // 게이지 / "함께한 시간". 살아 있음을 액자가 증명할 필요가 없다.
+        //
+        // 눈(<see cref="DrawEyes"/>)과 <b>같은 방식</b>이다: 코드는 지우지 않고 게이트만 둔다.
+        // 되살리려면 이 한 줄을 true로 돌리면 되고, 그때 위 근거를 다시 읽으면 된다.
+        private const bool Breathing = false;
 
         // ────────────────────────────────────────────────────────────────────────
         // 액자(카메라) 배치 — 키 배수. 서 있는 그림 기준으로 잡은 값이지만, 넘어짐 프레이밍도
@@ -224,6 +251,22 @@ namespace StickMate.Interaction
 
         public PortraitPose Pose => _pose;
 
+        // ==================== 진단/테스트 전용 (2026-09-02 액자 불변식) ====================
+        //
+        // 리플렉션 대신 창구를 연다 — 이 저장소는 "_tabRects를 리플렉션으로 뒤지던 관례"를 이미
+        // 창구로 대체했고, 이름을 바꾸면 조용히 죽는 테스트를 더 만들지 않는다.
+
+        /// <summary>지금 서명. <b>포즈를 바꿔도 이 값이 변하지 않아야 한다</b>는 것이 액자 불변식이고,
+        /// 그 회귀를 이 창구가 잰다(<see cref="ComputeSignature"/> 문서).</summary>
+        public int SignatureForTests => ComputeSignature();
+
+        /// <summary>숨쉬기 게이트(<see cref="Breathing"/>). 테스트가 <c>false</c>를 베껴 적지 않게 한다.</summary>
+        public static bool BreathingEnabledForTests => Breathing;
+
+        /// <summary>숨쉬기 주기(초). "안 움직인다"를 재는 테스트가 <b>최소 한 주기 이상</b> 관찰하도록
+        /// 예산을 이 값에서 유도한다 — 2초짜리 사인파를 프레임 두 장으로 재면 아무것도 증명하지 못한다.</summary>
+        public static float BreathPeriodSecondsForTests => BreathPeriodSeconds;
+
         /// <summary>
         /// 두 번째 촬영장의 X 좌표 — 화면 좌하단 호버 패널의 미리보기 카드가 쓴다(docs/UX_FLOW.md 34-6-3).
         ///
@@ -289,7 +332,12 @@ namespace StickMate.Interaction
             }
         }
 
-        /// <summary>포즈를 바꾼다. 실제로 달라졌을 때만 도형을 다시 굽는다(24시간 상주 앱).</summary>
+        /// <summary>포즈를 바꾼다. 실제로 달라졌을 때만 도형을 다시 굽는다(24시간 상주 앱).
+        /// <para>★★ 2026-09-02 — <b>프로덕션 호출자가 0개</b>다(정보창이 부르던 한 줄을 걷어냈다).
+        /// 지금 이 함수를 부르는 것은 넘어짐/가출 프레이밍을 검증하는 테스트뿐이다.
+        /// <b>새 프로덕션 호출자를 만들지 마라</b> — 그 순간 액자에 시간이 다시 흐르고,
+        /// 사용자 신고("장비 착용 모습만 …인데 가끔 움직임")가 그대로 재발한다
+        /// (<see cref="ComputeSignature"/> 문서의 실측 70.9pt).</para></summary>
         public void SetPose(PortraitPose pose)
         {
             if (_pose == pose) return;
@@ -322,9 +370,18 @@ namespace StickMate.Interaction
                 : UiChrome.PortraitSurface;               // 종이 — 정보창 액자와 정확히 같은 색
         }
 
-        /// <summary>상태 ID -> 포즈. <b>같은 스냅샷에서 프레즌스 문구와 함께 파생</b>된다 —
-        /// 초상화가 서 있는데 문구만 "넘어져 있는 중"인 어긋남을 구조적으로 막는다(원칙 1의 정신을
-        /// 이미지에도 적용, 이번 라운드 신규 규칙).</summary>
+        /// <summary>상태 ID -> 포즈.
+        ///
+        /// <para>★★ 2026-09-02 — <b>프로덕션 호출자가 없다.</b> 옛 근거는 "초상화가 서 있는데 문구만
+        /// '넘어져 있는 중'인 어긋남을 구조적으로 막는다(원칙 1의 정신을 이미지에도 적용)"였는데,
+        /// 28개 상태 전수 대조가 그 반대를 보였다(45-0-5): 그림이 문구를 <b>실제로 그리는</b> 상태는
+        /// 3개(10.7%)뿐이고 <b>다른 것을 그리는</b> 상태가 15개(53.6%)였다. 막으려던 바로 그 어긋남이
+        /// 절반 이상에서 일어나고 있었다 — <c>Walk</c>에서 액자는 서 있는데 문구는 "걷는 중"이다.
+        /// 4버킷이 28행보다 정확할 수 없으므로, 그 일치는 이제 <b>글자가 전부 진다</b>
+        /// (<c>CharacterInfoWindow.StateLabel</c>, 28행).</para>
+        ///
+        /// <para>이 함수를 지우지 않고 남긴 이유는 아래 <c>Dragged</c> 주석이다 — 2026-08-30 신고의
+        /// 판정 근거가 거기에만 있다.</para></summary>
         public static PortraitPose PoseForState(StickmanStateId id)
         {
             switch (id)
@@ -583,11 +640,14 @@ namespace StickMate.Interaction
 
         private void ApplyBreathing()
         {
+#pragma warning disable 162 // 의도된 상수 게이트 — Breathing을 true로 되돌리면 그대로 살아난다.
+            if (!Breathing) return;
             if (_figureRoot == null) return;
             float amp = _pose == PortraitPose.Standing ? TotalHeight * BreathAmplitudeRatio : 0f;
             float y = _baseFigureY + Mathf.Sin(Time.unscaledTime * Mathf.PI * 2f / BreathPeriodSeconds) * amp;
             Vector3 p = _figureRoot.localPosition;
             if (!Mathf.Approximately(p.y, y)) _figureRoot.localPosition = new Vector3(p.x, y, p.z);
+#pragma warning restore 162
         }
 
         /// <summary>
@@ -631,6 +691,13 @@ namespace StickMate.Interaction
         /// 경우를 못 잡는다(마스크가 그대로다). 캐릭터는 안 바뀌는데 초상화만 옛 모자를 쓰고 있거나
         /// 그 반대가 되는, 찾기 어려운 불일치가 된다.
         /// <see cref="EquipmentModel.WornStateSignature"/>는 아이템 자리까지 섞는다.
+        ///
+        /// <para>★★ 2026-09-02 <b>【액자 불변식】</b> (docs/UX_FLOW.md 45-1 / UI_SURFACE_SPEC 14.1) —
+        /// 액자 속 그림은 <b>착용 장비 · 해금 상태 · 잉크색 · 캐릭터 키</b> 네 가지가 바뀔 때만 다시
+        /// 그려진다. <b>캐릭터의 상태(무엇을 하고 있는가)는 액자에 도달하지 않는다.</b>
+        /// 여기 있던 <c>(int)_pose</c> 한 줄이 사용자 신고("장비 착용 모습만 보여줘야 하는데 가끔 움직임")의
+        /// 원인이었다 — 상태 버킷이 바뀌는 순간 뒷팔 끝이 <b>1프레임에 70.9pt</b>(액자 세로의 39%) 솟았다
+        /// 1.2초 뒤 되돌아왔다(실측 45-0-3). 되돌리면 그 튐이 그대로 돌아온다.</para>
         /// </summary>
         private int ComputeSignature()
         {
@@ -642,15 +709,16 @@ namespace StickMate.Interaction
                 if (EquipmentModel.IsUnlocked((EquipmentSlot)i)) unlockedMask |= 1 << i;
             }
             hash = hash * 31 + unlockedMask;
-            hash = hash * 31 + (int)_pose;
             hash = hash * 31 + ResolveInk().GetHashCode();
 
             // ★ 2026-08-31 — 캐릭터 전신 높이도 서명에 넣는다(크기 다이얼 대응).
             //   그림의 관절 좌표/획 두께/액세서리 크기는 전부 이 값에서 나오는데, 예전 서명에는
             //   빠져 있어서 배율을 바꿔도 <b>다른 이유로</b> 다시 구워질 때까지 옛 그림이 남았다.
-            //   그러면 ApplyBreathing()만 새 키의 진폭으로 흔들려(그 함수는 매 프레임 실측치를 읽는다)
-            //   그림과 숨결의 기준이 어긋난다. 서명에 넣으면 <b>액자·그림·숨결이 항상 같은 키</b>다.
+            //   서명에 넣으면 <b>액자와 그림이 항상 같은 키</b>다.
             //   (표시 크기는 ApplyFraming()이 액자를 함께 옮기므로 이 재굽기로도 변하지 않는다.)
+            //   ⚠ 2026-09-02: 원래 근거의 뒷부분("숨결만 새 키로 흔들린다")은 숨쉬기가 꺼지면서
+            //     사라졌다. 그래도 이 줄은 남는다 — 키가 바뀌면 <b>그림 자체</b>가 달라지기 때문이고,
+            //     그건 사용자가 요구한 "장비 착용 모습"의 일부다(크기 다이얼).
             hash = hash * 31 + TotalHeight.GetHashCode();
             return hash;
         }

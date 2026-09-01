@@ -515,6 +515,28 @@ namespace StickMate.Core
             }
         }
 
+        // ============================================================================
+        // ★★ 물리 주기 훅 (2026-09-02) — 발 떼기 이송이 마찰과 **같은 주기**로 돌게 하는 유일한 배선
+        // ============================================================================
+        // 이 컴포넌트에는 원래 FixedUpdate가 없었다. 상태 로직은 전부 Update(프레임)에서 돌고,
+        // 물리에 주는 지시는 "다음 FixedUpdate가 읽어갈 값을 프레임 끝에 세워 둔다"는 관례로 처리해
+        // 왔다(중력 억제/포즈). 그 관례는 **프레임당 한 번이면 충분한** 값에만 성립한다.
+        //
+        // 발 떼기 이송은 그 부류가 아니다. 되돌리려는 마찰이 FixedUpdate마다 걸리므로, 프레임당 1회
+        // 재적용은 프레임이 길어질수록 지고 프레임이 유예(0.25초)를 삼키면 0회가 된다 — 절전 등급
+        // DisplayOff(4fps = 250ms/프레임)에서는 결정적으로 그렇다. 그래서 이 한 가지만 물리 주기에
+        // 싣는다(유도와 계측: States/StickmanBlackboard.TickStepOffCarry 문서).
+        //
+        // ★ 여기에 다른 로직을 늘리지 마라. 상태 머신은 프레임 주기가 계약이고(포즈/대사/센서가 모두
+        //   그 전제 위에 있다), 물리 주기에서 상태를 바꾸면 한 프레임에 여러 번 전이하게 된다.
+        // ★ Suspend 중에는 돌지 않는다 — Update가 조기 return하는 것과 같은 이유이며, 그때는
+        //   SetBodiesSimulated(false)로 물리 자체가 멎어 있어 속도를 쓰는 것 자체가 무의미하다.
+        private void FixedUpdate()
+        {
+            if (_isSuspended || _blackboard == null) return;
+            _blackboard.TickStepOffCarry();
+        }
+
         private void Update()
         {
             using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Agent);   // [스톨구간] 계측
@@ -991,6 +1013,15 @@ namespace StickMate.Core
             // 상태/파라미터 보존(UX_FLOW.md 6-4절/9절-4, "IDLE 리셋 금지"): 상태 인스턴스를 파괴하거나
             // Idle로 되돌리지 않고 단순히 Tick 호출 자체를 건너뛴다 — 진행 중이던 상태의 내부 타이머
             // (예: FallState._landingConfirmTimer)가 그대로 멈춰 있다가 Resume() 이후 이어서 진행된다.
+            //
+            // ★★ 2026-09-02 정정 — 위 문장은 **deltaTime 누적 타이머에만** 참이었다. 이 코드베이스에는
+            //    벽시계 절대 기한(Time.time + duration)이 딱 하나 있고(drop-through 유예 / 발 떼기 이송,
+            //    States/StickmanBlackboard.cs), 그것은 Tick을 건너뛰어도 계속 흘러간다. 하강 도중
+            //    전체화면이 0.25초 창에 겹치면 Resume 시점에 둘 다 만료돼 그 하강이 조용히 무효가 됐다
+            //    (결과는 자기회복 — Dock에 도로 착지 — 이지만 문서화된 계약이 거짓이었다).
+            //    아래 한 줄이 잔여 시간을 얼려 Resume에서 재기점한다 = 이제 계약이 실제로 참이다.
+            _blackboard?.SuspendAbsoluteTimeWindows();
+
             SetBodiesSimulated(false); // 물리 시뮬레이션도 함께 멈춰 숨겨진 동안 위치가 흐트러지지 않게 함.
             SetRenderersEnabled(false);
 
@@ -1016,6 +1047,10 @@ namespace StickMate.Core
         private void Resume()
         {
             _isSuspended = false;
+            // Suspend()에서 얼려 둔 절대 기한을 **지금**을 기준으로 다시 세운다(그 주석 참고) —
+            // 숨어 있던 시간만큼 창이 뒤로 밀린다. 물리를 켜기 전에 해야 첫 FixedUpdate가 이미
+            // 재기점된 창을 본다.
+            _blackboard?.ResumeAbsoluteTimeWindows();
             SetBodiesSimulated(true);
             // BUG-P5-M1 대응(Major, docs/BUG_REPORT_PHASE5.md): 예전에는 여기서 무조건
             // SetRenderersEnabled(true)를 호출해, 가출(RunawayState) Hidden 페이즈 중 전체화면 Suspend/

@@ -1,4 +1,7 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 using NUnit.Framework;
 using UnityEngine;
 using StickMate.Core;
@@ -109,6 +112,125 @@ namespace StickMate.Tests.EditMode
 
         /// <summary>데드존을 확실히 넘는 이동 의도(프로덕션 배회 AI는 ±1을 낸다).</summary>
         private float MovingInput => _config.moveInputDeadzone + 1f;
+
+        // ==================== 0. ★ 되올라가기 경합 (2026-09-02 실측, 미해결) ====================
+
+        /// <summary>
+        /// ★★ <b>[갭추적] 1프레임짜리 Idle에서 대사가 파생된다 — 불변 원칙 1 위반.</b>
+        /// 리더 실측(신빌드 05:03, 벽타기 완료 10회 중 1회):
+        /// <code>
+        ///   frame=68488 [벽타기] 완료 → [말풍선] "심심하다"(Idle) 표시
+        ///   frame=68488 [되올라가기] 안착 — 턱 안쪽으로 걸어 들어갑니다
+        ///   frame=68489 [말풍선] 즉시 컷 (Idle) — 컷사유=상태종료, 노출 0.02초
+        /// </code>
+        ///
+        /// <para><b>기제(소스에서 확정, 추측 아님)</b> — <c>StickmanAgent.Update</c>의 순서는
+        /// <c>_autoWander.Tick</c> → <c>_machine.Tick</c>이다.
+        /// <list type="number">
+        ///   <item><c>ParkourClimbState</c>가 맨틀 완료 프레임에
+        ///         <c>_blackboard.ReportClimbMantleCompleted(_direction)</c>로 <b>"곧 턱 안쪽으로
+        ///         걸어 들어간다"를 확정 사실로 기록</b>한다.</item>
+        ///   <item><b>바로 다음 줄에서</b> <c>MoveInputX</c>를 읽어 다음 상태를 고른다. 그 값은
+        ///         아직 <b>0</b>이다(배회 AI는 다음 프레임에야 그 신호를 소비해 <c>EnterMoving</c>을
+        ///         부른다) → <b>Idle</b>을 고른다.</item>
+        ///   <item>Idle의 <c>Enter()</c>가 발화 자격 게이트에 묻는다.
+        ///         <c>PlannedDwellRemainingSecondsFor(Idle)</c>는 "의도와 상태가 어긋나면 0"이라는
+        ///         옳은 규칙을 쓰지만, 그 <c>MoveInputX</c>가 <b>블랙보드에 이미 기록된 맨틀 신호에
+        ///         대해 한 프레임 낡았다</b> → 배회 페이즈 잔여(2.8초)를 그대로 답한다 → <b>통과</b>.</item>
+        ///   <item>다음 프레임에 배회 AI가 신호를 소비해 <c>EnterMoving</c> → Idle → Walk → 즉시 컷.</item>
+        /// </list></para>
+        ///
+        /// <para><b>리더 질문의 답</b>: <i>"되올라가기 직후에도 그 판정이 서는가?"</i> → <b>서지 않는다.</b>
+        /// 게이트가 보는 두 사실(페이즈 잔여 · 이동 의도)이 <b>둘 다</b> 맨틀 신호에 대해 낡았다.</para>
+        ///
+        /// <para><b>고칠 자리(둘 중 하나, 둘 다 <c>States/</c>)</b>:
+        /// <list type="bullet">
+        ///   <item><b>(권장) <c>ParkourClimbState</c></b> — 맨틀 직후 다음 상태를 <c>MoveInputX</c>가
+        ///         아니라 <b>자기가 방금 확정한 <c>ClimbMantleDirection</c></b>에서 고른다. 한 줄이고,
+        ///         "확정된 사실에서 파생한다"는 원칙 1의 문장 그대로다. 1프레임 Idle 자체가 사라지므로
+        ///         대사뿐 아니라 포즈/발소리 등 <b>모든 파생물</b>이 함께 고쳐진다.</item>
+        ///   <item><c>StickmanBlackboard.PlannedDwellRemainingSecondsFor</c> — 소비되지 않은 맨틀
+        ///         신호가 있으면 Idle의 잔여를 0으로 답한다. 대사만 고치고 1프레임 Idle은 남는다.</item>
+        /// </list>
+        /// <b>이번 라운드의 coder 편집 범위가 <c>Dialogue/</c>와 <c>Interaction/InfoGearIconWidget.cs</c>로
+        /// 한정돼 있어 여기서 고칠 수 없다</b> — 그래서 <b>고치지 않고 잠가만 둔다</b>(리더 배정 요청).
+        /// 아래는 그 경합을 <b>합성</b>해 두므로, 고치는 사람이 <c>Assert.Ignore</c>를 지우기만 하면
+        /// 곧바로 회귀 테스트가 된다.</para>
+        /// </summary>
+        [Test]
+        public void 맨틀_직후_1프레임_Idle에서는_대사가_나오지_않는다()
+        {
+            // ★ 네거티브 컨트롤(먼저) — 맨틀이 없으면 이 조합은 <b>정상적으로 말해야</b> 한다.
+            //   이게 없으면 아래 단언이 "언제나 침묵"이라는 오답과 구별되지 않는다.
+            _intent.MoveInputX = 0f;
+            Assert.AreEqual(PhaseRemaining, _blackboard.PlannedDwellRemainingSecondsFor(StickmanStateId.Idle), 1e-6f,
+                "맨틀이 없는 평범한 Idle인데 계획 잔여가 0이다 — 그러면 캐릭터가 통째로 벙어리가 된다.");
+            Assert.IsTrue(AmbientChatter.TryRollChatter(_blackboard, StickmanStateId.Idle,
+                    new AmbientChatter.ChatterParams()),
+                "맨틀이 없는 평범한 Idle에서 발화가 막혔다 — 게이트가 과잉 차단하고 있다.");
+
+            // ★ 경합 합성 — ParkourClimbState가 맨틀을 보고한 <b>그 프레임</b>의 상태 그대로다:
+            //   배회는 Moving 페이즈(2.8초 남음)이고, 경계 정지 중이라 이동 의도는 아직 0이다.
+            //   배회 AI는 <b>다음 프레임</b>에야 이 신호를 소비해 EnterMoving을 부른다.
+            _blackboard.ReportClimbMantleCompleted(1);
+            _intent.MoveInputX = 0f;
+
+            Assert.AreEqual(0f, _blackboard.PlannedDwellRemainingSecondsFor(StickmanStateId.Idle), 1e-6f,
+                "맨틀이 확정된 프레임인데 Idle의 계획 잔여가 남아 있다 — 게이트가 보는 이동 의도가 " +
+                "<이미 블랙보드에 기록된 맨틀 신호>에 대해 한 프레임 낡았다는 뜻이다.");
+            Assert.IsFalse(AmbientChatter.TryRollChatter(_blackboard, StickmanStateId.Idle,
+                    new AmbientChatter.ChatterParams()),
+                "맨틀 완료 프레임의 Idle에서 대사가 파생됐다 — 실제 체류는 1프레임(0.02초)이고, " +
+                "다음 프레임에 Walk로 밀려나면서 즉시 컷된다(절대 불변 원칙 1 위반).");
+
+            // ★ 반대쪽도 확인한다 — 맨틀은 "멈춤"이 아니라 <b>"걸어 들어감"</b>이 확정된 사실이다.
+            //   Idle만 0으로 만들고 Walk까지 0이면, 근본 수정으로 실제로 진입하는 Walk가 통째로
+            //   벙어리가 된다(증상을 반대쪽으로 옮기는 것일 뿐이다).
+            Assert.AreEqual(PhaseRemaining, _blackboard.PlannedDwellRemainingSecondsFor(StickmanStateId.Walk), 1e-6f,
+                "맨틀 확정 프레임의 Walk에까지 0을 답한다 — 되올라간 뒤 걸어 들어가는 2.8초가 통째로 침묵한다.");
+        }
+
+        /// <summary>
+        /// ★★ <b>근본 수정 쪽</b>을 따로 잠근다(2026-09-02).
+        ///
+        /// <para>위 테스트는 <b>게이트</b>의 성질만 본다. 그런데 리더가 채택한 근본 수정은 게이트가
+        /// 아니라 <c>ParkourClimbState</c>가 <b>다음 상태를 무엇으로 고르는가</b>다 — 1프레임 Idle
+        /// 자체를 없애 대사뿐 아니라 포즈·발소리 등 모든 파생물을 함께 고치는 쪽이다.
+        /// <b>즉 위 테스트만으로는 근본 수정의 유무를 판별할 수 없다</b>(게이트만 고쳐도 초록이 된다).
+        /// 그 사각지대를 이 검사가 메운다.</para>
+        ///
+        /// <para>소스 텍스트 스캔인 이유: 이 전이는 실제 씬/물리/등반 진행이 있어야 도달하는 경로라
+        /// EditMode에서 상태 인스턴스만으로 재현할 수 없고, PlayMode로 옮기면 "무엇을 고르는가"라는
+        /// 이 한 가지 결정이 등반 성공 여부에 가려진다. 이 파일의 다른 검사들과 달리 <b>구조</b>를
+        /// 잠그는 검사임을 밝혀 둔다.</para>
+        /// </summary>
+        [Test]
+        public void 맨틀_직후_다음_상태는_이동의도가_아니라_확정된_맨틀에서_고른다()
+        {
+            string src = File.ReadAllText(Path.Combine(Application.dataPath,
+                "_Project", "Scripts", "States", "ParkourClimbState.cs"));
+
+            // 주석은 벗긴다 — 결함을 설명하는 주석 자체가 구현으로 오인되던 함정(다른 감사와 같은 관례).
+            var sb = new StringBuilder(src.Length);
+            foreach (string line in src.Replace("\r\n", "\n").Split('\n'))
+            {
+                int c = line.IndexOf("//", StringComparison.Ordinal);
+                sb.Append(c >= 0 ? line.Substring(0, c) : line).Append('\n');
+            }
+            string exec = sb.ToString();
+
+            int mantle = exec.IndexOf("ReportClimbMantleCompleted(", StringComparison.Ordinal);
+            Assert.Greater(mantle, 0, "맨틀 보고가 사라졌다 — 이 검사의 대상이 없다.");
+
+            string afterMantle = exec.Substring(mantle);
+            StringAssert.Contains("ChangeState(StickmanStateId.Walk)", afterMantle,
+                "맨틀 직후 전이가 Walk 확정이 아니다 — 그러면 1프레임 Idle이 되살아나고, " +
+                "그 프레임에서 파생된 대사가 0.02초 만에 잘린다(원칙 1).");
+            StringAssert.DoesNotContain("MoveInputX", afterMantle,
+                "맨틀 직후 다음 상태를 다시 MoveInputX로 고르고 있다 — 그 값은 이 시점에 " +
+                "<이미 기록된 맨틀 신호>보다 한 프레임 낡았다(StickmanAgent.Update: " +
+                "_autoWander.Tick -> _machine.Tick).");
+        }
 
         // ==================== 1. 상태 범위 질의 자체 ====================
 
