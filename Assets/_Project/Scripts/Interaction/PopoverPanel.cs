@@ -41,8 +41,15 @@ namespace StickMate.Interaction
         /// <summary>버튼에서 자라나는 시간. 0.16초, scale 0.92 -> 1, alpha 0 -> 1.</summary>
         protected const float GrowSeconds = 0.16f;
 
-        /// <summary>닫힐 때. 여는 것보다 빨라야 한다(닫기는 "취소"라 즉시성이 가치다).</summary>
-        protected const float ShrinkSeconds = 0.12f;
+        /// <summary>닫힐 때. 여는 것보다 빨라야 한다(닫기는 "취소"라 즉시성이 가치다).
+        /// <para>★ <b>public</b>인 이유(<see cref="ScreenMarginPoints"/> / <c>ActionDedupSeconds</c>와
+        /// 같은 사정): <c>Close()</c>는 <c>_open</c>을 <b>즉시</b> 내리지 않고 이 시간 동안 접히는
+        /// 애니메이션을 돌린다. 그래서 "닫혔는가 / 안 닫혔는가"를 재는 테스트는 이만큼을 <b>벽시계로</b>
+        /// 기다린 뒤에 봐야 한다. 2026-09-02 네거티브 컨트롤이 실제로 이 함정을 잡아냈다 —
+        /// 바깥 클릭 닫기를 일부러 되살렸는데 <c>yield return null</c> 한 프레임 뒤의
+        /// <c>IsOpen</c>은 아직 true라 테스트가 <b>초록</b>이었다. 숫자를 베끼면 이 값이 한 번
+        /// 바뀔 때 그 거짓 초록이 조용히 돌아온다.</para></summary>
+        public const float ShrinkSeconds = 0.12f;
 
         protected const float GrowStartScale = 0.92f;
 
@@ -480,7 +487,6 @@ namespace StickMate.Interaction
                 //   여기서 하는 일은 <b>아무것도 안 하는 것</b>이다. 특히 그 클릭을 <b>먹지 않는다</b> —
                 //   차단막(BoxCollider2D)은 패널 사각형만 덮으므로 이 좌표에는 콜라이더가 없고,
                 //   히트테스트(hitTestType=Raycast)가 그대로 관통시켜 밑의 앱에 전달한다(원칙 2).
-                Close("NEGCTRL 팝오버 바깥 클릭");
                 return;
             }
             if (ContainsScreenPoint(CloseButtonRect, cursor))

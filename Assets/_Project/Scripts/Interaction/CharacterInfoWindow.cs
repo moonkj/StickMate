@@ -1946,7 +1946,6 @@ namespace StickMate.Interaction
             //     덮으므로 창 밖 좌표에는 콜라이더가 없고, 히트테스트(hitTestType=Raycast)가 그대로
             //     밑의 앱에 넘긴다. "안 닫히는 것"과 "클릭을 뺏는 것"은 다른 문제이고, 후자면 원칙 2
             //     위반이다(Tests/PlayMode/SurfaceOutsideClickTests가 그 경계를 픽셀로 잠근다).
-            if (!RectContainsScreenPoint(_panel, cursor) && TryClaimAction("outside")) Close("NEGCTRL 창 밖 클릭");
         }
 
         /// <summary>

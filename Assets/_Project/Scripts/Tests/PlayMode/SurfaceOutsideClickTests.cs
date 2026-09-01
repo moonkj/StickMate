@@ -215,14 +215,23 @@ namespace StickMate.Tests.PlayMode
             AssertBlockerDoesNotCover(popover.ClickBlockerWorldBounds, outside, "행동 명령 팝오버");
 
             popover.FeedClickForTests(outside);
-            yield return null;
+
+            // ★★ 여기서 <c>yield return null</c> 한 프레임만 두고 재면 <b>거짓 초록</b>이다.
+            //   <c>Close()</c>는 <c>_open</c>을 즉시 내리지 않고 <see cref="PopoverPanel.ShrinkSeconds"/>
+            //   동안 접히는 애니메이션을 돌리므로, 한 프레임 뒤의 <c>IsOpen</c>은 <b>닫기가 실제로
+            //   걸렸어도 아직 true</b>다. 2026-09-02 네거티브 컨트롤(바깥 클릭 닫기를 일부러 되살려
+            //   빨개지는지 확인)이 정확히 이 함정을 잡아냈다 — 세 표면 중 팝오버만 초록이었다.
+            //   그래서 접힘 시간의 3배를 <b>벽시계로</b> 기다린 뒤에 본다(숫자는 프로덕션 상수 참조).
+            yield return new WaitForSecondsRealtime(PopoverPanel.ShrinkSeconds * 3f + 0.1f);
             Assert.IsTrue(popover.IsOpen,
                 $"{LogPrefix} 바깥({outside})을 눌렀더니 팝오버가 꺼졌습니다 — 사용자 지시 위반입니다.");
+            Assert.IsTrue(popover.IsClickBlockerEnabled,
+                $"{LogPrefix} 팝오버는 열려 있는데 차단막이 꺼졌습니다 — 창 안 클릭이 밑으로 샙니다.");
 
             yield return new WaitForSecondsRealtime(0.5f);
 
             popover.FeedClickForTests(popover.CloseButtonScreenRectForTests.center);
-            yield return new WaitForSecondsRealtime(0.3f);   // 접히는 애니메이션(0.12초)을 넘긴다.
+            yield return new WaitForSecondsRealtime(PopoverPanel.ShrinkSeconds * 3f + 0.1f);
             Assert.IsFalse(popover.IsOpen, $"{LogPrefix} [✕]를 눌렀는데 팝오버가 닫히지 않았습니다.");
             Assert.IsFalse(popover.IsClickBlockerEnabled,
                 $"{LogPrefix} 팝오버를 닫았는데 차단막이 남았습니다(원칙 2 위반).");
@@ -274,7 +283,8 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 고른 좌표 {outside}가 팝오버({panel}) 안입니다 — 전제가 무너졌습니다.");
 
             popover.FeedClickForTests(outside);
-            yield return null;
+            // 접힘 애니메이션을 넘겨서 본다 — 한 프레임 뒤의 IsOpen은 닫기가 걸렸어도 아직 true다.
+            yield return new WaitForSecondsRealtime(PopoverPanel.ShrinkSeconds * 3f + 0.1f);
             Assert.IsTrue(popover.IsOpen,
                 $"{LogPrefix} 전제 실패 — 바깥 클릭이 아직 팝오버를 닫고 있습니다(사용자 지시 위반).");
 

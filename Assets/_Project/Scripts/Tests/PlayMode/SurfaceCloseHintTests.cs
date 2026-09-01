@@ -172,7 +172,8 @@ namespace StickMate.Tests.PlayMode
             Rect popoverClose = action.CloseButtonScreenRectForTests;
             Assert.Greater(popoverClose.width, 1f, $"{LogPrefix} 팝오버 [✕] 사각형이 비었습니다.");
             action.FeedClickForTests(popoverClose.center);
-            yield return new WaitForSecondsRealtime(0.3f);
+            // 접힘 애니메이션을 벽시계로 넘긴다 — Close()는 IsOpen을 즉시 내리지 않는다.
+            yield return new WaitForSecondsRealtime(PopoverPanel.ShrinkSeconds * 3f + 0.1f);
             Assert.IsFalse(action.IsOpen,
                 $"{LogPrefix} 팝오버 [✕]를 눌렀는데 닫히지 않았습니다 — 바깥 클릭을 없앤 지금 " +
                 "이것이 유일한 마우스 탈출구입니다.");
