@@ -6,6 +6,7 @@ namespace StickMate.Core
     {
         public const float BaselineCharacterTotalHeight = 2.2746944f;
         public const float MinStrokeScreenPoints = 2f;
+        public const float MinFillOutlineScreenPoints = 1f;
         public const float ReferencePointsPerWorldUnitApprox = 846f / (2f * 12f);
     }
 }

@@ -13,6 +13,15 @@ sys.path.insert(0, VERIFY_DIR)
 import rig as rigmod
 from rig import Shape
 
+# ★ shim 이 베낀 StickConfig 상수가 프로덕션과 어긋나면 여기서 멈춘다.
+#   (2026-09-02: MinFillOutlineScreenPoints 결손으로 이 하니스가 조용히 죽어 있었다)
+_drift = subprocess.run([sys.executable, os.path.join(HERE, "shimdrift.py")],
+                        capture_output=True, text=True)
+if _drift.returncode != 0:
+    print(_drift.stdout); print(_drift.stderr)
+    print("!! CoreShim.cs 가 프로덕션과 어긋났다 — 검산이 무엇을 재는지 알 수 없다.")
+    sys.exit(1)
+
 raw = subprocess.run([os.path.join(HERE, "build.sh")], capture_output=True, text=True)
 if raw.returncode != 0:
     print(raw.stdout); print(raw.stderr); sys.exit(1)
