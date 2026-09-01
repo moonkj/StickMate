@@ -117,10 +117,19 @@ namespace StickMate.Tests.PlayMode
                 "톱니 → [캐릭터]를 처음부터 다시 밟아야 하는 막다른 길이 됩니다(M8).");
         }
 
-        /// <summary>바깥 클릭으로 닫아도 같다 — 닫는 방법에 따라 규칙이 달라지면 사용자가 규칙을 세울 수 없다.</summary>
+        /// <summary>
+        /// ★★ <b>2026-09-02에 뒤집힌 테스트</b>. 여기에는 원래 "바깥 클릭으로 닫아도 정보창이
+        /// 돌아온다"가 있었다. 사용자 지시로 <b>바깥 클릭이 아예 닫지 않게</b> 됐으므로, 이제 이
+        /// 테스트가 잠그는 것은 정반대다 — <b>설정창 밖을 눌러도 설정창은 그대로 있고</b>, 그
+        /// 결과로 밀려나 있던 정보창도 <b>되돌아오지 않는다</b>(돌아오면 그건 창이 닫혔다는 뜻이다).
+        ///
+        /// <para>★ 왜 이 자리를 비우지 않고 뒤집는가: 이 파일은 "설정창을 <b>어떤 경로로 닫든</b>
+        /// 정보창이 돌아온다"를 잠근다. 경로가 하나 사라졌으면 그 사실 자체를 잠가 둬야 다음 사람이
+        /// "복귀가 안 되네?" 하고 바깥 클릭 경로를 되살리지 않는다.</para>
+        /// </summary>
         [UnityTest]
         [Timeout(120000)]
-        public IEnumerator ClosingSettingsByClickingOutsideAlsoReturns()
+        public IEnumerator ClickingOutsideSettingsNeitherClosesItNorReturnsTheInfoWindow()
         {
             yield return LoadScene();
 
@@ -129,27 +138,49 @@ namespace StickMate.Tests.PlayMode
             _info.FeedClickForTests(_info.SettingsChipScreenRect.center);
             yield return null;
             Assume.That(_settings.IsOpen, Is.True, $"{LogPrefix} 전제: 설정창이 열려 있어야 합니다.");
+            Assume.That(_info.IsOpen, Is.False, $"{LogPrefix} 전제: 설정창은 배타 모달이라 정보창을 닫습니다.");
 
             // ★ "창 밖"을 좌표로 못 박지 않는다 — 배치모드의 좁은 화면(예: 640×480)에서는 720×560 패널이
-            //   화면을 통째로 덮어 <b>바깥이 존재하지 않는다</b>(첫 작성본이 (4,4)를 찍었다가 그 지점이
-            //   패널 <b>안쪽</b>이라 실패했다). 패널 사각형에서 실제 바깥 한 점을 구하고, 그런 점이
-            //   화면에 없으면 이 환경에서는 검증할 수 없다고 <b>말하고</b> 넘어간다.
+            //   화면을 통째로 덮어 <b>화면 안에는</b> 바깥이 존재하지 않는다(첫 작성본이 (4,4)를 찍었다가
+            //   그 지점이 패널 <b>안쪽</b>이라 실패했다).
+            //   ★ 2026-09-02 — 그때는 Assert.Ignore로 넘겼는데, 그러면 이 경로가 <b>어디에서도</b>
+            //     검증되지 않는다(조용한 구멍). 화면 안에 없으면 <b>화면 밖이라도 패널 밖</b>인 점을
+            //     쓴다: 프로덕션이 보는 조건은 "패널 사각형 안인가" 하나(SettingsWindow.FeedClick)라
+            //     같은 분기를 그대로 지나고, 차이는 그 자리가 눈에 보이는가뿐이다.
             Rect panel = _settings.PanelScreenRect;
             float outsideX = panel.xMin - 20f;
-            if (outsideX < 0f) outsideX = panel.xMax + 20f;
-            if (outsideX < 0f || outsideX > Screen.width)
+            bool onScreen = outsideX >= 1f;
+            if (!onScreen && panel.xMax + 20f <= Screen.width - 1f)
             {
-                Assert.Ignore($"{LogPrefix} 화면({Screen.width}×{Screen.height})이 창({panel})보다 좁아 " +
-                    "\"창 밖\" 지점이 없습니다 — 이 환경에서는 이 경로를 검증할 수 없습니다.");
+                outsideX = panel.xMax + 20f;
+                onScreen = true;
+            }
+            var outside = new Vector2(outsideX, panel.center.y);
+            Assert.IsFalse(panel.Contains(outside),
+                $"{LogPrefix} 고른 좌표 {outside}가 패널({panel}) 안입니다 — 전제가 무너졌습니다.");
+            if (!onScreen)
+            {
+                Debug.Log($"{LogPrefix} 화면({Screen.width}×{Screen.height})이 창({panel})보다 좁아 " +
+                    $"화면 밖 좌표 {outside}를 씁니다 — 프로덕션 분기는 동일하게 지납니다.");
             }
 
-            _settings.FeedClickForTests(new Vector2(outsideX, Mathf.Clamp(panel.center.y, 1f, Screen.height - 1f)));
+            _settings.FeedClickForTests(outside);
             yield return null;
 
-            Assert.IsFalse(_settings.IsOpen, $"{LogPrefix} 창 밖을 눌렀는데 설정창이 닫히지 않았습니다.");
+            Assert.IsTrue(_settings.IsOpen,
+                $"{LogPrefix} 창 밖을 눌렀더니 설정창이 꺼졌습니다 — 2026-09-02 사용자 지시는 " +
+                "\"사용자가 닫기전에는 안꺼져야함\"입니다.");
+            Assert.IsFalse(_info.IsOpen,
+                $"{LogPrefix} 설정창은 그대로인데 정보창이 뒤에서 되살아났습니다 — 복귀는 설정창이 " +
+                "<b>실제로 닫힐 때</b>만 일어나야 합니다(부르지 않은 창이 뜨는 것도 방해입니다).");
+
+            // ★ 네거티브 컨트롤 — [✕] 경로는 여전히 닫고, 여전히 정보창을 되돌린다.
+            //   이게 없으면 위 두 단언은 "닫기가 통째로 고장난" 상태에서도 초록이다.
+            _settings.FeedClickForTests(_settings.CloseButtonScreenRect.center);
+            yield return null;
+            Assert.IsFalse(_settings.IsOpen, $"{LogPrefix} [✕]를 눌렀는데 설정창이 닫히지 않았습니다.");
             Assert.IsTrue(_info.IsOpen,
-                $"{LogPrefix} 창 밖 클릭으로 닫았을 때만 정보창이 돌아오지 않습니다 — 닫는 방법마다 " +
-                "규칙이 다르면 그것도 원칙 1의 불일치입니다.");
+                $"{LogPrefix} [✕]로 닫았는데 정보창이 돌아오지 않았습니다 — 복귀 자체가 죽었습니다.");
         }
 
         /// <summary>★ 반대 방향 — 정보창이 <b>열려 있지 않았다면</b> 설정창을 닫아도 아무것도 열리지

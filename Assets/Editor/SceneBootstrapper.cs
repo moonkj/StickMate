@@ -724,6 +724,23 @@ namespace StickMate.EditorTools
             // ★ 크기 배율 — 아래 모든 지오메트리가 이 하나에서 파생된다(위 "캐릭터 크기 배율" 절 참고).
             float bodyScale = config != null ? config.ResolveCharacterScale() : 1f;
             float headVisualRadius = BaselineHeadVisualRadius * bodyScale;
+            // ★★ 머리 링의 하한은 **굽기 시점에는 2.00pt 그대로**다(2026-09-02 M6 검토 결과, 의도된 예외).
+            //
+            //   M6은 "채운 도형의 경계선은 1.00pt"이고 링은 정의상 그 집합이다. 그런데 그 규칙을
+            //   **여기(굽기)**에 적용하면 실효 링 계수가 0.0756501 -> 0.063(명목)으로 떨어진다:
+            //     지금   : max(0.063 x 0.75, 2pt/35.25 = 0.0567376) = 0.0567376  => 실효 계수 0.0756501
+            //     1pt면  : max(0.063 x 0.75, 1pt/35.25 = 0.0283688) = 0.04725    => 실효 계수 0.063
+            //   런타임 두께는 (구운 값 x 배율비)라 이 계수가 **모든 배율의 링 두께**를 정한다. 계수가
+            //   내려가면 머리 잉크 지름 D(s) = 0.44s + 링(s)가 함께 줄어, 배율 0.60에서 몸통 획 ÷ 머리
+            //   지름이 22.291%(팀 확정 목표 22.3%)가 아니라 22.85%가 된다 — **목표에서 멀어진다.**
+            //   설계(docs/CHARACTER_FORM_SPEC.md 21-4)의 M6 검산표는 전부 실효 계수 0.0756501을 전제로
+            //   0.35/0.60/0.75/1.00 = 1.083/1.857/2.321/3.095pt를 예측하고 있고, 그 표가 목표에 붙는다.
+            //
+            //   ⇒ 바꾸는 것은 **런타임 하한 하나뿐**이다(Core/StickmanAgent.ApplyStrokeWidthsForScale이
+            //     HeadOutline에 MinFillOutlineScreenPoints를 건다). 굽기 값이 그대로이므로
+            //     **프리팹은 1바이트도 안 바뀌고 Rebuild All 없이 다음 빌드부터 적용된다.**
+            //     (M6의 실제 효과는 여기가 아니라 "배율 0.6461 아래에서 링이 2pt에 눌리던 것"이
+            //      0.3231 아래로 내려가는 것이다 — 사용자 배율 0.60이 정확히 그 구간에 있었다.)
             float headOutlineWidth = ScaledStrokeWidth(BaselineHeadOutlineWidth, bodyScale);
             float lineWidth = ScaledStrokeWidth(BaselineLineWidth, bodyScale);
             float legLineWidth = ScaledStrokeWidth(BaselineLegLineWidth, bodyScale);

@@ -1,39 +1,58 @@
 using System.Collections;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
 using StickMate.Interaction;
-using StickMate.Platform;
 
 namespace StickMate.Tests.PlayMode
 {
     /// <summary>
-    /// ★ <b>닫는 법을 화면이 말한다</b> — 2026-09-02 (docs/UX_FLOW.md 41-3).
-    ///
-    /// <para>실측(결정적): 정보창을 연 상태에서 <c>Cmd+W</c>를 누르면 <b>정보창은 그대로이고 뒤에 있던
-    /// Finder 창이 닫혔다</b>. 저장 안 한 문서였으면 진짜 사고다. 원인은 고칠 수 있는 종류가 아니다 —
-    /// <c>CGWindowList</c> 실측으로 우리 OS 창은 <c>layer=101</c> 전체화면 <b>1장뿐</b>이고 정보창·설정창·
-    /// 팝오버는 그 안에 그려진 <b>그림</b>이라 키보드 포커스를 받지 못한다. 키를 가로채는 방향은
-    /// 검토하지 않는다(포커스를 받으면 클릭관통이 깨져 원칙 2가 무너진다).</para>
-    ///
-    /// <para>그래서 처방은 <b>문패</b>다: <c>[✕]</c> 바로 왼쪽에 같은 문장 하나. 문장의 <b>'도'</b>가
-    /// <c>[✕]</c>를 전제하므로 한 문장이 두 경로를 다 가르친다.</para>
+    /// ★★ <b>화면이 거짓말을 하지 않는다</b> — 2026-09-02 (사용자 지시로 하루 만에 <b>뒤집힌</b> 파일).
     ///
     /// ============================================================================
-    /// ★ 이 파일이 함께 잠그는 <b>설계 오류 정정</b>
+    /// 이 파일의 이력 — 왜 정반대가 됐는가
     /// ============================================================================
-    /// 41-3 ③은 "팝오버 3종 중 가장 좁은 것"을 <b>480(행동창)</b>으로 적었지만 사실이 아니다 —
-    /// 실제 최소는 <see cref="FocusSessionPopover"/> <b>244pt</b>, 다음이
-    /// <see cref="TodoBoardPopover"/> <b>300pt</b>다. 그래서 41-3 ④가 "실제로는 발생하지 않는다"고 적어
-    /// 둔 예외(<i>좁아서 힌트가 제목과 겹치면 힌트를 먼저 지운다</i>)가 <b>실제로 발생한다</b>.
-    /// 아래 ③이 그 사실을 <b>단언으로</b> 붙잡아 둔다 — 동시에 "폭 판정이 진짜로 동작한다"는
-    /// 네거티브 컨트롤이기도 하다(어떤 폭에서도 힌트가 붙는다면 ①의 통과는 아무 조건도 아니다).
+    /// 이 파일은 원래 41-3의 <b>"닫는 법을 화면이 말한다"</b>를 잠갔다: 세 표면(정보창·설정창·팝오버)의
+    /// [✕] 왼쪽에 <c>"창 밖을 클릭해도 닫혀요"</c>가 붙어 있는지, 좁은 팝오버에서는 제목에 밀려
+    /// 지워지는지까지 쟀다.
+    ///
+    /// <para>그리고 <b>같은 날</b> 사용자 신고가 그 전제를 무너뜨렸다 — <i>"캐릭터창이나 다른 메뉴창들이
+    /// 떠있을때 바탕화면을 클릭하면 꺼지는데 안꺼지고 사용자가 닫기전에는 안꺼져야함"</i>. 바깥 클릭이
+    /// 더 이상 닫지 않으므로 그 문장은 <b>거짓</b>이 됐고, 문구와 동작을 함께 걷어냈다.</para>
+    ///
+    /// <para>그래서 이 파일이 잠그는 것도 뒤집혔다: 이제는 <b>그 문장이 다시 기어들어오지 않는지</b>를
+    /// 잠근다. 이 실패 모드는 조용하다 — 문구는 계속 예쁘게 렌더되고, 사용자만 바탕화면을 여러 번
+    /// 클릭하다 포기한다. 되살리기도 쉽다("힌트가 없네?" 하고 한 줄 되돌리면 끝이다).</para>
+    ///
+    /// ============================================================================
+    /// 잠그는 것
+    /// ============================================================================
+    ///  ① <b>다섯 표면 어디에도</b> "창 밖/바깥을 클릭하면 닫힌다"는 문장이 없다.
+    ///  ② ★ <b>네거티브 컨트롤</b> — ①의 스캐너가 실제로 글자를 훑고 있다(글자 0개를 훑고 "없다"고
+    ///     말하는 것은 아무 조건도 아니다). 훑은 글자 수에 하한을 걸고, 일부러 심은 옛 문장을
+    ///     <b>같은 스캐너가 잡아내는지</b>도 확인한다.
+    ///  ③ 닫는 유일한 마우스 경로인 <b>[✕]가 세 표면 모두에 실재하고 실제로 닫는다</b>.
+    ///     문구를 지웠으므로 이 버튼이 죽으면 탈출구가 <b>0개</b>가 된다.
+    ///
+    /// <para><b>왜 한 번에 다 열지 않는가</b>: 이 표면들은 전부 <see cref="IExclusiveSurface"/>라
+    /// 하나를 열면 나머지가 닫히고, 닫힌 캔버스는 <c>SetActive(false)</c>라 <c>GameObject.Find</c>가
+    /// 못 찾는다. 그 상태로 "거짓 문장 0건"을 세면 아무것도 안 훑고 초록이 된다 — 그래서
+    /// <b>하나씩 열어 그때그때 훑는다</b>(그리고 ②의 하한이 그 실수를 다시 잡는다).</para>
     /// </summary>
     public sealed class SurfaceCloseHintTests
     {
-        private const string LogPrefix = "[닫기힌트-TEST]";
+        private const string LogPrefix = "[닫기문구-TEST]";
+
+        /// <summary>"바깥 클릭으로 닫힌다"고 읽히는 문구 조각. 하나라도 화면에 있으면 거짓말이다.</summary>
+        private static readonly string[] OutsideClickClaims =
+        {
+            "창 밖", "바깥을 클릭", "바깥 클릭", "빈 곳을 클릭", "바탕화면을 클릭",
+        };
+
+        private static readonly Rect AnchorRect = new Rect(400f, 400f, 44f, 44f);
 
         private IEnumerator LoadScene()
         {
@@ -42,112 +61,175 @@ namespace StickMate.Tests.PlayMode
             yield return null;
         }
 
-        // ==================== ① 행동 명령 팝오버(480) — 힌트가 [✕] 바로 왼쪽에 있다 ====================
+        // ==================== ① 다섯 표면 어디에도 그 문장이 없다 ====================
 
         [UnityTest]
-        [Timeout(120000)]
-        public IEnumerator WideActionPopoverShowsTheHintImmediatelyLeftOfTheCloseButton()
+        [Timeout(180000)]
+        public IEnumerator NoSurfaceClaimsThatClickingOutsideClosesIt()
         {
             yield return LoadScene();
 
-            var popover = Object.FindFirstObjectByType<ActionCommandPopover>();
-            Assert.IsNotNull(popover, $"{LogPrefix} 씬에 ActionCommandPopover가 없습니다.");
+            var info = Object.FindFirstObjectByType<CharacterInfoWindow>();
+            var settings = Object.FindFirstObjectByType<SettingsWindow>();
+            var action = Object.FindFirstObjectByType<ActionCommandPopover>();
+            var todo = Object.FindFirstObjectByType<TodoBoardPopover>();
+            var focus = Object.FindFirstObjectByType<FocusSessionPopover>();
+            Assert.IsNotNull(info, $"{LogPrefix} 씬에 CharacterInfoWindow가 없습니다.");
+            Assert.IsNotNull(settings, $"{LogPrefix} 씬에 SettingsWindow가 없습니다.");
+            Assert.IsNotNull(action, $"{LogPrefix} 씬에 ActionCommandPopover가 없습니다.");
+            Assert.IsNotNull(todo, $"{LogPrefix} 씬에 TodoBoardPopover가 없습니다.");
+            Assert.IsNotNull(focus, $"{LogPrefix} 씬에 FocusSessionPopover가 없습니다.");
 
-            popover.Open(new Rect(400f, 400f, 44f, 44f), "PlayMode 테스트");
+            var offenders = new List<string>();
+            int scanned = 0;
+
+            info.Open("문구 검사");
             yield return null;
+            scanned += ScanCanvas("CharacterInfoCanvas", offenders);
+            info.Close("문구 검사 끝");
             yield return null;
 
-            Text hint = popover.CloseHintTextForTests;
-            Assert.IsNotNull(hint,
-                $"{LogPrefix} 480pt 팝오버에 닫기 힌트가 없습니다 — 이 앱은 Esc도 Cmd+W도 받지 못하고, " +
-                "Cmd+W는 뒤에 있던 남의 창을 닫습니다. 닫는 법은 이미 동작하므로 화면이 말하기만 하면 됩니다.");
-            Assert.AreEqual(UiChrome.CloseHintText, hint.text,
-                $"{LogPrefix} 세 표면이 같은 문장을 써야 합니다 — 문구가 갈리면 사용자는 다른 규칙인가를 의심합니다.");
+            settings.Open("문구 검사");
+            yield return null;
+            scanned += ScanCanvas("SettingsCanvas", offenders);
+            settings.Close("문구 검사 끝");
+            yield return null;
 
-            Rect hintRect = PopoverPanel.ScreenRectOf(hint.rectTransform);
-            Rect closeRect = popover.CloseButtonScreenRectForTests;
-            Assert.Greater(closeRect.width, 1f, $"{LogPrefix} [✕] 사각형이 비었습니다.");
+            scanned += PopoverScan(action, "ActionCommandPopoverCanvas", offenders);
+            yield return new WaitForSecondsRealtime(0.25f);
+            scanned += PopoverScan(todo, "TodoBoardPopoverCanvas", offenders);
+            yield return new WaitForSecondsRealtime(0.25f);
+            scanned += PopoverScan(focus, "FocusSessionPopoverCanvas", offenders);
+            yield return new WaitForSecondsRealtime(0.25f);
 
-            Assert.LessOrEqual(hintRect.xMax, closeRect.xMin + 0.5f,
-                $"{LogPrefix} 힌트({hintRect})가 [✕]({closeRect})를 침범했습니다 — 글자는 자기가 설명하는 " +
-                "버튼을 <b>가리켜야</b> 하지 덮으면 안 됩니다.");
+            // ★ 네거티브 컨트롤 (a) — 스캐너가 <b>빈 목록을 훑고</b> "없다"고 말하는 것을 막는다.
+            //   다섯 표면의 크롬만 해도 제목/탭/버튼/캡션으로 수십 개다. 30은 넉넉히 낮은 하한이다.
+            Assert.Greater(scanned, 30,
+                $"{LogPrefix} 화면 글자를 {scanned}개밖에 못 찾았습니다 — 표면이 실제로 열리지 않았거나 " +
+                "캔버스 이름이 바뀌었습니다. 이 상태의 \"거짓 문장 없음\"은 거짓 초록입니다.");
 
-            Text title = popover.TitleTextForTests;
-            Assert.IsNotNull(title, $"{LogPrefix} 제목 글자를 찾지 못했습니다.");
-            Rect titleRect = PopoverPanel.ScreenRectOf(title.rectTransform);
-            Assert.LessOrEqual(titleRect.xMax, hintRect.xMin + 0.5f,
-                $"{LogPrefix} 제목 상자({titleRect})와 힌트 상자({hintRect})가 겹칩니다 — 두 글자가 " +
-                "포개지면 둘 다 못 읽습니다(41-3 ④: 그럴 땐 힌트를 먼저 지운다).");
+            Assert.IsEmpty(offenders,
+                $"{LogPrefix} 화면이 아직 <b>바깥 클릭으로 닫힌다</b>고 말하고 있습니다:\n  " +
+                string.Join("\n  ", offenders) +
+                "\n2026-09-02 사용자 지시로 그 동작을 세 표면에서 걷어냈습니다 — 문구만 남으면 " +
+                "사용자는 바탕화면을 여러 번 클릭하다 포기합니다(원칙 1: 표시와 실제의 일치).");
 
-            popover.Close("테스트 정리");
+            Debug.Log($"{LogPrefix} ① 통과 — 글자 {scanned}개를 훑어 거짓 문장 0건.");
         }
 
-        // ==================== ② 정보창(880) ====================
+        // ==================== ② 네거티브 컨트롤 — 스캐너가 실제로 문다 ====================
 
+        /// <summary>★ ①이 "어떤 문장이든 통과시키는" 빈 검사가 아니라는 증명. 실제 표면에 옛 문구를
+        /// <b>일부러 심고</b> 같은 스캐너를 돌린다 — 반드시 잡혀야 한다.</summary>
         [UnityTest]
         [Timeout(120000)]
-        public IEnumerator InfoWindowTitleBarSaysHowToCloseIt()
+        public IEnumerator NegativeControl_TheScannerActuallyCatchesTheOldSentence()
         {
             yield return LoadScene();
 
             var info = Object.FindFirstObjectByType<CharacterInfoWindow>();
             Assert.IsNotNull(info, $"{LogPrefix} 씬에 CharacterInfoWindow가 없습니다.");
-
-            info.Open("PlayMode 테스트");
-            yield return null;
+            info.Open("네거티브 컨트롤");
             yield return null;
 
-            bool found = false;
-            foreach (Text t in info.GetComponentsInChildren<Text>(true))
-            {
-                if (t.text == UiChrome.CloseHintText) { found = true; break; }
-            }
+            GameObject canvas = GameObject.Find("CharacterInfoCanvas");
+            Assert.IsNotNull(canvas, $"{LogPrefix} CharacterInfoCanvas를 찾지 못했습니다.");
 
-            // 정보창 캔버스는 씬 루트에 있으므로 이름으로도 한 번 더 찾는다.
-            if (!found)
-            {
-                GameObject canvas = GameObject.Find("CharacterInfoCanvas");
-                if (canvas != null)
-                {
-                    foreach (Text t in canvas.GetComponentsInChildren<Text>(true))
-                    {
-                        if (t.text == UiChrome.CloseHintText) { found = true; break; }
-                    }
-                }
-            }
+            Text[] texts = canvas.GetComponentsInChildren<Text>(true);
+            Assume.That(texts.Length, Is.GreaterThan(0), $"{LogPrefix} 정보창에 글자가 하나도 없습니다.");
 
-            Assert.IsTrue(found,
-                $"{LogPrefix} 정보창 타이틀바에 \"{UiChrome.CloseHintText}\"가 없습니다 — 민지가 " +
-                "Cmd+W를 누른 그 순간 시선은 <b>창의 오른쪽 위</b>에 있었습니다. 답이 거기 있어야 합니다.");
+            string original = texts[0].text;
+            texts[0].text = "창 밖을 클릭해도 닫혀요";   // 2026-09-02 이전의 바로 그 문장.
+
+            var offenders = new List<string>();
+            ScanCanvas("CharacterInfoCanvas", offenders);
+            texts[0].text = original;
+
+            Assert.IsNotEmpty(offenders,
+                $"{LogPrefix} 옛 문구를 <b>일부러 심었는데도</b> 스캐너가 잡지 못했습니다 — " +
+                "그렇다면 ①의 \"없다\"는 어떤 화면에서도 통과하는 빈 조건입니다(거짓 초록).");
 
             info.Close("테스트 정리");
         }
 
-        // ==================== ③ 좁은 팝오버(244) — 힌트를 <b>일부러</b> 붙이지 않는다 ====================
+        // ==================== ③ [✕]는 실재하고 실제로 닫는다 ====================
 
-        /// <summary>★ 네거티브 컨트롤 겸 설계 오류 정정. 폭 판정이 실제로 동작하지 않으면(= 어떤
-        /// 폭에서도 힌트를 붙이면) 244pt 팝오버에서 힌트가 제목 <c>집중 모드 · 진행 중</c>을 통째로
-        /// 덮는다. 여기서 "안 붙는다"가 확인되어야 ①의 "붙는다"가 의미를 갖는다.</summary>
+        /// <summary>★ 문구를 지운 대가로 <b>[✕]가 유일한 마우스 탈출구</b>가 됐다. 그것이 없거나
+        /// 안 먹히면 사용자는 창을 영영 못 닫는다(이 앱은 Esc도 Cmd+W도 받지 못한다 —
+        /// <see cref="UiChrome"/> "창을 닫는 법" 절).</summary>
         [UnityTest]
-        [Timeout(120000)]
-        public IEnumerator NarrowFocusPopoverDropsTheHintBecauseTheTitleWins()
+        [Timeout(180000)]
+        public IEnumerator TheCloseButtonIsTheSurvivingEscapeHatchOnEverySurface()
         {
             yield return LoadScene();
 
-            var focus = Object.FindFirstObjectByType<FocusSessionPopover>();
-            Assert.IsNotNull(focus, $"{LogPrefix} 씬에 FocusSessionPopover가 없습니다.");
-
-            focus.Open(new Rect(400f, 400f, 44f, 44f), "PlayMode 테스트");
+            var action = Object.FindFirstObjectByType<ActionCommandPopover>();
+            Assert.IsNotNull(action, $"{LogPrefix} 씬에 ActionCommandPopover가 없습니다.");
+            action.Open(AnchorRect, "탈출구 검사");
             yield return null;
+            Assume.That(action.IsOpen, Is.True, $"{LogPrefix} 전제: 팝오버가 열려야 합니다.");
+
+            Rect popoverClose = action.CloseButtonScreenRectForTests;
+            Assert.Greater(popoverClose.width, 1f, $"{LogPrefix} 팝오버 [✕] 사각형이 비었습니다.");
+            action.FeedClickForTests(popoverClose.center);
+            yield return new WaitForSecondsRealtime(0.3f);
+            Assert.IsFalse(action.IsOpen,
+                $"{LogPrefix} 팝오버 [✕]를 눌렀는데 닫히지 않았습니다 — 바깥 클릭을 없앤 지금 " +
+                "이것이 유일한 마우스 탈출구입니다.");
+
+            var settings = Object.FindFirstObjectByType<SettingsWindow>();
+            Assert.IsNotNull(settings, $"{LogPrefix} 씬에 SettingsWindow가 없습니다.");
+            settings.Open("탈출구 검사");
             yield return null;
+            Rect settingsClose = settings.CloseButtonScreenRect;
+            Assert.Greater(settingsClose.width, 1f, $"{LogPrefix} 설정창 [✕] 사각형이 비었습니다.");
+            settings.FeedClickForTests(settingsClose.center);
+            yield return null;
+            Assert.IsFalse(settings.IsOpen, $"{LogPrefix} 설정창 [✕]를 눌렀는데 닫히지 않았습니다.");
 
-            Assert.IsNull(focus.CloseHintTextForTests,
-                $"{LogPrefix} 244pt 팝오버에까지 힌트가 붙었습니다 — 그 폭에서는 힌트(최소 " +
-                $"{UiChrome.CloseHintMinWidth}pt)와 제목이 같은 줄에 함께 앉을 수 없습니다. " +
-                "41-3 ④가 정한 대로 <b>힌트를 먼저 지웁니다</b>(제목이 우선). " +
-                "★ 이 창의 닫기 안내는 별도 배정 필요 — 41-3 ③의 '팝오버 최소 폭 480'은 사실이 아닙니다.");
+            var info = Object.FindFirstObjectByType<CharacterInfoWindow>();
+            Assert.IsNotNull(info, $"{LogPrefix} 씬에 CharacterInfoWindow가 없습니다.");
+            info.Open("탈출구 검사");
+            yield return null;
+            Rect infoClose = info.CloseButtonScreenRect;
+            Assert.Greater(infoClose.width, 1f, $"{LogPrefix} 정보창 [✕] 사각형이 비었습니다.");
+            info.FeedClickForTests(infoClose.center);
+            yield return null;
+            Assert.IsFalse(info.IsOpen, $"{LogPrefix} 정보창 [✕]를 눌렀는데 닫히지 않았습니다.");
 
-            focus.Close("테스트 정리");
+            Debug.Log($"{LogPrefix} ③ 통과 — 세 표면 모두 [✕]로 실제로 닫힙니다.");
+        }
+
+        // ==================== 도구 ====================
+
+        private static int PopoverScan(PopoverPanel popover, string canvasName, List<string> offenders)
+        {
+            popover.Open(AnchorRect, "문구 검사");
+            int scanned = ScanCanvas(canvasName, offenders);
+            popover.Close("문구 검사 끝");
+            return scanned;
+        }
+
+        /// <summary>한 캔버스를 훑어 거짓 문장을 모은다. 돌려주는 값은 <b>훑은 글자 수</b> — 그것이 0이면
+        /// "없다"는 결론 자체가 무의미하다는 것을 호출자가 알 수 있어야 한다.</summary>
+        private static int ScanCanvas(string canvasName, List<string> offenders)
+        {
+            GameObject canvas = GameObject.Find(canvasName);
+            if (canvas == null) return 0;
+
+            int scanned = 0;
+            foreach (Text t in canvas.GetComponentsInChildren<Text>(true))
+            {
+                if (string.IsNullOrEmpty(t.text)) continue;
+                scanned++;
+                for (int c = 0; c < OutsideClickClaims.Length; c++)
+                {
+                    if (!t.text.Contains(OutsideClickClaims[c])) continue;
+                    offenders.Add($"{canvasName}/{t.gameObject.name}: \"{t.text}\"");
+                    break;
+                }
+            }
+            return scanned;
         }
     }
 }

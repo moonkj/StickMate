@@ -286,6 +286,14 @@ namespace StickMate.Core
             }
         }
 
+        /// <summary>
+        /// 머리 링 오브젝트의 이름 — <b>치수 계약 C1의 열쇠</b>이자 이 리그에서 유일하게 이름으로
+        /// 찾는 자식이다. 여기 하나만 두는 이유: 같은 문자열이 이미 세 곳(이 클래스, 액세서리
+        /// 렌더러의 머리 링 참조, 2026-09-02부터 <see cref="StickmanAgent"/>의 채움 경계선 표식)에
+        /// 흩어져 있었고, 그중 하나만 바뀌면 나머지가 <b>조용히</b> 폴백으로 떨어진다.
+        /// </summary>
+        public const string HeadRingObjectName = "HeadOutline";
+
         /// <summary>머리 링("HeadOutline")의 반지름(로컬). 못 읽으면 0.
         /// SceneBootstrapper.CreateRing이 첫 점을 (반지름, 0, 0)에 찍으므로 그 x가 곧 반지름이다.</summary>
         private static float ReadRingRadius(Transform head)
@@ -294,7 +302,7 @@ namespace StickMate.Core
             for (int i = 0; i < head.childCount; i++)
             {
                 Transform c = head.GetChild(i);
-                if (c == null || c.name != "HeadOutline") continue;
+                if (c == null || c.name != HeadRingObjectName) continue;
                 var lr = c.GetComponent<LineRenderer>();
                 if (lr != null && lr.positionCount > 0) return Mathf.Abs(lr.GetPosition(0).x);
             }

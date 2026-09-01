@@ -198,10 +198,17 @@ namespace StickMate.Tests.PlayMode
                   / (2f * cam.orthographicSize)
                 : StickConfig.ReferencePointsPerWorldUnitApprox;
             float floorWorld = StickConfig.MinStrokeScreenPoints / pointsPerWorldUnit;
+            // ★ 2026-09-02 M6 — 하한이 <b>역할로</b> 둘이다. 채운 도형의 경계선(액세서리 채움 + 머리 링)은
+            //   낱선의 절반을 쓴다. 하나의 최소값을 하나의 하한과 비교하던 예전 구조는 이제
+            //   "정상적으로 얇은 경계선"을 결함으로 신고한다.
+            float fillOutlineFloorWorld = StickConfig.MinFillOutlineScreenPoints / pointsPerWorldUnit;
 
             Assert.AreEqual(floorWorld, _agent.MinStrokeWorldWidth, floorWorld * 0.02f,
                 $"{LogPrefix} 에이전트가 쓰는 하한({_agent.MinStrokeWorldWidth:F5})이 이 테스트가 손계산한 " +
                 $"하한({floorWorld:F5})과 다릅니다 — 하한의 단일 소스가 갈라졌습니다.");
+            Assert.AreEqual(fillOutlineFloorWorld, _agent.MinFillOutlineWorldWidth, fillOutlineFloorWorld * 0.02f,
+                $"{LogPrefix} 에이전트의 채움 경계선 하한({_agent.MinFillOutlineWorldWidth:F5})이 손계산" +
+                $"({fillOutlineFloorWorld:F5})과 다릅니다 — 두 하한이 서로 다른 pt/유닛으로 환산되고 있습니다.");
 
             // ★ 단조 증가를 <b>엄격</b>하게 요구하면 안 된다 — 화면이 작은 환경(배치 모드 창)에서는
             //   작은 배율들이 전부 하한에 걸려 같은 값이 나오는 것이 <b>정상</b>이다. 그래서
@@ -217,8 +224,10 @@ namespace StickMate.Tests.PlayMode
                 for (int f = 0; f < 5; f++) yield return null;
 
                 // ★ 매번 다시 조회한다(캐시 금지 — 위 문서). 몸은 계층에서, 몸 바깥의 잉크는 창구에서.
-                float min = float.MaxValue, max = 0f;
-                int bodyCount = 0, dynamicCount = 0;
+                // ★ 2026-09-02 M6 — 최소값을 <b>역할별로</b> 나눠 담는다(하나로 합치면 채움 경계선이
+                //   낱선 하한과 비교되어 정상 그림이 결함으로 신고된다).
+                float minLine = float.MaxValue, minFill = float.MaxValue, max = 0f;
+                int bodyCount = 0, dynamicCount = 0, fillOutlineCount = 0;
                 LineRenderer[] bodyLines = _agent.GetComponentsInChildren<LineRenderer>(true);
                 for (int i = 0; i < bodyLines.Length; i++)
                 {
@@ -227,7 +236,8 @@ namespace StickMate.Tests.PlayMode
                     float w = lr.startWidth;   // 실제 월드 두께(widthMultiplier는 프리팹에서 1.0 그대로다).
                     if (w <= 0f) continue;
                     bodyCount++;
-                    min = Mathf.Min(min, w);
+                    if (FillOutlineStroke.Is(lr)) { fillOutlineCount++; minFill = Mathf.Min(minFill, w); }
+                    else minLine = Mathf.Min(minLine, w);
                     max = Mathf.Max(max, w);
                 }
 
@@ -240,15 +250,18 @@ namespace StickMate.Tests.PlayMode
                     float w = lr.startWidth;
                     if (w <= 0f) continue;
                     dynamicCount++;
-                    min = Mathf.Min(min, w);
+                    if (FillOutlineStroke.Is(lr)) { fillOutlineCount++; minFill = Mathf.Min(minFill, w); }
+                    else minLine = Mathf.Min(minLine, w);
                     max = Mathf.Max(max, w);
                 }
 
                 minAccessoryLinesSeen = Mathf.Min(minAccessoryLinesSeen, dynamicCount);
 
-                Debug.Log($"{LogPrefix} 배율 {v:F2} — 획 두께 {min:F5}~{max:F5}(화면상 하한 {floorWorld:F5}유닛 " +
-                    $"= {StickConfig.MinStrokeScreenPoints:F1}pt), 검사한 선 = 몸 {bodyCount}개 + " +
-                    $"액세서리/펫/FX {dynamicCount}개.");
+                Debug.Log($"{LogPrefix} 배율 {v:F2} — 낱선 최소 {minLine:F5}(하한 {floorWorld:F5}유닛 " +
+                    $"= {StickConfig.MinStrokeScreenPoints:F1}pt) · 채움경계선 {fillOutlineCount}개 최소 " +
+                    $"{minFill:F5}(하한 {fillOutlineFloorWorld:F5}유닛 = " +
+                    $"{StickConfig.MinFillOutlineScreenPoints:F1}pt) · 최대 {max:F5}, " +
+                    $"검사한 선 = 몸 {bodyCount}개 + 액세서리/펫/FX {dynamicCount}개.");
 
                 // ★★ 이 단언이 없으면 예전과 똑같이 "액세서리를 하나도 못 보고 통과"가 다시 가능해진다.
                 Assert.Greater(dynamicCount, 0,
@@ -256,10 +269,23 @@ namespace StickMate.Tests.PlayMode
                     "액세서리/펫/FX가 단일 창구(StickmanAgent.DynamicVisuals)에 신고하지 않고 있습니다. " +
                     "이 상태로는 아래 하한 단언이 몸만 검사하는 거짓 안심이 됩니다.");
 
-                Assert.GreaterOrEqual(min, floorWorld - 1e-4f,
-                    $"{LogPrefix} 배율 {v:F2}에서 가장 얇은 획이 {min:F5}유닛으로 화면상 하한" +
+                // ★★ 같은 이유의 M6판 비공허성 잠금 — 채움 경계선을 하나도 못 봤다면 아래 두 번째
+                //    단언이 통째로 공허하다(표식이 안 붙은 것이 정확히 그 상태다).
+                Assert.Greater(fillOutlineCount, 0,
+                    $"{LogPrefix} 배율 {v:F2}에서 채움 경계선(FillOutlineStroke 표식)을 <b>하나도</b> " +
+                    "찾지 못했습니다 — 머리 링 표식(StickmanAgent.MarkHeadRingAsFillOutline)이나 " +
+                    "액세서리 채움 도형 표식(CharacterAccessoryRenderer.AddLine)이 끊겼습니다.");
+
+                Assert.GreaterOrEqual(minLine, floorWorld - 1e-4f,
+                    $"{LogPrefix} 배율 {v:F2}에서 가장 얇은 <b>낱선</b>이 {minLine:F5}유닛으로 화면상 하한" +
                     $"({floorWorld:F5}유닛 = {StickConfig.MinStrokeScreenPoints:F1}pt) 아래입니다 — " +
                     "작은 배율에서 선이 안티에일리어싱에 묻힙니다.");
+
+                Assert.GreaterOrEqual(minFill, fillOutlineFloorWorld - 1e-4f,
+                    $"{LogPrefix} 배율 {v:F2}에서 가장 얇은 <b>채움 경계선</b>이 {minFill:F5}유닛으로 " +
+                    $"자기 하한({fillOutlineFloorWorld:F5}유닛 = " +
+                    $"{StickConfig.MinFillOutlineScreenPoints:F1}pt) 아래입니다 — " +
+                    "Windows 표시배율 100%에서 1pt = 1물리픽셀이라 여기서 더 내려가면 경계가 소실됩니다.");
 
                 if (previousMax > 0f)
                 {
@@ -335,6 +361,90 @@ namespace StickMate.Tests.PlayMode
                 "순수 비례 두께가 <b>한 번도</b> 하한 아래로 내려가지 않았습니다 — 그렇다면 위 하한 단언은 " +
                 "항상 참이라 아무 결함도 잡지 못합니다(이 환경에서는 이 회귀 잠금이 무의미하므로 " +
                 "화면 크기/카메라 설정을 확인하세요).");
+        }
+
+        /// <summary>
+        /// ★★ <b>M6 네거티브 컨트롤 — 되올리기 두 경로가 실제로 역할을 안다</b>(2026-09-02).
+        ///
+        /// <para><b>이 테스트가 없으면 화면은 그대로인데 초록불이 뜬다.</b>
+        /// <see cref="StickmanAgent"/>의 <c>ApplyStrokeWidthsForScale</c>은 <b>두 경로</b>에서 모든 선을
+        /// 하한으로 되올린다 — (1) 프리팹에 구워진 몸의 선(머리 링 포함), (2) 단일 창구의 안전망 훑기
+        /// (액세서리/펫/FX). 둘 중 <b>한 곳만</b> 역할을 모르면, 렌더러가 1.00pt로 그린 직후 그 경로가
+        /// 2.00pt로 되돌려 놓는다. 그런데 위 <c>배율을_바꿔도_...</c> 테스트는 "각자 하한 이상"만 보므로
+        /// 되올려진 상태도 <b>통과</b>한다(2.00 ≥ 1.00). 그래서 여기서 <b>반대 방향</b>을 단언한다:
+        /// 두 경로 각각에서 <b>낱선 하한보다 실제로 얇은</b> 채움 경계선이 나와야 한다.</para>
+        ///
+        /// <list type="bullet">
+        ///   <item><b>경로 (1) 증인</b> = 머리 링(<c>HeadOutline</c>). 구워진 선이라 (1)만 만진다.</item>
+        ///   <item><b>경로 (2) 증인</b> = 액세서리 채움 도형의 윤곽선. 런타임 생성이라 (2)만 만진다.</item>
+        /// </list>
+        ///
+        /// <para>두 증인을 <b>따로</b> 세우는 것이 핵심이다 — 하나로 합치면 한 경로만 고쳐도 초록이 된다.</para>
+        /// </summary>
+        [UnityTest]
+        public IEnumerator NegativeControl_M6_되올리기_두_경로가_각각_채움_경계선을_2pt로_되돌리지_않는다()
+        {
+            yield return SetUp();
+            yield return EquipEverySlot();
+
+            float lineFloor = _agent.MinStrokeWorldWidth;
+            float fillFloor = _agent.MinFillOutlineWorldWidth;
+            Assert.Less(fillFloor, lineFloor,
+                $"{LogPrefix} 채움 경계선 하한({fillFloor:F5})이 낱선 하한({lineFloor:F5})보다 작지 않습니다 — " +
+                "M6이 적용되지 않았거나 두 상수가 같아졌습니다. 이 상태로는 아래 단언이 무의미합니다.");
+
+            // 머리 링은 '구워진 선' 경로의 유일한 채움 경계선이다. 표식부터 확인한다 —
+            // 표식이 없으면 아래 두께 단언이 "그런 선이 없어서" 통과할 수 있다.
+            Transform head = _agent.transform.Find("Head");
+            Assert.IsNotNull(head, $"{LogPrefix} Head 앵커를 찾지 못했습니다.");
+            Transform ringTransform = head.Find(StickmanMetrics.HeadRingObjectName);
+            Assert.IsNotNull(ringTransform,
+                $"{LogPrefix} 머리 링('{StickmanMetrics.HeadRingObjectName}')을 찾지 못했습니다 — " +
+                "치수 계약 C1이 깨졌습니다.");
+            var ring = ringTransform.GetComponent<LineRenderer>();
+            Assert.IsTrue(FillOutlineStroke.Is(ring),
+                $"{LogPrefix} 머리 링에 채움 경계선 표식이 없습니다 — " +
+                "StickmanAgent.MarkHeadRingAsFillOutline()이 Awake에서 불리지 않았습니다.");
+
+            bool ringWentBelowLineFloor = false;      // 경로 (1)의 증인
+            bool accessoryWentBelowLineFloor = false; // 경로 (2)의 증인
+
+            foreach (float v in Scales)
+            {
+                _agent.ApplyCharacterScale(v, "테스트");
+                for (int f = 0; f < 5; f++) yield return null;
+
+                float ringWidth = ring != null ? ring.startWidth : 0f;
+                if (ringWidth > 0f && ringWidth < lineFloor - 1e-5f) ringWentBelowLineFloor = true;
+
+                float thinnestAccessoryFill = float.MaxValue;
+                CharacterVisualRegistry registry = _agent.DynamicVisuals;
+                registry.Refresh();
+                for (int i = 0; i < registry.Count; i++)
+                {
+                    LineRenderer lr = registry[i].Line;
+                    if (lr == null || lr.startWidth <= 0f || !FillOutlineStroke.Is(lr)) continue;
+                    thinnestAccessoryFill = Mathf.Min(thinnestAccessoryFill, lr.startWidth);
+                }
+                if (thinnestAccessoryFill < lineFloor - 1e-5f) accessoryWentBelowLineFloor = true;
+
+                Debug.Log($"{LogPrefix} [M6 네거티브] 배율 {v:F2} — 머리 링 {ringWidth:F5} / " +
+                    $"액세서리 채움경계선 최소 " +
+                    $"{(thinnestAccessoryFill == float.MaxValue ? 0f : thinnestAccessoryFill):F5} / " +
+                    $"낱선 하한 {lineFloor:F5} / 채움경계선 하한 {fillFloor:F5}.");
+            }
+
+            Assert.IsTrue(ringWentBelowLineFloor,
+                $"{LogPrefix} ★ 경로 (1) 실패 — 다이얼 전 구간에서 머리 링이 <b>한 번도</b> 낱선 하한" +
+                $"({lineFloor:F5}) 아래로 내려가지 않았습니다. ApplyStrokeWidthsForScale의 " +
+                "<b>구워진 선 훑기</b>가 여전히 모든 선을 2pt로 되올리고 있습니다 — " +
+                "화면은 하나도 안 바뀐 채 나머지 단언만 초록입니다.");
+
+            Assert.IsTrue(accessoryWentBelowLineFloor,
+                $"{LogPrefix} ★ 경로 (2) 실패 — 다이얼 전 구간에서 액세서리 채움 경계선이 <b>한 번도</b> " +
+                $"낱선 하한({lineFloor:F5}) 아래로 내려가지 않았습니다. ApplyStrokeWidthsForScale의 " +
+                "<b>_dynamicVisuals 안전망 훑기</b>가 표식을 무시하고 되올리고 있거나, " +
+                "CharacterAccessoryRenderer가 채움 도형의 윤곽선에 낱선 두께를 쓰고 있습니다.");
         }
 
         /// <summary>7슬롯을 전부 착용시킨다 — 액세서리/펫/FX가 <b>실제로 존재하는</b> 상태를 만든다.

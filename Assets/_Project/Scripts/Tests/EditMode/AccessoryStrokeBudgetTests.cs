@@ -224,11 +224,19 @@ namespace StickMate.Tests.EditMode
             if (p == null || p.Length < 2) return $"'{shape.Name}'의 점이 2개 미만입니다.";
 
             Bounds(p, out Vector2 min, out Vector2 max);
-            float span = Mathf.Max(max.x - min.x, max.y - min.y);
-            if (span < w * 1.5f)
+            // ★ 2026-09-02 이름 정정 — 이것은 잉크 사각형의 <b>긴 변</b>이다(max(폭, 높이)).
+            //   예전 이름("잉크 사각형")은 넓이/두께를 재는 것처럼 읽혀 규칙 1의 구멍을 가렸다:
+            //   길이 5W · 두께 0.1W짜리 실오라기도 이 검사를 통과한다. 규칙 1에는 "가로질러 얼마나
+            //   두꺼운가"를 재는 항목이 <b>하나도 없었고</b>, 그것이 61개가 전부 통과하고도 38개의
+            //   색면이 30% 미만이던 이유다. 두께는 규칙 1-C(AccessoryFillAreaRuleTests)가
+            //   최대 내접원 반경 ρ_max를 직접 재서 맡는다 — 이 검사는 "도형이 최소한의 크기는
+            //   되는가"라는 <b>다른 목적</b>을 그대로 수행한다(값 1.5획 유지).
+            float longSide = Mathf.Max(max.x - min.x, max.y - min.y);
+            if (longSide < w * 1.5f)
             {
-                return $"'{shape.Name}'의 잉크 사각형이 {span / w:F2}획입니다 — 1.5획 미만이면 화면에서 " +
-                    "'뚱뚱한 점' 하나로 보입니다(37-6 규칙 1).";
+                return $"'{shape.Name}'의 잉크 사각형 <b>긴 변</b>이 {longSide / w:F2}획입니다 — " +
+                    "1.5획 미만이면 화면에서 '뚱뚱한 점' 하나로 보입니다(37-6 규칙 1-A). " +
+                    "※ 이 검사는 길이만 봅니다. 두께는 규칙 1-C(ρ_max)가 따로 잡습니다.";
             }
 
             return DescribeStubSegment(shape, w);

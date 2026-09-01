@@ -271,6 +271,8 @@ namespace StickMate.Core
             // 색 프리셋 일괄 갱신용 캐시(사용자 요청 "흰색 or 검은색 선택", 2026-08-28).
             // 몸통/머리링/눈/팔다리가 전부 LineRenderer라 이 배열 하나면 캐릭터 전체를 덮는다.
             _lineRenderers = GetComponentsInChildren<LineRenderer>(true);
+            // ★ 표식이 먼저다 — CacheBakedStrokeWidths가 선마다 "어느 하한 소속인가"를 함께 굽는다.
+            MarkHeadRingAsFillOutline();
             CacheBakedStrokeWidths();
 
             // ★ 단일 창구 배선(_dynamicVisuals 문서). 부품 목록을 여기 적지 않는다 —
@@ -279,7 +281,7 @@ namespace StickMate.Core
             //   이 줄을 고칠 필요가 없다.
             _dynamicVisuals.BindSources(GetComponentsInChildren<ICharacterVisualSource>(true));
             // 하한은 카메라/화면에서 나오므로 첫 프레임(액세서리가 굽기 전)부터 유효해야 한다.
-            _minStrokeWorldWidth = ResolveMinStrokeWorldWidth();
+            RefreshStrokeFloors();
 
             // ★ "프리팹이 어떤 배율로 구워졌는가"를 <b>어떤 다이얼 조작보다 먼저</b> 한 번만 캐싱한다.
             // 루트 localScale이 아직 1인 이 시점의 실측 배율이 정확히 그 값이다. 이걸 놓치면
@@ -663,7 +665,7 @@ namespace StickMate.Core
             _visualHalfWidthTimer = 0f;
 
             // 화면/카메라에서 나오는 값이라 여기서 함께 갱신한다(획 두께 하한의 단일 소스).
-            _minStrokeWorldWidth = ResolveMinStrokeWorldWidth();
+            RefreshStrokeFloors();
 
             if (_body == null || _blackboard == null) return;
 
@@ -827,14 +829,48 @@ namespace StickMate.Core
         /// </summary>
         private float[] _bakedStrokeWidths;
 
+        /// <summary>구워진 선마다 "채움 경계선인가"(= 어느 하한을 쓰는가). <see cref="_bakedStrokeWidths"/>와
+        /// 같은 인덱스다. 계층은 런타임에 변하지 않으므로 Awake에서 한 번만 굽는다 —
+        /// 매 배율 변경마다 <c>TryGetComponent</c>를 다시 부르지 않기 위해서다.</summary>
+        private bool[] _bakedStrokeIsFillOutline;
+
         private void CacheBakedStrokeWidths()
         {
             if (_lineRenderers == null) return;
             _bakedStrokeWidths = new float[_lineRenderers.Length];
+            _bakedStrokeIsFillOutline = new bool[_lineRenderers.Length];
             for (int i = 0; i < _lineRenderers.Length; i++)
             {
                 LineRenderer lr = _lineRenderers[i];
                 _bakedStrokeWidths[i] = lr != null ? lr.startWidth : 0f;
+                _bakedStrokeIsFillOutline[i] = FillOutlineStroke.Is(lr);
+            }
+        }
+
+        /// <summary>
+        /// ★ 머리 링을 <b>채움 경계선</b>으로 표식한다(2026-09-02 M6, 부수 효과 M5 흡수).
+        ///
+        /// <para>링은 잉크로 꽉 찬 머리 원반(<c>HeadFill</c>)의 <b>경계선</b>이므로 정의상 채움 윤곽선
+        /// 집합이다. 2.00pt 하한은 배율 0.6461 아래에서 링을 눌러 <b>획을 보이게 하는 대신 머리를
+        /// 키우고</b> 있었다(범주 오류). 1.00pt로 내리면 그 구간이 0.3231 아래로 내려가 다이얼 전
+        /// 구간에서 링이 순수 비례가 되고, 배율 0.60의 몸통 획 ÷ 머리 지름이 22.04% →
+        /// <b>22.291%</b>(팀 확정 목표 22.3%)가 된다.</para>
+        ///
+        /// <para><b>프리팹에 굽지 않고 여기서 붙이는 이유</b>는 <see cref="FillOutlineStroke"/> 문서에
+        /// 있다 — 구우면 <c>Rebuild All</c> 전까지 변경이 조용히 무효가 된다.</para>
+        ///
+        /// <para>이름으로 찾는 것은 이 리그의 <b>기존 치수 계약 C1</b>이다
+        /// (<see cref="StickmanMetrics.HeadRingObjectName"/>). 못 찾으면 조용히 넘어간다 —
+        /// 링이 없는 최소 리그(테스트 스텁)에서도 에이전트는 돌아야 한다.</para>
+        /// </summary>
+        private void MarkHeadRingAsFillOutline()
+        {
+            if (_lineRenderers == null) return;
+            for (int i = 0; i < _lineRenderers.Length; i++)
+            {
+                LineRenderer lr = _lineRenderers[i];
+                if (lr == null || lr.gameObject.name != StickmanMetrics.HeadRingObjectName) continue;
+                FillOutlineStroke.Mark(lr);
             }
         }
 
@@ -888,10 +924,17 @@ namespace StickMate.Core
         }
 
         /// <summary>
-        /// 획 두께를 배율에 맞춰 다시 대입한다. <b>화면상 최소 두께</b>
-        /// (<see cref="StickConfig.MinStrokeScreenPoints"/>) 아래로는 내려가지 않는다 —
-        /// Assets/Editor/SceneBootstrapper.cs가 프리팹을 구울 때 쓰는 것과 <b>같은 상수, 같은 규칙</b>이다
+        /// 획 두께를 배율에 맞춰 다시 대입한다. <b>화면상 최소 두께</b> 아래로는 내려가지 않되,
+        /// 그 하한은 <b>선의 역할에 따라 둘로 갈린다</b>(2026-09-02 M6):
+        /// 낱선은 <see cref="StickConfig.MinStrokeScreenPoints"/>(2.00pt),
+        /// 채운 도형의 경계선은 <see cref="StickConfig.MinFillOutlineScreenPoints"/>(1.00pt).
+        /// Assets/Editor/SceneBootstrapper.cs가 프리팹을 구울 때 쓰는 것과 <b>같은 상수</b>다
         /// (상수를 두 곳에 적지 않으려고 StickConfig로 올렸다).
+        ///
+        /// <para><b>★★ 이 메서드가 M6의 급소다.</b> 여기 <b>두 경로</b>가 모든 선을 하한으로
+        /// 되올리므로, 둘 중 <b>한 곳만</b> 역할을 알면 렌더러가 1.00pt로 그린 직후 여기서 2.00pt로
+        /// 되돌아간다 — <b>화면은 하나도 안 바뀌는데 테스트는 초록</b>인 상태가 된다.
+        /// 그래서 두 경로 모두 <see cref="FillOutlineStroke"/> 표식을 본다.</para>
         /// </summary>
         private void ApplyStrokeWidthsForScale(float scale)
         {
@@ -901,30 +944,38 @@ namespace StickMate.Core
             if (baked <= 0.0001f || float.IsNaN(baked)) baked = 1f;
             float ratio = scale / baked;
             // 액세서리/펫/FX가 이 프레임에 다시 구우면서 읽어갈 값이므로 여기서 먼저 최신화한다.
-            _minStrokeWorldWidth = ResolveMinStrokeWorldWidth();
+            RefreshStrokeFloors();
             float floorWorld = _minStrokeWorldWidth;
+            float fillOutlineFloorWorld = _minFillOutlineWorldWidth;
 
+            // (1) 프리팹에 구워진 몸의 선. ★ 머리 링이 여기 들어 있고, 그것만 채움 경계선이다.
             for (int i = 0; i < _lineRenderers.Length && i < _bakedStrokeWidths.Length; i++)
             {
                 LineRenderer lr = _lineRenderers[i];
                 if (lr == null || _bakedStrokeWidths[i] <= 0f) continue;
-                float width = Mathf.Max(_bakedStrokeWidths[i] * ratio, floorWorld);
+                bool isFillOutline = _bakedStrokeIsFillOutline != null
+                    && i < _bakedStrokeIsFillOutline.Length && _bakedStrokeIsFillOutline[i];
+                float width = Mathf.Max(_bakedStrokeWidths[i] * ratio,
+                    isFillOutline ? fillOutlineFloorWorld : floorWorld);
                 lr.startWidth = width;
                 lr.endWidth = width;
             }
 
-            // ★ 2026-08-31 — 몸 바깥의 잉크에도 <b>같은 하한</b>을 건다(단일 창구).
+            // ★ 2026-08-31 — 몸 바깥의 잉크에도 <b>같은 규칙</b>을 건다(단일 창구).
             //   여기서는 <b>올리기만</b> 한다(비율 재계산 금지): 액세서리/펫/FX의 두께는 각자
             //   StickmanMetrics에서 비례로 유도하고 있고, 그 비례값은 소유자가 다시 구울 때
-            //   자기 하한(MinStrokeWorldWidth)을 이미 반영한다. 여기서 비율까지 다시 곱하면
-            //   같은 배율이 두 번 걸린다. 이 훑기는 "다시 굽기 전까지의 한 프레임"을 메우는 안전망이다.
+            //   자기 하한(MinStrokeWorldWidth / MinFillOutlineWorldWidth)을 이미 반영한다.
+            //   여기서 비율까지 다시 곱하면 같은 배율이 두 번 걸린다.
+            //   이 훑기는 "다시 굽기 전까지의 한 프레임"을 메우는 안전망이다.
             _dynamicVisuals.Refresh();
             for (int i = 0; i < _dynamicVisuals.Count; i++)
             {
                 LineRenderer lr = _dynamicVisuals[i].Line;
                 if (lr == null) continue;
-                if (lr.startWidth < floorWorld) lr.startWidth = floorWorld;
-                if (lr.endWidth < floorWorld) lr.endWidth = floorWorld;
+                // ★ 여기서 역할을 안 물으면 액세서리 채움 경계선이 이 한 줄에 도로 2.00pt가 된다.
+                float lineFloor = FillOutlineStroke.Is(lr) ? fillOutlineFloorWorld : floorWorld;
+                if (lr.startWidth < lineFloor) lr.startWidth = lineFloor;
+                if (lr.endWidth < lineFloor) lr.endWidth = lineFloor;
             }
         }
 
@@ -946,26 +997,49 @@ namespace StickMate.Core
             ? _minStrokeWorldWidth
             : StickConfig.MinStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
 
-        private float _minStrokeWorldWidth;
+        /// <summary>
+        /// ★ <b>채운 도형의 경계선</b> 전용 하한(월드 유닛) —
+        /// <see cref="StickConfig.MinFillOutlineScreenPoints"/>의 환산값(2026-09-02 M6).
+        /// 위 <see cref="MinStrokeWorldWidth"/>와 <b>같은 pt/유닛</b>으로 환산하므로 둘의 비는 언제나
+        /// 1:2다 — 환산을 두 번 적으면 화면이 바뀔 때 한쪽만 따라간다.
+        /// <para>소비자: <see cref="Interaction.CharacterAccessoryRenderer"/>(채움 도형의 윤곽선),
+        /// 그리고 이 클래스의 두 되올리기 경로.</para>
+        /// </summary>
+        public float MinFillOutlineWorldWidth => _minFillOutlineWorldWidth > 0f
+            ? _minFillOutlineWorldWidth
+            : StickConfig.MinFillOutlineScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
 
-        /// <summary>화면상 최소 획 두께를 월드 유닛으로 환산한다. 카메라의 직교 크기와 화면 높이(포인트)를
-        /// 실측해서 쓰므로, 프리팹을 구울 때의 근사(창 높이 846pt 고정)보다 정확하다. 카메라가 없으면
-        /// 그 근사로 되메운다 — 0을 흘리면 하한이 조용히 사라진다.</summary>
-        private float ResolveMinStrokeWorldWidth()
+        private float _minStrokeWorldWidth;
+        private float _minFillOutlineWorldWidth;
+
+        /// <summary>화면상 최소 획 두께 <b>두 종류</b>를 월드 유닛으로 환산해 캐시한다. 카메라의 직교
+        /// 크기와 화면 높이(포인트)를 실측해서 쓰므로, 프리팹을 구울 때의 근사(창 높이 846pt 고정)보다
+        /// 정확하다. 카메라가 없으면 그 근사로 되메운다 — 0을 흘리면 하한이 조용히 사라진다.
+        /// <para>한 함수에서 둘을 함께 구하는 이유: pt/유닛 환산은 <b>하나</b>이고 하한만 둘이다.
+        /// 함수를 둘로 쪼개면 카메라를 두 번 읽게 되고, 그 사이에 화면이 바뀌면 두 하한이 서로 다른
+        /// 디스플레이를 말하게 된다.</para></summary>
+        private void RefreshStrokeFloors()
+        {
+            float pointsPerWorldUnit = ResolvePointsPerWorldUnit();
+            _minStrokeWorldWidth = StickConfig.MinStrokeScreenPoints / pointsPerWorldUnit;
+            _minFillOutlineWorldWidth = StickConfig.MinFillOutlineScreenPoints / pointsPerWorldUnit;
+        }
+
+        /// <summary>월드 1유닛이 몇 OS 포인트인가(실측). 못 재면 프리팹 굽기와 같은 근사로 되메운다.</summary>
+        private float ResolvePointsPerWorldUnit()
         {
             Camera cam = _mainCamera != null ? _mainCamera : Camera.main;
             if (cam == null || !cam.orthographic || Screen.height <= 0)
-                return StickConfig.MinStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
+                return StickConfig.ReferencePointsPerWorldUnitApprox;
 
             // 화면 높이(OS 포인트) = Unity 픽셀 높이 × (OS 포인트 / Unity 픽셀).
             float screenHeightPoints = Screen.height * ScreenCoordinateConverter.ResolveDpiScale(_config);
-            if (screenHeightPoints <= 1f)
-                return StickConfig.MinStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
+            if (screenHeightPoints <= 1f) return StickConfig.ReferencePointsPerWorldUnitApprox;
 
             float pointsPerWorldUnit = screenHeightPoints / (2f * cam.orthographicSize);
-            if (pointsPerWorldUnit <= 0.0001f)
-                return StickConfig.MinStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
-            return StickConfig.MinStrokeScreenPoints / pointsPerWorldUnit;
+            return pointsPerWorldUnit <= 0.0001f
+                ? StickConfig.ReferencePointsPerWorldUnitApprox
+                : pointsPerWorldUnit;
         }
 
         private void TickFullscreenSuspend(float deltaTime)

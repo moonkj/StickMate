@@ -160,13 +160,24 @@ namespace StickMate.Tests.EditMode
         }
 
         // ============================================================================
-        // (3') ★★ 하한이 아무리 세게 걸려도 머리는 커지지 않는다 — 무조건 성립하는 부등식
+        // (3') ★★ 하한이 걸려도 머리는 커지지 않는다 — 단, 2026-09-02부터 <b>조건부</b>다
         // ============================================================================
         // 머리의 바깥 실루엣을 정하는 것은 **링**이다(바깥 가장자리 = R + W_ring/2). 채움이 그보다
-        // 밖으로 나가지 않는 한 머리 크기는 정의상 변하지 않는다. 하한 F는 **채움과 링에 똑같이**
-        // 걸리므로, 경로 반경이 더 작은 쪽(채움: R/2.2 &lt; R)이 하한 때문에 상대적으로 커지는 일이
-        // 생길 수 없다. 아래는 그 두 부등식을 F를 넓은 범위로 훑으며 실제로 확인한 것이다
-        // (헤드리스 실측값 0.100, 기준 디스플레이 0.0567, 그리고 비현실적으로 큰 값까지).
+        // 밖으로 나가지 않는 한 머리 크기는 정의상 변하지 않는다.
+        //
+        // ★★ 예전 이 자리의 근거는 "하한 F는 **채움과 링에 똑같이** 걸리므로 무조건 안전"이었다.
+        //    M6(docs/CHARACTER_FORM_SPEC.md 19절)이 하한을 역할로 쪼개면서 그 전제가 깨졌다 —
+        //    링은 채운 원반의 **경계선**이라 1.00pt를 쓰고, 채움(HeadFill)은 그 자신이 잉크 덩어리라
+        //    2.00pt 그대로다. 즉 하한이 세게 걸리는 구간에서 채움은 부풀고 링은 덜 부푼다.
+        //    그래서 "무조건"이 아니라 **부등식이 성립하는 구간**을 유도하고, 그 구간이 다이얼 전체를
+        //    덮는지를 검사한다(그리고 그 경계 바로 밖에서는 실제로 깨진다는 네거티브 컨트롤을 붙인다).
+        //
+        //    유도(둘 다 하한에 눌린 최악의 경우):
+        //      채움 바깥 = R/(1+k/2) + F_line/2      링 바깥 = R + F_out/2,  F_out = ratio·F_line
+        //      안전 ⟺ F_line·(1−ratio)/2 ≤ R·(k/2)/(1+k/2)
+        //      ⟺ F_line ≤ 2·r0·s·(k/2) / ((1+k/2)·(1−ratio))   ← 아래 CriticalLineFloor()
+        //    k=2.4, ratio=0.5, r0=0.22 ⇒ 임계 = 0.48·s. 다이얼 최소 0.35에서 0.168유닛이고,
+        //    기준 디스플레이의 실제 하한은 0.0567유닛(2.96배 여유), 헤드리스 480pt에서도 0.100유닛이다.
         [Test]
         public void FillNeverEscapesTheRingUnderAnyStrokeFloor()
         {
@@ -174,42 +185,84 @@ namespace StickMate.Tests.EditMode
             float r0 = ReadConst(BootstrapperPath, "BaselineHeadVisualRadius");
             float ringWidth0 = 0.09f * 0.7f;   // BaselineHeadOutlineWidth = 0.09 * LineWidthScale(0.7).
 
-            float[] floors = { 0f, 0.02f, 0.056737f, 0.1f, 0.2f, 0.5f };
+            // 하한 두 종류의 비 — 숫자를 베끼지 않고 배포 상수에서 그대로 가져온다.
+            float floorRatio = StickConfig.MinFillOutlineScreenPoints / StickConfig.MinStrokeScreenPoints;
+
+            // 현실 범위의 하한만 훑는다: 0(하한 없음) / 기준 디스플레이 0.0567 / 헤드리스 480pt 0.100.
+            float[] floors = { 0f, 0.02f, 0.056737f, 0.1f };
             float[] scales = { StickConfig.MinCharacterScale, 0.5f, 0.75f, 1f, StickConfig.MaxCharacterScale };
 
             foreach (float F in floors)
             {
                 foreach (float s in scales)
                 {
-                    float R = r0 * s;
-                    Derive(R, k, out float fillPath, out float fillDesignWidth);
-
-                    float wFill = Mathf.Max(fillDesignWidth, F);
-                    float wRing = Mathf.Max(ringWidth0 * s, F);
-
-                    float fillOuter = fillPath + wFill * 0.5f;
-                    float ringOuter = R + wRing * 0.5f;
+                    Measure(r0, k, ringWidth0, s, F, floorRatio,
+                        out float fillOuter, out float ringOuter, out float fillInner);
 
                     // (i) 채움이 머리 바깥 실루엣을 넘지 않는다 = 머리가 커지지 않는다.
                     Assert.LessOrEqual(fillOuter, ringOuter + 1e-6f,
-                        $"{LogPrefix} 하한 F={F:F4}, 배율 {s:F2}에서 채움 바깥({fillOuter:F5})이 " +
-                        $"머리 바깥 실루엣({ringOuter:F5})을 넘었습니다 — 머리가 커집니다.");
+                        $"{LogPrefix} 낱선 하한 F={F:F4}(채움경계선 {F * floorRatio:F4}), 배율 {s:F2}에서 " +
+                        $"채움 바깥({fillOuter:F5})이 머리 바깥 실루엣({ringOuter:F5})을 넘었습니다 — 머리가 커집니다. " +
+                        $"이 조합의 임계 하한은 {CriticalLineFloor(r0, k, s, floorRatio):F4}유닛입니다.");
 
                     // (ii) 채움이 최소한 링의 중심선까지는 닿는다 = 채움과 링 사이에 틈이 없다.
-                    Assert.GreaterOrEqual(fillOuter, R - 1e-6f,
+                    Assert.GreaterOrEqual(fillOuter, r0 * s - 1e-6f,
                         $"{LogPrefix} 하한 F={F:F4}, 배율 {s:F2}에서 채움 바깥({fillOuter:F5})이 " +
-                        $"링 중심선({R:F5})에 못 미칩니다 — 얼굴 가장자리에 빈 고리가 생깁니다.");
+                        $"링 중심선({r0 * s:F5})에 못 미칩니다 — 얼굴 가장자리에 빈 고리가 생깁니다.");
 
                     // (iii) 중심에 구멍이 없다.
-                    Assert.LessOrEqual(fillPath - wFill * 0.5f, 0f,
+                    Assert.LessOrEqual(fillInner, 0f,
                         $"{LogPrefix} 하한 F={F:F4}, 배율 {s:F2}에서 채움 안쪽 가장자리가 0을 넘습니다.");
                 }
             }
 
-            Debug.Log($"{LogPrefix} 무조건 안전 확인 — 하한 {floors.Length}종 × 배율 {scales.Length}종 " +
-                $"= {floors.Length * scales.Length}조합 전부에서 " +
-                "(채움 바깥 ≤ 링 바깥) ∧ (채움 바깥 ≥ 링 중심선) ∧ (안쪽 가장자리 ≤ 0).");
+            // ---- 임계 하한이 실제 하한보다 위에 있는가(= 여유가 있는가) ----
+            float critical = CriticalLineFloor(r0, k, StickConfig.MinCharacterScale, floorRatio);
+            float referenceFloor =
+                StickConfig.MinStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
+            Assert.Greater(critical, referenceFloor,
+                $"{LogPrefix} 다이얼 최소 배율의 임계 하한({critical:F4})이 기준 디스플레이의 실제 하한" +
+                $"({referenceFloor:F4})보다 크지 않습니다 — 그 화면에서 머리가 부풀기 시작합니다.");
+            Assert.Greater(critical, 0.1f,
+                $"{LogPrefix} 임계 하한({critical:F4})이 헤드리스 배치 모드 실측 하한(0.100)보다 크지 않습니다.");
+
+            // ---- ★ 네거티브 컨트롤 — 임계 바로 위에서는 실제로 깨진다(단언이 공허하지 않다) ----
+            Measure(r0, k, ringWidth0, StickConfig.MinCharacterScale, critical * 1.10f, floorRatio,
+                out float brokenFill, out float brokenRing, out _);
+            Assert.Greater(brokenFill, brokenRing,
+                $"{LogPrefix} 네거티브 컨트롤 실패 — 임계({critical:F4})의 1.10배 하한에서도 채움이 링을 " +
+                "넘지 않았습니다. 임계 유도식이 틀렸거나 부등식이 공허합니다.");
+
+            Debug.Log($"{LogPrefix} 조건부 안전 확인 — 하한 {floors.Length}종 × 배율 {scales.Length}종 " +
+                $"= {floors.Length * scales.Length}조합 전부에서 (채움 바깥 ≤ 링 바깥) ∧ " +
+                $"(채움 바깥 ≥ 링 중심선) ∧ (안쪽 가장자리 ≤ 0). 하한 비 {floorRatio:F2} " +
+                $"(낱선 {StickConfig.MinStrokeScreenPoints:F1}pt / 채움경계선 " +
+                $"{StickConfig.MinFillOutlineScreenPoints:F1}pt)에서 다이얼 최소 배율의 임계 하한은 " +
+                $"{critical:F4}유닛 = 기준 디스플레이 하한({referenceFloor:F4})의 {critical / referenceFloor:F2}배.");
         }
+
+        /// <summary>채움/링의 바깥·안쪽 가장자리를 한 곳에서 계산한다 —
+        /// 본 단언과 네거티브 컨트롤이 <b>같은 식</b>을 써야 컨트롤이 무엇을 증명하는지가 확정된다.</summary>
+        private static void Measure(float r0, float k, float ringWidth0, float scale,
+            float lineFloor, float floorRatio,
+            out float fillOuter, out float ringOuter, out float fillInner)
+        {
+            float R = r0 * scale;
+            Derive(R, k, out float fillPath, out float fillDesignWidth);
+
+            // 채움(HeadFill)은 자기 윤곽선이 없는 잉크 덩어리 -> 낱선 하한.
+            float wFill = Mathf.Max(fillDesignWidth, lineFloor);
+            // 링(HeadOutline)은 채운 원반의 경계선 -> 채움 경계선 하한(M6).
+            float wRing = Mathf.Max(ringWidth0 * scale, lineFloor * floorRatio);
+
+            fillOuter = fillPath + wFill * 0.5f;
+            ringOuter = R + wRing * 0.5f;
+            fillInner = fillPath - wFill * 0.5f;
+        }
+
+        /// <summary>채움이 링을 넘기 시작하는 <b>낱선 하한</b>(월드 유닛). 위 주석의 유도 그대로다.</summary>
+        private static float CriticalLineFloor(float r0, float k, float scale, float floorRatio)
+            => 2f * r0 * scale * (k * 0.5f) / ((1f + k * 0.5f) * (1f - floorRatio));
 
         // ============================================================================
         // (4) 다각형 근사 오차가 링 두께 안에 묻힌다

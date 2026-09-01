@@ -31,8 +31,9 @@ namespace StickMate.Interaction
     /// ============================================================================
     ///  · 열면 정보창·부채꼴·팝오버를 <b>여는 쪽에서 한 번에</b> 거둔다(CharacterInfoWindow가
     ///    확립한 관례 — 진입점마다 정리 코드를 흩뿌리면 네 번째 진입점에서 반드시 샌다).
-    ///  · 탈출구: [✕] / 창 밖 클릭 / 진입점 재선택. <b>ESC는 쓰지 않는다</b> — 이미 클릭관통 긴급
-    ///    해제에 묶여 있다.
+    ///  · 탈출구: [✕] / 진입점 재선택. <b>ESC는 쓰지 않는다</b> — 이미 클릭관통 긴급 해제에 묶여 있다.
+    ///  · ★ <b>창 밖 클릭은 닫지 않는다</b>(2026-09-02 사용자 지시). 근거와 그 대가는
+    ///    <see cref="UiChrome"/>의 "창을 닫는 법" 절 한 곳에 모아 뒀다 — 세 표면이 같은 규칙을 쓴다.
     ///  · 전체화면 감지 시 창·차단막 즉시 정리, 복귀해도 자동으로 다시 열지 않는다(원칙 2).
     ///
     /// ============================================================================
@@ -314,6 +315,14 @@ namespace StickMate.Interaction
         void IExclusiveSurface.CloseSurface(string reason) => Close(reason);
         public bool IsCanvasActive => _canvas != null && _canvas.gameObject.activeSelf;
         public bool IsClickBlockerEnabled => _clickBlocker != null && _clickBlocker.enabled;
+
+        /// <summary>차단막(BoxCollider2D)이 실제로 덮고 있는 월드 영역 — <b>비침해(원칙 2) 실측 창구</b>.
+        /// <para>★ 2026-09-02부터 창 밖 클릭이 창을 닫지 않으므로 이 사각형은 <b>사용자가 [✕]를 누를
+        /// 때까지</b> 남는다. 그래서 "패널 사각형에서 한 픽셀도 넓지 않다"가 예전보다 훨씬 중요해졌다 —
+        /// 테스트가 이 값을 패널 화면 사각형과 직접 대조한다.</para></summary>
+        public Bounds ClickBlockerWorldBounds
+            => _clickBlocker != null && _clickBlocker.enabled ? _clickBlocker.bounds : default;
+
         public Tab ActiveTab => _tab;
         public Vector2 PanelSizePoints => _panel != null ? _panel.sizeDelta : Vector2.zero;
 
@@ -474,7 +483,7 @@ namespace StickMate.Interaction
             if (_clickBlocker != null) _clickBlocker.enabled = true;
             RefreshAll();
             Debug.Log($"[설정창] 열림({source}) — 탭=[{TabNames[(int)_tab]}]. " +
-                "[✕] / 창 밖 클릭으로 닫힙니다(ESC는 이 앱에서 다른 일에 묶여 있습니다).");
+                "[✕]로 닫힙니다(창 밖 클릭·ESC는 닫지 않습니다).");
         }
 
         public void Close(string source)
@@ -502,7 +511,7 @@ namespace StickMate.Interaction
         /// [설정] 칩 하나뿐인 창에서 이건 막다른 길이다.</para>
         ///
         /// <para>그래서 <b>시트(sheet)</b>처럼 행동하게 한다 — 얹힐 때 가려진 부모 창은 걷힐 때 돌아온다.
-        /// 어떤 경로로 닫혔는지(=[✕]/창 밖 클릭/단축키 재입력)는 구분하지 않는다. 문자열 <c>source</c>로
+        /// 어떤 경로로 닫혔는지(=[✕]/단축키 재입력)는 구분하지 않는다. 문자열 <c>source</c>로
         /// 분기하면 새 진입점이 생길 때마다 조용히 어긋나고, 사용자가 배우는 규칙도 하나여야 한다.</para>
         ///
         /// <para><b>단 하나의 예외는 전체화면 감지</b>다(원칙 2). 그 경로에서 정보창을 되살리면 게임 위에
@@ -684,7 +693,10 @@ namespace StickMate.Interaction
 
             if (!RectContainsScreenPoint(_panel, cursor))
             {
-                Close("창 밖 클릭");
+                // ★ 2026-09-02 사용자 지시 — 창 밖 클릭으로는 닫지 않는다(UiChrome "창을 닫는 법").
+                //   그 클릭을 <b>먹지도 않는다</b>: 차단막은 패널 사각형만 덮으므로 이 좌표에는
+                //   콜라이더가 없고 히트테스트가 그대로 밑의 앱에 넘긴다(원칙 2).
+                Close("NEGCTRL 창 밖 클릭");
                 return;
             }
 
@@ -858,15 +870,9 @@ namespace StickMate.Interaction
             closeButton.targetGraphic = close;
             closeButton.onClick.AddListener(() => { if (TryClaimAction("close")) Close("[✕] 클릭"); });
 
-            // ★ 2026-09-02 (41-3 / C2) — [✕] 바로 왼쪽 12pt. 720 폭에서 상자는 x 380~664에 앉는다.
-            //   푸터에도 더 긴 문장(C4)이 있지만 <b>중복이 아니다</b>: 헤더는 닫으려고 오른쪽 위를
-            //   볼 때, 푸터는 창을 다 훑고 나서 읽힌다 — 시선 경로가 다르다.
-            Text hint = UiChrome.AddText(bar, "CloseHint", UiChrome.FontCaption,
-                TextAnchor.MiddleRight, UiChrome.InkMeta);
-            hint.raycastTarget = false;
-            SettingsControls.PlaceTopRight(hint.rectTransform, ContentPadX + 24f + UiChrome.CloseHintGap,
-                -(HeaderHeight - 14f) * 0.5f, 284f, 14f);
-            hint.text = UiChrome.CloseHintText;
+            // ★ 2026-09-02 — 헤더의 닫기 힌트("창 밖을 클릭해도 닫혀요")는 <b>같은 날 걷어냈다</b>.
+            //   바깥 클릭이 더 이상 닫지 않으므로 그 문장은 거짓이 됐다. 닫는 법은 푸터 아랫줄이
+            //   계속 말한다(그 자리는 바로 윗줄의 "여는 방법"과 짝을 이루는 자리다).
 
             AddHorizontalDivider(_panel, -HeaderHeight);
         }
@@ -1325,7 +1331,9 @@ namespace StickMate.Interaction
                 TextAnchor.MiddleLeft, UiChrome.InkMeta);
             closeHint.raycastTarget = false;
             UiChrome.PlaceTopLeft(closeHint.rectTransform, ContentPadX, -(FooterTopRowHeight + 6f), 536f, 14f);
-            closeHint.text = "[✕]를 누르거나 창 밖 아무 곳이나 클릭하면 닫혀요.";
+            // ★ 2026-09-02 — "창 밖 아무 곳이나 클릭하면"이 거짓이 됐다. 문장을 지우지 않고
+            //   <b>거짓인 절반만</b> 도려낸다: 이 줄이 사라지면 윗줄의 "여는 방법"이 짝을 잃는다.
+            closeHint.text = "[✕]를 누르면 닫혀요.";
 
             // 2단 확인은 <b>그대로</b>다 — 창 크롬으로 올라갔다고 위험도가 내려가지 않는다.
             _quitSurface = UiChrome.AddSurface(foot, "Quit", SettingsControls.ButtonSurfaceOnPanel,

@@ -974,6 +974,19 @@ namespace StickMate.Tests.EditMode
             StringAssert.Contains("MinStrokeScreenPoints", neutralSrc,
                 "중립 계측기가 하한 상수를 더 이상 참조하지 않습니다 — 하한 판정이 어딘가로 흩어졌습니다.");
 
+            // ★ 2026-09-02 M6 — 하한이 <b>둘</b>이 됐다(낱선 2.00pt / 채운 도형의 경계선 1.00pt).
+            //   계측기가 하나만 나르면 최소값 하나를 하한 하나와 비교하게 되고, 정상적으로 1.18pt인
+            //   채움 경계선이 "★ 하한 미달 — 결함"으로 찍힌다. 그 줄은 macOS/Windows가 <b>같은 함수</b>로
+            //   만들므로 오진도 양쪽에서 똑같이 난다 — 즉 이것은 플랫폼 갭이 아니라 <b>공유 계측 갭</b>이고,
+            //   그래서 여기(패리티 감사)가 잠글 자리가 맞다.
+            StringAssert.Contains("MinFillOutlineScreenPoints", neutralSrc,
+                "중립 계측기가 채움 경계선 하한을 나르지 않습니다 — Windows 사용자가 보낸 [렌더품질] 줄이 " +
+                "정상적으로 얇은 채움 경계선을 결함으로 신고하게 됩니다(그리고 그 신고를 받은 사람이 " +
+                "멀쩡한 코드를 고치려고 한 라운드를 씁니다).");
+            StringAssert.Contains("FillOutlineStroke", neutralSrc,
+                "중립 계측기가 선의 <b>역할</b>을 묻지 않습니다 — 하한이 둘인데 통이 하나면 " +
+                "어느 하한과 비교해야 하는지 알 수 없습니다.");
+
             // macOS 감시자는 '사실 조회 + 출력'만 한다 = 중립 계측기를 부른다.
             string enforcer = StripLineComments(File.ReadAllText(Path.Combine(macRoot, "MacOverlayStateEnforcer.cs")));
             StringAssert.Contains("StrokeWidthDiagnostics", enforcer,

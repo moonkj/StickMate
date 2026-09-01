@@ -294,6 +294,26 @@ namespace StickMate.Interaction
         /// <summary>출하 기본 배율에서의 획 예산(R 배수). 규칙 1의 검산은 전부 이 값으로 한다.</summary>
         internal static float ShippingStrokeBudgetInHeadRadii => StrokeBudgetInHeadRadii(ShippingCharacterScale);
 
+        /// <summary>
+        /// ★ <b>채운 도형의 윤곽선</b>이 그 배율에서 실제로 그리는 폭(R 배수) — 2026-09-02 M6.
+        /// 위 <see cref="StrokeBudgetInHeadRadii"/>와 <b>같은 식</b>이고 하한만
+        /// <see cref="StickConfig.MinFillOutlineScreenPoints"/>다.
+        ///
+        /// <para>규칙 1-C(색면 조건, docs/CHARACTER_FORM_SPEC.md 20-2)가 이 값을 쓴다:
+        /// <c>ρ_max ≥ W_out</c>. 배율 0.509 이상에서는 하한이 안 물려 <b>0.21818 R로 상수</b>가 되므로,
+        /// 게이트 세 배율(0.60 / 0.75 / 1.00)의 판정이 소수점까지 같아진다.</para>
+        ///
+        /// <para>소비자: Tests/EditMode/AccessoryFillAreaRuleTests — 런타임은 이 값을 읽지 않는다
+        /// (렌더러는 월드 단위로 <c>RenderFillOutlineStrokeWidth</c>를 직접 계산한다).</para>
+        /// </summary>
+        internal static float FillOutlineBudgetInHeadRadii(float characterScale)
+        {
+            float scale = Mathf.Max(0.0001f, characterScale);
+            float stroke = Mathf.Max(BaselineStrokeWidth * scale,
+                StickConfig.MinFillOutlineScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox);
+            return stroke / (BaselineHeadVisualRadius * scale);
+        }
+
         // ---- 털모자(33-2-1 #2). ★ 2026-09-01(2차) — "띠(band)"가 <b>접힌 단(cuff)</b>이 됐다.
         //      옛 띠는 머리 위쪽(0.42~0.62R)을 가로지르는 납작한 사각형이라 <b>얹혀</b> 있었고,
         //      이 카테고리에서 가장 깊이 눌러쓰는 모자라는 정체와 정반대였다. 지금은 단이 −0.64R까지

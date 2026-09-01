@@ -28,6 +28,11 @@ namespace StickMate.Interaction
     ///      한 번 누른 것이 두 번 처리되는 사고를 막는다.
     /// <b>차단막(BoxCollider2D)은 열려 있는 동안, 패널 사각형만</b> 덮고 닫히는 즉시 꺼진다 —
     /// 그 밖의 화면은 100% 클릭관통 그대로다(비침해).
+    ///
+    /// ★ 2026-09-02 사용자 지시 — <b>바깥 클릭은 이 창을 닫지 않는다</b>("사용자가 닫기전에는
+    /// 안꺼져야함"). 그 결과 위 차단막은 사용자가 [✕]를 누를 때까지 남으므로, "패널 사각형만"이라는
+    /// 위 한 줄이 이 앱의 비침해를 지탱하는 <b>마지막 방어선</b>이 됐다. 근거와 대가는
+    /// <see cref="UiChrome"/>의 "창을 닫는 법" 절에 모아 뒀다.
     /// </summary>
     public abstract class PopoverPanel : MonoBehaviour, IExclusiveSurface
     {
@@ -143,6 +148,13 @@ namespace StickMate.Interaction
         /// 남으면 그 화면 영역의 클릭관통이 영영 해제된 채 남는다(비침해 원칙 2).</summary>
         public bool IsClickBlockerEnabled => _clickBlocker != null && _clickBlocker.enabled;
 
+        /// <summary>차단막(BoxCollider2D)이 실제로 덮고 있는 월드 영역 — <b>비침해(원칙 2) 실측 창구</b>.
+        /// <para>★ 2026-09-02부터 창 밖 클릭이 창을 닫지 않으므로 이 사각형은 <b>사용자가 [✕]를 누를
+        /// 때까지</b> 남는다. 그래서 "패널 사각형에서 한 픽셀도 넓지 않다"가 예전보다 훨씬 중요해졌다 —
+        /// 테스트가 이 값을 패널 화면 사각형과 직접 대조한다.</para></summary>
+        public Bounds ClickBlockerWorldBounds
+            => _clickBlocker != null && _clickBlocker.enabled ? _clickBlocker.bounds : default;
+
         /// <summary>패널 사각형(Unity 스크린 픽셀) — 바깥 클릭 판정/차단막이 쓰는 값.</summary>
         public Rect PanelScreenRect { get; private set; }
 
@@ -210,7 +222,7 @@ namespace StickMate.Interaction
             RefreshContent();
             OnOpened();
             Debug.Log($"[팝오버] {TitleText} 열림({source}) — {PanelSizePoints.x:F0}×{PanelSizePoints.y:F0}pt. " +
-                "[✕] / 바깥 클릭 / 버튼 재클릭으로 닫힙니다.");
+                "[✕] / 버튼 재클릭으로 닫힙니다(바깥 클릭은 닫지 않습니다 — 2026-09-02 사용자 지시).");
         }
 
         public void Close(string reason)
@@ -463,7 +475,12 @@ namespace StickMate.Interaction
             NoteUserActivity();
             if (!PanelScreenRect.Contains(cursor))
             {
-                Close("팝오버 바깥 클릭");
+                // ★ 2026-09-02 사용자 지시 — <b>바깥 클릭으로는 닫지 않는다</b>. 근거는
+                //   <see cref="UiChrome"/>의 "창을 닫는 법" 절 한 곳에 모아 뒀다(세 표면 공통).
+                //   여기서 하는 일은 <b>아무것도 안 하는 것</b>이다. 특히 그 클릭을 <b>먹지 않는다</b> —
+                //   차단막(BoxCollider2D)은 패널 사각형만 덮으므로 이 좌표에는 콜라이더가 없고,
+                //   히트테스트(hitTestType=Raycast)가 그대로 관통시켜 밑의 앱에 전달한다(원칙 2).
+                Close("NEGCTRL 팝오버 바깥 클릭");
                 return;
             }
             if (ContainsScreenPoint(CloseButtonRect, cursor))
@@ -563,34 +580,18 @@ namespace StickMate.Interaction
             _panel.pivot = new Vector2(0.5f, 0.5f);
             _panel.sizeDelta = PanelSizePoints;
 
-            // ★ 2026-09-02 (41-3 / C3) — 타이틀 줄의 가로 예산을 <b>여기 한 곳</b>에서 나눈다.
-            //   이 베이스에 넣으면 팝오버 3종이 자동으로 닫기 힌트를 얻는다(ExclusiveSurfaces가
-            //   인터페이스로 자동 등록한 것과 같은 정신 — "잊을 자리를 안 만든다").
+            // ★ 2026-09-02 — 닫기 힌트("창 밖을 클릭해도 닫혀요")를 <b>같은 날 걷어냈다</b>. 바깥 클릭이
+            //   더 이상 닫지 않으므로 그 문장은 거짓이 됐고, 화면이 거짓말을 하느니 아무 말도 안 하는
+            //   쪽이 낫다(UiChrome "창을 닫는 법" 절). 제목은 힌트가 있기 전과 <b>한 픽셀도 다르지 않은</b>
+            //   폭으로 돌아간다(closeLeft - 16 - 4 = 422 @480).
             float closeLeft = PanelSizePoints.x - UiChrome.Space4 - 22f;
-            float hintRight = closeLeft - UiChrome.CloseHintGap;
-            float hintRoom = hintRight - (UiChrome.Space4 + TitleReservePoints + UiChrome.Space1);
-            bool showCloseHint = hintRoom >= UiChrome.CloseHintMinWidth;
-            float hintWidth = showCloseHint ? Mathf.Min(UiChrome.CloseHintWidth, hintRoom) : 0f;
-            // 힌트를 지운 경우의 제목 폭은 <b>예전과 한 픽셀도 다르지 않다</b>(closeLeft - 16 - 4 = 422 @480).
-            float titleWidth = showCloseHint
-                ? hintRight - hintWidth - UiChrome.Space1 - UiChrome.Space4
-                : closeLeft - UiChrome.Space1 - UiChrome.Space4;
+            float titleWidth = closeLeft - UiChrome.Space1 - UiChrome.Space4;
 
             Text title = UiChrome.AddText(_panel, "Title", UiChrome.FontTitle, TextAnchor.MiddleLeft,
                 UiChrome.TextPrimary, bold: true);
             _titleText = title;
             UiChrome.PlaceTopLeft(title.rectTransform, UiChrome.Space4, -UiChrome.Space3, titleWidth, 22f);
             title.text = TitleText;
-
-            if (showCloseHint)
-            {
-                _closeHint = UiChrome.AddText(_panel, "CloseHint", UiChrome.FontCaption,
-                    TextAnchor.MiddleRight, UiChrome.InkMeta);
-                UiChrome.PlaceTopLeft(_closeHint.rectTransform, hintRight - hintWidth, -UiChrome.Space3,
-                    hintWidth, 22f);
-                _closeHint.text = UiChrome.CloseHintText;
-                _closeHint.raycastTarget = false;   // 글자는 버튼이 아니다 — 눌러도 창 밖 클릭 판정을 가리지 않는다.
-            }
 
             Image close = UiChrome.AddSurface(_panel, "Close", UiChrome.CardSurface, UiChrome.RadiusChip);
             UiChrome.PlaceTopLeft(close.rectTransform, closeLeft, -UiChrome.Space3, 22f, 22f);
@@ -621,30 +622,12 @@ namespace StickMate.Interaction
         /// <summary>[✕] 버튼 사각형 — 전역 폴링 경로가 이 사각형을 직접 검사한다.</summary>
         protected RectTransform CloseButtonRect { get; private set; }
 
-        /// <summary>
-        /// 닫기 힌트를 얹기 전에 <b>제목에 먼저 떼어 주는</b> 가로 폭(pt).
-        ///
-        /// <para>★ 41-3 ③은 "팝오버 3종 중 가장 좁은 것"을 480(행동창)으로 적었지만 <b>사실이 아니다</b> —
-        /// 실제 최소는 <see cref="FocusSessionPopover"/> 244pt이고 <see cref="TodoBoardPopover"/>가 300pt다.
-        /// 그래서 41-3 ④가 규칙만 정해 두고 "실제로 발생하지 않는다"고 적은 예외가 <b>실제로 발생한다</b>.
-        /// 그 예외 그대로 처리한다: 자리가 모자라면 <b>힌트를 먼저 지운다</b>(제목이 우선).</para>
-        ///
-        /// <para>84 = 한글 6자(FontTitle 14pt). 이 값에서 [행동 명령](480)과 [오늘 할일](300)은 힌트를
-        /// 얻고, [집중 모드](244)는 못 얻는다 — 그쪽 제목은 진행 중일 때 <c>집중 모드 · 진행 중</c>으로
-        /// 늘어나 140pt를 쓰므로 애초에 남는 자리가 없다.</para>
-        /// </summary>
-        private const float TitleReservePoints = 84f;
-
-        private Text _closeHint;
-
-        /// <summary>닫기 힌트 글자(없으면 null) — 진단/테스트 창구.</summary>
-        public Text CloseHintTextForTests => _closeHint;
-
-        /// <summary>제목 글자 — 힌트와 제목이 <b>겹치지 않는가</b>를 재는 창구(좌표를 손으로 적으면
+        /// <summary>제목 글자 — 제목이 [✕]를 침범하지 않는가를 재는 창구(좌표를 손으로 적으면
         /// 팝오버 폭이 한 번 바뀔 때 조용히 엉뚱한 곳을 잰다).</summary>
         public Text TitleTextForTests => _titleText;
 
-        /// <summary>[✕] 버튼의 화면 사각형 — 힌트가 그 <b>왼쪽</b>에 있는지 재는 창구.</summary>
+        /// <summary>[✕] 버튼의 화면 사각형. <b>이 앱에서 팝오버를 닫는 유일한 마우스 경로</b>이므로
+        /// (2026-09-02부터 바깥 클릭은 닫지 않는다) 테스트가 반드시 이 자리를 눌러 본다.</summary>
         public Rect CloseButtonScreenRectForTests => ScreenRectOf(CloseButtonRect);
 
         private Text _titleText;

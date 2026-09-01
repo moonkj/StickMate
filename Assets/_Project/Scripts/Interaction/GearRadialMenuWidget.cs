@@ -815,7 +815,10 @@ namespace StickMate.Interaction
             Collapse(GearMenuCollapseMode.Auto, $"{AutoCollapseIdleSeconds:F0}초 동안 커서가 부채꼴 밖");
         }
 
-        /// <summary>팝오버가 스스로 닫혔으면(✕ / 바깥 클릭) 남아 있던 버튼도 함께 거둔다.</summary>
+        /// <summary>팝오버가 스스로 닫혔으면 남아 있던 버튼도 함께 거둔다.
+        /// <para>★ 2026-09-02 — "스스로 닫힌다"의 경로가 <b>[✕] / 버튼 재클릭 / 무입력 180초</b>로
+        /// 줄었다. <b>바깥 클릭은 더 이상 팝오버를 닫지 않는다</b>(사용자 지시 — UiChrome "창을 닫는 법").
+        /// 즉 팝오버가 떠 있는 동안에는 이 부채꼴도 함께 남는다.</para></summary>
         private void TickAnchoredPopover()
         {
             if (_activeIndex < 0) return;

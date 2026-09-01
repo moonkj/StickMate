@@ -340,8 +340,6 @@ namespace StickMate.Interaction
         private RectTransform _closeRect;
         private RectTransform _settingsRect;   // 헤더의 작은 [설정] 칩 — 설정창의 주 진입점(36-11).
 
-        /// <summary>타이틀바의 닫기 힌트(41-3 / C1). 좁은 화면에서는 꺼진다.</summary>
-        private Text _closeHint;
         private RectTransform _titleBarRect;   // 드래그 손잡이(2026-08-30).
         private readonly Image[] _tabUnderlines = new Image[TabCount];
         private readonly Text[] _tabLabels = new Text[TabCount];
@@ -512,11 +510,11 @@ namespace StickMate.Interaction
         /// 스크롤이지 착용이 아니다. 창의 다른 버튼들은 지금까지처럼 누름에 반응한다.</summary>
         private int _pendingEquipCard = -1;
 
-        /// <summary>배타 규칙("이 창이 뜨면 부채꼴/팝오버는 접힌다")과 "창 밖 클릭" 예외가 쓰는 이웃 —
-        /// 둘 다 같은 GameObject에 있고, 없을 수도 있으므로(테스트 조립) 늦게 한 번만 찾는다.</summary>
-        private GearRadialMenuWidget _menu;
+        // ★ 2026-09-02 — 여기 있던 <c>_menu</c>/<c>_gear</c> 캐시를 지웠다. 유일한 사용처가
+        //   "창 밖 클릭" 탈출구의 <b>예외 판정</b>(톱니/부채꼴 위 클릭은 창을 닫지 않는다)이었는데,
+        //   그 탈출구 자체가 사용자 지시로 사라졌다. 배타 규칙은 <see cref="ExclusiveSurfaces"/>가
+        //   인터페이스로 처리하므로 이 창이 이웃을 직접 알 이유가 더는 없다.
 
-        private InfoGearIconWidget _gear;
         private string _lastActionKey;
         private float _lastActionTime;
         private StickmanStateId _lastShownState = (StickmanStateId)(-1);
@@ -552,6 +550,13 @@ namespace StickMate.Interaction
 
         /// <summary>클릭관통 차단막이 켜져 있는가(진단/테스트 전용, 비침해 원칙 2 검증용).</summary>
         public bool IsClickBlockerEnabled => _clickBlocker != null && _clickBlocker.enabled;
+
+        /// <summary>차단막(BoxCollider2D)이 실제로 덮고 있는 월드 영역 — <b>비침해(원칙 2) 실측 창구</b>.
+        /// <para>★ 2026-09-02부터 창 밖 클릭이 창을 닫지 않으므로 이 사각형은 <b>사용자가 [✕]를 누를
+        /// 때까지</b> 남는다. 그래서 "패널 사각형에서 한 픽셀도 넓지 않다"가 예전보다 훨씬 중요해졌다 —
+        /// 테스트가 이 값을 패널 화면 사각형과 직접 대조한다.</para></summary>
+        public Bounds ClickBlockerWorldBounds
+            => _clickBlocker != null && _clickBlocker.enabled ? _clickBlocker.bounds : default;
 
         private void Awake()
         {
@@ -1844,6 +1849,12 @@ namespace StickMate.Interaction
         /// 이 창으로 <b>돌아오는지</b>를 검증하는 테스트가 실제로 누를 자리다(M8).</summary>
         public Rect SettingsChipScreenRect => RawScreenRectOf(_settingsRect);
 
+        /// <summary>[✕] 버튼의 화면 사각형. ★ 2026-09-02부터 창 밖 클릭이 닫지 않으므로 <b>이 앱에서
+        /// 이 창을 닫는 유일한 마우스 경로</b>다(Esc/Cmd+W는 포커스 없는 오버레이라 못 받는다 —
+        /// <see cref="UiChrome"/> "창을 닫는 법" 절). 그래서 테스트가 좌표를 손으로 적지 않고
+        /// 반드시 이 자리를 눌러 본다.</summary>
+        public Rect CloseButtonScreenRect => RawScreenRectOf(_closeRect);
+
         private static Rect RawScreenRectOf(RectTransform rt)
         {
             if (rt == null || rt.gameObject == null || !rt.gameObject.activeInHierarchy) return new Rect();
@@ -1925,26 +1936,17 @@ namespace StickMate.Interaction
                 return;
             }
 
-            // ★ 33-7-9의 세 번째 탈출구 — <b>창 밖 클릭</b>(2026-08-30 신설). 여기까지 왔다는 것은 어떤
-            // 컨트롤에도 맞지 않았다는 뜻이라, 패널 안이면 "빈 자리"고 밖이면 닫는다. 이게 없어서 실제
-            // 탈출구가 [✕] 하나뿐이었다(ESC는 클릭관통 긴급 해제에 선점 — 클래스 문서 참고).
-            if (RectContainsScreenPoint(_panel, cursor)) return;
-
-            // 톱니/부채꼴은 예외다. 그쪽도 같은 클릭에 반응하므로(톱니는 뗀 순간 창을 닫는다) 여기서
-            // 먼저 닫으면 한 번의 클릭이 두 번 처리된다.
-            if (IsOnGearSurface(cursor)) return;
-            if (TryClaimAction("outside")) Close("창 밖 클릭");
-        }
-
-        /// <summary>커서가 톱니 아이콘이나 펼쳐진 부채꼴 위인가 — "창 밖 클릭"의 유일한 예외.
-        /// 배타 규칙(<see cref="CloseOverlappingSurfaces"/>) 덕에 부채꼴이 이 창과 함께 떠 있을 일은
-        /// 없지만, 톱니는 창이 열려 있는 동안에도 항상 화면에 있다.</summary>
-        private bool IsOnGearSurface(Vector2 cursor)
-        {
-            if (_gear == null) _gear = GetComponent<InfoGearIconWidget>();
-            if (_gear != null && _gear.IsIconVisible && _gear.InteractiveScreenRect.Contains(cursor)) return true;
-            if (_menu == null) _menu = GetComponent<GearRadialMenuWidget>();
-            return _menu != null && _menu.ContainsCursor(cursor);
+            // ★ 2026-09-02 사용자 지시 — 여기까지 왔다는 것은 어떤 컨트롤에도 맞지 않았다는 뜻이고,
+            //   <b>패널 안이든 밖이든 아무 일도 하지 않는다</b>. 2026-08-30에 신설했던 "창 밖 클릭"
+            //   탈출구(33-7-9 ③)를 사용자 신고로 걷어냈다: "캐릭터창이나 다른 메뉴창들이 떠있을때
+            //   바탕화면을 클릭하면 꺼지는데 안꺼지고 사용자가 닫기전에는 안꺼져야함".
+            //   근거와 그 대가는 <see cref="UiChrome"/>의 "창을 닫는 법" 절 한 곳에 모아 뒀다.
+            //
+            //   ★ 그 클릭을 <b>먹지는 않는다</b>: 차단막(<see cref="_clickBlocker"/>)은 패널 사각형만
+            //     덮으므로 창 밖 좌표에는 콜라이더가 없고, 히트테스트(hitTestType=Raycast)가 그대로
+            //     밑의 앱에 넘긴다. "안 닫히는 것"과 "클릭을 뺏는 것"은 다른 문제이고, 후자면 원칙 2
+            //     위반이다(Tests/PlayMode/SurfaceOutsideClickTests가 그 경계를 픽셀로 잠근다).
+            if (!RectContainsScreenPoint(_panel, cursor) && TryClaimAction("outside")) Close("NEGCTRL 창 밖 클릭");
         }
 
         /// <summary>
@@ -2334,7 +2336,6 @@ namespace StickMate.Interaction
             {
                 _panel.sizeDelta = new Vector2(width, height);
                 SyncActionReachability();
-                SyncCloseHintVisibility();
             }
 
             Vector2 clamped = ClampPanelPosition(_panel.anchoredPosition, scaleFactor);
@@ -2632,33 +2633,12 @@ namespace StickMate.Interaction
                 if (TryClaimAction("settings")) OpenSettings("정보창 헤더 [설정]");
             });
 
-            // ★ 2026-09-02 (41-3 / C1) — 닫는 법을 화면에 적는다. 자리는 <b>[설정]의 왼쪽</b>이다:
-            //   힌트가 가리키는 것은 [✕]지만, 두 버튼 <b>사이</b>에 글자를 끼우면 셋 다 버튼처럼 읽힌다.
-            //   민지는 Cmd+W를 눌렀고 그 순간 시선은 창의 오른쪽 위에 있었다 — 답이 거기 있어야 한다.
-            _closeHint = UiChrome.AddText(barGo.transform, "CloseHint", UiChrome.FontCaption,
-                TextAnchor.MiddleRight, UiChrome.InkMeta);
-            _closeHint.raycastTarget = false;   // 글자는 버튼이 아니다(드래그 손잡이도 가리지 않는다).
-            RectTransform hintRect = _closeHint.rectTransform;
-            hintRect.anchorMin = hintRect.anchorMax = hintRect.pivot = new Vector2(1f, 1f);
-            hintRect.sizeDelta = new Vector2(CloseHintBoxWidth, 12f);
-            // 오른쪽 끝 = [설정] 칩 왼쪽에서 6pt. 880 폭에서 상자는 x 582~782에 앉는다.
-            hintRect.anchoredPosition = new Vector2(-(48f + 44f + 6f), -(TitleHeight - 12f) * 0.5f);
-            _closeHint.text = UiChrome.CloseHintText;
-            SyncCloseHintVisibility();
-        }
-
-        /// <summary>닫기 힌트 상자 폭(pt). 문장 실측 109pt에 여유를 얹은 값이며, 이 상자가 제목
-        /// 상자(x16 w200)에 닿는 좁은 화면에서는 <b>힌트를 먼저 지운다</b>(제목이 우선 — 41-3 ④).</summary>
-        private const float CloseHintBoxWidth = 200f;
-
-        /// <summary>이 폭 미만에서는 힌트를 숨긴다 = 오른쪽 여백 98 + 힌트 200 + 간격 4 + 제목 216.</summary>
-        private const float CloseHintMinPanelWidth = 98f + CloseHintBoxWidth + 4f + 216f;
-
-        private void SyncCloseHintVisibility()
-        {
-            if (_closeHint == null || _panel == null) return;
-            bool show = _panel.sizeDelta.x >= CloseHintMinPanelWidth;
-            if (_closeHint.gameObject.activeSelf != show) _closeHint.gameObject.SetActive(show);
+            // ★ 2026-09-02 — 여기 있던 닫기 힌트("창 밖을 클릭해도 닫혀요")를 <b>같은 날 걷어냈다</b>.
+            //   같은 라운드에서 바깥 클릭이 더 이상 닫지 않게 됐으므로 그 문장은 거짓이 됐고, 화면이
+            //   거짓말을 하느니 아무 말도 안 하는 쪽이 낫다. 닫는 자리는 바로 오른쪽 [✕]다.
+            //   ★ 대체 문구가 필요한지는 UX 소관으로 넘겼다(UiChrome "창을 닫는 법" 절의 실측 참고:
+            //     ✕ 글리프는 5.73:1로 읽히지만 그것을 담은 칩은 창 바탕과 1.01:1이라 <b>버튼으로</b>
+            //     읽히지 않는다 — 이 앱 스스로 정한 비텍스트 하한 3.0:1 미달).
         }
 
         /// <summary>

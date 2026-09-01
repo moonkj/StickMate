@@ -222,9 +222,9 @@ namespace StickMate.Tests.PlayMode
             CharacterPortraitStage stage = Stage();
             Transform figure = MiniFigure(stage);
 
-            Assert.IsFalse(CharacterPortraitStage.BreathingEnabledForTests,
-                $"{LogPrefix} 숨쉬기 게이트가 켜져 있습니다 — 아래 측정은 반드시 실패할 것이고, " +
-                "그 전에 여기서 이유를 밝힙니다(45-2-a).");
+            // ★ 게이트 단언은 <b>측정 뒤에</b> 둔다. 앞에 두면 게이트가 켜진 세계에서 테스트가
+            //   거기서 끊겨 <b>실제로 얼마나 움직이는지를 한 번도 재지 않는다</b> — 네거티브 컨트롤이
+            //   "빨개졌다"만 말하고 "얼마나"를 못 말하면 반쪽이다(2026-09-02 실측으로 확인).
 
             // 예산은 <b>프로덕션 주기</b>에서 유도한다. 두 주기를 보는 이유: 한 주기면 시작 위상이
             // 최대점이었을 때 되돌아온 값만 보고 "정지"로 오판할 여지가 남는다.
@@ -256,12 +256,22 @@ namespace StickMate.Tests.PlayMode
                 "오판할 수 있습니다(프레임 두 장으로 재지 않는다).");
 
             float peakToPeak = maxY - minY;
-            Debug.Log($"{LogPrefix} {elapsed:F2}초 / {samples}표본 관찰 — 세로 진폭 " +
-                $"peak-to-peak = {peakToPeak:E3} 유닛(옛 거동은 1.898pt / 2.004초였다).");
+
+            // 진폭은 키에 비례하므로 <b>키 배수</b>로도 남긴다 — 설계 유도식(0.012 H = 1.862pt)과
+            // 바로 대조할 수 있게. 캐릭터 배율이 바뀌어도 이 수치는 같아야 한다.
+            var metrics = Object.FindFirstObjectByType<StickmanMetrics>();
+            float h = metrics != null ? metrics.TotalHeight : 0f;
+            string inHeight = h > 0f ? $"{peakToPeak / h:F5} H" : "키를 못 읽음";
+            Debug.Log($"{LogPrefix} {elapsed:F2}초 / {samples}표본 관찰 — 세로 peak-to-peak = " +
+                $"{peakToPeak:E3}유닛 ({inHeight}). 옛 거동은 0.012 H = 1.862pt(실측 1.898pt / 2.004초).");
 
             Assert.AreEqual(0f, peakToPeak, 1e-6f,
-                $"{LogPrefix} 액자 속 인물이 {elapsed:F2}초 동안 세로로 {peakToPeak:E3}유닛 " +
+                $"{LogPrefix} 액자 속 인물이 {elapsed:F2}초 동안 세로로 {peakToPeak:E3}유닛({inHeight}) " +
                 "움직였습니다 — 장비 A와 B를 겹쳐 비교할 수 없습니다(45-2-a).");
+
+            // 구조 잠금 — 값이 0이어도 게이트가 켜져 있으면 그건 우연이다(측정 뒤에 확인한다).
+            Assert.IsFalse(CharacterPortraitStage.BreathingEnabledForTests,
+                $"{LogPrefix} 숨쉬기 게이트가 켜져 있습니다(45-2-a).");
         }
 
         // ============================================================================

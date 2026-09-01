@@ -25,7 +25,9 @@ namespace StickMate.Tests.PlayMode
     ///        항목</b>으로 읽혔다.</item>
     ///  <item>그리고 <c>Cmd+W</c>는 우리 창이 아니라 <b>뒤에 있던 Finder 창을 닫았다</b>(우리 창은
     ///        layer=101 전체화면 1장뿐이라 그 안의 창들은 키보드 포커스를 못 받는다). 닫는 법은
-    ///        이미 동작하고 있었다 — <b>화면이 안 알려줬을 뿐이다</b>.</item>
+    ///        이미 동작하고 있었다 — <b>화면이 안 알려줬을 뿐이다</b>.
+    ///        ★ 2026-09-02 후속: 그때 넣은 문구 중 "창 밖을 클릭해도 닫혀요"는 <b>같은 날 걷어냈다</b> —
+    ///        사용자 지시로 그 동작 자체가 사라졌기 때문이다(UiChrome "창을 닫는 법" 절).</item>
     /// </list>
     ///
     /// ============================================================================
@@ -138,27 +140,59 @@ namespace StickMate.Tests.PlayMode
 
         // ==================== 41-3 — 닫는 법을 화면이 말한다 ====================
 
+        /// <summary>
+        /// ★★ 2026-09-02 <b>같은 날 두 번째 개정</b> — 사용자 지시로 "창 밖 클릭"이 더 이상 닫지
+        /// 않게 됐다. 그래서 이 테스트는 <b>정반대 방향</b>으로 뒤집혔다: 예전에는 "닫는 법을
+        /// 화면이 말하는가"를 요구했고, 지금은 <b>"화면이 거짓말을 하지 않는가"</b>를 요구한다.
+        ///
+        /// <para>동작을 없애 놓고 안내 문구를 남기면 그건 원칙 1이 금지한 표시/실제 불일치다.
+        /// 그리고 그 실패 모드는 <b>조용하다</b> — 문구는 계속 예쁘게 렌더되고, 사용자만
+        /// 바탕화면을 여러 번 클릭하다 포기한다.</para>
+        /// </summary>
         [UnityTest]
         [Timeout(120000)]
-        public IEnumerator SettingsWindowTellsHowToCloseItInBothHeaderAndFooter()
+        public IEnumerator NoSurfaceClaimsThatClickingOutsideCloses()
         {
             yield return LoadAndOpen();
 
-            List<Text> hints = TextsSaying(UiChrome.CloseHintText);
-            Assert.GreaterOrEqual(hints.Count, 1,
-                $"{LogPrefix} 설정창 헤더에 \"{UiChrome.CloseHintText}\"가 없습니다 — 이 앱은 " +
-                "Esc도 Cmd+W도 받지 못하고(포커스 없는 오버레이), Cmd+W는 <b>뒤에 있던 남의 창</b>을 " +
-                "닫습니다. 닫는 법은 이미 동작하므로 화면이 그것을 말하기만 하면 됩니다.");
+            var offenders = new List<string>();
+            foreach (Text t in AllTexts())
+            {
+                string s = t.text;
+                if (string.IsNullOrEmpty(s)) continue;
+                if (s.Contains("창 밖") || s.Contains("바깥을 클릭") || s.Contains("바깥 클릭"))
+                {
+                    offenders.Add($"[{t.gameObject.name}] \"{s}\"");
+                }
+            }
+
+            Assert.IsEmpty(offenders,
+                $"{LogPrefix} 설정창이 아직 <b>창 밖 클릭으로 닫힌다</b>고 적고 있습니다:\n  " +
+                string.Join("\n  ", offenders) +
+                "\n2026-09-02 사용자 지시로 그 동작을 걷어냈습니다 — 문구가 남으면 화면이 거짓말을 합니다.");
+        }
+
+        /// <summary>★ 위 테스트의 <b>네거티브 컨트롤</b>. "없다"만 재면 <b>푸터 문장이 통째로
+        /// 사라져도</b> 초록이다 — 그건 닫는 법을 아무도 안 알려주는 상태이고, 이 앱에서 [✕]는
+        /// 창 바탕과 1.01:1이라 <b>버튼으로 읽히지 않는다</b>(UiChrome "창을 닫는 법" 절의 실측).
+        /// 그래서 <b>참인 문장은 남아 있어야</b> 한다.</summary>
+        [UnityTest]
+        [Timeout(120000)]
+        public IEnumerator FooterStillTellsTheOneCloseRouteThatActuallyWorks()
+        {
+            yield return LoadAndOpen();
 
             bool footerSentence = false;
             foreach (Text t in AllTexts())
             {
                 if (string.IsNullOrEmpty(t.text)) continue;
-                if (t.text.Contains("창 밖 아무 곳이나 클릭하면 닫혀요")) footerSentence = true;
+                if (t.text.Contains("[✕]") && t.text.Contains("닫")) footerSentence = true;
             }
+
             Assert.IsTrue(footerSentence,
-                $"{LogPrefix} 설정창 푸터에 긴 닫기 문장이 없습니다 — 이 창은 머무는 시간이 가장 길고, " +
-                "푸터가 이미 '여는 방법'을 적고 있어 여는 법 ↔ 닫는 법이 한 자리에서 짝을 이룹니다.");
+                $"{LogPrefix} 설정창 푸터에서 닫기 문장이 통째로 사라졌습니다 — 거짓인 절반만 도려내야 " +
+                "했는데 문장을 지운 것입니다. 이 창은 머무는 시간이 가장 길고, 바로 윗줄이 이미 " +
+                "'여는 방법'을 적고 있어 여는 법 ↔ 닫는 법이 한 자리에서 짝을 이룹니다.");
         }
 
         /// <summary>★ "안 되는 키를 적지 않는다"는 규칙을 잠근다. 화면에 <c>Esc</c>가 적히면
@@ -199,15 +233,5 @@ namespace StickMate.Tests.PlayMode
 
         private static IEnumerable<Text> AllTexts()
             => SettingsCanvas().GetComponentsInChildren<Text>(true);
-
-        private static List<Text> TextsSaying(string exact)
-        {
-            var found = new List<Text>();
-            foreach (Text t in AllTexts())
-            {
-                if (t.text == exact) found.Add(t);
-            }
-            return found;
-        }
     }
 }

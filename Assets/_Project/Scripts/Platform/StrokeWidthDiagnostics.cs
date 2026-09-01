@@ -34,34 +34,68 @@ namespace StickMate.Platform
     /// </summary>
     public static class StrokeWidthDiagnostics
     {
-        /// <summary>한 번의 훑기 결과. 전부 <b>사실</b>이고 판정 문구는 <see cref="Describe"/>가 만든다.</summary>
+        /// <summary>한 번의 훑기 결과. 전부 <b>사실</b>이고 판정 문구는 <see cref="Describe"/>가 만든다.
+        ///
+        /// <para><b>★ 2026-09-02 — 통을 둘로 나눴다(M6).</b> 하한이 역할에 따라 둘로 갈리면서
+        /// (낱선 2.00pt / 채움 경계선 1.00pt) 하나의 최소값을 하나의 하한과 비교하는 구조가
+        /// <b>구조적으로 오진</b>하게 됐다. 그대로 뒀다면 Windows 사용자가 보낸 <c>[렌더품질]</c> 줄이
+        /// 정상적으로 1.18pt로 그려진 채움 경계선을 "★ 하한 미달 — 결함"으로 신고했을 것이다
+        /// (그리고 그 신고를 받은 사람은 멀쩡한 코드를 고치려고 한 라운드를 쓴다).</para></summary>
         public readonly struct Report
         {
             /// <summary>두께가 0보다 큰 LineRenderer 개수(0이면 아직 캐릭터가 안 그려진 프레임).</summary>
             public readonly int LineCount;
+            /// <summary>그중 <b>채운 도형의 경계선</b>인 것(<see cref="FillOutlineStroke"/> 표식)의 개수.</summary>
+            public readonly int FillOutlineCount;
             /// <summary>월드 1유닛이 몇 물리픽셀인가(직교 카메라가 없으면 0).</summary>
             public readonly float PixelsPerWorldUnit;
             public readonly float MinPixels;
             public readonly float MaxPixels;
             public readonly float MinPoints;
             public readonly float MaxPoints;
-            /// <summary>비교 대상 하한(OS 포인트). 상수를 베끼지 않고 <see cref="StickConfig.MinStrokeScreenPoints"/>를 그대로 나른다.</summary>
+            /// <summary>비교 대상 하한(OS 포인트) — <b>낱선</b> 쪽. 상수를 베끼지 않고
+            /// <see cref="StickConfig.MinStrokeScreenPoints"/>를 그대로 나른다.</summary>
             public readonly float FloorPoints;
+            /// <summary>비교 대상 하한(OS 포인트) — <b>채움 경계선</b> 쪽
+            /// (<see cref="StickConfig.MinFillOutlineScreenPoints"/>).</summary>
+            public readonly float FillOutlineFloorPoints;
+            /// <summary>낱선만 본 최소 두께(OS 포인트). 낱선이 하나도 없으면 0.</summary>
+            public readonly float MinLinePoints;
+            /// <summary>채움 경계선만 본 최소 두께(OS 포인트). 그런 선이 없으면 0.</summary>
+            public readonly float MinFillOutlinePoints;
 
-            public Report(int lineCount, float pixelsPerWorldUnit,
-                float minPixels, float maxPixels, float minPoints, float maxPoints, float floorPoints)
+            public Report(int lineCount, int fillOutlineCount, float pixelsPerWorldUnit,
+                float minPixels, float maxPixels, float minPoints, float maxPoints,
+                float minLinePoints, float minFillOutlinePoints,
+                float floorPoints, float fillOutlineFloorPoints)
             {
                 LineCount = lineCount;
+                FillOutlineCount = fillOutlineCount;
                 PixelsPerWorldUnit = pixelsPerWorldUnit;
                 MinPixels = minPixels;
                 MaxPixels = maxPixels;
                 MinPoints = minPoints;
                 MaxPoints = maxPoints;
+                MinLinePoints = minLinePoints;
+                MinFillOutlinePoints = minFillOutlinePoints;
                 FloorPoints = floorPoints;
+                FillOutlineFloorPoints = fillOutlineFloorPoints;
             }
 
-            /// <summary>하한이 지켜지고 있는가. 부동소수 여유 0.01pt(= 표시 자릿수)만 준다.</summary>
-            public bool FloorHonored => LineCount > 0 && MinPoints >= FloorPoints - 0.01f;
+            /// <summary>하한이 지켜지고 있는가 — <b>두 통을 각자의 하한과</b> 비교한다.
+            /// 부동소수 여유 0.01pt(= 표시 자릿수)만 준다.
+            /// <para>없는 통은 판정에 넣지 않는다(개수 0이면 최소값도 0이라 무조건 미달이 된다).</para></summary>
+            public bool FloorHonored
+            {
+                get
+                {
+                    if (LineCount == 0) return false;
+                    int standalone = LineCount - FillOutlineCount;
+                    if (standalone > 0 && MinLinePoints < FloorPoints - 0.01f) return false;
+                    if (FillOutlineCount > 0 && MinFillOutlinePoints < FillOutlineFloorPoints - 0.01f) return false;
+                    return true;
+                }
+            }
         }
 
         /// <summary>
@@ -78,7 +112,8 @@ namespace StickMate.Platform
                 : 0f;
 
             float minWidthPx = float.MaxValue, maxWidthPx = 0f;
-            int lineCount = 0;
+            float minLinePx = float.MaxValue, minFillOutlinePx = float.MaxValue;
+            int lineCount = 0, fillOutlineCount = 0;
             LineRenderer[] lines = Object.FindObjectsByType<LineRenderer>(
                 FindObjectsInactive.Exclude, FindObjectsSortMode.None);
             for (int i = 0; i < lines.Length; i++)
@@ -93,16 +128,28 @@ namespace StickMate.Platform
                 lineCount++;
                 if (widthPx < minWidthPx) minWidthPx = widthPx;
                 if (widthPx > maxWidthPx) maxWidthPx = widthPx;
+
+                // ★ 2026-09-02 M6 — 이 선이 어느 하한 소속인지는 <b>선 자신에게 묻는다</b>.
+                //   이름/목록으로 가르면 DLC 도형이 조용히 빠져나간다(FillOutlineStroke 문서).
+                if (FillOutlineStroke.Is(lr))
+                {
+                    fillOutlineCount++;
+                    if (widthPx < minFillOutlinePx) minFillOutlinePx = widthPx;
+                }
+                else if (widthPx < minLinePx) minLinePx = widthPx;
             }
             if (lineCount == 0) minWidthPx = 0f;
+            if (minLinePx == float.MaxValue) minLinePx = 0f;
+            if (minFillOutlinePx == float.MaxValue) minFillOutlinePx = 0f;
 
             // OS 포인트 = Unity 픽셀 x DpiScale(Retina 2x -> 0.5, Windows 표시배율 125% -> 0.8).
             // 곱셈 한 번이라 카메라가 없어 pixelsPerUnit이 0이어도 0이 나올 뿐 NaN이 생기지 않는다.
             float dpiScale = ScreenCoordinateConverter.ResolveDpiScale(config);
-            return new Report(lineCount, pixelsPerUnit,
+            return new Report(lineCount, fillOutlineCount, pixelsPerUnit,
                 minWidthPx, maxWidthPx,
                 minWidthPx * dpiScale, maxWidthPx * dpiScale,
-                StickConfig.MinStrokeScreenPoints);
+                minLinePx * dpiScale, minFillOutlinePx * dpiScale,
+                StickConfig.MinStrokeScreenPoints, StickConfig.MinFillOutlineScreenPoints);
         }
 
         /// <summary>
@@ -116,8 +163,13 @@ namespace StickMate.Platform
             string verdict = r.FloorHonored
                 ? "하한 지켜짐"
                 : "★ 하한 미달 — 결함";
+            // ★ 하한이 둘이므로 <b>어느 통이 무엇과 비교됐는지</b>까지 적는다. 예전처럼 최소값 하나와
+            //   하한 하나만 찍으면, 정상적으로 1.18pt인 채움 경계선이 "2pt 미달"로 읽힌다.
+            int standalone = r.LineCount - r.FillOutlineCount;
             return $"LineRenderer {r.LineCount}개 획 두께 실측 {r.MinPixels:F2}~{r.MaxPixels:F2} 물리픽셀 " +
-                   $"(= {r.MinPoints:F2}~{r.MaxPoints:F2} OS pt / 하한 {r.FloorPoints:F1}pt -> {verdict})";
+                   $"(= {r.MinPoints:F2}~{r.MaxPoints:F2} OS pt / 낱선 {standalone}개 최소 " +
+                   $"{r.MinLinePoints:F2}pt vs 하한 {r.FloorPoints:F1}pt · 채움경계선 {r.FillOutlineCount}개 최소 " +
+                   $"{r.MinFillOutlinePoints:F2}pt vs 하한 {r.FillOutlineFloorPoints:F1}pt -> {verdict})";
         }
     }
 }

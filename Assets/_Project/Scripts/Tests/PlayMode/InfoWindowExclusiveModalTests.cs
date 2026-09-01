@@ -22,14 +22,16 @@ namespace StickMate.Tests.PlayMode
     ///  · 시나리오 C: 창이 열린 채 톱니를 다시 누르면(사용자가 창을 닫으려고 하는 가장 자연스러운 동작)
     ///    부채꼴이 창 <b>위로</b> 펼쳐졌다.
     /// 게다가 33-7-9가 규정한 "창 밖 클릭" 탈출구가 구현되어 있지 않아 실제 탈출구는 [✕] 하나뿐이었다.
+    /// (★ 2026-09-02 후기: 그 탈출구는 2026-08-30에 구현됐다가 <b>사용자 지시로 다시 걷혔다</b> —
+    ///  "사용자가 닫기전에는 안꺼져야함". 그래서 지금 탈출구는 다시 [✕] 하나이고, 이번에는 그것이 의도다.)
     ///
     /// ============================================================================
     /// 절대 조건으로 잠그는 것
     /// ============================================================================
     ///  ① <b>배타</b>: 어느 진입점으로 열든(부채꼴 / 단축키 경로) 창이 뜬 뒤에는 부채꼴도 팝오버도 없다.
     ///  ② <b>역방향</b>: 창이 열린 채 톱니를 누르면 창이 닫히고 부채꼴은 펼쳐지지 않는다.
-    ///  ③ <b>창 밖 클릭</b>으로 닫힌다. 단 창 안 클릭과 <b>톱니 위 클릭</b>은 닫지 않는다
-    ///     (톱니는 뗀 순간 자기가 닫는다 — 여기서도 닫으면 한 클릭이 두 번 처리된다).
+    ///  ③ ★ <b>2026-09-02에 뒤집혔다</b> — 창 밖 클릭은 <b>닫지 않는다</b>(사용자 지시). 창 안/톱니 위도
+    ///     마찬가지고, 닫는 마우스 경로는 <b>[✕] 하나</b>다. 그 하나가 살아 있음을 같은 테스트가 잰다.
     ///  ④ <b>정렬</b>: 창이 부채꼴/팝오버보다 위, 말풍선과는 값이 <b>다르다</b>(동률은 Unity가 순서를
     ///     보장하지 않는다).
     ///  ⑤ <b>드래그</b>: 타이틀바를 끌면 창이 그 방향으로 움직이고, 아무리 끌어도 화면을 벗어나지 않으며,
@@ -195,11 +197,21 @@ namespace StickMate.Tests.PlayMode
             Debug.Log($"{LogPrefix} ② 통과 — 톱니 재클릭은 창을 닫기만 하고, 창이 없을 때만 부채꼴을 폅니다.");
         }
 
-        // ==================== ③ 창 밖 클릭 탈출구(33-7-9) ====================
+        // ==================== ③ 창 밖 클릭은 <b>닫지 않는다</b>(2026-09-02 사용자 지시) ====================
 
+        /// <summary>
+        /// ★★ <b>2026-09-02에 뒤집힌 단언</b>. 이 자리에는 원래 33-7-9 ③의 "창 밖 클릭 탈출구"를
+        /// 잠그는 테스트가 있었다. 사용자 신고가 그 설계를 뒤집었다 — <i>"캐릭터창이나 다른 메뉴창들이
+        /// 떠있을때 바탕화면을 클릭하면 꺼지는데 안꺼지고 사용자가 닫기전에는 안꺼져야함"</i>.
+        ///
+        /// <para>★ 그래서 <b>어디를 눌러도 닫히지 않는다</b>를 잠근다. 창 안이든, 톱니 위든, 화면
+        /// 구석이든 마찬가지다. 그리고 마지막에 <b>[✕]로는 반드시 닫힌다</b>를 확인한다 —
+        /// 이 네거티브 컨트롤이 없으면 "닫기 자체가 통째로 고장난" 상태에서도 이 테스트가 초록이다
+        /// (그 상태의 사용자는 창을 영영 못 닫는다).</para>
+        /// </summary>
         [UnityTest]
         [Timeout(180000)]
-        public IEnumerator OutsideClickClosesWindowButInsideAndGearDoNot()
+        public IEnumerator OutsideClickDoesNotCloseWindowButTheCloseButtonStillDoes()
         {
             yield return LoadSceneAndResolve();
 
@@ -208,12 +220,12 @@ namespace StickMate.Tests.PlayMode
             yield return null;
             Assert.IsTrue(_window.IsOpen, $"{LogPrefix} 창이 열리지 않았습니다.");
 
-            // (a) 창 안 클릭은 닫지 않는다.
+            // (a) 창 안의 빈 자리 클릭 — 예나 지금이나 닫지 않는다.
             _window.FeedClickForTests(_window.PanelScreenRect.center);
             Assert.IsTrue(_window.IsOpen, $"{LogPrefix} 창 안을 눌렀는데 창이 닫혔습니다.");
             yield return new WaitForSecondsRealtime(0.5f);   // 클릭 중복 억제(0.35초)를 넘긴다.
 
-            // (b) 톱니 위 클릭도 닫지 않는다 — 그 클릭은 톱니가 뗀 순간 자기가 처리한다.
+            // (b) 톱니 위 클릭도 이 창을 닫지 않는다(그 클릭은 톱니가 뗀 순간 자기가 처리한다).
             // 좁은 배치 화면(640×480)에서는 880 창이 우상단 톱니까지 덮어 "창 밖"과 "톱니 위"를 구분할 수
             // 없다. 그래서 이 한 프레임만 창을 최소 크기로 줄여 둘을 갈라 놓는다(주입 관례는 클래스 문서 참고).
             Assert.IsNotNull(ClampMethod, $"{LogPrefix} ClampPanelToScreen을 찾지 못했습니다 — 이름이 바뀌었습니다.");
@@ -221,17 +233,29 @@ namespace StickMate.Tests.PlayMode
             Assert.IsFalse(_window.PanelScreenRect.Contains(_gear.IconScreenCenter),
                 $"{LogPrefix} 관측 전제 실패 — 창을 줄였는데도 톱니가 창 안에 있습니다.");
             _window.FeedClickForTests(_gear.IconScreenCenter);
-            Assert.IsTrue(_window.IsOpen, $"{LogPrefix} 톱니 위를 눌렀는데 창이 먼저 닫혔습니다(한 클릭이 두 번 처리됩니다).");
+            Assert.IsTrue(_window.IsOpen, $"{LogPrefix} 톱니 위를 눌렀는데 창이 닫혔습니다.");
             yield return new WaitForSecondsRealtime(0.5f);
 
-            // (c) 그 밖의 창 밖 클릭은 닫는다.
+            // (c) ★ 핵심 — 창 밖(바탕화면 자리)을 눌러도 닫히지 않는다.
             Vector2 outside = new Vector2(4f, 4f);   // 화면 좌하단 구석 — 창(중앙 모달)과도 톱니(우상단)와도 겹치지 않는다.
             Assert.IsFalse(_window.PanelScreenRect.Contains(outside),
                 $"{LogPrefix} 관측 전제 실패 — 창이 화면 좌하단 구석까지 덮고 있습니다.");
             _window.FeedClickForTests(outside);
-            Assert.IsFalse(_window.IsOpen, $"{LogPrefix} 창 밖을 눌렀는데 닫히지 않았습니다 — 33-7-9의 탈출구가 없습니다.");
+            Assert.IsTrue(_window.IsOpen,
+                $"{LogPrefix} 창 밖을 눌렀더니 창이 꺼졌습니다 — 2026-09-02 사용자 지시는 " +
+                "\"사용자가 닫기전에는 안꺼져야함\"입니다.");
+            yield return new WaitForSecondsRealtime(0.5f);
 
-            Debug.Log($"{LogPrefix} ③ 통과 — 창 밖 클릭으로 닫히고, 창 안/톱니 위는 예외입니다.");
+            // (d) ★ 네거티브 컨트롤 — 닫기 경로 자체는 살아 있다. 이게 죽어 있으면 위 (a)~(c)의
+            //     "열려 있다"는 전부 공짜 초록이고, 사용자는 창을 영영 못 닫는다.
+            Rect close = _window.CloseButtonScreenRect;
+            Assert.Greater(close.width, 1f, $"{LogPrefix} [✕] 사각형이 비었습니다.");
+            _window.FeedClickForTests(close.center);
+            Assert.IsFalse(_window.IsOpen,
+                $"{LogPrefix} [✕]를 눌렀는데 닫히지 않았습니다 — 바깥 클릭을 없앤 지금 이것이 " +
+                "유일한 마우스 탈출구입니다.");
+
+            Debug.Log($"{LogPrefix} ③ 통과 — 창 밖/톱니 위/창 안 어디를 눌러도 안 닫히고, [✕]만 닫습니다.");
         }
 
         // ==================== ④ 정렬 순서 ====================

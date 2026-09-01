@@ -273,11 +273,32 @@ namespace StickMate.Interaction
         /// </summary>
         private float RenderStrokeWidth => Mathf.Max(StrokeWidth, MinStrokeWorld);
 
+        /// <summary>
+        /// ★★ <b>채운 도형의 경계선</b>이 실제로 그려지는 두께(2026-09-02 M6,
+        /// docs/CHARACTER_FORM_SPEC.md 19절). 위 <see cref="RenderStrokeWidth"/>와 <b>같은 비례
+        /// 두께</b>를 쓰되 하한만 절반(<see cref="StickConfig.MinFillOutlineScreenPoints"/> = 1.00pt)이다.
+        ///
+        /// <para><b>왜 이 선만 다른가</b>: 채움 경계선은 폭 W 펜이 경계에 중심을 두므로 도형이
+        /// 안쪽으로 정확히 W/2를 잃는다 — 굵힐수록 <b>자기 색면을 먹는다</b>. 반면 낱선 20개는
+        /// 그 선이 그 자리의 유일한 잉크라 얇아지면 요소가 사라진다. 두 집합은 겹치지 않으므로
+        /// 각각 다른 하한을 걸면 <b>양쪽을 동시에</b> 얻는다(교환이 아니다).
+        /// 배율 0.60에서 색면 생존율 중앙값 22.0% → <b>47.7%</b>, 색면 폭 ≥ 1획인 도형 25/61 → 57/61.</para>
+        ///
+        /// <para>배율 0.509 이상에서는 이 하한이 <b>아예 물리지 않는다</b> — 사용자 배율 0.60,
+        /// 출하 0.75, 다이얼 최대 1.00 전부 순수 비례가 된다.</para>
+        /// </summary>
+        private float RenderFillOutlineStrokeWidth => Mathf.Max(StrokeWidth, MinFillOutlineWorld);
+
         /// <summary>이 렌더러가 쓰는 화면상 최소 두께(월드). 에이전트가 없는 사본/스텁에서는
         /// StickConfig의 근사 환산으로 되메운다 — 0을 흘리면 하한이 조용히 사라진다.</summary>
         private float MinStrokeWorld => _agent != null
             ? _agent.MinStrokeWorldWidth
             : StickConfig.MinStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
+
+        /// <summary>채움 경계선 하한(월드). 값의 단일 소스는 <see cref="StickmanAgent.MinFillOutlineWorldWidth"/>다.</summary>
+        private float MinFillOutlineWorld => _agent != null
+            ? _agent.MinFillOutlineWorldWidth
+            : StickConfig.MinFillOutlineScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
 
         /// <summary>지금 치수/방향으로 만든 도형 리그 — 이 렌더러와 초상화가 같은 값을 쓴다.</summary>
         internal AccessoryShapeBuilder.Rig BuildRig()
@@ -339,7 +360,7 @@ namespace StickMate.Interaction
                 for (int i = 0; i < _headTransform.childCount; i++)
                 {
                     Transform c = _headTransform.GetChild(i);
-                    if (c != null && c.name == "HeadOutline") _headOutline = c.GetComponent<LineRenderer>();
+                    if (c != null && c.name == StickmanMetrics.HeadRingObjectName) _headOutline = c.GetComponent<LineRenderer>();
                 }
             }
         }
@@ -678,7 +699,11 @@ namespace StickMate.Interaction
 
             // 실제로 그려질 두께 — 화면상 하한에 걸리면 배율이 그대로여도 두께가 달라진다
             // (창 크기/DPI 변화). 서명에 없으면 그 프레임에 다시 굽지 않아 옛 두께가 남는다.
+            // ★ 2026-09-02 M6 — 하한이 둘이 되면서 <b>두 두께 모두</b> 서명에 들어가야 한다.
+            //   낱선 두께만 넣으면, 낱선은 하한에 걸려 그대로인데 채움 경계선만 달라지는 구간
+            //   (배율 0.509 부근)에서 다시 굽지 않아 옛 경계선 두께가 남는다.
             hash = hash * 31 + Mathf.RoundToInt(RenderStrokeWidth * 10000f);
+            hash = hash * 31 + Mathf.RoundToInt(RenderFillOutlineStrokeWidth * 10000f);
 
             // 33-2-5 (D) 줄무늬 타이는 월요일에 조금 느슨해진다 — 자정을 넘기면 다시 구워야 한다.
             hash = hash * 31 + DayOfWeekIndex;
@@ -828,7 +853,11 @@ namespace StickMate.Interaction
                 outline = AccessoryShapeBuilder.FillOutlineColor(color);
             }
 
-            LineRenderer lr = AddLine(shape.Name, shape.Points, outline, shape.Loop, shape.SortingOrder, parent);
+            // ★ 2026-09-02 M6 — 이 선이 <b>채움의 경계선인가 낱선인가</b>가 두께를 가른다.
+            //   판정 근거는 shape.Filled 하나뿐이고, 그 사실을 선 자신에게 표식으로 붙여
+            //   에이전트/진단이 같은 답을 얻게 한다(FillOutlineStroke 문서).
+            LineRenderer lr = AddLine(shape.Name, shape.Points, outline, shape.Loop, shape.SortingOrder,
+                parent, shape.Filled);
             if (lr == null || !shape.HasSway) return;
 
             // 흔들 점이 있는 선만 별도 목록에 둔다 — 매 프레임 전체 선을 훑지 않기 위해서다.
@@ -877,8 +906,12 @@ namespace StickMate.Interaction
             return mesh;
         }
 
+        /// <param name="isFillOutline">이 선이 <b>채운 도형의 경계선</b>인가. true면 두께 하한이
+        /// 1.00pt로 내려가고(<see cref="RenderFillOutlineStrokeWidth"/>) 선에 표식이 붙는다.
+        /// 기본값 false는 낱선(그 선이 그 자리의 유일한 잉크)이다.</param>
         private LineRenderer AddLine(string name, Vector3[] points, Color color, bool loop,
-            int sortingOrder = AccessoryShapeBuilder.SortDefault, Transform parent = null)
+            int sortingOrder = AccessoryShapeBuilder.SortDefault, Transform parent = null,
+            bool isFillOutline = false)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent != null ? parent : _container.transform, false);
@@ -888,14 +921,16 @@ namespace StickMate.Interaction
             lr.material = _lineMaterial;
             lr.startColor = color;
             lr.endColor = color;
-            lr.startWidth = RenderStrokeWidth;
-            lr.endWidth = RenderStrokeWidth;
+            float width = isFillOutline ? RenderFillOutlineStrokeWidth : RenderStrokeWidth;
+            lr.startWidth = width;
+            lr.endWidth = width;
             lr.numCapVertices = 4;
             lr.numCornerVertices = 4;
             lr.sortingOrder = sortingOrder;
             lr.loop = loop;
             lr.positionCount = points.Length;
             lr.SetPositions(points);
+            if (isFillOutline) FillOutlineStroke.Mark(lr);
             _lines.Add(lr);
             return lr;
         }
