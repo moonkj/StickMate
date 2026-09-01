@@ -119,7 +119,10 @@ namespace StickMate.Tests.EditMode
             yield return new TestCaseData(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret).SetName("HEAD 베레모");
             yield return new TestCaseData(EquipmentSlot.Head, AccessoryShapeBuilder.HeadStraw).SetName("HEAD 밀짚모자");
 
-            // ---- NECK. 나비넥타이·줄무늬타이·목도리는 면제 대장에 있다.
+            // ---- NECK. 나비넥타이·줄무늬타이는 면제 대장에 있다.
+            //      목도리는 2026-09-01(2차) "카드 단독 판독" 라운드가 재설계하며 합류했다
+            //      (띠 좌우 변 0.99 -> 1.22획 / 자락 폭 0.64 -> 1.2획 이상).
+            yield return new TestCaseData(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckScarf).SetName("NECK 목도리");
             yield return new TestCaseData(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell).SetName("NECK 방울목걸이");
             yield return new TestCaseData(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckPendant).SetName("NECK 펜던트");
             yield return new TestCaseData(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBandana).SetName("NECK 반다나");

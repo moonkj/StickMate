@@ -60,11 +60,11 @@ namespace StickMate.Tests.PlayMode
         /// MonocleRing / BrowlineLensFront.</para></summary>
         private static readonly (int Index, string Label, string LensShape)[] Glasses =
         {
-            (0, "선글라스",   "SunglassVisor"),
-            (1, "동그란안경", "RoundPodFront"),
+            (0, "선글라스",   "SunglassLensFront"),
+            (1, "동그란안경", "RoundLensFront"),
             (2, "고글",       "GoggleLens"),
             (3, "외알안경",   "MonoclePod"),
-            (4, "뿔테안경",   "BrowlineVisor"),
+            (4, "뿔테안경",   "BrowlineLensFront"),
             (5, "안대",       "PatchCover"),
         };
 

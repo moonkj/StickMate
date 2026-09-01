@@ -861,6 +861,10 @@ namespace StickMate.Platform.Windows
             // 재적합(전체화면 확장/해상도 변경 후 재무장)이 끝난 프레임에 좌표계를 즉시 갱신하는 훅.
             // 폴링(0.5초)을 기다리면 그 사이 원점/배율이 옛 값이라 캐릭터가 화면 밖으로 튄다.
             _enforcer.OverlayRectReporter = CaptureOverlayOrigin;
+            // 항상위 상시 감시(2026-09-01)가 OS 실측(GetWindowLong(GWL_EXSTYLE))을 하려면 HWND가 필요하다.
+            // 이 핸들은 이미 좌표계 원점 보고(CaptureOverlayOrigin)와 DPI 조회에 쓰이고 있어 실기에서
+            // 검증된 값이며, 감시자 쪽에서 IsWindow()로 유효성을 한 번 더 확인한다.
+            _enforcer.OverlayHandle = _overlayHwnd;
             _enforcer.MarkDirty();
 
             Debug.Log("[Win32WindowService] CreateOverlayWindow(): UniWindowController 확보 및 초기 상태 적용 완료 " +

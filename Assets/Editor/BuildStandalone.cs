@@ -48,6 +48,7 @@ namespace StickMate.EditorTools
             ConfigureRunInBackground();
             ConfigureAntiAliasing();
             ConfigureResidencyFootprint();
+            ConfigureRenderDiagnostics();
 
             string[] scenes = GetEnabledScenePaths();
             if (scenes.Length == 0)
@@ -171,6 +172,29 @@ namespace StickMate.EditorTools
         /// 또한 <b>런타임에 QualitySettings.antiAliasing을 바꿔도 백버퍼에 반영되지 않는다</b>
         /// (Screen.msaaSamples는 그 사실을 감춘다). 그래서 이 값을 바꾸는 유효한 지점은 여전히
         /// 여기(빌드 시점) 또는 프로세스 시작 전(Platform/RenderQualityTuner.cs)뿐이다.</para>
+        ///
+        /// <para>============================================================================<br/>
+        /// <b>★ 2026-09-01 — 이 4x는 이제 "macOS 기준값"이다. Windows는 런타임에 덮어쓴다.</b><br/>
+        /// ============================================================================<br/>
+        /// 사용자 실기 A/B(콜드 스타트)에서 <b>Windows만</b> MSAA 배수에 따라 체감 렉이 갈렸다
+        /// (4x 렉 심함 / 2x 봐줄만함 / 0x 렉 줄지만 화질 "지저분함"). macOS는 위 6쌍 실측대로
+        /// 절감이 검출되지 않으므로 <b>4x가 순이득</b>이다. 같은 값이 두 GPU 구조에서 다른 물건이라는
+        /// 뜻이라, 한쪽에 맞춰 다른 쪽을 깎지 않는다.</para>
+        ///
+        /// <para><b>그래서 플랫폼 분기를 이 함수(빌드 시점)가 아니라
+        /// <c>Platform/RenderQualityTuner.WindowsDefaultSamples</c>(프로세스 시작 시점)에 두었다.</b>
+        /// 여기서 나누지 않은 이유:
+        /// <list type="number">
+        ///   <item><c>QualitySettings.asset</c>은 <b>두 플랫폼이 공유하는 단일 에셋</b>이다. 빌드 경로마다
+        ///     다른 값을 쓰면 macOS 빌드와 Windows 빌드를 번갈아 할 때마다 그 에셋이 4 &lt;-&gt; 2로
+        ///     뒤집히며 <b>git 디프가 매번 더러워지고</b>, "마지막에 빌드한 쪽이 이긴다"는 상태가 된다.</item>
+        ///   <item>런타임 분기는 <b>사용자가 실기에서 이미 검증한 바로 그 경로</b>다 —
+        ///     <c>STICKMATE_FORCE_MSAA</c>가 효과를 낸 곳이 <c>BeforeSceneLoad</c>이고, 기본값도
+        ///     같은 지점에서 적용된다. 즉 출시 구성이 검증된 구성과 동일하다.</item>
+        ///   <item>누군가 Quality Settings UI를 만져도 Windows 실행 시 <b>자동으로 교정</b>된다
+        ///     (이 함수의 멱등 복구는 빌드할 때만 도는 반면, 런타임 교정은 매 실행 도는다).</item>
+        /// </list>
+        /// 이 함수는 계속 4x를 박는다 — 그게 macOS 값이자 에디터 작업 기준값이기 때문이다.</para>
         /// </summary>
         public static void ConfigureAntiAliasing()
         {
@@ -189,6 +213,42 @@ namespace StickMate.EditorTools
 
             Debug.Log($"[BuildStandalone] QualitySettings.antiAliasing={TargetAntiAliasing} 적용 완료 " +
                 $"(전체 {names.Length}개 품질 레벨) — 투명 창에서 캐릭터 윤곽선 계단 현상 제거용.");
+        }
+
+        /// <summary>
+        /// <b>GPU 프레임 시간 계측을 켠다</b>(<c>PlayerSettings.enableFrameTimingStats</c>).
+        /// 2026-09-01 "윈도우만 렉" 라운드에서 추가.
+        ///
+        /// <para><b>왜 필요한가 — 이게 없으면 Windows 렌더 비용을 측정할 방법이 아예 없다.</b>
+        /// 이 앱은 60fps 상한이 걸려 있어서, GPU가 한 프레임에 9ms를 쓰든 3ms를 쓰든
+        /// <b>CPU 프레임 시간은 똑같이 16.7ms로 보인다</b>. 즉 프레임 시간만 보면 MSAA를 4x에서 0x로
+        /// 내려도 "차이 없음"이라는 잘못된 결론이 나온다. 그런데 그 6ms는 사라진 게 아니라
+        /// <b>사용자의 다른 앱이 쓸 수 있었던 GPU 시간</b>이고, 그것이 정확히 신고 "앱 수치는 낮은데
+        /// 시스템이 느려짐"의 정체다. 이 설정을 켜야 <c>FrameTimingManager</c>가 GPU 프레임 시간을
+        /// 돌려주고, <c>Platform/FramePacing.cs</c>의 <c>RenderDiagnostics</c>가 그 값을 로그에 남긴다.</para>
+        ///
+        /// <para><b>개발 머신이 macOS라 Windows 실기 프로파일러를 붙일 수 없다</b>는 이 프로젝트의
+        /// 구조적 제약 때문에, 앱이 스스로 찍는 이 숫자가 사실상 유일한 원격 계측 수단이다.</para>
+        ///
+        /// <para><b>대가(정직하게)</b>: 프레임마다 GPU 타이머 질의가 붙는다. 오버헤드는 작다고
+        /// 알려져 있지만 0은 아니다. 24시간 상주 앱이므로, 훗날 이 항목이 실측에서 유의미한 비용으로
+        /// 잡히면 이 한 줄을 false로 돌리면 된다(그 순간 진단 로그는 "측정 불가"라고 스스로 밝힌다 —
+        /// 0을 진짜 값인 척 찍지 않는다). 수집 자체도 <c>RenderDiagnostics</c>가 시작 후 60초만 하고
+        /// 멈춘다.</para>
+        ///
+        /// <para>두 빌드 경로가 모두 부른다 — 플랫폼 간 진단 능력이 갈리면 "한쪽에서만 재현되는 문제"를
+        /// 비교할 수 없게 되기 때문이다(이번 라운드가 정확히 그 상황이었다).</para>
+        /// </summary>
+        public static void ConfigureRenderDiagnostics()
+        {
+            if (!PlayerSettings.enableFrameTimingStats)
+            {
+                PlayerSettings.enableFrameTimingStats = true;
+            }
+
+            Debug.Log("[BuildStandalone] enableFrameTimingStats=true 적용 완료 — " +
+                "GPU 프레임 시간 계측 활성화. 60fps 상한에 가려 보이지 않는 렌더 비용을 " +
+                "[렌더진단] 로그로 드러내기 위한 설정.");
         }
 
         /// <summary>
@@ -334,6 +394,7 @@ namespace StickMate.EditorTools
             ConfigureRunInBackground();
             ConfigureAntiAliasing();
             ConfigureResidencyFootprint();
+            ConfigureRenderDiagnostics();
             ConfigureWindowsTransparencySettings();
 
             string[] scenes = GetEnabledScenePaths();

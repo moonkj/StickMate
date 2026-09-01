@@ -245,86 +245,88 @@ namespace StickMate.Tests.EditMode
         }
 
         // ============================================================================
-        // 3. 날개 — 두 깃의 어깨 쪽 닫힘변
+        // 3. 날개 — <b>한 쌍</b>이고, 두 깃이 등뼈와 한 몸으로 이어진다
         // ============================================================================
+        //
+        // ★ 2026-09-01(2차) 이 절의 뜻이 바뀌었다. 옛 검사는 "두 깃의 어깨 쪽 닫힘변이 획보다
+        //   길다"(0.90 / 0.86획 -> 1.20획)만 봤는데, 그때 두 깃은 <b>둘 다 진행 반대쪽</b>으로만
+        //   뻗는 겹친 도형이었다 — 즉 규칙 1은 지키면서 <b>날개 한 짝</b>을 그리고 있었고,
+        //   리더 육안 검증이 카드에서 그것을 "나뭇잎 한 장 / 깃발"로 판정했다(Tasklist V7).
+        //   규칙 1은 "획에 먹히는가"만 재지 "이름대로 보이는가"는 재지 않는다.
+        //   그래서 옛 좌표를 얼려 둔 네거티브 컨트롤도 함께 폐기했다 — 그 좌표는 이제 존재하지
+        //   않는 설계(한 짝짜리 날개)의 것이고, 살려 두면 되돌아갈 자리를 남기는 셈이다.
 
         [Test]
-        public void 날개_두_깃의_어깨_닫힘변이_획_하나보다_길다()
+        public void 날개_두_깃이_좌우_한_쌍이다()
         {
             AccessoryShapeBuilder.Rig rig = Rig();
-            List<AccessoryShapeBuilder.Shape> wings =
-                Build(rig, EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackWings);
-
-            foreach (string name in new[] { "WingFeatherA", "WingFeatherB" })
+            foreach (int item in new[]
             {
-                AccessoryShapeBuilder.Shape feather = AccessorySilhouetteMetrics.Find(wings, name);
-                Assert.IsNull(AccessoryStrokeBudgetTests.DescribeRuleOneViolation(feather, BudgetWorld(rig)),
-                    $"{name}이 규칙 1을 어깁니다.");
-                Assert.Greater(ClosingEdgeInStrokes(feather), 1f,
-                    $"{name}의 어깨 쪽 닫힘변이 {ClosingEdgeInStrokes(feather):F2}획입니다 " +
-                    "(옛 값 A 0.90 / B 0.86획) — 어깨 뿌리가 획에 먹혀 뭉개집니다.");
+                AccessoryShapeBuilder.BackWings, AccessoryShapeBuilder.BackFairyWings,
+            })
+            {
+                List<AccessoryShapeBuilder.Shape> wings = Build(rig, EquipmentSlot.Shoulders, item);
+                Vector3[] a = AccessorySilhouetteMetrics.Find(wings, "WingFeatherA").Points;
+                Vector3[] b = AccessorySilhouetteMetrics.Find(wings, "WingFeatherB").Points;
+                string label = ItemCatalog.Item(EquipmentSlot.Shoulders, item).DisplayName;
+
+                Assert.AreEqual(a.Length, b.Length, $"{label}: 두 깃의 점 수가 다릅니다.");
+                for (int i = 0; i < a.Length; i++)
+                {
+                    // 한쪽은 점 순서가 뒤집혀 있다(두 짝의 회전 방향을 맞추기 위해서다).
+                    Vector3 mirror = b[b.Length - 1 - i];
+                    Assert.AreEqual(-a[i].x, mirror.x, 1e-5f,
+                        $"{label}: {i}번 점이 좌우 대칭이 아닙니다 — 날개는 <b>쌍</b>이어야 합니다.");
+                    Assert.AreEqual(a[i].y, mirror.y, 1e-5f,
+                        $"{label}: {i}번 점의 y가 짝과 다릅니다.");
+                }
             }
         }
 
-        /// <summary>
-        /// 어깨에 붙는 <b>첫 점</b>은 등뼈(<c>WingSpine</c>)의 시작점과 같은 자리다.
-        /// <para>닫힘변을 늘리는 가장 쉬운 방법이 "첫 점을 옮기는 것"인데, 그러면 등뼈가 깃에서 떨어져
-        /// 규칙 4(부착)를 어긴다. 그래서 아래쪽 꼭짓점만 움직였다는 사실을 잠근다 —
-        /// 다음 사람이 같은 값을 반대쪽에서 만들려다 이 조건을 깨는 것을 막는다.</para>
-        /// </summary>
         [Test]
-        public void 날개_등뼈는_깃의_어깨_꼭짓점에_그대로_붙어_있다()
+        public void 날개_두_깃과_등뼈가_한_점에서_만난다()
         {
             AccessoryShapeBuilder.Rig rig = Rig();
-            List<AccessoryShapeBuilder.Shape> wings =
-                Build(rig, EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackWings);
+            foreach (int item in new[]
+            {
+                AccessoryShapeBuilder.BackWings, AccessoryShapeBuilder.BackFairyWings,
+            })
+            {
+                List<AccessoryShapeBuilder.Shape> wings = Build(rig, EquipmentSlot.Shoulders, item);
+                string label = ItemCatalog.Item(EquipmentSlot.Shoulders, item).DisplayName;
 
-            Vector3 spineRoot = AccessorySilhouetteMetrics.Find(wings, "WingSpine").Points[0];
-            Vector3 featherRoot = AccessorySilhouetteMetrics.Find(wings, "WingFeatherA").Points[0];
+                Vector3 spineRoot = AccessorySilhouetteMetrics.Find(wings, "WingSpine").Points[0];
+                Vector3[] a = AccessorySilhouetteMetrics.Find(wings, "WingFeatherA").Points;
+                Vector3[] b = AccessorySilhouetteMetrics.Find(wings, "WingFeatherB").Points;
 
-            Assert.AreEqual(spineRoot, featherRoot,
-                "등뼈의 시작점이 큰 깃의 어깨 꼭짓점과 어긋났습니다 — 두 선이 같은 자리에서 시작해야 " +
-                "날개가 등에서 자란 것으로 보입니다(37-6 규칙 4).");
+                Assert.AreEqual(spineRoot, b[0],
+                    $"{label}: 등뼈의 시작점이 깃의 뿌리와 어긋났습니다 — 좌표를 새로 적으면 " +
+                    "한쪽만 고쳐지는 순간 날개가 등에서 떨어집니다(37-6 규칙 4).");
+                Assert.AreEqual(spineRoot, a[a.Length - 1],
+                    $"{label}: 반대쪽 깃이 같은 뿌리에서 시작하지 않습니다 — 두 짝이 등 한가운데에서 " +
+                    "만나지 않으면 '한 쌍'이 아니라 '떨어진 두 조각'이 됩니다.");
+            }
         }
 
-        /// <summary>★ 네거티브 컨트롤 — 옛 꼭짓점은 <b>지금 리그에서도</b> 0.90 / 0.86획이다.</summary>
         [Test]
-        public void 컨트롤_옛_날개_꼭짓점은_규칙_1을_실제로_어긴다()
+        public void 날개_두_깃이_규칙_1을_지킨다()
         {
             AccessoryShapeBuilder.Rig rig = Rig();
-            float r = rig.HeadRadius;
-            float sy = rig.ShoulderY;
-
-            // 얼린 것은 <b>바뀐 꼭짓점 하나</b>씩이고, 나머지 네 점은 살아 있는 상수에서 받는다.
-            List<AccessoryShapeBuilder.Shape> live =
-                Build(rig, EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackWings);
-
-            var cases = new[]
+            foreach (int item in new[]
             {
-                new { Name = "WingFeatherA", Old = new Vector2(-0.45f, -0.18f), Expected = 0.90f },
-                new { Name = "WingFeatherB", Old = new Vector2(-0.30f, -0.34f), Expected = 0.86f },
-            };
-
-            foreach (var c in cases)
+                AccessoryShapeBuilder.BackWings, AccessoryShapeBuilder.BackFairyWings,
+            })
             {
-                Vector3[] now = AccessorySilhouetteMetrics.Find(live, c.Name).Points;
-                var oldPoints = new Vector3[now.Length];
-                for (int i = 0; i < now.Length - 1; i++) oldPoints[i] = now[i];
-                oldPoints[now.Length - 1] = rig.F(r * c.Old.x, sy + r * c.Old.y);
-
-                Assert.AreNotEqual(oldPoints[now.Length - 1], now[now.Length - 1],
-                    $"{c.Name}의 아래 꼭짓점이 옛 값으로 되돌아갔습니다.");
-
-                var old = new AccessoryShapeBuilder.Shape("Old" + c.Name, oldPoints, true,
-                    AccessoryShapeBuilder.SortBack, filled: true);
-
-                float closing = Vector3.Distance(oldPoints[oldPoints.Length - 1], oldPoints[0])
-                                / (W * rig.HeadRadius);
-                Assert.AreEqual(c.Expected, closing, 0.01f,
-                    $"옛 {c.Name}의 닫힘변이 {closing:F2}획으로 측정됩니다 — 대장의 실측값({c.Expected:F2}획)과 " +
-                    "어긋나므로 이 컨트롤은 다른 도형을 재고 있습니다.");
-                Assert.IsNotNull(AccessoryStrokeBudgetTests.DescribeRuleOneViolation(old, BudgetWorld(rig)),
-                    $"옛 {c.Name}이 규칙 1을 통과한다고 나옵니다 — 검사기가 눈이 멀었습니다.");
+                List<AccessoryShapeBuilder.Shape> wings = Build(rig, EquipmentSlot.Shoulders, item);
+                string label = ItemCatalog.Item(EquipmentSlot.Shoulders, item).DisplayName;
+                foreach (string name in new[] { "WingFeatherA", "WingFeatherB" })
+                {
+                    AccessoryShapeBuilder.Shape feather = AccessorySilhouetteMetrics.Find(wings, name);
+                    Assert.IsNull(AccessoryStrokeBudgetTests.DescribeRuleOneViolation(feather, BudgetWorld(rig)),
+                        $"{label} {name}이 규칙 1을 어깁니다.");
+                    Assert.Greater(ClosingEdgeInStrokes(feather), 1f,
+                        $"{label} {name}의 닫힘변이 {ClosingEdgeInStrokes(feather):F2}획입니다.");
+                }
             }
         }
 

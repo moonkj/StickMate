@@ -50,7 +50,8 @@ namespace StickMate.Tests.EditMode
     /// "고쳤는데 면제로 남기는" 길을 막고 있으므로, 고친 라운드는 여기서 지울 수밖에 없다.
     /// 그것이 이 대장의 설계 의도이고, 이번이 그 설계가 <b>실제로 작동한 첫 사례</b>다.
     ///
-    /// 남은 면제 9개는 NECK 3종(나비넥타이·줄무늬타이·목도리) 8개와 HEAD 털모자 띠 1개다.
+    /// 남은 면제 6개는 NECK 2종(나비넥타이·줄무늬타이) 5개와 HEAD 털모자 띠 1개다
+    /// (목도리 3개는 2026-09-01 2차 라운드가 재설계로 닫았다).
     /// 털모자 띠는 리더가 <b>백로그</b>로 뺐다(실루엣 재설계 — 아래 사유 참고).
     /// </summary>
     public sealed class AccessoryRuleOneCoverageTests
@@ -90,12 +91,11 @@ namespace StickMate.Tests.EditMode
                 "줄무늬 잉크 사각형 0.87획 — 화면에 존재하지 않는 선이다."),
             new Waiver(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckStriped, "TieStripeB",
                 "줄무늬 잉크 사각형 0.87획."),
-            new Waiver(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckScarf, "ScarfWrap",
-                "띠의 좌우 변이 0.99획(높이 0.34R). 1.0획에 1%만큼 못 미친다."),
-            new Waiver(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckScarf, "ScarfTailA",
-                "자락 폭 0.22R = 0.64획. 두 자락이 같은 값이라 함께 고쳐야 한다."),
-            new Waiver(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckScarf, "ScarfTailB",
-                "자락 폭 0.22R = 0.64획."),
+            // ---- 목도리 3개(ScarfWrap 0.99획 / ScarfTailA·B 각 0.64획)는 2026-09-01(2차)
+            //      "카드 단독 판독" 라운드가 도형을 다시 그리면서 <b>빠졌다</b>. 그 라운드의 목적은
+            //      규칙 1이 아니라 "카드가 장화로 보인다"(리더 육안 검증 V8)였는데, 자락이 획에
+            //      먹혀 <b>한 덩어리 기둥</b>으로 합쳐진 것이 바로 그 장화의 세로선이었다 —
+            //      즉 두 결함은 같은 원인이었고 한 번에 닫혔다.
 
             // ---- BACK. 날개 두 깃(0.90 / 0.86획)과 배낭 어깨끈(1.32획)은 2026-09-01 마지막 정리
             //      라운드가 고쳐서 여기서 빠졌다. 이 카테고리에는 이제 면제가 하나도 없다.
@@ -259,10 +259,10 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 커버리지가_2026_09_01_수준_아래로_내려가지_않는다()
         {
-            // 2026-09-01 마지막 정리 라운드에서 22 -> 26종 / 면제 14 -> 9개로 올라갔다.
             // 래칫은 <b>올라간 자리에서 다시 잠근다</b> — 옛 값으로 두면 방금 갚은 빚을 다시 질 수 있다.
-            const int itemsAtRatchet = 26;      // 30종 중 완전 통과
-            const int waivedShapesAtRatchet = 9;
+            // 2026-09-01(2차) 목도리가 합류해 26 -> 27종 / 면제 9 -> 6개가 됐다.
+            const int itemsAtRatchet = 27;      // 30종 중 완전 통과
+            const int waivedShapesAtRatchet = 6;
 
             int items = 0, clean = 0;
             ForEachItem((slot, item) =>

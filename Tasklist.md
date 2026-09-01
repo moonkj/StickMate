@@ -15490,6 +15490,104 @@ H7이 그 사실을 단언으로 못 박았다.
 특히 확인할 것: **천모자 챙 뿌리가 3.8배 두꺼워져 "챙"이 아니라 "이마 띠"로 보일 가능성**,
 폼폼 27% 확대, EYES 바이저 6종, 헤어/목걸이 재설계, 신규 아이템 14종, 초상화 액자 미리보기.
 
+## ★★ 카드 단독 판독 라운드 (2026-09-01, coder) — 위 육안 결함 9건 대응 + 지표 3종 신설
+
+리더 육안 검증(바로 아래 절)의 V1~V9 전건을 도형 재설계로 닫았다. **이번에는 수치로 끝내지 않고
+실제 빌드를 실행해 카드를 확대 판독했다.** 수정 전/후 캡처는
+`scratchpad/visual/`(리더 원본 + `after_*.png`)와 `scratchpad/geo/ALL_before_after.png`에 있다.
+
+### 0. 먼저 확인한 것 — 원인 가설이 맞았다
+리더의 가설("EYES는 얼굴에 얹혔을 때를 기준으로 만들어졌고 카드는 머리 없이 도형만 그린다")을
+**카드 렌더러를 오프라인으로 복제해 검증했다**. 옛 좌표를 그대로 넣어 그린 결과가 리더 캡처와
+픽셀 수준으로 일치했다(화살표·아령·한쪽 고리·따로 노는 원+선). 즉 카드가 이상한 것은 색이나
+렌더링이 아니라 **도형 그 자체**이고, 맥락(머리)이 사라지면 무너지는 조형이었다.
+
+**해법은 (2) "도형 자체를 단독으로도 읽히게 고친다"를 골랐다.** 이유 셋:
+- (1) 머리 실루엣 힌트는 V5·V6(초상화에서 부리처럼 튀어나온 끝 / 공중에 뜬 안경다리)을 **못 고친다**.
+  그 둘은 실물 쪽 결함이라 어차피 도형을 손대야 한다.
+- 같은 이유로 B군(날개·목도리)·C군(망토)도 도형 수정이 필요하다. 카테고리마다 다른 해법을 쓰면
+  "카드 그림의 규칙"이 둘이 된다.
+- 모자 4종이 **머리 없이도 잘 읽히는** 이유가 이미 답이었다: 관(crown)이 좌우 대칭인 덩어리라
+  단독으로 성립하고, 챙이 방향만 얹는다. 같은 문법을 EYES에 적용했다.
+
+### 1. 수정 전/후 캡처 판독 (실제 빌드 15:23, 정보창 확대)
+
+| # | 항목 | 수정 전(리더 판독) | 수정 후(실빌드 확대 판독) |
+|---|---|---|---|
+| V1 | 선글라스 카드 | 오른쪽 화살표/커서 | **렌즈 2장 + 코다리** — 안경으로 읽힌다 |
+| V2 | 동그란안경 카드 | 아령(덤벨) | **원 2개 + 꼭대기를 잇는 아치** — 둥근 안경으로 읽힌다 |
+| V3 | 고글 카드 | 왼쪽에만 곡선, 쏠린 기형 | **좌우 대칭 주황 테/끈 + 렌즈** — 고글로 읽힌다 |
+| V4 | 외알안경 카드 | 원과 선이 따로 논다 | 체인이 **알의 최하 꼭짓점에서 출발**(간격 0) |
+| V5 | 선글라스 바이저 끝(초상화) | 부리/주둥이 | **뾰족한 끝 자체를 없앴다** — 판이 머리 원 안에 온전히 담긴다 |
+| V6 | 안경다리(초상화) | 공중에 뜬 막대 | **다리를 삭제**했다(아래 "못 고친 것" 참고) |
+| V7 | 날개 카드 | 나뭇잎 한 장/깃발, 한 짝 | **좌우 한 쌍** — 등 한가운데에서 만난다 |
+| V8 | 목도리 카드 | 장화/파이프 | **목에 감긴 고리 + 앞뒤 자락 2개** — 목도리로 읽힌다 |
+| V9 | 짧은망토 vs 긴망토 | 거의 동일 | 긴망토에 **제비꼬리(갈라진 밑단)** — 카드에서 즉시 갈린다 |
+
+**추가로 발견해 함께 고친 것(리더 미보고 — 캡처에서 잘려 있던 자리)**
+- **뿔테안경**: 카드가 "뚜껑 달린 상자"로 읽혔다. 테 1장 + 렌즈 2장으로 바꿨다.
+- **안대**: 끈이 천에서 **0.50획 떠 있었다**(연결성 지표가 잡았다). 이제 끈이 천의 뒤쪽 두 꼭짓점에서 출발한다.
+- **요정날개**: 형제인 날개와 같은 "한 짝" 결함. 같은 이유로 한 쌍이 됐다.
+
+### 2. ★ 신설 지표 3종 — "이름대로 읽히는가"에 근접한 자
+`Tests/EditMode/AccessoryNameLegibilityTests.cs`. 셋 다 **옛 좌표를 얼린 네거티브 컨트롤**을 함께 둔다.
+
+| 지표 | 재는 것 | 옛 값 | 새 값 | 문턱 |
+|---|---|---|---|---|
+| **A 쌍 대칭성** | 쌍이어야 하는 것이 쌍인가 | 날개 **1.000**(완전 쏠림) / 선글라스 0.429 | 날개 0.000 / 선글라스 0.059 | ≤0.15 |
+| **B 부품 연결성** | 부품이 한 덩어리로 묶이는가 | 외알안경 0.30획 / 안대 0.50획 **떨어짐** | 전부 0.00획 | ≤0.25획 |
+| **C 카드 정규화 실루엣 차** | **카드에서** 두 아이템이 다른 그림인가 | 짧은망토 vs 긴망토 **0.108** | 0.180 | ≥0.15 |
+
+**지표 C가 이번 라운드의 핵심 발견이다.** 기존 실루엣 지표는 **월드 좌표**로 재는데
+카드(`AccessoryCardIcon`)는 도형을 상자에 꽉 차게 **다시 스케일한다**. 그래서 "길이가 다르다"는
+차이는 카드에서 **원리적으로 사라진다** — 두 망토는 월드 지표를 넉넉히 통과하면서 카드에서는
+같은 그림이었다. V9은 지표의 눈이 먼 자리였지 도형만의 문제가 아니었다.
+
+### 3. ★ 정직하게 적는다 — 지표가 원리적으로 못 보는 것
+- **V3(고글)은 새 지표 셋 중 무엇으로도 안 잡힌다.** 옛 고글은 채움이 좌우 대칭이라 A가 0.000이고,
+  끈이 렌즈에서 0.04획밖에 안 떨어져 B도 통과한다. "머리가 있어야만 성립하는 그림"이라는 성질은
+  여기 있는 어떤 자로도 잴 수 없다 — **육안 캡처로만** 잡힌다.
+- 지표 C의 문턱 0.15는 확인된 결함(0.108)과 가장 빠듯한 합격(0.180) 사이가 넓지 않다. 즉 이 자는
+  "확실히 다른가"가 아니라 **"거의 같은 그림인가"만** 잡는다. 값이 커졌다고 그림이 좋아졌다는 뜻이 아니다.
+- **V6은 "고쳤다"기보다 "포기하고 없앴다"**: 머리 반경이 1.0R이라 관자놀이 다리가 실제로 그려질 수
+  있는 길이는 0.06R(획의 17%)뿐이다. 그보다 길면 반드시 머리 밖 허공에 뜬다. 즉 이 조형에서
+  **안경다리는 그릴 수 없다** — 대신 렌즈 2장 + 코다리가 "안경"을 말하게 했다.
+
+### 4. 검증 결과
+- EditMode 전체 **721개 중 720 통과 / 0 실패**(1건은 원래 Skip: Windows 가상데스크톱 미해결 항목).
+  액세서리 관련 187개 전부 통과.
+- 기존 지표 **하나도 완화하지 않았다**: 규칙 1(획 예산), 실루엣 구분 ≥1.5W, 규칙 4 간격, 채움
+  불투명·눈 자리 덮기·좌우 반전 거울, 레이어 순서 전부 그대로다.
+- **커버리지가 올랐다**: 목도리가 재설계로 규칙 1을 통과해 획 예산 린트에 합류
+  (26 → **27종** / 면제 도형 9 → **6개**). 래칫도 그 자리에서 다시 잠갔다.
+- macOS 빌드 성공(종료코드 0). `xcheck.sh osx` / `win` **둘 다 에러 0**.
+- 실행 → `key I` → 캡처 → 확대 판독 → 정상 종료(Unity 종료 시퀀스 3/3줄).
+  세이브는 백업 → 원복, **SHA 일치 확인**(장비 착용 상태 무변경. 실행 중 오른 XP 5.5 / 시간 220초는
+  원복으로 되돌렸다).
+
+### 5. 건드리지 않은 것 (리더 지시)
+모자 4종(천모자/털모자/중절모/왕관), 나비넥타이, 줄무늬타이 — **좌표 한 줄도 손대지 않았다.**
+수정 후 캡처에서 넷 다 그대로 잘 읽히는 것을 확인했다(`after_head_row.png`, `after_neck_row.png`).
+
+### 6. 교차 레이어 영향
+- `Interaction/CharacterAccessoryRenderer.cs`·`CharacterPortraitStage.cs`는 **무수정**이다.
+  둘 다 `AccessoryShapeBuilder`만 호출하므로 도형 변경이 자동으로 따라간다.
+- `GlassesTempleReachRatio`(1.02R)를 **일부러 남겼다** — 렌더러의 `GlassesTempleTipLocalX`
+  프로퍼티와 `CharacterAccessoryScaleTests`가 읽는다. 안경다리는 사라졌지만 이제 그 x는
+  **동그란안경 뒤쪽 렌즈의 바깥 끝**(0.64R + 0.38R = 1.02R)이라 여전히 실제 잉크를 가리킨다.
+- 사양 이탈 1건(리더 판단 요청): 33-2-2 #3이 고글 스트랩을 "가장 비대칭인 요소이므로 facing 반전
+  회귀 대상"으로 지목했으나, **그 비대칭이 V3의 원인**이라 좌우 대칭으로 바꿨다.
+  반전 회귀는 앞쪽 눈만 가리는 외알안경·안대와
+  `EyesVisorOpacityTests.좌우를_반전해도_같은_판이_거울로_선다`(6종 점별 검사)가 계속 맡는다.
+
+### 7. Windows 영향
+**없음.** 이 라운드가 만진 것은 `AccessoryShapeBuilder`의 좌표 상수/도형 조립과 그 테스트뿐이고,
+플랫폼 분기·P/Invoke·`IPlatformWindowService` 경로를 한 줄도 지나지 않는다. 도형은 전부
+머리 반경 R / 몸통 길이 배수라 DPI·해상도와도 무관하다. 크로스 컴파일로 확인:
+`xcheck.sh win` 에러 0(윈도우 런타임 어셈블리도 그대로 컴파일된다).
+
+---
+
 ## ★★ 리더 육안 검증 결과 (2026-09-01) — 수치가 통과시킨 것을 눈이 잡았다
 
 빌드(14:26) 후 리더가 직접 실행해 캡처/확대로 확인했다. 세이브는 백업→원복(SHA 일치) 완료.
@@ -15529,3 +15627,480 @@ H7이 그 사실을 단언으로 못 박았다.
   카드 하단 착용 버튼 + 카테고리 상호배타(선글라스 "착용 중/해제") ✓, 넘어진 횟수 삭제 ✓,
   창 불투명(뒤 비침 0) ✓, `6 / 6` 개수 표기 ✓.
 - 초상화에서 **머리 채움 + 눈 제거**가 의도대로 보인다.
+
+---
+
+## 2026-09-01 — 3번째 신고 "엑셀 클릭하면 캐릭터가 창 뒤로 넘어감" **원인 확정 + 수정** [Debugger]
+
+**결론: 가설 B(z-order 강등)가 원인. 앞선 수정 2회(macOS 게임 카테고리 / Windows 게임바 대조)는
+전부 엉뚱한 곳을 고쳤다** — 그 두 수정은 "자동 숨김 오발동"(가설 A)을 고쳤는데, 사용자가 겪은 것은
+숨김이 아니라 창 순서였다. 사용자 확인 사살: **"자동숨김이 아니라 창뒤로 넘어가는거야"**.
+
+### 과학적 토론 로그
+
+- **H-Z1(채택, 코드로 확정)** "Windows에는 topmost를 **되돌리는 주체가 아예 없다**."
+  → 검증방법: `WindowsOverlayStateEnforcer.Update()` 제어 흐름 추적 + `MarkDirty()` 호출자 전수 검색.
+  → 결과: 재적용 루프는 `if (_appliedCount >= ReapplyAttempts) return;`(=5회 x 0.5초 = **2.5초**)로
+  상한이 걸려 있고, 카운터를 되돌리는 `MarkDirty()`의 호출자는 `CreateOverlayWindow` /
+  `SetClickThrough` / `SetAlwaysOnTop` 셋뿐이다. 그중 `SetAlwaysOnTop(true)`는 `StickmanAgent.cs:449`
+  에서 **기동 시 딱 1회** 불린다. 즉 **부착 2.5초 후부터 topmost 재적용 경로가 0개**다.
+  → 결론: OS가 언제 어떤 이유로 강등시키든 영구히 복구되지 않는다. 사용자 증상("한 번 넘어가면 계속")과 일치.
+  **패리티 결함**: macOS에는 같은 자리에 상한 없는 상시 감시(`MacOverlayStateEnforcer.TickAllSpacesBehavior`,
+  2초 주기)가 이미 있었고 Windows에만 대응물이 없었다.
+
+- **H-Z2(채택, 라이브러리 소스로 반증→확정)** "설령 루프가 계속 돌아도 `topmostSkipped` 가드가
+  재적용을 영원히 건너뛴다."
+  → 검증방법: 가드가 근거로 삼은 주석("isTopmost 게터는 네이티브 진실을 되읽는다")을 패키지 소스에서 확인.
+  → 결과: **주석이 사실이 아니다.**
+  `Library/PackageCache/com.kirurobo.uniwinc@304f9ba2aa4a/Runtime/Scripts/LowLevel/UniWinCore.cs:256`
+  `public bool IsTopmost { get { return (IsActive && _isTopmost); } }` — **순수 C# 캐시 필드**다.
+  네이티브 되읽기 extern은 같은 파일 78번 줄에 **선언만 있고 패키지 전역 검색 결과 호출처 0건**.
+  → 결론: 그 가드는 같은 주석이 `isTransparent`에 대해 경고했던 "캐시 때문에 재적용을 건너뛰는
+  최악의 경우"를 `isTopmost`에서 **실제로 저지르고 있었다**. (도입: 커밋 `c256a58`, 2026-08-31.)
+
+- **H-Z3(채택, ProjectSettings 실측)** "Windows 플레이어가 **FullScreenWindow 모드로 남아** 있고,
+  Unity가 전체화면 계열 모드에서 포커스를 잃을 때 창을 뒤로 보낸다."
+  → 검증방법: `ProjectSettings/ProjectSettings.asset` 실값 + `TickFullScreenBounds`의 조건식 대조.
+  → 결과: `fullscreenMode: 1`(= FullScreenWindow, Unity 신규 프로젝트 기본값). 창 모드로 내리는
+  유일한 호출 `Screen.SetResolution(w, h, FullScreenMode.Windowed)`가 **"해상도가 다를 때"에만** 실행된다.
+  Windows는 dpi 배율 1.0이라 `targetPixelW/H == Screen.width/height`가 성립 → **조건이 거짓 → 한 번도
+  실행되지 않음**. 같은 코드가 macOS에서 멀쩡했던 이유는 Retina 배율(dpi=2)로 조건이 **항상 참**이었기
+  때문 — 한쪽에서만 우연히 성립하던 전제였다.
+  → 결론: 이것이 "macOS는 모르겠는데 Windows에서"라는 신고 문구와 정확히 맞는 플랫폼 비대칭이다.
+  **미확정 부분(정직한 한계)**: "Unity가 FullScreenWindow에서 포커스 상실 시 z-order를 내린다"는
+  이 머신에서 실행 검증이 불가능하다. 그래서 이 라운드는 (a) 모드를 명시적으로 Windowed로 내리고
+  (b) 그것과 **무관하게** 동작하는 상시 감시를 함께 넣어, 원인이 셋 중 무엇이든 복구되게 했다.
+
+- **H-Z4(기각)** "네이티브 LibUniWinC가 자체 타이머/훅으로 topmost를 스스로 되돌린다."
+  → 검증방법: `Runtime/Plugins/Windows/x64/LibUniWinC.dll` 임포트 심볼 스캔.
+  → 결과: `SetWindowPos` / `GetWindowLongW` / `SetWindowLongW`는 있으나 **`SetWinEventHook`·`SetTimer`가
+  없다**. 라이브러리는 호출받은 순간 1회만 z-order를 손댄다.
+  → 결론: 자가 복구 없음. 감시자는 우리 쪽에 있어야 한다.
+
+- **H-Z5(배제됨, 사용자 확인)** 가설 A "자동 숨김 오발동".
+  → 사용자가 직접 배제("자동숨김이 아니라 창뒤로 넘어가는거야"). 게임 카테고리 판정은 **손대지 않았다**.
+  참고로 코드 감사상으로도 `WindowsGameProcessProbe`는 조회 실패를 전부 "게임 아님"으로 떨어뜨려
+  숨기지 않는 방향으로만 틀리게 되어 있어, A가 원인이기 어려운 구조였다.
+
+### 수정 내용
+
+| 파일 | 변경 |
+|---|---|
+| `Assets/_Project/Scripts/Platform/TopmostRestorePolicy.cs` (신규) | 플랫폼 중립 **순수 규칙**: `TopmostRestorePolicy.ShouldReassert` + 전이 추적기 `TopmostWatchdogTracker`. P/Invoke 0줄이라 macOS EditMode에서 규칙 검증 가능 |
+| `Assets/_Project/Scripts/Platform/Windows/WindowsTopmostWatchdog.cs` (신규) | OS 실측(`GetWindowLong(GWL_EXSTYLE) & WS_EX_TOPMOST`) → 풀렸으면 재적용 → **전이 순간만** `[Z-ORDER]` 진단 1줄. **쓰기 계열 Win32는 선언조차 없음**(원칙 3) |
+| `WindowsOverlayStateEnforcer.cs` | (H-Z1) `TickTopmostWatchdog()`를 `_appliedCount >= ReapplyAttempts` early return **위에** 배치 → 상시 동작 / (H-Z2) 생략 판정을 라이브러리 캐시 → **OS 실측**으로 교체 / (H-Z3) `Screen.fullScreenMode != FullScreenMode.Windowed`를 조건에 추가 + 로그에 `fullScreenMode` 노출 |
+| `Win32WindowService.cs` | `_enforcer.OverlayHandle = _overlayHwnd` 배선(감시자의 OS 실측용) |
+| `Tests/EditMode/TopmostZOrderWatchdogTests.cs` (신규) | 회귀 테스트 20건 |
+
+### ★ Windows 영향: **이 라운드는 Windows 전용 수정이다** (macOS 무변경)
+- 변경된 런타임 파일 3개 중 2개가 `#if UNITY_STANDALONE_WIN` 안이고, 나머지 1개
+  (`TopmostRestorePolicy.cs`)는 신규 추가라 macOS 경로에서 **아무도 호출하지 않는다**.
+- macOS 파일은 **한 줄도 건드리지 않았다.** `MacOverlayStateEnforcer`의 `SetResolution` 조건은
+  Retina 배율 때문에 이미 항상 참이라 H-Z3이 성립하지 않으며, `TickAllSpacesBehavior`가 이미
+  H-Z1의 역할을 하고 있다. 즉 이번 수정은 **Windows를 macOS 수준으로 끌어올리는 패리티 작업**이다.
+- 크로스 컴파일 검증: `xcheck.sh win` **에러 0**, `xcheck.sh osx` **에러 0**.
+  Windows 정의 산출물 DLL 안에 신규 타입 4종(`WindowsTopmostWatchdog`/`TopmostRestorePolicy`/
+  `TopmostWatchdogTracker`/`TryReadOsTopmost`)과 진단 문자열(`Z-ORDER` 3건, `밀림 감지` 3건,
+  `되돌리기 성공` 1건, `전경 창 전환` 1건) **실제 포함 확인**(UTF-16 바이트 스캔).
+
+### 검증
+- **순수 로직 14건 전수 실행 PASS** — `TopmostRestorePolicy.cs`가 Unity 비의존이라 mono로 직접
+  하네스를 돌려 확인(재적용 조건 4건, 전이 추적 10건). 실행 못 한 채 "통과할 것"이라고 적지 않았다.
+- **정적 스캔 6건**은 grep으로 직접 대조 확인(감시 호출이 early return 위 / 캐시 가드 제거 /
+  `fullScreenMode` 조건·로그 존재 / 쓰기 Win32 미선언 7종 / 전이 전용 로그 가드).
+- 어셈블리 컴파일: `StickMate.Runtime` OK, `StickMate.Tests.EditMode` OK.
+- **미검증(정직한 한계)**: 실제 Windows에서 강등이 일어나는지, 재적용이 실제로 먹는지는 이 머신에서
+  확인 불가. 그래서 아래 로그 항목을 만들었다.
+
+### ★ Windows 실기 확인 항목 — 다음 신고 때 **이 한 줄로 원인이 갈린다**
+
+**로그 위치**: `%USERPROFILE%\AppData\LocalLow\DefaultCompany\StickMate\Player.log`
+(탐색기 주소창에 `%USERPROFILE%\AppData\LocalLow\DefaultCompany\StickMate` 붙여넣기)
+
+찾을 태그는 **`[Z-ORDER]`** 하나다. 엑셀을 클릭한 직후의 줄을 보면 된다.
+
+| 로그에 보이는 것 | 뜻 | 다음 행동 |
+|---|---|---|
+| `[Z-ORDER] 밀림 감지 -> 같은 틱에 되돌렸습니다` | **수정이 먹었다.** 강등은 여전히 일어나지만 즉시 복구 중 | 캐릭터가 여전히 사라지면 원인은 z-order가 **아니다** |
+| `[Z-ORDER] 되돌리기 성공 — NNNms 동안 밀려 있었습니다` | 되돌리긴 하는데 **느리다**. NNN이 200ms를 넘으면 눈에 보인다 | 감시 주기(`WatchIntervalSeconds=0.1`)를 줄이거나 프레임 등급을 손봐야 함 |
+| `[Z-ORDER] ★ 밀림 감지 — 되돌리기에 실패했습니다` | **라이브러리의 SetTopmost 경로 자체가 안 먹는다** | 원인이 완전히 다름 → 직접 `SetWindowPos` 경로 검토 필요 |
+| `[Z-ORDER] 전경 창 전환(항상위는 정상 유지 중)` **만** 있고 밀림 줄이 없다 | 강등이 **안 일어났다** | 원인은 z-order가 아니다 → 다른 축(합성/렌더러/숨김)으로 |
+| `[Z-ORDER]`가 **한 줄도 없다** | 감시가 안 돌고 있다 | `오버레이 창 핸들이 아직 없습니다` 경고를 확인 |
+
+각 `[Z-ORDER]` 줄에는 리더가 요구한 항목이 전부 들어 있다:
+우리 창의 `WS_EX_TOPMOST` **재적용 전/후 실측값**, 전경 창 핸들·프로세스명·창 상태
+(최소화/최대화/전체화면/일반)·exStyle, **z-order상 우리가 위인지 아래인지**(`우리 #3 < 전경 #7`),
+재적용 실행 여부와 누적 횟수, 누적 밀림 횟수, `Screen.fullScreenMode`, 숨김중 여부, 관측 간격(ms).
+
+추가로 기동 로그에서 **`[WindowsOverlayStateEnforcer] 전체화면 확장 시도`** 줄의
+**`fullScreenMode=`** 값을 확인한다 — `Windowed`가 아니면 H-Z3이 아직 안 고쳐진 것이다.
+
+### 교차 레이어 영향 로그
+- **Platform(공용) 신규 규칙 추가**: `StickMate.Platform.TopmostRestorePolicy` / `TopmostWatchdogTracker` /
+  `TopmostWatchEvent`. macOS도 나중에 같은 규칙을 쓸 수 있도록 플랫폼 중립 폴더에 두었으나,
+  **이번 라운드에서 macOS 배선은 하지 않았다**(macOS는 이미 `TickAllSpacesBehavior`로 커버됨 —
+  증거 없는 예방적 수정 금지 원칙).
+- **로그 태그 신설 `[Z-ORDER]`**: 기존 `[전체화면판정]`/`[전체화면숨김]`과 **의도적으로 분리**했다.
+  "숨김이냐 z-order냐"를 사용자가 태그만 보고 가르게 하는 것이 이 분리의 목적이다.
+- **`Screen.fullScreenMode` 변경 가능성**: H-Z3 수정으로 Windows 플레이어가 기동 몇 초 안에
+  FullScreenWindow → Windowed로 내려간다. 창 크기/위치는 그 직후 `windowSize`/`windowPosition`
+  대입으로 모니터 전체에 다시 맞춰지고 `OverlayRectReporter`가 같은 프레임에 좌표계를 갱신하므로
+  발판/커서 좌표계에 영구 영향은 없어야 한다 — **다만 기동 시 한 번 깜빡일 가능성은 실기 확인 필요**.
+
+## 리더 결정 — z-order 원인 확정 (2026-09-01)
+
+**세 번 신고된 "엑셀 클릭하면 캐릭터가 없어짐"의 진짜 원인이 확정됐다. 앞선 수정 2회는 전부
+엉뚱한 곳을 고쳤다.** 리더가 사용자의 최초 신고 문구 "**화면 뒤로 넘어 가는 거 같음**"을
+"자동 숨김 오발동"으로 오독한 것이 원인이다. 사용자는 처음부터 정확히 말했다.
+
+원인 3중 결함 전부 승인:
+- **H-Z1**: Windows에 topmost 재적용 주체가 없었다(2.5초 상한 후 경로 0개). macOS에는 상한 없는
+  `TickAllSpacesBehavior`가 있었고 **Windows만 대응물이 없었다.**
+- **H-Z2**: "이미 topmost다" 가드가 `UniWinCore.IsTopmost`(순수 C# 캐시)를 읽으면서 주석에는
+  "네이티브 진실을 되읽는다"고 적혀 있었다 — **주석이 거짓이었다.** 도입 커밋 `c256a58`(08-31)이고,
+  사용자의 "**이전엔 안그랬던거 같은데**"와 시점이 정확히 맞는다.
+- **H-Z3**: 창 모드로 내리는 코드가 "해상도가 다를 때"만 실행 → Windows는 dpi 1.0이라 조건이
+  **항상 거짓**, macOS는 레티나(dpi 2)라 **항상 참**. macOS가 멀쩡했던 건 우연이었고, 이것이
+  "맥os는 모르겠는데 Windows에서"라는 신고 문구의 정체다.
+
+### ★ 리더가 배워야 할 것 — 사용자의 표현을 자기 가설로 덮어쓰지 마라
+사용자는 첫 신고에서 증상을 **정확히** 묘사했다("화면 뒤로 넘어간다"). 리더가 그걸 자기가 아는
+기능("자동 숨김")에 끼워 맞춰 해석했고, 그 결과 **두 라운드와 릴리즈 하나를 통째로 낭비**했다.
+신고 문구에 나온 **현상 서술은 가설보다 우선하는 증거**로 다룬다. 해석이 필요하면 사용자에게
+되물어 확인한다(이번에도 사용자가 "자동숨김이 아니라 창뒤로 넘어가는거야"라고 직접 정정해줘서야
+방향이 잡혔다).
+
+### 빌드/릴리즈 상태
+z-order 수정은 코드에 들어갔으나 **동시 진행 중인 MSAA 라운드가 `FramePacing.cs`를 편집 중이라
+트리가 컴파일 불가**(`RenderQualityTuner.DescribeState` 미존재). MSAA 라운드 완료 후 **두 수정을
+한 빌드로 묶어 릴리즈**한다 — 사용자 다운로드도 1회로 줄인다.
+
+---
+
+## [debugger/T2] Windows 알파/합성 경로 조사 — "여전히 창 겹침 + 텍스트 번짐" (2026-09-01)
+
+**신고**: (Windows 릴리즈 빌드) "여전히 창 겹침현상 텍스트도 다 번져보임".
+사용자가 사진 판정까지 확인해줬다 — **"실제 사진처럼 보임"**, 즉 촬영 아티팩트가 아니라 실재 렌더링 결함.
+
+### ★ 먼저: 앞 라운드가 세워 둔 갈림길이 **발화했다**
+
+2026-08-31 알파 라운드는 이렇게 적어 뒀다:
+> "다음 Windows 빌드에서 잔상이 남는지로 **가른다**(남으면 DWM 가설 유지, 사라지면 알파 가설로 통합)."
+
+**갈림길 판정 결과: 알파 붕괴 단독 원인 가설은 반증됐다.** 근거는 추론이 아니라 출하 바이너리 실측이다.
+
+| # | 증거 | 방법 | 결과 |
+|---|------|------|------|
+| E0 | 사용자가 테스트한 그 빌드에 알파 수정이 실제로 들어 있는가 | `monodis`로 `Builds/Windows/StickMate_Data/Managed/StickMate.Runtime.dll`(빌드 시각 09-01 14:33) IL 덤프 → `UiChrome..cctor` 확인 | `PanelSurface` = `ldc.r4 1.` (**α=1.0**), `AddOpaquePanel`/`Flatten` 심볼 존재. **수정은 들어갔고 증상은 남았다** |
+
+### 가설/검증/결과 — 확정된 것 (코드·바이너리 증거)
+
+| 가설 | 검증 방법 | 결과 |
+|------|-----------|------|
+| **H1** Windows도 "프레임버퍼 알파 = OS 합성 마스크"인가? (= macOS 전제가 성립하는가) | ① `strings LibUniWinC.dll`(x64) import 목록 ② 패키지 프리팹 `UniWindowController.prefab`의 `transparentType` ③ 씬 `Main.unity`가 그 값을 덮는지 ④ 네이티브 원본(`kirurobo/UniWindowController` `libuniwinc.cpp`) | **성립한다(가설 확인).** 프리팹 `transparentType: 1`(=Alpha), 씬 오버라이드 없음 → 네이티브는 `enableTransparentByDWM()` = `DwmExtendFrameIntoClientArea(hWnd, MARGINS{-1})`. ColorKey 경로가 **아니다**. 즉 알파 1.0이면 불투명하다는 전제는 Windows에서도 참이고, **앞 라운드의 α=1 수정은 Windows에서도 유효하다**(그래서 증상이 남았다는 사실이 더 무겁다) |
+| **H2** 그렇다면 macOS/Windows가 갈리는 지점은 어디인가? | 네이티브 원본에서 우리가 켜는 API 3종(`SetTransparent`/`SetAlphaValue`/`SetClickThrough`)의 스타일 조작 전수 확인 | **갈림길 특정 성공.** `SetClickThrough(TRUE)`가 `WS_EX_TRANSPARENT`와 함께 **`WS_EX_LAYERED`를 켠다.** 그리고 disable 분기는 `WS_EX_TRANSPARENT`만 지운다 → **한 번 켜지면 레이어드가 영구히 남는다.** 이 앱은 원칙 2에 따라 클릭 관통이 기본 ON이므로 **출하 형상이 곧 "레이어드 + DWM 확장 프레임" 하이브리드**다. macOS의 클릭 관통(`ignoresMouseEvents`)은 합성 경로를 전혀 건드리지 않는다 — **이 상태는 Windows에만 존재한다** |
+| **H3** 그 레이어드 창에 레이어드 속성이 설정돼 있는가 | 네이티브 `applyWindowAlphaValue()` 호출 순서 추적 | **설정돼 있지 않다(가설 확인).** `byAlpha_=0xFF`라 스타일을 켜지 않고 `SetLayeredWindowAttributes`만 호출하는데, 그 호출은 `attachWindow()` 시점 — 아직 레이어드가 아니라 **실패**한다. 이후 클릭 관통이 레이어드만 켠다. 결과: `SetLayeredWindowAttributes`/`UpdateLayeredWindow`가 **한 번도 성립하지 않은 레이어드 창** |
+| **H4** 기존 알파 회귀 테스트 3종이 Windows 경로를 검증하는가 | `InfoWindowPanelOpacityTests` / `PopoverAndHoverPanelOpacityTests` / `SettingsWindowChromeTests` 코드 정독 | **검증하지 않는다(가설 확인).** 셋 다 **CPU 시뮬레이션**이다 — 프레임버퍼도 OS 합성기도 건드리지 않고 `dstA' = srcA² + dstA(1−srcA)`를 손으로 계산한다. 플랫폼 중립이므로 **macOS 전용도 아니지만 Windows를 덮지도 않는다.** 잠그는 것은 "uGUI 계층에 패널 전체를 덮는 반투명 겹이 없다"는 **구조 불변식** 하나뿐 |
+| **H5** 그 테스트가 이번 신고("텍스트 번짐")를 잡을 수 있었는가 | `CoverageAtCenter()` / `SimulateWindowAlphaOverPanel()` 판정 조건 확인 | **구조적으로 불가능(가설 확인).** ① `if (g is Text) return 0f;` — **글자를 명시적으로 0으로 본다** ② 패널 사각형을 **통째로 덮는** 겹만 센다(카드/구분선/보더/마스크 경계 전부 제외). 즉 이번 신고 대상이 **설계 단계에서 면제 처리**돼 있었다 |
+| **H6** 면제된 그 구간의 실제 비침량은 얼마인가 | `Blend SrcAlpha OneMinusSrcAlpha`가 알파 채널에도 걸린다는 기존 결론에 글리프 커버리지 c를 대입 | **불투명 패널 위 글자 가장자리에서 dstA = c² + 1·(1−c), 최소값 c=0.5에서 0.75 → 25% 비침.** 투명 배경 위 글자(말풍선 없는 만화체 대사)는 dstA = c², c=0.5에서 **0.25**(정상 0.5의 절반). Retina(2x)에서는 이 띠가 물리적으로 절반 크기라 눈에 덜 띄고, **Windows 100% 배율에서는 획 자체가 1~1.5px이라 글자 대부분이 이 구간에 들어간다** — 같은 결함의 체감 차이가 플랫폼별로 갈리는 이유 |
+
+### 반증된 것 / 기각한 것
+
+- **[반증] "알파 붕괴가 Windows 증상의 원인이다"** — E0. 수정이 들어간 빌드에서 증상이 그대로다.
+  다만 **완전 기각은 아니다**: H5/H6이 보여주듯 α=1 수정은 **패널 내부만** 고쳤고 글자/1px선은 손대지 않았다.
+  → **"주원인"에서 "잔여 기여"로 강등.**
+- **[기각] "촬영(사진) 아티팩트일 수 있다"** — 사용자가 실물 확인해줌.
+- **[기각] `preserveFramebufferAlpha: 0`이 범인** — 이 값은 `ProjectSettings.asset`의 **플랫폼 공통** 값이다.
+  macOS와 Windows가 같은 값을 쓰므로 **정의상 플랫폼 갈림길이 될 수 없다.** (같은 이유로
+  `useFlipModelSwapchain: 0`, `antiAliasing: 4`(6개 레벨 전부), `m_HDR: 0`도 갈림길 후보에서 제외.)
+- **[기각] "flip model이 켜져 있어 DWM 투명이 깨졌다"** — `boot.config`에 `force-d3d11-bitblt-model=`
+  (Unity가 `useFlipModelSwapchain=false`일 때 **키만** 쓰는 형식)가 실제로 기록돼 있다. BitBlt 강제는 적용됨.
+- **[기각] "DPI 인식이 없어 OS가 창을 비트맵 확대한다"** — `strings Builds/Windows/StickMate.exe`의
+  임베드 매니페스트에 `<dpiAware>True/PM</dpiAware>` + `<dpiAwareness>PerMonitorV2</dpiAwareness>`.
+  플레이어는 Per-Monitor V2 인식이다 → OS 가상화 확대는 일어나지 않는다.
+
+### 미확정 — 실기에서만 갈린다 (정직한 한계)
+
+두 증상이 **같은 원인인지 다른 원인인지 아직 확정하지 못했다.** 남은 후보는 셋이고 전부 Windows 실행이 필요하다.
+
+| 후보 | 만드는 증상 | 근거 | 갈리는 관측 |
+|------|------------|------|------------|
+| **C1** 레이어드 + DWM 확장 프레임 하이브리드(H2·H3) | 겹침 + 번짐 | 합성 경로가 둘로 갈린 상태이며 레이어드 속성이 미설정 = OS/드라이버 정의에 맡겨짐 | 로그 `WS_EX_LAYERED=True` & `레이어드속성=없음` |
+| **C2** 표시 단계 리샘플(백버퍼 ≠ 창 클라이언트) | 번짐(획이 두 겹으로 살짝 어긋남) | 08-31 신고 문구 "텍스트 획이 유령처럼 살짝 어긋난 채 겹쳐 보임"과 형태가 정확히 일치. **같은 날 z-order 라운드가 확정한 H-Z3**(플레이어가 `FullScreenWindow`로 남아 있었다)이 이 후보의 직접 공급원이다 — 전체화면 계열 모드에서 Unity는 렌더 결과를 디스플레이 해상도로 스케일할 수 있다 | 로그 `RESAMPLE` 줄의 배율 |
+| **C3** 비정수 캔버스 배율(디스플레이 125%/150%) | 번짐(글자만) | 캔버스 배율 = `GetDpiForWindow/96`. 레거시 uGUI `Text`는 `round(fontSize×배율)`로 아틀라스를 굽고 그 뒤 비정수 배로 확대한다 | 로그 `GLYPH-SCALE` 줄의 배율 |
+
+**C2는 z-order 라운드의 H-Z3 수정으로 이미 사라졌을 수 있다**(그 수정이 플레이어를 Windowed로 내린다).
+→ **다음 빌드가 이 셋을 가르는 실험이 된다.** 번짐만 사라지고 겹침이 남으면 C1, 둘 다 남으면 C1 단독,
+둘 다 사라지면 C2가 원인이었다.
+
+### 이번 라운드 산출물 — "로그 한 줄로 원인 확정" (리더 지시)
+
+Windows 실행 수단이 없는 상태에서 추측 수정을 반복하지 않기 위해, **관측을 코드로 못박았다.**
+
+- **신규 `Assets/_Project/Scripts/Platform/OverlayCompositionSnapshot.cs`** — 플랫폼 중립.
+  관측 자료구조 + **순수 판정기** `OverlayCompositionVerdict.Diagnose()`. 판정 규칙 9종
+  (`DWM-OFF` / `COLORKEY` / `CLEAR-FLAGS` / `CLEAR-ALPHA` / `CLEAR-RGB` / `RESAMPLE` /
+  `FULLSCREEN-MODE` / `GLYPH-SCALE` / `LAYERED+DWM` · `LAYERED-NOATTR` · `LAYERED-ALPHA` / `MSAA`)이
+  각각 **어느 증상(겹침/번짐/둘 다)을 만드는지까지** 분류한다.
+- **신규 `Assets/_Project/Scripts/Platform/Windows/WindowsCompositionProbe.cs`** — `#if UNITY_STANDALONE_WIN`.
+  **관측만** 한다: `GetWindowLongPtr(GWL_EXSTYLE)`로 `WS_EX_LAYERED`/`WS_EX_TRANSPARENT` **OS 실측**,
+  `GetLayeredWindowAttributes`(성공 여부 + 알파 바이트), `DwmIsCompositionEnabled`, `transparentType`,
+  카메라 clearFlags/배경 RGBA, 백버퍼 vs `clientSize` vs `windowSize`, `fullScreenMode`,
+  캔버스 배율 / `AutoUiDensityScale` / `AutoDpiScale`, MSAA 요청 vs 실측, UI 스프라이트 필터 모드.
+  **2초에 한 번 관측하고 지문(Signature)이 바뀔 때만 한 줄 찍는다** — 정상 안정 후에는 로그가 완전히 멈춘다.
+  결함이 하나라도 있으면 `LogWarning`, 아니면 `LogDebug`급 `Log`.
+- **신규 `Tests/EditMode/OverlayCompositionDiagnosticsTests.cs`** — 20건. Windows 판정 로직을
+  **macOS에서 합성 입력으로 전수 검증**한다(오탐 0 기준선 / 각 결함의 증상 분류 / 관측 실패 시 "추측 금지" /
+  지문이 19개 필드 전부의 변화를 감지하는지).
+- **배선 2줄**: `WindowsOverlayStateEnforcer.EnsureExists()`(부착 **실패** 상황에서도 관측이 돌게)와
+  `ApplyTransparentSafeCameraBackground()`(알파 소유 지점) — z-order 라운드가 편집 중인 `Update()`는 건드리지 않았다.
+
+**사용자 안내(로그 위치)**: `%USERPROFILE%\AppData\LocalLow\DefaultCompany\StickMate\Player.log`
+(탐색기 주소창에 `%USERPROFILE%\AppData\LocalLow\DefaultCompany\StickMate` 붙여넣기).
+검색어는 **`[합성진단]`** 한 단어.
+
+### 부수 발견 (Minor, 수정하지 않음 — 근거 기록만)
+
+- `WindowsOverlayStateEnforcer.ApplyTransparentSafeCameraBackground()`의 가드
+  `if (!_controller.isTransparent) return;`는 **네이티브 진실이 아니다.** 그 게터는 캐시된 C# 필드를
+  돌려주고 그 값은 씬 에셋(`Main.unity`의 `_isTransparent: 1`)에서 이미 true로 직렬화돼 있다.
+  즉 문서가 주장하는 "투명화 실패 시 밝은 회색 유지" 방어는 **성립하지 않는다**. 오늘 z-order 라운드가
+  `isTopmost`에서 발견한 것과 **완전히 같은 실패 패턴**(캐시를 진실로 착각)이다. 대체 실측 수단이 없어
+  코드는 그대로 두되 주석으로 반증을 남겼고, 새 프로브가 실기에서 이 상황(`CLEAR-RGB` 줄)을 잡는다.
+- 씬 카메라 배경은 `(0.94, 0.94, 0.94, a=0)`이다. DWM은 창 표면을 **프리멀티플라이드**로 읽으므로,
+  런타임 교정이 돌지 않으면 알파 0인 화소도 RGB가 그대로 **더해져** 바탕화면 전체가 뿌옇게 밝아진다.
+- `UiChrome.cs`가 이미 적어 둔 진짜 해법(**UI 머티리얼의 알파 블렌드 분리**,
+  `Blend SrcAlpha OneMinusSrcAlpha, One OneMinusSrcAlpha` → `dstA' = srcA + dstA(1−srcA)`)은
+  H6의 글자/1px선 잔여 비침을 **구조적으로 0으로 만드는 유일한 수단**이다. "셰이더 0건" 규약을 깨는
+  결정이라 **리더 판단 대기**로 그대로 둔다.
+
+### 교차 레이어 영향
+
+1. **z-order 라운드(H-Z3)와 원인 후보가 겹친다.** 그쪽이 플레이어를 `Windowed`로 내리는 수정을 했고,
+   그것이 내 후보 **C2(표시 단계 리샘플)를 없앨 수 있다.** 두 라운드를 한 빌드로 묶는 것이 맞고,
+   **다음 사용자 리포트가 C1/C2를 가르는 실험**이 된다.
+2. **MSAA 라운드(`RenderQualityTuner`)와 인접**. 그 라운드가 MSAA 샘플 수를 바꾸면 투명 창의 알파
+   리졸브가 함께 바뀐다. 새 프로브가 `MSAA 요청 vs 실측`을 찍으므로 그 변경의 실기 반영 여부도 같은 줄에서 보인다.
+3. **기존 알파 테스트 3종의 유효 범위를 문서화**했다(H4/H5). 앞으로 "알파 테스트가 초록이니 창 비침은
+   없다"는 추론을 하면 안 된다 — 그 셋은 **패널 전체를 덮는 겹**만 본다.
+
+### 검증
+
+- 크로스 컴파일 **오류 0 / 경고 0**: `-define:UNITY_STANDALONE_WIN`(1900b0aP) / macOS(200b0aP) 양쪽.
+  심볼 대조 — `WindowsCompositionProbe`는 **win DLL에만** 있고 osx DLL에는 없다(플랫폼 게이팅 정상),
+  `OverlayCompositionVerdict`/`OverlayCompositionSnapshot`은 양쪽에 있다(테스트 대상이므로 의도된 것).
+  ※ 컴파일 시 동시 진행 중인 MSAA 라운드의 in-flight 불일치(`RenderQualityTuner.DescribeState` 미존재)만
+  **스크래치패드 사본에서** 임시 봉합했다 — 저장소 파일은 건드리지 않았다.
+- 신규 EditMode 테스트 20건을 Unity 번들 mono + 리플렉션 러너로 실행 → **20 PASS / 0 FAIL**.
+- **Unity 에디터/PlayMode는 실행하지 않았다**(병렬 라운드가 같은 트리를 편집 중). 리더 통합 게이트에서 실행 요망.
+
+## 리더 결정 — Windows 창 겹침/번짐 조사 (2026-09-01)
+
+1. **또 "지표가 깨진 것을 잰 적 없음" 패턴이다 — 오늘 세 번째.**
+   알파 테스트의 `CoverageAtCenter()`에 `if (g is Text) return 0f;`가 있어 **텍스트가 설계 단계에서
+   검사 면제**돼 있었다. 사용자 신고가 정확히 "텍스트가 번진다"인데 그걸 검사하는 테스트가 텍스트를
+   안 보고 있었다. 카드 아이콘("서로 다른가"만 재고 "그 물건으로 보이는가"는 안 잼), 프레임 예산
+   ("통과하지만 아무것도 측정 안 함")에 이은 세 번째다.
+   **→ 규칙: 테스트에 면제(exemption)를 넣을 때는 "이 면제가 나중에 신고될 증상을 가리지 않는가"를
+   반드시 적어라. 사유 없는 면제 금지.**
+2. **macOS/Windows 합성 경로가 갈리는 지점 확정 승인**: 네이티브 `SetClickThrough(TRUE)`가
+   `WS_EX_TRANSPARENT`와 함께 `WS_EX_LAYERED`를 켜는데 disable 분기는 전자만 지운다 → 레이어드가
+   영구히 남는다. **클릭 관통이 기본 ON(원칙2)이므로 Windows 출하 형상 = "레이어드 + DWM 확장
+   프레임" 하이브리드.** macOS의 `ignoresMouseEvents`는 합성 경로를 안 건드린다.
+3. **알파 붕괴 단독 원인 가설은 반증됨**(사용자가 테스트한 그 DLL의 IL을 직접 덤프해 α=1.0 확인).
+   수정은 들어갔고 증상은 남았다 — 08-31 라운드가 예고한 갈림 실험이 발화한 것이다.
+4. **다음 빌드가 곧 판별 실험이다.** 번짐 후보 C2(표시 단계 리샘플)는 z-order 라운드의 H-Z3
+   수정(`FullScreenWindow` → 창 모드)으로 **이미 사라졌을 수 있다.** 다음 빌드에서 번짐이 사라지면
+   C2 확정, 남으면 C1/C3로 좁혀진다. `[합성진단]` 로그가 셋을 가른다.
+5. **같은 실패 패턴 3건째 발견**: `ApplyTransparentSafeCameraBackground()`의 가드도 캐시를 읽으면서
+   주석은 "안전 폴백"이라 주장한다(z-order 라운드의 `isTopmost`, 그 앞의 `isTransparent`에 이어).
+   **→ UniWindowController의 `is*` 속성은 전부 캐시로 간주하고, OS 실측이 필요하면 직접 물어라.**
+   이 규칙을 CLAUDE.md 후보로 올린다.
+
+---
+
+## 2026-09-01 — perf-doc: "맥은 멀쩡, 윈도우만 렉" — MSAA 원인 확정 + 플랫폼별 기본값 분리
+
+**신고**: "맥에서는 렉도 거의 없었는데 윈도우에서는 렉이 심함"(Windows 릴리즈 빌드).
+
+### 결과 요약 — 가설이 실기에서 확정됐다
+
+이 세션의 macOS MSAA 라운드가 남긴 미검증 예측("Windows GPU는 즉시 모드라 MSAA가 실제 대역폭
+비용이다. 이 macOS 결과는 Windows에 전이되지 않으며 별도 실기 검증이 필요하다")을 **사용자가
+콜드 스타트 A/B로 직접 확인**했다.
+
+| MSAA | 화질(사용자 표현) | 렉(사용자 표현) |
+|---|---|---|
+| 4x (기존 기본) | 좋음 | **심함** |
+| 2x | **봐줄만함** | (확인 중) |
+| 0x | **지저분함** | 줄어듦 |
+
+→ 양 끝이 모두 기각. **Windows 기본값을 2x로 분리하고 macOS는 4x를 유지**한다.
+
+### 왜 같은 설정이 두 플랫폼에서 다른 물건인가 (기구 수준 근거)
+
+| | macOS (Apple GPU, TBDR) | Windows (즉시 모드 IMR) |
+|---|---|---|
+| MSAA resolve 위치 | **타일 메모리 안**에서 종료 | **VRAM 왕복** = 실제 대역폭 |
+| 실측 결과 | 4x vs 0x 절감 **검출 안 됨**(6쌍, 부호 불일치) | 사용자 실기에서 **체감 렉이 갈림** |
+| 남는 비용 | 메모리 93MB뿐 | 대역폭 + BitBlt 표면 복사가 그 위에 얹힘 |
+
+**전제 정정 1건(중요).** 조사 지시에 있던 "레이어드 창은 GPU 결과를 CPU 접근 가능한 비트맵으로
+가져와야 한다"는 **이 앱에는 해당하지 않는다.** 동봉 네이티브를 직접 확인한 결과
+(`strings LibUniWinC.dll`) import에 `DwmExtendFrameIntoClientArea` / `SetLayeredWindowAttributes` /
+`SetWindowLongPtrW`는 있으나 **`UpdateLayeredWindow` / `GetDIBits` / `CreateDIBSection`은 0건**이다.
+즉 GPU→CPU 리드백 경로는 없고, 비용은 전부 GPU 측(resolve + 리디렉션 표면 복사 + DWM 합성)이다.
+이 정정이 없으면 절감 기대치를 과대평가하게 된다.
+
+### ★ "2x면 비용도 절반"은 추측이다 — 근거와 반대 예측
+
+MSAA 비용은 배수에 비례하는 성분과 **비례하지 않는 고정 성분**으로 나뉜다.
+
+| 성분 | 배수(N)에 따른 변화 | 이 앱에서의 크기 |
+|---|---|---|
+| 컬러 버퍼 메모리 | ∝ N | 정확히 비례 |
+| 클리어 | ~고정 | 고속 클리어(메타데이터)라 N배가 아님 |
+| 픽셀 셰이딩 | 고정 | 샘플당이 아니라 픽셀당 |
+| 그려진 픽셀의 샘플 기록 | ∝ N | **화면의 약 0.3%뿐 → 무시 가능** |
+| **resolve 패스의 존재 자체** | **고정(0 vs >0)** | N=1이면 아예 없다 |
+| **resolve 쓰기(W·H·4)** | **고정** | 화면 전체 |
+| resolve 읽기 | 명목상 ∝ N | **99% 픽셀이 "지워지기만 함" → 압축으로 대부분 소멸** |
+
+→ **예측: 4x→2x의 절감은 절반보다 작다.** 이 앱은 화면의 99% 이상이 아무것도 안 그려진 픽셀이라
+배수 비례 성분이 압축으로 사라지고 **고정 성분이 지배**한다. 4x→0x가 체감될 만큼 효과가 있었던 것도
+0x에서만 고정 성분(별도 서피스 + resolve 패스)이 통째로 사라지기 때문이라는 설명과 일관된다.
+
+**이 예측을 확정하는 법(3분)**: `STICKMATE_FORCE_MSAA`를 0/2/4로 주며 콜드 스타트 3회 →
+각 회차 `[렌더진단] ★A/B 요약`의 **GPU 프레임시간** 비교. 2x가 4x에 붙으면 고정 성분 지배(=2x는
+나쁜 절충, 셰이더 AA로 가야 함), 중간이면 배수 성분 지배(=2x가 정당한 절충).
+
+### 셰이더 AA 실현 가능성 평가 (리더 지시 — "이게 진짜 답일 수 있다")
+
+**원리적으로는 맞다.** 화면 전체 서피스에 MSAA를 거는 것은 이 앱 구조에서 낭비이고, 셰이더 AA는
+**그려진 픽셀에만** 비용이 든다. Built-in RP + `Sprites-Default.mat`(`Blend One OneMinusSrcAlpha`,
+프리멀티플라이드) 확인 완료. LineRenderer의 리본 UV는 `uv.y`가 폭 방향 0→1이므로
+`d = |uv.y-0.5|*2`, `alpha = saturate((1-d)/fwidth(d))`로 **긴 변**의 해석적 AA가 성립한다.
+
+**그런데 이 라운드에서 확정하지 못한 단 하나의 갈림길이 있다 — 캡/코너.**
+이 프로젝트는 `numCapVertices = numCornerVertices = 8`(SceneBootstrapper:115)로 둥근 캡·코너를
+**팬 지오메트리**로 만든다. 그 팬 정점의 `uv.y`가 중심선으로부터의 **반경 거리**를 담는지는
+문서화돼 있지 않고 **이 세션에서 검증하지 못했다**(Unity 미실행 — 병렬 라운드 3개와 `Library/` 경합).
+- 담으면 → 실루엣 전체가 해석적 AA로 덮인다. **MSAA 0 + 셰이더 AA가 화질·성능 둘 다 이긴다.**
+- 안 담으면 → 긴 변만 매끈하고 **관절마다 있는 캡/코너는 계단**이 남는다. AA가 불균일한 것은
+  균일한 MSAA보다 오히려 더 결함으로 보일 수 있다.
+
+**결판 실험(에디터 10분)**: EditMode에서 `numCapVertices=8`인 LineRenderer를 만들어
+`BakeMesh(mesh)` 후 `mesh.uv`/`mesh.vertices`를 덤프 → 캡 팬 정점에서 `|uv.y-0.5|*2`가
+반경 거리와 일치하는지 확인. **셰이더를 쓰기 전에 이것부터 하라.**
+
+**함께 넘기는 함정 3건(구현 라운드에서 반드시 처리):**
+1. **프리멀티플라이드 필수.** `Blend One OneMinusSrcAlpha`이므로 셰이더가 `rgb *= alpha`를 내야 한다.
+   빠뜨리면 가장자리에 프린지가 생긴다 — 과거 "반짝임" 사건과 같은 계열의 버그다.
+2. **획이 2.5~3px로 얇다.** 1px 폭 falloff가 획의 큰 비율을 먹어 **4x보다 흐리고 가늘어 보일** 수 있다.
+   최소 렌더 폭을 ~1px로 클램프하고 부족분을 알파로 환산하는 처리가 필요하다.
+3. **클릭관통 히트테스트와 교차한다.** `isHitTestEnabled` + `opacityThreshold=0.1`이라 AA된 가장자리
+   알파가 곧 클릭 가능 영역이다. 가장자리가 넓어지면 실루엣이 미세하게 커진다.
+
+**결론**: 유망하며 장기적으로 옳은 방향일 가능성이 높지만, **이 라운드에서 실현 불가**다 —
+머티리얼 배선이 `SceneBootstrapper.ConfigureLine()`과 `Interaction/*Renderer.cs` 약 15개에 흩어져
+있고 그 중 다수가 **이번 라운드 편집 금지 파일**이다. 위 결판 실험을 게이트로 한 **별도 coder 라운드**로
+넘긴다. 그때까지의 답은 2x다.
+
+### 적용한 변경
+
+| 파일 | 변경 |
+|---|---|
+| `Platform/RenderQualityTuner.cs` | `WindowsDefaultSamples = 2` 신설 + `BeforeSceneLoad`에서 **Windows 플레이어에만** 적용. `ForcedByEnvironment` / `MutatedAfterStartup` / `DescribeState()` 추가. Windows(cmd/PowerShell) A/B 실행 예시 + 콜드 스타트 필수 경고 문서화 |
+| `Platform/FramePacing.cs` | `RenderDiagnostics` 신설(콜드스타트 스냅샷 1회 / A/B 요약 1회 / 백버퍼 변경 시에만). `FrameTimeStats`를 "표본 수집"과 "로그"로 분리하고 `TrySummarize` 노출 |
+| `Assets/Editor/BuildStandalone.cs` | `ConfigureRenderDiagnostics()` 신설(`enableFrameTimingStats=true`), 두 빌드 경로에서 호출. `ConfigureAntiAliasing` 문서에 "4x는 이제 macOS 기준값" 명시 |
+| `ProjectSettings/ProjectSettings.asset` | `enableFrameTimingStats: 0 → 1` |
+| `Tests/EditMode/WindowsMsaaDefaultTests.cs` | **신규 6건** — 기본값/에셋 4x 유지/에디터 무영향/`#if` 가드/환경변수 생존/계측 설정 잠금 |
+
+**왜 `QualitySettings.asset`을 직접 나누지 않았나(리더 질문 2에 대한 답)**: 그 에셋은 **두 플랫폼이
+공유하는 단일 파일**이라 빌드 경로마다 다른 값을 쓰면 macOS/Windows 빌드를 번갈아 할 때마다
+4↔2로 뒤집혀 git 디프가 더러워지고 "마지막 빌드가 이긴다"가 된다. 런타임 분기는 반대로
+(a) **사용자가 실기에서 이미 검증한 바로 그 경로**(`STICKMATE_FORCE_MSAA`가 먹은 `BeforeSceneLoad`)이고
+(b) 누가 Quality Settings UI를 만져도 매 실행 자동 교정된다. 프로젝트 에셋은 4x(macOS 값)로 남긴다.
+
+### 진단 로그 — 사용자가 볼 것
+
+**위치**: `%USERPROFILE%\AppData\LocalLow\DefaultCompany\StickMate\Player.log`
+**검색어**: `[렌더진단]`
+
+- `[렌더진단] 콜드스타트` — 그래픽API/GPU명, 렌더타깃(백버퍼) vs 디스플레이모드 vs 시스템 해상도,
+  dpi, MSAA 상태, 카메라 `allowMSAA/allowHDR/clear`, 추정 컬러버퍼·resolve·표면복사 바이트,
+  vSync/targetFrameRate/renderFrameInterval.
+- `[렌더진단] ★A/B 요약(60초)` — **이 한 줄이 A/B 비교 단위다.** MSAA 상태 + 백버퍼 + 등급 +
+  CPU 프레임시간(평균/최악) + **GPU 프레임시간(평균/최악)**.
+- `[렌더진단] 백버퍼 변경 감지` — 모니터 전환/해상도 변경 시에만.
+
+**"이번 실행의 실제 MSAA"를 어떻게 신뢰하는가(리더 지시 4)**: `Screen.msaaSamples`는 참고값으로만
+찍고 "이 값은 백버퍼의 진실이 아니다"라고 함께 남긴다. 대신 **인과적 사실**을 기록한다 —
+`MutatedAfterStartup`이 "시작 이후에 값이 바뀌었는가"를 런타임 플래그로 들고 있어, false면
+`RequestedSamples`가 백버퍼의 진실이고 true면 그 회차 측정은 무효라고 로그가 **스스로 밝힌다**.
+행동 증거로는 GPU 프레임시간이 최종 심판 역할을 한다.
+
+**왜 GPU 프레임시간이 필수인가**: 60fps 상한 때문에 GPU가 9ms를 쓰든 3ms를 쓰든 **CPU 프레임시간은
+똑같이 16.7ms**다. 프레임시간만 보면 "차이 없음"이라는 오진이 나온다. 그 6ms는 사라진 게 아니라
+사용자의 다른 앱이 쓸 수 있었던 GPU 시간이고, 그게 신고 "앱 수치는 낮은데 시스템이 느려짐"의 정체다.
+
+**24시간 상주 규율**: 세 로그 모두 전환/1회성이다. 요약 후에는 `Tick`이 **2초에 한 번 int 2개 비교**만
+하고(GPU 타이밍 수집도 그때 멈춘다) 매 프레임 로그·매 프레임 할당은 0이다.
+
+### MSAA 외 Windows 전용 렌더 비용 점검 (리더 지시 4)
+
+| 항목 | 상태 | 판정 |
+|---|---|---|
+| 그래픽 API | `m_APIs: 02000000`(D3D11 단독), `m_Automatic: 0` | **의도대로.** D3D12/Vulkan은 투명창 불가라 선택지 없음 |
+| BitBlt 스왑체인 | `useFlipModelSwapchain: 0`, `boot.config`에 `force-d3d11-bitblt-model=` | **구조적 강제**(기확정, 재조사 안 함) |
+| vSync | Windows는 `vSyncCount=0` + `targetFrameRate=60` | 의도대로(레이어드 창은 앱 vsync가 지연만 더함) |
+| depth/stencil | `disableDepthAndStencilBuffers: 1` — **프로젝트 전역**이라 Windows에도 적용됨 | 적용됨. 단 **Windows 실기 반영 여부는 미검증**(macOS는 vmmap 121MB 소멸로 확인) |
+| 오디오 | `m_DisableAudio: 1` | 적용됨 |
+| 색공간 | `m_ActiveColorSpace: 0`(감마) | 리니어가 아니라 추가 변환 비용 없음 |
+| Standalone 품질 레벨 | 5(Ultra): `shadows:2`, `softParticles:1`, `realtimeReflectionProbes:1` | **전부 no-op으로 확인** — 씬에 실시간 광원/그림자 캐스터/리플렉션 프로브가 없고 `ParticleSystem` 사용처가 **전수 0건**이다 |
+| 그래픽 잡 | `boot.config` 비대칭 발견: **Windows만** `gfx-enable-gfx-jobs=1`, `gfx-threading-mode=6`(macOS는 4) | **비용이라 단정하지 않음**(그래픽 잡은 통상 이득). 관측 사실로만 기록 — 근거 없는 예방적 변경 금지 원칙에 따라 손대지 않았다 |
+
+### 검증
+
+- 크로스 컴파일 **에러 0**: `xcheck.sh win`(`-define:UNITY_STANDALONE_WIN`) / `xcheck.sh osx` 양쪽.
+  `RenderDiagnostics` 심볼이 win/osx 두 DLL 모두에 존재(플랫폼 중립 진단이라 의도된 것).
+  · 라운드 **시작** 시점 win 베이스라인은 `WindowsOverlayStateEnforcer.cs` 3건이었고 z-order 라운드가
+    끝나며 해소됐다.
+  · 라운드 **종료** 시점에는 동시 진행 중인 액세서리 라운드의 in-flight 편집으로
+    `Interaction/AccessoryShapeBuilder.cs`에 12건이 떠 있다(`RoundPodOffsetRatio` 등 상수 미정의).
+    **내 변경과 무관함을 격리 컴파일로 증명**했다 — 그 파일 하나만 `git show HEAD:` 사본으로 치환하고
+    나머지는 현재 트리 그대로 컴파일한 결과 **win 0건 / osx 0건**.
+- **macOS 경로 무변경 증명**: `TryGetPlatformDefault()`가 `#if UNITY_STANDALONE_WIN && !UNITY_EDITOR`
+  밖에서 **false를 반환 → `Apply()`가 호출조차 되지 않는다.** "같은 값을 다시 대입"도 아니다.
+  프로젝트 에셋의 6개 품질 레벨은 전부 `antiAliasing: 4` 그대로이며 테스트가 이를 잠근다.
+- EditMode 테스트 어셈블리 컴파일: 신규 `WindowsMsaaDefaultTests.cs` **에러 0**.
+  (같은 컴파일에서 `ItemCatalogAssetParityTests`/`PetLittleStickMateNameTests` 9건이 남는데,
+  `ItemCatalogDigest`가 `#if UNITY_EDITOR` 안에 있어 **플레이어 정의로 도는 내 임시 하네스의 한계**다.
+  실제 에디터 컴파일에는 영향 없음 — 내 변경과 무관.)
+- **Unity 에디터/PlayMode 미실행**(병렬 라운드 3개와 `Library/` 경합 회피). 리더 통합 게이트에서 실행 요망.
+
+### 실기 확인 필요 항목 (정직한 분리 — 이 머신에서는 불가능)
+
+1. **2x가 렉을 실제로 줄이는가.** `STICKMATE_FORCE_MSAA` 0/2/4 콜드 스타트 3회 →
+   `[렌더진단] ★A/B 요약`의 GPU 프레임시간 비교. 위 "고정 성분 지배" 예측의 판정도 여기서 난다.
+2. **`disableDepthAndStencilBuffers`가 Windows에서 실제로 먹는가.** macOS는 vmmap으로 확인했으나
+   Windows 미검증.
+3. A/B 시 반드시 `STICKMATE_FORCE_TIER=Active`를 함께 줄 것(등급이 다르면 비교 무효 —
+   요약 줄에 등급이 함께 찍히므로 눈으로 걸러낼 수 있다).
+4. 탐색기 더블클릭은 환경변수가 전달되지 않는다. 변수를 설정한 **그 콘솔에서** 실행할 것.
+   `setx`는 금지(영구 등록되어 평상시 실행까지 계측 모드가 된다).
+
+### 교차 레이어 영향
+
+1. **z-order 라운드와 같은 빌드에 묶인다.** 내 변경은 렌더 품질/진단이고 그쪽은 창 상태라 충돌
+   없음(`WindowsOverlayStateEnforcer.cs`는 한 줄도 건드리지 않았다).
+2. **합성 진단(`[합성진단]`) 라운드와 인접.** 그 라운드가 `MSAA 요청 vs 실측`을 찍는데, 이제
+   Windows에서 그 값이 **4가 아니라 2**로 나온다 — 그 로그를 읽는 사람이 "설정이 안 먹었나?"로
+   오해하지 않도록 이 항목을 남긴다. 두 로그는 같은 사실을 다른 각도로 본다.
+3. **셰이더 AA는 coder 라운드로 이관**(위 결판 실험이 게이트). 머티리얼 배선이
+   `SceneBootstrapper.ConfigureLine()` + `Interaction/*Renderer.cs` 약 15개에 걸쳐 있어
+   perf-doc 소유 범위를 벗어난다.
+
+**Windows 영향**: 이 라운드의 핵심 대상이 Windows다. 기본 MSAA가 4x→**2x**로 내려가고
+(macOS는 4x 유지), `[렌더진단]` 3종 로그와 GPU 프레임시간 계측이 새로 붙는다. 그래픽 API/BitBlt/
+vSync/depth·stencil 설정은 **변경 없음**. 실기 확인 필요 항목은 위 4건.

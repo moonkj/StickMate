@@ -82,6 +82,13 @@ namespace StickMate.Platform.Windows
         /// 0.5초 폴링을 기다리는 동안 캐릭터가 옛 좌표계로 튀는 구간을 없앤다.</summary>
         internal System.Action OverlayRectReporter;
 
+        /// <summary>우리 오버레이 창의 HWND(Win32WindowService.CreateOverlayWindow가 확보해 넣어준다).
+        /// 항상위 감시가 <b>OS 실측</b>을 하려면 반드시 필요하다 — 라이브러리는 자기 캐시만 돌려준다.</summary>
+        internal System.IntPtr OverlayHandle;
+
+        /// <summary>항상위 강등 감시 + 진단 로그. 아래 <see cref="TickTopmostWatchdog"/> 참고.</summary>
+        private readonly WindowsTopmostWatchdog _topmostWatchdog = new WindowsTopmostWatchdog();
+
         // 목표 상태 — Win32WindowService가 자기 API 호출 때마다 갱신한다.
         internal bool DesiredTransparent = true;
         internal bool DesiredTopmost;
@@ -90,6 +97,12 @@ namespace StickMate.Platform.Windows
 
         internal static WindowsOverlayStateEnforcer EnsureExists(UniWindowController controller)
         {
+            // ★ 2026-09-01 — 알파/합성 진단 프로브를 <b>여기서</b> 세운다(부착 성공을 기다리지 않는다).
+            //   부착이 끝내 실패하는 경우가 이 진단이 가장 필요한 순간인데, 부착 이후 경로에만 걸어 두면
+            //   정확히 그때 아무 관측도 남지 않는다. 프로브는 멱등이고 2초에 한 번, 지문이 바뀔 때만
+            //   찍는다(WindowsCompositionProbe 문서 참고).
+            WindowsCompositionProbe.EnsureExists(controller, null);
+
             var existing = UnityEngine.Object.FindAnyObjectByType<WindowsOverlayStateEnforcer>(FindObjectsInactive.Include);
             if (existing != null)
             {
@@ -167,7 +180,14 @@ namespace StickMate.Platform.Windows
             // 순서 중요: 재무장을 먼저 판정해야 같은 프레임의 TickFullScreenBounds()가 곧바로 다시 돈다.
             TickDisplayTopology();
             TickFullScreenBounds();
+            TickTopmostWatchdog();
 
+            // ★ 위 TickTopmostWatchdog()이 이 return **위에** 있는 것이 핵심이다(2026-09-01).
+            //   아래 재적용 루프는 ReapplyAttempts(5) x 0.5초 = 2.5초로 상한이 걸려 있어, 기동 몇 초 뒤엔
+            //   영원히 돌지 않는다. 그래서 그 뒤에 OS가 우리 창을 z-order에서 강등시키면 되돌릴 주체가
+            //   아무도 없었다 — 사용자가 3번 신고한 "엑셀 클릭하면 캐릭터가 창 뒤로 넘어감"의 직접 원인.
+            //   macOS판은 같은 자리에 TickAllSpacesBehavior()라는 상시 감시가 이미 있었고
+            //   (MacOverlayStateEnforcer), Windows에만 대응물이 없었다.
             if (_appliedCount >= ReapplyAttempts) return;
 
             _timer += Time.unscaledDeltaTime;
@@ -186,9 +206,22 @@ namespace StickMate.Platform.Windows
             // 5번을 무조건 다시 걸었고, 그것이 사용자가 신고한 "처음 실행시 캐릭터와 나사 버튼이
             // 깜박깜박"의 후보 중 하나다(확정된 원인 아님 — Tasklist 참고).
             //
-            // ★ 왜 isTopmost <b>만</b> 가드하는가 (나머지는 일부러 무조건 대입한다)
-            //   · isTopmost 게터는 `_isTopmost = _uniWinCore.IsTopmost`로 <b>네이티브 진실을 되읽는다</b>.
-            //     따라서 "이미 맞다"는 판정이 실제 창 상태에 근거한다 — 버려진 값은 여전히 복구된다.
+            // ★★ 2026-09-01 반증 — 위 가드의 근거가 **사실이 아니었다**(같은 버그 3번째 신고에서 발각).
+            //
+            // 원래 여기에는 이렇게 적혀 있었다: "isTopmost 게터는 `_isTopmost = _uniWinCore.IsTopmost`로
+            // 네이티브 진실을 되읽는다". 패키지 소스를 실제로 열어 보니 그 끝은 네이티브가 아니다:
+            //     UniWinCore.cs:256  public bool IsTopmost { get { return (IsActive && _isTopmost); } }
+            // 즉 <b>순수 C# 캐시 필드</b>이고, 네이티브 되읽기용 extern
+            //     UniWinCore.cs:78   public static extern bool IsTopmost();
+            // 은 <b>선언만 되어 있고 패키지 전체에서 한 번도 호출되지 않는다</b>(전수 검색으로 확인).
+            // 그래서 OS가 우리 창의 WS_EX_TOPMOST를 떼어내도 이 게터는 계속 true를 돌려주고,
+            // 가드는 "이미 목표값이니 생략"을 영원히 반복한다 — 바로 아래 문단이 isTransparent에 대해
+            // 경고하는 "캐시 때문에 재적용을 건너뛰는 최악의 경우"가 isTopmost에서 실제로 일어났다.
+            //
+            // 그래서 판정 근거를 라이브러리 캐시에서 <b>OS 실측</b>(GetWindowLong(GWL_EXSTYLE) &
+            // WS_EX_TOPMOST)으로 바꾼다. 실측을 못 읽는 상황(핸들 미확보 등)에서는 가드를 걸지 않고
+            // 무조건 재적용한다 — 모를 때는 거는 쪽이 안전하다.
+            //
             //   · isTransparent / isClickThrough 게터는 <b>캐시된 C# 필드</b>를 그대로 돌려준다
             //     (UniWindowController.cs:136-141, :126-131). 네이티브가 값을 조용히 버려도 캐시는
             //     목표값 그대로다. 여기에 같은 가드를 걸면 "투명이 실제로는 안 걸렸는데 걸린 줄 알고
@@ -197,7 +230,8 @@ namespace StickMate.Platform.Windows
             //   · isHitTestEnabled는 네이티브 부작용이 없는 평범한 public 필드라 대입 비용이 0이다.
             _controller.isHitTestEnabled = DesiredHitTest;
             _controller.isTransparent = DesiredTransparent;
-            bool topmostSkipped = _controller.isTopmost == DesiredTopmost;
+            bool topmostSkipped = _topmostWatchdog.TryReadOsTopmost(OverlayHandle, out bool osTopmost)
+                && osTopmost == DesiredTopmost;
             if (!topmostSkipped) _controller.isTopmost = DesiredTopmost;
             _controller.isClickThrough = DesiredClickThrough;
 
@@ -209,6 +243,54 @@ namespace StickMate.Platform.Windows
                 $"isClickThrough={_controller.isClickThrough}, isHitTestEnabled={_controller.isHitTestEnabled}) / " +
                 $"windowSize={_controller.windowSize}, windowPosition={_controller.windowPosition}, " +
                 $"transparentType={_controller.transparentType}.");
+        }
+
+        /// <summary>
+        /// 항상위(topmost) 상시 감시 — 2026-09-01 신설. <b>재적용 루프 상한과 무관하게 앱이 살아 있는
+        /// 내내 돈다</b>(macOS의 TickAllSpacesBehavior와 같은 계약).
+        ///
+        /// 하는 일은 세 가지뿐이고 전부 <c>WindowsTopmostWatchdog</c> 안에 있다:
+        ///   (1) <c>GetWindowLong(GWL_EXSTYLE) &amp; WS_EX_TOPMOST</c>로 <b>OS의 진실</b>을 읽는다.
+        ///   (2) 풀렸으면 <c>isTopmost</c> 대입으로 다시 건다(우리 창에만 작용 — 원칙 3 준수).
+        ///   (3) <b>전이 순간에만</b> [Z-ORDER] 한 줄을 남긴다.
+        ///
+        /// <para>숨김 중(전체화면 게임 감지)에는 재적용을 보류한다 — 게임 위로 기어 올라가는 것은
+        /// 원칙 2 위반이고, 독점 전체화면 앱과 z-order를 다투면 그쪽만 깜빡인다. 다만 <b>로그는 남긴다</b>:
+        /// "숨김 때문인가 z-order 때문인가"를 다음 신고에서 가르는 것이 이 라운드의 목적이다.</para>
+        /// </summary>
+        private void TickTopmostWatchdog()
+        {
+            // ★ 델리게이트를 필드에 캐시해 넘긴다(인라인 람다 금지). `this`를 캡처하는 람다는 Roslyn이
+            //   캐시하지 않으므로, 호출부에 그냥 쓰면 **매 프레임 델리게이트 2개**가 새로 할당된다.
+            //   Tick()은 내부 주기 가드보다 앞에서 인자를 평가하므로 조기 반환으로도 못 피한다.
+            //   24시간 상주 앱에서 초당 120개의 쓰레기는 그냥 결함이다.
+            _reassertTopmost ??= ReassertTopmost;
+            _describeOverlay ??= DescribeOverlay;
+
+            bool suspended = _agent != null && _agent.IsSuspended;
+            _topmostWatchdog.Tick(
+                Time.unscaledDeltaTime, OverlayHandle, DesiredTopmost, suspended,
+                _reassertTopmost, _describeOverlay);
+        }
+
+        private System.Action _reassertTopmost;
+        private System.Func<string> _describeOverlay;
+
+        /// <summary>topmost 재적용. 라이브러리 세터에는 동등성 가드가 없으므로
+        /// (UniWindowController.SetTopmost의 `//if (_isTopmost == topmost) return;`가 주석 처리되어 있다)
+        /// 캐시값이 목표와 같아도 네이티브 SetWindowPos까지 확실히 내려간다.</summary>
+        private void ReassertTopmost()
+        {
+            if (_controller != null) _controller.isTopmost = DesiredTopmost;
+        }
+
+        /// <summary>진단 로그에 붙일 "라이브러리가 주장하는 상태". OS 실측값과 <b>나란히</b> 찍히므로
+        /// 둘이 어긋나는 순간(= 캐시가 거짓말하는 순간)이 로그에 그대로 드러난다.</summary>
+        private string DescribeOverlay()
+        {
+            if (_controller == null) return "컨트롤러 없음";
+            return $"isTopmost(캐시)={_controller.isTopmost}, " +
+                $"windowPosition={_controller.windowPosition}, windowSize={_controller.windowSize}";
         }
 
         /// <summary>
@@ -249,7 +331,26 @@ namespace StickMate.Platform.Windows
             float dpi = Mathf.Max(0.0001f, ScreenCoordinateConverter.ResolveDpiScale(ResolveConfig()));
             int targetPixelW = Mathf.RoundToInt(monitor.width / dpi);
             int targetPixelH = Mathf.RoundToInt(monitor.height / dpi);
-            if (Screen.width != targetPixelW || Screen.height != targetPixelH)
+
+            // ★★ 2026-09-01 — 여기가 "엑셀 클릭하면 캐릭터가 창 뒤로 넘어간다"의 Windows 전용 원인이다.
+            //
+            // 이 호출의 세 번째 인자 FullScreenMode.Windowed가 말하듯, 오버레이는 **반드시 창 모드**여야
+            // 한다(테두리는 라이브러리의 SetBorderless가 없앤다). 그런데 조건이 "해상도가 다를 때"뿐이라
+            // 다음 두 사실이 겹치면 이 줄이 **한 번도 실행되지 않는다**:
+            //   (1) ProjectSettings의 fullscreenMode가 1(FullScreenWindow)이다 — Unity 신규 프로젝트 기본값.
+            //   (2) Windows에서는 dpi 배율이 1.0이라 targetPixel* == 모니터 해상도이고, 플레이어는
+            //       이미 네이티브 해상도로 떠 있다. 즉 Screen.width/height가 목표와 **이미 같다**.
+            // 결과: 플레이어가 FullScreenWindow 모드로 남고, Unity는 전체화면 계열 모드에서 포커스를
+            // 잃으면 창을 뒤로 보낸다(다른 앱을 쓸 수 있게 하는 의도된 동작). 사용자가 본 "화면 뒤로
+            // 넘어감"이 정확히 이것이다.
+            //
+            // 같은 코드가 macOS에서 멀쩡했던 이유도 여기서 갈린다: Retina 배율(dpi=2) 때문에
+            // targetPixel*가 항상 Screen.width/height와 달라 조건이 늘 참이었고, 그래서 macOS는
+            // 매번 Windowed로 내려갔다. **한쪽에서만 우연히 성립하던 전제**였던 셈이라, 조건에
+            // fullScreenMode 자체를 명시적으로 넣어 우연에 기대지 않게 한다.
+            bool resolutionMismatch = Screen.width != targetPixelW || Screen.height != targetPixelH;
+            bool modeMismatch = Screen.fullScreenMode != FullScreenMode.Windowed;
+            if (resolutionMismatch || modeMismatch)
             {
                 Screen.SetResolution(targetPixelW, targetPixelH, FullScreenMode.Windowed);
             }
@@ -279,6 +380,10 @@ namespace StickMate.Platform.Windows
                 $"모니터={monitor}, 이전(size={sizeBefore}, pos={posBefore}) -> 이후(size={sizeAfter}, pos={posAfter}), " +
                 $"clientSize={_controller.clientSize}, " +
                 $"Screen=({Screen.width}x{Screen.height}) [목표 {targetPixelW}x{targetPixelH} 픽셀, dpi배율={dpi:F3}], " +
+                // ★ fullScreenMode를 반드시 남긴다(2026-09-01): 이 값이 Windowed가 아니면 Unity가
+                //   포커스를 잃을 때 창을 뒤로 보내므로, "캐릭터가 창 뒤로 넘어간다" 신고에서 이 한 줄이
+                //   원인을 가른다. 이전 로그에는 이 값이 없어서 실기 확인이 불가능했다.
+                $"fullScreenMode={Screen.fullScreenMode}(직전 불일치: 해상도={resolutionMismatch}, 모드={modeMismatch}), " +
                 $"결과={(ok ? "성공(오차 1px 이내)" : "미달 — 다음 시도에서 재적용")}.");
         }
 
@@ -378,7 +483,21 @@ namespace StickMate.Platform.Windows
         /// </summary>
         private void ApplyTransparentSafeCameraBackground()
         {
+            // ★ 2026-09-01 — 진단 프로브를 <b>아래 조기 반환들보다 먼저</b> 세운다.
+            //   이 진단이 가장 필요한 순간이 바로 "아래 교정이 실패해 배경이 0.94 회색으로 남는" 경우다.
+            //   교정 성공 여부와 무관하게 관측이 돌아야 그 실패를 실기 로그에서 볼 수 있다.
+            //   비용: 2초에 한 번, 지문이 바뀔 때만 한 줄(WindowsCompositionProbe 문서 참고).
+            WindowsCompositionProbe.EnsureExists(_controller, ResolveConfig());
+
             if (_cameraBackgroundPremultiplyFixed) return;
+
+            // ★ 2026-09-01 주의(반증 기록) — 이 가드는 <b>네이티브 진실이 아니다</b>.
+            //   UniWindowController.isTransparent 게터는 캐시된 C# 필드(_isTransparent)를 그대로
+            //   돌려주고, 그 값은 씬 에셋에서 이미 true로 직렬화돼 있다(Main.unity의
+            //   `_isTransparent: 1`). 즉 이 줄은 사실상 항상 통과하며, 문서가 주장하던
+            //   "투명화가 실패하면 밝은 회색을 유지한다"는 방어는 <b>성립하지 않는다</b>.
+            //   같은 착각이 오늘 isTopmost에서 실제 버그로 드러났다(Tasklist 과학적 토론 로그).
+            //   실측 대체 수단이 없어 지금은 그대로 두되, 위 프로브가 실기에서 이 상황을 잡아 준다.
             if (!_controller.isTransparent) return;
 
             Camera cam = _controller.currentCamera != null ? _controller.currentCamera : Camera.main;

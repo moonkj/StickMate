@@ -459,26 +459,38 @@ namespace StickMate.Tests.EditMode
         // ============================================================================
 
         /// <summary>
-        /// 33-2-2 #3이 "가장 비대칭인 요소이므로 facing 반전 회귀 테스트 대상"으로 <b>지목한</b> 고글 스트랩.
-        /// 뒤쪽 반원(각 100°→260°)이라 오른쪽을 볼 때는 x가 전부 음수여야 하고, 왼쪽을 볼 때는 전부 양수여야 한다.
+        /// ★ 2026-09-01(2차) <b>뜻이 바뀐 검사</b>. 옛 고글 스트랩은 "뒤통수를 도는 반원"이라
+        /// 33-2-2 #3이 그것을 facing 반전 회귀의 대상으로 지목했고, 이 검사는 <b>모든 점이 x&lt;0</b>임을
+        /// 요구했다.
+        ///
+        /// <para>그 요구가 결함의 원인이었다. 카드 아이콘(<c>AccessoryCardIcon</c>)은 <b>머리 없이</b>
+        /// 도형만 그리므로, "머리를 도는 끈"은 맥락이 사라지면 <b>한쪽에만 붙은 고리</b>가 된다 —
+        /// 리더 육안 검증이 "곡선이 왼쪽에만 있어 한쪽으로 쏠린 기형 도형"으로 판정한 그 상태다
+        /// (Tasklist V3). 그래서 스트랩을 <b>좌우 대칭</b>으로 다시 그렸고, 이 검사도 그 성질을 잠근다.</para>
+        ///
+        /// <para>반전 회귀의 대상은 사라지지 않았다 — EYES에는 여전히 <b>앞쪽 눈에만</b> 있는
+        /// 외알안경·안대가 있고, <c>EyesVisorOpacityTests.좌우를_반전해도_같은_판이_거울로_선다</c>가
+        /// 6종 전부의 x 부호 반전을 점별로 검사한다.</para>
         /// </summary>
         [Test]
-        public void 고글_스트랩이_언제나_뒤통수쪽에_있다()
+        public void 고글_스트랩이_좌우로_똑같이_뻗는다()
         {
             var right = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
-            var left = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
             AccessoryShapeBuilder.Append(right, EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesGoggles, Rig(+1f));
-            AccessoryShapeBuilder.Append(left, EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesGoggles, Rig(-1f));
-
             Vector3[] r = Find(right, "GoggleStrap");
-            Vector3[] l = Find(left, "GoggleStrap");
+
+            float back = 0f, front = 0f;
             for (int i = 0; i < r.Length; i++)
             {
-                Assert.Less(r[i].x, 0f, $"오른쪽을 보는데 스트랩 {i}번 점이 얼굴 앞쪽(x={r[i].x:F4})에 있습니다.");
-                Assert.Greater(l[i].x, 0f, $"왼쪽을 보는데 스트랩 {i}번 점이 얼굴 앞쪽(x={l[i].x:F4})에 있습니다.");
-                Assert.AreEqual(-r[i].x, l[i].x, 1e-5f, "스트랩이 좌우 반전되지 않았습니다.");
-                Assert.AreEqual(r[i].y, l[i].y, 1e-5f, "좌우 반전인데 y가 함께 뒤집혔습니다(x에만 부호를 곱해야 합니다).");
+                back = Mathf.Max(back, -r[i].x);
+                front = Mathf.Max(front, r[i].x);
             }
+            Assert.AreEqual(back, front, 1e-5f,
+                $"스트랩이 뒤로 {back:F4} / 앞으로 {front:F4}만큼 뻗어 한쪽으로 쏠렸습니다 — " +
+                "카드에는 머리가 없으므로 비대칭인 끈은 '기형 도형'으로 읽힙니다(리더 육안 검증 V3).");
+
+            float reach = AccessorySilhouetteMetrics.Rig().HeadRadius * AccessoryShapeBuilder.GoggleStrapReachRatio;
+            Assert.AreEqual(reach, front, 1e-5f, "스트랩 끝이 선언한 뻗음 상수와 어긋났습니다.");
         }
 
         /// <summary>왕관은 좌우 대칭이라 방향이 바뀌어도 같은 그림이어야 한다(33-2-1 #4가 명시한 정상 동작).</summary>

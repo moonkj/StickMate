@@ -131,6 +131,7 @@ namespace StickMate.Platform
             _interactionHoldUntil = float.NegativeInfinity;
             for (int i = 0; i < TierSeconds.Length; i++) TierSeconds[i] = 0f;
             FrameTimeStats.ResetForTests();
+            RenderDiagnostics.ResetForTests();
         }
 
         /// <summary>
@@ -144,6 +145,7 @@ namespace StickMate.Platform
             _applied = true;
 
             FrameTimeStats.Configure(config);
+            RenderDiagnostics.Begin();
             ApplyDisplaySleepPolicy();
 
 #if UNITY_STANDALONE_OSX
@@ -173,6 +175,11 @@ namespace StickMate.Platform
         {
             FrameTimeStats.Tick();
             TickAdaptiveGovernor(characterIdle);
+
+            // 등급을 여기서 넘기는 이유: 진단 로그의 A/B 요약이 "이 60초를 어느 등급에서 쟀는가"를
+            // 함께 적어야 한다. 등급이 다른 두 실행을 비교하면 MSAA 차이가 아니라 프레임 수 차이를
+            // 보게 되므로, 그 무효 조건을 사람이 눈으로 걸러낼 수 있어야 한다.
+            RenderDiagnostics.Tick(_currentTier);
         }
 
         /// <summary>
@@ -244,6 +251,11 @@ namespace StickMate.Platform
         private static bool _planValid;
         private static bool _adaptiveEnabled;
         private static FramePacingTier? _forcedTier;
+
+        /// <summary>진단 로그용 — 이번 실행에서 등급이 환경변수로 고정됐는지 사람이 읽을 문자열.
+        /// A/B 비교의 유효성 판정에 쓰인다(고정 없이 잰 두 실행은 등급이 달라 비교가 무의미해질 수
+        /// 있다). 문자열 보간이 아니라 상수 반환이라 호출 비용이 0이다.</summary>
+        internal static string ForcedTierLabel => _forcedTier.HasValue ? _forcedTier.Value.ToString() : "없음";
 
         // 평소(Active) 값 — 두 플랫폼이 서로 다른 기구를 쓰지만 판단 함수는 둘 다 받는다.
         private static int _baseVSyncCount;
@@ -659,58 +671,358 @@ namespace StickMate.Platform
         private static int _sampleCount;
         private static int _sampleHead;
         private static float _reportTimer;
-        private static bool _enabled;
+        private static bool _logEnabled;
+        private static bool _sampling;
 
         internal static void ResetForTests()
         {
             _sampleCount = 0;
             _sampleHead = 0;
             _reportTimer = 0f;
-            _enabled = false;
+            _logEnabled = false;
+            _sampling = false;
         }
 
         internal static void Configure(Core.StickConfig config)
         {
-            _enabled = config != null && config.logFrameTimeStats;
+            // ★ 2026-09-01: 로그를 꺼도 **표본 수집은 계속한다.** <see cref="RenderDiagnostics"/>의
+            // A/B 요약 한 줄이 이 링 버퍼를 그대로 재사용하기 때문이다(같은 버퍼를 두 벌 만들지
+            // 않는다). 수집 비용은 프레임당 float 대입 1회 + 덧셈 2회, 할당 0이라 24시간 상주
+            // 컨벤션에 걸리지 않는다. 바뀐 것은 "언제 Debug.Log를 부르는가"뿐이다.
+            _logEnabled = config != null && config.logFrameTimeStats;
+            _sampling = true;
         }
 
         internal static void Tick()
         {
-            if (!_enabled) return;
+            if (!_sampling) return;
 
             Samples[_sampleHead] = Time.unscaledDeltaTime * 1000f;
             _sampleHead = (_sampleHead + 1) % SampleCapacity;
             if (_sampleCount < SampleCapacity) _sampleCount++;
 
             _reportTimer += Time.unscaledDeltaTime;
-            if (_reportTimer < ReportIntervalSeconds || _sampleCount < 16) return;
+            if (!_logEnabled) return;
+            if (_reportTimer < ReportIntervalSeconds || _sampleCount < MinimumSamples) return;
             _reportTimer = 0f;
 
-            int n = _sampleCount;
-            System.Array.Copy(Samples, SortScratch, n);
-            System.Array.Sort(SortScratch, 0, n);
-
-            float sum = 0f;
-            for (int i = 0; i < n; i++) sum += SortScratch[i];
-            float mean = sum / n;
-
-            float p50 = SortScratch[n / 2];
-            float p95 = SortScratch[Mathf.Min(n - 1, Mathf.RoundToInt(n * 0.95f))];
-            float p99 = SortScratch[Mathf.Min(n - 1, Mathf.RoundToInt(n * 0.99f))];
-            float max = SortScratch[n - 1];
+            if (!TrySummarize(out FrameTimeSummary s)) return;
 
             // ★ 이 값은 **게임 루프 주기**이지 화면에 실제로 나가는 주기가 아니다.
             //   renderFrameInterval이 2 이상이면 루프는 60Hz인데 프레젠트는 30fps일 수 있다 —
             //   그 차이를 모르면 "60fps인데 왜 반만 부드럽지?"라고 잘못 진단하게 되므로 함께 찍는다.
             int interval = Mathf.Max(1, OnDemandRendering.renderFrameInterval);
-            float loopFps = mean > 0f ? 1000f / mean : 0f;
+            float loopFps = s.MeanMs > 0f ? 1000f / s.MeanMs : 0f;
 
-            Debug.Log($"[프레임시간] 표본 {n}개 — 루프 평균 {mean:F2}ms({loopFps:F1}fps) " +
-                $"p50 {p50:F2}ms / p95 {p95:F2}ms / p99 {p99:F2}ms / 최대 {max:F2}ms. " +
+            Debug.Log($"[프레임시간] 표본 {s.SampleCount}개 — 루프 평균 {s.MeanMs:F2}ms({loopFps:F1}fps) " +
+                $"p50 {s.P50Ms:F2}ms / p95 {s.P95Ms:F2}ms / p99 {s.P99Ms:F2}ms / 최대 {s.MaxMs:F2}ms. " +
                 $"vSyncCount={QualitySettings.vSyncCount}, targetFrameRate={Application.targetFrameRate}, " +
                 $"renderFrameInterval={interval} -> 실제 프레젠트 약 {loopFps / interval:F1}fps" +
                 (interval > 1 ? " (적응형 절감 중)" : "") + ". " +
                 "(최대가 p50의 2배를 크게 넘으면 그 순간이 사용자가 '렉'으로 느끼는 지점이다.)");
         }
+
+        private const int MinimumSamples = 16;
+
+        /// <summary>
+        /// 링 버퍼의 <b>현재 내용</b>(최근 최대 <see cref="SampleCapacity"/>프레임 = 60fps에서 약 8.5초)을
+        /// 분위수로 요약한다. <b>할당 0</b>(미리 잡아둔 <see cref="SortScratch"/>에 복사해 정렬).
+        ///
+        /// <para>표본이 <see cref="MinimumSamples"/>개 미만이면 false를 돌려주고 아무것도 채우지 않는다 —
+        /// 시작 직후 몇 프레임의 스파이크(셰이더 컴파일/창 부착)가 "최댓값"으로 굳어 A/B 비교를
+        /// 오염시키는 것을 막는다.</para>
+        ///
+        /// <para><b>이 요약의 창(window)은 "최근 8.5초"다.</b> 실행 전체의 최악 프레임을 알고 싶으면
+        /// 이 값이 아니라 <see cref="RenderDiagnostics"/>가 워밍업 구간 전체에 걸쳐 따로 누적하는
+        /// 최댓값을 봐야 한다 — 두 숫자는 의도적으로 다른 것을 재고 있고, 로그에도 그렇게 적힌다.</para>
+        /// </summary>
+        internal static bool TrySummarize(out FrameTimeSummary summary)
+        {
+            summary = default;
+            int n = _sampleCount;
+            if (n < MinimumSamples) return false;
+
+            System.Array.Copy(Samples, SortScratch, n);
+            System.Array.Sort(SortScratch, 0, n);
+
+            float sum = 0f;
+            for (int i = 0; i < n; i++) sum += SortScratch[i];
+
+            summary.SampleCount = n;
+            summary.MeanMs = sum / n;
+            summary.P50Ms = SortScratch[n / 2];
+            summary.P95Ms = SortScratch[Mathf.Min(n - 1, Mathf.RoundToInt(n * 0.95f))];
+            summary.P99Ms = SortScratch[Mathf.Min(n - 1, Mathf.RoundToInt(n * 0.99f))];
+            summary.MaxMs = SortScratch[n - 1];
+            return true;
+        }
     }
+
+    /// <summary>프레임 시간 분위수 요약 한 벌(구조체 — 힙 할당 0).</summary>
+    internal struct FrameTimeSummary
+    {
+        internal int SampleCount;
+        internal float MeanMs;
+        internal float P50Ms;
+        internal float P95Ms;
+        internal float P99Ms;
+        internal float MaxMs;
+    }
+
+    /// <summary>
+    /// **렌더 비용 진단 로그** — "이 실행에서 실제로 무엇을, 얼마나 비싸게 그리고 있는가"를
+    /// 사용자가 Player.log 몇 줄만 보고 알 수 있게 한다(2026-09-01 "윈도우만 렉" 라운드).
+    ///
+    /// <para><b>왜 필요한가.</b> 이 앱의 Windows 렌더 비용은 <b>우리 프로세스의 CPU%에 잡히지 않는다</b>
+    /// (레거시 BitBlt 경로의 복사는 dwm.exe와 GPU 복사 엔진에 계상된다 — <see cref="FramePacing"/> 클래스
+    /// 문서의 Windows 절). 그래서 작업 관리자로는 원인이 보이지 않고, 개발 머신이 macOS라 실기 프로파일러도
+    /// 붙일 수 없다. 남은 유일한 원격 계측 수단이 <b>앱이 스스로 찍는 로그</b>다.</para>
+    ///
+    /// <para><b>세 줄만 남긴다(24시간 상주 앱이라 주기 로그를 늘리지 않는다).</b>
+    /// <list type="number">
+    ///   <item>콜드스타트 스냅샷 — 창 부착이 끝난 뒤 <b>1회</b>. 구성(그래픽 API/백버퍼/MSAA/페이싱).</item>
+    ///   <item>A/B 요약 — 워밍업 <see cref="WarmupSeconds"/>초 뒤 <b>1회</b>. 이 한 줄이 A/B 비교 단위다.</item>
+    ///   <item>백버퍼 변경 — 모니터 전환/해상도 변경 등 <b>실제로 바뀔 때만</b>. 안 바뀌면 영원히 안 찍는다.</item>
+    /// </list>
+    /// 요약을 낸 뒤에는 <see cref="Tick"/>이 <b>2초에 한 번 int 두 개를 비교</b>하는 것 외에 아무 일도 하지
+    /// 않는다(GPU 타이밍 수집도 그때 멈춘다). 매 프레임 로그·매 프레임 할당은 0이다.</para>
+    ///
+    /// ============================================================================
+    /// ★ MSAA를 A/B 할 때의 함정 — 이 클래스가 존재하는 진짜 이유
+    /// ============================================================================
+    /// <para><c>Screen.msaaSamples</c>는 <b>백버퍼의 진실을 말하지 않는다.</b> 이 프로젝트는 같은 함정에
+    /// 두 번 빠졌다: (a) Apple GPU가 8x 요청을 조용히 4x로 낮췄는데도 8을 그대로 보고했고(커밋 39ab690),
+    /// (b) 런타임에 4 -> 0으로 바꾸면 즉시 0을 보고하지만 그래픽 메모리는 1바이트도 움직이지 않았다
+    /// (<see cref="RenderQualityTuner"/>의 "닫힌 길" 주석, 2026-08-31 6쌍 실측).</para>
+    ///
+    /// <para>그래서 이 로그는 <c>Screen.msaaSamples</c>를 <b>참고값으로만</b> 찍고, 신뢰할 수 있는 지표
+    /// <b>두 개</b>를 대신 내놓는다:</para>
+    /// <list type="number">
+    ///   <item><b>적용 시점의 사실</b> — <see cref="RenderQualityTuner.MutatedAfterStartup"/>.
+    ///     MSAA가 <c>BeforeSceneLoad</c>에서만 정해졌는가(= 백버퍼에 반영될 수 있는 유일한 시점)를
+    ///     주석이 아니라 <b>런타임 플래그</b>로 확인한다. true면 그 실행의 MSAA 비교는 무효다.</item>
+    ///   <item><b>행동으로 드러난 비용</b> — <c>FrameTimingManager</c>의 <b>GPU 프레임 시간</b>.
+    ///     MSAA가 실제로 걸렸고 실제로 비싸면 여기가 갈린다. 안 갈리면 안 걸렸거나 공짜인 것이다.
+    ///     API가 뭐라고 보고하든 이 숫자가 최종 심판이다.</item>
+    /// </list>
+    ///
+    /// <para><b>왜 GPU 시간이 프레임 시간보다 결정적인가.</b> 이 앱은 60fps 상한이 걸려 있다. GPU가
+    /// 4x에서 9ms, 0x에서 3ms를 쓰더라도 <b>둘 다 60fps를 채우므로 CPU 프레임 시간은 똑같이 16.7ms다.</b>
+    /// 즉 프레임 시간만 보면 "차이 없음"이라는 잘못된 결론이 나온다. 그런데 그 6ms는 사라진 게 아니라
+    /// <b>사용자의 다른 앱이 쓸 수 있었던 GPU 시간</b>이고, 그게 정확히 신고 "앱 수치는 낮은데 시스템이
+    /// 느려짐"의 정체다. GPU 프레임 시간은 상한에 가려지지 않고 그 비용을 그대로 보여준다.</para>
+    ///
+    /// <para><b>전제</b>: <c>PlayerSettings.enableFrameTimingStats</c>가 켜져 있어야 GPU 시간이 나온다
+    /// (<c>Assets/Editor/BuildStandalone.cs</c>의 <c>ConfigureRenderDiagnostics()</c>가 빌드 때 켠다).
+    /// 꺼져 있거나 드라이버가 타이머 질의를 지원하지 않으면 <c>FrameTimingManager.IsFeatureEnabled()</c>가
+    /// false를 주고, 그때는 <b>"측정 불가"라고 적는다</b> — 0을 진짜 값인 척 찍지 않는다.</para>
+    /// </summary>
+    internal static class RenderDiagnostics
+    {
+        /// <summary>창 부착(전체 데스크톱 확장)이 끝나기를 기다리는 시간. 이보다 일찍 찍으면 백버퍼가
+        /// 아직 기본 창 크기여서 "렌더 타깃 해상도" 줄이 통째로 거짓이 된다. 값이 틀려도 백버퍼가
+        /// 나중에 바뀌면 3번 로그가 자동으로 정정하므로 여기서 크게 잡을 이유는 없다.</summary>
+        private const float SnapshotDelaySeconds = 5f;
+
+        /// <summary>A/B 요약을 내기까지의 워밍업. 짧을수록 테스트 루프가 짧아지고(콜드스타트 2회 =
+        /// 약 2분 30초) 길수록 표본이 안정된다. 60초는 셰이더 워밍업·창 부착·첫 GC가 모두 지난 뒤이면서
+        /// 사용자가 한 번의 A/B를 앉은자리에서 끝낼 수 있는 지점이다.</summary>
+        private const float WarmupSeconds = 60f;
+
+        /// <summary>요약 후 백버퍼 변화를 확인하는 주기. 매 프레임 <c>Screen.width</c>를 읽는 것은
+        /// 네이티브 호출이라 24시간 상주 앱에서는 그것조차 아깝다.</summary>
+        private const float BackbufferWatchSeconds = 2f;
+
+        // GetLatestTimings는 배열을 받아 채운다 — 미리 한 번만 잡아 재사용한다(프레임당 할당 0).
+        private static readonly FrameTiming[] TimingScratch = new FrameTiming[1];
+
+        private static bool _snapshotLogged;
+        private static bool _summaryLogged;
+        private static float _elapsed;
+        private static float _watchTimer;
+        private static int _lastWidth;
+        private static int _lastHeight;
+
+        // 워밍업 구간 전체(= 60초)에 걸친 누적. FrameTimeStats의 링 버퍼(최근 8.5초)와 달리
+        // "이번 실행에서 가장 나빴던 프레임"을 놓치지 않는다.
+        private static double _cpuSumMs;
+        private static double _cpuWorstMs;
+        private static int _cpuCount;
+        private static double _gpuSumMs;
+        private static double _gpuWorstMs;
+        private static int _gpuCount;
+        private static bool _timingFeatureAvailable;
+
+        internal static void ResetForTests()
+        {
+            _snapshotLogged = false;
+            _summaryLogged = false;
+            _elapsed = 0f;
+            _watchTimer = 0f;
+            _lastWidth = 0;
+            _lastHeight = 0;
+            _cpuSumMs = 0.0;
+            _cpuWorstMs = 0.0;
+            _cpuCount = 0;
+            _gpuSumMs = 0.0;
+            _gpuWorstMs = 0.0;
+            _gpuCount = 0;
+            _timingFeatureAvailable = false;
+        }
+
+        /// <summary><see cref="FramePacing.ApplyOnce"/>가 부른다. 여기서는 로그를 남기지 않는다 —
+        /// 이 시점의 백버퍼는 아직 창 부착 전이라 믿을 수 없기 때문이다.</summary>
+        internal static void Begin()
+        {
+            _timingFeatureAvailable = FrameTimingManager.IsFeatureEnabled();
+        }
+
+        /// <summary>
+        /// 매 프레임 호출된다. 요약이 끝난 뒤의 비용은 <b>float 덧셈 1회 + 비교 1회</b>이고,
+        /// 2초에 한 번만 <c>Screen</c>을 읽는다.
+        /// </summary>
+        internal static void Tick(FramePacingTier tier)
+        {
+            float dt = Time.unscaledDeltaTime;
+
+            if (_summaryLogged)
+            {
+                WatchBackbuffer(dt);
+                return;
+            }
+
+            _elapsed += dt;
+
+            if (!_snapshotLogged)
+            {
+                // --- 정착 구간: 아직 아무것도 재지 않는다 ---
+                // ★ 여기서 표본을 모으면 A/B가 망가진다. 시작 직후에는 셰이더 컴파일, 창 부착
+                //   (전체 데스크톱 확장), 첫 GC가 몰려 있어 **수십 ms짜리 스파이크**가 뜬다. 그것들은
+                //   MSAA와 아무 상관이 없는데 "최악 프레임" 자리를 차지해 버려서, 두 회차를 비교할 때
+                //   MSAA 차이가 아니라 그날의 시작 운을 비교하게 된다. 그래서 정착이 끝난 뒤부터만 잰다.
+                if (_elapsed < SnapshotDelaySeconds) return;
+
+                _snapshotLogged = true;
+                _lastWidth = Screen.width;
+                _lastHeight = Screen.height;
+                LogSnapshot("콜드스타트");
+                return;
+            }
+
+            // --- 측정 구간(정착 이후 ~ 워밍업 종료). 끝나면 이 블록 자체가 실행되지 않는다 ---
+            float cpuMs = dt * 1000f;
+            _cpuSumMs += cpuMs;
+            if (cpuMs > _cpuWorstMs) _cpuWorstMs = cpuMs;
+            _cpuCount++;
+
+            if (_timingFeatureAvailable)
+            {
+                FrameTimingManager.CaptureFrameTimings();
+                if (FrameTimingManager.GetLatestTimings(1, TimingScratch) > 0)
+                {
+                    double gpu = TimingScratch[0].gpuFrameTime;
+                    // 0은 "그 프레임의 타이머 질의가 아직 안 돌아왔다"는 뜻이지 "GPU가 0ms 썼다"가
+                    // 아니다. 평균에 섞으면 값이 아래로 끌려가므로 버린다.
+                    if (gpu > 0.0)
+                    {
+                        _gpuSumMs += gpu;
+                        if (gpu > _gpuWorstMs) _gpuWorstMs = gpu;
+                        _gpuCount++;
+                    }
+                }
+            }
+
+            if (_elapsed >= WarmupSeconds)
+            {
+                _summaryLogged = true;
+                LogAbSummary(tier);
+            }
+        }
+
+        private static void WatchBackbuffer(float dt)
+        {
+            _watchTimer += dt;
+            if (_watchTimer < BackbufferWatchSeconds) return;
+            _watchTimer = 0f;
+
+            int w = Screen.width;
+            int h = Screen.height;
+            if (w == _lastWidth && h == _lastHeight) return;
+
+            _lastWidth = w;
+            _lastHeight = h;
+            LogSnapshot("백버퍼 변경 감지");
+        }
+
+        // ====================================================================
+        // 로그 본문
+        // ====================================================================
+
+        private static void LogSnapshot(string reason)
+        {
+            int w = Screen.width;
+            int h = Screen.height;
+            int samples = Mathf.Max(1, RenderQualityTuner.RequestedSamples);
+            long px = (long)w * h;
+
+            // 산술 추정이다(드라이버의 프레임버퍼 압축/타일 최적화는 반영되지 않는다).
+            // 그래서 이 숫자는 "규모"를 보라고 찍는 것이지 벤치마크 값이 아니다 — 실제 비용은
+            // 아래 A/B 요약의 GPU 프레임 시간이 말한다.
+            double colorMb = px * 4.0 * samples / (1024.0 * 1024.0);
+            double resolveMb = samples > 1 ? px * 4.0 * (samples + 1) / (1024.0 * 1024.0) : 0.0;
+            double bltMb = px * 4.0 * 2 / (1024.0 * 1024.0);
+
+            int interval = Mathf.Max(1, OnDemandRendering.renderFrameInterval);
+            int cap = Application.targetFrameRate;
+            double presentFps = (cap > 0 ? cap : Screen.currentResolution.refreshRateRatio.value) / interval;
+
+            Camera cam = Camera.main;
+            string camInfo = cam == null
+                ? "메인 카메라 없음"
+                : $"allowMSAA={cam.allowMSAA}, allowHDR={cam.allowHDR}, clear={cam.clearFlags}";
+
+            Debug.Log($"[렌더진단] {reason} — " +
+                $"그래픽API={SystemInfo.graphicsDeviceType} ({SystemInfo.graphicsDeviceName}, " +
+                $"{SystemInfo.graphicsDeviceVersion}), VRAM={SystemInfo.graphicsMemorySize}MB. " +
+                $"렌더타깃(백버퍼)={w}x{h}, 디스플레이모드={Screen.currentResolution.width}x" +
+                $"{Screen.currentResolution.height}@{Screen.currentResolution.refreshRateRatio.value:F1}Hz, " +
+                $"시스템주화면={Display.main.systemWidth}x{Display.main.systemHeight}, " +
+                $"dpi={Screen.dpi:F0}, 창모드={Screen.fullScreenMode}. " +
+                $"MSAA {RenderQualityTuner.DescribeState()} " +
+                $"(참고: Screen.msaaSamples={Screen.msaaSamples} — 이 값은 백버퍼의 진실이 아니다). " +
+                $"카메라: {camInfo}. " +
+                $"추정 컬러버퍼 {colorMb:F1}MB, 프레임당 MSAA resolve 트래픽 {resolveMb:F1}MB, " +
+                $"프레임당 표면 복사 {bltMb:F1}MB -> 현재 프레젠트 {presentFps:F1}fps 기준 " +
+                $"{(resolveMb + bltMb) * presentFps / 1024.0:F2}GB/s(산술 추정). " +
+                $"페이싱: vSyncCount={QualitySettings.vSyncCount}, targetFrameRate={cap}, " +
+                $"renderFrameInterval={interval}, runInBackground={Application.runInBackground}. " +
+                $"GPU 타이밍={(_timingFeatureAvailable ? "사용 가능" : "사용 불가(enableFrameTimingStats 꺼짐 또는 드라이버 미지원)")}.");
+        }
+
+        private static void LogAbSummary(FramePacingTier tier)
+        {
+            float cpuMean = _cpuCount > 0 ? (float)(_cpuSumMs / _cpuCount) : 0f;
+            string tail = FrameTimeStats.TrySummarize(out FrameTimeSummary recent)
+                ? $"최근 {recent.SampleCount}프레임 p95 {recent.P95Ms:F2}ms / p99 {recent.P99Ms:F2}ms"
+                : "최근 분위수: 표본 부족";
+
+            string gpu = _gpuCount > 0
+                ? $"GPU 프레임시간 평균 {_gpuSumMs / _gpuCount:F2}ms / 최악 {_gpuWorstMs:F2}ms (표본 {_gpuCount})"
+                : (_timingFeatureAvailable
+                    ? "GPU 프레임시간: 드라이버가 타이머 질의를 돌려주지 않음(표본 0)"
+                    : "GPU 프레임시간: 측정 불가(enableFrameTimingStats 꺼짐 — 이 빌드로는 MSAA 비용을 잴 수 없다)");
+
+            Debug.Log($"[렌더진단] ★A/B 요약(정착 {SnapshotDelaySeconds:F0}초 제외, " +
+                $"측정 {WarmupSeconds - SnapshotDelaySeconds:F0}초) — " +
+                $"MSAA {RenderQualityTuner.DescribeState()}, " +
+                $"백버퍼={Screen.width}x{Screen.height}, 그래픽API={SystemInfo.graphicsDeviceType}, " +
+                $"등급={tier}(강제={FramePacing.ForcedTierLabel}). " +
+                $"CPU 프레임시간 평균 {cpuMean:F2}ms / 최악 {_cpuWorstMs:F2}ms (표본 {_cpuCount}), {tail}. " +
+                $"{gpu}. " +
+                "※ 이 한 줄을 MSAA만 바꾼 다른 콜드스타트의 같은 줄과 비교하세요. " +
+                "CPU 프레임시간은 60fps 상한에 가려 잘 안 갈립니다 — **GPU 프레임시간**을 보세요. " +
+                "등급이 서로 다르면 그 비교는 무효입니다(STICKMATE_FORCE_TIER=Active로 고정하세요).");
+        }
+    }
+
 }
