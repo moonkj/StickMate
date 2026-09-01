@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -78,7 +77,7 @@ namespace StickMate.Tests.EditMode
         private StickConfig _config;
         private StickmanBlackboard _blackboard;
         private StubIntent _intent;
-        private Random.State _randomState;
+        private UnityEngine.Random.State _randomState;
 
         [SetUp]
         public void SetUp()
@@ -86,8 +85,8 @@ namespace StickMate.Tests.EditMode
             AppSettingsModel.ResetForTesting();
 
             // 잡담 추첨의 난수를 결정론으로 고정한다(전역 상태이므로 TearDown에서 원복).
-            _randomState = Random.state;
-            Random.InitState(20260901);
+            _randomState = UnityEngine.Random.state;
+            UnityEngine.Random.InitState(20260901);
 
             _config = ScriptableObject.CreateInstance<StickConfig>();
             _config.dialogueBubbleEnabled = true;
@@ -102,7 +101,7 @@ namespace StickMate.Tests.EditMode
         [TearDown]
         public void TearDown()
         {
-            Random.state = _randomState;
+            UnityEngine.Random.state = _randomState;
             _blackboard = null;
             _intent = null;
             if (_config != null) Object.DestroyImmediate(_config);
@@ -113,11 +112,11 @@ namespace StickMate.Tests.EditMode
         /// <summary>데드존을 확실히 넘는 이동 의도(프로덕션 배회 AI는 ±1을 낸다).</summary>
         private float MovingInput => _config.moveInputDeadzone + 1f;
 
-        // ==================== 0. ★ 되올라가기 경합 (2026-09-02 실측, 미해결) ====================
+        // ==================== 0. ★ 되올라가기 경합 (2026-09-02 실측 → 같은 날 수정 완료) ====================
 
         /// <summary>
-        /// ★★ <b>[갭추적] 1프레임짜리 Idle에서 대사가 파생된다 — 불변 원칙 1 위반.</b>
-        /// 리더 실측(신빌드 05:03, 벽타기 완료 10회 중 1회):
+        /// ★★ <b>1프레임짜리 Idle에서 대사가 파생된다 — 불변 원칙 1 위반(2026-09-02 수정 완료).</b>
+        /// 리더 실측(독립 2회, 프레임 배열까지 동일한 서명, 벽타기 완료 11회 중 2회 = 18%):
         /// <code>
         ///   frame=68488 [벽타기] 완료 → [말풍선] "심심하다"(Idle) 표시
         ///   frame=68488 [되올라가기] 안착 — 턱 안쪽으로 걸어 들어갑니다
@@ -143,19 +142,21 @@ namespace StickMate.Tests.EditMode
         /// <para><b>리더 질문의 답</b>: <i>"되올라가기 직후에도 그 판정이 서는가?"</i> → <b>서지 않는다.</b>
         /// 게이트가 보는 두 사실(페이즈 잔여 · 이동 의도)이 <b>둘 다</b> 맨틀 신호에 대해 낡았다.</para>
         ///
-        /// <para><b>고칠 자리(둘 중 하나, 둘 다 <c>States/</c>)</b>:
-        /// <list type="bullet">
-        ///   <item><b>(권장) <c>ParkourClimbState</c></b> — 맨틀 직후 다음 상태를 <c>MoveInputX</c>가
-        ///         아니라 <b>자기가 방금 확정한 <c>ClimbMantleDirection</c></b>에서 고른다. 한 줄이고,
-        ///         "확정된 사실에서 파생한다"는 원칙 1의 문장 그대로다. 1프레임 Idle 자체가 사라지므로
-        ///         대사뿐 아니라 포즈/발소리 등 <b>모든 파생물</b>이 함께 고쳐진다.</item>
-        ///   <item><c>StickmanBlackboard.PlannedDwellRemainingSecondsFor</c> — 소비되지 않은 맨틀
-        ///         신호가 있으면 Idle의 잔여를 0으로 답한다. 대사만 고치고 1프레임 Idle은 남는다.</item>
-        /// </list>
-        /// <b>이번 라운드의 coder 편집 범위가 <c>Dialogue/</c>와 <c>Interaction/InfoGearIconWidget.cs</c>로
-        /// 한정돼 있어 여기서 고칠 수 없다</b> — 그래서 <b>고치지 않고 잠가만 둔다</b>(리더 배정 요청).
-        /// 아래는 그 경합을 <b>합성</b>해 두므로, 고치는 사람이 <c>Assert.Ignore</c>를 지우기만 하면
-        /// 곧바로 회귀 테스트가 된다.</para>
+        /// <para><b>어떻게 고쳤나(둘 다 넣었다, 그리고 그 이유)</b>:
+        /// <list type="number">
+        ///   <item><b>근본 — <c>ParkourClimbState</c></b>가 맨틀 직후 다음 상태를 <c>MoveInputX</c>가
+        ///         아니라 <b>자기가 방금 확정한 사실</b>에서 고른다(= Walk). <b>1프레임 Idle 자체가
+        ///         사라지므로</b> 대사뿐 아니라 포즈/발소리 등 모든 파생물이 함께 고쳐진다.
+        ///         아래 <c>맨틀_직후_다음_상태는_이동의도가_아니라_확정된_맨틀에서_고른다</c>가 잠근다.</item>
+        ///   <item><b>같은 사실의 두 번째 소비자 — <c>PlannedDwellRemainingSecondsFor</c></b>도
+        ///         맨틀이 확정된 프레임에는 "이동 의도 = 걸어 들어감"으로 읽는다. 이 테스트가 잠근다.</item>
+        /// </list></para>
+        ///
+        /// <para>★★ <b>왜 둘 다인가 — 이 테스트만으로는 근본 수정을 판별할 수 없기 때문이다.</b>
+        /// 이 테스트는 게이트를 <b>직접</b> 호출해 합성한 경합을 보므로, (2)만 고쳐도 초록이 되고
+        /// (1)이 없어도 초록이 된다. 즉 <b>"감사를 통과하는 유일한 배선이 곧 신고된 결함"</b>이 될 수
+        /// 있는 형태였다(2026-09-02 같은 밤에 다른 라운드에서 실제로 난 사고). 그래서 근본 수정 쪽은
+        /// 아래에 <b>별도 검사</b>를 세워 각각 독립적으로 잠갔다.</para>
         /// </summary>
         [Test]
         public void 맨틀_직후_1프레임_Idle에서는_대사가_나오지_않는다()
@@ -214,12 +215,12 @@ namespace StickMate.Tests.EditMode
             var sb = new StringBuilder(src.Length);
             foreach (string line in src.Replace("\r\n", "\n").Split('\n'))
             {
-                int c = line.IndexOf("//", StringComparison.Ordinal);
+                int c = line.IndexOf("//", System.StringComparison.Ordinal);
                 sb.Append(c >= 0 ? line.Substring(0, c) : line).Append('\n');
             }
             string exec = sb.ToString();
 
-            int mantle = exec.IndexOf("ReportClimbMantleCompleted(", StringComparison.Ordinal);
+            int mantle = exec.IndexOf("ReportClimbMantleCompleted(", System.StringComparison.Ordinal);
             Assert.Greater(mantle, 0, "맨틀 보고가 사라졌다 — 이 검사의 대상이 없다.");
 
             string afterMantle = exec.Substring(mantle);
