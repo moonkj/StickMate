@@ -26,7 +26,14 @@ namespace StickMate.Tests.PlayMode
     ///  ① 넘어짐 포즈에서 <b>머리 원 전체(중심 + 반지름)</b>가 카메라 가시 사각형 안에 완전히 들어온다.
     ///  ② 그려진 <b>모든 선</b>이(획 굵기의 바깥쪽까지) 가시 사각형 안에 들어온다 — 머리만 맞추고
     ///     발이 튀어나가는 부분 최적화를 막는다.
-    ///  ③ 랙돌 / 던져짐 / 일어나는 중 <b>세 상태 모두</b> 실제로 그 프레이밍을 받는다(매핑 + 기하 동시 검증).
+    ///  ③ 랙돌 / 던져짐 / 일어나는 중 <b>세 상태 모두</b> 넘어짐 포즈로 매핑되고, 그 포즈가 실제로
+    ///     액자에 들어가면 기하가 성립한다(매핑 + 기하 동시 검증).
+    ///     <para>★★ 2026-09-02 변경 — 예전 이 항목은 <b>"창이 상태를 보고 포즈를 밀어넣는다"</b>를
+    ///     함께 잠그고 있었다. 사용자 신고("장비 착용 모습만 …인데 가끔 움직임")로 <b>그 계약 자체가
+    ///     폐기</b>됐다(docs/UX_FLOW.md §45-1: 캐릭터의 상태는 액자에 도달하지 않는다).
+    ///     그래서 (2)는 포즈를 <see cref="CharacterPortraitStage.SetPose"/>로 직접 넣어 <b>기하만</b>
+    ///     확인하고, 없어진 옛 계약은 (5)에서 <b>반대 방향으로</b> 다시 잠근다 —
+    ///     상태를 몰아도 액자가 따라오지 않는지. 잠금을 지우지 않고 <b>뒤집는다</b>.</para>
     ///  ④ (네거티브 컨트롤) 옛 "발 회전축" 변환을 그대로 되돌려 놓으면 ①이 <b>실제로 깨진다</b> —
     ///     이 테스트가 이 버그를 진짜로 잡는다는 증명이다.
     ///
@@ -337,53 +344,77 @@ namespace StickMate.Tests.PlayMode
                 StickmanStateId.Getup,
             };
 
-            var metrics = Object.FindFirstObjectByType<StickmanMetrics>();
-            Assert.IsNotNull(metrics, $"{LogPrefix} 씬에서 StickmanMetrics를 찾지 못했습니다.");
-
             for (int i = 0; i < fallenStates.Length; i++)
             {
                 StickmanStateId id = fallenStates[i];
                 Assert.AreEqual(PortraitPose.Fallen, CharacterPortraitStage.PoseForState(id),
-                    $"{LogPrefix} {id}가 넘어짐 포즈로 매핑되지 않습니다 — 문구와 그림이 어긋납니다.");
-
-                // ★ 공중으로 올린 뒤에 전이시킨다. 땅에 붙어 있으면 ThrowTumble이 첫 Tick에서
-                //   "회전할 시간이 부족합니다(착지까지 0.00초)"로 스스로 빠져나가, 창이 그 상태를
-                //   한 번도 못 보고 지나간다(첫 실행에서 실측으로 걸렸다).
-                bb.Body.linearVelocity = Vector2.zero;
-                bb.Body.position = new Vector2(bb.Body.position.x, bb.Body.position.y + metrics.TotalHeight * 4f);
-                bb.CurrentFootholdHandle = 0L;
-                bb.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+                    $"{LogPrefix} {id}가 넘어짐 포즈로 매핑되지 않습니다. " +
+                    "이 매핑은 프로덕션에서 더 이상 불리지 않지만(45-1), 2026-08-30 붙잡힘 판정의 " +
+                    "근거가 여기에 있으므로 계속 잠근다.");
 
                 // 안티-공허 장치: 직전 반복의 Fallen이 남아 있으면 이 관측은 아무것도 증명하지 못한다.
-                yield return WaitForPose(stage, fallen: false, what: $"{id} 관측 전 초기화");
+                stage.SetPose(PortraitPose.Standing);
+                yield return null;
                 Assert.AreNotEqual(PortraitPose.Fallen, stage.Pose,
                     $"{LogPrefix} {id} 관측 전에 포즈가 Fallen에서 내려오지 않았습니다 — 관측이 공허해집니다.");
 
-                bb.Machine.ChangeState(id, isForcedInterrupt: true);
-                yield return WaitForPose(stage, fallen: true, what: $"{id} 전이 후");
+                stage.SetPose(CharacterPortraitStage.PoseForState(id));
+                yield return null;
 
                 Assert.AreEqual(PortraitPose.Fallen, stage.Pose,
-                    $"{LogPrefix} {id}로 전이했는데 초상화 포즈가 {stage.Pose}입니다(현재 상태 " +
-                    $"{bb.Machine.CurrentStateId}) — 창이 포즈를 밀어넣지 않았습니다.");
-                AssertHeadFullyInside(stage, $"{id} 실제 전이");
+                    $"{LogPrefix} {id}의 포즈가 액자에 들어가지 않았습니다(현재 {stage.Pose}).");
+                AssertHeadFullyInside(stage, $"{id} 넘어짐 프레이밍");
             }
+
+            stage.SetPose(PortraitPose.Standing);
+            yield return null;
+        }
+
+        // ============================================================================
+        // (5) ★ 뒤집힌 잠금 — <b>상태를 몰아도 액자는 따라오지 않는다</b> (2026-09-02)
+        // ============================================================================
+        //
+        // (2)가 잠그던 옛 계약("창이 상태를 보고 포즈를 밀어넣는다")은 폐기됐다. 잠금을 그냥 지우면
+        // 다음 사람이 "왜 없앴지?" 하고 되살릴 수 있으므로, <b>같은 자리에 반대 방향으로</b> 남긴다.
+        // 넘어짐은 (A) 종이인형이 잃는 유일한 진짜 일치였다(28개 중 1개) — 그 사실을 여기 적어 둔다.
+        // 문구 "넘어져 있는 중"이 그 몫을 진다(CharacterInfoWindow.StateLabel).
+
+        [UnityTest]
+        [Timeout(120000)]
+        public IEnumerator DrivingTheRealStateNeverReachesTheFrameAnyMore()
+        {
+            yield return SetUpOpenWindowAndPinState();
+
+            var stage = PrimaryStage();
+            StickmanBlackboard bb = _pinnedAgent.Blackboard;
+
+            Assert.AreEqual(PortraitPose.Standing, stage.Pose,
+                $"{LogPrefix} 창을 연 직후 액자 포즈가 {stage.Pose}입니다 — 서 있는 종이인형이어야 합니다.");
+
+            bb.CurrentFootholdHandle = 0L;
+            bb.Machine.ChangeState(StickmanStateId.Ragdoll, isForcedInterrupt: true);
+
+            // 넉넉히 기다린다 — 짧게 기다려서 초록이면 그건 증명이 아니라 운이다(벽시계).
+            float deadline = Time.realtimeSinceStartup + 1.0f;
+            bool sawRagdoll = false;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+                if (bb.Machine.CurrentStateId == StickmanStateId.Ragdoll) sawRagdoll = true;
+            }
+
+            // 대조군 — 상태가 실제로 Ragdoll을 지났는가. 아니면 아래 단언은 공허하다.
+            Assert.IsTrue(sawRagdoll,
+                $"{LogPrefix} Ragdoll에 한 번도 머물지 못했습니다(현재 {bb.Machine.CurrentStateId}) — " +
+                "관측 전제가 깨졌습니다.");
+
+            Assert.AreEqual(PortraitPose.Standing, stage.Pose,
+                $"{LogPrefix} 캐릭터가 넘어졌더니 액자 포즈가 {stage.Pose}가 됐습니다 — " +
+                "정보창이 다시 SetPose를 부르고 있습니다(액자 불변식 위반, docs/UX_FLOW.md 45-1).");
 
             bb.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
             yield return null;
         }
 
-        /// <summary>포즈가 원하는 쪽이 될 때까지 조건 기반 대기(프레임 수가 아니라 실시간 + 타임아웃).</summary>
-        private static IEnumerator WaitForPose(CharacterPortraitStage stage, bool fallen, string what)
-        {
-            const float TimeoutSeconds = 2f;
-            float deadline = Time.realtimeSinceStartup + TimeoutSeconds;
-            while (Time.realtimeSinceStartup < deadline)
-            {
-                yield return null;
-                if ((stage.Pose == PortraitPose.Fallen) == fallen) yield break;
-            }
-            Debug.Log($"{LogPrefix} {what}: {TimeoutSeconds:F0}초 안에 포즈가 " +
-                $"{(fallen ? "Fallen" : "Fallen 아님")}이 되지 않았습니다(현재 {stage.Pose}).");
-        }
     }
 }

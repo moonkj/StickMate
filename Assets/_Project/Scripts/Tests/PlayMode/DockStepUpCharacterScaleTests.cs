@@ -110,7 +110,17 @@ namespace StickMate.Tests.PlayMode
 
         [UnityTest] public IEnumerator ClimbProbeReachesDecisionDistance_Scale075() { yield return AssertClimbProbeReachesDecisionDistance(0.75f); }
         [UnityTest] public IEnumerator ClimbProbeReachesDecisionDistance_Scale100() { yield return AssertClimbProbeReachesDecisionDistance(1.00f); }
-        [UnityTest] public IEnumerator ClimbProbeReachesDecisionDistance_Scale125() { yield return AssertClimbProbeReachesDecisionDistance(1.25f); }
+        /// <summary>상한 바로 아래 한 눈금. 상한(<see cref="StickConfig.MaxCharacterScale"/>)이 바뀌면
+        /// 자동으로 따라간다. ★ 2026-09-02: 예전에는 <c>1.25f</c>를 박아 뒀는데, 사용자 지시로 상한이
+        /// 1.5 -> 1.0으로 내려가자 그 값이 클램프되어 <b>요청 1.25 / 실제 1.00</b>으로 빨간불이 됐다.
+        /// CLAUDE.md "테스트에 프로덕션 상수를 숫자로 베끼지 않는다"의 재발 사례다.
+        /// 상한 자체는 <c>_ScaleMax</c> 짝이 따로 본다 — 이쪽은 <b>두 번째 표본점</b>이 존재 이유이므로
+        /// 상한과 <b>다른 값</b>이어야 한다(같아지면 두 테스트가 같은 것을 두 번 잰다).</summary>
+        private static float ScaleOneStepBelowMax =>
+            Mathf.Max(StickConfig.MinCharacterScale,
+                      StickConfig.MaxCharacterScale - CharacterScaleController.ValueStep);
+
+        [UnityTest] public IEnumerator ClimbProbeReachesDecisionDistance_ScaleBelowMax() { yield return AssertClimbProbeReachesDecisionDistance(ScaleOneStepBelowMax); }
         /// <summary>다이얼 상한(StickConfig.MaxCharacterScale). 상한이 바뀌면 이 테스트가 자동으로 따라간다 —
         /// 숫자를 박아 두면 상한을 올린 사람이 이 경로를 검증하지 않고 지나간다.</summary>
         [UnityTest] public IEnumerator ClimbProbeReachesDecisionDistance_ScaleMax() { yield return AssertClimbProbeReachesDecisionDistance(StickConfig.MaxCharacterScale); }
@@ -182,7 +192,7 @@ namespace StickMate.Tests.PlayMode
         // ============================================================================
 
         [UnityTest] public IEnumerator ClimbsBackOntoDock_Scale075() { yield return AssertClimbsBackOntoDock(0.75f); }
-        [UnityTest] public IEnumerator ClimbsBackOntoDock_Scale125() { yield return AssertClimbsBackOntoDock(1.25f); }
+        [UnityTest] public IEnumerator ClimbsBackOntoDock_ScaleBelowMax() { yield return AssertClimbsBackOntoDock(ScaleOneStepBelowMax); }
         [UnityTest] public IEnumerator ClimbsBackOntoDock_ScaleMax() { yield return AssertClimbsBackOntoDock(StickConfig.MaxCharacterScale); }
 
         private IEnumerator AssertClimbsBackOntoDock(float scale)

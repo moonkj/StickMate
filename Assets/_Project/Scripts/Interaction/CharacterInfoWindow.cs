@@ -2247,6 +2247,23 @@ namespace StickMate.Interaction
 
         public int MaxInventoryScrollForTests => MaxInventoryScroll;
 
+        /// <summary>두 클릭 경로(<see cref="BuildPagerButton"/>의 <c>onClick</c>과 <see cref="FeedClick"/>의
+        /// 폴링)가 <b>둘 다 보는</b> 그 판정. 칩의 겉모습도 여기서 나오므로, 테스트는 "겉모습 == 이 값"을
+        /// 확인하는 것만으로 <b>표시-실제 일치</b>를 잠글 수 있다.</summary>
+        public bool CanScrollInventoryForTests(int direction) => CanScrollInventory(direction);
+
+        /// <summary>진단/테스트 전용 — 페이지 이동을 <b>클릭 핸들러가 부르는 바로 그 함수</b>로 부른다.
+        ///
+        /// <para>★ 왜 클릭 대신 이것이 필요한가(2026-09-02 실측): 배치모드 PlayMode의 화면은
+        /// <b>640×480</b>이라 880pt 창이 608pt로 줄고, 우측 레일(패널 좌단 기준 x≈850)이
+        /// <c>Body</c> 마스크(16..624) <b>밖으로 통째로 잘린다</b>. 그래서 그 자리는
+        /// <b>물리적으로 눌리지 않는다</b>("보이지 않는 것은 눌리지 않는다" 규칙이 정상 작동한 결과다).
+        /// 클릭으로 검증하려 들면 테스트는 초록도 빨강도 아닌 <b>거짓 빨강</b>을 낸다.</para>
+        ///
+        /// <para>가드는 여기서 재현하지 않는다 — 세 번째 사본을 만들면 그것이 곧 다음 결함이다.
+        /// 가드는 <see cref="CanScrollInventoryForTests"/>로 따로 확인한다.</para></summary>
+        public void ScrollInventoryForTests(int direction) => ScrollInventory(direction);
+
         /// <summary>탭 버튼의 화면 사각형 — 테스트가 <b>실제 클릭 경로</b>로 탭을 누를 수 있게 연다
         /// (<c>_tabRects</c>를 리플렉션으로 뒤지던 관례를 대체한다).</summary>
         public Rect TabScreenRect(int index)

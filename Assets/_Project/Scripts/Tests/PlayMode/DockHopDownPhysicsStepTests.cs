@@ -256,7 +256,24 @@ namespace StickMate.Tests.PlayMode
         /// 갈래 선택 순서(뛰어내리기 -> 매달리기)는 States/AutoWanderController.TryBoundaryBehaviour와 같다 —
         /// 그래야 이 테스트가 "실제로 일어나는 일"을 보고 있다고 말할 수 있다.
         /// </summary>
-        private IEnumerator TryDescendAtScale(float scale, DescentResult result, int direction = 1)
+        /// <param name="stallSecondsPerFrame">
+        /// ★ 0보다 크면 <b>발을 뗀 뒤부터</b> 관측 루프의 매 프레임을 실제로 그만큼 늘린다(메인스레드 블로킹).
+        /// 절전 등급 <see cref="FramePacingTier.DisplayOff"/>(= <see cref="FramePacingPolicy.DisplayOffTargetFps"/>fps)의
+        /// 프레임 길이를 재현하는 유일하게 확실한 방법이다 — <c>Application.targetFrameRate</c>는
+        /// 에디터/배치모드에서 신뢰할 수 없고, 이 검사가 보려는 것은 fps 수치가 아니라
+        /// <b>"한 프레임이 유예(0.25초)만큼 길다"</b>는 사실 그 자체다.
+        ///
+        /// <para>★★ <b>왜 "발을 뗀 뒤부터"인가 — 실측으로 배웠다(2026-09-02).</b> 처음에는 걷기 구간부터
+        /// 늘렸는데, 그러면 <b>뛰어내리기 판정 자체에 도달하지 못한다</b>: 긴 프레임 하나의 물리 따라잡기가
+        /// 걷기 속도로 0.36유닛(= 배율 0.60에서 1.5유닛/초 x 0.25초)을 옮겨 버려, Update가 "모서리까지
+        /// <c>hopDownEdgeCommitDistance</c>(0.12유닛) 안"을 관측할 기회 없이 모서리를 지나친다.
+        /// 실제 로그: <c>[발판상실] ... 캐릭터가 걸어서 모서리를 넘어갔습니다 ... 12.6pt 벗어남</c>.
+        /// 그 경로는 <b>스스로 내려가므로 실패가 아니다</b>(다만 뛰어내리기 연출이 아니라 걸어 넘어가기다).
+        /// 이 파일이 잠그려는 결함은 그 다음 갈래 — <b>뛰어내리기가 확정된 뒤</b> 유예 창이 긴 프레임
+        /// 하나에 통째로 삼켜지는 경우 — 이므로, 확정된 시점부터 늘린다.</para>
+        /// </param>
+        private IEnumerator TryDescendAtScale(float scale, DescentResult result, int direction = 1,
+            float stallSecondsPerFrame = 0f)
         {
             StickmanBlackboard bb = _agent.Blackboard;
             var intent = (ScriptedIntentSource)bb.IntentSource;
@@ -322,6 +339,7 @@ namespace StickMate.Tests.PlayMode
             float started = Time.time;
             bool leftGround = false;
 
+            int stallMs = Mathf.RoundToInt(stallSecondsPerFrame * 1000f);
             while (Time.time < deadline)
             {
                 yield return null;
@@ -333,6 +351,12 @@ namespace StickMate.Tests.PlayMode
                 {
                     intent.HopDownRequested = false;
                     intent.LedgeHangRequested = false;
+
+                    // ★★ 여기서부터 프레임을 실제로 늘린다(아래 stallSecondsPerFrame 문서 참고).
+                    //   이 프레임이 길어지면 **다음 프레임 시작에 고정 스텝이 몰려서** 따라잡는다
+                    //   (엔진 최대 timestep 0.333초 / 고정 스텝 0.02초 -> 12~13스텝). 유예 창 전체가
+                    //   그 한 프레임 안에서 지나가는, 이 결함이 노리는 정확히 그 모양이다.
+                    if (stallMs > 0) System.Threading.Thread.Sleep(stallMs);
                 }
 
                 long handle = bb.CurrentFootholdHandle;
@@ -457,6 +481,176 @@ namespace StickMate.Tests.PlayMode
             Assert.Less(dropped, DockDropUnits * 0.2f,
                 $"{LogPrefix} 네거티브 컨트롤에서 {dropped:F4}유닛이나 내려갔습니다 — 현장 관측" +
                 "(‘OS y 906.8~907.0 밖으로 한 번도 안 나감’)과 다릅니다.");
+        }
+
+        // ====================================================================
+        // T3 — ★★ 본 검증(2026-09-02 2차): 프레임이 **유예만큼 길어도** 내려온다
+        // ====================================================================
+        //
+        // 1차 수정은 이송 재적용을 FallState.Tick(= Update, 프레임당 1회)에만 실었다. 그런데
+        // 되돌리려는 마찰은 **FixedUpdate마다** 걸린다. 즉 마찰 : 이송 = (프레임당 물리 스텝 수) : 1
+        // 이라, 프레임이 길어질수록 이송이 지고 **프레임 하나가 유예(0.25초)를 삼키면 재적용이 0회**가
+        // 되어 수정 자체가 없던 것이 된다(그 프레임 안에서 몸은 정지 거리 0.061유닛만 가고 멈추며,
+        // Time.time 기준 유예도 함께 만료돼 제자리 착지 = 회귀 전 거동).
+        //
+        // ★ 그 조건은 가정이 아니라 **절전 등급의 정상 동작**이다: FramePacingTier.DisplayOff는
+        //   FramePacingPolicy.DisplayOffTargetFps fps 고정 = 프레임 하나가 유예와 정확히 같은 길이다.
+        //   (Away 30fps는 0.148초라 통과한다 — 즉 이 검사는 DisplayOff에서만 갈린다.)
+        //
+        // 이 테스트는 그 프레임 길이를 **실제로 만들어** 결과를 본다. 프레임 수가 아니라 벽시계로
+        // 재현한다는 점이 중요하다(CLAUDE.md: 이 저장소의 배치모드 PlayMode는 2,000fps 이상으로 돈다).
+
+        /// <summary>절전 등급 DisplayOff의 프레임 길이. 프로덕션 상수에서 유도한다(하드코딩 금지).</summary>
+        private static float DisplayOffFrameSeconds => 1f / FramePacingPolicy.DisplayOffTargetFps;
+
+        [UnityTest]
+        public IEnumerator 프레임이_유예만큼_길어도_Dock에서_내려온다()
+        {
+            yield return SetUpProductionDock(stepOffCarry: true);
+
+            // ★ 전제 — 이 검사가 의미를 가지려면 프레임 하나가 유예 이상이어야 한다.
+            Assert.GreaterOrEqual(DisplayOffFrameSeconds, _clonedConfig.hopDownDropThroughIgnoreDuration,
+                $"{LogPrefix} 전제 실패 — 절전 등급 프레임 {DisplayOffFrameSeconds:F3}초가 유예 " +
+                $"{_clonedConfig.hopDownDropThroughIgnoreDuration:F3}초보다 짧습니다. 그러면 이 검사가 " +
+                "재현하려는 '한 프레임이 유예를 통째로 삼킨다'는 조건이 성립하지 않습니다.");
+
+            var r = new DescentResult();
+            yield return TryDescendAtScale(UserSavedScale, r, direction: 1,
+                stallSecondsPerFrame: DisplayOffFrameSeconds);
+
+            StickmanBlackboard bb = _agent.Blackboard;
+            int physicsTicks = bb.StepOffCarryPhysicsTicks;
+            int frameTicks = bb.StepOffCarryFrameTicks;
+
+            StringAssert.StartsWith("뛰어내리기", r.Branch,
+                $"{LogPrefix} 전제 실패 — 배율 {UserSavedScale:F2}에서 뛰어내리기 갈래가 선택되지 않았습니다" +
+                $"(실제 {r.Branch}).");
+
+            Debug.Log($"{LogPrefix} 긴 프레임 검증 — 프레임 길이 {DisplayOffFrameSeconds:F3}초" +
+                $"(= 절전 등급 {FramePacingPolicy.DisplayOffTargetFps}fps), 유예 " +
+                $"{_clonedConfig.hopDownDropThroughIgnoreDuration:F2}초, 고정 스텝 {Time.fixedDeltaTime:F4}초. " +
+                $"이송 재적용 — 물리 주기 {physicsTicks}회 / 프레임 주기 {frameTicks}회. " +
+                $"착지 발판핸들={r.LandedHandle}, 하강 {(_dockTopWorldY - r.LowestWorldY):F4}유닛.");
+
+            // ── (1) 결과: 실제로 내려갔는가(현장 로그와 같은 판별식 — 첫 착지가 -3인가 -2인가).
+            Assert.IsTrue(r.Descended,
+                $"{LogPrefix} ★회귀★ 프레임이 유예만큼 길면 하강이 실패합니다 — 착지핸들 {r.LandedHandle} " +
+                $"(기대 {NetRightHandle}), 하강 {(_dockTopWorldY - r.LowestWorldY):F4}유닛. " +
+                $"이송 재적용이 물리 주기 {physicsTicks}회 / 프레임 주기 {frameTicks}회였습니다 — " +
+                "물리 주기가 0에 가깝다면 배선이 Core/StickmanAgent.FixedUpdate()에서 끊어진 것입니다.");
+
+            // ── (2) 기전: 그 결과를 만든 것이 **물리 주기 재적용**임을 숫자로 못박는다.
+            //     이게 없으면 "어쩌다 통과"와 구별되지 않는다.
+            Assert.Greater(physicsTicks, frameTicks * 3,
+                $"{LogPrefix} 이송이 여전히 프레임 주기에 실려 있습니다(물리 {physicsTicks}회 / " +
+                $"프레임 {frameTicks}회). 마찰은 물리 스텝마다 걸리므로 이 비가 1에 가까우면 " +
+                "긴 프레임에서 반드시 진다 — 그것이 이 회귀의 본질입니다.");
+
+            // 0.25초 창 / 고정 스텝 0.02초 = 12.5스텝. 절반만 실려도 필요 거리(0.09~0.12유닛)를
+            // 넘긴다(스텝당 1.2 x 0.02 = 0.024유닛). 하한을 5로 잡아 "0회/1회"만 확실히 배제한다.
+            Assert.GreaterOrEqual(physicsTicks, 5,
+                $"{LogPrefix} 유예 창에 이송이 {physicsTicks}회밖에 실리지 않았습니다 — " +
+                $"고정 스텝 {Time.fixedDeltaTime:F4}초 기준 유예 " +
+                $"{_clonedConfig.hopDownDropThroughIgnoreDuration:F2}초에는 10회 이상 실려야 합니다.");
+        }
+
+        // ====================================================================
+        // T3n — ★ 같은 조건의 네거티브 컨트롤
+        // ====================================================================
+
+        [UnityTest]
+        public IEnumerator 네거티브_긴_프레임에서_이송을_끄면_Dock에_도로_착지한다()
+        {
+            yield return SetUpProductionDock(stepOffCarry: false);
+
+            var r = new DescentResult();
+            yield return TryDescendAtScale(UserSavedScale, r, direction: 1,
+                stallSecondsPerFrame: DisplayOffFrameSeconds);
+
+            StringAssert.StartsWith("뛰어내리기", r.Branch,
+                $"{LogPrefix} 전제 실패 — 뛰어내리기 갈래가 선택되지 않았습니다(실제 {r.Branch}).");
+            Assert.IsFalse(r.Descended,
+                $"{LogPrefix} 네거티브 컨트롤이 무력합니다 — 이송을 껐는데도 내려갔습니다" +
+                $"(착지핸들 {r.LandedHandle}). 그렇다면 T3의 초록불은 이 수정이 아니라 다른 무언가가 " +
+                "만들고 있다는 뜻입니다.");
+            Assert.AreEqual(DockHandle, r.LandedHandle,
+                $"{LogPrefix} 네거티브 컨트롤에서 Dock({DockHandle})이 아니라 핸들 {r.LandedHandle}에 " +
+                "착지했습니다 — 현장 로그와 다른 실패 모양입니다.");
+        }
+
+        // ====================================================================
+        // T4 — ★ 이송은 **그 Fall 구간**에서만 산다(낡은 이송 속도가 다음 낙하를 덮지 않는다)
+        // ====================================================================
+        //
+        // 유예는 시간이 지나면 스스로 풀리지만 이송 **속도값**은 어디서도 0으로 돌아가지 않았다.
+        // 그래서 창이 살아 있는 동안 `Fall -> 다른 상태 -> Fall` 왕복이 생기면 낡은 이송 속도가
+        // 새 낙하의 x를 덮어썼다. 시간 조건 하나로는 이 왕복을 못 막는다 — 구간에도 묶어야 한다.
+        //
+        // ★ 정직한 한계: 이 왕복을 **실기에서 관측한 적은 없다**. 도달 경로는 소스로만 확인했다
+        //   (낮은 단에 곧바로 착지한 뒤 스냅 상한 초과 / 발판 상실로 0.25초 안에 다시 Fall).
+        //   그래서 이 테스트는 "그 왕복이 일어난다면"이 아니라 **불변식**을 잠근다:
+        //   <b>유예 창이 아직 열려 있어도, Fall 구간을 벗어나면 이송은 이미 닫혀 있다.</b>
+
+        [UnityTest]
+        public IEnumerator 이송은_Fall_구간을_벗어나면_유예가_남아도_즉시_해제된다()
+        {
+            yield return SetUpProductionDock(stepOffCarry: true);
+
+            StickmanBlackboard bb = _agent.Blackboard;
+            var intent = (ScriptedIntentSource)bb.IntentSource;
+            _agent.ApplyCharacterScale(UserSavedScale, $"{LogPrefix} 이송 해제 검증");
+            _clonedConfig.SetRuntimeCharacterScale(UserSavedScale);
+            yield return null;
+
+            float startX = _dockRightWorldX - _clonedConfig.hopDownEdgeCommitDistance;
+            bb.MoveBodyToWorld(new Vector2(startX, _dockTopWorldY));
+            bb.Body.linearVelocity = Vector2.zero;
+            bb.CurrentFootholdHandle = DockHandle;
+            bb.ResetGroundLossTimer();
+            intent.MoveInputX = 1f;
+            intent.HopDownRequested = true;
+            bb.Machine.ChangeState(StickmanStateId.Walk, isForcedInterrupt: true);
+
+            // 발을 뗄 때까지 기다린다(= Fall 진입 + 이송 무장).
+            float deadline = Time.time + ObserveBudgetSeconds;
+            while (Time.time < deadline && bb.Machine.CurrentStateId != StickmanStateId.Fall)
+            {
+                yield return null;
+            }
+            Assert.AreEqual(StickmanStateId.Fall, bb.Machine.CurrentStateId,
+                $"{LogPrefix} 전제 실패 — 발을 떼지 못했습니다(상태 {bb.Machine.CurrentStateId}).");
+            intent.HopDownRequested = false;
+
+            Assert.IsTrue(bb.TryGetStepOffCarryVelocityX(out float armed),
+                $"{LogPrefix} 전제 실패 — Fall에 들어갔는데 이송이 무장되지 않았습니다.");
+            Assert.AreNotEqual(0f, armed, $"{LogPrefix} 전제 실패 — 이송 속도가 0입니다.");
+
+            // ★ Fall 구간을 끝낸다. 유예는 **아직 열려 있어야** 이 검사가 의미를 갖는다.
+            bb.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+
+            Assert.AreNotEqual(0L, bb.DropThroughIgnoredFootholdHandle,
+                $"{LogPrefix} 검사 무효 — 상태를 바꾸는 사이에 유예 창이 이미 닫혔습니다. " +
+                "그러면 아래 단언은 이송 해제가 아니라 유예 만료를 확인하는 공허한 검사가 됩니다.");
+            Assert.IsFalse(bb.TryGetStepOffCarryVelocityX(out _),
+                $"{LogPrefix} 유예 창이 아직 열려 있는데(무시 핸들 {bb.DropThroughIgnoredFootholdHandle}) " +
+                "이송이 살아 있습니다 — 이 창 안에 Fall로 되돌아오는 경로가 생기면 낡은 이송 속도가 " +
+                "새 낙하의 x를 덮어씁니다(States/StickmanBlackboard.EndStepOffCarry 문서 참고).");
+
+            // ★ 네거티브 컨트롤 — "언제나 false"가 아니다. 다시 발을 떼면 정상적으로 무장된다.
+            bb.MoveBodyToWorld(new Vector2(startX, _dockTopWorldY));
+            bb.Body.linearVelocity = Vector2.zero;
+            bb.CurrentFootholdHandle = DockHandle;
+            bb.ResetGroundLossTimer();
+            intent.HopDownRequested = true;
+            bb.Machine.ChangeState(StickmanStateId.Walk, isForcedInterrupt: true);
+            deadline = Time.time + ObserveBudgetSeconds;
+            while (Time.time < deadline && bb.Machine.CurrentStateId != StickmanStateId.Fall)
+            {
+                yield return null;
+            }
+            intent.HopDownRequested = false;
+            Assert.IsTrue(bb.TryGetStepOffCarryVelocityX(out _),
+                $"{LogPrefix} 해제가 과잉입니다 — 다시 발을 뗐는데도 이송이 무장되지 않습니다.");
         }
 
         // ====================================================================
