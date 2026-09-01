@@ -52,6 +52,10 @@ namespace StickMate.Interaction
         /// <summary>화면 가장자리에서 남겨둘 최소 여백(월드 유닛, 약 4pt) — BattleMinigameRenderer와 같은 값.</summary>
         private const float ScreenEdgePadWorld = 0.10f;
 
+        /// <summary>자리 계산에서 "같은 점"으로 볼 부동소수 오차(월드 유닛, 약 0.04pt).
+        /// <see cref="ResolvePlacement"/>의 경계 처리에만 쓴다.</summary>
+        private const float EdgeEpsilon = 0.001f;
+
         private float _checkTimer;
         private float _cooldownRemaining;
         private bool _active;
@@ -114,43 +118,61 @@ namespace StickMate.Interaction
                 StickmanStateId.Archery);
         }
 
+        /// <summary>과녁 자리를 못 찾았을 때 사용자에게 보여줄 한 줄(36-7 표와 1:1). 상수라 폴링해도
+        /// 문자열이 새로 생기지 않는다.</summary>
+        public const string NoPlacementReason = "과녁 놓을 자리가 없어요";
+
         /// <summary>
-        /// 활쏘기 강제 발동(전역 단축키 Ctrl+Opt+Cmd+A / 캐릭터 우클릭 메뉴). GraffitiDirector.
+        /// ★ 지금 활쏘기를 시킬 수 있는가 — <b>회색 처리와 실제 실행이 함께 쓰는 단 하나의 판정</b>
+        /// (docs/UX_FLOW.md 36-7 절대 규칙). <see cref="ForceTriggerNow"/>가 내부에서 이것을 호출하므로
+        /// 두 판단이 어긋날 방법이 구조적으로 없다.
+        /// </summary>
+        public CommandAvailability GetAvailability()
+        {
+            if (_player == null || _config == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
+                return CommandAvailability.Missing;
+
+            if (SpectacleEventLock.IsActive)
+                return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(SpectacleEventLock.ActiveKind));
+
+            StickmanStateId current = _player.Blackboard.Machine.CurrentStateId;
+            if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
+                return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(current));
+
+            if (!TryResolvePlacement(out _, out _, out _, out _, out _))
+                return CommandAvailability.Blocked(NoPlacementReason);
+
+            return CommandAvailability.Ready;
+        }
+
+        /// <summary>
+        /// 활쏘기 강제 발동(전역 단축키 Ctrl+Opt+Cmd+A / 행동 명령창 [활쏘기]). GraffitiDirector.
         /// ForceTriggerNow와 같은 관례로 <b>확률/쿨다운만</b> 건너뛴다 — 상호배제 락, Idle/Walk 진입
         /// 조건, 그리고 "과녁 자리가 화면 안에 없으면 발동하지 않는다"는 규칙은 하나도 완화하지 않는다.
         /// </summary>
-        public void ForceTriggerNow(string reason)
+        /// <returns>실제로 시작했는가. 기존 단축키 호출부는 반환값을 무시하면 되므로 하위 호환이다.</returns>
+        public bool ForceTriggerNow(string reason)
         {
-            if (_player == null || _config == null)
+            CommandAvailability availability = GetAvailability();
+            if (!availability.IsReady)
             {
-                Debug.LogWarning($"[활쏘기] 강제 발동 실패({reason}) — 플레이어/설정 배선이 없습니다.");
-                return;
-            }
-            if (SpectacleEventLock.IsActive)
-            {
-                Debug.Log($"[활쏘기] 강제 발동 건너뜀({reason}) — 다른 스펙터클({SpectacleEventLock.ActiveKind})이 " +
-                          "진행 중입니다(상호배제 락).");
-                return;
+                Debug.Log($"[활쏘기] 강제 발동 건너뜀({reason}) — {availability.Reason}. " +
+                    "자리 조건은 두 가지다: (1) 궤적 전체가 화면 안, (2) 과녁이 **지금 딛고 있는 발판(창)의 " +
+                    "가로 범위 안**(밖이면 허공에 뜬다). 조건은 강제 경로에서도 완화하지 않는다.");
+                return false;
             }
 
-            var current = _player.Blackboard.Machine.CurrentStateId;
-            if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
-            {
-                Debug.Log($"[활쏘기] 강제 발동 건너뜀({reason}) — 지금은 {current} 중입니다(Idle/Walk에서만 시작).");
-                return;
-            }
-
+            // 사거리를 매번 추첨하므로 여기서 한 번 더 부른다 — 위 판정은 "자리가 있는가"(결정론적)이고
+            // 이 호출은 "이번에 쓸 좌표"(추첨)다. 같은 프레임이라 가능/불가 판정이 뒤집히지 않는다.
             if (!TryResolvePlacement(out float standX, out Vector2 target, out float groundY,
                     out float facing, out string kindLabel))
             {
-                Debug.Log($"[활쏘기] 강제 발동 건너뜀({reason}) — 좌우 어느 쪽에도 과녁을 온전히 놓을 " +
-                    "자리가 없습니다. 자리 조건은 두 가지다: (1) 궤적 전체가 화면 안, " +
-                    "(2) 과녁이 **지금 딛고 있는 발판(창)의 가로 범위 안**(밖이면 허공에 뜬다). " +
-                    "딛고 있는 창이 좁으면 억지로 놓지 않고 조용히 포기합니다.");
-                return;
+                Debug.Log($"[활쏘기] 강제 발동 건너뜀({reason}) — {NoPlacementReason}(좌표 재계산 단계).");
+                return false;
             }
 
             Begin(standX, target, groundY, facing, kindLabel, reason);
+            return true;
         }
 
         private void Begin(float standX, Vector2 target, float groundY, float facing, string kindLabel, string reason)
@@ -232,23 +254,48 @@ namespace StickMate.Interaction
         private float RadiusRatio => _config != null ? Mathf.Clamp(_config.archeryTargetRadiusRatio, 0.05f, 0.9f) : 0.40f;
 
         /// <summary>화면이 좁을 때까지 줄여도 되는 최소 사거리(신장 배수). 이보다 가까우면 "쏘는" 것이
-        /// 아니라 "찌르는" 것처럼 보이므로 차라리 발동하지 않는다.</summary>
+        /// 아니라 "찌르는" 것처럼 보이므로 차라리 발동하지 않는다. = 랜덤 사거리 밴드의 <b>하한</b>.</summary>
         private float MinDistanceRatio => _config != null ? Mathf.Max(0.5f, _config.archeryMinTargetDistanceRatio) : 2.6f;
 
+        /// <summary>랜덤 사거리 밴드의 <b>상한</b>(신장 배수). 2026-08-31 사용자 신고 "무조건 과녁이
+        /// 화면 끝에만 생김 ... 거리는 항상 랜덤으로 변경되어야" 대응으로 신설됐다. 이 상한이 없으면
+        /// (=구간 전체를 쓰면) 넓은 바탕화면에서 과녁이 매번 화면 맨 끝에 붙는다.</summary>
+        private float MaxDistanceRatio
+        {
+            get
+            {
+                float min = MinDistanceRatio;
+                float max = _config != null ? _config.archeryMaxTargetDistanceRatio : 6.6f;
+                return Mathf.Max(min * 1.05f, max); // 상한이 하한 아래로 뒤집히면 랜덤이 사라진다.
+            }
+        }
+
         /// <summary>
-        /// ★★ 배치 결정(2026-08-29 사용자 재정의): "과녁과 캐릭터 사이가 너무 가까운데서 행동을 함.
-        /// 최소 바탕화면일경우는 화면 전체 길이의 절반 이상 떨어진곳만큼 캐릭터가 이동한 다음 과녁을
-        /// 생성후 쏘고, 창 일 경우 그 창의 전체 길이의 끝으로 이동한 다음 반대쪽 끝쪽에 과녁 생성후
-        /// 활쏘기".
+        /// ★★ 배치 결정 — <b>2026-08-31 사용자 재정의로 규칙이 한 번 더 바뀌었다.</b>
         ///
-        /// 두 경우는 <b>같은 형태</b>로 환원된다: 쓸 수 있는 가로 구간을 하나 정하고 <b>캐릭터를 한쪽 끝,
-        /// 과녁을 반대쪽 끝</b>에 놓는다. 다른 것은 구간을 무엇으로 잡는가와 최소 거리 요구뿐이다.
-        ///   · 창/Dock 위   : 구간 = <b>딛고 있는 그 발판의 실측 좌우 경계</b>(GroundSensor가 돌려주는
-        ///                     CurrentFoothold*WorldX — 추정하지 않는다). 최소 거리는 신장 배수.
-        ///   · 바닥(바탕화면): 구간 = 걸어다닐 수 있는 화면 범위
-        ///                     (StickmanBlackboard.TryGetWalkableScreenBoundsWorld — 화면 끝 클램프와
-        ///                     같은 유일한 생산자에서 나온다). 최소 거리는 <b>화면 폭의 절반</b>.
-        /// 구간이 좁아 최소 거리조차 안 나오면 <b>조용히 발동을 포기</b>한다(허공/코앞에 억지로 놓지 않는다).
+        /// 이력(둘 다 같은 사용자 신고에서 나왔다, 뒤엣것이 앞엣것을 덮어쓴다):
+        ///   1) 2026-08-29 "과녁과 캐릭터 사이가 너무 가까운데서 행동을 함. ... 화면 전체 길이의 절반
+        ///      이상 떨어진 곳만큼 캐릭터가 이동한 다음 과녁을 생성" → 캐릭터를 구간 한쪽 끝, 과녁을
+        ///      <b>반대쪽 끝</b>에 고정 배치했다. 랜덤이 하나도 없는 결정론적 최대 거리 배치였다.
+        ///   2) 2026-08-31 "활쏘기 시키면 <b>무조건 과녁이 화면 끝에만 생김</b>. 적당히 먼 거리만 되도
+        ///      되는데 <b>물론 거리는 항상 랜덤으로 변경</b>되어야 하지만" → (1)의 부작용을 그대로
+        ///      지적한 것이다. 그래서 지금은 <b>사거리를 매번 추첨</b>한다.
+        ///
+        /// 지금 규칙(단순하다):
+        ///   · 사거리 d = Random(신장×archeryMinTargetDistanceRatio, 신장×archeryMaxTargetDistanceRatio).
+        ///     상한이 <b>구간 폭과 무관한 절대 밴드</b>라는 점이 이번 수정의 핵심이다 — 화면/창이
+        ///     아무리 넓어도 과녁이 그 끝까지 밀려나지 않는다.
+        ///   · 구간(발판 ∩ 걸어다닐 수 있는 화면 범위)이 좁아 밴드 상한을 못 채우면 <b>들어가는 만큼만</b>
+        ///     줄인다. 하한(최소 사거리)조차 안 나오면 <b>조용히 발동을 포기</b>한다(코앞에 억지로
+        ///     놓지 않는다 — 그러면 포물선이 직선처럼 보인다).
+        ///   · 서는 자리는 "지금 위치에서 가장 가까운 유효 지점"이다. 예전처럼 무조건 구간 끝까지
+        ///     걸어가지 않는다 — 거리를 랜덤으로 뽑는 이상 끝까지 갈 이유가 사라졌고, 매번 화면
+        ///     가장자리로 행진하는 그림 자체가 신고 문구("무조건 ... 화면 끝")의 절반이었다.
+        ///
+        /// 구간은 예전과 같이 <b>딛고 있는 발판의 실측 좌우 경계</b>(GroundSensor의
+        /// CurrentFoothold*WorldX — 추정하지 않는다)와 <b>걸어다닐 수 있는 화면 범위</b>
+        /// (StickmanBlackboard.TryGetWalkableScreenBoundsWorld — 화면 끝 클램프와 같은 유일한
+        /// 생산자)의 교집합이다. 바닥에서는 안전망 발판이 화면 전체를 덮으므로 사실상 화면 범위가 된다.
         ///
         /// 캐릭터가 서야 할 자리(<paramref name="standX"/>)만 여기서 정하고, 거기까지 <b>실제로 걸어가는</b>
         /// 것은 States/ArcheryState.cs의 Approach 페이즈가 한다(순간이동하지 않는다 — 사용자 명시).
@@ -289,28 +336,30 @@ namespace StickMate.Interaction
             float hi = Mathf.Min(ground.CurrentFootholdRightWorldX, screenRight);
 
             bool onWindow = IsRealWindowFoothold(ground.GroundedFootholdHandle);
-            float requiredDistance = onWindow
-                ? height * MinDistanceRatio
-                : Mathf.Max(height * MinDistanceRatio, (screenRight - screenLeft) * 0.5f);
-            kindLabel = onWindow ? "창/Dock 발판의 양 끝" : "바탕화면(화면 폭의 절반 이상)";
+            kindLabel = onWindow ? "창/Dock 발판" : "바탕화면";
 
-            float charInset = height * CharacterEdgeInsetRatio;
-            float targetInset = radius + height * TargetEdgeInsetRatio;
-            if ((hi - targetInset) - (lo + charInset) <= 0f) return false;
+            float minDistance = height * MinDistanceRatio;
+            float maxDistance = height * MaxDistanceRatio;
 
-            // 캐릭터는 자기가 더 가까운 쪽 끝으로 걸어가고, 과녁은 반대쪽 끝에 선다(걷는 거리가 짧다).
-            bool standLeft = Mathf.Abs(foot.x - lo) <= Mathf.Abs(hi - foot.x);
-            standX = standLeft ? lo + charInset : hi - charInset;
-            float targetX = standLeft ? hi - targetInset : lo + targetInset;
-            facing = standLeft ? 1f : -1f;
+            // ★ 추첨은 여기 한 번뿐이다(Random.value). 나머지 계산은 전부 순수 함수라 EditMode에서
+            //   시드를 바꿔가며 분포를 직접 검사할 수 있다(Tests/EditMode/ArcheryTargetDistanceTests.cs).
+            Placement placed = ResolvePlacement(foot.x, lo, hi,
+                height * CharacterEdgeInsetRatio,
+                radius + height * TargetEdgeInsetRatio,
+                height * BackStepRatio,
+                minDistance, maxDistance, Random.value);
+            if (!placed.Ok) return false;
 
-            float distance = Mathf.Abs(targetX - standX);
-            if (distance < height * MinDistanceRatio) return false; // 코앞이면 아예 하지 않는다.
-            if (distance + 0.001f < requiredDistance)
+            standX = placed.StandX;
+            facing = placed.Facing;
+            float targetX = placed.TargetX;
+
+            if (placed.Distance + 0.001f < maxDistance)
             {
-                // 좁은 화면/발판 — 리더 승인대로 "확보 가능한 최대 거리"로 타협한다.
-                Debug.Log($"[활쏘기] 요구 사거리 {requiredDistance:F2}유닛을 구간 폭이 감당하지 못해 " +
-                    $"확보 가능한 최대 {distance:F2}유닛으로 타협합니다({kindLabel}).");
+                // 좁은 화면/발판 — 밴드 상한을 못 채운 경우. 포기가 아니라 들어가는 만큼으로 타협한다.
+                Debug.Log($"[활쏘기] 사거리 추첨 {placed.Distance:F2}유닛 " +
+                    $"(밴드 {minDistance:F2}~{maxDistance:F2}유닛, 구간 폭이 허용한 최대 " +
+                    $"{placed.MaxAvailableDistance:F2}유닛, {kindLabel}).");
             }
 
             float centerY = groundY + TargetCenterHeight(height, radius);
@@ -323,6 +372,126 @@ namespace StickMate.Interaction
 
             target = new Vector2(targetX, centerY);
             return true;
+        }
+
+        /// <summary>
+        /// 배치 결과. <see cref="Ok"/>가 false면 "이번엔 놓을 자리가 없다"는 뜻이고 나머지 값은 의미가 없다.
+        /// </summary>
+        public readonly struct Placement
+        {
+            public readonly bool Ok;
+            /// <summary>캐릭터가 서야 할 월드 X(발바닥 기준).</summary>
+            public readonly float StandX;
+            /// <summary>과녁 중심의 월드 X.</summary>
+            public readonly float TargetX;
+            /// <summary>+1이면 오른쪽, -1이면 왼쪽을 향해 쏜다.</summary>
+            public readonly float Facing;
+            /// <summary>실제로 확정된 사거리(항상 |TargetX - StandX|).</summary>
+            public readonly float Distance;
+            /// <summary>이 구간에서 물리적으로 가능한 최대 사거리 — 진단/로그용.</summary>
+            public readonly float MaxAvailableDistance;
+
+            public Placement(bool ok, float standX, float targetX, float facing, float distance, float maxAvailable)
+            {
+                Ok = ok;
+                StandX = standX;
+                TargetX = targetX;
+                Facing = facing;
+                Distance = distance;
+                MaxAvailableDistance = maxAvailable;
+            }
+
+            public static readonly Placement None = new Placement(false, 0f, 0f, 1f, 0f, 0f);
+        }
+
+        /// <summary>
+        /// ★ 사거리 추첨 + 자리 계산의 <b>순수 함수 본체</b>(2026-08-31 신고 "무조건 화면 끝" 수정의 핵심).
+        /// MonoBehaviour/씬/카메라에 전혀 의존하지 않으므로 EditMode에서 수천 번 표본을 뽑아
+        /// <b>분포 자체</b>를 검사할 수 있다 — "돌아갈 것 같다"가 아니라 통계로 잠근다.
+        ///
+        /// 계약:
+        ///   · 반환 사거리는 항상 [<paramref name="minDistance"/>, min(<paramref name="maxDistance"/>,
+        ///     구간이 허용하는 최대)] 안이다. <paramref name="roll01"/>에 대해 <b>선형</b>이므로
+        ///     균등 난수를 넣으면 사거리도 균등 분포다(한쪽 극단으로 쏠리지 않는다).
+        ///   · 캐릭터와 과녁은 둘 다 구간 안에 있고, 각자의 여백(<paramref name="charInset"/>,
+        ///     <paramref name="targetInset"/>)을 지킨다.
+        ///   · 최소 사거리조차 안 나오면 <see cref="Placement.None"/>.
+        /// </summary>
+        /// <param name="footX">캐릭터 현재 발바닥 월드 X.</param>
+        /// <param name="lo">쓸 수 있는 구간의 왼쪽 끝(월드 X).</param>
+        /// <param name="hi">쓸 수 있는 구간의 오른쪽 끝(월드 X).</param>
+        /// <param name="charInset">캐릭터가 구간 끝에서 남겨야 할 여백.</param>
+        /// <param name="targetInset">과녁이 구간 끝에서 남겨야 할 여백(반지름 포함).</param>
+        /// <param name="backStep">쏘기 전에 과녁 반대쪽으로 물러서는 거리(월드 유닛). 0이면 제자리.</param>
+        /// <param name="minDistance">랜덤 사거리 밴드의 하한(월드 유닛).</param>
+        /// <param name="maxDistance">랜덤 사거리 밴드의 상한(월드 유닛).</param>
+        /// <param name="roll01">0~1 난수. 프로덕션은 Random.value, 테스트는 시드 난수를 넣는다.</param>
+        public static Placement ResolvePlacement(float footX, float lo, float hi,
+            float charInset, float targetInset, float backStep, float minDistance, float maxDistance, float roll01)
+        {
+            if (!(hi > lo)) return Placement.None;
+
+            float standLo = lo + charInset;
+            float standHi = hi - charInset;
+            float targetLo = lo + targetInset;
+            float targetHi = hi - targetInset;
+            if (standHi < standLo || targetHi < targetLo) return Placement.None;
+
+            minDistance = Mathf.Max(0.0001f, minDistance);
+            maxDistance = Mathf.Max(minDistance, maxDistance);
+
+            // 오른쪽/왼쪽 각각 물리적으로 가능한 최대 사거리. 예전 코드는 이 값을 **그대로** 썼다
+            // (=항상 최대) — 그게 사용자가 본 "무조건 화면 끝"이다.
+            float spanRight = targetHi - standLo;
+            float spanLeft = standHi - targetLo;
+
+            // 방향: 구간이 더 넓게 남은 쪽(=지금 위치에서 먼 쪽 끝)을 향해 쏜다. 예전과 같은 규칙이라
+            // "화면 밖으로 나가지 않는다"는 성질이 유지된다.
+            float facing = Mathf.Abs(footX - lo) <= Mathf.Abs(hi - footX) ? 1f : -1f;
+            float span = facing > 0f ? spanRight : spanLeft;
+            if (span < minDistance)
+            {
+                // 그쪽이 좁으면 반대편으로 미러링한 뒤에도 안 되면 포기(기존 우선순위 유지).
+                facing = -facing;
+                span = facing > 0f ? spanRight : spanLeft;
+                if (span < minDistance) return Placement.None;
+            }
+
+            float bandHi = Mathf.Min(maxDistance, span);
+            float distance = Mathf.Lerp(minDistance, bandHi, Mathf.Clamp01(roll01));
+
+            // 서는 자리: 지금 위치에서 가장 가까운 유효 지점(불필요한 도보 없음).
+            // 제약 = 캐릭터도 구간 안 + (캐릭터 X + facing×사거리)도 과녁 여백 안.
+            float slotLo, slotHi;
+            if (facing > 0f)
+            {
+                slotLo = standLo;
+                slotHi = Mathf.Min(standHi, targetHi - distance);
+            }
+            else
+            {
+                slotLo = Mathf.Max(standLo, targetLo + distance);
+                slotHi = standHi;
+            }
+            if (slotHi < slotLo)
+            {
+                // ★ 부동소수 방어(EditMode 실측으로 잡힌 결함). 사거리가 구간 최대(span)와 같아지는
+                // 추첨(roll≈1)에서는 수학적으로 slotLo == slotHi여야 하는데, float 연산
+                // (Mathf.Lerp(a,b,1f) = a+(b-a)가 b와 정확히 같지 않다)에서 1e-7 단위로 뒤집힌다.
+                // 그대로 두면 "좁은 창에서 가장 먼 사거리를 뽑았을 때만" 활쏘기가 조용히 취소되는
+                // 재현 난이도 최상급 버그가 된다. 오차 범위 안이면 두 값을 한 점으로 합친다.
+                if (slotLo - slotHi > EdgeEpsilon) return Placement.None;
+                float pinned = (slotLo + slotHi) * 0.5f;
+                slotLo = pinned;
+                slotHi = pinned;
+            }
+
+            // 자리가 남아 있으면 과녁 반대쪽으로 <b>한 걸음 물러선다</b>. 자리가 없으면 그만큼 덜
+            // 물러선다(클램프). 예전처럼 구간 끝까지 행진하지는 않는다 — BackStepRatio 문서 참고.
+            float desiredStand = footX - facing * Mathf.Max(0f, backStep);
+            float standX = Mathf.Clamp(desiredStand, slotLo, slotHi);
+            float targetX = standX + facing * distance;
+            return new Placement(true, standX, targetX, facing, Mathf.Abs(targetX - standX), span);
         }
 
         /// <summary>
@@ -343,6 +512,19 @@ namespace StickMate.Interaction
 
         /// <summary>과녁이 발판 끝에서 안쪽으로 남겨두는 여유(반지름에 더해지는 신장 배수).</summary>
         internal const float TargetEdgeInsetRatio = 0.20f;
+
+        /// <summary>
+        /// 쏘기 전에 과녁 반대쪽으로 <b>물러서는</b> 거리(신장 배수).
+        ///
+        /// 왜 있는가: 사용자가 확정한 연출 순서는 "<b>이동</b> -> 과녁 생성 -> 발사"다
+        /// (States/ArcheryState의 Approach 페이즈, PlayMode 테스트가 '발동 직후에는 과녁이 보이면 안
+        /// 된다'로 잠가 놨다). 2026-08-31 수정으로 사거리를 추첨하게 되면서 "구간 끝까지 행진"은
+        /// 없앴는데, 그러면 이동이 <b>0</b>이 되어 그 순서가 통째로 사라진다. 그래서 행진 대신
+        /// <b>한 걸음(신장 1배 ≈ 0.7초)</b>만 물러선다 — 활 쏘기 전에 거리를 재는 자연스러운 동작이면서,
+        /// 매번 화면 가장자리로 걸어가는 옛 그림(신고 문구의 나머지 절반)도 되돌아오지 않는다.
+        /// 뒤에 자리가 없으면 그만큼만 물러선다(사거리는 물러선 결과와 무관하게 이미 확정돼 있다).
+        /// </summary>
+        internal const float BackStepRatio = 1.0f;
 
         /// <summary>
         /// 과녁 중심의 로컬 높이(발바닥 기준). <b>반지름에서 유도</b>되며 별도 설정값이 아니다:

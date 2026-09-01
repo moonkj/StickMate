@@ -12,6 +12,10 @@ namespace StickMate.Interaction
     /// "로직은 있는데 아무도 안 듣는" 패턴). 실측한 발행 조건은 다음 두 가지가 전부다:
     ///   · LookAround  — Idle 진입 후 wanderLookAroundDelayMin~Max(기본 1.0~2.5초) 뒤,
     ///                   그 Idle 구간이 아직 끝나지 않았으면 <b>그 구간에 정확히 1회</b>.
+    ///                   ★ 2026-08-31 — 여기에 발행자 쪽 최소 간격이 하나 더 붙었다
+    ///                   (StickConfig.wanderLookAroundCooldownSeconds, 기본 30초). 사용자 신고
+    ///                   "너무 자주함" 대응이며 실측 분당 9.6회 -> 1.8회. <b>여전히 이 클래스에는
+    ///                   확률도 타이머도 없다</b> — 조건은 전부 발행자에 있다.
     ///   · SitAndYawn  — "Idle 연장"이 연속 3회 이상 선택된 경우에만 wanderRestExtendSitChance
     ///                   (기본 0.15) 확률로.
     /// 이 클래스는 <b>그 조건에 아무것도 더하지 않는다</b> — 새 확률도, 새 타이머도, 새 상태도 없다.
@@ -63,9 +67,13 @@ namespace StickMate.Interaction
             LastRequestAccepted = blackboard.BeginIdleAmbientMotion(motion);
             if (!LastRequestAccepted) return;
 
+            // 로그 문구는 확정된 상태에서만 파생한다(불변 원칙 1). "무수정"이라고 쓰던 예전 문구는
+            // 2026-08-31에 발행자 쪽 최소 간격이 생기면서 사실이 아니게 됐으므로 함께 고쳤다 —
+            // 진단 로그가 코드보다 낡으면 다음 사람이 그 문구를 믿고 엉뚱한 데를 판다.
             Debug.Log($"[유휴동작] {Describe(motion)} 재생 — " +
                 $"진행 중 상태={blackboard.Machine?.CurrentStateId}, " +
-                $"{blackboard.IdleAmbientDurationSeconds:F2}초. (26-3 트리거 조건 무수정, 새 확률 0개)");
+                $"{blackboard.IdleAmbientDurationSeconds:F2}초. " +
+                "(트리거는 26-3 그대로 + 발행자 최소 간격, 이 구독자에는 새 확률 0개)");
         }
 
         /// <summary>로그 문구는 <b>확정된 신호 값에서만</b> 파생한다(불변 원칙 1의 텍스트-액션 싱크 규약을

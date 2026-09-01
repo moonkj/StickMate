@@ -267,7 +267,23 @@ namespace StickMate.Tests.PlayMode
             yield return SetUp();
 
             const float Scale = 2.0f;
-            const int SampleFrames = 900;   // 자율 배회가 걷기/유휴를 여러 번 오갈 만큼.
+
+            // ★★ 2026-09-01 — 표본 창을 <b>프레임 수</b>에서 <b>벽시계 시간</b>으로 바꿨다.
+            //
+            // 예전에는 `const int SampleFrames = 900;`이었고 주석은 "자율 배회가 걷기/유휴를 여러 번
+            // 오갈 만큼"이라고 적혀 있었다. 그런데 배치 모드(-nographics)는 0.11~0.45ms/프레임으로
+            // 돌기 때문에 900프레임은 실제로 <b>0.099~0.405초</b>였다 — 걷기/유휴를 오가기는커녕
+            // 표본 전체가 <b>앱 시작 낙하의 착지 동작 한 번</b> 안에 갇혀 있었다. 그 구간은 팔이
+            // 벌어져 있어 몸의 잉크 반폭이 최대로 커지는 자리라, 망토 돌출(액세서리 - 몸)이 문턱
+            // 0.05유닛 근처에서 오르내렸다(실행 간 실측 -0.0199 ~ +0.0612 — 문턱을 사이에 두고
+            // 갈렸다). 즉 이 테스트의 "간헐적 실패"는 프로덕션이 아니라 표본 창의 결함이었다.
+            //
+            // 고친 방식은 두 겹이다: (a) 표본을 시작하기 전에 <b>Idle에 안착</b>할 때까지 기다리고,
+            // (b) 그 뒤 3초(벽시계)를 표본한다. Idle에서는 팔이 내려와 몸 반폭이 줄어들어 돌출이
+            // 실측 0.42유닛 — 문턱의 <b>8배</b>다. 즉 이 변경은 테스트를 약화시키는 것이 아니라
+            // 겨냥한 순간을 반드시 보게 만드는 <b>강화</b>다. 문턱과 단언은 한 글자도 바뀌지 않았다.
+            const float SampleSeconds = 3f;
+
             int capeCount = ItemCatalog.ItemCountIn(EquipmentSlot.Shoulders);
             Assert.Greater(capeCount, 0, $"{LogPrefix} 망토(Shoulders) 아이템이 하나도 없습니다.");
 
@@ -291,15 +307,23 @@ namespace StickMate.Tests.PlayMode
             float minCoverage = float.PositiveInfinity;   // (보고 - 액세서리) 중 가장 작은 값.
             int coveredSamples = 0;
 
-            for (int f = 0; f < SampleFrames; f++)
+            // (a) 낙하/착지가 끝나 Idle에 안착할 때까지 — 여기서 기다리지 않으면 아래 3초가 통째로
+            //     착지 동작 안에 들어가 버린다(위 문서의 근본 원인).
+            yield return TestClock.WaitForState(
+                _agent.Blackboard, StickmanStateId.Idle, timeoutSeconds: 20f, holdSeconds: 0.1f);
+
+            int idleSamples = 0;
+
+            // (b) 3초(벽시계) 표본 — 자율 배회가 유휴/걷기를 실제로 오간다.
+            ForceHalfWidthRemeasure();
+            yield return TestClock.SampleForSeconds(SampleSeconds, _ =>
             {
-                ForceHalfWidthRemeasure();
-                yield return null;
+                ForceHalfWidthRemeasure();   // 다음 프레임에도 반드시 다시 재게 한다.
 
                 float cx = _agent.Blackboard.Body.position.x;
                 float bodyInk = BodyInkHalfWidth(cx);
                 float accInk = AccessoryInkHalfWidth(cx);
-                if (accInk <= 0f) continue;   // 재구성 프레임(컨테이너가 잠깐 없다).
+                if (accInk <= 0f) return;   // 재구성 프레임(컨테이너가 잠깐 없다).
 
                 float reported = _agent.Blackboard.CharacterVisualHalfWidthWorld;
                 float overhang = accInk - bodyInk;
@@ -310,13 +334,22 @@ namespace StickMate.Tests.PlayMode
                 }
                 minCoverage = Mathf.Min(minCoverage, reported - accInk);
                 coveredSamples++;
-            }
+                if (_agent.Blackboard.Machine.CurrentStateId == StickmanStateId.Idle) idleSamples++;
+            });
 
-            Debug.Log($"{LogPrefix} 망토 #{bestItem} (배율 {Scale:F2}) — 표본 {coveredSamples}프레임. " +
+            Debug.Log($"{LogPrefix} 망토 #{bestItem} (배율 {Scale:F2}) — 표본 {SampleSeconds:F1}초 동안 " +
+                $"{coveredSamples}프레임(그중 Idle {idleSamples}프레임). " +
                 $"최대 돌출 프레임: 몸 {worstBody:F4} / 액세서리 {worstAcc:F4} / 보고 {worstReported:F4} " +
                 $"→ 돌출 {worstOverhang:F4}유닛. 전 표본에서 (보고 - 액세서리) 최소값 {minCoverage:F4}유닛.");
 
             Assert.Greater(coveredSamples, 100, $"{LogPrefix} 유효 표본이 {coveredSamples}프레임뿐입니다.");
+
+            // 진단용(단언 아님) — Idle을 한 프레임도 못 봤다면 아래 네거티브 컨트롤이 실패했을 때
+            // "표본 창이 또 엉뚱한 구간에 갇힌 것"임을 즉시 알 수 있어야 한다.
+            Assert.Greater(idleSamples, 0,
+                $"{LogPrefix} {SampleSeconds:F1}초 표본에서 Idle 프레임을 하나도 보지 못했습니다 — " +
+                "표본 창이 또 다른 동작 안에 갇혔습니다(팔이 벌어진 포즈만 보면 망토 돌출이 문턱 " +
+                "근처에서 오르내려 이 테스트가 다시 '간헐적'이 됩니다).");
 
             // ① 네거티브 컨트롤 — 액세서리가 <b>실제로</b> 몸 밖으로 나가는 순간이 존재한다.
             //    (없다면 아래 ②는 항상 참이라 결함을 잡지 못한다.)

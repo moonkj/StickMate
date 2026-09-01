@@ -182,7 +182,8 @@ namespace StickMate.States
                     _blackboard.PoseSmoothingRate, _blackboard.WalkSpeedSmoothingRate,
                     _cfg != null ? _cfg.walkFootGroundingBlend : 1f,
                     _cfg != null ? _cfg.walkPoseAmplitudeScale : 1f,
-                    _cfg != null ? _cfg.walkStrideScale : 1f);
+                    _cfg != null ? _cfg.walkStrideScale : 1f,
+                    _blackboard.RunBodyLeanDegrees);
                 return;
             }
 

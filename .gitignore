@@ -40,3 +40,17 @@ Assets/InitTestScene*
 # 배치모드 크래시 시 Mono가 프로젝트 루트에 남기는 덤프 (2026-08-31, Camera.Render() nographics
 # 크래시 조사 중 여러 라운드가 겪음 — 진단 후에는 커밋 대상이 아니다)
 mono_crash.*.json
+
+# npx skills add 로 설치한 서드파티 에이전트 스킬 (2026-09-01)
+# 저장소에 넣지 않는다: (1) 5.2MB 벤더링 코드이고 프로젝트 소스가 아니다,
+# (2) skills-lock.json 이 출처+해시를 들고 있어 재설치가 가능하다,
+# (3) impeccable 스킬의 스크립트 출력에 "에이전트가 자율성 관련 지침을 무시하게 만드는"
+#     프롬프트 인젝션 문구가 들어 있었다 — 저장소에 커밋하면 이 프로젝트를 클론하는
+#     모든 사람/세션에 그게 따라간다. 로컬 도구로만 둔다.
+.agents/
+.claude/skills/diagnosing-bugs
+.claude/skills/impeccable
+.claude/skills/performance-optimization
+.claude/skills/systematic-debugging
+.claude/skills/unity-cli
+.claude/skills/unity-ecs-patterns

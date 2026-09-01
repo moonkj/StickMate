@@ -43,7 +43,14 @@ namespace StickMate.States
             // 남긴다. 그래서 아래 DialogueIntent의 매핑 함수는 난수를 전혀 쓰지 않는 순수 함수이며,
             // "이 텍스트가 어느 Enter() 호출의 어느 파라미터에서 나왔는지"가 항상 역추적된다
             // (UX_FLOW.md 31-1/31-3). 추첨에 떨어지면 대사 자체가 만들어지지 않는다.
-            if (AmbientChatter.TryRollChatter(_blackboard, StickmanStateId.Idle, _chatterParams))
+            //
+            // ★ 2026-09-01 — 발판 상실 공중 유예(GroundLossHang)에서 되돌아온 전이는 **추첨하지 않는다.**
+            // 그건 새 유휴 에피소드가 아니라 같은 에피소드의 복귀다(창 열거가 한 번 튀었다가 돌아온 것뿐).
+            // 여기서 추첨을 돌리면 열거가 튈 때마다 말풍선 확률이 새로 생겨, 사용자가 아무 것도 하지
+            // 않았는데 대사 빈도가 올라간다 — 이번 라운드의 리더 결정("연출만, 대사 없이")과 정면으로
+            // 어긋나고, 사용자가 반복적으로 불만을 표해온 "요청하지 않은 대사"가 정확히 이것이다.
+            if (context.From != StickmanStateId.GroundLossHang
+                && AmbientChatter.TryRollChatter(_blackboard, StickmanStateId.Idle, _chatterParams))
             {
                 _ = new DialogueIntent(context, AmbientChatter.Resolve);
             }

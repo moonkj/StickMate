@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78e6f691c35d849a3aaae03fcb063cd4, type: 3}
+  m_Name: equip_head_crown
+  m_EditorClassIdentifier: 
+  itemId: equip.head.crown
+  slot: 0
+  itemIndex: 3
+  displayName: "\uC655\uAD00"
+  description: "\uCC45\uC0C1 \uC704\uC5D0\uC11C\uB9CC \uD1B5\uC6A9\uB418\uB294 \uAD8C\uC704."
+  requiredLevel: 20
+  hidesHair: 0
+  icon:
+  - kind: 0
+    values:
+    - 8
+    - 29
+    - 32
+    - 29
+    color: {r: 1, g: 0.9411765, b: 0.72156864, a: 1}
+    tone: 1
+  - kind: 0
+    values:
+    - 8
+    - 29
+    - 9
+    - 14
+    - 14.5
+    - 21
+    - 20
+    - 11
+    - 25.5
+    - 21
+    - 31
+    - 14
+    - 32
+    - 29
+    color: {r: 0.9098039, g: 0.75686276, b: 0.3529412, a: 1}
+    tone: 0

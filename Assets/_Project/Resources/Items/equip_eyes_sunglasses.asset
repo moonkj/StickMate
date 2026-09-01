@@ -1,0 +1,89 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78e6f691c35d849a3aaae03fcb063cd4, type: 3}
+  m_Name: equip_eyes_sunglasses
+  m_EditorClassIdentifier: 
+  itemId: equip.eyes.sunglasses
+  slot: 1
+  itemIndex: 0
+  displayName: "\uC120\uAE00\uB77C\uC2A4"
+  description: "\uC2E4\uB0B4\uC5D0\uC11C\uB3C4 \uBC97\uC9C0 \uC54A\uB294\uB2E4. \uD45C\uC815\uC774
+    \uC798 \uC548 \uBCF4\uC778\uB2E4."
+  requiredLevel: 1
+  hidesHair: 0
+  icon:
+  - kind: 0
+    values:
+    - 5
+    - 17
+    - 17
+    - 17
+    - 18
+    - 18
+    - 18
+    - 22
+    - 17.56
+    - 24.22
+    - 16.22
+    - 25.56
+    - 14
+    - 26
+    - 9
+    - 26
+    - 6.78
+    - 25.56
+    - 5.44
+    - 24.22
+    - 5
+    - 22
+    - 5
+    - 18
+    - 5
+    - 17
+    color: {r: 0.4862745, g: 0.5411765, b: 0.6392157, a: 1}
+    tone: 0
+  - kind: 0
+    values:
+    - 23
+    - 17
+    - 35
+    - 17
+    - 35
+    - 22
+    - 34.56
+    - 24.22
+    - 33.22
+    - 25.56
+    - 31
+    - 26
+    - 26
+    - 26
+    - 23.78
+    - 25.56
+    - 22.44
+    - 24.22
+    - 22
+    - 22
+    - 22
+    - 18
+    - 23
+    - 17
+    color: {r: 0.4862745, g: 0.5411765, b: 0.6392157, a: 1}
+    tone: 0
+  - kind: 0
+    values:
+    - 18
+    - 19
+    - 22
+    - 19
+    color: {r: 0.827451, g: 0.85490197, b: 0.89411765, a: 1}
+    tone: 1

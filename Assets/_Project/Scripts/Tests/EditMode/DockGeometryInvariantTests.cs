@@ -397,6 +397,97 @@ namespace StickMate.Tests.EditMode
         }
 
         // ============================================================================
+        // ★ (3-2) 탐지 도달거리 ≥ 평가 거리 (2026-08-31, "키우면 Dock 위로 안 올라옴")
+        // ============================================================================
+        //
+        // 배회 AI는 경계 행동을 <b>걷기 구간당 딱 한 번</b>, "경계까지 남은 거리 ≤ 평가 거리"가 되는
+        // 그 프레임에 추첨하고 실패하면 그 자리에서 돌아선다 — 그보다 가까이 가는 일이 없다.
+        // 그러므로 탐지(GroundSensor의 경계 근접 게이트)는 <b>정확히 그 거리에서</b> 성립해야 한다.
+        // 평가 거리는 배율에서 유도되는데(0.4×배율+0.10) 탐지 게이트는 0.5 절대값이었고,
+        // 배율 1.0을 넘는 순간 평가 거리가 게이트를 추월해 되올라가기/내려가기가 <b>구조적으로</b>
+        // 불가능해졌다. 아래 두 테스트가 그 짝을 잠근다(PlayMode 쪽은 DockStepUpCharacterScaleTests).
+
+        [Test]
+        public void 탐지_도달거리가_모든_배율에서_평가_거리를_덮어야_한다()
+        {
+            StickConfig deployed = LoadDeployedConfig();
+
+            float[] scales =
+            {
+                StickConfig.MinCharacterScale, 0.5f, deployed.ResolveCharacterScale(),
+                0.9f, 1f, 1.25f, 1.5f, StickConfig.MaxCharacterScale
+            };
+
+            foreach (float scale in scales)
+            {
+                float halfWidth = StickConfig.BaselineBodyPhysicsHalfWidth * scale;
+                float stop = DockGeometry.ResolveEdgeStopDistance(deployed.wanderEdgeStopDistance, halfWidth);
+                float reach = DockGeometry.ResolveEdgeProbeReach(deployed.parkourDetectionRadius, stop);
+                float clearance = reach - stop;
+                bool derivationWins = reach > deployed.parkourDetectionRadius + 1e-4f;
+
+                Debug.Log($"[DOCK-GEOM] 배율 {scale:F3} → 평가 거리 {stop:F3}, 탐지 도달거리 설정 " +
+                    $"{deployed.parkourDetectionRadius:F3} → 유도 {reach:F3} " +
+                    $"({(derivationWins ? "유도 승" : "설정 승")}), 여유 {clearance:F4}");
+
+                Assert.GreaterOrEqual(clearance, RequiredClearanceUnits,
+                    $"배율 {scale:F3}에서 탐지 도달거리({reach:F3})가 평가 거리({stop:F3})를 " +
+                    $"{RequiredClearanceUnits:F2} 넘는 여유로 덮지 못합니다(여유 {clearance:F4}) — " +
+                    "이 배율의 사용자는 경계에서 추첨은 도는데 대상이 잡히지 않아 Dock을 오르내릴 수 없습니다.");
+            }
+        }
+
+        /// <summary>
+        /// ★ 위 테스트의 <b>네거티브 컨트롤</b> — "유도를 끄면 실제로 깨진다"를 박제한다.
+        /// 유도 함수를 우회하고 옛 절대값(parkourDetectionRadius)을 그대로 게이트로 쓰는 계산을
+        /// 재현해, 그 방식이 무너지는 배율 천장을 계산하고 그것이 다이얼 상한(2.00) 안쪽임을 확인한다.
+        /// 이 단언이 실패한다면 유도 없이도 안전하다는 뜻이므로 위 테스트는 아무것도 지키지 않는다.
+        /// </summary>
+        [Test]
+        public void 네거티브컨트롤_유도를_끄면_큰_배율에서_탐지가_평가거리를_못_따라간다()
+        {
+            StickConfig deployed = LoadDeployedConfig();
+
+            // 옛 방식이 버티는 천장: 0.4×배율 + EdgeStopWallStandoffMargin ≤ parkourDetectionRadius.
+            float ceiling = (deployed.parkourDetectionRadius - DockGeometry.EdgeStopWallStandoffMarginUnits)
+                            / StickConfig.BaselineBodyPhysicsHalfWidth;
+
+            float bigScale = StickConfig.MaxCharacterScale;
+            float halfWidth = StickConfig.BaselineBodyPhysicsHalfWidth * bigScale;
+            float stop = DockGeometry.ResolveEdgeStopDistance(deployed.wanderEdgeStopDistance, halfWidth);
+            float legacyClearance = deployed.parkourDetectionRadius - stop;                       // 유도 없음.
+            float derivedClearance = DockGeometry.ResolveEdgeProbeReach(deployed.parkourDetectionRadius, stop) - stop;
+
+            // 배포 배율에서는 유도값이 설정값과 정확히 같아야 한다(= 지금 화면 거동 무변경).
+            float deployedScale = deployed.ResolveCharacterScale();
+            float deployedStop = DockGeometry.ResolveEdgeStopDistance(deployed.wanderEdgeStopDistance,
+                StickConfig.BaselineBodyPhysicsHalfWidth * deployedScale);
+            float deployedReach = DockGeometry.ResolveEdgeProbeReach(deployed.parkourDetectionRadius, deployedStop);
+
+            Debug.Log($"[DOCK-GEOM] (네거티브 컨트롤) 옛 절대 게이트 {deployed.parkourDetectionRadius:F3}이 " +
+                $"버티는 배율 천장 = {ceiling:F3}. 배율 {bigScale:F2}에서 여유 — 유도 끔 {legacyClearance:F4} / " +
+                $"유도 켬 {derivedClearance:F4}. 배포 배율 {deployedScale:F3}에서는 유도값 {deployedReach:F4} " +
+                $"= 설정값 {deployed.parkourDetectionRadius:F4}(거동 무변경).");
+
+            Assert.Less(ceiling, StickConfig.MaxCharacterScale,
+                $"옛 절대 게이트가 버티는 천장({ceiling:F3})이 다이얼 상한({StickConfig.MaxCharacterScale:F2}) " +
+                "이상입니다 — 그렇다면 유도가 없어도 안전하다는 뜻이라 위 테스트가 아무것도 지키지 않습니다.");
+
+            Assert.Less(legacyClearance, RequiredClearanceUnits,
+                $"유도를 끈 계산에서도 배율 {bigScale:F2}의 여유가 {legacyClearance:F4}로 충분합니다 — " +
+                "네거티브 컨트롤이 성립하지 않습니다(재현 조건이 바뀌었는지 확인하세요).");
+
+            Assert.GreaterOrEqual(derivedClearance, RequiredClearanceUnits,
+                $"유도를 켰는데도 배율 {bigScale:F2}의 여유가 {derivedClearance:F4}입니다 — " +
+                "DockGeometry.ResolveEdgeProbeReach의 여유 계산을 확인하세요.");
+
+            Assert.AreEqual(deployed.parkourDetectionRadius, deployedReach, 1e-4f,
+                $"배포 배율({deployedScale:F3})에서 유도값({deployedReach:F4})이 설정값" +
+                $"({deployed.parkourDetectionRadius:F4})과 다릅니다 — 이 수정은 지금 화면의 거동을 " +
+                "바꾸지 않는다는 전제가 깨졌습니다(배포 배율이나 여유 상수가 바뀐 것인지 확인하세요).");
+        }
+
+        // ============================================================================
         // (4) 진짜 금지 조합 — 내려갈 길이 하나도 없는 설정 (M1 재정의)
         // ============================================================================
 

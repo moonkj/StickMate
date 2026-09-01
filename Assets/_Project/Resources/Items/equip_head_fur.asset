@@ -1,0 +1,61 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78e6f691c35d849a3aaae03fcb063cd4, type: 3}
+  m_Name: equip_head_fur
+  m_EditorClassIdentifier: 
+  itemId: equip.head.fur
+  slot: 0
+  itemIndex: 1
+  displayName: "\uD138\uBAA8\uC790"
+  description: "\uACA8\uC6B8\uC5D0\uB9CC \uAEBC\uB0B4\uB294 \uB450\uAEBC\uC6B4 \uD138\uBAA8\uC790."
+  requiredLevel: 5
+  hidesHair: 1
+  icon:
+  - kind: 0
+    values:
+    - 11
+    - 26
+    - 12.21
+    - 21.5
+    - 15.5
+    - 18.21
+    - 20
+    - 17
+    - 24.5
+    - 18.21
+    - 27.79
+    - 21.5
+    - 29
+    - 26
+    color: {r: 0.7529412, g: 0.56078434, b: 0.3764706, a: 1}
+    tone: 0
+  - kind: 0
+    values:
+    - 8
+    - 26
+    - 32
+    - 26
+    - 32
+    - 30
+    - 8
+    - 30
+    - 8
+    - 26
+    color: {r: 0.7529412, g: 0.56078434, b: 0.3764706, a: 1}
+    tone: 0
+  - kind: 1
+    values:
+    - 20
+    - 10
+    - 2.6
+    color: {r: 0.9098039, g: 0.8862745, b: 0.83137256, a: 1}
+    tone: 1

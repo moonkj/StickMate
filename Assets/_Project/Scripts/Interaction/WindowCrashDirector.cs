@@ -66,39 +66,55 @@ namespace StickMate.Interaction
         /// 있어야 한다"는 대상 선정 조건. 그리고 무엇보다 <b>대상 창에는 여전히 아무 짓도 하지 않는다</b> —
         /// 발행하는 것은 좌표 스냅샷 이벤트 하나뿐이고 크랙은 100% 클릭관통 시각 레이어다(27-4).
         /// </summary>
-        public void ForceTriggerNow(string reason)
-        {
-            if (_player == null || _config == null)
-            {
-                Debug.LogWarning($"[창크래시] 강제 발동 실패({reason}) — 플레이어/설정 배선이 없습니다.");
-                return;
-            }
-            if (_overlayActive)
-            {
-                Debug.Log($"[창크래시] 강제 발동 건너뜀({reason}) — 이미 크랙 오버레이가 떠 있습니다.");
-                return;
-            }
-            if (SpectacleEventLock.IsActive)
-            {
-                Debug.Log($"[창크래시] 강제 발동 건너뜀({reason}) — 다른 스펙터클({SpectacleEventLock.ActiveKind})이 " +
-                          "진행 중입니다(상호배제 락).");
-                return;
-            }
+        /// <summary>이미 크랙이 떠 있을 때의 문구 — 락과 별개의 자체 수명이라 따로 본다.</summary>
+        public const string OverlayBusyReason = "아직 금이 안 사라졌어요";
 
-            var current = _player.Blackboard.Machine.CurrentStateId;
+        /// <summary>포그라운드 창을 못 찾았을 때의 문구(36-7 표와 1:1).</summary>
+        public const string NoForegroundWindowReason = "지금 앞에 있는 창이 없어요";
+
+        /// <summary>
+        /// ★ 지금 창 부수기를 시킬 수 있는가 — 회색 처리와 실제 실행이 함께 쓰는 단 하나의 판정
+        /// (docs/UX_FLOW.md 36-7). 27-4의 대상 조건(IsTopmost인 실제 창)까지 여기서 본다.
+        /// </summary>
+        public CommandAvailability GetAvailability()
+        {
+            if (_player == null || _config == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
+                return CommandAvailability.Missing;
+
+            if (_overlayActive)
+                return CommandAvailability.Blocked(OverlayBusyReason);
+
+            if (SpectacleEventLock.IsActive)
+                return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(SpectacleEventLock.ActiveKind));
+
+            StickmanStateId current = _player.Blackboard.Machine.CurrentStateId;
             if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
+                return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(current));
+
+            if (!TryFindForegroundWindow(out _))
+                return CommandAvailability.Blocked(NoForegroundWindowReason);
+
+            return CommandAvailability.Ready;
+        }
+
+        /// <returns>실제로 시작했는가. 기존 단축키 호출부는 반환값을 무시하면 되므로 하위 호환이다.</returns>
+        public bool ForceTriggerNow(string reason)
+        {
+            CommandAvailability availability = GetAvailability();
+            if (!availability.IsReady)
             {
-                Debug.Log($"[창크래시] 강제 발동 건너뜀({reason}) — 지금은 {current} 중입니다(Idle/Walk에서만 시작).");
-                return;
+                Debug.Log($"[창크래시] 강제 발동 건너뜀({reason}) — {availability.Reason}" +
+                    "(상호배제 락/진입 상태/대상 창 조건은 강제 경로에서도 완화하지 않는다).");
+                return false;
             }
 
             if (!TryFindForegroundWindow(out PlatformFoothold target))
             {
-                Debug.Log($"[창크래시] 강제 발동 건너뜀({reason}) — 포그라운드(IsTopmost) 실제 창을 찾지 못했습니다.");
-                return;
+                Debug.Log($"[창크래시] 강제 발동 건너뜀({reason}) — {NoForegroundWindowReason}(대상 재선정 단계).");
+                return false;
             }
 
-            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.WindowCrash, this)) return;
+            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.WindowCrash, this)) return false;
 
             _targetHandle = target.Handle;
             _targetRectSnapshot = target.ScreenRect;
@@ -111,6 +127,7 @@ namespace StickMate.Interaction
             Debug.Log($"[창크래시] 강제 발동({reason}) — 대상 창 handle={_targetHandle}, OS영역 {_targetRectSnapshot}, " +
                 $"크랙 유지 {_config.windowCrashOverlayDurationSeconds:F1}초. " +
                 "크랙은 순수 시각 레이어이므로 그동안에도 그 창은 평소처럼 클릭/타이핑됩니다(27-4).");
+            return true;
         }
 
         private void Update()

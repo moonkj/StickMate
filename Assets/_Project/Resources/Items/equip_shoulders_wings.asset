@@ -1,0 +1,78 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78e6f691c35d849a3aaae03fcb063cd4, type: 3}
+  m_Name: equip_shoulders_wings
+  m_EditorClassIdentifier: 
+  itemId: equip.shoulders.wings
+  slot: 3
+  itemIndex: 2
+  displayName: "\uB0A0\uAC1C"
+  description: "\uB728\uC9C0\uB294 \uC54A\uC9C0\uB9CC \uD3FC\uC740 \uB09C\uB2E4."
+  requiredLevel: 17
+  hidesHair: 0
+  icon:
+  - kind: 0
+    values:
+    - 20
+    - 12
+    - 20
+    - 28
+    color: {r: 0.6901961, g: 0.56078434, b: 0.8156863, a: 1}
+    tone: 1
+  - kind: 0
+    values:
+    - 19
+    - 14
+    - 13.19
+    - 13.5
+    - 8.75
+    - 15
+    - 5.69
+    - 18.5
+    - 4
+    - 24
+    - 7.94
+    - 24.12
+    - 11.75
+    - 23.5
+    - 15.44
+    - 22.12
+    - 19
+    - 20
+    - 19
+    - 14
+    color: {r: 0.93333334, g: 0.9490196, b: 0.972549, a: 1}
+    tone: 0
+  - kind: 0
+    values:
+    - 21
+    - 14
+    - 26.81
+    - 13.5
+    - 31.25
+    - 15
+    - 34.31
+    - 18.5
+    - 36
+    - 24
+    - 32.06
+    - 24.12
+    - 28.25
+    - 23.5
+    - 24.56
+    - 22.12
+    - 21
+    - 20
+    - 21
+    - 14
+    color: {r: 0.93333334, g: 0.9490196, b: 0.972549, a: 1}
+    tone: 0

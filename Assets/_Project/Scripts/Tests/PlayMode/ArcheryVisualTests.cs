@@ -241,16 +241,29 @@ namespace StickMate.Tests.PlayMode
                     $"과녁 x={_director.LastTargetWorld.x:F2}가 딛고 있는 발판의 오른쪽 끝" +
                     $"({groundInfo.CurrentFootholdRightWorldX:F2}) 바깥입니다 — 창 모서리 너머 허공에 뜹니다.");
 
-                if (!ArcheryDirector.IsRealWindowFoothold(groundInfo.GroundedFootholdHandle)
-                    && _agent.Blackboard.TryGetWalkableScreenBoundsWorld(out float wl, out float wr))
+                // ★ 2026-08-31 사용자 재정의로 상한 규칙이 바뀌었다. 예전에는 "바탕화면이면 화면 폭의
+                // 절반 이상"을 **요구**했는데(그래서 캐릭터를 한쪽 끝, 과녁을 반대쪽 끝에 고정 배치했다),
+                // 그게 곧 신고 "활쏘기 시키면 무조건 과녁이 화면 끝에만 생김 / 거리는 항상 랜덤으로
+                // 변경되어야"의 원인이었다. 지금은 사거리가 신장 배수 밴드(2.6~6.6배)에서 매번 추첨된다.
+                // 여기서는 **상한과 가장자리 여유**만 실물 씬에서 확인하고, 분포(=진짜 랜덤인가)는
+                // EditMode의 ArcheryTargetDistanceTests가 수천 표본으로 잠근다.
+                Assert.LessOrEqual(shootDistance, height * 6.6f + height * 0.2f,
+                    $"사거리 {shootDistance:F2}유닛이 랜덤 밴드 상한(신장의 6.6배 = {height * 6.6f:F2}유닛)을 " +
+                    "넘었습니다 — 사거리가 다시 화면/발판 폭에 끌려가고 있습니다(신고 재발).");
+
+                if (_agent.Blackboard.TryGetWalkableScreenBoundsWorld(out float wl, out float wr)
+                    && (wr - wl) > height * 16f)
                 {
-                    // 바탕화면(안전망 발판) — 사용자 명시 "화면 전체 길이의 절반 이상".
-                    // 화면/발판 폭이 그만큼도 안 될 때의 타협은 허용하므로, 확보 가능한 최대치와 비교한다.
-                    float best = (wr - wl) - height * (0.35f + 0.20f) - _renderer.TargetRadius;
-                    float required = Mathf.Min((wr - wl) * 0.5f, best);
-                    Assert.GreaterOrEqual(shootDistance, required - 0.05f,
-                        $"바탕화면인데 사거리가 {shootDistance:F2}유닛으로 요구치({required:F2}유닛, " +
-                        $"화면 폭 {(wr - wl):F2}의 절반 또는 확보 가능한 최대치)에 못 미칩니다.");
+                    // 화면이 밴드보다 충분히 넓을 때만 의미 있는 판정 — 과녁이 진행 방향 끝에 붙지 않는다.
+                    // 경계 16배의 근거(계산): facing +1일 때 standX ≤ 화면중앙 - 한걸음(신장 1배)이고
+                    // 사거리 ≤ 신장 6.6배이므로 여유 ≥ 0.5W + 1H - 6.6H. 이게 2H를 넘으려면 W > 15.2H.
+                    // 실측 환경(가시 폭 36.96유닛 = 신장의 21.7배)은 여유 있게 이 조건을 넘는다.
+                    float gap = _agent.Blackboard.ArcheryFacingSign > 0f
+                        ? wr - _director.LastTargetWorld.x
+                        : _director.LastTargetWorld.x - wl;
+                    Assert.Greater(gap, height * 2f,
+                        $"과녁이 진행 방향 화면 끝에서 {gap:F2}유닛(신장의 {gap / height:F1}배)밖에 안 " +
+                        "떨어져 있습니다 — 신고 문구 '화면 끝에만 생김'이 재발한 상태입니다.");
                 }
             }
 
@@ -265,6 +278,12 @@ namespace StickMate.Tests.PlayMode
             var stuckDescents = new List<float>(3);
             var stuckOvershoots = new List<float>(3);
             bool leftArchery = false;
+            // ★ 2026-08-31 신고 "활대를 잡아야 하는데 이상한 데를 잡고 쏨" — 사이클을 지켜보는 김에
+            // **실제로 그려진 활대와 손의 거리**를 매 프레임 잰다(순수 함수 테스트만으로는 배치
+            // 코드가 그 함수를 쓰는지 증명되지 않는다).
+            StickmanPoseAnimator poseAnimator = _agent.Blackboard.GetPoseAnimator();
+            float maxGripError = -1f;
+            float maxHandVsPoseError = -1f;
             Vector2 footAtStateEnd = footAtStart;
             float archerySeconds = 0f;
             while (elapsed < 12f)
@@ -296,10 +315,35 @@ namespace StickMate.Tests.PlayMode
                         footAtStateEnd = _agent.Blackboard.Body.position;
                     }
                 }
+                if (_agent.Blackboard.ArcheryDrawRatio > 0.5f
+                    && _renderer.TryGetBowGripAndHandWorld(out Vector2 gripWorld, out Vector2 bowHandWorld))
+                {
+                    maxGripError = Mathf.Max(maxGripError, Vector2.Distance(gripWorld, bowHandWorld));
+                    if (poseAnimator != null && poseAnimator.HasLimbs)
+                    {
+                        poseAnimator.GetHandWorldPositions(out _, out Vector2 frontHand);
+                        if (frontHand != Vector2.zero)
+                            maxHandVsPoseError = Mathf.Max(maxHandVsPoseError,
+                                Vector2.Distance(bowHandWorld, frontHand));
+                    }
+                }
                 if (!_renderer.IsVisible && _releases.Count >= 3) break;
                 yield return null;
             }
             Assert.IsTrue(leftArchery, "12초 안에 활쏘기가 끝나지 않았습니다 — 3발 뒤 종료 조건이 걸리지 않습니다.");
+
+            // ★ 손이 잡는 곳 = 활대 한가운데(신고 회귀 잠금). 예전 배치는 이 거리가 정확히
+            // 그립 오프셋(신장의 15.5%)이었다 — 손이 활대도 시위도 아닌 빈 공간을 쥔 그림.
+            float charHeight = _agent.Blackboard.CharacterHeightWorld;
+            Assert.GreaterOrEqual(maxGripError, 0f,
+                "만작(당김 50% 초과) 구간에서 활이 한 프레임도 그려지지 않았습니다 — 이 검사가 " +
+                "아무것도 보지 못했다는 뜻입니다(테스트가 조용히 무력화된 상태).");
+            Assert.Less(maxGripError, charHeight * 0.02f,
+                $"활대 한가운데가 활 든 손에서 최대 {maxGripError:F3}유닛(신장의 " +
+                $"{maxGripError / charHeight:P1}) 떨어져 그려졌습니다 — 신고된 '이상한 데를 잡고 쏨'입니다.");
+            Assert.Less(maxHandVsPoseError, charHeight * 0.25f,
+                $"렌더러가 활을 쥐여준 지점이 실제 앞손(오른팔 끝)에서 최대 {maxHandVsPoseError:F3}유닛 " +
+                "떨어져 있습니다 — 반대쪽 손이나 폴백 근사치를 쓰고 있다는 뜻입니다.");
             Assert.Less(archerySeconds, 10f,
                 $"활쏘기 한 사이클이 {archerySeconds:F1}초나 걸렸습니다 — 3발 연출이 늘어집니다.");
 
@@ -787,6 +831,85 @@ namespace StickMate.Tests.PlayMode
             Assert.AreEqual(height - radius, ArcheryDirector.TargetCenterHeight(height, radius), Tol,
                 "과녁 중심 높이가 '신장 - 반지름'이 아닙니다 — 이 관계가 깨지면 과녁 꼭대기가 " +
                 "정수리와 어긋나고, 디렉터의 세로 화면 판정도 함께 틀어집니다.");
+        }
+
+        // ============================================================================
+        // ⑦ 손이 잡는 곳 = 활대 한가운데 (2026-08-31 사용자 신고)
+        // ============================================================================
+
+        /// <summary>
+        /// ★ 신고 원문: "활 쏠 때 활대를 잡아야 하는데 이상한 데를 잡고 쏨".
+        ///
+        /// 활 로컬 좌표계는 <b>시위선이 x=0</b>이고 활대가 +x로 불룩하다. 예전 코드는 활 루트를 손끝에
+        /// 그대로 놓아 <b>원점(시위선 한가운데)</b>이 손에 왔다 — 그 지점은 활대에서 신장의 15.5% 뒤,
+        /// 당겨진 시위의 V자보다는 앞인 <b>빈 공간</b>이라 손이 아무것도 쥐지 않은 그림이 된다.
+        ///
+        /// 이 테스트가 잠그는 절대 조건: <b>어떤 조준각/배율에서도 활대 한가운데(BowLimbLocal(0))의
+        /// 컨테이너 로컬 위치가 손끝과 정확히 일치</b>한다. 각도를 여러 개 도는 이유는 그립 오프셋을
+        /// 회전에 태우지 않고 x축으로만 빼는 흔한 실수(조준각이 0이 아닐 때만 어긋난다)를 잡기 위해서다.
+        /// </summary>
+        [TestCase(1.0f)]
+        [TestCase(0.75f)]
+        [TestCase(0.5f)]
+        public void BowIsHeldByItsGripNotByTheString(float scale)
+        {
+            GameObject rig = Rig(scale);
+            var r = rig.AddComponent<ArcheryRenderer>();
+            string label = $"배율 {scale:F2}";
+
+            // (A) 활 모양 자체의 계약 — 활대 한가운데는 t=0, 양 끝(시위 매듭)은 x=0.
+            Assert.AreEqual(r.BowGripLocalX, r.BowLimbLocal(0f).x, Tol,
+                $"{label}: 활대 한가운데의 x가 그립 오프셋과 다릅니다 — 두 값이 서로 다른 식에서 나오면 " +
+                "손 위치와 그림이 조용히 어긋납니다.");
+            Assert.AreEqual(0f, r.BowLimbLocal(0f).y, Tol, $"{label}: 그립이 활 상하 한가운데가 아닙니다.");
+            Assert.AreEqual(0f, r.BowLimbLocal(1f).x, Tol, $"{label}: 활 위쪽 끝이 시위선(x=0) 위에 없습니다.");
+            Assert.AreEqual(0f, r.BowLimbLocal(-1f).x, Tol, $"{label}: 활 아래쪽 끝이 시위선(x=0) 위에 없습니다.");
+            Assert.AreEqual(r.BowHalfLength, r.BowLimbLocal(1f).y, Tol, $"{label}: 활 길이가 어긋납니다.");
+            Assert.Greater(r.BowGripLocalX, 0f, $"{label}: 활대가 앞으로 휘지 않았습니다(그립이 시위선 위).");
+
+            // (B) 절대 조건 — 조준각과 무관하게 그립이 손끝에 온다.
+            var hands = new[] { new Vector2(0.72f, 1.97f) * scale, new Vector2(-3.1f, 0.9f) * scale };
+            foreach (float aim in new[] { -35f, -12f, 0f, 7f, 18f, 44f, 90f, 173f, -168f })
+            {
+                Quaternion rot = Quaternion.Euler(0f, 0f, aim);
+                foreach (Vector2 hand in hands)
+                {
+                    Vector2 root = ArcheryRenderer.ResolveBowRootLocal(hand, aim, r.BowGripLocalX);
+                    Vector2 gripWorld = root + (Vector2)(rot * (Vector3)r.BowLimbLocal(0f));
+                    Assert.AreEqual(hand.x, gripWorld.x, Tol,
+                        $"{label}/조준 {aim}도: 활대 한가운데의 x가 손끝과 다릅니다.");
+                    Assert.AreEqual(hand.y, gripWorld.y, Tol,
+                        $"{label}/조준 {aim}도: 활대 한가운데의 y가 손끝과 다릅니다.");
+
+                    // 네거티브 컨트롤 — 예전처럼 루트를 손에 그대로 놓았다면(그립 오프셋 0) 활대가
+                    // 손에서 이만큼 떨어진다. "눈에 안 띌 만큼 작은 차이"가 아님을 같은 식으로 보인다.
+                    Vector2 oldGrip = hand + (Vector2)(rot * (Vector3)r.BowLimbLocal(0f));
+                    float err = Vector2.Distance(oldGrip, hand);
+                    Assert.AreEqual(r.BowGripLocalX, err, Tol,
+                        $"{label}/조준 {aim}도: 네거티브 컨트롤 계산이 그립 오프셋과 다릅니다.");
+                    Assert.Greater(err, r.BowHalfLength * 0.4f,
+                        $"{label}: 옛 배치의 어긋남이 활 반길이의 40%도 안 됩니다 — 그렇다면 이 테스트는 " +
+                        "아무것도 증명하지 못합니다(신고된 그림이 재현되지 않는다는 뜻).");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 만작에서 <b>시위에 걸린 화살의 촉이 활대에 닿는다</b> — 손-그립 일치와 독립적으로 같은
+        /// 결론을 요구하는 두 번째 증거다(활 전체가 앞뒤로 밀려 있으면 이 관계부터 깨진다).
+        /// 오늬는 뒷손이 정하지만, 그 최대 당김폭(BowMaxPull)과 화살대 길이는 상수라 검산할 수 있다.
+        /// </summary>
+        [Test]
+        public void FullDrawArrowTipReachesTheBowStave()
+        {
+            GameObject rig = Rig(1f);
+            var r = rig.AddComponent<ArcheryRenderer>();
+
+            // 활 로컬에서 오늬 x = -당김폭, 촉 x = 오늬 + 화살대. 그 촉이 활대(그립 x) 근처에 와야 한다.
+            float tipX = -r.BowMaxPull + r.ArrowShaftLength;
+            Assert.AreEqual(r.BowGripLocalX, tipX, r.BowHalfLength * 0.35f,
+                $"만작 화살촉 x={tipX:F3}이 활대 x={r.BowGripLocalX:F3}에서 너무 멉니다 — 화살이 활을 " +
+                "관통했거나(+) 활 앞에 한참 못 미칩니다(-).");
         }
     }
 }

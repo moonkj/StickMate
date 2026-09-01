@@ -54,6 +54,26 @@ namespace StickMate.States
         // "Idle 연장"이 연속으로 선택된 횟수(26-3 앉기/하품 트리거 조건).
         private int _consecutiveIdleExtensions;
 
+        // ★ "주위 살피기" 최소 간격(2026-08-31 사용자 신고 "너무 자주함").
+        //
+        // 왜 트리거 조건이 아니라 유예 타이머인가 — 26-3의 조건("Idle 진입 후 지연시간 경과 시 그
+        // 구간에 1회") 자체는 멀쩡하다. 문제는 그 위에 있는 26-1의 갈래다: Idle이 끝나면 25% 확률로
+        // "Idle 연장"이 뽑히고, 연장은 EnterResting()을 다시 부르므로 **새 Idle 구간 = 새 추첨권**이
+        // 된다. 그래서 한 번 쉬기 시작하면 2~6초마다 계속 나온다.
+        //   실측(이 파일의 확률/지속시간 그대로 1시간 몬테카를로): 분당 9.7회 / 중앙값 간격 6.3초 /
+        //   최소 간격 1.4초 -> 유예 30초에서 분당 1.8회 / 중앙값 32.9초.
+        // 조건식을 건드리지 않고 유예만 얹는 이유는 26-3 스펙을 그대로 보존하기 위해서다
+        // (StickConfig.wanderLookAroundCooldownSeconds = 0이면 정확히 예전 거동 = 네거티브 컨트롤).
+        // 이 타이머는 **페이즈와 무관하게** Tick에서 줄어든다 — 걷는 동안에도 유예가 흐르지 않으면
+        // "걷다 서면 매번 살피기"가 그대로 남는다.
+        private float _lookAroundCooldownTimer;
+
+        /// <summary>진단/테스트 창구 — 지금 남은 "주위 살피기" 유예(초). 0이면 다음 Idle에서 발동 가능.</summary>
+        public float LookAroundCooldownRemaining => _lookAroundCooldownTimer;
+
+        /// <summary>진단/테스트 창구 — 이 컨트롤러가 지금까지 실제로 올린 "주위 살피기" 신호 수.</summary>
+        public int LookAroundRaisedCount { get; private set; }
+
         // Moving(Walk) 페이즈 상태 —————————————————————————————————————
         private float _moveTimer;
         private float _moveDuration;
@@ -141,6 +161,7 @@ namespace StickMate.States
             _stepUpRequestedThisTick = false;
 
             if (_descendSuppressTimer > 0f) _descendSuppressTimer -= deltaTime;
+            if (_lookAroundCooldownTimer > 0f) _lookAroundCooldownTimer -= deltaTime;
             ConsumeClimbMantleSignalIfAny();
 
             if (_phase == Phase.Resting) TickResting(deltaTime);
@@ -199,10 +220,18 @@ namespace StickMate.States
             _moveInputX = 0f;
 
             // 26-3: 두리번거리기 — Idle 진입 후 지연시간 경과 시 1회만 발동, Idle이 그 전에 끝나면 자연히 취소됨.
+            // ★ 여기에 최소 간격(_lookAroundCooldownTimer)이 하나 더 걸린다 — 위 필드 선언부의 실측 참고.
+            //   추첨권(_lookAroundFiredThisRest)은 유예에 막혔더라도 **함께 소모한다**. 안 그러면 유예가
+            //   풀리는 순간 그 Idle 구간 안에서 곧바로 발동해 "가끔 두 번 연속"이 남는다.
             if (!_lookAroundFiredThisRest && _restTimer >= _lookAroundDelay && _restTimer < _restDuration)
             {
                 _lookAroundFiredThisRest = true;
-                StickmanEventBus.RaiseWanderAmbientMotionRequested(WanderAmbientMotion.LookAround);
+                if (_lookAroundCooldownTimer <= 0f)
+                {
+                    _lookAroundCooldownTimer = Mathf.Max(0f, Cfg(c => c.wanderLookAroundCooldownSeconds, 30f));
+                    LookAroundRaisedCount++;
+                    StickmanEventBus.RaiseWanderAmbientMotionRequested(WanderAmbientMotion.LookAround);
+                }
             }
 
             if (_restTimer < _restDuration) return;

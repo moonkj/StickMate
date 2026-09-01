@@ -1,0 +1,52 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78e6f691c35d849a3aaae03fcb063cd4, type: 3}
+  m_Name: equip_neck_bandana
+  m_EditorClassIdentifier: 
+  itemId: equip.neck.bandana
+  slot: 2
+  itemIndex: 5
+  displayName: "\uBC18\uB2E4\uB098"
+  description: "\uBAA9\uC5D0 \uB450\uB978 \uB0A9\uC791\uD55C \uCC9C. \uC55E\uC790\uB77D\uC774 \uAC78\uC744 \uB54C\uB9C8\uB2E4 \uD754\uB4E4\uB9B0\uB2E4."
+  requiredLevel: 25
+  hidesHair: 0
+  icon:
+  - kind: 0
+    values:
+    - 8
+    - 15
+    - 20
+    - 18
+    - 32
+    - 15
+    - 32
+    - 21
+    - 20
+    - 25
+    - 8
+    - 21
+    - 8
+    - 15
+    color: {r: 0.54901963, g: 0.7529412, b: 0.43137255, a: 1}
+    tone: 0
+  - kind: 0
+    values:
+    - 17
+    - 24
+    - 25
+    - 24
+    - 21
+    - 33
+    - 17
+    - 24
+    color: {r: 0.43529412, g: 0.6627451, b: 0.34117648, a: 1}
+    tone: 1

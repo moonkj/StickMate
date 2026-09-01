@@ -152,6 +152,22 @@ namespace StickMate.Platform.MacOS
         private int _fullScreenApplyAttempts;
         private const int MaxFullScreenApplyAttempts = 6;
 
+        // 실행 중 디스플레이 구성 변경 추적(2026-08-31). 판단 로직은 플랫폼 공용
+        // Platform/DisplayTopologyWatcher.cs 한 곳에 있고 여기서는 관측만 한다 — Windows판도 같은 클래스를
+        // 같은 방식으로 쓴다(오늘 VisibleTopEdgeSolver에서 한쪽만 고쳐 재발한 사례의 재발 방지).
+        private readonly DisplayTopologyWatcher _topologyWatcher = new DisplayTopologyWatcher();
+        /// <summary>전체화면 적합 에피소드가 끝난 뒤 기준값을 다시 잡았는가. 재무장할 때 false로 돌린다.</summary>
+        private bool _topologyBaselineSynced;
+        /// <summary>토폴로지 관측 주기(초). 디바운스 창(0.75초)보다 충분히 짧아 판정 해상도는 잃지 않으면서
+        /// 디스플레이 열거/CGDisplayBounds 호출을 초당 60회에서 10회로 줄인다.</summary>
+        private const float TopologySampleIntervalSeconds = 0.1f;
+        private float _topologySampleTimer;
+
+        /// <summary>플랫폼 계층이 배선하는 "지금 즉시 오버레이 창 OS 사각형을 보고하라" 훅
+        /// (MacWindowService.ReportOverlayRectNow). 재적합 직후 같은 프레임에 좌표계를 갱신해
+        /// 발판 폴링을 기다리는 동안 캐릭터가 옛 좌표계로 튀는 구간을 없앤다.</summary>
+        internal System.Action OverlayRectReporter;
+
         // 목표 상태 — MacWindowService가 자기 API 호출 때마다 갱신한다.
         internal bool DesiredTransparent = true;
         internal bool DesiredTopmost;
@@ -221,6 +237,9 @@ namespace StickMate.Platform.MacOS
             {
                 _attachDetected = true;
                 ApplyTransparentSafeCameraBackground();
+                // 창이 실제로 존재하는 이 시점에 앱 등급을 accessory로 내린다(원인 A, R1의 (1)단계).
+                // 근거/트레이드오프는 MacSpaceBehaviorNative의 클래스 문서 참고.
+                MacSpaceBehaviorNative.ApplyAccessoryActivationPolicyOnce();
                 Debug.Log($"[MacOverlayStateEnforcer] 창 부착 감지 — windowSize={windowSize}, " +
                     $"clientSize={_controller.clientSize}, windowPosition={_controller.windowPosition}, " +
                     $"경과 {_elapsed:F2}초. 이제 목표 상태를 재적용합니다. " +
@@ -229,8 +248,11 @@ namespace StickMate.Platform.MacOS
             }
 
             TickHitTestProbe();
+            // 순서 중요: 재무장을 먼저 판정해야 같은 프레임의 TickFullScreenBounds()가 곧바로 다시 돈다.
+            TickDisplayTopology();
             TickFullScreenBounds();
             TickFootholdReport();
+            TickAllSpacesBehavior();
 
             if (_appliedCount >= ReapplyAttempts)
             {
@@ -250,6 +272,12 @@ namespace StickMate.Platform.MacOS
             _controller.isTransparent = DesiredTransparent;
             _controller.isTopmost = DesiredTopmost;
             _controller.isClickThrough = DesiredClickThrough;
+
+            // ★ 순서 의존: LibUniWinC의 setTopmost()가 collectionBehavior를 통째로 덮어쓰므로
+            //   (.fullScreenAuxiliary만 남고 .canJoinAllSpaces가 날아간다) isTopmost 대입 **직후**에
+            //   반드시 다시 걸어야 한다. 아래 TickAllSpacesBehavior()의 감시만으로도 결국 복구되지만,
+            //   그 사이 최대 2초 동안 타 앱 전체화면에서 캐릭터가 사라지는 창이 생긴다.
+            MacSpaceBehaviorNative.EnsureAllSpacesBehavior(out _);
 
             Debug.Log($"[MacOverlayStateEnforcer] 재적용 {_appliedCount}/{ReapplyAttempts} — " +
                 $"목표(transparent={DesiredTransparent}, topmost={DesiredTopmost}, " +
@@ -277,6 +305,27 @@ namespace StickMate.Platform.MacOS
         /// 걸린다. 최대 MaxFullScreenApplyAttempts번만 시도하고 성공(오차 1pt 이내)하면 즉시 멈춘다 —
         /// 사용자가 창을 직접 만졌을 때 영원히 되돌리지 않기 위한 기존 컨벤션(ReapplyAttempts)과 같은 태도다.
         /// </summary>
+        /// <summary>
+        /// collectionBehavior(.canJoinAllSpaces | .fullScreenAuxiliary) 유지 감시 — 원인 A의 마지막 안전망.
+        ///
+        /// 재적용 루프(ReapplyAttempts회)는 몇 초 뒤 끝나지만, UniWindowController는 그 뒤에도 자체 사정으로
+        /// SetTopmost를 다시 호출할 수 있다(예: 창 재부착, isTopmost 프로퍼티 재대입). 그때마다 우리 플래그가
+        /// 날아가면 사용자는 "가끔 전체화면에서 캐릭터가 사라진다"는 재현 어려운 버그를 겪는다. 그래서 낮은
+        /// 빈도로 계속 확인하되, <b>플래그가 이미 맞으면 쓰기도 로그도 하지 않는다</b>(24시간 상주 앱).
+        /// </summary>
+        private void TickAllSpacesBehavior()
+        {
+            _timerAllSpaces += Time.unscaledDeltaTime;
+            if (_timerAllSpaces < AllSpacesWatchIntervalSeconds) return;
+            _timerAllSpaces = 0f;
+            MacSpaceBehaviorNative.EnsureAllSpacesBehavior(out _);
+        }
+
+        /// <summary>위 감시 주기(초). 사람이 Space를 전환하는 속도보다 충분히 짧고, ObjC 호출 4~5회짜리
+        /// 비용이라 상주 부담이 사실상 없다.</summary>
+        private const float AllSpacesWatchIntervalSeconds = 2f;
+        private float _timerAllSpaces;
+
         private void TickFullScreenBounds()
         {
             if (_fullScreenBoundsApplied || _fullScreenApplyAttempts >= MaxFullScreenApplyAttempts) return;
@@ -351,7 +400,15 @@ namespace StickMate.Platform.MacOS
             Vector2 posAfter = _controller.windowPosition;
             bool ok = Mathf.Abs(sizeAfter.x - monitor.width) <= 1f && Mathf.Abs(sizeAfter.y - monitor.height) <= 1f
                 && Mathf.Abs(posAfter.x - monitor.x) <= 1f && Mathf.Abs(posAfter.y - monitor.y) <= 1f;
-            if (ok) _fullScreenBoundsApplied = true;
+            if (ok)
+            {
+                _fullScreenBoundsApplied = true;
+
+                // 같은 프레임에 좌표계를 갱신한다(폴링 대기 없음). 창이 방금 다른 크기/원점이 됐는데
+                // ScreenCoordinateConverter가 최대 한 폴링 주기 동안 옛 원점/배율을 들고 있으면, 그 사이의
+                // 커서<->월드 변환과 발판 판정이 통째로 어긋나 캐릭터가 화면 밖으로 튄다.
+                OverlayRectReporter?.Invoke();
+            }
 
             Debug.Log($"[MacOverlayStateEnforcer] 전체화면 확장 시도 {_fullScreenApplyAttempts}/{MaxFullScreenApplyAttempts} — " +
                 $"모니터={monitor}, 이전(size={sizeBefore}, pos={posBefore}) -> 이후(size={sizeAfter}, pos={posAfter}), " +
@@ -361,6 +418,80 @@ namespace StickMate.Platform.MacOS
         }
 
         private float _timerFullScreen;
+
+        /// <summary>
+        /// 실행 중 디스플레이 구성 변경 감시 — <see cref="_fullScreenBoundsApplied"/> 재무장 지점
+        /// (2026-08-31 perf-doc 지적: 그 플래그를 false로 되돌리는 경로가 아예 없어서 오버레이 창이
+        /// 최초 기동 해상도에 영원히 박제됐다). Windows판(WindowsOverlayStateEnforcer.TickDisplayTopology)과
+        /// <b>같은 원칙·같은 공용 클래스</b>를 쓴다 — 한쪽만 고치면 다른 쪽에서 그대로 재발한다.
+        ///
+        /// 두 가지 안전장치가 있고 둘 다 없으면 안 된다:
+        ///   (1) <b>적합 진행 중에는 관측하지 않는다.</b> 재적합은 Screen.SetResolution/창 크기를 우리가
+        ///       직접 바꾸는 일이라, 그 와중의 관측은 "우리가 만든 변화"를 새 사건으로 오인한다.
+        ///   (2) <b>에피소드가 끝나면 기준값을 다시 잡는다</b>(관측 대신 ResetBaseline 1회).
+        ///       (1)과 합쳐 "재적합 -> 시그니처 변화 -> 재적합"의 무한 루프를 원천 차단한다.
+        ///
+        /// 디바운스(마지막 변화 후 0.75초 안정)는 전부 DisplayTopologyWatcher 안에 있다. macOS에서
+        /// 해상도 모드 전환은 특히 중간 상태를 여러 번 노출하며(디스플레이 재구성 통지가 연속으로 온다),
+        /// 그때마다 Screen.SetResolution을 부르면 지금보다 훨씬 큰 히치를 우리가 직접 만든다.
+        /// </summary>
+        private void TickDisplayTopology()
+        {
+            bool fitInProgress = !_fullScreenBoundsApplied && _fullScreenApplyAttempts < MaxFullScreenApplyAttempts;
+            if (fitInProgress) return;
+
+            // 매 프레임 디스플레이를 열거하는 것은 24시간 상주 앱에서 순수 낭비다. 누적 시간을 그대로
+            // 감시기에 넘기므로 디바운스는 여전히 벽시계 기준으로 정확하다.
+            _topologySampleTimer += Time.unscaledDeltaTime;
+            if (_topologySampleTimer < TopologySampleIntervalSeconds) return;
+            float sampleDelta = _topologySampleTimer;
+            _topologySampleTimer = 0f;
+
+            if (!_topologyBaselineSynced)
+            {
+                _topologyBaselineSynced = true;
+                _topologyWatcher.ResetBaseline(SampleTopology());
+                return;
+            }
+
+            if (!_topologyWatcher.Observe(SampleTopology(), sampleDelta)) return;
+
+            _fullScreenBoundsApplied = false;
+            _fullScreenApplyAttempts = 0;
+            _timerFullScreen = ReapplyIntervalSeconds; // 다음 TickFullScreenBounds에서 곧바로 1회.
+            _topologyBaselineSynced = false;
+
+            Debug.Log("[MacOverlayStateEnforcer] 디스플레이 구성 변경이 안정됐습니다 — " +
+                $"{_topologyWatcher.Baseline}. 전체화면 재적합 루프를 다시 무장합니다" +
+                $"({ReapplyIntervalSeconds}초 x {MaxFullScreenApplyAttempts}회 분산).");
+        }
+
+        /// <summary>
+        /// 이번 틱의 화면 구성 지문. <b>OS가 주는 값만</b> 넣는다 — 우리 창 크기/위치에서 유도되는 값
+        /// (ScreenCoordinateConverter.AutoDpiScale = 창 폭 / Screen.width)을 넣으면 재적합이 자기 자신을
+        /// 다시 트리거한다(DisplayTopologyWatcher 문서).
+        ///
+        /// macOS에서 화면 전체 크기는 CGDisplayBounds(TryGetMainDisplayBounds)로 읽는다. 이 값은 순수
+        /// 조회이고 창과 무관하며, 사용자가 "더 넓게/더 크게" 배율 해상도를 바꾸면 <b>포인트 크기 자체가</b>
+        /// 바뀌므로 해상도 변경과 배율 변경을 한 신호로 함께 잡는다(그래서 UI 밀도 항은 쓰지 않는다 —
+        /// macOS에서는 아무도 보고하지 않아 항상 0이다).
+        /// </summary>
+        private DisplayTopologySignature SampleTopology()
+        {
+            int count = UniWindowController.GetMonitorCount();
+            if (count <= 0) return DisplayTopologySignature.Invalid;
+            if (!TryGetTargetMonitorRect(out Rect monitor, out _)) return DisplayTopologySignature.Invalid;
+
+            Vector2 desktopSize = Vector2.zero;
+            var describer = ResolveDescriber();
+            if (describer != null && describer.TryGetMainDisplayBounds(out Rect display))
+            {
+                desktopSize = display.size;
+            }
+
+            return DisplayTopologySignature.Create(count, monitor, desktopSize,
+                ScreenCoordinateConverter.AutoUiDensityScale);
+        }
 
         /// <summary>
         /// 창 중심이 속한 모니터의 사각형을 라이브러리 좌표계 그대로 돌려준다. 멀티 모니터에서 어느

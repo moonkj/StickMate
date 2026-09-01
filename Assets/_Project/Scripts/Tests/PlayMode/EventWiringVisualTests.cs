@@ -86,6 +86,13 @@ namespace StickMate.Tests.PlayMode
         private TestFootholdService _service;
         private ScriptedIntentSource _intent;
         private Transform _head;
+
+        /// <summary>★ 2026-09-01 — 몸통(=목) Transform. "머리가 목에서 벗어나지 않는가"를 재는 기준선이
+        /// 됐다(아래 <see cref="MeasureHeadNeckGap"/>). 상체 기울임이 도입되면서 <b>머리 로컬 x가
+        /// 0이라는 것</b>은 더 이상 그 조건과 같은 말이 아니다 — 목이 함께 기울면 머리는 옆으로
+        /// 이동하는 것이 <b>정상</b>이기 때문이다.</summary>
+        private Transform _torso;
+
         private Vector3 _headNeutralLocal;
         private float _groundWorldY;
         private float _characterHeight;
@@ -182,6 +189,8 @@ namespace StickMate.Tests.PlayMode
 
             _head = FindChildByName(bb.Body.transform, "Head");
             Assert.IsNotNull(_head, $"{LogPrefix} 프리팹에서 Head를 찾지 못했습니다.");
+            _torso = FindChildByName(bb.Body.transform, "Torso");
+            Assert.IsNotNull(_torso, $"{LogPrefix} 프리팹에서 Torso를 찾지 못했습니다.");
             _headNeutralLocal = _head.localPosition;
             _characterHeight = bb.CharacterHeightWorld;
 
@@ -491,7 +500,7 @@ namespace StickMate.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator LookAroundSignalRaisesOneArmAndShiftsHead()
+        public IEnumerator LookAroundSignalRaisesOneArmAndSweepsEyesWithoutMovingHead()
         {
             yield return SetUpFlatGround();
             yield return WaitForPendingWanderSignalToExpire();
@@ -514,17 +523,47 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 주위 살피기인데 반대쪽 팔까지 움직였습니다(|{peak.MaxAbsLeftArm:F1}|도 > 중립 " +
                 $"{neutralMax:F1}도) — 기지개와 실루엣이 구분되지 않습니다.");
 
-            float expectedShift = _characterHeight * _clonedConfig.idleAmbientLookHeadShiftRatio;
-            Assert.Greater(peak.MaxHeadShiftX, expectedShift * 0.4f,
-                $"{LogPrefix} 머리가 좌우로 움직이지 않았습니다(최대 {peak.MaxHeadShiftX:F4}유닛, 기대 {expectedShift:F4}).");
+            // ★★ 2026-08-31 회귀 잠금 — 이 단언이 **뒤집혔다**.
+            //
+            // 예전에는 "머리가 좌우로 움직였는가"를 요구했다. 그런데 이 리그에는 목 관절이 없다 —
+            // 목은 Torso LineRenderer의 윗부분이고 루트 로컬 x=0에 고정이라(SceneBootstrapper),
+            // 머리 앵커만 미는 연출은 **정의상** 머리를 목에서 떼어놓는다. 사용자 신고 원문:
+            // "자꾸 머리를 움직이는데 목에서 벗어나서 이상함". 그래서 지금 요구하는 것은 반대다 —
+            // 머리는 좌우로 **한 톨도 움직이면 안 된다**.
+            // 안전 상한 유도와 네거티브 컨트롤은 Tests/EditMode/IdleAmbientLookAroundInvariantTests.cs.
+            //
+            // ★★ 2026-09-01 갱신 — 지표를 "머리 로컬 x"에서 <b>"머리 중심과 목 선 사이의 거리"</b>로
+            //    바꿨다. 이번 라운드에 상체 기울임(SetBodyLean)이 들어오면서 주위 살피기의 두리번거림이
+            //    **상체를 앞뒤로 기울이는 것**으로 승격됐기 때문이다(눈이 사라져 없어진 시각 신호의 대체).
+            //    그러면 머리 중심은 좌우로 움직인다 — 그런데 그건 결함이 아니라 <b>목이 함께 기울어서</b>
+            //    생기는 정상 결과다. 옛 지표는 "목이 절대 안 기운다"는 그때의 리그 사실에 묶여 있었다.
+            //    지금도 잠그는 조건 자체는 한 톨도 완화되지 않았다: 머리는 여전히 목 획 반폭 밖으로
+            //    나가면 안 된다(기울임이 0이면 두 지표는 정확히 같은 값이다).
+            float headShiftLimit = _characterHeight * StickConfig.MaxSafeHeadShiftRatio;
+            Assert.LessOrEqual(peak.MaxHeadNeckGap, headShiftLimit,
+                $"{LogPrefix} 주위 살피기 중 머리 중심이 목 선에서 {peak.MaxHeadNeckGap:F4}유닛 벗어났습니다" +
+                $"(상한 {headShiftLimit:F4} = 목 획 반폭). 머리만 밀고 목을 안 기울이면 나오는 그림입니다 — " +
+                "2026-08-31 사용자 신고 그대로입니다.");
+
+            // 두리번거림은 이제 **눈동자**가 낸다. 0.9초 안에 좌우 양쪽 극값이 나오는 것은
+            // 커서 추적으로는 만들 수 없는 서명이다(커서는 그 사이 움직이지 않는다).
+            float amp = _clonedConfig.idleAmbientLookEyeSweep01;
+            Assert.Greater(peak.MaxEyeX, amp * 0.3f,
+                $"{LogPrefix} 눈동자가 한쪽(+)으로 훑지 않았습니다(최대 {peak.MaxEyeX:F3}, 폭 {amp:F2}).");
+            Assert.Less(peak.MinEyeX, -amp * 0.3f,
+                $"{LogPrefix} 눈동자가 반대쪽(-)으로 훑지 않았습니다(최소 {peak.MinEyeX:F3}, 폭 {amp:F2}) — " +
+                "한쪽으로만 치우쳤다면 그건 두리번거림이 아니라 커서를 보고 있는 것입니다.");
 
             yield return new WaitForSeconds(0.5f);
             Assert.IsFalse(_agent.Blackboard.IsIdleAmbientMotionActive);
             Assert.Less(Mathf.Abs(_head.localPosition.x - _headNeutralLocal.x), 0.001f,
                 $"{LogPrefix} 머리 좌우 오프셋이 원복되지 않았습니다.");
+            Assert.IsFalse(_agent.Blackboard.TryGetIdleAmbientEyeSweep(out _),
+                $"{LogPrefix} 동작이 끝났는데 눈동자 훑기가 계속 켜져 있습니다 — 커서 추적이 돌아오지 못합니다.");
 
             Debug.Log($"{LogPrefix} 주위 살피기 통과 — 올린 팔 |{peak.MaxAbsRightArm:F1}|도 / 반대 팔 " +
-                $"|{peak.MaxAbsLeftArm:F1}|도, 머리 이동 {peak.MaxHeadShiftX:F4}유닛.");
+                $"|{peak.MaxAbsLeftArm:F1}|도, 머리-목 이탈 {peak.MaxHeadNeckGap:F4}유닛(상한 {headShiftLimit:F4}), " +
+                $"눈동자 훑기 {peak.MinEyeX:F3}~{peak.MaxEyeX:F3}.");
         }
 
         /// <summary>네거티브 컨트롤 — 스위치를 끄면 같은 신호에 포즈가 전혀 변하지 않는다.</summary>
@@ -551,8 +590,14 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 스위치를 껐는데 왼팔이 중립({neutralMax:F1}도)을 벗어났습니다(|{peak.MaxAbsLeftArm:F1}|도).");
             Assert.LessOrEqual(peak.MaxAbsRightArm, neutralMax,
                 $"{LogPrefix} 스위치를 껐는데 오른팔이 중립({neutralMax:F1}도)을 벗어났습니다(|{peak.MaxAbsRightArm:F1}|도).");
-            Assert.Less(peak.MaxHeadShiftX, 0.001f,
-                $"{LogPrefix} 스위치를 껐는데 머리가 움직였습니다({peak.MaxHeadShiftX:F4}유닛).");
+            Assert.Less(peak.MaxHeadNeckGap, 0.001f,
+                $"{LogPrefix} 스위치를 껐는데 머리가 목에서 벗어났습니다({peak.MaxHeadNeckGap:F4}유닛).");
+            // 눈동자 훑기도 같은 스위치에 묶여 있어야 한다 — 눈만 따로 살아 있으면 "껐는데 절반만
+            // 꺼지는" 상태가 되고, 그건 마스터 스위치가 아니다.
+            // (여기서 CurrentLookDirection이 아니라 계약 자체를 묻는 이유: 스위치가 꺼진 동안 눈은
+            //  커서를 추적하므로 x가 0이 아닐 수 있다 — 그 값으로 단언하면 커서 위치에 따라 흔들린다.)
+            Assert.IsFalse(_agent.Blackboard.TryGetIdleAmbientEyeSweep(out _),
+                $"{LogPrefix} 스위치를 껐는데 눈동자 훑기가 살아 있습니다.");
 
             Debug.Log($"{LogPrefix} 네거티브 컨트롤 통과 — 스위치를 끄면 Idle 중립 포즈가 100% 유지됨.");
         }
@@ -562,12 +607,45 @@ namespace StickMate.Tests.PlayMode
             public float MaxAbsLeftArm;
             public float MaxAbsRightArm;
             public float MaxHeadRise;
-            public float MaxHeadShiftX;
+
+            /// <summary>★ 2026-09-01 — 예전 이름은 MaxHeadShiftX(머리 로컬 x의 절대 이동)였다.
+            /// 상체 기울임(States/StickmanPoseAnimator.SetBodyLean)이 도입되면서 그 지표는 **뜻이
+            /// 달라졌다**: 목이 함께 기울면 머리 중심은 옆으로 이동하지만 <b>목에서 벗어나지는
+            /// 않는다</b>. 그래서 사용자 신고("머리를 움직이는데 목에서 벗어나서 이상함")가 가리키는
+            /// 진짜 조건 — <b>머리 중심이 몸통(목) 선에서 얼마나 벗어났는가</b> — 를 직접 잰다.
+            /// 옛 지표는 이 값의 특수한 경우다(기울임이 0이면 둘이 정확히 같다).</summary>
+            public float MaxHeadNeckGap;
+
+            // ★ 2026-08-31 — "주위 살피기"의 두리번거림이 머리에서 **눈동자**로 옮겨졌다.
+            //   좌/우 극값을 따로 모으는 이유: |x| 최대치만 보면 "커서가 왼쪽에 있어서 눈이 왼쪽을
+            //   보고 있는 것"과 구분되지 않는다. 0.9초 안에 좌우 **양쪽** 극값이 나오는 것은
+            //   커서 추적으로는 만들 수 없는 서명이다.
+            public float MinEyeX = float.PositiveInfinity;
+            public float MaxEyeX = float.NegativeInfinity;
         }
 
         private struct ArmSample
         {
             public float MaxAbsArm;
+        }
+
+        /// <summary>
+        /// 머리 중심이 <b>몸통(목) 선</b>에서 벗어난 수직거리(월드 유닛). 목은 별도 관절이 아니라
+        /// Torso LineRenderer의 윗부분이므로, "머리가 목 위에 있다"는 곧 "머리 중심이 그 선의 연장선
+        /// 위에 있다"이다. 몸통이 기울면 그 선도 함께 기울므로 이 지표는 기울임에 <b>불변</b>이다.
+        /// </summary>
+        private float MeasureHeadNeckGap()
+        {
+            if (_head == null || _torso == null) return 0f;
+
+            // 몸통 선의 방향 = 몸통 Transform의 로컬 +y(그 선이 그 축 위에 그려져 있다).
+            Vector3 dir = _torso.TransformDirection(Vector3.up);
+            float len = new Vector2(dir.x, dir.y).magnitude;
+            if (len < 1e-6f) return 0f;
+            dir /= len;
+
+            Vector3 rel = _head.position - _torso.position;
+            return Mathf.Abs(rel.x * dir.y - rel.y * dir.x); // 2D 외적 = 선까지의 수직거리.
         }
 
         private ArmSample SampleArms()
@@ -591,8 +669,15 @@ namespace StickMate.Tests.PlayMode
                 peak.MaxAbsLeftArm = Mathf.Max(peak.MaxAbsLeftArm, Mathf.Abs(leftArm));
                 peak.MaxAbsRightArm = Mathf.Max(peak.MaxAbsRightArm, Mathf.Abs(rightArm));
                 peak.MaxHeadRise = Mathf.Max(peak.MaxHeadRise, _head.localPosition.y - _headNeutralLocal.y);
-                peak.MaxHeadShiftX = Mathf.Max(peak.MaxHeadShiftX,
-                    Mathf.Abs(_head.localPosition.x - _headNeutralLocal.x));
+                peak.MaxHeadNeckGap = Mathf.Max(peak.MaxHeadNeckGap, MeasureHeadNeckGap());
+
+                EyeController eyes = _agent.Blackboard.GetEyeController();
+                if (eyes != null)
+                {
+                    float eyeX = eyes.CurrentLookDirection.x;
+                    peak.MinEyeX = Mathf.Min(peak.MinEyeX, eyeX);
+                    peak.MaxEyeX = Mathf.Max(peak.MaxEyeX, eyeX);
+                }
             }
         }
     }

@@ -82,7 +82,25 @@ namespace StickMate.Interaction
         //   (모자/안경 도형이 같은 눈 좌표를 기준선으로 쓴다 — 두 곳에 적으면 한쪽만 어긋난다).
         //   여기서는 머리 반경 배수로 받아 쓴다.
         private const float EyeRadiusRatio = 0.030f / StickConfig.BaselineCharacterTotalHeight;
-        private const float StrokeWidthRatio = 0.048f / StickConfig.BaselineCharacterTotalHeight;
+        // ★ 2026-09-01 — 획 두께 비율도 AccessoryShapeBuilder가 단일 정의처다(값 동일, 거동 변화 0).
+        private const float StrokeWidthRatio = AccessoryShapeBuilder.StrokeWidthRatio;
+
+        // ============================================================================
+        // ★ 2026-09-01 P1 — 초상화도 눈을 그리지 않는다 (docs/UX_FLOW.md 38-4 / 38-5)
+        // ============================================================================
+        // 실제 캐릭터(Editor/SceneBootstrapper.BakeEyes)와 **반드시 같은 값**이어야 한다. 한쪽만 끄면
+        // 37-8 (3)이 지적한 "카드/초상화와 실제가 다르다"는 이중 정의 결함이 그대로 재발한다 —
+        // 실제로 이 파일은 직전 라운드까지 "안경을 쓰면 초상화에서만 눈이 사라지는" 같은 유형의
+        // 결함을 갖고 있었다(Tests/PlayMode/PortraitEyeVisibilityTests 문서 참고).
+        //
+        // 되살리는 절차는 Editor/SceneBootstrapper.BakeEyes 문서에 한 번만 적어 뒀다(상수 3개 + 재생성).
+        // 아래 눈 그리기 코드와 EyeRadiusRatio는 **지우지 않고** 게이트만 둔다.
+        private const bool DrawEyes = false;
+
+        // 채움 원의 폭/경로반경 비 — Editor/SceneBootstrapper.FilledDiscWidthPerPathRadius와 같은 값,
+        // 같은 유도(그쪽 문서에 유도식 전문이 있다). 두 곳에 상수가 있는 것은 어셈블리가 다르기
+        // 때문이고(Editor vs Runtime), **같다는 사실 자체는 EditMode 테스트가 잠근다.**
+        private const float FilledDiscWidthPerPathRadius = 2.4f;
 
         private const float IdleArmSpreadDegrees = 40f;
         private const float IdleLegSpreadDegrees = 12f;
@@ -263,7 +281,7 @@ namespace StickMate.Interaction
         /// </summary>
         public static Color ResolveBackdropColor(StickConfig config)
         {
-            bool whiteInk = config != null && config.inkColor == StickmanInkColor.White;
+            bool whiteInk = config != null && config.IsWhiteInk();
             return whiteInk
                 ? new Color(0.145f, 0.157f, 0.180f, 1f)   // 목탄 — 흰 잉크용 반전 바탕(33-1절에 대응 토큰 없음)
                 : UiChrome.PortraitSurface;               // 종이 — 정보창 액자와 정확히 같은 색
@@ -404,14 +422,12 @@ namespace StickMate.Interaction
 
         private void BuildCamera()
         {
-            float h = TotalHeight;
-
             var camGo = new GameObject("PortraitCamera");
             camGo.transform.SetParent(transform, false);
-            camGo.transform.localPosition = new Vector3(0f, h * FrameCenterHeightRatio, -10f);
+            camGo.transform.localPosition = new Vector3(0f, 0f, -10f);
             _camera = camGo.AddComponent<Camera>();
             _camera.orthographic = true;
-            _camera.orthographicSize = h * FrameOrthoRatio;
+            ApplyFraming();   // 액자 구도(중심/직교크기)는 <b>지금 키</b>에서만 나온다 — 아래 문서 참고.
             // ★ RT가 생기기 전에도 종횡비를 못박는다. 안 그러면 그때까지 화면 해상도(헤드리스에서는
             //   배치 모드 기본값)가 액자 구도를 좌우해, 넘어짐 프레이밍이 실기와 테스트에서 달라진다.
             _camera.aspect = DesignAspect;
@@ -429,6 +445,59 @@ namespace StickMate.Interaction
             figureGo.transform.SetParent(transform, false);
             _figureRoot = figureGo.transform;
             _baseFigureY = 0f;
+        }
+
+        /// <summary>
+        /// ★★ 2026-08-31 — 사용자 신고 <b>"캐릭터 사이즈를 키우면 캐릭터 창에서 캐릭터가 사이즈를
+        /// 벗어남. 캐릭터창에서는 사이즈나 마우스로 잡았을 때나 변함없이 보여야 하고 아이템 착용만
+        /// 반영돼야 함."</b>
+        ///
+        /// ============================================================================
+        /// 무엇이 어긋나 있었나 — <b>액자와 그림의 기준 키가 서로 달랐다</b>
+        /// ============================================================================
+        /// 이 촬영장의 모든 치수는 <see cref="TotalHeight"/>(= 살아 있는 캐릭터의 실측 전신 높이)에
+        /// 비례한다. 그림도, 액자도 그렇다. 둘이 <b>같은 키</b>를 쓰면 배율이 얼마든 액자 안 그림의
+        /// 크기는 항상 같다 — 원래 설계가 그랬다.
+        ///
+        /// 그런데 액자(카메라의 <c>orthographicSize</c>/중심)는 <see cref="BuildCamera"/>에서
+        /// <b>앱 시작 때 딱 한 번</b> 계산됐고, 그림은 <see cref="Rebuild"/>가 돌 때마다
+        /// <b>그 순간의 키</b>로 다시 그려졌다. 2026-08-31에 크기 다이얼이 붙으면서
+        /// <see cref="StickmanAgent.ApplyCharacterScale"/>가 <c>metrics.Remeasure()</c>로 키를 바꾸기
+        /// 시작했고, 그때부터 두 기준이 갈라졌다:
+        ///
+        /// <code>
+        ///   배율 0.75로 시작 → 액자 = 0.75 기준으로 고정
+        ///   유저가 다이얼로 1.50 → 키만 2배. 이 순간에는 아직 다시 굽지 않아 멀쩡해 보인다.
+        ///   유저가 캐릭터를 <b>마우스로 잡는다</b> → 포즈 Standing→Busy → Rebuild()
+        ///     → 그림만 2배로 커지고 액자는 그대로 → <b>액자 밖으로 튀어나감</b>
+        /// </code>
+        ///
+        /// 사용자가 "사이즈나 <b>마우스로 잡았을 때나</b>"라고 두 가지를 함께 말한 이유가 이것이다 —
+        /// 두 개의 버그가 아니라, <b>크기 변경이 심어 둔 어긋남이 잡는 순간 터진 것</b>이다.
+        ///
+        /// ============================================================================
+        /// 고친 방법 — 액자를 그림과 <b>같은 프레임에</b> 다시 잡는다
+        /// ============================================================================
+        /// 그림을 배율 1.0으로 정규화하는 방법(관절 좌표/획 두께/액세서리 도형을 전부 키로 나누기)도
+        /// 있었지만, 그건 <see cref="_metrics"/>를 읽는 <b>모든</b> 그리기 함수를 손대야 하고 새로
+        /// 추가되는 도형이 정규화를 빠뜨리면 조용히 다시 어긋난다. 반대로 액자를 따라오게 하면
+        /// <b>비례 관계 하나만</b> 지키면 되고, 앞으로 어떤 도형이 추가돼도 자동으로 성립한다.
+        ///
+        /// 결과: 액자 속 캐릭터의 <b>표시 크기는 캐릭터 배율(0.35~1.50)과 완전히 무관</b>해진다.
+        /// 반영되는 것은 장비/외형/잉크색뿐 — 사용자가 요구한 그대로다.
+        /// (RenderTexture 크기는 애초에 <b>액자의 표시 크기</b>에서만 나오므로 여기와 무관하다.)
+        /// </summary>
+        private void ApplyFraming()
+        {
+            if (_camera == null) return;
+            float h = TotalHeight;
+
+            Vector3 p = _camera.transform.localPosition;
+            float y = h * FrameCenterHeightRatio;
+            if (!Mathf.Approximately(p.y, y)) _camera.transform.localPosition = new Vector3(p.x, y, p.z);
+
+            float half = h * FrameOrthoRatio;
+            if (!Mathf.Approximately(_camera.orthographicSize, half)) _camera.orthographicSize = half;
         }
 
         /// <summary>액자의 설계 종횡비(가로/세로). 숫자를 새로 적지 않고 정보창 레이아웃에서 파생시킨다 —
@@ -504,6 +573,14 @@ namespace StickMate.Interaction
             hash = hash * 31 + unlockedMask;
             hash = hash * 31 + (int)_pose;
             hash = hash * 31 + ResolveInk().GetHashCode();
+
+            // ★ 2026-08-31 — 캐릭터 전신 높이도 서명에 넣는다(크기 다이얼 대응).
+            //   그림의 관절 좌표/획 두께/액세서리 크기는 전부 이 값에서 나오는데, 예전 서명에는
+            //   빠져 있어서 배율을 바꿔도 <b>다른 이유로</b> 다시 구워질 때까지 옛 그림이 남았다.
+            //   그러면 ApplyBreathing()만 새 키의 진폭으로 흔들려(그 함수는 매 프레임 실측치를 읽는다)
+            //   그림과 숨결의 기준이 어긋난다. 서명에 넣으면 <b>액자·그림·숨결이 항상 같은 키</b>다.
+            //   (표시 크기는 ApplyFraming()이 액자를 함께 옮기므로 이 재굽기로도 변하지 않는다.)
+            hash = hash * 31 + TotalHeight.GetHashCode();
             return hash;
         }
 
@@ -527,6 +604,11 @@ namespace StickMate.Interaction
                 if (_fillMeshes[i] != null) Destroy(_fillMeshes[i]);
             }
             _fillMeshes.Clear();
+
+            // ★ 액자를 <b>그림보다 먼저</b> 지금 키로 다시 잡는다. 순서가 중요하다 —
+            //   FrameFallenFigure()가 FrameHalfExtents(= 카메라 직교크기)를 읽어 넘어짐 배치를
+            //   역산하므로, 그림을 먼저 그리면 옛 액자 기준으로 눕히게 된다.
+            ApplyFraming();
 
             if (_figureRoot == null) return;
             _figureRoot.localRotation = Quaternion.identity;
@@ -635,6 +717,12 @@ namespace StickMate.Interaction
             // 캔버스를 달았던 부채꼴 메뉴였고, 이 파일은 원인이 아니었다.
             // 이름을 바꾸지 않는 이유: PortraitFallenFramingTests가 figure.Find("Head")로 이 원을 실측해
             // 액자 밖으로 잘리는지 검사한다(개명은 이득 없이 그 잠금장치를 끊는다).
+            // ★ 2026-09-01 P1 — 실제 캐릭터와 같은 "꽉 찬 머리"(docs/UX_FLOW.md 38-4-1).
+            //   바깥 반경이 정확히 r이라 **액자 안 그림 크기는 1pt도 안 변한다**(AddFilledDisc 문서).
+            //   sortingOrder는 몸과 같은 0으로 둔다 — 채움/링/몸통이 전부 같은 잉크색이라 서로 간의
+            //   그리는 순서는 결과 그림에 영향이 없고, 액세서리는 전부 SortBack(-1) 또는 6 이상이라
+            //   앞뒤 관계가 지금과 그대로 유지된다.
+            AddFilledDisc("HeadFill", Vector2.up * HeadCenterY, r, ink, 28);
             AddCircle("Head", Vector2.up * HeadCenterY, r, ink, 28);
             AddLine("Torso", new[] { V(0f, HeadCenterY - r), V(0f, HipY) }, ink, loop: false);
 
@@ -647,13 +735,35 @@ namespace StickMate.Interaction
             DrawLimb("LegFront", new Vector2(0f, HipY), IdleLegSpreadDegrees, IdleKneeBendDegrees,
                 h * LegUpperRatio, h * LegLowerRatio, ink);
 
-            // 눈 — 선글라스를 쓰면 렌즈에 가려지므로 그리지 않는다(실제 캐릭터와 같은 겹침 관계).
-            if (EquippedAndUnlocked(EquipmentSlot.Eyes)) return;
+            // ★★ 2026-08-31 — 안경을 써도 눈은 <b>항상</b> 그린다.
+            //
+            //   예전에는 여기서 `if (EquippedAndUnlocked(EquipmentSlot.Eyes)) return;`으로 <b>EYES 슬롯에
+            //   뭐가 들어오든 카테고리 단위로</b> 눈 두 개를 통째로 지웠다. 근거 주석은 "선글라스를 쓰면
+            //   렌즈에 가려지므로"였는데 <b>그 전제가 사실이 아니었다</b>:
+            //
+            //     · AccessoryShapeBuilder.AppendEyes는 안경 4종(선글라스/동그란안경/고글/외알안경)의
+            //       렌즈를 전부 <b>filled 인자 없이</b> 넣는다(= 채움 없는 윤곽선). 가릴 면이 없다.
+            //     · 겹침은 이미 <b>레이어가</b> 정한다 — 몸의 눈은 sortingOrder 0, 안경은 SortEyes(8)라
+            //       안경이 위에 온다. 실제 캐릭터도 정확히 이 관계이고, 그쪽 눈(States/EyeController)은
+            //       장비 슬롯을 <b>아예 모른다</b>. 즉 몸은 눈을 계속 그리는데 초상화만 혼자 지우고 있었다
+            //       (같은 그림을 두 곳에서 다르게 정의한 <b>이중 정의</b> 결함).
+            //     · 결정적으로 <b>외알안경</b>은 앞쪽 눈에만 링을 그린다(AppendEyes의 "앞쪽 눈에만 있다").
+            //       한쪽 렌즈가 양쪽 눈을 지우는 그림은 어떤 해석으로도 옳을 수 없다.
+            //
+            //   훗날 렌즈를 filled: true로 바꾸면 채움 면이 알아서 덮어 준다 — 이 분기를 되살릴 필요가
+            //   없다. <b>가림은 레이어가 정하는 것이 옳고, 카테고리 조건문이 정하면 안 된다.</b>
+            //
+            // ★ 2026-09-01 P1 — 그런데 이제 **눈 자체가 없다**(DrawEyes = false). 위 문단은 눈을
+            //   되살렸을 때 다시 유효해지는 판단이라 지우지 않고 남긴다. 아래 두 줄도 마찬가지다 —
+            //   "가림은 레이어가 정한다"는 결론은 눈이 돌아오면 그대로 다시 필요하다.
+#pragma warning disable 162 // 의도된 상수 게이트 — DrawEyes를 true로 되돌리면 그대로 살아난다.
+            if (!DrawEyes) return;
             float eyeX = r * AccessoryShapeBuilder.EyeOffsetXInHeadRadii;
             float eyeY = HeadCenterY + r * AccessoryShapeBuilder.EyeOffsetYInHeadRadii;
             float eyeR = h * EyeRadiusRatio;
             AddCircle("EyeBack", new Vector2(-eyeX, eyeY), eyeR, ink, 8);
             AddCircle("EyeFront", new Vector2(eyeX, eyeY), eyeR, ink, 8);
+#pragma warning restore 162
         }
 
         /// <summary>2분절 마디. 각도는 아래 방향을 0으로 보고 x쪽으로 벌어지는 각
@@ -733,6 +843,15 @@ namespace StickMate.Interaction
         /// <summary>미리보기 레이어. 펫/FX는 몸에 붙은 것이 아니므로 몸통 획(0~2) 뒤에 둔다.</summary>
         private const int PreviewSortingOrder = -3;
 
+        // ★ 획 두께에 대한 확인 메모 (2026-09-01, 신규 4종 추가 라운드)
+        //   미리보기 9종은 전부 <see cref="AddLine"/>의 기본값 = <see cref="Stroke"/>를 쓴다. 즉
+        //   FX/펫 미리보기는 <b>따로 획 상수를 갖지 않는다</b> — 새 이중 정의를 만들지 않기 위해서다.
+        //   다만 그 Stroke가 지금은 액세서리 획(AccessoryShapeBuilder.StrokeWidthRatio)이라는 사실은
+        //   Tasklist 38-12 #10(초상화가 <b>몸</b>을 그릴 때 액세서리 획을 쓰는 이중 정의)과 같은 뿌리다.
+        //   그 결함은 카테고리 무관·몸 레이어 문제라 P6 소관이고 여기서 건드리지 않는다.
+        //   ⚠ P6가 고칠 때 <b>Stroke 자체를 몸 획으로 재정의하면</b> 미리보기 9종이 함께 두꺼워진다.
+        //     몸 전용 두께는 새 이름(예: BodyStroke)으로 두고 Stroke는 그대로 두어야 한다.
+
         /// <summary>
         /// <para>넘어짐/가출 포즈에서는 그리지 않는다. 넘어짐은 다 그린 뒤 도형 전체를 눕혀 액자에
         /// 맞추는데(<see cref="FrameFallenFigure"/>), 발자국까지 함께 누우면 "땅에 찍힌 자국"이라는
@@ -784,6 +903,33 @@ namespace StickMate.Interaction
                         Offset(pts, x, Stroke);
                         AddLine(i == 0 ? "FxDustA" : "FxDustB", pts, ink, false, PreviewSortingOrder);
                     }
+                    break;
+                }
+
+                case AppearanceShapeBuilder.FxBubble:
+                {
+                    // 실물은 걷는 동안 <b>고관절 옆</b>에서 방울이 떠오르며 커지고 뒤로 흘러간다
+                    // (CharacterFxRenderer.TickBubbles). 정지 컷은 그 궤적의 <b>양 끝</b>을 한 번에 놓는다 —
+                    // 갓 생긴 작은 것(반지름 하한)과 다 떠오른 큰 것(반지름 상한). 위에 있는 쪽이 더
+                    // 왼쪽인 것도 실물과 같은 이유다(진행 반대쪽으로 벗어난다).
+                    AddPreviewLine("FxBubbleA",
+                        AppearanceShapeBuilder.BubbleRing(r * AppearanceShapeBuilder.BubbleMaxRadiusInR, 12),
+                        x - h * 0.09f, HipY + r * 2.6f, true, ink);
+                    AddPreviewLine("FxBubbleB",
+                        AppearanceShapeBuilder.BubbleRing(r * AppearanceShapeBuilder.BubbleMinRadiusInR, 12),
+                        x - h * 0.04f, HipY, true, ink);
+                    break;
+                }
+
+                case AppearanceShapeBuilder.FxLeaf:
+                {
+                    // 잎은 <b>돌면서</b> 진다(수명 동안 210도). 정지 컷에서 그 회전을 대신하는 것은
+                    // 서로 다른 기울기의 두 장이다 — 수평으로 눕히면 "떨어지는 잎"이 아니라
+                    // "바닥에 놓인 잎"으로 읽힌다. 실물의 발생 높이(머리 위 2.2R)를 그대로 쓰면
+                    // 위쪽 잎이 액자 밖으로 나가므로 머리 옆으로 내려 잡았다.
+                    float length = r * AppearanceShapeBuilder.LeafLengthInR;
+                    AddLeafPreview("FxLeafA", x, HeadCenterY + r * 1.10f, length, 34f, ink);
+                    AddLeafPreview("FxLeafB", x - h * 0.07f, HeadCenterY - r * 0.60f, length, -22f, ink);
                     break;
                 }
             }
@@ -841,6 +987,36 @@ namespace StickMate.Interaction
                         x, HeadCenterY + r * 0.95f, false, primary);
                     break;
                 }
+
+                case AppearanceShapeBuilder.PetBalloon:
+                {
+                    // 실물의 묶인 자리(머리 중심보다 위)를 그대로 쓰면 주머니가 액자 위로 잘린다.
+                    // 그래서 <b>주머니가 머리 높이에 오도록</b> 묶인 자리를 역산해 내린다 —
+                    // "머리 옆에 떠 있는 풍선"이라는 그림은 그대로 남고 액자 안에 들어온다.
+                    // 두 도형이 같은 원점을 쓰므로 매듭은 여기서도 벌어지지 않는다.
+                    float tieY = HeadCenterY - r * (AppearanceShapeBuilder.BalloonStringInR
+                        + AppearanceShapeBuilder.BalloonRadiusInR);
+                    AddPreviewLine("PetBalloonString", AppearanceShapeBuilder.BalloonString(r),
+                        x, tieY, false, secondary);
+                    AddPreviewLine("PetBalloonBody", AppearanceShapeBuilder.BalloonBody(r),
+                        x, tieY, true, primary);
+                    break;
+                }
+
+                case AppearanceShapeBuilder.PetSnail:
+                {
+                    // 정면(facing +1) — 리틀스틱메이트와 같은 규약(액자 속 인물과 같은 방향을 본다).
+                    // 도형 원점이 <b>접지선</b>이라 y=0이 곧 땅이다(공/리틀스틱메이트와 같은 바닥선).
+                    float size = r * AppearanceShapeBuilder.SnailSizeInR;
+                    AddPreviewLine("PetSnailFoot", AppearanceShapeBuilder.SnailFoot(size, 1f),
+                        x, 0f, false, primary);
+                    AddPreviewLine("PetSnailShell", AppearanceShapeBuilder.SnailShell(size, 1f, 14),
+                        x, 0f, true, primary);
+                    // 보조색은 껍데기 속 점 하나뿐이다(37-6 규칙 3-2) — 실물과 같은 배분.
+                    AddPreviewLine("PetSnailCore", AppearanceShapeBuilder.SnailShellCore(size, 1f, 8),
+                        x, 0f, true, secondary);
+                    break;
+                }
             }
         }
 
@@ -861,6 +1037,18 @@ namespace StickMate.Interaction
             }
         }
 
+        /// <summary>잎 한 장 = 잎몸 + 잎자루. 두 조각을 <b>같은 각도로</b> 돌린 뒤 함께 옮긴다 —
+        /// 따로 돌리면 잎자루가 잎몸 뒤끝에서 떨어져 나간다(그 접점이 곧 "붙어 있다"는 뜻이다).</summary>
+        private void AddLeafPreview(string name, float x, float y, float length, float tiltDegrees, Color ink)
+        {
+            Vector3[] blade = AppearanceShapeBuilder.LeafBlade(length);
+            Vector3[] stem = AppearanceShapeBuilder.LeafStem(length);
+            Rotate(blade, tiltDegrees);
+            Rotate(stem, tiltDegrees);
+            AddPreviewLine(name + "Blade", blade, x, y, true, ink);
+            AddPreviewLine(name + "Stem", stem, x, y, false, ink);
+        }
+
         private void AddPreviewLine(string name, Vector3[] points, float x, float y, bool loop, Color color)
         {
             Offset(points, x, y);
@@ -874,6 +1062,19 @@ namespace StickMate.Interaction
             for (int i = 0; i < points.Length; i++)
             {
                 points[i] = new Vector3(points[i].x + dx, points[i].y + dy, points[i].z);
+            }
+        }
+
+        /// <summary>도형을 자기 원점 둘레로 돌린다(<see cref="Offset"/>과 같은 이유로 점을 직접 고친다).
+        /// 재구성 경로에서만 불린다 — 매 프레임 경로가 아니다.</summary>
+        private static void Rotate(Vector3[] points, float degrees)
+        {
+            float rad = degrees * Mathf.Deg2Rad;
+            float cos = Mathf.Cos(rad), sin = Mathf.Sin(rad);
+            for (int i = 0; i < points.Length; i++)
+            {
+                points[i] = new Vector3(points[i].x * cos - points[i].y * sin,
+                    points[i].x * sin + points[i].y * cos, points[i].z);
             }
         }
 
@@ -930,6 +1131,28 @@ namespace StickMate.Interaction
                 points[i] = new Vector3(center.x + Mathf.Cos(step * i) * radius, center.y + Mathf.Sin(step * i) * radius, 0f);
             }
             AddLine(name, points, ink, loop: true);
+        }
+
+        /// <summary>
+        /// ★ 바깥 반경이 정확히 <paramref name="outerRadius"/>인 <b>꽉 찬 원</b>.
+        /// Editor/SceneBootstrapper.CreateFilledDisc와 <b>같은 유도</b>다(유도식 전문은 그쪽 문서):
+        /// 폭 W = k·r, 바깥 r + W/2 = R ⇒ r = R/(1+k/2), k = 2.4에서 r = 0.4545R / W = 1.0909R.
+        /// <para>이 원의 점은 전부 반경 r 위에 있고 획 반폭이 W/2라, "점 ± 획 반폭"으로 잉크 범위를
+        /// 재는 초상화 테스트들(PortraitScaleInvarianceTests / PortraitFallenFramingTests)에서
+        /// 이 도형의 범위는 정확히 R이다 — 머리 링(R + 획/2)보다 항상 작으므로 <b>액자 여백 계산이
+        /// 전혀 흔들리지 않는다</b>.</para>
+        /// </summary>
+        private void AddFilledDisc(string name, Vector2 center, float outerRadius, Color ink, int segments)
+        {
+            float pathRadius = outerRadius / (1f + FilledDiscWidthPerPathRadius * 0.5f);
+            var points = new Vector3[segments];
+            float step = Mathf.PI * 2f / segments;
+            for (int i = 0; i < segments; i++)
+            {
+                points[i] = new Vector3(center.x + Mathf.Cos(step * i) * pathRadius,
+                    center.y + Mathf.Sin(step * i) * pathRadius, 0f);
+            }
+            AddLine(name, points, ink, loop: true, width: pathRadius * FilledDiscWidthPerPathRadius);
         }
 
         /// <param name="sortingOrder">33-2-0의 레이어 재배치표. 미니 피규어도 같은 순서를 써야

@@ -119,9 +119,10 @@ namespace StickMate.EditorTools
         // 한다(리더 지시: "팔다리 선 두께와 비슷하거나 약간 얇게"). 위 LineWidthScale이 함께 곱해진다.
         private const float BaselineHeadOutlineWidth = 0.09f * LineWidthScale;
         // 머리 시각 반경. 물리 CircleCollider2D.radius(0.4, 아래 참고)와는 별개 값 — 판정 크기는 무변경.
-        // 머리는 이제 "검은 링(테두리)만, 안쪽은 완전히 비어 투명"이다(사용자 정정, 2026-08-28 —
-        // "얼굴이 흰색이 아니고 색 자체가 없어야지"). 진짜 투명 창이 동작하게 되어 얼굴 안쪽으로
-        // 바탕화면이 그대로 비쳐야 하므로, 예전의 흰 채움 원(CreateFilledHead)은 제거했다.
+        // ★ 이 값은 "완성된 머리의 바깥 반경"이다. 채움(HeadFill)과 링(HeadOutline)이 **둘 다** 이 값을
+        // 받아 각자 경로/폭을 유도하므로(CreateFilledDisc / CreateRing), 여기를 바꾸면 둘이 함께 움직인다.
+        // Core/StickmanMetrics.HeadRadius가 링의 첫 점 x로 이 값을 실측하고, 액세서리 28종 리그와
+        // 초상화 액자 비율이 전부 거기서 파생된다(계약 C1, docs/UX_FLOW.md 38-2).
         private const float BaselineHeadVisualRadius = 0.22f;
 
 // 눈동자 점(CreateFilledDot)이 쓰는 원 근사 세분화 수. 손/발 끝 점은 2026-08-28 사용자 요청으로
@@ -137,6 +138,26 @@ namespace StickMate.EditorTools
         private const float BaselineEyePupilRadius = 0.018f;
         private const float BaselineEyeOffsetX = 0.075f;
         private const float BaselineEyeOffsetY = 0.02f;
+
+        // ============================================================================
+        // ★ 2026-09-01 P1 — 눈을 굽지 않는다 (docs/UX_FLOW.md 38-4 / 38-5)
+        // ============================================================================
+        // 사용자 지시: "눈 삭제하고 머리도 그냥 다 채워주고" + "커서 눈맞춤 기능은 삭제하되 **코드는
+        // 남겨** 나중에 복원 가능하게 할 것". 그래서 이것은 **삭제가 아니라 게이트**다 —
+        // 좌표 상수 3개(위)와 CreateFilledDot(), States/EyeController.cs, StickConfig의 눈 추적 튜닝
+        // 필드 5개는 **전부 그대로 남아 있다**.
+        //
+        // 되살리는 절차(이 세 개를 되돌리면 눈이 그대로 돌아온다 — 다른 파일은 손댈 필요 없다):
+        //   1) 여기 BakeEyes = true
+        //   2) Interaction/CharacterPortraitStage.DrawEyes = true   (정보창 초상화)
+        //   3) StickConfig.eyeTrackingEnabled = true + DefaultStickConfig.asset의 같은 필드 = 1
+        //   4) 메뉴 StickMate/Rebuild All 또는 배치 -executeMethod ... BuildAll --force (프리팹+씬 동시)
+        // 이 절차가 실제로 유효하다는 것은 Tests/EditMode/EyeRestorePathContractTests.cs가 잠근다.
+        //
+        // 왜 EyeController.cs를 한 줄도 안 고치는가: 그 클래스는 "Head 직속 자식 중 LeftEye/RightEye"를
+        // 찾고 **못 찾으면 모든 메서드가 조용히 아무것도 안 한다**(전 메서드 null 가드 + HasEyes).
+        // 프리팹에서 눈을 빼는 순간 자동으로 무해해지므로, "기능을 끄는 코드"를 새로 쓸 필요가 없다.
+        private const bool BakeEyes = false;
 
         // 중립(Idle) 팔 벌림 각도 — StickConfig.idleArmSpreadDegrees와 반드시 같은 값이어야 한다
         // (프리팹 저장 시점의 초기 localRotation과 런타임 포즈 목표각이 일치해야 첫 프레임에 튀지 않는다).
@@ -193,12 +214,45 @@ namespace StickMate.EditorTools
         // 밖이라 RAGDOLL에 들어가는 순간 관절이 튄다.
         private const float MinJointBendDegrees = 3f;
 
-        // 고관절/어깨의 스윙 허용 범위(중립 0도 = 마디가 몸통 축과 나란한 상태 기준, ±).
-        // 하한 조건: 보행 키포즈의 최대 각도(엉덩이 ±25도, 어깨 ±18도)와 Idle 벌림(다리 12도, 팔 40도)을
-        // 모두 포함해야 한다 — 능동 포즈가 제한 밖이면 RAGDOLL 진입 프레임에 팔다리가 튄다.
+        // 고관절의 스윙 허용 범위(중립 0도 = 마디가 몸통 축과 나란한 상태 기준, ±).
+        // 하한 조건: 보행 키포즈의 최대 각도(엉덩이 ±25도)와 Idle 벌림(다리 12도)을 모두 포함해야
+        // 한다 — 능동 포즈가 제한 밖이면 RAGDOLL 진입 프레임에 팔다리가 튄다.
         // 상한 조건: 90도(몸통에 완전히 수직)를 넘기지 않아야 "대자로 뻗은" 실루엣이 막힌다.
         private const float HipSwingLimitDegrees = 65f;
-        private const float ShoulderSwingLimitDegrees = 75f;
+
+        // ================================================================================
+        // ★ 2026-09-01 (P9-d, 리더 승인) 어깨만 **비대칭**으로 — docs/UX_FLOW.md 38-14-3 (d)
+        // ================================================================================
+        // 어깨는 ±75도 대칭이었다. 사람 어깨는 대칭이 아니다: 앞/위로는 170도 가까이 올라가지만
+        // 뒤로는 60도쯤에서 막힌다. 대칭 제한은 그 비대칭을 **평균**으로 뭉갠 값이라, 어느 쪽으로도
+        // 사람처럼 움직일 수 없다:
+        //
+        //   · 앞/위 방향: 참고자료(피격 2~4프레임)의 "팔이 머리 위로 홱 튕겨 올라가는" 그림은
+        //     어깨 각도 약 150도를 요구한다. 75도 제한에서는 **값을 어떻게 튜닝해도 원리적으로
+        //     불가능**하다(충격량을 아무리 키워도 솔버가 75도에서 자른다).
+        //   · 뒤 방향: 오히려 75도는 너무 관대했다. 두 팔이 각각 +75/−75로 벌어지면 그게 바로
+        //     2026-08-28에 막으려 했던 "대(大)자"다(수평에서 15도 모자란 상태).
+        //
+        // 그래서 앞은 열고 뒤는 조인다: [-75, +75] -> [-60, +150].
+        // **이 변경은 "대자" 방지를 약화시키지 않고 오히려 강화한다** — 대자는 한 팔이 앞으로,
+        // 다른 팔이 뒤로 각각 수평(±90도)일 때 나오는데, 뒤쪽 한계가 75 -> 60으로 내려가 그 실루엣이
+        // 더 확실히 막힌다. 새로 열리는 것은 "두 팔이 같은 쪽(앞/위)으로 크게 넘어가는" 구간뿐이고,
+        // 그건 정확히 얻어맞아 넘어가는 그림이다.
+        //
+        // 부호 규약(States/StickmanPoseAnimator.cs 클래스 문서): 마디 로컬 -y가 손 끝이고 Z축 양의
+        // 회전이 끝을 +x로 보내므로 **양수 = 진행 방향(앞) 스윙**이다. 표(LegHipKeys/ArmShoulderKeys)의
+        // "+ = 앞"과 같은 규약이다.
+        //
+        // 좌우 반전 배관은 새로 만들 것이 없다: States/RagdollRig.MirrorIfFacingLeft가 왼쪽을 볼 때
+        // [min,max]를 [-max,-min]으로 뒤집어 적용한다(2026-08-29에 만든 것). 즉 왼쪽을 보면
+        // [-150, +60]이 되어 "앞으로 크게, 뒤로 조금"이라는 해부학적 의미가 그대로 보존된다.
+        //
+        // 하한 조건(진입 프레임 튐 방지)은 그대로 지킨다: 보행 어깨 키 ±18도와 Idle 팔 벌림 ±40도가
+        // 모두 [-60, +150] 안에 있다. 뒤쪽 여유는 40 -> 60까지 20도이므로, 보행 진폭 배율
+        // (StickConfig.walkPoseAmplitudeScale × 속도 연동, P9-c)이 어깨 18도를 3.3배까지 키워도
+        // 제한을 넘지 않는다.
+        private const float ShoulderSwingBackLimitDegrees = 60f;
+        private const float ShoulderSwingForwardLimitDegrees = 150f;
 
         /// <summary>
         /// 중립 자세에서 엉덩이부터 발끝까지의 수직 낙차. 대퇴는 hipAngle, 정강이는 hipAngle+무릎각의
@@ -405,6 +459,10 @@ namespace StickMate.EditorTools
             added += EnsureComponent<GearRadialMenuWidget>(root);
             added += EnsureComponent<FocusSessionPopover>(root);
             added += EnsureComponent<TodoBoardPopover>(root);
+            // 2026-08-31 부채꼴 ④ [행동] 신설(docs/UX_FLOW.md 36-6). 36-13 #11이 "33-9 #10 / 34-9 #10과
+            // **똑같은 함정**(신규 컴포넌트가 프리팹에 없어 런타임 부재 → Blocker)"이라며 체크리스트에
+            // 고정하라고 명시한 항목이다 — 이 한 줄이 없으면 ④를 눌러도 경고만 남고 창이 안 뜬다.
+            added += EnsureComponent<ActionCommandPopover>(root);
             // 2026-08-30 외형 라운드 신설 3종. 이미 구워진 프리팹에 --force 재생성 없이 얹기 위한 경로다
             // (--force는 모든 fileID를 재할당해 Main.unity의 오버라이드를 고아로 만든다 — BUG-SW-M3).
             added += EnsureComponent<CharacterFxRenderer>(root);
@@ -413,6 +471,10 @@ namespace StickMate.EditorTools
             // 2026-08-31 구석 호버 패널(크기 다이얼 + 미리보기 카드). 위 3종과 같은 이유로 여기에도 넣는다 —
             // 34-9 #10이 미리 경고한 "신규 컴포넌트가 프리팹에 없어 런타임에 존재하지 않음" Blocker 방지.
             added += EnsureComponent<CornerHoverPanel>(root);
+            // 2026-09-01 설정창(docs/UX_FLOW.md 35-1). 위와 <b>완전히 같은 이유</b>로 여기에도 넣는다 —
+            // 이 한 줄이 없으면 정보창 헤더의 [설정]과 단축키 ⌃⌥⌘,가 경고만 남기고 아무 일도 하지 않는다
+            // (33-9 #10 / 34-9 #10 / 36-13 #11이 세 번 연속으로 경고한 그 함정).
+            added += EnsureComponent<SettingsWindow>(root);
 
             if (added > 0) PrefabUtility.SaveAsPrefabAsset(root, PrefabAssetPath);
             PrefabUtility.UnloadPrefabContents(root);
@@ -860,7 +922,8 @@ namespace StickMate.EditorTools
             // SpectacleEventLock 참여 — 기준은 다른 항목과 같다("ChangeState()로 단일 상태 슬롯을
             // 다투는가"). 활쏘기는 Idle/Walk에서 StickmanStateId.Archery로 전이하므로 참여한다.
             // 자율 발동 확률(StickConfig.archeryChance)은 **기본 0**이라, 배치만으로는 아무 일도
-            // 일어나지 않는다 — 전역 단축키 Ctrl+Opt+Cmd+A / 우클릭 메뉴 [활쏘기]가 유일한 발동 경로다.
+            // 일어나지 않는다 — 부채꼴 ④ [행동] 창의 [활쏘기] / 전역 단축키 Ctrl+Opt+Cmd+A가 유일한
+            // 발동 경로다(2026-08-31: 우클릭 메뉴 폐지, 36-9).
             var archery = root.AddComponent<ArcheryDirector>();
             var archerySo = new SerializedObject(archery);
             archerySo.FindProperty("_player").objectReferenceValue = agent;
@@ -913,15 +976,17 @@ namespace StickMate.EditorTools
             // 같은 GameObject의 CharacterInfoWindow를 Awake()에서 직접 찾으므로 배선이 필요 없다.
             root.AddComponent<InfoGearIconWidget>();
 
-            // 톱니 클릭 -> 부채꼴 원버튼 3개 + 그 버튼에서 자라나는 팝오버 2종
-            // (2026-08-30 사용자 요청 "기어메뉴를 클릭했을때 집중모드/캐릭터/오늘 할일 3가지가 촤르륵",
-            // docs/UX_FLOW.md 32절). 셋 다 같은 GameObject의 StickmanAgent/FocusWatchDirector/
+            // 톱니 클릭 -> 부채꼴 **아이콘 전용** 원버튼 4개 + 그 버튼에서 자라나는 팝오버 3종
+            // (2026-08-30 "집중모드/캐릭터/오늘 할일 3가지가 촤르륵" + 2026-08-31 "기어아이콘에 메뉴하나
+            // 추가해서 행동들은 거기서 클릭하면 창 하나가 떠서 행동 명령 내릴수 있게",
+            // docs/UX_FLOW.md 32절 + 36절). 전부 같은 GameObject의 StickmanAgent/FocusWatchDirector/
             // CharacterInfoWindow를 Awake()에서 직접 찾으므로 SerializedObject 배선이 필요 없다.
-            // ★ 순서 주의: 팝오버 2종은 부채꼴이 Start()에서 GetComponent로 찾으므로 같은
+            // ★ 순서 주의: 팝오버 3종은 부채꼴이 Start()에서 GetComponent로 찾으므로 같은
             //   GameObject에 함께 있어야 한다(없으면 버튼이 경고만 남기고 아무 일도 하지 않는다).
             root.AddComponent<GearRadialMenuWidget>();
             root.AddComponent<FocusSessionPopover>();
             root.AddComponent<TodoBoardPopover>();
+            root.AddComponent<ActionCommandPopover>();
 
             // ★ 화면 좌하단 구석 호버 패널 — 크기 다이얼 + "캐릭터만 보여주는" 미리보기 카드
             // (docs/UX_FLOW.md 34-4~34-6). 같은 GameObject의 StickmanAgent/CharacterInfoWindow를
@@ -930,6 +995,14 @@ namespace StickMate.EditorTools
             //    실제로 Blocker B1로 터졌던 바로 그 함정이다(34-9 #10). 위 CharacterInfoWindow보다
             //    <b>뒤에</b> 붙여야 Awake의 GetComponent<CharacterInfoWindow>()가 찾을 수 있다.
             root.AddComponent<CornerHoverPanel>();
+
+            // ★ 설정창(35-1). CharacterInfoWindow와 같은 이유로 [SerializeField] _config 배선이 필요하고,
+            //   같은 GameObject의 CharacterInfoWindow/CornerHoverPanel/부채꼴을 Awake/지연 조회로 찾으므로
+            //   <b>그것들보다 뒤에</b> 붙인다(배타 모달 정리가 그 참조를 쓴다).
+            var settingsWindow = root.AddComponent<SettingsWindow>();
+            var settingsSo = new SerializedObject(settingsWindow);
+            settingsSo.FindProperty("_config").objectReferenceValue = config;
+            settingsSo.ApplyModifiedPropertiesWithoutUndo();
 
             // ================================================================================
             // 배선 감사 잔여 2건 — 구독자 0명 이벤트의 시각 소비자 (2026-08-30)
@@ -959,8 +1032,12 @@ namespace StickMate.EditorTools
             //   "착지 먼지가 떠 있는 동안 먼지 구름 억제"를 판단한다(같은 루트에 있기만 하면 되고
             //   AddComponent 순서와는 무관하다 — 없으면 억제만 생략되고 나머지는 그대로 돈다).
             //
-            // LongCapeTripDirector만 Director다. 새 자율 확률을 하나 늘리지만(평균 90초에 1회),
-            // 그건 **긴 망토를 착용한 동안에만** 돌고 벗으면 즉시 멈춘다 — 리더 승인 항목.
+            // LongCapeTripDirector만 Director다. ★ 2026-08-31 — 이 디렉터의 자율 발동은 **기본
+            // OFF**다(StickConfig.longCapeTripMeanSeconds = 0). 사용자 명시 요청 "걷다가 갑자기
+            // 아픈것처럼 쓰러지는데 이런건 없애줘"에 따른 것이며, 컴포넌트를 씬에서 빼지 않고
+            // 그대로 두는 이유는 값을 양수로 올리면 즉시 되살아나게 하기 위해서다(기본 OFF 상태의
+            // Update는 float 비교 한 번으로 끝난다). 자세한 근거는 그 필드의 Tooltip과
+            // Interaction/LongCapeTripDirector.cs 클래스 문서에 있다.
             root.AddComponent<CharacterFxRenderer>();
             root.AddComponent<CharacterPetRenderer>();
             root.AddComponent<LongCapeTripDirector>();
@@ -968,9 +1045,11 @@ namespace StickMate.EditorTools
             // ================================================================================
             // 앱 제어 수단 배선 (2026-08-28 — "터미널 없이 끌 수 있어야 한다")
             // ================================================================================
-            // Interaction/AppControlDirector.cs: 전역 단축키(Ctrl+Opt+Cmd+Q 종료 등)와 캐릭터 우클릭
-            // 제어 메뉴. 직렬화 필드가 없고 Awake()에서 같은 GameObject의 StickmanAgent를 직접
-            // 찾으므로(없으면 씬 전체에서 탐색) SerializedObject 배선이 필요 없다.
+            // Interaction/AppControlDirector.cs: 전역 단축키(Ctrl+Opt+Cmd+Q 종료 등). 직렬화 필드가
+            // 없고 Awake()에서 같은 GameObject의 StickmanAgent를 직접 찾으므로(없으면 씬 전체에서 탐색)
+            // SerializedObject 배선이 필요 없다.
+            // ★ 2026-08-31 — 캐릭터 우클릭 제어 메뉴는 폐지됐다(docs/UX_FLOW.md 36-9). 마우스만으로
+            //   도달하는 종료 경로는 이제 부채꼴 ④ [행동] 창의 푸터 [✕ 앱 종료]다.
             root.AddComponent<AppControlDirector>();
 
             // 몸통(목) 선의 위쪽 끝 — **머리 링 안쪽으로 침범하지 않게** 정확히 맞춘다
@@ -989,23 +1068,33 @@ namespace StickMate.EditorTools
             //  => 끝점 = torsoTopY + (headOutlineWidth - lineWidth)/2
             // 이러면 (a) 링 안쪽 빈 공간으로는 1px도 침범하지 않고, (b) 몸통 획이 링 두께 구간을 완전히
             // 가로질러 겹치므로 목과 머리 사이에 틈도 생기지 않는다.
+            //
+            // ★ 2026-09-01 P1 이후 이 보정은 **더 이상 필요하지 않다**(얼굴이 채워져 침범해도 안 보인다).
+            //   그래도 이번 라운드에는 건드리지 않는다 — 값이 바뀌면 프리팹 지오메트리가 함께 움직여
+            //   "눈 삭제 + 머리 채움"의 회귀 판정에 무관한 변화가 섞인다. 실제로 문제가 되는 것은
+            //   lineWidth가 굵어지는 P2(두께 전환)이므로(그때 이 식이 음수로 커져 목이 짧아진다)
+            //   `torsoTopOverlapped = torsoTopY` 단순화는 P2에서 한 번에 한다(docs/UX_FLOW.md 38-4-1).
             float torsoTopOverlapped = torsoTopY + (headOutlineWidth - lineWidth) * 0.5f;
             float torsoCenterY = (torsoTopOverlapped + torsoBottomY) * 0.5f;
             float torsoHalf = (torsoTopOverlapped - torsoBottomY) * 0.5f;
             CreateLineSegmentVisual(root.transform, "Torso", new Vector3(0f, torsoCenterY, 0f),
                 new Vector3(0f, torsoHalf, 0f), new Vector3(0f, -torsoHalf, 0f), lineWidth, outline, sortingOrder: 1);
 
-            // 머리 — **검은 링(테두리)만 + 안쪽은 완전히 비어 투명**(2026-08-28 사용자 정정: "얼굴이
-            // 흰색이 아니고 색 자체가 없어야지, 비워져있어야함").
+            // 머리 — **잉크색으로 꽉 찬 원**(2026-09-01 사용자 지시: "눈 삭제하고 머리도 그냥 다 채워줘",
+            // 참고 이미지 3장 전부 이 형태. docs/UX_FLOW.md 38-4).
             //
-            // 이력: 직전 라운드까지는 "흰색으로 꽉 채운 원 + 검은 테두리"였는데, 그건 **불투명한 밝은
-            // 회색 배경을 전제로 한 설계**였다(흰 얼굴이 회색 배경과 구분되도록). 이번 라운드에
-            // UniWindowController로 진짜 투명 창이 실제 동작하게 되었으므로(사용자 실측 확인 — 바탕화면과
-            // Dock이 그대로 비쳐 보임), 얼굴 안쪽도 아무것도 그리지 않아 바탕화면이 그대로 비치게 한다.
-            // 흰 채움을 만들던 CreateFilledHead()는 LineRenderer가 없는 순수 앵커 CreateHeadAnchor()로
-            // 대체했다.
+            // 이력(두 번 뒤집혔다는 사실 자체가 근거다):
+            //   ① ~2026-08-28 : "흰색으로 꽉 채운 원 + 검은 테두리". **불투명한 밝은 회색 배경**을 전제로
+            //      한 설계였다(흰 얼굴이 회색 배경과 구분되도록).
+            //   ② 2026-08-28  : UniWindowController로 진짜 투명 창이 동작하게 되면서 흰 채움이
+            //      "바탕화면을 가리는 흰 판"이 되어버려 제거했다(사용자 정정 "얼굴이 흰색이 아니고
+            //      색 자체가 없어야지"). 이때 얼굴은 **완전히 빈 링**이 됐다.
+            //   ③ 2026-09-01  : 그림체 자체를 두꺼운 채움 실루엣으로 바꾸면서 다시 채운다. ①과 다른 점은
+            //      **채움 색이 배경색(흰색)이 아니라 잉크색**이라는 것이다 — 즉 ②가 없애려던 "바탕화면을
+            //      가리는 흰 판" 문제는 재발하지 않는다. 채움 면은 캐릭터 그 자체다.
             //
-            // 두 겹을 sortingOrder로 쌓는다:  4: 검은 테두리 링(CreateRing)   5: 검은 눈동자 점
+            // 세 겹을 sortingOrder로 쌓는다: 3: 잉크 채움 원(CreateFilledDisc)  4: 링(CreateRing)
+            //                                5: 눈동자 점(지금은 굽지 않음 — BakeEyes)
             // 물리 CircleCollider2D(반경 0.4, BUG-SW-M1 이후 무변경)는 앵커 오브젝트("Head")에 붙인다 —
             // 이 오브젝트가 머리의 기준 Transform이라 StickmanPoseAnimator의 몸 바운스(이름 "Head"로
             // 탐색)/EyeController의 부모 노릇을 함께 한다. 렌더러가 사라져도 이 역할은 그대로다.
@@ -1018,17 +1107,37 @@ namespace StickMate.EditorTools
             // StickConfig의 상수를 쓴다 — 배회 AI의 경계 판정 거리 유도가 같은 값을 읽는다
             // (Core/DockGeometry.ResolveEdgeStopDistance / States/StickmanBlackboard.EdgeStopDistanceWorld).
             headCollider.radius = StickConfig.BaselineBodyPhysicsHalfWidth * bodyScale;
+            // ★ 2026-09-01 P1 — 머리를 **꽉 찬 원**으로 만든다(docs/UX_FLOW.md 38-4-1).
+            //
+            // 링(HeadOutline)을 **지우지 않고** 채움을 형제로 추가하는 이유는 치수 계약 C1 하나 때문이다:
+            // Core/StickmanMetrics.HeadRadius가 "Head/HeadOutline" LineRenderer의 **첫 점 x**를 읽어
+            // 머리 반경을 실측하고, 그 값에서 액세서리 리그 28종/초상화 액자/말풍선 위치가 전부 파생된다.
+            // 링을 지우면 그 전부가 폴백 비율로 조용히 떨어진다. 채움과 링은 같은 잉크색이라 링은
+            // 시각적으로 존재하지 않는다(비용: LineRenderer 1개 = 24점).
+            //
+            // 순서: 채움(3) -> 링(4). sortingOrder 3인 이유는 몸통(1)/팔(2)보다 위 = 목이 얼굴을 뚫지
+            // 않고, 링(4)과 머리카락 채움(AccessoryShapeBuilder.SortHair-1 = 5)보다는 아래라 모자/머리가
+            // 두피 위에 그대로 온다. 액세서리 최저(SortBack = -1)와도 충돌하지 않는다.
+            CreateFilledDisc(head.transform, "HeadFill", Vector3.zero, headVisualRadius,
+                outline, sortingOrder: 3);
             CreateRing(head.transform, "HeadOutline", Vector3.zero, headVisualRadius, headOutlineWidth,
                 outline, sortingOrder: 4);
 
             // 눈(눈동자 점 2개) — **반드시 머리의 자식**이라야 RAGDOLL로 머리가 뒹굴 때도 따라간다.
-            // 투명한(비어 있는) 얼굴 안에 검은 점 두 개가 떠 있는 형태. sortingOrder는 테두리(4)보다 위(5).
-            // 런타임에 States/EyeController.cs가 이 점들의 localPosition을 중립에서 조금씩 오프셋해
-            // 시선을 움직인다(다음 라운드에 커서 추적 연결 예정 — 그 클래스 문서의 배선 지점 참고).
-            CreateFilledDot(head.transform, "LeftEye", new Vector3(-eyeOffsetX, eyeOffsetY, 0f),
-                eyePupilRadius, outline, sortingOrder: 5);
-            CreateFilledDot(head.transform, "RightEye", new Vector3(eyeOffsetX, eyeOffsetY, 0f),
-                eyePupilRadius, outline, sortingOrder: 5);
+            // sortingOrder는 테두리(4)보다 위(5). 런타임에 States/EyeController.cs가 이 점들의
+            // localPosition을 중립에서 조금씩 오프셋해 시선을 움직인다.
+            //
+            // ★ 2026-09-01 — BakeEyes = false라 지금은 굽지 않는다(위 상수 문서의 되살리기 절차 참고).
+            //   코드/좌표 상수를 지우지 않고 게이트만 두는 것이 사용자 지시("코드는 남겨")의 이행이다.
+#pragma warning disable 162 // 의도된 상수 게이트 — BakeEyes를 true로 되돌리면 그대로 살아난다.
+            if (BakeEyes)
+            {
+                CreateFilledDot(head.transform, "LeftEye", new Vector3(-eyeOffsetX, eyeOffsetY, 0f),
+                    eyePupilRadius, outline, sortingOrder: 5);
+                CreateFilledDot(head.transform, "RightEye", new Vector3(eyeOffsetX, eyeOffsetY, 0f),
+                    eyePupilRadius, outline, sortingOrder: 5);
+            }
+#pragma warning restore 162
 
             // ================================================================================
             // 말풍선 렌더러 배선 (2026-08-29 — 원칙 1의 산출물이 화면에 한 번도 안 나오던 문제)
@@ -1068,13 +1177,13 @@ namespace StickMate.EditorTools
             CreateLimb(root.transform, rb, "LeftArm", attachLocal: new Vector2(0f, shoulderY),
                 upperLength: armUpperLength, lowerLength: armLowerLength, width: armLineWidth,
                 upperAngle: -IdleArmSpreadDegrees, lowerAngle: ElbowBendSign * IdleElbowBendDegrees,
-                upperMinAngle: -ShoulderSwingLimitDegrees, upperMaxAngle: ShoulderSwingLimitDegrees,
+                upperMinAngle: -ShoulderSwingBackLimitDegrees, upperMaxAngle: ShoulderSwingForwardLimitDegrees,
                 lowerMinAngle: ElbowBendSign * MinJointBendDegrees, lowerMaxAngle: MaxJointBendDegrees,
                 outline, mass: 0.06f, gravityScale: gravityScale, sortingOrder: 2, limbLayer: limbLayer, agent: agent);
             CreateLimb(root.transform, rb, "RightArm", attachLocal: new Vector2(0f, shoulderY),
                 upperLength: armUpperLength, lowerLength: armLowerLength, width: armLineWidth,
                 upperAngle: IdleArmSpreadDegrees, lowerAngle: ElbowBendSign * IdleElbowBendDegrees,
-                upperMinAngle: -ShoulderSwingLimitDegrees, upperMaxAngle: ShoulderSwingLimitDegrees,
+                upperMinAngle: -ShoulderSwingBackLimitDegrees, upperMaxAngle: ShoulderSwingForwardLimitDegrees,
                 lowerMinAngle: ElbowBendSign * MinJointBendDegrees, lowerMaxAngle: MaxJointBendDegrees,
                 outline, mass: 0.06f, gravityScale: gravityScale, sortingOrder: 2, limbLayer: limbLayer, agent: agent);
 
@@ -1434,7 +1543,7 @@ namespace StickMate.EditorTools
             go.AddComponent<UnityEngine.EventSystems.EventSystem>();
             // ★ 2026-08-29: StandaloneInputModule을 함께 붙인다. 이전 주석은 "이 프로젝트에는 uGUI
             // Canvas가 하나도 없어 모듈이 필요 없다"고 했고 그때는 사실이었지만, 그 뒤 말풍선
-            // (DialogueBubbleRenderer) / 앱 제어 메뉴(AppControlDirector) / 투두 포스트잇
+            // (DialogueBubbleRenderer) / 부채꼴·팝오버(PopoverPanel 계열) / 투두 포스트잇
             // (TodoPostItWidget)이 각자 Canvas를 만들면서 전제가 깨졌다.
             //
             // 입력 모듈이 없는 EventSystem은 포인터 이벤트를 **아예 처리하지 않으므로**
@@ -1571,9 +1680,11 @@ namespace StickMate.EditorTools
         /// <summary>속이 빈 원(링) 시각 표현(머리) — HeadRingSegments개의 점을 원주 위에 찍고
         /// loop=true로 닫아 "채워지지 않은 동그라미"를 그린다.</summary>
         /// <summary>
-        /// 채워진 검은 머리 - 레퍼런스(Alan Becker 계열)는 머리가 "속이 빈 동그라미"가 아니라 **꽉 찬
-        /// 검은 덩어리**다. 길이 0인 선분에 지름만큼의 선 폭 + 둥근 캐을 주면 LineRenderer 하나로 완전히
-        /// 채워진 원이 나온다(SpriteRenderer를 다시 들여오지 않고 "LineRenderer만 사용" 컨벤션 유지).
+        /// 머리의 기준 Transform(렌더러 없음). 실제 그림은 자식 두 개 —
+        /// <c>HeadFill</c>(<see cref="CreateFilledDisc"/>) + <c>HeadOutline</c>(<see cref="CreateRing"/>) — 이 그린다.
+        /// <para>이 오브젝트가 앵커로 남아 있어야 하는 이유: 물리 <c>CircleCollider2D</c>가 여기 붙고,
+        /// <c>StickmanPoseAnimator</c>의 몸 바운스가 이름 "Head"로 찾으며, <c>EyeController</c>가
+        /// 머리 좌표계의 부모로 쓴다. <b>렌더러 구성이 어떻게 바뀌어도 이 역할은 그대로다.</b></para>
         /// </summary>
         private static GameObject CreateHeadAnchor(Transform parent, string name, Vector3 localPos)
         {
@@ -1627,6 +1738,63 @@ namespace StickMate.EditorTools
             {
                 float angle = (i / (float)FilledDotSegments) * Mathf.PI * 2f;
                 lr.SetPosition(i, new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f));
+            }
+            return go;
+        }
+
+        /// <summary>
+        /// 채움 비율 W/r — <see cref="CreateFilledDot"/>이 실측으로 정착시킨 2.4를 그대로 쓴다.
+        /// 이론 최소는 2.0(폭 = 지름이면 안쪽 가장자리가 정확히 중심에 닿는다)이지만, 그 값에서는
+        /// 다각형 근사의 안쪽 정점 N개가 전부 중심 한 점에 겹쳐 부동소수 오차로 바늘구멍/별 모양
+        /// 아티팩트가 남을 수 있다. 2.4면 안쪽 가장자리가 중심을 0.2r 지나쳐 그 실패가 구조적으로
+        /// 불가능해진다(CreateFilledDot의 "지름보다 넉넉히 두꺼워야" 주석과 같은 근거).
+        /// </summary>
+        private const float FilledDiscWidthPerPathRadius = 2.4f;
+
+        /// <summary>
+        /// ★ 바깥 반경이 정확히 <paramref name="outerRadius"/>인 **꽉 찬 원**(머리 채움 전용).
+        ///
+        /// 왜 <see cref="CreateFilledDot"/>을 그대로 쓰면 안 되는가: 그쪽은 인자가 <b>경로 반경</b>이고
+        /// 폭이 그 2.4배라 실제 바깥 반경이 <b>2.2배</b>가 된다. 머리에 그대로 쓰면 머리가 2.2배로
+        /// 커진다. 그래서 이 헬퍼는 <b>완성된 그림의 반경</b>을 받고 경로/폭을 내부에서 유도한다 —
+        /// 호출부가 실수할 여지를 없애는 것이 목적이다.
+        ///
+        /// <code>
+        ///   폭 W인 닫힌 원 경로(경로반경 r)가 덮는 반경 구간 = [r − W/2, r + W/2]
+        ///     (a) 바깥이 정확히 R  :  r + W/2 = R
+        ///     (b) 안쪽까지 완전히 채움 : r − W/2 ≤ 0   (여유를 두려면 W = k·r, k &gt; 2)
+        ///   W = k·r 을 (a)에 넣으면       r = R / (1 + k/2),  W = k·r
+        ///   k = 2.4 ⇒ r = R/2.2 = 0.4545R,  W = 1.0909R,  안쪽 가장자리 = −0.0909R (여유 채움)
+        /// </code>
+        ///
+        /// <b>머리 크기는 1pt도 변하지 않는다</b> — 바깥 반경이 링의 경로 반경 R과 정확히 같으므로
+        /// 최종 실루엣은 지금까지와 똑같은 [R − W_ring/2, R + W_ring/2] 띠에서 끝난다.
+        /// 24각형 근사로 변 중앙이 r(1−cos(180°/24)) = 0.0086r = R의 0.39%만큼 들어가지만
+        /// (배율 0.75에서 0.023pt) 이는 링 두께 2pt 안에 완전히 묻힌다.
+        ///
+        /// <para>★ 런타임 하한과의 관계(확인함): <see cref="StickmanAgent"/>의 ApplyStrokeWidthsForScale이
+        /// 모든 획에 화면상 2pt 하한을 걸지만, 이 채움의 폭은 최소 배율(0.35)에서도
+        /// 1.0909 × 0.22 × 0.35 = 0.084유닛 &gt; 하한 0.0567유닛이라 <b>전 배율 구간에서 하한에 걸리지
+        /// 않는다</b>(= 하한이 머리를 부풀리는 일이 없다). 이 부등식은 EditMode
+        /// HeadFillGeometryTests가 잠근다.</para>
+        /// </summary>
+        private static GameObject CreateFilledDisc(Transform parent, string name, Vector3 localAt,
+            float outerRadius, Color color, int sortingOrder)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localAt;
+            go.transform.localScale = Vector3.one;
+
+            float pathRadius = outerRadius / (1f + FilledDiscWidthPerPathRadius * 0.5f);
+            float width = pathRadius * FilledDiscWidthPerPathRadius;
+
+            var lr = ConfigureLine(go, color, sortingOrder, loop: true, width);
+            lr.positionCount = HeadRingSegments;
+            for (int i = 0; i < HeadRingSegments; i++)
+            {
+                float angle = (i / (float)HeadRingSegments) * Mathf.PI * 2f;
+                lr.SetPosition(i, new Vector3(Mathf.Cos(angle) * pathRadius, Mathf.Sin(angle) * pathRadius, 0f));
             }
             return go;
         }

@@ -37,6 +37,20 @@ namespace StickMate.Tests.PlayMode
     ///     기본 폴백값으로 바뀌어 반드시 달라진다.
     ///  ③ <see cref="EyeController.GeometryScale"/>이 1.0에서 유의미하게 벗어나 있다(배포 배율 0.75).
     ///     폴백 경로는 정확히 1.0을 남기므로, 이 단언이 "실측에 성공했다"의 증거가 된다.
+    ///
+    /// ============================================================================
+    /// ★ 2026-09-01 — <b>보류(Ignore) 상태다. 삭제하지 않았다.</b>
+    /// ============================================================================
+    /// 그림체 전환 P1(docs/UX_FLOW.md 38-4/38-5)에서 캐릭터의 눈이 삭제되어
+    /// (<c>Editor/SceneBootstrapper.BakeEyes = false</c>) 이 테스트의 <b>관측 대상 자체가 씬에 없다</b>.
+    /// 첫 단언 <c>baseline.HasEyes</c>부터 성립하지 않는다.
+    ///
+    /// 그런데 이 테스트가 잠그던 회귀("이름으로 파츠를 찾을 때 자손 전체를 훑어 UI 미끼를 집는다")는
+    /// <b>눈과 무관하게 여전히 유효한 불변식</b>이고, 눈을 되살리는 순간(상수 3개 되돌리기 —
+    /// <c>SceneBootstrapper.BakeEyes</c> 문서의 절차) <b>그대로 다시 필요해진다</b>. 그래서 지우지 않고
+    /// <c>[Ignore]</c>만 건다. 되살리는 절차의 마지막 단계는 <b>아래 Ignore 한 줄을 지우는 것</b>이다.
+    ///
+    /// (같은 회귀의 <c>StickmanPoseAnimator</c> 쪽 잠금은 눈과 무관하므로 계속 돌고 있다.)
     /// </summary>
     public sealed class EyeControllerHeadScopeTests
     {
@@ -91,6 +105,8 @@ namespace StickMate.Tests.PlayMode
         }
 
         [UnityTest]
+        [Ignore("2026-09-01 그림체 전환 P1 — 캐릭터에서 눈이 삭제되어(SceneBootstrapper.BakeEyes=false) " +
+                "관측 대상이 씬에 없다. 눈을 되살리면 이 줄만 지우면 그대로 다시 돈다(클래스 문서 참고).")]
         public IEnumerator DecoyHeadInCharacterHierarchyDoesNotStealTheEyes()
         {
             yield return LoadScene();

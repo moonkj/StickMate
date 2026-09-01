@@ -78,25 +78,42 @@ namespace StickMate.Interaction
         /// 화면을 볼 수 없는 검증 환경에서 "왜 아무 일도 안 일어났는지"를 로그만으로 판별할 수 있어야 하기
         /// 때문에, 실패 사유를 구분해 남긴다.
         /// </summary>
-        public void ForceTriggerNow(string reason)
-        {
-            if (_player == null)
-            {
-                Debug.LogWarning($"[격파] 강제 발동 실패({reason}) — 플레이어 배선이 없습니다.");
-                return;
-            }
-            if (SpectacleEventLock.IsActive)
-            {
-                Debug.Log($"[격파] 강제 발동 건너뜀({reason}) — 다른 스펙터클({SpectacleEventLock.ActiveKind})이 " +
-                          "진행 중입니다(상호배제 락).");
-                return;
-            }
+        /// <summary>부분 클릭관통 해제(15절-4 단일 소유자 락)가 거부됐을 때의 문구.
+        /// <b>미리 판정할 수 없는</b> 유일한 실패 원인이라 이유 문자열만 준비해 둔다.</summary>
+        public const string ClickCaptureDeniedReason = "지금은 클릭을 받을 수 없어요";
 
-            var current = _player.Blackboard.Machine.CurrentStateId;
+        /// <summary>
+        /// ★ 지금 격파 놀이를 시킬 수 있는가 — 회색 처리와 실제 실행이 함께 쓰는 단 하나의 판정
+        /// (docs/UX_FLOW.md 36-7). <see cref="ForceTriggerNow"/>가 내부에서 이것을 호출한다.
+        ///
+        /// 여기서 <b>미리 알 수 없는 것</b> 하나: 부분 클릭관통 해제 요청의 거부다. 그 락은 요청해 봐야
+        /// 알 수 있고 요청 자체가 부수효과라 미리 떠볼 수 없다 — 그 경우 실행이 false를 돌려주고
+        /// 창이 그 자리에서 이유를 말한다(36-7의 "조용한 실패 금지").
+        /// </summary>
+        public CommandAvailability GetAvailability()
+        {
+            if (_player == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
+                return CommandAvailability.Missing;
+
+            if (SpectacleEventLock.IsActive)
+                return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(SpectacleEventLock.ActiveKind));
+
+            StickmanStateId current = _player.Blackboard.Machine.CurrentStateId;
             if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
+                return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(current));
+
+            return CommandAvailability.Ready;
+        }
+
+        /// <returns>실제로 시작했는가. 기존 단축키 호출부는 반환값을 무시하면 되므로 하위 호환이다.</returns>
+        public bool ForceTriggerNow(string reason)
+        {
+            CommandAvailability availability = GetAvailability();
+            if (!availability.IsReady)
             {
-                Debug.Log($"[격파] 강제 발동 건너뜀({reason}) — 지금은 {current} 중입니다(Idle/Walk에서만 시작).");
-                return;
+                Debug.Log($"[격파] 강제 발동 건너뜀({reason}) — {availability.Reason}(상호배제 락/진입 상태 조건은 " +
+                    "강제 경로에서도 완화하지 않는다).");
+                return false;
             }
 
             _idleCheckTimer = 0f;
@@ -110,11 +127,12 @@ namespace StickMate.Interaction
                     $"최대 재도전 {(_config != null ? _config.battleMaxRetries : 3)}회, " +
                     $"무입력 타임아웃 {(_config != null ? _config.battleInputTimeoutSeconds : 5f):F0}초. " +
                     "이제 판자/게이지 위나 캐릭터 위를 클릭하세요.");
+                return true;
             }
-            else
-            {
-                Debug.LogWarning($"[격파] 강제 발동 실패({reason}) — 부분적 클릭관통 해제 요청이 거부되었습니다.");
-            }
+
+            Debug.LogWarning($"[격파] 강제 발동 실패({reason}) — {ClickCaptureDeniedReason}" +
+                "(부분적 클릭관통 해제 요청이 거부되었습니다 — 15절-4 단일 소유자 락).");
+            return false;
         }
 
         private void Update()

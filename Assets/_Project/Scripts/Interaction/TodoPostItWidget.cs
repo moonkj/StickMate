@@ -189,6 +189,17 @@ namespace StickMate.Interaction
             _clickPollTimer = 0f;
 
             if (!_buttonService.TryGetPrimaryButtonPressed(out bool left)) return;
+            // ★ 여기만 홀드를 거는 이유 — 이 포스트잇은 <b>할 일이 있으면 하루 종일 떠 있는 상시
+            // HUD</b>다. 다른 UI들처럼 "보이는 동안"으로 걸면 Calm 등급이 영영 성립하지 않아
+            // 적응형 절감이 통째로 무력화된다(정보창/부채꼴/구석패널은 전부 수명이 짧거나 커서가
+            // 붙어 있어야 유지되는 표면이라 사정이 다르다).
+            // 그래서 조건은 "보인다"가 아니라 <b>지금 버튼이 눌려 있다</b> = 실제 상호작용이다.
+            // 이 위젯에는 커서를 따라다니는 것이 없고(위치 고정, 드래그 없음) 남은 것은 클릭뿐이라
+            // 이 범위로 충분하다. 눌린 동안 20Hz로 재호출되므로 0.5초 홀드가 끊기지 않는다.
+            // 효과는 등급 유지보다 <b>즉시 재평가</b> 쪽이 크다 — 클릭 직후 다음 관측 폴링(최대
+            // 0.2초)까지 절반 프레임레이트로 시작하던 구간이 사라진다.
+            if (left) FramePacing.HoldActiveForInteraction();
+
             if (!_leftInitialized) { _leftInitialized = true; _leftPrev = left; return; }
             bool rising = left && !_leftPrev;
             _leftPrev = left;

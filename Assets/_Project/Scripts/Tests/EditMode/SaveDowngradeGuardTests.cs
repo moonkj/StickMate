@@ -25,8 +25,19 @@ namespace StickMate.Tests.EditMode
     ///   (1) 원본을 <c>character_save.v{N}.backup.json</c>으로 **복사**한다(지우지도 옮기지도 않는다 —
     ///       절대 불변 원칙 3 정적 감사가 파일 삭제/이동 API를 금지한다).
     ///   (2) 이미 백업이 있으면 덮어쓰지 않는다(첫 백업이 가장 값지다).
-    ///   (3) 백업에 실패하면 이번 실행의 <see cref="CharacterSaveStore.Save"/>를 **보류**한다.
+    ///   (3) 백업 성공/실패와 <b>무관하게</b> 이번 실행의 <see cref="CharacterSaveStore.Save"/>를 **보류**한다.
     ///   (4) 어느 경우에도 모델은 기본값으로 시작한다(신버전 스키마를 해석할 수 없으므로).
+    ///
+    /// <para>★ <b>(3)은 2026-09-01에 뒤집힌 계약이다</b>(페르소나 재현 J1 실측 A). 원래는 "백업에
+    /// 성공했으면 저장은 정상 진행"이었고, 이 파일에도 그것을 잠그는 테스트가 있었다
+    /// (<c>백업이_성공했으면_저장은_정상_진행된다</c>). 그 판단은 "구버전 앱이 나중에 켜진다"는
+    /// <b>직렬</b> 시나리오만 가정한 것이다. 실제 워크플로는 세이브 파일 하나를 여러 인스턴스가
+    /// 공유하고(.claude/skills/run-stickmate/SKILL.md), 신버전 인스턴스가 <b>아직 돌고 있는 채로</b>
+    /// 구버전이 파일을 되돌리는 일이 실제로 일어난다(실측: 11:05:58 v8 → 11:06:03 v7, 설정창 키 10개
+    /// 소실). 백업은 가장 처음 한 번만 찍히므로 그 뒤의 변경은 어느 사본에도 없다 — 즉 백업이 그
+    /// 손실을 막아 주지 못한다. 그래서 아래 테스트도 <c>백업에_성공해도_신버전_원본은_덮어쓰지_않는다</c>로
+    /// 뒤집었다. "이미 켜져 있는 인스턴스 밑에서 파일이 바뀌는" 나머지 절반은
+    /// <see cref="SaveConcurrentInstanceTests"/>가 맡는다(저장 직전 버전 재확인).</para>
     ///
     /// 네거티브 컨트롤: HandleNewerVersionFile() 호출을 지우고 예전처럼 `return`으로 되돌리면
     /// 아래 <c>신버전_파일은_저장으로_덮이기_전에_백업된다</c>가 즉시 실패한다(백업 파일이 생기지 않음).
@@ -76,6 +87,15 @@ namespace StickMate.Tests.EditMode
             else if (File.Exists(path)) File.Delete(path);
 
             CleanBackupCopy();
+
+            // ★ 2026-09-01 — 정적 진단 플래그를 다음 픽스처에 물려주지 않는다.
+            // 새 계약에서는 이 픽스처의 테스트들이 <b>SaveSuspended=true를 남긴 채</b> 끝난다
+            // (신버전 파일을 만나면 이번 실행의 저장을 보류하는 것이 그 계약이다). 그대로 두면
+            // 뒤에 도는 지속성 테스트들의 Save()가 전부 false를 받아, 이 라운드와 아무 상관 없는
+            // 곳에서 빨개진다(그 픽스처들의 SetUp은 모델만 초기화하고 Load()를 부르지 않는다).
+            // Load()는 첫 줄에서 플래그 3종을 초기화하므로 한 번 부르는 것으로 충분하다.
+            // 모델 초기화는 그 <b>뒤</b>에 한다 — Load()가 복원한 값이 다음 픽스처로 새어 나가지 않게.
+            CharacterSaveStore.Load();
             ResetModels();
         }
 
@@ -138,20 +158,25 @@ namespace StickMate.Tests.EditMode
         }
 
         [Test]
-        public void 백업이_성공했으면_저장은_정상_진행된다()
+        public void 백업에_성공해도_신버전_원본은_덮어쓰지_않는다()
         {
+            // 위 클래스 문서의 ★ 문단이 이 뒤집기의 근거다(실측 있음).
             File.WriteAllText(CharacterSaveStore.FilePath, FutureJson);
 
             LogAssert.ignoreFailingMessages = true;
             CharacterSaveStore.Load();
             LogAssert.ignoreFailingMessages = false;
 
-            Assert.IsFalse(CharacterSaveStore.SaveSuspended,
-                "백업에 성공했는데도 저장이 보류됐습니다 — 구버전 앱에서 논 시간이 전부 버려집니다.");
-            Assert.IsTrue(CharacterSaveStore.Save(),
-                "백업이 있는데도 저장에 실패했습니다.");
+            Assert.IsTrue(File.Exists(BackupCopyPath), "사전 조건: 백업이 만들어져야 합니다.");
+            Assert.IsTrue(CharacterSaveStore.SaveSuspended,
+                "신버전 파일을 만났는데 저장이 보류되지 않았습니다 — 다음 주기 저장(60초)이 그 파일을 " +
+                "구버전 스키마로 되돌립니다. 그때 사라지는 값은 백업이 찍힌 뒤에 생긴 것이라 어느 " +
+                "사본에도 남지 않습니다.");
+            Assert.IsFalse(CharacterSaveStore.Save(),
+                "보류 상태인데 저장이 성공을 보고했습니다 — 호출부가 '저장됐다'로 속습니다.");
 
-            // 덮어써도 백업이 남아 있으므로 데이터는 살아 있다 — 그것이 이 설계의 요점이다.
+            StringAssert.Contains("미래동료", File.ReadAllText(CharacterSaveStore.FilePath),
+                "구버전 앱이 신버전 저장 파일을 덮어썼습니다 — 재현이 실측한 그 데이터 소실입니다.");
             StringAssert.Contains("미래동료", File.ReadAllText(BackupCopyPath),
                 "저장이 백업 사본까지 덮어썼습니다 — 백업이 의미를 잃었습니다.");
         }

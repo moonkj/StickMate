@@ -58,7 +58,8 @@ namespace StickMate.Interaction
     /// 짧게 클릭 vs 길게 눌러 옮기기 (2026-08-30 사용자 요청)
     /// ============================================================================
     /// 사용자 원문: "캐릭터 설정 기어들도 길게 클릭해서 위치 옮길 수 있게 해줘".
-    ///  · <b>짧게 클릭</b> — 두 기어가 맞물려 도는 것과 <b>동시에</b> 부채꼴 버튼 3개가 펼쳐진다.
+    ///  · <b>짧게 클릭</b> — 두 기어가 맞물려 도는 것과 <b>동시에</b> 부채꼴 버튼 4개가 펼쳐진다
+    ///    (2026-08-31에 [행동]이 늘어 3 -> 4가 됐다. 개수의 단일 출처는 <see cref="GearRadialMenuWidget.ButtonCount"/>).
     ///  · <b>길게 누르기</b>(<see cref="LongPressSeconds"/> 이상) 또는 누른 채
     ///    <see cref="DragMoveThresholdPoints"/> 이상 이동 — 드래그로 전환되어 커서를 따라간다.
     ///    떼면 그 자리에 확정되고 저장 파일에 남아 <b>재시작해도 유지</b>된다(Core/UiLayoutModel.cs).
@@ -81,7 +82,7 @@ namespace StickMate.Interaction
     /// ============================================================================
     /// 사용자 원문: "기어메뉴를 클릭했을때 집중모드 버튼 캐릭터 버튼 오늘 할일 버튼 3가지가 촤르륵
     /// 원버튼 3개가 나오고 각 버튼을 클릭했을때 세부 메뉴로 들어가도록".
-    /// 클릭한 프레임에 <see cref="GearRadialMenuWidget"/>가 원형 버튼 3개를 펼치기 시작하고, 동시에
+    /// 클릭한 프레임에 <see cref="GearRadialMenuWidget"/>가 원형 버튼 4개를 펼치기 시작하고, 동시에
     /// 두 기어가 <see cref="SpinSeconds"/> 동안 맞물려 돈다.
     /// <b>회전과 펼침은 동시에 시작한다</b>(docs/UX_FLOW.md 32-9 (B)) — 회전이 끝나기를 기다리면
     /// 클릭부터 첫 픽셀까지 520ms가 걸리고, 그동안 아무 변화가 없으면 사용자는 "안 먹었다"고 판단해
@@ -140,8 +141,11 @@ namespace StickMate.Interaction
         private const float ToothTipHalfFraction = 0.17f;    // 이 끝(마루)의 반각.
         private const float ToothRootHalfFraction = 0.30f;   // 이 뿌리의 반각(마루보다 넓어야 사다리꼴).
 
-        private const float SpinSeconds = 0.52f;
-        private const float BigSpinTurns = 0.75f;   // 큰 기어 기준 회전량. 작은 기어는 잇수비만큼 더 돈다.
+        private const float SpinSeconds = 1.4f;     // 2026-09-01 페르소나(민지) 발견 M5: BigSpinTurns를 4까지 올리면서
+                                                     // 이 값을 그대로 두면 ease-out 시작 순간 각속도가 138°/프레임(60fps)까지
+                                                     // 치솟아 잇수10 기어의 맞물림이 앨리어싱으로 안 보인다. 회전량에 비례해
+                                                     // 늘려 체감 가독 구간을 넓힌다(0.52 -> 1.4, 민지 권장 범위 1.2~1.6 중간값).
+        private const float BigSpinTurns = 4f;      // 큰 기어 기준 회전량(2026-09-01 사용자 요청으로 0.75 -> 1.25 -> 4). 작은 기어는 잇수비만큼 더 돈다.
         private const float IdleAlpha = 0.70f;      // 평소에는 은은하게(관찰형 앱 — 화면을 지배하지 않는다).
         private const float ActiveAlpha = 0.95f;    // 커서가 위에 있거나 창이 열려 있을 때.
         private const float AlphaFadeSpeed = 6f;
@@ -247,9 +251,23 @@ namespace StickMate.Interaction
         /// <summary>세 버튼이 전부 펼쳐지는 데 걸리는 시간(초) — 테스트가 이 값만큼만 기다리면 된다.</summary>
         public static float MenuExpandTotalSeconds => GearRadialMenuWidget.ExpandTotalSeconds;
 
-        /// <summary>클릭 후 부채꼴이 완전히 안착하기까지의 시간(초). 회전(0.52초)과 <b>동시에</b>
-        /// 진행되므로 회전 시간을 더하지 않는다 — 그것이 이번 라운드의 핵심 변경이다.</summary>
-        public static float MenuReadySeconds => GearRadialMenuWidget.ExpandTotalSeconds;
+        /// <summary>
+        /// 클릭 후 <b>다음 클릭이 먹기까지</b>의 시간(초). 그림(부채꼴 펼침)과 <b>손잡이가 다시 살아나는
+        /// 시점</b>이 다르면 큰 쪽을 쓴다.
+        ///
+        /// <para>★ 2026-09-01 — 예전에는 <see cref="GearRadialMenuWidget.ExpandTotalSeconds"/>(0.30초)
+        /// 하나였다. 회전이 0.52초여도 펼침과 <b>동시에</b> 진행되므로 그림은 0.30초면 끝났기 때문이다.
+        /// 그런데 <see cref="ActivateClick"/>은 첫 줄이 <c>if (IsSpinning) return;</c>이라 <b>회전이 끝날
+        /// 때까지 클릭 자체를 먹지 않는다</b>. 그림만 보고 만든 이 값은 그 사실을 몰랐고, M5 조치로
+        /// 회전이 0.52 → <see cref="SpinSeconds"/> 1.4초가 되는 순간 "다 펼쳐졌다고 알려 준 시점에
+        /// 눌렀는데 아무 일도 안 일어난다"가 됐다(부채꼴 토글 회귀 3건이 그 자리에서 깨졌다).</para>
+        ///
+        /// <para>고친 것은 <b>숫자가 아니라 정의</b>다 — 이 값은 "그림이 끝나는 시각"이 아니라
+        /// <b>"조작이 다시 먹는 시각"</b>이고, 그래서 두 게이트의 <see cref="Mathf.Max"/>다.
+        /// 회전 시간을 바꾸는 사람이 이 값을 따로 기억할 필요가 없어진다.</para>
+        /// </summary>
+        public static float MenuReadySeconds
+            => Mathf.Max(GearRadialMenuWidget.ExpandTotalSeconds, SpinSeconds);
 
         /// <summary>큰 기어의 현재 회전각(도). 회귀 테스트가 방향/속도를 직접 잰다.</summary>
         public float BigGearAngleDegrees => _bigGear != null ? _bigGear.localEulerAngles.z : 0f;
@@ -333,8 +351,9 @@ namespace StickMate.Interaction
                 $"{MarginRightPoints:F0}pt / 위 {MarginTopPoints:F0}pt, 큰 기어 반지름 {BigOuterPoints:F0}pt / " +
                 $"잇수 {BigToothCount}, 작은 기어 {SmallOuterPoints:F1}pt / 잇수 {SmallToothCount}, " +
                 $"중심 거리 {CenterDistancePoints:F1}pt). 클릭하면 두 기어가 **반대 방향으로** 돌고" +
-                $"(작은 쪽이 {MeshRatio:F2}배 빠르게) 그 뒤 부채꼴 버튼 3개([집중 모드]/[캐릭터]/" +
-                $"[오늘 할일], Ø{GearRadialMenuWidget.ButtonDiameterPoints:F0}pt / 궤도 " +
+                $"(작은 쪽이 {MeshRatio:F2}배 빠르게) 그 뒤 **아이콘 전용** 부채꼴 버튼 " +
+                $"{GearRadialMenuWidget.ButtonCount}개([집중 모드]/[캐릭터]/[오늘 할일]/[행동], " +
+                $"Ø{GearRadialMenuWidget.ButtonDiameterPoints:F0}pt / 궤도 " +
                 $"{GearRadialMenuWidget.OrbitRadiusPoints:F0}pt / 간격 " +
                 $"{GearRadialMenuWidget.ButtonAngleStepDegrees:F0}도)가 **회전과 동시에** 촤르륵 펼쳐집니다. " +
                 $"전역 폴링 경로={(_buttonService != null ? "사용 가능" : "미지원 — 콜라이더 경로만")}. " +
@@ -361,7 +380,14 @@ namespace StickMate.Interaction
             // 씬 루트라 그 배열에 없다 — 액세서리가 겪었던 "몸이 사라진 자리에 모자만 남는다"와 같은 구조.
             // 부채꼴/팝오버/정보창은 각자 IsSuspended를 폴링해 스스로 닫지만(소유권 분리), 여기서도
             // 메뉴를 명시적으로 접어 "톱니는 사라졌는데 버튼만 남는" 한 프레임을 없앤다.
-            if (_agent.IsSuspended) { ApplySuspendHide(); return; }
+            // ★ 2026-09-01 설정창 [일반] "톱니 아이콘" 토글 — 끄면 전체화면 감지와 <b>같은 경로</b>로
+            //   거둔다(그림/차단막/부채꼴/창까지 한 번에). 새 숨김 경로를 만들지 않는 이유: 숨기는
+            //   방법이 둘이 되면 "무엇을 되살려야 하는가"의 목록도 둘이 되고, 그 목록은 반드시 갈라진다.
+            if (_agent.IsSuspended || !AppSettingsModel.GearIconVisible)
+            {
+                ApplySuspendHide(_agent.IsSuspended ? "전체화면 감지" : "설정창에서 톱니 아이콘을 껐습니다");
+                return;
+            }
             if (_hiddenBySuspend) ReleaseSuspendHide();
 
             if (_camera == null) _camera = _agent.Blackboard != null ? _agent.Blackboard.MainCamera : Camera.main;
@@ -385,13 +411,13 @@ namespace StickMate.Interaction
         /// <summary>전체화면 감지 동안 톱니 그림과 클릭 차단막을 내린다. 눌림/드래그 상태도 함께
         /// 취소한다 — 안 그러면 숨는 순간의 "누르고 있음"이 그대로 남아, 복귀하자마자 놓는 동작이
         /// 클릭이나 위치 이동으로 오인된다. 도형은 파괴하지 않는다(복귀할 때 다시 굽지 않기 위해).</summary>
-        private void ApplySuspendHide()
+        private void ApplySuspendHide(string reason = "전체화면 감지")
         {
             if (_hiddenBySuspend) return;
             _hiddenBySuspend = true;
 
-            if (_menu != null) _menu.Collapse(GearMenuCollapseMode.User, "전체화면 감지 — 자동 숨김");
-            if (_window != null) _window.Close("전체화면 감지 — 자동 숨김");
+            if (_menu != null) _menu.Collapse(GearMenuCollapseMode.User, reason + " — 자동 숨김");
+            if (_window != null) _window.Close(reason + " — 자동 숨김");
             if (_container != null) _container.SetActive(false);
             if (_clickTarget != null) _clickTarget.enabled = false;
 
@@ -400,8 +426,8 @@ namespace StickMate.Interaction
             _menuPressIndex = -1;
             _spinTimer = -1f;
             _leftInitialized = false;   // 복귀 후 첫 폴링이 눌림 엣지를 새로 잡게 한다.
-            Debug.Log("[톱니] 전체화면 감지 — 톱니/부채꼴/정보창을 모두 거두고 클릭 차단막도 내립니다" +
-                "(비침해 원칙 2). 게임을 벗어나면 톱니만 다시 나타납니다.");
+            Debug.Log($"[톱니] {reason} — 톱니/부채꼴/정보창을 모두 거두고 클릭 차단막도 내립니다" +
+                "(비침해 원칙 2). 사유가 사라지면 톱니만 다시 나타납니다.");
         }
 
         /// <summary>복귀 — 톱니만 되살린다. 숨기기 전에 열려 있던 메뉴/창은 <b>일부러</b> 복원하지 않는다
@@ -414,8 +440,14 @@ namespace StickMate.Interaction
             Debug.Log("[톱니] 전체화면 해제 — 톱니가 다시 나타납니다(메뉴/창은 사용자가 다시 엽니다).");
         }
 
-        /// <summary>커서가 올라간 버튼만 진하게. 메뉴가 떠 있는 동안에만 커서를 묻는다(평소에는
-        /// 추가 비용 0 — 24시간 상주 앱).</summary>
+        /// <summary>
+        /// 커서가 올라간 버튼만 진하게 + <b>그 버튼의 이름표만</b> 띄운다(2026-08-31 사용자 지시:
+        /// "4가지중 마우스로 선택되고있는 메뉴만 텍스트로 어떤 메뉴인지 이름이 보여야함").
+        /// 이름표 자체는 <see cref="GearRadialMenuWidget"/>가 그린다 — 여기는 "어느 버튼인가"만 넘긴다
+        /// (입력 소유권 단일화: 커서 폴링은 이 클래스 한 곳에서만 한다).
+        ///
+        /// 메뉴가 떠 있는 동안에만 커서를 묻는다(평소에는 추가 비용 0 — 24시간 상주 앱).
+        /// </summary>
         private void TickMenuHover()
         {
             if (_menu == null || !_menu.IsVisible) return;
@@ -973,7 +1005,10 @@ namespace StickMate.Interaction
 
             _spinTimer = 0f;
             ExpandMenu();   // ★ 회전과 <b>동시에</b> 펼친다.
-            Debug.Log("[톱니] 클릭 — 두 기어가 맞물려 도는 것과 동시에 부채꼴 버튼 3개가 펼쳐집니다.");
+            // 개수를 손으로 적지 않는다 — 2026-08-31에 버튼이 3 -> 4로 늘었을 때 이 줄만 3에 남아
+            // 로그가 화면과 다른 말을 했다(페르소나 소은 #8). 세는 곳은 부채꼴 자신이다.
+            Debug.Log($"[톱니] 클릭 — 두 기어가 맞물려 도는 것과 동시에 부채꼴 버튼 " +
+                $"{GearRadialMenuWidget.ButtonCount}개가 펼쳐집니다.");
         }
 
         /// <summary>부채꼴 버튼의 동작은 <see cref="GearRadialMenuWidget"/>가 전담한다 — 그쪽이
@@ -999,8 +1034,33 @@ namespace StickMate.Interaction
             _container.transform.localScale = new Vector3(_visualScale, _visualScale, 1f);
         }
 
+        // ==================== 테스트용 커서 주입 ====================
+
+        private bool _hasTestCursor;
+        private Vector2 _testCursor;
+
+        /// <summary>
+        /// 테스트 전용 — <b>이 위젯이 커서를 읽는 단 하나의 창구</b>(<see cref="TryGetCursorUnityScreen"/>)에
+        /// 좌표를 밀어 넣는다. <see cref="FeedPointerForTests"/>와 같은 관례이며, 같은 이유로 존재한다:
+        /// PlayMode는 진짜 OS 커서를 원하는 자리로 옮길 수 없다.
+        ///
+        /// ★ 왜 <c>GearRadialMenuWidget.SetHover</c>를 테스트가 직접 부르지 않는가: 호버의 <b>소유자는
+        /// 이 클래스의 폴링</b>이라(<see cref="TickMenuHover"/>) 밖에서 SetHover를 부르면 다음 프레임에
+        /// 폴링이 곧바로 덮어쓴다 — 실제로 그렇게 짠 첫 회귀 테스트가 전부 빈 이름표를 봤다.
+        /// 여기에 좌표를 넣으면 히트테스트/호버/이름표/자동접힘이 <b>전부 실제 코드 경로</b>를 탄다.
+        /// </summary>
+        public void FeedHoverCursorForTests(Vector2 cursorUnityScreen)
+        {
+            _hasTestCursor = true;
+            _testCursor = cursorUnityScreen;
+        }
+
+        /// <summary>주입한 커서를 걷고 실제 OS 커서로 되돌린다.</summary>
+        public void ClearHoverCursorForTests() => _hasTestCursor = false;
+
         private bool TryGetCursorUnityScreen(out Vector2 cursorUnityScreen)
         {
+            if (_hasTestCursor) { cursorUnityScreen = _testCursor; return true; }
             cursorUnityScreen = default;
             if (_agent == null || !_agent.TryGetCursorPosition(out Vector2 osScreen)) return false;
             cursorUnityScreen = ScreenCoordinateConverter.OsScreenToUnityScreen(osScreen, _config);

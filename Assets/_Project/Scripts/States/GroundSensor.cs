@@ -60,8 +60,24 @@ namespace StickMate.States
             /// </summary>
             public readonly long GroundedFootholdHandle;
 
+            /// <summary>
+            /// ★ 2026-09-01 — <b>발판을 잃은 사유가 "걸어서 모서리를 넘어갔다"인가</b>
+            /// (딛고 있던 발판이 목록에 <b>그대로 있는데</b> 발 X만 그 가로 범위 밖).
+            /// Grounded==true면 언제나 false.
+            ///
+            /// <para>왜 필요한가: 발판 상실 유예(StickConfig.ResolveGroundLossGraceDuration) 동안
+            /// <b>몸을 붙잡아 둘지</b>를 이 값 하나로 가른다. 유예의 목적은 "창 열거가 한 번 튄 것"을
+            /// 흡수하는 것인데, 그러려면 그동안 몸이 <b>움직이지 않아야</b> 한다 — 튐이 지나갔을 때
+            /// 이미 접지 밴드 밖으로 떨어져 있으면 유예가 아무 것도 흡수하지 못한다(유예를 늘리는 것만으로는
+            /// 디버거 가설 H5가 완전히 닫히지 않는 이유가 이것이다).
+            /// 반대로 <b>정말 걸어서 모서리를 넘어갔다면</b> 발밑에 아무것도 없는 것이 사실이므로 붙잡아
+            /// 두면 공중부양이 된다. 그래서 그 한 경우만 예외로 가른다.</para>
+            /// </summary>
+            public readonly bool WalkedOffPreferredFoothold;
+
             public GroundInfo(bool grounded, float groundWorldY, bool hasAnyFoothold, float screenLeftWorldX, float screenRightWorldX,
-                float currentFootholdLeftWorldX, float currentFootholdRightWorldX, long groundedFootholdHandle = 0L)
+                float currentFootholdLeftWorldX, float currentFootholdRightWorldX, long groundedFootholdHandle = 0L,
+                bool walkedOffPreferredFoothold = false)
             {
                 Grounded = grounded;
                 GroundWorldY = groundWorldY;
@@ -71,6 +87,7 @@ namespace StickMate.States
                 CurrentFootholdLeftWorldX = currentFootholdLeftWorldX;
                 CurrentFootholdRightWorldX = currentFootholdRightWorldX;
                 GroundedFootholdHandle = groundedFootholdHandle;
+                WalkedOffPreferredFoothold = walkedOffPreferredFoothold;
             }
         }
 
@@ -109,6 +126,10 @@ namespace StickMate.States
             float maxRightOs = float.MinValue;
             float currentLeftOs = footOs.x;
             float currentRightOs = footOs.x;
+            // 고착 발판이 목록에 남아 있는가 / 발 X가 그 조각 중 하나의 가로 범위 안인가
+            // (WalkedOffPreferredFoothold 문서 참고 — 유예 중 몸을 붙잡아 둘지의 유일한 판정 재료).
+            bool preferredFound = false;
+            bool footWithinPreferredX = false;
 
             for (int i = 0; i < footholds.Count; i++)
             {
@@ -120,6 +141,12 @@ namespace StickMate.States
                 if (rightEdge > maxRightOs) maxRightOs = rightEdge;
 
                 if (grounded) continue; // 이미 접지 확정 — 좌우 경계 누적은 계속하되 재판정은 생략
+
+                if (preferredHandle != 0L && fh.Handle == preferredHandle)
+                {
+                    preferredFound = true;
+                    if (footOs.x >= r.x && footOs.x <= rightEdge) footWithinPreferredX = true;
+                }
 
                 // 발판 고착(sticky): 이미 딛고 있는 발판이 지정돼 있으면 그 핸들만 후보다.
                 if (preferredHandle != 0L && fh.Handle != preferredHandle) continue;
@@ -157,8 +184,10 @@ namespace StickMate.States
                 currentFootholdRightWorldX = curRightWorld.x;
             }
 
+            bool walkedOff = !grounded && preferredHandle != 0L && preferredFound && !footWithinPreferredX;
+
             return new GroundInfo(grounded, groundWorldY, true, screenLeftWorldX, screenRightWorldX,
-                currentFootholdLeftWorldX, currentFootholdRightWorldX, groundedHandle);
+                currentFootholdLeftWorldX, currentFootholdRightWorldX, groundedHandle, walkedOff);
         }
 
         /// <summary>
@@ -336,22 +365,34 @@ namespace StickMate.States
 
         /// <summary>
         /// ParkourClimb 진입 판정(아키텍처 0절, UX_FLOW.md 4절): 지금 딛고 있는 발판(info)의 진행방향
-        /// 경계 근처(parkourDetectionRadius 이내)에, 상단이 지금 발판보다 눈에 띄게(parkourDetectionRadius
-        /// 이상) 높은 다른 발판이 있는지 찾는다. 있으면 그 발판(핸들 포함, 이후 등반 중 "잡을 곳이
-        /// 사라졌는지" 재확인용)과 상단 월드 Y를 반환한다("벽"으로 간주). 비슷하거나 더 낮은 발판은
-        /// 파쿠르 대상이 아니라 평범한 점프/낙하 대상이므로 제외한다.
+        /// 경계 근처(<paramref name="edgeProbeReach"/> 이내)에, 상단이 지금 발판보다 눈에 띄게
+        /// (parkourDetectionRadius 이상) 높은 다른 발판이 있는지 찾는다. 있으면 그 발판(핸들 포함,
+        /// 이후 등반 중 "잡을 곳이 사라졌는지" 재확인용)과 상단 월드 Y를 반환한다("벽"으로 간주).
+        /// 비슷하거나 더 낮은 발판은 파쿠르 대상이 아니라 평범한 점프/낙하 대상이므로 제외한다.
         /// </summary>
+        /// <param name="edgeProbeReach">
+        /// ★ 2026-08-31 — "경계 근처인가" 게이트에만 쓰는 도달거리(월드 유닛). 0 이하/NaN이면 예전처럼
+        /// StickConfig.parkourDetectionRadius를 쓴다(기본값이라 기존 호출부는 한 줄도 안 바뀐다).
+        ///
+        /// 왜 별도 인자인가: 이 게이트는 <b>배회 AI가 경계 행동을 추첨하는 거리</b>와 반드시 짝이어야
+        /// 하는데(그 거리보다 가까이 다가가는 일이 영영 없다), 그 거리는 2026-08-30부터 캐릭터 배율에서
+        /// 유도된다. 반면 이 함수 안의 다른 두 용도 — "벽으로 인정할 최소 높이차"와 "인접 발판 탐색 폭" —
+        /// 은 판정 상대가 캐릭터가 아니라 OS 창 사각형이라 절대값이 맞다. 그래서 <b>게이트만</b> 분리한다.
+        /// 유도식/근거: Core/DockGeometry.ResolveEdgeProbeReach.
+        /// </param>
         public static bool TryFindClimbableWall(Camera cam, Vector2 footWorldPos, GroundInfo info, int direction,
-            IReadOnlyList<PlatformFoothold> footholds, StickConfig config, out PlatformFoothold wallFoothold, out float wallTopWorldY)
+            IReadOnlyList<PlatformFoothold> footholds, StickConfig config, out PlatformFoothold wallFoothold, out float wallTopWorldY,
+            float edgeProbeReach = 0f)
         {
             wallFoothold = default;
             wallTopWorldY = 0f;
             if (cam == null || !info.Grounded || footholds == null || footholds.Count == 0) return false;
 
             float detectionRadius = config != null ? config.parkourDetectionRadius : 0.5f;
+            float probeReach = edgeProbeReach > 0f && !float.IsNaN(edgeProbeReach) ? edgeProbeReach : detectionRadius;
             float edgeX = direction > 0 ? info.CurrentFootholdRightWorldX : info.CurrentFootholdLeftWorldX;
             float distanceToEdge = direction > 0 ? edgeX - footWorldPos.x : footWorldPos.x - edgeX;
-            if (distanceToEdge > detectionRadius) return false; // 아직 경계 근처가 아님
+            if (distanceToEdge > probeReach) return false; // 아직 경계 근처가 아님
 
             _ = ScreenCoordinateConverter.WorldToOsScreen(cam, footWorldPos, config, out float depth);
             float searchSlack = detectionRadius * AdjacentFootholdSearchRadiusMultiplier;
@@ -404,19 +445,26 @@ namespace StickMate.States
         /// </summary>
         /// <param name="minDropDepth">인정할 최소 낙차(월드 유닛). 이보다 얕은 발판은 목적지가 아니다.</param>
         /// <param name="maxDropDepth">인정할 낙차 상한(월드 유닛, 이 값 자신은 제외). 0 이하면 상한 없음.</param>
+        /// <param name="edgeProbeReach">
+        /// ★ 2026-08-31 — "경계 근처인가" 게이트에만 쓰는 도달거리. 0 이하/NaN이면 예전처럼
+        /// parkourDetectionRadius. 근거는 <see cref="TryFindClimbableWall"/>의 같은 인자 문서와
+        /// Core/DockGeometry.ResolveEdgeProbeReach에 있다 — 올라가는 쪽만 고치면 배율을 키운 사용자는
+        /// Dock <b>위</b>에 갇힌다(같은 게이트가 하강 판정도 막고 있었다).
+        /// </param>
         public static bool TryFindDescendTarget(Camera cam, Vector2 footWorldPos, GroundInfo info, int direction,
             IReadOnlyList<PlatformFoothold> footholds, StickConfig config, float dropOutwardOffset,
             float minDropDepth, float maxDropDepth,
-            out long targetHandle, out float targetTopWorldY)
+            out long targetHandle, out float targetTopWorldY, float edgeProbeReach = 0f)
         {
             targetHandle = 0L;
             targetTopWorldY = 0f;
             if (cam == null || !info.Grounded || footholds == null || footholds.Count == 0) return false;
 
             float detectionRadius = config != null ? config.parkourDetectionRadius : 0.5f;
+            float probeReach = edgeProbeReach > 0f && !float.IsNaN(edgeProbeReach) ? edgeProbeReach : detectionRadius;
             float edgeX = direction > 0 ? info.CurrentFootholdRightWorldX : info.CurrentFootholdLeftWorldX;
             float distanceToEdge = direction > 0 ? edgeX - footWorldPos.x : footWorldPos.x - edgeX;
-            if (distanceToEdge > detectionRadius) return false; // 아직 경계 근처가 아님
+            if (distanceToEdge > probeReach) return false; // 아직 경계 근처가 아님
 
             // 손을 놓았을 때 몸이 실제로 있을 x(모서리 바깥).
             float dropX = edgeX + direction * Mathf.Max(0f, dropOutwardOffset);
@@ -512,6 +560,177 @@ namespace StickMate.States
                 return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// ★ 2026-09-01 — <b>"이 프레임 하나만으로 접지가 풀리는" 임계 프레임 시간</b>(초)을 지금의
+        /// 카메라/설정에서 직접 계산한다. 상수를 베껴 적지 않기 위한 유일한 계산 지점이다.
+        ///
+        /// <para>유도: 논리 발판에는 물리 콜라이더가 없으므로 접지 유지는 매 프레임 위치 스냅뿐이고,
+        /// 그 사이에도 중력은 적분된다. 한 프레임(dt)의 자유낙하가 접지 허용오차를 넘으면 그 프레임이
+        /// 끝나는 순간 접지 판정이 실패한다:
+        /// <code>
+        ///   0.5 * |Physics2D.gravity.y| * gravityScale * dt^2  >  groundSnapTolerance / (OS포인트/월드유닛)
+        ///   =>  dt_crit = sqrt(2 * tolerance_world / (g * gravityScale))
+        /// </code>
+        /// 배포 형상(gravityScale 3, 허용오차 20 OS-pt, 카메라 orthographicSize 12 → 1유닛≈40.9pt)에서
+        /// <b>약 0.182초</b>가 나온다 — 디버거가 손으로 계산해 둔 그 182ms와 같은 값이며, 이제는
+        /// 설정을 바꾸면 함께 움직인다.</para>
+        ///
+        /// <para>이 값이 무서운 이유: 절전 프레임페이싱 티어 <c>DisplayOff</c>는 4fps(=250ms/프레임)이고
+        /// 엔진 최대 timestep도 333ms다. 즉 임계를 <b>상시</b> 넘는 동작 등급이 존재한다. 그래서 근본
+        /// 처방은 이 임계를 키우는 것이 아니라 접지 중 중력 적분 자체를 막는 것이다
+        /// (StickConfig.groundedGravitySuppressionEnabled).</para>
+        ///
+        /// <para>★ 이 값은 <b>낙관적 상한</b>이다(= 실제는 이보다 더 빨리 터진다). 위 식은 연속
+        /// 운동학이지만 Box2D는 semi-implicit Euler라 한 스텝에서 <c>Δy = g·dt²</c>(연속의 2배)만큼
+        /// 내려간다. 긴 프레임이 fixedDeltaTime 여러 번으로 쪼개지면 연속에 가까워지지만, 쪼개지지 않는
+        /// 극단(한 번의 큰 적분)에서는 임계가 √2배 더 짧다. 즉 여기서 나온 값보다 안전한 쪽은 없다.</para>
+        /// </summary>
+        /// <returns>계산에 필요한 것(카메라)이 없거나 중력이 0이면 <see cref="float.PositiveInfinity"/>
+        /// (= "어떤 프레임 길이로도 이 경로로는 떨어지지 않는다").</returns>
+        public static float ComputeGroundLossFrameTimeThreshold(Camera cam, StickConfig config)
+        {
+            if (cam == null) return float.PositiveInfinity;
+            return ComputeGroundLossFrameTimeThreshold(ComputeOsPointsPerWorldUnit(cam, config), config);
+        }
+
+        /// <summary>
+        /// 위와 같은 계산을, 카메라 대신 <b>환산 비율을 직접 받아서</b> 수행한다.
+        ///
+        /// <para>왜 나눠 뒀는가: 이 임계값은 화면 기하(월드 1유닛이 몇 OS 포인트인가)에 정비례하는데,
+        /// batchmode 테스트 환경의 화면(기본 640x480 → 20pt/유닛)은 배포 형상(982pt → 40.9pt/유닛)과
+        /// 다르다. 그대로 재면 <b>테스트 환경의 임계</b>(261ms)를 배포 임계(182ms)로 착각하게 된다.
+        /// 그래서 "지금 이 화면"을 볼 때는 카메라 버전을, "출하 형상"을 볼 때는 이 스칼라 버전에
+        /// DockGeometry.ReferencePointsPerWorldUnit을 넘겨 쓴다.</para>
+        /// </summary>
+        public static float ComputeGroundLossFrameTimeThreshold(float osPointsPerWorldUnit, StickConfig config)
+        {
+            float gravityScale = config != null ? config.gravityScale : 1f;
+            float g = Mathf.Abs(Physics2D.gravity.y) * gravityScale;
+            if (g <= 0f) return float.PositiveInfinity;
+            if (osPointsPerWorldUnit <= 0f) return float.PositiveInfinity;
+
+            float toleranceWorld = (config != null ? config.groundSnapTolerance : 6f) / osPointsPerWorldUnit;
+            if (toleranceWorld <= 0f) return 0f;
+
+            return Mathf.Sqrt(2f * toleranceWorld / g);
+        }
+
+        /// <summary>월드 1유닛이 몇 OS 포인트인가 — 카메라/DPI를 실측해서 얻는다(상수 환산 금지 규약).
+        /// DockGeometry.ReferencePointsPerWorldUnit은 테스트 배치 재현용 상수이고, 런타임은 이쪽을 쓴다.</summary>
+        public static float ComputeOsPointsPerWorldUnit(Camera cam, StickConfig config)
+        {
+            if (cam == null) return 0f;
+            Vector2 a = ScreenCoordinateConverter.WorldToOsScreen(cam, Vector3.zero, config, out _);
+            Vector2 b = ScreenCoordinateConverter.WorldToOsScreen(cam, new Vector3(0f, 1f, 0f), config, out _);
+            return Mathf.Abs(b.y - a.y);
+        }
+
+        /// <summary>
+        /// ★ 2026-09-01 (디버거) — <b>왜 접지가 풀렸는지</b>를 숫자와 함께 한 줄로 설명한다.
+        /// StickmanBlackboard.GroundedTick()의 <c>[발판상실]</c> 로그 전용(그 순간에만 불리는 이산
+        /// 경로라 문자열 할당이 상주 비용에 잡히지 않는다 — 매 프레임 경로에서는 절대 부르지 말 것).
+        ///
+        /// <para>왜 필요한가: 기존 <c>[발판상실]</c> 로그는 사유를 "(a) 사라짐 / (b) X 범위 이탈 /
+        /// (c) 상단선 이탈 중 하나"라고만 적어서, 사용자 신고 "창에서 가끔 갑자기 떨어짐"을 조사할 때
+        /// 실측 로그(Player.log.prevround, 핸들 5242 = 메모 창)에서 <b>세 사유를 끝내 구분할 수
+        /// 없었다.</b> 로그가 유일한 판별 수단인 상주 오버레이 앱에서 "셋 중 하나"는 진단 정보가 아니다.
+        /// 그래서 그 자리에서 실제 값을 재서 사유를 <b>하나로 확정</b>해 남긴다.</para>
+        ///
+        /// <para>사유 (d)를 새로 구분하는 것이 이 함수의 핵심이다: 논리 발판에는 물리 콜라이더가 없어
+        /// "서 있기"가 <b>매 프레임 스냅</b>으로만 유지되므로(StickmanBlackboard.TickGroundKeepingSafetyNet
+        /// 문서 참고), 프레임이 한 번 길어지면 <b>창이 전혀 변하지 않았는데도</b> 몸이 자유낙하로 허용
+        /// 오차 밴드를 이탈한다. 실측 상수(gravityScale 3, groundSnapTolerance 20 OS-pt, 1유닛≈40.9pt)로
+        /// 계산한 임계 프레임시간은 <b>182 ms</b>다. 그래서 발판이 멀쩡히 있고 X도 범위 안인데 세로만
+        /// 어긋난 경우에는 그 프레임의 dt를 함께 찍어 (c)와 (d)를 구분할 수 있게 한다.</para>
+        /// </summary>
+        /// <param name="worstDeltaTime">유예가 쌓이는 동안 관측한 가장 긴 프레임 시간(초). 0 이하면 생략.</param>
+        /// <param name="gravitySuppressedWhileGrounded">
+        /// 접지 중 중력 억제(StickConfig.groundedGravitySuppressionEnabled)가 실제로 동작 중이었는지.
+        /// ★ 2026-09-01 근본 수정 이후 이 값이 true라면 사유 (d)는 **구조적으로 불가능**하다 —
+        /// 그런데도 (d)가 찍혔다면 억제가 어떤 경로로든 풀려 있었다는 뜻이므로, 그 사실 자체가
+        /// 다음 조사의 출발점이 되도록 문구를 갈라 둔다(진단 함수의 존재 이유 그대로).
+        /// </param>
+        public static string DescribeGroundLoss(Camera cam, Vector2 footWorldPos,
+            IReadOnlyList<PlatformFoothold> footholds, StickConfig config, long handle, float worstDeltaTime,
+            bool gravitySuppressedWhileGrounded = false)
+        {
+            if (cam == null) return "카메라가 없어 접지 판정 자체가 불가능했습니다(사유 판정 불가).";
+            int total = footholds != null ? footholds.Count : 0;
+            if (handle == 0L)
+            {
+                return $"고착된 발판이 애초에 없었습니다(핸들 0). 발판 목록 {total}개 중 발 위치에서 " +
+                    "접지 가능한 것이 하나도 없었다는 뜻입니다 — 앱 시작 직후/구조 회수 직후의 정상 경로일 수 있습니다.";
+            }
+
+            Vector2 footOs = ScreenCoordinateConverter.WorldToOsScreen(cam, footWorldPos, config, out _);
+            float tolerance = config != null ? config.groundSnapTolerance : 6f;
+
+            bool found = false;
+            float bestDx = float.MaxValue;   // X 범위 밖으로 벗어난 거리(안이면 0)
+            float bestDy = float.MaxValue;   // 상단선과의 세로 차(+ = 발이 상단선보다 아래)
+            Rect bestRect = default;
+            int segments = 0;
+            for (int i = 0; i < total; i++)
+            {
+                if (footholds[i].Handle != handle) continue;
+                segments++;
+                Rect r = footholds[i].ScreenRect;
+                float right = r.x + r.width;
+                float dx = footOs.x < r.x ? r.x - footOs.x : (footOs.x > right ? footOs.x - right : 0f);
+                float dy = footOs.y - r.y;
+                // "가장 가까운 조각" 하나만 설명한다 — X가 범위 안인 조각이 있으면 그것을 우선한다.
+                bool better = !found || dx < bestDx || (Mathf.Approximately(dx, bestDx) && Mathf.Abs(dy) < Mathf.Abs(bestDy));
+                if (!better) continue;
+                found = true; bestDx = dx; bestDy = dy; bestRect = r;
+            }
+
+            // ★ 2026-09-01 — 임계값을 숫자로 베끼지 않는다. 지금의 카메라/중력/허용오차에서 직접 유도한다
+            // (ComputeGroundLossFrameTimeThreshold 문서의 유도 참고 — 배포 형상에서 약 182ms).
+            float hitchThreshold = ComputeGroundLossFrameTimeThreshold(cam, config);
+            string hitch;
+            if (worstDeltaTime <= 0f)
+            {
+                hitch = string.Empty;
+            }
+            else if (worstDeltaTime < hitchThreshold)
+            {
+                hitch = $" 유예 구간의 최장 프레임={worstDeltaTime * 1000f:F0}ms(임계 {hitchThreshold * 1000f:F0}ms 미만).";
+            }
+            else if (gravitySuppressedWhileGrounded)
+            {
+                // 억제가 켜져 있으면 긴 프레임 자체는 더 이상 사유가 아니다 — 그 사실을 명시해야
+                // 다음 조사자가 (d)를 다시 파는 헛수고를 하지 않는다.
+                hitch = $" 유예 구간의 최장 프레임={worstDeltaTime * 1000f:F0}ms(임계 {hitchThreshold * 1000f:F0}ms 초과)이지만, " +
+                    "접지 중 중력 억제가 동작 중이었으므로 **사유 (d) 프레임 끊김은 원인이 아닙니다** " +
+                    "(억제 중에는 세로 적분 자체가 0이라 프레임 길이와 무관).";
+            }
+            else
+            {
+                hitch = $" 유예 구간의 최장 프레임={worstDeltaTime * 1000f:F0}ms ★임계 {hitchThreshold * 1000f:F0}ms 초과 — " +
+                    "이 한 프레임의 자유낙하만으로 밴드를 벗어납니다(사유 d: 프레임 끊김). " +
+                    "접지 중 중력 억제(StickConfig.groundedGravitySuppressionEnabled)가 꺼져 있거나 풀려 있었다는 뜻입니다.";
+            }
+
+            if (!found)
+            {
+                return $"사유 (a) 발판이 목록에서 사라졌습니다 — 핸들 {handle}의 조각이 0개입니다" +
+                    $"(현재 발판 목록 {total}개). 그 창이 닫혔거나, 다른 창에 완전히 가려졌거나, " +
+                    $"창 열거 자체가 한 번 실패했다는 뜻입니다. 캐릭터OS=({footOs.x:F1},{footOs.y:F1})." + hitch;
+            }
+
+            if (bestDx > 0f)
+            {
+                return $"사유 (b) 캐릭터 X가 발판의 가로 범위를 {bestDx:F1}pt 벗어났습니다 — " +
+                    $"발판(핸들 {handle}, 조각 {segments}개) x {bestRect.x:F1}~{bestRect.x + bestRect.width:F1}, " +
+                    $"캐릭터OS=({footOs.x:F1},{footOs.y:F1}). 창이 옆으로 움직였거나, 가려짐 계산으로 " +
+                    "보이는 조각이 좁아졌거나, 캐릭터가 걸어서 모서리를 넘어갔습니다." + hitch;
+            }
+
+            return $"사유 (c/d) 발판은 그대로 있고 X도 범위 안인데 세로만 {bestDy:F1}pt 어긋났습니다" +
+                $"(허용 ±{tolerance:F1}pt, {(bestDy > 0f ? "발이 상단선보다 아래" : "발이 상단선보다 위")}) — " +
+                $"발판(핸들 {handle}) 상단OS y={bestRect.y:F1}, 캐릭터OS=({footOs.x:F1},{footOs.y:F1})." + hitch;
         }
     }
 }

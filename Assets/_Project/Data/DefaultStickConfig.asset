@@ -32,6 +32,9 @@ MonoBehaviour:
   ragdollForceThreshold: 8
   ragdollSettleSpeedThreshold: 0.3
   ragdollSettleHoldDuration: 0.5
+  ragdollEntryAngularVelocityAtThreshold: 100
+  ragdollEntryAngularVelocityCap: 400
+  ragdollEntryAngularSensitivityPerImpulse: 42.8
   getupDuration: 0.6
   getupFloorClearanceEnabled: 1
   parkourDetectionRadius: 0.5
@@ -195,7 +198,7 @@ MonoBehaviour:
   runawaySnackStressRelief: 0.5
   dockFootholdThicknessPoints: 75
   dockFootholdWidthFraction: 0.65
-  eyeTrackingEnabled: 1
+  eyeTrackingEnabled: 0
   eyeMaxPupilOffset: 0.05
   eyeTrackingFollowRate: 12
   eyeTrackingNeutralRadiusWorld: 0.6
@@ -204,6 +207,7 @@ MonoBehaviour:
   dialogueMinVisibleSeconds: 0.7
   dialogueMaxVisibleSeconds: 4
   dialogueFontSize: 16
+  dialogueTiltDegrees: 8
   idleChatterChance: 0.28
   walkChatterChance: 0.14
   ambientChatterCooldownSeconds: 11
@@ -290,6 +294,7 @@ MonoBehaviour:
   archeryCooldownSeconds: 600
   archeryTargetDistanceRatio: 4.6
   archeryMinTargetDistanceRatio: 2.6
+  archeryMaxTargetDistanceRatio: 6.6
   archeryTargetRadiusRatio: 0.4
   archeryMissShortfallRadii: 1.5
   archeryArrowFlightSeconds: 0.62
@@ -337,9 +342,37 @@ MonoBehaviour:
   idleAmbientLookAroundSeconds: 0.9
   idleAmbientLookArmDegrees: 107
   idleAmbientLookElbowDegrees: 122
-  idleAmbientLookHeadShiftRatio: 0.035
+  idleAmbientLookHeadShiftRatio: 0
   idleAmbientStretchSeconds: 2
   idleAmbientStretchArmSpreadDegrees: 13
   idleAmbientStretchElbowDegrees: 16
   idleAmbientStretchKneeStraighten01: 0.7
   idleAmbientStretchRiseRatio: 0.03
+  bodyLeanEnabled: 1
+  bodyLeanRunMaxDegrees: 10
+  bodyLeanLookAroundDegrees: 7
+  bodyLeanHitDegrees: 14
+  bodyLeanHitRecoverRate: 7
+  bodyLeanSmoothingRate: 12
+  windowsTargetFrameRate: 60
+  windowsDisableVSyncForFrameCap: 1
+  macVSyncInterval: 2
+  macTargetFrameRate: 0
+  logFrameTimeStats: 1
+  wanderLookAroundCooldownSeconds: 30
+  idleAmbientLookEyeSweep01: 0.85
+  longCapeTripMeanSeconds: 0
+  groundedGravitySuppressionEnabled: 1
+  groundLossGracePollIntervalMultiplier: 1.5
+  overlayOriginSanityCheckEnabled: 1
+  groundLossHangStateEnabled: 1
+  groundLossHangReactionDelayRatio: 0.15
+  groundLossHangFallTellRatio: 0.72
+  groundLossHangLegCycleSpeedMultiplier: 3
+  groundLossHangLegAmplitudeScale: 1
+  groundLossHangArmFlailBaseDegrees: 125
+  groundLossHangArmFlailDegrees: 48
+  groundLossHangArmFlailFrequencyRatio: 0.63
+  groundLossHangElbowBendDegrees: 22
+  groundLossHangFallTellLeanDegrees: 26
+  groundLossHangHardTimeoutGraceMultiplier: 3

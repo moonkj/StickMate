@@ -308,6 +308,77 @@ namespace StickMate.Core
         }
 
         // ────────────────────────────────────────────────────────────────────────────
+        // ★ 경계 행동 탐지 도달거리 (2026-08-31) — "평가하는 거리"와 "탐지하는 거리"를 맞춘다
+        // ────────────────────────────────────────────────────────────────────────────
+        //
+        // 2026-08-31 사용자 신고: "맥에서 캐릭터 크기를 키우면 독 아래에서 독 위로 안 올라옴".
+        //
+        // ============================================================================
+        // 원인 — 한 쌍이어야 할 두 거리가 서로 다른 계보로 갈라져 있었다
+        // ============================================================================
+        // 배회 AI는 경계 행동(뛰어내리기/매달리기/되올라가기)을 <b>한 걷기 구간에 딱 한 번</b>,
+        // "발판 경계까지 남은 거리 &lt;= 경계 판정 거리"가 되는 그 프레임에 추첨한다
+        // (States/AutoWanderController.TickMoving의 _edgeActionRolledThisLeg). 추첨이 불발하면 그
+        // 자리에서 멈춰 돌아서므로, <b>그보다 더 가까이 다가가는 일은 영영 없다.</b>
+        // 즉 경계 행동의 대상 탐지(GroundSensor.TryFindClimbableWall / TryFindDescendTarget)는
+        // <b>정확히 그 거리에서</b> 성립해야 한다.
+        //
+        // 그런데 두 값의 계보가 달랐다:
+        //   · 평가 거리 = <see cref="ResolveEdgeStopDistance"/> → 2026-08-30부터 <b>배율에서 유도</b>
+        //     (0.4 x 배율 + 0.10). 배율 0.75에서 0.400, 1.50에서 0.700, 2.00에서 <b>0.900</b>.
+        //   · 탐지 거리 = StickConfig.parkourDetectionRadius → <b>0.5 절대값</b>(배율 무관).
+        // 배율이 1.0을 넘는 순간 평가 거리가 탐지 거리를 추월한다. 그러면 캐릭터는 Dock에서
+        // 0.7~0.9유닛 떨어진 자리에서 "경계다"라고 판정해 추첨을 돌리는데, 그 거리에서는 벽 탐지가
+        // <b>게이트에서 곧바로 기각</b>되어(`distanceToEdge &gt; detectionRadius`) 되올라가기가
+        // 성립할 수 없다. 그리고 그 걷기 구간은 돌아서기로 끝난다 — <b>구조적 영구 실패</b>다.
+        // ★ 같은 게이트를 하강 탐지(TryFindDescendTarget)도 쓰므로, 배율을 키우면 Dock <b>위</b>에서
+        //   내려오지도 못한다(사용자는 "못 올라온다"만 신고했지만 반대쪽도 같은 원인으로 죽어 있었다).
+        //
+        // ============================================================================
+        // 왜 parkourDetectionRadius를 그냥 키우지 않는가
+        // ============================================================================
+        // 그 필드는 이 파일 계보에서 <b>세 가지 역할을 겸한다</b>:
+        //   (a) 경계 근접 게이트, (b) "벽으로 인정할 최소 높이차", (c) 인접 발판 탐색 폭(x4).
+        // 상수를 키우면 (b)가 함께 커져 낮은 턱이 등반 대상에서 빠지고, (c)가 커져 멀리 떨어진 창까지
+        // 벽 후보가 된다 — 신고와 무관한 거동 두 개가 조용히 바뀐다. 그래서 (a)만 떼어 <b>평가 거리와
+        // 같은 입력</b>에서 유도한다. (b)(c)는 설정 절대값 그대로다.
+        //
+        // ★ 배포 배율(0.75)에서 유도값 = max(0.500, 0.400 + 0.10) = <b>0.500</b> = 지금 상수와 완전히
+        //   같다 — 즉 <b>지금 화면의 거동은 한 픽셀도 바뀌지 않는다</b>. 유도가 실제로 이기기 시작하는
+        //   배율은 0.75 초과이며, 그 구간이 바로 지금 고장나 있던 구간이다.
+
+        /// <summary>
+        /// 탐지 도달거리를 평가 거리 위로 얼마나 더 띄울지(월드 유닛).
+        ///
+        /// 0이면 안 되는 이유(둘 다 실측에서 나온 값이다):
+        ///   · 이 프로젝트가 OS↔월드 좌표 왕복에 허용하는 오차 <b>0.02</b>(DockTileSizeStepUpTests).
+        ///   · 추첨 프레임과 ParkourClimbState.Enter()의 <b>재확인 프레임</b> 사이에 몸이 벽에서
+        ///     밀려나는 접촉 복원 드리프트 <b>0.03~0.04</b>(2026-08-30 DockTileSizeStepUpTests (C)가
+        ///     실측해 주석으로 남긴 값). 재확인이 기각되면 등반은 진입 직후 Fall로 무효화된다.
+        /// 둘 중 큰 0.04의 2배 이상이면서, 맨틀 인셋 여유(<see cref="MantleInsetMinMarginUnits"/>)와
+        /// 같은 계열의 크기로 0.10을 쓴다.
+        /// </summary>
+        public const float EdgeProbeReachMarginUnits = 0.10f;
+
+        /// <summary>
+        /// ★ 경계 행동 대상 탐지의 도달거리를 정한다 = max(설정 절대값, 평가 거리 + 여유).
+        ///
+        /// <see cref="ResolveEdgeStopDistance"/> / <see cref="ResolveParkourMantleInset"/>와 같은
+        /// 형태다 — 설정값은 <b>하한</b>이고, 유도가 더 큰 값을 요구하면 유도가 이긴다.
+        /// 어느 한쪽이 실패해도 다른 쪽이 받친다:
+        ///   · 평가 거리가 0/NaN(유도가 죽은 리그) → 설정값 그대로(예전 거동과 100% 동일).
+        ///   · 설정값이 0 → 평가 거리 + 여유가 받친다(탐지가 통째로 죽지 않는다).
+        /// </summary>
+        /// <param name="configuredDetectionRadius">StickConfig.parkourDetectionRadius.</param>
+        /// <param name="resolvedEdgeStopDistance"><see cref="ResolveEdgeStopDistance"/>의 결과. 실패 시 0 이하/NaN.</param>
+        public static float ResolveEdgeProbeReach(float configuredDetectionRadius, float resolvedEdgeStopDistance)
+        {
+            float floor = Mathf.Max(0f, configuredDetectionRadius);
+            if (float.IsNaN(resolvedEdgeStopDistance) || resolvedEdgeStopDistance <= 0f) return floor;
+            return Mathf.Max(floor, resolvedEdgeStopDistance + EdgeProbeReachMarginUnits);
+        }
+
+        // ────────────────────────────────────────────────────────────────────────────
         // 실측 낙차 — 어디서 재는가 (런타임. 새 OS 호출 0건)
         // ────────────────────────────────────────────────────────────────────────────
         //

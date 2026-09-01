@@ -101,6 +101,14 @@ namespace StickMate.Platform
 
         private void Poll()
         {
+            // ★ 2026-09-01 — 오버레이 원점 위생 검사 스위치를 좌표 변환기에 밀어 넣는 유일한 지점.
+            // 플랫폼 서비스가 EnumerateFootholds() 안에서 오버레이 사각형을 보고하므로(Mac/Win 양쪽
+            // CaptureOverlayOrigin), 그 호출 **직전**인 여기가 설정을 반영할 정확한 자리다.
+            // ScreenCoordinateConverter가 StickConfig를 직접 알지 않게 하려는 것이 목적이다
+            // (그 클래스는 순수 static 유틸이며 설정 의존이 없다 — 그쪽 문서 참고).
+            ScreenCoordinateConverter.OverlayOriginSanityCheckEnabled =
+                _config == null || _config.overlayOriginSanityCheckEnabled;
+
             IReadOnlyList<PlatformFoothold> latest = _service.EnumerateFootholds();
 
             // 원본 창 캐시는 발판 변경 여부와 무관하게 매 폴링 갱신한다 — 아래 HasChanged 조기 반환보다

@@ -405,14 +405,17 @@ namespace StickMate.Tests.PlayMode
             Assert.IsFalse(panel.gameObject.activeSelf,
                 "할일이 0건인데 포스트잇 카드가 떠 있습니다 — 17절의 '빈 상태 예외'가 지켜지지 않았습니다.");
 
-            // 할일 추가 경로. 이 경로가 생기기 전에는 TodoListModel.Add 호출자가 프로젝트 전체에 0건이라
-            // 카드가 구조적으로 절대 뜨지 않았다.
+            // ★ 2026-08-31 — 종전에는 여기서 _todoDirector.ForceTriggerNow()를 불러 데모 할일 3건이
+            //   자동으로 들어오는 것에 기댔다. 그 시딩은 **사용자의 진짜 목록을 오염시키는 버그**라
+            //   제거됐으므로(TodoReminderDirector 클래스 문서 참고), 이 테스트도 실제 사용자 경로와
+            //   같은 것을 쓴다: TodoBoardPopover 입력칸이 부르는 바로 그 TodoListModel.Add다.
             yield return WaitUntilIdleOrWalk();
+            TodoListModel.Add("테스트 할일", 15);
             _todoDirector.ForceTriggerNow("PlayMode 테스트");
             yield return null;
 
             Assert.Greater(TodoListModel.UncompletedCount, 0,
-                "ForceTriggerNow를 호출했는데 할일이 하나도 추가되지 않았습니다.");
+                "할일을 추가했는데 목록에 반영되지 않았습니다.");
             Assert.IsTrue(panel.gameObject.activeSelf,
                 "할일을 추가했는데 포스트잇 카드가 여전히 숨겨져 있습니다.");
 
@@ -485,6 +488,9 @@ namespace StickMate.Tests.PlayMode
             yield return LoadSceneAndResolve();
 
             yield return WaitUntilIdleOrWalk();
+            // 강조할 할일이 하나도 없으면 리마인더는 발동하지 않는다(2026-08-31: 데모 시딩 제거).
+            // 사용자 경로와 같은 함수로 하나 적어둔다.
+            if (TodoListModel.UncompletedCount <= 0) TodoListModel.Add("테스트 할일", 15);
             _todoDirector.ForceTriggerNow("PlayMode 테스트");
             yield return null;
 

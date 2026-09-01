@@ -18,6 +18,8 @@ namespace StickMate.Tests.PlayMode
     /// 왜 이 파일이 필요한가 — 물리가 아니라 <b>파생 레이어</b>가 문제였다
     /// ============================================================================
     /// 2026-08-30 디버거 실측이 확인한 것: 물리는 배율 0.35~2.00 전 구간에서 안전하다
+    /// (그 실측은 다이얼 상한이 2.0이던 시절의 것이다 — 2026-08-31에 상한이 1.5로 내려갔으므로
+    ///  지금 이 파일이 실제로 도는 구간은 0.35~1.50이고, 옛 결론을 좁힌 것이라 그대로 유효하다)
     /// (질량이 스케일을 안 따라가 랙돌 임계가 배율 불변 / breakForce가 Infinity라 관절 파단 불가 /
     /// 루트 원점이 발바닥이라 접지 오차 0). 그런데 <b>물리가 아닌 네 가지</b>가 조용히 어긋났다:
     ///   (1) <see cref="StickmanMetrics"/>가 1회 캐싱이라 Remeasure 없이는 옛 값을 계속 돌려준다.
@@ -38,8 +40,35 @@ namespace StickMate.Tests.PlayMode
     {
         private const string LogPrefix = "[SCALE-RUNTIME]";
 
-        /// <summary>다이얼 전 구간의 대표 배율. 34-3-5의 표에 나오는 지점을 그대로 쓴다.</summary>
-        private static readonly float[] Scales = { 0.35f, 0.75f, 1.0f, 1.5f, 2.0f };
+        /// <summary>
+        /// 다이얼 전 구간의 대표 배율. 34-3-5의 표에 나오는 지점을 쓰되, <b>양 끝은 숫자를 적지 않고
+        /// <see cref="StickConfig.MinCharacterScale"/>/<see cref="StickConfig.MaxCharacterScale"/>에서
+        /// 유도</b>한다 — 상한이 또 바뀌어도 이 배열이 저절로 따라간다.
+        ///
+        /// <para>★ 2026-09-01 — 예전에는 끝값이 <c>2.0f</c>였다. 2026-08-31에 사용자 지시로 상한이
+        /// <b>1.5</b>로 내려간 뒤 그 항목은 <see cref="StickmanAgent.ApplyCharacterScale"/> 안에서
+        /// 조용히 1.5로 clamp됐고, 그 결과 <b>두 가지</b>가 동시에 벌어졌다:</para>
+        /// <list type="number">
+        ///   <item>바로 앞 항목(1.5)과 같은 값이 되어 무동작 가드에 걸려 <c>false</c>를 돌려줬다 →
+        ///         <c>배율_전_구간에서_치수와_접지와_보행속도가_따라온다</c>가 "배율 2.00 적용이
+        ///         무시됐습니다"로 실패.</item>
+        ///   <item>기대 신장을 <c>Baseline × 2.0 = 4.5494</c>로 계산했는데 실제는
+        ///         <c>Baseline × 1.5 = 3.4120</c>이었다 → 같은 배열을 쓰는 다른 단언도 함께 실패.</item>
+        /// </list>
+        /// <para><b>단순히 2.0을 1.5로 바꾸지 않고 항목을 없앤 근거(실측)</b>: 획 두께 로그가
+        /// <c>배율 1.50 — 획 두께 0.10000~0.36000</c>과 <c>배율 2.00 — 획 두께 0.10000~0.36000</c>으로
+        /// <b>완전히 같은 값</b>을 찍고 있었다. 즉 그 항목은 이미 1.5를 한 번 더 재고 있었을 뿐이라,
+        /// 없애도 획 두께/비율 단언이 재는 대상은 한 비트도 줄지 않는다(1.5는 여전히 끝값이다).</para>
+        ///
+        /// <para>아래 항목은 전부 이 파일이 <b>실제로 측정해 본</b> 지점이다(0.75 = 출하 기본 배율,
+        /// 1.0 = 기준 신장). 새 지점을 넣을 때는 맨틀 인셋 여유가 배율에 따라 단조롭지 않다는 것에
+        /// 주의하라 — 실측 여유는 0.35에서 0.300, 0.75에서 0.200, 1.00에서 <b>0.100</b>(가장 빠듯),
+        /// 1.50에서 0.150이다(하한 0.05).</para>
+        /// </summary>
+        private static readonly float[] Scales =
+        {
+            StickConfig.MinCharacterScale, 0.75f, 1.0f, StickConfig.MaxCharacterScale
+        };
 
         private StickmanAgent _agent;
         private StickConfig _originalConfig;
@@ -336,7 +365,13 @@ namespace StickMate.Tests.PlayMode
             yield return SetUp();
 
             StickmanMetrics metrics = _agent.Metrics;
-            float[] sequence = { 2.0f, 0.5f, 1.25f, 0.75f };
+            // ★ 2026-09-01 — 첫 항목이 2.0f였다. 상한 1.5로 clamp되면서 기대 신장
+            //   (Baseline × 2.0 = 4.5494)과 실제(Baseline × 1.5 = 3.4120)가 갈라져 이 테스트가
+            //   실패하고 있었다. 여기서 검증하려는 것은 "특정 숫자"가 아니라 <b>2회차부터의 드리프트</b>이므로,
+            //   필요한 조건은 (a) 전부 유효 구간 안, (b) 연속한 두 값이 서로 다름, (c) 첫 값이 현재 값과
+            //   다름뿐이다. 첫 값을 상한에서 유도해 그 세 조건을 유지한다(기대값은 아래에서 v로부터
+            //   다시 계산되므로 옛 2.0 시절의 수를 베껴 오는 자리가 없다).
+            float[] sequence = { StickConfig.MaxCharacterScale, 0.5f, 1.25f, 0.75f };
 
             foreach (float v in sequence)
             {
@@ -377,12 +412,17 @@ namespace StickMate.Tests.PlayMode
             Assert.IsTrue(EquipmentModel.IsEquipped(EquipmentSlot.Head),
                 $"{LogPrefix} 모자를 걸친 상태를 만들지 못했습니다 — 이 테스트의 전제가 성립하지 않습니다.");
 
-            // 페이드가 올라오고 컨테이너가 만들어질 때까지(FadeSeconds + 여유).
-            for (int i = 0; i < 60; i++)
-            {
-                yield return null;
-                if (_agent.transform.Find("EquipmentAccessories") != null) break;
-            }
+            // 컨테이너가 만들어질 때까지 기다린다.
+            // ★ 2026-09-01 — 예전 주석은 "페이드가 올라오고 ... (FadeSeconds + 여유)"라며 60프레임을
+            //   기다렸는데, 배치 모드에서 60프레임은 <b>0.007~0.027초</b>라 페이드
+            //   (CharacterAccessoryRenderer.FadeSeconds = 0.18초)를 전혀 덮지 못했다. 실제로 통과한
+            //   이유는 컨테이너 <b>생성</b>이 페이드와 무관하게 LateUpdate 재구성에서 바로 끝나기
+            //   때문이다 — 주석이 틀렸고 예산은 우연히 충분했다. 둘 다 바로잡는다: 근거를 재구성
+            //   프레임으로 고치고, 예산은 페이드까지 확실히 덮는 시간(초)으로 잡는다.
+            yield return TestClock.WaitUntil(
+                () => _agent.transform.Find("EquipmentAccessories") != null,
+                timeoutSeconds: 2f,
+                what: "액세서리 컨테이너(EquipmentAccessories) 생성");
         }
 
         /// <summary>
@@ -432,7 +472,14 @@ namespace StickMate.Tests.PlayMode
             yield return SetUp();
             yield return EnsureAccessoryContainer();
 
-            const float BigScale = 2.0f;
+            // ★ 2026-09-01 — 2.0f였다. 상한이 1.5로 내려간 뒤 이 값은 clamp돼 <b>실제로는 1.5가
+            //   적용되고 있었고</b>, 로그만 "배율 2.00"이라고 거짓말하고 있었다(단언은 측정한
+            //   rootScale을 쓰므로 통과는 하고 있었다 — 조용히 무의미해지는 유형).
+            //   상한에서 유도해 로그와 실제를 일치시킨다. 측정량은 바뀌지 않는다:
+            //   rootScale = v / baked = 1.5 / 0.75 = 2.0으로 전과 동일하고, 실측 비도
+            //   1.997~1.999(기대 2.0000, 허용 0.15)로 그대로다. 상쇄가 빠지면 비가 1.0으로 떨어져
+            //   기대값과 1.0만큼 벌어지므로, 이 허용 오차에서도 네거티브 컨트롤의 판별력은 유지된다.
+            const float BigScale = StickConfig.MaxCharacterScale;
             _agent.ApplyCharacterScale(BigScale, "네거티브 컨트롤");
             for (int i = 0; i < 5; i++) yield return null;   // 재구성 + 상쇄 적용(위 FindAccessoryContainer 문서).
             Transform container = FindAccessoryContainer();
@@ -490,17 +537,23 @@ namespace StickMate.Tests.PlayMode
             yield return SetUp();
             StickmanBlackboard bb = _agent.Blackboard;
 
+            // ★ 2026-09-01 — 예산을 60프레임 → <b>1초(벽시계)</b>로 바꿨다.
+            //   배치 모드는 0.11~0.45ms/프레임이라 60프레임은 실제로 <b>0.007~0.027초</b>였다.
+            //   여기서 잡으려는 것은 "스케일 변경이 만든 물리 튐이 랙돌 임계값을 넘는가"인데, 그
+            //   튐은 Rigidbody2D 적분과 관절 복원이 몇 <b>번의 물리 스텝</b>(fixedDeltaTime 0.02초)에
+            //   걸쳐 커졌다 잦아드는 현상이다. 0.007초는 <b>물리 스텝이 한 번도 안 도는</b> 길이라,
+            //   이 감시창은 사실상 아무것도 보지 못하고 초록이었다(거짓 통과).
+            //   1초 = 물리 스텝 50회 = 랙돌 진입/복귀가 실제로 판정되고도 남는 길이다.
+            const float WatchSeconds = 1f;
             foreach (float v in Scales)
             {
-                _agent.ApplyCharacterScale(v, "테스트");
-                for (int i = 0; i < 60; i++)
-                {
-                    yield return null;
+                float scale = v;   // 람다가 잡는 값(foreach 변수를 직접 캡처하지 않는다).
+                _agent.ApplyCharacterScale(scale, "테스트");
+                yield return TestClock.SampleForSeconds(WatchSeconds, elapsed =>
                     Assert.AreNotEqual(StickmanStateId.Ragdoll, bb.Machine.CurrentStateId,
-                        $"{LogPrefix} 배율 {v:F2}로 바꾼 뒤 {i}프레임 만에 RAGDOLL로 무너졌습니다 — " +
-                        "스케일 변경이 물리 튐을 만든다는 뜻입니다(2026-08-30 실측 결론과 배치됩니다).");
-                }
-                Debug.Log($"{LogPrefix} 배율 {v:F2} — 60프레임 동안 상태 {bb.Machine.CurrentStateId}, " +
+                        $"{LogPrefix} 배율 {scale:F2}로 바꾼 뒤 {elapsed:F3}초 만에 RAGDOLL로 무너졌습니다 — " +
+                        "스케일 변경이 물리 튐을 만든다는 뜻입니다(2026-08-30 실측 결론과 배치됩니다)."));
+                Debug.Log($"{LogPrefix} 배율 {scale:F2} — {WatchSeconds:F1}초 동안 상태 {bb.Machine.CurrentStateId}, " +
                     $"발Y {_agent.Metrics.FootWorldY:F4}, 접지 {bb.SenseGround().Grounded}.");
             }
         }

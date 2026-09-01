@@ -25,7 +25,7 @@ namespace StickMate.States
     ///   <see cref="EnterActiveMode"/> : 루트 회전 고정(FreezeRotation) + 팔다리 Kinematic + 관절 비활성
     ///                                   → 물리가 포즈에 개입할 수 있는 통로를 전부 차단한다.
     ///                                     실제 포즈 각도는 StickmanPoseAnimator가 만든다.
-    ///   <see cref="EnterRagdoll"/>    : 루트 회전 제약 해제 + 팔다리 Dynamic + 관절 활성
+    ///   <see cref="EnterRagdoll()"/>  : 루트 회전 제약 해제 + 팔다리 Dynamic + 관절 활성
     ///                                   → 전신 물리에 완전 위임(피격/던짐 손맛은 그대로).
     ///
     /// 두 메서드 모두 **멱등**이며 실제 모드가 바뀔 때만 컴포넌트를 건드린다(매 프레임 호출해도 안전).
@@ -47,8 +47,20 @@ namespace StickMate.States
     /// </summary>
     public sealed class RagdollRig
     {
-        // RAGDOLL 진입 시 각속도를 한 번 깎는 비율(BUG-SW-M4, 아래 EnterRagdoll 참고).
-        private const float AngularVelocityDampenOnEntry = 0.5f;
+        /// <summary>
+        /// RAGDOLL 진입 시 전신 각속도에 한 번 곱하는 비율. <b>1 = 감쇠 없음(현재 값).</b>
+        ///
+        /// ★ 2026-09-01 (P9-a) 0.5 -> 1.0. 이 상수는 BUG-SW-M4("이동 중 피격 RAGDOLL의 정착 실패")의
+        /// 대책으로 들어왔는데, <b>같은 버그의 대책으로 팔다리 감쇠 상향(0.6/1.5 -> 0.9/3.0,
+        /// Editor/SceneBootstrapper.LimbLinearDamping/LimbAngularDamping)도 함께</b> 들어갔다.
+        /// 즉 안전장치가 둘이었고, 정착을 실제로 책임지는 쪽은 매 스텝 작용하는 감쇠다(이 상수는
+        /// 진입 프레임 1회뿐이다). 남은 절반 삭감은 <b>우리가 원하는 회전 에너지를 정확히 절반
+        /// 지우는</b> 부작용만 냈다 — docs/UX_FLOW.md 38-14-3 (b).
+        ///
+        /// 되돌리기 = 이 숫자 하나. 판정 기준도 하나다: Tests/PlayMode/StickmanRagdollRecoveryTests가
+        /// 정착 실패(GETUP 미도달)를 바로 잡아낸다.
+        /// </summary>
+        private const float AngularVelocityDampenOnEntry = 1f;
 
         // 관절 각도 부호 규약을 실측으로 판정할 때(DetectJointAngleSign) 표본으로 쓸 수 있는 최소 진입
         // 각도(도). 이보다 작으면 referenceAngle도 0 근처라 부호를 신뢰할 수 없어 건너뛴다.
@@ -79,6 +91,18 @@ namespace StickMate.States
 
         private bool _modeInitialized;
         private bool _isRagdollMode;
+
+        // 진입 충격량을 가하는 지점의 루트 로컬 높이(= 어깨 부착 높이). 하드코딩이 아니라 프리팹
+        // 지오메트리에서 유도한다 — 아래 생성자 문서 참고. 유도할 수 없으면 false로 남아 충격량
+        // 경로 전체가 조용히 비활성화된다(루트 중심에 때려 토크가 0이 되는 것보다 정직하다).
+        private readonly float _chestLocalY;
+        private readonly bool _hasChestAnchor;
+
+        /// <summary>마지막 RAGDOLL 진입에서 실제로 가한 충격량의 크기(실측 검증/로그용, 0이면 없음).</summary>
+        public float LastEntryImpulse { get; private set; }
+
+        /// <summary>마지막 진입 충격량을 가한 월드 지점(실측 검증/로그용).</summary>
+        public Vector2 LastEntryImpulsePoint { get; private set; }
 
         // GETUP 루트 회전 보간의 시작각(널브러진 실제 각도).
         private float _getupStartRootAngle;
@@ -114,6 +138,22 @@ namespace StickMate.States
                 _anatomicalLimits[i] = _joints[i].limits;
                 _jointUsesLimits[i] = _joints[i].useLimits;
             }
+
+            // ★ 2026-09-01 (P9-a) 진입 충격량을 가할 "가슴 높이"를 프리팹 지오메트리에서 유도한다.
+            // 루트에 직접 매달린 관절(= 팔다리 위 마디)의 connectedAnchor.y 중 가장 높은 것이 곧
+            // 어깨 부착 높이다(다리는 엉덩이 높이라 항상 그보다 낮다). 숫자를 적어두지 않는 이유는
+            // 이 프로젝트 컨벤션 그대로다 — 캐릭터 치수는 배율/기하학 상수에서 계속 바뀌는데 여기에
+            // 상수를 박으면 어느 배율에서만 맞는 값이 된다.
+            float highestRootAnchorY = float.NegativeInfinity;
+            for (int i = 0; i < _joints.Length; i++)
+            {
+                HingeJoint2D joint = _joints[i];
+                if (joint == null || joint.connectedBody != _root) continue;
+                float y = joint.connectedAnchor.y;
+                if (y > highestRootAnchorY) highestRootAnchorY = y;
+            }
+            _hasChestAnchor = _root != null && highestRootAnchorY > float.NegativeInfinity;
+            _chestLocalY = _hasChestAnchor ? highestRootAnchorY : 0f;
         }
 
         /// <summary>
@@ -173,17 +213,42 @@ namespace StickMate.States
         }
 
         /// <summary>
-        /// RAGDOLL 진입: 루트 회전 제약을 풀고 팔다리를 Dynamic으로 되돌린 뒤 관절을 다시 켜 전신을
-        /// 순수 물리 낙하물로 전환한다(아키텍처 0절 "RAGDOLL은 전신 물리에 완전 위임"). Rigidbody2D의
-        /// simulated는 건드리지 않는다 — 시뮬레이션 정지는 오직 전체화면 Suspend 전용이다.
-        ///
-        /// BUG-SW-M4 대응(2026-08-28, docs/BUG_REPORT_SCENE_WIRING.md)은 그대로 유지: 진입 시 각속도만
-        /// 한 번 절반으로 깎아 초기 회전 관성을 줄인다(선속도는 건드리지 않으므로 "충격에 붕 날아가는"
-        /// 손맛은 그대로, 회전만 덜 격렬하게 시작해 damping이 정리할 시간을 번다). 실측상 이 완충이
-        /// 없으면 Walk 중 피격 RAGDOLL이 ragdollSettleSpeedThreshold 아래로 안정적으로 내려오지 못해
-        /// GETUP 복귀에 실패하는 경우가 있었다.
+        /// RAGDOLL 진입(충격량 없음) — 기존 호출자 전용 하위호환 오버로드.
+        /// 거동은 <see cref="EnterRagdoll(UnityEngine.Vector2,float)"/>에 impulse=0을 넘긴 것과 정확히 같다.
         /// </summary>
-        public void EnterRagdoll()
+        public void EnterRagdoll() => EnterRagdoll(Vector2.zero, 0f);
+
+        /// <summary>
+        /// RAGDOLL 진입: 루트 회전 제약을 풀고 팔다리를 Dynamic으로 되돌린 뒤 관절을 다시 켜 전신을
+        /// 순수 물리 낙하물로 전환하고(아키텍처 0절 "RAGDOLL은 전신 물리에 완전 위임"), 그 위에
+        /// **진입 충격량**을 한 번 실어 준다. Rigidbody2D의 simulated는 건드리지 않는다 — 시뮬레이션
+        /// 정지는 오직 전체화면 Suspend 전용이다.
+        ///
+        /// ─────────────────────────────────────────────────────────────────────────────────────
+        /// ★ 2026-09-01 (P9-a) 왜 충격량을 새로 주는가 — docs/UX_FLOW.md 38-14-3
+        /// ─────────────────────────────────────────────────────────────────────────────────────
+        /// 지금까지 RAGDOLL의 초기 에너지는 **그 순간 이미 실려 있던 속도가 전부**였다(걷던 속도 정도).
+        /// 그래서 사용자가 지적한 "얻어맞을 때 축 늘어지듯 크게 휘둘리는" 그림이 나올 수가 없었다.
+        ///
+        /// 감쇠를 낮추는 것은 답이 아니다: 감쇠는 광대역이라 낮추면 관절 제한 경계의 고주파 링잉
+        /// (= 사용자가 이미 한 번 거부한 "경련")이 같이 돌아온다. 1차 감쇠계에서
+        /// <c>진폭 ∝ 초기에너지 / 감쇠</c>, <c>링잉 지속 ∝ 1 / 감쇠</c>이므로,
+        /// <b>감쇠를 유지한 채 초기 에너지만 올리면 첫 스윙만 커지고 링잉은 여전히 짧다.</b>
+        /// 그래서 Editor/SceneBootstrapper의 LimbLinearDamping 0.9 / LimbAngularDamping 3.0은
+        /// 손대지 않는다.
+        ///
+        /// <b>왜 루트 중심이 아니라 가슴 높이인가</b>: 질량중심에 그대로 때리면 순수 병진운동이라
+        /// 몸이 미끄러질 뿐 젖혀지지 않는다. 질량중심보다 위인 가슴에 때리면 그 오프셋이 그대로
+        /// 지렛대가 되어 <c>토크 = r × F</c>가 저절로 생기고, 상체가 젖혀지는 회전이 관절을 통해
+        /// 팔다리로 전파된다(= 원하는 팔로우스루). 그래서 이 메서드는 팔다리에 개별로 힘을 주지
+        /// 않는다 — 그건 각 마디를 따로 던지는 것이라 "한 몸이 얻어맞은" 그림이 안 나온다.
+        ///
+        /// 방식(아키텍처 0절) 무변경: 능동/랙돌 경계도, 능동 상태의 거동도 건드리지 않는다.
+        /// 이것은 랙돌 구간의 <b>초기 조건</b>일 뿐이다.
+        /// </summary>
+        /// <param name="hitDirection">맞은 방향(월드, 정규화 불필요). 길이가 0이면 충격량은 무시된다.</param>
+        /// <param name="impulse">충격량 크기(N·s). 0 이하면 아무 힘도 가하지 않는다(하위호환 경로).</param>
+        public void EnterRagdoll(Vector2 hitDirection, float impulse)
         {
             EnsureRagdollMode();
 
@@ -192,17 +257,64 @@ namespace StickMate.States
             // 새로 실린 회전 관성을 같은 방식으로 한 번 깎아주기 위해서다. 그래서 이 루프는 매 프레임
             // 호출되는 EnsureRagdollMode()가 아니라 이 메서드에만 있다 — 매 프레임 곱하면 각속도가
             // 순식간에 0이 되어 RAGDOLL이 굴러가지 않는 정반대의 버그가 된다.
+            //
+            // ★ 2026-09-01 현재 이 비율은 1(= 무효)이라 이 루프는 항등 연산이다. 그래도 지우지 않는
+            // 이유는 되돌리기 경로를 **상수 하나**로 유지하기 위해서다(위 상수 문서). 진입 이벤트당
+            // 1회 5회 곱셈이라 비용도 논할 수준이 아니다.
             for (int i = 0; i < _bodies.Length; i++)
             {
                 if (_bodies[i] == null) continue;
                 _bodies[i].angularVelocity *= AngularVelocityDampenOnEntry;
             }
+
+            ApplyEntryImpulse(hitDirection, impulse);
+        }
+
+        /// <summary>
+        /// 가슴 높이 지점에 <see cref="Rigidbody2D.AddForceAtPosition"/>(Impulse)로 한 번 때린다.
+        /// 순서상 <see cref="EnsureRagdollMode"/> 뒤여야 한다 — 그 전에는 루트에 FreezeRotation이
+        /// 걸려 있어 지렛대가 만든 토크가 통째로 버려진다(이 메서드의 존재 이유가 사라진다).
+        /// </summary>
+        private void ApplyEntryImpulse(Vector2 hitDirection, float impulse)
+        {
+            LastEntryImpulse = 0f;
+            if (_root == null || !_hasChestAnchor) return;
+            if (!(impulse > 0f)) return;                       // NaN도 여기서 함께 걸러진다.
+            float length = hitDirection.magnitude;
+            if (!(length > 0.0001f)) return;
+
+            Vector2 point = _root.transform.TransformPoint(new Vector3(0f, _chestLocalY, 0f));
+            Vector2 force = hitDirection * (impulse / length);
+            _root.AddForceAtPosition(force, point, ForceMode2D.Impulse);
+
+            LastEntryImpulse = impulse;
+            LastEntryImpulsePoint = point;
+
+            // RAGDOLL 진입은 이산적이고 드문 사건이라(정상 동작에서는 0회) 표본 예산 없이 항상 남긴다 —
+            // RagdollImpactResolver.LogCollisionImpact와 같은 근거. 에이전트는 화면을 볼 수 없으므로
+            // "에너지가 실제로 주입됐는가"는 이 한 줄로만 확정할 수 있다.
+            Debug.Log($"[RagdollRig] 진입 충격량 {impulse:F2}N·s 방향 ({force.x / impulse:F2}, {force.y / impulse:F2}) — " +
+                $"가슴 지점 월드 {point.x:F3},{point.y:F3} (루트 로컬 y={_chestLocalY:F3}), " +
+                $"질량중심 월드 {_root.worldCenterOfMass.x:F3},{_root.worldCenterOfMass.y:F3} -> " +
+                $"지렛대 {(point.y - _root.worldCenterOfMass.y):F3}유닛.");
+        }
+
+        /// <summary>
+        /// 진입 충격량이 실리는 지점(월드). 실측 검증용 — 이 점이 질량중심보다 <b>위</b>여야
+        /// 수평 타격이 토크를 만든다.
+        /// </summary>
+        public bool TryGetChestWorldPoint(out Vector2 point)
+        {
+            point = default;
+            if (_root == null || !_hasChestAnchor) return false;
+            point = _root.transform.TransformPoint(new Vector3(0f, _chestLocalY, 0f));
+            return true;
         }
 
         /// <summary>
         /// RAGDOLL 물리 모드임을 보장하는 멱등 연산(StickmanBlackboard.TickPose()가 매 프레임 호출).
         /// 이미 RAGDOLL 모드면 아무것도 하지 않는다 — 진입 이벤트성 처리(각속도 완충)는 여기 두지 않고
-        /// <see cref="EnterRagdoll"/>에만 둔다.
+        /// <see cref="EnterRagdoll(UnityEngine.Vector2,float)"/>에만 둔다.
         /// </summary>
         /// <returns>이번 호출로 실제 모드 전환이 일어났으면 true.</returns>
         public bool EnsureRagdollMode()
@@ -309,8 +421,13 @@ namespace StickMate.States
         /// <summary>
         /// 해부학 제한을 좌우 반전한다. 포즈가 각도에 -1을 곱해 반전되므로(위 문서), 제한 구간도
         /// 같은 변환을 거쳐야 한다 — [min,max]에 -1을 곱하면 순서가 뒤집히므로 [-max,-min]이다.
+        ///
+        /// ★ 2026-09-01 (P9-d) private -> internal. 어깨 제한이 <b>비대칭</b>([-60,+150])이 되면서
+        /// 이 함수가 "새 배관 없이 좌우 반전을 처리한다"는 전제 자체가 검증 대상이 됐다(대칭
+        /// 구간에서는 이 함수가 항등이라 틀려도 티가 안 났다). Tests/EditMode가
+        /// InternalsVisibleTo로 직접 호출해 잠근다 — 테스트가 같은 식을 베껴 적으면 함께 틀린다.
         /// </summary>
-        private static JointAngleLimits2D MirrorIfFacingLeft(JointAngleLimits2D limits, bool mirrored)
+        internal static JointAngleLimits2D MirrorIfFacingLeft(JointAngleLimits2D limits, bool mirrored)
         {
             if (!mirrored) return limits;
             return new JointAngleLimits2D { min = -limits.max, max = -limits.min };

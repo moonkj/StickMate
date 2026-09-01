@@ -22,18 +22,19 @@ namespace StickMate.Interaction
     /// 기하 (전부 OS 포인트 — 캔버스가 ConstantPixelSize라 캔버스 유닛 = OS 포인트)
     /// ============================================================================
     /// <code>
-    ///                  12시 방향 96°는 비어 있다(눈금 없음)
-    ///     i=0  θ=-132°                                  i=33  θ=+132°
-    ///     0.35×        ╲   ┌──────────┐   ╱             2.00×
+    ///                12시 방향 176°는 비어 있다(눈금 없음, 상한 1.5 기준)
+    ///     i=0  θ=-92°                                   i=23  θ=+92°
+    ///     0.35×        ╲   ┌──────────┐   ╱             1.50×
     ///                    │ │  0.75×   │ │
     ///                    │ │   크기    │ │
     ///                  ╱   └──────────┘   ╲
     ///                       6시 = θ 0°
     /// </code>
     /// θ는 6시에서 <b>시계 방향</b>으로 +다. 화면 방향 벡터는 <c>(sin θ, −cos θ)</c>
-    /// (θ=0 → 아래, θ=+132° → 오른쪽 위, θ=−132° → 왼쪽 위).
+    /// (θ=0 → 아래, θ=+92° → 오른쪽, θ=−92° → 왼쪽). 각도는 전부 <see cref="DegreesForIndex"/>
+    /// 하나에서 나온다 — 상한이 바뀌면 눈금 수와 스윕이 함께 따라온다.
     ///
-    /// <b>12시 96°를 비워 둔 이유</b>는 장식이 아니다 — 패널이 접혀 있을 때 위쪽이 잘려도
+    /// <b>12시 쪽을 비워 둔 이유</b>(상한 1.5에서 176°, 그 전 2.0에서는 96°)는 장식이 아니다 — 패널이 접혀 있을 때 위쪽이 잘려도
     /// <b>눈금은 하나도 가려지지 않는다</b>. 그래서 접힌 상태에서도 크기 조절이 100% 가능하고,
     /// 펼침은 "미리보기를 곁들이는" 선택지일 뿐이다(34-5-3).
     ///
@@ -52,25 +53,47 @@ namespace StickMate.Interaction
     {
         // ==================== 값 축 (34-3-2 / 34-3-5) ====================
 
-        /// <summary>눈금 1칸 = 0.05배. 범위 0.35~2.00을 이 간격으로 나누면 정확히 34칸이다.</summary>
-        public const float ValueStep = 0.05f;
+        /// <summary>눈금 1칸 = 0.05배. 범위 0.35~1.50을 이 간격으로 나누면 정확히 24칸이다
+        /// (★ 2026-08-31 상한 2.0 → 1.5, 그 전에는 34칸).
+        /// <para>★ 2026-09-01 — 값을 여기 적지 않고 <see cref="CharacterScaleController.ValueStep"/>을
+        /// 그대로 참조한다. 설정창 슬라이더가 생기면서 스냅 격자를 쓰는 곳이 둘이 됐고, 격자가 두 벌이면
+        /// 같은 값이 한쪽에서 1.15, 다른 쪽에서 1.20으로 보인다(원칙 1 위반). public API는 그대로다.</para></summary>
+        public const float ValueStep = CharacterScaleController.ValueStep;
 
-        /// <summary>눈금 개수. <c>(2.00 − 0.35) / 0.05 + 1 = 34</c>. 범위는
+        /// <summary>눈금 개수. <c>(1.50 - 0.35) / 0.05 + 1 = 24</c>. 범위는
         /// <see cref="StickConfig.MinCharacterScale"/>/<see cref="StickConfig.MaxCharacterScale"/>를
         /// <b>그대로</b> 쓴다 — 다이얼이 자기 범위를 새로 정의하면 인스펙터 슬라이더와 진실이 둘이 된다.</summary>
         public static readonly int TickCount = Mathf.RoundToInt(
             (StickConfig.MaxCharacterScale - StickConfig.MinCharacterScale) / ValueStep) + 1;
 
-        /// <summary>눈금 사이 각도. 33간격 × 8° = 264° 스윕, 12시 쪽 96°가 남는다.</summary>
+        /// <summary>눈금 사이 각도. <b>간격은 상한과 무관하게 8°로 고정</b>이다 — 상한이 바뀌면
+        /// 스윕이 따라 바뀌지(23간격 x 8° = 184°, 12시 쪽 176° 남음) 눈금이 촘촘해지지 않는다.
+        /// 눈금 밀도를 고정해야 "한 칸 = 0.05배"라는 손끝 감각이 상한 변경에도 그대로 유지된다.</summary>
         private const float DegreesPerTick = 8f;
 
         private static float SweepHalfDegrees => (TickCount - 1) * DegreesPerTick * 0.5f;
+
+        /// <summary>
+        /// 눈금 i가 놓인 각도 θ(6시에서 시계방향 +, 도). 그리기(<see cref="Refresh"/>)와
+        /// 잡기(<see cref="BeginDrag"/>)와 <b>테스트</b>가 전부 이 하나를 쓴다.
+        /// <para>★ 2026-08-31 상한 2.0 → 1.5 변경에서 필요해졌다 — 테스트가 <c>-132° + i x 8°</c>를
+        /// 베껴 적고 있었고, 눈금 수가 34 → 24로 바뀌자 그 식이 <b>존재하지 않는 원 위</b>를 찍어
+        /// "다이얼이 안 눌린다"로 실패했을 것이다. 식이 두 벌이면 상한이 바뀔 때마다 같은 사고가 난다.</para>
+        /// </summary>
+        public static float DegreesForIndex(int index) => -SweepHalfDegrees + index * DegreesPerTick;
 
         // ==================== 기하 (OS 포인트) ====================
 
         private const float TickInnerRadius = 38f;
         private const float TickLength = 10f;
         private const float TickLengthCurrent = 13f;      // 현재 값은 색만이 아니라 **길이로도** 구분한다(색맹 접근성).
+
+        /// <summary>눈금 <b>그림</b>이 실제로 뻗는 바깥 반지름(pt). 히트 원환(<see cref="HitOuterRadius"/>)과
+        /// 다르다 — 이쪽은 "눈에 보이는 끝"이다.
+        /// <para>public인 이유: 다이얼이 <b>상자 밖에 그려지지 않는다</b>는 불변식
+        /// (<c>CornerHoverPanel.ContentGateBlend</c>)이 이 수 위에서 성립한다. 눈금을 길게 만들면 그
+        /// 게이트도 같이 올려야 하며, <c>CornerHoverPanelTests</c>가 그 등식을 잠근다.</para></summary>
+        public const float TickVisualOuterRadius = TickInnerRadius + TickLengthCurrent;
         private const float TickThickness = 2.5f;
         private const float HaloThickness = 7f;
         private const float HaloThicknessCurrent = 9f;
@@ -89,6 +112,11 @@ namespace StickMate.Interaction
         // ==================== 상태 ====================
 
         private readonly RectTransform _root;
+
+        /// <summary>등장 알파를 한 곳에서 먹인다 — 눈금 68겹의 색을 하나씩 건드리지 않는다
+        /// (색은 값에서만 파생돼야 한다: <see cref="Refresh"/>).</summary>
+        private readonly CanvasGroup _group;
+
         private readonly Image[] _haloes;
         private readonly Image[] _cores;
         private readonly Image _bloom;
@@ -142,9 +170,10 @@ namespace StickMate.Interaction
         /// <param name="parent">다이얼 중심이 놓일 부모. 이 클래스는 부모 <b>중심</b> 기준으로 그린다.</param>
         public SizeDialWidget(Transform parent, float initialValue)
         {
-            var go = new GameObject("SizeDial", typeof(RectTransform));
+            var go = new GameObject("SizeDial", typeof(RectTransform), typeof(CanvasGroup));
             go.transform.SetParent(parent, false);
             _root = go.GetComponent<RectTransform>();
+            _group = go.GetComponent<CanvasGroup>();
             _root.anchorMin = _root.anchorMax = _root.pivot = new Vector2(0.5f, 0.5f);
             _root.sizeDelta = new Vector2(BloomDiameter, BloomDiameter);
 
@@ -195,6 +224,11 @@ namespace StickMate.Interaction
 
             _index = ValueToIndex(initialValue);
             Refresh();
+
+            // ★ 태어날 때는 <b>보이지 않는다</b>. 소유자가 상자를 다 키운 뒤에 켠다(SetReveal 문서).
+            Reveal = 0f;
+            _group.alpha = 0f;
+            go.SetActive(false);
         }
 
         private static Image AddGlow(Transform parent, string name, float diameter, Color color)
@@ -223,6 +257,36 @@ namespace StickMate.Interaction
             Refresh();
         }
 
+        /// <summary>
+        /// 등장 진행도 0..1. 소유자(<see cref="CornerHoverPanel"/>)가 매 프레임 밀어 넣는다.
+        ///
+        /// <para>★ 2026-08-31 사용자 신고 <i>"크기조절 원이 먼저 떠 있고 상자가 나중에 커짐"</i>의 수정.
+        /// 이 위젯은 패널의 <b>자식</b>인데 패널에는 마스크가 없다 — 패널 사각형이 PEEK(104×14pt)일 때도
+        /// 이 그림(중심이 패널 바닥에서 78pt 위, 눈금이 51pt까지 뻗는다)은 <b>잘리지 않고 전부 그려졌다</b>.
+        /// 그래서 상자가 자라기 전부터 원이 허공에 떠 있었다. 이제 알파의 출처가 상자의 성장 진행도
+        /// 하나뿐이라 두 그림의 등장 순서가 갈라질 수 없다.</para>
+        ///
+        /// <para><b>스케일은 건드리지 않는다</b> — 그림과 히트 판정이 같은 한 쌍의 수에서 나와야 하기
+        /// 때문이다(<see cref="SetCenterInParentPoints"/> 문서). 알파만 움직이면 "보이는 곳"과
+        /// "먹히는 곳"이 언제나 같은 자리에 있다.</para>
+        /// </summary>
+        public void SetReveal(float reveal01)
+        {
+            float v = Mathf.Clamp01(reveal01);
+            if (Mathf.Approximately(v, Reveal)) return;   // 24시간 상주 앱 — 같은 값을 매 프레임 대입하지 않는다.
+            Reveal = v;
+            if (_group != null) _group.alpha = v;
+
+            // 완전히 투명할 때는 아예 끈다 — 알파 0짜리 Image(눈금 2겹 x TickCount + 블룸)를
+            // 캔버스 리빌드에 계속 태우지 않는다(24시간 상주 앱).
+            bool visible = v > 0.001f;
+            if (_root != null && _root.gameObject.activeSelf != visible)
+                _root.gameObject.SetActive(visible);
+        }
+
+        /// <summary>지금 등장 진행도(진단/테스트용).</summary>
+        public float Reveal { get; private set; }
+
         public void SetPendingCaption(bool on)
         {
             if (_pendingText == null || _pendingText.gameObject.activeSelf == on) return;
@@ -242,7 +306,7 @@ namespace StickMate.Interaction
 
                 float length = current ? TickLengthCurrent : TickLength;
                 float haloThickness = current ? HaloThicknessCurrent : HaloThickness;
-                float degrees = -SweepHalfDegrees + i * DegreesPerTick;
+                float degrees = DegreesForIndex(i);
 
                 // (a)/(b) 헤일로 — 꺼진 눈금은 헤일로가 없다(몸통 한 겹만 남는다).
                 Color haloColor = current
@@ -295,8 +359,9 @@ namespace StickMate.Interaction
         // ==================== 입력 (34-3-4) ====================
 
         /// <summary>
-        /// 커서가 조작 원환(20 ≤ r ≤ 90pt) <b>이면서 눈금이 실제로 있는 각도 범위(|θ| ≤ 132°) 안</b>인가.
-        /// ★ 2026-08-31(통합검증 R2, M1) — 반지름만 보던 시절, 12시 쪽 빈 96° 구역(눈금이 하나도 없는
+        /// 커서가 조작 원환(20 ≤ r ≤ 90pt) <b>이면서 눈금이 실제로 있는 각도 범위 안</b>인가
+        /// (|θ| ≤ SweepHalfDegrees — 상한 1.5에서 92°).
+        /// ★ 2026-08-31(통합검증 R2, M1) — 반지름만 보던 시절, 12시 쪽 빈 구역(눈금이 하나도 없는
         /// 자리)도 "원환 안"으로 잡혀서, 그 빈 자리를 탭하면 <see cref="EndDrag"/>의 탭 분기가
         /// <see cref="IndexForAngle"/>을 부르고 그 함수의 "빈 구역은 가까운 끝값에 붙인다" 규칙(랩어라운드
         /// 방지용 — <b>드래그 도중</b>에는 맞는 동작이다)이 그대로 적용돼, 아무 데나 짧게 누른 클릭이
@@ -322,7 +387,7 @@ namespace StickMate.Interaction
             _grabIndex = _index;
             _grabCursor = cursorScreen;
             _grabTime = unscaledTime;
-            _grabOffsetDegrees = AngleOf(cursorScreen) - (-SweepHalfDegrees + _index * DegreesPerTick);
+            _grabOffsetDegrees = AngleOf(cursorScreen) - DegreesForIndex(_index);
         }
 
         /// <summary>드래그 중. 값이 실제로 바뀌면 true(호출부가 그때만 캐릭터에 반영한다).</summary>
@@ -391,13 +456,13 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// θ → 눈금 인덱스. <b>랩어라운드를 금지</b>한다 — 12시 쪽 빈 96° 구간을 통과할 수 없고,
+        /// θ → 눈금 인덱스. <b>랩어라운드를 금지</b>한다 — 12시 쪽 빈 구간을 통과할 수 없고,
         /// ±132°를 넘으면 끝값에 붙는다. 최대에서 조금 더 돌렸을 때 최소로 튀는 것이 회전식 UI의
         /// 가장 흔한 사고다.
         /// </summary>
         private static int IndexForAngle(float degrees)
         {
-            // atan2는 (−180, 180]을 돌려준다. 빈 구역(|θ| > 132°)에 들어오면 <b>가까운 끝값에 붙인다</b>.
+            // atan2는 (-180, 180]을 돌려준다. 빈 구역(|θ| > SweepHalfDegrees)에 들어오면 <b>가까운 끝값에 붙인다</b>.
             // 부호가 그대로 어느 쪽 끝인지 말해 준다 — 정수리 바로 왼쪽은 −179°(최소), 오른쪽은 +179°(최대).
             float half = SweepHalfDegrees;
             degrees = Mathf.Clamp(degrees, -half, half);

@@ -544,7 +544,10 @@ namespace StickMate.States
 
             // ── 예전 경로(스위치를 끄거나 너무 약하게 놓은 경우) ─────────────────────────────
             // 충격량 = 속력 * 질량(StickmanAgent.OnCollisionEnter2D와 동일 단위 관례).
-            bool wentRagdoll = RagdollImpactResolver.TryApplyImpact(_blackboard, impulseMagnitude);
+            // ★ 2026-09-01 (P9-b) 방향도 함께 넘긴다 — 던진 속도 벡터가 곧 "밀려나는 방향"이다.
+            // 이 경로는 여기서 이미 Body.linearVelocity를 그 속도로 설정했으므로, RagdollRig의 진입
+            // 충격량은 그 위에 **얹히는 회전 에너지**로 작용한다(가슴 지점 지렛대 -> 상체가 젖혀짐).
+            bool wentRagdoll = RagdollImpactResolver.TryApplyImpact(_blackboard, impulseMagnitude, throwVelocity);
             Debug.Log($"[DragThrowState] [6/6] 놓음 — 던진 속도={throwVelocity.ToString("F2")}(속력 {speed:F2}, " +
                 $"상한 {maxSpeed:F2} = {heightsPerSecond:F2}신장/초), 충격량={impulseMagnitude:F2}, " +
                 $"회전 스위치={tumbleEnabled} -> {(wentRagdoll ? "RAGDOLL" : "Fall")}.");

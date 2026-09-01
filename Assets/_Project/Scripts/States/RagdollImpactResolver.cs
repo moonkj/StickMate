@@ -66,7 +66,62 @@ namespace StickMate.States
             bool shielded = IsOwnLandingContact(blackboard, collision);
             LogCollisionImpact(blackboard, collision, impulseMagnitude, shielded);
             if (shielded) return false;
-            return TryApplyImpact(blackboard, impulseMagnitude);
+            return TryApplyImpact(blackboard, impulseMagnitude, ResolveContactPushDirection(collision));
+        }
+
+        /// <summary>
+        /// 랙돌 임계값 <b>미만</b> 타격의 시각 리액션(2026-09-01) — 상체를 밀린 방향으로 짧게 기울였다
+        /// 되돌린다(States/StickmanPoseAnimator.AddHitLean). 순수 시각 트윈이라 물리에 아무 것도 더하지
+        /// 않으며, 스스로 감쇠하므로 취소 배관도 없다.
+        ///
+        /// <para>세기는 <b>임계값 대비 비</b>로 정규화한다 — 충격량의 절대 단위(질량 x 속도)는 배율/설정에
+        /// 따라 움직이지만 "임계값의 몇 %인가"는 무차원이라 어떤 설정에서도 같은 그림이 나온다.</para>
+        ///
+        /// <para>방향을 모르면(무방향 호출 경로) <b>뒤로 젖힌다</b>: 방향을 모른다고 앞으로 숙이면
+        /// "맞았는데 달려드는" 그림이 되지만, 뒤로 젖히는 것은 어느 방향에서 맞았든 '움찔'로 읽힌다.</para>
+        /// </summary>
+        private static void ApplyHitLean(StickmanBlackboard blackboard, float impulseMagnitude, Vector2 hitDirection)
+        {
+            float maxDegrees = blackboard.HitBodyLeanDegrees;
+            if (maxDegrees <= 0f) return;
+
+            StickmanPoseAnimator pose = blackboard.GetPoseAnimator();
+            if (pose == null) return;
+
+            float threshold = Mathf.Max(0.0001f, blackboard.Config.ragdollForceThreshold);
+            float strength = Mathf.Clamp01(impulseMagnitude / threshold);
+            float forward = hitDirection.sqrMagnitude > 0.000001f
+                ? Mathf.Clamp(hitDirection.normalized.x * pose.FacingSign, -1f, 1f)
+                : -1f;
+
+            pose.AddHitLean(maxDegrees * strength * forward, blackboard.HitBodyLeanRecoverRate);
+        }
+
+        /// <summary>
+        /// ★ 2026-09-01 (P9-b) 충돌에서 "어느 쪽으로 밀려나는가"를 뽑는다 — 접촉 법선의 평균.
+        ///
+        /// 왜 <see cref="Collision2D.relativeVelocity"/>가 아니라 법선인가: relativeVelocity는 "두 물체의
+        /// 상대 속도"라 부호 규약이 문서만으로 확정되지 않고(어느 쪽에서 뺀 것인지), 우리 쪽이 정지해
+        /// 있고 상대가 날아온 경우와 그 반대에서 서로 다른 해석이 필요하다. 반면 <c>ContactPoint2D.normal</c>은
+        /// "상대 콜라이더에서 나(이 충돌 콜백을 받은 쪽)를 향하는" 표면 법선이라, 그것이 곧 <b>내가 밀리는
+        /// 방향</b>이다(이 프로젝트가 이미 접지 판정에서 같은 규약을 쓰고 있다 — 바닥에 떨어지면 법선이 +y).
+        ///
+        /// 접촉이 여러 개면 평균한다. 양쪽에서 동시에 끼인(법선이 서로 상쇄되는) 이론상의 경우에는
+        /// 결과가 0이 되고, 그러면 RagdollRig가 충격량 경로를 건너뛴다 — <b>추정한 방향으로 때리는 것보다
+        /// 안 때리는 쪽이 정직하다</b>(방향을 모르면 P9-a 이전 거동 그대로).
+        /// </summary>
+        private static Vector2 ResolveContactPushDirection(Collision2D collision)
+        {
+            if (collision == null) return Vector2.zero;
+            int count = collision.contactCount;
+            if (count <= 0) return Vector2.zero;
+
+            Vector2 sum = Vector2.zero;
+            for (int i = 0; i < count; i++)
+            {
+                sum += collision.GetContact(i).normal;
+            }
+            return sum;
         }
 
         /// <summary>
@@ -164,17 +219,106 @@ namespace StickMate.States
             return false;
         }
 
+        /// <summary>
+        /// 방향을 모르는 호출 경로(원인 불명의 강제 랙돌, 크기만 아는 통지)용. 방향 0 = 진입 충격량
+        /// 없음이므로 <b>P9-a 이전과 비트 단위로 같은 거동</b>이다.
+        /// </summary>
         /// <returns>임계값 이상이라 Ragdoll로 전이시켰으면 true, 미만이라 아무 것도 하지 않았으면 false.</returns>
         public static bool TryApplyImpact(StickmanBlackboard blackboard, float impulseMagnitude)
+            => TryApplyImpact(blackboard, impulseMagnitude, Vector2.zero);
+
+        /// <summary>
+        /// ★ 2026-09-01 (P9-b) 방향까지 아는 호출 경로용. 크기/방향 두 스냅샷을 함께 남기고 전이시킨다 —
+        /// RagdollState.Enter()가 그 둘에서 진입 충격량 벡터를 만들어 RagdollRig에 넘긴다.
+        /// </summary>
+        /// <param name="hitDirection">캐릭터가 <b>밀려나는</b> 방향(월드, 정규화 불필요). 0이면 위 무방향 경로와 같다.</param>
+        public static bool TryApplyImpact(StickmanBlackboard blackboard, float impulseMagnitude, Vector2 hitDirection)
         {
             if (blackboard == null || blackboard.Machine == null || blackboard.Config == null) return false;
-            if (impulseMagnitude < blackboard.Config.ragdollForceThreshold) return false;
+            if (impulseMagnitude < blackboard.Config.ragdollForceThreshold)
+            {
+                // ★ 2026-09-01 — 임계값에 못 미치는 타격은 지금까지 **아무 일도 일어나지 않았다**
+                // (판정만 하고 조용히 false). 그 구간에 시각 리액션(상체가 밀린 쪽으로 짧게 기울었다
+                // 복귀)만 얹는다. 랙돌로 가는 경로는 아래 한 줄도 건드리지 않는다 — 이 분기는 정의상
+                // "랙돌로 가지 않는" 쪽이라 진입 각속도/댐핑 튜닝과 교집합이 없다.
+                ApplyHitLean(blackboard, impulseMagnitude, hitDirection);
+                return false;
+            }
 
             // UX_FLOW.md 31-2 #2 대비 스냅샷 — RagdollState.Enter()가 이 값을 IHasDialogueParams로
             // 노출해 "윽.../으악!/으아아아악?!" 같은 충격 강도별 대사를 파생시킨다(31-1 원칙).
             blackboard.LastImpactMagnitude = impulseMagnitude;
+            // 방향은 소비형이다(StickmanBlackboard.LastImpactDirection 문서) — 여기서 덮어쓰고,
+            // RagdollState.Enter()가 읽는 즉시 지운다.
+            blackboard.LastImpactDirection = hitDirection;
             blackboard.Machine.ChangeState(StickmanStateId.Ragdoll, isForcedInterrupt: true);
             return true;
+        }
+
+        // ════════════════════════════════════════════════════════════════════════════════════
+        // ★ 2026-09-01 (P9-b) 판정 단위(N·s) -> 연출 단위(도/초) 환산
+        // ════════════════════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 랙돌 <b>판정</b>에 쓰인 원본 충격량을, 랙돌 <b>진입 연출</b>에 실을 충격량(N·s)으로 환산한다.
+        /// <see cref="RagdollRig.EnterRagdoll(UnityEngine.Vector2,float)"/>에 넘길 유일한 값의 생산자다.
+        ///
+        /// ────────────────────────────────────────────────────────────────────────────────────
+        /// 왜 원본을 그대로 넘기면 안 되는가 (실측 근거)
+        /// ────────────────────────────────────────────────────────────────────────────────────
+        /// 실측 감도는 <b>1N·s당 약 42.8도/초</b>다
+        /// (<see cref="StickConfig.ragdollEntryAngularSensitivityPerImpulse"/>).
+        /// 기존 호출부들이 넘기는 원본 충격량은 <c>ragdollForceThreshold</c>의 1.02배(긴 망토)~5배
+        /// (테스트/강한 타격)이고, 5배 = 40N·s를 그대로 넣으면 <b>약 1712도/초 = 초당 4.8바퀴</b>다.
+        /// 팽이가 되는 것이지 얻어맞아 넘어지는 그림이 아니다.
+        ///
+        /// ────────────────────────────────────────────────────────────────────────────────────
+        /// 환산식 — 선형 + 상한 클램프. 계수를 직접 적지 않고 <b>역산</b>한다
+        /// ────────────────────────────────────────────────────────────────────────────────────
+        /// <code>
+        ///   scale  = 목표각속도(임계값에서) / 감도 / 임계값     [N·s per 원본 단위]
+        ///   capRaw = 임계값 x (상한각속도 / 목표각속도)         [원본 단위]
+        ///   결과   = min(원본, capRaw) x scale
+        /// </code>
+        /// 기본값(임계 8, 목표 100도/초, 상한 400도/초, 감도 42.8)에서:
+        /// <list type="bullet">
+        /// <item>1.00배(8N·s)  -> 2.34N·s -> <b>100도/초</b>  — 은은하게 픽 넘어진다(긴 망토/최약 피격).</item>
+        /// <item>1.50배(12N·s) -> 3.50N·s -> <b>150도/초</b></item>
+        /// <item>2.00배(16N·s) -> 4.67N·s -> <b>200도/초</b>  — 대사가 "으악!"으로 바뀌는 지점.</item>
+        /// <item>4.00배(32N·s) -> 9.35N·s -> <b>400도/초</b>  — 포화. 대사가 "으아아아악?!"이 되는 지점과 일치.</item>
+        /// <item>5.00배(40N·s) -> 9.35N·s -> <b>400도/초</b>  — 클램프가 1712도/초를 막는다.</item>
+        /// </list>
+        /// 상한을 대사 3구간의 마지막 경계(4배)에 맞춘 것은 우연이 아니다 — 그 위는 이미 "말로 표현되는
+        /// 가장 센 충격"이라 물리적으로 더 크게 만들 이유가 없고, 대신 <b>어디서 포화하는지가 대사와
+        /// 같은 눈금 위에 있게</b> 된다(원칙 1: 행동과 텍스트가 같은 파라미터에서 파생).
+        ///
+        /// 상한을 "안 넘어가게 나누기"가 아니라 <c>Mathf.Min</c>으로 둔 이유: 부드러운 포화 곡선
+        /// (tanh 등)을 쓰면 임계값 근처의 기울기까지 함께 바뀌어 "약한 충격은 은은하게"가 흐려진다.
+        /// 1~4배 구간이 정확히 선형이고 그 밖은 딱 잘리는 편이 튜닝도 검증도 단순하다.
+        /// </summary>
+        /// <param name="config">null이면 아래 폴백 상수를 쓴다(에디터/손조립 리그).</param>
+        /// <param name="rawImpactMagnitude">랙돌 판정에 쓴 그 값(= <see cref="StickmanBlackboard.LastImpactMagnitude"/>).</param>
+        /// <returns>진입에 실을 충격량(N·s). 0이면 아무 힘도 가하지 않는다.</returns>
+        public static float ResolveEntryImpulse(StickConfig config, float rawImpactMagnitude)
+        {
+            if (!(rawImpactMagnitude > 0f)) return 0f;   // NaN도 여기서 함께 걸러진다.
+
+            float threshold = config != null ? config.ragdollForceThreshold : 8f;
+            float target = config != null ? config.ragdollEntryAngularVelocityAtThreshold : 100f;
+            float cap = config != null ? config.ragdollEntryAngularVelocityCap : 400f;
+            float sensitivity = config != null ? config.ragdollEntryAngularSensitivityPerImpulse : 42.8f;
+
+            // 셋 중 하나라도 유효하지 않으면 조용히 꺼진다(= P9-a 이전 거동). target <= 0은 이 기능의
+            // 공식 OFF 스위치이기도 하다 — StickConfig의 그 필드 툴팁에 적어 두었다.
+            if (!(threshold > 0f) || !(target > 0f) || !(sensitivity > 0f)) return 0f;
+
+            // 상한이 목표보다 낮게 설정되면(오설정) 상한을 목표까지 끌어올린다 — 그렇지 않으면
+            // capRaw가 임계값보다 작아져 "세게 맞을수록 약해지는" 구간이 생긴다.
+            if (cap < target) cap = target;
+
+            float scale = target / sensitivity / threshold;
+            float capRaw = threshold * (cap / target);
+            return Mathf.Min(rawImpactMagnitude, capRaw) * scale;
         }
     }
 }

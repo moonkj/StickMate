@@ -34,6 +34,22 @@ namespace StickMate.States
         public float LastImpactMagnitude;
 
         /// <summary>
+        /// ★ 2026-09-01 (P9-b) — 위 <see cref="LastImpactMagnitude"/>와 <b>짝을 이루는 방향 스냅샷</b>
+        /// (월드, 정규화 불필요, "캐릭터가 밀려나는 방향"). 크기가 "얼마나 세게"라면 이것은 "어느
+        /// 쪽으로"이고, 둘이 합쳐져야 RagdollRig.EnterRagdoll(방향, 충격량)에 넘길 벡터가 완성된다.
+        /// 생산자는 <see cref="RagdollImpactResolver.TryApplyImpact(StickmanBlackboard,float,UnityEngine.Vector2)"/>
+        /// 하나뿐이다(전이를 확정하기 직전에 원인이 되는 물리량을 남기는 이 프로젝트의 관례 그대로).
+        ///
+        /// <b>이것만 소비형(consume-once)이다</b>: RagdollState.Enter()가 읽는 즉시 0으로 지운다.
+        /// 크기 쪽은 대사 파생용이라 남겨도 무해하지만, 방향은 남겨 두면 <b>방향을 모르는 진입</b>
+        /// (StickmanAgent.ReportExternalImpact(크기만) / 테스트의 직접 ChangeState / 원인 불명의 강제
+        /// 랙돌)에서 <b>지난번 타격의 방향으로 유령 충격량이 다시 실린다</b>. 0이면
+        /// RagdollRig가 충격량 경로 전체를 건너뛰므로(= 기존 무인자 거동), 지우는 것 하나로
+        /// "방향을 아는 경로만 힘을 받는다"가 보장된다.
+        /// </summary>
+        public Vector2 LastImpactDirection;
+
+        /// <summary>
         /// ★ 마지막 착지에서 실제로 떨어진 높이(월드 유닛). FallState.ConfirmLanding()이
         /// StickmanEventBus.LandingRollRequested에 싣는 것과 **정확히 같은 값**을 여기에도 남긴 뒤
         /// LandingCrouch로 전이하고, LandingCrouchState.Enter()가 이 스냅샷 하나로 앉는 깊이와 유지
@@ -270,6 +286,24 @@ namespace StickMate.States
         // ★ 2026-08-30 — GroundedTick()이 마지막으로 실행된 프레임 번호(TickGroundKeepingSafetyNet 참고).
         private int _groundedTickFrame = -1;
 
+        // ★ 2026-09-01 (디버거) — 유예가 쌓이는 동안 관측한 가장 긴 프레임 시간(초).
+        // 논리 발판에는 콜라이더가 없어 "서 있기"가 매 프레임 스냅으로만 유지되므로, 프레임이 한 번
+        // 길어지면 창이 전혀 변하지 않았는데도 자유낙하로 허용오차 밴드를 벗어난다(임계는
+        // GroundSensor.ComputeGroundLossFrameTimeThreshold가 유도 — 배포 형상에서 약 182ms).
+        // 그 경우를 (c) "창이 세로로 움직임"과 구분해 로그로 남기기 위한 값이다.
+        private float _worstLossDeltaTime;
+
+        // ★ 2026-09-01 (근본 수정) — GroundedTick()이 "접지 확정"으로 끝난 마지막 프레임 번호.
+        // 프레임 끝의 ApplyGroundedGravitySuppression()이 이 값 하나로 억제 여부를 정한다.
+        private int _groundedConfirmedFrame = -1;
+
+        // 같은 함수가 "아직 유예 중이고, 몸을 붙잡아 둬야 한다"고 판단한 마지막 프레임 번호.
+        private int _graceHoldFrame = -1;
+
+        // 이번 발판 상실 구간 직전에 중력 억제가 실제로 걸려 있었는가(진단 전용).
+        // DescribeGroundLoss()에 그대로 넘겨 사유 (d)를 잘못 지목하지 않게 한다.
+        private bool _groundedGravitySuppressionEngagedSinceLastLoss;
+
         // ★ 2026-08-30 — Fall 상태인데 실제로는 멈춰 있는(= 논리 발판 없는 물리면에 얹힌) 시간 누적.
         // EnforceScreenBoundsAndRescue()의 사각지대 회수 판정에 쓴다.
         private float _fallRestingTimer;
@@ -408,10 +442,18 @@ namespace StickMate.States
 
         /// <summary>
         /// Idle/Walk 공용 지상 로직: 접지 중이면 유예 타이머를 리셋하고 위치를 발판에 스냅한다.
-        /// 접지가 아니면 유예 타이머를 누적하다가 StickConfig.fallGraceDuration을 넘기면 Fall로
-        /// 강제 전이한다(발판 경계의 미세한 흔들림으로 인한 오탐 방지, StickConfig.cs 문서 참고).
+        /// 접지가 아니면 유예 타이머를 누적하다가 <see cref="StickConfig.ResolveGroundLossGraceDuration"/>
+        /// (= max(fallGraceDuration, footholdPollInterval x 배수))를 넘기면 Fall로 강제 전이한다.
+        ///
+        /// <para>★ 2026-09-01 — 유예 동안에는 <b>몸을 그 자리에 붙잡아 둔다</b>(중력 억제 유지).
+        /// 유예의 목적이 "창 열거/원점 읽기가 한 번 튄 것"의 흡수인데, 그동안 몸이 자유낙하해 버리면
+        /// 튐이 지나갔을 때 이미 접지 밴드 밖이라 아무 것도 흡수하지 못하기 때문이다. 예외는
+        /// "정말 걸어서 모서리를 넘어간" 경우 하나뿐이다
+        /// (<see cref="GroundSensor.GroundInfo.WalkedOffPreferredFoothold"/>).</para>
         /// </summary>
-        /// <returns>이번 호출로 Fall 전이가 발생했으면 true(호출부는 나머지 로직을 생략해야 함).</returns>
+        /// <returns>이번 호출로 <b>상태 전이</b>가 발생했으면 true(호출부는 나머지 로직을 생략해야 함).
+        /// 2026-09-01 이전에는 그 전이가 항상 Fall이었지만, 이제 Idle/Walk에서는
+        /// <see cref="StickmanStateId.GroundLossHang"/>(유예 승격)도 여기서 일어난다.</returns>
         public bool GroundedTick(float deltaTime, GroundSensor.GroundInfo info)
         {
             // ★ 2026-08-30 — 이번 프레임에 이미 접지 유지가 수행됐음을 기록한다. 아래
@@ -431,26 +473,100 @@ namespace StickMate.States
                     ReportFootholdChangeIfNeeded("접지 획득(공중을 거치지 않은 최초 접지)");
                 }
                 _groundLossTimer = 0f;
+                _worstLossDeltaTime = 0f;
                 // 스냅이 상한을 넘어 "발판을 놓고 Fall"로 갔으면 그 사실을 호출부에 그대로 전달한다
                 // (호출부 계약: true = 이번 호출로 Fall 전이가 일어났으니 나머지 로직을 생략하라).
-                return SnapToGround(info);
+                bool leftGround = SnapToGround(info);
+                // ★ 2026-09-01 — 접지가 "이번 프레임에" 확정됐음을 남긴다. 프레임 끝에서
+                // ApplyGroundedGravitySuppression()이 이 값 하나로 중력 억제 여부를 정한다
+                // (그 함수 문서 참고 — 스냅에 실패해 Fall로 간 프레임은 접지로 치지 않는다).
+                if (!leftGround) _groundedConfirmedFrame = Time.frameCount;
+                return leftGround;
             }
 
             _groundLossTimer += deltaTime;
-            float grace = Config != null ? Config.fallGraceDuration : 0.1f;
+            if (deltaTime > _worstLossDeltaTime) _worstLossDeltaTime = deltaTime;
+
+            // ★ 2026-09-01 — 유예 동안 **몸을 붙잡아 둘지**를 이번 프레임 기준으로 기록한다.
+            // 유예의 목적은 "창 열거/원점 읽기가 한 번 튄 것"을 흡수하는 것인데, 그러려면 그동안
+            // 몸이 움직이지 않아야 한다 — 튐이 지나갔을 때 이미 접지 밴드 밖으로 떨어져 있으면
+            // 유예를 아무리 늘려도 아무 것도 흡수하지 못한다(유예 연장만으로는 H5가 닫히지 않는다).
+            // 실측 근거: 폴링 한 주기(0.3초)만 자유낙하해도 1.32유닛 = 허용오차 0.489유닛의 2.7배,
+            // 스냅 상한 0.6유닛도 넘는다 → 튐이 사라져도 되돌아갈 수 없다.
+            // 붙잡지 **않는** 경우는 둘뿐이다:
+            //   · 정말 걸어서 모서리를 넘어갔다(발밑에 실제로 아무것도 없다 — 붙잡으면 공중부양이 된다).
+            //     GroundSensor.GroundInfo.WalkedOffPreferredFoothold 참고.
+            //   · 애초에 딛고 있던 발판이 없다(핸들 0 = 공중에서 시작한 Idle 등). 붙잡을 "직전 상태"가
+            //     없으므로 흡수할 튐도 없고, 붙잡으면 허공에 멈춘 그림만 남는다.
+            if (CurrentFootholdHandle != 0L && !info.WalkedOffPreferredFoothold)
+            {
+                _graceHoldFrame = Time.frameCount;
+
+                // ★ 2026-09-01 (연출) — 붙잡기가 성립한 <b>그 순간</b> 유예를 진짜 상태로 승격한다.
+                // 왜 필요한가: 붙잡음 자체는 낙하 수정의 본체라 뺄 수 없는데, 실측에서 IDLE 중에는
+                // 그 구간이 10프레임 넘게 화소차 0.00%인 **완전 정지 화면**이 되어 "앱이 멈췄다"로
+                // 읽혔다(WALK 중에는 다리가 돌아가 코요테 개그로 읽혔다 — 같은 빌드/물리/시간의
+                // 통제 비교다). 포즈를 붙이려면 이 프로젝트 규약("상태 ID 하나로 포즈가 결정된다")상
+                // 상태 승격이 맞다. 조건/근거는 States/GroundLossHangState.cs 클래스 문서 참고.
+                if (TryEnterGroundLossHang()) return true;
+            }
+            // ★ 2026-09-01 (근본 원인 2) — 유예를 **창 열거 폴링 간격에서 유도**한다.
+            // 예전에는 fallGraceDuration(0.1초)을 그대로 썼는데, 발판 캐시는 footholdPollInterval
+            // (0.3초) 동안 고정이라 열거가 한 번만 튀면 그 나쁜 목록이 유예의 3배 동안 유지된다 =
+            // 유예가 설계 목적(일시적 튐 흡수)을 원리적으로 수행할 수 없었다(디버거 가설 H5).
+            // 숫자를 여기 적지 않는 이유는 폴링 주기를 바꾸면 유예가 자동으로 따라가야 하기 때문이다 —
+            // 계산은 StickConfig.ResolveGroundLossGraceDuration() 한 곳에만 있다.
+            float grace = Config != null ? Config.ResolveGroundLossGraceDuration() : 0.1f;
             if (_groundLossTimer < grace) return false;
 
-            _groundLossTimer = 0f;
             // 리더 지시: 발판을 잃는 순간을 **사유와 함께** 남긴다(로그가 유일한 판별 수단).
+            // ★ 2026-09-01 — 예전에는 "(a)/(b)/(c) 중 하나"라고만 적어서 사용자 신고 "창에서 가끔
+            // 갑자기 떨어짐"을 조사할 때 실측 로그에서 사유를 끝내 구분할 수 없었다. 이제 그 자리에서
+            // 실제 값을 재서 사유를 하나로 확정하고, 창이 전혀 변하지 않았는데 프레임이 길어져 떨어진
+            // 경우(사유 d)까지 분리한다 — GroundSensor.DescribeGroundLoss 문서 참고.
+            var footholdsNow = FootholdPoller != null
+                ? FootholdPoller.CachedFootholds
+                : System.Array.Empty<PlatformFoothold>();
+            Vector2 footNow = Body != null ? Body.position : Vector2.zero;
+            string why = GroundSensor.DescribeGroundLoss(MainCamera, footNow, footholdsNow, Config,
+                CurrentFootholdHandle, _worstLossDeltaTime, _groundedGravitySuppressionEngagedSinceLastLoss);
             Debug.Log($"[발판상실] 딛고 있던 발판(핸들={CurrentFootholdHandle})이 {grace:F2}초 동안 접지 조건을 " +
-                "만족하지 못해 Fall로 전이합니다 — 사유는 (a) 그 창이 닫히거나 다른 창에 완전히 가려져 " +
-                "발판 목록에서 사라짐, (b) 창이 움직여 캐릭터 X가 그 창의 X 범위를 벗어남, " +
-                "(c) 창이 세로로 이동해 상단선이 허용오차 밖으로 벗어남 중 하나다.");
+                $"만족하지 못해 Fall로 전이합니다 — {why}");
+
+            _groundLossTimer = 0f;
+            _worstLossDeltaTime = 0f;
+            _groundedGravitySuppressionEngagedSinceLastLoss = false;
+            _graceHoldFrame = -1;   // 유예가 끝났다 = 더 이상 붙잡지 않는다(이 프레임부터 실제로 떨어진다).
             Machine.ChangeState(StickmanStateId.Fall);
             return true;
         }
 
         public void ResetGroundLossTimer() => _groundLossTimer = 0f;
+
+        /// <summary>
+        /// 유예 붙잡기가 성립한 프레임에 <see cref="StickmanStateId.GroundLossHang"/>으로 승격한다.
+        ///
+        /// <para><b>Idle/Walk에서만 승격하는 이유</b>는 States/GroundLossHangState.cs 클래스 문서에
+        /// 실패 시나리오까지 적어 뒀다. 요약: 스펙터클 상태에서까지 전이시키면 창 열거가 한 번 튈
+        /// 때마다 진행 중이던 연출이 취소된다 — 유예가 흡수하려던 사건이 유예 때문에 눈에 보이는
+        /// 사고로 바뀐다. 그 상태들은 포즈를 스스로 소유하므로 "같은 상태인데 포즈가 두 가지" 문제도
+        /// 애초에 생기지 않고, 붙잡음은 위 <c>_graceHoldFrame</c>이 예전 그대로 담당한다.</para>
+        ///
+        /// <para>스위치(<see cref="StickConfig.groundLossHangStateEnabled"/>)를 끄면 이 승격만
+        /// 사라져 2026-09-01 오전 거동으로 정확히 되돌아간다(붙잡음/유예 길이는 그대로).</para>
+        /// </summary>
+        /// <returns>실제로 전이시켰으면 true.</returns>
+        private bool TryEnterGroundLossHang()
+        {
+            if (Machine == null) return false;
+            if (Config != null && !Config.groundLossHangStateEnabled) return false;
+
+            StickmanStateId id = Machine.CurrentStateId;
+            if (id != StickmanStateId.Idle && id != StickmanStateId.Walk) return false;
+
+            Machine.ChangeState(StickmanStateId.GroundLossHang);
+            return true;
+        }
 
         // ================================================================================
         // ★★ 접지 유지 안전망 (2026-08-30, 디버거 — 사용자 신고 "갑자기 독 아래로 떨어지면서
@@ -482,6 +598,12 @@ namespace StickMate.States
         /// 공중에 있거나(Jump/Fall/ThrowTumble) 몸 위치를 스스로 구동하거나(LedgeHang/ParkourClimb/
         /// Dragged/RodeoCursor/Runaway) 전신을 물리에 위임한(Ragdoll) 상태들이다.
         /// 여기 없는 상태는 전부 안전망의 보호를 받는다.
+        ///
+        /// <para>★ <see cref="StickmanStateId.GroundLossHang"/>이 <b>일부러 여기 없는</b> 이유:
+        /// 이 목록은 접지 안전망뿐 아니라 <see cref="ApplyGroundedGravitySuppression"/>의 제외 목록이기도
+        /// 하다. 유예 상태를 여기 넣으면 <b>중력 억제가 걸리지 않아 몸이 자유낙하한다</b> — 붙잡음이
+        /// 사라지는 것이고, 그건 이번 수정이 막으려는 버그 그 자체다. 안전망 쪽 중복 호출은 그 상태가
+        /// 자기 Tick에서 GroundedTick을 부르므로 <c>_groundedTickFrame</c>으로 이미 걸러진다.</para>
         /// </summary>
         public static bool IsGroundKeepingSelfManaged(StickmanStateId id)
         {
@@ -522,9 +644,96 @@ namespace StickMate.States
 
             // 안전망이 실제로 개입해 Fall로 보낸 경우만 남긴다(이산 사건이라 로그가 넘치지 않는다).
             Debug.Log($"[접지안전망] 상태 {id}가 접지 유지를 하지 않아 안전망이 대신 처리했고, " +
-                "발판을 잃어 Fall로 전이시켰습니다. 이 안전망이 없으면 이 상태에 머무는 동안 " +
+                $"발판을 잃어 {Machine.CurrentStateId}로 전이시켰습니다. 이 안전망이 없으면 이 상태에 머무는 동안 " +
                 "논리 발판(Dock/창 상단, 물리 콜라이더 없음) 위에서 그대로 자유낙하해 화면 최하단 " +
                 "물리 바닥에 전속력으로 부딪히고 RAGDOLL이 됩니다(2026-08-30 신고의 근본 원인).");
+        }
+
+        // ================================================================================
+        // ★★ 접지 중 중력 억제 (2026-09-01 — 사용자 신고 "캐릭터가 창에서 가끔 갑자기 떨어짐"의 근본 원인 1)
+        // ================================================================================
+        // 무엇이 문제였나(디버거 조사로 확정, 반증된 가설은 다시 파지 않는다):
+        //   창/Dock 상단은 **논리 발판일 뿐 물리 콜라이더가 없다.** 그래서 "서 있기"는 매 프레임
+        //   SnapToGround() 한 번으로만 유지되는데, **그 사이에도 중력은 계속 적분된다.**
+        //   한 프레임의 자유낙하가 접지 허용오차(groundSnapTolerance)를 넘으면 그 프레임이 끝나는
+        //   순간 GroundSensor.Sense()가 Grounded=false를 내고, 그 한 프레임이 유예까지 통째로
+        //   소진하므로 **단 한 프레임으로 낙하가 확정된다**(창은 1픽셀도 움직이지 않았는데).
+        //   임계 프레임시간은 GroundSensor.ComputeGroundLossFrameTimeThreshold()가 계산한다 —
+        //   배포 형상에서 약 182ms. 그런데 절전 프레임페이싱 티어 DisplayOff는 4fps(=250ms/프레임),
+        //   엔진 최대 timestep은 333ms다. 즉 절전 등급이나 히치 한 번이면 **상시** 성립한다.
+        //
+        // 왜 "스냅을 더 자주/더 세게"가 아니라 중력을 끄는가:
+        //   스냅은 사후 보정이라 원리적으로 프레임 길이에 진다. 반면 접지 중 gravityScale=0은
+        //   **세로 적분 자체를 0으로 만들기 때문에 프레임이 아무리 길어도 낙하량이 0이다.**
+        //   즉 이 처방만 프레임 길이와 독립이다.
+        //
+        // ★ 가장 큰 위험은 반대쪽이다 — "중력이 꺼진 채 갇히기". 그래서 벗겼다 다시 얹는다:
+        //   StickmanAgent.Update()가 상태 Tick **직전**에 ReleaseGroundedGravitySuppression()으로
+        //   무조건 원복하고, 그 프레임의 모든 처리가 끝난 **맨 끝**에 ApplyGroundedGravitySuppression()이
+        //   다시 얹는다(잉크 바닥 클리어런스 리프트와 완전히 같은 관례). 그 결과:
+        //     · 상태 로직/연출 코드가 gravityScale을 읽는 시점에는 **언제나 진짜 값**이다
+        //       (ThrowTumbleState가 포물선을 계산할 때 0을 읽는 사고가 원천 차단된다).
+        //     · 어떤 경로로 상태가 바뀌든(강제 인터럽트/외부 ChangeState/컴포넌트 비활성) 억제는
+        //       다음 프레임 맨 앞에서 반드시 풀린다. 억제가 영구히 남을 수 있는 코드 경로가 없다.
+        //     · 다시 얹는 조건은 **이번 프레임에 (a) 접지가 확정됐거나 (b) 아직 유예 중이며 몸을
+        //       붙잡아 둬야 하고, 그 상태가 접지를 스스로 관리하지 않는 종류일 때**뿐이다.
+        //       Jump/Fall/Ragdoll/ThrowTumble/Dragged 등은 애초에 대상이 아니다.
+        //       (b)가 필요한 이유는 GroundedTick()의 _graceHoldFrame 주석에 있다 — 유예는 몸이
+        //       움직이지 않을 때에만 "일시적 튐"을 흡수할 수 있다.
+
+        // 억제 직전에 백업해 둔 원래 gravityScale. NaN = 억제 중 아님(0도 유효한 원래 값일 수 있으므로
+        // 0을 "억제 아님" 표식으로 쓰지 않는다).
+        private float _gravityScaleBeforeSuppression = float.NaN;
+
+        /// <summary>지금 이 프레임에 접지 중력 억제가 걸려 있는지(진단/테스트용).</summary>
+        public bool IsGroundedGravitySuppressed => !float.IsNaN(_gravityScaleBeforeSuppression);
+
+        /// <summary>
+        /// 얹어 둔 중력 억제를 벗긴다. StickmanAgent.Update()가 <b>상태 Tick보다 먼저</b> 무조건 부른다.
+        /// 멱등이며, 억제 중이 아니면 아무 일도 하지 않는다.
+        /// </summary>
+        public void ReleaseGroundedGravitySuppression()
+        {
+            if (float.IsNaN(_gravityScaleBeforeSuppression)) return;
+            if (Body != null) Body.gravityScale = _gravityScaleBeforeSuppression;
+            _gravityScaleBeforeSuppression = float.NaN;
+        }
+
+        /// <summary>
+        /// 이번 프레임에 접지가 확정됐으면 중력을 눌러 둔다(위 섹션 문서 참고).
+        /// StickmanAgent.Update()가 <b>다른 모든 처리가 끝난 뒤 맨 마지막</b>에 부른다 —
+        /// 그래야 이 프레임의 최종 상태(강제 인터럽트/화면 클램프/구조 회수까지 반영된 결과)를 보고
+        /// 판단할 수 있고, 그 판단이 곧 <b>다음 FixedUpdate</b>에 적용된다(Unity 프레임 순서상
+        /// FixedUpdate는 Update보다 앞이므로, 여기서 세운 값이 다음 물리 스텝을 지배한다).
+        /// </summary>
+        public void ApplyGroundedGravitySuppression()
+        {
+            if (Body == null || Machine == null) return;
+            if (Config != null && !Config.groundedGravitySuppressionEnabled) return;
+            if (!float.IsNaN(_gravityScaleBeforeSuppression)) return;      // 이미 얹혀 있다(멱등).
+
+            // 이번 프레임에 GroundedTick()이 (a) "접지 확정"으로 끝났거나 (b) "아직 유예 중이며 몸을
+            // 붙잡아 둬야 한다"고 판단했는가. 스냅 상한 초과로 발판을 놓은 프레임은 (a)에 들어오지
+            // 않는다(GroundedTick 참고).
+            int frame = Time.frameCount;
+            if (_groundedConfirmedFrame != frame && _graceHoldFrame != frame) return;
+
+            // 접지를 스스로 관리하는 상태(공중/자기구동/전신물리)는 대상이 아니다 —
+            // 목록을 여기 다시 적지 않는 것이 핵심이다(안전망과 같은 단일 소스).
+            if (IsGroundKeepingSelfManaged(Machine.CurrentStateId)) return;
+
+            _gravityScaleBeforeSuppression = Body.gravityScale;
+            Body.gravityScale = 0f;
+            _groundedGravitySuppressionEngagedSinceLastLoss = true;
+
+            // 잔여 세로 속도도 함께 지운다. 중력이 0인데 속도가 남아 있으면 등속으로 미끄러져
+            // 오히려 밴드를 벗어난다(SnapToGround는 하강 속도만 지우므로 상승 잔여분이 남을 수 있다).
+            Vector2 v = Body.linearVelocity;
+            if (v.y != 0f)
+            {
+                v.y = 0f;
+                Body.linearVelocity = v;
+            }
         }
 
         // ================================================================================
@@ -870,6 +1079,25 @@ namespace StickMate.States
                     halfWidth = StickConfig.BaselineBodyPhysicsHalfWidth * scale;
                 }
                 return DockGeometry.ResolveParkourMantleInset(configured, EdgeStopDistanceWorld, halfWidth);
+            }
+        }
+
+        /// <summary>
+        /// ★ 경계 행동(뛰어내리기/매달리기/되올라가기) <b>대상 탐지</b>의 도달거리(월드 유닛) —
+        /// 2026-08-31, 사용자 신고 "캐릭터 크기를 키우면 Dock 위로 안 올라옴"의 근본 수정.
+        ///
+        /// 위 <see cref="EdgeStopDistanceWorld"/>는 <b>언제 평가할지</b>를 정하고, 이 값은
+        /// <b>그 순간 무엇이 잡히는지</b>를 정한다. 배회 AI는 평가 거리보다 가까이 다가가지 않으므로
+        /// (경계 추첨은 걷기 구간당 1회, 실패하면 그 자리에서 돌아선다) 이 값이 평가 거리보다 짧으면
+        /// 경계 행동이 <b>구조적으로 성립 불가능</b>해진다. 배율 1.0을 넘으면 실제로 그렇게 됐다.
+        /// 유도식/근거는 <see cref="DockGeometry.ResolveEdgeProbeReach"/>에 전부 적어 두었다.
+        /// </summary>
+        public float EdgeProbeReachWorld
+        {
+            get
+            {
+                float configured = Config != null ? Config.parkourDetectionRadius : 0.5f;
+                return DockGeometry.ResolveEdgeProbeReach(configured, EdgeStopDistanceWorld);
             }
         }
 
@@ -1294,6 +1522,19 @@ namespace StickMate.States
         /// </summary>
         public void TickPose(float deltaTime)
         {
+            TickPoseRouting(deltaTime);
+
+            // ★ 2026-09-01 상체 기울임 — 위 라우팅에는 조기 return이 열 개 넘게 있고(상태마다 포즈
+            // 주인이 다르다), 기울임은 그 **전부**에서 갱신돼야 한다. 그래서 라우팅을 감싸 여기 한
+            // 곳에서만 확정한다: 포즈가 이번 프레임에 요청한 목표(TickWalkPose/ApplyIdleAmbientPose)로
+            // 감쇠 접근하고, 아무도 요청하지 않았으면 목표가 0이라 자동으로 직립으로 돌아온다.
+            // 상태 목록을 여기 다시 적지 않는 것이 핵심이다 — 그러면 새 상태가 생길 때마다 빠뜨린다.
+            StickmanPoseAnimator leanPose = GetPoseAnimator();
+            if (leanPose != null) leanPose.TickBodyLean(deltaTime, BodyLeanSmoothingRate);
+        }
+
+        private void TickPoseRouting(float deltaTime)
+        {
             RagdollRig rig = GetRagdollRig();
             StickmanPoseAnimator pose = GetPoseAnimator();
             if (rig == null || pose == null || Machine == null) return;
@@ -1319,8 +1560,15 @@ namespace StickMate.States
 
             if (Machine.CurrentStateId == StickmanStateId.Ragdoll)
             {
-                // EnterRagdoll()이 아니라 멱등 버전을 쓴다 — 전자는 진입 이벤트마다 각속도를 절반으로
-                // 깎으므로 매 프레임 호출하면 RAGDOLL이 회전하지 못한다(RagdollRig.cs 참고).
+                // EnterRagdoll()이 아니라 멱등 버전을 쓴다 — 전자는 **진입 이벤트 1회분**의 처리
+                // (각속도 완충 + 진입 충격량)를 담고 있어 매 프레임 부르면 그게 매 프레임 반복된다
+                // (RagdollRig.cs 참고). ★ 2026-09-01: 각속도 완충 비율은 1(무효)이 됐지만, 이제 그
+                // 자리에 진입 충격량이 들어와 이 분리가 더 중요해졌다 — 매 프레임 때리면 랙돌이
+                // 영원히 가속된다.
+                // 기운 채로 전신 물리에 넘기면 관절이 부착점을 되찾으며 팔이 튄다. 감쇠를 기다리지
+                // 않고 **이 프레임에** 지운다(랙돌 진입 에너지 로직은 건드리지 않는다 — 이건 시각
+                // 오프셋 원복일 뿐이고, 다음 물리 스텝은 다음 프레임 FixedUpdate에서 돈다).
+                pose.ClearBodyLean();
                 rig.EnsureRagdollMode();
                 return;
             }
@@ -1353,6 +1601,13 @@ namespace StickMate.States
 
             rig.SnapRootUpright();
             if (Machine.CurrentStateId == StickmanStateId.Walk) return;
+
+            // ★ 발판 상실 공중 유예(2026-09-01) — Walk/LandingCrouch/Archery와 **완전히 같은 이유**로
+            // 여기서 아무 것도 하지 않는다: 포즈를 이미 GroundLossHangState.Tick()이 자기 진행 곡선으로
+            // 세팅했다. 이 상태에서는 그 "아무 것도 하지 않음"이 특히 중요하다 — 연출의 첫 박자가
+            // **의도적인 무반응**(직전 상태의 마지막 그림을 그대로 유지)이라서, 여기서 Idle 중립 포즈를
+            // 덧씌우면 발판을 잃는 순간 다리가 차렷 자세로 모이는 "반응"이 생겨 개그가 통째로 죽는다.
+            if (Machine.CurrentStateId == StickmanStateId.GroundLossHang) return;
 
             // ★ 무릎앉아 착지(2026-08-29) — Walk와 **완전히 같은 이유**로 여기서 아무 것도 하지 않는다:
             // 포즈를 이미 LandingCrouchState.Tick()이 자기 진행 곡선으로 세팅했다. 이 분기를 빠뜨리면
@@ -1501,6 +1756,25 @@ namespace StickMate.States
             EyeController eyes = GetEyeController();
             if (eyes == null) return;
 
+            // ★★ 2026-08-31 — "주위 살피기" 중에는 커서 추적 대신 **눈동자가 좌우를 훑는다**.
+            //
+            // 무엇을 고친 것인가: 예전에는 이 연출이 머리 Transform을 좌우로 밀었다
+            // (StickmanPoseAnimator.SetBodyOffset의 headOffsetX). 그런데 이 리그에는 목 관절이 없다 —
+            // 목은 Torso LineRenderer의 윗부분이고 루트 로컬 x=0에 고정돼 있어서, 머리만 옆으로 밀면
+            // 정의상 머리가 목에서 미끄러진다(사용자 신고 "머리를 움직이는데 목에서 벗어나서 이상함").
+            // 그 경로는 StickConfig.idleAmbientLookHeadShiftRatio = 0으로 껐고, 잃어버린 "두리번거림"
+            // 신호를 구조적으로 안전한 곳 — 머리의 자식이고 링 안쪽으로 실측 clamp되는 눈동자 —
+            // 으로 옮긴다. 어떤 배율에서도 눈이 머리 밖으로 나갈 수 없다(EyeController._measuredSafeOffset).
+            //
+            // 포락선은 포즈와 **완전히 같은 식**이다(ApplyIdleAmbientPose의 env). 양 끝이 정확히 0이라
+            // 시작/끝에서 눈이 튀지 않고, 동작이 끝나면 다음 프레임부터 아래 커서 추적이 그대로 이어받는다
+            // (SetLookDirection은 즉시 대입이지만 TickLookAt이 지수 감쇠로 되돌리므로 복귀도 부드럽다).
+            if (TryGetIdleAmbientEyeSweep(out float eyeSweepX))
+            {
+                eyes.SetLookDirection(new Vector2(eyeSweepX, 0f));
+                return; // 진단 로그는 커서 추적 표본만 남긴다(연출 중 표본이 섞이면 추적 검증이 흐려진다).
+            }
+
             bool hasCursor = TryGetCursorWorldPosition(out Vector2 cursorWorld);
             eyes.TickLookAt(hasCursor, cursorWorld, deltaTime, BuildEyeTrackingSettings());
 
@@ -1525,6 +1799,36 @@ namespace StickMate.States
                 $"눈동자오프셋={offset.ToString("F4")}(길이 {offset.magnitude:F4}), " +
                 $"시선={eyes.CurrentLookDirection.ToString("F3")}, 눈발견={eyes.HasEyes}, " +
                 $"상태={(Machine != null ? Machine.CurrentStateId.ToString() : "?")}.");
+        }
+
+        /// <summary>
+        /// "주위 살피기"가 지금 눈동자에 줘야 할 좌우 오프셋(-1~1). 진행 중이 아니거나 폭이 0이면 false.
+        ///
+        /// 진행 곡선은 StickmanPoseAnimator.ApplyIdleAmbientPose와 **글자 그대로 같은 두 줄**이다
+        /// (sin(2*pi*p) x smoothstep(sin(pi*p))) — 팔과 눈이 같은 리듬으로 움직여야 한 동작으로 읽힌다.
+        /// 두 곳에 같은 식이 있는 것은 의도적이다: 포즈 계산은 무상태 순수 함수이고 이쪽은
+        /// EyeController를 잡고 있어 서로를 부를 수 없으며, 억지로 공유하면 포즈 레이어가 눈을 알게 된다.
+        /// 대신 <b>같은 식이라는 사실 자체를 테스트가 잠근다</b>
+        /// (Tests/EditMode/IdleAmbientLookAroundInvariantTests.cs).
+        /// </summary>
+        public bool TryGetIdleAmbientEyeSweep(out float sweepX)
+        {
+            sweepX = 0f;
+            if (!IsIdleAmbientMotionActive) return false;
+            if (_idleAmbientMotion != WanderAmbientMotion.LookAround) return false;
+            // 상태가 이미 Idle을 벗어났으면 이번 프레임부터 연출은 없는 것으로 본다 — TickIdleAmbientMotion이
+            // 같은 프레임 뒤쪽에서 이걸 정리하므로, 여기서 먼저 막지 않으면 한 프레임 눈만 남는다.
+            if (Machine == null || Machine.CurrentStateId != StickmanStateId.Idle) return false;
+
+            float amplitude = Config != null ? Mathf.Clamp01(Config.idleAmbientLookEyeSweep01) : 0.85f;
+            if (amplitude <= 0f) return false;
+            if (Config != null && !Config.idleAmbientMotionEnabled) return false;
+
+            float p = Mathf.Clamp01(IdleAmbientProgress01);
+            float raw = Mathf.Sin(p * Mathf.PI);
+            float env = raw * raw * (3f - 2f * raw);
+            sweepX = Mathf.Sin(p * Mathf.PI * 2f) * env * amplitude;
+            return true;
         }
 
         /// <summary>StickConfig의 눈 추적 튜닝 값 묶음(미배선 경로에서도 안전한 기본값 사용).</summary>
@@ -1619,6 +1923,23 @@ namespace StickMate.States
                 Config != null ? Config.fallPoseKneeBendDegrees : 38f);
         }
 
+        /// <summary>
+        /// 발판 상실 공중 유예 자세(제자리 종종걸음 + 팔 허우적) 각도/배수 묶음
+        /// (StickConfig -> StickmanPoseAnimator). BuildFallPoseSettings와 완전히 같은 패턴이며,
+        /// 전부 <b>각도와 무차원 배수</b>라 캐릭터 배율 환산이 필요 없다(리더 지시: "각도는 크기와
+        /// 무관하니 절대값, 거리·속도 성분만 StickmanMetrics에서 파생").
+        /// </summary>
+        public StickmanPoseAnimator.GroundLossHangPoseSettings BuildGroundLossHangPoseSettings()
+        {
+            return new StickmanPoseAnimator.GroundLossHangPoseSettings(
+                Config != null ? Config.groundLossHangLegCycleSpeedMultiplier : 3f,
+                Config != null ? Config.groundLossHangLegAmplitudeScale : 1f,
+                Config != null ? Config.groundLossHangArmFlailBaseDegrees : 125f,
+                Config != null ? Config.groundLossHangArmFlailDegrees : 48f,
+                Config != null ? Config.groundLossHangArmFlailFrequencyRatio : 0.63f,
+                Config != null ? Config.groundLossHangElbowBendDegrees : 22f);
+        }
+
         /// <summary>활 쏘는 자세 각도 묶음(StickConfig -> StickmanPoseAnimator). BuildPoseSettings와
         /// 동일한 패턴 — Config가 없는 테스트/폴백 경로에서도 안전하도록 각 값에 기본값을 둔다.
         /// 마지막 인자(몸이 가라앉는 거리)만 <b>신장 비율 -> 월드 거리</b>로 여기서 환산한다
@@ -1641,6 +1962,35 @@ namespace StickMate.States
         /// <summary>활쏘기 포즈의 지수 감쇠 계수(1/초) — LandingCrouchPoseSmoothingRate와 같은 관례.</summary>
         public float ArcheryPoseSmoothingRate => Config != null ? Config.archeryPoseSmoothingRate : 46f;
 
+        // ==================== 상체 기울임 (2026-09-01) ====================
+        // 마스터 스위치가 꺼지면 세 용도가 **전부** 0이 된다 — 스위치의 의미를 호출부마다 해석하지
+        // 않도록 여기 한 곳에서만 판단한다(Config가 없는 테스트 리그에서도 안전한 기본값을 둔다).
+
+        private bool BodyLeanEnabled => Config == null || Config.bodyLeanEnabled;
+
+        /// <summary>명령 속도에 도달했을 때의 전방 기울임(도). WalkState/ArcheryState가 TickWalkPose에 넘긴다.</summary>
+        public float RunBodyLeanDegrees
+            => BodyLeanEnabled ? (Config != null ? Config.bodyLeanRunMaxDegrees : 10f) : 0f;
+
+        /// <summary>발판 상실 공중 유예의 '낙하 전조' 상체 기울임 목표 각도(도).
+        /// 마스터 스위치(bodyLeanEnabled)가 꺼지면 다른 두 용도와 함께 0이 된다.</summary>
+        public float GroundLossHangFallTellLeanDegrees
+            => BodyLeanEnabled ? (Config != null ? Config.groundLossHangFallTellLeanDegrees : 26f) : 0f;
+
+        /// <summary>'주위 살피기'의 상체 좌우 왕복 각도(도).</summary>
+        public float LookAroundBodyLeanDegrees
+            => BodyLeanEnabled ? (Config != null ? Config.bodyLeanLookAroundDegrees : 7f) : 0f;
+
+        /// <summary>랙돌 임계값 미만 피격의 상체 튕김 각도(도).</summary>
+        public float HitBodyLeanDegrees
+            => BodyLeanEnabled ? (Config != null ? Config.bodyLeanHitDegrees : 14f) : 0f;
+
+        /// <summary>피격 기울임의 복구 계수(1/초).</summary>
+        public float HitBodyLeanRecoverRate => Config != null ? Config.bodyLeanHitRecoverRate : 7f;
+
+        /// <summary>기울임이 목표를 따라가는 지수 감쇠 계수(1/초).</summary>
+        public float BodyLeanSmoothingRate => Config != null ? Config.bodyLeanSmoothingRate : 12f;
+
         /// <summary>유휴 앰비언트 동작(26-3) 각도/거리 묶음. 거리 성분 2개만 신장을 곱해 환산한다
         /// (BuildArcheryPoseSettings와 완전히 같은 관례).</summary>
         public StickmanPoseAnimator.IdleAmbientPoseSettings BuildIdleAmbientPoseSettings()
@@ -1652,7 +2002,8 @@ namespace StickMate.States
                 Config != null ? Config.idleAmbientStretchArmSpreadDegrees : 13f,
                 Config != null ? Config.idleAmbientStretchElbowDegrees : 16f,
                 Config != null ? Config.idleAmbientStretchKneeStraighten01 : 0.7f,
-                CharacterHeightWorld * (Config != null ? Config.idleAmbientStretchRiseRatio : 0.030f));
+                CharacterHeightWorld * (Config != null ? Config.idleAmbientStretchRiseRatio : 0.030f),
+                LookAroundBodyLeanDegrees);
         }
 
         /// <summary>공중 회전(텀블링) 자세 각도 묶음(StickConfig -> StickmanPoseAnimator).
@@ -1763,8 +2114,9 @@ namespace StickMate.States
             wallHandle = 0L;
             var footholds = FootholdPoller != null ? FootholdPoller.CachedFootholds : System.Array.Empty<PlatformFoothold>();
             Vector2 foot = Body != null ? Body.position : Vector2.zero;
+            // ★ 2026-08-31 — 경계 근접 게이트만 유도값으로 넘긴다(EdgeProbeReachWorld 문서 참고).
             bool found = GroundSensor.TryFindClimbableWall(MainCamera, foot, info, direction, footholds, Config,
-                out PlatformFoothold wall, out wallTopWorldY);
+                out PlatformFoothold wall, out wallTopWorldY, EdgeProbeReachWorld);
             if (found) wallHandle = wall.Handle;
             return found;
         }
@@ -1793,7 +2145,7 @@ namespace StickMate.States
             float outward = Config != null ? Config.ledgeHangEdgeOffset : 0.14f;
             // 상한 없음(0) — 매달리기는 "깊으면 깊을수록" 성립한다. 하한만이 안전 조건이다.
             return GroundSensor.TryFindDescendTarget(MainCamera, foot, info, direction, footholds, Config, outward,
-                LedgeHangMinDropDepth, 0f, out targetHandle, out targetTopWorldY);
+                LedgeHangMinDropDepth, 0f, out targetHandle, out targetTopWorldY, EdgeProbeReachWorld);
         }
 
         /// <summary>
@@ -1815,7 +2167,8 @@ namespace StickMate.States
             float outward = Config != null ? Config.hopDownProbeOutward : 0.2f;
             float minDrop = Config != null ? Config.hopDownMinDropHeight : 0.35f;
             return GroundSensor.TryFindDescendTarget(MainCamera, foot, info, direction, footholds, Config, outward,
-                Mathf.Max(0.0001f, minDrop), HopDownMaxDropHeight, out targetHandle, out targetTopWorldY);
+                Mathf.Max(0.0001f, minDrop), HopDownMaxDropHeight, out targetHandle, out targetTopWorldY,
+                EdgeProbeReachWorld);
         }
 
         /// <summary>

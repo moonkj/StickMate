@@ -53,36 +53,52 @@ namespace StickMate.Interaction
         /// 그리지 않고 이연한다"는 규칙을 그대로 통과해야 한다. 사용자가 단축키를 눌렀다는 사실이
         /// 남의 작업 창 위에 낙서해도 된다는 허락은 아니다.
         /// </summary>
-        public void ForceTriggerNow(string reason)
-        {
-            if (_player == null || _config == null)
-            {
-                Debug.LogWarning($"[그라피티] 강제 발동 실패({reason}) — 플레이어/설정 배선이 없습니다.");
-                return;
-            }
-            if (SpectacleEventLock.IsActive)
-            {
-                Debug.Log($"[그라피티] 강제 발동 건너뜀({reason}) — 다른 스펙터클({SpectacleEventLock.ActiveKind})이 " +
-                          "진행 중입니다(상호배제 락).");
-                return;
-            }
+        /// <summary>빈 자리를 못 찾았을 때 사용자에게 보여줄 한 줄(36-7 표와 1:1).</summary>
+        public const string NoEmptyRegionReason = "낙서할 빈 자리가 없어요";
 
-            var current = _player.Blackboard.Machine.CurrentStateId;
+        /// <summary>
+        /// ★ 지금 그라피티를 시킬 수 있는가 — 회색 처리와 실제 실행이 함께 쓰는 단 하나의 판정
+        /// (docs/UX_FLOW.md 36-7). 27-3의 "발판(창)과 겹치지 않는 빈 영역이 있어야 한다"는 침해 방지
+        /// 규칙까지 여기서 함께 본다 — 그래야 버튼이 회색인 이유와 실제 포기 이유가 같아진다.
+        /// </summary>
+        public CommandAvailability GetAvailability()
+        {
+            if (_player == null || _config == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
+                return CommandAvailability.Missing;
+
+            if (SpectacleEventLock.IsActive)
+                return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(SpectacleEventLock.ActiveKind));
+
+            StickmanStateId current = _player.Blackboard.Machine.CurrentStateId;
             if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
+                return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(current));
+
+            if (!TryFindEmptyRegion(out _))
+                return CommandAvailability.Blocked(NoEmptyRegionReason);
+
+            return CommandAvailability.Ready;
+        }
+
+        /// <returns>실제로 시작했는가. 기존 단축키 호출부는 반환값을 무시하면 되므로 하위 호환이다.</returns>
+        public bool ForceTriggerNow(string reason)
+        {
+            CommandAvailability availability = GetAvailability();
+            if (!availability.IsReady)
             {
-                Debug.Log($"[그라피티] 강제 발동 건너뜀({reason}) — 지금은 {current} 중입니다(Idle/Walk에서만 시작).");
-                return;
+                Debug.Log($"[그라피티] 강제 발동 건너뜀({reason}) — {availability.Reason}. 빈 영역 탐색 범위는 " +
+                    $"캐릭터 주변 {(_config != null ? _config.graffitiMinRadiusPx : 0f):F0}~" +
+                    $"{(_config != null ? _config.graffitiMaxRadiusPx : 0f):F0}px다" +
+                    "(27-3: 억지로 창 위에 그리지 않는다).");
+                return false;
             }
 
             if (!TryFindEmptyRegion(out Rect region))
             {
-                Debug.Log($"[그라피티] 강제 발동 건너뜀({reason}) — 캐릭터 주변 " +
-                    $"{_config.graffitiMinRadiusPx:F0}~{_config.graffitiMaxRadiusPx:F0}px 안에서 " +
-                    "다른 창과 겹치지 않는 빈 영역을 찾지 못했습니다(27-3: 억지로 창 위에 그리지 않는다).");
-                return;
+                Debug.Log($"[그라피티] 강제 발동 건너뜀({reason}) — {NoEmptyRegionReason}(영역 재계산 단계).");
+                return false;
             }
 
-            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.Graffiti, this)) return;
+            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.Graffiti, this)) return false;
 
             _checkTimer = 0f;
             _cooldownRemaining = 0f;
@@ -94,6 +110,7 @@ namespace StickMate.Interaction
             Debug.Log($"[그라피티] 강제 발동({reason}) — 빈 영역 OS좌표 {region}, " +
                 $"유지 {_config.graffitiHoldDurationMin:F0}~{_config.graffitiHoldDurationMax:F0}초. " +
                 "배경화면 파일/설정 API는 호출하지 않는 순수 오버레이입니다.");
+            return true;
         }
 
         private void Update()

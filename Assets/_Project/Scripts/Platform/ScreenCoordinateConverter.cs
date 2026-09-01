@@ -107,11 +107,150 @@ namespace StickMate.Platform
         /// </summary>
         public static void ReportOverlayWindowOsRect(Rect overlayRectOsPoints)
         {
+            ReportOverlayWindowOsRect(overlayRectOsPoints, default, false);
+        }
+
+        /// <summary>
+        /// 위와 같되 <b>이번 관측과 같은 순간의 데스크톱 경계</b>를 함께 받는 오버로드.
+        /// 경계를 알면 아래 위생 검사(<see cref="IsOverlayRectPlausible"/>)가 "명백히 화면 밖" 보고를
+        /// 걸러낼 수 있다. macOS는 CGDisplayBounds(주 디스플레이), Windows는 SM_*VIRTUALSCREEN(모든
+        /// 모니터의 외접 사각형)을 넘긴다 — 둘 다 이미 같은 열거 패스에서 조회하던 값이라
+        /// <b>추가 시스템 호출이 0건</b>이다.
+        /// </summary>
+        public static void ReportOverlayWindowOsRect(Rect overlayRectOsPoints, Rect desktopBoundsOsPoints)
+        {
+            ReportOverlayWindowOsRect(overlayRectOsPoints, desktopBoundsOsPoints, true);
+        }
+
+        private static void ReportOverlayWindowOsRect(Rect overlayRectOsPoints, Rect desktopBoundsOsPoints, bool hasDesktopBounds)
+        {
+            if (!IsOverlayRectPlausible(overlayRectOsPoints, desktopBoundsOsPoints, hasDesktopBounds, out string reason))
+            {
+                RejectedOverlayRectCount++;
+                LastRejectedOverlayRectReason = reason;
+                // 직전 유효값을 그대로 유지한다(원점도 배율도 건드리지 않는다).
+                return;
+            }
+
             OverlayOriginOsScreen = overlayRectOsPoints.position;
             if (overlayRectOsPoints.width > 0f && Screen.width > 0)
             {
                 AutoDpiScale = overlayRectOsPoints.width / Screen.width;
             }
+        }
+
+        // ============================================================================
+        // ★★ 오버레이 원점 위생 검사 (2026-09-01 — 신고 "창에서 가끔 갑자기 떨어짐"의 근본 원인 3)
+        // ============================================================================
+        // 실측 증거(디버거, Player.log.prevround): 원점이
+        //     (0,0) -> (0,-805) -> (0,-936) -> (0,-937) -> (0,-78) -> (0,0)
+        // 으로 한 차례 요동친 직후 [발판상실]이 발생했다. 화면 높이는 982pt이므로 -936은 창의
+        // 95%가 화면 위로 빠져나간 값이다 — 실제로 그런 창은 존재할 수 없고, 창 애니메이션 도중의
+        // 일시적 오독이다. 원점이 틀리면 WorldToOsScreen이 통째로 틀어져 "발 OS y"와 "발판 상단 y"의
+        // 비교가 무너진다 = 창은 그대로인데 접지가 풀린다.
+        //
+        // ★ 이 검사만으로 위 시퀀스 전부를 잡지는 못한다(정직한 한계):
+        //   -805(18% 남음) / -936(4.7% 남음)은 걸리지만 -78(92% 남음)은 "명백히 밖"이 아니라 통과한다.
+        //   -78처럼 완만한 한 번의 튐은 **근본 원인 2의 처방**이 흡수한다 — 유예(폴링 간격 x 1.5 = 0.45초)가
+        //   나쁜 원점의 수명(다음 폴링까지 최대 0.3초)보다 길고, 그 유예 동안 몸이 중력 억제로 **제자리에
+        //   붙잡혀 있어서**(StickmanBlackboard.GroundedTick의 _graceHoldFrame) 튐이 지나간 뒤 그대로 다시
+        //   접지된다. 유예만 늘리고 몸을 놔두면 0.3초 자유낙하가 1.32유닛이라 허용오차(0.489)도 스냅
+        //   상한(0.6)도 넘어 되돌아올 수 없다 — 두 처방은 함께여야 작동한다.
+        //   세 처방은 서로 다른 층에서 같은 증상을 막는다.
+        //
+        // ★ 왜 "무조건 거부"가 아니라 "연속 확인"인가 — 영구 고착이 더 위험하기 때문이다.
+        //   macOS가 넘겨주는 것은 **주 디스플레이** 경계라, 사용자가 앱을 보조 모니터로 옮기면
+        //   정상 창인데도 이 검사에 걸린다. 그래서 거부는 **잠정적**이다: 같은 사각형이
+        //   OffDesktopConfirmReports회 연속으로 보고되면 실제 이동으로 인정하고 받아들인다.
+        //   창 애니메이션 중의 오독은 매 표본이 다른 값이라 이 카운터를 채우지 못한다(= 계속 거부).
+
+        /// <summary>창 넓이의 이만큼이 데스크톱 안에 남아 있어야 "그럴듯한 보고"로 본다.
+        /// 절반은 "명백히 화면 밖"의 보수적 해석이다 — 실측 오독(4.7%/18% 잔존)은 걸러내고,
+        /// 창을 화면 밖으로 절반쯤 끌어다 놓는 정상 사용은 통과시킨다.</summary>
+        private const float MinOnDesktopAreaFraction = 0.5f;
+
+        /// <summary>위 문단의 "연속 확인" 횟수. 폴링 주기가 0.3초이므로 2회 = 약 0.6초 안에 스스로 풀린다.</summary>
+        private const int OffDesktopConfirmReports = 2;
+
+        private static Vector4 _lastOffDesktopRect;
+        private static int _offDesktopRepeatCount;
+
+        /// <summary>위생 검사로 버린 보고의 누적 횟수(진단/테스트용).</summary>
+        public static int RejectedOverlayRectCount { get; private set; }
+
+        /// <summary>마지막으로 버린 보고의 사유(진단/테스트용). 버린 적이 없으면 빈 문자열.</summary>
+        public static string LastRejectedOverlayRectReason { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// 플랫폼 계층이 매 폴링 직전에 스위치 상태를 밀어 넣는 통로(Platform/FootholdPoller).
+        /// StickConfig를 여기서 직접 읽지 않는 이유는 이 클래스가 순수 static 유틸이기 때문이다 —
+        /// 설정 의존을 늘리는 대신, 이미 설정을 들고 있고 보고 직전에 반드시 도는 한 곳에서 밀어준다.
+        /// </summary>
+        public static bool OverlayOriginSanityCheckEnabled { get; set; } = true;
+
+        /// <summary>테스트가 누적 카운터/연속 확인 상태를 초기화하는 통로(플랫폼 계층은 쓰지 않는다).</summary>
+        public static void ResetOverlayRectSanityState()
+        {
+            RejectedOverlayRectCount = 0;
+            LastRejectedOverlayRectReason = string.Empty;
+            _offDesktopRepeatCount = 0;
+            _lastOffDesktopRect = Vector4.zero;
+        }
+
+        /// <summary>
+        /// 이 오버레이 사각형 보고를 받아들여도 되는가(위 섹션 문서 참고). 순수 판정 + 연속 확인 부기만
+        /// 하고 좌표계는 건드리지 않는다.
+        /// </summary>
+        public static bool IsOverlayRectPlausible(Rect rect, Rect desktopBounds, bool hasDesktopBounds, out string reason)
+        {
+            reason = string.Empty;
+
+            // (0) 숫자 자체가 망가진 보고. 스위치와 무관하게 언제나 거부한다 — NaN이 좌표계에 들어가면
+            //     그 뒤 모든 변환이 NaN이 되어 캐릭터가 영원히 사라진다(복구 경로 없음).
+            if (float.IsNaN(rect.x) || float.IsNaN(rect.y) || float.IsNaN(rect.width) || float.IsNaN(rect.height)
+                || float.IsInfinity(rect.x) || float.IsInfinity(rect.y)
+                || float.IsInfinity(rect.width) || float.IsInfinity(rect.height))
+            {
+                reason = $"좌표에 NaN/무한대가 섞였습니다 — rect={rect}";
+                return false;
+            }
+            if (rect.width <= 0f || rect.height <= 0f)
+            {
+                reason = $"창 크기가 0 이하입니다 — rect={rect}";
+                return false;
+            }
+
+            if (!OverlayOriginSanityCheckEnabled) return true;
+            if (!hasDesktopBounds || desktopBounds.width <= 0f || desktopBounds.height <= 0f) return true;
+
+            float overlapW = Mathf.Min(rect.xMax, desktopBounds.xMax) - Mathf.Max(rect.xMin, desktopBounds.xMin);
+            float overlapH = Mathf.Min(rect.yMax, desktopBounds.yMax) - Mathf.Max(rect.yMin, desktopBounds.yMin);
+            float onDesktopArea = Mathf.Max(0f, overlapW) * Mathf.Max(0f, overlapH);
+            float rectArea = rect.width * rect.height;
+            float onDesktopFraction = rectArea > 0f ? onDesktopArea / rectArea : 0f;
+
+            if (onDesktopFraction >= MinOnDesktopAreaFraction)
+            {
+                _offDesktopRepeatCount = 0;
+                return true;
+            }
+
+            // 같은 사각형이 연속으로 다시 오면 실제 이동으로 인정한다(영구 고착 방지, 위 문서 참고).
+            var key = new Vector4(rect.x, rect.y, rect.width, rect.height);
+            _offDesktopRepeatCount = key == _lastOffDesktopRect ? _offDesktopRepeatCount + 1 : 1;
+            _lastOffDesktopRect = key;
+            if (_offDesktopRepeatCount >= OffDesktopConfirmReports)
+            {
+                _offDesktopRepeatCount = 0;
+                return true;
+            }
+
+            reason = $"창의 {(onDesktopFraction * 100f):F1}%만 데스크톱 안에 있습니다" +
+                $"(최소 {(MinOnDesktopAreaFraction * 100f):F0}%) — rect={rect}, 데스크톱={desktopBounds}. " +
+                $"직전 유효 원점 {OverlayOriginOsScreen}을 유지합니다. " +
+                $"같은 값이 {OffDesktopConfirmReports}회 연속으로 오면 실제 이동으로 인정합니다" +
+                $"(현재 {_offDesktopRepeatCount}회).";
+            return false;
         }
 
         // ============================================================================

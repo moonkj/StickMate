@@ -1,0 +1,86 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78e6f691c35d849a3aaae03fcb063cd4, type: 3}
+  m_Name: look_fx_sparkle
+  m_EditorClassIdentifier: 
+  itemId: look.fx.sparkle
+  slot: 5
+  itemIndex: 2
+  displayName: "\uBC18\uC9DD\uC784"
+  description: "\uAC00\uB054 \uBE5B\uB09C\uB2E4."
+  requiredLevel: 12
+  hidesHair: 0
+  icon:
+  - kind: 0
+    values:
+    - 20
+    - 8
+    - 20
+    - 18
+    color: {r: 0.9098039, g: 0.75686276, b: 0.3529412, a: 1}
+    tone: 0
+  - kind: 0
+    values:
+    - 20
+    - 22
+    - 20
+    - 32
+    color: {r: 0.9098039, g: 0.75686276, b: 0.3529412, a: 1}
+    tone: 0
+  - kind: 0
+    values:
+    - 8
+    - 20
+    - 18
+    - 20
+    color: {r: 0.9098039, g: 0.75686276, b: 0.3529412, a: 1}
+    tone: 0
+  - kind: 0
+    values:
+    - 22
+    - 20
+    - 32
+    - 20
+    color: {r: 0.9098039, g: 0.75686276, b: 0.3529412, a: 1}
+    tone: 0
+  - kind: 0
+    values:
+    - 12
+    - 12
+    - 16
+    - 16
+    color: {r: 0.54901963, g: 0.7529412, b: 0.43137255, a: 1}
+    tone: 1
+  - kind: 0
+    values:
+    - 28
+    - 12
+    - 24
+    - 16
+    color: {r: 0.54901963, g: 0.7529412, b: 0.43137255, a: 1}
+    tone: 1
+  - kind: 0
+    values:
+    - 12
+    - 28
+    - 16
+    - 24
+    color: {r: 0.54901963, g: 0.7529412, b: 0.43137255, a: 1}
+    tone: 1
+  - kind: 0
+    values:
+    - 28
+    - 28
+    - 24
+    - 24
+    color: {r: 0.54901963, g: 0.7529412, b: 0.43137255, a: 1}
+    tone: 1

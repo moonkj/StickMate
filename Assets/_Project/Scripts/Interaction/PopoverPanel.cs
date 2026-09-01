@@ -50,6 +50,46 @@ namespace StickMate.Interaction
         protected const float ClickPollInterval = 0.05f;
         protected const float ActionDedupSeconds = 0.35f;
 
+        // ==================== 무입력 자동 닫힘 (2026-09-01 페르소나 J5) ====================
+        //
+        // ★ 왜 이것이 절전이 아니라 <b>비침해(원칙 2)</b> 문제인가:
+        //   "톱니 → [오늘 할일] → 자리 비움"이면 부채꼴의 6초 자동 접힘이 <b>무력화</b>된다 —
+        //   GearRadialMenuWidget.TickAutoCollapse가 `AnyPopoverOpen()`이면 타이머를 리셋하기 때문이다
+        //   (읽고 있는 창을 시간으로 닫지 않겠다는, 그 자체로는 옳은 규칙). 그런데 이 클래스에는
+        //   자기 몫의 자동 닫힘이 없었으므로 팝오버와 <b>그 클릭관통 차단막</b>이 밤새 남았다.
+        //   바탕화면 한 조각의 클릭관통이 밤새 해제된 채 남는 것은 이 앱이 스스로 금지한 침해다.
+        //
+        // ★ 왜 부채꼴의 6초가 아니라 3분인가: 부채꼴 버튼은 <b>지나가는 표적</b>이지만 팝오버는
+        //   사용자가 지금 읽고 쓰는 내용이다. 6초는 "할일을 훑는 동안" 닫히고, 그건 편의가 아니라
+        //   사고다(위 TickAutoCollapse 문서와 같은 판단). 3분은 사람이 화면 앞에서 만들 수 있는
+        //   무입력이 아니다 — 자리를 뜬 것이다.
+        //
+        // ★ 무입력의 근거를 <b>스스로</b> 관측한다(FramePacing.LastPresence를 읽지 않는다):
+        //   그쪽은 "진단/테스트 창구"로 선언된 값이고, 적응형 페이싱이 꺼져 있으면 갱신되지 않아
+        //   "관측값이 없다"와 "입력이 있었다"가 구분되지 않는다. 그 상태에서 닫지 <b>못하는</b> 쪽으로
+        //   기울면 정확히 이 버그가 되살아난다. 여기서는 신호가 없을수록 닫히는 쪽으로 기운다.
+
+        /// <summary>무입력이 이만큼 이어지면 팝오버가 스스로 닫힌다(초).</summary>
+        public const float DefaultIdleAutoCloseSeconds = 180f;
+
+        private static float _idleAutoCloseSeconds = DefaultIdleAutoCloseSeconds;
+
+        /// <summary>지금 쓰이는 임계(초). 제품은 기본값을 그대로 쓰고 <b>테스트만</b> 낮춘다 —
+        /// 3분을 진짜로 기다리는 테스트는 만들지 않는다.</summary>
+        public static float IdleAutoCloseSeconds => _idleAutoCloseSeconds;
+
+        public static void SetIdleAutoCloseSecondsForTests(float seconds)
+            => _idleAutoCloseSeconds = Mathf.Max(0.05f, seconds);
+
+        public static void ResetIdleAutoCloseSecondsForTests()
+            => _idleAutoCloseSeconds = DefaultIdleAutoCloseSeconds;
+
+        /// <summary>무입력 시계를 다시 재는 주기(초). 3분짜리 판정에 매 프레임 OS 커서를 물을 이유가 없다.</summary>
+        private const float IdlePollInterval = 0.25f;
+
+        /// <summary>이보다 작은 커서 이동은 손떨림/좌표 반올림으로 본다(픽셀).</summary>
+        private const float IdleCursorEpsilonPixels = 2f;
+
         /// <summary>포스트잇/캐릭터 창보다 위, 부채꼴보다도 위 — 팝오버는 방금 사용자가 부른 것이다.</summary>
         private const int SortingOrder = 31700;
 
@@ -76,7 +116,17 @@ namespace StickMate.Interaction
         private string _lastActionKey;
         private float _lastActionTime;
 
+        private float _idleSeconds;
+        private float _idlePollTimer;
+        private Vector2 _lastCursorSample;
+        private bool _hasCursorSample;
+        private bool _hasTestCursor;
+        private Vector2 _testCursor;
+
         public bool IsOpen => _open;
+
+        /// <summary>지금까지 누적된 무입력 시간(초) — 진단/테스트 창구.</summary>
+        public float IdleSecondsForTests => _idleSeconds;
 
         /// <summary>패널이 실제로 켜져 있는가(진단/테스트 전용) — 플래그가 아니라 GameObject의 실제 상태.</summary>
         public bool IsCanvasActive => _canvas != null && _canvas.gameObject.activeSelf;
@@ -145,6 +195,7 @@ namespace StickMate.Interaction
             _closing = false;
             _animTimer = 0f;
             _leftInitialized = false;   // 여는 그 클릭이 곧바로 행 클릭으로 오인되지 않게.
+            NoteUserActivity();         // 무입력 시계는 열리는 순간부터 다시 센다.
             if (_canvas != null) _canvas.gameObject.SetActive(true);
             if (_clickBlocker != null) _clickBlocker.enabled = true;
             UpdatePlacement();
@@ -208,11 +259,85 @@ namespace StickMate.Interaction
             UpdatePlacement();
             SyncClickBlocker();
             TickGlobalClickPolling();
+            if (TickIdleAutoClose()) return;   // 이번 프레임에 스스로 닫았다.
 
             _slowTimer += Time.unscaledDeltaTime;
             if (_slowTimer < 0.25f) return;
             _slowTimer = 0f;
             TickSlow();
+        }
+
+        /// <summary>
+        /// 무입력 자동 닫힘(위 상수 문단이 근거) — <b>true면 이번 프레임에 닫았다</b>.
+        ///
+        /// <para>입력의 정의는 "커서가 움직였거나 눌렸다"이다. 키보드만 두드리는 사용자는 이 시계를
+        /// 멈추지 못하는데, 그것은 의도된 선택이다 — 이 창은 2초짜리 심부름용이고(클래스 문서),
+        /// 3분 동안 커서가 1px도 안 움직였다면 이 창은 이미 쓰이고 있지 않다.</para>
+        /// </summary>
+        private bool TickIdleAutoClose()
+        {
+            // 키보드도 입력이다 — [오늘 할일]의 입력칸에 타이핑하는 동안 창이 닫히면 그건 사고다.
+            // Input.anyKey는 <b>이 앱이 포커스를 가졌을 때만</b> 참이므로, 남의 앱에서 치는 키는
+            // 여기 잡히지 않는다(그게 우리가 원하는 정의다 — 이 창을 쓰고 있는 손만 시계를 멈춘다).
+            if (Input.anyKey) { NoteUserActivity(); return false; }
+
+            _idlePollTimer += Time.unscaledDeltaTime;
+            if (_idlePollTimer < IdlePollInterval) return false;
+            float elapsed = _idlePollTimer;
+            _idlePollTimer = 0f;
+
+            if (TryGetIdleCursor(out Vector2 cursor))
+            {
+                if (!_hasCursorSample ||
+                    (cursor - _lastCursorSample).sqrMagnitude > IdleCursorEpsilonPixels * IdleCursorEpsilonPixels)
+                {
+                    _hasCursorSample = true;
+                    _lastCursorSample = cursor;
+                    _idleSeconds = 0f;
+                    return false;
+                }
+            }
+
+            _idleSeconds += elapsed;
+            if (_idleSeconds < IdleAutoCloseSeconds) return false;
+
+            Close($"무입력 {IdleAutoCloseSeconds:F0}초 — 자리를 비운 것으로 보고 차단막까지 거둡니다(원칙 2)");
+            return true;
+        }
+
+        /// <summary>무입력 판정이 볼 커서. 주입된 값이 있으면 그것을 쓴다 — PlayMode는 진짜 OS 커서를
+        /// 원하는 자리에 <b>붙잡아 둘</b> 수 없고(테스트 도중 사람이 마우스를 건드리면 시계가 리셋된다),
+        /// 그렇다고 판정 로직을 테스트용으로 우회하면 "테스트만 통과하는 코드"가 된다.
+        /// <see cref="InfoGearIconWidget.FeedHoverCursorForTests"/>와 같은 관례다.</summary>
+        private bool TryGetIdleCursor(out Vector2 cursorUnityScreen)
+        {
+            if (_hasTestCursor) { cursorUnityScreen = _testCursor; return true; }
+            if (Agent != null && Agent.TryGetCursorPosition(out Vector2 osScreen))
+            {
+                cursorUnityScreen = ScreenCoordinateConverter.OsScreenToUnityScreen(osScreen, Config);
+                return true;
+            }
+            cursorUnityScreen = default;
+            return false;
+        }
+
+        /// <summary>테스트 전용 — 무입력 판정이 볼 커서를 이 자리에 고정한다.</summary>
+        public void FeedIdleCursorForTests(Vector2 cursorUnityScreen)
+        {
+            _hasTestCursor = true;
+            _testCursor = cursorUnityScreen;
+        }
+
+        /// <summary>주입한 커서를 걷고 실제 OS 커서로 되돌린다.</summary>
+        public void ClearIdleCursorForTests() => _hasTestCursor = false;
+
+        /// <summary>사용자가 이 창을 실제로 만졌다 — 무입력 시계를 0으로 되돌린다.
+        /// 자식 팝오버가 자기만의 입력 경로(예: 텍스트 입력)를 가질 때 직접 부를 수 있게 protected다.</summary>
+        protected void NoteUserActivity()
+        {
+            _idleSeconds = 0f;
+            _idlePollTimer = 0f;
+            _hasCursorSample = false;
         }
 
         /// <summary>false면 이번 프레임에 완전히 닫혔다는 뜻 — 호출자는 즉시 빠져나가야 한다.</summary>
@@ -321,6 +446,7 @@ namespace StickMate.Interaction
         private void FeedClick(Vector2 cursor)
         {
             if (!_open || _closing) return;
+            NoteUserActivity();
             if (!PanelScreenRect.Contains(cursor))
             {
                 Close("팝오버 바깥 클릭");
@@ -338,6 +464,8 @@ namespace StickMate.Interaction
 
         protected bool TryClaimAction(string key)
         {
+            // uGUI 경로의 클릭도 여기를 지난다 — 무입력 시계를 되돌릴 유일한 공통 길목이다.
+            NoteUserActivity();
             if (_lastActionKey == key && Time.unscaledTime - _lastActionTime < ActionDedupSeconds) return false;
             _lastActionKey = key;
             _lastActionTime = Time.unscaledTime;
@@ -406,16 +534,20 @@ namespace StickMate.Interaction
             ApplyCanvasScaleFactor();
             _group = canvasGo.AddComponent<CanvasGroup>();
 
-            Image panelImage = UiChrome.AddSurface(canvasGo.transform, "Panel", UiChrome.PanelSurface, UiChrome.RadiusPanel);
-            _panel = panelImage.rectTransform;
+            // ★ 2026-08-31 "뒤 창이 비쳐 보인다" 회귀 수정 — 정보창(CharacterInfoWindow)과 같은 원인이
+            //   이 창에도 남아 있었다. 옛 코드는 패널 <b>Image의 자식으로</b> 그림자를 달고
+            //   SetAsFirstSibling()으로 뒤로 보내려 했지만, uGUI는 <b>부모 Graphic을 자식보다 먼저</b>
+            //   그리므로 형제 순서를 어떻게 바꿔도 그림자는 본체 <b>위</b>를 벗어나지 못한다. 그 결과
+            //   창 알파가 1 → 0.7525(키 α0.55) → <b>0.6202</b>(앰비언트 α0.28)로 무너져 사용자의
+            //   데스크톱이 <b>38% 비쳐 들었다</b>(UiChrome 파일 머리 "알파 채널의 법칙" (2)).
+            //   AddOpaquePanel은 그림 없는 컨테이너에 [그림자 → 본체 → 보더]를 <b>형제로</b> 배치해
+            //   같은 그림을 창 알파 1.0으로 만든다. 반환값이 컨테이너이므로 아래 배치 코드는 그대로다.
+            _panel = UiChrome.AddOpaquePanel(canvasGo.transform, "Panel", UiChrome.RadiusPanel,
+                6f, new Vector2(0f, -2f), out _);
             // 앵커를 좌하단에 두고 피벗을 가운데로 — anchoredPosition이 곧 "캔버스 포인트 좌표의 중심"이 된다.
             _panel.anchorMin = _panel.anchorMax = Vector2.zero;
             _panel.pivot = new Vector2(0.5f, 0.5f);
             _panel.sizeDelta = PanelSizePoints;
-
-            UiChrome.AddShadow(_panel, "Shadow", UiChrome.RadiusPanel, 6f, new Vector2(0f, -2f))
-                .transform.SetAsFirstSibling();
-            UiChrome.AddOutline(_panel, "Border", UiChrome.PanelBorder, UiChrome.RadiusPanel);
 
             Text title = UiChrome.AddText(_panel, "Title", UiChrome.FontTitle, TextAnchor.MiddleLeft,
                 UiChrome.TextPrimary, bold: true);

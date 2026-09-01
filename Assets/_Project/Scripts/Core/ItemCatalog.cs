@@ -52,7 +52,9 @@ namespace StickMate.Core
             Tone = 0;
         }
 
-        private ItemIconPart(ItemIconPartKind kind, float[] values, Color color, byte tone)
+        /// <summary>에셋(<see cref="AccessoryDefSO"/>)에서 값을 되살릴 때 쓰는 완전 생성자.
+        /// 어셈블리 밖으로는 열지 않는다 — 색/역할을 임의로 지어내는 경로를 만들지 않기 위해서다.</summary>
+        internal ItemIconPart(ItemIconPartKind kind, float[] values, Color color, byte tone)
         {
             Kind = kind;
             Values = values;
@@ -209,9 +211,15 @@ namespace StickMate.Core
         /// 호출부를 한 번에 갈아엎지 않으려고 시그니처만 남겨 뒀다.</summary>
         public int? ResolveUnlockLevel(StickConfig config) => RequiredLevel;
 
-        /// <summary>지금 이 항목을 가지고 있는가. 행동은 <b>항상 보유</b>, 장비는 레벨로 열린다.</summary>
+        /// <summary>지금 이 항목을 가지고 있는가. 행동은 <b>항상 보유</b>, 장비는 레벨로 열린다.
+        /// <para>2026-08-31 <b>임시</b>: <see cref="EquipmentDebugUnlock.UnlockAll"/>이 켜져 있으면 레벨을
+        /// 보지 않는다(사용자 QA 요청). 규칙을 지운 것이 아니라 <b>앞에 스위치 하나를 둔 것</b>이고,
+        /// 이 자리에 둔 이유는 여기가 카드 색·상태 문구·착용 가능 여부의 공통 뿌리이기 때문이다 —
+        /// 더 아래(착용 시점)에서 우회하면 "Lv.20에 열림"이라 적힌 카드가 눌리는 거짓말이 된다.</para></summary>
         public bool IsOwned(StickConfig config)
-            => !RequiredLevel.HasValue || CharacterProgressionModel.Level >= RequiredLevel.Value;
+            => !RequiredLevel.HasValue
+               || EquipmentDebugUnlock.UnlockAll
+               || CharacterProgressionModel.Level >= RequiredLevel.Value;
 
         /// <summary>장비면서 <b>지금 이 아이템이</b> 착용 중인가(같은 카테고리의 다른 아이템이 착용
         /// 중이면 false — 카테고리당 하나만 걸칠 수 있다).</summary>
@@ -231,7 +239,8 @@ namespace StickMate.Core
     /// <summary>
     /// ★ 보관함 카탈로그 — 2026-08-30 사용자 요청("탭을 하나 더 만들어서 가지고있는 아이템 장비들을
     /// 보여주면좋을듯"), 같은 날 <b>외부 디자인 핸드오프에 맞춰 8카테고리 × 4아이템 = 32종으로 확장</b>,
-    /// 그리고 같은 날 <b>표정(FACE) 카테고리 삭제로 7 × 4 = 28종</b>(사용자 결정, 아래 표 주석 참고).
+    /// 그리고 같은 날 <b>표정(FACE) 카테고리 삭제로 7 × 4 = 28종</b>(사용자 결정, 아래 표 주석 참고),
+    /// 2026-09-01 <b>카테고리당 +2종으로 7 × 6 = 42종</b>(캐러셀 도입에 맞춘 확장 — 신규 14종은 임시 플레이스홀더).
     ///
     /// ============================================================================
     /// 지금 이 카탈로그는 아무것도 팔지 않는다 (의도적)
@@ -253,13 +262,18 @@ namespace StickMate.Core
     /// <see cref="EquipmentModel.IsAppearanceSlot"/>로 표현했다(UI 헤더 "장비 계열 / 외형 계열").
     ///
     /// ============================================================================
-    /// 단일 소스 — 32종의 이름/설명/요구레벨은 오직 여기 한 곳
+    /// 단일 소스 — 28종의 이름/설명/요구레벨은 이제 <b>에셋</b>이다 (2026-08-31 A단계)
     /// ============================================================================
     /// 리더 지시: "슬롯/이름/레벨을 두 곳에 따로 하드코딩하지 마라". 확장 전에는 장비 이름이
-    /// <see cref="EquipmentModel"/>에 있었지만, 아이템이 4개에서 32개가 되면서 그 표는 카탈로그로
-    /// 옮겼다(회귀 테스트: Tests/EditMode/ItemCatalogTests.cs). <see cref="StickConfig"/>에 32개
-    /// 필드를 늘어놓지 않은 이유도 같다 — 요구 레벨은 콘텐츠 설계이지 튜닝 노브가 아니고, 인스펙터에서
-    /// 한 칸만 잘못 건드리면 저장 파일과 어긋난 채 조용히 굴러간다.
+    /// <see cref="EquipmentModel"/>에 있었고, 32종 확장에서 이 파일의 표로 옮겼다. 그리고
+    /// <b>2026-08-31 DLC 이행 A단계에서 그 표가 이 파일을 떠났다</b> —
+    /// <c>Assets/_Project/Resources/Items/*.asset</c>(<see cref="AccessoryDefSO"/> 28개)가 주인이고
+    /// 이 클래스는 그것을 읽는 파사드다. 이유는 원칙 4다: 표가 코드 안에 있으면 DLC 팩마다
+    /// 기본 로직 파일을 고쳐야 한다(docs/ARCHITECTURE.md 5-3).
+    /// <b>주인은 여전히 하나</b>라는 성질은 그대로다 — 옮겨간 곳이 코드에서 에셋으로 바뀌었을 뿐이다.
+    /// 회귀 잠금: Tests/EditMode/ItemCatalogTests.cs + ItemCatalogAssetParityTests.cs(골든 대조).
+    /// <see cref="StickConfig"/>에 28개 필드를 늘어놓지 않은 이유는 그대로다 — 요구 레벨은 콘텐츠
+    /// 설계이지 튜닝 노브가 아니다.
     ///
     /// ============================================================================
     /// 문구 원칙 (UX 디자이너가 실제 코드와 대조해 확정, 2026-08-30)
@@ -270,60 +284,188 @@ namespace StickMate.Core
     /// </summary>
     public static class ItemCatalog
     {
-        /// <summary>표 한 줄. 배열 리터럴을 사람이 읽을 수 있게 유지하려고 만든 <b>표기용</b> 형식이고,
-        /// 정적 초기화가 끝나면 <see cref="ItemCatalogEntry"/>로 바뀌어 밖으로 나가지 않는다.</summary>
-        private readonly struct Row
+        // ============================================================================
+        // ★ 표는 이제 코드가 아니라 에셋이다 (DLC 이행 A단계, docs/ARCHITECTURE.md 5-3-3)
+        // ============================================================================
+        // 2026-08-31까지 이 자리에는 `new Row(...)` 28줄과 아이콘 좌표 리터럴 150여 줄이 있었다.
+        // 그 구조에서는 DLC 팩 하나를 붙일 때마다 <b>이 파일을 고쳐야</b> 했고, 그것이 원칙 4
+        // ("신규 콘텐츠는 기본 로직 무수정")를 선언만 남기고 무력화하고 있었다. 이제 28종은
+        // Assets/_Project/Resources/Items 아래 AccessoryDefSO 에셋 28개이고, 이 클래스는 그것을 읽어
+        // <b>예전과 똑같은 모양</b>으로 내주는 파사드다(공개 API는 한 줄도 바뀌지 않았다).
+        //
+        // 옮기면서 값이 하나도 안 바뀌었다는 증거:
+        //   Tests/EditMode/Golden/ItemCatalogGolden.txt  = 전환 직전 카탈로그 전문(28종 + 행동 13종)
+        //   Tests/EditMode/ItemCatalogAssetParityTests.cs = 지금 카탈로그를 같은 형식으로 찍어 완전 대조
+        // 좌표 한 칸, 색 한 채널만 흔들려도 빨개진다.
+        //
+        // Addressables/팩 매니페스트는 <b>여기 없다</b> — C단계 전까지는 평범한 Resources다(같은 문서).
+        private const string ItemResourceFolder = "Items";
+
+        // 성공/실패를 가리지 않고 <b>한 번만</b> 읽고 캐시한다. 실패했다고 매 접근마다 다시 읽으면
+        // 고장난 빌드에서 LoadAll이 프레임마다 도는 최악이 된다(하루 종일 켜 두는 앱이다).
+        // 대신 무엇이 왜 비었는지는 Debug.LogError가 한 번 크게 남긴다.
+        private static ItemCatalogEntry[][] _bySlot;
+        private static ItemCatalogEntry[] _entries;
+
+        private static ItemCatalogEntry[][] BySlot
         {
-            public readonly string Id;
-            public readonly string Name;
-            public readonly string Description;
-            public readonly int RequiredLevel;
+            get { EnsureLoaded(); return _bySlot; }
+        }
 
-            /// <summary>이 아이템의 썸네일 아이콘. 이름/설명/레벨과 <b>같은 줄</b>에 적는다 —
-            /// 아이콘만 다른 표에 두면 한쪽에 아이템을 끼워 넣는 순간 짝이 조용히 어긋난다.</summary>
-            public readonly ItemIconPart[] Icon;
+        private static ItemCatalogEntry[] AllEntries
+        {
+            get { EnsureLoaded(); return _entries; }
+        }
 
-            public Row(string id, string name, int requiredLevel, string description, ItemIconPart[] icon)
+        /// <summary>에셋 -> 런타임 표. 정적 필드 초기화자로 두지 않는 이유는 <c>Resources.LoadAll</c>이
+        /// 도메인 리로드/직렬화 도중에 부르면 안 되는 API여서다 — "타입을 건드리는 순간"이 아니라
+        /// "실제로 목록을 쓰는 순간"까지 미룬다.</summary>
+        private static void EnsureLoaded()
+        {
+            if (_bySlot != null) return;
+
+            // 칸 수는 콘텐츠가 아니라 <b>enum이 정하는 사실</b>이다(EquipmentSlot 값이 7개다).
+            // 에셋이 통째로 사라져도 카테고리 개수는 흔들리지 않아야 UI가 칸을 잃지 않는다.
+            const int slots = EquipmentModel.SlotCount;
+
+            AccessoryDefSO[] defs = Resources.LoadAll<AccessoryDefSO>(ItemResourceFolder);
+
+            // 검사는 <b>한 번만</b> 한다 — 두 패스에서 각각 부르면 같은 에러가 두 줄씩 찍힌다.
+            var placeable = new bool[defs.Length];
+            var counts = new int[slots];
+            for (int i = 0; i < defs.Length; i++)
             {
-                Id = id;
-                Name = name;
-                RequiredLevel = requiredLevel;
-                Description = description;
-                Icon = icon;
+                placeable[i] = IsPlaceable(defs[i]);
+                if (!placeable[i]) continue;
+
+                int s = (int)defs[i].slot;
+                if (defs[i].itemIndex + 1 > counts[s]) counts[s] = defs[i].itemIndex + 1;
             }
+
+            var bySlot = new ItemCatalogEntry[slots][];
+            for (int s = 0; s < slots; s++) bySlot[s] = new ItemCatalogEntry[counts[s]];
+
+            for (int i = 0; i < defs.Length; i++)
+            {
+                if (!placeable[i]) continue;
+                AccessoryDefSO def = defs[i];
+
+                ItemCatalogEntry[] row = bySlot[(int)def.slot];
+                if (row[def.itemIndex] != null)
+                {
+                    Debug.LogError($"[ItemCatalog] {def.slot} 카테고리 {def.itemIndex}번 자리를 두 아이템이 " +
+                        $"다툽니다: '{row[def.itemIndex].Id}' vs '{def.itemId}'. 자리 번호는 도형" +
+                        "(AccessoryShapeBuilder)이 그림을 고르는 값이라 겹치면 엉뚱한 것이 그려집니다.");
+                    continue;
+                }
+
+                row[def.itemIndex] = ItemCatalogEntry.ForEquipment(def.itemId, def.slot, def.itemIndex,
+                    def.displayName, def.description, def.requiredLevel, def.BuildIcon());
+            }
+
+            if (defs.Length == 0)
+            {
+                // 카테고리별로 7줄을 쏟아내 봐야 원인은 하나다 — 한 줄만 크게 남긴다.
+                Debug.LogError($"[ItemCatalog] Resources/{ItemResourceFolder} 에서 아이템 에셋을 하나도 " +
+                    "찾지 못했습니다. 보관함이 통째로 비고 착용 복원이 전부 실패합니다.");
+                _bySlot = bySlot;
+                _entries = BuildFlat(bySlot);
+                return;
+            }
+
+            // 구멍(중간 번호가 빈 것)과 빈 카테고리만 여기서 잡을 수 있다.
+            // <b>못 잡는 것</b>: 카테고리의 <b>마지막</b> 번호가 통째로 사라진 경우 — 자리 수를 에셋에서
+            // 세기 때문에 그냥 "원래 3종이었다"로 보인다. 카테고리마다 몇 종이어야 하는지는 데이터에
+            // 없는 사실이고, 그걸 여기 적으면 방금 코드 밖으로 꺼낸 표를 다시 코드에 적는 셈이다.
+            // 그 검사는 EditMode 테스트(7×6 = 42종)가 맡고, 팩 단위 선언은 C단계 매니페스트가 맡는다.
+            for (int s = 0; s < slots; s++)
+            {
+                if (bySlot[s].Length == 0)
+                {
+                    Debug.LogError($"[ItemCatalog] {(EquipmentSlot)s} 카테고리에 아이템 에셋이 하나도 " +
+                        $"없습니다(Resources/{ItemResourceFolder}). 보관함에 빈 카테고리가 그대로 보입니다.");
+                    continue;
+                }
+
+                for (int i = 0; i < bySlot[s].Length; i++)
+                {
+                    if (bySlot[s][i] != null) continue;
+                    Debug.LogError($"[ItemCatalog] {(EquipmentSlot)s} 카테고리 {i}번 자리의 아이템 에셋이 " +
+                        $"없습니다(Resources/{ItemResourceFolder}). 뒤 번호가 앞으로 당겨지지 않으므로 " +
+                        "보관함에 빈 칸이 생기고, 그 자리를 저장 파일이 가리키면 복원에 실패합니다.");
+                }
+            }
+
+            _bySlot = bySlot;
+            _entries = BuildFlat(bySlot);
         }
 
-        // 아래 32개 리터럴이 쓰는 짧은 생성자. 이름을 한 글자로 줄이지 않은 이유는, 이 표를
-        // 사람이 눈으로 스펙(icon-paths.json)과 대조할 일이 실제로 생기기 때문이다.
-        private static ItemIconPart Stroke(params float[] xy) => new ItemIconPart(ItemIconPartKind.Polyline, xy);
-        private static ItemIconPart Ring(float cx, float cy, float r)
-            => new ItemIconPart(ItemIconPartKind.Ring, new[] { cx, cy, r });
-        private static ItemIconPart DashedRing(float cx, float cy, float r)
-            => new ItemIconPart(ItemIconPartKind.DashedRing, new[] { cx, cy, r });
-        private static ItemIconPart Dot(float cx, float cy, float r)
-            => new ItemIconPart(ItemIconPartKind.Dot, new[] { cx, cy, r });
-
-        /// <summary>이 조각을 <b>보조색</b>으로 칠한다("A" = accent). 표에서 한 글자로 감싸면 어떤 조각이
-        /// 강조인지 리터럴만 봐도 읽힌다.</summary>
-        private static ItemIconPart A(ItemIconPart part) => part.AsSecondary();
-
-        /// <summary>아이콘 한 벌에 주색/보조색을 한 번에 입힌다. 색을 조각마다 적지 않고 아이템마다
-        /// 두 개만 적게 하는 장치다 — 32종 × 조각 수만큼 색을 고르기 시작하면 팔레트가 무너진다.</summary>
-        private static ItemIconPart[] Tinted(Color primary, Color secondary, params ItemIconPart[] parts)
+        /// <summary>표에 놓을 수 있는 에셋인가. 놓을 수 없는 것은 <b>조용히 버리지 않는다</b> —
+        /// DLC 팩이 잘못 만들어졌을 때 증상이 "아이템이 그냥 안 보임"이면 아무도 원인을 못 찾는다.</summary>
+        private static bool IsPlaceable(AccessoryDefSO def)
         {
-            for (int i = 0; i < parts.Length; i++) parts[i] = parts[i].WithPalette(primary, secondary);
-            return parts;
+            if (def == null) return false;
+
+            if (string.IsNullOrEmpty(def.itemId))
+            {
+                Debug.LogError($"[ItemCatalog] 아이템 에셋 '{def.name}'에 itemId가 없습니다 " +
+                    "(저장 파일이 적을 값이라 비어 있으면 착용을 복원할 수 없습니다).");
+                return false;
+            }
+            if ((int)def.slot < 0 || (int)def.slot >= EquipmentModel.SlotCount)
+            {
+                Debug.LogError($"[ItemCatalog] '{def.itemId}'의 카테고리 값 {(int)def.slot}이 범위를 벗어납니다.");
+                return false;
+            }
+            if (def.itemIndex < 0)
+            {
+                Debug.LogError($"[ItemCatalog] '{def.itemId}'의 자리 번호 {def.itemIndex}가 음수입니다.");
+                return false;
+            }
+            return true;
+        }
+
+        private static ItemCatalogEntry[] BuildFlat(ItemCatalogEntry[][] bySlot)
+        {
+            int equipmentCount = 0;
+            for (int s = 0; s < bySlot.Length; s++)
+            {
+                for (int i = 0; i < bySlot[s].Length; i++)
+                {
+                    if (bySlot[s][i] != null) equipmentCount++;
+                }
+            }
+
+            var flat = new ItemCatalogEntry[equipmentCount + _actions.Length];
+            int w = 0;
+            for (int s = 0; s < bySlot.Length; s++)
+            {
+                for (int i = 0; i < bySlot[s].Length; i++)
+                {
+                    if (bySlot[s][i] != null) flat[w++] = bySlot[s][i];
+                }
+            }
+            for (int i = 0; i < _actions.Length; i++) flat[w++] = _actions[i];
+            return flat;
         }
 
         // ============================================================================
-        // ★ 아이템 소재 팔레트 (2026-08-30 사용자 지적 "어울리는 컬러로")
+        // ★ 아이템 소재 팔레트 — 규칙은 여기, 값은 에셋 (2026-08-31 A단계)
         // ============================================================================
-        // 규칙 세 줄로 끝난다 — 색을 아이템마다 즉흥적으로 고르면 32칸 격자가 무지개가 된다.
+        // 색 상수 표(Ivory/Wool/Gold/…)는 아이콘 리터럴과 함께 에셋으로 내려갔다. 하지만 <b>규칙</b>은
+        // 코드에도 문서에도 남아야 한다 — 값만 옮기고 규칙을 지우면 다음 DLC 팩이 무지개가 된다.
         //  (1) 소재가 분명한 것(금/가죽/은/천/종이)은 그 소재색을 쓴다.
+        //      Ivory #E8E2D4 · Wool #C08F60 · Felt #8C96A6 · Gold #E8C15A / GoldLight #FFF0B8 ·
+        //      Silver #D3DAE4 · DarkLens #7C8AA3 · Leather #C9744A · Canvas #C0925F · Paper #EEF2F8 ·
+        //      Toy #E0574F · HairBrown #B8894F
         //  (2) 소재가 없는 것(이펙트/펫)은 그 카테고리의 틴트(UiChrome.CategoryTint)와 같은 색상대에
         //      머문다. 새 색상대를 발명하지 않는다.
+        //      TintHead #E8834A · TintEyes #4FC0C6 · TintNeck #8CC06E / NeckDeep #6FA957 ·
+        //      TintBack #B08FD0 / BackDeep #9A76BF · Accent #5DA1F5
         //  (3) 보조색은 "이 아이템을 다른 셋과 구별해 주는 한 부분"에만 쓴다(챙/방울/줄무늬/별).
         // 값은 34-1 다크 팔레트 위에서 읽히도록 명도를 올려 잡았다(어두운 카드 위의 진한 색은 사라진다).
+        // 아래 두 잉크 표식만 코드에 남는다 — 이건 팔레트가 아니라 "잉크색을 따르라"는 <b>지시</b>라서
+        // 런타임(WornColor)이 값으로 비교한다.
         private static Color Rgb(int hex)
             => new Color(((hex >> 16) & 0xFF) / 255f, ((hex >> 8) & 0xFF) / 255f, (hex & 0xFF) / 255f, 1f);
 
@@ -335,292 +477,34 @@ namespace StickMate.Core
         /// <summary>흐린 잉크 표식. 취급은 <see cref="InkTone"/>과 같다.</summary>
         public static readonly Color InkDimTone = Rgb(0x8B939F);
 
-        // 소재
-        private static readonly Color Ivory = Rgb(0xE8E2D4);   // 천/캔버스(밝은)
-        private static readonly Color Wool = Rgb(0xC08F60);    // 털실
-        private static readonly Color Felt = Rgb(0x8C96A6);    // 펠트(중절모)
-        private static readonly Color Gold = Rgb(0xE8C15A);    // 금
-        private static readonly Color GoldLight = Rgb(0xFFF0B8);
-        private static readonly Color Silver = Rgb(0xD3DAE4);  // 은/금속
-        private static readonly Color DarkLens = Rgb(0x7C8AA3); // 짙은 남색 렌즈(어두운 카드 위 하한)
-        private static readonly Color Leather = Rgb(0xC9744A);
-        private static readonly Color Canvas = Rgb(0xC0925F);  // 배낭 천
-        private static readonly Color Paper = Rgb(0xEEF2F8);   // 종이/깃털
-        private static readonly Color Toy = Rgb(0xE0574F);     // 장난감 빨강
-
-        // 카테고리 틴트(UiChrome.CategoryTint와 같은 값 — Core는 UI를 참조할 수 없어 값으로 못박는다.
-        // 두 곳이 어긋나면 카드 테두리와 아이콘 색이 서로 다른 계열이 된다).
-        private static readonly Color TintHead = Rgb(0xE8834A);
-        private static readonly Color TintEyes = Rgb(0x4FC0C6);
-        private static readonly Color TintNeck = Rgb(0x8CC06E);
-        private static readonly Color TintBack = Rgb(0xB08FD0);
-        private static readonly Color Accent = Rgb(0x5DA1F5);   // = UiChrome.Accent
-        private static readonly Color Ink = InkTone;            // = UiChrome.IconInk
-        private static readonly Color InkDim = InkDimTone;
-        private static readonly Color NeckDeep = Rgb(0x6FA957);
-        private static readonly Color BackDeep = Rgb(0x9A76BF);
-        private static readonly Color HairBrown = Rgb(0xB8894F);
-
-        // ============================================================================
-        // ★ 아이콘 32종 (외부 핸드오프 data/icon-paths.json을 그대로 옮긴 것, 2026-08-30)
-        // ============================================================================
-        // 좌표계: 스펙 그대로 <b>40×40 viewBox, 원점 좌상단, y가 아래로</b> 증가한다. 우리 캐릭터
-        // 좌표계(발바닥 원점, y 위)와 <b>무관</b>하다 — 이건 평면 썸네일이지 몸에 붙는 도형이 아니다.
-        // 화면 좌표로의 뒤집기는 그리는 쪽(Interaction/CharacterInfoWindow.cs)이 한 곳에서 한다.
-        //
-        // SVG 문자열을 그대로 두지 않고 숫자로 옮긴 이유(33-7-5): d 문자열 파서를 새로 만드는 것은
-        // 32개짜리 표 하나를 위해 새 버그 표면을 만드는 일이다. 곡선(q/a)은 미리 꺾은선으로
-        // 샘플링했다 — 40×40에서 5점 꺾은선과 베지어는 육안으로 구분되지 않는다.
-        //
-        // ★ 스펙 이탈 1건: 스펙의 채움 도형(["f",d] — 선글라스 렌즈 2개)을 <b>닫힌 선</b>으로 그린다.
-        //   이 프로젝트에는 채움 도형을 만드는 경로가 없고(모든 그림이 선화다), 억지로 만들면
-        //   "한 자루 펜으로 그린 선화"라는 앱 전체의 문법에서 이 아이콘 하나만 벗어난다.
-        //   ["fc"](채운 원)는 눈동자/방울/발자국처럼 <b>점</b>으로 읽혀야 하는 자리라 그대로 채운다.
-
-        private static readonly ItemIconPart[] IconHeadCap = Tinted(Ivory, TintHead,
-            Stroke(11f, 25f, 12.21f, 20.5f, 15.5f, 17.21f, 20f, 16f, 24.5f, 17.21f, 27.79f, 20.5f, 29f, 25f),
-            A(Stroke(6f, 25f, 34f, 25f)),
-            A(Stroke(29f, 25f, 36f, 25f, 35f, 27f, 29f, 27f)));
-
-        private static readonly ItemIconPart[] IconHeadFur = Tinted(Wool, Ivory,
-            Stroke(11f, 26f, 12.21f, 21.5f, 15.5f, 18.21f, 20f, 17f, 24.5f, 18.21f, 27.79f, 21.5f, 29f, 26f),
-            Stroke(8f, 26f, 32f, 26f, 32f, 30f, 8f, 30f, 8f, 26f),
-            A(Ring(20f, 10f, 2.6f)));
-
-        private static readonly ItemIconPart[] IconHeadFedora = Tinted(Felt, TintHead,
-            Stroke(13f, 23f, 16.5f, 18.12f, 20f, 16.5f, 23.5f, 18.12f, 27f, 23f),
-            Stroke(17f, 15f, 19f, 16.33f, 21f, 16.33f, 23f, 15f),
-            Stroke(5f, 24f, 12.5f, 26.25f, 20f, 27f, 27.5f, 26.25f, 35f, 24f),
-            A(Stroke(13f, 22f, 16.5f, 23.12f, 20f, 23.5f, 23.5f, 23.12f, 27f, 22f)));
-
-        private static readonly ItemIconPart[] IconHeadCrown = Tinted(Gold, GoldLight,
-            A(Stroke(8f, 29f, 32f, 29f)),
-            Stroke(8f, 29f, 9f, 14f, 14.5f, 21f, 20f, 11f, 25.5f, 21f, 31f, 14f, 32f, 29f));
-
-        private static readonly ItemIconPart[] IconEyesSunglasses = Tinted(DarkLens, Silver,
-            Stroke(5f, 17f, 17f, 17f, 18f, 18f, 18f, 22f, 17.56f, 24.22f, 16.22f, 25.56f, 14f, 26f, 9f, 26f, 6.78f, 25.56f, 5.44f, 24.22f, 5f, 22f, 5f, 18f, 5f, 17f),
-            Stroke(23f, 17f, 35f, 17f, 35f, 22f, 34.56f, 24.22f, 33.22f, 25.56f, 31f, 26f, 26f, 26f, 23.78f, 25.56f, 22.44f, 24.22f, 22f, 22f, 22f, 18f, 23f, 17f),
-            A(Stroke(18f, 19f, 22f, 19f)));
-
-        private static readonly ItemIconPart[] IconEyesRound = Tinted(Silver, TintEyes,
-            Ring(12f, 21f, 6f),
-            Ring(28f, 21f, 6f),
-            A(Stroke(18f, 21f, 22f, 21f)),
-            A(Stroke(6f, 19f, 2f, 16f)),
-            A(Stroke(34f, 19f, 38f, 16f)));
-
-        private static readonly ItemIconPart[] IconEyesGoggles = Tinted(Silver, TintHead,
-            Stroke(8f, 15f, 32f, 15f, 34.25f, 16f, 35f, 19f, 35f, 23f, 34.56f, 25.22f, 33.22f, 26.56f, 31f, 27f, 9f, 27f, 6.78f, 26.56f, 5.44f, 25.22f, 5f, 23f, 5f, 19f, 5.75f, 16f, 8f, 15f),
-            Stroke(14f, 19f, 17f, 18.25f, 20f, 18f, 23f, 18.25f, 26f, 19f),
-            A(Stroke(2f, 21f, 5f, 21f)),
-            A(Stroke(35f, 21f, 38f, 21f)));
-
-        private static readonly ItemIconPart[] IconEyesMonocle = Tinted(Gold, Silver,
-            Ring(15f, 19f, 6.5f),
-            A(Stroke(21f, 21f, 25.88f, 30.75f, 27f, 33f)),
-            A(Stroke(8.5f, 19f, 4f, 17f)));
-
-        private static readonly ItemIconPart[] IconNeckBowtie = Tinted(TintNeck, Ivory,
-            Stroke(18f, 20f, 7f, 14f, 7f, 26f, 18f, 20f),
-            Stroke(22f, 20f, 33f, 14f, 33f, 26f, 22f, 20f),
-            A(Stroke(18f, 17f, 22f, 17f, 22f, 23f, 18f, 23f, 18f, 17f)));
-
-        private static readonly ItemIconPart[] IconNeckStriped = Tinted(NeckDeep, Ivory,
-            Stroke(16f, 8f, 24f, 8f, 22f, 13f, 18f, 13f, 16f, 8f),
-            Stroke(18f, 13f, 22f, 13f, 25f, 27f, 20f, 33f, 15f, 27f, 18f, 13f),
-            A(Stroke(15f, 20f, 25f, 16f)),
-            A(Stroke(16f, 25f, 25f, 21f)));
-
-        private static readonly ItemIconPart[] IconNeckScarf = Tinted(TintHead, Leather,
-            Stroke(8f, 16f, 14f, 19f, 20f, 20f, 26f, 19f, 32f, 16f),
-            Stroke(8f, 16f, 14f, 19.75f, 20f, 21f, 26f, 19.75f, 32f, 16f, 32f, 20f, 26f, 23f, 20f, 24f, 14f, 23f, 8f, 20f, 8f, 16f),
-            A(Stroke(14f, 21f, 14f, 32f)),
-            A(Stroke(19f, 23f, 19f, 32f)));
-
-        private static readonly ItemIconPart[] IconNeckBell = Tinted(Leather, Gold,
-            Stroke(8f, 13f, 14f, 17.5f, 20f, 19f, 26f, 17.5f, 32f, 13f),
-            A(Stroke(20f, 22f, 17.22f, 22.56f, 15.56f, 24.22f, 15f, 27f, 25f, 27f, 24.44f, 24.22f, 22.78f, 22.56f, 20f, 22f)),
-            A(Dot(20f, 29f, 1.8f)));
-
-        private static readonly ItemIconPart[] IconBackCape = Tinted(TintBack, Ivory,
-            A(Stroke(12f, 11f, 28f, 11f)),
-            Stroke(13f, 12f, 9f, 26f, 14.5f, 27.5f, 20f, 28f, 25.5f, 27.5f, 31f, 26f, 27f, 12f));
-
-        private static readonly ItemIconPart[] IconBackLongCape = Tinted(BackDeep, Ivory,
-            A(Stroke(12f, 9f, 28f, 9f)),
-            Stroke(13f, 10f, 7f, 32f, 13.5f, 33.88f, 20f, 34.5f, 26.5f, 33.88f, 33f, 32f, 27f, 10f),
-            A(Stroke(20f, 12f, 20f, 30f)));
-
-        private static readonly ItemIconPart[] IconBackWings = Tinted(Paper, TintBack,
-            A(Stroke(20f, 12f, 20f, 28f)),
-            Stroke(19f, 14f, 13.19f, 13.5f, 8.75f, 15f, 5.69f, 18.5f, 4f, 24f, 7.94f, 24.12f, 11.75f, 23.5f, 15.44f, 22.12f, 19f, 20f, 19f, 14f),
-            Stroke(21f, 14f, 26.81f, 13.5f, 31.25f, 15f, 34.31f, 18.5f, 36f, 24f, 32.06f, 24.12f, 28.25f, 23.5f, 24.56f, 22.12f, 21f, 20f, 21f, 14f));
-
-        private static readonly ItemIconPart[] IconBackBackpack = Tinted(Canvas, TintNeck,
-            Stroke(11f, 14f, 29f, 14f, 30.5f, 14.75f, 31f, 17f, 31f, 30f, 29f, 32f, 11f, 32f, 9f, 30f, 9f, 17f, 9.5f, 14.75f, 11f, 14f),
-            A(Stroke(15f, 14f, 17.5f, 11.38f, 20f, 10.5f, 22.5f, 11.38f, 25f, 14f)),
-            A(Stroke(9f, 22f, 31f, 22f)),
-            A(Stroke(17f, 26f, 23f, 26f)));
-
-        private static readonly ItemIconPart[] IconHairCowlick = Tinted(HairBrown, TintEyes,
-            Stroke(9f, 26f, 10.09f, 21.23f, 13.14f, 17.4f, 17.55f, 15.28f, 22.45f, 15.28f, 26.86f, 17.4f, 29.91f, 21.23f, 31f, 26f),
-            A(Stroke(22f, 15f, 24.06f, 12.06f, 26.25f, 10.25f, 28.56f, 9.56f, 31f, 10f)));
-
-        private static readonly ItemIconPart[] IconHairNeat = Tinted(HairBrown, TintEyes,
-            Stroke(9f, 26f, 10.09f, 21.23f, 13.14f, 17.4f, 17.55f, 15.28f, 22.45f, 15.28f, 26.86f, 17.4f, 29.91f, 21.23f, 31f, 26f),
-            A(Stroke(16f, 16f, 19.12f, 17.69f, 22.5f, 18.75f, 26.12f, 19.19f, 30f, 19f)));
-
-        private static readonly ItemIconPart[] IconHairCurly = Tinted(HairBrown, TintEyes,
-            Stroke(9f, 26f, 10.09f, 21.23f, 13.14f, 17.4f, 17.55f, 15.28f, 22.45f, 15.28f, 26.86f, 17.4f, 29.91f, 21.23f, 31f, 26f),
-            A(Stroke(9f, 20f, 10.5f, 18.12f, 12f, 17.5f, 13.5f, 18.12f, 15f, 20f, 16.5f, 18.12f, 18f, 17.5f, 19.5f, 18.12f, 21f, 20f, 22.5f, 18.12f, 24f, 17.5f, 25.5f, 18.12f, 27f, 20f, 28.78f, 17.89f, 30.11f, 18.22f, 31f, 21f)));
-
-        private static readonly ItemIconPart[] IconHairBald = Tinted(Ink, TintEyes,
-            Stroke(9f, 27f, 10.09f, 22.23f, 13.14f, 18.4f, 17.55f, 16.28f, 22.45f, 16.28f, 26.86f, 18.4f, 29.91f, 22.23f, 31f, 27f),
-            A(Stroke(15f, 17f, 17f, 15.38f, 19f, 14.5f, 21f, 14.38f, 23f, 15f)));
-
-        private static readonly ItemIconPart[] IconFxNone = Tinted(InkDim, InkDim,
-            Dot(20f, 20f, 2f),
-            DashedRing(20f, 20f, 9f));
-
-        private static readonly ItemIconPart[] IconFxFootprint = Tinted(TintNeck, TintNeck,
-            Dot(10f, 27f, 2f),
-            Dot(17f, 23f, 2f),
-            Dot(24f, 19f, 2f),
-            Dot(31f, 15f, 2f));
-
-        private static readonly ItemIconPart[] IconFxSparkle = Tinted(Gold, TintNeck,
-            Stroke(20f, 8f, 20f, 18f),
-            Stroke(20f, 22f, 20f, 32f),
-            Stroke(8f, 20f, 18f, 20f),
-            Stroke(22f, 20f, 32f, 20f),
-            A(Stroke(12f, 12f, 16f, 16f)),
-            A(Stroke(28f, 12f, 24f, 16f)),
-            A(Stroke(12f, 28f, 16f, 24f)),
-            A(Stroke(28f, 28f, 24f, 24f)));
-
-        private static readonly ItemIconPart[] IconFxDust = Tinted(InkDim, TintNeck,
-            Stroke(10f, 26f, 7.96f, 22.78f, 8.79f, 19.06f, 12f, 17f, 14.32f, 13.58f, 18.16f, 12.06f, 22.19f, 12.98f, 25f, 16f, 29.12f, 16.05f, 32f, 19f, 31.95f, 23.12f, 29f, 26f, 10f, 26f),
-            A(Stroke(8f, 30f, 17f, 30f)),
-            A(Stroke(21f, 30f, 31f, 30f)));
-
-        private static readonly ItemIconPart[] IconPetBall = Tinted(Toy, Paper,
-            Ring(20f, 18f, 8f),
-            A(Stroke(14f, 13f, 15.75f, 14.62f, 17f, 16.5f, 17.75f, 18.62f, 18f, 21f)),
-            A(Stroke(11f, 31f, 15.5f, 32.12f, 20f, 32.5f, 24.5f, 32.12f, 29f, 31f)));
-
-        private static readonly ItemIconPart[] IconPetPlane = Tinted(Paper, TintBack,
-            Stroke(6f, 20f, 34f, 8f, 24f, 32f, 19f, 23f, 6f, 20f),
-            A(Stroke(6f, 20f, 19f, 23f, 34f, 8f)));
-
-        private static readonly ItemIconPart[] IconPetMini = Tinted(Ink, Ink,
-            Ring(20f, 13f, 5f),
-            Stroke(20f, 18f, 20f, 27f),
-            Stroke(20f, 21f, 14f, 25f),
-            Stroke(20f, 21f, 26f, 25f),
-            Stroke(20f, 27f, 15f, 34f),
-            Stroke(20f, 27f, 25f, 34f));
-
-        private static readonly ItemIconPart[] IconPetCursor = Tinted(Accent, Accent,
-            Stroke(13f, 7f, 13f, 30f, 19f, 24f, 23f, 33f, 27f, 31f, 23f, 22f, 31f, 22f, 13f, 7f));
-        // ============================================================================
-        // ★ 콘텐츠 표 (외부 디자인 핸드오프 2026-08-30 그대로) — 슬롯 순서 = EquipmentSlot 순서
-        // ============================================================================
-        // 요구 레벨 1 = "처음부터 보유"(핸드오프의 '기본'). 보유와 착용은 다른 사실이다 —
-        // 시작 시 실제로 걸치고 있는 것은 모자/안경 둘뿐이다(EquipmentModel.CreateDefaultWorn).
-        private static readonly Row[][] Table =
-        {
-            // ---- HEAD 모자 ----
-            new[]
-            {
-                new Row("equip.head.cap", "천모자", 1, "장식 없는 천 모자. 챙은 항상 가는 쪽을 향한다.", IconHeadCap),
-                new Row("equip.head.fur", "털모자", 5, "겨울에만 꺼내는 두꺼운 털모자.", IconHeadFur),
-                new Row("equip.head.fedora", "중절모", 9, "어딘가 진지해 보이는 효과.", IconHeadFedora),
-                new Row("equip.head.crown", "왕관", 20, "책상 위에서만 통용되는 권위.", IconHeadCrown),
-            },
-            // ---- EYES 안경 ----
-            new[]
-            {
-                new Row("equip.eyes.sunglasses", "선글라스", 1, "실내에서도 벗지 않는다. 표정이 잘 안 보인다.", IconEyesSunglasses),
-                new Row("equip.eyes.round", "동그란안경", 6, "시야가 조금 또렷해진다.", IconEyesRound),
-                new Row("equip.eyes.goggles", "고글", 11, "뛸 때 눈이 시리지 않다.", IconEyesGoggles),
-                new Row("equip.eyes.monocle", "외알안경", 15, "한쪽 눈만 진지하다.", IconEyesMonocle),
-            },
-            // ---- NECK 넥타이 ----
-            new[]
-            {
-                new Row("equip.neck.bowtie", "나비넥타이", 1, "목에 걸친 단 하나의 격식.", IconNeckBowtie),
-                new Row("equip.neck.striped", "줄무늬타이", 8, "월요일마다 조금 느슨해진다.", IconNeckStriped),
-                new Row("equip.neck.scarf", "목도리", 12, "끝자락이 걸을 때마다 흔들린다.", IconNeckScarf),
-                // ★ 문구 교체(2026-08-30 리더 승인): 원문은 "움직일 때 소리가 난다"였는데 이 프로젝트에는
-                //   오디오 시스템이 <b>하나도 없다</b>(AudioSource/AudioClip/PlayOneShot 전수 검색 0건).
-                //   없는 효과를 주장하지 않는다는 이 파일의 문구 원칙에 정면으로 걸린다. 방울 하나 때문에
-                //   오디오 스택을 새로 들이는 것이 명백한 과잉이라, 실제로 보이는 사실로 바꿔 적는다.
-                new Row("equip.neck.bell", "방울목걸이", 18, "걸을 때마다 방울이 흔들린다.", IconNeckBell),
-            },
-            // ---- BACK 망토 (슬롯 이름은 역사적 이유로 Shoulders, 핸드오프 코드는 BACK) ----
-            new[]
-            {
-                new Row("equip.shoulders.cape", "짧은망토", 1, "늘 가는 방향의 반대쪽으로 날린다.", IconBackCape),
-                new Row("equip.shoulders.long_cape", "긴망토", 13, "가끔 밟고 넘어진다.", IconBackLongCape),
-                new Row("equip.shoulders.wings", "날개", 17, "뜨지는 않지만 폼은 난다.", IconBackWings),
-                new Row("equip.shoulders.backpack", "배낭", 22, "뭘 넣는지는 아무도 모른다.", IconBackBackpack),
-            },
-            // ★ 2026-08-30 FACE(표정) 카테고리 삭제 — 사용자 결정("표정관련은 전부삭제 어차피 구별이
-            //   안됨"). 표 순서 = EquipmentSlot 순서이므로 이 자리를 비우지 않고 <b>줄 자체를 지운다</b>.
-            // ---- HAIR 머리 ----
-            new[]
-            {
-                new Row("look.hair.cowlick", "삐친머리", 1, "한 가닥이 계속 서 있다.", IconHairCowlick),
-                new Row("look.hair.neat", "단정한머리", 5, "아침에만 유지된다.", IconHairNeat),
-                new Row("look.hair.curly", "곱슬", 9, "습도에 민감하다.", IconHairCurly),
-                new Row("look.hair.bald", "민머리", 14, "바람의 저항이 적다.", IconHairBald),
-            },
-            // ---- FX 이펙트 ----
-            new[]
-            {
-                new Row("look.fx.none", "없음", 1, "조용히 걸어다닌다.", IconFxNone),
-                new Row("look.fx.footprint", "발자국", 6, "지나간 자리에 점이 남는다.", IconFxFootprint),
-                new Row("look.fx.sparkle", "반짝임", 12, "가끔 빛난다.", IconFxSparkle),
-                new Row("look.fx.dust", "먼지구름", 16, "뛸 때만 나타난다.", IconFxDust),
-            },
-            // ---- PET 펫 ----
-            new[]
-            {
-                new Row("look.pet.ball", "작은공", 1, "굴러다니며 따라온다.", IconPetBall),
-                new Row("look.pet.plane", "종이비행기", 13, "머리 위를 돈다.", IconPetPlane),
-                new Row("look.pet.mini", "작은졸라맨", 19, "똑같이 생겼다.", IconPetMini),
-                new Row("look.pet.cursor", "커서친구", 24, "마우스를 따라다닌다.", IconPetCursor),
-            },
-        };
-
         private static readonly ItemCatalogEntry[] _actions =
         {
             // 직접 부를 수 있는 것 먼저(단축키 순), 그다음 자율 발동 전용.
-            ItemCatalogEntry.ForAction("action.archery", "활쏘기", "⌃⌥⌘A",
+            ItemCatalogEntry.ForAction("action.archery", "활쏘기", ShortcutLabel.Chord("A"),
                 "과녁을 세우고 세 발을 쏜다. 마지막 한 발은 언제나 한가운데다."),
             // ★ 2026-08-30 신규 등재 — 새 기능이 아니라 **이미 있던 기능의 누락 등재**다.
             //   Dialogue/AmbientChatter.cs(유휴/보행 중 확률 발화)와 그 강제 경로
             //   Interaction/AppControlDirector.ForceSayNow(단축키 B)가 Phase 3부터 살아 있었는데
             //   보관함 목록에만 빠져 있었다. 라이벌 대결 항목이 삭제되며 발견됐다.
-            ItemCatalogEntry.ForAction("action.chatter", "혼잣말", "⌃⌥⌘B",
+            ItemCatalogEntry.ForAction("action.chatter", "혼잣말", ShortcutLabel.Chord("B"),
                 "가만히 있거나 걷는 동안 가끔 혼자 중얼거린다. 단축키를 누르면 지금 당장 한마디 한다."),
-            ItemCatalogEntry.ForAction("action.battle", "격파 놀이", "⌃⌥⌘K",
+            ItemCatalogEntry.ForAction("action.battle", "격파 놀이", ShortcutLabel.Chord("K"),
                 "허공에 송판을 세우고 발차기 한 번. 부서지는 건 그려낸 송판뿐이다."),
-            ItemCatalogEntry.ForAction("action.graffiti", "그라피티", "⌃⌥⌘G",
+            ItemCatalogEntry.ForAction("action.graffiti", "그라피티", ShortcutLabel.Chord("G"),
                 "남의 창 위에 낙서를 한 장 남긴다. 잠시 뒤 저절로 옅어져 사라진다."),
-            ItemCatalogEntry.ForAction("action.window_theft", "창 도둑", "⌃⌥⌘T",
+            ItemCatalogEntry.ForAction("action.window_theft", "창 도둑", ShortcutLabel.Chord("T"),
                 "창을 통째로 들고 달아나는 척한다. 진짜 창은 1픽셀도 움직이지 않는다."),
-            ItemCatalogEntry.ForAction("action.rodeo_cursor", "로데오 커서", "⌃⌥⌘R",
+            ItemCatalogEntry.ForAction("action.rodeo_cursor", "로데오 커서", ShortcutLabel.Chord("R"),
                 "가만히 멈춰 있는 커서에 올라탄다. 커서를 흔들면 곧바로 떨어진다."),
-            ItemCatalogEntry.ForAction("action.window_crash", "창 부수기", "⌃⌥⌘X",
+            ItemCatalogEntry.ForAction("action.window_crash", "창 부수기", ShortcutLabel.Chord("X"),
                 "창에 금이 쫙 간 것처럼 보이게 한다. 금은 그림이고 클릭은 그대로 통과한다."),
-            ItemCatalogEntry.ForAction("action.runaway", "가출", "⌃⌥⌘N",
+            ItemCatalogEntry.ForAction("action.runaway", "가출", ShortcutLabel.Chord("N"),
                 "삐지면 화면 밖으로 나가 버린다. 한 번 더 부르면 못 이기는 척 돌아온다."),
-            ItemCatalogEntry.ForAction("action.focus_watch", "집중 모드", "⌃⌥⌘F",
+            ItemCatalogEntry.ForAction("action.focus_watch", "집중 모드", ShortcutLabel.Chord("F"),
                 "타이머가 도는 동안 곁을 지킨다. 창을 자주 바꾸면 조용히 쳐다본다."),
-            ItemCatalogEntry.ForAction("action.todo_reminder", "할일 알림", "⌃⌥⌘J",
+            ItemCatalogEntry.ForAction("action.todo_reminder", "할일 알림", ShortcutLabel.Chord("J"),
                 "적어둔 할일을 때가 되면 들고 온다. 재촉은 한 번뿐이다."),
-            ItemCatalogEntry.ForAction("action.hardware_reaction", "하드웨어 반응", "⌃⌥⌘H",
+            ItemCatalogEntry.ForAction("action.hardware_reaction", "하드웨어 반응", ShortcutLabel.Chord("H"),
                 // ★ 문구 교체(2026-08-30, ux-designer 지적 + 리더 승인): 원문은 "표정만 바뀌고"였는데
                 //   Interaction/HardwareReactionRenderer.cs가 실제로 그리는 것은 얼굴이 아니라
                 //   <b>머리 주변에 뜨는 이모트 아이콘</b>(배터리/와이파이/땀방울)이다. 이 앱에는 상태별
@@ -632,71 +516,34 @@ namespace StickMate.Core
                 "화면 구석에 블랙홀을 그려 아이콘을 빨아들인다. 빨려 들어가는 건 전부 그림자다."),
         };
 
-        /// <summary>슬롯별 아이템(표를 그대로 옮긴 것). 정적 초기화 때 <b>한 번만</b> 만든다 —
-        /// 이 앱은 하루 종일 켜져 있고, 목록을 그릴 때마다 새로 만들면 매 프레임 할당이 된다.</summary>
-        private static readonly ItemCatalogEntry[][] _bySlot = BuildBySlot();
+        public static IReadOnlyList<ItemCatalogEntry> Entries => AllEntries;
 
-        private static readonly ItemCatalogEntry[] _entries = BuildFlat();
-
-        private static ItemCatalogEntry[][] BuildBySlot()
-        {
-            var bySlot = new ItemCatalogEntry[Table.Length][];
-            for (int s = 0; s < Table.Length; s++)
-            {
-                Row[] rows = Table[s];
-                var items = new ItemCatalogEntry[rows.Length];
-                for (int i = 0; i < rows.Length; i++)
-                {
-                    items[i] = ItemCatalogEntry.ForEquipment(rows[i].Id, (EquipmentSlot)s, i,
-                        rows[i].Name, rows[i].Description, rows[i].RequiredLevel, rows[i].Icon);
-                }
-                bySlot[s] = items;
-            }
-            return bySlot;
-        }
-
-        private static ItemCatalogEntry[] BuildFlat()
-        {
-            int equipmentCount = 0;
-            for (int s = 0; s < _bySlot.Length; s++) equipmentCount += _bySlot[s].Length;
-
-            var flat = new ItemCatalogEntry[equipmentCount + _actions.Length];
-            int w = 0;
-            for (int s = 0; s < _bySlot.Length; s++)
-            {
-                for (int i = 0; i < _bySlot[s].Length; i++) flat[w++] = _bySlot[s][i];
-            }
-            for (int i = 0; i < _actions.Length; i++) flat[w++] = _actions[i];
-            return flat;
-        }
-
-        public static IReadOnlyList<ItemCatalogEntry> Entries => _entries;
-
-        public static int Count => _entries.Length;
+        public static int Count => AllEntries.Length;
 
         /// <summary>카테고리 수(= <see cref="EquipmentSlot"/> 값의 개수). 표가 진짜 소스라서
         /// <see cref="EquipmentModel.SlotCount"/>가 이 값을 검증한다.</summary>
-        public static int SlotCount => _bySlot.Length;
+        public static int SlotCount => BySlot.Length;
 
-        /// <summary>이 카테고리의 아이템 수(지금은 전부 4).</summary>
+        /// <summary>이 카테고리의 아이템 수. <b>가변값이다</b> — 코드가 4나 6이라고 적어 두면
+        /// 에셋을 늘리는 순간 그 뒤가 조용히 사라진다(정보창 카드 풀이 이 값을 그대로 센다).</summary>
         public static int ItemCountIn(EquipmentSlot slot)
         {
             int s = (int)slot;
-            return s >= 0 && s < _bySlot.Length ? _bySlot[s].Length : 0;
+            return s >= 0 && s < BySlot.Length ? BySlot[s].Length : 0;
         }
 
         /// <summary>카테고리 안의 아이템 목록(정보창 카테고리 패널이 그대로 순회한다).</summary>
         public static IReadOnlyList<ItemCatalogEntry> ItemsIn(EquipmentSlot slot)
         {
             int s = (int)slot;
-            return s >= 0 && s < _bySlot.Length ? _bySlot[s] : System.Array.Empty<ItemCatalogEntry>();
+            return s >= 0 && s < BySlot.Length ? BySlot[s] : System.Array.Empty<ItemCatalogEntry>();
         }
 
         public static ItemCatalogEntry Item(EquipmentSlot slot, int itemIndex)
         {
             int s = (int)slot;
-            if (s < 0 || s >= _bySlot.Length) return null;
-            ItemCatalogEntry[] items = _bySlot[s];
+            if (s < 0 || s >= BySlot.Length) return null;
+            ItemCatalogEntry[] items = BySlot[s];
             return itemIndex >= 0 && itemIndex < items.Length ? items[itemIndex] : null;
         }
 
@@ -706,12 +553,14 @@ namespace StickMate.Core
         {
             if (string.IsNullOrEmpty(itemId)) return -1;
             int s = (int)slot;
-            if (s < 0 || s >= _bySlot.Length) return -1;
+            if (s < 0 || s >= BySlot.Length) return -1;
 
-            ItemCatalogEntry[] items = _bySlot[s];
+            ItemCatalogEntry[] items = BySlot[s];
             for (int i = 0; i < items.Length; i++)
             {
-                if (items[i].Id == itemId) return i;
+                // null 방어: 에셋이 빠져 자리에 구멍이 난 경우에도 저장 복원 경로가 예외로 죽지 않게 한다
+                // (구멍 자체는 EnsureLoaded가 이미 LogError로 크게 신고했다).
+                if (items[i] != null && items[i].Id == itemId) return i;
             }
             return -1;
         }
@@ -722,7 +571,7 @@ namespace StickMate.Core
             get
             {
                 int n = 0;
-                for (int s = 0; s < _bySlot.Length; s++) n += _bySlot[s].Length;
+                for (int s = 0; s < BySlot.Length; s++) n += BySlot[s].Length;
                 return n;
             }
         }
@@ -734,15 +583,15 @@ namespace StickMate.Core
         public static int UnlockedEquipmentCount(StickConfig config)
         {
             int n = 0;
-            for (int i = 0; i < _entries.Length; i++)
+            for (int i = 0; i < AllEntries.Length; i++)
             {
-                if (_entries[i].Category == ItemCategory.Equipment && _entries[i].IsOwned(config)) n++;
+                if (AllEntries[i].Category == ItemCategory.Equipment && AllEntries[i].IsOwned(config)) n++;
             }
             return n;
         }
 
         public static ItemCatalogEntry At(int index)
-            => index >= 0 && index < _entries.Length ? _entries[index] : null;
+            => index >= 0 && index < AllEntries.Length ? AllEntries[index] : null;
 
         /// <summary>이 카테고리에서 <b>지금 화면이 대표로 보여줄</b> 아이템 — 착용 중이면 그것,
         /// 미착용이면 첫 아이템. (착용 중인 것이 없다고 설명 카드를 비우면 "뭘 고를 수 있는지"가
@@ -812,9 +661,9 @@ namespace StickMate.Core
         public static ItemCatalogEntry FindById(string id)
         {
             if (string.IsNullOrEmpty(id)) return null;
-            for (int i = 0; i < _entries.Length; i++)
+            for (int i = 0; i < AllEntries.Length; i++)
             {
-                if (_entries[i].Id == id) return _entries[i];
+                if (AllEntries[i].Id == id) return AllEntries[i];
             }
             return null;
         }

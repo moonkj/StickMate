@@ -90,6 +90,7 @@ namespace StickMate.Interaction
         // 머리 실측을 못 구했을 때의 폴백 비율(배율 1.0 프리팹 기준) — StickmanMetrics 자신이 쓰는 값과 같다.
         private const float BaselineHeadCenterRatio = 2.0546944f / StickConfig.BaselineCharacterTotalHeight;
         private const float BaselineHeadRadiusRatio = 0.22f / StickConfig.BaselineCharacterTotalHeight;
+        private const float BaselineHipRatio = 0.9346944f / StickConfig.BaselineCharacterTotalHeight;
 
         private const int SortingOrder = 7;   // 캐릭터 획(0~5) 앞, 그라피티(9) 뒤.
 
@@ -106,6 +107,10 @@ namespace StickMate.Interaction
         private StickmanAgent _agent;
         private FocusWatchDirector _director;
         private Material _lineMaterial;
+
+        /// <summary>몸통 Transform — <b>회전만</b> 읽는다(<see cref="ResolveBodyRotation"/>).
+        /// Interaction/CharacterAccessoryRenderer.cs와 같은 규약: 각도를 여기서 새로 계산하지 않는다.</summary>
+        private Transform _torsoTransform;
 
         // ==================== 캐릭터 실측 치수 조회 ====================
 
@@ -164,6 +169,19 @@ namespace StickMate.Interaction
         private float TapShakeAmplitude => Height * TapShakeAmplitudeRatio;
 
         private GameObject _container;
+
+        /// <summary>
+        /// ★ 2026-09-01 — <b>곁눈질 호만</b> 담는 자식(교차 레이어 항목 #22).
+        ///
+        /// <para>이 렌더러는 두 종류를 한 컨테이너에 그린다: 발밑 <b>타이머 링</b>(+ 두드림 자국)과
+        /// 머리 옆 <b>곁눈질 호</b>. 상체가 기울 때 따라가야 하는 것은 <b>곁눈질뿐</b>이다 —
+        /// 링은 18절이 "캐릭터 발밑, 앱 소유 UI"로 지정한 위젯이고, 회전 중심(엉덩이)보다 아래에 있어
+        /// 함께 돌리면 발밑 링이 몸을 따라 <b>비스듬히 눕는다</b>. 그래서 컨테이너 전체를 돌리는
+        /// 액세서리 방식 대신, 머리에 붙는 것만 담는 자식을 하나 두고 <b>거기만</b> 돌린다
+        /// (CharacterAccessoryRenderer의 _headGroup과 같은 이유의 같은 구조).</para>
+        /// </summary>
+        private Transform _glanceGroup;
+
         private LineRenderer _arc;
         private readonly List<LineRenderer> _glanceLines = new List<LineRenderer>(2);
         private readonly List<LineRenderer> _tapLines = new List<LineRenderer>(TapMarkCount);
@@ -204,6 +222,17 @@ namespace StickMate.Interaction
         {
             _agent = GetComponent<StickmanAgent>();
             _director = GetComponent<FocusWatchDirector>();
+            _torsoTransform = FindDirectChild("Torso");
+        }
+
+        private Transform FindDirectChild(string childName)
+        {
+            for (int i = 0; i < transform.childCount; i++)
+            {
+                Transform t = transform.GetChild(i);
+                if (t != null && t.name == childName) return t;
+            }
+            return null;
         }
 
         private void OnEnable() => StickmanEventBus.FocusWatchTierChanged += OnTierChanged;
@@ -265,6 +294,7 @@ namespace StickMate.Interaction
                 center.y += Mathf.Cos(_tierTimer * TapShakeSpeed * 1.3f) * amplitude * 0.6f;
             }
             _container.transform.position = center;
+            ApplyGlanceGroupLean();
 
             UpdateArc();
             UpdateTierAnimation();
@@ -284,11 +314,16 @@ namespace StickMate.Interaction
             _container.transform.SetParent(null, false);
             _container.transform.position = RingWorldPosition();
 
+            var glance = new GameObject("GlanceGroup");
+            glance.transform.SetParent(_container.transform, false);
+            _glanceGroup = glance.transform;
+
             CreateLine("RingTrack", BuildCircle(Vector3.zero, RingRadius, RingSegments),
                 TrackColor, StrokeWidth * 0.8f, loop: true);
             _arc = CreateLine("RingProgress", new[] { Vector3.zero, Vector3.zero }, CalmArcColor, StrokeWidth, loop: false);
 
             RebuildTierVisuals();
+            ApplyGlanceGroupLean();
 
             Debug.Log($"[포모도로] 타이머 링 생성 — 캐릭터 발밑(y+{RingCenterLocalY:F2}) 반지름 {RingRadius:F2}유닛" +
                 $"(전신 {Height:F2}유닛 기준 비율), " +
@@ -347,7 +382,8 @@ namespace StickMate.Interaction
                         pts[i] = new Vector3(glanceX * side + Mathf.Sin(a) * bulgeX * side,
                             relY + Mathf.Cos(a) * bulgeY - bulgeY, 0f);
                     }
-                    _glanceLines.Add(CreateLine(side < 0 ? "GlanceL" : "GlanceR", pts, GlanceColor, StrokeWidth * 0.8f, loop: false));
+                    _glanceLines.Add(CreateLine(side < 0 ? "GlanceL" : "GlanceR", pts, GlanceColor,
+                        StrokeWidth * 0.8f, loop: false, parent: _glanceGroup));
                 }
             }
 
@@ -384,6 +420,47 @@ namespace StickMate.Interaction
             }
         }
 
+        /// <summary>
+        /// ★ 2026-09-01 — 곁눈질 호를 <b>엉덩이 피벗으로 상체와 같은 각도만큼</b> 돌린다
+        /// (교차 레이어 항목 #22, 참고 패턴은 Interaction/CharacterAccessoryRenderer.cs 클래스 문서 3-2).
+        ///
+        /// <para>좌표는 <b>컨테이너(= 링 중심) 로컬</b>이므로 엉덩이도 그 기준으로 환산한다:
+        /// <c>hip = HipLocalY − RingCenterLocalY</c>. 자식의 변환이 <c>위치 + R·p</c>이므로
+        /// <c>위치 = hip − R·hip</c>이면 점 p가 <c>hip + R·(p − hip)</c>로 간다(= 피벗 회전 그 자체).</para>
+        ///
+        /// <para>기울임이 0이면 회전이 identity이고 위치가 정확히 0이라 <b>예전과 완전히 같은 그림</b>이다.
+        /// 링과 두드림 자국은 이 그룹 밖에 있으므로 <b>영향을 받지 않는다</b>(18절의 발밑 위젯 유지).</para>
+        /// </summary>
+        private void ApplyGlanceGroupLean()
+        {
+            if (_glanceGroup == null) return;
+
+            Quaternion rot = ResolveBodyRotation();
+            if (rot == Quaternion.identity)
+            {
+                _glanceGroup.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+                return;
+            }
+
+            var hip = new Vector3(0f, HipLocalY - RingCenterLocalY, 0f);
+            _glanceGroup.SetLocalPositionAndRotation(hip - rot * hip, rot);
+        }
+
+        /// <summary>지금 상체가 기운 각도. <b>계산하지 않고 읽는다</b> — 포즈가 Torso에 실제로 적용한
+        /// 회전이 유일한 진실이므로, 이 렌더러가 각도 유도식을 한 벌 더 갖지 않는다.</summary>
+        private Quaternion ResolveBodyRotation()
+            => _torsoTransform != null ? _torsoTransform.localRotation : Quaternion.identity;
+
+        /// <summary>고관절의 로컬 Y(발바닥 기준) — 기울임의 회전 중심. 실측을 못 구하면 비율 폴백.</summary>
+        private float HipLocalY
+        {
+            get
+            {
+                StickmanMetrics m = Metrics;
+                return m != null && m.HipLocalY > 0.0001f ? m.HipLocalY : Height * BaselineHipRatio;
+            }
+        }
+
         private Vector3 RingWorldPosition()
         {
             var blackboard = _agent != null ? _agent.Blackboard : null;
@@ -417,6 +494,7 @@ namespace StickMate.Interaction
             _glanceLines.Clear();
             _tapLines.Clear();
             _arc = null;
+            _glanceGroup = null;   // 컨테이너의 자식이라 아래 Destroy로 함께 사라진다.
             if (_container != null)
             {
                 Destroy(_container);
@@ -435,10 +513,11 @@ namespace StickMate.Interaction
             lr.endColor = c;
         }
 
-        private LineRenderer CreateLine(string name, Vector3[] points, Color color, float width, bool loop)
+        private LineRenderer CreateLine(string name, Vector3[] points, Color color, float width, bool loop,
+            Transform parent = null)
         {
             var go = new GameObject(name);
-            go.transform.SetParent(_container.transform, false);
+            go.transform.SetParent(parent != null ? parent : _container.transform, false);
 
             var lr = go.AddComponent<LineRenderer>();
             lr.useWorldSpace = false;

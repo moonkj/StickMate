@@ -205,6 +205,21 @@ namespace StickMate.Core
         }
 
         /// <summary>
+        /// ★ 2026-09-01 (P9-b) 위 메서드에 <b>방향</b>을 얹은 오버로드. 가드/판정은 완전히 같고,
+        /// 넘긴 방향이 RAGDOLL 진입 순간 가슴 높이에 실릴 충격량의 방향이 된다(팔다리가 그 반대로
+        /// 휘둘린다 — RagdollRig.EnterRagdoll의 지렛대 문서 참고).
+        ///
+        /// 방향을 <b>모르는</b> 호출자는 위 무방향 버전을 그대로 쓴다. 추정한 방향으로 때리는 것보다
+        /// 안 때리는 쪽이 정직하고, 무방향 경로는 P9-a 이전과 비트 단위로 같은 거동을 유지한다.
+        /// </summary>
+        /// <param name="hitDirection">캐릭터가 밀려나는 방향(월드, 정규화 불필요).</param>
+        public void ReportExternalImpact(float impulseMagnitude, Vector2 hitDirection)
+        {
+            if (_isSuspended || _machine == null || _config == null) return;
+            RagdollImpactResolver.TryApplyImpact(_blackboard, impulseMagnitude, hitDirection);
+        }
+
+        /// <summary>
         /// ★ 충돌 콜백 전용 통지(2026-08-29, "무릎앉아 착지" 라운드). <see cref="ReportExternalImpact"/>와
         /// 같은 판정을 쓰되, 그 앞에 "이건 외력이 아니라 내 착지다"라는 예외 하나가 추가된 경로다 —
         /// 판정과 근거는 전부 States/RagdollImpactResolver.TryApplyCollisionImpact 문서에 있다.
@@ -229,6 +244,10 @@ namespace StickMate.Core
             // 앞선 테스트 케이스)이 지정한 런타임 배율을 여기서 지우지 않으면 그 값이 다음 씬으로
             // 조용히 새어 들어간다 — PlayMode 스위트 전체가 0.35배로 돌던 사고의 전파 경로다.
             if (_config != null) _config.ClearRuntimeCharacterScale();
+
+            // ★ 2026-08-31 R5 — 잉크색도 정확히 같은 이유로 세션 시작에 지운다(사용자가 고른 색은
+            // 아래 Start()에서 저장 파일로부터 다시 얹는다. 에셋에는 어느 쪽도 기록되지 않는다).
+            if (_config != null) _config.ClearRuntimeInkColor();
 
             _body = GetComponent<Rigidbody2D>();
             // BUG-P1-M6 대응(Major, docs/BUG_REPORT_PHASE1.md): SetRenderersEnabled와 대칭을 맞춰
@@ -362,6 +381,11 @@ namespace StickMate.Core
                 // 클래스 문서에 판단 근거). 등록을 빠뜨리면 ChangeState가 BUG-M2 방어 코드를 밟아
                 // 연출이 통째로 사라진다.
                 { StickmanStateId.Archery, new ArcheryState(_blackboard) },
+                // ★ 발판 상실 공중 유예(2026-09-01) — Idle/Walk가 발판을 잃은 순간
+                // StickmanBlackboard.GroundedTick()이 여기로 승격시킨다. 등록을 빠뜨리면 ChangeState가
+                // BUG-M2 방어 코드(에러 로그 + 현재 상태 유지)를 밟아 연출이 통째로 사라지고,
+                // 유예 붙잡음은 그대로라 **정지 화면**(= 이번 라운드가 고치려는 그 그림)으로 되돌아간다.
+                { StickmanStateId.GroundLossHang, new GroundLossHangState(_blackboard) },
             };
 
             // BUG-P1-M2 대응(Major, docs/BUG_REPORT_PHASE1.md): 생성과 "최초 상태 활성화"를 분리했다.
@@ -389,6 +413,14 @@ namespace StickMate.Core
             // 색 프리셋 적용(사용자 요청, 2026-08-28) — 프리팹에 저장된 색이 무엇이든 런타임에는 항상
             // StickConfig.inkColor가 이긴다. 덕분에 프리팹/씬을 다시 생성하지 않고 에셋 값만 바꿔도
             // 흰색/검은색을 전환할 수 있다.
+            // ★ 2026-08-31 R5 — 사용자가 고른 잉크색은 에셋이 아니라 저장 파일이 기억한다
+            //   (Core/CharacterAppearanceModel.cs). 저장 파일 로드는 CharacterProgressionDirector.Awake가
+            //   하므로 모든 Awake가 끝난 이 시점에는 이미 복원돼 있다 — 여기서 런타임 오버라이드로
+            //   얹은 뒤 한 번에 적용한다(빌드에서 재시작마다 검정으로 되돌아가던 결함의 수정).
+            if (_config != null && CharacterAppearanceModel.HasInkColor)
+            {
+                _config.SetRuntimeInkColor(CharacterAppearanceModel.InkColor);
+            }
             ApplyInkColorFromConfig();
 
             bool overlayReady = _platformService.CreateOverlayWindow();
@@ -456,7 +488,7 @@ namespace StickMate.Core
                 lr.endColor = color;
                 applied++;
             }
-            Debug.Log($"[StickmanAgent] 캐릭터 선 색 적용 — 프리셋={( _config != null ? _config.inkColor.ToString() : "?")}, " +
+            Debug.Log($"[StickmanAgent] 캐릭터 선 색 적용 — 프리셋={( _config != null ? _config.ResolveInkPreset().ToString() : "?")}, " +
                 $"색=({color.r:F2},{color.g:F2},{color.b:F2}), LineRenderer {applied}개 갱신.");
         }
 
@@ -515,6 +547,13 @@ namespace StickMate.Core
             // (StickmanBlackboard.ReleaseInkFloorClearanceLift 문서의 두 임계값 참고).
             _blackboard.ReleaseInkFloorClearanceLift();
 
+            // ★ 접지 중 중력 억제도 **상태 로직보다 먼저** 벗긴다(2026-09-01, 신고 "창에서 가끔 갑자기
+            // 떨어짐"의 근본 원인 1). 위 리프트와 완전히 같은 관례이며 이유도 같다 — 얹힌 채로 두면
+            // 상태/연출 코드가 gravityScale을 읽을 때 0을 보게 되고(ThrowTumbleState의 포물선 계산 등),
+            // 무엇보다 "중력이 꺼진 채 갇히는" 상태가 남을 수 있다. 다시 얹는 것은 이 Update의 맨 끝
+            // 한 곳뿐이다(StickmanBlackboard.ApplyGroundedGravitySuppression 문서 참고).
+            _blackboard.ReleaseGroundedGravitySuppression();
+
             _machine.Tick(dt);
 
             // ★★ 접지 유지 안전망(2026-08-30, 디버거 — 사용자 신고 "갑자기 독 아래로 떨어지면서
@@ -547,6 +586,23 @@ namespace StickMate.Core
             // 화면 안으로 되돌리고, 오래 착지하지 못하면 강제 복귀시킨다
             // (StickmanBlackboard.EnforceScreenBoundsAndRescue 문서 참고).
             _blackboard.EnforceScreenBoundsAndRescue(dt);
+
+            // ★ 맨 마지막 — 이번 프레임의 **최종** 상태/위치가 확정된 뒤에만 중력 억제를 얹는다.
+            // Unity 프레임 순서가 FixedUpdate -> Update이므로, 여기서 세운 값이 다음 물리 스텝을
+            // 지배한다 = 다음 프레임이 250ms로 튀어도 접지 중이면 세로 적분이 0이다.
+            // 위 ReleaseGroundedGravitySuppression()과 짝이다(얹기/벗기기를 한 프레임 안에서 닫는다).
+            _blackboard.ApplyGroundedGravitySuppression();
+        }
+
+        /// <summary>
+        /// 마지막 보험 — 이 컴포넌트가 어떤 이유로든(비활성화/씬 언로드) 더 이상 Update를 돌지 않게 되면
+        /// 얹어 둔 중력 억제를 즉시 벗긴다. Update의 "맨 앞에서 벗기고 맨 끝에서 얹는다" 규율은 Update가
+        /// 계속 돈다는 전제 위에 있으므로, 그 전제가 깨지는 유일한 지점을 여기서 닫는다
+        /// (중력이 꺼진 채 갇히는 것은 이 수정이 막으려는 버그보다 심각하다).
+        /// </summary>
+        private void OnDisable()
+        {
+            _blackboard?.ReleaseGroundedGravitySuppression();
         }
 
         // ============================================================================
@@ -896,7 +952,12 @@ namespace StickMate.Core
             if (_fullscreenPollTimer < interval) return;
             _fullscreenPollTimer = 0f;
 
-            bool fullscreenActive = _platformService.IsFullscreenAppActive();
+            // ★ 2026-09-01 설정창 [일반] "전체화면 게임 감지 시 자동 숨김" 토글의 <b>유일한 게이트</b>.
+            //   기본값은 켬이고(AppSettingsModel), 끄는 것은 사용자의 명시적 선택이다 — 절대 불변 원칙 2를
+            //   사용자가 스스로 면제하는 자리이므로 그 판단을 코드가 대신하지 않는다.
+            //   판정을 여기 한 줄로 둔 이유: Suspend/Resume의 대칭이 자동으로 성립한다. 숨어 있는 동안
+            //   토글을 끄면 fullscreenActive가 false가 되어 다음 폴링에서 Resume()이 정확히 한 번 돈다.
+            bool fullscreenActive = _platformService.IsFullscreenAppActive() && AppSettingsModel.AutoHideOnFullscreen;
             if (fullscreenActive && !_isSuspended) Suspend();
             else if (!fullscreenActive && _isSuspended) Resume();
         }

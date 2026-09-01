@@ -176,6 +176,142 @@ namespace StickMate.Tests.EditMode
                 string.Join("\n\n", violations));
         }
 
+        // ================= 1-b. 레지스트리 쓰기 금지 (2026-09-01 이관) =================
+        //
+        // ★ 이 스캔은 원래 Tests/EditMode/WindowsFullscreenGamePolicyTests.cs 안에 있었다.
+        //   C1(Windows 전체화면 게임 판정) 라운드가 HKCU\System\GameConfigStore를 <b>읽기 전용</b>으로
+        //   인용하기 시작하면서 함께 만든 것인데, 그 파일은 <c>Platform/Windows/</c> 폴더만 훑었다.
+        //   원칙 3의 단일 관문은 <b>이 파일</b>이므로 여기로 옮기고 범위를 저장소 전체로 넓힌다 —
+        //   레지스트리를 만지는 코드가 언젠가 Platform/Windows/ 밖에 생기면(예: 자동 실행 등록,
+        //   35-1-9 P3의 "로그인 항목") 옛 스캔은 그것을 영영 못 본다. 원칙은 폴더에 걸지 않는다.
+        //
+        // <b>왜 위 ForbiddenPatterns에 합치지 않았나</b>: 위 스캔은 주석을 걷어내지 않는다(그리고
+        //   지금까지 그래도 됐다 — 어떤 주석도 File.Delete( 같은 형태를 인용하지 않는다).
+        //   반면 레지스트리 쓰기 API는 <b>금지 사실을 적은 주석</b>이 실제로 존재한다
+        //   (WindowsGameProcessProbe.cs가 "RegSetValueEx / RegCreateKeyEx는 선언조차 하지 않는다"고
+        //   써 두었다). 정직하게 적을수록 감사가 빨개지면 다음 사람은 사실을 지운다.
+        //   그래서 이 항목만 <b>주석을 제외한 스캔</b>으로 따로 둔다 — 두 리스트의 차이는 취향이 아니라
+        //   "주석에 인용될 수 있는 이름인가"라는 기준이다.
+
+        /// <summary>선언조차 없어야 하는 레지스트리 <b>쓰기</b> 계열 API. 선언이 없으면 실수로도 못 부른다.
+        /// <para>읽기 계열(RegOpenKeyEx / RegQueryValueEx / RegEnumValue)은 <b>허용</b>이다 — 이 앱이
+        /// 게임 바 등록 목록을 인용하는 경로가 그것이고, 인용은 원칙 3이 금지하는 행위가 아니다.</para></summary>
+        private static readonly string[] ForbiddenRegistryWriteApis =
+        {
+            "RegSetValue", "RegCreateKey", "RegDeleteKey", "RegDeleteValue",
+            "RegDeleteTree", "RegSaveKey", "RegRestoreKey", "RegLoadKey", "RegReplaceKey",
+            "RegSetKeySecurity", "RegUnLoadKey",
+        };
+
+        /// <summary>레지스트리를 <b>여는 권한</b> 중 쓰기를 포함하는 것. 쓰기 함수를 안 부르더라도
+        /// 이 권한으로 열면 원칙 3의 표면적이 넓어진다(KEY_READ 하나면 충분하다).</summary>
+        private static readonly string[] ForbiddenRegistryAccessFlags =
+        {
+            "KEY_WRITE", "KEY_ALL_ACCESS", "KEY_SET_VALUE", "KEY_CREATE_SUB_KEY", "KEY_CREATE_LINK",
+        };
+
+        /// <summary>주석 줄을 빈 줄로 바꾼 사본(줄 번호를 보존해야 실패 메시지가 쓸모 있다).</summary>
+        private static string[] BlankOutCommentLines(string[] lines)
+        {
+            var kept = new string[lines.Length];
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string t = lines[i].TrimStart();
+                kept[i] = t.StartsWith("//", StringComparison.Ordinal)
+                          || t.StartsWith("*", StringComparison.Ordinal)
+                    ? string.Empty
+                    : lines[i];
+            }
+            return kept;
+        }
+
+        [Test]
+        public void 레지스트리_쓰기_API가_저장소_어디에도_없다()
+        {
+            var violations = new List<string>();
+            foreach (string filePath in CollectScannedSourceFiles())
+            {
+                string[] lines = BlankOutCommentLines(File.ReadAllLines(filePath));
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    foreach (string needle in ForbiddenRegistryWriteApis)
+                    {
+                        if (!lines[i].Contains(needle)) continue;
+                        violations.Add($"{Path.GetFileName(filePath)}:{i + 1}: '{needle}' — {lines[i].Trim()}");
+                    }
+                }
+            }
+
+            Assert.IsTrue(violations.Count == 0,
+                "레지스트리 쓰기 계열 API가 발견되었습니다(CLAUDE.md 절대 불변 원칙 3: 유저 자산 불변 — " +
+                "레지스트리도 <b>읽기 전용</b>만 허용). 게임 바 등록 목록 같은 값은 OS/사용자의 소유물이고 " +
+                "이 앱은 인용만 합니다:\n" + string.Join("\n", violations));
+        }
+
+        [Test]
+        public void 레지스트리를_쓰기_권한으로_여는_코드가_없다()
+        {
+            var violations = new List<string>();
+            foreach (string filePath in CollectScannedSourceFiles())
+            {
+                string[] lines = BlankOutCommentLines(File.ReadAllLines(filePath));
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    foreach (string needle in ForbiddenRegistryAccessFlags)
+                    {
+                        if (!lines[i].Contains(needle)) continue;
+                        violations.Add($"{Path.GetFileName(filePath)}:{i + 1}: '{needle}' — {lines[i].Trim()}");
+                    }
+                }
+            }
+
+            Assert.IsTrue(violations.Count == 0,
+                "레지스트리를 KEY_READ 이외의 권한으로 여는 코드가 있습니다 — 쓰기 함수를 부르지 " +
+                "않더라도 그 순간 원칙 3의 보장이 '코드를 다 읽어야 아는 것'으로 약해집니다:\n" +
+                string.Join("\n", violations));
+        }
+
+        /// <summary>
+        /// ★ 네거티브 컨트롤 — 이 스캔이 <b>실제로 볼 수 있는가</b>, 그리고 <b>주석은 넘기는가</b>.
+        /// <para>두 사실을 이 파일 안에 함께 박제한다: (a) 옛 위반 형태(P/Invoke 선언 한 줄)를 주면
+        /// 걸린다, (b) 같은 이름이 <b>주석</b>에 있으면 안 걸린다 — 후자가 이 스캔을 여기로 옮기면서
+        /// 위 <see cref="ForbiddenPatterns"/>에 합치지 <b>않은</b> 이유 그 자체다.</para>
+        /// </summary>
+        [Test]
+        public void 컨트롤_레지스트리_스캔은_선언을_잡고_주석은_넘긴다()
+        {
+            string[] sample =
+            {
+                "        [DllImport(\"advapi32.dll\")]",
+                "        private static extern int RegSetValueExW(IntPtr hKey, string name);",
+                "        // 쓰기 계열(RegSetValueEx / RegCreateKeyEx ...)은 선언조차 하지 않는다.",
+                "        /// <summary>KEY_ALL_ACCESS는 쓰지 않는다 — KEY_READ만 요청한다.</summary>",
+                "        private const int KEY_READ = 0x20019;",
+            };
+
+            string[] stripped = BlankOutCommentLines(sample);
+            Assert.AreEqual(sample.Length, stripped.Length,
+                "주석 제거가 줄 수를 바꾸면 실패 메시지의 줄 번호가 거짓말이 됩니다.");
+
+            int declarationHits = 0, commentHits = 0;
+            for (int i = 0; i < stripped.Length; i++)
+            {
+                bool writeApi = false, accessFlag = false;
+                foreach (string needle in ForbiddenRegistryWriteApis) writeApi |= stripped[i].Contains(needle);
+                foreach (string needle in ForbiddenRegistryAccessFlags) accessFlag |= stripped[i].Contains(needle);
+                if (writeApi || accessFlag) declarationHits++;
+
+                foreach (string needle in ForbiddenRegistryWriteApis) if (sample[i].Contains(needle) && stripped[i].Length == 0) commentHits++;
+                foreach (string needle in ForbiddenRegistryAccessFlags) if (sample[i].Contains(needle) && stripped[i].Length == 0) commentHits++;
+            }
+
+            Assert.AreEqual(1, declarationHits,
+                "선언 한 줄만 걸려야 합니다 — 0이면 스캐너가 눈이 먼 것이고, 2 이상이면 주석까지 세고 있습니다.");
+            Assert.Greater(commentHits, 0,
+                "주석에 든 금지 이름이 하나도 없습니다 — 이 컨트롤이 재현하려는 상황(정직한 금지 주석)이 " +
+                "표본에 없으므로 '주석은 넘긴다'가 증명되지 않습니다.");
+        }
+
         // ================= 스캔 자체의 유효성을 보장하는 가드 =================
 
         [Test]

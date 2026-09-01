@@ -151,6 +151,36 @@ namespace StickMate.Core
         [Tooltip("ragdollSettleSpeedThreshold 이하 속도가 이 시간(초) 이상 유지되어야 실제로 Getup 전이 (순간적인 감속 오탐 방지)")]
         public float ragdollSettleHoldDuration = 0.5f;
 
+        // ────────────────────────────────────────────────────────────────────────────────────
+        // ★ 2026-09-01 (P9-b) RAGDOLL 진입 충격량 환산 — "얻어맞으면 팔다리가 크게 튕긴다"
+        // ────────────────────────────────────────────────────────────────────────────────────
+        // RagdollRig.EnterRagdoll(방향, 충격량)은 P9-a에서 만들어졌지만 아무도 호출하지 않았다(배관만
+        // 있고 물이 안 흘렀다). 이제 RagdollState.Enter()가 호출하는데, 그때 **판정용 충격량
+        // (ragdollForceThreshold와 비교하는 그 값)을 그대로 넘기면 안 된다**:
+        //
+        //   실측(2026-09-01, Tests/PlayMode/RagdollEntryEnergyTests의 감도 로그):
+        //   가슴 지점에 1N·s를 가하면 루트에 약 42.8도/초가 실린다. 임계값의 5배(40N·s)를 그대로
+        //   넘기면 진입 각속도가 약 1712도/초 = **초당 4~5바퀴**다. 얻어맞아 넘어지는 게 아니라 팽이다.
+        //
+        // 그래서 판정 단위(N·s)와 연출 단위(도/초)를 분리하고, 아래 세 값으로 환산한다. 셋 다 사람이
+        // 읽을 수 있는 단위로 노출한 이유는 튜닝을 "곱하기 0.29" 같은 무의미한 숫자가 아니라
+        // **"임계값에 딱 맞게 맞으면 몇 도/초로 넘어지는가"**로 하게 하기 위해서다.
+        // 환산식은 States/RagdollImpactResolver.ResolveEntryImpulse() 한 곳에만 있다.
+        [Tooltip("RAGDOLL 진입 연출 강도 ①: 충격량이 정확히 ragdollForceThreshold일 때 목표 진입 각속도(도/초). " +
+                 "가장 약한 랙돌(긴 망토 걸려 넘어짐 = 임계값의 1.02배)이 이 값 근처로 들어온다. " +
+                 "0 이하로 두면 진입 충격량 기능 전체가 꺼지고 P9-a 이전 거동(초기 에너지 = 이미 실려 있던 속도뿐)으로 돌아간다")]
+        public float ragdollEntryAngularVelocityAtThreshold = 100f;
+
+        [Tooltip("RAGDOLL 진입 연출 강도 ②: 진입 각속도 상한(도/초). 아무리 세게 맞아도 이 이상으로 회전하며 들어가지 않는다. " +
+                 "기본값 400도/초 = 약 1.1회전/초. 상한이 없으면 임계값의 5배 타격에서 1700도/초(초당 5바퀴)가 나온다. " +
+                 "AtThreshold의 4배로 두면 대사 3구간(1~2배/2~4배/4배 초과)의 마지막 구간이 시작되는 지점에서 정확히 포화한다")]
+        public float ragdollEntryAngularVelocityCap = 400f;
+
+        [Tooltip("리그 실측 상수: 가슴 지점에 1N·s의 충격량을 가할 때 루트에 실리는 각속도(도/초). " +
+                 "연출 목표(도/초)를 물리 단위(N·s)로 되돌리는 환산 계수이며 튜닝 값이 아니다 — 캐릭터 질량/관성모멘트/지렛대가 " +
+                 "바뀌면 다시 재야 한다. 재측정 방법: Tests/PlayMode/RagdollEntryEnergyTests가 로그에 '…N·s당 감도 …도/초/N·s'로 찍는다")]
+        public float ragdollEntryAngularSensitivityPerImpulse = 42.8f;
+
         [Tooltip("Ragdoll -> Getup 진입 후 직립 포즈로 보간 완료까지 걸리는 기준 시간(초). GetupState._getupProgress가 이 값으로 정규화된다")]
         public float getupDuration = 0.6f;
 
@@ -169,7 +199,14 @@ namespace StickMate.Core
         public bool getupFloorClearanceEnabled = true;
 
         [Header("파쿠르 (docs/UX_FLOW.md 4절)")]
-        [Tooltip("ParkourClimb 진입 판정을 위한 벽/모서리 발판 감지 반경(경계 근접 거리이자, 벽으로 인정할 최소 높이차 겸용)")]
+        [Tooltip("ParkourClimb 진입 판정을 위한 벽/모서리 발판 감지 반경(벽으로 인정할 최소 높이차 + 인접 발판 " +
+                 "탐색 폭). ★ 2026-08-31: 세 용도 중 '경계 근접 거리'만 여기서 분리되어 **유도값**이 되었다 — " +
+                 "그 거리는 배회 AI가 경계 행동을 추첨하는 거리(StickmanBlackboard.EdgeStopDistanceWorld)와 " +
+                 "반드시 짝이어야 하는데, 그쪽은 캐릭터 배율에서 유도되므로 배율 1.0을 넘으면 이 절대값을 " +
+                 "추월해 되올라가기/내려가기가 구조적으로 성립 불가능해졌다(사용자 신고: 캐릭터를 키우면 " +
+                 "Dock 위로 못 올라옴). 유도는 Core/DockGeometry.ResolveEdgeProbeReach이며, 배포 배율 0.75에서는 " +
+                 "유도값이 정확히 이 값(0.5)과 같아 거동이 바뀌지 않는다. 나머지 두 용도는 판정 상대가 OS 창 " +
+                 "사각형이라 그대로 절대값이다.")]
         public float parkourDetectionRadius = 0.5f;
 
         [Tooltip("ParkourClimb 상태에서 매달린 위치부터 벽 상단까지 올라가는 데 걸리는 기준 시간(초)")]
@@ -980,12 +1017,28 @@ namespace StickMate.Core
         [Range(0f, 1f)]
         public float dockFootholdWidthFraction = 0.65f;
 
-        [Header("눈 커서 추적 (사용자 요청: '마우스 위치에 따라 눈도 움직여야')")]
+        [Header("눈 커서 추적 (★ 2026-09-01 기능 OFF — 캐릭터에 눈이 없어졌다. 아래 문서 참고)")]
 
-        [Tooltip("눈동자가 마우스 커서를 따라갈지 여부. 기본 ON. 끄면 눈동자가 부드럽게 중립(정면)으로 " +
-                 "돌아가 고정된다 — 값을 바꾸면 재빌드 없이 다음 프레임부터 즉시 반영된다" +
-                 "(States/EyeController.cs가 매 프레임 이 설정 묶음을 새로 읽기 때문).")]
-        public bool eyeTrackingEnabled = true;
+        // ============================================================================
+        // ★ 2026-09-01 — 눈맞춤 기능은 **꺼졌지만 삭제되지 않았다** (docs/UX_FLOW.md 38-5)
+        // ============================================================================
+        // 사용자 지시: "커서 눈맞춤 기능은 삭제하되 **코드는 남겨** 나중에 복원 가능하게 할 것."
+        // 그림체가 두꺼운 채움 실루엣으로 바뀌면서 얼굴 요소가 전부 사라졌고(머리 = 꽉 찬 원),
+        // 눈이 없는 캐릭터에게 "시선"은 원래 없는 개념이라 흉내 내지 않는다(원칙 1의 그림 버전).
+        //
+        // 아래 5개 필드는 **전부 그대로 보존**한다 — 되살릴 때 그때의 튜닝값이 남아 있어야 하기
+        // 때문이다. 되살리는 절차 전문은 Editor/SceneBootstrapper.BakeEyes 문서에 한 번만 적혀 있고,
+        // 그 절차가 유효하다는 것은 Tests/EditMode/EyeRestorePathContractTests.cs가 잠근다.
+        //
+        // 지금 이 값이 false여도 실제 동작에는 차이가 없다(프리팹에 눈 오브젝트 자체가 없어
+        // States/EyeController가 이미 무해한 상태다). 그래도 false로 두는 이유는 **의도의 기록**이다 —
+        // 누군가 눈 오브젝트만 되살렸을 때 "추적까지 같이 켜려던 것인지"를 이 값이 말해 준다.
+        [Tooltip("눈동자가 마우스 커서를 따라갈지 여부.\n\n" +
+                 "★ 2026-09-01 기본 OFF — 캐릭터에서 눈이 삭제되어(그림체 전환, docs/UX_FLOW.md 38절) " +
+                 "따라갈 눈동자가 존재하지 않는다. 아래 튜닝값 4개는 되살리기용으로 보존해 둔 것이다.\n\n" +
+                 "켜면 재빌드 없이 다음 프레임부터 즉시 반영된다(States/EyeController.cs가 매 프레임 " +
+                 "이 설정 묶음을 새로 읽는다) — 단 눈 오브젝트가 프리팹에 있어야 눈에 보인다.")]
+        public bool eyeTrackingEnabled = false;
 
         [Tooltip("눈동자가 중립에서 벗어날 수 있는 최대 거리(월드 유닛). 머리 링 반경 0.22 / 눈 중립 " +
                  "(±0.075,+0.02) / 눈동자 반경 0.018 기준으로 기하학적 상한은 0.0929이며, 이 값이 " +
@@ -1037,6 +1090,19 @@ namespace StickMate.Core
                  "Retina에서는 이 값이 물리적으로 2배 픽셀에 그려질 뿐 크기는 그대로다(CanvasScaler가 흡수).")]
         public int dialogueFontSize = 16;
 
+        [Tooltip("만화 레터링 글자를 비스듬히 기울이는 각도(도). 사용자 요구 2026-08-31 " +
+                 "'캐릭터가 말하는 텍스트는 좀 대각선으로 작성해줘'. 0이면 수평(기울기 끔).\n\n" +
+                 "**부호는 여기서 정하지 않는다** — 글자가 캐릭터 왼쪽 위에 놓이면 반시계, 오른쪽 위면 " +
+                 "시계 방향으로 DialogueBubbleRenderer가 자동으로 뒤집어 배치의 대각선과 맞물린다. " +
+                 "여기 값은 그 '크기'이고, 대사마다 ±25% 편차가 결정적 해시로 붙어 손글씨 느낌을 낸다.\n\n" +
+                 "8도의 근거: 두 줄 블록에서 양 끝 높이차가 한 줄 높이만큼 생겨 한눈에 비스듬해 보이면서도 " +
+                 "글자 하나하나의 세로축은 수직에 가까워 한글 네모 글리프가 읽힌다. 15도를 넘기면 " +
+                 "넘어지는 것처럼 보이고, 회전 리샘플링으로 획도 함께 무뎌진다.\n\n" +
+                 "※ 글리프가 물리 14픽셀보다 작으면 회전 리샘플링이 한글 자모를 뭉개므로 이 값과 무관하게 " +
+                 "기울기가 꺼진다(Retina에서는 폰트 하한 9pt = 18px라 항상 켜진다).")]
+        [Range(0f, 20f)]
+        public float dialogueTiltDegrees = 8f;
+
         [Tooltip("IDLE 진입 시 혼잣말을 할 확률(0~1, UX_FLOW.md 26-3절 '살아있는 느낌'). 0이면 유휴 " +
                  "혼잣말이 완전히 꺼진다(직전 라운드까지의 거동과 100% 동일).")]
         [Range(0f, 1f)]
@@ -1056,8 +1122,56 @@ namespace StickMate.Core
                  "배경이 어두운 바탕화면에서는 검은 캐릭터가 거의 보이지 않으므로 흰색이 필요하다. " +
                  "이 값만 바꾸면 프리팹을 다시 만들 필요 없이 런타임에 즉시 반영된다 — " +
                  "StickmanAgent.ApplyInkColorFromConfig()가 시작 시 모든 LineRenderer 색을 이 값으로 " +
-                 "일괄 갱신하기 때문이다(Core/StickmanAgent.cs 참고).")]
+                 "일괄 갱신하기 때문이다(Core/StickmanAgent.cs 참고).\n" +
+                 "★ 이 필드는 <b>배포 기본값</b>이다. 사용자가 앱에서 고른 색은 여기에 쓰지 않는다 — " +
+                 "읽을 때는 반드시 ResolveInkPreset()/ResolveInkColor()를 거칠 것(아래 문단 참고).")]
         public StickmanInkColor inkColor = StickmanInkColor.Black;
+
+        // ============================================================================
+        // ★ 사용자가 고른 잉크색은 이 에셋에 **기록되지 않는다** (2026-08-31, R5 잉크색 오염)
+        // ============================================================================
+        // characterScale과 **정확히 같은 실패 모드**였다(아래 "이번 실행의 배율은 이 에셋에 기록되지
+        // 않는다" 문단이 그 원본 근거다). 정보창의 잉크 스와치와 우클릭 메뉴 [잉크색]이
+        // `_config.inkColor = next`로 **직렬화 필드**에 직접 썼고, 그 _config는 프리팹 16개 컴포넌트에
+        // 배선된 배포 에셋(Assets/_Project/Data/DefaultStickConfig.asset) 그 자체다. 유니티 에디터는
+        // ScriptableObject 애셋에 가한 플레이 모드 중 변경을 되돌리지 않으므로, 에디터에서 한 번
+        // 눌러 보고 프로젝트를 저장하면 그 값이 출하 기본값이 되어 전 사용자에게 나간다.
+        //
+        // 고친 방식도 배율과 같다: 배포 기본값(위 직렬화 필드)과 이번 실행의 값(아래 [NonSerialized]
+        // 필드)을 물리적으로 분리하고, 조회는 리졸버 하나로 합친다. [NonSerialized]라 Ctrl+S로도
+        // AssetDatabase로도 .asset 파일에 닿을 수 없다 — 오염 경로가 타입 수준에서 사라진다.
+        //
+        // "그러면 재시작하면 색이 초기화되지 않나?" — 그래서 기억은 세이브 파일이 맡는다
+        // (Core/CharacterAppearanceModel.cs + CharacterSaveStore 스키마 v7). 오히려 이전에는
+        // <b>빌드에서 재시작마다 잉크색이 초기화</b>되고 있었다(에셋 변경이 남는 것은 에디터뿐이다).
+        [System.NonSerialized] private bool _hasRuntimeInkColor;
+        [System.NonSerialized] private StickmanInkColor _runtimeInkColor;
+
+        /// <summary>이번 실행에서 잉크색이 명시적으로 지정됐는가(스와치/메뉴/저장 복원/테스트). 진단용.</summary>
+        public bool HasRuntimeInkColor => _hasRuntimeInkColor;
+
+        /// <summary>이번 실행의 잉크색(디스크의 .asset에는 남지 않는다).</summary>
+        public void SetRuntimeInkColor(StickmanInkColor v)
+        {
+            _runtimeInkColor = v;
+            _hasRuntimeInkColor = true;
+        }
+
+        /// <summary>런타임 잉크색을 지우고 배포 기본값으로 되돌린다. StickmanAgent.Awake가 매 세션
+        /// 시작에 부른다 — 에셋 인스턴스는 씬 재로드에도 살아남으므로, 이걸 안 하면 앞선 씬의
+        /// 잉크색이 다음 씬으로 새어 들어간다(배율에서 이미 겪은 전파 경로).</summary>
+        public void ClearRuntimeInkColor() => _hasRuntimeInkColor = false;
+
+        /// <summary>
+        /// ★ 지금 유효한 잉크색 <b>프리셋</b>. <c>inkColor</c> 필드를 직접 읽지 말고 반드시 이것을 쓸 것 —
+        /// 직접 읽으면 사용자가 고른 색(런타임 오버라이드)이 무시된다.
+        /// </summary>
+        public StickmanInkColor ResolveInkPreset() => _hasRuntimeInkColor ? _runtimeInkColor : inkColor;
+
+        /// <summary>흰 잉크 프리셋인가 — 호출부 대부분이 필요로 하는 형태(색 반전 분기)라 여기 둔다.
+        /// <c>config.inkColor == StickmanInkColor.White</c>라고 손으로 적으면 그 자리만 런타임
+        /// 오버라이드를 놓친다(이 버그의 재발 경로가 정확히 그 문장이었다).</summary>
+        public bool IsWhiteInk() => ResolveInkPreset() == StickmanInkColor.White;
 
         [Tooltip("inkColor == Black일 때 쓰는 실제 색. 기존 필드를 그대로 재사용하므로 지금까지의 " +
                  "모든 배선/문서가 무효화되지 않는다.")]
@@ -1081,7 +1195,8 @@ namespace StickMate.Core
         /// 유일하게 성립하는 선택이다.
         /// </summary>
         public Color ResolveInkColor()
-            => inkColor == StickmanInkColor.White ? whiteInkColor : primaryOutlineColor;
+            => IsWhiteInk() ? whiteInkColor : primaryOutlineColor;
+
         [Tooltip("말풍선 **안쪽 채움** 색. ★ 기본 알파 0 = 완전 투명(2026-08-29 사용자 요구 \"말풍선도 " +
                  "흰색바탕이 아니고 얼굴처럼 투명한데다 텍스트가 써져야함\"). 이 상태에서 말풍선은 캐릭터 " +
                  "머리와 같은 문법이 된다 — 잉크 링(테두리)만 있고 안은 비어 바탕화면이 그대로 비친다.\n" +
@@ -1253,6 +1368,10 @@ namespace StickMate.Core
         //     → 판정 상대가 캐릭터가 아니라 **OS가 주는 창/Dock 사각형**이다. Dock 단차(1.6375유닛,
         //       이 개발 머신 tilesize=49 기준. Core/DockGeometry.cs가 유도)는 캐릭터 크기와 무관하므로
         //       이 값들이 함께 줄면 판정만 예민해진다.
+        //     ★ 2026-08-31 예외 하나 — parkourDetectionRadius의 **"경계 근접 게이트" 용도만** 배율에서
+        //       유도한다(Core/DockGeometry.ResolveEdgeProbeReach). 그 게이트의 판정 상대는 창이 아니라
+        //       "배회 AI가 경계 행동을 추첨하는 거리"이고, 그 거리는 몸의 물리 반폭에서 나오기 때문이다.
+        //       짝이 어긋나 있던 탓에 배율 1.0 초과에서 되올라가기/내려가기가 통째로 죽어 있었다.
         //   · hopDownEdgeCommitDistance(0.12) → 제약이 "walkSpeed x 한 프레임"이고 둘 다 비례하지 않는다.
         //   · stepUpMaxHeight(설정값 2.4) → 반드시 Dock 단차 1.6375를 덮어야 한다. 비례로 바꾸면 배율
         //       0.68 아래에서 2.4*s < 1.6375가 되어 **한 번 Dock에서 내려간 캐릭터가 영영 못 올라온다**.
@@ -1360,8 +1479,24 @@ namespace StickMate.Core
         /// <summary>슬라이더 하한. Dock 단차 임계 배율(약 0.341, 위 Tooltip 유도)보다 조금 위에 둔다.</summary>
         public const float MinCharacterScale = 0.35f;
 
-        /// <summary>슬라이더 상한. 1.0이 이미 "너무 크다"는 피드백을 받은 크기라 2배면 충분히 넉넉하다.</summary>
-        public const float MaxCharacterScale = 2f;
+        /// <summary>
+        /// 슬라이더 상한. ★ 2026-08-31 사용자 지시 <i>"캐릭터 사이즈는 max를 1.5까지만"</i> — 2.0 → <b>1.5</b>.
+        ///
+        /// <para>파급(전부 이 상수에서 <b>파생</b>되므로 손으로 맞출 곳은 없다):
+        /// 다이얼 눈금 수 <c>(1.5−0.35)/0.05+1 = 24칸</c>(옛 34칸), 눈금 스윕 <c>23×8° = 184°</c>
+        /// (옛 264°) — 12시 쪽 빈 구역이 96°에서 176°로 넓어질 뿐, 눈금 간격 8°와 각도→값 매핑은
+        /// 그대로다(<see cref="SizeDialWidget.DegreesForIndex"/>).</para>
+        ///
+        /// <para><b>Dock 등반과의 관계</b>: 이 상한을 내려도 "크게 만들면 Dock 계단을 못 오른다"는
+        /// 별건 조사는 유효하다 — 고정 상수가 버티는 천장은 배율 <b>1.125</b>라 1.5 이하에서도 그
+        /// 구간이 그대로 남는다(<c>DockGeometryInvariantTests</c>의 네거티브 컨트롤이 이 수를 찍는다).
+        /// 상한을 내리는 것은 그 버그의 수정이 아니라 <b>사용자가 고른 범위</b>일 뿐이다.</para>
+        ///
+        /// <para>이미 2.0×로 저장해 둔 사용자는 복원 시 여기로 clamp된다
+        /// (<c>CornerHoverPanel.RestoreSavedScale</c>) — 표시 숫자와 실제 배율이 갈라지지 않게
+        /// 저장 모델까지 함께 내린다.</para>
+        /// </summary>
+        public const float MaxCharacterScale = 1.5f;
 
         /// <summary>
         /// 배율 1.0에서의 전신 높이(발바닥~정수리, 월드 유닛). Editor/SceneBootstrapper.cs의 지오메트리
@@ -1370,6 +1505,24 @@ namespace StickMate.Core
         /// 기본 신장이기도 하다.
         /// </summary>
         public const float BaselineCharacterTotalHeight = 2.2746944f;
+
+        /// <summary>
+        /// ★ 유휴 "주위 살피기"가 머리를 좌우로 밀 수 있는 **안전 상한** — 신장 배수
+        /// (2026-08-31 사용자 신고 "머리를 움직이는데 목에서 벗어나서 이상함").
+        ///
+        /// 이 리그에는 목 관절이 없다. 목은 Torso LineRenderer의 윗부분이고 루트 로컬 x=0에 고정인데
+        /// (Editor/SceneBootstrapper.cs), States/StickmanPoseAnimator.SetBodyOffset의 headOffsetX는
+        /// 형제인 "Head" 앵커만 민다. 그래서 목선이 여전히 "머리 중심을 가리키는 선"으로 읽히려면
+        /// 머리 중심이 <b>목 획의 폭 밖으로 나가면 안 된다</b>:
+        ///   목 획 두께 = 0.11 x 0.7 = 0.077 -> 반폭 0.0385 -> 0.0385 / 2.2746944 = 0.01693
+        /// 획 두께와 신장이 같은 배율로 커지므로 이 비율은 <b>배율에 무관</b>하다.
+        /// 예전 기본값 0.035는 이 상한의 2.07배(머리 반경의 36%)였고, 그래서 육안으로 어긋나 보였다.
+        ///
+        /// 상수로 노출하는 이유: 이 유도를 테스트 두 곳(EditMode 불변식 / PlayMode 회귀)에 각각
+        /// 옮겨 적으면 그 중 하나가 낡는 순간 조용히 초록불이 된다 — 이 프로젝트가 이미 여러 번
+        /// 겪은 실패 유형이다.
+        /// </summary>
+        public const float MaxSafeHeadShiftRatio = (0.11f * 0.7f * 0.5f) / BaselineCharacterTotalHeight;
 
         /// <summary>
         /// ★ 배율 1.0에서 **몸이 벽에 얼마나 가까이 설 수 있는가**를 정하는 반폭(월드 유닛) —
@@ -1917,19 +2070,33 @@ namespace StickMate.Core
         [Tooltip("한 사이클이 끝난 뒤 다음 자율 발동까지의 최소 쿨다운(초).")]
         public float archeryCooldownSeconds = 600f;
 
-        [Tooltip("과녁까지의 **희망** 거리 — 캐릭터 신장 배수. 4.6이면 신장 1.71유닛(배율 0.75)에서 " +
+        [Tooltip("과녁까지의 **기준** 거리 — 캐릭터 신장 배수. 랜덤 밴드" +
+                 "(archeryMinTargetDistanceRatio ~ archeryMaxTargetDistanceRatio)의 한가운데 값이자, " +
+                 "화살 비행 시간을 거리에 맞춰 늘리는 기준 사거리다" +
+                 "(States/ArcheryState.ResolveFlightSeconds). 4.6이면 신장 1.71유닛(배율 0.75)에서 " +
                  "약 7.9유닛(화면상 약 276pt) 앞이다.\n\n" +
                  "★ 2026-08-29 사용자 신고 '과녁이 너무 가까이 생성됨'으로 2.8 -> 4.6. 사거리는 " +
                  "'곡선으로 멀리 날아간다'는 요구와도 직결된다 — 짧으면 포물선이 그려질 공간 자체가 " +
                  "없어 직선처럼 보인다.\n\n" +
-                 "화면에 이만큼의 자리가 없으면 발동을 포기하지 않고 **들어가는 만큼 줄여서** 놓는다" +
-                 "(ArcheryDirector.TryPlaceHorizontally). 그 하한이 아래 archeryMinTargetDistanceRatio다.")]
+                 "★ 2026-08-31 사용자 신고 '무조건 과녁이 화면 끝에만 생김 / 거리는 항상 랜덤' 이후로는 " +
+                 "이 값이 **직접 쓰이는 배치 거리**가 아니다 — 실제 사거리는 아래 두 값 사이에서 매번 " +
+                 "추첨된다(Interaction/ArcheryDirector.ResolvePlacement).")]
         public float archeryTargetDistanceRatio = 4.6f;
 
-        [Tooltip("화면이 좁을 때까지 줄여도 되는 **최소** 사거리 — 캐릭터 신장 배수. 이보다 가까우면 " +
+        [Tooltip("랜덤 사거리 밴드의 **하한** — 캐릭터 신장 배수. 이보다 가까우면 " +
                  "'쏘는' 것이 아니라 '찌르는' 것처럼 보이고 포물선도 거의 직선이 되므로, 차라리 " +
                  "발동하지 않는다(반대편 미러링 -> 그래도 안 되면 조용히 포기).")]
         public float archeryMinTargetDistanceRatio = 2.6f;
+
+        [Tooltip("랜덤 사거리 밴드의 **상한** — 캐릭터 신장 배수(★ 2026-08-31 신설).\n\n" +
+                 "신고 원문: '활쏘기 시키면 무조건 과녁이 화면 끝에만 생김. 적당히 먼 거리만 되도 " +
+                 "되는데 물론 거리는 항상 랜덤으로 변경되어야 하지만'. 이전 배치는 캐릭터를 발판 한쪽 " +
+                 "끝, 과녁을 반대쪽 끝에 **결정론적으로** 놓아서 넓은 바탕화면에서는 언제나 화면 " +
+                 "가장자리였다.\n\n" +
+                 "이 상한은 화면/창 폭과 **무관한 절대 밴드**라는 점이 중요하다 — 구간이 아무리 넓어도 " +
+                 "과녁이 끝까지 밀려나지 않는다. 기본 6.6은 기준값 4.6을 가운데 두고 하한 2.6과 대칭이며, " +
+                 "신장 1.71유닛(배율 0.75) 기준 약 4.4~11.3유닛(가시 폭 약 37유닛의 12~31%)이다.")]
+        public float archeryMaxTargetDistanceRatio = 6.6f;
 
         [Tooltip("과녁 바깥 링의 반지름 — **캐릭터 신장 배수**. 과녁 중심 높이는 별도 설정값이 아니라 " +
                  "이 값에서 유도된다: 과녁 꼭대기가 정확히 캐릭터 정수리 높이가 되도록 " +
@@ -2217,10 +2384,23 @@ namespace StickMate.Core
         [Tooltip("'주위 살피기'의 팔꿈치 굽힘(도, 항상 0 이상). 위 어깨 각도와 한 쌍으로 유도된 값이다.")]
         public float idleAmbientLookElbowDegrees = 122f;
 
-        [Tooltip("'주위 살피기'에서 머리가 좌우로 왕복하는 최대 거리 — **캐릭터 신장 배수**. " +
-                 "머리 링 안쪽 가장자리 안에 목선이 남아 있어야 하므로 크게 둘 수 없다" +
-                 "(0.035면 배율 0.75에서 약 0.06유닛 = 머리 반경의 약 36%).")]
-        public float idleAmbientLookHeadShiftRatio = 0.035f;
+        [Tooltip("'주위 살피기'에서 머리가 좌우로 왕복하는 최대 거리 — **캐릭터 신장 배수**.\n" +
+                 "\n" +
+                 "★★ 2026-08-31 사용자 신고 \"자꾸 머리를 움직이는데 목에서 벗어나서 이상함\" 대응으로 " +
+                 "기본값 0.035 -> **0**(= 머리를 옆으로 밀지 않는다). 대신 눈동자가 좌우를 훑는다" +
+                 "(idleAmbientLookEyeSweep01). 이 항목의 코드 경로는 그대로 남아 있으므로 값 하나만 " +
+                 "되돌리면 예전 거동이 살아난다(wanderPostIdleJumpChance를 0으로 내렸던 것과 같은 관례).\n" +
+                 "\n" +
+                 "왜 0이어야 하는가 — 이 리그에는 **목 관절이 없다**. 목은 Torso LineRenderer의 윗부분이고 " +
+                 "루트 로컬 x=0에 고정돼 있는데(Editor/SceneBootstrapper.CreateLineSegmentVisual), " +
+                 "States/StickmanPoseAnimator.SetBodyOffset의 headOffsetX는 **머리 앵커만** 옆으로 민다. " +
+                 "즉 값이 0이 아니면 머리가 정의상 목에서 미끄러진다.\n" +
+                 "안전 상한(유도): 목선이 여전히 머리 중심을 가리키려면 머리 중심이 목 획 밖으로 나가면 " +
+                 "안 되므로 |밀린 거리| <= 목 획 반폭이다. 목 획 두께 = 0.11 x 0.7 = 0.077, 반폭 0.0385, " +
+                 "신장 2.2746944 -> **신장의 0.0169배**가 상한이다. 예전 기본값 0.035는 그 2.07배였고 " +
+                 "머리 반경(신장의 0.0967배)의 36%나 되어 육안으로 확실히 어긋나 보였다. " +
+                 "이 상한은 Tests/EditMode/IdleAmbientLookAroundInvariantTests.cs가 잠근다.")]
+        public float idleAmbientLookHeadShiftRatio = 0f;
 
         [Tooltip("'기지개' 지속 시간(초). UX 26-3이 정한 1.5~2.5초 구간의 중앙값이다.")]
         public float idleAmbientStretchSeconds = 2f;
@@ -2239,6 +2419,51 @@ namespace StickMate.Core
         [Tooltip("'기지개'에서 몸이 솟는 높이 — **캐릭터 신장 배수**. 발끝으로 서는 느낌을 주는 " +
                  "시각 전용 오프셋이라 Rigidbody2D 위치/접지 판정에는 아무 영향이 없다.")]
         public float idleAmbientStretchRiseRatio = 0.030f;
+
+        // ============================================================================
+        // ★ 상체 기울임 (2026-09-01 — 참고 이미지 "달리다 넘어지는 졸라맨" 라운드)
+        // ============================================================================
+        // 이 프로젝트의 몸통 오브젝트는 지금까지 **한 번도 회전한 적이 없다**(localPosition만 세팅됐다).
+        // 그래서 달릴 때 상체가 앞으로 기우는 그림이 원천적으로 나올 수 없었고, 유휴 "주위 살피기"의
+        // 머리 좌우 이동은 목을 함께 기울일 배관이 없어 0으로 꺼져 있었다
+        // (idleAmbientLookHeadShiftRatio 문서의 "값을 되살리려면 먼저 목을 함께 기울이는 배관부터").
+        // States/StickmanPoseAnimator.SetBodyLean이 그 배관이며, 회전 중심은 **엉덩이**다(다리 무영향).
+
+        [Header("상체 기울임 (2026-09-01 — 달리기 / 주위 살피기 / 피격 리액션 공용)")]
+
+        [Tooltip("상체 기울임 마스터 스위치. 끄면 아래 세 용도가 전부 0이 되어 상체가 언제나 " +
+                 "곧게 선다(= 2026-09-01 이전 거동, 네거티브 컨트롤).")]
+        public bool bodyLeanEnabled = true;
+
+        [Tooltip("**명령 속도에 도달했을 때**의 전방 기울임(도). 실제 적용값은 보행 진폭과 같은 " +
+                 "정규화 값(실측 속도/명령 속도)으로 스케일되므로, 느리게 걸으면 덜 기울고 " +
+                 "성큼성큼 걸으면 이 값에 가까워진다.\n" +
+                 "값의 근거: 상체가 기울면 머리 중심이 앞으로 (어깨~엉덩이 거리)x sin(각도)만큼 " +
+                 "이동한다 — 배율 0.75에서 10도면 약 0.11유닛(화면상 약 4pt)이라 '기운 것이 보이되 " +
+                 "말풍선/게이지 같은 머리 기준 앵커가 눈에 띄게 어긋나지는 않는' 구간이다.")]
+        public float bodyLeanRunMaxDegrees = 10f;
+
+        [Tooltip("'주위 살피기'에서 상체가 앞뒤로 한 번 왕복하는 최대 각도(도). 눈이 사라지면서" +
+                 "(2026-09-01 P1) 없어진 '두리번거린다'는 시각 신호의 대체다. 머리만 밀던 옛 방식과 " +
+                 "달리 목(=몸통 선)이 함께 기울므로 머리가 목에서 벗어나지 않는다.")]
+        public float bodyLeanLookAroundDegrees = 7f;
+
+        [Tooltip("랙돌 전이 임계값(ragdollForceThreshold)에 **못 미치는** 피격에서 상체가 튕기는 " +
+                 "최대 각도(도). 임계값을 넘는 피격은 그대로 RAGDOLL이므로 이 값과 무관하다 — " +
+                 "즉 이 항목은 '맞았는데 아무 반응이 없던' 약한 타격 전용이며 랙돌 물리에 일절 " +
+                 "개입하지 않는다(순수 시각 트윈).\n" +
+                 "★ 실측: 이 값은 **임펄스**이고 화면에 실제로 나오는 최대 각도는 그보다 작다 — " +
+                 "복구(bodyLeanHitRecoverRate 7)와 접근(bodyLeanSmoothingRate 12)이 동시에 걸려 " +
+                 "14도 임펄스의 실효 최대는 약 6.2도다(Tests/EditMode/BodyLeanHipPivotTests 실측).")]
+        public float bodyLeanHitDegrees = 14f;
+
+        [Tooltip("피격 기울임이 0으로 돌아오는 지수 감쇠 계수(1/초). 7이면 약 0.4초 안에 " +
+                 "육안으로 직립이다. 0 이하면 다음 틱에 즉시 사라진다.")]
+        public float bodyLeanHitRecoverRate = 7f;
+
+        [Tooltip("상체 기울임이 목표 각도를 따라가는 지수 감쇠 계수(1/초). 걷기 진입/이탈에서 " +
+                 "상체가 툭 튀지 않게 하는 유일한 장치다(프레임레이트 독립).")]
+        public float bodyLeanSmoothingRate = 12f;
 
         [Header("Windows 프레임 페이싱 (2026-08-31 — 잔상/렉 대응, Windows 전용)")]
 
@@ -2305,5 +2530,277 @@ namespace StickMate.Core
                  "Windows 잔상/렉은 이 개발 환경(macOS)에서 재현이 불가능해 **사용자 기기의 로그가 유일한 " +
                  "계측 수단**이다. 렉 문제가 종결되면 false로 내려도 된다.")]
         public bool logFrameTimeStats = true;
+
+        // ============================================================================
+        // 유휴 "주위 살피기" 후속 (2026-08-31 사용자 신고 2건 대응)
+        // ============================================================================
+        // 위쪽 "유휴 앰비언트 동작" 섹션이 아니라 파일 맨 끝의 신규 섹션에 두는 이유는 이 파일의
+        // 기존 관례와 같다 — 같은 라운드에 다른 작업자가 위쪽 섹션들을 동시에 편집 중이라 충돌을
+        // 피하기 위해서다(위 "PC 하드웨어 반응 — 자율 발동 마스터 스위치" 섹션 주석과 동일).
+
+        [Header("유휴 '주위 살피기' 빈도/시선 (2026-08-31)")]
+
+        [Tooltip("'주위 살피기'를 다시 낼 수 있을 때까지의 **최소 간격**(초). 0이면 예전 거동" +
+                 "(네거티브 컨트롤).\n" +
+                 "\n" +
+                 "★ 2026-08-31 사용자 신고 \"너무 자주함\" 대응. 실측(States/AutoWanderController.cs의 " +
+                 "확률/지속시간을 그대로 몬테카를로 1시간 시뮬레이션)으로 나온 예전 빈도는 " +
+                 "**분당 9.7회, 중앙값 간격 6.3초, 최소 간격 1.4초**였다. 원인은 트리거 자체가 아니라 " +
+                 "'Idle 연장'(25%)이 새 Idle 구간을 만들 때마다 그 구간에서 다시 1회 발동한다는 데 있다 " +
+                 "— 한 번 쉬기 시작하면 2~6초마다 계속 나온다.\n" +
+                 "기본값 30초에서의 실측: **분당 1.8회, 중앙값 간격 32.9초**(5.4배 감소).\n" +
+                 "\n" +
+                 "이 값은 **발행자 쪽**(AutoWanderController)에 건다 — 소비자" +
+                 "(Interaction/IdleAmbientMotionRenderer.cs)가 '새 확률/타이머를 하나도 두지 않는다'는 " +
+                 "계약을 그대로 지키기 위해서다. 유예는 개체별이다(사본이 서로 다른 리듬을 갖는다).")]
+        public float wanderLookAroundCooldownSeconds = 30f;
+
+        [Tooltip("'주위 살피기' 동안 **눈동자**가 좌우로 훑는 폭(0~1, 1 = 머리 링을 뚫지 않는 실측 " +
+                 "최대 오프셋). 0이면 눈을 건드리지 않는다(네거티브 컨트롤).\n" +
+                 "\n" +
+                 "왜 머리가 아니라 눈인가: 머리를 옆으로 미는 예전 연출은 목 관절이 없는 이 리그에서 " +
+                 "정의상 머리를 목에서 떼어놓는다(idleAmbientLookHeadShiftRatio 문서의 유도 참고). " +
+                 "눈동자는 머리의 자식이고 States/EyeController가 링 안쪽으로 실측 clamp까지 하므로 " +
+                 "어떤 배율에서도 구조적으로 어긋날 수 없다. 게다가 '두리번거린다'는 신호로는 " +
+                 "눈이 원래 더 정확하다.\n" +
+                 "포즈와 **같은 포락선**(양 끝 정확히 0)을 쓰므로 시작/끝에서 눈이 튀지 않고, " +
+                 "동작이 끝나면 다음 프레임부터 커서 추적이 그대로 이어받는다.")]
+        [Range(0f, 1f)]
+        public float idleAmbientLookEyeSweep01 = 0.85f;
+
+        // ============================================================================
+        // 긴 망토 걸려 넘어짐 — 자율 발동 스위치 (2026-08-31 사용자 명시 요청으로 기본 OFF)
+        // ============================================================================
+        // 파일 맨 끝의 신규 섹션에 두는 이유는 이 파일의 기존 관례와 같다 — 같은 라운드에 다른
+        // 작업자가 위쪽 섹션들을 동시에 편집 중이라 충돌을 피하기 위해서다
+        // (위 "PC 하드웨어 반응 — 자율 발동 마스터 스위치" 섹션 주석과 동일).
+        //
+        // ★ 사용자 원문(2026-08-31): "그리고 걷다가 갑자기 아픈것처럼 쓰러지는데 이런건 없애줘"
+        //
+        // 이것이 그 연출의 **유일한 발동 경로**다. 코드베이스 전체에서
+        // StickmanAgent.ReportExternalImpact()를 부르는 곳은 세 군데뿐이고
+        //   · Core/RagdollLimbImpactRelay      : 실제 물리 충돌(유저가 던지거나 부딪힌 결과)
+        //   · States/DragThrowState            : 유저가 직접 던진 속도
+        //   · States/RodeoCursorState          : 유저가 커서로 거칠게 흔든 것
+        // 나머지 둘도 전부 **유저가 시작한 행동**이다. 유저가 아무것도 하지 않았는데 스스로
+        // RAGDOLL로 가는 경로는 Interaction/LongCapeTripDirector 하나뿐이었다(실측 근거는 아래).
+        //
+        // ★ 실측(2026-08-31 디버거) — 사용자 저장 파일에 wornShoulders=equip.shoulders.long_cape,
+        //   ragdollFalls=48이 찍혀 있었고, 사용자 Player-prev.log에 인과가 그대로 남아 있었다:
+        //       [긴망토] 자락을 밟고 넘어졌습니다 — 충격량 8.16 (임계값 8.00의 최소 초과분)
+        //       [말풍선] 표시 (Ragdoll) "윽...!"
+        //   신고의 "아픈것처럼"은 저 "윽...!"이다. 즉 추정이 아니라 확인된 원인이다.
+        //
+        // 왜 2026-08-29 "구경거리 전부 자율 발동 OFF" 정리에서 살아남았는가: 이 기능은 그 정리
+        // **다음 날**(2026-08-30) 만들어졌고, 발동 주기를 StickConfig가 아니라 자기 파일 안의
+        // private const에 숨겨 뒀다. 그래서 "*Chance 필드를 0으로" 라는 그 라운드의 정리 방식이
+        // 구조적으로 닿을 수 없었다. 이번에 그 상수를 이 필드로 끌어올려 같은 규칙 아래 둔다 —
+        // 다음에 같은 정리를 할 때 또 빠지지 않게 하는 것이 이 이동의 진짜 목적이다.
+
+        [Header("긴 망토 걸려 넘어짐 — 자율 발동 (2026-08-31 사용자 요청으로 기본 OFF)")]
+
+        [Tooltip("긴 망토를 걸치고 **걷는 동안** 자락을 밟고 스스로 넘어지는(RAGDOLL) 연출의 평균 " +
+                 "발동 간격(초). 포아송 과정이라 '정확히 N초마다'가 아니라 '평균 N초에 한 번'이다.\n\n" +
+                 "★ 0 이하 = 발동하지 않는다(기본값). 2026-08-31 사용자 명시 요청 " +
+                 "\"걷다가 갑자기 아픈것처럼 쓰러지는데 이런건 없애줘\"에 따른 것이다. " +
+                 "실측 근거는 이 필드 바로 위 섹션 주석에 있다(사용자 로그의 [긴망토] -> Ragdoll -> " +
+                 "\"윽...!\" 연쇄, 저장 파일 ragdollFalls=48).\n\n" +
+                 "★ 기능을 지우는 것이 아니라 기본값을 조용하게 만드는 것이다 — " +
+                 "Interaction/LongCapeTripDirector의 코드 경로는 그대로 살아 있고, 이 값을 양수로 " +
+                 "올리면 즉시 예전 거동으로 돌아온다(원래 기본값 90). 다른 구경거리 연출을 " +
+                 "*Chance = 0으로 끈 것과 정확히 같은 방식이다.\n\n" +
+                 "주의: 유저가 직접 던지거나(DragThrowState) 커서로 흔들어(RodeoCursorState) 넘어뜨리는 " +
+                 "경로는 이 값을 읽지 않으므로 OFF에서도 그대로 살아 있다 — 끄는 것은 **자율 발동**뿐이다.")]
+        public float longCapeTripMeanSeconds = 0f;
+
+        // ============================================================================
+        // ★★ "창에서 가끔 갑자기 떨어짐" 근본 원인 3종 (2026-09-01, 사용자 신고 + 디버거 확정)
+        // ============================================================================
+        // 파일 맨 끝의 신규 섹션에 두는 이유는 바로 위 섹션과 같다 — 같은 라운드에 다른 작업자가
+        // 위쪽 섹션들을 편집 중이라 충돌을 피한다.
+        //
+        // 디버거의 1차 조사(Tasklist.md "[debugger/Teammate2] 2026-09-01")가 네이티브 프로브
+        // 3600표본으로 **반증**한 것: 창 가림 오판(H1) / 폴링 지터(H2). 발판 열거 자체는 멀쩡하다.
+        // **남은 진짜 원인 3가지**가 아래 세 필드에 각각 대응한다.
+        //
+        //   (1) 접지 중에도 중력이 켜져 있었다 → groundedGravitySuppressionEnabled
+        //   (2) 발판 상실 유예(0.1초)가 창 열거 폴링 캐시(0.3초)보다 짧았다
+        //                                     → groundLossGracePollIntervalMultiplier
+        //   (3) 오버레이 원점 읽기가 가끔 쓰레기값을 줬다 → overlayOriginSanityCheckEnabled
+
+        [Header("접지 안정성 (2026-09-01 신고 \"창에서 가끔 갑자기 떨어짐\")")]
+
+        [Tooltip("원인 (1). 접지가 확정된 프레임에는 Rigidbody2D.gravityScale을 0으로 눌러 " +
+                 "**세로 적분 자체를 막는다**(기본 ON).\n\n" +
+                 "왜 위치 스냅만으로는 부족한가: 창/Dock 상단은 **논리 발판일 뿐 물리 콜라이더가 " +
+                 "없다.** 그래서 '서 있기'가 매 프레임 SnapToGround 한 번으로만 유지되는데, 그 사이에도 " +
+                 "중력은 계속 적분된다. 한 프레임이 길어지면 그 프레임의 자유낙하만으로 접지 허용오차 " +
+                 "밴드(groundSnapTolerance)를 통째로 벗어나고, 그러면 창이 전혀 움직이지 않았는데도 " +
+                 "캐릭터가 낙하한다.\n" +
+                 "임계 프레임시간은 States/GroundSensor.ComputeGroundLossFrameTimeThreshold()가 실제 " +
+                 "카메라/설정에서 계산한다 — 배포 형상(gravityScale 3, 허용오차 20 OS-pt, 1유닛≈40.9pt)에서 " +
+                 "**약 182ms**다. 그런데 절전 프레임페이싱 티어 DisplayOff는 4fps(=250ms/프레임)이고 " +
+                 "엔진 최대 timestep도 333ms다 — 즉 **절전 등급에 들어가거나 히치가 한 번만 나도 조건이 " +
+                 "성립**한다. 이것이 신고의 가장 유력한 원인이다.\n\n" +
+                 "안전장치: 억제는 매 프레임 **벗겼다 다시 얹는다**(StickmanAgent.Update가 상태 Tick " +
+                 "직전에 해제하고 모든 처리가 끝난 뒤 다시 적용) — 잉크 바닥 클리어런스 리프트와 완전히 " +
+                 "같은 관례다. 그래서 어떤 경로로 상태가 바뀌어도 '중력이 꺼진 채 갇히는' 상태가 " +
+                 "구조적으로 남을 수 없고, 상태 로직/연출 코드가 gravityScale을 읽을 때는 언제나 진짜 값이다.\n\n" +
+                 "끄면 예전 거동(스냅 전용)으로 정확히 되돌아간다 — 회귀 테스트의 네거티브 컨트롤이 이 값을 쓴다.")]
+        public bool groundedGravitySuppressionEnabled = true;
+
+        [Tooltip("원인 (2). 발판 상실 유예를 **footholdPollInterval의 몇 배**로 둘 것인가.\n\n" +
+                 "실제 유예 = max(fallGraceDuration, footholdPollInterval x 이 값) — " +
+                 "ResolveGroundLossGraceDuration()이 유일한 계산 지점이다. 숫자를 따로 적지 않고 " +
+                 "폴링 간격에서 **유도**하므로, 폴링 주기를 바꾸면 유예가 자동으로 따라간다.\n\n" +
+                 "왜 필요한가: 유예의 목적은 '창 목록이 한 번 튀는 것'을 흡수하는 것이다. 그런데 발판 " +
+                 "캐시는 footholdPollInterval(0.3초) 동안 고정이라, 열거가 한 번만 튀면 그 나쁜 목록이 " +
+                 "**0.3초 내내** 유지된다. 예전 유예 0.1초는 그 1/3이라 설계 목적을 원리적으로 수행할 수 " +
+                 "없었다(디버거 가설 H5, 성립). 1배가 아니라 1.5배인 이유는 폴링 위상과 프레임 경계가 " +
+                 "정렬돼 있지 않기 때문이다 — 나쁜 목록이 관측되는 시점이 폴링 주기 한가운데일 수 있어 " +
+                 "정확히 1배면 경계에서 아슬아슬하게 진다.\n\n" +
+                 "0 이하로 두면 예전 거동(fallGraceDuration 그대로)이 된다.\n" +
+                 "※ 이 값은 **발판 상실** 판정에만 쓴다. 착지 확정(FallState)은 여전히 fallGraceDuration을 " +
+                 "쓴다 — 두 판정은 목적이 다르고, 착지까지 늦추면 공중에 붕 뜬 채 내려앉는 그림이 된다.")]
+        public float groundLossGracePollIntervalMultiplier = 1.5f;
+
+        [Tooltip("원인 (3). 플랫폼이 보고한 오버레이 창 사각형이 화면 경계를 명백히 벗어나면 그 보고를 " +
+                 "**버리고 직전 유효값을 유지**한다(기본 ON).\n\n" +
+                 "실측 근거: Player.log.prevround에서 오버레이 원점이 " +
+                 "(0,0)->(0,-805)->(0,-936)->(0,-937)->(0,-78)->(0,0)으로 요동친 직후 [발판상실]이 " +
+                 "발생했다(화면 높이는 982pt). 원점이 틀리면 캐릭터의 OS 좌표가 통째로 틀어져 발판 " +
+                 "상단과의 비교가 무너진다 = 창은 그대로인데 접지가 풀린다.\n\n" +
+                 "판정과 '영구 고착 방지'는 Platform/ScreenCoordinateConverter의 " +
+                 "ReportOverlayWindowOsRect()에 있다 — 같은 값이 연속으로 다시 오면 실제 이동으로 보고 " +
+                 "받아들이므로, 디스플레이를 바꿔도 낡은 원점에 갇히지 않는다.")]
+        public bool overlayOriginSanityCheckEnabled = true;
+
+        /// <summary>
+        /// **발판 상실** 판정에 쓸 유예 시간(초)의 유일한 계산 지점.
+        /// = max(<see cref="fallGraceDuration"/>, <see cref="footholdPollInterval"/> x
+        /// <see cref="groundLossGracePollIntervalMultiplier"/>).
+        ///
+        /// <para>착지 확정(States/FallState)은 이 값을 쓰지 않는다 — 위 툴팁의 마지막 문단 참고.</para>
+        /// </summary>
+        public float ResolveGroundLossGraceDuration()
+        {
+            float derived = footholdPollInterval * groundLossGracePollIntervalMultiplier;
+            return Mathf.Max(fallGraceDuration, derived);
+        }
+
+        // ============================================================================
+        // ★★ 발판 상실 공중 유예 연출 (2026-09-01 — 소은 실측 + 리더 결정 "(C) 시간은 두고 연출을 붙인다")
+        // ============================================================================
+        // 위 (2) 유예가 만든 부작용을 닫는 항목이다. 유예 동안 몸을 붙잡는 것은 수정과 분리 불가인데
+        // (폴링 한 주기 자유낙하가 이미 허용오차의 2.7배라 발판으로 돌아올 방법이 없다), 그 결과
+        // **IDLE 중에는 화면이 통째로 정지**한다. 소은의 프레임별 픽셀 추적:
+        //
+        //   IDLE : 모자 상단 y가 10프레임 넘게 1픽셀도 안 움직임(연속 프레임 화소차 0.00%)
+        //          -> "만화적 연출"이 아니라 **"앱이 멈췄다/렉이다"** 로 읽힌다.
+        //   WALK : 같은 빌드·같은 물리·같은 지속시간인데 허공을 수평으로 걸어감(다리가 계속 돌아감)
+        //          -> 와일 E. 코요테 그대로. 귀엽다.
+        //
+        // 즉 문제는 "0.45초"라는 길이가 아니라 **그 시간에 생명 신호가 있느냐**다(같은 빌드 안의 통제
+        // 비교라 다른 변수가 끼어들 여지가 없다). 그래서 시간 단축안은 기각됐고, 대신 유예를 진짜
+        // 상태(StickmanStateId.GroundLossHang)로 승격해 그 상태의 포즈로 신호를 만든다.
+        //
+        // ★ 사용자가 실제로 보는 정지 시간 = 폴링 지연(0~footholdPollInterval) + 유예
+        //   = 0.45~0.75초, 평균 약 0.6초(리더 결정 승인사항 4로 확정된 전제). 아래 두 비율이
+        //   "유예의 몇 %"인 이유가 이것이다 — 폴링 주기를 바꾸면 유예가 따라가고, 연출도 함께 따라가야
+        //   한다. 숫자를 초로 적으면 유예가 짧아졌을 때 연출의 뒷부분이 통째로 잘린다.
+
+        [Header("발판 상실 공중 유예 연출 (2026-09-01 — 정지 화면을 코요테 개그로)")]
+
+        [Tooltip("유예 구간을 **상태로 승격**할지의 마스터 스위치(기본 ON).\n\n" +
+                 "끄면 Idle/Walk가 GroundLossHang으로 전이하지 않고 2026-09-01 오전 거동으로 정확히 " +
+                 "되돌아간다 — 유예 동안 몸은 여전히 붙잡히지만(그건 낙하 수정의 본체라 분리 불가) " +
+                 "연출이 없어 **정지 화면**이 된다. 회귀 테스트의 네거티브 컨트롤이 이 값을 쓴다: " +
+                 "끈 상태에서 화면이 실제로 얼어붙는 것을 재서, 켠 상태의 움직임 수치가 의미를 갖게 한다.")]
+        public bool groundLossHangStateEnabled = true;
+
+        [Tooltip("유예 전체 길이 대비 **무반응 구간**의 비율(0~1). 발판을 잃은 뒤 이 비율만큼은 " +
+                 "포즈를 한 톨도 건드리지 않는다 — 늦게 알아차리는 그 한 박자가 코요테 개그의 핵심이다.\n\n" +
+                 "★ 소은의 원안은 0.12초(=유예 0.45초의 0.267)였고 여기서는 0.15로 **줄였다**. 사유: " +
+                 "소은 자신이 4항에서 확정한 대로 사용자가 보는 정지에는 폴링 지연(0~0.3초, 평균 0.15초)이 " +
+                 "**이미 앞에 붙어 있다.** 그 구간에는 앱이 발판 상실을 정말로 모르고 있으므로 그 자체가 " +
+                 "'늦게 알아차림'이다. 원안대로 0.267을 쓰면 무반응이 평균 0.15+0.12=0.27초, 최악 0.42초가 " +
+                 "되어 의도한 한 박자의 2.2~3.5배가 되고, 그건 다시 '렉'으로 읽히는 구간이다. 0.15면 " +
+                 "무반응은 최소 0.068초(폴링 지연 0) ~ 최대 0.368초, 평균 0.22초이고, 대신 " +
+                 "**생명 신호 구간이 0.26초에서 0.38초로 46% 길어진다.**")]
+        [Range(0f, 0.5f)]
+        public float groundLossHangReactionDelayRatio = 0.15f;
+
+        [Tooltip("유예 전체 길이 대비 **낙하 전조(상체 기울임)가 시작되는** 지점의 비율(0~1). " +
+                 "이 지점부터 유예가 끝날 때까지 상체가 앞으로 기운다(다리 종종거림은 계속된다).\n\n" +
+                 "★ 소은의 원안은 0.35초(=0.778)였고 여기서는 0.72로 앞당겼다. 사유: 기울임은 " +
+                 "**지수 감쇠로 목표를 따라가므로**(bodyLeanSmoothingRate 12/초) 남은 시간이 짧을수록 " +
+                 "실제로 적용되는 각도가 작아진다. 0.778이면 남은 시간 0.1초에 목표의 70%, 0.72면 " +
+                 "0.126초에 78%다 — 소은이 '단독으론 물리적으로 안 보이는 변화'라고 지적한 구간을 " +
+                 "벗어나기 위한 최소 조정이다(그 지적의 실체는 각도가 아니라 **끝점 이동 pt**다).")]
+        [Range(0f, 1f)]
+        public float groundLossHangFallTellRatio = 0.72f;
+
+        [Tooltip("제자리 종종걸음의 다리 사이클 주파수를 **걷기 사이클의 몇 배**로 돌릴 것인가. " +
+                 "리더 승인 범위는 2~3배이고 기본값은 그 상단이다 — 유예가 0.45초뿐이라 " +
+                 "배수가 곧 '몇 걸음이 보이는가'이기 때문이다(3배 = 실측 걷기 1.35Hz 기준 약 4Hz = " +
+                 "생명 신호 구간 0.38초에 약 3걸음).\n\n" +
+                 "숫자를 Hz로 적지 않는 이유: 걷기 주파수는 보폭(다리 길이 x 진폭)과 명령 속도에서 " +
+                 "나오는 값이라 캐릭터 배율/진폭 설정이 바뀌면 함께 움직여야 한다. " +
+                 "States/StickmanPoseAnimator.ApplyGroundLossHangPose가 걷기와 같은 식으로 매 프레임 유도한다.")]
+        public float groundLossHangLegCycleSpeedMultiplier = 3f;
+
+        [Tooltip("종종걸음의 다리 진폭 배수(걷기 키포즈 표에 곱한다). 1 = 걷기와 같은 보폭 각도. " +
+                 "낮추면 '종종'거리는 느낌은 커지지만 **화면에서 보이는 크기가 그대로 줄어든다** — " +
+                 "이 캐릭터는 높이 63pt짜리 막대라 1% 미만의 변화는 육안으로 무의미하다는 실측이 있어 " +
+                 "기본값은 줄이지 않았다.")]
+        public float groundLossHangLegAmplitudeScale = 1f;
+
+        [Tooltip("팔 허우적의 **중심** 어깨 각도(도). 포즈 규약상 0 = 곧게 아래, 180 = 곧게 위다. " +
+                 "기본값 125는 '위-바깥으로 든 팔'이고, 곧이어 이어지는 낙하 자세" +
+                 "(fallPoseArmRaiseDegrees 143)가 아래 진폭 범위 안에 들어와 전환이 매끄럽다.")]
+        public float groundLossHangArmFlailBaseDegrees = 125f;
+
+        [Tooltip("팔 허우적의 왕복 진폭(도). 중심 각도 ± 이 값만큼 왕복한다.\n\n" +
+                 "기본값 48의 근거는 **보이는 크기**다(각도가 아니라 손끝 이동 pt로 정한다). " +
+                 "중심 125 ± 48 = 77~173도 구간에서 손끝의 세로 이동은 팔 두 마디 기하학상 약 0.59유닛" +
+                 "(배포 환산 약 24pt)이고, 여기에 팔 각도 스무딩 감쇠(팔은 다리의 0.55배 계수)가 걸려 " +
+                 "화면에는 약 19pt가 남는다 — 소은이 '물리적으로 안 보이는 변화'로 지목한 6.1pt의 약 3배다. " +
+                 "40도로 낮추면 그 여유가 2.5배로 줄어 기준선에 너무 가까워진다" +
+                 "(Tests/PlayMode/GroundLossHangStateTests.H8이 이 값을 실측으로 잠근다).")]
+        public float groundLossHangArmFlailDegrees = 48f;
+
+        [Tooltip("팔 왕복 주파수 / 다리 사이클 주파수 비. **정수가 아니어야** 한다 — 딱 맞아떨어지면 " +
+                 "허우적이 아니라 행진처럼 보인다(dragStruggle의 팔 주파수 비와 같은 이유).")]
+        public float groundLossHangArmFlailFrequencyRatio = 0.63f;
+
+        [Tooltip("허우적 중 팔꿈치 굽힘(도, 항상 0 이상). 완전히 펴면 막대기로 보인다.")]
+        public float groundLossHangElbowBendDegrees = 22f;
+
+        [Tooltip("낙하 전조로 상체가 앞으로 기우는 **목표** 각도(도). 실제 화면 각도는 지수 감쇠 " +
+                 "때문에 이보다 작다(위 groundLossHangFallTellRatio 참고).\n\n" +
+                 "값의 근거는 '보이는 크기'다: 상체 길이가 약 35pt라 기울임 θ의 끝점 이동은 35sin(θ)pt다. " +
+                 "소은이 '단독으론 안 보이는 변화'로 지목한 10도는 6.1pt였다. 26도 목표 -> 실효 약 20도 -> " +
+                 "약 12pt로 그 2배가 된다(상한은 StickmanPoseAnimator.MaxBodyLeanDegrees 30도).\n" +
+                 "bodyLeanEnabled를 끄면 이 값과 무관하게 0이다(마스터 스위치 하나로 전부 꺼진다).")]
+        public float groundLossHangFallTellLeanDegrees = 26f;
+
+        [Tooltip("★ **갇힘 방지 최후 안전망** — 이 상태에 머물 수 있는 절대 상한을 유예의 몇 배로 둘 것인가.\n\n" +
+                 "정상 경로에서는 유예 만료(1.0배)에 반드시 빠져나가므로 이 상한은 도달하지 않는다. " +
+                 "그럼에도 두는 이유: **이 상태에 갇히면 캐릭터가 영원히 공중에 뜬다** — 이번 라운드가 " +
+                 "고치려는 원래 버그보다 나쁜 결과다. 유예 타이머는 블랙보드가 소유하고 여러 경로가 " +
+                 "리셋할 수 있으므로(ResetGroundLossTimer), 상태가 자기 시계로도 한 번 더 끊는다. " +
+                 "1보다 커야 정상 경로를 앞지르지 않는다.")]
+        public float groundLossHangHardTimeoutGraceMultiplier = 3f;
+
+        /// <summary>
+        /// 발판 상실 공중 유예 상태에 머물 수 있는 <b>절대 상한</b>(초)의 유일한 계산 지점.
+        /// = <see cref="ResolveGroundLossGraceDuration"/> x
+        /// <see cref="groundLossHangHardTimeoutGraceMultiplier"/>(최소 1배).
+        /// </summary>
+        public float ResolveGroundLossHangHardTimeout()
+        {
+            float grace = ResolveGroundLossGraceDuration();
+            return grace * Mathf.Max(1f, groundLossHangHardTimeoutGraceMultiplier);
+        }
     }
 }

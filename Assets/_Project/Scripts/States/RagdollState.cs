@@ -1,3 +1,4 @@
+using UnityEngine;
 using StickMate.Core;
 using StickMate.Dialogue;
 
@@ -52,12 +53,27 @@ namespace StickMate.States
         public void Enter(StateTransitionContext context)
         {
             _settleTimer = 0f;
-            // 모든 관절의 모터/목표 각도 추종을 끄고 전신을 순수 물리 낙하물로 전환.
-            _blackboard.GetRagdollRig()?.EnterRagdoll();
+
+            // ★ 2026-09-01 (P9-b) 진입 충격량 배선 — 방향 스냅샷은 **읽는 즉시 지운다**(소비형).
+            // 지우지 않으면 방향을 모르는 다음 진입(ReportExternalImpact(크기만) / 테스트의 직접
+            // ChangeState / 원인 불명의 강제 랙돌)에서 지난번 타격의 방향으로 유령 충격량이 실린다.
+            Vector2 hitDirection = _blackboard.LastImpactDirection;
+            _blackboard.LastImpactDirection = Vector2.zero;
+
+            // 판정용 원본 충격량(N·s)을 그대로 넘기면 임계값 5배 타격에서 초당 5바퀴가 나온다 —
+            // 환산/클램프는 RagdollImpactResolver.ResolveEntryImpulse() 한 곳에만 있다(그 문서에 실측 근거).
+            float entryImpulse = RagdollImpactResolver.ResolveEntryImpulse(
+                _blackboard.Config, _blackboard.LastImpactMagnitude);
+
+            // 모든 관절의 모터/목표 각도 추종을 끄고 전신을 순수 물리 낙하물로 전환한다. 방향이 0이거나
+            // 충격량이 0이면 RagdollRig가 힘 인가 경로를 통째로 건너뛴다(= 기존 무인자 거동 그대로).
+            _blackboard.GetRagdollRig()?.EnterRagdoll(hitDirection, entryImpulse);
 
             // BUG-M7 대응 시연(UX_FLOW.md 31-2 #2) — StickmanAgent.ReportExternalImpact()가 이 전이
             // 직전에 스냅샷해둔 충격량을 임계값 대비 배율로 환산해 파라미터로 노출하고, 그 값 하나로
             // "윽.../으악!/으아아아악?!" 세 갈래를 갈라 파생시킨다(같은 매핑 함수, 같은 스냅샷 — 31-1 원칙).
+            // ★ 대사는 위에서 **행동(진입 충격량)이 확정된 뒤** 같은 스냅샷 하나에서 파생된다 —
+            // 순서를 바꾸면 원칙 1(행동-텍스트 싱크)이 깨진다.
             float threshold = _blackboard.Config != null ? _blackboard.Config.ragdollForceThreshold : 8f;
             _dialogueParams.ImpactRatio = threshold > 0f ? _blackboard.LastImpactMagnitude / threshold : 0f;
 

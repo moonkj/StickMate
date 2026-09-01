@@ -117,6 +117,41 @@ namespace StickMate.States
         /// <summary>팔은 같은 쪽 다리와 반대 위상 — 다리 위상에 이만큼 더해서 팔 키를 샘플링한다.</summary>
         private const float ArmPhaseOffset = 0.5f;
 
+        // ─────────────────────────────────────────────────────────────────────────────────────
+        // ★ 2026-09-01 (P9-c) 속도 연동 진폭 — docs/UX_FLOW.md 38-14-2
+        // ─────────────────────────────────────────────────────────────────────────────────────
+        // 위 키표는 "한 가지 걸음걸이"만 정의한다. 그래서 지금까지는 아무리 빨리 걸어도 다리 스윙
+        // 폭이 똑같았다(amplitudeScale이 StickConfig의 **고정값** 1.0이었다). 참고자료의 달리기는
+        // 팔이 더 크게 휘둘리고 다리가 가위처럼 더 넓게 벌어진다 — 그건 다른 키표가 아니라 **같은
+        // 키표의 더 큰 진폭**이다.
+        //
+        // 그래서 새 상태(Run)도, 새 측정도, 새 키프레임도 만들지 않는다. 이미 매 프레임 계산되는
+        // _smoothedSpeed(실제 이동 속도 실측)를 기준 속도로 정규화해 진폭 배율을 유도한다.
+        //
+        // 이 두 값을 StickConfig가 아니라 여기 두는 이유는 위 키표와 같다: 이건 사용자가 만질 튜닝
+        // 스칼라가 아니라 **키표와 한 몸인 걸음걸이 곡선의 양 끝점**이고, 둘 사이의 정합성이 깨지면
+        // 걷기가 통째로 이상해진다. 사용자/설정이 만지는 전체 배율은 여전히
+        // StickConfig.walkPoseAmplitudeScale이며, 아래 유도값은 거기에 **곱해진다**(즉 설정을 0으로
+        // 두면 예전처럼 진폭이 0이 되고, 1로 두면 아래 곡선이 그대로 적용된다).
+        //
+        // 값의 근거(UX 설계 38-14-2): 느린 종종걸음 0.85 ~ 성큼성큼 1.35.
+        //   ★ 이 구간에서 보폭도 함께 커지지만 **발 미끄러짐은 자동으로 흡수된다** — 사이클 이동
+        //     거리(_distancePerCycle)가 바로 이 진폭에서 역산되기 때문이다(그 필드 문서). 진폭이
+        //     커지면 보폭이 늘고 사이클 주파수가 그만큼 내려간다(= 성큼성큼 걸으면 걸음 수가 준다).
+        //     물리적으로 옳은 방향이고, Tests/PlayMode/WalkFootSlipTests가 그 정합성을 잠근다.
+
+        /// <summary>정지에 가까운 속도에서의 진폭 배율(종종걸음).</summary>
+        private const float WalkAmplitudeAtRest = 0.85f;
+
+        /// <summary>기준 속도(호출부가 넘긴 명령 속도)에 도달했을 때의 진폭 배율(성큼성큼).</summary>
+        private const float WalkAmplitudeAtFullSpeed = 1.35f;
+
+        /// <summary>
+        /// 기준 속도가 0에 가까울 때 0으로 나누는 것을 막는 하한(유닛/초). 이 값 자체가 걸음걸이에
+        /// 영향을 주지 않도록, 실제 걷기 속도(배율 0.35에서도 약 1.17유닛/초)보다 훨씬 작게 둔다.
+        /// </summary>
+        private const float MinWalkReferenceSpeed = 0.01f;
+
         /// <summary>실제 이동 속도를 평균 내는 측정 창(초). 물리 고정 스텝(50Hz) 5회분이라 렌더 프레임
         /// 단위의 톱니가 확실히 상쇄되면서도, 속도 변화에 대한 반응이 눈에 띄게 늦어지지 않는다.</summary>
         private const float SpeedWindowSeconds = 0.1f;
@@ -140,6 +175,7 @@ namespace StickMate.States
             public Vector2 PivotLocal;     // 부모 로컬 공간에서의 관절 위치(HingeJoint2D.connectedAnchor).
             public Vector2 AnchorLocal;    // 이 마디 로컬 공간에서의 관절 위치(HingeJoint2D.anchor, 현재 항상 0).
             public bool FollowsBodyOffset; // 루트 직속(위 마디)만 true — 몸 바운스 오프셋을 여기에 더한다.
+            public bool FollowsBodyLean;   // 상체(팔)만 true — 부착점이 엉덩이 피벗으로 함께 돈다(SetBodyLean).
             public float CurrentAngle;     // 지수 감쇠 보간의 상태값 = 지금 실제로 적용돼 있는 각도(도).
             public float GetupStartAngle;  // GETUP 보간 시작각(널브러진 실제 각도) 캡처값.
             public float Length;           // 이 마디의 길이(월드 유닛) — 보폭 계산/발끝 좌표 산출용.
@@ -193,6 +229,11 @@ namespace StickMate.States
         // 보행 주파수 산출에 쓰는 수평 속도의 스무딩 값 — 속도가 급변해도 주파수가 튀지 않게 한다.
         private float _smoothedSpeed;
 
+        // ★ P9-c — 이번 틱에 실제로 적용된 진폭 배율(설정값 × 속도 유도 계수)과 그 속도 정규화 값.
+        // 실측 검증/로그 전용 상태값이며 다음 틱에서 통째로 덮어써진다(누적 상태가 아니다).
+        private float _walkAmplitudeScale = 1f;
+        private float _walkSpeed01;
+
         // Idle 미세 호흡 모션의 자체 타이머(초). Walk 위상과 독립이라 상태를 오가도 이어진다.
         private float _idleTime;
 
@@ -203,6 +244,57 @@ namespace StickMate.States
         // 절대 건드리지 않는다** — 접지 판정(GroundSensor/SnapToGround)이 루트의 물리 위치를 발 높이로
         // 쓰기 때문에 그걸 흔들면 접지 로직이 깨진다(리더 명시 지시). 순수하게 보이는 것만 흔든다.
         private float _bodyOffsetY;
+
+        // 시각 전용 머리 좌우 오프셋(루트 로컬). 상체 기울임 회전 **뒤에** 더해진다(SetBodyOffset 문서).
+        private float _headOffsetX;
+
+        // ─────────────────────────────────────────────────────────────────────────────────────
+        // ★ 2026-09-01 상체 기울임(SetBodyLean) — 회전 중심은 **엉덩이**다
+        // ─────────────────────────────────────────────────────────────────────────────────────
+        // 지금까지 몸통 오브젝트의 localRotation은 이 프로젝트 어디에서도 세팅된 적이 없었다
+        // (localPosition만 썼다). 그래서 "달릴 때 상체가 앞으로 기운다" 같은 그림이 원천적으로 나올 수
+        // 없었고, 유휴 "주위 살피기"의 머리 좌우 이동은 목(=Torso 선의 윗부분)을 함께 기울일 배관이
+        // 없어서 기본값 0으로 꺼져 있었다(StickConfig.idleAmbientLookHeadShiftRatio 문서의 예고).
+        //
+        // 왜 엉덩이 피벗인가: 몸통 오브젝트의 원점은 몸통 **선의 중점**이다(Editor/SceneBootstrapper가
+        // torsoCenterY에 만든다). 그래서 localRotation만 주면 몸통이 자기 중점을 축으로 돌아 아랫배가
+        // 뒤로 빠지고 다리와 몸통이 어긋난다. 사람은 고관절에서 접히므로 **엉덩이**가 축이어야 하고,
+        // 그 지점은 이미 리그에 실측 가능한 형태로 있다 — 다리 위 마디의 부착점(Segment.PivotLocal =
+        // HingeJoint2D.connectedAnchor)이 곧 엉덩이다. 새 상수를 하나도 도입하지 않는다.
+        //
+        // 적용 대상: 몸통 / 머리 / **팔 부착점**(어깨). 다리는 피벗 그 자체라 회전의 부동점이므로
+        // 자동으로 영향을 받지 않는다(같은 식을 적용해도 결과가 제자리다 — 아래 LeanedPivot 참고).
+        // 팔의 **각도**는 일부러 기울이지 않는다(TickBodyLean 문서의 "왜 팔 각도는 안 돌리는가").
+
+        /// <summary>기울임 안전 상한(도). 이 이상은 "기운 자세"가 아니라 넘어지는 그림이라, 어떤 호출부가
+        /// 실수로 큰 값을 넣어도 실루엣이 무너지지 않게 최종 적용 지점에서 자른다.</summary>
+        private const float MaxBodyLeanDegrees = 30f;
+
+        /// <summary>이 각도(도) 미만은 "기울지 않음"으로 본다 — 24시간 상주 앱이라 0에 수렴한 뒤에는
+        /// 회전 계산과 Transform 쓰기를 통째로 건너뛴다.</summary>
+        private const float LeanEpsilonDegrees = 0.01f;
+
+        // 지금 실제로 적용돼 있는 기울임(도, + = 진행 방향 앞쪽). 방향 중립 공간이며 최종 적용 지점에서만
+        // _facingSign이 곱해진다(각 마디 각도와 같은 관례).
+        private float _bodyLeanDegrees;
+
+        // 이번 프레임의 포즈가 요청한 목표 기울임. TickBodyLean이 **소비하며 0으로 비운다** — 그래서
+        // 아무도 요청하지 않은 상태(Fall/Hang/Getup/Ragdoll…)는 별도의 원복 배관 없이 자동으로 직립으로
+        // 돌아온다(SetBodyOffset의 headOffsetX가 오버로드로 항상 0이 되는 것과 같은 안전장치).
+        private float _leanRequestDegrees;
+
+        // 피격 리액션 임펄스(도)와 그 복구 계수(1/초). 위 목표에 더해지고 스스로 0으로 감쇠한다.
+        private float _hitLeanDegrees;
+        private float _hitLeanRecoverRate;
+
+        // 회전 캐시 — 기울임이 바뀐 프레임에만 다시 만든다.
+        private Quaternion _leanRotation = Quaternion.identity;
+        private bool _hasLean;
+
+        // 상체 회전의 피벗(루트 로컬) = 다리 부착점 실측값. 다리를 못 찾으면 (0,0)이고, 그 경우
+        // 기울임은 발밑을 축으로 돌게 되므로 아래 HasHipPivot이 false면 기울임 자체를 적용하지 않는다.
+        private Vector2 _hipPivotLocal;
+        private bool _hasHipPivot;
 
         // 바라보는 방향(+1 = 오른쪽, -1 = 왼쪽). 2026-08-28 사용자 "이상하게 뒤로 걸어" 대응:
         // 캐릭터가 왼쪽으로 이동하는데 다리 스윙/무릎 접힘 방향은 오른쪽을 향한 채 고정돼 있어
@@ -293,6 +385,14 @@ namespace StickMate.States
             {
                 _legUpperLength = refLeg.Upper != null ? refLeg.Upper.Length : 0f;
                 _legLowerLength = refLeg.Lower != null ? refLeg.Lower.Length : 0f;
+
+                // 상체 기울임의 회전 중심 = **다리 부착점**(= 엉덩이). 새 상수를 만들지 않고 리그를
+                // 실측한다 — 프리팹 지오메트리가 바뀌거나 배율이 달라져도 자동으로 따라온다.
+                if (refLeg.Upper != null)
+                {
+                    _hipPivotLocal = refLeg.Upper.PivotLocal;
+                    _hasHipPivot = true;
+                }
             }
             _distancePerCycle = ComputeDistancePerCycle(1f);
         }
@@ -377,15 +477,19 @@ namespace StickMate.States
 
             return new Limb
             {
-                Upper = BuildSegment(upperTransform, followsBodyOffset: true),
-                Lower = lowerTransform != null ? BuildSegment(lowerTransform, followsBodyOffset: false) : null,
+                // 팔의 위 마디(어깨)만 상체 기울임을 따라간다 — 다리 부착점은 회전 피벗 그 자체라
+                // 돌려도 제자리이고, 아래 마디는 위 마디의 자식이라 자동으로 딸려온다.
+                Upper = BuildSegment(upperTransform, followsBodyOffset: true, followsBodyLean: !isLeg),
+                Lower = lowerTransform != null
+                    ? BuildSegment(lowerTransform, followsBodyOffset: false, followsBodyLean: false)
+                    : null,
                 NeutralSign = sign,
                 PhaseOffset = phase,
                 IsLeg = isLeg,
             };
         }
 
-        private static Segment BuildSegment(Transform t, bool followsBodyOffset)
+        private static Segment BuildSegment(Transform t, bool followsBodyOffset, bool followsBodyLean)
         {
             var joint = t.GetComponent<HingeJoint2D>();
             var box = t.GetComponent<BoxCollider2D>();
@@ -397,6 +501,7 @@ namespace StickMate.States
                 PivotLocal = joint != null ? joint.connectedAnchor : (Vector2)t.localPosition,
                 AnchorLocal = joint != null ? joint.anchor : Vector2.zero,
                 FollowsBodyOffset = followsBodyOffset,
+                FollowsBodyLean = followsBodyLean,
                 // 마디 길이는 BoxCollider2D.size.y와 정확히 같게 만들어져 있다
                 // (Editor/SceneBootstrapper.CreateLimbSegment) — 하드코딩 대신 그 값을 읽는다.
                 Length = box != null ? box.size.y : 0f,
@@ -475,10 +580,16 @@ namespace StickMate.States
         /// 물려받는 것이 규칙이다).
         ///
         /// 왜 두 동작이 하필 이 모양인가(캐릭터가 화면상 약 60pt로 아주 작다는 실측 제약):
-        ///   · LookAround(주위 살피기) — <b>한쪽 팔을 이마에 얹어 멀리 보는 손차양 자세</b> + 머리가
-        ///     좌우로 한 번 왕복한다. 처음에는 "머리만 좌우로 움직이기"를 검토했으나, 머리 반경이
-        ///     화면상 약 6pt라 머리만으로는 사실상 보이지 않는다. 팔 길이는 신장의 약 1/3이라
-        ///     팔 실루엣이 바뀌는 것이 이 크기에서 유일하게 확실히 읽히는 신호다.
+        ///   · LookAround(주위 살피기) — <b>한쪽 팔을 이마에 얹어 멀리 보는 손차양 자세</b>.
+        ///     팔 길이는 신장의 약 1/3이라 팔 실루엣이 바뀌는 것이 이 크기에서 유일하게 확실히
+        ///     읽히는 신호다.
+        ///     ★★ 2026-08-31 — 여기에 있던 "머리 좌우 왕복"은 <b>기본값 0으로 껐다</b>
+        ///     (StickConfig.idleAmbientLookHeadShiftRatio). 이 리그에는 목 관절이 없어서 — 목은
+        ///     Torso LineRenderer의 윗부분이고 루트 로컬 x=0에 고정이다 — 머리 앵커만 옆으로 미는
+        ///     이 방식은 <b>정의상</b> 머리를 목에서 떼어놓는다(사용자 신고 "머리를 움직이는데
+        ///     목에서 벗어나서 이상함"). 잃어버린 "두리번거림" 신호는 눈동자 좌우 훑기로 옮겼다
+        ///     (StickmanBlackboard.TryGetIdleAmbientEyeSweep) — 눈은 머리의 자식이고 링 안쪽으로
+        ///     실측 clamp되므로 구조적으로 어긋날 수 없다.
         ///     각도는 손 끝이 어깨 기준 (앞 0.20, 위 0.95)·팔길이에 오도록 역산한 값이다(어깨 107도 /
         ///     팔꿈치 122도) — 그 지점이 곧 이마 높이다.
         ///   · SitAndYawn(기지개) — 두 팔을 머리 위로 뻗고(매달리기와 같은 180∓spread 규약) 무릎을
@@ -506,6 +617,17 @@ namespace StickMate.States
                 : Mathf.Sin(Mathf.Clamp01(progress01) * Mathf.PI * 2f) * env * ambient.LookHeadShiftDistance;
             float rise = stretching ? ambient.StretchRiseDistance * env : 0f;
             SetBodyOffset(breath * settings.BreathAmplitude + rise, headShift);
+
+            // ★ 2026-09-01 — 눈이 사라지면서(SceneBootstrapper.BakeEyes=false) 없어진 "두리번거림"의
+            // 시각 신호를 **상체 기울임**으로 승격한다. 예전 머리 좌우 이동(headShift)과 곡선이 같지만
+            // (양 끝 정확히 0인 한 번의 왕복) 결정적으로 다른 점은 목이 함께 기운다는 것이다 —
+            // 머리 앵커만 밀던 옛 방식이 "머리가 목에서 벗어난다"는 신고를 받고 0으로 꺼진 이유가
+            // 정확히 그 배관의 부재였다(StickConfig.idleAmbientLookHeadShiftRatio 문서).
+            if (!stretching)
+            {
+                RequestBodyLean(Mathf.Sin(Mathf.Clamp01(progress01) * Mathf.PI * 2f) * env
+                    * ambient.LookLeanDegrees);
+            }
 
             for (int i = 0; i < _limbs.Length; i++)
             {
@@ -707,6 +829,94 @@ namespace StickMate.States
                     // 만세 — 부호가 곧 그 팔의 바깥 방향이므로 좌우 대칭이 자동으로 보장된다.
                     upper = limb.NeutralSign * fall.ArmRaiseDegrees;
                     lower = ElbowBendSign * Mathf.Max(0f, fall.ElbowBendDegrees);
+                }
+
+                upper = Mathf.LerpAngle(NeutralUpperAngle(limb, idle), upper, t);
+                lower = Mathf.LerpAngle(NeutralLowerAngle(limb, idle), lower, t);
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+        }
+
+        /// <summary>
+        /// ★ 발판 상실 공중 유예 자세 — <b>제자리 종종걸음 + 팔 허우적</b>
+        /// (2026-09-01, 소은 실측 5항 + 리더 결정 승인사항 1). States/GroundLossHangState.cs가
+        /// 무반응 구간이 끝난 뒤 매 프레임 호출한다.
+        ///
+        /// <para><b>왜 이 모양인가(실측이 정한 우선순위).</b> 이 캐릭터는 높이 약 63pt짜리 검은 막대
+        /// 실루엣이고 배경은 잡다한 데스크톱이다. 실측에서 <b>1% 미만의 화소 변화는 육안으로 무의미</b>
+        /// 했으므로 진폭이 큰 채널부터 쓴다:
+        /// <list type="number">
+        ///   <item>다리 종종거림 — <b>걷기 키포즈 표를 그대로 재사용</b>하고 가로 이동만 0으로 둔다.
+        ///     WALK 케이스가 "이러면 개그로 읽힌다"를 이미 증명했고, 새 애니메이션 채널이 필요 없으며,
+        ///     IDLE/WALK 어느 쪽에서 들어와도 그림이 하나로 통일된다.</item>
+        ///   <item>팔 허우적 — 막대 실루엣에서 가장 잘 읽히는 큰 진폭 채널.</item>
+        /// </list>
+        /// 상체 기울임은 여기서 하지 않는다 — 그건 "마지막 0.1초 낙하 전조"라는 <b>시간축의 사건</b>이라
+        /// 시간을 세는 쪽(상태)이 <see cref="RequestBodyLeanDegrees"/>로 요청한다.</para>
+        ///
+        /// <para><b>케이던스를 상수로 적지 않는 이유.</b> "2~3배속"의 기준인 걷기 사이클 주파수는
+        /// 보폭(= 다리 길이 x 진폭)과 명령 속도에서 나오는 값이라, 캐릭터 배율이나 진폭 설정이 바뀌면
+        /// 함께 움직여야 한다. 그래서 여기서 <see cref="ComputeDistancePerCycle"/>로 <b>그 순간의 보폭</b>을
+        /// 다시 계산해 "지금 전속력으로 걷고 있었다면 나왔을 주파수"를 만들고 거기에 배수를 곱한다 —
+        /// <see cref="TickWalkPose"/>가 쓰는 것과 같은 식이므로 두 그림의 다리 속도가 구조적으로 이어진다.</para>
+        ///
+        /// <para>몸 오프셋은 0으로 되돌린다 — 발이 닿는 지면이 없으므로 보행 접지 보정
+        /// (<see cref="ComputeFootGroundingOffset"/>)이 의미를 갖지 않는다. 이것이 "허공을 달린다"의
+        /// 시각적 핵심이기도 하다: 다리는 미친 듯이 도는데 <b>몸통 높이는 그대로</b>다.</para>
+        /// </summary>
+        /// <param name="intensity01">0 = Idle 중립과 완전히 같음, 1 = 연출 최대. 호출부가 무반응
+        /// 구간 직후의 램프를 만든다 — 0에서 시작하므로 어떤 자세에서 들어와도 튀지 않는다.</param>
+        /// <param name="commandedWalkSpeed">케이던스 기준이 되는 <b>명령</b> 보행 속도(월드 유닛/초,
+        /// StickConfig.ResolveWalkSpeed()). 실측 속도가 아니다 — 이 상태의 실제 수평 속도는 0일 수도
+        /// 있고(IDLE 진입) 걷던 속도 그대로일 수도 있는데(WALK 진입), 다리 속도는 그와 무관하게
+        /// 같아야 "IDLE/WALK 그림이 하나로 통일된다"는 목적이 달성되기 때문이다.</param>
+        public void ApplyGroundLossHangPose(float deltaTime, in PoseSettings idle, in GroundLossHangPoseSettings hang,
+            float smoothingRate, float intensity01, float commandedWalkSpeed, float walkAmplitudeScale, float strideScale)
+        {
+            SetBodyOffset(0f);
+
+            float t = Mathf.Clamp01(intensity01);
+
+            float amplitudeScale = walkAmplitudeScale > 0f ? walkAmplitudeScale : 1f;
+            amplitudeScale *= Mathf.Max(0f, hang.LegAmplitudeScale);
+
+            // 걷기와 **같은 식**으로 케이던스를 유도한다(위 문단 참고). 보폭을 계산할 수 없는 이례적
+            // 리그(다리 마디 길이 0)에서는 걷기와 같은 폴백을 쓴다.
+            float distancePerCycle = ComputeDistancePerCycle(amplitudeScale) * Mathf.Max(0.1f, strideScale);
+            float walkCyclesPerSecond = distancePerCycle > 0.0001f
+                ? commandedWalkSpeed / distancePerCycle
+                : commandedWalkSpeed * 0.6f;
+            float cyclesPerSecond = walkCyclesPerSecond * Mathf.Max(0f, hang.LegCycleSpeedMultiplier);
+
+            // 위상은 **리셋하지 않고 이어서 적분**한다 — WALK에서 들어오면 돌던 다리가 그대로 빨라지고
+            // (이음매 없음), IDLE에서 들어오면 멈춰 있던 위상에서 시작한다.
+            _phase01 = Mathf.Repeat(_phase01 + cyclesPerSecond * deltaTime, 1f);
+            _hangTime += deltaTime;
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float upper;
+                float lower;
+                if (limb.IsLeg)
+                {
+                    // 걷기와 완전히 같은 표/보간 — 다른 것은 주파수와 "가로 이동이 0"이라는 사실뿐이다.
+                    float phase = _phase01 + limb.PhaseOffset;
+                    upper = SampleCyclic(LegHipKeys, phase) * amplitudeScale;
+                    // 걷기와 같은 불변식: 무릎은 절대 뒤로 꺾이지 않는다(스플라인 오버슈트를 0에서 자른다).
+                    lower = KneeBendSign * Mathf.Max(0f, SampleCyclic(LegKneeKeys, phase) * amplitudeScale);
+                }
+                else
+                {
+                    // 팔은 위-바깥으로 든 채(Base) 크게 왕복한다(Flail). NeutralSign이 곧 그 팔의 바깥
+                    // 방향이라 좌우 대칭이 자동이고, 두 팔의 PhaseOffset이 0/0.5라 서로 반대 위상이 된다
+                    // (같은 위상이면 "만세"가 되고 허우적으로 읽히지 않는다).
+                    // 다리와의 주파수 비를 **정수가 아닌 값**으로 두는 이유는 ApplyDragStrugglePose와
+                    // 같다 — 딱 맞아떨어지면 허우적이 아니라 행진처럼 보인다.
+                    float armPhase = (_hangTime * cyclesPerSecond * hang.ArmFlailFrequencyRatio + limb.PhaseOffset)
+                        * Mathf.PI * 2f;
+                    upper = limb.NeutralSign * (hang.ArmFlailBaseDegrees + Mathf.Sin(armPhase) * hang.ArmFlailDegrees);
+                    lower = ElbowBendSign * Mathf.Max(0f, hang.ElbowBendDegrees);
                 }
 
                 upper = Mathf.LerpAngle(NeutralUpperAngle(limb, idle), upper, t);
@@ -1075,14 +1285,22 @@ namespace StickMate.States
         /// 진폭 배율이고, strideScale(StickConfig.walkStrideScale)은 계산된 사이클 이동 거리에 곱하는
         /// 보정 계수다. 진폭을 바꾸면 보폭도 같이 다시 계산되므로 어느 배율에서도 발이 붙어 있다.
         ///
+        /// ★ 2026-09-01 (P9-c) 넘겨받은 amplitudeScale은 이제 **그대로 쓰이지 않고**, 실측 속도에서
+        /// 유도한 계수(<see cref="WalkAmplitudeAtRest"/>~<see cref="WalkAmplitudeAtFullSpeed"/>)가
+        /// 곱해진다 — 느리면 종종걸음, 빠르면 성큼성큼. 유도식은 본문 주석 참고.
+        ///
         /// 부드러움 장치: (1) 위상을 적분해 속도 변화에 위상이 점프하지 않게 하고, (2) 주파수 입력이 되는
         /// 수평 속도 자체를 스무딩하며, (3) 최종 각도를 지수 감쇠로 추종하고, (4) 팔은 다리보다, 아래
         /// 마디는 위 마디보다 각각 더 느슨한 계수를 써 관절 연쇄에 자연스러운 시차를 만든다. 전부
         /// 프레임레이트 독립이다.
         /// </summary>
+        /// <param name="leanDegreesAtFullSpeed">명령 속도에 도달했을 때의 상체 전방 기울임(도).
+        /// 기본값 0은 <b>"이 인자를 안 넘기면 예전과 100% 같은 거동"</b>을 뜻한다(기존 호출부/테스트 무영향).
+        /// 실제 적용값은 진폭 배율과 <b>같은 정규화 값</b>(<see cref="_walkSpeed01"/>)으로 스케일된다 —
+        /// 새 측정도 새 상태도 만들지 않는다는 것이 이 배선의 핵심이다.</param>
         public void TickWalkPose(float deltaTime, float horizontalSpeedAbs, in PoseSettings settings,
             float smoothingRate, float speedSmoothingRate, float groundingBlend,
-            float amplitudeScale, float strideScale)
+            float amplitudeScale, float strideScale, float leanDegreesAtFullSpeed = 0f)
         {
             // 주파수 입력 속도 — 호출부가 넘긴 **명령** 속도(walkSpeed)가 아니라 루트가 실제로 이동한
             // 거리에서 측정한다. 벽/발판 경계에 막혀 명령대로 못 나아가는 순간에도 다리가 헛돌지 않게
@@ -1124,6 +1342,25 @@ namespace StickMate.States
                 : Damp(_smoothedSpeed, measuredSpeed, speedSmoothingRate, deltaTime);
 
             if (amplitudeScale <= 0f) amplitudeScale = 1f;
+
+            // ★ 2026-09-01 (P9-c) 속도 연동 진폭 — 위 WalkAmplitudeAtRest/AtFullSpeed 문서 참고.
+            // 기준 속도는 호출부가 넘긴 **명령** 속도다(WalkState는 ResolveWalkSpeed(), ArcheryState는
+            // 그 순간의 목표 속도). 배율(characterScale)이 바뀌면 명령 속도와 _smoothedSpeed가 함께
+            // 비례해 움직이므로 이 비는 **무차원이고 배율에 불변**이다 — 새 상수를 도입하지 않고
+            // 정규화할 수 있는 유일한 값이라 이걸 쓴다.
+            //
+            // strideScale은 **유도하지 않는다.** 그건 보폭이 아니라 "각도 스무딩 지연 때문에 실제
+            // 진폭이 표보다 조금 작다"를 보정하는 **발 미끄러짐 교정 계수**(실측 0.93)라서, 속도로
+            // 흔들면 곧바로 문워크가 된다. 눈에 보이는 보폭은 이미 진폭에서 자동으로 따라온다
+            // (_distancePerCycle = ComputeDistancePerCycle(진폭) × strideScale).
+            _walkSpeed01 = Mathf.Clamp01(_smoothedSpeed / Mathf.Max(horizontalSpeedAbs, MinWalkReferenceSpeed));
+            amplitudeScale *= Mathf.Lerp(WalkAmplitudeAtRest, WalkAmplitudeAtFullSpeed, _walkSpeed01);
+            _walkAmplitudeScale = amplitudeScale;
+
+            // ★ 2026-09-01 속도 연동 상체 기울임 — 위 진폭 유도와 **같은 값**에서 파생한다.
+            // 요청만 남기고 실제 적용/스무딩은 TickBodyLean이 한 곳에서 처리한다(그래야 걷기를
+            // 벗어나는 순간 아무도 요청하지 않게 되어 상체가 자동으로 직립으로 돌아온다).
+            RequestBodyLean(leanDegreesAtFullSpeed * _walkSpeed01);
 
             // 사이클 주파수(Hz) = 이동 속도 / 한 사이클 이동 거리. 보폭을 계산할 수 없는 이례적 상황
             // (콜라이더 누락 등)에서만 안전한 고정값으로 폴백한다.
@@ -1351,6 +1588,15 @@ namespace StickMate.States
         public float WalkPhase01 => _phase01;
         public float DistancePerCycle => _distancePerCycle;
 
+        /// <summary>보행 사이클 주파수 산출에 쓰는 스무딩된 실측 수평 속도(유닛/초). 실측 검증용.</summary>
+        public float SmoothedWalkSpeed => _smoothedSpeed;
+
+        /// <summary>직전 <see cref="TickWalkPose"/>에서 실제로 적용된 진폭 배율(설정값 × 속도 유도 계수).</summary>
+        public float WalkAmplitudeScale => _walkAmplitudeScale;
+
+        /// <summary>직전 <see cref="TickWalkPose"/>의 속도 정규화 값(0=정지, 1=명령 속도 도달). 실측 검증용.</summary>
+        public float WalkSpeed01 => _walkSpeed01;
+
         private static Vector2 FootWorldPosition(Limb limb)
         {
             if (limb == null || limb.Lower == null || limb.Lower.Transform == null) return Vector2.zero;
@@ -1427,11 +1673,16 @@ namespace StickMate.States
 
             Vector2 offset = rotation * segment.AnchorLocal;
             float bodyOffset = segment.FollowsBodyOffset ? _bodyOffsetY : 0f;
+            // 상체가 기울면 **어깨 부착점이 엉덩이를 축으로 함께 돈다**. 이게 없으면 몸통 윗부분만
+            // 기울고 팔은 원래 자리에 남아 몸에서 떨어져 보인다(액세서리가 몸 회전을 안 따라가던 것과
+            // 정확히 같은 계열의 결함). 다리는 FollowsBodyLean=false이자 피벗 그 자체라 무영향이다.
+            Vector2 pivot = segment.FollowsBodyLean ? LeanedLocal(segment.PivotLocal) : segment.PivotLocal;
             Vector3 current = segment.Transform.localPosition;
             // 피벗 X도 함께 미러링한다(현재 기하학에서는 모든 부착점이 x=0이라 결과가 같지만, 나중에
-            // 좌우 비대칭 배치가 생겨도 시각이 조용히 깨지지 않게).
-            segment.Transform.localPosition = new Vector3((segment.PivotLocal.x - offset.x) * _facingSign,
-                segment.PivotLocal.y - offset.y + bodyOffset, current.z);
+            // 좌우 비대칭 배치가 생겨도 시각이 조용히 깨지지 않게). 기울임이 만든 X도 여기서 함께
+            // 뒤집히므로, LeanedLocal은 각도와 같은 **방향 중립 공간**에서 계산한다.
+            segment.Transform.localPosition = new Vector3((pivot.x - offset.x) * _facingSign,
+                pivot.y - offset.y + bodyOffset, current.z);
         }
 
         /// <summary>
@@ -1442,15 +1693,180 @@ namespace StickMate.States
         /// </summary>
         private void SetBodyOffset(float offsetY) => SetBodyOffset(offsetY, 0f);
 
-        /// <param name="headOffsetX">머리만 좌우로 미는 시각 전용 오프셋(월드 유닛) — 유휴 앰비언트
-        /// "주위 살피기"에서만 0이 아니다. 인자 없는 오버로드가 항상 0을 넣으므로, 다른 포즈 경로로
-        /// 넘어가는 순간(Walk/Fall/Ragdoll 등 전부 SetBodyOffset을 부른다) 자동으로 원복된다 —
-        /// 연출이 중간에 끊겨도 머리가 옆으로 밀린 채 굳는 경우가 구조적으로 없다.</param>
+        /// <param name="headOffsetX">머리만 좌우로 미는 시각 전용 오프셋(루트 로컬 유닛 = 월드 유닛.
+        /// 프리팹의 루트/자식 localScale이 전부 1이고 배율은 지오메트리에 구워지므로 두 단위가 같다 —
+        /// Editor/SceneBootstrapper.cs). 유휴 앰비언트 "주위 살피기"에서만 0이 아니다. 인자 없는
+        /// 오버로드가 항상 0을 넣으므로, 다른 포즈 경로로 넘어가는 순간(Walk/Fall/Ragdoll 등 전부
+        /// SetBodyOffset을 부른다) 자동으로 원복된다 — 연출이 중간에 끊겨도 머리가 옆으로 밀린 채
+        /// 굳는 경우가 구조적으로 없다.
+        ///
+        /// ★★ 2026-08-31 — <b>이 값은 0이어야 한다</b>(StickConfig.idleAmbientLookHeadShiftRatio가
+        /// 0으로 내려가 지금 이 경로에는 항상 0이 들어온다). 목은 별도 관절이 아니라 Torso 선의
+        /// 윗부분(루트 로컬 x=0 고정)이므로, 머리 앵커만 옆으로 밀면 머리와 목이 어긋난다.
+        /// 안전 상한은 "머리 중심이 목 획 밖으로 나가지 않는 것" = 신장의 0.0169배이고, 그 이상은
+        /// 육안으로 즉시 어긋나 보인다(예전 기본값 0.035는 그 2.07배).
+        /// 값을 되살리려면 먼저 목을 함께 기울이는 배관부터 만들어야 한다 —
+        /// Tests/EditMode/IdleAmbientLookAroundInvariantTests.cs가 이 상한을 잠근다.</param>
         private void SetBodyOffset(float offsetY, float headOffsetX)
         {
             _bodyOffsetY = offsetY;
-            if (_torso != null) _torso.localPosition = new Vector3(_torsoNeutral.x, _torsoNeutral.y + offsetY, _torsoNeutral.z);
-            if (_head != null) _head.localPosition = new Vector3(_headNeutral.x + headOffsetX, _headNeutral.y + offsetY, _headNeutral.z);
+            _headOffsetX = headOffsetX;
+            ApplyBodyPlacement();
+        }
+
+        // ============================================================================
+        // ★ 상체 기울임 (2026-09-01) — 달리기 전방 기울임 / 주위 살피기 / 피격 리액션 공용
+        // ============================================================================
+
+        /// <summary>
+        /// 상체(몸통·머리·어깨)를 <b>엉덩이를 축으로</b> 기울인다. 양수 = 진행 방향 앞쪽,
+        /// 음수 = 뒤쪽이며, 좌우 반전은 최종 적용 지점에서 <see cref="_facingSign"/>이 곱해지므로
+        /// 호출부는 언제나 "앞/뒤"로만 생각하면 된다(각 마디 각도와 완전히 같은 관례).
+        ///
+        /// <para>즉시 적용된다 — 다음 포즈 틱을 기다리지 않는다. 다만 <b>팔 부착점</b>은 이 호출이
+        /// 아니라 다음 <see cref="ApplyAngle"/>에서 따라온다(RAGDOLL 도중 물리가 소유한 마디의
+        /// Transform을 이 경로가 건드리지 않게 하려는 의도적 분리다 — 능동 상태에서는 매 프레임
+        /// 포즈 틱이 돌므로 최대 1프레임, 육안으로 구분되지 않는다).</para>
+        ///
+        /// <para>회전 중심이 엉덩이인 이유와 그 좌표의 출처는 위 <see cref="_hipPivotLocal"/> 문단 참고.
+        /// 엉덩이를 실측하지 못한 리그(다리 없는 테스트 더미)에서는 <b>아무 것도 하지 않는다</b> —
+        /// 발밑을 축으로 도는 그림이 나오느니 기울이지 않는 편이 정직하다.</para>
+        /// </summary>
+        public void SetBodyLean(float degrees)
+        {
+            float clamped = _hasHipPivot ? Mathf.Clamp(degrees, -MaxBodyLeanDegrees, MaxBodyLeanDegrees) : 0f;
+            // 지수 감쇠는 0에 점근할 뿐 도달하지 못한다 — 임계 아래를 정확히 0으로 스냅해야
+            // "연출이 끝나면 완전한 직립"이 코드로 보장된다(잔재가 남으면 그때부터 계속 미세하게 기운다).
+            if (Mathf.Abs(clamped) < LeanEpsilonDegrees) clamped = 0f;
+            if (clamped == _bodyLeanDegrees) return;
+
+            _bodyLeanDegrees = clamped;
+            _hasLean = clamped != 0f;
+            // 방향 중립 공간의 회전(팔 부착점용). 몸통 선은 원점에서 **위(+y)**로 뻗으므로, 앞으로
+            // 기울어지려면(윗부분이 +x로) Z가 음수여야 한다 — 마디(아래로 뻗음)와 부호가 반대인 것은
+            // 기하학이 그렇기 때문이지 규약이 다른 것이 아니다.
+            _leanRotation = _hasLean ? Quaternion.Euler(0f, 0f, -clamped) : Quaternion.identity;
+            ApplyBodyPlacement();
+        }
+
+        /// <summary>지금 적용돼 있는 상체 기울임(도, + = 앞). 실측 검증/디버그용.</summary>
+        public float BodyLeanDegrees => _bodyLeanDegrees;
+
+        /// <summary>이번 프레임의 포즈가 요청한 기울임 목표(도). <see cref="TickBodyLean"/>이 소비한다.
+        /// 요청이 없으면 0이므로, 어떤 상태로 빠져나가도 상체는 자동으로 직립으로 돌아온다.</summary>
+        private void RequestBodyLean(float degrees) => _leanRequestDegrees = degrees;
+
+        /// <summary>
+        /// 위 요청 창구의 공개판 — <b>포즈를 직접 구동하는 상태</b>가 자기 진행 곡선으로 상체 기울임을
+        /// 요청할 때 쓴다(States/GroundLossHangState의 "낙하 전조").
+        ///
+        /// <para><b>왜 <see cref="SetBodyLean"/>을 직접 부르면 안 되는가</b>: 그쪽은 즉시 적용이라,
+        /// 매 프레임 부르면 같은 프레임 뒤에 도는 <see cref="TickBodyLean"/>이 "아무도 요청하지 않았다"고
+        /// 보고 목표 0으로 감쇠시킨다. 그 결과 실제로 적용되는 각도가 <b>프레임 시간에 의존</b>하게 된다
+        /// (배치모드 10,000fps에서는 거의 그대로, 실기 60fps에서는 20% 가까이 깎인다). 요청만 남기면
+        /// 확정은 언제나 TickBodyLean 한 곳이라 그 함정이 구조적으로 사라진다.</para>
+        /// </summary>
+        public void RequestBodyLeanDegrees(float degrees) => RequestBodyLean(degrees);
+
+        /// <summary>
+        /// 피격 순간의 짧은 기울임 임펄스(도, + = 앞으로 밀림). 랙돌 진입 임계값에 못 미치는 타격에도
+        /// 몸이 반응하게 하는 것이 목적이며, <b>랙돌 물리에는 일절 개입하지 않는다</b>(순수 시각 트윈).
+        /// 스스로 지수 감쇠로 0으로 돌아가므로 취소 배관이 없다.
+        /// </summary>
+        /// <param name="recoverRate">복구 계수(1/초). 0 이하면 다음 틱에 즉시 사라진다.</param>
+        public void AddHitLean(float degrees, float recoverRate)
+        {
+            _hitLeanDegrees = Mathf.Clamp(degrees, -MaxBodyLeanDegrees, MaxBodyLeanDegrees);
+            _hitLeanRecoverRate = recoverRate;
+        }
+
+        /// <summary>
+        /// 이번 프레임의 기울임을 확정한다 — <b>포즈 라우팅이 전부 끝난 뒤 한 곳에서만</b> 호출된다
+        /// (States/StickmanBlackboard.TickPose). 목표(포즈가 요청한 값 + 피격 임펄스)로 지수 감쇠
+        /// 접근하므로 걷기 진입/이탈에서 상체가 툭 튀지 않는다.
+        ///
+        /// <para><b>왜 팔 각도는 안 돌리는가</b>: 강체로 붙은 팔이라면 상체와 같은 각도만큼 회전하는 것이
+        /// 맞지만, 이 리그에서 팔 각도는 <see cref="GetUpperAngles"/>가 "포즈가 만든 각도"로 읽는
+        /// 진단 계약이기도 하다(여러 회귀 테스트가 그 값의 중립 범위를 잠근다). 기울임을 각도에 섞으면
+        /// 그 계약이 조용히 바뀐다. 그래서 이번 라운드는 <b>부착점만</b> 함께 돌린다 — 팔은 어깨에
+        /// 정확히 붙어 있고 세계 기준으로 늘어뜨려진다(달리는 스틱맨의 팔 스윙과 시각적으로 모순되지
+        /// 않는다). 각도까지 묶는 것은 팔 각도 계약을 먼저 정리한 뒤의 일이다.</para>
+        /// </summary>
+        public void TickBodyLean(float deltaTime, float smoothingRate)
+        {
+            if (_hitLeanRecoverRate > 0f && _hitLeanDegrees != 0f)
+            {
+                _hitLeanDegrees = Damp(_hitLeanDegrees, 0f, _hitLeanRecoverRate, deltaTime);
+                if (Mathf.Abs(_hitLeanDegrees) < LeanEpsilonDegrees) _hitLeanDegrees = 0f;
+            }
+            else if (_hitLeanRecoverRate <= 0f)
+            {
+                _hitLeanDegrees = 0f;
+            }
+
+            float target = _leanRequestDegrees + _hitLeanDegrees;
+            _leanRequestDegrees = 0f; // 소비형 — 다음 프레임에 아무도 요청하지 않으면 목표는 0이다.
+
+            // 24시간 상주 앱: 이미 직립이고 목표도 직립이면 아무 것도 하지 않는다.
+            if (!_hasLean && Mathf.Abs(target) < LeanEpsilonDegrees) return;
+
+            SetBodyLean(Damp(_bodyLeanDegrees, target, smoothingRate, deltaTime));
+        }
+
+        /// <summary>기울임을 **즉시** 지운다(감쇠 없음). RAGDOLL처럼 포즈 소유권이 물리로 넘어가는
+        /// 순간에 쓴다 — 기운 채로 전신 물리에 넘기면 관절이 부착점을 되찾으며 튄다.</summary>
+        public void ClearBodyLean()
+        {
+            _hitLeanDegrees = 0f;
+            _leanRequestDegrees = 0f;
+            SetBodyLean(0f);
+        }
+
+        /// <summary>엉덩이를 축으로 <paramref name="local"/>(루트 로컬, 방향 중립)을 회전시킨다.
+        /// 기울임이 없으면 입력을 그대로 돌려주므로 기존 경로의 결과가 한 톨도 달라지지 않는다.</summary>
+        private Vector2 LeanedLocal(Vector2 local)
+        {
+            if (!_hasLean) return local;
+            Vector2 rel = local - _hipPivotLocal;
+            Vector2 rotated = _leanRotation * rel;
+            return _hipPivotLocal + rotated;
+        }
+
+        /// <summary>
+        /// 몸통/머리의 최종 적용 지점 — 상하 오프셋(<see cref="_bodyOffsetY"/>) + 머리 좌우 오프셋 +
+        /// 엉덩이 피벗 기울임을 한 번의 Transform 쓰기로 합친다.
+        ///
+        /// <para>기울임 회전에는 여기서 <see cref="_facingSign"/>을 곱한 각도를 쓴다(몸통/머리는
+        /// <see cref="ApplyAngle"/>처럼 X를 따로 미러링하지 않는 경로이므로, 회전 자체에 방향을 실어야
+        /// 좌우가 대칭이 된다). 기울임이 0이면 회전은 identity이고 위치식은 예전과 완전히 동일하다.</para>
+        /// </summary>
+        private void ApplyBodyPlacement()
+        {
+            Quaternion rot = _hasLean
+                ? Quaternion.Euler(0f, 0f, -_bodyLeanDegrees * _facingSign)
+                : Quaternion.identity;
+
+            if (_torso != null)
+            {
+                Vector2 p = LeanedFacing(rot, _torsoNeutral);
+                _torso.SetLocalPositionAndRotation(
+                    new Vector3(p.x, p.y + _bodyOffsetY, _torsoNeutral.z), rot);
+            }
+            if (_head != null)
+            {
+                Vector2 p = LeanedFacing(rot, _headNeutral);
+                _head.SetLocalPositionAndRotation(
+                    new Vector3(p.x + _headOffsetX, p.y + _bodyOffsetY, _headNeutral.z), rot);
+            }
+        }
+
+        /// <summary><see cref="LeanedLocal"/>의 "방향이 이미 실린 회전" 버전.</summary>
+        private Vector2 LeanedFacing(Quaternion rotWithFacing, Vector3 neutral)
+        {
+            if (!_hasLean) return new Vector2(neutral.x, neutral.y);
+            Vector2 rel = new Vector2(neutral.x, neutral.y) - _hipPivotLocal;
+            Vector2 rotated = rotWithFacing * rel;
+            return _hipPivotLocal + rotated;
         }
 
         /// <summary>스칼라용 지수 감쇠(위 SmoothTo와 같은 공식) — 보행 주파수 입력 속도 스무딩에 사용.</summary>
@@ -1564,6 +1980,44 @@ namespace StickMate.States
         }
 
         /// <summary>
+        /// 발판 상실 공중 유예 자세(<see cref="ApplyGroundLossHangPose"/>)의 각도/배수 묶음.
+        /// 다른 *PoseSettings와 완전히 같은 관례(readonly struct + in 파라미터 = 매 프레임 경로에서
+        /// 힙 할당 없음)이며, 값은 StickmanBlackboard가 StickConfig에서 구성해 넘긴다.
+        /// </summary>
+        public readonly struct GroundLossHangPoseSettings
+        {
+            /// <summary>걷기 사이클 주파수의 배수(소은/리더 승인 범위 2~3). 1이면 걷는 속도 그대로다.</summary>
+            public readonly float LegCycleSpeedMultiplier;
+
+            /// <summary>걷기 키포즈 표에 곱하는 다리 진폭 배수(1 = 걷기와 같은 보폭 각도).</summary>
+            public readonly float LegAmplitudeScale;
+
+            /// <summary>팔 허우적의 중심 어깨 각도(도, 부호는 그 팔의 바깥 방향이 자동으로 실린다).
+            /// 이 클래스 규약대로 0 = 곧게 아래, 180 = 곧게 위다.</summary>
+            public readonly float ArmFlailBaseDegrees;
+
+            /// <summary>중심 각도 기준 왕복 진폭(도).</summary>
+            public readonly float ArmFlailDegrees;
+
+            /// <summary>다리 케이던스 대비 팔 왕복 주파수 비. <b>정수가 아니어야</b> 허우적으로 읽힌다.</summary>
+            public readonly float ArmFlailFrequencyRatio;
+
+            /// <summary>팔꿈치 굽힘(도, 항상 0 이상 — 사람 관절 불변식).</summary>
+            public readonly float ElbowBendDegrees;
+
+            public GroundLossHangPoseSettings(float legCycleSpeedMultiplier, float legAmplitudeScale,
+                float armFlailBaseDegrees, float armFlailDegrees, float armFlailFrequencyRatio, float elbowBendDegrees)
+            {
+                LegCycleSpeedMultiplier = legCycleSpeedMultiplier;
+                LegAmplitudeScale = legAmplitudeScale;
+                ArmFlailBaseDegrees = armFlailBaseDegrees;
+                ArmFlailDegrees = armFlailDegrees;
+                ArmFlailFrequencyRatio = armFlailFrequencyRatio;
+                ElbowBendDegrees = elbowBendDegrees;
+            }
+        }
+
+        /// <summary>
         /// 공중 회전(텀블링) 자세 각도 묶음(<see cref="ApplyThrowTumblePose"/>). 위 구조체들과 같은
         /// 성격·같은 컨벤션(readonly struct + in 파라미터 — 매 프레임 경로라 힙 할당이 없다).
         /// StickmanBlackboard.BuildThrowTumblePoseSettings()가 StickConfig에서 구성해 넘긴다.
@@ -1666,17 +2120,23 @@ namespace StickMate.States
             public readonly float LookArmDegrees;
             public readonly float LookElbowDegrees;
             public readonly float LookHeadShiftDistance;
+
+            /// <summary>주위 살피기에서 상체가 앞뒤로 한 번 왕복하는 최대 각도(도). 목이 함께 기울므로
+            /// <see cref="LookHeadShiftDistance"/>와 달리 머리가 목에서 벗어나지 않는다.</summary>
+            public readonly float LookLeanDegrees;
             public readonly float StretchArmSpreadDegrees;
             public readonly float StretchElbowDegrees;
             public readonly float StretchKneeStraighten01;
             public readonly float StretchRiseDistance;
 
             public IdleAmbientPoseSettings(float lookArm, float lookElbow, float lookHeadShiftDistance,
-                float stretchArmSpread, float stretchElbow, float stretchKneeStraighten01, float stretchRiseDistance)
+                float stretchArmSpread, float stretchElbow, float stretchKneeStraighten01, float stretchRiseDistance,
+                float lookLeanDegrees = 0f)
             {
                 LookArmDegrees = lookArm;
                 LookElbowDegrees = lookElbow;
                 LookHeadShiftDistance = lookHeadShiftDistance;
+                LookLeanDegrees = lookLeanDegrees;
                 StretchArmSpreadDegrees = stretchArmSpread;
                 StretchElbowDegrees = stretchElbow;
                 StretchKneeStraighten01 = stretchKneeStraighten01;

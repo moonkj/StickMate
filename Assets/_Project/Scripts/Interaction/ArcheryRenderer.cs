@@ -145,6 +145,10 @@ namespace StickMate.Interaction
         private GameObject _container;
         private Transform _targetRoot;
         private Transform _bowRoot;
+        /// <summary>직전 프레임에 활을 실제로 배치했는지 + 그때 쓴 활 든 손의 월드 좌표
+        /// (<see cref="TryGetBowGripAndHandWorld"/> 전용 — 그림에는 영향을 주지 않는 진단 값).</summary>
+        private bool _bowPlaced;
+        private Vector2 _lastBowHandWorld;
         private LineRenderer _bowLimbs;
         private LineRenderer _bowString;
         private LineRenderer _nockedArrow;
@@ -229,6 +233,25 @@ namespace StickMate.Interaction
             return true;
         }
 
+        /// <summary>
+        /// ★ 진단/테스트용 — <b>직전 프레임에 실제로 그린</b> 활의 그립(활대 한가운데) 월드 좌표와,
+        /// 그때 활 든 손으로 삼은 지점의 월드 좌표. 활이 보이지 않으면 false.
+        ///
+        /// 2026-08-31 신고 "활대를 잡아야 하는데 이상한 데를 잡고 쏨"의 회귀 잠금 지점이다. 그립은
+        /// 계산식이 아니라 <b>실제 Transform</b>에서 읽으므로(<see cref="Transform.TransformPoint"/>),
+        /// 배치 코드가 바뀌어도 "손과 활대가 붙어 있다"는 결론만 검사한다.
+        /// </summary>
+        public bool TryGetBowGripAndHandWorld(out Vector2 gripWorld, out Vector2 handWorld)
+        {
+            gripWorld = Vector2.zero;
+            handWorld = Vector2.zero;
+            if (!_bowPlaced || _bowRoot == null) return false;
+            Vector2 gripLocal = BowLimbLocal(0f);
+            gripWorld = _bowRoot.TransformPoint(new Vector3(gripLocal.x, gripLocal.y, 0f));
+            handWorld = _lastBowHandWorld;
+            return true;
+        }
+
         // ==================== 캐릭터 실측 치수 ====================
 
         private StickmanMetrics Metrics
@@ -265,7 +288,41 @@ namespace StickMate.Interaction
         public float StrokeWidth => Height * StrokeWidthRatio;
         public float BowHalfLength => Height * BowHalfLengthRatio;
         public float BowMaxPull => Height * BowMaxPullRatio;
+
         public float ArrowShaftLength => Height * ArrowShaftRatio;
+
+        /// <summary>
+        /// ★ <b>손이 잡는 지점</b>(활 로컬 x) — 활대의 한가운데(그립/줌통)다. 활 로컬에서 시위선이
+        /// x=0이고 활대가 +x로 <see cref="BowDepthRatio"/>만큼 불룩하므로, 활대의 한가운데는 정확히
+        /// 이 x에 있다(<see cref="BowLimbLocal"/>의 t=0과 <b>같은 식</b>에서 나온다 — 두 번째 계산원을
+        /// 만들지 않는다).
+        ///
+        /// 2026-08-31 사용자 신고 "활 쏠 때 활대를 잡아야 하는데 이상한 데를 잡고 쏨"의 근본 원인이
+        /// 여기였다: 활 루트를 손 위치에 그대로 놓아 <b>원점(=시위선 한가운데, 활대에서 신장의 15.5%
+        /// 뒤의 허공)</b>이 손에 오게 했었다. 그러면 손은 활대도 시위도 아닌 빈 공간을 쥔 그림이 된다.
+        /// 지금은 루트를 조준 방향으로 이만큼 뒤로 물려, <b>활대 한가운데가 손끝에 정확히 오게</b> 한다.
+        /// </summary>
+        public float BowGripLocalX => Height * BowDepthRatio;
+
+        /// <summary>활대 곡선 위의 한 점(활 로컬). t=-1 아래 끝 / 0 그립(활대 한가운데) / +1 위 끝.
+        /// 활을 그리는 <see cref="BuildBow"/>와 손이 잡는 지점(<see cref="BowGripLocalX"/>)의
+        /// <b>유일한 계산원</b>이다.</summary>
+        public Vector2 BowLimbLocal(float t)
+        {
+            return new Vector2(BowGripLocalX * (1f - t * t), t * BowHalfLength);
+        }
+
+        /// <summary>
+        /// 활 루트의 컨테이너 로컬 위치 — <b>활대 한가운데가 손끝(<paramref name="handLocal"/>)에
+        /// 정확히 오도록</b> 조준 방향으로 그립 오프셋만큼 뒤로 물린 지점. 순수 함수라 PlayMode 테스트가
+        /// 손-그립 일치를 직접 검산한다(ArcheryVisualTests.BowIsHeldByItsGripNotByTheString).
+        /// </summary>
+        public static Vector2 ResolveBowRootLocal(Vector2 handLocal, float aimDegrees, float gripLocalX)
+        {
+            float rad = aimDegrees * Mathf.Deg2Rad;
+            return new Vector2(handLocal.x - Mathf.Cos(rad) * gripLocalX,
+                               handLocal.y - Mathf.Sin(rad) * gripLocalX);
+        }
 
         /// <summary>과녁 면에 꽂힌 화살이 수평에서 아래로 기울 수 있는 최대 각도(도).</summary>
         public float FaceImpactMaxDescentDegrees => Config != null
@@ -455,12 +512,11 @@ namespace StickMate.Interaction
             _bowLimbs = CreateLine(_bowRoot, "Limbs", ink, StrokeWidth * 0.85f, SortingBow, loop: false, capVertices: 0);
             int n = 13;
             _bowLimbs.positionCount = n;
-            float half = BowHalfLength;
-            float depth = Height * BowDepthRatio;
             for (int i = 0; i < n; i++)
             {
                 float t = i / (float)(n - 1) * 2f - 1f; // -1 ~ +1
-                _bowLimbs.SetPosition(i, new Vector3(depth * (1f - t * t), t * half, 0f));
+                Vector2 p = BowLimbLocal(t);
+                _bowLimbs.SetPosition(i, new Vector3(p.x, p.y, 0f));
             }
 
             _bowString = CreateLine(_bowRoot, "String", ink, StrokeWidth * 0.45f, SortingBow, loop: false, capVertices: 2);
@@ -554,6 +610,7 @@ namespace StickMate.Interaction
                 SetLineAlpha(_bowLimbs, 0f);
                 SetLineAlpha(_bowString, 0f);
                 SetLineAlpha(_nockedArrow, 0f);
+                _bowPlaced = false;
                 return;
             }
 
@@ -561,8 +618,13 @@ namespace StickMate.Interaction
             Vector2 v0 = SolveLaunchVelocity(handLocal, _planImpactLocal, _planFlight, ResolveApex(handLocal, _planImpactLocal));
             float angle = Mathf.Atan2(v0.y, v0.x) * Mathf.Rad2Deg;
 
-            _bowRoot.localPosition = new Vector3(handLocal.x, handLocal.y, 0f);
+            // ★ 손이 잡는 곳은 활 로컬 원점(시위선)이 아니라 **활대 한가운데**다(BowGripLocalX 문서).
+            // 루트를 조준 방향으로 그만큼 뒤로 물려야 활대가 손끝에 얹힌다.
+            Vector2 rootLocal = ResolveBowRootLocal(handLocal, angle, BowGripLocalX);
+            _bowRoot.localPosition = new Vector3(rootLocal.x, rootLocal.y, 0f);
             _bowRoot.localRotation = Quaternion.Euler(0f, 0f, angle);
+            _lastBowHandWorld = handLocal + _anchorWorld;
+            _bowPlaced = true;
 
             float draw01 = Mathf.Clamp01(blackboard.ArcheryDrawRatio);
             float half = BowHalfLength;
@@ -596,6 +658,9 @@ namespace StickMate.Interaction
         ///     시위가 손을 따라 몸통까지 끌려가지 않는다.
         ///   - 활 앞으로 넘어가거나 활보다 위아래로 크게 벗어나지 않게 클램프한다(병리적 자세 방어).
         /// </summary>
+        /// <remarks>좌표 주의: 이 함수가 쓰는 활 로컬에서 <b>x=0은 시위선</b>이고 손이 잡는 활대는
+        /// x=<see cref="BowGripLocalX"/>다(루트가 그만큼 뒤로 물려 있다). 아래 클램프 값들은 시위선
+        /// 기준이므로 그립 기준으로 착각해 고치면 시위가 뒷손에서 떨어진다.</remarks>
         private Vector2 ResolveNockLocal(StickmanBlackboard blackboard, float draw01)
         {
             Vector2 pulled = new Vector2(-BowMaxPull, 0f);
@@ -925,6 +990,7 @@ namespace StickMate.Interaction
             _targetLines.Clear();
             _targetRoot = null;
             _bowRoot = null;
+            _bowPlaced = false;
             _bowLimbs = null;
             _bowString = null;
             _nockedArrow = null;

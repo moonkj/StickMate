@@ -117,7 +117,9 @@ namespace StickMate.Interaction
         /// 않는다(하루 종일 켜져 있는 앱이다).</summary>
         private static bool IsAnythingDirty()
             => CharacterProgressionModel.IsDirty || CharacterStatsModel.IsDirty || UiLayoutModel.IsDirty
-               || TodoListModel.IsDirty;   // v4 — 사용자가 적은 할일은 반드시 남아야 한다.
+               || TodoListModel.IsDirty    // v4 — 사용자가 적은 할일은 반드시 남아야 한다.
+               || CharacterAppearanceModel.IsDirty    // v7 — 잉크색(우클릭 메뉴/단축키 경로는 즉시 저장을 부르지 않는다).
+               || AppSettingsModel.IsDirty;           // v8 — 설정창(슬라이더는 드래그 중 즉시 저장을 부르지 않는다).
 
         // ==================== 보너스 훅(전부 읽기 전용 구독) ====================
 
@@ -185,7 +187,8 @@ namespace StickMate.Interaction
             if (count <= 0) return "새로 열린 장비는 없습니다.";
 
             string more = count > 1 ? $" 외 {count - 1}종" : string.Empty;
-            return $"새 장비 해제: [{firstName}]{more} — 정보창(⌃⌥⌘I 또는 우상단 톱니)에서 착용할 수 있습니다.";
+            return $"새 장비 해제: [{firstName}]{more} — 정보창({ShortcutLabel.Chord("I")} 또는 우상단 톱니)에서 " +
+                   "착용할 수 있습니다.";
         }
 
         /// <summary>
@@ -199,7 +202,8 @@ namespace StickMate.Interaction
         {
             if (_config == null || !_config.verboseDiagnosticsLogging)
             {
-                Debug.LogWarning("[성장] 검증용 XP 지급은 진단 로그(⌃⌥⌘D)가 켜져 있을 때만 동작합니다.");
+                Debug.LogWarning($"[성장] 검증용 XP 지급은 진단 로그({ShortcutLabel.Chord("D")})가 " +
+                    "켜져 있을 때만 동작합니다.");
                 return;
             }
             Grant(amount, "검증용 임시 지급");

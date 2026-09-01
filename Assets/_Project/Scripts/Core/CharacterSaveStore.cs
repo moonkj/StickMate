@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.Text;
 using UnityEngine;
 
 namespace StickMate.Core
@@ -61,7 +63,34 @@ namespace StickMate.Core
         /// 그 false는 "아직 크기를 고른 적 없다 = 배포 기본 배율을 쓴다"는 정확한 사실이다.
         /// <c>cornerPanelEnabled</c>만은 <b>기본이 true인 값</b>이라 없으면 false로 채워져 뜻이 뒤집힌다.
         /// 그래서 옛 파일에는 그 키를 읽지 않고 기본값(켜짐)을 그대로 쓴다(아래 Load의 분기).
-        private const int CurrentVersion = 6;
+        /// 7 = 2026-08-31 잉크색 오염 수정 라운드에서 <b>사용자가 고른 잉크색</b>
+        /// (Core/CharacterAppearanceModel.cs)이 추가된 버전. 하위 호환은 v3(톱니 위치)/v6(캐릭터 크기)와
+        /// <b>같은 방식</b>으로 성립한다 — v1~v6 파일에는 <c>inkColorSaved</c>가 없어 JsonUtility가
+        /// false로 채우고, 그 false는 "아직 색을 고른 적 없다 = 배포 기본 잉크색을 쓴다"는 정확한 사실이다.
+        /// 값 자체는 숫자가 아니라 <b>이름 문자열</b>("Black"/"White")로 적는다 — 근거는
+        /// CharacterAppearanceModel.RestoreFromSave 문서(열거형 순서가 바뀌어도 파일이 안 밀린다).
+        /// 8 = 2026-09-01 설정창 라운드에서 <b>설정창이 만지는 값</b>(Core/AppSettingsModel.cs)이 추가된
+        /// 버전. 말풍선 4종은 v6의 <c>characterScaleSaved</c>와 같은 "고른 적 있는가 + 값" 두 벌이라
+        /// 하위 호환이 저절로 성립하지만, <c>autoHideOnFullscreen</c>/<c>gearIconVisible</c>는
+        /// <b>기본이 true인 값</b>이라 v7 이하 파일에서 읽으면 뜻이 뒤집힌다(구석 패널이 겪은 그 함정) —
+        /// 아래 Load가 버전을 보고 기본값(켜짐)을 넘긴다.
+        ///
+        /// <para>★ <b>internal인 이유</b>(2026-09-01): 지속성 테스트가 "저장하면 최신 버전으로 올라간다"를
+        /// 확인할 때 기대값을 <c>"version": 7</c>처럼 <b>숫자로 베껴 적고</b> 있었다. 그러면 스키마가
+        /// 올라갈 때마다 마이그레이션과 무관한 테스트가 함께 빨개지고(v8 라운드에서 실제로 2건 터졌다),
+        /// 고치는 사람은 "숫자만 맞추면 되는 잡음"으로 학습해 <b>진짜 데이터 손실</b>을 같은 손놀림으로
+        /// 넘길 위험이 생긴다. 그래서 이 상수를 테스트 어셈블리에 열어 두고, 테스트는 숫자가 아니라
+        /// 이 상수를 참조한다(InternalsVisibleTo: Scripts/AssemblyInfo.cs).</para>
+        ///
+        /// <para>버전을 올릴 때 실제로 잠가야 하는 것은 "숫자가 바뀌었는가"가 아니라 <b>새 필드가 없는
+        /// 옛 파일이 여전히 옳게 읽히는가</b>다. 그 잠금은 버전마다 하나씩 있는 하위 호환 테스트가 맡는다
+        /// (v5→구석 패널, v6→잉크색, v7→설정창 2종 — Tests/EditMode/EquipmentMigrationTests.cs).</para>
+        internal const int CurrentVersion = 8;
+
+        /// <summary>설정창 값이 처음 들어간 버전. 이 값보다 낮은 파일에는 <c>autoHideOnFullscreen</c>/
+        /// <c>gearIconVisible</c> 키가 없으므로 읽으면 안 된다(false = 꺼짐으로 오해된다 —
+        /// <see cref="FirstVersionWithCornerPanel"/>과 완전히 같은 종류의 필드다).</summary>
+        private const int FirstVersionWithAppSettings = 8;
 
         /// <summary>구석 호버 패널 설정이 처음 들어간 버전. 이 값보다 낮은 파일에는
         /// <c>cornerPanelEnabled</c> 키 자체가 없으므로 그 필드를 읽으면 안 된다(false = 꺼짐으로
@@ -144,6 +173,35 @@ namespace StickMate.Core
             /// <summary>구석 호버 패널을 쓸 것인가. <b>기본이 true</b>라 v5 이하 파일에서는 읽으면 안 된다
             /// (위 <see cref="FirstVersionWithCornerPanel"/> 문서).</summary>
             public bool cornerPanelEnabled;
+
+            // ---- v7: 사용자가 고른 잉크색(Core/CharacterAppearanceModel.cs) ----
+
+            /// <summary>사용자가 잉크색을 한 번이라도 골랐는가. false면 아래 이름을 무시하고 배포
+            /// 기본값을 쓴다(Black도 실제로 고를 수 있는 값이라 별도 플래그가 필요하다 —
+            /// characterScaleSaved / gearPositionSaved와 같은 이유).</summary>
+            public bool inkColorSaved;
+
+            /// <summary>고른 색의 <b>이름</b>("Black"/"White"). 숫자가 아닌 이유는
+            /// CharacterAppearanceModel.RestoreFromSave 문서 참고.</summary>
+            public string inkColorName;
+
+            // ---- v8: 설정창(Core/AppSettingsModel.cs) ----
+
+            /// <summary>전체화면 자동 숨김 / 톱니 아이콘. <b>둘 다 기본이 true</b>라 v7 이하 파일에서는
+            /// 읽으면 안 된다(위 <see cref="FirstVersionWithAppSettings"/> 문서).</summary>
+            public bool autoHideOnFullscreen;
+            public bool gearIconVisible;
+
+            /// <summary>말풍선 설정 4종. 전부 "고른 적 있는가 + 값" 두 벌이라 옛 파일에서 false로 채워지는
+            /// 것이 곧 "배포 기본값을 쓴다"는 정확한 사실이다(characterScaleSaved와 같은 구조).</summary>
+            public bool dialogueFontSizeSaved;
+            public int dialogueFontSize;
+            public bool dialogueVisibleSecondsSaved;
+            public float dialogueVisibleSeconds;
+            public bool chatterPercentSaved;
+            public int chatterPercent;
+            public bool dialogueBubbleEnabledSaved;
+            public bool dialogueBubbleEnabled;
 
             public string wornHead;
             public string wornEyes;
@@ -247,6 +305,7 @@ namespace StickMate.Core
             NewerVersionFileDetected = false;
             NewerVersionBackupPath = null;
             SaveSuspended = false;
+            LastSaveWasAtomic = false;
         }
 
         /// <summary>저장 파일의 절대 경로. 진단 로그/테스트에서만 쓴다.</summary>
@@ -268,11 +327,21 @@ namespace StickMate.Core
         //   (1) 원본을 **백업 사본**으로 남긴다. 원본을 지우거나 옮기지 않고 복사만 한다 — 파일 삭제/이동
         //       API는 절대 불변 원칙 3 정적 감사가 금지한다(Tests/EditMode/UserAssetImmutabilityAuditTests).
         //       백업이 이미 있으면 **덮어쓰지 않는다**(가장 처음 백업이 가장 값지다).
-        //   (2) 백업에 실패했으면 이번 실행에서는 **저장을 보류**한다(Save()가 false를 돌려준다).
+        //   (2) 이번 실행에서는 **저장을 보류**한다(Save()가 false를 돌려준다).
         //       "구버전 앱에서 놀던 것을 못 저장한다"는 불편은 되돌릴 수 있지만, 덮어쓴 데이터는 못 되돌린다.
         //
-        // 백업에 성공했다면 저장은 정상 진행한다 — 원본이 안전하므로 구버전 앱도 평소처럼 쓸 수 있고,
-        // 사용자는 신버전으로 돌아갈 때 백업 파일을 되돌려 놓으면 된다(경로를 경고 로그에 남긴다).
+        // ★ 2026-09-01 정책 변경 (페르소나 재현 J1 실측 A): (2)는 원래 **백업에 실패했을 때만**이었고,
+        // 백업에 성공하면 신버전 파일을 그대로 덮어썼다("원본이 안전하니 구버전 앱도 평소처럼 쓰라").
+        // 그 판단은 "구버전 앱이 나중에 켜진다"는 <b>직렬</b> 시나리오만 가정한 것이다. 실제로는 세이브
+        // 파일 하나를 여러 인스턴스가 공유하고(.claude/skills/run-stickmate/SKILL.md), 신버전 인스턴스가
+        // **아직 돌고 있는 채로** 구버전이 파일을 되돌리는 일이 일어난다. 그때 백업은 손실을 막지 못한다 —
+        // 백업은 딱 한 번(가장 처음) 찍히므로, 그 뒤 신버전이 만든 변경은 어느 사본에도 없다.
+        // 실측(11:05:58 v8 → 11:06:03 v7)에서 설정창 키 10개가 그렇게 사라졌다. 그래서 이제 이 분기는
+        // 백업 성공 여부와 무관하게 저장을 보류한다.
+        //
+        // 이 방어는 Load()에서만 도는 **기동 시 1회**짜리라, "이미 켜져 있는 구버전 인스턴스의 발밑에서
+        // 파일이 신버전으로 바뀌는" 경로는 여전히 못 본다. 그쪽은 저장 직전 버전 재확인(아래
+        // WriteAtomically의 (2)번 단계)이 맡는다 — 두 장치는 같은 원칙의 서로 다른 시점 담당이다.
 
         /// <summary>이번 실행이 <b>자기보다 새로운 버전</b>의 저장 파일을 만났는가. 진단/테스트용.</summary>
         public static bool NewerVersionFileDetected { get; private set; }
@@ -324,6 +393,19 @@ namespace StickMate.Core
                 // v5 이하에는 cornerPanelEnabled 키가 없다 — 읽으면 false(꺼짐)로 오해되므로 기본값(켜짐)을 쓴다.
                 UiLayoutModel.RestoreCornerPanelFromSave(data.characterScaleSaved, data.characterScale,
                     data.version >= FirstVersionWithCornerPanel ? data.cornerPanelEnabled : true);
+                // v6 이하에는 잉크색 키가 없다 — inkColorSaved가 false로 채워지고, 그 false가
+                // "고른 적 없다 = 배포 기본 잉크색"이라는 정확한 사실이다(별도 버전 분기가 필요 없다).
+                CharacterAppearanceModel.RestoreFromSave(data.inkColorSaved, data.inkColorName);
+                // v7 이하에는 설정창 키가 없다 — 기본이 true인 두 값만 버전으로 갈라 준다(나머지는
+                // "고른 적 있는가" 플래그가 false로 채워져 저절로 배포 기본값이 된다).
+                bool hasAppSettings = data.version >= FirstVersionWithAppSettings;
+                AppSettingsModel.RestoreFromSave(
+                    hasAppSettings ? data.autoHideOnFullscreen : true,
+                    hasAppSettings ? data.gearIconVisible : true,
+                    data.dialogueFontSizeSaved, data.dialogueFontSize,
+                    data.dialogueVisibleSecondsSaved, data.dialogueVisibleSeconds,
+                    data.chatterPercentSaved, data.chatterPercent,
+                    data.dialogueBubbleEnabledSaved, data.dialogueBubbleEnabled);
                 TodoListModel.RestoreFromSave(ToItems(data.todos), ToItems(data.todoArchive));
                 LoadedFromFile = true;
 
@@ -383,30 +465,267 @@ namespace StickMate.Core
         {
             NewerVersionFileDetected = true;
 
-            string backupPath = Path.Combine(SaveDirectory, BackupFileName(fileVersion));
+            // ★ 2026-09-01 — 백업 성공/실패와 **무관하게** 이번 실행의 저장을 보류한다(정책 변경).
+            // 예전에는 "백업에 성공했으면 저장은 정상 진행"이었다. 그 판단은 "구버전 앱이 나중에 켜진다"는
+            // **직렬** 시나리오만 가정한 것이었는데, 실제 워크플로는 세이브 파일 하나를 여러 인스턴스가
+            // 공유한다(.claude/skills/run-stickmate/SKILL.md). 신버전 인스턴스가 **아직 돌고 있는** 상태에서
+            // 구버전이 파일을 되돌리면, 백업이 찍힌 뒤에 신버전이 만든 변경은 어느 백업에도 없다 —
+            // 즉 백업은 그 손실을 막아 주지 못한다(페르소나 재현 J1 실측 A: 11:06:03에 설정창 키 10개 소실).
+            // 그래서 이 클래스가 이미 채택한 저울("못 저장하는 불편은 되돌릴 수 있지만 덮어쓴 데이터는
+            // 못 되돌린다")을 이 분기에도 똑같이 적용한다.
+            SaveSuspended = true;
+
+            if (TryBackupOnce(path, fileVersion, out string backupPath, out string failure))
+            {
+                NewerVersionBackupPath = backupPath;
+                Debug.LogWarning($"[성장] 저장 파일이 이 앱보다 새로운 버전입니다(파일 v{fileVersion} > 앱 v{CurrentVersion}). " +
+                    $"내용을 해석할 수 없어 기본값으로 시작하고, 원본을 덮어쓰지 않도록 이번 실행에서는 " +
+                    $"**저장을 보류**합니다(이 실행에서 얻은 성장/할일은 저장되지 않습니다). " +
+                    $"원본은 그대로 있고 사본도 남겼습니다: {backupPath}\n" +
+                    "최신 버전 앱으로 돌아가면 지금까지의 데이터를 그대로 이어서 쓸 수 있습니다.");
+                return;
+            }
+
+            // 백업조차 실패 — 보류는 이미 걸려 있으므로 사실만 남긴다.
+            NewerVersionBackupPath = null;
+            Debug.LogWarning($"[성장] 저장 파일이 이 앱보다 새로운 버전인데({fileVersion} > {CurrentVersion}) " +
+                $"백업에 실패했습니다({failure}). " +
+                "원본을 덮어쓰지 않도록 이번 실행에서는 **저장을 보류**합니다 — " +
+                "이 실행에서 얻은 성장/할일은 저장되지 않습니다.");
+        }
+
+        /// <summary>
+        /// 신버전 원본의 사본을 <b>딱 한 번만</b> 남긴다. 이미 사본이 있으면 손대지 않는다 —
+        /// 가장 처음 백업이 가장 값지다(그 뒤의 내용은 구버전이 오염시켰을 수 있다).
+        /// 복사만 한다: 원본을 지우거나 옮기는 API는 이 프로젝트에 존재하지 않는다(원칙 3 정적 감사).
+        /// </summary>
+        /// <returns>사본이 (지금 만들어졌거나 이미) 존재하면 true.</returns>
+        private static bool TryBackupOnce(string path, int fileVersion, out string backupPath, out string failure)
+        {
+            backupPath = Path.Combine(SaveDirectory, BackupFileName(fileVersion));
+            failure = null;
             try
             {
-                // 이미 백업이 있으면 그대로 둔다(첫 백업이 가장 값지다 — 두 번째 실행이 덮으면
-                // 그 사이 구버전이 만든 내용으로 백업이 오염될 수 있다).
                 if (!File.Exists(backupPath)) File.Copy(path, backupPath);
-                NewerVersionBackupPath = backupPath;
-                SaveSuspended = false;
-
-                Debug.LogWarning($"[성장] 저장 파일이 이 앱보다 새로운 버전입니다(파일 v{fileVersion} > 앱 v{CurrentVersion}). " +
-                    $"내용을 해석할 수 없어 기본값으로 시작하지만, 원본을 백업해 두었으므로 데이터는 " +
-                    $"사라지지 않습니다: {backupPath}\n" +
-                    "최신 버전 앱으로 돌아가려면 이 백업 파일의 이름을 원래 저장 파일명으로 되돌리세요.");
+                return true;
             }
             catch (Exception e)
             {
-                // 백업조차 실패 — 이번 실행에서는 저장을 보류해 원본을 지킨다.
-                NewerVersionBackupPath = null;
-                SaveSuspended = true;
-                Debug.LogWarning($"[성장] 저장 파일이 이 앱보다 새로운 버전인데({fileVersion} > {CurrentVersion}) " +
-                    $"백업에 실패했습니다({e.GetType().Name}: {e.Message}). " +
-                    "원본을 덮어쓰지 않도록 이번 실행에서는 **저장을 보류**합니다 — " +
-                    "이 실행에서 얻은 성장/할일은 저장되지 않습니다.");
+                failure = $"{e.GetType().Name}: {e.Message}";
+                backupPath = null;
+                return false;
             }
+        }
+
+        // ============================================================================
+        // ★ 원자적 쓰기 (2026-08-31 R5 — "저장 파일 비원자적 쓰기" 수정)
+        // ============================================================================
+        // 무엇이 문제였나: 저장이 `File.WriteAllText(FilePath, json)` 한 줄이었다. 이 호출은 대상
+        // 파일을 **먼저 0바이트로 자르고** 내용을 쓴다. 그 사이(수 ms지만 하루 종일 켜져 있고 60초마다
+        // 저장하는 앱이다)에 크래시/강제종료/전원 차단이 나면 파일은 **반쯤 쓰인 JSON**으로 남고,
+        // 다음 실행의 Load()는 그것을 파싱하지 못해 "기본값(Lv.1 / 빈 할일)으로 시작"으로 떨어진다 —
+        // 레벨·장비·기록·<b>사용자가 적은 오늘 할일</b>이 통째로 사라진다. 다운그레이드 방어(m6)가
+        // 막으려던 것과 똑같은 종류의 조용한 전손인데, 이쪽만 무방비였다.
+        //
+        // 고친 방식(표준 패턴): **임시 파일에 전부 쓰고 → 디스크에 확정(fsync) → 원자적 교체**.
+        //   · 교체에 File.Replace를 쓴다. 커널 수준에서 rename 한 번이라 "반쯤 교체된 상태"가
+        //     존재하지 않는다 — 어느 순간에 죽어도 대상 경로에는 **옛 파일 아니면 새 파일**만 있다.
+        //   · File.Move/File.Delete는 쓰지 않는다(쓸 수도 없다) — 절대 불변 원칙 3 정적 감사
+        //     (Tests/EditMode/UserAssetImmutabilityAuditTests)가 그 두 API를 예외 없이 금지한다.
+        //     File.Replace는 "우리 파일의 내용을 바꾸는" 행위라 그 금지의 취지에도 어긋나지 않는다.
+        //   · fs.Flush(true)로 OS 버퍼까지 내려쓴 뒤에 교체한다. 이게 없으면 rename만 먼저 반영되고
+        //     내용은 아직 캐시에 있는 상태에서 전원이 끊길 수 있다(빈 파일이 남는 고전적 실패).
+        //   · 첫 저장(대상 파일이 아직 없을 때)에는 File.Replace가 성립하지 않으므로 **빈 파일을 먼저
+        //     만들고** 교체한다. 거기서 죽어도 잃을 것은 없고(그 전에 저장된 내용이 없다), 남는 것은
+        //     빈 파일이라 Load()가 IsNullOrWhiteSpace 가드로 조용히 "새 캐릭터"로 시작한다 —
+        //     반쯤 쓰인 JSON이 남아 경고 로그를 내는 것보다 정확한 상태다.
+        //   · 교체 자체가 실패하는 플랫폼/파일시스템이 있으면(예: 임시 폴더와 대상이 다른 볼륨)
+        //     예전 방식으로 물러선다. 그 경로는 지금보다 나빠지지 않으며, 조용히 넘어가지 않고
+        //     경고를 남긴다(무엇이 원자적이지 않았는지 나중에 알 수 있게).
+
+        // ============================================================================
+        // ★ 임시 파일 이름은 인스턴스마다 다르다 (2026-09-01, 페르소나 재현 J2)
+        // ============================================================================
+        // 이 저장 파일은 **여러 인스턴스가 공유한다** — 유저가 종일 켜 두는 인스턴스와 팀이 방금 낸
+        // 새 빌드가 같은 파일을 본다(.claude/skills/run-stickmate/SKILL.md에 명시된 설계).
+        // 그런데 임시 파일 이름이 `stickmate_character.json.writing` **하나로 고정**이라, 두 인스턴스의
+        // 저장이 겹치면 서로의 임시 파일을 밟았다:
+        //   (a) 겹치는 순간 FileShare.None 때문에 늦은 쪽이 IOException → 그 주기의 저장을 통째로 놓친다.
+        //   (b) 더 나쁜 쪽: A가 임시 파일을 닫은 **직후** B가 FileMode.Create로 같은 경로를 0바이트로
+        //       자르면, A의 File.Replace가 **B의 내용(또는 빈 파일)** 을 본체로 승격시킨다. 빈 파일이
+        //       본체가 되면 다음 Load()가 IsNullOrWhiteSpace 가드로 조용히 "새 캐릭터"로 떨어진다 —
+        //       이 클래스가 "가장 나쁜 실패"라고 부르는 그 결과이고, 원자적 쓰기가 막으려던 바로 그 사고다.
+        // 이름 가운데에 프로세스 아이디를 넣으면 그 두 경로가 **구조적으로** 사라진다(비용 0).
+        //
+        // 남는 것 하나(의도적으로 받아들인다): 쓰는 도중에 죽으면 그 PID의 임시 파일이 남는다.
+        // 이 앱에는 파일을 지우는 능력이 아예 없으므로(아래 MarkNotLoadedForTesting 문서) 청소하지 않는다.
+        // 대신 같은 PID의 다음 저장이 그 파일을 그대로 다시 쓰고(FileMode.Create), OS가 PID를 재사용하므로
+        // 무한히 늘어나지도 않는다. 이름이 `.writing`으로 **끝나는** 것은 그대로 유지한다 — 저장 파일이나
+        // 백업 명명 규칙(character_save.v{N}.backup.json)과 겹치지 않게 하는 것이 원래의 이유였다.
+
+        /// <summary>임시 파일 이름의 꼬리. 이것으로 끝나는 파일은 "쓰다 만 것"이라는 뜻이다.</summary>
+        private const string TempFileSuffix = ".writing";
+
+        private static string s_instanceTag;
+
+        /// <summary>이 인스턴스만의 짧은 꼬리표(프로세스 아이디). 프로세스 아이디를 얻을 수 없는
+        /// 플랫폼(예: 샌드박스가 막는 모바일 IL2CPP)에서는 실행마다 다른 난수로 물러선다 —
+        /// 여기서 필요한 성질은 "다른 인스턴스와 겹치지 않는다" 하나뿐이라 그 폴백으로 충분하다.</summary>
+        private static string InstanceTag
+        {
+            get
+            {
+                if (s_instanceTag != null) return s_instanceTag;
+                try
+                {
+                    using (var self = System.Diagnostics.Process.GetCurrentProcess())
+                    {
+                        s_instanceTag = self.Id.ToString(CultureInfo.InvariantCulture);
+                    }
+                }
+                catch (Exception)
+                {
+                    s_instanceTag = "r" + Guid.NewGuid().ToString("N").Substring(0, 8);
+                }
+                return s_instanceTag;
+            }
+        }
+
+        /// <summary>쓰는 중인 임시 파일의 이름 — <c>stickmate_character.json.&lt;인스턴스&gt;.writing</c>.
+        /// 저장 파일명과 <b>다른 확장자</b>로 끝나 저장 파일로 오인되거나 백업 명명 규칙과 겹치지 않고,
+        /// 가운데 꼬리표가 인스턴스끼리의 충돌을 막는다(위 문단).</summary>
+        private static string TempFileName => FileName + "." + InstanceTag + TempFileSuffix;
+
+        /// <summary>쓰는 중인 임시 파일의 절대 경로. 진단/테스트에서만 쓴다.</summary>
+        public static string TempFilePath => Path.Combine(SaveDirectory, TempFileName);
+
+        /// <summary>마지막 저장이 원자적 교체 경로로 끝났는가(false = 폴백으로 물러섰다). 진단/테스트용.</summary>
+        public static bool LastSaveWasAtomic { get; private set; }
+
+        // ============================================================================
+        // ★ 저장 직전 버전 재확인 — "내 것보다 새로운 저장을 조용히 덮어쓰지 않는다"
+        //    (2026-09-01, 페르소나 재현 J1 실측 B)
+        // ============================================================================
+        // 다운그레이드 방어(m6)는 <b>Load() 안에만</b> 있었고 Load()는 기동 시 1회뿐이다. 그래서
+        // "구버전 앱이 나중에 켜진다"는 직렬 시나리오만 막혔고, **이미 켜져 있는 구버전 인스턴스의
+        // 발밑에서 파일이 신버전으로 바뀌는** 경로는 완전한 사각지대였다 — 실측으로 15초 만에
+        // 구버전이 v8 파일을 v7로 되돌렸고, 새 백업도 경고 로그도 0줄이었다.
+        //
+        // 막는 방법: 대상 파일을 갈아끼우기 **직전에** 디스크에 있는 파일의 version 한 필드만 다시 읽어,
+        // 그게 내가 쓰려는 버전보다 높으면 내 쓰기를 포기한다. 비용은 read 1회(주기 60초)다.
+        //
+        // 이것은 <b>락이 아니다</b>(최선 노력). 확인과 File.Replace 사이의 마이크로초 창은 남는다 —
+        // 그래서 확인을 파일을 만지기 **가장 가까운 자리**에 둔다. 진짜 배타 제어가 필요해지면
+        // 단일 인스턴스 락이 답이고(현재 프로젝트에 0건), 그건 이 클래스 밖의 결정이다.
+        // 같은 버전끼리의 갱신 손실(두 v8 인스턴스가 서로의 값을 덮는 것)도 이 가드의 범위가 아니다 —
+        // 여기서 지키는 것은 "스키마가 더 새로운 파일을 옛 스키마로 되돌리지 않는다" 하나다.
+
+        /// <summary>저장 직전 확인 전용 — 파일의 <c>version</c> 한 필드만 읽기 위한 최소 스키마.
+        /// <see cref="SaveData"/>로 읽지 않는 이유: 신버전 파일에는 우리가 모르는 필드가 들어 있고,
+        /// 여기서 알고 싶은 것은 오직 "이 파일이 나보다 새로운가" 하나다.</summary>
+        [Serializable]
+        private sealed class VersionProbe
+        {
+            public int version;
+        }
+
+        /// <summary>디스크에 있는 저장 파일의 <c>version</c>만 다시 읽는다.
+        /// 읽을 수 없으면(파일 없음/빈 파일/손상/권한/파싱 실패) <b>false</b>를 돌려주고, 그때는
+        /// 저장을 막지 <b>않는다</b>. 손상된 파일 하나가 저장 기능을 영구히 잠그는 쪽이 더 나쁘고,
+        /// 그 경우의 계약은 원래부터 "다음 저장이 정상 내용으로 덮어쓴다"였다(Load의 catch 참고).</summary>
+        private static bool TryReadDiskVersion(string path, out int version)
+        {
+            version = 0;
+            try
+            {
+                if (!File.Exists(path)) return false;
+
+                string json = File.ReadAllText(path);
+                if (string.IsNullOrWhiteSpace(json)) return false;
+
+                var probe = JsonUtility.FromJson<VersionProbe>(json);
+                if (probe == null || probe.version <= 0) return false;
+
+                version = probe.version;
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 저장 직전에 발견한 "나보다 새로운 파일"을 <b>그대로 두고</b> 물러선다.
+        /// 원본은 한 바이트도 건드리지 않고, 사본을 한 번 남기고, 이번 실행의 저장을 보류한다
+        /// (보류가 있어야 60초마다 같은 경고가 반복되지 않고, 종료 시 저장도 원본을 건드리지 않는다).
+        /// </summary>
+        private static void AbandonWriteToNewerFile(string path, int diskVersion)
+        {
+            NewerVersionFileDetected = true;
+            SaveSuspended = true;
+
+            bool backedUp = TryBackupOnce(path, diskVersion, out string backupPath, out string failure);
+            NewerVersionBackupPath = backedUp ? backupPath : null;
+
+            Debug.LogWarning($"[성장] 저장을 취소했습니다 — 저장 파일이 그 사이 이 앱보다 새로운 버전이 " +
+                $"되었습니다(디스크 v{diskVersion} > 앱 v{CurrentVersion}). 다른 인스턴스(새 빌드)가 같은 " +
+                $"파일에 이미 저장했다는 뜻이라, 여기서 덮어쓰면 그쪽 데이터가 사라집니다. " +
+                (backedUp
+                    ? $"원본은 그대로 두었고 사본도 남겼습니다: {backupPath}. "
+                    : $"사본 만들기는 실패했지만({failure}) 원본은 손대지 않았습니다. ") +
+                "이번 실행에서 얻은 성장/할일은 저장되지 않습니다 — 되돌릴 수 없는 덮어쓰기 대신 " +
+                "되돌릴 수 있는 불편을 택했습니다(이 클래스의 다운그레이드 방어와 같은 저울).");
+        }
+
+        /// <returns>대상 저장 파일을 실제로 갱신했으면 true. 위 가드에 걸려 <b>쓰지 않고 물러섰으면</b>
+        /// false — 그때 호출자는 모델을 "저장됨"으로 표시하면 안 된다.</returns>
+        private static bool WriteAtomically(string json)
+        {
+            string path = FilePath;
+            string temp = TempFilePath;
+
+            // (1) 전량을 임시 파일에 쓰고 디스크에 확정한다. 여기서 죽으면 대상 파일은 손도 대지 않은
+            //     옛 내용 그대로다(이 수정의 핵심).
+            using (var fs = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var writer = new StreamWriter(fs, new UTF8Encoding(false)))
+            {
+                writer.Write(json);
+                writer.Flush();
+                fs.Flush(true);   // OS 버퍼 → 디스크. 전원 차단까지 견디게 하는 한 줄이다.
+            }
+
+            // (2) ★ 교체 **직전** 확인 — 그 사이 다른 인스턴스가 더 새로운 버전으로 저장했는가.
+            //     일부러 아래 try 밖에 둔다: 이 확인이 예외를 내면 폴백(직접 쓰기)으로 떨어져
+            //     막으려던 덮어쓰기를 스스로 저지르게 된다. TryReadDiskVersion은 던지지 않는다.
+            if (TryReadDiskVersion(path, out int diskVersion) && diskVersion > CurrentVersion)
+            {
+                // 임시 파일은 남지만 다음 저장이 같은 이름을 다시 쓴다(위 임시 파일 문단).
+                AbandonWriteToNewerFile(path, diskVersion);
+                return false;
+            }
+
+            try
+            {
+                // (3) 첫 저장이면 교체 대상이 있어야 하므로 빈 파일을 만든다(위 문단 참고).
+                if (!File.Exists(path)) File.WriteAllText(path, string.Empty);
+
+                // (4) 원자적 교체. 백업 사본은 만들지 않는다(null) — 다운그레이드 백업(m6)과 역할이
+                //     다르고, 매 저장마다 사본을 남기면 디스크만 두 배로 쓴다.
+                File.Replace(temp, path, null);
+                LastSaveWasAtomic = true;
+            }
+            catch (Exception e)
+            {
+                // 물러서기: 예전과 같은 직접 쓰기. 지금보다 나빠지지는 않지만 원자적이지 않다.
+                LastSaveWasAtomic = false;
+                File.WriteAllText(path, json);
+                Debug.LogWarning($"[성장] 저장 파일을 원자적으로 교체하지 못해 직접 쓰기로 물러섰습니다" +
+                    $"({e.GetType().Name}: {e.Message}). 저장 자체는 성공했지만, 이번 쓰기 도중 " +
+                    "강제 종료되면 파일이 손상될 수 있습니다.");
+            }
+
+            return true;
         }
 
         /// <summary>미착용을 <c>null</c>이 아니라 빈 문자열로 적는다 — JsonUtility는 null 문자열을
@@ -416,7 +735,10 @@ namespace StickMate.Core
         /// <summary>성공하면 true. 실패해도 예외를 밖으로 던지지 않는다(클래스 문서 참고).</summary>
         public static bool Save()
         {
-            // ★ 다운그레이드 보류(m6) — 신버전 파일을 백업조차 못 한 상태에서는 절대 덮어쓰지 않는다.
+            // ★ 저장 보류 — 이번 실행이 "나보다 새로운 저장 파일"을 이미 만났다면 두 번 다시 쓰지 않는다.
+            //   거는 자리는 둘: 기동 시 Load()의 다운그레이드 방어(m6), 그리고 저장 직전 버전 재확인
+            //   (AbandonWriteToNewerFile). 여기서 일찍 끊어야 60초마다 같은 경고가 반복되지 않고,
+            //   종료 시 저장(OnApplicationQuit)도 신버전 파일을 건드리지 않는다.
             if (SaveSuspended) return false;
 
             try
@@ -444,6 +766,18 @@ namespace StickMate.Core
                     characterScaleSaved = UiLayoutModel.HasCharacterScale,
                     characterScale = UiLayoutModel.CharacterScale,
                     cornerPanelEnabled = UiLayoutModel.CornerPanelEnabled,
+                    inkColorSaved = CharacterAppearanceModel.HasInkColor,
+                    inkColorName = CharacterAppearanceModel.InkColorSaveName(),
+                    autoHideOnFullscreen = AppSettingsModel.AutoHideOnFullscreen,
+                    gearIconVisible = AppSettingsModel.GearIconVisible,
+                    dialogueFontSizeSaved = AppSettingsModel.HasDialogueFontSize,
+                    dialogueFontSize = AppSettingsModel.DialogueFontSize,
+                    dialogueVisibleSecondsSaved = AppSettingsModel.HasDialogueVisibleSeconds,
+                    dialogueVisibleSeconds = AppSettingsModel.DialogueMaxVisibleSeconds,
+                    chatterPercentSaved = AppSettingsModel.HasChatterPercent,
+                    chatterPercent = AppSettingsModel.ChatterPercent,
+                    dialogueBubbleEnabledSaved = AppSettingsModel.HasDialogueBubbleEnabled,
+                    dialogueBubbleEnabled = AppSettingsModel.DialogueBubbleEnabled,
                     todos = ToRecords(TodoListModel.ActiveItems),
                     todoArchive = ToRecords(TodoListModel.CompletedArchive),
                     wornHead = WornId(EquipmentSlot.Head),
@@ -457,10 +791,16 @@ namespace StickMate.Core
 
                 string dir = SaveDirectory;
                 if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-                File.WriteAllText(FilePath, JsonUtility.ToJson(data, true));
+                // ★ 쓰지 않고 물러섰으면(디스크가 더 새로운 버전) 여기서 끝낸다 — MarkSaved를 부르면
+                //   모델이 "디스크에 반영됨"이라고 거짓말을 하게 되고, 그 거짓말은 나중에 진짜 저장
+                //   기회를 잡아먹는다(변경분이 있어야만 주기 저장이 돈다).
+                if (!WriteAtomically(JsonUtility.ToJson(data, true))) return false;
+
                 CharacterProgressionModel.MarkSaved();
                 CharacterStatsModel.MarkSaved();
                 UiLayoutModel.MarkSaved();
+                CharacterAppearanceModel.MarkSaved();
+                AppSettingsModel.MarkSaved();
                 TodoListModel.MarkSaved();
                 return true;
             }

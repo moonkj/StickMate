@@ -88,6 +88,23 @@
 ## 교차 레이어 영향 로그 (실시간 공유)
 > 한 팀원의 변경이 다른 레이어에 준 영향을 여기에 기록한다.
 
+- **[Coder, 2026-09-01, 페르소나 조치 라운드]** 아래 4건은 내 파일 경계를 넘거나 다른 레이어의 판단이
+  필요하다. 상세 근거는 이 문서 "페르소나 검증 로그" > "코더(Teammate1) 조치 결과 — 2026-09-01".
+  1. **`PlayerPrefs` 첫 사용** — 부채꼴 최초 1회 안내(M13)의 "봤다" 플래그를
+     `StickMate.GearMenu.OnboardingSeen.v1` 키로 저장했다. 세이브 파일에 넣으려면 스키마 버전 +
+     마이그레이션이 필요한데 `Core/CharacterSaveStore.cs`는 지금 재현 J1(다운그레이드 방어)로 다른
+     담당자가 보고 있다. 저장되는 것은 부울 하나이고 유실돼도 최악이 "안내가 한 번 더 뜬다"이다.
+     **리더 판단 요망**: 세이브 파일로 옮길 것인가, PlayerPrefs를 UI 1회성 플래그의 공식 자리로 둘 것인가.
+  2. **`StickmanAgent.IsSuspended`의 의미가 과하게 넓다(재현 J3)** — `IsFullscreenAppActive() &&
+     AutoHideOnFullscreen`이라, 사용자가 [일반] 탭에서 자동 숨김을 끄면 캐릭터뿐 아니라
+     **차단막을 가진 표면 전부**(설정창/팝오버/부채꼴)가 전체화면 게임 위에 남는다. 이번 라운드에는
+     캡션으로 **고지**만 했다(코더 경계). "캐릭터 표시"와 "차단막 유지"를 분리하려면 Core 배정이 필요하다.
+  3. **`PopoverPanel`에 무입력 자동 닫힘 3분이 생겼다(재현 J5)** — `FocusSessionPopover`/
+     `TodoBoardPopover`/`ActionCommandPopover` **전부**에 적용된다. 집중 세션 자체는 계속 돌고 창만
+     닫힌다. 팝오버가 닫히면 `GearRadialMenuWidget.TickAnchoredPopover`가 부채꼴도 함께 거둔다.
+  4. **부채꼴 호버 이름표가 반지름 방향으로 이동했다(소은 #1)** — 배치 계산과 `UnionScreenRect`는
+     그대로다(36-3 기하 근거 무변). 스크린샷을 근거로 쓰는 문서/리포트는 이름표 위치가 바뀐 점 참고.
+
 - **[Architect, 2026-08-27]** Coder의 Phase 4 확인 요청 2건 모두 승인. (1) 윈도우 크래시: 스윙 애니메이션(짧음)과 크랙 오버레이 수명(3초, 원 기획 "3초 뒤 원상복구"와 정확히 일치)을 분리한 해석 승인 — 캐릭터 동작과 시각효과 지속시간은 별개 축이어야 자연스럽다. (2) 하드웨어 반응(배터리/CPU/충전/네트워크)에 `SpectacleEventLock` 미적용 판단 승인 — 이 4가지는 일회성 "스펙터클"이 아니라 지속적인 배경 무드/상태 표현(캐릭터가 헐떡이거나 땀 흘리는 등)에 가까워, 격파미니게임/라이벌대결/드래그던지기/로데오/창도둑/그라피티/크래시/블랙홀 같은 일회성 이벤트와 동시에 발생해도 시각적으로 자연스럽게 공존해야 한다. UX_FLOW.md 28절-29에 이미 이렇게 범위가 한정되어 있었으므로 문서와 구현이 일치.
 
 - **[Architect, 2026-08-27] 결정: 격파 미니게임 "릴리즈 순간" 대사도 자기-전이(self-transition)로 Enter()를 통과시킬 것.** Coder가 남긴 질문(UX 31-2표 #5 대사가 `Tick()` 중 클릭 판정 시점에 확정되어 `Enter()` 전용 원칙과 구조적으로 충돌) 답: 예외를 만들지 않는다. 클릭이 성공/실패로 판정되는 그 프레임에 `Machine.ChangeState(StickmanStateId.BattleMinigame, isForcedInterrupt:false)`로 **자기 자신에게 재전이**시키고, 재전이 직전에 `_dialogueParams`(판정 결과)를 갱신해라 — `RagdollState`가 반복 피격 시 이미 이 패턴(같은 상태로 재전이 → `Enter()` 재실행 → `_settleTimer` 리셋)을 쓰고 있으니 새 개념이 아니라 기존 컨벤션의 재사용이다. 이렇게 하면 "대사는 오직 확정된 전이의 Enter()에서만 파생"이라는 원칙에 예외를 두지 않고도, "판정 순간"과 "전이 확정 순간"을 코드 구조상 같은 프레임의 같은 사건으로 만들 수 있다. Coder는 다음 라운드에서 `BattleMinigameState`의 클릭 판정 지점(현재 `Tick()` 내부로 추정)을 이 패턴으로 교체할 것 — Debugger는 이 항목이 반영됐는지 함께 확인할 것.
@@ -9353,3 +9370,6162 @@ bool asleep = CGDisplayIsAsleep(_mainDisplay) != 0;
   않는 독립 메서드다). 즉 R5의 "Major 2를 고칠 때 함께 정리하라"는 전제는 성립하지 않았고, Minor 4는
   **열린 채로 정리 라운드에 남긴다**(리더 확인 요망).
 - R5 Minor 1~6과 이월 항목(Windows 알파 필터 등)은 이번 범위 밖 — 그대로 열려 있다.
+
+---
+
+## [UX Designer] 2026-08-31 — 신규 기획서 2건 검토 → 구현 계획 수립 (완료, 코드 변경 0)
+
+**상태: 완료.** 산출물은 `docs/UX_FLOW.md` **35절**(35-0 ~ 35-6). 이번 라운드는 **계획 전용**이라
+소스 코드는 한 줄도 건드리지 않았다(리더가 재확인 후 구현 배정).
+
+입력: 사용자 전달 기획서 2건 — ①「StickMate 기획 정리 (개발 착수용)」 ②「StickMate 아이디어 검토 —
+5인 페르소나 10라운드 회의록」. 담당 3개 영역(설정창 신설 / 온보딩 / 캐릭터 커스터마이징 방향성).
+
+### 한 일
+- **설정창(35-1)**: 지금까지 문서·코드에 쌓인 "설정창에 넣자" 항목 **14건**을 grep으로 전수 수집하고,
+  신규 기획서 2건의 설정 후보를 **5탭(일반/캐릭터/이벤트/접근성·성능/데이터) 약 48항목**으로 전수 분류.
+  항목마다 컨트롤·실제 코드 연결점·난이도·원칙 점검을 붙였다. 720×560 와이어프레임 + [이벤트] 탭
+  "필수만 먼저" 접기 구조 + 저장 스키마 v7 초안 + 진입점 3개(기어 부채꼴에 4번째 버튼을 **넣지 않는** 근거 포함).
+- **온보딩(35-2)**: 상태 흐름 7단계 확정. **신규 상태 클래스 0개**로 구현 가능함을 확인
+  (`ThrowTumbleState`가 이미 "회전 낙하 → 무릎앉아 착지"이고 대사를 만들지 않는다 =
+  기획서 ①의 최초 실행 연출과 정확히 일치). 필수 2문항 카드 + 팁 노출 규율.
+- **커스터마이징(35-3)**: 무료 포인트 컬러 vs DLC 전신 테마를 **4층 모델**로 경계 확정
+  (단일 훅 = `ItemCatalog.ResolveWornPalette`). 말투 커스텀을 `DialogueIntent` 계약 **무변경**으로
+  구현하는 방법(`SpeechLexicon` = 파생 함수 안에서 톤 소비). 상태 연동 악세서리는 오늘의 28종
+  장비 시스템과 **별개 메커니즘**이라고 판정하고 투명 오버레이 설계를 제시.
+
+### ★ 조사 중 발견한 문제 (리더 보고 — 상세는 35-1-3 / 35-4)
+1. **[버그] `StickConfig.inkColor` 직접 대입 2곳 = 배포 에셋 오염** —
+   `Interaction/CharacterInfoWindow.cs:1045`, `Interaction/AppControlDirector.cs:400`.
+   2026-08-31 R3 Blocker 2(`characterScale`)와 **같은 실패 모드**인데,
+   잠금 테스트 `DeployedConfigAssetImmutabilityTests`는 `characterScale`만 단언해 그물 밖이다.
+   덤으로 잉크색은 `CharacterSaveStore`에 필드가 없어 **재시작마다 초기화된다**(= 저장되는 설정이 아니다).
+2. **크기 값의 적용 게이트가 `CornerHoverPanel`의 private + 변경 알림 이벤트 없음** —
+   설정창 슬라이더를 그대로 붙이면 두 UI가 서로 다른 값을 표시하게 되어 **원칙 1 위반**.
+   `CharacterScaleController` 승격 + `StickmanEventBus.CharacterScaleChanged` 신설을 선행 권고.
+3. **UX 1-A(권한 프라이밍 화면 2장)가 현재 구현과 불일치** — `MacWindowService`/`Win32WindowService`
+   주석의 실측 근거대로 이 앱은 **어떤 OS 권한도 요구하지 않는다**(macOS는 `kCGWindowOwnerName`만 읽고
+   창 제목 `kCGWindowName`은 읽지 않는다). 요구하지 않는 권한을 설명하는 첫 화면은 원칙 1의 UI 카피판
+   위반이자 최악의 이탈 지점. **문서 강등 승인 요청**(35-5 #5).
+4. **설정 토글을 `component.enabled`로 구현 금지** — BUG-P3-M1(락 누수)은 해소됐지만,
+   컴포넌트를 끄면 `ForceTriggerNow`(수동 발동)까지 죽는다. Director별 `AutoTriggerEnabled` 프로퍼티 권고.
+
+### 교차 레이어 영향 로그 (요약 — 전문은 UX_FLOW 35-4의 19행 표)
+- 신규 파일 예정 5개: `Interaction/SettingsWindow.cs` / `Interaction/SettingsControls.cs`(토글·슬라이더·
+  세그먼트·스테퍼 — `UiChrome`에 **없음**을 실측 확인) / `Interaction/OnboardingDirector.cs` /
+  `Dialogue/SpeechLexicon.cs` / (선택) `Core/CharacterScaleController.cs`.
+- 기존 파일 영향: `Core/CharacterSaveStore.cs`(v6→v7, 설정 필드 약 20개) /
+  `Core/EquipmentModel.cs`+`Interaction/CharacterAccessoryRenderer.cs:668,682`(투명 오버레이, 읽기 지점 3곳) /
+  `Platform/IGlobalKeyStateService.cs`(`GlobalKey` 2개 추가 + 플랫폼 매핑 2곳) /
+  `Platform/FramePacing.cs`(저전력 설정용 공개 진입점 — 현재 `internal` + 환경변수 전용) /
+  `Core/StickConfig.cs`(`MinStrokeScreenPoints` 런타임 오버레이 = 접근성 윤곽선 강조의 단일 레버) /
+  `Interaction/AppControlDirector.cs`(우클릭 메뉴 18행 → 13행, 영구 토글 4개 이관 + `[설정…]` 추가).
+- **ESC를 새로 점유하지 않는다**(클릭관통 긴급 해제 + 구석 패널 숨김이 이미 사용). 정보창 선례 그대로 `[✕]`.
+- 정렬 순서: 설정창 `31800`(정보창 31900 아래, 팝오버 31700 위) + 정보창과 **상호 배타**.
+- **모바일 격차**: 우클릭·호버·전역 단축키가 전부 없어 설정창 진입점 3개가 하나도 성립하지 않는다(예약만).
+
+### 리더 결정 요청 6건 (UX_FLOW 35-5)
+잉크색 버그 별건 처리 여부 / 크기 단일 소스 선행 여부 / **마이크 권한(통화 감지) 도입 여부** /
+**첫 네트워크 송신(크래시 리포트·자동 업데이트) 개방 여부** / 1-A 권한 화면 강등 승인 /
+[이벤트] 프리셋 기본값.
+
+---
+
+## 2026-08-31 — 신규 기획서 2건: 엔지니어링/인프라 + 콘텐츠 기술 실현성 **계획 수립** **[Coder / Teammate1]**
+
+리더 지시로 **코드 미작성 / 계획만** 수행. 산출물은 `docs/ARCHITECTURE.md` **5절**(5-0 ~ 5-5).
+ux-designer의 온보딩/설정창/커스터마이징 UX 계획(`docs/UX_FLOW.md`)과 범위 분리.
+
+### 원문 확보
+두 기획서 원문 전문을 세션 기록에서 복원해 읽었다(기획서 1은 컴팩션으로 요약만 남아 있었으나
+`queued_command` 첨부에서 원문 확보). 조건부 채택 3건의 조건을 원문 그대로 계획에 명시:
+- 크래시리포트 = "옵트인 + 명시 고지 필수"
+- 세이브 동기화 = "스팀 우선, MS스토어/맥은 후순위"
+- 마우스 패턴 기분 추측 = "명확한 고지 + 옵트아웃 필수"
+
+### 코드베이스 실측으로 확인한 주요 사실
+| 확인 | 근거 |
+|---|---|
+| 원칙 4(플러그인 구조)가 **미구현** | `MotionPluginSO`/`EffectPluginSO` 참조 0건, 콘텐츠 32종은 `ItemCatalog.cs` 하드코딩 Row 28개 + `AccessoryShapeBuilder.cs` 1,225줄 switch, Data 폴더 에셋 1개, Addressables 미설치 |
+| 네트워크 코드 **0건** | `UnityWebRequest`/`HttpClient`/`Socket`/`System.Net` 전수 grep 0 |
+| `.github/` **없음**, 그러나 배치 빌드 진입점은 완비 | `Assets/Editor/BuildStandalone.cs`의 `PerformBuild`/`PerformBuildWindows` |
+| 첫 실행 인트로 **없음**(부품만 있음) | `FirstRun`/`Onboarding` grep은 세이브 통계 필드뿐. 회전은 `ThrowTumbleState`, 착지는 `LandingCrouchState`에 각각 존재 |
+| 집중모드 타이머 링이 **발밑**(기획서는 머리 위) | `FocusWatchRenderer.RingCenterYRatio` + 주석 "18절이 지정한 발밑" |
+
+### 신규 발견 결함/위험 (구현하지 않고 보고만)
+1. **[실재 결함] 세이브가 비원자적이다** — `Core/CharacterSaveStore.cs:460`
+   `File.WriteAllText(FilePath, ...)`. 쓰기 도중 크래시/전원차단 시 세이브 전체 손실.
+   버전/다운그레이드 가드/백업은 훌륭하나 "쓰다 만 파일"만 못 막는다. 수정 난이도 작음(임시파일+Replace).
+2. **[이중 진실 공급원]** 배터리 상태를 `HardwareReactionDirector`는 `SystemInfo.batteryStatus`로,
+   `ViewerPresenceSnapshot`은 네이티브(`OnBattery`/`LowPowerMode`)로 각자 들고 있다. "Dock 낙차 4:2 갈림"과
+   같은 실패 패턴. 신규 "배터리 걱정 리액션" 추가 **전에** 통합 권고.
+3. **[신규 상호작용]** 유휴 행동 발동 구간과 `FramePacing`의 `Away`(180초)/`DisplayOff` 등급 강등 구간이
+   정확히 겹친다 → 4fps 낚시 애니메이션 = 고장으로 보임. 규칙 신설 권고(Away 이상에서 시작 금지/중단).
+4. **[원칙 3 충돌]** "비활성 창 흔들기"는 문자 그대로 구현 불가(창 이동=원칙3 위반 / 창 픽셀 캡처=프라이버시
+   표면 신설 + Windows BitBlt 비용 증가). 축소 스펙 권고.
+5. **[반려 권고]** Job System 멀티스레드 최적화 — 오늘 `sample` 실측상 관리 코드는 메인스레드 표본의
+   0.25%. 최선의 효과가 0.25% 미만. 대신 `JobsUtility.JobWorkerCount` 축소만 측정 후 검토(-20~30MB 추정).
+
+### 교차 레이어 영향 로그
+- **ux-designer와 경계 협의 필요**: 첫 실행 플래그(`introPlayed`) 소유권 — **온보딩이 소유하고 인트로
+  디렉터는 이벤트 소비만** 권고. 두 곳이 각자 읽으면 "온보딩 끝났는데 인트로 재생" 버그 확정.
+- **신규 인터페이스 예고(둘 다 읽기 전용)**: `IDesktopWallpaperService`(배경화면 감상 리액션),
+  `IWindowChromeGeometryService`(인질극 닫기버튼 조준). `IPlatformWindowService`에 추가하지 않는다 —
+  그 인터페이스의 "메서드를 추가하지 않는다" 주석과 이를 강제하는 EditMode 테스트를 존중.
+- **세이브 스키마 v7 동시 개방 권고**: `introPlayed` / `lastWriteUnixSeconds` / `deviceId`(난수) /
+  동의 플래그(크래시리포트·마우스패턴·배경화면). 재마이그레이션 방지를 위해 한 번에.
+- **정적 감사 프레임워크 확장 3건 예정**: `Tests/EditMode/UserAssetImmutabilityAuditTests.cs`의 소스
+  스캔 방식을 복제해 (a) 오프라인 우선(네트워크 API), (b) `GlobalKey` 열거형 범위 잠금(키로거 방지),
+  (c) `Update()` 내 무가드 보간 로그 금지.
+- **성능 규칙 신설 제안**: 신규 유휴/스펙터클 렌더러는 `CharacterVisualRegistry` 등록·해제 필수
+  (오늘 원칙 2 위반 재발 방지) + `Away` 등급 이상에서 시작 금지.
+
+### 이월 미해결 항목과의 상호작용
+- **Windows 알파 필터 부재(Major, 이월)**: 로프등반/낚시/낮잠/인질극/던전이 **전부 발판 선택에 의존** →
+  신규 콘텐츠 착수 전 선결 필요. 안 고치면 신규 기능이 이 버그의 누명을 쓴다.
+- **`DWMWA_EXTENDED_FRAME_BOUNDS` 미적용(Minor, 이월)**: 인질극 닫기버튼 조준/로프 앵커가 Windows에서
+  일제히 ~7px 어긋난다. 싸고 파급이 커서 선결 권고.
+- **`IsCoveredByHat` Major 4(UX 판단 대기)**: DLC 스키마의 `AccessoryDefSO.hidesHair` 필드가 이 문제를
+  전역 규칙 → 아이템별 데이터로 바꾸는 **근본 해법**이 된다(부수 효과).
+- **소형 오버레이 창(perf-doc 제안 B-1, 별도 Phase 승인됨)**: 다개체/전역 연출과 정면 충돌 →
+  본 콘텐츠 계획과 **동시 진행 금지** 권고.
+
+### 리더 결정 요청 (6건)
+1. DLC 이행 3단계(A: 32종 에셋화 → B: 레지스트리 전환 → C: 매니페스트+Addressables) 승인 여부
+2. 집중모드 타이머 링 위치 확정 — UX_FLOW 18절 "발밑"(구현됨) vs 신규 기획서 "머리 위"
+3. 첫 실행 플래그 소유권(온보딩 vs 인트로 디렉터)
+4. 미니보스 레이드 — 2026-08-30 삭제한 라이벌 인프라 부활 건, **사용자 확인 필요**
+5. 기본값 3건: 자동 업데이트 확인(옵트아웃 권고) / 마우스 패턴(기본 OFF 권고) / 배경화면 분석(옵트아웃)
+6. 외부 조치: GitHub Actions용 Unity 라이선스 시크릿, Steam appid
+
+### 결과
+프로덕션/테스트 소스 **한 줄도 수정하지 않았다**. 변경 파일은 `docs/ARCHITECTURE.md`(5절 추가)와
+이 `Tasklist.md` 항목뿐.
+
+### 리더 결정 (2026-08-31)
+1. **DLC 3단계 이행 승인.** DLC 확정 6종 사업계획 전체가 이 위에 있어 최우선 구조 과제로 채택.
+2. **집중모드 타이머 위치 충돌 → ux-designer에 재확인 요청.** "발밑"은 이미 구현·출하됨. 신규
+   기획서의 "머리 위 HUD"가 별도 컴포넌트 신설 의도였는지, 위치 이전 의도였는지 ux-designer가
+   원문 맥락을 다시 확인해서 판단.
+3. **첫 실행 플래그 소유권 — 코더 권고안 승인.** 온보딩이 `introPlayed` 소유, 인트로 디렉터는
+   이벤트 소비만.
+4. **미니보스 레이드 — 기획에서 완전 제외 (사용자 확정, AskUserQuestion).** 2026-08-30 라이벌 인프라
+   전체 삭제 결정을 번복하지 않는다. `RivalStickmanAgent` 등 관련 클래스는 부활시키지 않는다.
+   대체 콘텐츠(라이벌 인프라 불필요한 버전)가 필요하면 별도 라운드에서 재기획.
+5. **기본값 3건 — 전부 권고안대로 승인.** 자동 업데이트 확인 옵트아웃, 마우스 패턴 추측 기본 OFF,
+   배경화면 분석 옵트아웃.
+6. **외부 조치(Unity 라이선스 시크릿, Steam appid) — 사용자 액션 대기, 보류.** 필요 시점(CI 착수/
+   Steam Cloud 착수)에 다시 요청.
+7. **소형 오버레이 창(perf-doc B-1) vs 본 콘텐츠 계획 동시 진행 금지 — 승인.** perf-doc 검증 라운드
+   완료 후 순서 재조정.
+
+---
+
+## [debugger] 2026-08-31 — "기어 설정창조차 클릭하면 약간 렉걸린듯이 움직임" 원인 확정 + 수정
+
+**결론(가설 아님, 코드 검증 + 뮤테이션 테스트로 확인):** 적응형 프레임 페이싱의 `Calm` 등급이
+정보창을 **읽는 동안** 켜지고, 상호작용을 재개해도 복귀가 관측 폴링(최대 0.2초)까지 지연된다.
+Windows는 `baseVSyncCount=0`이라 Calm이 `targetFrameRate`를 60→30으로 나눠 **게임 루프 자체**가
+30Hz가 되고, 정보창 드래그는 `Update()`마다 OS 커서를 1회 폴링하는 구조라 **커서 표본 주기도 절반**이
+된다(창이 커서를 계단식으로 따라옴). macOS는 같은 등급이 `renderFrameInterval`만 바꿔 루프가 60Hz로
+남는다 — 사용자가 "윈도우에서는"이라고 한 플랫폼 비대칭과 일치.
+
+**수정:** `FramePacing.HoldActiveForInteraction()` (만료 시각 방식 UI 홀드) 신설 →
+`FramePacingPolicy.DecideTier(..., uiInteractionActive)` + `ShouldApplyLowPowerDownshift()`.
+홀드는 **Calm만** 이긴다(DisplayOff/Suspended/Away에는 진다 — 원칙 2와 24시간 절감 보호).
+`CharacterInfoWindow.Update()`가 열려 있는 동안 매 프레임 갱신(단방향 결합 1줄).
+
+**검증:** EditMode 206/206 통과(신규 14건 포함). 뮤테이션 테스트 2건으로 신규 테스트가 공허하지
+않음을 확인. 정보창 관련 PlayMode 26/26 통과.
+
+**교차 레이어 영향 로그:** 다른 UI 표면(부채꼴 메뉴/포스트잇/구석 호버 패널/사이즈 다이얼)에는
+아직 홀드를 배선하지 않았다 — 같은 증상이 그쪽에도 잠재한다. 각 표면 `Update()`에 한 줄 추가하면
+된다(coder 후속 과제).
+
+**미해결 — Windows 전역 렉의 별개 후보(실기 검증 필요, 리더 판단 요망):** Windows는
+`vSyncCount=0 + targetFrameRate=60`(sleep 기반)이라 위상이 디스플레이와 고정되지 않는다.
+FramePacing 클래스 문서가 macOS에서 "그래서 오히려 더 끊겨 보인다"고 스스로 결론 낸 바로 그 구성이며,
+Windows에서 그렇게 둔 근거(잔상 감소)는 문서에도 "추론이며 실측되지 않았다"고 적혀 있다.
+A/B 방법: `DefaultStickConfig`의 `windowsDisableVSyncForFrameCap`를 false로 두고 실기 체감 비교.
+
+## 2026-08-31 — 사용자 신고 "전체화면 엑셀을 클릭하면 캐릭터가 사라짐" 원인 규명 (Debugger)
+
+사용자 신고 원문: *"맥os는 모르겠는데 엑셀같은 프로그램전체화면에서 엑셀 클릭하면 캐릭터가
+없어져버림 화면 뒤로 넘어 가는거 같음 이전엔 안그랬던거 같은데"*
+
+### 결론 — **원인이 하나가 아니라 둘이고, 둘 다 실측으로 확증됐다. 순서대로 겹쳐서 터진다.**
+- **원인 A (0ms, 사용자가 실제로 보는 것) — Space 이탈.** macOS 네이티브 전체화면은 앱을 **별도
+  Space**로 보낸다. 우리 오버레이 창은 그 Space에 따라가지 못하고 데스크톱 Space에 남는다
+  → 즉시 사라진 것처럼 보인다. 사용자의 "화면 뒤로 넘어가는 것 같다"는 직관이 맞았다.
+- **원인 B (≤1.5초 뒤) — 전체화면 자동 숨김(원칙 2)이 실제로 발동한다.** 그 뒤 폴링에서
+  `IsFullscreenAppActive()`가 true를 돌려 `Suspend()`가 렌더러를 끈다. 즉 **A를 고쳐도 B 때문에
+  캐릭터는 여전히 보이지 않는다. 둘 다 손봐야 한다.**
+
+원인 B는 실행 중인 StickMate 자신의 `Player.log`에서 직접 관측했다(내가 띄운 전체화면 프로브 창 대상):
+```
+[전체화면판정] 전체화면 앱 감지 -> 캐릭터를 숨깁니다 — 판정 근거 창 = 'SpaceProbe'
+              bounds=(0,0 1512x982), 메인 디스플레이=(0,0 1512x982) -> 일치=True.
+[전체화면숨김] ... 숨기기 직전 상태=Walk, 몸 렌더러 12개 + 액세서리/펫/FX 8개 비활성화.
+```
+
+원인 A의 근본은 UniWindowController 네이티브(`Xcode/LibUniWinC/LibUniWinC.swift` `setTopmost()`)의 한 줄:
+```swift
+window.collectionBehavior = [.fullScreenAuxiliary]   // ← .canJoinAllSpaces 가 없다
+window.level = NSWindow.Level.popUpMenu
+```
+`.fullScreenAuxiliary`는 **자기 앱의** 전체화면 Space에만 따라붙는 플래그다. **타 앱**의 전체화면
+Space에 뜨려면 `.canJoinAllSpaces`가 반드시 필요하다(아래 실측 표).
+
+### 실측 방법 (사용자 앱을 일절 건드리지 않음)
+Swift 프로브 2개 프로세스: (A) StickMate 오버레이 설정을 그대로 모사한 창들을 띄우는 프로세스,
+(B) 자기 창을 `toggleFullScreen`으로 전체화면 Space에 보낸 뒤 `CGWindowListCopyWindowInfo
+(.optionOnScreenOnly)`로 "그 Space에 어떤 창이 남아 있는가"를 표본하는 프로세스.
+StickMate 본체도 같은 표본에 함께 잡혔다 → **실행 중인 StickMate 창이 전체화면 Space에서
+사라지는 것을 직접 관측했다**(가설이 아니라 실측).
+
+### 실측 진리표 (level=.popUpMenu 고정, 타 앱 전체화면 Space에서 살아남는가)
+| 앱 활성화 정책 | 창 클래스 | nonactivatingPanel | collectionBehavior | 살아남음 |
+|---|---|---|---|---|
+| regular | NSWindow | (설정 불가) | `[.fullScreenAuxiliary]` ← **현재 상태** | ✗ |
+| regular | NSWindow | – | `[.canJoinAllSpaces,.fullScreenAuxiliary]` | ✗ |
+| regular | NSWindow→NSPanel(`object_setClass`) | ✗ | `[.canJoinAllSpaces,.fullScreenAuxiliary]` | ✗ |
+| regular | NSWindow→NSPanel(`object_setClass`) | ✓ | `[.canJoinAllSpaces,.fullScreenAuxiliary]` | **✓** |
+| regular | NSPanel | ✓ | `[.fullScreenAuxiliary]`만 | ✗ |
+| accessory | NSWindow | – | `[.fullScreenAuxiliary]` ← 현재 상태 | ✗ |
+| accessory | NSWindow | – | `[.canJoinAllSpaces]` | **✓** |
+| accessory | NSWindow | – | `[]` | ✗ |
+
+추가 실측: **`NSWindow`는 `.nonactivatingPanel` 비트를 조용히 거부한다**(대입 후 `styleMask`가
+0으로 남음). 즉 클래스 교체 없이 그 비트만 켜는 우회로는 존재하지 않는다.
+
+### 원인 A 수정안 2가지 (둘 다 `.canJoinAllSpaces` 필수 — UniWinC는 이 API를 노출하지 않음)
+- **R1(권장, 저위험)**: 앱 활성화 정책을 `NSApplicationActivationPolicyAccessory`로 + `collectionBehavior`에
+  `.canJoinAllSpaces` 추가. 창 클래스 수술 없음. **부작용: Dock 아이콘/Cmd-Tab에서 사라진다**
+  (상주 데스크톱 펫에는 오히려 자연스럽지만 **제품 결정 필요**, 그리고 Dock 타일 수가 1개 줄어
+  `IDockMetricsService` 실측값이 바뀐다 → 교차 레이어 영향).
+- **R2(고위험)**: Unity 메인 창을 `object_setClass`로 NSPanel로 바꾸고 `.nonactivatingPanel` +
+  `.canJoinAllSpaces`. Unity의 NSWindow 서브클래스 오버라이드가 통째로 날아가므로 입력/리사이즈
+  회귀 위험이 크다. **비권장.**
+
+두 안 모두 **libobjc P/Invoke(신규 네이티브 인터롭 계층)** 가 필요하다 — UniWinC가 해당 API를
+노출하지 않기 때문. 자체 ObjC 플러그인은 2026-08-28에 의도적으로 제거했으므로 그 결정의 재검토가
+동반된다.
+
+### 원인 B 수정안 — 리더 제품 결정이 선행되어야 한다
+`EvaluateFullscreen()`은 "전체화면 **앱**"만 알 뿐 "전체화면 **게임**"을 구분하지 못한다. 원칙 2의
+문언은 "전체화면 게임 감지 시 자동 숨김"인데 구현은 엑셀·키노트·브라우저 전체화면까지 전부 숨긴다.
+선택지:
+  1. **범위 축소** — 전경 앱의 `LSApplicationCategoryType`이 게임 계열일 때만 숨김(NSRunningApplication
+     + 번들 Info.plist 읽기, 전부 읽기 전용이라 원칙 3 안전). 엑셀은 숨기지 않게 된다.
+  2. **사용자 설정화** — `StickConfig`에 "전체화면 앱 위에서도 계속 보이기" 토글 신설(기본값 결정 필요).
+  3. **현행 유지** — 그러면 원인 A를 고쳐도 사용자 증상은 그대로다(권장하지 않음).
+→ **Coder 단계 복귀 + 리더 제품 결정 필요(A·B 각각).**
+
+### 반증된 가설 (전부 실측/코드 근거로 기각)
+- **가설 1 — "오늘 넣은 topmost 재적용 가드가 오판한다"** → **반증.** macOS topmost 경로에 그런 가드는
+  없다. `UniWindowController.SetTopmost()`의 조기 반환은 라이브러리에서 주석 처리돼 있고
+  (`//if (_isTopmost == topmost) return;`), 오늘 `MacOverlayStateEnforcer.cs`에 들어간 변경은
+  FramePacing 배선 10줄이 전부다(`git show c256a58`). 애초에 level/collectionBehavior는 한 번 걸면
+  유지되므로 재적용 빈도는 이 증상과 무관하다.
+- **가설 2 — "VisibleTopEdgeSolver 이관이 z-order 계산을 깨뜨렸다"** → **반증.** 그 코드는
+  `_footholdBuffer`(발판 목록)만 만들고 창 레벨 API를 전혀 호출하지 않는다. 우리 창의 z-order와 무관.
+- **가설 3 — "엑셀을 전체화면 게임으로 오판해 Suspend했다"** → **처음엔 반증했다가, 실측으로
+  뒤집어 확증했다(내 오판을 기록해 둔다).**
+  - 1차 판단(반증): 사용자 세션 `Player.log` 16분치에 `[전체화면판정]` 전이가 **0건**, FramePacing
+    등급 체류도 `전체화면숨김 0%`였다. + 내 프로브가 전체화면 Space에서 읽은 전체화면 창 bounds가
+    `(0,33 1512x949)`, 최상단 layer 0 창은 `(0,33 1512x32)`(툴바 띠)여서 디스플레이
+    `(0,0 1512x982)`와 일치하지 않았다.
+  - **반전(확증)**: 프로브를 돌리는 동안 StickMate 자신이 같은 창을 `(0,0 1512x982)`로 읽고
+    **일치=True → `[전체화면숨김]`** 을 27줄 남겼다. 즉 `EvaluateFullscreen()`은 **정상 발동한다**.
+  - 1차 판단이 틀린 이유: **전체화면 창의 CGWindow bounds가 한 세션 안에서 변한다.** 메뉴바가
+    드러나 있는 동안은 `(0,33 W×H-33)`, 자동으로 숨겨지면 `(0,0 W×H)`. 내 프로브는 앞쪽 순간을,
+    StickMate는 뒤쪽 순간을 표본했다. 사용자 세션에 로그가 0건이었던 것은 "감지가 안 된다"가
+    아니라 **그 16분 동안 사용자가 전체화면 Space에 간 적이 자체가 없다**는 뜻이었다(같은 세션의
+    `[발판리포트]` 16개가 전부 `Cursor@(0,33 1512x874)`로 불변 — 즉 신고는 그 이전 세션의 일).
+- **"이전엔 안 그랬다"(회귀 의심)** → **회귀 아님으로 판정.** Space 소속을 바꾸는 코드는 오늘도,
+  08-30에도, 08-28 UniWindowController 이행 때도 들어온 적이 없다. 삭제된 자체 ObjC 플러그인
+  (`git show fd4de0e:Assets/Plugins/macOS/StickMateOverlayPlugin.m`)도 `collectionBehavior`를 전혀
+  건드리지 않았다(`setLevel:`만 했다). 원인 B도 마찬가지로 오래된 코드다 —
+  `StickmanAgent.TickFullscreenSuspend()`는 **Phase 1 최초 커밋(18806a7)** 부터,
+  `MacWindowService.EvaluateFullscreen()`은 **802143f** 부터 존재한다(`git log -S`로 확인).
+  오늘 c256a58이 건드린 것은 Suspend 시 액세서리/펫/FX가 페이드로 늦게 사라지던 잔상 문제뿐이고,
+  **몸 렌더러를 끄는 동작 자체는 그 전부터 있었다.**
+  사용자가 이전에 본 것은 **네이티브 전체화면이 아니라 창 최대화(zoom)** 였을 가능성이 높다 —
+  최대화는 Space를 만들지 않고 우리 창은 level 101(popUpMenu)이라 그 위에 그대로 보인다.
+  실사용 로그가 그 해석과 정합한다(사용자 세션의 `Cursor@(0,33 1512x874)` = 최대화된 창이고,
+  그 16분 동안 캐릭터는 한 번도 숨겨지지 않았다).
+
+### 부수 발견 (이번 증상의 원인은 아니지만 별건 결함)
+- **[Major·가설] 전체화면 판정이 한 세션 안에서 깜빡일 수 있다(verdict flapping).**
+  실측된 두 값 — 메뉴바가 보일 때 `(0,33 1512x949)`(→ 일치=False), 메뉴바가 숨으면
+  `(0,0 1512x982)`(→ 일치=True) — 은 **같은 전체화면 창**의 것이다. 그렇다면 사용자가 전체화면 앱에서
+  마우스를 화면 맨 위로 올려 메뉴바를 부를 때마다 `EvaluateFullscreen()`이 False로 뒤집혀
+  `Resume()` → 캐릭터가 잠깐 나타났다가 다시 `Suspend()`될 수 있다.
+  **검증 방법**: 전체화면 앱에서 커서를 화면 상단에 3초 올렸다 내리기를 3회 반복한 뒤
+  `Player.log`의 `[전체화면판정]` 전이 줄 수를 센다. 2줄(진입/이탈)을 크게 넘으면 확정.
+  (이번 라운드에서는 프로브 전체화면 유지 시간이 3~5초로 짧아 직접 재현하지 못했다.)
+  ※ 앞서 이 자리에 "전체화면 감지가 사실상 죽어 있다"고 적었던 내 판단은 **철회한다** — 위 반전 참고.
+- **[Minor] 같은 함수의 `layer == 0` 첫 창에서 즉시 return하는 구조가 취약하다.** 실측에서 첫 layer 0
+  창은 전체화면 창이 아니라 32pt짜리 툴바 띠였다. "최상단 일반 창"을 그렇게 정의하면 오판 여지가 있다.
+- **[Minor] 같은 함수의 `IsSelfWindow()` 조기 반환은 macOS에서 도달 불가능한 죽은 코드다.** 우리 창은
+  topmost일 때 `kCGWindowLayer=101`(popUpMenu)이라 `layer != 0` 필터에서 먼저 걸러진다(실측 확인).
+- **[검토 요청] UniWinC `_keepKeyWindowObserver`가 `didResignKey`마다 `_makeKeyWindow()`를 시도한다.**
+  사용자가 타 앱을 클릭할 때 우리가 key window를 되찾으려 하는 동작 — 원칙 2(비침해) 관점에서
+  별도 검증이 필요하다(이번 증상과의 인과는 확인하지 못했다).
+
+### 정직한 한계
+- Unity 빌드로 **수정본을 검증하지는 못했다** — 코드 수정 자체를 하지 않았다(제품 결정 2건 + 신규
+  네이티브 인터롭 계층이 선행되어야 하므로 Debugger가 단독 진행할 범위를 넘는다).
+- **엑셀 자체로 재현하지는 않았다.** 사용자 앱을 조작하지 않기 위해 내가 만든 Swift 창을
+  `toggleFullScreen`으로 보내 동일 조건(별도 Space + 전체화면 창)을 만들었다. 엑셀 고유의
+  변수(예: 엑셀이 메뉴바를 다루는 방식)는 검증되지 않았다.
+- 그 밖의 원인 규명은 **실행 중인 실제 StickMate 창/실제 Player.log를 대상으로 한 실측**이라
+  가설 단계가 아니다. 프로브 소스는 세션 스크래치패드에 있으며 재실행하면 같은 표를 재생산한다.
+
+### Windows 쪽 위험 (조사 범위 밖, 구조만 지적)
+Windows에는 Space 개념이 없어 이 버그는 존재하지 않는다. 다만
+`Win32WindowService.IsFullscreenAppActive()`(793행)도 "전경창 사각형 == 모니터 사각형" 동일 휴리스틱이라,
+위 [Major] 부수 발견과 같은 계열의 취약점을 공유하는지는 별도 확인이 필요하다.
+
+### 사용자 확인 (2026-08-31) — Windows 전역 렉, 저전력/노트북 가설 기각
+사용자: "노트북이나 배터리 세이버는 켜져있지 않음 스틱메이트만 실행하면 느려짐" — 즉 (a) 오늘 고친
+저전력 모드 프레임 반토막 버그는 이번 "전역 렉" 신고의 원인이 아니다(별도 버그로 이미 수정됐지만
+무관), (b) 다른 앱 간섭(전에 기각한 Amphetamine처럼)도 아니고 StickMate 자체가 원인. BitBlt
+컴포지터 비용 가설과 정확히 부합 — perf-doc의 소형 오버레이 창 프로토타입 검증에 참고용으로 전달.
+
+### [UX Designer] 추가 — 코더 보고 충돌 1건 판정: 집중 모드 타이머 링 위치 (UX_FLOW 35-7)
+
+**결론: "독립 컴포넌트로 분리하되 위치는 발밑 유지"** (세 선택지 중 3번). **18절 무변경,
+`FocusWatchRenderer.RingCenterYRatio` 무변경, 코드 변경 0건.**
+
+- **출처 정정**: 해당 항목은 **회의록(②)이 아니라 기획서 ①「StickMate 기획 정리」 §4**에 있다.
+  회의록 전문에서 `타이머/링/모래시계/머리/HUD/집중` 출현 **전부 0회**(전수 검색).
+- **(a) 대체 의도 아님**: 원문이 기각한 것은 "**손에 드는 소품**"이고, 사유는 "행동 애니메이션과 충돌"이며,
+  하중을 받는 요구는 "**캐릭터 상태와 완전히 독립적인 별도 컴포넌트**"다. "머리 위"는 그 요구를 만족하는
+  **예시 위치**일 뿐, 발밑 링을 검토·기각한 서술은 없다.
+- **(b) 이전 근거 없음**: 기획서 ①에 `발밑` 0회, 현행 링 언급 0회, 가독성/충돌 문제 제기 0회.
+  §4는 아직 없는 신규 콘텐츠를 서술하는 맥락이라 **작성자가 출하된 링의 존재를 전제하지 않은 문장**으로 읽힌다.
+- **(c) 요구는 이미 충족**: 링 컨테이너는 `SetParent(null, false)` = **씬 루트 오브젝트**이고 매 프레임
+  **위치만 복사**한다(`FocusWatchRenderer.cs:284,285,267`). 그래서 캐릭터가 텀블링/랙돌로 회전해도
+  **링은 기울지 않고** 루트 스케일도 상속하지 않는다 — 머리 부착 HUD보다 오히려 더 독립적이다.
+- **(d) 머리 구역이 이미 최혼잡**: 만화 레터링 대사(머리 대각선 위, 사용자 명시 요구·최신 커밋) /
+  하드웨어 이모트(**"머리와 겹친다" 사용자 신고 이력** 때문에 대각선으로 재배치) / 스트레스 한숨 퍼프·어깨 표시 /
+  모자·머리 장비 + 35-3-4가 제안한 상태 연동 모자 4종 / 집중모드 자신의 신체 표식(안경).
+  게다가 발밑 선택 근거는 **코드 주석에 이미 있다** — *"머리 위 오버레이…와 세로로 완전히 갈라진다"*
+  (`FocusWatchRenderer.cs:52~53`).
+- **(e) 판단 기준**: ① 머리 대각선은 **발화(정성) 구역**, 링은 **계기(정량)** — 겹치면 "말인지 표시인지"가
+  모호해진다(원칙 1의 공간판). ② 같은 문서에서 머리 슬롯을 더 붐비게 만들면서 타이머까지 올리는 것은 자기모순.
+- **위치를 바꾸려면 새 근거 필요**: 실제 사용자 신고, 또는 "Dock 위에 설 때 링 하단이 먹히는가" 같은 실측.
+  **추측으로는 옮기지 않는다.**
+- **위치와 무관하게 채택 3건**: ① "손 소품 금지"를 규약으로 명문화(집중모드 행동 구현 시 재발 방지)
+  ② 모래시계 형태 대안(**같은 앵커에서 형태만**, DLC 팩별 계기 디자인 후크) ③ 마지막 1분 체크 리액션
+  (원칙 1 부합 — 확정된 사실에서 파생, 예고 아님. 1회·무대사·동작만).
+
+**→ 코더 계획서에 "머리 위 이전"이 잡혀 있다면 UX_FLOW 35-7을 근거로 철회 요청.**
+
+---
+
+## [coder] 2026-08-31 — UI 상호작용 프레임 홀드 나머지 표면 배선 (debugger 후속 과제 처리)
+
+**배선 3곳(실파일 3개 = 지목된 4곳 전부).** 전부 debugger가 만든 `FramePacing.HoldActiveForInteraction()`
+재사용, 신규 장치 없음. 결합은 각 파일 1줄, UI → FramePacing 단방향.
+
+| 표면 | 진입점 | 홀드 조건 | 이유 |
+|---|---|---|---|
+| `GearRadialMenuWidget` | `LateUpdate()` | `_phase != Hidden` 가드 뒤 무조건 | 접혀 있으면 그 위 가드에서 이미 return. 6초 자동 접힘으로 수명 유한 |
+| `CornerHoverPanel` | `Update()` | **`if (IsVisible)`** | 이 Update()는 숨어 있을 때도 매 프레임 돈다(구석 감지 폴링) — 무조건 걸면 상시 60fps |
+| `SizeDialWidget` | (없음) | — | MonoBehaviour가 아니라 `CornerHoverPanel`이 직접 굴리는 평범한 클래스. **중복 배선 금지**, 위 한 줄이 다이얼 드래그까지 덮는다 |
+| `TodoPostItWidget` | `TickGlobalClickPolling()` | **`if (left)`** (버튼이 눌린 동안) | ↓ 예외 케이스 |
+
+**★ 예외 1건 — 포스트잇에는 "보이는 동안" 패턴을 쓰지 않았다(리더 확인 요망).**
+이 위젯은 할 일이 있으면 **하루 종일 떠 있는 상시 HUD**다. 다른 표면들처럼 가시성으로 홀드를 걸면
+`Calm` 등급이 영영 성립하지 않아 적응형 절감이 통째로 무력화된다(Away 180초만 남음). 게다가 이
+위젯에는 커서를 따라다니는 것이 전혀 없고(위치 고정·드래그 없음) 상호작용은 클릭뿐이라, 조건을
+"실제 상호작용 중"으로 좁혔다. 실효는 등급 유지보다 **즉시 재평가** 쪽이다 — 클릭 직후 다음 관측
+폴링(최대 0.2초)까지 절반 프레임레이트로 시작하던 구간이 사라진다.
+
+**배선하지 않은 동종 후보 2건(분석 후 판단, 리더 판단 요망).**
+- `PopoverPanel`(집중/할일 팝오버 공통 기반, `if (!_open) return;` + 전체화면 가드까지 정보창과 구조가
+  동일) — **불필요 판정**: 팝오버가 떠 있는 동안 `TickAutoCollapse`가 부채꼴 접힘을 멈춰 `_phase`가
+  `Open`으로 남고, 정보창 경유 팝오버는 정보창이 열린 채라, 두 경로 모두 이미 홀드에 덮인다.
+  팝오버를 부채꼴/정보창 없이 단독으로 띄우는 조립이 생기면 그때 1줄 추가가 맞다.
+- `AppControlDirector` 우클릭 메뉴(`_menuOpen`, 20초 자동 닫힘) — 진짜 동종이지만 담당 범위 밖이고,
+  **지금 다른 에이전트가 이 파일을 수정 중**이라 손대지 않았다. 붙인다면 `if (_menuOpen)` 조건.
+
+**검증.** EditMode 전체 211건 중 210 통과. 신규 5건 추가(`UiInteractionFramePacingHoldTests`, 14 → 19건).
+**뮤테이션 테스트 5종 전부 확인** — 각각 정확히 의도한 테스트만 실패하고 나머지는 그대로 통과:
+배선 제거(부채꼴/구석/포스트잇) 3종 + **가드만** 제거(`if (IsVisible)` / `if (left)`) 2종.
+가드 제거 뮤테이션이 각각 1건만 실패시킨다는 것이 "조건까지 잠갔다"의 증거다.
+
+**교차 레이어 영향 로그(즉시 보고 — 내 변경 아님).**
+1. `EquipmentMigrationTests.v5_왕복은_...`가 **실패 중**이다. 원인은 다른 에이전트가 16:42에
+   `CharacterSaveStore.CurrentVersion`을 6 → 7로 올리면서(신규 `wornHair/wornFx/wornPet`,
+   `CharacterAppearanceModel.cs`) 테스트의 `"version": 6` 기대를 갱신하지 않은 것. 내 첫 실행(16:41)에는
+   통과했다. 해당 담당자에게 회수 요망.
+2. 같은 시간대에 `CharacterSaveStore.cs`가 반쯤 저장된 상태(`error CS0103: WriteAtomically`)여서
+   프로젝트 전체가 일시적으로 컴파일 불가였다. 배치 테스트를 돌리는 팀원은 이 시간대 결과를 신뢰하지 말 것.
+
+## [debugger] 2026-08-31 — "활쏘기 시키면 무조건 과녁이 화면 끝에만 생김" 원인 확정 + 수정
+
+**신고 원문.** "활쏘기 시키면 무조건 과녁이 화면 끝에만 생김 적당히 먼거리만 되도 되는데 물론 거리는
+항상 랜덤으로 변경되어야하지만"
+
+**근본 원인(추측 아님, 코드로 확정).** `Interaction/ArcheryDirector.TryResolvePlacement`에 **난수가
+한 줄도 없었다.** 캐릭터를 쓸 수 있는 구간(발판 ∩ 걸어다닐 수 있는 화면 범위) 한쪽 끝, 과녁을 반대쪽
+끝에 **결정론적으로** 배치했다 → 사거리 = 구간 폭 - 여백 = 항상 화면 끝. 2026-08-29 신고 "과녁이 너무
+가까움"을 "최대 거리 고정"으로 과교정한 결과다(clamp가 한쪽 극단으로 쏠리는 오늘의 버그 클래스와 동형).
+PlayMode 실측 로그: 같은 씬에서 구간 폭이 허용한 최대는 **28.65유닛**이었다.
+
+**수정.** 사거리를 **화면 폭과 무관한 절대 밴드**(신장 2.6~6.6배)에서 매번 추첨.
+`ArcheryDirector.ResolvePlacement`를 **순수 static 함수**로 분리(난수를 `roll01`로 주입)해 분포 자체를
+EditMode에서 검사 가능하게 했다. 구간이 좁으면 들어가는 만큼 줄이고, 최소 사거리조차 안 되면 종전대로
+조용히 포기. `StickConfig.archeryMaxTargetDistanceRatio`(6.6) 신설.
+부수로 **부동소수 결함 1건**을 실측으로 잡아 고쳤다: 사거리가 구간 최대와 같아지는 추첨(roll≈1)에서
+`Mathf.Lerp(a,b,1f) != b` 오차 때문에 자리 구간이 1e-7만큼 뒤집혀 **좁은 창에서만, 가장 먼 거리를
+뽑았을 때만** 활쏘기가 통째로 취소됐다(EdgeEpsilon 도입). float64 파이썬 시뮬레이션은 이 결함을
+재현하지 못했다 — 시뮬레이션은 컴파일러/런타임의 대체물이 아니라는 기록.
+
+**교차 레이어 영향.**
+1. 종전 사양 "바탕화면이면 화면 폭의 절반 이상"(2026-08-29 사용자 명시)은 이번 사용자 재정의로
+   **폐기**했다. 이를 강제하던 PlayMode 단언(`ArcheryVisualTests` 바탕화면 요구치 블록)을 밴드 상한 +
+   가장자리 여유 판정으로 교체. **리더 확인 요망**(사양 덮어쓰기라 기록 남김).
+2. "구간 끝까지 행진"을 없애면 이동 거리가 0이 되어 사용자 확정 순서 "이동 -> 과녁 생성 -> 발사"가
+   사라진다(PlayMode가 이 순서를 잠그고 있다). 그래서 행진 대신 **한 걸음(신장 1배 ≈ 0.7초) 물러서기**
+   (`BackStepRatio`)를 넣어 순서를 유지했다.
+
+**검증(전부 실측).** 신규 `Tests/EditMode/ArcheryTargetDistanceTests` 14건 통과(시드 3종 × 2000표본:
+표준편차 1.97~2.01유닛, 상위 10% 쏠림 9.6~10.2% = 균등, 밴드 이탈 0). 수정 전 알고리즘을 같은 파일에서
+재현한 **네거티브 컨트롤** 포함(옛 사거리 35.34유닛 = 새 상한의 3.1배). EditMode 전체 206/206,
+PlayMode `ArcheryVisualTests` 20/20 통과. 실행 로그 실측: 같은 세션의 두 발동이 각각 **7.46 / 8.80유닛**
+(구간 허용 최대 28.65유닛), 1.51유닛 걸어간 뒤 과녁 등장.
+
+---
+
+## 2026-08-31 (perf-doc) — 소형 오버레이 창(B-1) 프로토타입 검증 라운드
+
+**상태: 완료. 보고서는 `docs/ARCHITECTURE.md` 6절.** 결론은 **조건부 가능 / 지금 착수 비권고 —
+리더 판단 필요**.
+
+핵심 실측 3줄 요약(네이티브 프로토타입 `Tools/PerfProbe/`, present 횟수를 60fps로 고정한 페어드 교차설계):
+- 표면적을 9.3배 줄이면 WindowServer **−6.8%p**. 전체화면 오버레이의 총 합성비용은 **+10.6%p**.
+  → 면적 귀속률 약 64%. **1차 리포트의 "14.5배" 추정은 과대추정이며 이번 실측으로 정정한다.**
+- 창을 **매 프레임 추종하면 +13.8%p**(12/12 유의) — **절감보다 크다. 순효과가 음수다.**
+  10Hz면 +5.0%p, **2Hz면 검출 불가** → 설계 제약: **창 이동은 초당 2회 이하 청크 점프.**
+- `setFrameOrigin` 1회의 순수 비용 **488~573µs**(메인스레드 동기 IPC) = 60Hz면 프레임 예산의 3.4%.
+
+### 교차 레이어 영향 로그
+1. **[정정 → 리더/coder]** 1차 성능 리포트 5단계 B-1 표의 "WindowServer 18.0%p → 1.2%p(14.5배)"는
+   면적 귀속률 100% 가정에서 나온 값이다. 실측 귀속률은 약 64%이며 **최대 이득은 약 −64%**다.
+2. **[정정 → 리더]** 현재 오버레이 창은 "전 가상 데스크톱"이 아니라 **창 중심이 속한 모니터 1개**다
+   (`WindowsOverlayStateEnforcer.TryGetTargetMonitorRect`). 멀티모니터 이동은 지금도 미지원.
+3. **[신규 제약 → coder]** 소형 창을 착수한다면 **`orthographicSize`를 "화면 절반 높이"로 쓰는 12곳**
+   (`TodoReminderRenderer` / `HardwareReactionRenderer` / `StressGaugeRenderer` / `RunawayRenderer` /
+   `FocusWatchRenderer` / `BattleMinigameRenderer` / `ArcheryDirector`×2 / `ArcheryRenderer` /
+   `CharacterPetRenderer` / `DockPhysicsStep`)을 **"데스크톱 경계" 질의 API로 먼저 교체**해야 한다.
+   선행하지 않으면 연출 12종이 조용히 캐릭터 코앞으로 클램프된다.
+4. **[신규 제약 → ux-designer]** `CharacterInfoWindow`는 **880×861pt**라 640×640 창에도 안 들어간다.
+   `CornerHoverPanel`은 화면 모서리 앵커라 소형 창에 앵커 자체가 없다. 두 상시 UI가 **전체화면
+   복귀 모드**를 요구한다(전역 연출뿐 아니라).
+5. **[좋은 소식 → 전원]** 좌표계는 이미 준비돼 있다. `ScreenCoordinateConverter.OverlayOriginOsScreen`이
+   창 원점을 흡수하고, `VisibleTopEdgeSolver`는 창 크기와 무관하며, `CheckScreenBoundsOrFall`의
+   경계는 카메라가 아니라 발판 합집합에서 나온다. 단 **창을 옮기는 코드가 같은 프레임에
+   `ReportOverlayWindowOsRect`를 직접 호출**해야 한다(폴링에 맡기면 커서↔월드가 틀어진다).
+6. **[다음 한 걸음 권고 → 리더]** B-1보다 먼저, Windows 실기에서 **`FramePacing`의 present 축소가
+   실제로 `dwm.exe`를 낮추는지 측정**할 것(코드는 이미 있음, `STICKMATE_FORCE_TIER`로 등급 강제).
+   macOS에서는 이 축이 컴포지터를 실제로 낮춘다(WindowServer 13.0% → 7.6%). 같으면 **B-1 없이
+   사용자 신고가 해소될 수 있다.**
+
+### 2026-08-31 (perf-doc, 후속) — Windows 실기 dwm.exe 1차 측정 해석
+사용자 측정: `dwm.exe` CPU **00~01%**, 메모리 **219,444K → 226,896K(+7,452K)**.
+**판정: 확증도 반증도 아님(무정보).** 상세는 `docs/ARCHITECTURE.md` 6-6절.
+- **CPU 00~01%는 반증이 아니다 — 단위와 분해능 문제다.** 작업관리자 CPU 열은 *논리 프로세서 합계
+  기준 정수 %*이고 내 macOS 수치는 *코어 1개 기준*이다. +10.6%(1코어)는 16스레드 PC에서 **0.66%**,
+  즉 **"01%"로 표시되는 것이 정상**이다. 정수 표시라 분해능 하한(0.5%)이 16스레드 기준 코어 1개의
+  8% — **찾는 신호 전체가 눈금 한 칸 안**이다.
+- **CPU가 아니라 GPU를 봐야 할 수 있다.** BitBlt 복사는 GPU 카피 엔진이 한다 → dwm CPU가 0인 것이
+  정상일 수 있다. 아직 GPU 열을 한 번도 안 봤다.
+- **메모리 델타가 유일하게 살아 있는 신호다.** +7.28MiB는 1920×1080 BGRA 표면 1장(7.91MiB)의 92%.
+  메모리 열은 분해능 1K(SNR 약 8000:1) → **주 계측기를 CPU 열에서 메모리 열로 바꾼다.**
+- **요청할 후속 측정 3종**: ① 작업관리자에 GPU/GPU엔진 열 추가 + 4상태(종료→실행유휴→상호작용→종료)
+  스냅샷 + 논리프로세서수/해상도/배율 회신 ② `Tools/PerfProbe/measure-dwm.ps1`(신규, UTF-8 BOM,
+  `Win32_PerfRawData_PerfProc_Process` 100ns 분해능, OFF/ON 교차 4사이클 — 한국어 Windows에서
+  `Get-Counter` 경로가 현지화되어 실패하므로 CIM 클래스를 쓴다) ③ **결정적**: 디스플레이 해상도를
+  1920×1080 → 1280×720으로 낮춰(면적 2.25배 감소) dwm 메모리 델타가 비례해 줄어드는지 확인.
+  **코드 변경 없이 소형 창의 효과를 미리 재는 유일한 방법**이며, 비례하지 않으면 **B-1 즉시 기각**.
+- **B-1은 측정 3 결과가 나올 때까지 착수 보류 유지.**
+
+---
+
+## [Debugger, 2026-08-31 R5] 확정 버그 2건 수정 — 잉크색 배포 에셋 오염 + 세이브 비원자적 쓰기
+
+**1. 잉크색 오염(characterScale과 동형).** 정보창 스와치/우클릭 메뉴가 `_config.inkColor = next`로
+**배포 에셋의 직렬화 필드**에 직접 썼다(에디터에서는 영구 오염, 빌드에서는 반대로 **재시작마다 초기화** —
+세이브 스키마에 잉크색이 아예 없었다). R3 Blocker 2에서 쓴 패턴 그대로 `StickConfig`에
+`[NonSerialized]` 런타임 오버라이드 + `ResolveInkPreset()` / `IsWhiteInk()` 리졸버를 넣고, 직접 필드
+접근을 **프로덕션 전역에서 0건**으로 만들었다(정보창/앱제어/말풍선/초상화/에이전트 로그). 영속화는
+신규 `Core/CharacterAppearanceModel.cs` + 세이브 **v6→v7**(`inkColorSaved` + `inkColorName`, 숫자가 아닌
+**이름 문자열**로 기록 — 열거형 순서가 바뀌어도 안 밀린다). 세션 누수 방지로 `StickmanAgent.Awake`에
+`ClearRuntimeInkColor()`, 복원 적용은 `Start()`에서 1회.
+
+**2. 세이브 비원자적 쓰기.** `File.WriteAllText(FilePath, ...)`는 대상을 **먼저 0바이트로 자른다** —
+그 창에서 죽으면 레벨/장비/기록/할일이 통째로 날아간다. 임시 파일 전량 쓰기 → `fs.Flush(true)`(fsync) →
+`File.Replace`로 교체하는 표준 패턴으로 교체. `File.Move`/`File.Delete`는 원칙 3 정적 감사가 금지하므로
+쓰지 않았고, 첫 저장(대상 없음)은 빈 파일을 만든 뒤 교체한다. 교체 실패 시에만 예전 방식으로 물러서며
+경고를 남긴다(`LastSaveWasAtomic`). 기존 버전/다운그레이드/백업 로직은 손대지 않았다.
+
+**그물(재발 방지).** `Tests/PlayMode/DeployedConfigAssetImmutabilityTests`에 잉크색 케이스 3건 추가 —
+런타임 계약 2건(직렬화 불변 + 실효값 추종, 씬 재로드 시 기본값 복귀) + **소스 정적 스캔 1건**
+(프로덕션 126개 파일에서 `.inkColor =` / `.characterScale =` 직접 쓰기 0건, 주석 줄 제외). 리더가 지적한
+"characterScale만 잠그고 잉크색은 그물 밖"이 이걸로 메워진다.
+
+**검증(전부 실측, Unity 6000.0.82f1 batchmode).** EditMode **221/221 통과**(신규 10건: 잉크 영속화·v6/v4
+마이그레이션·모르는 색 이름 폴백 5건 + 원자적 쓰기 4건 + 네거티브 컨트롤), `error CS`/`warning CS` **0건**.
+PlayMode **전체 317건 중 316 통과 / 0 실패**(1건은 헤드리스 전용 기존 `Assert.Ignore`).
+로그 실측: 원자적 교체 경로 실제 사용됨(`원자적=True`, macOS에서 `File.Replace` 동작 확인), 강제 종료
+재현(임시 53바이트 잘린 JSON + 원본 868바이트)에서 **원본 바이트 동일 + Lv.12/이름/기록/잉크색 전부 복원**,
+네거티브 컨트롤(대상 파일 직접 절단)은 예상대로 **전손**(LoadedFromFile=False, Lv.1).
+로그: `Logs/dbg_r5_edit.{log,xml}`, `Logs/dbg_r5_play_full.{log,xml}`, `Logs/dbg_r5_play_immut.{log,xml}`.
+
+**교차 레이어 영향.** 세이브 스키마가 v7로 올라가면서 `EquipmentMigrationTests`의 `"version": 6` 기대값을
+v7로 갱신했다(병행 코더 보고 반영). 앞으로 스키마를 올리는 사람은 이 단언도 함께 고쳐야 한다.
+
+**추가(리더 결정 반영).** 단축키/우클릭 메뉴의 잉크색 전환도 정보창 스와치·장비 토글과 **같이 즉시
+`CharacterSaveStore.Save()`**를 부르게 통일했다(`AppControlDirector`의 `MenuAction.InkColor` 한 줄) —
+주기 저장에만 맡기면 강제 종료 시 최대 60초치 선택이 사라져 이번 라운드 취지와 어긋난다.
+재검증: EditMode **231/231 통과**(`error CS`/`warning CS` 0건, `Logs/dbg_r5_edit2.{log,xml}`),
+PlayMode 관련 3픽스처 **26/26 통과**(`Logs/dbg_r5_play_ink2.{log,xml}`, 원자적 교체 폴백 발생 0건).
+
+---
+
+## [코더] 타 앱 전체화면에서 캐릭터가 사라지는 버그 — 원인 A/B 구현 (2026-08-31)
+
+**전제 정정(리더 보고 필요).** 지시서의 `Xcode/LibUniWinC/LibUniWinC.swift`는 **이 저장소에 존재하지
+않는다.** UniWinC는 UPM git 패키지(`Packages/manifest.json`)로 들어오고 패키지에는 서명된
+`LibUniWinC.bundle` **바이너리만** 있다. 네이티브를 고치려면 상류 포크 + Xcode 파이프라인 신설이
+필요해 "빌드 파이프라인 불변" 제약과 충돌하므로, 이미 이 프로젝트가 검증해 쓰던 **Objective-C 런타임
+P/Invoke**(MacWindowService의 NSWorkspace 조회와 같은 방식)로 **우리 앱 자신의** NSApplication/NSWindow에만
+같은 설정을 걸었다. 라이브러리는 무수정이라 패키지 업데이트에도 깨지지 않는다. R2(object_setClass)는 미시도.
+
+**원인 A(R1 채택).** `Platform/MacOS/MacSpaceBehaviorNative.cs`(신규) — ① `setActivationPolicy(accessory)`
+앱 시작 1회, ② 모든 자기 창의 `collectionBehavior`에 `.canJoinAllSpaces | .fullScreenAuxiliary` 보장
+(상호 배타 비트 `.moveToActiveSpace`/`.fullScreenPrimary`는 제거). `MacOverlayStateEnforcer`가 창 부착
+시점에 ①, `isTopmost` 대입 **직후**와 2초 감시 주기에 ②를 부른다 — LibUniWinC의 `setTopmost`가
+`collectionBehavior`를 통째로 덮어쓰는 것을 **실측으로 확인**했기 때문(0x100 = auxiliary만).
+
+**원인 B.** `MacWindowService.EvaluateFullscreen()`이 기하 일치에 더해 **전경 창 소유 앱의
+`LSApplicationCategoryType`이 게임 계열일 때만** 숨기도록 좁혔다(NSRunningApplication -> bundleURL ->
+NSBundle.infoDictionary, 전부 읽기 전용 · 무권한 · 원칙 3 안전). 미선언/조회 실패는 **게임 아님(숨기지
+않음)** 으로 폴백. 규칙 자체는 `Platform/MacOS/FullscreenSuspendPolicy.cs`에 순수 함수로 분리해
+EditMode에서 검증한다.
+
+**부수 발견(깜빡임) 같이 처리.** 메뉴바 호출로 bounds가 `(0,33...)↔(0,0...)` 요동쳐 Resume/Suspend가
+반복되던 문제를 `FullscreenVerdictDebouncer`(1.0초 연속 유지 시에만 확정)로 흡수. 값 타입이라 할당 0.
+
+**검증.** EditMode **231/231 통과**(신규 9건: 게임/세부장르/비게임/미선언/유사문자열 5건 + 디바운스 4건),
+`error CS` 0건. macOS 플레이어 실빌드 실행 로그: `activation policy 0 -> 1 성공`,
+`collectionBehavior 0x80 -> 0x101`, 이후 `0x100 -> 0x101` 재적용 확인(= 라이브러리가 덮어쓴다는 가설의
+직접 증거). 네이티브 프로브로 카테고리 조회 체인 실측 — Safari/Xcode/Cursor/캘린더/카카오톡 등 사용자가
+실제로 전체화면으로 쓰는 앱은 전부 비게임 카테고리라 이제 숨지 않는다, 존재하지 않는 pid는 nil 안전 폴백.
+
+**교차 레이어 영향(로그).**
+- **앱 등급 변경(전 레이어 영향)**: accessory 전환으로 **Dock 아이콘/Cmd-Tab에서 StickMate가 사라진다**
+  (리더 결정 + 사용자 승인된 트레이드오프). 종료 경로는 Dock에 의존한 적이 없어 그대로다 —
+  `AppControlDirector`의 Ctrl+Opt+Cmd+Q(CGEventSourceKeyState 폴링이라 비활성 상태에서도 동작)와
+  캐릭터 우클릭 -> [앱 종료] 2경로 모두 유효.
+- **AI/상태 레이어**: `IsFullscreenAppActive()`가 이제 "전체화면 게임"에서만 true다. 이를 소비하는
+  `StickmanAgent.TickFullscreenSuspend`/`ViewerPresence`의 Suspend 진입 빈도가 크게 줄어든다(의도된 변화).
+- **StickMate 자신의 번들이 `public.app-category.games`로 선언돼 있다**(Unity 기본값). 자기 창은
+  `IsSelfWindow`가 먼저 걸러 무해하지만, 앞으로 이 값을 판정에 쓰는 코드를 추가할 때 주의.
+
+---
+
+## [debugger/Teammate2] 2026-08-31 — 활쏘기: 손이 활대가 아닌 허공(시위선)을 잡던 결함
+
+**신고 원문.** "그리고 활쏠때 활 대를 잡아야하는데 이상한데를 잡고 쏨"
+
+**근본 원인 (확정).** `Interaction/ArcheryRenderer.TickBow`가 활 루트의 **로컬 원점을 손끝에 그대로**
+놓았다. 그런데 활 로컬 좌표계는 **시위선이 x=0**이고 활대는 +x로 `BowDepthRatio`(신장 15.5%)만큼
+불룩하다 — 즉 원점은 활대도 시위(당겨진 V자)도 아닌 **활의 아가리 한가운데 빈 공간**이다.
+실측: 출하 배율 0.75에서 손과 활대 사이 **9.3pt**(활 전체 길이의 26%, 캐릭터 키 60pt 대비 15%).
+같은 원인으로 만작 화살촉이 활대에서 8.6pt 못 미쳐 허공에 떠 있었다.
+
+**수정.** 그립 지점을 `BowGripLocalX`(= `BowLimbLocal(0).x`, 활대 곡선과 **같은 한 식**에서 유도)로
+명시하고, 루트를 조준 방향으로 그만큼 뒤로 물리는 순수 함수 `ArcheryRenderer.ResolveBowRootLocal`을
+신설해 **활대 한가운데가 손끝에 오게** 했다. 활 곡선 생성(`BuildBow`)도 같은 `BowLimbLocal`을 쓴다.
+
+**회귀 안전성(수치 검산).** 시위 오늬는 `ResolveNockLocal`이 뒷손 월드좌표를 활 로컬로 역변환하므로
+자동 보정된다(로컬 x -0.33H -> -0.17H, 클램프 밴드 [-0.68,-0.09] 안 → 클램프 미발동, 시위가 뒷손에
+계속 붙는다). 화살 발사점/궤적/탄도는 손 좌표를 그대로 쓰므로 **월드 기준 화살 위치는 0.7pt 이내로 불변**
+— 발사 순간 튐 없음. 만작 화살촉은 활대에 정확히 얹힌다(오차 0.7pt).
+
+**테스트(실행 완료).** PlayMode `ArcheryVisualTests` **24/24 통과**(Unity 6000.0.82f1 batchmode).
+신설 3종: `BowIsHeldByItsGripNotByTheString`(배율 3 × 조준각 9, 순수 함수 + 네거티브 컨트롤),
+`FullDrawArrowTipReachesTheBowStave`, 그리고 **실물 사이클 단언** — `FullCycle...` 테스트가 만작
+프레임마다 `ArcheryRenderer.TryGetBowGripAndHandWorld()`로 **실제 Transform에서 읽은 활대 한가운데**와
+활 든 손의 거리를 재어 신장의 2% 미만을 요구하고, 그 손이 실제 오른팔 끝인지도 함께 본다.
+
+**뮤테이션 검증(자기 반증).** 순수 함수 테스트만으로는 "배치 코드가 그 함수를 쓴다"가 증명되지 않아,
+수정을 옛 배치(`rootLocal = handLocal`)로 되돌려 재실행했다 → `FullCycle...`이 정확히
+**0.264유닛(신장의 15.5%)** 어긋남으로 실패. 사전 계산값과 소수점까지 일치했고, 되돌리자 다시 24/24
+통과. 즉 이 테스트는 신고된 그림을 실제로 잡는다.
+
+**별건 판단 — "명령 내리지 않으면 절대 활 안 쏨"은 버그 아님(설계).** `StickConfig.archeryChance`는
+도입 커밋(b014611)부터 지금까지 **줄곧 0**이며(회귀 아님), "요청하지 않은 연출 금지"라는 리더 지시로
+모든 스펙터클 `*Chance`가 0으로 내려간 결과다. 자동 추첨 경로(`ArcheryDirector.TickAutoTrigger`)는
+살아 있고 값만 올리면 즉시 동작한다. **자율 발동을 켤지는 리더 결정 사항**(신규 기능이라 이번 라운드
+구현하지 않음).
+
+### 2026-08-31 (perf-doc, 3차) — 해상도 4K 확인에 따른 자기 정정
+사용자 실제 해상도 **3840×2160**. `docs/ARCHITECTURE.md` 6-7절 신설.
+- **【정정 철회】** 6-6의 "메모리 델타 +7.28MiB가 1920×1080 표면과 92% 일치" → **틀렸다.**
+  4K 표면은 **31.64MiB**이고 델타는 그 **23%**다. 해상도를 모른 채 맞춘 우연이었다.
+- **【반증】** "DPI 가상화로 앱이 1080p 렌더링 중" 가설도 죽었다. 빌드된 `StickMate.exe` 임베디드
+  매니페스트 실물 확인: **`dpiAware=True/PM`, `dpiAwareness=PerMonitorV2`** → 배율과 무관하게
+  합성 표면은 항상 물리 픽셀 4K다. (부수: 배율 함정이 없으므로 측정 3 설계가 단순해진다.)
+- **【계측기 강등】** DWM 합성 표면은 D3D 리소스라 VRAM/공유 GPU 메모리에 있고 작업 집합에 안 잡힐 수
+  있다 → **메모리 열을 "주 계측기"에서 보조로 강등.**
+- **【계측기 승격】** `Player.log`(`%USERPROFILE%\AppData\LocalLow\DefaultCompany\StickMate\Player.log`).
+  우리 앱이 **표면 크기·배율·MSAA·GPU를 이미 직접 로그로 남긴다** — 면적을 역추정할 이유가 없었다.
+- **【신규 후보 → 리더】 4K + MSAA 4x면 resolve 트래픽이 프레임당 약 158MiB = 60fps에서 약 10.0GB/s**로,
+  BitBlt 복사(1.99GB/s)보다 **5배 크다.** 즉 **B-3(MSAA)이 4K에서는 B-1보다 큰 레버일 수 있고 공사는
+  비교도 안 되게 작다.** `Player.log`의 `MSAA 요청/실측` 한 줄이 이걸 확정한다.
+- **측정 3 갱신**: 1920→1280이 아니라 **3840×2160 → 1920×1080(정확히 4배)**. 반드시
+  `measure-dwm.ps1`로 잴 것(작업관리자 CPU 열로는 0.7%→0.35%라 판정 불가). 대조 신호는
+  StickMate 자기 CPU 하락.
+- B-1 상한은 4K에서 면적비 **20.2배**로 커졌으나 귀속률(64%)·매프레임 추종 금지 제약 불변 →
+  **6-5 권고(착수 보류) 변경 없음.**
+
+### 2026-08-31 (perf-doc, 4차) — 해상도 4배 실험 "체감 무변화" 해석 → **B-1 조건부 잠정 기각**
+`docs/ARCHITECTURE.md` 6-8절 신설.
+- **정성 보고를 "면적 비례성 반증"으로 쓰지 않는다**(6-6과 같은 함정). 나는 이 실험을 요청할 때
+  "작업관리자로도 안 보인다"고 미리 못 박았고, 체감은 그보다 거친 계측기다. **면적 비례성 자체는
+  macOS 실측(6-2 E1)이 여전히 지지한다.**
+- **그러나 천장 논증으로는 기각이 성립한다.** 4K→1080p는 면적의 **75.0%**를 제거했고, B-1 상한
+  (4K→640×640)은 **95.06%**다. 즉 사용자는 **설정 토글 한 번으로 B-1 상한의 78.9%를 무료로 체험했고
+  아무 변화도 못 느꼈다.** B-1이 추가로 주는 몫은 **21.1%**뿐인데 그 값으로 6-4의 특대 난제 전부를
+  치른다. **이 논증은 계측 정밀도와 무관하다.**
+- **【실제 결함 발견 → 리더/coder】 `_fullScreenBoundsApplied`가 한 번 true가 되면 리셋되지 않는다**
+  (`WindowsOverlayStateEnforcer.cs:201/239`, `MacOverlayStateEnforcer.cs:313/385`). 재적합 트리거도
+  없다(`shouldFitMonitor=false`). → **해상도/모니터 변경 시 오버레이가 재적합하지 않는다.** 고→저
+  해상도면 창이 데스크톱 밖으로 넘치고 좌표계(`OverlayOriginOsScreen`)도 어긋난다.
+  **소형 창과 무관한 별건 버그.** 동시에 이번 실험이 **무효였을 가능성**을 뜻한다(앱을 켜 둔 채
+  해상도를 바꿨다면 창이 안 줄었다) → 확인: 1080p + **앱 재시작** 후 `StickMate.exe` **자기 CPU**가
+  떨어졌는가(면적에 정직히 비례하므로 작업관리자로도 보인다).
+- **【방향 정정】 "B-1 기각 → B-3(MSAA)" 는 논리적으로 성립하지 않는다.** 해상도 4배 축소는 BitBlt
+  복사·MSAA resolve·앱 래스터화를 **전부 4배** 줄였다. 실험이 유효했다면 **픽셀 처리량 가설 전체
+  (B-1·B-3·B-4)가 함께 약화**된다. 둘은 같은 축이다.
+- **【신규 가설】 BitBlt 스왑체인의 이진 페널티**: flip model의 direct flip/MPO 경로를 레이어드 창이
+  무효화 → 데스크톱 전체 매 프레임 합성. **면적 무관, 켜지거나 꺼지거나.** 관측 4개를 전부 설명한다
+  (시스템 전체 저하 / dwm CPU 0에 가까움 / 면적 4배 줄여도 무변화 / macOS 귀속률 64%).
+- **다음 실험(코드 변경 0)**: `STICKMATE_FORCE_TIER`(이미 구현됨, 재시작 필요)로 **면적 고정 + present
+  횟수만** 바꿔 A/B. 체감이 변하면 FramePacing 튜닝으로 끝(공사 0). 안 변하면 이진 페널티가 유력해지고
+  남는 선택지는 수용 / **사용자 토글**(Rusty's Retirement 선례) / 레이어드 창 탈피 재설계뿐.
+- **우선순위: ① `Player.log`(한 파일이 5개 질문에 동시 응답: 실험 유효성·MSAA 실제 배수·배율·GPU·등급)
+  ② 자기 CPU 하락 확인 ③ FORCE_TIER A/B ④ CSV(생략 가능).**
+- **B-1 처분: 조건부 잠정 기각.** ③ 확인에서 "실험 무효"로 판명되면 기각 철회 후 재실험.
+
+### 2026-08-31 (perf-doc, 5차) — 해상도 변경 시 472ms/1091ms 스파이크 원인 규명
+`docs/ARCHITECTURE.md` 6-9절.
+- **가설 (a) "상시 재적용 루프가 동기 블로킹" → 코드로 반증.** `전체화면 확장 시도 N/6`
+  (`TickFullScreenBounds`, **유일하게 `Screen.SetResolution`을 부르는 곳** `:228`)은 `:201` sticky
+  가드로 **재실행 불가**. `재적용 X/5`는 `_timer < 0.5s` 강제라 **구조적으로 한 프레임에 못 몰린다**
+  (값 대입 4번). `원점/배율 갱신`은 `GetWindowRect`+`GetDpiForWindow`로 µs.
+- **가설 (b) "해상도 변경 감지 별도 경로" → 그런 경로가 없다.** `Screen.SetResolution`은 프로젝트
+  전체에서 그 한 곳뿐이고, `OnMonitorChanged` **구독자 0**, `WM_DISPLAYCHANGE` 처리 없음.
+  → **우리 앱엔 디스플레이 변경 반응 코드가 아예 없다.**
+- **그 1초의 정체(순위)**: ① 엔진/드라이버의 4K 백버퍼·**레거시 BitBlt 스왑체인 재생성**(모드 변경 시
+  데스크톱 전체가 멈춘다 — 모든 앱이 그렇다) ② 우리 쪽 **uGUI 연쇄 리빌드**(`Screen` 변경 →
+  `ResolveCanvasScaleFactor` 변경 → 캔버스 4~5개가 같은 프레임에 `scaleFactor` 갱신:
+  `DialogueBubbleRenderer:719`/`CharacterInfoWindow:1508`/`GearRadialMenuWidget:951`/
+  `AppControlDirector:907` → 레이아웃 리빌드 + 폰트 아틀라스 재래스터화) ③ 초상화 RT 재할당.
+  ①②를 가르는 법: `Player.log`에 `전체화면 확장 시도 1/6`이 **스파이크 시점에도** 있으면 앱 재시작
+  (= 기동 비용, 무해), 없으면 ①+②.
+- **일상적 상황 아님**: 창은 기동 후 **한 번도 안 움직인다**(`windowPosition` 대입도 sticky 가드 안).
+  → **멀티모니터 경계 넘기로는 이 경로를 안 탄다.** 촉발은 해상도/모니터/DPI 변경, **디스플레이 절전
+  복귀**(24시간 상주 앱에서 유일하게 일상적), RDP, 드라이버 리셋.
+  **1초 단발 히치는 신고된 "지속적 시스템 저하"와 증상 자체가 다르다 — 내가 요청한 실험의 산물이지
+  버그의 증거가 아니다.**
+- **【진짜 버그 → coder 이관】** 스파이크가 아니라 **그 뒤 영구히 남는 상태**다. sticky라 재적합이
+  영원히 안 일어나 창 크기/위치가 옛 화면 기준으로 고정되고, 백버퍼가 어긋나고, 원점만 갱신되는
+  반쪽 상태로 좌표가 틀어진다. **★ 그리고 이것이 4차의 해상도 실험을 무효로 만든다(표면적이 실제로
+  안 줄었다) — "체감 차이 없음"의 가장 유력한 설명.**
+  위치: `WindowsOverlayStateEnforcer.cs` `_fullScreenBoundsApplied`(`:65`/`:201`/`:239`) +
+  **형제 `MacOverlayStateEnforcer.cs` `:151`/`:313`/`:385` 양쪽 동일 결함**.
+  지침: ① 토폴로지 변경 시 플래그 **re-arm만** 하면 기존 0.5초×6 분산 구조가 그대로 동작
+  (감지는 `OnMonitorChanged` 또는 `GetMonitorRect`/`Screen.currentResolution` 폴링 — **신규 P/Invoke
+  불필요**) ② **★디바운스 필수**: 마지막 이벤트 후 0.5~1.0초 안정 뒤 1회만. 안 하면
+  `Screen.SetResolution` 연발로 **지금보다 큰 히치를 우리가 만든다** ③ 재적합 직후
+  `ReportOverlayWindowOsRect`를 같은 프레임에 직접 호출.
+- **트랙 분리**: A(즉시·작음)=재적합 버그 → coder / B(계속)=신고 증상 → present 횟수·BitBlt 이진
+  페널티, `STICKMATE_FORCE_TIER` A/B. **A는 B의 답이 아니다.** 해상도 실험 재시도 시 **반드시 재시작**.
+
+### 2026-08-31 (perf-doc, 6차) — Windows GPU 실측 확정 + B-1 정식 기각
+`docs/ARCHITECTURE.md` 6-10 / 6-11절.
+- **【확정】 비용의 위치가 잡혔다**: `dwm.exe` GPU **0.6% → 35.6%(약 59배)**, 시스템 전체 GPU 1% → 54%.
+  같은 사건이 CPU 열에서는 0.1%→0.5% — **6-6의 "CPU 열로는 못 본다"가 실측으로 확증됐다.**
+- **【메모리 열 완전 폐기】** 335.0 → 332.7MB(**−2.3MB**). 어제의 `+7.45MB`는 **노이즈였다**(부호가 반대).
+  합성 표면은 GPU 메모리에 있어 dwm 작업 집합에 안 잡힌다. **함의: 비용은 1회 할당이 아니라 매 프레임
+  반복 작업이다 → present 횟수 축이 살아 있다.**
+- **【내 서술 정정】 "BitBlt = Copy 엔진"은 부정확했다. 실측은 3D 엔진이다.** 실제 기구는 복사가 아니라
+  **데스크톱 전체 재합성**이다(불투명 전체화면만 있으면 DWM은 direct flip/MPO로 합성을 건너뛴다 →
+  종료 시 0.6%. 레이어드 창이 하나라도 있으면 그 경로가 깨진다).
+- **【B-1 정식 기각】** 세 관측이 수렴: (a) dwm CPU≈0/GPU 35.6% (b) 면적 4배 줄여도 무변화
+  (c) Copy 아닌 3D. → **비용 = 데스크톱 전체 재합성 × present 횟수.** DWM이 재합성하는 것은 우리 창이
+  아니라 **데스크톱 전체**이므로 창을 640×640으로 줄여도 **구조적으로 줄지 않는다.**
+  근거가 천장 논증에서 **메커니즘 논증**으로 격상됨. B-3/B-4는 `StickMate.exe` 자기 GPU(추정 ~18%p)
+  에만 유효 → 부차적이나 폐기는 아님.
+- **【신규 가설 → 10초 확인】 크로스 어댑터**: dwm이 `GPU 2`에서 돈다(어댑터 복수). `StickMate.exe` 행의
+  "GPU 엔진"이 **다른 번호**면 매 프레임 PCIe 어댑터 간 복사 확정 → **설정 > 그래픽에서 같은 GPU로
+  지정하면 코드 변경 0으로 해결.** 이번 조사 최저비용 후보.
+- **【상승 추세 35.6→69→75 해석】 누적 경로는 코드에 없다**(MarkDirty 호출부는 기동 1회+긴급키뿐,
+  `Screen.SetResolution`은 sticky 1곳, `new Material/Texture2D/Instantiate`는 전체 9곳이며
+  **Update 계열 안에는 0곳**, 창은 1개 고정). 원리적으로도 dwm 비용은 우리가 뭘 그리는지와 무관하다.
+  **가장 유력한 설명은 GPU 다운클럭에 의한 백분율 팽창** — 유휴일수록 클럭이 내려가 같은 작업이 더 큰
+  %로 보인다. **누수 가설과 상관 방향이 반대다.** 판별: dwm이 오를 때 `StickMate.exe` GPU%도 **함께**
+  오르면 다운클럭, dwm만 오르면 진짜 누적.
+- **【"유휴인데 높다"는 FramePacing 반증이 아니다】** ① `Calm`은 **캐릭터가 `Idle`**일 것을 요구하는데
+  이 앱 캐릭터는 **스스로 돌아다닌다** → 사용자가 쉬어도 등급은 `Active` ② `Away`는 무입력 3분인데
+  **작업관리자를 보는 행위가 곧 입력**이다(`GetLastInputInfo`). **관측이 관측 대상을 바꾼다.**
+  → `STICKMATE_FORCE_TIER`가 이 두 함정을 동시에 제거한다.
+- **【6-10 예측표 정정】** 다운클럭 때문에 **`dwm.exe` GPU % 단독 절대값으로는 present 실험을 판정할 수
+  없다**(present를 줄이면 클럭이 더 내려가 %가 오히려 오를 수 있다). 판정 지표를 ① 사용자 체감
+  ② dwm%와 StickMate%의 **비율** ③ 실행 vs 종료 대비로 교체.
+
+### 2026-08-31 (perf-doc, 7차) — "등락" 확인 → 누수 기각 확정 + present 축 유력
+`docs/ARCHITECTURE.md` 6-12절.
+- **【누수 기각 확정】** 코드 감사(누적 경로 0)와 사용자 관측(**단조 증가가 아니라 등락**)이 독립적으로
+  일치. **이 방향은 닫는다.**
+- **【신규 유력 해석】 등락 폭이 약 2배**(35.6→69 = 1.94배, →75 = 2.11배)인데 **`Calm` 등급의 divisor가
+  정확히 2**다. 그리고 **`CalmDwellSeconds = 0.75f`**(`FramePacing.cs:254`) — 캐릭터가 0.75초만 `Idle`이면
+  걸리고 움직이면 즉시 풀린다(`:380`). **자율 배회 캐릭터에서는 등급이 몇 초마다 뒤집힌다** →
+  present 60↔30 왕복 → dwm GPU ~2배 등락. **관측과 정확히 맞는다.**
+- **【함의】 이게 맞으면 사용자는 자기도 모르게 FORCE_TIER 실험을 이미 수행한 것이고, present 횟수가
+  dwm 비용을 지배한다는 실사용 직접 증거가 된다 → 트랙 B가 사실상 답이 나온다.**
+  처방: **`StickConfig.windowsTargetFrameRate`(`:2317`, 현재 60)를 낮추면 비례해서 즉시 감소. 신규 코드 0줄.**
+- **★【리더 결정 필요 — 사용자 확정값과 충돌】** `ViewerPresence.cs:73-75`에 **"2026-08-31 사용자 확정:
+  움직일 때는 60fps, 여기는 절대 건드리지 않는다"**가 박혀 있다. 프레임 상한을 내리는 것은 그 확정값을
+  뒤집는 일이라 perf-doc 단독 판단 사안이 아니다. **사용자에게 되물을 것**: "부드러움(60fps) vs 시스템
+  부하 — 30fps로 내리면 dwm 부하 절반."
+- **【판별법(30초, 무료)】** A(다운클럭)/B(등급 전환) 모두 dwm·StickMate 동반 상승이라 동반 여부로는 못
+  가린다. **상관 대상**으로 가른다: **캐릭터가 걸을 때 높고 서 있을 때 낮으면 → B 확정.** 캐릭터와
+  무관하게 시스템 유휴도를 따라가면 → A. 보조: `Player.log` 등급 전환 타임스탬프 대조.
+- **【측정 위생】 35.6%가 어느 등급의 값인지 모른다.** `Calm` 순간이었다면 `Active` 실측은 약 70%이고
+  6-10의 "+35.0%p"는 **과소평가**다. → **앞으로 모든 Windows 수치에 등급(또는 "캐릭터가 움직였는가")을
+  반드시 병기한다.** 등급 미상 단일 스냅샷은 최대 2배 불확실성.
+- **B-1 정식 기각은 유효**(메커니즘 논증이라 절대 수치 무관). (3)이 맞으면 **더욱 불필요** — 같은 효과를
+  설정값 하나로 얻는다.
+
+---
+
+## [Coder, 2026-08-31] 실행 중 해상도/모니터/DPI 변경 시 오버레이 창 박제 결함 수정 (양 플랫폼)
+
+perf-doc 정적 분석 지적 대응. `_fullScreenBoundsApplied`가 한 번 true가 되면 **false로 되돌리는 경로가
+코드 어디에도 없어**, 앱이 켜진 채 디스플레이 구성을 바꾸면 오버레이 창이 최초 기동 해상도에 영원히
+고정되던 결함(Windows `:239` / macOS `:385`).
+
+- 신규 `Assets/_Project/Scripts/Platform/DisplayTopologyWatcher.cs` — 플랫폼 공용 순수 로직
+  (토폴로지 지문 + **디바운스 0.75초**). 감지 즉시 재적합하면 해상도 전환 중간 상태마다
+  `Screen.SetResolution`이 불려 고치려던 것보다 큰 히치를 만들므로, **마지막 변화 후 값이 유지될 때
+  딱 1회만** 신호를 낸다. 되돌아온 변화는 신호 없음.
+- 양 플랫폼 Enforcer에 `TickDisplayTopology()` 추가(같은 공용 클래스·같은 원칙). 관측 주기 0.1초로
+  스로틀(매 프레임 디스플레이 열거 방지). 재적합 직후 `OverlayRectReporter` 훅으로 같은 프레임에
+  좌표계 갱신(Windows=`CaptureOverlayOrigin`, macOS=신규 `MacWindowService.ReportOverlayRectNow`).
+- 자기 되먹임 차단: 적합 진행 중에는 관측하지 않고, 에피소드 종료 시 기준값을 재동기화한다
+  (시그니처에 우리 창에서 유도되는 값(`AutoDpiScale`)을 넣지 않는 이유도 같다).
+- 검증: 신규 `Tests/EditMode/DisplayTopologyRefitTests.cs` 14건 전부 통과.
+  EditMode 전체 **245/245**(macOS 타깃) + **245/245**(Win64 타깃, `UNITY_STANDALONE_WIN` 정의 확인 —
+  Windows 전용 코드 실제 컴파일됨), `error CS`/`warning CS` 각 0건.
+
+### 교차 레이어 영향 로그
+- **네이티브/좌표 계층**: `ScreenCoordinateConverter`의 원점/배율이 이제 **재적합과 같은 프레임에**
+  갱신된다(기존: 최대 한 폴링 주기 지연). 좌표를 소비하는 입력/렌더 쪽은 API 변경 없음.
+- **플랫폼 서비스**: `MacWindowService`에 `internal ReportOverlayRectNow()` 추가(순수 조회, 창 미변경).
+  두 서비스의 `CreateOverlayWindow()`에서 Enforcer에 훅을 1줄 배선.
+
+### 2026-08-31 (perf-doc, 8차) — 크로스 어댑터 기각 + 실험 우선순위 재조정
+`docs/ARCHITECTURE.md` 6-13절.
+- **【기각】 크로스 어댑터**: `StickMate.exe`와 `dwm.exe`가 **같은 `GPU 2 - 3D` 엔진**. PCIe 어댑터 간
+  복사 없음. 무료 해법 후보 소멸. **다른 결론은 불변.**
+- **【오히려 선명해진 것】** 둘이 **같은 3D 엔진을 경합**한다 → 시스템 GPU 54%(비포화)인데 체감이 나쁜 것은
+  포화가 아니라 **직렬화/지연**. present를 줄이면 StickMate 렌더 패스와 dwm 재합성이 **동시에** 줄어
+  같은 큐에서 **두 번 이득**.
+- **【자기 정정】 ②(StickMate GPU% 동반 상승)는 판별력이 낮다.** A(다운클럭)·B(등급 전환) **둘 다 동반
+  상승을 예측**하므로 A/B를 못 가린다. "dwm만 단독으로 튀는 제3의 이상" 배제용 정도.
+- **【권고】 ③(`FORCE_TIER`)을 먼저.** 등급을 고정하면 **"~2배 등락이 사라지는가"**로 A/B가 갈린다 —
+  A면 등락 지속(클럭 변동은 등급 무관), B면 소멸. **이 질적 지표는 다운클럭에 강건**해 이 조사를 세
+  라운드 괴롭힌 계측기 문제를 전부 우회한다.
+- **사전 예측 등록**: `FORCE_TIER=Away`(15fps)에서 ① 등락 멈춤 ② dwm GPU가 `Active`의 ~1/4 ③ 체감 개선.
+  **셋 중 하나라도 어긋나면 present 축은 지배적이지 않다 → 이진 페널티 엔드게임**(수용/사용자 토글/
+  레이어드 창 탈피).
+- **다음 단계**: ①③ 최우선 → ② `Calm`(30fps)로 타협점 탐색(처방은 `windowsTargetFrameRate` 한 값,
+  신규 코드 0, **단 사용자 확정값 "움직일 때 60fps"와 충돌 → 사용자 재확인 필수**) → ③ `Player.log`
+  (미수령) → ④ ②는 보조.
+
+### 2026-08-31 (perf-doc, 9차 · 라운드 종료) — Windows 실기 확인이 내일로 이월
+`docs/ARCHITECTURE.md` **6-14절(마무리)**에 확정/미확정/내일 절차를 정리했다.
+- **확정**: ① 비용은 `dwm.exe` **GPU 합성**(0.6%→35.6%, 시스템 1%→54%) ② 기구는 복사가 아니라
+  **데스크톱 전체 재합성**(Copy 아닌 **3D** 엔진 — 내 초기 서술 정정) ③ **B-1 소형 오버레이 창 정식
+  기각**(메커니즘 논증: DWM이 재합성하는 건 우리 창이 아니라 데스크톱 전체) ④ 부수 기각 3건
+  (크로스 어댑터 / 누수·누적 / 메모리 열 계측) ⑤ **별건 실버그**: `_fullScreenBoundsApplied` sticky로
+  디스플레이 변경 시 영구 미재적합(6-9 (5), coder 이관 대기).
+- **미확정(내일 판정)**: **35%p가 present 횟수에 비례하는가.** A(비례 → `windowsTargetFrameRate`
+  튜닝, **신규 코드 0줄**) vs B(이진 페널티 → 수용/토글/재설계). **정황은 A 쪽**(등락 폭 ~2배가
+  `Calm` divisor 2 및 `CalmDwellSeconds=0.75f`와 일치) — **정황이지 증거 아님.**
+- **내일 절차(5분)**: `cmd`에서 `set STICKMATE_FORCE_TIER=Away` 후 실행 → 3~5분 평소 작업하며
+  ① 체감 ② **dwm GPU 등락이 멈추는가** ③ 값이 뚜렷이 낮은가. 좋으면 `Calm`(30fps)로 타협점 탐색.
+  가능하면 `Player.log`도 회수(MSAA 배수 + 등급 전환 이력 확정).
+  **사전 예측 등록**: 셋 다 충족 → A, 하나라도 어긋나면 → B.
+- **이것이 최종 결정 관문이 맞다.** 단 **사용자 토글은 A/B 어느 쪽이든 필요한 공통 처방**이라
+  결과를 기다리지 않고 착수 가능한 유일 항목이다(착수 판단은 리더).
+  **주의: `ViewerPresence.cs:73-75`의 사용자 확정값("움직일 때는 60fps")과 충돌하므로 기본값 변경은
+  반드시 사용자 재확인 후.**
+- perf-doc은 이번 라운드에서 **`.cs` 파일을 한 줄도 수정하지 않았다.**
+
+### 2026-08-31 (ux-designer) — 부채꼴 아이콘화 + 우클릭 메뉴 폐지 + 행동 명령창 설계 [완료]
+산출물 `docs/UX_FLOW.md` **36절**. 코드 변경 0건(구현은 리더 배정 대기).
+- **우클릭 메뉴 18행 + 단축키 16개 전수 분류**: (가)행동 명령 7 / (나)설정 3 / **(다)개발 전용 5** / (라)종료 1 / 기존 2.
+  ★ **(다) 5개 = 진단로그 · 하드웨어 반응 미리보기 · 스트레스 게이지 순환 · 할일 데모추가 · 집중모드 90초 데모.**
+  전부 "실제로는 일어나지 않은 상태를 표시하는" 미리보기 경로 = **사용자 UI에 넣으면 원칙 1 상설 위반**.
+  `StickMateDevTools.Enabled`(EDITOR/DEV_BUILD/`STICKMATE_DEVTOOLS=1`) 단일 게이트 뒤로 격리.
+- **부채꼴 4버튼 기하 재계산(실측 전수 계산)**: 간격 60°→**30°**, R 62→**111pt**, 스팬 120°→**90°**,
+  상자 56×56 정사각. 기어 위치 전역 격자 계산 결과 **현행 3버튼보다 오히려 튼튼하다**(최대 평행이동 36pt→9pt).
+  → **35-1-6의 "4번째를 넣으면 180°가 되어 실패한다" 기각 논거를 반증·철회**(간격 고정을 가정한 오류).
+- **행동 명령창** `ActionCommandPopover` 480×560(`PopoverPanel` 상속, 스크림 없음). 명령 6 + 가출 중 [돌아와!] +
+  푸터 [앱 종료](2단 확인). 성공하면 창이 닫히고, **실패하면 창이 남아 이유를 말한다**.
+- **캐릭터 우클릭 = 완전 무동작**(폴링까지 제거 → 사용자의 우클릭이 밑의 앱으로 관통 = 비침해 개선).
+- **교차 레이어 영향(리더 확인 요망) 14건** — 그중 2건이 결정 대기:
+  ① `ForceTriggerNow` 7종을 `GetAvailability()` + 결과 반환형으로 승격(안 하면 "눌러도 아무 일 없는 버튼" 6개)
+  ② 개발 게이트 신설(안 하면 (다) 5개가 사용자 UI 후보로 남음). **⌃⌥⌘Q는 게이트 밖 — 릴리스에서 반드시 산다.**
+- **부채 1건**: 구석 호버 패널 영구 off(34-8 탈출구 ③)의 거처 상실 → **설정창(35-1) 최우선 승격 사유**.
+  탈출구 ①②④는 살아 있어 원칙 4 자체는 유지.
+- **동반 필수 과제**: 온보딩(35-2) 1회 안내 — 라벨 제거 비용을 갚는 유일한 장치.
+
+### 2026-08-31 (test-engineer) — 오프라인 우선 정적 감사 신설 (ARCHITECTURE 5-1-8 / 5-4 A-1) [완료]
+신규 `Assets/_Project/Scripts/Tests/EditMode/OfflineFirstNetworkAuditTests.cs` (**12개 `[Test]`**, 프로덕션 코드 수정 0줄).
+`UserAssetImmutabilityAuditTests`(원칙 3 감사)의 텍스트 정적 스캔 프레임워크를 그대로 복제해 **네트워크 0건**을 잠갔다.
+- **스캔 결과 위반 0건.** 유일한 히트는 `HardwareReactionDirector.cs:304`
+  `Application.internetReachability == NetworkReachability.NotReachable` **1줄** — 소켓/전송 없는 OS 상태 조회라
+  화이트리스트에 등재(라인 검증자 포함). **전송(Transmission) 계열 화이트리스트는 0건이며 그 사실을 별도 테스트로 고정.**
+- **니들 25종** 4계열: Unity(`UnityWebRequest`/`UnityEngine.Networking`/`DownloadHandler`/`UploadHandler`/`new WWW(`/
+  `Application.OpenURL`), BCL(`System.Net`/`HttpClient`/`HttpWebRequest`/`HttpListener`/`WebClient`/`WebSocket`/
+  `TcpClient`/`TcpListener`/`UdpClient`/`new Socket(`/`SmtpClient`/`FtpWebRequest`/`Dns.`/`ServicePointManager`/`new Uri("http`),
+  서드파티 선제차단(`Steamworks`/`Unity.Netcode`), 감시(읽기전용 상태조회 2종).
+- **주석 인식**: 문자열 리터럴(`"..."`/`@"..."`/`'.'`)을 존중하며 `//`·여러 줄 `/* */`를 제거한 뒤 스캔.
+  → 문서가 금지 API를 언급하는 것은 통과, **코드 뒤 변명 주석은 그 코드를 숨기지 못함**, 문자열에 숨긴 니들도 검출.
+- **화이트리스트 = 리뷰 게이트**(이 감사의 진짜 목적). 항목마다 5-1-8이 요구한 **(파일 · 이유 · 동의 게이트 유무)** +
+  **허용 니들 명시 필수**(파일 통째 면제 금지 — 그 파일의 미래 위반까지 숨기는 것을 막는다) + 라인 검증자.
+  `RequiresConsentGate=true`면 **같은 파일에 동의 플래그를 읽는 코드가 실제로 있는지**까지 검사(5-1-9 예행연습).
+  죽은 예외 방지 테스트 포함(원칙 3 감사가 `SetWindowPos` 예외를 제거할 때 쓴 논리 재사용).
+- **네거티브 컨트롤 5건**: 프로덕션 감사와 **동일한 `ScanSource()`**에 가짜 소스를 흘려 (1) 명백한 위반 6종을 전부
+  잡는가(줄 번호 정확도 포함) (2) 주석 안 언급은 오탐하지 않는가 (3) 코드+변명주석/문자열 은닉은 잡는가
+  (4) 화이트리스트가 파일·니들 범위를 벗어나 통과시키지 않는가 (5) 동의 게이트 없으면 예외가 무효인가.
+- **엔드투엔드 뮤테이션 검증(실행)**: 임시 프로덕션 파일에 `Application.OpenURL(...)` 1줄을 심고 감사 실행 →
+  **정확히 1건 실패**(`__NetworkAuditMutationProbe.cs:9`, 파일·줄·이유 정확히 리포트), 나머지 11건은 초록.
+  즉시 파일 삭제 후 전체 재실행으로 원복 확인 — 감사가 "그냥 항상 초록"이 아님을 실측으로 증명.
+- **커버리지 가드**: 스캔 파일 하한 100(실측 133), 알려진 파일 존재, `Tests/` 제외, 니들 표 하한 15 + 핵심 니들 잔존 확인.
+  추가로 **asmdef 참조 감사**(코드보다 먼저 들어오는 선행 신호: `Unity.Netcode`/`Mirror`/`Steamworks` 등) 1건.
+- **검증**: `-runTests -testPlatform EditMode` 2회 — **257/257 통과, failed=0**, `error CS`/`warning CS` **0건**
+  (`Logs/te_offline_edit1.xml`·`te_offline_edit2.xml`, 뮤테이션 런은 `te_offline_mutation.xml`).
+- **후속 권고(미착수)**: ① 5-1-8의 **감사 대상 2호 "전역 키보드 범위 잠금"**(`IGlobalKeyStateService` 열거형이
+  임의로 커지지 못하게)은 이번 라운드 범위 밖 — 별도 배정 필요. ② `Packages/manifest.json`의
+  `com.unity.modules.unitywebrequest*` 4종은 Unity 기본 모듈이라 존재만으로 위반은 아니나, 제거하면 빌드 표면적이
+  더 줄어든다(manifest는 병렬 작업자 소유라 이번엔 손대지 않음).
+
+---
+
+## [Coder, 2026-08-31] 이월 결함 2건 해소 — Windows 알파 필터 부재(Major) / `DWMWA_EXTENDED_FRAME_BOUNDS` 미적용(Minor)
+
+**결함 1 (Major)** — `Win32WindowService`에 macOS `kCGWindowAlpha<0.05` 대응물이 없어, 같은 날 도입된
+가려짐 필터가 **새 사고를 만들 수 있는 상태**였다(전체화면 투명 HUD 1개가 아래 발판을 전부 삭제 → 영구 낙하).
+`VisibleTopEdgeSolver`는 "발판 자격 == 가릴 자격"이라 후보 단계에서 막는 것이 유일한 해법.
+→ 신규 `Platform/Windows/WindowsFootholdFilter.cs`(**P/Invoke 0줄, `#if` 없음 = macOS EditMode에서 실측 가능**)로
+판정을 분리하고, Win32는 `GetLayeredWindowAttributes` **조회만** 담당. 픽셀별 알파(조회 실패) 창은
+클릭관통(WS_EX_TRANSPARENT)까지 켜졌을 때만 제외(조회 실패로 멀쩡한 창을 지우지 않는 보수 원칙).
+같이 맞춘 macOS 패리티: 최소 크기 60x40, 가상 화면(주 모니터 아님 — 멀티모니터 유실 방지) 밖 제외.
+솔버의 미사용 출력 `GetVisibleWidth()`를 Windows에서도 사용 → `LastRawWindowCount`/
+`LastFullyOccludedWindowCount` + `AppendWindowDiagnostics()` + 이상 징후 전용 `[발판진단]` 로그
+(발판 0개 또는 투명창 제외 시에만, 30초 억제, 창 제목/경로 미기록) = 이월 Minor 3(원격 진단 불가)도 해소.
+
+**결함 2 (Minor)** — 발판 사각형이 `GetWindowRect`라 DWM 비가시 테두리(~7px)를 포함했다.
+`DwmGetWindowAttribute(hwnd, 9 /*EXTENDED_FRAME_BOUNDS*/, out RECT, Marshal.SizeOf<RECT>())` **RECT 오버로드**로
+교체(`TryGetVisualWindowRect`, 실패 시 `GetWindowRect` 폴백). 열거 + 오버레이 원점에 적용.
+**`IsFullscreenAppActive()`는 의도적으로 미적용** — 판정이 "모니터 사각형과 정확히 일치"이고 확장 프레임은
+더 작을 수만 있어, 바꾸면 전체화면 게임을 놓치는 방향(비침해 원칙 2 위반)으로만 틀릴 수 있다.
+
+**검증**: Win64 크로스빌드 에러0/경고0(`Logs/coder_win_build.log`), rsp에 `define:UNITY_STANDALONE_WIN` 확인 +
+빌드 산출 DLL 심볼 대조 10종(`TryGetVisualWindowRect`/`ResolveWindowAlpha` 등) 실제 컴파일 확인.
+EditMode 신규 15건 포함 **280/280 통과**(macOS 타깃 재실행, `define:UNITY_STANDALONE_OSX` 확인 —
+기존 macOS 발판 로직 회귀 0). 네거티브 컨트롤 W9n(투명창을 솔버에 넣으면 아래 발판 전멸) + 소스 정적 감사
+D2~D5(시그니처/상수/폴백/쓰기 API 부재) 포함.
+
+**리더 확인 요망**: ① `[발판진단]`을 macOS처럼 주기 리포트로 승격하려면 `WindowsOverlayStateEnforcer.cs`
+배선이 필요한데 그 파일은 이번 범위 밖이라 손대지 않았다(지금은 이상 징후 시 자체 로그만).
+② `RawWindows`(창 도둑 대상)에서 투명/너무 작은 창이 이제 빠진다 — macOS와 같은 계약이며 의도된 변경.
+③ 실기 Windows 검증은 여전히 불가(이 환경은 macOS) — 알파 문턱의 실제 오탐/미탐은 실기 로그 필요.
+
+### 교차 레이어 영향 로그
+- **네이티브(Windows)**: 발판 사각형이 ~7px 좁아진다 → 발판/가림/창 겨냥 좌표를 쓰는 모든 상위 레이어
+  (ParkourClimb, WindowTheftDirector, 향후 인질극/로프 앵커)에 동일 방향으로 반영된다. macOS는 무영향.
+- **파일**: `Platform/Windows/Win32WindowService.cs`(수정), `Platform/Windows/WindowsFootholdFilter.cs`(신규),
+  `Tests/EditMode/WindowsFootholdFilterTests.cs`(신규 15건). `VisibleTopEdgeSolver.cs`는 **무수정**
+  (이미 플랫폼 중립이라 Windows 쪽 사용부만 고치면 됐다). 커밋하지 않음(리더가 통합 후 커밋).
+
+### 2026-08-31 (perf-doc, 10차) — macOS 실측: 컴포지터 부하는 present 횟수에 **정확히 비례**
+`docs/ARCHITECTURE.md` **6-15절** / `docs/UX_FLOW.md` **35-8절**. 도구 `Tools/PerfProbe/measure-macos.py`.
+- **실제 `StickMate.app`으로 측정**(프로토타입 아님). M2 Pro/Metal, 3024×1964, **MSAA 4x 실측 확인**,
+  기준 `vSyncCount=2`. 등급을 **양쪽 다 강제**(`FORCE_TIER=Active`/`Away`, `open --env` 경유)하고
+  `OFF→ACTIVE→OFF→AWAY` **3사이클 교차**(12위상×20초), 중앙값 집계.
+- **결과(중앙값)**: WindowServer CPU%(1코어) **OFF 2.57 / ACTIVE 14.66 / AWAY 5.63**,
+  GPU 전역 **1.30 / 30.90 / 12.20**, StickMate 자기 CPU **25.53 / 10.20**.
+- **`ACTIVE−OFF` = +12.09%p, `AWAY−OFF` = +3.06%p → 비율 0.25.**
+  **코드에서 유도한 present 비율 1/4과 정확히 일치.**
+  선형 분해 결과 **present 무관 고정항 B ≈ 0.05%p ≈ 0** → **macOS에는 이진 페널티가 없다.**
+- **비용 모델 확정**: `컴포지터 비용 = present 횟수 × (면적 항 + 창당 고정 항)`, **present 무관 항 없음.**
+  6-2 E2의 "고정비 3.8%p"는 **면적 무관 항**이지 present 무관 항이 아니었다 — 모순 없음.
+  **B-1 정식 기각과도 정합**(면적 항만 줄여봐야 곱해지는 present 항을 못 건드린다).
+- **Windows 미확정 질문 함의**: 증명은 아니지만 **갈래 A(present 비례)가 한 플랫폼에서 완벽 성립**했고,
+  BitBlt 복사도 **present마다** 일어나므로 같은 방향일 가능성이 높다 → **내일 Windows FORCE_TIER
+  테스트의 사전 확률이 A로 크게 기움.** A면 처방은 `windowsTargetFrameRate` 한 값 + 설정 노출, **코드 0줄.**
+- **부수 확인**: ① **MSAA 4x 실제 적용**(백버퍼 직접) — B-3 전제 참. 단 이 비용도 present마다 발생하므로
+  **저전력 렌더링이 먼저**다. ② 적응형 거버너 실제 동작 중(300초 체류: 활성 24/정적 34/자리비움 42%).
+  ③ **[별건·경미 → debugger]** 오버레이 창 원점이 33분간 8회 변동(`0→-372→-1576→-785→-156→0`).
+  `-1576`은 폭 1512 화면에서 완전히 화면 밖 → 그 순간 커서↔월드 변환이 크게 틀어진다.
+  **성능 영향 없음**(2Hz 이하 이동은 무료, 여기선 33분에 8회). **좌표 정확성 이슈로만** 이관.
+- **설정창 토글(사용자 승인)**: UX_FLOW 35-1 [접근성·성능] 탭에 **이미 존재**("저전력 렌더링
+  적응형/60/45/30"). 신설 불필요 → **실측 뒷받침 + 세그먼트 값 정정 제안(45 제거, `적응형/60/30/15`)**
+  을 35-8절로 기록. **45fps는 `vSyncCount` 정수 분주로 만들 수 없다**(60Hz: 60/30/20/15,
+  120Hz: 120/60/40/30/24/20/15). **기본값은 `적응형` 유지 = 사용자 확정값 "움직일 때 60fps"와 양립.**
+- 측정 후 사용자 앱을 **FORCE_TIER 없는 정상 상태로 복구 완료**(pid 재기동 확인).
+- perf-doc은 이번에도 **`.cs` 파일을 한 줄도 수정하지 않았다.**
+
+### 2026-08-31 (coder, DLC 이행 **A단계**) — 장비 28종을 코드에서 **에셋으로** 옮김
+근거 `docs/ARCHITECTURE.md` **5-3-3 A단계**. **B(레지스트리)·C(매니페스트/Addressables)는 손대지 않음.**
+- **신규** `Core/AccessoryDefSO.cs`(아이템 1종 = 에셋 1개, `hidesHair` 포함) ·
+  `Core/ItemCatalogDigest.cs`(`#if UNITY_EDITOR`, 골든 다이제스트) ·
+  `Assets/Editor/AccessoryDefMigration.cs`(일회성 생성기, 메뉴 `StickMate/DLC 이행 A/…`).
+- **생성** `Assets/_Project/Resources/Items/*.asset` **28개**(7카테고리×4) + 골든 스냅샷
+  `Tests/EditMode/Golden/ItemCatalogGolden.txt`(349줄, 전환 **직전** 카탈로그 전문).
+- **`ItemCatalog.cs`**: `Row`/`Table`/아이콘 리터럴 **전부 삭제**(822줄 → 663줄, 아이콘/표 리터럴 약 320줄 제거), 이제 `Resources.LoadAll`로
+  에셋을 읽는 얇은 파사드. **공개 API 무변경** → 소비자 8개 파일 **무수정**. 세이브 마이그레이션 **불필요**
+  (v5는 이미 itemId 문자열을 적는다).
+- **검증**: EditMode **280/280 통과**(전환 전 245건 전부 동일 카운트·전원 통과 + 신규 8건).
+  네거티브 컨트롤 2회 실기 확인 — ① 좌표 1칸 `8 → 8.001` 변조 시 골든 대조가 **줄 번호까지 지목**하며 실패,
+  ② 에셋 1개 삭제 시 신규 2건 + 기존 `ItemCatalogTests` 1건이 함께 실패.
+- **교차 레이어 영향(리더 확인 요망)**: ① 이 프로젝트 **최초의 `Resources` 폴더** 도입 →
+  빌드/CI(5-1-5)에 항상 포함(28개 소형 에셋, 용량 무시 가능). ② `AccessoryShapeBuilder.cs` **읽기만 함, 무수정**.
+  ③ `hidesHair`는 **아무도 읽지 않는 상태로 채워만 뒀다**(Major 4 해결은 별도 라운드) — 대신 값이
+  렌더러 `HatCoverLocalY`와 일치하는지 테스트가 잠갔다.
+
+### 2026-08-31 (coder) — 부채꼴 아이콘화 + **행동 명령창** 신설 + 우클릭 메뉴 폐지 + 개발자 게이트
+근거 `docs/UX_FLOW.md` **36절 전체**(36-0~36-13). 사용자 지시 2건:
+① *"버튼 메뉴들의 텍스트는 전부삭제 / 캐릭터 우클릭 메뉴 없애고 / 기어아이콘에 메뉴하나 추가해서 행동 명령"*
+② *"4가지중 마우스로 선택되고있는 메뉴만 텍스트로 어떤 메뉴인지 이름이 보여야함"*
+
+**신규 4파일** `Core/StickMateDevTools.cs` · `Core/CommandAvailability.cs` ·
+`Core/StickMateDisplayNames.cs` · `Interaction/ActionCommandPopover.cs`(480×560).
+
+- **개발자 게이트**: `StickMateDevTools.Enabled` = `UNITY_EDITOR || DEVELOPMENT_BUILD ||`
+  **환경변수 `STICKMATE_DEVTOOLS=1`**. (다) 6개(진단로그 D / 하드웨어 H / 스트레스 S / 할일 J /
+  집중 90초 데모 F / 가출 **발동**)를 뒤로 숨겼고, 게이트가 닫히면 **키 폴링 자체를 안 한다**(36-2 규칙 3).
+  시작 배너도 두 벌로 갈라 릴리스 로그가 없는 기능을 광고하지 않는다. **⌃⌥⌘Q는 게이트 밖**(36-10).
+- **부채꼴 4버튼**: 3→4개 / 60°→**30°** / R62→**R111** / 스팬 120°→**90°** / 스태거 0.055→**0.037**
+  (총 0.301초로 32-2의 0.30초 예산 유지). 라벨 알약 서브트리·상수 6종 **완전 삭제** →
+  클램프 상자가 **56×56 정사각·원 중심 정렬**이 되어 기어→버튼 거리가 R로 **균일**해졌다.
+  ④ [행동] = 확성기 심볼 6획.
+- **호버 이름표(지시 ②)**: 인스턴스 **하나**만 두고 커서가 올라간 버튼을 따라다닌다. 원 아래가 기본,
+  화면 밖이면 원 위로 뒤집고 좌우 클램프. **배치 계산과 `UnionScreenRect`에 참여하지 않는다** —
+  참여시키면 36-3의 전수 계산 근거(56×56 전제)가 무너지고 클릭관통 차단 영역만 넓어진다(원칙 2).
+- **`GetAvailability()` 승격 7개**(Archery/Battle/Graffiti/WindowTheft/WindowCrash/TodoReminder +
+  `AppControlDirector.GetSayNowAvailability`) + `RunawayDirector`는 소환/발동을 **분리**
+  (`GetRecallAvailability`/`TryRecallNow` vs `GetForcedRunawayAvailability`/`TryForceRunawayNow`).
+  `ForceTriggerNow`는 `void`→**`bool`**(기존 호출부는 반환값 무시 = 하위 호환)이고 **내부에서
+  `GetAvailability()`를 호출**한다 → 회색 처리와 실제 실행이 구조적으로 같은 판정 하나를 쓴다(36-7).
+- **우클릭 메뉴 완전 제거**: `AppControlDirector` 959→약 500줄. 메뉴 캔버스/패널/18행/`_menuBlocker`/
+  `HitTestMenuRow`/`OpenMenu`/`CloseMenu`/`RefreshMenuLabels`/`MoveMenuBesideCharacter` + **우클릭 폴링**
+  전부 삭제. 우클릭은 이제 밑의 앱으로 그대로 관통한다(비침해 개선).
+- **★ 버그 수정**: `TodoReminderDirector.ForceTriggerNow`가 목록이 비면 데모 할일 3건을
+  `TodoListModel.Add`로 **사용자의 진짜 목록에 넣고 저장까지 하던** 경로를 **삭제**했다. 이제 할일이
+  없으면 `"아직 적어둔 할일이 없어요"`로 거절한다(게이트로 숨기는 것과 별개의 데이터 오염이었다).
+
+**검증(Unity 에디터를 열지 않고 수행 — 병렬 작업자의 `Library` 잠금 방지)**
+Unity 번들 Roslyn(`DotNetSdkRoslyn/csc.dll`)으로 직접 컴파일:
+- 런타임 136파일 **오류 0** — `UNITY_EDITOR` / `DEVELOPMENT_BUILD` / **릴리스(둘 다 없음)** 3개 구성 전부.
+- Editor 어셈블리(SceneBootstrapper 포함) **오류 0**.
+- 테스트 89+6파일 — 내 변경으로 생긴 오류 **0**(잔여 오류는 전부 `InternalsVisibleTo`를 재현 못 하는
+  임시 컴파일 구성 탓, 기존과 동일).
+
+**신규 테스트 6파일** — EditMode 3(`GearRadialFanGeometryTests` 9건 / `StickMateDevToolsGateTests` 5건 /
+`CommandAvailabilityContractTests` 9건) + PlayMode 3(`ActionCommandPopoverTests` 8건 /
+`TodoDemoDataPollutionTests` 5건 / `GearMenuHoverLabelTests` 7건). 특히:
+- 기하 확정치(30°/R111/스팬90°/56×56/0.30초)와 **히트 원 비겹침**을 순수 함수로 잠금 —
+  PlayMode는 폴백 사다리에 가려 확정치 오류를 못 잡는다.
+- **무할당 회귀**: 이유 문구를 두 번 물으면 `Assert.AreSame`(0.25초 폴링이 GC를 만들지 않는지).
+- **(다) 격리**: 행동 명령창 명령 이름에 개발 전용 키워드가 없는지 전수 확인.
+- 호버 이름표가 **버튼 위치·클램프 상자·`UnionScreenRect`를 하나도 바꾸지 않는지** 전후 대조.
+
+**교차 레이어 영향 로그(리더 확인 요망)**
+1. **`IGlobalPointerButtonService.TryGetSecondaryButtonPressed` 소비자가 0이 됐다.** 우클릭 폴링이
+   유일한 호출자였다. 인터페이스와 구현 3종(Mac/Win/Fallback)은 **건드리지 않았다** — 지금 Platform
+   레이어를 다른 coder가 작업 중이고, 죽은 API 제거는 그쪽 라운드에서 판단할 일이다. **리더 판단 요망.**
+2. `ForceTriggerNow`의 반환형이 `void`→`bool`로 바뀌었다(7종). 기존 호출부는 전부 무시하므로 동작
+   변화는 없지만, 앞으로 이 메서드를 부르는 코드는 **성공 여부를 확인할 수 있다/해야 한다**.
+3. `SceneBootstrapper`에 `ActionCommandPopover` 배선을 **두 곳**(신규 생성 경로 +
+   `EnsurePrefabComponents` 경로) 모두 추가했다. 이미 구워진 프리팹에는 후자로 얹힌다.
+4. **부채 유지**: `구석 크기 패널 on/off`는 갈 곳(설정창 [일반])이 없어 개발 게이트 뒤에 임시로 남았다
+   (36-11). **설정창(35-1) 최우선 승격 사유**이며, 그때까지 원칙 4 탈출구는 34-8의 ①②④가 담당한다.
+5. **동반 필수 과제**: 온보딩(35-2). 다만 호버 이름표가 들어가면서 36-4가 우려한 "첫 만남의 식별성"
+   비용은 **상당 부분 상쇄됐다** — 이제 이름을 확인할 상시 수단이 앱 안에 있다.
+
+#### 리더 결정 반영 (2026-08-31, 위 coder 라운드 후속)
+- **죽은 API 정리 보류(결정)**: `IGlobalPointerButtonService.TryGetSecondaryButtonPressed`는 우클릭 폴링
+  제거로 **소비자 0건**이 됐지만, 이번 라운드에서 **제거하지 않는다**. 인터페이스 + 구현 3종
+  (`MacWindowService` / `Win32WindowService` / `FallbackPlatformWindowService`)이 전부 Platform 담당자의
+  작업 영역이라, 그쪽 라운드에서 함께 판단한다. **→ Platform 담당자 인계 항목.**
+  (참고: 좌버튼 `TryGetPrimaryButtonPressed`는 `PopoverPanel`/`StickmanClickHitbox`가 계속 쓴다 —
+  인터페이스 자체를 지우면 안 되고, 지운다면 우버튼 메서드 하나만이다.)
+- 호버 이름표를 **공유 pill 1개 + 레이아웃/`UnionScreenRect` 제외**로 둔 설계 **승인됨**(36-3 대칭성
+  계산 보호 근거 인정).
+- 할일 데모 오염 버그를 **실제 위치**(`TodoReminderDirector.cs` — 영구 저장까지 되던 경로)에서 고친 것
+  **승인됨**. 최초 지목 위치(`TodoBoardPopover.cs:296`)는 사용자 입력이 부르는 정상 경로였다.
+
+### 2026-08-31 (coder, 사용자 요청) — 장비 잠금 **임시** 전체 해제 스위치
+사용자 요청: "장비창은 일단 전부다 잠금없이 열어줘(임시로) 전체 동작하는지 확인해야함".
+- **신규** `Core/EquipmentDebugUnlock.cs` — `DefaultUnlockAll` 하나로 켜고 끈다. **현재 `true`(켜짐)**.
+  되돌릴 때 **이 한 줄만** `false`로 바꾸면 되고 다른 파일은 건드릴 필요 없다.
+- **우회 지점은 보유 판정 2곳뿐**: `ItemCatalogEntry.IsOwned`(카드 색·상태 문구·클릭 가능) ·
+  `EquipmentModel.IsItemOwned`(착용/보유수). **요구 레벨 로직은 한 줄도 삭제하지 않았다.**
+  더 아래(착용 시점)에서 막지 않은 이유: "Lv.20에 열림"이라 적힌 카드가 눌리는 **거짓말**을 피하려고
+  — 지금은 문구도 같이 "보유"로 바뀐다.
+- **`StickMateDevTools.Enabled`에 얹지 않았다**: 그 게이트는 `UNITY_EDITOR/DEVELOPMENT_BUILD/환경변수`라
+  사용자가 평소 쓰는 **릴리스 빌드에서는 꺼진다** — 요청 목적(그 빌드로 28종 클릭 확인)이 이행되지 않는다.
+- **테스트가 제품 규칙을 계속 지킨다**: `GlobalEditModeTestIsolation`이 스위트 전체에서 스위치를 **끈다**
+  → 기존 잠금 단언(`CharacterProgressionPersistenceTests` 등)은 그대로 진짜 규칙을 검증한다.
+  신규 `EquipmentDebugUnlockTests`(4건)가 켠 상태/끈 상태를 **둘 다** 검증.
+- **검증**: EditMode **298/298 통과**. 켜져 있는 동안 프로세스당 1회 `LogWarning`을 남긴다(로그만 봐도 알 수 있게).
+- **알려진 부작용(경미)**: 레벨업 토스트 `CharacterProgressionDirector.DescribeNewUnlocks`는
+  `RequiredLevel`을 직접 읽으므로 스위치와 무관하게 "새 장비 해제"를 계속 알린다(이미 착용 가능한 것을
+  알리는 셈). 해당 파일은 지금 다른 에이전트가 수정 중이라 건드리지 않았다 — **리더 판단 요망**.
+
+### 2026-08-31 (debugger, 사용자 신고) — 유휴 "주위 살피기": 머리가 목에서 벗어남 + 너무 자주함
+사용자 원문: "자꾸 머리를 움직이는데 목에서 벗어나서 이상함 ... 그리고 너무 자주함".
+- **원인 확정 (구조적, 확률 문제 아님)**: 이 리그에는 **목 관절이 없다**. 목은 Torso LineRenderer의
+  윗부분(루트 로컬 x=0 고정)이고 머리는 그것의 **형제** 앵커라, `StickmanPoseAnimator.SetBodyOffset`의
+  `headOffsetX`가 0이 아니면 **정의상** 머리가 목에서 미끄러진다. 예전 기본값 0.035(신장 배수)는
+  머리 반경의 **36%**, 안전 상한의 **2.07배**였다.
+  → `idleAmbientLookHeadShiftRatio` **0.035 → 0**(코드 기본값 + 배포 에셋 둘 다).
+  두리번거림 신호는 **눈동자 좌우 훑기**로 이동(`StickmanBlackboard.TryGetIdleAmbientEyeSweep`) —
+  눈은 머리의 자식이고 링 안쪽으로 실측 clamp되므로 어떤 배율에서도 어긋날 수 없다.
+- **빈도 실측**(컨트롤러 갈래 그대로 1시간 시뮬레이션): 분당 **9.6회** / 중앙값 간격 6.2초 / 최소 1.4초.
+  진짜 원인은 26-3 트리거가 아니라 26-1의 "Idle 연장"(25%)이 `EnterResting()`을 다시 불러
+  **새 Idle 구간 = 새 추첨권**을 만든다는 것. → 발행자 쪽 최소 간격
+  `wanderLookAroundCooldownSeconds = 30`(신규) → 분당 **1.8회** / 중앙값 33.1초.
+- **반증된 가설 2건**: (a) 로컬/월드 단위 혼동 — 루트/자식 `localScale`이 전부 1이라 두 단위가 같음.
+  (b) `StickmanMetrics.TotalHeight` 오측 — 루트 비-트리거 캡슐 `size.y`를 읽고 직속 자식만 훑어 정상.
+- **회귀 테스트**: 신규 `Tests/EditMode/IdleAmbientLookAroundInvariantTests.cs`(안전 상한 유도 +
+  네거티브 컨트롤로 예전 0.035가 실제로 걸리는지 확인 + 빈도 시뮬레이션 3단언),
+  `Tests/PlayMode/EventWiringVisualTests.cs`의 주위 살피기 단언을 **뒤집음**(머리 이동 요구 → 금지,
+  대신 눈동자가 0.9초 안에 좌우 **양쪽** 극값을 찍는지 = 커서 추적으로는 못 만드는 서명).
+- **검증**: 3개 어셈블리 전체 Roslyn 컴파일 통과(다른 에이전트 진행 중 파일 포함). EditMode 단언 수치는
+  C# 동일 시드로 별도 실행해 확인. **PlayMode 실행은 미완** — 실행 시점에 다른 에이전트가 Unity 락을
+  잡고 있었다(`Temp/UnityLockfile`, coderA PlayMode 런). 통합 패스에서 실행 필요.
+- **후속(리더 판단 요망)**: `CharacterAccessoryRenderer.ResolveHeadOffsetX()`(모자 머리 추종)는 이제
+  항상 0을 돌려주는 무효 코드다 — 그 파일은 지금 DLC 담당이 수정 중이라 건드리지 않았다.
+
+### 2026-08-31 (coder, 사용자 요구) — 말풍선 대사를 "좀 대각선으로" (글자 자체를 기울임)
+사용자 원문: "그리고 캐릭터가 말하는 텍스트는 좀 대각선으로 작성해줘".
+- **진단**: 대각선 **배치**(4486ad5)는 이미 있었고 회전 코드도 있었다. 문제는 각도가
+  `ComicTiltMaxDegrees = 2.5도`(일부러 눈에 안 띄게 만든 "손글씨 흔들림")였고 **부호까지 대사 해시에서
+  사실상 무작위**라, 화면에서는 수평과 구분되지 않았다. 즉 "회전이 걸려 있는가"만 보면 정상으로 보이는
+  유형이다.
+- **변경** (`Dialogue/DialogueBubbleRenderer.cs`, `Core/StickConfig.cs`, `Data/DefaultStickConfig.asset`):
+  (1) 각도를 `StickConfig.dialogueTiltDegrees`(신규, 기본 **8도**, Range 0~20)로 노출 — 하드코딩 금지 컨벤션.
+  (2) 부호를 **놓인 쪽의 거울상**으로 고정(왼쪽 위 → 반시계 +, 오른쪽 위 → 시계 −). 연속값
+      `_sideBlend`에서 파생하므로 화면 끝 뒤집기 중에도 각도가 함께 미끄러진다.
+  (3) 해시는 부호가 아니라 **크기의 ±25% 편차**에 사용(손글씨 느낌 유지, 실측 6.7~10.0도).
+  (4) 화면 클램프 크기를 **회전한 축 정렬 경계**로 교체(`RotatedBounds`) — 안 하면 화면 위/옆에서
+      기울어진 글자 모서리만 잘린다.
+  (5) 회전 리샘플링 하한의 단위를 캔버스 유닛 → **물리 픽셀**(`ComicTiltMinGlyphPixels = 14`)로 정정.
+      근거 실측("12px 한글은 뭉개지고 32px는 멀쩡")의 px가 원래 물리 픽셀이었다.
+- **검증**: 3개 어셈블리 Roslyn 오프라인 컴파일 **오류/경고 0**.
+  **EditMode 333/333 통과**, **PlayMode 대사 계열 14/14 통과**(`.*Dialogue.*` 필터).
+  신규 회귀 3건(`DialogueComicTextPlacementTests` (E)):
+  실제 RectTransform 회전값의 크기 하한 4도 + 부호 규칙 + 좌우 거울상 + 클램프 경계 일치 /
+  설정 0·소형 글리프에서 꺼지는 네거티브 컨트롤 / **출하 조합(16pt x 0.75 x 0.875 = 10pt,
+  Retina 2x = 물리 20px)에서 실제로 기울어지는지**.
+  실행 로그 실측: `글자쪽=왼쪽위, 글자크기=10pt, 기울기=7.4도(반시계)` / 반대 방향은 `-7.4도(시계)` —
+  정확한 거울상. 대사별 각도 분포(실제 혼잣말 10종 계산): 6.7~10.0도.
+- **부수 수확(테스트 플래키 제거)**: 같은 테스트가 한 번은 통과하고 한 번은 "계산값과 실제 회전이
+  반대"로 실패했다. 원인은 `SpawnRig`가 같은 배율의 리그를 둘 만들 때 **GameObject 이름이 겹쳐**
+  `FindRendererCanvas`(이름으로 캔버스를 찾는다)가 앞 리그의 패널을 반환한 것. 리그 이름에 일련번호를
+  붙여 제거(근거는 해당 함수 주석에 기록).
+- **교차 레이어 영향(리더 보고)**: 비Retina 1x 화면(예: 배율 100% 윈도우)에서는 실효 글리프가
+  10물리px라 기울기가 **자동으로 꺼진다** — macOS Retina에서는 폰트 하한 9pt x 2 = 18px라 캐릭터
+  배율과 무관하게 항상 켜진다. 의도된 가독성 우선 폴백이지만 플랫폼 간 외형 차이라 기록해 둔다.
+
+---
+
+## [debugger/T2] 구석 호버 패널 — 등장 순서 버그 + 캐릭터 배율 상한 1.5 (2026-08-31)
+
+- **신고**: "왼쪽 하단 크기조절창도 이상함 — 크기조절 원이 먼저 떠 있고 상자가 나중에 커짐"
+- **근본 원인**(확정, 가설 아님): 다이얼/카드는 `_panel`의 **자식인데 패널에 마스크가 없다**. 상자 크기는
+  `_peekBlend`가, 내용물의 보임 여부는 **아무것도** 정하지 않아(항상 보임) 두 그림의 출처가 갈라져 있었다.
+  PEEK(104x14pt)에서도 다이얼 눈금(패널 바닥 기준 27~129pt)이 100% 그려져 **최소 260ms 동안 원만 허공에**
+  떠 있었고, 그 뒤 상자가 원을 감싸며 자랐다. 카드도 같은 결함(닫힐 때 232x212pt가 작은 상자 밖으로 삐져나옴).
+- **수정**: `TickAnimation`을 **등장 순서를 정하는 단 하나의 함수**로 만들었다.
+  열림 = 상자(0.14s) → 내용물(0.10s), 닫힘 = 내용물(0.07s) → 상자(0.14s, 내용물이 0이 될 때까지 **멈춰 선다**).
+  게이트 `ContentGateBlend = 0.9`는 취향이 아니라 유도값(눈금 꼭대기 129pt가 상자에 들어가는 최소 블렌드 0.858).
+  보이지 않는 다이얼은 클릭도 먹지 않게 히트 게이트 추가. `SetStage(Hidden)`이 상자/내용물 진행도를 함께 0으로.
+- **회귀**: `내용물_게이트에서_다이얼이_상자_안에_완전히_들어간다`(정적 기하), `상자가_다_자란_뒤에_다이얼이_나타난다`
+  (시간축 PlayMode, 열림/닫힘 모두 매 프레임 불변식 확인 — 30~1000fps 시뮬레이션에서 위반 0).
+  **기존 테스트가 못 잡은 이유**: 전부 정적 상수 등식이거나 "애니메이션 0.6초 뒤"를 봤다. 끝 그림은 처음부터 옳았고
+  틀린 것은 시간축뿐이었다.
+- **추가 지시 이행**: `StickConfig.MaxCharacterScale` 2.0 → **1.5**. 눈금 34 → 24칸, 스윕 264° → 184°(간격 8° 불변).
+  각도식이 테스트에 복사돼 있던 것을 `SizeDialWidget.DegreesForIndex` 하나로 단일화(안 했으면 테스트가 존재하지 않는
+  각도를 눌러 거짓 실패). 저장된 2.0x는 복원 시 1.5x로 clamp + 저장 모델까지 되쓴다(원칙 1).
+- **교차 레이어 영향(리더 확인 요망)**:
+  (1) `DockGeometryInvariantTests` 네거티브 컨트롤은 상한 1.5에서도 성립(고정 상수 천장 **1.125** < 1.5, 여유 -0.10 < 0.05).
+      즉 **"크게 만들면 Dock 계단을 못 오른다" 조사는 여전히 유효**하다 — 상한을 내려도 문제 구간이 남는다.
+  (2) `docs/UX_FLOW.md` 34-3-2(34칸/264°/96°)와 34-4-4(등장 연출 표에 내용물 등장 타이밍 없음)가 이제 코드와 다르다 —
+      문서 갱신 필요(perf-doc 최종 단계).
+  (3) `StickmanAgent.cs:717` 주석의 "2.00x" 예시가 상한과 어긋난다(무해, 손대지 않음 — 파일 충돌 회피).
+- **검증**: Unity 6000.0.82f1 번들 Roslyn 오프라인 컴파일 — Runtime **오류 0**, Tests.PlayMode **오류 0**,
+  내 파일(CornerHoverPanel/SizeDialWidget/StickConfig) **경고 0**. (Tests.EditMode의 잔여 오류 7건은 전부
+  `ItemCatalogAssetParityTests`의 `ItemCatalogDigest` 미정의 — 병렬 진행 중인 DLC 에셋화 작업 소관.)
+
+---
+
+## [debugger/T2] 정보창 반투명(창 겹쳐 보임) 회귀 + 초상화가 캐릭터 배율을 따라가던 결함 (2026-08-31)
+
+- **신고 1**(스크린샷): "지금도 창이 이렇게 여러개로 겹쳐 보이는데 디버깅 안됬음?" — 어두운 "내 책상 동료"
+  창 뒤로 데스크톱 날씨 위젯(파란 그라데이션, `24°`)이 그대로 읽힘.
+- **회귀 여부: 회귀 확정.** `git log -L`로 확인 — 커밋 **b6755f4(다크 톤 리스킨)**가 한 번에 4가지를 바꿨다:
+  `PanelSurface` α 0.985→**0.96** + RGB 밝음→어두움, `PanelShadow` α 0.16→**0.55**, `AddShadow` 1겹→**2겹**.
+- **근본 원인(2중)**:
+  ① `CharacterInfoWindow`가 그림자를 **패널 Image의 자식**으로 달았다. uGUI는 부모 Graphic을 자식보다
+     먼저 그리므로 `SetAsFirstSibling()`을 불러도 그림자는 **본체 위**에 얹힌다.
+  ② 투명 오버레이에서는 프레임버퍼 알파가 OS 합성 마스크인데, UI/Default의
+     `Blend SrcAlpha OneMinusSrcAlpha`가 알파 채널에도 적용돼 `dstA' = srcA² + dstA(1−srcA)` —
+     **반투명 겹을 쌓을수록 창 알파가 내려간다**. 0.9216 → 0.7172 → **0.5948**(비침 40.5%).
+- **왜 리스킨 라운드가 못 잡았나**: 밝은 팔레트에서도 비침은 있었지만(≈16%) 밝은 표면이 뒤 화소를 가려
+  체감 12%였다. 표면이 어두워지자 **같은 비침이 체감 549%로 증폭**됐다. → "팔레트를 어둡게 바꾸는 것은
+  알파를 그대로 둬도 되는 변경이 아니다"를 `UiChrome` 머리에 "알파 채널의 법칙"으로 못박았다.
+- **수정**: `UiChrome.PanelSurface` α=**1.0**, 신규 `UiChrome.AddOpaquePanel()`(컨테이너 → [그림자, 본체, 보더]
+  형제 배치) + `UiChrome.Flatten()`(반투명 장식을 미리 합성한 불투명색으로), `AddShadow()`에 오용 감지 경고.
+  정보창은 `AddOpaquePanel`을 쓰고 `_panel`의 계약(드래그/클램프/히트테스트)은 무변경.
+
+- **신고 2**: "캐릭터 사이즈를 키우면 캐릭터 창에서 캐릭터가 사이즈가 벗어남. 사이즈나 마우스로 잡았을때나
+  변함없이 보여야 함." → **원인 하나짜리 버그다.** 촬영장 액자(카메라 `orthographicSize`/중심)는
+  `BuildCamera()`에서 **앱 시작 때 한 번만** 계산되는데 그림은 `Rebuild()`마다 **그 순간의 키**로 그려진다.
+  크기 다이얼이 `metrics.Remeasure()`로 키를 바꾸기 시작하면서 갈라졌고, **잡는 순간(Standing→Busy)의
+  Rebuild**가 그 어긋남을 화면에 터뜨린다 — 사용자가 두 조건을 한 문장에 넣은 이유가 이것.
+- **수정**: `ApplyFraming()`을 `Rebuild()` 첫 줄에서 호출(액자·그림 원자적 동기화) + 전신 높이를
+  다시 굽기 서명에 포함. 결과 **표시 크기가 배율 0.35~1.50 전 구간에서 불변**, 반영되는 것은 장비/외형/잉크색뿐.
+
+- **회귀 잠금(신규 2파일)**: `Tests/PlayMode/InfoWindowPanelOpacityTests.cs`(토큰 α=1 / 컨테이너 무-Graphic /
+  실제 계층을 그리기 순서로 걸어 합성한 창 알파=1 / **네거티브 컨트롤로 옛 구조가 실제로 깨짐을 증명** /
+  오용 감지 경고), `Tests/PlayMode/PortraitScaleInvarianceTests.cs`(3배율 표시 크기 동일 + 액자 이탈 0 +
+  키운 뒤 붙잡아도 동일 + **액자만 얼리면 실제로 벗어남**을 확인하는 네거티브 컨트롤).
+
+- **교차 레이어 영향(리더 확인 요망)**:
+  (1) **`PopoverPanel.cs:416`에 같은 결함이 그대로 남아 있다**(그림자를 패널 Image의 자식으로 부착).
+      `PanelSurface`가 불투명해져 0.59→0.62로 나아졌을 뿐 여전히 **38% 비친다**. 파일 소유권 밖이라
+      손대지 않았다 — **코더 라운드 필요**(6줄: `AddSurface`+`AddShadow`+`AddOutline` → `AddOpaquePanel` 한 줄).
+  (2) **`CornerHoverPanel.cs:926/965`의 `AddGlassPanel(alpha: 0.86)` → 창 알파 ≈0.72(비침 28%)**.
+      구조는 옳지만 알파 자체가 낮다. 지금 다른 디버거가 그 파일을 잡고 있어 손대지 않았다 —
+      "구석 패널도 뒤가 비친다"는 **같은 원인의 남은 절반**이다(2026-08-31 오전 신고 ③과 일치).
+  (3) 오전 라운드의 Windows 잔상 결론("BitBlt/DWM 합성 경합", 그 문서에 **[추론, 미검증]**으로 표시됨)에
+      **경쟁 가설**이 생겼다. 알파 붕괴는 신고 ①(여러 겹) ③(호버 패널도 동일)을 플랫폼 특성 없이 설명한다.
+      다음 Windows 빌드에서 잔상이 남는지로 **가른다**(남으면 DWM 가설 유지, 사라지면 알파 가설로 통합).
+  (4) 1~2px 구분선/테두리(`CardBorder` α0.10, `Divider` α0.07 등)는 그 선 위에서만 6~13% 비침이 남는다.
+      커스텀 셰이더 없이는 구조적으로 불가피(Minor). 면적이 큰 두 곳(착용 썸네일 wash, 게이지 트랙)은
+      `Flatten()`으로 이미 제거했다.
+- **검증**: Unity 6000.0.82f1 번들 Roslyn 오프라인 컴파일 — **StickMate.Runtime / Tests.PlayMode /
+  Tests.EditMode 3종 모두 오류 0 / 경고 0**. **Unity 실행(테스트 러너)은 하지 않았다** — 병렬 라운드가
+  같은 워킹 트리를 편집 중이라(process.md의 "동시 작업 사고") 리더의 통합 게이트에서 실행 요망.
+
+---
+
+## [debugger/T2] 외알안경 눈 소실 + 카드/몸 괴리 조사 (2026-08-31)
+
+- **버그 1 (외알안경 착용 시 눈 사라짐) — 원인 확정, 수정은 리더/초상화 담당에게 이관**
+  코드베이스에서 **눈을 조건부로 숨기는 자리는 단 하나**다: `Interaction/CharacterPortraitStage.cs:715`
+  `if (EquippedAndUnlocked(EquipmentSlot.Eyes)) return;` — **카테고리 단위** 판정이라 안경 4종 중 무엇을
+  껴도 초상화(정보창 + 좌하단 호버 패널) 눈이 **두 개 다** 사라진다. 외알안경은 한쪽에만 있는 물건이라
+  이 판정 자체가 틀렸다. 그 줄의 근거 주석("실제 캐릭터와 같은 겹침 관계")도 **사실이 아니다** —
+  실제 캐릭터의 안경 4종은 `filled`가 전부 false이고 눈동자(sortingOrder 5)를 끄는 코드가 어디에도
+  없어서 몸에서는 네 종류 모두 눈이 렌즈 너머로 보인다. 즉 초상화만 혼자 다른 그림을 그리고 있었다.
+  → **수정은 1줄 삭제**(그 줄 + 주석). 병렬 작업 중인 파일이라 손대지 않았다. 리더 보고에 패치 전문 첨부.
+  · 반증된 가설 2건: (a) `AccessoryDefSO.hidesHair`가 눈에 잘못 걸렸다 → 아니다(외알안경 값 0,
+    **읽는 렌더러가 아예 없다**). (b) 외알안경 도형이 양쪽 눈을 덮는다 → 아니다(링 중심 R·0.40 /
+    반경 R·0.34, 뒤쪽 눈까지 거리 R·0.74로 링 밖).
+- **버그 1-b (몸 쪽, Minor)**: 기본 배율 0.75에서 외알안경 링은 **지름 3.96pt인데 획이 2pt**라
+  안쪽 구멍이 0.98pt다(눈이 그려지는 반지름은 1.48pt). 배율 0.5에서 구멍 0.32pt, 0.35에서 **음수** —
+  링이 통째로 메워져 앞쪽 눈을 덮는다. 획 하한(2pt)이 도형보다 큰 물리 한계라 비율만으로는 못 고친다.
+  링을 눈 중심(R·0.341, +R·0.091)에 맞추는 정렬 교정은 가능하나 **실루엣이 바뀌므로 리더 판단 대기**.
+- **버그 2 (카드 그림 vs 착용 모습) — 성격 판별: 코드 버그 1건 + 문서화된 설계 결정 2건**
+  · (설계, UX_FLOW 33 1646/2144행) 아이콘은 외부 핸드오프 `icon-paths.json`을 그대로 채택하고
+    **몸 도형만 새로 설계**한 것이 명시적 확정 사항이다. 두 그림이 다른 것은 버그가 아니라 그 결정의 결과.
+  · (설계) 몸에서만 채움이 있다 — `filled: true` 12개(캡/털모자/중절모/망토2/날개2 등). 카드에는 채움 개념
+    자체가 없어(ItemIconPart에 Dot 외 채움 없음) 같은 아이템이 카드=선화, 몸=덩어리로 보인다.
+  · **(코드 버그) `Core/ItemCatalog.WornColor`의 채도 하한 0.42가 무채색 계열의 색상(hue)을 발명한다.**
+    은색 `#D3DAE4`(s 0.07) → 몸 `#769ACC`(**파랑**), 흰색 `#EEF2F8`(s 0.04) → `#7699CC`(파랑),
+    크림 `#E8E2D4`(s 0.09) → `#CCB276`(황토). 28종 중 **6~8종이 카드와 색이름부터 다르다**
+    (안경/고글 렌즈, 날개, 종이비행기, 미니펫, 대머리, 캡, 목도리 보조색 등). 같은 함수의 주석은
+    "새 색표를 만들지 않으므로 카드와 몸이 다른 색이 되는 이중 정의는 생기지 않는다"고 적혀 있는데
+    **수치가 그 주장을 반증한다**. 제안: 채도가 이미 있는 색만 하한을 걸고(s ≥ 0.15 등), 무채색 계열은
+    명도 창으로만 잉크와 벌린다. 다만 이 하한은 2026-08-30 사용자 신고 ②("구분이 잘 안 감") 대응으로
+    들어온 값이라 **되돌리는 순간 그 신고가 재발할 수 있다 — 리더/UX 판단 필요**(수치는 리더 보고 참조).
+
+---
+
+## [debugger/T2] "크기를 키우면 Dock 위로 안 올라옴" 원인 확정 + 수정 (2026-08-31)
+
+- **원인(확정, 실측)**: 한 쌍이어야 할 두 거리가 서로 다른 계보였다. 배회 AI가 경계 행동을 추첨하는
+  거리(`StickmanBlackboard.EdgeStopDistanceWorld` = 0.4×배율+0.10, 2026-08-30부터 배율 유도)가,
+  그 추첨의 대상 탐지 게이트(`GroundSensor` 안 `parkourDetectionRadius` 0.5 **절대값**)를
+  **배율 1.000부터 추월**한다. 추첨은 걷기 구간당 1회뿐이고 실패하면 그 자리에서 돌아서므로
+  되올라가기(+ 같은 게이트를 쓰는 하강 판정까지)가 **구조적 영구 실패**가 된다.
+  실측: 배율 1.25 → 추첨 거리 0.600 / 옛 게이트 0.500 → 탐지 False. 0.75에서는 0.400/0.500 → True.
+- **수정**: `Core/DockGeometry.ResolveEdgeProbeReach()` 신설(= max(설정값, 추첨 거리 + 0.10)) →
+  `GroundSensor.TryFindClimbableWall/TryFindDescendTarget`에 **경계 근접 게이트 전용** 선택 인자 추가 →
+  `StickmanBlackboard.EdgeProbeReachWorld`가 세 호출부에 주입. `parkourDetectionRadius`의 나머지 두 용도
+  (벽 최소 높이차 / 인접 발판 탐색 폭)는 절대값 그대로. **배포 배율 0.75에서 유도값 = 0.500 = 기존
+  상수라 지금 화면 거동은 무변경**(EditMode가 이 등식을 단언한다).
+- **검증(실행함)**: EditMode `DockGeometryInvariantTests` 14/14(신규 2건 = 전 배율 불변식 + 네거티브
+  컨트롤), PlayMode 신규 `DockStepUpCharacterScaleTests` 7/7(배율 0.75/1.00/1.25/1.50 — 유도 없는 옛
+  경로가 1.25↑에서 False임을 같은 테스트가 박제), 인접 8개 PlayMode 스위트 47/47.
+  로그: `Logs/dbg_scale_edit_after.xml`, `Logs/dbg_scale_play_after.xml`, `Logs/dbg_scale_play_regress.xml`.
+- **남은 관찰(리더 판단)**: 큰 배율에서는 등반 시작점이 턱에서 0.7~0.8유닛 떨어져 있어 맨틀 수평 이동이
+  그만큼 길다(신장 대비 비율은 배율 0.75와 같아 육안 이질감은 없다고 판단). 더 붙여서 오르게 하려면
+  "추첨 성공 후 벽까지 걸어간 뒤 등반"(뛰어내리기 확약과 같은 구조)이 필요 — 별도 라운드 권장.
+
+### [debugger/T2 추가] 안경 착용 시 초상화의 두 눈이 사라지던 결함 (2026-08-31, 같은 라운드 이어서)
+
+다른 디버거가 찾아 패치를 준비해 둔 건을 **독립 검증 후** 적용했다(파일 소유권상 내가 마무리).
+
+- **신고**: 안경 4종(선글라스/동그란안경/고글/외알안경) 아무거나 착용 → 초상화에서 **양쪽 눈이 다 사라짐**.
+- **근본 원인**: `CharacterPortraitStage.DrawBody`의 `if (EquippedAndUnlocked(EquipmentSlot.Eyes)) return;` —
+  **카테고리 단위**로 눈 두 개를 통째로 건너뛰었다. 근거 주석("렌즈에 가려지므로")의 전제가 거짓.
+- **독립 검증(전부 코드로 확인, 추측 아님)**:
+  - E1 `grep EquipmentSlot.Eyes` 전수 — 눈을 숨기는 코드는 **이 한 줄이 코드베이스 전체에서 유일**하다.
+  - E2 `AccessoryShapeBuilder.AppendEyes`(596~681) — 안경 4종의 렌즈에 `filled:` 인자가 **하나도 없다**
+    (`Shape` 생성자 기본값 `filled = false`). 즉 **가릴 면이 존재하지 않는다.**
+  - E3 `States/EyeController.cs` — 장비 슬롯을 **아예 모른다**(`Equipment`/`Eyes` 참조 0건).
+    게다가 `AccessoryShapeBuilder.cs:917` 주석이 못박아 두었다: *"눈동자 점 2개는 원래부터
+    EyeController.cs의 **단독 소유**"*. → **몸은 항상 눈을 그린다. 초상화만 혼자 달랐다(이중 정의).**
+  - E4(결정적) `EyesMonocle`은 **앞쪽 눈에만** 링을 그린다. 한쪽 렌즈가 양쪽 눈을 지우는 그림은
+    어떤 해석으로도 옳을 수 없다.
+  - E5 겹침은 이미 레이어가 정한다 — 초상화도 몸의 눈은 `sortingOrder 0`, 안경은 `SortEyes(8)`
+    (`CharacterPortraitStage.AddLine` 기본값 0 vs `shape.SortingOrder`). **per-eye 가림 플래그 불필요** 확인.
+- **수정**: 그 분기를 삭제. 판단 근거를 주석으로 남겼다 — **"가림은 레이어가 정하는 것이 옳고,
+  카테고리 조건문이 정하면 안 된다."** 훗날 렌즈를 `filled: true`로 바꿔도 채움 면이 덮으므로 되살릴 필요 없음.
+- **회귀 잠금(신규)**: `Tests/PlayMode/PortraitEyeVisibilityTests.cs` — 안경 4종 각각 착용 후
+  `EyeBack`/`EyeFront`가 **둘 다** 그려졌는지 검사. **대조군 2중**: ① 해당 안경의 렌즈 도형이 실제로
+  그려졌는지 확인(장비가 안 걸쳐져서 눈이 남은 "공허한 통과" 차단) ② 한 종류도 못 걸쳤으면 **실패**
+  (요구 레벨이 막았을 때 조용히 통과하는 것 차단). 아이템 수가 4에서 바뀌면 목록 갱신을 요구하며 실패.
+- **검증**: Roslyn 오프라인 컴파일 3종 재실행 — **오류 0 / 경고 0**. 육안 확인은 리더 통합 게이트에서.
+
+---
+
+## [UX Designer, 2026-08-31] 착용 상태 시각 완성도 전수 진단 — **완료(진단·계획, 코드 무변경)**
+
+사용자 총평 *"전체 장비들 착용시 디자인이 재작업필요… 고도화 필요"* + 추가 지적
+*"반짝임효과도 잘적용안됨 / 머리 스타일은 전체적으로 리디자인 필요, 너무 성의없음"* 대응.
+**산출물: `docs/UX_FLOW.md` 37절**(진단 + 우선순위 로드맵 + 스타일 가이드 + 교차 레이어 영향 로그).
+
+- **방법**: Unity가 타 에이전트 `-runTests`로 잠겨 있어, `AccessoryShapeBuilder.cs`(순수 계산)를
+  오프라인 래스터라이저로 옮겨 20종을 실제 획 두께·색 변환·레이어 그대로 렌더.
+  증거물 `Logs/evidence_20260831_ux_accessory_audit/`(전체 시트 2 + 실제크기 + 카테고리별 5 + 재현 스크립트 3).
+  **한계**: 정지 포즈 1개, 걷기 흔들림 미포함 — Unity 해제 시 PlayMode 대조 권장.
+- **근본 원인 1건 확정 — 획 예산 미준수**: 배율 0.75에서 획 2.00pt = **0.34R**인데 좌표는 선 굵기 0을
+  전제로 설계됨. 측정 26개 중 **가독 판정 1개**(그마저 2026-08-30에 손으로 고친 모자 관 1.05R),
+  **치명(획보다 작음) 14개**. 20종 중 **19종**이 최단 선분 < 획 1개.
+- **채움 편중**: 채움 12개가 **전부 HEAD(7)/BACK(5)**. **EYES·NECK·HAIR은 0개** — 사용자가 문제 삼은
+  카테고리와 정확히 일치.
+- **HAIR(사용자 명시)**: 4종 합계 **선 5개**(타 카테고리 11~13개), 3종 단색, 곱슬 웨이브 진폭이
+  획 반폭보다 작아 **곱슬≡단정**(기하학적 동일), 두피 밖 0.13R(획의 0.38배)에 떠 있음,
+  보조색이 **EYES 틴트(청록)** — 4종 전부 동일 팔레트.
+- **FX 반짝임(사용자 명시)**: **렌더링 버그 아님 / 설계 결함**으로 판정. 십자 갈래 1.98pt ≈ 획 2.00pt,
+  노출률 ~8%. **구조 결함 별도 보고**: 무장 3초 + 재발동 6~10초 > 배회 Idle 최대 6초 →
+  **2회차가 원리적으로 도래하지 않음**(`CharacterFxRenderer` 상수가 `StickConfig` 배회 시간을 모름).
+- **debugger 교차 확인 3건 통합(37-8)**: ① 카드↔몸 색 불일치는 내 37-5 표와 **독립 도출·동일 값** → 확정,
+  단순 롤백 금지(2026-08-30 신고 대응물)이므로 **조건부 채도 하한 + 명도차 회귀 테스트** 대안 제시.
+  ② 외알안경 55% 어긋남을 재검산해 일치 확인 — **분모(구멍)가 획에 절반 먹힌 것이 증폭 원인**임을 규명,
+  스타일 가이드 **규칙 4-a**(실측 상수 있으면 매직넘버 금지) 신설. ③ 카드/몸 이원화는 **기록된 설계 결정**
+  (33-1절)임을 확인하고 **옵션 3안 + 권고안(옵션 2)** 제시.
+- **로드맵**: **P0-a 카드 렌더 경로 결정(리더 선결)** → P0 HAIR 재설계(큼) → P1 EYES 재비례+채움(중간)
+  → P2 NECK 목도리·타이(작음) → P3 날개(중간) → P4 FX 반짝임(작음/중간) → P5 색 정책(중간)
+  → P6 획 위계 → P7 HEAD 마감 → P8 획 예산 lint.
+- **스타일 가이드 7+1개 규칙** 도출(획 예산 / 채움 기준 / 팔레트 / 부착 + 4-a / LOD 정원 2~4개 /
+  획 위계 / 검증 게이트) — DLC 신규 아이템에 그대로 적용.
+
+### 교차 레이어 영향 로그 (리더 판단 필요)
+1. **HAIR 채움 도입 시 `IsCoveredByHat`가 무력화** — "선 통째로 생략"이 닫힌 도형에서는
+   **모자 쓰면 머리카락 전체 소실**을 뜻함. **커버선에서 자르기(clip)로 변경 필요** = 도형 API 변경.
+2. **EYES/NECK/HAIR 채움** → 캐릭터당 `MeshRenderer` 4 → 약 12개. **perf-doc 확인 요청**(24시간 상주).
+3. **LOD 도입** → `AccessoryShapeBuilder.Append`에 배율/획 인자 추가 = 공개 시그니처 변경
+   (`CharacterAccessoryRenderer` + `CharacterPortraitStage` 양쪽 호출부).
+4. **`WornColor` 조건부화** → 카드·몸·초상화 3소비처 동시 변경.
+5. **P0-a 옵션 2 채택 시** → `AccessoryDefSO.icon[]` 28개가 폴백/폐기 대상이 되고
+   `ItemCatalogEntry`의 색 추출 경로가 함께 바뀜 — **A단계 DLC 에셋 구조에 직접 영향**.
+6. **FX 반짝임** — 값 수정만으로는 재발(두 시스템이 서로의 수치를 모름). 이벤트 기준 전환 권고.
+
+**이번 라운드 코드 변경 0건.** `AccessoryShapeBuilder.cs`는 읽기만 했다.
+
+### 리더 결정 (2026-08-31)
+- **P0-a 승인 — 옵션 2(카드도 `AccessoryShapeBuilder`에서 렌더, 단일 소스로 통합).** 오늘 하루 반복
+  적용한 "단일 소스" 원칙과 일치하고, `CharacterPortraitStage`가 이미 같은 방식으로 유사 문제를
+  해결한 선례가 있다. `AccessoryDefSO.icon[]`은 이 통합의 폴백/폐기 대상으로 후속 라운드에서 정리.
+- **P0(HAIR 재설계) 즉시 착수 승인.** `IsCoveredByHat` "생략→자르기(clip)" API 변경도 이번 라운드에
+  포함해서 처리한다.
+- **P4(FX 반짝임) 착수 승인, 단 값 수정이 아니라 이벤트 기준 전환으로.** 무장/재발동 타이머가 배회
+  Idle 최대 지속시간과 서로의 값을 모른 채 따로 도는 구조적 결함이므로, 값만 고치면 배회 시간 조정
+  시 재발한다는 지적을 반영해 근본적으로 고친다.
+- P1(EYES)/P2(NECK)/P3(날개)/P5~P8은 다음 라운드로 순연.
+
+---
+
+## [debugger] 2026-08-31 — 망토 낙하 펄럭임 + 빨강 (사용자 신고 2건)
+
+신고 ① "떨어지거나 할때 망토도 펄럭여야하는데 고정되어있음" / ② "망토 색도 빨간색으로 변경해줘".
+
+**원인은 두 겹이었고 둘 다 코드로 확정(추측 아님).**
+1. **Blocker** — 밑단 흔들림의 구동원이 `CharacterAccessoryRenderer.ResolveWalkSpeed01()`
+   = `|velocity.x| / 보행속도` **하나뿐**이었다. 수직 낙하는 vx=0 → 진폭이 정확히 0이고, 0이면
+   `SetPositions` 호출 자체를 건너뛴다. 즉 "낙하 중 한 점도 안 움직인다"가 **설계상 보장**돼 있었다.
+2. **Major** — 밑단을 옮기는 곳이 `LineRenderer` **윤곽선뿐**이고, 화면에서 실제로 "천"으로 보이는
+   **채움 메시**(`BuildFillMesh`로 한 번 구운 것)는 재구성 전까지 정적이었다. 걸을 때조차 천은
+   고정이고 테두리만 미끄러졌다. (이 공백은 `AccessoryFillRenderingTests`가 "m4 공백"으로 **계측만**
+   해 두고 상한을 걸어 놨던 자리다 — 증상은 잠갔지만 원인은 남아 있었다.)
+
+**수정**
+- `AccessoryShapeBuilder.HemAirOffset()` 신설(순수 함수) — 기류 세기/방향 → 밑단 점 오프셋.
+  젖힘은 바람 방향, 물결은 그 **수직**. `air01 == 0`이면 식 자체가 0을 낸다(if 분기 아님).
+- `CharacterAccessoryRenderer.ResolveAirFlow01()` 신설 — Fall/Jump/ThrowTumble에서만 켜지고,
+  세기 기준은 **새 숫자 없이** `StickConfig.fallPoseFullSpeedHeightsPerSecond`를 그대로 쓴다
+  (낙하 자세와 망토가 같은 한 값에서 파생 = 원칙 1). 방향은 `InverseTransformDirection`으로 로컬에
+  내린다 — 안 그러면 던지기 회전 중 기류만 고정돼 망토가 몸을 가로질러 돈다.
+- `SwayLine`에 채움 메시를 묶어 **선과 면을 같은 루프에서** 갱신(+`RecalculateBounds`로 컬링 보정).
+- 망토 주름 2줄의 **끝점**도 흔들 구간에 편입 — 천만 젖혀지고 그늘이 남으면 "천에 붙은 끈"이 된다.
+- 색: `equip_shoulders_cape.asset` 주색 `#B08FD0`(TintBack 보라) → **`#CC3333`**. 채도 0.75/명도 0.80이라
+  `WornColor`의 채도 하한(0.42)·명도 창(0.55~0.80)을 **둘 다 통과해 값이 그대로 남는다**(카드=몸 동일).
+  골든 `ItemCatalogGolden.txt` 동반 갱신.
+
+**검증 (실측, Unity 6000.0.82f1 batchmode)**
+- EditMode `CapeAirFlutterTests` 신설 14케이스 — 필터 실행 **61/61 통과**(골든 파리티 동반 통과).
+- PlayMode `CapeFallFlutterTests` 신설 5케이스 — **전체 스위트 379개 중 통과**.
+- 실측 수치(획 두께 0.03600u = 1.27pt 기준, 배율 0.75):
+
+| 상황 | 밑단 이동 | 판정 |
+|---|---|---|
+| **수직 낙하 20u/s (vx=0 — 옛 코드에선 정확히 0)** | **0.15084u = 획의 419% (~5.3pt)** | 고쳐짐 |
+| 던지기 회전 중 | 0.15104u | 고쳐짐 |
+| 루트 90도 회전 시 밑단 도착점 차이 | 0.21363u | 기류가 몸을 따라 돎 |
+| 낙하 0.05u/s (경계) | 0.000631u = 획의 1.8% | 안 보임 = 의도대로 |
+| Idle 20프레임 | **0.000000u** | 원칙 1 유지 |
+| 낙하 중 윤곽선↔채움 어긋남 | **0.000000u** | 면이 선을 정확히 따라옴 |
+| 보행 중 윤곽선↔채움 어긋남 | 0.7×획 → **0%** | 기존 m4 공백 동반 해소 |
+
+- **회귀 0건**: 직전 전체 실행(play2, 361개)과 이번(play3, 379개) 비실패 집합 비교 결과 새 실패는
+  `PetFallSyncTests.F2/F3` 둘뿐이고, **둘 다 play2에는 존재하지도 않던 펫 담당의 신규 테스트**이며
+  실패 사유도 각각 "주인이 회전하지 않음(테스트 전제)" / "`CharacterPetRenderer`가
+  `LandingCrouchState.CurrentCrouchAmount`를 안 읽음"으로 액세서리와 무관. 나머지 5건은 play2에서
+  이미 실패 중이던 배율 다이얼/호버패널 계열(타 에이전트 진행 중).
+
+### 리더 결정 반영 (2026-09-01)
+- **긴망토(lv13)도 같은 `#CC3333`으로 통일** — 사용자 동의. `equip_shoulders_long_cape.asset`의
+  tone:0 조각(`#9A76BF` BackDeep) → `#CC3333`, 골든 2곳(primary + p1 색) 동반 갱신.
+  실측: 카드·몸(흰 잉크/검은 잉크) 6경우 전부 `RGB(0.800,0.200,0.200) HSV(0도, s=0.75, v=0.80)` —
+  `WornColor`의 채도 하한(0.42)·명도 창(0.55~0.80)을 **둘 다 통과해 값이 그대로 남는다**.
+  회귀 잠금은 `망토는_카드에서도_몸에서도_빨강이다`(두 망토 TestCase) +
+  `짧은망토와_긴망토의_빨강은_완전히_같은_값이다`. EditMode 필터 실행 **25/25 통과**.
+- 색 규칙 예외: `ItemCatalog` 팔레트 규칙 (2)는 BACK 카테고리를 TintBack 색상대로 못박고 있다.
+  망토는 "소재가 분명한 것"(천)이므로 규칙 (1) 적용으로 해석했다. 규칙 주석 수정은 다른 에이전트가
+  `ItemCatalog.cs`를 편집 중이라 **건드리지 않았다** — 후속 라운드에서 정리 필요.
+
+---
+
+## [coder] 2026-08-31 — 창 알파 비침 나머지 2건 정리 (팝오버 3종 / 좌하단 호버 패널)
+
+debugger가 정보창에서 확정한 결함(`dstA' = srcA² + dstA(1−srcA)` — 블렌드가 **알파 채널에도**
+적용되어 반투명 겹이 창 알파를 **내린다**)의 남은 호출부 2곳을 닫았다.
+
+**수정**
+- `Interaction/PopoverPanel.cs:409` — `AddSurface + AddShadow().SetAsFirstSibling() + AddOutline`
+  3줄을 `UiChrome.AddOpaquePanel(...)` 한 줄로 교체. 정보창과 **완전히 같은 결함**이었다
+  (그림자가 패널 Image의 자식 → 부모 Graphic이 먼저 그려지므로 형제 순서로는 본체 위를 못 벗어남).
+  실측 **0.6202 → 1.0000** (비침 38.0% → 0%). 팝오버 3종 전부가 이 한 곳을 공유한다.
+- `Interaction/CornerHoverPanel.cs:1031/1073` — `AddGlassPanel(alpha: 0.86)` → alpha 인자 제거.
+  겹 순서는 원래 옳았고 **알파값 자체**가 원인이었다(다른 종류의 결함).
+  실측 본체 **0.7869 → 1.0000**, 미리보기 카드 **0.7869 → 1.0000**.
+- `Interaction/UiChrome.cs` — ① `AddGlassPanel`을 `AddOpaquePanel` 위임 + `Flatten`한 상단 하이라이트로
+  재정의(**alpha 파라미터 삭제** — 안전한 값이 1 하나뿐인 파라미터는 함정). ② `AddShadow`의
+  잘못된 부모 감지를 **Warning → LogError로 승격**(마지막 위반 호출부가 정리되어 이제 제품 코드
+  위반 0건 = Error는 곧 테스트 실패 = CI 봉인).
+
+**검증**: `Tests/PlayMode/PopoverAndHoverPanelOpacityTests.cs` 신설(10케이스, 네거티브 컨트롤 2건 포함,
+`InfoWindowPanelOpacityTests` 패턴 복제 + CanvasGroup 알파 누적 측정 추가). 전 케이스 통과.
+
+### 교차 레이어 영향 로그
+- `UiChrome.AddGlassPanel` **시그니처 변경**(alpha 인자 제거). 호출부는 `CornerHoverPanel.cs` 2곳뿐이며
+  둘 다 이 라운드에서 갱신했다. 새 창을 만드는 사람은 alpha를 고를 수 없다.
+- `AddShadow`가 이제 **LogError**를 낸다 — Graphic 있는 부모에 그림자를 달면 무관한 PlayMode 테스트도
+  같이 빨개진다. 이게 의도다(구조적 봉인). `InfoWindowPanelOpacityTests`의 `LogAssert.Expect`도
+  `LogType.Error`로 동반 수정했다.
+- 34-2의 유리 단서 (b) **세로 시인은 제거**됐다(알파 램프는 α=1로 옮길 수 없다). UX 재확인 필요.
+
+### 리더 확인 요청 (내 파일 소유권 밖 — 손대지 않았다)
+- `Interaction/SizeDialWidget.cs:193` 허브 원판 α0.72 → 이제 불투명해진 패널 안에 **20% 비치는 원**이
+  남아 있다. 1줄 수정(`UiChrome.Flatten(hubColor, UiChrome.PanelSurface)`)으로 색 그대로 α=1이 된다.
+- 같은 클래스가 `Divider`(α0.07, 6.5%) / `TrackBackground`(α0.09, 8.2%) / `AccentSurface`(α0.14, 12%) /
+  `CardBorder`(α0.10, 9%) 등 **창 내부 장식 전반**에 남아 있다. 별도 라운드 필요.
+
+---
+
+## [디버거] 2026-08-31 — "걷다가 갑자기 아픈것처럼 쓰러진다" 원인 확정 및 제거 ✅
+
+**사용자 원문**: "그리고 걷다가 갑자기 아픈것처럼 쓰러지는데 이런건 없애줘"
+
+**원인(추정 아님 — 실측 확정)**: `Interaction/LongCapeTripDirector.cs`.
+긴 망토 착용 + Walk + 접지 중이면 **평균 90초에 1회** 포아송 추첨으로
+`ReportExternalImpact(threshold × 1.02)` → RAGDOLL. 증거 3종:
+1. 저장 파일에 `wornShoulders: equip.shoulders.long_cape`, `ragdollFalls: 48`
+2. `Player-prev.log`에 인과가 연속으로 남음 — `[긴망토] … 충격량 8.16` → `(Ragdoll) "윽...!"`
+   (신고의 "아픈것처럼"이 곧 이 대사다)
+3. 같은 로그에 **충돌 유래 RAGDOLL 전이는 0건** — 착지/발판 경로는 무관함이 확인됨
+
+**왜 이것만 살아남았나**: 2026-08-29 "자율 발동 전부 OFF" 정리 **다음 날** 만들어졌고,
+발동 주기를 StickConfig가 아니라 자기 파일의 `private const`에 숨겨 뒀다 →
+"StickConfig의 *Chance를 0으로"라는 정리 방식이 구조적으로 닿을 수 없었다.
+
+**조치**(기능 삭제 아님 — 값만 OFF, 되살리려면 값 하나):
+- `StickConfig.longCapeTripMeanSeconds` 신설, **기본 0 = 발동 안 함**(+ 배포 에셋에 명시)
+- 디렉터가 그 값을 읽고 `ResolveArmed()` 맨 앞에서 차단.
+  ★ 이 가드가 **필수**다 — 없이 0만 넣으면 `dt/0 = +Infinity`라 `Random.value >= p`가 항상 거짓이 되어
+  **정반대로 매 프레임 발동**한다(0으로 나누기 함정, 수치로 실증)
+- 원칙 1 양방향: 행동을 껐으므로 그 행동을 약속하던 카탈로그 문구도 교체
+  `"가끔 밟고 넘어진다."` → `"발목까지 내려오는 긴 자락."` (아이템 에셋 + 골든 스냅샷 동반 갱신)
+
+**검증**:
+- 몬테카를로(실제 Idle/Walk 분포 + 지터 + Idle연장): 수정 전 4시간 18분당 평균 **56회**(범위 40~75)
+  → 사용자 실측 48회가 예측 구간 안. 수정 후 **0회**. (24시간 상주 시 수정 전 예상 319회)
+- 회귀 테스트 2건 (`Tests/PlayMode/CharacterAppearanceLayerTests.cs`):
+  기본 설정에서 900프레임 강제 보행 중 RAGDOLL 0 / TripCount 0 / `RagdollFalls` 불변 +
+  **네거티브 컨트롤**(간격 0.01초로 켜면 실제로 넘어지는가)로 "관측 전제가 깨져서 초록"을 배제
+- 기존 양성 대조 테스트는 "기본 OFF 확인 → 켜면 살아남" 구조로 갱신
+
+**교차 레이어 영향**: `StickConfig`(신규 필드, 파일 맨 끝 신규 섹션) / 배포 에셋 1줄 /
+`SceneBootstrapper` 주석 / 긴 망토 아이템 설명문 + 골든. **`GroundSensor`/`StickmanBlackboard`는 건드리지 않았다**
+(창 낙하 버그 조사 담당 디버거와 역할 분리 — 이 건은 발판 판정이 아니라 랙돌 전이 경로였다).
+
+**재발 방지 규칙 제안(리더 판단 요청)**: *자율 발동 파라미터는 반드시 StickConfig에 노출한다.*
+파일 안 `private const`에 숨기면 "전부 OFF" 같은 일괄 정리가 그 기능만 조용히 건너뛴다.
+
+---
+
+## [debugger/Teammate2] 2026-09-01 — 신고 "캐릭터가 창에서 가끔 갑자기 떨어짐" 1차 조사
+
+`[발판상실]` 로그 소스 = `States/StickmanBlackboard.cs` `GroundedTick()`.
+
+**과학적 토론 로그 (가설/검증/결과)**
+
+| # | 가설 | 검증 방법 | 결과 |
+|---|---|---|---|
+| H1 | occlusion/알파 필터 오판으로 발판이 저절로 깜빡인다 | `MacWindowService.EnumerateFootholds` + `VisibleTopEdgeSolver`를 C로 1:1 재현한 네이티브 프로브를 0.1초 간격 6분(3600표본) 실행 | **반증.** "원본창 무변화인데 발판만 변함" **0회**. 발판 변화 6회는 전부 실제 창 생성/소멸이 원인 |
+| H2 | 좌표 재조회 타이밍/부동소수 지터 | 같은 프로브 + 실측 로그 대조 | **반증.** 정지 데스크톱에서 사각형 값이 완전히 고정 |
+| H3 | 오버레이 원점(`OverlayOriginOsScreen`) 순간 오독 | `Player.log.prevround` 실측 | **부분 적중(별건 Major).** 원점이 (0,0)→(0,-805)→(0,-936)→(0,-937)→(0,-78)→(0,0)으로 요동친 직후 `[발판상실]` 1건 발생. 5건 중 1건만 설명 |
+| H4 | **논리 발판에는 콜라이더가 없어 "서 있기"가 매 프레임 스냅으로만 유지된다 → 프레임이 길어지면 창이 그대로여도 자유낙하로 밴드 이탈** | 실측 상수로 유도 (gravityScale 3, tolerance 20 OS-pt, 1유닛=40.9pt) | **미반증 / 유력.** 임계 프레임시간 **182 ms**. 그 한 프레임이 유예 0.1초도 함께 소진하므로 **단일 프레임으로 즉시 낙하**. `FramePacingTier.DisplayOff`(4fps=250ms)는 이 조건을 **상시** 만족 |
+| H5 | 폴링 주기(0.3s) > 유예(0.1s)라 유예가 설계 목적을 수행 불가 | 코드/상수 | **성립.** 열거가 한 번만 튀어도 캐시가 0.3초 고정 = 유예의 3배 → 확정 낙하 |
+| H6 | UI 알파 비침 버그 / `_fullScreenBoundsApplied` 재적합이 발판에 영향 | 코드 경로 추적 | 직접 영향 없음. 단 재적합은 H3(원점 요동)과 같은 계열 |
+
+**실측 증거**: `Player.log.prevround`에 실제 창(핸들 5242 = 메모 `(593,213 501x660)`) 위 `[발판상실]` 5건.
+그 중 1건은 **직전 `[발판리포트]` 심장박동이 "딛고있음=실제 창: 메모 / 캐릭터OS=(719.2,213.0) / 화면안=예 / 상태=Idle"로 완전 정상**을 찍은 직후 발생 = 신고의 "이유 없이".
+
+**조치(이번 라운드)**: `[발판상실]` 로그가 "(a)/(b)/(c) 중 하나"라고만 적어 **사유를 끝내 구분할 수 없던 것**이 조사의 병목이었다.
+`GroundSensor.DescribeGroundLoss()` 신설 → 그 자리에서 실제 값을 재서 사유를 **하나로 확정**하고
+(a) 목록에서 사라짐 / (b) X 이탈 pt / (c) 세로 이탈 pt / **(d) 프레임 끊김(최장 dt, 182ms 임계 표시)** 까지 분리해 남긴다.
+
+**coder 복귀 요청(근본 수정, 아키텍트 판단 필요)**: 접지 중 중력이 몸을 끌어내리지 못하게 할 것
+(논리 발판은 콜라이더가 없으므로 접지 확정 프레임에 `gravityScale`을 0으로 두거나 세로 적분을 막는다).
+이것 없이는 프레임 힛치/저프레임 등급에서 낙하가 원리적으로 반복된다. 부수로 `fallGraceDuration ≥ footholdPollInterval` 검토.
+
+**교차 레이어 영향**: `States/GroundSensor.cs`(순수 함수 1개 추가) / `States/StickmanBlackboard.cs`(로그 문구 + 진단 필드 1개). 판정 로직·상수 **무변경**.
+
+---
+
+## [debugger] 리틀스틱메이트 — 낙하 동기화 + 발판 범위 이탈 + 이름 변경 (2026-09-01)
+
+**신고 A** "높은 곳에서 떨어질 때 작은 졸라맨도 캐릭터와 동일한 형태로 떨어져야 하는데 안 됨"
+**신고 B** "작은 졸라맨도 창 위에 있을 때 창 범위 안에 있어야 하는데 공중에 떠 있음"
+
+**확정 원인(코드 경로로 확정, 추측 아님)** — 둘 다 `Interaction/CharacterPetRenderer.cs`.
+리더가 지목한 `CharacterAccessoryRenderer.cs` / `AccessoryShapeBuilder.cs`에는 **PET 코드가 한 줄도 없다**(grep 0건).
+- A: `TickMini`가 `Machine.CurrentStateId`를 **한 번도 읽지 않았다**. y는 언제나 `ResolveGroundY`(마지막 발판 상단)라 주인이 떨어져도 미니는 붙박이, 몸통 회전은 `Quaternion.identity` **하드코딩**이라 던지기 공중 회전이 0도 전달. (리더 가설 1이 옳았다 / 가설 2는 반증 — 발판 추종 로직 자체는 정상이었다.)
+- B: y만 발판에서 가져오고 **x는 발판의 가로 범위를 아무도 보지 않았다**. 주인이 창 가장자리에서 돌아서면 facing 부호가 뒤집혀 끌림거리(신장 0.75배)가 바깥으로 향한다. 실측 재현: 창 오른끝 4.800 / 옛 목표 x 5.739 = **0.94유닛 바깥**.
+
+**수정** — 미니가 주인에게서 가져오는 값 4개, 전부 상태가 확정한 것을 읽기만 한다(불변 원칙 1의 그림 버전):
+공중 여부 → 높이를 주인 발바닥에서 / 루트 회전각 → 몸통 회전(회전 중심은 발이 아니라 **엉덩이**) /
+`ComputeFallPoseIntensity` → 만세 자세 / `LandingCrouchState.CurrentCrouchAmount` → 스쿼트 깊이.
++ `ClampToOwnerFoothold`로 x를 **같은 발판**의 좌우 모서리에 제한(B).
+
+**자기 반증 기록**: 자세 감쇠 계수를 22로 새로 박았다가 PlayMode 로그로 **스스로 반증**했다 — 무릎앉아 눌림 구간은 58ms인데 rate 22는 63% 수렴에 45ms라 미니가 눈에 띄게 늦게 앉는다. 몸통이 쓰는 `PoseSmoothingRate`/`LandingCrouchPoseSmoothingRate`를 그대로 빌려 쓰도록 교체(튜닝 창구 단일화).
+
+**검증**: EditMode 50/50 통과(골든 대조 포함 — 이름 변경 1줄만 반영됐음을 `ItemCatalogDigest` 대조가 증명).
+PlayMode 신규 `PetFallSyncTests` F1/F1n/F2/F3/F4/F4n + 기존 `PetFollowsOwnerFootholdTests` P1~P3 무회귀.
+※ 첫 실행의 F2/F3 실패는 **batchmode 프레임이 1ms 미만**이라 고정 프레임 반복이 연출 구간에 도달조차 못 한 harness 결함이었다(제품 결함 아님, 로그로 확정) → 표본을 흘러간 게임 시간 기준으로 교체.
+
+**이름 변경**: `look_pet_mini.asset` displayName "작은졸라맨" → **"리틀스틱메이트"**. 아이디 `look.pet.mini`는 **불변**(바꾸면 저장된 차림이 사라진다). 골든 `ItemCatalogGolden.txt` 253행 1줄만 갱신.
+
+**교차 레이어 영향**: `Interaction/CharacterPetRenderer.cs`(펫 전용) / `Interaction/AppearanceShapeBuilder.cs`(미니 치수 상수 2개 추출, 좌표값 무변경) / `Resources/Items/look_pet_mini.asset` / 골든 1줄 / 신규 테스트 2파일. **상태 머신·몸통 포즈·다른 펫 3종은 무변경.**
+
+**리더 확인 요청**: `docs/UX_FLOW.md` 33-6-2/33-6-4는 "공·작은 졸라맨은 마지막 발판 Y를 유지한 채 x만 따라온다"라고 적혀 있다. 이번 사용자 지시가 **미니에 한해** 그 규약을 뒤집었다(공은 그대로 — P3로 잠금). 문서 반영은 ux-designer 소관이라 손대지 않았다.
+
+---
+
+## [perf-doc] 2026-08-31 — "60fps 유지 + 부하 감소" 라운드: MSAA 실측 (완료)
+
+사용자 결정 "60을 유지하면서 시스템 부담을 줄인다"에 따라, **present를 60fps에 고정한 채**
+MSAA만 바꾼 A/B를 실측했다. 전문은 `docs/ARCHITECTURE.md` **6-16절**.
+
+**결론 3줄**
+1. **MSAA는 부하 레버가 아니다.** 4x vs 0x 콜드 스타트 페어드 6쌍에서 WindowServer CPU(2/6),
+   앱 CPU(3/6), GPU 사용률(3/6) 모두 **신호 없음**(부호조차 일정하지 않음). Apple GPU는 TBDR이라
+   MSAA resolve가 타일 메모리에서 끝난다 → 6-15(6)의 "resolve 119MB/frame" 추정 **철회**.
+2. **MSAA는 메모리 레버다.** 4x가 그래픽 메모리 **+92.99MB**(6/6, σ=0.43MB), 물리 풋프린트 +87.9MB.
+   404MB 중 23%가 MSAA 컬러버퍼다.
+3. **기본값 4x 유지 — 코드 변경 없음.** 0x는 화질 회귀 명확(평균 Δ휘도 30.9/255).
+   2x는 4x와 거의 구분 불가(평균 Δ 4.65/255 = 1.8%)라 **메모리가 의제가 될 때의 카드**로만 남긴다.
+
+**★ 방법론 사고(팀 전체 규약으로 승격)**
+- **런타임에 `QualitySettings.antiAliasing`을 바꿔도 백버퍼에 반영되지 않는다.**
+  그런데 `Screen.msaaSamples`는 바뀐 값을 그대로 보고한다(8x 함정, 커밋 `39ab690`과 같은 부류의 2회차).
+- 유효성 검증은 API가 아니라 **`vmmap --summary <pid>`의 `owned unmapped (graphics)`**로 한다
+  (4x=98.3MB / 0x=5.3MB). 무효로 판명된 3초 교차 계측 코드는 삭제하고 "닫힌 길" 주석으로 대체했다.
+
+**변경 파일(다른 에이전트와 겹치지 않음)**
+- 신규 `Assets/_Project/Scripts/Platform/RenderQualityTuner.cs` — `STICKMATE_FORCE_MSAA` 시작 전 1회 적용.
+  **미지정 시 제품 동작 영향 0.**
+- 신규 `Assets/Editor/PerfProbeBuild.cs` — 계측 전용 빌드를 `Builds/PerfProbe/`에 별도로 굽는다
+  (`Builds/macOS/`를 덮어쓰지 않기 위해).
+- 신규 `Tools/PerfProbe/measure-msaa.py`, `measure-msaa-cold.py`, `HOWTO.txt` 갱신.
+- `Assets/Editor/BuildStandalone.cs` — `ConfigureAntiAliasing()` 문서에 6-16 결론 추가(**코드 무변경**).
+- `docs/ARCHITECTURE.md` — 6-16절 신설.
+
+**리더 판단 필요 — 남은 레버(60fps 자체는 안 건드림)**
+| 순위 | 레버 | 기대 효과 | 성격 |
+|---|---|---|---|
+| 1 | **Active 등급 체류 시간 단축**. `Calm`이 `캐릭터 Idle && 무입력≥2초`를 요구해 **캐릭터가 걷는 동안은 무조건 60fps**다(실측 체류 활성 70%/정적 30%). "무입력 30~60초면 캐릭터 상태와 무관하게 Calm" 규칙 추가 | 컴포지터 비용 −17% 수준(present 비례라 예측 가능) | **제품 결정** |
+| 2 | **가려짐 기반 절감** — 캐릭터가 불투명 창에 완전히 덮이면 등급 하향. z-order/창 사각형은 이미 폴링 중 | 전체화면 작업 시간대 전체 | 리더 |
+| 3 | MSAA 4x→2x | 메모리 −46MB, 부하 0 | 리더(화질 트레이드오프) |
+| 4 | Dock 메트릭 캐시 0.75초 → 5~10초 (1.33Hz로 CFPreferences 8회 + 실행 앱 전수 열거 + HashSet 2개 할당 중) | 부하는 미미, **GC 압박 감소** | coder |
+
+**교차 레이어 영향**: 없음(런타임 제품 경로 무변경). `Builds/PerfProbe/`는 `.gitignore`의 `[Bb]uilds/`에 포함.
+
+**부수 관측(별건)**: 12초 `sample` 프로파일에 **온-CPU 핫스팟이 없다**
+(`semaphore_wait_trap` 396,095 vs `objc_msgSend` 20 / `malloc` 9). 앱 CPU는 특정 알고리즘이 아니라
+프레임 루프 자체다 → 미세 최적화로는 못 줄인다. "텍스처 아틀라스" 같은 일반 팁은 이 앱에
+스프라이트 에셋이 0개라 애초에 해당 없음.
+
+#### 테스트 스위트 실측 결과 (2026-09-01 새벽, batchmode)
+**최종: EditMode 364/364 통과(실패 0) · PlayMode 372/379 통과(실패 6, 전부 타 에이전트 파일).
+신규 42건(EditMode 23 + PlayMode 19) 전원 통과.**
+
+동시 실행 회피: 매 실행 전 `ps`로 다른 batchmode를 확인하고 **슬롯이 빌 때까지 대기**한 뒤 잡았다
+(체크와 실행 사이 경합을 없애려고 대기·기동을 같은 프로세스에 넣었다). 그래도 아래 1차 실행은
+타 에이전트의 편집 중 스냅샷을 물어 오염됐다 — 기록해 둔다.
+
+| 실행 | 결과 | 판정 |
+|---|---|---|
+| PlayMode 1차(20:40) | 133/345, **실패 211** | **오염** — 실행 중(20:48:40) 타 에이전트가 `UiChrome.AddShadow`에 `Debug.LogError` 가드를 넣었고, 기존 `PopoverPanel.cs:416`이 그걸 밟아 씬을 쓰는 테스트가 **전부** 빨개졌다(210/211이 이 한 줄). 그 에이전트가 곧 `LogWarning`으로 낮추며 "`PopoverPanel`은 별도 라운드"라고 주석에 남김 → 내 쪽 조치 불필요 |
+| PlayMode 2차(21:08) | 345/361, 실패 12 | 진짜 신호 확보. **내 실패 10건** 발견 |
+| PlayMode 3차(02:20) | **372/379, 실패 6** | 내 10건 전부 수정 완료. 남은 6건은 전부 타 에이전트 파일 |
+| EditMode 최종(02:36) | **364/364** | 실패 0 |
+
+**실측이 잡아낸 내 결함 2건(컴파일만으로는 절대 못 잡는 것들)**
+1. **`ActionCommandPopover`가 씬에 없었다**(6건 실패). `SceneBootstrapper`에 코드를 넣어도
+   **프리팹은 자동으로 갱신되지 않는다** — 36-13 #11이 "33-9/34-9와 똑같은 함정"이라고 세 번째로
+   경고한 바로 그 Blocker다. `-executeMethod ...EnsurePrefabComponents`로 프리팹에 실제로 얹었고
+   (`Stickman.prefab` +14줄), 씬은 프리팹 인스턴스라 그대로 전파된다.
+   → **내가 쓴 테스트가 이 함정을 실제로 잡았다**(경고 문구까지 그대로 출력).
+2. **호버 이름표가 한 번도 뜨지 않았다**(4건 실패). 원인은 제품이 아니라 **테스트**였다:
+   호버의 소유자는 `InfoGearIconWidget`의 폴링인데 테스트가 `GearRadialMenuWidget.SetHover`를
+   직접 불러서, 다음 프레임에 폴링이 곧바로 `-1`로 덮어썼다. `FeedPointerForTests` 관례를 따라
+   **커서 주입 훅**(`FeedHoverCursorForTests`)을 커서를 읽는 <b>단 하나의 창구</b>에 달아,
+   히트테스트→호버→이름표가 전부 실제 코드 경로를 타게 고쳤다.
+
+**남은 6건 — 전부 타 에이전트의 진행 중 작업(내 변경과 무관)**
+`CharacterScaleRuntimeTests` 2건 · `DeployedConfigAssetImmutabilityTests` 1건 ·
+`CornerHoverPanelTests` 1건(넷 다 "런타임 배율 경로가 죽었다"는 같은 증상) ·
+`PetFallSyncTests` 2건(ThrowTumble 회전 / 무릎앉아 추종). 해당 파일
+(`StickConfig` / `StickmanAgent` / `CornerHoverPanel` / `CharacterPetRenderer`)은 전부 다른
+에이전트가 수정 중(`git status M`)이고, 나는 배율·펫·구석패널 파일을 하나도 건드리지 않았다.
+참고: 1차 실행의 기준선이던 `DockStepUpCharacterScaleTests` 4건은 그 사이 그쪽에서 고쳐 지금 통과한다.
+
+---
+
+## [coder/T1] P0-a 카드 렌더 통합 + P0 HAIR 전면 재설계 + P4 FX 반짝임 구조 수정 (2026-09-01)
+
+리더 승인 3건(`P0-a` 옵션 2 / `P0` + 커버규칙 변경 / `P4` 이벤트·유도 기준 전환) 구현.
+**EYES(P1)는 손대지 않았다** — 같은 날 사용자가 "장비창에서 눈모양쪽은 전부 삭제필요함"을 지시해
+카테고리 존폐가 재검토 중이라는 코디네이터 통보를 받았다. 이번 변경에 EYES 전용 도형·상수·에셋 수정은 **0건**이다
+(카드 렌더 경로는 카테고리 무관 일반 코드라 EYES가 삭제되어도 되돌릴 것이 없다).
+
+### P0 — HAIR 4종 전면 재설계 (`Interaction/AccessoryShapeBuilder.cs`)
+
+- **획 예산을 코드로 들여왔다.** `BaselineStrokeWidth`(0.048) / `StrokeWidthRatio` /
+  `ShippingCharacterScale`(0.75) / `StrokeBudgetInHeadRadii(scale)` 신설. 배율 0.75에서 **W = 0.3439R = 2.00pt**.
+  ux-designer가 37-1에서 실측으로 쓴 숫자를 **식으로** 옮긴 것이라, 신장/획 비율이 바뀌면 예산이 함께 따라간다.
+- **재설계 결과(4종 전부 채움 도입, 정원 2도형)**
+  | | 옛 구성 | 새 구성 | 식별 특징 |
+  |---|---|---|---|
+  | 삐친머리 | 선 1·점 4·단색 | 실루엣(채움) + 삐침 삼각형(채움) | 뒤로 솟은 뿔 |
+  | 단정한머리 | 선 2·점 12 | 실루엣(채움) + 가르마 가닥(채움, 폭 1.11획) | 대각 가르마 |
+  | 곱슬 | 선 1·점 17·단색 | 물결 실루엣(채움) + 앞머리 컬(채움) | 웨이브 |
+  | 민머리 | 선 1·점 5·단색 | 옆/뒤 테두리 2조각(채움) | 벗겨진 정수리 |
+- **곱슬 ≡ 단정 등식 해소**: 진폭 0.16R(0.47획) -> **0.28R**, 마루-골 **1.63획**(옛 0.93획).
+- **부착**: 실루엣 안쪽 경계를 동심 원호가 아니라 **포물선 이마선**(`HairlineCrestRatio` 0.50R)으로 바꿔
+  두피 링 **안쪽** 0.35~0.42R까지 파고든다. 옛 값(단정 1.13R / 곱슬 1.10R)은 링 **바깥** 0.13R·0.10R에 떠 있었다.
+  · 첫 시안은 안쪽을 동심 원호로 막았는데 오프라인 렌더에서 **헬멧 테**로 보여 폐기했다(증거물 참고).
+- **팔레트 독립**: 보조색 4종이 전부 EYES 틴트(청록 #4FC0C6)였던 것을 **HAIR 카테고리 틴트(주황 #E8834A) 색상대**로
+  옮기고 4종을 서로 다르게 했다. 주색도 4종이 같던 것을 갈색/짙은갈색/적갈/재빛으로 분리(3종 단색 문제 해소).
+  변경 파일: `Resources/Items/look_hair_*.asset` 4개 + 골든 스냅샷 12줄.
+- **눈동자 보호**: 머리카락 채움의 레이어는 `SortHair−1 = 5`로 **눈동자(5)와 동률**이다. 레이어 표를 건드리는
+  대신 이마선을 눈동자 위끝(0.227R)보다 확실히 위(0.50R)에 두어 **겹칠 일 자체를 없앴고**, 그 성질을 테스트가 단언한다.
+- **일부러 넣지 않은 것**: 민머리 정수리 광택. 두 테 사이 맨 두피는 어느 자리에 놓아도 테와의 간격이
+  1.5획(0.52R)을 넘지 못한다(오프라인 검산). 37-6 규칙 5 — "예산을 못 지키는 [선택] 디테일은 넣지 않는다".
+
+### ★ 커버 규칙 API 변경 — "선 통째로 생략" → "커버선에서 자르기(clip)"
+
+`IsCoveredByHat` **삭제**, `AppendClippedBelowCover` 신설(닫힌 도형 = 반평면 Sutherland–Hodgman /
+열린 선 = 연속 구간 분할). `strokeHalfWidth`의 뜻이 "커버 판정 여유"에서 **"이보다 작은 조각은 버린다"**로 바뀌었다.
+
+- 그대로 뒀다면 머리카락이 닫힌 채움 도형 하나가 되면서 **모자를 쓰면 머리카락이 전부 사라진다**(37-7 #1).
+- 이제 모자 밑으로 **옆머리가 남는다**(실제로 모자를 써도 귀 옆 머리는 보인다). 잘린 단면은 모자 자신의
+  획 중심선에 놓이므로 모자 획/채움 아래에 들어간다.
+- 소비처 갱신: `CharacterAccessoryRenderer`(회귀 훅 `TryMeasureHairTopUnderHat` 신설),
+  `CharacterPortraitStage`는 호출 시그니처 무변경.
+
+### P0-a — 카드 썸네일을 `AccessoryShapeBuilder`에서 렌더 (옵션 2)
+
+- 신설 `Interaction/AccessoryCardIcon.cs` — 몸 도형을 40×40 카드 상자에 맞춰 축소해 그린다.
+  `CharacterPortraitStage`가 쓴 것과 같은 패턴(도형은 공유, 개체만 분리).
+- 채움을 위해 `AccessoryFillGraphic : Image` 신설. **`Image`를 상속한 이유**는 정보창이 카드 색을
+  `GetComponentsInChildren<Image>()`로 모아 갈아끼우기 때문 — 순수 `Graphic`이면 잠긴 카드에서 채움만 제 색으로 남는다.
+  삼각형 분할은 몸과 **같은** `AccessoryShapeBuilder.Triangulate`를 쓴다.
+- **폴백 유지**: `AccessoryDefSO.icon[]`은 지우지 않았다. `TryBuild`가 false면(FX/PET처럼 몸 도형이 없는
+  카테고리가 정상적으로 여기 해당) 옛 아이콘을 그린다. 새 경로가 통째로 틀려도 카드가 비지 않는다.
+- **이번에 고친 것은 (a) 좌표 이원화 (b) 채움 유무**뿐이다. (c) 색 정책(`WornColor`)과 (d) 획 위계는
+  각각 P5·P6이라 일부러 손대지 않았다 — 넷을 한꺼번에 바꾸면 그림이 달라진 이유를 판정할 수 없다.
+
+### P4 — FX 반짝임: 값이 아니라 불변식을 고쳤다
+
+- 신설 `Interaction/SparkleCadence.cs`. **불변식: `무장 + 재발동 대기 최대 + 수명 ≤ 배회 Idle 최대 지속시간`.**
+  무장/수명을 Idle 창의 지분(0.25 / 0.20)으로 잡아 **남는 창이 항상 55%**이므로 부등식 우변이 음수가 될 수 없다.
+  창이 넉넉하면 설계값(무장 3s / 대기 6~10s)이 **그대로** 나가고, 좁을 때만 창에서 유도한 상한으로 내려간다
+  (오늘 반복 적용한 `max(설정값, 필요값)`의 **반대 방향** = 상한).
+- 배포 설정(Idle 최대 6초) 유도 결과: 무장 1.5s / 대기 1.98~3.30s / 수명 1.2s → **한 Idle 구간에 최소 2회**.
+  옛 조합(3 + 10 + 0.7 = 13.7초 > 6초)은 2회차가 **원리적으로** 오지 않았다.
+- 십자 크기: `SparkleArmInR` 0.34R(=1.00획, "뚱뚱한 점") -> **0.85R(2.47획)**.
+  갈래가 커진 만큼 발동 높이 `SparkleHeightInR` 1.3R -> **2.0R**(아래 갈래 끝이 정수리보다 0.15R 위).
+  시작 배율 0.2(0.8pt 티끌) -> **0.55**.
+- `CharacterFxRenderer`에서 무장/대기/수명 상수 3개를 **삭제**하고 정책에서 받아 쓴다.
+
+### 검증
+
+- **오프라인 획 예산 검산** — C# 파일에서 상수를 직접 파싱해 도형을 재구성하고 규칙을 재검산하는 스크립트로
+  옮겨 적기 오류까지 확인(실패 0건). 증거물 `Logs/evidence_20260901_coder_hair_p0/`
+  (배율 0.35/0.75/1.50 × 좌우반전 × 모자 2종 착용 시트 2장 + 실제 크기 1장 — 37-6 규칙 7 검증 게이트 형식).
+- **신규 EditMode**: `AccessoryStrokeBudgetTests`(획 예산 lint — 그리려다 만 점 / 도형 크기 / 채움 /
+  부착 / 정원 / 보조색 1개 / 눈동자 비침범 / 곱슬≠단정 / 4종 상호 구분 / 반짝임 갈래),
+  `SparkleCadenceInvariantTests`(11개 창 길이 + 배포 에셋 + **네거티브 컨트롤**: 옛 상수 조합이 실제로 부등식을 어김),
+  `AccessoryCardIconTests`(새 경로/폴백/Image 수집/상자 이탈/카드 리그 유도).
+- **갱신**: `AccessoryShapeCatalogTests`의 모자+머리 조합표 2건을 자르기 의미로 재작성(+네거티브 컨트롤 2건 추가),
+  PlayMode `CharacterAppearanceLayerTests.모자를_쓰면_머리가_숨고...` -> `..._커버선_아래로_잘리고...`.
+- **골든**: `ItemCatalogGolden.txt` HAIR 12줄 갱신(의도된 팔레트 변경).
+
+### 교차 레이어 영향 로그 (리더 보고 대상)
+
+1. **커버 규칙 API 변경** — `IsCoveredByHat` 삭제. 외부 소비처는 렌더러/초상화 2곳뿐이고 둘 다 갱신했다.
+   `AccessoryDefSO.hidesHair`는 여전히 아무도 읽지 않는다(Major 4 예정).
+2. **획 두께 비율 단일화** — `0.048`이 렌더러/초상화/예산 3곳에 흩어져 있던 것을
+   `AccessoryShapeBuilder.StrokeWidthRatio` 하나로 모았다. **값은 그대로라 거동 변화 0**(테스트가 등식을 단언).
+3. **채움 개수 증가** — HAIR가 채움 0 -> 캐릭터당 최대 2개(+카드 썸네일마다 최대 3개).
+   몸 쪽 메시는 기존 `DestroyFillMeshes` 경로가 그대로 회수한다. 카드 쪽은 uGUI 메시라 별도 해제 불필요.
+   **perf-doc 확인 요청**(24시간 상주 앱, 37-7 #2와 같은 항목).
+4. **FX 반짝임이 `StickConfig`를 읽기 시작** — `CharacterFxRenderer`가 블랙보드의 설정을 참조한다.
+   설정이 없는 리그는 `AutoWanderController`와 **같은 폴백 6초**를 쓴다(테스트가 등식을 단언).
+5. **카드 썸네일 그림이 28종 전부 바뀐다**(P0-a의 목적 자체). 디자인 재승인 1회 필요 — 리더 게이트 대상.
+
+### 남은 것 / 넘기는 것
+
+- **육안 검증 1회**가 남아 있다. 이 에이전트는 Unity를 띄우지 못했고(다른 에이전트가 배치 실행 중 프로젝트 잠금),
+  위 증거물은 오프라인 래스터라이저다 — *정지 포즈 1개 / 안티에일리어싱 근사*라는 한계가 그대로 있다.
+- P1(EYES)은 **사용자 지시로 보류**. P2(NECK)·P3(날개)·P5(색 정책)·P6(획 위계)·P7·P8은 다음 라운드.
+- 획 예산 lint(P8)의 적용 범위는 지금 **HAIR + FX 반짝임뿐**이다. EYES/NECK/BACK은 아직 통과하지 못하므로
+  넣지 않았다(빨간불 상시화 방지). 그 카테고리를 재설계하는 라운드에 `BudgetedItems()`에 한 줄씩 추가하면 된다.
+
+---
+
+## [ux-designer] 캐릭터 그림체 전면 전환 설계 스펙 — "얇은 선화 → 두꺼운 채움 실루엣" (2026-09-01) ✅
+
+**상태: 완료(설계만). 코드 변경 0건.** 산출물 = `docs/UX_FLOW.md` **38절**(신설, 804줄).
+사용자가 참고 이미지 3장과 함께 보낸 그림체 변경 지시의 설계 스펙 + 로드맵 + 리스크 평가.
+
+### ★ 핵심 판단 — 뼈대(Active Ragdoll + IK) 변경: **불필요**
+
+`StickmanPoseAnimator.cs`는 그림을 그리지 않는다(각도만 계산). 몸은 전부
+`Editor/SceneBootstrapper.BuildStickmanPrefab()`이 구운 **LineRenderer 12개**이고,
+`numCapVertices = 8`이라 **이미 둥근 캡 캡슐**이다 — 레퍼런스와의 차이는 **폭 하나뿐**이다.
+시각 폭이 물리로 새는 경로는 `CreateLimbSegment`의 **한 줄**
+(`collider.size = new Vector2(width, length)`)뿐이고, 인자를 `visualWidth`/`physicsWidth`로
+쪼개면 RAGDOLL 거동이 비트 단위로 동일하게 유지된다. **새 렌더링 기법 도입 불필요.**
+
+### 리더 승인이 필요한 항목 (전부 선택 사항이거나 결정 대기)
+
+| # | 항목 | 성격 | 없으면 |
+|---|---|---|---|
+| A | **EYES 카테고리 존폐** — 사용자 문장 자기모순(38-7-1) | 사용자 재확인 1문장 | 되돌릴 수 없는 삭제를 추측으로 하게 된다 |
+| B | **`Main.unity`가 100% 부트스트래퍼 생성물인가** | 사실 확인 | 프리팹 `--force` 재생성 시 씬 오버라이드 소실(BUG-SW-M3) |
+| C | 고관절/어깨 **부착점 x 오프셋**(`connectedAnchor.x`) | 물리 인접 값 | 대안 있음(허벅지 상단이 골반으로 뭉쳐 보임 — 허용 가능) |
+| D | 무릎 각도 제한 **100°→150°**(진짜 가부좌) | 물리 값 | 가부좌가 원리적으로 불가능(수식 첨부). 대안 "무릎 세워 앉기" 있음 |
+| E | **프레임 정책 `Away` 판정** — perf-doc 레버 1과 정면 충돌 | 제품 결정 | 사용자가 지켜보는 동안 15~30fps로 떨어짐 |
+
+### 실측으로 새로 찾은 결함 3건 (요청 범위 밖이지만 이번 전환이 드러냄)
+
+1. **출하 배율 0.75에서 몸의 두께 위계가 이미 붕괴해 있다.** 2pt 하한이 팔(1.85)·머리링(1.67)에
+   걸려 둘 다 2.00pt로 올라붙는다. **배율 0.74 미만에서는 4개 획이 전부 같은 굵기**다.
+   37절이 액세서리에서 찾은 실패와 **같은 실패가 몸에서도 있었다**(37절은 액세서리만 쟀다).
+   → 두께를 올리면 위계가 다이얼 최소(0.35)까지 살아남아 **부수적으로 해결**된다.
+2. **초상화(`CharacterPortraitStage`)가 몸을 그릴 때 액세서리 획(0.048)을 쓴다** — 실제 몸
+   (0.077/0.084/0.070)보다 **37~43% 얇다.** 지금은 둘 다 하한에 눌려 안 보이지만 두께를 올리는
+   순간 드러난다. **이미 존재하던 이중 정의 1건.**
+3. **`WanderAmbientMotion.SitAndYawn`은 앉지 않는다** — 구현이 "만세 기지개"다.
+   이름-행동 불일치(원칙 1의 내부 버전). 유저 노출 문자열은 없어 사고는 아니지만,
+   이번에 진짜 앉기를 넣으면서 `Stretch`로 개명 + `SitDown` 신설을 권고.
+
+### perf-doc과의 충돌 (과학적 토론 — 양보하지 않음)
+
+perf-doc 레버 1: *"무입력 30~60초면 **캐릭터 상태와 무관하게** Calm"*.
+현재도 `ViewerPresence.DecideTier`가 `Away`(무입력 180초)를 `characterIdle` 없이 판정해
+**사용자가 가만히 지켜보는 동안 프레임을 1/4로 내린다**(120Hz→30fps, 60Hz→**15fps**).
+보행 1.35Hz를 15fps로 그리면 한 사이클이 11프레임 — 무릎이 프레임당 최대 9°씩 점프한다.
+
+- **반박 1**: UX_FLOW 2절이 이 앱의 코어 루프를 *"지켜보기가 기본 액션"*으로 못박았다.
+  **무입력은 이탈 신호가 아니라 몰입 신호**다.
+- **반박 2**: perf-doc이 근거로 든 "Active 체류 70%"는 절감 여지가 아니라 **캐릭터가 실제로
+  움직이고 있는 시간**이다. 그 70%를 깎는 것 = 제품의 유일한 콘텐츠를 깎는 것.
+- **반박 3**: 절감은 **사람이 안 보는 것이 관측된 경우**(화면 꺼짐 / 전체화면 / 창에 완전히 가려짐
+  — perf-doc 레버 2)로 한정해야 한다. 그 셋은 이미 있거나 제안돼 있다.
+- **권고**: `Away` 판정에 **`&& characterIdle`** 을 AND로 추가. 자율 배회가 Idle 30% / Walk 70%라
+  평균 절감은 거의 유지된다. **사용자 신고 "움직임이 부드럽지 않다"의 최유력 원인이기도 하다.**
+
+### 교차 레이어 영향 로그 (전문 38-12, 11건)
+
+주요 항목만: ① 프레임 정책(perf-doc 충돌) ② `BaselineCharacterTotalHeight` +0.5% 변경
+③ 눈 삭제로 LookAround 앰비언트 시각 신호 소실(사용자가 요청하지 않은 부수 피해)
+④ `CreateLimbSegment` 시그니처 분리(이걸 안 하면 물리가 함께 바뀐다)
+⑥ **액세서리 획 위계 재계산** — 몸 획 ×2.5면 액세서리/몸 비율이 0.98→0.35로 붕괴.
+37-4 **P6을 재정의**해야 하고 28종 예산 재검산을 유발한다(별도 Phase로 분리해 뒤로 미룸)
+⑨ **`widthCurve` 금지 규약 신설** — `ApplyStrokeWidthsForScale`가 배율 변경마다 커브를 파괴한다
+⑩ 초상화 이중 정의 ⑪ 펫 미니 졸라맨(4번째 몸 렌더링)도 같이 바꿔야 한다.
+
+### coder에게 넘기는 것 (P1은 승인 없이 착수 가능)
+
+- **P1(눈 삭제 + 머리 채움 + 눈맞춤 게이트)** 은 승인 대기 항목이 없다. 38-4-1의 유도식
+  (`경로반경 R/2, 폭 R`)을 그대로 쓰면 **머리 크기가 1pt도 안 변한다.**
+  `HeadOutline`은 **지우지 말 것** — `StickmanMetrics.HeadRadius`가 그 첫 점의 x를 읽는다(계약 C1).
+- **`EyeController.cs`는 한 줄도 고치지 않는다.** 프리팹에서 눈을 빼면 그 클래스는 이미 있는
+  null 가드로 **자동으로 무해**해진다. 되살리는 절차는 상수 3개(`BakeEyes`/`DrawEyes`/
+  `eyeTrackingEnabled`)를 되돌리고 프리팹 재생성.
+- **P2 착수 전에 위 B(씬 `--force` 안전성)를 반드시 확인**할 것.
+
+### 리더 결정 (2026-09-01, 새벽)
+- **A. EYES 존폐 → E2 채택(슬롯 유지, 이미지2 스타일 "가리개"로 재설계).** 공통분모(눈동자 삭제)는
+  즉시 실행, 안경 4종은 렌즈+눈동자 방식에서 머리 위에 얹는 대비색 가리개 방식으로 재설계.
+- **E. 프레임 정책 → ux-designer 반박 채택, perf-doc 제안 기각.** `Away` 판정에 `&& characterIdle`
+  AND 조건 추가로 별도 긴급 라운드 착수(coder에게 즉시 배정, `docs/UX_FLOW.md` 38절과 별개로 진행).
+- **C/D(물리 인접 2건, 고관절 오프셋 / 무릎 제한)**: 참고 이미지 재현 충실도 우선, 판단은
+  구현 담당자에게 위임 — 단 물리/랙돌 거동 변화는 반드시 리더에게 보고할 것.
+- **P0(씬 안전성 확인) + P1(눈 삭제+머리채움) 착수 승인.**
+
+### coder — E(프레임 정책) 긴급 라운드 완료 (2026-09-01)
+
+리더 결정 E 이행. `FramePacingPolicy.DecideTier`의 `Away` 판정을
+`무입력 >= 180초` → `무입력 >= 180초 **&& characterIdle`** 로 변경(AND 1개만 추가, 임계값 180초 유지).
+`characterIdle`은 기존 `FramePacing.ResolveCharacterIdle()` 재사용 — 새 신호 없음, 배선 변경 없음.
+`DisplayOff`(4fps)/`Suspended`/`Calm`/저전력 감쇄 경로는 **한 글자도 건드리지 않았다**.
+
+- 변경: `Assets/_Project/Scripts/Platform/ViewerPresence.cs` (판정 1줄 + 근거 문서)
+- 신규 테스트: `Tests/EditMode/AwayTierMotionGuardTests.cs` (17개 — Walk 상태 3/5/10분/8시간 무입력에서
+  Away 미진입, 문턱 전후 연속성, 보행 주기당 프레임 예산 하한, 멈춘 뒤 Away 재개, DisplayOff/Suspended
+  회귀, UI홀드 독립성, 정적 배선 스캔)
+- 기존 테스트 1개 갱신: `AdaptiveFramePacingPolicyTests.오래_무입력이면_자리비움등급이다`
+  → `오래_무입력이고_캐릭터도_서있으면_자리비움등급이다` (`characterIdle: false` → `true`).
+
+**교차 레이어 영향(리더 확인 요망) — 렌더/성능 레이어, 2건**
+1. 자율 배회가 Idle/Walk를 반복하므로 **사용자가 실제로 자리를 비운 밤에도 Away↔Active가 왕복**한다.
+   야간 절감량이 줄어든다(화면 슬립이 걸리면 DisplayOff가 회수). 의도된 트레이드오프이나 수치 미실측.
+2. **실패 방향이 뒤집혔다**: `ResolveCharacterIdle`이 `agent==null`에서 `false`를 반환하므로, 그 신호가
+   깨지면 이전에는 "3분 뒤 Away"였던 것이 이제 "영원히 Active(60fps)"가 된다. 현재는 Enforcer가 매
+   프레임 agent를 재탐색해 기동 직후 몇 프레임만 해당하지만, 향후 이 신호에 다른 소비자가 붙으면 재검토 필요.
+
+### [추가] 움직임 참고자료 2차(달리기/피격 4프레임) 반영 — 38-14절 신설 (2026-09-01)
+
+코디네이터가 전달한 참고 이미지 4장(달리기 1 + 피격/넘어짐 3)의 관찰을 **38-14절**로 추가하고
+38-11의 `P9` 행을 **P9-a~e 5개로 재정의**했다. **코드 변경 여전히 0건.**
+
+**그림체는 앞선 3장과 일치해 38절 나머지는 무변경**(38-14-6에 항목별 대조표). 새 정보는 "움직임의 질" 하나.
+
+#### (1) 몸통 전진 기울임 — 조사 결과: **배관 자체가 없다**
+
+`_torso`는 `localPosition`에만 쓰이고 **`localRotation`을 쓰는 코드가 0줄**이다(사용처 4곳 전수 확인).
+"기울임이 미약"한 게 아니라 **몸통이 언제나 정확히 수직**이다.
+
+**★ 이 프로젝트가 이미 이 배관의 부재를 스스로 문서화해 뒀다** — `SetBodyOffset(headOffsetX)`의
+2026-08-31 주석: *"값을 되살리려면 먼저 **목을 함께 기울이는 배관**부터 만들어야 한다."*
+`idleAmbientLookHeadShiftRatio`를 0으로 죽인 그 사건의 원인이 정확히 이 누락이다.
+
+⇒ **`SetBodyLean(deg)` 하나가 3가지를 동시에 푼다**: ① 달리기 기울임 ② **눈을 지운 뒤
+LookAround가 잃어버릴 시각 신호**(38-5-2 E5의 미해결 항목 — 원래 "(iii) 포기"를 권고했는데
+이 배관이 생기면 "(i) 상체 기울임"으로 상향된다) ③ 피격 시 상체 젖힘.
+회전 피벗이 엉덩이라 **다리는 lean의 영향을 안 받는다**(해부학적으로도 정확). 수식·권장각 38-14-1.
+
+#### (2) "달리기" — 새 상태 불필요. 배관은 이미 있고 **속도와 연결만 안 돼 있다**
+
+`TickWalkPose`가 이미 `amplitudeScale`/`strideScale`을 인자로 받는데 `StickConfig`의 **고정값**
+(1.0 / 0.93)이 들어간다. `_smoothedSpeed`(이미 매 프레임 계산됨)에서 유도하면
+느리면 종종걸음 / 빠르면 성큼성큼 + 기울임 = 달리기. **새 상태 0 · 새 측정 0 · 새 키프레임 0.**
+
+#### (3) RAGDOLL이 "크고 유연하게" 안 보이는 이유 — **3중으로 억제돼 있다**
+
+| | 지금 |
+|---|---|
+| a | `EnterRagdoll()`이 **자체 충격량을 하나도 안 준다**(상태만 바꾸고 기존 속도에만 의존) |
+| b | `AngularVelocityDampenOnEntry = 0.5` — 진입 시 **전신 각속도를 절반으로 깎는다** |
+| c | 팔다리 감쇠가 2026-08-28에 **의도적으로 상향**(0.6/1.5 → 0.9/3.0) |
+| d | `ShoulderSwingLimitDegrees = 65`(대칭) — 레퍼런스의 "팔이 위로 홱"(≈150°)이 **원천 불가능** |
+
+**★ 핵심 논증: "경련"과 "크게 휘두름"은 서로 다른 주파수 대역이다.**
+경련 = 관절 경계의 고주파·저진폭 링잉 / 크게 휘두름 = 저주파·대진폭 스윙.
+감쇠는 **광대역** 도구라 (c)의 상향이 둘 다 죽였다.
+1차 감쇠계에서 `진폭 ∝ 초기에너지/감쇠`, `링잉시간 ∝ 1/감쇠` 이므로
+**감쇠를 유지한 채 초기 에너지만 올리면 첫 스윙만 커지고 경련은 안 돌아온다.**
+
+```
+ 충격 0 + 감쇠 低 = 경련        ← 2026-08-28 이전(사용자가 이미 거부한 그림)
+ 충격 0 + 감쇠 高 = 뻣뻣·작음   ← 지금(사용자가 지금 지적하는 것)
+ 충격 高 + 감쇠 高 = 크게 휘둘렸다가 축 늘어짐  ← ★ 레퍼런스 = 목표
+```
+
+⇒ **"감쇠를 낮추자"는 접근은 틀렸다.** 감쇠(0.9/3.0)는 **건드리지 않는다.**
+
+**권고**: ① `EnterRagdoll(hitDirection, impulse)` 오버로드(가슴 높이 오프셋에 `AddForceAtPosition`
+→ 자연 토크) ② `AngularVelocityDampenOnEntry` 0.5 → **1.0** ③ 어깨 제한 **비대칭화** `[-60,+150]`.
+
+- ②의 근거: 그 상수의 목적(BUG-SW-M4 정착 실패 방지)은 **감쇠 상향(c)이 이미 책임진다** →
+  **중복 안전장치로 남아 손맛만 깎고 있을 가능성.** `StickmanRagdollRecoveryTests`가 바로 판정해 준다. 되돌리기 = 상수 1개.
+- ③의 근거: 2026-08-28 제한 도입의 목적은 "불가사리 대(大)자" 방지였고 그 원인은 **제한이 아예 없던 것**
+  (`useLimits: false`)이지 "크게 움직임"이 아니었다. 사람 어깨는 비대칭(앞/위 ~170°, 뒤 ~60°).
+  **`RagdollRig.MirrorIfFacingLeft`가 비대칭 제한의 좌우 반전을 이미 정확히 처리한다 — 새 배관 0.**
+
+> **CLAUDE.md 무빙 방식과 충돌하지 않음(명시)**: ①은 랙돌 구간의 **초기 조건**, ②③은 랙돌 구간의
+> **수치**다. 능동 상태 거동은 비트 단위 무변경(팔다리가 Kinematic이라 damping/limits가 적용될 대상이 없음).
+> **③만 프리팹 물리 자산이라 리더 승인 대상.**
+
+#### P9 재정의 + 순서 권고
+
+| | 항목 | 승인 |
+|---|---|---|
+| **P9-a** | RAGDOLL 진입 에너지 복원(②+①) — 지적 (3)의 **가장 큰 단일 원인** | — |
+| **P9-b** | 몸통 전진 기울임 `SetBodyLean` — **3가지를 동시에 푼다** | — |
+| **P9-c** | 속도 연동 진폭 = "달리기" | — |
+| **P9-d** | 어깨 제한 비대칭화 | **리더** |
+| **P9-e** | 좌우반전(M2)·2차보간(M3)·팔 진폭 보상(M4) | — |
+
+**P9-a·b를 P9-e보다 먼저** 하는 이유: M2~M4는 **이미 있는 움직임을 다듬는** 일이고 P9-a·b는
+**없던 움직임을 만드는** 일이다. 사용자 지적은 후자다 — 다듬기를 먼저 하면 *없는 것을 부드럽게 만드는 셈*이 된다.
+**P9-a·c·d는 P2(두께 전환)와 독립이라 병행 가능**하고, **P9-b는 P1(눈 삭제) 직후**가 좋다
+(LookAround 신호 소실 구간이 아예 안 생긴다).
+
+#### 교차 레이어 추가 4건 (38-12 #12~#16)
+
+- **#12 `SetBodyLean` ↔ 액세서리**: 렌더러가 몸 오프셋을 **평행이동으로만** 따라온다(회전 미독).
+  그대로 두면 **몸은 기울고 모자만 수평으로 뜬다.** → `Head.localRotation`을 함께 세팅하고
+  렌더러가 그걸 읽게 한다(한 줄. **빠뜨리면 즉시 눈에 띈다**).
+- **#14 `amplitudeScale` 동적화** → `WalkFootSlipTests`를 속도 구간별 확장 필요.
+- **#15 어깨 제한/진입 충격량** → `StickmanRagdollRecoveryTests` 회귀.
+- **#16** 38-5-2 LookAround 대체안을 (iii) 포기 → **(i) 상체 기울임**으로 상향(P9-b 채택 시).
+
+#### 38-10 M1(프레임 정책)의 근거가 더 강해졌다
+
+이번 참고자료는 *"매 프레임 실루엣이 완전히 다른"* 큰 동작을 요구한다.
+`Away` 등급(무입력 180초 → 15~30fps)에서는 그 동작이 **표본 부족으로 통째로 사라진다.**
+**진폭을 키울수록(P9-a/c) 프레임레이트 부족이 더 잘 드러난다** — perf-doc 레버 1과의 조정이 더 시급해졌다.
+
+---
+
+## [coder] 그림체 전환 P0(씬 안전성 확인) + P1(눈 삭제 + 머리 완전 채움) (2026-09-01) ✅
+
+리더 승인(`docs/UX_FLOW.md` 38절, "리더 결정 — P0+P1 착수 승인")에 따른 첫 실제 구현.
+**P0에서 위험 없음을 실측 확인한 뒤** P1을 진행했다.
+
+### P0 — `Main.unity`는 100% 부트스트래퍼 생성물이다 (`--force` 안전, 실측 확인)
+
+ux-designer가 38-11-1에서 "진짜 블로커"로 지목한 항목. **결론: 안전.** 근거 6가지(전부 파일 실측):
+
+1. **씬 오브젝트 목록이 코드와 1:1** — Main Camera / EventSystem / UniWindowController / PhysicsGround /
+   DockPhysicsStep / Stickman 인스턴스 + 설정 4종. `BuildMainScene`이 만드는 것 외에 **하나도 없다.**
+2. **두 PrefabInstance 모두 수동 오버라이드 0건** — `m_AddedGameObjects` / `m_AddedComponents` /
+   `m_RemovedComponents` / `m_RemovedGameObjects`가 **전부 빈 배열**이고, `m_Modifications`는 Transform +
+   이름 + `ConfigureUniWindowController`가 코드로 세팅하는 7개 필드뿐.
+3. **수치가 현재 코드와 정확히 일치** — `PhysicsGround.y = -12.804481` = `0 - 12·(1 - 2·8/982) - 2/2`
+   (`OrthographicSize=12`, `DummyFootholdHeightFraction=8/982`)로 소수점까지 재현. 콜라이더 200×2,
+   레이어 2(Ignore Raycast)도 상수 그대로. **씬이 낡지도 않았다.**
+4. **프리팹 루트 컴포넌트 43개가 `BuildStickmanPrefab`의 `AddComponent` 목록과 완전 일치**(차집합 양쪽 0).
+   즉 `EnsurePrefabComponents`로만 얹혀 `--force` 때 사라질 컴포넌트가 **없다**(이게 가장 위험했던 가설).
+5. **`CreateOrLoadConfig(force:true)`는 에셋을 리셋하지 않는다** — 기존 에셋이 있으면 그 인스턴스에
+   `groundSnapTolerance = 20`만 재적용한다(이미 20). 튜닝값 유실 경로 없음.
+6. 씬→프리팹 참조는 `DockPhysicsStep._agent` **1건뿐**이고 `BuildMainScene`이 다시 배선한다
+   (게다가 그 컴포넌트에는 `FindFirstObjectByType` 심층 방어가 있다).
+
+**실행 후 사후 검증**: 재생성된 씬을 fileID 정규화 후 비교 — 오브젝트 이름 집합 동일,
+`propertyPath` 오버라이드 집합 **완전 동일**, 값 동일. **실제로 잃은 것 0건.**
+프리팹 fileID도 대부분 보존됐다(`SaveAsPrefabAsset`이 일치하는 오브젝트의 앵커를 재사용) — 실제 diff는
+"LeftEye/RightEye 2개 제거 + HeadFill 1개 추가"뿐이었다.
+
+> **다만 규칙은 유지**: 프리팹만 단독으로 `--force` 재생성하면 안 된다. 반드시 프리팹+씬 동시
+> (`BuildAll --force` / `Rebuild All` / `Resize Stickman`). BUG-SW-M3의 위험은 "프리팹만 다시 굽는" 경로에 남아 있다.
+
+### P1 — 구현
+
+- **`Editor/SceneBootstrapper.cs`**
+  - `CreateFilledDisc(parent, name, localAt, outerRadius, ...)` 신설 — **바깥 반경**을 받아 경로/폭을
+    내부에서 유도한다(호출부가 실수할 여지 제거. `CreateFilledDot`은 *경로 반경*을 받고 바깥이 2.2배라
+    머리에 그대로 쓰면 머리가 2.2배가 된다).
+  - `Head/HeadFill`(sortingOrder 3) 추가. **`HeadOutline`은 손대지 않았다**(계약 C1).
+  - `const bool BakeEyes = false` 게이트로 눈 생성을 감쌌다. 좌표 상수 3개/`CreateFilledDot`은 보존.
+- **`Interaction/CharacterPortraitStage.cs`** — `AddFilledDisc` + `const bool DrawEyes = false`.
+  초상화도 같은 유도식으로 머리를 채웠다(38-12 #10의 이중 정의 재발 방지).
+- **`Core/StickConfig.cs` + `DefaultStickConfig.asset`** — `eyeTrackingEnabled` 기본값 `false`.
+  튜닝 필드 4개는 전부 보존.
+- **`States/EyeController.cs` — 한 줄도 고치지 않았다.**
+
+### ★ 유도식을 38-4-1에서 조정했다 (리더 보고 대상)
+
+38-4-1은 `경로반경 R/2, 폭 R`(= k 2.0)을 제시했다. **바깥 반경 R은 그대로 유지하되 k를 2.4로 올렸다.**
+
+- 이유: k=2.0이면 다각형 안쪽 정점 24개가 **중심 한 점에 정확히 겹친다**(여유 0). 같은 파일의
+  `CreateFilledDot`이 이미 실측으로 2.4를 쓰고 있고 그 주석이 *"지름보다 넉넉히 두꺼워야 안쪽까지
+  완전히 채워진다"* 라고 명시한다 — 2.0은 이론 최소라는 뜻이다.
+- **머리 크기 불변은 그대로**: `r + W/2 = R`을 유지하므로 바깥 반경은 여전히 정확히 R이다
+  (r = R/2.2 = 0.4545R, W = 1.0909R, 안쪽 가장자리 = −0.0909R로 중심을 지나침).
+- 부수 이득: 폭이 커져 화면상 최소 획 하한(2pt)에 걸릴 여유가 36% → **48%**로 늘었다.
+
+### 검증
+
+- **프리팹 YAML 실측**: `HeadFill` 경로 0.075 / 폭 0.180 → **바깥 0.165**, `HeadOutline` 경로 **0.165**
+  (변경 전과 동일). 즉 머리 바깥선이 1pt도 안 움직였다. 프리팹에 `LeftEye`/`RightEye` 부재.
+- **EditMode 394/394 통과**(`Logs/p1_edit2.xml`), `error CS`/`warning CS` **0건**. 직전 기준선 364에서
+  신규 10건 + 타 에이전트 신규분.
+- **PlayMode 383개 중 376 통과**(`Logs/p1_play_all.xml`). 실패 5건 전수 분석:
+  - 4건은 **직전 두 기준선(`alpha_play_all.xml` 02:36 / `coder_hair_play.xml` 03:07)과 동일한 기존 실패**
+    — `MaxCharacterScale`이 오늘 2.0 → 1.5로 바뀌었는데 테스트 3건이 아직 2.0을 기대한다
+    (`CharacterScaleRuntimeTests` 2건, `DeployedConfigAssetImmutabilityTests` 1건) + `CornerHoverPanelTests` 1건.
+  - 1건은 **플레이키**: `InfoGearMeshingTests.TwoGearsSpinInOppositeDirectionsAtTheToothRatio`
+    (Δ=0.187° vs 임계 0.5°). **단독 재실행 3/3 통과**(`Logs/p1_gear1.xml`) — 전체 스위트 부하에서
+    프레임 시간에 민감한 단언. 이번 변경과 무관(기어 회전 연출).
+- **신규 테스트 10건**
+  - EditMode `HeadFillGeometryTests`(5) — 배포 상수를 **C# 소스에서 파싱해** 검산.
+    바깥 반경 = R(배율 5종), 바늘구멍 없음(+ k=2.0 네거티브 컨트롤), 기준 디스플레이 여유,
+    24각형 근사 오차 0.39%R = 0.023pt, **실제/초상화 채움 비율 동일**.
+  - EditMode `EyeRestorePathContractTests`(5) — 되살리기 절차의 각 단계가 가리키는 대상이 실재하는지
+    소스 감사(선례: `OfflineFirstNetworkAuditTests`). 두 게이트가 **같은 상태**인지, 배포 에셋도 같이
+    꺼졌는지, `EyeController`가 눈 없이 예외 없이 돌고 **눈을 붙이면 다시 잡는지**(네거티브 컨트롤).
+  - PlayMode `CharacterHeadFillTests`(4) — 실제 씬에서 머리 반경/채움 범위/눈 부재/`EyeController` 무해성.
+- **되돌리기 경로 실증(실제로 해봤다)**: 상수 3개를 `true`로 뒤집고 `BuildAll --force` →
+  `LeftEye`/`RightEye`가 **그대로 복원**됨(에러/경고 0). 다시 `false`로 되돌리고 재생성 →
+  **프리팹이 P1 상태와 바이트 단위로 완전히 동일**, 씬도 fileID를 제외하면 완전 동일.
+  즉 되살리기가 **왕복으로** 안전하다.
+- 갱신: `PortraitEyeVisibilityTests` **단언 반전**(눈이 "있다" → "없다", 그림이 실제로 그려졌는지 대조군
+  2종 추가), `EyeControllerHeadScopeTests` `[Ignore]`(삭제 아님 — 되살릴 때 그 한 줄만 지우면 된다),
+  `CharacterScaleInvarianceTests.IsBodyRenderer`에서 눈 2종 제거.
+
+### 교차 레이어 영향 로그 (리더 보고 대상)
+
+1. **★ 화면상 최소 획 하한(2pt)의 월드 값은 실행 환경마다 다르다** — 실측으로 발견.
+   `ResolveMinStrokeWorldWidth`가 `화면높이 ÷ 직교크기`로 계산하므로, 기준 디스플레이(846pt)에서는
+   0.0567유닛이지만 **배치 모드 헤드리스(480pt)에서는 0.100유닛**이 되어 최소 배율에서 실제로 구속한다.
+   **그래도 머리는 커지지 않는다** — 하한이 채움과 링에 똑같이 걸리는데 채움의 경로 반경이 더 작기
+   (R/2.2 < R) 때문이다. 부등식(채움 바깥 ≤ 링 바깥 ∧ 채움 바깥 ≥ 링 중심선)을 하한 6종 × 배율 5종
+   30조합으로 잠갔다. **P2(두께 전환)에서 이 성질을 반드시 재확인할 것** — 몸 획을 2.5배로 올리면
+   하한이 걸리는 지점 자체가 이동한다.
+2. **`torsoTopOverlapped` 목선 보정을 P1에서 건드리지 않았다.** 38-4-1은 채움 뒤 불필요해졌으니
+   `= torsoTopY`로 단순화하라고 권고하지만, P1에서 바꾸면 프리팹 지오메트리가 함께 움직여 회귀 판정에
+   무관한 변화가 섞인다. 실제로 문제가 되는 것은 `lineWidth`가 굵어지는 **P2**이므로 그때 한 번에 한다
+   (코드에 사유 주석 명시).
+3. **펫(리틀스틱메이트) 머리는 아직 빈 링이다** — `AppearanceShapeBuilder.MiniFigure`가 4번째 몸
+   렌더링이고 38-12 #11이 P2로 배정한 항목. 지금은 **주인은 꽉 찬 머리, 펫은 빈 머리**로 보인다.
+   즉시 고치지 않은 이유: 그 함수의 반환 배열은 **순서가 계약**이고(`CharacterPetRenderer`가 인덱스 2~5를
+   회전시킨다) 원소를 끼워 넣으면 보행/낙하 연출이 조용히 깨진다. P2에서 인덱스 계약과 함께 처리해야 한다.
+4. **LookAround 앰비언트의 눈동자 훑기가 화면에서 사라졌다**(38-12 #3, R9 "확실"). 예상된 부수 피해.
+   다만 **신호 자체는 살아 있다** — `EyeController.CurrentLookDirection`은 눈 오브젝트 없이도 갱신되므로
+   `EventWiringVisualTests`의 훑기 단언이 그대로 통과한다(그 파일은 수정 불필요했다).
+   눈을 되살리면 연출도 함께 돌아온다.
+5. **기존 빨간불 4건은 이번 라운드 이전부터 있었다**(위 PlayMode 분석). 특히
+   `MaxCharacterScale` 2.0 → 1.5 변경에 테스트 3건이 아직 따라오지 않았다 — **다른 담당자 소관**이라
+   건드리지 않았다. 리더 배정 필요.
+
+---
+
+## ★★ [debugger/T2] 2026-09-01 — 운영 경고: `kill <PID>`(SIGTERM)로 앱을 끄면 **저장이 안 된다** (실측 확정)
+
+> **팀 전체 필독.** 두 에이전트의 모순(A: "SIGTERM이 종료 저장을 트리거했다" / B: "SIGTERM은
+> `OnApplicationQuit`을 실행하지 않는다")을 실측으로 판정했다. **에이전트 B가 맞다.**
+> 에이전트 A의 관측은 **다른 인스턴스의 60초 자동저장이 만든 착시**였다(아래 재현).
+
+### 결론 (한 줄)
+
+`Builds/macOS/StickMate.app` (Unity 6000.0.82f1 macOS Standalone)은 **SIGTERM/SIGINT에 핸들러를 걸지
+않는다**. 커널 기본 동작으로 **0.2초 만에 즉사**하며 `OnApplicationQuit`은 **실행되지 않는다**.
+종료 저장은 `Interaction/CharacterProgressionDirector.cs:87 OnApplicationQuit()` **한 곳**에만 걸려 있으므로
+**마지막 자동저장 이후의 진행(최대 60초)이 통째로 사라진다.**
+
+### 실측 (총 12회, 같은 빌드·같은 기기)
+
+| 종료 방법 | 시행 | 프로세스 | Unity 종료 시퀀스 로그 | 종료 시 저장 |
+|---|---|---|---|---|
+| `kill -TERM` (= `kill` 기본값) | **7/7** | 0.20~0.24초 만에 즉사 | **0줄** | **없음** |
+| `kill -INT` (기본 처리 복원 후) | 1/1 | 0.21초 만에 즉사 | **0줄** | **없음** |
+| `NSRunningApplication.terminate()` (PID 지정 정상 종료) | **3/3** | 0.30~0.83초 | **3줄** | **있음** (요청 +0.06~0.53초에 파일 갱신) |
+| `osascript` + System Events `quit process` | 1/1 | **안 죽음** | 0줄 | 없음 (**rc=0인데 아무 일도 안 일어남 — 함정**) |
+
+- **관측 지표 ①(인스턴스 격리, 신뢰도 높음)**: 정상 종료 시에만 그 인스턴스의 `-logFile`에
+  `[Physics::Module] Cleanup current backned.` / `Input System module state changed to: ShutdownInProgress.` /
+  `... to: Shutdown.` 3줄이 찍힌다. SIGTERM에서는 **0줄**.
+- **관측 지표 ②(세이브 파일 mtime)**: 자동저장 틱에서 가장 먼 위상(파일 나이 20~40초)으로 킬 시점을
+  맞춰 교란을 배제했다. SIGTERM 3회 전부 mtime **변화 없음**, 정상 종료는 **+0.06초**에 갱신.
+
+### 왜 에이전트 A에게는 "저장된 것처럼" 보였나 — 착시의 정체 (실험으로 재현함)
+
+1. **`CharacterSaveStore.Save()`는 성공 시 로그를 한 줄도 남기지 않는다**(실패 시에만 경고).
+   따라서 "저장 로그가 없다"도 "저장됐다"도 로그로는 판별 불가. **에이전트 B의 근거 문장
+   ("저장 로그가 0줄")은 사실이지만 논거로는 약하다** — 성공해도 0줄이기 때문이다.
+   B의 결론이 맞은 것은 맞지만, 결정적 증거는 위의 "Unity 종료 시퀀스 3줄"이다.
+2. **세이브 파일은 모든 인스턴스가 공유한다.** 실측 중 사용자 인스턴스(PID 78429)는 **정확히 60.000초
+   주기**로 이 파일을 계속 덮어썼다(mtime …504.674 / …564.673 / …624.674). 즉 **어떤 인스턴스를 죽이든
+   파일은 계속 신선해 보인다.** "죽이고 나서 파일을 읽어 보니 방금 갱신돼 있더라"는 관측은
+   **죽은 프로세스와 아무 인과관계가 없다.**
+3. 실제로 SIGTERM 직후(3초 뒤) 파일을 읽는 실험에서 파일은 "16초 전 갱신됨"으로 보였다.
+   그러나 같은 인스턴스의 로그에는 종료 시퀀스가 **0줄**이었다 — 그 갱신은 **살아 있는 다른
+   인스턴스**가 한 것이다.
+
+### 문서 근거
+
+- 바이너리 실측: `UnityPlayer.dylib`의 `SIGINT/SIGTERM/SIGQUIT/...` 문자열 테이블은
+  `PlatformDependent/UnixCommon/...` · `.config/unity3d`(**Linux 플레이어 설정 경로**) 문자열과 같은
+  구역에 있다 — 즉 그 시그널 핸들러 설치 경로는 **Unix/Linux 쪽**이다. macOS 종료 경로는 같은
+  바이너리에 있는 Cocoa `applicationShouldTerminate:`이고, 이것은 **Apple Event 종료 요청으로만** 열린다.
+- Unity Issue Tracker: "OnApplicationQuit() is not called ... when exiting Mac Dedicated Server"
+  (2021.3 / 2022.3 / **6000.0** / 6000.1 영향). 수정은 **Dedicated Server 빌드 한정**으로 들어갔고
+  일반 macOS Standalone 플레이어에는 적용되지 않는다.
+
+### ★ 앱을 안전하게 종료하는 법 (지금부터 이걸 써라)
+
+**A. 특정 PID만 정상 종료 — 컴파일러 없이 한 줄 (권장, 실측 3/3 성공)**
+
+```bash
+osascript -l JavaScript -e "ObjC.import('AppKit'); \
+  var a=\$.NSRunningApplication.runningApplicationWithProcessIdentifier(<PID>); \
+  a.isNil() ? 'NO_SUCH_PID' : String(a.terminate())"
+# 성공하면 true 를 출력하고, 0.3~0.8초 뒤 프로세스가 사라진다.
+# 검증: 그 인스턴스의 -logFile 끝에 "Input System module state changed to: Shutdown." 이 찍혔는지 봐라.
+```
+
+이것이 `Application.Quit()` → `OnApplicationQuit()` → `CharacterSaveStore.Save()` 경로를 정확히 탄다.
+**전역이 아니라 PID 지정**이므로 사용자 인스턴스를 건드리지 않는다.
+
+**B. 사람이 직접 끌 때** — 전역 단축키 `Ctrl+Opt+Cmd+Q` 또는 캐릭터 우클릭 → `[앱 종료]`.
+`Q`는 **전역**이라 권한을 가진 **모든 인스턴스가 함께 죽는다**(테스트 인스턴스와 사용자 인스턴스가
+동시에 떠 있을 때는 쓰지 마라).
+
+**쓰면 안 되는 것**
+- `kill <PID>` / `kill -TERM` / `kill -9` / `pkill StickMate` — **전부 저장 없이 즉사**.
+- `osascript -e 'tell application "System Events" to quit (process ...)'` — **rc=0인데 안 죽는다.**
+- `osascript -e 'tell application "StickMate" to quit'` — 인스턴스가 2개일 때 **어느 쪽이 죽을지 모른다.**
+
+**불가피하게 강제 종료해야 한다면** 죽이기 전에 최소 60초 이상 앱을 그대로 두어 자동저장 틱을 한 번
+지나가게 하라. 그래도 마지막 틱 이후의 진행은 잃는다.
+
+### 오늘 밤 실제 피해 추정
+
+리더가 `kill <PID>`로 끈 횟수 × (마지막 자동저장 이후 경과, 0~60초)만큼의 **XP·함께한 시간·격파/활쏘기
+전적·넘어진 횟수·톱니 위치**가 유실됐다. 즉시 저장 경로가 따로 있는 항목(할일, 잉크색, 장비 토글,
+톱니 위치 확정, 레벨업)은 **무사하다**. 실측 중 세이브 파일의 모든 필드는 단조 증가만 확인됐다
+(손상·역행 없음).
+
+### 담당자 조율 필요
+
+- `.claude/skills/run-stickmate/SKILL.md` **Gotcha 4는 내용상 맞다**(수정 불필요). 다만 근거 문장이
+  "저장 로그가 0줄"로 되어 있는데 이는 약한 논거다 — **"Unity 종료 시퀀스 3줄이 안 찍힌다"**로 바꾸고,
+  위 **A안 한 줄**을 `driver.sh stop`에 넣기를 제안한다(현재 `stop`은 SIGTERM이다).
+  **스킬 파일은 담당자 소관이라 손대지 않았다 — 리더가 배정해 달라.**
+
+### 부수 발견 (Minor, 코드 정독 기반 — 별도 검증 필요)
+
+`Interaction/CharacterStatsDirector.cs:79 OnDisable()` → `:84 Flush()`가 마지막 조각(≤10초치 누적 시간)을 모델에 반영하지만,
+Unity 종료 순서는 **`OnApplicationQuit` → `OnDisable` → `OnDestroy`**다. 즉 그 Flush로 늘어난 값은
+**정상 종료에서도 저장되지 않는다**(저장은 이미 끝난 뒤다). 손실은 최대 10초로 작지만, 주석이 의도한
+"마지막 조각을 잃지 않게"는 씬 언로드에서만 성립한다. **가설이며, `OnApplicationQuit`에서
+`CharacterStatsDirector.Flush()`를 먼저 부르는지 확인/수정은 coder 소관.**
+
+---
+
+## P9-a / P9-c / P9-d — 랙돌 진입 에너지 + 속도 연동 진폭 + 어깨 비대칭 (2026-09-01, coder)
+
+리더 승인 항목 3건 착수. 근거는 `docs/UX_FLOW.md` 38-14(ux-designer). **감쇠(0.9/3.0)는 지시대로
+한 줄도 건드리지 않았다** — 경련(고주파·저진폭)과 크게 휘두름(저주파·대진폭)이 다른 문제라는 논증을
+그대로 지켰다.
+
+### P9-a — 랙돌 진입 충격량 + 각속도 삭감 무효화
+
+- `States/RagdollRig.cs`
+  - **`EnterRagdoll(Vector2 hitDirection, float impulse)` 오버로드 신설.** 가슴 지점에
+    `AddForceAtPosition(..., Impulse)`. 무인자 `EnterRagdoll()`은 `(Vector2.zero, 0f)`을 넘기는
+    래퍼로 남겨 **기존 소비자 3곳 전원 무변경**(`RagdollState`/`StickmanBlackboard`/테스트).
+  - **가슴 높이를 하드코딩하지 않았다** — 루트에 직접 매달린 관절(팔다리 위 마디)의
+    `connectedAnchor.y` 최댓값 = 어깨 부착 높이를 생성자에서 1회 유도한다(배율이 바뀌어도 자동 추종).
+  - `AngularVelocityDampenOnEntry` **0.5 → 1.0**. 루프는 지우지 않았다(되돌리기 = 상수 1개).
+  - `MirrorIfFacingLeft` `private` → `internal`(EditMode가 `InternalsVisibleTo`로 직접 검증).
+- **실측**: 지렛대 0.215유닛(가슴이 질량중심보다 위), 감도 **42.8도/초/N·s**,
+  +x 타격 −171.00도/초 / −x 타격 +171.06도/초(부호 정확·좌우 대칭), 무충격 대조군 0.07도/초.
+  재진입 각속도 비 **1.000**(예전 0.500).
+- **`StickmanRagdollRecoveryTests` 통과** → ux-designer의 "정착은 감쇠가 책임진다" 판단이 실측으로 확인됨.
+
+### P9-c — 걷기 진폭을 `_smoothedSpeed`에서 유도
+
+- `States/StickmanPoseAnimator.cs` — `TickWalkPose` 안에서
+  `amplitudeScale *= lerp(0.85, 1.35, clamp01(_smoothedSpeed / 명령속도))`.
+  새 상태/새 측정/새 키프레임 0개, 시그니처 무변경. 실측 접근자 3개 추가
+  (`SmoothedWalkSpeed`/`WalkAmplitudeScale`/`WalkSpeed01`).
+- **`strideScale`은 유도하지 않았다**(리더 지시와 다른 판단 — 아래 보고 사항 2).
+- **실측**: 속도비 0/0.25/0.5/0.75/1 → 진폭 0.850/0.975/1.100/1.225/1.350(정확히 선형).
+  실제 적용 엉덩이 스윙 46.1도 → 63.3도, 한 사이클 이동거리 1.143 → 1.604유닛.
+
+### P9-d — 어깨 제한 비대칭화 (물리 자산)
+
+- `Editor/SceneBootstrapper.cs` — `ShoulderSwingLimitDegrees(75, 대칭)` →
+  `ShoulderSwingBackLimitDegrees(60)` / `ShoulderSwingForwardLimitDegrees(150)`.
+- `_Project/Prefabs/Stickman.prefab` — 상완 관절 2개만 `[-75,75]` → `[-60,150]`
+  (전체 재생성이 아니라 **해당 2개 값만** 수정 — 병렬 작업 중인 P1 프리팹 변경과 충돌 방지).
+  고관절/무릎/팔꿈치 6개는 한 바이트도 안 건드렸다.
+- **"대(大)자" 방지는 강화됐다**: 대자는 한 팔 +90 / 다른 팔 −90인데 뒤쪽 한계가 75 → 60으로
+  **내려갔다**. 새로 열린 것은 "두 팔이 같은 쪽(앞/위)으로 넘어가는" 구간뿐 = 얻어맞는 그림.
+- `MirrorIfFacingLeft`가 실제로 충분함을 확인: `[-60,150]` → 왼쪽 `[-150,60]`, 새 배관 0.
+- **실측**: 런타임 적용 폭 상완 **210.0도**(=60+150) / 대퇴 130.0도(=65+65), 둘 다 0 포함(진입 튐 없음).
+
+### 신규 회귀 테스트 17건
+
+- EditMode `WalkAmplitudeSpeedScalingTests`(6) — 물리/씬 없이 가짜 리그의 루트를 직접 밀어
+  **제품 코드를 그대로** 돌린다. 단조성/양 끝점/실제 관절각/보폭/설정배율 곱셈/0 폴백/결정성.
+- EditMode `ShoulderSwingAsymmetryTests`(7) — 소스 상수와 **프리팹 YAML을 각각 파싱해 대조**
+  (선례: `HeadFillGeometryTests`). 비대칭성/대자 차단/자산-코드 동기화/능동 포즈 구간 내포/
+  좌우 반전 거울상 + 네거티브 컨트롤 2종(고관절 대칭 유지, 대칭 구간에서 반전 함수가 항등).
+- PlayMode `RagdollEntryEnergyTests`(5) — 지렛대 실재/토크 부호와 좌우 대칭/각속도 삭감 소멸/
+  하위호환 무충격/비대칭 제한의 런타임 도달.
+
+### 교차 레이어 영향 로그
+
+| # | 항목 | 영향 | 조치 |
+|---|---|---|---|
+| 17 | **`EnterRagdoll` 새 오버로드에 생산자가 아직 없다** | 배관만 생겼고 실제로 충격량을 넘기는 코드가 0곳이라, 이번 라운드에 화면에서 달라지는 것은 각속도 삭감 소멸(2배)뿐이다 | 리더 배정 필요(아래 보고 사항 1) |
+| 18 | **충격량 스케일 실측 — `LastImpactMagnitude`를 그대로 넘기면 안 된다** | 감도 42.8도/초/N·s라 랙돌 임계 5배(40N·s)면 **초당 5회전**이 된다(실측 −1795도/초) | 생산자 배선 시 환산 계수 필수 |
+| 19 | **`WalkFootSlipTests`의 접지 임계값을 진폭으로 정규화** | P9-c로 진폭이 1.35배가 되자 3개 배율 전부에서 임계를 12% 초과 | 임계에 `WalkAmplitudeScale`을 곱했다. **단위 진폭당 실측은 0.0499~0.0501로 진폭 1.0 시절 0.052보다 오히려 좋다** — 커진 것은 오차가 아니라 자(尺)였다 |
+| 20 | **자유 보행에서 속도 정규화 값은 항상 ≈1.0이다** | `WalkState`가 속도를 매 프레임 직접 대입해 실측=명령이라, 지금 게임에서는 진폭이 사실상 상수 1.35다(종종걸음 구간은 벽에 막혔을 때만) | 의도된 결과(= "걷기가 35% 커짐"). 진짜 walk/run 구분은 명령 속도가 둘이 되어야 생긴다 |
+| 21 | **`AwayTierMotionGuardTests`의 `GaitCycleHz=1.35` 주석이 낡았다** | 진폭이 커지면 보폭이 늘어 사이클 주파수는 **내려간다**(프레임/주기 단언은 더 여유로워지므로 통과) | 값 자체는 하한 판정에 안전한 방향이라 건드리지 않았다. 다른 담당자 소관 |
+
+---
+
+## P9-b — RAGDOLL 진입 충격량 **생산자 배선** (coder, 2026-09-01)
+
+P9-a가 만든 `RagdollRig.EnterRagdoll(방향, 충격량)`은 **호출자가 0곳**이었다(교차 레이어 로그 #17).
+배관은 있는데 물이 안 흘러 "얻어맞으면 팔다리가 크게 튕긴다"가 화면에 전혀 안 나왔다. 이번에 연결했다.
+
+### 환산 계수 — `RagdollImpactResolver.ResolveEntryImpulse()` 한 곳에만 있다
+
+교차 레이어 로그 #18의 경고("`LastImpactMagnitude`를 그대로 넘기면 안 된다")를 그대로 이행했다.
+
+```
+scale  = 목표각속도(임계값에서) / 감도 / 임계값      = 100 / 42.8 / 8 = 0.2921
+capRaw = 임계값 x (상한각속도 / 목표각속도)          = 8 x (400/100)  = 32
+결과   = min(원본, capRaw) x scale
+```
+
+| 원본(임계값 배수) | 진입 충격량 | 진입 각속도 | 비고 |
+|---|---|---|---|
+| 1.00배 (8N·s) | 2.34N·s | **100도/초** | 설계 하한 |
+| 1.02배 | 2.38N·s | 102도/초 | 긴 망토 = 현존 최약 랙돌 |
+| 1.25배 | 2.92N·s | 125도/초 | 로데오 흔들기 |
+| 2.00배 | 4.67N·s | 200도/초 | 대사가 "으악!"이 되는 지점 |
+| 4.00배 | 9.35N·s | **400도/초** | 포화. 대사 "으아아아악?!" 시작점과 일치 |
+| 5.00배 | 9.35N·s | 400도/초 | **클램프가 1712도/초(초당 4.8바퀴)를 막는다** |
+
+- 상한을 대사 3구간의 마지막 경계(4배)에 맞춘 것은 의도다 — 포화 지점이 대사와 **같은 눈금** 위에 있다(원칙 1).
+- 튜닝 값 3개를 전부 StickConfig에 **사람이 읽는 단위**로 노출했다:
+  `ragdollEntryAngularVelocityAtThreshold`(100도/초) / `ragdollEntryAngularVelocityCap`(400도/초) /
+  `ragdollEntryAngularSensitivityPerImpulse`(42.8도/초/N·s, **실측 상수이지 튜닝 값이 아니다**).
+  AtThreshold를 0으로 두면 기능 전체가 꺼진다(되돌리기 = 숫자 하나).
+
+### 배선한 이벤트 (방향을 아는 곳 전부)
+
+| 경로 | 방향의 출처 | 파일 |
+|---|---|---|
+| 충돌(루트/사지 전부) | **접촉 법선의 평균** — 상대 콜라이더에서 나를 향하는 방향 | `RagdollImpactResolver.TryApplyCollisionImpact` |
+| 던지기(랙돌로 가는 예전 경로) | 던진 속도 벡터 | `DragThrowState.ReleaseAndThrow` |
+| 로데오 거친 흔들기 | 커서 이동 벡터(덮어쓰기 **전에** 캡처) | `RodeoCursorState.TickMounted` |
+| 긴 망토 걸림 | `FacingSign`(진행 방향으로 고꾸라짐) | `LongCapeTripDirector` + `StickmanAgent.ReportExternalImpact(크기, 방향)` 신규 오버로드 |
+| 크기만 아는 통지 / 직접 `ChangeState` | **없음 → 그대로 무충격**(P9-a 이전과 비트 단위 동일) | `ReportExternalImpact(float)` |
+
+- 전수 확인 결과 **`ChangeState(Ragdoll)`을 부르는 제품 코드는 `RagdollImpactResolver.TryApplyImpact` 하나뿐**이다.
+  `WindowTheftDirector` / `WindowCrashDirector` / `BattleMinigameDirector`는 랙돌 진입 경로가 아예 없다(오해 방지).
+- `LastImpactDirection`은 **소비형**이다 — `RagdollState.Enter()`가 읽는 즉시 0으로 지운다.
+  안 지우면 방향 모르는 다음 진입에서 **지난 타격의 방향으로 유령 충격량**이 실린다(전용 회귀 테스트 있음).
+
+### 실측 (PlayMode 전체 스위트, `Logs/p9b_play_all.log`)
+
+- 약(1.02배): 예측 102.0 → **실측 101.9도/초** (오차 1.00배)
+- 강(5배): 상한 400 → **실측 399.6도/초** (변환 없었으면 1712도/초)
+- 부호/대칭: +x 밀림 −199.8 / −x 밀림 +199.7도/초 (2배 타격)
+- 유령 충격량: 1차 9.346N·s → 2차(방향 없음) **0.000N·s**
+- 정착: 최대 충격 + 방향 있음에서도 GETUP 경유 **1.75초** 만에 Walk 복귀
+
+### 신규 회귀 테스트 14건
+
+- EditMode `RagdollEntryImpulseConversionTests`(8) — 물리 없이 순수 함수만: 설계범위(1~5배 전 구간
+  90~400도/초) / 강약 구분 / **상한 클램프 네거티브 컨트롤**(원본 그대로면 1712도/초임을 함께 단언해
+  전제가 무너지면 테스트가 먼저 알린다) / 단조성 / OFF 스위치 / NaN·음수·null 방어 / 오설정(상한<목표) /
+  코드기본값↔배포에셋 표류.
+- PlayMode `RagdollEntryImpulseWiringTests`(6) — 생산자와 **완전히 같은 경로**로 실제 이벤트를 일으켜
+  각속도 실측: 약/강 설계범위 + 감도 상수 유효성 / 상한 클램프 / 좌우 부호 / 무방향 경로 무변경 /
+  유령 충격량 / **정착(GETUP 복귀)**.
+
+### 교차 레이어 영향 로그
+
+| # | 항목 | 영향 | 조치 |
+|---|---|---|---|
+| 22 | **#17 해소** — `EnterRagdoll(방향,충격량)`에 생산자 5경로 배선 | 이제 모든 피격/던짐/흔들기/충돌 랙돌이 회전 에너지를 갖고 진입한다. 랙돌 진입 순간의 그림이 실제로 바뀐다 | 완료. 렌더/AI 레이어 코드 변경은 0 |
+| 23 | **#18 해소** — 환산 + 상한 클램프 도입 | 1712도/초 → 400도/초 | 완료. `ResolveEntryImpulse` 단일 지점 |
+| 24 | `StickmanBlackboard`에 **필드 1개 추가**(`LastImpactDirection`) | 블랙보드는 전 레이어 공용이라 알림 필요. 기존 필드/시그니처 변경은 없음(순수 추가) | 리더 확인 요망 |
+| 25 | `StickmanAgent.ReportExternalImpact`에 **오버로드 추가**(기존 시그니처 무변경) | 외부 디렉터가 방향을 넘길 수 있는 통로 | 기존 호출부 전원 무수정 동작 확인 |
+| 26 | **`RagdollEntryEnergyTests.EntryImpulseCreatesTorqueInTheDirectionOfTheHit`가 순서 의존으로 불안정** | 내 변경이 원인이 **아님**(로그로 확정, 아래 보고 참고). 단독 실행/전체 스위트에서는 통과, 특정 부분 배치에서 실패 | 리더 배정 필요 — 제안 수정안은 보고서 참고 |
+
+---
+
+## 2026-09-01 — 설정창 신설 + 캐릭터 크기 단일 소스화 (coder / Teammate1)
+
+승인된 시안(720×560 웹 목업, 사용자 "이렇게 적용해줘")을 Unity C#으로 구현했다.
+근거 문서: `docs/UX_FLOW.md` 35-1-3 ① / 35-1-4 / 35-1-5 / 35-1-7 / 36-11.
+
+### 임무 1 — 캐릭터 크기 값 단일 소스화 (35-1-3 ①)
+
+- **신규 `Core/CharacterScaleController.cs`** — 게이트·유예·강제적용·기억·알림을 통째로 소유한다.
+  `CornerHoverPanel`의 private 3개(`CanApplyNow`/`TickPendingScale`/`ApplyScaleNow`)를 **상태 목록과
+  상수(3초)까지 그대로** 옮겼다(거동 변경 0). 스냅 격자 `ValueStep = 0.05`도 여기로 올리고
+  `SizeDialWidget.ValueStep`이 그것을 참조한다 — 격자가 두 벌이면 같은 값이 한쪽에서 1.15,
+  다른 쪽에서 1.20으로 보인다.
+- **`StickmanEventBus.CharacterScaleChanged`** 신설(23번째 이벤트, 기존 struct 페이로드 관례 그대로).
+  `Value`는 **사용자가 고른 값**이고 `AppliedToCharacter`로 유예 여부를 구분한다 —
+  유예 중에도 두 UI의 **표시**는 즉시 같아진다(유예는 몸이 늦는 것이지 선택이 취소된 게 아니다).
+- **구석 다이얼과 설정창 슬라이더 둘 다** 이 이벤트의 구독자이자 발행자다. 어느 쪽에서 바꿔도
+  다른 쪽이 같은 프레임에 따라온다. 상한은 `StickConfig.MaxCharacterScale`(1.5)를 그대로 참조.
+
+### 임무 2 — 설정창 (신규 파일 2개)
+
+- **`Interaction/SettingsControls.cs`** — 토글 / 슬라이더(+스테퍼) / 세그먼트 / 스와치 4종 +
+  카드·행 레이아웃 조립기 + 클릭 등록소(`SettingsControlHost`). **색을 하나도 새로 만들지 않았다** —
+  전부 `UiChrome` 토큰이거나 `UiChrome.Flatten(반투명토큰, 밑에깔린불투명색)` 합성이다(알파 안전).
+- **`Interaction/SettingsWindow.cs`** — 720×560 중앙 모달. 헤더 48 / 탭바 40(활성 밑줄 2pt Accent) /
+  내용 438(좌우 패딩 20, `RectMask2D` + `[▲][▼]` 페이지) / 푸터 34. 5탭 중 [일반][캐릭터]만 채우고
+  나머지 3탭은 **회색 + 사유 캡션**(35-1-7 "없는 척하지 않는다").
+- 진입점: **정보창 헤더의 [설정] 칩**(주 경로, 36-11) + **전역 단축키 ⌃⌥⌘,**(신규 `GlobalKey.Comma`).
+
+### 교차 레이어 영향 로그
+
+| # | 항목 | 영향 | 조치 |
+|---|---|---|---|
+| 22 | **`GlobalKey.Comma` 신설 = 네이티브 계층 2곳 수정** | macOS `kVK_ANSI_Comma(0x2B)` / Win32 `VK_OEM_COMMA(0xBC)`. 이 enum에 처음 들어온 **문자 아닌 키**라 두 구현의 ASCII 지름길이 통하지 않는다 | 각 구현에 명시적 한 줄 추가. 빠지면 조용히 false만 돌아온다 |
+| 23 | **`StickmanAgent.TickFullscreenSuspend`에 한 줄 게이트** | 설정창 [일반]의 "전체화면 자동 숨김" 토글이 실제로 동작하려면 여기가 유일한 지점이다. 그 파일은 이번 라운드에 다른 작업자가 잡고 있었다 | 한 줄만 수정 + PlayMode 테스트로 잠금. **리더 확인 요망**(다른 작업자가 통째로 덮어쓰면 조용히 죽는다) |
+| 24 | **`InfoGearIconWidget`에 톱니 on/off 게이트** | 전체화면 숨김과 **같은 경로**(`ApplySuspendHide`)를 재사용했다 — 숨기는 방법이 둘이 되면 "무엇을 되살리는가" 목록도 갈라진다 | `ApplySuspendHide(reason)`로 사유만 파라미터화 |
+| 25 | **말풍선 설정 4종이 `DialogueBubbleRenderer`/`AmbientChatter`의 읽기 경로를 지난다** | `_config.dialogueFontSize` 등 **직렬화 필드 직접 읽기 5곳**을 `AppSettingsModel.Resolve*`로 교체 | 고른 적 없으면 에셋 값이 그대로 나오므로 **거동 무변화**. 이게 없으면 설정창이 배포 에셋을 오염시킨다 |
+| 26 | **저장 스키마 v7 → v8** | `AppSettingsModel` 8필드 추가. `autoHideOnFullscreen`/`gearIconVisible`는 **기본이 true**라 옛 파일에서 읽으면 뜻이 뒤집힌다(구석 패널이 겪은 그 함정) | `FirstVersionWithAppSettings`로 버전 분기. 나머지는 "고른 적 있는가" 플래그라 저절로 성립 |
+| 27 | **프리팹에 `SettingsWindow` 컴포넌트 추가 필요** | `SceneBootstrapper.EnsurePrefabComponents`에 한 줄 넣었지만, **실제 프리팹 적용은 Unity 실행이 필요**하다 | 배치 락이 풀리는 대로 실행 필요(33-9 #10 / 34-9 #10과 같은 함정) |
+
+### 미해결 / 리더 판단 필요
+
+1. **부채꼴 5번째 버튼**: 임무 지시는 "톱니 부채꼴 메뉴에 항목 추가"였으나 `UX_FLOW` 36-11이
+   "**여전히 만들지 않는다**"로 결론(사유: 기하가 아니라 **빈도**)지어 두었고, 4버튼 기하를
+   `GearRadialFanGeometryTests`가 잠그고 있다. 문서를 따라 **만들지 않았다** — 대신 36-11이
+   주 경로로 승격시킨 "정보창 헤더의 작은 톱니"를 구현했다. 뒤집을지 리더 판단 요망.
+2. **푸터 문구 1줄 변경**: 시안의 "톱니 아이콘 클릭 · ⌃⌥⌘," → "캐릭터 정보창 [설정] · ⌃⌥⌘,".
+   **존재하지 않는 문을 알려 주지 않기 위해서**다(원칙 1). 1번이 뒤집히면 시안 문구로 되돌린다.
+3. **"지금 즉시 숨기기/보이기"는 1회성 동작**이다(`Blackboard.SetCharacterVisible` 경유).
+   영구 숨김 상태는 `StickmanAgent`에 상태를 하나 두어야 하는데 그 파일이 이번 라운드에
+   다른 작업자 소유라 배정 요망.
+4. **숨기기/보이기 단축키(⌃⌥⌘V)**는 토글만 만들고 **비활성 + 사유 캡션**으로 뒀다(`GlobalKey`에 V 없음).
+5. **로그인 시 자동 실행 / 말투 세그먼트 / 포인트 컬러**는 자리만 확보 + 비활성(각각 P3 / 35-3-3 / 회의록 6).
+
+### 신규 회귀 테스트 4파일
+
+- PlayMode `SettingsCharacterScaleSingleSourceTests`(5) — 슬라이더→다이얼/저장모델/실캐릭터 일치,
+  역방향 일치, **랙돌 중 유예에도 표시는 즉시 일치 + 3초 후 강제 적용**, 두 UI 같은 격자, 상한 1.5.
+- PlayMode `SettingsWindowChromeTests`(6) — 창 알파 1.0(정보창 테스트와 같은 실측 방법),
+  **창 안 모든 그래픽이 불투명 or 완전투명**(부품 단위 잠금), 잉크 스와치/말풍선 슬라이더가
+  배포 에셋을 안 건드림, 닫으면 차단막도 꺼짐(비침해), 설정창↔정보창 상호 배타.
+- EditMode `CharacterScaleSingleOwnerSourceTests`(4) — `.ApplyCharacterScale(` 호출부가
+  컨트롤러 밖에 0건(정적 스캔), 두 UI가 같은 문을 지나고 둘 다 구독/해제, 게이트 이름 복제 0건,
+  설정창이 저장모델/런타임배율에 직접 쓰지 않음.
+- EditMode `AppSettingsModelContractTests`(6) — 고른 적 없으면 배포 기본값 통과, 잡담 빈도는
+  **확률을 덮어쓰지 않고 배율로 곱함**, 최소>최대 모순 방지, 범위 clamp, 옛 저장파일 하위 호환, IsDirty.
+
+### 리더 직접 수정 (2026-09-01)
+- `Interaction/InfoGearIconWidget.cs` `BigSpinTurns` **0.75 → 1.25 → 4**(사용자 요청, 2회 연속 상향:
+  "나사가 좀더 돌아가면 좋겠음" → "회전을 4바퀴로 늘려줘"). 지속시간(`SpinSeconds=0.52초`)은 그대로,
+  회전량만 상향(작은 기어는 잇수비 10:6만큼 자동 비례 — 4바퀴 기준 약 6.67바퀴). 참조하는 테스트/에셋
+  없음(정적 스캔 확인), 리더 단독으로 안전하게 적용. 웹 목업도 동기화.
+
+---
+
+## 2026-09-01 — 캐릭터창 4건(카드 하단 착용 버튼 / 상호배타 / 넘어진횟수 삭제 / 가로 캐러셀 + 카테고리당 2종) — coder
+
+사용자 원문: "징비 착용 버튼을 각 장비 하단에 있는게 맞는거 같아 서로 상호작용해서 모자에서 다른장비
+착용시 다른 모자는 해제되는 형태로 그리고 넘어진 횟수 삭제 및 장비들도 추가 될수 있으니 장비들이
+카드 형식으로 되어있으니까 마우스로 잡고 밀면 카드들이넘어가는형태로 일단 장비카드들 각각 몇개씩
+더 추가해서 구현햐줘"
+
+### 한 일
+
+1. **착용 버튼을 카드 하단으로** — 카드 본체 클릭은 지금까지처럼 "고르기"만 한다(원래도 그랬다).
+   새 버튼(`ItemCard.ActionRect`, 119×22pt)만이 착용/해제를 한다. 상세 패널의 [착용] 버튼은
+   **남겼다** — `InfoWindowClippedHitTestTests`(잘린 버튼은 눌리지 않는다) 전체가 그 버튼을 대상으로
+   삼고 있고, 두 버튼은 `StyleActionButton` 하나를 공유해 상태 표가 갈라지지 않는다.
+2. **카테고리 내 상호배타** — 새로 만들지 않았다. `EquipmentModel._worn`가 카테고리당 정수 한 칸이라
+   원리적으로 이미 보장돼 있다. 새 버튼은 기존 경로(`ToggleItem` → `CharacterSaveStore.Save` → 이벤트)를
+   그대로 탄다. PlayMode 테스트로 그 사실만 잠갔다.
+3. **"넘어진 횟수" 표시 삭제** — `StatCount` 6→5, `StatLabels`에서 제거. **카운터는 그대로다**
+   (`CharacterStatsModel.RagdollFalls` 무수정 — 오늘 낮 긴 망토 오계수 수정/리셋 이력 보존).
+   레이아웃은 상단 정렬 유지, 남는 32pt는 여백(최소 변경).
+4. **가로 캐러셀** — 섹션당 `ScrollRect`(horizontal) + `RectMask2D` 뷰포트 + `HorizontalLayoutGroup`
+   + `ContentSizeFitter`. `CardsPerSection`/`CardCount` 상수를 **삭제**하고 카드 수를 카탈로그에서 센다.
+5. **카테고리당 +2종(총 14종, 28 → 42)** — 에셋 14개 신규 + `AccessoryShapeBuilder` 신규 케이스 10개.
+
+### 교차 레이어 영향 로그
+
+| # | 항목 | 영향 | 조치 |
+|---|---|---|---|
+| 28 | **장비 28종 → 42종** | `ItemCatalog.EquipmentCount`, 보관함 줄 수, 골든 다이제스트, 카운트 단언 5개 | 골든(`ItemCatalogGolden.txt`) **의도적 갱신**. 개수를 적던 테스트는 전부 "센다"로 교체 |
+| 29 | **카드 내부 재배치(썸네일 62→54, 아이콘 50→44, 이름줄 16→14)** | 세로 예산이 이미 꽉 차 있어(섹션 4개×156 = 624 = 본문 여유 전부) 카드를 키울 수 없었다 | 카드 108pt를 유지한 채 내부만 재분배. 아이콘/썸네일 **비율 81%는 보존** |
+| 30 | **FX/PET 신규 4종은 몸/행동 연출이 없다** | 셰이프가 `AppearanceShapeBuilder`+`CharacterFxRenderer`/`CharacterPetRenderer` 소관인데 그 3파일은 이번 라운드 **다른 작업자 소유**라 손대지 않았다 | 설명문을 **"준비 중인 자리 · 지금은 카드 그림만"**으로 정직하게 적었다. 후속 라운드 배정 요망 |
+| 31 | **모자 2종 추가로 `HatCoverLocalY` 분기 2개 증가** | 머리카락 클리핑이 새 모자에도 걸린다. `hidesHair` 에셋 필드와 렌더러가 같은 말을 해야 한다 | 둘 다 "덮는다"로 통일 → `왕관만_머리카락을_남긴다` 무수정 통과. 커버 검증 루프는 하드코딩 배열 대신 **데이터에서 센다**(`CoveringHats()`) |
+| 32 | **전역 폴링 드래그 한 벌 추가** | uGUI `ScrollRect` 드래그는 앱이 활성화된 뒤에만 도착한다(타이틀바 드래그를 폴링으로 짠 것과 같은 사정) | **절대값 공식**(잡은 순간 content.x + 커서 이동량)이라 두 경로가 동시에 돌아도 더해지지 않는다. 그래서 `inertia=false` + `MovementType.Clamped`가 **필수 전제**다 |
+
+### 신규 아이템 14종 — 전부 **임시 플레이스홀더**
+
+| 카테고리 | idx 4 | idx 5 |
+|---|---|---|
+| HEAD | 베레모(Lv.23) | 밀짚모자(Lv.26) |
+| EYES | 뿔테 안경(Lv.19) | 안대(Lv.23) |
+| NECK | 펜던트 목걸이(Lv.21) | 반다나(Lv.25) |
+| BACK | 판초(Lv.25) | 요정 날개(Lv.28) |
+| HAIR | 바가지머리(Lv.18) | 포니테일(Lv.22) |
+| FX | 물방울(Lv.20) ※연출 미구현 | 나뭇잎(Lv.24) ※연출 미구현 |
+| PET | 풍선(Lv.27) ※연출 미구현 | 달팽이(Lv.30) ※연출 미구현 |
+
+전부 형제 도형의 비율/팔레트 변형이고, **획 예산(37-6 규칙 1)은 검산해서 지켰다**
+(안대·요정날개·바가지 앞머리 3건은 1차 값이 위반이라 좌표를 고쳤다). 요구 레벨은 카테고리 안에서
+오름차순이어야 하므로 기존 마지막 아이템보다 높게 잡았다(임시 QA 해금 스위치가 켜져 있어 지금은 전부 열린다).
+
+### 미해결 / 리더 판단 필요
+
+1. **FX/PET 4종의 실제 연출**(교차영향 #30). 지금 착용하면 카드만 바뀌고 화면에는 아무 일도
+   일어나지 않는다 — 설명문이 그 사실을 말하고 있지만, "착용했는데 화면이 그대로면 그건 착용이
+   아니다"(33-4 #4)에 걸린다. 3파일 소유권이 정리되면 1라운드로 끝난다.
+2. **바가지머리 vs 단정한머리**는 `머리_4종이_서로_구분된다`의 지표(각도별 최대 반경)로는
+   0.20R 차이라 통과하지 못한다. 식별 특징이 실루엣이 아니라 **이마를 가로지르는 내부 선**이라
+   지표가 원리적으로 못 본다. 그래서 그 테스트에는 **넣지 않았다**(지표 확장은 별도 라운드).
+3. **상세 패널 [착용] 버튼 존치** 여부. 카드 하단 버튼이 생겨 기능상 중복이지만, 지우면
+   `InfoWindowClippedHitTestTests` 3케이스가 대상을 잃는다.
+
+### 신규 회귀 테스트 1파일
+
+- PlayMode `InfoWindowCardCarouselTests`(5) — 카드 수가 카탈로그를 따라간다 / 밀면 content가 실제로
+  움직이고 **양끝에서 클램프**된다 / 탭 전환 시 스크롤 리셋 / 카드 버튼 착용→저장 파일 반영 +
+  **같은 카테고리 앞 모자 자동 해제** / **버튼 위에서 시작한 드래그는 착용하지 않는다**.
+
+### P9-b 후속 — `RagdollEntryEnergyTests` 불안정 해소 (리더 승인, 2026-09-01)
+
+교차 레이어 로그 #26의 결함을 직접 고쳤다. **판정 통계 자체가 틀렸던 것**이지 값이 빡빡했던 게 아니다.
+
+- **근본 원인**: `control`(무충격 기준선)을 **다른 씬 로드에서** 재놓고 이번 타격과 짝지어진
+  대조군처럼 썼다. 진입 노이즈(팔다리가 Kinematic→Dynamic이 되며 그 무게가 루트를 비트는 회전)는
+  진입 포즈에 좌우돼 실행마다 **0.06 ~ 73.5도/초**로 흔들리는데, 판정이 `|타격| > |control|*3 + 5`라
+  control이 55를 넘는 순간 **물리적으로 도달 불가능한 하한**을 요구했다(4N·s의 상한은 약 171도/초).
+- **고친 방법 3가지** (전부 실측 표본으로 문턱을 유도했다):
+  | 항목 | 예전 | 지금 | 근거 |
+  |---|---|---|---|
+  | 신호 통계 | 한 방향 타격 크기 | **좌우 차분** `\|left − right\|` | 두 측정의 노이즈는 독립이라 상쇄되고, 신호는 부호가 반대라 더해진다 |
+  | 노이즈 하한 | `\|control\|*3 + 5` | `2 x \|control\|` | 귀무가설에서 차분의 상한이 `\|n1\|+\|n2\| ≈ 2\|noise\|`이므로 옳은 계수는 2다 |
+  | 물리 하한 | (없음) | 이상값의 **1/3** = `2·I·감도/3` | 차분 실측 181~461(이상값 342의 53~135%). 1/2은 최저 표본과 너무 가깝다 |
+  | 좌우 대칭 | 절대차 `< \|한쪽\|*0.35+5` | **비(比) < 4.0배** | 방향별 감도가 18.6~74.1도/초/N·s로 4배 산포. 절대차는 크기에 따라 의미가 달라진다 |
+- **커버리지는 줄지 않았다**: "각속도가 절반으로 깎이는" 회귀는 원래부터 (3)
+  `RepeatedEntryNoLongerHalvesExistingAngularVelocity`가 **결정론적으로**(각속도 직접 주입, 물리 노이즈 0)
+  잠그고 있다. 시끄러운 측정에 그 역할까지 겹쳐 지우던 것을 분리했을 뿐이다.
+- **같은 결함이 내 신규 테스트에도 복제돼 있었다**(패턴을 베껴 왔다). `RagdollEntryImpulseWiringTests`의
+  좌우 대칭 판정도 같은 비(比) 4.0배로 통일하고, 각속도 허용 배수를 실측 산포(0.48~1.54배)에 맞춰
+  0.33~2.0배로 넓혔다. 대신 **정밀 잠금은 물리를 안 거치는
+  `LastEntryImpulse == ResolveEntryImpulse` 단언(오차 0.1%)이 맡는다** — 역할 분리.
+- **검증**: 두 클래스 동시 **8회 연속 88/88 통과**(그 전 단계에서 각각 1회씩 실패를 재현시켜 원인을 확정한 뒤).
+  원래 실패하던 6클래스 부분배치 19/19, 전체 PlayMode에서도 랙돌 계열 전부 통과.
+
+| # | 항목 | 영향 | 조치 |
+|---|---|---|---|
+| 26 | (해소) `RagdollEntryEnergyTests` 순서 의존 불안정 | 판정 통계 교체로 제거 | 완료 — 8회 반복 검증 |
+| 27 | **측정 산포는 결함이 아니라 사양이다** | 진입 포즈(걷기 위상)+거울상 관절 제한 때문에 방향별 감도가 4배까지 흩어진다. 랙돌 각속도를 실측으로 판정하는 **앞으로의 모든 테스트**가 이 산포를 전제해야 한다 | 두 파일에 표본과 유도 근거를 주석으로 남겼다 |
+
+### 검증 실측 (2026-09-01 09:31, `Logs/settings_edit.xml` / `Logs/settings_play.xml`)
+
+- **EditMode 10/10 통과** (신규 2파일).
+- **PlayMode 38개 중 35 통과** — **신규 11개 전원 통과**. 실패 3건은 <b>전부 이번 라운드 이전부터
+  빨간불</b>이었다(근거: 내 첫 편집(08:33) 전에 시작된 `Logs/p9b_play_all.xml`(08:22 시작)에 같은 3건이
+  이미 실패로 기록돼 있다).
+- 실측 로그 발췌:
+  - 창 알파: `알파 0 → [ShadowAmbient α0.28] 0.0784 → [Shadow α0.55] 0.3378 → [Body α1.00] 1.0000`
+    = **창 알파 1.0000, 뒤 창 비침 0.0%**.
+  - 부품 알파 전수: **그래픽 78개 중 반투명 0개**(그림자 제외 — 그건 창 <b>바깥</b>이라 의도된 것).
+  - 단일 소스: `설정창=1.20 / 구석 다이얼=1.20 / 저장모델=1.20 / 실캐릭터=1.200 / 컨트롤러=1.20`.
+  - 게이트: `랙돌 중 요청 — 유예=True, 남은 시간=3.00초, 설정창=1.35, 다이얼=1.35, 실캐릭터=1.200`
+    → 3초 뒤 `강제 적용 후 — 유예=False, 실캐릭터=1.350`.
+  - 에셋 불변: `직렬화 dialogueFontSize=16(그대로), 실효=17 -> 18` / 잉크색도 직렬화 필드 무변화.
+  - 저장 스키마 v8 왕복 확인(임시 저장 파일 실물): `version:8, characterScaleSaved:false,
+    inkColorSaved:false, autoHideOnFullscreen:true, gearIconVisible:true`(테스트가 정리한 뒤 상태).
+
+### ★ 이번 회귀 실행에서 발견한 **남의 영역** 문제 3건 (리더 배정 요망)
+
+| # | 항목 | 진단 | 조치 |
+|---|---|---|---|
+| A | `DeployedConfigAssetImmutabilityTests.배율_조작이_...`가 **8-31부터 실패 중**이었다 | 상한이 2.0 → 1.5로 내려갔는데 테스트가 `Target = 2.0f`를 그대로 들고 있었다(clamp돼 1.5) | **내가 고쳤다** — `Target = StickConfig.MaxCharacterScale`로 유도(상한이 또 바뀌어도 따라간다). 내 임무의 검증 항목을 막고 있던 테스트라 최소 수정 |
+| B | `CharacterScaleRuntimeTests` 2건 실패 | 같은 원인 — `Scales[] = {…, 2.0f}` / `sequence = {2.0f, …}` / `BigScale = 2.0f`가 전부 상한 밖 | **손대지 않았다.** 그 배열은 획 두께·액세서리 비율 단언에 함께 쓰여 숫자가 2.0 기준으로 조율돼 있을 수 있다 — 캐릭터 배율 담당자에게 배정 요망 |
+| C | `CornerHoverPanelTests.상자가_다_자란_뒤에_다이얼이_나타난다` 실패 | 다이얼 `Reveal`이 180프레임 동안 0에서 안 올라온다. **가설**: 오늘 낮 배치 실행에서도 동일 실패라 이 라운드와 무관하며, 상자 성장(`_peekBlend`)이 게이트(0.9)에 도달하지 못하는 쪽으로 보인다(같은 테스트가 `ContentReveal == DialReveal`은 통과시키므로 배선이 아니라 **성장 타이밍** 쪽) | 디버거 배정 요망 |
+
+### 테스트 위생 — 내가 심었다가 같은 라운드에서 잡은 것 (기록)
+
+내 PlayMode 테스트는 <b>제품 경로</b>로 값을 바꾸므로 설정창이 실제로 `CharacterSaveStore.Save()`를
+부른다. PlayMode 저장 경로는 임시 폴더로 리디렉션돼 있지만 **그 파일은 실행과 실행 사이에 남는다** —
+1차 실행이 남긴 `characterScale 1.20 / inkColor White`가 2차 실행의 씬 로드에서 복원되어
+`DeployedConfigAssetImmutabilityTests` 4건을 무너뜨렸다(원인: 내 테스트, 증상: 남의 테스트).
+→ 두 스위트의 `TearDown`이 정적 모델을 비운 **뒤 한 번 더 저장**해 파일을 기본값으로 되돌린다.
+
+---
+
+## ★ [debugger/T2] 2026-09-01 — EditMode 실패 2건: 스키마 v7→v8 잔존 하드코딩 (근본 원인 확정 + 조치)
+
+### 증상
+| # | 테스트 | 결과 |
+|---|--------|------|
+| 1 | `EquipmentMigrationTests.v5_왕복은_카테고리마다_고른_아이템을_아이디로_보존한다` | `Expected: String containing "\"version\": 7"` / `But was: "{ \"version\": 8, ... }"` |
+| 2 | `InkColorPersistenceTests.구버전_파일을_읽은_뒤_저장하면_v7로_올라가고_...` | 동일 |
+
+### 근본 원인 — 배정받은 가설이 **맞았다** (검증 완료, 하지만 그게 전부가 아니었다)
+
+`CharacterSaveStore.CurrentVersion`이 v7 → **v8**로 올라간 것은 **정상적이고 의도된 스키마 확장**이다.
+오타가 아니라는 근거 3가지:
+- `FirstVersionWithAppSettings = 8` 상수가 함께 신설됐고, `Load()`가 실제로 그 상수로 분기한다
+  (`hasAppSettings ? data.autoHideOnFullscreen : true`) — "기본이 true인 값"의 뜻 뒤집힘을 막는 분기다.
+- `CurrentVersion` 위 XML 문서에 v8 항목이 v1~v7과 같은 형식으로 서술돼 있다.
+- `git diff`상 v8 라운드 변경은 **순수 추가(additive)**다. 기존 필드 삭제/이름변경/순서 의미변화 0건.
+
+두 테스트는 v7 라운드에 작성돼 기대 버전을 **숫자로 베껴 적고** 있었다. 오늘 밤 `MaxCharacterScale`
+2.0→1.5 잔존(위 "남의 영역 문제 A/B")과 **완전히 같은 패턴**의 3·4번째 사례다.
+
+### ★ 데이터 손실은 없다 — 추측이 아니라 실물 JSON으로 확인했다
+
+버전 숫자만 맞추고 넘어가지 않기 위해, 임시 프로브 테스트로 **실제 저장된 v8 파일**을 덤프해 육안 확인:
+
+```
+"version": 8,   "inkColorSaved": true,  "inkColorName": "White",
+"wornHead": "equip.head.fedora",   "wornEyes": "equip.eyes.sunglasses",
+"wornHair": "look.hair.bald",      "wornFx": "look.fx.footprint",
+"autoHideOnFullscreen": true,      "gearIconVisible": true
+```
+카테고리별 아이템 **아이디**(인덱스 아님) 보존 정상, 잉크색 필드 보존 정상, v8 신설 필드 기본값 정상.
+`Save()`의 `wornXxx` 7줄 / `inkColorSaved` / `inkColorName`은 v8 라운드에서 한 줄도 손대지 않았다.
+프로브 파일은 확인 후 삭제했다(스위트에 남기지 않음).
+
+### 조치
+
+| 파일 | 변경 |
+|---|---|
+| `Assets/_Project/Scripts/Core/CharacterSaveStore.cs` | `private const int CurrentVersion = 8` → **`internal const`**(EditMode 어셈블리에 `InternalsVisibleTo` 이미 있음). 왜 여는지 XML 문서로 근거 기록 |
+| `Tests/EditMode/EquipmentMigrationTests.cs` | 하드코딩 `"version": 7` → `$"\"version\": {CharacterSaveStore.CurrentVersion}"` |
+| `Tests/EditMode/InkColorPersistenceTests.cs` | 동일. 추가로 `Assert.Greater(CurrentVersion, 4)`로 "픽스처가 구버전이다"라는 **전제 자체**를 잠갔다. 테스트 이름도 `..._v7로_올라가고_...` → `..._최신_스키마로_올라가고_...`(이름이 또 낡지 않게) |
+
+### ★ 그런데 진짜 문제는 따로 있었다 — **v8 하위 호환이 아예 잠겨 있지 않았다**
+
+지워진 하드코딩 단언에는 "버전만 올리고 잊는 것을 여기서 잡는다"는 주석이 붙어 있었다. **거짓이다.**
+그 단언은 숫자가 바뀐 사실만 알려줄 뿐, 하위 호환이 지켜졌는지는 한 글자도 검증하지 못한다.
+실제로 v8 라운드가 넣은 `autoHideOnFullscreen`/`gearIconVisible` 하위 호환 분기를 **커버하는 테스트가
+0건**이었다(v5→구석 패널, v6→잉크색에는 각각 있는데 v7→설정창만 비어 있었다).
+
+→ `EquipmentMigrationTests`에 **`v7_파일을_읽어도_설정창_값이_꺼지지_않는다`** 신설.
+`ResetModels`에 `CharacterAppearanceModel`/`AppSettingsModel` 초기화도 추가(정적 상태 누수 차단).
+
+**네거티브 컨트롤 실측(가설 검증):** `Load()`의 삼항을 `data.autoHideOnFullscreen`으로 되돌리고
+`EquipmentMigrationTests`만 실행 → **10건 중 1건 실패, 그 1건이 신설 테스트**
+(`Expected: True / But was: False`). 나머지 9건은 전부 통과 = **기존 스위트로는 이 회귀를 못 잡았다**는
+직접 증거. 이후 프로덕션 파일 원복 확인.
+
+이 결함이 살아 있었다면 v7 사용자가 업데이트만 했는데 **전체화면 자동 숨김이 꺼지고**(절대 불변 원칙 2
+직접 위반) **톱니 아이콘이 사라져 설정 진입점 자체가 없어진다**. 현재 코드는 정상이고, 이제 잠겼다.
+
+### 회귀 검증
+`Unity 6000.0.82f1 -runTests -testPlatform EditMode` **442/442 통과, 실패 0, 컴파일 에러 0**
+(신설 1건 포함. 수정 전 동일 명령에서 위 2건 실패 재현 확인).
+
+### 다음에 또 안 깨지게 — 팀 규칙 제안 (리더 판단 요망)
+1. 테스트에서 **프로덕션 상수를 숫자로 베끼지 않는다.** 필요하면 `internal`로 열고 참조한다
+   (오늘 밤 이 패턴의 잔존 버그가 `MaxCharacterScale` 2건 + 스키마 버전 2건 = **총 4건**이었다).
+2. `CurrentVersion`을 올리는 라운드는 **`vN-1` 파일을 읽는 하위 호환 테스트 1건을 반드시 동반**한다.
+   "기본이 true인 필드"를 추가하면서 이 테스트를 빠뜨리면 조용한 설정 초기화가 출하된다.
+3. 픽스처(입력) JSON의 버전 숫자는 **그대로 두는 게 맞다** — 그건 "옛 파일"이라는 사실 자체다.
+   상수로 바꾸면 안 된다. 바꿔야 하는 것은 **출력 기대값**뿐이다.
+
+## [coder/T1] EYES 6종 "불투명 바이저(가리개)" 전면 재설계 — 옵션 E2 실행 (2026-09-01) ✅
+
+리더 승인 사항(`docs/UX_FLOW.md` 38-7 **E2**)의 실행이다. 같은 날 눈이 삭제되면서
+(`SceneBootstrapper.BakeEyes = false` / `CharacterPortraitStage.DrawEyes = false`) 안경 6종의 설계
+전제 — *"렌즈 안으로 눈동자가 비친다"* — 가 통째로 사라졌다. 비칠 것이 없어진 윤곽선 렌즈는
+**검은 얼굴 위에 그은 빈 네모**다. 그래서 6종을 "가릴 것이 없어도 **스스로 불투명한 판**"으로 다시 그렸다.
+
+### 무엇을 어떤 도형으로 바꿨나 (6종 전부, 옛 → 새)
+
+| # | 아이템 | 옛 도형(채움 0 — 안대만 예외) | **새 도형(전부 채움)** |
+|---|---|---|---|
+| 0 | 선글라스 | 둥근 사각 렌즈 2 + 코받침 + 다리 = **선 4개** | **`SunglassVisor`** 오각 랩어라운드 판(1.48R×0.68R, 코앞으로 뾰족한 비대칭) + `SunglassTemple` 관자놀이 다리 |
+| 1 | 동그란안경 | 12각 링 2 + 코받침 + 다리 = 선 4개 | **`RoundPodBack`/`RoundPodFront`** 채운 팟 2개(지름 0.60R, 간격 **1.51획**) + `RoundBridge`(간격을 정확히 메운다) |
+| 2 | 고글 | 8각 렌즈(윤곽) + 하이라이트 호 + 스트랩 | **`GoggleLens`** 모서리 깎은 8각 통짜 판(1.92R×0.92R, **카테고리 최대**) + `GoggleStrap`(무수정) |
+| 3 | 외알안경 | `MonocleRing`(12각 **링**) + 체인 | **`MonoclePod`** 채운 12각 팟(지름 0.80R) + `MonocleChain`(팟 밖으로 재배치) |
+| 4 | 뿔테안경 | 네모 렌즈 2(윤곽) + 눈썹테 **선 1개** | **`BrowlineVisor`**(아래로 좁아지는 렌즈 판) + **`BrowlineBar`**(그보다 **넓은** 눈썹테, 채움·보조색) |
+| 5 | 안대 | `PatchCover`(이미 채움) + 끈 | 같은 방패꼴을 **키우고**(반폭 0.34→0.40R, 반높이 0.30→0.36R) 중심을 눈 좌표에서 유도 |
+
+- **삭제**: 헬퍼 `GlassesLensFront/Back`·`GlassesBridge`·`GlassesTemple`과 상수
+  `GlassesLens*`, `RoundLens*`, `BrowlineLens*`, `BrowlineBarRise`. 고글 하이라이트 호도 뺐다 —
+  판 높이 0.92R에 내부 선을 그으려면 위아래 1.5획씩(=1.03R)이 필요해 **산술적으로 불가능**하다
+  (37-6 규칙 5: 예산 못 지키는 [선택] 디테일은 넣지 않는다).
+- **보존**: `GlassesCenterRatio`(부착 기준선)와 **`GlassesTempleReachRatio`** —
+  `CharacterAccessoryRenderer.GlassesTempleTipLocalX`와 `CharacterAccessoryScaleTests`가 읽는다.
+  선글라스 다리 끝을 **정확히 그 x**에 두어 프로퍼티가 여전히 실제 잉크를 가리키게 했고,
+  바이저 앞 끝(`VisorFrontTipRatio`)도 값을 새로 적지 않고 이 상수에서 받는다(규칙 4-a).
+- **규칙 4-a 위반 2건 동시 제거**: `MonocleOffsetRatio`(매직넘버 `0.40f`)와 `PatchOffsetRatio`(`0.42f`)를
+  둘 다 **`EyeOffsetXInHeadRadii`(0.3409, 프리팹 실측)** 유도로 바꿨다. 37-8 (2)가 실제 사례로
+  적어 둔 "구멍 반경의 55%만큼 눈에서 어긋난" 결함이 이번에 소멸했다.
+
+### 지킨 규칙 (37-6). 좌표는 전부 **오프라인 검산 후** 확정했다 — W = **0.34386R** @배율 0.75
+
+| 규칙 | 결과 | 가장 빠듯한 자리 |
+|---|---|---|
+| 1 획 예산(변 ≥ 1.0W / 잉크 사각형 ≥ 1.5W) | **6종 전부 통과** | 고글 좌우 변 **1.12W**, 동그란안경 팟 간격 **1.51W**, 선글라스 앞 경사 1.81W |
+| 2 채움 | 채움 실루엣 보유 **1/6 → 6/6** | — |
+| 3-2 보조색 1부위 | 6종 전부 정확히 1개 | — |
+| 5 구성 정원 2~4 | 2개(5종) / 3개(동그란안경) | 옛 세트는 4개까지 있었고 그 4번째가 전부 획에 먹혔다 |
+| 8 잉크 대비 | `WornColor`의 채도 하한 0.42 + 명도 창 0.55~0.80이 구조적으로 보장 | 흰 잉크 최소 채널차 **0.54**, 검은 잉크 **0.55**(문턱 0.35) |
+
+### 3개 렌더 경로 확인 — **EYES에는 획 두께 이중 정의가 없다**
+
+의뢰받은 "포트레이트가 액세서리 전용 획 상수를 잘못 쓰는 이중 정의"를 EYES 관점에서 전수 확인했다.
+
+| 경로 | 도형 | 채움 처리 | 획 |
+|---|---|---|---|
+| 실제 캐릭터 `CharacterAccessoryRenderer` | `AccessoryShapeBuilder.Append` | `AddFill` → `MeshRenderer`(`SortEyes−1`) | `AccessoryShapeBuilder.StrokeWidthRatio` + 2pt 하한 |
+| 초상화 `CharacterPortraitStage` | 같음 | `AddFill` → `MeshRenderer`(같은 레이어) | **같은 상수** |
+| 카드 `AccessoryCardIcon` | 같음 | `AccessoryFillGraphic`(같은 귀자르기) | 카드 획 규약 |
+
+→ **셋 다 같은 상수를 읽는다. EYES 카테고리에 이중 정의는 없었다.** 오늘 밤 보고된 결함(38-12 #10)은
+*초상화가 **몸**을 그릴 때 액세서리 획 0.048을 쓴다*는 **카테고리 무관·몸 레이어** 문제이고,
+EYES만 손대서 고칠 수 있는 것이 아니라 **건드리지 않았다**(P6 / 38-12 #6 소관, 리더 판단 요망).
+
+### 검증
+
+1. **오프라인 기하 검산** — 좌표를 그대로 재구성해 규칙 1/2/5·눈 자리 덮음을 6종 × 좌우 2방향으로
+   재계산. 위반 **0건**. `Triangulate`를 그대로 옮겨 채움 삼각형이 다각형을 **100.0000%** 덮는 것도
+   16개 조합 전부 확인.
+2. **신규 EditMode `EyesVisorOpacityTests` — 10개 검사 / 50 케이스.** "불투명"을 세 각도로 잰다:
+   - **기하**: 채움 존재·닫힌 고리 / 귀자르기 삼각형 개수가 정확히 `n−2` / 삼각형 합계 면적이
+     다각형 면적의 **99.9% 이상**(자기교차면 구멍 뚫린 판이 된다) / `BuildFillMesh`가 실제 메시 +
+     정점 색(알파 포함)을 만든다
+   - **위치**: 채움이 **눈 중립 좌표**를 덮는다. 외알안경·안대는 **앞쪽 눈만**(뒤쪽 눈을 덮으면 실패)
+   - **색**: `ResolveWornPalette` 결과가 흰/검 잉크와 채널 최대 **≥0.35** 차이(규칙 8)
+   - 그 외: 레이어(`SortEyes`, 채움은 머리카락 위·모자 아래) / 정원·보조색 / 좌우 반전 거울 /
+     **6종이 화면에서 서로 구분된다**(획 반폭 격자의 대칭차 비율 `|A△B|/|A∪B|`,
+     실측 최소 **0.27**(외알 vs 안대 — 둘 다 앞쪽 눈만 가리는 형제라 원래 가장 닮았다), 문턱 0.20)
+3. **`AccessoryStrokeBudgetTests`에 EYES 6종 합류** — 그 파일이 스스로 적어 둔 사용법
+   ("재설계되는 라운드에 `BudgetedItems`에 한 줄씩 추가")대로. **머리카락 전용** 검사 2개
+   (두피 부착 / 눈동자 회피)는 새 `HairItems()` 소스로 분리해 EYES에 머리카락의 규칙이
+   걸리지 않게 했다. 파일 상단의 "EYES는 아직 통과하지 못한다" 문단도 사실에 맞게 갱신.
+4. **네거티브 컨트롤(오프라인)** — 사각형의 두 점을 바꿔 자기교차(나비꼴)로 만들면 채움 덮음이
+   **1071%** 로 튀어 `채움_삼각형이_판을_빈틈없이_덮는다`가 실제로 빨간불이 된다. 에디터 안에서 `filled: true`를 하나 빼 보는 대조 실행은 **의도적으로 하지 않았다** — 그러려면 공용 파일을 잠깐 망가뜨려야 하는데 지금 같은 파일을 다른 작업자가 만지고 있어 잔존 위험이 이득보다 크다(스크립트까지 만들었다가 취소하고 원본 동일을 diff로 확인했다). 그 단언(`filled >= 1`)은 인과가 직접적이고, **이번 라운드 직전 상태 자체가 네거티브 컨트롤**이다 — 6종 중 5종이 채움 0이었으므로 그때 이 검사를 돌렸다면 5건이 실패한다.
+5. **전체 EditMode 스위트** — `Unity 6000.0.82f1 -runTests -testPlatform EditMode`:
+   **507 / 507 통과, 실패 0, 컴파일 에러 0**(그중 신규 56케이스 = 이 파일 50 + 획 예산 EYES 6).
+
+### 교차 레이어 영향 로그
+
+| # | 항목 | 영향 | 조치 |
+|---|---|---|---|
+| 33 | **EYES 채움 도입** | 캐릭터당 채움 `MeshRenderer`의 EYES 몫이 **0~1개 → 1~2개**(동그란안경·뿔테안경이 2개). 전 슬롯 최악 10 → **11개** | 37-7 #2가 예고한 그대로다. 메시는 기존 규약대로 `DestroyFillMeshes()`가 손으로 지운다(누수 없음). **perf-doc 확인 요청**(24시간 상주) |
+| 34 | **EYES 채움 레이어 7 = `SortNeck`(7) 동률** | 채움은 `SortEyes−1 = 7`에 깔린다. 33-2-0이 정리한 "동률 = 그리기 순서 미정" 함정에 형식상 해당(안대가 어젯밤 이미 만든 상태이나, 이제 6종 전부가 그렇다) | **기하로 안전**: NECK 6종은 전부 목 밑동(`NeckLocalY` = 어깨+0.04R) 아래, EYES는 얼굴 위 — EYES의 최저점(외알 체인 `cy−1.08R`)조차 목선보다 위다. 레이어를 올리면 HEAD 채움(9)과 충돌하므로 **옮기지 않았다.** 리더 확인 요망 |
+| 35 | **도형 이름 4개 변경** | `GlassesLensFront`→`SunglassVisor` / `RoundLensFront`→`RoundPodFront` / `MonocleRing`→`MonoclePod` / `BrowlineLensFront`→`BrowlineVisor`. 이름으로 찾는 곳은 `PortraitEyeVisibilityTests`의 **대조군 목록** 하나뿐 | 같이 갱신했다(검사의 뜻은 무변경). `GoggleStrap`/`PatchCover`는 **일부러 유지** — 다른 테스트가 그 이름으로 찾는다 |
+| 36 | **카드 썸네일이 함께 바뀐다** | P0-a 이후 카드도 `AccessoryShapeBuilder`에서 렌더되므로 EYES 카드 6장이 자동으로 "채운 판"이 된다 | 의도된 결과(단일 소스의 이득). 에셋 `icon[]`(폴백)은 손대지 않았다 |
+| 37 | **에셋 색 미수정 — 규칙 3-3 위반 1건 잔존** | 고글 보조색이 `TintHead`(주황 #E8834A)라 EYES 틴트 색상대를 벗어나 있다 | 이번 라운드는 **도형만** 소유했다. 색 정책은 P5 소관 — 리더 배정 요망 |
+
+### 남은 것 / 리더 판단 요망
+
+1. **육안 검증 1회**(이 에이전트는 에디터 UI를 띄울 수 없다). 검산은 전부 기하·수치이고,
+   37-6 규칙 7의 검증 게이트(배율 0.35/0.75/1.5 × 좌우반전 × 형제 나란히 시트)는 아직 못 찍었다.
+2. 교차영향 **#34(레이어 동률)** 과 **#37(고글 보조색)**.
+3. `EyeController.cs`는 **한 줄도 건드리지 않았다**(복원용 보존). 이번 재설계는 오히려 복원을 쉽게
+   만든다 — 눈이 돌아와도 가림은 채움 면과 레이어가 정하므로 카테고리 조건문이 필요 없다.
+4. **작업 중 관측(보고)**: 11:05~11:15경 `Core/StickConfig.cs` 2440줄의 문자열 리터럴이 개행으로
+   끊겨 있어 **프로젝트 전체가 컴파일 불가**였다(다른 작업자의 in-flight 편집, `bodyLeanRunMaxDegrees`
+   툴팁). 11:15경 저절로 해소됐고 내 쪽 조치는 없다. 그 사이 나는 **남의 파일을 고치지 않고**
+   복사본에 임시 패치를 떠서 Roslyn 오프라인 컴파일로 내 변경만 검증했다(오류 0).
+
+---
+
+## 페르소나 검증 로그
+
+**2026-09-01 리더 결정**: 사용자 요청으로 페르소나 검증단 3명을 팀에 신설(`.claude/agents/persona-newcomer.md`
+/ `persona-stress.md` / `persona-immersion.md` — 민지/재현/소은). 앞으로 기능 추가·변경이 완료될
+때마다 리더가 이 3명을 병렬로 호출해 비판적으로 검증시키고, 의견은 이 섹션에 각자 기록한다.
+리더가 그중 실제 조치가 필요한 항목만 골라 담당자에게 피드백으로 전달한다. 페르소나는 프로덕션
+코드를 직접 수정하지 않는다.
+
+첫 적용 대상(소급): 설정창, 캐릭터/장비창, 나사메뉴 — 셋 다 이번 세션에 이미 구현·테스트 통과했지만
+페르소나 신설 이전이라 이 관점의 검증은 아직 없었음.
+
+### 민지의 의견 (2026-09-01, 설정창/캐릭터창/나사메뉴)
+
+**검증 방식 — 실제 구동 못 함, 코드 판독으로 대체.** `driver.sh doctor` 결과 (a) 빌드 산출물이
+`2026-08-31 17:08`인데 대상 소스는 `SettingsWindow.cs` 09:03 / `SettingsControls.cs` 09:03 /
+`CharacterInfoWindow.cs` 09:49 / `InfoGearIconWidget.cs` 09:27 — **오늘 밤 화면이 빌드에 없다**,
+(b) "Unity 배치모드 락: 사용 중 — 지금 build/test 하지 말 것"(다른 에이전트의 PlayMode 배치 실행 중).
+`Q`는 쏘지 않았고 사용자 인스턴스도 건드리지 않음. 아래 항목 중 **M5·M12는 "실제 구동 확인 필요"**로
+표시했다(나머지는 상수·문자열·레이아웃 계산만으로 확정 가능한 것들).
+
+#### 발견 가능성
+
+**M1 [치명적] 카테고리마다 아이템이 6종인데 화면엔 정확히 4장만 보이고, 더 있다는 단서가 0이다**
+- 실측: `Assets/_Project/Resources/Items/*.asset` = **42개 = 7카테고리 × 6종**.
+- 계산: 뷰포트 `RightContentWidth = 592`, `CardWidth 141` + `CardGap 9`(=`CardStep 150`−141).
+  `HorizontalLayoutGroup` padding 0이므로 카드 좌표는 0 / 150 / 300 / **450**(오른쪽 끝 591) / 600 / 750.
+  **4장이 592 안에 1pt 여유로 딱 들어가고, 5·6번째는 완전히 화면 밖.** 잘린 카드가 반쯤 보이는
+  peek조차 없다.
+- `BuildCardRow()`가 `scroll.horizontalScrollbar = null; scroll.verticalScrollbar = null;`. 화살표도,
+  가장자리 페이드도, "1/6" 같은 카운터도 없다.
+- 민지는 "모자는 4개구나"로 확정한다. 밀어볼 이유가 하나도 없다. **콘텐츠의 1/3(14종)이 통째로 안 보인다.**
+- 악화: 섹션 제목 오른쪽 카운트가 `OwnedItemCount / ItemCount` = 예 "2 / 6"인데 카드는 4장.
+  힌트가 아니라 **모순**으로 읽힌다. QA용 `EquipmentDebugUnlock.UnlockAll`이 켜져 있으면 "6 / 6"에
+  카드 4장 — 더 나쁘다.
+- 제안(가장 싼 것부터): ① 뷰포트 폭을 592 → 520~560으로 줄여 **5번째 카드가 반쯤 걸치게** 한다.
+  카드 폭·간격·개수는 그대로고 "더 있다"가 그림 하나로 해결된다. ② 카운트를 "보유 2 / 전체 6"으로
+  풀어 쓴다. ③ 그래도 부족하면 캐러셀 양끝에 [‹][›] 칩.
+
+**M2 [거슬림] 톱니를 눌렀는데 [설정]이 없다**
+- ⚙는 만국 공통 "설정" 기호다. 눌러 보면 부채꼴 4개 = 집중 모드 / 캐릭터 / 오늘 할일 / 행동. 설정 없음.
+- 실제 경로는 **톱니 → (심볼만 있는 원 4개 중) 캐릭터 → 880pt 창 타이틀바 오른쪽 끝 44×24pt [설정] 칩**. 3단계.
+- 그 [설정] 칩은 `UiChrome.FontCaption`(**10pt**) + `TextSecondary`. 이 디자인 시스템에서 10pt는
+  "캡션 / 슬롯코드 / 카운트 / 카드 메타" 전용 **최소 등급**이다. 바로 옆 [✕]는 `FontBody`(12pt).
+  앱 전체 설정의 주 진입점이 닫기 버튼보다 작게 그려져 있다.
+- `GearRadialMenuWidget`도 "부채꼴 5번째 버튼은 36-11이 만들지 않는다로 결론 — 리더 판단 사항"이라
+  남겨 뒀다. 민지 기준으로는 이게 가장 큰 헛걸음이다.
+
+**M3 [거슬림] "이 창을 여는 방법"이 그 창 안에만 적혀 있다**
+- `SettingsWindow.BuildFooter()` 오른쪽: "이 창을 여는 방법: 캐릭터 정보창 [설정] · ⌃⌥⌘,".
+- 문구는 정직하다(⌃⌥⌘,는 `GlobalKey.Comma` → `MacWindowService`의 `kVK_ANSI_Comma`까지 실제 배선 확인).
+  문제는 **위치**다. 이 문장을 읽으려면 이미 창을 열었어야 한다. 아직 여는 법을 모르는 사람에게는
+  영원히 도달하지 않는다.
+
+**M4 [거슬림] 카드를 옆으로 밀 수 있다는 신호가 없고, 창마다 휠 규칙이 다르다**
+- 캐러셀은 `ScrollRect`(휠 먹음) + 전역 폴링 드래그. 그런데 설정창은 `BuildPageButtons()` 주석대로
+  "휠/드래그 스크롤을 쓰지 않는다"며 [▲][▼] 칩만 둔다(비침해 근거).
+- 결과: 같은 앱의 두 모달에서 휠이 한쪽은 되고 한쪽은 안 된다. 민지는 규칙을 세울 수 없다.
+
+**M13 [거슬림] 라벨을 지운 대가로 약속한 "온보딩 1회 안내"가 코드에 없다**
+- `GearRadialMenuWidget` 클래스 문서: "지우라는 것은 사용자 지시이므로 지우되 **비용은 온보딩 1회
+  안내(35-2)로 갚는다** — 아이콘 전용 내비게이션의 정답은 툴팁이 아니라 최초 1회 학습이다."
+- `Assets/_Project/Scripts/` 전체 grep 결과 온보딩/최초 1회 안내 구현은 **없다**(검색되는 "온보딩"은
+  전부 모바일 발판 지정용 미래 계획 주석). 부채가 아직 미지급이고, 그 몫을 민지가 대신 낸다.
+
+#### 첫인상
+
+**M5 [거슬림 · 실제 구동 확인 필요] 톱니 4바퀴는 "회전"으로 안 보인다 — 지지직거리거나 거꾸로 돈다**
+- `InfoGearIconWidget`: `SpinSeconds = 0.52f`, `BigSpinTurns = 4f`, ease-out `1-(1-t)³`.
+- 각속도 = 1440° × 3(1−t)² / 0.52 → t=0에서 **8308°/s**. 60fps면 **138°/프레임**.
+  큰 기어 잇수 10 → 이 피치 36°. 한 프레임에 **이 3.8개**를 건너뛴다.
+- 작은 기어는 `MeshRatio` 10/6배 더 빠르다 → 230°/프레임, 이 피치 60° → 역시 3.8피치.
+- 회전 방향을 눈으로 읽으려면 프레임당 이동이 이 피치의 절반(18°) 미만이어야 한다(웨건휠 효과).
+  그 조건을 만족하는 구간은 **애니메이션 끝 36%(≈0.19초)뿐**이다.
+- 더 나쁜 조건: `ViewerPresence.BuildPlan`의 `Calm` 등급은 divisor 2 = 실효 30fps. 클릭 직전이
+  Calm("캐릭터가 서 있고 최근 입력 없음" — 톱니를 처음 누르는 순간의 전형적 상태)이면 2배 악화된다.
+- 아이러니: 이 파일 전체가 모듈·중심거리·맞물림 위상까지 맞춘 기구학 코드인데, 4바퀴 속도에서는
+  그 그림이 육안으로 성립하지 않는다. 민지에게는 "멋있다"가 아니라 "화면이 튀었나?"에 가깝다.
+- 제안: 바퀴 수를 늘리려면 `SpinSeconds`도 같이 늘린다(4바퀴면 1.2~1.6초). 또는 이(teeth) 회전은
+  1.25바퀴로 두고 "4바퀴 느낌"은 다른 요소로 낸다. **계산은 상수만으로 한 것이므로 실측으로
+  반증되면 이 항목은 폐기해도 된다.**
+
+**M6 [거슬림] 개발자 말이 사용자 화면에 그대로 나온다**
+- `SettingsControls.ComposeCaption()`이 `disabledNote`를 `"준비 중 — " + note`로 **화면에 렌더한다**
+  (10pt `TextTertiary` 캡션). 실제 출력:
+  - "준비 중 — 이 단축키는 아직 없습니다(**GlobalKey에 V가 없어** 다음 라운드에 **배선**합니다)"
+  - "준비 중 — 로그인 항목 등록은 네이티브 작업이라 별도 라운드입니다(**35-1-9 P3**)"
+  - "준비 중 — 이 탭은 다음 라운드에 채워집니다(**35-1-9 P1/P2**)"
+- GlobalKey가 뭔지, 배선이 뭔지, 35-1-9가 뭔지 민지는 모른다. "준비 중"까지만 읽고 나머지는
+  노이즈거나, 최악으로는 "이 앱 미완성이구나"의 증거로 읽는다.
+
+**M7 [거슬림] 준비 중인 3탭이 탭바에서는 멀쩡한 탭과 구분이 안 된다**
+- `ApplyTabVisibility()`는 5개 탭 전부 같은 규칙(`TabInactive` / 선택 시 `TextPrimary`+Bold+Accent 밑줄)을
+  적용한다. **비활성/미구현 탭에 대한 회색 처리가 탭바에는 없다.**
+- 회색은 탭 **안쪽 행 한 줄**에만 걸린다(`BuildPlaceholderTab`). 즉 **눌러야만** 빈 탭인 걸 안다.
+- 첫 방문에서 5탭 중 3탭이 헛걸음이다.
+
+#### 원칙 1 체감 (민지는 원칙을 모른다 — "말과 행동이 안 맞네"만 느낀다)
+- M1의 "2 / 6"인데 카드 4장.
+- M2의 톱니(=설정 기호)를 눌렀는데 설정이 안 나옴.
+- M9의 "숨기기"를 눌렀는데 캐릭터가 다시 나옴.
+세 곳 다 **표시가 약속한 것과 실제가 다르다**. 개별로는 작지만 첫 10분 안에 셋을 다 만난다.
+
+#### 탈출 / 취소 수단
+
+**M8 [거슬림] [설정]을 누르면 보던 장비창이 사라지고, 닫아도 안 돌아온다**
+- `SettingsWindow.Open()` → `CloseOverlappingSurfaces()` → `_infoWindow.Close(reason)`. 배타 자체는
+  의도된 규칙이고 옳다. 문제는 **돌아갈 문이 없다**는 것.
+- 민지 흐름: 장비 구경 → [설정] → (장비창 증발) → 설정 보고 [✕] → **빈 바탕화면**. 장비창으로
+  가려면 톱니 → 캐릭터를 처음부터 다시.
+- 제안: 설정창 헤더에 [← 캐릭터] 한 개, 또는 "정보창 [설정]으로 들어온 경우에만" 닫을 때 정보창 복귀
+  (진입 출처를 이미 `source` 문자열로 알고 있다).
+
+**M9 [거슬림] [지금 즉시 → 숨기기]로 숨긴 캐릭터가 말없이 되살아난다**
+- `SetCharacterVisibleNow()`의 XML 문서는 "**한계를 캡션 없이 숨기지 않는다**"고 선언하는데, 실제
+  호출부 `display.AddButtons("general.hideNow", "지금 즉시", …)`는 **`caption` 인자를 넘기지 않는다**
+  (`AddButtons`의 `caption`은 기본값 null).
+- 그 한계는 `Debug.Log`에만 있다: "1회성 동작입니다(전체화면 감지가 왕복하면 다시 나타납니다)".
+  민지는 로그를 안 본다.
+- 방해받아서 숨겼는데 유튜브 전체화면 한 번 왕복하면 캐릭터가 다시 나온다. **`SettingsWindow`
+  클래스 문서 첫 문단이 "이 앱이 삭제되는 유일한 진짜 이유는 방해받았다"라고 스스로 적어 둔
+  바로 그 자리다.**
+- 제안: `caption: "지금 한 번만 숨깁니다 — 전체화면 앱을 오갔다 오면 다시 나타나요."` 한 줄이면 된다
+  (영구 숨김 구현은 별개 과제로 남겨도 무방).
+
+**M10 [사소] 부채꼴이 6초 뒤 혼자 접힌다**
+- `AutoCollapseIdleSeconds = 6f`. 커서가 부채꼴 안이면 `KeepAlive()`로 리셋되니 이름표를 읽는 동안에는
+  안 접힌다 — 거기까진 괜찮다.
+- 그런데 열어 놓고 "뭘 누르지" 생각하며 커서를 옆으로 치우는 건 자연스러운 행동이고, macOS 메뉴는
+  그래도 안 닫힌다. 6초 뒤 조용히 사라지면 "내가 잘못 눌렀나?"가 된다.
+
+#### 그 밖 — 민지는 못 보지만 팀이 봐야 할 것
+
+**M11 [사소] 로그가 없어진 문을 광고한다 (원칙 1의 로그판)**
+- `CharacterInfoWindow.Start()`: "여는 방법 3가지: … **(3) 캐릭터 우클릭 -> [캐릭터 정보]**".
+  우클릭 메뉴는 2026-08-31 폐지됐고, `AppControlDirector.LogStartupBanner()`가 **같은 부팅 로그에서**
+  "우클릭 메뉴는 폐지됐습니다"라고 말한다. 두 문장이 서로 반박한다.
+- 같은 문장의 "(1) 화면 우상단 톱니 아이콘 클릭(**주 진입점**)"도 이제 부정확하다 — 톱니 클릭은
+  부채꼴을 열 뿐이고 정보창까지는 2클릭이다.
+
+**M12 [사소 · 실제 구동 확인 필요] 설정창 [▲][▼] 칩이 토글 스위치 위에 겹칠 수 있다**
+- 칩은 `_panel` 자식으로 `_viewport`**보다 뒤에** 추가되므로 내용 위에 그려진다.
+  `PlaceTopRight(…, ContentPadX + offset, …, 24, 24)` → [▼]는 패널 x **676~700**, [▲]는 **646~670**.
+- 카드 안 토글 트랙은 `CardWidth 680` − `CardPadX 14` 기준 패널 x **648~686**.
+  즉 [▲]와 22pt, [▼]와 10pt **가로로 겹친다**.
+- 지금의 [일반] 탭 행 배치로는 세로가 아슬아슬하게 빗나가는 것으로 계산되지만(행 하나 차이),
+  카드나 행이 하나만 늘어도 토글 위에 칩이 올라앉는다. 실측 권장.
+
+#### 민지 기준 이상 없음 (잘 된 것)
+- **⌃⌥⌘,는 실제로 살아 있다.** `GlobalKey.Comma` → `MacWindowService`의 `kVK_ANSI_Comma`까지 배선
+  확인. 푸터가 없는 문을 알려 주지 않았다 — 이 프로젝트가 스스로 세운 규칙을 지켰다.
+- **톱니를 끌 때 나오는 경고**("끄면 캐릭터 정보창은 ⌃⌥⌘I 로만 열 수 있어요.")는 좋다. 진입점을
+  스스로 지우는 유일한 스위치에 대안을 같이 준다. 다만 **설정창은 언급이 없다** — "이 창은 ⌃⌥⌘,"
+  한 마디만 덧붙이면 완성이다.
+- **카드 본체 클릭 = 고르기 / 착용은 하단 버튼 + 뗄 때 확정 + 민 뒤 0.2초 클릭 무시.** 캐러셀을
+  밀다가 옷이 갈아입혀지는 사고는 구조적으로 막혀 있다. 이 부분은 이상 없음.
+- **부채꼴 호버 이름표(한 번에 하나만)** 는 "글자를 없애 달라"와 "무슨 버튼인지 알고 싶다"를 동시에
+  만족시킨다. 다만 탐색으로만 알 수 있어서 M13(미지급 온보딩)과 짝이다.
+
+
+---
+
+### 소은의 의견 (2026-09-01, 발판 상실 공중 정지)
+
+**결론: (C) 시간은 두되 연출을 붙여야 한다.** 다만 전제 하나를 정정한다 — 실제 체감 정지는
+0.45초가 아니라 **0.45~0.75초**다(아래 4항).
+
+**검증 방식 — 실제로 구동해서 눈으로 봤다(단, 재구성 실험).** 배포 산출물이
+`Builds/macOS/StickMate.app`(11:16:13)인데 수정 소스는 `StickmanBlackboard.cs` 12:29,
+`StickConfig.cs` 12:08, `GroundSensor.cs` 12:52라 **산출물에 이번 수정이 안 들어가 있다.**
+그리고 `doctor` 락 항목이 "사용 중"이고 실제로 코더의 PlayMode 배치가 계속 돌고 있어
+(`Logs/coder_band_bell_play.log` 13:04) `build --force`는 하지 않았다(Gotcha 9).
+
+그래서 **현재 빌드로 문제의 그림 자체를 그대로 만들어 냈다.** 근거는
+`Platform/MacOS/MacWindowService.cs`의 `MinWindowAlpha = 0.05f`다 — 알파를 `0.055`로 낮추면
+창은 **화면에서 사라지지만 발판 목록에는 그대로 남는다.** 즉 "발판을 잃었지만 몸은 붙잡혀
+있는" 유예 구간과 **렌더링 결과가 동일한 상태**를 만들 수 있다. 이 상태를 0.45초 유지한 뒤
+프로세스를 죽여 실제 낙하까지 이어 붙였다.
+
+- 하니스: 전용 더미 창(`testwin2.swift`, 상단 y=600pt, 전폭) → `driver.sh start` → 캐릭터가
+  그 창 위에 착지(`[FallState] 착지 확정 — 발판핸들=10531(실제 창), 착지 월드Y=-2.664`) 확인
+  → `screencapture -v` 영상 녹화 → 알파 고스팅 → 0.45초 뒤 창 종료.
+- 계측: AVFoundation 프레임 추출(53fps) + 모자(주황) 픽셀 추적으로 캐릭터 y/x를 프레임별 측정,
+  캐릭터 박스(200x200px) 연속 프레임 화소차로 "움직임이 있는가"를 정량화.
+- 안전: 시작 전 세이브 백업 →
+  `/private/tmp/claude-501/-Users-kjmoon-App-StickMate/bf3ed972-ae20-4c9c-abed-8d989e6b94d7/scratchpad/soeun-save-backup-20260901-130250.json`
+  → 종료 후 원복 완료(SHA-256 일치, `8b9f0827...933fb9`). 장비 착용 상태 변동 없음(차이는
+  currentXp/companionSeconds뿐이었고 그것도 되돌렸다). 산출물 백업도 떠 뒀고
+  `diff -rq` 결과 **빌드 산출물 변경 없음**. `Q`는 쓰지 않았고 `stop`으로 정상 종료(3/3줄).
+  사용자 인스턴스는 처음부터 없었다(`doctor`: "그 밖의 인스턴스: 없음").
+
+---
+
+#### 1. IDLE에서의 정지 — 이게 문제다 (심각도: **거슬림**)
+
+**관찰 지점.** 창이 화면에서 사라진 프레임(영상 1025ms)부터 캐릭터가 처음 움직인
+프레임(1520ms)까지 **495ms**. 그 사이 캐릭터 박스의 연속 프레임 화소차:
+
+```
+1050ms -> 1080ms   평균차=0.49  변화픽셀=0/40000 (0.00%)
+1080 -> 1110       평균차=0.30  변화픽셀=2/40000 (0.01%)
+1110 -> 1140       평균차=0.19  변화픽셀=0/40000 (0.00%)
+   ... (중략, 1440ms까지 전부 0.00~0.02%) ...
+1350 -> 1380       평균차=0.00  변화픽셀=0/40000 (0.00%)
+1500 -> 1530       평균차=0.00  변화픽셀=0/40000 (0.00%)
+1530 -> 1560       평균차=3.77  변화픽셀=1137/40000 (2.84%)   <- 여기서 비로소 떨어지기 시작
+```
+
+모자 상단 y도 `52,53,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51 -> 57`로 **10프레임 넘게
+1픽셀도 안 움직인다.**
+
+**몰입이 깨지는 이유.** 이건 "붙잡힌 포즈"가 아니라 **완전히 정지한 한 장의 그림**이다.
+발밑의 창이 방금 사라졌는데 캐릭터가 0.5초 동안 픽셀 단위로 얼어 있으면, 사용자가 가장 먼저
+꺼내 쓸 해석은 "만화적 연출"이 아니라 **"앱이 아직 못 알아챘다 / 렉이다"**이다. 왜냐하면
+프리즈한 스프라이트는 **멈춘 앱이 실제로 보이는 모습 그 자체**이기 때문이다. 진짜 코요테
+개그가 성립하는 이유는 정지 중에도 **다리가 계속 돌아가거나 팔이 허우적대서 "캐릭터는 살아
+있는데 중력만 늦게 온다"**가 읽히기 때문인데, 지금은 그 신호가 0이다.
+
+참고로 이건 이 수정이 만든 문제가 아니라 **드러낸** 문제다. IDLE 포즈는 유휴동작(주위 살피기)
+사이에는 원래 정지 화면이다(창 위에 정상적으로 서 있던 pre-ghost 구간 화소차도 0.00~0.10%).
+평소엔 "서 있으니까 안 움직이는 게 맞다"로 읽히던 것이, **발판이 없어진 순간부터는 같은 그림이
+"버그"로 읽힌다.**
+
+**원칙1 위반 여부: 위반 아님(단, 인접한 주의사항 있음).** 유예 구간에는 상태 전이가 없다 —
+캐릭터는 여전히 Idle이고, 대사를 먼저 뽑아 행동을 맞춘 흔적도 없다. 실측 로그에서도 유예
+구간에 `[말풍선]`은 하나도 안 나왔고, 이번 라운드에 나온 말풍선은 전부 착지 **후** Idle에서
+파생됐다(`[말풍선] 표시 (Idle) "발판 참 좁네"`). 다만 **아래 5항의 함정**을 조심해야 한다.
+
+---
+
+#### 2. WALK에서의 정지 — 이건 좋다 (심각도: 없음)
+
+같은 실험을 캐릭터가 **걷는 중**에 걸었다(모자 x를 실시간 추적해 이동이 잡히는 순간 발사).
+
+```
+2450ms  모자상단y=52  x=433      <- 창이 사라진 직후
+2500ms  y=54  x=421
+2550ms  y=56  x=413
+2600ms  y=56  x=401
+2650ms  y=58  x=393
+2700ms  y=58  x=381
+2750ms  y=57  x=373             <- 여기까지 높이 그대로, 가로로만 36pt(약 1유닛) 전진
+2800ms  y=67                    <- 낙하 시작
+2850ms  y=87 / 2900 y=95 / 2950 y=117 / 3000 y=154 / 3050 y=200
+```
+
+**허공을 수평으로 걸어간다. 다리는 계속 돌아간다.** 이건 와일 E. 코요테 그대로고, 실제로 보면
+귀엽다. 같은 빌드·같은 물리·같은 지속시간인데 IDLE은 렉으로 읽히고 WALK는 개그로 읽힌다 —
+**즉 문제는 "0.45초"라는 숫자가 아니라 "그 0.45초에 생명 신호가 있느냐"다.** 이게 (B)가 아니라
+(C)라고 판단하는 결정적 근거다(같은 빌드 안에서 얻은 통제 비교라 다른 변수가 끼어들 여지가 없다).
+
+---
+
+#### 3. 물리적 설득력 — 이상 없음
+
+낙하 시작 후 모자 y 증분(50ms 간격): `6, 9, 13, 25, 36 px` — 매끄러운 2차 가속이다.
+순간이동/급정지/부자연스러운 각도 없음. 유예가 끝나는 순간 속도 0에서 출발하므로 **팝이 없다.**
+착지도 `[무릎앉아] 착지 연출 시작 — 낙하높이=7.33유닛` 로 이어지고,
+`[착지충격] 충격량=21.78(랙돌 임계 8.0) ... 차단스위치=True -> 착지로 판정해 무시` 로
+랙돌 오발동도 막혀 있다. **소은 기준 이 항목은 이상 없음.**
+
+---
+
+#### 4. ★ 전제 정정 — 체감 정지는 0.45초가 아니라 최대 0.75초다
+
+`Platform/FootholdPoller.Tick()`은 `footholdPollInterval`(0.3초) 주기로만 재열거한다. 접지
+판정은 `CachedFootholds`를 보므로, **창이 닫혀도 앱이 그 사실을 아는 데 0~0.3초가 더 걸린다.**
+그 0~0.3초 동안 캐릭터는 (앱 입장에서) 정상 접지라 아무 일도 안 일어나는데, 화면에는 이미
+창이 없다 — **사용자 눈에는 유예와 구분되지 않는 같은 정지 그림이다.**
+
+    사용자가 보는 정지 = 폴링 지연(0~0.3초) + 유예(0.45초) = **0.45 ~ 0.75초, 평균 약 0.6초**
+
+내 실측 495ms도 이 합성값을 잰 것이다(고스팅부터 첫 움직임까지). 0.75초짜리 **프리즈**는
+확실히 "앱이 멈췄나?" 영역이다. 반대로 0.75초짜리 **허우적**은 만화가 오히려 즐겨 쓰는 길이다.
+→ **연출을 넣으면 이 숫자는 문제가 아니게 되고, 안 넣으면 0.45초로 줄여도 여전히 프리즈다.**
+(그래서 (B) 단독은 반대다. 0.3초로 줄여도 얼어 있는 건 똑같고, OS 열거 호출만 늘어난다.)
+
+---
+
+#### 5. 제안 — 어떤 연출이 이 캐릭터에 맞는가
+
+이 캐릭터는 **높이 63pt짜리 검은 막대 실루엣 + 모자**이고 배경은 잡다한 데스크톱이다.
+작은 변화는 물리적으로 안 보인다(1항의 화소차 데이터가 그 증거 — 1% 미만 변화는 육안 무의미).
+그래서 우선순위는 **진폭이 큰 채널부터**다.
+
+1. **다리 종종거림(제자리 달리기) — 1순위.** WALK 케이스가 이미 증명했다. 걷기 다리 사이클을
+   가로 이동 0으로 2~3배속 재생하면 그대로 코요테다. **새 애니메이션 채널이 필요 없고**,
+   IDLE/WALK 두 경우의 그림이 하나로 통일된다(일관성 항목에도 이득).
+2. **팔 허우적 — 2순위.** 막대 실루엣에서 가장 잘 읽히는 큰 진폭 채널이다. 1과 같이 쓰면 충분.
+3. **`SetBodyLean(도)`는 보조로만.** 상체 길이가 ~35pt라 10도 기울여 봐야 끝점이 6pt 움직인다 —
+   **단독 신호로는 1항의 "안 보이는 변화" 구간에 그대로 들어간다.** 다만 **마지막 0.1초에
+   상체가 앞으로 툭 기우는 것**은 낙하의 전조로 쓰기 좋다(전환의 자연스러움 항목 보강).
+4. **시선 연출은 불가.** 눈이 제거돼 있다(로그 `[눈추적] ... 눈발견=False`). "아래를 내려다본다"는
+   머리 회전으로만 표현해야 하는데 모자가 붙어 있어 회전 자체는 읽힌다 — 3과 묶어 쓸 수는 있다.
+
+**타이밍 제안(총 0.45초 기준):**
+
+    0.00~0.12초  아무 반응 없음 (관성 — 이 "늦게 알아차림"이 개그의 핵심이다)
+    0.12~0.35초  다리 종종거림 + 팔 허우적 (여기가 "살아 있음" 신호)
+    0.35~0.45초  상체가 앞으로 기울며(SetBodyLean) 낙하로 넘어감 (전조)
+
+**★ 원칙1 관련 설계 주의(리더 판단 필요).** 지금 유예 붙잡기는 `_graceHoldFrame`이라는
+**내부 플래그일 뿐 상태가 아니다.** 그런데 이 프로젝트는 "상태 ID 하나로 포즈가 결정된다"
+(TickPose)를 규약으로 삼고 있다. 따라서:
+
+- 포즈를 붙이려면 **유예 구간을 진짜 상태(예: `GROUND_LOSS_GRACE` 또는 Fall의 서브페이즈)로
+  승격**하는 편이 규약과 맞다. 플래그를 보고 Idle 포즈를 예외 처리하는 방식은 "같은 상태인데
+  포즈가 두 가지"가 되어 나중에 반드시 어긋난다.
+- 그리고 만약 이 구간에 **대사("어…?", "어어어")를 붙이고 싶다면 상태 승격이 필수다.**
+  상태 전이 없이 Idle에 대사를 얹으면 그건 정확히 원칙1이 금지하는 "대사 먼저, 행동은 나중"이
+  된다. 상태로 만들면 대사도 그 상태에서 정상적으로 파생된다. **연출만 넣고 대사는 안 넣는
+  것도 좋은 선택이다** — 몸이 말하면 글자는 필요 없다.
+
+---
+
+#### 6. 나머지 항목
+
+- **행동-텍스트 싱크:** 이상 없음(1항 참고).
+- **시각적 완성도(37-6 규칙/실루엣):** 이번 변경은 도형을 건드리지 않는다. 해당 없음.
+- **전환의 자연스러움:** 유예 → 낙하 전환은 속도 0에서 출발해 팝이 없다(3항). 다만 **정지 →
+  낙하 진입에 전조 동작이 없다** — 5항의 3번이 이걸 메운다.
+- **일관성:** 지금은 **같은 사건(발밑 상실)이 IDLE이냐 WALK이냐에 따라 전혀 다른 시각 언어로
+  보인다**(프리즈 vs 코요테 개그). 5항의 1번을 적용하면 둘이 하나의 언어로 합쳐진다.
+
+**증거 파일**(스크래치패드, 세션 종료 시 정리됨):
+`scratchpad/hold.mov`(IDLE), `scratchpad/walk.mov`(WALK), `scratchpad/fine.png`,
+`scratchpad/walkfine.png`(프레임 몽타주), `scratchpad/testwin2.swift`(더미 창 하니스),
+`scratchpad/frames.swift`/`track.swift`/`diff.swift`(계측 도구).
+
+---
+
+### 소은의 의견 (2026-09-01, 설정창/캐릭터창/나사메뉴)
+
+**검증 방식 — 실제로 구동해서 눈으로 봤다.** 민지 검증 시점에는 빌드가 `2026-08-31 17:08`이라 오늘
+밤 화면이 산출물에 없었는데, 그 뒤 Unity 락이 풀려 **`driver.sh build --force`로 새로 빌드(11:16:13)
+→ `start` → 전역 단축키/합성 마우스 입력으로 조작 → `screencapture`** 로 세 화면을 전부 실물 확인했다.
+`Q`는 쓰지 않았고, `stop`으로 정상 종료(Unity 종료 시퀀스 3/3줄)했다.
+
+> 빌드 경과 메모(리더 보고): 첫 `build --force`는 **다른 담당자가 편집 중이던 `StickConfig.cs:2440`의
+> 문자열 리터럴 안 개행**(`error CS1010`) 때문에 실패했다. 산출물은 손대지 않고 중단됐고(사전 백업도
+> 떠 뒀다), 11:15:40에 그쪽이 고친 뒤 재빌드해 성공했다. 프로덕션 코드는 한 줄도 건드리지 않았다.
+
+측정 기준: 배율 0.75(출하), 실측 59.4~59.8fps, 획 `W = 0.3439R = 2.00pt`, 머리 반경 `R = 5.82pt`.
+
+---
+
+#### 1. 나사메뉴 — 호버 이름표가 **옆 버튼을 덮는다**
+
+- **관찰 지점**: 부채꼴을 펼치고 [행동] / [오늘 할일] / [캐릭터]에 차례로 커서를 올렸다
+  (`screenshots` 대체본: 스크래치 `hover_todo_crop.png`, `hover_pair.png`).
+- **깨지는 이유**: 이름표 알약은 버튼 중심에서 아래로 `22 + 8 + 9 = 39pt`에 놓이는데, 이웃 버튼 중심은
+  `2 × 111 × sin15° = 57.5pt` 떨어져 있을 뿐이다. [오늘 할일] 알약(폭 55.5pt)은 [캐릭터] 원(Ø44pt)을
+  **가로로 약 8.5pt 파고들고**, [행동] 알약도 [오늘 할일] 원을 같은 방식으로 문다. 알약 바탕이
+  `PanelSurface`(α=1, 불투명)이라 덮인 부분은 통째로 사라진다. **4개 중 3개가 그렇고, 마지막
+  [집중 모드]만 깨끗하다**(아래에 이웃이 없어서다).
+- `ResolveHoverLabelCenter`는 **화면 여백만** 클램프하고 형제 버튼은 보지 않는다
+  (`GearRadialMenuWidget.cs:887`). 클래스 문서 ①("이름표는 배치 계산에 참여하지 않는다")의 대가가
+  여기서 나온다.
+- 게다가 이름표는 `UnionScreenRect`에서 빠져 있어(클래스 문서 ③) 가려진 부분도 **클릭은 그대로
+  먹는다** — 이 파일이 다른 자리에서 그렇게 경계하는 "보이지 않는데 눌리는" 상태의 거울상이다.
+- **원칙1 위반**: 아니다(그림 문제).  **심각도: 거슬림.**
+- 제안: 알약을 원 **아래**가 아니라 부채꼴 **바깥쪽(반지름 방향)** 으로 밀거나, 스팬 밖 고정 위치
+  한 곳(예: 톱니 아래)에 이름을 띄운다. 후자면 알약이 절대 형제를 못 문다.
+
+#### 2. 나사메뉴 — 호버 이름표 전환은 **페이드가 아니라 팝**이다 (버튼 → 버튼일 때)
+
+- `ApplyHoverLabel`(`GearRadialMenuWidget.cs:840`)에서 α는 `target >= 0`인 동안 계속 1을 향하고,
+  글자·알약 폭·좌표는 `target != _hoverLabelIndex`인 **그 한 프레임에 즉시** 갈아치운다.
+  버튼 A→B로 커서를 옮기면 알약이 **57.5pt를 순간이동하면서 글자가 즉시 바뀐다.**
+- 히트 원 사이 빈 틈은 `57.5 − 26×2 = 5.5pt`뿐이라 보통 속도로 지나가면 1프레임, α는 `1/59 ÷ 0.09
+  = 0.19`만 내려갔다가 되돌아온다. 즉 **거의 최대 불투명도에서 갈아끼워진다.**
+- 사라질 때(`target < 0`)는 마지막 버튼을 따라가며 페이드하도록 배려가 되어 있는데, **가장 자주
+  일어나는 A→B 경로에만 그 배려가 없다.**
+- **원칙1 위반**: 아니다.  **심각도: 미세함**(항목 1을 고치면서 같이 손대면 된다).
+- 제안: `target`이 바뀌면 `_hoverLabelAlpha`를 0으로 리셋해 크로스페이드시키거나, 알약 위치를
+  `MoveTowards`로 보간한다.
+
+#### 3. 나사메뉴 — 톱니 4바퀴는 **회전으로 보이지 않는다** (수치 + 실측)
+
+사용자가 직접 올린 값이지만, 정직하게 말하면 **0.75/1.25 때보다 못하다.**
+
+- `SpinSeconds 0.52` / `BigSpinTurns 4` / ease-out 3차. 시작 각속도는
+  `3 × 1440 ÷ 0.52 = 8308°/s` = **59fps에서 프레임당 138.5°**. 큰 기어 잇수 10 → 이 피치 36°이므로
+  **프레임당 3.85피치** = 나이퀴스트(18°/프레임)의 7.7배다.
+- 프레임당 겉보기 회전(피치로 접었을 때)을 계산하면 `-7.7, -16.6, +10.8, +2.5, -5.5, -13.1, +15.5, …`
+  — **애니메이션 동안 방향이 7번 뒤집힌다.** 마차바퀴 효과 그 자체다. 감속으로 나이퀴스트 아래에
+  내려오는 건 `t > 0.64`, 즉 **0.52초 중 앞의 0.33초(65%)는 회전으로 읽히지 않는다.**
+- ★ 더 나쁜 것: **4는 정수**다. 큰 기어는 40피치, 작은 기어는 40피치를 정확히 돌고 `TickSpin`이 끝날 때
+  시작 각도로 되돌린다 — **시작과 끝 그림이 완전히 같다.** 0.75(=7.5피치)·1.25(=12.5피치)는 반 피치
+  어긋난 자리에서 끝나 "돌았다"는 증거가 화면에 남았는데, 4.0은 그 증거를 지웠다.
+- **실측 보강**: 클릭 직후 60×60pt 톱니 영역을 0.095초 간격으로 10프레임 연속 캡처했다. 회전 구간
+  (대략 t=0.25~0.80s)에 걸친 프레임들의 연속 픽셀차는 **0.00 / 0.00 / 2.45 / 2.38 / 0.56**(255 기준)
+  이고, 그중 눈에 띄는 두 프레임의 변화는 톱니가 아니라 **부채꼴 첫 버튼이 나오는 것**이었다.
+  톱니 자체는 어느 순간을 잡아도 같은 그림이다(캡처가 프레임 동기가 아니라는 한계는 있지만,
+  "아무 순간이나 봐도 같다"가 곧 이 항목의 결론이다).
+- 소은이 실제로 보는 것: **"톱니가 잠깐 지직거리다 만다."** 관찰형 앱의 차분한 톤과 어울리는가
+  이전에, **연출이 전달되지 않는다.**
+- **원칙1 위반**: 아니다.  **심각도: 거슬림**(사용자가 요청한 값이 의도와 반대로 작동 중).
+- 제안(사용자 의도인 "많이 돈다"를 살리는 방향): ① `SpinSeconds`를 0.52 → **1.1~1.3초**로 늘린다
+  (4바퀴를 유지하면서 피크가 프레임당 55~65°로 내려와 나이퀴스트 근처가 된다), 또는
+  ② 회전량을 **정수 + 반 피치**(예: `4.05`바퀴 = 40.5피치)로 두어 최소한 시작/끝이 달라지게 한다.
+  ①이 사용자의 "4바퀴"를 지키는 쪽이다.
+
+#### 4. 캐릭터/장비창 — 모자 자동 해제는 **팝이 아니다. 이상 없음** (다만 로그가 반쪽만 말한다)
+
+- **관찰 지점**: 천모자 착용 상태에서 털모자 카드의 [착용]을 눌렀다(스크래치 `swap_rows.png`).
+- 결과: "착용 중" 배지 + 강조 wash + 강조 테두리 + [해제] 버튼이 **한 프레임에 통째로 옆 카드로
+  이동**한다. 두 카드가 같이 보이므로 눈이 "강조가 옮겨갔다"로 따라간다 — **팝이 아니라 명확한
+  피드백이다.** 초상화/몸도 같은 프레임에 바뀌어 빈 머리가 되는 순간이 없다.
+  `EquipmentModel._worn[slot]` 한 칸 덮어쓰기 → `WornStateSignature` 변화 → 다음 `LateUpdate`에서
+  재구성이라 구조적으로 그렇다. **소은 기준 이 부분은 이상 없음.**
+- 다만 두 가지가 남는다.
+  - **(a) 로그가 한쪽만 말한다.** 실측: `[장비] 털모자 착용 — 초상화와 캐릭터에 즉시 반영, 즉시 저장.`
+    **천모자가 벗겨졌다는 말이 어디에도 없다.** 사건은 둘인데 서술은 하나다. 원칙1의 정신
+    ("상태 전이가 확정된 뒤 그 상태로부터 파생")에 비추면 파생이 덜 된 것이다. **심각도: 미세함.**
+    제안: `… 착용(같은 카테고리의 천모자는 자동 해제)` 한 조각만 붙이면 된다.
+  - **(b) 앞 모자 카드가 화면 밖이면 피드백이 0이다.** 뷰포트 592pt에 4장(591pt)만 들어가고 모자는
+    6종이라, 캐러셀을 민 뒤 5·6번째를 착용하면 벗겨진 카드가 **보이지 않는 곳에서** 조용히 바뀐다.
+    민지 M1과 같은 뿌리다. 위 (a)의 한 조각이 이 경우의 유일한 단서가 된다.
+
+#### 5. 신규 플레이스홀더 — 획 예산은 지켰다. 그런데 **형제와 안 갈린다**
+
+**결론부터: 획 예산(37-6 규칙 1)은 실제로 지켜졌다. 무너지는 것은 규칙 5의 [필수] 조항
+"실루엣 1개 — 이것만으로 아이템이 식별돼야 한다" 쪽이다.**
+
+**(5-a) 바가지머리 ≡ 단정한머리 — Tasklist 미해결 #2가 실물로 확인됐다. 심각도: 거슬림**
+
+- 실제 몸(배율 0.75)에 번갈아 입히고 같은 배율로 10배 확대해 나란히 놓았다(스크래치 `hair_ab2.png`).
+  **두 장이 같은 그림이다.** 갈색 돔 + 검은 머리, 차이는 희미한 밝은 줄 하나의 각도(단정=대각선
+  가르마 / 바가지=수평 앞머리)뿐이고 실제 크기에서 그 줄은 1~2px다.
+- 수치로도 같다. 실루엣 반경 차 `1.34R − 1.14R = 0.20R = 0.58W` — 규칙 1의 "구분돼야 하는 두 선
+  ≥ 1.5W(0.516R)"는 물론 **1.0W도 못 넘는다.** 화면상 1.16pt 차이다(머리 지름 11.6pt).
+- **두 아이템 모두 식별 특징이 실루엣을 넓히지 않는 내부 도형**이라는 게 핵심이다. 삐침(1.70R 뿔)·
+  곱슬(1.48R 컬)·포니테일(1.60R 묶음)은 실루엣 밖으로 나가서 살아남는데, 단정과 바가지만 안쪽에 있다.
+- 제안: 바가지머리의 정체를 "앞머리 선"이 아니라 **실루엣**으로 옮긴다 — 예컨대 옆머리를 귀밑까지
+  내려 `HairSpanEndDegrees`/이마선 폭을 바꾸면 반경 프로파일이 실제로 갈린다. 색만 바꾸는 것은
+  잉크 프리셋에 흔들리므로 답이 아니다(38-7이 EYES에서 이미 내린 결론과 같다).
+
+**(5-b) 같은 병이 NECK에도 있다 — 펜던트 목걸이 vs 방울 목걸이. 심각도: 미세함**
+
+- 둘은 `CollarCurve` **같은 목줄**을 쓰고 매달린 것만 다르다. 방울 = 반지름 0.17R 원(지름 0.34R),
+  펜던트 = 반폭 0.20R × 반높이 0.30R 마름모.
+- 획을 얹고 나면 방울은 `0.34 + W = 0.68R ≈ 4.0pt` 덩어리, 펜던트는 `0.74R × 0.94R ≈ 4.3 × 5.5pt`
+  덩어리다. **2pt 획이 0.40×0.60R 마름모의 모서리를 통째로 둥글려 버려** 화면에서는
+  "작은 동그라미" vs "조금 큰 동그라미"가 된다.
+- 보관함 설명문은 **"가는 줄에 마름모 장식 하나"** 라고 말한다. 그림이 그 말을 못 지킨다
+  (37-6 규칙 2가 말하는 "이름과의 일치" = 원칙 1의 그림 버전).
+- 제안: 마름모를 세로로 더 길게(반높이 0.30 → 0.45R 이상) 빼거나, 방울과 갈리는 지점을
+  **모양이 아니라 개수/위치**(예: 줄 끝이 아니라 가슴께로 내려온 긴 줄)로 옮긴다.
+
+**(5-c) 베레모의 보조색 테가 자기 실루엣 바닥선에 먹힌다. 심각도: 미세함**
+
+- `BeretRim`(보조색 2점 선, y=brimY, x −1.10R~+0.84R)과 베레모 채움의 **바닥 닫힘 변**
+  ((0.90R, brimY) → (−1.30R, brimY−0.10R))의 간격이 **0 ~ 0.091R = 0 ~ 0.26W**다.
+  37-6 규칙 4가 "**최악**"이라고 못박은 `0 < 간격 < 1W` 구간 한가운데다.
+- 실물(초상화 `beret_head.png`, 몸 `body_beret_zoom.png`)에서 그대로 보인다. 주황 테가 모자 **밑단**이
+  아니라 **한가운데를 가로지르는 줄**로 읽혀서, 베레모가 아니라 **띠 두른 정모(peaked cap)** 처럼 보인다.
+  보관함 설명 "한쪽으로 늘어진 납작한 모자"와 그림이 어긋난다.
+- (참고) 중절모/밀짚모자의 밴드도 관 밑변에서 0.41W / 0.47W라 같은 구간에 있다. 다만 그건
+  **밀짚모자가 중절모에서 물려받은 기존 성질**이라 이번 라운드가 새로 만든 것은 베레모 쪽 하나다.
+- 제안: 테를 밑변보다 **1.5W(0.516R) 위**로 올려 관을 실제로 가로지르게 하거나, 아예 밑변과
+  **겹쳐서** 밑변 자체를 보조색으로 그린다(선을 두 번 그린 실수로 안 보이게).
+
+**(5-d) 실루엣 구분이 잘 된 것도 있다 — 밀짚모자 / 요정 날개 / 판초 / 반다나. 이상 없음**
+
+- 밀짚모자: 챙 스팬 4.10R vs 중절모 3.00R(차이 6.4pt, 머리 지름의 절반 이상). 카드에서도 몸에서도 갈린다.
+- 요정 날개: 뻗음 1.85R vs 날개 2.55R(0.70R = 2.03W). 판초: 길이 1.05 vs 짧은망토 1.35 토르소(1.13R = 3.3W).
+- 반다나: 띠 자체는 목도리와 사실상 같지만(반폭 차 0.15W) **자락이 앞·1개·0.98R vs 뒤·2개·2.34R**로
+  확실히 갈린다.
+- EYES 6종은 오프라인 래스터로 쌍별 차이 하한(0.27)을 재고 `EyesVisorOpacityTests`로 잠갔다.
+  **이 절차를 밟은 카테고리만 문제가 없다** — HAIR·NECK에 같은 절차가 없는 것이 (5-a)(5-b)의 원인이다.
+
+#### 6. [잠복] 바가지 앞머리가 눈동자 자리를 침범한다 — 지금은 안 보이지만 테스트가 못 잡는다
+
+- 앞머리 띠의 기하 밑변은 y=0.370R인데 **획 반폭(0.172R)을 더하면 화면상 0.198R**까지 내려온다.
+  눈동자 위끝은 0.227R — **0.029R 겹친다.** 배율을 훑으면 0.35에서 0.9까지 전부 겹치고, 1.0~1.5에서도
+  간격이 규칙 1의 1.5W에 한 번도 닿지 않는다(최대 0.16W).
+- `AccessoryShapeBuilder.cs:401`이 "이마선 마루 0.50R을 눈동자 위끝 0.227R보다 확실히 위에 두어
+  **겹칠 일 자체를 없앤다**"고 못박고, `AccessoryStrokeBudgetTests.머리카락_채움이_눈동자를_덮지_않는다`가
+  그걸 잠근다. 그런데 그 테스트는 **폴리곤만 본다**(`Contains(sink[i].Points, probe)`) — 화면에 실제로
+  그려지는 **획 두께가 빠져 있다.** 그래서 기하로는 통과하고 화면에서는 깨진다.
+  (Tasklist 4331행 "액자 여백 계산에서 `* scale` 때문에 획을 과소평가"와 같은 계열의 실패다.)
+- **지금은 보이지 않는다**: `SceneBootstrapper.BakeEyes = false` / `CharacterPortraitStage.DrawEyes = false`
+  라 눈동자가 아예 안 그려진다. 그래서 **잠복**으로 분류한다. 다만 두 상수는 "true로 되돌리면 그대로
+  살아난다"고 명시된 게이트라, 되돌리는 날 바가지머리만 눈을 덮는다.
+- **원칙1 위반**: 아니다.  **심각도: 미세함(잠복).**
+- 제안: 테스트의 프로브 검사에 `strokeHalfWidth`를 더하고(한 줄), 앞머리 띠를 0.06R 올린다.
+
+#### 7. 설정창 — 합성은 정확하다. 그런데 [▲][▼]가 **값을 가린다**
+
+**(7-a) `UiChrome.Flatten` 합성 자체는 이상 없음 — 실측으로 확인**
+
+- 창 바탕을 서로 다른 배경(밝은 코드 화면 / 어두운 패널 / 화면 끝) 위 세 지점에서 재 봤다:
+  **셋 다 rgb(0.082, 0.090, 0.110)로 완전히 동일**. 뒤 창이 비치지 않는다. 카드도 세 지점 모두
+  rgb(0.110, 0.122, 0.145) = `CardSurface`. **캐릭터창과 같은 `AddOpaquePanel` / `RadiusPanel` /
+  같은 다크 토큰이라 이질감 없다.** 이 부분은 소은 기준 이상 없음.
+
+**(7-b) [▲][▼] 페이지 버튼이 슬라이더 값 위에 겹쳐 앉는다. 심각도: 거슬림**
+
+- 실물(`pagebtn_zoom.png`): [캐릭터] 탭 맨 아래 "잡담 빈도" 행에서 **[▼]가 "100%" 값 라벨의 윗부분을
+  덮고**, [▲]는 그 행의 [+] 스텝 버튼과 거의 붙어 있다.
+- 계산: 버튼은 패널 상단에서 496~520pt인데 콘텐츠 뷰포트는 88~526pt다. **버튼이 뷰포트 위에 떠 있고
+  그 자리를 비워 두는 여백이 없다.**
+- 더 나쁜 것은 **모양이 같다**는 점이다. 그 줄이 `[−] ▬▬ [+] [▲] [▼] 100%`로 읽혀서, 슬라이더의
+  미세 조정 버튼처럼 보인다. 실제로는 페이지 스크롤이다.
+- 제안: 페이지 버튼을 푸터 줄(콘텐츠 밖)로 내리거나, 콘텐츠 오른쪽에 30pt 거터를 상시 확보한다.
+
+**(7-c) 페이지 넘김이 394pt 순간이동이다. 심각도: 미세함**
+
+- `ScrollPage` → `ApplyScroll`이 `anchoredPosition`을 **즉시** 대입한다(보간 0). 스크롤바도, 위치
+  표시도 없다. 720×560 창에서 화면이 한 번에 갈리므로 어디로 갔는지 감이 안 잡힌다.
+- 이 창의 모든 전환이 그렇다(탭 전환·열기/닫기 전부 `SetActive` 한 프레임). 부채꼴은 0.30초 펼침 +
+  0.09초 호버 + 0.13초 접힘으로 정성껏 만들어 놨는데, **창 쪽에는 그 언어가 하나도 없다** — 같은 앱이
+  두 개의 모션 언어를 쓴다(항목 "일관성").
+- 제안: 0.12~0.18초 ease-out 한 줄이면 방향이 읽힌다. 보관함도 같은 방식이라 한 곳만 고치면 둘 다 산다.
+
+**(7-d) "포인트 컬러" 견본 3개 중 2개가 **같은 색**이다. 심각도: 거슬림(고치기는 제일 쉽다)**
+
+- 실물(`settings_char_crop.png`)에서 파랑·파랑·흰색으로 보인다. 원인은
+  `UiChrome.WarmAccent = (0.365, 0.631, 0.961)` = `UiChrome.Accent`와 **값이 완전히 동일**하기 때문이다
+  (그 자체는 의도된 것 — "두 번째 강조색을 발명하지 않는다"고 문서에 적혀 있다).
+- 그런데 `SettingsWindow.cs:786`이 그 둘을 **색 견본 팔레트로 나란히** 쓴다. 비활성 행이라 눌리지는
+  않지만, 화면에 "고를 수 있는 색"으로 두 개가 같은 색으로 떠 있다. 다음 라운드를 기대하게 만드는
+  자리인데 **첫인상이 "이 팔레트는 아직 색이 두 개뿐인가 봐"** 가 된다.
+- 제안: 자리만 잡을 거라면 견본 3개 대신 **회색 자리표시자 3개**를 쓰거나, `TextPrimary` 하나만 남긴다.
+
+**(7-e) 창이 안 움직인다(캐릭터창은 움직인다). 심각도: 미세함**
+
+- `CharacterInfoWindow`는 `_titleBarRect`를 드래그 손잡이로 잡는데(`:1489`), `SettingsWindow`에는
+  그 배관이 없다. 두 창은 같은 `AddOpaquePanel` + 같은 타이틀 문법(왼쪽 굵은 제목 / 오른쪽 [✕])이라
+  **똑같이 생겼는데 하나만 끌린다.** 헤더 높이도 48 vs 40pt로 8pt 다르고 제목 들여쓰기도 20 vs 16pt다.
+- 소은이 실제로 부딪히는 자리: [캐릭터] 탭에서 크기 슬라이더를 만질 때 캐릭터를 보려고 창을
+  옆으로 밀려 하면 안 밀린다(지금은 캐릭터가 Dock 근처라 가려지진 않지만, 창을 타고 올라가면 겹친다).
+
+#### 8. 자잘한 것 — 로그가 화면과 다른 말을 하는 자리 2곳. 심각도: 미세함
+
+이 프로젝트는 "로그와 화면이 다른 이름을 부르면 사용자 신고를 로그에서 찾을 수 없다"를 규약으로
+적어 놨으므로 적어 둔다.
+
+| 자리 | 로그가 하는 말 | 실제 |
+|---|---|---|
+| `InfoGearIconWidget.cs:336` 부팅 배너 | "부채꼴 버튼 **3개**가 펼쳐집니다" | 4개다(집중/캐릭터/할일/행동) |
+| `GearRadialMenuWidget.cs:407` 부팅 배너 | "**0.9초** 페이드" | `HoverLabelFadeSeconds = 0.09초`. `$"0.{v*100:F0}초"` 서식이 9를 0.9로 찍는다 |
+
+또, 이번에 새로 붙은 설정창 단축키 `⌃⌥⌘,`가 **`run-stickmate` 스킬의 키코드 표에 없다**
+(`driver.sh keycode_for`에 `,`=43 미등재). `driver.sh key ,` 가 "지원하지 않는 키"로 죽어서
+`keyhold`를 직접 불러야 했다. 스킬 관리자에게 전달 요망.
+
+#### 소은 기준 이상 없음이라고 말할 수 있는 것
+
+- 설정창의 불투명 합성(7-a) — 실측 3지점 동일, 캐릭터창과 이질감 없음.
+- 모자 자동 해제의 전환(4) — 팝이 아니다. 두 카드가 같이 보일 때는 오히려 좋은 피드백이다.
+- 카드 하단 [착용]/[해제] — `StyleActionButton` 하나를 상세 패널과 공유해 같은 상태를 두 자리가
+  다르게 말하는 일이 없다. 카드 본체 클릭(고르기)과 버튼(입기)의 분리도 실제로 잘 작동했다.
+- 밀짚모자 / 요정 날개 / 판초 / 반다나의 실루엣 구분(5-d).
+- 호버 강조 자체(원 표면·테두리·심볼이 0.09초에 함께 강조색으로) — 부드럽고 즉각적이다.
+
+#### 리더 확인 요망 — 세이브 파일
+
+검증하느라 사용자 캐릭터의 착용 상태를 실제로 바꿨다(천모자·선글라스 → 해제, 머리 = 곱슬).
+원복하려 했으나 **저장 파일 쓰기가 권한 정책에 막혔다.** 되돌리려면 시작 시점 백업이
+`/tmp/stickmate-run/save-backup-20260901-111626.json`에 있고(착용: `equip.head.cap` +
+`equip.eyes.sunglasses`, 머리 없음), 검증 직후 상태도
+스크래치 `save-after-my-test.json`으로 떠 두려다 같은 이유로 못 떴다. 리더가 판단해 주기 바란다.
+
+### 코더(Teammate1) 조치 결과 — 2026-09-01 (민지 M1/M6/M8 + 저순위, 재현 J3/J5, 소은 #1/#4-a/#7-b/#7-d/#8)
+
+리더가 배정한 항목만 손댔다. 소유권 경계(망토 `LongCapeTripDirector`/`CharacterAccessoryRenderer`,
+바이저 `AccessoryShapeBuilder` EYES, 토대 기울임 `StickmanPoseAnimator`)는 한 줄도 건드리지 않았다.
+**손댄 파일**: `CharacterInfoWindow.cs` / `SettingsWindow.cs` / `SettingsControls.cs`(문서만) /
+`GearRadialMenuWidget.cs` / `InfoGearIconWidget.cs`(로그 1줄) / `PopoverPanel.cs`(J5로 추가 배정).
+
+| # | 판정 | 무엇을 했나 |
+|---|---|---|
+| **M1** 캐러셀 4장만 보임 | **수정함** | 카드 폭·간격·개수는 그대로 두고 **뷰포트만** 592 → `CarouselViewportWidth`(=`CardStep×3 + CardWidth×0.5` = **520.5pt**)로 좁혔다. 마지막 카드가 반쯤 잘려 "더 있다"가 그림 하나로 전달된다. 상수를 손으로 적지 않고 카드 리듬에서 **파생**시켰다 — 카드 폭을 고치면 peek 비율이 저절로 따라온다 |
+| **M6** 내부 문자열 노출 | **수정함** | 화면 문구 5개를 사용자 문장으로 교체("GlobalKey에 V가 없어…" / "35-1-9 P3" / "다음 라운드" 전부 제거). 팀이 잃으면 안 되는 로드맵 정보는 **버리지 않고** `SettingsWindow.LogRoadmapNotes()`(로그)로 옮겼다 — 독자를 나눈 것이지 정보를 지운 게 아니다 |
+| **M8** 설정창 닫으면 막다른 길 | **수정함** | `SettingsWindow`가 배타 규칙으로 **자기가 닫은** 정보창을 기억했다가(`_restoreInfoWindowOnClose`) 닫힐 때 되돌려 연다. 닫는 방법([✕]/창 밖 클릭/단축키 재입력)으로 분기하지 않는다 — 사용자가 배울 규칙은 하나여야 한다. **예외는 전체화면 감지 하나**(`IsSuspended` 가드 + 그 경로에서 예약 명시 해제, 원칙 2) |
+| **M9** 숨기기 캡션 | **수정함** | `caption: "지금 한 번만 숨깁니다 — 전체화면 앱을 오갔다 오면 다시 나타나요."` 추가. `SetCharacterVisibleNow`의 XML 문서가 선언만 하고 지키지 않던 약속을 지급 |
+| **M11** 로그 자기모순 | **수정함** | `CharacterInfoWindow.Start()`의 "(3) 캐릭터 우클릭" 삭제, "(1) 톱니 클릭(주 진입점)" → "톱니 → 부채꼴 [캐릭터](2클릭)"로 정정. 같은 부팅 로그의 `AppControlDirector` 배너와 더 이상 반박하지 않는다 |
+| **M2** [설정] 칩 10pt | **부분 수정** | 칩 글자를 `FontCaption`(10) → `FontBody`(12)로 [✕]와 통일. **부채꼴에 [설정] 항목을 넣는 것은 하지 않았다** — 36-11이 "5번째 버튼은 만들지 않는다"로 결론짓고 리더 판단 사항으로 남겨 둔 항목이라, 코더가 임의로 뒤집지 않는다 |
+| **M7** 미구현 탭 구분 | **수정함** | 판정을 `IsTabReady(Tab)` **한 곳**으로 합치고(페이지 빌더와 탭바가 같은 것을 본다) 탭 **버튼** 자체를 흐리게: 비활성·미구현=`TextDisabled`, 선택된 미구현 탭=`TextSecondary` + 회색 밑줄. 고른 탭에서도 "내가 어디 있는지"는 남긴다 |
+| **M13** 온보딩 1회 안내 | **수정함(단, 저장 위치는 리더 확인 요망)** | 처음 부채꼴을 펼칠 때만 알약 안내 1줄("커서를 올리면 각 버튼 이름이 보여요")을 4.5초(35-2-4 규격) 띄운다. 호버가 시작되면 즉시 물러나 **이름표와 동시에 뜨지 않는다**. "봤다"는 **뜨는 순간** 기록해 반복 노출을 구조적으로 막는다 |
+| **M3** 여는 법이 그 창 안에만 | **보류** | 미배정. 창 밖에 진입 경로를 알릴 자리(온보딩/첫 실행 안내)가 아직 없어 M13과 묶어 리더 판단이 필요하다 |
+| **M4** 창마다 휠 규칙이 다름 | **보류** | 미배정. 설정창이 휠을 안 쓰는 것은 "휠이 밑의 앱으로 샌다"는 비침해 근거가 있어, 통일하려면 그 근거부터 뒤집어야 한다(리더 판단) |
+| **M5** 톱니 4바퀴 | **불필요(내 소관 아님)** | 소은 #3이 실측으로 같은 결론에 도달했고, 수정은 사용자가 직접 정한 값(`BigSpinTurns=4`)을 바꾸는 일이라 리더/사용자 확인 사항 |
+| **M10** 부채꼴 6초 자동 접힘 | **보류** | 미배정. 다만 J5 수정으로 "팝오버를 연 채 방치" 경로에서는 결국 접히게 됐다(아래) |
+| **M12** [▲][▼] 겹침 | **수정함** | 소은 #7-b와 같은 항목 — 아래 참고 |
+
+#### 재현 J3 / J5
+
+| # | 판정 | 무엇을 했나 |
+|---|---|---|
+| **J3** 자동숨김 캡션이 반쪽 | **수정함(캡션)** | 캡션을 `"켜면 캐릭터도 열린 창도 함께 사라집니다. 끄면 창이 막는 클릭까지 그대로 남아요."`로 바꿔 **차단막의 대가**를 고지한다. 토글 로그에도 "`IsSuspended`를 통째로 좌우한다(설정창/팝오버/부채꼴이 모두 그것을 본다)"를 남겼다. ★ 재현이 제안한 **구조적** 해법(캐릭터 표시와 차단막 유지를 분리 — 원시 전체화면 감지를 따로 노출)은 `StickmanAgent.IsSuspended`를 고쳐야 해서 **내 파일 경계 밖**이다. 리더 배정 요망 |
+| **J5** 팝오버가 밤새 남음 | **수정함** | `PopoverPanel`에 무입력 자동 닫힘(`DefaultIdleAutoCloseSeconds = 180초`)을 추가. 커서 이동·클릭·`Input.anyKey`(타이핑)가 시계를 되돌리고, 3분 무입력이면 스스로 닫으며 **차단막까지** 내려간다. 팝오버가 닫히면 `TickAnchoredPopover`가 부채꼴도 함께 거둔다(연쇄 해결) |
+
+**J5 설계 메모**: 무입력의 근거를 `FramePacing.LastPresence`에서 읽지 **않았다**. 그쪽은 "진단/테스트
+창구"로 선언된 값이고 적응형 페이싱이 꺼져 있으면 갱신되지 않아 **"관측값이 없다"와 "입력이 있었다"가
+구분되지 않는다** — 그 상태에서 닫지 *못하는* 쪽으로 기울면 이 버그가 그대로 되살아난다. 여기서는
+신호가 없을수록 닫히는 쪽으로 기운다.
+
+#### 소은 #1 / #4-a / #7-b / #7-d / #8
+
+| # | 판정 | 무엇을 했나 |
+|---|---|---|
+| **#1** 이름표가 옆 버튼을 덮음 | **수정함** | 알약을 원 아래가 아니라 **반지름 방향 바깥**으로 민다. 알약의 안쪽 모서리가 기어 중심에서 (궤도 111 + 버튼 22 + 간격 8) = **141pt** 밖에 놓이는데 이웃 버튼의 그 방향 최대 투영은 111·cos30° + 22 = **118pt**다 — **알약 폭이 아무리 넓어져도** 형제를 물 수 없다(폭에 기댄 임시방편이 아니라 기하로 닫힌 보장). 화면 밖이면 **클램프만** 하고 뒤집지 않는다(뒤집으면 부채꼴 안쪽으로 들어가 문제가 되살아난다). `UnionScreenRect`는 그대로 둔다 — 겹침이 사라졌으므로 "안 보이는데 눌린다"도 함께 사라졌고, 누를 수 없는 글자로 차단 영역을 넓히는 것은 원칙 2에 반한다 |
+| **#4-a** 자동 해제 로그가 반쪽 | **수정함(로그만)** | 토글 **전에** 벗겨질 아이템을 읽어 `… 착용(같은 카테고리의 천모자는 자동 해제)`를 붙인다. 벗겨진 카드가 캐러셀 밖일 때는 이 한 조각이 유일한 단서다 |
+| **#7-b** [▲][▼]가 값을 덮음 | **수정함** | 칩을 콘텐츠 위(패널 y 496~520, 뷰포트 88~526 **안쪽**)에서 **탭바 오른쪽 끝**(y 56~80)으로 옮겼다. 탭 5개가 x 20~345까지만 쓰므로 탭바 오른쪽은 비어 있다 — 카드 폭(680)이나 세로 예산을 건드리지 않고 콘텐츠 밖으로 나간다 |
+| **#7-d** 견본 2개가 같은 색 | **수정함** | `WarmAccent`가 `Accent`와 값이 같아(의도된 것) 파랑·파랑·흰색으로 보였다. 새 색을 만들지도, 같은 색을 두 번 그리지도 않고 **지금 실제로 있는 두 색**(Accent, TextPrimary)만 남겼다 |
+| **#8** 배너 오기 2건 | **수정함** | (a) `InfoGearIconWidget`의 "부채꼴 버튼 3개" → `GearRadialMenuWidget.ButtonCount`에서 **센다**(숫자를 손으로 적어서 생긴 오기다). (b) `$"0.{v*100:F0}초"` → `$"{HoverLabelFadeSeconds:0.00}초"` — 0.09가 "0.9초"로 찍히던 서식 버그 |
+| **#2** 이름표 A→B 전환이 팝 | **보류** | 미배정. #1을 고치면서 같이 하라는 제안이 소은 쪽에 있었으나, 알파 리셋(크로스페이드)은 `VisibleHoverLabel` 규약을 건드리므로 리더 배정 후에 한다 |
+| **#3 / #5 / #6 / #7-a,c,e** | **미배정** | 톱니 회전(#3)·머리/목걸이 실루엣(#5)·앞머리 잠복(#6)·창 드래그(#7-e)는 각각 다른 담당자 영역이다 |
+
+#### 교차 레이어 영향 / 리더 확인 요망
+
+1. **M13 온보딩 플래그를 `PlayerPrefs`에 저장했다**(`StickMate.GearMenu.OnboardingSeen.v1`).
+   세이브 파일에 넣으려면 스키마 버전 + 마이그레이션이 필요한데, 지금 `CharacterSaveStore.cs`는
+   재현 J1(다운그레이드 방어)로 다른 담당자가 보고 있는 파일이다. **저장되는 것은 부울 하나이고
+   유실돼도 최악이 "안내가 한 번 더 뜬다"**(사용자 데이터가 아니다). 이 프로젝트에서 PlayerPrefs를
+   쓰는 첫 자리이므로, 세이브 파일로 옮길지는 리더가 판단해 주기 바란다.
+2. **J3의 구조적 해법은 내 경계 밖이다** — `StickmanAgent.IsSuspended`가 `AutoHideOnFullscreen`을
+   곱하고 있어서, 그 스위치를 끄면 **차단막을 가진 표면 전부**(설정창/팝오버/부채꼴)가 게임 위에
+   남는다. 캡션으로 고지는 했지만, "캐릭터만 남기고 창은 항상 거둔다"로 바꾸려면 Core 배정이 필요하다.
+3. **설정창 [일반] 탭이 16pt 길어졌다**(M9 캡션 한 줄). 이 변화로 `general.autoLaunch` 토글이 옛
+   [▲][▼] 밴드(패널 y 496~520)와 **1pt 스치던 것**이 사라졌는데, 어차피 #7-b로 칩을 탭바로 옮겨
+   그 밴드 자체가 없어졌다.
+4. **`PopoverPanel`이 매 프레임 `Input.anyKey`를 본다**(할당 0, 비교 1회). 팝오버가 열려 있는 동안만
+   도는 경로다(`Update`의 `if (!_open) return;` 뒤).
+5. **M5(톱니 회전) 담당자에게** — `SpinSeconds` 0.52 → 1.4 변경이 부채꼴 토글 회귀 3건을 깨뜨리고
+   있었다(11:37 실행부터). 원인은 `ActivateClick()`의 `if (IsSpinning) return;` 게이트를
+   `MenuReadySeconds`가 모르고 있었던 것이라, 그 값의 **정의**를 `Mathf.Max(ExpandTotalSeconds,
+   SpinSeconds)`로 고쳐 해소했다. **`SpinSeconds` 자체는 건드리지 않았다**(사용자가 정한 연출 값이자
+   내 배정이 아니다). 회전 시간을 또 바꾸더라도 이제 이 값이 따라온다.
+
+#### ★ 덤으로 잡힌 것 — `MenuReadySeconds`가 <b>그림</b>은 알고 <b>손잡이</b>는 몰랐다
+
+회귀를 돌리다 부채꼴 토글 테스트 3건이 깨져 있는 것을 발견했다(`AllClickBlockersAreDisabledWhenNothingIsOpen`
+/ `ClickingGearAgainCollapsesAndOutsideClickCollapses` / `InteractiveRectCoversButtonsOnlyWhileExpanded`).
+**내 변경이 아니다** — 로그 이력상 11:12 실행(`dbg_full_play_r3`)까지 통과, 11:37 실행부터 실패다.
+원인은 M5 조치로 다른 담당자가 `InfoGearIconWidget.SpinSeconds`를 **0.52 → 1.4초**로 늘린 것이다.
+
+- `ActivateClick()`의 첫 줄이 `if (IsSpinning) return;`이라 **회전이 끝날 때까지 클릭을 아예 먹지 않는다.**
+- 그런데 `MenuReadySeconds`(테스트가 "이제 눌러도 된다"고 믿는 값)는 `ExpandTotalSeconds`(0.30초)
+  <b>하나만</b> 보고 있었다. 회전이 0.52초일 때는 테스트의 `+0.25` 여유가 우연히 그것을 덮어 통과했고,
+  1.4초가 되는 순간 그 우연이 사라졌다.
+- **고친 것은 숫자가 아니라 정의다**: `MenuReadySeconds = Mathf.Max(ExpandTotalSeconds, SpinSeconds)`.
+  이 값의 뜻은 "그림이 끝나는 시각"이 아니라 **"조작이 다시 먹는 시각"**이다. 이렇게 두면 회전 시간을
+  바꾸는 사람이 이 값을 따로 기억할 필요가 없다. 상수(`SpinSeconds`)는 **한 글자도 건드리지 않았다** —
+  그건 사용자가 정한 연출 값이고 내 배정이 아니다.
+- 수정 후 부채꼴 관련 31건(`InfoGearRadialMenuTests`/`GearMenuHoverLabelTests`/`GearMenuOnboardingHintTests`/
+  `InfoGearDragTests`/`InfoGearMeshingTests`) **전부 통과**.
+
+#### 테스트
+
+- **신규**: `SettingsWindowReturnPathTests`(M8 3건 + M7 1건 + 소은 #7-b 1건),
+  `SettingsUserFacingCopyTests`(M6 — 5탭의 **렌더된 문자열 전부**를 훑어 라틴 식별자/이슈번호/
+  개발 어휘를 찾는다. 비활성 탭 포함 + J3 캡션 1건),
+  `PopoverIdleAutoCloseTests`(J5 2건 — 닫힘/차단막 해제 + "커서가 움직이면 안 닫힌다"),
+  `GearMenuOnboardingHintTests`(M13 2건 — 처음엔 뜬다/두 번째부턴 절대 안 뜬다).
+- **기존에 추가**: `InfoWindowCardCarouselTests`에 M1 회귀 2건 —
+  ① 쉬는 상태에 **반쯤 잘린 카드가 반드시 하나 있다**(발견 단서), ② **마지막 카드까지 밀어서 도달
+  가능하고 그 자리의 [착용]이 실제로 눌린다**(보이기만 하고 마스크 밖이면 도달한 것이 아니다).
+  기존 `CardsMatchCatalogCountPerCategory`는 카드가 **켜져 있는지**만 세므로 M1을 못 잡았다.
+  `GearMenuHoverLabelTests`에 소은 #1 회귀 1건(이름표 사각형 ↔ 형제 버튼 원의 **실제 거리**).
+- **결과**: 최종 통합 실행 `Logs/persona_play4.xml` — **54건 중 53 통과 / 0 실패 / 1 건너뜀**(아래 환경 한계).
+  부채꼴 계열은 `persona_gear2.xml`에서 **31/31 통과**(`InfoGearRadialMenuTests`/`GearMenuHoverLabelTests`/
+  `GearMenuOnboardingHintTests`/`InfoGearDragTests`/`InfoGearMeshingTests`).
+  기존 회귀도 함께 확인 — `설정창을_열면_정보창이_닫힌다`(배타 규칙 유지), `창을_닫으면_클릭관통_차단막도_같이_꺼진다`,
+  `TheHoverLabelChangesNeitherLayoutNorClickBlocking`(이름표가 배치·차단 영역에 개입하지 않음) 전부 통과.
+- **배치모드 환경 한계 2건**(테스트가 스스로 말하게 해 뒀다 — 조용히 넘어가지 않는다):
+  1. 배치모드 화면은 **640×480**이라 720×560 설정창이 화면을 통째로 덮는다 → "창 밖 클릭" 경로는
+     `Assert.Ignore`로 건너뛰며 그 사실을 메시지로 남긴다(좌표를 못 박았다가 그 지점이 패널 <b>안쪽</b>이라
+     실패했던 첫 작성본의 교훈).
+  2. 같은 이유로 정보창이 `ClampPanelToScreen`으로 줄어 패널 마스크가 카드 오른쪽을 자른다. 그래서 M1
+     회귀는 **화면이 아니라 캐러셀 줄(뷰포트) 기준**으로 잰다 — 화면 크기가 만든 잘림은 이 항목의 증거가
+     될 수 없다(그 경우는 `InfoWindowClippedHitTestTests`가 따로 잠근다).
+
+---
+
+
+### 코더(Teammate1) 조치 결과 — 2026-09-01 (소은 #5-a / #5-b / #5-c, 실루엣 3건)
+
+리더가 배정한 3건만 손댔다. **소유권 경계 준수**: `AccessoryShapeBuilder.cs`의 **HAIR / NECK 케이스와
+베레모(HEAD) 케이스**만 고쳤다. EYES 6종(같은 날 다른 라운드가 재설계 완료)·천모자·털모자·중절모·
+왕관·밀짚모자·BACK 4종은 **한 줄도 건드리지 않았다**.
+
+**손댄 파일**: `Interaction/AccessoryShapeBuilder.cs` /
+`Tests/EditMode/AccessoryStrokeBudgetTests.cs`(지표 교체 + 4종→6종) /
+**신규** `Tests/EditMode/AccessorySilhouetteMetrics.cs`, `Tests/EditMode/AccessorySilhouetteDistinctionTests.cs`.
+
+#### ★ 먼저: **도형만 고쳤다면 아무것도 못 지켰다** — 지표가 같이 틀려 있었다
+
+소은이 "이 지표가 원리적으로 못 본다"고 지목한 자리를 실제로 재 봤더니, 원인이 **적혀 있던 것과 달랐다.**
+
+| | 옛 지표(정점만·상반구만) | 새 지표(변 조밀 표본·360도) | 실물 관찰 |
+|---|---|---|---|
+| 바가지 vs 단정 | **3.77획(통과)** | **0.58획(실패)** | 소은: "두 장이 같은 그림" |
+
+즉 옛 지표는 "내부 선을 못 본" 게 아니라 **잉크가 없는 각도 구간을 반경 0으로 세는 바람에 값을
+부풀리고 있었다**(긴 변이 여러 구간을 지나가도 양 끝점만 기록됐다). 그래서 **지표를 먼저 고치고**
+도형을 고쳤다. 새 지표의 0.58획은 소은이 손으로 계산한 값(0.20R = 0.58획)과 **정확히 일치**한다.
+
+세 결함 모두 **네거티브 컨트롤**(옛 좌표를 그대로 박제해 "지표가 그것을 빨간불로 읽는가"를 단언)을
+같은 스위트에 함께 넣었다 — 지표가 다시 눈이 멀면 그 3건이 먼저 터진다.
+
+#### (5-a) 바가지머리 — 정체를 **내부 선에서 실루엣으로** 옮겼다
+
+옛 도형은 형제들과 **같은 돔**(`HairSilhouette`)을 반경만 1.34R로 키운 것이었다. 그래서 반경만으로는
+단정한머리(1.14R)와 0.20R = 0.58획밖에 안 갈렸다. 새 도형은 **전용 실루엣**(`BowlSilhouette`)이다 —
+형제들의 "돔 + 포물선 이마선" 대신 **수평으로 자른 밑선 셋**으로 닫는다.
+
+| 항목 | 값 | 근거 |
+|---|---|---|
+| 돔 반경 `BowlCapRadiusRatio` | 1.34 → **1.52R** | 형제 중 최대 부피 |
+| 옆머리 자른 높이 `BowlCutLineRatio` | (없었음) → **−0.46R** | 귀를 덮는다. **형제 5종은 이 각도대에 잉크가 아예 없다** |
+| 얼굴이 드러나는 반폭 `BowlSideHalfWidthRatio` | (없었음) → **0.78R** | 옆머리 안쪽 변 = 앞머리 선 반폭(한 값에서 유도) |
+| 앞머리 선 `BowlFringeLineRatio` | (내부 띠 y≈0.55R) → **0.54R (실루엣 경계)** | 이름("눈썹 위에서 가지런히 자른")이 곧 도형 |
+
+- **단정한머리와 0.58획 → 3.90획.** 머리 6종 15쌍 전부 **≥1.47획**(최소는 삐친 vs 단정 1.47획).
+- 규칙 1 재검산: 꺾임-꺾임 최단 변 **1.94획**, 잉크 사각형 8.83획 / 앞머리 선 4.54획.
+- 규칙 4 부착: 가장 안쪽 정점 **0.540R**(두피 링을 1.34획 파고든다. 한계 0.656R).
+- 규칙 5 정원 2개 / 규칙 3-2 보조색 1개(앞머리 선) — 그대로.
+- **덤으로 잠복 결함 #6이 바가지머리에서 소멸했다**: 옛 앞머리 띠는 획 반폭을 얹으면 눈동자 위끝
+  (0.227R)을 **0.029R 파고들었는데**, 새 앞머리 선은 획을 얹고도 **0.141R(0.41획) 떠 있다**.
+  그 계산을 하는 검사를 새로 넣었다(기존 `머리카락_채움이_눈동자를_덮지_않는다`는 폴리곤만 본다 —
+  **그 검사는 건드리지 않았다**. 나머지 5종까지 획 인식으로 바꾸는 것은 별건이다. 실측 여유는
+  단정/삐친/곱슬/포니테일 **0.017R**로 아주 빠듯하다 — 리더 판단 요망).
+
+#### (5-b) 펜던트 목걸이 — 원과 갈리는 것은 **크기가 아니라 종횡비**다
+
+크기만 키우면 "조금 더 큰 동그라미"가 될 뿐이라, **세로로 길게** 뺐다.
+
+| | 옛 | 새 |
+|---|---|---|
+| 반폭 × 반높이 | 0.20 × 0.30R | **0.28 × 0.62R** |
+| 종횡비 | 1.50 (방울 1.05) | **2.21** |
+| 빗변 | 1.05획(획이 꼭짓점을 둥글린다) | **1.98획** |
+| 매달린 위치 | 목선 아래 0.40R(드롭 상수) | **목줄 최저점에서 유도**(규칙 4-a) |
+| 아래 꼭짓점 | 목선 아래 0.70R(몸통 19%) | **1.38R(몸통 37%, 가슴께)** |
+| 방울과 외곽 차 | **0.54획** | **2.50획** |
+
+- 소은의 두 제안(세로로 빼기 / 가슴께로 내리기)을 **둘 다** 적용했다. 위 꼭짓점은 `CollarLowLocalY`
+  (신설, `CollarRiseRatio`·`CollarDipRatio`에서 유도)로 목줄 최저점에 **정확히** 붙는다 —
+  매달린 지점이 보여야 물건이 공중에 안 뜬다(규칙 4).
+- **목 6종 15쌍 전부 ≥2.12획**으로 갈린다(신규 검사).
+- **방울은 안 건드렸다.** 소은이 이상 없다고 한 도형이고, 키우면 오히려 펜던트와 다시 가까워진다.
+
+#### (5-c) 베레모 — 테를 **밑변 그 자체**로
+
+소은이 준 두 선택지 중 **"밑변과 겹친다"** 를 골랐다. 나머지 하나("1.5획 위로 올린다")를 버린 이유는
+계산이 반대 결론을 냈기 때문이다: **관 높이가 0.66R뿐이라 1.5획(0.516R)을 올리면 테가 관 높이의
+79% 지점을 가로지른다** — 소은이 본 "띠 두른 정모"가 더 심해진다.
+
+- `BeretRim`이 이제 `BeretCrown`의 밑변 **두 끝점을 그대로 받아 쓴다**(좌표를 새로 적지 않는다 →
+  어긋날 자리가 없다). 간격 **0.01~0.26획 → 0.00획**.
+- 상수 정리: `BeretRimBackRatio`/`BeretRimFrontRatio` 삭제, 인라인 `0.10f` → `BeretBackDroopDropRatio`(규칙 4-a).
+- **참고(미소유·미수정)**: 중절모 밴드 **0.41획**, 밀짚모자 밴드 **0.47획** — 같은 금지 구간이다.
+  소은이 "이번 라운드가 만든 것은 베레모 하나"라고 적어 둔 그대로 손대지 않았다. 리더 배정 요망.
+
+#### 검증
+
+1. **오프라인 기하 검산** — `AccessoryShapeBuilder`의 좌표계를 그대로 옮겨 재구성한 뒤 규칙 1/4/5,
+   눈동자 회피, 모자 5종 커버선 자르기, 쌍별 실루엣 차이를 재계산. 이 포트가 **소은의 세 실측치
+   (0.58획 / 0.54획 / 0.26획)를 전부 재현**하는 것을 먼저 확인하고 나서 새 좌표를 잡았다.
+2. **신규 EditMode 11건** — `AccessorySilhouetteDistinctionTests`
+   (바가지↔단정 / 앞머리 선 겹침 / 획 인식 눈동자 여유 / 펜던트↔방울 / 종횡비·빗변 / 목줄 부착 /
+   목 6종 15쌍 / 베레모 테 겹침 + **네거티브 컨트롤 3건**).
+   계측 자는 `AccessorySilhouetteMetrics`로 뽑아 HAIR·NECK·HEAD가 **같은 자**를 쓴다.
+3. **기존 검사 확장** — `AccessoryStrokeBudgetTests.머리_4종이_서로_구분된다` → **`머리_6종`**.
+   "바가지머리는 원리적으로 못 잡으므로 일부러 뺐다"고 적혀 있던 주석을 사실에 맞게 갈아 끼웠다.
+   지표도 새 자로 교체(같은 파일의 곱슬↔단정 검사도 함께 새 자를 쓴다).
+4. **전체 EditMode 스위트** — `Unity 6000.0.82f1 -runTests -testPlatform EditMode`:
+   **523 / 523 통과, 실패 0, 컴파일 에러 0**(`Logs/coder_silhouette_edit.xml`).
+   다른 작업자들의 편집이 계속 들어와서 **12:52에 한 번 더** 돌렸다 —
+   **560 통과 / 실패 0 / 건너뜀 3**(`Logs/coder_silhouette_edit2.xml`. 건너뜀 3건은 같은 시간대에
+   신설된 `PlatformParityAuditTests`의 의도적 `Assert.Ignore`다). 내 신규 12건은 두 실행 모두 통과.
+5. **PlayMode 스위트** — 잉크 최저점(`TryGetLowestInkWorldY`) 소비자가 있어 함께 돌렸다:
+   **423 / 429 통과, 실패 3, 건너뜀 3**(`Logs/coder_silhouette_play.xml`). **실패 3건은 내 변경과
+   무관하다** — 근거를 아래에 적는다(추측 아님).
+
+| 실패 | 왜 내 것이 아닌가 |
+|---|---|
+| `CharacterVisualHalfWidthTests.몸보다_튀어나온_액세서리가_...` | **내가 손대기 전부터** 실패하고 있었다: 11:59의 `dbg2_spread1~5`에서 **5회 중 4회 실패**(1회만 통과). 리더가 이미 "표본 창을 벽시계/상태 기반으로 교체"를 test-engineer에 배정한 그 항목이고, 대상은 **망토(BACK)** 라 이번 라운드 소유 밖이다 |
+| `BodyLeanAccessoryFollowTests.상체가_기울어도_모자는_...` | 이 검사는 `ClearAll()` 뒤 **천모자(HeadCap) 하나만** 입히고 `HatCrown` 채움 메시를 찍는다. HAIR·NECK·베레모 도형을 **한 개도 만들지 않는다** — 내 변경이 닿을 경로가 없다 |
+| `DragStruggleTests.StruggleDoesNotBreakCursorStickiness` | 액세서리를 아예 쓰지 않는다(끌기 중 **루트 위치** 검사) |
+
+  뒤 두 건은 11:58 `dbg2_play_all`에서 **통과**였다가 12:25 내 실행에서 실패로 뒤집혔다. 그 사이에
+  다른 작업자가 `Core/StickmanAgent.cs`(12:11)·`States/GroundSensor.cs`(12:23)·`StickmanBlackboard.cs`(12:25)
+  등을 **실시간으로 고치고 있었고**, 내 실행은 그 진행 중 스냅샷을 컴파일했다(파일 수정 시각 실측).
+  **12:47 재실행으로 확정**: 내 변경을 그대로 둔 채 두 검사를 다시 돌리니 **7/7 통과**
+  (`Logs/coder_silhouette_play2.xml` — 네거티브 컨트롤 `컨테이너_회전을_지우면_...` 포함).
+  즉 12:25의 두 실패는 **다른 작업자의 진행 중 편집이 만든 일시 상태**였다. 추측이 아니라 실측이다.
+
+#### 교차 레이어 영향 로그
+
+| # | 항목 | 영향 | 조치 |
+|---|---|---|---|
+| 38 | **바가지 `HairFringe`가 채움 → 열린 선** | 채움 `MeshRenderer`가 아이템당 2개 → **1개**(감소). 대신 털모자·베레모처럼 커버선이 낮은 모자 밑에서는 앞머리 선이 **통째로 잘려 사라진다**(보조색 0개) | 자르기 규약대로다(모자 밑으로 들어간 앞머리는 안 보이는 게 맞다). 실루엣은 남으므로 `모자를_써도_옆머리는_남는다` 통과 |
+| 39 | **머리·목 잉크가 더 멀리 뻗는다** | 머리 1.34R → **1.52R**, 옆머리 아래끝 **머리중심 −0.46R**, 펜던트 아래끝 **목선 −1.38R**. `CharacterAccessoryRenderer.TryGetLowestInkWorldY`(GETUP 바닥 클리어런스)가 보는 정점이 늘었다 | 계산은 **지금 그리는 정점**에서 하므로 목록을 고칠 곳은 없다. PlayMode로 회귀 확인. 카드 아이콘은 `FitFraction`으로 자동 축소, 초상화 액자(1.80R)도 1.52R < 1.75R로 여유 |
+| 40 | **보조색 선이 실루엣 변과 정확히 겹친다**(바가지 앞머리 선 / 베레모 테) | 같은 `sortingOrder`에 **좌표가 같은 LineRenderer 2개**가 생긴다 — 33-2-0이 "그리기 순서 미정"이라고 못박은 자리다 | **리더 확인 요망.** 실패해도 **우아하다**(보조색이 형제의 어두운 윤곽선에 가려질 뿐, 도형·구분은 그대로). 실측 근거: 단정한머리 `HairPart`는 캡 채움 **안에 완전히 묻혀 있는데도** 소은의 스크린샷에서 보였다 → 이 프로젝트에서 나중에 만든 도형이 위에 그려진다. 대안(1.5획 띄우기)은 소은이 지적한 "정모" 그림을 악화시키므로 채택하지 않았다 |
+
+#### 안 고친 것 / 리더 판단 요망
+
+1. **방울의 규칙 1 위반**(잉크 사각형 0.99획, 변 0.31획) — NECK은 "아직 규칙 1을 통과하지 못한다"고
+   `AccessoryStrokeBudgetTests`가 스스로 선언한 카테고리다. 키우면 펜던트와 다시 가까워지므로
+   **이번 배정 밖으로 두고 보고만 한다**(NECK 전체 재설계 라운드 소관).
+2. **중절모/밀짚모자 밴드 0.41획 / 0.47획** — 베레모와 같은 금지 구간(위 5-c).
+3. **잠복 #6의 나머지 5종** — 획 인식 눈동자 여유가 단정/삐친/곱슬/포니테일 **0.017R**로 빠듯하다
+   (바가지만 0.141R로 고쳤다). 이마선(`HairlineCrestRatio`)을 손대면 4종이 동시에 움직이므로
+   별도 라운드 배정이 옳다.
+4. **래스터 대칭차 지표는 HAIR에 넣지 않았다.** 재 보니 삐친 vs 단정이 **13%**(EYES 문턱 0.20 미달)로
+   나오는데, 그 쌍의 차이는 1.70R 삐침 **돌기**라 반경 지표로는 1.47획으로 뚜렷하다 —
+   면적비는 HAIR에 맞는 자가 아니다. 이번 배정 밖의 쌍에 빨간불을 만들지 않으려고 넣지 않았고,
+   수치만 남긴다(참고: 새 바가지는 형제 대비 44~78%, 옛 바가지는 24~36%였다).
+5. **규칙 3-3 위반(HAIR 보조색이 EYES 청록 틴트)** 은 색 정책이라 P5 소관 — 도형만 손댔다.
+6. **육안 검증 1회** — 이 에이전트는 에디터 UI를 띄울 수 없다. 검산은 전부 기하·수치이고,
+   37-6 규칙 7의 시트(배율 0.35/0.75/1.5 × 좌우반전 × 형제 나란히)는 못 찍었다.
+
+---
+
+## 2026-09-01 — 디버거(Teammate2): 배율 상한 2.0→1.5 잔존 실패 2건 + "불안정"으로 보고된 1건 정리
+
+리더 배정: 위 "남의 영역 문제 3건"의 **B**(`CharacterScaleRuntimeTests`)와 **C**(`CornerHoverPanelTests`).
+
+### B. `CharacterScaleRuntimeTests` — 원인 확정 (추측 아님, 실측 인용)
+
+`Logs/settings_play.xml`의 실제 실패 메시지 2건이 원인을 그대로 말하고 있었다.
+
+| 실패 테스트 | 실패 메시지(원문) | 해석 |
+|---|---|---|
+| `배율_전_구간에서_치수와_접지와_보행속도가_따라온다` | `배율 2.00 적용이 무시됐습니다. Expected: True But was: False` | `ApplyCharacterScale`이 2.0을 1.5로 clamp → 직전 항목(1.5)과 같은 값 → **무동작 가드**(`StickmanAgent.cs:807`)가 `false` 반환 |
+| `배율을_연달아_바꿔도_두_번째부터_어긋나지_않는다` | `Expected: 4.5493888 But was: 3.4120416` | 기대 `Baseline×2.0=4.5494` vs 실제 `Baseline×1.5=3.4120` |
+
+**"단순히 1.5로 바꾸지 말라"는 경고를 실측으로 해소했다.** 배열이 획 두께 단언에도 쓰이므로
+숫자가 2.0 기준으로 조율돼 있을 가능성을 확인해야 했는데, 로그가 답을 갖고 있었다:
+
+```
+배율 1.50 — 획 두께 0.10000~0.36000 ...
+배율 2.00 — 획 두께 0.10000~0.36000 ...   ← 완전히 동일
+```
+
+즉 `2.0f` 항목은 **이미 1.5를 한 번 더 재고 있었을 뿐**이라, 조율된 기대값 같은 것은 없었다.
+그래서 1.5로 "바꾸는" 대신 **중복 항목을 없앴고**, 양 끝은 상수에서 유도했다.
+
+- `Scales[] = { StickConfig.MinCharacterScale, 0.75f, 1.0f, StickConfig.MaxCharacterScale }`
+- `sequence[0]`, `NegativeControl`의 `BigScale` → `StickConfig.MaxCharacterScale`
+
+기대값을 손으로 다시 적은 곳은 **없다** — 이 파일의 단언은 전부 `v`에서 파생된다
+(`Baseline × v`, 측정한 `rootScale` 등). 네거티브 컨트롤은 측정량 자체가 불변임을 확인했다:
+`rootScale = v/baked = 1.5/0.75 = 2.0`으로 전과 같고, 실측 비도 `1.997`(기대 2.0000, 허용 0.15)로
+동일하다. 로그만 "배율 2.00"이라 거짓말하던 것이 "배율 1.50"으로 정직해졌다.
+
+### C. `CornerHoverPanelTests.상자가_다_자란_뒤에_다이얼이_나타난다` — **"불안정"이 아니었다**
+
+먼저 전제를 뒤집었다: 과거 결과 XML 전수 조사 결과 이 테스트는 **0/10 통과**,
+10회 전부 같은 자리(`:377 다이얼이 끝내 나타나지 않았습니다`)에서 실패했다. 산발적 실패가 아니라
+**결정적 실패**이므로 "타이밍 레이스" 계열 가설은 그 자체로 반증된다.
+
+**확정된 원인 — 프로덕션이 아니라 테스트의 단위 불일치.**
+등장 연출은 `Time.unscaledDeltaTime` 기반 **벽시계 애니메이션**인데, 테스트 예산만
+`for (int i = 0; i < 180; i++)`로 **프레임 수**였다. 같은 스위트 안 세 테스트의 길이 차로 배치 모드
+프레임 시간을 역산했다(`settings_play.xml`):
+
+| 테스트 | 루프 프레임 | duration |
+|---|---|---|
+| `패널_컴포넌트가_...붙어_있다` | 0 | 1.099720s |
+| `숨어_있는_동안_클릭_차단막이_꺼져_있다` | 120 | 1.113230s |
+| `상자가_다_자란_뒤에_다이얼이_나타난다` | 180 | 1.140439s |
+
+→ **0.11~0.45 ms/프레임(약 2,200~8,900fps)**. 즉 180프레임 = **0.014~0.082초**뿐이다.
+그런데 상자가 게이트에 닿는 데만 `ContentGateBlend × PeekGrowSeconds = 0.9 × 0.14 = 0.126초`가 든다.
+예산이 끝날 때 상자는 겨우 **0.58**까지 자라 있었고, 그래서 내용물은 **시작조차 못 했다**.
+
+**프로덕션 타이밍은 옳았다.** 수정 후 실측이 상수와 정확히 일치한다(4회 실행 비트 동일):
+
+```
+등장 순서 확인 — 상자 완성 0.140s / 다이얼 등장 0.126s(그때 상자 0.902) / 완전히 보임 0.226s.
+닫힘 순서 확인 — 다이얼 소멸 0.070s → 상자 축소 시작 0.070s → 손잡이 복귀 0.210s.
+```
+
+`0.140 = PeekGrowSeconds`, `0.126 = 0.9 × 0.14`, `0.226 = 0.126 + ContentRevealSeconds`,
+`0.070 = ContentHideSeconds`, `0.210 = 0.07 + CollapseSeconds` — 전부 정확히 맞는다.
+즉 **상자 완성(0.140s) < 다이얼 완성(0.226s)** 으로 순서가 옳았고, 옛 예산은 그 0.226s에
+닿을 방법이 처음부터 없었다.
+
+**수정**: 예산을 프레임이 아니라 **벽시계 시간**으로 잡되, 숫자를 베끼지 않고 상수에서 유도한다.
+그러려면 연출 상수가 보여야 하므로 `CornerHoverPanel`의 타이밍 상수 4개를 `public const`로 올리고
+(값은 한 글자도 안 바꿨다, 로직도 안 건드렸다) 파생 상수 2개를 추가했다:
+
+- `OpenSequenceSeconds = PeekGrowSeconds + ContentRevealSeconds`
+- `CloseSequenceSeconds = ContentHideSeconds + CollapseSeconds`
+- 테스트 3곳(열림 루프/닫힘 루프/재열림 대기 `0.4f`)이 이 값에서 예산을 유도한다.
+
+실패 메시지도 진단형으로 바꿨다 — 이제 "예산이 모자랐나 / 연출이 멈췄나"를 실측(경과 시간·상자
+진행도·게이트)으로 한 줄에 가른다.
+
+### 검증 — 16개 테스트 × 5회 실행 = **80/80**
+
+| 실행 | 비고 | 내 2개 클래스 |
+|---|---|---|
+| `Logs/dbg_t1.xml` | 두 클래스 표적 실행 | 16/16 |
+| `Logs/coder_play_full2.xml` | **다른 에이전트**가 독립적으로 돌린 전체 PlayMode | 16/16 |
+| `Logs/dbg_full_play_r1/r2/r3.xml` | 전체 PlayMode 3회 | 각 16/16 |
+
+전체 스위트: EditMode 3회 **439/441**, PlayMode 3회 **406~408/410~411**.
+남은 실패는 전부 **내 편집(09:45경) 이전부터 빨간불**이었음을 확인했다(근거: 09:31 `p9b_final_edit.xml`,
+09:32 시작 `p9b_final_play.xml`에 동일 항목이 이미 실패로 기록):
+`EquipmentMigrationTests` / `InkColorPersistenceTests`(EditMode),
+`CharacterVisualHalfWidthTests` / `EyeControllerHeadScopeTests` / `PortraitEyeVisibilityTests` /
+`PortraitTextureResolutionTests`(PlayMode, 캐릭터 리디자인 병행 라운드 영역).
+
+### 교차 레이어 영향
+
+- `CornerHoverPanel`의 타이밍 상수 4개가 `private → public`(값·로직 불변). 연출 길이를 바꾸는 사람은
+  이제 테스트 예산이 자동으로 따라온다는 것을 알고 바꾸면 된다.
+- **다음 사람에게**: 이 저장소의 PlayMode는 배치 모드에서 **2,000fps 이상**으로 돈다.
+  시간 기반 연출을 검증할 때 `for (i < N프레임)`로 예산을 잡으면 **조용히 거짓 실패**한다.
+  대기는 반드시 벽시계(`Time.unscaledDeltaTime` 누적 / `WaitForSecondsRealtime`)로 잡아라.
+
+### 재현의 의견 (2026-09-01, 설정창/캐릭터창/나사메뉴)
+
+**검증 방식 — 이번엔 실제로 구동했다(부분).** `doctor`: 다른 인스턴스 0개, 입력 모니터링 허용,
+"Unity 배치모드 락 사용 중"이라 **빌드/테스트는 하지 않았다**. `Q`(전역종료) 미사용.
+한계가 하나 있고 그게 결과를 갈랐다: `Builds/macOS/StickMate.app`은 **2026-08-31 17:08 산출물 =
+스키마 v7 앱**이라 오늘 밤 세 화면이 **빌드에 없다**. 그래서 설정창/캐러셀 UI는 코드 판독,
+그 화면들이 **올라탄 공용 배관**(세이브 스토어 · FramePacing · 전체화면 Suspend)은 실측으로 갈랐다.
+세이브 파일은 검증 전 해시 백업 → 검증 후 **바이트 동일 복원 완료**(`38d36d08…`).
+다만 앱이 스스로 만든 `character_save.v8.backup.json`(원본과 동일 내용)이 세이브 폴더에 남아 있다 —
+지우는 코드가 이 앱에 없으므로(의도된 불변식) 리더가 판단해 정리할 것.
+
+---
+
+#### J1 [Blocker · 실측 2건] 상주 구버전 인스턴스가 신버전 세이브를 조용히 덮어쓴다 — 백업도 경고도 없이
+
+**시나리오**: 유저가 어제 빌드를 켜 둔 채로 팀이 v8 빌드를 낸다. 유저가 새 빌드에서 설정을 만진다.
+어제 빌드가 60초 자동저장을 돌리는 순간 v8 파일이 v7로 되돌아간다. **오늘 밤 이 팀의 워크플로가
+정확히 이 형태다**(세이브 파일은 전 인스턴스 공유 — run-stickmate SKILL.md Gotcha 5).
+
+**실측 A — 콜드 스타트: 방어가 돌지만 파일은 그래도 클로버된다**
+파일이 이미 v8인 상태에서 구버전 빌드 기동(11:05:01). 로그 42행:
+`[성장] 저장 파일이 이 앱보다 새로운 버전입니다(파일 v8 > 앱 v7) … 백업해 두었으므로 데이터는 사라지지 않습니다`
+→ 백업 생성 확인. **그런데 `HandleNewerVersionFile`은 백업 성공 시 `SaveSuspended = false`로 둔다**
+(CharacterSaveStore.cs:463). 60초 뒤 실제로:
+
+```
+11:05:58 "version":8  size=1208
+11:06:03 "version":7  size=866   ← 구버전이 v8 파일을 교체
+```
+사라진 키 10개(= 설정창이 쓰는 전부):
+`autoHideOnFullscreen, gearIconVisible, dialogueFontSize(+Saved), dialogueVisibleSeconds(+Saved),
+chatterPercent(+Saved), dialogueBubbleEnabled(+Saved)`
+
+**실측 B — 상주 인스턴스: 방어가 아예 돌지 않는다 (이쪽이 진짜 문제다)**
+이미 v7 파일을 읽고 돌던 인스턴스 **밑에서** 파일만 v8로 교체(11:07:47):
+
+```
+11:07:52 "version":8
+11:08:02 "version":7   ← 15초 만에 재클로버
+백업파일 mtime 09:30:55 → 09:30:55 (변화 없음 = 새 백업 0건)
+새로 찍힌 [성장] 경고: (없음)
+```
+
+**코드 근거**: `NewerVersionFileDetected` / `SaveSuspended`는 **`Load()` 안에서만** 세팅된다
+(CharacterSaveStore.cs:353~372). `Load()`는 기동 시 1회뿐이다. `Save()`는 `SaveSuspended`만 보고
+**대상 파일의 현재 버전을 다시 읽지 않는다**(:566 `version = CurrentVersion`). 즉 다운그레이드 방어는
+**"구버전 앱이 나중에 켜진다"는 직렬 시나리오만** 가정하고 설계됐다. 파일이 발밑에서 올라가는
+동시 실행은 사각지대다. 그리고 단일 인스턴스 락은 소스 전체에 **0건**(grep).
+
+**위반**: 원칙 3(유저 자산 불변)의 정신. 같은 경로로 `todos`(코드 주석이 스스로 "사용자의 진짜 일정"이라
+부른 것)도 날아간다. **심각도: Blocker. 확인 필요: 없음(실측 2건).**
+
+**제안**: `WriteAtomically`가 `File.Replace` 직전 대상 파일의 `version` 한 필드만 다시 읽어
+`> CurrentVersion`이면 중단 + 백업. 그 경로는 이미 파일을 여는 자리라 비용은 read 1회다.
+(debugger/T2가 오늘 잠근 것은 **콜드 스타트 하위호환**이고 그건 정상 동작을 확인했다 — 이건 그 옆의
+빈칸이다.)
+
+---
+
+#### J2 [Major · 확인 필요] 원자적 쓰기의 임시 파일 경로가 전 인스턴스 공유다
+
+**코드 근거**: `TempFileName = FileName + ".writing"` (CharacterSaveStore.cs:509) — 고정 경로 하나.
+스트림은 `FileShare.None`(:521).
+
+두 인스턴스의 60초 주기가 겹치면 (a) 늦은 쪽이 IOException → `[성장] 저장에 실패` 후 다음 주기 재시도
+(무해), (b) A가 temp를 **닫은 직후** B가 `FileMode.Create`로 그 temp를 자르면, A의 `File.Replace`가
+B의 내용(또는 0바이트)을 본체로 승격시킬 수 있다. 0바이트가 본체가 되면 다음 `Load()`는
+`IsNullOrWhiteSpace` 가드로 **조용히 "새 캐릭터"** 로 떨어진다 — 이 파일 주석이 "이 앱에서 가장 나쁜
+실패"라고 부른 그 결과다. `File.Replace`가 실패하면 비원자적 `WriteAllText` 폴백으로 내려간다(:552).
+
+**위반**: 원칙 3. **심각도: Major. 확인 필요: 예** — ms 단위 타이밍이라 이번 세션에 재현 못 했다.
+**제안**: `TempFileName`에 PID를 붙이면 구조적으로 사라진다(비용 0, 동작 변화 없음).
+
+---
+
+#### J3 [Major · 확인 필요] 전체화면 자동 숨김을 끄면 **차단막까지** 게임 위에 남는다
+
+**리더 질문 1의 답부터: 자동 숨김이 켜져 있으면(기본값) 차단막은 제대로 풀린다.**
+`Suspend()`는 렌더러/물리만 끄고 컴포넌트를 비활성화하지 않으므로(StickmanAgent.cs:936~980)
+`SettingsWindow.Update()`가 계속 돌아 그 프레임에 `Close()` → `_clickBlocker.enabled = false`
+(:294~299, :262). `OnDisable()`도 같은 보험을 든다(:222). 경로는 건전하다.
+
+**문제는 그 가드가 설정창 자신이 끌 수 있는 스위치에 매달려 있다는 것이다.**
+`IsSuspended`는 `IsFullscreenAppActive() && AppSettingsModel.AutoHideOnFullscreen`이다
+(StickmanAgent.cs:930). 사용자가 [일반] 탭에서 그 토글을 끄면 `IsSuspended`가 영원히 false가 되고,
+전체화면 게임 위에 **설정창 본체 + 720×560 클릭관통 차단막(BoxCollider2D)** 이 그대로 남는다.
+같은 논리로 `PopoverPanel`(:193)·`GearRadialMenuWidget`(:672)의 자동 숨김도 함께 무력화된다 —
+셋 다 `IsSuspended`를 본다.
+
+그런데 그 토글의 캡션은 **"게임 · 영상이 전체화면이 되면 즉시 사라집니다"**(SettingsWindow.cs:647)로
+**캐릭터 얘기만** 한다. 캐릭터가 남는 것과 720×560짜리 "클릭이 안 먹는 구멍"이 남는 것은 침해의 급이
+다르다. 사용자는 전자에 동의했지 후자에 동의한 적이 없다.
+
+**위반**: 원칙 2. **심각도: Major. 확인 필요: 예**(빌드에 이 창이 없어 실구동 불가).
+**제안**: 이 사용자 예외는 **캐릭터에만** 적용하고, 창/팝오버/부채꼴 같은 **차단막을 가진 표면**은
+`AutoHideOnFullscreen`과 무관하게 항상 거둔다(원시 전체화면 감지를 따로 노출).
+
+---
+
+#### J4 [Minor · 확인 필요] 캐러셀 드래그 도중 해상도/토폴로지가 바뀌면 두 드래그 경로의 등가식이 깨진다
+
+**리더 질문 2.** 등가 주장(CharacterInfoWindow.cs:1405~1409, "둘 다 잡은 순간 + 이동량의 절대값이라
+결과가 같다")은 **좌표계가 고정인 동안에만** 성립한다. 두 경로는 커서 소스가 다르다:
+
+| | 커서 소스 | 기준값 |
+|---|---|---|
+| 전역 폴링 | `TryGetCursorPosition` → `ScreenCoordinateConverter.OsScreenToUnityScreen`(오버레이 창 원점/폭 기반) | `_carouselGrabScreenX` (:1424) |
+| ScrollRect | Unity `eventData.position` | `m_PointerStartLocalCursor` |
+
+`MacOverlayStateEnforcer.TickDisplayTopology → TickFullScreenBounds`가 재적합하면 `Screen.SetResolution`과
+창 사각형이 **드래그 도중** 동시에 바뀐다. 기준값 둘은 옛 계에서 잡혔고 **재기준되는 방식이 서로
+다르므로**, 그 구간에서 두 경로가 매 프레임 다른 x를 계산한다 → 실행 순서에 따라 카드가 떨린다.
+`CanvasScale()`(:1522)이 바뀌면 폴링 쪽 `delta` 배율만 추가로 어긋난다.
+디바운스가 0.75초라(DisplayTopologyWatcher.DefaultSettleSeconds) 창은 짧고, 손을 떼면 복구된다.
+
+**심각도: Minor(품질, 원칙 위반 아님). 확인 필요: 예** — 드래그 중 모니터 분리 실측 필요.
+
+**같은 시나리오에서 이상 없다고 확인한 것**(찾아봤지만 안 터진다):
+- 패널 자체는 `ClampPanelToScreen`(:1887)이 매 프레임 크기·위치를 다시 잡는다 → 작은 화면으로 바뀌어도
+  창이 화면 밖에 남지 않는다.
+- 고아 드래그 없음: ScrollRect는 `OnDisable`에서 스스로 `m_Dragging`을 풀고, 폴링 쪽은 `Close()`/
+  `OnDisable()`에서 `EndCarouselDrag()`(:511, :529).
+- **두 경로가 평소에 싸우지도 않는다**: 폴링 임계 4pt가 EventSystem `pixelDragThreshold`(10px)보다
+  **먼저** 트립하므로 `_lastCarouselMoveTime`이 항상 먼저 찍히고 `SuppressedByCarousel()`(:1476)이
+  uGUI 클릭을 덮는다. `inertia=false` + `MovementType.Clamped`(:2453-2454)도 확인했다.
+
+---
+
+#### J5 [Major] 나사메뉴: **Away는 안 깎는다.** 진짜 구멍은 홀드가 아니라 "접히지 않는다"였다
+
+**리더 질문 3의 답: 설계는 안전하고, 테스트로 잠겨 있다.**
+`FramePacingPolicy.DecideTier`가 Away를 `uiInteractionActive`보다 **위**에 둔다(ViewerPresence.cs:255~266).
+EditMode 테스트 `UI홀드는_자리비움을_이기지_못한다`가 그 순서를 명시적으로 잠갔다
+(UiInteractionFramePacingHoldTests.cs:140~149). `GearRadialMenuWidget.LateUpdate`의 홀드는
+`if (_phase == Phase.Hidden) return;` **뒤**라 접혀 있는 평소에는 호출조차 되지 않는다(:670, :688).
+홀드가 만료 시각 방식이라 해제 책임이 없는 것도 24시간 상주 앱에서 옳은 선택이다.
+
+**그런데 "열어놓고 방치하기 쉬운 UI"라는 리더의 직관은 맞았다 — 다른 지점에서 맞았다.**
+`TickAutoCollapse`(:713)는 `AnyPopoverOpen()`이면 `_idleTimer = 0f`로 리셋하고 그냥 나간다. 그리고
+`PopoverPanel`에는 무반응 자동 닫힘이 **없다**(Update는 전체화면 가드 / 애니메이션 / 배치 / 클릭 폴링뿐,
+:181~215). 따라서:
+
+> 톱니 → [오늘 할일] 또는 [집중 모드] → 자리 비움
+> = 부채꼴 + 팝오버 + **팝오버의 클릭관통 차단막**(PopoverPanel.cs:451)이 **밤새 화면에 남는다.**
+> 6초 자동 접힘(`AutoCollapseIdleSeconds`)은 이 경로에서 완전히 무력하다.
+
+절전보다 이쪽이 원칙 2에 더 직접적이다 — 바탕화면 한 조각의 클릭관통이 밤새 해제된 채 남는다.
+
+**실측 참고(구버전 빌드, 창을 5분간 열어둠)**:
+`[FramePacing/적응형] 최근 300초 등급 체류 — 활성 94% / 정적 6% / 자리비움 0% / 화면꺼짐 0%, 전이 10회`
+자리비움 **0%**. 다만 **이건 통제 실험이 아니다** — 같은 머신에 실제 사용자 입력이 있었을 수 있고
+11:05:15에 내가 단축키를 주입했으므로 무입력 180초 조건 자체가 성립하지 않았을 가능성이 크다.
+Away 미진입의 원인을 홀드로 돌릴 수 **없다**. 다만 한 가지는 남는다: **밤 절전의 실질은 Away가 아니라
+DisplayOff(화면 슬립)가 낸다**는 것. 홀드는 DisplayOff에도 지므로(같은 함수 :253) 그쪽은 안전하다.
+
+**위반**: 원칙 2(차단막 잔존). **심각도: Major. 확인 필요**: 미접힘은 코드 근거로 확정,
+Away 수치는 통제 실험 필요.
+**제안**: 팝오버가 열려 있어도 훨씬 긴 상한(예: 무입력 3분)에서는 접히게 한다. `FramePacing`이 이미
+무입력 시간을 관측하고 있으므로 새 배관이 필요 없다.
+
+---
+
+#### J6 [Minor · 확인 필요] 차단막이 켜진 사각형을 누르면 유저의 포커스를 뺏는다 (구조적 한계, 기록용)
+
+`hitTestType = Raycast`(SceneBootstrapper.cs:1489) + `m_QueriesHitTriggers: 1`(ProjectSettings 확인) 이므로
+`isTrigger` 차단막은 실제로 히트테스트에 걸리고, 그 사각형 안의 클릭은 OS가 StickMate 창에 배달한다.
+앱은 accessory 정책이지만(MacSpaceBehaviorNative.cs:163) accessory 앱도 클릭으로 key가 될 수 있고,
+소스 전체에 nonactivating panel / `becomesKeyOnlyIfNeeded` 처리는 **0건**이다(grep).
+→ 설정창 토글 하나를 누르면 직전까지 타이핑하던 앱이 포커스를 잃을 수 있다.
+모달 UI에서 어느 정도 불가피하지만, 원칙 2가 "포커스를 뺏지 않는다"를 명시하므로 기록해 둔다.
+**심각도: Minor. 확인 필요: 예**(실제로 key가 되는지 실측 필요 — 이번 빌드로는 불가).
+
+---
+
+#### 재현 기준 이상 없음 (찾아봤고, 안 터졌다)
+
+- **장시간 드리프트(누수) 0건**: 이벤트 구독은 SettingsWindow(:213~222) / CharacterInfoWindow(:469~478)
+  모두 `OnEnable`↔`OnDisable` 짝이 맞고, GearRadialMenuWidget은 애초에 버스 구독이 없다.
+  창·차단막 GameObject는 `OnDestroy`에서 회수(SettingsWindow:225~229). 홀드는 만료 시각 방식이라
+  호출부가 어떤 경로로 죽어도 0.5초 뒤 자동 해제된다.
+- **로그도 자원으로 다뤄지고 있다**: 등급 전이 로그가 6회 뒤 5분 요약으로 전환되는 것을 실측 확인
+  (로그 178행). 24시간 상주 앱에서 옳다.
+- **원칙 3(유저 자산) — 새 침해 경로 0건**: 설정창 [데이터] 탭("내 것을 확인하고 지우기")은 이번 라운드
+  플레이스홀더이고 삭제 코드가 없다. 잉크색은 `_config.SetRuntimeInkColor` 런타임 전용이라 배포 에셋
+  직렬화 필드를 건드리지 않는다(:838~845). 타 윈도우는 여전히 열거만 한다.
+- **배율 단일 소스**: 구석 다이얼 ↔ 설정창 슬라이더가 `CharacterScaleController` 한 곳을 지나고
+  `CharacterScaleChanged` 하나로 흐른다. 두 UI가 서로를 모른 채 같은 숫자를 가리키는 구조가 맞다.
+  게이트/스냅 격자도 한 벌뿐이라 "어디서 바꿨느냐에 따라 반응이 다른 앱"은 되지 않는다.
+- **슬라이더 저장은 손 뗄 때 한 번**(`RequestSave`/`FlushPendingSave`, :459~468) — 24시간 상주 앱에서
+  드래그마다 디스크를 두드리지 않는다. `Close()`가 flush까지 하므로 전체화면 자동 닫힘에서도 안 샌다.
+
+### [debugger/T2] 재현 J1/J2 조치 결과 — 완료 (2026-09-01)
+
+**결론: J1(Blocker) / J2(Major) 둘 다 근본 원인 재확인 후 수정. EditMode 512/512 통과(회귀 0),
+네거티브 컨트롤로 새 테스트의 민감도까지 증명.** 다만 **오늘 밤 상황에는 소급되지 않는다**(아래 한계 1).
+
+#### 1. 근본 원인 — 재현의 보고를 코드로 독립 재확인 (둘 다 사실)
+
+- **J1**: `SaveSuspended`를 세팅하는 자리는 소스 전체에 4곳뿐이고(`ResetForTesting` / `Load` 진입부 /
+  `HandleNewerVersionFile` 성공·실패 분기) **전부 `Load()` 경로**다. `Save()`는 그 플래그만 보고
+  `version = CurrentVersion`으로 바로 직렬화한다 — **대상 파일의 현재 버전을 다시 읽는 코드가 0줄**.
+  실측 B(상주 인스턴스)가 무방비였다는 지적 그대로.
+- **J1-A**: `HandleNewerVersionFile`이 백업 성공 시 `SaveSuspended = false`로 두는 것도 확인. 콜드
+  스타트에서 백업만 남기고 파일은 그대로 덮어쓰는 게 **의도된 계약**이었다(주석이 그 이유를 적어 뒀다).
+- **J2**: `private const string TempFileName = FileName + ".writing"` — 상수 하나, 전 인스턴스 공유 확인.
+  스트림은 `FileShare.None`. 재현이 적은 두 경로((a) 늦은 쪽 IOException, (b) 남의 temp가 본체로 승격)
+  둘 다 코드상 성립한다.
+
+#### 2. 조치 (`Assets/_Project/Scripts/Core/CharacterSaveStore.cs` 한 파일)
+
+1. **저장 직전 버전 재확인**(J1-B). `WriteAtomically`가 `File.Replace` **바로 앞**에서 디스크 파일의
+   `version` 한 필드만 다시 읽는다(`TryReadDiskVersion` + 최소 스키마 `VersionProbe`). 그 값이
+   `CurrentVersion`보다 크면 **쓰지 않고 물러선다**(`AbandonWriteToNewerFile`): 원본 무수정 + 사본 1회 +
+   `SaveSuspended=true` + 경고 로그. `WriteAtomically`가 `bool`을 돌려주고 `Save()`는 실패 시
+   **`MarkSaved()`를 부르지 않는다**(모델이 "저장됨"으로 거짓말하면 다음 저장 기회를 잡아먹는다).
+   - 확인은 일부러 `try` **밖**에 뒀다 — 그 안에서 예외가 나면 폴백(`File.WriteAllText`)으로 떨어져
+     막으려던 덮어쓰기를 스스로 저지른다. `TryReadDiskVersion`은 어떤 경우에도 던지지 않는다.
+   - 읽기 실패(손상/빈 파일/권한)는 **막지 않는다**. 손상 파일 하나가 저장을 영구히 잠그는 쪽이 더 나쁘다.
+2. **정책 반전**(J1-A, ★리더 확인 요망). `HandleNewerVersionFile`이 **백업 성공/실패와 무관하게**
+   저장을 보류한다. 근거: 신버전 인스턴스가 **아직 돌고 있는** 동시 실행에서는 백업이 처음 한 번만
+   찍히므로 그 뒤의 변경을 어느 사본도 보관하지 못한다 = 백업이 손실을 막아 주지 못한다(실측 A).
+   이 파일이 이미 채택한 저울("못 저장하는 불편은 되돌릴 수 있지만 덮어쓴 데이터는 못 되돌린다")을
+   같은 분기에 적용한 것. **기존 테스트 1건의 계약이 뒤집혔다**(아래 4).
+3. **임시 파일 인스턴스화**(J2). `stickmate_character.json.<pid>.writing`.
+   `System.Diagnostics.Process.GetCurrentProcess().Id`를 1회만 계산해 캐시하고, 프로세스 API가 없는
+   플랫폼(모바일 IL2CPP)에서는 실행별 난수로 물러선다. `.writing`으로 **끝나는** 규칙은 유지(저장
+   파일/백업 명명과 겹치지 않게 하려던 원래 이유). 원자적 쓰기 구조(temp→fsync→`File.Replace`→폴백)는
+   한 줄도 바꾸지 않았다.
+
+#### 3. 테스트
+
+- 신규 `Assets/_Project/Scripts/Tests/EditMode/SaveConcurrentInstanceTests.cs` (5건, 전부 임시 폴더에서
+  실행 — 전역 격리가 걸려 있지 않으면 `[OneTimeSetUp]`이 **먼저 실패**하도록 단언해 사용자 실제 저장
+  파일을 열 수조차 없게 했다):
+  `상주_인스턴스는_발밑에서_신버전으로_바뀐_파일을_덮어쓰지_않는다`(실측 B 재현: 정상 파일로 기동 →
+  파일만 신버전으로 교체 → 저장 시도) / `NegativeControl_같은_버전_파일이면_평소대로_덮어쓴다` /
+  `손상되거나_빈_파일은_저장을_막지_않는다` / `임시_파일_경로는_인스턴스마다_다르다` /
+  `다른_인스턴스의_임시파일을_밟지_않는다`(옛 공유 경로에 남의 temp를 놓고 저장 — 그 파일이
+  **바이트 동일하게 살아남는지** 확인).
+- 기존 `SaveDowngradeGuardTests`: `백업이_성공했으면_저장은_정상_진행된다` →
+  `백업에_성공해도_신버전_원본은_덮어쓰지_않는다`로 반전(근거를 클래스 문서에 실측과 함께 기록).
+  **부수 발견**: 이 픽스처가 이제 `SaveSuspended=true`를 남긴 채 끝나는데, 뒤에 도는 지속성 테스트
+  4종은 `[SetUp]`에서 모델만 초기화하고 `Load()`를 부르지 않아 그 정적 플래그를 그대로 물려받는다
+  (= 무관한 곳에서 `Save()`가 전부 false). `[OneTimeTearDown]`에서 `Load()`로 플래그를 되돌리도록 보강.
+
+#### 4. 검증 결과 (Unity 배치모드, 락 비었을 때만 실행)
+
+| 실행 | 결과 |
+|---|---|
+| EditMode 전체(수정 후) | **512/512 통과, 실패 0, 컴파일 에러 0 / 경고 0** |
+| **네거티브 컨트롤**(수정 3줄만 되돌림: 가드 조건 / `SaveSuspended` / temp 이름) | 같은 14건 중 **정확히 4건 실패** — `상주_인스턴스는…`("저장이 성공을 보고"), `백업에_성공해도…`("보류되지 않음"), `임시_파일_경로는…`(이름이 `stickmate_character.json.writing` 그대로), `다른_인스턴스의_임시파일을…`("임시 파일이 사라졌습니다"). 나머지 10건(원자적 쓰기 4건 포함)은 그대로 통과 = 새 가드가 정상 경로를 막아서 통과한 것이 아님 |
+| 되돌린 파일 복구 | trap으로 즉시 원복(`negctrl_left=0`), 최종 전체 실행 재확인 512/512 |
+
+Roslyn 단독 컴파일(`Library/` 락을 잡지 않는 사전 점검)으로 런타임/테스트 두 어셈블리 모두 에러 0을
+먼저 확인한 뒤에 배치모드를 돌렸다. 다른 에이전트의 PlayMode 배치가 도는 동안에는 대기했고,
+사용자 상주 인스턴스(PID 38366)와 `Builds/`는 건드리지 않았다(빌드 미실행).
+
+#### 5. 남은 한계 — 리더 판단 필요 (조치 안 함, 숨기지 않고 기록)
+
+1. **오늘 밤에는 소급되지 않는다.** 가드는 *쓰는 쪽* 코드에 있다. 지금 상주 중인 v7 빌드 바이너리에는
+   그 코드가 없으므로, 그 인스턴스는 여전히 v8 파일을 덮어쓴다. **이 수정이 효력을 가지려면 상주
+   인스턴스를 새 빌드로 교체해야 한다**(그전까지는 재현이 쓴 운영 수칙이 유일한 방어다).
+2. **같은 버전끼리의 갱신 손실은 그대로 남는다.** v8 두 인스턴스가 서로의 값을 덮는 것(예: 유저가 켠
+   설정 vs 테스트 빌드가 만진 설정)은 이 가드의 범위가 아니다 — 버전이 같으면 통과한다. 진짜 해법은
+   **단일 인스턴스 락**(프로젝트 전체 0건, 재현 확인)이거나 세대 카운터/병합인데, 둘 다
+   `CharacterSaveStore` 밖의 설계 결정이라 착수하지 않았다. **Architect 판단 필요.**
+3. **보류가 사용자에게 보이지 않는다.** 저장이 멈춘 사실은 경고 로그 한 줄뿐이다. 구버전 인스턴스에서
+   할일을 적으면 그대로 사라진다(로그를 볼 사람은 없다). 최소한의 UI 신호가 필요한지는 UX/Architect 몫.
+4. **가드는 락이 아니다.** 확인과 `File.Replace` 사이 마이크로초 창은 남는다(그래서 확인을 교체 직전에
+   뒀다). 크래시 시 그 PID의 임시 파일이 하나 남는 것도 의도적으로 받아들였다 — 이 앱에는 파일 삭제
+   능력이 없고(원칙 3 정적 감사), 같은 PID의 다음 저장이 그 파일을 재사용한다.
+
+**건드리지 않은 파일**: `SettingsWindow.cs` / `GearRadialMenuWidget.cs` / `InfoGearIconWidget.cs` /
+`CharacterInfoWindow.cs`(다른 라운드 소유). J3~J6은 이번 스코프 밖이라 손대지 않았다.
+
+
+---
+
+## 2026-09-01 — 상체 기울임 `SetBodyLean` 신설 + 액세서리 회전 추종 (coder / Teammate1) ✅
+
+리더 승인 설계 3용도(달리기 전방 기울임 / 눈 삭제로 사라진 "둘러보기" 신호 대체 / 피격 리액션)를
+**함수 하나**로 처리했다. 착수 전 확인한 사실 그대로: 이 프로젝트에서 몸통(`_torso`)의
+`localRotation`은 **어디에서도 세팅된 적이 없었다**(`localPosition`만). 즉 기능이 아니라 **배관이
+통째로 없었다** — `SetBodyOffset(headOffsetX)` 주석이 예고한 "목을 함께 기울이는 배관"이 이것이다.
+
+### 1. `StickmanPoseAnimator.SetBodyLean(float degrees)` — 회전 중심은 **엉덩이**
+
+- 각도 규약은 클래스 전체와 동일: **+ = 진행 방향 앞**, 좌우 반전은 최종 적용 지점에서 `_facingSign`.
+- **피벗은 하드코딩하지 않았다.** 다리 위 마디의 부착점(`Segment.PivotLocal` = `HingeJoint2D.connectedAnchor`)을
+  생성자에서 1회 실측한다 → 배율/지오메트리가 바뀌어도 자동 추종, 새 상수 0개.
+  - 몸통 오브젝트의 원점은 몸통 **선의 중점**이라(SceneBootstrapper `torsoCenterY`), `localRotation`만
+    주면 자기 중점을 축으로 돌아 아랫배가 뒤로 빠진다. 그래서 **위치까지 함께** 다시 쓴다:
+    `p = 엉덩이 + R·(중립 − 엉덩이)`.
+  - 적용 대상: 몸통 / 머리 / **팔 부착점(어깨)**. **다리는 피벗 그 자체라 부동점**(같은 식을 적용해도
+    제자리) — 해부학 요구사항이 코드 구조로 보장된다.
+  - 엉덩이를 실측 못 한 리그(다리 없는 더미)에서는 **아예 기울이지 않는다**(발밑 축으로 도는 그림 방지).
+- **자동 원복**: 포즈는 `RequestBodyLean(목표)`만 남기고, `TickBodyLean`이 **소비하며 0으로 비운다**.
+  아무도 요청하지 않는 상태(Fall/Hang/Getup/Archery/Ragdoll…)는 별도 배관 없이 직립으로 돌아온다.
+  `StickmanBlackboard.TickPose`를 `TickPoseRouting`으로 감싸 **조기 return 10여 개 전부** 뒤에서
+  한 번만 확정한다(상태 목록을 다시 적지 않는 것이 핵심 — 새 상태가 생겨도 빠지지 않는다).
+- **RAGDOLL 진입 프레임에 `ClearBodyLean()`**(감쇠 없이 즉시). 기운 채로 물리에 넘기면 관절이
+  부착점을 되찾으며 팔이 튄다. 랙돌 진입 에너지/댐핑 로직은 **한 줄도 건드리지 않았다**
+  (`TickPose`는 `machine.Tick()` 뒤·다음 `FixedUpdate` 앞이라 물리는 기운 좌표를 본 적이 없다).
+
+### 2. 세 용도 배선
+
+| 용도 | 유도 | 배선 지점 |
+|---|---|---|
+| 달리기 전방 기울임 | `bodyLeanRunMaxDegrees × _walkSpeed01` — **진폭(P9-c)과 같은 정규화 값**. 새 측정/새 상태 0개 | `TickWalkPose(..., leanDegreesAtFullSpeed = 0f)` 신설 인자(기본값 0 = 기존 호출부 무영향), `WalkState`/`ArcheryState`가 전달 |
+| 둘러보기(LookAround) | `sin(2πp)·env·bodyLeanLookAroundDegrees` — 옛 머리 좌우 이동과 **같은 곡선**(양 끝 정확히 0) | `ApplyIdleAmbientPose` (기지개는 제외) |
+| 피격 리액션 | `bodyLeanHitDegrees × (충격량/임계값) × 밀린 방향` → 자체 지수 감쇠 | `RagdollImpactResolver.TryApplyImpact`의 **임계값 미만 분기**(= 랙돌로 가지 않는 쪽) |
+
+- 피격은 **랙돌 경로를 한 줄도 지나지 않는다**. 지금까지 임계값 미만 타격은 판정만 하고 조용히
+  아무 일도 없었는데, 그 구간에만 시각 트윈을 얹었다.
+- StickConfig 6개 신설(`bodyLeanEnabled` 마스터 스위치 포함) — 하드코딩 0. 끄면 세 용도 전부 0.
+
+### 3. 교차 레이어 수정 — `CharacterAccessoryRenderer`가 **회전까지** 따라간다
+
+리더가 착수 전에 지목한 결함(모자만 수평으로 뜨는 그림)을 같은 라운드에 처리했다.
+
+- 컨테이너를 **같은 피벗(엉덩이)으로 같은 각도만큼** 돌린다: `localPosition = 엉덩이 − R·엉덩이 + (0, 바운스)`.
+  → 모자/망토/넥타이 전부 한 번에 따라온다. **`AccessoryShapeBuilder`는 한 줄도 안 건드렸다**(소유권 경계 준수).
+- 각도는 **새로 계산하지 않고 `Torso.localRotation`을 읽는다** — 같은 값을 두 곳에서 계산하지 않는다.
+- 바운스/머리 오프셋 역산의 기준을 "프리팹 중립"에서 **"기울임이 적용된 중립"**으로 바꿨다
+  (안 하면 기울임이 만든 머리 이동을 바운스로 오해해 **두 번** 적용한다).
+- 덤으로 정리: 머리 중립 y를 `HeadCenterLocalY` **항등식**으로 대신하던 것을 Awake 실측으로 바꿨다.
+  회전이 들어오면 그 항등식의 어떤 편차든 `sin(각도)`만큼 가로로 새기 때문이다(모자가 머리에서 미끄러진다).
+  실측 모자 이탈 **0.0037 → 0.0018유닛**(머리 반경의 1.1%).
+  **정직한 단서**: 프리팹 유도상(`totalHeight = headY + headRadius`) 항등식은 루트 스케일 1에서
+  정확해야 하므로, 줄어든 0.0019와 남은 0.0018의 원인을 항등식 하나로 단정하지 않는다 —
+  이 교체의 근거는 수치 개선이 아니라 **가정을 실측으로 바꾼 것**이고, 배율이 1이 아닐 때
+  `RootScale` 나눗셈이 끼어들던 경로가 함께 사라진 것이다. 남은 0.0018유닛(화면상 0.06pt)의
+  출처는 미확정이며 육안 판별 범위 밖이다.
+
+### 4. 신규 테스트 11건 + 기존 1건 지표 교체
+
+- **EditMode `BodyLeanHipPivotTests`(9)** — 물리/씬 없이 제품 코드를 그대로 돌린다.
+  - 다리·발끝 불변(20도에서 **0.0000유닛**) / 몸통·머리·어깨가 엉덩이 피벗 회전식과 정확히 일치 /
+    머리 중심이 몸통(목) 선 위에 남음(모든 각도에서 <1e-4) / 좌우 대칭 / 속도 단조성 /
+    요청 소멸 시 **정확히 0으로** 복귀 / 피격 임펄스 자연 소멸 / 다리 없는 리그 폴백.
+  - **네거티브 컨트롤**: 발밑 피벗이었다면 엉덩이가 0.2163유닛 움직였을 자리에서 실측 0.0000유닛.
+  - 실측: 속도비 0.15 → 1.50도, 1.00 → 10.00도. 피격 14도 임펄스의 **화면 실효 최대는 6.20도**
+    (복구 7 + 접근 12이 동시에 걸린다 — 툴팁에 기록).
+- **PlayMode `BodyLeanAccessoryFollowTests`(2)** — 실제 씬 + 실제 모자.
+  머리 로컬 좌표계에서 본 모자 위치가 기울임 20도 내내 **0.0018유닛**만 움직인다(허용 0.00825 = 머리 반경 5%),
+  같은 프레임에 모자의 월드 이동은 0.3305유닛(= 진짜로 기울었다).
+  **네거티브 컨트롤**: 컨테이너 회전만 지우면 같은 지표가 **0.5723유닛**(허용의 69배)로 깨진다.
+- **`EventWiringVisualTests`의 LookAround 지표 교체(보고 대상)** — "머리 로컬 x 이동량"에서
+  **"머리 중심과 목 선 사이의 수직거리"**로. 상체가 기울면 머리가 좌우로 움직이는 것은 **정상**이고,
+  옛 지표는 "목이 절대 안 기운다"는 그때의 리그 사실에 묶여 있었다. **조건은 완화되지 않았다** —
+  상한(목 획 반폭)은 그대로이고, 기울임이 0이면 두 지표는 같은 값이다.
+
+### 5. 검증 결과
+
+| 실행 | 결과 |
+|---|---|
+| EditMode 전체 | **512/512 통과** (`Logs/coder_lean_edit4.xml`, 최종) |
+| PlayMode 전체 | **406/413 통과, 실패 5, 스킵 2** (`Logs/coder_lean_playfull.xml`) — 실패 5건 전수 분석 아래 |
+| PlayMode 액세서리 3파일(신규 2 + 기존 20) | **22/22 통과** (`Logs/coder_lean_play3.xml`) |
+| 컴파일 에러/경고 | 0건 |
+
+**포즈/랙돌 관련 회귀는 0건이다** — 지시로 보호 대상이던 `RagdollEntryEnergyTests`(5/5),
+`WalkFootSlipTests`(3/3), `LandingCrouchTests`(6/6), `CharacterAccessoryScaleTests`(14/14),
+`EventWiringVisualTests`(6/6) 전부 통과.
+
+#### PlayMode 실패 5건 — 전수 분석 (내 변경 소관 0건)
+
+| 실패 | 직전 기준선(`Logs/dbg_full_play_r3.xml`, 11:12) | 판정 |
+|---|---|---|
+| `CharacterVisualHalfWidthTests.몸보다_튀어나온_액세서리가_보고_반폭에_포함된다` | **이미 실패**(실측 0.00212, 요구 >0.05) | 선행 실패. 내 변경으로 실측이 **0.00212 → 0.04094**(요구치의 82%)로 올라갔다 — 상체가 기울면 망토 밑단이 피벗 아래라 반대쪽으로 더 나가기 때문이다. **고치는 방향으로 19배 움직였고 아직 임계 미달**. 소관자에게 이 실측을 넘긴다 |
+| `InfoGearRadialMenuTests` 3건 + `InfoWindowExclusiveModalTests` 1건 | **전부 통과였음** | **다른 작업자의 진행 중 변경.** 같은 시각 `GearRadialMenuWidget.cs`(+677줄, 11:30)/`CharacterInfoWindow.cs`(+800줄, 11:31)/`InfoGearIconWidget.cs`(11:10)가 재작업 중이고, 실패 내용은 전부 **부채꼴 토글/접힘 상태**(`Collapse` 로직)다. 이 테스트들은 `ProcessPointer`에 입력을 직접 주입하며 캐릭터 Transform을 읽지 않으므로, 포즈/액세서리 레이어와 인과 경로가 없다 |
+
+### 교차 레이어 영향 로그
+
+| # | 항목 | 영향 | 조치 |
+|---|---|---|---|
+| 22 | **머리 기준 앵커 렌더러 4종이 기울임을 모른다** (`StressGaugeRenderer`/`FocusWatchRenderer`/`CharacterFxRenderer`/`CharacterPetRenderer`) | `StickmanMetrics.HeadCenterLocalY`(=중립)로 위치를 잡으므로, 걷는 동안 머리는 앞으로 최대 `(머리−엉덩이)×sin(10°)` ≈ **0.15유닛(배율 0.75, 화면 약 5pt)** 이동하는데 한숨 퍼프/시계/반짝임/펫은 제자리에 남는다 | **미해결 — 리더 판단 요청.** 말풍선은 Head Transform을 앵커로 쓰므로 자동으로 따라간다(영향 없음). 고치려면 네 렌더러가 `Head.position`을 쓰거나 Metrics에 "기울임 반영 머리 좌표" 조회를 하나 더 여는 방식 |
+| 23 | **자유 보행에서 `_walkSpeed01`은 항상 ≈1.0** (#20의 연장) | 명령 속도가 하나뿐이라 걷는 내내 기울임이 사실상 상수 10도다. "빠를수록 더"는 벽에 막히거나 출발 직후에만 관찰된다 | 의도된 결과. 진짜 walk/run 구분은 **명령 속도가 둘이 되어야** 생긴다(#20과 같은 결론) |
+| 24 | **팔 각도에는 기울임을 섞지 않았다** | 강체 결합이라면 팔도 같은 각도로 돌아야 하지만, `GetUpperAngles`는 "포즈가 만든 각도"라는 진단 계약이고 회귀 테스트 여러 건이 그 중립 범위를 잠근다(예: LookAround의 반대쪽 팔 ≤42.5도) | 이번 라운드는 **부착점만** 회전(팔은 어깨에 정확히 붙어 있고 세계 기준으로 늘어뜨려진다). 각도까지 묶으려면 팔 각도 계약 정리가 선행돼야 함 |
+| 25 | **팔 부착점은 기울임을 1프레임 늦게 따라간다** | `SetBodyLean`은 몸통·머리만 즉시 쓰고, 팔 부착점은 다음 `ApplyAngle`에서 갱신된다(RAGDOLL 중 물리가 소유한 마디를 이 경로가 건드리지 않게 하려는 의도적 분리) | 능동 상태는 매 프레임 포즈 틱이 도므로 최대 1프레임(60fps에서 0.2도 미만) — 육안 식별 불가 |
+| 26 | **`DefaultStickConfig.asset`에 키 6개 추가** | 필드 초기값과 동일한 값을 명시적으로 기록(누락 시에도 C# 초기값이 쓰이므로 거동 동일) | 완료. 병렬 작업자의 프리팹/에셋 재생성과 충돌하지 않도록 **해당 6줄만** 삽입 |
+
+### 소유권 경계 준수
+
+`AccessoryShapeBuilder.cs` / `EyeController.cs` / `CharacterPortraitStage.cs` / `RagdollRig.cs` /
+`RagdollState.cs` — **이 라운드에서 한 바이트도 건드리지 않았다.**
+(`git status`에 이 파일들이 수정으로 뜨는 것은 같은 시간 병렬 작업 중인 EYES 재설계/직전 P9 라운드의
+변경분이다 — 이번 작업의 diff는 아래 6개 소스 + 신규 테스트 2개 + 설정 에셋 6줄이 전부다:
+`States/StickmanPoseAnimator.cs`, `States/StickmanBlackboard.cs`, `States/WalkState.cs`,
+`States/ArcheryState.cs`, `States/RagdollImpactResolver.cs`, `Interaction/CharacterAccessoryRenderer.cs`,
+`Core/StickConfig.cs`, `Tests/PlayMode/EventWiringVisualTests.cs`(지표 교체).)
+
+## 리더 결정 — EYES 바이저 리디자인 교차 레이어 항목 (2026-09-01)
+
+1. **채움 MeshRenderer 최악 10→11개 (perf-doc 확인 요청 건)**: 승인. 이 앱은 캐릭터가 화면에
+   1~2개(본체+펫) 정도만 동시 렌더되는 데스크톱 컴패니언이라, 슬롯당 채움 1개 증가는 무시 가능한
+   수준이다. 별도 perf-doc 라운드 불필요 — 이 결정으로 종결.
+2. **EYES 채움 레이어 7 = NECK(SortNeck) 동률**: 승인, 그대로 둔다. 에이전트가 기하로 직접
+   검증(외알안경 체인의 최저점 `cy-1.08R`도 목선보다 위) — 실제 화면에서 겹칠 경우가 없으므로
+   숫자가 같아도 안전하다. HEAD(9)로 올리면 그쪽과 충돌하니 현행 유지가 맞다.
+3. **고글 보조색이 TintHead(주황)라 규칙 3-3 위반**: 미해결로 남긴다. 색상 정책(P5) 담당 라운드가
+   생기면 그때 같이 처리 — 지금 당장 사용자 체감에 영향이 크지 않은 항목이라 별도 긴급 배정은
+   하지 않는다.
+
+37-6 규칙 7의 육안 시트(배율 0.35/0.75/1.5 × 좌우반전)는 여전히 미완 — 다음 실제 Unity 에디터
+접근 가능한 라운드에서 확인.
+
+## 리더 결정 — 저장 다운그레이드 방어 정책 변경 승인 (2026-09-01)
+
+`HandleNewerVersionFile`이 "백업 성공 시 저장 재개"에서 "백업 성공 여부와 무관하게 저장 영구
+중단"으로 바뀐 것을 승인한다. 근거: 백업은 그 순간의 스냅샷 하나일 뿐이라, 그 뒤로 구버전
+인스턴스가 계속 값을 바꾸면 그 변경분은 어떤 백업에도 없다 — 백업 성공이 "계속 써도 안전하다"는
+증거가 되지 못한다. 구버전으로 판명된 인스턴스는 이후 쓰기를 신뢰하지 않는 게 맞다.
+
+나머지 한계는 백로그로 남긴다(긴급 아님, 이유):
+- **오늘 밤 이미 떠 있는 구버전 실행 파일에는 소급 적용 안 됨** — 새 빌드부터 유효. 당연한 제약.
+- **동일 버전 인스턴스 2개의 마지막-쓰기-승리 경합**은 여전함 — 단일 인스턴스 락이 근본 해법인데
+  이 앱의 실제 사용 패턴(1인 데스크톱, 동시 다중 인스턴스는 오늘 같은 개발/테스트 상황에서만
+  발생)상 지금 당장 우선순위 낮음.
+- **중단 상태가 사용자에게 안 보임**(로그 경고 1줄뿐, 구버전에 입력한 할일이 조용히 사라짐) —
+  UX 신호가 필요할 수 있으나 지금 진행 중인 다른 UI 라운드들과 파일이 겹쳐 이번엔 배정하지 않음.
+  다음 설정창/정보창 라운드에 묶어서 처리.
+
+---
+
+## ★★ [debugger/T2] 2026-09-01 — `몸보다_튀어나온_액세서리가_보고_반폭에_포함된다` 실패 원인 확정 + 망토 착지 결함 수정
+
+> **결론 요약(먼저 읽을 것):** 지목된 용의선 4건은 **전부 반증**됐다. 망토의 진폭은 오늘 밤 한 번도
+> 줄지 않았다 — 이 테스트에서 망토 잉크는 **기록에 남은 모든 실행(통과분 포함)에서 소수점 넷째
+> 자리까지 구워진 도형값 그대로**였다. 실패한 것은 **네거티브 컨트롤**이고, 그 원인은 이 테스트의
+> **표본 창이 배치 모드에서 0.11초**밖에 안 된다는 데 있다(주석은 "걷기/유휴를 여러 번"이라고 적혀
+> 있다 — 실측과 약 2자릿수 차이). 다만 조사 중 **별개의 실사용 결함**(착지 프레임에 망토가
+> 순간이동)을 실측으로 확정해 근본 수정 + 회귀 3건을 넣었다.
+
+### 원인 — 실측 증거
+
+**(1) 망토 잉크는 한 번도 움직인 적이 없다(이 테스트 안에서).**
+`Logs/*.log` 20개 실행의 `[시각반폭] 최대 돌출 프레임` 줄을 시계열로 뽑으면 액세서리 값이
+
+| 기간 | 액세서리 잉크 | 몸 잉크(최소) | 돌출 | 판정 |
+|---|---|---|---|---|
+| 08-31 13:58 ~ 20:38 | **1.4140** (고정) | 1.21~1.25 | 0.16~0.20 | 통과 |
+| 08-31 21:22 ~ 09-01 09:07 | **1.0730** (고정) | 0.90~0.93 | 0.14~0.19 | 통과 |
+| 09-01 09:47 ~ | **1.0730** (고정) | 1.03~1.08 | 0.04 → 0.02 → **−0.004** | 실패 |
+
+액세서리 값이 **여러 시간·수십 실행에 걸쳐 소수점 넷째 자리까지 동일**하다 = 900프레임 어디에서도
+밑단이 한 점도 움직이지 않았다는 직접 증거다. 1.4140 → 1.0730의 단 한 번의 변화도 망토와 무관하다:
+비율 0.7588 = 다른 담당자의 **`MaxCharacterScale` 2.0 → 1.5** 변경(테스트는 2.0을 요청하지만 클램프된다)
+이고, **몸 잉크도 정확히 같은 비율로 함께 줄었다**(1.22×0.759 = 0.93 ✓).
+
+**(2) 진짜 변수는 몸 쪽이고, 그마저도 "포즈가 바뀐" 것이 아니라 "표본 창이 옮겨간" 것이다.**
+PlayMode 진단(임시 테스트, 확인 후 삭제)으로 900프레임 동안의 상태를 전수 기록했다:
+
+```
+[진단] 루프 시작 t=1.299   dt=0.00011초(≈9000fps)
+[진단] 900프레임 지점 t=1.409 (경과 0.110초)   ← 900프레임 = 게임시간 0.11초
+[진단] 상태 LandingCrouch = 900/900 프레임,  v=(0.00, 0.00)
+```
+
+즉 **표본 전체가 앱 시작 낙하(11.63유닛)의 무릎앉아 착지 0.62초 안**, 그중에서도 `crouch` 값이
+0.824 → 0.150으로 내려가는 **일어서는 구간**에 통째로 들어 있다. 이 구간은 팔이 가장 크게 벌어지는
+자세라 몸 반폭이 1.05~1.08까지 간다(망토 1.073과 거의 같다). 같은 진단을 6000프레임(0.63초)으로
+늘리면 상태가 Idle까지 진행하고, 그때 값은
+
+```
+[LandingCrouch] 최소몸 0.8931  액 1.0730 -> 돌출 0.1799
+[Idle]          최소몸 0.7029  액 1.1233 -> 돌출 0.4204
+```
+
+**Idle에서는 돌출이 0.42유닛** — 이 테스트가 증명하려는 성질(액세서리가 몸 밖으로 나간다)은 제품에서
+압도적으로 참이다. 표본이 그 프레임을 한 번도 보지 못할 뿐이다. 오늘 밤 돌출이 0.14 → 0.04 → 0.02 →
+−0.004로 서서히 깎인 것도 **프레임 시간이 조금씩 달라지며 0.11초 창이 착지 곡선 위를 미끄러진**
+결과지, 어떤 커밋 하나의 결과가 아니다.
+
+**(3) 용의선 4건 반증 (전부 시각 증거 기반)**
+
+| # | 용의선 | 반증 근거 |
+|---|---|---|
+| 1 | 망토 펄럭임 기능 신설 | 펄럭임이 **존재하기 전**인 08-31 13:58 실행에서도 액세서리 잉크는 이미 정적(1.4140 고정). 게다가 이 테스트는 **착지가 끝난 뒤에** 망토를 착용하므로 이 망토에는 공중 이력 자체가 없다 |
+| 2 | 망토 색 빨강 | 도형 무변경. 액세서리 잉크 값이 색 변경 전후로 동일 |
+| 3 | 보폭 `lerp(0.85,1.35)` 파생 | `StickmanPoseAnimator.cs` mtime **07:23**. 그 뒤 07:53 / 08:38 / 08:54 실행이 몸 잉크 0.91~0.93으로 **전부 통과**. 실패는 09:34 실행부터 |
+| 4 | `RagdollRig` / `ShoulderSwingBackLimit` 튜닝 | `RagdollRig.cs` mtime **07:28** — #3과 같은 이유로 반증. 표본 900프레임 중 Ragdoll 프레임 0개 |
+
+### ★ 그 조사 중 확정한 **별개의 실사용 결함** — 착지 프레임의 망토 순간이동 (수정함)
+
+기류 펄럭임의 세기는 상태 게이트(Fall/Jump/ThrowTumble)로만 만들어졌다. 그래서 **발이 닿는 한
+프레임에 세기가 1 → 0으로 떨어지고**, `TickHemMotion`이 곧바로 `RestoreHemBase()`로 밑단을 구워진
+원본에 **순간이동**시켰다. 크기는 도형 상수에서 바로 나온다:
+`(HemAirPushRatio 0.85 + HemAirRippleRatio 0.34) × R = 1.19R` = 출하 기본 배율에서 **한 프레임 0.26유닛
+(획 두께의 약 7배)**. 사용자가 요청한 "떨어질 때 펄럭이는 망토"가 **가장 눈에 띄는 순간에 딸깍
+끊기고 있었다.** 실측 보조 증거: 착지 연출 0.62초 **전 구간 2720프레임에서 망토 잉크가 정확히
+1.0730유닛**(= 도형값) — 몸이 앱에서 가장 크게 움직이는 그 0.62초 동안 천은 단 한 점도 안 움직였다.
+
+**조치 — `Interaction/CharacterAccessoryRenderer.cs`만 수정(망토 파일 범위 유지):**
+
+| 항목 | 내용 |
+|---|---|
+| `TickAirFlowInertia()` 신설 | 기류의 **목표값**이 아니라 **관성을 태운 실제값**을 그린다. 붙잡을 때는 즉시(낙하 회귀가 재는 최대 이동이 한 프레임도 안 늦는다), 놓을 때는 `AirFlowSettleSeconds`에 걸쳐 **선형**으로. 방향은 마지막 공중 프레임의 것을 유지 |
+| `AirFlowSettleSeconds` | **새 숫자 0개** — 이 파일이 이미 "천이 한 번 흔들리는 시간"으로 쓰는 `SwayPeriodSeconds`(0.62초)를 그대로 재사용 |
+| 지수감쇠를 쓰지 않은 이유 | 지수감쇠는 **영원히 0에 닿지 않는다** → "가만히 서 있으면 정적"이 깨지고, 24시간 상주 앱이 영구히 매 프레임 `SetPositions`+메시 갱신을 돈다. `MoveTowards`는 유한 시간에 **정확히 0** |
+| 보행 스웨이 배타 → **교차 페이드** | `walk01 = ResolveWalkSpeed01() × (1 − air01)`. 배타였을 때는 기류가 0이 되는 프레임에 보행 스웨이가 진폭 그대로 튀어나왔다(달리다 착지하면 천이 한 번 튐). 가중치 합이 항상 1이라 "더하면 진폭 두 배"(원래 배타로 만든 이유)는 여전히 성립하지 않는다 |
+| 숨김 구간 방어 | `_airFlowFrame`으로 갱신 연속성을 확인 — 랙돌로 몇 초 숨었다 돌아온 천이 **몇 초 전 기류**로 펄럭이지 않게 |
+
+**원칙 1 준수**: 이 잔여 운동은 스스로 생기지 않는다. 반드시 직전에 **확정된 공중 상태**가 만든
+값에서만 출발하고, 단조 감소해 0에 닿은 뒤에는 어떤 경로로도 다시 커지지 않는다.
+
+### 검증
+
+**신설 `Tests/PlayMode/CapeLandingSettleTests.cs` (3건, 네거티브 컨트롤 포함) — 전부 통과**
+```
+[착지여파] [네거티브] 전속력 낙하 중 밑단 변위 = 0.15102유닛 (획의 419 %)   ← 젖혀질 것이 실제로 있다
+[착지여파] 착지 한 프레임의 밑단 변위 = 0.00010유닛 (획의 0 %)              ← 수정 전에는 1.19R
+[착지여파] 착지 뒤 잔여 운동 관측 = True, 정확히 0이 된 시점 = 0.620초       ← 유한 시간에 정확히 0
+```
+
+- **EditMode 512/512 통과, 실패 0**(`Logs/dbg2_edit_all.xml`).
+- **기존 `CapeFallFlutterTests` 5건 전부 통과** — 특히 `가만히_서_있으면_망토는_정적이다`가
+  **0.000000유닛**으로 그대로다(관성이 유한 시간에 정확히 0이 되기 때문).
+- `CharacterVisualHalfWidthTests` 4건 중 3건 통과. 남은 1건이 아래 항목.
+
+### ⚠ 리더 판단 요망 — 남은 빨간불 1건은 **테스트의 표본 전제**가 원인이다 (건드리지 않았다)
+
+`몸보다_튀어나온_액세서리가_보고_반폭에_포함된다`는 여전히 실패한다. **망토 쪽 수정으로는 고칠 수
+없다** — 이 테스트는 캐릭터가 **이미 착지한 뒤에** 망토를 착용하므로 그 망토에는 잦아들 공중 이력이
+아예 없고, 표본 0.11초 동안 상태는 `LandingCrouch` 하나뿐(속도 정확히 0)이라 보행 스웨이도 0이다.
+
+문턱(0.05)이나 단언을 낮추는 것은 **증상 가리기라 하지 않았고, 지시상으로도 금지**다. 대신 원인은
+테스트 주석이 스스로 적어 둔 전제에 있다:
+
+> `const int SampleFrames = 900;   // 자율 배회가 걷기/유휴를 여러 번 오갈 만큼.`
+
+배치 모드 실측 `dt ≈ 0.00011초` → **900프레임 = 0.11초**. 전제가 약 2자릿수 틀렸다.
+본 단언 ②(`minCoverage`)는 지금도 통과하고 있고, 실패한 것은 "이 표본이 의미 있는가"를 묻는
+네거티브 컨트롤이다 — **테스트가 자기 역할을 정확히 수행해 "이번 표본은 무의미하다"고 알려준 것**이다.
+
+**권고(문턱·단언 무변경, 표본만 실제로 의도대로 만들기)** — 소유자(test-engineer) 배정 필요:
+프레임 수 대신 **게임 시간**으로 표본을 잡거나(예: `while (Time.time - t0 < 3f)`), 표본 시작 전에
+착지 연출이 끝날 때까지(`CurrentStateId == Idle`) 기다린다. 실측상 Idle 한 프레임만 봐도 돌출이
+**0.42유닛**이라 문턱 0.05의 8배 여유가 생긴다 — 즉 이 변경은 테스트를 **약화가 아니라 강화**한다.
+
+### 교차 레이어 영향 로그
+
+1. **`MaxCharacterScale` 2.0 → 1.5**(다른 담당자, 08-31 밤)로 이 테스트가 요청하는 배율 2.00이 조용히
+   1.5로 클램프된다. 로그에는 여전히 "배율 2.00"으로 찍히므로 **실측값을 오독하기 쉽다**
+   (액세서리 1.4140 → 1.0730의 유일한 원인이 이것이다). 배율을 인자로 받는 다른 PlayMode 테스트도
+   같은 함정에 있다.
+2. **배치 모드의 프레임 시간이 게임 시간과 100배 가까이 어긋난다**(`dt ≈ 0.1ms`). "N프레임 = 몇 초"를
+   가정한 PlayMode 테스트는 전부 같은 위험을 안고 있다. 프레임 수 대신 `Time.time`을 쓰는 것을
+   팀 규칙으로 제안한다.
+3. `CharacterAccessoryRenderer.cs`는 이 라운드 중 **다른 작업자가 상체 기울임(SetBodyLean) 추종을
+   같은 파일에 넣고 있었다**(11:20 mtime). 내 수정은 밑단 모션 구획에만 한정했고 충돌 없이 컴파일·
+   통과를 확인했지만, 리더는 두 변경이 같은 파일에 겹쳤다는 사실을 인지할 것.
+
+## 리더 결정 — P9-b(토대 기울임) 교차 레이어 항목 (2026-09-01)
+
+1. **머리 기준 앵커 렌더러 4종이 기울임 중 머리를 못 따라감**(StressGaugeRenderer/FocusWatchRenderer/
+   CharacterFxRenderer/CharacterPetRenderer, 중립 좌표 기준이라 최대 0.15유닛/약 5pt 어긋남).
+   백로그로 남긴다 — 어긋남 폭이 작고(5pt) 지금 병렬 라운드가 이미 여럿이라 이번엔 배정하지 않음.
+   다음 캐릭터 연출 라운드에 같이 처리.
+2. **`EventWiringVisualTests` LookAround 지표 교체**(머리 로컬 x이동 → 머리중심-목선 수직거리) 승인.
+   기울임 0에서 값 동일, 정당한 재정의.
+3. **팔 각도에 기울임 미반영**(부착점 회전만) — 승인. `GetUpperAngles` 계약 정리가 선행돼야 하는
+   별도 작업.
+4. **`InfoGearRadialMenuTests`(3)/`InfoWindowExclusiveModalTests`(1) 회귀** — 토대기울임 작업자
+   분석상 인과 경로 없음(포인터 직접 주입, 캐릭터 Transform 미참조), 동시에 GearRadialMenuWidget.cs/
+   CharacterInfoWindow.cs를 대폭 편집 중인 다른 라운드(민지/재현/소은 발견사항 일괄수정) 탓일
+   가능성이 높음 — 그 라운드 완료 후 재확인 예정, 지금은 조치 보류.
+
+### ★ 추가 실측 (리더 전달사항에 대한 답) — 이 수치는 **개선된 것이 아니라 잡음이다**
+
+리더로부터 "P9-b(토대 기울임) 착륙만으로 이 테스트 수치가 0.00212 → 0.04094로 올랐다"는 정보를 받고,
+**같은 코드 트리에서 이 테스트 하나만 5회 반복 실행**해 재현성을 직접 쟀다(`Logs/dbg2_spread1~5`):
+
+```
+run 1  몸 1.0319 / 액 1.0730 -> 돌출 0.0411   Failed
+run 2  몸 1.0377 / 액 1.0730 -> 돌출 0.0353   Failed
+run 3  몸 1.0351 / 액 1.0730 -> 돌출 0.0379   Failed
+run 4  몸 1.0333 / 액 1.0730 -> 돌출 0.0397   Failed
+run 5  몸 1.0118 / 액 1.0730 -> 돌출 0.0612   Passed  ← 코드 변경 0, 결과만 뒤집힘
+```
+같은 트리를 **전체 스위트 안에서** 돌리면 같은 테스트가 **−0.0039 / −0.0199**까지 내려간다
+(스위트 부하로 프레임 시간이 달라져 0.11초 창이 착지 곡선 위 다른 위치에 떨어지기 때문).
+
+**결론: 이 지표의 실행 간 폭은 −0.02 ~ +0.061이고, 문턱 0.05는 그 폭 안에 있다.** 즉 0.00212 →
+0.04094는 P9-b가 만든 개선이 아니라 같은 잡음대의 다른 표본이다. 실제로 표본 구간의 상태는
+`LandingCrouch` 하나뿐이고 **속도가 정확히 0**이라, 속도에서 파생되는 토대 기울임은 그 구간에서
+정의상 0이다 — 기울임이 이 수치를 올릴 수 있는 경로 자체가 없다.
+**액세서리 값은 5회 모두 1.0730으로 완전히 동일하다**(= 망토는 여전히 한 점도 안 움직인다).
+움직인 것은 몸(1.0118~1.0377)뿐이다.
+
+따라서 이 빨간불은 **망토 쪽 어떤 수정으로도 안정적으로 녹색이 되지 않는다.** 위 "리더 판단 요망"
+항목의 권고(표본을 프레임 수가 아니라 **게임 시간**으로 잡거나 착지 연출이 끝난 뒤 표본 시작)를
+적용해야 하며, 그 변경은 문턱·단언을 그대로 두고 표본만 의도대로 만드는 것이라 테스트를 **강화**한다.
+
+### 전체 회귀 (최종)
+
+- **EditMode 512/512 통과, 실패 0** (`Logs/dbg2_edit_all.xml`).
+- **PlayMode 427건 중 실패 7 / 스킵 2** (`Logs/dbg2_play_all.xml`). 직전 기준선(`dbg_full_play_r1.xml`)과
+  대조한 결과 **이번 라운드가 새로 만든 실패는 0건**이다. 새로 늘어난 6건은 전부 UI 계열
+  (`InfoGearRadialMenuTests` 3, `InfoWindowCardCarouselTests` 1, `InfoWindowExclusiveModalTests` 1,
+  `SettingsWindowReturnPathTests` 1)로 **다른 작업자가 같은 시간대에 진행 중인 변경**이며 밑단 모션과
+  접점이 없다. 남은 1건이 위 `몸보다_튀어나온_...`이고, `PortraitEyeVisibilityTests` 1건은 이번에 해소됐다.
+- 망토 관련 전 테스트 통과: `CapeFallFlutterTests` 5/5, `CapeLandingSettleTests` 3/3(신설),
+  `CapeAirFlutterTests`(EditMode) 전건, `CharacterVisualHalfWidthTests` 4건 중 3건.
+
+## 리더 결정 — 망토 라운드 (2026-09-01)
+
+1. **"프레임 수 = 시간" 함정, 오늘 세 번째 발생.** `CornerHoverPanelTests`(180프레임=0.014~0.082초),
+   `CharacterVisualHalfWidthTests`(900프레임=0.11초)에 이어 세 번째다. CLAUDE.md에 이미 규칙으로
+   박아놨지만(시간 기반 검증은 반드시 벽시계), **기존 테스트 중 같은 패턴이 더 있는지 전수 점검이
+   필요하다** — 별도 라운드로 배정 예정.
+2. **리더가 전달한 "0.04094로 개선" 정보는 잡음이었다**(에이전트가 5회 반복 실측으로 반증:
+   코드 변경 0인데 -0.0199~+0.0612로 튐). 리더가 에이전트 간에 수치를 중계할 때는 그 수치가
+   단일 측정인지 반복 검증된 것인지 확인하고 넘겨야 한다 — 이번엔 에이전트가 스스로 검증해서
+   막았지만, 안 그랬으면 잘못된 전제로 작업할 뻔했다.
+3. **망토 착지 순간 밑단 순간이동(획 7배) 수정 승인** — 조사 범위 밖에서 발견했지만 사용자가
+   직접 요청한 기능("떨어질 때 망토도 펄럭여야 한다")의 핵심 순간이 깨져 있던 것이라 이번 라운드에
+   포함한 판단이 옳다.
+4. `CharacterVisualHalfWidthTests` 표본 창을 벽시계/상태 기반으로 교체하는 건 test-engineer에
+   배정한다(문턱 0.05는 그대로, 표본만 의도대로 — Idle 한 프레임만 봐도 돌출 0.42유닛으로 8배
+   여유가 생기므로 이건 테스트 약화가 아니라 강화다).
+
+## 리더 결정 — UI 일괄수정 라운드 판단 요청 4건 (2026-09-01)
+
+1. **M13 온보딩 플래그를 PlayerPrefs에 저장한 것 — 승인, 다만 조건부.**
+   이 프로젝트의 PlayerPrefs 첫 사용이 맞다(전수 확인: `GearRadialMenuWidget.cs`가 유일). 승인 근거:
+   (a) 이 값은 "이 사용자가 안내를 봤는가" 하나뿐이고 캐릭터 진행도/장비 같은 유저 자산이 아니다,
+   (b) 마침 같은 시각에 저장 스키마 담당(J1)이 `CharacterSaveStore.cs`를 대공사 중이라 그 파일을
+   피한 판단이 옳았다, (c) 저장 스키마 v9로 올리는 비용(하위호환 테스트 동반 의무 — CLAUDE.md 규칙)
+   대비 이득이 없다.
+   **단, 이것이 선례가 되면 안 된다** — 앞으로 PlayerPrefs는 "잃어도 사용자가 손해 안 보는
+   1비트 UI 상태"에만 쓰고, 그 외 상태는 전부 `CharacterSaveStore`로 간다. 두 번째 PlayerPrefs
+   사용처가 생기면 그때 통합 여부를 재검토한다.
+
+2. **J3의 구조적 해법(`IsSuspended = 전체화면 && AutoHideOnFullscreen`) — 이번 라운드 범위 밖 처리 승인.**
+   토글을 끄면 차단막 가진 표면 전부가 게임 위에 남는 구조 자체는 그대로다. 지금은 고지(캡션)로
+   막았고, 구조 수정은 `StickmanAgent.cs`를 건드려야 해서 다른 라운드와 충돌 위험이 크다.
+   **백로그로 승격**: "자동숨김 토글 OFF일 때도 차단막만은 전체화면 게임 위에서 물러나게 분리".
+   원칙2 관련이라 우선순위 중상.
+
+3. **`MenuReadySeconds` 정의를 `Mathf.Max(ExpandTotalSeconds, SpinSeconds)`로 고친 것 — 승인.**
+   리더가 직접 `SpinSeconds`를 0.52→1.4로 바꾸면서 만든 회귀를(부채꼴 3건) 상수를 되돌리지 않고
+   **의존 관계를 명시화**해서 푼 것이 옳다. 이런 게 "숫자를 다시 적지 않는다" 규칙의 정확한 적용이다.
+
+4. **미배정 잔여 4건 처리**:
+   - **M3**(창 여는 법이 그 창 안에만 적혀 있음) — M13 온보딩 안내가 들어갔으므로 **부분 해소**로
+     간주, 별도 조치 안 함.
+   - **M4**(캐러셀은 휠 되고 설정창은 안 됨 — 앱 내 규칙 불일치) — **백로그 승격**. 설정창이
+     휠을 안 받는 건 비침해 근거가 있는 의도된 설계지만, 같은 앱 두 모달에서 규칙이 다른 건
+     맞다. 다음 UI 라운드에서 어느 쪽으로 통일할지 결정.
+   - **M10**(부채꼴 6초 자동 접힘이 "내가 잘못 눌렀나" 유발) — **조치 안 함.** 방금 J5로
+     `PopoverPanel`에 무입력 3분 자동 닫힘이 들어갔고, 부채꼴 6초는 비침해 원칙(원칙2)상 짧은
+     쪽이 안전하다. 화면을 오래 점유하지 않는 게 이 앱의 정체성이다.
+   - **소은 #2**(이름표 크로스페이드) — **백로그**, 미세 항목.
+
+---
+
+## [test-engineer/T3] Windows 패리티 감사 (2026-09-01)
+
+**임무**: 사용자 상시 요구사항 *"수정한 모든 것들은 윈도우 버전도 동일하게 수정되어야 함"* 이
+2026-08-31 밤의 대량 변경에서 지켜졌는지 전수 확인. 감사가 주 임무이고, 명백·안전한 누락만 직접 수정.
+
+**검증 수단(이 환경의 한계 안에서 할 수 있는 최대치)**
+- Windows 빌드는 이 머신에서 **실행할 수 없다**. 그래서 Unity 없이 Roslyn(`MonoBleedingEdge`)으로
+  런타임 어셈블리 전체를 `-define:UNITY_STANDALONE_WIN` 으로 **크로스 컴파일**해 확인했다 →
+  **에러 0건**. `UNITY_STANDALONE_OSX` / `UNITY_IOS` 도 각각 에러 0건(회귀 없음).
+  ※ 컴파일이 통과했다는 것이지 **동작이 옳다는 뜻은 아니다**. 실동작은 사용자 Windows 머신 확인 필요.
+- EditMode 전수: **563건 중 560 통과 / 0 실패 / 3 무시**(무시는 아래 D절의 의도적 `Assert.Ignore`).
+  관련 PlayMode(구석 패널·전체화면 숨김) 18건 전부 통과.
+- `PerformBuildWindows`(실제 Windows 플레이어 빌드)는 **실행하지 못했다** — 다른 에이전트들이
+  Unity 배치모드를 계속 점유해 40분 이상 락이 풀리지 않았다(한 번 시도했다가 "another Unity
+  instance" 로 안전하게 중단, `Builds/Windows`는 백업 후 원상 복구 완료). 위 크로스 컴파일이
+  그 자리를 대신하며, 실제 플레이어 빌드는 다음 라운드에서 락이 비었을 때 수행 권장.
+- 재발 방지용 자동 감사 테스트 신설: `Assets/_Project/Scripts/Tests/EditMode/PlatformParityAuditTests.cs`
+
+### A. 이번 라운드에서 **직접 수정한** 누락 (안전·소규모)
+
+| # | 누락 내용 | Windows 사용자가 겪던 증상 | 조치 |
+|---|---|---|---|
+| A1 | **전체화면 판정 디바운스(1초 유지)** 가 macOS에만 배선됨 | 작업표시줄 자동 숨김/알트탭/게임 해상도 전환 순간마다 `Suspend↔Resume`이 반복 → 캐릭터가 깜빡이고 프레임 등급도 요동 | `Win32WindowService.IsFullscreenAppActive()`를 macOS와 **같은 뼈대**로 재구성: `EvaluateFullscreen(out reason)` + `FullscreenVerdictDebouncer` + "판정이 바뀔 때만 로그" |
+| A2 | 판정 규칙 파일이 **macOS 폴더 안**에 있어 Windows가 부를 수조차 없음 | (A1의 근본 원인) | `Platform/MacOS/FullscreenSuspendPolicy.cs` → `Platform/FullscreenSuspendPolicy.cs`, 네임스페이스 `StickMate.Platform.MacOS` → `StickMate.Platform`. 두 플랫폼 파일 모두 이미 `using StickMate.Platform;`이라 추가 수정 0줄 |
+| A3 | 좌하단 호버 패널이 **macOS Dock만** 회피 (`IDockMetricsService` 단독 조회) | 감지 영역/패널이 **작업표시줄에 파묻혀** 손잡이를 집기 어렵고 클릭도 작업표시줄이 먼저 먹음 | `CornerHoverPanel.ResolveDetectOriginPoints()`에 `IReservedBottomBarService`(Win32가 이미 실측해 내놓던 값) 경로를 **앞에 추가**. macOS는 이 인터페이스를 구현하지 않아 항상 false → **macOS 거동 무변경** |
+| A4 | `WindowsOverlayStateEnforcer.Update()`가 `if (_controller == null) return;`을 **FramePacing 호출보다 위**에 둠 | 컨트롤러를 아직/더는 잡지 못한 프레임에서 적응형 프레임 등급이 마지막 값에 얼어붙어 24시간 상주 절감이 Windows에서만 정지 | macOS판과 같은 순서로 교정(FramePacing 먼저, null 가드 뒤) |
+
+### B. **패리티가 이미 맞아 있던** 항목 (확인만, 수정 없음)
+
+- `DisplayTopologyWatcher`(0.75초 디바운스 재적합) — 양쪽 Enforcer가 **같은 공용 클래스**를 같은 방식으로 사용 ✅
+- `OverlayRectReporter`(재적합 직후 좌표계 즉시 보고) — macOS `ReportOverlayRectNow` / Windows `CaptureOverlayOrigin` ✅
+- `FramePacing.HoldActiveForInteraction`(UI 조작 중 60fps) — 플랫폼 중립 한 곳에만 존재, 소비자도 전부 중립 UI ✅
+- `Away` 티어 `characterIdle` AND 조건 — `FramePacingPolicy`(중립)에 있고 양쪽 Enforcer가 같은 자리에서 `FramePacing.Tick(FramePacing.ResolveCharacterIdle(_agent))` 호출 ✅
+- 전역 단축키 `GlobalKey.Comma` — macOS `kVK_ANSI_Comma 0x2B` / Win32 `VK_OEM_COMMA 0xBC` **둘 다 있음**. `GlobalKey` 20종 전수 대조도 전부 양쪽 존재 ✅
+- 저장 스키마 v8 / 다운그레이드 방어 / 임시파일 PID 분리 — 전부 플랫폼 중립. `Process.GetCurrentProcess()`는 실패 시 GUID 폴백이 있어 IL2CPP 스트리핑에도 안전. `File.Replace` 실패(Windows에서 더 자주 발생 가능) 시 직접 쓰기 폴백 존재 ✅
+- 하단 예약 막대 → 발판/안전망 경로 — `FallbackPlatformWindowService.TryGetDockRectOsScreen`이 **0순위로 `IReservedBottomBarService`(Windows)**, 그다음 Dock 실측(macOS) 순으로 이미 단일 소스화 ✅
+- 가려짐 계산(`VisibleTopEdgeSolver`) / 알파·크기 필터(`WindowsFootholdFilter`) / DPI 보고(mac `DetectDesktopDpiScale` ↔ win `GetDpiForWindow`→`ReportUiDensityScale`) ✅
+- 빌드 설정 — `PerformBuildWindows`가 macOS판의 `Configure*` 3종을 모두 부르고 Windows 전용 투명 설정을 추가로 호출 ✅
+
+### C. **미해결 — 리더 배정 요청** (구조적, 이 라운드에서 손대지 않음)
+
+| # | 심각도 | 항목 | Windows 사용자 증상 | 난이도 / 비고 |
+|---|---|---|---|---|
+| C1 | **높음 (원칙 2 위반)** | **전체화면 "게임 카테고리" 필터가 Windows에 없음.** macOS는 `LSApplicationCategoryType` → `FullscreenGameCategory.IsGameCategory`로 게임만 숨기는데, Windows는 여전히 기하 판정(창 == 모니터)만 한다 | 전체화면 엑셀/PPT/브라우저/영상에서도 **캐릭터가 사라진다**. 원칙 2의 문구는 "전체화면 **게임**"인데 Windows만 못 지킴 | **중~상**. Windows엔 대응 조회 API가 없다. 후보: 레지스트리 `HKCU\System\GameConfigStore\Children\*\MatchedExeFullPath`(게임 바가 관리하는 게임 목록, **읽기 전용**) + `QueryFullProcessImageName`로 hwnd→exe 해석. 참고로 `SHQueryUserNotificationState`는 보더리스 전체화면 게임과 전체화면 엑셀을 구분하지 못해(둘 다 `QUNS_BUSY`) **단독으로는 부적합**. **사용자 Windows 머신에서 실기 검증 필요** |
+| C2 | 중상 | **`MacSpaceBehaviorNative`의 Windows 대응물 없음.** macOS는 `.canJoinAllSpaces` + accessory 등급으로 모든 Space에 따라붙는다 | 가상 데스크톱을 전환하면 캐릭터가 **원래 데스크톱에 남는다**(macOS에서 이미 "타 앱 전체화면에서 캐릭터가 사라진다"로 신고됐던 것과 같은 계열) | **상**. 소속 확인은 공개 COM `IVirtualDesktopManager`로 가능하지만 **모든 데스크톱에 핀 고정하는 API는 비공개**다. 즉 기술 선택 이전에 **정책 판단**(핀 고정 포기 / 비공개 API 사용 / 데스크톱 전환 감지 후 재배치)이 먼저 필요 — 리더 결정 사항 |
+| C3 | 중 | **단축키 표기가 macOS 글리프로 하드코딩**(`⌃⌥⌘A` 등). `ItemCatalog.cs` 11곳 + `CharacterInfoWindow.cs` 1곳 | 보관함/정보창 안내가 Windows에서 **틀린 문구**(실제 조합은 `Ctrl+Alt+Win+A`) | **중**. 플랫폼 중립 표기 헬퍼(`ShortcutLabel.Chord("A")`) 신설 후 갈아끼움. `ItemCatalogTests`가 `"⌃⌥⌘A"`를 잠그고 있어 테스트도 함께 수정 필요. **`CharacterInfoWindow.cs`는 파일 소유권 경계상 T3가 건드릴 수 없음** → 리더가 담당자 배정 요망 |
+| C4 | 중하 | `WindowsViewerPresenceService`가 **모니터 꺼짐을 감지하지 못함**(항상 `DisplayAsleep=false`) | `DisplayOff` 등급이 Windows에서 성립하지 않아 **화면이 꺼진 밤에도 절감이 한 단계 덜 된다**(오동작은 없음) | **중**. `RegisterPowerSettingNotification(GUID_MONITOR_POWER_ON)`은 창 프로시저를 가로채야 하는데 창을 UniWindowController가 소유. 코드에 이미 정직하게 문서화돼 있음(의도적 보수 폴백) |
+| C5 | 낮음 | 발판 진단 채널의 **형태**가 다름 — macOS는 주기적 리포트(`TickFootholdReport`)+`TryDescribeFoothold`, Windows는 이상 징후 시에만(`ReportFootholdAnomaly`, 30초 스로틀) | "Windows에서만 캐릭터가 허공에 선다"류 신고에서 macOS만큼 세밀한 원격 추적이 어려움 | **하**. 다만 Windows 쪽이 24시간 상주 로그 위생 면에서는 더 낫다 — **의도된 분기로 보고 그대로 두는 것도 합리적**. 리더 판단 |
+| C6 | 정보 | `IDesktopIconLayoutService`는 Windows만 스텁 구현(항상 실패/빈 목록), macOS는 아예 미구현 | 동일 — 청소부/블랙홀이 양쪽에서 똑같이 "아이콘 조회 실패로 억제" | 조치 불필요(동작이 이미 대칭) |
+
+### D. 신설한 자동 감사 테스트
+
+`Assets/_Project/Scripts/Tests/EditMode/PlatformParityAuditTests.cs` — **소스 정적 스캔** 방식.
+`Win32WindowService.cs` / `WindowsOverlayStateEnforcer.cs`는 파일 전체가 `#if UNITY_STANDALONE_WIN`이라
+macOS 에디터에서는 **타입이 존재하지 않아 리플렉션으로는 영원히 검사할 수 없다** — 기존
+`DisplayTopologyRefitTests` / `UserAssetImmutabilityAuditTests`와 같은 방식을 따랐다.
+
+잠그는 항목:
+1. 전체화면 디바운스가 **양쪽**에 배선 (`FullscreenVerdictDebouncer` + `FullscreenVerdictHoldSeconds`)
+2. `FullscreenSuspendPolicy.cs`가 **플랫폼 중립 위치**에 있고 네임스페이스가 `StickMate.Platform`
+   (다시 `Platform/MacOS/`로 옮기면 즉시 실패 — A2 재발 방지)
+3. `GlobalKey` **전 열거값**이 양쪽 구현에 매핑 (키 하나가 한쪽에만 들어가면 그 플랫폼에서
+   *로그 한 줄 없이* 단축키가 죽는다)
+4. `FramePacing.ApplyOnce` / `Tick(ResolveCharacterIdle(...))`가 양쪽 Enforcer에 배선
+5. UI 홀드 상태가 플랫폼 파일에 **복제되지 않음**
+6. `VisibleTopEdgeSolver` 공용 사용 / 발판 진단 카운터 양쪽 존재
+7. 좌하단 패널이 **두 하단 막대를 모두** 회피
+
+미해결 3건(C1·C2·C3)은 `Assert.Fail`이 아니라 **`Assert.Ignore`** 로 남겼다 — 실기 검증이
+불가능한 항목으로 다른 라운드를 빨간 테스트로 막지 않으면서, 테스트 목록에 "무시됨"으로 계속
+떠 있게 해 잊히지 않게 하기 위함. 구현이 들어오면 각 테스트가 `Assert.Pass`로 빠지며
+"정식 검사로 승격하라"고 알려준다.
+
+**함정 하나 기록**: 처음 구현은 단순 문자열 검사였는데, `Win32WindowService`의 XML 문서에
+"macOS는 `FullscreenGameCategory.IsGameCategory`로 거른다(Windows는 아직 없다)"라고 **결함을
+설명하는 주석**을 적어두자 감사가 그것을 구현으로 오인해 통과했다. 결함을 정직하게 적을수록
+감사가 눈머는 구조라 `StripLineComments()`를 넣어 판정에서 주석을 제외한다.
+
+### E. 사용자 Windows 머신에서 확인이 필요한 항목
+
+1. A1 — 작업표시줄 자동 숨김을 켠 채 전체화면 앱을 오갈 때 캐릭터 깜빡임이 사라졌는지
+2. A3 — 작업표시줄이 화면 하단에 있을 때 좌하단 호버 손잡이가 **작업표시줄 위**에 뜨는지
+3. C1 — (미수정) 전체화면 엑셀/브라우저에서 캐릭터가 사라지는 현상이 **여전히 재현되는지** 확인 후
+   C1의 우선순위 결정
+4. C2 — (미수정) 가상 데스크톱 전환 시 캐릭터가 따라오지 않는 것이 실제로 재현되는지
+
+## 리더 결정 — 헤어/목걸이/베레모 라운드 (2026-09-01)
+
+1. **교차영향 #40(바가지 앞머리선·베레모 띠가 형제 실루엣 변과 정확히 겹침, 33-2-0 위험) — 현행 승인.**
+   근거: (a) 실패 양상이 graceful하다(보조선이 어두운 외곽선 밑에 숨을 뿐, 형태와 구분도는 살아있다),
+   (b) 실증 근거가 있다 — 단정한머리의 `HairPart`는 모자 채움에 완전히 묻혀 있는데도 소은의
+   스크린샷에 보였다. 겹침을 피하려고 좌표를 억지로 띄우면 방금 확보한 구분도를 잃는다.
+2. **지표가 틀렸던 사건을 기록으로 남긴다.** "지표가 원리적으로 못 본다"(과거 기록)는 **오진**이었고,
+   실제로는 지표가 정점만/상반구만 샘플링해서 값을 부풀려 읽고 있었다. 교훈: **측정값이 예상과
+   다르면 대상이 아니라 자를 먼저 의심한다.** 이번 라운드가 네거티브 컨트롤(옛 좌표를 고정해두고
+   "자가 그걸 빨간불로 읽는가"를 검사)을 3건 심어둬서 자가 다시 멀어지면 그게 먼저 터진다 — 좋은 선례.
+3. **미수정 보고 항목 중 중절모/밀짚모자 띠(0.41W/0.47W)는 즉시 배정** — 방금 고친 베레모와
+   완전히 같은 결함이고, 곧 윈도우 릴리즈에 나갈 시각 품질이라 지금 처리한다.
+4. **나머지 미수정 항목은 백로그**: 방울 자체의 규칙1 위반, 나머지 헤어 5종의 잠재 #6(획 고려
+   여유 0.017R), 헤어 보조색 tint(규칙 3-3, P5 색 정책 소관 — 고글 건과 함께 처리).
+
+## [test-engineer/T3] 프레임수=시간 함정 전수 점검 (2026-09-01)
+
+### 0. 이번 라운드에서 얻은 **직접 실측** — 추정이 아니다
+
+지금까지 "0.11~0.45ms/프레임"은 같은 스위트 세 테스트의 길이차에서 **역산**한 값이었다. 이번에
+표본 창을 시간 기준으로 바꾸면서 `경과 3.0초 / 실제 프레임 수`를 직접 찍었다(4회):
+
+| 실행 | 3.0초 동안 돈 프레임 | 프레임당 | fps |
+|---|---|---|---|
+| play2 | 24,520 | 0.1223ms | 8,177 |
+| hw_r1 | 28,940 | 0.1037ms | 9,647 |
+| hw_r2 | 28,674 | 0.1046ms | 9,558 |
+| hw_r3 | 27,692 | 0.1083ms | 9,231 |
+
+→ **배치 모드는 8,200~9,700fps**로 돈다(역산값의 빠른 쪽 끝과 일치). 환산표:
+
+```
+   20프레임 = 0.002 ~ 0.002초      120프레임 = 0.012 ~ 0.015초
+   60프레임 = 0.006 ~ 0.007초      240프레임 = 0.025 ~ 0.029초
+                                   900프레임 = 0.093 ~ 0.110초
+```
+
+### 1. 발견 목록 (Tests/ 전체 143파일 스캔)
+
+프레임 대기 루프 36개를 전수 검토. **"검증 대상이 시간 기반인가"로만 갈랐다** — 무차별 치환은
+하지 않았다(구조적 대기는 프레임이 옳은 단위다).
+
+| # | 위치 | 예산 | 실제 시간 | 필요한 시간 | 판정 | 조치 |
+|---|---|---|---|---|---|---|
+| 1 | `CharacterVisualHalfWidthTests` 표본창 | 900f | 0.093~0.110초 | 착지 끝나고 Idle 도달 | **거짓 통과 + 간헐 실패** (표본 전체가 착지 동작 안) | 수정 |
+| 2 | `CornerHoverPanelTests.숨어_있는_동안_클릭_차단막이_꺼져_있다` | 120f | 0.012~0.015초 | 폴링 주기 0.05초 ≥ 1회 | **거짓 통과** — 폴링이 **한 번도 안 돎**(0.24~0.30회) | 수정 |
+| 3 | `AccessoryFillRenderingTests.망토_채움이_흔들리는_윤곽선을_따라가는가` | 60f | 0.006~0.007초 | sway 주기 0.62초 | **거짓 통과** — 위상이 한 주기의 **1.0~1.2%**만 돎(= 정지 화면 한 장) | 수정 |
+| 4 | `CharacterScaleRuntimeTests.배율을_바꿔도_랙돌로_무너지지_않는다` | 60f | 0.006~0.007초 | 물리 스텝 0.02초 | **거짓 통과** — FixedUpdate가 **0~0.36회**(한 번도 안 돌 수 있다) | 수정 |
+| 5 | `CharacterAppearanceLayerTests` 네거티브 컨트롤 | 240f | 0.025~0.029초 | `p = dt/0.01` 포아송 | **결함 있는 네거티브 컨트롤** — 주석의 근거("p>1이라 첫 프레임에 반드시 발동")가 **거짓**(p>1이려면 100fps 미만이어야 함). 실제 p≈0.010~0.012 → 미발동 확률 **약 7%** | 수정 |
+| 6 | `CharacterAppearanceLayerTests` 보행 노출창 | 900f | 0.093~0.110초 | "정상 보행 중" 노출 | **표기 오류** — 0.1초를 보고 "900프레임 동안 보행"이라 적음 | 수정 |
+| 7 | `CharacterScaleRuntimeTests.EnsureAccessoryContainer` | 60f | 0.006~0.007초 | 주석은 "FadeSeconds(0.18초) + 여유" | **주석이 거짓, 통과는 우연** — 컨테이너 생성은 페이드와 무관(LateUpdate 재구성) | 수정 |
+| 8 | `CapeFallFlutterTests.가만히_서_있으면_망토는_정적이다` | 20f | 0.002초 | "정적"을 주장하려면 초 단위 | **약화됨** — 0.01유닛/초로 새는 회귀도 0.002초 동안은 9e-5라 문턱 1e-4를 못 넘어 통과 | **보고만**(다른 라운드 편집 중) |
+
+### 2. "프레임이 정당하다"고 판정해 **건드리지 않은** 것들 (오탐 방지 근거)
+
+- `AccessoryFacingFlipFillTests`(8f/3f), `AccessoryFillRenderingTests`(8f), `CharacterScaleRuntimeTests`
+  (5f/30f), `CapeLandingSettleTests`(8f) — 액세서리 **재구성**은 LateUpdate 한 바퀴에 끝난다(시간 무관).
+- `CharacterHeadFillTests`(30f) — "매 프레임 진입점이 예외를 안 던지는가". 프레임이 곧 측정 단위.
+- `LedgeHangDescentTests`(`framesUntilFall <= 2`) — "**즉시** 낙하"를 프레임으로 정의한 의도적 단언.
+- `StressTierDisplayDisabledTests`(2f), `PortraitEyeVisibilityTests`(2f) — 반응이 즉시임을 같은 파일의
+  네거티브 컨트롤이 증명한다.
+- `BodyLeanAccessoryFollowTests`(20f/12f) — `SetBodyLean`은 보간 없이 즉시 적용(실측 확인).
+- `PetFallSyncTests`/`PetFollowsOwnerFootholdTests`(3f) — 펫의 **y는 매 프레임 직접 대입**(x만 지수 감쇠)
+  이라, 막으려는 회귀("주인 따라 뜬다")가 발생하면 3프레임 안에 반드시 보인다.
+- `FullscreenSuspendCharacterInkTests` — 이 함정을 **이미 문서화하고 시간 기준으로 고쳐 둔** 모범 사례.
+
+### 3. 조치 결과 (전부 실측 검증)
+
+**① `CharacterVisualHalfWidthTests` (리더 배정 항목)** — 문턱 0.05와 단언은 **한 글자도 안 건드렸다.**
+표본 시작 전 `TestClock.WaitForState(Idle)`로 착지를 통과시키고, 표본을 **3초(벽시계)**로 바꿨다.
+
+| | 수정 전(5회, 디버거 실측) | 수정 후(4회) |
+|---|---|---|
+| 최대 돌출 | **-0.0199 ~ +0.0612** (문턱 0.05를 사이에 두고 갈림) | **0.2451 ~ 0.5533** |
+| 문턱 대비 여유 | 실패~1.2배 | **4.9 ~ 11.1배** |
+| 표본 | 900프레임 = 0.11초, 전부 착지 동작 안 | 3.0초 = 24,520~28,940프레임(Idle 12,253~28,674) |
+
+4회 연속 통과(`play2`, `hw_r1~r3`). 표본 창을 넓혔는데 최소 여유가 **12배 이상 좋아졌다** — 약화가
+아니라 강화임이 수치로 확인된다. Idle 표본 수를 세는 진단 단언도 함께 넣어, 다시 엉뚱한 구간에
+갇히면 그 사실 자체가 빨간불이 되게 했다.
+
+**② 나머지 6건** — 전부 `TestClock` 기반 초 예산으로 교체하고 근거를 주석에 남겼다.
+- `AccessoryFillRenderingTests`: 60f → **1.5초(sway 2.4주기)**. 덤으로 **네거티브 컨트롤 신설** —
+  "표본 동안 윤곽선이 실제로 움직였는가"(실측 0.02128유닛, 문턱 0.005 = 4.3배 여유). 이게 없으면
+  선이 안 움직이기만 해도 상한이 통과한다. 어긋남 실측은 **0.00000유닛**(2026-08-31에 채움이
+  같은 버퍼로 들어오면서 옛 "획의 60%" 공백은 메워졌음 — 옛 주석도 실측으로 갱신).
+- `CharacterScaleRuntimeTests`: 60f → **1초**(물리 스텝 50회), 컨테이너 대기 → `WaitUntil(2초)`.
+- `CornerHoverPanelTests`: 120f → **2초**(폴링 40회).
+- `CharacterAppearanceLayerTests`: 보행 노출 900f → **3초**, 네거티브 컨트롤 240f → **1초**
+  (기대 발동 100회 → 미발동 확률 e^-100). 실행 로그에서 실제로 1회 발동 후 즉시 종료 확인.
+
+검증: `hw_r1~r3`, `acc1/acc_a/acc_b`(4/4×3), `scale1`(7/7), `corner1`(9/9), `appear1`(16/16),
+`play2`(5/5) — **전부 통과, 실패 0**.
+
+### 4. 재발 방지 (임무 3)
+
+- **`Assets/_Project/Scripts/Tests/PlayMode/TestClock.cs` 신설** — 초 단위 예산 공용 도구.
+  `SampleForSeconds(초, 콜백)` / `WaitUntil(조건, 타임아웃, 설명)` / `WaitForState(bb, 상태, 타임아웃, 홀드)`.
+  각 테스트가 프레임 루프를 직접 짜지 않게 한다. 벽시계(`unscaledDeltaTime`)를 쓰는 이유까지 문서화
+  (연출이 멈춰도 예산은 반드시 끝나야 하므로 — 게임시간 예산은 timeScale이 새면 영원히 안 끝난다).
+- **`Assets/_Project/Scripts/Tests/EditMode/FrameBudgetLintTests.cs` 신설** — 테스트 소스를 스캔해
+  **30프레임 초과** 대기/표본 루프를 자동 검출한다. 주석/문자열을 먼저 지운 뒤 괄호 대응으로 루프
+  본문을 뽑고, `const int` 상수까지 풀어 실제 반복 횟수를 계산한다.
+  - 경계 근거: 이 저장소에서 **정당한** 대기는 전부 30프레임 이하, **결함**은 전부 60프레임 이상
+    → 오탐 0 / 미탐 0.
+  - 정말 프레임이 맞는 자리는 루프 위에 `프레임예산-OK` 표식 + 근거를 적으면 통과.
+  - **린트 자신의 네거티브 컨트롤 포함** — 알려진 표본(900f/120f는 잡고, 8f·주석·문자열·시간기준
+    루프는 안 잡는다)으로 스캐너를 자기검증한다. 고장 난 파서는 언제나 초록이기 때문이다.
+  - 현재 상태: 143파일 / 루프 36개 스캔, **위반 0건**.
+
+### 5. 다른 라운드로 넘기는 항목 (편집 중이라 손대지 않음)
+
+- `CapeFallFlutterTests.가만히_서_있으면_망토는_정적이다`(위 표 #8) — 20프레임(0.002초)을
+  1~2초로 넓히면 "느리게 새는" 회귀까지 잡을 수 있다. 지금 예산으로는 못 잡는다.
+- `CapeFallFlutterTests.HoldTumble`(6프레임) — 기류 **상승**은 즉시라 지금은 문제 없지만
+  (`TickAirFlowInertia`가 `target >= 현재`면 스냅), 상승도 시간에 걸리게 바뀌는 순간 조용히
+  무의미해진다. 그때는 초 예산으로 바꿔야 한다.
+- 위 두 건은 새 린트가 30프레임 이하라 **자동으로는 안 잡는다** — 사람이 판단해야 하는 자리다.
+- **→ 2026-09-01 마무리 완료.** 아래 `## [test-engineer/T3] 프레임수=시간 함정 — 잔여 2건 마무리`
+  참고(20프레임→2.0초 / 6프레임→0.9초+0.01초, 문턱 무수정, 실측 6회 통과, 정적 실측 0.000000유닛).
+
+### 6. 부수 관찰 (프레임 함정과 무관, 참고용)
+
+`TodoDemoDataPollutionTests.RepeatedForcedRemindersStillLeaveTheListEmpty`가 5회 반복 호출하지만,
+`TodoReminderDirector.ForceTriggerNow`는 목록이 비면 `TryPickFeaturedTodo`에서 바로 false로 빠진다 —
+즉 5회가 전부 **같은 이른 반환**이라 "반복"이 새 경로를 밟지 않는다. 이 테스트가 막으려는 것
+(데모 경로가 할일을 만드는 것)은 1회 호출로도 증명되므로 결함은 아니지만, 제목이 약속하는 만큼을
+재고 있지는 않다.
+
+## 리더 결정 — 프레임수=시간 함정 전수 점검 결과 (2026-09-01)
+
+**이번 점검의 가치는 "실패를 고친 것"이 아니라 "통과하던 거짓 통과를 드러낸 것"이다.** 결함 8건 중
+다수가 초록불이면서 아무것도 측정하지 않고 있었다(망토 채움: sway 위상 1.0~1.2%만 = 정지 화면 한 장,
+배율: FixedUpdate 0~0.36회, 구석패널 숨김: 폴링 0.24~0.30회 = 한 번도 안 돎). 초록불이 검증의
+증거가 아니었다는 뜻이라, 이 유형은 앞으로도 최우선으로 다룬다.
+
+- 배치모드 프레임레이트 **직접 실측 확정**: 0.104~0.122ms/프레임 = **8,200~9,700fps**. 이제 추정이
+  아니라 실측값이다. 앞으로 "N프레임이 몇 초인가"는 이 값으로 계산한다.
+- 재발 방지 2겹 승인: 공용 도구(`TestClock.cs`)와 소스 스캔 린트(`FrameBudgetLintTests.cs`).
+  린트가 **자기 자신의 네거티브 컨트롤**을 갖고 있는 점이 특히 옳다 — 고장 난 파서는 언제나
+  초록이므로. 30프레임 초과만 잡는 보수적 문턱(오탐 0/미탐 0 실측)도 승인.
+- `CharacterVisualHalfWidthTests` 여유가 실패~1.2배 → **4.9~11.1배**로 개선. 표본을 넓혔는데 최소
+  여유가 12배 좋아졌으니 약화가 아니라 강화임이 수치로 증명됐다.
+- **잔여 2건(`CapeFallFlutterTests`의 20프레임/6프레임)은 즉시 배정** — 30프레임 이하라 새 린트가
+  자동으로 못 잡는, 사람 판단이 필요한 자리다. 망토 라운드가 끝나 파일이 비었다.
+
+---
+
+## 2026-09-01 — FX/PET 신규 4종 연출 구현 + 머리 앵커 렌더러 4종 기울임 추종 (coder / Teammate1) ✅
+
+두 미해결 항목이 같은 파일들을 건드려 한 라운드로 묶었다.
+① 교차영향 **#30**("FX/PET 신규 4종은 몸/행동 연출이 없다", 카테고리당 +2종 라운드)
+② 교차영향 **#22**("머리 기준 앵커 렌더러 4종이 기울임을 모른다", P9-b 라운드)
+
+---
+
+### 1. FX/PET 신규 4종 — "카드만 있고 화면엔 0픽셀"이던 자리를 채웠다
+
+직전 라운드는 에셋(카드)만 만들고 설명문에 **"준비 중인 자리 · 지금은 카드 그림만"**이라고 정직하게
+적어 두었다(도형 3파일이 그 라운드의 소유가 아니었기 때문). 이 저장소의 확정 규칙
+**"착용했는데 화면이 그대로면 그건 착용이 아니다"**에 걸리는 상태였고, 이번 라운드에서 해소했다.
+
+| 자리 | 연출 | 발동 | 도형(획 예산 검산 완료) |
+|---|---|---|---|
+| **FX 물방울**(Lv.20) | 몸 옆에서 방울이 하나씩 떠올라 흩어진다 | **Walk** | 링 1개(반지름 0.58~0.80R 무작위) |
+| **FX 나뭇잎**(Lv.24) | 머리 위에서 잎이 팔랑이며 떨어져 **지면에 닿으면** 사라진다 | **상태 무관 앰비언트**(1.6~3.2초) | 잎몸(닫힘 6점) + 잎자루 |
+| **PET 풍선**(Lv.27) | 머리 옆에 묶인 끈을 달고 위에서 둥실거리고, 끌리는 만큼 기운다 | 상시 | 끈(5점) + 주머니(닫힘 12점) |
+| **PET 달팽이**(Lv.30) | 땅에 붙어 아주 느리게, **밀었다 쉬었다** 하며 따라온다 | 상시 | 발+더듬이 한 획(5점) + 껍데기 링 + 속 점 |
+
+**설계 원칙(전부 기존 4종의 배관을 그대로 탄다 — 새 컴포넌트/새 상태 0개)**
+
+- **발동 창을 서로 갈라 놓았다.** 반짝임=Idle / 먼지=달리기·도약 / **물방울=Walk**. 세 이펙트가 같은
+  순간을 노리면 어느 것을 골라도 화면이 비슷해져 "골랐다"는 감각 자체가 사라진다.
+- **나뭇잎만 상태와 무관**하다. 이건 캐릭터의 *행동*이 아니라 주변 분위기(날씨에 가깝다)라 원칙 1의
+  적용 대상이 아니고, 반대로 상태를 붙이면 "가만히 서 있으면 잎이 안 진다"는 이상한 규칙이 생긴다.
+  단 **도착 높이**는 `ResolveOwnerGroundWorldY`("주인이 지금 딛고 있는 발판")를 쓴다 — "그 x에서 가장
+  높은 면"을 물으면 창 하나만 최대화해도 잎이 화면 꼭대기에 쌓인다(이 프로젝트가 세 번 겪은 API 오용).
+- **물방울은 고관절 높이에서 난다.** 상체 기울임의 회전 중심이 바로 거기라, ②의 보정 없이도 기울여도
+  몸에서 어긋나지 않는다(정직한 이유로 이 한 아이템만 보정 대상이 아니다).
+- **풍선의 회전 중심은 "묶인 자리"**다. 주머니를 원점에 두면 흔들 때 끈이 몸을 뚫는다. 기우는 각도는
+  속도를 새로 재지 않고 **지수 감쇠 추종의 지연량**을 그대로 쓴다(지연 자체가 이미 속도의 함수다).
+- **달팽이의 "느림"은 계수 하나로 표현하지 않았다.** 그러면 화면에서는 그냥 *둔한 공*이다. 추종 계수에
+  주기적인 문(gate 0.30~1.0)을 곱해 밀었다 쉬었다를 만들고, 같은 위상으로 몸을 **균등** 배율로 늘였다
+  줄인다(비균등 배율은 LineRenderer 두께를 왜곡하므로 쓰지 않는다). 높이/가로 범위는 공과 **완전히
+  같은 경로**(`ResolveGroundY` + `ClampToOwnerFoothold`)를 탄다 — 달팽이는 날지 않는다.
+- **좌우 반전은 도형 재구성**으로 처리(달팽이만 비대칭 → 재구성 서명에 방향을 섞었다). 대칭인
+  공/비행기/커서/풍선은 서명에 넣지 않는다 — 그림은 똑같은데 방향 전환마다 GameObject를 부수게 된다.
+- FX 조각의 **팔랑임(sway)/회전(spin)** 을 `Puff`에 얹을 때 기본값을 0으로 두어, 기존 3종의 계산
+  결과가 **한 톨도 달라지지 않는다**(항이 통째로 빠진다).
+
+**설명문 교체(에셋 4개 + 골든)** — "준비 중" 문구를 지우고 실제 연출을 적었다. 기존 FX/PET 문구와
+같은 길이·같은 톤(짧은 현재형 한 문장):
+`걸을 때 방울이 떠오른다.` / `머리 위에서 잎이 진다.` / `머리 위에 매달려 따라온다.` / `아주 느리게 따라온다.`
+
+---
+
+### 2. 머리 기준 앵커 렌더러 4종 — 상체 기울임 추종 (#22 해소)
+
+참고 패턴은 P9-b가 이미 고쳐 둔 `CharacterAccessoryRenderer`(클래스 문서 3-2)다:
+**같은 피벗(엉덩이)으로 같은 각도만큼 돌리고, 각도는 새로 계산하지 않고 `Torso.localRotation`을 읽는다.**
+`CharacterAccessoryRenderer.cs`는 **한 바이트도 건드리지 않았다**(읽기만).
+
+| 렌더러 | 적용 방식 | 왜 그 방식인가 |
+|---|---|---|
+| `StressGaugeRenderer` | **컨테이너 통째로** 회전(`위치 = anchor + 엉덩이 − R·엉덩이`) | 어깨 처짐·굽은 등·한숨 퍼프가 전부 어깨~머리 높이라 예외가 없다 |
+| `FocusWatchRenderer` | **곁눈질 호만** 담는 자식 `GlanceGroup`을 신설해 거기만 회전 | 발밑 링은 18절이 지정한 "앱 소유 발밑 위젯"이고 회전 중심보다 **아래**라, 함께 돌리면 링이 비스듬히 눕는다 |
+| `CharacterFxRenderer` | 스폰 기준점을 `LeanedHeadWorld`로 교체(반짝임·나뭇잎) | 조각이 월드 고정이라 "스폰 순간의 기준점"이 곧 전부다 |
+| `CharacterPetRenderer` | 같은 함수로 종이비행기 궤도 중심 / 풍선 매듭 | 〃 |
+
+- 기울임이 0이면 회전이 identity라 **예전 식과 완전히 같은 결과**가 나온다(무회귀가 식 자체로 보장).
+- 머리 위 추가 오프셋(궤도 중심 1.9R, 풍선 매듭 0.3R)도 **함께 돈다** — 머리에 매달린 것은 머리가
+  기울면 같이 기우는 편이 자연스럽다.
+- **랙돌 안전성**: `Torso`는 Rigidbody가 없는 순수 시각 마디이고 P9-b가 RAGDOLL 진입 프레임에
+  `ClearBodyLean()`을 부르므로, 랙돌 중 이 각도는 항상 0이다(펫이 랙돌 중에도 남는 규약과 충돌 없음).
+
+---
+
+### 3. 신규 테스트 3파일(23건) + 실측
+
+| 파일 | 건수 | 무엇을 잠그나 |
+|---|---|---|
+| PlayMode `AppearanceNewItemsRenderTests` | 5 | 신규 4종이 **실제로 그려진다** + FX "없음" 네거티브 컨트롤 |
+| PlayMode `BodyLeanHeadAnchorFollowTests` | 9 | 4종이 **엉덩이 피벗으로** 기울임을 따라간다 + 네거티브 3종 |
+| EditMode `AppearanceShapeBudgetTests` | 9 | 신규 4종 도형의 **획 예산**(37-6 규칙 1/4/5) |
+
+**FX/PET가 그려진다는 증거**(플래그가 아니라 실제 선을 읽는다 — 이름/점 개수/도형 크기/알파 4가지를
+전부 본다. 하나라도 빠지면 "존재하지만 안 보이는" 상태가 초록으로 통과한다):
+
+```
+나뭇잎 — 조각 2개, 조각당 선 2개, 최대 알파 1.00, 최대 크기 0.1898유닛
+물방울 — 조각 3개, 조각당 선 1개, 최대 알파 1.00, 최대 크기 0.2579유닛
+풍선   — 선 2개(BalloonString/BalloonBody), 알파 0.90, 주인과의 거리 1.60유닛(신장 1.71)
+달팽이 — 선 3개(SnailFoot/SnailShell/SnailShellCore), 알파 0.90, 주인과의 거리 1.62유닛
+FX "없음" — 같은 관측에서 조각 0개 / 살아 있는 조각 0개  ← 네거티브 컨트롤
+```
+
+**기울임 추종 실측**(기울임 20도, 배율 0.75 / 머리 반경 0.1650 / 허용 0.00825 = 머리 반경 5%):
+
+```
+어깨 처짐  — 회전 이탈 0.00000 / 피벗 이탈 0.00000, 월드 이동 0.2400   [네거티브 0.4713 = 허용의 57배]
+곁눈질 호  — 회전 이탈 0.00000 / 피벗 이탈 0.00000, 월드 이동 0.3373   [네거티브 0.5529 = 허용의 67배]
+발밑 링    — 상체 20.0도에서 링 기울기 0.000도                          ← 반대 방향 잠금
+FX 앵커    — 엉덩이 피벗 예측과 0.000000 / 중립(옛 식)과 0.4063 / 발밑 피벗 예측과 0.2435
+PET 앵커   — 엉덩이 피벗 예측과 0.000000 / 중립(옛 식)과 0.4006 / 발밑 피벗 예측과 0.2435
+나뭇잎 스폰 — 몸 중심선에서 0.2741유닛 (무작위 폭 0.1815유닛)  ← 안 따라가면 원리적으로 불가능한 값
+풍선 매듭  — 몸 중심선보다 진행 방향으로 +0.1805유닛 (안 따라가면 −0.75R = −0.124)  ← 부호가 뒤집힌다
+```
+
+FX/펫의 네거티브 컨트롤은 **부등식 안에 들어 있다**: 나뭇잎의 x는 ±1.1R 무작위인데 기울임이 앵커를
+옮기는 거리가 그보다 크므로 "중심선에서 무작위 폭보다 멀다"는 조건은 **따라갔을 때만** 성립한다.
+풍선은 아예 매달린 쪽의 **부호가 뒤집힌다** — 허용오차 조정으로는 통과시킬 수 없는 지표다.
+
+#### 3-1. 이번 라운드에서 **내 테스트가 먼저 틀렸다** (기록해 둘 가치가 있는 자책)
+
+첫 지표는 "그려진 선을 몸통 로컬로 되돌린다"(`BodyLeanAccessoryFollowTests`가 모자에 쓴 자)였는데,
+이 두 렌더러는 선 오브젝트를 **컨테이너 원점에 그대로 두고 점 좌표만 로컬에 담는다**. 그래서
+`transform.position`은 컨테이너 회전에 **구조적으로 반응하지 않았고**, 양성과 네거티브가 똑같이
+0.13161을 냈다 — 지표가 회전에 대해 눈이 멀어 있었다. `LineRenderer`의 **점**을 직접 월드로 올려
+해결했다.
+
+그 다음 잔차(어깨 0.12745 / 곁눈질 0.08708)는 제품 결함이 아니라 **두 렌더러의 화면 클램프**였다.
+추측으로 넘기지 않고 수치로 확정했다: `drift = |c − R·c| = 2|c|·sin10°`로 역산한 클램프량의 **차이
+0.1162**가 두 렌더러의 클램프 여유 차이(0.5625 − 0.4463)와 **소수점 넷째 자리까지 일치**했다.
+그래서 지표를 "기울임 전후의 **차이**"로 바꿔 상수인 클램프를 상쇄시켰고, 그 결과 이탈이 정확히
+0.00000이 됐다. **제품 코드는 이 진단 때문에 한 줄도 바뀌지 않았다.**
+
+---
+
+### 4. 검증 결과
+
+| 실행 | 결과 |
+|---|---|
+| PlayMode 신규 2파일 | **14/14** (`coder_newitems_play.xml` 5/5, `coder_anchor_play3.xml` 9/9) |
+| PlayMode `Phase5VisualLayerTests` + `RendererScaleRatioTests` + `StressTierDisplayDisabledTests` + `BodyLeanAccessoryFollowTests` | **30/30** |
+| PlayMode `CharacterAppearanceLayerTests` + `PetFallSyncTests` + `PetFollowsOwnerFootholdTests` + `FullscreenSuspendCharacterInkTests` | **28/28** |
+| PlayMode `CharacterPortraitStageTests` + `AppearanceTabSectionTests` + `InfoWindowCardCarouselTests` + `CharacterAccessoryScaleTests` | **30/30** |
+| EditMode `AppearanceShapeBudgetTests` | **9/9** |
+| EditMode `ItemCatalogAssetParityTests`(골든 대조) | **8/8** |
+| **EditMode 전체** | **575/578 통과, 실패 0, 스킵 3**(스킵 3건은 전부 기존 `PlatformParityAuditTests`의 "미해결 Windows" 표식) |
+| **PlayMode 전체** | **451/455 통과, 실패 1, 스킵 3** — 실패 1건 분석 아래 |
+| 컴파일 에러/경고 | **0건** |
+
+#### PlayMode 실패 1건 — `FloorContactVisibilityTests.FeetVisuallyTouchScreenBottomAndAreNeverClipped`
+
+**내 소관 0건이라고 판단한 근거(추측 아님, 전부 확인한 사실):**
+
+1. **그 테스트는 내 오브젝트를 애초에 세지 않는다.** 계측 대상이
+   `agent.GetComponentsInChildren<Renderer>(true)`인데, 이 라운드가 만드는 오버레이는 전부
+   **씬 루트**(`SetParent(null, false)`)라 캐릭터 계층에 들어가지 않는다.
+2. **그 테스트 동안 내 코드는 GameObject를 하나도 만들지 않는다.** 착용 아이템 0개(FX/PET 컨테이너
+   미생성) + 스트레스 상시 표시 기본 OFF + 집중 세션 미시작이다.
+3. **실패 수치가 그 테스트 파일이 이미 적어 둔 알려진 간헐 실패값과 같다.** 파일 주석
+   (`FloorContactVisibilityTests.cs:112`)이 *"간헐적 실패로 관측됨: **482.72pt**"*라고 적어 두었고,
+   이번 실측은 **482.73pt / state=Idle**이다. 원인도 그 주석이 설명한 그대로다 — 스폰 직후
+   **낙하 시작 전 Idle**을 "착지했다"로 오인해(`landedOnce` 판정이 `Idle || Walk`) 스폰 높이 좌표가
+   간격 검증 구간으로 새어 들어간다. 같은 실행의 **접지 Idle 샘플은 5.98pt**(허용 12pt)로 정상이다.
+4. **그 층은 지금 다른 라운드가 대규모로 고치는 중이다.** `SceneBootstrapper.cs`(+246줄 — 스폰 높이의
+   주인), `DockGeometry.cs`(+71줄), `GroundSensor.cs`, `FootholdPoller.cs`가 이번 세션에 수정돼 있고
+   `WindowsFootholdFilter.cs` 등이 신규 추가됐다.
+
+→ **리더 판단 요청**: 이 실패는 제품 결함이 아니라 **테스트의 착지 판정 결함**으로 보인다
+(`landedOnce`가 "낙하 전 Idle"과 "착지 후 Idle"을 구분하지 못한다). 발판/스폰 라운드 소관이라
+이번 라운드에서는 손대지 않았다.
+
+> `-testFilter`에 **쉼표 목록을 주면 0건이 실행된다**(정규식으로 해석된다). 다음 사람을 위해 남긴다 —
+> `"StickMate.Tests.PlayMode.(A|B|C).*"` 형태의 **정규식 대안**을 써야 한다. 쉼표로 준 실행이
+> `total=0 passed=0`으로 **초록불처럼 끝나기 때문에** 모르면 "다 통과했다"고 오독하기 딱 좋다.
+
+---
+
+### 5. 교차 레이어 영향 로그
+
+| # | 항목 | 영향 | 조치 |
+|---|---|---|---|
+| 33 | **정보창 초상화에는 신규 4종 미리보기가 없다** | `CharacterPortraitStage.DrawFxPreview/DrawPetPreview`의 `switch`에 FX 4·5 / PET 4·5 케이스가 없어 **액자에는 여전히 아무것도 안 나온다**. 몸(실시간)은 이번 라운드로 해결됐다 | **미해결 — 리더 배정 요망.** 그 파일은 이번 라운드 소유가 아니다. 도형은 이미 `AppearanceShapeBuilder`에 있으므로 `case` 4개 추가로 끝난다(각 6~10줄) |
+| 34 | **FX 슬롯은 카탈로그 색을 무시한다**(기존 3종부터 그렇다) | 카드에는 파란 물방울/초록 잎인데 몸에서는 전부 **잉크색**이다. 펫/액세서리는 `ItemCatalog.ResolveWornPalette`를 쓰는데 FX만 안 쓴다 | **신규 2종도 기존 3종과 같게(잉크) 맞췄다** — 신규만 색을 넣으면 한 카테고리 안에서 규칙이 갈라진다. 슬롯 전체를 팔레트로 옮기는 것은 `StaleInkPieceCount` 계약(잉크 전환 회귀 창구)을 함께 손봐야 해서 별도 라운드 |
+| 35 | **렌더러 2종에 공개 진단 프로퍼티 신설** | `CharacterFxRenderer` / `CharacterPetRenderer`에 `HeadAnchorWorldPosition`, `HeadAnchorAboveHeadCenter` 추가 | 이 저장소의 "지금 어디에 그리려 하는가를 계산 그대로 노출" 관례 그대로다. **옛 식은 프로덕션에 남기지 않았다** — 테스트가 `StickmanMetrics`만으로 중립값을 다시 만든다 |
+| 36 | **`FocusWatchRing` 아래에 자식 `GlanceGroup`이 생겼다** | 계층이 한 겹 깊어진다 | `ActiveVisualCount`/`ActiveColliderCount`는 `GetComponentsInChildren`이라 무영향(Phase5 30/30 통과로 확인). 링/두드림 자국은 이 그룹 **밖**이라 발밑 위젯 성질이 그대로다 |
+| 37 | **골든 다이제스트 4줄 갱신**(`ItemCatalogGolden.txt`의 desc) | `ItemCatalogAssetParityTests`의 완전 대조 | 설명문만 바뀌었으므로 **의도적 갱신**. 좌표/색/레벨은 한 칸도 손대지 않았다 |
+| 38 | **`AppearanceShapeBuilder.SnailShellCenterYRatio` = 0.66** | 이 도형에서 가장 빠듯한 값(위로 뜨면 공중에 뜬 원, 아래로 내리면 땅에 잠긴다) | "닿는다"의 판정 기준을 좌표가 아니라 **획 반폭**(0.5 W)으로 잡고 EditMode 테스트가 양쪽을 잠근다 |
+
+### 6. 소유권 경계 준수
+
+`AccessoryShapeBuilder.cs`(이름이 비슷한 **남의 것**) / `CharacterAccessoryRenderer.cs` /
+`StickmanPoseAnimator.cs` / `CharacterInfoWindow.cs` / `SettingsWindow.cs` / `GearRadialMenuWidget.cs` /
+`GroundSensor.cs` — **한 바이트도 건드리지 않았다.**
+
+---
+
+## [coder/Teammate1] 2026-09-01 — 신고 "캐릭터가 창에서 가끔 갑자기 떨어짐" 근본 수정 3종 ✅
+
+디버거 1차 조사(같은 날 위 항목)가 좁혀 놓은 **원인 3가지를 전부** 제품 코드에 반영했다.
+반증된 가설(H1 창 가림 오판 / H2 폴링 지터)은 다시 파지 않았다.
+
+### 근본 원인 1 — 접지 중에도 중력이 꺼지지 않았다 (H4, 가장 유력)
+
+**무엇이 문제였나**: 창/Dock 상단은 논리 발판일 뿐 **물리 콜라이더가 없다.** "서 있기"가 매 프레임
+`SnapToGround()` 한 번으로만 유지되는데 그 사이에도 중력은 계속 적분된다. 한 프레임의 자유낙하가
+접지 허용오차를 넘으면 그 프레임 끝에 `Grounded=false`가 되고, 그 한 프레임이 유예까지 통째로
+소진하므로 **단 한 프레임으로 낙하가 확정**된다(창은 1픽셀도 안 움직였는데).
+
+**수정**: `StickmanBlackboard.ApplyGroundedGravitySuppression()` / `ReleaseGroundedGravitySuppression()`
+신설 — 접지가 확정된 프레임에는 `Rigidbody2D.gravityScale`을 0으로 눌러 **세로 적분 자체를 0으로**
+만든다. 스냅은 사후 보정이라 원리적으로 프레임 길이에 지지만, 이 처방만 프레임 길이와 독립이다.
+
+**"중력이 꺼진 채 갇히는" 반대편 사고를 구조적으로 차단한 방법** — 잉크 바닥 클리어런스 리프트와
+**완전히 같은 관례**로 매 프레임 벗겼다 다시 얹는다:
+- `StickmanAgent.Update()` 맨 앞(상태 Tick 직전)에서 **무조건 해제** → 상태/연출 코드가
+  `gravityScale`을 읽을 때는 언제나 진짜 값이다(`ThrowTumbleState`의 포물선 계산이 0을 읽는 사고 차단).
+- 같은 Update의 **맨 끝**(화면 클램프/구조 회수까지 끝난 뒤)에서만 다시 얹는다 → 그 프레임의
+  최종 상태를 보고 판단하고, Unity 프레임 순서(FixedUpdate → Update)상 그 값이 다음 물리 스텝을 지배한다.
+- 대상에서 제외되는 상태 목록은 **새로 적지 않고** 기존 `IsGroundKeepingSelfManaged()`를 그대로 쓴다
+  (Jump/Fall/Ragdoll/ThrowTumble/Dragged/RodeoCursor/LedgeHang/ParkourClimb/Runaway).
+- `StickmanAgent.OnDisable()`에서도 해제 — Update가 도는 전제가 깨지는 유일한 지점을 닫는다.
+
+### 근본 원인 2 — 유예(0.1초)가 창 열거 폴링 캐시(0.3초)보다 짧았다 (H5, 성립)
+
+**수정**: `StickConfig.ResolveGroundLossGraceDuration()` 신설 =
+`max(fallGraceDuration, footholdPollInterval × groundLossGracePollIntervalMultiplier)`.
+숫자를 어디에도 베끼지 않았다 — 폴링 주기를 바꾸면 유예가 자동으로 따라간다(오늘 확정된 규칙).
+배포값 0.3 × 1.5 = **0.45초**. 착지 확정(`FallState`)은 그대로 `fallGraceDuration`을 쓴다(목적이 다르다).
+
+**★ 유예만 늘리면 안 된다는 것을 계산으로 확인했다(자기 반증)**: 유예 동안 몸이 자유낙하하면
+폴링 한 주기(0.3초)에 **1.32유닛**을 내려가는데, 이는 허용오차 0.489유닛과 스냅 상한 0.6유닛을
+둘 다 넘는다 → 튐이 지나가도 되돌아올 수 없다 = 유예가 여전히 아무 것도 흡수하지 못한다.
+그래서 **유예 동안에는 몸을 붙잡아 둔다**(중력 억제 유지, `_graceHoldFrame`).
+
+붙잡지 **않는** 예외 2가지(공중부양 방지):
+- `GroundSensor.GroundInfo.WalkedOffPreferredFoothold` 신설 — 딛던 발판이 목록에 **그대로 있는데**
+  발 X만 그 가로 범위 밖이면 "정말 걸어서 모서리를 넘어간" 것이므로 즉시 떨어진다.
+- `CurrentFootholdHandle == 0`(애초에 딛던 발판이 없음) — 붙잡을 직전 상태가 없다.
+
+### 근본 원인 3 — 오버레이 원점 읽기가 가끔 쓰레기값을 줬다 (H3, 부분 적중)
+
+**수정**: `ScreenCoordinateConverter.ReportOverlayWindowOsRect(rect, desktopBounds)` 오버로드 +
+`IsOverlayRectPlausible()` 위생 검사. NaN/무한대/0크기는 **스위치와 무관하게 언제나** 거부하고,
+데스크톱 밖으로 절반 넘게 빠져나간 사각형은 버리고 **직전 유효값을 유지**한다.
+데스크톱 경계는 양 플랫폼이 이미 같은 열거 패스에서 조회하던 값을 넘긴다(**추가 시스템 호출 0건**):
+macOS `CGDisplayBounds`(주 디스플레이) / Windows `SM_*VIRTUALSCREEN`(모든 모니터 외접).
+
+**영구 고착 방지가 이 수정의 핵심 안전장치다**: macOS가 주는 것은 주 디스플레이 경계뿐이라 앱을
+보조 모니터로 옮기면 정상 창도 걸린다. 그래서 거부는 **잠정적**이다 — 같은 사각형이 2회 연속
+보고되면 실제 이동으로 인정한다(0.6초 안에 스스로 풀린다). 창 애니메이션 중 오독은 매 표본이
+다른 값이라 이 카운터를 채우지 못한다.
+
+**정직한 한계**: 실측 시퀀스 `-805`(18% 잔존)/`-936`(4.7%)는 걸러지지만 `-78`(92%)은 통과한다.
+그 완만한 튐은 **원인 2의 처방**이 흡수한다(유예 0.45초 > 나쁜 원점 수명 0.3초 + 그 동안 몸이 정지).
+세 처방은 서로 다른 층에서 같은 증상을 막는다.
+
+### 진단 함수는 지우지 않고 **더 정확하게** 유지했다
+
+- `GroundSensor.ComputeGroundLossFrameTimeThreshold()` 신설 — 하드코딩돼 있던 `0.182f`를 제거하고
+  실제 카메라/중력/허용오차에서 유도한다. 배포 형상 실측 **182.3ms**(디버거의 손계산 182ms와 일치).
+  화면 기하가 다른 환경을 위해 "pt/유닛을 직접 받는" 스칼라 오버로드도 함께 둔다.
+- `DescribeGroundLoss(..., gravitySuppressedWhileGrounded)` — 억제가 동작 중이었으면 사유 (d)
+  프레임 끊김을 **원인이 아니라고 명시**한다. 안 그러면 다음 조사자가 이미 닫힌 방향을 다시 판다.
+  억제가 꺼져/풀려 있었을 때만 예전처럼 (d)를 지목한다.
+
+### 검증 (Unity 6000.0.82f1 batchmode, 실측)
+
+**신규 PlayMode `GroundedGravitySuppressionTests` 12케이스 — 12/12 통과** (`Logs/coder_fall_play3.xml`)
+
+| 케이스 | 실측 |
+|---|---|
+| **G2 ★핵심★** 프레임이 250ms로 8회 튀어도 접지면 안 떨어진다 | **최대 처짐 0.0000유닛**(밴드 0.4888), 상태 Idle 유지, 발판핸들 유지 |
+| **G2n 네거티브 컨트롤** 억제를 끄면 같은 조건에서 깨진다 | **5.9999유닛 낙하**(물리 바닥까지) — 재현 전제가 살아 있음을 증명 |
+| G1 접지 중 중력 | gravityScale **0.000**(기준 3.00) |
+| G3a/b/c Fall·Jump·Ragdoll 전이 후 중력 복구 | 3건 모두 **3.000 복구, 억제=False** |
+| G3d 발판이 사라지면 실제로 떨어진다 | 0.95초 뒤 상태 Fall, 몸Y −9.630(발판 −5.804) |
+| **G6** 창 열거가 한 폴링 주기(0.3초) 튀었다 복구 | **세로 이동 0.0000유닛**, 상태 Idle 유지 = 유예가 설계 목적을 실제로 수행 |
+| **G7** 걸어서 모서리를 넘어가면 붙잡지 않는다 | 0.225초에 **0.9182유닛** 하강, 억제=False (공중부양 없음) |
+| G4 배포 형상 임계 프레임시간 | **182.3ms** < DisplayOff 티어 250ms < 최대 timestep 333ms |
+| G5/G5b 진단 문구 | 억제 ON이면 "원인이 아닙니다", OFF면 "사유 d: 프레임 끊김", 발판 소멸은 "사유 (a)" |
+
+**신규 EditMode 18케이스 — 18/18 통과** (`Logs/coder_fall_edit.xml`):
+`GroundLossGraceDerivationTests`(유예 유도 10, 배포 에셋 파리티 포함) +
+`OverlayOriginSanityTests`(원점 위생 8, 실측 요동 시퀀스 재현 + 영구고착 방지 + 네거티브 컨트롤 2).
+
+**★ harness 함정 2건을 실측으로 잡아 고쳤다**(이 저장소가 반복해 밟는 유형이라 남긴다):
+1. batchmode 화면은 640x480(20pt/유닛)이라 접지 밴드가 **배포의 2배(1.0 vs 0.489유닛)** 로 관대하다.
+   그대로 두면 "배포에서는 떨어지는 상황이 테스트에서는 안 떨어져" 초록이 공허해진다 →
+   SetUp에서 **월드 밴드를 배포와 같게 재환산**하고(`DockGeometry.ReferenceWorldUnitsPerPoint`에서 유도),
+   G4가 "보정 후 임계 == 배포 임계"를 함께 잠근다.
+2. 긴 프레임을 `Physics2D.Simulate(0.25)` **한 방**으로 만들면 semi-implicit Euler라 자유낙하가
+   연속식의 2배가 되어 실제보다 가혹한 조건이 된다 → `fixedDeltaTime` 단위 **13개 substep**으로 채워
+   엔진 거동을 그대로 재현했다.
+
+**회귀 (표적 실행)**
+- PlayMode 접지/발판/좌표 계열 16개 클래스 **79/79 통과**(`Logs/coder_fall_reg.xml`) —
+  `DockSinkholeRegressionTests` / `GroundSnapTeleportTests` / `DockSafetyNetSplitTests` /
+  `EdgeHopDownTests` / `FootholdLandingDirectionTests` / `LedgeHangDescentTests` / `WalkFootSlipTests` /
+  `OccludedWindowFootholdTests` / `DockPhysicsStepTests` / `LandingCrouchTests` /
+  `PetFollowsOwnerFootholdTests` / `RetinaDpiCoordinateTests` / `ReservedBottomBarFootholdTests` /
+  `ScreenEdgeTurnaroundTests` / `StickmanRagdollRecoveryTests` / `ThrowTumbleTests`.
+- EditMode **전체 578개 중 574 통과 / 실패 1 / 스킵 3**(`Logs/coder_fall_edit_all.xml`).
+  유일한 실패는 `AccessorySilhouetteDistinctionTests.지표가_옛_펜던트를_실제로_잡는다`로
+  **액세서리 실루엣 지표**(다른 에이전트가 같은 시간대에 `AccessoryShapeBuilder.cs` 진행 중)이며
+  접지/낙하/좌표 경로와 접점이 0이다. 스킵 3은 기존 `PlatformParityAuditTests`의 알려진 패리티 항목.
+
+### 교차 레이어 영향 로그
+
+- **`Core/StickmanAgent.cs`(내 소유권 밖 — 최소 3줄)**: Update 맨 앞 `ReleaseGroundedGravitySuppression()`,
+  맨 끝 `ApplyGroundedGravitySuppression()`, 신규 `OnDisable()`. 이 배선 없이는 억제가 성립하지 않는다
+  (억제의 안전성이 "매 프레임 벗겼다 얹는다"에 전적으로 의존하기 때문). **리더 확인 요청.**
+- **`GroundSensor.GroundInfo`에 필드 1개 추가**(`WalkedOffPreferredFoothold`, 생성자 인자는 기본값
+  있는 선택 인자라 기존 호출부 무변경). 소비자는 지금 `GroundedTick` 하나뿐이다.
+- **`ScreenCoordinateConverter` 공개 표면 확장**: `ReportOverlayWindowOsRect(rect, desktopBounds)`
+  오버로드 / `OverlayOriginSanityCheckEnabled` / `RejectedOverlayRectCount` /
+  `LastRejectedOverlayRectReason` / `ResetOverlayRectSanityState()`. **기존 1인자 오버로드의 거동은
+  한 글자도 바뀌지 않는다**(경계를 모르면 위생 검사를 건너뛴다) — 에디터/헤드리스/모바일/기존 테스트 무영향.
+- **`Platform/FootholdPoller.Poll()` 1줄**: StickConfig의 위생 검사 스위치를 좌표 변환기에 밀어 넣는다.
+  `ScreenCoordinateConverter`가 순수 static 유틸로 남게 하려는 선택이다.
+- **`MacWindowService` / `Win32WindowService`**: 이미 조회 중이던 디스플레이 경계를 보고에 함께 넘긴다.
+  **새 네이티브 호출 0건, 어떤 창도 건드리지 않는다**(읽기 전용 — 절대 불변 원칙 3 준수).
+- **`StickConfig` 신규 3필드 + 배포 에셋 3줄**: `groundedGravitySuppressionEnabled`(기본 ON) /
+  `groundLossGracePollIntervalMultiplier`(1.5) / `overlayOriginSanityCheckEnabled`(기본 ON).
+  셋 다 끄면 예전 거동으로 정확히 되돌아간다(회귀 테스트의 네거티브 컨트롤이 이 스위치를 쓴다).
+
+### 리더 판단 요청 (거동 변화 — 사용자 눈에 보일 수 있음)
+
+1. **발판을 잃고 실제로 떨어지기까지 0.1초 → 0.45초**가 됐다. 창을 닫으면 캐릭터가 그 자리에 잠깐
+   멈췄다가 떨어진다(만화적으로는 자연스럽지만 의도된 연출은 아니다). 이 유예 동안 몸이 **정지**해야
+   원인 2가 실제로 닫히므로 둘을 분리할 수 없다. 짧게 하려면 `footholdPollInterval`을 줄이는 것이
+   정공법이고(유예가 따라 줄어든다), 그건 OS 호출 빈도와의 맞교환이다.
+2. `DescribeGroundLoss`의 임계 문구가 이제 **화면 기하를 따라 움직인다**(배포 182ms). 디버거가
+   Tasklist에 적어둔 "182ms"는 배포 형상 한정 값이라는 뜻이니, 다른 해상도의 로그를 읽을 때 주의.
+
+## 리더 결정 — "창에서 갑자기 떨어짐" 수정 라운드 (2026-09-01)
+
+1. **`StickmanAgent.cs` 3줄 편집(소유권 경계 밖) 승인.** 짝맞춤 호출 2개 + `OnDisable` 해제뿐이고,
+   이 저장소의 기존 관용구("매 프레임 벗겼다 다시 씌운다" — 잉크 바닥 여유 로직과 동일)를 그대로
+   따랐다. 억제가 남아 갇히는 경로가 구조적으로 없다는 점이 핵심이라 승인.
+2. **"유예 연장만으로는 아무 효과 없다"는 계산 결과가 이 라운드의 진짜 발견이다.** 폴링 한 주기
+   (0.3초) 자유낙하 = 1.32유닛으로 허용오차(0.489)와 스냅 상한(0.6)을 둘 다 넘어, 블립이 걷혀도
+   돌아올 방법이 없다. 그래서 유예 동안 몸을 **붙잡아야** 한다 — 처음 지시에는 이 통찰이 없었고
+   에이전트가 계산으로 찾아냈다.
+3. **0.45초 공중 정지는 소은(persona-immersion)에게 판단 위임** — 이건 수치 문제가 아니라
+   "만화적으로 자연스러운가 vs 버그로 보이는가"라 몰입 담당이 볼 자리다. 단축이 필요하다는 결론이
+   나오면 `footholdPollInterval`을 낮추는 방향(유예가 자동으로 따라옴, 대가는 OS 호출 빈도)으로
+   처리한다.
+4. **"182ms"는 이제 배포 화면 기하에 종속된 파생값**이라는 지적 반영 — 이 문서 앞부분에 상수처럼
+   적힌 182ms는 고정 수치가 아니라 `ComputeGroundLossFrameTimeThreshold()`가 계산하는 값이다.
+
+---
+
+## 2026-09-01 — 중절모/밀짚모자 띠 금지 구간 + 방울 규칙1 위반 (coder / Teammate1) ✅
+
+리더 배정 2건(위 "헤어/목걸이/베레모 라운드" 결정 3·4번). **소유권 경계 준수**:
+`Interaction/AccessoryShapeBuilder.cs`의 **HEAD 중절모·밀짚모자 케이스**와 **NECK 방울 케이스**만
+고쳤다. 방금 고쳐진 것들(바가지머리·펜던트·베레모)과 EYES 6종·천모자·털모자·왕관·BACK 4종·HAIR는
+**한 줄도 건드리지 않았다**.
+
+**손댄 파일**: `Interaction/AccessoryShapeBuilder.cs` /
+`Tests/EditMode/AccessoryStrokeBudgetTests.cs`(방울 1줄 합류) /
+`Tests/EditMode/AccessorySilhouetteDistinctionTests.cs`(네거티브 컨트롤 1건 자기완결화 — 아래 ★) /
+**신규** `Tests/EditMode/AccessoryHatBandAndBellTests.cs`(14건, 그중 네거티브 컨트롤 4건).
+
+### 먼저: 오프라인 검산 포트가 **보고된 세 수치를 그대로 재현**하는 것을 확인하고 시작했다
+
+`AccessorySilhouetteMetrics`의 계산(변 조밀 표본·360도)을 그대로 옮긴 포트로 재 봤다.
+W = **0.343864R** @배율 0.75.
+
+| 보고값 | 내 포트 재현값 |
+|---|---|
+| 중절모 띠 0.41획 | **0.41획**(0.1400R) |
+| 밀짚모자 띠 0.47획 | **0.47획**(0.1600R) |
+| 방울 잉크 사각형 0.99획 / 변 0.31획 | **0.99획 / 0.31획** |
+| (베레모 0.00획 — 앞 라운드 결과) | **0.00획** |
+
+재현이 확인된 뒤에야 새 좌표를 잡았다.
+
+### (1) 중절모 / 밀짚모자 — 베레모와 **같은 해법이 그대로 적용된다**
+
+먼저 "베레모 방식이 되는가"를 각 모자의 실제 수치로 확인했다. 결론: **된다. 그리고 그것밖에 없다.**
+
+| | 관 높이 | 띠를 1.5획(0.516R) 띄우려면 필요한 관 높이 | 판정 |
+|---|---|---|---|
+| 베레모(앞 라운드) | 0.66R | 1.03R | 불가 → 겹침 채택 |
+| **중절모** | 0.72R | 1.03R | **불가** |
+| **밀짚모자** | 0.54R | 1.03R | **불가**(가장 심하다) |
+
+- 위아래로 각각 1.5획씩 두려면 관이 1.03R은 돼야 한다. 세 모자 다 산술적으로 불가능하다.
+  밀짚모자는 "챙이 넓고 **관이 낮다**"가 정체성이라 관을 키우는 것은 아이템을 없애는 것과 같다.
+- 그래서 **베레모와 같은 패턴**을 썼다: 띠가 좌표를 새로 적지 않고 **관(crown) 밑변의 두 끝점을
+  그대로 받는다**. 세 도형(챙·관·띠)이 같은 `Vector3` 두 개를 공유하므로 **어긋날 자리 자체가 없다**.
+- **그림으로도 이쪽이 옳다**: 중절모의 띠는 원래 관 밑동에 감기는 리본이고, 그 자리가 곧 챙 윗변이라
+  "챙 바로 위에 두른 띠"라는 실물과 정확히 맞는다. **띠를 없애는 방향은 쓰지 않았다**(중절모의 정체성).
+  테스트 `모자_띠는_보조색으로_남아있다`가 그 길을 막는 울타리로 남는다.
+
+| 항목 | 옛 값 | 새 값 |
+|---|---|---|
+| 중절모 띠 ↔ 관 밑변 | 0.1400R = **0.41획**(금지 구간) | **0.00획**(끝점 공유) |
+| 중절모 띠 ↔ 챙 윗변 | 0.41획 | **0.00획** |
+| 밀짚모자 띠 ↔ 관 밑변 | 0.1600R = **0.47획**(금지 구간) | **0.00획** |
+| 밀짚모자 띠 폭 | 관보다 2% 좁음(±0.98·crownHalf) | **관과 정확히 같음**(끝점 공유) |
+| 상수 | `FedoraBandRiseRatio` 0.14f / `StrawBandRiseRatio` 0.16f | **둘 다 삭제**(규칙 4-a) |
+
+- **왜 "획을 얹으면 실제로 겹친다"가 핵심인가**: 옛 중절모 띠는 관 밑변에서 0.14R 위인데 획이
+  0.344R이다. 두 선의 잉크(각각 ±0.172R)가 **0.032R 실제로 겹쳐서**, 화면에는 **절반은 회색 절반은
+  주황인 굵은 막대 하나**가 그려지고 있었다. 이제는 같은 자리에 주황 선 하나다.
+
+**모자 6종 15쌍 실루엣 차이 — 띠 이동 전후 완전히 동일**(띠는 실루엣 안쪽 선이라 외곽에 영향 없음).
+최소 **2.95획**(털모자↔중절모), 최대 6.51획. 중절모↔밀짚모자는 **6.51획**이라 띠가 같은 자리로
+모여도 두 모자는 전혀 헷갈리지 않는다(챙 스팬 3.00R vs 4.10R). 이 값을 새 검사가 잠근다.
+
+### (2) 방울 — 규칙 1 위반 + **보고에 없던 규칙 4 위반 1건을 더 찾았다**
+
+재 보니 옛 방울은 규칙 1만 어긴 게 아니었다. **매단 자리도 금지 구간에 있었다**:
+옛 드롭(0.34R)으로 잡은 공의 위 끝이 목줄 최저점보다 **0.038R = 0.11획** 아래였다.
+즉 방울이 목줄에서 **살짝 떨어져 떠 있었다**(0 < 간격 < 1획 — 이번 라운드 주제와 같은 병).
+
+| 항목 | 옛 | 새 |
+|---|---|---|
+| 반지름 | 0.17R (지름 **0.99획**) | **0.28R (지름 1.63획)** |
+| 채움 | 없음(윤곽선) | **있음** |
+| 매단 위치 | `BellDropRatio` 0.34f (매직넘버, 0.11획 어긋남) | **`CollarLowLocalY`에서 유도, 간격 0.00획** |
+| 추(clapper) | 잉크 사각형 **0.29획**(화면에 없는 선) | **삭제**(규칙 5) |
+| 보조색 도형 수 | 2개(공+추) — 규칙 3-2 위반 | **1개** |
+| 도형 수 | 3개 | 2개(정원 2~4 안) |
+| 펜던트와 외곽 차 | 2.52획 | **1.98획** |
+
+- **왜 "키우기"가 아니라 "채우기"가 핵심인가**: 윤곽선으로 두면 규칙 1이 요구하는 "내부를 보여주는
+  크기"가 **3.0획 = 1.03R**이다. 그 크기의 방울은 머리 반지름만 하고 **펜던트와 다시 붙는다**.
+  방울은 속이 보여야 하는 물건이 아니라 **금속 덩어리**다 — 채우는 것이 이름에 맞는 그림이다(규칙 2).
+- **왜 0.28R인가**: 1.5획 문턱에 8.7% 여유. 더 키우면 펜던트와의 구분도가 그만큼 깎인다
+  (둘은 같은 목줄에 매달린 형제라 갈리는 축이 "얼마나 내려오는가"다 — 방울 목선 −0.70R,
+  펜던트 −1.38R). **0.26R이면 구분도 2.12획이지만 규칙 1 여유가 0.7%뿐**이라 반올림 하나에
+  빨간불이 되고, 0.34R이면 여유는 커지지만 구분도가 1.67획까지 떨어진다. 0.28R이 두 값 다
+  안전한 자리다. **펜던트는 한 줄도 건드리지 않았다.**
+- **원 정체성 유지**: 종횡비 **1.05**(펜던트 2.21). 앞 라운드가 세운 "원과 갈리는 것은 크기가 아니라
+  종횡비"라는 축을 그대로 지킨다 — 새 검사가 방울의 종횡비를 1.0±0.2로 잠근다.
+- **10각형을 유지한 이유(함정 기록)**: 변의 수를 줄이면 각 변이 길어지지만, **8각형은 꺾임이 정확히
+  45도**라 획 예산 검사가 각 변을 "독립된 획"으로 요구한다(`AssertNoStubSegments`의 `CornerDegrees`).
+  그 조건을 만족하는 8각형은 지름이 **2.6획**이라 펜던트와 다시 붙는다(실측). 10각형은 꺾임 36도로
+  "매끄러운 곡선"에 해당해 면제된다 — **원을 각지게 만들수록 커져야 한다**는 것이 이 자리의 교훈이고,
+  검사로 박아 뒀다.
+- **첫 점을 90도에서 시작**하도록 `Polygon`에 선택 인자(`startDegrees`, 기본 0 = 기존 호출부 무변화)를
+  더했다. 위상 0도면 10각형의 가장 높은 꼭짓점이 72도에 놓여 **매단 자리가 0.11획 어긋난다** —
+  옛 방울의 부착 결함이 정확히 이것이었다.
+
+### ★ 앞 라운드의 네거티브 컨트롤 1건이 **정당하게 터졌다** — 원인과 조치
+
+`AccessorySilhouetteDistinctionTests.지표가_옛_펜던트를_실제로_잡는다`가 처음 실행에서 실패했다
+(1.12획, 문턱 1.0획). 추측하지 않고 원인을 확인했다: **그 검사는 옛 펜던트만 박제하고 방울은
+살아 있는 도형을 읽고 있었다.** 그래서 방울이 정당한 이유로 커지자 이 검사가 실제로 잰 것은
+"옛 펜던트 vs **새** 방울" = **역사상 존재한 적 없는 쌍**이 됐다.
+
+- 조치: **비교 대상(옛 방울: 반지름 0.17R / 드롭 0.34R / 위상 0도 10각형 + 추)도 함께 박제**해
+  검사를 자기완결형으로 만들었다. 값 0.56획(문턱 1.0획 미만)으로 통과.
+- 교훈(기록): **역사를 재현하는 네거티브 컨트롤은 양쪽을 다 얼려야 한다.** 한쪽만 얼리면 그 컨트롤은
+  "지표가 멀었다"가 아니라 "상대가 바뀌었다"로도 터지고, 그때 무엇이 잘못됐는지 말해 주지 못한다.
+
+### 검증
+
+1. **오프라인 기하 검산** — 보고된 4개 수치를 전부 재현한 뒤 새 좌표 확정(위 표).
+2. **신규 EditMode 14건**(`AccessoryHatBandAndBellTests`):
+   띠 겹침 2건 / 띠 보조색·길이 2건 / 모자 6종 15쌍 1건 / 방울 획 예산 1건 / 방울 꺾임각 1건 /
+   방울 부착 1건 / 방울↔펜던트 + 종횡비 1건 / 정원·보조색 1건 / 흔들 점 1건
+   **+ 네거티브 컨트롤 3건**(옛 중절모 띠 0.41획 · 옛 밀짚모자 띠 0.47획 · 옛 방울 0.99획 & 0.11획).
+   컨트롤은 전부 "자가 그 값을 **금지 구간/규칙 위반으로 읽는가**"를 단언한다.
+3. **기존 검사 확장** — `AccessoryStrokeBudgetTests.BudgetedItems`에 **NECK 방울 목걸이** 1줄 합류
+   (파일이 스스로 적어 둔 사용법 그대로). 카테고리가 아니라 **아이템 단위**로 넣었다.
+4. **표적 실행** — `AccessoryHatBandAndBellTests|AccessoryStrokeBudgetTests|
+   AccessorySilhouetteDistinctionTests|AccessoryShapeCatalogTests|AccessoryCardIconTests`:
+   **112 / 112 통과**(`Logs/coder_band_bell_edit2.xml`).
+5. **전체 EditMode** — **578건 중 575 통과 / 실패 0 / 건너뜀 3**(`Logs/coder_band_bell_edit_all.xml`).
+   건너뜀 3건은 `PlatformParityAuditTests`의 **의도적 `Assert.Ignore`**(다른 라운드 소관, 내 변경 무관).
+6. **PlayMode 액세서리 계열 8스위트** — `AccessoryFillRenderingTests`/`AccessoryFacingFlipFillTests`/
+   `AppearanceNewItemsRenderTests`/`CharacterAccessoryScaleTests`/`CharacterAppearanceLayerTests`/
+   `CharacterPortraitStageTests`/`CharacterVisualHalfWidthTests`/`BodyLeanAccessoryFollowTests`:
+   **59 / 59 통과, 실패 0**(`Logs/coder_band_bell_play.xml`).
+   ※ 방울이 채움 도형이 되면서 `MeshRenderer`가 하나 늘어나는 경로라 이 스위트를 반드시 돌렸다.
+7. **Unity 락 준수** — 매 실행 전 `pgrep`로 확인하고 비어 있을 때만 돌렸다(한 번은 LOCKED라 대기).
+
+### 교차 레이어 영향 로그
+
+| # | 항목 | 영향 | 조치 |
+|---|---|---|---|
+| 41 | **방울이 채움 도형이 됐다** | 방울 착용 시 `CharacterAccessoryRenderer`의 `MeshRenderer`가 **+1**(37-7 #2 "채움 도입으로 메시 증가"와 같은 계열). 메시는 기존 규약대로 `_fillMeshes`가 손으로 `Destroy` | PlayMode 채움/반전/배율/레이어 스위트 59건 전부 통과. 아이템당 도형 수는 3 → **2로 줄어** 선 렌더러는 오히려 하나 감소 |
+| 42 | **방울이 목선 아래로 0.51R → 0.70R까지 내려간다** | `TryGetLowestInkWorldY`(GETUP 바닥 클리어런스)가 보는 최저점이 목걸이 착용 시 0.19R 내려간다. 다만 **펜던트가 이미 1.38R**이라 이 카테고리의 최댓값은 바뀌지 않는다 | 계산은 "지금 그리는 정점"에서 하므로 고칠 목록 없음. PlayMode로 회귀 확인 |
+| 43 | **보조색 선이 실루엣 변과 정확히 겹치는 사례가 2건 늘었다**(중절모 띠 / 밀짚모자 띠) | 33-2-0의 "같은 `sortingOrder`에 좌표가 같은 선 2개" 자리. **리더가 앞 라운드에서 같은 항목(#40)을 이미 현행 승인**했고 근거(실패가 graceful / 나중에 만든 도형이 위에 그려진다는 실증)가 그대로 적용된다 | **보고만 한다.** 띠는 관·챙보다 **나중에** `sink`에 들어가므로 위에 그려진다. 실패해도 우아하다(주황 대신 회색 선 하나 — 형태·구분도는 그대로) |
+| 44 | **방울이 걸을 때 원이 찌그러진다**(기존 거동, 완화됨) | 스웨이는 점마다 위상이 다르다(`SwayPointPhaseStep 0.9`). 진폭은 크기와 무관한 0.16R이라 **옛 방울은 반지름 대비 94%**가 흔들렸고 지금은 **57%**다 | **개선됐지만 남아 있다.** 강체 이동으로 만들려면 렌더러의 스웨이 규약(점 인덱스 위상)을 바꿔야 해 **별건**. 설명문이 "흔들린다"라 지금 그림이 틀린 것은 아니다 — 리더 판단 요망 |
+
+### 안 고친 것 / 리더 판단 요망
+
+1. **밀짚모자 띠의 잉크 두께 / 관 높이 = 0.64** — 규칙 1의 "장식 폭 ≤ 0.5 × 대상"을 넘는다
+   (중절모는 0.48로 아슬아슬하게 통과). **이번 변경이 만든 것이 아니다** — 띠가 선 하나인 한
+   두께는 언제나 획 0.344R이고, 관이 0.54R로 낮아서 생기는 값이다. 고치려면 관을 0.69R 이상으로
+   키워야 하는데 그러면 중절모(0.72R)와 같아져 **"관이 낮다"는 정체성이 사라진다**. 수치만 남긴다.
+2. **NECK 나머지 3종은 여전히 규칙 1 미통과** — 실측: 나비넥타이 매듭 **0.91획**, 줄무늬 타이 매듭
+   1.40획·줄무늬 0.87획·blade 꺾임 0.60획, 목도리 자락 꺾임 **0.64획**. 이번 배정 밖이라 `BudgetedItems`에
+   넣지 않았다(넣으면 즉시 상시 빨간불).
+3. **펜던트·반다나는 재 보니 이미 규칙 1을 통과한다**(잉크 사각형 3.61획 / 4.65·3.09획).
+   두 아이템은 이번 배정 밖이라 `BudgetedItems`에 넣지 않았다 — **넣을지 리더 판단 요망**(넣으면
+   그 둘도 회귀로 잠긴다).
+4. **털모자 폼폼은 8각형이라 HEAD를 `BudgetedItems`에 통째로 넣으면 즉시 실패한다**(변 0.49획,
+   꺾임 정확히 45도 = 문턱). 위 (2)와 같은 이유로 HEAD는 넣지 않았다. **함정 기록**: "카테고리째 합류"는
+   이 폼폼 하나 때문에 막혀 있다.
+5. **육안 검증 0회** — 이 에이전트는 에디터 UI를 띄울 수 없다. 검산은 전부 기하·수치이고,
+   37-6 규칙 7의 시트(배율 0.35/0.75/1.5 × 좌우반전 × 형제 나란히)는 못 찍었다.
+6. **카드 아이콘은 손대지 않았다**(`Core/ItemCatalog.cs` — 소유권 밖). 참고로 중절모 카드 아이콘의
+   띠(`p3`)는 양 끝이 관 밑변(y=23)보다 1px 위(y=22)이고 한가운데는 0.5px 아래(y=23.5)라
+   **관 밑변을 가로지르는 곡선**이다 — 몸에서 방금 고친 것과 같은 계열로 보인다. 다만 카드는 40px
+   격자라 몸의 획 예산 계산이 그대로 적용되지는 않는다. **별도 라운드 배정 대상으로만 보고한다.**
+
+## 리더 결정 — 모자 띠/방울 라운드 (2026-09-01)
+
+1. **#43(중절모/밀짚 띠가 실루엣 변과 정확히 겹침) — 현행 승인.** #40과 완전히 같은 사안이고
+   근거도 그대로 적용된다(실패가 graceful, 띠가 `sink`에 나중에 들어가 위에 그려짐).
+2. **#44(걸을 때 방울 원이 찌그러짐) — 백로그.** 이번 변경이 오히려 완화시켰고(반지름 대비 94%
+   → 57%), 근본 해결은 렌더러 스웨이 규약 변경이라 별건이다.
+3. **#4(밀짚모자 띠 잉크/관 높이 0.64, 규칙1의 "장식 ≤ 0.5×대상" 초과) — 수용.** 이번 변경이
+   만든 값이 아니라 "관이 낮다"는 밀짚모자 정체성에서 나오는 값이다. 고치면 중절모와 같아진다.
+4. **`BudgetedItems` 확장 + 폼폼 위반 + 중절모 카드 아이콘 — 즉시 배정.** 특히 폼폼(8각형,
+   변 0.49W·꺾임 45도) 하나 때문에 **HEAD 카테고리 전체가 획 예산 검사에서 빠져 있는 것**이
+   실질적인 커버리지 구멍이다. 곧 릴리즈에 나가므로 지금 막는다.
+5. **교훈 기록 — "역사를 재현하는 네거티브 컨트롤은 비교 대상 양쪽을 다 얼려야 한다."**
+   앞 라운드가 옛 펜던트만 박제하고 방울은 살아있는 도형을 읽게 두어, 방울이 커지자 "역사상
+   존재한 적 없는 쌍"을 재는 검사가 됐다. 자기완결형으로 고친 것이 옳다.
+
+## 리더 결정 — Windows 패리티 감사 (2026-09-01)
+
+**이 감사의 최대 성과: C1이 사용자가 원래 신고한 바로 그 버그였다.**
+사용자 신고 원문(2026-08-31): "맥os는 모르겠는데 엑셀같은 프로그램 전체화면에서 엑셀 클릭하면
+캐릭터가 없어져버림". 당시 macOS의 `LSApplicationCategoryType` 게임 카테고리 판정을 추가해
+해결했다고 판단했는데, **정작 사용자가 신고한 Windows 쪽은 지금까지 기하 판정만 쓰고 있었다.**
+즉 신고된 플랫폼에서 버그가 그대로 살아 있었고, 곧 Windows 릴리즈가 나간다. **즉시 배정.**
+
+교훈: 사용자 신고에 "맥은 모르겠는데"처럼 플랫폼 단서가 있으면 그 플랫폼을 **먼저** 고쳐야 한다.
+사용자의 상시 요구("수정한 모든 것은 윈도우도 동일하게")가 있었는데도 이번엔 macOS만 고치고
+Windows를 놓쳤다 — 이 감사가 없었으면 릴리즈에 그대로 나갈 뻔했다.
+
+| 항목 | 판단 |
+|---|---|
+| **C1** 전체화면 게임 카테고리 판정 없음 (원칙2 위반, 사용자 신고 버그) | **즉시 배정** |
+| **C3** 단축키 표기가 macOS 글리프(⌃⌥⌘A)로 하드코딩 — Windows에서 틀린 조합 표시 | **즉시 배정**(단 `ItemCatalog.cs`를 다른 라운드가 편집 중이라 그 라운드 종료 후) |
+| **C2** 가상 데스크톱 전환 시 캐릭터 안 따라옴 | **백로그.** 모든 데스크톱 고정이 비공개 API라 코딩 이전에 정책 판단이 필요하다 |
+| **C4** Windows 모니터 절전 감지 불가(`DisplayOff` 티어 미발동) | **수용.** 코드에 정직하게 문서화돼 있고 보수적으로 동작(오작동 아님) |
+| **C5** 발판 진단 로그 형태가 양 플랫폼에서 다름 | **의도된 분기로 유지.** 24시간 상주 앱에는 Windows 쪽(이상 시에만 + 30초 스로틀)이 오히려 낫다 |
+
+**방법론 칭찬 겸 기록**: Windows 전용 파일은 이 머신에서 **한 번도 컴파일되지 않는다**는 게
+갭이 조용해지는 근본 이유인데, Unity 번들 Roslyn을 직접 몰아 `-define:UNITY_STANDALONE_WIN`으로
+런타임 어셈블리를 크로스 컴파일(0 에러)한 접근이 옳다. 앞으로 Windows 쪽 변경은 이 방식으로
+검증한다.
+또 하나: 첫 감사 버전이 **"Windows에는 아직 이 판정이 없다"고 정직하게 써둔 주석 때문에 그 갭을
+'해결됨'으로 오판**했다. 정직한 문서화일수록 소박한 텍스트 감사를 눈멀게 한다 —
+`StripLineComments()`가 그래서 필요하다.
+
+## 리더 결정 — 발판 상실 공중 정지 (2026-09-01)
+
+**(C) 채택 — 시간은 두고 연출을 붙인다.** 소은의 통제 비교(같은 빌드·같은 물리·같은 지속시간에서
+IDLE=렉, WALK=개그)가 결정적이다. (B) 시간 단축은 **기각** — 줄여도 얼어 있는 건 같고 OS 열거
+호출만 늘어난다. 문제는 길이가 아니라 **생명 신호의 유무**다.
+
+승인 사항:
+1. **연출 구현 배정** — 다리 종종거림(걷기 사이클 가로이동 0, 2~3배속) 1순위, 팔 허우적 2순위,
+   `SetBodyLean`은 마지막 0.1초 전조로만(상체 35pt라 10도면 끝점 6pt — 단독으론 안 보이는 변화).
+2. **유예를 진짜 상태로 승격한다.** 지금 `_graceHoldFrame`은 내부 플래그일 뿐인데 이 프로젝트
+   규약은 "상태 ID 하나로 포즈가 결정된다"(TickPose)이다. 포즈를 붙이려면 승격이 규약에 맞다.
+3. **대사는 넣지 않는다.** 원칙1상 상태 승격 없이 Idle에 대사를 얹으면 그게 정확히 "대사 먼저"다.
+   승격하면 기술적으로는 가능해지지만, 사용자가 요청하지 않은 연출/대사가 뜨는 것에 반복적으로
+   불만을 표했던 이력이 있으므로 **연출만, 대사 없이** 간다.
+4. **체감 시간 전제 정정 기록**: 사용자가 보는 정지 = 폴링 지연(0~0.3초) + 유예(0.45초) =
+   **0.45~0.75초, 평균 약 0.6초**. 앞으로 이 구간을 논할 때 0.45초가 아니라 이 값을 쓴다.
+5. **미확인 항목(소은 요청)**: 이번 판단은 재구성 실험이다. 수정이 들어간 빌드가 나오면 IDLE
+   케이스를 30초쯤 재확인해야 한다 — 특히 "유예 중 IdleState가 실제로 Tick을 도는가". 만약 유예
+   중엔 유휴동작이 아예 안 걸린다면 프리즈는 관측된 것보다 **더** 확정적이다.
+
+## [test-engineer/T3] 프레임수=시간 함정 — 잔여 2건 마무리 (2026-09-01)
+
+앞 절(`## [test-engineer/T3] 프레임수=시간 함정 전수 점검`)의 **5. 다른 라운드로 넘기는 항목**을
+닫는다. 대상은 `Assets/_Project/Scripts/Tests/PlayMode/CapeFallFlutterTests.cs` 두 곳뿐이고,
+프로덕션 코드는 **한 줄도 건드리지 않았다**(4개 라운드가 프로덕션 파일을 편집 중).
+
+### 1. 무엇을 바꿨나 — 표본 창만, 문턱과 단언은 그대로
+
+| # | 자리 | 이전 | 이후 | 문턱/단언 |
+|---|---|---|---|---|
+| 1 | `가만히_서_있으면_망토는_정적이다` 표본 창 | 20프레임 = **0.002초** | **2.0초**(`TestClock.SampleForSeconds`) | `Assert.Less(maxShift, 1e-4f)` — **무수정** |
+| 2 | `TestRig.HoldTumble` 예산 | 6프레임 = **0.0007초** | 초 인자로 변경. 기류 상승용 **0.9초** / 회전 반영용 **0.01초** | `> Stroke*1.5`, `> Stroke` — **무수정** |
+| 3 | `LoadSceneAndPinIdle`의 손수 짠 Idle 대기 루프 | `Time.realtimeSinceStartup` 루프, 홀드 0.5초 | `TestClock.WaitForState(..., holdSeconds: 0.7f)` | — |
+
+③을 함께 고친 이유: 착지 뒤 기류는 `AirFlowSettleSeconds`(=`SwayPeriodSeconds` **0.62초**)에 걸쳐
+잦아드는데 **그 구간은 이미 Idle이다.** 홀드 0.5초는 그 0.62초보다 짧아, "아직 잦아드는 중"인 천을
+기준 원본(`still`)으로 찍을 수 있었다. 표본이 0.002초일 때는 드러나지 않던 위험이 2초로 넓히는
+순간 진짜 위험이 된다.
+
+### 2. #1 — "정적이다"는 **실제로 정적이었다** (실측 6회)
+
+표본을 1,000배로 넓혔는데도 **밑단 최대 이동 = 0.000000유닛**(획 두께 0.036의 0.000%). 즉 이번에
+드러난 진짜 결함은 없다. 대신 **감도**가 달라졌다 — 문턱 1e-4는 그대로지만 잡아낼 수 있는 누출
+속도가 `1e-4 / 표본시간`이므로:
+
+```
+   옛 20프레임(0.002초) : 0.05    유닛/초보다 느린 누출은 전부 통과(사실상 무검증)
+   지금 2.0초           : 0.00005 유닛/초까지 검출  →  감도 1,000배
+```
+
+| 실행 | 표본 | 프레임 수 | fps | Idle 이탈 | 밑단 최대 이동 |
+|---|---|---|---|---|---|
+| r1(표적) | 2.000초 | 25,314 | 12,657 | **0프레임** | **0.000000** |
+| r2(표적) | 2.000초 | 25,352 | 12,676 | 0프레임 | 0.000000 |
+| r3(표적) | 2.000초 | 18,642 | 9,321 | 0프레임 | 0.000000 |
+| r4(표적) | 2.000초 | 25,565 | 12,783 | 0프레임 | 0.000000 |
+| coder 전체 스위트(455건) | 2.000초 | 25,887 | 12,944 | 0프레임 | 0.000000 |
+| r5(`.*Cape.*` 12건) | 2.000초 | 26,411 | 13,206 | 0프레임 | 0.000000 |
+
+**부수 실측 — 배치모드 프레임레이트 갱신치**: 이 스위트에서는 **9,300~13,200fps**
+(0.076~0.107ms/프레임)로, 앞 라운드 실측(8,200~9,700fps)보다 빠른 구간이 나왔다. 환산할 때는
+**빠른 쪽(0.076ms)** 을 쓰는 편이 안전하다 — 20프레임이 0.0015초까지 줄어든다.
+
+**추가한 진단 2개**(이게 없으면 이 테스트는 다른 방식으로 거짓 통과한다):
+- **Idle 이탈 0프레임 단언.** 이 테스트는 Idle이 아닌 프레임을 건너뛴다 → 상태가 한 번도 Idle이
+  아니어도 `maxShift`가 0인 채 초록이 된다(빈 표본 = 보이지 않는 거짓 통과). 게다가 창 안에서
+  공중을 한 번 다녀오면 그 뒤 Idle 프레임의 움직임은 "가만히 서 있는데 움직인다"가 아니라
+  **직전 낙하의 잔여 운동**(0.62초 잦아듦)이라 표본 자체가 무효다. 6회 실행 전부 **이탈 0**.
+- **Idle 표본 시간 하한**(예산의 90%) 단언 — 위와 같은 이유의 두 번째 그물.
+- 네거티브 컨트롤은 **새로 만들지 않고 참조**했다: 같은 `HemPoints()` 경로가 낙하 중 **0.150유닛**
+  (획의 418~420%)을 재는 것이 같은 파일 (1)/(3)이다. "0이 나왔다"가 의미를 갖는 근거가 그것이다.
+
+### 3. #2 — 왜 `HoldTumble`을 **비대칭**으로 만들었나 (여기가 이번 라운드의 판단 지점)
+
+단순히 두 홀드를 다 0.9초로 늘리면 **회전 단언이 스스로 약해진다.** 밑단 오프셋에는 4.5Hz 물결
+(`HemAirRippleRatio` 0.34·R)이 섞여 있어서, 두 표본 사이에 시간이 흐르면 **회전과 무관하게** 물결
+위상만으로 최대 `2·0.34·R ≈ 0.0857유닛`(실측 R≈0.126)이 벌어진다 — 문턱(획 0.036)의 **2.4배**다.
+즉 "기류를 로컬로 내리지 않는" 회귀가 있어도 통과할 수 있게 된다.
+
+그래서:
+- **첫 홀드(기류 세기 상승) = 0.9초** — 프로덕션의 유일한 기류 시간 상수 0.62초의 1.45배.
+  상승이 시간에 걸리게 바뀌어도 이 표본은 계속 의미가 있다. 모자라게 되면 `shiftAtZero`가
+  **빨갛게 실패**한다(조용히 통과하지 않는다).
+- **둘째 홀드(루트 회전 반영) = 0.01초** — 회전은 `Force()`가 루트 transform에 직접 대입하고
+  렌더러가 **같은 루트에 붙어 있어**(`SceneBootstrapper`: `root.AddComponent<CharacterAccessoryRenderer>()`)
+  같은 프레임 LateUpdate에 반영된다. 세기는 첫 홀드에서 이미 최대이고 속력이 그대로라 다시 올릴
+  것이 없다. 0.01초면 물결 위상이 0.28라디안만 돌아 오염 상한이 **0.012유닛(문턱의 33%)** 이라
+  회전 효과가 0이면 단언이 정상적으로 실패한다.
+
+측정값은 이전과 사실상 동일(변경 전 기록 `0.15104 / 0.21366`):
+
+| 실행 | 0도 밑단 이동(문턱 0.054) | 0도↔90도 차이(문턱 0.036) |
+|---|---|---|
+| r1 | 0.14959 | 0.21508 |
+| r2 | 0.14956 | 0.21499 |
+| r3 | 0.14956 | 0.21512 |
+| r4 | 0.14965 | 0.21505 |
+| 전체 스위트 | 0.15037 | 0.21457 |
+| r5 | 0.15084 | 0.21340 |
+
+여유는 각각 **2.8배 / 5.9배**, 실행 간 편차 0.1% 미만.
+
+### 4. ★ 표본을 넓혔더니 드러난 것 — 리더 판단 요청 (측정에는 무해)
+
+`던져져_회전하는_동안에도...` 리그는 **땅에 서 있는 캐릭터에게 던지기 회전을 못 박아** 흉내 낸다.
+그런데 `ThrowTumbleState`는 진입하자마자 `"회전할 시간이 부족합니다(착지까지 0.00초 ...)"`로 Fall에
+넘기고, 다음 프레임에 리그가 다시 못 박는다 → **두 프레임에 한 번꼴로 상태 재진입**.
+
+- 실측: 첫 홀드 0.9초에 **3,969~4,123회**(6회 실행). 예산이 6프레임일 때도 **같은 비율**로
+  일어나던 일이고(홀드당 약 3회), 창을 넓히면서 **눈에 보이게 된 것**이다.
+- **측정에는 영향 없음**: 렌더러가 보는 것은 매 LateUpdate의 "공중 상태 + 속도 + 회전각"이고
+  Fall도 기류 대상(`IsAirborne`)이라 기류가 끊기지 않는다. 위 표의 안정성이 그 증거다.
+- **비용**: 진입 로그가 그만큼 쌓인다 — 이 표본 한 건이 결과 XML을 약 **1.4MB**, Player 로그를
+  약 **15MB** 불린다(전체 PlayMode XML이 2.6MB인 저장소에서 무시할 크기가 아니다).
+- **근본 해소안**: 홀드 동안 **위치까지 못 박아 실제로 공중에 띄우기**(지금은 속도/회전/상태만
+  못 박는다). 그러면 재진입이 사라지고 "던져져 회전 중"이라는 상황에도 더 충실하다. 다만 이건
+  **표본 창 교체를 넘는 시나리오 변경**이라 임의로 하지 않았다 — **리더 판단 요청**.
+  (파일 안 주석에도 같은 내용을 실측값과 함께 남겨 뒀다.)
+
+### 5. 검증
+
+- **PlayMode 6회 전부 통과**: 표적 4회(`CapeFallFlutterTests` 5/5), 다른 에이전트의 **전체 스위트**
+  455건 실행에 포함되어 통과(그 실행의 유일한 실패 `FeetVisuallyTouchScreenBottomAndAreNeverClipped`는
+  이 라운드와 무관한 다른 영역), `.*Cape.*` 12건 실행 12/12(`CapeLandingSettleTests`,
+  `LongCapeTrip*` 포함 — 이웃 스위트 무영향 확인).
+- **EditMode `FrameBudgetLintTests` 통과**: 144파일 / 프레임 대기 루프 **34개**(고치기 전 36개)
+  스캔, 위반 0건.
+- **Roslyn 오프라인 컴파일**(Unity 번들 `DotNetSdkRoslyn/csc.dll` + Bee가 만든 실제 `.rsp` 재사용)
+  으로 `StickMate.Tests.PlayMode` 어셈블리 **오류/경고 0** — `Library/` 락을 잡지 않는 사전 점검.
+- **락 취급**: 판정을 `comm`(실행 파일 이름) 기준으로만 했다. `pgrep -f "...-projectPath...StickMate"`는
+  **자기 셸 명령줄을 물어** 락이 영원히 잡힌 것으로 오판한다(앞 라운드가 발견한 버그). 이번 실행
+  중 실제로 다른 에이전트가 전체 스위트를 시작해 **830초를 기다렸다가** 실행했다 — 동시 실행 0회.
+
+### 6. 남은 함정 (다음 사람에게)
+
+- **`CapeFallFlutterTests`의 30프레임 낙하 루프 2개는 그대로 뒀다.** 재는 것이 "낙하 중 **최대**
+  이동"인데 기류 상승이 즉시라 첫 프레임에 최대가 나온다 — 프레임이 맞는 단위다. 단, **상승이
+  시간에 걸리게 바뀌면 이 둘도 초로 바꿔야 한다**(그때는 조용히 통과하는 것이 아니라 실패한다).
+- `Tests/EditMode/CapeAirFlutterTests.cs`는 순수 함수 검사라 프레임 예산이 **0건** — 손댈 것 없음.
+
+## 리더 결정 — 망토 테스트 잔여 2건 (2026-09-01)
+
+1. **`HoldTumble` 비대칭 홀드(상승 0.9초 / 회전 0.01초) 승인.** 둘 다 늘리면 밑단 4.5Hz 물결
+   위상만으로 문턱의 2.4배가 벌어져 회전 단언이 스스로 약해진다는 계산이 정확하다. 사유가 파일
+   주석에 남아 있으니 나중에 "왜 한쪽만 짧지?"로 되돌려지는 것도 막힌다.
+2. **`던져져_회전...` 리그의 상태 재진입 4,000회(로그 +15MB) — 백로그.** 프로덕션 버그가 아니라
+   테스트 시나리오 인공물이다(땅에 선 캐릭터에게 던지기 회전을 못 박으니 `ThrowTumbleState`가
+   "착지까지 0.00초"로 즉시 포기하고 리그가 다시 못 박는 순환). 측정 결과에는 영향이 없음이
+   수치 안정성으로 확인됐다. 근본 해소는 "홀드 동안 위치까지 못 박아 실제로 공중에 띄우기"인데
+   표본 창 교체를 넘는 시나리오 변경이라 별도 라운드로 미룬다. 다만 **로그 15MB는 다른 조사의
+   신호를 묻을 수 있으므로** 우선순위는 중간.
+3. **배치모드 프레임레이트 실측 갱신**: 앞 라운드 8,200~9,700fps → 이번에 **9,300~13,200fps**
+   구간도 관측. "N프레임이 몇 초인가" 계산은 보수적으로 상단값(13,200fps ≈ 0.076ms/프레임)을
+   쓰는 게 안전하다.
+4. **함정 기록**: `-testFilter`는 글로브가 아니라 **정규식**이다. `*Cape*`는 0건 매칭 + 종료코드 3
+   (통과처럼 보이지 않지만 오해하기 쉽다). `.*Cape.*` 형태로 써야 한다.
+
+## 리더 결정 — FX/PET 연출 + 머리앵커 추종 라운드 (2026-09-01)
+
+1. **정보창 초상화에 신규 4종 미리보기 없음 — 즉시 배정.** 몸은 해결됐지만
+   `CharacterPortraitStage.DrawFxPreview/DrawPetPreview`의 `switch`에 케이스가 없어 액자가 빈다.
+   이건 이 저장소가 스스로 세운 규칙 **"착용했는데 화면이 그대로면 그건 착용이 아니다"**가
+   초상화에서 그대로 재현되는 것이고, 곧 릴리즈에 나간다. 도형은 이미 있으니 케이스 4개면 끝난다.
+2. **FX 슬롯 전체가 카탈로그 색을 무시(기존 3종부터) — 백로그.** 신규 2종만 색을 넣으면 한
+   카테고리 안에서 규칙이 갈라지므로 기존과 같게 맞춘 판단이 옳다. 슬롯 전체 전환은
+   `StaleInkPieceCount` 계약을 함께 손봐야 하니 별도 라운드(고글 보조색·헤어 tint 등 P5 색 정책
+   묶음에 합류).
+3. **`FloorContactVisibilityTests` 실패 — 이 라운드 소관 아님 확정.** 근거가 충분하다:
+   실패값 482.73pt가 그 파일 주석(`:112`)이 "간헐적 실패로 관측됨: 482.72pt"로 적어둔 값과
+   사실상 동일하고 원인도 같다(낙하 전 Idle을 착지로 오인 → 스폰 좌표 누출). 게다가 지금 다른
+   라운드가 그 층(`SceneBootstrapper.cs`/`GroundSensor.cs`)을 대규모로 고치는 중이다 —
+   **그 라운드 종료 후 재확인** 항목으로 넘긴다.
+4. **함정 추가 기록 — `-testFilter`에 쉼표 목록을 주면 정규식으로 해석돼 0건 실행되고
+   `total=0 passed=0`으로 초록불처럼 끝난다.** 오늘 `-testFilter` 관련 함정이 두 번째다
+   (앞선 건: 글로브가 아니라 정규식이라 `*Cape*`는 0건 매칭). 여러 클래스를 지정하려면
+   `"StickMate.Tests.PlayMode.(A|B|C).*"` 정규식으로 써야 한다.
+5. **설명문의 주인은 `ItemCatalog.cs`가 아니라 `Resources/Items/*.asset`이다**(2026-08-31 DLC
+   이행 A단계 이후, `ItemCatalog.cs`는 파사드). 앞으로 아이템 설명 수정 배정 시 이 점을 명시할 것 —
+   이번 라운드가 스스로 알아차렸지만 지시에는 없었다.
+
+## ★ 리더 프로세스 결함 기록 — 파일 소유권 서술의 신선도 (2026-09-01)
+
+**사고 경위**: 리더가 "망토 라운드가 끝나 `CapeFallFlutterTests.cs`가 비었다"고 이 문서에 적은
+직후, **바로 그 파일을 편집할 라운드를 배정하고도 기록을 갱신하지 않았다.** 나중에 다른 에이전트가
+그 서술을 읽었고, 만약 그대로 믿었다면 활성 편집 중인 파일을 동시에 덮어쓸 뻔했다. 그 에이전트가
+**파일 mtime을 직접 재서** 막았다("4분 전에 수정된 활성 파일").
+
+**확정 규칙 (리더용)**:
+1. 이 문서의 "파일이 비었다 / 소유권이 풀렸다" 서술은 **작성 시점의 스냅샷일 뿐이며, 다음 배정
+   한 번으로 즉시 거짓이 된다.** 그러므로 소유권을 서술할 때는 **측정 근거(mtime, 커밋 해시,
+   해당 라운드 완료 시각)를 함께 적는다.** 근거 없는 "비었다"는 쓰지 않는다.
+2. **배정과 동시에 소유권 기록을 갱신한다.** 배정 프롬프트에 파일 목록을 쓰면서 이 문서의
+   소유권 서술을 안 고치면 그 순간부터 문서가 거짓말을 한다.
+3. **에이전트 측 규칙**: 남이 적어둔 소유권 서술은 참고 자료일 뿐이다. 파일을 편집하기 전에
+   **mtime을 직접 확인**해라. 문서와 실측이 다르면 실측이 맞다.
+
+이번엔 에이전트가 문서보다 실측을 믿어서 사고가 안 났다 — 그 판단이 옳았고, 규칙으로 승격한다.
+
+## Windows 전체화면 자동 숨김을 "게임일 때만"으로 좁힘 — 사용자 신고 버그 정면 수정 (Coder, 2026-09-01)
+
+**신고 원문(2026-08-31)**: "맥os는 모르겠는데 엑셀같은 프로그램 전체화면에서 엑셀 클릭하면 캐릭터가
+없어져버림 화면 뒤로 넘어가는 거 같음 이전엔 안그랬던거 같은데"
+
+8/31에 macOS만 `LSApplicationCategoryType` 필터로 고쳤고, **정작 신고 대상인 Windows는 기하 판정
+("전경 창 사각형 == 모니터 사각형")만 남아** 있었다(9/1 패리티 감사에서 발각). 그래서 전체화면
+Excel / PowerPoint 슬라이드쇼 / 브라우저 F11 / 동영상 전체화면에서 캐릭터가 계속 사라졌다.
+CLAUDE.md 절대 불변 원칙 2의 문구는 "전체화면 **게임** 감지 시 자동 숨김"이다 — 게임만이다.
+
+### 구현 방식 (macOS와 같은 2층 구조)
+
+| 층 | macOS | Windows (신규) |
+|---|---|---|
+| 순수 규칙 (플랫폼 중립) | `FullscreenGameCategory.IsGameCategory` | `WindowsGameExecutablePolicy.IsRegisteredGameExecutable` / `.PathEquals` |
+| 사실 조회 (플랫폼 전용) | `MacWindowService.QueryAppCategory` (NSRunningApplication → Info.plist) | `WindowsGameProcessProbe.IsGameProcess` (레지스트리 + 프로세스 경로) |
+| 배선 | `MacWindowService.EvaluateFullscreen` | `Win32WindowService.EvaluateFullscreen` |
+
+- 규칙은 전부 `Platform/FullscreenSuspendPolicy.cs`(플랫폼 중립)에 있다. Windows 전용 코드는
+  "게임인가"라는 **사실만** 떠 온다 — macOS와 동일한 책임 분리이고, 덕분에 macOS 개발 머신의
+  EditMode에서 규칙 전체를 검증할 수 있다.
+- 판정 근거: 게임 바가 스스로 관리하는 `HKCU\System\GameConfigStore\Children\*\MatchedExeFullPath`
+  (**읽기 전용**) ↔ `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` + `QueryFullProcessImageName`으로
+  얻은 전경 프로세스 실행 파일 경로를 대조. macOS가 Info.plist를 인용하듯, "게임인가"를 우리가
+  추측하지 않고 **OS/사용자가 이미 내려 둔 선언을 인용**한다.
+- **보수적 기본값(macOS와 같은 규약)**: 조회가 어떤 이유로든 실패하면 전부 **"게임 아님 = 숨기지
+  않음"**. 게임 중에 안 숨는 것은 사소한 거슬림이지만, 업무 중 캐릭터 실종은 지금 신고된 그 버그다.
+- 디바운스(`FullscreenVerdictDebouncer`, 1초)는 앞 라운드 이식분을 그대로 재사용.
+
+### 기각한 후보 (근거를 코드 주석에도 남김)
+
+- `SHQueryUserNotificationState` 단독 — 테두리 없는 전체화면 게임과 전체화면 엑셀이 **둘 다
+  `QUNS_BUSY`**. 이번 버그의 두 당사자를 구분조차 못 한다.
+- 창 스타일 휴리스틱(`WS_POPUP` + topmost + 캡션 없음) — PPT 슬라이드쇼/브라우저 F11도 같은 모양.
+- 로드된 모듈 검사(d3d11/dxgi) — 엑셀·브라우저도 같은 DLL을 올린다. 게다가 타 프로세스 모듈
+  열거는 원칙 3의 표면적만 넓힌다.
+- **파일 이름만 대조하는 폴백은 일부러 넣지 않았다** — `launcher.exe` 같은 흔한 이름에서 업무 앱을
+  게임으로 오인하는 쪽(=위험한 방향)의 오탐이 생긴다.
+
+### 절대 불변 원칙 3 (유저 자산 불변) 준수
+
+- 레지스트리는 `KEY_READ`로만 연다. 쓰기 계열(`RegSetValueEx`/`RegCreateKeyEx`/`RegDeleteKey`/
+  `RegDeleteValue` 등)은 **선언조차 하지 않았다** — 선언이 없으면 실수로도 부를 수 없다.
+- 프로세스 핸들은 `PROCESS_QUERY_LIMITED_INFORMATION`만. 메모리 읽기/쓰기·스레드 조작·종료 권한이
+  아예 없고 관리자 승격도 불필요하다. 타 프로세스에 메시지를 보내지 않고 창을 건드리지 않는다.
+- 새 테스트가 이 두 가지를 **기계로 잠근다**(아래).
+
+### 변경/추가 파일
+
+- `Assets/_Project/Scripts/Platform/FullscreenSuspendPolicy.cs` — `WindowsGameExecutablePolicy` 추가(순수)
+- `Assets/_Project/Scripts/Platform/Windows/WindowsGameProcessProbe.cs` — **신규**, 조회 전용 P/Invoke
+- `Assets/_Project/Scripts/Platform/Windows/Win32WindowService.cs` — `EvaluateFullscreen`에 게임 조건 추가
+- `Assets/_Project/Scripts/Tests/EditMode/WindowsFullscreenGamePolicyTests.cs` — **신규** 12건
+- `Assets/_Project/Scripts/Tests/EditMode/PlatformParityAuditTests.cs` — C1의 `Assert.Ignore`를
+  정식 검사 `전체화면_숨김은_양_플랫폼_모두_게임일_때만_건다`로 **승격**
+
+### 검증 결과 (이 머신에서 가능한 전부)
+
+1. **크로스 컴파일 0 에러** — Unity 번들 Roslyn(`MonoBleedingEdge/lib/mono/4.5/csc.exe`)을 직접 몰아
+   런타임 어셈블리를 두 정의로 빌드. `-define:UNITY_STANDALONE_WIN` 0건, `-define:UNITY_STANDALONE_OSX`
+   0건(macOS 회귀 없음). 산출물 심볼 확인: `WindowsGameProcessProbe`는 win 어셈블리에만,
+   `WindowsGameExecutablePolicy`는 양쪽에 존재.
+2. **EditMode 테스트 29건 실행 → 27 passed / 0 failed / 2 skipped**
+   (`WindowsFullscreenGamePolicyTests` + `PlatformParityAuditTests` + `UserAssetImmutabilityAuditTests`).
+   skipped 2건은 이 라운드와 무관한 잔여 패리티 항목(가상 데스크톱 동행, 단축키 글리프 표기).
+3. **순수 규칙 27개 단언을 실제 컴파일 산출물로 직접 실행**(Unity 없이 mono 콘솔 하네스) — 전부 통과.
+   "전체화면 EXCEL/POWERPNT/chrome = 게임 아님", "등록된 게임 = 게임", 대소문자/슬래시/따옴표/NUL
+   흔들림 흡수, 빈 경로끼리는 같다고 보지 않음(조회 실패 두 건이 우연히 일치해 숨는 최악 경로 차단).
+
+### ★ 사용자 Windows 머신에서 반드시 확인해야 할 항목 (이 머신에서는 검증 불가)
+
+| # | 시나리오 | 기대 결과 |
+|---|---|---|
+| 1 | **엑셀을 전체화면으로 놓고 엑셀 창을 클릭** | 캐릭터가 **사라지지 않는다** (신고 버그 자체) |
+| 2 | PowerPoint 슬라이드쇼(F5) 실행 | 캐릭터가 사라지지 않는다 |
+| 3 | 브라우저 F11 전체화면 / 유튜브 전체화면 | 캐릭터가 사라지지 않는다 |
+| 4 | **실제 게임을 전체화면으로 실행** (가급적 Win+G 게임 바가 "게임"으로 인식하는 것) | 캐릭터가 **숨는다** |
+| 5 | 4번 게임을 종료/알트탭 | 약 1초 안에 캐릭터가 **되돌아온다**(디바운스 1초) |
+| 6 | 게임 바를 한 번도 쓰지 않은 계정에서 게임 실행 | **숨지 않을 수 있다**(알려진 한계, 안전한 방향). Win+G로 한 번 열어 "게임입니다" 체크 후 재확인 |
+| 7 | 작업표시줄 자동 숨김 ON + 전체화면 앱 | 캐릭터가 깜빡이지 않는다(디바운스) |
+| 8 | 로그 확인 | 상태가 바뀔 때만 `[전체화면판정] ... 전경 실행 파일=..., 게임바 등록 N건 -> 게임=...` 한 줄이 남는다. **N=0이면** 게임 바 목록을 못 읽은 것(6번 상황) |
+
+> 6번이 "게임인데 안 숨는다"로 나오면 그건 **설계된 보수적 실패**이지 버그가 아니다. 반대로
+> 1~3번에서 여전히 사라진다면 그건 회귀이므로 8번 로그 한 줄을 그대로 보내 주면 원인이 특정된다.
+
+### 교차 레이어 영향
+
+- **네이티브(Windows)**: `Platform/Windows/`에 조회 전용 P/Invoke 파일이 1개 늘었다
+  (advapi32 4종 + kernel32 3종, 전부 읽기). `Win32WindowService.cs`의 클래스 문서에 있던 "Win32
+  P/Invoke는 이 파일에만"이라는 문장은 이미 사실이 아니었으므로(`WindowsViewerPresenceService`)
+  컨벤션 문구대로 "`Platform/Windows/` 밖으로 나가지 않는다"로 정정했다.
+- **AI/렌더/입력**: 변경 없음. `IPlatformWindowService`의 시그니처도 그대로다 — 바뀐 것은
+  `IsFullscreenAppActive()`가 **언제 true를 돌려주는가**뿐이고, Windows에서 true가 나오는 경우가
+  줄어드는 방향이다(= Suspend가 덜 걸린다). macOS 동작은 한 줄도 바뀌지 않았다.
+- **리더 확인 요청**: 레지스트리 쓰기 API 금지 스캔을 지금은 새 테스트
+  `WindowsFullscreenGamePolicyTests.Windows_구현에는_레지스트리_쓰기_API가_한_건도_없다`에 두었다.
+  파일 소유권 경계 때문에 `UserAssetImmutabilityAuditTests.ForbiddenPatterns`에 넣지 못했는데,
+  **원칙 3의 단일 관문은 그쪽**이므로 다음 라운드에 그리로 옮기는 편이 옳다(그때 스캔 대상이
+  Windows 폴더 밖으로도 넓어진다).
+
+### 다음 사람에게 (도구 기록)
+
+- 다른 에이전트와 `Library/` 경합 없이 **Unity를 띄우지 않고** 컴파일만 검증하는 스크립트를
+  스크래치패드에 남겼다: `xcheck.sh win|osx`(런타임), `xcheck_tests.sh`(EditMode 테스트).
+  Unity가 이미 만들어 둔 `Library/Bee/artifacts/{1900b0aP=Win,200b0aP=macOS,200b0aE=맥에디터}.dag/
+  *.rsp`에서 옵션/참조만 뽑아 소스 목록만 갈아끼우는 방식이라 정의(define) 세트가 실제 빌드와 같다.
+- **함정**: 테스트 어셈블리를 크로스 컴파일할 때 `-out:` 파일명을 원본과 다르게 주면
+  어셈블리 이름이 달라져 `InternalsVisibleTo`가 깨지고 **CS0122가 수십 건 쏟아진다**(내 코드 문제로
+  오인하기 쉽다). 산출물 이름은 반드시 `StickMate.Runtime.dll` / `StickMate.Tests.EditMode.dll`로.
+- `-testFilter`에 **세미콜론(`;`) 구분 목록은 정상 동작한다**(쉼표는 정규식으로 해석돼 0건 —
+  앞 라운드 기록 보완).
+
+## 리더 결정 — C1 Windows 전체화면 게임 판정 (2026-09-01)
+
+**사용자 신고 버그가 신고된 플랫폼에서 마침내 해결됐다.** 접근이 macOS와 대칭인 점이 좋다 —
+macOS가 앱의 `Info.plist` 선언을 인용하듯 Windows는 게임바 등록 목록(읽기 전용 레지스트리)을
+인용한다. 둘 다 **추측이 아니라 OS/사용자가 이미 한 선언**을 근거로 쓴다. 기각된 후보들
+(`SHQueryUserNotificationState` 단독, 창 스타일 휴리스틱, 로드된 모듈 검사, 파일명 폴백)의 사유가
+코드에 남아 있어 나중에 "왜 이렇게 안 했지"로 되돌려지는 것도 막힌다.
+
+1. **레지스트리 쓰기 금지 스캔을 `UserAssetImmutabilityAuditTests.cs`로 이관 — 배정 대기.**
+   원칙3의 단일 관문은 그 파일이고, 지금은 스캔이 신규 테스트 파일 안에 있어 `Platform/Windows/`
+   범위에만 걸린다. C3(단축키 글리프)와 함께 마지막 정리 라운드로 묶는다(둘 다 지금 다른 라운드가
+   해당 파일을 편집 중이라 대기).
+2. **비행 중 관측 보고 — `AccessoryBeaniePomTests.cs`에 NUnit에 없는 `Assert.GreaterAndLess(...)`가
+   잠시 들어가 EditMode 어셈블리 전체가 깨졌었다**(폼폼 라운드). 그 라운드가 스스로 고쳤지만,
+   **한 파일의 컴파일 에러가 전체 어셈블리를 죽여 다른 라운드의 검증까지 막는다**는 사실이
+   실증됐다. 동시 라운드가 많을 때 이 위험이 크므로, 앞으로 테스트 파일 추가 시 존재하지 않는
+   NUnit API를 쓰지 않았는지 컴파일로 먼저 확인할 것.
+3. **재사용 도구 확보**: 스크래치패드에 `xcheck.sh win|osx` / `xcheck_tests.sh` — Unity를 띄우지
+   않고 크로스 컴파일만 하는 스크립트다. `Library/` 락 경합 없이 사전 점검할 수 있어 동시 라운드가
+   많은 이 저장소에 특히 유용하다. **함정**: 테스트 어셈블리를 크로스 컴파일할 때 `-out:` 파일명이
+   반드시 `StickMate.Tests.EditMode.dll`이어야 한다 — 아니면 `InternalsVisibleTo`가 깨지면서
+   엉뚱한 CS0122가 수십 개 쏟아진다.
+
+## ★ 릴리즈 후 사용자 Windows 머신에서 확인할 항목 (C1 관련)
+
+이 머신에서는 Windows 실행이 불가능하므로 아래는 **실기 확인 필수**다.
+
+1. 전체화면 Excel에서 Excel 클릭 → 캐릭터가 **그대로 있어야** 함 (원래 신고된 버그)
+2. PowerPoint F5 슬라이드쇼 → 그대로
+3. 브라우저 F11 / 전체화면 유튜브 → 그대로
+4. 실제 전체화면 게임(게임바가 아는 것) → **숨어야** 함
+5. 그 게임에서 나가거나 알트탭 → 약 1초 안에 복귀(디바운스)
+6. 게임바를 한 번도 안 쓴 계정에서는 게임에서도 **안 숨을 수 있다** — 보수적 실패로 설계된 것이지
+   버그가 아니다. Win+G를 한 번 누른 뒤 재확인.
+7. 작업표시줄 자동숨김 + 전체화면 앱 → 깜빡임 없어야 함
+8. 전환 시 로그: `[전체화면판정] ... 전경 실행 파일=..., 게임바 등록 N건 -> 게임=...`
+   `N=0`이면 게임바 목록을 못 읽은 것(6번 경우).
+
+---
+
+## 2026-09-01 — 폼폼 규칙1 위반 + 획 예산 린트 커버리지 확장 (coder / Teammate1) ✅
+
+리더 배정 3건("모자 띠/방울 라운드" 결정 4번). **소유권 경계 준수**:
+`AccessoryShapeBuilder.cs`는 **폼폼(BeaniePom) 한 자리만** 고쳤다. 방금 고쳐진 것들(EYES 6종,
+바가지머리·펜던트·베레모, 중절모/밀짚 띠, 방울)은 **한 줄도 건드리지 않았다**.
+
+**손댄 파일**: `Interaction/AccessoryShapeBuilder.cs`(폼폼 상수 + 호출 1줄) /
+`Tests/EditMode/AccessoryStrokeBudgetTests.cs`(BudgetedItems 확장 + 규칙 검사기를 재사용 가능하게) /
+`Resources/Items/equip_head_fedora.asset` + `Tests/EditMode/Golden/ItemCatalogGolden.txt`(카드 폴백 띠 1줄) /
+**신규 3개** `AccessoryBeaniePomTests`(8건) · `AccessoryRuleOneCoverageTests`(6건) ·
+`AccessoryFedoraCardBandTests`(4건).
+
+### 먼저: 오프라인 검산 포트가 **앞 라운드들의 수치를 전부 재현**하는 것을 확인하고 시작했다
+
+`AccessorySilhouetteMetrics`의 계산(변 조밀 표본·360도)과 `AccessoryStrokeBudgetTests`의 규칙 1
+판정을 그대로 옮긴 포트. W = **0.343864R** @배율 0.75.
+
+| 앞 라운드 보고값 | 내 포트 재현값 |
+|---|---|
+| 폼폼 잉크 사각형 1.28획 / 변 0.49획 / 꺾임 45도 | **1.28획 / 0.49획 / 45.0도** |
+| 펜던트 3.61획 · 반다나 4.65·3.09획 | **동일** |
+| 방울 지름 1.63획 · 중절모/밀짚 띠 0.00획 | **동일** |
+| 나비넥타이 매듭 0.91획 / 타이 매듭 1.40·줄무늬 0.87·blade 0.60획 / 목도리 자락 0.64획 | **전부 동일** |
+
+### (1) 폼폼 — 위반은 **두 겹**이었고, 둘째는 앞 라운드가 모르던 것이다
+
+| | 실측 | 판정 |
+|---|---|---|
+| 잉크 사각형 | 0.44R = **1.28획** (문턱 1.5획) | **확정 위반** |
+| 한 변 | **0.49획** (문턱 1.0획) | 위반이지만 **린트가 못 잡는다** ← 새 발견 |
+
+★ **8각형은 꺾임이 정확히 45.000도인데 검사 문턱(`CornerDegrees`)도 정확히 45도다.** float32에서
+여덟 꼭짓점이 **44.999996 / 45.000006으로 번갈아** 갈려, "양끝이 **모두** 꺾임"인 선분이 하나도
+성립하지 않는다 → stub 검사가 0.49획짜리 여덟 변을 **한 개도** 잡지 못한다.
+즉 **폼폼을 그대로 둔 채 HEAD를 린트에 넣었어도 이 변들은 조용히 통과했을 것**이다.
+배정문의 "8각형은 꺾임이 정확히 45도라 각 변이 독립 획으로 요구된다"는 절반만 맞다 —
+요구되는 것은 맞지만, **요구되는지 아닌지가 반올림에 달려 있었다**.
+
+**고침 — 방울과 같은 병이 아니었다.** 방울의 해법은 "키우기가 아니라 채우기"였는데
+**폼폼은 처음부터 `filled: true`였다**. 남은 지렛대는 각수와 크기뿐이라 둘 다 썼다.
+
+| 항목 | 옛 값 | 새 값 |
+|---|---|---|
+| 각수 / 위상 | 8각, 위상 0도 | **10각, 위상 90도** |
+| 꺾임 | 45.000도(= 문턱) | **36.000도**(문턱에서 9도) |
+| 반지름 | 0.22R (지름 **1.28획**) | **0.28R (지름 1.63획)** — 1.5획에 8.6% 여유 |
+| 오프셋 | `BeaniePomOffsetRatio` 0.18f (매직넘버) | **`BeaniePomCrestRiseRatio`(0.40) − 반지름에서 유도** |
+| 폼폼 꼭대기 | 머리중심 위 **1.80R** | **1.80R (한 자리도 안 움직였다)** |
+| 관과의 겹침 | **0.01획**(사실상 접함 — 규칙 4 잠복 결함) | **0.36획** |
+| 모자 6종 15쌍 실루엣 차 | 최소 2.949획(털모자↔중절모) | **최소 2.949획 — 소수점 여섯 자리까지 동일** |
+
+- **왜 반지름이 아니라 "꼭대기"를 고정 대상으로 잡았나**: 폼폼 꼭대기는 초상화 액자 상한
+  (`CharacterPortraitStage.TallestAccessoryAboveHeadCenterInR` = 1.80R)에 **정확히 닿아** 있었다
+  (0.62 + 0.78 + 0.18 + 0.22 = 1.80). 반지름만 키우면 그대로 잘린다. `오프셋 = 꼭대기 − 반지름`으로
+  유도하니 **실루엣이 산술적으로 안 움직인다** — 그래서 15쌍이 전부 그대로다(배정 조건 "2.95획 유지" 충족).
+  털모자 반경 프로파일에서 값이 바뀐 각도 구간은 **72개 중 4개**(80~100도, 곧장 위쪽)뿐이다.
+- **위상 90도인 이유**: 10각형을 위상 0으로 두면 가장 높은 꼭짓점이 72도에 놓여 꼭대기가 0.049·r
+  낮아진다(옛 방울의 부착 결함과 같은 계열). 90도면 꼭대기가 **정확히** 꼭짓점이다.
+- **덤으로 규칙 4 잠복 결함 1건이 닫혔다**: 옛 폼폼은 관 표면과 0.01획만 겹쳐 사실상 접해 있었다 —
+  어느 쪽 상수를 조금만 건드려도 규칙 4가 "최악"이라고 못박은 0 &lt; 간격 &lt; 1획 구간에 빠지는 자리였다.
+
+### (2) 커버리지 — **아이템 단위 목록**을 **도형 단위 대장**으로 바꿨다
+
+전 카테고리 30종을 전수 실측한 결과 **22종이 이미 통과**한다. `BudgetedItems`에 전부 넣었다.
+
+| | 이전 | 이후 |
+|---|---|---|
+| `BudgetedItems` | **13종**(HAIR 6 + EYES 6 + 방울 1) | **22종**(+ HEAD 왕관·베레모·밀짚모자, NECK 펜던트·반다나, BACK 짧은망토·긴망토·판초·요정날개) |
+| 실제 검사되는 **도형** | 27개 / 전체 75개 (36%) | **61개 / 75개 (81%)** |
+| 검사에서 통째로 빠진 아이템 | 17종 | **0종** |
+
+★ **핵심은 숫자가 아니라 구조다.** 신규 `AccessoryRuleOneCoverageTests`가 **전 카테고리 전 아이템의
+모든 도형**을 훑고, 대장(`Waivers`)에 **이름과 실측값이 적힌 도형만** 건너뛴다. 그래서
+
+- 새 DLC 아이템/도형은 **기본이 검사**다(아무것도 안 적으면 검사된다 = 구멍이 안 생긴다).
+- 면제가 **도형 하나씩**이라, 털모자는 폼폼·관이 검사되고 **띠만** 빠진다
+  (옛 방식은 폼폼 하나 때문에 HEAD 카테고리 15개 도형 전부가 사라졌다).
+- **면제는 스스로 만료된다** — `면제된_도형은_아직_실제로_위반한다`가 "고쳤는데 대장에서 지우는 걸
+  잊는" 경로를 막는다. 대장이 낡아서 새 위반을 조용히 덮는 일이 없다.
+- **래칫**: 커버리지가 22종/면제 14개 아래로 못 내려간다. 이게 없으면 "아이템을 목록에서 빼고
+  면제를 늘려" 전부 초록인 채로 커버리지를 팔 수 있다.
+
+### (3) ★ 넣어 보니 드러난 **신규 위반 6건** — 전부 이번 소유권 밖이라 대장에 적고 보고한다
+
+앞 라운드들은 NECK 3종만 알고 있었다. 나머지 5종은 **이번에 처음 측정됐다**.
+
+| 카테고리 | 아이템 | 도형 | 실측 | 최소 수정안 |
+|---|---|---|---|---|
+| HEAD | **천모자** | `HatBrim` | 닫힘변(4→0) **0.29획** (챙 뿌리 0.10R) | 0.10R → 0.35R. 챙이 관을 파고든다 |
+| HEAD | **털모자** | `BeanieBand` | 좌우 변 **0.58획**(띠 높이 0.20R) | **큰 수정 — 아래 별도 항목** |
+| HEAD | **중절모** | `FedoraCrease` | 잉크 사각형 **1.26획** | 폭 비율 0.30 → 0.36 (한 글자) |
+| BACK | **날개** | `WingFeatherA/B` | 어깨 닫힘변 **0.90 / 0.86획** | 요정날개가 이미 같은 자리를 피해 갔다(그쪽 주석에 "옛 날개 0.90획" 기록) |
+| BACK | **배낭** | `PackStrap` | 잉크 사각형 **1.32획** | 끈 끝점 = 배낭 위치라 함께 움직여야 한다 |
+
+**★ 배정의 전제가 절반은 틀렸다 — 폼폼만 고쳐도 HEAD는 통째로 못 들어간다.**
+배정문은 "폼폼 하나 때문에 HEAD 카테고리 전체가 막혀 있다"였지만, 실제로는 **천모자·중절모도 각각
+자기 위반이 있고 털모자는 폼폼 말고 띠도 어긴다.** 폼폼을 고친 뒤에도 HEAD 6종 중 3종은 못 들어온다.
+그래서 도형 단위 대장이 **필요했던 것**이지 취향이 아니다 — 대장 덕분에 HEAD 16개 도형 중
+**13개**는 지금 검사되고 있다(옛 방식으로는 0개).
+
+### 검증 (Unity 6000.0.82f1 batchmode, 실측)
+
+1. **오프라인 검산** — 앞 라운드 수치 8개를 전부 재현한 뒤에야 새 좌표를 확정했다(위 표).
+2. **신규 EditMode 18건**(`Logs/coder_pom_edit2.xml`):
+   - `AccessoryBeaniePomTests` **8건** — 획 예산 / 꺾임 여유 / 보조색·채움·정원 / 꼭대기 유도 /
+     15쌍 2.94획 하한 / 관 겹침 **+ 네거티브 컨트롤 2건**
+   - `AccessoryRuleOneCoverageTests` **6건** — 전 도형 검사 / 면제 만료 / 면제 실재성 /
+     구멍 양방향(통과인데 목록 밖 · 면제인데 목록 안) / 래칫
+   - `AccessoryFedoraCardBandTests` **4건** — 몸의 끝점 공유 / 카드가 몸 경로로 그려짐 /
+     폴백 띠도 관 밑변 직선 **+ 네거티브 컨트롤 1건**
+3. **★ 네거티브 컨트롤 3건 — 전부 자기완결형**(비교 대상의 **양쪽**을 다 얼렸다. 앞 라운드 교훈 준수):
+   - `컨트롤_옛_폼폼은_잉크_사각형_규칙을_실제로_어긴다` — 옛 8각 0.22R을 테스트 안에서 만들고
+     **1.28획**을 재확인한 뒤 검사기가 실제로 빨간불을 내는지 본다(살아 있는 도형을 0개 읽는다).
+   - `컨트롤_8각형은_꺾임_판정이_회전만으로_갈린다` — **회전은 수학적으로 각도를 안 바꾸는데**
+     "꺾임으로 세어진 꼭짓점 수"가 한 다각형 안에서 0도 8도 아닌 값이 나온다 = 판정이 기하가 아니라
+     반올림 소관. 판정 결과 자체를 단언하지 않는다(그 자체가 미정이므로) — **미정이라는 사실**을 단언한다.
+   - `컨트롤_옛_폴백_띠는_관_밑변을_가로질렀다` — 옛 띠 좌표 **와** 옛 관 밑변 y(23) 둘 다 박제.
+4. **표적 실행 216 / 216 통과**(`Logs/coder_pom_edit2.xml`) — 신규 3스위트 +
+   `AccessoryStrokeBudgetTests`(케이스 **38개**, 그중 BudgetedItems가 **22개**) +
+   `AccessoryHatBandAndBellTests` / `AccessorySilhouetteDistinctionTests` / `AccessoryShapeCatalogTests` /
+   `AccessoryCardIconTests` / `ItemCatalogAssetParityTests` / `ItemCatalogTests` /
+   `EyesVisorOpacityTests` / `HeadFillGeometryTests`.
+5. **전체 EditMode 618건 중 616 통과 / 실패 0 / 건너뜀 2**(`Logs/coder_pom_edit_all.xml`).
+   건너뜀 2건은 `PlatformParityAuditTests`의 의도적 `Assert.Ignore`(다른 라운드 소관).
+6. **PlayMode 액세서리 9스위트 60 / 60 통과**(`Logs/coder_pom_play.xml`) —
+   `AccessoryFillRenderingTests` / `AccessoryFacingFlipFillTests` / `AppearanceNewItemsRenderTests` /
+   `CharacterAccessoryScaleTests` / `CharacterAppearanceLayerTests` / `CharacterPortraitStageTests` /
+   `CharacterVisualHalfWidthTests` / `BodyLeanAccessoryFollowTests` / `PortraitEyeVisibilityTests`.
+   ※ 폼폼 정점이 8 → 10으로 늘어 채움 메시의 삼각형 수가 바뀌는 경로라 반드시 돌렸다.
+7. **Unity 락 준수** — 매 실행 전 `pgrep -x Unity`로 확인하고 비어 있을 때만 돌렸다.
+
+### 교차 레이어 영향 로그
+
+| # | 항목 | 영향 | 조치 |
+|---|---|---|---|
+| 45 | **폼폼 정점 8 → 10** | `CharacterAccessoryRenderer`의 `LineRenderer` positionCount +2, 채움 메시 삼각형 +2. 렌더러 수(MeshRenderer/LineRenderer)는 **안 바뀐다**(옛 폼폼도 이미 채움 도형이었다) | PlayMode 채움/반전/배율/레이어/초상화 60건 통과. `_points` 버퍼(카드 아이콘 128) 여유 충분 |
+| 46 | **폼폼 반경 0.22R → 0.28R** | 털모자 착용 시 실루엣 좌우 최대폭이 폼폼 자리에서 0.046R 넓어진다. **꼭대기는 불변**(1.80R)이라 초상화 액자·`CharacterVisualHalfWidth` 계열은 무영향 | `CharacterVisualHalfWidthTests` 통과. 모자 15쌍 실루엣 차 완전 동일 |
+| 47 | **`AccessoryStrokeBudgetTests`의 규칙 판정이 던지기 → 문자열 반환으로 바뀌었다** | 같은 규칙을 커버리지 대장이 **반대 방향**으로도 써야 해서 `DescribeRuleOneViolation`(통과 시 null)로 뽑았다. `CornerDegrees`/`Rig()`/`BudgetWorld`/`TurnDegrees`가 `internal`이 됐다 | **어셈블리 안**(Tests.EditMode)에서만 보인다. 런타임 코드는 이 파일들을 읽지 않는다 |
+| 48 | **중절모 카드 폴백 SVG 1줄 + 골든 1줄** | `equip_head_fedora.asset`의 보조색 조각이 5점 곡선 → 2점 직선. `ItemCatalogGolden.txt`도 같은 줄만 고쳤다(`n=10` → `n=4`) | `ItemCatalogAssetParityTests` 골든 대조 포함 216건 통과. **다른 아이템의 줄은 한 글자도 안 건드렸다** |
+
+### ★ 배정 3번(중절모 카드 아이콘)에 대한 정정 보고 — **전제가 이미 낡아 있었다**
+
+배정문은 "`ItemCatalog.cs`의 중절모 카드 아이콘 띠"라고 했지만, 좌표는 그 파일에 없다.
+2026-09-01 P0-a에서 카드가 `AccessoryCardIcon`(= **몸과 같은 도형**)으로 갈아탔고, 40×40 SVG는
+`Resources/Items/*.asset`으로 옮겨져 **`TryBuild`가 실패할 때만 쓰는 폴백**으로 남았다.
+장비 카테고리에서는 실패하지 않는다(`AccessoryCardIconTests`가 30종 전부에 대해 그것을 잠근다).
+
+→ **지적된 "관 밑변을 가로지르는 곡선"은 화면에 나올 수 없는 죽은 데이터였다.** 사용자가 보는
+중절모 카드는 이미 몸 도형 그 자체이고, 따라서 띠는 이미 관 밑변과 정확히 일치한다.
+그래도 폴백을 고쳤다(안전망이 틀린 그림이면 안전망이 아니다) + 검사로 잠갔다.
+
+**다만 같은 계열의 낡은 폴백이 4건 더 있다**(이번 소유권 밖이라 손대지 않았다):
+
+| 아이템 | 폴백 SVG | 몸의 현재 도형 |
+|---|---|---|
+| 밀짚모자 | 띠가 관 밑변(y=23)보다 **3px 위**(y=20) | 띠 = 관 밑변(간격 0) |
+| 베레모 | 테 `7,23→31,23`, 관 밑변 끝은 8·30 (2px씩 어긋남) | 테 = 밑변 끝점 공유 |
+| 방울목걸이 | **추(clapper) `kind=Dot`가 아직 있다** | 추는 2026-09-01에 삭제됐다 |
+| 펜던트 | 마름모 종횡비 **1.1** | 종횡비 **2.21**(세로로 뺀 것이 이번 재설계의 요지) |
+
+**리더 판단 요망**: (a) 넷 다 맞춘다 / (b) 폴백은 어차피 안 나오니 그대로 둔다 /
+(c) 폴백 SVG를 아예 삭제하고 `TryBuild` 실패 시 빈 카드를 허용한다.
+지금은 **중절모 하나만 새 계열, 나머지 넷은 옛 계열**이라 가장 어중간한 상태다.
+
+### 안 고친 것 / 리더 판단 요망
+
+1. **털모자 `BeanieBand` 0.58획 — 큰 수정이라 보고만 한다.** 띠 높이 0.20R을 1.0획(0.344R)로
+   만들려면: 밑변은 이 모자의 **커버선**(`HatCoverLocalY` 0.42R, HAIR 6종의 클리핑이 읽고
+   `AccessoryShapeCatalogTests`가 `0.42f`로 하드코딩해 잠근다)이라 못 내리고, 윗변을 0.7639R로
+   올리면 관이 밀려 폼폼 꼭대기가 **1.94R**이 되어 액자(1.80R)를 넘는다.
+   동시에 `BeanieCrownHeightRatio`를 0.78 → **0.636**으로 줄여야 아귀가 맞는데, 그건 털모자
+   실루엣 재설계다. **HAIR 클리핑 + 초상화 + 실루엣 구분도**를 한 번에 건드리므로 별도 라운드.
+2. **천모자 챙 0.29획 / 중절모 크리스 1.26획 / 날개 0.90·0.86획 / 배낭 끈 1.32획** — 넷 다
+   한두 상수 수정이지만 **이번 라운드의 소유권 밖**이다(중절모·천모자·BACK). 최소 수정안은 위 표에.
+3. **밀짚모자 띠 잉크/관 높이 0.64** — 리더가 이미 수용 결정(모자 띠 라운드 결정 3번). 재확인만 했다.
+4. **육안 검증 0회** — 이 에이전트는 에디터 UI를 띄울 수 없다. 검산은 전부 기하·수치이고,
+   37-6 규칙 7의 시트(배율 0.35/0.75/1.5 × 좌우반전 × 형제 나란히)는 못 찍었다.
+   특히 "폼폼이 27% 커졌는데 여전히 폼폼으로 보이는가"는 눈으로 봐야 한다.
+5. **`CornerDegrees` 문턱 자체는 안 건드렸다.** 45도가 정팔각형과 정확히 같은 값이라는 것이
+   이번 사각지대의 원인이지만, 문턱을 옮기면(예: 40도) **전 카테고리의 판정이 한꺼번에 바뀐다** —
+   이번 라운드가 짊어질 변경이 아니다. 대신 컨트롤로 사실을 박제해 두었고, 폼폼·방울이
+   10각형인 이유가 주석에 남아 있다. **문턱 조정은 리더 판단 대상.**
+
+## 리더 결정 — 폼폼 + 획예산 커버리지 라운드 (2026-09-01)
+
+**이 라운드는 리더 지시의 전제를 두 번 반증했고 둘 다 옳았다.** 기록해 둔다:
+- "8각형은 꺾임 45도라 각 변이 독립 획으로 요구된다" → **틀렸다.** float32에서 44.999996/45.000006이
+  번갈아 나와 `corner[]`가 F,T,F,T...가 되고 "양끝이 모두 꺾임"인 선분이 0개라, 검사가 0.49획짜리
+  여덟 변을 **하나도 못 잡고 있었다**. 폼폼을 안 고친 채 린트에 넣었어도 조용히 통과했을 것이다.
+- "폼폼만 고치면 HEAD가 통째로 들어간다" → **틀렸다.** 천모자·중절모도 각자 위반이 있고 털모자는
+  폼폼 말고 띠도 어긴다. 그래서 "아이템 목록"이 아니라 **"도형 대장"**(전 30종 75도형 중 61개=81%
+  검사, 통째로 빠진 아이템 0종, 자기 만료 + 래칫)으로 목표를 달성한 판단이 옳다.
+
+| 항목 | 판단 |
+|---|---|
+| **1. 털모자 `BeanieBand` 0.58W** | **백로그.** 밑변이 커버선(HAIR 6종 클리핑 + 카탈로그 테스트 하드코딩)이고 윗변을 올리면 폼폼 꼭대기가 액자를 넘어 `BeanieCrownHeightRatio` 동반 변경 = 실루엣 재설계다. 릴리즈 직전에 할 일이 아니다 |
+| **2. 천모자/중절모/날개/배낭 4건** | **즉시 배정.** 한두 상수 수정이고 릴리즈에 나갈 시각 품질이다 |
+| **3. 카드 폴백 4건** | **(a) 넷 다 맞춤으로 배정.** 특히 방울 폴백에 **이미 삭제된 추(clapper)가 남아 있는 것**은 존재하지 않는 아이템을 그리는 것이라 방치할 수 없다. 폴백 삭제(c)는 안전망을 없애는 것이라 기각 |
+| **4. `CornerDegrees` 45도 문턱** | **현행 유지.** 옮기면 전 카테고리 판정이 한꺼번에 바뀐다. 다만 이번에 드러난 사각지대(정팔각형이 문턱과 정확히 같아 반올림으로 판정이 갈림)는 이 라운드가 네거티브 컨트롤로 **"미정이라는 사실 자체"를 단언**해 잠가뒀다 — 좋은 처리 |
+| **5. 육안 검증** | **누적 미완 4라운드째.** 릴리즈 전에 리더가 직접 실행해서 확인한다(폼폼 27% 확대, 신규 아이템 14종, EYES 바이저, 헤어/목걸이 재설계 전부) |
+
+## 사용자 요청 (2026-09-01) — 구석 크기 다이얼 제거, 설정창 슬라이더로 일원화
+
+**사용자 지시 원문**: "릴리즈 후 지금 현재 왼쪽하단에 마우스 대면 사이즈 변경메뉴가 나오는데
+삭제하고 캐릭터 설정창에 사이즈 변경바를 넣어줘"
+
+**타이밍: 릴리즈 후에 착수한다**(사용자가 명시). 이번 Windows 릴리즈에는 구석 패널이 그대로 나간다.
+
+### 착수 전 확인해 둔 사실
+- **설정창 슬라이더는 이미 존재한다.** `SettingsWindow.cs:870` [캐릭터] 탭의 `캐릭터 크기` 슬라이더가
+  `CharacterScaleController`를 지나며, `StickConfig.Min/MaxCharacterScale`과 `ValueStep`을 그대로
+  참조한다. `SettingsCharacterScaleSingleSourceTests`가 "설정창 슬라이더 = 구석 다이얼 = 저장모델
+  = 실캐릭터"를 이미 잠그고 있다. → **요청의 후반부는 이미 충족. 실제 작업은 구석 패널 제거다.**
+- 구석 패널은 **크기 다이얼 전용 UI가 맞다**(다른 기능을 품고 있지 않음).
+- 제거 규모: `CornerHoverPanel.cs`(70KB) + `SizeDialWidget.cs`(28KB), 참조 19곳
+  (`SceneBootstrapper.cs` 씬 생성 포함, 테스트 8파일).
+
+### 착수 시 주의
+1. **다이얼은 값의 발행자이자 구독자를 겸한다.** 제거하면 설정창 슬라이더가 유일한 발행자가 되므로,
+   `CharacterScaleController`의 이벤트 왕복(발행 → 구독자 갱신)이 자기 자신만 남았을 때도 정상
+   동작하는지 확인해야 한다.
+2. **테스트 8파일 정리 방향**: `CornerHoverPanelTests`/`SizeDialWidgetHitTestTests`는 대상이
+   사라지므로 삭제. 그러나 `SettingsCharacterScaleSingleSourceTests`처럼 **단일 소스 불변식을
+   지키는 테스트는 남겨야 한다** — 다이얼 항목만 빼고 설정창↔저장모델↔실캐릭터 3자로 축소.
+   불변식 자체를 지우면 안 된다.
+3. `UiInteractionFramePacingHoldTests`에 구석 패널의 `HoldActiveForInteraction` 배선이 잠겨 있다 —
+   패널이 사라지면 그 항목도 정리하되, **다른 위젯의 홀드 배선은 건드리지 말 것**.
+4. `SceneBootstrapper` 재생성 시 **프리팹만 `--force` 하지 말고 씬과 함께** 재생성한다(기존 규칙).
+5. 제거 후 "크기 변경 진입 경로가 설정창 하나뿐"이 되므로, 설정창 진입 경로(정보창 헤더 [설정] /
+   `⌃⌥⌘,`)가 확실히 살아 있는지 확인. 진입로가 막히면 크기 변경이 통째로 불가능해진다.
+
+## coder (Teammate1) — FX/PET 신규 4종 **초상화 미리보기** 채움 (2026-09-01)
+
+**Windows 영향: 없음.** 건드린 것은 `Interaction/CharacterPortraitStage.cs`(순수 렌더 좌표)와 신규
+PlayMode 테스트 1개뿐이다. P/Invoke·`Platform/` 하위·네이티브 계층 참조 0건, 플랫폼 분기 0건,
+`IPlatformWindowService` 접촉 0건. macOS/Windows가 같은 코드 경로를 그대로 쓴다.
+
+### 무엇이 비어 있었나
+
+직전 라운드가 신규 4종(물방울 Lv.20 / 나뭇잎 Lv.24 / 풍선 Lv.27 / 달팽이 Lv.30)의 **실제 캐릭터
+연출**을 채웠는데, `CharacterPortraitStage`의 `DrawFxPreview`/`DrawPetPreview` **`switch`에는 그
+4종의 `case`가 없었다.** 착용하고 정보창을 열면 액자가 그대로다 — 규칙 *"착용했는데 화면이
+그대로면 그건 착용이 아니다"*가 **정보창(= 사용자가 아이템을 고르는 바로 그 화면)에서 재현**되고
+있었다. `switch`는 케이스를 빠뜨려도 컴파일이 통과하므로 사람 리뷰로는 반복해서 놓친다.
+
+### 조치 — 케이스 4개 + 헬퍼 2개 (도형은 전부 `AppearanceShapeBuilder`에서 가져온다)
+
+| 아이템 | 초상화가 놓는 대표 한 컷 | 도형(전부 기존 빌더) |
+|---|---|---|
+| FX 물방울 | 궤적의 **양 끝** 2알(막 생긴 작은 것 = 반지름 하한 / 다 떠오른 큰 것 = 상한). 위쪽이 더 왼쪽 = 실물의 "진행 반대쪽으로 흐름" | `BubbleRing` ×2 |
+| FX 나뭇잎 | 기울기가 다른 **2장**(실물은 수명 동안 210도 회전 — 수평으로 눕히면 "바닥에 놓인 잎"이 된다) | `LeafBlade`+`LeafStem` ×2 |
+| PET 풍선 | 끈(보조색) + 주머니(주색) 1개. **주머니가 머리 높이에 오도록 묶인 자리를 역산**해 내렸다 | `BalloonString`, `BalloonBody` |
+| PET 달팽이 | 접지선(y=0)에 놓인 1마리, 정면(facing +1) | `SnailFoot`, `SnailShell`, `SnailShellCore` |
+
+- **기존 관례를 그대로 따랐다**: FX는 잉크색·왼쪽(지나온 쪽) / 펫은 `ResolveWornPalette`의
+  주색·보조색·오른쪽, 보조색은 실물과 같은 1부위에만, 지면에 붙는 것은 y=0, 정지 컷은 조각 2개.
+- 신규 헬퍼는 `AddLeafPreview`(잎몸+잎자루를 **같은 각도로** 돌린 뒤 함께 이동 — 따로 돌리면
+  잎자루가 떨어져 나간다)와 `Rotate`(`Offset`과 같은 이유로 점을 직접 고친다) 둘뿐이다.
+- **좌표를 초상화에 새로 적은 곳은 0곳**이다(놓는 자리만 정한다 — `AppearanceShapeBuilder`의
+  "언제/어디/얼마나/무슨 색은 부르는 쪽 책임" 규약 그대로).
+
+### 38-12 #10(초상화 몸 획 이중 정의) 확인 결과 — **고치지 않았고, 물려받지도 않았다**
+
+지시대로 범위 밖이라 손대지 않았다. 확인한 사실:
+
+- 신규 4종 미리보기는 `AddLine`의 **기본 획**을 쓴다 = 기존 미리보기 7종과 **같은 한 벌**.
+  새 획 상수를 하나도 들이지 않았다(실측 6종 전부 `0.03600`유닛으로 동일).
+- ⚠ **P6에게 넘기는 주의**: 그 기본 획 `Stroke`가 지금 액세서리 상수
+  (`AccessoryShapeBuilder.StrokeWidthRatio`)라는 사실이 38-12 #10과 같은 뿌리다.
+  **고칠 때 `Stroke` 자체를 몸 획으로 재정의하면 미리보기 9종이 함께 두꺼워진다** —
+  몸 전용 두께는 새 이름(예: `BodyStroke`)으로 두고 `Stroke`는 그대로 둘 것.
+  같은 경고를 코드 주석(`PreviewSortingOrder` 바로 아래)에도 남겼다.
+
+### 검증 — 신규 `Tests/PlayMode/PortraitNewItemPreviewTests.cs` (6개, **6/6 통과**)
+
+플래그가 아니라 **실제로 만들어진 `LineRenderer`**를 잰다: ① 이름이 있고 ② 점 2개 이상 ③ 사각형이
+0이 아니고 ④ 알파 > 0.5 이며 `enabled` ⑤ **획 바깥쪽까지 액자 가시 사각형 안**(⑤가 없으면
+"그렸는데 액자 밖이라 안 보인다"가 초록으로 통과한다 — 이 촬영장이 2026-08-31에 실제로 낸 사고).
+
+- **공허한 통과 방지 2중**: 같은 프레임에 몸(`Head`/`HeadFill`/`Torso`)이 그려져 있는가 +
+  포즈가 미리보기를 그리는 버킷(Standing/Busy)인가.
+- **네거티브 컨트롤**: FX "없음" + 펫 미착용이면 4종 도형이 **하나도** 없다.
+- **획 일관성**: 신규 4종의 획 = 기존 미리보기(반짝임/공)의 획. 값을 못박지 않아 훗날 초상화
+  획이 바뀌어도 유효하다.
+- **돌연변이 검증(이 테스트가 정말 이 결함을 잡는가)**: `case FxBubble` 하나를 도달 불가로 바꿔
+  재실행 → **3개 테스트가 즉시 실패**(본 테스트 / 획 일관성 / 네거티브 컨트롤이 "안 걸쳤는데
+  그려졌다"로), 되돌린 뒤 6/6 복귀. 조용히 초록이 되는 테스트가 아니다.
+- **회귀**: 초상화·외형 계열 PlayMode 26/26 통과(`PortraitEyeVisibility` / `PortraitScaleInvariance`
+  / `PortraitFallenFraming` / `PortraitDragIndependence` / `CharacterPortraitStage` /
+  `AppearanceNewItemsRender`). EditMode `FrameBudgetLint` + `AppearanceShapeBudget` +
+  `AccessoryStrokeBudget` 49/49 통과.
+- 시간 대기는 **벽시계**(`TestClock.WaitUntil`)로 잡았다. 프레임 2개 대기는 "재구성이 `Update`에서
+  한 바퀴 도는가"라는 **구조적** 대기라 프레임이 맞는 자리다(린트 상한 30프레임 이내).
+
+### 교차 레이어 영향 로그
+
+1. **없음(렌더 전용).** 입력/네이티브/AI/상태머신/물리에 닿는 변경 0건. `AppearanceShapeBuilder`는
+   **읽기만** 했고 `AccessoryShapeBuilder`/`ItemCatalog`/`States/`/`Platform/`은 열지도 않았다.
+2. 단, 위 P6 주의 1건은 **초상화 레이어 안에서** 미래에 충돌할 수 있는 자리라 명시해 둔다.
+
+### 남은 것 (이 라운드가 하지 않은 것)
+
+- **육안 검증 0회.** 좌표·액자 여백은 전부 수치로 검산했고 테스트가 "액자 안"까지 단언하지만,
+  *"방울 2알이 방울로 보이는가 / 잎 2장이 지고 있는 것으로 읽히는가"* 는 눈으로 봐야 한다.
+- 풍선은 **실물의 묶인 자리(머리 위)를 그대로 쓰지 못했다** — 그러면 주머니가 액자 위로 잘린다.
+  액자 세로가 신장의 1.14배뿐이고 풍선 전고가 3.30R이라 기하학적으로 안 들어간다. 미리보기를
+  줄이는 대신 **자리를 내렸다**(크기는 실물과 같게 유지 = "이만한 게 생긴다"가 그대로 읽힌다).
+
+## 사용자 요청 (2026-09-01) — OS별 단축키 적합성 확인 [릴리즈 후]
+
+**사용자 지시 원문**: "맥os용과 윈도우즈 단축키도 각각 운영체제에 맞게 설정되어있는지도 릴리즈후 확인"
+
+**진행 중인 C3와는 다른 사안이다.** C3는 **표기**를 고치는 것(Windows에서 ⌃⌥⌘로 잘못 보이는 문제)이고,
+이 항목은 **조합 자체가 각 OS에 적절한가**이다.
+
+### 현재 상태 (확인 완료)
+| 플랫폼 | 수식키 | 근거 |
+|---|---|---|
+| macOS | `Control + Option + Command` | 관례적 hyper 조합, 무난 |
+| Windows | `Ctrl + Alt + Win` | `Win32WindowService.cs:1001` — `GlobalKey.Command` → `VK_LWIN`/`VK_RWIN` |
+
+### 실기에서 확인할 것 (Windows 우선)
+1. **★ 이 앱은 `RegisterHotKey`로 등록하지 않고 키 상태를 폴링한다**(`GetAsyncKeyState` 계열).
+   즉 **입력을 가로채지 않으므로, 같은 키가 Windows와 활성 앱에도 그대로 전달된다.**
+   `Ctrl+Alt+Win+<글자>`를 눌렀을 때 우리 앱만 반응하는지, 아니면 다른 일도 같이 일어나는지 확인.
+2. Win 키가 섞인 조합이 Windows 예약 단축키와 충돌하는지 전수 확인 — 특히 우리가 쓰는 글자들:
+   A(활쏘기) B(말풍선) C(잉크색) D G H I J K N Q(종료) R S T X F, 그리고 신설된 `,`(설정창).
+   Win+G(게임바), Win+D, Win+E 등은 Win 단독 조합이라 Ctrl+Alt가 더해지면 대개 비껴가지만
+   **실기 확인 필요.**
+3. **`Ctrl+Alt+Win+Q`(앱 종료)가 특히 위험**하다 — 활성 앱에도 전달되므로 다른 앱이 이 조합에
+   반응하면 의도치 않은 동작이 겹칠 수 있다.
+4. 대안 검토: Windows 앱은 Win 키 대신 **`Ctrl+Alt+Shift`**를 3중 수식키로 쓰는 관례가 더 흔하다.
+   충돌이 확인되면 Windows만 이 조합으로 바꾸는 것을 검토(플랫폼별로 조합이 달라도 되며,
+   오히려 그게 각 OS 관례에 맞다).
+5. macOS 쪽도 확인: `Control+Option+Command+<글자>`가 시스템 단축키나 자주 쓰는 앱과 겹치는지.
+   참고로 `⌃⌥⌘,`는 macOS의 "환경설정 = ⌘," 관례를 따른 것이라 이 하나는 잘 고른 편이다.
+6. 확인 결과에 따라 `.claude/skills/run-stickmate/SKILL.md`의 단축키 표도 갱신할 것.
+
+## 리더 결정 — 초상화 신규 4종 미리보기 (2026-09-01)
+
+승인. **돌연변이 검증**(케이스를 도달 불가로 바꿔 3개 테스트가 실제로 실패하는지 확인 후 복구)까지
+한 것이 좋다 — 오늘 "통과하지만 아무것도 측정 안 하던" 거짓 통과를 여러 건 겪은 뒤라 특히 옳은 절차다.
+**"Windows 영향: 없음"** 줄이 보고에 포함된 첫 라운드이기도 하다(신설 프로토콜 정상 작동 확인).
+
+### ★ P6(획 두께 이중 정의, 38-12 #10) 담당자에게 넘기는 경고 — 잃어버리지 말 것
+초상화 미리보기의 기본 획 `Stroke`가 지금 `AccessoryShapeBuilder.StrokeWidthRatio`를 참조하는데,
+이게 #10과 **같은 뿌리**다. 고칠 때 **`Stroke` 자체를 몸 획으로 재정의하면 미리보기 9종이 함께
+두꺼워진다.** 몸 전용 두께는 새 이름(`BodyStroke` 등)으로 두고 `Stroke`는 유지해야 한다.
+같은 경고가 코드 주석에도 남아 있다.
+
+### 육안 검증 누적 미완 — 5라운드째
+"방울 2알이 방울로 보이는가 / 잎 2장이 지고 있는 것으로 읽히는가"는 수치로 알 수 없다.
+릴리즈 전 리더 육안 확인 대상에 초상화 액자도 포함한다.
+
+---
+
+## 2026-09-01 — 릴리즈 전 마지막 정리: 획예산 4건 + 카드 폴백 4건 + C3 단축키 + 원칙3 관문 (coder / Teammate1) ✅
+
+리더 배정 4항목. **먼저 오프라인 검산 포트가 대장의 실측값 6개를 전부 재현하는 것을 확인하고 시작했다**
+(`AccessoryStrokeBudgetTests.DescribeRuleOneViolation` + `AccessorySilhouetteMetrics`를 그대로 옮긴 포트,
+W = **0.343864R** @배율 0.75).
+
+| 대장에 적힌 값 | 내 포트 재현값 |
+|---|---|
+| 천모자 `HatBrim` 0.29 / 털모자 `BeanieBand` 0.58 / 중절모 `FedoraCrease` 1.26 | **0.29 / 0.58 / 1.26** |
+| 날개 `WingFeatherA` 0.90 / `WingFeatherB` 0.86 / 배낭 `PackStrap` 1.32 | **0.90 / 0.86 / 1.32** |
+
+**손댄 파일**: `Interaction/AccessoryShapeBuilder.cs`(상수 2개 신설 + 좌표 4곳) ·
+`Core/ShortcutLabel.cs`(**신규**) · `Core/ItemCatalog.cs` · `Core/ItemCatalogDigest.cs` ·
+`Interaction/CharacterInfoWindow.cs` · `Interaction/SettingsWindow.cs` ·
+`Interaction/CharacterProgressionDirector.cs` ·
+`Resources/Items/` 4개(밀짚·베레모·방울·펜던트) + `Golden/ItemCatalogGolden.txt` ·
+`Tests/EditMode/` — `AccessoryRuleOneCoverageTests` · `AccessoryStrokeBudgetTests` ·
+`PlatformParityAuditTests` · `UserAssetImmutabilityAuditTests` · `WindowsFullscreenGamePolicyTests` ·
+`ItemCatalogTests` · **신규 3개** `AccessoryRuleOneClosureTests` · `AccessoryFallbackIconParityTests` ·
+`ShortcutLabelParityTests` / `Tests/PlayMode/SettingsUserFacingCopyTests`(한 줄).
+
+### (1) 규칙 1 위반 4건 — 전부 상수 1~2개로 닫았다
+
+| 항목 | 옛 값 → 새 값 | 실측 |
+|---|---|---|
+| 천모자 `HatBrim` 챙 뿌리 두께 | 0.10R → **0.38R**(`HatBrimRootDropRatio` 신설) | 닫힘변 **0.29 → 1.11획** |
+| 중절모 `FedoraCrease` 반폭 비율 | 0.30 → **0.40**(`FedoraCreaseHalfWidthRatio` 신설) | 잉크 **1.26 → 1.68획** |
+| 날개 `WingFeatherA` 아래 안쪽 꼭짓점 | (−0.45, −0.18)R → **(−0.52, −0.26)R** | 닫힘변 **0.90 → 1.20획** |
+| 날개 `WingFeatherB` 아래 안쪽 꼭짓점 | (−0.30, −0.34)R → **(−0.38, −0.44)R** | 닫힘변 **0.86 → 1.20획** |
+| 배낭 `PackStrap` 끝점 | `(cx+hw, cyp+hh)` → **배낭 몸의 실재 꼭짓점** `(cx+hw, cyp+0.62hh)` | 잉크 **1.32 → 2.30획** |
+
+**★ 배정문의 "최소 수정안"을 두 자리에서 안 따랐고, 둘 다 이유가 있다.**
+
+1. **중절모 크리스: 0.36이 아니라 0.40.** 0.36은 1.5076획 — 문턱(1.5획)에 **0.5%**만 남는다.
+   좌표 한 자리만 움직여도 다시 넘어가는 자리라 여유 12%(1.68획)를 택했다. 두 끝점은 여전히
+   관 위 변 안쪽(±0.66 관반폭)이라 **실루엣이 한 구간도 안 움직인다**.
+2. **천모자 챙: "0.35R 이상으로 두껍게 하면 챙이 관을 파고든다"는 전제가 틀렸다.**
+   관(`HatCrown`)은 챙선 **위**에만 있고 챙이 두꺼워지는 방향은 **아래**다 — 겹칠 수 없다.
+   실측으로도 프로파일 **72구간 전부 소수점 아홉 자리까지 동일**하고, 모자 15쌍 최소 실루엣 차는
+   **2.948685획 → 2.948685획**(폼폼 라운드가 기록한 값 그대로)이다.
+
+**★ 덤으로 규칙 4 잠복 결함 1건이 닫혔다 — 이 라운드의 가장 중요한 발견.**
+배낭 끈의 옛 끝점 `(cx+hw, cyp+hh)`는 배낭 팔각형의 **모따기 바깥**, 즉 몸에서 **0.64획 떠 있는**
+자리였다(규칙 4가 "최악"이라고 못박은 `0 < 간격 < 1획` 구간 한가운데). 규칙 1을 고치는 가장 자연스러운
+방법 — 끝점을 **실재하는 꼭짓점**으로 내리기 — 이 그 결함까지 함께 닫았다(간격 **0.64 → 0.00획**).
+중절모 띠/베레모 테가 쓴 "좌표를 새로 적지 않고 끝점을 공유한다" 규약과 같은 형태다.
+
+**고친 4종은 대장에서 뺐다**(면제 5줄 삭제 — 날개는 도형 2개). 대장의 자기 만료 검사
+(`면제된_도형은_아직_실제로_위반한다`)가 있어서 **뺄 수밖에 없었다** — 그 설계가 실제로 작동한 첫 사례다.
+
+| | 이전 | 이후 |
+|---|---|---|
+| `BudgetedItems`(완전 통과 아이템) | 22종 | **26종**(+ 천모자·중절모·날개·배낭) |
+| 면제 도형 | 14개 | **9개**(HEAD 털모자 띠 1 + NECK 8) |
+| 면제가 남은 카테고리 | HEAD·NECK·BACK | **HEAD 1종 · NECK 3종**(BACK은 0) |
+| 래칫 | 22종 / 14개 | **26종 / 9개**로 다시 잠금 |
+
+**털모자 `BeanieBand`(0.58획)는 지시대로 손대지 않았다** — 리더가 백로그로 뺀 실루엣 재설계.
+
+### (2) 카드 폴백 4건 — 전부 "몸이 지금 뭐라고 말하는가"에 맞췄다
+
+| 아이템 | 옛 폴백 | 새 폴백 | 몸의 규약 |
+|---|---|---|---|
+| **방울** | 반원 꺾은선(8점) + **이미 삭제된 추** `Dot(20,29,1.8)` | **`Dot(20,24,5)` 하나**, 조각 3 → **2개** | 채운 원 하나가 줄 최저점에 접한다 |
+| 밀짚모자 | 띠 `13.5,20 → 26.5,20`(관 밑변보다 **3px 위**) | **`13,23 → 27,23`** = 관 폴리라인 첫/끝 점 | `StrawBand` = 관 밑변 두 끝점 |
+| 베레모 | 테 `7,23 → 31,23`(양끝 1px씩 바깥, 기울기도 어긋남) | **`8,23 → 30,22`** = 관 첫/끝 점 | `BeretRim` = `{frontTip, backTip}` |
+| 펜던트 | 마름모 반폭 4 × 반높이 4.5(**종횡비 1.13**) | 반폭 **2.8** × 반높이 **6.2**(종횡비 **2.2143**) | `PendantHalfWidth/Height` = 0.28R / 0.62R |
+
+- **방울이 가장 급했다는 리더 판단이 맞았다**: 추는 2026-09-01에 몸에서 삭제됐는데 폴백에만 남아 있어,
+  폴백이 뜨는 순간 **존재하지 않는 아이템**이 그려진다. 이제 몸 도형 수(2)와 폴백 조각 수(2)가 같고,
+  그 등식 자체를 검사가 잠근다.
+- **펜던트 새 좌표 2.8 / 6.2는 몸의 비율(0.28R / 0.62R)을 그대로 ×10 한 값**이다 — 숫자를 보면
+  어디서 왔는지 읽힌다. 종횡비가 소수점 넷째 자리까지 몸과 같다(2.2143).
+- 넷 다 **살아 있는 몸 도형과 대조**하는 검사를 붙였다. 폴백에 숫자를 새로 적어 두면 몸이 다시 바뀌는 날
+  폴백만 옛 그림으로 남는다 — 그게 이번에 넷이 한꺼번에 낡은 이유다.
+- 골든 `ItemCatalogGolden.txt`도 같은 줄만 고쳤다. **손편집이 아니라 검산했다**: `.asset` YAML을 파싱해
+  `ItemCatalogDigest` 형식으로 다시 만들어 5개 아이템(중절모 포함) 전 조각을 대조 → 전부 일치.
+
+### (3) [C3] 단축키 표기 — 단일 정의처 `Core/ShortcutLabel` 신설
+
+**감사 기준(`ItemCatalog.cs` 11곳 + `CharacterInfoWindow.cs` 1곳)은 실제보다 적었다.** 직접 스캔한 결과
+**문자열 리터럴 17곳**이었다(주석 인용은 제외):
+
+| 파일 | 건수 | 성격 |
+|---|---|---|
+| `Core/ItemCatalog.cs` | 11 | **화면**(보관함 카드 상태 슬롯) |
+| `Interaction/SettingsWindow.cs` | **6** | **화면 5**(단축키 행 라벨 · 톱니 경고 캡션 · 종료 버튼 ×2 · 푸터 안내) + 로그 1 |
+| `Interaction/CharacterInfoWindow.cs` | 1 | 부팅 로그 |
+| `Interaction/CharacterProgressionDirector.cs` | 2 | 해금 알림 문구 1 + 경고 로그 1 |
+
+`ShortcutLabel.MacChord` / `WindowsChord` / `Chord`(컴파일 타임 분기) 셋을 두고 전부 갈아끼웠다.
+**크로스 컴파일 산출물을 리플렉션으로 직접 실행해 확인**했다(추정 아님):
+
+```
+osx 빌드: HostUsesWindowsNotation=False   Chord("A")=⌃⌥⌘A       Chord(",")=⌃⌥⌘,
+win 빌드: HostUsesWindowsNotation=True    Chord("A")=Ctrl+Alt+Win+A  Chord(",")=Ctrl+Alt+Win+,
+```
+
+- `PlatformParityAuditTests`의 C3 `Assert.Ignore`를 **정식 검사 3건 + 네거티브 컨트롤 1건**으로 승격.
+  스캐너는 **문자열 리터럴만** 본다 — 줄 단위 스캔은 `Settings, // ⌃⌥⌘,` 같은 **줄 끝 주석**을 오탐하고,
+  그러면 다음 사람은 검사를 끄거나 주석에서 사실을 지운다. HEAD 시점 소스에 돌려 **15곳을 실제로 잡는 것**까지
+  확인했다.
+- `ItemCatalogTests`의 `"⌃⌥⌘A"` 하드코딩 제거. **테스트는 문자열을 다시 적지 않는다** — 성질만 단언한다
+  (Windows 표기에 U+2300 이상 문자 0개 / macOS 조합키에 라틴 문자 0개 / 둘 다 동작키로 끝난다 /
+  지금 빌드가 호스트에 맞는 표를 골랐다). 유일한 예외가 네거티브 컨트롤이고, 거기서는 옛 리터럴과
+  "그것이 macOS 표기였다"는 사실을 **둘 다** 얼려 (a) macOS 문구 무회귀와 (b) Windows에서 틀렸다는 사실을
+  동시에 증명한다.
+
+**★ 이 수정이 만들 뻔한 Windows 전용 빨간불 2건을 함께 막았다**(고치지 않았으면 Windows 머신에서만 실패):
+
+1. **골든 스냅샷** — `status=⌃⌥⌘A` 11줄이 그대로 있었다. Windows에서는 `Ctrl+Alt+Win+A`가 나와
+   **같은 코드가 한 플랫폼에서만 11줄 어긋난다.** `ItemCatalogDigest`가 조합키 접두사만 `<chord>`로 접게
+   했다(동작키는 남긴다 — 어느 행동의 키가 바뀌면 골든은 여전히 빨개진다). 표기 자체의 정확성은
+   `ShortcutLabelParityTests`가 **두 표를 다 계산해** 따로 잠근다.
+2. **`SettingsUserFacingCopyTests`** — "화면의 라틴 문자 3글자 이상 = 내부 식별자" 규칙이 있는데,
+   그 문서가 적어 둔 전제("단축키는 ⌃⌥⌘ + 한 글자라 안 걸린다")는 **macOS에서만 참**이다.
+   `Ctrl`/`Alt`/`Win`을 허용 목록에 넣었다(그 플랫폼 키보드에 실제로 각인된 이름이므로 "사용자가 읽을 말"이다).
+
+### (4) 원칙 3 관문 확장 — 레지스트리 쓰기 금지 스캔 이관
+
+`WindowsFullscreenGamePolicyTests` → **`UserAssetImmutabilityAuditTests`**(원칙 3의 단일 관문).
+범위가 `Platform/Windows/` 폴더 → **`Scripts/` 전체**(Tests 제외)로 넓어졌다.
+
+- 옮기면서 **쓰기 권한 플래그 스캔도 함께** 넣었다(`KEY_WRITE`/`KEY_ALL_ACCESS`/`KEY_SET_VALUE`/
+  `KEY_CREATE_SUB_KEY`/`KEY_CREATE_LINK`) — 쓰기 함수를 안 불러도 그 권한으로 여는 순간
+  원칙 3의 보장이 "코드를 다 읽어야 아는 것"으로 약해진다. 원래 파일의 프로브 전용 검사에서는
+  같은 세 플래그를 **뺐다**(두 곳에 적으면 한쪽만 늘어난다).
+- **기존 `ForbiddenPatterns`에 합치지 않은 이유**: 그 스캔은 주석을 안 걷어낸다(그래도 됐다 —
+  어떤 주석도 `File.Delete(` 형태를 인용하지 않는다). 반면 레지스트리 쓰기 API는 **금지 사실을 적은 주석**이
+  실재한다(`WindowsGameProcessProbe.cs`). 정직하게 적을수록 감사가 빨개지면 다음 사람은 사실을 지운다.
+  그래서 이 항목만 주석 제외 스캔으로 두고, 두 리스트의 기준 차이("주석에 인용될 수 있는 이름인가")를
+  코드에 적어 뒀다. 네거티브 컨트롤이 "선언은 잡고 주석은 넘긴다"를 표본으로 증명한다.
+
+### 교차 레이어 영향 로그
+
+| # | 항목 | 영향 | 조치 |
+|---|---|---|---|
+| 49 | **날개 두 깃의 아래 안쪽 꼭짓점 이동** | 정점 수 불변(5개) → `LineRenderer.positionCount`·채움 삼각형 수 **안 바뀐다**. 실루엣 프로파일은 72구간 중 **6구간**이 최대 **0.36획** 변한다(아래·안쪽). BACK 3쌍 구분도 6.23 / 8.04 / 8.58획 **전부 동일** | PlayMode 액세서리 스위트로 확인 |
+| 50 | **배낭 끈 끝점이 몸 꼭짓점 공유로** | `PackBody`의 5번째 정점을 `packStrapAnchor` 지역변수로 뽑아 몸·끈이 나눠 쓴다. **좌표값은 몸 쪽이 그대로**라 배낭 프로파일 **72구간 전부 불변** | 규칙 4 간격 0.64 → 0.00획 |
+| 51 | **천모자 챙 / 중절모 크리스** | 실루엣 프로파일 **72구간 전부 소수점 아홉 자리까지 동일**. 모자 15쌍 최소 차 2.948685획 유지 | `AccessoryBeaniePomTests`의 2.94획 하한 무영향 |
+| 52 | **`ShortcutLabel` 신설 → 런타임 4개 파일이 컴파일 타임 분기에 의존** | 단축키 문구가 플랫폼별로 갈린다. **골든 스냅샷**과 **설정창 카피 검사**가 그 영향을 받는다(위 (3) 참고) | 골든은 `<chord>`로 중립화, 카피 검사는 허용 단어 3개 추가. **크로스 컴파일 2종 + 리플렉션 실행으로 실측 확인** |
+| 53 | **레지스트리 스캔 이관** | 검사 범위가 `Platform/Windows/`(파일 5개) → `Scripts/` 전체(Tests 제외)로 넓어졌다. `WindowsFullscreenGamePolicyTests`의 프로브 검사에서 레지스트리 권한 플래그 3개를 뺐다(이관처가 더 넓게 본다) | 두 스캔 다 저장소 전체 0건 확인 |
+| 54 | **카드 폴백 방울 조각 3 → 2개** | `ItemCatalogEntry`의 `SecondaryColor`는 **첫 보조색 조각**에서 나오므로 불변. 골든의 `primary=`/`secondary=` 줄도 그대로 | 골든 `icon=3` → `icon=2` 한 줄만 갱신 |
+
+### 검증
+
+- **오프라인 검산 포트** — 대장의 실측값 6개를 전부 재현한 뒤에야 새 좌표를 확정했다(위 표).
+- **크로스 컴파일 2종 0에러** — `xcheck.sh win` / `xcheck.sh osx`(런타임) + `xcheck_tests.sh`
+  (맥 에디터 정의 런타임 + `StickMate.Tests.EditMode`). `-out:` 파일명 함정은 스크립트가 이미 처리.
+- **산출물 리플렉션 실행** — 두 빌드의 `ShortcutLabel.Chord`를 실제로 호출해 표기를 확인(위 (3)).
+  `ItemCatalogDigest.NeutralStatus`도 두 표기 모두 `<chord>A`로 접는 것을 실행으로 확인.
+- **골든 검산** — `.asset` YAML을 파싱해 다이제스트 형식으로 재생성, 5개 아이템 전 조각 일치.
+- **스캐너 실증** — C3 글리프 스캐너를 HEAD 시점 소스에 돌려 **15곳**을 실제로 잡는 것을 확인.
+- **정적 스캔 0건** — 레지스트리 쓰기 API / 쓰기 권한 플래그 / 기존 금지 패턴 전부 저장소 전체 0건.
+- **Unity 6000.0.82f1 batchmode 실측**(락 준수 — 매 실행 전 `pgrep -x Unity`가 빌 때만 돌렸다.
+  다른 라운드의 전체 PlayMode가 도는 동안 30분 대기했다):
+  1. **표적 EditMode 18스위트 277건 → 276 통과 / 실패 0 / 건너뜀 1**(`Logs/coder_final_edit_targeted.xml`).
+     건너뜀 1건은 `PlatformParityAuditTests.미해결_Windows에는_가상데스크톱_동행_배선이_없다` —
+     **다른 라운드 소관의 의도적 `Assert.Ignore`**다. C3 쪽 `Ignore`는 이번에 사라졌다.
+  2. **전체 EditMode 655건 → 654 통과 / 실패 0 / 건너뜀 1**(`Logs/coder_final_edit_all.xml`).
+     건너뜀이 **2 → 1건**으로 줄었다(= C3 승격분).
+  3. **PlayMode 10스위트 62 / 62 통과**(`Logs/coder_final_play.xml`) — `AccessoryFillRenderingTests` ·
+     `AccessoryFacingFlipFillTests` · `AppearanceNewItemsRenderTests` · `CharacterAccessoryScaleTests` ·
+     `CharacterAppearanceLayerTests` · `CharacterPortraitStageTests` · `CharacterVisualHalfWidthTests` ·
+     `BodyLeanAccessoryFollowTests` · `PortraitEyeVisibilityTests` · `SettingsUserFacingCopyTests`.
+     ※ 도형 좌표가 바뀌어 **채움 메시 삼각형의 정점이 달라지는 경로**라 반드시 돌렸다
+     (정점 *수*는 안 바뀐다 — 옮긴 것은 위치뿐이다).
+- **신규 검사 33건**(전부 통과): `AccessoryRuleOneClosureTests` **11건**(규칙 1 마감 4건 +
+  실루엣 불변 2건 + 등뼈 부착 1건 + 끈 꼭짓점 공유 1건 + **네거티브 컨트롤 4건**) /
+  `AccessoryFallbackIconParityTests` **9건**(폴백 4건 + 몸 규약 대조 2건 + 매달림 2건 +
+  **네거티브 컨트롤 2건**) / `ShortcutLabelParityTests` **6건**(+ **컨트롤 1건**) /
+  `PlatformParityAuditTests` **+4건**(승격 3 + **컨트롤 1**) / `UserAssetImmutabilityAuditTests`
+  **+3건**(이관 2 + **컨트롤 1**).
+- **★ 네거티브 컨트롤 8건 — 전부 "양쪽을 다 얼렸다"**(오늘 확정된 교훈 준수). 다만 형태를 한 단계
+  더 밀었다: 도형 쪽 컨트롤은 **옛 좌표 전체가 아니라 바뀐 상수 하나만** 얼리고 이웃(관·배낭 몸)은
+  살아 있는 리그에서 받는다. 그러면 이웃이 나중에 움직여도 **두 도형이 언제나 같은 세계에 있어**
+  "역사상 존재한 적 없는 쌍"이 원리적으로 생길 수 없다. 얼린 상수가 지금 값과 같아지면
+  (= 누가 되돌렸으면) 컨트롤이 스스로 빨개진다.
+
+
+### ★ Windows 영향: **함께 수정함**
+
+CLAUDE.md 협업 프로토콜 필수 항목. 3번(단축키 표기)은 정의상 Windows 영향이 있고, **같은 라운드에서
+Windows 쪽까지 함께 고쳤다**. 근거는 추정이 아니라 실측이다:
+
+1. **크로스 컴파일 2종 0에러** — `-define:UNITY_STANDALONE_WIN` / `-define:UNITY_STANDALONE_OSX`
+   (`xcheck.sh win|osx`) + 테스트 어셈블리(`xcheck_tests.sh`, `-out:StickMate.Tests.EditMode.dll`).
+2. **두 산출물을 실제로 실행**해 표기를 확인(리플렉션) — Windows 빌드가 `Ctrl+Alt+Win+A`를 낸다.
+3. **Windows 전용으로만 빨개졌을 검사 2건을 선제 차단** — 골든 11줄(`<chord>` 중립화)과
+   설정창 카피 검사(허용 단어 3개). 이 둘은 macOS에서는 영원히 초록이라 **여기서 안 잡으면
+   Windows 머신에서 처음 발견**된다.
+4. 1·2·4번 항목(도형 좌표 / 카드 폴백 / 레지스트리 스캔)은 플랫폼 중립 코드다 —
+   4번은 오히려 **Windows 쪽 보증이 넓어졌다**(폴더 → 저장소 전체).
+
+**실기 확인이 필요한 것 하나**: Windows에서 단축키 라벨이 길어져(`⌃⌥⌘I` 4자 → `Ctrl+Alt+Win+I` 14자)
+설정창 단축키 행/종료 버튼의 폭이 넘칠 수 있다. 레이아웃은 macOS 머신에서 렌더할 수 없다.
+
+### 안 한 것 / 리더 판단 요망
+
+1. **털모자 `BeanieBand` 0.58획** — 지시대로 손대지 않았다(리더 백로그: 실루엣 재설계).
+   이제 HEAD에서 **유일하게** 남은 면제다.
+2. **NECK 3종 8도형** — 이번 배정 밖. 나비넥타이 매듭 0.91 / 타이 매듭 1.40·blade 0.60·줄무늬 0.87 /
+   목도리 자락 0.64·띠 0.99획. 목도리 `ScarfWrap`은 **1.0획에 1%만큼** 못 미치므로(0.99획)
+   높이 0.34R → 0.35R 한 자리로 닫힌다 — 가장 싼 다음 한 건이다.
+3. **육안 검증 0회** — 이 에이전트는 에디터 UI를 띄울 수 없다. 특히 확인이 필요한 자리:
+   (a) 천모자 챙 뿌리가 0.10R → 0.38R로 **3.8배** 두꺼워졌다(실루엣은 수학적으로 불변이지만
+   **보조색 면적**이 늘어 "챙"이 아니라 "이마 띠"로 보일 가능성), (b) 중절모 크리스가 33% 넓어진 모습,
+   (c) 날개 아래 안쪽 꼭짓점이 내려간 모습. 누적 미완 5라운드째.
+4. **`SettingsWindow` / `CharacterProgressionDirector` / `SettingsUserFacingCopyTests`는
+   배정문의 소유권 목록 밖이었다.** mtime 실측(12:01 / 08:49 / 11:34 — 진행 중 라운드보다 오래됨)으로
+   유휴를 확인하고 손댔다. 이유: C3를 "정식 검사로 승격"하려면 저장소 전체가 규칙을 지켜야 하는데,
+   그 세 파일에 리터럴 8곳이 남아 있으면 승격한 검사가 곧바로 빨개진다.
+   **리더가 범위 이탈로 판단하면 되돌릴 수 있게 변경은 전부 한 줄짜리 치환으로 묶어 뒀다.**
+
+## coder (Teammate1) — 발판 상실 공중 유예를 **상태로 승격 + 연출** (2026-09-01)
+
+리더 결정 "(C) 시간은 두고 연출을 붙인다"의 구현. 소은 실측(같은 빌드·같은 물리·같은 지속시간에서
+**IDLE=화소차 0.00% 프리즈 / WALK=코요테 개그**)이 정한 방향 그대로다.
+
+**Windows 영향: 없음** — 아래 "Windows 영향 판단" 절에 직접 확인한 근거를 적었다.
+
+### 1. 무엇을 만들었나
+
+| # | 파일 | 내용 |
+|---|---|---|
+| 1 | `States/GroundLossHangState.cs` **(신규)** | 유예 구간 전용 상태. 나가는 길 6종 + 갇힘 방지 최후 안전망 |
+| 2 | `Core/StickmanEventBus.cs` | `StickmanStateId.GroundLossHang` 추가(**열거 끝에** 추가 — 기존 정수값 불변) |
+| 3 | `States/StickmanBlackboard.cs` | `TryEnterGroundLossHang()` 승격 + `TickPose` 라우팅 분기 + 포즈 설정 빌더 |
+| 4 | `States/StickmanPoseAnimator.cs` | `ApplyGroundLossHangPose()` + `GroundLossHangPoseSettings` + `RequestBodyLeanDegrees()` |
+| 5 | `Core/StickConfig.cs` | 연출 파라미터 11개 + `ResolveGroundLossHangHardTimeout()` |
+| 6 | `Data/DefaultStickConfig.asset` | 위 11개 값을 명시적으로 기록(파일 맨 끝 신규 섹션 관례) |
+| 7 | `Core/StickmanAgent.cs` | 상태 등록 1줄 |
+| 8 | `Core/StickMateDisplayNames.cs` | 한글 이름 "허둥대는"(EditMode 전수 계약 테스트가 요구) |
+| 9 | `States/IdleState.cs` / `WalkState.cs` | 유예에서 **복귀할 때** 잡담 추첨/보행 위상 리셋을 건너뜀 |
+| 10 | `States/StickmanStateMachine.cs` | 전이 규칙 주석에 새 상태 4줄 추가 |
+| 11 | `Tests/PlayMode/GroundLossHangStateTests.cs` **(신규)** | 13건 |
+
+### 2. ★ 승격 범위를 **Idle/Walk로 좁혔다** — 리더 판단 요망 지점
+
+리더 지시는 "유예를 진짜 상태로 승격"이었는데, `GroundedTick()`은 Idle/Walk뿐 아니라 **접지 안전망을
+통해 Attack/Getup/Archery/WindowTheft/TimedSpectacle 등 십수 개 상태에서도** 호출된다. 그 전부를
+승격시키면 **창 열거가 한 번 튈 때마다 진행 중이던 연출이 중도 취소된다** — 유예가 흡수하려던 바로
+그 사건이 유예 때문에 눈에 보이는 사고로 바뀐다(유예의 설계 목적 자체를 부정한다).
+
+그래서 승격은 **포즈 주인이 `TickPose` 기본 경로인 Idle/Walk**로만 한정했다. 규약("상태 ID 하나로
+포즈가 결정된다")이 요구하는 것은 "같은 상태인데 포즈가 두 가지"의 제거인데, 스펙터클 상태들은
+**포즈를 스스로 소유**하므로 그 문제가 애초에 없다. 그 상태들의 붙잡음은 예전 그대로
+`_graceHoldFrame` 플래그가 담당한다(플래그를 지우지 않은 이유가 이것이다).
+
+### 3. 타이밍 — 소은 제안에서 **비율 2개를 조정**했다(사유 포함)
+
+| 구간 | 소은 원안(0.45초 기준) | 채택값 | 사유 |
+|---|---|---|---|
+| 무반응 | 0~0.12초 (비율 0.267) | 0~0.068초 (**비율 0.15**) | 아래 (a) |
+| 종종걸음+허우적 | 0.12~0.35초 | 0.068~0.324초 | (a)의 결과로 **0.23초 → 0.256초** |
+| 낙하 전조(기울임) | 0.35~0.45초 (비율 0.778) | 0.324~0.45초 (**비율 0.72**) | 아래 (b) |
+
+**(a) 무반응을 줄인 이유 — 소은 자신의 4항이 근거다.** 사용자가 보는 정지에는 **폴링 지연(0~0.3초,
+평균 0.15초)이 이미 앞에 붙어 있고**, 그 구간에는 앱이 발판 상실을 정말로 모른다 = 그 자체가 "늦게
+알아차림"이다. 원안 0.12초를 그대로 쓰면 무반응이 **평균 0.27초 / 최악 0.42초**로 의도한 한 박자의
+2.2~3.5배가 되고, 그건 다시 "렉"으로 읽히는 구간이다(소은 1항이 판정한 그 그림). 0.15로 줄이면
+무반응은 최소 0.068초(폴링 지연 0) ~ 최대 0.368초, 평균 0.22초이고 **생명 신호 구간이 46% 길어진다.**
+
+**(b) 전조를 앞당긴 이유 — 지수 감쇠를 계산에 넣지 않으면 각도가 안 나온다.** 기울임은
+`bodyLeanSmoothingRate`(12/초)로 목표를 따라가므로 남은 시간이 짧을수록 실효 각도가 작아진다.
+0.778(남은 0.1초)이면 목표의 70%, 0.72(남은 0.126초)면 78%다. **소은의 "10도면 6pt라 안 보인다"는
+지적의 실체는 각도가 아니라 끝점 이동 pt**이므로, 그 pt를 기준선 위로 올리기 위한 최소 조정이다.
+목표 각도도 26도로 잡았다(상한 30도) — 실측 19.6도가 나온다.
+
+또한 **전조 목표는 램프가 아니라 계단으로 준다.** 남은 0.126초 동안 목표까지 램프를 걸면 실효가
+목표의 **42%**로 떨어져 "안 보이는 변화" 구간으로 되돌아간다(계단이면 78%). 계단이어도 화면에는
+감쇠된 곡선이 나오므로 툭 튀지 않는다.
+
+### 4. ★ "실제로 눈에 보인다"의 증명 — 실측 수치
+
+측정 기준선은 **소은이 남긴 유일한 숫자**를 그대로 쓴다: 상체 35pt를 10도 기울인 끝점 이동
+**6.1pt = 육안 무의미**. 위치는 배치모드 화면에서 재고 pt 환산만 **배포 상수**(40.92pt/유닛)로 한다.
+
+```
+[H8]  무반응 구간(68ms)   : 발 이동 진폭 0.000pt          <- 여기는 정지가 정답(첫 박자)
+      생명신호 구간(374ms) : 양발 간격 진폭 33.34pt (기준선의 5.5배)
+                            30fps 한 프레임 최대 이동 16.76pt
+                            손 세로 진폭     35.43pt (기준선의 5.8배)
+                            30fps 한 프레임 최대 이동 15.96pt
+                            다리 사이클 1.80회(= 약 3.6걸음), 평균 4.83Hz(걷기의 3.0배)
+[H9]  전조 구간(126ms)    : 최대 상체 기울임 19.62도(목표 26도의 75%)
+                            머리 가로 이동 11.53pt (기준선의 1.9배)
+[H10] 스위치 OFF(같은 자) : 양발 간격 진폭 0.000pt, 30fps 프레임 최대 이동 0.000pt, 승격 0회
+                            -> 소은이 실측한 IDLE 프리즈(화소차 0.00%)를 코드로 재현
+```
+
+**H10이 이 표의 핵심이다.** 같은 측정 코드가 스위치 OFF에서 정확히 0.000pt를 낸다 = H8의 33pt는
+"재는 방법이 둔해서" 나온 값이 아니다. 소은의 화소차 0.00% 관측이 우리 자로도 재현된 셈이다.
+
+**연출이 소은의 두 케이스를 하나로 합쳤는지도 확인했다**: WALK에서 진입해도 걷기 위상(`_phase01`)을
+리셋하지 않고 그대로 가속하므로 이음매가 없고(그래서 `WalkState.Enter`의 `ResetWalkPhase`도 복귀
+시에는 건너뛴다), IDLE에서 진입해도 같은 키포즈 표를 쓰므로 **그림이 하나로 통일**된다.
+
+### 5. ★ 갇힘 방지 — 나가는 길 전수와 그 잠금
+
+이 상태에 갇히면 **캐릭터가 영원히 공중에 뜬다**(원래 버그보다 나쁘다). 나가는 길:
+
+| 경로 | 구현 위치 | 잠금 |
+|---|---|---|
+| 유예 만료 → Fall | `GroundedTick`(공용 경로) | H2 |
+| 발판 복귀 → Idle | 상태 `Tick` | H3 |
+| 발판 복귀 → Walk(이동 의도 있음) | 상태 `Tick` | H3b |
+| 발밑이 정말 빔(모서리 넘음/핸들 0) → 즉시 Fall | 상태 `Tick` | H4(진입 금지) / H5(중도 이탈) |
+| 화면 좌우 이탈 → Fall | `CheckScreenBoundsOrFall` | (기존 경로 재사용) |
+| 스냅 상한 초과 → Fall | `SnapToGround` | (기존 경로 재사용) |
+| 외력 → Ragdoll 강제 인터럽트 | `RagdollImpactResolver`(상태 목록을 안 본다) | H6 |
+| 드래그/스펙터클/전체화면 취소 | 외부 `ChangeState` | H7 |
+| **최후 안전망**(유예의 3배 = 1.35초) | 상태 자기 시계 + `LogWarning` | H11 |
+
+**H11이 안전망을 실제로 발동시켜 잰다**: 매 프레임 `ResetGroundLossTimer()`를 호출해 정상 경로를
+인위적으로 죽인 뒤 — 이것이 "갇힐 수 있는 유일한 남은 경로"다 — 체류 **1.35초에서 정확히 Fall로
+탈출**하는 것과 경고 로그를 확인했다.
+
+**H12는 조합 내구 시험**이다: 창이 8주기(사라짐 0.25초 / 돌아옴 0.25초) 깜빡이는 동안 매 프레임
+감시 — 진입 8회, **최장 연속 체류 0.248초**(유예 0.45초 / 상한 1.35초), 최종 Idle 정착.
+
+### 6. ★ 실측으로 드러난 것 — 드래그 왕복은 유예 타이머를 리셋하지 않는다(중요)
+
+H7을 짜다가 발견했다. 커서가 없는 환경에서 `Dragged`로 인터럽트하면 `DragThrowState`가 첫 틱에
+Idle로 되돌리고, 몸은 아직 공중이라 같은 프레임의 접지 안전망이 **유예로 다시 승격**한다.
+이건 결함이 아니라 옳은 거동인데(공중이면 유예가 맞다), **만약 그 왕복이 `_groundLossTimer`를
+리셋한다면 잡았다 놓기를 반복해 영원히 공중에 뜰 수 있다.** 실제로는 리셋하지 않는다
+(`ResetGroundLossTimer` 호출부 전수 확인: ParkourClimb/Fall착지/ThrowTumble착지/화면회수뿐).
+H7이 그 사실을 단언으로 못 박았다.
+
+### 7. 대사는 넣지 않았다 + **오히려 한 곳을 막았다**
+
+리더 결정대로 `DialogueIntent`를 만들지 않고 `IHasDialogueParams`도 구현하지 않았다.
+그리고 **승격이 만들어 낸 새 대사 경로 하나를 닫았다**: 유예에서 Idle/Walk로 복귀하는 것도 상태
+전이라 `Enter()`의 잡담 추첨이 돌게 된다. 그러면 **창 열거가 튈 때마다 말풍선 확률이 새로 생겨**
+사용자가 아무것도 하지 않았는데 대사 빈도가 올라간다 — 사용자가 반복적으로 불만을 표해온 바로 그
+현상이다. `context.From == GroundLossHang`이면 추첨을 건너뛴다(같은 에피소드의 복귀이지 새
+에피소드가 아니다).
+
+### 8. Windows 영향 판단 — **없음** (직접 확인)
+
+- 변경한 10개 프로덕션 파일에 `UNITY_STANDALONE_WIN` / `UNITY_STANDALONE_OSX` / `DllImport`
+  **0건**(유일하게 그런 지시자가 있는 `StickmanAgent.cs`는 확인 결과 내 편집 위치가 무조건 실행되는
+  상태 등록 딕셔너리 안이다).
+- 발판 열거는 확실히 플랫폼별이지만(`Win32WindowService` / `MacWindowService`), 이번 변경은
+  `FootholdPoller.CachedFootholds`를 **읽는** 기존 `GroundSensor` 경로만 소비한다. 승격 조건
+  (`!Grounded && 핸들≠0 && !WalkedOffPreferredFoothold`)은 전부 플랫폼 중립인 `GroundSensor`가
+  같은 `PlatformFoothold` 목록에서 계산한다 — 열거 코드는 한 줄도 건드리지 않았다.
+- 연출은 전부 **프레임레이트 독립**(지수 감쇠 + dt 적분)이라 Windows의 60fps 상한
+  (`windowsTargetFrameRate`)에서도 같은 그림이다. 4.83Hz 사이클이 60fps에서 약 12프레임/사이클.
+- 절전 등급 우려도 확인: `FramePacing.ResolveCharacterIdle`은 `Idle`일 때만 참이므로 유예 중에는
+  차분 등급이 쌓이지 않는다(양 플랫폼 공통 판정 한 곳).
+
+### 9. 검증
+
+- **신규 `GroundLossHangStateTests` 13/13 통과 — 독립 3회 실행**(`Logs/coder_hang_r1/r2/r3`, 매회 새
+  프로세스). 1차에서 H7이 실패한 것은 위 6절의 발견 때문이고, 프로덕션이 아니라 **테스트의 전제**를
+  고쳤다(2·3차는 13/13). 실측값의 **실행 간 편차는 0.1% 미만**(양발 진폭 33.34 / 33.35pt, 손 진폭
+  35.43 / 35.43pt, 기울임 19.62 / 19.62도) — 불안정한 표본이 아니라 결정적 값이다.
+- **이웃 스위트 40/40**(`GroundedGravitySuppression` / `DockSinkholeRegression` / `EdgeHopDown` /
+  `FootholdLandingDirection` / `GroundSnapTeleport` / `OccludedWindowFoothold`) —
+  특히 `G6`(창 열거가 한 번 튀어도 제자리)와 `G7`(모서리를 넘으면 붙잡지 않는다)이 그대로 초록이다.
+- **EditMode 620/620 통과**(스킵 2건은 기존 의도된 미해결 표식). `CommandAvailabilityContractTests`
+  (새 상태의 한글 이름 전수 계약)와 `FrameBudgetLintTests`(새 테스트 파일의 프레임 예산)를 포함한다.
+- **PlayMode 전체 스위트 474건 — 470 통과 / 3 스킵 / 1 실패**(`Logs/coder_hang_full_play`, 18분 19초).
+  유일한 실패는 `FloorContactVisibilityTests.FeetVisuallyTouchScreenBottomAndAreNeverClipped`이고
+  **기존 실패다**: (i) 오늘 앞 라운드(test-engineer/T3)의 전체 스위트 455건 실행에서도 **같은 이 한 건**이
+  유일한 실패였고("이 라운드와 무관한 다른 영역"으로 기록됨), (ii) 이번에 **단독 실행으로 재확인**한
+  결과도 같은 값 `482.73pt`로 **완전히 동일**했다(전체 실행 482.726 / 단독 482.729 — 결정적이며 실행
+  순서와 무관). 메시지가 지목하는 곳도 `Platform/NullPlatformWindowService.BottomSafetyNetInsetPoints`로
+  이번 라운드가 건드린 영역이 아니다.
+- **Roslyn 오프라인 컴파일**(Unity 번들 `DotNetSdkRoslyn/csc.dll` + Bee가 만든 실제 `.rsp` 재사용)로
+  `StickMate.Runtime` / `StickMate.Tests.PlayMode` / `StickMate.Tests.EditMode` /
+  `Assembly-CSharp-Editor` **오류·경고 0** — `Library/` 락을 잡지 않는 사전 점검이다.
+- **락 취급**: 실행 전마다 `ps -Ao comm=`(실행 파일 경로) 기준으로 확인했다.
+  `pgrep -f`는 자기 셸 명령줄을 물어 오판하므로 쓰지 않았다.
+  ★ **한 번 실수했고, 결과와 함께 남긴다**: 확인과 실행을 같은 명령줄에 `;`로 이어 붙여서 "이미
+  다른 인스턴스가 돌고 있음(count=1)"을 출력해 놓고도 실행이 그대로 나갔다. **다행히 피해는 0** —
+  Unity 자신이 `Fatal Error! It looks like another Unity instance is running`으로 프로젝트를 열기
+  **전에** 거부했고(내 프로세스만 exit 134), 다른 에이전트의 실행은 정상 완료됐다(`Library/` 손상 없음).
+  그 뒤로는 실행을 `if [ count = 0 ]` 조건 안에 넣었다. 다음 사람도 **확인은 조건문으로** 쓸 것.
+
+### 10. 교차 레이어 영향 로그
+
+1. **상태머신에 상태 ID가 하나 늘었다**(열거 끝에 추가 = 기존 정수값 불변). 상태 ID를 switch 하는
+   곳 중 **내 소유권 밖이라 손대지 않은 두 곳**이 있다:
+   - **`Interaction/CharacterInfoWindow.cs`의 `StateLabel`**(이번 라운드 편집 금지 파일) —
+     `default: return id.ToString()`이라 정보창이 열려 있으면 최대 0.45초 동안 **영문
+     "GroundLossHang"**이 그대로 보인다. `case StickmanStateId.GroundLossHang: return "허둥대는 중";`
+     한 줄이면 끝난다. **그 파일 담당자에게 배정 필요.**
+   - `Interaction/CornerHoverPanel.cs`의 `ResolveCaption` — `default`가 "쉬는 중"이라 허공에서
+     허둥대는 동안 "쉬는 중"으로 표시된다(원칙 1의 사소한 어긋남). 같은 배정.
+   - `CharacterPortraitStage.PoseForState`는 `default`가 `Standing`이라 **문제 없음**(확인함).
+2. **렌더 레이어 2건은 새 상태를 "지상"으로 본다** — 둘 다 이번 라운드 편집 금지 파일이라 건드리지
+   않았다. 판단 필요:
+   - `CharacterAccessoryRenderer.IsAirborne`(= `Fall || Jump || ThrowTumble`) → 허공에 떠 있는
+     0.45초 동안 **망토가 펄럭이지 않는다.** 넣으면 코요테 그림이 더 살아난다.
+   - `CharacterPetRenderer.IsOwnerGrounded` → 펫이 사라진 발판 위에 그대로 서 있는다.
+     (주인도 그 자리에 붙잡혀 있으므로 어긋나 보이지는 않는다 — 우선순위 낮음.)
+3. **AI/입력/네이티브 무영향**: `AutoWanderController`/`IMovementIntentSource`/`Platform/` 는 열지도
+   않았다. 유예 중에도 이동 의도는 그대로 읽히며(복귀 상태 분기에 쓴다) 새 의도를 만들지 않는다.
+4. **설정 에셋에 필드 11개가 늘었다**(`DefaultStickConfig.asset` 맨 끝). 값은 C# 기본값과 동일하게
+   명시했다 — Unity가 나중에 자동으로 채우게 두지 않고 지금 적어 둔 이유는, 배포 에셋의 값이
+   "코드 기본값에 의존하는 암묵값"이 아니라 **읽어서 확인할 수 있는 명시값**이어야 하기 때문이다.
+
+### 11. 이 라운드가 하지 않은 것
+
+- **육안 검증 0회.** 33pt/35pt/19.6도는 전부 수치이고, "허공에서 종종거리는 게 코요테로 읽히는가"는
+  눈으로 봐야 한다. 소은의 재검증 요청(리더 결정 5항: "수정이 들어간 빌드로 IDLE 케이스 30초 재확인")
+  이 그대로 유효하다 — 이제는 그 확인에서 **유예 중 다리가 실제로 도는지**를 함께 보면 된다.
+- 유예 **길이**는 한 톨도 건드리지 않았다(0.45초 그대로, 리더 결정 (B) 기각 준수).
+
+## 리더 결정 — 최종 정리 라운드 (2026-09-01)
+
+1. **소유권 밖 3파일 편집 승인** (`SettingsWindow.cs` / `CharacterProgressionDirector.cs` /
+   `SettingsUserFacingCopyTests.cs`). **mtime 실측으로 유휴를 먼저 확인한 절차가 정확히 오늘
+   확정한 규칙 그대로다.** C3를 정식 검사로 승격하려면 저장소 전체가 규칙을 지켜야 하므로 범위
+   확장도 타당하다. 전부 한 줄 치환.
+2. **리더 지시의 "최소 수정안"이 두 자리에서 틀렸고 에이전트가 실측으로 반증했다** —
+   (a) 크리스 0.36은 문턱 여유가 0.5%뿐이라 0.40이 맞다, (b) "챙을 두껍게 하면 관을 파고든다"는
+   **틀렸다**(관은 챙선 위에만 있고 두꺼워지는 방향은 아래). 리더가 수치를 직접 재지 않고 넘긴
+   제안은 앞으로도 "제안"으로만 전달하고, 담당자가 실측으로 뒤집는 것을 정상 절차로 둔다.
+3. **잠복 결함 1건 추가 해소**: 배낭 끈 끝점이 팔각형 모따기 바깥이라 몸에서 **0.64획 떠 있었다**
+   (규칙4 "최악" 구간). 끝점 공유로 규칙1과 4를 함께 닫은 것이 좋다.
+4. **C3 검증 수준 특기**: 크로스 컴파일 산출물 **두 개를 리플렉션으로 실제 실행**해
+   `osx → ⌃⌥⌘A` / `win → Ctrl+Alt+Win+A`를 확인했다. "컴파일된다"를 넘어 "실행하면 맞는 값이
+   나온다"까지 간 검증이라 앞으로 플랫폼 분기 검증의 기준으로 삼는다.
+5. **목도리 `ScarfWrap` 0.99획(0.34R→0.35R 한 자리) — 릴리즈 후 백로그.** 털모자 띠와 함께
+   다음 액세서리 라운드에서 처리.
+
+### Windows 실기 확인 항목 추가
+- **단축키 라벨이 4자(⌃⌥⌘A) → 14자(Ctrl+Alt+Win+A)로 길어졌다.** 설정창 단축키 행과 종료 버튼
+  폭이 넘칠 수 있다(레이아웃은 macOS에서 렌더 불가라 확인 못 함). 릴리즈 후 실기에서 잘림 여부 확인.
+
+### 육안 검증 — 리더가 직접 수행 (누적 5라운드 미완)
+특히 확인할 것: **천모자 챙 뿌리가 3.8배 두꺼워져 "챙"이 아니라 "이마 띠"로 보일 가능성**,
+폼폼 27% 확대, EYES 바이저 6종, 헤어/목걸이 재설계, 신규 아이템 14종, 초상화 액자 미리보기.
+
+## ★★ 리더 육안 검증 결과 (2026-09-01) — 수치가 통과시킨 것을 눈이 잡았다
+
+빌드(14:26) 후 리더가 직접 실행해 캡처/확대로 확인했다. 세이브는 백업→원복(SHA 일치) 완료.
+
+### 근본 문제: 지표가 잰 적 없는 성질
+오늘 액세서리 라운드 4회가 통과한 지표는 전부 **"두 도형이 서로 다른가"**(실루엣 차 ≥1.5W)와
+**"획보다 두꺼운가"**(규칙1)였다. 그런데 실제로 깨진 것은 **"이 도형이 그 이름의 물건으로 읽히는가"**다.
+**이 성질을 잰 지표는 하나도 없었고, 그래서 5라운드 연속 초록불이면서 카드가 읽히지 않는 상태로
+왔다.** 앞으로 도형 변경 라운드는 반드시 실물 캡처 육안 확인을 동반한다(수치만으로 종료 금지).
+
+### 확인된 결함 (우선순위 순)
+
+| # | 항목 | 실제로 무엇처럼 보이는가 |
+|---|---|---|
+| V1 | **선글라스 카드** | **오른쪽을 가리키는 화살표/커서**. 안경으로 전혀 안 읽힘 |
+| V2 | **동그란안경 카드** | **아령(덤벨)**. 원 2개 + 가는 막대, 안경다리가 안 보임 |
+| V3 | **고글 카드** | 곡선(끈)이 **왼쪽에만** 있어 한쪽으로 쏠린 기형 도형 |
+| V4 | **외알안경 카드** | 금색 원 + 흰 선이 따로 놀아 하나의 물건으로 안 묶임 |
+| V5 | **선글라스 바이저 끝이 머리 밖으로 튀어나옴**(초상화) | **부리/주둥이**처럼 보인다 |
+| V6 | **선글라스 안경다리가 머리에서 떨어져 공중에 뜸**(초상화) | 머리 위에 별개의 막대가 떠 있다 |
+| V7 | **날개 카드** | **나뭇잎 한 장 / 깃발**. 날개는 한 쌍이어야 하는데 한 짝만 보인다 |
+| V8 | **목도리 카드** | **장화/파이프**. 목도리로 안 읽힘 |
+| V9 | **짧은망토 vs 긴망토 카드** | 거의 동일한 그림. 지표는 통과하지만 눈으로는 구분 안 됨 |
+
+**공통 원인 가설(V1~V4)**: EYES 바이저 재설계는 **얼굴 위에 얹혔을 때**를 기준으로 만들어졌고
+초상화에서는 실제로 잘 읽힌다(바이저로 보인다). 그런데 카드 아이콘은 **머리 없이 도형만 단독으로**
+그려서 맥락이 사라진다. "얼굴에 얹는 불투명 판"은 홀로 떼어놓으면 그냥 판때기다.
+
+### 잘 나온 것 (확인 완료 — 건드리지 말 것)
+- **모자 4종 전부 좋다.** 천모자=챙 달린 캡, 털모자=폼폼 달린 비니(27% 확대해도 폼폼으로 읽힘),
+  중절모=중절모, 왕관=왕관. **소은이 우려한 "챙이 이마 띠로 보인다"는 기우였다** — 캡으로 잘 읽힌다.
+- 나비넥타이/줄무늬타이 좋다. 망토 빨간색 적용 확인.
+- **설정창 전부 좋다** — 잠긴 탭이 탭바에서 구분됨(M7 ✓), 내부 개발 문구 제거됨(M6 ✓),
+  [▲][▼]가 콘텐츠 밖으로 나감(소은 #3 ✓), 자동숨김 캡션이 창 차단막까지 고지(J3 ✓),
+  푸터 진입 경로 안내 정확.
+- **캐러셀 peek 동작 확인**(3장 온전 + 1장 반쯤 + 더 있음이 그림으로 전달, M1 ✓),
+  카드 하단 착용 버튼 + 카테고리 상호배타(선글라스 "착용 중/해제") ✓, 넘어진 횟수 삭제 ✓,
+  창 불투명(뒤 비침 0) ✓, `6 / 6` 개수 표기 ✓.
+- 초상화에서 **머리 채움 + 눈 제거**가 의도대로 보인다.

@@ -77,7 +77,9 @@ namespace StickMate.Platform
         /// <summary>사용자가 보고는 있지만 캐릭터가 가만히 서 있고 최근 입력도 없다.</summary>
         Calm = 1,
 
-        /// <summary>자리 비움 — 오랫동안 입력이 없다.</summary>
+        /// <summary>자리 비움 — 오랫동안 입력이 없고 <b>그 사이 캐릭터도 제자리에 서 있다</b>.
+        /// 두 조건은 AND다. 무입력만으로는 이 등급이 아니다(<see cref="FramePacingPolicy.AwaySeconds"/>
+        /// 문서의 "무입력은 이탈이 아니라 몰입 신호일 수 있다" 절).</summary>
         Away = 2,
 
         /// <summary>전체화면 게임 감지로 캐릭터를 숨긴 상태(기존 Suspend 경로).</summary>
@@ -141,12 +143,61 @@ namespace StickMate.Platform
     /// </summary>
     public static class FramePacingPolicy
     {
-        /// <summary>이 시간(초) 이상 입력이 없으면 "자리 비움"으로 본다.</summary>
+        /// <summary>
+        /// 자리 비움 판정의 <b>필요조건</b>(충분조건이 아니다) — 이 시간(초) 이상 입력이 없어야 한다.
+        ///
+        /// <para><b>★ 2026-09-01 정정 — 무입력만으로 Away를 주면 "움직임이 부드럽지 않다"가 된다.</b>
+        /// 원래 이 상수 하나가 곧 Away 판정이었다. 그 판정은 <b>캐릭터가 무엇을 하고 있는지를 보지
+        /// 않았고</b>, 그래서 다음이 성립했다:
+        /// <list type="number">
+        /// <item>사용자가 마우스에서 손을 떼고 <b>캐릭터를 구경한다</b>(이 앱의 기본 액션이다 —
+        ///   docs/UX_FLOW.md 2절).</item>
+        /// <item>정확히 180초 뒤 Away로 내려가 프레임이 1/4이 된다(60Hz -> 15fps).</item>
+        /// <item>그런데 캐릭터는 계속 걷고 있다. 보행 주기 1.35Hz면 한 걸음이 <b>약 11프레임</b>으로만
+        ///   그려져 무릎 관절이 프레임당 최대 9도씩 <b>점프</b>한다.</item>
+        /// <item>사용자가 마우스를 조금이라도 움직이면 즉시 사라진다 — 그래서 재현이 어렵고 오래 살았다.</item>
+        /// </list>
+        /// 즉 <b>보고 있는 사람 앞에서 프레임을 4분의 1로 깎고 있었다</b>. 절감 등급의 대전제
+        /// ("아무도 보고 있지 않은 시간에만 깎는다")를 정면으로 어긴 유일한 경로였다.</para>
+        ///
+        /// <para><b>왜 "무입력 시간을 더 줄이자"가 아니라 "조건을 더하자"인가</b>: 이 앱에서 무입력은
+        /// 이탈 신호가 아니라 <b>몰입 신호일 수 있다</b>. 지켜보기가 곧 기본 상호작용이라, 무입력
+        /// 임계값을 앞당기는 방향(예: 30~60초)은 증상을 <b>더 자주</b> 만든다. 그래서 임계값은 180초
+        /// 그대로 두고, 판정에 <c>characterIdle</c>을 AND로 더했다. 캐릭터가 서 있다면 프레임을 깎아도
+        /// 깎이는 것이 없다(정지 화면에는 부드러움이라는 성질 자체가 없다).</para>
+        ///
+        /// <para><b>DisplayOff는 이 정정의 대상이 아니다</b> — 화면이 물리적으로 꺼진 것은 관측된
+        /// 사실이고, 그때는 캐릭터가 걷든 말든 볼 수 있는 사람이 없다. 그래서 걷는 중에도 4fps로
+        /// 내려간다(<see cref="DisplayOffTargetFps"/>).</para>
+        ///
+        /// <para><b>대가(의도적으로 받아들인 것)</b>: 자율 배회는 Idle 2~6초 / Walk 1.5~4초를 반복하므로
+        /// 사용자가 실제로 자리를 비운 밤에도 등급이 Away와 Active를 오간다 — 절감량이 줄어든다.
+        /// 그 절반은 <see cref="FramePacingTier.DisplayOff"/>(화면 슬립)가 회수하고, 나머지는
+        /// "보고 있는 사람 앞에서 끊기지 않는다"의 값이 더 크다고 판단한 결과다.</para>
+        /// </summary>
         public const float AwaySeconds = 180f;
 
         /// <summary>Calm 등급의 전제 — 최근 이 시간(초) 안에 입력이 있었으면 사용자가 상호작용
-        /// 중이라고 보고 무조건 Active를 유지한다. UI(정보창/부채꼴메뉴/포스트잇)를 만지는 중에
-        /// 프레임이 떨어지는 일을 <b>UI 코드와 전혀 결합하지 않고</b> 막는 장치다.</summary>
+        /// 중이라고 보고 무조건 Active를 유지한다.
+        ///
+        /// <para><b>★ 2026-08-31 정정 — 이것만으로는 UI 상호작용을 지키지 못한다(사용자 신고로 반증됨).</b>
+        /// 원래 주석은 "UI(정보창/부채꼴메뉴/포스트잇)를 만지는 중에 프레임이 떨어지는 일을 UI 코드와
+        /// 전혀 결합하지 않고 막는 장치"라고 적혀 있었다. 그 주장은 <b>틀렸다</b>. 반례가 아주 흔하다:
+        /// <list type="number">
+        /// <item>사용자가 정보창을 열고 <b>읽는다</b>. 마우스를 안 움직인다 -> 무입력 2초 경과.</item>
+        /// <item>그 사이 캐릭터가 자율 배회의 Idle 구간(실측 2~6초)에 들어간다 -> <b>Calm</b>.</item>
+        /// <item>사용자가 이제 타이틀바를 잡고 끈다. 입력이 다시 들어오지만 등급 복귀는
+        ///       <b>다음 관측 폴링(최대 0.2초)</b>에 가서야 일어난다.</item>
+        /// </list>
+        /// 즉 <b>모든 상호작용의 첫 0.2초가 절반 프레임레이트로 시작</b>한다. Windows에서는 이것이
+        /// 표시 부드러움만의 문제가 아니다 — Windows 등급은 <c>targetFrameRate</c>를 나누므로
+        /// <b>게임 루프 자체가 30Hz</b>가 되고, 정보창 드래그는 <c>Update()</c>마다 OS 커서를 한 번
+        /// 폴링하는 구조라 <b>커서 표본 주기도 같이 절반</b>이 된다(창이 커서를 계단식으로 따라온다).
+        /// 사용자 신고 "기어 설정창조차 클릭하면 약간 렉걸린듯이 움직임"이 이 경로다.</para>
+        ///
+        /// <para>그래서 "최근 입력" 휴리스틱은 그대로 두되, <b>UI 표면이 자기가 열려 있음을 명시적으로
+        /// 알리는</b> 두 번째 장치(<c>DecideTier(..., uiInteractionActive)</c>의 네 번째 인자)를 추가했다. 결합은 <b>한 방향 단 한 줄</b>이다(UI -> FramePacing).</para>
+        /// </summary>
         public const float RecentInputSeconds = 2f;
 
         /// <summary>디스플레이가 꺼져 있을 때의 절대 fps. 0이 아닌 이유: 깨어남 감지 폴링이
@@ -160,10 +211,49 @@ namespace StickMate.Platform
         /// </summary>
         public static FramePacingTier DecideTier(in ViewerPresenceSnapshot presence,
             bool suspendedForFullscreen, bool characterIdle)
+            => DecideTier(presence, suspendedForFullscreen, characterIdle, uiInteractionActive: false);
+
+        /// <summary>
+        /// 위 규칙에 <b>"지금 사용자가 이 앱의 UI 표면을 붙잡고 있다"</b>는 사실 하나를 더한 판정.
+        ///
+        /// <para><b>왜 필요한가</b>: <see cref="RecentInputSeconds"/> 문서의 반례 참고 — "창을 읽는
+        /// 동안 Calm으로 내려갔다가, 끌기 시작하는 첫 0.2초를 절반 프레임레이트로 시작"하는 구멍을
+        /// 최근 입력 휴리스틱만으로는 막을 수 없다. 열려 있는 모달은 <b>사용자가 보고 있다는 사실
+        /// 그 자체</b>라, 추정(무입력 시간)이 아니라 관측으로 다뤄야 한다.</para>
+        ///
+        /// <para><b>★ 우선순위를 어디에 끼웠는지가 이 함수의 전부다</b> — DisplayOff / Suspended /
+        /// Away <b>아래</b>다. 이 셋을 이기게 두면 각각 다음이 깨진다:
+        /// <list type="bullet">
+        /// <item><b>DisplayOff</b>: 화면이 꺼진 것은 관측된 사실이다. 창이 열려 있어도 볼 사람이
+        ///   물리적으로 없다.</item>
+        /// <item><b>Suspended</b>: 전체화면 게임이 감지된 상태다. 여기서 프레임을 유지하는 것은
+        ///   CLAUDE.md 원칙 2(비침해) 정면 위반이다. (덧붙여 정보창류 표면은 그 순간 스스로 닫히므로 실제로는 도달하지도 않는다.)</item>
+        /// <item><b>Away</b>: <b>24시간 상주 앱의 안전장치</b>다. 창을 열어 둔 채 사용자가 자리를
+        ///   비우면(3분 무입력 + 캐릭터 정지) 이 홀드가 60fps를 <b>영구히</b> 붙잡아 밤새 컴포지터를
+        ///   돌린다. Away가 이기게 두면 "잊고 열어 둔 창"이 절감을 통째로 무력화하지 못한다. 그리고 이
+        ///   배치는 신고된 증상을 조금도 되살리지 않는다 — <b>끌고 있는 동안에는 정의상 입력이 계속</b>
+        ///   들어오므로 Away 조건이 성립할 수 없다. (2026-09-01부터 Away는 <c>characterIdle</c>까지
+        ///   요구하므로 이 홀드가 지는 범위는 오히려 더 좁아졌다 — 걷는 중이면 애초에 Away가 아니다.)</item>
+        /// </list>
+        /// 즉 이 홀드가 실제로 이기는 대상은 <b>Calm 하나</b>이고, 그것이 신고된 버그의 원인이었다.</para>
+        /// </summary>
+        /// <param name="uiInteractionActive">이 앱의 UI 표면(정보창 등)이 열려 있거나 끌리는 중인가.
+        /// 호출부가 <c>FramePacing.HoldActiveForInteraction()</c>으로 갱신한 홀드의 유효 여부다.</param>
+        public static FramePacingTier DecideTier(in ViewerPresenceSnapshot presence,
+            bool suspendedForFullscreen, bool characterIdle, bool uiInteractionActive)
         {
             if (presence.Valid && presence.DisplayAsleep) return FramePacingTier.DisplayOff;
             if (suspendedForFullscreen) return FramePacingTier.Suspended;
-            if (presence.Valid && presence.SecondsSinceUserInput >= AwaySeconds) return FramePacingTier.Away;
+
+            // ★ Away는 "무입력"과 "캐릭터 정지"의 AND다. 무입력만으로 내려가면 구경 중인 사용자
+            //   앞에서 걷기가 15fps로 끊긴다(근거: AwaySeconds 문서). DisplayOff는 위에서 이미
+            //   빠져나갔으므로 이 AND가 화면 꺼짐 절감을 약화시키지는 않는다.
+            if (presence.Valid && presence.SecondsSinceUserInput >= AwaySeconds && characterIdle)
+            {
+                return FramePacingTier.Away;
+            }
+
+            if (uiInteractionActive) return FramePacingTier.Active;
 
             if (characterIdle && presence.Valid
                 && presence.SecondsSinceUserInput >= RecentInputSeconds)
@@ -172,6 +262,25 @@ namespace StickMate.Platform
             }
             return FramePacingTier.Active;
         }
+
+        /// <summary>
+        /// 저전력 모드로 <b>활성 등급까지</b> 한 칸 낮출 것인가를 정하는 유일한 곳
+        /// (<see cref="BuildPlan"/>의 <c>lowPowerMode</c> 인자에 넣을 값).
+        ///
+        /// <para><b>왜 분리했는가(2026-08-31 드래그 렉 라운드에서 발견한 두 번째 구멍)</b>:
+        /// <c>BuildPlan</c>은 <c>lowPowerMode &amp;&amp; divisor == 1</c>일 때, 즉 <b>Active 등급에서도</b>
+        /// 나누기 2를 건다. 그래서 Windows 배터리 세이버(또는 macOS 저전력 모드)가 켜진 노트북에서는
+        /// 등급이 항상 Active여도 <c>targetFrameRate</c>가 30으로 고정된다 — <b>창을 끄는 내내</b>
+        /// 그렇다. 관측 실패도 아니고 Calm도 아니라서 위 <see cref="DecideTier"/>로는 절대 잡히지
+        /// 않는 별개의 경로다.</para>
+        ///
+        /// <para>사용자가 OS에서 저전력을 켠 것은 존중해야 할 의사표시지만, <b>그 사용자가 지금 이
+        /// 앱의 창을 직접 끌고 있는 그 몇 초</b>까지 반값으로 그려 줄 이유는 없다(그 몇 초의 전력은
+        /// 무시할 수 있고, 대가는 "이 앱은 끊긴다"는 인상이다). 홀드가 끝나면 즉시 원래대로 돌아간다.</para>
+        /// </summary>
+        public static bool ShouldApplyLowPowerDownshift(in ViewerPresenceSnapshot presence,
+            bool uiInteractionActive)
+            => presence.Valid && presence.LowPowerMode && !uiInteractionActive;
 
         /// <summary>
         /// 등급 -> 실제 손잡이 값. <paramref name="baseVSyncCount"/>가 0이면(Windows처럼 vsync를 끄고
@@ -230,7 +339,7 @@ namespace StickMate.Platform
         {
             FramePacingTier.Active => "활성(사용자가 보고 있고 캐릭터가 움직인다)",
             FramePacingTier.Calm => "정적(캐릭터가 서 있고 최근 입력 없음)",
-            FramePacingTier.Away => "자리비움(오랫동안 입력 없음)",
+            FramePacingTier.Away => "자리비움(오랫동안 입력 없고 캐릭터도 정지)",
             FramePacingTier.Suspended => "전체화면 숨김",
             FramePacingTier.DisplayOff => "디스플레이 꺼짐(볼 수 있는 사람 없음)",
             _ => tier.ToString(),

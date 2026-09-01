@@ -88,35 +88,78 @@ namespace StickMate.Interaction
         /// </summary>
         public void ForceTriggerNow(string reason)
         {
+            // ★ 36-1이 이 단축키를 반으로 갈랐다: **소환은 (가) 사용자 명령**, **발동은 (다) 개발 전용**.
+            //   가출 중이라면 그건 데모가 아니라 20절이 상시 제공을 요구한 탈출구이므로 게이트와 무관하게
+            //   언제나 산다. 게이트 판단은 호출자(AppControlDirector)가 발동측에만 건다.
+            if (IsRunawayActive) { TryRecallNow(reason); return; }
+            TryForceRunawayNow(reason);
+        }
+
+        /// <summary>지금 가출 중인가 — 행동 명령창 헤더의 [돌아와!] 칩이 이 값으로만 나타난다.</summary>
+        public bool IsRunawayActive => _player != null && _player.Blackboard != null
+            && _player.Blackboard.Machine != null
+            && _player.Blackboard.Machine.CurrentStateId == StickmanStateId.Runaway;
+
+        /// <summary>가출 중이 아닐 때 [돌아와!]를 물으면 나오는 문구. 실제로는 그때 칩 자체가 없다
+        /// (36-6: 없는 상태를 사용자에게 가르치지 않는다) — 프로그램 오용에 대한 방어다.</summary>
+        public const string NotRunawayReason = "지금은 집에 있어요";
+
+        /// <summary>
+        /// ★ (가) 사용자 명령 — [돌아와!]. 20절이 "찾기 미니게임을 강제하지 않는 상시 탈출구"라고
+        /// 못박은 원칙 4 장치라 <b>개발 게이트 대상이 아니다</b>.
+        /// </summary>
+        public CommandAvailability GetRecallAvailability()
+        {
             if (_player == null || _config == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
-            {
-                Debug.LogWarning($"[가출] 강제 발동 실패({reason}) — 플레이어/설정 배선이 없습니다.");
-                return;
-            }
+                return CommandAvailability.Missing;
+            return IsRunawayActive ? CommandAvailability.Ready : CommandAvailability.Blocked(NotRunawayReason);
+        }
 
-            var current = _player.Blackboard.Machine.CurrentStateId;
-            if (current == StickmanStateId.Runaway)
+        /// <returns>실제로 소환 신호를 세웠는가.</returns>
+        public bool TryRecallNow(string reason)
+        {
+            if (!GetRecallAvailability().IsReady)
             {
-                _player.Blackboard.RunawayManualRecallSignaled = true;
-                Debug.Log($"[가출] [돌아오라고 부르기]({reason}) — 수동 소환 신호를 세웠습니다. " +
-                    "찾기 미니게임을 강제하지 않는 상시 탈출구다(20절).");
-                return;
+                Debug.Log($"[가출] [돌아오라고 부르기]({reason}) 건너뜀 — {NotRunawayReason}.");
+                return false;
             }
+            _player.Blackboard.RunawayManualRecallSignaled = true;
+            Debug.Log($"[가출] [돌아오라고 부르기]({reason}) — 수동 소환 신호를 세웠습니다. " +
+                "찾기 미니게임을 강제하지 않는 상시 탈출구다(20절).");
+            return true;
+        }
 
+        /// <summary>
+        /// ★ (다) 개발 전용 — 가출을 <b>억지로 시키는</b> 쪽. 36-1의 판단: 가출은 스트레스의 <b>결과</b>라
+        /// 원인 없이 결과를 만드는 것은 원칙 1 위반이다. 사용자 UI에는 노출되지 않으며 호출자가
+        /// <see cref="StickMateDevTools"/> 게이트 뒤에서만 부른다.
+        /// </summary>
+        public CommandAvailability GetForcedRunawayAvailability()
+        {
+            if (_player == null || _config == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
+                return CommandAvailability.Missing;
+
+            StickmanStateId current = _player.Blackboard.Machine.CurrentStateId;
             if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
-            {
-                Debug.Log($"[가출] 강제 발동({reason}) — 지금은 {current} 중이라 건너뜁니다" +
-                    "(진행 중인 행동을 데모 때문에 중단시키지 않는다).");
-                return;
-            }
+                return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(current));
 
             if (SpectacleEventLock.IsActive)
+                return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(SpectacleEventLock.ActiveKind));
+
+            return CommandAvailability.Ready;
+        }
+
+        /// <returns>실제로 가출을 시작했는가.</returns>
+        public bool TryForceRunawayNow(string reason)
+        {
+            CommandAvailability availability = GetForcedRunawayAvailability();
+            if (!availability.IsReady)
             {
-                Debug.Log($"[가출] 강제 발동({reason}) — 다른 스펙터클({SpectacleEventLock.ActiveKind})이 " +
-                    "진행 중이라 건너뜁니다(25절-20 상호배제는 강제 경로에서도 그대로 지킨다).");
-                return;
+                Debug.Log($"[가출] 강제 발동({reason}) 건너뜀 — {availability.Reason}" +
+                    "(진행 중인 행동을 데모 때문에 중단시키지 않는다 / 25절-20 상호배제는 강제 경로에서도 지킨다).");
+                return false;
             }
-            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.Runaway, this)) return;
+            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.Runaway, this)) return false;
 
             int corner = Random.Range(0, 4);
             _player.Blackboard.PendingRunawayHideWorldPos = ComputeHideSpotWorldPos(corner);
@@ -128,6 +171,7 @@ namespace StickMate.Interaction
                 $"자동 복귀 마지노선 {_config.runawayAutoReturnSeconds:F0}초, " +
                 $"힌트 파문 주기 {_config.runawayHintPulseIntervalSeconds:F0}초. " +
                 "다시 같은 단축키를 누르면 [돌아오라고 부르기]로 동작한다.");
+            return true;
         }
 
         /// <summary>은신처 4곳(화면 네 모서리, 20절)을 OS 화면 좌표로 계산한 뒤 캐릭터 현재 위치 기준

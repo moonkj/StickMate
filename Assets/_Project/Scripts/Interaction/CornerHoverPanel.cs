@@ -53,7 +53,7 @@ namespace StickMate.Interaction
     /// 절대 불변 원칙 (34-8)
     /// ============================================================================
     ///  · 원칙 1(행동-텍스트 싱크): 다이얼 숫자·켜진 눈금 수·카드 속 크기·실캐릭터 크기가 전부 같은
-    ///    하나의 인덱스에서 파생된다. "2.00×라고 떠 있는데 캐릭터는 그대로"가 구조적으로 불가능하다.
+    ///    하나의 인덱스에서 파생된다. "1.50×라고 떠 있는데 캐릭터는 그대로"가 구조적으로 불가능하다.
     ///  · 원칙 2(비침해): <see cref="StickmanAgent.IsSuspended"/>면 <b>연출 없이 그 프레임에</b> 거둔다
     ///    (차단막 포함). 복귀해도 자동으로 다시 열지 않는다. 숨어 있는 동안 콜라이더 0개.
     ///  · 원칙 3(유저 자산 불변): 이 패널은 <b>읽기만</b> 한다 — 커서 좌표, Dock 두께, 캐릭터 상태.
@@ -112,9 +112,52 @@ namespace StickMate.Interaction
         /// <summary>전체화면 게임을 끄는 순간 커서가 구석에 있는 것은 흔하다 — 복귀 직후 오폭 방지.</summary>
         private const float ResumeSuppressSeconds = 1f;
 
-        private const float PeekGrowSeconds = 0.14f;
+        // ★ 2026-09-01 — 아래 넷(PeekGrow/Collapse/ContentReveal/ContentHide)을 public으로 올린다.
+        //   값은 한 글자도 바뀌지 않는다. 이유는 <b>테스트가 이 수를 베껴 적지 않게</b> 하기 위해서다:
+        //   등장/퇴장 연출은 프레임이 아니라 <b>벽시계 초</b>(Time.unscaledDeltaTime)로 굴러가는데,
+        //   CornerHoverPanelTests가 대기 예산을 "프레임 180번"으로 적어 두는 바람에 배치 모드
+        //   (실측 0.11~0.45ms/프레임 = 2,200~8,900fps)에서 180프레임이 고작 0.014~0.082초밖에 되지
+        //   않아, 상자가 게이트(0.9 × 0.14s = 0.126s)에 닿기도 전에 판정이 끝나 10회 중 10회 실패했다.
+        //   ContentGateBlend를 public으로 둔 것과 같은 이유이고 같은 관례다.
+        public const float PeekGrowSeconds = 0.14f;
         private const float ExpandSeconds = 0.20f;
-        private const float CollapseSeconds = 0.14f;
+        public const float CollapseSeconds = 0.14f;
+
+        /// <summary>
+        /// ★ 2026-08-31 사용자 신고 <i>"크기조절 원이 먼저 떠 있고 상자가 나중에 커짐"</i>의 수정 상수.
+        ///
+        /// <para><b>무엇이 잘못됐었나</b>: 다이얼과 카드는 패널의 <b>자식</b>인데 패널에는 마스크가 없다.
+        /// 그래서 상자 크기(<see cref="_peekBlend"/>)와 내용물의 보임 여부가 <b>서로 다른 출처</b>에서
+        /// 나왔고, PEEK(104×14pt)에서도 다이얼(눈금이 패널 바닥 기준 27~129pt를 차지한다)이 100%
+        /// 그려졌다. 즉 <b>상자보다 원이 먼저</b> 보이고, 260ms 뒤에야 상자가 원을 감싸며 자랐다.</para>
+        ///
+        /// <para><b>규칙</b>: 내용물(다이얼·카드)은 상자가 이만큼 자란 뒤에만 알파가 오른다. 값 0.9는
+        /// 취향이 아니라 <b>기하에서 유도</b>됐다 — 눈금 꼭대기(78 + <see cref="SizeDialWidget.TickVisualOuterRadius"/>
+        /// = 129pt)가 상자 안에 들어가는 최소 블렌드가 0.858이다. <c>CornerHoverPanelTests</c>의
+        /// <c>내용물은_상자가_다_자란_뒤에만_보인다</c>가 이 등식을 잠근다.</para>
+        /// </summary>
+        public const float ContentGateBlend = 0.9f;
+
+        public const float ContentRevealSeconds = 0.10f;
+
+        /// <summary>사라질 때는 나타날 때보다 빠르다 — 상자가 줄기 시작하려면 내용물이 <b>먼저</b>
+        /// 다 사라져야 하고(등장의 정확한 역순), 그동안 상자가 멈춰 서 있기 때문이다.</summary>
+        public const float ContentHideSeconds = 0.07f;
+
+        /// <summary>HIDDEN/PEEK → 내용물이 <b>완전히</b> 보일 때까지 걸리는 벽시계 시간(초).
+        /// 상자가 게이트까지 자라고(<see cref="ContentGateBlend"/> × <see cref="PeekGrowSeconds"/>),
+        /// 상자가 다 자란 뒤(나머지 <see cref="PeekGrowSeconds"/>) 내용물이 오르는
+        /// (<see cref="ContentRevealSeconds"/>) 순서라, 상한은 이 둘의 <b>합</b>이다.
+        /// 테스트는 이 값에서 대기 예산을 유도한다 — 숫자를 베껴 적으면 상수가 바뀌는 순간 거짓 실패한다.</summary>
+        public const float OpenSequenceSeconds = PeekGrowSeconds + ContentRevealSeconds;
+
+        /// <summary>내용물이 다 사라지고(<see cref="ContentHideSeconds"/>) 그 뒤 상자가 손잡이까지
+        /// 줄어드는(<see cref="CollapseSeconds"/>) 데 걸리는 벽시계 시간(초).</summary>
+        public const float CloseSequenceSeconds = ContentHideSeconds + CollapseSeconds;
+
+        /// <summary>이만큼 보여야 누를 수 있다. <b>보이지 않는 다이얼이 클릭을 먹으면</b> "보이는 곳을
+        /// 누르면 먹는다"가 거꾸로 뒤집힌다(SizeDialWidget.SetCenterInParentPoints 문서와 같은 원칙).</summary>
+        private const float ContentInteractiveReveal = 0.5f;
 
         /// <summary>펼침 드래그의 데드존(pt). 이 아래는 "클릭"이다(손떨림으로 열리지 않게).</summary>
         private const float ExpandDeadZonePoints = 10f;
@@ -202,6 +245,10 @@ namespace StickMate.Interaction
         private float _expand;
         private float _expandTarget;
 
+        /// <summary>내용물(다이얼·카드) 등장 진행도 0..1. <b>상자의 성장 진행도에서만 파생</b>된다
+        /// (<see cref="ContentGateBlend"/>) — 두 그림이 각자의 타이밍을 갖는 순간 등장 순서가 어긋난다.</summary>
+        private float _contentReveal;
+
         private bool _dragActive;
         private bool _dragIsDial;
         private Vector2 _dragStart;
@@ -217,14 +264,11 @@ namespace StickMate.Interaction
         private bool _hiddenBySuspend;
         private bool _wasSuspended;
 
-        /// <summary>다이얼로 정했지만 아직 실캐릭터에 못 넣은 값(랙돌/스펙터클 중). 34-3-6의 2단계 적용.</summary>
-        private bool _hasPendingScale;
-        private float _pendingScale;
-        private float _pendingSince;
-
-        /// <summary>적용을 무한정 미루지 않는다 — 이 시간이 지나면 상태와 무관하게 넣는다.
-        /// (물리적으로는 어떤 상태에서 바꿔도 안전하다는 것이 2026-08-30 실측 결론이므로 이건 연출 유예다.)</summary>
-        private const float PendingForceSeconds = 3f;
+        /// <summary>★ 2026-09-01 — 적용 대기(34-3-6의 2단계 적용) 상태는 이제 이 패널이 갖지 않는다.
+        /// <see cref="CharacterScaleController"/>가 게이트·대기·강제적용을 통째로 소유하고, 여기서는
+        /// 그 상태를 <b>읽어서 캡션만</b> 그린다 — 설정창 슬라이더가 같은 규칙을 다시 구현하지 않게
+        /// 하기 위해서다(35-1-3 ①). 이 필드는 캡션을 실제로 바꾼 프레임에만 건드리려고 남긴 캐시다.</summary>
+        private bool _pendingCaptionShown;
 
         private string _lastCaption;
 
@@ -233,6 +277,16 @@ namespace StickMate.Interaction
         public bool IsVisible => _stage_ != Stage.Hidden;
         public bool IsExpanded => _stage_ == Stage.Expanded;
         public bool IsClickBlockerEnabled => _clickBlocker != null && _clickBlocker.enabled;
+
+        /// <summary>상자가 손잡이(PEEK)에서 패널(COLLAPSED)까지 자란 진행도 0..1(진단/테스트용).</summary>
+        public float PanelGrowProgress => _peekBlend;
+
+        /// <summary>내용물(다이얼·카드)이 드러난 진행도 0..1(진단/테스트용).</summary>
+        public float ContentRevealProgress => _contentReveal;
+
+        /// <summary>다이얼 그림이 지금 얼마나 보이는가 0..1 — <b>위젯이 실제로 들고 있는 값</b>을 읽는다
+        /// (패널이 시킨 값이 아니라). 둘이 다르면 배선이 끊긴 것이다.</summary>
+        public float DialRevealProgress => _dial != null ? _dial.Reveal : 0f;
 
         /// <summary>지금 보이는 패널 사각형(Unity 스크린 픽셀). 차단막이 정확히 이 크기다.</summary>
         public Rect PanelScreenRect { get; private set; }
@@ -256,6 +310,10 @@ namespace StickMate.Interaction
         {
             _buttonService = _agent != null ? _agent.PlatformService as IGlobalPointerButtonService : null;
 
+            // 배율의 단일 소스에게 "이 캐릭터에 넣어라"를 알려 준다(설정창도 같은 줄을 갖는다 —
+            // 둘 중 무엇이 먼저 돌아도 되고, 씬이 다시 로드되면 새 인스턴스로 갈아탄다).
+            CharacterScaleController.Bind(_agent);
+
             // 커서 좌표를 못 얻는 플랫폼(모바일 스크린샷 백드롭 모드 / 폴백 / 배치 모드)에서는
             // "구석 호버" 개념 자체가 없다(터치엔 호버가 없다) — 34-4-6의 첫 번째 "거부" 상태다.
             //
@@ -276,10 +334,27 @@ namespace StickMate.Interaction
             RestoreSavedScale();
         }
 
+        /// <summary>★ 다른 UI(설정창 슬라이더)가 배율을 바꾸면 이 다이얼도 같은 프레임에 따라온다 —
+        /// 35-1-3 ①이 지적한 "설정창에서 바꾸고 구석 패널을 열면 옛 값을 가리킨다"(원칙 1 위반)의 수정.</summary>
+        private void OnEnable()
+        {
+            StickmanEventBus.CharacterScaleChanged += OnCharacterScaleChanged;
+        }
+
         private void OnDisable()
         {
+            StickmanEventBus.CharacterScaleChanged -= OnCharacterScaleChanged;
             // 패널이 꺼진 채 차단막만 남으면 그 영역이 이유 없이 클릭관통 해제로 남는다(비침해).
             if (_clickBlocker != null) _clickBlocker.enabled = false;
+        }
+
+        private void OnCharacterScaleChanged(CharacterScaleChangeEvent e)
+        {
+            // 사용자가 지금 이 다이얼을 끌고 있으면 에코를 무시한다 — 안 그러면 끄는 손이 되돌려진다
+            // (RestoreSavedScale 문서의 (c)와 같은 이유).
+            if (_dial == null || (_dragActive && _dragIsDial)) return;
+            _scaleRestored = true;   // 다른 UI가 값을 확정했다 = 복원이 더 이상 덮어쓸 자격이 없다.
+            _dial.SetValue(e.Value);
         }
 
         private void OnDestroy()
@@ -312,12 +387,45 @@ namespace StickMate.Interaction
         {
             if (_scaleRestored) return;
 
+            // ★ 2026-09-01 — <b>적용 대기 중이면 복원은 끼어들지 않는다.</b>
+            //   이 줄이 없으면 다음이 가능하다: 랙돌 중 설정창 슬라이더로 1.35를 고르면 컨트롤러는
+            //   유예로 등록하면서 <b>저장 모델에는 즉시</b> 1.35를 적는데, 그 직후 아래 복원 분기가
+            //   "저장값이 생겼다"고 보고 게이트 없이 즉시 적용해 버린다 = 유예가 조용히 무효화된다.
+            //   (아래 (c) "사용자가 다이얼을 잡는 순간 끝"의 일반화 — 값을 잡는 손이 둘이 됐다.)
+            //
+            //   반대로 "컨트롤러에 값이 있으면 무조건 그만둔다"로 넓히면 안 된다: 컨트롤러는 정적이라
+            //   씬을 다시 로드해도 값이 남는데, 새 캐릭터는 배포 기본 배율로 태어난다. 그때 복원을
+            //   막으면 몸만 원래 크기인 화면이 된다(테스트가 실제로 그 상태를 잡아냈다).
+            if (CharacterScaleController.HasPendingApply)
+            {
+                _scaleRestored = true;
+                if (_dial != null) _dial.SetValue(CharacterScaleController.Value);
+                return;
+            }
+
             if (UiLayoutModel.HasCharacterScale)
             {
                 _scaleRestored = true;
-                float v = UiLayoutModel.CharacterScale;
+
+                // ★ 2026-08-31 상한 2.0 → 1.5(StickConfig.MaxCharacterScale). 이미 1.5를 넘겨 저장해 둔
+                //   사용자가 있다. clamp를 여기서 <b>한 번</b> 하고 그 값을 저장 모델에도 되쓴다 —
+                //   안 그러면 다이얼(ValueToIndex가 24칸으로 clamp)은 1.50×를 그리는데 저장 모델은
+                //   2.00×로 남아 "표시와 진실이 둘"이 된다(원칙 1). 다이얼을 한 번도 안 만지면
+                //   그 불일치가 영원히 남는다.
+                float saved = UiLayoutModel.CharacterScale;
+                float v = Mathf.Clamp(saved, StickConfig.MinCharacterScale, StickConfig.MaxCharacterScale);
+                if (!Mathf.Approximately(v, saved))
+                {
+                    UiLayoutModel.SetCharacterScale(v);
+                    Debug.Log($"[구석패널] 저장된 크기 {saved:F2}×가 상한을 넘어 {v:F2}×로 낮췄습니다 " +
+                        $"(상한 {StickConfig.MaxCharacterScale:F2}×).");
+                }
+
                 if (_dial != null) _dial.SetValue(v);
-                if (_agent != null) _agent.ApplyCharacterScale(v, "저장된 크기 복원");
+                // ★ 2026-09-01 — 적용을 직접 하지 않고 단일 소스를 지난다. 그래야 이 값이 설정창
+                //   슬라이더에도 같은 프레임에 실려 간다(원칙 1). 복원은 게이트를 거치지 않는다 —
+                //   시작 시점에 랙돌일 수 없고, 여기서 유예하면 첫 화면이 옛 크기로 뜬다.
+                CharacterScaleController.AdoptRestored(v, "저장된 크기 복원");
                 return;
             }
 
@@ -350,6 +458,16 @@ namespace StickMate.Interaction
                 _hiddenBySuspend = false;
                 _suppressUntil = Time.unscaledTime + ResumeSuppressSeconds;
             }
+
+            // ★ 이 Update()는 숨어 있을 때도 매 프레임 돈다(구석 감지 폴링). 그래서 홀드 조건은
+            // "열려 있다"가 아니라 <b>보이는 중</b>이어야 한다 — 상시 표면이 무조건 홀드를 걸면
+            // 24시간 내내 Calm이 성립하지 않아 절감이 통째로 사라진다.
+            // 보이는 동안은 정의상 커서가 구석에 머물러 있고(Peek 이상), 크기 다이얼 드래그는
+            // TickPointer()가 Update()마다 OS 커서를 폴링해 따라가므로 30Hz 루프에서 계단식으로
+            // 끊긴다 — 신고된 정보창 드래그와 정확히 같은 인과다.
+            // SizeDialWidget은 MonoBehaviour가 아니라 이 패널이 직접 굴리는 평범한 클래스라,
+            // 다이얼의 홀드도 여기 한 줄이 전부다(중복 배선 금지).
+            if (IsVisible) FramePacing.HoldActiveForInteraction();
 
             RestoreSavedScale();
             TickPendingScale();
@@ -465,6 +583,11 @@ namespace StickMate.Interaction
             {
                 _expand = 0f;
                 _expandTarget = 0f;
+                // 상자와 내용물을 <b>같은 순간에</b> 0으로 되돌린다. 여기서 안 지우면 ESC/전체화면으로
+                // 즉시 거둔 뒤 다시 뜰 때 상자가 이미 커진 채로 시작한다(= 원이 먼저 보이는 그 사고).
+                _peekBlend = 0f;
+                _contentReveal = 0f;
+                if (_dial != null) _dial.SetReveal(0f);
                 if (_canvas != null) _canvas.gameObject.SetActive(false);
                 if (_clickBlocker != null) _clickBlocker.enabled = false;
             }
@@ -512,12 +635,37 @@ namespace StickMate.Interaction
 
         private float PixelsPerPoint => ScreenCoordinateConverter.CanvasToUnityScreen(1f, _config);
 
-        /// <summary>감지 영역 원점(화면 좌하단 기준, OS 포인트). Dock을 피한다(34-4-2).</summary>
+        /// <summary>감지 영역 원점(화면 좌하단 기준, OS 포인트). 하단 막대(macOS Dock / Windows
+        /// 작업표시줄)를 피한다(34-4-2).
+        ///
+        /// <para><b>★ 2026-09-01 Windows 패리티 감사</b> — 원래 이 함수는 <see cref="IDockMetricsService"/>
+        /// 하나만 물어봤다. 그 인터페이스는 <b>macOS 전용</b>이다(Dock 타일 크기/개수). Windows의
+        /// <c>Win32WindowService</c>는 대신 <see cref="IReservedBottomBarService"/>로 작업표시줄의
+        /// <b>정확한 사각형</b>을 실측해 내놓는데 여기서 그것을 묻지 않았다 — 그 결과 Windows에서는
+        /// 좌하단 감지 영역과 패널이 작업표시줄에 파묻혀, 손잡이를 가리키기도 어렵고 클릭해도
+        /// 작업표시줄이 먼저 먹는다. 발판/안전망 쪽은 이미
+        /// <c>FallbackPlatformWindowService.TryGetDockRectOsScreen</c>이 두 플랫폼을 같은 자리에서
+        /// 처리하고 있었고, UI 배치만 macOS 경로에 갇혀 있었다.</para>
+        ///
+        /// <para>순서: <b>OS가 확정값을 주는 쪽을 먼저</b> 본다. Windows는 실측 사각형이라 추정이
+        /// 필요 없고, macOS는 이 인터페이스를 애초에 구현하지 않아
+        /// (<c>FallbackPlatformWindowService</c>가 false를 돌려준다) 아래 Dock 경로로 그대로 내려간다 —
+        /// 즉 <b>macOS 거동은 한 픽셀도 바뀌지 않는다</b>.</para></summary>
         private Vector2 ResolveDetectOriginPoints()
         {
             float x = CornerMarginPoints;
             float y = CornerMarginPoints;
 
+            // (1) Windows 작업표시줄 등 "OS가 예약한 하단 막대" — 실측 사각형이 있으면 그 두께를 쓴다.
+            //     false는 "지금 하단 막대가 없다"는 확정 신호다(자동 숨김이거나 좌/우/상단 배치).
+            var bottomBar = _agent != null ? _agent.PlatformService as IReservedBottomBarService : null;
+            if (bottomBar != null && bottomBar.TryGetReservedBottomBarOsScreen(out Rect barRect)
+                && barRect.height > 0f)
+            {
+                return new Vector2(x, barRect.height + DockGapPoints);
+            }
+
+            // (2) macOS Dock — 타일 크기에서 두께를 유도한다(위 (1)은 macOS에서 항상 false다).
             var dockService = _agent != null ? _agent.PlatformService as IDockMetricsService : null;
             if (dockService != null && dockService.TryGetDockMetrics(out DockMetrics dock)
                 && dock.IsBottomOriented && !dock.IsAutoHidden)
@@ -536,24 +684,53 @@ namespace StickMate.Interaction
             Vector2 origin = ResolveDetectOriginPoints() * px;
             DetectScreenRect = new Rect(origin.x, origin.y, DetectWidthPoints * px, DetectHeightPoints * px);
 
-            float width = Mathf.Lerp(PeekWidthPoints, PanelWidthPoints, PeekBlend);
-            float height = Mathf.Lerp(PeekHeightPoints,
-                Mathf.Lerp(CollapsedHeightPoints, ExpandedHeightPoints, _expand), PeekBlend);
-
-            PanelScreenRect = new Rect(origin.x, origin.y, width * px, height * px);
+            Vector2 size = PanelSizePointsAt(PeekBlend, _expand);
+            PanelScreenRect = new Rect(origin.x, origin.y, size.x * px, size.y * px);
         }
+
+        /// <summary>블렌드/펼침 진행도에서 패널 크기(pt)를 얻는다. <b>런타임과 테스트가 같은 식을 쓴다</b> —
+        /// 내용물 게이트(<see cref="ContentGateBlend"/>)의 근거가 이 식 위에서만 성립하므로, 테스트가
+        /// 식을 베껴 쓰면 상수가 바뀔 때 테스트만 조용히 옛 식을 잠근다.</summary>
+        public static Vector2 PanelSizePointsAt(float peekBlend, float expand)
+            => new Vector2(
+                Mathf.Lerp(PeekWidthPoints, PanelWidthPoints, peekBlend),
+                Mathf.Lerp(PeekHeightPoints,
+                    Mathf.Lerp(CollapsedHeightPoints, ExpandedHeightPoints, expand), peekBlend));
 
         /// <summary>PEEK(손잡이)에서 COLLAPSED(패널)로 가는 블렌드 0..1. 애니메이션이 이 값을 움직인다.</summary>
         private float _peekBlend;
         private float PeekBlend => _peekBlend;
 
+        /// <summary>
+        /// ★ <b>등장 순서를 정하는 단 하나의 함수</b>(2026-08-31 수정).
+        /// <code>
+        ///   열림:  상자가 자란다(0.14s) ──► 다 자란 뒤 내용물이 뜬다(0.10s)
+        ///   닫힘:  내용물이 사라진다(0.07s) ──► 다 사라진 뒤 상자가 줄어든다(0.14s)
+        /// </code>
+        /// 닫힘이 열림의 <b>정확한 역순</b>이어야 하므로, 줄어드는 방향에서는 내용물이 0이 될 때까지
+        /// 상자를 <b>멈춰 세운다</b>. 교착은 불가능하다 — 내용물의 목표는 상자가 아니라 <see cref="Stage"/>가
+        /// 정하므로(상자가 멈춰 있어도) 반드시 0에 도달한다.
+        /// </summary>
         private void TickAnimation()
         {
             float dt = Time.unscaledDeltaTime;
 
-            float peekTarget = _stage_ == Stage.Hidden ? 0f : _stage_ == Stage.Peek ? 0f : 1f;
-            float peekSpeed = peekTarget > _peekBlend ? 1f / PeekGrowSeconds : 1f / CollapseSeconds;
-            _peekBlend = Mathf.MoveTowards(_peekBlend, peekTarget, peekSpeed * dt);
+            bool boxOpen = _stage_ == Stage.Collapsed || _stage_ == Stage.Expanded;
+
+            // (1) 내용물 — 상자가 ContentGateBlend까지 자란 뒤에만 오른다. 판정에는 <b>이번 프레임에
+            //     상자를 움직이기 전 값</b>을 쓴다(같은 프레임에 둘이 동시에 시작하지 않게).
+            float contentTarget = boxOpen && _peekBlend >= ContentGateBlend ? 1f : 0f;
+            float contentSpeed = contentTarget > _contentReveal ? 1f / ContentRevealSeconds : 1f / ContentHideSeconds;
+            _contentReveal = Mathf.MoveTowards(_contentReveal, contentTarget, contentSpeed * dt);
+
+            // (2) 상자 — 자랄 때는 그냥 자라고, 줄어들 때는 내용물이 다 사라진 뒤에 줄어든다.
+            float peekTarget = boxOpen ? 1f : 0f;
+            bool shrinking = peekTarget < _peekBlend;
+            if (!shrinking || _contentReveal <= 0f)
+            {
+                float peekSpeed = shrinking ? 1f / CollapseSeconds : 1f / PeekGrowSeconds;
+                _peekBlend = Mathf.MoveTowards(_peekBlend, peekTarget, peekSpeed * dt);
+            }
 
             if (!_dragActive || _dragIsDial)
             {
@@ -589,15 +766,21 @@ namespace StickMate.Interaction
                 _dial.CenterScreen = new Vector2(
                     PanelScreenRect.xMin + PanelWidthPoints * 0.5f * px,
                     PanelScreenRect.yMin + DialCenterFromBottomPoints * px);
+                // ★ 보임의 출처는 상자의 성장 진행도 <b>하나뿐</b>이다(TickAnimation 문서).
+                _dial.SetReveal(_contentReveal);
             }
 
             if (_cardRoot != null)
             {
-                float cardAlpha = _expand <= CardFadeStart ? 0f
+                // 펼침에서 파생된 알파(설계 34-5-3) × 상자 게이트. 카드도 다이얼과 <b>같은 규칙</b>을
+                // 따른다 — 카드는 232×212pt라 상자가 덜 자란 동안 보이면 사방으로 삐져나온다.
+                float expandAlpha = _expand <= CardFadeStart ? 0f
                     : Mathf.InverseLerp(CardFadeStart, 1f, _expand);
+                float cardAlpha = expandAlpha * _contentReveal;
                 if (_cardGroup != null) _cardGroup.alpha = cardAlpha;
                 _cardRoot.gameObject.SetActive(cardAlpha > 0.001f);
-                float rise = Mathf.Lerp(-CardRisePoints, 0f, cardAlpha);
+                // 12pt 미끄러짐은 <b>펼침</b>에서만 파생된다(게이트로 흔들리지 않게).
+                float rise = Mathf.Lerp(-CardRisePoints, 0f, expandAlpha);
                 _cardRoot.anchoredPosition = new Vector2(0f, -(UiChrome.Space3) + rise);
             }
         }
@@ -636,6 +819,11 @@ namespace StickMate.Interaction
         public void ForceStageForTests(bool expanded)
             => SetStage(expanded ? Stage.Expanded : Stage.Collapsed, "테스트");
 
+        /// <summary>테스트 전용 — PEEK(손잡이)로 접는다. 실제 "커서 이탈"과 <b>같은 SetStage</b>를 타므로
+        /// 닫힘 연출의 순서(내용물 먼저, 상자 나중)를 제품 경로 그대로 관찰할 수 있다.
+        /// 배치 모드에는 전역 커서가 없어 이 전이를 자연 발생시킬 수 없다.</summary>
+        public void ForcePeekForTests() => SetStage(Stage.Peek, "테스트: 커서 이탈");
+
         /// <summary>테스트/증거 캡처 전용 — 호버 상태 머신을 잠시 멈춘다. 배치 모드에는 전역 커서가
         /// 없어 매 프레임 "커서 이탈"로 판정되므로, 강제로 띄운 상태를 몇 프레임 유지할 수 없다.
         /// <b>제품 경로는 이 값을 절대 켜지 않는다</b>(기본 false).</summary>
@@ -654,7 +842,9 @@ namespace StickMate.Interaction
             _expandAtDragStart = _expand;
 
             // ★ 누른 위치로 두 드래그를 가른다(클래스 문서). 다이얼 원환이면 값 조절, 아니면 펼침/접힘.
-            _dragIsDial = _dial != null && _dial.IsInRing(cursor);
+            //   ★ 아직 뜨지 않은(=보이지 않는) 다이얼은 누를 수 없다 — 안 보이는 컨트롤이 클릭을 먹으면
+            //     "보이는 곳을 누르면 먹는다"가 거꾸로 뒤집힌다(ContentInteractiveReveal 문서).
+            _dragIsDial = _dial != null && _contentReveal >= ContentInteractiveReveal && _dial.IsInRing(cursor);
             if (_dragIsDial) _dial.BeginDrag(cursor, Time.unscaledTime);
         }
 
@@ -694,7 +884,8 @@ namespace StickMate.Interaction
             float moved = (cursor - _dragStart).magnitude / px;
             bool tap = moved < ToggleMovePoints && Time.unscaledTime - _dragStartTime < ToggleSeconds;
 
-            if (tap && hasCursor && _dial != null && _dial.IsOnHub(cursor))
+            if (tap && hasCursor && _dial != null && _contentReveal >= ContentInteractiveReveal
+                && _dial.IsOnHub(cursor))
             {
                 // 중앙 숫자 클릭 → 기본값 복귀(34-3-1 탈출구 ③).
                 float baked = _agent != null ? _agent.BakedCharacterScale : 0.75f;
@@ -740,58 +931,22 @@ namespace StickMate.Interaction
             _holdUntil = Time.unscaledTime + ChangeHoldSeconds;
             if (!applyToCharacter) return;
 
-            float v = _dial.Value;
-            UiLayoutModel.SetCharacterScale(v);
-
-            if (CanApplyNow())
-            {
-                ApplyScaleNow(v, "다이얼");
-                return;
-            }
-            _hasPendingScale = true;
-            _pendingScale = v;
-            _pendingSince = Time.unscaledTime;
-            _dial.SetPendingCaption(true);
+            // ★ 2026-09-01 — 기억(UiLayoutModel) / 게이트 / 유예 / 강제적용이 전부 단일 소스로 옮겨졌다
+            //   (Core/CharacterScaleController, 35-1-3 ①). 여기 남은 것은 "다이얼이 정한 값을 넘긴다"뿐이며,
+            //   설정창 슬라이더도 <b>같은 문</b>을 지난다 — 그래서 규칙이 두 벌이 될 수 없다.
+            CharacterScaleController.Request(_dial.Value, "구석 다이얼");
         }
 
-        /// <summary>
-        /// 지금 실캐릭터에 넣어도 되는가. <b>물리적으로는 어떤 상태에서도 안전하다</b>는 것이
-        /// 2026-08-30 실측 결론이므로(관절 파단 불가/구속 오차 증가 0/랙돌 임계 배율 불변),
-        /// 이 게이트는 안전이 아니라 <b>연출</b>이다 — 몸이 굴러가는 중에 크기가 바뀌면 그 순간의
-        /// 인과가 읽히지 않는다. 그래서 최대 3초 뒤에는 상태와 무관하게 넣는다.
-        /// </summary>
-        private bool CanApplyNow()
-        {
-            StickmanBlackboard bb = _agent != null ? _agent.Blackboard : null;
-            if (bb == null || bb.Machine == null) return true;
-            switch (bb.Machine.CurrentStateId)
-            {
-                case StickmanStateId.Ragdoll:
-                case StickmanStateId.ThrowTumble:
-                case StickmanStateId.Getup:
-                case StickmanStateId.Dragged:
-                case StickmanStateId.RodeoCursor:
-                    return false;
-                default:
-                    return true;
-            }
-        }
-
+        /// <summary>유예 상태를 <b>읽어서</b> "곧 적용" 캡션만 그린다(판정은 단일 소스가 한다).
+        /// 실제로 바뀐 프레임에만 위젯을 건드린다 — 하루 종일 켜져 있는 앱이다.</summary>
         private void TickPendingScale()
         {
-            if (!_hasPendingScale) return;
-            bool forced = Time.unscaledTime - _pendingSince >= PendingForceSeconds;
-            if (!CanApplyNow() && !forced) return;
+            CharacterScaleController.Tick();
 
-            _hasPendingScale = false;
-            if (_dial != null) _dial.SetPendingCaption(false);
-            ApplyScaleNow(_pendingScale, forced ? "대기 후 강제 적용" : "대기 해제");
-        }
-
-        private void ApplyScaleNow(float v, string reason)
-        {
-            if (_agent == null) return;
-            _agent.ApplyCharacterScale(v, reason);
+            bool pending = CharacterScaleController.HasPendingApply;
+            if (pending == _pendingCaptionShown) return;
+            _pendingCaptionShown = pending;
+            if (_dial != null) _dial.SetPendingCaption(pending);
         }
 
         // ==================== 미리보기 카드 (34-6) ====================
@@ -845,6 +1000,8 @@ namespace StickMate.Interaction
                 case StickmanStateId.Walk: return "걷는 중";
                 case StickmanStateId.Jump: return "뛰는 중";
                 case StickmanStateId.Fall: return "떨어지는 중";
+                // 2026-09-01: 빠뜨리면 default가 "쉬는 중"이라 허공에서 허둥대는데 쉰다고 말한다(원칙1 위반).
+                case StickmanStateId.GroundLossHang: return "허둥대는 중";
                 case StickmanStateId.ParkourClimb: return "오르는 중";
                 case StickmanStateId.LedgeHang: return "매달린 중";
                 case StickmanStateId.Ragdoll:
@@ -912,8 +1069,12 @@ namespace StickMate.Interaction
             _group = canvasGo.AddComponent<CanvasGroup>();
             _group.alpha = 0f;
 
-            // 유리 6겹(34-2). 알파는 34-1의 규칙대로 호버 패널 = 0.86.
-            _panel = UiChrome.AddGlassPanel(canvasGo.transform, "Panel", 0.86f, UiChrome.RadiusPanel, out _panelBody);
+            // ★ 2026-08-31 — 여기 있던 alpha 0.86이 이 패널의 창 알파를 <b>0.72</b>로 만들고 있었다
+            //   (0.86² = 0.7396, 그 위에 보더 α0.16이 다시 곱해져 0.72 → 데스크톱이 <b>28% 비침</b>).
+            //   유리를 포기한 것이 아니라 <b>유리에서 "비침"만</b> 뺐다 — 나머지 단서(그림자/보더/상단
+            //   하이라이트)는 UiChrome.Flatten으로 겉보기 색 그대로 α=1에 옮겨졌다. 자세한 근거는
+            //   UiChrome.AddGlassPanel 문서.
+            _panel = UiChrome.AddGlassPanel(canvasGo.transform, "Panel", UiChrome.RadiusPanel, out _panelBody);
             _panel.anchorMin = _panel.anchorMax = Vector2.zero;
             _panel.pivot = Vector2.zero;    // 좌하단 고정 — 패널은 위로만 자란다(34-5-3).
             _panel.sizeDelta = new Vector2(PeekWidthPoints, PeekHeightPoints);
@@ -952,7 +1113,10 @@ namespace StickMate.Interaction
             _cardGroup = cardGo.GetComponent<CanvasGroup>();
             _cardGroup.alpha = 0f;
 
-            RectTransform glass = UiChrome.AddGlassPanel(_cardRoot, "CardGlass", 0.86f, UiChrome.RadiusCard, out _);
+            // ★ 카드는 패널(불투명) <b>위에</b> 얹히지만 그래도 α=1이어야 한다 — 이 프로젝트의 블렌드는
+            //   알파 채널에도 적용되므로 반투명 겹은 <b>불투명 바탕 위에서도</b> 창 알파를 내린다
+            //   (dstA=1 위의 α0.86 → 0.88). "우리 것 위니까 괜찮다"가 성립하지 않는 구조다.
+            RectTransform glass = UiChrome.AddGlassPanel(_cardRoot, "CardGlass", UiChrome.RadiusCard, out _);
             UiChrome.Stretch(glass);
 
             // 액자 — 잉크색에 따라 뒤집히는 밝은 판(34-1의 PortraitSurface 예외가 여기에도 그대로 적용된다).

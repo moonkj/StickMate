@@ -154,6 +154,23 @@ namespace StickMate.EditorTools
         ///
         /// 주의(리더 명시): MSAA는 투명 창 합성에 영향을 줄 수 있으므로 켠 뒤 반드시 투명이 여전히
         /// 정상 동작하는지 실측 재검증할 것 — 투명이 우선순위다.
+        ///
+        /// <para><b>★ 2026-08-31 성능 라운드 결론 — "부하를 줄이려고" 이 값을 내리지 마라
+        /// (docs/ARCHITECTURE.md 6-16절)</b>. present를 60fps에 고정한 채 4x vs 0x를 콜드 스타트
+        /// 페어드로 6쌍 측정한 결과:
+        /// <list type="bullet">
+        /// <item><b>CPU/GPU 절감은 검출되지 않았다</b>(WindowServer 2/6, 앱 CPU 3/6, GPU 3/6 —
+        ///   부호조차 일정하지 않음). Apple GPU는 TBDR이라 MSAA resolve가 타일 메모리 안에서 끝나
+        ///   대역폭이 4배가 되지 않는다.</item>
+        /// <item><b>대신 메모리는 정확히 93MB 차이가 난다</b>(6/6, σ=0.43MB). 즉 이 값은
+        ///   <b>부하 손잡이가 아니라 메모리 손잡이</b>다.</item>
+        /// <item>화질: 0x는 명백한 회귀(평균 Δ휘도 30.9/255), <b>2x는 4x와 거의 구분 불가</b>
+        ///   (평균 Δ 4.65/255 = 1.8%). 메모리 46MB가 급할 때만 2x를 검토하고, 그때도
+        ///   6-16절 (5)의 화질 표를 먼저 읽을 것.</item>
+        /// </list>
+        /// 또한 <b>런타임에 QualitySettings.antiAliasing을 바꿔도 백버퍼에 반영되지 않는다</b>
+        /// (Screen.msaaSamples는 그 사실을 감춘다). 그래서 이 값을 바꾸는 유효한 지점은 여전히
+        /// 여기(빌드 시점) 또는 프로세스 시작 전(Platform/RenderQualityTuner.cs)뿐이다.</para>
         /// </summary>
         public static void ConfigureAntiAliasing()
         {

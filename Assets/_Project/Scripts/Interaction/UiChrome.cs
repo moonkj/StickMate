@@ -55,6 +55,39 @@ namespace StickMate.Interaction
         public const int RadiusBadge = 5;  // 자물쇠 배지.
         public const int RadiusDot = 2;    // 카테고리 틴트 도트 / 게이지 트랙.
 
+        // ====================================================================================
+        // ★★★ 이 파일을 고치기 전에 반드시 읽을 것 — <b>알파 채널의 법칙</b> (2026-08-31)
+        // ====================================================================================
+        //
+        // 이 앱의 창은 <b>전체화면 투명 오버레이</b>다. 카메라는 배경을 (0,0,0,<b>알파 0</b>)으로 지운다
+        // (MacOverlayStateEnforcer.ApplyTransparentSafeCameraBackground / SceneBootstrapper).
+        // 즉 <b>프레임버퍼의 알파 채널이 그대로 OS 합성기의 마스크</b>가 된다 — 알파가 0.6인 화소에는
+        // 유저의 진짜 데스크톱이 40% 비쳐 든다. 보통의 게임 UI에서는 알파가 "예쁨"이지만 여기서는
+        // <b>"뒤 창이 얼마나 보이는가"</b>다.
+        //
+        // 그리고 uGUI의 기본 셰이더(UI/Default)는 이렇게 섞는다:
+        //
+        //     Blend SrcAlpha OneMinusSrcAlpha          ← RGB<b>와 알파에 똑같이</b> 적용된다
+        //     => dstA' = srcA*srcA + dstA*(1 - srcA)   ← srcA + dstA*(1-srcA) 가 <b>아니다</b>
+        //
+        // 여기서 두 가지 반직관적인 결과가 나온다. 둘 다 실제 버그를 냈다:
+        //
+        //   (1) 알파는 <b>제곱된다</b>. α0.96짜리 판 하나를 알파 0 위에 그리면 화면 알파는 0.96이
+        //       아니라 0.9216이다(비침 4%가 아니라 7.8%).
+        //   (2) 알파는 <b>줄어들 수 있다</b>. 이미 알파 0.92인 자리에 α0.55짜리 검은 그림자를 덮으면
+        //       0.55² + 0.92×0.45 = <b>0.717</b>로 <b>내려간다</b>. 반투명 겹을 아무리 쌓아도
+        //       "점점 불투명해지는" 일은 일어나지 않는다.
+        //
+        // 그래서 이 파일에는 두 가지 규칙이 있다:
+        //
+        //   · <b>큰 창의 바탕(PanelSurface)은 α=1이다.</b> α<1 유리는 "내 앱의 다른 부분"이 뒤에 있을
+        //     때만 성립하는 연출인데, 우리 패널 뒤에는 유저의 다른 창이 있다(원칙 2의 관점에서도
+        //     "남의 창을 반투명 필터로 덮은 화면"은 우리가 팔 그림이 아니다).
+        //   · <b>그림자는 절대로 본체 위에 그리지 않는다.</b> 위 (2) 때문에 그림자 한 겹이 창 알파를
+        //     통째로 무너뜨린다. uGUI는 <b>부모 Graphic을 자식보다 먼저</b> 그리므로,
+        //     "Image가 붙은 오브젝트의 자식으로 그림자를 넣으면 그림자가 본체 <b>위</b>로 간다".
+        //     <see cref="AddShadow"/>가 그 배치를 감지해 경고 로그를 남긴다(그 메서드 문서 참고).
+        //
         // ==================== 색 — 2026-08-30 다크 글로스 팔레트 (docs/UX_FLOW.md 34-1) ==========
         // ★ 같은 날 오전의 33-1 팔레트(종이빛 회색 + 테라코타)는 <b>폐기</b>했다. 이 파일을 쓰는 모든
         //   표면(기어 부채꼴 / 집중 모드 팝오버 / 할일 팝오버 / 캐릭터 창)이 함께 다크 글로스로
@@ -66,9 +99,26 @@ namespace StickMate.Interaction
         /// 훗날 덮어도 되는 화면(온보딩 등)이 생겼을 때 색을 새로 고르지 않게 하기 위해서다.</summary>
         public static readonly Color ScreenScrim = new Color(0.039f, 0.047f, 0.063f, 1f);
 
-        /// <summary>창 바탕(#14171c, α0.96). 큰 창은 사실상 불투명해야 어떤 배경 위에서도 글자가 읽힌다
-        /// (34-1 대비표: TextSecondary 7.4:1).</summary>
-        public static readonly Color PanelSurface = new Color(0.078f, 0.090f, 0.110f, 0.96f);
+        /// <summary>
+        /// 창 바탕(#14171c, <b>α = 1.0</b>).
+        ///
+        /// <para>★★ 2026-08-31 회귀 수정 — 사용자 신고 "창이 여러 개로 겹쳐 보인다"(스크린샷: 정보창
+        /// 뒤로 날씨 위젯의 파란 그라데이션과 <c>24°</c>가 그대로 읽힘). 원인은 이 한 글자,
+        /// <b>α 0.96</b>이었다. 34-2가 "유리 판정 단서 (a) 뒤가 살짝 비침"으로 넣은 값인데,
+        /// <b>이 앱에서는 패널 뒤에 우리 콘텐츠가 없다 — 유저의 진짜 데스크톱이 있다.</b>
+        /// 일반 앱에서 유리는 "내 앱의 다른 부분"을 비추지만, 전체화면 투명 오버레이에서는
+        /// 곧바로 <b>남의 창이 비친다</b>. 즉 알파 유리는 이 아키텍처에서 성립하지 않는다.
+        /// (b)(c)(d) 시인/하이라이트/그림자 2겹은 그대로 남으므로 유리 느낌은 유지된다.</para>
+        ///
+        /// <para>왜 오전 팔레트(α0.985, 밝은 회색)에서는 아무도 못 봤나: 비침 자체는 그때도 있었다
+        /// (실측 시뮬레이션 결과 약 16%). 다만 <b>밝은 표면</b>은 뒤에서 새어 들어온 밝은 화소를 거의
+        /// 가려서 체감 밝기 변화가 12%뿐이었다. 34-1에서 표면이 <b>어두워지자</b> 같은 비침이
+        /// 체감 549%로 증폭됐다(어두운 바탕은 가릴 밝기 자체가 없다). <b>팔레트를 어둡게 바꾸는 것은
+        /// 알파를 그대로 두어도 되는 변경이 아니다</b> — 이 문장이 이번 회귀의 교훈이다.</para>
+        ///
+        /// <para>대비표(34-1: TextSecondary 7.4:1)는 α=1에서 계산된 값이라 오히려 이제야 성립한다.</para>
+        /// </summary>
+        public static readonly Color PanelSurface = new Color(0.078f, 0.090f, 0.110f, 1f);
 
         /// <summary>패널 상단 시인(sheen) 시작색 rgba(255,255,255,0.10) — 34-2 (3)겹.
         /// "위쪽이 더 밝다"는 유리 판정 단서를 블러 없이 만든다.</summary>
@@ -552,6 +602,8 @@ namespace StickMate.Interaction
         /// </summary>
         public static Image AddShadow(Transform parent, string name, int radius, float spread, Vector2 offset)
         {
+            FailIfShadowWouldCoverParentSurface(parent, name);
+
             // 앰비언트를 먼저 붙여야 형제 순서상 뒤(아래)에 깔린다.
             AddShadowLayer(parent, name + "Ambient", radius, spread * AmbientSpreadFactor,
                 offset * AmbientOffsetFactor, AmbientShadowAlpha);
@@ -561,6 +613,43 @@ namespace StickMate.Interaction
         private const float AmbientSpreadFactor = 2.4f;   // 34-2: spread 14 -> 34
         private const float AmbientOffsetFactor = 2.3f;   // 34-2: offset -6 -> -14
         private const float AmbientShadowAlpha = 0.28f;
+
+        /// <summary>
+        /// ★ 2026-08-31 — "창 뒤가 비쳐 보인다" 회귀를 <b>구조적으로</b> 재발 방지한다.
+        ///
+        /// <para>uGUI는 <b>부모의 Graphic을 자식들보다 먼저</b> 그린다. 그래서 <c>Image</c>가 붙어 있는
+        /// 오브젝트를 <paramref name="parent"/>로 주면 그림자는 <see cref="Transform.SetAsFirstSibling"/>을
+        /// 아무리 불러도 <b>본체 위</b>에 올라간다(형제 순서는 형제끼리만 정한다). 눈으로는 "패널이 좀
+        /// 어둡네" 정도로만 보여서 여러 라운드 동안 아무도 못 잡았지만, 파일 머리의 <b>알파 채널의 법칙
+        /// (2)</b>에 따라 창 알파가 0.92 -> 0.59로 무너져 데스크톱이 40% 비쳐 들었다.</para>
+        ///
+        /// <para>여기서 <b>고쳐 줄 수는 없다</b> — 부모를 마음대로 재구성하면 호출부가 붙잡고 있는
+        /// 레이아웃 참조가 통째로 깨진다. 대신 반드시 눈에 띄게 만든다. 이 로그가 뜨면 호출부를
+        /// "그림 없는 컨테이너 → [그림자, 본체, 보더] 형제 배치"로 바꿔야 한다
+        /// (<see cref="AddOpaquePanel"/> / <see cref="AddGlassPanel"/>이 그 정답 형태다).</para>
+        ///
+        /// <para><b>2026-08-31 2차: Warning → Error로 승격했다.</b> 앞 라운드에서 Warning으로 둔 이유는
+        /// 마지막 위반 호출부(<c>PopoverPanel.cs</c>)가 아직 남아 있어 Error로 올리면 그 창을 만드는
+        /// PlayMode 테스트가 버그와 무관하게 전부 빨개지기 때문이었다. 그 호출부를 <see cref="AddOpaquePanel"/>로
+        /// 옮겼으므로 이제 <b>제품 코드에 위반이 0건</b>이고, Error는 곧 <b>테스트 실패</b>다
+        /// (Unity 테스트 러너는 예상하지 못한 <c>LogError</c>를 실패로 처리한다). 즉 이 버그 클래스는
+        /// 다시 들어오는 순간 CI에서 멈춘다 — 컴파일 타임 봉인은 불가능하지만(부모의 Graphic 유무는
+        /// 런타임 정보다) 이것이 실질적으로 같은 효과를 낸다.</para>
+        /// </summary>
+        private static void FailIfShadowWouldCoverParentSurface(Transform parent, string name)
+        {
+            if (parent == null) return;
+            var parentGraphic = parent.GetComponent<Graphic>();
+            if (parentGraphic == null) return;
+
+            Debug.LogError(
+                $"[UiChrome] 그림자 '{name}'의 부모 '{parent.name}'에 이미 Graphic({parentGraphic.GetType().Name})이 " +
+                "붙어 있습니다 — uGUI는 부모를 자식보다 먼저 그리므로 이 그림자는 본체 <위>에 얹힙니다. " +
+                "투명 오버레이에서는 그 한 겹이 창 알파를 무너뜨려 데스크톱이 비쳐 보입니다" +
+                "(UiChrome 파일 머리의 '알파 채널의 법칙' 참고). " +
+                "부모를 그림 없는 컨테이너로 바꾸고 [그림자 → 본체 → 보더]를 형제로 배치하세요" +
+                "(UiChrome.AddOpaquePanel이 정답 형태입니다).");
+        }
 
         private static Image AddShadowLayer(Transform parent, string name, int radius, float spread,
             Vector2 offset, float alpha)
@@ -604,6 +693,13 @@ namespace StickMate.Interaction
 
         /// <summary>
         /// 위쪽이 밝고 45% 지점에서 완전히 투명해지는 <b>둥근 사각형</b>. 유리의 단서 (b)를 만든다.
+        ///
+        /// <para>★★ <b>2026-08-31 — 이 앱의 오버레이 캔버스에는 쓰지 말 것</b>(호출부 0건으로 정리됐다).
+        /// 이 스프라이트는 램프를 <b>알파 채널</b>에 담는데, 파일 머리 "알파 채널의 법칙" (2)에 따라
+        /// 알파 램프는 그 자리의 창 알파를 그대로 끌어내린다(α0.10 시인 한 겹 → 창 알파 0.91,
+        /// 즉 데스크톱이 <b>9% 비친다</b>). 남겨 두는 이유는 훗날 <b>불투명 배경 위</b>(RenderTexture로
+        /// 굽는 초상화 스테이지 등)에서는 여전히 옳은 도구이기 때문이다. 화면에 직접 그리는 캔버스에서
+        /// 쓰려면 먼저 UI 머티리얼의 알파 블렌드를 분리해야 한다(<see cref="AddGlassPanel"/> 문서 참고).</para>
         ///
         /// <para><b>왜 9-슬라이스가 아니라 <see cref="Image.Type.Simple"/>인가</b>: 9-슬라이스는 가운데를
         /// 늘리는데, 그 가운데가 곧 그라데이션 구간이라 늘리면 램프까지 늘어나 "위 45%"라는 약속이
@@ -706,43 +802,47 @@ namespace StickMate.Interaction
         private const float HighlightInsetPoints = 1f;
 
         /// <summary>
-        /// ★ 34-2의 유리 6겹을 <b>한 번에</b> 만든다. 호출부가 겹 순서를 손으로 다시 적으면 창마다
-        /// 유리가 달라진다 — 그래서 순서를 아는 곳을 여기 하나로 못박는다.
+        /// ★ <b>유리 패널</b> — 34-2의 겹 순서 그대로, 그러나 <b>반투명 겹이 하나도 없다</b>
+        /// (2026-08-31 "뒤 창이 비쳐 보인다" 회귀의 두 번째 호출부 수정).
         ///
-        /// <para>반환값은 <b>컨테이너</b>(그림 없는 RectTransform)다. 호출부는 이 사각형의 크기/위치만
-        /// 정하면 되고 안쪽 6겹은 전부 <see cref="Stretch"/>로 따라온다. 그림자를 컨테이너의
-        /// <b>형제가 아니라 첫 자식</b>으로 두면 본체 위에 얹혀 패널을 검게 덮으므로, 여기서는
-        /// 그림자 → 본체 → 시인 → 하이라이트 → 보더 순으로 <b>형제 순서</b>를 만든다.</para>
+        /// <para><b>왜 <c>alpha</c> 파라미터가 사라졌는가</b>: 파일 머리 "알파 채널의 법칙" (2) 때문에
+        /// α&lt;1 겹은 <b>무엇 위에 그리든</b> 창 알파를 끌어내린다 — <b>우리 자신의 불투명 패널 위에
+        /// 그려도 마찬가지다</b>(dstA=1 위의 α0.86 겹 → 0.86² + 1×0.14 = <b>0.88</b>). 그래서
+        /// "α만 0.98로 올린다"도 해가 아니다(0.98² = 0.9604이고 여기에 시인/보더가 겹치면 0.83까지
+        /// 내려간다). 이 아키텍처에서 <b>안전한 알파는 1 하나뿐</b>이라, 파라미터로 둘 값 자체가 없다.</para>
+        ///
+        /// <para><b>그런데도 유리로 읽히는 이유</b>: 34-2가 정리한 유리의 단서 넷 중 (c) 가장자리의 밝은
+        /// 선과 (d) 떠 있음은 <see cref="Flatten"/>으로 <b>겉보기 색을 한 톤도 바꾸지 않고</b> α=1로
+        /// 옮길 수 있다. 잃는 것은 (a) 비침 하나뿐인데, 그건 애초에 비침해 원칙 2가 금지한 그림이다
+        /// ("남의 창을 반투명 필터로 덮은 화면"은 우리가 팔 그림이 아니다).</para>
+        ///
+        /// <para><b>(b) 세로 시인은 뺐다 — 못 한 게 아니라 성립하지 않는다.</b> 알파 램프를 α=1로
+        /// 옮기려면 램프를 RGB에 굽고 알파를 <b>본체와 똑같은 실루엣 마스크</b>로 써야 한다. 그 마스크가
+        /// 모든 크기에서 본체와 일치하려면 9-슬라이스여야 하는데, 9-슬라이스는 가운데를 늘려 램프를
+        /// 망가뜨린다(<see cref="VerticalGradientFill"/> 문서가 이미 지적한 그 이유다). 유일한 도피처인
+        /// "고정 높이 밴드"도 이 패널이 <b>104×14pt에서 240×392pt까지</b> 자라는 이상 성립하지 않는다
+        /// (<c>CornerHoverPanel</c>). 램프를 되살리는 진짜 방법은 겹을 더 얹는 것이 아니라 UI 머티리얼의
+        /// <b>알파 블렌드를 분리</b>하는 것이다(<c>Blend SrcAlpha OneMinusSrcAlpha, One OneMinusSrcAlpha</c>
+        /// → dstA' = srcA + dstA(1−srcA)). 그건 이 파일의 "셰이더 0건" 규약을 깨는 결정이라 리더 판단
+        /// 사항으로 남겨 둔다.</para>
+        ///
+        /// <para>반환값은 <b>컨테이너</b>(그림 없는 RectTransform)다 — <see cref="AddOpaquePanel"/>과
+        /// 완전히 같은 계약이며, 겹 순서를 아는 곳도 그쪽 하나로 모았다.</para>
         /// </summary>
-        /// <param name="alpha">본체 알파. 34-1의 규칙: 큰 창 0.96 / 호버 패널·카드 0.86 / 다이얼 원판 0.72.</param>
-        /// <param name="body">본체 표면 — 호출부가 색을 다시 칠하거나 알파를 애니메이션할 대상.</param>
-        public static RectTransform AddGlassPanel(Transform parent, string name, float alpha, int radius,
-            out Image body)
+        /// <param name="body">본체 표면 — 호출부가 색을 다시 칠할 대상. <b>알파는 1로 유지할 것.</b></param>
+        public static RectTransform AddGlassPanel(Transform parent, string name, int radius, out Image body)
         {
-            var go = new GameObject(name, typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            var container = go.GetComponent<RectTransform>();
+            RectTransform container = AddOpaquePanel(parent, name, radius, GlassShadowSpread,
+                GlassShadowOffset, out body);
 
-            // (1) 그림자 2겹 — 넓고 옅은 앰비언트가 "떠 있음"을, 좁고 진한 키가 "가장자리"를 만든다.
-            AddShadow(container, "Shadow", radius, 14f, new Vector2(0f, -6f));
-
-            // (2) 본체.
-            body = AddSurface(container, "Body", new Color(PanelSurface.r, PanelSurface.g, PanelSurface.b, alpha), radius);
-            Stretch(body.rectTransform);
+            // 유리는 큰 창과 달리 바탕이 클릭을 먹지 않는다 — 호버 패널/카드는 전역 폴링과 차단막이
+            // 클릭을 처리하고, uGUI 레이캐스트까지 이 판이 가로채면 두 경로가 같은 클릭을 다툰다.
             body.raycastTarget = false;
 
-            // (3) 세로 시인 — 위쪽이 더 밝다.
-            var sheenGo = new GameObject("Sheen", typeof(RectTransform), typeof(Image));
-            sheenGo.transform.SetParent(container, false);
-            Stretch(sheenGo.GetComponent<RectTransform>());
-            var sheen = sheenGo.GetComponent<Image>();
-            sheen.sprite = VerticalGradientFill(radius);
-            sheen.type = Image.Type.Simple;
-            sheen.color = PanelSheen;
-            sheen.raycastTarget = false;
-
-            // (4) 안쪽 상단 1px 하이라이트 — 코너 곡선 구간을 피해야 선이 곡면 위에 얹히지 않는다.
-            var hi = new GameObject("Highlight", typeof(RectTransform), typeof(Image));
+            // 안쪽 상단 1px 하이라이트 — 유리의 단서 (c). 보더(AddOpaquePanel이 이미 얹었다)와는
+            // 1pt 어긋나 있어 겹치지 않으므로 형제 순서가 뒤여도 그림이 같다.
+            // 색은 <b>미리 합성</b>한다: 이 선 아래에 있는 것은 항상 방금 그린 불투명 본체다.
+            var hi = new GameObject(name + "Highlight", typeof(RectTransform), typeof(Image));
             hi.transform.SetParent(container, false);
             var hiRt = hi.GetComponent<RectTransform>();
             hiRt.anchorMin = new Vector2(0f, 1f);
@@ -753,12 +853,62 @@ namespace StickMate.Interaction
             var hiImage = hi.GetComponent<Image>();
             hiImage.sprite = RoundedFill(RadiusDot);
             hiImage.type = Image.Type.Sliced;
-            hiImage.color = PanelHighlight;
+            hiImage.color = Flatten(PanelHighlight, PanelSurface);
             hiImage.raycastTarget = false;
 
-            // (5) 보더.
-            AddOutline(container, "Border", PanelBorder, radius);
             return container;
+        }
+
+        /// <summary>유리 패널의 그림자 — 34-2가 정한 값(스프레드 14 / 아래로 6). 큰 창보다 넓게 뜬다.</summary>
+        private const float GlassShadowSpread = 14f;
+
+        private static readonly Vector2 GlassShadowOffset = new Vector2(0f, -6f);
+
+        /// <summary>
+        /// ★ <b>큰 창</b>(캐릭터 창 / 팝오버)의 바탕 — 2026-08-31 "뒤가 비쳐 보인다" 회귀 수정.
+        ///
+        /// <para><see cref="AddGlassPanel"/>과 <b>겹 순서 규약이 같고</b>(그림자 → 본체 → 보더) 차이는
+        /// 딱 둘이다: 본체가 <b>α=1</b>이고, 유리 연출(시인/하이라이트)이 없다. 큰 창은 글을 읽는
+        /// 표면이라 위쪽만 밝아지는 시인이 오히려 본문 대비를 흔든다.</para>
+        ///
+        /// <para><b>반환값은 컨테이너</b>(그림 없는 <see cref="RectTransform"/>)다. 호출부는 이 사각형의
+        /// 크기/위치만 정하고 내용물을 여기에 붙이면 된다. <b>컨테이너에 Graphic을 붙이지 말 것</b> —
+        /// 그 순간 그림자가 본체 위로 올라간다(<see cref="AddShadow"/>가 Error로 막는다).</para>
+        /// </summary>
+        /// <param name="body">본체 표면. 클릭을 받는 판이기도 하다(창 바탕을 눌러도 뒤로 새지 않게).</param>
+        public static RectTransform AddOpaquePanel(Transform parent, string name, int radius,
+            float shadowSpread, Vector2 shadowOffset, out Image body)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var container = go.GetComponent<RectTransform>();
+
+            // (1) 그림자 2겹 — 컨테이너에 Graphic이 없으므로 <b>본체보다 먼저</b> 그려진다(= 뒤에 깔린다).
+            AddShadow(container, name + "Shadow", radius, shadowSpread, shadowOffset);
+
+            // (2) 본체 — α=1. 투명 오버레이에서 창 알파를 1로 만드는 유일한 겹이다.
+            body = AddSurface(container, name + "Body", PanelSurface, radius);
+            Stretch(body.rectTransform);
+
+            // (3) 보더 — <b>미리 합성한 불투명색</b>으로 그린다.
+            //   PanelBorder(흰색 α0.16)를 그대로 얹으면 그 1px 위에서만 창 알파가 0.87로 내려간다
+            //   (파일 머리 "알파 채널의 법칙" (2)). 보더 아래에 있는 것은 <b>항상 방금 그린 불투명 본체</b>
+            //   이므로, 같은 블렌드 결과를 미리 계산해 α=1로 칠하면 <b>색은 완전히 같고 알파만 1로 남는다</b>.
+            //   (스프라이트 자체의 가장자리 안티에일리어싱은 그대로다 — 그건 패널 실루엣이라 필요한 것이다.)
+            AddOutline(container, name + "Outline", Flatten(PanelBorder, PanelSurface), radius);
+            return container;
+        }
+
+        /// <summary>반투명 <paramref name="over"/>를 불투명 <paramref name="onto"/> 위에 얹은 결과를
+        /// <b>α=1 단색</b>으로 미리 계산한다. 보이는 색은 같고 창 알파만 지킨다.</summary>
+        public static Color Flatten(Color over, Color onto)
+        {
+            float a = Mathf.Clamp01(over.a);
+            return new Color(
+                Mathf.Lerp(onto.r, over.r, a),
+                Mathf.Lerp(onto.g, over.g, a),
+                Mathf.Lerp(onto.b, over.b, a),
+                1f);
         }
 
         public static Text AddText(Transform parent, string name, int fontSize, TextAnchor anchor,

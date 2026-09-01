@@ -582,15 +582,18 @@ namespace StickMate.Tests.PlayMode
         }
 
         /// <summary>캐릭터의 "몸"을 이루는 렌더러인지 — Editor/SceneBootstrapper.cs가 굽는 이름 그대로.
-        /// Phase 4/5 시각 레이어가 만드는 이펙트 오브젝트를 배제하기 위한 것이다.</summary>
+        /// Phase 4/5 시각 레이어가 만드는 이펙트 오브젝트를 배제하기 위한 것이다.
+        /// <para>★ 2026-09-01 그림체 전환 P1 — "LeftEye"/"RightEye"는 더 이상 구워지지 않아 제거했다
+        /// (SceneBootstrapper.BakeEyes). 신설된 "HeadFill"은 <b>일부러 넣지 않는다</b>: 이 목록의 용도는
+        /// 가로 실루엣 폭 측정인데, 폭이 지름만 한 LineRenderer의 <c>bounds</c>는 Unity가 매우 보수적으로
+        /// 잡아 실제보다 훨씬 넓게 나온다. HeadFill의 바깥 반경은 정의상 HeadOutline의 링 반경과 같으므로
+        /// (Editor/SceneBootstrapper.CreateFilledDisc) 넣어도 새로 측정되는 것이 없고, 측정만 흐려진다.</para></summary>
         private static bool IsBodyRenderer(string name)
         {
             switch (name)
             {
                 case "Torso":
                 case "HeadOutline":
-                case "LeftEye":
-                case "RightEye":
                 case "LeftArm":
                 case "LeftArmLower":
                 case "RightArm":

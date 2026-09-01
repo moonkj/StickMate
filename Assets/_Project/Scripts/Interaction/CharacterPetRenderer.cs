@@ -6,8 +6,17 @@ using StickMate.States;
 namespace StickMate.Interaction
 {
     /// <summary>
-    /// ★ 펫(PET 슬롯) 4종 — 2026-08-30 외부 디자인 핸드오프(docs/UX_FLOW.md 33-6).
-    /// 작은 공 / 종이비행기 / 작은 졸라맨 / 커서 친구.
+    /// ★ 펫(PET 슬롯) 6종 — 2026-08-30 외부 디자인 핸드오프(docs/UX_FLOW.md 33-6),
+    /// 2026-09-01 <b>풍선/달팽이</b> 추가.
+    /// 작은 공 / 종이비행기 / 리틀스틱메이트 / 커서 친구 / 풍선 / 달팽이.
+    ///
+    /// <para>★ 풍선·달팽이는 카테고리당 +2종 라운드가 <b>카드만 만들고 비워 둔 자리</b>였다("준비 중").
+    /// 이 저장소의 확정 규칙("착용했는데 화면이 그대로면 그건 착용이 아니다")에 걸리는 상태였고
+    /// 이번 라운드에서 채웠다. 둘 다 기존 4종과 <b>같은 배관</b>(물리 없음 + 지수 감쇠 보간 +
+    /// 화면 클램프 + 알파 페이드)을 쓴다 — 새 컴포넌트도 새 상태도 만들지 않았다.</para>
+    /// ("리틀스틱메이트"는 2026-08-31 사용자 요청으로 "작은졸라맨"에서 바뀐 표시 이름이다.
+    ///  아이템 <b>아이디</b>(look.pet.mini)와 코드상의 자리 이름 PetMini는 그대로다 —
+    ///  아이디를 함께 바꾸면 사용자의 저장된 차림이 사라진다.)
     ///
     /// ============================================================================
     /// 공통 계약 (33-6-1) — 지키지 않으면 절대 불변 원칙을 깬다
@@ -34,11 +43,17 @@ namespace StickMate.Interaction
         private const int PetPlane = AppearanceShapeBuilder.PetPlane;
         private const int PetMini = AppearanceShapeBuilder.PetMini;
         private const int PetCursor = AppearanceShapeBuilder.PetCursor;
+        private const int PetBalloon = AppearanceShapeBuilder.PetBalloon;
+        private const int PetSnail = AppearanceShapeBuilder.PetSnail;
 
         // ---- 레이어(33-6). 종이비행기만 반주기마다 4 <-> 10을 오간다.
         private const int SortDefault = 4;
         private const int SortPlaneFront = 10;
         private const int SortCursorFriend = 11;
+
+        /// <summary>풍선은 머리 위에 떠 있으므로 <b>항상 캐릭터 앞</b>이다(뒤로 가면 머리에 잘린다).
+        /// 종이비행기의 "앞" 값과 같은 층을 쓴다 — 새 층을 발명하지 않는다.</summary>
+        private const int SortBalloon = SortPlaneFront;
 
         // ---- 33-6-2가 못박은 궤적 상수 ----
         private const float BallTrailInHeight = 0.55f;
@@ -58,6 +73,71 @@ namespace StickMate.Interaction
         private const float MiniLegSwingPeriod = 0.5f;
         private const float MiniLegSwingDegrees = 22f;
         private const float MiniMovingSpeedGateInHeight = 0.05f;
+
+        // ---- 리틀스틱메이트 낙하 동기화(2026-08-31 사용자 신고: "높은 곳에서 떨어질 때 작은 졸라맨도
+        //      캐릭터와 동일한 형태로 떨어져야 하는데 제대로 동작 안 함").
+        //      각도는 전부 <b>마디의 절대 각도</b>(0 = 곧게 아래, 부호 = +x 쪽)이며, 실제로 적용하는 값은
+        //      "구워진 마디의 기본 각도"와의 차이다(BuildMini가 그 기본 각도를 실측해 캐시한다).
+
+        /// <summary>낙하 만세 — 팔의 절대 각도. 몸통 규격(StickmanPoseAnimator.ApplyFallPose 문서의
+        /// "±152도 = 수직에서 바깥으로 28도")과 같은 어휘를 쓴다.</summary>
+        private const float MiniAirArmDegrees = 152f;
+
+        /// <summary>낙하 중 다리를 바깥으로 벌리는 절대 각도(StickConfig.fallPoseLegSpreadDegrees와 같은 층).</summary>
+        private const float MiniAirLegSpreadDegrees = 16f;
+
+        /// <summary>던지기 공중 회전 중의 <b>웅크림</b> — 팔/다리를 진행 방향으로 모은다. 회전이 눈에
+        /// 읽히려면 실루엣이 작아야 한다(몸통의 ApplyThrowTumblePose와 같은 의도).</summary>
+        private const float MiniTumbleArmDegrees = 74f;
+        private const float MiniTumbleLegDegrees = 48f;
+
+        /// <summary>웅크렸을 때도 두 마디가 완전히 겹치지 않게 하는 최소 벌림(도).</summary>
+        private const float MiniTumbleLimbSpreadDegrees = 9f;
+
+        /// <summary>무릎앉아 착지에서 다리를 바깥으로 벌리는 각도(깊이 1일 때). 마디가 하나뿐이라
+        /// 무릎을 접을 수 없으므로 <b>벌려서 낮아진다</b>(스쿼트) — 몸이 내려가는 거리는 이 각도에서
+        /// 유도되므로(<see cref="ResolveMiniCrouchDrop"/>) 발이 지면을 뚫거나 뜨지 않는다.</summary>
+        private const float MiniCrouchLegSpreadDegrees = 34f;
+
+        /// <summary>무릎앉아에서 팔을 진행 방향 앞으로 내미는 각도(깊이 1일 때) — 균형을 잡는 그림.</summary>
+        private const float MiniCrouchArmDegrees = 62f;
+
+        // ★ 자세 가중치의 감쇠 계수는 <b>여기서 새로 정하지 않는다</b>. 몸통이 같은 자세를 만들 때
+        //   쓰는 값(StickmanBlackboard.PoseSmoothingRate / LandingCrouchPoseSmoothingRate)을 그대로
+        //   빌려 쓴다 — 처음에는 22를 상수로 박았다가 PlayMode 로그로 반증했다: 무릎앉아의 눌림 구간은
+        //   지속시간의 18%(얕은 착지에서 약 58ms)뿐인데 rate 22는 63% 수렴에 45ms가 걸려, 미니가
+        //   주인보다 눈에 띄게 늦게 앉았다가 늦게 일어선다. 몸통은 바로 그 이유로 무릎앉아에만 더 높은
+        //   계수(기본 48)를 쓰고 있었다(StickConfig.landingCrouchPoseSmoothingRate Tooltip). 값을 여기
+        //   따로 두면 그 튜닝이 두 곳으로 갈라진다.
+
+        /// <summary>주인의 엉덩이 높이를 실측하지 못했을 때 쓰는 신장 대비 비율.
+        /// <see cref="ThrowTumbleState"/>의 같은 이름 상수와 <b>같은 값</b>이어야 한다 — 그 상태가
+        /// 회전 보정에 쓴 축과 여기서 되돌리는 축이 다르면 미니가 회전 위상에 맞춰 출렁인다.</summary>
+        private const float OwnerFallbackHipRatio = 0.9346944f / StickConfig.BaselineCharacterTotalHeight;
+
+        // ---- 풍선(2026-09-01). 끈이 묶인 자리를 머리 옆에 두고, 주머니는 그 위에서 둥실거린다.
+        //      회전 중심이 <b>묶인 자리</b>라 좌우로 흔들려도 끈이 몸에서 떨어지지 않는다.
+        private const float BalloonFollowRate = 3.4f;
+        private const float BalloonTetherBehindInR = 0.75f;   // 묶인 자리(머리 중심에서 진행 반대쪽)
+        private const float BalloonTetherAboveInR = 0.30f;    // 묶인 자리(머리 중심에서 위)
+        private const float BalloonBobSeconds = 2.6f;
+        private const float BalloonBobInR = 0.28f;
+        private const float BalloonMaxTiltDegrees = 26f;
+        /// <summary>기울기 1도당 필요한 "목표에서 뒤처진 거리"의 기준(머리 반경 배수).
+        /// 끌려가는 만큼 눕는다 — 속도를 따로 재지 않아도 되는 이유다(지연 자체가 곧 속도의 함수).</summary>
+        private const float BalloonTiltReferenceInR = 1.2f;
+
+        // ---- 달팽이(2026-09-01). 땅에 붙어 아주 느리게 따라온다.
+        //      "느리다"를 계수 하나로만 표현하면 그냥 <b>덜 반응하는 공</b>이다. 그래서 따라가는
+        //      속도 자체를 주기적으로 눌러(기어가는 리듬) 몸이 함께 늘었다 줄게 했다.
+        private const float SnailTrailInHeight = 0.95f;
+        private const float SnailFollowRate = 0.9f;
+        private const float SnailCrawlSeconds = 1.3f;         // 한 번 밀어내는 주기
+        private const float SnailCrawlGateFloor = 0.30f;      // 밀지 않는 구간에도 이만큼은 나아간다
+        private const float SnailBreathScale = 0.045f;        // 기어갈 때의 몸 신축(균등 배율)
+        private const float SnailSizeInR = AppearanceShapeBuilder.SnailSizeInR;
+        private const int SnailShellSegments = 14;
+        private const int SnailCoreSegments = 8;
 
         private const float CursorFollowRate = 9.0f;
         private const float CursorLeadSeconds = 0.08f;
@@ -82,6 +162,10 @@ namespace StickMate.Interaction
         private LineRenderer _headOutline;
         private Material _lineMaterial;
 
+        /// <summary>몸통 Transform — <b>회전만</b> 읽는다(<see cref="LeanedHeadWorld"/>).
+        /// 액세서리 렌더러와 같은 규약: 기울임 각도를 이 파일에서 새로 계산하지 않는다.</summary>
+        private Transform _torsoTransform;
+
         private GameObject _container;
         private LineRenderer[] _lines;
         private Transform _body;      // 그림 전체가 붙는 자리(위치/회전/스케일)
@@ -100,6 +184,17 @@ namespace StickMate.Interaction
         private long _lastGroundHandle;
         private float _orbitPhase;
         private float _legPhase;
+
+        /// <summary>구워진 미니 마디 4개(팔뒤/팔앞/다리뒤/다리앞)의 <b>기본 각도</b>(도, 0 = 곧게 아래).
+        /// BuildMini가 실제 점 좌표에서 실측해 담는다 — 도형을 바꿔도 자세 계산이 저절로 따라온다.</summary>
+        private float[] _miniLimbNeutral;
+
+        /// <summary>지금 프레임의 자세 가중치(전부 지수 감쇠로 수렴). 세 값은 상태 하나가 정하므로
+        /// 서로 배타적이지만, 전이 순간에는 겹쳐 섞이면서 자세가 이어진다.</summary>
+        private float _miniAir01;
+        private float _miniTumble01;
+        private float _miniCrouch;
+        private float _miniSpinDegrees;
         private Vector2 _cursorVelocity;
         private Vector2 _lastCursor;
         private bool _hasCursor;
@@ -111,6 +206,26 @@ namespace StickMate.Interaction
         /// <summary>테스트/진단용 — 펫의 현재 월드 좌표.</summary>
         public Vector2 PetWorldPosition => _position;
 
+        /// <summary>
+        /// 테스트/진단용 — 머리에 매달리는 펫(종이비행기 궤도 중심 / 풍선 매듭)이 <b>지금</b> 기준으로
+        /// 삼는 월드 좌표. 값은 <see cref="LeanedHeadWorld"/> 그 자체이므로 "그리는 값"과 "재는 값"이
+        /// 갈라질 수 없다.
+        /// </summary>
+        public Vector2 HeadAnchorWorldPosition
+        {
+            get
+            {
+                StickmanBlackboard bb = _agent != null ? _agent.Blackboard : null;
+                if (bb == null || bb.Body == null) return transform.position;
+                return LeanedHeadWorld(bb, HeadAnchorAboveHeadCenter);
+            }
+        }
+
+        /// <summary>머리 중심에서 <see cref="HeadAnchorWorldPosition"/>까지의 높이(월드 유닛) —
+        /// 종이비행기 궤도 중심 기준. 테스트가 "기울이지 않았다면 어디였을지"를
+        /// <see cref="StickmanMetrics"/>만으로 계산할 수 있게 열어 둔다.</summary>
+        public float HeadAnchorAboveHeadCenter => HeadRadius * PlaneCenterAboveHeadInR;
+
         /// <summary>테스트/진단용 — 지금 알파(숨김 페이드 확인).</summary>
         public float Alpha => _alpha;
 
@@ -118,10 +233,26 @@ namespace StickMate.Interaction
         /// 튀지 않는지 확인하는 창구다(R2 m4).</summary>
         public float BallSpinDegrees => _ballAngleDegrees;
 
+        /// <summary>테스트/진단용 — 리틀스틱메이트에 지금 적용된 <b>몸통 회전각</b>(도).
+        /// 주인의 루트 회전(ThrowTumbleState가 구동)을 그대로 따라간다.</summary>
+        public float MiniSpinDegrees => _miniSpinDegrees;
+
+        /// <summary>테스트/진단용 — 리틀스틱메이트의 <b>웅크림</b>(0 = 직립 / 1 = 최대 / 음수 = 반동).
+        /// 주인의 <see cref="LandingCrouchState.CurrentCrouchAmount"/>를 지수 감쇠로 따라간다.</summary>
+        public float MiniCrouchAmount => _miniCrouch;
+
+        /// <summary>테스트/진단용 — 리틀스틱메이트의 <b>공중 자세 세기</b>(0~1).
+        /// 주인의 <see cref="StickmanBlackboard.ComputeFallPoseIntensity"/>를 따라간다.</summary>
+        public float MiniAirPostureAmount => _miniAir01;
+
+        /// <summary>테스트/진단용 — 리틀스틱메이트의 <b>던지기 웅크림</b> 가중치(0~1).</summary>
+        public float MiniTumblePostureAmount => _miniTumble01;
+
         private void Awake()
         {
             _agent = GetComponent<StickmanAgent>();
             _metrics = StickmanMetrics.Find(this);
+            _torsoTransform = FindDirectChild("Torso");
 
             Transform head = FindDirectChild("Head");
             if (head != null)
@@ -202,6 +333,8 @@ namespace StickMate.Interaction
                 case PetPlane: TickPlane(dt); break;
                 case PetMini: TickMini(dt); break;
                 case PetCursor: TickCursorFriend(dt); break;
+                case PetBalloon: TickBalloon(dt); break;
+                case PetSnail: TickSnail(dt); break;
             }
             ApplyAlpha();
         }
@@ -243,6 +376,10 @@ namespace StickMate.Interaction
             }
 
             _position.y = ResolveGroundY(bb, grounded, bb.Body.position.y) + radius;
+            // ★ 2026-08-31 사용자 신고 "창 위에 있을 때 창 범위 안에 있어야 하는데 공중에 떠 있음".
+            //   y만 발판에서 가져오고 x는 주인 기준 끌림거리로만 정하면, 주인이 창 가장자리에서 <b>돌아설</b>
+            //   때 펫이 창 바깥으로 밀려 나가면서 "창 높이에 떠 있는" 그림이 된다(아래 함수 문서에 유도 전문).
+            ClampToOwnerFoothold(bb, grounded, ref _position, radius);
             ClampToScreen(ref _position, radius);
 
             float delta = _position.x - previousX;
@@ -265,8 +402,11 @@ namespace StickMate.Interaction
 
             _orbitPhase += dt * Mathf.PI * 2f / PlaneOrbitSeconds;
             float r = HeadRadius;
-            float cx = bb.Body.position.x;
-            float cy = bb.Body.position.y + HeadCenterLocalY + r * PlaneCenterAboveHeadInR;
+            // ★ 2026-09-01 — 궤도 중심이 <b>기울임이 반영된</b> 머리 위다(교차 레이어 항목 #22).
+            //   중립 머리에 묶여 있던 동안에는 상체가 기울어도 비행기만 제자리를 돌았다.
+            Vector2 center = LeanedHeadWorld(bb, r * PlaneCenterAboveHeadInR);
+            float cx = center.x;
+            float cy = center.y;
 
             float sin = Mathf.Sin(_orbitPhase);
             float cos = Mathf.Cos(_orbitPhase);
@@ -286,8 +426,30 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// ③ 작은 졸라맨 — 미니어처가 따라온다. <b>다리는 실제로 이동 중일 때만 흔든다</b>:
+        /// ③ 리틀스틱메이트 — 미니어처가 따라온다. <b>다리는 실제로 이동 중일 때만 흔든다</b>:
         /// 멈췄는데 다리가 계속 움직이면 그게 바로 행동-그림 불일치(원칙 1의 그림 버전)다.
+        ///
+        /// ============================================================================
+        /// ★★ 사용자 신고 (2026-08-31) — "높은 곳에서 떨어질 때 작은 졸라맨도 캐릭터와 동일한 형태로
+        ///     떨어져야 하는데 제대로 동작 안 함"
+        /// ============================================================================
+        /// 확정된 원인(추측 아님 — 수정 전 이 함수 본문 12줄이 전부였다):
+        ///   · y가 <b>언제나</b> <see cref="ResolveGroundY"/>였다. 주인이 공중이면 이 함수는 "마지막
+        ///     발판의 상단"을 돌려주므로, 주인이 20유닛을 떨어지는 동안 미니는 원래 높이에 <b>붙박이</b>로
+        ///     남아 x만 따라 미끄러졌다.
+        ///   · 몸통 회전이 <c>Quaternion.identity</c> <b>하드코딩</b>이었다. 던지기 공중 회전
+        ///     (ThrowTumbleState가 루트의 시각 회전을 직접 구동)이 미니에는 한 도(度)도 전달되지 않았다.
+        ///   · <see cref="StickmanStateMachine.CurrentStateId"/>를 이 함수가 <b>한 번도 읽지 않았다</b> —
+        ///     즉 Fall/ThrowTumble/LandingCrouch를 구독하는 경로 자체가 없었다(리더 가설 1이 옳았다).
+        ///
+        /// 수정 후 미니가 주인에게서 가져오는 것은 <b>정확히 네 가지</b>이며 전부 상태에서 파생된다:
+        ///   (1) 공중 여부(<see cref="IsOwnerGrounded"/>) -> 높이를 발판이 아니라 <b>주인의 발바닥</b>에서 가져온다.
+        ///   (2) 루트 회전각(<c>Body.rotation</c>) -> 몸통 회전. 회전 중심은 발이 아니라 <b>엉덩이</b>다
+        ///       (ThrowTumbleState.ApplyRootRotation과 같은 식 — 발을 축으로 돌리면 머리가 원을 그린다).
+        ///   (3) 낙하 세기(<see cref="StickmanBlackboard.ComputeFallPoseIntensity"/>) -> 만세 자세의 세기.
+        ///   (4) 무릎앉아 깊이(<see cref="LandingCrouchState.CurrentCrouchAmount"/>) -> 스쿼트 깊이.
+        /// 넷 다 <b>상태가 확정한 값</b>을 읽기만 한다(불변 원칙 1의 그림 버전 — 그림이 먼저 정해지고
+        /// 상태가 따라가는 일이 없다).
         /// </summary>
         private void TickMini(float dt)
         {
@@ -296,24 +458,142 @@ namespace StickMate.Interaction
 
             float h = Height;
             float facing = bb.FacingSign >= 0f ? 1f : -1f;
+            bool grounded = IsOwnerGrounded();
+            Vector2 ownerFoot = OwnerFootWorld(bb);
             float previousX = _position.x;
 
-            float targetX = bb.Body.position.x - facing * h * MiniTrailInHeight;
-            if (!_hasPosition) { _position = new Vector2(targetX, bb.Body.position.y); _hasPosition = true; }
-            _position.x = Mathf.Lerp(_position.x, targetX, 1f - Mathf.Exp(-MiniFollowRate * dt));
-            _position.y = ResolveGroundY(bb, IsOwnerGrounded(), bb.Body.position.y);
+            float targetX = ownerFoot.x - facing * h * MiniTrailInHeight;
+            if (!_hasPosition) { _position = new Vector2(targetX, ownerFoot.y); _hasPosition = true; }
+
+            if (grounded)
+            {
+                _position.x = Mathf.Lerp(_position.x, targetX, 1f - Mathf.Exp(-MiniFollowRate * dt));
+                _position.y = ResolveGroundY(bb, true, ownerFoot.y);
+                ClampToOwnerFoothold(bb, true, ref _position, h * MiniScale * 0.5f);
+            }
+            else
+            {
+                // ★ 공중에서는 지수 감쇠를 쓰지 않는다. 던지기처럼 수평 속도가 큰 비행에서 rate 3.0의
+                //   정상상태 지연은 v/3 유닛(초속 20유닛이면 6.7유닛 ≈ 신장 4개)이라, 미니가 주인과
+                //   "같은 형태로" 떨어지는 게 아니라 통째로 뒤에 남았다가 착지 후 끌려오는 그림이 된다.
+                //   이륙 프레임에는 이미 수렴해 있어 값이 같으므로 순간이동은 생기지 않는다.
+                _position.x = targetX;
+                _position.y = ownerFoot.y;
+            }
             ClampToScreen(ref _position, h * MiniScale * 0.5f);
 
+            // ---- 보행 스윙: 예전 그대로(접지 중에만). 자세 가중치와 달리 감쇠를 걸지 않는다.
             float speed = dt > 0.0001f ? Mathf.Abs(_position.x - previousX) / dt : 0f;
-            bool moving = speed > h * MiniMovingSpeedGateInHeight;
+            bool moving = grounded && speed > h * MiniMovingSpeedGateInHeight;
             if (moving) _legPhase += dt * Mathf.PI * 2f / MiniLegSwingPeriod;
             float swing = moving ? Mathf.Sin(_legPhase) * MiniLegSwingDegrees : 0f;
-            ApplyMiniLegSwing(swing);
 
-            _body.position = new Vector3(_position.x, _position.y, 0f);
-            _body.localRotation = Quaternion.identity;
+            TickMiniPosture(bb, dt, grounded);
+            ApplyMiniPose(facing, swing);
+
+            float miniH = h * MiniScale;
+            float drop = ResolveMiniCrouchDrop(miniH);
+
+            // 회전 중심을 엉덩이로 옮기는 보정(ThrowTumbleState.ApplyRootRotation의 식과 동일):
+            //   R(θ)·(0,p) = (−sinθ·p, cosθ·p)  ->  보정 = (sinθ·p, p − cosθ·p)
+            float hip = miniH * AppearanceShapeBuilder.MiniHipRatio;
+            float rad = _miniSpinDegrees * Mathf.Deg2Rad;
+            float pivotX = Mathf.Sin(rad) * hip;
+            float pivotY = hip - Mathf.Cos(rad) * hip;
+
+            _body.position = new Vector3(_position.x + pivotX, _position.y - drop + pivotY, 0f);
+            _body.localRotation = Quaternion.Euler(0f, 0f, _miniSpinDegrees);
             // 좌우 반전은 자식 회전이 아니라 도형 재구성으로 처리한다(localScale.x = -1 금지 규약).
             _body.localScale = Vector3.one;
+        }
+
+        /// <summary>
+        /// 자세 가중치 3종과 몸통 회전각을 <b>주인의 상태에서만</b> 갱신한다. 세 가중치는 상태 하나가
+        /// 정하므로 상호 배타지만(전이 순간에만 겹친다), 각각 독립적으로 0으로 수렴하기 때문에 어떤
+        /// 전이 조합에서도 자세가 튀지 않는다 — 상태 조합을 열거하지 않아도 되는 것이 이 구조의 요점이다.
+        /// </summary>
+        private void TickMiniPosture(StickmanBlackboard bb, float dt, bool grounded)
+        {
+            StickmanStateId id = bb.Machine != null ? bb.Machine.CurrentStateId : StickmanStateId.Idle;
+            bool tumbling = id == StickmanStateId.ThrowTumble;
+
+            float airTarget = grounded || tumbling ? 0f : Mathf.Clamp01(bb.ComputeFallPoseIntensity());
+            float tumbleTarget = tumbling ? 1f : 0f;
+            float crouchTarget = ResolveOwnerCrouchAmount(bb);
+
+            // 공중 자세/텀블링은 몸통의 일반 포즈 계수를, 무릎앉아는 몸통의 무릎앉아 전용 계수를 쓴다
+            // (위 주석의 반증 기록 참고 — 두 구간은 요구 반응속도가 다르다).
+            float kPose = 1f - Mathf.Exp(-Mathf.Max(1f, bb.PoseSmoothingRate) * dt);
+            float kCrouch = 1f - Mathf.Exp(-Mathf.Max(1f, bb.LandingCrouchPoseSmoothingRate) * dt);
+            _miniAir01 += (airTarget - _miniAir01) * kPose;
+            _miniTumble01 += (tumbleTarget - _miniTumble01) * kPose;
+            _miniCrouch += (crouchTarget - _miniCrouch) * kCrouch;
+
+            // 몸통 회전은 <b>보간하지 않는다</b>: 주인의 루트 회전각 그 자체가 이미 상태가 매 프레임
+            // 적분한 값이라, 여기서 한 번 더 감쇠를 걸면 초당 수백 도의 회전이 눈에 띄게 뒤처진다.
+            // 능동 상태에서 루트는 SnapRootUpright로 0이므로 평소에는 정확히 0이다.
+            _miniSpinDegrees = bb.Body != null ? bb.Body.rotation : 0f;
+        }
+
+        /// <summary>
+        /// 주인이 지금 무릎앉아 중이면 그 <b>진행 곡선 값</b>(0 = 직립 / 1 = 최대 깊이 / 음수 = 반동)을,
+        /// 아니면 0을 돌려준다. 값을 새로 계산하지 않고 <b>상태 인스턴스에서 직접 읽는</b> 것이 핵심이다 —
+        /// 같은 곡선을 여기서 다시 적으면 그 순간부터 두 개의 진실이 되고, 깊이/지속시간 튜닝이
+        /// StickConfig 한 곳에서 끝나지 않는다.
+        /// </summary>
+        private static float ResolveOwnerCrouchAmount(StickmanBlackboard bb)
+        {
+            if (bb.Machine == null || bb.Machine.CurrentStateId != StickmanStateId.LandingCrouch) return 0f;
+            return bb.Machine.CurrentState is LandingCrouchState crouch ? crouch.CurrentCrouchAmount : 0f;
+        }
+
+        /// <summary>
+        /// 무릎앉아에서 <b>몸이 내려가는 거리</b>(월드 유닛). 미니는 마디가 하나뿐이라 무릎을 접을 수
+        /// 없으므로 다리를 φ만큼 <b>벌려서</b> 낮아진다. 벌린 뒤 엉덩이~발끝의 수직 거리는
+        /// <c>키·(MiniHipRatio·cosφ − MiniLegTipXRatio·sinφ)</c>이고(구워진 다리 끝점을 φ만큼 돌린
+        /// 결과의 −y 성분), 원래 거리와의 차이가 곧 내려가는 거리다. 이 유도 덕분에 <b>발끝은 어떤
+        /// 깊이에서도 정확히 지면에 남는다</b> — 임의의 "웅크림 = 얼마 내리기" 상수를 쓰면 발이 지면을
+        /// 뚫거나 뜬다. 반동 구간(φ&lt;0)에서는 값이 음수가 되어 몸이 살짝 솟는다(다리가 곧게 펴진다).
+        /// </summary>
+        private float ResolveMiniCrouchDrop(float miniHeight)
+        {
+            float phi = MiniCrouchLegSpreadDegrees * _miniCrouch * Mathf.Deg2Rad;
+            float standing = AppearanceShapeBuilder.MiniHipRatio;
+            float bent = AppearanceShapeBuilder.MiniHipRatio * Mathf.Cos(phi)
+                       - AppearanceShapeBuilder.MiniLegTipXRatio * Mathf.Sin(phi);
+            return miniHeight * (standing - bent);
+        }
+
+        /// <summary>
+        /// 자세 가중치 -> 마디 4개의 회전량(도)을 만들어 적용한다. 모든 항이 "기본 자세로부터의 차이"라
+        /// <b>가중치가 전부 0이면 결과가 예전과 정확히 같다</b>(보행 스윙만 남는다) — 스위치를 끄면
+        /// 예전 거동이 되는 이 프로젝트의 관례를 코드 구조로 보장한다.
+        /// </summary>
+        private void ApplyMiniPose(float facing, float swingDegrees)
+        {
+            if (_lines == null || _lines.Length < 6 || _miniLimbNeutral == null) return;
+
+            for (int i = 0; i < 4; i++)
+            {
+                float neutral = _miniLimbNeutral[i];
+                // 기본 각도의 부호가 곧 그 마디의 <b>바깥 방향</b>이다(몸통 리그의 NeutralSign과 같은 개념).
+                float outward = neutral >= 0f ? 1f : -1f;
+                bool isLeg = i >= 2;
+
+                float airAbs = outward * (isLeg ? MiniAirLegSpreadDegrees : MiniAirArmDegrees);
+                float tumbleAbs = facing * (isLeg ? MiniTumbleLegDegrees : MiniTumbleArmDegrees)
+                                + outward * MiniTumbleLimbSpreadDegrees;
+
+                float delta = _miniAir01 * (airAbs - neutral)
+                            + _miniTumble01 * (tumbleAbs - neutral)
+                            + _miniCrouch * (isLeg ? outward * MiniCrouchLegSpreadDegrees
+                                                   : facing * MiniCrouchArmDegrees);
+
+                // 다리에만 보행 스윙을 더한다(뒤/앞이 서로 반대 위상 — 예전 ApplyMiniLegSwing과 동일).
+                if (isLeg) delta += i == 2 ? swingDegrees : -swingDegrees;
+
+                RotateLimb(_lines[i + 2], delta);
+            }
         }
 
         /// <summary>
@@ -369,6 +649,99 @@ namespace StickMate.Interaction
             _body.position = new Vector3(_position.x, _position.y, 0f);
             _body.localRotation = Quaternion.identity;
             _body.localScale = Vector3.one;
+        }
+
+        /// <summary>
+        /// ⑤ 풍선(2026-09-01) — 머리 옆에 묶인 끈을 달고 위에서 둥실거린다.
+        ///
+        /// <para>회전 중심을 <b>묶인 자리</b>로 잡은 것이 이 아이템의 전부다. 주머니를 중심으로 두면
+        /// 기울일 때 끈이 몸을 뚫고 지나간다 — 도형(AppearanceShapeBuilder.BalloonString/BalloonBody)이
+        /// 원점을 매듭이 아니라 <b>묶인 자리</b>로 정의해 둔 이유가 이것이다.</para>
+        ///
+        /// <para>기우는 각도는 속도를 새로 재서 만들지 않는다. 지수 감쇠 추종의 <b>지연량</b>
+        /// (목표와 현재 위치의 차이)이 이미 속도의 함수이므로 그 값을 그대로 쓴다 — 같은 사실을
+        /// 두 번 계산하지 않는다는 이 저장소의 관례 그대로다.</para>
+        ///
+        /// <para>주인이 랙돌로 자빠져도 사라지지 않는다(33-6-4: 펫은 독립 개체). 다만 기울임 각도는
+        /// 랙돌 중에도 Torso가 직립(States/StickmanPoseAnimator.ClearBodyLean)이라 0이다.</para>
+        /// </summary>
+        private void TickBalloon(float dt)
+        {
+            StickmanBlackboard bb = _agent.Blackboard;
+            if (bb == null || bb.Body == null) return;
+
+            float r = HeadRadius;
+            float facing = bb.FacingSign >= 0f ? 1f : -1f;
+
+            _orbitPhase += dt * Mathf.PI * 2f / BalloonBobSeconds;
+            Vector2 head = LeanedHeadWorld(bb, r * BalloonTetherAboveInR);
+            var anchor = new Vector2(head.x - facing * r * BalloonTetherBehindInR,
+                head.y + Mathf.Sin(_orbitPhase) * r * BalloonBobInR);
+
+            if (!_hasPosition) { _position = anchor; _hasPosition = true; }
+            _position = Vector2.Lerp(_position, anchor, 1f - Mathf.Exp(-BalloonFollowRate * dt));
+
+            // 주머니 꼭대기까지가 화면 안에 들어와야 한다 — 끈 길이 + 지름이 곧 이 펫의 세로 크기다.
+            float reach = r * (AppearanceShapeBuilder.BalloonStringInR
+                + AppearanceShapeBuilder.BalloonRadiusInR * 2f);
+            ClampToScreen(ref _position, reach * 0.5f);
+
+            float lag = anchor.x - _position.x;
+            float tilt = Mathf.Clamp(lag / (r * BalloonTiltReferenceInR) * BalloonMaxTiltDegrees,
+                -BalloonMaxTiltDegrees, BalloonMaxTiltDegrees);
+
+            _body.position = new Vector3(_position.x, _position.y, 0f);
+            _body.localRotation = Quaternion.Euler(0f, 0f, tilt);
+            _body.localScale = Vector3.one;
+        }
+
+        /// <summary>
+        /// ⑥ 달팽이(2026-09-01) — 땅에 붙어 <b>아주 느리게</b> 따라온다.
+        ///
+        /// <para>"느리다"를 추종 계수 하나로만 표현하면 화면에서는 그냥 <b>둔한 공</b>으로 읽힌다.
+        /// 그래서 나아가는 속도 자체에 주기적인 문(gate)을 걸어 <b>밀었다 쉬었다</b>를 만들고, 같은
+        /// 위상으로 몸을 균등하게 늘였다 줄인다(비균등 배율은 LineRenderer 두께를 왜곡하므로 쓰지 않는다).</para>
+        ///
+        /// <para>높이/가로 범위는 공과 <b>완전히 같은 경로</b>(<see cref="ResolveGroundY"/> +
+        /// <see cref="ClampToOwnerFoothold"/>)를 쓴다 — "주인이 지금 딛고 있는 발판"만 본다. 주인이
+        /// 공중이면 목표 갱신을 멈추고 마지막 발판 위에서 기다린다(달팽이는 날지 않는다).</para>
+        /// </summary>
+        private void TickSnail(float dt)
+        {
+            StickmanBlackboard bb = _agent.Blackboard;
+            if (bb == null || bb.Body == null) return;
+
+            float h = Height;
+            float r = HeadRadius;
+            float facing = bb.FacingSign >= 0f ? 1f : -1f;
+            bool grounded = IsOwnerGrounded();
+            float trailX = bb.Body.position.x - facing * h * SnailTrailInHeight;
+
+            if (!_hasPosition)
+            {
+                _position = new Vector2(grounded ? trailX : bb.Body.position.x, bb.Body.position.y);
+                _hasPosition = true;
+            }
+
+            // 기어가는 리듬 — 0..1 사이를 오가는 문을 추종 계수에 곱한다.
+            _legPhase += dt * Mathf.PI * 2f / SnailCrawlSeconds;
+            float gate = SnailCrawlGateFloor
+                + (1f - SnailCrawlGateFloor) * (0.5f + 0.5f * Mathf.Sin(_legPhase));
+
+            if (grounded)
+            {
+                _position.x = Mathf.Lerp(_position.x, trailX, 1f - Mathf.Exp(-SnailFollowRate * gate * dt));
+            }
+            _position.y = ResolveGroundY(bb, grounded, bb.Body.position.y);
+            ClampToOwnerFoothold(bb, grounded, ref _position, r * SnailSizeInR);
+            ClampToScreen(ref _position, r * SnailSizeInR);
+
+            float breath = 1f + Mathf.Sin(_legPhase) * SnailBreathScale;
+
+            _body.position = new Vector3(_position.x, _position.y, 0f);
+            _body.localRotation = Quaternion.identity;
+            // 좌우 반전은 도형 재구성으로 처리한다(localScale.x = -1 금지 규약) — 여기 배율은 균등하다.
+            _body.localScale = new Vector3(breath, breath, 1f);
         }
 
         /// <summary>커서가 화면 가장자리 가까이 있으면 붙는 쪽을 뒤집는다(펫이 화면 밖으로 밀려나지 않게).</summary>
@@ -455,6 +828,80 @@ namespace StickMate.Interaction
             return _hasGroundY ? _lastGroundY : ownerFootY;
         }
 
+        /// <summary>
+        /// 주인의 <b>직립 환산 발바닥</b> 월드 좌표 — 펫이 "주인이 서 있는/떠 있는 자리"로 삼는 단 하나의 값.
+        ///
+        /// <para>왜 <c>Body.position</c>을 그냥 쓰면 안 되는가: 던지기 공중 회전(ThrowTumbleState)은
+        /// <b>엉덩이를 축으로</b> 몸을 돌리기 위해 루트 위치에 보정량을 얹는다
+        /// (<c>Body.position = 탄도상의_발 + (sinθ·p, p − cosθ·p)</c>, p = 엉덩이 로컬 높이).
+        /// 그래서 회전 중에는 <c>Body.position</c>이 발바닥이 아니고, 그대로 쓰면 미니가 주인의 회전
+        /// 위상에 맞춰 최대 2p(신장의 약 0.8배)만큼 위아래로 출렁인다.</para>
+        ///
+        /// <para>여기서는 그 상태의 내부 필드를 들여다보지 않고 <b>일반식</b>으로 되돌린다: 리그의
+        /// 엉덩이는 루트의 자식이라 언제나 <c>엉덩이 = Body.position + R(θ)·(0,p)</c>이고, 그 값에서
+        /// (0,p)를 빼면 회전과 무관한 발바닥이 나온다. θ=0(= 능동 상태에서 SnapRootUpright가 보장)
+        /// 이면 <c>Body.position</c>과 <b>정확히</b> 같으므로 기존 경로의 거동은 한 치도 바뀌지 않는다.</para>
+        /// </summary>
+        private Vector2 OwnerFootWorld(StickmanBlackboard bb)
+        {
+            Vector2 p = bb.Body.position;
+            float degrees = bb.Body.rotation;
+            if (Mathf.Abs(degrees) < 0.001f) return p;
+
+            float hip = _metrics != null && _metrics.HipLocalY > 0.0001f
+                ? _metrics.HipLocalY
+                : Height * OwnerFallbackHipRatio;
+            float rad = degrees * Mathf.Deg2Rad;
+            return p + new Vector2(-Mathf.Sin(rad) * hip, Mathf.Cos(rad) * hip - hip);
+        }
+
+        /// <summary>
+        /// ★★ 사용자 신고 (2026-08-31) — <b>"창 위에 있을 때 창 범위 안에 있어야 하는데 공중에 떠 있음"</b>
+        ///
+        /// ============================================================================
+        /// 확정된 원인 (코드 경로로 확정)
+        /// ============================================================================
+        /// 펫의 <b>y</b>는 2026-08-31 오전 수정으로 "주인이 지금 딛고 있는 발판의 상단"이 되었지만
+        /// (<see cref="ResolveGroundY"/>), <b>x</b>는 그때도 지금도 <c>주인의 x − 끌림거리</c> 하나로만
+        /// 정해진다. 즉 <b>발판의 가로 범위를 아무도 보지 않았다.</b>
+        ///
+        /// 그래서 다음 배치에서 반드시 재현된다 — 주인이 창의 <b>오른쪽 가장자리</b>에서 걸음을 멈추고
+        /// (AutoWander는 <c>EdgeStopDistanceWorld</c>에서 선다) 왼쪽으로 <b>돌아서는</b> 순간, facing이
+        /// −1이 되어 끌림거리의 부호가 뒤집히므로 펫의 목표 x가 <c>주인 + 끌림거리</c>가 된다. 리틀스틱
+        /// 메이트의 끌림거리는 신장의 0.75배라 이 값은 창 오른쪽 끝을 <b>확실히</b> 넘는다. 그 결과
+        /// 펫은 "창의 상단 높이"에 있으면서 창 바깥 x에 놓인다 = 화면상 <b>공중에 떠 있는 그림</b>이다.
+        /// 주인이 창 왼쪽 끝에서 오른쪽으로 돌아설 때가 그 거울상이다.
+        ///
+        /// ============================================================================
+        /// 수정
+        /// ============================================================================
+        /// y를 발판에서 가져왔으면 x도 <b>같은 발판</b>에서 제한해야 한다 — 두 축이 서로 다른 근거를 쓰면
+        /// 어긋난다(이 프로젝트에서 반복된 실패 유형). 발판의 좌/우 모서리는 이미 단일 창구
+        /// <see cref="StickmanBlackboard.TryGetFootholdEdgeWorld"/>가 <b>매 프레임 재조회</b>로 답한다
+        /// (LedgeHang이 "창이 옆으로 움직이면 잡은 손도 따라간다"에 쓰는 바로 그 함수라, 유저가 창을
+        /// 드래그하는 동안에도 값이 늙지 않는다).
+        ///
+        /// <para>주인이 공중이면(<paramref name="grounded"/> = false) 아무 것도 하지 않는다 — 그때
+        /// 펫은 발판 위가 아니라 주인 옆에서 함께 떨어지는 중이고, 여기서 옛 발판의 폭에 묶으면 낙하가
+        /// 대각선으로 휘어진다.</para>
+        ///
+        /// <para>발판이 펫보다 좁으면(작은 창) 안쪽 여백을 폭의 절반으로 줄여 <b>가운데</b>에 세운다.
+        /// 여백을 그대로 두면 좌우 한계가 뒤집혀 Clamp가 미정의 결과를 낸다.</para>
+        /// </summary>
+        private void ClampToOwnerFoothold(StickmanBlackboard bb, bool grounded, ref Vector2 p, float halfWidth)
+        {
+            if (!grounded) return;
+
+            long handle = bb.CurrentFootholdHandle != 0L ? bb.CurrentFootholdHandle : _lastGroundHandle;
+            if (handle == 0L) return;
+            if (!bb.TryGetFootholdEdgeWorld(handle, -1, out _, out float leftX)) return;
+            if (!bb.TryGetFootholdEdgeWorld(handle, 1, out _, out float rightX)) return;
+            if (rightX <= leftX) return;   // 퇴화한 사각형 — 손대지 않는 편이 안전하다.
+
+            float inset = Mathf.Min(Mathf.Max(0f, halfWidth), (rightX - leftX) * 0.5f);
+            p.x = Mathf.Clamp(p.x, leftX + inset, rightX - inset);
+        }
+
         private bool TryGetScreenRect(out Rect rect)
         {
             rect = default;
@@ -510,7 +957,9 @@ namespace StickMate.Interaction
                 + Mathf.RoundToInt(Height * 10000f)
                 // 실제로 그려질 두께 — 화면상 하한에 걸리면 배율이 그대로여도 달라진다(창 크기/DPI).
                 + Mathf.RoundToInt(RenderStroke * 10000f) * 7
-                + (item == PetMini && FacingSign < 0f ? 1 : 0);
+                // 비대칭 도형만 방향을 서명에 섞는다 — 공/비행기/커서/풍선은 좌우가 같아서
+                // 캐릭터가 돌 때마다 다시 구우면 그림은 똑같은데 비용만 든다(24시간 상주 앱).
+                + ((item == PetMini || item == PetSnail) && FacingSign < 0f ? 1 : 0);
             if (_builtItem == item && signature == _builtSignature && _container != null) return;
 
             // ★ 위치는 유지한 채 그림만 다시 굽는다. Teardown()을 쓰면 _hasPosition이 초기화되어
@@ -521,7 +970,7 @@ namespace StickMate.Interaction
 
             // ★ 2026-08-30 — 펫은 <b>물건</b>이라 자기 색을 갖는다(빨간 공, 종이 비행기).
             //   색표는 Core/ItemCatalog 하나뿐이고 여기서는 그 값을 받아 칠하기만 한다.
-            //   "작은 졸라맨"만은 카탈로그가 잉크 표식색을 들고 있어 자동으로 캐릭터 잉크색이 된다.
+            //   "리틀스틱메이트"만은 카탈로그가 잉크 표식색을 들고 있어 자동으로 캐릭터 잉크색이 된다.
             ItemCatalog.ResolveWornPalette(EquipmentSlot.Pet, item, ResolveInk(), out _primary, out _secondary);
 
             _container = new GameObject("CharacterPet");
@@ -536,6 +985,8 @@ namespace StickMate.Interaction
                 case PetPlane: BuildPlane(); break;
                 case PetMini: BuildMini(); break;
                 case PetCursor: BuildCursorFriend(); break;
+                case PetBalloon: BuildBalloon(); break;
+                case PetSnail: BuildSnail(); break;
             }
         }
 
@@ -569,7 +1020,7 @@ namespace StickMate.Interaction
         private void BuildMini()
         {
             Vector3[][] parts = AppearanceShapeBuilder.MiniFigure(Height * MiniScale, FacingSign);
-            // 이름 6개는 순서 계약을 사람이 읽을 수 있게 남긴다(다리 2개가 마지막 — ApplyMiniLegSwing).
+            // 이름 6개는 순서 계약을 사람이 읽을 수 있게 남긴다(팔 2 + 다리 2가 마지막 넷 — ApplyMiniPose).
             _lines = new[]
             {
                 MakeLine("MiniHead", parts[0], true, SortDefault, _primary),
@@ -579,14 +1030,22 @@ namespace StickMate.Interaction
                 MakeLine("MiniLegBack", parts[4], false, SortDefault, _primary),
                 MakeLine("MiniLegFront", parts[5], false, SortDefault, _primary),
             };
+
+            // 마디 4개의 기본 각도를 <b>구워진 점에서 실측</b>해 캐시한다. 상수로 다시 적지 않는 이유:
+            // 도형(AppearanceShapeBuilder.MiniFigure)이 바뀌면 자세 계산이 조용히 어긋나기 때문이다.
+            // 좌우 반전은 도형 재구성으로 처리하므로 facing이 바뀌면 EnsureBuilt가 여기를 다시 지나간다.
+            _miniLimbNeutral = new float[4];
+            for (int i = 0; i < 4; i++) _miniLimbNeutral[i] = LimbNeutralDegrees(_lines[i + 2]);
         }
 
-        /// <summary>다리 2개만 뿌리 기준으로 회전시킨다(도형을 다시 굽지 않는다).</summary>
-        private void ApplyMiniLegSwing(float degrees)
+        /// <summary>마디의 기본 각도(도, 0 = 곧게 아래, + = +x 쪽). <see cref="MakeLine"/>이 뿌리를
+        /// 오브젝트 위치로 옮기고 점을 상대 좌표로 다시 적어 두었으므로, 마지막 점이 곧 뿌리에서 본
+        /// 끝점 벡터다.</summary>
+        private static float LimbNeutralDegrees(LineRenderer lr)
         {
-            if (_lines == null || _lines.Length < 6) return;
-            RotateLimb(_lines[4], degrees);
-            RotateLimb(_lines[5], -degrees);
+            if (lr == null || lr.positionCount < 2) return 0f;
+            Vector3 tip = lr.GetPosition(lr.positionCount - 1);
+            return Mathf.Atan2(tip.x, -tip.y) * Mathf.Rad2Deg;
         }
 
         /// <summary>뿌리(0번 점)를 축으로 돈다. <see cref="MakeLine"/>이 뿌리를 오브젝트 위치로 옮기고
@@ -604,6 +1063,34 @@ namespace StickMate.Interaction
             _lines = new[]
             {
                 MakeLine("CursorFriend", AppearanceShapeBuilder.CursorArrow(s), false, SortCursorFriend, _primary),
+            };
+        }
+
+        /// <summary>풍선 — 끈(보조색) + 주머니(주색). 원점은 <b>끈이 묶인 자리</b>라
+        /// <see cref="_body"/>를 돌리면 매달린 것처럼 흔들린다.</summary>
+        private void BuildBalloon()
+        {
+            float r = HeadRadius;
+            _lines = new[]
+            {
+                MakeLine("BalloonString", AppearanceShapeBuilder.BalloonString(r), false, SortBalloon, _secondary),
+                MakeLine("BalloonBody", AppearanceShapeBuilder.BalloonBody(r), true, SortBalloon, _primary),
+            };
+        }
+
+        /// <summary>달팽이 — 발+더듬이 한 획(주색) / 껍데기 링(주색) / 껍데기 속 점(보조색).
+        /// 원점은 <b>땅에 닿는 자리</b>이고, 좌우 반전은 도형을 다시 구워서 처리한다.</summary>
+        private void BuildSnail()
+        {
+            float size = HeadRadius * SnailSizeInR;
+            float facing = FacingSign;
+            _lines = new[]
+            {
+                MakeLine("SnailFoot", AppearanceShapeBuilder.SnailFoot(size, facing), false, SortDefault, _primary),
+                MakeLine("SnailShell", AppearanceShapeBuilder.SnailShell(size, facing, SnailShellSegments),
+                    true, SortDefault, _primary),
+                MakeLine("SnailShellCore", AppearanceShapeBuilder.SnailShellCore(size, facing, SnailCoreSegments),
+                    true, SortDefault, _secondary),
             };
         }
 
@@ -676,6 +1163,7 @@ namespace StickMate.Interaction
             _container = null;
             _body = null;
             _lines = null;
+            _miniLimbNeutral = null;   // 선과 수명이 같다(다시 구우면 다시 실측한다).
             _builtItem = -1;
             _builtSignature = -1;
         }
@@ -688,6 +1176,10 @@ namespace StickMate.Interaction
             _hasGroundY = false;
             _lastGroundHandle = 0L;
             _hasCursor = false;
+            _miniAir01 = 0f;
+            _miniTumble01 = 0f;
+            _miniCrouch = 0f;
+            _miniSpinDegrees = 0f;
         }
 
         // ==================== 치수/재료 ====================
@@ -695,6 +1187,37 @@ namespace StickMate.Interaction
         private float Height => _metrics != null ? _metrics.TotalHeight : StickConfig.BaselineCharacterTotalHeight;
         private float HeadRadius => _metrics != null ? _metrics.HeadRadius : 0.22f;
         private float HeadCenterLocalY => _metrics != null ? _metrics.HeadCenterLocalY : Height - HeadRadius;
+
+        /// <summary>고관절의 로컬 Y(발바닥 기준) — 상체 기울임의 <b>회전 중심</b>.
+        /// 폴백 비율은 <see cref="OwnerFallbackHipRatio"/>와 같은 출처다.</summary>
+        private float HipLocalY => _metrics != null && _metrics.HipLocalY > 0.0001f
+            ? _metrics.HipLocalY
+            : Height * OwnerFallbackHipRatio;
+
+        /// <summary>
+        /// ★ 2026-09-01 — <b>기울임이 반영된</b> 머리 기준 월드 좌표(교차 레이어 항목 #22).
+        ///
+        /// <para>예전 식은 <c>Body.position + (0, HeadCenterLocalY)</c>, 즉 <b>중립(기울지 않은)</b>
+        /// 머리였다. States/StickmanPoseAnimator.SetBodyLean이 들어오면서 걷는 동안 머리는 엉덩이를
+        /// 축으로 앞으로 나가는데, 종이비행기의 궤도 중심만 제자리에 남았다.</para>
+        ///
+        /// <para>액세서리 렌더러(클래스 문서 3-2)와 <b>같은 방법</b>이다: 같은 피벗(엉덩이)으로 같은
+        /// 각도만큼 돌린다. 각도는 새로 계산하지 않고 Torso의 localRotation을 읽는다 — 포즈가 실제로
+        /// 적용한 값이 유일한 진실이다. 기울임이 0이면 결과가 예전 식과 정확히 같다.</para>
+        ///
+        /// <para><paramref name="extraAboveHead"/>도 함께 돈다: 머리 위에 매달린 것(궤도 중심/풍선
+        /// 매듭)은 머리가 기울면 같이 기우는 편이 자연스럽다.</para>
+        /// </summary>
+        private Vector2 LeanedHeadWorld(StickmanBlackboard bb, float extraAboveHead)
+        {
+            Vector2 foot = bb.Body.position;
+            var neutral = new Vector2(0f, HeadCenterLocalY + extraAboveHead);
+            Quaternion rot = _torsoTransform != null ? _torsoTransform.localRotation : Quaternion.identity;
+            if (rot == Quaternion.identity) return foot + neutral;
+
+            var hip = new Vector2(0f, HipLocalY);
+            return foot + hip + (Vector2)(rot * (neutral - hip));
+        }
 
         /// <summary>펫 획의 <b>비례 두께</b>(월드 유닛). 도형 유도는 이 값을 쓴다 — 배율에 정확히
         /// 비례해야 회귀 테스트(배율 비례 단언)와 그림체가 함께 성립한다.</summary>

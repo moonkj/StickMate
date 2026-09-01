@@ -1,0 +1,47 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78e6f691c35d849a3aaae03fcb063cd4, type: 3}
+  m_Name: equip_eyes_monocle
+  m_EditorClassIdentifier: 
+  itemId: equip.eyes.monocle
+  slot: 1
+  itemIndex: 3
+  displayName: "\uC678\uC54C\uC548\uACBD"
+  description: "\uD55C\uCABD \uB208\uB9CC \uC9C4\uC9C0\uD558\uB2E4."
+  requiredLevel: 15
+  hidesHair: 0
+  icon:
+  - kind: 1
+    values:
+    - 15
+    - 19
+    - 6.5
+    color: {r: 0.9098039, g: 0.75686276, b: 0.3529412, a: 1}
+    tone: 0
+  - kind: 0
+    values:
+    - 21
+    - 21
+    - 25.88
+    - 30.75
+    - 27
+    - 33
+    color: {r: 0.827451, g: 0.85490197, b: 0.89411765, a: 1}
+    tone: 1
+  - kind: 0
+    values:
+    - 8.5
+    - 19
+    - 4
+    - 17
+    color: {r: 0.827451, g: 0.85490197, b: 0.89411765, a: 1}
+    tone: 1

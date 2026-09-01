@@ -36,12 +36,22 @@ namespace StickMate.States
             // 제한/모터 설정은 전부 사라졌다: 팔다리가 Kinematic이 되어 관절 모터라는 개념 자체가
             // 없어졌기 때문이다(States/StickmanPoseAnimator.cs 클래스 문서 참고). 실제 각도 세팅은
             // Tick()이 매 프레임 수행한다.
-            _blackboard.GetPoseAnimator()?.ResetWalkPhase();
+            //
+            // ★ 2026-09-01 예외 — 발판 상실 공중 유예에서 돌아온 경우에는 위상을 **리셋하지 않는다.**
+            // 그 상태는 같은 걷기 키포즈 표를 2~3배속으로 계속 돌리고 있었으므로, 여기서 0으로 되돌리면
+            // 다리가 한 프레임에 차렷 자세로 튄다(연출의 이음매가 정확히 여기서 끊긴다).
+            if (context.From != StickmanStateId.GroundLossHang)
+            {
+                _blackboard.GetPoseAnimator()?.ResetWalkPhase();
+            }
 
             // 보행 혼잣말(26-3절) — IdleState.Enter()와 동일한 파이프라인. 대사 표와 확률만 다르고
             // 매핑 함수는 같은 AmbientChatter.Resolve 하나를 공유한다(UX_FLOW.md 31-1 "같은 매핑 함수
             // 안의 분기만 허용" — Idle/Walk 분기는 그 함수 내부의 상태 ID 분기다).
-            if (AmbientChatter.TryRollChatter(_blackboard, StickmanStateId.Walk, _chatterParams))
+            // GroundLossHang 복귀에서 추첨하지 않는 이유는 IdleState.Enter의 같은 자리 주석 참고
+            // (새 에피소드가 아니라 같은 에피소드의 복귀 — 요청하지 않은 대사가 늘어나는 경로다).
+            if (context.From != StickmanStateId.GroundLossHang
+                && AmbientChatter.TryRollChatter(_blackboard, StickmanStateId.Walk, _chatterParams))
             {
                 _ = new DialogueIntent(context, AmbientChatter.Resolve);
             }
@@ -192,10 +202,13 @@ namespace StickMate.States
                 StickmanPoseAnimator pose = _blackboard.GetPoseAnimator();
                 if (pose != null && _blackboard.Config != null)
                 {
+                    // 마지막 인자 = 상체 전방 기울임(2026-09-01). 빠를수록 더 기운다 —
+                    // 실제 스케일은 진폭과 같은 정규화 값에서 파생된다(StickmanPoseAnimator).
                     pose.TickWalkPose(deltaTime, Mathf.Abs(v.x), _blackboard.BuildPoseSettings(),
                         _blackboard.PoseSmoothingRate, _blackboard.WalkSpeedSmoothingRate,
                         _blackboard.Config.walkFootGroundingBlend,
-                        _blackboard.Config.walkPoseAmplitudeScale, _blackboard.Config.walkStrideScale);
+                        _blackboard.Config.walkPoseAmplitudeScale, _blackboard.Config.walkStrideScale,
+                        _blackboard.RunBodyLeanDegrees);
                 }
             }
             // 좌우 반전(스프라이트 flip)은 Phase 2 렌더링 레이어 담당 — 여기서는 물리 이동/보행 애니메이션만.

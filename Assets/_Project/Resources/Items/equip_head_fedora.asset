@@ -1,0 +1,70 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78e6f691c35d849a3aaae03fcb063cd4, type: 3}
+  m_Name: equip_head_fedora
+  m_EditorClassIdentifier: 
+  itemId: equip.head.fedora
+  slot: 0
+  itemIndex: 2
+  displayName: "\uC911\uC808\uBAA8"
+  description: "\uC5B4\uB518\uAC00 \uC9C4\uC9C0\uD574 \uBCF4\uC774\uB294 \uD6A8\uACFC."
+  requiredLevel: 9
+  hidesHair: 1
+  icon:
+  - kind: 0
+    values:
+    - 13
+    - 23
+    - 16.5
+    - 18.12
+    - 20
+    - 16.5
+    - 23.5
+    - 18.12
+    - 27
+    - 23
+    color: {r: 0.54901963, g: 0.5882353, b: 0.6509804, a: 1}
+    tone: 0
+  - kind: 0
+    values:
+    - 17
+    - 15
+    - 19
+    - 16.33
+    - 21
+    - 16.33
+    - 23
+    - 15
+    color: {r: 0.54901963, g: 0.5882353, b: 0.6509804, a: 1}
+    tone: 0
+  - kind: 0
+    values:
+    - 5
+    - 24
+    - 12.5
+    - 26.25
+    - 20
+    - 27
+    - 27.5
+    - 26.25
+    - 35
+    - 24
+    color: {r: 0.54901963, g: 0.5882353, b: 0.6509804, a: 1}
+    tone: 0
+  - kind: 0
+    values:
+    - 13
+    - 23
+    - 27
+    - 23
+    color: {r: 0.9098039, g: 0.5137255, b: 0.2901961, a: 1}
+    tone: 1

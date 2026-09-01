@@ -171,24 +171,57 @@ namespace StickMate.Tests.PlayMode
             Mesh mesh = capeFill.GetComponent<MeshFilter>().sharedMesh;
             Vector3 fillBefore = mesh.vertices[4];
 
+            // ★★ 2026-09-01 — 표본 창을 60프레임에서 <b>1.5초(벽시계)</b>로 바꿨다.
+            //
+            //   흔들림(HemSway)의 위상은 <c>Time.time × 2π / SwayPeriodSeconds</c>이고
+            //   <c>SwayPeriodSeconds = 0.62초</c>다(CharacterAccessoryRenderer). 그런데 배치 모드는
+            //   0.11~0.45ms/프레임이라 60프레임은 실제로 <b>0.007~0.027초</b> — 한 주기의
+            //   <b>1.1%~4.3%</b>다. 즉 위상이 0.04~0.17rad밖에 안 돌아, "걷는 동안 채움이 윤곽선을
+            //   따라가는가"를 본다면서 사실상 <b>정지 화면 한 장</b>을 보고 있었다(거짓 통과).
+            //   1.5초면 위상이 2.4주기를 돌아 자락이 앞뒤로 여러 번 왕복한다.
+            //
+            //   함께 넣은 진단값 <c>maxExcursion</c>은 "표본 동안 윤곽선이 실제로 움직이기는 했는가"다 —
+            //   이것이 0이면 위 maxGap 상한은 (움직임이 없으니) 언제나 참이라 아무 의미가 없다.
+            const float SampleSeconds = 1.5f;
             float maxGap = 0f;
-            for (int f = 0; f < 60; f++)
+            float maxExcursion = 0f;
+            Vector3[] firstLinePts = null;
+            yield return TestClock.SampleForSeconds(SampleSeconds, _ =>
             {
                 body.linearVelocity = new Vector2(walk, body.linearVelocity.y);
-                yield return null;
                 var linePts = new Vector3[capeLine.positionCount];
                 capeLine.GetPositions(linePts);
                 Vector3[] fillPts = mesh.vertices;
                 for (int k = 2; k <= 6 && k < linePts.Length && k < fillPts.Length; k++)
+                {
                     maxGap = Mathf.Max(maxGap, Vector3.Distance(linePts[k], fillPts[k]));
-            }
+                    if (firstLinePts != null && k < firstLinePts.Length)
+                        maxExcursion = Mathf.Max(maxExcursion, Vector3.Distance(linePts[k], firstLinePts[k]));
+                }
+                firstLinePts ??= linePts;
+            });
 
             float stroke = renderer.StrokeWidth;
-            Debug.Log($"{LogPrefix} 걷는 동안 망토 윤곽선과 채움 면의 최대 어긋남 = {maxGap:F5} 월드유닛 " +
-                $"(획 두께 {stroke:F5}, 획의 {maxGap / stroke:P0}). 채움 첫 표본 {fillBefore} -> {mesh.vertices[4]}");
-            // ★ 2026-08-30 통합검증 m4 — 지금은 획 두께의 60% 미만이라 화면상 ~0.9pt로 사실상 안 보이지만,
-            // 구조적으로 망토 채움이 sway를 따라가지 않는 공백이 있다(_swayLines가 LineRenderer만 갱신).
-            // 진폭/캐릭터 크기가 커지면 드러날 수 있음 — 이 상한이 깨지면 그 공백을 메울 시점이다.
+            Debug.Log($"{LogPrefix} 걷는 동안({SampleSeconds:F1}초 = sway {SampleSeconds / 0.62f:F1}주기) " +
+                $"망토 윤곽선과 채움 면의 최대 어긋남 = {maxGap:F5} 월드유닛 " +
+                $"(획 두께 {stroke:F5}, 획의 {maxGap / stroke:P0}). 채움 첫 표본 {fillBefore} -> {mesh.vertices[4]}. " +
+                $"[네거티브 진단] 표본 동안 윤곽선이 실제로 움직인 최대 거리 = {maxExcursion:F5} 월드유닛 " +
+                $"(0이면 흔들림이 아예 안 돌았다는 뜻이라 위 상한은 무의미합니다).");
+            // ★ 2026-09-01 네거티브 컨트롤 — 표본 창이 흔들림을 <b>실제로</b> 봤는가.
+            //   이 단언이 없으면 "채움이 선을 따라간다"는 아래 상한은 <b>선이 안 움직이기만 해도</b>
+            //   통과한다(60프레임 예산이 sway 한 주기의 1.1%였을 때가 정확히 그 상태였다).
+            //   실측 0.02128유닛이 나오므로 문턱 0.005는 4배 여유다.
+            Assert.Greater(maxExcursion, 0.005f,
+                $"{LogPrefix} 표본 {SampleSeconds:F1}초 동안 망토 윤곽선이 {maxExcursion:F5}유닛밖에 " +
+                "움직이지 않았습니다 — 흔들림(HemSway)이 돌지 않았다는 뜻이고, 그러면 아래 " +
+                "'채움이 선을 따라간다' 상한은 아무것도 검증하지 못합니다(표본 창이 다시 " +
+                "sway 주기 0.62초보다 짧아졌는지, 보행 속도 주입이 먹히는지 확인하세요).");
+
+            // ★ 2026-08-30 통합검증 m4 — 그때는 획 두께의 60% 미만이었다("구조적으로 망토 채움이 sway를
+            // 따라가지 않는 공백이 있다 — _swayLines가 LineRenderer만 갱신").
+            // ★ 2026-09-01 — 그 공백은 메워졌다(TickHemMotion이 선과 채움을 같은 버퍼로 함께 갱신).
+            //   표본 창을 프레임 → 시간으로 고친 뒤 실측 어긋남은 <b>0.00000유닛(획의 0%)</b>이다.
+            //   상한은 그대로 둔다 — 회귀가 생기면 이 값이 다시 올라오는 것이 조기 경보다.
             Assert.Less(maxGap, stroke * 0.7f,
                 $"{LogPrefix} 흔들리는 동안 채움 면이 윤곽선에서 최대 {maxGap:F5}(획 두께의 " +
                 $"{maxGap / stroke:P0}) 어긋납니다 — 걸을 때 면이 선 밖으로 삐져나옵니다.");

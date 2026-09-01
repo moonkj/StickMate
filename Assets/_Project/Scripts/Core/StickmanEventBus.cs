@@ -161,6 +161,35 @@ namespace StickMate.Core
         /// 정상 종료는 Idle이며, 다른 스펙터클과 동일하게 SpectacleEventLock에 참여한다.
         /// </summary>
         Archery,
+
+        // ==== 발판 상실 공중 유예 (2026-09-01, 소은 실측 + 리더 결정 "시간은 두고 연출을 붙인다") ====
+
+        /// <summary>
+        /// 딛고 있던 발판이 창 목록에서 사라졌지만 <b>아직 떨어지지는 않는</b> 유예 구간
+        /// (States/GroundLossHangState.cs). 유예 자체는 2026-09-01 오전에 이미 있었지만
+        /// <c>StickmanBlackboard._graceHoldFrame</c>이라는 <b>내부 플래그</b>였고, 이 프로젝트 규약은
+        /// "상태 ID 하나로 포즈가 결정된다"(StickmanBlackboard.TickPose)이므로 포즈를 붙이려면 상태로
+        /// 승격하는 것이 맞다(리더 결정 2026-09-01 승인사항 2).
+        ///
+        /// <para><b>왜 이 상태가 필요한가(실측 근거).</b> 같은 빌드·같은 물리·같은 지속시간인데
+        /// IDLE 중이면 10프레임 넘게 화소차 0.00%로 <b>완전히 얼어붙고</b>(= "앱이 멈췄다"로 읽힌다),
+        /// WALK 중이면 다리가 계속 돌아가 <b>코요테 개그로 읽힌다</b>. 즉 문제는 유예의 길이가 아니라
+        /// 그 시간에 <b>생명 신호가 있느냐</b>다(Tasklist.md "소은의 의견 (2026-09-01, 발판 상실 공중
+        /// 정지)" 1·2항). 이 상태는 IDLE/WALK 어느 쪽에서 들어와도 같은 그림(제자리 종종걸음 + 팔
+        /// 허우적)을 만들어 그 신호를 확정한다.</para>
+        ///
+        /// <para><b>대사는 만들지 않는다</b>(리더 결정 승인사항 3). 상태로 승격되면 기술적으로는
+        /// 원칙 1을 지키며 대사를 붙일 수 있게 되지만, 사용자가 요청하지 않은 연출/대사에 반복적으로
+        /// 불만을 표한 이력이 있어 <b>연출만</b> 넣는다.</para>
+        ///
+        /// <para>진입은 Idle/Walk에서만이다 — 이유는 States/GroundLossHangState.cs 클래스 문서의
+        /// "왜 Idle/Walk에서만 승격하는가" 절에 실패 시나리오와 함께 적어 뒀다. 나가는 경로는
+        /// 유예 만료 -> Fall / 발판 복귀 -> Idle·Walk / 발밑이 정말 비었음 -> Fall / 화면 이탈 -> Fall /
+        /// 외력 -> Ragdoll(강제 인터럽트) / 상한 초과 -> Fall(갇힘 방지 최후 안전망)이며,
+        /// <b>이 상태에 갇히면 캐릭터가 영원히 공중에 뜬다</b> — 원래 버그보다 나쁘므로
+        /// Tests/PlayMode/GroundLossHangStateTests.cs가 모든 경로를 잠근다.</para>
+        /// </summary>
+        GroundLossHang,
     }
 
     /// <summary>
@@ -426,6 +455,39 @@ namespace StickMate.Core
         }
     }
 
+    /// <summary>
+    /// ★ 캐릭터 <b>배율 변경</b> 1건 — 2026-09-01 설정창 신설과 함께 추가(docs/UX_FLOW.md 35-1-3 ①).
+    ///
+    /// <para><b>왜 이 이벤트가 필요한가</b>: 배율을 바꾸는 UI가 <b>둘</b>이 됐다(구석 호버 다이얼 /
+    /// 설정창 슬라이더). 알림 채널이 없으면 설정창에서 1.20×로 바꾼 뒤 구석 패널을 열었을 때
+    /// 다이얼이 <b>옛 값</b>을 가리킨다 — "켜진 눈금 = 표시 숫자 = 실제 값"이라는 34-3-4의 보증이
+    /// 깨지고, 그것이 곧 절대 불변 원칙 1(표시와 실제의 일치) 위반이다.</para>
+    ///
+    /// <para><b>Value는 "사용자가 고른 값"이다</b>(캐릭터에 이미 들어간 값이 아니다). 랙돌/스펙터클
+    /// 중에는 적용이 최대 3초 유예되는데(34-3-6), 그 동안에도 두 UI는 <b>사용자가 고른 값</b>을
+    /// 똑같이 보여줘야 한다 — 유예는 몸이 늦는 것이지 선택이 취소된 것이 아니다. 실제 적용 여부는
+    /// <see cref="AppliedToCharacter"/>로 구분한다(대기 중이면 false로 한 번, 적용될 때 true로 한 번
+    /// 더 발행된다).</para>
+    /// </summary>
+    public readonly struct CharacterScaleChangeEvent
+    {
+        /// <summary>사용자가 고른 배율(0.05 눈금에 스냅됨, StickConfig.Min/MaxCharacterScale 구간).</summary>
+        public readonly float Value;
+
+        /// <summary>출처(로그/진단용) — "구석 다이얼" / "설정창 슬라이더" / "저장된 크기 복원" 등.</summary>
+        public readonly string Reason;
+
+        /// <summary>이 발행 시점에 실제 캐릭터까지 반영됐는가. false면 적용 대기 중(최대 3초).</summary>
+        public readonly bool AppliedToCharacter;
+
+        public CharacterScaleChangeEvent(float value, string reason, bool appliedToCharacter)
+        {
+            Value = value;
+            Reason = reason;
+            AppliedToCharacter = appliedToCharacter;
+        }
+    }
+
     /// <summary>상태 전이 1건을 나타내는 불변 이벤트 페이로드 (From -> To).</summary>
     public readonly struct StateTransitionEvent
     {
@@ -561,6 +623,17 @@ namespace StickMate.Core
         /// 소비자는 액세서리 렌더러(Interaction/CharacterAccessoryRenderer.cs)와 정보창이다.</summary>
         public static event Action CharacterEquipmentChanged;
 
+        /// <summary>
+        /// 캐릭터 배율(크기)이 바뀌었을 때 발생 — <b>발행자는 Core/CharacterScaleController 하나뿐</b>이다
+        /// (2026-09-01, 35-1-3 ①). 구석 호버 다이얼과 설정창 슬라이더는 <b>둘 다 구독자이자 발행자</b>이며,
+        /// 어느 쪽에서 바꾸든 다른 쪽이 같은 프레임에 따라온다.
+        ///
+        /// <para>구독자 주의: 자기가 방금 요청해서 돌아온 값도 그대로 받는다(에코). 값이 같으면 아무것도
+        /// 하지 않는 것으로 충분하다 — 다이얼/슬라이더 모두 <c>SetValue</c>가 같은 값이면 즉시 빠져나온다.
+        /// 사용자가 <b>끌고 있는 중</b>인 컨트롤은 에코를 무시해야 한다(끄는 손을 되돌리게 된다).</para>
+        /// </summary>
+        public static event Action<CharacterScaleChangeEvent> CharacterScaleChanged;
+
         public static void RaiseStateTransitioned(StickmanStateId from, StickmanStateId to, bool isForcedInterrupt = false)
             => StateTransitioned?.Invoke(new StateTransitionEvent(from, to, isForcedInterrupt));
 
@@ -627,5 +700,8 @@ namespace StickMate.Core
 
         public static void RaiseCharacterEquipmentChanged()
             => CharacterEquipmentChanged?.Invoke();
+
+        public static void RaiseCharacterScaleChanged(float value, string reason, bool appliedToCharacter)
+            => CharacterScaleChanged?.Invoke(new CharacterScaleChangeEvent(value, reason, appliedToCharacter));
     }
 }

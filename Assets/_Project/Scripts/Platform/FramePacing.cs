@@ -128,6 +128,7 @@ namespace StickMate.Platform
             _forcedTier = null;
             _transitionCount = 0;
             _summaryTimer = 0f;
+            _interactionHoldUntil = float.NegativeInfinity;
             for (int i = 0; i < TierSeconds.Length; i++) TierSeconds[i] = 0f;
             FrameTimeStats.ResetForTests();
         }
@@ -159,9 +160,15 @@ namespace StickMate.Platform
         /// 매 프레임 호출해도 안전 — 통계가 꺼져 있으면 첫 줄에서 돌아간다.
         /// </summary>
         /// <param name="characterIdle">지금 캐릭터가 IDLE 상태인가(= 제자리에 서 있는가).
-        /// 호출부(각 플랫폼 Enforcer)가 상태머신에서 읽어 넘긴다. 모르면 false를 넘기면 되고,
-        /// 그러면 적응형 등급이 <see cref="FramePacingTier.Calm"/>으로 내려가지 않을 뿐 나머지
-        /// (자리 비움 / 디스플레이 꺼짐)는 그대로 동작한다.</param>
+        /// 호출부(각 플랫폼 Enforcer)가 상태머신에서 읽어 넘긴다. 모르면 false를 넘기면 된다.
+        ///
+        /// <para><b>★ 2026-09-01부터 이 인자는 <see cref="FramePacingTier.Away"/> 판정에도 들어간다</b>
+        /// (그 전에는 <see cref="FramePacingTier.Calm"/>에만 쓰였다 — 무입력만으로 Away를 주면 구경
+        /// 중인 사용자 앞에서 걷기가 15fps로 끊겼다. 근거: <see cref="FramePacingPolicy.AwaySeconds"/>
+        /// 문서). 그래서 false를 계속 넘기면 <b>Calm뿐 아니라 Away도 성립하지 않는다</b> — 즉 화면이
+        /// 꺼지지 않는 한 계속 60fps다. 24시간 상주 앱에서 이 신호가 끊기면 절감이 아니라
+        /// <b>비용</b> 쪽으로 실패한다는 뜻이므로, 배선을 지울 때 이 문단을 먼저 읽어라.
+        /// (<see cref="FramePacingTier.DisplayOff"/>는 이 인자와 무관하게 그대로 동작한다.)</para></param>
         internal static void Tick(bool characterIdle = false)
         {
             FrameTimeStats.Tick();
@@ -258,6 +265,75 @@ namespace StickMate.Platform
         /// <summary>마지막 OS 관측값(진단용).</summary>
         internal static ViewerPresenceSnapshot LastPresence => _presence;
 
+        // ============================================================================
+        // UI 상호작용 홀드 (2026-08-31 — 사용자 신고 "기어 설정창조차 클릭하면 약간 렉걸린듯이 움직임")
+        // ============================================================================
+        //
+        // ★ 확정된 인과(코드 검증):
+        //   1. 사용자가 정보창을 열고 읽는다 -> 마우스 무입력 2초 경과.
+        //   2. 그 사이 캐릭터가 자율 배회의 Idle 구간(실측 2~6초)에 들어간다 -> **Calm 등급**.
+        //   3. Windows에서 Calm은 `Application.targetFrameRate`를 60 -> 30으로 나눈다
+        //      (baseVSyncCount=0이라 renderFrameInterval이 아니라 targetFrameRate 쪽이 나뉜다).
+        //      즉 **게임 루프 자체가 30Hz**가 된다.
+        //   4. CharacterInfoWindow의 타이틀바 드래그는 `Update()`마다 OS 커서를 한 번 폴링해
+        //      패널 위치를 갱신한다 -> 커서 표본 주기도 30Hz -> 창이 커서를 **계단식으로** 따라온다.
+        //   5. 사용자가 다시 마우스를 움직여도 등급 복귀는 다음 관측 폴링(최대 0.2초)에 가서야
+        //      일어난다 -> **모든 상호작용의 첫 0.2초가 절반 프레임레이트로 시작**한다.
+        //
+        // macOS에서는 같은 등급이 renderFrameInterval만 건드리므로 게임 루프는 60Hz 그대로다
+        // (= 커서 추적 정확도는 유지되고 표시만 30fps). 사용자가 "윈도우에서는"이라고 말한 것과
+        // 플랫폼 비대칭이 정확히 일치한다.
+        //
+        // 처방은 두 겹이다. **둘 다 필요하다** — 하나만으로는 위 5번(복귀 지연)이 남는다:
+        //   (A) 홀드가 걸린 동안 등급 판정에서 Calm을 금지한다(FramePacingPolicy.DecideTier).
+        //   (B) 홀드가 **걸리는 그 순간** 폴링 주기를 기다리지 않고 즉시 재평가한다(아래 참고).
+        //
+        // <b>왜 "창이 열려 있다"가 아니라 "만료 시각"인가</b>: 홀드를 켜고 끄는 두 개의 호출로 만들면
+        // 예외/강제 종료 경로 하나만 새도 60fps가 영원히 붙잡힌다(24시간 상주 앱에서 가장 비싼
+        // 종류의 누수다). 만료 시각 방식은 호출부가 죽어도 HoldSeconds 뒤에 **저절로** 풀린다 —
+        // 해제 책임이 아예 존재하지 않는다.
+
+        /// <summary>한 번의 <see cref="HoldActiveForInteraction"/>이 유지되는 시간(초).
+        /// 호출부는 열려 있는 동안 매 프레임 다시 부르면 되고, 호출이 끊기면 이 시간 뒤 자동 만료된다.
+        /// 0.5초인 이유: 관측 폴링 최대 간격(0.5초)보다 짧으면 홀드가 폴링 사이에서 깜빡일 수 있다.</summary>
+        internal const float InteractionHoldSeconds = 0.5f;
+
+        private static float _interactionHoldUntil = float.NegativeInfinity;
+
+        /// <summary>지금 UI 상호작용 홀드가 유효한가(진단/테스트 창구).</summary>
+        internal static bool IsInteractionHeld => Time.unscaledTime < _interactionHoldUntil;
+
+        /// <summary>
+        /// "지금 사용자가 이 앱의 UI 표면을 붙잡고 있다"를 알린다 — <b>열려 있는 동안 매 프레임</b>
+        /// 부르면 된다(비용: float 비교 1회 + 대입 1회, 할당 0).
+        ///
+        /// <para>등급이 이미 Active면 아무 일도 하지 않는다. Active가 아니었다면 <b>폴링 주기를
+        /// 기다리지 않고 즉시</b> 재평가한다 — 이것이 없으면 창을 여는 첫 0.2초가 여전히 절반
+        /// 프레임레이트로 시작한다(위 5번). <c>ApplyPlan</c>의 동등성 가드 덕분에 즉시 재평가가
+        /// 손잡이를 실제로 돌리는 것은 등급이 진짜 바뀌는 그 한 프레임뿐이다.</para>
+        ///
+        /// <para>에디터/테스트에서는 <c>_applied</c>가 false라 손잡이를 건드리지 않는다(이 파일의
+        /// 일관된 규약). 홀드 <b>상태 자체</b>는 그래도 기록하므로 EditMode에서 검증할 수 있다.</para>
+        /// </summary>
+        internal static void HoldActiveForInteraction(float seconds = InteractionHoldSeconds)
+        {
+            float until = Time.unscaledTime + Mathf.Max(0f, seconds);
+            if (until <= _interactionHoldUntil) return;   // 이미 더 긴 홀드가 걸려 있다.
+            bool wasHeld = IsInteractionHeld;
+            _interactionHoldUntil = until;
+
+            // 홀드가 "새로" 걸렸고 지금 절감 중이라면 폴링을 기다리지 않는다.
+            if (wasHeld || _currentTier == FramePacingTier.Active) return;
+
+            // 관측값도 함께 새로 읽는다. 홀드만 갱신하고 낡은 관측을 그대로 쓰면 Away(3분 무입력)에서
+            // 돌아오는 경로가 낡은 "181초 무입력"을 근거로 여전히 Away로 판정되어, 정작 이 즉시
+            // 재평가가 아무것도 못 고친다. 이 조회는 홀드가 **걸리는 순간에만** 일어나므로(연속
+            // 호출은 위에서 걸러진다) 주기 폴링 예산에 영향이 없다.
+            if (_presenceService != null && !_presenceService.TryGetPresence(out _presence)) _presence = default;
+            _presencePollTimer = 0f;
+            EvaluateAdaptiveTier(_idleDwellSeconds >= CalmDwellSeconds, force: false);
+        }
+
         /// <summary>
         /// "지금 캐릭터가 제자리에 서 있는가"를 <b>양 플랫폼이 똑같이</b> 판정하는 한 곳.
         /// 각 Enforcer가 자기 파일에서 따로 판정하면 한쪽만 조건이 바뀌는 사고가 난다
@@ -334,10 +410,16 @@ namespace StickMate.Platform
                 return;
             }
 
+            // UI 상호작용 홀드는 등급 판정과 저전력 감쇄 **양쪽 모두**에 들어가야 한다.
+            // 한쪽만 넣으면 배터리 세이버가 켜진 노트북에서 등급이 Active인데도 손잡이는 여전히
+            // 반값인 상태가 남는다(위 InteractionHoldSeconds 근처 주석 + FramePacingPolicy
+            // .ShouldApplyLowPowerDownshift 문서 참고).
+            bool held = IsInteractionHeld;
+
             FramePacingTier tier = _forcedTier
-                ?? FramePacingPolicy.DecideTier(_presence, _suspendedNow, characterIdle);
-            FramePacingPlan plan = FramePacingPolicy.BuildPlan(
-                tier, _baseVSyncCount, _baseTargetFrameRate, _presence.Valid && _presence.LowPowerMode);
+                ?? FramePacingPolicy.DecideTier(_presence, _suspendedNow, characterIdle, held);
+            FramePacingPlan plan = FramePacingPolicy.BuildPlan(tier, _baseVSyncCount, _baseTargetFrameRate,
+                FramePacingPolicy.ShouldApplyLowPowerDownshift(_presence, held));
             ApplyPlan(plan);
         }
 
@@ -367,7 +449,8 @@ namespace StickMate.Platform
                 Debug.Log($"[FramePacing/적응형] 등급 {before} -> {plan.Tier} " +
                     $"({FramePacingPolicy.DescribeTier(plan.Tier)}) — " +
                     $"vSyncCount={plan.VSyncCount}, targetFrameRate={plan.TargetFrameRate}, " +
-                    $"renderFrameInterval={plan.RenderFrameInterval}. 관측: {_presence}." +
+                    $"renderFrameInterval={plan.RenderFrameInterval}. 관측: {_presence}, " +
+                    $"UI홀드={(IsInteractionHeld ? "걸림" : "없음")}." +
                     (_transitionCount == VerboseTransitionLogLimit
                         ? " (이후 전이는 개별로 남기지 않고 5분마다 요약합니다 — 아래 주석 참고.)"
                         : string.Empty));

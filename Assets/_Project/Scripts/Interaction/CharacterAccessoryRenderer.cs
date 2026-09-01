@@ -34,10 +34,12 @@ namespace StickMate.Interaction
     /// ============================================================================
     /// States/StickmanPoseAnimator.SetBodyOffset()이 매 프레임 "Torso"와 "Head"의 localPosition.y를
     /// 중립에서 밀어 몸 전체를 오르내리게 한다. 액세서리가 이걸 따라가지 않으면 걸을 때마다 모자만
-    /// 제자리에 떠 있게 된다. 중립 y를 새로 상수로 적으면 또 하나의 이중 정의가 되므로,
-    /// <b>Head의 중립 localY == StickmanMetrics.HeadCenterLocalY</b>라는 이미 성립하는 항등식
-    /// (프리팹이 headY = totalHeight - headRadius로 굽고 Metrics도 같은 식으로 잰다)을 이용해
-    /// 바운스 오프셋을 그 자리에서 역산한다. 상수 추가 0개.
+    /// 제자리에 떠 있게 된다. 중립을 새로 상수로 적으면 또 하나의 이중 정의가 되므로, <b>Awake에서
+    /// 머리의 프리팹 중립 위치를 한 번 재어</b> 그 자리에서 바운스 오프셋을 역산한다(상수 추가 0개 —
+    /// 포즈 애니메이터는 첫 Update에서야 생기므로 Awake 시점의 값이 곧 프리팹 중립이다).
+    /// <para>★ 2026-09-01까지는 세로 중립을 <c>StickmanMetrics.HeadCenterLocalY</c> 항등식으로 대신했다.
+    /// (3-2)의 회전이 들어오면 그 항등식의 어떤 편차든 sin(각도)만큼 가로로 새어 나오므로, 가정 대신
+    /// 실측으로 바꿨다. 항등식은 이제 머리를 못 찾은 리그의 폴백으로만 남는다.</para>
     ///
     /// ============================================================================
     /// (3-1) 머리 좌우 추종 — 2026-08-30 사용자 신고("머리만 움직이고 모자는 가만히 있음")
@@ -47,6 +49,23 @@ namespace StickMate.Interaction
     /// 움직이는 동안 모자가 제자리에 남아 목이 어긋나 보였다. 컨테이너를 통째로 미는 것으로는
     /// 고칠 수 없다 — 넥타이/망토는 <b>어깨선</b>에서 유도되므로 함께 밀면 그쪽이 어긋난다.
     /// 그래서 머리에 붙는 자리(HEAD/EYES/HAIR)만 담는 자식 하나를 두고 거기에만 오프셋을 준다.
+    ///
+    /// ============================================================================
+    /// (3-2) 몸통 <b>회전</b> 추종 — 2026-09-01 상체 기울임(SetBodyLean) 라운드
+    /// ============================================================================
+    /// (3)/(3-1)은 <b>위치</b>만 따라갔다. 그런데 States/StickmanPoseAnimator.SetBodyLean이 도입되면서
+    /// 몸통·머리·어깨가 <b>엉덩이를 축으로 회전</b>하게 됐다 — 위치만 따라가면 모자가 완벽히 수평으로
+    /// 뜬 채 그 아래 머리만 기울어지는 그림이 된다(리더가 착수 전에 지목한 교차 레이어 결함).
+    ///
+    /// 고치는 방법은 하나뿐이다: <b>컨테이너를 같은 피벗(엉덩이)으로 같은 각도만큼 돌린다.</b>
+    /// 그러면 모자(머리 부착)·망토·넥타이(어깨 유도)가 전부 한 번에 따라온다 — 도형 32종을 한 줄도
+    /// 고치지 않는다. 각도는 <b>새로 계산하지 않고</b> Torso Transform의 localRotation을 그대로 읽는다:
+    /// 그것이 포즈가 실제로 적용한 값이고, 같은 값을 두 곳에서 계산하면 언젠가 한쪽만 바뀐다
+    /// (이 프로젝트가 여러 번 겪은 실패 유형 — 클래스 문서 (3)의 "상수 추가 0개"와 같은 원칙).
+    ///
+    /// 회전이 붙으면서 (3)/(3-1)의 역산도 함께 갱신됐다: 머리의 현재 localPosition에서 빼야 할 중립은
+    /// 이제 "프리팹 중립"이 아니라 <b>"기울임이 적용된 중립"</b>(= 엉덩이 피벗 회전 뒤의 위치)이다.
+    /// 그렇게 하지 않으면 기울임이 만든 머리 이동을 바운스/좌우 오프셋으로 오해해 <b>두 번</b> 적용한다.
     ///
     /// ============================================================================
     /// (4) 랙돌 중에는 <b>숨긴다</b> — 그리고 그 이유
@@ -90,7 +109,9 @@ namespace StickMate.Interaction
 
         // 선 두께 — 캐릭터 획과 같은 문법을 유지하기 위해 전신 높이 비율로 잡는다.
         // 분자 0.048은 StressGaugeRenderer가 이미 쓰는 검증된 획 두께다(같은 그림체를 유지).
-        private const float StrokeWidthRatio = 0.048f / StickConfig.BaselineCharacterTotalHeight;
+        // ★ 2026-09-01 — 0.048은 여기·초상화·획 예산 세 곳에 각자 적혀 있었다(한 곳만 고쳐지는 사고의
+        //   전형). AccessoryShapeBuilder를 단일 정의처로 삼고 값은 그대로 둔다(거동 변화 0).
+        private const float StrokeWidthRatio = AccessoryShapeBuilder.StrokeWidthRatio;
 
         // HemSway(33-2-5 (A)) — 33절이 준 값 그대로. 진폭은 머리 반경 배수이므로 배율을 자동으로 따라간다.
         private const float SwayPeriodSeconds = 0.62f;
@@ -99,12 +120,38 @@ namespace StickMate.Interaction
         private const float SwayBackRatio = 0.7f;
         private const float SwayLiftRatio = 0.4f;
 
+        /// <summary>이 아래의 기류는 "없다"로 본다(2026-08-31). 포물선 정점처럼 속도가 0을 스치는
+        /// 구간에서 진폭이 0에 수렴하므로 값 자체는 무엇이든 화면에서 같지만, 이 하한이 있어야
+        /// <b>SetPositions/메시 갱신 호출을 건너뛰는</b> 정지 경로로 되돌아간다(24시간 상주 앱).</summary>
+        private const float AirFlowEpsilon = 0.0001f;
+
+        /// <summary>
+        /// ★ 2026-09-01 (디버거) — 기류가 <b>사라질 때</b> 천이 잦아드는 데 걸리는 시간(초).
+        ///
+        /// <para><b>새 숫자가 아니다</b> — <see cref="SwayPeriodSeconds"/>(이 파일이 이미 "천이 한 번
+        /// 흔들리는 시간"으로 쓰는 값)를 그대로 재사용한다. 천 한 장이 흐트러졌다가 제자리를 찾는 데
+        /// 걸리는 시간은 그 천의 흔들림 주기와 같은 크기라는 것이 유일한 근거이며, 여기에 별도의
+        /// 튜닝 스칼라를 만들면 "걷는 망토"와 "잦아드는 망토"가 서로 다른 시간축을 갖게 된다.</para>
+        ///
+        /// <para><b>왜 지수감쇠가 아니라 <see cref="Mathf.MoveTowards"/>인가</b>: 지수감쇠는 <b>영원히
+        /// 0에 닿지 않는다</b>. 그러면 "가만히 서 있으면 망토는 정적이다"(Tests/PlayMode/
+        /// CapeFallFlutterTests)가 성립하지 않고, 24시간 상주 앱이 영구히 매 프레임 SetPositions +
+        /// 메시 갱신을 돌게 된다. 선형 감쇠는 유한 시간에 <b>정확히 0</b>이 되어 그 두 성질을 모두
+        /// 지킨다.</para>
+        /// </summary>
+        private const float AirFlowSettleSeconds = SwayPeriodSeconds;
+
         /// <summary>요일 확인 주기(초). 33-2-5 (D) 줄무늬 타이가 자정을 넘겼는지만 알면 되므로 넉넉하다.</summary>
         private const float DayPollSeconds = 60f;
 
         private StickmanAgent _agent;
         private StickmanMetrics _metrics;
         private Transform _headTransform;
+
+        /// <summary>몸통 Transform — 상체 기울임(클래스 문서 (3-2))의 <b>단일 진실</b>. 각도를 여기서
+        /// 읽기만 하고 다시 계산하지 않는다. 없으면(구버전 리그/테스트 스텁) 회전은 identity다.</summary>
+        private Transform _torsoTransform;
+
         private LineRenderer _headOutline;   // 몸이 지금 보이는지 판정하는 기준(ResolveWantVisible 참고).
         private Material _lineMaterial;
 
@@ -113,9 +160,20 @@ namespace StickMate.Interaction
         /// <summary>모자/안경/머리카락만 담는 자식. 머리의 좌우 오프셋을 여기에만 준다.</summary>
         private Transform _headGroup;
 
-        /// <summary>머리의 <b>중립</b> localX. 프리팹이 굽어 있는 값이므로 Awake에서 한 번만 잰다
-        /// (SetBodyOffset이 아직 아무것도 밀지 않은 시점).</summary>
-        private float _headNeutralLocalX;
+        /// <summary>머리의 <b>중립</b> 로컬 위치(루트 로컬 단위). 프리팹이 굽어 있는 값이므로 Awake에서
+        /// 한 번만 잰다(포즈 애니메이터는 첫 Update에서야 생성되므로 이 시점의 값이 곧 프리팹 중립이다).
+        ///
+        /// <para>★ 2026-09-01 — 예전에는 x만 재고 y는 <c>HeadCenterLocalY / RootScale</c> <b>항등식</b>으로
+        /// 대신했다. 기울임이 없을 때는 세로 편차가 상수로만 남아 보이지 않지만, 기울임이 들어오면
+        /// 그 편차가 <b>sin(각도)만큼 가로로 새어 나온다</b>(모자가 머리에서 미끄러진다). 중립을
+        /// <b>직접 재면</b> 그 편차가 정의상 0이고, RootScale 나눗셈이 개입하는 경로도 함께 사라진다.
+        /// <br/>실측(Tests/PlayMode/BodyLeanAccessoryFollowTests, 기울임 20도): 모자의 머리 로컬 이탈
+        /// <b>0.0037 → 0.0018유닛</b>. <i>정직한 단서</i> — 프리팹 유도상 항등식은 루트 스케일 1에서
+        /// 정확해야 하므로(SceneBootstrapper: totalHeight = headY + headRadius), 남은 0.0018과 줄어든
+        /// 0.0019의 원인을 항등식 하나로 단정하지 않는다. 두 값 모두 머리 반경의 2% 미만이라 육안
+        /// 판별 범위 밖이고, 이 교체의 근거는 실측 개선이 아니라 <b>가정을 실측으로 바꾼 것</b>이다.</para></summary>
+        private Vector2 _headNeutralLocal;
+        private bool _hasHeadNeutral;
 
         private readonly List<LineRenderer> _lines = new List<LineRenderer>(8);
 
@@ -134,6 +192,14 @@ namespace StickMate.Interaction
         private sealed class SwayLine
         {
             public LineRenderer Line;
+
+            /// <summary>★ 2026-08-31 — 이 선이 두르고 있는 <b>채움 면</b>의 메시(없으면 null).
+            /// <para>이 필드가 없던 것이 사용자 신고 "망토가 고정되어있음"의 절반이었다. 흔들림은
+            /// LineRenderer의 점만 옮기고 채움 메시는 재구성 전까지 정적이었으므로, 화면에서 천으로
+            /// 보이는 면은 <b>한 번도 움직인 적이 없었다</b>. 테두리만 미끄러지는 그림이라 사용자가
+            /// "고정"이라고 말한 것이 정확했다.</para></summary>
+            public Mesh Fill;
+
             public Vector3[] Base;
             public Vector3[] Buffer;
             public int Start;
@@ -142,6 +208,20 @@ namespace StickMate.Interaction
 
         private readonly List<SwayLine> _swayLines = new List<SwayLine>(4);
         private bool _swayApplied;
+
+        // ★ 2026-09-01 (디버거) — 천의 <b>관성</b>. 아래 TickAirFlowInertia() 문서 참고.
+        /// <summary>지금 천에 실제로 걸려 있는 기류 세기(0~1). 목표값(ResolveAirFlow01)을 바로 쓰지
+        /// 않는다 — 착지 프레임에 목표가 1에서 0으로 뚝 떨어지면 천이 한 프레임에 순간이동한다.</summary>
+        private float _airFlow01;
+
+        /// <summary>그 기류가 부는 방향(로컬 단위벡터). 공중이 끝난 뒤 잦아드는 동안에는
+        /// <b>마지막 공중 프레임의 방향</b>을 유지한다 — 천은 방향을 잃는 것이 아니라 세기를 잃는다.</summary>
+        private Vector2 _airWindLocal;
+
+        /// <summary>관성을 마지막으로 갱신한 프레임. 액세서리가 숨겨져 있던(= LateUpdate가 조기
+        /// 반환한) 동안에는 갱신이 끊기므로, 끊긴 뒤 첫 프레임에는 관성 없이 목표로 바로 맞춘다.
+        /// 그렇게 하지 않으면 랙돌로 몇 초간 숨었다 돌아온 천이 <b>몇 초 전의 기류</b>로 펄럭인다.</summary>
+        private int _airFlowFrame = -1;
 
         private int _cachedDayOfWeek = -1;
         private float _dayCheckedAt = float.NegativeInfinity;
@@ -250,10 +330,12 @@ namespace StickMate.Interaction
         {
             _agent = GetComponent<StickmanAgent>();
             _metrics = StickmanMetrics.Find(this);
+            _torsoTransform = FindDirectChild("Torso");
             _headTransform = FindDirectChild("Head");
             if (_headTransform != null)
             {
-                _headNeutralLocalX = _headTransform.localPosition.x;
+                _headNeutralLocal = _headTransform.localPosition;
+                _hasHeadNeutral = true;
                 for (int i = 0; i < _headTransform.childCount; i++)
                 {
                     Transform c = _headTransform.GetChild(i);
@@ -331,18 +413,30 @@ namespace StickMate.Interaction
             // ★ 2026-08-31 — 루트 스케일을 컨테이너에서 상쇄한다(아래 "이중 스케일" 문단).
             SyncContainerScale();
 
-            // 몸 바운스 추종(클래스 문서 (3)) — 컨테이너를 통째로 밀면 네 아이템이 함께 따라간다.
-            // localPosition은 <b>부모(루트) 로컬 단위</b>다. ResolveBodyOffsetY도 그 단위로 돌려준다.
-            _container.transform.localPosition = new Vector3(0f, ResolveBodyOffsetY(), 0f);
+            // 몸 바운스 + 상체 기울임 추종(클래스 문서 (3)/(3-2)) — 컨테이너 하나를 엉덩이 피벗으로
+            // 돌리고 밀면 네 아이템이 함께 따라간다. localPosition은 <b>부모(루트) 로컬 단위</b>다.
+            //
+            // 식의 유도: 컨테이너 안의 점 p(월드 단위, 중립 직립 좌표)가 루트 로컬에서
+            //   f(p) = 엉덩이 + R·(p/s - 엉덩이) + (0, 바운스)   [s = 루트 배율]
+            // 로 가야 하는데, 컨테이너 자식의 변환은 localPosition + R·p/s 이므로
+            //   localPosition = 엉덩이 - R·엉덩이 + (0, 바운스)
+            // 가 된다(= 피벗 회전 공식 그 자체). 기울임이 없으면 R = identity라 예전 식과 완전히 같다.
+            Quaternion bodyRotation = ResolveBodyRotation();
+            Vector3 hipLocal = new Vector3(0f, HipY / RootScale, 0f);
+            _container.transform.SetLocalPositionAndRotation(
+                hipLocal - bodyRotation * hipLocal + new Vector3(0f, ResolveBodyOffsetY(), 0f),
+                bodyRotation);
 
             // 머리 좌우 추종(클래스 문서 (3-1)) — 머리에 붙은 것만 따라간다.
             // 이쪽은 <b>컨테이너 안</b>(월드 스케일 1)이므로 루트 로컬 오프셋에 배율을 곱해 월드로 올린다.
+            // (기울어진 컨테이너 안이라 이 오프셋도 함께 기운다. 지금 이 값은 항상 0이고 —
+            //  StickConfig.idleAmbientLookHeadShiftRatio — 되살아나더라도 목 획 반폭 이하라 무시 가능하다.)
             if (_headGroup != null)
             {
                 _headGroup.localPosition = new Vector3(ResolveHeadOffsetX() * RootScale, 0f, 0f);
             }
 
-            TickHemSway();
+            TickHemMotion();
             ApplyAlpha();
         }
 
@@ -494,13 +588,38 @@ namespace StickMate.Interaction
         private float ResolveBodyOffsetY()
         {
             if (_headTransform == null || _metrics == null) return 0f;
-            return _headTransform.localPosition.y - _metrics.HeadCenterLocalY / RootScale;
+            return _headTransform.localPosition.y - LeanedHeadNeutralLocal().y;
         }
 
         /// <summary>클래스 문서 (3-1) — Head의 현재 localX에서 중립을 뺀 값. 세로(y)와 달리
         /// Metrics에 대응 항등식이 없어(중립 x는 언제나 프리팹 값 그대로다) Awake에서 잰 값을 쓴다.</summary>
         private float ResolveHeadOffsetX()
-            => _headTransform != null ? _headTransform.localPosition.x - _headNeutralLocalX : 0f;
+            => _headTransform != null ? _headTransform.localPosition.x - LeanedHeadNeutralLocal().x : 0f;
+
+        /// <summary>
+        /// 지금 상체가 기운 각도(클래스 문서 (3-2)). <b>계산하지 않고 읽는다</b> — 포즈가 Torso에
+        /// 실제로 적용한 회전이 유일한 진실이므로, 이 렌더러가 각도 유도식을 한 벌 더 갖지 않는다.
+        /// </summary>
+        private Quaternion ResolveBodyRotation()
+            => _torsoTransform != null ? _torsoTransform.localRotation : Quaternion.identity;
+
+        /// <summary>
+        /// "기울임이 적용된 머리 중립 위치"(루트 로컬). 바운스/좌우 오프셋 역산의 기준점이다 —
+        /// 프리팹 중립을 그대로 빼면 기울임이 만든 머리 이동까지 바운스로 오해해 두 번 적용된다
+        /// (클래스 문서 (3-2)). 기울임이 없으면 결과가 프리팹 중립과 정확히 같다.
+        /// </summary>
+        private Vector2 LeanedHeadNeutralLocal()
+        {
+            Vector2 neutral = _hasHeadNeutral
+                ? _headNeutralLocal
+                : new Vector2(0f, _metrics != null ? _metrics.HeadCenterLocalY / RootScale : 0f);
+
+            Quaternion rot = ResolveBodyRotation();
+            if (rot == Quaternion.identity) return neutral;
+
+            var hip = new Vector2(0f, HipY / RootScale);
+            return hip + (Vector2)(rot * (neutral - hip));
+        }
 
         /// <summary>착용 조합 + 방향 + 배율이 그대로면 아무것도 하지 않는다(24시간 상주 앱 — 매 프레임
         /// GameObject를 만들고 부수지 않는다. StressGaugeRenderer의 "단계가 바뀐 순간에만 재구성"과 동일).</summary>
@@ -698,9 +817,10 @@ namespace StickMate.Interaction
             // ★ 채움 면 먼저(윤곽선 바로 아래). 2026-08-30 사용자 신고 "모자가 투명해보임" —
             //   선화만으로는 모자 관 안쪽으로 머리 링이 그대로 비친다(AccessoryShapeBuilder.Shape.Filled).
             Color outline = color;
+            Mesh fillMesh = null;
             if (shape.Filled)
             {
-                AddFill(shape, color, parent);
+                fillMesh = AddFill(shape, color, parent);
                 outline = AccessoryShapeBuilder.FillOutlineColor(color);
             }
 
@@ -708,11 +828,14 @@ namespace StickMate.Interaction
             if (lr == null || !shape.HasSway) return;
 
             // 흔들 점이 있는 선만 별도 목록에 둔다 — 매 프레임 전체 선을 훑지 않기 위해서다.
+            // ★ 채움 메시를 <b>같은 항목에</b> 넣는다(SwayLine.Fill 문서). 목록을 따로 두면 선과 면이
+            //   서로 다른 프레임에 갱신될 수 있는 자리가 생기고, 그게 정확히 지금 고치는 버그다.
             var buffer = new Vector3[shape.Points.Length];
             System.Array.Copy(shape.Points, buffer, shape.Points.Length);
             _swayLines.Add(new SwayLine
             {
                 Line = lr,
+                Fill = fillMesh,
                 Base = shape.Points,
                 Buffer = buffer,
                 Start = shape.SwayStart,
@@ -725,10 +848,10 @@ namespace StickMate.Interaction
         /// <summary>채움 면 하나를 만든다. 재질은 캐릭터 선의 것을 그대로 빌려 쓰고 색은 정점 색으로
         /// 넣는다(AccessoryShapeBuilder.BuildFillMesh 문서). 메시는 <see cref="_fillMeshes"/>가
         /// 들고 있다가 재구성/파괴 때 직접 지운다 — GameObject를 지워도 메시는 남는다.</summary>
-        private void AddFill(in AccessoryShapeBuilder.Shape shape, Color color, Transform parent)
+        private Mesh AddFill(in AccessoryShapeBuilder.Shape shape, Color color, Transform parent)
         {
             Mesh mesh = AccessoryShapeBuilder.BuildFillMesh(shape.Points, color);
-            if (mesh == null) return;
+            if (mesh == null) return null;
 
             var go = new GameObject(shape.Name + "Fill");
             go.transform.SetParent(parent != null ? parent : _container.transform, false);
@@ -742,6 +865,7 @@ namespace StickMate.Interaction
 
             _fillMeshes.Add(mesh);
             _fills.Add(mr);
+            return mesh;
         }
 
         private LineRenderer AddLine(string name, Vector3[] points, Color color, bool loop,
@@ -767,42 +891,64 @@ namespace StickMate.Interaction
             return lr;
         }
 
-        // ==================== HemSway (docs/UX_FLOW.md 33-2-5 (A)) ====================
+        // ==================== 밑단 움직임 (docs/UX_FLOW.md 33-2-5 (A) + 2026-08-31 낙하 펄럭임) ====================
 
         /// <summary>
-        /// ★ 걸을 때만 자락이 흔들린다 — <b>원칙 1(행동-텍스트 싱크)의 그림 버전</b>.
+        /// ★ 자락은 <b>지금 상태가 만든 움직임에서만</b> 흔들린다 — 원칙 1(행동-텍스트 싱크)의 그림 버전.
         ///
-        /// 카탈로그 문구 셋이 지금 존재하지 않는 동작을 주장하고 있었다: 목도리 "끝자락이 걸을 때마다
-        /// 흔들린다", 짧은 망토 "늘 가는 방향의 반대쪽으로 날린다", 방울 목걸이 "움직일 때마다 흔들린다".
-        /// 확장 전 이 렌더러는 <b>완전히 정적</b>이었다(재구성 사이에는 한 점도 움직이지 않는다).
+        /// <para>모드는 둘이고 가중치의 합이 <b>언제나 1</b>인 교차 페이드로 섞인다 — 그냥 더하면
+        /// 던져진 순간에 진폭이 두 배가 되어 천이 몸을 뚫고, 배타로 잘라내면 기류가 0이 되는 프레임에
+        /// 보행 스웨이가 진폭 그대로 튀어나온다(★ 2026-09-01에 배타 -> 교차 페이드로 고침):</para>
+        /// <list type="bullet">
+        ///   <item><b>보행 스웨이</b>(땅) — 카탈로그 문구 셋("걸을 때마다 흔들린다" 등)이 주장하는 동작.
+        ///     2026-08-30 확장 전에는 이 렌더러가 완전히 정적이라 문구만 있고 동작이 없었다.</item>
+        ///   <item><b>기류 펄럭임</b>(공중, 2026-08-31 신설) — 사용자 신고
+        ///     "떨어지거나 할때 망토도 펄럭여야하는데 고정되어있음". 보행 스웨이가
+        ///     <c>|velocity.x| / 보행속도</c> 하나로만 구동돼 <b>수직 낙하에서 진폭이 정확히 0</b>이었다
+        ///     (그리고 0이면 SetPositions를 건너뛰므로 한 점도 안 움직이는 것이 설계상 보장돼 있었다).</item>
+        /// </list>
         ///
-        /// 도형 전체를 매 프레임 다시 굽지 않는다 — 각 도형이 "흔들리는 점 구간"을 스스로 선언하고
-        /// (<see cref="AccessoryShapeBuilder.Shape.SwayStart"/>) 그 점의 x/y에만 오프셋을 더한다.
+        /// <para>도형 전체를 매 프레임 다시 굽지 않는다 — 각 도형이 "흔들리는 점 구간"을 스스로 선언하고
+        /// (<see cref="AccessoryShapeBuilder.Shape.SwayStart"/>) 그 점에만 오프셋을 더한다. 오프셋 식은
+        /// <see cref="AccessoryShapeBuilder.HemAirOffset"/>(순수 함수)에 있다.</para>
         ///
-        /// <b>정지 중에는 <c>SetPositions</c> 호출 자체를 건너뛴다.</b> 24시간 상주 앱에서 헛일을 하지
-        /// 않기 위해서이기도 하고, 그 스킵이 곧 "걸을 <b>때만</b> 흔들린다"를 코드로 보장하기 때문이기도
+        /// <para><b>정지 중에는 갱신 호출 자체를 건너뛴다.</b> 24시간 상주 앱에서 헛일을 하지 않기
+        /// 위해서이기도 하고, 그 스킵이 곧 "움직일 <b>때만</b> 흔들린다"를 코드로 보장하기 때문이기도
         /// 하다. 다만 멈춘 첫 프레임에는 <b>한 번만</b> 원본으로 되돌린다 — 안 그러면 마지막 흔들린
         /// 모양이 그대로 굳어 "멈췄는데 자락이 뒤로 날린 채"가 된다.
+        /// ★ 2026-09-01 — 그 "멈춘 첫 프레임"이 <b>착지 프레임</b>이었던 것이 결함이었다. 지금은
+        /// <see cref="TickAirFlowInertia"/>가 기류를 유한 시간에 걸쳐 0으로 데려가므로, 되돌리기는
+        /// 천이 실제로 다 잦아든 뒤에만 일어난다(그 시점의 변위는 정의상 0이라 아무것도 튀지 않는다).</para>
+        ///
+        /// <para>★ 선과 <b>채움 면</b>을 같은 루프에서 함께 갱신한다. 2026-08-31 이전에는 선만 옮기고
+        /// 채움 메시는 재구성 전까지 정적이라, 화면에서 천으로 보이는 면이 한 번도 움직이지 않았다
+        /// (사용자가 "고정"이라고 신고한 것의 나머지 절반).</para>
         /// </summary>
-        private void TickHemSway()
+        private void TickHemMotion()
         {
             if (_swayLines.Count == 0) return;
 
-            float speed01 = ResolveWalkSpeed01();
-            if (speed01 <= 0.0001f)
+            // 지금 천에 걸려 있는 기류(관성 포함). 목표값이 아니라 이 값이 그림을 만든다.
+            float air01 = TickAirFlowInertia(out Vector2 windLocal);
+
+            // ★ 2026-09-01 — 배타(air ? 0 : walk)를 <b>교차 페이드</b>로 바꿨다. 배타였을 때는
+            //   기류가 0이 되는 프레임에 보행 스웨이가 진폭 그대로 <b>튀어나왔다</b>(달리다 착지하면
+            //   그 자리에서 천이 한 번 튄다). 가중치의 합이 언제나 1이므로 "둘을 더하면 진폭이 두 배가
+            //   된다"(원래 배타로 만든 이유)는 여전히 성립하지 않는다.
+            float walk01 = ResolveWalkSpeed01() * (1f - air01);
+
+            if (air01 <= 0f && walk01 <= 0.0001f)
             {
                 if (!_swayApplied) return;
-                for (int i = 0; i < _swayLines.Count; i++)
-                {
-                    SwayLine s = _swayLines[i];
-                    if (s.Line != null) s.Line.SetPositions(s.Base);
-                }
+                RestoreHemBase();
                 _swayApplied = false;
                 return;
             }
 
-            float phase = Time.time * Mathf.PI * 2f / SwayPeriodSeconds;
-            float amplitude = R * SwayAmplitudeRatio * speed01;
+            float now = Time.time;
+            float walkPhase = now * Mathf.PI * 2f / SwayPeriodSeconds;
+            float walkAmplitude = R * SwayAmplitudeRatio * walk01;
+            float r = R;
 
             for (int i = 0; i < _swayLines.Count; i++)
             {
@@ -813,15 +959,109 @@ namespace StickMate.Interaction
                 for (int k = 0; k < s.Count; k++)
                 {
                     int idx = s.Start + k;
-                    float sway = Mathf.Sin(phase + idx * SwayPointPhaseStep) * amplitude;
                     Vector3 p = s.Buffer[idx];
-                    p.x += -_facingSign * sway * SwayBackRatio;  // 뒤로 밀린다
-                    p.y += sway * SwayLiftRatio;                 // 살짝 들린다
+                    if (air01 > 0f)
+                    {
+                        Vector2 o = AccessoryShapeBuilder.HemAirOffset(r, windLocal, air01, now, idx);
+                        p.x += o.x;
+                        p.y += o.y;
+                    }
+                    if (walkAmplitude > 0f)
+                    {
+                        float sway = Mathf.Sin(walkPhase + idx * SwayPointPhaseStep) * walkAmplitude;
+                        p.x += -_facingSign * sway * SwayBackRatio;  // 뒤로 밀린다
+                        p.y += sway * SwayLiftRatio;                 // 살짝 들린다
+                    }
                     s.Buffer[idx] = p;
                 }
+
                 s.Line.SetPositions(s.Buffer);
+                ApplyFillVertices(s.Fill, s.Buffer);
             }
             _swayApplied = true;
+        }
+
+        /// <summary>
+        /// ★★ 2026-09-01 (디버거) — <b>천에는 관성이 있다.</b> 기류의 <b>목표값</b>
+        /// (<see cref="ResolveAirFlow01"/>)을 그대로 그리지 않고, 이 함수가 관성을 태운 <b>실제</b>
+        /// 값을 돌려준다.
+        ///
+        /// ============================================================================
+        /// 무엇이 결함이었나 (실측)
+        /// ============================================================================
+        /// 목표값은 상태로 게이트돼 있다(Fall/Jump/ThrowTumble). <b>착지하는 순간 그 게이트가 닫히면서
+        /// 목표가 1에서 0으로 한 프레임에 떨어지고</b>, 그러면 <c>TickHemMotion</c>이 곧바로
+        /// <see cref="RestoreHemBase"/>를 불러 밑단을 구워진 원본으로 <b>순간이동</b>시킨다.
+        /// 최대 기류에서의 변위는 <c>(HemAirPushRatio 0.85 + HemAirRippleRatio 0.34)·R = 1.19R</c>이므로,
+        /// 출하 기본 배율(R=0.22)에서만 해도 <b>한 프레임에 0.26유닛</b>이 튄다. 사용자가 요청한
+        /// "떨어질 때 펄럭이는 망토"가 <b>가장 눈에 띄는 순간(발이 닿는 프레임)에 딸깍 끊긴다.</b>
+        ///
+        /// 실측 근거(PlayMode 진단, 배율 상한 1.5·긴 망토): 착지 연출(LandingCrouch) 0.62초 <b>전
+        /// 구간 2720프레임에서 망토 잉크 반폭이 정확히 1.0730유닛 — 소수점 넷째 자리까지 구워진
+        /// 도형값 그대로였다.</b> 즉 몸이 이 앱에서 가장 크게 움직이는 그 0.62초 동안 천은 <b>단 한
+        /// 점도</b> 움직이지 않았다.
+        ///
+        /// ============================================================================
+        /// 어떻게 고치는가
+        /// ============================================================================
+        ///  · <b>붙잡을 때는 즉시</b>(목표가 지금보다 세면 그대로 따라간다) — 바람은 천을 곧바로 민다.
+        ///    낙하 회귀 테스트가 재는 "낙하 중 최대 이동"이 한 프레임도 늦어지지 않는다.
+        ///  · <b>놓을 때는 <see cref="AirFlowSettleSeconds"/>에 걸쳐 선형으로</b> — 유한 시간에 정확히
+        ///    0이 되므로 "가만히 서 있으면 정적"과 정지 시 계산 스킵이 모두 그대로 유지된다.
+        ///  · 방향은 <b>마지막 공중 프레임의 것을 유지</b>한다. 천은 세기를 잃는 것이지 방향을 바꾸는
+        ///    것이 아니고, 지상에서 새 방향을 지어내면 그것이야말로 원칙 1 위반(상태가 만들지 않은
+        ///    움직임)이 된다.
+        ///
+        /// <para>원칙 1과의 관계: 이 잔여 운동은 <b>스스로 생기지 않는다.</b> 반드시 직전에 확정된
+        /// 공중 상태가 만든 값에서만 출발하고, 단조 감소해 0에 닿은 뒤에는 어떤 경우에도 다시 커지지
+        /// 않는다. "대사(그림)를 먼저 정하고 상태를 끼워 맞춘" 것이 아니라, 상태가 남긴 운동량을
+        /// 물리적으로 소진시키는 것이다.</para>
+        /// </summary>
+        /// <param name="windLocal">지금 천을 미는 방향(로컬 단위벡터). 0이면 기류 없음.</param>
+        private float TickAirFlowInertia(out Vector2 windLocal)
+        {
+            float target = ResolveAirFlow01(out Vector2 targetWind);
+
+            // 갱신이 끊겼던 뒤(숨김/재구성)에는 관성을 태우지 않는다 — 위 _airFlowFrame 문서.
+            bool continuous = _airFlowFrame == Time.frameCount - 1;
+            _airFlowFrame = Time.frameCount;
+
+            if (target > 0f) _airWindLocal = targetWind;   // 공중이면 방향은 언제나 지금 것.
+
+            if (!continuous || target >= _airFlow01) _airFlow01 = target;
+            else _airFlow01 = Mathf.MoveTowards(_airFlow01, target, Time.deltaTime / AirFlowSettleSeconds);
+
+            if (_airFlow01 <= AirFlowEpsilon)
+            {
+                _airFlow01 = 0f;
+                _airWindLocal = Vector2.zero;
+            }
+
+            windLocal = _airWindLocal;
+            return _airFlow01;
+        }
+
+        /// <summary>흔들린 선/면을 <b>구워진 원본</b>으로 한 번에 되돌린다(멈춘 첫 프레임 전용).</summary>
+        private void RestoreHemBase()
+        {
+            for (int i = 0; i < _swayLines.Count; i++)
+            {
+                SwayLine s = _swayLines[i];
+                if (s.Line != null) s.Line.SetPositions(s.Base);
+                ApplyFillVertices(s.Fill, s.Base);
+            }
+        }
+
+        /// <summary>채움 메시의 정점을 지금 점으로 갈아 끼운다.
+        /// <para><c>Mesh.RecalculateBounds()</c>를 반드시 함께 부른다 — 정점만 바꾸고 경계를 두면
+        /// 카메라가 옛 경계로 컬링을 판정해, 크게 젖혀진 자락이 화면 가장자리에서 통째로 사라진다
+        /// (이 프로젝트가 투사체에서 이미 겪은 "화면 밖 컬링" 계열 사고와 같은 뿌리다).</para>
+        /// <para>정점 <b>개수</b>는 바뀌지 않으므로 색/삼각형 채널은 그대로 살아 있다.</para></summary>
+        private static void ApplyFillVertices(Mesh mesh, Vector3[] points)
+        {
+            if (mesh == null || points == null || mesh.vertexCount != points.Length) return;
+            mesh.vertices = points;
+            mesh.RecalculateBounds();
         }
 
         /// <summary>지금 걷는 속도(0~1). 블랙보드가 없으면 0 — 정지로 본다(테스트 스텁 리그 포함).</summary>
@@ -834,6 +1074,68 @@ namespace StickMate.Interaction
             if (walk <= 0.0001f) return 0f;
             return Mathf.Clamp01(Mathf.Abs(blackboard.Body.linearVelocity.x) / walk);
         }
+
+        /// <summary>
+        /// 지금 <b>공중</b>인가, 그렇다면 기류가 얼마나 센가(0~1)와 어느 쪽으로 부는가.
+        ///
+        /// <para><b>(a) 왜 상태를 보는가</b> — 원칙 1. 기류 펄럭임은 "발이 땅에서 떨어져 몸이 통째로
+        /// 날아가는 중"이라는 <b>확정된 상태</b>에서만 파생돼야 한다. 땅에서는 발이 박혀 있어 천이
+        /// 아래로 늘어지는 것이 맞고, 그쪽 연출은 보행 스웨이가 이미 맡고 있다.
+        /// 대상은 <see cref="StickmanStateId.Fall"/> / <see cref="StickmanStateId.Jump"/> /
+        /// <see cref="StickmanStateId.ThrowTumble"/> 셋이다. <see cref="StickmanStateId.Ragdoll"/>은
+        /// 넣지 않는다 — 그 상태에서는 액세서리를 통째로 숨기므로(ResolveWantVisible) 계산이 낭비다.
+        /// <see cref="StickmanStateId.Dragged"/>도 넣지 않는다: 커서에 붙들려 Kinematic으로 끌려다니는
+        /// 동안의 속도는 "기류"가 아니라 사용자의 손이고, 커서를 흔들면 진폭이 발작하듯 튄다.</para>
+        ///
+        /// <para><b>(b) 왜 이 무차원화인가</b> — 세기의 기준을
+        /// <see cref="StickConfig.fallPoseFullSpeedHeightsPerSecond"/>(초당 몇 신장)로 쓴다. 새 숫자를
+        /// 만들지 않은 것이 핵심이다: 낙하 <b>자세</b>가 최대가 되는 바로 그 속도에서 망토도 최대로
+        /// 펄럭인다 = 자세와 천이 <b>같은 한 값</b>에서 나온다. 속도를 절대 유닛/초로 재면 배율을 줄인
+        /// 캐릭터일수록 같은 낙하에서 천이 더 세게 날리는 어긋남이 생긴다.</para>
+        ///
+        /// <para><b>(c) 왜 하강 속도가 아니라 속력인가</b> — 낙하 자세
+        /// (<see cref="StickmanBlackboard.ComputeFallPoseIntensity"/>)는 착지에 대비하는 동작이라
+        /// <b>하강</b> 성분만 본다. 기류는 방향을 가리지 않는다. 옆으로 세게 던져진(수평) 캐릭터의
+        /// 망토가 안 날리면 그게 오히려 고장으로 읽힌다.</para>
+        ///
+        /// <para><b>(d) 왜 로컬로 내리는가</b> — 던지기 회전(States/ThrowTumbleState)은 <b>루트를 통째로</b>
+        /// 돌린다. 이 렌더러의 점은 루트 로컬이므로 월드 방향을 그대로 쓰면 회전하는 몸 위에서 기류만
+        /// 고정돼 망토가 몸을 가로질러 도는 그림이 된다. 로컬로 내리면 반대로, 몸이 도는 동안 기류가
+        /// 몸 주위를 훑고 지나가는 <b>맞는</b> 그림이 나온다.
+        /// <c>Transform.InverseTransformDirection()</c>은 스케일의 영향을 받지 않는다.</para>
+        /// </summary>
+        /// <param name="windLocal">바람이 <b>가는</b> 방향(로컬, 단위벡터). 0이면 기류 없음.</param>
+        private float ResolveAirFlow01(out Vector2 windLocal)
+        {
+            windLocal = Vector2.zero;
+
+            StickmanBlackboard blackboard = _agent != null ? _agent.Blackboard : null;
+            if (blackboard == null || blackboard.Body == null || blackboard.Machine == null) return 0f;
+            if (!IsAirborne(blackboard.Machine.CurrentStateId)) return 0f;
+
+            Vector2 v = blackboard.Body.linearVelocity;
+            float speed = v.magnitude;
+            if (speed <= 0.0001f) return 0f;
+
+            float height = Mathf.Max(0.0001f, blackboard.CharacterHeightWorld);
+            float full = blackboard.Config != null ? blackboard.Config.fallPoseFullSpeedHeightsPerSecond : 7f;
+            if (full <= 0.0001f) full = 7f;
+
+            float air01 = Mathf.Clamp01(speed / (height * full));
+            if (air01 <= AirFlowEpsilon) return 0f; // 정점 부근 — 사실상 정지, 펄럭임도 없다.
+
+            // 기류는 진행 <b>반대</b> 방향에서 불어와 천을 그쪽으로 민다.
+            Vector3 local = transform.InverseTransformDirection(new Vector3(-v.x / speed, -v.y / speed, 0f));
+            windLocal = new Vector2(local.x, local.y);
+            return air01;
+        }
+
+        /// <summary>발이 땅에서 떨어져 몸이 통째로 날아가는 상태인가(위 (a) 문단).</summary>
+        // 2026-09-01: GroundLossHang(발판이 사라져 허공에 붙잡힌 유예 구간)도 공중이다.
+        // 빠뜨리면 코요테 연출 0.45초 동안 망토만 뻣뻣하게 멈춰 그림이 반쪽이 된다.
+        private static bool IsAirborne(StickmanStateId id)
+            => id == StickmanStateId.Fall || id == StickmanStateId.Jump || id == StickmanStateId.ThrowTumble
+               || id == StickmanStateId.GroundLossHang;
 
         // ==================== 테스트/진단 훅 ====================
 
@@ -885,6 +1187,30 @@ namespace StickMate.Interaction
             AccessoryShapeBuilder.Append(_shapes, EquipmentSlot.Hair, hairItemIndex, rig,
                 AccessoryShapeBuilder.HatCoverLocalY(hatItemIndex, rig), StrokeWidth * 0.5f, false);
             return _shapes.Count;
+        }
+
+        /// <summary>
+        /// ★ 2026-09-01 커버 규칙이 "생략"에서 "자르기"로 바뀌면서 신설한 회귀 훅.
+        /// 선 개수만으로는 더 이상 규칙을 말할 수 없다 — 모자를 써도 <b>옆머리는 남는 것이 옳고</b>,
+        /// 대신 <b>커버선 위로 잉크가 한 점도 올라가지 않아야</b> 한다. 그 최고점을 돌려준다.
+        /// </summary>
+        /// <returns>남은 것이 있으면 true.</returns>
+        public bool TryMeasureHairTopUnderHat(int hairItemIndex, int hatItemIndex,
+            out float topLocalY, out float hatCoverLocalY)
+        {
+            _shapes.Clear();
+            AccessoryShapeBuilder.Rig rig = BuildRig();
+            hatCoverLocalY = AccessoryShapeBuilder.HatCoverLocalY(hatItemIndex, rig);
+            AccessoryShapeBuilder.Append(_shapes, EquipmentSlot.Hair, hairItemIndex, rig,
+                hatCoverLocalY, StrokeWidth * 0.5f, false);
+
+            topLocalY = float.NegativeInfinity;
+            for (int i = 0; i < _shapes.Count; i++)
+            {
+                Vector3[] pts = _shapes[i].Points;
+                for (int k = 0; k < pts.Length; k++) topLocalY = Mathf.Max(topLocalY, pts[k].y);
+            }
+            return _shapes.Count > 0;
         }
 
         /// <summary>이 모자가 선언한 커버선(33-4-1). 왕관/미착용은 <see cref="float.PositiveInfinity"/>.</summary>

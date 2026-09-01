@@ -42,6 +42,21 @@ namespace StickMate.States
     /// - Idle/Walk -> ParkourClimb: 벽/모서리 발판 근접(StickConfig.parkourDetectionRadius 이내) + 상승 입력.
     ///       정상 종료 시 Idle/Walk로 복귀, 도중 외력 임계값 초과 시 Ragdoll로 강제 인터럽트 가능.
     /// - Idle/Walk -> Attack      : 공격 입력. 모션 종료 시 직전 능동 상태로 복귀, 도중 Ragdoll 인터럽트 가능.
+    /// - Idle/Walk -> GroundLossHang : 딛고 있던 발판이 창 목록에서 사라졌는데 **아직 붙잡아 둘 근거가
+    ///       있을 때**(발판 핸들이 있고, 걸어서 모서리를 넘어간 것이 아닐 때). StickmanBlackboard
+    ///       .GroundedTick()이 유예 붙잡기가 성립한 그 프레임에 승격시킨다 — 예전에는 이 구간이
+    ///       `_graceHoldFrame`이라는 내부 플래그였는데, 실측 결과 IDLE 중에는 화면이 통째로 얼어붙어
+    ///       "앱이 멈췄다"로 읽혔다(WALK 중에는 다리가 돌아가 코요테 개그로 읽혔다). 포즈를 붙이려면
+    ///       "상태 ID 하나로 포즈가 결정된다"는 이 프로젝트 규약상 상태 승격이 맞다.
+    ///       스펙터클 상태에서는 승격하지 않는다(그러면 열거가 튈 때마다 연출이 취소된다) —
+    ///       States/GroundLossHangState.cs 클래스 문서 참고.
+    /// - GroundLossHang -> Fall   : 유예 만료 / 발밑이 정말 빔(걸어서 모서리를 넘음) / 화면 좌우 이탈 /
+    ///       스냅 상한 초과 / 갇힘 방지 최후 상한(유예의 3배). **이 상태에 갇히면 캐릭터가 영원히
+    ///       공중에 뜬다**는 것이 이 목록이 길고 테스트가 많은 이유다.
+    /// - GroundLossHang -> Idle/Walk : 발판 복귀(= 유예가 창 열거 튐을 설계대로 흡수한 경우).
+    ///       착지 확정과 같은 규칙으로 이동 의도 유무에 따라 분기한다.
+    /// - GroundLossHang -> Ragdoll : 외력 임계값 초과(다른 능동 상태와 완전히 같다 —
+    ///       RagdollImpactResolver는 상태 목록을 보지 않으므로 새 상태가 자동으로 커버된다).
     ///
     /// 전이 취소와 DialogueIntent: ChangeState가 호출될 때마다 TransitionGeneration을 증가시킨다.
     /// 그 결과 직전 컨텍스트로 만들어진 DialogueIntent는 (StickmanEventBus.StateTransitioned를

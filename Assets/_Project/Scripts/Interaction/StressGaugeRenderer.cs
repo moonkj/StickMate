@@ -121,6 +121,7 @@ namespace StickMate.Interaction
         // 어깨/머리 실측을 못 구했을 때의 폴백 비율(배율 1.0 프리팹 기준). StickmanMetrics 자신이 쓰는
         // 것과 같은 값이라, 이 경로로 떨어져도 "어깨가 발밑에 있다" 같은 값은 나오지 않는다.
         private const float BaselineShoulderRatio = 1.7646944f / StickConfig.BaselineCharacterTotalHeight;
+        private const float BaselineHipRatio = 0.9346944f / StickConfig.BaselineCharacterTotalHeight;
         private const float BaselineHeadCenterRatio = 2.0546944f / StickConfig.BaselineCharacterTotalHeight;
         private const float BaselineHeadRadiusRatio = 0.22f / StickConfig.BaselineCharacterTotalHeight;
         // 한숨 퍼프는 머리 중심에서 머리 반경의 이만큼 위에 난다(종전 1.62 - 머리중심 1.57 = 0.05, 반경 0.22 기준).
@@ -151,6 +152,10 @@ namespace StickMate.Interaction
         /// </summary>
         private StickmanAgent _agent;
         private Material _lineMaterial;
+
+        /// <summary>몸통 Transform — <b>회전만</b> 읽는다(<see cref="ResolveBodyRotation"/>).
+        /// Interaction/CharacterAccessoryRenderer.cs와 같은 규약: 기울임 각도를 여기서 새로 계산하지 않는다.</summary>
+        private Transform _torsoTransform;
 
         // ==================== 캐릭터 실측 치수 조회 ====================
 
@@ -285,6 +290,17 @@ namespace StickMate.Interaction
         private void Awake()
         {
             _agent = GetComponent<StickmanAgent>();
+            _torsoTransform = FindDirectChild("Torso");
+        }
+
+        private Transform FindDirectChild(string childName)
+        {
+            for (int i = 0; i < transform.childCount; i++)
+            {
+                Transform t = transform.GetChild(i);
+                if (t != null && t.name == childName) return t;
+            }
+            return null;
         }
 
         private void OnEnable()
@@ -355,7 +371,9 @@ namespace StickMate.Interaction
             _lineMaterial = ResolveLineMaterial();
             _container = new GameObject("StressMoodOverlay");
             _container.transform.SetParent(null, false);
-            _container.transform.position = AnchorWorldPosition();
+            // 생성 프레임에도 기울임을 반영한다 — LateUpdate가 같은 프레임에 다시 맞춰 주지만,
+            // 첫 프레임의 위치를 테스트/스크린샷이 읽는 경로가 있어 두 곳이 같은 함수를 쓰게 한다.
+            ApplyContainerPlacement(AnchorWorldPosition());
 
             bool alarm = tier == StressMoodTier.Alarm;
             Color color = alarm ? AlarmColor : CautionColor;
@@ -465,7 +483,52 @@ namespace StickMate.Interaction
                 target.y = Mathf.Clamp(target.y, camPos.y - halfH + margin, camPos.y + halfH - margin);
             }
 
-            _container.transform.position = target;
+            ApplyContainerPlacement(target);
+        }
+
+        /// <summary>
+        /// ★ 2026-09-01 — 컨테이너를 <b>엉덩이 피벗으로 상체와 같은 각도만큼</b> 돌린다
+        /// (교차 레이어 항목 #22, 참고 패턴은 Interaction/CharacterAccessoryRenderer.cs 클래스 문서 3-2).
+        ///
+        /// <para>어깨 처짐 호 / 굽은 등 / 한숨 퍼프는 전부 <b>어깨·머리 높이</b>에 그려진다. 그 높이는
+        /// States/StickmanPoseAnimator.SetBodyLean이 엉덩이를 축으로 돌리는 구간이므로, 위치만
+        /// 따라가면 걷는 동안 상체는 앞으로 기우는데 어깨 표시만 <b>완벽히 수평으로</b> 남는다.</para>
+        ///
+        /// <para>식의 유도: 컨테이너 안의 점 p(발바닥 원점 로컬)가 월드에서
+        /// <c>anchor + 엉덩이 + R·(p − 엉덩이)</c>로 가야 하는데, 자식의 변환은 <c>위치 + R·p</c>이므로
+        /// <c>위치 = anchor + 엉덩이 − R·엉덩이</c>가 된다. 기울임이 없으면 R = identity라
+        /// 예전 식(<c>position = anchor</c>)과 <b>완전히 같다</b>.</para>
+        ///
+        /// <para>한숨 퍼프도 함께 기운다 — 기운 몸에서 나온 한숨이 몸의 축을 따라 올라가는 것이 맞다.</para>
+        /// </summary>
+        private void ApplyContainerPlacement(Vector3 anchor)
+        {
+            if (_container == null) return;
+
+            Quaternion rot = ResolveBodyRotation();
+            if (rot == Quaternion.identity)
+            {
+                _container.transform.SetPositionAndRotation(anchor, Quaternion.identity);
+                return;
+            }
+
+            var hip = new Vector3(0f, HipLocalY, 0f);
+            _container.transform.SetPositionAndRotation(anchor + hip - rot * hip, rot);
+        }
+
+        /// <summary>지금 상체가 기운 각도. <b>계산하지 않고 읽는다</b> — 포즈가 Torso에 실제로 적용한
+        /// 회전이 유일한 진실이므로, 이 렌더러가 각도 유도식을 한 벌 더 갖지 않는다.</summary>
+        private Quaternion ResolveBodyRotation()
+            => _torsoTransform != null ? _torsoTransform.localRotation : Quaternion.identity;
+
+        /// <summary>고관절의 로컬 Y(발바닥 기준) — 기울임의 회전 중심. 실측을 못 구하면 비율 폴백.</summary>
+        private float HipLocalY
+        {
+            get
+            {
+                StickmanMetrics m = Metrics;
+                return m != null && m.HipLocalY > 0.0001f ? m.HipLocalY : Height * BaselineHipRatio;
+            }
         }
 
         private Vector3 AnchorWorldPosition()

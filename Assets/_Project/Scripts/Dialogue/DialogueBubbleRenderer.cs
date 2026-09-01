@@ -83,7 +83,10 @@ namespace StickMate.Dialogue
     ///   · <b>잉크색 글자 + 반대색 외곽선</b>으로 그려진다. 이것이 만화 레터링의 기본 문법이면서
     ///     동시에 배경이 사라진 뒤의 유일한 가독성 대책이다 — 검은 캐릭터 + 어두운 바탕화면,
     ///     흰 캐릭터 + 밝은 바탕화면 양쪽에서 글자가 사라지는 것을 이 선 하나가 막는다.
-    ///   · 굵은 페이스(AppleSDGothicNeo-Heavy 계열) + 미세 기울임 + 등장 시 팝(스케일 바운스).
+    ///   · 굵은 페이스(AppleSDGothicNeo-Heavy 계열) + 등장 시 팝(스케일 바운스).
+    ///   · <b>글자 자체가 비스듬히 기울어 있다</b>(사용자 요구 2026-08-31 "좀 대각선으로 작성해줘").
+    ///     기울기의 부호는 놓인 쪽의 거울상이라 배치의 대각선과 맞물린다 — 자세한 근거는 아래
+    ///     "글자 기울기" 상수 블록 참고.
     ///
     /// 도형을 그리던 코드는 <b>지우지 않고 전부 남겼다</b>(<see cref="DrawBubbleShapes"/> 플래그 하나로
     /// 종전 그림이 그대로 복원된다) — 되돌리기 요구에 대비한 리더 지시다.
@@ -193,13 +196,51 @@ namespace StickMate.Dialogue
         private const float PopInOvershoot = 1.12f;
         /// <summary>팝인에서 오버슈트 정점에 도달하는 지점(0~1 진행도).</summary>
         private const float PopInPeakAt = 0.6f;
-        /// <summary>손글씨 느낌을 내는 미세 기울기의 최대 각도(도). ★ 과하면 읽기 힘들어진다 —
-        /// 리더 지시 "미세하게". 대사 문자열의 결정적 해시에서 뽑으므로 같은 대사는 항상 같은 각도다
-        /// (프레임마다 각도가 떨리면 글자가 진동하는 것으로 보인다).</summary>
-        private const float ComicTiltMaxDegrees = 2.5f;
-        /// <summary>이 크기(캔버스 유닛 = OS 포인트) 미만에서는 기울기를 아예 끈다 —
-        /// 회전 리샘플링이 작은 한글 글리프를 뭉개기 때문이다(ComicTiltFor 문서 참고).</summary>
-        private const int ComicTiltMinFontSize = 10;
+        // ========================================================================
+        // ★★ 글자 기울기 (사용자 요구 2026-08-31 "캐릭터가 말하는 텍스트는 좀 대각선으로 작성해줘")
+        // ========================================================================
+        // 직전까지의 기울기는 "손글씨 흔들림"(±2.5도, 부호는 대사 해시에서 사실상 무작위)이었다.
+        // 2.5도는 10pt 한 줄짜리 블록에서 양 끝 높이차가 2pt 남짓이라 **의도적으로 눈에 띄지 않는**
+        // 값이고, 부호까지 대사마다 뒤집혀 "기울어져 있다"는 인상 자체가 생기지 않았다 — 사용자가
+        // 화면에서 본 것은 사실상 수평 글자였다. 배치(대각선 상단)만 대각선이고 글자는 아니었다.
+        //
+        // 그래서 두 가지를 바꾼다:
+        //   (1) 크기 — 눈에 보이는 각도로 올린다(StickConfig.dialogueTiltDegrees, 기본 8도).
+        //   (2) 부호 — 무작위가 아니라 **글자가 놓인 쪽의 거울상**으로 고정한다.
+        //       왼쪽 위에 놓이면 반시계(+, 오른쪽 끝이 올라감) / 오른쪽 위면 시계(-).
+        //       이 부호라야 블록에서 캐릭터에 **가장 가까운 아래쪽 안쪽 모서리가 들리는 쪽**이 된다.
+        //       (폭 80pt 블록에서 8도면 그 모서리가 5.6pt 올라간다 — 잘림은 어차피 아래 회전 경계
+        //       클램프가 막지만, 눈에 보이는 여백이 최소 보장치보다 넓어져 글자가 머리에서 대각선으로
+        //       **날아가는** 것처럼 읽힌다. 반대 부호면 같은 모서리가 그만큼 머리 쪽으로 내려온다.)
+        //       덤으로 좌우 배치가 서로 정확한 거울상이 되어, 캐릭터가 돌아설 때 글자도 함께 뒤집힌다.
+        //       부호가 대사마다 뒤집히면 같은 자리에 놓인 글자가 매번 다른 방향으로 넘어져 배치의
+        //       대각선과 싸운다.
+        // 손글씨 느낌을 버리는 것은 아니다 — 결정적 해시는 이제 **부호가 아니라 크기의 미세 편차**에 쓴다.
+
+        /// <summary>설정(StickConfig)을 받지 못했을 때 쓰는 기울기 기준값(도).
+        /// 8도의 근거: 두 줄(약 24pt) x 170pt 블록에서 양 끝 높이차가 약 24pt — 한 줄 높이만큼
+        /// 기울어 한눈에 "비스듬하다"가 보이면서, 글자 하나하나의 세로축은 여전히 수직에 가까워
+        /// 한글 네모 글리프의 가독성이 유지되는 상한대다(15도를 넘기면 넘어지는 것처럼 보인다).</summary>
+        private const float DefaultComicTiltDegrees = 8f;
+        /// <summary>대사마다 달라지는 기울기 **크기**의 편차 비율(±). 부호가 아니라 크기에만 걸린다
+        /// (8도 기준 6~10도). 대사 문자열의 결정적 해시에서 뽑으므로 같은 대사는 항상 같은 각도이고,
+        /// 프레임마다 다시 계산해도 글자가 떨리지 않는다(Dialogue/AmbientChatter.cs와 같은 컨벤션).</summary>
+        private const float ComicTiltJitterRatio = 0.25f;
+        /// <summary>
+        /// 기울기를 켜기 위한 글리프의 **물리 픽셀** 하한. 이 아래에서는 기울이지 않는다.
+        ///
+        /// ★ 단위가 바뀌었다(종전: "캔버스 유닛 10 미만이면 끔"). 근거가 된 실측(2026-08-29)은
+        /// "12px 한글은 회전 리샘플링으로 자모가 통째로 뭉개지고 32px는 멀쩡하다"였는데, 거기서의 px는
+        /// uGUI가 글리프를 굽는 **물리 픽셀**이지 캔버스 유닛이 아니다. Retina 대응 이후 캔버스는
+        /// scaleFactor = 1/dpi로 그려지므로 물리 픽셀 = fontSize x canvas.scaleFactor다. 같은 10pt가
+        /// Retina에서는 20px(문제없음)이고 1x 화면에서는 10px(뭉개짐)이라, 종전처럼 캔버스 유닛으로
+        /// 재면 정반대인 두 경우를 구분하지 못한다 — Retina에서 멀쩡한 글자의 기울기를 끄거나
+        /// 1x에서 뭉개질 글자를 기울이거나 둘 중 하나가 된다.
+        /// 14의 근거: 뭉개짐이 확인된 12 바로 위, 멀쩡한 32 아래. 현재 출하 조합(10pt x Retina 2x =
+        /// 20px)은 여유 있게 통과하고 만화 모드 폰트 하한(9pt x 2 = 18px)도 통과한다 — 즉 Retina에서는
+        /// 캐릭터 배율을 어떻게 바꿔도 기울기가 조용히 꺼지지 않는다.
+        /// </summary>
+        private const float ComicTiltMinGlyphPixels = 14f;
         /// <summary>감탄사 강조 배율 — 느낌표가 든 대사("윽…!")를 조금 더 크게 외친다(만화 문법).</summary>
         private const float ComicEmphasisScale = 1.14f;
         /// <summary>화면 끝 뒤집기 보간 속도(쪽 부호/초). 순간이동처럼 튀지 않게 좌우로 미끄러진다.</summary>
@@ -292,7 +333,10 @@ namespace StickMate.Dialogue
         /// </summary>
         private int ResolveFontSize()
         {
-            int configured = _config != null ? Mathf.Max(8, _config.dialogueFontSize) : 16;
+            // ★ 2026-09-01 설정창 — 사용자가 고른 값은 배포 에셋이 아니라 AppSettingsModel에 있다
+            //   (그 클래스 문서의 "왜 StickConfig에 직접 쓰지 않는가" 참고). 고른 적이 없으면
+            //   에셋의 값이 그대로 나오므로 지금까지의 거동은 한 톨도 바뀌지 않는다.
+            int configured = Mathf.Max(8, StickMate.Core.AppSettingsModel.ResolveDialogueFontSize(_config));
             // 말풍선 모드로 되돌리면 종전 크기(하한 12pt)가 그대로 복원된다.
             if (DrawBubbleShapes)
                 return Mathf.Max(MinReadableFontSize, Mathf.RoundToInt(configured * BubbleScale));
@@ -431,7 +475,8 @@ namespace StickMate.Dialogue
         private bool _snapSideBlend = true;   // 새 대사의 첫 프레임에는 보간 없이 제자리에서 시작한다.
         private float _popElapsed;            // 팝인 경과 시간(초).
         private float _steadyScale = 1f;      // 감탄사 강조 등 정상 상태의 배율(팝인과 곱해진다).
-        private float _tiltDegrees;           // 이 대사의 미세 기울기(도).
+        private float _tiltMagnitudeDegrees;  // 이 대사의 기울기 **크기**(도, 부호 없음). 대사마다 고정.
+        private float _tiltDegrees;           // 실제로 적용되는 부호 있는 기울기(= -놓인 쪽 x 크기).
 
         // ==================== 테스트/진단용 공개 관측점 ====================
         /// <summary>지금 말풍선이 화면에 있는가(알파 &gt; 0이고 루트가 활성). 즉시 제거의 "같은 프레임"
@@ -459,6 +504,11 @@ namespace StickMate.Dialogue
         /// <summary>배치에 실제로 쓰인 글자 블록 크기(캔버스 유닛, 강조 배율 반영·팝인 제외).
         /// 테스트가 "기준점에서 글자 블록 **가장자리**까지의 간격"을 계산하는 데 쓴다.</summary>
         public Vector2 LastTextSizeCanvas { get; private set; }
+
+        /// <summary>글자 블록에 실제로 적용된 기울기(도, 반시계가 +). 정의상 **놓인 쪽의 거울상**이라
+        /// 왼쪽 위에 놓이면 +, 오른쪽 위에 놓이면 -다. 0이면 기울기가 꺼진 것이다
+        /// (<see cref="ComicTiltMinGlyphPixels"/> 하한 또는 설정값 0). 테스트/진단 전용 관측점.</summary>
+        public float LastTextTiltDegrees { get; private set; }
 
         /// <summary>
         /// 화자가 바라보는 방향(+1 오른쪽 / -1 왼쪽)의 공급자. null이면 <see cref="StickmanAgent"/>의
@@ -562,7 +612,7 @@ namespace StickMate.Dialogue
         {
             if (intent == null) return;
             if (!IsMine(intent)) return;
-            if (_config != null && !_config.dialogueBubbleEnabled) return;
+            if (!StickMate.Core.AppSettingsModel.ResolveDialogueBubbleEnabled(_config)) return;
 
             // 규칙 5(큐잉 금지): 이전 말풍선은 즉시 교체된다 — 다음 대사를 모아두는 큐가 없다.
             _active = intent;
@@ -580,7 +630,10 @@ namespace StickMate.Dialogue
             _latchedTextSide = -ResolveFacingSign();
             _snapSideBlend = true;
             _popElapsed = 0f;
-            _tiltDegrees = ComicTiltFor(_activeText, ResolveFontSize());
+            // 기울기 **크기**만 여기서 대사별로 확정한다. 부호는 매 프레임 "실제로 놓인 쪽"에서
+            // 파생되므로(UpdateComicTextPlacement) 화면 끝에서 쪽이 뒤집히면 기울기도 함께 뒤집힌다.
+            _tiltMagnitudeDegrees = ComicTiltMagnitudeFor(_activeText, ResolveGlyphPixelSize(), ResolveTiltDegrees());
+            _tiltDegrees = -_latchedTextSide * _tiltMagnitudeDegrees;
             _steadyScale = ComicEmphasisFor(_activeText);
 
             RefreshColors(); // 잉크색 프리셋(Ctrl+Opt+Cmd+C)이 런타임에 바뀌어도 다음 대사부터 즉시 반영.
@@ -594,7 +647,9 @@ namespace StickMate.Dialogue
             Debug.Log($"[말풍선] 표시 ({intent.StateId}) \"{_activeText}\" — " +
                       $"진행방향={(_latchedTextSide < 0f ? "오른쪽" : "왼쪽")}, " +
                       $"글자쪽={(_latchedTextSide < 0f ? "왼쪽위" : "오른쪽위")}, " +
-                      $"글자크기={ResolveFontSize()}pt, 외곽선={ScaledTextOutline:F2}pt, frame={Time.frameCount}");
+                      $"글자크기={ResolveFontSize()}pt, 외곽선={ScaledTextOutline:F2}pt, " +
+                      $"기울기={_tiltDegrees:F1}도({(_tiltMagnitudeDegrees <= 0f ? "꺼짐" : _tiltDegrees > 0f ? "반시계" : "시계")}), " +
+                      $"frame={Time.frameCount}");
         }
 
         private void OnDialogueExpired(DialogueIntent intent)
@@ -645,8 +700,8 @@ namespace StickMate.Dialogue
 
             if (!_fadingOut)
             {
-                float minVisible = _config != null ? _config.dialogueMinVisibleSeconds : 0.7f;
-                float maxVisible = _config != null ? _config.dialogueMaxVisibleSeconds : 4f;
+                float minVisible = StickMate.Core.AppSettingsModel.ResolveDialogueMinVisibleSeconds(_config);
+                float maxVisible = StickMate.Core.AppSettingsModel.ResolveDialogueMaxVisibleSeconds(_config);
 
                 // 정상 종료 대기분: 최소 노출 시간을 채우면 페이드아웃 시작(규칙 4의 "정상 진행 중"에만
                 // 적용되는 최소 노출 시간).
@@ -772,7 +827,12 @@ namespace StickMate.Dialogue
 
             // 클램프에는 정상 상태 배율만 반영한다 — 팝인 오버슈트(최대 1.12배)는 150ms짜리 순간이고,
             // 그것까지 넣으면 등장할 때마다 글자가 화면 안쪽으로 한 번 밀렸다가 제자리로 돌아온다.
-            Vector2 size = panelSize * Mathf.Max(0.01f, _steadyScale);
+            // ★ 기울인 뒤에는 **회전한 블록의 축 정렬 경계**로 재야 화면 클램프가 성립한다.
+            //   8도면 170pt 폭 블록의 세로 경계가 24pt 더 커지므로, 회전 전 크기로 클램프하면 화면
+            //   위/옆에서 글자의 모서리만 잘려 나간다(가장자리에 붙어 있는 시간이 긴 캐릭터다).
+            //   이 크기는 기울기의 **부호와 무관**하다(|cos|,|sin|) — 쪽이 뒤집혀도 같은 값이라
+            //   뒤집기 보간 중에 블록 크기가 흔들리지 않는다.
+            Vector2 size = RotatedBounds(panelSize * Mathf.Max(0.01f, _steadyScale), _tiltMagnitudeDegrees);
 
             ComicTextPlacement placement = ComputeComicTextPlacement(
                 tip, size, _latchedTextSide, gapX, gapY, screenW, screenH, ScreenEdgeMargin);
@@ -789,6 +849,12 @@ namespace StickMate.Dialogue
                     Time.unscaledDeltaTime * SideFlipSpeed);
             }
 
+            // ★ 기울기의 부호는 **놓인 쪽의 거울상**이다(위 "글자 기울기" 블록 참고).
+            //   연속값 _sideBlend에서 파생하므로 쪽이 뒤집히는 동안 각도도 함께 미끄러진다 —
+            //   부호가 0을 지날 때 글자가 잠깐 수평이 됐다가 반대로 기운다. 목표 각도를 바로 대입하면
+            //   머리 위를 가로지르는 동안 글자만 홱 뒤집혀 배치와 따로 논다.
+            _tiltDegrees = -_sideBlend * _tiltMagnitudeDegrees;
+
             // 보간 중에는 연속값 _sideBlend로 X를 다시 잡는다(부호가 0을 지나며 머리 위를 가로지른다).
             float half = size.x * 0.5f;
             float centerX = tip.x + _sideBlend * (gapX + half);
@@ -804,6 +870,7 @@ namespace StickMate.Dialogue
             LastTextCenterCanvas = center;
             LastTextSideSign = placement.SideSign;
             LastTextSizeCanvas = size;
+            LastTextTiltDegrees = _tiltDegrees;
         }
 
         /// <summary>글자 블록 배치 계산 결과(<see cref="ComputeComicTextPlacement"/>).</summary>
@@ -907,22 +974,47 @@ namespace StickMate.Dialogue
         }
 
         /// <summary>
-        /// 이 대사의 미세 기울기(도). 대사 문자열의 **결정적 해시**에서 뽑으므로 같은 대사는 항상 같은
-        /// 각도이고, 프레임마다 다시 계산해도 글자가 떨리지 않는다. 난수를 쓰지 않는 것은 이 프로젝트의
-        /// 컨벤션이기도 하다(Dialogue/AmbientChatter.cs "같은 입력이면 항상 같은 출력").
+        /// 이 대사의 기울기 **크기**(도, 항상 0 이상). 부호는 여기서 정하지 않는다 — 부호는 글자가
+        /// 실제로 놓인 쪽에서 파생되고(UpdateComicTextPlacement), 이 함수는 "얼마나"만 답한다.
+        ///
+        /// 크기는 기준값에 대사 문자열의 **결정적 해시**로 뽑은 ±<see cref="ComicTiltJitterRatio"/>
+        /// 편차를 곱해 만든다. 같은 대사는 항상 같은 각도이므로 프레임마다 다시 계산해도 글자가 떨리지
+        /// 않는다(난수를 쓰지 않는 것은 이 프로젝트의 컨벤션이다 — Dialogue/AmbientChatter.cs
+        /// "같은 입력이면 항상 같은 출력").
         /// </summary>
-        private static float ComicTiltFor(string text, int fontSize)
+        private static float ComicTiltMagnitudeFor(string text, float glyphPixels, float baseDegrees)
         {
-            if (string.IsNullOrEmpty(text)) return 0f;
-            // ★ 작은 글자에서는 기울이지 않는다 (2026-08-29 실측으로 확인한 실패).
+            if (string.IsNullOrEmpty(text) || baseDegrees <= 0f) return 0f;
+            // ★ 아주 작은 글리프는 기울이지 않는다 (2026-08-29 실측으로 확인한 실패).
             //   기울이면 글자 쿼드가 픽셀 격자와 어긋나 글리프 아틀라스가 바이리니어로 다시 샘플링된다.
             //   32px 글리프에서는 눈에 띄지 않지만 12px 한글에서는 자모 획이 통째로 뭉개져 읽을 수
-            //   없게 된다 — 손글씨 느낌보다 "읽힌다"가 먼저다.
-            if (fontSize < ComicTiltMinFontSize) return 0f;
+            //   없게 된다 — "대각선으로"보다 "읽힌다"가 먼저다.
+            //   하한을 **물리 픽셀**로 재는 이유는 ComicTiltMinGlyphPixels 문서 참고.
+            if (glyphPixels < ComicTiltMinGlyphPixels) return 0f;
             int hash = 17;
             for (int i = 0; i < text.Length; i++) hash = unchecked(hash * 31 + text[i]);
             float t = ((hash & 0x7fffffff) % 1000) / 999f;
-            return Mathf.Lerp(-ComicTiltMaxDegrees, ComicTiltMaxDegrees, t);
+            return baseDegrees * Mathf.Lerp(1f - ComicTiltJitterRatio, 1f + ComicTiltJitterRatio, t);
+        }
+
+        /// <summary>이 대사에 쓸 기울기 기준값(도). 설정 경유가 원칙이고, 설정이 없을 때만 기본값으로
+        /// 떨어진다(에디터/테스트 리그). 음수는 "반대로 기울여라"가 아니라 설정 실수이므로 0으로 막는다
+        /// — 방향은 배치 쪽에서 결정되는 값이지 사람이 설정으로 뒤집을 값이 아니다.</summary>
+        private float ResolveTiltDegrees()
+            => _config != null ? Mathf.Max(0f, _config.dialogueTiltDegrees) : DefaultComicTiltDegrees;
+
+        /// <summary>uGUI가 글리프를 실제로 굽는 크기(**물리 픽셀**) = 글자 크기(캔버스 유닛) x 캔버스
+        /// 배율. 회전 리샘플링 하한(<see cref="ComicTiltMinGlyphPixels"/>)이 이 단위로 걸린다.</summary>
+        private float ResolveGlyphPixelSize()
+            => ResolveFontSize() * Mathf.Max(0.01f, ScreenCoordinateConverter.ResolveCanvasScaleFactor(_config));
+
+        /// <summary>기울인 사각형의 축 정렬 경계 크기. 기울기의 부호와 무관하다(|cos|, |sin|).</summary>
+        private static Vector2 RotatedBounds(Vector2 size, float degrees)
+        {
+            float rad = Mathf.Abs(degrees) * Mathf.Deg2Rad;
+            float c = Mathf.Cos(rad);
+            float s = Mathf.Sin(rad);
+            return new Vector2(size.x * c + size.y * s, size.x * s + size.y * c);
         }
 
         /// <summary>감탄사 강조 배율 — 느낌표가 든 대사는 조금 더 크게 외친다(만화 문법).</summary>
@@ -1068,7 +1160,7 @@ namespace StickMate.Dialogue
         {
             if (_config == null) return new Color(1f, 1f, 1f, 0f);
             Color fill = _config.dialogueBubbleColor;
-            if (_config.inkColor == StickmanInkColor.White) fill = new Color(0f, 0f, 0f, fill.a);
+            if (_config.IsWhiteInk()) fill = new Color(0f, 0f, 0f, fill.a);
             return fill;
         }
 
@@ -1082,7 +1174,7 @@ namespace StickMate.Dialogue
         /// </summary>
         private Color ResolveTextOutlineColor()
         {
-            bool whiteInk = _config != null && _config.inkColor == StickmanInkColor.White;
+            bool whiteInk = _config != null && _config.IsWhiteInk();
             return whiteInk ? new Color(0f, 0f, 0f, 1f) : new Color(1f, 1f, 1f, 1f);
         }
 
@@ -1684,6 +1776,8 @@ namespace StickMate.Dialogue
         /// 이 컴포넌트에 남은 선명도 대책:
         ///   · 합성 볼드 대신 **진짜 Bold 페이스** 사용(아래) — 16pt 한글에서 합성 볼드는 획을
         ///     서로 붙여 뭉개는 가장 큰 원인이다.
+        ///   · 글자를 기울이면 글리프 아틀라스가 다시 샘플링되므로, 기울기는 글리프가 충분히 큰
+        ///     경우에만 켠다(<see cref="ComicTiltMinGlyphPixels"/>).
         ///   · <see cref="TextSupersample"/>은 근본 원인이 사라져 1(끔)로 되돌렸다(그 상수 주석 참고).
         /// </summary>
         private static Font ResolveKoreanFont(int size)

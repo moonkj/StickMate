@@ -104,10 +104,15 @@ namespace StickMate.Dialogue
             if (!forced)
             {
                 if (config == null) return false;
-                if (!config.dialogueBubbleEnabled) return false;
+                // ★ 2026-09-01 설정창 — "말풍선 표시"/"잡담 빈도"는 사용자 설정이 있으면 그것을 따른다.
+                //   확률값 자체를 덮어쓰지 않고 배율로 곱하는 이유는 35-1-3 ③과 같다: 원래 값을 지우면
+                //   되돌릴 수 없다(고른 적이 없으면 에셋 값 그대로라 거동 무변화).
+                if (!StickMate.Core.AppSettingsModel.ResolveDialogueBubbleEnabled(config)) return false;
                 if (Time.unscaledTime < blackboard.NextChatterAllowedUnscaledTime) return false;
 
-                float chance = stateId == StickmanStateId.Walk ? config.walkChatterChance : config.idleChatterChance;
+                float chance = stateId == StickmanStateId.Walk
+                    ? StickMate.Core.AppSettingsModel.ResolveWalkChatterChance(config)
+                    : StickMate.Core.AppSettingsModel.ResolveIdleChatterChance(config);
                 if (chance <= 0f) return false;
                 if (Random.value >= chance) return false;
             }

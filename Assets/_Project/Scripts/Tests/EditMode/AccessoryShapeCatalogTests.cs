@@ -57,6 +57,17 @@ namespace StickMate.Tests.EditMode
         [TestCase(EquipmentSlot.Hair, AccessoryShapeBuilder.HairNeat, "look.hair.neat")]
         [TestCase(EquipmentSlot.Hair, AccessoryShapeBuilder.HairCurly, "look.hair.curly")]
         [TestCase(EquipmentSlot.Hair, AccessoryShapeBuilder.HairBald, "look.hair.bald")]
+        // ---- 2026-09-01 카테고리당 +2종(임시 플레이스홀더) ----
+        [TestCase(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret, "equip.head.beret")]
+        [TestCase(EquipmentSlot.Head, AccessoryShapeBuilder.HeadStraw, "equip.head.straw")]
+        [TestCase(EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesBrowline, "equip.eyes.browline")]
+        [TestCase(EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesPatch, "equip.eyes.patch")]
+        [TestCase(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckPendant, "equip.neck.pendant")]
+        [TestCase(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBandana, "equip.neck.bandana")]
+        [TestCase(EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackPoncho, "equip.shoulders.poncho")]
+        [TestCase(EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackFairyWings, "equip.shoulders.fairy_wings")]
+        [TestCase(EquipmentSlot.Hair, AccessoryShapeBuilder.HairBowl, "look.hair.bowl")]
+        [TestCase(EquipmentSlot.Hair, AccessoryShapeBuilder.HairPonytail, "look.hair.ponytail")]
         public void 도형이_고르는_자리가_카탈로그_표와_같다(EquipmentSlot slot, int itemIndex, string expectedId)
         {
             ItemCatalogEntry entry = ItemCatalog.Item(slot, itemIndex);
@@ -66,8 +77,11 @@ namespace StickMate.Tests.EditMode
                 "표 중간에 아이템이 끼어들었거나 순서가 바뀌었습니다(예외 없이 엉뚱한 그림이 나오는 유형).");
         }
 
+        /// <summary>카테고리당 아이템 수. 7×4=28 -> <b>7×6=42</b>(2026-09-01 카테고리당 +2종).</summary>
+        private const int ItemsPerSlot = 6;
+
         [Test]
-        public void 그릴_수_있는_카테고리는_아이템_4개가_전부_도형을_갖는다()
+        public void 그릴_수_있는_카테고리는_아이템_전부가_도형을_갖는다()
         {
             var drawable = new[]
             {
@@ -79,7 +93,9 @@ namespace StickMate.Tests.EditMode
             for (int s = 0; s < drawable.Length; s++)
             {
                 int count = ItemCatalog.ItemCountIn(drawable[s]);
-                Assert.AreEqual(4, count, $"{drawable[s]} 카테고리의 아이템 수가 4가 아닙니다.");
+                Assert.AreEqual(ItemsPerSlot, count,
+                    $"{drawable[s]} 카테고리의 아이템 수가 {ItemsPerSlot}이 아닙니다 — 표(에셋)와 도형 switch 중 " +
+                    "한쪽만 늘어나면 늘어난 쪽이 예외 없이 빈 카드/빈 몸으로 나옵니다.");
                 for (int i = 0; i < count; i++)
                 {
                     sink.Clear();
@@ -94,6 +110,20 @@ namespace StickMate.Tests.EditMode
                     }
                 }
             }
+        }
+
+        /// <summary>머리카락을 <b>실제로 덮는다</b>고 스스로 선언한 모자 전부(= 커버선이 유한한 것).
+        /// 배열을 손으로 적으면 새 모자가 들어올 때마다 이 파일이 조용히 뒤처진다 — 데이터에게 묻는다.</summary>
+        private static int[] CoveringHats()
+        {
+            AccessoryShapeBuilder.Rig rig = Rig();
+            var hats = new System.Collections.Generic.List<int>(ItemsPerSlot);
+            for (int i = 0; i < ItemCatalog.ItemCountIn(EquipmentSlot.Head); i++)
+            {
+                if (!float.IsPositiveInfinity(AccessoryShapeBuilder.HatCoverLocalY(i, rig))) hats.Add(i);
+            }
+            Assert.Greater(hats.Count, 0, "머리카락을 덮는 모자가 하나도 없습니다 — 커버 규칙 검증이 공허해집니다.");
+            return hats.ToArray();
         }
 
         // ============================================================================
@@ -122,63 +152,159 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// 33-4-1의 조합표 그대로: 모자 3종은 머리 4종을 전부 숨기고, <b>왕관만</b> 전부 보인다.
-        /// <para>★ 이 표가 지키는 경계 사례 하나 — 민머리 하이라이트의 최고점은 R·0.611로, 천 모자
-        /// 커버선(R·0.62)을 <b>0.009R 차이로 통과</b>한다. 점 좌표만 보면 챙 밑에 한 줄이 남는다.
-        /// 그래서 커버 판정은 <b>획 바깥쪽</b>까지 본다(획 반두께 ≈ 0.109R). 이 테스트가 그 판정을 잠근다.</para>
+        /// ★ 2026-09-01 커버 규칙 변경 — <b>"선 통째로 생략" -> "커버선에서 자르기(clip)"</b>.
+        ///
+        /// <para>옛 규칙은 커버선 위로 올라가는 점이 하나라도 있으면 그 선을 통째로 버렸다. 머리카락이
+        /// 선 1개짜리 호였을 때는 그것이 "모자 속에 감춘다"와 같았지만, P0에서 머리카락이 <b>닫힌 채움
+        /// 도형</b>이 되면서 같은 규칙이 정확히 반대로 작동한다 — 실루엣 하나가 통째로 버려지므로
+        /// <b>모자를 쓰면 머리카락이 전부 사라진다</b>(ux-designer가 37-7 #1로 보고한 자리).</para>
+        ///
+        /// <para>그래서 이제 조합표가 요구하는 것은 "0개"가 아니라 <b>"커버선 위에 잉크가 없다"</b>이다.
+        /// 모자 밑으로 삐져나온 옆머리는 남는 것이 옳다(실제로 모자를 써도 귀 옆 머리는 보인다).</para>
         /// </summary>
         [Test]
-        public void 모자와_머리_동시착용_조합표가_33_4_1과_일치한다()
+        public void 모자를_쓰면_머리카락이_커버선_위로_한_점도_올라가지_않는다()
         {
             AccessoryShapeBuilder.Rig rig = Rig();
-            // 획 반두께 — 렌더러가 넘기는 값과 같은 식(전신 높이 × 0.048 / 기준신장 ÷ 2).
             float strokeHalf = StickConfig.BaselineCharacterTotalHeight
-                * (0.048f / StickConfig.BaselineCharacterTotalHeight) * 0.5f;
+                * AccessoryShapeBuilder.StrokeWidthRatio * 0.5f;
 
-            var hats = new[]
-            {
-                AccessoryShapeBuilder.HeadCap, AccessoryShapeBuilder.HeadBeanie, AccessoryShapeBuilder.HeadFedora,
-            };
+            int[] hats = CoveringHats();
             var sink = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
 
             for (int h = 0; h < hats.Length; h++)
             {
                 float cover = AccessoryShapeBuilder.HatCoverLocalY(hats[h], rig);
-                for (int hair = 0; hair < 4; hair++)
+                for (int hair = 0; hair < ItemsPerSlot; hair++)
                 {
                     sink.Clear();
                     AccessoryShapeBuilder.Append(sink, EquipmentSlot.Hair, hair, rig, cover, strokeHalf);
-                    Assert.AreEqual(0, sink.Count,
-                        $"모자 {hats[h]}번을 썼는데 머리 {hair}번의 선이 {sink.Count}개 남았습니다 — " +
-                        "33-4-1 조합표는 왕관 이외의 모자에서 머리가 전부 숨겨진다고 못박았습니다.");
+                    for (int i = 0; i < sink.Count; i++)
+                    {
+                        Vector3[] pts = sink[i].Points;
+                        for (int k = 0; k < pts.Length; k++)
+                        {
+                            Assert.LessOrEqual(pts[k].y, cover + 1e-4f,
+                                $"모자 {hats[h]}번을 썼는데 머리 {hair}번 '{sink[i].Name}'의 점이 " +
+                                $"커버선({cover:F4}) 위 {pts[k].y:F4}에 남았습니다 — 모자를 뚫고 나온 머리카락입니다.");
+                        }
+                    }
                 }
             }
+        }
 
+        /// <summary>왕관은 밑이 뚫려 있으므로 <b>한 점도 잘리지 않는다</b>(커버선 +∞).</summary>
+        [Test]
+        public void 왕관은_머리카락을_한_점도_자르지_않는다()
+        {
+            AccessoryShapeBuilder.Rig rig = Rig();
+            float strokeHalf = StickConfig.BaselineCharacterTotalHeight
+                * AccessoryShapeBuilder.StrokeWidthRatio * 0.5f;
             float crownCover = AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadCrown, rig);
-            for (int hair = 0; hair < 4; hair++)
+
+            var bare = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+            var under = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+            for (int hair = 0; hair < ItemsPerSlot; hair++)
             {
-                sink.Clear();
-                AccessoryShapeBuilder.Append(sink, EquipmentSlot.Hair, hair, rig, crownCover, strokeHalf);
-                Assert.Greater(sink.Count, 0,
-                    $"왕관을 썼는데 머리 {hair}번이 사라졌습니다 — 왕관은 밑이 뚫려 있어 머리가 함께 보여야 합니다.");
+                bare.Clear();
+                under.Clear();
+                AccessoryShapeBuilder.Append(bare, EquipmentSlot.Hair, hair, rig);
+                AccessoryShapeBuilder.Append(under, EquipmentSlot.Hair, hair, rig, crownCover, strokeHalf);
+
+                Assert.AreEqual(bare.Count, under.Count,
+                    $"왕관을 썼더니 머리 {hair}번의 도형 수가 달라졌습니다.");
+                for (int i = 0; i < bare.Count; i++)
+                {
+                    Assert.AreEqual(bare[i].Points.Length, under[i].Points.Length,
+                        $"왕관을 썼더니 머리 {hair}번 '{bare[i].Name}'의 점 수가 달라졌습니다.");
+                }
             }
         }
 
         /// <summary>
-        /// ★ 네거티브 컨트롤 — "획 두께를 빼고 점 좌표만 봤다면" 위 조합표가 <b>실제로 깨진다</b>.
-        /// 이게 실패하면 위 테스트는 헐거운 조건을 통과한 것뿐이라는 뜻이다.
+        /// ★ 네거티브 컨트롤 — 자르기가 <b>실제로 일을 하고 있는가</b>.
+        /// 모자를 안 썼을 때의 머리카락은 커버선 위로 올라가는 점을 갖고 있어야 한다.
+        /// 그러지 않는다면 위 테스트는 "애초에 자를 것이 없어서" 통과한 것뿐이다.
         /// </summary>
         [Test]
-        public void 획_두께를_빼면_천모자_민머리_조합이_실제로_깨진다()
+        public void 자르기가_없었다면_머리카락이_모자를_뚫고_나온다()
         {
             AccessoryShapeBuilder.Rig rig = Rig();
-            float cover = AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadCap, rig);
             var sink = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
 
-            AccessoryShapeBuilder.Append(sink, EquipmentSlot.Hair, AccessoryShapeBuilder.HairBald, rig, cover, 0f);
-            Assert.AreEqual(1, sink.Count,
-                "획 두께를 0으로 두면 민머리 하이라이트가 천 모자 커버선을 통과해 살아남아야 합니다 — " +
-                "그러지 않는다면 이 경계 사례가 애초에 존재하지 않는 것이고, 획 두께를 보는 판정의 근거가 사라집니다.");
+            int[] hats = CoveringHats();
+            for (int h = 0; h < hats.Length; h++)
+            {
+                float cover = AccessoryShapeBuilder.HatCoverLocalY(hats[h], rig);
+                for (int hair = 0; hair < ItemsPerSlot; hair++)
+                {
+                    sink.Clear();
+                    AccessoryShapeBuilder.Append(sink, EquipmentSlot.Hair, hair, rig);   // 커버선 +∞
+
+                    bool anyAbove = false;
+                    for (int i = 0; i < sink.Count && !anyAbove; i++)
+                    {
+                        Vector3[] pts = sink[i].Points;
+                        for (int k = 0; k < pts.Length; k++)
+                        {
+                            if (pts[k].y > cover) { anyAbove = true; break; }
+                        }
+                    }
+                    Assert.IsTrue(anyAbove,
+                        $"모자 {hats[h]}번의 커버선 위로 올라가는 점이 머리 {hair}번에 하나도 없습니다 — " +
+                        "자를 것이 없다면 자르기 규칙을 검증하는 위 테스트가 공허하게 통과합니다.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 자르기가 <b>실루엣을 통째로 지우지 않는다</b>(이번 API 변경의 존재 이유).
+        /// 옛 "선 통째로 생략"이었다면 채움 도형 하나가 사라져 머리카락이 전부 없어졌을 것이다.
+        /// </summary>
+        [Test]
+        public void 모자를_써도_옆머리는_남는다()
+        {
+            AccessoryShapeBuilder.Rig rig = Rig();
+            float strokeHalf = StickConfig.BaselineCharacterTotalHeight
+                * AccessoryShapeBuilder.StrokeWidthRatio * 0.5f;
+            var sink = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+
+            // 천 모자(커버선 R·0.62) — 세 모자 중 가장 얕게 쓴다.
+            float cover = AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadCap, rig);
+            for (int hair = 0; hair < ItemsPerSlot; hair++)
+            {
+                sink.Clear();
+                AccessoryShapeBuilder.Append(sink, EquipmentSlot.Hair, hair, rig, cover, strokeHalf);
+                Assert.Greater(sink.Count, 0,
+                    $"천 모자를 썼더니 머리 {hair}번이 통째로 사라졌습니다 — " +
+                    "이것이 채움 도형에 옛 '선 통째로 생략' 규칙을 적용했을 때 나는 그림입니다(37-7 #1).");
+            }
+        }
+
+        /// <summary>잘라 낸 조각이 <b>획 하나보다 작으면</b> 버린다 — 커버선 위에 점 하나만 남는 것을 막는다.</summary>
+        [Test]
+        public void 획보다_작은_조각은_버린다()
+        {
+            AccessoryShapeBuilder.Rig rig = Rig();
+            var sink = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+
+            // 커버선 바로 아래에 아주 얇게 걸치는 삼각형 하나.
+            float cover = rig.HeadCenterY;
+            float sliver = rig.HeadRadius * 0.02f;
+            var shape = new AccessoryShapeBuilder.Shape("Sliver", new[]
+            {
+                rig.F(-sliver, cover - sliver),
+                rig.F(sliver, cover - sliver),
+                rig.F(0f, cover + sliver * 4f),
+            }, true, AccessoryShapeBuilder.SortHair, filled: true);
+
+            AccessoryShapeBuilder.AppendClippedBelowCover(sink, shape, cover, rig.HeadRadius * 0.2f);
+            Assert.AreEqual(0, sink.Count,
+                "획(0.4R)보다 작은 조각이 살아남았습니다 — 커버선 위에 얹힌 점 하나로 보입니다.");
+
+            sink.Clear();
+            AccessoryShapeBuilder.AppendClippedBelowCover(sink, shape, cover, 0f);
+            Assert.AreEqual(1, sink.Count, "획 반폭 0에서는 같은 조각이 살아남아야 합니다(네거티브 컨트롤).");
         }
 
         // ============================================================================
@@ -220,7 +346,7 @@ namespace StickMate.Tests.EditMode
 
             for (int e = 0; e < expected.Length; e++)
             {
-                for (int i = 0; i < 4; i++)
+                for (int i = 0; i < ItemCatalog.ItemCountIn(expected[e].Slot); i++)
                 {
                     sink.Clear();
                     AccessoryShapeBuilder.Append(sink, expected[e].Slot, i, Rig());

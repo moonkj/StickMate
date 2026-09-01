@@ -1,5 +1,7 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -50,6 +52,7 @@ namespace StickMate.Tests.PlayMode
         private StickmanAgent _agent;
         private StickConfig _deployed;
         private float _serializedDeployScale;
+        private StickmanInkColor _serializedDeployInk;
 
         private IEnumerator LoadSceneAndFindAgent()
         {
@@ -62,6 +65,7 @@ namespace StickMate.Tests.PlayMode
             _deployed = _agent.Config;
             Assert.IsNotNull(_deployed, $"{LogPrefix} StickmanAgent에 StickConfig가 배선돼 있지 않습니다.");
             _serializedDeployScale = _deployed.characterScale;
+            _serializedDeployInk = _deployed.inkColor;
 
             yield return new WaitForSeconds(0.5f);
         }
@@ -72,6 +76,7 @@ namespace StickMate.Tests.PlayMode
             // 런타임 배율만 지우고 지오메트리를 배포 기본값으로 되돌린다. 직렬화 필드는 애초에
             // 만진 적이 없으므로 되돌릴 것이 없다(그것이 이 파일이 증명하려는 바다).
             if (_deployed != null) _deployed.ClearRuntimeCharacterScale();
+            if (_deployed != null) _deployed.ClearRuntimeInkColor();
             if (_agent != null && _serializedDeployScale > 0f)
                 _agent.ApplyCharacterScale(_serializedDeployScale, "테스트 정리");
             _agent = null;
@@ -92,7 +97,11 @@ namespace StickMate.Tests.PlayMode
             Assert.IsFalse(_deployed.HasRuntimeCharacterScale,
                 $"{LogPrefix} 씬 로드 직후인데 런타임 배율이 이미 설정돼 있습니다 — 앞선 테스트의 값이 샜습니다.");
 
-            const float Target = 2.0f;
+            // ★ 2026-09-01 — 2.0f였다. 2026-08-31에 사용자 지시로 상한이 <b>1.5</b>로 내려가면서
+            //   (StickConfig.MaxCharacterScale) 이 값이 clamp돼 "실효 배율이 2.0이 아니다"로 이 테스트가
+            //   계속 실패하고 있었다(설정창 라운드의 회귀 실행에서 발견 — 그 전날부터 빨간불이었다).
+            //   숫자를 손으로 다시 적지 않고 <b>상수에서 유도</b>한다: 상한이 또 바뀌어도 따라간다.
+            const float Target = StickConfig.MaxCharacterScale;
             Assert.IsTrue(_agent.ApplyCharacterScale(Target, "에셋 불변 테스트"),
                 $"{LogPrefix} 배율 {Target:F2} 적용이 무시됐습니다 — 무동작 가드가 잘못 걸렸습니다.");
             yield return null;
@@ -180,6 +189,142 @@ namespace StickMate.Tests.PlayMode
                 "살아남습니다. StickmanAgent.Awake의 ClearRuntimeCharacterScale()이 빠졌습니다.");
             Assert.AreEqual(_deployed.characterScale, _deployed.ResolveCharacterScale(), 1e-4f,
                 $"{LogPrefix} 재로드 후 실효 배율이 배포 기본값과 다릅니다.");
+        }
+
+
+        // ============================================================================
+        // ★ 잉크색 — characterScale과 <b>같은 실패 모드</b>였다 (2026-08-31 R5)
+        // ============================================================================
+        // 리더 지적: "characterScale만 잠그고 잉크색은 그물 밖"이었다. 정보창 스와치와 우클릭 메뉴가
+        // `_config.inkColor = next`로 직렬화 필드에 직접 썼고, 같은 경로로 배포 에셋이 오염된다.
+        // 아래 세 테스트가 그 구멍을 메운다(런타임 계약 2건 + 소스 정적 스캔 1건).
+
+        [UnityTest]
+        public IEnumerator 잉크색_전환이_배포_에셋의_직렬화_필드를_건드리지_않는다()
+        {
+            yield return LoadSceneAndFindAgent();
+
+            StickmanInkColor serializedBefore = _deployed.inkColor;
+            Assert.IsFalse(_deployed.HasRuntimeInkColor,
+                $"{LogPrefix} 씬 로드 직후인데 런타임 잉크색이 이미 설정돼 있습니다 — 앞선 테스트의 값이 샜습니다.");
+
+            // 배포 기본값의 반대색으로 바꾼다(어느 쪽이 구워져 있어도 실제 변화가 일어나게).
+            StickmanInkColor target = serializedBefore == StickmanInkColor.White
+                ? StickmanInkColor.Black
+                : StickmanInkColor.White;
+
+            // 프로덕션 경로와 같은 두 줄(Interaction/CharacterInfoWindow.OnInkSwatchClicked 참고).
+            _deployed.SetRuntimeInkColor(target);
+            _agent.ApplyInkColorFromConfig();
+            yield return null;
+
+            Color expected = target == StickmanInkColor.White ? _deployed.whiteInkColor : _deployed.primaryOutlineColor;
+            Debug.Log($"{LogPrefix} 잉크색 적용 후 — 직렬화 inkColor={_deployed.inkColor}(기대 {serializedBefore} 그대로), " +
+                $"실효 ResolveInkPreset()={_deployed.ResolveInkPreset()}, IsWhiteInk()={_deployed.IsWhiteInk()}, " +
+                $"ResolveInkColor()=({_deployed.ResolveInkColor().r:F2},{_deployed.ResolveInkColor().g:F2},{_deployed.ResolveInkColor().b:F2}).");
+
+            // ★ 핵심 단언 — 디스크에 직렬화되는 필드는 그대로다.
+            Assert.AreEqual(serializedBefore, _deployed.inkColor,
+                $"{LogPrefix} 배포 에셋(DefaultStickConfig.asset)의 직렬화 필드 inkColor가 런타임에 " +
+                $"{serializedBefore} -> {_deployed.inkColor}로 바뀌었습니다. 에디터가 이 애셋을 저장하는 순간 " +
+                "그 색이 전 사용자의 출하 기본값이 됩니다(R5 잉크색 오염 재발).");
+
+            // ★ (1)이 "아무 일도 안 일어나서" 통과한 것이 아님을 같은 호흡에 증명한다.
+            Assert.AreEqual(target, _deployed.ResolveInkPreset(),
+                $"{LogPrefix} 실효 잉크 프리셋이 따라오지 않았습니다 — 런타임 오버라이드 경로가 죽었습니다.");
+            Assert.AreEqual(target == StickmanInkColor.White, _deployed.IsWhiteInk(),
+                $"{LogPrefix} IsWhiteInk()가 실효 프리셋과 어긋납니다.");
+            Assert.AreEqual(expected, _deployed.ResolveInkColor(),
+                $"{LogPrefix} 실제 선 색이 프리셋을 따라오지 않았습니다.");
+
+            // 네거티브 컨트롤 — 옛 방식(직렬화 필드 직접 대입)은 복제본에서 즉시 검출된다.
+            StickConfig probe = Object.Instantiate(_deployed);
+            try
+            {
+                StickmanInkColor before = probe.inkColor;
+                probe.inkColor = before == StickmanInkColor.White ? StickmanInkColor.Black : StickmanInkColor.White;
+                Debug.Log($"{LogPrefix} 잉크색 네거티브 컨트롤 — 복제본에 옛 방식으로 대입: {before} -> {probe.inkColor}.");
+                Assert.AreNotEqual(before, probe.inkColor,
+                    $"{LogPrefix} 직렬화 필드에 직접 대입했는데도 값이 그대로입니다 — 위 단언의 검사 방법이 " +
+                    "변화를 감지하지 못한다는 뜻이라 그 통과는 무의미합니다.");
+            }
+            finally
+            {
+                Object.Destroy(probe);
+            }
+
+            Assert.AreEqual(_serializedDeployInk, _deployed.inkColor,
+                $"{LogPrefix} 네거티브 컨트롤이 배포 에셋의 잉크색을 오염시켰습니다.");
+        }
+
+        [UnityTest]
+        public IEnumerator 씬을_다시_로드하면_배포_기본_잉크색으로_돌아온다()
+        {
+            yield return LoadSceneAndFindAgent();
+
+            StickmanInkColor target = _deployed.inkColor == StickmanInkColor.White
+                ? StickmanInkColor.Black
+                : StickmanInkColor.White;
+            _deployed.SetRuntimeInkColor(target);
+            Assert.IsTrue(_deployed.HasRuntimeInkColor, $"{LogPrefix} 런타임 잉크색이 기록되지 않았습니다.");
+
+            yield return LoadSceneAndFindAgent();   // 같은 에셋 인스턴스가 살아 있는 상태에서 재로드.
+
+            Debug.Log($"{LogPrefix} 재로드 후 — HasRuntimeInkColor={_deployed.HasRuntimeInkColor}, " +
+                $"ResolveInkPreset()={_deployed.ResolveInkPreset()}, 직렬화={_deployed.inkColor}.");
+
+            Assert.IsFalse(_deployed.HasRuntimeInkColor,
+                $"{LogPrefix} 씬을 다시 로드했는데 앞선 잉크색이 남아 있습니다 — StickConfig는 에셋이라 씬 " +
+                "재로드에도 살아남습니다. StickmanAgent.Awake의 ClearRuntimeInkColor()가 빠졌습니다.");
+            Assert.AreEqual(_deployed.inkColor, _deployed.ResolveInkPreset(),
+                $"{LogPrefix} 재로드 후 실효 잉크색이 배포 기본값과 다릅니다.");
+        }
+
+        // ============================================================================
+        // ★ 소스 정적 스캔 — 이 버그 클래스가 다시 새지 않게 하는 그물
+        // ============================================================================
+        // 위 두 테스트는 "지금 코드가 안 쓴다"만 증명한다. 내일 누군가 새 UI에서 다시
+        // `config.inkColor = ...`라고 적으면 그 자리만 조용히 오염된다(정확히 이번에 벌어진 일이다).
+        // 그래서 UserAssetImmutabilityAuditTests와 같은 방식의 텍스트 스캔으로 <b>패턴 자체</b>를 막는다.
+        // 주석 줄은 건너뛴다 — 이 수정의 문서가 옛 코드 줄을 그대로 인용하고 있기 때문이다.
+
+        [Test]
+        public void 프로덕션_코드는_배포_설정의_직렬화_필드에_직접_쓰지_않는다()
+        {
+            string scriptsRoot = Path.Combine(Application.dataPath, "_Project", "Scripts");
+            string testsRoot = (Path.Combine(scriptsRoot, "Tests") + Path.DirectorySeparatorChar).Replace('\\', '/');
+
+            var files = new List<string>(Directory.GetFiles(scriptsRoot, "*.cs", SearchOption.AllDirectories));
+            files.RemoveAll(p => p.Replace('\\', '/').StartsWith(testsRoot, System.StringComparison.Ordinal));
+
+            Assert.GreaterOrEqual(files.Count, 40,
+                $"{LogPrefix} 스캔 대상 파일이 비정상적으로 적습니다({files.Count}) — 경로 계산 오류로 허위 통과할 위험.");
+
+            // "무언가.inkColor =" / "무언가.characterScale =" (비교 연산자 ==는 제외).
+            var writePattern = new Regex(@"\.(inkColor|characterScale)\s*=(?!=)");
+            var violations = new List<string>();
+
+            foreach (string file in files)
+            {
+                string[] lines = File.ReadAllLines(file);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string trimmed = lines[i].TrimStart();
+                    if (trimmed.StartsWith("//") || trimmed.StartsWith("*") || trimmed.StartsWith("///")) continue;
+                    Match m = writePattern.Match(lines[i]);
+                    if (!m.Success) continue;
+                    violations.Add($"{Path.GetFileName(file)}:{i + 1}: {lines[i].Trim()}");
+                }
+            }
+
+            Debug.Log($"{LogPrefix} 정적 스캔 — 파일 {files.Count}개에서 직렬화 필드 직접 쓰기 {violations.Count}건.");
+
+            Assert.IsTrue(violations.Count == 0,
+                $"{LogPrefix} 배포 ScriptableObject 에셋(DefaultStickConfig.asset)의 직렬화 필드에 직접 쓰는 코드가 " +
+                "발견됐습니다. 이 에셋은 프리팹 16개 컴포넌트에 배선된 출하 기본값이고, 에디터는 플레이 모드 중의 " +
+                "변경을 되돌리지 않습니다 — 대신 SetRuntimeInkColor()/SetRuntimeCharacterScale()를 쓰고, 값이 " +
+                "재시작을 넘어 남아야 하면 저장 파일(CharacterAppearanceModel/UiLayoutModel)에 기록하세요.\n\n" +
+                string.Join("\n", violations));
         }
 
         // ============================================================================

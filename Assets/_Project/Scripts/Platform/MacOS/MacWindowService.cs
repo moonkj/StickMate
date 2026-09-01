@@ -141,6 +141,7 @@ namespace StickMate.Platform.MacOS
         private const ushort kVK_ANSI_F = 0x03; // 집중 모드 켜기/끄기(Focus)
         private const ushort kVK_ANSI_A = 0x00; // 활쏘기 발동(Archery)
         private const ushort kVK_ANSI_I = 0x22; // 캐릭터 정보/장비 창(Info) — <HIToolbox/Events.h> kVK_ANSI_I = 34
+        private const ushort kVK_ANSI_Comma = 0x2B; // 설정창(⌘, 관례) — <HIToolbox/Events.h> kVK_ANSI_Comma = 43
 
         [DllImport(CoreGraphicsLib)]
         private static extern uint CGMainDisplayID();
@@ -280,6 +281,16 @@ namespace StickMate.Platform.MacOS
         [DllImport(ObjCLib, EntryPoint = "objc_msgSend")]
         private static extern IntPtr ObjCSendPtrWithNUInt(IntPtr receiver, IntPtr selector, IntPtr index);
 
+        /// <summary>[receiver selector:pid] — pid_t(= int32) 인자 1개, 객체 포인터 반환
+        /// (+[NSRunningApplication runningApplicationWithProcessIdentifier:]). pid_t는 NSInteger가 아니라
+        /// 정확히 32비트이므로 IntPtr로 넘기면 안 된다 — 아래 "전체화면 게임 판별" 절 참고.</summary>
+        [DllImport(ObjCLib, EntryPoint = "objc_msgSend")]
+        private static extern IntPtr ObjCSendPtrWithInt32(IntPtr receiver, IntPtr selector, int pid);
+
+        /// <summary>[receiver selector:object] — 객체 인자 1개, 객체 포인터 반환(+[NSBundle bundleWithURL:]).</summary>
+        [DllImport(ObjCLib, EntryPoint = "objc_msgSend")]
+        private static extern IntPtr ObjCSendPtrWithPtr(IntPtr receiver, IntPtr selector, IntPtr arg);
+
         /// <summary>NSApplicationActivationPolicyRegular — "Dock에 타일이 생기고 메뉴바를 갖는 보통 앱".
         /// 1=Accessory(LSUIElement, Dock 타일 없음), 2=Prohibited(백그라운드 전용).</summary>
         private const int NSApplicationActivationPolicyRegular = 0;
@@ -316,6 +327,11 @@ namespace StickMate.Platform.MacOS
         private readonly IntPtr _keyWindowNumber;
         private readonly IntPtr _keyWindowAlpha;
         private readonly IntPtr _keyWindowIsOnscreen;
+
+        /// <summary>앱 번들 Info.plist의 App Store 카테고리 키 — 전체화면 "게임" 판별용
+        /// (아래 <see cref="TryGetFrontWindowAppCategory"/> 참고). 다른 키들과 같은 규칙:
+        /// 프로세스 수명 동안 1회 생성, CFRelease하지 않는다.</summary>
+        private readonly IntPtr _keyAppCategoryType;
 
         // 열거 결과 버퍼. 매 호출 시 새 List를 만들지 않고 Clear 후 재사용한다(Win32WindowService와
         // 동일한 24시간 상주 앱 컨벤션).
@@ -466,6 +482,7 @@ namespace StickMate.Platform.MacOS
             _keyWindowNumber = CFStringCreateWithCString(IntPtr.Zero, "kCGWindowNumber", kCFStringEncodingUTF8);
             _keyWindowAlpha = CFStringCreateWithCString(IntPtr.Zero, "kCGWindowAlpha", kCFStringEncodingUTF8);
             _keyWindowIsOnscreen = CFStringCreateWithCString(IntPtr.Zero, "kCGWindowIsOnscreen", kCFStringEncodingUTF8);
+            _keyAppCategoryType = CFStringCreateWithCString(IntPtr.Zero, "LSApplicationCategoryType", kCFStringEncodingUTF8);
 
             using (var self = System.Diagnostics.Process.GetCurrentProcess())
             {
@@ -674,6 +691,9 @@ namespace StickMate.Platform.MacOS
             LastFullyOccludedWindowCount = 0;
             bool hasDisplay = TryGetMainDisplayBounds(out Rect displayBounds);
             _overlayOriginPassArea = 0.0; // CaptureOverlayOrigin()의 "이번 패스 최대 면적" 리셋.
+            // ★ 2026-09-01 — 같은 관측을 CaptureOverlayOrigin()의 위생 검사에도 넘긴다(새 호출 0건).
+            _hasDisplayBoundsThisPass = hasDisplay;
+            _displayBoundsThisPass = displayBounds;
 
             IntPtr windowArray = CopyOnScreenWindowList();
             if (windowArray == IntPtr.Zero) return _footholdBuffer; // 조회 실패 — FallbackPlatformWindowService 안전망이 감싸므로 빈 리스트로도 안전.
@@ -908,6 +928,9 @@ namespace StickMate.Platform.MacOS
             _enforcer.DesiredTopmost = false;
             _enforcer.DesiredClickThrough = false;
             _enforcer.DesiredHitTest = false;
+            // 재적합(전체화면 확장/해상도 변경 후 재무장)이 끝난 프레임에 좌표계를 즉시 갱신하는 훅.
+            // 폴링을 기다리면 그 사이 원점/배율이 옛 값이라 캐릭터가 화면 밖으로 튄다.
+            _enforcer.OverlayRectReporter = ReportOverlayRectNow;
             _enforcer.MarkDirty();
 
             Debug.Log("[MacWindowService] CreateOverlayWindow(): UniWindowController 확보 및 초기 상태 적용 완료 " +
@@ -992,13 +1015,36 @@ namespace StickMate.Platform.MacOS
         }
 
         /// <summary>
-        /// Win32의 "전경창 사각형 == 모니터 전체 사각형" 휴리스틱과 동일한 아이디어를 macOS로 이식.
-        /// kCGWindowListOptionOnScreenOnly 결과에서 (우리 자신을 제외한) 가장 앞선 일반 앱 창의 bounds가
-        /// 메인 디스플레이 전체 영역과 일치하면 전체화면 앱으로 간주한다.
+        /// Win32의 "전경창 사각형 == 모니터 전체 사각형" 휴리스틱과 동일한 아이디어를 macOS로 이식하되,
+        /// 여기에 **두 개의 조건을 더** 얹는다(2026-08-31, 사용자 신고 "타 앱 전체화면 클릭 시 캐릭터가
+        /// 사라짐"에 대한 리더 결정):
+        ///   (1) 기하 조건 — (우리 자신을 제외한) 가장 앞선 일반(layer 0) 창의 bounds가 메인 디스플레이
+        ///       전체 영역과 일치할 것. (기존 조건)
+        ///   (2) <b>게임 조건</b> — 그 창을 소유한 앱의 LSApplicationCategoryType이 게임 계열일 것.
+        ///       원칙 2의 문구가 "전체화면 <b>게임</b>"이기 때문이다. 이 조건이 없어서 엑셀/키노트/
+        ///       브라우저 전체화면에서도 캐릭터가 사라졌다.
+        ///   (3) 디바운스 — 위 판정이 뒤집혔더라도 일정 시간 연속 유지되어야 확정한다(메뉴바 호출로
+        ///       bounds가 요동쳐 Resume/Suspend가 반복되던 깜빡임 차단).
         /// </summary>
         public bool IsFullscreenAppActive()
         {
-            bool verdict = EvaluateFullscreen(out string reason);
+            bool raw = EvaluateFullscreen(out string reason);
+
+            // ★ 2026-08-31 깜빡임(flapping) 차단. 같은 전체화면 창인데도 사용자가 커서를 화면 상단에
+            //   올려 메뉴바를 부르면 CGWindow bounds가 (0,33 ...) <-> (0,0 ...) 로 오가서 기하 판정이
+            //   뒤집힌다(디버거 실측). 그대로 두면 Resume/Suspend가 반복돼 캐릭터가 깜빡인다.
+            //   규칙 자체는 FullscreenSuspendPolicy.cs에 순수 함수로 분리돼 EditMode 테스트가 검증한다.
+            bool verdict = _fullscreenDebouncer.Update(raw, Time.realtimeSinceStartupAsDouble, FullscreenVerdictHoldSeconds);
+
+            if (raw != _lastRawFullscreenVerdict)
+            {
+                _lastRawFullscreenVerdict = raw;
+                if (raw != verdict)
+                {
+                    Debug.Log($"[전체화면판정] 원시 판정이 {raw}로 흔들렸지만 {FullscreenVerdictHoldSeconds:F1}초 연속 " +
+                        $"유지되기 전이라 확정하지 않습니다(메뉴바 호출 등에 의한 깜빡임 흡수) — {reason}");
+                }
+            }
 
             // ★ 2026-08-29 — 판정이 **바뀔 때만** 사유와 함께 남긴다(리더 지시: 사용자 신고 "캐릭터가
             // 안 보이다가 클릭하면 나타난다"의 원인 추적 수단이 전혀 없었다). 매 폴링(1.5초)마다 찍으면
@@ -1082,11 +1128,26 @@ namespace StickMate.Platform.MacOS
                         && Math.Abs(winRect.Size.Width - displayBounds.Size.Width) < epsilon
                         && Math.Abs(winRect.Size.Height - displayBounds.Size.Height) < epsilon;
 
-                    reason = $"판정 근거 창 = '{owner}' bounds=({winRect.Origin.X:F0},{winRect.Origin.Y:F0} " +
-                        $"{winRect.Size.Width:F0}x{winRect.Size.Height:F0}), 메인 디스플레이=" +
-                        $"({displayBounds.Origin.X:F0},{displayBounds.Origin.Y:F0} " +
-                        $"{displayBounds.Size.Width:F0}x{displayBounds.Size.Height:F0}) -> 일치={match}.";
-                    return match;
+                    if (!match)
+                    {
+                        reason = $"판정 근거 창 = '{owner}' bounds=({winRect.Origin.X:F0},{winRect.Origin.Y:F0} " +
+                            $"{winRect.Size.Width:F0}x{winRect.Size.Height:F0}), 메인 디스플레이=" +
+                            $"({displayBounds.Origin.X:F0},{displayBounds.Origin.Y:F0} " +
+                            $"{displayBounds.Size.Width:F0}x{displayBounds.Size.Height:F0}) -> 기하 일치=false.";
+                        return false;
+                    }
+
+                    // ★ 2026-08-31 — 기하만으로는 부족하다. 여기서 "그 앱이 게임인가"까지 확인한다.
+                    //   (원인 B: 엑셀/키노트/브라우저 전체화면에서도 캐릭터가 사라지던 문제.)
+                    TryGetInt(windowDict, _keyWindowOwnerPID, out int ownerPid);
+                    string category = TryGetAppCategory(ownerPid);
+                    bool isGame = FullscreenGameCategory.IsGameCategory(category);
+
+                    reason = $"판정 근거 창 = '{owner}'(pid {ownerPid}) bounds=({winRect.Origin.X:F0},{winRect.Origin.Y:F0} " +
+                        $"{winRect.Size.Width:F0}x{winRect.Size.Height:F0}) = 메인 디스플레이 전체 -> 기하 일치=true, " +
+                        $"LSApplicationCategoryType={(string.IsNullOrEmpty(category) ? "(미선언)" : category)} -> 게임={isGame}" +
+                        (isGame ? "." : " (게임이 아니므로 숨기지 않습니다 — 원칙 2는 '전체화면 게임'만 대상).");
+                    return isGame;
                 }
                 reason = "layer 0(일반 앱) 창이 하나도 없음(전부 최소화 등) — 전체화면 아님으로 안전 처리.";
                 return false;
@@ -1100,6 +1161,108 @@ namespace StickMate.Platform.MacOS
         // 위 IsFullscreenAppActive()의 "판정이 바뀔 때만 로그" 상태. 최초 1회는 false에서 시작하므로
         // 앱 시작 직후 정상(비전체화면) 상태에서는 아무 로그도 남지 않는다.
         private bool _lastFullscreenVerdict;
+
+        /// <summary>디바운스 이전의 원시 판정 — "흔들렸지만 흡수했다"를 한 번만 로그로 남기기 위한 상태.</summary>
+        private bool _lastRawFullscreenVerdict;
+
+        /// <summary>바뀐 원시 판정이 이만큼 연속 유지되어야 확정한다. 메뉴바 호출로 인한 bounds 요동은
+        /// 수백 ms 안에 되돌아오므로 1초면 충분히 흡수되고, 진짜 게임 실행/종료는 1초 늦게 반영돼도
+        /// 사람이 눈치채지 못한다(발판 폴링 주기 0.3~0.5초와 같은 자릿수).</summary>
+        private const double FullscreenVerdictHoldSeconds = 1.0;
+
+        private FullscreenVerdictDebouncer _fullscreenDebouncer;
+
+        // ============================================================================
+        // 전체화면 "게임" 판별 — LSApplicationCategoryType 조회 (2026-08-31)
+        // ============================================================================
+        // 원칙 2의 문구는 "전체화면 게임 감지 시 자동 숨김"인데 기존 판정은 기하(창 == 화면)만 봤다.
+        // 그래서 엑셀/키노트/브라우저 전체화면에서도 캐릭터가 사라졌다. 여기서 전경 창 소유 앱의
+        // 번들 Info.plist에 선언된 App Store 카테고리를 **읽기만** 해서 게임 여부를 가른다
+        // (NSRunningApplication -> bundleURL -> NSBundle.infoDictionary. 전부 조회 전용 공개 API이고
+        //  어떤 권한도 요구하지 않으며, 타 앱의 파일을 수정하지 않는다 — 절대 불변 원칙 3 안전).
+        //
+        // 판정 규칙(문자열 -> 게임 여부)은 일부러 여기에 두지 않고 FullscreenSuspendPolicy.cs의
+        // 순수 함수로 뺐다 — 네이티브 없이 EditMode에서 규칙 자체를 검증할 수 있어야 하기 때문이다.
+        //
+        // pid_t 마샬링 주의: runningApplicationWithProcessIdentifier:의 인자는 NSInteger가 아니라
+        // pid_t = int32다. IntPtr(64비트)로 넘기면 arm64에서 상위 32비트 쓰레기까지 실려 조회가
+        // 조용히 실패한다(nil 반환 -> "게임 아님"으로 폴백되어 증상이 눈에 띄지 않는 위험한 실패).
+        // 그래서 전용 오버로드 ObjCSendPtrWithInt32를 따로 선언했다.
+        private const double AppCategoryCacheSeconds = 30.0;
+        private int _cachedCategoryPid = -1;
+        private string _cachedCategory;
+        private double _cachedCategoryTime = double.NegativeInfinity;
+        private bool _categorySelectorsReady;
+        private IntPtr _clsRunningApplication;
+        private IntPtr _clsBundle;
+        private IntPtr _selRunningAppWithPid;
+        private IntPtr _selBundleUrl;
+        private IntPtr _selBundleWithUrl;
+        private IntPtr _selInfoDictionary;
+
+        /// <summary>pid로 앱 카테고리(LSApplicationCategoryType)를 조회한다. 미선언/조회 실패는 null.
+        /// 카테고리는 앱이 살아 있는 동안 바뀌지 않지만 pid는 재사용될 수 있어 짧은 만료를 둔다.</summary>
+        private string TryGetAppCategory(int pid)
+        {
+            if (pid <= 0) return null;
+
+            double now = Time.realtimeSinceStartupAsDouble;
+            if (pid == _cachedCategoryPid && now - _cachedCategoryTime < AppCategoryCacheSeconds)
+            {
+                return _cachedCategory;
+            }
+
+            string category = QueryAppCategory(pid);
+            _cachedCategoryPid = pid;
+            _cachedCategory = category;
+            _cachedCategoryTime = now;
+            return category;
+        }
+
+        private string QueryAppCategory(int pid)
+        {
+            try
+            {
+                if (!_categorySelectorsReady)
+                {
+                    _clsRunningApplication = ObjCGetClass("NSRunningApplication");
+                    _clsBundle = ObjCGetClass("NSBundle");
+                    _selRunningAppWithPid = ObjCSelector("runningApplicationWithProcessIdentifier:");
+                    _selBundleUrl = ObjCSelector("bundleURL");
+                    _selBundleWithUrl = ObjCSelector("bundleWithURL:");
+                    _selInfoDictionary = ObjCSelector("infoDictionary");
+                    _categorySelectorsReady = true;
+                }
+                if (_clsRunningApplication == IntPtr.Zero || _clsBundle == IntPtr.Zero) return null;
+
+                IntPtr app = ObjCSendPtrWithInt32(_clsRunningApplication, _selRunningAppWithPid, pid);
+                if (app == IntPtr.Zero) return null;
+
+                // 번들이 없는 프로세스(순수 실행파일)는 bundleURL이 nil이다 — 카테고리도 없다.
+                IntPtr url = ObjCSendPtr(app, _selBundleUrl);
+                if (url == IntPtr.Zero) return null;
+
+                IntPtr bundle = ObjCSendPtrWithPtr(_clsBundle, _selBundleWithUrl, url);
+                if (bundle == IntPtr.Zero) return null;
+
+                // NSDictionary <-> CFDictionary는 toll-free bridge라 이미 선언된 CFDictionaryGetValue를
+                // 그대로 쓸 수 있다(objc_msgSend 오버로드를 하나 덜 만든다 = 마샬링 표면적 축소).
+                IntPtr info = ObjCSendPtr(bundle, _selInfoDictionary);
+                if (info == IntPtr.Zero) return null;
+
+                IntPtr value = CFDictionaryGetValue(info, _keyAppCategoryType);
+                if (value == IntPtr.Zero) return null;
+                if (CFGetTypeID(value) != CFStringGetTypeID()) return null;
+                return CopyCFStringValue(value);
+            }
+            catch (System.Exception e)
+            {
+                // 실패 시 null = "미선언" = 숨기지 않음. 판정을 못 했다고 캐릭터를 감추지는 않는다.
+                Debug.LogWarning($"[전체화면판정] pid {pid}의 앱 카테고리를 읽지 못했습니다" +
+                    $"({e.GetType().Name}) — 게임이 아닌 것으로 간주해 숨기지 않습니다.");
+                return null;
+            }
+        }
 
         // ============================================================================
         // IDockMetricsService — Dock 실측
@@ -1489,6 +1652,7 @@ namespace StickMate.Platform.MacOS
                 case GlobalKey.F:       code = kVK_ANSI_F;  break;
                 case GlobalKey.A:       code = kVK_ANSI_A;  break;
                 case GlobalKey.I:       code = kVK_ANSI_I;  break;
+                case GlobalKey.Comma:   code = kVK_ANSI_Comma; break;
                 default:
                     pressed = false;
                     return false;
@@ -1534,7 +1698,17 @@ namespace StickMate.Platform.MacOS
             // ★ 원점과 DPI 배율을 **한 번의 관측**으로 함께 보고한다(2026-08-29 Retina 대응 라운드).
             // 배율 = 창 폭(OS 포인트) / Screen.width(Unity 픽셀). 폴링마다 재측정되므로 창이 리사이즈되거나
             // 다른 배율의 모니터로 옮겨져도 자동으로 따라간다 — 하드코딩 0.5가 아닌 이유가 이것이다.
-            ScreenCoordinateConverter.ReportOverlayWindowOsRect(osRect);
+            // ★ 2026-09-01 — 원점 위생 검사(신고 "창에서 가끔 갑자기 떨어짐"의 근본 원인 3).
+            // 화면 밖으로 대부분 빠져나간 사각형은 창 애니메이션 도중의 일시적 오독이므로 버리고
+            // 직전 유효값을 유지한다. 판정/영구고착 방지는 ScreenCoordinateConverter가 담당한다.
+            if (_hasDisplayBoundsThisPass)
+            {
+                ScreenCoordinateConverter.ReportOverlayWindowOsRect(osRect, _displayBoundsThisPass);
+            }
+            else
+            {
+                ScreenCoordinateConverter.ReportOverlayWindowOsRect(osRect);
+            }
 
             if (!_overlayOriginLogged || originMoved
                 || Mathf.Abs(ScreenCoordinateConverter.AutoDpiScale - _lastLoggedDpiScale) > 0.01f)
@@ -1626,8 +1800,34 @@ namespace StickMate.Platform.MacOS
             return found;
         }
 
+        /// <summary>
+        /// 발판 폴링을 기다리지 않고 <b>지금 이 프레임에</b> 오버레이 창의 OS 사각형을 재측정해
+        /// ScreenCoordinateConverter에 반영한다. MacOverlayStateEnforcer가 전체화면 재적합
+        /// (최초 확장 / 해상도 변경 후 재무장)을 끝낸 직후 호출한다.
+        ///
+        /// 왜 즉시여야 하는가: 재적합은 창의 크기와 원점을 동시에 바꾼다. 그 사이 컨버터가 옛 원점/배율을
+        /// 들고 있으면 커서<->월드 변환과 발판 좌표가 한 화면만큼 어긋나 캐릭터가 화면 밖으로 튄다.
+        /// CGWindowListCopyWindowInfo 한 번짜리 순수 조회이며(어떤 창도 건드리지 않는다) 재적합
+        /// 성공 시에만 불리므로 상주 비용이 없다.
+        /// </summary>
+        internal void ReportOverlayRectNow()
+        {
+            if (!TryGetSelfWindowRect(out Rect selfRect)) return;
+            if (selfRect.width <= 0f || selfRect.height <= 0f) return;
+            // 열거 패스 밖의 단발성 경로라 디스플레이 경계를 여기서 한 번 더 읽는다(순수 조회).
+            if (TryGetMainDisplayBounds(out Rect display))
+            {
+                ScreenCoordinateConverter.ReportOverlayWindowOsRect(selfRect, display);
+                return;
+            }
+            ScreenCoordinateConverter.ReportOverlayWindowOsRect(selfRect);
+        }
+
         // CaptureOverlayOrigin()이 한 열거 패스 안에서 "가장 큰 자기 창"을 고르기 위한 작업 변수.
         private double _overlayOriginPassArea;
+        // 이번 열거 패스에서 관측한 주 디스플레이 경계(원점 위생 검사에 넘긴다 — 새 시스템 호출 없음).
+        private bool _hasDisplayBoundsThisPass;
+        private Rect _displayBoundsThisPass;
         private bool _overlayOriginLogged;
         // 로그를 배율 변화에도 반응시키기 위한 직전 값(로그 스팸 방지 — 0.3초마다 도는 폴링이다).
         private float _lastLoggedDpiScale = -1f;

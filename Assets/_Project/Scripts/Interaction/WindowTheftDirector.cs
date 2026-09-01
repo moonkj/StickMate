@@ -72,38 +72,62 @@ namespace StickMate.Interaction
         /// windowTheftMinTargetWidthPoints)) 이하인 실제 창"이라는 대상 선정 조건을 그대로 통과해야 한다. 후보 창이 없으면 아무 일도 일어나지 않는다(억지로 큰 창을
         /// 대상으로 삼지 않는다 — 그러면 "밀어도 안 움직임"이 당연해 보여 개그가 죽는다).
         /// </summary>
-        public void ForceTriggerNow(string reason)
-        {
-            if (_player == null || _config == null)
-            {
-                Debug.LogWarning($"[창도둑] 강제 발동 실패({reason}) — 플레이어/설정 배선이 없습니다.");
-                return;
-            }
-            if (SpectacleEventLock.IsActive)
-            {
-                Debug.Log($"[창도둑] 강제 발동 건너뜀({reason}) — 다른 스펙터클({SpectacleEventLock.ActiveKind})이 " +
-                          "진행 중입니다(상호배제 락).");
-                return;
-            }
+        /// <summary>조건에 맞는 작은 창이 없을 때 사용자에게 보여줄 한 줄(36-7 표와 1:1).</summary>
+        public const string NoTargetReason = "지금 붙잡을 만한 작은 창이 없어요";
 
-            var current = _player.Blackboard.Machine.CurrentStateId;
+        /// <summary>창 목록 채널 자체가 없을 때(권한/미지원). 36-7의 "거부(권한)" 행 — 그룹 전체가
+        /// 비활성이 되는 유일한 경우다.</summary>
+        public const string NoWindowListReason = "다른 창 목록을 읽을 수 없어요";
+
+        /// <summary>
+        /// ★ 지금 창 도둑을 시킬 수 있는가 — 회색 처리와 실제 실행이 함께 쓰는 단 하나의 판정
+        /// (docs/UX_FLOW.md 36-7). 27-1의 대상 선정 조건(폭 상한 이하인 실제 창)까지 여기서 본다.
+        /// </summary>
+        public CommandAvailability GetAvailability()
+        {
+            if (_player == null || _config == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
+                return CommandAvailability.Missing;
+
+            if (SpectacleEventLock.IsActive)
+                return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(SpectacleEventLock.ActiveKind));
+
+            StickmanStateId current = _player.Blackboard.Machine.CurrentStateId;
             if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
+                return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(current));
+
+            // 후보 소스 자체가 없다 = 창 열거 채널 부재(권한/미지원). "작은 창이 없다"와는 다른 사실이라
+            // 다른 문구를 준다 — 사용자가 창을 하나 더 열어도 해결되지 않는 상황이기 때문이다.
+            if (ResolveCandidateSource() == null)
+                return CommandAvailability.Blocked(NoWindowListReason);
+
+            if (!TryFindTargetWindow(out _))
+                return CommandAvailability.Blocked(NoTargetReason);
+
+            return CommandAvailability.Ready;
+        }
+
+        /// <returns>실제로 시작했는가. 기존 단축키 호출부는 반환값을 무시하면 되므로 하위 호환이다.</returns>
+        public bool ForceTriggerNow(string reason)
+        {
+            CommandAvailability availability = GetAvailability();
+            if (!availability.IsReady)
             {
-                Debug.Log($"[창도둑] 강제 발동 건너뜀({reason}) — 지금은 {current} 중입니다(Idle/Walk에서만 시작).");
-                return;
+                // 2026-08-29: 종전에는 "찾지 못했습니다"만 찍어서, 강제 발동이 실패해도 **폭 조건에
+                // 걸린 건지 후보 목록 자체가 비어 있는 건지** 구분할 수 없었다(직전 라운드에서 창 도둑을
+                // 실물로 한 번도 못 본 채로 남은 직접적인 원인이다). 실제 후보 목록과 각 창의 폭을
+                // 그대로 찍어 다음 실행 한 번으로 원인이 특정되게 한다.
+                Debug.Log($"[창도둑] 강제 발동 건너뜀({reason}) — {availability.Reason}. {BuildTargetSearchDiagnostic()}");
+                return false;
             }
 
             if (!TryFindTargetWindow(out PlatformFoothold target))
             {
-                // 2026-08-29: 종전에는 여기서 "찾지 못했습니다"만 찍어서, 강제 발동이 실패해도 **폭 조건에
-                // 걸린 건지 후보 목록 자체가 비어 있는 건지** 구분할 수 없었다(직전 라운드에서 창 도둑을
-                // 실물로 한 번도 못 본 채로 남은 직접적인 원인이다). 실제 후보 목록과 각 창의 폭을
-                // 그대로 찍어 다음 실행 한 번으로 원인이 특정되게 한다.
-                Debug.Log($"[창도둑] 강제 발동 건너뜀({reason}) — {BuildTargetSearchDiagnostic()}");
-                return;
+                Debug.Log($"[창도둑] 강제 발동 건너뜀({reason}) — {NoTargetReason}(대상 재선정 단계). " +
+                    BuildTargetSearchDiagnostic());
+                return false;
             }
 
-            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.WindowTheft, this)) return;
+            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.WindowTheft, this)) return false;
 
             _targetHandle = target.Handle;
             _targetRectSnapshot = target.ScreenRect;
@@ -118,6 +142,7 @@ namespace StickMate.Interaction
                 $"폭={_targetRectSnapshot.width:F0}pt(상한 {WindowTheftTargetRules.ComputeMaxTargetWidthOsPx(ComputeCharacterHeightOsPx(), _config):F0}pt), " +
                 $"가려짐={(IsHandleInFootholdList(_targetHandle) ? "아니오(발판 목록에도 보임)" : "예(다른 창 뒤 — 발판 목록에는 없음)")}. " +
                 "실제 창은 1픽셀도 움직이지 않으며(원칙 3), 화면에 보이는 것은 복사본(고스트) 사각형뿐입니다.");
+            return true;
         }
 
         private void Update()

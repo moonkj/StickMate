@@ -12,7 +12,7 @@ namespace StickMate.Tests.EditMode
     /// ============================================================================
     /// 무엇을 잡으려는가
     /// ============================================================================
-    ///  (1) <b>이중 정의 금지</b>: 아이템 28종의 이름/자리/요구레벨을 <see cref="EquipmentModel"/> 경유로
+    ///  (1) <b>이중 정의 금지</b>: 장비 전종의 이름/자리/요구레벨을 <see cref="EquipmentModel"/> 경유로
     ///      읽은 값과 대조한다 — 한 글자라도 달라지면 실패한다. 이 프로젝트가 이미 두 번 겪은
     ///      "같은 사실이 두 곳에 적혀 조용히 어긋나는" 실패 유형의 직접 잠금이다.
     ///      (2026-08-30 32종 확장에서 표의 주인이 EquipmentModel -> ItemCatalog로 바뀌었지만,
@@ -40,8 +40,14 @@ namespace StickMate.Tests.EditMode
             EquipmentModel.ResetForTesting();
         }
 
+        /// <summary>카테고리당 아이템 수. 7×4=28 -> <b>7×6=42</b>(2026-09-01 카테고리당 +2종).
+        /// 숫자를 여기 <b>한 곳에만</b> 적는다 — 아래 두 단언이 이 상수에서 파생된다.</summary>
+        private const int ItemsPerSlot = 6;
+
+        private const int EquipmentTotal = ItemsPerSlot * EquipmentModel.SlotCount;   // 42
+
         [Test]
-        public void 장비_항목은_7카테고리_4아이템이고_EquipmentModel과_같은_사실을_말한다()
+        public void 장비_항목은_7카테고리_고정개수이고_EquipmentModel과_같은_사실을_말한다()
         {
             StickConfig config = LoadDefaultConfig();
             int found = 0;
@@ -49,8 +55,9 @@ namespace StickMate.Tests.EditMode
             for (int s = 0; s < EquipmentModel.SlotCount; s++)
             {
                 var slot = (EquipmentSlot)s;
-                Assert.AreEqual(4, EquipmentModel.ItemCount(slot),
-                    $"[{EquipmentModel.SlotName(slot)}] 카테고리의 아이템이 4개가 아닙니다(2026-08-30 표정 삭제 후 7×4=28).");
+                Assert.AreEqual(ItemsPerSlot, EquipmentModel.ItemCount(slot),
+                    $"[{EquipmentModel.SlotName(slot)}] 카테고리의 아이템이 {ItemsPerSlot}개가 아닙니다 " +
+                    "(2026-08-30 표정 삭제로 7×4 -> 2026-09-01 카테고리당 +2종으로 7×6=42).");
 
                 for (int i = 0; i < EquipmentModel.ItemCount(slot); i++)
                 {
@@ -72,8 +79,8 @@ namespace StickMate.Tests.EditMode
                 }
             }
 
-            Assert.AreEqual(28, found, "장비 아이템이 28종이 아닙니다(표정 4종 삭제 후).");
-            Assert.AreEqual(28, ItemCatalog.EquipmentCount);
+            Assert.AreEqual(EquipmentTotal, found, $"장비 아이템이 {EquipmentTotal}종이 아닙니다.");
+            Assert.AreEqual(EquipmentTotal, ItemCatalog.EquipmentCount);
         }
 
         [Test]
@@ -194,7 +201,7 @@ namespace StickMate.Tests.EditMode
         }
 
         [Test]
-        public void 장비_28종은_전부_아이콘을_갖고_행동은_아이콘이_없다()
+        public void 장비는_전부_아이콘을_갖고_행동은_아이콘이_없다()
         {
             for (int i = 0; i < ItemCatalog.Count; i++)
             {
@@ -296,9 +303,17 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual("착용 중", cap.ResolveStatusSlot(config),
                 "새 캐릭터는 천모자를 걸치고 시작합니다(핸드오프 확정 기본 차림).");
 
+            // ★ 2026-09-01 — 여기 있던 "⌃⌥⌘A" 하드코딩을 지웠다. 그 리터럴은 <b>macOS 표기</b>라,
+            // 테스트가 그것을 잠그는 동안 Windows 사용자에게는 존재하지 않는 조합이 안내되고 있었다
+            // (Windows 패리티 감사 C3). 이제 표기를 만드는 곳은 Core/ShortcutLabel 하나뿐이고,
+            // 여기서 확인할 사실은 "카탈로그가 <b>그 단일 소스를</b> 쓰는가"다.
+            // 표기 자체가 플랫폼별로 옳은지는 ShortcutLabelParityTests가 따로 잠근다 —
+            // 이 파일이 문자열을 다시 적으면 단일 소스가 둘이 된다.
             ItemCatalogEntry archery = FindById("action.archery");
-            Assert.AreEqual("⌃⌥⌘A", archery.ResolveStatusSlot(config),
+            Assert.AreEqual(ShortcutLabel.Chord("A"), archery.ResolveStatusSlot(config),
                 "직접 부를 수 있는 행동의 상태 슬롯에는 단축키가 나와야 합니다.");
+            StringAssert.EndsWith("A", archery.ResolveStatusSlot(config),
+                "단축키 문구가 동작키(A)로 끝나지 않습니다 — 조합키만 남고 키가 빠졌습니다.");
 
             ItemCatalogEntry tidy = FindById("action.desktop_tidy");
             Assert.AreEqual(ItemCatalogEntry.AutoOnlyStatus, tidy.ResolveStatusSlot(config),

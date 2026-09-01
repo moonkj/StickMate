@@ -5,12 +5,24 @@ using StickMate.Platform;
 
 namespace StickMate.Interaction
 {
-    /// <summary>부채꼴 메뉴의 세 칸. 값(0/1/2)이 곧 부채꼴에서의 슬롯 순서다(θ₀+60 / θ₀ / θ₀−60).</summary>
+    /// <summary>
+    /// 부채꼴 메뉴의 네 칸. <b>값이 곧 슬롯 순서</b>다 — θ₀ + (1.5 − i)·30°
+    /// (i=0 → θ₀+45°, i=3 → θ₀−45°). docs/UX_FLOW.md 36-3-4.
+    ///
+    /// ★ <b>기존 0/1/2는 재번호하지 않는다.</b> 32절이 "값이 곧 슬롯 순서"라고 못박았으므로 중간 삽입은
+    /// Todo 2→3 재번호를 일으키고, 그 값을 읽는 switch가 조용히 어긋날 수 있다. 네 버튼이 기어에서
+    /// 등거리(118~123pt)라 슬롯별 조작 비용 차이가 없어 "새 항목을 좋은 자리에" 논쟁 자체가 성립하지
+    /// 않는다 — 관례대로 끝에 붙인다.
+    /// </summary>
     public enum GearMenuButton
     {
         FocusMode = 0,
         Character = 1,
         Todo = 2,
+
+        /// <summary>2026-08-31 신설 — 행동 명령창(<see cref="ActionCommandPopover"/>) 진입점.
+        /// 이 버튼은 캐릭터의 상태를 <b>보는</b> 곳이 아니라 캐릭터에게 <b>시키는</b> 곳이다(36-5).</summary>
+        Action = 3,
     }
 
     /// <summary>접힘의 종류 — <b>움직임이 서로 달라야</b> "내가 접었다"와 "시간이 지나 닫혔다"가 구분된다.</summary>
@@ -27,9 +39,61 @@ namespace StickMate.Interaction
     }
 
     /// <summary>
-    /// ★ 톱니를 짧게 클릭했을 때 <b>촤르륵 펼쳐지는 원버튼 3개</b> — docs/UX_FLOW.md <b>32절</b> 확정 설계.
+    /// ★ 톱니를 짧게 클릭했을 때 <b>촤르륵 펼쳐지는 원버튼 4개</b> — docs/UX_FLOW.md <b>32절 + 36절</b>.
     /// 2026-08-30 사용자 원문: "기어메뉴를 클릭했을때 집중모드 버튼 캐릭터 버튼 오늘 할일 버튼 3가지가
     /// 촤르륵 원버튼 3개가 나오고 각 버튼을 클릭했을때 세부 메뉴로 들어가도록".
+    /// 2026-08-31 사용자 원문: "버튼 메뉴들의 텍스트는 전부삭제 필요 ... 기어아이콘에 메뉴하나 추가해서
+    /// 행동들은 거기서 클릭하면 창 하나가 떠서 행동 명령 내릴수 있게".
+    ///
+    /// ============================================================================
+    /// 왜 버튼을 4개로 늘렸는데 부채꼴이 <b>더</b> 튼튼해지는가 (36-3, 반직관적이지만 계산이 그렇다)
+    /// ============================================================================
+    /// 32-1의 3개 배치(60° 간격 / R62)는 스팬이 <b>120°</b>였고, 기본 기어 위치에서 이미 평행이동
+    /// 35.5pt를 받아 기어→버튼 실거리가 84/97/89pt로 제각각이었다 — "궤도"라는 말이 사실이 아니었다.
+    /// 모서리에서 부채꼴을 막는 것은 반지름이 아니라 <b>각도 스팬</b>이므로, 간격을 30°로 줄이고 반지름을
+    /// 111pt로 키우면 스팬이 <b>90°</b>가 되어 평행이동이 사실상 0이 된다(실측 격자 전수 계산: 평균
+    /// 0.7pt / 최대 9pt, 세로일렬 폴백 0건). 반지름은 기어에서 화면 <b>안쪽</b>으로 뻗는 방향이라 화면
+    /// 여백을 거의 소모하지 않는다. 결과적으로 기어→버튼 실거리가 118~123pt로 균일해진다.
+    ///
+    /// ============================================================================
+    /// 라벨(이름표)은 <b>전부 지웠다</b> — 그리고 그 비용은 다른 데서 갚는다 (36-4)
+    /// ============================================================================
+    /// 32-1은 "심볼만 있는 원은 반드시 오독된다(툴팁을 띄울 상시 포커스가 없다)"며 라벨 알약을 넣었고,
+    /// 그 논거 자체는 여전히 옳다. 지우라는 것은 사용자 지시이므로 지우되 비용은 <b>온보딩 1회 안내</b>
+    /// (35-2)로 갚는다 — 아이콘 전용 내비게이션의 정답은 툴팁이 아니라 최초 1회 학습이다(Dock/툴바의
+    /// 실증 사례). 호버 피드백(표면/테두리/심볼 색 0.09초)은 그대로 남으므로 "지금 이걸 누르면 이게
+    /// 눌린다"는 보장은 유지된다.
+    ///
+    /// 라벨 <b>알약</b>(버튼마다 상시 붙어 있던 이름표) 코드는 완전히 지웠다 — 끄기 위해 죽은 채로
+    /// 남겨두는 코드는 반드시 썩고, 라벨 폭이 클램프 상자 계산에 다시 끼어들면 위 36-3의 기하 근거가
+    /// 조용히 무너지기 때문이다.
+    ///
+    /// ============================================================================
+    /// ★ 호버 이름표 — 2026-08-31 사용자 추가 지시
+    /// ============================================================================
+    /// 사용자 원문: <i>"기어메뉴에서 4가지중 마우스로 선택되고있는 메뉴만 텍스트로 어떤 메뉴인지 이름이
+    /// 보여야함"</i>. 즉 <b>상시 이름표는 없애되, 커서가 올라간 하나만</b> 이름을 보여준다.
+    ///
+    /// 이것은 앞선 지시("텍스트 전부 삭제")를 뒤집는 것이 아니라 <b>36-4가 인정한 비용을 직접 갚는
+    /// 것</b>이다. 32-1은 "심볼만 있는 원은 반드시 오독된다(이 앱은 툴팁을 띄울 상시 포커스가 없다)"고
+    /// 했고 그 논거는 옳았다. 그런데 우리는 이미 <see cref="InfoGearIconWidget"/>에서 커서를 전역
+    /// 폴링하고 있으므로 <b>"상시 포커스가 없다"는 전제 자체가 더 이상 사실이 아니다</b> — 툴팁을 띄울
+    /// 수 있다. 화면에는 언제나 이름이 <b>최대 하나</b>만 있으므로 "글자를 없애 달라"는 요구(어수선함
+    /// 제거)와 "무슨 버튼인지 알고 싶다"는 요구가 동시에 만족된다.
+    ///
+    /// <b>★ 설계 제약(36-3의 기하를 지키기 위해 반드시 지킨다)</b>:
+    ///  ① 호버 이름표는 <b>배치 계산에 참여하지 않는다.</b> 클램프 상자는 여전히 56×56 정사각이고
+    ///     버튼 위치는 이름표가 있든 없든 같다. 이름표를 상자에 넣는 순간 36-3-1의 전수 계산 근거가
+    ///     무너진다(그게 정확히 예전 라벨 알약이 저지른 일이다). 대신 <b>이름표 자신이</b> 화면 여백
+    ///     안으로 클램프된다(아래로 안 들어가면 원 위로 뒤집는다).
+    ///  ② <b>인스턴스는 하나뿐이다.</b> 버튼마다 하나씩 두지 않는다 — 동시에 한 커서만 존재하므로
+    ///     "두 개가 같이 보이는" 상태를 <b>구조적으로 불가능</b>하게 만드는 편이 그 버그를 테스트로
+    ///     쫓는 것보다 싸다.
+    ///  ③ <see cref="UnionScreenRect"/>(클릭관통 차단 영역)에 <b>포함하지 않는다.</b> 이름표는 누를
+    ///     수 있는 물건이 아니므로, 포함시키면 차단 영역만 넓어져 비침해가 나빠진다(원칙 2).
+    ///
+    /// 남는 글자는 이 호버 이름표와 <b>오늘 할일 미완료 배지</b>뿐이며, 배지는 이름표가 아니라
+    /// <b>상태 수량</b>이다(지우면 "안 읽은 개수"라는 정보가 앱에서 사라지고 대체 표시 수단이 없다).
     ///
     /// ============================================================================
     /// 왜 LineRenderer 선화가 아니라 uGUI인가 (32-9 (E))
@@ -50,10 +114,10 @@ namespace StickMate.Interaction
     /// ============================================================================
     /// 화면 밖으로 나가지 않는다 — <b>부채꼴 전체를 회전</b>시킨다 (32-1)
     /// ============================================================================
-    /// 개별 버튼을 화면 안으로 밀어 넣으면 모서리에서 세 버튼이 한 점으로 뭉개져 히트 원이 겹치고,
+    /// 개별 버튼을 화면 안으로 밀어 넣으면 모서리에서 네 버튼이 한 점으로 뭉개져 히트 원이 겹치고,
     /// 그러면 <b>보이는 것과 실제로 눌리는 것이 달라진다</b>(먼저 검사되는 버튼이 이긴다). 그래서
     /// 형태를 유지한 채 문제를 푼다: ① θ₀를 ±15°씩 최대 ±90°까지 돌려보고 → ② 세로 일렬 폴백 →
-    /// ③ 지름 축소(44→36) → ④ 그래도 안 되면 <b>세 버튼을 같은 벡터로</b> 평행이동(형태 보존).
+    /// ③ 지름 축소(44→36) → ④ 그래도 안 되면 <b>네 버튼을 같은 벡터로</b> 평행이동(형태 보존).
     ///
     /// 기준각 θ₀는 사분면 부호가 아니라 <b>(화면 중심 − 기어 중심)의 실제 각도를 45° 단위로 스냅</b>한
     /// 값이다. 부호 방식이면 기어가 화면 위쪽 한가운데 있을 때 아래로 곧게 못 펼치고, 중앙선 근처에서
@@ -61,15 +125,19 @@ namespace StickMate.Interaction
     /// </summary>
     public sealed class GearRadialMenuWidget : MonoBehaviour
     {
-        public const int ButtonCount = 3;
+        public const int ButtonCount = 4;
 
         // ==================== 확정 수치 (docs/UX_FLOW.md 32-1 / 32-2) ====================
 
         public const float ButtonDiameterPoints = 44f;
         public const float ShrunkDiameterPoints = 36f;
         public const float HoverScale = 48f / 44f;
-        public const float OrbitRadiusPoints = 62f;
-        public const float ButtonAngleStepDegrees = 60f;
+        /// <summary>36-3-3: 62 → 111pt. 하한은 기어 판정 반경 31.36 + 버튼 판정 26 = 57.4pt이므로
+        /// 여유 53.6pt다. 반지름은 화면 안쪽으로 뻗어 여백을 거의 소모하지 않는다.</summary>
+        public const float OrbitRadiusPoints = 111f;
+
+        /// <summary>36-3-3: 60 → 30°. 4개 × 30° = 스팬 90°(기존 3개 × 60° = 120°보다 <b>좁다</b>).</summary>
+        public const float ButtonAngleStepDegrees = 30f;
         public const float HitPaddingPoints = 4f;
         public const float ScreenMarginPoints = 8f;
 
@@ -80,15 +148,19 @@ namespace StickMate.Interaction
         /// </summary>
         public const float TopMarginPoints = 40f;
 
-        public const float LabelHeightPoints = 16f;
-        public const float LabelGapPoints = 4f;
-        public const float ClampBoxExtraWidthPoints = 12f;
+        /// <summary>클램프 상자 = 원 지름 + 이만큼(Ø44 → <b>56×56 정사각</b>, 중심 = 원 중심).
+        /// 라벨이 사라지면서 상자의 비대칭 세로 오프셋(중심 아래 +10pt)도 함께 사라졌다 — 이제 상자와
+        /// 원의 중심이 같으므로 "보이는 원"과 "화면 밖 판정 영역"이 처음으로 같은 것을 가리킨다.</summary>
+        public const float ClampBoxPaddingPoints = 12f;
 
         public const float ExpandSecondsPerButton = 0.19f;
-        public const float ExpandStaggerSeconds = 0.055f;
+
+        /// <summary>36-3-3: 0.055 → 0.037초. "촤르륵"의 예산은 <b>0.30초로 정해져 있다</b>(32-2).
+        /// 0.055를 그대로 두면 버튼 4개에서 0.355초가 된다 — 버튼이 하나 늘었다고 사용자를 매번 18%
+        /// 더 기다리게 만들지 않는다. 0.19 + 0.037×3 = 0.301초로 예산 안에 들어온다.</summary>
+        public const float ExpandStaggerSeconds = 0.037f;
+
         public const float AlphaFadeInSeconds = 0.11f;
-        public const float LabelDelaySeconds = 0.10f;
-        public const float LabelFadeSeconds = 0.12f;
         public const float StartRadiusFraction = 0.35f;
         public const float StartScale = 0.62f;
 
@@ -98,9 +170,57 @@ namespace StickMate.Interaction
         public const float AutoCollapseIdleSeconds = 6f;
 
         public const float HoverSeconds = 0.09f;
+
+        // ---- 호버 이름표(2026-08-31 사용자 추가 지시) ----
+
+        /// <summary>이름표 알약 높이. 부채꼴 배치 계산에는 <b>참여하지 않는다</b>(위 클래스 문서 ①).</summary>
+        public const float HoverLabelHeightPoints = 18f;
+
+        /// <summary>원 가장자리에서 이름표까지의 간격.</summary>
+        public const float HoverLabelGapPoints = 8f;
+
+        /// <summary>글자 좌우 여백(알약 폭 = 글자 폭 + 이것).</summary>
+        public const float HoverLabelPaddingPoints = 14f;
+
+        /// <summary>나타나고 사라지는 시간 — 원의 호버 강조(<see cref="HoverSeconds"/>)와 <b>같은 값</b>을
+        /// 쓴다. 이름이 강조보다 늦게 뜨면 "느리다"가 아니라 "따로 논다"로 보인다.</summary>
+        public const float HoverLabelFadeSeconds = HoverSeconds;
         public const float PressFlashSeconds = 0.09f;
         public const float MinClickableProgress = 0.5f;
 
+        // ---- 최초 1회 온보딩 안내(2026-09-01 — 36-4가 라벨 삭제의 대가로 약속한 부채의 지급) ----
+        //
+        // ★ 이 클래스 문서가 스스로 적어 둔 빚이다: "지우라는 것은 사용자 지시이므로 지우되 비용은
+        //   <b>온보딩 1회 안내</b>(35-2)로 갚는다 — 아이콘 전용 내비게이션의 정답은 툴팁이 아니라
+        //   최초 1회 학습이다." 그런데 그 코드가 없어서(2026-09-01 페르소나 M13, grep 0건) 비용을
+        //   매번 사용자가 대신 내고 있었다. 여기가 그 지급이다.
+        //
+        // ★ 형식은 35-2-4의 "팁" 규격을 따른다: 말풍선이 아니라 <b>작은 알약 캡션 4.5초</b>.
+        //   말풍선을 쓰면 상태에서 파생되지 않은 문자열이 대사에 섞여 원칙 1이 흐려진다.
+        //
+        // ★ <b>반복 노출 금지</b>가 이 기능의 절반이다. 이미 아는 사용자에게 또 뜨면 그게 방해다
+        //   (원칙 2). 그래서 "봤다"는 사실은 <b>디스크에</b> 남고, 뜨는 그 순간 기록한다.
+
+        /// <summary>안내 알약이 화면에 머무는 시간(초) — 35-2-4의 4.5초.</summary>
+        public const float OnboardingHintSeconds = 4.5f;
+
+        /// <summary>한 줄이다. 두 줄이 필요하면 그건 안내가 아니라 설명서다.</summary>
+        public const string OnboardingHintText = "커서를 올리면 각 버튼 이름이 보여요";
+
+        /// <summary>
+        /// "이 안내를 이미 봤다"의 저장 자리.
+        ///
+        /// <para>★ <b>왜 세이브 파일(CharacterSaveStore)이 아닌가</b>: 그쪽에 필드를 하나 더하려면
+        /// 스키마 버전을 올리고 마이그레이션을 붙여야 하는데, 2026-09-01 현재 그 파일은 다른 작업자가
+        /// 다운그레이드 방어(J1)를 들여다보는 중이다. <b>안내를 한 번 봤다</b>는 사실 하나 때문에
+        /// 세이브 스키마를 흔드는 것은 위험 대비 이득이 맞지 않는다. 저장되는 것은 부울 하나뿐이고
+        /// 유실돼도 최악이 "안내가 한 번 더 뜬다"이다(사용자 데이터가 아니다).
+        /// 리더가 옳다고 판단하면 훗날 세이브 파일로 옮긴다 — 교차 레이어 로그에 남겨 두었다.</para>
+        /// </summary>
+        private const string OnboardingSeenKey = "StickMate.GearMenu.OnboardingSeen.v1";
+
+        /// <summary>세로 일렬 폴백 간격. 라벨이 사라져 "지름 + 라벨 간격 + 라벨 높이"라는 하한 계산식이
+        /// 함께 사라졌으므로 <b>52pt 고정</b>이다(36-3-3).</summary>
         public const float ColumnFallbackSpacingPoints = 52f;
         public const float RotationSearchStepDegrees = 15f;
         public const float RotationSearchMaxDegrees = 90f;
@@ -110,26 +230,42 @@ namespace StickMate.Interaction
         ///
         /// 왜 필요한가(실측으로 드러난 기하 모순): 톱니의 기본 위치는 화면 오른쪽 끝에서 30pt다. 실측
         /// 화면(1512×982pt)에서 클램프 상자가 화면 안에 들어오려면 버튼 중심이 θ∈[153°, 256°]에 있어야
-        /// 하는데, 그 창은 103°이고 부채꼴은 120°가 필요하다 — <b>어떤 각도로도 회전만으로는 성립하지
-        /// 않는다</b>. 실제로 이 단계가 없을 때 기본 위치에서 곧장 세로 일렬 폴백으로 떨어지는 것을
+        /// 하는데, 그 창은 103°이고 <b>3개 배치의</b> 부채꼴은 120°가 필요했다 — 어떤 각도로도 회전만으로는
+        /// 성립하지 않았다. 실제로 이 단계가 없을 때 기본 위치에서 곧장 세로 일렬 폴백으로 떨어지는 것을
         /// 스크린샷으로 확인했다(= 사용자가 보게 될 기본 화면이 폴백이 된다).
         ///
-        /// 평행이동은 <b>형태를 완전히 보존</b>한다(세 버튼의 상대 위치가 그대로다). 32-1이 금지한 것은
+        /// ★ 2026-08-31(36-3) 이후 스팬이 90°로 줄어 이 단계가 실제로 걸리는 일은 거의 없어졌다
+        /// (실측 격자 전수 계산: 평균 이동 0.7pt / 최대 9pt). <b>그래도 지운다는 선택은 하지 않는다</b> —
+        /// 800×600 같은 좁은 화면에서는 여전히 39pt까지 필요하고, 이 사다리가 없으면 그 화면은 곧장
+        /// 세로 일렬 폴백으로 떨어진다.
+        ///
+        /// 평행이동은 <b>형태를 완전히 보존</b>한다(네 버튼의 상대 위치가 그대로다). 32-1이 금지한 것은
         /// 버튼을 <b>따로따로</b> 밀어 호를 찌그러뜨리는 일이지 강체 이동이 아니다.
         /// </summary>
         public const float MaxGroupShiftPoints = 48f;
 
-        /// <summary>세 버튼이 전부 안착하기까지(0.19 + 0.055×2 = 0.30초).</summary>
+        /// <summary>네 버튼이 전부 안착하기까지(0.19 + 0.037×3 = 0.301초 — 32-2의 0.30초 예산).</summary>
         public static float ExpandTotalSeconds => ExpandSecondsPerButton + ExpandStaggerSeconds * (ButtonCount - 1);
 
-        /// <summary>포스트잇(30000)·캐릭터 창(31000)보다 위, 앱 제어 메뉴(32760)보다 아래 —
-        /// 부채꼴은 방금 사용자가 부른 것이라 다른 상시 패널에 가리면 안 되지만, 긴급 종료 수단
-        /// (제어 메뉴)을 가려서는 안 된다.</summary>
+        /// <summary>포스트잇(30000)·캐릭터 창(31000)보다 위, 팝오버(31700)보다 아래 —
+        /// 부채꼴은 방금 사용자가 부른 것이라 다른 상시 패널에 가리면 안 되고, 자기가 낳은 팝오버를
+        /// 가려서도 안 된다. (2026-08-31: 32760에 있던 우클릭 제어 메뉴는 폐지됐다 — 36-9.)</summary>
         private const int SortingOrder = 31500;
         private const float SymbolStroke = 2.0f;
         private const float SymbolBoxPoints = 24f;
 
-        private static readonly string[] Labels = { "집중 모드", "캐릭터", "오늘 할일" };
+        /// <summary>
+        /// 네 진입점의 이름. 두 곳에서 쓴다: <b>호버 이름표</b>(커서가 올라간 하나만)와 <b>로그/접힘
+        /// 사유</b>("[오늘 할일] 재클릭" 같은 진단 줄에서 인덱스 숫자만 남으면 로그를 읽을 수 없다).
+        ///
+        /// 두 용도가 같은 배열을 쓰는 이유: 로그와 화면이 다른 이름을 부르면 사용자 신고("행동 버튼이
+        /// 안 눌려요")를 로그에서 찾을 수 없다. 이름은 한 곳에서만 정의한다.
+        /// </summary>
+        private static readonly string[] ButtonNames = { "집중 모드", "캐릭터", "오늘 할일", "행동" };
+
+        /// <summary>버튼 이름(테스트/진단 전용) — 호버 이름표가 실제로 이 값을 쓰는지 대조한다.</summary>
+        public static string NameOf(int index)
+            => index >= 0 && index < ButtonNames.Length ? ButtonNames[index] : string.Empty;
 
         // ==================== 내부 상태 ====================
 
@@ -147,10 +283,6 @@ namespace StickMate.Interaction
             public Image[] SymbolFixedParts;   // 색이 고정된 획(체크마크 = 완료를 뜻하는 Accent) — 알파만 따라간다.
             public Image RingTrack;          // 집중 모드 전용 — 세션 중에는 잔여 시간 호가 된다.
             public Image RingFill;
-            public RectTransform LabelPill;
-            public Image LabelSurface;
-            public Image LabelBorder;
-            public Text LabelText;
             public RectTransform Badge;      // 오늘 할일 전용 미완료 배지.
             public Image BadgeSurface;
             public Text BadgeText;
@@ -159,7 +291,6 @@ namespace StickMate.Interaction
             public float Progress;
             public float Hover;              // 0~1.
             public float FlashTimer = -1f;
-            public float LabelWidth = 44f;
             public bool CollapsingNow;
         }
 
@@ -168,6 +299,7 @@ namespace StickMate.Interaction
         private FocusWatchDirector _focusDirector;
         private FocusSessionPopover _focusPopover;
         private TodoBoardPopover _todoPopover;
+        private ActionCommandPopover _actionPopover;
 
         private Canvas _canvas;
         private CanvasScaler _scaler;
@@ -184,7 +316,26 @@ namespace StickMate.Interaction
         private float _baseAngleDegrees = 225f;
         private Vector2 _gearCenterPoints;
         private Vector2 _screenPointsAtLayout;
-        private float _labelClockTimer;
+        // 호버 이름표 — 인스턴스 하나뿐이다(클래스 문서 ②).
+        private RectTransform _hoverLabel;
+        private Image _hoverLabelSurface;
+        private Image _hoverLabelBorder;
+        private Text _hoverLabelText;
+        private float _hoverLabelAlpha;
+        private int _hoverLabelIndex = -1;      // 지금 알약에 적혀 있는 이름의 버튼(-1 = 없음).
+        private readonly float[] _nameWidths = new float[ButtonCount];
+
+        // 온보딩 안내 알약 — 호버 이름표와 <b>다른 인스턴스</b>다(둘은 절대 동시에 보이지 않는다:
+        // 호버가 시작되는 순간 이쪽이 물러난다. 아래 ApplyOnboardingHint 참고).
+        private RectTransform _onboardingHint;
+        private Image _onboardingHintSurface;
+        private Image _onboardingHintBorder;
+        private Text _onboardingHintText;
+        private float _onboardingHintWidth;
+        private float _onboardingHintAlpha;
+        private float _onboardingHintTimer = -1f;   // 음수 = 안내 중이 아님.
+
+        private float _clockTimer;
         private int _lastShownRemainingSeconds = -1;
         private int _lastShownBadgeCount = -1;
 
@@ -199,12 +350,52 @@ namespace StickMate.Interaction
         /// <summary>팝오버를 띄운 채 남아 있는 버튼(-1 = 없음).</summary>
         public int AnchoredButton => _activeIndex;
 
-        /// <summary>세 버튼의 <b>클램프 상자</b>를 모두 덮는 사각형(Unity 스크린 픽셀). 톱니가 클릭관통
+        /// <summary>네 버튼의 <b>클램프 상자</b>를 모두 덮는 사각형(Unity 스크린 픽셀). 톱니가 클릭관통
         /// 차단 콜라이더를 이만큼 넓혀야 버튼 클릭이 밑의 앱으로 새지 않는다.</summary>
         public Rect UnionScreenRect { get; private set; }
 
         /// <summary>지금 부채꼴이 쓰는 기준각(도). 회귀 테스트가 45° 스냅을 직접 확인한다.</summary>
         public float BaseAngleDegrees => _baseAngleDegrees;
+
+        /// <summary>호버 이름표에 지금 보이는 글자(안 보이면 빈 문자열) — "선택된 것만 이름이 보인다"를
+        /// 회귀 테스트가 직접 확인한다.</summary>
+        public string VisibleHoverLabel
+            => _hoverLabel != null && _hoverLabelAlpha > 0.5f && _hoverLabelText != null
+                ? _hoverLabelText.text : string.Empty;
+
+        /// <summary>지금 온보딩 안내 알약에 보이는 글자(안 보이면 빈 문자열) — 회귀 테스트 창구.</summary>
+        public string VisibleOnboardingHint
+            => _onboardingHint != null && _onboardingHintAlpha > 0.5f && _onboardingHintText != null
+                ? _onboardingHintText.text : string.Empty;
+
+        /// <summary>이 컴퓨터에서 안내를 이미 본 적이 있는가(디스크 기록).</summary>
+        public static bool OnboardingHintSeen => PlayerPrefs.GetInt(OnboardingSeenKey, 0) == 1;
+
+        /// <summary>테스트 전용 — "처음 쓰는 사용자"로 되돌린다. 제품 경로에는 지우는 코드가 없다.</summary>
+        public static void ResetOnboardingHintForTests()
+        {
+            PlayerPrefs.DeleteKey(OnboardingSeenKey);
+            PlayerPrefs.Save();
+        }
+
+        /// <summary>테스트 전용 — "이미 본 사용자"로 만든다.</summary>
+        public static void MarkOnboardingHintSeenForTests()
+        {
+            PlayerPrefs.SetInt(OnboardingSeenKey, 1);
+            PlayerPrefs.Save();
+        }
+
+        /// <summary>호버 이름표의 화면 사각형(Unity 스크린 픽셀). 안 보이면 빈 사각형.</summary>
+        public Rect HoverLabelScreenRect
+        {
+            get
+            {
+                if (_hoverLabel == null || _hoverLabelAlpha <= 0.5f) return new Rect();
+                Vector2 size = _hoverLabel.sizeDelta * PixelsPerPoint;
+                Vector2 center = PointsToScreen(_hoverLabel.anchoredPosition);
+                return new Rect(center.x - size.x * 0.5f, center.y - size.y * 0.5f, size.x, size.y);
+            }
+        }
 
         /// <summary>지금 버튼 지름(포인트) — 축소 폴백이 걸렸는지 알 수 있다.</summary>
         public float ButtonDiameter => _diameterPoints;
@@ -227,7 +418,7 @@ namespace StickMate.Interaction
             return new Rect(c.x - r, c.y - r, r * 2f, r * 2f);
         }
 
-        /// <summary>세 버튼 <b>중심</b> 사이의 최소 거리(포인트) — 겹침 회귀 테스트용.
+        /// <summary>네 버튼 <b>중심</b> 사이의 최소 거리(포인트) — 겹침 회귀 테스트용.
         /// 아직 <see cref="BuildUi"/> 전(Awake 이전)이면 <see cref="float.MaxValue"/>를 돌려준다:
         /// "가장 좁은 간격"의 항등원이라 어떤 최소값 단언도 통과시키지 않고 조용히 넘어가지 않는다.</summary>
         public float MinimumCenterSpacingPoints()
@@ -246,13 +437,13 @@ namespace StickMate.Interaction
             return min;
         }
 
-        /// <summary>버튼의 클램프 상자(캔버스 포인트, 좌하단 원점) — 라벨까지 포함한 실제 차지 영역.
+        /// <summary>버튼의 클램프 상자(캔버스 포인트, 좌하단 원점) — <b>원 중심에 정렬된 정사각형</b>.
         /// 범위 밖/미생성이면 빈 사각형(<see cref="Rect.Contains"/>가 항상 false) — 형제 접근자
         /// <see cref="ButtonScreenCenter"/>/<see cref="ButtonProgress"/>와 같은 가드 규약이다.</summary>
         public Rect ClampBoxPoints(int index)
         {
             if (index < 0 || index >= ButtonCount || _buttons[index] == null) return new Rect();
-            return BoxFor(_buttons[index].CenterPoints, _diameterPoints, _buttons[index].LabelWidth);
+            return BoxFor(_buttons[index].CenterPoints, _diameterPoints);
         }
 
         // ==================== 수명 주기 ====================
@@ -269,9 +460,17 @@ namespace StickMate.Interaction
             _focusDirector = GetComponent<FocusWatchDirector>();
             _focusPopover = GetComponent<FocusSessionPopover>();
             _todoPopover = GetComponent<TodoBoardPopover>();
-            Debug.Log("[부채꼴] 준비 완료 — 톱니를 짧게 클릭하면 [집중 모드]/[캐릭터]/[오늘 할일] 원버튼 " +
-                $"3개가 Ø{ButtonDiameterPoints:F0}pt, 궤도 {OrbitRadiusPoints:F0}pt, 간격 " +
-                $"{ButtonAngleStepDegrees:F0}도로 {ExpandTotalSeconds:F2}초 동안 촤르륵 펼쳐집니다. " +
+            _actionPopover = GetComponent<ActionCommandPopover>();
+            Debug.Log("[부채꼴] 준비 완료 — 톱니를 짧게 클릭하면 [집중 모드]/[캐릭터]/[오늘 할일]/[행동] " +
+                $"**아이콘 전용** 원버튼 {ButtonCount}개가 Ø{ButtonDiameterPoints:F0}pt, 궤도 " +
+                $"{OrbitRadiusPoints:F0}pt, 간격 {ButtonAngleStepDegrees:F0}도(스팬 " +
+                $"{ButtonAngleStepDegrees * (ButtonCount - 1):F0}도)로 {ExpandTotalSeconds:F2}초 동안 " +
+                "촤르륵 펼쳐집니다. 상시 이름표(라벨)는 2026-08-31 사용자 지시로 전부 삭제됐고, " +
+                "대신 **커서가 올라간 버튼 하나만** 그 이름이 원 <b>바깥쪽</b>에 뜹니다" +
+                // ★ 예전에는 $"0.{v*100:F0}초"였다 — v=0.09에서 9를 찍어 <b>"0.9초"</b>가 됐다
+                //   (실제의 10배, 페르소나 소은 #8). 값을 그대로 서식하면 그런 종류의 거짓말이 없다.
+                $"({HoverLabelFadeSeconds:0.00}초 페이드, 부채꼴 바깥쪽으로 밀려 형제 버튼을 덮지 않습니다). " +
+                "그 밖에 남는 글자는 [오늘 할일] 미완료 배지 하나뿐입니다(이름이 아니라 상태 수량). " +
                 $"기준각은 (화면 중심 − 기어 중심)을 45도 단위로 스냅해 펼침 순간에 고정하고, 화면 밖이면 " +
                 $"부채꼴 전체를 ±{RotationSearchStepDegrees:F0}도씩 최대 ±{RotationSearchMaxDegrees:F0}도까지 " +
                 $"회전해 봅니다. {AutoCollapseIdleSeconds:F0}초 동안 커서가 부채꼴 밖이면 자동으로 접힙니다.");
@@ -308,8 +507,24 @@ namespace StickMate.Interaction
                 _buttons[i].CollapsingNow = false;
             }
             if (_canvas != null) _canvas.gameObject.SetActive(true);
+            TryStartOnboardingHint();
             RefreshDynamicContent(force: true);
             ApplyVisuals();
+        }
+
+        /// <summary>
+        /// 처음 펼친 그 한 번만 안내를 띄운다. <b>본 사실은 뜨는 순간 기록</b>한다 — 안내를 0.2초 보고
+        /// 부채꼴을 접은 사용자에게 내일 또 띄우면 그게 방해다(원칙 2). "끝까지 읽었는가"를 조건으로
+        /// 삼으면 반드시 그 경로가 생긴다.
+        /// </summary>
+        private void TryStartOnboardingHint()
+        {
+            if (_onboardingHint == null || OnboardingHintSeen) return;
+            PlayerPrefs.SetInt(OnboardingSeenKey, 1);
+            PlayerPrefs.Save();
+            _onboardingHintTimer = 0f;
+            Debug.Log($"[부채꼴] 최초 1회 안내를 띄웁니다({OnboardingHintSeconds:F1}초) — \"{OnboardingHintText}\". " +
+                "36-4가 상시 라벨을 지우면서 약속한 대가(35-2 온보딩)의 지급이고, 이 컴퓨터에서 다시는 뜨지 않습니다.");
         }
 
         public void Collapse(GearMenuCollapseMode mode, string reason)
@@ -343,8 +558,8 @@ namespace StickMate.Interaction
         // ==================== 버튼 발동 ====================
 
         /// <summary>
-        /// 눌린 버튼을 실행한다. <b>캐릭터</b>는 세 개가 모두 접히고 창이 뜬다. <b>집중 모드/오늘 할일</b>은
-        /// 나머지 2개만 접히고 누른 버튼이 활성 스타일로 남아, 그 버튼에서 팝오버가 자라난다 —
+        /// 눌린 버튼을 실행한다. <b>캐릭터</b>는 넷이 모두 접히고 창이 뜬다. <b>집중 모드/오늘 할일/행동</b>은
+        /// 나머지 3개만 접히고 누른 버튼이 활성 스타일로 남아, 그 버튼에서 팝오버가 자라난다 —
         /// 팝오버에 꼬리를 그리지 않고도 "이 창은 저 버튼에서 나왔다"를 보여주는 가장 싼 방법이다(32-3).
         /// </summary>
         public void Activate(int index)
@@ -355,7 +570,7 @@ namespace StickMate.Interaction
             // 이미 그 버튼으로 팝오버가 떠 있으면 재클릭 = 완전 종료(32-3).
             if (_activeIndex == index)
             {
-                Collapse(GearMenuCollapseMode.User, $"[{Labels[index]}] 재클릭");
+                Collapse(GearMenuCollapseMode.User, $"[{ButtonNames[index]}] 재클릭");
                 return;
             }
 
@@ -366,6 +581,9 @@ namespace StickMate.Interaction
                     return;
                 case GearMenuButton.FocusMode:
                     AnchorPopover(index, OpenFocusPopover());
+                    return;
+                case GearMenuButton.Action:
+                    AnchorPopover(index, OpenActionPopover());
                     return;
                 default:
                     AnchorPopover(index, OpenTodoPopover());
@@ -409,12 +627,27 @@ namespace StickMate.Interaction
             return true;
         }
 
+        /// <summary>④ 행동 명령창(36-6). 씬에 컴포넌트가 없으면 <b>조용히 실패하지 않고</b> 경고를 남긴다 —
+        /// 33-9/34-9에서 반복 재발한 "신규 컴포넌트가 프리팹에 없어 런타임 부재" 함정의 관례 방어다.</summary>
+        private bool OpenActionPopover()
+        {
+            if (_actionPopover == null) _actionPopover = GetComponent<ActionCommandPopover>();
+            if (_actionPopover == null)
+            {
+                Debug.LogWarning("[부채꼴] [행동] — ActionCommandPopover가 없어 건너뜁니다. " +
+                    "Assets/Editor/SceneBootstrapper.cs가 이 컴포넌트를 붙이는지 확인하세요.");
+                return false;
+            }
+            _actionPopover.Open(ButtonScreenRect((int)GearMenuButton.Action), "부채꼴 [행동]");
+            return true;
+        }
+
         /// <summary>누른 버튼만 남기고 나머지를 접는다.</summary>
         private void AnchorPopover(int index, bool opened)
         {
             if (!opened)
             {
-                Collapse(GearMenuCollapseMode.User, $"[{Labels[index]}] 열기 실패");
+                Collapse(GearMenuCollapseMode.User, $"[{ButtonNames[index]}] 열기 실패");
                 return;
             }
 
@@ -427,13 +660,15 @@ namespace StickMate.Interaction
                 _buttons[i].CollapsingNow = true;
             }
             _collapseMode = GearMenuCollapseMode.User;
-            Debug.Log($"[부채꼴] [{Labels[index]}] 선택 — 나머지 2개는 접히고 이 버튼만 활성 스타일로 남습니다.");
+            Debug.Log($"[부채꼴] [{ButtonNames[index]}] 선택 — 나머지 {ButtonCount - 1}개는 접히고 이 버튼만 " +
+                "활성 스타일로 남습니다.");
         }
 
         private void ClosePopovers(string reason)
         {
             if (_focusPopover != null) _focusPopover.Close(reason);
             if (_todoPopover != null) _todoPopover.Close(reason);
+            if (_actionPopover != null) _actionPopover.Close(reason);
         }
 
         /// <summary>
@@ -446,12 +681,15 @@ namespace StickMate.Interaction
         {
             if (_focusPopover == null) _focusPopover = GetComponent<FocusSessionPopover>();
             if (_todoPopover == null) _todoPopover = GetComponent<TodoBoardPopover>();
+            if (_actionPopover == null) _actionPopover = GetComponent<ActionCommandPopover>();
             ClosePopovers(reason);
             Collapse(GearMenuCollapseMode.User, reason);
         }
 
         private bool AnyPopoverOpen()
-            => (_focusPopover != null && _focusPopover.IsOpen) || (_todoPopover != null && _todoPopover.IsOpen);
+            => (_focusPopover != null && _focusPopover.IsOpen)
+               || (_todoPopover != null && _todoPopover.IsOpen)
+               || (_actionPopover != null && _actionPopover.IsOpen);
 
         // ==================== 히트 테스트 ====================
 
@@ -520,6 +758,16 @@ namespace StickMate.Interaction
                 return;
             }
 
+            // ★ 부채꼴이 떠 있다 = 사용자가 지금 이것을 겨누고 있다는 관측된 사실이다.
+            // 적응형 페이싱은 그 사실을 모른 채 "캐릭터 Idle + 무입력 2초"만 보고 Calm으로 내려가고,
+            // Windows에서 Calm은 게임 루프 자체를 30Hz로 만든다(CharacterInfoWindow.Update()의 같은
+            // 자리 주석에 인과 전체가 있다). 홀드는 만료 시각 방식이라 이 위젯이 어떤 경로로 죽어도
+            // 0.5초 뒤 저절로 풀린다 — 해제 책임이 없다. 위 Hidden 가드 뒤에 있으므로 접혀 있는
+            // 평소에는 호출조차 되지 않는다(평소 비용 0 유지).
+            // 팝오버(집중/할일)가 떠 있는 동안에는 TickAutoCollapse가 접힘을 멈춰 _phase가 Open으로
+            // 남으므로, 그 팝오버들의 상호작용도 이 한 줄이 함께 덮는다.
+            FramePacing.HoldActiveForInteraction();
+
             float dt = Time.unscaledDeltaTime;
             _timer += dt;
 
@@ -562,6 +810,12 @@ namespace StickMate.Interaction
             _phase = Phase.Hidden;
             _activeIndex = -1;
             _hoverIndex = -1;
+            _hoverLabelAlpha = 0f;
+            _hoverLabelIndex = -1;
+            _onboardingHintTimer = -1f;
+            _onboardingHintAlpha = 0f;
+            if (_onboardingHint != null) _onboardingHint.gameObject.SetActive(false);
+            if (_hoverLabel != null) _hoverLabel.gameObject.SetActive(false);
             for (int i = 0; i < ButtonCount; i++) _buttons[i].Progress = 0f;
             if (_canvas != null) _canvas.gameObject.SetActive(false);
             UnionScreenRect = new Rect(PointsToScreen(_gearCenterPoints), Vector2.zero);
@@ -639,28 +893,187 @@ namespace StickMate.Interaction
                 b.Group.anchoredPosition = center;
                 b.Root.localScale = new Vector3(scale, scale, 1f);
 
-                float labelAlpha = b.CollapsingNow || _phase != Phase.Expanding
-                    ? alpha
-                    : alpha * Mathf.Clamp01((_timer - i * ExpandStaggerSeconds - LabelDelaySeconds) / LabelFadeSeconds);
-
-                ApplyButtonStyle(b, i, alpha, labelAlpha);
+                ApplyButtonStyle(b, i, alpha);
 
                 if (alpha <= 0.001f) continue;
                 anyVisible = true;
-                Rect box = BoxFor(center, _diameterPoints, b.LabelWidth);
+                Rect box = BoxFor(center, _diameterPoints);
                 if (box.xMin < minX) minX = box.xMin;
                 if (box.yMin < minY) minY = box.yMin;
                 if (box.xMax > maxX) maxX = box.xMax;
                 if (box.yMax > maxY) maxY = box.yMax;
             }
 
+            // ★ 호버 이름표는 이 합집합에 <b>들어가지 않는다</b>(클래스 문서 ③) — 누를 수 있는 물건이
+            //   아니라서, 포함시키면 클릭관통 차단 영역만 넓어져 비침해가 나빠진다(원칙 2).
             UnionScreenRect = anyVisible
                 ? new Rect(PointsToScreen(new Vector2(minX, minY)),
                     new Vector2((maxX - minX) * PixelsPerPoint, (maxY - minY) * PixelsPerPoint))
                 : new Rect(PointsToScreen(_gearCenterPoints), Vector2.zero);
+
+            ApplyHoverLabel();
+            ApplyOnboardingHint();
         }
 
-        private void ApplyButtonStyle(ButtonView b, int index, float alpha, float labelAlpha)
+        /// <summary>
+        /// "마우스로 선택되고 있는 메뉴만 이름이 보인다"(2026-08-31 사용자 지시)를 실행한다.
+        ///
+        /// 이름표는 <b>커서가 올라간 버튼 하나</b>를 따라다니고, 커서가 벗어나면 같은 시간에 걸쳐
+        /// 사라진다. 활성(팝오버를 띄운 채 남은) 버튼에는 이름을 띄우지 않는다 — 그 버튼의 창이 이미
+        /// 화면에 제목을 달고 떠 있어서 같은 이름이 두 번 보이기 때문이다.
+        /// </summary>
+        private void ApplyHoverLabel()
+        {
+            if (_hoverLabel == null) return;
+
+            int target = _hoverIndex;
+            if (target >= 0 && (target == _activeIndex || _buttons[target] == null
+                || _buttons[target].CollapsingNow || _buttons[target].Progress < MinClickableProgress))
+            {
+                target = -1;
+            }
+
+            float dt = Time.unscaledDeltaTime;
+            _hoverLabelAlpha = Mathf.MoveTowards(_hoverLabelAlpha, target >= 0 ? 1f : 0f,
+                dt / Mathf.Max(0.0001f, HoverLabelFadeSeconds));
+
+            // 글자는 <b>값이 바뀐 프레임에만</b> 쓴다(Text.text 대입은 메시 재생성이다).
+            if (target >= 0 && target != _hoverLabelIndex)
+            {
+                _hoverLabelIndex = target;
+                _hoverLabelText.text = ButtonNames[target];
+                _hoverLabel.sizeDelta = new Vector2(_nameWidths[target], HoverLabelHeightPoints);
+            }
+
+            if (_hoverLabelAlpha <= 0.001f)
+            {
+                if (_hoverLabel.gameObject.activeSelf) _hoverLabel.gameObject.SetActive(false);
+                _hoverLabelIndex = -1;
+                return;
+            }
+            if (!_hoverLabel.gameObject.activeSelf) _hoverLabel.gameObject.SetActive(true);
+
+            // 사라지는 중이면 마지막으로 보이던 버튼을 그대로 따라간다(글자가 순간이동하지 않게).
+            int anchorIndex = target >= 0 ? target : _hoverLabelIndex;
+            if (anchorIndex >= 0 && _buttons[anchorIndex] != null)
+            {
+                _hoverLabel.anchoredPosition = ResolveHoverLabelCenter(
+                    _buttons[anchorIndex].CenterPoints, _hoverLabel.sizeDelta.x);
+            }
+            SetHoverLabelAlpha(_hoverLabelAlpha);
+        }
+
+        /// <summary>
+        /// 최초 1회 안내 알약 — 부채꼴 <b>가운데</b> 아래에 뜬다(특정 버튼의 이름표가 아니므로 어느
+        /// 한 버튼에 붙이면 그 버튼 설명으로 오독된다).
+        ///
+        /// <para>호버가 시작되면 <b>즉시</b> 물러난다: 안내의 목적이 "커서를 올려 보라"인데, 올린
+        /// 순간에도 안내가 남아 있으면 이름표와 알약 두 개가 동시에 뜬다(클래스 문서 ② "화면에는
+        /// 언제나 이름이 최대 하나"의 정신).</para>
+        ///
+        /// <para>이름표와 같은 제약을 그대로 진다: 배치 계산에 참여하지 않고
+        /// (<see cref="ComputeLayout"/>은 이 알약을 모른다), <see cref="UnionScreenRect"/>에도
+        /// 들어가지 않는다 — 누를 수 없는 글자가 클릭관통 차단 영역을 넓히면 원칙 2 위반이다.</para>
+        /// </summary>
+        private void ApplyOnboardingHint()
+        {
+            if (_onboardingHint == null) return;
+
+            if (_onboardingHintTimer >= 0f)
+            {
+                _onboardingHintTimer += Time.unscaledDeltaTime;
+                if (_hoverIndex >= 0 || _phase == Phase.Collapsing
+                    || _onboardingHintTimer >= OnboardingHintSeconds)
+                {
+                    _onboardingHintTimer = -1f;
+                }
+            }
+
+            float dt = Time.unscaledDeltaTime;
+            _onboardingHintAlpha = Mathf.MoveTowards(_onboardingHintAlpha, _onboardingHintTimer >= 0f ? 1f : 0f,
+                dt / Mathf.Max(0.0001f, HoverLabelFadeSeconds));
+
+            if (_onboardingHintAlpha <= 0.001f)
+            {
+                if (_onboardingHint.gameObject.activeSelf) _onboardingHint.gameObject.SetActive(false);
+                return;
+            }
+            if (!_onboardingHint.gameObject.activeSelf) _onboardingHint.gameObject.SetActive(true);
+
+            // 부채꼴의 <b>이등분 방향</b>으로, 가장 바깥 버튼만큼 나간 자리를 기준점으로 삼는다.
+            // 그래야 이름표와 같은 기하 보장(ResolveHoverLabelCenter 문단)이 안내 알약에도 그대로
+            // 적용된다 — 네 버튼 중심의 평균을 그대로 쓰면 기준점이 호 <b>안쪽</b>이라 보장이 약해진다.
+            Vector2 middle = Vector2.zero;
+            for (int i = 0; i < ButtonCount; i++) middle += _buttons[i].CenterPoints;
+            middle = middle / ButtonCount - _gearCenterPoints;
+            if (middle.sqrMagnitude < 1e-4f) middle = Vector2.down;
+            middle.Normalize();
+
+            float reach = 0f;
+            for (int i = 0; i < ButtonCount; i++)
+                reach = Mathf.Max(reach, Vector2.Dot(_buttons[i].CenterPoints - _gearCenterPoints, middle));
+
+            _onboardingHint.anchoredPosition =
+                ResolveHoverLabelCenter(_gearCenterPoints + middle * reach, _onboardingHintWidth);
+            _onboardingHintSurface.color = Fade(UiChrome.PanelSurface, _onboardingHintAlpha);
+            _onboardingHintBorder.color = Fade(UiChrome.AccentBorder, _onboardingHintAlpha);
+            _onboardingHintText.color = Fade(UiChrome.TextPrimary, _onboardingHintAlpha);
+        }
+
+        /// <summary>
+        /// ★ 2026-09-01(페르소나 소은 #1) — 이름표를 원 <b>아래</b>가 아니라 부채꼴 <b>바깥쪽
+        /// (반지름 방향)</b>으로 민다.
+        ///
+        /// <para><b>무엇이 깨져 있었나</b>: 알약은 버튼 중심에서 아래로 22+8+9=<b>39pt</b>에 놓였는데
+        /// 이웃 버튼 중심은 2·111·sin15° = <b>57.5pt</b>밖에 안 떨어져 있다. 그래서 [오늘 할일] 알약
+        /// (폭 55.5pt)이 [캐릭터] 원을 가로로 8.5pt 파고들었다 — 알약 바탕이 불투명(α=1)이라 덮인
+        /// 부분은 통째로 사라지고, 그 자리는 <b>보이지 않는데 클릭은 먹는</b> 영역이 됐다(4개 중 3개).</para>
+        ///
+        /// <para><b>왜 반지름 방향이면 구조적으로 안 겹치는가</b>: 알약의 <b>안쪽 모서리</b>를 기어
+        /// 중심에서 (궤도반지름 + 버튼반지름 + 간격) 밖에 두면, 알약의 모든 점이 그 평면 바깥에 있다
+        /// (축 정렬 사각형의 지지 함수 = |d.x|·반폭 + |d.y|·반높이). 반면 이웃 버튼의 그 방향 최대
+        /// 투영은 111·cos30° + 22 = 118pt로 <b>141pt에 못 미친다</b>. 즉 <b>알약 폭이 아무리 넓어져도</b>
+        /// 형제를 물 수 없다 — 폭에 의존하는 임시방편이 아니라 기하로 닫힌 보장이다.</para>
+        ///
+        /// <para>화면 밖으로 나가면 <b>클램프만</b> 하고 반대쪽으로 뒤집지 않는다. 뒤집으면 부채꼴
+        /// 안쪽으로 들어가 정확히 위 문제가 되살아나기 때문이다(예전 "아래가 안 되면 위로" 규칙이
+        /// 그 자리였다). 클램프가 실제로 걸리는 구성에서는 위 보장이 그만큼 약해지지만, 화면 밖으로
+        /// 나간 이름표는 아예 읽을 수 없으므로 그쪽이 먼저다.</para>
+        ///
+        /// <para>★ 여전히 <b>이름표만</b> 움직인다 — 버튼 위치는 건드리지 않는다. 이름표가 배치에
+        /// 개입하는 순간 36-3의 기하 근거(56×56 정사각 상자 전수 계산)가 무너진다.</para>
+        /// </summary>
+        private Vector2 ResolveHoverLabelCenter(Vector2 anchorCenter, float pillWidth)
+        {
+            float halfW = pillWidth * 0.5f;
+            float halfH = HoverLabelHeightPoints * 0.5f;
+
+            Vector2 outward = anchorCenter - _gearCenterPoints;
+            if (outward.sqrMagnitude < 1e-4f) outward = Vector2.down;
+            outward.Normalize();
+
+            float reach = Mathf.Abs(outward.x) * halfW + Mathf.Abs(outward.y) * halfH;
+            Vector2 center = anchorCenter + outward * (_diameterPoints * 0.5f + HoverLabelGapPoints + reach);
+
+            float minX = ScreenMarginPoints + halfW;
+            float maxX = _screenPointsAtLayout.x - ScreenMarginPoints - halfW;
+            if (maxX >= minX) center.x = Mathf.Clamp(center.x, minX, maxX);
+
+            float minY = ScreenMarginPoints + halfH;
+            float maxY = _screenPointsAtLayout.y - TopMarginPoints - halfH;
+            if (maxY >= minY) center.y = Mathf.Clamp(center.y, minY, maxY);
+
+            return center;
+        }
+
+        private void SetHoverLabelAlpha(float alpha)
+        {
+            _hoverLabelSurface.color = Fade(UiChrome.PanelSurface, alpha);
+            _hoverLabelBorder.color = Fade(UiChrome.PanelBorder, alpha);
+            _hoverLabelText.color = Fade(UiChrome.TextPrimary, alpha);
+        }
+
+        private void ApplyButtonStyle(ButtonView b, int index, float alpha)
         {
             bool active = index == _activeIndex;
             float hover = EaseOutQuad(b.Hover);
@@ -699,10 +1112,6 @@ namespace StickMate.Interaction
                 b.Flash.color = new Color(0f, 0f, 0f, 0f);
             }
 
-            b.LabelSurface.color = Fade(UiChrome.PanelSurface, labelAlpha * 0.92f);
-            b.LabelBorder.color = Fade(UiChrome.PanelBorder, labelAlpha);
-            b.LabelText.color = Fade(active ? UiChrome.TextPrimary : UiChrome.TextSecondary, labelAlpha);
-
             if (b.Badge != null && b.Badge.gameObject.activeSelf)
             {
                 b.BadgeSurface.color = Fade(UiChrome.Accent, alpha);
@@ -718,14 +1127,17 @@ namespace StickMate.Interaction
         private static Color Fade(Color c, float alpha) => new Color(c.r, c.g, c.b, c.a * Mathf.Clamp01(alpha));
 
         /// <summary>
-        /// 라벨/배지/잔여 시간 호는 <b>실제 값에서만</b> 파생한다(원칙 1의 UI판). 링이 3할 남았는데
-        /// 라벨이 다른 값이면 그 자체로 회귀 실패다 — 그래서 둘을 같은 스냅샷에서 한 번에 쓴다.
+        /// 배지/잔여 시간 호는 <b>실제 값에서만</b> 파생한다(원칙 1의 UI판).
+        ///
+        /// ★ 36-4로 라벨이 사라지면서 "집중 · 12:30" 표기도 함께 사라졌다. 이제 <b>스톱워치 링의 잔여
+        /// 호(fillAmount)가 유일한 표시</b>이며, 정확한 숫자는 팝오버를 열면 나온다. 원칙 1은 그대로
+        /// 지켜진다 — 호는 여전히 <see cref="FocusWatchDirector"/>의 실제 값에서만 파생된다.
         /// </summary>
         private void RefreshDynamicContent(bool force)
         {
-            _labelClockTimer += Time.unscaledDeltaTime;
-            bool tick = force || _labelClockTimer >= 1f;
-            if (tick) _labelClockTimer = 0f;
+            _clockTimer += Time.unscaledDeltaTime;
+            bool tick = force || _clockTimer >= 1f;
+            if (tick) _clockTimer = 0f;
 
             // ---- 오늘 할일 배지 ----
             ButtonView todo = _buttons[(int)GearMenuButton.Todo];
@@ -750,17 +1162,15 @@ namespace StickMate.Interaction
             if (!running)
             {
                 _lastShownRemainingSeconds = -1;
-                if (focus.LabelText.text != Labels[(int)GearMenuButton.FocusMode])
-                    focus.LabelText.text = Labels[(int)GearMenuButton.FocusMode];
                 return;
             }
 
+            // 초 단위로 값이 바뀐 프레임에만 쓴다 — 하루 종일 켜져 있는 앱이다.
             int remaining = Mathf.Max(0, Mathf.CeilToInt(_focusDirector.RemainingSeconds));
             if (remaining == _lastShownRemainingSeconds) return;
             _lastShownRemainingSeconds = remaining;
 
             focus.RingFill.fillAmount = Mathf.Clamp01(_focusDirector.RemainingSeconds / _focusDirector.SessionDurationSeconds);
-            focus.LabelText.text = $"집중 · {remaining / 60:00}:{remaining % 60:00}";
         }
 
         // ==================== 배치 계산 ====================
@@ -819,8 +1229,7 @@ namespace StickMate.Interaction
 
             for (int i = 0; i < ButtonCount; i++)
             {
-                if (!IsBoxOnScreen(BoxFor(FanCenter(baseDegrees, i) + shift, diameter, _buttons[i].LabelWidth)))
-                    return false;
+                if (!IsBoxOnScreen(BoxFor(FanCenter(baseDegrees, i) + shift, diameter))) return false;
             }
 
             for (int i = 0; i < ButtonCount; i++) _buttons[i].CenterPoints = FanCenter(baseDegrees, i) + shift;
@@ -829,19 +1238,31 @@ namespace StickMate.Interaction
             return true;
         }
 
-        private Vector2 FanCenter(float baseDegrees, int index)
+        /// <summary>슬롯 i의 각도 오프셋. θ₀ + ((n−1)/2 − i)·step — <b>부채꼴은 언제나 θ₀를 기준으로
+        /// 좌우 대칭</b>이라 버튼 개수가 바뀌어도 "가운데가 화면 안쪽"이라는 성질이 유지된다.
+        /// n=3이면 (1−i)·60°, n=4면 (1.5−i)·30°(36-3-3).
+        ///
+        /// <see cref="Snap45"/>와 같은 이유로 <b>public static 순수 함수</b>다 — 기하 확정치는 씬 없이
+        /// EditMode에서 잠글 수 있어야 한다(36절의 계산이 코드에서 조용히 어긋나는 것을 막는 유일한 방법).</summary>
+        public static float SlotOffsetDegrees(int index) => ((ButtonCount - 1) * 0.5f - index) * ButtonAngleStepDegrees;
+
+        /// <summary>기어 중심과 기준각이 주어졌을 때 슬롯 i 버튼의 중심(캔버스 포인트). 순수 함수.</summary>
+        public static Vector2 SlotCenterPoints(Vector2 gearCenterPoints, float baseDegrees, int index)
         {
-            float a = (baseDegrees + (1 - index) * ButtonAngleStepDegrees) * Mathf.Deg2Rad;
-            return _gearCenterPoints + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * OrbitRadiusPoints;
+            float a = (baseDegrees + SlotOffsetDegrees(index)) * Mathf.Deg2Rad;
+            return gearCenterPoints + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * OrbitRadiusPoints;
         }
+
+        private Vector2 FanCenter(float baseDegrees, int index)
+            => SlotCenterPoints(_gearCenterPoints, baseDegrees, index);
 
         /// <summary>이 각도의 부채꼴을 화면 안으로 넣는 데 필요한 <b>최소 평행이동</b>.</summary>
         private Vector2 RequiredShift(float baseDegrees, float diameter)
         {
-            Rect union = BoxFor(FanCenter(baseDegrees, 0), diameter, _buttons[0].LabelWidth);
+            Rect union = BoxFor(FanCenter(baseDegrees, 0), diameter);
             for (int i = 1; i < ButtonCount; i++)
             {
-                Rect box = BoxFor(FanCenter(baseDegrees, i), diameter, _buttons[i].LabelWidth);
+                Rect box = BoxFor(FanCenter(baseDegrees, i), diameter);
                 union = Rect.MinMaxRect(Mathf.Min(union.xMin, box.xMin), Mathf.Min(union.yMin, box.yMin),
                     Mathf.Max(union.xMax, box.xMax), Mathf.Max(union.yMax, box.yMax));
             }
@@ -853,21 +1274,20 @@ namespace StickMate.Interaction
             PlaceColumn(diameter);
             for (int i = 0; i < ButtonCount; i++)
             {
-                if (!IsBoxOnScreen(BoxFor(_buttons[i].CenterPoints, diameter, _buttons[i].LabelWidth))) return false;
+                if (!IsBoxOnScreen(BoxFor(_buttons[i].CenterPoints, diameter))) return false;
             }
             _diameterPoints = diameter;
             return true;
         }
 
         /// <summary>
-        /// 세로 일렬 폴백 — 화면 안쪽 수직 방향. 간격은 32-1의 52pt를 <b>하한</b>으로 쓰되 실제로는
-        /// "지름 + 라벨 간격 + 라벨 높이 + 여유 4"보다 좁아지지 않게 한다: 52pt는 Ø44에서 라벨 알약이
-        /// 아래 버튼 원에 파고드는 값이라(실측 스크린샷에서 실제로 겹쳤다) 글자가 읽히지 않는다.
+        /// 세로 일렬 폴백 — 화면 안쪽 수직 방향. 간격은 <b>52pt 고정</b>이다(36-3-3): 라벨이 사라져
+        /// "지름 + 라벨 간격 + 라벨 높이"라는 하한 계산식 자체가 없어졌고, Ø44 + 히트 여백 4×2 = 52라
+        /// 이 값이 곧 "히트 원이 겹치지 않는 최소 간격"이다.
         /// </summary>
         private void PlaceColumn(float diameter)
         {
-            float spacing = Mathf.Max(ColumnFallbackSpacingPoints,
-                diameter + LabelGapPoints + LabelHeightPoints + UiChrome.Space1);
+            float spacing = ColumnFallbackSpacingPoints;
             float sign = _gearCenterPoints.y > _screenPointsAtLayout.y * 0.5f ? -1f : 1f;
             for (int i = 0; i < ButtonCount; i++)
             {
@@ -878,13 +1298,13 @@ namespace StickMate.Interaction
             _diameterPoints = diameter;
         }
 
-        /// <summary>세 버튼을 <b>같은 벡터로</b> 평행이동해 화면 안으로 넣는다(형태 보존 — 개별 클램프 금지).</summary>
+        /// <summary>네 버튼을 <b>같은 벡터로</b> 평행이동해 화면 안으로 넣는다(형태 보존 — 개별 클램프 금지).</summary>
         private void ShiftGroupIntoScreen()
         {
-            Rect union = BoxFor(_buttons[0].CenterPoints, _diameterPoints, _buttons[0].LabelWidth);
+            Rect union = BoxFor(_buttons[0].CenterPoints, _diameterPoints);
             for (int i = 1; i < ButtonCount; i++)
             {
-                Rect box = BoxFor(_buttons[i].CenterPoints, _diameterPoints, _buttons[i].LabelWidth);
+                Rect box = BoxFor(_buttons[i].CenterPoints, _diameterPoints);
                 union = Rect.MinMaxRect(Mathf.Min(union.xMin, box.xMin), Mathf.Min(union.yMin, box.yMin),
                     Mathf.Max(union.xMax, box.xMax), Mathf.Max(union.yMax, box.yMax));
             }
@@ -906,15 +1326,20 @@ namespace StickMate.Interaction
             return shift;
         }
 
-        /// <summary>버튼이 실제로 차지하는 상자(원 + 라벨 알약). 라벨까지 화면 안에 들어와야
-        /// "잘린 메뉴"가 안 나온다(32-1).</summary>
-        private static Rect BoxFor(Vector2 center, float diameter, float labelWidth)
+        /// <summary>
+        /// 버튼이 실제로 차지하는 상자 — <b>원 중심에 정렬된 정사각형</b>(Ø44 → 56×56).
+        ///
+        /// 36-4로 라벨이 사라지면서 종전의 두 가지 비대칭이 함께 사라졌다: (1) 폭이 글자 길이에 따라
+        /// 버튼마다 달랐고, (2) 상자가 원보다 아래로 20pt 길어 중심이 원 중심에서 10pt 어긋나 있었다.
+        /// 그 비대칭이 곧 기본 위치에서 평행이동 35.5pt를 만들던 원인 중 하나였다(36-3-2).
+        /// </summary>
+        public static Rect ButtonClampBox(Vector2 center, float diameter)
         {
-            float width = Mathf.Max(diameter, labelWidth) + ClampBoxExtraWidthPoints;
-            float height = diameter + LabelGapPoints + LabelHeightPoints;
-            float top = center.y + diameter * 0.5f;
-            return new Rect(center.x - width * 0.5f, top - height, width, height);
+            float side = diameter + ClampBoxPaddingPoints;
+            return new Rect(center.x - side * 0.5f, center.y - side * 0.5f, side, side);
         }
+
+        private static Rect BoxFor(Vector2 center, float diameter) => ButtonClampBox(center, diameter);
 
         private bool IsBoxOnScreen(Rect box)
             => box.xMin >= ScreenMarginPoints && box.yMin >= ScreenMarginPoints
@@ -969,7 +1394,76 @@ namespace StickMate.Interaction
             _root.sizeDelta = Vector2.zero;
 
             for (int i = 0; i < ButtonCount; i++) _buttons[i] = BuildButton(i);
+            BuildHoverLabel();
+            BuildOnboardingHint();
             canvasGo.SetActive(false);
+        }
+
+        /// <summary>
+        /// 호버 이름표 하나를 만든다(2026-08-31 사용자 지시). 버튼 그룹의 자식이 아니라 <b>_root의
+        /// 직계</b>다 — 버튼과 함께 스케일/궤도 이동을 타면 호버로 원이 커질 때 글자까지 커져 어수선해지고
+        /// (예전 라벨 알약이 Group/Root를 나눠야 했던 바로 그 이유), 무엇보다 이름표는 버튼의 일부가
+        /// 아니라 <b>화면에 떠 있는 툴팁</b>이라 자기만의 클램프 규칙을 가져야 하기 때문이다.
+        ///
+        /// 글자 폭은 여기서 <b>한 번만</b> 잰다. <see cref="Text.preferredWidth"/>는 폰트 메시를 다시
+        /// 재는 호출이라 매 프레임 부르면 24시간 상주 앱에서 그대로 비용이 된다.
+        /// </summary>
+        private void BuildHoverLabel()
+        {
+            var go = new GameObject("HoverLabel", typeof(RectTransform));
+            go.transform.SetParent(_root, false);
+            _hoverLabel = go.GetComponent<RectTransform>();
+            _hoverLabel.anchorMin = _hoverLabel.anchorMax = _hoverLabel.pivot = new Vector2(0.5f, 0.5f);
+            _hoverLabel.sizeDelta = new Vector2(44f, HoverLabelHeightPoints);
+
+            _hoverLabelSurface = UiChrome.AddSurface(_hoverLabel, "Surface", UiChrome.PanelSurface, 9);
+            UiChrome.Stretch(_hoverLabelSurface.rectTransform);
+            _hoverLabelSurface.raycastTarget = false;   // 툴팁은 클릭을 먹지 않는다.
+            _hoverLabelBorder = UiChrome.AddOutline(_hoverLabel, "Border", UiChrome.PanelBorder, 9);
+            _hoverLabelBorder.raycastTarget = false;
+
+            _hoverLabelText = UiChrome.AddText(_hoverLabel, "Text", UiChrome.FontCaption,
+                TextAnchor.MiddleCenter, UiChrome.TextPrimary);
+            UiChrome.Stretch(_hoverLabelText.rectTransform);
+
+            for (int i = 0; i < ButtonCount; i++)
+            {
+                _hoverLabelText.text = ButtonNames[i];
+                _nameWidths[i] = _hoverLabelText.preferredWidth + HoverLabelPaddingPoints;
+            }
+            _hoverLabelText.text = string.Empty;
+
+            SetHoverLabelAlpha(0f);
+        }
+
+        /// <summary>최초 1회 안내 알약. 호버 이름표와 <b>같은 크롬</b>(알약 + 테두리 + 10pt 글자)을 쓰되
+        /// 테두리만 강조색이다 — 같은 가족이면서 "지금 이건 다른 종류의 말"임을 색 하나로 구분한다.
+        /// 글자 폭은 여기서 한 번만 잰다(<see cref="Text.preferredWidth"/>는 폰트 메시를 다시 재는 호출).</summary>
+        private void BuildOnboardingHint()
+        {
+            var go = new GameObject("OnboardingHint", typeof(RectTransform));
+            go.transform.SetParent(_root, false);
+            _onboardingHint = go.GetComponent<RectTransform>();
+            _onboardingHint.anchorMin = _onboardingHint.anchorMax = _onboardingHint.pivot = new Vector2(0.5f, 0.5f);
+
+            _onboardingHintSurface = UiChrome.AddSurface(_onboardingHint, "Surface", UiChrome.PanelSurface, 9);
+            UiChrome.Stretch(_onboardingHintSurface.rectTransform);
+            _onboardingHintSurface.raycastTarget = false;   // 안내는 클릭을 먹지 않는다(원칙 2).
+            _onboardingHintBorder = UiChrome.AddOutline(_onboardingHint, "Border", UiChrome.AccentBorder, 9);
+            _onboardingHintBorder.raycastTarget = false;
+
+            _onboardingHintText = UiChrome.AddText(_onboardingHint, "Text", UiChrome.FontCaption,
+                TextAnchor.MiddleCenter, UiChrome.TextPrimary);
+            UiChrome.Stretch(_onboardingHintText.rectTransform);
+            _onboardingHintText.text = OnboardingHintText;
+
+            _onboardingHintWidth = _onboardingHintText.preferredWidth + HoverLabelPaddingPoints;
+            _onboardingHint.sizeDelta = new Vector2(_onboardingHintWidth, HoverLabelHeightPoints);
+
+            _onboardingHintSurface.color = Fade(UiChrome.PanelSurface, 0f);
+            _onboardingHintBorder.color = Fade(UiChrome.AccentBorder, 0f);
+            _onboardingHintText.color = Fade(UiChrome.TextPrimary, 0f);
+            go.SetActive(false);
         }
 
         private ButtonView BuildButton(int index)
@@ -983,7 +1477,10 @@ namespace StickMate.Interaction
             view.Group.anchorMin = view.Group.anchorMax = view.Group.pivot = new Vector2(0.5f, 0.5f);
             view.Group.sizeDelta = Vector2.zero;
 
-            // 원 묶음(스케일 대상) — 라벨은 스케일에서 제외한다(호버로 글자가 커지면 어수선하다).
+            // 원 묶음(스케일 대상). 라벨 알약이 있던 시절에는 Group/Root를 나눠 글자만 스케일에서
+            // 빼야 했지만(호버로 글자가 커지면 어수선하다), 이제 둘 다 원만 담는다. 계층을 합치지 않은
+            // 이유는 Group.anchoredPosition이 곧 "궤도 위 위치"이고 Root.localScale이 곧 "호버/펼침
+            // 스케일"이라는 역할 분리가 애니메이션 코드를 단순하게 유지하기 때문이다.
             var circleGo = new GameObject("Circle", typeof(RectTransform));
             circleGo.transform.SetParent(view.Group, false);
             view.Root = circleGo.GetComponent<RectTransform>();
@@ -1006,31 +1503,14 @@ namespace StickMate.Interaction
             {
                 GearMenuButton.FocusMode => BuildStopwatchSymbol(view),
                 GearMenuButton.Character => BuildStickmanSymbol(view),
+                GearMenuButton.Action => BuildMegaphoneSymbol(view.Symbol),
                 _ => BuildChecklistSymbol(view),
             };
 
-            // ---- 라벨 알약(원 아래 4pt) ----
-            var pillGo = new GameObject("Label", typeof(RectTransform));
-            pillGo.transform.SetParent(view.Group, false);
-            view.LabelPill = pillGo.GetComponent<RectTransform>();
-            view.LabelPill.anchorMin = view.LabelPill.anchorMax = view.LabelPill.pivot = new Vector2(0.5f, 0.5f);
+            // ★ 라벨 알약 서브트리는 2026-08-31에 통째로 삭제됐다(36-4, 사용자 지시). 되살릴 때는
+            //   지금의 기하(56×56 정사각 클램프 상자)에 맞춰 새로 쓴다 — 옛 코드를 남겨두지 않았다.
 
-            view.LabelSurface = UiChrome.AddSurface(view.LabelPill, "PillSurface", UiChrome.PanelSurface, 8);
-            UiChrome.Stretch(view.LabelSurface.rectTransform);
-            view.LabelSurface.raycastTarget = false;
-            view.LabelBorder = UiChrome.AddOutline(view.LabelPill, "PillBorder", UiChrome.PanelBorder, 8);
-
-            view.LabelText = UiChrome.AddText(view.LabelPill, "PillText", UiChrome.FontCaption,
-                TextAnchor.MiddleCenter, UiChrome.TextSecondary);
-            UiChrome.Stretch(view.LabelText.rectTransform);
-            view.LabelText.text = Labels[index];
-
-            // 폭은 실제 글자 폭에서 구한다(고정값으로 박으면 라벨이 길어질 때 잘린다). 한 번만 잰다.
-            view.LabelWidth = Mathf.Max(d, view.LabelText.preferredWidth + UiChrome.Space3);
-            view.LabelPill.sizeDelta = new Vector2(view.LabelWidth, LabelHeightPoints);
-            view.LabelPill.anchoredPosition = new Vector2(0f, -(d * 0.5f + LabelGapPoints + LabelHeightPoints * 0.5f));
-
-            // ---- 오늘 할일 미완료 배지 ----
+            // ---- 오늘 할일 미완료 배지(유일하게 남은 글자 — 이름이 아니라 상태 수량이다) ----
             if ((GearMenuButton)index == GearMenuButton.Todo)
             {
                 var badgeGo = new GameObject("Badge", typeof(RectTransform));
@@ -1122,6 +1602,26 @@ namespace StickMate.Interaction
             // 알파만 따라가게 한다.
             view.SymbolFixedParts = new[] { checkShort, checkLong };
             return new[] { line0, line1, line2, strike, box0, box1 };
+        }
+
+        /// <summary>
+        /// ④ 행동 — <b>확성기</b>(6획, 36-5). 나머지 셋(스톱워치=원 / 스틱맨=수직 대칭 / 체크리스트=수평
+        /// 줄)이 전부 좌우 대칭인 반면 확성기는 <b>오른쪽을 향한 비대칭 실루엣</b>이라 22pt 축소에서도
+        /// 형태가 충돌하지 않는다. 의미도 정확하다 — 이 버튼은 캐릭터의 상태를 <b>보는</b> 곳이 아니라
+        /// 캐릭터에게 <b>시키는</b> 곳이다.
+        ///
+        /// 손잡이는 일부러 뺐다: 24pt 상자에서 손잡이 획은 잉크 얼룩이 되고, 나팔 + 소리선만으로 이미
+        /// 확성기로 읽힌다. 배지도 상태 반영도 없다(32-4 ② — 내비게이션 표지는 영원히 같은 그림이다).
+        /// </summary>
+        private static Image[] BuildMegaphoneSymbol(Transform p)
+        {
+            var upper = UiChrome.AddStroke(p, "HornUpper", 13f, SymbolStroke, 13f, new Vector2(-1.6f, 5.0f), UiChrome.TextPrimary);
+            var lower = UiChrome.AddStroke(p, "HornLower", 13f, SymbolStroke, -13f, new Vector2(-1.6f, -5.0f), UiChrome.TextPrimary);
+            var neck = UiChrome.AddStroke(p, "HornNeck", 5.6f, SymbolStroke, 90f, new Vector2(-8.4f, 0f), UiChrome.TextPrimary);
+            var mouth = UiChrome.AddStroke(p, "HornMouth", 11.6f, SymbolStroke, 90f, new Vector2(5.0f, 0f), UiChrome.TextPrimary);
+            var waveUp = UiChrome.AddStroke(p, "WaveUpper", 4.6f, 1.6f, 30f, new Vector2(9.6f, 3.4f), UiChrome.TextPrimary);
+            var waveDown = UiChrome.AddStroke(p, "WaveLower", 4.6f, 1.6f, -30f, new Vector2(9.6f, -3.4f), UiChrome.TextPrimary);
+            return new[] { upper, lower, neck, mouth, waveUp, waveDown };
         }
 
         private static Image AddSmallBox(Transform parent, string name, Vector2 center)

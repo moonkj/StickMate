@@ -96,10 +96,14 @@ namespace StickMate.States
         {
             _rideTimer += deltaTime;
 
+            // ★ 2026-09-01 (P9-b) 이번 프레임의 커서 이동 벡터. 아래에서 _lastCursorWorld를 덮어쓰기
+            // **전에** 잡아 둔다 — 이것이 곧 "털려서 날아가는 방향"이다(커서가 움직인 쪽으로 튕긴다).
+            Vector2 shakeDelta = _hasLastCursorWorld ? cursorWorld - _lastCursorWorld : Vector2.zero;
+
             float speedWorldPerSec = 0f;
             if (_hasLastCursorWorld && deltaTime > 0f)
             {
-                speedWorldPerSec = Vector2.Distance(cursorWorld, _lastCursorWorld) / deltaTime;
+                speedWorldPerSec = shakeDelta.magnitude / deltaTime;
             }
             _lastCursorWorld = cursorWorld;
             _hasLastCursorWorld = true;
@@ -115,7 +119,10 @@ namespace StickMate.States
                 if (_blackboard.Body != null) _blackboard.Body.bodyType = RigidbodyType2D.Dynamic;
                 float threshold = _blackboard.Config != null ? _blackboard.Config.ragdollForceThreshold : 8f;
                 float multiplier = _blackboard.Config != null ? _blackboard.Config.rodeoShakeImpactMultiplier : 1.25f;
-                RagdollImpactResolver.TryApplyImpact(_blackboard, threshold * multiplier);
+                // ★ 2026-09-01 (P9-b) 방향 = 커서가 움직인 쪽. 흔들어 떼어낸 것이므로 "털린 방향으로
+                // 날아간다"가 자연스럽다. 이 분기는 speedWorldPerSec >= 임계값일 때만 오므로 shakeDelta는
+                // 항상 0이 아니다(그래도 0이면 RagdollRig가 충격량을 건너뛴다 — 안전한 폴백).
+                RagdollImpactResolver.TryApplyImpact(_blackboard, threshold * multiplier, shakeDelta);
                 return;
             }
 

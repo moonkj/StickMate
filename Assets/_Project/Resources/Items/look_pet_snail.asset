@@ -1,0 +1,46 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78e6f691c35d849a3aaae03fcb063cd4, type: 3}
+  m_Name: look_pet_snail
+  m_EditorClassIdentifier: 
+  itemId: look.pet.snail
+  slot: 6
+  itemIndex: 5
+  displayName: "\uB2EC\uD33D\uC774"
+  description: "\uC544\uC8FC \uB290\uB9AC\uAC8C \uB530\uB77C\uC628\uB2E4."
+  requiredLevel: 30
+  hidesHair: 0
+  icon:
+  - kind: 1
+    values:
+    - 18
+    - 20
+    - 7
+    color: {r: 0.7529412, g: 0.56078434, b: 0.3764706, a: 1}
+    tone: 0
+  - kind: 0
+    values:
+    - 11
+    - 27
+    - 30
+    - 27
+    - 33
+    - 22
+    color: {r: 0.7529412, g: 0.56078434, b: 0.3764706, a: 1}
+    tone: 0
+  - kind: 1
+    values:
+    - 18
+    - 20
+    - 3
+    color: {r: 0.9098039, g: 0.8862745, b: 0.83137256, a: 1}
+    tone: 1

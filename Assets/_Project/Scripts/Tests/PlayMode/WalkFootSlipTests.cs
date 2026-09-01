@@ -323,10 +323,32 @@ namespace StickMate.Tests.PlayMode
 
             // 접지 보정(ComputeFootGroundingOffset)이 살아 있는지 잠근다 — 이 값이 커지면 디딤발이
             // 지면을 들락거려 "발이 땅에 안 붙은" 느낌이 난다(보정 도입 전 실측: 파고듦 0.025 / 뜸 0.070).
-            // 길이 차원이라 임계값을 루트 배율에 비례시킨다(0.06은 루트 localScale 1에서 잰 값).
+            //
+            // ★★ 2026-09-01 (P9-c) 임계값에 **진폭 배율**을 함께 곱한다 — BUG-WALK-B2에서 루트 배율을
+            // 곱해야 했던 것과 정확히 같은 종류의 정규화다(docs/UX_FLOW.md 38-14-5 #14가 예고한 확장).
+            //
+            //   왜 필요한가(실측으로 확인한 인과): 이 지표가 실제로 재고 있는 것은 접지 보정의 오차가
+            //   아니라 대부분 **"디딤발 불일치"** 구간이다(같은 로그의 불일치율 20%). 보정은 두 발 중
+            //   **더 낮은 발**을 지면에 붙이는데, 이 측정은 **위상상의** 디딤발을 보므로 그 20% 동안은
+            //   반대쪽 발이 지면에 붙고 이 발은 떠 있는 것으로 잡힌다. 그 뜬 높이는 두 발이 벌어진
+            //   거리이므로 **포즈 진폭에 정비례**한다.
+            //   실측 대조(배율 0.75): 진폭 1.00 -> 0.052유닛 / 진폭 1.29 -> 0.0673유닛 (비 1.29 = 진폭비).
+            //   즉 커진 것은 오차가 아니라 **자(尺)** 다. 진폭으로 나누면 예전과 같은 수가 나온다.
+            //
+            //   ★ 그래서 이 완화는 "느슨하게 풀어준 것"이 아니다. 진폭이 커져도 **단위 진폭당 접지
+            //   오차는 예전 그대로여야 한다**는, 오히려 더 강한 조건을 잠근 것이다. 진폭과 무관하게
+            //   보정이 깨지면(예: 보정 자체를 꺼버리면) 이 단언은 그대로 빨간불이 된다.
+            //
+            //   남은 잔여 과제(불일치율 20%)는 이번 변경 이전부터 있던 것으로, 이 파일 상단 문서에
+            //   이미 명시돼 있다.
+            float amplitudeScale = Mathf.Max(1f, pose.WalkAmplitudeScale);
+            float groundErrLimit = 0.06f * rootScale * amplitudeScale;
             float worstGroundErr = Mathf.Max(Mathf.Abs(groundErrMin), Mathf.Abs(groundErrMax));
-            Assert.Less(worstGroundErr, 0.06f * rootScale,
-                $"{LogPrefix} 디딤발이 지면에서 {worstGroundErr:F4}유닛 벗어납니다(허용 {0.06f * rootScale:F4}) — " +
+            Debug.Log($"{LogPrefix} 접지 임계 — 진폭 배율 {pose.WalkAmplitudeScale:F3}(속도 정규화 " +
+                $"{pose.WalkSpeed01:F3}) -> 허용 {groundErrLimit:F4}유닛, 단위 진폭당 실측 " +
+                $"{worstGroundErr / (rootScale * amplitudeScale):F4}유닛(진폭 1.0 시절 기준선 0.052).");
+            Assert.Less(worstGroundErr, groundErrLimit,
+                $"{LogPrefix} 디딤발이 지면에서 {worstGroundErr:F4}유닛 벗어납니다(허용 {groundErrLimit:F4}) — " +
                 "StickmanPoseAnimator.ComputeFootGroundingOffset()의 접지 보정이 깨졌을 가능성이 큽니다.");
         }
     }

@@ -170,8 +170,12 @@ namespace StickMate.Core
             return entry != null && entry.RequiredLevel.HasValue ? entry.RequiredLevel.Value : int.MaxValue;
         }
 
+        /// <summary>2026-08-31 <b>임시</b>: <see cref="EquipmentDebugUnlock.UnlockAll"/>이 켜져 있으면
+        /// 레벨을 보지 않는다(사용자 QA 요청 — 28종을 전부 눌러 보기 위해). 위
+        /// <see cref="RequiredLevel"/>은 그대로 살아 있고, 스위치를 끄면 원래 규칙으로 돌아온다.</summary>
         public static bool IsItemOwned(EquipmentSlot slot, int itemIndex)
-            => CharacterProgressionModel.Level >= RequiredLevel(slot, itemIndex);
+            => EquipmentDebugUnlock.UnlockAll
+               || CharacterProgressionModel.Level >= RequiredLevel(slot, itemIndex);
 
         /// <summary>이 카테고리에서 지금 보유한 아이템 수(정보창 카테고리 카드의 "n/4").</summary>
         public static int OwnedItemCount(EquipmentSlot slot)

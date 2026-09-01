@@ -62,77 +62,72 @@ namespace StickMate.Interaction
             _player.Blackboard.Machine.ChangeState(StickmanStateId.TodoReminder);
         }
 
-        /// <summary>
-        /// 17절 "[+ 할일 추가]"가 아직 없는 지금(설정창/트레이 미구현) 데모 목록에 넣는 문구.
-        ///
-        /// ★ CLAUDE.md 불변 원칙 3 — 이 문자열들은 <b>전부 이 소스 파일에 박힌 리터럴</b>이다.
-        /// 유저의 실제 캘린더/미리알림/할일 앱/파일을 읽어오는 코드는 이 프로젝트 어디에도 없고
-        /// (Tests/EditMode/UserAssetImmutabilityAuditTests.cs가 정적으로 스캔한다), 이 기능의 데이터는
-        /// 처음부터 끝까지 Core/TodoListModel.cs의 앱 내부 상태뿐이다.
-        /// </summary>
-        private static readonly string[] DemoTodoTexts =
-        {
-            "보고서 초안 쓰기",
-            "장보기",
-            "세탁물 찾기",
-        };
+        /// <summary>강조할 할일이 하나도 없을 때의 문구(36-7 표와 1:1).</summary>
+        public const string NoTodoReason = "아직 적어둔 할일이 없어요";
 
         /// <summary>
-        /// 투두 데모 경로(Ctrl+Opt+Cmd+J / 우클릭 메뉴) — 두 가지를 한 번에 한다.
-        ///
-        /// (1) <b>할일 추가</b>: 17절의 트리거는 "설정창 또는 트레이 메뉴의 [+ 할일 추가]"인데 둘 다
-        ///     아직 없어서, <c>Core.TodoListModel.Add</c>를 호출하는 코드가 프로젝트 전체에 <b>0건</b>
-        ///     이었다. 즉 목록이 영원히 비어 있었고, 그래서 포스트잇 카드는 17절의 "빈 상태 예외"에
-        ///     따라 항상 숨겨졌고 이 Director의 유휴 추첨도 <c>UncompletedCount &lt;= 0</c>에서 매번
-        ///     즉시 return했다 — 기능 전체가 <b>도달 불가능</b>했다. 목록이 비어 있을 때만 데모 3건을
-        ///     넣어 그 경로를 열어준다.
-        /// (2) <b>리마인더 강제 발동</b>: 자동 트리거가 45초 주기 20% 추첨이라 확률만으로는 실물 검증이
-        ///     사실상 불가능하다 — 다른 Director의 ForceTriggerNow와 같은 성격. 확률/주기만 건너뛰고
-        ///     상호배제 락과 진입 상태 조건(Idle/Walk)은 그대로 지킨다.
+        /// ★ 지금 리마인더를 강제 발동할 수 있는가 — 회색 처리와 실제 실행이 함께 쓰는 단 하나의 판정
+        /// (docs/UX_FLOW.md 36-7). 이 경로는 (다) 개발 전용이지만 판정 구조는 나머지 6개와 같게 둔다:
+        /// 두 벌의 판정이 생기는 것을 막는 규칙에 예외를 두면 그 예외가 다음 함정이 된다.
         /// </summary>
-        public void ForceTriggerNow(string reason)
+        public CommandAvailability GetAvailability()
         {
             if (_player == null || _config == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
-            {
-                Debug.LogWarning($"[투두] 강제 발동 실패({reason}) — 플레이어/설정 배선이 없습니다.");
-                return;
-            }
+                return CommandAvailability.Missing;
 
             if (TodoListModel.UncompletedCount <= 0)
-            {
-                for (int i = 0; i < DemoTodoTexts.Length; i++)
-                {
-                    TodoListModel.Add(DemoTodoTexts[i], _config.todoActiveCountSoftCap);
-                }
-                Debug.Log($"[투두] 데모 할일 {DemoTodoTexts.Length}건 추가({reason}) — " +
-                    $"미완료 {TodoListModel.UncompletedCount}건. 화면 우상단 포스트잇 카드가 나타나고 " +
-                    $"최대 {_config.todoPostItMaxVisibleRows}줄까지 보인다(17절). " +
-                    "★ 실제 캘린더/할일 앱은 읽지 않는다 — 전부 이 소스에 박힌 리터럴이다(원칙 3).");
-            }
+                return CommandAvailability.Blocked(NoTodoReason);
 
-            var current = _player.Blackboard.Machine.CurrentStateId;
+            StickmanStateId current = _player.Blackboard.Machine.CurrentStateId;
             if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
-            {
-                Debug.Log($"[투두] 리마인더 강제 발동({reason}) — 지금은 {current} 중이라 종이 꺼내기는 건너뜁니다" +
-                    "(포스트잇 카드는 상태와 무관하게 그대로 떠 있다).");
-                return;
-            }
+                return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(current));
 
             if (SpectacleEventLock.IsActive)
+                return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(SpectacleEventLock.ActiveKind));
+
+            return CommandAvailability.Ready;
+        }
+
+        /// <summary>
+        /// 리마인더 강제 발동(개발 전용 ⌃⌥⌘J). 자동 트리거가 45초 주기 20% 추첨이라 확률만으로는
+        /// 실물 검증이 사실상 불가능해 확률/주기만 건너뛴다 — 상호배제 락과 진입 상태 조건(Idle/Walk)은
+        /// 그대로 지킨다.
+        ///
+        /// ============================================================================
+        /// ★★ 2026-08-31 버그 수정 — 이 경로는 더 이상 <b>사용자의 진짜 목록에 쓰지 않는다</b>
+        /// ============================================================================
+        /// 종전에는 목록이 비어 있으면 데모 할일 3건("보고서 초안 쓰기"/"장보기"/"세탁물 찾기")을
+        /// <c>TodoListModel.Add</c>로 <b>실제 목록에 넣고 저장까지 남겼다</b>. 그 시절의 논거는
+        /// "Add 호출자가 프로젝트 전체에 0건이라 투두 기능이 도달 불가능하다"였는데, 부채꼴 ④
+        /// <see cref="TodoBoardPopover"/>에 입력칸이 생기면서 <b>그 전제가 더 이상 사실이 아니게 됐다</b>.
+        /// 남은 것은 사용자가 적지 않은 항목이 자기 목록에 나타나 저장 파일에까지 남는 것뿐이며,
+        /// 그것은 게이트로 숨기고 말고와 무관한 <b>데이터 오염</b>이다(CLAUDE.md 원칙 1·3).
+        ///
+        /// 그래서 데모 시딩을 <b>지웠다</b>(끄기 위해 남겨두지 않는다 — 죽은 채 남은 쓰기 경로는 반드시
+        /// 되살아난다). 목록이 비어 있으면 이 명령은 <see cref="NoTodoReason"/>으로 <b>거절</b>되고,
+        /// 검증하려는 사람은 부채꼴 ④의 입력칸이라는 <b>정식 경로</b>로 할일을 하나 적으면 된다.
+        /// </summary>
+        /// <returns>실제로 리마인더를 시작했는가.</returns>
+        public bool ForceTriggerNow(string reason)
+        {
+            CommandAvailability availability = GetAvailability();
+            if (!availability.IsReady)
             {
-                Debug.Log($"[투두] 리마인더 강제 발동({reason}) — 다른 스펙터클({SpectacleEventLock.ActiveKind})이 " +
-                    "진행 중이라 건너뜁니다(16-15/28절-29 상호배제는 강제 경로에서도 그대로 지킨다).");
-                return;
+                Debug.Log($"[투두] 리마인더 강제 발동({reason}) 건너뜀 — {availability.Reason}. " +
+                    "★ 이 경로는 데모 할일을 만들지 않는다(2026-08-31 수정) — 할일은 부채꼴 [오늘 할일] " +
+                    "입력칸으로만 들어온다. 포스트잇 카드는 상태와 무관하게 그대로 떠 있다.");
+                return false;
             }
 
-            if (!TryPickFeaturedTodo(out string text)) return;
-            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.TodoReminder, this)) return;
+            if (!TryPickFeaturedTodo(out string text)) return false;
+            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.TodoReminder, this)) return false;
 
             TodoListModel.SetPendingReminderText(text);
             _player.Blackboard.Machine.ChangeState(StickmanStateId.TodoReminder);
             Debug.Log($"[투두] 들고 다니는 모드 강제 발동({reason}) — 강조 할일 \"{text}\", " +
                 $"{_config.todoReminderHoldSeconds:F1}초 홀드. 종이는 TodoReminderRenderer가, " +
                 "텍스트는 말풍선이 그린다(원칙 1 — 전이가 확정된 뒤 그 상태에서만 파생).");
+            return true;
         }
 
         /// <summary>"1개 강조" — 가장 오래된 미완료 항목을 고른다(TodoListModel.ActiveItems는 FIFO 순서).</summary>

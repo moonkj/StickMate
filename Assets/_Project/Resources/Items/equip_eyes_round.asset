@@ -1,0 +1,60 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78e6f691c35d849a3aaae03fcb063cd4, type: 3}
+  m_Name: equip_eyes_round
+  m_EditorClassIdentifier: 
+  itemId: equip.eyes.round
+  slot: 1
+  itemIndex: 1
+  displayName: "\uB3D9\uADF8\uB780\uC548\uACBD"
+  description: "\uC2DC\uC57C\uAC00 \uC870\uAE08 \uB610\uB837\uD574\uC9C4\uB2E4."
+  requiredLevel: 6
+  hidesHair: 0
+  icon:
+  - kind: 1
+    values:
+    - 12
+    - 21
+    - 6
+    color: {r: 0.827451, g: 0.85490197, b: 0.89411765, a: 1}
+    tone: 0
+  - kind: 1
+    values:
+    - 28
+    - 21
+    - 6
+    color: {r: 0.827451, g: 0.85490197, b: 0.89411765, a: 1}
+    tone: 0
+  - kind: 0
+    values:
+    - 18
+    - 21
+    - 22
+    - 21
+    color: {r: 0.30980393, g: 0.7529412, b: 0.7764706, a: 1}
+    tone: 1
+  - kind: 0
+    values:
+    - 6
+    - 19
+    - 2
+    - 16
+    color: {r: 0.30980393, g: 0.7529412, b: 0.7764706, a: 1}
+    tone: 1
+  - kind: 0
+    values:
+    - 34
+    - 19
+    - 38
+    - 16
+    color: {r: 0.30980393, g: 0.7529412, b: 0.7764706, a: 1}
+    tone: 1

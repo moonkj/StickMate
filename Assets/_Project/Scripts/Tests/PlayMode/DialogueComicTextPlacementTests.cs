@@ -27,6 +27,12 @@ namespace StickMate.Tests.PlayMode
     ///     떨어져 나가거나 머리를 파고든다.
     /// (3) <b>화면 밖 잘림</b>. 캐릭터는 화면 좌우 끝에 서 있는 시간이 길다(가장자리 회전/벽타기).
     /// (4) <b>말풍선 도형이 되살아나는 실패</b>. "텍스트만"이라는 요구가 깨지는 지점.
+    /// (5) <b>글자가 조용히 수평으로 돌아가는 실패</b> (2026-08-31 사용자 요구 "캐릭터가 말하는
+    ///     텍스트는 좀 대각선으로 작성해줘"). 이 실패는 실제로 한 번 일어났다 — 회전 코드는
+    ///     처음부터 있었지만 각도가 ±2.5도(눈에 띄지 않게 하려던 "손글씨 흔들림")였고 부호까지
+    ///     대사 해시에서 사실상 무작위였다. 컴파일도 되고 로그도 정상이며 회전값도 0이 아니어서,
+    ///     "회전이 걸려 있는가"만 보는 검사로는 절대 잡히지 않는다. 그래서 아래 (E)는 각도의
+    ///     <b>크기 하한</b>과 <b>부호 규칙</b>을 함께 못박는다.
     ///
     /// ============================================================================
     /// 무엇을 어떻게 단언하는가 — 비율 비교가 아니라 **절대 조건**이다
@@ -42,6 +48,10 @@ namespace StickMate.Tests.PlayMode
     ///  (C) 클램프: 어떤 자리에서도 글자 블록이 화면 밖으로 나가지 않고, 화면 끝에서는 안쪽으로
     ///      밀리는 대신 **반대쪽으로 뒤집힌다**(밀면 글자가 머리 위로 올라타 요구가 깨진다).
     ///  (D) 도형 부재: 렌더러가 만든 캔버스에 **켜져 있는 Image가 하나도 없다**.
+    ///  (E) 기울기: 글자 블록의 RectTransform이 실제로 회전해 있고, 그 각도의 크기가 눈에 보이는
+    ///      하한(<see cref="MinVisibleTiltDegrees"/>) 이상이며, 부호가 **놓인 쪽의 거울상**이다
+    ///      (왼쪽 위 -> 반시계 +, 오른쪽 위 -> 시계 -). 그리고 클램프에 쓰이는 블록 크기가
+    ///      **회전한 축 정렬 경계**여야 한다 — 회전 전 크기로 클램프하면 화면 끝에서 모서리만 잘린다.
     ///
     /// ============================================================================
     /// 네거티브 컨트롤 (이 테스트가 정말 무언가를 보고 있는가)
@@ -74,6 +84,24 @@ namespace StickMate.Tests.PlayMode
         private const float ExpectedGapXRatio = 0.20f;
         private const float ExpectedGapYRatio = 0.10f;
 
+        // ---- (E) 기울기 계약의 바깥 숫자 ----
+        /// <summary>이 테스트가 렌더러에 주입하는 기울기 기준값(도). 출하 기본값과 같다.</summary>
+        private const float TiltBaseDegrees = 8f;
+        /// <summary>DialogueBubbleRenderer.ComicTiltJitterRatio와 같은 값 — 크기에만 붙는 결정적 편차.</summary>
+        private const float TiltJitterRatio = 0.25f;
+        /// <summary>
+        /// "눈에 보이는 기울기"의 하한(도). ★ 이 숫자가 (5) 실패를 잡는 핵심이다 — 직전 구현의
+        /// 최대 각도가 2.5도였으므로, 그 시절 코드로 되돌아가면 이 단언에서 반드시 걸린다.
+        /// 4도의 근거: 한 줄(약 20pt) x 80pt 블록에서 양 끝 높이차가 5.6pt로 글자 높이의 4분의 1이다 —
+        /// 그 아래로는 "기울인 것"이 아니라 "레이아웃이 약간 어긋난 것"으로 보인다.
+        /// </summary>
+        private const float MinVisibleTiltDegrees = 4f;
+        /// <summary>기울기 테스트에서 쓰는 글자 크기(캔버스 유닛 기준값). 배율 0.75 x 만화 배율
+        /// 0.875를 거쳐 21pt가 되고, dpi 오버라이드 1과 곱해 물리 21px — 렌더러의 회전 하한
+        /// (물리 14px)을 여유 있게 넘긴다. 이 리그를 출하 조합(10pt x Retina 2x = 20px)과 같은
+        /// 글리프 크기대에 맞추기 위한 값이지 임의의 큰 숫자가 아니다.</summary>
+        private const int TiltTestFontSize = 32;
+
         /// <summary>진입할 때마다 지정된 텍스트로 DialogueIntent를 하나 만드는 테스트 상태
         /// (DialogueBubbleContractTests와 같은 방식 — 물리/씬 없이 대사 하나를 정확히 재현한다).</summary>
         private sealed class TalkingState : IStickmanState
@@ -96,6 +124,9 @@ namespace StickMate.Tests.PlayMode
         }
 
         private readonly List<GameObject> _spawned = new List<GameObject>(4);
+        private readonly List<StickConfig> _configs = new List<StickConfig>(2);
+        /// <summary>리그 이름을 유일하게 만드는 일련번호 — 아래 SpawnRig 주석의 함정 참고.</summary>
+        private int _rigSerial;
         private readonly List<StickmanStateMachine> _machines = new List<StickmanStateMachine>(4);
         private readonly List<Camera> _suspendedCameras = new List<Camera>(2);
         private Camera _camera;
@@ -144,6 +175,13 @@ namespace StickMate.Tests.PlayMode
                 if (_spawned[i] != null) Object.DestroyImmediate(_spawned[i]);
             }
             _spawned.Clear();
+            // 주입한 테스트 전용 StickConfig 정리. ★ 렌더러의 _config를 먼저 null로 되돌린 뒤 지운다 —
+            // 파괴된 ScriptableObject를 붙든 채 남으면 다음 프레임의 LateUpdate가 그것을 읽는다.
+            for (int i = 0; i < _configs.Count; i++)
+            {
+                if (_configs[i] != null) Object.DestroyImmediate(_configs[i]);
+            }
+            _configs.Clear();
             _camera = null;
             for (int i = 0; i < _suspendedCameras.Count; i++)
             {
@@ -458,12 +496,186 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ────────────────────────────────────────────────────────────────────────
+        // (E) 기울기 — 배치만 대각선이 아니라 **글자 자체가** 비스듬하다
+        // ────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// 사용자 요구 2026-08-31 "캐릭터가 말하는 텍스트는 좀 대각선으로 작성해줘".
+        ///
+        /// 세 가지를 한꺼번에 못박는다:
+        ///   · <b>크기</b> — 실제 RectTransform 회전각의 크기가 <see cref="MinVisibleTiltDegrees"/> 이상.
+        ///     (직전 구현의 상한 2.5도로 되돌아가면 여기서 즉시 깨진다 = 이 테스트의 존재 이유.)
+        ///   · <b>부호</b> — 놓인 쪽의 거울상. 왼쪽 위면 반시계(+), 오른쪽 위면 시계(-).
+        ///     좌우 두 경우의 크기가 정확히 같아야 한다(거울상이지 서로 다른 각도가 아니다).
+        ///   · <b>적용</b> — 렌더러가 보고하는 값(LastTextTiltDegrees)과 화면에 실제로 걸린
+        ///     Transform 회전이 일치한다. "계산은 했는데 적용을 안 한" 실패를 따로 잡는다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator TextItselfIsTilted_AndTheTiltMirrorsTheSideItSitsOn()
+        {
+            var magnitudeBySide = new Dictionary<float, float>(2);
+            float[] facings = { 1f, -1f };
+            foreach (float facing in facings)
+            {
+            DialogueBubbleRenderer renderer = SpawnRig(0.75f, facing, out StickmanStateMachine machine);
+            InjectTiltConfig(renderer, TiltBaseDegrees, TiltTestFontSize);
+            yield return null;
+
+            machine.Start(StickmanStateId.Attack);
+            Assert.IsTrue(renderer.IsBubbleVisible, "대사가 표시되지 않았다 — 기울기를 잴 수 없다.");
+            yield return null;
+
+            RectTransform panel = FindTextPanel(renderer);
+            Assert.IsNotNull(panel, "글자 블록(BubblePanel)을 찾지 못했다.");
+
+            float z = SignedZDegrees(panel);
+            float side = renderer.LastTextSideSign;
+
+            // (E-1) 계산값과 실제 적용값이 같은가.
+            Assert.AreEqual(renderer.LastTextTiltDegrees, z, 1e-2f,
+                $"렌더러는 기울기 {renderer.LastTextTiltDegrees:F2}도라고 보고하는데 글자 블록의 실제 " +
+                $"회전은 {z:F2}도다 — 각도를 계산해 놓고 Transform에 적용하지 않았다.");
+
+            // (E-2) 눈에 보이는 크기인가. ★ 이 단언이 "회전은 0이 아니지만 아무도 못 알아보는"
+            //       종전 상태(±2.5도)를 잡는다.
+            Assert.GreaterOrEqual(Mathf.Abs(z), MinVisibleTiltDegrees,
+                $"글자 기울기가 {Mathf.Abs(z):F2}도뿐이다 — 사용자 요구는 '좀 대각선으로'인데 이 정도는 " +
+                "화면에서 수평과 구분되지 않는다(직전 구현의 상한이 정확히 2.5도였다).");
+            Assert.LessOrEqual(Mathf.Abs(z), TiltBaseDegrees * (1f + TiltJitterRatio) + 0.01f,
+                $"글자 기울기가 {Mathf.Abs(z):F2}도로 설정 기준값({TiltBaseDegrees}도)의 편차 범위를 넘었다 — " +
+                "각도가 설정을 따르지 않는다.");
+            Assert.GreaterOrEqual(Mathf.Abs(z), TiltBaseDegrees * (1f - TiltJitterRatio) - 0.01f,
+                $"글자 기울기가 {Mathf.Abs(z):F2}도로 설정 기준값({TiltBaseDegrees}도)의 편차 범위보다 작다.");
+
+            // (E-3) 부호 = 놓인 쪽의 거울상.
+            if (side < 0f)
+            {
+                Assert.Greater(z, 0f,
+                    "글자가 캐릭터 **왼쪽 위**에 놓였는데 시계 방향으로 기울었다 — 반시계(오른쪽 끝이 " +
+                    "올라감)여야 머리에 가장 가까운 아래쪽 안쪽 모서리가 떠오르고, 좌우 배치가 서로 " +
+                    "거울상이 된다.");
+            }
+            else
+            {
+                Assert.Less(z, 0f,
+                    "글자가 캐릭터 **오른쪽 위**에 놓였는데 반시계로 기울었다 — 시계 방향이어야 한다.");
+            }
+
+            // (E-4) 클램프 크기가 **회전한 축 정렬 경계**인가. 회전 전 크기로 클램프하면 화면
+            //       위/옆에서 글자 모서리만 잘려 나간다.
+            Vector2 raw = panel.sizeDelta;
+            float rad = Mathf.Abs(z) * Mathf.Deg2Rad;
+            var expected = new Vector2(
+                raw.x * Mathf.Cos(rad) + raw.y * Mathf.Sin(rad),
+                raw.x * Mathf.Sin(rad) + raw.y * Mathf.Cos(rad));
+            Assert.AreEqual(expected.x, renderer.LastTextSizeCanvas.x, 0.05f,
+                "클램프에 쓰인 가로 크기가 회전 경계와 다르다 — 회전 전 사각형으로 클램프하고 있다.");
+            Assert.AreEqual(expected.y, renderer.LastTextSizeCanvas.y, 0.05f,
+                "클램프에 쓰인 세로 크기가 회전 경계와 다르다 — 회전 전 사각형으로 클램프하고 있다.");
+            Assert.Greater(renderer.LastTextSizeCanvas.y, raw.y,
+                "기울었는데 클램프 세로 크기가 회전 전과 같다(회전이 클램프에 반영되지 않았다).");
+
+            magnitudeBySide[side] = Mathf.Abs(z);
+            }
+
+            // (E-5) 좌우가 정확한 거울상인가 — 같은 대사면 크기는 같고 부호만 반대여야 한다.
+            Assert.AreEqual(2, magnitudeBySide.Count,
+                "좌우 두 배치가 같은 쪽으로 계산됐다 — 거울상 여부를 확인할 수 없다.");
+            Assert.AreEqual(magnitudeBySide[-1f], magnitudeBySide[1f], 1e-2f,
+                $"왼쪽 배치({magnitudeBySide[-1f]:F2}도)와 오른쪽 배치({magnitudeBySide[1f]:F2}도)의 " +
+                "기울기 크기가 다르다 — 부호만 뒤집는 거울상이어야 한다.");
+        }
+
+        /// <summary>
+        /// 기울기가 <b>설정을 따르고</b>, 글리프가 너무 작을 때는 스스로 꺼지는가.
+        ///
+        /// 두 번째 절반이 중요하다: 기울이면 글자 쿼드가 픽셀 격자와 어긋나 글리프 아틀라스가
+        /// 바이리니어로 다시 샘플링된다. 12px 한글에서는 자모 획이 통째로 뭉개져 읽을 수 없게 되므로
+        /// (2026-08-29 실측), 그 크기대에서는 "대각선으로"보다 "읽힌다"가 먼저다.
+        ///
+        /// 동시에 이 테스트는 (E)의 **네거티브 컨트롤**이기도 하다 — 각도가 설정에 따라 0까지
+        /// 내려가는 것을 같은 측정 방법으로 보이므로, (E)가 통과한 이유가 "어딘가 고정된 상수를
+        /// 읽어서"가 아님이 증명된다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate()
+        {
+            DialogueBubbleRenderer renderer = SpawnRig(0.75f, facing: 1f, out StickmanStateMachine machine);
+            StickConfig config = InjectTiltConfig(renderer, TiltBaseDegrees, TiltTestFontSize);
+            yield return null;
+
+            machine.Start(StickmanStateId.Attack);
+            yield return null;
+            Assert.GreaterOrEqual(Mathf.Abs(SignedZDegrees(FindTextPanel(renderer))), MinVisibleTiltDegrees,
+                "기준 조건(기울기 8도 + 충분히 큰 글자)에서부터 기울지 않았다 — 아래 비교가 무의미해진다.");
+
+            // (1) 설정으로 끄면 정확히 수평이 된다.
+            config.dialogueTiltDegrees = 0f;
+            yield return RespeakAsync(machine);
+            Assert.AreEqual(0f, SignedZDegrees(FindTextPanel(renderer)), 1e-3f,
+                "dialogueTiltDegrees = 0인데 글자가 여전히 기울어 있다 — 각도가 설정을 읽지 않는다.");
+
+            // (2) 글리프가 회전 하한(물리 14px)보다 작으면 설정과 무관하게 꺼진다.
+            //     32 -> 8pt: 8 x 0.75(배율) x 0.875(만화 배율) = 5.25 -> 만화 모드 폰트 하한 9pt로 받쳐지고,
+            //     dpi 오버라이드 1이라 물리 9px < 14px이므로 기울기가 꺼져야 한다.
+            config.dialogueTiltDegrees = TiltBaseDegrees;
+            config.dialogueFontSize = 8;
+            yield return RespeakAsync(machine);
+            Assert.AreEqual(0f, SignedZDegrees(FindTextPanel(renderer)), 1e-3f,
+                "물리 9px짜리 글리프인데도 기울였다 — 회전 리샘플링으로 한글 자모 획이 뭉개진다 " +
+                "(2026-08-29 실측). 이 크기대에서는 '대각선으로'보다 '읽힌다'가 먼저다.");
+            Assert.AreEqual(0f, renderer.LastTextTiltDegrees, 1e-3f,
+                "렌더러가 보고하는 기울기와 실제 적용값이 어긋난다.");
+        }
+
+        /// <summary>
+        /// ★ <b>출하 조합에서 정말 기울어지는가</b> — 이 테스트가 없으면 (E)는 "테스트용으로 크게 키운
+        /// 글자에서만 기울어진다"를 통과시킬 수 있다.
+        ///
+        /// 회전 하한이 **물리 픽셀** 단위라, 판정은 글자 크기와 화면 배율의 <b>곱</b>에 달려 있다.
+        /// 나머지 PlayMode 리그는 DPI가 1이라 실제 사용자 화면(Retina 2x)과 조건이 다르다 —
+        /// 그쪽에서만 확인하면 "테스트는 통과하는데 화면은 그대로 수평"이 성립해 버린다.
+        /// 그래서 여기서는 출하 조합을 그대로 재현한다:
+        ///   dialogueFontSize 16(배포 에셋) x characterScale 0.75(출하) x 0.875(만화 배율) = 10pt,
+        ///   x Retina 캔버스 배율 2.0 = 물리 20px >= 하한 14px  ->  <b>켜져야 한다</b>.
+        /// (desktopDpiScale = 0.5 = "OS 포인트 / Unity 픽셀"이 곧 캔버스 배율 2.0의 역수다.)
+        /// </summary>
+        [UnityTest]
+        public IEnumerator ShippingConfigurationOnARetinaScreen_ActuallyTiltsTheText()
+        {
+            DialogueBubbleRenderer renderer = SpawnRig(0.75f, facing: 1f, out StickmanStateMachine machine);
+            StickConfig config = InjectTiltConfig(renderer, TiltBaseDegrees, fontSize: 16);
+            config.desktopDpiScale = 0.5f; // Retina 2x — 캔버스 1유닛 = 물리 2픽셀.
+            yield return null;
+
+            machine.Start(StickmanStateId.Attack);
+            yield return null;
+
+            float z = SignedZDegrees(FindTextPanel(renderer));
+            Assert.GreaterOrEqual(Mathf.Abs(z), MinVisibleTiltDegrees,
+                $"출하 그대로의 설정(16pt x 0.75 x 0.875 = 10pt, Retina 2x = 물리 20px)에서 기울기가 " +
+                $"{Mathf.Abs(z):F2}도뿐이다 — 사용자 화면에서 글자가 수평으로 보인다는 뜻이다. " +
+                "회전 하한(ComicTiltMinGlyphPixels)이 출하 조합을 잘라내고 있는지 확인할 것.");
+            Assert.Greater(z, 0f, "오른쪽으로 걷는 중이라 글자는 왼쪽 위 = 반시계여야 한다.");
+        }
+
+        // ────────────────────────────────────────────────────────────────────────
         // 리그 조립 / 좌표 헬퍼
         // ────────────────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// ★ 리그 이름에 일련번호를 붙이는 이유 (2026-08-31 실측으로 잡은 **플래키**):
+        /// <see cref="FindRendererCanvas"/>는 캔버스를 <b>이름</b>("DialogueBubbleCanvas (리그이름)")으로
+        /// 찾는다 — 렌더러가 만드는 캔버스가 씬 루트에 있고 렌더러 쪽 참조가 private이라 그것이
+        /// 유일한 경로다. 그런데 한 테스트가 <b>같은 배율의 리그를 둘</b> 만들면(좌/우 진행 방향을
+        /// 나란히 보는 경우) 이름이 겹치고, 앞 리그는 TearDown 전까지 살아 있으므로
+        /// <c>FindObjectsByType</c>의 순서에 따라 <b>남의 캔버스</b>가 잡힌다.
+        /// 실제로 같은 테스트가 한 번은 통과하고 한 번은 "계산값과 실제 회전이 반대"로 실패했다
+        /// (두 번째 리그를 재면서 첫 번째 리그의 패널을 읽었다). 이름을 갈라 원인을 없앤다.
+        /// </summary>
         private DialogueBubbleRenderer SpawnRig(float scale, float facing, out StickmanStateMachine machine)
         {
-            GameObject root = BuildMetricsRig($"ComicRig_{scale:F2}", scale);
+            GameObject root = BuildMetricsRig($"ComicRig_{scale:F2}#{++_rigSerial}", scale);
             _spawned.Add(root);
 
             var renderer = root.AddComponent<DialogueBubbleRenderer>();
@@ -515,6 +727,55 @@ namespace StickMate.Tests.PlayMode
 
             root.AddComponent<StickmanMetrics>();
             return root;
+        }
+
+        /// <summary>기울기 계약 검사용 StickConfig를 만들어 렌더러에 주입한다.
+        /// (_config는 [SerializeField] private이라 리플렉션이 유일한 주입 경로다 — 프로덕션 코드에
+        ///  테스트 전용 setter를 뚫지 않기 위한 선택이고, 같은 파일의 외곽선 테스트와 같은 방식이다.)
+        /// desktopDpiScale을 1로 못박는 이유: 회전 하한이 **물리 픽셀** 단위라 앞선 테스트가 남긴
+        /// 전역 DPI 실측값에 따라 결과가 달라지면 안 된다.</summary>
+        private StickConfig InjectTiltConfig(DialogueBubbleRenderer renderer, float tiltDegrees, int fontSize)
+        {
+            var config = ScriptableObject.CreateInstance<StickConfig>();
+            config.dialogueTiltDegrees = tiltDegrees;
+            config.dialogueFontSize = fontSize;
+            config.desktopDpiScale = 1f;
+            _configs.Add(config);
+
+            System.Reflection.FieldInfo field = typeof(DialogueBubbleRenderer)
+                .GetField("_config", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            Assert.IsNotNull(field, "_config 필드를 찾지 못했다 — 필드명이 바뀌었다면 이 테스트도 갱신할 것.");
+            field.SetValue(renderer, config);
+            return config;
+        }
+
+        /// <summary>같은 대사를 한 번 더 시키고(상태를 빠져나갔다 다시 들어간다) 배치가 갱신될 때까지
+        /// 기다린다. 기울기 크기는 대사가 뜨는 순간 한 번 확정되므로, 설정을 바꾼 뒤에는 반드시
+        /// 새 대사를 띄워야 새 값이 반영된다.</summary>
+        private static IEnumerator RespeakAsync(StickmanStateMachine machine)
+        {
+            machine.ChangeState(StickmanStateId.Ragdoll);
+            yield return null;
+            machine.ChangeState(StickmanStateId.Attack);
+            yield return null;
+        }
+
+        /// <summary>글자 블록(회전/팝인 스케일을 먹는 컨테이너) RectTransform.</summary>
+        private RectTransform FindTextPanel(DialogueBubbleRenderer renderer)
+        {
+            Canvas canvas = FindRendererCanvas(renderer);
+            if (canvas == null) return null;
+            Text label = canvas.GetComponentInChildren<Text>(true);
+            return label != null ? label.transform.parent as RectTransform : null;
+        }
+
+        /// <summary>Z축 회전을 -180~+180 범위의 **부호 있는** 각도로 읽는다
+        /// (eulerAngles는 0~360이라 -8도가 352도로 나와 부호 단언이 통째로 무의미해진다).</summary>
+        private static float SignedZDegrees(RectTransform rect)
+        {
+            Assert.IsNotNull(rect, "글자 블록 RectTransform이 없다.");
+            float z = rect.localEulerAngles.z;
+            return z > 180f ? z - 360f : z;
         }
 
         private Canvas FindRendererCanvas(DialogueBubbleRenderer renderer)

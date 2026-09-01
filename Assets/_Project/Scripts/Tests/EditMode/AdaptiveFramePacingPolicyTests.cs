@@ -72,18 +72,22 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 캐릭터가_걷는중이면_아무리_오래_무입력이어도_활성등급이다()
         {
-            // 사용자 확정 사항: "움직일 때는 60fps". 자리 비움 등급보다 아래로는 못 내려가지만,
-            // 자리 비움(3분)까지 가기 전에는 걷는 동안 절대 절감하지 않는다.
+            // 사용자 확정 사항: "움직일 때는 60fps". 2026-09-01부터 이 제목은 <b>문자 그대로</b>
+            // 참이다 — Away조차 characterIdle을 요구하므로 걷는 동안에는 어떤 무입력 시간에도
+            // 내려가지 않는다. 경계 넘어간 쪽의 상세 검증은 AwayTierMotionGuardTests에 있다.
             FramePacingTier tier = FramePacingPolicy.DecideTier(
                 Presence(idleSeconds: FramePacingPolicy.AwaySeconds - 1f), false, characterIdle: false);
             Assert.AreEqual(FramePacingTier.Active, tier);
         }
 
         [Test]
-        public void 오래_무입력이면_자리비움등급이다()
+        public void 오래_무입력이고_캐릭터도_서있으면_자리비움등급이다()
         {
+            // ★ characterIdle: false -> true로 바뀐 것은 2026-09-01 수정 때문이다(테스트 의도는 그대로).
+            //   Away는 이제 "무입력 AND 캐릭터 정지"다. 걷는 중 무입력 케이스는 위 테스트와
+            //   AwayTierMotionGuardTests가 맡는다.
             FramePacingTier tier = FramePacingPolicy.DecideTier(
-                Presence(idleSeconds: FramePacingPolicy.AwaySeconds + 1f), false, characterIdle: false);
+                Presence(idleSeconds: FramePacingPolicy.AwaySeconds + 1f), false, characterIdle: true);
             Assert.AreEqual(FramePacingTier.Away, tier);
         }
 

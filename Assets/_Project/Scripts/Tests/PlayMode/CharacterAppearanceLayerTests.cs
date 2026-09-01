@@ -55,6 +55,18 @@ namespace StickMate.Tests.PlayMode
         private const int PetBall = 0;
         private const float SpawnProbeOffsetX = 3f;
 
+        /// <summary>긴 망토 자율 발동 간격을 바꿔 볼 때 쓰는 <b>복제본</b>과 원복 정보.
+        /// ★ 배포 에셋(Data/DefaultStickConfig.asset)에는 한 비트도 쓰지 않는다 —
+        /// Tests/PlayMode/DeployedConfigAssetImmutabilityTests가 잠근 계약이자 CLAUDE.md 원칙 3이다.</summary>
+        private StickmanAgent _tripAgent;
+        private StickConfig _tripDeployedConfig;
+        private StickConfig _tripCloneConfig;
+
+        /// <summary>StickmanAgent의 StickConfig 참조를 복제본으로 갈아끼우기 위한 주입 지점
+        /// (SuspendedField와 같은 관례 — 프리팹 직렬화 필드라 공개 세터가 없다).</summary>
+        private static readonly FieldInfo AgentConfigField =
+            typeof(StickmanAgent).GetField("_config", BindingFlags.Instance | BindingFlags.NonPublic);
+
         /// <summary>전체화면 감지 주입 — 플랫폼 서비스에 주입 지점이 없어 이 프로젝트가 쓰는 관례.</summary>
         private static readonly FieldInfo SuspendedField =
             typeof(StickmanAgent).GetField("_isSuspended", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -62,7 +74,6 @@ namespace StickMate.Tests.PlayMode
         private readonly List<GameObject> _rigs = new List<GameObject>(4);
 
         private StickConfig _inkConfig;
-        private StickmanInkColor _savedInk;
 
         /// <summary>정리 진입점은 <b>하나로 유지한다</b> — TearDown이 여러 개면 실행 순서가 정의되지 않는다
         /// (CharacterPortraitStageTests가 확립한 이 프로젝트의 관례).</summary>
@@ -80,14 +91,76 @@ namespace StickMate.Tests.PlayMode
             EquipmentModel.ResetForTesting();
             CharacterProgressionModel.ResetForTesting();
 
-            // 잉크색은 ScriptableObject 자산의 값이라 다음 테스트로 새어 나간다(폴링 주기를 복원하는
-            // FullscreenSuspendUiHidingTests와 같은 관례).
+            // 잉크색은 ScriptableObject 자산 위에 얹히는 값이라 다음 테스트로 새어 나간다(폴링 주기를
+            // 복원하는 FullscreenSuspendUiHidingTests와 같은 관례). ★ 2026-08-31 R5 — 이제 배포 에셋의
+            // 직렬화 필드를 저장/복원하는 것이 아니라 **런타임 오버라이드만** 지운다(이 테스트가
+            // 배포 에셋을 오염시킬 능력 자체를 없앴다).
             if (_inkConfig != null)
             {
-                _inkConfig.inkColor = _savedInk;
+                _inkConfig.ClearRuntimeInkColor();
                 _inkConfig = null;
             }
+
+            // ★ 2026-08-31 — 긴 망토 자율 발동 간격을 켜 본 테스트가 있으면 에이전트의 StickConfig
+            // 참조를 배포 에셋으로 되돌리고 복제본을 파괴한다. (배포 에셋 자체는 애초에 만지지
+            // 않았으므로 되돌릴 값이 없다 — 그것이 이 방식을 쓰는 이유다.)
+            if (_tripAgent != null && _tripDeployedConfig != null && AgentConfigField != null)
+            {
+                AgentConfigField.SetValue(_tripAgent, _tripDeployedConfig);
+            }
+            if (_tripCloneConfig != null) Object.DestroyImmediate(_tripCloneConfig);
+            _tripAgent = null;
+            _tripDeployedConfig = null;
+            _tripCloneConfig = null;
             yield return null;
+        }
+
+        /// <summary>
+        /// 긴 망토 자율 발동 간격을 이 테스트 동안만 바꾼다.
+        ///
+        /// ★ <b>배포 에셋에 쓰지 않는다.</b> <c>agent.Config</c>는 프리팹에 배선된
+        /// <c>Data/DefaultStickConfig.asset</c> <b>그 자체</b>이고, 유니티는 플레이 모드 중 애셋에
+        /// 가한 변경을 되돌려 주지 않는다(Tests/PlayMode/DeployedConfigAssetImmutabilityTests의
+        /// R3 Blocker 2 기록). 여기서 그 필드에 직접 쓰면, 테스트가 중간에 실패해 TearDown이
+        /// 건너뛰어졌을 때 <b>사용자가 없애 달라고 한 연출이 켜진 채로 커밋된다</b> — 이 라운드에서
+        /// 가장 피해야 할 결과다. 그래서 <b>복제본</b>을 만들어 에이전트에 갈아끼운다.
+        /// </summary>
+        private void SetCapeTripMeanSeconds(StickmanAgent agent, float seconds)
+        {
+            Assert.IsNotNull(agent, $"{LogPrefix} StickmanAgent가 없습니다.");
+            Assert.IsNotNull(AgentConfigField,
+                $"{LogPrefix} StickmanAgent._config 필드를 찾지 못했습니다 — 주입 지점이 사라졌습니다.");
+
+            if (_tripCloneConfig == null)
+            {
+                _tripAgent = agent;
+                _tripDeployedConfig = agent.Config;
+                Assert.IsNotNull(_tripDeployedConfig, $"{LogPrefix} StickConfig가 배선돼 있지 않습니다.");
+                _tripCloneConfig = Object.Instantiate(_tripDeployedConfig);
+                _tripCloneConfig.name = _tripDeployedConfig.name + " (CapeTripClone)";
+
+                // ★ 복제본은 **직렬화 필드만** 복사한다 — 런타임 오버라이드(배율/잉크색)는 딸려오지
+                // 않는다. 그대로 갈아끼우면 저장 파일에서 복원된 배율이 조용히 풀려 캐릭터 크기가
+                // 테스트 중간에 바뀐다(그 배율 오염이 바로 R3 Blocker 2의 피해 경로였다).
+                // 그래서 실효값을 그대로 옮겨 심는다 — 이 교체가 관측 대상 외에는 아무것도 바꾸지
+                // 않는다는 것이 이 헬퍼의 계약이다.
+                if (_tripDeployedConfig.HasRuntimeCharacterScale)
+                {
+                    _tripCloneConfig.SetRuntimeCharacterScale(_tripDeployedConfig.ResolveCharacterScale());
+                }
+                if (_tripDeployedConfig.HasRuntimeInkColor)
+                {
+                    _tripCloneConfig.SetRuntimeInkColor(_tripDeployedConfig.ResolveInkPreset());
+                }
+
+                AgentConfigField.SetValue(agent, _tripCloneConfig);
+            }
+
+            _tripCloneConfig.longCapeTripMeanSeconds = seconds;
+
+            Assert.AreEqual(0f, _tripDeployedConfig.longCapeTripMeanSeconds, Tol,
+                $"{LogPrefix} 배포 에셋의 longCapeTripMeanSeconds가 오염됐습니다 — " +
+                "테스트가 배포 기본값을 바꿔 사용자 요청을 되돌리고 있습니다(CLAUDE.md 원칙 3).");
         }
 
         /// <summary>StickmanMetrics가 실측하는 소스만 갖춘 최소 리그(CharacterAccessoryScaleTests와 같은 구성).</summary>
@@ -251,8 +324,17 @@ namespace StickMate.Tests.PlayMode
         // 33-4-1 모자 + 머리 동시 착용
         // ============================================================================
 
+        /// <summary>
+        /// ★ 2026-09-01 — 커버 규칙이 <b>"선 통째로 생략" -> "커버선에서 자르기"</b>로 바뀌었다
+        /// (docs/UX_FLOW.md 37-7 #1, 리더 승인). 머리카락이 닫힌 채움 도형이 되면서 옛 규칙은
+        /// "모자를 쓰면 머리카락이 <b>전부</b> 사라진다"를 뜻하게 됐기 때문이다.
+        ///
+        /// <para>그래서 이제 조합표가 요구하는 것은 "선 0개"가 아니라 두 가지다:
+        /// ① 커버선 위로 잉크가 한 점도 올라가지 않는다 ② 모자 밑으로 삐져나온 옆머리는 <b>남는다</b>.
+        /// 실제로 모자를 써도 귀 옆 머리는 보이고, 그게 옛 그림보다 옳다.</para>
+        /// </summary>
         [Test]
-        public void 모자를_쓰면_머리가_숨고_왕관만_예외다()
+        public void 모자를_쓰면_머리카락이_커버선_아래로_잘리고_왕관만_예외다()
         {
             CharacterAccessoryRenderer r = Renderer(0.75f, +1f);
 
@@ -263,9 +345,13 @@ namespace StickMate.Tests.PlayMode
 
                 foreach (int hat in new[] { Cap, Beanie, Fedora })
                 {
-                    Assert.AreEqual(0, r.HairLineCountUnderHat(hair, hat),
-                        $"모자 {hat}번을 썼는데 머리 {hair}번의 선이 남았습니다(33-4-1 조합표 위반).");
+                    Assert.IsTrue(r.TryMeasureHairTopUnderHat(hair, hat, out float top, out float cover),
+                        $"모자 {hat}번을 썼더니 머리 {hair}번이 통째로 사라졌습니다 — " +
+                        "옛 '선 통째로 생략' 규칙이 채움 도형에 그대로 적용되면 나는 그림입니다.");
+                    Assert.LessOrEqual(top, cover + 1e-4f,
+                        $"모자 {hat}번을 썼는데 머리 {hair}번의 잉크가 커버선({cover:F4}) 위 {top:F4}에 남았습니다.");
                 }
+
                 Assert.AreEqual(bare, r.HairLineCountUnderHat(hair, Crown),
                     $"왕관을 썼는데 머리 {hair}번이 사라졌습니다 — 왕관은 밑이 뚫려 있어 머리가 함께 보여야 합니다.");
             }
@@ -501,7 +587,6 @@ namespace StickMate.Tests.PlayMode
 
             var agent = Object.FindFirstObjectByType<StickmanAgent>();
             _inkConfig = agent.Config;
-            _savedInk = _inkConfig.inkColor;
 
             RaiseLevelTo(6, agent.Config); // 발자국 요구 레벨
             Assert.IsTrue(Wear(EquipmentSlot.Fx, FxFootprint),
@@ -533,7 +618,8 @@ namespace StickMate.Tests.PlayMode
 
         private void SetInk(StickmanAgent agent, StickmanInkColor ink)
         {
-            agent.Config.inkColor = ink;
+            // 배포 에셋의 직렬화 필드가 아니라 런타임 오버라이드에 쓴다(프로덕션 경로와 동일).
+            agent.Config.SetRuntimeInkColor(ink);
             agent.ApplyInkColorFromConfig();
         }
 
@@ -633,7 +719,20 @@ namespace StickMate.Tests.PlayMode
             StickmanBlackboard bb = agent.Blackboard;
             bb.Machine.ChangeState(StickmanStateId.Walk, isForcedInterrupt: true);
 
-            // ---- 양성 대조: 긴 망토 + Walk이면 반드시 발동 대기 ----
+            // ---- ★ 2026-08-31: 기본 설정에서는 **꺼져 있어야 한다**(사용자 명시 요청) ----
+            // 이 단언이 이 테스트에서 가장 중요하다 — 아래 상호배제 3종은 전부 "끄는 조건"을 보는
+            // 것이라, 기능이 기본으로 켜져 있어도 전부 초록이다. 사용자 요청의 본체는 여기다.
+            Assert.AreEqual(0f, agent.Config.longCapeTripMeanSeconds, Tol,
+                $"{LogPrefix} longCapeTripMeanSeconds 기본값이 0이 아닙니다 — 사용자가 없애 달라고 " +
+                "명시 요청한 '걷다가 갑자기 아픈것처럼 쓰러지는' 연출이 다시 켜졌습니다.");
+            Assert.IsFalse(director.IsArmed,
+                $"{LogPrefix} 기본 설정인데 긴 망토를 걸치고 걷자 발동 대기가 됐습니다 — " +
+                "자율 넘어짐이 되살아났습니다(2026-08-31 사용자 요청 위반).");
+
+            // ---- 양성 대조: 값을 켜면 긴 망토 + Walk이면 반드시 발동 대기 ----
+            // 기능을 **지운 것이 아니라 껐다**는 것을 증명한다. 이게 없으면 위 IsFalse는
+            // "슬롯 상수 오타로 기능이 통째로 죽은 것"과 구별되지 않는다(원래 이 테스트의 취지).
+            SetCapeTripMeanSeconds(agent, 90f); // 원래 기본값 (배포 에셋이 아니라 복제본에 쓴다)
             Assert.IsTrue(director.IsArmed,
                 $"{LogPrefix} 긴 망토를 걸치고 걷는데 발동 대기가 아닙니다 — 넘어짐 기능이 죽어 있습니다" +
                 "(이 단언이 없으면 '벗으면 멈춘다'만으로는 죽은 기능을 못 잡습니다).");
@@ -684,6 +783,120 @@ namespace StickMate.Tests.PlayMode
             yield return null;
             Assert.IsFalse(director.IsArmed,
                 $"{LogPrefix} 짧은 망토인데 발동 대기 상태입니다 — 넘어지는 것은 **긴** 망토뿐입니다.");
+        }
+
+        // ============================================================================
+        // ★★ 2026-08-31 사용자 신고 회귀 잠금 — "걷다가 갑자기 아픈것처럼 쓰러지는데 이런건 없애줘"
+        // ============================================================================
+
+        /// <summary>
+        /// <b>장시간 보행 중 자율 RAGDOLL 0회</b>를 실측으로 잠근다.
+        ///
+        /// 왜 이 테스트가 필요한가: 위 <c>IsArmed</c> 단언은 <b>한 프레임의 게이트 상태</b>만 본다.
+        /// 사용자가 겪은 것은 게이트가 아니라 <b>시간이 흐르는 동안 확률이 누적되는 것</b>이었다
+        /// (4시간 18분에 48회 = 약 5.4분에 한 번). 그래서 최악의 조건 — 긴 망토를 걸치고, 매 프레임
+        /// Walk로 다시 고정하고, 접지시켜 두는 = <b>발동 조건이 100% 충족된 상태</b> — 로
+        /// 여러 프레임을 흘려보내며 RAGDOLL이 <b>한 번도</b> 나오지 않는 것을 본다.
+        ///
+        /// 세 가지를 동시에 본다(하나만 보면 다른 경로로 새는 것을 놓친다):
+        ///  ① 상태가 한 프레임도 Ragdoll이 되지 않는다,
+        ///  ② <c>LongCapeTripDirector.TripCount</c>가 0이다,
+        ///  ③ 사용자가 실제로 본 지표인 <c>CharacterStatsModel.RagdollFalls</c>("넘어진 횟수")가
+        ///     늘지 않는다. 사용자 저장 파일에 48이 찍혀 있던 그 칸이다.
+        ///
+        /// ★ <b>네거티브 컨트롤이 같은 테스트 안에 있다</b>. 이 프로젝트가 반복해서 데인 유형이
+        /// "관측 전제가 조용히 깨져서 아무 일도 안 일어난 것을 초록으로 읽는" 것이다 — 예를 들어
+        /// 상태 고정에 실패해 Walk가 아니었다면 위 셋은 전부 자동으로 통과한다. 그래서 마지막에
+        /// 발동 간격을 아주 짧게 켜고 <b>같은 루프가 실제로 넘어짐을 관측할 수 있는지</b>를 확인한다.
+        /// 그게 실패하면 앞의 초록은 의미가 없다.
+        /// </summary>
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator LongCapeNeverTripsByItselfWhileWalkingWithDefaultConfig()
+        {
+            yield return LoadSceneAndPinIdle();
+
+            var director = Object.FindFirstObjectByType<LongCapeTripDirector>();
+            Assert.IsNotNull(director, $"{LogPrefix} LongCapeTripDirector가 씬에 없습니다.");
+
+            var agent = Object.FindFirstObjectByType<StickmanAgent>();
+            RaiseLevelTo(13, agent.Config);
+            Assert.IsTrue(Wear(EquipmentSlot.Shoulders, LongCape),
+                $"{LogPrefix} 긴 망토를 걸치지 못했습니다 — 관측 전제가 성립하지 않습니다.");
+
+            Assert.AreEqual(0f, agent.Config.longCapeTripMeanSeconds, Tol,
+                $"{LogPrefix} 이 테스트는 **기본 설정**의 거동을 봅니다 — 기본값이 0이 아닙니다.");
+
+            StickmanBlackboard bb = agent.Blackboard;
+            int fallsBefore = CharacterStatsModel.RagdollFalls;
+            int tripsBefore = director.TripCount;
+
+            // 발동 조건이 100% 충족된 상태로 시간을 흘린다. 매 프레임 Walk로 되돌리는 것은
+            // 실사용보다 **엄격한** 조건이다(실사용은 걷다 서다를 반복하므로 노출 시간이 더 짧다).
+            //
+            // ★ 2026-09-01 — 예전에는 `const int Frames = 900;`이었다. 이 디렉터의 발동 확률은
+            //   프레임당 <c>p = Time.deltaTime / 평균간격</c>이라 <b>기대 발동 횟수 = 노출 시간 /
+            //   평균간격</b>으로 순수하게 시간에 비례한다. 그런데 배치 모드는 0.11~0.45ms/프레임이라
+            //   900프레임은 <b>0.099~0.405초</b>였다 — "정상 보행 중"이라고 적어 놓고 실제로는 0.1초를
+            //   봤다. 노출을 초로 잡아야 이 관측이 의미를 갖는다.
+            const float ExposureSeconds = 3f;
+            int ragdollFrames = 0;
+            yield return TestClock.SampleForSeconds(ExposureSeconds, _ =>
+            {
+                if (bb.Machine.CurrentStateId == StickmanStateId.Ragdoll) ragdollFrames++;
+                if (bb.Machine.CurrentStateId != StickmanStateId.Walk)
+                {
+                    bb.Machine.ChangeState(StickmanStateId.Walk, isForcedInterrupt: true);
+                }
+            });
+
+            Assert.AreEqual(0, ragdollFrames,
+                $"{LogPrefix} 정상 보행 중 {ExposureSeconds:F1}초 동안 RAGDOLL 프레임이 {ragdollFrames}개 " +
+                "관측됐습니다 — 사용자가 신고한 '걷다가 갑자기 쓰러짐'이 그대로 재발한 것입니다.");
+            Assert.AreEqual(tripsBefore, director.TripCount,
+                $"{LogPrefix} TripCount가 {tripsBefore} -> {director.TripCount}로 늘었습니다 — " +
+                "자율 넘어짐이 발동했습니다.");
+            Assert.AreEqual(fallsBefore, CharacterStatsModel.RagdollFalls,
+                $"{LogPrefix} 기록의 '넘어진 횟수'가 {fallsBefore} -> {CharacterStatsModel.RagdollFalls}로 " +
+                "늘었습니다 — 유저가 정보창에서 보는 바로 그 숫자가 저절로 오르고 있습니다.");
+
+            // ---- 네거티브 컨트롤: 이 관측창이 정말 넘어짐을 볼 수 있는가 ----
+            //
+            // ★★ 2026-09-01 — 여기 적혀 있던 근거가 <b>틀렸다</b>. 예전 주석은 "간격을 0.01초로 두면
+            //    p = dt/0.01 > 1이라 조건이 맞는 첫 프레임에 반드시 발동한다"였는데, p > 1이 되려면
+            //    dt > 0.01초(= 100fps 미만)여야 한다. 배치 모드는 0.11~0.45ms/프레임이라 실제
+            //    p는 0.011~0.045에 불과했고, 예전 예산 240프레임의 미발동 확률은 프레임이 빠른 쪽에서
+            //    <b>(1-0.011)^240 = 약 7%</b>였다. 즉 이 네거티브 컨트롤 자체가 20번에 한 번꼴로
+            //    까닭 없이 빨개지는 장치였다(전형적인 "프레임 수 = 시간" 오인).
+            //
+            //    예산을 <b>1초(벽시계)</b>로 잡으면 기대 발동 횟수 = 1초 / 0.01초 = 100회라
+            //    미발동 확률이 e^-100(사실상 0)로 떨어진다 — 프레임률이 무엇이든 같다.
+            const float NegativeControlSeconds = 1f;
+            SetCapeTripMeanSeconds(agent, 0.01f);
+            bb.Machine.ChangeState(StickmanStateId.Walk, isForcedInterrupt: true);
+
+            bool sawRagdoll = false;
+            yield return TestClock.SampleForSeconds(NegativeControlSeconds, _ =>
+            {
+                if (bb.Machine.CurrentStateId == StickmanStateId.Ragdoll) sawRagdoll = true;
+                if (sawRagdoll) return false;   // 찾았으면 그 자리에서 멈춘다.
+                if (bb.Machine.CurrentStateId != StickmanStateId.Walk)
+                {
+                    bb.Machine.ChangeState(StickmanStateId.Walk, isForcedInterrupt: true);
+                }
+                return true;
+            });
+
+            Assert.IsTrue(sawRagdoll,
+                $"{LogPrefix} 네거티브 컨트롤이 실패했습니다 — 발동 간격을 0.01초로 켜고 " +
+                $"{NegativeControlSeconds:F1}초(기대 발동 100회)를 봤는데도 넘어지지 " +
+                "않았습니다. 즉 위의 '0회' 초록은 기능이 꺼진 증거가 아니라 **관측 전제가 깨진** " +
+                "증거입니다(예: 상태 고정 실패, 접지 실패, 씬에 디렉터 없음).");
+            Assert.Greater(director.TripCount, tripsBefore,
+                $"{LogPrefix} 네거티브 컨트롤에서 TripCount가 오르지 않았습니다.");
+
+            bb.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
+            yield return null;
         }
 
         // ============================================================================

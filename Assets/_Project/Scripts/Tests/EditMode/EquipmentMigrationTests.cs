@@ -70,6 +70,10 @@ namespace StickMate.Tests.EditMode
             CharacterStatsModel.ResetForTesting();
             UiLayoutModel.ResetForTesting();
             TodoListModel.ResetForTesting();
+            // v7/v8 필드의 하위 호환도 여기서 검증하므로 그 모델들도 함께 초기화한다 —
+            // 정적 상태가 앞선 테스트에서 새어 들어오면 "파일이 말한 것"과 "직전 상태"를 구분할 수 없다.
+            CharacterAppearanceModel.ResetForTesting();
+            AppSettingsModel.ResetForTesting();
         }
 
         // ============================================================================
@@ -291,8 +295,15 @@ namespace StickMate.Tests.EditMode
             // 하나 끼워 넣는 날 전원의 착용물이 한 칸씩 밀린다.
             string json = File.ReadAllText(CharacterSaveStore.FilePath);
             StringAssert.Contains("equip.head.fedora", json, "착용 아이템이 아이디로 저장되지 않았습니다.");
-            // ★ 2026-08-31 v6(구석 호버 패널: 캐릭터 크기 + 패널 on/off)로 올라갔다.
-            StringAssert.Contains("\"version\": 6", json, "저장 파일이 v6로 기록되지 않았습니다.");
+            // ★ 2026-09-01 — 예전에는 이 단언이 기대 버전을 숫자로 베껴 적었고("version": 7),
+            //   스키마가 v8(설정창)으로 올라가자 마이그레이션과 무관하게 빨개졌다.
+            //   그 빨간색은 정보가 없다 — 고치는 사람은 "숫자만 바꾸면 되는 잡음"으로 학습하고,
+            //   다음에 같은 자리가 진짜 데이터 손실로 빨개졌을 때도 같은 손놀림으로 넘길 위험이 생긴다.
+            //   그래서 이제 상수를 참조한다. "버전을 올리면서 하위 호환을 잊는" 사고는 숫자 비교가
+            //   아니라 아래 <c>v7_파일을_읽어도_설정창_값이_꺼지지_않는다</c> 같은
+            //   버전별 하위 호환 테스트가 잡는다(그쪽이 진짜 잠금장치다).
+            StringAssert.Contains($"\"version\": {CharacterSaveStore.CurrentVersion}", json,
+                "저장 파일이 현재 스키마 버전으로 기록되지 않았습니다.");
 
             EquipmentModel.ResetForTesting();
             CharacterSaveStore.Load();
@@ -335,6 +346,53 @@ namespace StickMate.Tests.EditMode
                 "FirstVersionWithCornerPanel 분기 확인).");
             Assert.IsFalse(UiLayoutModel.HasCharacterScale,
                 "v5 파일에 없는 크기가 '사용자가 고른 값'으로 복원됐습니다.");
+        }
+
+        /// <summary>
+        /// ★ v8 신설 필드(설정창)의 하위 호환 — v6의 <c>cornerPanelEnabled</c>와 <b>완전히 같은 종류의
+        /// 함정</b>이 두 개 더 생겼다. <c>autoHideOnFullscreen</c>/<c>gearIconVisible</c>는 기본이
+        /// true인데, v7 이하 파일에는 그 키가 아예 없어 JsonUtility가 false로 채운다 — 그대로 읽으면
+        /// 업데이트만 했는데 옛 사용자의 <b>전체화면 자동 숨김이 꺼지고</b>(절대 불변 원칙 2 위반) 톱니
+        /// 아이콘이 사라진다. 나머지 말풍선 4종은 "고른 적 있는가 + 값" 두 벌이라 false가 곧 정확한
+        /// 사실이므로 여기서 함께 확인만 한다.
+        ///
+        /// <para>네거티브 컨트롤: CharacterSaveStore.Load()의 <c>hasAppSettings ? ... : true</c> 삼항을
+        /// <c>data.autoHideOnFullscreen</c>로 되돌리면 이 테스트가 즉시 실패한다.</para>
+        ///
+        /// <para>이 테스트가 <b>v8 라운드의 진짜 잠금장치</b>다. 예전에는 "저장 파일이 v7로 기록되는가"라는
+        /// 숫자 단언이 그 역할을 한다고 적혀 있었지만, 그 단언은 버전 숫자가 바뀐 사실만 알려줄 뿐
+        /// 하위 호환이 지켜졌는지는 한 글자도 검증하지 못했다(2026-09-01 근본 원인).</para>
+        /// </summary>
+        [Test]
+        public void v7_파일을_읽어도_설정창_값이_꺼지지_않는다()
+        {
+            string json =
+                "{\n" +
+                "    \"version\": 7,\n" +
+                "    \"level\": 9,\n" +
+                "    \"characterName\": \"일곱동료\",\n" +
+                "    \"inkColorSaved\": true,\n" +
+                "    \"inkColorName\": \"White\",\n" +
+                "    \"wornHead\": \"\"\n" +
+                "}";
+            File.WriteAllText(CharacterSaveStore.FilePath, json);
+            CharacterSaveStore.Load();
+
+            Assert.IsTrue(CharacterSaveStore.LoadedFromFile, "v7 파일을 통째로 버렸습니다.");
+            Assert.AreEqual(9, CharacterProgressionModel.Level, "v7 파일의 레벨이 사라졌습니다.");
+            Assert.IsTrue(CharacterAppearanceModel.HasInkColor, "v7 파일의 잉크색 선택이 사라졌습니다.");
+
+            Assert.IsTrue(AppSettingsModel.AutoHideOnFullscreen,
+                "v7 파일(그 키가 애초에 없는 파일)을 읽었더니 전체화면 자동 숨김이 꺼졌습니다 — " +
+                "JsonUtility가 채운 false를 사용자의 선택으로 오해한 것입니다(CharacterSaveStore." +
+                "FirstVersionWithAppSettings 분기 확인). 원칙 2(비침해) 직결입니다.");
+            Assert.IsTrue(AppSettingsModel.GearIconVisible,
+                "v7 파일을 읽었더니 톱니 아이콘이 숨겨졌습니다 — 설정 진입점이 통째로 사라집니다.");
+
+            Assert.IsFalse(AppSettingsModel.HasDialogueFontSize,
+                "v7 파일에 없는 말풍선 글자 크기가 '사용자가 고른 값'으로 복원됐습니다.");
+            Assert.IsFalse(AppSettingsModel.HasDialogueBubbleEnabled,
+                "v7 파일에 없는 말풍선 on/off가 '사용자가 고른 값'으로 복원됐습니다.");
         }
 
         [Test]

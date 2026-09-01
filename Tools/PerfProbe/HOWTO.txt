@@ -1,0 +1,44 @@
+소형 오버레이 창(B-1) 검증용 컴포지터 계측 도구 — perf-doc, 2026-08-31
+Unity 프로젝트 밖(Assets/ 아님)이라 에디터가 임포트하지 않는다. 제품 코드가 아니다.
+
+빌드:  swiftc -O OverlayBench.swift -o OverlayBench
+실행:
+  # 표면적 실험 (전체화면 vs 400x400, 3초마다 교차, 14쌍)
+  python3 paired.py 1512 982 400 400 3 14 0
+  # 창 추종 실험 (같은 크기, BIG 페이즈만 매 프레임 이동)
+  python3 paired.py 640 640 640 640 3 12 2        # 60Hz
+  python3 paired.py 640 640 640 640 3 10 2 6      # 10Hz
+  python3 paired.py 640 640 640 640 3 10 2 30     # 2Hz
+  # 합성 총비용 (창 표시 vs 숨김, present는 계속)
+  python3 paired.py 1512 982 1512 982 3 10 3
+
+설계 요지: 배경 부하(브라우저/에디터/StickMate 본체)가 시간에 따라 흔들리므로
+조건을 3초마다 교차시켜 인접 쌍의 차이만 본다(공통모드 제거 + 부호검정).
+present 횟수는 모든 조건에서 60.0~60.2fps로 고정되므로 변수는 표면적/이동뿐이다.
+결과 해석은 docs/ARCHITECTURE.md 6절.
+
+--- Windows 쪽 (2026-08-31 추가) ---
+measure-dwm.ps1 : dwm.exe / StickMate.exe 의 CPU를 100ns 분해능으로 OFF/ON 교차 샘플링.
+  실행:  powershell -ExecutionPolicy Bypass -File .\measure-dwm.ps1
+  측정 3(면적 4배 실험)은 이 스크립트를 두 번 돌린다:
+    (A) 디스플레이 3840x2160 상태에서 1회
+    (B) 디스플레이 1920x1080 으로 바꾼 뒤 1회
+  각 회차의 "차이(ON-OFF)"를 비교한다. 면적이 4배 줄었으니 차이도 줄어야 한다.
+  대조 신호: StickMate 자기 CPU는 (B)에서 눈에 띄게 낮아야 한다(렌더 픽셀 1/4).
+  안 낮아지면 해상도 변경이 앱에 반영되지 않은 것이므로 그 회차는 폐기.
+
+--- MSAA 라운드 (2026-08-31 추가) ---
+measure-msaa.py       : 콜드 스타트로 OFF/4x/2x/0x를 순회. 4조건 전체 조망용.
+                        실행: python3 measure-msaa.py [위상초=20] [사이클=3]
+measure-msaa-cold.py  : 4x vs 0x 만 콜드 스타트 페어드(사이클마다 순서 반전). 결론을 낸 것은 이쪽.
+                        실행: python3 measure-msaa-cold.py [위상초=55] [사이클=6]
+전제: Builds/PerfProbe/StickMate.app 이 있어야 한다(Assets/Editor/PerfProbeBuild.cs).
+      Unity -batchmode -nographics -projectPath <repo> \
+        -executeMethod StickMate.EditorTools.PerfProbeBuild.PerformBuild -quit -logFile <path>
+
+★ MSAA를 잴 때의 두 가지 함정 (docs/ARCHITECTURE.md 6-16절 (2))
+  1. **런타임에 MSAA를 바꾸면 백버퍼에 반영되지 않는다.** 반드시 앱을 껐다 켜서 비교할 것.
+  2. **Screen.msaaSamples는 요청값을 되돌려줄 뿐이다.** 유효성 검증은
+     `vmmap --summary <pid>` 의 `owned unmapped (graphics)` 로 한다
+     (4x=98.3MB / 2x=~52MB / 0x=5.3MB 로 갈리면 유효, 안 갈리면 그 회차는 폐기).
+결과 해석은 docs/ARCHITECTURE.md 6-16절.

@@ -82,6 +82,17 @@ namespace StickMate.Platform
         /// [캐릭터 정보]가 보조 경로다 — 이 프로젝트의 모든 기능이 갖는 "단축키 + 메뉴" 이중 경로 관례.
         /// Interaction/CharacterInfoWindow.cs 참고.</summary>
         I,
+
+        /// <summary>★ 설정창 열기·닫기(Ctrl+Opt+Cmd+<b>쉼표</b>) — 2026-09-01 신설, docs/UX_FLOW.md 36-11.
+        /// macOS에서 <c>⌘,</c>는 "환경설정"의 관례이고, 이 앱은 조합키 3개를 강제하므로 다른 앱의
+        /// <c>⌘,</c>와 충돌하지 않는다. I(정보창)/A(활쏘기)/F(집중 모드)와 같은 <b>정식 진입점</b>이지
+        /// 확률을 건너뛰는 데모 지름길이 아니다.
+        ///
+        /// <para><b>이 목록에 처음 들어온 문자 아닌 키</b>다. 두 플랫폼 구현 모두 문자 키를 ASCII 규약으로
+        /// 처리하는 지름길을 갖고 있으므로(Win32는 <c>VK_A == 'A'</c>, macOS는 표), 쉼표는 각자
+        /// <b>명시적인 한 줄</b>이 필요하다 — Win32 <c>VK_OEM_COMMA(0xBC)</c> /
+        /// macOS <c>kVK_ANSI_Comma(0x2B)</c>. 그 한 줄이 없으면 조용히 false만 돌아온다.</para></summary>
+        Comma,
     }
 
     /// <summary>
