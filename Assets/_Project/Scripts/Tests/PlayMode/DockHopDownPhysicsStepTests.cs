@@ -136,6 +136,7 @@ namespace StickMate.Tests.PlayMode
         private float _dockTopWorldY;
         private float _floorTopWorldY;
         private float _dockRightWorldX;
+        private float _dockLeftWorldX;
 
         [TearDown]
         public void TearDown()
@@ -214,6 +215,7 @@ namespace StickMate.Tests.PlayMode
             bb.FootholdPoller = new FootholdPoller(_service, _clonedConfig);
 
             _dockRightWorldX = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(rightOs, dockTopOsY), 10f, _clonedConfig).x;
+            _dockLeftWorldX = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(leftOs, dockTopOsY), 10f, _clonedConfig).x;
 
             // 계단은 DockPhysicsStep.Update()가 세운다 — 몇 프레임 준다.
             yield return null;
@@ -238,6 +240,7 @@ namespace StickMate.Tests.PlayMode
         private sealed class DescentResult
         {
             public float Scale;
+            public int Direction = 1;            // +1 = 오른쪽 모서리, -1 = 왼쪽 모서리
             public string Branch = "(없음)";     // 뛰어내리기 / 매달려내려가기
             public float StartWorldX;
             public float DistanceToEdge;
@@ -253,7 +256,7 @@ namespace StickMate.Tests.PlayMode
         /// 갈래 선택 순서(뛰어내리기 -> 매달리기)는 States/AutoWanderController.TryBoundaryBehaviour와 같다 —
         /// 그래야 이 테스트가 "실제로 일어나는 일"을 보고 있다고 말할 수 있다.
         /// </summary>
-        private IEnumerator TryDescendAtScale(float scale, DescentResult result)
+        private IEnumerator TryDescendAtScale(float scale, DescentResult result, int direction = 1)
         {
             StickmanBlackboard bb = _agent.Blackboard;
             var intent = (ScriptedIntentSource)bb.IntentSource;
@@ -268,33 +271,36 @@ namespace StickMate.Tests.PlayMode
             yield return null;
 
             // 모서리까지 hopDownEdgeCommitDistance만 남긴 자리 = 실제로 발을 떼는 바로 그 지점.
-            float startX = _dockRightWorldX - _clonedConfig.hopDownEdgeCommitDistance;
+            float edgeWorldX = direction > 0 ? _dockRightWorldX : _dockLeftWorldX;
+            long expectedTarget = direction > 0 ? NetRightHandle : NetLeftHandle;
+            float startX = edgeWorldX - direction * _clonedConfig.hopDownEdgeCommitDistance;
             bb.MoveBodyToWorld(new Vector2(startX, _dockTopWorldY));
             bb.Body.linearVelocity = Vector2.zero;
             bb.CurrentFootholdHandle = DockHandle;
             bb.ResetGroundLossTimer();
-            intent.MoveInputX = 1f;
+            intent.MoveInputX = direction;
             intent.HopDownRequested = false;
             intent.LedgeHangRequested = false;
             bb.Machine.ChangeState(StickmanStateId.Walk, isForcedInterrupt: true);
             yield return null;
 
             result.StartWorldX = bb.Body.position.x;
-            result.DistanceToEdge = _dockRightWorldX - result.StartWorldX;
+            result.DistanceToEdge = Mathf.Abs(edgeWorldX - result.StartWorldX);
+            result.Direction = direction;
             result.StepOffSpeed = _clonedConfig.ResolveWalkSpeed() * _clonedConfig.hopDownStepOffSpeedScale;
 
             GroundSensor.GroundInfo info = bb.SenseGround();
             Assert.IsTrue(info.Grounded,
                 $"{LogPrefix} 배율 {scale:F4} 전제 실패 — Dock에 접지하지 못했습니다(핸들 {bb.CurrentFootholdHandle}).");
 
-            if (bb.TryFindHopDownTarget(info, 1, out long hopHandle, out _))
+            if (bb.TryFindHopDownTarget(info, direction, out long hopHandle, out _))
             {
-                result.Branch = $"뛰어내리기(목적지 {hopHandle})";
+                result.Branch = $"뛰어내리기(목적지 {hopHandle}, 기대 {expectedTarget})";
                 intent.HopDownRequested = true;
             }
-            else if (bb.TryFindDescendTarget(info, 1, out long hangHandle, out _))
+            else if (bb.TryFindDescendTarget(info, direction, out long hangHandle, out _))
             {
-                result.Branch = $"매달려내려가기(목적지 {hangHandle})";
+                result.Branch = $"매달려내려가기(목적지 {hangHandle}, 기대 {expectedTarget})";
                 intent.LedgeHangRequested = true;
             }
             else
@@ -347,7 +353,8 @@ namespace StickMate.Tests.PlayMode
             result.LandedHandle = bb.CurrentFootholdHandle;
             result.Descended = result.LandedHandle == NetRightHandle || result.LandedHandle == NetLeftHandle;
 
-            Debug.Log($"{LogPrefix} 배율 {result.Scale:F4} — 갈래={result.Branch}, 발 뗀 X={result.StartWorldX:F4}" +
+            Debug.Log($"{LogPrefix} 배율 {result.Scale:F4} {(result.Direction > 0 ? "오른쪽" : "왼쪽")} — " +
+                $"갈래={result.Branch}, 발 뗀 X={result.StartWorldX:F4}" +
                 $"(모서리까지 {result.DistanceToEdge:F4}유닛, 내딛는 속도 {result.StepOffSpeed:F3}유닛/초 " +
                 $"-> 필요시간 {(result.StepOffSpeed > 0f ? result.DistanceToEdge / result.StepOffSpeed : -1f):F3}초 / " +
                 $"유예 {_clonedConfig.hopDownDropThroughIgnoreDuration:F2}초), " +
@@ -369,14 +376,19 @@ namespace StickMate.Tests.PlayMode
             float[] scales = ScaleSweep;
             for (int i = 0; i < scales.Length; i++)
             {
+                // ★ 방향을 교대한다 — 왼쪽 모서리는 코드가 다른 필드
+                //   (info.CurrentFootholdLeftWorldX)를 읽고 목적지도 다른 발판(-1)이다.
+                //   현장 로그는 양방향 모두 실패했으므로 양쪽 다 잠근다.
+                int direction = (i % 2 == 0) ? 1 : -1;
                 var r = new DescentResult();
-                yield return TryDescendAtScale(scales[i], r);
+                yield return TryDescendAtScale(scales[i], r, direction);
 
                 float dropped = _dockTopWorldY - r.LowestWorldY;
                 if (!r.Descended)
                 {
-                    failures.Add($"배율 {r.Scale:F4}: 갈래={r.Branch}, 착지핸들={r.LandedHandle}" +
-                        $"(기대 {NetRightHandle}), 하강 {dropped:F4}유닛(기대 >= {DockDropUnits * 0.8f:F4})");
+                    failures.Add($"배율 {r.Scale:F4} {(r.Direction > 0 ? "오른쪽" : "왼쪽")}: 갈래={r.Branch}, " +
+                        $"착지핸들={r.LandedHandle}(기대 {(r.Direction > 0 ? NetRightHandle : NetLeftHandle)}), " +
+                        $"하강 {dropped:F4}유닛(기대 >= {DockDropUnits * 0.8f:F4})");
                 }
                 else if (dropped < DockDropUnits * 0.8f)
                 {

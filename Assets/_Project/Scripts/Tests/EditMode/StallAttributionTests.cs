@@ -247,9 +247,12 @@ namespace StickMate.Tests.EditMode
         // ====================================================================================
 
         /// <summary>
-        /// 창 열거는 <see cref="FootholdPoller"/>가 <b>유일한 호출자</b>라(클래스 상단 컨벤션)
-        /// 거기 스톱워치 하나면 앱 전체의 열거 비용이 빠짐없이 잡힌다. 그 배선이 사라지면
-        /// 다음 실기 로그에서 창열거 항목이 영원히 0.0ms로 나와 <b>후보 A가 거짓으로 무죄가 된다.</b>
+        /// 발판 폴링 경로의 스톱워치 배선. 이게 사라지면 다음 실기 로그에서 창열거 항목이 영원히
+        /// 0.0ms로 나와 <b>후보 A가 거짓으로 무죄가 된다.</b>
+        ///
+        /// <para>★ 2026-09-02 정정 — 예전 이 문서에는 "<c>FootholdPoller</c>가 <b>유일한 호출자</b>라
+        /// 거기 스톱워치 하나면 앱 전체가 빠짐없이 잡힌다"고 적혀 있었다. <b>거짓이었다.</b>
+        /// 전체화면 판정 경로가 창 목록을 따로 조회한다 — 아래 H절이 그쪽을 잠근다.</para>
         /// </summary>
         [Test]
         public void 발판폴러가_열거_소요시간을_실측해_보고한다()
@@ -587,6 +590,197 @@ namespace StickMate.Tests.EditMode
                 "로그 본문이 Windows 전용 용어를 쓰고 있다 — macOS도 같은 값을 보고한다.");
             StringAssert.Contains("macOS", src,
                 "'정밀검사'가 두 플랫폼에서 각각 무엇인지 설명이 있어야 한다.");
+        }
+
+        // ====================================================================================
+        // H. ★★ 2026-09-02 — 원장의 17%가 비어 있던 구멍을 잠근다
+        // ====================================================================================
+        // 배경: FootholdPoller가 스스로를 "네이티브 창 열거가 일어나는 **유일한** 지점"이라고
+        // 단언했지만 거짓이었다. 전체화면 판정(IsFullscreenAppActive)이 창 목록을 **따로** 조회한다.
+        //   발판 폴링 0.3초 = 초당 3.33회 / 전체화면 판정 1.5초 = 초당 0.67회
+        //   -> 초당 4회 중 **0.67회 = 17%가 계측 밖**이었다.
+
+        /// <summary>ms를 <see cref="System.Diagnostics.Stopwatch"/> 틱으로 — 계측 API가 틱을 받는다.</summary>
+        private static long TicksForMs(double ms)
+            => (long)(ms * System.Diagnostics.Stopwatch.Frequency / 1000.0);
+
+        /// <summary>
+        /// ★★ <b>네거티브 컨트롤.</b> 같은 프레임, 같은 시간인데 <b>장부에 전체화면 경로가 있는지</b>에
+        /// 따라 판정이 갈리는 것을 증명한다.
+        ///
+        /// <para>재현하는 상황: 200ms 블로킹이 전부 전체화면 판정 경로(1.5초 주기)에서 났고, 그 프레임에
+        /// 발판 폴링(0.3초 주기)은 마침 돌지 않았다 — 두 주기가 다르므로 <b>실제로 자주 일어난다</b>.</para>
+        ///
+        /// <list type="bullet">
+        ///   <item><b>고치기 전</b>: enumMs에 전체화면 경로가 없다 -> 200ms가 익명 잔차로 흘러
+        ///         <c>기타로직(우리 Update 안)</c>. <b>원인이 창 목록 조회인데 원장이 "아니다"라고 말한다.</b></item>
+        ///   <item><b>고친 뒤</b>: 같은 200ms가 창열거경로에 잡혀 <c>WindowEnumeration</c>.</item>
+        /// </list>
+        /// </summary>
+        [Test]
+        public void 전체화면_판정이_블로킹되면_옛_장부는_기타로직이라고_거짓말한다()
+        {
+            const float frameMs = 210f;
+            const float logicMs = 205f;
+            const float fullscreenMs = 200f;
+            const float footholdEnumMs = 0f;   // 이 프레임엔 발판 폴링이 돌지 않았다.
+
+            Assert.AreEqual(StallCulprit.OtherLogic,
+                StallAttribution.Attribute(frameMs, logicMs, footholdEnumMs, 0f),
+                "이게 2026-09-02 이전의 장부다 — 200ms 블로킹 창 목록 조회가 '기타로직'으로 찍혔다. " +
+                "이 단언이 깨지면 네거티브 컨트롤이 성립하지 않는다(대조군이 사라진 것).");
+
+            Assert.AreEqual(StallCulprit.WindowEnumeration,
+                StallAttribution.Attribute(frameMs, logicMs, footholdEnumMs + fullscreenMs, 0f),
+                "전체화면 판정 경로를 창열거경로에 합산하지 않으면 미계측 17%가 그대로 돌아온다.");
+        }
+
+        /// <summary>
+        /// 위 네거티브 컨트롤의 <b>실행 배선</b>. 소스 문자열이 아니라 <b>장부에 실제로 쌓이는지</b>를 본다.
+        /// </summary>
+        [Test]
+        public void 전체화면_판정_시간이_장부에_실제로_쌓인다()
+        {
+            Assert.AreEqual(0.0, StallAttribution.CurrentFrameFullscreenProbeMs, 1e-9,
+                "ResetForTests가 새 칸을 비우지 않으면 테스트 간에 값이 샌다.");
+            Assert.AreEqual(0, StallAttribution.CurrentFrameFullscreenProbeCount);
+
+            StallAttribution.RecordFullscreenProbe(TicksForMs(40.0));
+            StallAttribution.RecordFullscreenProbe(TicksForMs(60.0));
+
+            Assert.AreEqual(2, StallAttribution.CurrentFrameFullscreenProbeCount,
+                "판정 횟수가 세어지지 않으면 '1.5초 주기가 맞나'를 로그로 확인할 수 없다.");
+            Assert.AreEqual(100.0, StallAttribution.CurrentFrameFullscreenProbeMs, 5.0,
+                "전체화면 판정 시간이 프레임 장부에 누적되지 않는다 — 계측 창구가 죽어 있다.");
+
+            // 발판 경로와 **섞이지 않아야** 한다. 섞이면 "둘 중 어느 쪽이 느린가"를 다시 못 가른다.
+            Assert.AreEqual(0.0, StallAttribution.CurrentFrameFootholdEnumMs, 1e-9);
+        }
+
+        /// <summary>OS 왕복 단독 계측이 장부에 쌓이고, 지원하지 않는 CPU 시계(-1)를 0으로 위장하지 않는가.</summary>
+        [Test]
+        public void OS_창목록_왕복이_따로_장부에_쌓인다()
+        {
+            StallAttribution.RecordNativeWindowListQuery(TicksForMs(3.0), 1_500_000L); // CPU 1.5ms
+            StallAttribution.RecordNativeWindowListQuery(TicksForMs(2.0), -1);          // CPU 미지원
+
+            Assert.AreEqual(2, StallAttribution.CurrentFrameOsListCount);
+            Assert.AreEqual(5.0, StallAttribution.CurrentFrameOsListMs, 1.0,
+                "OS 왕복만 재는 중첩 타이머가 장부에 쌓이지 않는다 — 'OS가 느린가 우리 후처리가 느린가'를 " +
+                "다시 라벨만 보고 추측하게 된다.");
+
+            // 이 값은 발판/전체화면 칸의 **부분집합**이므로 그쪽에 더해지면 안 된다(이중계산).
+            Assert.AreEqual(0.0, StallAttribution.CurrentFrameFootholdEnumMs, 1e-9);
+            Assert.AreEqual(0.0, StallAttribution.CurrentFrameFullscreenProbeMs, 1e-9);
+        }
+
+        /// <summary>
+        /// 스파이크 귀인이 <b>두 경로의 합</b>을 쓰는가. 여기가 끊기면 위 네거티브 컨트롤의 "고친 뒤"가
+        /// 실기에서 재현되지 않는다(테스트만 초록인 상태).
+        /// </summary>
+        [Test]
+        public void 스파이크_귀인이_전체화면_경로를_창열거에_합산한다()
+        {
+            string src = ReadScript("Platform", "StallAttribution.cs");
+            StringAssert.Contains("float enumMs = (float)(b.EnumMs + b.FullscreenProbeMs);", src,
+                "스파이크 귀인이 발판 경로만 보고 있다 — 전체화면 판정의 블로킹이 다시 '기타로직'이 된다.");
+        }
+
+        /// <summary>
+        /// 전체화면 판정 계측은 <b>플랫폼 중립 데코레이터</b>에 있어야 한다. macOS 파일 안에 넣으면
+        /// Windows가 물리적으로 같은 계측을 못 받는다 — <c>FullscreenSuspendPolicy.cs</c>로 이미 겪은
+        /// 사고이고, CLAUDE.md가 명시적으로 금지하는 형태다.
+        /// </summary>
+        [Test]
+        public void 전체화면_판정_계측이_플랫폼_중립_한_곳에_배선돼_있다()
+        {
+            string decorator = ReadScript("Platform", "FallbackPlatformWindowService.cs");
+            StringAssert.Contains("StallAttribution.RecordFullscreenProbe(", decorator,
+                "데코레이터가 전체화면 판정 시간을 재지 않는다 — Mac/Win 양쪽이 동시에 미계측으로 돌아간다.");
+
+            int start = decorator.IndexOf("long start = System.Diagnostics.Stopwatch.GetTimestamp();",
+                System.StringComparison.Ordinal);
+            int call = decorator.IndexOf("bool active = _inner.IsFullscreenAppActive();",
+                System.StringComparison.Ordinal);
+            int record = decorator.IndexOf("StallAttribution.RecordFullscreenProbe(",
+                System.StringComparison.Ordinal);
+            Assert.Greater(start, 0, "판정 직전 타임스탬프가 없다.");
+            Assert.Greater(call, start, "타임스탬프가 판정 호출보다 뒤에 있다 — 0ms만 찍힌다.");
+            Assert.Greater(record, call, "기록이 판정 호출을 감싸지 않는다.");
+
+            // 플랫폼 구현체가 각자 재기 시작하면 이중계산 + 한쪽만 고쳐지는 갭이 동시에 생긴다.
+            foreach (string plat in new[] { Path.Combine("MacOS", "MacWindowService.cs"),
+                                            Path.Combine("Windows", "Win32WindowService.cs") })
+            {
+                StringAssert.DoesNotContain("RecordFullscreenProbe(", ReadScript("Platform", plat),
+                    $"{plat}가 전체화면 판정을 자체 계측한다 — 데코레이터와 이중계산되고, " +
+                    "플랫폼마다 복제하면 한쪽만 고쳐지는 그 실패가 반복된다.");
+            }
+        }
+
+        /// <summary>
+        /// macOS의 OS 왕복 중첩 타이머가 <b>모든</b> 창목록 조회 경로에 걸려 있는가.
+        /// 원시 <c>CopyOnScreenWindowList()</c>를 직접 부르는 곳이 하나라도 남으면 그 왕복은
+        /// 다시 원장에서 사라진다 — 그게 이번 라운드가 고친 결함의 형태 그 자체다.
+        /// </summary>
+        [Test]
+        public void macOS_창목록_왕복은_전부_중첩_타이머를_거친다()
+        {
+            string mac = ReadScript("Platform", "MacOS", "MacWindowService.cs");
+            StringAssert.Contains("StallAttribution.RecordNativeWindowListQuery(", mac,
+                "OS 왕복 단독 계측이 없다 — 'OS가 느린가 우리 후처리가 느린가'를 다시 못 가른다.");
+
+            // 주석을 걷어내고 **실행 코드**만 본다(결함을 설명하는 주석 자체가 구현으로 오인되던 함정).
+            string exec = StripComments(mac);
+            int declared = CountOccurrences(exec, "CopyOnScreenWindowList()");
+            int measured = CountOccurrences(exec, "CopyOnScreenWindowListMeasured()");
+            // 남아야 하는 원시 호출은 딱 둘: 정의 한 줄 + 계측 래퍼 안의 실제 호출 한 줄.
+            Assert.AreEqual(2, declared,
+                $"계측을 우회하는 원시 CopyOnScreenWindowList() 호출이 {declared - 2}개 남아 있다 — " +
+                "그 왕복은 원장에 잡히지 않는다.");
+            Assert.GreaterOrEqual(measured, 4,
+                "계측판 호출부(정의 1 + 발판열거/전체화면판정/자기창조회 3)가 모자란다.");
+        }
+
+        /// <summary>
+        /// ★ 낡은 주석 재발 방지. "여기가 <b>유일한</b> 지점"이라는 <b>거짓 단언</b>이 조사를 한 라운드
+        /// 통째로 잡아먹었다. 같은 문장이 돌아오면 여기서 막는다.
+        /// </summary>
+        [Test]
+        public void 발판폴러가_스스로를_유일한_창열거_지점이라고_주장하지_않는다()
+        {
+            string poller = ReadScript("Platform", "FootholdPoller.cs");
+            StringAssert.DoesNotContain("네이티브 창 열거가 일어나는 **유일한** 지점", poller,
+                "거짓 단언이 되살아났다 — 전체화면 판정 경로가 창 목록을 따로 조회한다.");
+            StringAssert.DoesNotContain("창 열거는 이 클래스가 **유일한 호출자**", poller,
+                "같은 거짓 단언의 다른 문장이 되살아났다.");
+            StringAssert.Contains("IsFullscreenAppActive()", poller,
+                "다른 조회 경로가 존재한다는 사실이 이 파일에 적혀 있어야 한다 — 다음 사람이 " +
+                "같은 함정에 빠지지 않게 하는 것이 이 주석의 유일한 목적이다.");
+        }
+
+        /// <summary>
+        /// macOS의 창당 문자열 할당 제거(초당 60개 ≈ 250MB/일 gen0 쓰레기)가 되돌아가지 않게 잠근다.
+        /// <see cref="StickMate.Platform.MacOS"/>의 <c>IsOwnAppWindow</c>는 <b>레이어 필터보다 먼저</b>,
+        /// <b>모든 창</b>에 대해 돈다 — 여기서 <c>string</c>을 만들면 24시간 상주 앱에서 그대로 누적된다.
+        /// </summary>
+        [Test]
+        public void macOS_자기앱_판정은_창마다_문자열을_만들지_않는다()
+        {
+            string exec = StripComments(ReadScript("Platform", "MacOS", "MacWindowService.cs"));
+
+            int body = exec.IndexOf("private bool IsOwnAppWindow(", System.StringComparison.Ordinal);
+            Assert.Greater(body, 0, "IsOwnAppWindow가 사라졌다 — 이 테스트의 대상이 없다.");
+            int end = exec.IndexOf('}', exec.IndexOf('{', body));
+            string fn = exec.Substring(body, end - body);
+            StringAssert.DoesNotContain("TryGetString(", fn,
+                "IsOwnAppWindow가 다시 창마다 string을 만든다 — 18창 x 3.33패스/초 = 초당 60개다. " +
+                "UTF-8 바이트 비교(OwnerNameEqualsCurrentProcess)로 돌려놓으세요.");
+
+            StringAssert.Contains("_currentProcessNameUtf8", exec,
+                "프로세스 이름 UTF-8 1회 캐시가 사라졌다.");
+            StringAssert.Contains("_ownerNameBuffer[want] == 0", exec,
+                "NUL 종단 확인이 빠지면 우리 이름을 접두사로 갖는 남의 앱까지 '우리 앱'으로 통과한다.");
         }
 
         /// <summary>테스트가 시간을 쓰게 만드는 최소 바쁜 대기(ms). Thread.Sleep은 정밀도가 낮아

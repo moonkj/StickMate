@@ -470,6 +470,7 @@ namespace StickMate.Tests.PlayMode
                 float heightsFallen = DockStepDropUnits / _characterHeight;
                 float bodyDropHeights = obs.MaxHeadDrop / _characterHeight;
                 rows.Add($"배율 {scales[i]:F4}: 신장 {_characterHeight:F4}, 낙차 {heightsFallen:F3} H, " +
+                    $"티어={ResolveLandingCrouchState().Tier}(진단), " +
                     $"몸하강 {bodyDropHeights * 100f:F2} %H(상한 {limit * 100f:F0}), 앞무릎 {obs.MaxKneeBendAbs:F1}도, " +
                     $"연출 {obs.CrouchSeconds:F3}초, 랙돌={obs.SawRagdoll}");
 
@@ -611,7 +612,9 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 배율 {scale:F4}에서 신장을 읽지 못했습니다(StickmanMetrics 재측정 실패).");
         }
 
-        /// <summary>지금 상태머신에 등록된 LandingCrouchState 인스턴스(티어/깊이 스냅샷 조회용).</summary>
+        /// <summary>지금 상태머신에 등록된 LandingCrouchState 인스턴스.
+        /// ★ 티어 이름은 더 이상 <b>계약이 아니다</b>(위 (2) 문서 참고) — 배율에 따라 정당하게 바뀐다.
+        /// 그래도 "지금 어느 램프 위인가"는 실패를 읽을 때 결정적이라 <b>진단 로그로만</b> 남긴다.</summary>
         private LandingCrouchState ResolveLandingCrouchState()
         {
             var bb = _agent.Blackboard;

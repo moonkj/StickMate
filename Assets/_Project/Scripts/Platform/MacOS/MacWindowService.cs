@@ -482,7 +482,7 @@ namespace StickMate.Platform.MacOS
         // ★ 왜 조심해서 다뤘나: 이 함수는 2026-09-01 좌표계 오염 사고(IsSelfWindow의 이름 매칭)의
         //   현장이다. **판정 규칙은 한 글자도 바꾸지 않았다** — 같은 두 문자열을 비교하되 비교를
         //   바이트로 할 뿐이다. 좌표계 출처는 여전히 IsSelfProcessWindow(PID 단독)만 결정한다.
-        private readonly byte[] _currentProcessNameUtf8 = new byte[0];
+        private readonly byte[] _currentProcessNameUtf8 = System.Array.Empty<byte>();
         private readonly int _currentProcessNameUtf8Length; // 0 = 비교 불가(항상 false).
 
         // 클릭관통/항상위의 "우리가 마지막으로 의도한" 목표 상태. UniWindowController는 프로퍼티마다
