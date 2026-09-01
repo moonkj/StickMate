@@ -146,7 +146,10 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(5, CharacterStatsModel.BattleWins, "v6 파일의 기록이 복원되지 않았습니다.");
             Assert.IsTrue(UiLayoutModel.HasCharacterScale, "v6 파일의 캐릭터 크기가 복원되지 않았습니다.");
             Assert.AreEqual(1.25f, UiLayoutModel.CharacterScale, 1e-4f);
-            Assert.IsFalse(UiLayoutModel.CornerPanelEnabled, "v6 파일의 구석 패널 설정(꺼짐)이 뒤집혔습니다.");
+            // v6의 cornerPanelEnabled는 2026-09-01 구석 호버 패널 삭제로 <b>죽은 필드</b>가 됐다.
+            // 값이 무엇이든 화면이 같아야 하므로 여기서 단언하지 않는다 — 다만 그 키가 들어 있는 파일이
+            // 통째로 버려지지 않는다는 사실은 위 LoadedFromFile 단언이 이미 지키고 있다
+            // (전용 잠금: EquipmentMigrationTests.삭제된_구석_패널_설정이_적힌_파일도_다른_값을_잃지_않는다).
         }
 
         [Test]

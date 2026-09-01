@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using UnityEngine;
 using StickMate.Core;
+using StickMate.Dialogue;
 
 namespace StickMate.Tests.EditMode
 {
@@ -46,6 +47,11 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(16, AppSettingsModel.ResolveDialogueFontSize(_probe));
             Assert.AreEqual(4f, AppSettingsModel.ResolveDialogueMaxVisibleSeconds(_probe), 1e-4f);
             Assert.AreEqual(0.7f, AppSettingsModel.ResolveDialogueMinVisibleSeconds(_probe), 1e-4f);
+            Assert.AreEqual(DialogueVisibleLength.Default, AppSettingsModel.DialogueVisibleLength,
+                "대사 표시 시간의 배포 기본값은 `기본`이어야 한다(세그먼트 첫 칸).");
+            Assert.AreEqual(DialogueBudget.MinVisibleScale, AppSettingsModel.ResolveDialogueVisibleScale(), 1e-4f,
+                "고른 적이 없는데 노출 배율이 100%가 아니다 — 그러면 이 라운드가 2026-09-01에 착륙한 " +
+                "화면 거동을 조용히 되돌린 것이다.");
             Assert.AreEqual(0.28f, AppSettingsModel.ResolveIdleChatterChance(_probe), 1e-4f);
             Assert.AreEqual(0.14f, AppSettingsModel.ResolveWalkChatterChance(_probe), 1e-4f);
             Assert.IsTrue(AppSettingsModel.ResolveDialogueBubbleEnabled(_probe));
@@ -77,17 +83,38 @@ namespace StickMate.Tests.EditMode
         }
 
         [Test]
-        public void 최대_노출_시간을_최소보다_짧게_고르면_최소가_함께_내려간다()
+        public void 배포_최소가_최대보다_길면_최소가_받쳐진다()
         {
-            // 사용자가 1.5초를 고르면 "최소 0.7초 보장"과 충돌하지 않는다(0.7 < 1.5).
-            AppSettingsModel.SetDialogueMaxVisibleSeconds(1.5f);
-            Assert.AreEqual(0.7f, AppSettingsModel.ResolveDialogueMinVisibleSeconds(_probe), 1e-4f);
-
             // 배포 기본 최소가 최대보다 큰 조합(에셋 튜닝으로 충분히 가능하다)에서는 최소가 받쳐진다.
             _probe.dialogueMinVisibleSeconds = 3f;
+            _probe.dialogueMaxVisibleSeconds = 1.5f;
             Assert.AreEqual(1.5f, AppSettingsModel.ResolveDialogueMinVisibleSeconds(_probe), 1e-4f,
                 "최소가 최대보다 길면 '최소 보장'과 '최대 제한'이 동시에 참일 수 없다 — 말풍선이 " +
                 "규칙 4를 조용히 어기게 된다.");
+
+            // 상한 없음(0 이하)이면 받칠 것이 없다 — 배포 최소가 그대로 나온다.
+            _probe.dialogueMaxVisibleSeconds = 0f;
+            Assert.AreEqual(3f, AppSettingsModel.ResolveDialogueMinVisibleSeconds(_probe), 1e-4f);
+        }
+
+        /// <summary>
+        /// ★ 2026-09-02 — 초 슬라이더가 폐기되고 3단 세그먼트가 됐다(UX_FLOW.md 42-4).
+        /// 여기서 잠그는 것은 <b>"고른 적 없음 = 기본"</b>과 <b>범위 밖 값이 기본으로 떨어진다</b> 둘이다.
+        /// 배율의 <b>숫자</b>는 이 파일이 아니라 <c>DialogueVisibleScaleContractTests</c>가 유도식으로 잰다.
+        /// </summary>
+        [Test]
+        public void 대사_표시_시간은_세_칸이고_고른_값이_그대로_남는다()
+        {
+            AppSettingsModel.SetDialogueVisibleLength(DialogueVisibleLength.VeryLong);
+            Assert.IsTrue(AppSettingsModel.HasDialogueVisibleLength);
+            Assert.AreEqual(DialogueVisibleLength.VeryLong, AppSettingsModel.DialogueVisibleLength);
+            Assert.AreEqual(AppSettingsModel.ScaleOf(DialogueVisibleLength.VeryLong),
+                AppSettingsModel.ResolveDialogueVisibleScale(), 1e-4f);
+
+            // 열거형 밖의 값(저장 파일 손상/미래 버전)은 기본으로 떨어진다 — 죽은 값을 사용자의
+            // 선택으로 오해하는 것보다 배포 기본값이 언제나 안전하다.
+            AppSettingsModel.SetDialogueVisibleLength((DialogueVisibleLength)99);
+            Assert.AreEqual(DialogueVisibleLength.Default, AppSettingsModel.DialogueVisibleLength);
         }
 
         [Test]
@@ -111,7 +138,7 @@ namespace StickMate.Tests.EditMode
             AppSettingsModel.RestoreFromSave(
                 autoHideOnFullscreen: true, gearIconVisible: true,
                 hasFontSize: false, fontSize: 0,
-                hasVisibleSeconds: false, visibleSeconds: 0f,
+                hasVisibleLength: false, visibleLengthName: null,
                 hasChatterPercent: false, chatterPercent: 0,
                 hasBubbleEnabled: false, bubbleEnabled: false);
 
@@ -121,7 +148,39 @@ namespace StickMate.Tests.EditMode
                 "고른 적 없음(has*=false)인데 저장된 0이 새어 나왔습니다.");
             Assert.IsTrue(AppSettingsModel.ResolveDialogueBubbleEnabled(_probe),
                 "고른 적 없음인데 저장된 false가 새어 나왔습니다 — 말풍선이 이유 없이 꺼집니다.");
+            Assert.IsFalse(AppSettingsModel.HasDialogueVisibleLength,
+                "고른 적 없음인데 대사 표시 시간이 '사용자가 고른 값'으로 복원됐습니다.");
             Assert.IsFalse(AppSettingsModel.IsDirty, "복원은 변화가 아니라 초기 상태 확정이다(다른 모델과 같은 규약).");
+        }
+
+        /// <summary>
+        /// ★ 저장 파일에는 숫자가 아니라 <b>이름 문자열</b>이 적힌다(잉크색과 같은 관례). 그래서 모르는
+        /// 이름을 만나는 경로가 실재한다 — 파일 손상, 그리고 <b>미래 버전이 추가한 칸</b>.
+        /// 그때 조용히 첫 칸으로 떨어지는 것이 계약이다.
+        /// </summary>
+        [Test]
+        public void 저장된_이름이_모르는_값이면_고른_적_없음으로_떨어진다()
+        {
+            AppSettingsModel.RestoreFromSave(
+                autoHideOnFullscreen: true, gearIconVisible: true,
+                hasFontSize: false, fontSize: 0,
+                hasVisibleLength: true, visibleLengthName: "Eternal",
+                hasChatterPercent: false, chatterPercent: 0,
+                hasBubbleEnabled: false, bubbleEnabled: true);
+
+            Assert.IsFalse(AppSettingsModel.HasDialogueVisibleLength,
+                "모르는 이름이 '사용자가 고른 값'으로 복원됐습니다 — 그 값은 화면에서 아무 뜻도 없습니다.");
+            Assert.AreEqual(DialogueBudget.MinVisibleScale, AppSettingsModel.ResolveDialogueVisibleScale(), 1e-4f);
+
+            // 아는 이름은 그대로 살아남는다(위 단언이 '전부 떨어뜨려서' 통과한 것이 아님을 보인다).
+            AppSettingsModel.RestoreFromSave(
+                autoHideOnFullscreen: true, gearIconVisible: true,
+                hasFontSize: false, fontSize: 0,
+                hasVisibleLength: true, visibleLengthName: DialogueVisibleLength.Long.ToString(),
+                hasChatterPercent: false, chatterPercent: 0,
+                hasBubbleEnabled: false, bubbleEnabled: true);
+            Assert.IsTrue(AppSettingsModel.HasDialogueVisibleLength);
+            Assert.AreEqual(DialogueVisibleLength.Long, AppSettingsModel.DialogueVisibleLength);
         }
 
         [Test]

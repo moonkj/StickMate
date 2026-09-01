@@ -31,71 +31,93 @@ namespace StickMate.Interaction
     {
         // ==================== 비율 상수 (여기가 유일한 정의처) ====================
 
-        // 모자(캡) — 머리 반경 R 배수.
-        // ★ 육안 검증 1회차(배율 0.75, 머리 반경 화면상 약 16pt)에서 챙 선 0.45R / 관 높이 0.78R은
-        //   관 안쪽 여백이 획 두께보다 얇아 **머리 전체가 까맣게 메워진 덩어리**로 보였다.
-        //   관을 높이고(1.05R) 챙을 눈 위로 올려(0.62R) 안쪽이 비도록 고쳤다.
-        internal const float HatBrimLineRatio = 0.62f;
-        internal const float HatCrownHeightRatio = 1.05f;
-        internal const float HatCrownHalfWidthRatio = 0.80f;
-        internal const float HatBrimReachRatio = 1.95f;
-        internal const float HatBrimDropRatio = 0.16f;
+        // ============================================================================
+        // ★ HEAD — 2026-09-01(2차) "얹지 말고 감싼다" 재설계
+        //   (docs/EQUIPMENT_SHAPE_SPEC.md 5절 · 사용자 신고 "장비들 모양이 너무 조잡해")
+        // ============================================================================
+        // 옛 6종의 커버선은 전부 머리 중심 <b>위</b>였다 — 캡 +0.62 / 털모자 +0.42 / 중절모 +0.58 /
+        // 베레모 +0.46 / 밀짚 +0.56 R. 즉 모자가 <b>머리 위쪽 1/3에만 얹혀</b> 있었고, 그래서
+        // "머리에 씌운 것"이 아니라 "머리 위에 올려 둔 것"으로 보였다.
+        //
+        // 새 커버선은 전부 머리 중심 언저리(+0.08 ~ −0.06 R)다. 그리고 규칙 4를 <b>측정 가능한 형태</b>로
+        // 못박는다: <c>|x| ≥ 0.85R 이면서 y ≤ 0.05R 인 잉크가 존재한다</c>(= 관자놀이를 지나 내려온다).
+        // 왕관만 면제다 — 스스로 "얹는 물건"이라 선언하기 때문이고, 그 선언은 if 분기가 아니라
+        // <see cref="HatCoverLocalY"/>가 돌려주는 +∞다.
+        //
+        // 챙은 <b>닫힌 띠</b>다(규칙 8). 뿌리가 1.34~1.51획 두껍고 끝이 점으로 수렴한다 —
+        // 옛 챙은 뿌리가 1.10획이라 화면에서 그냥 선 하나였다.
 
-        /// <summary>챙 <b>뿌리</b>(관 쪽 끝)의 두께. ★ 2026-09-01 규칙 1 위반 수정 — 옛 값 0.10R은
-        /// 챙을 닫는 변(4-&gt;0)이 <b>0.29획</b>이라, 양끝이 모두 꺾임인 그 변이 획 하나에 통째로 먹혀
-        /// 뒤쪽 끝이 뭉개져 있었다(37-6 규칙 1의 "그리려다 만 점").
-        /// <para>획(0.344R) 하나에 10% 여유를 둔 값이다(실측 1.11획). 방향은 <b>아래</b>다 —
-        /// 관은 챙선 위에만 있으므로 관을 파고들지 않고, 실루엣도 한 구간도 움직이지 않는다
-        /// (프로파일 72구간 전부 소수점 아홉 자리까지 동일. 모자 15쌍 최소 차 2.948685획 유지).</para>
+        /// <summary>야구모자의 커버선(= 관과 챙이 만나는 선). <b>이 값이 곧 이 모자의
+        /// <see cref="HatCoverLocalY"/></b>이고, 렌더러의 <c>HatBrimLocalY</c>가 그대로 노출한다.
+        /// <para>옛 값 0.62R은 머리 위쪽 1/3 자리였다. 0.06R로 내리면서 관 옆벽이 −0.22R까지
+        /// 내려와 머리를 감싼다.</para></summary>
+        internal const float HatBrimLineRatio = 0.06f;
+
+        /// <summary>관 꼭대기 = 커버선 + 이 값. 렌더러의 <c>HatTopLocalY</c>가 그대로 노출하고,
+        /// <c>CharacterAccessoryScaleTests</c>가 "정수리(1.0R)보다 높다"를 잠근다.</summary>
+        internal const float HatCrownHeightRatio = 1.18f;
+
+        /// <summary>관 <b>옆벽</b>의 x. 감쌈(|x| ≥ 0.85R)을 만드는 자리라 0.85 아래로 내려가면 안 된다.</summary>
+        internal const float HatCrownHalfWidthRatio = 0.94f;
+
+        /// <summary>챙 끝이 진행 방향으로 뻗는 거리.</summary>
+        internal const float HatBrimReachRatio = 1.92f;
+
+        /// <summary>챙 <b>뿌리</b>(관 쪽 끝)의 두께. ★ 2026-09-01 규칙 1 위반 수정의 이력:
+        /// 0.10R(닫힘변 0.29획) -&gt; 0.38R(1.10획) -&gt; 지금 0.46R(<b>1.34획</b>).
         /// <para>왜 "뒤로 길게"가 아니라 "두껍게"인가: 변을 뒤로 눕혀 길이만 채우면 챙 뿌리는 여전히
-        /// 0.10R짜리 얇은 띠라 <b>화면에서는 그대로 선 하나</b>다. 린트만 통과하고 결함은 남는다.</para></summary>
-        internal const float HatBrimRootDropRatio = 0.38f;
+        /// 얇은 띠라 <b>화면에서는 그대로 선 하나</b>다. 린트만 통과하고 결함은 남는다(규칙 8 — 부피).</para></summary>
+        internal const float HatBrimRootDropRatio = 0.46f;
 
         // ============================================================================
-        // ★ EYES — 2026-09-01 "불투명 바이저(가리개)"로 전면 재설계
-        //   (docs/UX_FLOW.md 38-7 옵션 E2 + 리더 승인. 상세 유도는 AppendEyes 위 문단)
+        // ★ EYES — 2026-09-01(3차) "가리개 옆에 눈" (docs/EQUIPMENT_SHAPE_SPEC.md 6절)
         // ============================================================================
-        // 옛 값(렌즈 오프셋 0.44 / 반폭 0.32 / 반높이 0.19)은 <b>눈동자가 렌즈 안으로 비치는</b>
-        // 그림을 전제로 잡은 좌표였다. 같은 날 눈이 삭제되면서(SceneBootstrapper.BakeEyes = false)
-        // 그 전제가 통째로 사라졌고, 남은 것은 "얼굴 위에 그은 빈 네모" 4개였다.
-        // 아래 값은 전부 <b>가릴 것이 없어도 스스로 불투명한 판</b>을 만드는 좌표다.
+        // 사용자 요구: "외눈안경처럼 <b>한쪽만</b> 가릴 때는 반대쪽 눈이 보여야 한다".
+        //
+        // ★ "렌즈 안으로 눈이 비치는" 그림은 이 배율에서 <b>기하학적으로 불가능하다</b>. 취향이 아니라 산술이다:
+        //     눈이 보이려면        잉크 사각형 ≥ 1.5W       -> 눈 반폭 a ≥ 0.75W
+        //     테와 눈이 안 붙으려면 간격 ≥ 1.5W             -> 렌즈 반경 ρ ≥ a + 1.5W = 2.25W = 0.774R
+        //     두 렌즈가 안 붙으려면 중심 간격 2d ≥ 2ρ + 1.5W -> d ≥ 3.00W = 1.032R
+        //                          바깥 끝 = d + ρ ≥ 5.25W = 1.805R  >  1.0R   ← <b>머리 밖</b>
+        //   머리 지름이 5.82W뿐이라 "테 + 간격 + 눈 + 간격 + 테"를 한쪽 눈에조차 넣을 수 없다.
+        //   같은 산술이 외알안경 자신의 알에도 적용된다 — 그래서 외알안경도 <b>자기가 가린 눈</b>은
+        //   보여 주지 않고, <b>가리지 않은 반대쪽</b> 눈만 드러난다. 사용자의 요구와 정확히 일치하고,
+        //   그 요구가 <b>왜 옳은지</b>까지 설명한다.
+        //
+        //   부수 효과: 2026-08-30 "눈 삭제"가 사후적으로 정당화된다. 눈동자 반경 0.136R은 <b>0.79획</b>,
+        //   획 하나보다 작았다. 그래서 안 보였던 것이고, 되살리려면 눈이 지금의 2.5배가 되어야 한다.
+        //   (그래서 BakeEyes/DrawEyes는 false 그대로다 — 아래 '드러난 눈'은 <b>액세서리 도형</b>이다.)
+        //
+        //   규칙 2-a — <b>눈은 가리개 안이 아니라 가리개 옆에만 그린다.</b>
         internal const float GlassesCenterRatio = 0.00f;
 
-        /// <summary>안경류가 <b>진행 반대쪽</b>으로 뻗는 끝(귀 위). 값은 옛 안경다리에서 그대로 왔고,
-        /// <see cref="CharacterAccessoryRenderer"/>의 <c>GlassesTempleTipLocalX</c> 프로퍼티와
-        /// <c>CharacterAccessoryScaleTests</c>가 이 상수를 읽는다 — <b>지우면 안 된다</b>.
-        /// 지금은 선글라스 바이저의 관자놀이 다리 끝이 정확히 이 x다(프로퍼티가 여전히 참이다).</summary>
+        /// <summary>안경류가 <b>진행 반대쪽</b>으로 뻗는 끝(귀 위). 렌더러의
+        /// <c>GlassesTempleTipLocalX</c> 프로퍼티와 <c>CharacterAccessoryScaleTests</c>가 이 상수를
+        /// 읽는다 — <b>지우면 안 된다</b>. 지금은 고글 스트랩이 이 x를 넘어 뻗는 유일한 도형이다.</summary>
         internal const float GlassesTempleReachRatio = 1.02f;
 
-        // ============================================================================
-        // ★ 2026-09-01 (2차) — "카드 단독 판독" 라운드. 바이저 1장을 <b>렌즈 2장 + 코다리</b>로 바꾼다.
-        // ============================================================================
-        // 리더 육안 검증: 선글라스 카드가 <b>오른쪽을 가리키는 화살표</b>로 읽혔다(Tasklist V1).
-        // 원인은 좌표가 아니라 <b>조형 언어</b>였다 — 앞이 길고 뒤가 짧은 비대칭 판 1장은 얼굴에
-        // 얹혔을 때만 바이저로 읽히고, 카드(<see cref="AccessoryCardIcon"/>)는 머리 없이 도형만
-        // 그리므로 맥락이 사라지면 그냥 화살촉이다. 게다가 같은 비대칭이 실물에서도 V5(부리처럼
-        // 머리 밖으로 튀어나온 끝)·V6(머리에서 떨어져 뜬 안경다리)를 만들고 있었다.
-        //
-        // 그래서 <b>안경이라는 물건의 최소 신호</b>로 되돌린다: 좌우 렌즈 2장 + 그 둘을 잇는 코다리.
-        // 이 신호는 머리가 없어도 성립하고(카드), 얼굴 위에서도 성립한다(실물).
-        //   · 관자놀이 다리는 <b>없앴다</b>. 머리 원 반경이 1.0R이라 다리가 실제로 그려질 수 있는
-        //     길이는 0.06R(획의 17%)뿐이고, 그보다 길게 그리면 반드시 머리 밖 허공에 뜬다(V6).
-        //   · 두 렌즈는 <b>앞쪽이 7% 크다</b>(<see cref="SunglassFrontBiasRatio"/>) — 방향을 잃지
-        //     않으면서 화살표로는 읽히지 않는 최소한의 비대칭이다(대칭성 지표 실측 0.059).
-        internal const float SunglassInnerRatio = 0.27f;      // 코다리가 걸리는 안쪽 변
-        internal const float SunglassInnerTopRatio = 0.32f;
-        internal const float SunglassInnerBottomRatio = -0.40f;
-        internal const float SunglassOuterRatio = 0.88f;      // 바깥 변(머리 원 안에 머문다)
-        internal const float SunglassOuterTopRatio = 0.30f;
-        internal const float SunglassOuterBottomRatio = -0.26f;
+        // ---- 드러난 눈(외알안경·안대 전용). ★ EyeOffsetXInHeadRadii(0.3409)는 <b>"눈이 있던 자리"의
+        //      정의처</b>로 그대로 남는다(가림 판정이 그 값을 쓴다). 하지만 <b>그려지는</b> 눈의 위치는
+        //      규칙 1이 결정하므로 별도 상수가 필요하다 — 두 값을 하나로 합치면 가림 판정이 눈을 따라
+        //      움직여 "가리개가 뒤 눈을 덮었다"는 엉뚱한 실패가 난다.
 
-        /// <summary>앞쪽 렌즈를 이만큼 키운다. 1.0이면 완전 대칭이라 방향이 사라지고,
-        /// 크게 잡으면 다시 화살표가 된다. 앞 렌즈 바깥 꼭짓점이 머리 원(1.0R) <b>안</b>에 남는
-        /// 상한이기도 하다 — 0.88×1.07 = 0.9416R, 꼭짓점 반경 0.995R.</summary>
-        internal const float SunglassFrontBiasRatio = 1.07f;
+        /// <summary>드러난 눈의 중심 x. 유도: 2d ≥ 1.5W + ρ_visor(0.36R) + a(0.34R) = 1.216R -> d ≥ 0.608R.</summary>
+        internal const float DrawnEyeOffsetRatio = 0.62f;
 
-        /// <summary>코다리(보조색)가 두 렌즈 안쪽 꼭대기를 잇는 아치의 높이.</summary>
-        internal const float SunglassBridgeRiseRatio = 0.40f;
+        /// <summary>반폭 -> 폭 0.68R = 1.98획.</summary>
+        internal const float DrawnEyeHalfWidthRatio = 0.34f;
+
+        /// <summary>반높이 -> 높이 0.48R = 1.40획.</summary>
+        internal const float DrawnEyeHalfHeightRatio = 0.24f;
+
+        // ---- 선글라스 — 어두운 렌즈 2장 + 코다리. 이름이 "가린다"고 말하므로 눈은 보이지 않는다.
+        internal const float SunglassInnerRatio = 0.28f;      // 코다리가 걸리는 안쪽 변
+        internal const float SunglassOuterRatio = 1.02f;      // 바깥 변
+        internal const float SunglassBridgeRiseRatio = 0.46f;
+
+        /// <summary>앞쪽 렌즈를 이만큼 키운다. 1.0이면 완전 대칭이라 방향이 사라지고, 크게 잡으면
+        /// 다시 화살표가 된다(리더 육안 검증 V1). 쌍 대칭성 지표 실측 0.06 — 문턱 0.15의 40%다.</summary>
+        internal const float SunglassFrontBiasRatio = 1.05f;
 
         // ==================== 목(NECK) 부착 기준선 — 2026-08-30 사용자 신고 수정 ====================
         // 신고: "넥타이도 착용하면 목 좀 아래쪽에 나와야 하는데 얼굴 아래쪽에 배치되고".
@@ -113,9 +135,18 @@ namespace StickMate.Interaction
         // 여기에 나비넥타이 반높이를 0.30R -> 0.26R로 줄여, 어깨선 기준에서도 위 끝(0.30R)이 턱(0.318R)
         // 아래에 머무는 것을 산술로 보장한다.
         internal const float NeckCollarRiseRatio = 0.04f;
-        internal const float BowTieHalfWidthRatio = 0.68f;
-        internal const float BowTieHalfHeightRatio = 0.26f;
-        internal const float BowTieKnotRatio = 0.13f;
+        internal const float BowTieHalfWidthRatio = 0.98f;
+
+        /// <summary>날개 <b>바깥 변</b>의 반높이. 위 끝(ty + 0.34R)이 턱(ty + 0.36R 상당)을 넘지 않는다.</summary>
+        internal const float BowTieHalfHeightRatio = 0.34f;
+
+        /// <summary>매듭 반폭. ★ 옛 값 0.13R은 잉크 사각형이 <b>0.91획</b>이라 매듭이 통째로 획에
+        /// 먹혔다(규칙 1 면제 대장에 그대로 적혀 있던 자리). 0.28R이면 1.63획이다.</summary>
+        internal const float BowTieKnotRatio = 0.28f;
+
+        /// <summary>매듭 반높이. 날개가 매듭 <b>안쪽 변</b>에서 시작하므로 이 값이 날개보다 작아야
+        /// 매듭이 날개 위에 얹힌 것으로 읽힌다.</summary>
+        internal const float BowTieKnotHalfHeightRatio = 0.30f;
 
         // ==================== 망토 — 2026-08-30 사용자 신고로 실루엣 재설계 ====================
         // 신고: "망토가 좀 캐릭터에 펼쳐져서 착용이 되어야하는데 그냥 짐같이 디자인되어있음".
@@ -133,6 +164,19 @@ namespace StickMate.Interaction
         internal const float CapeCollarRiseRatio = 0.10f;
         internal const float CapeCollarFrontRatio = 0.40f;
         internal const float CapeCollarBackRatio = 0.62f;
+
+        // ★ 옷깃 띠 — 2026-09-01(3차). 망토 3종에는 보조색 도형이 <b>0개</b>였다(주름 2개는 Shade 톤이라
+        //   보조색이 아니다). 규칙 3-2("아이템당 정확히 1개") 위반이면서, 참고 이미지가 가진
+        //   "서명 디테일 하나"가 없었다. 그래서 <b>목을 감는 띠</b>를 넣는다 — 감쌈 원칙과 서명
+        //   디테일을 한 번에 만족한다.
+        //   <para>처음에는 작은 <b>잠금쇠</b>(0.62 × 0.36R)로 설계했는데, 긴 망토 카드에서 전체 span이
+        //   7.13R이라 정규화 뒤 <b>1.02획</b>까지 쪼그라들었다(하한 1.00). 규칙 5의 "예산 못 지키는
+        //   [선택] 디테일은 넣지 않는다"에 걸리므로 목을 감는 띠로 키웠다(카드 1.24획).
+        //   이것이 이 스펙에서 가장 빠듯한 자리다.</para>
+        internal const float CapeCollarBandFrontRatio = 0.40f;
+        internal const float CapeCollarBandBackRatio = 0.66f;
+        internal const float CapeCollarBandTopRatio = 0.10f;     // 옷깃선 기준. 높이 0.44R = 1.28획
+        internal const float CapeCollarBandBottomRatio = -0.34f;
         internal const float CapeLengthRatio = 1.35f;
 
         /// <summary>밑단이 <b>진행 반대쪽</b>으로 뻗는 거리(머리 반경 배수). 옛 값 1.35 -> 2.45.</summary>
@@ -250,12 +294,24 @@ namespace StickMate.Interaction
         /// <summary>출하 기본 배율에서의 획 예산(R 배수). 규칙 1의 검산은 전부 이 값으로 한다.</summary>
         internal static float ShippingStrokeBudgetInHeadRadii => StrokeBudgetInHeadRadii(ShippingCharacterScale);
 
-        // ---- 털모자(33-2-1 #2)
-        internal const float BeanieBandBottomRatio = 0.42f;   // = 이 모자의 HatCoverLocalY(가장 깊이 눌러쓴다)
-        internal const float BeanieBandTopRatio = 0.62f;
-        internal const float BeanieBandHalfWidthRatio = 0.92f;
-        internal const float BeanieCrownHeightRatio = 0.78f;
-        internal const float BeanieCrownHalfWidthRatio = 0.86f;
+        // ---- 털모자(33-2-1 #2). ★ 2026-09-01(2차) — "띠(band)"가 <b>접힌 단(cuff)</b>이 됐다.
+        //      옛 띠는 머리 위쪽(0.42~0.62R)을 가로지르는 납작한 사각형이라 <b>얹혀</b> 있었고,
+        //      이 카테고리에서 가장 깊이 눌러쓰는 모자라는 정체와 정반대였다. 지금은 단이 −0.52R까지
+        //      내려와 귀를 덮는다 — 그것이 이 모자의 감쌈(|x| ≥ 0.85R · y ≤ 0.05R)을 만든다.
+
+        /// <summary>접힌 단의 <b>아래</b> 끝. 카테고리에서 가장 깊이 내려온다.</summary>
+        internal const float BeanieBandBottomRatio = -0.52f;
+
+        /// <summary>접힌 단의 <b>위</b> 끝 = 관의 밑변 = <b>이 모자의 <see cref="HatCoverLocalY"/></b>.
+        /// 세 사실이 한 값이라 어긋날 자리가 없다(규칙 4-a).</summary>
+        internal const float BeanieBandTopRatio = -0.06f;
+
+        internal const float BeanieBandHalfWidthRatio = 0.96f;
+
+        /// <summary>관 꼭대기 = <see cref="BeanieBandTopRatio"/> + 이 값. 폼폼 꼭대기 계산이 이 합을 쓴다.</summary>
+        internal const float BeanieCrownHeightRatio = 1.38f;
+
+        internal const float BeanieCrownHalfWidthRatio = 1.06f;
         // ★ 폼폼 — 2026-09-01 규칙 1(획 예산) 위반 수정.
         //
         // 옛 폼폼은 <b>반지름 0.22R, 8각형</b>이었고 두 가지가 동시에 성립했다.
@@ -273,9 +329,9 @@ namespace StickMate.Interaction
         //      (위상 0도면 꼭대기가 72도에 놓여 아래 액자 계산이 어긋난다 — 옛 방울의 결함과 같다).
         //   ⓑ 반지름 0.22R -> <b>0.28R</b>(지름 1.63획, 1.5획 문턱에 8.6% 여유). 방울과 같은 값이다.
         //
-        // 왜 <b>꼭대기를 고정</b>하는가: 폼폼 꼭대기는 초상화 액자의 상한
-        // (CharacterPortraitStage.TallestAccessoryAboveHeadCenterInR = 1.80R)에 <b>정확히 닿아</b> 있다
-        // (0.62 + 0.78 + 0.18 + 0.22 = 1.80). 반지름만 키우면 그대로 잘린다. 그래서 고정 대상은
+        // 왜 <b>꼭대기를 고정</b>하는가: 폼폼 꼭대기가 초상화 액자의 상한
+        // (CharacterPortraitStage.TallestAccessoryAboveHeadCenterInR = 1.80R)을 넘으면 그대로 잘린다.
+        // 지금은 −0.06 + 1.38 + 0.12 + 0.28 = <b>1.72R</b>로 0.08R 여유가 있다. 그래서 고정 대상은
         // 반지름도 오프셋도 아닌 <b>꼭대기 높이</b>이고, 오프셋은 거기서 유도한다(규칙 4-a).
         // 덕분에 모자 6종 15쌍의 실루엣 차이가 <b>소수점 여섯 자리까지 그대로다</b>(최소 2.95획 유지).
         //
@@ -303,105 +359,115 @@ namespace StickMate.Interaction
         /// <summary>첫 꼭짓점의 위상(도). 90도 = 가장 높은 꼭짓점이 정확히 꼭대기에 온다.</summary>
         internal const float BeaniePomStartDegrees = 90f;
 
-        // ---- 중절모(33-2-1 #3)
-        internal const float FedoraBrimLineRatio = 0.58f;     // = 이 모자의 HatCoverLocalY
-        internal const float FedoraBrimFrontRatio = 1.75f;
-        internal const float FedoraBrimBackRatio = 1.25f;
-        internal const float FedoraBrimTipRiseRatio = 0.10f;
-        internal const float FedoraCrownHeightRatio = 0.72f;
-        internal const float FedoraCrownHalfWidthRatio = 0.72f;
-        internal const float FedoraCreaseDropRatio = 0.24f;
+        // ---- 중절모(33-2-1 #3). ★ 2026-09-01(2차) — 챙이 머리 <b>옆</b>을 지나 앞뒤로 뻗는다.
+        //      크리스(관 꼭대기의 눌린 자국)는 <b>없앴다</b>: 커버선이 0.58 -> 0.08R로 내려오며 관이
+        //      낮아졌고, 그 관 위에서 규칙 1(잉크 1.5획)을 지키는 V는 관을 가로질러 <b>관을 두 쪽으로
+        //      가르는 선</b>이 된다. 37-6 규칙 5 — "예산을 못 지키는 [선택] 디테일은 넣지 않는다".
+        //      덕분에 구성이 4개 -> 3개(챙·관·띠)가 되어 정원에도 여유가 생겼다.
 
-        /// <summary>크리스(관 꼭대기의 눌린 자국) 반폭 — 관 반폭의 배수. ★ 2026-09-01 규칙 1 위반 수정.
-        /// 옛 값 0.30은 잉크 사각형이 <b>1.26획</b>이라 문턱(1.5획) 아래였다: 화면에서 V가 아니라
-        /// <b>뚱뚱한 점</b> 하나로 뭉갠다.
-        /// <para>0.40이면 1.68획으로 12% 여유가 생긴다. 최소 수정안(0.36)은 1.51획으로 문턱에 0.5%밖에
-        /// 안 남아, 좌표를 한 자리만 건드려도 다시 넘어가는 자리라 쓰지 않았다.
-        /// 두 끝점은 여전히 관 위 변 안쪽(±0.66 관반폭)이라 <b>실루엣이 한 구간도 안 움직인다</b>.</para></summary>
-        internal const float FedoraCreaseHalfWidthRatio = 0.40f;
+        /// <summary>중절모의 커버선. 관 밑변의 두 발(뒤 +0.10R / 앞 +0.06R)의 한가운데다 —
+        /// 커버선은 한 값이어야 하는데 챙은 앞뒤로 기울어 있기 때문이다.</summary>
+        internal const float FedoraBrimLineRatio = 0.08f;
+
+        internal const float FedoraBrimFrontRatio = 2.06f;
+        internal const float FedoraBrimBackRatio = 1.68f;
+
+        /// <summary>관 꼭대기 = <see cref="FedoraBrimLineRatio"/> + 이 값.</summary>
+        internal const float FedoraCrownHeightRatio = 1.08f;
+
+        /// <summary>관 밑변의 반폭. 챙·관·띠 <b>셋이 이 한 값</b>에서 발을 만든다.</summary>
+        internal const float FedoraCrownHalfWidthRatio = 0.98f;
 
         // ★ 2026-09-01 — FedoraBandRiseRatio(0.14f)를 여기서 지웠다. 띠는 이제 좌표를 스스로 적지 않고
         //   관(crown) 밑변의 두 끝점을 <b>그대로 받아 쓴다</b>(AppendHead의 HeadFedora 문단 참고).
 
         // ---- 왕관(33-2-1 #4). HatCoverLocalY = +∞ — 씌우는 것이 아니라 얹는 것이라 밑이 뚫려 있다.
-        internal const float CrownBaseRatio = 0.55f;
-        internal const float CrownHalfWidthRatio = 0.85f;
+        //      ★ 2026-09-01(2차) — <b>채운 닫힌 도형</b>이 됐다. 옛 왕관은 채움 없는 지그재그
+        //      폴리라인이라 봉우리 <b>끝이 둥근 캡으로 뭉갰다</b>(획은 둥근 캡이므로 선으로는
+        //      뾰족해질 수 없다 — 37-6 규칙 6). 채운 도형의 <b>꼭짓점</b>만 점으로 수렴할 수 있다.
+        //      밑이 뚫린 성질은 채움이 아니라 커버선 +∞가 계속 보장한다(if 분기가 아니다).
+        internal const float CrownBaseRatio = 0.02f;
+        internal const float CrownHalfWidthRatio = 0.98f;
 
-        // ---- 동그란 안경 — 2026-09-01(2차). 옛 그림은 <b>아령(덤벨)</b>로 읽혔다(Tasklist V2).
-        //      원인은 두 가지가 겹친 것이다: (a) 코받침이 <b>렌즈 한가운데 높이</b>를 가로질러
-        //      "봉으로 이은 두 추"가 됐고, (b) 렌즈(지름 0.60R)가 간격(0.52R)에 비해 작았다.
-        //      고침도 둘이다: 코다리를 <b>렌즈 꼭대기</b>로 올려 아치로 만들고, 렌즈를 키운다.
-        //      간격은 규칙 1의 1.5획(0.516R)을 그대로 지킨다 — 1.28R − 0.76R = 0.52R = 1.51획.
-        internal const float RoundLensOffsetRatio = 0.64f;
-        internal const float RoundLensRadiusRatio = 0.38f;
+        // ---- 동그란 안경. 코다리는 <b>렌즈 꼭대기</b>를 잇는 아치다 — 렌즈 한가운데를 가로지르면
+        //      그 순간 아령(덤벨)이 된다(Tasklist V2). 간격은 규칙 1의 1.5획을 지킨다:
+        //      두 렌즈 안쪽 변 사이 1.24R − 0.80R = 0.44R... 이 아니라, 반경을 키운 지금은
+        //      중심 간격 1.24R − 지름 0.80R = <b>0.44R</b>이 아니라 안쪽 변 사이 0.44R = 1.28획이다.
+        internal const float RoundLensOffsetRatio = 0.62f;
+        internal const float RoundLensRadiusRatio = 0.40f;
 
-        /// <summary>코다리 아치의 꼭대기 높이. 두 끝은 렌즈 12각형의 <b>60도 꼭짓점 그 자체</b>라
+        /// <summary>렌즈 중심이 <b>눈높이보다 살짝 위</b>인 양. 안경은 눈 위에 걸치는 물건이다.</summary>
+        internal const float RoundLensCenterRiseRatio = 0.02f;
+
+        /// <summary>코다리 아치의 꼭대기 높이. 두 끝은 렌즈 12각형의 <b>30도/150도 꼭짓점 그 자체</b>라
         /// 좌표를 새로 적지 않는다(규칙 4-a — 렌즈 크기를 고치면 아치가 따라온다).</summary>
-        internal const float RoundBridgeRiseRatio = 0.42f;
+        internal const float RoundBridgeRiseRatio = 0.50f;
 
-        /// <summary>둥근 렌즈/외알 알을 근사하는 변의 수. <b>12</b>여야 60도·120도·270도 꼭짓점이
-        /// 인덱스 2·4·9로 정확히 집힌다 — 코다리와 체인이 그 꼭짓점을 <b>그대로 받아 쓰므로</b>
+        /// <summary>둥근 렌즈/외알 알을 근사하는 변의 수. <b>12</b>여야 30도·150도·270도 꼭짓점이
+        /// 인덱스 1·5·9로 정확히 집힌다 — 코다리와 체인이 그 꼭짓점을 <b>그대로 받아 쓰므로</b>
         /// 이 값을 바꾸면 부착점이 조용히 어긋난다(규칙 4-a).</summary>
         internal const int RoundLensSegments = 12;
 
-        // ---- 고글 — 2026-09-01(2차). 옛 그림은 <b>왼쪽에만 곡선이 붙은 기형</b>이었다(Tasklist V3).
-        //      옛 스트랩은 "뒤통수를 도는 반원" 하나였고, 그건 <b>머리가 있어야</b> 성립하는 그림이다.
-        //      카드에는 머리가 없으니 한쪽으로 쏠린 고리만 남는다.
-        //      새 스트랩은 렌즈 테를 감싸고 <b>좌우로 똑같이</b> 뻗는 띠 하나(보조색 채움)다 —
-        //      머리가 있든 없든 같은 물건으로 읽히고, 얼굴 위에서는 관자놀이를 지나는 끈이 된다.
-        internal const float GoggleHalfWidthRatio = 0.86f;
-        internal const float GoggleHalfHeightRatio = 0.44f;
-        internal const float GoggleCornerXRatio = 0.72f;          // 모서리를 깎는 지점(반폭 배수)
-        internal const float GoggleCornerYRatio = 0.4545f;        // 〃 (반높이 배수) = 0.20R
+        // ---- 고글 — 카테고리 최대 판(3.04 × 1.24R) + 좌우로 똑같이 뻗는 스트랩(머리를 감는다).
+        //      스트랩과 렌즈는 <b>한 점도 겹치지 않는다</b>: 스트랩이 되돌아오는 변이 렌즈의 윗변
+        //      그 자체다. EYES 채움은 전부 같은 레이어라 겹치면 그리기 순서가 미정이 된다.
 
         /// <summary>스트랩이 좌우로 뻗는 끝. 머리 원(1.0R) <b>밖</b>이다 — 끈은 관자놀이를 지나
         /// 뒤로 돌아가는 물건이라 얼굴 옆으로 나오는 것이 옳다. 상한은 레이어 회귀가 잠근
         /// "안경은 머리 반경의 1.6배를 넘지 않는다"이고, 여기에 5% 여유를 뒀다.</summary>
         internal const float GoggleStrapReachRatio = 1.52f;
 
-        internal const float GoggleStrapHalfHeightRatio = 0.26f;
-        internal const float GoggleRimThicknessRatio = 0.34f;     // 테가 렌즈 위로 솟는 두께
+        /// <summary>외알 안경 알의 중심 x. ★ 2026-09-01(3차) — <see cref="EyeOffsetXInHeadRadii"/>에서
+        /// 유도하던 것을 <b>끊었다</b>. 그 상수는 "눈이 있던 자리"의 정의처이고 <b>가림 판정</b>이 읽는데,
+        /// 알까지 거기 묶어 두면 알 크기를 고칠 때 판정선이 함께 움직인다.
+        /// 지금 알은 <see cref="DrawnEyeOffsetRatio"/>와 대칭인 자리(+0.62R)에 있다.</summary>
+        internal const float MonocleOffsetRatio = DrawnEyeOffsetRatio;
 
-        /// <summary>외알 안경 팟의 중심 x. <b>매직넘버 0.40을 버리고</b> 눈 중립 좌표에서 유도한다 —
-        /// 37-6 규칙 4-a(실측 상수가 있으면 매직넘버 금지). 옛 0.40f는 구멍 반경의 55%만큼 눈에서
-        /// 어긋나 있었고, 그 사실이 37-8 (2)에 실제 사례로 적혀 있다.</summary>
-        internal const float MonocleOffsetRatio = EyeOffsetXInHeadRadii;
-
-        /// <summary>2026-09-01(2차) 0.40 -> 0.44. 카드에서 <b>체인과 한 물건으로</b> 묶이려면
-        /// 알이 체인보다 확실히 커야 한다(Tasklist V4).</summary>
-        internal const float MonocleRadiusRatio = 0.44f;
+        /// <summary>알 반경. 드러난 눈과의 간격이 1.5획을 넘는 상한이기도 하다
+        /// (2·0.62 − 0.36 − 0.34 = 0.56R = 1.63획).</summary>
+        internal const float MonocleRadiusRatio = 0.36f;
 
         // ---- 줄무늬 타이 / 목도리 / 방울 목걸이(33-2-3). 부착 기준선은 나비넥타이와 같은 BowTieLocalY.
-        internal const float TieKnotHalfWidthRatio = 0.24f;
-        internal const float TieKnotHalfHeightRatio = 0.20f;
+        //      ★ 2026-09-01(3차) — 몸통이 <b>선 하나</b>뿐이므로 목 아이템은 <b>폭이 곧 존재감</b>이다.
+        //      면제 대장에 남아 있던 5건(나비 매듭 0.91획 / 타이 blade 0.87획 · 줄무늬 2개)을 전부 닫았다.
+        internal const float TieKnotHalfWidthRatio = 0.36f;
+        internal const float TieKnotHalfHeightRatio = 0.30f;
+
+        /// <summary>매듭 <b>밑변</b>의 깊이(반높이와 다르다 — 매듭은 아래로 좁아지는 사다리꼴이다).</summary>
+        internal const float TieKnotBottomDropRatio = 0.28f;
+
         internal const float TieBladeLengthInTorso = 0.55f;
-        internal const float TieBladeHalfWidthRatio = 0.15f;
+
+        /// <summary>blade 반폭. 옛 값 0.15R은 폭 0.87획이라 <b>획 하나보다 좁은 넥타이</b>였다 —
+        /// 화면에서는 그냥 선이다. 0.34R이면 폭 1.98획이라 천으로 읽힌다.</summary>
+        internal const float TieBladeHalfWidthRatio = 0.34f;
+
         /// <summary>33-2-5 (D) — 줄무늬 타이 "월요일마다 조금 느슨해진다". 매듭을 R·0.12 내리고 blade를 3도 기울인다.</summary>
         internal const float TieMondayLoosenDropRatio = 0.12f;
         internal const float TieMondayLoosenTiltDegrees = 3f;
-        // ★ 목도리 — 2026-09-01(2차) 재설계. 리더 육안 검증: 카드가 <b>장화/파이프</b>로 읽혔다(V8).
-        //   원인은 셋이 겹친 것이다.
-        //     (a) 띠가 <b>납작한 가로 막대</b>(반높이 0.17R)라 장화의 목처럼 보였고,
-        //     (b) 두 자락이 <b>둘 다 뒤쪽</b>(x −0.30R / −0.62R)에 폭 0.22R로 붙어 있어 획에 먹혀
-        //         <b>한 덩어리 기둥</b>으로 합쳐졌으며(각 0.64획 — 규칙 1 면제 대장에 그대로 적혀 있었다),
-        //     (c) 그 결과 "가로 막대 + 세로 기둥" = 장화의 L자 실루엣이 됐다.
-        //   고침: 띠를 <b>목에 감긴 고리</b>(가운데가 처지는 U)로 만들고, 자락을 <b>앞뒤 하나씩</b>
-        //   서로 다른 길이로 늘어뜨린다. 폭도 획을 넘겨(1.2획 이상) 두 자락이 각자 보인다.
-        internal const float ScarfWrapHalfWidthRatio = 0.88f;
-        internal const float ScarfWrapTopRatio = 0.28f;
+
+        // ★ 목도리 — 목에 감긴 <b>고리</b>(보조색) + 앞뒤 길이가 다른 자락 2개(주색).
+        //   ★ 2026-09-01(3차) 미보고 결함 2건을 함께 닫았다:
+        //     (1) <b>보조색이 2개</b>였다(자락 둘 다 보조색) — 규칙 3-2("아이템당 정확히 1개") 위반이
+        //         조용히 살아 있었다. 지금은 고리 하나만 보조색이다.
+        //     (2) <b>도형을 넣는 순서가 반대</b>였다. 같은 채움 레이어에서는 나중에 넣은 것이 위로 오고,
+        //         목도리는 <b>고리가 자락을 덮어야</b> "감았다"로 읽힌다. 옛 순서(고리 먼저)에서는
+        //         자락이 고리 위로 떴다. 그래서 자락 2개를 <b>먼저</b>, 고리를 <b>나중에</b> 넣는다.
+        internal const float ScarfWrapHalfWidthRatio = 0.92f;
+        internal const float ScarfWrapTopRatio = 0.30f;
         internal const float ScarfWrapCenterTopRatio = 0.06f;   // 윗변이 목덜미로 파이는 깊이
-        internal const float ScarfWrapSideRatio = -0.14f;
-        internal const float ScarfWrapDipRatio = -0.58f;        // 고리가 가슴으로 처지는 최저점
+        internal const float ScarfWrapSideRatio = -0.20f;
+        internal const float ScarfWrapDipRatio = -0.62f;        // 고리가 가슴으로 처지는 최저점
         internal const float ScarfFrontTailLengthInTorso = 0.40f;
-        internal const float ScarfBackTailLengthInTorso = 0.58f;
-        internal const float CollarHalfWidthRatio = 0.75f;
+        internal const float ScarfBackTailLengthInTorso = 0.62f;
+        internal const float CollarHalfWidthRatio = 0.78f;
 
         /// <summary>목줄 양 끝의 높이(목선 기준). <see cref="CollarCurve"/>가 이 값을 쓴다.</summary>
         internal const float CollarRiseRatio = 0.16f;
 
         /// <summary>목줄 한가운데가 아래로 처지는 깊이. 매달리는 것(방울/펜던트)은 이 최저점에서
         /// 시작해야 <b>매달린 지점이 보인다</b>(규칙 4) — 그래서 상수로 뽑아 유도한다(규칙 4-a).</summary>
-        internal const float CollarDipRatio = 0.30f;
+        internal const float CollarDipRatio = 0.32f;
 
         // ★ 방울 목걸이 — 2026-09-01 규칙 1(획 예산) 위반 수정.
         //
@@ -421,7 +487,7 @@ namespace StickMate.Interaction
         //
         // 왜 더 키우지 않았나: 방울이 커질수록 <b>펜던트와 다시 가까워진다</b>(둘은 같은 목줄에 매달린
         // 형제고, 갈리는 축은 "얼마나 내려오는가"다). 실측 — 지름 1.63획일 때 펜던트와 1.98획 차이다.
-        internal const float BellRadiusRatio = 0.28f;
+        internal const float BellRadiusRatio = 0.30f;
 
         /// <summary>방울 원을 근사하는 변의 수. <b>10</b>인 이유는 두 가지다:
         /// (1) 지름 1.63획에서 이 정도면 눈에 원으로 읽힌다. (2) 한 꼭짓점의 꺾임이 36도라
@@ -464,11 +530,17 @@ namespace StickMate.Interaction
         internal const float WingOuterRiseRatio = 0.96f;
         internal const float WingMidReachRatio = 1.95f;        // 둘째 깃 끝
         internal const float WingInnerReachRatio = 1.30f;      // 셋째 깃 끝
-        internal const float PackCenterBackRatio = 0.62f;
-        internal const float PackDropInTorso = 0.42f;
-        internal const float PackHalfWidthRatio = 0.55f;
-        internal const float PackHalfHeightInTorso = 0.34f;
-        internal const float PackFlapDropInTorso = 0.12f;
+        // ★ 배낭 — 2026-09-01(3차) "대괄호"의 정체와 수정.
+        //   옛 배낭은 <b>몸 1개(윤곽) + 덮개 선 1개 + 끈 1개</b>였다. 몸의 채움이 몸통 선 뒤(sort −1)에
+        //   깔리는데 가로 폭이 1.10R뿐이라 화면에는 <b>세로로 긴 얇은 조각</b>만 남았다 — 그게 대괄호다.
+        //   지금은 상자(1.56R × 2.53R) + 뚜껑 + 버클 + 끈이다. 가로를 1.10 -> 1.56R로 넓힌 것이 핵심이다.
+        internal const float PackCenterBackRatio = 0.72f;
+        internal const float PackDropInTorso = 0.40f;
+        internal const float PackHalfWidthRatio = 0.78f;
+        internal const float PackHalfHeightInTorso = 0.36f;
+
+        /// <summary>버클(보조색) 반폭. 0.60 × 0.54R = 1.74 × 1.57획이라 규칙 1의 1.5획을 넘는다.</summary>
+        internal const float PackBuckleHalfWidthRatio = 0.30f;
 
         // ============================================================================
         // ★ 2026-09-01 카테고리당 +2종 — <b>임시 플레이스홀더</b>의 치수표
@@ -480,21 +552,22 @@ namespace StickMate.Interaction
         // 그 조건을 손으로 검산해 잡았다(가장 빠듯한 자리마다 주석으로 값을 남겼다).
 
         // ---- 베레모(모자 4번) — 털모자 관(crown)의 <b>비대칭 변주</b>. 뒤로 처지고 꼭지가 없다.
-        internal const float BeretBrimLineRatio = 0.46f;    // = 이 모자의 HatCoverLocalY
-        internal const float BeretCrownHeightRatio = 0.66f;
-        internal const float BeretBackDroopRatio = 1.30f;   // 뒤로 늘어진 끝
-        internal const float BeretFrontRatio = 0.90f;
+        //      감쌈은 <b>뒤로 처진 끝</b>(−1.46R, y −0.10R)이 만든다 — 이 카테고리에서 유일하게
+        //      "옆이 아니라 뒤로" 감싸는 모자다.
+        internal const float BeretBrimLineRatio = 0.02f;    // = 이 모자의 HatCoverLocalY
+        internal const float BeretCrownHeightRatio = 1.04f;
+        internal const float BeretBackDroopRatio = 1.46f;   // 뒤로 늘어진 끝
+        internal const float BeretFrontRatio = 0.92f;
 
         /// <summary>뒤로 늘어진 끝이 밑변보다 더 내려가는 깊이. 밑변(= 보조색 테)의 기울기를 만든다.</summary>
-        internal const float BeretBackDroopDropRatio = 0.10f;
+        internal const float BeretBackDroopDropRatio = 0.12f;
 
-        // ---- 밀짚모자(모자 5번) — 중절모의 <b>납작·광폭 변주</b>(챙이 넓고 관이 낮다).
-        internal const float StrawBrimLineRatio = 0.56f;    // = 이 모자의 HatCoverLocalY
-        internal const float StrawBrimFrontRatio = 2.15f;
-        internal const float StrawBrimBackRatio = 1.95f;
-        internal const float StrawBrimDropRatio = 0.16f;
-        internal const float StrawCrownHeightRatio = 0.54f;
-        internal const float StrawCrownHalfWidthRatio = 0.78f;
+        // ---- 밀짚모자(모자 5번) — 중절모의 <b>납작·광폭 변주</b>. 챙이 카테고리 최대(폭 4.24R)다.
+        internal const float StrawBrimLineRatio = 0.08f;    // = 이 모자의 HatCoverLocalY
+        internal const float StrawBrimFrontRatio = 2.18f;
+        internal const float StrawBrimBackRatio = 2.06f;
+        internal const float StrawCrownHeightRatio = 1.06f;
+        internal const float StrawCrownHalfWidthRatio = 0.86f;
 
         // ★ 2026-09-01 — StrawBandRiseRatio(0.16f)도 같은 이유로 지웠다(중절모와 같은 결함·같은 해법).
 
@@ -502,22 +575,35 @@ namespace StickMate.Interaction
         //      <b>뚜껑 달린 상자</b>로 읽혔다. 뿔테의 정체는 "굵은 눈썹테 <b>아래에 렌즈가 매달린다</b>"이므로
         //      판을 위아래가 아니라 <b>테 1장 + 렌즈 2장</b>으로 나눈다 — 렌즈가 둘로 갈리는 순간
         //      맥락 없이도 안경으로 읽힌다(형제들과 같은 신호). 테는 여전히 보조색이다(규칙 3-2).
-        internal const float BrowlineBarOuterRatio = 1.00f;
-        internal const float BrowlineBarInnerRatio = 0.90f;
-        internal const float BrowlineBarBottomRatio = 0.12f;       // 테 밑변 = 렌즈 윗변(간격 0, 규칙 4)
-        internal const float BrowlineBarTopRatio = 0.54f;
-        internal const float BrowlineLensInnerRatio = 0.28f;       // 두 렌즈 사이 0.56R = 1.63획
-        internal const float BrowlineLensOuterRatio = 0.94f;
+        internal const float BrowlineBarOuterRatio = 1.06f;
+        internal const float BrowlineBarInnerRatio = 0.98f;
+        internal const float BrowlineBarBottomRatio = 0.14f;       // 테 밑변 = 렌즈 윗변(간격 0, 규칙 4)
+        internal const float BrowlineBarTopRatio = 0.58f;
+        internal const float BrowlineLensInnerRatio = 0.24f;       // 두 렌즈 사이 0.48R = 1.40획
+        internal const float BrowlineLensOuterRatio = 1.06f;
 
-        // ---- 안대(안경 5번) — 외알안경과 같은 "앞쪽 눈에만" 규약. 채운 천 + 뒤로 넘어가는 끈.
-        //      중심 x는 외알안경과 <b>같은 유도</b>다(규칙 4-a) — 두 아이템이 같은 눈을 가린다.
-        //      ★ 2026-09-01(2차): 옛 끈은 머리 링을 도는 <b>독립된 호</b>라 천에서 0.50획 떠 있었다
-        //      (연결성 지표가 잡은 미보고 결함). 이제 끈이 천의 뒤쪽 두 꼭짓점에서 <b>출발</b>한다.
+        // ---- 안대(안경 5번) — 외알안경과 같은 "앞쪽 눈에만" 규약. 채운 천 + 뒤로 넘어가는 끈 +
+        //      <b>드러난 뒤쪽 눈</b>. ★ 2026-09-01(3차): 끈이 <b>주색</b>으로 바뀌었다 —
+        //      보조색 정원 1개를 눈이 가져가기 때문이고, 의미상으로도 옳다(천과 끈은 같은 가죽이다).
+        //      끈 끝점을 polar(146°, 0.99) -> <b>polar(122°/238°, 1.02)</b>로 올렸다:
+        //      옛 자리는 드러난 눈과 <b>0.77획</b> 떨어져 규칙 4가 "최악"이라 못박은 구간이었다.
         internal const float PatchOffsetRatio = EyeOffsetXInHeadRadii;
-        internal const float PatchHalfWidthRatio = 0.40f;
-        internal const float PatchHalfHeightRatio = 0.36f;
-        internal const float PatchStrapReachRatio = 0.82f;
-        internal const float PatchStrapRiseRatio = 0.56f;
+        /// <summary>천의 반폭/반높이. ★ 알(외알안경)보다 <b>커야</b> 두 아이템이 갈린다 —
+        /// 스펙 초안은 둘 다 0.72 × 0.72R이라 원이 사각형에 <b>내접</b>했고, 채움 격자 구분도가
+        /// 0.09(문턱 0.20)까지 떨어졌다. 천은 렌즈가 아니라 <b>덮개</b>이므로 큰 편이 옳다.</summary>
+        internal const float PatchHalfWidthRatio = 0.38f;
+
+        internal const float PatchHalfHeightRatio = 0.44f;
+
+        /// <summary>천의 중심 x. 외알 알과 <b>같은 유도</b>(드러난 눈의 거울 자리)다 — 두 아이템이
+        /// 같은 눈을 가린다는 사실이 좌표에서 보여야 한다(규칙 4-a).</summary>
+        internal const float PatchCenterRatio = DrawnEyeOffsetRatio;
+
+        /// <summary>끈 끝점의 반경(머리 원 밖 0.02R). 두 끝의 각도는 대칭이라 하나로 둔다.</summary>
+        internal const float PatchStrapReachRatio = 1.02f;
+
+        /// <summary>끈 끝점의 각도(도). 위쪽 끝이 이 각도, 아래쪽 끝이 360 − 이 각도다.</summary>
+        internal const float PatchStrapDegrees = 122f;
 
         // ★ 펜던트 목걸이(목 4번) — 2026-09-01 실루엣 재설계.
         //
@@ -529,18 +615,22 @@ namespace StickMate.Interaction
         // 그래서 <b>세로로 길게</b> 뺐다(종횡 1.50 -> 2.21). 원과 갈리는 것은 크기가 아니라 종횡비다:
         // 원은 어떤 각도에서도 반경이 같고, 이 마름모는 세로가 가로의 2.2배다. 빗변도 1.05획 -> 1.98획이
         // 되어 꼭짓점이 획에 먹히지 않는다. 실측: 방울과 외곽 차이 <b>2.50획</b>(옛 0.54획).
-        internal const float PendantHalfWidthRatio = 0.28f;
+        internal const float PendantHalfWidthRatio = 0.30f;
 
         /// <summary>마름모 반높이. 위 꼭짓점은 <b>목줄 최저점</b>에 붙고 아래 꼭짓점은 가슴께로
         /// 내려온다 — 방울(목선 아래 0.51R)과 <b>매달린 길이</b>로도 갈린다(목선 아래 1.38R).</summary>
-        internal const float PendantHalfHeightRatio = 0.62f;
+        internal const float PendantHalfHeightRatio = 0.64f;
 
         // ---- 반다나(넥타이 5번) — 목도리 띠의 <b>납작 변주</b> + 앞으로 늘어진 삼각 자락 하나.
         internal const float BandanaWrapRiseRatio = 0.06f;
-        internal const float BandanaWrapHalfWidthRatio = 0.80f;
-        internal const float BandanaWrapHalfHeightRatio = 0.20f;   // 위아래 변 간격 0.40R(= 1.16획)
-        internal const float BandanaTailLengthRatio = 0.62f;
-        internal const float BandanaTailHalfWidthRatio = 0.18f;
+        internal const float BandanaWrapHalfWidthRatio = 0.84f;
+        internal const float BandanaWrapHalfHeightRatio = 0.22f;   // 위아래 변 간격 0.44R(= 1.28획)
+
+        /// <summary>자락 끝이 내려가는 길이(몸통 배수). 자락은 <b>채운 삼각형</b>이라 밑변이
+        /// 0.48R(1.40획)이어야 꼭짓점 두 개가 획에 안 먹힌다.</summary>
+        internal const float BandanaTailLengthRatio = 0.30f;
+
+        internal const float BandanaTailHalfWidthRatio = 0.24f;
 
         // ---- 판초(망토 4번) — 짧은 망토와 <b>같은 도형·다른 비율</b>. 짧고 앞까지 덮는다.
         internal const float PonchoLengthRatio = 1.05f;
@@ -557,106 +647,114 @@ namespace StickMate.Interaction
         internal const float FairyWingSpineDropScale = 0.40f;   // 등뼈 길이(WingSpineDropInTorso 배수 아님 — 몸통 배수)
 
         // ============================================================================
-        // ★ HAIR — 2026-09-01 전면 재설계 (docs/UX_FLOW.md 37-3 (A) / 로드맵 P0)
+        // ★ HAIR — 2026-09-01 (2차) "덩어리" 재설계 (docs/EQUIPMENT_SHAPE_SPEC.md 4절)
         // ============================================================================
-        // 옛 4종은 <b>합계 선 5개·채움 0개·3종 단색</b>이었고, 다음 세 가지가 동시에 성립했다:
-        //   · 곱슬 웨이브 진폭 0.16R = 0.93pt < 획 반폭 1.00pt  ->  <b>곱슬 ≡ 단정</b>(기하학적 동일)
-        //   · 단정 1.13R / 곱슬 1.10R = 두피 링(1.0R) <b>바깥</b> 0.13R·0.10R에 떠 있음
-        //     (= 획의 0.38·0.29배. 붙은 것도 뗀 것도 아니라 "선을 두 번 그린 실수"로 읽힌다)
-        //   · 보조색 4종 전부 EYES 틴트(청록) -> 갈색 머리에 형광 청록 가르마
+        // 사용자 신고: "머리스타일 옵션도 이정도 퀄이 되어야지 / 내가 준거랑 차이가 크잖아".
         //
-        // 재설계의 규칙은 취향이 아니라 <see cref="StrokeBudgetInHeadRadii"/>다. 세 가지를 지켰다:
-        //   (1) <b>채움</b>. 머리카락은 두피를 가려야 하므로 실루엣이 닫힌 채움 도형이다(37-6 규칙 2).
-        //   (2) <b>부착</b>. 실루엣의 안쪽 경계는 <b>이마선</b>(HairlineCrestRatio)이라 두피 링 <b>안쪽</b>을
-        //       지난다 — 링을 1W 이상 파고들어 "머리에서 자란 것"으로 읽힌다(규칙 4).
-        //   (3) <b>식별 특징 1개</b>. 삐침(뿔)/가르마/컬/테두리 각 1개에만 보조색을 쓴다(규칙 5).
+        // 조잡함의 정체는 취향이 아니라 <b>숫자 하나</b>였다. 배율 0.75에서 머리 지름은 획 5.82개뿐인데,
+        // 옛 5종은 정수리에서 두피 링 위로 <b>획 하나보다 얇게</b> 덮고 있었다:
+        //   삐친 0.64획 · 단정 0.41획 · 곱슬 0.81획 · 포니테일 0.47획 (통과는 바가지 1.51획 하나뿐).
+        // 머리카락 윤곽선과 두피 링은 각각 1획이라, 둘 사이가 1.5획 미만이면 <b>화면에서 한 줄로 뭉친다</b>.
+        // 그래서 다섯 종이 "머리에 씌운 뚜껑"이 됐고, 유일하게 통과한 바가지머리만 페르소나가 읽어냈다.
+        // 그리고 6종 중 <b>어느 것도 턱(−1.0R) 아래로 내려가지 않았다</b>(최저 −0.68R).
         //
-        // ★ 이마선을 <b>동심 원호가 아니라 포물선 현(chord)</b>으로 잡은 이유: 링과 같은 중심의 원호로
-        //   안쪽을 막으면 머리카락이 아니라 <b>헬멧 테</b>로 보인다(오프라인 시안 1차에서 실제로 그랬다).
-        //   이마선은 얼굴을 가로지르는 선이어야 한다.
+        // ★ 옛 상수 두 개(<c>HairSpanEndDegrees</c> 196 / <c>HairlineEdgeRatio</c> −0.06)를 <b>폐기했다</b>.
+        //   그 둘을 조정하는 것으로는 못 고친다 — 이유는 기하다. 옛 바깥 윤곽은 <b>반경이 일정한 극좌표
+        //   호</b>라, 스팬을 늘리면 옆머리는 내려오지만 반경이 그대로여서 <b>머리에 딱 붙은 껍질</b>이 된다.
+        //   반경을 키우면 이번엔 정수리가 초상화 액자(1.75R)를 넘는다. 참고 이미지의 머리카락은
+        //   "머리를 감싼 껍질"이 아니라 <b>머리보다 넓은 덩어리</b>다.
         //
-        // ★ 눈동자(States/EyeController, sortingOrder 5)와 머리카락 <b>채움</b>(SortHair−1 = 5)은
-        //   레이어가 동률이다. 그래서 이마선 마루(0.50R)를 눈동자 위끝(0.0909R + 반지름 0.136R = 0.227R)
-        //   보다 확실히 위에 두어 <b>겹칠 일 자체를 없앤다</b>. 이 성질은 EditMode가 직접 단언한다
-        //   (동률 레이어는 그리기 순서가 미정이라는 이 프로젝트의 33-2-0 함정과 같은 자리다).
-        internal const float HairSpanStartDegrees = -16f;   // 진행 방향(+x)이 0도
-        internal const float HairSpanEndDegrees = 196f;
-        internal const int HairCapSegments = 14;
-        internal const int HairCurlSegments = 22;
+        // 그래서 <b>구성 자체</b>를 바꿨다. 6종이 경계를 도는 순서는 전부 같다 —
+        // 이 순서가 어긋나면 폴리곤이 자기교차하고 귀 자르기(<see cref="Triangulate"/>)가 깨진다.
+        //
+        //   돔(앞→뒤, 반경 cap) → 뒤 커튼(내려갔다 안쪽으로) → 두피 안쪽 호(뒤→앞, 0.58R) → 앞 커튼
+        //   ↑ 마지막 점이 돔의 첫 점으로 닫힌다
+        //
+        // ★ 원칙 정정 — 옛 문단은 "채움은 가릴 것이 있을 때만"이라고 적었다. <b>틀렸다.</b> 이 엔진에서
+        //   "굵은 덩어리"를 만드는 유일한 수단이 채움이다. 머리카락은 두피를 가리려고가 아니라
+        //   <b>덩어리를 만들려고</b> 채운다. 얇은 띠(stroke)로 덩어리를 흉내내면 반드시 소심해진다.
 
-        /// <summary>이마선의 반폭(R 배수). 링(1.0R) 안쪽이라 머리카락이 두피에 <b>박힌다</b>.</summary>
-        internal const float HairlineHalfWidthRatio = 0.88f;
+        /// <summary>두피를 파고드는 안쪽 경계의 반경. 규칙 4의 부착 판정선(1 − W = 0.656R)보다
+        /// <b>작아야</b> 한다 — 그래야 "머리에서 자란 것"으로 읽힌다.
+        /// <para>옛 포물선 이마선(<c>HairlineCrestRatio</c>)을 동심 호로 되돌린 것이 아니다. 옛 이마선은
+        /// 얼굴을 <b>가로지르는 현</b>이라 안쪽 경계가 그것 하나뿐이었고, 그래서 덩어리가 정수리에만
+        /// 남았다. 지금은 안쪽 호가 두피를 돌고 <b>커튼 두 개</b>가 얼굴 양옆으로 내려온다.</para></summary>
+        internal const float HairInnerRadiusRatio = 0.58f;
 
-        /// <summary>이마선 양 끝의 높이(머리 중심 기준). 귀 앞뒤로 살짝 내려온다.</summary>
-        internal const float HairlineEdgeRatio = -0.06f;
+        /// <summary>돔 반경의 <b>하한</b> = 1.0R + 1.5W. 이 값이 '뚜껑'을 없앤다 —
+        /// 정수리에서 머리카락 윤곽과 두피 링이 각자 1획을 갖고도 1.5획 떨어져 있게 하는 최소치다.
+        /// <para>매끈한 돔 4종(단정·곱슬·바가지·포니테일)이 이 하한 위에 있고, 삐친머리만 예외다 —
+        /// 그쪽은 <b>봉우리와 골이 번갈아 도는 실루엣</b> 자체가 정체라 골이 하한 아래로 내려간다.
+        /// 대신 그 골 양옆의 봉우리가 1.70R 이상이라 정수리 부근의 가장 두꺼운 자리는 2.2획이다.</para></summary>
+        internal const float HairCapMinRatio = 1.52f;
 
-        /// <summary>이마선 한가운데의 높이. 눈동자 위끝(0.227R)보다 위여야 한다(위 문단).</summary>
-        internal const float HairlineCrestRatio = 0.50f;
+        /// <summary>돔 반경의 <b>상한</b> = 초상화 액자(1.75R). 넘으면 정보창에서 정수리가 잘린다
+        /// (<see cref="CharacterPortraitStage"/>의 <c>TallestAccessoryAboveHeadCenterInR</c>).</summary>
+        internal const float HairCapMaxRatio = 1.75f;
 
-        internal const int HairlineSegments = 6;
+        /// <summary>돔의 분할 수. 12면 인접 두 점 사이가 배율 0.75에서도 획보다 길어 각이 지지 않는다.</summary>
+        internal const int HairDomeSegments = 12;
 
-        // 삐친머리 — 실루엣 + 뒤로 솟은 삐침 하나.
-        internal const float CowlickCapRadiusRatio = 1.22f;
-        internal const float CowlickFrontLiftRatio = 0.06f;
-        internal const float CowlickTuftTipRadiusRatio = 1.70f;
-        internal const float CowlickTuftTipDegrees = 120f;
+        /// <summary>두피 안쪽 호의 분할 수.</summary>
+        internal const int HairInnerArcSegments = 7;
 
-        // 단정한머리 — 앞으로 빗어 넘긴 실루엣 + 가르마 가닥 하나.
-        internal const float NeatCapRadiusRatio = 1.14f;
-        internal const float NeatFrontLiftRatio = 0.16f;
-        internal const float NeatPartHalfWidthRatio = 0.19f;   // 가닥 반폭 -> 폭 0.38R = 1.11W
+        // ---- 0 삐친머리 — 바깥 윤곽 <b>자체</b>가 다섯 번 뾰족하다(머리 위에 붙인 삼각형이 아니다).
+        //      옛 도형은 매끈한 돔에 삼각형 하나를 얹은 것이라, 획을 얹으면 삼각형이 돔에 흡수됐다.
+        internal const float CowlickSpikeMinRatio = 1.28f;   // 봉우리 사이 골
+        internal const float CowlickSpikeMaxRatio = 1.78f;   // 봉우리 끝(액자 안: y = 1.63R)
 
-        // 곱슬 — 물결치는 실루엣 + 앞으로 늘어진 컬 하나.
-        //  ★ 진폭 0.28R(= 0.81W, 마루-골 1.63W)이라 웨이브가 <b>획에 먹히지 않는다</b>.
-        //    옛 값 0.16R은 획 반폭(0.17R)보다 작아 물결이 획 안에 통째로 매몰됐다.
-        internal const float CurlBaseRadiusRatio = 1.28f;
+        // ---- 1 단정한머리 — 곧게 늘어진 생머리. 카테고리에서 <b>가장 길다</b>(뒤 커튼 끝 −2.12R).
+        internal const float NeatCapRatio = 1.58f;
+
+        // ---- 2 곱슬머리 — 물결이 정수리가 아니라 <b>커튼</b>에 있다. 이유는 산술이다:
+        //      웨이브를 정수리에 실으면 골 ≥ 1.516R(뚜껑 방지)이고 마루 ≤ 1.75R(액자)이라
+        //      진폭이 0.117R(0.34획) 이하여야 하는데, 아래 상수는 0.75획 이상을 요구한다.
+        //      <b>동시에 만족 불가능</b>하므로 물결을 세로(커튼)로 옮겼다 — 세로에는 상한이 없다.
+        internal const float CurlCapRatio = 1.62f;
+
+        /// <summary>커튼 물결 한 굽이의 <b>진폭</b>(R 배수, 마루-골의 절반). 옛 값 0.16R은 획 반폭
+        /// (0.17R)보다 작아 물결이 자기 획 안에 통째로 매몰됐다 — 그때 <b>곱슬 ≡ 단정</b>이었다.
+        /// <para>이 값은 좌표를 만들지 않고 <b>좌표가 지켜야 할 하한</b>을 선언한다. 실제 커튼 점이
+        /// 이 진폭을 갖는지는 <c>AccessoryStrokeBudgetTests</c>가 출하 도형에서 직접 잰다.</para></summary>
         internal const float CurlAmplitudeRatio = 0.28f;
-        internal const float CurlWaveCount = 2f;
 
-        // 민머리 — 실루엣이 <b>없는</b> 것이 특징이다. 관자놀이~뒤통수에 남은 테두리 2조각만 그린다.
-        // 안쪽 0.58R = 두피 링을 0.42R(=1.22획) 파고든다. 0.62R로도 규칙 4를 통과하지만 여유가
-        // 획의 10%뿐이라, 훗날 획 하한이 조금만 올라가도 조용히 '떠 있는 아이템'이 된다.
-        internal const float BaldRimInnerRadiusRatio = 0.58f;
-        internal const float BaldRimOuterRadiusRatio = 1.18f;
-        internal const float BaldRimBackFromDegrees = 122f;
-        internal const float BaldRimBackToDegrees = 206f;
-        internal const float BaldRimFrontFromDegrees = -26f;
-        internal const float BaldRimFrontToDegrees = 24f;
+        // ---- 3 민머리 — 덩어리가 <b>없는</b> 것이 정체다. 관자놀이/뒤통수에 남은 테 2조각.
+        //      안쪽 0.58R은 형제들의 두피 안쪽 호와 <b>같은 값</b>이다(규칙 4-a — 두 벌로 적지 않는다).
+        internal const float BaldRimInnerRadiusRatio = HairInnerRadiusRatio;
+        internal const float BaldRimOuterRadiusRatio = 1.20f;
+        internal const float BaldRimBackFromDegrees = 120f;
+        internal const float BaldRimBackToDegrees = 208f;
+        internal const float BaldRimFrontFromDegrees = -28f;
+        internal const float BaldRimFrontToDegrees = 26f;
+        internal const int BaldRimBackSegments = 7;
+        internal const int BaldRimFrontSegments = 4;
 
-        // ★ 바가지머리(머리 4번) — 2026-09-01 실루엣 재설계.
-        //
-        // 옛 도형은 형제들과 <b>같은 돔</b>(HairSilhouette)을 반경만 키운 것이었고, 정체는 이마를
-        // 가로지르는 내부 선 하나였다. 배율 0.75에서 단정한머리와의 반경 차가 0.20R = <b>0.58획</b>이라
-        // 규칙 1의 1.0획도 못 넘었고, 페르소나가 실물 스크린샷에서 "두 장이 같은 그림"이라고 확인했다.
-        // (지표도 못 봤다: 옛 검사는 <b>정점만</b> 상반구에서 훑어 빈 각도를 0으로 세는 바람에 같은 쌍을
-        //  3.77획으로 부풀렸다. 지금은 변을 조밀 표본하고 360도를 다 본다.)
-        //
-        // 그래서 정체를 <b>실루엣</b>으로 옮겼다 — 형제들의 "돔 + 포물선 이마선" 대신 <b>수평으로 자른
-        // 밑선 셋</b>으로 닫는다: 귀를 덮는 옆머리 두 짝(밑변 <see cref="BowlCutLineRatio"/>)과 이마를
-        // 가로지르는 앞머리 선(<see cref="BowlFringeLineRatio"/>). 이름("가지런히 자른")이 곧 도형이다.
-        // 실측: 단정한머리와 3.90획, 형제 5종 중 최소 3.90획(옛 0.58획).
-        internal const float BowlCapRadiusRatio = 1.52f;
+        // ---- 4 바가지머리 — 턱선에서 <b>수평으로 자른</b> 단발. '자른 밑선'이 정체다.
+        //      돔은 옆머리 밑변과 만나는 각도에서 시작/끝난다(각도를 손으로 적으면 그 자리에 틈이 생긴다).
+        internal const float BowlCapRadiusRatio = 1.62f;
 
-        /// <summary>옆머리를 자른 높이(머리 중심 기준, 음수 = 아래). 귀를 덮는 자리다 —
-        /// 형제들의 실루엣은 이 각도대에 잉크가 아예 없어서 반경 프로파일이 실제로 갈린다.</summary>
-        internal const float BowlCutLineRatio = -0.46f;
+        /// <summary>옆머리를 자른 높이(머리 중심 기준). 옛 값 −0.46R은 <b>턱(−1.0R)보다 한참 위</b>라
+        /// 단발이 아니라 반모자였다. 6종 중 유일하게 턱을 넘어가는 값이 여기서 나온다.</summary>
+        internal const float BowlCutLineRatio = -0.95f;
 
-        /// <summary>옆머리 안쪽 변의 x(=얼굴이 드러나는 폭의 절반). 앞머리 선의 반폭이기도 하다 —
+        /// <summary>옆머리 안쪽 변의 x(= 얼굴이 드러나는 폭의 절반). 앞머리 선의 반폭이기도 하다 —
         /// 두 값이 갈라지면 모서리에 이가 빠진다.</summary>
-        internal const float BowlSideHalfWidthRatio = 0.78f;
+        internal const float BowlSideHalfWidthRatio = 0.80f;
 
         /// <summary>이마를 가로지르는 앞머리 선의 높이. 눈동자 위끝(0.227R) 위로 <b>획 반폭까지 얹어도</b>
-        /// 0.141R(0.41획) 떠 있어야 한다 — 옛 앞머리 띠는 여기서 0.029R 겹쳤다(잠복 결함).</summary>
-        internal const float BowlFringeLineRatio = 0.54f;
+        /// 0.288R 지점에 머문다(여유 0.18획). 값이 내려간 것은 돔이 커지며 이마가 더 덮였기 때문이다.</summary>
+        internal const float BowlFringeLineRatio = 0.46f;
 
-        /// <summary>앞머리 선을 쪼개는 수. 한가운데 점(x=0)이 생겨 실루엣이 두피 링 안쪽
-        /// 0.54R까지 파고든 것으로 계측된다(규칙 4의 부착 검사가 정점을 본다).</summary>
+        /// <summary>앞머리 선을 쪼개는 수. 한가운데 점(x=0)이 생겨 실루엣이 두피 링 안쪽까지
+        /// 파고든 것으로 계측된다(규칙 4의 부착 검사가 정점을 본다).</summary>
         internal const int BowlFringeSegments = 4;
 
-        // 포니테일(머리 5번) — 단정한머리 실루엣 + 뒤통수에서 아래로 떨어지는 채운 묶음 하나.
-        // 묶음의 극좌표 5점은 아래 AppendHair에 있고, 가장 짧은 변이 0.52R(= 1.5획)이라 획에 먹히지 않는다.
-        internal const float PonytailCapRadiusRatio = 1.16f;
-        internal const float PonytailFrontLiftRatio = 0.08f;
+        /// <summary>바가지 돔의 분할 수. 형제들(12)보다 촘촘한 것은 돔이 반원보다 <b>긴 호</b>라서다
+        /// (자른 밑선이 −0.95R까지 내려가 스팬이 250도에 이른다).</summary>
+        internal const int BowlDomeSegments = 14;
+
+        // ---- 5 포니테일 — 짧은 덩어리 + 뒤통수에서 묶여 떨어지는 긴 묶음(끝 −2.42R, 뾰족하다).
+        internal const float PonytailCapRatio = 1.56f;
 
         /// <summary>도형을 만드는 데 필요한 몸의 치수 묶음. 전부 <see cref="Core.StickmanMetrics"/> 실측값
         /// 또는 그 폴백에서 온다 — 이 구조체는 값을 <b>만들지 않고 나르기만</b> 한다.</summary>
@@ -710,7 +808,7 @@ namespace StickMate.Interaction
             switch (hatItemIndex)
             {
                 case HeadCap: return HatBrimLocalY(rig);
-                case HeadBeanie: return rig.HeadCenterY + rig.HeadRadius * BeanieBandBottomRatio;
+                case HeadBeanie: return rig.HeadCenterY + rig.HeadRadius * BeanieBandTopRatio;
                 case HeadFedora: return rig.HeadCenterY + rig.HeadRadius * FedoraBrimLineRatio;
                 case HeadBeret: return rig.HeadCenterY + rig.HeadRadius * BeretBrimLineRatio;
                 case HeadStraw: return rig.HeadCenterY + rig.HeadRadius * StrawBrimLineRatio;
@@ -720,94 +818,144 @@ namespace StickMate.Interaction
 
         // ==================== 도형 ====================
 
-        /// <summary>캡 모자의 관(crown) — 닫힌 고리.</summary>
+        /// <summary>야구모자의 관(crown) — 닫힌 고리. 옆벽이 −0.22R까지 내려와 <b>머리를 감싼다</b>.
+        /// <para>밑변의 두 끝점(<c>[7] [8]</c>)은 챙이 그대로 받아 쓴다 — 좌표를 두 번 적으면
+        /// 한쪽만 고쳐지는 순간 관과 챙 사이에 틈이 생긴다(규칙 4-a).</para></summary>
         internal static Vector3[] HatCrown(in Rig rig)
         {
             float r = rig.HeadRadius;
-            float brimY = HatBrimLocalY(rig);
-            float topY = HatTopLocalY(rig);
-            float halfW = r * HatCrownHalfWidthRatio;
+            float hc = rig.HeadCenterY;
+            float side = r * HatCrownHalfWidthRatio;
             return new[]
             {
-                rig.F(-halfW, brimY),
-                rig.F(-halfW * 0.92f, brimY + (topY - brimY) * 0.55f),
-                rig.F(-halfW * 0.62f, topY),
-                rig.F(0f, topY + r * 0.05f),
-                rig.F(halfW * 0.62f, topY),
-                rig.F(halfW * 0.92f, brimY + (topY - brimY) * 0.55f),
-                rig.F(halfW, brimY),
+                rig.F(-side, hc - r * 0.22f),
+                rig.F(-r * 1.02f, hc + r * 0.36f),
+                rig.F(-r * 0.72f, hc + r * 1.02f),
+                rig.F(0f, HatTopLocalY(rig)),
+                rig.F(r * 0.72f, hc + r * 1.00f),
+                rig.F(r * 1.00f, hc + r * 0.34f),
+                rig.F(side, hc - r * 0.06f),
+                HatCrownFrontFoot(rig),
+                HatCrownBackFoot(rig),
             };
         }
 
-        /// <summary>챙 — 진행 방향으로 뻗어 살짝 처지는 닫힌 고리(모자를 <b>비대칭</b>으로 만드는 부분).</summary>
+        /// <summary>관 밑변의 뒤쪽 발 = <b>커버선 그 자체</b>. 챙의 첫 점이기도 하다.</summary>
+        internal static Vector3 HatCrownBackFoot(in Rig rig)
+            => rig.F(-rig.HeadRadius * 0.40f, HatBrimLocalY(rig));
+
+        internal static Vector3 HatCrownFrontFoot(in Rig rig)
+            => rig.F(rig.HeadRadius * 0.60f, HatBrimLocalY(rig) - rig.HeadRadius * 0.02f);
+
+        /// <summary>챙 — <b>닫힌 띠</b>다(규칙 8). 뿌리가 1.34획 두껍고 끝이 점으로 수렴한다.
+        /// 옛 챙은 뿌리가 얇아 화면에서 선 하나였다.</summary>
         internal static Vector3[] HatBrim(in Rig rig)
         {
             float r = rig.HeadRadius;
-            float brimY = HatBrimLocalY(rig);
-            float halfW = r * HatCrownHalfWidthRatio;
+            float hc = rig.HeadCenterY;
             return new[]
             {
-                rig.F(-halfW * 0.35f, brimY),
-                rig.F(halfW * 0.85f, brimY + r * 0.02f),
-                rig.F(r * HatBrimReachRatio, brimY - r * HatBrimDropRatio),
-                rig.F(halfW * 0.85f, brimY - r * 0.14f),
-                rig.F(-halfW * 0.35f, brimY - r * HatBrimRootDropRatio),
+                HatCrownBackFoot(rig),
+                HatCrownFrontFoot(rig),
+                rig.F(r * 1.36f, hc - r * 0.06f),
+                rig.F(r * HatBrimReachRatio, hc - r * 0.34f),   // 끝 — 점으로 수렴
+                rig.F(r * 1.20f, hc - r * 0.42f),
+                rig.F(r * 0.40f, hc - r * 0.44f),
+                rig.F(-r * 0.42f, HatBrimLocalY(rig) - r * HatBrimRootDropRatio),
             };
         }
 
-        // ---- EYES 바이저(2026-09-01 재설계). 옛 GlassesLensFront/Back/Bridge/Temple 4개는 여기서
-        //      지웠다 — 그 넷은 "렌즈 2개 + 코받침 + 다리"라는 <b>눈이 있는 얼굴</b>의 도형 언어였고,
-        //      눈이 삭제된 지금은 어느 것도 가릴 것이 없어 얼굴 위의 빈 네모로만 남는다.
+        // ---- EYES 가리개. 옛 GlassesLensFront/Back/Bridge/Temple 4개는 여기서 지웠다 —
+        //      그 넷은 "렌즈 2개 + 코받침 + 다리"라는 <b>눈이 있는 얼굴</b>의 도형 언어였다.
 
-        /// <summary>선글라스 렌즈 한 장(채움 전용 사각형). <paramref name="forward"/>가 true면
-        /// <b>진행 방향쪽</b> 렌즈라 <see cref="SunglassFrontBiasRatio"/>만큼 크다.
+        /// <summary>선글라스 렌즈 한 장(채움). <paramref name="forward"/>가 true면 진행 방향쪽이다.
         /// <para>점 순서는 두 렌즈가 <b>같은 회전 방향</b>이 되도록 갈라 둔다 — 채움 삼각형 분할이
         /// 시계/반시계에 따라 다른 결과를 내므로, 한쪽만 뒤집히면 카드에서 한 렌즈만 구멍이 난다.</para></summary>
         internal static Vector3[] SunglassLens(in Rig rig, bool forward)
         {
             float r = rig.HeadRadius;
             float cy = GlassesLocalY(rig);
-            float k = forward ? SunglassFrontBiasRatio : 1f;
-            float sx = forward ? 1f : -1f;
-            float inner = r * SunglassInnerRatio;
-            float outer = r * SunglassOuterRatio * k;
-            float innerTop = cy + r * SunglassInnerTopRatio * k;
-            float innerBottom = cy + r * SunglassInnerBottomRatio * k;
-            float outerTop = cy + r * SunglassOuterTopRatio * k;
-            float outerBottom = cy + r * SunglassOuterBottomRatio * k;
-            return forward
-                ? new[]
-                {
-                    rig.F(inner, innerTop), rig.F(outer, outerTop),
-                    rig.F(outer, outerBottom), rig.F(inner, innerBottom),
-                }
-                : new[]
-                {
-                    rig.F(sx * inner, innerBottom), rig.F(sx * outer, outerBottom),
-                    rig.F(sx * outer, outerTop), rig.F(sx * inner, innerTop),
-                };
+            // 진행 반대쪽(뒤) 렌즈가 <b>원본</b>이고, 앞 렌즈는 그것을 거울로 뒤집어
+            // <see cref="SunglassFrontBiasRatio"/>만큼 키운 것이다. 좌표를 두 벌 적으면
+            // 한쪽만 고쳐지는 순간 "안경 한 짝"이 되고, 카드에서 화살표로 읽힌다(리더 육안 검증 V1).
+            var back = new[]
+            {
+                new Vector2(-SunglassInnerRatio, 0.34f),
+                new Vector2(-0.96f, 0.30f),
+                new Vector2(-SunglassOuterRatio, -0.16f),
+                new Vector2(-0.32f, -0.44f),
+            };
+
+            var result = new Vector3[back.Length];
+            for (int i = 0; i < back.Length; i++)
+            {
+                // 거울쪽은 점 순서를 뒤집는다 — 두 짝의 회전 방향이 같아야 채움 삼각형 분할이
+                // 한쪽만 뒤집히지 않는다(날개가 쓰는 규약과 같다).
+                Vector2 p = forward ? back[back.Length - 1 - i] : back[i];
+                // 앞 렌즈는 <b>바깥으로만</b> 5% 자란다. 안쪽 변(코다리가 걸리는 자리)은 두 렌즈가
+                // 같은 x여야 아치가 기울지 않고, 세로까지 키우면 "한 짝만 큰 안경"이 된다.
+                float x = forward
+                    ? SunglassInnerRatio + (-p.x - SunglassInnerRatio) * SunglassFrontBiasRatio
+                    : p.x;
+                result[i] = rig.F(x * r, cy + p.y * r);
+            }
+            return result;
         }
 
         /// <summary>코다리 — 두 렌즈의 <b>안쪽 꼭대기 꼭짓점 그 자체</b>를 잇는 아치(보조색).
         /// 좌표를 새로 적지 않으므로 렌즈를 고치면 다리가 따라온다(규칙 4-a).</summary>
         internal static Vector3[] SunglassBridge(in Rig rig)
         {
-            float r = rig.HeadRadius;
-            float cy = GlassesLocalY(rig);
+            Vector3[] back = SunglassLens(rig, forward: false);
+            Vector3[] front = SunglassLens(rig, forward: true);
+            // 앞 렌즈는 점 순서가 뒤집혀 있으므로 안쪽 꼭대기가 <b>마지막</b> 점이다.
             return new[]
             {
-                rig.F(-r * SunglassInnerRatio, cy + r * SunglassInnerTopRatio),
-                rig.F(0f, cy + r * SunglassBridgeRiseRatio),
-                rig.F(r * SunglassInnerRatio, cy + r * SunglassInnerTopRatio * SunglassFrontBiasRatio),
+                back[0],
+                rig.F(0f, GlassesLocalY(rig) + rig.HeadRadius * SunglassBridgeRiseRatio),
+                front[front.Length - 1],
             };
         }
 
+        /// <summary>
+        /// <b>드러난 눈</b> — 채운 아몬드 4점(양 끝이 점으로 수렴한다).
+        /// <para>한쪽만 가리는 물건(외알안경·안대)에서만 쓴다. 두 눈을 다 가리는 물건은 아무것도
+        /// 보여 주지 않는다 — 렌즈 <b>안</b>으로 눈이 비치는 그림은 이 배율에서 기하학적으로
+        /// 불가능하기 때문이다(위 EYES 문단의 산술).</para>
+        /// <para><b>동공은 넣지 않는다.</b> 내부를 보이려면 3.0W = 1.03R, 즉 머리 반지름만 한 눈이
+        /// 필요하다(규칙 1). 아몬드 하나가 이 배율에서 그릴 수 있는 눈의 전부다.</para>
+        /// </summary>
+        /// <param name="sign">−1 = 진행 반대쪽(= 가려지지 않은 눈). 지금 두 소비자 모두 −1이다.</param>
+        internal static Vector3[] DrawnEye(in Rig rig, float sign)
+        {
+            float r = rig.HeadRadius;
+            float cy = GlassesLocalY(rig);
+            float dx = DrawnEyeOffsetRatio;
+            float hw = DrawnEyeHalfWidthRatio;
+            float hh = DrawnEyeHalfHeightRatio;
+            return new[]
+            {
+                rig.F(sign * (dx - hw) * r, cy),
+                rig.F(sign * (dx - 0.06f) * r, cy + hh * r),
+                rig.F(sign * (dx + hw) * r, cy + 0.02f * r),
+                rig.F(sign * (dx + 0.02f) * r, cy - hh * r),
+            };
+        }
+
+        /// <summary>나비넥타이 왼쪽 날개 — <b>채운</b> 4점. 옛 날개는 열린 선 3점이라 화면에서
+        /// 두께가 없었다(규칙 2 — 이 엔진에서 덩어리를 만드는 유일한 수단이 채움이다).</summary>
         internal static Vector3[] BowTieLeftWing(in Rig rig)
         {
             float r = rig.HeadRadius;
             float cy = BowTieLocalY(rig);
             float hw = r * BowTieHalfWidthRatio, hh = r * BowTieHalfHeightRatio, knot = r * BowTieKnotRatio;
-            return new[] { rig.F(-hw, cy + hh), rig.F(-knot, cy), rig.F(-hw, cy - hh), rig.F(-hw, cy + hh) };
+            return new[]
+            {
+                rig.F(-hw * 0.878f, cy + hh),
+                rig.F(-knot, cy + r * 0.02f),
+                rig.F(-hw * 0.878f, cy - hh),
+                rig.F(-hw, cy),
+            };
         }
 
         internal static Vector3[] BowTieRightWing(in Rig rig)
@@ -815,13 +963,27 @@ namespace StickMate.Interaction
             float r = rig.HeadRadius;
             float cy = BowTieLocalY(rig);
             float hw = r * BowTieHalfWidthRatio, hh = r * BowTieHalfHeightRatio, knot = r * BowTieKnotRatio;
-            return new[] { rig.F(hw, cy + hh), rig.F(knot, cy), rig.F(hw, cy - hh), rig.F(hw, cy + hh) };
+            return new[]
+            {
+                rig.F(hw * 0.878f, cy + hh),
+                rig.F(hw, cy),
+                rig.F(hw * 0.878f, cy - hh),
+                rig.F(knot, cy + r * 0.02f),
+            };
         }
 
+        /// <summary>매듭 — <b>채운 직사각형</b>. 옛 8각 근사(<c>RoundedBox</c>, 2026-09-01(3차)에
+        /// 마지막 소비자가 사라져 함께 지웠다)를 쓰지 않는 이유는 안대와 같다: 이 크기에서
+        /// 모따기 변이 획보다 짧아 화면에서 통째로 먹힌다(규칙 1).</summary>
         internal static Vector3[] BowTieKnot(in Rig rig)
         {
-            float knot = rig.HeadRadius * BowTieKnotRatio;
-            return RoundedBox(rig, 0f, BowTieLocalY(rig), knot, knot * 1.2f);
+            float r = rig.HeadRadius;
+            float cy = BowTieLocalY(rig);
+            float hw = r * BowTieKnotRatio, hh = r * BowTieKnotHalfHeightRatio;
+            return new[]
+            {
+                rig.F(-hw, cy + hh), rig.F(hw, cy + hh), rig.F(hw, cy - hh), rig.F(-hw, cy - hh),
+            };
         }
 
         // ★ 2026-08-30 — 옛 짧은 망토 전용 CapeOutline/CapeFold(단일 인자)를 여기서 지웠다.
@@ -945,31 +1107,36 @@ namespace StickMate.Interaction
 
                 case HeadBeanie:
                 {
-                    float bandBottom = hc + r * BeanieBandBottomRatio;
-                    float bandTop = hc + r * BeanieBandTopRatio;
-                    float bandHalf = r * BeanieBandHalfWidthRatio;
-                    sink.Add(new Shape("BeanieBand", new[]
-                    {
-                        rig.F(-bandHalf, bandBottom),
-                        rig.F(-bandHalf, bandTop),
-                        rig.F(bandHalf, bandTop),
-                        rig.F(bandHalf, bandBottom),
-                    }, true, SortHead, filled: true));
-
-                    float crownH = r * BeanieCrownHeightRatio;
+                    // 관 밑변 = 접힌 단의 윗변 = 커버선. 세 사실이 <b>같은 두 점</b>이다.
+                    float cuffTop = hc + r * BeanieBandTopRatio;
+                    float cuffHalf = r * BeanieBandHalfWidthRatio;
+                    Vector3 cuffBack = rig.F(-cuffHalf, cuffTop);
+                    Vector3 cuffFront = rig.F(cuffHalf, cuffTop);
+                    float crownTop = cuffTop + r * BeanieCrownHeightRatio;
                     float crownHalf = r * BeanieCrownHalfWidthRatio;
-                    float crownTop = bandTop + crownH;
+
                     sink.Add(new Shape("BeanieCrown", new[]
                     {
-                        rig.F(-crownHalf, bandTop),
-                        rig.F(-crownHalf * 0.70f, bandTop + crownH * 0.72f),
+                        cuffBack,
+                        rig.F(-crownHalf, hc + r * 0.52f),
+                        rig.F(-r * 0.62f, hc + r * 1.16f),
                         rig.F(0f, crownTop),
-                        rig.F(crownHalf * 0.70f, bandTop + crownH * 0.72f),
-                        rig.F(crownHalf, bandTop),
+                        rig.F(r * 0.62f, hc + r * 1.14f),
+                        rig.F(crownHalf, hc + r * 0.50f),
+                        cuffFront,
                     }, true, SortHead, filled: true));
 
-                    // ★ 2026-09-01 — 8각형 0.22R(1.28획) -> 10각형 0.28R(1.63획). 꼭대기는 그대로다
-                    //   (BeaniePomCrestRiseRatio 문단 — 액자 상한 1.80R에 정확히 닿아 있는 자리).
+                    // 접힌 단(cuff) — 귀를 덮고 −0.52R까지 내려온다. 이 모자의 감쌈은 여기서 나온다.
+                    sink.Add(new Shape("BeanieCuff", new[]
+                    {
+                        cuffBack,
+                        cuffFront,
+                        rig.F(r * 1.00f, hc - r * 0.42f),
+                        rig.F(r * 0.62f, hc + r * BeanieBandBottomRatio),
+                        rig.F(-r * 0.62f, hc + r * BeanieBandBottomRatio),
+                        rig.F(-r * 1.00f, hc - r * 0.42f),
+                    }, true, SortHead, filled: true));
+
                     sink.Add(new Shape("BeaniePom",
                         Polygon(rig, -r * BeaniePomBackShiftRatio, crownTop + r * BeaniePomOffsetRatio,
                             r * BeaniePomRadiusRatio, BeaniePomSegments, BeaniePomStartDegrees),
@@ -980,53 +1147,38 @@ namespace StickMate.Interaction
                 case HeadFedora:
                 {
                     float brimY = hc + r * FedoraBrimLineRatio;
-                    float rise = r * FedoraBrimTipRiseRatio;
                     float crownHalf = r * FedoraCrownHalfWidthRatio;
 
-                    // ★ 2026-09-01 — 관 밑변의 두 끝점을 <b>한 번만</b> 만들어 챙·관·띠 셋이 나눠 쓴다.
-                    // 같은 자리에 세 번 좌표를 적으면 하나만 고쳐지는 사고가 난다(이 파일이 옛 망토에서
-                    // 이미 겪은 이중 정의 계열 실패).
-                    Vector3 crownBackFoot = rig.F(-crownHalf, brimY);
-                    Vector3 crownFrontFoot = rig.F(crownHalf, brimY);
+                    // 관 밑변의 두 끝점을 <b>한 번만</b> 만들어 챙·관·띠 셋이 나눠 쓴다.
+                    // 챙이 앞뒤로 기울어 있으므로 두 발의 y가 커버선을 사이에 두고 갈린다.
+                    Vector3 crownBackFoot = rig.F(-crownHalf, brimY + r * 0.02f);
+                    Vector3 crownFrontFoot = rig.F(crownHalf, brimY - r * 0.02f);
 
-                    // 챙은 **양쪽 다** 뻗지만 앞이 더 길어 방향이 읽힌다(33-2-1 #3).
+                    // 챙은 양쪽 다 뻗지만 앞이 더 길어 방향이 읽힌다. 뿌리 두께 0.52R(1.51획).
                     sink.Add(new Shape("FedoraBrim", new[]
                     {
-                        rig.F(-r * FedoraBrimBackRatio, brimY + rise),
+                        rig.F(-r * FedoraBrimBackRatio, hc + r * 0.24f),
                         crownBackFoot,
                         crownFrontFoot,
-                        rig.F(r * FedoraBrimFrontRatio, brimY + rise),
-                        rig.F(crownHalf, brimY - r * 0.12f),
-                        rig.F(-crownHalf, brimY - r * 0.12f),
+                        rig.F(r * FedoraBrimFrontRatio, hc + r * 0.18f),
+                        rig.F(r * 1.24f, hc - r * 0.30f),
+                        rig.F(r * 0.20f, hc - r * 0.42f),
+                        rig.F(-r * 1.00f, hc - r * 0.34f),   // 감쌈을 만드는 챙 뿌리
                     }, true, SortHead, filled: true));
 
                     float crownTop = brimY + r * FedoraCrownHeightRatio;
                     sink.Add(new Shape("FedoraCrown", new[]
                     {
                         crownBackFoot,
-                        rig.F(-crownHalf * 0.92f, crownTop),
-                        rig.F(0f, crownTop + r * 0.02f),
-                        rig.F(crownHalf * 0.92f, crownTop),
+                        rig.F(-r * 0.92f, hc + r * 0.86f),
+                        rig.F(-r * 0.42f, crownTop),
+                        rig.F(r * 0.42f, crownTop - r * 0.02f),
+                        rig.F(r * 0.92f, hc + r * 0.82f),
                         crownFrontFoot,
                     }, true, SortHead, filled: true));
 
-                    sink.Add(new Shape("FedoraCrease", new[]
-                    {
-                        rig.F(-crownHalf * FedoraCreaseHalfWidthRatio, crownTop),
-                        rig.F(0f, crownTop - r * FedoraCreaseDropRatio),
-                        rig.F(crownHalf * FedoraCreaseHalfWidthRatio, crownTop),
-                    }, false, SortHead, tone: Shade));
-
-                    // ★ 2026-09-01 — 띠를 <b>관 밑변 그 자체</b>로 옮겼다(간격 0.41획 -> 0).
-                    // 옛 띠는 밑변에서 0.14R = 0.41획 위에 떠 있었다. 규칙 4가 "최악"이라고 못박은
-                    // 0 &lt; 간격 &lt; 1획 구간이라, 획(0.344R)을 얹으면 두 선의 잉크가 실제로 겹쳐
-                    // <b>절반은 회색 절반은 주황인 굵은 막대</b> 하나로 뭉갠다(베레모가 같은 병이었다).
-                    //
-                    // 왜 <b>위로 1.5획</b>이 아니라 겹침인가 — 관 높이가 0.72R뿐이라, 위아래로 각각
-                    // 1.5획(0.516R)씩 띄우려면 관이 1.03R은 돼야 한다. 산술적으로 불가능하다.
-                    // 그리고 그 편이 옳다: 중절모의 띠는 원래 <b>관 밑동</b>에 감기는 리본이고,
-                    // 이 자리는 챙 윗변이기도 해서 "챙 바로 위에 두른 띠"라는 실물의 그림과 정확히 맞는다.
-                    // 좌표를 새로 적지 않고 위 두 끝점을 그대로 받으므로 어긋날 자리 자체가 없다.
+                    // 띠 — 관 밑변 <b>그 자체</b>(간격 0). 규칙 4가 금지하는 것은 0 < 간격 < 1획이지
+                    // 겹침이 아니다. 관 높이로는 1.5획을 띄우는 것이 산술적으로 불가능하다.
                     sink.Add(new Shape("FedoraBand", new[] { crownBackFoot, crownFrontFoot },
                         false, SortHead, tone: Accent));
                     break;
@@ -1036,94 +1188,95 @@ namespace StickMate.Interaction
                 {
                     float baseY = hc + r * CrownBaseRatio;
                     float half = r * CrownHalfWidthRatio;
-                    sink.Add(new Shape("CrownBase", new[]
+                    // 좌우 대칭이라 facing에 무관하게 같은 그림이 나온다(33-2-1 #4, 정상).
+                    // <b>채운 닫힌 도형</b>이라 봉우리 세 개가 꼭짓점으로 수렴한다 — 선으로 그리면
+                    // 둥근 캡이 끝을 뭉갠다(옛 왕관이 그 상태였다).
+                    sink.Add(new Shape("CrownBody", new[]
                     {
                         rig.F(-half, baseY),
+                        rig.F(-r * 0.88f, hc + r * 1.28f),
+                        rig.F(-r * 0.46f, hc + r * 0.62f),
+                        rig.F(0f, hc + r * 1.52f),
+                        rig.F(r * 0.46f, hc + r * 0.62f),
+                        rig.F(r * 0.88f, hc + r * 1.28f),
+                        rig.F(half, baseY),
+                        rig.F(r * 0.60f, hc - r * 0.10f),
+                        rig.F(-r * 0.60f, hc - r * 0.10f),
+                    }, true, SortHead, filled: true));
+
+                    // 테는 몸의 밑변 네 점을 그대로 받는다(좌표를 새로 적지 않는다).
+                    sink.Add(new Shape("CrownRim", new[]
+                    {
+                        rig.F(-half, baseY),
+                        rig.F(-r * 0.60f, hc - r * 0.10f),
+                        rig.F(r * 0.60f, hc - r * 0.10f),
                         rig.F(half, baseY),
                     }, false, SortHead, tone: Accent));
-
-                    // 좌우 대칭이라 facing에 무관하게 같은 그림이 나온다(33-2-1 #4, 정상).
-                    sink.Add(new Shape("CrownZigzag", new[]
-                    {
-                        rig.F(-r * 0.85f, baseY),
-                        rig.F(-r * 0.78f, baseY + r * 0.95f),
-                        rig.F(-r * 0.40f, baseY + r * 0.40f),
-                        rig.F(0f, baseY + r * 1.25f),
-                        rig.F(r * 0.40f, baseY + r * 0.40f),
-                        rig.F(r * 0.78f, baseY + r * 0.95f),
-                        rig.F(r * 0.85f, baseY),
-                    }, false, SortHead));
                     break;
                 }
 
                 case HeadBeret:
                 {
-                    // 털모자 관을 뒤로 늘어뜨린 변주 — 밴드도 꼭지도 없다. 그 둘이 없는 것이 정체다.
+                    // 뒤로 처진 비대칭 덩어리. 밴드도 꼭지도 없다 — 그 둘이 없는 것이 정체다.
                     float brimY = hc + r * BeretBrimLineRatio;
-                    float top = brimY + r * BeretCrownHeightRatio;
                     Vector3 backTip = rig.F(-r * BeretBackDroopRatio, brimY - r * BeretBackDroopDropRatio);
-                    Vector3 frontTip = rig.F(r * BeretFrontRatio, brimY);   // 가장 짧은 변 0.39R = 1.13획
-                    sink.Add(new Shape("BeretCrown", new[]
+                    Vector3 frontFoot = rig.F(r * BeretFrontRatio, brimY);
+                    Vector3 innerFoot = rig.F(-r * 0.30f, brimY - r * 0.04f);
+
+                    sink.Add(new Shape("BeretBody", new[]
                     {
                         backTip,
-                        rig.F(-r * 0.95f, brimY + r * 0.34f),
-                        rig.F(0f, top),
-                        rig.F(r * 0.66f, brimY + r * 0.36f),
-                        frontTip,
+                        rig.F(-r * 1.02f, hc + r * 0.62f),
+                        rig.F(-r * 0.20f, brimY + r * BeretCrownHeightRatio),
+                        rig.F(r * 0.62f, hc + r * 0.90f),
+                        rig.F(r * 0.98f, hc + r * 0.44f),
+                        frontFoot,
+                        innerFoot,
                     }, true, SortHead, filled: true));
 
-                    // ★ 2026-09-01 — 테를 <b>밑변 그 자체</b>로 옮겼다(간격 0.01~0.26획 -> 0).
-                    // 옛 테는 자기 밑변과 0 &lt; 간격 &lt; 1획, 규칙 4가 "최악"이라고 못박은 구간
-                    // 한가운데였다. 관 높이가 0.66R뿐이라 1.5획(0.516R) 위로 올리면 테가 관을
-                    // 가로질러 <b>띠 두른 정모</b>가 된다 — 페르소나가 실물에서 본 그 그림이다.
-                    // 그래서 규칙 4가 허용하는 나머지 안전 구간인 <b>겹침</b>을 택했다: 새 점을
-                    // 만들지 않고 밑변의 두 끝을 그대로 받아 쓴다(어긋날 자리 자체가 없다).
-                    sink.Add(new Shape("BeretRim", new[] { frontTip, backTip }, false, SortHead,
-                        tone: Accent));
+                    // 테 = 밑변 그 자체(간격 0). 관 높이로 1.5획을 띄우면 테가 관을 가로질러
+                    // <b>띠 두른 정모</b>가 된다 — 페르소나가 실물에서 본 그 그림이다.
+                    sink.Add(new Shape("BeretRim", new[] { frontFoot, innerFoot, backTip },
+                        false, SortHead, tone: Accent));
                     break;
                 }
 
                 case HeadStraw:
                 {
-                    // 중절모의 납작·광폭 변주. 챙이 양쪽으로 넓게 나가고 관이 낮다.
                     float brimY = hc + r * StrawBrimLineRatio;
                     float crownHalf = r * StrawCrownHalfWidthRatio;
-                    float drop = r * StrawBrimDropRatio;
 
                     // 중절모와 같은 규약 — 관 밑변 두 끝점을 챙·관·띠가 공유한다.
-                    Vector3 crownBackFoot = rig.F(-crownHalf, brimY);
+                    Vector3 crownBackFoot = rig.F(-crownHalf, brimY + r * 0.02f);
                     Vector3 crownFrontFoot = rig.F(crownHalf, brimY);
 
                     sink.Add(new Shape("StrawBrim", new[]
                     {
-                        rig.F(-r * StrawBrimBackRatio, brimY + r * 0.06f),
+                        rig.F(-r * StrawBrimBackRatio, hc + r * 0.28f),
                         crownBackFoot,
                         crownFrontFoot,
-                        rig.F(r * StrawBrimFrontRatio, brimY + r * 0.06f),
-                        rig.F(crownHalf, brimY - drop),
-                        rig.F(-crownHalf, brimY - drop),
+                        rig.F(r * StrawBrimFrontRatio, hc + r * 0.26f),
+                        rig.F(r * 1.30f, hc - r * 0.24f),
+                        rig.F(r * 0.20f, hc - r * 0.36f),
+                        rig.F(-r * 1.20f, hc - r * 0.22f),   // 감쌈을 만드는 챙 뿌리
                     }, true, SortHead, filled: true));
 
-                    float crownTop = brimY + r * StrawCrownHeightRatio;
                     sink.Add(new Shape("StrawCrown", new[]
                     {
                         crownBackFoot,
-                        rig.F(-crownHalf * 0.90f, crownTop),
-                        rig.F(crownHalf * 0.90f, crownTop),
+                        rig.F(-r * 0.74f, hc + r * 0.92f),
+                        rig.F(0f, brimY + r * StrawCrownHeightRatio),
+                        rig.F(r * 0.74f, hc + r * 0.90f),
                         crownFrontFoot,
                     }, true, SortHead, filled: true));
 
-                    // ★ 2026-09-01 — 중절모와 <b>같은 결함·같은 해법</b>(간격 0.47획 -> 0).
-                    // 이 모자는 관이 0.54R로 더 낮아서 사정이 더 나빴다: 띠를 띄울 수 있는 여지가
-                    // 중절모보다도 작다(1.5획을 위아래로 두려면 관이 1.03R이어야 한다).
-                    // 옛 띠는 폭도 관보다 2% 좁아(±0.98) 밑변과 <b>끝만 살짝 어긋난</b> 선이었다 —
-                    // 이제 밑변의 끝점을 그대로 받으므로 폭도 정확히 관과 같다.
                     sink.Add(new Shape("StrawBand", new[] { crownBackFoot, crownFrontFoot },
                         false, SortHead, tone: Accent));
                     break;
                 }
             }
         }
+
 
         // ============================================================================
         // ★ EYES (가리개) — 2026-09-01 "불투명 바이저" 전면 재설계
@@ -1172,7 +1325,7 @@ namespace StickMate.Interaction
             {
                 case EyesSunglasses:
                     // 렌즈 2장 + 코다리. "안경이라는 물건"의 최소 신호이자, 머리가 없는 카드에서도
-                    // 성립하는 유일한 구성이다(위 SunglassInnerRatio 문단).
+                    // 성립하는 유일한 구성이다.
                     sink.Add(new Shape("SunglassLensBack", SunglassLens(rig, forward: false),
                         true, SortEyes, filled: true));
                     sink.Add(new Shape("SunglassLensFront", SunglassLens(rig, forward: true),
@@ -1186,73 +1339,71 @@ namespace StickMate.Interaction
                     // 그 순간 아령이 된다(V2) — 높이가 이 아이템의 정체다.
                     float dx = r * RoundLensOffsetRatio;
                     float rad = r * RoundLensRadiusRatio;
-                    Vector3[] back = Polygon(rig, -dx, cy, rad, RoundLensSegments);
-                    Vector3[] front = Polygon(rig, dx, cy, rad, RoundLensSegments);
+                    float lensY = cy + r * RoundLensCenterRiseRatio;
+                    Vector3[] back = Polygon(rig, -dx, lensY, rad, RoundLensSegments);
+                    Vector3[] front = Polygon(rig, dx, lensY, rad, RoundLensSegments);
                     sink.Add(new Shape("RoundLensBack", back, true, SortEyes, filled: true));
                     sink.Add(new Shape("RoundLensFront", front, true, SortEyes, filled: true));
-                    // 60도(뒤 렌즈) / 120도(앞 렌즈) 꼭짓점 = 두 렌즈의 <b>안쪽 꼭대기</b>.
-                    // 12각형이라 인덱스로 정확히 집힌다(2번 = 60도, 4번 = 120도).
+                    // 30도(뒤 렌즈 index 1) / 150도(앞 렌즈 index 5) = 두 렌즈의 <b>안쪽 위</b> 꼭짓점.
                     sink.Add(new Shape("RoundBridge", new[]
                     {
-                        back[2], rig.F(0f, cy + r * RoundBridgeRiseRatio), front[4],
+                        back[1], rig.F(0f, cy + r * RoundBridgeRiseRatio), front[5],
                     }, false, SortEyes, tone: Accent));
                     break;
                 }
 
                 case EyesGoggles:
                 {
-                    float hw = r * GoggleHalfWidthRatio;
-                    float hh = r * GoggleHalfHeightRatio;
-                    float cornerX = hw * GoggleCornerXRatio;
-                    float cornerY = hh * GoggleCornerYRatio;
                     float strap = r * GoggleStrapReachRatio;
-                    float strapHalf = r * GoggleStrapHalfHeightRatio;
-                    float rim = r * GoggleRimThicknessRatio;
 
-                    // 스트랩+테는 <b>렌즈를 한 점도 덮지 않는다</b> — 되돌아오는 변이 렌즈의 윗변
-                    // 그 자체라 두 채움이 겹치지 않는다. EYES 채움은 전부 같은 레이어(SortEyes−1)라
+                    // 렌즈의 윗변 두 끝점을 <b>한 번만</b> 만들어 스트랩이 되돌아올 때 그대로 받는다.
+                    // 두 채움이 한 점도 겹치지 않는다 — EYES 채움은 전부 같은 레이어(SortEyes−1)라
                     // 겹치면 그리기 순서가 미정이 되고, 그때 어느 판이 위로 올지 보장할 수 없다.
+                    Vector3 lensTopBack = rig.F(-r * 0.66f, cy + r * 0.16f);
+                    Vector3 lensTopFront = rig.F(r * 0.66f, cy + r * 0.16f);
+                    Vector3 lensCornerBack = rig.F(-r * 1.04f, cy - r * 0.06f);
+                    Vector3 lensCornerFront = rig.F(r * 1.04f, cy - r * 0.06f);
+
                     sink.Add(new Shape("GoggleStrap", new[]
                     {
-                        rig.F(-strap, -strapHalf + cy), rig.F(-strap, strapHalf + cy),
-                        rig.F(-hw - r * 0.20f, cy + cornerY + r * 0.14f),
-                        rig.F(-cornerX - r * 0.12f, cy + hh + rim),
-                        rig.F(cornerX + r * 0.12f, cy + hh + rim),
-                        rig.F(hw + r * 0.20f, cy + cornerY + r * 0.14f),
-                        rig.F(strap, strapHalf + cy), rig.F(strap, -strapHalf + cy),
-                        rig.F(hw, cy - cornerY), rig.F(hw, cy + cornerY),
-                        rig.F(cornerX, cy + hh), rig.F(-cornerX, cy + hh),
-                        rig.F(-hw, cy + cornerY), rig.F(-hw, cy - cornerY),
+                        rig.F(-strap, cy - r * 0.24f),
+                        rig.F(-strap, cy + r * 0.22f),
+                        rig.F(-r * 1.06f, cy + r * 0.40f),
+                        rig.F(-r * 0.66f, cy + r * 0.62f),
+                        rig.F(r * 0.66f, cy + r * 0.62f),
+                        rig.F(r * 1.06f, cy + r * 0.40f),
+                        rig.F(strap, cy + r * 0.22f),
+                        rig.F(strap, cy - r * 0.24f),
+                        lensCornerFront, lensTopFront, lensTopBack, lensCornerBack,
                     }, true, SortEyes, tone: Accent, filled: true));
 
                     sink.Add(new Shape("GoggleLens", new[]
                     {
-                        rig.F(-cornerX, cy - hh),
-                        rig.F(-hw, cy - cornerY),
-                        rig.F(-hw, cy + cornerY),
-                        rig.F(-cornerX, cy + hh),
-                        rig.F(cornerX, cy + hh),
-                        rig.F(hw, cy + cornerY),
-                        rig.F(hw, cy - cornerY),
-                        rig.F(cornerX, cy - hh),
+                        lensTopBack, lensTopFront, lensCornerFront,
+                        rig.F(r * 0.84f, cy - r * 0.50f),
+                        rig.F(r * 0.20f, cy - r * 0.62f),
+                        rig.F(-r * 0.20f, cy - r * 0.62f),
+                        rig.F(-r * 0.84f, cy - r * 0.50f),
+                        lensCornerBack,
                     }, true, SortEyes, filled: true));
                     break;
                 }
 
                 case EyesMonocle:
                 {
-                    // 앞쪽 눈에만 있다(33-2-2 #4). ★ 2026-09-01(2차): 옛 체인은 알에서 0.30획 떠 있어
-                    // 카드에서 "금색 원 + 흰 선"이 따로 놀았다(V4). 이제 체인의 첫 점이 알의
-                    // <b>맨 아래 꼭짓점 그 자체</b>다 — 간격 0.
-                    float cxm = r * MonocleOffsetRatio;
-                    Vector3[] pod = Polygon(rig, cxm, cy, r * MonocleRadiusRatio, RoundLensSegments);
+                    // 앞쪽 눈에만 알이 있고, <b>가려지지 않은 뒤쪽 눈이 드러난다</b>(보조색).
+                    // 체인은 주색이다 — 알과 체인은 같은 금속이고, 보조색 정원 1개는 눈이 가져간다.
+                    Vector3[] pod = Polygon(rig, r * MonocleOffsetRatio, cy + r * RoundLensCenterRiseRatio,
+                        r * MonocleRadiusRatio, RoundLensSegments);
                     sink.Add(new Shape("MonoclePod", pod, true, SortEyes, filled: true));
                     sink.Add(new Shape("MonocleChain", new[]
                     {
-                        pod[9],                                   // 270도 = 알의 최하점
-                        rig.F(r * 0.26f, cy - r * 0.92f),
-                        rig.F(r * 0.56f, cy - r * 1.22f),
-                    }, false, SortEyes, tone: Accent));
+                        pod[9],                                   // 270도 = 알의 최하점(간격 0)
+                        rig.F(r * 0.44f, cy - r * 0.76f),
+                        rig.F(r * 0.76f, cy - r * 1.16f),
+                    }, false, SortEyes));
+                    sink.Add(new Shape("MonocleEye", DrawnEye(rig, -1f), true, SortEyes,
+                        tone: Accent, filled: true));
                     break;
                 }
 
@@ -1265,8 +1416,10 @@ namespace StickMate.Interaction
                     {
                         rig.F(-r * BrowlineBarOuterRatio, barBottom),
                         rig.F(-r * BrowlineBarInnerRatio, cy + r * BrowlineBarTopRatio),
-                        rig.F(r * BrowlineBarInnerRatio, cy + r * BrowlineBarTopRatio),
-                        rig.F(r * BrowlineBarOuterRatio, barBottom),
+                        rig.F(r * BrowlineBarInnerRatio, cy + r * (BrowlineBarTopRatio - 0.02f)),
+                        rig.F(r * BrowlineBarOuterRatio, barBottom - r * 0.02f),
+                        rig.F(r * BrowlineLensInnerRatio, barBottom - r * 0.04f),
+                        rig.F(-r * BrowlineLensInnerRatio, barBottom - r * 0.02f),
                     }, true, SortEyes, tone: Accent, filled: true));
 
                     sink.Add(new Shape("BrowlineLensBack", BrowlineLens(rig, forward: false),
@@ -1278,58 +1431,60 @@ namespace StickMate.Interaction
 
                 case EyesPatch:
                 {
-                    // 외알안경과 같은 규약 — <b>앞쪽 눈에만</b> 있다(33-2-2 #4).
-                    float px = r * PatchOffsetRatio;
+                    // 외알안경과 같은 규약 — 앞쪽 눈만 천으로 덮고 뒤쪽 눈이 드러난다.
                     float phw = r * PatchHalfWidthRatio;
                     float phh = r * PatchHalfHeightRatio;
-                    // RoundedBox를 쓰지 않는다 — 그 8각 근사는 이 크기에서 마지막 변이 획보다 짧아
-                    // 화면에서 통째로 먹힌다(37-6 규칙 1). 네 변 전부가 획보다 긴 방패꼴로 대신한다.
-                    var cover = new[]
+                    float pcx = r * PatchCenterRatio;
+                    Vector3 coverTopBack = rig.F(pcx - phw, cy + phh);
+                    Vector3 coverBottomBack = rig.F(pcx - phw + r * 0.04f, cy - phh * 0.82f);
+                    sink.Add(new Shape("PatchCover", new[]
                     {
-                        rig.F(px - phw, cy + phh),
-                        rig.F(px + phw, cy + phh * 0.86f),
-                        rig.F(px + phw * 0.92f, cy - phh),
-                        rig.F(px - phw, cy - phh * 0.86f),
-                    };
-                    sink.Add(new Shape("PatchCover", cover, true, SortEyes, filled: true));
+                        coverTopBack,
+                        rig.F(pcx + phw, cy + phh * 0.82f),
+                        rig.F(pcx + phw - r * 0.06f, cy - phh),
+                        coverBottomBack,
+                    }, true, SortEyes, filled: true));
+
                     // 끈은 천의 <b>뒤쪽 두 꼭짓점에서 출발</b>해 머리를 돌아 넘어간다. 끝점은 머리
-                    // 원 위(반경 0.99R)라 허공에서 끊기지 않는다.
+                    // 원 밖(1.02R)이라 허공에서 끊기지 않고, 드러난 눈과는 1.5획 넘게 떨어진다.
                     sink.Add(new Shape("PatchStrap", new[]
                     {
-                        rig.F(-r * PatchStrapReachRatio, cy + r * PatchStrapRiseRatio),
-                        cover[0], cover[3],
-                        rig.F(-r * PatchStrapReachRatio, cy - r * PatchStrapRiseRatio),
-                    }, false, SortEyes, tone: Accent));
+                        HeadPolar(rig, PatchStrapDegrees, PatchStrapReachRatio),
+                        coverTopBack, coverBottomBack,
+                        HeadPolar(rig, 360f - PatchStrapDegrees, PatchStrapReachRatio),
+                    }, false, SortEyes));
+
+                    sink.Add(new Shape("PatchEye", DrawnEye(rig, -1f), true, SortEyes,
+                        tone: Accent, filled: true));
                     break;
                 }
             }
         }
 
-        /// <summary>뿔테 렌즈 한 장 — 테 밑변에서 시작해 아래로 둥글게 좁아진다.
+        /// <summary>뿔테 렌즈 한 장 — 테 밑변에서 시작해 아래로 좁아진다.
         /// 선글라스와 같은 이유로 두 장의 회전 방향을 맞춰 둔다(채움 분할 안정성).</summary>
         internal static Vector3[] BrowlineLens(in Rig rig, bool forward)
         {
             float r = rig.HeadRadius;
             float cy = GlassesLocalY(rig);
             float top = cy + r * BrowlineBarBottomRatio;
-            float inner = r * BrowlineLensInnerRatio;
-            float outer = r * BrowlineLensOuterRatio;
-            var pts = new[]
-            {
-                new Vector2(inner, top),
-                new Vector2(outer, top),
-                new Vector2(r * 0.86f, cy - r * 0.32f),
-                new Vector2(r * 0.54f, cy - r * 0.52f),
-                new Vector2(r * 0.26f, cy - r * 0.26f),
-            };
-            var result = new Vector3[pts.Length];
-            for (int i = 0; i < pts.Length; i++)
-            {
-                Vector2 p = forward ? pts[i] : pts[pts.Length - 1 - i];
-                result[i] = rig.F(forward ? p.x : -p.x, p.y);
-            }
-            return result;
+            return forward
+                ? new[]
+                {
+                    rig.F(r * BrowlineLensInnerRatio, top - r * 0.04f),
+                    rig.F(r * 0.44f, cy - r * 0.52f),
+                    rig.F(r * 1.00f, cy - r * 0.34f),
+                    rig.F(r * BrowlineBarOuterRatio, top - r * 0.02f),
+                }
+                : new[]
+                {
+                    rig.F(-r * BrowlineLensInnerRatio, top - r * 0.02f),
+                    rig.F(-r * BrowlineBarOuterRatio, top),
+                    rig.F(-r * 0.98f, cy - r * 0.32f),
+                    rig.F(-r * 0.44f, cy - r * 0.50f),
+                };
         }
+
 
         // ==================== NECK (넥타이) ====================
 
@@ -1341,9 +1496,12 @@ namespace StickMate.Interaction
             switch (item)
             {
                 case NeckBowTie:
-                    sink.Add(new Shape("BowTieLeftWing", BowTieLeftWing(rig), false, SortNeck));
-                    sink.Add(new Shape("BowTieRightWing", BowTieRightWing(rig), false, SortNeck));
-                    sink.Add(new Shape("BowTieKnot", BowTieKnot(rig), true, SortNeck, tone: Accent));
+                    // 날개도 매듭도 <b>채운다</b>. 옛 나비넥타이는 셋 다 열린 선이라 화면에서
+                    // "리본"이 아니라 "가는 획 몇 개"였다.
+                    sink.Add(new Shape("BowTieLeftWing", BowTieLeftWing(rig), true, SortNeck, filled: true));
+                    sink.Add(new Shape("BowTieRightWing", BowTieRightWing(rig), true, SortNeck, filled: true));
+                    sink.Add(new Shape("BowTieKnot", BowTieKnot(rig), true, SortNeck,
+                        tone: Accent, filled: true));
                     break;
 
                 case NeckStriped:
@@ -1353,16 +1511,17 @@ namespace StickMate.Interaction
                     float tilt = mondayLoosened ? TieMondayLoosenTiltDegrees * Mathf.Deg2Rad : 0f;
                     float kw = r * TieKnotHalfWidthRatio;
                     float kh = r * TieKnotHalfHeightRatio;
+                    float kb = r * TieKnotBottomDropRatio;
 
                     sink.Add(new Shape("TieKnot", new[]
                     {
                         rig.F(-kw, knotY + kh),
                         rig.F(kw, knotY + kh),
-                        rig.F(kw * 0.68f, knotY - kh),
-                        rig.F(-kw * 0.68f, knotY - kh),
-                    }, true, SortNeck));
+                        rig.F(kw * 0.722f, knotY - kb),
+                        rig.F(-kw * 0.722f, knotY - kb),
+                    }, true, SortNeck, filled: true));
 
-                    float pivotY = knotY - kh;
+                    float pivotY = knotY - kb;
                     float len = rig.TorsoLength * TieBladeLengthInTorso;
                     float bw = r * TieBladeHalfWidthRatio;
 
@@ -1377,62 +1536,62 @@ namespace StickMate.Interaction
                     }
 
                     // 끝 V의 3점(인덱스 2~4)이 흔들린다. 33절은 "끝 2점"이라고 적었지만 V의 꼭짓점만
-                    // 남기고 두 어깨점을 고정하면 V가 찢어져 보인다 — 세 점을 함께 흔든다(도형 무결성 우선).
+                    // 남기고 두 어깨점을 고정하면 V가 찢어져 보인다 — 세 점을 함께 흔든다.
                     sink.Add(new Shape("TieBlade", new[]
                     {
                         Blade(-bw, 0f),
                         Blade(bw, 0f),
-                        Blade(bw, -(len - r * 0.14f)),
+                        Blade(bw * 1.176f, -len * 0.72f),
                         Blade(0f, -len),
-                        Blade(-bw, -(len - r * 0.14f)),
-                    }, true, SortNeck, swayStart: 2, swayCount: 3));
+                        Blade(-bw * 1.176f, -len * 0.72f),
+                    }, true, SortNeck, filled: true, swayStart: 2, swayCount: 3));
 
-                    sink.Add(new Shape("TieStripeA", new[]
+                    // ★ 줄무늬는 <b>하나</b>다. 옛 도형은 열린 선 2개였고 각각 잉크 사각형이 0.87획이라
+                    // 둘 다 화면에 존재하지 않았다(규칙 1 면제 대장의 나머지 두 줄). 지금은 blade를
+                    // 가로지르는 <b>채운 띠</b> 하나 — 보조색 정원도 2개 -> 1개가 되어 규칙 3-2를 지킨다.
+                    sink.Add(new Shape("TieStripe", new[]
                     {
-                        Blade(-bw, -len * 0.30f),
-                        Blade(bw, -len * 0.30f - r * 0.18f),
-                    }, false, SortNeck, tone: Accent));
-                    sink.Add(new Shape("TieStripeB", new[]
-                    {
-                        Blade(-bw, -len * 0.58f),
-                        Blade(bw, -len * 0.58f + r * 0.30f),
-                    }, false, SortNeck, tone: Accent));
+                        Blade(-bw * 1.06f, -len * 0.30f),
+                        Blade(bw * 1.06f, -len * 0.30f - r * 0.20f),
+                        Blade(bw * 1.12f, -len * 0.52f - r * 0.20f),
+                        Blade(-bw * 1.12f, -len * 0.52f),
+                    }, true, SortNeck, tone: Accent, filled: true));
                     break;
                 }
 
                 case NeckScarf:
                 {
-                    // 목에 감긴 <b>고리</b> + 앞뒤로 하나씩 늘어진 자락. 자락 길이가 서로 다른 것이
-                    // 이 아이템의 식별 특징이다(형제인 반다나는 자락이 앞으로 하나뿐이다).
+                    // ★ 자락을 <b>먼저</b>, 고리를 <b>나중에</b> 넣는다. 같은 채움 레이어에서는 나중에
+                    // 넣은 것이 위로 오고, 목도리는 고리가 자락을 덮어야 "감았다"로 읽힌다.
+                    // (옛 순서는 반대라 자락이 고리 위로 떴다 — 미보고 결함.)
+                    float back = rig.TorsoLength * ScarfBackTailLengthInTorso;
+                    sink.Add(new Shape("ScarfTailBack", new[]
+                    {
+                        rig.F(-r * 0.58f, ty - r * 0.32f),
+                        rig.F(-r * 0.06f, ty - r * 0.48f),
+                        rig.F(-r * 0.48f, ty - back),
+                        rig.F(-r * 1.04f, ty - back + rig.TorsoLength * 0.07f),
+                    }, true, SortNeck, swayStart: 2, swayCount: 2, filled: true));
+
+                    float front = rig.TorsoLength * ScarfFrontTailLengthInTorso;
+                    sink.Add(new Shape("ScarfTailFront", new[]
+                    {
+                        rig.F(r * 0.06f, ty - r * 0.48f),
+                        rig.F(r * 0.54f, ty - r * 0.34f),
+                        rig.F(r * 1.12f, ty - front),
+                        rig.F(r * 0.58f, ty - front - rig.TorsoLength * 0.07f),
+                    }, true, SortNeck, swayStart: 2, swayCount: 2, filled: true));
+
                     float wh = r * ScarfWrapHalfWidthRatio;
                     sink.Add(new Shape("ScarfWrap", new[]
                     {
                         rig.F(-wh, ty + r * ScarfWrapTopRatio),
                         rig.F(0f, ty + r * ScarfWrapCenterTopRatio),
                         rig.F(wh, ty + r * ScarfWrapTopRatio),
-                        rig.F(wh, ty + r * ScarfWrapSideRatio),
+                        rig.F(wh + r * 0.04f, ty + r * ScarfWrapSideRatio),
                         rig.F(0f, ty + r * ScarfWrapDipRatio),
-                        rig.F(-wh, ty + r * ScarfWrapSideRatio),
-                    }, true, SortNeck, filled: true));
-
-                    // 끝 2점(인덱스 2,3)이 흔들린다 — 33-2-5 (A)가 지정한 그대로.
-                    float front = rig.TorsoLength * ScarfFrontTailLengthInTorso;
-                    sink.Add(new Shape("ScarfTailFront", new[]
-                    {
-                        rig.F(r * 0.06f, ty - r * 0.44f),
-                        rig.F(r * 0.48f, ty - r * 0.34f),
-                        rig.F(r * 1.02f, ty - front),
-                        rig.F(r * 0.58f, ty - front - rig.TorsoLength * 0.06f),
-                    }, true, SortNeck, swayStart: 2, swayCount: 2, tone: Accent, filled: true));
-
-                    float back = rig.TorsoLength * ScarfBackTailLengthInTorso;
-                    sink.Add(new Shape("ScarfTailBack", new[]
-                    {
-                        rig.F(-r * 0.50f, ty - r * 0.30f),
-                        rig.F(-r * 0.08f, ty - r * 0.44f),
-                        rig.F(-r * 0.44f, ty - back),
-                        rig.F(-r * 0.92f, ty - back + rig.TorsoLength * 0.06f),
-                    }, true, SortNeck, swayStart: 2, swayCount: 2, tone: Accent, filled: true));
+                        rig.F(-wh - r * 0.04f, ty + r * ScarfWrapSideRatio),
+                    }, true, SortNeck, tone: Accent, filled: true));
                     break;
                 }
 
@@ -1441,20 +1600,12 @@ namespace StickMate.Interaction
                     sink.Add(new Shape("Collar", CollarCurve(rig, ty), false, SortNeck));
 
                     // 위 꼭짓점이 <b>목줄 최저점 그 자리</b>다 — 펜던트와 똑같은 유도(규칙 4-a).
-                    // 그래서 첫 점을 90도(정수리 방향)에서 시작한다: 10각형은 위상 0도로 두면 가장 높은
-                    // 꼭짓점이 72도에 놓여 매단 자리가 0.11획 어긋난다(옛 방울이 정확히 그 상태였다).
+                    // 첫 점을 90도에서 시작하는 이유: 10각형을 위상 0도로 두면 가장 높은 꼭짓점이
+                    // 72도에 놓여 매단 자리가 0.11획 어긋난다(옛 방울이 정확히 그 상태였다).
                     float bellR = r * BellRadiusRatio;
                     float bellY = CollarLowLocalY(rig, ty) - bellR;
-                    // 33-2-5 (C) — 오디오 시스템이 없으므로 "소리"는 만들 수 없다. 대신 방울이
-                    // 걸을 때 실제로 흔들리게 해 설명문(리더 승인으로 '흔들린다'로 교체 예정)과 맞춘다.
                     sink.Add(new Shape("Bell", Polygon(rig, 0f, bellY, bellR, BellSegments, 90f),
                         true, SortNeck, swayStart: 0, swayCount: BellSegments, tone: Accent, filled: true));
-
-                    // ★ 2026-09-01 — 옛 'BellClapper'(공 아래로 0.10R 내린 선)를 여기서 지웠다.
-                    // 잉크 사각형이 <b>0.29획</b>이라 화면에 존재하지 않는 선이었고, 규칙 1을 만족시킬
-                    // 길이(1.5획 = 0.516R)로 늘리면 방울 지름보다 길어져 <b>꼬리 달린 공</b>이 된다.
-                    // 37-6 규칙 5가 그 경우를 명시한다 — "[선택] 디테일은 W 예산을 못 지키면 넣지 않는다".
-                    // 덤으로 보조색 도형이 2개 -> 1개가 되어 규칙 3-2("보조색은 단 한 부분")도 맞는다.
                     break;
                 }
 
@@ -1463,13 +1614,10 @@ namespace StickMate.Interaction
                     // 방울 목걸이의 목줄을 <b>그대로</b> 쓰고(같은 부착선·같은 곡률) 매달린 것만 바꾼다.
                     sink.Add(new Shape("Chain", CollarCurve(rig, ty), false, SortNeck));
 
-                    // 위 꼭짓점을 <b>목줄 최저점 그 자리</b>에 둔다 — 매달린 지점이 보여야 물건이
-                    // 공중에 뜨지 않는다(규칙 4). 드롭을 따로 적어 두면 목줄 곡률을 바꿀 때 어긋난다.
                     float hangY = CollarLowLocalY(rig, ty);
                     float phw = r * PendantHalfWidthRatio;
                     float phh = r * PendantHalfHeightRatio;
                     float py = hangY - phh;
-                    // 방울과 같은 이유로 흔들린다(33-2-5 (C) — 오디오가 없으므로 움직임으로 말한다).
                     sink.Add(new Shape("Pendant", new[]
                     {
                         rig.F(0f, hangY),
@@ -1482,33 +1630,34 @@ namespace StickMate.Interaction
 
                 case NeckBandana:
                 {
-                    // 목도리 띠의 납작 변주 + 앞으로 늘어진 삼각 자락 하나(목도리는 뒤로 두 갈래다).
+                    // 목도리 고리의 납작 변주 + 앞으로 늘어진 <b>채운 삼각</b> 자락 하나.
                     float wrapY = ty + r * BandanaWrapRiseRatio;
                     float wh = r * BandanaWrapHalfWidthRatio;
                     float wv = r * BandanaWrapHalfHeightRatio;
                     sink.Add(new Shape("BandanaWrap", new[]
                     {
                         rig.F(-wh, wrapY + wv),
-                        rig.F(0f, wrapY + wv * 0.72f),
+                        rig.F(0f, wrapY + wv * 0.4545f),
                         rig.F(wh, wrapY + wv),
                         rig.F(wh, wrapY - wv),
-                        rig.F(0f, wrapY - wv * 1.55f),
+                        rig.F(0f, wrapY - wv * 1.909f),
                         rig.F(-wh, wrapY - wv),
                     }, true, SortNeck, filled: true));
 
                     float thw = r * BandanaTailHalfWidthRatio;
-                    float tipY = wrapY - wv - rig.TorsoLength * BandanaTailLengthRatio * 0.42f;
+                    float baseY = wrapY - r * 0.30f;
                     // 끝 꼭짓점(인덱스 2) 하나만 흔든다 — 밑변 두 점은 매듭이라 고정이다.
                     sink.Add(new Shape("BandanaTail", new[]
                     {
-                        rig.F(r * 0.06f, wrapY - wv * 0.6f),
-                        rig.F(r * 0.06f + thw * 2f, wrapY - wv * 0.6f),
-                        rig.F(r * 0.06f + thw, tipY),
+                        rig.F(r * 0.04f, baseY),
+                        rig.F(r * 0.04f + thw * 2f, baseY),
+                        rig.F(r * 0.04f + thw * 0.75f, baseY - rig.TorsoLength * BandanaTailLengthRatio),
                     }, true, SortNeck, swayStart: 2, swayCount: 1, tone: Accent, filled: true));
                     break;
                 }
             }
         }
+
 
         /// <summary>목줄 — 아래로 볼록한 5점 곡선. 방울 목걸이와 펜던트 목걸이가 <b>같은 하나</b>를 쓴다
         /// (두 벌로 두면 부착선이 갈라져 한쪽만 목에서 뜬다 — 이 파일이 옛 망토에서 이미 겪은 실패다).</summary>
@@ -1609,6 +1758,8 @@ namespace StickMate.Interaction
                     sink.Add(new Shape("CapeFold2",
                         CapeFold(rig, CapeLengthRatio, CapeSpreadRatio, 0.72f), false, SortBack,
                         swayStart: 1, swayCount: 1, tone: Shade));
+                    sink.Add(new Shape("CapeCollar", CapeCollarBand(rig), true, SortBack,
+                        tone: Accent, filled: true));
                     break;
 
                 case BackLongCape:
@@ -1624,6 +1775,8 @@ namespace StickMate.Interaction
                     sink.Add(new Shape("CapeFold2",
                         CapeFold(rig, LongCapeLengthRatio, LongCapeSpreadRatio, 0.72f, 0.96f), false, SortBack,
                         swayStart: 1, swayCount: 1, tone: Shade));
+                    sink.Add(new Shape("CapeCollar", CapeCollarBand(rig), true, SortBack,
+                        tone: Accent, filled: true));
                     break;
 
                 case BackWings:
@@ -1656,33 +1809,51 @@ namespace StickMate.Interaction
                     // 구간이다. 동시에 끈의 잉크 사각형이 1.32획(문턱 1.5획)이라 규칙 1도 어겼다.
                     // 끝점을 이 꼭짓점으로 내리면 <b>간격 0(겹침) · 잉크 2.30획</b>으로 둘이 함께 닫힌다.
                     // 좌표를 새로 적지 않으므로 어긋날 자리 자체가 없다(중절모 띠/베레모 테와 같은 규약).
-                    Vector3 packStrapAnchor = rig.F(cx + hw, cyp + hh * 0.62f);
+                    Vector3 packStrapAnchor = rig.F(cx + hw, cyp + hh * 0.46f);
 
                     sink.Add(new Shape("PackBody", new[]
                     {
-                        rig.F(cx - hw, cyp - hh * 0.62f),
-                        rig.F(cx - hw, cyp + hh * 0.62f),
-                        rig.F(cx - hw * 0.55f, cyp + hh),
-                        rig.F(cx + hw * 0.55f, cyp + hh),
+                        rig.F(cx - hw, cyp - hh * 0.60f),
+                        rig.F(cx - hw, cyp + hh * 0.46f),
+                        rig.F(cx - hw * 0.62f, cyp + hh * 0.86f),
+                        rig.F(cx + hw * 0.62f, cyp + hh * 0.86f),
                         packStrapAnchor,
-                        rig.F(cx + hw, cyp - hh * 0.62f),
-                        rig.F(cx + hw * 0.55f, cyp - hh),
-                        rig.F(cx - hw * 0.55f, cyp - hh),
+                        rig.F(cx + hw, cyp - hh * 0.60f),
+                        rig.F(cx + hw * 0.60f, cyp - hh),
+                        rig.F(cx - hw * 0.60f, cyp - hh),
                     }, true, SortBack, filled: true));
 
-                    float flapY = cyp + hh - rig.TorsoLength * PackFlapDropInTorso;
-                    sink.Add(new Shape("PackFlap", new[]
+                    // 뚜껑 — 몸과 <b>같은 주색</b>이라 겹쳐도 그리기 순서가 무관하다(같은 레이어 채움의
+                    // 순서 미정 함정을 색으로 피한다). 옛 'PackFlap'(선 1개)은 여기서 지웠다:
+                    // 선 하나는 뚜껑이 아니라 상자에 그은 금이고, 규칙 2가 요구하는 덩어리가 아니다.
+                    sink.Add(new Shape("PackLid", new[]
                     {
-                        rig.F(cx - hw * 0.92f, flapY),
-                        rig.F(cx + hw * 0.92f, flapY),
-                    }, false, SortBack, tone: Accent));
+                        rig.F(cx - hw * 0.96f, cyp + hh * 0.40f),
+                        rig.F(cx - hw * 0.66f, cyp + hh * 0.92f),
+                        rig.F(cx + hw * 0.66f, cyp + hh * 0.92f),
+                        rig.F(cx + hw * 0.96f, cyp + hh * 0.40f),
+                        rig.F(cx + hw * 0.80f, cyp + hh * 0.06f),
+                        rig.F(cx - hw * 0.80f, cyp + hh * 0.06f),
+                    }, true, SortBack, filled: true));
 
+                    // 서명 디테일 하나 — 보조색 버클(규칙 3-2).
+                    float bhw = r * PackBuckleHalfWidthRatio;
+                    sink.Add(new Shape("PackBuckle", new[]
+                    {
+                        rig.F(cx - bhw, cyp + hh * 0.10f),
+                        rig.F(cx + bhw, cyp + hh * 0.10f),
+                        rig.F(cx + bhw, cyp - hh * 0.30f),
+                        rig.F(cx - bhw, cyp - hh * 0.30f),
+                    }, true, SortBack, tone: Accent, filled: true));
+
+                    // 어깨끈은 <b>하나</b>다. 측면도에서 두 번째 끈은 몸통 선에 가려 보이지 않으므로
+                    // 정원(2~4)만 먹는다 — 37-6 규칙 5. 주색인 것은 보조색 정원을 버클이 가져가서다.
                     sink.Add(new Shape("PackStrap", new[]
                     {
-                        rig.F(r * 0.10f, sy),
-                        rig.F(-r * 0.20f, sy - rig.TorsoLength * 0.12f),
+                        rig.F(r * 0.22f, sy + r * 0.04f),
+                        rig.F(-r * 0.10f, sy - rig.TorsoLength * 0.14f),
                         packStrapAnchor,
-                    }, false, SortBack, tone: Accent));
+                    }, false, SortBack));
                     break;
                 }
 
@@ -1698,6 +1869,8 @@ namespace StickMate.Interaction
                     sink.Add(new Shape("CapeFold2",
                         CapeFold(rig, PonchoLengthRatio, PonchoSpreadRatio, 0.72f), false, SortBack,
                         swayStart: 1, swayCount: 1, tone: Shade));
+                    sink.Add(new Shape("CapeCollar", CapeCollarBand(rig), true, SortBack,
+                        tone: Accent, filled: true));
                     break;
 
                 case BackFairyWings:
@@ -1722,140 +1895,190 @@ namespace StickMate.Interaction
         //   States/EyeController.cs의 단독 소유라 이 삭제와 무관하게 그대로 커서를 따라간다.
 
         // ==================== HAIR (머리) ====================
+        //
+        // 아래 좌표는 전부 <b>머리 중심 원점 · R 배수 · +x 진행 방향</b>이다
+        // (docs/EQUIPMENT_SHAPE_SPEC.md 1절의 규약, 부록 A와 같은 단위).
+        // 로컬 좌표(원점 = 발바닥)로 옮기는 곳은 <see cref="HairToLocal"/> 한 곳뿐이다 —
+        // 곳곳에서 rig.HeadCenterY를 더하면 한 곳만 빠뜨리는 사고가 난다.
 
-        /// <summary>
-        /// 머리카락 실루엣 — <b>바깥 윤곽 + 이마선</b>으로 닫히는 채움 도형.
-        /// <para>바깥 윤곽은 진행 방향(<see cref="HairSpanStartDegrees"/>)에서 뒤통수까지 도는 극좌표
-        /// 곡선이고, 되돌아오는 안쪽 경계는 얼굴을 가로지르는 <b>포물선 이마선</b>이다
-        /// (동심 원호로 막으면 머리카락이 아니라 헬멧 테가 된다 — 위 재설계 문단).</para>
-        /// </summary>
-        /// <param name="baseRadiusRatio">바깥 윤곽의 기준 반경(R 배수).</param>
-        /// <param name="waveAmplitudeRatio">웨이브 진폭(R 배수). 0이면 매끈한 곡선.</param>
-        /// <param name="waveCount">스팬 전체에 들어가는 웨이브 주기 수.</param>
-        /// <param name="frontLiftRatio">앞쪽으로 갈수록 더해지는 반경(앞머리를 내민다).</param>
-        internal static Vector3[] HairSilhouette(in Rig rig, float baseRadiusRatio, float waveAmplitudeRatio,
-            float waveCount, float frontLiftRatio, int outerSegments)
+        /// <summary>커튼 좌표는 <b>배열 하나</b>로만 존재한다. 도형을 굽는 경로는 착용/방향/색이
+        /// 바뀐 프레임에만 도므로 정적 재사용으로 충분하다(매 프레임 할당 금지 규약).</summary>
+        private static readonly List<Vector2> _hairPath = new List<Vector2>(48);
+
+        // ---- 0 삐친머리. (각도, 반경) 쌍 — 봉우리와 골이 번갈아 도는 <b>실루엣 그 자체</b>가 정체다.
+        private static readonly Vector2[] CowlickSpikesPolar =
         {
-            float r = rig.HeadRadius;
-            float hc = rig.HeadCenterY;
-            int outer = Mathf.Max(2, outerSegments);
-            var pts = new Vector3[outer + 1 + HairlineSegments + 1];
+            new Vector2(6f, 1.28f), new Vector2(24f, 1.70f), new Vector2(44f, 1.30f),
+            new Vector2(66f, 1.76f), new Vector2(90f, 1.32f), new Vector2(114f, 1.78f),
+            new Vector2(138f, 1.34f), new Vector2(160f, 1.72f), new Vector2(184f, 1.30f),
+            new Vector2(204f, 1.56f),
+        };
+        private static readonly Vector2[] CowlickBackCurtain =
+            { new Vector2(-1.30f, -1.10f), new Vector2(-0.78f, -0.76f) };
+        private static readonly Vector2[] CowlickFrontCurtain =
+            { new Vector2(0.86f, 0.04f), new Vector2(1.12f, -0.72f) };
 
-            for (int i = 0; i <= outer; i++)
-            {
-                float t = i / (float)outer;
-                float rad = Mathf.Lerp(HairSpanStartDegrees, HairSpanEndDegrees, t) * Mathf.Deg2Rad;
-                float radius = baseRadiusRatio
-                    + waveAmplitudeRatio * Mathf.Sin(t * waveCount * Mathf.PI * 2f)
-                    + frontLiftRatio * (1f - t);
-                pts[i] = rig.F(Mathf.Cos(rad) * radius * r, hc + Mathf.Sin(rad) * radius * r);
-            }
+        // ---- 1 단정한머리. 뒤 커튼이 −2.12R까지 내려간다(6종 중 유일하게 어깨 근처까지 닿는다).
+        private static readonly Vector2[] NeatBackCurtain =
+        {
+            new Vector2(-1.46f, -0.92f), new Vector2(-1.10f, -2.12f), new Vector2(-0.62f, -1.26f),
+        };
+        private static readonly Vector2[] NeatFrontCurtain =
+        {
+            new Vector2(0.80f, 0.10f), new Vector2(1.06f, -0.62f), new Vector2(1.28f, -1.30f),
+        };
+        private static readonly Vector2[] NeatPart =
+        {
+            new Vector2(-0.14f, 1.56f), new Vector2(0.26f, 1.54f),
+            new Vector2(0.44f, 0.60f), new Vector2(0.04f, 0.64f),
+        };
 
-            // 이마선은 <b>뒤 -> 앞</b>으로 되돌아온다(바깥 윤곽이 앞 -> 뒤였으므로 고리가 닫힌다).
-            for (int i = 0; i <= HairlineSegments; i++)
+        // ---- 2 곱슬머리. 커튼 x가 굽이마다 <see cref="CurlAmplitudeRatio"/> 이상 벌어진다.
+        private static readonly Vector2[] CurlBackCurtain =
+        {
+            new Vector2(-1.90f, -0.50f), new Vector2(-1.36f, -0.94f), new Vector2(-1.82f, -1.42f),
+            new Vector2(-1.18f, -1.74f), new Vector2(-0.86f, -0.98f),
+        };
+        private static readonly Vector2[] CurlFrontCurtain =
+        {
+            new Vector2(0.84f, 0.16f), new Vector2(1.44f, -0.30f),
+            new Vector2(1.06f, -0.86f), new Vector2(1.54f, -1.34f),
+        };
+        private static readonly Vector2[] CurlCoil =
+        {
+            new Vector2(1.54f, -1.34f), new Vector2(1.94f, -1.68f), new Vector2(1.50f, -2.10f),
+            new Vector2(1.00f, -1.80f), new Vector2(1.20f, -1.54f),
+        };
+
+        // ---- 5 포니테일.
+        private static readonly Vector2[] PonytailBackCurtain =
+            { new Vector2(-1.34f, -0.84f), new Vector2(-0.82f, -0.62f) };
+        private static readonly Vector2[] PonytailFrontCurtain =
+            { new Vector2(0.82f, 0.06f), new Vector2(1.10f, -0.72f) };
+
+        /// <summary>머리 중심 원점·R 배수로 쌓은 점열 -> 로컬 좌표(원점 = 발바닥).</summary>
+        private static Vector3[] HairToLocal(in Rig rig, List<Vector2> pathInR)
+        {
+            var result = new Vector3[pathInR.Count];
+            for (int i = 0; i < pathInR.Count; i++)
             {
-                float u = -1f + 2f * i / HairlineSegments;   // -1(뒤) -> +1(앞)
-                float x = u * HairlineHalfWidthRatio;
-                float y = HairlineEdgeRatio + (HairlineCrestRatio - HairlineEdgeRatio) * (1f - u * u);
-                pts[outer + 1 + i] = rig.F(x * r, hc + y * r);
+                Vector2 p = pathInR[i];
+                result[i] = rig.F(p.x * rig.HeadRadius, rig.HeadCenterY + p.y * rig.HeadRadius);
             }
-            return pts;
+            return result;
+        }
+
+        /// <summary>같은 단위의 <b>낱개 점열</b>(커튼·삐침·묶음) -> 로컬 좌표.</summary>
+        private static Vector3[] HairToLocal(in Rig rig, Vector2[] ptsInR)
+        {
+            var result = new Vector3[ptsInR.Length];
+            for (int i = 0; i < ptsInR.Length; i++)
+            {
+                result[i] = rig.F(ptsInR[i].x * rig.HeadRadius,
+                    rig.HeadCenterY + ptsInR[i].y * rig.HeadRadius);
+            }
+            return result;
+        }
+
+        private static void PathArc(List<Vector2> path, float fromDegrees, float toDegrees,
+            float radiusRatio, int segments)
+        {
+            int n = Mathf.Max(1, segments);
+            for (int i = 0; i <= n; i++)
+            {
+                float rad = Mathf.Lerp(fromDegrees, toDegrees, i / (float)n) * Mathf.Deg2Rad;
+                path.Add(new Vector2(Mathf.Cos(rad) * radiusRatio, Mathf.Sin(rad) * radiusRatio));
+            }
+        }
+
+        private static void PathPoints(List<Vector2> path, Vector2[] pts)
+        {
+            for (int i = 0; i < pts.Length; i++) path.Add(pts[i]);
         }
 
         /// <summary>
-        /// 바가지머리 전용 실루엣 — <b>돔 + 수평으로 자른 밑선 셋</b>으로 닫히는 채움 도형.
-        /// <para>형제들의 <see cref="HairSilhouette"/>(돔 + 포물선 이마선)와 <b>도형의 종류 자체가</b>
-        /// 다르다. 반경만 키운 형제 복사본은 배율 0.75에서 단정한머리와 0.58획밖에 차이가 나지 않았고,
-        /// 그 사실이 이 전용 도형이 존재하는 이유다(위 재설계 문단).</para>
-        /// <para>점 순서: 앞쪽 옆머리 끝 → 돔 → 뒤쪽 옆머리 끝 → 뒤 밑변 → 뒤 옆머리 안쪽 변 →
-        /// <b>앞머리 선</b> → 앞 옆머리 안쪽 변 → (닫히며) 앞 밑변.</para>
+        /// 머리카락 덩어리 — <b>돔 + 뒤 커튼 + 두피 안쪽 호 + 앞 커튼</b>으로 닫히는 채움 도형.
+        /// <para>6종이 <b>같은 순서</b>로 경계를 돈다. 순서가 어긋나면 폴리곤이 자기교차하고
+        /// 귀 자르기(<see cref="Triangulate"/>)가 깨져 천이 찢어진 것처럼 삼각형이 튄다.</para>
+        /// <para>얼굴(파인 공간)은 두피 안쪽 호가 끝나는 <b>앞·아래</b> 사분면이다 — 그래서 눈동자가
+        /// 되살아나도(<c>BakeEyes</c>) 머리카락 채움에 덮이지 않는다.</para>
+        /// </summary>
+        /// <param name="capRatio">돔 반경. <see cref="HairCapMinRatio"/> ~ <see cref="HairCapMaxRatio"/>.</param>
+        internal static Vector3[] HairMass(in Rig rig, float capRatio, float domeFromDegrees,
+            float domeToDegrees, Vector2[] backCurtain, float innerFromDegrees, float innerToDegrees,
+            Vector2[] frontCurtain)
+        {
+            _hairPath.Clear();
+            PathArc(_hairPath, domeFromDegrees, domeToDegrees, capRatio, HairDomeSegments);
+            PathPoints(_hairPath, backCurtain);
+            PathArc(_hairPath, innerFromDegrees, innerToDegrees, HairInnerRadiusRatio, HairInnerArcSegments);
+            PathPoints(_hairPath, frontCurtain);
+            return HairToLocal(rig, _hairPath);
+        }
+
+        /// <summary>삐친머리 전용 덩어리 — 돔이 <b>반경 일정한 호가 아니라</b> 봉우리 5개다.
+        /// 나머지 세 구간(커튼·안쪽 호·커튼)은 형제들과 완전히 같은 규약이다.</summary>
+        internal static Vector3[] CowlickMass(in Rig rig)
+        {
+            _hairPath.Clear();
+            for (int i = 0; i < CowlickSpikesPolar.Length; i++)
+            {
+                float rad = CowlickSpikesPolar[i].x * Mathf.Deg2Rad;
+                float radius = CowlickSpikesPolar[i].y;
+                _hairPath.Add(new Vector2(Mathf.Cos(rad) * radius, Mathf.Sin(rad) * radius));
+            }
+            PathPoints(_hairPath, CowlickBackCurtain);
+            PathArc(_hairPath, 196f, 76f, HairInnerRadiusRatio, HairInnerArcSegments);
+            PathPoints(_hairPath, CowlickFrontCurtain);
+            return HairToLocal(rig, _hairPath);
+        }
+
+        /// <summary>
+        /// 바가지머리 전용 덩어리 — <b>돔 + 수평으로 자른 밑선 셋</b>으로 닫는다.
+        /// <para>형제들과 <b>도형의 종류 자체가</b> 다르다. 돔은 옆머리 밑변과 만나는 각도에서
+        /// 시작/끝난다 — 각도를 손으로 적어 두면 반경이나 자른 높이를 바꿀 때 그 자리에 틈이 생기고,
+        /// 틈은 획에 먹혀 이 빠진 실루엣이 된다.</para>
         /// </summary>
         internal static Vector3[] BowlSilhouette(in Rig rig)
         {
-            float r = rig.HeadRadius;
-            float hc = rig.HeadCenterY;
-
-            // 돔은 <b>옆머리 밑변과 만나는 각도</b>에서 시작/끝난다. 각도를 손으로 적어 두면 반경이나
-            // 자른 높이를 바꿀 때 그 자리에 틈이 생기고, 틈은 획에 먹혀 이 빠진 실루엣이 된다.
             float startDeg = Mathf.Asin(Mathf.Clamp(BowlCutLineRatio / BowlCapRadiusRatio, -1f, 1f))
                 * Mathf.Rad2Deg;
             float endDeg = 180f - startDeg;
 
-            Vector3[] fringe = BowlFringeLine(rig);
-            var pts = new Vector3[(HairCapSegments + 1) + 2 + fringe.Length];
-            int w = 0;
-
-            for (int i = 0; i <= HairCapSegments; i++)
+            _hairPath.Clear();
+            PathArc(_hairPath, startDeg, endDeg, BowlCapRadiusRatio, BowlDomeSegments);
+            _hairPath.Add(new Vector2(-BowlSideHalfWidthRatio, BowlCutLineRatio));
+            for (int i = 0; i <= BowlFringeSegments; i++)
             {
-                float rad = Mathf.Lerp(startDeg, endDeg, i / (float)HairCapSegments) * Mathf.Deg2Rad;
-                pts[w++] = rig.F(Mathf.Cos(rad) * BowlCapRadiusRatio * r,
-                    hc + Mathf.Sin(rad) * BowlCapRadiusRatio * r);
+                _hairPath.Add(new Vector2(Mathf.Lerp(-BowlSideHalfWidthRatio, BowlSideHalfWidthRatio,
+                    i / (float)BowlFringeSegments), BowlFringeLineRatio));
             }
-
-            pts[w++] = rig.F(-BowlSideHalfWidthRatio * r, hc + BowlCutLineRatio * r);
-            for (int i = 0; i < fringe.Length; i++) pts[w++] = fringe[i];   // 뒤 -> 앞
-            pts[w] = rig.F(BowlSideHalfWidthRatio * r, hc + BowlCutLineRatio * r);
-            return pts;
+            _hairPath.Add(new Vector2(BowlSideHalfWidthRatio, BowlCutLineRatio));
+            return HairToLocal(rig, _hairPath);
         }
 
         /// <summary>이마를 가로지르는 앞머리 선. <see cref="BowlSilhouette"/>의 안쪽 경계와
-        /// <b>같은 점</b>을 쓴다 — 두 벌로 적어 두면 한쪽만 고쳐 선이 어긋난다.</summary>
+        /// <b>같은 식</b>을 쓴다 — 두 벌로 적어 두면 한쪽만 고쳐 선이 어긋난다.</summary>
         internal static Vector3[] BowlFringeLine(in Rig rig)
         {
-            float r = rig.HeadRadius;
-            float y = rig.HeadCenterY + BowlFringeLineRatio * r;
             var pts = new Vector3[BowlFringeSegments + 1];
             for (int i = 0; i <= BowlFringeSegments; i++)
             {
                 float x = Mathf.Lerp(-BowlSideHalfWidthRatio, BowlSideHalfWidthRatio,
                     i / (float)BowlFringeSegments);
-                pts[i] = rig.F(x * r, y);
+                pts[i] = rig.F(x * rig.HeadRadius, rig.HeadCenterY + BowlFringeLineRatio * rig.HeadRadius);
             }
             return pts;
-        }
-
-        /// <summary>극좌표 두 점을 잇는 <b>일정한 폭의 띠</b>(가르마 가닥). 폭이 획보다 넓어야
-        /// 가닥으로 읽힌다 — 옛 가르마는 폭이 없는 선 1개라 "머리에 그은 금"이었다.</summary>
-        private static Vector3[] HairStrand(in Rig rig, float fromDegrees, float fromRadiusRatio,
-            float toDegrees, float toRadiusRatio, float halfWidthRatio)
-        {
-            float r = rig.HeadRadius;
-            float hc = rig.HeadCenterY;
-            float a0 = fromDegrees * Mathf.Deg2Rad, a1 = toDegrees * Mathf.Deg2Rad;
-            var p0 = new Vector2(Mathf.Cos(a0) * fromRadiusRatio, Mathf.Sin(a0) * fromRadiusRatio);
-            var p1 = new Vector2(Mathf.Cos(a1) * toRadiusRatio, Mathf.Sin(a1) * toRadiusRatio);
-            Vector2 d = p1 - p0;
-            float len = d.magnitude;
-            if (len <= 0.0001f) return System.Array.Empty<Vector3>();
-            var n = new Vector2(-d.y / len * halfWidthRatio, d.x / len * halfWidthRatio);
-            return new[]
-            {
-                rig.F((p0.x + n.x) * r, hc + (p0.y + n.y) * r),
-                rig.F((p1.x + n.x) * r, hc + (p1.y + n.y) * r),
-                rig.F((p1.x - n.x) * r, hc + (p1.y - n.y) * r),
-                rig.F((p0.x - n.x) * r, hc + (p0.y - n.y) * r),
-            };
         }
 
         /// <summary>머리 중심을 도는 <b>고리 조각</b>(안쪽 반경 ~ 바깥 반경). 민머리의 남은 테두리.</summary>
         private static Vector3[] HeadRimBand(in Rig rig, float fromDegrees, float toDegrees,
             float innerRatio, float outerRatio, int segments)
         {
-            float r = rig.HeadRadius;
-            float hc = rig.HeadCenterY;
-            int n = Mathf.Max(2, segments);
-            var pts = new Vector3[(n + 1) * 2];
-            for (int i = 0; i <= n; i++)
-            {
-                float rad = Mathf.Lerp(fromDegrees, toDegrees, i / (float)n) * Mathf.Deg2Rad;
-                pts[i] = rig.F(Mathf.Cos(rad) * outerRatio * r, hc + Mathf.Sin(rad) * outerRatio * r);
-            }
-            for (int i = 0; i <= n; i++)
-            {
-                float rad = Mathf.Lerp(toDegrees, fromDegrees, i / (float)n) * Mathf.Deg2Rad;
-                pts[n + 1 + i] = rig.F(Mathf.Cos(rad) * innerRatio * r, hc + Mathf.Sin(rad) * innerRatio * r);
-            }
-            return pts;
+            _hairPath.Clear();
+            PathArc(_hairPath, fromDegrees, toDegrees, outerRatio, segments);
+            PathArc(_hairPath, toDegrees, fromDegrees, innerRatio, segments);
+            return HairToLocal(rig, _hairPath);
         }
 
         /// <summary>극좌표 한 점 -> 로컬 좌표(머리 중심 기준).</summary>
@@ -1872,83 +2095,71 @@ namespace StickMate.Interaction
             switch (item)
             {
                 case HairCowlick:
-                    _hairScratch.Add(new Shape("HairCap",
-                        HairSilhouette(rig, CowlickCapRadiusRatio, 0f, 0f, CowlickFrontLiftRatio, HairCapSegments),
-                        true, SortHair, filled: true));
-                    // 식별 특징 — 뒤로 솟은 삐침 하나(채운 삼각형). 최소 높이 0.58R = 1.7W라 획에 안 먹힌다.
-                    _hairScratch.Add(new Shape("HairTuft", new[]
+                    _hairScratch.Add(new Shape("HairMass", CowlickMass(rig), true, SortHair, filled: true));
+                    // 식별 특징 — 뒤로 솟은 삐침 하나. 끝(2.45R)이 봉우리들보다 확실히 더 나가야
+                    // "하나가 유독 뻗쳤다"로 읽힌다(같은 높이면 여섯 번째 봉우리일 뿐이다).
+                    _hairScratch.Add(new Shape("HairCrest", new[]
                     {
-                        HeadPolar(rig, 98f, CowlickCapRadiusRatio),
-                        HeadPolar(rig, CowlickTuftTipDegrees, CowlickTuftTipRadiusRatio),
-                        HeadPolar(rig, 140f, CowlickCapRadiusRatio - 0.04f),
+                        HeadPolar(rig, 126f, 1.34f),
+                        HeadPolar(rig, 142f, 2.45f),
+                        HeadPolar(rig, 154f, 1.26f),
                     }, true, SortHair, tone: Accent, filled: true));
                     break;
 
                 case HairNeat:
-                    _hairScratch.Add(new Shape("HairCap",
-                        HairSilhouette(rig, NeatCapRadiusRatio, 0f, 0f, NeatFrontLiftRatio, HairCapSegments),
+                    _hairScratch.Add(new Shape("HairMass",
+                        HairMass(rig, NeatCapRatio, 10f, 206f, NeatBackCurtain, 198f, 78f, NeatFrontCurtain),
                         true, SortHair, filled: true));
-                    // 식별 특징 — 정수리에서 이마선으로 내려오는 가르마 <b>가닥</b>(폭 0.38R = 1.11W).
-                    _hairScratch.Add(new Shape("HairPart",
-                        HairStrand(rig, 86f, 1.18f, 34f, 0.66f, NeatPartHalfWidthRatio),
+                    // 식별 특징 — 정수리에서 이마로 내려오는 가르마 가닥.
+                    _hairScratch.Add(new Shape("HairPart", HairToLocal(rig, NeatPart),
                         true, SortHair, tone: Accent, filled: true));
                     break;
 
                 case HairCurly:
-                    _hairScratch.Add(new Shape("HairCap",
-                        HairSilhouette(rig, CurlBaseRadiusRatio, CurlAmplitudeRatio, CurlWaveCount, 0f,
-                            HairCurlSegments),
+                    _hairScratch.Add(new Shape("HairMass",
+                        HairMass(rig, CurlCapRatio, 8f, 208f, CurlBackCurtain, 200f, 74f, CurlFrontCurtain),
                         true, SortHair, filled: true));
-                    // 식별 특징 — 얼굴 앞으로 늘어진 컬 한 가닥.
-                    _hairScratch.Add(new Shape("HairCoil", new[]
-                    {
-                        HeadPolar(rig, 6f, 1.36f),
-                        HeadPolar(rig, -18f, 1.48f),
-                        HeadPolar(rig, -40f, 1.20f),
-                        HeadPolar(rig, -24f, 0.80f),
-                        HeadPolar(rig, 0f, 0.96f),
-                    }, true, SortHair, tone: Accent, filled: true));
+                    // 식별 특징 — 앞 커튼 <b>끝점 그 자리</b>에서 이어지는 컬 하나(간격 0 — 규칙 4).
+                    _hairScratch.Add(new Shape("HairCoil", HairToLocal(rig, CurlCoil),
+                        true, SortHair, tone: Accent, filled: true));
                     break;
 
                 case HairBald:
                     // 실루엣이 <b>없는</b> 것이 이 아이템의 정체다. 그래도 아무것도 안 그리지는 않는다 —
-                    // 착용했는데 화면이 그대로면 그건 착용이 아니다(33-4 #4). 관자놀이/뒤통수에 남은 테 2조각.
-                    // ★ 세 번째 조각(정수리 광택)은 <b>일부러 넣지 않았다</b>: 두 테 사이의 맨 두피는
-                    //   어느 자리에 놓아도 테와의 간격이 1.5W(0.52R)를 넘지 못한다(오프라인 검산).
-                    //   37-6 규칙 5 — "예산을 못 지키는 [선택] 디테일은 넣지 않는다".
+                    // 착용했는데 화면이 그대로면 그건 착용이 아니다(33-4 #4).
                     _hairScratch.Add(new Shape("HairRimBack",
                         HeadRimBand(rig, BaldRimBackFromDegrees, BaldRimBackToDegrees,
-                            BaldRimInnerRadiusRatio, BaldRimOuterRadiusRatio, 7),
+                            BaldRimInnerRadiusRatio, BaldRimOuterRadiusRatio, BaldRimBackSegments),
                         true, SortHair, filled: true));
                     _hairScratch.Add(new Shape("HairRimFront",
                         HeadRimBand(rig, BaldRimFrontFromDegrees, BaldRimFrontToDegrees,
-                            BaldRimInnerRadiusRatio, BaldRimOuterRadiusRatio, 4),
+                            BaldRimInnerRadiusRatio, BaldRimOuterRadiusRatio, BaldRimFrontSegments),
                         true, SortHair, tone: Accent, filled: true));
                     break;
 
                 case HairBowl:
-                    _hairScratch.Add(new Shape("HairCap", BowlSilhouette(rig), true, SortHair, filled: true));
+                    _hairScratch.Add(new Shape("HairMass", BowlSilhouette(rig), true, SortHair, filled: true));
                     // 식별 특징 — 자른 앞머리 선. 실루엣의 안쪽 경계와 <b>정확히 겹친다(간격 0)</b>:
-                    // 규칙 4가 "최악"이라고 못박은 것은 0 &lt; 간격 &lt; 1획이지 겹침이 아니다. 겹치면
-                    // 화면에서 선 하나(보조색)로 읽히고, 조금 어긋나면 "선을 두 번 그린 실수"가 된다.
-                    // 새 선을 하나도 만들지 않으므로 규칙 1의 간격 예산도 소비하지 않는다.
+                    // 규칙 4가 "최악"이라고 못박은 것은 0 &lt; 간격 &lt; 1획이지 겹침이 아니다.
                     _hairScratch.Add(new Shape("HairFringe", BowlFringeLine(rig), false, SortHair,
                         tone: Accent));
                     break;
 
                 case HairPonytail:
-                    _hairScratch.Add(new Shape("HairCap",
-                        HairSilhouette(rig, PonytailCapRadiusRatio, 0f, 0f, PonytailFrontLiftRatio,
-                            HairCapSegments),
+                    _hairScratch.Add(new Shape("HairMass",
+                        HairMass(rig, PonytailCapRatio, 12f, 200f, PonytailBackCurtain, 194f, 76f,
+                            PonytailFrontCurtain),
                         true, SortHair, filled: true));
-                    // 뒤통수에서 아래로 떨어지는 묶음. 가장 짧은 변이 0.52R(= 1.5획)이라 획에 먹히지 않는다.
+                    // 식별 특징 — 뒤통수에서 묶여 떨어지는 긴 묶음. 시작·끝점을 <b>극좌표</b>로 잡아
+                    // 덩어리 표면에서 출발하게 한다(좌표를 따로 적으면 묶음이 머리에서 뜬다).
                     _hairScratch.Add(new Shape("HairTail", new[]
                     {
-                        HeadPolar(rig, 152f, 1.10f),
-                        HeadPolar(rig, 178f, 1.55f),
-                        HeadPolar(rig, 205f, 1.60f),
-                        HeadPolar(rig, 215f, 1.05f),
-                        HeadPolar(rig, 185f, 0.95f),
+                        HeadPolar(rig, 158f, 1.22f),
+                        rig.F(-1.86f * rig.HeadRadius, rig.HeadCenterY + 0.62f * rig.HeadRadius),
+                        rig.F(-2.42f * rig.HeadRadius, rig.HeadCenterY - 0.10f * rig.HeadRadius),
+                        rig.F(-1.84f * rig.HeadRadius, rig.HeadCenterY - 0.34f * rig.HeadRadius),
+                        rig.F(-1.30f * rig.HeadRadius, rig.HeadCenterY - 0.46f * rig.HeadRadius),
+                        HeadPolar(rig, 196f, 1.06f),
                     }, true, SortHair, tone: Accent, filled: true));
                     break;
             }
@@ -2147,6 +2358,24 @@ namespace StickMate.Interaction
                 rig.F(-trail * 0.14f, hemY + wave),        // 4 ├ 물결치는 밑단
                 rig.F(lead * 0.55f, hemY - wave * 0.30f),  // 5 ┘
                 rig.F(lead, hemY + drop * 0.10f),          // 6 밑단 앞끝
+            };
+        }
+
+        /// <summary>
+        /// 망토 3종이 공유하는 <b>서명 디테일</b> — 목을 감는 옷깃 띠(보조색·채움).
+        /// <para>세 망토가 <b>같은 하나</b>를 쓴다. 밑단 길이·폭만 다른 형제들이라, 옷깃이 각자
+        /// 다른 좌표를 갖는 순간 "같은 옷의 변주"라는 사실이 그림에서 사라진다(규칙 4-a).</para>
+        /// </summary>
+        internal static Vector3[] CapeCollarBand(in Rig rig)
+        {
+            float r = rig.HeadRadius;
+            float cy = CapeCollarLocalY(rig);
+            return new[]
+            {
+                rig.F(r * CapeCollarBandFrontRatio, cy + r * CapeCollarBandTopRatio),
+                rig.F(r * CapeCollarBandFrontRatio, cy + r * CapeCollarBandBottomRatio),
+                rig.F(-r * CapeCollarBandBackRatio, cy + r * (CapeCollarBandBottomRatio - 0.04f)),
+                rig.F(-r * CapeCollarBandBackRatio, cy + r * (CapeCollarBandTopRatio - 0.04f)),
             };
         }
 
@@ -2373,6 +2602,24 @@ namespace StickMate.Interaction
             return mesh;
         }
 
+        /// <summary>
+        /// ★ 같은 아이템 안에서 <b>채움 2개가 겹칠 때</b>의 그리기 순서 — 2026-09-01(3차).
+        ///
+        /// <para>문제: 한 아이템의 채움은 전부 <c>SortingOrder − 1</c>이라 <b>동률</b>이다. 동률은
+        /// 그리기 순서가 미정이라는 것이 이 저장소가 33-2-0에서 이미 한 번 정리한 함정이고, HAIR
+        /// (덩어리 vs 삐침)에서는 <b>이미</b> 그 상태였다. 이번 재설계로 HEAD(관 vs 챙)·
+        /// NECK(고리 vs 자락)·BACK(천 vs 옷깃)까지 늘었다.</para>
+        ///
+        /// <para>고침: 채움 메시 오브젝트의 <b>로컬 z</b>에 "아이템 안에서 몇 번째로 넣었는가 × 이 값"을
+        /// 준다. z가 작을수록 카메라에 가까우므로(2D 카메라는 −z에서 +z를 본다) <b>나중에 넣은 것이
+        /// 위로 온다</b> — 목도리가 고리를 자락보다 나중에 넣는 이유가 이것이다.</para>
+        ///
+        /// <para><c>sortingOrder</c>를 건드리지 않는다는 것이 이 해법의 핵심이다. 레이어를 옮기면
+        /// <c>EyesVisorOpacityTests.판이_머리카락과_모자_사이의_제자리에_깔린다</c>(모든 EYES 도형이
+        /// <c>SortEyes</c>여야 한다)가 깨진다. 크기는 획 두께의 1/3000이라 원근 왜곡이 없다.</para>
+        /// </summary>
+        internal const float FillDepthStep = -0.0001f;
+
         /// <summary>채움 위에 얹는 윤곽선 색 — 같은 색을 그대로 쓰면 면과 선이 붙어 <b>실루엣만 남은
         /// 덩어리</b>가 된다(털모자의 띠와 관이 한 덩어리로 뭉치는 자리). 같은 색을 어둡게 한 값이라
         /// 팔레트를 늘리지 않으면서 경계를 만든다.</summary>
@@ -2410,21 +2657,6 @@ namespace StickMate.Interaction
                 pts[i] = rig.F(centerForwardX + Mathf.Cos(rad) * radius, centerY + Mathf.Sin(rad) * radius);
             }
             return pts;
-        }
-
-        /// <summary>8각 근사 상자 — 원보다 렌즈/매듭처럼 보이고 점이 적어 가볍다.</summary>
-        private static Vector3[] RoundedBox(in Rig rig, float forwardCx, float cy, float halfW, float halfH)
-        {
-            return new[]
-            {
-                rig.F(forwardCx - halfW, cy - halfH * 0.45f),
-                rig.F(forwardCx - halfW * 0.7f, cy + halfH),
-                rig.F(forwardCx + halfW * 0.7f, cy + halfH),
-                rig.F(forwardCx + halfW, cy + halfH * 0.35f),
-                rig.F(forwardCx + halfW * 0.85f, cy - halfH * 0.75f),
-                rig.F(forwardCx + halfW * 0.2f, cy - halfH),
-                rig.F(forwardCx - halfW * 0.6f, cy - halfH),
-            };
         }
     }
 }

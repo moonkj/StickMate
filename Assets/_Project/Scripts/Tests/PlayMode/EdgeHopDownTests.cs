@@ -375,7 +375,8 @@ namespace StickMate.Tests.PlayMode
                         wallDetected = true;
                         Debug.Log($"{LogPrefix} 2단계 — 되올라갈 턱 감지: 핸들={wallHandle}(기대 {DockHandle}), " +
                             $"턱 상단 Y={wallTopY:F3}, 지금 딛는 발판 Y={info.GroundWorldY:F3}, " +
-                            $"높이차={(wallTopY - info.GroundWorldY):F3}유닛(상한 {_clonedConfig.stepUpMaxHeight:F2}).");
+                            $"높이차={(wallTopY - info.GroundWorldY):F3}유닛(상한 {_clonedConfig.stepUpMaxHeights:F4} H = " +
+                            $"{_clonedConfig.ResolveStepUpMaxHeightWorld(bb.CharacterHeightWorld):F2}유닛).");
                         Assert.AreEqual(DockHandle, wallHandle, $"{LogPrefix} 감지된 턱이 Dock이 아닙니다.");
                     }
                     _intent.StepUpRequested = true;

@@ -26,6 +26,9 @@ namespace StickMate.Tests.PlayMode
     ///     16 → 0.831유닛 / 48 → 1.613(macOS 기본) / 49 → 1.637(이 머신) / 80 → 2.395 / 128 → 3.568
     /// 이고, 고쳤다고 믿었던 절대값 stepUpMaxHeight=2.4는 **tilesize 81부터 낙차를 못 덮는다**
     /// (교차점 80.2 — 2026-08-30 R3 M2 정정. 아래 "네거티브 컨트롤" 절 참고).
+    /// ★ 2026-09-02: 그 설정값은 신장 배수 <c>stepUpMaxHeights</c>(1.0551 H)가 되어 교차점도
+    /// 배포 배율을 따라 움직인다(0.75에서 약 55.6pt). 이 파일은 교차점을 숫자로 적지 않고
+    /// 그 자리에서 유도하므로 아래 로직은 그대로 유효하다.
     /// 즉 Dock 아이콘을 크게 쓰는 사용자에게는 그 버그가 처음부터 끝까지 그대로 남아 있었고,
     /// 테스트가 0건이라 아무도 몰랐다.
     ///
@@ -68,13 +71,13 @@ namespace StickMate.Tests.PlayMode
     /// 네거티브 컨트롤
     /// ============================================================================
     /// AutoWanderController.ResolveStepUpMaxHeight()를 예전 코드
-    /// (`Cfg(c =&gt; c.stepUpMaxHeight, 1.5f)`)로 되돌리면 (A)의 tilesize 128과 (B)가 즉시 실패한다.
+    /// (설정값만 쓰는 형태)로 되돌리면 (A)의 tilesize 128과 (B)가 즉시 실패한다.
     /// 되돌리지 않고도 같은 산술을 확인할 수 있게, (A)는 "설정 절대값 단독으로 덮는가"를 **양방향으로**
     /// 단언한다(교차점 아래 tilesize에서는 덮고, 위에서는 못 덮는다). 그 단언이 통과한다는 것은
     /// 이 테스트가 **유도 로직이 없으면 반드시 빨간불**이라는 뜻이다.
     ///
     /// ★ 2026-08-30 R3 M2 정정 — 그 교차점은 tilesize 80이 아니라 **80.2**다.
-    ///     stepUpMaxHeight 2.400유닛 ÷ (24/982 유닛/pt) = 98.2pt,  낙차(pt) = tilesize + 18
+    ///     설정 상한 2.400유닛(당시) ÷ (24/982 유닛/pt) = 98.2pt,  낙차(pt) = tilesize + 18
     ///     ⇒ 79 → 2.3707 ✔덮음 / 80 → 2.3951 ✔덮음 / **81 → 2.4196 ✘못덮음**
     /// 최초 작성본의 `if (tileSizePoints &gt;= 80f)` 게이트는 한 칸 일러서 tilesize 80에서
     /// `configured(2.400) &lt;= measuredDrop(2.39511)`을 요구했고 그대로 실패했다.
@@ -216,12 +219,14 @@ namespace StickMate.Tests.PlayMode
             Assert.IsTrue(netFound, $"{LogPrefix} 바닥 안전망 조각의 상단을 조회하지 못했습니다.");
 
             float measuredDrop = dockTopY - netTopY;
-            float configured = _clonedConfig.stepUpMaxHeight;
+            // ★ 2026-09-02 — 설정값이 신장 배수가 됐다. 프로덕션 리졸버로 월드 유닛을 만들어 쓴다.
+            float configured = _clonedConfig.ResolveStepUpMaxHeightWorld(bb.CharacterHeightWorld);
             float resolved = DockGeometry.ResolveStepUpMaxHeight(configured, measuredDrop);
 
             Debug.Log($"{LogPrefix} tilesize={tileSizePoints:F0}pt — 기대 낙차 {expectedDrop:F4}유닛, " +
                 $"실측 낙차 {measuredDrop:F4}유닛(Dock 상단 {dockTopY:F4} − 안전망 상단 {netTopY:F4}), " +
-                $"stepUpMaxHeight 설정값 {configured:F3} → 유도값 {resolved:F4} (여유 {(resolved - measuredDrop):F4}), " +
+                $"되올라가기 설정값 {_clonedConfig.stepUpMaxHeights:F4} H → 월드 {configured:F3} → 유도값 {resolved:F4} " +
+                $"(여유 {(resolved - measuredDrop):F4}), " +
                 $"매달리기 최소 낙차 {bb.LedgeHangMinDropDepth:F4}, 배율 {_clonedConfig.ResolveCharacterScale():F3}");
 
             // 전제 — 배치가 의도한 낙차를 실제로 만들어 냈다(좌표 왕복 오차 허용 0.02유닛).
@@ -264,7 +269,7 @@ namespace StickMate.Tests.PlayMode
                 Assert.Less(configured, measuredDrop,
                     $"{LogPrefix} tilesize {tileSizePoints:F0}pt(교차점 {crossoverTileSizePoints:F2}pt보다 위)에서 " +
                     $"설정 절대값({configured:F3})이 낙차({measuredDrop:F3})를 이미 덮고 있습니다 — " +
-                    "이 테스트의 전제(M3의 근거)가 바뀌었습니다. stepUpMaxHeight가 크게 올라갔다면 " +
+                    "이 테스트의 전제(M3의 근거)가 바뀌었습니다. stepUpMaxHeights가 크게 올라갔다면 " +
                     "'일반 창까지 순간이동 등반' 쪽을 다시 검토하세요.");
             }
             else if (soloCoverageMargin > CrossoverAmbiguityBandUnits)
@@ -272,7 +277,7 @@ namespace StickMate.Tests.PlayMode
                 Assert.Greater(configured, measuredDrop,
                     $"{LogPrefix} tilesize {tileSizePoints:F0}pt(교차점 {crossoverTileSizePoints:F2}pt보다 아래)에서 " +
                     $"설정 절대값({configured:F3})이 낙차({measuredDrop:F3})를 못 덮습니다 — " +
-                    "낙차 유도식이나 stepUpMaxHeight가 바뀌었습니다(교차점 자체를 재검산할 것).");
+                    "낙차 유도식이나 stepUpMaxHeights가 바뀌었습니다(교차점 자체를 재검산할 것).");
             }
             else
             {
@@ -324,9 +329,10 @@ namespace StickMate.Tests.PlayMode
             //    이 전제가 성립할 때에만 아래의 등반 성공이 곧 "유도가 동작했다"의 증거가 된다.
             if (requireDerivationWarning)
             {
-                Assert.Greater(drop, _clonedConfig.stepUpMaxHeight,
-                    $"{LogPrefix} 전제 실패 — tilesize {tileSizePoints:F0}의 낙차({drop:F3})가 stepUpMaxHeight 설정값" +
-                    $"({_clonedConfig.stepUpMaxHeight:F3}) 이하입니다. 이 상태로는 등반이 성공해도 " +
+                float configuredWorld = _clonedConfig.ResolveStepUpMaxHeightWorld(bb.CharacterHeightWorld);
+                Assert.Greater(drop, configuredWorld,
+                    $"{LogPrefix} 전제 실패 — tilesize {tileSizePoints:F0}의 낙차({drop:F3})가 되올라가기 설정값" +
+                    $"({_clonedConfig.stepUpMaxHeights:F4} H = {configuredWorld:F3}유닛) 이하입니다. 이 상태로는 등반이 성공해도 " +
                     "M3의 유도 경로를 지났다는 증거가 되지 못합니다(테스트 무의미).");
             }
 
@@ -390,7 +396,8 @@ namespace StickMate.Tests.PlayMode
                 $"(설정 {_clonedConfig.wanderEdgeStopDistance:F3}), " +
                 $"시작 위치 x={startX:F3}(걷기 한계 {walkableRightX:F3}에서 {StartInsetFromScreenEdgeUnits:F2} 안쪽, " +
                 $"Dock 오른쪽 모서리 {_dockRightWorldX:F3}), " +
-                $"stepUpMaxHeight 설정값 {_clonedConfig.stepUpMaxHeight:F3}(이 값만으로는 못 덮는다), " +
+                $"되올라가기 설정값 {_clonedConfig.stepUpMaxHeights:F4} H = " +
+                $"{_clonedConfig.ResolveStepUpMaxHeightWorld(bb.CharacterHeightWorld):F3}유닛(이 값만으로는 못 덮는다), " +
                 $"stepUpChance={_clonedConfig.stepUpChance:F2}, 시드={FixedWanderSeed}");
 
             bool backOnDock = false;

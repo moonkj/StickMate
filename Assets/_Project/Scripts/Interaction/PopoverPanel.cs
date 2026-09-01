@@ -29,7 +29,7 @@ namespace StickMate.Interaction
     /// <b>차단막(BoxCollider2D)은 열려 있는 동안, 패널 사각형만</b> 덮고 닫히는 즉시 꺼진다 —
     /// 그 밖의 화면은 100% 클릭관통 그대로다(비침해).
     /// </summary>
-    public abstract class PopoverPanel : MonoBehaviour
+    public abstract class PopoverPanel : MonoBehaviour, IExclusiveSurface
     {
         // ==================== 공통 상수 (32-2 / 32-3) ====================
 
@@ -124,6 +124,11 @@ namespace StickMate.Interaction
         private Vector2 _testCursor;
 
         public bool IsOpen => _open;
+
+        // ★ 배타 표면 등록(2026-09-01) — 이 한 벌로 FocusSessionPopover/TodoBoardPopover/
+        //   ActionCommandPopover 셋이 전부 등록된다. 명시적 구현이라 공개 API는 그대로다.
+        bool IExclusiveSurface.IsSurfaceOpen => _open;
+        void IExclusiveSurface.CloseSurface(string reason) => Close(reason);
 
         /// <summary>지금까지 누적된 무입력 시간(초) — 진단/테스트 창구.</summary>
         public float IdleSecondsForTests => _idleSeconds;
@@ -231,6 +236,7 @@ namespace StickMate.Interaction
 
         protected virtual void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.UiWindows);   // [스톨구간] 계측
             if (!_open) return;
 
             // ★★ 절대 불변 원칙 2(비침해) — 전체화면 게임이 감지되면 즉시 거둔다.

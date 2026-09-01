@@ -355,6 +355,26 @@ namespace StickMate.Tests.EditMode
         }
 
         [Test]
+        public void 실제_렌더_콜백이라는_독립_계기가_함께_찍힌다()
+        {
+            // ★ 2026-09-01 계기 정직성 라운드. willCurrentFrameRender는 네이티브 바인딩이 없는
+            //   **순수 산술**(Time.frameCount % renderFrameInterval == 0)이라 "실제로 그렸는가"의
+            //   증거가 될 수 없다 — 그것으로 거른 표본 수가 interval에 비례하는 것은 동어반복이다.
+            //   그래서 계획이 아니라 사건을 세는 세 번째 계기가 반드시 함께 있어야 한다.
+            string source = ReadScript("Platform", "FramePacing.cs");
+
+            Assert.IsTrue(source.Contains("Camera.onPostRender"),
+                "실제 렌더 콜백 계기가 사라졌다 — 그러면 renderedFrameCount가 거짓말할 때 " +
+                "그것을 반증할 수단이 이 앱에 하나도 남지 않는다.");
+            Assert.IsTrue(source.Contains("실측 렌더 콜백"),
+                "요약 로그에서 실측 렌더 콜백 표기가 사라졌다 — 세 계기를 한 줄에 나란히 찍지 않으면 " +
+                "사람이 불일치를 놓친다(이 저장소가 실제로 여러 라운드를 날린 방식이다).");
+            Assert.IsTrue(source.Contains("cam.targetTexture != null"),
+                "오프스크린 카메라를 거르는 가드가 사라졌다 — 초상화 스테이지가 렌더텍스처에 그리면 " +
+                "화면에 제출되지 않은 프레임이 '렌더됨'으로 잘못 잡힌다.");
+        }
+
+        [Test]
         public void GPU_점유는_msx제출의_곱으로_찍힌다()
         {
             // ★ 이 라운드가 줄이는 것은 ms/프레임이 **아니다** — 한 장을 그리는 비용은 그대로이고

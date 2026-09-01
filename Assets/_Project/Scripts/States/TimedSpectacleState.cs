@@ -58,7 +58,8 @@ namespace StickMate.States
             // 방어적 엣지 케이스 — 트리거 측이 미리 개수를 확인하므로 정상 경로에서는 발생하지 않는다).
             if (!string.IsNullOrEmpty(text))
             {
-                _ = new DialogueIntent(context, id => text);
+                // 종류=Reaction: 알림성 대사(투두/포모도로 등)라 상태가 끝나도 사실이 유지된다.
+                _ = new DialogueIntent(context, id => DialogueLine.React(text));
             }
         }
 

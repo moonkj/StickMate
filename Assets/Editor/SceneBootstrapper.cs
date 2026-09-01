@@ -8,6 +8,7 @@ using StickMate.Core;
 using StickMate.Dialogue;
 using StickMate.Interaction;
 using StickMate.Platform;
+using StickMate.States;
 
 namespace StickMate.EditorTools
 {
@@ -99,13 +100,42 @@ namespace StickMate.EditorTools
         // 관절에서 둥근 끝끼리 자연스럽게 겹쳐 매끄럽게 이어진다는 점이다. 우리가 계속 고생했던
         // "관절이 나눠져 보임"/"검은 뭉치" 문제는 이 스타일에서는 저절로 해결된다 — 오히려 관절 부위가
         // 살짝 뭉쳐 보이는 게 정상이고 자연스럽다(리더 명시).
-        // 선 두께 일괄 축소 배율(2026-08-28 사용자 피드백 "사이즈도 너무 커" 대응 라운드).
-        // 카메라 orthographicSize를 5 -> 12로 키워 캐릭터가 화면에서 약 2.4배 작아졌는데(아래
-        // OrthographicSize 상수 문서 참고), 선 두께를 그대로 두면 상대적으로 굵어져 작은 캐릭터가
-        // 검은 뭉치처럼 뭉개져 보인다. 축소 후 화면상 획 두께가 약 2.5~3.0 포인트가 되도록 잡은 값이다
-        // (리더 지시: "너무 얇으면 안 보이니 화면상 2~3px 정도는 유지"). 계산: 창 높이 846pt /
-        // (2*12 유닛) = 35.25 pt/유닛 이므로 0.11*0.7*35.25 ~= 2.7pt.
-        private const float LineWidthScale = 0.7f;
+        // ════════════════════════════════════════════════════════════════════════════════
+        // 선 두께 일괄 배율 — 2026-09-01 사용자 신고 "몸의 선 자체가 얇아서 그런거 같음" 대응
+        // ════════════════════════════════════════════════════════════════════════════════
+        // [이력] 0.7은 2026-08-28에 정해졌다. 카메라 orthographicSize를 5 -> 12로 키워 캐릭터가 화면에서
+        // 약 2.4배 작아졌을 때, 선 두께를 그대로 두면 작은 캐릭터가 검은 뭉치처럼 뭉개져 보인다는
+        // 판단으로 줄인 값이다. 근거는 **화면상 절대 크기**였다(리더 지시 "화면상 2~3pt는 유지",
+        // 0.11 × 0.7 × 35.25 ≒ 2.7pt).
+        //
+        // [무엇이 잘못됐나] 그 절대 기준이 곧 원인이었다. 캐릭터는 2.4배 작아졌는데 획은 "2~3pt"라는
+        // 고정 목표에 묶여 있었으므로, **획이 캐릭터를 따라 줄지 않고 캐릭터만 혼자 커진 셈**이 됐다.
+        // 그림체에서 획 두께는 화면 크기가 아니라 **캐릭터 대비 비율**로 읽힌다 — 그래서 사용자에게는
+        // "선이 얇다"로 보였다.
+        //
+        // [실측] 참고 이미지(Alan Becker 스틱맨) 3장·인물 3명을 색 마스크 + 거리변환으로 직접 쟀다:
+        //     빨강  머리 잉크 지름 166px, 획 36.8px -> 22.2%
+        //     초록  머리 잉크 지름 164px, 획 36.8px -> 22.4%
+        //     노랑  머리 잉크 지름 148px, 획 33.5px -> 22.6%
+        //   => 세 인물 모두 **획 = 머리 잉크 지름의 22.3% ± 0.2%**. 사진마다 흔들리지 않는다.
+        //   우리(배율 0.75 프리팹 실측)는 팔 14.7% / 몸통 14.9% / 다리 16.3%, 평균 15.3%였다.
+        //   22.3 / 15.3 = 1.4934  ->  0.7 × 1.4934 = 1.045.
+        //
+        // ★ 머리 "잉크" 지름은 2R이 아니라 **2R + 링 두께**다(CreateFilledDisc 문서의 [R−W/2, R+W/2]
+        //   띠). 2R로 나누면 우리 비율이 실제보다 굵게 나와 "이미 충분하다"는 오판이 나온다 —
+        //   이 라운드에서 실제로 한 번 그렇게 틀렸다.
+        //
+        // ★★ [이 값을 올리기 전에 반드시 곡선화가 되어 있어야 한다] 0.7로 후퇴한 그 "검은 뭉치"는
+        //   두께 자체가 아니라 **각진 관절 안쪽에 잉크가 겹쳐 뭉치는 것**이 정체였다. 참고 이미지가
+        //   22%인데도 안 뭉개지는 이유는 팔다리가 곡선이라 그 겹침이 없기 때문이다.
+        //   States/LimbCurveRenderer.cs가 무릎/팔꿈치를 원호로 갈아내 그 원인을 제거한 뒤라야
+        //   이 값이 안전하다. 곡선화를 되돌리면 이 값도 함께 되돌려야 한다.
+        //
+        // 결과(배율 0.75 = 출하 기본): 팔 2.76pt / 몸통 3.04pt / 다리 3.32pt, 평균이 머리 지름의 22.3%.
+        // 화면상 최소 두께 하한(MinStrokeScreenPoints)이 걸리기 시작하는 배율도 함께 내려간다
+        // (팔 0.81 -> 0.54): 예전에는 **출하 기본 배율 0.75에서 이미 팔이 하한에 눌려 있어**
+        // "팔이 몸통보다 얇다"는 의도가 사실상 사라져 있었다(프리팹 실측 0.056738 = 정확히 2.00pt).
+        private const float LineWidthScale = 1.045f;
 
         // ★ 2026-08-29 크기 배율 도입 — 아래 값들은 전부 **배율 1.0 기준**이다(Baseline 접두사).
         // 실제로 쓰이는 값은 BuildStickmanPrefab이 StickConfig.characterScale을 곱해 만든 지역 변수다.
@@ -115,9 +145,63 @@ namespace StickMate.EditorTools
         private const int LineCapVertices = 8; // 끝/모서리를 확실히 둥글게(레퍼런스 스타일의 round cap).
         private const int HeadRingSegments = 24; // 머리 테두리 링 근사에 쓰는 선분 개수(24면 육안으로 매끈한 원).
 
-        // 머리 테두리(검은 링) 두께 — 팔다리 획보다 약간 얇게 잡아 머리가 지나치게 두꺼워 보이지 않게
-        // 한다(리더 지시: "팔다리 선 두께와 비슷하거나 약간 얇게"). 위 LineWidthScale이 함께 곱해진다.
-        private const float BaselineHeadOutlineWidth = 0.09f * LineWidthScale;
+        // 머리 테두리 링 두께.
+        //
+        // ★ 2026-09-01 — **LineWidthScale에서 분리했다**(그전에는 0.09f * LineWidthScale였다).
+        //
+        // 왜: 이 값은 더 이상 "테두리 두께"가 아니라 **머리의 바깥 반경을 정하는 값**이다.
+        // 2026-09-01 P1에서 머리를 잉크색으로 꽉 채운 뒤(HeadFill), 링은 채움과 같은 색이라
+        // 테두리로 보이지 않는다 — 링이 하는 일은 머리 실루엣을 R에서 R + W_ring/2 까지 넓히는 것뿐이다
+        // (CreateFilledDisc 문서의 [R−W/2, R+W/2] 띠). 따라서 예전 규칙 "팔다리 획과 비슷하거나
+        // 약간 얇게"는 링이 진짜 테두리였던 시절의 규칙이고, 지금 그 규칙을 지키면
+        // **획을 굵게 할 때마다 머리가 같이 커진다**.
+        //
+        // 그것이 왜 나쁜가: 획 두께의 목표 자체가 "머리 지름 대비 22.3%"인데(LineWidthScale 문서),
+        // 분모인 머리가 함께 커지면 아무리 굵혀도 비율이 따라오지 않는다(실측: 링을 같이 키우면
+        // 배율 0.75에서 평균 21.5%에서 멈추고, 분리하면 정확히 22.3%에 닿는다). 게다가 머리 크기는
+        // 신장/머리 비율과 초상화 액자 프레이밍에 직접 얹혀 있어 두께 조정의 부작용으로 움직여선 안 된다.
+        //
+        // 값 0.063은 분리 직전의 실효값(0.09 × 0.7)과 정확히 같다 — 즉 이 라운드에서 **머리 크기는
+        // 1pt도 변하지 않는다**. 치수 계약 C1(StickmanMetrics.HeadRadius)은 링의 **경로 반경**을 읽으므로
+        // 애초에 이 폭과 무관하다(액세서리 28종 리그/초상화 액자 비율 전부 무영향).
+        //
+        // ============================================================================
+        // ★★ 2026-09-02 — 이 값은 **현재 출하 배율에서 실제로 쓰이지 않는다**(반드시 읽을 것)
+        // ============================================================================
+        // 조형 담당이 "명목 0.063이 아니라 0.0756501로 굳어 있다"고 보고했고, 디버거가 재현했다.
+        // 정확한 사실은 이렇다 — **명목이 바뀐 게 아니라 하한에 눌려 있다**:
+        //
+        //   ScaledStrokeWidth(0.063, 0.75) = max(0.063 × 0.75, 2pt/35.25)
+        //                                  = max(0.047250, 0.0567376) = **0.0567376**  <- 하한이 이긴다
+        //   구워진 프리팹 실측(Stickman.prefab / HeadOutline widthCurve) = **0.056737587** (일치)
+        //
+        // 즉 `0.063 × 배율`이라고 읽으면 틀린다. 하한이 이기는 구간은 **배율 ≤ 0.90060**이고
+        // (0.063 × s ≥ 0.0567376 ⟺ s ≥ 0.90060), 현재 출하 배율 0.75는 그 안에 있다.
+        // 런타임에서 StickmanAgent.ApplyStrokeWidthsForScale이 `구워진 값 × (배율/0.75)`로 다시
+        // 대입하므로, **런타임이 체감하는 실효 명목은 0.0567376 / 0.75 = 0.0756501**이다.
+        //
+        // ★ 그렇다고 이 상수를 0.0756501로 바꾸면 안 된다 — 디버거가 float32로 검산했다:
+        //     bodyScale 0.75  : 0.0756501 × 0.75 = 0.05673758 < 하한 → max가 하한을 고른다.
+        //                       결과 0.056737587 = **지금과 비트 단위로 동일**(그림 무변화, 여기까진 맞다)
+        //     bodyScale 0.9006: 0.0567378 → 0.0681305  (**+20.1%**)
+        //     bodyScale 1.00  : 0.063     → 0.0756501  (**+20.1%**)
+        //   즉 "위험 0"은 **지금 구워진 배율에서만** 참이다. StickConfig.characterScale을 올리고
+        //   [StickMate/Resize Stickman]을 누르는 것은 지원되는 워크플로이므로(그 메뉴가 존재하는
+        //   이유가 그것이다) 이 조건은 언제든 깨진다. 머리 잉크 바깥 반경 = R + W/2 이므로 배율 1.0
+        //   재굽기에서 머리가 0.2515 → 0.2578유닛(**+2.5% 반경 / +5.1% 면적**)으로 커진다.
+        //   그것은 이 저장소가 실측으로 **기각한 대안**("머리를 키운다", docs/CHARACTER_FORM_SPEC 2-5)이
+        //   상수 변경의 부작용으로 되살아나는 것이다. 게다가 "하한이 머리를 부풀리고 있다"는 것 자체가
+        //   지금 조형 담당이 **결함으로 지목한** 사항인데, 이 변경은 그 부풀림을 명목에 굳혀 넣는다.
+        //
+        // 정리: **지금 고칠 것은 이 숫자가 아니라 "0.063이 그대로 쓰인다"는 오해**이고, 그래서
+        // 값을 두고 이 주석을 남긴다. 진짜로 정합을 원한다면 선택지는 둘이며 **둘 다 재굽기가 필요해
+        // 리더 승인 사항**이다:
+        //   (A) 머리 링을 획 하한에서 **면제**한다(ScaledStrokeWidth 대신 순수 비례).
+        //       링은 채움과 같은 색이라 "보여야 하는 선"이 아니므로 하한의 목적에 해당하지 않는다.
+        //       배율 0.35에서 머리가 명목으로 돌아온다(조형 담당의 "4.585 머리" 계산과 같은 방향).
+        //   (B) 배율 0.75 전용 상수로 굳힌다(= 0.0756501). 위 이유로 **권하지 않는다.**
+        //   어느 쪽이든 배율 0.35 A/B 실기 캡처가 먼저다 — 산술로는 트레이드오프가 안 풀린다.
+        private const float BaselineHeadOutlineWidth = 0.063f;
         // 머리 시각 반경. 물리 CircleCollider2D.radius(0.4, 아래 참고)와는 별개 값 — 판정 크기는 무변경.
         // ★ 이 값은 "완성된 머리의 바깥 반경"이다. 채움(HeadFill)과 링(HeadOutline)이 **둘 다** 이 값을
         // 받아 각자 경로/폭을 유도하므로(CreateFilledDisc / CreateRing), 여기를 바꾸면 둘이 함께 움직인다.
@@ -468,9 +552,12 @@ namespace StickMate.EditorTools
             added += EnsureComponent<CharacterFxRenderer>(root);
             added += EnsureComponent<CharacterPetRenderer>(root);
             added += EnsureComponent<LongCapeTripDirector>(root);
-            // 2026-08-31 구석 호버 패널(크기 다이얼 + 미리보기 카드). 위 3종과 같은 이유로 여기에도 넣는다 —
-            // 34-9 #10이 미리 경고한 "신규 컴포넌트가 프리팹에 없어 런타임에 존재하지 않음" Blocker 방지.
-            added += EnsureComponent<CornerHoverPanel>(root);
+            // ★ 2026-09-01 구석 호버 패널 삭제(사용자 지시 "코너호버패널자체를 없애줘").
+            //   여기 있던 EnsureComponent<CornerHoverPanel>(root) 한 줄을 지웠다. 크기 조정은 설정창
+            //   슬라이더가, 미리보기는 캐릭터 정보창의 초상화가 대체한다.
+            //   ※ 그 클래스가 들고 있던 "저장 배율 복원"과 "CharacterScaleController.Tick() 상시 구동"은
+            //     CharacterProgressionDirector로 이관됐다(그쪽은 위에서 이미 EnsureComponent된다).
+            //     이관하지 않았다면 사용자가 고른 크기가 재시작마다 사라졌을 것이다.
             // 2026-09-01 설정창(docs/UX_FLOW.md 35-1). 위와 <b>완전히 같은 이유</b>로 여기에도 넣는다 —
             // 이 한 줄이 없으면 정보창 헤더의 [설정]과 단축키 ⌃⌥⌘,가 경고만 남기고 아무 일도 하지 않는다
             // (33-9 #10 / 34-9 #10 / 36-13 #11이 세 번 연속으로 경고한 그 함정).
@@ -550,6 +637,33 @@ namespace StickMate.EditorTools
             }
             AssetDatabase.SaveAssets();
             return config;
+        }
+
+        /// <summary>
+        /// ★ 캐릭터 <b>지오메트리만</b> 다시 굽는다 — 프리팹 + 씬은 force, <b>config는 보존</b>
+        /// (2026-09-01 곡선화/두께 라운드에서 신설).
+        ///
+        /// <para><b>왜 BuildAll --force가 아닌가</b>: 그쪽은 <see cref="CreateOrLoadConfig"/>에도
+        /// force를 넘겨 <c>DefaultStickConfig.asset</c>의 튜닝 필드를 코드 기본값으로 되돌린다.
+        /// 획 두께나 마디 길이 같은 <b>소스 상수</b>를 바꿨을 때 필요한 것은 프리팹 재생성뿐인데,
+        /// 그 김에 남의 튜닝값까지 되돌리면 무관한 변경이 diff에 섞이고 병행 작업과 충돌한다.</para>
+        ///
+        /// <para><b>왜 씬까지 다시 굽는가</b>: 프리팹을 다시 저장하면 모든 GameObject의 fileID가
+        /// 재할당되어 Main.unity의 PrefabInstance 오버라이드가 고아가 된다(BUG-SW-M3).
+        /// 프리팹과 씬은 언제나 함께 굽는다.</para>
+        ///
+        /// 배치: <c>-executeMethod StickMate.EditorTools.SceneBootstrapper.RebuildCharacterGeometry</c>
+        /// </summary>
+        [MenuItem("StickMate/Rebuild Character Geometry (프리팹+씬만, config 보존)")]
+        public static void RebuildCharacterGeometry()
+        {
+            StickConfig config = CreateOrLoadConfig(force: false);
+            GameObject prefab = BuildStickmanPrefab(config, force: true);
+            BuildMainScene(prefab, config, force: true);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log("[SceneBootstrapper] RebuildCharacterGeometry 완료 — " +
+                PrefabAssetPath + ", " + SceneAssetPath + " (config는 보존: " + ConfigAssetPath + ")");
         }
 
         [MenuItem("StickMate/Build Stickman Prefab")]
@@ -988,16 +1102,11 @@ namespace StickMate.EditorTools
             root.AddComponent<TodoBoardPopover>();
             root.AddComponent<ActionCommandPopover>();
 
-            // ★ 화면 좌하단 구석 호버 패널 — 크기 다이얼 + "캐릭터만 보여주는" 미리보기 카드
-            // (docs/UX_FLOW.md 34-4~34-6). 같은 GameObject의 StickmanAgent/CharacterInfoWindow를
-            // Awake()에서 직접 찾으므로 SerializedObject 배선이 필요 없다.
-            // ★★ 이 한 줄을 빠뜨리면 클래스가 런타임에 아예 존재하지 않는다 — 33-9 #10이 경고했고
-            //    실제로 Blocker B1로 터졌던 바로 그 함정이다(34-9 #10). 위 CharacterInfoWindow보다
-            //    <b>뒤에</b> 붙여야 Awake의 GetComponent<CharacterInfoWindow>()가 찾을 수 있다.
-            root.AddComponent<CornerHoverPanel>();
+            // ★ 2026-09-01 구석 호버 패널 삭제(사용자 지시). 여기 있던 AddComponent<CornerHoverPanel>()을
+            //   지웠다. docs/UX_FLOW.md 34절은 설계 기록으로 남아 있으나 ⛔ 폐기 고지가 붙어 있다.
 
             // ★ 설정창(35-1). CharacterInfoWindow와 같은 이유로 [SerializeField] _config 배선이 필요하고,
-            //   같은 GameObject의 CharacterInfoWindow/CornerHoverPanel/부채꼴을 Awake/지연 조회로 찾으므로
+            //   같은 GameObject의 CharacterInfoWindow/부채꼴을 Awake/지연 조회로 찾으므로
             //   <b>그것들보다 뒤에</b> 붙인다(배타 모달 정리가 그 참조를 쓴다).
             var settingsWindow = root.AddComponent<SettingsWindow>();
             var settingsSo = new SerializedObject(settingsWindow);
@@ -1069,12 +1178,19 @@ namespace StickMate.EditorTools
             // 이러면 (a) 링 안쪽 빈 공간으로는 1px도 침범하지 않고, (b) 몸통 획이 링 두께 구간을 완전히
             // 가로질러 겹치므로 목과 머리 사이에 틈도 생기지 않는다.
             //
-            // ★ 2026-09-01 P1 이후 이 보정은 **더 이상 필요하지 않다**(얼굴이 채워져 침범해도 안 보인다).
-            //   그래도 이번 라운드에는 건드리지 않는다 — 값이 바뀌면 프리팹 지오메트리가 함께 움직여
-            //   "눈 삭제 + 머리 채움"의 회귀 판정에 무관한 변화가 섞인다. 실제로 문제가 되는 것은
-            //   lineWidth가 굵어지는 P2(두께 전환)이므로(그때 이 식이 음수로 커져 목이 짧아진다)
-            //   `torsoTopOverlapped = torsoTopY` 단순화는 P2에서 한 번에 한다(docs/UX_FLOW.md 38-4-1).
-            float torsoTopOverlapped = torsoTopY + (headOutlineWidth - lineWidth) * 0.5f;
+            // ★ 2026-09-01 P2 — **예고된 대로 여기서 단순화한다**(바로 위 문단이 "P2에서 한 번에 한다"고
+            //   적어 둔 그 작업이다). 이번 라운드가 그 P2(두께 전환)다.
+            //
+            //   왜 지금이어야 하나: 위 식은 (headOutlineWidth − lineWidth)/2 라 몸통 획이 굵어질수록
+            //   **음수로 커진다**. 이번 라운드의 두께 상향(LineWidthScale 0.7 -> 1.045)을 넣으면
+            //   배율 0.75에서 −0.0005 -> −0.0147유닛(약 0.5pt)이 되어 목이 눈에 띄게 짧아진다.
+            //   즉 이 단순화를 같이 하지 않으면 "굵게 했더니 목이 사라졌다"가 된다.
+            //
+            //   왜 안전한가: 이 보정의 목적은 "몸통 선이 **빈** 머리 링 안쪽으로 침범해 보이는 것"을
+            //   막는 것이었다. P1에서 머리가 잉크로 꽉 찼으므로(HeadFill) 몸통이 머리 안으로 얼마나
+            //   들어가든 같은 색에 묻혀 보이지 않는다. 오히려 끝점을 머리 밑변에 딱 붙이면 둥근 캡이
+            //   lineWidth/2 만큼 머리 안으로 겹쳐 들어가 목과 머리 사이 틈이 구조적으로 불가능해진다.
+            float torsoTopOverlapped = torsoTopY;
             float torsoCenterY = (torsoTopOverlapped + torsoBottomY) * 0.5f;
             float torsoHalf = (torsoTopOverlapped - torsoBottomY) * 0.5f;
             CreateLineSegmentVisual(root.transform, "Torso", new Vector3(0f, torsoCenterY, 0f),
@@ -1186,6 +1302,17 @@ namespace StickMate.EditorTools
                 upperMinAngle: -ShoulderSwingBackLimitDegrees, upperMaxAngle: ShoulderSwingForwardLimitDegrees,
                 lowerMinAngle: ElbowBendSign * MinJointBendDegrees, lowerMaxAngle: MaxJointBendDegrees,
                 outline, mass: 0.06f, gravityScale: gravityScale, sortingOrder: 2, limbLayer: limbLayer, agent: agent);
+
+            // ★ 2026-09-01 — 무릎/팔꿈치의 각진 모서리를 원호로 갈아낸다(States/LimbCurveRenderer.cs).
+            //   **반드시 CreateLimb 네 번 뒤**에 있어야 한다: 아래 BakeEditorPreview()가 이 시점의
+            //   계층을 실측해 프리팹에 곡선을 구워 넣기 때문이다(위 마디/아래 마디와 그 길이).
+            //
+            //   왜 프리팹에까지 굽는가: 런타임 LateUpdate가 어차피 매번 다시 계산하므로 기능상으로는
+            //   없어도 된다. 그래도 굽는 이유는 (a) 첫 프레임에 직선이 한 번 스치는 것을 없애고,
+            //   (b) 에디터에서 프리팹을 열었을 때 실제 그림과 같은 것이 보이며,
+            //   (c) 프리팹 자산 자체가 "곡선이 실제로 계산됐다"의 증거가 되어 회귀를 눈으로 잡을 수
+            //   있기 때문이다. 굽기와 런타임이 **같은 메서드**를 쓰므로 두 벌이 어긋날 수 없다.
+            root.AddComponent<LimbCurveRenderer>().BakeEditorPreview();
 
             GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, PrefabAssetPath, out bool success);
             Object.DestroyImmediate(root);

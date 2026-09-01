@@ -534,6 +534,7 @@ namespace StickMate.Interaction
 
         private void LateUpdate()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Renderers);   // [스톨구간] 계측
             if (_mode == Mode.None) return;
 
             float dt = Time.deltaTime;
@@ -543,7 +544,18 @@ namespace StickMate.Interaction
             float alpha = 1f;
             if (_mode == Mode.Outro)
             {
-                float outro = ConfigFloat(c => c.archeryOutroSeconds, 0.75f);
+                // ★ 2026-09-02 (디버거) — 폴백 0.75f는 **처음부터 틀린 사본**이었다. 설정 기본값은
+                //   이 렌더러가 생기기 전부터 0.55이고 0.75였던 적이 없다. 그리고 이 값은
+                //   States/ArcheryState.cs가 사이클 종료를 판정할 때 쓰는 것과 **같은 값**이라,
+                //   한쪽만 0.75로 남으면 Config 없는 경로에서 상태는 flight+0.55에 끝나는데 렌더러는
+                //   0.75에 걷어내 **연출과 상태가 0.2초 어긋난다**(과녁이 이미 끝난 사이클보다 오래
+                //   남는다). 그쪽도 이 라운드에 0.55f로 맞췄다.
+                //
+                // ⚠ 구조적 결함 기록(다음 라운드 대상): 같은 값을 **두 파일이 각자 리터럴로** 들고
+                //   있는 것 자체가 문제다. outro 길이는 사이클의 성질이지 렌더러의 성질이 아니므로,
+                //   상태가 소유하고 렌더러는 통보받는 편이 옳다(BattleChargeRatio가 이미 그 관례다).
+                //   지금 합치지 않는 이유는 이번 라운드 범위가 "폴백 값 정합"이기 때문이다.
+                float outro = ConfigFloat(c => c.archeryOutroSeconds, 0.55f);
                 float t = outro > 0.0001f ? Mathf.Clamp01(_modeTimer / outro) : 1f;
                 alpha = 1f - t;
                 // 과녁이 쪼그라들며 옅어진다(격파 미니게임의 "민망한 퇴장"과 같은 정리 관례).

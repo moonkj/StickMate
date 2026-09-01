@@ -92,33 +92,61 @@ namespace StickMate.Tests.EditMode
         }
 
         // ============================================================================
-        // (2) 두 UI가 <b>같은 문</b>을 지나고, 둘 다 구독자다
+        // (2) 배율을 만지는 UI는 <b>같은 문</b>을 지나고, 구독자이기도 하다
         // ============================================================================
 
+        /// <summary>
+        /// 2026-09-01 구석 호버 다이얼이 삭제되어 배율 UI는 설정창 슬라이더 하나만 남았다. UI가 하나뿐일
+        /// 때도 이 검사를 남기는 이유: <b>다음에 두 번째 UI가 생기는 순간</b>(옛 다이얼이 그랬듯) 같은
+        /// 함정이 그대로 재현되기 때문이다. 문이 하나라는 사실 자체를 잠가 둔다.
+        /// </summary>
         [Test]
-        public void 구석_다이얼과_설정창_슬라이더는_둘_다_컨트롤러를_지나고_둘_다_구독한다()
+        public void 설정창_슬라이더는_컨트롤러를_지나고_변경_이벤트를_구독한다()
         {
-            string corner = ReadProductionFile("CornerHoverPanel.cs");
             string settings = ReadProductionFile("SettingsWindow.cs");
 
-            StringAssert.Contains("CharacterScaleController.Request(", corner,
-                $"{LogPrefix} 구석 다이얼이 단일 소스를 지나지 않습니다.");
             StringAssert.Contains("CharacterScaleController.Request(", settings,
                 $"{LogPrefix} 설정창 슬라이더가 단일 소스를 지나지 않습니다.");
 
-            StringAssert.Contains("StickmanEventBus.CharacterScaleChanged +=", corner,
-                $"{LogPrefix} 구석 다이얼이 배율 변경 이벤트를 구독하지 않습니다 — 설정창에서 바꾼 값을 " +
-                "따라오지 못합니다(원칙 1).");
             StringAssert.Contains("StickmanEventBus.CharacterScaleChanged +=", settings,
-                $"{LogPrefix} 설정창이 배율 변경 이벤트를 구독하지 않습니다 — 다이얼에서 바꾼 값을 " +
-                "따라오지 못합니다(원칙 1).");
+                $"{LogPrefix} 설정창이 배율 변경 이벤트를 구독하지 않습니다 — 다른 경로(저장 복원 등)가 " +
+                "바꾼 값을 따라오지 못합니다(원칙 1).");
 
             // 구독은 <b>반드시</b> 해제된다 — 정적 이벤트가 파괴된 MonoBehaviour를 붙들면 누수다
             // (StickmanEventBus 클래스 문서 3항).
-            StringAssert.Contains("StickmanEventBus.CharacterScaleChanged -=", corner,
-                $"{LogPrefix} 구석 다이얼이 구독을 해제하지 않습니다(정적 이벤트 누수).");
             StringAssert.Contains("StickmanEventBus.CharacterScaleChanged -=", settings,
                 $"{LogPrefix} 설정창이 구독을 해제하지 않습니다(정적 이벤트 누수).");
+        }
+
+        /// <summary>
+        /// ★ 2026-09-01 구석 호버 패널 삭제로 <b>고아가 될 뻔한 두 책임</b>의 잠금.
+        ///
+        /// <para>옛 <c>CornerHoverPanel.Update</c>는 열려 있든 아니든 매 프레임 돌면서 (a) 유예 해제
+        /// <c>Tick()</c>을 몰고 (b) <c>Start</c>에서 저장된 크기를 복원했다. 그 패널을 지울 때 이 둘을
+        /// 함께 옮기지 않으면 <b>조용히</b> 망가진다 — 저장한 크기가 재시작마다 사라지고, 랙돌 중에
+        /// 바꾼 크기는 설정창을 닫는 순간 영영 적용되지 않는다. 둘 다 예외도 로그도 없이 그냥 안 된다.</para>
+        ///
+        /// <para>설정창은 구동자가 될 수 없다 — 그 <c>Update</c>는 <c>if (!_open) return;</c>으로
+        /// 시작한다. 그래서 UI와 무관하게 도는 <c>CharacterProgressionDirector</c>가 주인이다.</para>
+        /// </summary>
+        [Test]
+        public void 저장크기_복원과_유예해제는_UI와_무관한_상시_구동자가_소유한다()
+        {
+            string driver = ReadProductionFile("CharacterProgressionDirector.cs");
+
+            StringAssert.Contains("CharacterScaleController.RestoreFromSaveModel()", driver,
+                $"{LogPrefix} 저장된 캐릭터 크기를 복원하는 곳이 없습니다 — 사용자가 고른 크기가 재시작마다 " +
+                "사라집니다(옛 CornerHoverPanel.RestoreSavedScale의 후임).");
+            StringAssert.Contains("CharacterScaleController.Tick()", driver,
+                $"{LogPrefix} 유예 해제를 매 프레임 모는 곳이 없습니다 — 랙돌/드래그 중에 바꾼 크기가 " +
+                "설정창을 닫는 순간 영영 적용되지 않습니다.");
+
+            // 복원은 <b>저장 파일을 읽은 뒤</b>여야 한다. 순서가 뒤집히면 빈 모델을 복원하게 된다.
+            int load = driver.IndexOf("CharacterSaveStore.Load()", System.StringComparison.Ordinal);
+            int restore = driver.IndexOf("CharacterScaleController.RestoreFromSaveModel()", System.StringComparison.Ordinal);
+            Assert.Greater(restore, load,
+                $"{LogPrefix} 저장 크기 복원이 CharacterSaveStore.Load()보다 먼저 있습니다 — 아직 아무것도 " +
+                "안 읽은 빈 모델을 복원하게 되어 사용자의 크기가 사라집니다.");
         }
 
         // ============================================================================
@@ -129,7 +157,7 @@ namespace StickMate.Tests.EditMode
         public void 랙돌_적용_게이트의_이름은_CharacterScaleController에만_있다()
         {
             // 왜 "상태 목록"이 아니라 <b>게이트의 이름</b>을 스캔하는가: 상태 이름(ThrowTumble/RodeoCursor)은
-            // 구석 패널의 캡션 표(<c>ResolveCaption</c>)에도 정당하게 등장한다 — 그것까지 잡으면 오탐이다.
+            // 캡션/포즈 표에도 정당하게 등장한다 — 그것까지 잡으면 오탐이다.
             // 진짜 복제는 판정 메서드를 통째로 베낄 때 일어나고, 그때 이름이 함께 따라온다.
             //
             // 이 검사가 놓치는 경우(이름을 바꿔 베끼는 것)는 위 (1)이 막는다: 게이트를 아무리 잘 베껴도

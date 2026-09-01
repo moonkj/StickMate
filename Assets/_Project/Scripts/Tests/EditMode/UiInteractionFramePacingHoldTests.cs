@@ -255,24 +255,69 @@ namespace StickMate.Tests.EditMode
             return File.ReadAllText(path);
         }
 
+        // ========================================================================
+        // ★ 2026-09-01 정정 — "열려 있는 동안 무조건 홀드"가 절전을 통째로 죽였다
+        // ========================================================================
+        // 원래 이 자리에는 "정보창 Update()가 <b>무조건</b> 홀드를 갱신한다"를 잠그는 테스트가
+        // 있었다. 그 테스트는 정확히 <b>버그를 잠그고</b> 있었다.
+        //
+        // 실측(사용자 로그, 추측 아님):
+        //   stickmate.log:127   [정보창] 열림   ...  발판 리포트 심장박동 125회 = 125분  ...
+        //   stickmate.log:3125  [정보창] 닫힘
+        //   그 125분간 [FramePacing/적응형] 등급 전이 0회, 활성 등급 체류 100%(정적/정지 0%).
+        //   창을 닫은 직후 전이 재개(구간별 72 -> 114 -> 89 -> 58회), GPU 점유 추정 12~21% ->
+        //   4.3~8.6%(약 2.5배 감소).
+        //
+        // Away(3분 무입력 + 캐릭터 Idle)가 이 홀드를 이기게 돼 있지만, 사용자가 <b>다른 앱에서
+        // 계속 타이핑</b>하면 SecondsSinceUserInput이 3분에 닿지 않는다 — 홀드를 깨는 경로가
+        // 실질적으로 없었다.
+        //
+        // 그래서 조건이 "보인다"에서 "조작 중이다"로 바뀌었고, 이 테스트도 그 반대 방향을 잠근다:
+        // <b>무조건 홀드가 다시 들어오면 실패</b>한다.
+
         [Test]
-        public void 정보창은_열려있는_동안_매프레임_홀드를_갱신한다()
+        public void 정보창_홀드는_열려있음이_아니라_조작중일때만_걸린다()
         {
             string source = ReadScript("Interaction", "CharacterInfoWindow.cs");
 
-            int update = source.IndexOf("private void Update()", StringComparison.Ordinal);
-            Assert.Greater(update, 0, "CharacterInfoWindow.Update()가 사라졌다 — 이 테스트를 갱신하라.");
+            Assert.AreEqual(1, CountOf(source, HoldCall),
+                "정보창의 홀드가 없거나 둘 이상이다 — 하나여야 어느 조건이 진짜인지 알 수 있다.");
 
-            int call = source.IndexOf("FramePacing.HoldActiveForInteraction(", update, StringComparison.Ordinal);
-            Assert.Greater(call, update,
-                "정보창 Update()가 프레임 페이싱 홀드를 갱신하지 않는다 — 창을 읽는 동안 Calm으로 " +
-                "내려갔다가 끌기 시작하는 첫 0.2초가 절반 프레임레이트가 되는 신고 버그가 되살아난다.");
+            int tick = IndexOfOrFail(source, "private void TickFramePacingHold(", 0,
+                "CharacterInfoWindow.TickFramePacingHold()가 사라졌다 — 이 테스트를 갱신하라.");
+            int call = IndexOfOrFail(source, HoldCall, tick,
+                "정보창의 홀드가 TickFramePacingHold() 안에 있지 않다.");
+            int policy = IndexOfOrFail(source, "FramePacingPolicy.ShouldHoldForSurface(", tick,
+                "정보창이 플랫폼 중립 판정 함수를 쓰지 않고 자기만의 조건을 만들었다 — 창마다 규칙이 " +
+                "갈리면 다음 사람이 어느 쪽이 진짜인지 알 수 없다.");
+            Assert.Less(policy, call, "홀드가 판정보다 앞이다 — 조건 없는 홀드와 같다.");
 
-            // 홀드는 '창이 열려 있을 때만'이어야 한다 — 닫힌 창이 60fps를 붙잡으면 안 된다.
-            int guard = source.IndexOf("if (!_open) return;", update, StringComparison.Ordinal);
-            Assert.Greater(guard, update, "Update()의 '닫혀 있으면 즉시 반환' 가드가 사라졌다.");
-            Assert.Less(guard, call,
-                "홀드 갱신이 '창이 열려 있는가' 가드보다 앞에 있다 — 닫힌 창이 프레임을 붙잡게 된다.");
+            // ★ 되돌림 방지: Update() 본문(= TickFramePacingHold 정의 앞)에 홀드가 있으면 안 된다.
+            int update = IndexOfOrFail(source, "private void Update()", 0,
+                "CharacterInfoWindow.Update()가 사라졌다 — 이 테스트를 갱신하라.");
+            Assert.Greater(call, tick,
+                "홀드가 TickFramePacingHold 밖(= Update 본문)에 있다 — 125분 실측 사고가 되살아난다.");
+            Assert.Greater(tick, update, "메서드 순서 전제가 깨졌다 — 이 테스트의 위치 비교를 갱신하라.");
+        }
+
+        [Test]
+        public void 설정창_홀드도_정보창과_같은_조건으로_걸린다()
+        {
+            // 정보창만 고치면 설정창이 같은 배선으로 남는다 — 실제로 그렇게 남아 있었다.
+            string source = ReadScript("Interaction", "SettingsWindow.cs");
+
+            Assert.AreEqual(1, CountOf(source, HoldCall), "설정창의 홀드가 없거나 둘 이상이다.");
+            int tick = IndexOfOrFail(source, "private void TickFramePacingHold(", 0,
+                "SettingsWindow.TickFramePacingHold()가 사라졌다 — 이 테스트를 갱신하라.");
+            int policy = IndexOfOrFail(source, "FramePacingPolicy.ShouldHoldForSurface(", tick,
+                "설정창이 플랫폼 중립 판정 함수를 쓰지 않는다.");
+            int call = IndexOfOrFail(source, HoldCall, tick, "설정창의 홀드가 TickFramePacingHold() 안에 없다.");
+            Assert.Less(policy, call, "홀드가 판정보다 앞이다.");
+
+            // 슬라이더 드래그는 커서가 창 밖으로 나가도 이어진다 — 사각형 판정만으로는 못 잡는다.
+            Assert.IsTrue(source.Contains("_dragIndex >= 0"),
+                "설정창이 '슬라이더를 끄는 중'을 조작으로 세지 않는다 — 커서가 패널 밖으로 나가는 " +
+                "순간 홀드가 풀려 손잡이가 계단식으로 따라온다.");
         }
 
         // ========================================================================
@@ -324,47 +369,21 @@ namespace StickMate.Tests.EditMode
                 "홀드가 전체화면 숨김 가드보다 앞이다 — 원칙 2(비침해)보다 먼저 프레임을 붙잡게 된다.");
         }
 
-        [Test]
-        public void 구석호버패널은_보이는_동안에만_홀드를_갱신한다()
-        {
-            string source = ReadScript("Interaction", "CornerHoverPanel.cs");
+        // ========================================================================
+        // ✝ 삭제된 테스트 2건 — 구석 호버 패널 / 크기 다이얼 (2026-09-01)
+        // ========================================================================
+        // `구석호버패널은_보이는_동안에만_홀드를_갱신한다`와
+        // `크기다이얼은_소유자인_구석패널의_홀드에_덮인다_중복배선금지`가 여기 있었다. 둘 다
+        // `Interaction/CornerHoverPanel.cs` / `Interaction/SizeDialWidget.cs`를 소스 스캔했는데,
+        // 같은 날 다른 작업이 그 두 컴포넌트를 <b>통째로 삭제</b>했다(사용자 요청, git staged
+        // 삭제 + 전용 테스트 2건도 함께 제거됨). 없는 파일을 읽는 테스트는 통과할 수도 실패할
+        // 수도 없는 소음이라 함께 걷었다.
+        //
+        // ★ 되돌리려면: `git show HEAD:Assets/_Project/Scripts/Tests/EditMode/UiInteractionFramePacingHoldTests.cs`
+        //   에 원문이 그대로 있다. 구석 패널이 부활하면 그 두 테스트도 같이 되살려야 한다 —
+        //   그 패널의 Update()는 <b>숨어 있을 때도 매 프레임 돌기</b> 때문에 조건 없는 홀드가
+        //   곧 "24시간 Active"였다는 것이 그 테스트의 요지였다.
 
-            int loop = IndexOfOrFail(source, "private void Update()", 0,
-                "CornerHoverPanel.Update()가 사라졌다 — 이 테스트를 갱신하라.");
-
-            // ★ 이 패널의 Update()는 **숨어 있을 때도 매 프레임 돈다**(구석 감지 폴링). 그래서
-            //   조건 없는 홀드는 곧 "24시간 Active"다. 조건까지 한 문자열로 못박는다.
-            Assert.Greater(source.IndexOf("if (IsVisible) " + HoldCall, loop, StringComparison.Ordinal), loop,
-                "구석 패널의 홀드가 'IsVisible'로 묶여 있지 않다 — 이 Update()는 숨어 있을 때도 돌기 " +
-                "때문에, 조건이 빠지면 상시 폴링이 그대로 상시 60fps가 되어 적응형 절감이 죽는다.");
-        }
-
-        [Test]
-        public void 크기다이얼은_소유자인_구석패널의_홀드에_덮인다_중복배선금지()
-        {
-            // SizeDialWidget은 MonoBehaviour가 아니라 CornerHoverPanel이 직접 들고 굴리는 평범한
-            // 클래스다(그 파일의 "왜 MonoBehaviour가 아닌가" 절). 매 프레임 진입점이 없으므로
-            // 배선할 자리 자체가 없고, 다이얼 드래그는 소유자의 TickPointer()가 굴린다.
-            // 여기에 따로 홀드를 넣으면 같은 사실을 두 곳이 주장하게 된다(진실이 둘).
-            string dial = ReadScript("Interaction", "SizeDialWidget.cs");
-
-            // (파일 안 "왜 MonoBehaviour가 아닌가" 설명 문단에도 그 단어가 나오므로 선언부로 본다.)
-            Assert.IsFalse(dial.Contains("class SizeDialWidget : MonoBehaviour"),
-                "SizeDialWidget이 컴포넌트가 됐다면 자기 Update()가 생겼다는 뜻이다 — 그때는 이 " +
-                "테스트가 아니라 '보이는 동안 홀드' 배선을 추가하고 이 주석을 갱신하라.");
-            Assert.AreEqual(0, CountOf(dial, "void Update()") + CountOf(dial, "void LateUpdate()"),
-                "다이얼에 매 프레임 진입점이 생겼다 — 위와 같다.");
-            Assert.AreEqual(0, CountOf(dial, HoldCall),
-                "다이얼에 홀드가 중복 배선됐다 — 홀드의 소유자는 CornerHoverPanel 하나여야 한다.");
-
-            // 소유자 쪽 배선이 실제로 살아 있어야 이 '없음'이 안전하다.
-            string owner = ReadScript("Interaction", "CornerHoverPanel.cs");
-            Assert.AreEqual(1, CountOf(owner, HoldCall),
-                "소유자(CornerHoverPanel)의 홀드가 없거나 둘 이상이다 — 없으면 다이얼 드래그가 " +
-                "30Hz로 끊기고, 둘 이상이면 어느 쪽이 진짜인지 다음 사람이 알 수 없다.");
-            Assert.Greater(owner.IndexOf("_dial", StringComparison.Ordinal), 0,
-                "구석 패널이 더 이상 다이얼을 소유하지 않는다 — 배선 책임을 다시 정하라.");
-        }
 
         [Test]
         public void 할일포스트잇은_상시표면이라_클릭중에만_홀드를_갱신한다()
@@ -394,8 +413,8 @@ namespace StickMate.Tests.EditMode
             string[][] surfaces =
             {
                 new[] { "Interaction", "CharacterInfoWindow.cs" },
+                new[] { "Interaction", "SettingsWindow.cs" },
                 new[] { "Interaction", "GearRadialMenuWidget.cs" },
-                new[] { "Interaction", "CornerHoverPanel.cs" },
                 new[] { "Interaction", "TodoPostItWidget.cs" },
             };
 
@@ -405,6 +424,77 @@ namespace StickMate.Tests.EditMode
                 Assert.GreaterOrEqual(CountOf(source, HoldCall), 1,
                     $"{surface[surface.Length - 1]}에 프레임 페이싱 홀드 배선이 없다.");
             }
+        }
+
+        // ========================================================================
+        // 표면 홀드 판정 자체 (2026-09-01 — 125분 실측 사고)
+        // ========================================================================
+
+        [Test]
+        public void 커서가_창_위에_있으면_홀드한다()
+        {
+            Assert.IsTrue(FramePacingPolicy.ShouldHoldForSurface(
+                cursorOverSurface: true, manipulating: false, secondsSinceLastTouch: 0f),
+                "커서가 창 위에 있다 = 클릭/드래그 직전이다. 여기서 절감하면 첫 조작이 굼떠 보인다.");
+        }
+
+        [Test]
+        public void 커서가_창_밖으로_나가도_조작중이면_홀드한다()
+        {
+            // 창 드래그/슬라이더 드래그는 커서가 사각형 밖으로 나가도 계속된다 — 사각형 판정만
+            // 쓰면 빠르게 끄는 순간 홀드가 풀려 손잡이가 계단식으로 따라온다.
+            Assert.IsTrue(FramePacingPolicy.ShouldHoldForSurface(
+                cursorOverSurface: false, manipulating: true,
+                secondsSinceLastTouch: 99f));
+        }
+
+        [Test]
+        public void 조작_직후_짧은_여유_동안은_홀드가_유지된다()
+        {
+            // 커서를 20Hz로 훑기 때문에 스치듯 들락거리면 판정이 그 주기로 깜빡인다.
+            float inside = FramePacingPolicy.SurfaceHoldLingerSeconds * 0.5f;
+            Assert.IsTrue(FramePacingPolicy.ShouldHoldForSurface(false, false, inside));
+
+            float outside = FramePacingPolicy.SurfaceHoldLingerSeconds + 0.01f;
+            Assert.IsFalse(FramePacingPolicy.ShouldHoldForSurface(false, false, outside),
+                "여유가 끝났는데도 홀드가 남으면 그게 곧 '열려 있는 동안 무조건'이다.");
+        }
+
+        [Test]
+        public void 창이_그냥_떠있기만_하면_홀드하지_않는다_125분_회귀()
+        {
+            // ★ 이것이 실측 사고의 회귀 잠금이다: 창은 열려 있고, 커서는 다른 앱에 있고,
+            //   마지막 조작으로부터 한참 지났다(사용자는 다른 앱에서 타이핑 중이라 무입력 시계도
+            //   흐르지 않는다 = Away가 성립하지 않는다).
+            bool held = FramePacingPolicy.ShouldHoldForSurface(
+                cursorOverSurface: false, manipulating: false,
+                secondsSinceLastTouch: 125f * 60f);
+            Assert.IsFalse(held, "창이 떠 있다는 이유만으로 60fps를 붙잡으면 적응형 절전이 통째로 죽는다.");
+
+            // 그리고 그 결과로 등급이 실제로 내려가야 한다 — 판정만 고치고 등급이 그대로면
+            // 아무것도 고치지 못한 것이다. 캐릭터가 오래 서 있는 상황을 쓴다.
+            ViewerPresenceSnapshot typingInAnotherApp = Presence(idleSeconds: 0.3f);
+            FramePacingTier tier = FramePacingPolicy.DecideTier(typingInAnotherApp,
+                suspendedForFullscreen: false, characterIdle: true, uiInteractionActive: held,
+                characterStill: true);
+            Assert.AreEqual(FramePacingTier.Still, tier,
+                "창을 열어 둔 채 다른 앱에서 일하는 동안에는 정지 등급까지 내려가야 한다.");
+
+            // 네거티브 컨트롤 — 옛 배선(무조건 홀드)이면 같은 관측에서 활성 등급에 묶인다.
+            Assert.AreEqual(FramePacingTier.Active,
+                FramePacingPolicy.DecideTier(typingInAnotherApp, false, true,
+                    uiInteractionActive: true, characterStill: true),
+                "대조군 전제 실패 — 무조건 홀드가 활성 등급을 붙잡는 것이 이 사고의 인과였다.");
+        }
+
+        [Test]
+        public void 표면_홀드_여유는_하강_제동보다_길지_않다()
+        {
+            // 여유가 하강 제동(FramePacing이 깊어지는 전이를 막는 시간)보다 길면 그 차이만큼
+            // 절감이 그냥 사라진다. 숫자를 베끼지 않고 두 상수를 비교한다.
+            Assert.LessOrEqual(FramePacingPolicy.SurfaceHoldLingerSeconds,
+                FramePacing.TierDescendCooldownSeconds,
+                "표면 홀드 여유가 등급 하강 제동보다 길다 — 그만큼은 절감이 불가능한 시간이다.");
         }
 
         [Test]

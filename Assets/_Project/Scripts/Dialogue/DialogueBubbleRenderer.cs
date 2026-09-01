@@ -25,17 +25,28 @@ namespace StickMate.Dialogue
     /// UX 계약 준수 방식 (5절 규칙별 대응, 이 클래스의 존재 이유)
     /// ============================================================================
     /// · 규칙 3(a) 정상 종료  : `DialogueExpired`가 "그 전이가 강제 인터럽트가 아니었을 때" 도착하면
-    ///                          최소 노출 시간을 채운 뒤 <see cref="FadeOutSeconds"/> 페이드아웃.
+    ///                          종류에 따라 갈린다(아래 규칙 4-c) — 서술은 즉시, 반응은 가독예산을
+    ///                          채운 뒤 <see cref="FadeOutSeconds"/> 페이드아웃.
     /// · 규칙 3(b) 강제 취소  : `DialogueExpired`가 **같은 프레임의 강제 인터럽트 전이**로 인해 도착하면
     ///                          페이드아웃 없이 <b>그 자리에서 동기적으로 즉시 제거</b>
     ///                          (<see cref="HideImmediate"/>). 이벤트 핸들러 안에서 바로 지우므로
     ///                          "취소된 상태의 말풍선이 화면에 남아있는 시간"이 구조적으로 0 프레임이다.
-    /// · 규칙 4 우선순위      : 최소 노출 시간(<see cref="StickConfig.dialogueMinVisibleSeconds"/>)은
-    ///                          정상 종료 경로에만 적용되고, 강제 취소는 <b>항상</b> 이 규칙을 이긴다
-    ///                          (HideImmediate는 경과 시간을 아예 보지 않는다).
+    /// · 규칙 4 우선순위      : ★ 2026-09-01 개정 — 대사 종류 축(<see cref="DialogueKind"/>) 도입.
+    ///                          ① 강제 인터럽트 → 같은 프레임 즉시 제거(종류·경과시간을 아예 안 본다)
+    ///                          ② 상한 dialogueMaxVisibleSeconds → 종류 무관
+    ///                          ③ Narrative + 정상 종료 → **즉시 컷**(가독예산 무시)
+    ///                          ④ Reaction + 정상 종료 → 글자수 비례 가독예산
+    ///                             (<see cref="DialogueBudget.ReadingSeconds"/>)을 채운 뒤 페이드아웃
+    ///                          즉 <b>취소는 여전히 항상 이긴다</b>(구판의 핵심 방어선 그대로). 바뀐 것은
+    ///                          "정상 종료"가 더 이상 고정 하한에 지지 않는다는 점뿐이다.
+    /// · 규칙 8 발화 자격     : ③의 즉시 컷이 "0.08초 번쩍이는 글자"를 만들지 않도록, 컷될 대사는 애초에
+    ///                          만들어지지 않는다 — 게이트는 여기가 아니라 생성 경로
+    ///                          (<see cref="DialogueIntent.TryCreate"/>)에 있다.
     /// · 규칙 5 큐잉 금지     : 새 `DialogueRequested`가 오면 이전 말풍선을 즉시 교체한다 — 다음 대사를
     ///                          모아두었다가 나중에 꺼내는 큐가 애초에 없다.
-    /// · 규칙 6 위치/스타일   : 등장 150ms/소멸 120ms. 배치는 아래 "만화 레터링 전환"으로 갱신됐다
+    /// · 규칙 6 위치/스타일   : 등장(알파) 60ms / 팝 스케일 바운스 180ms / 소멸 120ms
+    ///                          (2026-09-01 개정 — 세 값 전부 <see cref="DialogueTiming"/>이 단일 소스).
+    ///                          배치는 아래 "만화 레터링 전환"으로 갱신됐다
     ///                          (종전: 머리 위 + 꼬리가 캐릭터를 가리킴, 화면 경계에서는 꼬리 방향을
     ///                          유지한 채 박스만 안쪽으로 — <see cref="UpdateBubblePlacement"/>에 보존).
     /// · 규칙 7 다중 캐릭터   : `Bind()`로 화자(StickmanStateMachine)를 지정하면 그 머신이 발급한
@@ -158,19 +169,88 @@ namespace StickMate.Dialogue
         //   따르므로(검정/흰색) 검은 글자 + 어두운 바탕화면, 흰 글자 + 밝은 바탕화면 조합에서는
         //   글자가 그냥 사라진다. 만화 레터링의 표준 문법인 "잉크색 글자 + 반대색 외곽선"이 그 두
         //   요구(만화 느낌 / 가독성)를 **하나의 해법으로** 동시에 푼다.
+        // ============================================================================
+        // ★★ 2026-09-01 — "말풍선만 글자가 뭉갠다"(사용자 신고 "텍스트들도 선명하지 않고")
+        // ============================================================================
+        // 검증 담당 실측(에지 폭 = 명암 범위 / 99퍼센타일 기울기, Retina 물리 픽셀):
+        //     창 제목 1.41px · 창 탭 1.49px · 창 본문 0.84px · **말풍선 1.80px**
+        // 창 UI는 멀쩡하고 말풍선만 넓다. 후보는 둘이었다 — (a) 9.1도 회전 리샘플, (b) 0.84pt 외곽선.
+        //
+        // ★ 두 후보를 **오프라인 A/B로 갈랐다**(uGUI Text + Outline + 회전 파이프라인을 그대로
+        //   복제해 각 변수를 단독으로 스윕. 프로덕션 파라미터에서 실측 1.82px / 복제 1.79px로
+        //   일치했으므로 복제가 유효하다):
+        //
+        //     기울기 9.1도 -> 0도  : 전이 픽셀 -9%,  **속공간 열림 0.000 -> 0.000 (변화 없음)**
+        //     외곽선 0.84 -> 0.4pt : 전이 픽셀 -42%, **속공간 열림 0.000 -> 0.186**
+        //
+        //   즉 <b>범인은 외곽선이고 기울기가 아니다.</b> 각도를 0으로 만들어도 사용자가 본 뭉갬
+        //   (하의 ㅇ / 암의 ㅁ 속공간이 메워지는 것)은 <b>한 픽셀도 나아지지 않는다</b>.
+        //   그래서 손글씨 기울기 연출은 <b>그대로 둔다</b> — 없앨 이유가 실측으로 사라졌다.
+        //
+        // 왜 외곽선이 범인인가 — 기하로 확정된다:
+        //   uGUI Outline은 원본 메시를 네 대각선(±t, ±t)에 복제하므로 글자 모양이 **사방으로 t만큼
+        //   팽창**한다. 속공간은 양쪽에서 좁아지므로 **2t**만큼 줄어든다.
+        //   그런데 실측한 한글 속공간의 최소 폭은 em의 11.3%다(아래 상수). 종전 t = 0.06em이면
+        //   2t = 0.12em > 0.113em — <b>원리적으로 반드시 닫힌다.</b> 우연이 아니라 필연이었다.
+
+        /// <summary>
+        /// 한글 <b>속공간</b>(ㅇ 안, ㅁ 안 …)의 가장 좁은 폭. em(=글자 크기) 대비 비율이다.
+        ///
+        /// <para>실측(2026-09-01): Apple SD Gothic Neo <b>Bold</b>를 400px em으로 래스터라이즈해
+        /// "글자 안에 갇힌 배경"의 가로/세로 런 길이를 전수 조사한 값의 10퍼센타일 중앙값.
+        /// 이 렌더러가 실제로 고르는 페이스(Heavy/ExtraBold)는 이보다 <b>더 좁으므로</b> 이 값은
+        /// 보수적인 쪽이 아니라 <b>낙관적인</b> 쪽이다 — 예산을 여기에 맞추면 안전 여유가 남는다.</para>
+        ///
+        /// <para>표본: 하 암 오 늘 뭐 지 창 위 는 미 끄 러 워 구 경 중 이 야 (12자에서 유효 속공간 검출).
+        /// 글자별 분포는 0.076 ~ 0.164em이었고, 최솟값이 아니라 10퍼센타일을 쓰는 이유는 1~2px짜리
+        /// 래스터 잡음이 최솟값을 비현실적으로 끌어내리기 때문이다.</para>
+        /// </summary>
+        public const float NarrowestHangulCounterEmRatio = 0.113f;
+
+        /// <summary>
+        /// 외곽선이 <b>잡아먹어도 되는</b> 속공간의 비율(양쪽 합 기준). 1.0이면 속공간이 정확히
+        /// 0이 되는 지점 — 종전 값 0.06em은 이 예산으로 환산하면 <b>1.06</b>이었다(이미 넘겨 있었다).
+        ///
+        /// <para>0.72로 잡은 근거: 가장 좁은 속공간의 <b>28%가 남는다</b>. 14pt Retina(28px)에서
+        /// 0.28 x 0.113 x 28 = 약 0.9px이라, 한 픽셀짜리 구멍이지만 <b>있는 것과 없는 것이
+        /// 구분된다</b>. 더 낮추면(=외곽선을 더 얇게) 속공간은 더 열리지만 오프라인 A/B에서
+        /// 외곽선 링의 무결성이 0.62 -> 0.37로 무너졌다 — 그 선은 글자와 바탕화면 사이의 유일한
+        /// 분리막이라 얇아지는 데 한계가 있다. 0.72가 두 요구가 만나는 지점이다.</para>
+        /// </summary>
+        public const float CounterClosureBudget = 0.72f;
+
         /// <summary>
         /// 글자 외곽선 두께 = **글자 크기에 대한 비율**(em 비율). ★ 고정 두께로 두면 안 된다
         /// (2026-08-29 리더 지시, 그리고 실측으로 확인한 실패): 외곽선은 글자 뒤에 사방으로 깔리므로
         /// 글자가 작아질수록 이웃 글자의 후광끼리 붙어 자모 사이를 메운다. 한글은 한 글자에 자모가
         /// 2~3개라 라틴 문자보다 훨씬 빨리 뭉개진다 — 폰트를 줄이면 선도 같은 비율로 줄어야 한다.
-        /// 0.09의 근거: uGUI Outline은 대각선 네 방향(±t, ±t)에 복제를 깔아 실효 두께가 t·√2이므로
-        /// 화면상 획 굵기는 글자 크기의 약 12.7%가 된다 — 만화 레터링에서 흔히 쓰는 굵기대이면서
-        /// 글자 속 빈 곳을 메우지 않는 상한이다.
+        ///
+        /// <para>★ 숫자를 손으로 적지 않고 <b>실측 + 예산에서 유도</b>한다(2026-09-01). 속공간은
+        /// 양쪽에서 2t만큼 좁아지므로 <c>2t = 속공간 x 예산</c>, 즉 <c>t = 속공간 x 예산 / 2</c>다.
+        /// 0.113 x 0.72 / 2 = <b>0.0407em</b>(14pt에서 0.57pt = Retina 1.14물리px).
+        /// 폰트를 바꾸거나 예산을 조정하면 이 값이 자동으로 따라온다 — 종전처럼 리터럴 0.06을
+        /// 적어 두면 <b>왜 그 값인지가 사라지고</b>, 실제로 그렇게 사라진 채 속공간을 넘겨 있었다
+        /// (직전 주석은 존재하지도 않는 값 0.09의 근거를 설명하고 있었다).</para>
         /// </summary>
-        private const float TextOutlineEmRatio = 0.06f;
+        public const float TextOutlineEmRatio = NarrowestHangulCounterEmRatio * CounterClosureBudget * 0.5f;
         /// <summary>외곽선 두께의 화면상 하한(캔버스 유닛 = OS 포인트). 아주 작은 글자에서도 선이
         /// 0으로 수렴해 사라지면 안 된다 — 이 선이 글자와 바탕화면 사이의 유일한 분리막이다.
-        /// Retina에서 0.6pt = 물리 1.2px라 한 픽셀 폭의 또렷한 테두리가 남는다.</summary>
+        ///
+        /// <para>★ 2026-09-01 남겨 두는 미해결 항목(리더 보고 대상): 이 하한은 <b>화면 배율을
+        /// 모른다</b>. Retina(배율 2)에서는 0.8물리px이고 비Retina/Windows 100%(배율 1)에서는
+        /// 0.4물리px — 후자는 사실상 반투명 얼룩이라 "분리막"이 되지 못한다. 물리적으로 옳은 하한은
+        /// <b>1 물리 픽셀</b>(= 1 / <c>ScreenCoordinateConverter.ResolveCanvasScaleFactor</c>)이지만,
+        /// 그렇게 바꾸면 배율 1 환경의 외곽선이 0.4 -> 1.0pt로 <b>두꺼워져</b> 속공간 예산
+        /// (<see cref="CounterClosureBudget"/>)을 그쪽에서 다시 넘긴다. 즉 배율 1에서는 두 요구가
+        /// 물리적으로 양립하지 않으며, 진짜 답은 그 환경의 <b>폰트 하한을 올리는 것</b>이다.
+        /// 이번 라운드는 사용자 지시로 macOS(항상 Retina 2)만 다루므로 값을 건드리지 않는다.</para>
+        ///
+        /// <para>★ 2026-09-01 후속 — <b>배포 조합에서는 이 하한이 더 이상 물지 않는다.</b>
+        /// <see cref="ResolveMinComicFontSize"/>가 글자 하한을 "em 규칙이 1 물리픽셀을 내는 크기"로
+        /// 올렸고(그 문서의 유도 참고), 그 하한(13pt)의 em 규칙이 0.53pt라 여기를 이미 넘는다. 즉
+        /// <b>고정 두께가 속공간 예산을 넘기던 유일한 경로가 닫혔다</b>. 지금 이 값이 실제로 무는 곳은
+        /// 캔버스 배율 3배 이상(물리 요구치가 <see cref="LegacyComicFontFloor"/>보다 낮아져 가독성
+        /// 하한이 이기는 구간)뿐이며, 그 구간에서는 링이 이미 1물리px을 넘으므로 안전하다.</para></summary>
         private const float MinTextOutlineThickness = 0.4f;
         /// <summary>
         /// 만화 레터링 폰트 배율. ★ 2026-08-29 사용자 요구 "일단 텍스트 크기 지금의 절반".
@@ -188,10 +268,12 @@ namespace StickMate.Dialogue
         /// characterScale을 계속 바꾸므로(현재 0.75) 절대값은 그 순간 전부 틀린 값이 된다.</summary>
         private const float TextGapXRatio = 0.20f;
         private const float TextGapYRatio = 0.10f;
-        /// <summary>팝인(툭 튀어나오는 등장) 지속 시간. 규칙 6의 "등장 150ms"를 깨지 않으려고
-        /// 페이드인과 **같은 길이**로 맞췄다 — 알파는 그대로 150ms에 걸쳐 오르고, 그 위에 스케일
-        /// 바운스만 겹친다(페이드보다 만화답게 보이는 것이 목적이지 계약을 바꾸는 것이 아니다).</summary>
-        private const float PopInSeconds = FadeInSeconds;
+        /// <summary>팝인(툭 튀어나오는 등장) 지속 시간 — 규칙 6 개정(2026-09-01)으로 **알파 페이드인과
+        /// 분리된 독립 상수(180ms)** 가 됐다. 예전에는 <c>= FadeInSeconds</c>로 묶여 있어 알파를
+        /// 줄이면 바운스도 함께 짧아졌고, 그 커플링이 둘 다 어중간하게 만들었다(교차 레이어 로그 L3).
+        /// 값의 단일 소스는 <see cref="DialogueTiming"/>다 — 발화 자격 게이트(규칙 8)가 같은 상수를
+        /// 읽어야 하므로 렌더러가 소유하지 않는다.</summary>
+        private const float PopInSeconds = DialogueTiming.PopInSeconds;
         private const float PopInStartScale = 0.55f;
         private const float PopInOvershoot = 1.12f;
         /// <summary>팝인에서 오버슈트 정점에 도달하는 지점(0~1 진행도).</summary>
@@ -337,24 +419,117 @@ namespace StickMate.Dialogue
             //   (그 클래스 문서의 "왜 StickConfig에 직접 쓰지 않는가" 참고). 고른 적이 없으면
             //   에셋의 값이 그대로 나오므로 지금까지의 거동은 한 톨도 바뀌지 않는다.
             int configured = Mathf.Max(8, StickMate.Core.AppSettingsModel.ResolveDialogueFontSize(_config));
+            // ★ 배율을 여기서 한 번만 조회해 아래 하한과 글리프 스냅이 <b>같은 값</b>을 본다 —
+            //   두 번 부르면 그 사이에 모니터가 바뀌었을 때 하한과 스냅이 서로 다른 배율로 계산된다.
+            float canvasScale = ScreenCoordinateConverter.ResolveCanvasScaleFactor(_config);
             // 말풍선 모드로 되돌리면 종전 크기(하한 12pt)가 그대로 복원된다.
-            if (DrawBubbleShapes)
-                return Mathf.Max(MinReadableFontSize, Mathf.RoundToInt(configured * BubbleScale));
-            // 만화 레터링 모드 — 기준값과 하한을 **둘 다** 절반으로 내린다(ComicFontScale 문서 참고).
-            // 하한만 그대로 두면 배율을 줄여도 하한에 걸려 아무것도 바뀌지 않는다.
-            return Mathf.Max(MinComicFontSize, Mathf.RoundToInt(configured * BubbleScale * ComicFontScale));
+            int points = DrawBubbleShapes
+                ? Mathf.Max(MinReadableFontSize, Mathf.RoundToInt(configured * BubbleScale))
+                // 만화 레터링 모드 — 기준값은 ComicFontScale이 내리고, 하한은 <b>외곽선 링이 1 물리
+                // 픽셀이 되는 크기</b>에서 유도한다(ResolveMinComicFontSize 문서의 부등식).
+                : Mathf.Max(ResolveMinComicFontSize(canvasScale),
+                            Mathf.RoundToInt(configured * BubbleScale * ComicFontScale));
+
+            // ★ 2026-09-01 — 마지막에 <글리프 잔차 0>으로 스냅한다(사용자 신고 "텍스트도 다 번져보임").
+            //   여기만 정적 상수로 못 고치는 이유: 이 pt는 (사용자 설정 8~28) x (캐릭터 배율) x (만화 배율)의
+            //   런타임 곱이라 어떤 값이든 나올 수 있다. UI 창들처럼 "짝수 상수로 옮기기"가 성립하지 않는다.
+            //   그래서 규칙 자체(Platform/UiGlyphScalePolicy)를 호출해 <지금 캔버스 배율에서> 정수 픽셀이
+            //   되는 가장 가까운 pt로 올린다.
+            //   · 배율 1(비Retina) / 2(Retina mac·Windows 200%)에서는 모든 정수 pt가 이미 잔차 0이라
+            //     이 호출은 **항등**이다 — macOS와 기존 테스트의 거동이 한 톨도 바뀌지 않는다.
+            //   · 배율 1.5(Windows 150%)에서만 홀수가 +1로 올라간다(최대 변화 1pt).
+            //   ResolveFontSize()는 말풍선을 그릴 때마다 다시 호출되므로, 창을 배율이 다른 모니터로
+            //   옮겨도 다음 대사부터 자동으로 따라간다(생성 시점에 한 번 굳는 UI 창들과 다른 점이다).
+            return UiGlyphScalePolicy.SnapPoints(points, canvasScale);
         }
 
         /// <summary>말풍선(도형) 모드 글자의 화면상 하한(캔버스 유닛 = OS 포인트). 위 ResolveFontSize() 참고.</summary>
         private const int MinReadableFontSize = 12;
 
+        // ============================================================================
+        // ★★ 2026-09-01 — 만화 레터링 글자 하한을 <b>물리 픽셀에서 유도</b>한다
+        // ============================================================================
+        // 직전 라운드가 뭉갬의 범인을 외곽선으로 확정하고 <see cref="TextOutlineEmRatio"/>를 실측에서
+        // 유도했지만, <b>실행 중인 빌드가 9pt로 그리고 있어서</b> 그 수정이 화면에 닿지 못했다.
+        // 리더 검산이 이유를 확정했다 — 9pt에서는 두 요구가 <b>양립 자체가 불가능</b>하다:
+        //
+        //     링이 보이려면        외곽선 t ≥ 1 물리픽셀
+        //     속공간이 열리려면    t가 em 규칙(0.0407em)으로 나와야 한다
+        //                          (고정 하한 0.4pt가 물면 그 순간 예산을 넘긴다)
+        //     두 요구를 합치면     0.0407em × fontSize ≥ 1 물리픽셀
+        //
+        // 9pt = 18물리px에서 Heavy 한글 속공간은 약 2물리px이고, 외곽선이 사방 1px씩 먹으면 0이 된다.
+        // <b>외곽선을 어떻게 잡아도 9pt에서는 해결되지 않는다</b> — 고칠 수 있는 변수는 글자 크기뿐이다.
+        //
+        // ★ 그래서 하한을 숫자로 적지 않고 <b>위 부등식을 그대로 코드로 옮긴다</b>. 이 저장소가
+        //   반복해 겪은 사고는 전부 "한 진실의 사본이 두 곳에 있는데 대조 장치가 없다"였다.
+        //   외곽선 비율(=속공간 실측 × 예산)을 다시 재는 날 하한이 <b>자동으로</b> 따라온다.
+
         /// <summary>
-        /// 만화 레터링 모드 글자의 화면상 하한. 기준값(<see cref="ComicFontScale"/>)과 **항상 같은
-        /// 비율로 함께 움직인다** — 하한만 그대로 두면 기준값을 줄여도 하한에 걸려 크기가 변하지 않고,
-        /// 하한만 올리면 작은 캐릭터 배율에서 글자만 상대적으로 커진다.
-        /// 이력: 12(말풍선 시절) -> 6("지금의 절반") -> 9("지금의 1.5배", 6 x 1.5).
+        /// 외곽선 링이 "있다"고 보이기 위한 최소 두께(<b>물리 픽셀</b>). 1보다 작으면 GPU가 한 픽셀을
+        /// 부분 커버리지로 섞어 <b>반투명 얼룩</b>이 되고, 그건 글자와 바탕화면 사이의 분리막이 되지
+        /// 못한다(말풍선 도형을 없앤 뒤로 이 링이 <b>유일한</b> 분리막이다).
         /// </summary>
-        private const int MinComicFontSize = 9;
+        public const float OutlineRingMinPhysicalPixels = 1f;
+
+        /// <summary>
+        /// 이 저장소가 <b>실제 캡처로 판정한</b> 캔버스 배율 — macOS Retina(항상 2) / Windows 200%.
+        /// <see cref="ResolveMinComicFontSize"/>의 상한이 여기서 나온다.
+        ///
+        /// <para>★ 배율 1(Windows 100%·비Retina)에서는 위 부등식이 <b>25pt</b>를 요구한다. 그건 배율
+        /// 0.35 캐릭터(화면상 약 28pt)보다 글자가 커진다는 뜻이라, 신고를 하나 고치고 다른 하나를
+        /// 만드는 교환이다. 사용자 지시(2026-09-01 "윈도우는 일단 미루고 맥만")에 따라 그 환경은
+        /// <b>검증된 요구치에서 멈춘다</b> — 링이 1물리px에 못 미치는 갭이 남으며, 그 갭은
+        /// <c>Tests/EditMode/ComicFontFloorOutlineRingTests</c>가 <c>Assert.Ignore</c>로 계속
+        /// 러너에 "건너뜀"으로 보여 준다(CLAUDE.md: 못 고친 갭은 잊히지 않게 남긴다).</para>
+        /// </summary>
+        public const float VerifiedCanvasScale = 2f;
+
+        /// <summary>
+        /// 만화 레터링 글자의 <b>이력상 가독성 하한</b>(사용자 요구에서 온 값).
+        /// 이력: 12(말풍선 시절) -> 6("지금의 절반") -> 9("지금의 1.5배", 6 x 1.5).
+        ///
+        /// <para>물리 요구치가 이보다 낮게 나오는 초고배율(3배 초과)에서도 여기서 멈춘다 — 그 아래는
+        /// 링과 무관하게 그냥 읽히지 않는다. 회귀 테스트의 <b>네거티브 컨트롤</b>이 이 값을 쓴다:
+        /// 하한을 여기로 되돌리면 링 요구가 실제로 깨지는지 증명한다.</para>
+        /// </summary>
+        public const int LegacyComicFontFloor = 9;
+
+        /// <summary>캔버스 유닛(=OS 포인트)으로 잰 <b>1 물리 픽셀</b>. Retina에서 0.5pt인 것은 배율이
+        /// 2여서지 상수여서가 아니다 — 그래서 숫자로 적지 않고 배율에서 나눈다.
+        /// 배율을 모르면(0/NaN/무한대) 1pt로 본다(가장 보수적인 = 가장 큰 하한을 내는 쪽).</summary>
+        public static float PointsPerPhysicalPixel(float canvasScale)
+            => canvasScale > 0f && !float.IsNaN(canvasScale) && !float.IsInfinity(canvasScale)
+                ? 1f / canvasScale
+                : 1f;
+
+        /// <summary>
+        /// 외곽선 링이 <see cref="OutlineRingMinPhysicalPixels"/>를 채우는 데 필요한 글자 크기(pt).
+        /// <c>t = fontSize × TextOutlineEmRatio ≥ n × (1pt/배율)</c>를 fontSize에 대해 푼 것이며,
+        /// pt는 정수여야 하므로 올림한다. <b>상한 없는 순수 요구치</b>다 — 정책(상한)은
+        /// <see cref="ResolveMinComicFontSize"/>가 얹는다.
+        /// </summary>
+        public static int OutlineLegibleFontFloor(float canvasScale)
+            => Mathf.CeilToInt(OutlineRingMinPhysicalPixels * PointsPerPhysicalPixel(canvasScale)
+                               / TextOutlineEmRatio);
+
+        /// <summary>
+        /// 만화 레터링 모드 글자의 화면상 하한(pt). <see cref="OutlineLegibleFontFloor"/>(물리 요구)를
+        /// <see cref="LegacyComicFontFloor"/>(가독성)와 <see cref="VerifiedCanvasScale"/>의 요구치
+        /// (검증 범위) 사이로 자른다.
+        ///
+        /// <para>배율 2에서 이 값은 <b>13pt</b>다(0.0407em × 13 = 0.529pt = 1.06물리px). 종전 9pt는
+        /// 0.366pt = 0.73물리px으로 링이 얼룩이 됐고, em 규칙이 고정 하한 0.4pt에 걸려 속공간 예산까지
+        /// 넘겼다. 두 결함이 <b>같은 한 줄</b>에서 동시에 사라진다.</para>
+        ///
+        /// <para>★ 부작용(리더 육안 판정 대상): 하한이 올라가면 <b>캐릭터가 작을 때 글자가 상대적으로
+        /// 커진다</b>. 배율 1.0에서는 기준값(16 × 1.0 × 0.875 = 14pt)이 하한보다 커서 변화가 없지만,
+        /// 배율 0.75에서는 10 -> 13pt, 배율 0.35에서는 9 -> 13pt가 된다.</para>
+        /// </summary>
+        public static int ResolveMinComicFontSize(float canvasScale)
+            => Mathf.Clamp(OutlineLegibleFontFloor(canvasScale),
+                           LegacyComicFontFloor,
+                           OutlineLegibleFontFloor(VerifiedCanvasScale));
 
         /// <summary>
         /// 이 캐릭터의 전신 높이(월드 유닛). 캐릭터 기준 오프셋의 유일한 기준값.
@@ -382,8 +557,11 @@ namespace StickMate.Dialogue
 
         /// <summary>글자 블록과 머리 사이의 세로 간격(월드 유닛) — 캐릭터 크기 추종.</summary>
         private float TextGapWorldY => CharacterHeight * TextGapYRatio;
-        private const float FadeInSeconds = 0.15f;      // 규칙 6 "등장 150ms".
-        private const float FadeOutSeconds = 0.12f;     // 규칙 6 "소멸 100~150ms".
+        // 규칙 6 개정(2026-09-01): 등장 150ms -> **60ms**. 만화 레터링은 페이드로 등장하지 않는다 —
+        // 등장감은 PopInSeconds(스케일 바운스, 180ms)가 만든다. 소멸 120ms는 "100~150ms" 범위 안이라
+        // 유지. 두 값의 단일 소스는 DialogueTiming이다(발화 자격 게이트가 페이드인을 함께 읽는다).
+        private const float FadeInSeconds = DialogueTiming.FadeInSeconds;    // 규칙 6 "등장 60ms".
+        private const float FadeOutSeconds = DialogueTiming.FadeOutSeconds;  // 규칙 6 "소멸 100~150ms".
 
         // ============================================================================
         // ★ 타원 말풍선 기하 (사용자 신고 2026-08-29: "말풍선도 네모가 아닌 타원 형태의 말풍선")
@@ -454,7 +632,8 @@ namespace StickMate.Dialogue
         private DialogueIntent _active;        // 지금 표시 중인 대사(만료됐지만 최소 노출 중일 수도 있음).
         private string _activeText;
         private float _shownAtUnscaledTime;
-        private bool _expiredPendingFadeOut;   // 정상 종료로 만료됨 — 최소 노출 시간을 채운 뒤 페이드아웃.
+        private DialogueKind _activeKind;      // 지금 표시 중인 대사의 종류(규칙 4-a). 만료 처리의 분기 축.
+        private bool _expiredPendingFadeOut;   // 정상 종료로 만료된 **반응** 대사 — 가독예산을 채운 뒤 페이드아웃.
         private bool _fadingOut;
         private float _alpha;
 
@@ -485,6 +664,12 @@ namespace StickMate.Dialogue
 
         /// <summary>지금 화면에 떠 있는 대사 텍스트(없으면 null).</summary>
         public string VisibleText => IsBubbleVisible ? _activeText : null;
+
+        /// <summary>지금 떠 있는 대사가 화면에 있었던 시간(초). 안 떠 있으면 0.
+        /// <para>★ 교체 경로의 발화 자격(<see cref="DialogueBudget.CanReplaceVisible"/>)을 검증하려면
+        /// <b>노출 시계가 리셋됐는가</b>를 봐야 하는데, 텍스트만으로는 "같은 글자로 교체됐다"와
+        /// "교체되지 않았다"가 구분되지 않는다.</para></summary>
+        public float VisibleSeconds => IsBubbleVisible ? Time.unscaledTime - _shownAtUnscaledTime : 0f;
 
         /// <summary>마지막으로 "강제 인터럽트에 의한 즉시 제거"가 일어난 Time.frameCount(없으면 -1).</summary>
         public int LastImmediateRemovalFrame { get; private set; } = -1;
@@ -614,8 +799,49 @@ namespace StickMate.Dialogue
             if (!IsMine(intent)) return;
             if (!StickMate.Core.AppSettingsModel.ResolveDialogueBubbleEnabled(_config)) return;
 
+            // ★★ 2026-09-02 — 교체 경로의 발화 자격(DialogueBudget.CanReplaceVisible 문서에 실기 로그).
+            //   여기가 이 결함이 살아 있던 자리다: 최소 노출 보호는 **만료** 경로에만 있었고 이
+            //   **교체** 경로에는 한 줄도 없어서, 방금 뜬 글자가 다음 프레임에 지워질 수 있었다
+            //   (실측 0.02초 = 1.2프레임 번쩍임 2연속).
+            //   ★ 정책은 여기서 고르지 않는다 — 렌더러는 "지금 몇 초 떠 있었나"라는 **사실만** 주고
+            //     판정은 플랫폼/표현 중립 위치(DialogueBudget)가 한다.
+            if (IsBubbleVisible && !_fadingOut && _active != null)
+            {
+                float activeVisible = Time.unscaledTime - _shownAtUnscaledTime;
+                bool replacesItself = intent.Text == _activeText
+                                      && intent.StateId == _active.StateId
+                                      && intent.Kind == _activeKind;
+                if (!DialogueBudget.CanReplaceVisible(activeVisible, DialogueTiming.PopInSeconds, replacesItself))
+                {
+                    // 침묵이 정상 결과일수록 로그가 유일한 계기판이다 — 규칙 8의 "발화 보류"와 같은 어법.
+                    Debug.Log($"[말풍선] 발화 보류 ({intent.StateId}) \"{intent.Text}\" — " +
+                        (replacesItself
+                            ? "지금 떠 있는 것과 같은 글자다(같은 상태·같은 종류). 교체하면 노출 시계와 " +
+                              "팝인이 리셋돼 같은 글자가 다시 튀어오른다(렌더 글리치)."
+                            : $"이전 \"{_activeText}\"(종류={KindLabel(_activeKind)})가 아직 팝인 중이다 — " +
+                              $"노출 {activeVisible:F2}초 < 팝인 {DialogueTiming.PopInSeconds:F2}초.") +
+                        $" 규칙 5는 유지된다(큐에 쌓지 않고 버린다). frame={Time.frameCount}");
+                    return;
+                }
+            }
+
+            // ★ 2026-09-01 — 교체 경로의 제거 로그(MOTION_SPEC 3-6에서 발견된 결함).
+            //   지금까지 이 경로에는 "[말풍선] 제거"가 없어서, 표시 37건 중 34건만 제거 로그가 남고
+            //   3건이 **조용히 사라졌다**. 화면을 볼 수 없는 검증 환경에서 그 3건은 "노출 시간 미상"이
+            //   되어 3-7절의 계약 검증(서술 대사가 자기 상태보다 오래 남았는가)을 통째로 무력화한다.
+            //   표시/제거가 항상 쌍으로 찍히게 만드는 것이 이 블록의 전부다.
+            if (IsBubbleVisible && !string.IsNullOrEmpty(_activeText))
+            {
+                Debug.Log($"[말풍선] 교체 — 이전 \"{_activeText}\"" +
+                          $"({(_active != null ? _active.StateId.ToString() : "페이드아웃중")}, " +
+                          $"종류={KindLabel(_activeKind)}) 노출 {(Time.unscaledTime - _shownAtUnscaledTime):F2}초, " +
+                          $"새 \"{intent.Text}\"({intent.StateId}, 종류={KindLabel(intent.Kind)}), " +
+                          $"컷사유=교체(규칙 5 큐잉 금지), frame={Time.frameCount}");
+            }
+
             // 규칙 5(큐잉 금지): 이전 말풍선은 즉시 교체된다 — 다음 대사를 모아두는 큐가 없다.
             _active = intent;
+            _activeKind = intent.Kind;
             _activeText = intent.Text;
             _expiredPendingFadeOut = false;
             _fadingOut = false;
@@ -645,6 +871,8 @@ namespace StickMate.Dialogue
             // 배치 정보를 함께 남긴다 — 화면을 볼 수 없는 검증 환경에서도 "어느 쪽에 놓였는지"를
             // 실행 로그만으로 재구성할 수 있어야 한다(이 프로젝트의 표시/제거 로그 쌍과 같은 취지).
             Debug.Log($"[말풍선] 표시 ({intent.StateId}) \"{_activeText}\" — " +
+                      $"종류={KindLabel(intent.Kind)}, 가독예산={DialogueBudget.ReadingSeconds(_activeText):F2}초, " +
+                      $"노출상한={ResolveMaxVisibleSeconds():F2}초, " +
                       $"진행방향={(_latchedTextSide < 0f ? "오른쪽" : "왼쪽")}, " +
                       $"글자쪽={(_latchedTextSide < 0f ? "왼쪽위" : "오른쪽위")}, " +
                       $"글자크기={ResolveFontSize()}pt, 외곽선={ScaledTextOutline:F2}pt, " +
@@ -667,9 +895,29 @@ namespace StickMate.Dialogue
                 return;
             }
 
-            // 규칙 3(a) — 정상 종료: 최소 노출 시간을 채운 뒤 페이드아웃(Tick에서 처리).
+            // ★ 규칙 4-c ③ (2026-09-01 신설) — Narrative(진행 서술)는 상태가 끝나는 순간 문장 자체가
+            //   거짓이 된다("걷기 시작한 캐릭터 위의 '잠깐 쉬는 중'"). 그러므로 가독예산 잔여와 무관하게
+            //   **그 프레임에 페이드아웃을 개시**한다. 이 대사가 애초에 화면에 뜬 것은 규칙 8(발화 자격
+            //   게이트)이 "계획 잔여 체류 >= 페이드인 + 가독예산"을 이미 확인했기 때문이므로, 여기서
+            //   잘리는 것은 **계획이 외부 사건으로 깨진 소수 경우**뿐이다.
+            if (intent.Kind == DialogueKind.Narrative)
+            {
+                Debug.Log($"[말풍선] 즉시 컷 ({intent.StateId}) \"{_activeText}\" — 종류=서술, " +
+                          $"컷사유=상태종료, 노출 {(Time.unscaledTime - _shownAtUnscaledTime):F2}초, " +
+                          $"frame={Time.frameCount}");
+                BeginFadeOut();
+                return;
+            }
+
+            // 규칙 4-c ④ — Reaction(순간 반응)은 상태가 끝나도 여전히 참이므로 가독예산을 채운 뒤
+            // 페이드아웃한다(Tick에서 처리).
             _expiredPendingFadeOut = true;
         }
+
+        /// <summary>로그용 종류 라벨. 검증이 로그만으로 "서술이 자기 상태보다 오래 남았는가"를 셀 수
+        /// 있으려면 표시/교체/제거 로그 전부에 이 축이 찍혀야 한다(MOTION_SPEC 3-6/3-7).</summary>
+        private static string KindLabel(DialogueKind kind)
+            => kind == DialogueKind.Narrative ? "서술" : "반응";
 
         /// <summary>이 대사가 내가 담당하는 화자의 것인지(규칙 7 다중 캐릭터 분리).</summary>
         private bool IsMine(DialogueIntent intent)
@@ -682,6 +930,7 @@ namespace StickMate.Dialogue
 
         private void LateUpdate()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Dialogue);   // [스톨구간] 계측
             // 전체화면 게임 감지로 캐릭터가 숨겨졌으면 말풍선도 함께 사라져야 한다(비침해 원칙 2).
             if (_agent != null && _agent.IsSuspended && IsBubbleVisible)
             {
@@ -700,15 +949,22 @@ namespace StickMate.Dialogue
 
             if (!_fadingOut)
             {
-                float minVisible = StickMate.Core.AppSettingsModel.ResolveDialogueMinVisibleSeconds(_config);
-                float maxVisible = StickMate.Core.AppSettingsModel.ResolveDialogueMaxVisibleSeconds(_config);
+                float maxVisible = ResolveMaxVisibleSeconds();
+                // ★ 규칙 4-b(2026-09-01) — 고정 하한 0.7초가 **글자수 비례 가독예산**으로 대체됐다.
+                //   구판은 "음..."(4자)과 "창 위는 미끄러워"(9자)를 같은 시간 띄웠다. 가독성 하한이라면서
+                //   실제로는 가독성을 보장하지 못한 값이다. dialogueMinVisibleSeconds는 그 위에 얹는
+                //   **추가 절대 하한**으로 남는다(기본 0 = 예산에 전부 맡김).
+                // ★ 2026-09-02 — 사용자 노출 배율(대사 표시 시간 3단)은 <b>여기(화면 노출)</b>에만 곱한다.
+                //   발화 자격 게이트에는 곱하지 않는다(DialogueBudget.RequiredDwellSeconds 문서).
+                float minVisible = Mathf.Max(
+                    DialogueBudget.MinVisibleSecondsFor(_activeText, ResolveVisibleScale()),
+                    StickMate.Core.AppSettingsModel.ResolveDialogueMinVisibleSeconds(_config));
+                if (maxVisible > 0f) minVisible = Mathf.Min(minVisible, maxVisible);
 
-                // 정상 종료 대기분: 최소 노출 시간을 채우면 페이드아웃 시작(규칙 4의 "정상 진행 중"에만
-                // 적용되는 최소 노출 시간).
+                // 정상 종료 대기분(반응 대사만 여기에 온다 — 서술은 만료 즉시 컷됐다): 가독예산을
+                // 채우면 페이드아웃 시작.
                 if (_expiredPendingFadeOut && elapsed >= minVisible) BeginFadeOut();
                 // 상한: 상태가 아주 오래 지속돼도(예: Idle 6초) 말풍선이 화면에 눌러앉지 않게 한다.
-                // 이 방향(더 일찍 사라짐)은 계약이 막는 실패 모드("행동보다 텍스트가 오래 남음")의
-                // 반대편이라 안전하다.
                 else if (!_expiredPendingFadeOut && maxVisible > 0f && elapsed >= maxVisible) BeginFadeOut();
             }
 
@@ -720,7 +976,8 @@ namespace StickMate.Dialogue
                     // 정상 종료 경로의 제거도 로그로 남긴다 — 표시/제거가 항상 쌍으로 찍혀야
                     // "말풍선이 언제 사라졌는지"를 실행 로그만으로 재구성할 수 있다(빈도는 표시와
                     // 같으므로 로그가 늘어나는 양도 표시 로그와 동일하다).
-                    HideImmediateInternal($"정상 종료 페이드아웃 완료, 노출 {(Time.unscaledTime - _shownAtUnscaledTime):F2}초");
+                    HideImmediateInternal($"정상 종료 페이드아웃 완료, 종류={KindLabel(_activeKind)}, " +
+                        $"노출 {(Time.unscaledTime - _shownAtUnscaledTime):F2}초");
                     return;
                 }
             }
@@ -732,6 +989,35 @@ namespace StickMate.Dialogue
             UpdatePlacement();
             ApplyAlpha(_alpha);
         }
+
+        /// <summary>
+        /// ★ 지금 떠 있는 대사의 **노출 상한**(초). 표시 로그와 LateUpdate가 반드시 같은 값을 보게
+        /// 한 곳에 모은다 — 로그가 실제 판정과 다른 숫자를 찍으면 검증이 통째로 거짓말이 된다.
+        ///
+        /// 상한은 <b>둘</b>이고 둘 다 상한이므로 짧은 쪽(교집합)을 쓴다:
+        /// <list type="number">
+        ///   <item><b>가독예산 기반</b>(<see cref="DialogueBudget.MaxVisibleSecondsFor"/>) — 2026-09-01
+        ///     규칙 4-b 개정의 나머지 절반. 구판은 하한만 글자수 비례로 바꾸고 상한을 글자수 무관
+        ///     고정 4초로 남겨, 실측에서 결과가 정확히 뒤집혔다("하암...(5자)" 4.14초 vs
+        ///     "창 위는 미끄러워(9자)" 1.45초 — <b>짧은 대사가 더 오래</b> 떠 있었다).</item>
+        ///   <item><b>사용자 설정</b>(<c>dialogueMaxVisibleSeconds</c>) — 0 이하면 "상한 없음"이라
+        ///     예산 쪽만 남는다.</item>
+        /// </list>
+        /// 짧은 쪽을 고르는 방향(더 일찍 사라짐)은 계약이 막는 실패 모드("행동보다 텍스트가 오래
+        /// 남음")의 <b>반대편</b>이라 언제나 안전하다.
+        /// </summary>
+        private float ResolveMaxVisibleSeconds()
+        {
+            float budgetMax = DialogueBudget.MaxVisibleSecondsFor(_activeText,
+                DialogueTiming.PopInSeconds, DialogueTiming.FadeOutSeconds, ResolveVisibleScale());
+            float settingMax = StickMate.Core.AppSettingsModel.ResolveDialogueMaxVisibleSeconds(_config);
+            return settingMax > 0f ? Mathf.Min(settingMax, budgetMax) : budgetMax;
+        }
+
+        /// <summary>사용자가 고른 노출 배율(대사 표시 시간 3단). 기본 100%에서는 배율 도입 이전과
+        /// 화면 결과가 <b>한 톨도 다르지 않다</b>.</summary>
+        private static float ResolveVisibleScale()
+            => StickMate.Core.AppSettingsModel.ResolveDialogueVisibleScale();
 
         private void BeginFadeOut()
         {

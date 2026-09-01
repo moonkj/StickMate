@@ -508,18 +508,14 @@ namespace StickMate.Platform
         }
 
         /// <summary>주어진 배율에서 <c>pt × 배율</c>이 정수가 되는 가장 가까운 pt(같은 값이면 그대로).
-        /// "폰트를 몇 pt로 바꾸면 되는가"를 로그가 직접 답하게 하려고 둔다.</summary>
+        /// "폰트를 몇 pt로 바꾸면 되는가"를 로그가 직접 답하게 하려고 둔다.
+        ///
+        /// <para>★ 2026-09-01 — 구현을 <see cref="UiGlyphScalePolicy.SnapPoints"/>에 <b>위임</b>한다.
+        /// 이 로그가 권하는 pt와 실제 코드가 폰트를 스냅하는 pt는 <b>같은 규칙이어야</b> 하는데,
+        /// 여기에 사본을 두면 둘이 조용히 갈라진다(로그는 14를 권하는데 코드는 12로 스냅하는 식).
+        /// 판정 문구는 그대로다 — 같은 입력에 같은 답을 낸다(동률이면 위쪽, 탐색 폭 8pt).</para></summary>
         private static int NearestExactPoints(int points, float scale)
-        {
-            if (scale <= 0f) return points;
-            for (int d = 0; d <= 8; d++)
-            {
-                int up = points + d, down = points - d;
-                if (up > 0 && Mathf.Abs(up * scale - Mathf.Round(up * scale)) <= RatioEpsilon) return up;
-                if (down > 0 && Mathf.Abs(down * scale - Mathf.Round(down * scale)) <= RatioEpsilon) return down;
-            }
-            return points;
-        }
+            => UiGlyphScalePolicy.SnapPoints(points, scale);
 
         private static void Add(System.Collections.Generic.List<Line> lines, string code,
             CompositionFault fault, string text)

@@ -67,6 +67,107 @@ namespace StickMate.Platform
     }
 
     /// <summary>
+    /// **"이 창이 디스플레이를 통째로 덮고 있는가"의 순수 기하 규칙.** P/Invoke가 한 줄도 없으므로
+    /// EditMode에서 네이티브 없이 검증된다 — <b>이 파일이 존재하는 이유가 그것이다</b>.
+    ///
+    /// ============================================================================
+    /// 왜 "정확히 일치"만으로는 부족한가 (2026-09-02, 실기 통제 실험)
+    /// ============================================================================
+    /// macOS **네이티브 전체화면**(초록 버튼 / <c>toggleFullScreen:</c>)에 들어간 창의 실측 사각형은
+    /// 디스플레이 사각형과 <b>같지 않다</b>:
+    /// <code>
+    ///   CGDisplayBounds  = (0,  0, 1512, 982)
+    ///   실제 전체화면 창 = (0, 33, 1512, 949)   &lt;- 상단 33pt가 시스템 스트립에 남는다
+    /// </code>
+    /// 그래서 기존 "정확히 일치" 판정은 네이티브 전체화면 게임에서 <b>영원히 false</b>였고,
+    /// 절대 불변 원칙 2("전체화면 게임 감지 시 자동 숨김")가 그 경로에서 통째로 죽어 있었다.
+    ///
+    /// <para><b>★ 반증된 처방들</b>(같은 라운드에서 실측으로 각각 기각됐다. 다시 시도하지 말 것):
+    /// <list type="bullet">
+    /// <item><c>safeAreaInsets.top</c>(=32)을 상한으로 쓰기 — 실측 여백은 <b>33</b>이고 epsilon은
+    ///   0.5라 <b>0/24 샘플</b>에서 실패했다. "원인을 고쳤다"는 서사만 남고 동작은 하나도 안 바뀐다.</item>
+    /// <item><c>statusThick</c>(=22) / <c>auxiliaryTopLeftArea</c>(=32) — 어느 것도 33이 아니다.</item>
+    /// <item>"기하 불일치면 다음 창을 계속 본다"(<c>continue</c>) — 그러면 z-order 아무 데나 화면
+    ///   크기의 게임 창이 있기만 하면 숨는다. 전체화면 게임 위에 작은 창을 띄우고 작업 중일 때
+    ///   캐릭터가 사라져 <b>원칙 2의 반대편</b>을 새로 깬다.</item>
+    /// </list></para>
+    ///
+    /// ============================================================================
+    /// 채택한 규칙과 그 검산
+    /// ============================================================================
+    /// <code>
+    ///   정확일치  OR  ( 가로 전폭 AND 하단 밀착 AND 0 &lt;= 상단 여백 &lt;= 디스플레이 높이 * 5% )
+    /// </code>
+    /// · <b>상단 여백 상한을 비율로</b> 잡는 이유: 노치/메뉴바 두께는 기기와 스케일링에 따라 달라지므로
+    ///   상수 하나를 박으면 다음 기기에서 또 0/24가 된다. 실측 33 / 982 = <b>3.36%</b>이고 상한 5% =
+    ///   49.1pt라 <b>여유 1.49배</b>다.
+    /// · <b>하단 밀착이 음성 대조의 핵심 방벽이다.</b> Dock이 보이는 "줌(최대화)" 창은
+    ///   <c>(0,33,1512,874)</c>여서 하단이 <c>907 != 982</c>로 어긋나 탈락한다. 이 조건이 없으면
+    ///   최대화한 업무 창이 전부 전체화면으로 오판된다.
+    /// · 좌우는 <b>전폭</b>을 요구한다 — 반쪽 화면(Split View)은 폭이 절반이라 탈락한다.
+    ///
+    /// ============================================================================
+    /// ★ Windows는 <see cref="MatchesExactly"/>만 쓴다 (의도적 분기, 2026-09-02)
+    /// ============================================================================
+    /// Windows에는 "화면 상단에 OS가 항상 남겨두는 띠"라는 개념이 없다. 오히려 상단 도킹 작업표시줄이
+    /// 흔해서, 상단 여백 허용을 그대로 켜면 <b>상단 작업표시줄 환경에서 최대화한 창이 전부 전체화면으로
+    /// 오판</b>된다(= 원칙 2의 반대편을 깨는, macOS에서 방금 피한 것과 똑같은 사고). 그래서 규칙은 이
+    /// 중립 파일에 함께 두되 <b>Windows는 관용 없는 쪽을 명시적으로 호출</b>한다.
+    /// 실기 검증 없이 관용을 켜지 않는다 — 이 분기는 갭이 아니라 결정이다.
+    /// </summary>
+    public static class FullscreenGeometry
+    {
+        /// <summary>부동소수/서브픽셀 오차 허용치(OS 포인트). 두 플랫폼이 같은 값을 쓴다.</summary>
+        public const double Epsilon = 0.5;
+
+        /// <summary>
+        /// 상단에 남아도 되는 시스템 스트립(메뉴바/노치)의 최대 비율. 실측 33/982 = 3.36%에 대해
+        /// 1.49배 여유. 절대값(32/22/33...)을 박으면 기기·스케일링이 바뀔 때마다 다시 깨진다.
+        /// </summary>
+        public const double MenuBarStripFraction = 0.05;
+
+        /// <summary>창 사각형이 디스플레이 사각형과 정확히 같은가(보더리스 전체화면 / Windows 경로).</summary>
+        public static bool MatchesExactly(
+            double winX, double winY, double winWidth, double winHeight,
+            double dispX, double dispY, double dispWidth, double dispHeight,
+            double epsilon)
+        {
+            return Math.Abs(winX - dispX) < epsilon
+                && Math.Abs(winY - dispY) < epsilon
+                && Math.Abs(winWidth - dispWidth) < epsilon
+                && Math.Abs(winHeight - dispHeight) < epsilon;
+        }
+
+        /// <summary>
+        /// 창이 디스플레이를 덮고 있는가 — 정확일치, 또는 상단 시스템 스트립만 남긴 네이티브 전체화면.
+        /// 클래스 문서의 검산 표와 반증 목록을 함께 읽을 것.
+        /// </summary>
+        public static bool CoversDisplay(
+            double winX, double winY, double winWidth, double winHeight,
+            double dispX, double dispY, double dispWidth, double dispHeight,
+            double epsilon)
+        {
+            // 퇴화 사각형은 어떤 경우에도 "덮는다"가 아니다(0x0짜리 보조 창이 여기까지 오면 사고다).
+            if (winWidth <= 0.0 || winHeight <= 0.0) return false;
+            if (dispWidth <= 0.0 || dispHeight <= 0.0) return false;
+
+            if (MatchesExactly(winX, winY, winWidth, winHeight,
+                    dispX, dispY, dispWidth, dispHeight, epsilon)) return true;
+
+            // 가로 전폭 — Split View(반쪽 화면)를 여기서 떨군다.
+            if (Math.Abs(winX - dispX) >= epsilon) return false;
+            if (Math.Abs(winWidth - dispWidth) >= epsilon) return false;
+
+            // ★ 하단 밀착 — Dock이 보이는 "줌(최대화)" 창을 떨구는 핵심 방벽.
+            if (Math.Abs((winY + winHeight) - (dispY + dispHeight)) >= epsilon) return false;
+
+            double topInset = winY - dispY;
+            if (topInset < -epsilon) return false;                       // 화면 위로 삐져나온 창.
+            return topInset <= dispHeight * MenuBarStripFraction + epsilon;
+        }
+    }
+
+    /// <summary>
     /// Windows판 "이 전경 앱이 게임인가" 판정의 **순수 규칙**. macOS의
     /// <see cref="FullscreenGameCategory"/>와 같은 자리에 있고, 같은 계약을 지킨다:
     /// <b>모르면 게임이 아니다</b>.

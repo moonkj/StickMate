@@ -74,6 +74,60 @@ namespace StickMate.Platform.Windows
         /// <summary>macOS <c>MinWindowHeight</c>와 같은 값.</summary>
         public const float MinWindowHeight = 40f;
 
+        // ============================================================================
+        // ★★ 2026-09-01 — 제목 판정 + 제목 조회 예산 (블로킹 호출 제거 라운드)
+        //
+        // 배경은 Win32WindowService의 InternalGetWindowText 선언 문서에 있다. 요약하면
+        // "제목이 있는가"를 묻는 방법이 창의 메시지 루프를 깨우는 것이어서, 남의 앱이 바쁘면
+        // 우리 프레임이 그만큼 멈췄다(실기 최대 199ms/열거).
+        //
+        // 판정 자체를 여기 두는 이유는 이 파일의 다른 규칙들과 같다: Win32WindowService.cs는
+        // 통째로 #if UNITY_STANDALONE_WIN이라 이 개발 환경(macOS)에서 컴파일조차 되지 않아
+        // 테스트로 겨냥할 수 없다. OS에서 값을 '읽어오는' 일만 저쪽에 남기고 '해석'은 여기서 한다.
+        // ============================================================================
+
+        /// <summary>
+        /// 창 제목 조회 결과(복사된 글자 수)를 "제목이 있는가"로 해석한다.
+        ///
+        /// <para><b>이전 판정과 동치인 이유.</b> 이전에는 <c>GetWindowTextLength(hWnd) == 0</c>이면
+        /// 제목 없음이었다. 그 함수는 문서상 <b>실제 길이보다 큰 값을 돌려줄 수 있지만</b>
+        /// (ANSI/DBCS 변환 여유분) <b>0을 돌려주는 경우는 캡션이 빈 문자열일 때뿐</b>이다.
+        /// 지금 쓰는 조회는 버퍼에 실제로 복사한 글자 수를 돌려주므로, 캡션이 비어 있으면 0이고
+        /// 한 글자라도 있으면 1 이상이다 — <b>"0인가 아닌가"라는 이 판정에서는 두 값이 완전히
+        /// 같은 답을 낸다.</b> 캡션이 공백 문자만으로 이루어진 창도 이전과 똑같이 '제목 있음'으로
+        /// 남는다(트림하지 않는다 — 판정을 조금이라도 바꾸면 발판 후보 집합이 달라진다).</para>
+        ///
+        /// <para>버퍼가 작아도 무방하다: 잘라서 복사한 글자 수를 돌려주므로 제목이 길든 짧든
+        /// 결과의 부호는 같다. 그래서 호출부는 1글자 + 널 종단짜리 버퍼만 쓴다.</para>
+        /// </summary>
+        public static bool HasWindowTitle(int copiedCharCount) => copiedCharCount > 0;
+
+        /// <summary>프레임 목표를 알 수 없을 때(예: vsync 위임으로 -1) 가정하는 fps.</summary>
+        public const int DefaultTargetFrameRate = 60;
+
+        /// <summary>
+        /// 한 번의 열거에서 <b>제목 조회 전체</b>가 프레임 예산에서 가져가도 되는 몫.
+        /// 1/8이면 60fps(16.7ms) 기준 약 2.08ms다 — 이 단계는 커널 구조체 읽기 수십 회일 뿐이라
+        /// 정상이면 두 자릿수 마이크로초로 끝난다. 즉 이 문턱은 "약간 느림"이 아니라
+        /// <b>"블로킹 성질이 되살아났다"</b>를 잡는 경보선이다.
+        /// </summary>
+        public const float TitleProbeFrameBudgetShare = 0.125f;
+
+        /// <summary>
+        /// 제목 조회 예산(ms)을 <b>프레임 예산에서 유도</b>한다. 숫자를 코드에 박지 않는 것이
+        /// 이 저장소 규칙이고, 실질적 이유도 있다: Windows 저전력 등급에서 목표가 60 -> 30fps로
+        /// 내려가면 프레임 예산이 33ms가 되므로 경보선도 함께 움직여야 같은 의미를 유지한다.
+        /// </summary>
+        /// <param name="targetFrameRate">
+        /// <c>Application.targetFrameRate</c>. 0 이하(= vsync에 위임, 상한 없음)이면
+        /// <see cref="DefaultTargetFrameRate"/>로 대체한다.
+        /// </param>
+        public static float DeriveTitleProbeBudgetMs(int targetFrameRate)
+        {
+            int fps = targetFrameRate > 0 ? targetFrameRate : DefaultTargetFrameRate;
+            return 1000f / fps * TitleProbeFrameBudgetShare;
+        }
+
         /// <summary>
         /// 창의 "전체 알파"를 Win32 스타일 비트 + GetLayeredWindowAttributes 조회 결과로부터 판정한다.
         /// OS 호출은 호출부(Win32WindowService)가 하고, 이 함수는 그 결과만 해석한다.

@@ -75,7 +75,7 @@ namespace StickMate.Interaction
     /// 열려 있어도 문자열은 상태가 바뀐 프레임과 <see cref="SlowRefreshInterval"/> 주기에만 만든다.
     /// 히트테스트가 쓰는 코너 배열은 <see cref="_corners"/> 하나를 돌려쓴다(폴링 경로 할당 0).
     /// </summary>
-    public sealed class CharacterInfoWindow : MonoBehaviour
+    public sealed class CharacterInfoWindow : MonoBehaviour, IExclusiveSurface
     {
         [SerializeField] private StickConfig _config;
 
@@ -87,9 +87,19 @@ namespace StickMate.Interaction
         // ==================== 33-7-2 확정 치수 (캔버스 유닛 == OS 포인트) ====================
 
         private const float PanelWidth = 880f;
-        private const float PanelHeight = 861f;
         private const float TitleHeight = 40f;
-        private const float BodyHeight = PanelHeight - TitleHeight;   // 821
+
+        /// <summary>본문 마지막 요소(상세 패널) 아래에 남기는 여백. 예전에 861/696/103에서 <b>역산되던</b>
+        /// 값을 상수로 꺼냈다 — 이제 창 높이가 탭마다 달라지므로(<see cref="PanelHeightForTab"/>)
+        /// 이 값이 파생의 출발점이 되어야 한다. 861 = 40 + 696 + 103 + <b>22</b>.</summary>
+        private const float BodyBottomMargin = 22f;
+
+        /// <summary>가장 높은 탭(섹션 4개)의 창 높이 = 종전 고정값 861. 화면 클램프의 상한이자
+        /// 캔버스/차단막 계산의 기준으로만 쓴다.</summary>
+        private const float PanelMaxHeight = TitleHeight + SectionCount * SectionStep - SectionsTopY
+                                             + DetailHeight + BodyBottomMargin;   // 861
+
+        private const float BodyHeight = PanelMaxHeight - TitleHeight;   // 821 — 페이지 컨테이너 크기(마스크가 자른다)
         private const float ScreenMargin = 16f;
 
         // ---- 좌측 컬럼 ----
@@ -126,39 +136,70 @@ namespace StickMate.Interaction
         private const float SectionsTopY = -72f;
         private const float SectionStep = 156f;
         private const float SectionHeight = 136f;
-        private const float DetailY = -696f;
         private const float DetailHeight = 103f;
 
-        // ---- 카드 ----
-        private const float CardWidth = 141f;
-        private const float CardStep = 150f;
+        // ★ 2026-09-01 P0-1 — <b>DetailY 상수(-696)를 지웠다.</b>
+        //
+        //   -696은 "섹션 4개분(4 × 156 = 624)을 다 쓴 뒤"라는 뜻이었고, 그래서 섹션이 3개뿐인 [외형]
+        //   탭에서도 <b>없는 4번째 섹션의 자리를 예약</b>했다. 마지막 카드 아래에 176pt(창 높이 861의
+        //   20.4%)가 비었다 — 취향 문제가 아니라 상한(SectionCount)을 고정 예산으로 쓴 레이아웃 버그다
+        //   (docs/UI_SURFACE_SPEC.md §3.1: 예측 176 vs 캡처 실측 175).
+        //
+        //   이제 상세 패널의 y와 창 높이는 <b>그 탭이 실제로 보여줄 섹션 수</b>에서 파생된다.
+        //   [보관함]은 섹션이 아니라 20줄 목록이라 종전 최대 높이를 그대로 쓴다(빈칸이 없다).
 
-        /// <summary>카드 사이 간격 — <see cref="HorizontalLayoutGroup.spacing"/>에 그대로 들어간다.
-        /// 상수를 새로 적지 않고 <b>기존 두 값에서 뺀다</b>: 그래야 카드 폭을 고쳤을 때 간격만
-        /// 옛 값으로 남는 일이 없다(격자 시절의 CardStep 리듬이 캐러셀에서도 그대로 유지된다).</summary>
-        private const float CardGap = CardStep - CardWidth;   // 9
+        /// <summary>이 탭의 본문이 세로로 몇 칸(SectionStep)을 차지하는가.
+        /// 카드 탭은 실제 카테고리 수, [보관함]은 목록이 쓰는 최대치.</summary>
+        private static int LayoutStepsForTab(Tab tab)
+            => tab == Tab.Inventory ? SectionCount : SectionCountForTab(tab);
+
+        /// <summary>상세 패널의 위 끝(본문 좌표, 아래가 음수).</summary>
+        private static float DetailYForTab(Tab tab) => SectionsTopY - LayoutStepsForTab(tab) * SectionStep;
+
+        /// <summary>이 탭에서의 창 높이. [장비]/[보관함] 861, [외형] <b>705</b>(= 861 − 156).</summary>
+        private static float PanelHeightForTab(Tab tab)
+            => TitleHeight - DetailYForTab(tab) + DetailHeight + BodyBottomMargin;
+
+        /// <summary>탭 전환 시 창 높이가 바뀌는 데 걸리는 시간. 순간이동하면 화면 중앙 고정 창이
+        /// "깜빡 튄" 것처럼 보인다 — 부채꼴 호버(0.09초)보다 조금 길고 눈이 따라갈 수 있는 값.</summary>
+        private const float PanelHeightAnimateSeconds = 0.12f;
+
+        // ---- 카드 ----
+        // ★ 2026-09-01 사용자 신고("장비카드가 어설픈데서 절반 짤려있어서 더 이상함. 좀더 오른쪽까지
+        //   채워져야함"): 걸침(peek) 자체는 옳았지만 <b>자르는 선의 위치</b>가 틀렸다. 뷰포트가 520.5라
+        //   섹션 오른쪽 끝(592)에서 71.5pt 못 미친 <b>허공</b>에서 카드가 잘렸다 — 바로 위 "n / 6"
+        //   카운터가 592에서 끝나는데 카드줄만 520.5에서 끝나니 "더 있다"가 아니라 "깨졌다"로 읽힌다.
+        //   이제 자르는 선을 592(= 카운터 오른쪽 끝)에 맞추고, 그 폭에 3.5장이 떨어지도록 카드를 키운다.
+        private const float CardGap = 9f;
+        private const float CardWidth = 161f;
+        private const float CardStep = CardWidth + CardGap;   // 170
 
         /// <summary>캐러셀 뷰포트에 <b>온전히</b> 들어오는 카드 수. 나머지 한 장은 일부러 걸치게 둔다.</summary>
         private const int CarouselFullCards = 3;
 
-        /// <summary>걸치는 카드가 보이는 비율. 너무 작으면 "가장자리 그림자"로 보이고, 0.8을 넘으면
-        /// 온전한 카드처럼 보여 다시 "이게 전부"가 된다 — 반쯤이 가장 분명하게 <b>잘렸다</b>고 읽힌다.</summary>
-        private const float CarouselPeekFraction = 0.5f;
+        /// <summary>걸치는 카드가 보이는 비율. 이제 <b>입력이 아니라 결과</b>다 — 자르는 선을
+        /// 열 오른쪽 끝(592)에 못 박았으므로 비율은 거기서 떨어진다(161pt 카드의 50.9%).
+        /// 0.8을 넘으면 온전한 카드로 보여 다시 "이게 전부"가 되고, 너무 작으면 가장자리 그림자로
+        /// 보인다 — 그 창은 <c>CardWidth</c>로 맞춘다.</summary>
+        private const float CarouselPeekFraction =
+            (CarouselViewportWidth - CardStep * CarouselFullCards) / CardWidth;   // 0.509
 
         /// <summary>
-        /// ★ 2026-09-01 — 캐러셀 뷰포트 폭. 섹션 폭(<see cref="RightContentWidth"/> 592)보다 <b>일부러 좁다</b>.
+        /// ★ 캐러셀 뷰포트 폭 = <b>섹션 폭 그대로</b>. 이 창의 오른쪽 열에 있는 모든 것(구분선+"n / 6"
+        /// 카운터, 상세 패널)이 592에서 끝나므로 카드줄도 같은 선에서 끝나야 한다.
         ///
-        /// <para>592는 <see cref="CardStep"/> 150짜리 카드가 <b>정확히 4장</b> 들어가고(0/150/300/450 →
-        /// 오른쪽 끝 591) 1pt가 남는 폭이었다. 카테고리마다 6종이 있어도 화면에는 4장이 <b>딱 맞게</b>
-        /// 놓이므로 "모자는 4개구나"로 확정되고, 5·6번째는 통째로 밖에 있어 발견되지 않는다
-        /// (페르소나 M1 — 콘텐츠의 1/3이 도달 불가). 스크롤은 원래 됐다. 없었던 것은 <b>단서</b>다.</para>
+        /// <para><b>왜 이 상수가 한 번 520.5였는가</b>(2026-09-01 오전): 592는 <see cref="CardStep"/> 150
+        /// 짜리 카드가 <b>정확히 4장</b> 들어가고 1pt만 남는 폭이라 "모자는 4개구나"로 확정됐다
+        /// (페르소나 M1 — 6종 중 2종이 발견되지 않음). 그래서 카드는 그대로 두고 <b>창문만</b> 520.5로
+        /// 좁혀 마지막 카드를 반쯤 걸치게 했다.</para>
         ///
-        /// <para>그래서 카드 폭·간격·개수는 한 줄도 건드리지 않고 <b>창문만 좁힌다</b>: 마지막 카드가
-        /// 반쯤 잘린 채 남아 "오른쪽에 더 있다"가 그림 하나로 전달된다. 화살표 칩이나 스크롤바보다
-        /// 싸고(새 히트 영역 0개), <see cref="MaxCarouselScroll"/>·드래그·휠은 그대로다.</para>
+        /// <para><b>왜 되돌리는가</b>(같은 날 사용자 신고 "어설픈데서 절반 짤려있어서 더 이상함"):
+        /// 걸침은 <b>모서리에 걸려야</b> "계속된다"로 읽힌다. 520.5는 아무 모서리도 아닌 허공이라
+        /// 오른쪽에 71.5pt를 비워 둔 채 카드만 동강난 그림이 됐다. 이제 자르는 선을 열 끝에 두고
+        /// 카드 폭(141→161)으로 3.5장을 맞춘다 — 발견 단서는 유지하고 어중간함만 없앤다.
+        /// 덤으로 이름 칸이 70→90pt가 되어 P0-5의 한글 7자(≈84pt) 이름이 말줄임 없이 들어간다.</para>
         /// </summary>
-        private const float CarouselViewportWidth =
-            CardStep * CarouselFullCards + CardWidth * CarouselPeekFraction;   // 520.5
+        private const float CarouselViewportWidth = RightContentWidth;   // 592
 
         private const float CardHeight = 108f;
         private const float CardTopInSection = -28f;
@@ -166,10 +207,12 @@ namespace StickMate.Interaction
 
         // ★ 2026-09-01 — 카드 하단에 [착용]/[해제] 버튼이 들어오면서 <b>같은 108pt 안에서</b> 내부를
         //   다시 나눴다. 카드를 키울 수 없는 이유는 세로 예산이 이미 정확히 꽉 차 있어서다:
-        //   섹션 4개 × SectionStep 156 = 624 = SectionsTopY(-72) ~ DetailY(-696) 사이 전부.
+        //   섹션 4개 × SectionStep 156 = 624 = SectionsTopY(-72) ~ DetailYForTab([장비])(-696) 사이 전부.
         //   그래서 썸네일 62 -> 54, 이름줄 16 -> 14로 줄이고 남은 22pt를 버튼에 준다.
         private const float ThumbY = -8f;
-        private const float ThumbWidth = 119f;
+        /// <summary>카드 좌우 여백(<see cref="ThumbX"/>)을 뺀 나머지 — <b>숫자를 따로 적지 않는다</b>.
+        /// 카드 폭이 바뀌면 썸네일·하단 버튼·이름 칸이 전부 따라온다.</summary>
+        private const float ThumbWidth = CardWidth - ThumbX * 2f;   // 139
         private const float ThumbHeight = 54f;
 
         /// <summary>썸네일(119×54pt) 안에서 아이콘이 차지하는 정사각 크기.
@@ -186,8 +229,22 @@ namespace StickMate.Interaction
         private const float CardNameY = -64f;
         private const float CardTextHeight = 14f;
 
-        /// <summary>카드 하단 [착용]/[해제] 버튼. 상세 패널의 같은 버튼과 <b>같은 스타일 표</b>를 쓴다
-        /// (<see cref="StyleActionButton"/>) — 두 자리가 다른 색으로 같은 상태를 말하지 않게.</summary>
+        // ★ 2026-09-01 P0-5 — 이름 상자와 메타 상자가 <b>맞닿아 있었다</b>.
+        //   이름 x 11..89(폭 78, Overflow) / 메타 x 89..130 → 두 상자 사이 간격 <b>0pt</b>.
+        //   "리틀스틱메이트"(한글 7자 ≈ 84pt)는 78을 6pt 넘겨 "착용 중"과 부딪혔다
+        //   (캡처 실측 간격 1.2pt. 다른 카드는 40pt 이상이라 그 카드만 깨져 보였다).
+        //   이제 간격을 Space2로 <b>못 박고</b> 이름 폭을 거기서 뺀다 — 숫자를 두 곳에 적지 않는다.
+        //   ★ 2026-09-01 오후: 메타 칸 폭("착용 중" 41pt)을 <b>원본</b>으로 두고 x를 오른쪽 여백에서
+        //   역산한다. 예전에는 x가 원본이라 카드 폭이 커져도 메타가 왼쪽에 붙은 채 남았다.
+        private const float CardMetaWidth = 41f;
+        private const float CardMetaX = CardWidth - ThumbX - CardMetaWidth;          // 109
+        private const float CardNameGap = UiChrome.Space2;                           // 8
+        private const float CardNameWidth = CardMetaX - ThumbX - CardNameGap;        // 90
+
+        /// <summary>카드 하단 [착용]/[해제] 버튼 — 이 창에서 옷을 갈아입히는 <b>유일한</b> 손잡이다.
+        /// <para>★ 2026-09-01: 상세 패널에도 같은 버튼이 있었는데(사용자 신고 "각 장비별 착용버튼으로
+        /// 했는데 왜 옛날처럼 하단에 착용상자가 따로 있음?") 그쪽을 걷어냈다. 상태→라벨/색 매핑은
+        /// 여전히 <see cref="StyleActionButton"/> 한 곳뿐이다.</para></summary>
         private const float CardActionY = -80f;
         private const float CardActionHeight = 22f;
         private const float CardActionWidth = ThumbWidth;   // 썸네일과 같은 폭 = 카드 좌우 여백 11pt와 정렬
@@ -268,6 +325,13 @@ namespace StickMate.Interaction
         private RectTransform _panel;
         private BoxCollider2D _clickBlocker;
 
+        /// <summary>[장비]/[외형] 탭의 상세 패널. 탭마다 y가 달라지므로 붙잡아 둔다(P0-1).</summary>
+        private RectTransform _sectionDetailRect;
+
+        /// <summary>지금 화면에 있는 창 높이. 탭 전환 시 목표값(<see cref="PanelHeightForTab"/>)으로
+        /// <see cref="PanelHeightAnimateSeconds"/> 동안 이동한다. 0이면 아직 한 번도 안 정해진 상태.</summary>
+        private float _panelHeightPoints;
+
         private RectTransform _closeRect;
         private RectTransform _settingsRect;   // 헤더의 작은 [설정] 칩 — 설정창의 주 진입점(36-11).
         private RectTransform _titleBarRect;   // 드래그 손잡이(2026-08-30).
@@ -346,6 +410,12 @@ namespace StickMate.Interaction
             public Text Name;
             public Text Meta;
 
+            /// <summary><see cref="Name"/>에 넣으려던 <b>자르기 전</b> 문자열. 이것이 그대로면
+            /// <see cref="UiChrome.Ellipsize"/>를 다시 부르지 않는다 — 그 함수는 폭을 재려고
+            /// <c>Text.text</c>를 여러 번 바꾸고 잘린 문자열을 새로 할당하므로, 4Hz 갱신 루프에서
+            /// 무조건 부르면 카드 24장 × 4회/초의 쓰레기가 계속 쌓인다(상주 앱 규약).</summary>
+            public string NameSource;
+
             /// <summary>카드 하단 [착용]/[해제] 버튼(2026-09-01 사용자 요청). 카드 <b>본체</b> 클릭은
             /// 지금까지처럼 "고르기"만 하고, 옷을 갈아입히는 것은 이 버튼뿐이다 — 캐러셀을 밀다가
             /// 옷이 갈아입혀지는 사고를 구조적으로 없앤다.</summary>
@@ -374,10 +444,6 @@ namespace StickMate.Interaction
         private Text _detailName;
         private Text _detailMeta;
         private Text _detailBody;
-        private Image _actionSurface;
-        private Image _actionOutline;
-        private RectTransform _actionRect;
-        private Text _actionLabel;
 
         // ---- 보관함(가상 목록) ----
         private sealed class InventoryRowView
@@ -413,6 +479,11 @@ namespace StickMate.Interaction
         private bool _leftPrev;
         private bool _leftInitialized;
         private bool _draggingPanel;
+
+        /// <summary>커서가 이 창 위에 있었거나 조작이 있었던 마지막 시각(프레임 페이싱 홀드용).
+        /// <see cref="TickFramePacingHold"/> 참고.</summary>
+        private float _lastSurfaceTouchTime = float.NegativeInfinity;
+
         private Vector2 _dragGrabOffsetPoints;
         private Vector2 _dragStartOffsetPoints;
 
@@ -433,9 +504,6 @@ namespace StickMate.Interaction
         /// 둘 다 같은 GameObject에 있고, 없을 수도 있으므로(테스트 조립) 늦게 한 번만 찾는다.</summary>
         private GearRadialMenuWidget _menu;
 
-        /// <summary>구석 호버 패널(배타적 모달의 네 번째 표면). 지연 조회 — 이 컴포넌트가 붙지 않은
-        /// 조립(테스트 씬 등)에서는 계속 null이고 <see cref="CloseOverlappingSurfaces"/>가 건너뛴다.</summary>
-        private CornerHoverPanel _cornerPanel;
         private InfoGearIconWidget _gear;
         private string _lastActionKey;
         private float _lastActionTime;
@@ -451,13 +519,18 @@ namespace StickMate.Interaction
         /// 히트테스트가 "마스크에 잘린 자리는 누를 수 없다"를 판단하는 근거(R2 M3).</summary>
         private RectMask2D[] _masks = System.Array.Empty<RectMask2D>();
 
-        /// <summary>[착용] 버튼이 통째로 잘려 닿을 수 없는 상태인가 — 상태가 바뀔 때만 경고한다(로그 도배 방지).</summary>
+        /// <summary>카드의 [착용] 버튼이 <b>전부</b> 잘려 닿을 수 없는 상태인가 — 상태가 바뀔 때만 경고한다(로그 도배 방지).</summary>
         private bool _actionUnreachable;
 
         /// <summary>아이콘 한 파츠를 그릴 때 돌려쓰는 점 버퍼(가장 긴 파츠보다 넉넉하게).</summary>
         private static readonly Vector2[] _iconPoints = new Vector2[64];
 
         public bool IsOpen => _open;
+
+        // ★ 배타 표면 등록(2026-09-01) — 목록을 손으로 적지 않기 위한 유일한 배선. 명시적 구현이라
+        //   이 창의 공개 API(Open/Close/Toggle/IsOpen)는 한 톨도 바뀌지 않는다.
+        bool IExclusiveSurface.IsSurfaceOpen => _open;
+        void IExclusiveSurface.CloseSurface(string reason) => Close(reason);
 
         /// <summary>창이 실제로 켜져 있는가(진단/테스트 전용) — 플래그가 아니라 GameObject의 실제 상태.</summary>
         public bool IsCanvasActive => _canvas != null && _canvas.gameObject.activeSelf;
@@ -483,7 +556,7 @@ namespace StickMate.Interaction
             //   폐지됐고, AppControlDirector.LogStartupBanner()가 <b>같은 부팅 로그에서</b> "우클릭 메뉴는
             //   폐지됐습니다"라고 말한다 — 두 문장이 서로를 반박했다(페르소나 M11). "(1) 톱니 클릭"도
             //   부정확했다(톱니는 부채꼴을 열 뿐, 정보창까지는 2클릭). 로그도 원칙 1의 적용 대상이다.
-            Debug.Log($"[정보창] 준비 완료({PanelWidth:F0}×{PanelHeight:F0} 화면 중앙, 3탭: 장비/외형/보관함, " +
+            Debug.Log($"[정보창] 준비 완료({PanelWidth:F0}×{PanelHeightForTab(Tab.Equipment):F0}(외형 탭은 {PanelHeightForTab(Tab.Appearance):F0}) 화면 중앙, 3탭: 장비/외형/보관함, " +
                 $"카드 {_cards.Length}장 + 장비 {ItemCatalog.EquipmentCount}종) — 여는 방법 2가지: " +
                 "(1) **화면 우상단 톱니 아이콘 -> 부채꼴 [캐릭터]**(주 진입점, 2클릭), " +
                 $"(2) 전역 단축키 **{ShortcutLabel.Chord("I")}**. " +
@@ -532,6 +605,8 @@ namespace StickMate.Interaction
             CloseOverlappingSurfaces($"캐릭터 창 열림({source})");
             ResetPanelToCenter();      // 33-7-7의 "열면 화면 중앙"은 유지한다(드래그는 그 뒤의 이야기).
             _leftInitialized = false; // 창을 여는 그 클릭이 곧바로 카드 클릭으로 오인되지 않게.
+            // 여는 그 순간은 정의상 조작 중이다 — 첫 커서 폴링(최대 0.05초)까지의 공백을 메운다.
+            _lastSurfaceTouchTime = Time.unscaledTime;
             _hoveredCard = -1;
             _pendingEquipCard = -1;
             EndCarouselDrag();
@@ -561,39 +636,27 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// ★ 배타적 모달(2026-08-30) — 이 창이 뜨는 순간 부채꼴 메뉴와 팝오버 2종을 거둔다.
+        /// ★ 배타적 모달(2026-08-30) — 이 창이 뜨는 순간 <b>다른 모든 배타 표면</b>을 거둔다.
         /// <b>정리 책임을 여는 쪽 한 곳에만</b> 둔다. 진입점(부채꼴 [캐릭터] / 단축키 ⌃⌥⌘I / 우클릭
         /// 메뉴)마다 정리 코드를 흩뿌리면 네 번째 진입점이 생길 때 또 샌다 — 실제로 단축키 경로가
         /// 아무것도 닫지 않아 캔버스 3개(창 + 부채꼴 + 팝오버)가 동시에 뜨는 화면이 재현됐다.
+        ///
+        /// <para>★★ 2026-09-01 — <b>여기 있던 손으로 적은 목록을 통째로 걷어냈다</b>
+        /// (사용자 신고 "케릭터창도 겹쳐서보이는 문제있고"). 종전 구현은
+        /// <c>if (_menu != null) { _menu.ForceCloseAll(reason); return; }</c>로 <b>조기 반환</b>했고,
+        /// 부채꼴이 있는 정식 조립에서는 그 아래 줄이 절대 실행되지 않았다. 그래서 목록에 빠져 있던
+        /// <see cref="SettingsWindow"/>를 "아래에 한 줄 추가"하는 자연스러운 수정은 화면에서 아무
+        /// 효과가 없었을 것이다. 목록과 조기 반환을 함께 없애는 것이 이 버그의 근본 수정이다 —
+        /// 자세한 근거는 <see cref="IExclusiveSurface"/>.</para>
         /// </summary>
         private void CloseOverlappingSurfaces(string reason)
-        {
-            // ★ 2026-08-31 추가 — 네 번째 표면(구석 호버 패널). 이 줄이 없으면 다이얼을 <b>끌고 있는
-            // 동안</b>에는 그 패널의 자기 치유(DetectionArmed)가 통째로 멈춰 있어(끌다가 영역을 벗어나는
-            // 것이 정상 동작이라 일부러 그렇게 만들어져 있다) 액자 두 개가 겹친 채 남고 초상화 카메라가
-            // 2대 동시에 돈다. 이 메서드 문서의 "네 번째 진입점이 생기면 또 샌다"가 실제로 일어난 지점이라
-            // 아래 부채꼴 분기의 early-return **위에** 둔다(부채꼴이 있든 없든 반드시 실행되어야 한다).
-            if (_cornerPanel == null) _cornerPanel = GetComponent<CornerHoverPanel>();
-            if (_cornerPanel != null) _cornerPanel.ForceHide(reason);
-
-            if (_menu == null) _menu = GetComponent<GearRadialMenuWidget>();
-            if (_menu != null)
-            {
-                _menu.ForceCloseAll(reason);
-                return;
-            }
-
-            // 부채꼴이 없는 조립(테스트 씬 등)에서도 팝오버는 남아 있을 수 있다.
-            var focus = GetComponent<FocusSessionPopover>();
-            if (focus != null) focus.Close(reason);
-            var todo = GetComponent<TodoBoardPopover>();
-            if (todo != null) todo.Close(reason);
-        }
+            => ExclusiveSurfaces.CloseAllExcept(this, reason);
 
         // ==================== 루프 ====================
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.UiWindows);   // [스톨구간] 계측
             if (!_open) return; // 닫혀 있으면 아무 비용도 들이지 않는다.
 
             // ★★ 절대 불변 원칙 2(비침해) — 전체화면 게임이 감지되면 창을 닫는다.
@@ -608,21 +671,10 @@ namespace StickMate.Interaction
                 return;
             }
 
-            // ★★ 2026-08-31 — 사용자 신고 "기어 설정창조차 클릭하면 약간 렉걸린듯이 움직임".
-            //
-            // 이 창이 열려 있다는 것은 <b>사용자가 지금 이것을 보고 있다는 관측된 사실</b>이다. 그런데
-            // 적응형 프레임 페이싱은 그 사실을 몰랐고, "캐릭터가 Idle + 최근 2초 무입력"만 보고 Calm
-            // 등급으로 내려갔다 — 창을 **읽는 동안**이 정확히 그 조건이다(마우스를 안 움직인다).
-            // Windows에서 Calm은 targetFrameRate를 60->30으로 나눠 **게임 루프 자체를 30Hz**로 만들고,
-            // 아래 TickGlobalPointer()는 Update()마다 OS 커서를 한 번 폴링하므로 드래그가 커서를
-            // 계단식으로 따라오게 된다. 게다가 복귀는 다음 관측 폴링(최대 0.2초)에나 일어나서,
-            // **모든 상호작용의 첫 0.2초**가 절반 프레임레이트로 시작했다.
-            //
-            // 결합은 이 한 줄뿐이다(UI -> FramePacing 단방향). 홀드는 만료 시각 방식이라 이 창이
-            // 어떤 경로로 죽어도 0.5초 뒤 저절로 풀린다 — 해제 책임이 존재하지 않는다.
-            // 이 홀드는 Calm만 이긴다: 전체화면 숨김/화면 꺼짐/자리비움(3분)은 그대로 이긴다
-            // (FramePacingPolicy.DecideTier의 우선순위 문서 참고 — 원칙 2와 24시간 상주 절감 보호).
-            FramePacing.HoldActiveForInteraction();
+            // ★★ 프레임 페이싱 홀드는 여기가 아니라 TickGlobalPointer() 안에 있다 —
+            //    "창이 열려 있는 동안"이 아니라 <b>"지금 이 창을 조작 중일 때"</b>만 걸어야 하기
+            //    때문이다(근거: TickFramePacingHold 문서의 125분 실측). 커서 표본을 뜨는 곳이
+            //    거기 하나뿐이라 판정도 그 자리에서 한다.
 
             ApplyCanvasScaleFactor();
             SyncClickBlocker();
@@ -728,7 +780,7 @@ namespace StickMate.Interaction
         {
             if (index < 0 || index >= _statValues.Length || _statValues[index] == null) return;
             _statValues[index].text = value ?? "아직 없음";
-            _statValues[index].color = hasRecord ? UiChrome.TextPrimary : UiChrome.TextQuaternary;
+            _statValues[index].color = UiChrome.InkTitle(hasRecord);
         }
 
         /// <summary>레벨 -> 칭호. 새 시스템이 아니라 <b>표시용 매핑 하나</b>다(리더 확정 — 과설계 금지).</summary>
@@ -869,14 +921,21 @@ namespace StickMate.Interaction
             bool hovered = _hoveredCard >= 0 && _cards[_hoveredCard] == card;
             Color tint = UiChrome.CategoryTint(slot);
 
-            card.Name.text = owned ? entry.DisplayName : "???";
-            card.Name.color = owned ? UiChrome.TextPrimary : UiChrome.TextDisabled;
+            // 이름은 상자(70pt)를 넘으면 말줄임한다 — Overflow로 흘리면 오른쪽 메타("착용 중")와
+            // 물리적으로 겹친다(P0-5). 내용이 바뀐 순간에만 다시 계산한다(ItemCard.NameSource 문서).
+            string wantedName = owned ? entry.DisplayName : "???";
+            if (!string.Equals(card.NameSource, wantedName, System.StringComparison.Ordinal))
+            {
+                card.NameSource = wantedName;
+                card.Name.text = UiChrome.Ellipsize(card.Name, wantedName, CardNameWidth);
+            }
+            card.Name.color = UiChrome.InkTitle(owned);
 
             if (!owned)
             {
                 // "LV.20" — 잠긴 카드의 메타는 <b>언제 열리는지</b> 하나만 말한다.
                 card.Meta.text = $"LV.{entry.RequiredLevel}";
-                card.Meta.color = UiChrome.TextDisabled;
+                card.Meta.color = UiChrome.InkMeta;
                 card.Surface.color = UiChrome.CardSurfaceMuted;
                 card.Thumb.color = UiChrome.ThumbSurfaceLocked;
                 // 잠김 = <b>무채색 실루엣</b>. 해금 전에 소재색을 미리 보여주면 잠금 연출이 무의미해진다.
@@ -886,7 +945,7 @@ namespace StickMate.Interaction
             else
             {
                 card.Meta.text = worn ? "착용 중" : "보유";
-                card.Meta.color = worn ? tint : UiChrome.TextQuaternary;
+                card.Meta.color = worn ? tint : UiChrome.InkMeta;
                 card.Surface.color = UiChrome.CardSurface;
                 // 착용 중 썸네일 바탕은 <b>카테고리 틴트가 아니라 강조색 wash</b>다(2026-08-30).
                 // 같은 라운드에 아이템별 소재색이 들어오면서, 카테고리 틴트를 그대로 깔면 그 카테고리의
@@ -914,16 +973,32 @@ namespace StickMate.Interaction
 
             if (card.LockBadge != null) card.LockBadge.gameObject.SetActive(!owned);
 
-            // 카드 하단 버튼 — 상세 패널의 [착용] 버튼과 <b>같은 표</b>를 쓴다.
+            // 카드 하단 버튼 — 이 창의 유일한 착용 손잡이(상세 패널은 읽기 전용이다).
             StyleActionButton(card.ActionSurface, card.ActionOutline, card.ActionLabel, owned, worn);
         }
 
         /// <summary>
-        /// [착용]/[해제] 버튼 한 벌의 스타일 — 33-7-4의 상태 표. <b>카드 하단 버튼과 상세 패널 버튼이
-        /// 이 함수 하나를 공유한다</b>. 두 벌로 두면 같은 상태를 두 자리가 다른 색으로 말하게 된다
-        /// (이 프로젝트가 반복해서 겪은 이중 정의 계열 실패이고, 여기서는 <b>화면에서 바로 보인다</b>).
+        /// [착용]/[해제] 버튼 한 벌의 스타일 — 33-7-4의 상태 표. 상태→라벨/색 매핑이 존재하는
+        /// <b>유일한 자리</b>다.
+        ///
+        /// <para>★ 2026-09-01 <b>강조 등급 재조정</b> — 예전에는 이 함수가 두 자리(카드 하단 / 상세 패널)를
+        /// 강조 등급으로 나눠 칠했다. 사용자 신고("각 장비별 착용버튼으로 했는데 왜 옛날처럼 하단에
+        /// 착용상자가 따로 있음?")로 <b>상세 패널의 중복 버튼을 걷어내면서</b> 자리가 하나로 줄었고,
+        /// 등급 파라미터도 함께 지웠다 — 분기 하나짜리 등급은 다음 사람에게 "두 자리가 있다"는 거짓말이 된다.
+        /// 이제 <b>카드 버튼이 이 창의 1차 행동</b>이다.</para>
+        ///
+        /// <para>★ 그렇다고 흰 채움으로 되돌리지 <b>않는다</b>. P0-4가 실측으로 걷어낸 이유가 그대로 살아
+        /// 있기 때문이다: 카드 안 최고 휘도 면적비가 [착용] 버튼 면(119×22 = 2,618pt², 카드 대비 15.0:1) :
+        /// 아이템 아이콘 잉크(≈290pt², 11.9:1) = <b>약 9 : 1</b>이고, 한 화면에 이 막대가 12개 뜬다.
+        /// 유저가 고르는 대상은 <i>아이템</i>인데 가장 밝은 것이 <i>동사</i>가 된다. <b>1차 행동이라는 것은
+        /// 경쟁자가 없다는 뜻이지 가장 밝아야 한다는 뜻이 아니다</b> — 이 창에 남은 다른 채움 버튼이
+        /// 0개라, 조용한 채움만으로도 위계는 이미 서 있다.</para>
+        ///
         /// <para>색은 전부 불투명값이다 — 투명 오버레이에서 알파를 겹치면 그 자리만 뒤 창이 비친다
-        /// (UiChrome '알파 채널의 법칙').</para>
+        /// (UiChrome '알파 채널의 법칙'). 새 색을 만들지 않고 기존 토큰을 <see cref="UiChrome.Flatten"/>
+        /// 으로 합성한다: <c>Flatten(CardBorder, CardSurface)</c> = #32353c는
+        /// <see cref="SettingsControls"/>가 이미 쓰는 값이고, <c>Flatten(AccentSurface, CardSurface)</c>
+        /// = #243143은 착용 중 썸네일 wash와 <b>같은 값</b>이다.</para>
         /// </summary>
         private static void StyleActionButton(Image surface, Image outline, Text label, bool owned, bool worn)
         {
@@ -931,17 +1006,20 @@ namespace StickMate.Interaction
             {
                 // 잠긴 카드에 "LV.20"이라고 적지 않는다 — 바로 위 메타 줄이 이미 그 숫자를 말하고 있다.
                 label.text = !owned ? "잠김" : worn ? "해제" : "착용";
-                label.color = !owned ? UiChrome.TextDisabled
-                    : worn ? UiChrome.TextPrimary : UiChrome.OnAccentSolid;
+                label.color = !owned ? UiChrome.TextTertiary        // 2.09:1 -> 5.73:1
+                    : worn ? UiChrome.TextOnAccent                  // 7.14:1 on #243143
+                           : UiChrome.TextPrimary;                  // 11.10:1 on #32353c
             }
             if (surface != null)
             {
                 surface.color = !owned ? UiChrome.CardSurfaceMuted
-                    : worn ? UiChrome.CardSurface : UiChrome.TextPrimary;
+                    : worn ? UiChrome.Flatten(UiChrome.AccentSurface, UiChrome.CardSurface)
+                           : UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface);
             }
             if (outline != null)
             {
-                outline.color = owned ? UiChrome.TextPrimary : UiChrome.CardBorder;
+                outline.color = !owned ? UiChrome.CardBorder
+                    : worn ? UiChrome.AccentBorder : UiChrome.CardBorder;
             }
         }
 
@@ -968,8 +1046,17 @@ namespace StickMate.Interaction
             }
         }
 
-        /// <summary>선택 상세 패널(33-7-4). <b>잠긴 아이템도 선택은 된다</b> — 왜 잠겼는지 알 수 있는
-        /// 유일한 경로이기 때문이다. 버튼 클릭만 무시한다.</summary>
+        /// <summary>선택 상세 패널(33-7-4). <b>읽기 전용</b>이다 — 이름·슬롯/보유 상태·설명, 그리고
+        /// 잠겼다면 <b>왜 잠겼는지</b>를 말하는 것이 전부고, 옷을 갈아입히는 것은 카드 하단 버튼이 한다.
+        ///
+        /// <para>★ 2026-09-01 — 여기 있던 [착용]/[해제] 버튼을 걷어냈다(사용자 신고: "각 장비별
+        /// 착용버튼으로 했는데 왜 옛날처럼 하단에 착용상자가 따로 있음?"). 카드 버튼을 넣으면서 이쪽을
+        /// 안 걷어내 <b>같은 동작을 하는 버튼이 두 개</b>였다.</para>
+        ///
+        /// <para>★ <b>패널 자체는 남긴다.</b> 잠긴 아이템도 선택은 되고, 이 패널이 "왜 잠겼는지"를 알 수
+        /// 있는 <b>유일한</b> 경로다 — 카드에는 이름(<c>???</c>)과 요구 레벨 숫자뿐이고 설명문이 없다.
+        /// 버튼이 사라진 자리에는 아무것도 채우지 않는다(메타 줄은 172..502pt라 원래 닿지 않던 칸이다).</para>
+        /// </summary>
         private void RefreshDetail()
         {
             if (_tab == Tab.Inventory) return;
@@ -982,7 +1069,7 @@ namespace StickMate.Interaction
             if (_detailName != null)
             {
                 _detailName.text = owned ? entry.DisplayName : "???";
-                _detailName.color = owned ? UiChrome.TextPrimary : UiChrome.TextDisabled;
+                _detailName.color = UiChrome.InkTitle(owned);
             }
             if (_detailMeta != null)
             {
@@ -995,10 +1082,8 @@ namespace StickMate.Interaction
                 _detailBody.text = owned
                     ? entry.Description
                     : $"레벨 {entry.RequiredLevel}이 되면 열립니다. 지금은 실루엣만 보입니다.";
-                _detailBody.color = owned ? UiChrome.TextSecondary : UiChrome.TextDisabled;
+                _detailBody.color = UiChrome.InkBody(owned);
             }
-
-            StyleActionButton(_actionSurface, _actionOutline, _actionLabel, owned, worn);
         }
 
         // ==================== 보관함(가상 목록) ====================
@@ -1080,15 +1165,16 @@ namespace StickMate.Interaction
                     : owned ? UiChrome.CardSurface : UiChrome.CardSurfaceMuted;
                 view.Outline.color = selected ? UiChrome.TextPrimary
                     : worn ? UiChrome.CardBorderWorn : UiChrome.CardBorder;
+                // 도트만 글자가 아니다 — 나머지 셋은 전부 같은 사다리에서 나온다.
                 view.Dot.color = entry.Slot.HasValue
                     ? (worn ? UiChrome.CategoryTint(entry.Slot.Value)
-                            : owned ? UiChrome.TextQuaternary : UiChrome.TrackBackground)
-                    : UiChrome.TextQuaternary;
-                view.Title.color = owned ? UiChrome.TextPrimary : UiChrome.TextDisabled;
-                view.Subtitle.color = UiChrome.TextQuaternary;
-                view.Description.color = owned ? UiChrome.TextSecondary : UiChrome.TextDisabled;
+                            : owned ? UiChrome.NonTextMuted : UiChrome.TrackBackground)
+                    : UiChrome.NonTextMuted;
+                view.Title.color = UiChrome.InkTitle(owned);
+                view.Subtitle.color = UiChrome.InkMeta;
+                view.Description.color = UiChrome.InkBody(owned);
                 view.StatusSlot.color = worn && entry.Slot.HasValue ? UiChrome.CategoryTint(entry.Slot.Value)
-                    : owned ? UiChrome.TextTertiary : UiChrome.TextDisabled;
+                    : UiChrome.InkMeta;
             }
 
             if (_pageIndicator != null)
@@ -1187,6 +1273,8 @@ namespace StickMate.Interaction
 
         private void ApplyTabVisibility()
         {
+            ApplyTabDetailPlacement();   // 창 높이보다 먼저 — ApplyTabDetailPlacement 문서 참고.
+
             bool sections = _tab != Tab.Inventory;
             if (_sectionPage != null) _sectionPage.SetActive(sections);
             if (_inventoryPage != null) _inventoryPage.SetActive(!sections);
@@ -1197,7 +1285,7 @@ namespace StickMate.Interaction
                 if (_tabLabels[i] != null)
                 {
                     _tabLabels[i].fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
-                    _tabLabels[i].color = active ? UiChrome.TextPrimary : UiChrome.TabInactive;
+                    _tabLabels[i].color = UiChrome.InkTab(active);
                 }
                 if (_tabUnderlines[i] != null)
                 {
@@ -1206,8 +1294,11 @@ namespace StickMate.Interaction
             }
         }
 
-        /// <summary>카드 클릭 = <b>선택</b>. 착용/해제는 상세 패널의 버튼 하나로만 한다 —
-        /// "고른다"와 "입는다"를 같은 클릭에 겹치면, 설명을 읽으려고 눌렀을 뿐인데 옷이 갈아입혀진다.</summary>
+        /// <summary>카드 <b>본체</b> 클릭 = <b>선택</b>(아래 상세 패널이 그 아이템을 설명한다).
+        /// 착용/해제는 <b>그 카드 하단의 버튼</b>만 한다 — "고른다"와 "입는다"를 같은 클릭에 겹치면,
+        /// 설명을 읽으려고 눌렀을 뿐인데 옷이 갈아입혀진다.
+        /// <para>2026-09-01 이전에는 이 자리에 "착용은 상세 패널의 버튼 하나로만"이라고 적혀 있었다.
+        /// 그 버튼은 카드 버튼이 들어온 뒤로 중복이었고 지금은 없다.</para></summary>
         private void OnCardClicked(int cardIndex)
         {
             ItemCard card = CardAt(cardIndex);
@@ -1251,6 +1342,10 @@ namespace StickMate.Interaction
         private ItemCard CardAt(int index)
             => index >= 0 && index < _cards.Length ? _cards[index] : null;
 
+        /// <summary>착용/해제를 <b>실제로 수행</b>하는 단 하나의 자리. 진입점은
+        /// <see cref="OnCardEquipClicked"/> 하나뿐이다(상세 패널의 중복 버튼은 2026-09-01에 걷어냈다).
+        /// 선택 상태(<c>_selectedSlot</c>/<c>_selectedItem</c>)를 읽으므로 호출 전에 그 둘이 대상 아이템을
+        /// 가리키고 있어야 한다.</summary>
         private void OnActionClicked()
         {
             ItemCatalogEntry entry = ItemCatalog.Item(_selectedSlot, _selectedItem);
@@ -1259,7 +1354,7 @@ namespace StickMate.Interaction
             if (!entry.IsOwned(_config))
             {
                 // 33-7-4: 잠긴 항목은 버튼 클릭만 무시한다(선택은 되고 설명도 보인다).
-                Debug.Log($"[{TabNames[(int)_tab]}] {entry.DisplayName}은(는) 아직 잠겨 있습니다 — " +
+                Debug.Log($"[{TabNames[(int)_tab]}] {entry.DisplayName}{KoreanParticle.Topic(entry.DisplayName)} 아직 잠겨 있습니다 — " +
                     $"Lv.{entry.RequiredLevel}에서 열립니다(현재 Lv.{CharacterProgressionModel.Level}).");
                 return;
             }
@@ -1275,7 +1370,9 @@ namespace StickMate.Interaction
             ItemCatalogEntry replaced = nowWorn && replacedItem != EquipmentModel.NotWorn
                 && replacedItem != _selectedItem ? ItemCatalog.Item(_selectedSlot, replacedItem) : null;
             Debug.Log($"[{TabNames[(int)_tab]}] {entry.DisplayName} {(nowWorn ? "착용" : "해제")}" +
-                (replaced != null ? $"(같은 카테고리의 {replaced.DisplayName}은(는) 자동 해제)" : string.Empty) +
+                (replaced != null
+                    ? $"(같은 카테고리의 {replaced.DisplayName}{KoreanParticle.Topic(replaced.DisplayName)} 자동 해제)"
+                    : string.Empty) +
                 " — 초상화와 캐릭터에 즉시 반영, 즉시 저장.");
             CharacterSaveStore.Save(); // "모든 토글은 즉시 반영(별도 저장 버튼 없음)".
             RefreshCards();
@@ -1369,6 +1466,10 @@ namespace StickMate.Interaction
         {
             if (_buttonService == null || _panel == null) return;
 
+            // 홀드 판정도 이 가드 뒤에 있다 — 전역 포인터 서비스가 없으면 커서를 관측할 수단이
+            // 자체가 없다. 그 환경(에디터/Null 서비스)에서는 적응형 페이싱도 함께 꺼져 있으므로
+            // 홀드가 없어서 생기는 손해가 없다.
+
             // 드래그 중에만 폴링 간격을 없앤다 — 20Hz로 창을 끌면 커서에서 창이 뚝뚝 끊겨 떨어진다.
             // 평소에는 예전 그대로 ClickPollInterval(0.05초)로 눌러 둔다(하루 종일 켜져 있는 앱이다).
             if (!_draggingPanel && _carouselSection < 0)
@@ -1383,11 +1484,42 @@ namespace StickMate.Interaction
             Vector2 cursor = hasCursor
                 ? ScreenCoordinateConverter.OsScreenToUnityScreen(osScreen, _config)
                 : Vector2.zero;
+            TickFramePacingHold(hasCursor, cursor);
+
             // 끄는 중에는 카드를 다시 칠하지 않는다(패널 이동도, 캐러셀 밀기도 마찬가지다).
             if (hasCursor && !_draggingPanel && !_carouselMoved) UpdateHover(cursor);
 
             if (!_buttonService.TryGetPrimaryButtonPressed(out bool left)) return;
             ProcessPointer(left, cursor, hasCursor);
+        }
+
+        /// <summary>
+        /// "지금 이 창을 <b>조작 중</b>인가"를 프레임 페이싱에 알린다. 판정은 플랫폼 중립 한 곳
+        /// (<see cref="FramePacingPolicy.ShouldHoldForSurface"/>)이고 여기서는 사실만 모은다.
+        ///
+        /// <para><b>★ 2026-09-01 — 원래 이 홀드는 <c>Update()</c>에서 무조건 걸려 있었고, 그것이
+        /// 적응형 절전을 통째로 죽였다.</b> 사용자 로그에서 정보창이 <b>125분</b> 열려 있는 동안
+        /// 등급 전이가 0회 / 활성 등급 체류 100%였고, 창을 닫은 직후 전이가 재개되며 GPU 점유 추정이
+        /// 약 2.5배 떨어졌다. "정보창은 수명이 짧다"는 전제가 실측으로 반증된 것이다. 자리비움(3분
+        /// 무입력)이 이 홀드를 이기게 돼 있지만, 사용자가 <b>다른 앱에서 계속 타이핑</b>하면 그
+        /// 시계는 3분에 닿지 않는다 — 홀드를 깨는 경로가 실질적으로 없었다.</para>
+        ///
+        /// <para>반응성을 해치지 않는 근거(왜 이 경계인가)는 정책 함수 문서에 있다. 요약하면:
+        /// 절감 등급은 게임 루프가 아니라 렌더 간격만 바꾸므로 <b>입력 처리 주기는 그대로</b>이고,
+        /// 커서가 창에 닿는 순간의 복귀 지연이 최대 0.07초(폴링 0.05초 + 1프레임)다.</para>
+        /// </summary>
+        private void TickFramePacingHold(bool hasCursor, Vector2 cursor)
+        {
+            // 커서가 창 밖으로 나가도 계속되는 조작들 — 이것들은 사각형 판정으로 잡을 수 없다.
+            bool manipulating = _draggingPanel || _carouselSection >= 0 || _editingName;
+            bool cursorOver = hasCursor && RectContainsScreenPoint(_panel, cursor);
+            if (manipulating || cursorOver) _lastSurfaceTouchTime = Time.unscaledTime;
+
+            if (FramePacingPolicy.ShouldHoldForSurface(cursorOver, manipulating,
+                    Time.unscaledTime - _lastSurfaceTouchTime))
+            {
+                FramePacing.HoldActiveForInteraction();
+            }
         }
 
         /// <summary>
@@ -1681,11 +1813,6 @@ namespace StickMate.Interaction
                 if (TryClaimAction("card" + i)) OnCardClicked(i);
                 return;
             }
-            if (ContainsScreenPoint(_actionRect, cursor))
-            {
-                if (TryClaimAction("action")) OnActionClicked();
-                return;
-            }
 
             // ★ 33-7-9의 세 번째 탈출구 — <b>창 밖 클릭</b>(2026-08-30 신설). 여기까지 왔다는 것은 어떤
             // 컨트롤에도 맞지 않았다는 뜻이라, 패널 안이면 "빈 자리"고 밖이면 닫는다. 이게 없어서 실제
@@ -1828,36 +1955,6 @@ namespace StickMate.Interaction
             return Rect.MinMaxRect(xMin, yMin, xMax, yMax);
         }
 
-        /// <summary>[착용]/[해제] 버튼이 지금 화면에 보이는 넓이 비율(0 = 통째로 잘림). 진단/테스트용.</summary>
-        public float ActionButtonVisibleFraction
-        {
-            get
-            {
-                if (_actionRect == null || !_actionRect.gameObject.activeInHierarchy) return 0f;
-                _actionRect.GetWorldCorners(_corners);
-                float full = (_corners[2].x - _corners[0].x) * (_corners[2].y - _corners[0].y);
-                if (full <= 0f) return 0f;
-                Rect visible = VisibleScreenRectOf(_actionRect);
-                return Mathf.Clamp01(visible.width * visible.height / full);
-            }
-        }
-
-        /// <summary>[착용] 버튼의 <b>잘리기 전</b> 화면 사각형 — 테스트가 "안 보이는 자리"를 정확히
-        /// 눌러 보기 위해 필요하다(좌표를 손으로 적으면 레이아웃이 바뀔 때 엉뚱한 곳을 누른다).</summary>
-        public Rect ActionButtonRawScreenRect
-        {
-            get
-            {
-                if (_actionRect == null || !_actionRect.gameObject.activeInHierarchy) return new Rect();
-                _actionRect.GetWorldCorners(_corners);
-                return Rect.MinMaxRect(_corners[0].x, _corners[0].y, _corners[2].x, _corners[2].y);
-            }
-        }
-
-        /// <summary>지금 이 지점을 누르면 [착용] 버튼이 반응하는가(전역 폴링과 <b>같은</b> 판정).</summary>
-        public bool IsActionButtonHittableAt(Vector2 cursorUnityScreen)
-            => ContainsScreenPoint(_actionRect, cursorUnityScreen);
-
         // ==================== 진단/테스트 전용 — 카드 캐러셀 ====================
         //
         // 좌표를 테스트가 손으로 적으면 레이아웃이 바뀔 때 엉뚱한 곳을 누르게 된다([착용] 버튼 쪽에서
@@ -1877,6 +1974,16 @@ namespace StickMate.Interaction
 
         public int CardItemForTests(int index) => CardAt(index)?.Item ?? -1;
 
+        /// <summary>그 카드가 가리키는 슬롯. 섹션→슬롯 규칙(<see cref="SectionSlot"/>)을 테스트가
+        /// <b>베껴 적지 않게</b> 하는 창구다 — 카테고리를 더하거나 지우면 그 규칙만 바뀌어야 한다.
+        /// 카드가 없으면 false.</summary>
+        public bool TryGetCardSlotForTests(int index, out EquipmentSlot slot)
+        {
+            ItemCard card = CardAt(index);
+            slot = card != null ? SectionSlot(_tab, card.Section) : default;
+            return card != null;
+        }
+
         /// <summary>카드의 <b>잘리기 전</b> 화면 사각형. 캐러셀 밖으로 밀려난 카드도 값이 나온다 —
         /// "보이지 않는데 눌리는가"를 재려면 그 자리를 알아야 한다.</summary>
         public Rect CardRawScreenRect(int index) => RawScreenRectOf(CardAt(index)?.Rect);
@@ -1889,13 +1996,85 @@ namespace StickMate.Interaction
         /// <summary>카드 하단 [착용]/[해제] 버튼의 잘리기 전 화면 사각형.</summary>
         public Rect CardEquipButtonRawScreenRect(int index) => RawScreenRectOf(CardAt(index)?.ActionRect);
 
+        /// <summary>그 카드의 [착용] 버튼이 지금 화면에 보이는 넓이 비율(0 = 통째로 잘림).
+        /// <para>★ 2026-09-01 — 상세 패널 버튼을 걷어내면서 <c>ActionButtonVisibleFraction</c>이 갈 곳을
+        /// 잃었다. "보이지 않는 것은 눌리지 않는다"(R2 M3)는 그 버튼의 성질이 아니라 <b>이 창의 규칙</b>이라,
+        /// 살아남은 버튼 쪽으로 관측 창구를 옮겨 회귀를 그대로 유지한다.</para></summary>
+        public float CardEquipButtonVisibleFraction(int index)
+        {
+            RectTransform rt = CardAt(index)?.ActionRect;
+            if (rt == null || !rt.gameObject.activeInHierarchy) return 0f;
+            rt.GetWorldCorners(_corners);
+            float full = (_corners[2].x - _corners[0].x) * (_corners[2].y - _corners[0].y);
+            if (full <= 0f) return 0f;
+            Rect visible = VisibleScreenRectOf(rt);   // _corners를 다시 쓰므로 full을 먼저 잰다.
+            return Mathf.Clamp01(visible.width * visible.height / full);
+        }
+
         /// <summary>지금 이 지점을 누르면 그 카드의 [착용] 버튼이 반응하는가(마스크까지 본 판정).</summary>
         public bool IsCardEquipButtonHittableAt(int index, Vector2 cursorUnityScreen)
             => ContainsScreenPoint(CardAt(index)?.ActionRect, cursorUnityScreen);
 
+        // ---- P0-4 / P0-5 회귀용 관측 창구 ----
+
+        /// <summary>카드 하단 버튼의 <b>표면색</b>. P0-4 회귀가 "카드 버튼이 화면에서 가장 밝은 면이
+        /// 아니다"를 이 값으로 확인한다.</summary>
+        public Color CardActionSurfaceColor(int index) => CardAt(index)?.ActionSurface?.color ?? Color.clear;
+
+        /// <summary>카드 하단 버튼의 <b>라벨색</b>. 조용해진 표면 위에서도 읽히는지 확인한다.</summary>
+        public Color CardActionLabelColor(int index) => CardAt(index)?.ActionLabel?.color ?? Color.clear;
+
+        /// <summary>상세 패널 안에 살아 있는 <see cref="Button"/> 수. 회귀 테스트가 "걷어낸 중복 착용
+        /// 버튼이 되살아나지 않았다"를 <b>색이나 라벨이 아니라 존재 여부</b>로 확인하는 창구다.
+        /// 패널을 못 찾으면 −1(관측 전제 자체가 깨진 것과 0을 구별한다).
+        /// <para>진단/테스트 전용 — <c>GetComponentsInChildren</c>은 할당하므로 매 프레임 경로에서
+        /// 부르지 않는다(상주 앱 규약).</para></summary>
+        public int DetailPanelButtonCountForTests
+            => _sectionDetailRect != null ? _sectionDetailRect.GetComponentsInChildren<Button>(true).Length : -1;
+
+        /// <summary>상세 패널이 지금 말하고 있는 이름 — 잠긴 아이템이면 <c>???</c>.</summary>
+        public string DetailNameTextForTests => _detailName != null ? _detailName.text : null;
+
+        /// <summary>상세 패널 메타 줄(<c>카테고리 · 착용 중|보유 중|Lv.n에 열림</c>).</summary>
+        public string DetailMetaTextForTests => _detailMeta != null ? _detailMeta.text : null;
+
+        /// <summary>상세 패널 설명문 — 잠긴 아이템이면 <b>왜 잠겼는지</b>가 여기에만 있다.</summary>
+        public string DetailBodyTextForTests => _detailBody != null ? _detailBody.text : null;
+
+        /// <summary>화면 픽셀 ÷ 이 값 = 캔버스 포인트. 테스트가 화면 사각형을 pt로 되돌릴 때 쓴다.</summary>
+        public float CanvasScaleForTests => CanvasScale();
+
+        /// <summary>세로 한 칸(카테고리 섹션)의 높이. 창 높이가 섹션 수에서 파생되는지 확인할 때 쓴다.</summary>
+        public float SectionStepPoints => SectionStep;
+
+        /// <summary>카드 이름 상자 / 메타 상자의 화면 사각형(잘리기 전).</summary>
+        public Rect CardNameRawScreenRect(int index) => RawScreenRectOf(CardAt(index)?.Name?.rectTransform);
+
+        public Rect CardMetaRawScreenRect(int index) => RawScreenRectOf(CardAt(index)?.Meta?.rectTransform);
+
+        /// <summary>카드 이름이 <b>실제로 그려질 때</b> 차지하는 폭(캔버스 포인트). 상자 폭이 아니라
+        /// 폰트가 잰 값이라, 말줄임이 안 걸리면 상자를 넘는 것이 이 값에서 바로 보인다.</summary>
+        public float CardNameInkWidthPoints(int index)
+        {
+            Text t = CardAt(index)?.Name;
+            return t != null ? t.preferredWidth : 0f;
+        }
+
+        /// <summary>카드에 지금 표시된 이름(말줄임이 걸렸으면 잘린 쪽).</summary>
+        public string CardNameTextForTests(int index) => CardAt(index)?.Name?.text ?? string.Empty;
+
+        /// <summary>말줄임 전 원본 이름.</summary>
+        public string CardNameSourceForTests(int index) => CardAt(index)?.NameSource ?? string.Empty;
+
         /// <summary>캐러셀 한 줄(잡고 미는 자리)의 화면 사각형.</summary>
         public Rect CarouselRowScreenRect(int section)
             => RawScreenRectOf(section >= 0 && section < _sections.Length ? _sections[section]?.RowRect : null);
+
+        /// <summary>섹션 헤더의 "n / 6" 카운터 사각형. 이 창 오른쪽 열의 <b>오른쪽 끝선</b>을 정의하는
+        /// 요소이고, 카드줄 바로 위에 있다 — 회귀 테스트가 그 끝선을 숫자로 베끼지 않고 물어보는 통로.</summary>
+        public Rect SectionCountScreenRect(int section)
+            => RawScreenRectOf(section >= 0 && section < _sections.Length
+                ? _sections[section]?.Count?.rectTransform : null);
 
         /// <summary>지금 밀려 있는 양(캔버스 포인트, 왼쪽으로 밀면 음수).</summary>
         public float CarouselOffsetPoints(int section)
@@ -1907,6 +2086,48 @@ namespace StickMate.Interaction
         /// <summary>이 카테고리에서 밀 수 있는 최대치(양수). 0이면 카드가 화면에 다 들어온다는 뜻이다.</summary>
         public float CarouselMaxScrollPoints(int section)
             => MaxCarouselScroll(section >= 0 && section < _sections.Length ? _sections[section] : null);
+
+        // ==================== P0-1 회귀용 관측 창구 ====================
+
+        /// <summary>탭 버튼의 화면 사각형 — 테스트가 <b>실제 클릭 경로</b>로 탭을 누를 수 있게 연다
+        /// (<c>_tabRects</c>를 리플렉션으로 뒤지던 관례를 대체한다).</summary>
+        public Rect TabScreenRect(int index)
+            => RawScreenRectOf(index >= 0 && index < _tabRects.Length ? _tabRects[index] : null);
+
+        /// <summary>지금 탭이 실제로 보여주는 카테고리 섹션 수(<see cref="Tab.Inventory"/>면 0).</summary>
+        public int VisibleSectionCount => _tab == Tab.Inventory ? 0 : SectionCountForTab(_tab);
+
+        /// <summary>지금 탭에서 창이 목표로 하는 높이(캔버스 포인트). 애니메이션 중인 실제 높이는
+        /// <see cref="PanelSizePoints"/>가 준다 — 둘을 나눠 두어야 "다 줄었는가"를 기다릴 수 있다.</summary>
+        public float TargetPanelHeightPoints => PanelHeightForTab(_tab);
+
+        /// <summary>높이 애니메이션이 지금 도달한 값(<b>화면 클램프 전</b>).
+        /// <para><see cref="PanelSizePoints"/>는 <see cref="ClampPanelToScreen"/>이 화면 높이로 자른
+        /// <b>뒤</b>의 값이라, 화면이 낮은 실행 환경(배치모드 등)에서는 목표에 영원히 닿지 않는다 —
+        /// "애니메이션이 끝났는가"를 그걸로 판정하면 테스트가 환경에 따라 거짓 실패한다.</para></summary>
+        public float AnimatedPanelHeightPoints => _panelHeightPoints;
+
+        /// <summary>
+        /// ★ <b>마지막 카드 줄 아래 끝</b>과 <b>상세 패널 위 끝</b> 사이의 빈 높이(캔버스 포인트).
+        ///
+        /// <para>P0-1이 고친 결함이 정확히 이 값이었다: [장비](섹션 4개)에서는 20pt인데
+        /// [외형](섹션 3개)에서는 <b>176pt</b>였다 — 없는 4번째 섹션의 자리를 예약했기 때문이다.
+        /// 회귀 테스트는 "두 탭에서 이 값이 같다"를 본다. 숫자를 베끼지 않고 <b>탭끼리 비교</b>하므로
+        /// 상수를 바꿔도 테스트가 따라온다.</para>
+        /// </summary>
+        public float SectionsToDetailGapPoints
+        {
+            get
+            {
+                if (_tab == Tab.Inventory) return float.NaN;
+                int last = SectionCountForTab(_tab) - 1;
+                if (last < 0 || last >= _sections.Length) return float.NaN;
+                Rect row = RawScreenRectOf(_sections[last]?.RowRect);
+                Rect detail = RawScreenRectOf(_sectionDetailRect);
+                if (row.height <= 0f || detail.height <= 0f) return float.NaN;
+                return (row.yMin - detail.yMax) / CanvasScale();   // 화면 y는 위가 양수.
+            }
+        }
 
         private void ApplyCanvasScaleFactor()
         {
@@ -1931,7 +2152,8 @@ namespace StickMate.Interaction
         private void ClampPanelToScreen(float scaleFactor)
         {
             if (_panel == null || scaleFactor <= 0f) return;
-            float height = Mathf.Min(PanelHeight, Mathf.Max(MinPanelHeight, Screen.height / scaleFactor - ScreenMargin * 2f));
+            TickPanelHeight();
+            float height = Mathf.Min(_panelHeightPoints, Mathf.Max(MinPanelHeight, Screen.height / scaleFactor - ScreenMargin * 2f));
             float width = Mathf.Min(PanelWidth, Mathf.Max(MinPanelWidth, Screen.width / scaleFactor - ScreenMargin * 2f));
             if (!Mathf.Approximately(_panel.sizeDelta.x, width) || !Mathf.Approximately(_panel.sizeDelta.y, height))
             {
@@ -1941,6 +2163,36 @@ namespace StickMate.Interaction
 
             Vector2 clamped = ClampPanelPosition(_panel.anchoredPosition, scaleFactor);
             if (clamped != _panel.anchoredPosition) _panel.anchoredPosition = clamped;
+        }
+
+        /// <summary>
+        /// ★ P0-1 — 탭이 요구하는 높이로 창을 <b>부드럽게</b> 옮긴다. 창은 화면 중앙 고정(피벗 0.5)이라
+        /// 위아래로 균등하게 줄어든다.
+        /// <para>새 문자열/객체를 만들지 않는다 — 상주 앱의 Update 경로다.</para>
+        /// </summary>
+        private void TickPanelHeight()
+        {
+            float target = PanelHeightForTab(_tab);
+            if (_panelHeightPoints <= 0f) { _panelHeightPoints = target; return; }   // 첫 프레임은 즉시.
+            if (Mathf.Approximately(_panelHeightPoints, target)) { _panelHeightPoints = target; return; }
+
+            // 0.12초에 <b>가장 큰 단(SectionStep)</b>을 지나가는 속도. 단이 작으면 그만큼 빨리 끝난다.
+            float speed = SectionStep / PanelHeightAnimateSeconds;
+            _panelHeightPoints = Mathf.MoveTowards(_panelHeightPoints, target,
+                speed * Mathf.Max(0f, Time.unscaledDeltaTime));
+        }
+
+        /// <summary>탭이 요구하는 자리로 상세 패널을 옮긴다. 창 높이는 <see cref="TickPanelHeight"/>가
+        /// 뒤따라 줄어들지만 상세 패널은 <b>즉시</b> 올라가야 한다 — 늦으면 그 프레임에 본문 마스크
+        /// 밖으로 나가 패널이 잠깐 사라진다.</summary>
+        private void ApplyTabDetailPlacement()
+        {
+            if (_sectionDetailRect == null) return;
+            Vector2 p = _sectionDetailRect.anchoredPosition;
+            float y = DetailYForTab(_tab == Tab.Inventory ? Tab.Equipment : _tab);
+            if (Mathf.Approximately(p.y, y)) return;
+            p.y = y;
+            _sectionDetailRect.anchoredPosition = p;
         }
 
         /// <summary>창 중심이 화면 밖으로 나가지 않는 범위로 자른다 — 드래그와 화면 크기 변화가
@@ -1956,19 +2208,36 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// 화면이 낮아 [착용]/[해제] 버튼이 통째로 잘리면 <b>한 번만</b> 경고한다. 클릭은 이미
+        /// 화면이 낮아 [착용]/[해제] 버튼이 <b>하나도 남김없이</b> 잘리면 한 번만 경고한다. 클릭은 이미
         /// <see cref="ContainsScreenPoint"/>가 막으므로 "안 보이는데 눌린다"는 없어졌지만, 그 화면에서는
         /// 아이템을 갈아입을 수단 자체가 사라진다는 사실은 조용히 넘길 일이 아니다(33-7-9 페이지 폴백 미구현).
+        ///
+        /// <para>★ 2026-09-01 — 감시 대상을 상세 패널 버튼에서 <b>카드 하단 버튼들</b>로 옮겼다. 상세 패널의
+        /// 중복 버튼을 걷어내면서 착용 경로가 카드 버튼뿐이 됐기 때문이다. <b>하나라도</b> 보이면 아직
+        /// 갈아입을 수 있으므로 경고하지 않는다.</para>
+        ///
+        /// <para>창 크기가 <b>바뀔 때만</b> 불린다(<see cref="ClampPanelToScreen"/>) — 카드 수만큼 도는
+        /// 이 루프를 매 프레임 경로에 두면 상주 앱 규약을 어긴다.</para>
         /// </summary>
         private void SyncActionReachability()
         {
-            if (_actionRect == null) return;
-            bool unreachable = _actionRect.gameObject.activeInHierarchy && ActionButtonVisibleFraction <= 0f;
+            bool anyActive = false;
+            bool anyReachable = false;
+            for (int i = 0; i < _cards.Length; i++)
+            {
+                ItemCard card = _cards[i];
+                if (card == null || card.ActionRect == null) continue;
+                if (!card.ActionRect.gameObject.activeInHierarchy) continue;
+                anyActive = true;
+                if (CardEquipButtonVisibleFraction(i) > 0f) { anyReachable = true; break; }
+            }
+
+            bool unreachable = anyActive && !anyReachable;
             if (unreachable == _actionUnreachable) return;
             _actionUnreachable = unreachable;
             if (!unreachable) return;
 
-            Debug.LogWarning("[정보창] 화면 세로가 짧아 상세 패널의 [착용] 버튼이 완전히 가려졌습니다 — " +
+            Debug.LogWarning("[정보창] 화면 세로가 짧아 카드의 [착용] 버튼이 전부 가려졌습니다 — " +
                              "그 자리를 눌러도 반응하지 않습니다(보이지 않는 것은 눌리지 않는다). " +
                              "33-7-9의 [▲][▼] 페이지 폴백이 들어오기 전까지는 창을 띄울 세로 공간이 더 필요합니다.");
         }
@@ -2063,12 +2332,15 @@ namespace StickMate.Interaction
             //   이제 패널은 <b>그림 없는 컨테이너</b>이고 [그림자 → 본체(α1) → 보더]가 형제로 놓인다.
             //   _panel이 여전히 "움직이고 크기가 정해지는 사각형"이라는 계약은 그대로다 —
             //   드래그/클램프/히트테스트/차단막 코드는 한 줄도 바뀌지 않는다.
+            // 번짐 22 / 오프셋 -7 — 설정창과 같은 값(두 창은 같은 위계라 그림자도 같아야 한다).
+            // 옛 (18, -18)이 왜 틀렸는지는 UiChrome.AddShadow의 offset 문서에 있다.
             _panel = UiChrome.AddOpaquePanel(canvasGo.transform, "InfoPanel", UiChrome.RadiusPanel,
-                18f, new Vector2(0f, -18f), out Image panelImage);
+                22f, new Vector2(0f, -7f), out Image panelImage);
             // 33-7-7: 화면 중앙 모달. 배경 딤은 깔지 않는다(클래스 문서 참고).
             _panel.anchorMin = _panel.anchorMax = _panel.pivot = new Vector2(0.5f, 0.5f);
             _panel.anchoredPosition = Vector2.zero;
-            _panel.sizeDelta = new Vector2(PanelWidth, PanelHeight);
+            _panelHeightPoints = PanelHeightForTab(_tab);
+            _panel.sizeDelta = new Vector2(PanelWidth, _panelHeightPoints);
             // 창 바탕을 눌러도 뒤(데스크톱)로 새지 않아야 한다 — 예전 InfoPanel Image가 하던 역할.
             panelImage.raycastTarget = true;
 
@@ -2355,7 +2627,8 @@ namespace StickMate.Interaction
                 var rt = hit.rectTransform;
                 UiChrome.PlaceTopLeft(rt, x, TabStripY, width, TabStripHeight);
 
-                Text label = UiChrome.AddText(rt, "Label", UiChrome.FontTitle, TextAnchor.UpperCenter, UiChrome.TabInactive);
+                Text label = UiChrome.AddText(rt, "Label", UiChrome.FontTitle, TextAnchor.UpperCenter,
+                    UiChrome.InkTab(selected: false));
                 UiChrome.Stretch(label.rectTransform);
                 label.text = TabNames[i];
 
@@ -2411,14 +2684,14 @@ namespace StickMate.Interaction
 
                 Text title = Label(section, "Name", UiChrome.FontBody, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
                     15f, -2f, 70f, 14f, "—", bold: true);
-                Text code = Label(section, "Code", UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.TextQuaternary,
+                Text code = Label(section, "Code", UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.InkMeta,
                     90f, -3f, 46f, 12f, "—");
 
                 Image divider = UiChrome.AddSurface(section, "Divider", UiChrome.Divider, 2);
                 UiChrome.PlaceTopLeft(divider.rectTransform, 142f, -9f, 402f, 1f);
                 divider.raycastTarget = false;
 
-                Text count = Label(section, "Count", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.TextQuaternary,
+                Text count = Label(section, "Count", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.InkMeta,
                     548f, -3f, 44f, 12f, "0 / 4");
 
                 var view = new SectionView
@@ -2460,8 +2733,8 @@ namespace StickMate.Interaction
             var rowGo = new GameObject("CardRow", typeof(RectTransform), typeof(Image), typeof(ScrollRect));
             rowGo.transform.SetParent(section, false);
             var row = rowGo.GetComponent<RectTransform>();
-            // 폭이 섹션(592)이 아니라 CarouselViewportWidth인 이유는 그 상수 문서 참고 — 마지막 카드를
-            // 반쯤 잘라 "더 있다"를 보이게 하는 것이 이 창의 유일한 발견 단서다.
+            // 폭은 섹션과 <b>같다</b>(CarouselViewportWidth = RightContentWidth). 마지막 카드는 그 끝선에
+            // 걸려 반쯤 잘리고, 그 걸침이 이 창의 유일한 "더 있다" 단서다 — 그 상수 문서 참고.
             UiChrome.PlaceTopLeft(row, 0f, CardTopInSection, CarouselViewportWidth, CardHeight);
 
             var handle = rowGo.GetComponent<Image>();
@@ -2533,18 +2806,21 @@ namespace StickMate.Interaction
                 Outline = outline,
                 Thumb = thumb,
                 Name = Label(rt, "Name", UiChrome.FontBody, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
-                    ThumbX, CardNameY, 78f, CardTextHeight, "—"),
-                Meta = Label(rt, "Meta", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.TextQuaternary,
-                    89f, CardNameY, 41f, CardTextHeight, "—"),
+                    ThumbX, CardNameY, CardNameWidth, CardTextHeight, "—"),
+                Meta = Label(rt, "Meta", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.InkMeta,
+                    CardMetaX, CardNameY, CardMetaWidth, CardTextHeight, "—"),
             };
 
-            // ---- 카드 하단 [착용]/[해제] ----
-            card.ActionSurface = UiChrome.AddSurface(rt, "Action", UiChrome.TextPrimary, UiChrome.RadiusChip);
+            // ---- 카드 하단 [착용]/[해제] ---- 이 창의 <b>유일한</b> 착용 손잡이다(상세 패널의
+            //   중복 버튼은 2026-09-01 사용자 신고로 걷어냈다). 1차 행동이지만 P0-4의 조용한 칩을
+            //   그대로 유지한다 — 이유는 StyleActionButton 문서 참고(한 화면에 12개가 반복된다).
+            card.ActionSurface = UiChrome.AddSurface(rt, "Action",
+                UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface), UiChrome.RadiusChip);
             card.ActionRect = card.ActionSurface.rectTransform;
             UiChrome.PlaceTopLeft(card.ActionRect, ThumbX, CardActionY, CardActionWidth, CardActionHeight);
-            card.ActionOutline = UiChrome.AddOutline(card.ActionRect, "Outline", UiChrome.TextPrimary, UiChrome.RadiusChip);
+            card.ActionOutline = UiChrome.AddOutline(card.ActionRect, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
             card.ActionLabel = UiChrome.AddText(card.ActionRect, "Label", UiChrome.FontCaption,
-                TextAnchor.MiddleCenter, UiChrome.OnAccentSolid, bold: true);
+                TextAnchor.MiddleCenter, UiChrome.TextPrimary, bold: true);
             UiChrome.Stretch(card.ActionLabel.rectTransform);
             card.ActionLabel.text = "착용";
 
@@ -2707,7 +2983,7 @@ namespace StickMate.Interaction
         {
             const float viewW = 20f, viewH = 21f, renderW = 14f, renderH = 15f;
 
-            Image bodyImage = UiChrome.AddSurface(badge, "LockBody", UiChrome.TextQuaternary, 2);
+            Image bodyImage = UiChrome.AddSurface(badge, "LockBody", UiChrome.NonTextMuted, 2);
             var brt = bodyImage.rectTransform;
             brt.anchorMin = brt.anchorMax = brt.pivot = new Vector2(0.5f, 0.5f);
             brt.sizeDelta = new Vector2(14f * (renderW / viewW), 10f * (renderH / viewH));
@@ -2720,39 +2996,37 @@ namespace StickMate.Interaction
                 _iconPoints[i] = FromViewBox(LockShackle[i * 2], LockShackle[i * 2 + 1], viewW, viewH, renderW, renderH);
             }
             UiChrome.AddPolyline(badge, "LockShackle", _iconPoints, count,
-                IconStroke * (renderW / viewW), UiChrome.TextQuaternary);
+                IconStroke * (renderW / viewW), UiChrome.NonTextMuted);
         }
 
         private void BuildDetailPanel(RectTransform page)
         {
             Image detail = UiChrome.AddSurface(page, "Detail", UiChrome.SubtleSurface, UiChrome.RadiusCard);
             var drt = detail.rectTransform;
-            UiChrome.PlaceTopLeft(drt, RightPadX, DetailY, RightContentWidth, DetailHeight);
+            _sectionDetailRect = drt;
+            UiChrome.PlaceTopLeft(drt, RightPadX, DetailYForTab(_tab), RightContentWidth, DetailHeight);
             detail.raycastTarget = false;
             UiChrome.AddOutline(drt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
 
             _detailName = Label(drt, "DetailName", UiChrome.FontTitle, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
                 15f, -14f, 150f, 17f, "—", bold: true);
+            // ★ 2026-09-01 오후 — 폭 330(= 172..502)은 <b>오른쪽 끝의 [착용] 버튼(525..577)을 피하려고</b>
+            //   정한 값이었다. 그 버튼을 걷어낸 뒤 502..577의 75pt가 아무도 쓰지 않는 칸으로 남았다.
+            //   이제 설명문과 <b>같은 오른쪽 끝</b>에서 끝나게 파생시킨다 — "Lv.9에 열림"처럼 긴 잠김
+            //   문구가 그만큼 덜 밀린다. 숫자 330은 사라졌다.
+            const float DetailPadX = 15f;
+            const float DetailMetaX = 172f;
             _detailMeta = Label(drt, "DetailMeta", UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.TextTertiary,
-                172f, -14f, 330f, 17f, "—");
+                DetailMetaX, -14f, RightContentWidth - DetailPadX - DetailMetaX, 17f, "—");   // 405
 
             _detailBody = UiChrome.AddText(drt, "DetailBody", UiChrome.FontBody, TextAnchor.UpperLeft,
                 UiChrome.TextSecondary, wrap: true);
             UiChrome.PlaceTopLeft(_detailBody.rectTransform, 15f, -42f, RightContentWidth - 30f, 48f);
             _detailBody.lineSpacing = 1.6f;   // 스펙 line-height 1.6.
 
-            _actionSurface = UiChrome.AddSurface(drt, "Action", UiChrome.TextPrimary, UiChrome.RadiusChip);
-            _actionRect = _actionSurface.rectTransform;
-            UiChrome.PlaceTopLeft(_actionRect, RightContentWidth - 15f - 52f, -13f, 52f, 24f);
-            _actionOutline = UiChrome.AddOutline(_actionRect, "Outline", UiChrome.TextPrimary, UiChrome.RadiusChip);
-            _actionLabel = UiChrome.AddText(_actionRect, "Label", UiChrome.FontBody, TextAnchor.MiddleCenter,
-                UiChrome.OnAccentSolid);
-            UiChrome.Stretch(_actionLabel.rectTransform);
-            _actionLabel.text = "착용";
-
-            var actionButton = _actionSurface.gameObject.AddComponent<Button>();
-            actionButton.targetGraphic = _actionSurface;
-            actionButton.onClick.AddListener(() => { if (TryClaimAction("action")) OnActionClicked(); });
+            // ★ 여기에 [착용]/[해제] 버튼을 다시 만들지 마라(2026-09-01 사용자 신고로 걷어냈다).
+            //   착용 손잡이는 카드 하단 하나뿐이고, 이 패널은 "고른 것이 무엇이고 왜 잠겼는가"만 말한다.
+            //   되살아나면 InfoWindowSurfaceRegressionTests의 DetailPanelHasNoEquipButton이 잡는다.
         }
 
         // -------------------- 보관함 페이지 --------------------
@@ -2776,14 +3050,14 @@ namespace StickMate.Interaction
 
                 // 장비/행동을 완전히 같은 행 모양으로 그린다(디자이너 확정) —
                 // ● 표식 / 이름 / 부제 / 설명 한 줄 / 상태 슬롯(96pt 고정, 훗날 가격표 자리).
-                Image dot = UiChrome.AddSurface(rt, "Dot", UiChrome.TextQuaternary, UiChrome.RadiusDot);
+                Image dot = UiChrome.AddSurface(rt, "Dot", UiChrome.NonTextMuted, UiChrome.RadiusDot);
                 UiChrome.PlaceTopLeft(dot.rectTransform, UiChrome.Space2, -(InventoryRowHeight - 6f) * 0.5f, 6f, 6f);
                 dot.raycastTarget = false;
 
                 float nameX = UiChrome.Space2 + 6f + UiChrome.Space2;
                 Text title = Label(rt, "Title", UiChrome.FontLabel, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
                     nameX, 0f, 110f, InventoryRowHeight, string.Empty);
-                Text subtitle = Label(rt, "Subtitle", UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.TextQuaternary,
+                Text subtitle = Label(rt, "Subtitle", UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.InkMeta,
                     nameX + 112f, 0f, 48f, InventoryRowHeight, string.Empty);
 
                 float descX = nameX + 112f + 50f;
@@ -2827,12 +3101,12 @@ namespace StickMate.Interaction
                 SectionsTopY - (listHeight - InventoryRailWidth), () => ScrollInventory(1), "pageDown");
 
             _pageIndicator = Label(page, "PageIndicator", UiChrome.FontCaption, TextAnchor.MiddleCenter,
-                UiChrome.TextQuaternary, railX, SectionsTopY - (InventoryRailWidth + UiChrome.Space2),
+                UiChrome.InkMeta, railX, SectionsTopY - (InventoryRailWidth + UiChrome.Space2),
                 InventoryRailWidth, listHeight - InventoryRailWidth * 2f - UiChrome.Space2 * 2f, "1\n/\n1");
 
             Image detail = UiChrome.AddSurface(page, "InventoryDetail", UiChrome.SubtleSurface, UiChrome.RadiusCard);
             var drt = detail.rectTransform;
-            UiChrome.PlaceTopLeft(drt, RightPadX, DetailY, RightContentWidth, DetailHeight);
+            UiChrome.PlaceTopLeft(drt, RightPadX, DetailYForTab(Tab.Inventory), RightContentWidth, DetailHeight);
             detail.raycastTarget = false;
             UiChrome.AddOutline(drt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
 
@@ -2845,7 +3119,7 @@ namespace StickMate.Interaction
             _inventoryDetailBody.lineSpacing = 1.6f;
 
             // 지금 파는 것은 하나도 없다 — 그 사실을 화면에서도 숨기지 않는다.
-            Label(drt, "Note", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.TextQuaternary,
+            Label(drt, "Note", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.InkMeta,
                 RightContentWidth - 215f, -DetailHeight + 26f, 200f, 14f, "지금은 파는 것이 없습니다");
         }
 
@@ -2891,7 +3165,7 @@ namespace StickMate.Interaction
             text.supportRichText = false;
 
             Text placeholder = UiChrome.AddText(surface.rectTransform, "Placeholder", UiChrome.FontBody,
-                TextAnchor.MiddleLeft, UiChrome.TextQuaternary);
+                TextAnchor.MiddleLeft, UiChrome.InkMeta);
             UiChrome.Stretch(placeholder.rectTransform);
             placeholder.rectTransform.offsetMin = new Vector2(UiChrome.Space2, 0f);
             placeholder.rectTransform.offsetMax = new Vector2(-UiChrome.Space2, 0f);

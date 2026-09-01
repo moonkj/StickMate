@@ -170,9 +170,12 @@ namespace StickMate.Core
             return entry != null && entry.RequiredLevel.HasValue ? entry.RequiredLevel.Value : int.MaxValue;
         }
 
-        /// <summary>2026-08-31 <b>임시</b>: <see cref="EquipmentDebugUnlock.UnlockAll"/>이 켜져 있으면
-        /// 레벨을 보지 않는다(사용자 QA 요청 — 28종을 전부 눌러 보기 위해). 위
-        /// <see cref="RequiredLevel"/>은 그대로 살아 있고, 스위치를 끄면 원래 규칙으로 돌아온다.</summary>
+        /// <summary><see cref="EquipmentDebugUnlock.UnlockAll"/>이 켜져 있으면 레벨을 보지 않는다
+        /// (QA용 — 장비 전종을 눌러 보기 위해). 위 <see cref="RequiredLevel"/>은 그대로 살아 있고,
+        /// 스위치가 꺼지면 원래 규칙으로 돌아온다.
+        /// <para>★ 2026-09-01: 그 스위치는 더 이상 "사람이 출시 전에 되돌려야 하는 상수"가 아니다 —
+        /// 빌드 구성으로 갈린다(<b>사용자에게 나가는 릴리스 빌드에서는 자동으로 꺼진다</b>).
+        /// 근거와 검증은 <c>EquipmentDebugUnlock</c> 문서 / <c>EquipmentDebugUnlockReleaseGateTests</c>.</para></summary>
         public static bool IsItemOwned(EquipmentSlot slot, int itemIndex)
             => EquipmentDebugUnlock.UnlockAll
                || CharacterProgressionModel.Level >= RequiredLevel(slot, itemIndex);

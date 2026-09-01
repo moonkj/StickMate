@@ -49,6 +49,10 @@ namespace StickMate.Platform.MacOS
     ///
     /// 비침해 원칙 확인: 여기서 만지는 객체는 전부 <b>우리 프로세스의</b> NSApplication과 그 창들이다.
     /// 타 프로세스의 창을 조회하지도, 이동/변경하지도 않는다(CLAUDE.md 절대 불변 원칙 3).
+    ///
+    /// <para>★ 2026-09-01 — 이 클래스는 <b>두 가지</b> 사라짐을 막는다. 위의 "타 앱 전체화면 Space"가
+    /// 하나이고, 다른 하나는 <b>데스크톱 표시(F11)/Exposé</b>다. 후자의 원인·대조 실험·수용한 대가는
+    /// 아래 <see cref="RequiredBehavior"/> 위의 ".stationary가 필수인 이유" 문단에 있다.</para>
     /// </summary>
     internal static class MacSpaceBehaviorNative
     {
@@ -92,24 +96,62 @@ namespace StickMate.Platform.MacOS
         // NSWindowCollectionBehavior 비트(AppKit 헤더의 고정 리터럴 — 심볼 조회 불필요).
         private const long NSWindowCollectionBehaviorCanJoinAllSpaces = 1L << 0;
         private const long NSWindowCollectionBehaviorMoveToActiveSpace = 1L << 1;
+        private const long NSWindowCollectionBehaviorManaged = 1L << 2;
+        private const long NSWindowCollectionBehaviorTransient = 1L << 3;
+        private const long NSWindowCollectionBehaviorStationary = 1L << 4;
         private const long NSWindowCollectionBehaviorFullScreenPrimary = 1L << 7;
         private const long NSWindowCollectionBehaviorFullScreenAuxiliary = 1L << 8;
 
-        /// <summary>우리가 유지해야 하는 최소 비트 집합.</summary>
+        // ============================================================================
+        // ★★ .stationary 가 필수인 이유 — 데스크톱 표시(F11)/Exposé 대조 실험 (2026-09-01)
+        // ============================================================================
+        // 사용자 신고: "바탕화면을 클릭하거나 F11을 누르면 캐릭터·펫·톱니가 통째로 사라진다."
+        //
+        // 디버거가 우리와 **완전히 동일한 조건**(accessory 앱, borderless, windowLevel=101)의 창 3개를
+        // 띄우고 F11을 토글하며 cgBounds를 실측했다(재현 2회):
+        //
+        //     A  collectionBehavior 0x101 (=이 파일의 예전 값)  : (180,312) -> (-138,223)  ← 밀려남
+        //     B  collectionBehavior 0x111 (=A + .stationary)     : (350,312) -> (350,312)   ← 미동 없음
+        //     C  collectionBehavior 0x101, windowLevel 0         : (520,312) -> ( 88, -65)  ← 밀려남
+        //
+        // StickMate 본체도 같은 실험에서 원점 y가 `0 -> -937 -> 0 -> -937 -> 0`으로 F11 토글과 1:1로
+        // 대응했다. 즉 "사라진 것"이 아니라 **OS가 우리 창을 화면 밖으로 밀어낸 것**이다.
+        //
+        // 기전: 우리 창은 windowLevel이 NSNormalWindowLevel이 아니다(101). AppKit 규약상 그 경우
+        // Exposé 참여 기본값이 `.transient`(= 데스크톱 표시/Exposé 때 화면 밖으로 치워지는 등급)이고,
+        // 예전 값 0x101에는 managed/transient/stationary 비트가 **하나도 없어** 그 기본값이 그대로
+        // 적용됐다. `.stationary`를 명시하면 "Exposé가 나를 옮기지 않는다"가 되어 벽지와 같은 등급이 된다.
+        //
+        // ★ 이 처방의 대가(리더가 수용 결정, 버그 아님): Mission Control(F3)에서도 캐릭터가 화면 위에
+        //   그대로 남는다(실측 확인). 바탕화면 벽지가 stationary인 것과 같은 등급이며, "바탕화면에 붙어
+        //   사는 펫"이라는 컨셉에 오히려 부합한다고 판단했다.
+        //   → 나중에 "미션 컨트롤에 왜 캐릭터가 나오지?"라는 질문이 오면 **이 문단이 답이다.**
+        //     되돌리려면 .stationary를 빼야 하는데, 그 순간 위 표의 A 행(= 원래 버그)으로 돌아간다.
+
+        /// <summary>우리가 유지해야 하는 최소 비트 집합(목표 0x111).</summary>
         private const long RequiredBehavior =
-            NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary;
+            NSWindowCollectionBehaviorCanJoinAllSpaces
+            | NSWindowCollectionBehaviorStationary
+            | NSWindowCollectionBehaviorFullScreenAuxiliary;
 
         /// <summary>
-        /// 반드시 꺼야 하는 비트. 둘 다 우리가 켜는 비트와 AppKit 상 <b>상호 배타</b>라, 켜진 채로 남으면
+        /// 반드시 꺼야 하는 비트. 전부 우리가 켜는 비트와 AppKit 상 <b>상호 배타</b>라, 켜진 채로 남으면
         /// 동작이 미정의가 된다(실측 근거: 첫 적용 시 Unity 기본 창의 값이 0x80 =
         /// <c>.fullScreenPrimary</c>였고, OR만 하면 0x181 = primary와 auxiliary가 동시에 켜진 값이 됐다).
         ///   - <c>.moveToActiveSpace</c>  vs <c>.canJoinAllSpaces</c>: "따라다닌다" vs "모든 곳에 있다"
         ///   - <c>.fullScreenPrimary</c>  vs <c>.fullScreenAuxiliary</c>: "내가 전체화면이 된다" vs
         ///     "남의 전체화면 옆에 얹힌다". 오버레이는 후자여야 하고, 애초에 우리 창에는 전체화면 버튼이
         ///     없다(LibUniWinC의 setTopmost도 결국 auxiliary만 남긴다 — 같은 최종 상태로 수렴한다).
+        ///   - <c>.managed</c> / <c>.transient</c> vs <c>.stationary</c>: 이 셋은 <b>Exposé 참여 등급</b>
+        ///     하나를 고르는 상호 배타 그룹이다(위 ".stationary가 필수인 이유" 문단 참고).
+        ///     <c>.stationary</c>를 켜면서 나머지 둘을 남겨 두면 어느 쪽이 이기는지가 미정의가 되므로
+        ///     — 이 주석이 예전부터 스스로 세워 둔 규칙 그대로 — 반드시 함께 끈다.
         /// </summary>
         private const long ForbiddenBehavior =
-            NSWindowCollectionBehaviorMoveToActiveSpace | NSWindowCollectionBehaviorFullScreenPrimary;
+            NSWindowCollectionBehaviorMoveToActiveSpace
+            | NSWindowCollectionBehaviorManaged
+            | NSWindowCollectionBehaviorTransient
+            | NSWindowCollectionBehaviorFullScreenPrimary;
 
         // 셀렉터/클래스는 프로세스 수명 동안 불변이라 한 번만 등록해 캐시한다(감시 주기마다
         // sel_registerName 문자열 마샬링을 반복하지 않기 위함 — 24시간 상주 앱, 상시 할당 금지).
@@ -197,8 +239,10 @@ namespace StickMate.Platform.MacOS
         }
 
         /// <summary>
-        /// 우리 앱의 모든 NSWindow에 <c>.canJoinAllSpaces | .fullScreenAuxiliary</c>가 걸려 있도록 보장한다.
-        /// 이미 맞으면 <b>쓰기를 하지 않고</b> false를 돌려준다(감시 호출이 잦아도 부작용/로그가 없다).
+        /// 우리 앱의 모든 NSWindow에 <c>.canJoinAllSpaces | .stationary | .fullScreenAuxiliary</c>(0x111)가
+        /// 걸려 있도록 보장한다. 이미 맞으면 <b>쓰기를 하지 않고</b> false를 돌려준다(감시 호출이 잦아도
+        /// 부작용/로그가 없다). <c>.stationary</c>가 빠지면 데스크톱 표시(F11)/Exposé에서 OS가 창을 화면
+        /// 밖으로 밀어낸다 — 위 대조 실험 문단 참고.
         /// </summary>
         /// <param name="inspected">검사한 창 수(진단용).</param>
         /// <returns>실제로 collectionBehavior를 고쳐 쓴 창이 하나라도 있으면 true.</returns>
@@ -242,9 +286,11 @@ namespace StickMate.Platform.MacOS
 
                     Debug.Log($"[전체화면동거] collectionBehavior 재적용 — 창 #{i}: 0x{current:X} -> 0x{readBack:X} " +
                         $"(목표 0x{desired:X}, canJoinAllSpaces={(readBack & NSWindowCollectionBehaviorCanJoinAllSpaces) != 0}, " +
+                        $"stationary={(readBack & NSWindowCollectionBehaviorStationary) != 0}, " +
                         $"fullScreenAuxiliary={(readBack & NSWindowCollectionBehaviorFullScreenAuxiliary) != 0}). " +
                         "LibUniWinC의 setTopmost가 호출될 때마다 이 값을 덮어쓰므로 재적용 자체는 정상 동작이다 — " +
-                        "같은 전이가 반복되면 이 줄은 더 남기지 않는다.");
+                        "같은 전이가 반복되면 이 줄은 더 남기지 않는다. " +
+                        "stationary=False가 보이면 데스크톱 표시(F11)에서 창이 화면 밖으로 밀려난다(2026-09-01 실측).");
                 }
                 return changedAny;
             }

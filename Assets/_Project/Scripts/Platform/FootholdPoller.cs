@@ -12,7 +12,7 @@ namespace StickMate.Platform
     /// 그 계약을 코드 레벨로 강제한다.)
     ///
     /// 왜 필요한가: IPlatformWindowService.EnumerateFootholds()는 데스크톱 구현체(Win32WindowService)에서
-    /// EnumWindows P/Invoke + 창마다 IsWindowVisible/GetWindowTextLength/GetWindowRect 3회 호출을
+    /// EnumWindows P/Invoke + 창마다 여러 번의 조회(가시성/최소화/스타일/소유 프로세스/제목/DWM)를
     /// 수행하는 상대적으로 무거운 작업이다. 상태머신 Tick()이 이걸 매 프레임 직접 호출하면 24시간
     /// 상주 앱에서 불필요한 OS 호출 부하가 누적된다. 이 클래스는 StickConfig.footholdPollInterval
     /// 주기로만 실제 열거를 수행하고, 그 사이 프레임에는 마지막으로 열거한 결과를 캐시로 재사용한다.
@@ -24,6 +24,13 @@ namespace StickMate.Platform
     /// 구독자(향후 렌더링/디버그 오버레이 등)가 "변경 있을 때만" 반응하게 한다. 상태머신 자체는
     /// 매 프레임 CachedFootholds를 읽어 접지 판정을 하되(메모리 읽기일 뿐 OS 호출이 아니므로 저렴하다),
     /// 실제 OS 재열거 빈도만 이 클래스가 통제한다.
+    ///
+    /// ★ 2026-09-01 — "폴링을 이벤트로 바꾸자"는 라운드가 실제로 열렸다가 <b>실측으로 중단</b>됐다.
+    /// 사용자 실기 계측이 <c>[발판열거] 1회 평균 1.72~1.87ms, 초당 4.88~6.22ms = 실행 시간의 0.5%</c>,
+    /// 스톨 귀인 <c>판정: 로직밖(렌더/프레젠트/OS 합성)</c>을 내놓아 <b>창 열거는 렉의 원인이
+    /// 아님</b>이 확정됐기 때문이다. 그 라운드가 설계·검증까지 마친 규칙만
+    /// <c>Platform/FootholdScanPolicy.cs</c>에 <b>배선하지 않은 채</b> 남겨 두었다 — 근거와 함께
+    /// 그 파일 문서에 적혀 있으니, 나중에 열거 비용이 실제로 문제가 되면 그것부터 읽으면 된다.
     ///
     /// 모바일(ScreenshotBackdropPlatformService)에서는 유저가 발판을 추가/삭제할 때 그 서비스가 스스로
     /// StickmanEventBus.RaiseFootholdsChanged()를 즉시 호출해 UX_FLOW.md 3절이 요구하는 "탭 즉시 피드백"을

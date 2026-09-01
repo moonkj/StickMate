@@ -117,6 +117,81 @@ namespace StickMate.Interaction
             image.raycastTarget = true;
             return image;
         }
+
+        // ==================== 비활성 사유의 어휘 (K1 전용) ====================
+
+        /// <summary>
+        /// <b>아직 안 만들어짐</b>(<see cref="DisabledKind.NotBuilt"/>)을 가리키는 한 어절.
+        ///
+        /// <para>★ 설정창의 <b>탭바 배지</b>와 <b>행 캡션 접두사</b>가 이 한 자리를 같이 쓴다 — 유저는
+        /// 탭에서 이 단어를 보고, 눌러서 같은 단어로 시작하는 문장을 읽는다. 두 자리가 각자 문자열을
+        /// 들고 있으면 한쪽만 바뀌는 날이 오고, 그날 앱은 같은 사실을 두 어휘로 말한다.</para>
+        /// </summary>
+        public const string NotBuiltWord = "준비 중";
+
+        /// <summary>K1 캡션의 접두사. <b>이 문자열은 앱 전체에서 여기 한 자리에만 있다</b> —
+        /// 접두사 우회로를 뚫는 순간 "준비 중" 어법이 두 벌이 된다.</summary>
+        public const string NotBuiltPrefix = NotBuiltWord + " — ";
+    }
+
+    // ================================================================================
+    // 부품 0 — 비활성 사유는 <b>두 종류</b>다
+    // ================================================================================
+
+    /// <summary>
+    /// 이 행을 왜 지금 못 만지는가 — 두 종류이고, <b>유저가 해야 할 일이 정반대다</b>
+    /// (docs/UX_FLOW.md 43-2).
+    /// </summary>
+    public enum DisabledKind
+    {
+        /// <summary>앱이 그 기능을 <b>아직 갖고 있지 않다</b>. 유저의 올바른 행동은 <b>찾기를 멈추는 것</b>
+        /// → 캡션에 <see cref="SettingsControls.NotBuiltPrefix"/>가 붙고, 문장은 <b>"언제 오는가"</b>를
+        /// 말한다.</summary>
+        NotBuilt = 0,
+
+        /// <summary>기능은 <b>이 빌드에 들어 있다</b>. 조건만 만족시키면 지금 켜진다 → 접두사를 붙이지
+        /// <b>않는다</b>. "준비 중"이라고 말하면 <b>한 번만 누르면 되는 일을 기다리게</b> 만드는 거짓말이고
+        /// 그건 원칙 1의 정면 위반이다. 문장은 <b>"지금 무엇을 하면 되는가"</b>를 말한다.</summary>
+        ConditionUnmet = 1,
+    }
+
+    /// <summary>
+    /// 비활성 사유 한 줄 + <b>그 종류</b>. 둘을 한 값으로 묶은 것이 이 타입의 전부이고, 그 이유가
+    /// 이 타입이 존재하는 이유다.
+    ///
+    /// <para><b>2026-09-02 이전</b>: <c>disabledNote</c>는 <b>문장만</b> 받았다. 접두사는 그 채널에
+    /// K1만 온다고 <b>가정</b>했고, 실제로 콜사이트 5곳이 전부 K1이라 <b>배선의 우연으로</b> 맞았다.
+    /// 다음 사람이 <c>disabledNote: "지금 붙잡을 만한 작은 창이 없어요"</c>(K2)를 여기로 흘리면
+    /// 화면에는 <c>준비 중 — 지금 붙잡을 만한 작은 창이 없어요.</c>가 뜨고, <b>컴파일·리뷰·카피 테스트를
+    /// 전부 통과한다</b>(문장 자체는 정상 유저 어휘다). 시간 문제이지 가능성 문제가 아니었다.</para>
+    ///
+    /// <para>★ 그래서 <b>기본값을 두지 않는다</b>: 문장을 주려면 종류를 반드시 골라야 하고, 고르는 자리는
+    /// 문장을 쓰는 그 자리다. 종류를 <c>ComposeCaption</c>의 선택적 인자로 두면 다음 사람은 그것을
+    /// <b>안 적을 수 있고</b>, 안 적히는 순간 같은 사고가 그대로 돌아온다.</para>
+    ///
+    /// <para><see cref="SettingsRowGate"/>는 이 타입을 쓰지 않는다 — 그 클래스는 <b>구조적으로</b>
+    /// 언제나 <see cref="DisabledKind.ConditionUnmet"/>이다(런타임 조건으로 켜고 끄는 것이 존재 이유다).</para>
+    /// </summary>
+    public readonly struct DisabledReason
+    {
+        public readonly DisabledKind Kind;
+
+        /// <summary>사용자가 읽을 문장. <b>내부 식별자를 넣지 않는다</b>(SettingsUserFacingCopyTests).</summary>
+        public readonly string Text;
+
+        private DisabledReason(DisabledKind kind, string text)
+        {
+            Kind = kind;
+            Text = text;
+        }
+
+        /// <summary>아직 안 만들어짐. 문장은 <b>"언제 오는가"</b>로 끝난다.</summary>
+        public static DisabledReason NotBuilt(string text) => new DisabledReason(DisabledKind.NotBuilt, text);
+
+        /// <summary>지금 조건이 안 맞음. 문장은 <b>"지금 무엇을 하면 되는가"</b>로 끝난다.</summary>
+        public static DisabledReason ConditionUnmet(string text) => new DisabledReason(DisabledKind.ConditionUnmet, text);
+
+        public bool HasText => !string.IsNullOrEmpty(Text);
     }
 
     /// <summary>
@@ -287,9 +362,14 @@ namespace StickMate.Interaction
     {
         public RectTransform TrackHitRect;
         public RectTransform FillRect;
+        public Image FillImage;
         public RectTransform MinusRect;
         public RectTransform PlusRect;
         public Text ValueLabel;
+
+        /// <summary>지금 조작할 수 있는가. ★ 만들 때 정해지고 끝나는 값이 아니다 — 다른 컨트롤이
+        /// 이 행을 무효로 만들 수 있다(<see cref="SettingsRowGate"/>).</summary>
+        public bool Interactable = true;
 
         public float Min;
         public float Max;
@@ -353,6 +433,11 @@ namespace StickMate.Interaction
                 string text = Format != null ? Format(Value) : Value.ToString("0.00");
                 if (ValueLabel.text != text) ValueLabel.text = text;
             }
+            if (FillImage != null)
+            {
+                Color fill = Interactable ? SettingsControls.AccentSolid : UiChrome.DisabledControlInk;
+                if (FillImage.color != fill) FillImage.color = fill;
+            }
         }
     }
 
@@ -408,7 +493,7 @@ namespace StickMate.Interaction
                 if (Labels[i] != null)
                 {
                     Labels[i].color = !Interactable
-                        ? UiChrome.TextDisabled
+                        ? UiChrome.InkTitle(false)
                         : active ? UiChrome.OnAccentSolid : UiChrome.TextSecondary;
                     Labels[i].fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
                 }
@@ -452,6 +537,107 @@ namespace StickMate.Interaction
                 Borders[i].color = i == Index
                     ? UiChrome.TextPrimary                 // 선택 = 흰 테두리(시안 그대로).
                     : SettingsControls.OutlineOnCard;
+            }
+        }
+    }
+
+
+    // ================================================================================
+    // 부품 5 — 행 게이트(한 컨트롤이 다른 행들을 무효로 만들 때)
+    // ================================================================================
+
+    /// <summary>
+    /// ★★ 2026-09-02(docs/UX_FLOW.md 42-11 판정 G) — <b>한 컨트롤이 켜져 있어야만 뜻을 갖는 행들</b>을
+    /// 묶어 함께 비활성으로 내리는 손잡이.
+    ///
+    /// <para><b>왜 필요했나</b>: <c>말풍선 표시</c>를 끄면 대사가 그려지지 않는데
+    /// <c>말풍선 글자 크기</c>·<c>대사 표시 시간</c>·<c>잡담 빈도</c> 세 행이 그대로 활성이었다.
+    /// <b>컨트롤 셋이 움직이는데 화면에서 아무 일도 일어나지 않는다</b> — 42절이 고치는 그 병이
+    /// 같은 카드 안에 세 배로 있었다.</para>
+    ///
+    /// <para>★ <b>행 높이를 실행 중에 바꾸지 않는다.</b> 카드는 만들 때 한 번 쌓이고 각 행의 좌표가
+    /// 그때 확정되므로, 비활성 사유 한 줄이 나중에 생기면 그 아래 모든 행이 밀린다. 그래서 게이트에
+    /// 묶인 행은 <b>처음부터 캡션 줄을 확보</b>한다(사유가 없을 때는 빈 줄). 자리를 미리 비워 두는
+    /// 비용이 "설정을 만졌더니 카드가 출렁이는" 화면보다 싸다.</para>
+    ///
+    /// <para>★ 색은 직접 고르지 않는다 — 전부 <see cref="UiChrome.Ink"/> 사다리를 지난다.
+    /// 비활성은 <b>한 단만</b> 내려가고, 사유 한 줄(<see cref="UiChrome.InkMeta"/>)은 어떤 상태에서도
+    /// 흐려지지 않는다(그 줄이 비활성 행에서 가장 중요한 글자다).</para>
+    /// </summary>
+    public sealed class SettingsRowGate
+    {
+        private sealed class Row
+        {
+            public Text[] TitleInk;
+            public Text[] BodyInk;
+            public Text Caption;
+            public string BaseCaption;
+            public Action<bool> SetInteractable;
+        }
+
+        private readonly List<Row> _rows = new List<Row>(4);
+        private readonly string _disabledNote;
+
+        public bool Enabled { get; private set; } = true;
+
+        /// <param name="disabledNote">왜 지금 못 만지는가. <b>사용자가 읽을 문장만</b> 담는다.
+        /// <para>★ 이 문장은 <b>언제나</b> <see cref="DisabledKind.ConditionUnmet"/>이라 접두사를 타지
+        /// 않는다(<c>Apply()</c>가 raw로 쓴다) — 게이트는 정의상 "지금 조건이 안 맞음"만 만든다.
+        /// 그래서 "지금 무엇을 하면 되는가"로 끝나야 한다.</para></param>
+        public SettingsRowGate(string disabledNote)
+        {
+            _disabledNote = disabledNote;
+        }
+
+        internal void Register(Text[] titleInk, Text[] bodyInk, Text caption, string baseCaption,
+            Action<bool> setInteractable)
+        {
+            _rows.Add(new Row
+            {
+                TitleInk = titleInk,
+                BodyInk = bodyInk,
+                Caption = caption,
+                BaseCaption = baseCaption ?? string.Empty,
+                SetInteractable = setInteractable,
+            });
+        }
+
+        /// <summary>사유 한 줄. 게이트에 묶인 행은 이 문장을 위해 캡션 줄을 미리 확보한다.</summary>
+        internal string DisabledNote => _disabledNote;
+
+        public void SetEnabled(bool enabled)
+        {
+            if (Enabled == enabled) return;
+            Enabled = enabled;
+            Apply();
+        }
+
+        /// <summary>값이 실제로 바뀐 때만 불린다(하루 종일 켜져 있는 앱 — 매 프레임 색을 다시 쓰지 않는다).</summary>
+        public void Apply()
+        {
+            Color title = UiChrome.InkTitle(Enabled);
+            Color body = UiChrome.InkBody(Enabled);
+
+            for (int r = 0; r < _rows.Count; r++)
+            {
+                Row row = _rows[r];
+
+                if (row.TitleInk != null)
+                {
+                    for (int i = 0; i < row.TitleInk.Length; i++)
+                        if (row.TitleInk[i] != null) row.TitleInk[i].color = title;
+                }
+                if (row.BodyInk != null)
+                {
+                    for (int i = 0; i < row.BodyInk.Length; i++)
+                        if (row.BodyInk[i] != null) row.BodyInk[i].color = body;
+                }
+                if (row.Caption != null)
+                {
+                    string text = Enabled ? row.BaseCaption : _disabledNote;
+                    if (row.Caption.text != text) row.Caption.text = text;
+                }
+                row.SetInteractable?.Invoke(Enabled);
             }
         }
     }
@@ -514,8 +700,21 @@ namespace StickMate.Interaction
 
         private RectTransform BeginRow(string name, string label, string caption, string hotkey,
             bool enabled, out float rowHeight)
+            => BeginRow(name, label, caption, hotkey, enabled, null, out rowHeight, out _, out _);
+
+        /// <param name="gate">이 행을 나중에 통째로 비활성으로 내릴 수 있는 손잡이(없으면 null).
+        /// 게이트가 붙으면 <b>사유 한 줄을 위한 캡션 자리를 미리 확보</b>한다 — 이유는
+        /// <see cref="SettingsRowGate"/> 문서.</param>
+        private RectTransform BeginRow(string name, string label, string caption, string hotkey,
+            bool enabled, SettingsRowGate gate, out float rowHeight,
+            out Text labelOut, out Text captionOut)
         {
-            rowHeight = string.IsNullOrEmpty(caption) ? SettingsControls.RowHeight : SettingsControls.RowHeightWithCaption;
+            // 게이트에 묶인 행은 캡션이 없어도 캡션 높이로 잡는다 — 실행 중에 행 높이가 바뀌면
+            // 그 아래 카드가 통째로 밀린다(SettingsRowGate 문서의 "출렁임" 문단).
+            bool reserveCaption = gate != null;
+            rowHeight = string.IsNullOrEmpty(caption) && !reserveCaption
+                ? SettingsControls.RowHeight
+                : SettingsControls.RowHeightWithCaption;
 
             var go = new GameObject("Row_" + name, typeof(RectTransform));
             go.transform.SetParent(_card, false);
@@ -523,27 +722,32 @@ namespace StickMate.Interaction
             UiChrome.PlaceTopLeft(row, SettingsControls.CardPadX, _y,
                 SettingsControls.CardWidth - SettingsControls.CardPadX * 2f, rowHeight);
 
-            float labelY = string.IsNullOrEmpty(caption) ? -(rowHeight - 16f) * 0.5f : -12f;
+            float labelY = string.IsNullOrEmpty(caption) && !reserveCaption ? -(rowHeight - 16f) * 0.5f : -12f;
+            // ★ 이 행이 §2.4의 실측 현장이다 — 옛 코드에서 제목 2.09 < 캡션 5.33으로 서열이
+            //   뒤집혀 있었다. 유저는 "뭔가 준비 중이구나"만 읽고 "뭐가?"는 못 읽었다.
             Text labelText = UiChrome.AddText(row, "Label", UiChrome.FontBody, TextAnchor.MiddleLeft,
-                enabled ? UiChrome.TextPrimary : UiChrome.TextDisabled);
+                UiChrome.InkTitle(enabled));
             UiChrome.PlaceTopLeft(labelText.rectTransform, 0f, labelY, 420f, 16f);
             labelText.text = label;
 
             if (!string.IsNullOrEmpty(hotkey))
             {
                 Text hot = UiChrome.AddText(row, "Hotkey", UiChrome.FontCaption, TextAnchor.MiddleLeft,
-                    UiChrome.TextTertiary);
+                    UiChrome.InkMeta);
                 UiChrome.PlaceTopLeft(hot.rectTransform, labelText.preferredWidth + 8f, labelY, 120f, 14f);
                 hot.text = hotkey;
             }
 
-            if (!string.IsNullOrEmpty(caption))
+            captionOut = null;
+            if (!string.IsNullOrEmpty(caption) || reserveCaption)
             {
                 Text cap = UiChrome.AddText(row, "Caption", UiChrome.FontCaption, TextAnchor.MiddleLeft,
-                    UiChrome.TextTertiary);
+                    UiChrome.InkMeta);
                 UiChrome.PlaceTopLeft(cap.rectTransform, 0f, -31f, 480f, 14f);
-                cap.text = caption;
+                cap.text = enabled || gate == null ? (caption ?? string.Empty) : gate.DisabledNote;
+                captionOut = cap;
             }
+            labelOut = labelText;
 
             // 행 사이 1pt 구분선 — 마지막 행 것은 Finish()가 끈다.
             Image divider = UiChrome.AddSurface(_card, "Divider" + _rowIndex, SettingsControls.DividerOnCard, 2);
@@ -560,9 +764,11 @@ namespace StickMate.Interaction
         // -------------------- 부품별 행 --------------------
 
         public SettingsToggle AddToggle(string key, string label, bool on, Action<bool> changed,
-            string caption = null, string hotkey = null, bool enabled = true, string disabledNote = null)
+            string caption = null, string hotkey = null, bool enabled = true,
+            DisabledReason disabledNote = default)
         {
-            RectTransform row = BeginRow(key, label, ComposeCaption(caption, enabled, disabledNote), hotkey,
+            RectTransform row = BeginRow(key, label,
+                ComposeCaption(caption, enabled, disabledNote.Text, disabledNote.Kind), hotkey,
                 enabled, out float rowHeight);
 
             var toggle = new SettingsToggle { Interactable = enabled };
@@ -579,7 +785,7 @@ namespace StickMate.Interaction
             // AddCircle은 안티에일리어싱 램프만큼 상자를 부풀려서(diameter + feather×2) 18pt 정확한
             // 좌우 이동 거리를 계산할 수 없다. 18×18에 반지름 9면 결과는 완전한 원이다.
             Image knob = UiChrome.AddSurface(track.rectTransform, "Knob",
-                enabled ? UiChrome.TextPrimary : UiChrome.TextDisabled,
+                enabled ? UiChrome.TextPrimary : UiChrome.DisabledControlInk,
                 Mathf.RoundToInt(SettingsControls.SwitchKnob * 0.5f));
             knob.raycastTarget = false;
             knob.rectTransform.anchorMin = knob.rectTransform.anchorMax = knob.rectTransform.pivot = new Vector2(0f, 1f);
@@ -600,10 +806,12 @@ namespace StickMate.Interaction
 
         public SettingsSlider AddSlider(string key, string label, float min, float max, float step,
             float value, Func<float, string> format, Action<float> changed,
-            string caption = null, bool enabled = true, string disabledNote = null)
+            string caption = null, bool enabled = true, DisabledReason disabledNote = default,
+            SettingsRowGate gate = null)
         {
-            RectTransform row = BeginRow(key, label, ComposeCaption(caption, enabled, disabledNote), null,
-                enabled, out float rowHeight);
+            RectTransform row = BeginRow(key, label,
+                ComposeCaption(caption, enabled, disabledNote.Text, disabledNote.Kind), null,
+                enabled, gate, out float rowHeight, out Text labelText, out Text captionText);
 
             var slider = new SettingsSlider
             {
@@ -612,12 +820,13 @@ namespace StickMate.Interaction
                 Step = step,
                 Format = format,
                 Changed = changed,
+                Interactable = enabled,
             };
 
             float centerY = -(rowHeight - SettingsControls.StepButton) * 0.5f;
 
             Text valueLabel = UiChrome.AddText(row, "Value", UiChrome.FontLabel, TextAnchor.MiddleRight,
-                enabled ? UiChrome.TextSecondary : UiChrome.TextDisabled);
+                UiChrome.InkBody(enabled));
             SettingsControls.PlaceTopRight(valueLabel.rectTransform, 0f, centerY,
                 SettingsControls.ValueLabelWidth, SettingsControls.StepButton);
             slider.ValueLabel = valueLabel;
@@ -640,11 +849,12 @@ namespace StickMate.Interaction
             trackBg.raycastTarget = false;
 
             Image fill = UiChrome.AddSurface(trackBg.rectTransform, "Fill",
-                enabled ? SettingsControls.AccentSolid : UiChrome.TextDisabled, 3);
+                enabled ? SettingsControls.AccentSolid : UiChrome.DisabledControlInk, 3);
             fill.rectTransform.anchorMin = fill.rectTransform.anchorMax = fill.rectTransform.pivot = new Vector2(0f, 0.5f);
             fill.rectTransform.anchoredPosition = Vector2.zero;
             fill.raycastTarget = false;
             slider.FillRect = fill.rectTransform;
+            slider.FillImage = fill;
 
             float minusX = trackX + SettingsControls.TrackWidth + SettingsControls.ControlGap;
             Image minus = AddStepButton(row, "Minus", "−", minusX, centerY, enabled);
@@ -653,13 +863,29 @@ namespace StickMate.Interaction
             slider.SetValueSilently(value);
             slider.Apply();
 
-            Func<bool> gate = () => enabled;
-            _host?.Register(minus.rectTransform, minus, key + ".minus", () => slider.Nudge(-1), null, gate);
-            _host?.Register(plus.rectTransform, plus, key + ".plus", () => slider.Nudge(+1), null, gate);
+            // ★ 상수 캡처(() => enabled)가 아니라 부품의 현재 상태를 본다 — 안 그러면 게이트가 내려간
+            //   뒤에도 클릭이 그대로 먹는다("회색인데 눌리는" 행).
+            Func<bool> clickable = () => slider.Interactable;
+            _host?.Register(minus.rectTransform, minus, key + ".minus", () => slider.Nudge(-1), null, clickable);
+            _host?.Register(plus.rectTransform, plus, key + ".plus", () => slider.Nudge(+1), null, clickable);
             _host?.Register(hit.rectTransform, hit, key + ".track", () => { },
-                cursor => slider.SetFromTrackPoint(cursor), gate);
+                cursor => slider.SetFromTrackPoint(cursor), clickable);
+
+            gate?.Register(
+                new[] { labelText, StepGlyph(plus), StepGlyph(minus) },
+                new[] { valueLabel },
+                captionText, caption,
+                on => { slider.Interactable = on; slider.Apply(); });
 
             return slider;
+        }
+
+        /// <summary>스텝 버튼의 글리프 텍스트(+/−). 게이트가 잉크를 다시 칠할 때 필요하다.</summary>
+        private static Text StepGlyph(Image stepButton)
+        {
+            if (stepButton == null) return null;
+            Transform t = stepButton.transform.Find("Label");
+            return t != null ? t.GetComponent<Text>() : null;
         }
 
         private static Image AddStepButton(RectTransform row, string name, string glyph, float xFromRight,
@@ -669,17 +895,19 @@ namespace StickMate.Interaction
             SettingsControls.PlaceTopRight(surface.rectTransform, xFromRight, y,
                 SettingsControls.StepButton, SettingsControls.StepButton);
             Text label = UiChrome.AddText(surface.rectTransform, "Label", UiChrome.FontBody,
-                TextAnchor.MiddleCenter, enabled ? UiChrome.TextPrimary : UiChrome.TextDisabled);
+                TextAnchor.MiddleCenter, UiChrome.InkTitle(enabled));
             UiChrome.Stretch(label.rectTransform);
             label.text = glyph;
             return surface;
         }
 
         public SettingsSegment AddSegment(string key, string label, string[] options, int index,
-            Action<int> changed, string caption = null, bool enabled = true, string disabledNote = null)
+            Action<int> changed, string caption = null, bool enabled = true,
+            DisabledReason disabledNote = default, SettingsRowGate gate = null)
         {
-            RectTransform row = BeginRow(key, label, ComposeCaption(caption, enabled, disabledNote), null,
-                enabled, out float rowHeight);
+            RectTransform row = BeginRow(key, label,
+                ComposeCaption(caption, enabled, disabledNote.Text, disabledNote.Kind), null,
+                enabled, gate, out float rowHeight, out Text labelText, out Text captionText);
 
             var segment = new SettingsSegment
             {
@@ -695,6 +923,12 @@ namespace StickMate.Interaction
             float x = 0f;
             for (int i = options.Length - 1; i >= 0; i--)   // 오른쪽 끝에서 왼쪽으로 쌓는다.
             {
+                // ★ 9f는 <b>글자 한 칸의 폭 근사</b>이고 라벨 폰트(UiChrome.FontLabel)와 묶여 있다.
+                //   2026-09-01에 FontLabel이 11 -> 12로 올라갔지만(Windows 홀수 pt 번짐 수정) 여기는
+                //   그대로 뒀다: 한글은 폭이 pt에 가까워 12pt에서 "24 + 9n >= 12n" 즉 <b>8자까지</b>
+                //   안전하고, 지금 쓰는 캡션은 최장 3자("숨기기")다. 8자를 넘는 순한글 캡션을 새로
+                //   넣는 날에는 9f를 UiChrome.FontLabel에서 파생시켜야 한다
+                //   (CharacterInfoWindow.TabLabelWidth가 이미 그 형태다).
                 float width = 24f + options[i].Length * 9f;
                 Image surface = UiChrome.AddSurface(row, "Seg" + i, UiChrome.CardSurface, UiChrome.RadiusChip);
                 SettingsControls.PlaceTopRight(surface.rectTransform, x, centerY, width, SettingsControls.SegmentHeight);
@@ -718,14 +952,19 @@ namespace StickMate.Interaction
             }
 
             segment.SetIndexSilently(index);
+
+            gate?.Register(new[] { labelText }, null, captionText, caption,
+                on => { segment.Interactable = on; segment.Apply(); });
+
             return segment;
         }
 
         /// <summary>오른쪽에 버튼 1~3개가 붙은 행([숨기기][보이기] / [지금 종료]).</summary>
         public Image[] AddButtons(string key, string label, string[] captions, Action<int> clicked,
-            string caption = null, bool enabled = true, string disabledNote = null)
+            string caption = null, bool enabled = true, DisabledReason disabledNote = default)
         {
-            RectTransform row = BeginRow(key, label, ComposeCaption(caption, enabled, disabledNote), null,
+            RectTransform row = BeginRow(key, label,
+                ComposeCaption(caption, enabled, disabledNote.Text, disabledNote.Kind), null,
                 enabled, out float rowHeight);
 
             var results = new Image[captions.Length];
@@ -733,13 +972,14 @@ namespace StickMate.Interaction
             float x = 0f;
             for (int i = captions.Length - 1; i >= 0; i--)
             {
+                // 9f의 의미와 상한(순한글 8자)은 위 AddSegmented의 주석 참고.
                 float width = 26f + captions[i].Length * 9f;
                 Image surface = UiChrome.AddSurface(row, "Btn" + i, SettingsControls.ButtonSurfaceOnCard,
                     UiChrome.RadiusChip);
                 SettingsControls.PlaceTopRight(surface.rectTransform, x, centerY, width, SettingsControls.ButtonHeight);
                 UiChrome.AddOutline(surface.rectTransform, "Outline", SettingsControls.OutlineOnCard, UiChrome.RadiusChip);
                 Text text = UiChrome.AddText(surface.rectTransform, "Label", UiChrome.FontLabel,
-                    TextAnchor.MiddleCenter, enabled ? UiChrome.TextPrimary : UiChrome.TextDisabled, bold: true);
+                    TextAnchor.MiddleCenter, UiChrome.InkTitle(enabled), bold: true);
                 UiChrome.Stretch(text.rectTransform);
                 text.text = captions[i];
                 results[i] = surface;
@@ -755,9 +995,11 @@ namespace StickMate.Interaction
 
         /// <summary>색 견본이 오른쪽에 붙은 행(잉크색 / 포인트 컬러).</summary>
         public SettingsSwatchRow AddSwatches(string key, string label, Color[] colors, int index,
-            Action<int> changed, string caption = null, bool enabled = true, string disabledNote = null)
+            Action<int> changed, string caption = null, bool enabled = true,
+            DisabledReason disabledNote = default)
         {
-            RectTransform row = BeginRow(key, label, ComposeCaption(caption, enabled, disabledNote), null,
+            RectTransform row = BeginRow(key, label,
+                ComposeCaption(caption, enabled, disabledNote.Text, disabledNote.Kind), null,
                 enabled, out float rowHeight);
 
             var swatches = new SettingsSwatchRow
@@ -827,12 +1069,22 @@ namespace StickMate.Interaction
         /// (GlobalKey/이슈번호/"라운드")를 넣으면 이 함수가 그대로 화면에 렌더한다 — 실제로 그렇게
         /// 새어 나갔다(페르소나 M6). 팀이 알아야 할 사정은 <c>SettingsWindow.LogRoadmapNotes()</c>에
         /// 적고, 규칙은 <c>SettingsUserFacingCopyTests</c>가 <b>실제로 렌더된 문자열</b>을 훑어 잠근다.</para>
+        ///
+        /// <para>★★ <paramref name="kind"/>에 <b>기본값이 없는 것이 이 함수의 요점이다</b>
+        /// (docs/UX_FLOW.md 43-2). 접두사를 붙일지 말지는 <b>문장의 종류</b>가 정하고, 종류를 아는 것은
+        /// 문장을 쓰는 호출자뿐이다. 기본값을 두면 다음 사람이 종류를 <b>안 적을 수 있고</b>, 안 적힌
+        /// K2 문장은 "준비 중 — 지금 붙잡을 만한 작은 창이 없어요."로 렌더되어 <b>지금 할 수 있는 일을
+        /// 기다리라고 말한다</b>. 그건 컴파일도 리뷰도 카피 테스트도 통과한다.</para>
         /// </summary>
-        private static string ComposeCaption(string caption, bool enabled, string disabledNote)
+        private static string ComposeCaption(string caption, bool enabled, string disabledNote, DisabledKind kind)
         {
             if (enabled) return caption;
             if (string.IsNullOrEmpty(disabledNote)) return caption;
-            return string.IsNullOrEmpty(caption) ? "준비 중 — " + disabledNote : caption + "  ·  준비 중 — " + disabledNote;
+
+            string note = kind == DisabledKind.NotBuilt
+                ? SettingsControls.NotBuiltPrefix + disabledNote
+                : disabledNote;
+            return string.IsNullOrEmpty(caption) ? note : caption + "  ·  " + note;
         }
     }
 }

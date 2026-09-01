@@ -212,7 +212,8 @@ namespace StickMate.Core
         public int? ResolveUnlockLevel(StickConfig config) => RequiredLevel;
 
         /// <summary>지금 이 항목을 가지고 있는가. 행동은 <b>항상 보유</b>, 장비는 레벨로 열린다.
-        /// <para>2026-08-31 <b>임시</b>: <see cref="EquipmentDebugUnlock.UnlockAll"/>이 켜져 있으면 레벨을
+        /// <para><see cref="EquipmentDebugUnlock.UnlockAll"/>(QA 해금 스위치, 릴리스 빌드에서는 빌드
+        /// 구성상 자동으로 꺼진다)이 켜져 있으면 레벨을
         /// 보지 않는다(사용자 QA 요청). 규칙을 지운 것이 아니라 <b>앞에 스위치 하나를 둔 것</b>이고,
         /// 이 자리에 둔 이유는 여기가 카드 색·상태 문구·착용 가능 여부의 공통 뿌리이기 때문이다 —
         /// 더 아래(착용 시점)에서 우회하면 "Lv.20에 열림"이라 적힌 카드가 눌리는 거짓말이 된다.</para></summary>

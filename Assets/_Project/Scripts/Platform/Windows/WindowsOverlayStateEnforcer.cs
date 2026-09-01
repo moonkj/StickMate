@@ -98,6 +98,15 @@ namespace StickMate.Platform.Windows
         private int _setResolutionCalls;
         private int _windowResizeCalls;
 
+        /// <summary>
+        /// 창 기하 A↔B 진동 가드. 판정은 플랫폼 중립 한 곳
+        /// (<see cref="StickMate.Platform.OverlayGeometryOscillationGuard"/>)에 있고 여기서는 관측만 한다 —
+        /// macOS판 Enforcer도 같은 클래스를 같은 방식으로 쓴다(2026-09-01 맥 실기에서 오버레이 창
+        /// 사각형이 두 값 사이를 교대하는 것이 관측됐고, 불감대는 그 부류를 원리적으로 막지 못한다).
+        /// </summary>
+        private readonly OverlayGeometryOscillationGuard _boundsOscillation =
+            new OverlayGeometryOscillationGuard();
+
         // 실행 중 디스플레이 구성 변경 추적(2026-08-31). 판단 로직은 플랫폼 공용
         // Platform/DisplayTopologyWatcher.cs 한 곳에 있고 여기서는 관측만 한다 — macOS판도 같은 클래스를
         // 같은 방식으로 쓴다(오늘 VisibleTopEdgeSolver에서 한쪽만 고쳐 재발한 사례의 재발 방지).
@@ -195,6 +204,7 @@ namespace StickMate.Platform.Windows
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.PlatformEnforcer);   // [스톨구간] 계측
             // ★ 2026-09-01 패리티 감사 — 순서를 macOS판(MacOverlayStateEnforcer.Update)과 맞췄다.
             //   전에는 `if (_controller == null) return;`이 이 블록보다 **위에** 있었다. 그러면
             //   컨트롤러를 아직/더는 잡지 못한 프레임에서 FramePacing이 통째로 멈춘다 —
@@ -376,6 +386,7 @@ namespace StickMate.Platform.Windows
         private void TickFullScreenBounds()
         {
             if (_fullScreenBoundsApplied || _fullScreenApplyAttempts >= MaxFullScreenApplyAttempts) return;
+            if (_boundsOscillation.IsOscillating) return;   // 아래 진동 가드가 이미 멈춘 상태.
 
             _fullScreenTimer += Time.unscaledDeltaTime;
             if (_fullScreenTimer < ReapplyIntervalSeconds) return;
@@ -392,6 +403,23 @@ namespace StickMate.Platform.Windows
 
             Vector2 sizeBefore = _controller.windowSize;
             Vector2 posBefore = _controller.windowPosition;
+
+            // ★★ 2026-09-01 — A↔B 진동 가드(플랫폼 중립 OverlayGeometryOscillationGuard).
+            //
+            // 위 불감대는 **1px 래칫**만 막는다. 창 기하가 두 값 사이를 오가면 두 값 모두 불감대 밖이라
+            // "불일치" 판정이 매번 참이고, 재적용이 원리적으로 수렴하지 않는다. 재적용 한 번 =
+            // 스왑체인/리디렉션 표면 재생성 한 번 = 수백 ms 정지이므로, **수렴 불가라는 사실 자체**를
+            // 감지해 멈춘다. 정상 세션에서는 값이 정착하므로 이 가드는 아무 일도 하지 않는다
+            // (= Windows 기존 동작 무변경). macOS판 Enforcer도 같은 클래스를 같은 자리에서 쓴다.
+            if (_boundsOscillation.Observe(new Rect(posBefore, sizeBefore), BoundsEpsilonPixels))
+            {
+                _fullScreenApplyAttempts = MaxFullScreenApplyAttempts;   // 이번 에피소드 즉시 종료.
+                Debug.LogWarning("[WindowsOverlayStateEnforcer] ★전체화면 재적합을 중단합니다 — " +
+                    _boundsOscillation.Diagnosis +
+                    " 이후 디스플레이 구성이 바뀌어도 이 프로세스에서는 재무장하지 않습니다" +
+                    "(_setResolutionCalls 상한과 같은 이유 — 여기서 풀면 상한이 사실상 사라집니다).");
+                return;
+            }
 
             // 단위: Windows에서는 Unity Player가 per-monitor DPI aware라 Screen.width(Unity 픽셀)와
             // Win32/라이브러리의 좌표(물리 픽셀)가 같은 단위이므로 배율이 1.0으로 실측된다. 그래도
@@ -462,8 +490,14 @@ namespace StickMate.Platform.Windows
             // 크기/위치도 같은 불감대를 쓴다. **이미 목표 안에 들어와 있으면 대입 자체를 하지 않는다** —
             // 대입 한 번이 곧 OS 리사이즈 한 번이고, 그것이 백버퍼 재할당 한 번이다.
             // 크기 -> 위치 순서(크기를 먼저 정해야 위치 대입이 최종 좌표가 된다).
-            bool needsResize = OverlayBoundsFitPolicy.ShouldResize(sizeBefore.x, sizeBefore.y,
-                monitor.width, monitor.height, BoundsEpsilonPixels);
+            // ★ 2026-09-01 — 창 크기 재대입에도 **수명 상한**을 건다. Screen.SetResolution만 상한이
+            //   있고 이쪽은 무제한이던 비대칭을 없앤다(둘 다 OS 표면 재생성 = 수백 ms 정지).
+            //   지금 터지는 버그가 아니라, 불감대를 넘는 오차를 가진 환경에서 다시 열릴 문을 닫는
+            //   하드닝이다 — 근거는 OverlayBoundsFitPolicy.DefaultMaxWindowResizeCalls 문서.
+            bool resizeCapped = _windowResizeCalls >= OverlayBoundsFitPolicy.DefaultMaxWindowResizeCalls;
+            bool needsResize = OverlayBoundsFitPolicy.ShouldResizeWithinBudget(sizeBefore.x, sizeBefore.y,
+                monitor.width, monitor.height, BoundsEpsilonPixels,
+                _windowResizeCalls, OverlayBoundsFitPolicy.DefaultMaxWindowResizeCalls);
             bool needsMove = OverlayBoundsFitPolicy.ShouldMove(posBefore.x, posBefore.y,
                 monitor.x, monitor.y, BoundsEpsilonPixels);
             if (needsResize)
@@ -497,7 +531,7 @@ namespace StickMate.Platform.Windows
                 // ★ 스왑체인 재생성 누적 — [프레임스파이크]의 "백버퍼가 바뀌었다" 줄과 짝을 이룬다.
                 //   두 줄의 시각이 겹치면 그 스파이크의 범인이 이 파일임이 확정된다.
                 $"재생성 누적(SetResolution {_setResolutionCalls}/{MaxSetResolutionCalls}회" +
-                $"{(resolutionCapped ? " ★상한 도달 — 더는 부르지 않는다" : "")}, 창리사이즈 {_windowResizeCalls}회), " +
+                $"{(resolutionCapped ? " ★상한 도달 — 더는 부르지 않는다" : "")}, 창리사이즈 {_windowResizeCalls}/{OverlayBoundsFitPolicy.DefaultMaxWindowResizeCalls}회{(resizeCapped ? " ★상한 도달" : "")}), " +
                 $"이번 틱 실행(SetResolution={(resolutionMismatch || modeMismatch) && !resolutionCapped}, " +
                 $"리사이즈={needsResize}, 이동={needsMove}, 불감대={BoundsEpsilonPixels:F0}px), " +
                 $"clientSize={_controller.clientSize}, " +
@@ -525,6 +559,10 @@ namespace StickMate.Platform.Windows
         /// </summary>
         private void TickDisplayTopology()
         {
+            // 진동으로 확정된 뒤에는 재무장 자체를 하지 않는다 — 재무장은 상한을 되돌리는 유일한 경로라,
+            // 여기를 막지 않으면 위에서 멈춘 것이 다음 통지에 그대로 되살아난다(macOS판과 동일).
+            if (_boundsOscillation.IsOscillating) return;
+
             bool fitInProgress = !_fullScreenBoundsApplied && _fullScreenApplyAttempts < MaxFullScreenApplyAttempts;
             if (fitInProgress) return;
 

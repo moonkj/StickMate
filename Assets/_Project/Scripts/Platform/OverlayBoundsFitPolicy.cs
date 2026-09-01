@@ -63,6 +63,40 @@ namespace StickMate.Platform
         public const int DefaultMaxSetResolutionCalls = 4;
 
         /// <summary>
+        /// 프로세스 수명 전체에서 <b>창 크기를 재대입</b>할 수 있는 기본 상한.
+        ///
+        /// ============================================================================
+        /// 왜 생겼는가 (2026-09-01, 병행 라운드의 대칭성 지적)
+        /// ============================================================================
+        /// <see cref="DefaultMaxSetResolutionCalls"/>는 수명 상한이 있는데 <b>창 크기 재대입에는
+        /// 상한이 아예 없었다</b>. 두 호출은 성질이 같다 — 둘 다 클라이언트 영역을 바꾸므로
+        /// <b>OS 표면(스왑체인/백버퍼/리디렉션 표면)이 재생성</b>되고, 그것이 수백 ms짜리 정지다.
+        /// 한쪽만 막아 두면 나머지 한쪽으로 같은 사고가 그대로 재발한다.
+        ///
+        /// <para><b>지금 터지는 버그가 아니다</b>(정직하게): 같은 라운드 실측에서 2px 불감대가 관측
+        /// 오차를 흡수하고 있고, 에피소드당 <c>MaxFullScreenApplyAttempts</c> 하드 상한도 있으며,
+        /// macOS 92분 세션에서 전체화면 확장 시도는 1회, <c>windowSize</c> 11회 관측이 전부 동일해
+        /// <b>드리프트 0</b>이었다. 이것은 <b>불감대를 넘는 오차를 가진 환경에서 다시 열릴 문</b>을
+        /// 미리 닫는 하드닝이다.</para>
+        ///
+        /// <para>값이 <see cref="DefaultMaxSetResolutionCalls"/>와 같은 이유: 두 호출은 같은 함수의
+        /// 같은 에피소드에서 짝으로 일어난다. 정상 경로는 기동 시 1회이고, 디스플레이 구성 변경이
+        /// 세션당 몇 번 일어나도 감당하면서 진동은 즉시 멈춘다.</para>
+        /// </summary>
+        public const int DefaultMaxWindowResizeCalls = DefaultMaxSetResolutionCalls;
+
+        /// <summary>
+        /// 지금 창 크기를 다시 대입해도 되는가 — <see cref="ShouldResize"/>에 <b>수명 상한</b>을 얹은 것.
+        /// 호출자는 이 함수만 쓰면 되고, 상한에 닿았는지는 <paramref name="callsSoFar"/>로 판단한다.
+        /// </summary>
+        public static bool ShouldResizeWithinBudget(float currentW, float currentH,
+            float targetW, float targetH, float epsilonPixels, int callsSoFar, int maxCalls)
+        {
+            if (callsSoFar >= maxCalls) return false;
+            return ShouldResize(currentW, currentH, targetW, targetH, epsilonPixels);
+        }
+
+        /// <summary>
         /// 유효하다고 인정하는 최대 백킹 배율(OS 포인트 1 = Unity 픽셀 몇 개). 4x를 넘는 디스플레이는
         /// 존재하지 않으므로, 그보다 큰 값이 들어오면 <b>배율 측정이 깨진 것</b>으로 보고 불감대를
         /// 넓히지 않는다 — 깨진 측정값으로 불감대를 키우면 진짜 어긋남까지 덮게 된다.

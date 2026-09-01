@@ -182,7 +182,12 @@ namespace StickMate.States
                     _blackboard.PoseSmoothingRate, _blackboard.WalkSpeedSmoothingRate,
                     _cfg != null ? _cfg.walkFootGroundingBlend : 1f,
                     _cfg != null ? _cfg.walkPoseAmplitudeScale : 1f,
-                    _cfg != null ? _cfg.walkStrideScale : 1f,
+                    // ★ 2026-09-02 (디버거) — 폴백 1f는 **낡은 사본이 아니라 처음부터 틀린 사본**이었다.
+                    // walkStrideScale의 코드 기본값은 이 상태가 생기기 훨씬 전부터 0.93이고 1이었던 적이
+                    // 없다 — 바로 위 두 인자(walkFootGroundingBlend/walkPoseAmplitudeScale)가 진짜로 1f라
+                    // 그 줄을 복사하면서 함께 1f가 된 것으로 보인다. 같은 값을 쓰는 이웃 호출부
+                    // States/GroundLossHangState.cs는 처음부터 0.93f로 적혀 있어 이 파일만 갈라져 있었다.
+                    _cfg != null ? _cfg.walkStrideScale : 0.93f,
                     _blackboard.RunBodyLeanDegrees);
                 return;
             }
@@ -236,7 +241,13 @@ namespace StickMate.States
                 case Phase.Outro:
                     CurrentDrawRatio = 0f;
                     // 마지막 화살이 날아가 꽂히는 것을 끝까지 보여준 뒤에 끝낸다.
-                    if (_timer >= (_cfg != null ? _cfg.archeryArrowFlightSeconds : 0.62f) + (_cfg != null ? _cfg.archeryOutroSeconds : 0.75f))
+                    // ★ 2026-09-02 (디버거) — outro 폴백 0.75f도 처음부터 틀린 사본이다(설정 기본값은
+                    // 이 상태가 생기기 전부터 0.55). 같은 인자 목록의 나머지 여섯(intro 0.55 / draw 0.42 /
+                    // aim 0.30 / recover 0.34 / recoil 0.18 / flight 0.62)은 전부 실효값과 일치했고 이 하나만
+                    // 어긋나 있었다. ★ 쌍둥이가 하나 더 있다 — Interaction/ArcheryRenderer.cs의
+                    // ConfigFloat 람다 폴백(archeryOutroSeconds, 0.75f). 그쪽은 이번 라운드 편집 금지 구역이라
+                    // 손대지 않았고 리더에게 별도 보고했다(그 형태는 드리프트 스캐너의 정규식에도 안 걸린다).
+                    if (_timer >= (_cfg != null ? _cfg.archeryArrowFlightSeconds : 0.62f) + (_cfg != null ? _cfg.archeryOutroSeconds : 0.55f))
                     {
                         _blackboard.Machine.ChangeState(StickmanStateId.Idle);
                     }

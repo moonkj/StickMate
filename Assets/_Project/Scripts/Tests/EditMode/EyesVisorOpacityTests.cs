@@ -200,37 +200,124 @@ namespace StickMate.Tests.EditMode
         // 2. 위치 — 판이 실제로 눈 자리를 지난다
         // ============================================================================
 
+        /// <summary>드러난 눈 도형인가 — 이름이 <c>*Eye</c>로 끝나는 채움.
+        /// <para>가리개 검사(<see cref="가리개_채움이_눈_자리를_덮는다"/>)가 <b>가리개만</b> 보게 하려고
+        /// 쓴다. 이름 규약을 코드 한 곳에 두는 이유는, 다음 사람이 눈 좌표를 조금만 옮겨도
+        /// "가리개가 뒤 눈을 덮었다"는 <b>엉뚱한 실패 메시지</b>를 보지 않게 하기 위해서다.</para></summary>
+        private static bool IsDrawnEye(in AccessoryShapeBuilder.Shape shape)
+            => shape.Name != null && shape.Name.EndsWith("Eye");
+
         /// <summary>
-        /// 판이 <b>눈 중립 좌표</b>를 덮는가. 이 검사가 없으면 이마에 붙은 띠도 "채움 있음"으로 통과한다.
-        /// <para>눈은 지금 그려지지 않지만(<c>DrawEyes = false</c>) 좌표는
-        /// <see cref="AccessoryShapeBuilder.EyeOffsetXInHeadRadii"/>로 남아 있고, 그것이
-        /// "얼굴에서 눈이 있던 자리"의 단일 정의처다. 눈이 되살아나도 이 검사는 그대로 유효하다.</para>
+        /// <b>가리개</b>의 채움이 눈 중립 좌표를 덮는가. 이 검사가 없으면 이마에 붙은 띠도 "채움 있음"으로 통과한다.
+        ///
+        /// <para>눈 좌표는 지금 그려지지 않지만(<c>DrawEyes = false</c>)
+        /// <see cref="AccessoryShapeBuilder.EyeOffsetXInHeadRadii"/>가 "얼굴에서 눈이 있던 자리"의
+        /// 단일 정의처로 남아 있고, <b>가림 판정</b>이 그것을 읽는다.</para>
+        ///
+        /// <para>★ 2026-09-01(3차) — 프로브 대상을 "모든 채움"에서 <b>가리개 채움</b>(이름이
+        /// <c>*Eye</c>가 아닌 것)으로 좁혔다. 외알안경·안대에 <b>드러난 눈</b>이 채움 도형으로
+        /// 들어왔기 때문이다. 좁히지 않아도 지금 좌표에서는 우연히 통과하지만(드러난 눈은
+        /// 정규화 거리 1.26으로 옛 눈 자리를 포함하지 않는다), 그건 <b>계약이 아니라 우연</b>이다.
+        /// 계약을 명시로 바꾸고, 드러난 눈 쪽 계약은 아래 검사가 따로 맡는다.</para>
         /// </summary>
         [TestCaseSource(nameof(AllEyes))]
-        public void 채움이_눈_자리를_덮는다(int item)
+        public void 가리개_채움이_눈_자리를_덮는다(int item)
         {
             AccessoryShapeBuilder.Rig rig = Rig();
             float ex = rig.HeadRadius * AccessoryShapeBuilder.EyeOffsetXInHeadRadii;
             float ey = rig.HeadCenterY + rig.HeadRadius * AccessoryShapeBuilder.EyeOffsetYInHeadRadii;
-            List<AccessoryShapeBuilder.Shape> shapes = Build(item);
 
-            Assert.IsTrue(FilledContains(shapes, new Vector2(ex, ey)),
-                $"{Label(item)}의 채움이 <b>앞쪽</b> 눈 자리({ex:F3}, {ey:F3})를 덮지 않습니다 — " +
+            var visors = new List<AccessoryShapeBuilder.Shape>();
+            foreach (AccessoryShapeBuilder.Shape shape in Build(item))
+            {
+                if (!IsDrawnEye(shape)) visors.Add(shape);
+            }
+
+            Assert.IsTrue(FilledContains(visors, new Vector2(ex, ey)),
+                $"{Label(item)}의 가리개 채움이 <b>앞쪽</b> 눈 자리({ex:F3}, {ey:F3})를 덮지 않습니다 — " +
                 "가리개가 눈을 비껴가면 이름과 그림이 어긋납니다(원칙 1의 그림 버전).");
 
-            bool backCovered = FilledContains(shapes, new Vector2(-ex, ey));
+            bool backCovered = FilledContains(visors, new Vector2(-ex, ey));
             if (CoversFrontEyeOnly(item))
             {
                 Assert.IsFalse(backCovered,
                     $"{Label(item)}는 <b>앞쪽 눈에만</b> 있어야 하는 아이템인데(33-2-2 #4) " +
-                    "채움이 뒤쪽 눈까지 덮었습니다 — 외알안경/안대의 존재 이유가 사라집니다.");
+                    "가리개가 뒤쪽 눈까지 덮었습니다 — 외알안경/안대의 존재 이유가 사라집니다.");
             }
             else
             {
                 Assert.IsTrue(backCovered,
-                    $"{Label(item)}의 채움이 <b>뒤쪽</b> 눈 자리를 덮지 않습니다 — " +
+                    $"{Label(item)}의 가리개 채움이 <b>뒤쪽</b> 눈 자리를 덮지 않습니다 — " +
                     "두 눈을 가리는 아이템이 한쪽만 가리면 반대 방향을 볼 때 얼굴이 반쯤 드러납니다.");
             }
+        }
+
+        /// <summary>
+        /// ★ 규칙 2-a — <b>한쪽만 가리는 물건은 가려지지 않은 눈을 보여 준다.</b>
+        ///
+        /// <para>사용자 요구("외눈안경처럼 한쪽만 가릴 때만 눈 노출")를 계약으로 옮긴 것이다.
+        /// 두 눈을 다 가리는 4종은 <b>아무것도 보여 주지 않는다</b> — 렌즈 <b>안</b>으로 눈이 비치는
+        /// 그림은 이 배율에서 기하학적으로 불가능하기 때문이다:</para>
+        /// <code>
+        /// 눈이 보이려면 a ≥ 0.75W · 테와 안 붙으려면 ρ ≥ a + 1.5W = 2.25W
+        /// 두 렌즈가 안 붙으려면 d ≥ 3.00W  ->  바깥 끝 d + ρ ≥ 5.25W = 1.805R  >  1.0R (머리 밖)
+        /// </code>
+        /// <para>머리 지름이 5.82W뿐이라 "테 + 간격 + 눈 + 간격 + 테"가 한쪽 눈에조차 안 들어간다.</para>
+        ///
+        /// <para>그리고 드러난 눈은 <b>진행 반대쪽</b>에 있어야 한다 — 가려진 쪽에 눈을 그리면
+        /// 그것은 "렌즈 안으로 비치는 눈"이고, 위 산술이 금지한 그림이다.</para>
+        /// </summary>
+        [TestCaseSource(nameof(AllEyes))]
+        public void 한쪽만_가리는_물건만_반대쪽_눈을_보여준다(int item)
+        {
+            AccessoryShapeBuilder.Rig rig = Rig();
+            var eyes = new List<AccessoryShapeBuilder.Shape>();
+            foreach (AccessoryShapeBuilder.Shape shape in Build(item))
+            {
+                if (IsDrawnEye(shape)) eyes.Add(shape);
+            }
+
+            if (!CoversFrontEyeOnly(item))
+            {
+                Assert.IsEmpty(eyes,
+                    $"{Label(item)}는 두 눈을 다 가리는 아이템인데 눈 도형이 {eyes.Count}개 있습니다 — " +
+                    "가려진 눈을 그리면 그것은 '렌즈 안으로 비치는 눈'이고, 이 배율에서 그릴 수 없습니다(규칙 2-a).");
+                return;
+            }
+
+            Assert.AreEqual(1, eyes.Count,
+                $"{Label(item)}는 한쪽만 가리므로 드러난 눈이 <b>정확히 1개</b>여야 합니다(현재 {eyes.Count}개).");
+
+            AccessoryShapeBuilder.Shape eye = eyes[0];
+            Assert.IsTrue(eye.Filled && eye.Loop,
+                $"{Label(item)}의 드러난 눈이 채운 닫힌 도형이 아닙니다 — 윤곽선으로 그리면 " +
+                "내부를 보이는 데 3.0W(1.03R), 즉 머리 반지름만 한 눈이 필요합니다(규칙 1).");
+            Assert.AreEqual(AccessoryShapeBuilder.Accent, eye.Tone,
+                $"{Label(item)}의 드러난 눈이 보조색이 아닙니다 — 이 아이템의 결정적 특징은 " +
+                "'가려지지 않은 눈이 보인다'이고, 보조색은 그 한 부분에 씁니다(규칙 3-2).");
+
+            for (int i = 0; i < eye.Points.Length; i++)
+            {
+                Assert.Less(eye.Points[i].x, 0f,
+                    $"{Label(item)}의 드러난 눈이 <b>진행 방향쪽</b>(가려진 쪽)에 있습니다 — " +
+                    "가려진 눈을 그리는 것은 위 산술이 금지한 '렌즈 안으로 비치는 눈'입니다.");
+            }
+
+            // 눈과 가리개가 1.5획 이상 떨어져 있어야 두 잉크가 한 덩어리로 뭉치지 않는다(규칙 4).
+            float w = AccessoryShapeBuilder.ShippingStrokeBudgetInHeadRadii * rig.HeadRadius;
+            float eyeRight = float.MinValue, visorLeft = float.MaxValue;
+            for (int i = 0; i < eye.Points.Length; i++) eyeRight = Mathf.Max(eyeRight, eye.Points[i].x);
+            foreach (AccessoryShapeBuilder.Shape shape in Build(item))
+            {
+                if (IsDrawnEye(shape) || !shape.Filled) continue;
+                for (int i = 0; i < shape.Points.Length; i++)
+                {
+                    visorLeft = Mathf.Min(visorLeft, shape.Points[i].x);
+                }
+            }
+            Assert.GreaterOrEqual((visorLeft - eyeRight) / w, 1.5f,
+                $"{Label(item)}의 드러난 눈과 가리개가 {(visorLeft - eyeRight) / w:F2}획 떨어져 있습니다 — " +
+                "1.5획 미만이면 두 잉크가 붙어 '가리개가 눈까지 덮은' 한 덩어리로 보입니다(규칙 4).");
         }
 
         /// <summary>좌우 반전에서도 같은 판이 <b>거울처럼</b> 선다. 비대칭 요소(선글라스 다리·고글 스트랩·

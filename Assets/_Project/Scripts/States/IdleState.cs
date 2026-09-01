@@ -52,6 +52,14 @@ namespace StickMate.States
             if (context.From != StickmanStateId.GroundLossHang
                 && AmbientChatter.TryRollChatter(_blackboard, StickmanStateId.Idle, _chatterParams))
             {
+            // ★ 2026-09-01 — 발화 자격 게이트(UX_FLOW.md 5절 규칙 8)는 TryRollChatter 안에 있다.
+            //   서술 대사는 상태가 끝나면 즉시 컷되므로(규칙 4-c ③), "0.08초 번쩍이고 사라지는
+            //   글자"가 새 노이즈가 되지 않도록 **발화 시점에** 막는다. 계획 잔여 체류는 지어낸
+            //   값이 아니라 두 사실의 결합이다: 배회 AI가 이 페이즈에 진입할 때 확정해 둔 길이의
+            //   나머지(States/IPlannedDwellSource.cs)와, **그 계획이 지금 이 상태를 서술하는가**
+            //   (StickmanBlackboard.PlannedDwellRemainingSecondsFor). 이동 의도가 이미 이 상태를
+            //   부정하고 있으면 잔여는 0이다 — 다음 Tick에 실제로 나가기 때문이다.
+            //   막히면 아래 분기 자체가 false가 되어 대사가 만들어지지 않는다 — 침묵은 거짓말이 아니다.
                 _ = new DialogueIntent(context, AmbientChatter.Resolve);
             }
         }

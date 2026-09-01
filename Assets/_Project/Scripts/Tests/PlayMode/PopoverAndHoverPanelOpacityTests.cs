@@ -28,16 +28,16 @@ namespace StickMate.Tests.PlayMode
     ///    <code>1 → 0.55² + 1×0.45 = 0.7525 → 0.28² + 0.7525×0.72 = 0.6202</code>
     ///    = 데스크톱이 <b>38.0%</b> 비쳤다.
     ///
-    ///  · <b>호버 패널</b>(<see cref="CornerHoverPanel"/>) — 겹 순서는 옳았고 <b>알파 자체</b>가 문제였다.
-    ///    본체를 <c>alpha: 0.86</c>으로 만들었다.
+    ///  · <b>옛 좌하단 호버 패널</b> — 겹 순서는 옳았고 <b>알파 자체</b>가 문제였다(본체 <c>alpha: 0.86</c>).
     ///    <code>0.28²=0.0784 → 0.55²+0.0784×0.45=0.3378 → 0.86²+0.3378×0.14=0.7869</code>
-    ///    패널 한가운데에서 <b>21.3%</b>, 세로 시인(α0.10)이 겹치는 위쪽에서는 <b>28.2%</b>가 비쳤다
-    ///    (0.10² + 0.7869×0.90 = 0.7182).
+    ///    패널 한가운데에서 <b>21.3%</b>가 비쳤다. 그 패널 자체는 2026-09-01 사용자 요청으로
+    ///    <b>삭제됐지만</b>, 그때 밝혀진 <b>원인</b>(α&lt;1은 무엇 위에 그리든 창 알파를 끌어내린다)은
+    ///    이 앱의 모든 UI에 그대로 유효하다 — 그래서 아래 (3)(4)는 남긴다.
     ///
     /// ============================================================================
     /// 이 파일이 지키는 절대 조건
     /// ============================================================================
-    ///  ① 팝오버 <b>3종 전부</b>와 호버 패널의 창 알파가 1이다(뒤 창이 1%도 비치지 않는다).
+    ///  ① 팝오버 <b>3종 전부</b>의 창 알파가 1이다(뒤 창이 1%도 비치지 않는다).
     ///  ② 두 창의 패널 컨테이너에 <b>Graphic이 없다</b> — 있으면 그 즉시 그림자가 본체 위로 올라간다.
     ///  ③ 본체 <b>이후에 그려지는 창 크롬 겹</b>(보더/하이라이트)의 알파가 전부 1이다.
     ///     이것들은 사각형 전체를 덮지 않아 ①의 측정에 잡히지 않지만, 그 1px 위에서만 창 알파를
@@ -341,99 +341,25 @@ namespace StickMate.Tests.PlayMode
     }
 
     // ================================================================================
-    // 좌하단 호버 패널 (본체 + 미리보기 카드)
+    // 유리 알파 규칙 자체의 잠금 — 2026-09-01 좌하단 호버 패널 삭제 후 남은 부분
+    //
+    // 옛 CornerHoverPanel 본체/미리보기 카드를 실제로 측정하던 테스트 2건은 그 컴포넌트와 함께
+    // 지웠다(측정 대상이 없는 테스트는 남길 수 없다). 그 라운드가 <b>발견한 규칙</b>은 패널이 아니라
+    // UiChrome에 속하므로 여기 남는다 — 다음에 누가 α<1 유리를 다시 들여오면 (3)이 막고,
+    // (4)가 "그 측정이 실제로 결함을 잡는다"를 증명한다.
     // ================================================================================
-    public sealed class CornerHoverPanelOpacityTests
+    public sealed class GlassPanelAlphaRuleTests
     {
-        private const string LogPrefix = "[창알파-호버패널]";
+        private const string LogPrefix = "[창알파-유리규칙]";
 
-        private CornerHoverPanel _panel;
         private GameObject _syntheticRoot;
 
         [UnityTearDown]
         public IEnumerator TearDown()
         {
-            if (_panel != null) _panel.HoldStageForTests = false;
-            _panel = null;
             if (_syntheticRoot != null) Object.DestroyImmediate(_syntheticRoot);
             _syntheticRoot = null;
             yield return null;
-        }
-
-        /// <summary>배치 모드에는 전역 커서가 없어 호버를 자연 발생시킬 수 없다 —
-        /// <see cref="CornerHoverPanel.HoldStageForTests"/>가 이 프로젝트의 기존 관례다.</summary>
-        private IEnumerator SetUpExpanded()
-        {
-            SceneManager.LoadScene("Main", LoadSceneMode.Single);
-            yield return null;
-            yield return null;
-
-            var agent = Object.FindFirstObjectByType<StickmanAgent>();
-            Assert.IsNotNull(agent, $"{LogPrefix} 씬에서 StickmanAgent를 찾지 못했습니다.");
-            _panel = agent.GetComponent<CornerHoverPanel>();
-            Assert.IsNotNull(_panel,
-                $"{LogPrefix} CornerHoverPanel이 캐릭터에 없습니다 — SceneBootstrapper 배선이 빠졌습니다.");
-
-            _panel.HoldStageForTests = true;
-            _panel.ForceStageForTests(expanded: true);
-
-            // 펼침(0.20초) + 내용물 게이트(0.10초) + CanvasGroup 페이드가 전부 끝난 <b>정지 상태</b>를 잰다.
-            yield return new WaitForSecondsRealtime(1.0f);
-        }
-
-        // ============================================================================
-        // (1) 핵심 — 패널 본체
-        // ============================================================================
-        [UnityTest]
-        [Timeout(180000)]
-        public IEnumerator HoverPanelIsFullyOpaqueSoNoOtherWindowShowsThrough()
-        {
-            yield return SetUpExpanded();
-
-            RectTransform panel = WindowAlphaProbe.FindPanelUnderCanvas("CornerHoverPanelCanvas", "Panel");
-            Assert.IsNotNull(panel, $"{LogPrefix} CornerHoverPanelCanvas 아래에서 'Panel'을 찾지 못했습니다.");
-
-            var containerGraphic = panel.GetComponent<Graphic>();
-            Assert.IsNull(containerGraphic,
-                $"{LogPrefix} 패널 컨테이너에 " +
-                $"{(containerGraphic != null ? containerGraphic.GetType().Name : "?")}이(가) 붙어 있습니다 — " +
-                "그 즉시 그림자가 본체 위로 올라갑니다.");
-
-            float alpha = WindowAlphaProbe.SimulateWindowAlpha(panel, out string trace);
-            Debug.Log($"{LogPrefix} 본체: {trace} = 창 알파 {alpha:F4} (뒤 창 비침 {(1f - alpha) * 100f:F1}%).");
-
-            Assert.GreaterOrEqual(alpha, WindowAlphaProbe.RequiredWindowAlpha,
-                $"{LogPrefix} 호버 패널의 창 알파가 {alpha:F4}입니다 — 유저의 데스크톱이 " +
-                $"{(1f - alpha) * 100f:F1}% 비쳐 보입니다. 겹 합성 경로: {trace}");
-
-            WindowAlphaProbe.AssertChromeLayersAboveBodyAreOpaque(panel, "호버 패널");
-        }
-
-        // ============================================================================
-        // (2) 미리보기 카드 — <b>우리 패널 위</b>에 얹혀도 반투명은 여전히 비침을 만든다
-        // ============================================================================
-        [UnityTest]
-        [Timeout(180000)]
-        public IEnumerator PreviewCardGlassIsAlsoFullyOpaque()
-        {
-            yield return SetUpExpanded();
-
-            RectTransform card = WindowAlphaProbe.FindPanelUnderCanvas("CornerHoverPanelCanvas", "CardGlass");
-            Assert.IsNotNull(card,
-                $"{LogPrefix} 미리보기 카드(CardGlass)를 찾지 못했습니다 — 펼침이 끝나지 않았거나 " +
-                "이름이 바뀌었습니다.");
-
-            float alpha = WindowAlphaProbe.SimulateWindowAlpha(card, out string trace);
-            Debug.Log($"{LogPrefix} 미리보기 카드: {trace} = 창 알파 {alpha:F4} " +
-                $"(뒤 창 비침 {(1f - alpha) * 100f:F1}%).");
-
-            Assert.GreaterOrEqual(alpha, WindowAlphaProbe.RequiredWindowAlpha,
-                $"{LogPrefix} 미리보기 카드의 알파가 {alpha:F4}입니다. " +
-                "<b>우리 패널(불투명) 위에 얹힌 카드라도</b> 반투명이면 창 알파가 내려갑니다 — " +
-                "이 프로젝트의 블렌드는 알파 채널에도 적용되기 때문입니다(dstA=1 위의 α0.86 → 0.88). " +
-                $"겹 합성 경로: {trace}");
-
-            WindowAlphaProbe.AssertChromeLayersAboveBodyAreOpaque(card, "미리보기 카드");
         }
 
         // ============================================================================
@@ -456,7 +382,7 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
-        // (4) 네거티브 컨트롤 — alpha 0.86 유리를 재현하면 (1)이 실제로 깨진다
+        // (4) 네거티브 컨트롤 — alpha 0.86 유리를 재현하면 측정이 실제로 결함을 잡는다
         // ============================================================================
         [UnityTest]
         [Timeout(120000)]
@@ -465,7 +391,7 @@ namespace StickMate.Tests.PlayMode
             yield return null;
 
             // 겹 순서는 <b>옳게</b> 세운다(컨테이너에 Graphic 없음, 그림자가 본체보다 먼저).
-            // 즉 여기서 알파가 무너진다면 원인은 순서가 아니라 <b>알파값 그 자체</b>다 — 호버 패널의
+            // 즉 여기서 알파가 무너진다면 원인은 순서가 아니라 <b>알파값 그 자체</b>다 — 옛 호버 패널의
             // 결함이 팝오버/정보창과 <b>다른 종류</b>였음을 이 컨트롤이 분리해 보여 준다.
             _syntheticRoot = new GameObject("SyntheticOldGlassCanvas", typeof(Canvas), typeof(CanvasScaler));
             _syntheticRoot.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;

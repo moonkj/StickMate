@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 using StickMate.Core;
+using StickMate.States;
 
 namespace StickMate.Interaction
 {
@@ -83,7 +84,27 @@ namespace StickMate.Interaction
         //   여기서는 머리 반경 배수로 받아 쓴다.
         private const float EyeRadiusRatio = 0.030f / StickConfig.BaselineCharacterTotalHeight;
         // ★ 2026-09-01 — 획 두께 비율도 AccessoryShapeBuilder가 단일 정의처다(값 동일, 거동 변화 0).
+        //   ⚠ 이것은 <b>액세서리</b> 획이다. 몸(몸통/팔/다리)은 아래 세 개를 쓴다 — 섞으면 이번 라운드가
+        //     고친 그 결함이 그대로 재발한다.
         private const float StrokeWidthRatio = AccessoryShapeBuilder.StrokeWidthRatio;
+
+        // ============================================================================
+        // ★★ 2026-09-01 P6 — 몸 획을 실제 캐릭터와 같게 (리더가 20:31 빌드에서 눈으로 잡은 불일치)
+        // ============================================================================
+        // 증상: 바탕화면의 캐릭터는 굵은 곡선인데 초상화만 얇은 직선이었다.
+        // 원인: 여기서 <b>몸을 그릴 때도</b> 액세서리 획(StrokeWidthRatio = 0.0211×키)을 쓰고 있었다.
+        //       실제 캐릭터의 몸 획은 0.0459~0.0551×키라 <b>2.2~2.6배</b> 얇게 그리고 있던 것이다.
+        //       (이 결함은 이미 알려져 있었다 — 아래 PreviewSortingOrder 근처의 "P6 소관" 메모.)
+        //
+        // 고친 방법: 숫자를 여기 옮겨 적지 않고 Core/StickmanStrokeWidths.cs를 단일 정의처로 만들었다.
+        //   그 값이 <b>실제로 구워진 프리팹</b>과 같다는 사실은
+        //   Tests/EditMode/PortraitBodyStrokeParityTests가 잠근다.
+        //
+        // ⚠ <see cref="Stroke"/>는 <b>그대로 뒀다</b>(= 액세서리/FX/펫 미리보기 획).
+        //   직전 라운드의 경고 그대로다: Stroke 자체를 몸 획으로 재정의하면 미리보기 9종이 함께 두꺼워진다.
+        private const float TorsoWidthRatio = StickmanStrokeWidths.TorsoWidthRatio;
+        private const float LegWidthRatio = StickmanStrokeWidths.LegWidthRatio;
+        private const float ArmWidthRatio = StickmanStrokeWidths.ArmWidthRatio;
 
         // ============================================================================
         // ★ 2026-09-01 P1 — 초상화도 눈을 그리지 않는다 (docs/UX_FLOW.md 38-4 / 38-5)
@@ -146,7 +167,20 @@ namespace StickMate.Interaction
         private const float FrameInkTopRatio =
             (1f - HeadRadiusInHeight) + TallestAccessoryAboveHeadCenterInR * HeadRadiusInHeight;
 
-        private const float FrameInkBottomRatio = -StrokeWidthRatio * 0.5f;
+        /// <summary>
+        /// 그림의 최저점 = <b>다리 끝(발목) 획의 아래 가장자리</b> = −(다리 획 두께 ÷ 2).
+        /// 다리가 그림에서 가장 굵은 획이고 그 끝점이 y=0 부근이므로, 잉크의 최저점은 그 둥근 캡이다.
+        ///
+        /// <para>★ 2026-09-01 P6 — 여기서 <see cref="StrokeWidthRatio"/>(<b>액세서리</b> 획)를 쓰고 있었다.
+        /// 몸 획을 실제 캐릭터와 같게 맞추면서 다리 획이 2.6배 두꺼워졌으므로 <b>다리 획</b>으로
+        /// 바로잡는다. 안 고치면 아래 여백이 5%에서 1.9%로 줄고, 다음에 누가 획을 조금만 더 굵히면
+        /// <b>조용히 발끝이 잘린다</b> — 이 액자의 설계 의도가 "잘리지 않는 최소 + 5%"다.</para>
+        ///
+        /// <para>같은 날 잠깐 들어갔던 <b>발</b>은 제거됐지만 이 식은 <b>그대로 유효하다</b>:
+        /// 발이 있었을 때도 최저점은 발목 캡이었고(발은 발목보다 아래로 내려가지 않았다),
+        /// 발이 없는 지금도 최저점은 같은 발목 캡이다. 즉 발 유무와 무관한 값이다.
+        /// 옛 값(액세서리 획 기준)으로 되돌리면 안 된다 — 그건 애초에 틀린 값이었다.</para></summary>
+        private const float FrameInkBottomRatio = -LegWidthRatio * 0.5f;
 
         /// <summary>가시 사각형이 그림보다 얼마나 넉넉해야 하는가(여백 비율).</summary>
         private const float FrameMarginRatio = 0.05f;
@@ -232,6 +266,7 @@ namespace StickMate.Interaction
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Portrait);   // [스톨구간] 계측
             // 카메라가 아니라 <b>요청 여부</b>로 판단한다 — 헤드리스(그래픽 장치 없음)에서는 카메라를
             // 켜지 않지만 도형은 그대로 만들어져야 테스트가 배치/포즈를 검증할 수 있다.
             if (!_renderingRequested) return;
@@ -537,6 +572,15 @@ namespace StickMate.Interaction
             : TotalHeight * (0.9346944f / StickConfig.BaselineCharacterTotalHeight);
         private float Stroke => TotalHeight * StrokeWidthRatio;
 
+        // 몸 획 — 실제 캐릭터와 같은 비율(위 P6 문단). 팔 &lt; 몸통 &lt; 다리 관계까지 그대로 가져온다.
+        private float TorsoStroke => TotalHeight * TorsoWidthRatio;
+        private float LegStroke => TotalHeight * LegWidthRatio;
+        private float ArmStroke => TotalHeight * ArmWidthRatio;
+
+        /// <summary>이 그림에서 가장 굵은 획(= 다리). 잉크 범위를 잴 때의 여백에 쓴다 —
+        /// 예전에는 <see cref="Stroke"/> 하나로 재서 몸 획이 굵어지면 그만큼 과소평가됐다.</summary>
+        private float WidestStroke => Mathf.Max(LegStroke, Mathf.Max(TorsoStroke, Mathf.Max(ArmStroke, Stroke)));
+
         private void ApplyBreathing()
         {
             if (_figureRoot == null) return;
@@ -546,12 +590,39 @@ namespace StickMate.Interaction
             if (!Mathf.Approximately(p.y, y)) _figureRoot.localPosition = new Vector3(p.x, y, p.z);
         }
 
+        /// <summary>
+        /// ★★ 2026-09-01 — <b>여기가 예외의 최종 방어선</b>이다.
+        ///
+        /// <para>이 함수를 부르는 경로는 둘인데 성질이 다르다: <see cref="Update"/>는 Unity가 컴포넌트
+        /// 단위로 예외를 삼키지만, <see cref="SetRenderingEnabled"/>는 <b>정보창 Open() 한복판</b>에서
+        /// 불린다. 그래서 예전에는 마디 하나의 지오메트리 예외가 Open()을 통째로 중단시켰고, 그
+        /// 결과가 사용자에게는 이렇게 보였다(2026-09-01 실측 2건이 <b>같은 원인</b>이다):</para>
+        /// <list type="number">
+        ///   <item>초상화가 "머리 + 막대" — 예외 뒤의 장비/이펙트가 아예 안 그려진다.</item>
+        ///   <item><b>카테고리/아이템 이름이 전부 "—"</b> — Open()의 <c>RefreshAll()</c>이 그 아래
+        ///         줄이라 실행되지 않는다. 자리표시자 "—"가 그대로 남고, 몇 초 뒤 성장/장비 이벤트가
+        ///         우연히 갱신을 돌려야 정상으로 돌아온다("수 초 뒤 정상화" 신고의 정체).</item>
+        ///   <item><c>[정보창] 열림</c> 로그가 <b>안 찍힌다</b> — 스모크 스크립트가 "반응 없음 →
+        ///         권한 문제"로 <b>거짓 실패</b>를 보고해 팀이 원인을 엉뚱한 곳에서 찾는다.</item>
+        /// </list>
+        /// <para>그림 하나 못 그린 것이 창 전체를 못 열게 만들 이유가 없다. 여기서 끊고 크게 남긴다.</para>
+        /// <para>서명을 <b>Rebuild 전에</b> 확정하는 것이 중요하다 — 실패해도 매 프레임 다시 시도하며
+        /// 로그를 쏟지 않는다(24시간 상주 앱). 상태가 실제로 바뀌면 서명이 달라져 자동으로 재시도한다.</para>
+        /// </summary>
         private void EnsureFigureBuilt()
         {
             int signature = ComputeSignature();
             if (signature == _builtSignature) return;
             _builtSignature = signature;
-            Rebuild();
+            try
+            {
+                Rebuild();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError("[초상화] 미니 피규어 재구성이 예외로 중단됐습니다 — 액자는 이번 " +
+                    $"키에서 미완성으로 남고, 호출자(정보창 Open 등)는 정상적으로 계속됩니다. 원인: {e}");
+            }
         }
 
         /// <summary>
@@ -622,12 +693,35 @@ namespace StickMate.Interaction
             float armSpread = _pose == PortraitPose.Busy ? 64f : IdleArmSpreadDegrees;
             float backArmSpread = _pose == PortraitPose.Busy ? 128f : IdleArmSpreadDegrees; // 한쪽 팔을 든다.
 
-            DrawBody(ink, armSpread, backArmSpread);
-            DrawAccessories(ink);
-            DrawAppearancePreview(ink);
+            // ★★ 2026-09-01 — 그림 묶음을 <b>따로</b> 감싼다(페르소나 "막대사탕" 신고).
+            //   부팅 직후 첫 열기에서 DrawLimb 안의 지오메트리 예외 하나가 여기서 위로 뚫고 나가
+            //   <b>그 뒤의 모든 것</b>을 통째로 날렸다: 팔다리는 물론 장비/머리카락/이펙트까지.
+            //   화면에 남는 것은 머리 원과 몸통 막대뿐 — 앱은 죽지 않으므로 "이게 원래 그림인가"로
+            //   보인다. 묶음을 나눠 감싸면 <b>실패한 묶음만</b> 빠지고 나머지는 그대로 나온다.
+            //   (마디 하나짜리 실패는 여기까지 오지 않는다 — DrawLimb이 직선으로 대체한다.)
+            try { DrawBody(ink, armSpread, backArmSpread); }
+            catch (System.Exception e) { LogDrawFailure("몸(머리/몸통/팔다리)", e); }
+
+            try { DrawAccessories(ink); }
+            catch (System.Exception e) { LogDrawFailure("장비/머리카락", e); }
+
+            try { DrawAppearancePreview(ink); }
+            catch (System.Exception e) { LogDrawFailure("이펙트/펫 미리보기", e); }
 
             // 눕히기는 <b>다 그린 뒤</b>에 한다 — 얼마나 큰 그림인지 알아야 액자에 넣을 수 있다.
-            if (_pose == PortraitPose.Fallen) FrameFallenFigure();
+            if (_pose != PortraitPose.Fallen) return;
+            try { FrameFallenFigure(); }
+            catch (System.Exception e) { LogDrawFailure("넘어짐 액자 맞춤", e); }
+        }
+
+        /// <summary>그림 묶음 하나가 통째로 실패했다는 사실을 <b>눈에 보이게</b> 남긴다.
+        /// 이 경로가 도는 것 자체가 결함이므로 경고가 아니라 에러다(테스트 러너가 빨개진다).</summary>
+        private void LogDrawFailure(string what, System.Exception error)
+        {
+            // 조사 괄호 표기("을(를)")를 쓰지 않으려고 이름을 문장 끝이 아닌 자리에 둔다 —
+            // 조사 자동 선택 유틸(Core/KoreanParticle)은 있지만 적용은 다음 라운드 몫이다.
+            Debug.LogError($"[초상화] 그림 묶음 '{what}' 그리기 실패 — 이 묶음만 빠진 채 나머지를 계속 " +
+                $"그립니다(포즈={_pose}, 키={TotalHeight:F3}). 원인: {error}");
         }
 
         /// <summary>
@@ -698,7 +792,7 @@ namespace StickMate.Interaction
             }
             if (!any) return false;
 
-            float pad = Stroke * 0.5f;
+            float pad = WidestStroke * 0.5f;
             min -= new Vector2(pad, pad);
             max += new Vector2(pad, pad);
             return true;
@@ -722,18 +816,26 @@ namespace StickMate.Interaction
             //   sortingOrder는 몸과 같은 0으로 둔다 — 채움/링/몸통이 전부 같은 잉크색이라 서로 간의
             //   그리는 순서는 결과 그림에 영향이 없고, 액세서리는 전부 SortBack(-1) 또는 6 이상이라
             //   앞뒤 관계가 지금과 그대로 유지된다.
+            //   ★ 머리 링(아래 AddCircle)의 폭만 <b>일부러</b> 몸 획으로 바꾸지 않았다(2026-09-01 P6).
+            //     (1) 이 링은 채움과 <b>같은 잉크색</b>이라 테두리로 보이지 않는다 — 유일한 역할은
+            //         머리 실루엣을 R에서 R + 폭/2까지 넓히는 것뿐이다(SceneBootstrapper의 같은 설명).
+            //     (2) 실제 캐릭터의 링은 출하 배율에서 <b>화면상 2pt 하한에 눌려 있다</b>
+            //         (0.04725 → 0.0567376). 하한은 배율에 따라 비율이 변하는 값이라 초상화가 따라가면
+            //         "초상화는 캐릭터 배율과 무관"이라는 불변식이 깨진다(StickmanStrokeWidths 문서).
+            //     즉 이 한 값은 정의상 정확히 맞출 수 없고, 차이는 머리 지름의 1.5%이며 눈에 보이지 않는다.
             AddFilledDisc("HeadFill", Vector2.up * HeadCenterY, r, ink, 28);
             AddCircle("Head", Vector2.up * HeadCenterY, r, ink, 28);
-            AddLine("Torso", new[] { V(0f, HeadCenterY - r), V(0f, HipY) }, ink, loop: false);
+            AddLine("Torso", new[] { V(0f, HeadCenterY - r), V(0f, HipY) }, ink, loop: false,
+                width: TorsoStroke);
 
             DrawLimb("ArmBack", new Vector2(0f, ShoulderY), -backArmSpread, IdleElbowBendDegrees,
-                h * ArmUpperRatio, h * ArmLowerRatio, ink);
+                h * ArmUpperRatio, h * ArmLowerRatio, ArmStroke, ink);
             DrawLimb("ArmFront", new Vector2(0f, ShoulderY), frontArmSpread, IdleElbowBendDegrees,
-                h * ArmUpperRatio, h * ArmLowerRatio, ink);
+                h * ArmUpperRatio, h * ArmLowerRatio, ArmStroke, ink);
             DrawLimb("LegBack", new Vector2(0f, HipY), -IdleLegSpreadDegrees, IdleKneeBendDegrees,
-                h * LegUpperRatio, h * LegLowerRatio, ink);
+                h * LegUpperRatio, h * LegLowerRatio, LegStroke, ink);
             DrawLimb("LegFront", new Vector2(0f, HipY), IdleLegSpreadDegrees, IdleKneeBendDegrees,
-                h * LegUpperRatio, h * LegLowerRatio, ink);
+                h * LegUpperRatio, h * LegLowerRatio, LegStroke, ink);
 
             // ★★ 2026-08-31 — 안경을 써도 눈은 <b>항상</b> 그린다.
             //
@@ -766,16 +868,187 @@ namespace StickMate.Interaction
 #pragma warning restore 162
         }
 
-        /// <summary>2분절 마디. 각도는 아래 방향을 0으로 보고 x쪽으로 벌어지는 각
-        /// (Editor/SceneBootstrapper.LimbDrop과 같은 규약).</summary>
+        /// <summary>
+        /// 2분절 마디. 각도는 아래 방향을 0으로 보고 x쪽으로 벌어지는 각
+        /// (Editor/SceneBootstrapper.LimbDrop과 같은 규약).
+        ///
+        /// <para>★ 2026-09-01 P6 — <b>곡선과 발을 실제 캐릭터와 같은 코드에서 얻는다</b>.
+        /// 예전에는 여기서 관절 세 점(뿌리/무릎/끝)을 직접 이어 <b>각진 폴리라인</b>을 만들었다.
+        /// 실제 캐릭터는 <see cref="LimbCurveRenderer"/>가 무릎/팔꿈치를 원호로 갈아내는데
+        /// 그 라운드가 이 경로를 같이 고치지 않아, 초상화만 옛 각진 직선으로 남아 있었다.
+        /// 이제 두 경로가 <b>같은 static 수식</b>(<see cref="LimbCurveRenderer.BuildLimbPolyline"/>)을
+        /// 부르므로 구조적으로 다시 갈라질 수 없다.</para>
+        ///
+        /// <para>컴포넌트 자체를 재사용하지 못하는 이유는 계층이 다르기 때문이다 — 저쪽은 Transform
+        /// 두 개에 LineRenderer 두 개, 이쪽은 Transform 없는 폴리라인 한 줄이다(그 판단의 근거는
+        /// <see cref="LimbCurveRenderer.SolveFilletLength"/> 위 주석 블록에 적어 뒀다).</para>
+        ///
+        /// <para>★ 2026-09-01 — 잠깐 여기서 <b>발</b>도 함께 그렸다가 사용자 지시로 되돌렸다
+        /// ("발을 넣으면서 이상해짐"). 그 실측값과 실패 가설은 <see cref="LimbCurveRenderer"/>의
+        /// 발 기록 문단에 남아 있다. 곡선과 두께는 그대로 유지한다.</para>
+        /// </summary>
         private void DrawLimb(string name, Vector2 root, float spreadDegrees, float bendDegrees,
-            float upperLength, float lowerLength, Color ink)
+            float upperLength, float lowerLength, float stroke, Color ink)
         {
             float a1 = spreadDegrees * Mathf.Deg2Rad;
-            float a2 = (spreadDegrees + bendDegrees) * Mathf.Deg2Rad;
-            var joint = new Vector2(root.x + Mathf.Sin(a1) * upperLength, root.y - Mathf.Cos(a1) * upperLength);
-            var tip = new Vector2(joint.x + Mathf.Sin(a2) * lowerLength, joint.y - Mathf.Cos(a2) * lowerLength);
-            AddLine(name, new[] { V(root.x, root.y), V(joint.x, joint.y), V(tip.x, tip.y) }, ink, loop: false);
+
+            // ★ 2026-09-01 — 굽히기에 실패해도 <b>마디는 반드시 그린다</b>(아래 Resilient 문서).
+            int count = BuildLimbPolylineResilient(upperLength, lowerLength, bendDegrees, stroke,
+                _limbPoints, out LimbPolylineSource origin, out System.Exception error);
+
+            if (origin != LimbPolylineSource.Curved)
+            {
+                // 어떤 부위가 왜 폴백했는지 <b>이름과 수치</b>로 남긴다 — 이 로그 한 줄이 없으면
+                // "초상화가 좀 뻣뻣하다"로만 보이고 아무도 원인을 못 찾는다.
+                Debug.LogError($"[초상화] 마디 '{name}' 곡선 생성 실패({origin}) — " +
+                    $"버퍼 {(_limbPoints != null ? _limbPoints.Length : 0)}칸(필요 " +
+                    $"{LimbCurveRenderer.PolylinePointCount}칸), 위 {upperLength:F4} / 아래 {lowerLength:F4} / " +
+                    $"굽힘 {bendDegrees:F2}° / 획 {stroke:F5}. " +
+                    (count > 0
+                        ? "관절을 각지게 편 직선 3점으로 대체합니다(뻣뻣하지만 사라지지는 않습니다)."
+                        : "3점조차 담을 수 없어 이 마디를 그리지 못했습니다.") +
+                    (error != null ? $" 원인: {error}" : string.Empty));
+            }
+
+            if (count <= 0) return;
+
+            // 위 마디 로컬 → 액자 로컬: 벌림 각도만큼 돌리고 뿌리로 옮긴다.
+            float cos = Mathf.Cos(a1), sin = Mathf.Sin(a1);
+            var points = new Vector3[count];
+            for (int i = 0; i < count; i++)
+            {
+                Vector3 q = _limbPoints[i];
+                points[i] = new Vector3(root.x + q.x * cos - q.y * sin,
+                                        root.y + q.x * sin + q.y * cos, 0f);
+            }
+
+            AddLine(name, points, ink, loop: false, width: stroke);
+        }
+
+        /// <summary>마디 하나를 굽는 동안만 쓰는 재사용 버퍼. 재구성 경로에서만 돌지만
+        /// 마디마다 배열을 새로 잡을 이유가 없다.</summary>
+        private readonly Vector3[] _limbPoints = new Vector3[LimbCurveRenderer.PolylinePointCount];
+
+        // ============================================================================
+        // ★★ 마디 폴리라인 — "조용히 사라지는" 실패 양상을 구조적으로 없앤다 (2026-09-01)
+        // ============================================================================
+        //
+        // <b>무엇이 문제였나.</b> 예전 DrawLimb은 이 한 줄이 전부였다:
+        //
+        //     int count = LimbCurveRenderer.BuildLimbPolyline(...);
+        //     if (count <= 0) return;      // ← 팔다리가 아무 흔적 없이 사라진다
+        //
+        // 버퍼가 모자라든 지오메트리가 터지든 <b>결과는 언제나 같다</b>: 팔·다리가 없는 그림.
+        // 여기에 예외까지 얹히면 그 뒤의 장비/이펙트도 함께 날아가 <b>머리 원 + 몸통 막대</b>만
+        // 남는다("막대사탕"). 앱이 죽지 않아서 더 위험하다 — 아무도 결함이라고 인식하지 못한다.
+        //
+        // <b>원칙.</b> 없어지는 것보다 뻣뻣한 것이 낫다. 굽히기(원호 필렛)는 <b>장식</b>이고
+        // "팔다리가 몸에 붙어 있다"가 <b>사실</b>이다. 장식이 실패했다고 사실을 지우지 않는다.
+        //
+        // <b>대체 그림이 원래 그림과 어긋나지 않는 이유.</b> 직선 3점의 양 끝은
+        // <see cref="LimbCurveRenderer.BuildLimbPolyline"/>의 양 끝과 <b>정확히 같은 좌표</b>다:
+        // 첫 점은 뿌리 (0,0)이고, 끝점은 두 코드가 같은 식 (Ll·sinθ, −Lu − Ll·cosθ)으로 얻는다.
+        // 필렛은 관절 <b>안쪽</b>만 깎으므로 뻗은 길이·방향이 변하지 않는다. 즉 폴백은 <b>관절이
+        // 각져 보일 뿐</b> 손끝/발끝 위치도, 액자 프레이밍 계산(잉크 범위)도 흔들지 않는다.
+
+        /// <summary>마디 폴리라인이 <b>어느 경로로</b> 만들어졌는가. 정상은 <see cref="Curved"/>
+        /// 하나뿐이고 나머지는 전부 "결함이 있었고 눈에 보이게 대체했다"는 뜻이다.</summary>
+        public enum LimbPolylineSource
+        {
+            /// <summary>정상 — 관절이 원호로 갈린 폴리라인.</summary>
+            Curved = 0,
+
+            /// <summary>버퍼가 <see cref="LimbCurveRenderer.PolylinePointCount"/>보다 작아 직선으로 대체.</summary>
+            StraightBufferTooSmall = 1,
+
+            /// <summary>굽힌 결과에 NaN/무한대가 섞여 직선으로 대체(길이나 각도가 오염된 경우).
+            /// LineRenderer는 이런 점을 받아도 예외를 던지지 않고 <b>그림만 사라진다</b> — 그래서 여기서 잡는다.</summary>
+            StraightNotFinite = 2,
+
+            /// <summary>굽히는 중 예외가 나서 직선으로 대체(2026-09-01 FillArcs IndexOutOfRange가 이 경우였다).</summary>
+            StraightThrew = 3,
+
+            /// <summary>직선 3점조차 담을 수 없거나 그 결과도 유한하지 않아 <b>정말로</b> 못 그렸다.
+            /// 여기까지 오면 호출부가 반드시 로그를 남긴다 — 조용히 사라지는 경로는 남기지 않는다.</summary>
+            NotDrawn = 4,
+        }
+
+        /// <summary>직선 폴백이 쓰는 점 개수(뿌리 / 관절 / 끝). 이보다 작은 버퍼는 손쓸 방법이 없다.</summary>
+        public const int StraightLimbPointCount = 3;
+
+        /// <summary>
+        /// <see cref="LimbCurveRenderer.BuildLimbPolyline"/>을 감싸, <b>어떤 경우에도 마디가 사라지지
+        /// 않게</b> 한다. 실패하면 관절을 각지게 편 직선 3점(뿌리 → 관절 → 끝)으로 대체하고
+        /// <paramref name="origin"/>에 그 사유를 담는다(호출부가 그것을 로그로 남긴다).
+        /// <para>좌표계·각도 규약은 감싸는 대상과 <b>완전히 같다</b> — 위 마디 로컬, 뿌리가 원점,
+        /// 위 마디는 −Y로 뻗는다.</para>
+        /// </summary>
+        /// <returns>채운 점 개수. 0이면 그리지 말라는 뜻이며 그때 <paramref name="origin"/>은
+        /// <see cref="LimbPolylineSource.NotDrawn"/>이다.</returns>
+        public static int BuildLimbPolylineResilient(float upperLength, float lowerLength,
+            float bendDegrees, float strokeWidth, Vector3[] destination,
+            out LimbPolylineSource origin, out System.Exception error)
+        {
+            error = null;
+
+            if (destination == null || destination.Length < StraightLimbPointCount)
+            {
+                origin = LimbPolylineSource.NotDrawn;
+                return 0;
+            }
+
+            try
+            {
+                int count = LimbCurveRenderer.BuildLimbPolyline(upperLength, lowerLength, bendDegrees,
+                    strokeWidth, destination);
+                if (count >= 2 && AllFinite(destination, count))
+                {
+                    origin = LimbPolylineSource.Curved;
+                    return count;
+                }
+                origin = count <= 0
+                    ? LimbPolylineSource.StraightBufferTooSmall
+                    : LimbPolylineSource.StraightNotFinite;
+            }
+            catch (System.Exception e)
+            {
+                // ★ 넓게 잡는 것이 <b>의도</b>다. 이 함수의 계약은 "무슨 일이 있어도 마디를 돌려준다"이고,
+                //   여기서 예외 종류를 가리면 가리지 못한 종류가 곧바로 옛 실패 양상으로 되돌아간다.
+                //   삼키지 않는다 — 호출부가 origin/error를 반드시 로그로 남긴다.
+                origin = LimbPolylineSource.StraightThrew;
+                error = e;
+            }
+
+            int straight = FillStraightLimb(upperLength, lowerLength, bendDegrees, destination);
+            if (straight > 0 && AllFinite(destination, straight)) return straight;
+
+            origin = LimbPolylineSource.NotDrawn;
+            return 0;
+        }
+
+        /// <summary>관절을 각지게 편 2분절 마디(뿌리 → 관절 → 끝). 양 끝은 굽힌 그림과 정확히 같다.</summary>
+        private static int FillStraightLimb(float upperLength, float lowerLength, float bendDegrees,
+            Vector3[] destination)
+        {
+            float rad = bendDegrees * Mathf.Deg2Rad;
+            float cos = Mathf.Cos(rad), sin = Mathf.Sin(rad);
+
+            destination[0] = Vector3.zero;
+            destination[1] = new Vector3(0f, -upperLength, 0f);
+            destination[2] = new Vector3(lowerLength * sin, -upperLength - lowerLength * cos, 0f);
+            return StraightLimbPointCount;
+        }
+
+        private static bool AllFinite(Vector3[] points, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Vector3 p = points[i];
+                if (float.IsNaN(p.x) || float.IsInfinity(p.x)) return false;
+                if (float.IsNaN(p.y) || float.IsInfinity(p.y)) return false;
+                if (float.IsNaN(p.z) || float.IsInfinity(p.z)) return false;
+            }
+            return true;
         }
 
         /// <summary>

@@ -50,6 +50,8 @@ namespace StickMate.Platform
                 _host.AddComponent<StallFrameEndProbe>();
             }
 
+            InstallFontAtlasHook();
+
             if (!installLogHandler || _logHandlerInstalled) return;
 
             try
@@ -67,9 +69,48 @@ namespace StickMate.Platform
             }
         }
 
+        // ------------------------------------------------------------------------------------
+        // ★ 폰트 아틀라스 재구성 감시 (2026-09-01 2차 라운드)
+        // ------------------------------------------------------------------------------------
+        // 사용자 확정 조건: "켜놓을수록 렉이 심해짐" — 평균/p50은 그대로인데 p99와 최대만 커진다.
+        // 그 형태(상시 비용은 그대로, 간헐적 큰 멈춤만 악화)에 정확히 맞는 후보가 uGUI 동적 폰트의
+        // 아틀라스 재구성이다: 새 글리프가 들어올 때마다 아틀라스가 차오르고, 넘치면 <b>전체를 다시
+        // 굽고 그 폰트를 쓰는 모든 Text를 다시 만든다</b>. 한글은 글리프가 수천 자라 오래 켜 둘수록
+        // 재구성이 커지고 잦아진다. 이 앱은 대사/정보창/설정창/할일이 전부 한글 Text다.
+        //
+        // 비용: 재구성이 <b>실제로 일어날 때만</b> 콜백 1회(정상 프레임에는 아무 일도 하지 않는다).
+        // 여기서 텍스처 크기를 읽는 것도 그 순간뿐이다.
+        private static bool _fontHookInstalled;
+
+        private static void InstallFontAtlasHook()
+        {
+            if (_fontHookInstalled) return;
+            try
+            {
+                Font.textureRebuilt += OnFontTextureRebuilt;
+                _fontHookInstalled = true;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[스톨귀인] 폰트 아틀라스 감시를 걸지 못했습니다(계측 없이 계속 진행): " + ex.Message);
+            }
+        }
+
+        private static void OnFontTextureRebuilt(Font font)
+        {
+            Texture tex = font != null && font.material != null ? font.material.mainTexture : null;
+            StallAttribution.RecordFontAtlasRebuild(tex != null ? tex.width : 0, tex != null ? tex.height : 0);
+        }
+
         /// <summary>테스트가 원상 복구할 때 쓴다.</summary>
         public static void Uninstall()
         {
+            if (_fontHookInstalled)
+            {
+                Font.textureRebuilt -= OnFontTextureRebuilt;
+                _fontHookInstalled = false;
+            }
+
             if (_logHandlerInstalled && _originalHandler != null)
             {
                 Debug.unityLogger.logHandler = _originalHandler;
@@ -86,17 +127,31 @@ namespace StickMate.Platform
         }
     }
 
-    /// <summary>모든 Update보다 먼저 도는 프레임 시작 표식.</summary>
+    /// <summary>
+    /// 모든 Update/LateUpdate/FixedUpdate보다 <b>먼저</b> 도는 단계 시작 표식.
+    ///
+    /// <para>★ 2026-09-01 2차 라운드에서 <c>FixedUpdate</c>가 추가됐다. Unity의 프레임 순서는
+    /// <c>[FixedUpdate x K] -> Update -> LateUpdate -> 렌더</c>이므로, 1차 계측(Update 시작 ~ LateUpdate 끝)은
+    /// <b>물리를 통째로 놓치고 있었다</b> — 그 시간은 전부 "로직밖(렌더/프레젠트/합성)"으로 잘못 귀속됐다.
+    /// 랙돌 관절 + 던지기가 상시 도는 앱에서 이건 결코 작은 구멍이 아니다.</para>
+    ///
+    /// <para>한 컴포넌트가 세 메시지를 다 받는 이유: 실행 순서는 <b>컴포넌트 단위</b>라
+    /// -30000이면 이 컴포넌트의 Update·LateUpdate·FixedUpdate가 각 단계에서 모두 맨 앞에 선다.</para>
+    /// </summary>
     [DefaultExecutionOrder(-30000)]
     internal sealed class StallFrameBeginProbe : MonoBehaviour
     {
+        private void FixedUpdate() => StallAttribution.BeginFixedStep();
         private void Update() => StallAttribution.BeginFrame();
+        private void LateUpdate() => StallAttribution.BeginLatePhase();
     }
 
-    /// <summary>모든 LateUpdate보다 나중에 도는 로직 구간 종료 표식.</summary>
+    /// <summary>모든 Update/LateUpdate/FixedUpdate보다 <b>나중에</b> 도는 단계 종료 표식.</summary>
     [DefaultExecutionOrder(30000)]
     internal sealed class StallFrameEndProbe : MonoBehaviour
     {
+        private void FixedUpdate() => StallAttribution.EndFixedStep();
+        private void Update() => StallAttribution.EndUpdatePhase();
         private void LateUpdate() => StallAttribution.EndLogicPhase();
     }
 

@@ -137,11 +137,31 @@ namespace StickMate.Tests.EditMode
             float hc = rig.HeadCenterY;
             float r = rig.HeadRadius;
 
-            Assert.AreEqual(hc + r * 0.62f, AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadCap, rig), 1e-5f,
-                "천 모자의 커버선은 챙 선(HeadCenterY + R·0.62)이어야 합니다.");
-            Assert.AreEqual(hc + r * 0.42f, AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadBeanie, rig), 1e-5f,
-                "털모자는 가장 깊이 눌러쓰므로 커버선이 가장 낮아야 합니다.");
-            Assert.AreEqual(hc + r * 0.58f, AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadFedora, rig), 1e-5f);
+            // ★ 2026-09-01(3차) — 숫자를 베끼지 않는다. 커버선은 <b>모자가 스스로 선언한 상수</b>에서
+            //   나와야 하고, 그 상수가 곧 도형의 관/챙 경계이기도 하다(규칙 4-a).
+            //   옛 본문은 0.62 / 0.42 / 0.58을 손으로 적어 두어, 커버선이 내려간 라운드에
+            //   "설계가 바뀐 것"이 아니라 "테스트가 낡은 것"으로 빨간불이 났다.
+            Assert.AreEqual(AccessoryShapeBuilder.HatBrimLocalY(rig),
+                AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadCap, rig), 1e-5f,
+                "천 모자의 커버선은 <b>챙 선 그 자체</b>여야 합니다 — 두 값이 갈라지면 챙 밑으로 " +
+                "머리카락이 삐져나오거나 챙 위가 통째로 잘립니다.");
+            Assert.AreEqual(hc + r * AccessoryShapeBuilder.BeanieBandTopRatio,
+                AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadBeanie, rig), 1e-5f,
+                "털모자의 커버선은 접힌 단의 윗변(= 관 밑변)이어야 합니다.");
+            Assert.AreEqual(hc + r * AccessoryShapeBuilder.FedoraBrimLineRatio,
+                AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadFedora, rig), 1e-5f);
+
+            // 이 카테고리에서 <b>가장 깊이 눌러쓰는 모자</b>가 털모자라는 것은 도형의 정체다.
+            for (int i = 0; i < ItemCatalog.ItemCountIn(EquipmentSlot.Head); i++)
+            {
+                if (i == AccessoryShapeBuilder.HeadBeanie) continue;
+                float cover = AccessoryShapeBuilder.HatCoverLocalY(i, rig);
+                if (float.IsPositiveInfinity(cover)) continue;
+                Assert.Greater(cover,
+                    AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadBeanie, rig),
+                    $"모자 {i}번의 커버선이 털모자보다 낮습니다 — 털모자가 가장 깊이 눌러쓰는 " +
+                    "모자라는 것이 그 아이템의 정체입니다.");
+            }
 
             Assert.IsTrue(float.IsPositiveInfinity(
                     AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadCrown, rig)),
@@ -502,8 +522,8 @@ namespace StickMate.Tests.EditMode
             AccessoryShapeBuilder.Append(right, EquipmentSlot.Head, AccessoryShapeBuilder.HeadCrown, Rig(+1f));
             AccessoryShapeBuilder.Append(left, EquipmentSlot.Head, AccessoryShapeBuilder.HeadCrown, Rig(-1f));
 
-            Vector3[] a = Find(right, "CrownZigzag");
-            Vector3[] b = Find(left, "CrownZigzag");
+            Vector3[] a = Find(right, "CrownBody");
+            Vector3[] b = Find(left, "CrownBody");
             for (int i = 0; i < a.Length; i++)
             {
                 // 대칭 도형이므로 반전하면 점 순서만 뒤집힌 같은 집합이 된다.

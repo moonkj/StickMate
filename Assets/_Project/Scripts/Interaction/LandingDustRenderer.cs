@@ -10,7 +10,7 @@ namespace StickMate.Interaction
     /// ============================================================================
     /// 이 이벤트가 "추가로" 무엇을 표현하는가 (붙이기 전에 먼저 답해야 했던 질문)
     /// ============================================================================
-    /// 같은 임계값(StickConfig.rollLandingHeightThreshold)은 이미 <b>무릎앉아 착지</b>
+    /// 같은 임계값(StickConfig.landingSoftAbsorbThresholdHeights x 신장)은 이미 <b>무릎앉아 착지</b>
     /// (StickmanStateId.LandingCrouch)가 소비하고 있다 — 즉 착지의 <b>물리적 반응은 이미 있다</b>.
     /// 그래서 이 이벤트에 상태를 하나 더 만들거나 대사를 붙이는 것은 과설계이고, 남는 자리는
     /// "그 위에 얹는 가벼운 부가 연출"뿐이다. StickmanEventBus의 LandingCrouch 열거값 문서가
@@ -110,9 +110,27 @@ namespace StickMate.Interaction
         /// </summary>
         internal static float ComputeIntensity(float fallHeight, StickConfig cfg, float characterHeight)
         {
-            float threshold = cfg != null ? cfg.rollLandingHeightThreshold : 2f;
+            // ★ 2026-09-01 — 무릎앉아가 6티어로 바뀌면서 이 램프도 **두 단**이 됐다(MOTION_SPEC 4-5 주).
+            //   (가) T0.5 구간(0.35 H ~ 0.88 H): 이제 Dock 단차 같은 얕은 착지도 연출을 얻으므로,
+            //        먼지가 갑자기 minIntensity로 튀어나오면 "한 계단마다 흙먼지"가 된다. 그래서
+            //        이 구간은 minIntensity에 t0을 곱해 0에서부터 서서히 올린다 — 아주 옅게라도 나야
+            //        착지가 읽힌다.
+            //   (나) 그 위: 예전과 같은 램프(minIntensity -> 1). 임계값만 절대 유닛에서 H 배수가 됐다.
+            float softStart = cfg != null
+                ? cfg.ResolveLandingSoftAbsorbThreshold(characterHeight)
+                : 0.35f * StickConfig.BaselineCharacterTotalHeight;
+            float threshold = cfg != null
+                ? cfg.ResolveLandingReactionThreshold(characterHeight)
+                : 0.88f * StickConfig.BaselineCharacterTotalHeight;
             float fullHeights = cfg != null ? Mathf.Max(0.01f, cfg.landingDustFullHeights) : 3f;
             float minIntensity = cfg != null ? Mathf.Clamp01(cfg.landingDustMinIntensity) : 0.45f;
+
+            if (fallHeight < threshold)
+            {
+                float softSpan = Mathf.Max(0.0001f, threshold - softStart);
+                float t0 = Mathf.Clamp01((fallHeight - softStart) / softSpan);
+                return minIntensity * t0;
+            }
 
             float span = fullHeights * characterHeight;
             float t = span > 0.0001f ? Mathf.Clamp01((fallHeight - threshold) / span) : 1f;
@@ -172,6 +190,7 @@ namespace StickMate.Interaction
 
         private void LateUpdate()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Renderers);   // [스톨구간] 계측
             if (_container == null) return;
 
             _timer += Time.deltaTime;

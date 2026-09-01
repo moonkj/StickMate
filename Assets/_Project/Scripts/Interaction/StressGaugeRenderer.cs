@@ -421,6 +421,7 @@ namespace StickMate.Interaction
 
         private void LateUpdate()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Renderers);   // [스톨구간] 계측
             // ★ 2026-08-29 실측 버그 수정(배율 0.75 육안 검증 중 발견).
             // OnEnable()은 "켜지는 시점에 이미 게이지가 쌓여 있을 수 있다"를 처리하려고 곧바로
             // OnStressLevelChanged를 부른다. 그런데 그 시점에는 StickmanAgent가 아직 Blackboard/Body를

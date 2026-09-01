@@ -43,9 +43,23 @@ namespace StickMate.Platform.Windows
         /// <summary>관측 주기. 사람이 창을 옮기는 속도보다 충분히 빠르고, 상주 비용은 무시할 수 있다.</summary>
         private const float SampleIntervalSeconds = 2f;
 
-        /// <summary>글리프 리샘플 비를 계산할 대표 폰트 크기(pt). 정보창 본문과 같은 값이면 된다 —
-        /// 어떤 값을 넣어도 "캔버스 배율이 정수인가"라는 결론은 같고, 숫자만 사람이 읽기 쉬워진다.</summary>
-        private const int SampleFontSizePoints = 13;
+        /// <summary>
+        /// 글리프 리샘플 비를 계산할 대표 폰트 크기(pt).
+        ///
+        /// <para>★ 2026-09-01 — <b>사본을 지우고 진짜 상수를 가리킨다.</b> 여기에 <c>13</c>이 손으로
+        /// 적혀 있었고, 그 값이 <see cref="Interaction.UiChrome.FontTitle"/>의 <b>사본</b>이었다.
+        /// 같은 라운드에 FontTitle이 14로 옮겨지면(홀수 pt 번짐 수정) 이 줄만 13으로 남아
+        /// <c>[합성진단]</c>이 <b>이미 고쳐진 화면을 계속 "번짐"이라고 신고</b>한다 — 진단 도구가
+        /// 거짓 경보를 내는 순간 아무도 안 믿게 되므로, 사본을 남기지 않는 편이 낫다.</para>
+        ///
+        /// <para><b>Platform → Interaction 참조가 괜찮은가</b>: 이 파일은 <b>이미</b> 그 방향으로
+        /// 참조한다(<see cref="CaptureUiSpriteFilter"/>가 <c>Interaction.UiChrome.RoundedFill</c>을
+        /// 읽는다). 즉 새 결합이 아니라 기존 결합의 재사용이고, 둘 다 <b>읽기만</b> 하는 진단 경로다.
+        /// 정책이 아니라 관측값이라 CLAUDE.md의 "정책은 플랫폼 중립 위치에" 규약과도 어긋나지 않는다
+        /// (판정 규칙 자체는 <see cref="UiGlyphScalePolicy"/>, 즉 <c>Platform/</c>에 있다).
+        /// 같은 어셈블리의 <c>const</c>라 컴파일 시점에 값이 박히므로 상주 비용도 0이다.</para>
+        /// </summary>
+        private const int SampleFontSizePoints = Interaction.UiChrome.FontTitle;
 
         /// <summary>지문이 바뀌어도 이 간격 안에서는 두 줄을 찍지 않는다(위 Update의 상한 문서 참고).
         /// 15초면 사용자가 창을 다른 모니터로 옮기는 실험을 해도 각 전이가 한 줄씩 남고,
@@ -90,6 +104,7 @@ namespace StickMate.Platform.Windows
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.PlatformEnforcer);   // [스톨구간] 계측
             _timer += Time.unscaledDeltaTime;
             if (_cooldown > 0f) _cooldown -= Time.unscaledDeltaTime;
             if (_timer < SampleIntervalSeconds) return;

@@ -45,15 +45,15 @@ namespace StickMate.Tests.EditMode
         {
             public StickmanStateId StateId { get; }
             public DialogueIntent LastIntent { get; private set; }
-            private readonly Func<StickmanStateId, string> _textFn;
+            private readonly Func<StickmanStateId, DialogueLine> _lineFn;
 
-            public DialogueEmittingState(StickmanStateId id, Func<StickmanStateId, string> textFn)
+            public DialogueEmittingState(StickmanStateId id, Func<StickmanStateId, DialogueLine> lineFn)
             {
                 StateId = id;
-                _textFn = textFn;
+                _lineFn = lineFn;
             }
 
-            public void Enter(StateTransitionContext context) => LastIntent = new DialogueIntent(context, _textFn);
+            public void Enter(StateTransitionContext context) => LastIntent = new DialogueIntent(context, _lineFn);
             public void Tick(float deltaTime) { }
             public void Exit() { }
         }
@@ -84,7 +84,7 @@ namespace StickMate.Tests.EditMode
                 {
                     var snapshot = p as Params;
                     int shots = snapshot?.ShotsRemaining ?? 0;
-                    return shots >= 1 ? "한 발 더!" : "오늘은 여기까지";
+                    return shots >= 1 ? DialogueLine.React("한 발 더!") : DialogueLine.React("오늘은 여기까지");
                 });
             }
 
@@ -105,7 +105,7 @@ namespace StickMate.Tests.EditMode
         public void ChangeState가_확정되면_같은_전이에서_생성된_DialogueIntent는_Valid다()
         {
             var idle = new SimpleState(StickmanStateId.Idle);
-            var attack = new DialogueEmittingState(StickmanStateId.Attack, id => "타앗!");
+            var attack = new DialogueEmittingState(StickmanStateId.Attack, id => DialogueLine.React("타앗!"));
             var machine = BuildMachine(idle, attack);
 
             machine.Start(StickmanStateId.Idle);
@@ -123,7 +123,7 @@ namespace StickMate.Tests.EditMode
         public void 강제인터럽트_ChangeState는_직전_DialogueIntent를_즉시_만료시키고_DialogueExpired를_발행한다()
         {
             var idle = new SimpleState(StickmanStateId.Idle);
-            var attack = new DialogueEmittingState(StickmanStateId.Attack, id => "한 발 더!");
+            var attack = new DialogueEmittingState(StickmanStateId.Attack, id => DialogueLine.React("한 발 더!"));
             var ragdoll = new SimpleState(StickmanStateId.Ragdoll);
             var machine = BuildMachine(idle, attack, ragdoll);
 
@@ -159,7 +159,7 @@ namespace StickMate.Tests.EditMode
             // 바뀌는 순간 이전 DialogueIntent는 자동 만료된다 — "다음 프레임이든" 요구사항을
             // 프레임 시점과 무관한 세대 비교로 만족시킨다는 것을 확인한다.
             var idle = new SimpleState(StickmanStateId.Idle);
-            var attack = new DialogueEmittingState(StickmanStateId.Attack, id => "한 발 더!");
+            var attack = new DialogueEmittingState(StickmanStateId.Attack, id => DialogueLine.React("한 발 더!"));
             var walk = new SimpleState(StickmanStateId.Walk);
             var machine = BuildMachine(idle, attack, walk);
 
@@ -264,12 +264,12 @@ namespace StickMate.Tests.EditMode
             var ctx = capture.LastContext;
             Assert.IsNotNull(ctx, "Enter()가 context를 받아야 한다(사전 조건 확인).");
 
-            var first = new DialogueIntent(ctx, id => "첫 번째 대사");
+            var first = new DialogueIntent(ctx, id => DialogueLine.React("첫 번째 대사"));
             Assert.IsNotNull(first);
             Assert.IsTrue(first.IsValid);
 
             Assert.Throws<InvalidOperationException>(
-                () => new DialogueIntent(ctx, id => "같은 컨텍스트 재사용 시도"),
+                () => new DialogueIntent(ctx, id => DialogueLine.React("같은 컨텍스트 재사용 시도")),
                 "같은 StateTransitionContext로 두 번째 DialogueIntent를 생성하려는 시도는 " +
                 "InvalidOperationException으로 실패해야 한다(BUG-M1 Phase 2 완결 계약).");
         }

@@ -26,12 +26,24 @@ namespace StickMate.Tests.PlayMode
     /// ============================================================================
     /// 절대 조건으로 잠그는 것 (상대 비교/플래그 확인 금지)
     /// ============================================================================
-    ///  ① 숨기기 <b>전에</b> 다섯 표면이 실제로 켜져 있다 — 이 단계가 없으면 "원래 꺼져 있어서 통과"가 된다.
-    ///  ② 감지 후: 톱니 그림 / 부채꼴 / 팝오버 / 캐릭터 창이 전부 꺼지고,
-    ///     <b>클릭 차단막 3종(톱니·팝오버·창)도 함께 꺼진다</b> — 안 꺼지면 "안 보이는데 클릭만 먹는"
+    ///  ① 숨기기 <b>전에</b> 모든 표면이 실제로 켜져 있다 — 이 단계가 없으면 "원래 꺼져 있어서 통과"가 된다.
+    ///  ② 감지 후: 톱니 그림 / 부채꼴 / 팝오버 / 캐릭터 창 / 포스트잇이 전부 꺼지고,
+    ///     <b>씬의 클릭 차단막이 하나도 남김없이 꺼진다</b> — 안 꺼지면 "안 보이는데 클릭만 먹는"
     ///     최악의 형태가 된다. 플래그가 아니라 GameObject/Collider의 <b>실제 상태</b>를 읽는다.
-    ///  ③ 복귀하면 톱니는 다시 나타난다. 반대로 <b>메뉴/창/팝오버는 다시 열리지 않는다</b> —
-    ///     사용자가 부르지도 않은 창이 게임을 끄자마자 튀어나오면 그 자체가 방해다(확정 설계).
+    ///  ③ 복귀하면 톱니와 포스트잇(상시 HUD)은 다시 나타난다. 반대로 <b>메뉴/창/팝오버는 다시 열리지
+    ///     않는다</b> — 사용자가 부르지도 않은 창이 게임을 끄자마자 튀어나오면 그 자체가 방해다(확정 설계).
+    ///
+    /// ============================================================================
+    /// ★ 2026-09-01 — 이 테스트가 놓쳤던 것(포스트잇)과, 그래서 바꾼 것
+    /// ============================================================================
+    /// 원래 이 테스트가 검사한 것은 톱니 / 부채꼴 / <b>TodoBoardPopover</b> / 캐릭터 창 4종이었고,
+    /// <c>TodoPostItWidget</c>은 대상에 없었다. 이름이 비슷한 <c>TodoBoardPopover</c>가 명부에 있어서
+    /// "할 일 쪽은 검증됨"으로 보인 것이 함정이었다. 실제로 포스트잇은 <c>IsSuspended</c> 참조가
+    /// <b>0건</b>이라 전체화면 게임 위에 카드가 그대로 뜨고 그 사각형의 클릭까지 먹고 있었다.
+    ///
+    /// 그래서 표면을 하나 더 적는 데서 멈추지 않고, <b>씬의 클릭 차단막을 전수로 훑는 단언</b>을 넣었다
+    /// (<c>CountEnabledClickBlockers</c>). 다음에 새 표면이 생겨도 이 파일을 고치지 않고 잡힌다.
+    /// "명부에 한 줄 추가"에 의존하는 검사는 이미 한 번 샜다.
     ///
     /// ============================================================================
     /// 왜 리플렉션으로 _isSuspended를 세우는가
@@ -59,6 +71,7 @@ namespace StickMate.Tests.PlayMode
         private CharacterInfoWindow _window;
         private GearRadialMenuWidget _menu;
         private TodoBoardPopover _todo;
+        private TodoPostItWidget _postIt;
         private StickmanAgent _agent;
 
         private StickConfig _config;
@@ -91,6 +104,9 @@ namespace StickMate.Tests.PlayMode
         public void ResetLayout()
         {
             UiLayoutModel.ResetForTesting();
+            // 정적 모델이라 씬을 다시 로드해도 목록이 살아남는다 — 앞선 테스트가 남긴 할 일이 있으면
+            // 포스트잇 준비 단언이 "몇 건인지"에 따라 흔들린다.
+            TodoListModel.ResetForTesting();
             CharacterSaveStore.Save();
         }
 
@@ -106,7 +122,9 @@ namespace StickMate.Tests.PlayMode
             _window = null;
             _menu = null;
             _todo = null;
+            _postIt = null;
             _agent = null;
+            TodoListModel.ResetForTesting();
         }
 
         private void SetSuspended(bool on)
@@ -127,11 +145,17 @@ namespace StickMate.Tests.PlayMode
             _window = _gear.GetComponent<CharacterInfoWindow>();
             _menu = _gear.GetComponent<GearRadialMenuWidget>();
             _todo = _gear.GetComponent<TodoBoardPopover>();
+            // ★ 이름이 비슷한 TodoBoardPopover가 이미 있어서 "할 일 쪽은 검증됨"으로 보였던 것이
+            //   이 사각지대의 정체다. 둘은 완전히 다른 표면이다(팝오버 = 부채꼴에서 부르는 임시 창,
+            //   포스트잇 = 할 일이 있으면 하루 종일 떠 있는 상시 HUD).
+            _postIt = Object.FindFirstObjectByType<TodoPostItWidget>(FindObjectsInactive.Include);
             _agent = _gear.GetComponent<StickmanAgent>();
 
             Assert.IsNotNull(_window, $"{LogPrefix} CharacterInfoWindow가 없습니다.");
             Assert.IsNotNull(_menu, $"{LogPrefix} GearRadialMenuWidget이 없습니다.");
             Assert.IsNotNull(_todo, $"{LogPrefix} TodoBoardPopover가 없습니다.");
+            Assert.IsNotNull(_postIt, $"{LogPrefix} TodoPostItWidget이 없습니다 — 씬 조립이 바뀌었다면 " +
+                "이 테스트의 해석 경로를 함께 고쳐야 합니다.");
             Assert.IsNotNull(_agent, $"{LogPrefix} StickmanAgent가 없습니다.");
             Assert.IsNotNull(SuspendedField, $"{LogPrefix} StickmanAgent._isSuspended 필드를 찾지 못했습니다 " +
                 "— 필드 이름이 바뀌었다면 이 테스트의 주입 경로를 함께 고쳐야 합니다.");
@@ -168,7 +192,49 @@ namespace StickMate.Tests.PlayMode
             // ③ 그 위에 부채꼴/팝오버를 강제로 되살려 최악의 조합을 만든다.
             _menu.Expand(center);
             _todo.Open(_gear.IconScreenRect, "테스트 준비");
+
+            // ④ 포스트잇은 "열기" API가 없다 — 미완료 할 일이 1건 이상이면 스스로 뜨는 상시 HUD다.
+            //    검증 세션에 미완료가 0건이라 로그로 재현되지 않았던 것이 이 결함이 오래 산 이유다.
+            TodoListModel.Add("전체화면 숨김 회귀 테스트용 할 일", PostItSoftCap);
             for (int i = 0; i < SettleFrames; i++) yield return null;
+        }
+
+        /// <summary>포스트잇을 띄우기 위한 할 일 1건의 소프트 캡. 값 자체는 이 테스트의 관심사가
+        /// 아니다(1건만 넣으므로 어떤 상한이든 통과한다).</summary>
+        private const int PostItSoftCap = 99;
+
+        // ==================== 차단막 전수 조사 ====================
+        //
+        // ★ 개별 표면을 하나씩 적는 방식이 이 사고를 놓쳤다 — 다섯 표면을 적어 두고
+        //   TodoPostItWidget 하나가 빠져 있었고, 이름이 비슷한 TodoBoardPopover 때문에
+        //   "할 일 쪽은 검증됨"으로 보였다. 그래서 이제 <b>씬에 있는 클릭 차단막 전부</b>를 훑는다.
+        //   새 표면이 생겨도 이 테스트를 고칠 필요 없이 자동으로 잡힌다.
+        //
+        // 식별 방법: 이 프로젝트의 차단막/히트타깃은 전부 씬 루트에 만들어지고 이름이
+        // "...Blocker" 또는 "...ClickTarget"이다(CharacterInfoClickBlocker / SettingsClickBlocker /
+        // TodoPostItClickBlocker / <팝오버이름>Blocker / InfoGearClickTarget).
+        // 이름 규약이 깨지면 아래 최소 개수 단언이 먼저 실패한다.
+
+        private static bool IsClickBlockerName(string name) =>
+            name.EndsWith("Blocker", System.StringComparison.Ordinal)
+            || name.EndsWith("ClickTarget", System.StringComparison.Ordinal);
+
+        private static int CountEnabledClickBlockers(out string names)
+        {
+            var all = Object.FindObjectsByType<Collider2D>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var sb = new System.Text.StringBuilder();
+            int n = 0;
+            for (int i = 0; i < all.Length; i++)
+            {
+                Collider2D c = all[i];
+                if (c == null || !IsClickBlockerName(c.gameObject.name)) continue;
+                if (!c.enabled || !c.gameObject.activeInHierarchy) continue;
+                n++;
+                if (sb.Length > 0) sb.Append(", ");
+                sb.Append(c.gameObject.name);
+            }
+            names = sb.ToString();
+            return n;
         }
 
         private IEnumerator WaitFrames(int count)
@@ -192,9 +258,18 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 준비 단계에서 [오늘 할일] 팝오버가 열리지 않았습니다.");
             Assert.IsTrue(_window.IsOpen && _window.IsCanvasActive && _window.IsClickBlockerEnabled,
                 $"{LogPrefix} 준비 단계에서 캐릭터 창이 열리지 않았습니다.");
+            Assert.IsTrue(_postIt.IsCardVisible && _postIt.IsClickBlockerEnabled,
+                $"{LogPrefix} 준비 단계에서 포스트잇 카드/차단막이 켜지지 않았습니다 — 미완료 할 일이 " +
+                $"{TodoListModel.UncompletedCount}건입니다(0이면 17절 빈 상태 예외로 카드가 안 뜹니다).");
 
-            Debug.Log($"{LogPrefix} 준비 완료 — 톱니/부채꼴/팝오버/캐릭터 창 + 차단막 3종이 모두 켜진 상태에서 " +
-                "전체화면 감지를 주입합니다.");
+            int before = CountEnabledClickBlockers(out string beforeNames);
+            Assert.GreaterOrEqual(before, 4,
+                $"{LogPrefix} 켜진 차단막이 {before}개뿐입니다({beforeNames}) — 이름 규약이 바뀌었거나 " +
+                "표면이 안 떠 있습니다. 이 최소 개수 단언이 없으면 아래 '전부 꺼졌다'가 " +
+                "'애초에 하나도 못 찾았다'로도 통과합니다.");
+
+            Debug.Log($"{LogPrefix} 준비 완료 — 톱니/부채꼴/팝오버/캐릭터 창/포스트잇 + 켜진 차단막 " +
+                $"{before}개({beforeNames})가 모두 켜진 상태에서 전체화면 감지를 주입합니다.");
 
             // ② 전체화면 감지.
             SetSuspended(true);
@@ -212,8 +287,20 @@ namespace StickMate.Tests.PlayMode
             Assert.IsFalse(_window.IsOpen, $"{LogPrefix} 캐릭터 창이 닫히지 않았습니다.");
             Assert.IsFalse(_window.IsCanvasActive, $"{LogPrefix} 캐릭터 창 캔버스가 켜진 채 남아 있습니다.");
             Assert.IsFalse(_window.IsClickBlockerEnabled, $"{LogPrefix} 캐릭터 창 차단막이 살아 있습니다(원칙 2 위반).");
+            Assert.IsFalse(_postIt.IsCardVisible,
+                $"{LogPrefix} 전체화면 감지 후에도 포스트잇 카드가 게임 위에 남아 있습니다(원칙 2 위반).");
+            Assert.IsFalse(_postIt.IsClickBlockerEnabled,
+                $"{LogPrefix} 포스트잇 차단막이 살아 있습니다 — 안 보이는데 그 사각형의 클릭만 먹습니다.");
 
-            Debug.Log($"{LogPrefix} 감지 중 — 다섯 표면과 차단막 3종이 전부 내려갔습니다. 이제 복귀를 확인합니다.");
+            // ★ 표면별 단언을 하나씩 적는 방식이 바로 이 결함을 놓쳤다(포스트잇만 명부에서 빠져
+            //   있었고, 이름이 비슷한 TodoBoardPopover 때문에 검증된 것처럼 보였다). 그래서
+            //   마지막에는 씬의 차단막을 <b>전수</b>로 훑는다 — 새 표면이 생겨도 자동으로 잡힌다.
+            int during = CountEnabledClickBlockers(out string duringNames);
+            Assert.AreEqual(0, during,
+                $"{LogPrefix} 전체화면 감지 중인데 클릭 차단막 {during}개가 아직 켜져 있습니다: {duringNames}. " +
+                "이 목록에 있는 표면이 IsSuspended를 폴링하지 않는 것입니다(원칙 2 위반).");
+
+            Debug.Log($"{LogPrefix} 감지 중 — 모든 표면과 차단막이 전부 내려갔습니다. 이제 복귀를 확인합니다.");
 
             // ③ 복귀 — 톱니만 돌아온다.
             SetSuspended(false);
@@ -230,7 +317,15 @@ namespace StickMate.Tests.PlayMode
             Assert.IsFalse(_todo.IsOpen,
                 $"{LogPrefix} 복귀와 동시에 팝오버가 저절로 다시 열렸습니다.");
 
-            Debug.Log($"{LogPrefix} 복귀 확인 — 톱니만 되살아나고 메뉴/창/팝오버는 닫힌 채 유지됩니다.");
+            // ★ 포스트잇은 톱니와 같은 편이다 — "사용자가 연 창"이 아니라 할 일이 있는 동안 늘
+            //   떠 있는 상시 HUD라서, 게임이 끝나면 돌아오지 않으면 그것이 실종이다.
+            Assert.IsTrue(_postIt.IsCardVisible,
+                $"{LogPrefix} 전체화면이 끝났는데 포스트잇이 돌아오지 않았습니다(영구 실종). " +
+                $"미완료 {TodoListModel.UncompletedCount}건.");
+            Assert.IsTrue(_postIt.IsClickBlockerEnabled,
+                $"{LogPrefix} 포스트잇은 보이는데 차단막이 안 돌아왔습니다 — 체크박스 클릭이 밑의 앱으로 샙니다.");
+
+            Debug.Log($"{LogPrefix} 복귀 확인 — 톱니/포스트잇만 되살아나고 메뉴/창/팝오버는 닫힌 채 유지됩니다.");
         }
 
         // ==================== 네거티브 컨트롤 ====================
@@ -253,8 +348,16 @@ namespace StickMate.Tests.PlayMode
             Assert.IsTrue(_menu.IsVisible, $"{LogPrefix} 감지가 없는데 부채꼴이 사라졌습니다.");
             Assert.IsTrue(_todo.IsOpen, $"{LogPrefix} 감지가 없는데 팝오버가 닫혔습니다.");
             Assert.IsTrue(_window.IsOpen, $"{LogPrefix} 감지가 없는데 캐릭터 창이 닫혔습니다.");
+            Assert.IsTrue(_postIt.IsCardVisible, $"{LogPrefix} 감지가 없는데 포스트잇이 사라졌습니다.");
+            Assert.IsTrue(_postIt.IsClickBlockerEnabled, $"{LogPrefix} 감지가 없는데 포스트잇 차단막이 꺼졌습니다.");
 
-            Debug.Log($"{LogPrefix} 네거티브 컨트롤 통과 — 감지가 없으면 다섯 표면이 그대로 유지됩니다.");
+            int enabled = CountEnabledClickBlockers(out string names);
+            Assert.Greater(enabled, 0,
+                $"{LogPrefix} 감지가 없는데 켜진 차단막이 0개입니다 — 위 테스트의 '전부 꺼졌다'가 " +
+                "그냥 항상 참이라는 뜻이 됩니다.");
+
+            Debug.Log($"{LogPrefix} 네거티브 컨트롤 통과 — 감지가 없으면 모든 표면과 차단막 " +
+                $"{enabled}개({names})가 그대로 유지됩니다.");
         }
     }
 }

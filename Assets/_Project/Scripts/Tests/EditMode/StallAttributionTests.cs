@@ -176,14 +176,34 @@ namespace StickMate.Tests.EditMode
         {
             foreach (string file in new[] { "StallAttribution.cs", "StallAttributionProbe.cs", "PlayerLogPolicy.cs" })
             {
-                string src = ReadScript("Platform", file);
+                // ★ 2026-09-01 정정: 예전에는 파일 <b>원문</b>을 스캔해서 <b>문서 주석에 적힌 API 이름</b>까지
+                // 위반으로 잡았다(실제로 이 테스트가 그 이유 하나로 빨갛게 남아 있었다 — Tasklist.md 기록).
+                // 그건 거짓 양성이고, 더 나쁘게는 "고치려면 문서에서 정확한 API 이름을 지워야 한다"는
+                // 압력을 만든다. 이 테스트가 지키려는 것은 <b>실행되는 코드</b>이므로 주석을 벗기고 본다.
+                string src = StripComments(ReadScript("Platform", file));
                 foreach (string banned in new[] { "EnumWindows", "DllImport", "GetWindowRect", "DwmGetWindowAttribute",
                                                   "FindObjectsByType", "FindAnyObjectByType", "GetComponentsInChildren" })
                 {
                     StringAssert.DoesNotContain(banned, src,
-                        $"{file}에 {banned}가 들어갔다 — 진단 장치가 증상을 만드는 그 사고의 재발이다.");
+                        $"{file}의 **실행 코드**에 {banned}가 들어갔다 — 진단 장치가 증상을 만드는 그 사고의 재발이다.");
                 }
             }
+        }
+
+        /// <summary>줄 주석(<c>//</c>, <c>///</c>)과 블록 주석(<c>/* */</c>)을 지운다. 문자열 리터럴 안의
+        /// <c>//</c>까지 정밀하게 다루지는 않지만, 이 파일들에는 그런 리터럴이 없고 이 테스트의 목적
+        /// (실행 코드에 OS 호출이 있는가)에는 충분하다.</summary>
+        private static string StripComments(string src)
+        {
+            src = System.Text.RegularExpressions.Regex.Replace(src, @"/\*.*?\*/", string.Empty,
+                System.Text.RegularExpressions.RegexOptions.Singleline);
+            var sb = new System.Text.StringBuilder(src.Length);
+            foreach (string line in src.Split('\n'))
+            {
+                int i = line.IndexOf("//", System.StringComparison.Ordinal);
+                sb.Append(i >= 0 ? line.Substring(0, i) : line).Append('\n');
+            }
+            return sb.ToString();
         }
 
         /// <summary>
@@ -394,5 +414,180 @@ namespace StickMate.Tests.EditMode
             Assert.Greater(gate, 0, "가장 많이 찍히던 로그(실측 2,564줄 중 661줄)의 스위치가 사라졌다.");
             Assert.Greater(build, gate, "스위치가 문자열 조립 뒤에 있으면 꺼도 할당은 그대로다.");
         }
+        // ====================================================================================
+        // ★ 2026-09-01 2차 라운드 — "기타로직"을 이름으로 쪼개는 구간 계측
+        // ====================================================================================
+        // 이 라운드가 풀어야 했던 문제: 1차 계측이 창 열거(0.5%)와 로그 IO(0.04%)를 무죄로 확정한 뒤
+        // 남은 것이 <b>기타로직</b>(= 총시간 − 창열거 − 로그)이고, 실기 60초 요약이
+        // <c>로직구간 최대 684.1ms</c>를 잡았다. "잔차"에는 이름이 없어 다음 라운드도 추측하게 된다.
+        // 아래 테스트들은 그 이름표가 (a) 산술적으로 옳고 (b) 나중에 조용히 빠지지 않도록 잠근다.
+
+        [Test]
+        public void 구간_이름표가_열거형과_1대1이다()
+        {
+            foreach (StallSection section in System.Enum.GetValues(typeof(StallSection)))
+            {
+                if (section == StallSection.Count) continue;
+                string name = StallAttribution.SectionName(section);
+                Assert.AreNotEqual("알수없음", name,
+                    $"{section}에 사람이 읽는 이름이 없다 — 실기 로그가 '구간 3번'이라고 말하면 아무도 못 읽는다.");
+                Assert.IsFalse(string.IsNullOrWhiteSpace(name));
+            }
+        }
+
+        /// <summary>
+        /// ★ 이 라운드의 핵심 산술. 중첩 구간을 그대로 더하면 <b>같은 시간이 두 번</b> 세어져
+        /// "구간 합 &gt; 로직 시간"이 되고, 그러면 요약의 <c>미계측</c>이 음수가 되어 판독 불능이 된다.
+        /// 실제 사례: <c>CharacterProgressionDirector.Update</c>(=연출감독)가 <c>CharacterSaveStore.Save</c>
+        /// (=세이브)를 부른다. 자식 시간을 부모에서 빼야 두 값이 각자의 몫만 갖는다.
+        /// </summary>
+        [Test]
+        public void 중첩_구간은_자기시간만_세어_이중계산하지_않는다()
+        {
+            StallAttribution.BeginSection(StallSection.Directors);
+            Busy(3);
+            StallAttribution.BeginSection(StallSection.Save);
+            Busy(12);
+            StallAttribution.EndSection();
+            Busy(3);
+            StallAttribution.EndSection();
+
+            double parent = StallAttribution.WindowSectionMs(StallSection.Directors);
+            double child = StallAttribution.WindowSectionMs(StallSection.Save);
+
+            Assert.Greater(child, 0.0, "자식 구간이 0ms로 잡혔다 — 스톱워치 배선이 끊겼다.");
+            Assert.Greater(child, parent,
+                $"자식(세이브 {child:F2}ms)이 부모(연출감독 {parent:F2}ms)보다 오래 걸리게 만든 시나리오인데 " +
+                "부모가 더 크다 = 자식 시간이 부모에도 더해졌다(이중계산).");
+            Assert.AreEqual(1, StallAttribution.WindowSectionCount(StallSection.Save));
+            Assert.AreEqual(1, StallAttribution.WindowSectionCount(StallSection.Directors));
+        }
+
+        [Test]
+        public void using_범위는_예외가_나도_스택을_닫는다()
+        {
+            try
+            {
+                using (StallAttribution.Section(StallSection.UiWindows))
+                {
+                    throw new System.InvalidOperationException("의도된 예외");
+                }
+            }
+            catch (System.InvalidOperationException) { /* 여기서 받아 삼킨다 */ }
+
+            // 스택이 닫혔다면 다음 구간이 정상적으로 자기 이름으로 잡힌다(부모로 오염되지 않는다).
+            using (StallAttribution.Section(StallSection.Portrait)) { Busy(2); }
+            Assert.AreEqual(1, StallAttribution.WindowSectionCount(StallSection.UiWindows),
+                "예외로 빠져나간 구간이 닫히지 않았다 — 이후 모든 구간이 그 안에 중첩된 것으로 집계된다.");
+            Assert.AreEqual(1, StallAttribution.WindowSectionCount(StallSection.Portrait));
+        }
+
+        /// <summary>계측이 <b>스스로 GC 압박을 만들면</b> 24시간 상주 앱에서 그 자체가 증상이 된다.
+        /// <c>SectionScope</c>가 값 타입이어야 <c>using</c>이 박싱 없이 Dispose를 부른다.</summary>
+        [Test]
+        public void 구간_범위는_값타입이라_힙할당이_없다()
+        {
+            Assert.IsTrue(typeof(StallAttribution.SectionScope).IsValueType,
+                "SectionScope가 클래스가 되면 프레임당 40회 힙 할당이 생긴다 — 계측이 증상을 만드는 그 사고다.");
+        }
+
+        // ====================================================================================
+        // 배선 감사 — 계측은 기능이 아니라서 빠져도 아무 테스트가 깨지지 않는다. 그래서 소스로 잠근다.
+        // ====================================================================================
+
+        /// <summary>
+        /// ★ <b>세이브는 [스톨귀인]의 "로그" 항목에 잡히지 않는다</b>(Debug.Log가 아니므로).
+        /// 그런데 이 경로는 Update 안에서 동기로 fsync + File.Replace를 한다 = 기타로직의 유력 후보.
+        /// 이름표가 빠지면 다음 실기 로그가 또 침묵한다.
+        /// </summary>
+        [Test]
+        public void 세이브_경로에_구간_이름표가_붙어_있다()
+        {
+            string src = ReadScript("Core", "CharacterSaveStore.cs");
+            StringAssert.Contains("StallSection.Save", src,
+                "CharacterSaveStore.Save()에서 [스톨구간] 계측이 사라졌다 — 동기 파일 IO가 다시 익명이 된다.");
+        }
+
+        /// <summary>
+        /// ★ Unity 프레임 순서는 [FixedUpdate x K] -&gt; Update -&gt; LateUpdate다. 1차 계측은
+        /// Update 시작~LateUpdate 끝만 쟀으므로 <b>물리를 통째로 "로직밖"으로 오분류</b>하고 있었다.
+        /// 랙돌을 굴리는 앱에서 이건 결코 작은 구멍이 아니다.
+        /// </summary>
+        [Test]
+        public void 물리_단계도_계측_대상에_들어와_있다()
+        {
+            string probe = ReadScript("Platform", "StallAttributionProbe.cs");
+            StringAssert.Contains("BeginFixedStep", probe);
+            StringAssert.Contains("EndFixedStep", probe);
+            StringAssert.Contains("BeginLatePhase", probe);
+            StringAssert.Contains("EndUpdatePhase", probe);
+        }
+
+        /// <summary>
+        /// ★ 앞 라운드의 함정 재발 방지. 개별 스파이크 줄은 5초 쿨다운으로 억제되는데, 실기에서
+        /// <b>가장 심한 프레임이 바로 그 억제된 줄</b>이었다. 그래서 "남은 줄이 전부 판정: 로직밖"이
+        /// "로직 안은 무죄"로 잘못 읽혔다. 최악 프레임 스냅샷은 <b>쿨다운 검사보다 먼저</b> 있어야 한다.
+        /// </summary>
+        [Test]
+        public void 최악_프레임_스냅샷은_로그_쿨다운보다_먼저_기록된다()
+        {
+            string src = ReadScript("Platform", "StallAttribution.cs");
+            int snapshot = src.IndexOf("if (dtMs > _worstDtMs)", System.StringComparison.Ordinal);
+            int cooldown = src.IndexOf("if (_spikeCooldownLeft > 0f) return;", System.StringComparison.Ordinal);
+            Assert.Greater(snapshot, 0, "최악 프레임 스냅샷이 사라졌다.");
+            Assert.Greater(cooldown, 0, "쿨다운 조기 반환이 사라졌다.");
+            Assert.Less(snapshot, cooldown,
+                "쿨다운 뒤에서 스냅샷하면 억제된 프레임(=대개 가장 심한 프레임)의 귀인을 통째로 잃는다 — " +
+                "실기 로그에서 실제로 벌어졌던 오독이다.");
+        }
+
+        /// <summary>
+        /// 사용자 확정 조건이 "켜놓을수록 렉이 심해짐"(p50은 그대로, p99/최대만 커짐)이므로,
+        /// 요약 줄은 <b>추세를 볼 수 있는 값</b>을 반드시 함께 남겨야 한다. 하나라도 빠지면
+        /// 두 로그를 나란히 놓고 비교할 수 없다.
+        /// </summary>
+        [Test]
+        public void 요약이_시간에_따른_증가를_볼_수_있게_남긴다()
+        {
+            string src = ReadScript("Platform", "StallAttribution.cs");
+            foreach (string token in new[]
+            {
+                "_summaryIndex",              // 몇 번째 창인가
+                "Time.realtimeSinceStartup",  // 가동 시간
+                "SectionLifeMs",              // 구간별 생애 누적
+                "SectionLifeMaxMs",           // 구간별 생애 최대
+                "GetTotalMemory",             // 관리 힙 증가
+                "CollectionCount",            // GC 세대별
+                "_fontAtlasRebuildsTotal",    // 폰트 아틀라스 재구성 누적
+            })
+            {
+                StringAssert.Contains(token, src,
+                    $"{token}이(가) 요약에서 빠졌다 — '3분째 vs 30분째'를 비교할 근거가 사라진다.");
+            }
+        }
+
+        /// <summary>
+        /// ★ 플랫폼 중립 문구 감사(2026-09-01, 병행 라운드 지적). '정밀검사' 항목은 이제 macOS도
+        /// 보고한다. 설명이 Windows 전용(<c>DWM 조회</c>)으로 남아 있으면 macOS 로그를 읽는 사람이
+        /// "이 값은 나와 무관하다"고 잘못 판단한다.
+        /// </summary>
+        [Test]
+        public void 열거_비용_설명이_플랫폼_중립이다()
+        {
+            string src = ReadScript("Platform", "StallAttribution.cs");
+            StringAssert.DoesNotContain("DWM조회", src,
+                "로그 본문이 Windows 전용 용어를 쓰고 있다 — macOS도 같은 값을 보고한다.");
+            StringAssert.Contains("macOS", src,
+                "'정밀검사'가 두 플랫폼에서 각각 무엇인지 설명이 있어야 한다.");
+        }
+
+        /// <summary>테스트가 시간을 쓰게 만드는 최소 바쁜 대기(ms). Thread.Sleep은 정밀도가 낮아
+        /// 3ms와 12ms를 구분하지 못하는 환경이 있어 쓰지 않는다.</summary>
+        private static void Busy(double milliseconds)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (sw.Elapsed.TotalMilliseconds < milliseconds) { }
+        }
+
     }
 }

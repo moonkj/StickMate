@@ -311,6 +311,103 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
+        // (3-b) ★ 42-11 판정 G — 켜져 있어야만 뜻을 갖는 행이 활성인 채로 무효이면 안 된다
+        // ============================================================================
+
+        /// <summary>
+        /// ★★ <c>말풍선 표시</c>를 끄면 대사가 그려지지 않는데 <c>말풍선 글자 크기</c>·
+        /// <c>대사 표시 시간</c>·<c>잡담 빈도</c> 세 행이 <b>그대로 활성</b>이었다.
+        /// <b>컨트롤 셋이 움직이는데 화면에서 아무 일도 일어나지 않는다</b> — 42절이 고치는 그 병이
+        /// 같은 카드 안에 세 배로 있었다(docs/UX_FLOW.md 42-11).
+        ///
+        /// <para><b>왜 색이 아니라 클릭을 재는가</b>: 회색으로 칠하기만 하고 클릭이 그대로 먹으면
+        /// "회색인데 눌리는 행"이 되어 결함이 더 나빠진다. 그래서 <b>실제 클릭 경로</b>로 잰다.</para>
+        ///
+        /// <para><b>네거티브 컨트롤</b>: 토글을 다시 켜면 <b>같은 클릭</b>이 먹어야 한다. 그 짝이 없으면
+        /// "그냥 영영 못 누르게 하기"라는 오답이 통과한다.</para>
+        /// </summary>
+        [UnityTest]
+        [Timeout(120000)]
+        public IEnumerator 말풍선을_끄면_아래_세_행이_함께_비활성이_된다()
+        {
+            yield return LoadAndOpen();
+
+            _window.FeedClickForTests(_window.TabScreenRect(SettingsWindow.Tab.Character).center);
+            yield return null;
+
+            Assert.IsTrue(_window.SpeechRowsEnabledForTests,
+                $"{LogPrefix} 말풍선이 켜져 있는데 세 행이 이미 비활성입니다(사전 조건).");
+
+            Rect toggle = _window.DialogueBubbleToggleScreenRect;
+            Assert.Greater(toggle.width, 1f, $"{LogPrefix} 말풍선 표시 토글의 화면 사각형이 비어 있습니다.");
+            _window.FeedClickForTests(toggle.center);
+            yield return null;
+
+            Assert.IsFalse(AppSettingsModel.ResolveDialogueBubbleEnabled(_config),
+                $"{LogPrefix} 토글 클릭이 먹지 않았습니다 — 아래 단언들이 '아무 일도 안 일어나서' " +
+                "통과하게 됩니다.");
+            Assert.IsFalse(_window.SpeechRowsEnabledForTests,
+                $"{LogPrefix} 말풍선을 껐는데 아래 세 행이 여전히 활성입니다 — 만져도 화면이 바뀌지 " +
+                "않는 컨트롤 셋입니다(42-11 판정 G).");
+
+            // ① 슬라이더 [+]가 먹지 않는다.
+            int fontBefore = AppSettingsModel.ResolveDialogueFontSize(_config);
+            _window.FeedClickForTests(_window.DialogueFontSizePlusScreenRect.center);
+            yield return null;
+            Assert.AreEqual(fontBefore, AppSettingsModel.ResolveDialogueFontSize(_config),
+                $"{LogPrefix} 비활성인 글자 크기 슬라이더의 [+]가 그대로 먹었습니다 — '회색인데 눌리는' " +
+                "행은 결함을 고친 것이 아니라 더 나쁘게 만든 것입니다.");
+
+            // ② 세그먼트 칸도 먹지 않는다.
+            DialogueVisibleLength lengthBefore = AppSettingsModel.DialogueVisibleLength;
+            Rect chip = _window.DialogueVisibleLengthSegmentScreenRect(
+                (int)DialogueVisibleLength.VeryLong);
+            Assert.Greater(chip.width, 1f, $"{LogPrefix} `아주 길게` 칸의 화면 사각형이 비어 있습니다.");
+            _window.FeedClickForTests(chip.center);
+            yield return null;
+            Assert.AreEqual(lengthBefore, AppSettingsModel.DialogueVisibleLength,
+                $"{LogPrefix} 비활성인 `대사 표시 시간` 세그먼트가 그대로 먹었습니다.");
+
+            // ③ 왜 못 쓰는지 화면이 말한다.
+            Text reason = FindRowCaption("Row_character.visibleLength");
+            Assert.IsNotNull(reason, $"{LogPrefix} `대사 표시 시간` 행의 캡션 줄을 찾지 못했습니다.");
+            StringAssert.Contains("말풍선 표시", reason.text,
+                $"{LogPrefix} 비활성 사유가 화면에 없습니다(\"{reason.text}\") — 유저는 왜 못 만지는지 " +
+                "알 길이 없습니다.");
+
+            // ★ 네거티브 컨트롤 — 다시 켜면 같은 클릭이 먹는다.
+            //   같은 컨트롤의 연타는 창이 한 번으로 접으므로(ActionDedupSeconds) 그만큼 벽시계로
+            //   기다린 뒤 누른다. 숫자를 베끼지 않고 그 상수를 참조한다.
+            yield return new WaitForSecondsRealtime(SettingsWindow.ActionDedupSeconds + 0.05f);
+            _window.FeedClickForTests(_window.DialogueBubbleToggleScreenRect.center);
+            yield return null;
+            Assert.IsTrue(_window.SpeechRowsEnabledForTests,
+                $"{LogPrefix} 말풍선을 다시 켰는데 세 행이 비활성인 채로 남았습니다 — 비활성이 " +
+                "영구화됐습니다.");
+
+            _window.FeedClickForTests(_window.DialogueFontSizePlusScreenRect.center);
+            yield return null;
+            Assert.AreEqual(fontBefore + 1, AppSettingsModel.ResolveDialogueFontSize(_config),
+                $"{LogPrefix} 말풍선을 다시 켰는데도 [+]가 안 먹습니다 — 비활성이 영구화됐습니다.");
+
+            Debug.Log($"{LogPrefix} 42-11 G 확인 — 말풍선 OFF에서 슬라이더/세그먼트 클릭이 모두 막히고, " +
+                      "사유가 화면에 있으며, 다시 켜면 같은 클릭이 복귀합니다.");
+        }
+
+        private static Text FindRowCaption(string rowName)
+        {
+            GameObject canvas = GameObject.Find("SettingsCanvas");
+            Assert.IsNotNull(canvas, $"{LogPrefix} 씬에서 SettingsCanvas를 찾지 못했습니다.");
+            foreach (Transform t in canvas.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name != rowName) continue;
+                Transform cap = t.Find("Caption");
+                return cap != null ? cap.GetComponent<Text>() : null;
+            }
+            return null;
+        }
+
+        // ============================================================================
         // (4) 비침해 — 닫으면 차단막이 반드시 꺼진다
         // ============================================================================
 

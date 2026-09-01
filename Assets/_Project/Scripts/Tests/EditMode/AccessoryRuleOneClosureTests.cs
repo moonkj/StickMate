@@ -18,8 +18,6 @@ namespace StickMate.Tests.EditMode
     /// <list type="table">
     ///   <item><term>HEAD 천모자 <c>HatBrim</c></term>
     ///         <description>챙을 닫는 변(4→0) 0.29획 → <b>1.11획</b>. 챙 뿌리 두께 0.10R → 0.38R.</description></item>
-    ///   <item><term>HEAD 중절모 <c>FedoraCrease</c></term>
-    ///         <description>잉크 사각형 1.26획 → <b>1.68획</b>. 크리스 반폭 비율 0.30 → 0.40.</description></item>
     ///   <item><term>BACK 날개 <c>WingFeatherA/B</c></term>
     ///         <description>어깨 쪽 닫힘변 0.90 / 0.86획 → <b>1.20 / 1.20획</b>.
     ///         아래쪽 안쪽 꼭짓점만 뒤·아래로 옮겼다(어깨에 붙는 첫 점은 등뼈와 공유라 못 움직인다).</description></item>
@@ -69,9 +67,6 @@ namespace StickMate.Tests.EditMode
         // 1. 천모자 — 챙 뿌리
         // ============================================================================
 
-        /// <summary>옛 챙 뿌리 두께(R 배수). <b>이 값 하나만</b> 얼린다.</summary>
-        private const float OldHatBrimRootDropRatio = 0.10f;
-
         [Test]
         public void 천모자_챙의_닫힘변이_획_하나보다_길다()
         {
@@ -88,161 +83,32 @@ namespace StickMate.Tests.EditMode
                 "획 하나보다 짧으면 챙 뒤쪽 끝이 통째로 먹혀 사라집니다(37-6 규칙 1).");
             Assert.Less(closing, 1.6f,
                 $"챙 뿌리가 {closing:F2}획까지 두꺼워졌습니다 — 챙이 아니라 이마를 덮는 판이 됩니다.");
+            // 이 세 줄이 이 절에 남은 전부다. 옛 좌표를 얼린 컨트롤 두 건은 아래 문단대로 폐기했다.
         }
 
-        /// <summary>★ 네거티브 컨트롤 — 옛 두께로 되돌린 챙은 <b>지금 리그에서도</b> 실제로 위반한다.</summary>
-        [Test]
-        public void 컨트롤_옛_챙_뿌리는_규칙_1을_실제로_어긴다()
-        {
-            AccessoryShapeBuilder.Rig rig = Rig();
-            Assert.AreNotEqual(OldHatBrimRootDropRatio, AccessoryShapeBuilder.HatBrimRootDropRatio,
-                "챙 뿌리 두께가 옛 값으로 되돌아갔습니다 — 이 컨트롤이 재현하려는 결함이 곧 현재 상태입니다.");
-
-            AccessoryShapeBuilder.Shape old = OldHatBrim(rig);
-            string violation = AccessoryStrokeBudgetTests.DescribeRuleOneViolation(old, BudgetWorld(rig));
-            Assert.IsNotNull(violation,
-                "옛 챙(뿌리 0.10R)이 규칙 1을 통과한다고 나옵니다 — 검사기가 눈이 멀었거나 " +
-                "재현 좌표가 실제 옛 도형과 다릅니다(기록: 닫힘변 0.29획).");
-
-            Assert.AreEqual(0.29f, ClosingEdgeInStrokes(old), 0.01f,
-                "옛 챙의 닫힘변이 0.29획으로 측정되지 않습니다 — 대장에 적힌 실측값과 어긋납니다.");
-        }
-
-        /// <summary>
-        /// 챙을 두껍게 해도 <b>실루엣은 한 구간도 움직이지 않는다</b>. 두꺼워지는 방향이 아래(관 반대쪽)이고
-        /// 그 자리는 관이 이미 더 멀리 뻗어 있는 각도라, 반경 프로파일의 최댓값이 바뀌지 않기 때문이다.
-        /// <para>이 사실이 중요한 이유: 모자 6종 15쌍의 실루엣 구분도(최소 2.94획)가 이 수정으로
-        /// 흔들리지 않는다는 보증이 여기서 나온다.</para>
-        /// </summary>
-        [Test]
-        public void 챙을_두껍게_해도_천모자_실루엣이_바뀌지_않는다()
-        {
-            AccessoryShapeBuilder.Rig rig = Rig();
-            List<AccessoryShapeBuilder.Shape> live = Build(rig, EquipmentSlot.Head, AccessoryShapeBuilder.HeadCap);
-
-            var before = new List<AccessoryShapeBuilder.Shape>
-            {
-                AccessorySilhouetteMetrics.Find(live, "HatCrown"),   // 이웃은 살아 있는 것을 쓴다
-                OldHatBrim(rig),
-            };
-
-            float delta = AccessorySilhouetteMetrics.MaxRadiusDelta(
-                AccessorySilhouetteMetrics.ProfileOf(rig, before, rig.HeadCenterY),
-                AccessorySilhouetteMetrics.ProfileOf(rig, live, rig.HeadCenterY));
-
-            Assert.AreEqual(0f, delta, 1e-6f,
-                $"챙 수정으로 실루엣이 {delta / W:F2}획 움직였습니다 — 이 수정은 관 안쪽(아래)으로만 " +
-                "두꺼워지므로 반경 프로파일이 바뀔 수 없습니다. 바뀌었다면 다른 것도 함께 바뀐 것입니다.");
-        }
-
-        /// <summary>옛 챙 — 바뀐 상수 하나만 옛 값으로 두고 나머지는 <b>살아 있는 상수</b>에서 받는다.</summary>
-        private static AccessoryShapeBuilder.Shape OldHatBrim(in AccessoryShapeBuilder.Rig rig)
-        {
-            float r = rig.HeadRadius;
-            float brimY = AccessoryShapeBuilder.HatBrimLocalY(rig);
-            float halfW = r * AccessoryShapeBuilder.HatCrownHalfWidthRatio;
-            return new AccessoryShapeBuilder.Shape("OldHatBrim", new[]
-            {
-                rig.F(-halfW * 0.35f, brimY),
-                rig.F(halfW * 0.85f, brimY + r * 0.02f),
-                rig.F(r * AccessoryShapeBuilder.HatBrimReachRatio,
-                    brimY - r * AccessoryShapeBuilder.HatBrimDropRatio),
-                rig.F(halfW * 0.85f, brimY - r * 0.14f),
-                rig.F(-halfW * 0.35f, brimY - r * OldHatBrimRootDropRatio),
-            }, true, AccessoryShapeBuilder.SortHead, tone: AccessoryShapeBuilder.Accent, filled: true);
-        }
+        // ★ 2026-09-01(2차) — 아래 두 검사와 <c>OldHatBrim</c>을 <b>폐기했다</b>(날개 컨트롤과 같은 이유).
+        //     · <c>컨트롤_옛_챙_뿌리는_규칙_1을_실제로_어긴다</c>
+        //     · <c>챙을_두껍게_해도_천모자_실루엣이_바뀌지_않는다</c>
+        //   그 둘은 "관은 그대로 두고 챙 뿌리만 두껍게 했다"는 <b>한 상수짜리 수정</b>을 재던 자다.
+        //   이번 라운드는 야구모자를 통째로 다시 그렸다 — 커버선이 +0.62R에서 +0.06R로 내려오고
+        //   관 옆벽이 −0.22R까지 감싸므로, 옛 챙 좌표는 <b>이제 존재하지 않는 관</b>에 매달린
+        //   도형이고 실루엣 불변도 성립하지 않는다(관 자체가 움직였다).
+        //   살려 두면 "역사상 존재한 적 없는 쌍"을 재게 된다 — 이 파일 머리말이 금지한 바로 그것이다.
+        //   챙 뿌리가 여전히 획보다 두껍다는 사실은 위 <c>천모자_챙의_닫힘변이_획_하나보다_길다</c>가
+        //   <b>살아 있는 도형에서</b> 계속 잠근다(실측 1.34획).
 
         // ============================================================================
-        // 2. 중절모 — 크리스
+        // 2. 중절모 — 크리스 (★ 2026-09-01(2차) 폐기)
         // ============================================================================
-
-        /// <summary>옛 크리스 반폭 비율(관 반폭의 배수).</summary>
-        private const float OldFedoraCreaseHalfWidthRatio = 0.30f;
-
-        [Test]
-        public void 중절모_크리스의_잉크_사각형이_1_5획을_넘는다()
-        {
-            AccessoryShapeBuilder.Rig rig = Rig();
-            List<AccessoryShapeBuilder.Shape> fedora = Build(rig, EquipmentSlot.Head, AccessoryShapeBuilder.HeadFedora);
-            AccessoryShapeBuilder.Shape crease = AccessorySilhouetteMetrics.Find(fedora, "FedoraCrease");
-
-            Assert.IsNull(AccessoryStrokeBudgetTests.DescribeRuleOneViolation(crease, BudgetWorld(rig)),
-                "중절모 크리스가 규칙 1을 어깁니다.");
-
-            Vector2 extent = AccessorySilhouetteMetrics.ExtentInR(rig, crease.Points);
-            float span = Mathf.Max(extent.x, extent.y) / W;
-            Assert.Greater(span, 1.5f,
-                $"크리스의 잉크 사각형이 {span:F2}획입니다(옛 값 1.26획) — 1.5획 미만이면 V가 아니라 " +
-                "'뚱뚱한 점' 하나로 뭉갭니다.");
-            Assert.Greater(span, 1.6f,
-                $"크리스가 {span:F2}획으로 문턱에 너무 붙어 있습니다 — 최소 수정안(0.36 = 1.51획)은 " +
-                "여유가 0.5%뿐이라 좌표 한 자리만 건드려도 다시 넘어갑니다. 그래서 0.40을 골랐습니다.");
-
-            // 크리스는 관 <b>안쪽</b>에 있어야 한다. 밖으로 나가면 실루엣이 바뀌고 관을 뚫는다.
-            AccessoryShapeBuilder.Shape crown = AccessorySilhouetteMetrics.Find(fedora, "FedoraCrown");
-            float crownHalfX = 0f;
-            for (int i = 0; i < crown.Points.Length; i++)
-            {
-                crownHalfX = Mathf.Max(crownHalfX, Mathf.Abs(crown.Points[i].x));
-            }
-            for (int i = 0; i < crease.Points.Length; i++)
-            {
-                Assert.Less(Mathf.Abs(crease.Points[i].x), crownHalfX,
-                    "크리스가 관 밖으로 나갔습니다 — 눌린 자국은 관 위에 있어야 합니다.");
-            }
-        }
-
-        /// <summary>★ 네거티브 컨트롤 — 옛 반폭은 <b>지금 관에서도</b> 1.26획으로 실제로 위반한다.</summary>
-        [Test]
-        public void 컨트롤_옛_크리스_반폭은_규칙_1을_실제로_어긴다()
-        {
-            AccessoryShapeBuilder.Rig rig = Rig();
-            Assert.AreNotEqual(OldFedoraCreaseHalfWidthRatio,
-                AccessoryShapeBuilder.FedoraCreaseHalfWidthRatio,
-                "크리스 반폭이 옛 값으로 되돌아갔습니다.");
-
-            AccessoryShapeBuilder.Shape old = OldFedoraCrease(rig);
-            Vector2 extent = AccessorySilhouetteMetrics.ExtentInR(rig, old.Points);
-            Assert.AreEqual(1.26f, Mathf.Max(extent.x, extent.y) / W, 0.01f,
-                "옛 크리스가 1.26획으로 측정되지 않습니다 — 대장의 실측값과 어긋납니다.");
-            Assert.IsNotNull(AccessoryStrokeBudgetTests.DescribeRuleOneViolation(old, BudgetWorld(rig)),
-                "옛 크리스가 규칙 1을 통과한다고 나옵니다 — 검사기가 눈이 멀었습니다.");
-        }
-
-        [Test]
-        public void 크리스를_넓혀도_중절모_실루엣이_바뀌지_않는다()
-        {
-            AccessoryShapeBuilder.Rig rig = Rig();
-            List<AccessoryShapeBuilder.Shape> live = Build(rig, EquipmentSlot.Head, AccessoryShapeBuilder.HeadFedora);
-
-            var before = new List<AccessoryShapeBuilder.Shape>();
-            for (int i = 0; i < live.Count; i++)
-            {
-                before.Add(live[i].Name == "FedoraCrease" ? OldFedoraCrease(rig) : live[i]);
-            }
-
-            float delta = AccessorySilhouetteMetrics.MaxRadiusDelta(
-                AccessorySilhouetteMetrics.ProfileOf(rig, before, rig.HeadCenterY),
-                AccessorySilhouetteMetrics.ProfileOf(rig, live, rig.HeadCenterY));
-
-            Assert.AreEqual(0f, delta, 1e-6f,
-                $"크리스 수정으로 실루엣이 {delta / W:F2}획 움직였습니다 — 크리스는 관 위 변 안쪽에만 " +
-                "있으므로 바깥 윤곽에 영향을 줄 수 없습니다.");
-        }
-
-        private static AccessoryShapeBuilder.Shape OldFedoraCrease(in AccessoryShapeBuilder.Rig rig)
-        {
-            float r = rig.HeadRadius;
-            float brimY = rig.HeadCenterY + r * AccessoryShapeBuilder.FedoraBrimLineRatio;
-            float crownHalf = r * AccessoryShapeBuilder.FedoraCrownHalfWidthRatio;
-            float crownTop = brimY + r * AccessoryShapeBuilder.FedoraCrownHeightRatio;
-            return new AccessoryShapeBuilder.Shape("OldFedoraCrease", new[]
-            {
-                rig.F(-crownHalf * OldFedoraCreaseHalfWidthRatio, crownTop),
-                rig.F(0f, crownTop - r * AccessoryShapeBuilder.FedoraCreaseDropRatio),
-                rig.F(crownHalf * OldFedoraCreaseHalfWidthRatio, crownTop),
-            }, false, AccessoryShapeBuilder.SortHead, tone: AccessoryShapeBuilder.Shade);
-        }
+        // <c>FedoraCrease</c>는 <b>도형 자체가 사라졌다</b>. 커버선이 +0.58R -> +0.08R로 내려오며
+        // 관이 낮아졌고, 그 관 위에서 규칙 1(잉크 1.5획)을 지키는 V는 관을 가로질러 <b>관을 두 쪽으로
+        // 가르는 선</b>이 된다. 37-6 규칙 5 — "예산을 못 지키는 [선택] 디테일은 넣지 않는다".
+        // 그래서 아래 세 검사와 <c>OldFedoraCrease</c>를 함께 지웠다:
+        //     · <c>중절모_크리스의_잉크_사각형이_1_5획을_넘는다</c>
+        //     · <c>컨트롤_옛_크리스_반폭은_규칙_1을_실제로_어긴다</c>
+        //     · <c>크리스를_넓혀도_중절모_실루엣이_바뀌지_않는다</c>
+        // 없는 도형을 찾는 검사는 <see cref="AccessorySilhouetteMetrics.Find"/>에서 예외로 죽고,
+        // 그 실패는 "규칙을 어겼다"가 아니라 "검사가 낡았다"를 뜻해 신호를 오염시킨다.
 
         // ============================================================================
         // 3. 날개 — <b>한 쌍</b>이고, 두 깃이 등뼈와 한 몸으로 이어진다
@@ -373,32 +239,12 @@ namespace StickMate.Tests.EditMode
                 "둘 중 하나만 움직이는 순간 끈이 배낭에서 떠 버립니다(옛 값이 정확히 그 상태였다).");
         }
 
-        /// <summary>
-        /// ★ 네거티브 컨트롤 — 옛 끝점은 배낭 몸에서 <b>0.64획 떠 있었다</b>(규칙 4의 최악 구간).
-        /// <para>얼린 것은 "옛 끝점을 만드는 식"(모따기 <b>바깥</b>의 경계 상자 모서리)이고,
-        /// 배낭 몸은 살아 있는 것을 쓴다 — 배낭 비율이 바뀌면 두 값이 함께 움직이므로
-        /// 이 컨트롤이 존재한 적 없는 쌍을 재는 일이 없다.</para>
-        /// </summary>
-        [Test]
-        public void 컨트롤_옛_끈_끝점은_배낭에서_떠_있었다()
-        {
-            AccessoryShapeBuilder.Rig rig = Rig();
-            float r = rig.HeadRadius;
-            AccessoryShapeBuilder.Shape body = AccessorySilhouetteMetrics.Find(
-                Build(rig, EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackBackpack), "PackBody");
+        // ★ 2026-09-01(3차) — <c>컨트롤_옛_끈_끝점은_배낭에서_떠_있었다</c>를 폐기했다.
+        //   그 컨트롤은 "옛 끝점을 만드는 식"(경계 상자 모서리)만 얼리고 배낭 몸은 살아 있는 것을
+        //   썼는데, 이번 라운드가 배낭을 통째로 다시 그렸다(폭 1.10 -> 1.56R, 몸+뚜껑+버클+끈).
+        //   그래서 같은 식이 만드는 점이 새 몸에서는 2.13획 떨어진 자리가 된다 — 기록된 0.64획과
+        //   전혀 다른 사실을 재게 되고, 그건 "역사상 존재한 적 없는 쌍"이다(이 파일 머리말의 금지 사항).
+        //   끈 끝점이 몸의 실재 꼭짓점이라는 <b>계약</b>은 바로 위 검사가 살아 있는 도형에서 계속 잠근다.
 
-            float cx = -r * AccessoryShapeBuilder.PackCenterBackRatio;
-            float cyp = rig.ShoulderY - rig.TorsoLength * AccessoryShapeBuilder.PackDropInTorso;
-            float hw = r * AccessoryShapeBuilder.PackHalfWidthRatio;
-            float hh = rig.TorsoLength * AccessoryShapeBuilder.PackHalfHeightInTorso;
-            Vector3 oldTip = rig.F(cx + hw, cyp + hh);          // 팔각형 모따기 <b>바깥</b>의 모서리
-
-            float gap = AccessorySilhouetteMetrics.MaxGapToShape(rig, new[] { oldTip, oldTip }, body) / W;
-
-            Assert.That(gap, Is.GreaterThan(0f).And.LessThan(1f),
-                $"옛 끈 끝점의 간격이 {gap:F2}획으로 측정됩니다 — 기록은 0.64획(규칙 4의 최악 구간)입니다. " +
-                "이 값이 0이거나 1획을 넘으면 이 컨트롤이 재현하려는 결함 자체가 다른 것입니다.");
-            Assert.AreEqual(0.64f, gap, 0.02f, "옛 간격이 기록된 0.64획과 다릅니다.");
-        }
     }
 }

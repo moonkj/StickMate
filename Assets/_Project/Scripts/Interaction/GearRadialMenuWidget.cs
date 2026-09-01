@@ -123,7 +123,7 @@ namespace StickMate.Interaction
     /// 값이다. 부호 방식이면 기어가 화면 위쪽 한가운데 있을 때 아래로 곧게 못 펼치고, 중앙선 근처에서
     /// 1픽셀 이동에 방향이 90° 튄다. 그리고 <b>펼치는 순간 한 번 계산해 그 열림이 끝날 때까지 고정</b>한다.
     /// </summary>
-    public sealed class GearRadialMenuWidget : MonoBehaviour
+    public sealed class GearRadialMenuWidget : MonoBehaviour, IExclusiveSurface
     {
         public const int ButtonCount = 4;
 
@@ -138,6 +138,20 @@ namespace StickMate.Interaction
 
         /// <summary>36-3-3: 60 → 30°. 4개 × 30° = 스팬 90°(기존 3개 × 60° = 120°보다 <b>좁다</b>).</summary>
         public const float ButtonAngleStepDegrees = 30f;
+
+        /// <summary>
+        /// 원버튼 그림자의 번짐 폭(pt). 코어가 버튼과 같은 지름이므로 그림자가 차지하는 바깥 여유가
+        /// 곧 이 값이다.
+        /// <para><b>왜 3인가 — 오프라인 래스터 실측으로 골랐다.</b> 이웃 중심 간격은
+        /// <c>2·R·sin(step/2)</c> = 57.5pt이고 버튼이 44pt라 틈은 13.5pt뿐이다. 두 버튼 사이에서
+        /// 바탕 밝기가 97% 이상 회복되는 "깨끗한 틈"의 폭을 재면:
+        /// 옛 하드 링(d+4) <b>9.0pt</b> / feather 2 → 10.5 / <b>3 → 10.0</b> / 4 → 8.5 / 5 → 7.5.
+        /// 버튼 바로 아래의 "떠 있음"(어두워짐 30.3%)은 <b>알파가 정하지 폭이 정하지 않아서</b> 셋 다 같다.
+        /// 즉 3은 옛 값보다 <b>틈이 넓으면서</b> 딱딱한 테가 없는 유일한 구간의 안쪽이다.
+        /// 더 키우면 램프가 틈을 도로 먹고, 더 줄이면 램프가 1~2px이라 다시 테로 보인다.</para>
+        /// </summary>
+        public const float ButtonShadowFeatherPoints = 3f;
+
         public const float HitPaddingPoints = 4f;
         public const float ScreenMarginPoints = 8f;
 
@@ -677,6 +691,11 @@ namespace StickMate.Interaction
         /// 팝오버 정리를 그쪽에만 맡기면 "메뉴는 접혔는데 팝오버만 남은" 조합이 그대로 샌다.
         /// 팝오버 참조는 지연 해석이라(열어 본 적 없으면 null) 여기서 한 번 확인해 준다.
         /// </summary>
+        // ★ 배타 표면 등록(2026-09-01). "보이는가"의 기준은 IsVisible이다 — 접히는 중(Collapsing)도
+        //   아직 화면에 있으므로 열린 것으로 센다. 닫기는 이미 있는 단일 창구를 그대로 쓴다.
+        bool IExclusiveSurface.IsSurfaceOpen => IsVisible;
+        void IExclusiveSurface.CloseSurface(string reason) => ForceCloseAll(reason);
+
         public void ForceCloseAll(string reason)
         {
             if (_focusPopover == null) _focusPopover = GetComponent<FocusSessionPopover>();
@@ -739,6 +758,7 @@ namespace StickMate.Interaction
 
         private void LateUpdate()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.UiWindows);   // [스톨구간] 계측
             // ★★ 절대 불변 원칙 2(비침해) — 전체화면 게임이 감지되면 상시 표면을 <b>즉시</b> 거둔다.
             // StickmanAgent.Suspend()는 Awake에서 캐시한 캐릭터 렌더러만 끄므로, 씬 루트에 사는 이
             // 캔버스는 그 배열에 없어 그대로 남았다. 히트테스트가 커서 아래 픽셀 알파를 보는 구조라
@@ -1487,8 +1507,13 @@ namespace StickMate.Interaction
             view.Root.anchorMin = view.Root.anchorMax = view.Root.pivot = new Vector2(0.5f, 0.5f);
             view.Root.sizeDelta = new Vector2(d, d);
 
-            UiChrome.AddCircle(view.Root, "Shadow", d + 4f, UiChrome.PanelShadow).rectTransform.anchoredPosition
-                = new Vector2(0f, -1.5f);
+            // ★ 2026-09-01 — 옛 코드는 <c>AddCircle(d + 4f, PanelShadow)</c>였다. 즉 버튼보다 사방 2pt
+            // 큰 <b>딱딱한 검은 링</b>이고, 이웃 버튼과의 시각 여백 13.5pt 중 4pt를 그냥 먹었다
+            // (남는 9.5pt마저 양쪽이 진한 테라 "붙어 보인다"로 읽힌다 — 사용자 신고 "원 메뉴도 뭔가
+            // 겹쳐있는거 같이 되어있음"). 코어를 버튼과 <b>같은 지름</b>으로 두고 바깥으로만 감쇠시키면
+            // 눈에 보이는 경계가 사라져 같은 자리에서 틈이 넓어 보인다.
+            UiChrome.AddSoftShadowCircle(view.Root, "Shadow", d, ButtonShadowFeatherPoints,
+                UiChrome.PanelShadow, new Vector2(0f, -1.5f));
             view.Surface = UiChrome.AddCircle(view.Root, "Surface", d, UiChrome.CardSurface);
             view.Border = UiChrome.AddCircle(view.Root, "Border", d, UiChrome.CardBorder, 1.2f);
             view.Flash = UiChrome.AddCircle(view.Root, "Flash", d, new Color(0f, 0f, 0f, 0f));
@@ -1520,7 +1545,12 @@ namespace StickMate.Interaction
                 view.Badge.sizeDelta = new Vector2(16f, 16f);
                 view.Badge.anchoredPosition = new Vector2(15f, 15f);
                 view.BadgeSurface = UiChrome.AddCircle(view.Badge, "BadgeSurface", 16f, UiChrome.Accent);
-                view.BadgeText = UiChrome.AddText(view.Badge, "BadgeText", 9, TextAnchor.MiddleCenter,
+                // ★ 2026-09-01 글리프 잔차 제거(사용자 신고 "텍스트도 다 번져보임"): 9 -> 10.
+                //   캔버스 배율 1.5에서 홀수 pt는 반드시 비정수 배로 리샘플된다(9pt -> 13.5px 요청,
+                //   14px로 구워짐 = 0.964배). 짝수만 잔차 0(Platform/UiGlyphScalePolicy.cs).
+                //   레이아웃 영향 없음 — 배지는 16x16 원, 글자는 Stretch + MiddleCenter + Overflow이고
+                //   최대 문자열은 "9+"(2자)라 10pt 볼드에서도 원 안에 남는다.
+                view.BadgeText = UiChrome.AddText(view.Badge, "BadgeText", 10, TextAnchor.MiddleCenter,
                     UiChrome.OnAccentSolid, bold: true);
                 UiChrome.Stretch(view.BadgeText.rectTransform);
                 view.Badge.gameObject.SetActive(false);

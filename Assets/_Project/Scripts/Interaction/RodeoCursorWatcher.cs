@@ -62,6 +62,7 @@ namespace StickMate.Interaction
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Directors);   // [스톨구간] 계측
             if (_player == null || _config == null) return;
 
             // ★ 2026-08-28 사용자 피드백 대응 — 자동 발동 기본 OFF.

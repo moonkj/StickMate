@@ -174,6 +174,13 @@ namespace StickMate.Platform.MacOS
         /// <summary>창 크기를 실제로 재대입한 누적 횟수(로그 전용). 백버퍼 재할당 횟수와 1:1이다.</summary>
         private int _windowResizeCalls;
 
+        /// <summary>
+        /// 창 기하 A↔B 진동 가드. 판정은 플랫폼 중립 한 곳(<see cref="OverlayGeometryOscillationGuard"/>)에
+        /// 있고 여기서는 관측만 한다 — Windows판 Enforcer도 같은 클래스를 같은 방식으로 쓴다.
+        /// </summary>
+        private readonly OverlayGeometryOscillationGuard _boundsOscillation =
+            new OverlayGeometryOscillationGuard();
+
         // 실행 중 디스플레이 구성 변경 추적(2026-08-31). 판단 로직은 플랫폼 공용
         // Platform/DisplayTopologyWatcher.cs 한 곳에 있고 여기서는 관측만 한다 — Windows판도 같은 클래스를
         // 같은 방식으로 쓴다(오늘 VisibleTopEdgeSolver에서 한쪽만 고쳐 재발한 사례의 재발 방지).
@@ -222,6 +229,7 @@ namespace StickMate.Platform.MacOS
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.PlatformEnforcer);   // [스톨구간] 계측
             // ★ 창 부착 여부와 무관하게 가장 먼저 건다(2026-08-31 성능 라운드). 시작 직후 몇 초는
             //   UniWindowController가 NSWindow를 붙잡기를 기다리는 구간이라 오히려 프레임을 가장
             //   헛되이 태우는 구간이다. 설정이 아직 없으면 내부적으로 다음 프레임에 다시 시도한다.
@@ -296,9 +304,10 @@ namespace StickMate.Platform.MacOS
             _controller.isClickThrough = DesiredClickThrough;
 
             // ★ 순서 의존: LibUniWinC의 setTopmost()가 collectionBehavior를 통째로 덮어쓰므로
-            //   (.fullScreenAuxiliary만 남고 .canJoinAllSpaces가 날아간다) isTopmost 대입 **직후**에
-            //   반드시 다시 걸어야 한다. 아래 TickAllSpacesBehavior()의 감시만으로도 결국 복구되지만,
-            //   그 사이 최대 2초 동안 타 앱 전체화면에서 캐릭터가 사라지는 창이 생긴다.
+            //   (.fullScreenAuxiliary만 남고 .canJoinAllSpaces/.stationary가 날아간다) isTopmost 대입
+            //   **직후**에 반드시 다시 걸어야 한다. 아래 TickAllSpacesBehavior()의 감시만으로도 결국
+            //   복구되지만, 그 사이 최대 2초 동안 타 앱 전체화면에서 캐릭터가 사라지고, 그 창에
+            //   데스크톱 표시(F11)가 겹치면 창이 화면 밖으로 밀려 좌표계까지 오염된다(2026-09-01 실측).
             MacSpaceBehaviorNative.EnsureAllSpacesBehavior(out _);
 
             Debug.Log($"[MacOverlayStateEnforcer] 재적용 {_appliedCount}/{ReapplyAttempts} — " +
@@ -328,7 +337,9 @@ namespace StickMate.Platform.MacOS
         /// 사용자가 창을 직접 만졌을 때 영원히 되돌리지 않기 위한 기존 컨벤션(ReapplyAttempts)과 같은 태도다.
         /// </summary>
         /// <summary>
-        /// collectionBehavior(.canJoinAllSpaces | .fullScreenAuxiliary) 유지 감시 — 원인 A의 마지막 안전망.
+        /// collectionBehavior(.canJoinAllSpaces | .stationary | .fullScreenAuxiliary = 0x111) 유지 감시 —
+        /// 원인 A(타 앱 전체화면)와 데스크톱 표시(F11)/Exposé 양쪽의 마지막 안전망.
+        /// 각 비트의 근거는 MacSpaceBehaviorNative의 RequiredBehavior 위 문단에 있다.
         ///
         /// 재적용 루프(ReapplyAttempts회)는 몇 초 뒤 끝나지만, UniWindowController는 그 뒤에도 자체 사정으로
         /// SetTopmost를 다시 호출할 수 있다(예: 창 재부착, isTopmost 프로퍼티 재대입). 그때마다 우리 플래그가
@@ -351,6 +362,7 @@ namespace StickMate.Platform.MacOS
         private void TickFullScreenBounds()
         {
             if (_fullScreenBoundsApplied || _fullScreenApplyAttempts >= MaxFullScreenApplyAttempts) return;
+            if (_boundsOscillation.IsOscillating) return;   // 아래 진동 가드가 이미 멈춘 상태.
 
             _timerFullScreen += Time.unscaledDeltaTime;
             if (_timerFullScreen < ReapplyIntervalSeconds) return;
@@ -367,6 +379,23 @@ namespace StickMate.Platform.MacOS
 
             Vector2 sizeBefore = _controller.windowSize;
             Vector2 posBefore = _controller.windowPosition;
+
+            // ★★ 2026-09-01 — A↔B 진동 가드(플랫폼 중립 OverlayGeometryOscillationGuard).
+            //
+            // 불감대(OverlayBoundsFitPolicy)는 **1px 래칫**만 막는다. 창 기하가 두 값 사이를 오가면
+            // (실기 로그: (0,0,1512,982) ↔ (0,33,1512,1010)) 두 값 모두 불감대 밖이라 "불일치" 판정이
+            // 매번 참이고, 재적용이 원리적으로 수렴하지 않는다. 재적용 한 번 = OS 표면 재생성 한 번 =
+            // 수백 ms 정지이므로, **수렴 불가라는 사실 자체**를 감지해 멈춘다.
+            // Windows판 Enforcer도 같은 클래스를 같은 방식으로 쓴다.
+            if (_boundsOscillation.Observe(new Rect(posBefore, sizeBefore), BoundsEpsilonPoints))
+            {
+                _fullScreenApplyAttempts = MaxFullScreenApplyAttempts;   // 이번 에피소드 즉시 종료.
+                Debug.LogWarning("[MacOverlayStateEnforcer] ★전체화면 재적합을 중단합니다 — " +
+                    _boundsOscillation.Diagnosis +
+                    " 이후 디스플레이 구성이 바뀌어도 이 프로세스에서는 재무장하지 않습니다" +
+                    "(_setResolutionCalls 상한과 같은 이유 — 여기서 풀면 상한이 사실상 사라집니다).");
+                return;
+            }
 
             // 라이브러리의 GetMonitorRect()는 실측 결과 **visibleFrame**(메뉴바 33pt + Dock 75pt를 뺀
             // 작업영역)을 돌려준다: (0,75,1512,874). 화면 진짜 전체(1512x982)를 덮으려면 그 두 띠까지
@@ -457,8 +486,14 @@ namespace StickMate.Platform.MacOS
 
             // (c) 크기 -> 위치. **이미 불감대 안이면 대입 자체를 하지 않는다** — 대입 한 번이 곧 OS
             // 창 리사이즈 한 번이고, 그것이 백버퍼 재할당 한 번이다.
-            bool needsResize = OverlayBoundsFitPolicy.ShouldResize(sizeBefore.x, sizeBefore.y,
-                monitor.width, monitor.height, BoundsEpsilonPoints);
+            // ★ 2026-09-01 — 창 크기 재대입에도 **수명 상한**을 건다. Screen.SetResolution만 상한이
+            //   있고 이쪽은 무제한이던 비대칭을 없앤다(둘 다 OS 표면 재생성 = 수백 ms 정지).
+            //   지금 터지는 버그가 아니라, 불감대를 넘는 오차를 가진 환경에서 다시 열릴 문을 닫는
+            //   하드닝이다 — 근거는 OverlayBoundsFitPolicy.DefaultMaxWindowResizeCalls 문서.
+            bool resizeCapped = _windowResizeCalls >= OverlayBoundsFitPolicy.DefaultMaxWindowResizeCalls;
+            bool needsResize = OverlayBoundsFitPolicy.ShouldResizeWithinBudget(sizeBefore.x, sizeBefore.y,
+                monitor.width, monitor.height, BoundsEpsilonPoints,
+                _windowResizeCalls, OverlayBoundsFitPolicy.DefaultMaxWindowResizeCalls);
             bool needsMove = OverlayBoundsFitPolicy.ShouldMove(posBefore.x, posBefore.y,
                 monitor.x, monitor.y, BoundsEpsilonPoints);
             if (needsResize)
@@ -490,7 +525,7 @@ namespace StickMate.Platform.MacOS
             Debug.Log($"[MacOverlayStateEnforcer] 전체화면 확장 시도 {_fullScreenApplyAttempts}/{MaxFullScreenApplyAttempts} — " +
                 $"모니터={monitor}, 이전(size={sizeBefore}, pos={posBefore}) -> 이후(size={sizeAfter}, pos={posAfter}), " +
                 $"재생성 누적(SetResolution {_setResolutionCalls}/{OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls}회" +
-                $"{(resolutionCapped ? " ★상한 도달 — 더는 부르지 않는다" : "")}, 창리사이즈 {_windowResizeCalls}회), " +
+                $"{(resolutionCapped ? " ★상한 도달 — 더는 부르지 않는다" : "")}, 창리사이즈 {_windowResizeCalls}/{OverlayBoundsFitPolicy.DefaultMaxWindowResizeCalls}회{(resizeCapped ? " ★상한 도달" : "")}), " +
                 $"이번 틱 실행(SetResolution={(resolutionMismatch || modeMismatch) && !resolutionCapped}, " +
                 $"리사이즈={needsResize}, 이동={needsMove}, 불감대={BoundsEpsilonPoints:F0}pt/{resolutionEpsilon:F1}px), " +
                 $"Screen=({Screen.width}x{Screen.height}) [목표 {targetPixelW}x{targetPixelH} 픽셀, dpi배율={dpi:F3}], " +
@@ -519,6 +554,10 @@ namespace StickMate.Platform.MacOS
         /// </summary>
         private void TickDisplayTopology()
         {
+            // 진동으로 확정된 뒤에는 재무장 자체를 하지 않는다 — 재무장은 상한을 되돌리는 유일한 경로라,
+            // 여기를 막지 않으면 위에서 멈춘 것이 다음 통지에 그대로 되살아난다.
+            if (_boundsOscillation.IsOscillating) return;
+
             bool fitInProgress = !_fullScreenBoundsApplied && _fullScreenApplyAttempts < MaxFullScreenApplyAttempts;
             if (fitInProgress) return;
 
@@ -874,27 +913,13 @@ namespace StickMate.Platform.MacOS
             if (_renderQualityDiagnosticsLogged) return;
             _renderQualityDiagnosticsLogged = true;
 
-            // 세로 물리픽셀 / 세로 월드유닛(= orthographicSize * 2). 캐릭터가 화면에서 실제로 몇
-            // 픽셀을 차지하는지 계산하는 유일한 환산 계수다.
-            float pixelsPerUnit = cam.orthographic && cam.orthographicSize > 0f
-                ? cam.pixelHeight / (cam.orthographicSize * 2f)
-                : 0f;
-
-            // 캐릭터 선 두께 실측 — 씬의 모든 LineRenderer를 한 번만 훑는다(상주 앱이라 매 프레임
-            // 하지 않는다). 월드 스케일이 곱해진 실제 두께를 봐야 하므로 lossyScale.x를 함께 쓴다.
-            float minWidthPx = float.MaxValue, maxWidthPx = 0f;
-            int lineCount = 0;
-            var lines = Object.FindObjectsByType<LineRenderer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-            foreach (LineRenderer lr in lines)
-            {
-                if (lr == null) continue;
-                float widthPx = lr.startWidth * Mathf.Abs(lr.transform.lossyScale.x) * pixelsPerUnit;
-                if (widthPx <= 0f) continue;
-                lineCount++;
-                if (widthPx < minWidthPx) minWidthPx = widthPx;
-                if (widthPx > maxWidthPx) maxWidthPx = widthPx;
-            }
-            if (lineCount == 0) minWidthPx = 0f;
+            // 캐릭터 선 두께 실측은 **플랫폼 중립** 계측기에 위임한다
+            // (Platform/StrokeWidthDiagnostics). 환산(월드->물리픽셀->OS 포인트)과 하한 판정이
+            // 여기 인라인으로 있으면 Windows가 물리적으로 같은 숫자를 낼 수 없다 —
+            // FullscreenSuspendPolicy 사고와 같은 형태이고, PlatformParityAuditTests의 C4 감사가
+            // 이 자리를 잠근다. 이 파일이 하는 일은 "사실 조회 + 출력"뿐이다.
+            // ★ 2026-09-01: 옮기면서 `× lossyScale.x` 오류도 함께 고쳤다(경위는 그 클래스 문서).
+            StrokeWidthDiagnostics.Report strokes = StrokeWidthDiagnostics.Measure(cam, ResolveConfig());
 
             int requested = QualitySettings.antiAliasing;
             int actual = Screen.msaaSamples;
@@ -908,8 +933,8 @@ namespace StickMate.Platform.MacOS
                 $" | 품질레벨={QualitySettings.names[QualitySettings.GetQualityLevel()]}" +
                 $" | allowMSAA={cam.allowMSAA}, allowHDR={cam.allowHDR}, targetTexture={(cam.targetTexture == null ? "없음(백버퍼 직접)" : "있음(RT 우회 — MSAA 경로 이탈 의심)")}" +
                 $" | 카메라픽셀=({cam.pixelWidth}x{cam.pixelHeight}), Screen=({Screen.width}x{Screen.height}), dpi={Screen.dpi:F0}" +
-                $" | orthographicSize={cam.orthographicSize:F2} -> {pixelsPerUnit:F1} 물리픽셀/유닛" +
-                $" | LineRenderer {lineCount}개 획 두께 실측 {minWidthPx:F2}~{maxWidthPx:F2} 물리픽셀" +
+                $" | orthographicSize={cam.orthographicSize:F2} -> {strokes.PixelsPerWorldUnit:F1} 물리픽셀/유닛" +
+                $" | {StrokeWidthDiagnostics.Describe(strokes)}" +
                 $" | GPU={SystemInfo.graphicsDeviceName} ({SystemInfo.graphicsDeviceType})");
         }
 

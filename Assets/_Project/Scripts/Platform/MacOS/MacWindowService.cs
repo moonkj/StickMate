@@ -61,7 +61,7 @@ namespace StickMate.Platform.MacOS
     /// 취급하므로 컴파일/런타임 모두 문제 없다(Win32WindowService가 실제로 두 인터페이스 다 구현한 것과
     /// 다른 점 — macOS는 이번 라운드에 그 두 캐퍼빌리티까지는 손대지 않는다).
     /// </summary>
-    public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService, IGlobalPointerButtonService, IGlobalKeyStateService, ILocalClickCaptureService, IDockMetricsService, IRawWindowRectSource
+    public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService, IGlobalPointerButtonService, IGlobalKeyStateService, ILocalClickCaptureService, IDockMetricsService, IRawWindowRectSource, IWindowEnumerationCostSource
     {
         #region CoreGraphics / CoreFoundation P/Invoke 선언 (이 리전 밖으로 유출 금지)
 
@@ -141,7 +141,10 @@ namespace StickMate.Platform.MacOS
         private const ushort kVK_ANSI_F = 0x03; // 집중 모드 켜기/끄기(Focus)
         private const ushort kVK_ANSI_A = 0x00; // 활쏘기 발동(Archery)
         private const ushort kVK_ANSI_I = 0x22; // 캐릭터 정보/장비 창(Info) — <HIToolbox/Events.h> kVK_ANSI_I = 34
-        private const ushort kVK_ANSI_Comma = 0x2B; // 설정창(⌘, 관례) — <HIToolbox/Events.h> kVK_ANSI_Comma = 43
+        // 설정창(Preferences) — <HIToolbox/Events.h> kVK_ANSI_P = 35. 2026-09-01 쉼표에서 옮겨왔다:
+        // ⌃⌥⌘,는 macOS가 접근성 "대비 줄이기"로 예약한 조합이라 우리 단축키가 사용자의 OS 설정을
+        // 실제로 바꿨다(Core/ShortcutLabel.MacReservedActionKeys 참고).
+        private const ushort kVK_ANSI_P = 0x23;
 
         [DllImport(CoreGraphicsLib)]
         private static extern uint CGMainDisplayID();
@@ -392,6 +395,43 @@ namespace StickMate.Platform.MacOS
         /// </summary>
         public int LastFullyOccludedWindowCount { get; private set; }
 
+        // ============================================================================
+        // ★★ IWindowEnumerationCostSource (2026-09-01) — 리더 실측 대응
+        // ============================================================================
+        // 리더가 맥 빌드를 6분간 띄워 관측한 [발판열거] 시간순 수치:
+        //   1분 3.55ms -> 2분 4.01ms -> 3분 3.95ms -> 5분 4.92ms -> 6분 5.10ms  (1회 평균, +44%)
+        // **1회 비용이 단조 증가에 가깝게 커진다.** 그런데 같은 로그가
+        //   `전체 창 -1개(최대 -1), 정밀검사 -1회(최대 -1)`
+        // 로 찍혔다 — 이 서비스가 IWindowEnumerationCostSource를 구현하지 않아 "모르는 값"이었다.
+        //
+        // 그 두 숫자가 없으면 **처방이 정반대인 두 가설을 구분할 수 없다**:
+        //   (A) 창 개수가 늘고 있다        -> 외부 요인. 우리 비용이 창 수에 비례하는 설계 문제
+        //                                    -> 범위 축소/이벤트 방식이 정답.
+        //   (B) 창 개수는 그대로인데 1회 비용만 커진다 -> **우리 코드 안의 누적 결함**. 즉시 고칠 버그다.
+        // 이 두 프로퍼티가 그 구분을 준다. 비용은 패스당 정수 대입 1회 + 창당 증가 1회다.
+        private int _enumeratedWindowCount;
+        private int _detailProbeCount;
+
+        /// <summary>
+        /// 마지막 패스에서 <c>CGWindowListCopyWindowInfo</c>가 돌려준 창의 <b>총 개수</b>(필터 이전).
+        /// Windows의 <c>EnumWindows</c> 콜백 횟수와 같은 의미다.
+        /// </summary>
+        public int LastEnumeratedWindowCount => _enumeratedWindowCount;
+
+        /// <summary>
+        /// 값싼 필터(레이어 0 + bounds 파싱)를 뚫고 <b>창당 상세 조회</b>까지 간 횟수.
+        ///
+        /// <para><b>Windows와 의미가 정확히 같지는 않다</b>(로그 라벨은 "정밀검사"로 공유한다).
+        /// Windows에서는 이것이 <c>DwmGetWindowAttribute</c> = <b>크로스 프로세스</b> 호출 횟수다.
+        /// macOS에서 창 목록은 <c>CGWindowListCopyWindowInfo</c> <b>한 번</b>의 WindowServer 왕복으로
+        /// 통째로 오므로 창당 크로스 프로세스 호출이 없다. 대신 창마다
+        /// <c>TryGetString</c>(CFString -> C# 문자열 복사) / <c>TryGetFloat</c> / <c>TryGetBool</c> /
+        /// <c>CGRectMakeWithDictionaryRepresentation</c>가 도는데, <b>창 수에 비례해 커지는 실제 비용</b>은
+        /// 그쪽이다. 그래서 두 플랫폼에서 이 값이 답하는 질문은 같다:
+        /// <b>"창당 비싼 처리를 몇 번 했는가"</b>.</para>
+        /// </summary>
+        public int LastDwmProbeCount => _detailProbeCount;
+
         /// <summary>
         /// 가려짐 계산 후 남은 상단 테두리 조각이 이보다 좁으면 버린다(OS 포인트). 캐릭터 몸통 폭보다
         /// 훨씬 좁은 조각 위에 서 있게 하면 "허공에 떠 있다"는 사용자 인식이 그대로 재발하기 때문이다.
@@ -412,8 +452,10 @@ namespace StickMate.Platform.MacOS
         private const string RejectOffDisplay = "화면(주 디스플레이) 밖";
         private const string RejectFullyOccluded = "다른 창에 완전히 가려짐";
 
-        // CFStringGetCString용 재사용 버퍼(오너 이름 조회 — 자기 자신 제외 판정의 보조 신호로만 사용,
-        // 아래 IsSelfWindow 참고). 창 제목 자체는 PlatformFoothold가 애초에 노출하지 않는다
+        // CFStringGetCString용 재사용 버퍼(오너 이름 조회 — **발판/전체화면 제외 판정**의 보조 신호로만
+        // 사용한다. 좌표계의 출처 판정에는 절대 쓰지 않는다: 같은 앱의 두 번째 인스턴스는 이름이
+        // 정확히 같아서 남의 창이 우리 좌표계를 덮어쓴다 — IsSelfProcessWindow/IsOwnAppWindow 문서 참고).
+        // 창 제목 자체는 PlatformFoothold가 애초에 노출하지 않는다
         // (Win32WindowService도 GetWindowText 결과를 저장하지 않는 것과 동일한 설계).
         private readonly byte[] _ownerNameBuffer = new byte[256];
 
@@ -525,10 +567,16 @@ namespace StickMate.Platform.MacOS
         /// </summary>
         public float DetectDesktopDpiScale()
         {
-            if (TryGetSelfWindowRect(out Rect selfRect) && Screen.width > 0 && selfRect.width > 0f)
+            if (TryGetSelfWindowRect(out Rect selfFrame) && Screen.width > 0 && selfFrame.width > 0f)
             {
+                // ★ 2026-09-01 — frame(타이틀바 포함)이 아니라 콘텐츠 사각형을 보고한다. 기동 직후에는
+                //   창이 아직 보더리스가 아니라 frame이 28pt 더 크고 원점이 그만큼 위에 있다
+                //   (실기 로그 기동 첫 줄: 창=(0,33,1512,1010), 같은 창의 콘텐츠는 (0,61,1512,982)).
+                OverlayContentRectPolicy.TryStripTopDecoration(
+                    selfFrame, ResolveOverlayContentSize(selfFrame),
+                    OverlayContentRectPolicy.DefaultEpsilonPoints, out Rect selfRect, out _);
                 ScreenCoordinateConverter.ReportOverlayWindowOsRect(selfRect);
-                Debug.Log($"[MacWindowService] DetectDesktopDpiScale(): 자기 창 실측 — 창={selfRect}, " +
+                Debug.Log($"[MacWindowService] DetectDesktopDpiScale(): 자기 창 실측 — 창={selfRect}(원본 frame={selfFrame}), " +
                     $"Screen=({Screen.width}x{Screen.height}) -> 자동 배율 {ScreenCoordinateConverter.AutoDpiScale:F3} " +
                     "(창 폭[OS 포인트] / Screen.width[Unity 픽셀])를 ScreenCoordinateConverter에 반영했습니다" +
                     "(오버레이 원점도 같은 관측에서 함께 반영). " +
@@ -621,18 +669,61 @@ namespace StickMate.Platform.MacOS
         }
 
         /// <summary>
-        /// 이 창이 우리 자신(Unity 플레이어 프로세스)의 창인지 판정한다. PID 비교가 1차 근거(정확한
-        /// 식별자 — 이름은 배포/로컬라이즈에 따라 달라질 수 있음)이고, kCGWindowOwnerName 문자열 비교를
-        /// 보조 신호로 추가한다(작업 지시가 명시한 신호를 그대로 함께 반영 — PID 조회가 어떤 이유로
-        /// 실패해도(이론상 발생 안 함, CGWindowListCopyWindowInfo가 항상 채워주는 필수 키) 이름 비교로
-        /// 안전망 역할).
+        /// 이 창이 <b>바로 이 프로세스</b>의 창인가 — <c>kCGWindowOwnerPID</c> <b>단독</b> 판정.
+        ///
+        /// ============================================================================
+        /// ★ 2026-09-01 — 왜 이름 비교를 여기서 뺐는가 (이름은 프로세스를 식별하지 못한다)
+        /// ============================================================================
+        /// 직전까지 이 판정은 "PID가 같거나 <b>또는</b> kCGWindowOwnerName이 같으면 자기 창"이었다.
+        /// 그런데 <b>같은 앱의 두 번째 인스턴스</b>는 PID가 다르고 이름은 <b>정확히 같다</b>. 그래서
+        /// 이름 분기가 남의 프로세스 창을 "내 창"으로 통과시켰고, 그 창의 사각형이 그대로
+        /// <see cref="ScreenCoordinateConverter.ReportOverlayWindowOsRect"/>로 흘러들어가
+        /// <b>우리 좌표계 전체가 남의 창을 기준으로 재설정</b>됐다.
+        ///
+        /// <para>실기 흔적(2026-09-01, PID 11451 로그 18:05~18:06 구간): 오버레이 사각형이
+        /// <c>(0,0,1512,982)</c> ↔ <c>(0,33,1512,1010)</c>로 폴링마다 교대했다. 뒤엣것은
+        /// <b>StickMate가 기동 중일 때의 창 모양 그 자체</b>다 — 같은 로그 26번째 줄, 우리 자신의
+        /// 기동 구간에 바이트 단위로 같은 값이 찍혀 있다(타이틀바 28pt가 아직 붙어 있고 AppKit이
+        /// 그 타이틀바를 메뉴바 아래로 밀어 놓은 상태). 그런데 우리 창은 17:17에 전체화면 적합을
+        /// <b>1회</b> 끝낸 뒤 다시 만져진 적이 없다(재적합 시도 1/6, 재무장 0회). 즉 그 순간의
+        /// (0,33,1512,1010)은 <b>우리 창일 수 없다</b>.</para>
+        ///
+        /// <para>교대가 일어난 이유도 여기서 설명된다: <see cref="CaptureOverlayOrigin"/>은 한 패스에서
+        /// <b>면적이 가장 큰</b> 자기 창을 고르는데, 남의 창(1512x1010)이 우리 창(1512x982)보다 크므로
+        /// 그 창이 온스크린 목록에 있는 패스에서는 그쪽이, 없는 패스에서는 우리 창이 선택된다.</para>
+        ///
+        /// <para><b>PID 조회가 실패할 걱정은 없다</b>: <c>kCGWindowOwnerPID</c>는
+        /// <c>CGWindowListCopyWindowInfo</c>가 항상 채우는 필수 키다. 그래도 키 자체가 없는 이론적
+        /// 경우에만 이름을 안전망으로 쓴다 — <b>PID를 읽었다면 그 비교 결과가 곧 결론</b>이고,
+        /// "PID는 다른데 이름이 같아서 통과"는 이제 일어나지 않는다.</para>
         /// </summary>
-        private bool IsSelfWindow(IntPtr windowDict)
+        private bool IsSelfProcessWindow(IntPtr windowDict)
         {
-            if (TryGetInt(windowDict, _keyWindowOwnerPID, out int ownerPid) && ownerPid == _currentProcessId)
+            if (TryGetInt(windowDict, _keyWindowOwnerPID, out int ownerPid))
             {
-                return true;
+                return ownerPid == _currentProcessId;
             }
+            // PID 키가 아예 없는 경우에만 이름 안전망(이론상 도달하지 않는다).
+            string ownerName = TryGetString(windowDict, _keyWindowOwnerName);
+            return !string.IsNullOrEmpty(ownerName) && ownerName == _currentProcessName;
+        }
+
+        /// <summary>
+        /// 이 창이 <b>우리 앱(같은 이름의 다른 인스턴스 포함)</b>의 창인가 — "발판/전체화면 판정에서
+        /// 빼야 하는가"라는 <b>다른 질문</b>에 답한다.
+        ///
+        /// <para>두 질문을 한 함수가 겸하고 있던 것이 위 사고의 구조적 원인이다:</para>
+        /// <list type="bullet">
+        ///   <item><b>좌표계의 출처</b>("이 창이 내 오버레이인가") — 반드시 PID 단독이어야 한다.
+        ///         남의 창을 기준으로 좌표계를 세우면 캐릭터가 통째로 어긋난다.</item>
+        ///   <item><b>제외 대상</b>("이 창을 밟거나 전체화면으로 오인하면 안 되는가") — 이름까지
+        ///         포함하는 <b>넓은</b> 판정이 옳다. 두 번째 인스턴스의 투명 오버레이를 발판으로
+        ///         삼거나 "전체화면 앱"으로 오인하면 안 되기 때문이다(기존 동작 유지).</item>
+        /// </list>
+        /// </summary>
+        private bool IsOwnAppWindow(IntPtr windowDict)
+        {
+            if (IsSelfProcessWindow(windowDict)) return true;
             string ownerName = TryGetString(windowDict, _keyWindowOwnerName);
             return !string.IsNullOrEmpty(ownerName) && ownerName == _currentProcessName;
         }
@@ -689,11 +780,17 @@ namespace StickMate.Platform.MacOS
             _rejReasons.Clear();
             LastRawWindowCount = 0;
             LastFullyOccludedWindowCount = 0;
+            _enumeratedWindowCount = 0;
+            _detailProbeCount = 0;
             bool hasDisplay = TryGetMainDisplayBounds(out Rect displayBounds);
             _overlayOriginPassArea = 0.0; // CaptureOverlayOrigin()의 "이번 패스 최대 면적" 리셋.
             // ★ 2026-09-01 — 같은 관측을 CaptureOverlayOrigin()의 위생 검사에도 넘긴다(새 호출 0건).
             _hasDisplayBoundsThisPass = hasDisplay;
             _displayBoundsThisPass = displayBounds;
+            // ★ 2026-09-01 — 창 장식(타이틀바) 제거용 콘텐츠 크기를 이번 패스에 **한 번만** 읽는다.
+            //   CaptureOverlayOrigin()은 패스당 여러 번 불릴 수 있는데(자기 창이 여러 개), 그때마다
+            //   네이티브를 두드릴 이유가 없다. 부착 전에는 (0,0)이고 그러면 규칙이 보정을 포기한다.
+            _overlayContentSizeThisPass = ReadControllerContentSize();
 
             IntPtr windowArray = CopyOnScreenWindowList();
             if (windowArray == IntPtr.Zero) return _footholdBuffer; // 조회 실패 — FallbackPlatformWindowService 안전망이 감싸므로 빈 리스트로도 안전.
@@ -701,6 +798,7 @@ namespace StickMate.Platform.MacOS
             try
             {
                 long count = CFArrayGetCount(windowArray);
+                _enumeratedWindowCount = (int)count; // 계측 전용(IWindowEnumerationCostSource) — 대입 1회.
                 for (long i = 0; i < count; i++)
                 {
                     IntPtr windowDict = CFArrayGetValueAtIndex(windowArray, i);
@@ -710,9 +808,12 @@ namespace StickMate.Platform.MacOS
                     // 아래 레이어 필터보다 **먼저** 판정한다 — 우리 창은 항상위(kCGWindowLayer=101)라
                     // 레이어 필터에 먼저 걸리면 여기까지 오지 못하고, 그러면 바로 아래의 오버레이 원점
                     // 캡처가 영원히 실행되지 않는다(발판 목록에서 제외된다는 결과 자체는 순서와 무관하게 동일).
-                    if (IsSelfWindow(windowDict))
+                    if (IsOwnAppWindow(windowDict))
                     {
-                        CaptureOverlayOrigin(windowDict);
+                        // ★ 좌표계의 출처는 **이 프로세스의 창만**이다(IsSelfProcessWindow 문서 참고).
+                        //   같은 이름의 다른 인스턴스 창은 발판에서 빼기만 하고, 원점/배율에는 절대
+                        //   반영하지 않는다 — 그것이 2026-09-01 좌표계 교대의 직접 원인이었다.
+                        if (IsSelfProcessWindow(windowDict)) CaptureOverlayOrigin(windowDict);
                         continue;
                     }
 
@@ -726,6 +827,8 @@ namespace StickMate.Platform.MacOS
 
                     long handle = 0;
                     if (TryGetInt(windowDict, _keyWindowNumber, out int windowNumber)) handle = windowNumber;
+
+                    _detailProbeCount++; // 계측 전용 — 아래부터가 창당 비싼 구간(CFString 복사 등)이다.
 
                     var screenRect = new Rect((float)rect.Origin.X, (float)rect.Origin.Y, (float)rect.Size.Width, (float)rect.Size.Height);
                     // 위 _footholdOwnerNames 선언부 참고 — 진단 로그 전용, 인덱스 1:1 유지가 계약이다.
@@ -1098,11 +1201,31 @@ namespace StickMate.Platform.MacOS
                     if (windowDict == IntPtr.Zero) continue;
                     if (!TryGetInt(windowDict, _keyWindowLayer, out int layer) || layer != 0) continue;
 
+                    // ★★ 2026-09-02 — **투명 보조 창 거부권**. 이 한 줄이 없어서 원칙 2가 네이티브
+                    //   전체화면 경로에서 통째로 죽어 있었다.
+                    //   macOS는 네이티브 전체화면 창마다 "자동 숨김 타이틀바 컨테이너"를 함께 만든다.
+                    //   그 창은 layer 0이면서 z-order상 **본 창보다 앞**이고, 알파가 0이라 눈에는
+                    //   보이지 않는다:
+                    //       L=0 a=0.0 (0,33,1512, 32)   <- 얘가 먼저 잡혀 기하 불일치 -> return false
+                    //       L=0 a=1.0 (0,33,1512,949)   <- 본 창은 영원히 검사되지 않는다
+                    //   버그의 본질은 "같은 파일 안에서 **발판 열거 경로에는 있는 알파 필터**가
+                    //   전체화면 경로에만 빠져 있었다"는 것이다. 그래서 상수를 새로 만들지 않고
+                    //   MinWindowAlpha(발판 경로와 같은 값)를 그대로 재사용한다.
+                    //   (기하 불일치 쪽의 return false는 **의도적으로 유지한다** — continue로 바꾸면
+                    //    z-order 아무 데나 화면 크기 게임 창이 있기만 하면 숨어서, 전체화면 게임 위에
+                    //    작은 창을 띄우고 작업 중일 때 캐릭터가 사라진다.)
+                    //   순서: 이 필터가 IsOwnAppWindow보다 **앞**이다. 우리 오버레이의 NSWindow
+                    //   alphaValue는 1.0이고(투명은 픽셀 알파지 창 알파가 아니다) 창 레벨도 0이 아니라
+                    //   여기 걸리지 않는다. 설령 걸려 건너뛰더라도 그 아래 창을 정상 판정하게 되므로
+                    //   결과가 더 정확해지는 방향이다.
+                    float alpha = TryGetFloat(windowDict, _keyWindowAlpha, out float rawAlpha) ? rawAlpha : 1f;
+                    if (alpha < MinWindowAlpha) continue;
+
                     // 최상단 일반 창이 우리 자신이면 "다른 전체화면 앱"이 아니다(Win32의
                     // fg == _overlayHwnd 처리와 동일 의도) — 더 탐색하지 않고 즉시 false.
-                    if (IsSelfWindow(windowDict))
+                    if (IsOwnAppWindow(windowDict))
                     {
-                        reason = "최상단 일반(layer 0) 창이 우리 자신이라 전체화면 앱이 아님.";
+                        reason = "최상단 일반(layer 0) 창이 우리 앱(같은 이름의 다른 인스턴스 포함)이라 전체화면 앱이 아님.";
                         return false;
                     }
 
@@ -1121,12 +1244,18 @@ namespace StickMate.Platform.MacOS
                         return false;
                     }
 
+                    // 퇴화 사각형(0폭/0높이)은 판정 근거가 될 수 없다. 위 알파 필터와 같은 성격의
+                    // "보이지 않는 창" 거부권이며, 알파를 1로 보고하면서 크기만 0인 보조 창을 받는다.
+                    if (winRect.Size.Width <= 0 || winRect.Size.Height <= 0) continue;
+
                     CGRect displayBounds = CGDisplayBounds(CGMainDisplayID());
-                    const double epsilon = 0.5; // 부동소수/서브픽셀 오차 허용치.
-                    bool match = Math.Abs(winRect.Origin.X - displayBounds.Origin.X) < epsilon
-                        && Math.Abs(winRect.Origin.Y - displayBounds.Origin.Y) < epsilon
-                        && Math.Abs(winRect.Size.Width - displayBounds.Size.Width) < epsilon
-                        && Math.Abs(winRect.Size.Height - displayBounds.Size.Height) < epsilon;
+                    // 규칙은 플랫폼 중립 파일에 있다(Platform/FullscreenSuspendPolicy.cs) — 네이티브
+                    // 전체화면이 상단 시스템 스트립 33pt를 남기는 실측 근거와 반증 기록이 거기 있다.
+                    bool match = FullscreenGeometry.CoversDisplay(
+                        winRect.Origin.X, winRect.Origin.Y, winRect.Size.Width, winRect.Size.Height,
+                        displayBounds.Origin.X, displayBounds.Origin.Y,
+                        displayBounds.Size.Width, displayBounds.Size.Height,
+                        FullscreenGeometry.Epsilon);
 
                     if (!match)
                     {
@@ -1144,7 +1273,8 @@ namespace StickMate.Platform.MacOS
                     bool isGame = FullscreenGameCategory.IsGameCategory(category);
 
                     reason = $"판정 근거 창 = '{owner}'(pid {ownerPid}) bounds=({winRect.Origin.X:F0},{winRect.Origin.Y:F0} " +
-                        $"{winRect.Size.Width:F0}x{winRect.Size.Height:F0}) = 메인 디스플레이 전체 -> 기하 일치=true, " +
+                        $"{winRect.Size.Width:F0}x{winRect.Size.Height:F0}) 상단여백 {winRect.Origin.Y - displayBounds.Origin.Y:F0}pt " +
+                        $"(허용 {displayBounds.Size.Height * FullscreenGeometry.MenuBarStripFraction:F0}pt) -> 기하 일치=true, " +
                         $"LSApplicationCategoryType={(string.IsNullOrEmpty(category) ? "(미선언)" : category)} -> 게임={isGame}" +
                         (isGame ? "." : " (게임이 아니므로 숨기지 않습니다 — 원칙 2는 '전체화면 게임'만 대상).");
                     return isGame;
@@ -1652,7 +1782,7 @@ namespace StickMate.Platform.MacOS
                 case GlobalKey.F:       code = kVK_ANSI_F;  break;
                 case GlobalKey.A:       code = kVK_ANSI_A;  break;
                 case GlobalKey.I:       code = kVK_ANSI_I;  break;
-                case GlobalKey.Comma:   code = kVK_ANSI_Comma; break;
+                case GlobalKey.P:       code = kVK_ANSI_P;  break;
                 default:
                     pressed = false;
                     return false;
@@ -1691,8 +1821,40 @@ namespace StickMate.Platform.MacOS
             if (area < _overlayOriginPassArea) return;
             _overlayOriginPassArea = area;
 
-            var osRect = new Rect((float)rect.Origin.X, (float)rect.Origin.Y,
+            var frameRect = new Rect((float)rect.Origin.X, (float)rect.Origin.Y,
                 (float)rect.Size.Width, (float)rect.Size.Height);
+
+            // ★★ 2026-09-01 — kCGWindowBounds는 **frame** 사각형이다(타이틀바 포함). Unity가 그리는 것은
+            //    **콘텐츠** 사각형이므로, 창이 아직 보더리스가 아닌 동안에는 원점이 28pt 위로/높이가
+            //    28pt 크게 보고되어 좌표계가 그만큼 어긋난다. 우리 자신의 **기동 2.3초 구간**이 실측으로
+            //    확인된 그 구간이다(로그 26번째 줄: 창=(0,33,1512,1010), 같은 순간 clientSize=(1512,982)).
+            //    판정은 플랫폼 중립 규칙 한 곳에 있다 — 근거와 산술은 OverlayContentRectPolicy 문서 참고.
+            //    Windows판은 같은 부류를 이미 TryGetVisualWindowRect(DWM 확장 프레임)로 막고 있었다.
+            Vector2 contentSize = _overlayContentSizeThisPass;
+            bool contentSizeFromLibrary = contentSize.x > 0f && contentSize.y > 0f;
+            if (!contentSizeFromLibrary)
+            {
+                // 부착 전(clientSize=(0,0))에는 백버퍼로 유도한다 — 기동 직후 몇 초를 틀린 원점으로
+                // 보내지 않기 위해서다(근거는 정책 문서의 항등식).
+                OverlayContentRectPolicy.TryDeriveContentSizeFromBackbuffer(
+                    frameRect, Screen.width, Screen.height, out contentSize);
+            }
+
+            bool decorationStripped = OverlayContentRectPolicy.TryStripTopDecoration(
+                frameRect, contentSize, OverlayContentRectPolicy.DefaultEpsilonPoints,
+                out Rect osRect, out float strippedTopPoints);
+
+            // ★ 진동(A↔B↔A↔B) 감시. 불감대는 1px 래칫만 막고 A/B 진동은 못 막는다(둘 다 불감대 밖이면
+            //   영원히 계속된다) — 그래서 별도 안전장치를 플랫폼 중립 위치에 두고 양쪽이 호출한다.
+            //   여기서 우리가 창을 재적용하지는 않으므로 "멈출" 대상은 없지만, **증거를 한 번 남긴다**.
+            //   2026-09-01에 관측된 교대의 유력한 경로(같은 이름의 두 번째 인스턴스 창이 이름 폴백으로
+            //   '내 창'이 되던 것)는 이번 라운드에 IsSelfProcessWindow 분리로 막혔다. 그래도 이 줄이
+            //   다시 찍히면 **다른 원인이 남아 있다는 뜻**이므로, 그때의 상태를 통째로 남겨 둔다.
+            if (_overlayRectOscillation.Observe(frameRect, OverlayContentRectPolicy.DefaultEpsilonPoints))
+            {
+                LogOverlayOscillationEvidence();
+            }
+
             bool originMoved = Vector2.Distance(osRect.position, ScreenCoordinateConverter.OverlayOriginOsScreen) > 0.5f;
 
             // ★ 원점과 DPI 배율을 **한 번의 관측**으로 함께 보고한다(2026-08-29 Retina 대응 라운드).
@@ -1710,14 +1872,35 @@ namespace StickMate.Platform.MacOS
                 ScreenCoordinateConverter.ReportOverlayWindowOsRect(osRect);
             }
 
+            // ★★ 2026-09-01 계측 정직성 수정 — 이 줄은 **거부된 보고까지 "갱신"으로 찍고 있었다.**
+            //   실기 로그(/tmp/stickmate-run/stickmate.log)에서 정확히 이 모양이 21번 나왔다:
+            //       874: [원점위생] ... 버렸습니다 — 보고=(x:-1007 ...), 유지 중인 원점=(0.00, 0.00)
+            //       875: [MacWindowService] ... 갱신 — origin=(-1007.00, 0.00) ...   <- 갱신된 적 없다
+            //   그 결과 로그만 읽은 사람은 "원점이 -1007로 튀었다"고 읽는다(장시간 페르소나가 보고한
+            //   93/135/.../732pt 목록에 거부된 값이 섞여 들어간 직접 원인이다). 좌표계의 **진실**은
+            //   ScreenCoordinateConverter.OverlayOriginOsScreen 하나뿐이므로 그 값을 찍고, 이번 보고가
+            //   반영됐는지 여부를 같은 줄에 명시한다.
+            //   ★ 거부된 보고는 여기서 **아예 찍지 않는다**(침묵이 아니다 — 거부는 [원점위생]이
+            //     연속 1,2,4,8...회째로 이미 남긴다). 이 줄까지 거부마다 찍으면 전체화면 전환 한 번에
+            //     같은 사건이 두 태그로 두 번씩 쌓인다(24시간 상주 앱 — 로그 예산을 늘리지 않는다).
+            Vector2 effectiveOrigin = ScreenCoordinateConverter.OverlayOriginOsScreen;
+            bool reportAccepted = Vector2.Distance(effectiveOrigin, osRect.position) <= 0.5f;
+            if (!reportAccepted && _overlayOriginLogged) return;
             if (!_overlayOriginLogged || originMoved
                 || Mathf.Abs(ScreenCoordinateConverter.AutoDpiScale - _lastLoggedDpiScale) > 0.01f)
             {
                 _overlayOriginLogged = true;
                 _lastLoggedDpiScale = ScreenCoordinateConverter.AutoDpiScale;
-                Debug.Log($"[MacWindowService] 오버레이 창 원점/배율(Quartz 좌표) 갱신 — origin={osRect.position}, " +
-                    $"size=({rect.Size.Width}x{rect.Size.Height}), Screen=({Screen.width}x{Screen.height}) " +
+                Debug.Log($"[MacWindowService] 오버레이 창 원점/배율(Quartz 좌표) " +
+                    $"{(reportAccepted ? "갱신" : "보고 **거부됨**(위생 검사) — 좌표계는 직전 값 유지")} — " +
+                    $"실효 원점={effectiveOrigin}, 이번 보고={osRect.position}, " +
+                    $"size=({osRect.width}x{osRect.height}), Screen=({Screen.width}x{Screen.height}) " +
                     $"-> desktopDpiScale(자동)={ScreenCoordinateConverter.AutoDpiScale:F3}. " +
+                    // ★ frame(OS가 준 원본)과 content(우리가 쓰는 값)를 항상 나란히 남긴다. 둘이 다르면
+                    //   그 순간 창에 타이틀바가 붙어 있었다는 뜻이고, 그것이 좌표 어긋남의 유일한 실측 단서다.
+                    $"원본 frame=({frameRect.x},{frameRect.y} {frameRect.width}x{frameRect.height}), " +
+                    $"콘텐츠크기={contentSize}({(contentSizeFromLibrary ? "라이브러리 clientSize" : "백버퍼 유도")}), " +
+                    $"창장식 제거={(decorationStripped ? $"예(위 {strippedTopPoints:F0}pt — 타이틀바)" : "아니오(보더리스)")}. " +
                     "이 두 값이 커서<->월드 변환의 오프셋/배율 보정에 쓰입니다(ScreenCoordinateConverter).");
             }
         }
@@ -1780,7 +1963,7 @@ namespace StickMate.Platform.MacOS
                 {
                     IntPtr windowDict = CFArrayGetValueAtIndex(windowArray, i);
                     if (windowDict == IntPtr.Zero) continue;
-                    if (!IsSelfWindow(windowDict)) continue;
+                    if (!IsSelfProcessWindow(windowDict)) continue;   // 좌표계 출처 — PID 단독.
 
                     IntPtr boundsDict = CFDictionaryGetValue(windowDict, _keyWindowBounds);
                     if (boundsDict == IntPtr.Zero) continue;
@@ -1812,8 +1995,15 @@ namespace StickMate.Platform.MacOS
         /// </summary>
         internal void ReportOverlayRectNow()
         {
-            if (!TryGetSelfWindowRect(out Rect selfRect)) return;
-            if (selfRect.width <= 0f || selfRect.height <= 0f) return;
+            if (!TryGetSelfWindowRect(out Rect selfFrameRect)) return;
+            if (selfFrameRect.width <= 0f || selfFrameRect.height <= 0f) return;
+
+            // ★ 2026-09-01 — CaptureOverlayOrigin()과 **같은 규칙**으로 창 장식(타이틀바)을 걷어낸다.
+            //   두 경로가 서로 다른 사각형을 보고하면 폴링 한 주기마다 좌표계가 28pt씩 튄다.
+            OverlayContentRectPolicy.TryStripTopDecoration(
+                selfFrameRect, ResolveOverlayContentSize(selfFrameRect),
+                OverlayContentRectPolicy.DefaultEpsilonPoints, out Rect selfRect, out _);
+
             // 열거 패스 밖의 단발성 경로라 디스플레이 경계를 여기서 한 번 더 읽는다(순수 조회).
             if (TryGetMainDisplayBounds(out Rect display))
             {
@@ -1822,6 +2012,77 @@ namespace StickMate.Platform.MacOS
             }
             ScreenCoordinateConverter.ReportOverlayWindowOsRect(selfRect);
         }
+
+        /// <summary>
+        /// 라이브러리가 보고하는 우리 창의 <b>콘텐츠(클라이언트) 크기</b>(OS 포인트). 부착 전에는 (0,0)이고,
+        /// 그 경우 <see cref="OverlayContentRectPolicy"/>가 보정을 포기한다("모르면 건드리지 않는다").
+        ///
+        /// <para>왜 clientSize인가(실측): 기동 로그에서 CGWindow frame이 1512x<b>1010</b>이던 바로 그 순간
+        /// 라이브러리는 <c>windowSize=clientSize=(1512,982)</c>를 보고했다. 즉 이 값은 타이틀바를 뺀
+        /// 콘텐츠 크기이며, frame과의 차이 28pt가 곧 타이틀바다.</para>
+        /// </summary>
+        private Vector2 ReadControllerContentSize()
+        {
+            var controller = Controller;
+            return controller != null ? controller.clientSize : Vector2.zero;
+        }
+
+        /// <summary>
+        /// 열거 패스 밖의 단발성 경로(<see cref="ReportOverlayRectNow"/>/<see cref="DetectDesktopDpiScale"/>)가
+        /// 쓰는 콘텐츠 크기 해석. 라이브러리 값이 먼저이고, 부착 전이면 백버퍼로 유도한다
+        /// (열거 패스 안과 <b>같은 순서</b> — 두 경로가 다른 답을 내면 폴링마다 좌표계가 튄다).
+        /// </summary>
+        private Vector2 ResolveOverlayContentSize(Rect frameRect)
+        {
+            Vector2 size = ReadControllerContentSize();
+            if (size.x > 0f && size.y > 0f) return size;
+            OverlayContentRectPolicy.TryDeriveContentSizeFromBackbuffer(
+                frameRect, Screen.width, Screen.height, out size);
+            return size;
+        }
+
+        /// <summary>
+        /// 오버레이 창 사각형이 두 값 사이를 오간다고 <b>확정된 순간</b>에 딱 한 번 부르는 증거 수집.
+        ///
+        /// <para><b>왜 이 로그가 필요한가(정직하게)</b>: 이 라운드에서 <b>확정된 것</b>은 "두 사각형이
+        /// 같은 창의 frame이고 B는 타이틀바가 붙은 상태"까지다(산술 대조로 확정 — OverlayContentRectPolicy
+        /// 문서). <b>확정되지 않은 것</b>은 "누가 창을 보더리스에서 빼는가"다. 우리 재적합 루프는 실기
+        /// 로그에서 <b>단 1회</b> 실행되고 끝났으므로(전체화면 확장 시도 1/6, 재무장 0회) 우리 코드가
+        /// 창을 다시 만지고 있지는 않다. 그래서 추측으로 고치는 대신, 확정 순간의 상태를 전부 남겨
+        /// 다음 실기 1회로 범인이 갈리게 한다(가설은 클래스 하단 주석 참고).</para>
+        /// </summary>
+        private void LogOverlayOscillationEvidence()
+        {
+            var controller = Controller;
+            string controllerState = controller == null
+                ? "UniWindowController=없음"
+                : $"isTransparent={controller.isTransparent}, isTopmost={controller.isTopmost}, " +
+                  $"isClickThrough={controller.isClickThrough}, isHitTestEnabled={controller.isHitTestEnabled}, " +
+                  $"isFreePositioningEnabled={controller.isFreePositioningEnabled}, " +
+                  $"isZoomed={controller.isZoomed}, shouldFitMonitor={controller.shouldFitMonitor}, " +
+                  $"windowSize={controller.windowSize}, clientSize={controller.clientSize}, " +
+                  $"windowPosition={controller.windowPosition}";
+
+            Debug.LogWarning("[MacWindowService] ★오버레이 창 기하 진동 확정 — " + _overlayRectOscillation.Diagnosis +
+                $" | 지금 상태: {controllerState}, Screen=({Screen.width}x{Screen.height}), " +
+                $"fullScreenMode={Screen.fullScreenMode}. " +
+                "읽는 법: 두 사각형의 높이 차이가 28pt면 그것은 macOS 타이틀바이고, 곧 그 표본이 " +
+                "**보더리스가 되기 전의 StickMate 창**이라는 뜻입니다. 그런 창이 우리 것이 아니라면 " +
+                "같은 이름의 다른 인스턴스일 수 있습니다(2026-09-01에 실제로 그랬고, 이름 폴백은 " +
+                "그 라운드에 제거됐습니다 — IsSelfProcessWindow). 우리 것이라면 SetBorderless/" +
+                "SetTransparent 경로나 창 재부착을 의심하십시오. 이 줄은 프로세스당 한 번만 남습니다.");
+        }
+
+        /// <summary>
+        /// 오버레이 창 사각형의 A↔B 진동 감시기. 판정은 플랫폼 중립 한 곳
+        /// (<see cref="OverlayGeometryOscillationGuard"/>)에 있고 여기서는 관측만 한다 —
+        /// Windows판 Enforcer도 같은 클래스를 쓴다(한쪽만 고쳐지는 이 저장소의 단골 실패 방지).
+        /// </summary>
+        private readonly OverlayGeometryOscillationGuard _overlayRectOscillation =
+            new OverlayGeometryOscillationGuard();
+
+        // 이번 열거 패스에서 읽은 라이브러리 콘텐츠 크기(창 장식 제거용). 패스당 네이티브 조회 1회.
+        private Vector2 _overlayContentSizeThisPass;
 
         // CaptureOverlayOrigin()이 한 열거 패스 안에서 "가장 큰 자기 창"을 고르기 위한 작업 변수.
         private double _overlayOriginPassArea;

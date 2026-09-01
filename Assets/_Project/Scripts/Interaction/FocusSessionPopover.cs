@@ -201,7 +201,13 @@ namespace StickMate.Interaction
 
             _startSurface = UiChrome.AddSurface(_idlePage, "Start", UiChrome.Accent, UiChrome.RadiusCard);
             UiChrome.PlaceTopLeft(_startSurface.rectTransform, 0f, -160f, ContentWidth, 34f);
-            _startLabel = UiChrome.AddText(_startSurface.rectTransform, "Label", 13,
+            // ★ 2026-09-01 글리프 잔차 제거(사용자 신고 "텍스트도 다 번져보임"): 13 -> 14.
+            //   Windows 디스플레이 150%(캔버스 배율 1.5)에서 13pt는 19.5px를 요청하고 아틀라스에는
+            //   20px로 구워져 0.975배로 리샘플된다 = 획 번짐. 짝수 pt만 잔차가 0이다
+            //   (Platform/UiGlyphScalePolicy.cs 참고). 12이 아니라 14로 올린 이유: 이 라벨은
+            //   34pt 높이 주 버튼("시작")의 유일한 글자라 줄이면 CTA 위계가 내려간다.
+            //   레이아웃 영향 없음 — 폭 212pt 안에 2글자, Stretch + MiddleCenter라 재배치가 없다.
+            _startLabel = UiChrome.AddText(_startSurface.rectTransform, "Label", 14,
                 TextAnchor.MiddleCenter, UiChrome.OnAccentSolid, bold: true);
             UiChrome.Stretch(_startLabel.rectTransform);
             _startLabel.text = "시작";

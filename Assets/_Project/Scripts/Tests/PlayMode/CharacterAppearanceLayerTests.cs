@@ -398,7 +398,7 @@ namespace StickMate.Tests.PlayMode
             string[] crownLines = AccessoryLineNames(renderer);
             Debug.Log($"{LogPrefix} 천 모자 [{string.Join(", ", capLines)}] -> 왕관 [{string.Join(", ", crownLines)}]");
 
-            CollectionAssert.Contains(crownLines, "CrownZigzag",
+            CollectionAssert.Contains(crownLines, "CrownBody",
                 $"{LogPrefix} ★ 천 모자 -> 왕관 교체가 화면에 반영되지 않았습니다. 재구성 서명이 " +
                 "카테고리 비트마스크로 되돌아갔는지 확인하십시오(같은 카테고리 안의 교체를 못 봅니다).");
             CollectionAssert.DoesNotContain(crownLines, "HatBrim",

@@ -177,7 +177,8 @@ namespace StickMate.Interaction
             _mode = Mode.Drawing;
             _modeTimer = 0f;
 
-            Debug.Log($"[그라피티] '{doodleName}'을(를) 스프레이로 그리기 시작 — 획 {_strokes.Count}개, " +
+            Debug.Log($"[그라피티] '{doodleName}'{KoreanParticle.Objective(doodleName)} 스프레이로 그리기 시작 — " +
+                $"획 {_strokes.Count}개, " +
                 $"OS영역 {regionOsScreen}, 월드 중심 {_container.transform.position}, " +
                 $"{DrawSeconds:F2}초에 걸쳐 순차 등장. (배경화면 파일/설정 API 호출 0건 — 순수 오버레이)");
         }
@@ -229,6 +230,7 @@ namespace StickMate.Interaction
 
         private void LateUpdate()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Renderers);   // [스톨구간] 계측
             if (_mode == Mode.None) return;
             _modeTimer += Time.deltaTime;
 

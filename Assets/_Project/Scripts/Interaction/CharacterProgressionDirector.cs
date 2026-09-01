@@ -65,6 +65,15 @@ namespace StickMate.Interaction
 
             CharacterSaveStore.Load();
 
+            // ★ 2026-09-01 구석 호버 패널 삭제로 이사 온 두 가지 책임(그 패널이 유일한 주인이었다).
+            //   (1) 저장된 캐릭터 크기 복원. 여기서 하는 이유는 <b>순서 때문</b>이다 — 바로 위에서
+            //       저장 파일을 읽은 그 호출자가 곧바로 부르므로, 옛 구현이 안고 있던 "누가 먼저 도는지
+            //       모른다"(매 프레임 재시도 + 2초 유예 마감) 경주가 아예 성립하지 않는다.
+            //   (2) Bind. 설정창도 자기 Start에서 부르지만 두 Start의 순서는 보장되지 않는다.
+            //       멱등이라 둘 다 불러도 안전하고, 여기 한 줄이 있어야 설정창이 없는 조립에서도 산다.
+            CharacterScaleController.Bind(_agent);
+            CharacterScaleController.RestoreFromSaveModel();
+
             Debug.Log($"[성장] 준비 완료 — {CharacterProgressionModel.CharacterName} Lv.{CharacterProgressionModel.Level} " +
                 $"({CharacterProgressionModel.CurrentXp:F0}/{CharacterProgressionModel.XpToNextLevel(_config):F0} XP). " +
                 $"저장 파일={(CharacterSaveStore.LoadedFromFile ? "불러옴" : "없음 — 새 캐릭터로 시작")} " +
@@ -95,6 +104,14 @@ namespace StickMate.Interaction
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Directors);   // [스톨구간] 계측
+
+            // ★ 배율 적용 유예(랙돌/스펙터클 중)를 푸는 <b>상시 구동자</b>. 설정창도 부르지만 그쪽
+            //   Update는 `if (!_open) return;`으로 시작한다 — 창을 닫으면 유예가 영영 안 풀려서
+            //   "랙돌 중에 크기를 바꾸고 창을 닫으면 그 크기가 사라지는" 버그가 된다.
+            //   대기 값이 없으면 즉시 반환하는 0비용 호출이다(24시간 상주 앱: 할당 0).
+            CharacterScaleController.Tick();
+
             float passiveInterval = _config != null ? Mathf.Max(1f, _config.progressionPassiveTickSeconds) : 10f;
             _passiveTimer += Time.unscaledDeltaTime;
             if (_passiveTimer >= passiveInterval)

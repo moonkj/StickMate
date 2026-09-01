@@ -102,7 +102,8 @@ namespace StickMate.Tests.EditMode
             float gap = AccessorySilhouetteMetrics.MaxGapToShape(rig, oldBand, crown);
 
             Assert.That(gap, Is.GreaterThan(1e-4f).And.LessThan(W),
-                $"옛 중절모 띠의 간격이 {gap / W:F2}획으로 측정됐습니다 — 실측은 0.41획(금지 구간)입니다. " +
+                $"옛 중절모 띠의 간격이 {gap / W:F2}획으로 측정됐습니다 — 금지 구간(0 < 간격 < 1획) 안이어야 합니다 " +
+                "(옛 관에서 0.41획, 재설계된 관에서 0.45획 — 관이 움직이면 값도 함께 움직인다). " +
                 "지표가 이 값을 금지 구간 밖으로 읽으면 위 검사는 아무것도 막지 못합니다.");
         }
 
@@ -128,14 +129,17 @@ namespace StickMate.Tests.EditMode
             float gap = AccessorySilhouetteMetrics.MaxGapToShape(rig, oldBand, crown);
 
             Assert.That(gap, Is.GreaterThan(1e-4f).And.LessThan(W),
-                $"옛 밀짚모자 띠의 간격이 {gap / W:F2}획으로 측정됐습니다 — 실측은 0.47획(금지 구간)입니다.");
+                $"옛 밀짚모자 띠의 간격이 {gap / W:F2}획으로 측정됐습니다 — 금지 구간(0 < 간격 < 1획) 안이어야 " +
+                "합니다(옛 관에서 0.47획, 재설계된 관에서 0.46획).");
         }
 
         /// <summary>
         /// 모자 6종이 서로 구분된다 — <b>띠를 둘 다 관 밑변으로 옮긴 뒤에도</b>.
         /// <para>이 검사가 이 라운드에 필요한 이유: 두 모자의 보조색 선이 같은 자리(관 밑동)로 모였다.
         /// 띠는 실루엣 안쪽 선이라 원리적으로 외곽에 영향을 주지 않지만, "안 준다"를 말로만 두지 않는다.
-        /// 실측 최소는 털모자↔중절모 <b>2.95획</b>이고, 이 값은 띠 이동 전후가 같다.</para>
+        /// 실측 최소는 <b>왕관↔베레모 1.84획</b>이다(2026-09-01 감쌈 재설계 이후. 그 이전에는
+        /// 털모자↔중절모 2.95획이었는데, 큰 값의 정체는 "잘 구분된다"가 아니라 "여섯 종이 서로 다른
+        /// 높이로 <b>떠 있다</b>"였다 — 자세한 것은 AccessoryBeaniePomTests의 같은 검사 문단).</para>
         /// </summary>
         [Test]
         public void 모자_6종이_서로_구분된다()

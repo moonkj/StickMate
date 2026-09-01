@@ -90,8 +90,15 @@ $SK/driver.sh stop
 | `K` `G` `T` `X` | 격파 / 그라피티 / 창 도둑 / 윈도우 크래시 | 평소엔 확률이 낮아 강제 발동용 |
 | `N` | 가출 발동 / 부르기 | |
 | `I` | 캐릭터 정보 창 | |
-| `,` | 설정창 열기/닫기 | 2026-09-01 신설. `driver.sh key ,` 지원(kVK_ANSI_Comma=43) |
+| `P` | 설정창 열기/닫기 | `driver.sh key P`(kVK_ANSI_P=35). **2026-09-01 `,`에서 옮겼다** |
 | `D` `H` `S` `J` `F` | 진단로그 / 하드웨어반응 / 스트레스 / 할일 / 집중모드 | **`StickMateDevTools` 게이트가 열려야 동작** |
+
+> **★ `⌃⌥⌘` + `8` / `,` / `.` 는 절대 주입하지 마라.** macOS 접근성 시스템 단축키다
+> (색 반전 / 대비 늘리기 / 대비 줄이기 — symbolic hotkey 21 / 25 / 26). 주입하면
+> `com.apple.universalaccess`의 `contrast` 값이 **실제로 바뀐다** = 유저 자산 변경(원칙 3).
+> 설정창 단축키가 원래 `,`였다가 P로 옮겨진 이유가 바로 이것이다. `driver.sh`의 `keycode_for`가
+> 이 셋을 사유와 함께 거부하므로, 실수로 눌러도 주입되지 않는다.
+> 확인 명령: `defaults read com.apple.universalaccess contrast`
 
 ## 로그 읽기
 

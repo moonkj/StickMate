@@ -1,0 +1,1006 @@
+<title>스틱메이트 장비 리디자인</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --bg:#0f1319; --panel:#171c25; --card:#1c222d; --line:#2a3140; --line-soft:#222834;
+    --ink:#e9ecf1; --ink-2:#a8b2c4; --ink-3:#6d7889;
+    --ok:#7dd3a0; --bad:#e8836f; --hi:#e3b341;
+    --cream:#efe7d4; --brown:#b07a45; --gray:#9aa3b0; --green:#8fc46b;
+    --orange:#e0873f; --red:#d1564a; --gold:#e0b64a; --silver:#c3cad6;
+  }
+  :root[data-theme="light"]{
+    --bg:#f4f2ed; --panel:#ffffff; --card:#fbfaf7; --line:#ddd8cd; --line-soft:#e8e4da;
+    --ink:#1b1f26; --ink-2:#4d5563; --ink-3:#828b99;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#f4f2ed; --panel:#ffffff; --card:#fbfaf7; --line:#ddd8cd; --line-soft:#e8e4da;
+      --ink:#1b1f26; --ink-2:#4d5563; --ink-3:#828b99;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg); color:var(--ink); margin:0;
+    font-family:"IBM Plex Sans KR",-apple-system,"Apple SD Gothic Neo",sans-serif;
+    font-size:15px; line-height:1.65; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1120px; margin:0 auto; padding:56px 28px 96px}
+  h1{font-size:31px; font-weight:700; letter-spacing:-.02em; margin:0 0 10px; text-wrap:balance}
+  h2{font-size:20px; font-weight:600; letter-spacing:-.01em; margin:0 0 6px}
+  .lede{color:var(--ink-2); max-width:64ch; margin:0}
+  .eyebrow{
+    font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 14px;
+  }
+  section{margin-top:56px}
+  .rules{display:grid; grid-template-columns:repeat(auto-fit,minmax(232px,1fr)); gap:14px; margin-top:20px}
+  .rule{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 17px}
+  .rule b{display:block; font-size:14px; font-weight:600; margin-bottom:5px}
+  .rule span{font-size:13.5px; color:var(--ink-2); line-height:1.6}
+  .slot{
+    display:flex; align-items:center; gap:10px; margin:38px 0 14px;
+    font-size:14px; font-weight:600; color:var(--ink-2);
+  }
+  .slot::after{content:""; flex:1; height:1px; background:var(--line-soft)}
+  .dot{width:8px; height:8px; border-radius:2px}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(258px,1fr)); gap:14px}
+  .item{background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden}
+  .item-head{
+    display:flex; align-items:baseline; justify-content:space-between; gap:8px;
+    padding:13px 15px 0;
+  }
+  .item-name{font-size:15px; font-weight:600}
+  .verdict{
+    font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--bad);
+    border:1px solid color-mix(in oklch,var(--bad) 40%,transparent);
+    border-radius:4px; padding:1px 6px; white-space:nowrap;
+  }
+  .views{display:grid; grid-template-columns:1fr 1fr 1fr; gap:1px; background:var(--line-soft); margin-top:12px}
+  .view{background:var(--card); padding:10px 6px 8px; text-align:center}
+  .view figcaption{
+    font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.06em;
+    color:var(--ink-3); margin-top:4px;
+  }
+  .view.after{background:color-mix(in oklch,var(--ok) 7%,var(--card))}
+  .view.after figcaption{color:var(--ok)}
+  .fix{padding:11px 15px 14px; font-size:13px; color:var(--ink-2); border-top:1px solid var(--line-soft)}
+  .fix b{color:var(--ink); font-weight:600}
+  svg{display:block; margin:0 auto}
+  .impl{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:22px 24px; margin-top:20px}
+  .impl p{margin:0 0 12px; color:var(--ink-2); font-size:14px}
+  .impl p:last-child{margin-bottom:0}
+  code{
+    font-family:"IBM Plex Mono",monospace; font-size:12.5px;
+    background:var(--card); border:1px solid var(--line-soft); border-radius:4px; padding:1px 5px; color:var(--ink);
+  }
+  .note{
+    border-left:2px solid var(--hi); padding:2px 0 2px 14px; margin-top:18px;
+    color:var(--ink-2); font-size:13.5px;
+  }
+  table{width:100%; border-collapse:collapse; margin-top:14px; font-size:13.5px}
+  th,td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--line-soft)}
+  th{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); font-weight:500}
+  td:first-child{font-weight:600; white-space:nowrap}
+  .tbl-wrap{overflow-x:auto}
+</style>
+
+<div class="wrap">
+
+<p class="eyebrow">StickMate · 장비 도형 사양</p>
+<h1>장비 리디자인</h1>
+<p class="lede">
+  현재 42종 중 16종이 카드 크기에서 다른 물건으로 읽힙니다. 원인은 그리기 실력이 아니라
+  <b>규칙의 부재</b>입니다 — 선 두께가 아이템마다 다르고, 채움과 선을 섞는 기준이 없고,
+  그 물건임을 결정하는 특징(모자챙의 휨, 안경다리, 목도리 술, 왕관 테)이 빠져 있습니다.
+</p>
+
+<section>
+  <p class="eyebrow">규칙 넷</p>
+  <h2>모든 아이템이 공유해야 하는 것</h2>
+  <div class="rules">
+    <div class="rule"><b>실루엣이 먼저</b><span>속을 다 지우고 바깥선만 남겨도 그 물건으로 읽혀야 합니다. 안 읽히면 특징이 빠진 것입니다.</span></div>
+    <div class="rule"><b>선 두께 하나</b><span>세트 전체가 같은 두께를 씁니다. 굵기로 강약을 주지 않고 <em>형태</em>로 줍니다.</span></div>
+    <div class="rule"><b>채움은 가림용만</b><span>안쪽을 가려야 하는 물건(모자관·렌즈)만 채웁니다. 나머지는 순수 선화 — 캐릭터 본체와 같은 문법입니다.</span></div>
+    <div class="rule"><b>결정적 특징 하나</b><span>각 아이템에 "이게 없으면 그 물건이 아닌" 요소를 하나씩 박습니다. 장식은 그다음입니다.</span></div>
+  </div>
+  <p class="note">
+    검증 기준: <b>카드 40×40에서 읽히는가</b>, 그리고 <b>머리 지름 32pt 위에서 읽히는가</b>.
+    둘 다 통과해야 채택합니다. 아래 각 아이템의 세 번째 칸이 착용 상태입니다.
+  </p>
+</section>
+
+<section>
+  <p class="eyebrow">가장 큰 차이</p>
+  <h2>납작한 기호가 아니라 입체로 그린다</h2>
+  <p class="lede">
+    사용자가 기준으로 제시한 참고 이미지와 우리 장비의 격차는 <b>장식의 양이 아니라 부피</b>였습니다.
+    저 모자가 모자로 보이는 이유는 셋입니다 — 그리고 셋 다 선화로 재현할 수 있습니다.
+  </p>
+  <div class="rules" style="margin-top:18px">
+    <div class="rule"><b>챙은 타원이다</b><span>정면 막대가 아니라 비스듬히 본 원. 앞뒤 두께가 보이는 순간 평면이 물건이 됩니다.</span></div>
+    <div class="rule"><b>윗면이 보인다</b><span>원기둥 관의 윗 타원을 그리면 그것만으로 높이가 생깁니다. 선 하나 값입니다.</span></div>
+    <div class="rule"><b>선에 위계가 있다</b><span>바깥 윤곽은 굵게, 안쪽 디테일은 가늘게. 같은 굵기로 다 그리면 도면이 됩니다.</span></div>
+    <div class="rule"><b>서명 디테일 하나</b><span>그 아이템에만 있는 작은 요소 하나(장식·매듭·버클). 여러 개면 노이즈가 됩니다.</span></div>
+    <div class="rule"><b>얹지 말고 감싼다</b><span>모자는 머리 <b>옆으로 내려와</b> 머리를 안습니다. 정수리에 얹힌 순간 스티커가 됩니다.</span></div>
+    <div class="rule"><b>뒤로 삐져나온다</b><span>실루엣이 머리 뒤로 넘어가야 방향감이 생깁니다. 좌우 대칭이면 정면 도면이 됩니다.</span></div>
+  </div>
+  <p class="note">
+    아래 모자 넷은 이 원칙을 적용한 것입니다. 바깥 윤곽 <code>3.4</code>, 안쪽 디테일 <code>2.0</code>,
+    보조선 <code>1.6</code> — 세 단계만 씁니다. 참고 이미지는 다른 게임의 자산이므로 형태를 옮기지 않고
+    <b>만드는 방식만</b> 가져왔습니다.
+  </p>
+</section>
+
+<!-- ============================ 모자 ============================ -->
+<div class="slot"><span class="dot" style="background:var(--orange)"></span>모자 · HEAD</div>
+<div class="grid">
+
+  <!-- 천모자 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">천모자</span><span class="verdict">챙이 판때기</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <path d="M18 30 Q32 14 46 30 Z" fill="#efe7d4"/>
+          <rect x="16" y="30" width="34" height="5" rx="2" fill="#b07a45"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15.6 38 Q13.6 14 32 14 Q50.4 14 48.4 38 Q46 32 44 33.6 Q45 20 32 20 Q19 20 20 33.6 Q18 32 15.6 38 Z" fill="#efe7d4" stroke="#5c5348" stroke-width="3.4"/>
+          <path d="M32 14.4 Q35 22 33.6 32" stroke="#5c5348" stroke-width="2" opacity=".5"/>
+          <path d="M19 33 Q34 30 47 33.4 Q58.4 36 54.6 40.4 Q41 43.6 27 40 Q18.4 37.4 19 33 Z" fill="#b07a45" stroke="#5c5348" stroke-width="3.4"/>
+          <path d="M23 35.6 Q35 33.4 46.6 36" stroke="#5c5348" stroke-width="1.6" opacity=".45"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="30" cy="26" r="10" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M23 24 Q23 15 30 15 Q37 15 37 24 Z" fill="#efe7d4" stroke="#5c5348" stroke-width="2.4"/>
+          <path d="M23 24 H39 Q45 24 44 28 Q37 26.5 23 26.5 Z" fill="#b07a45" stroke="#5c5348" stroke-width="2.4"/>
+          <path d="M30 36 V50 M30 40 L23 46 M30 40 L37 46 M30 50 L25 60 M30 50 L35 60" stroke="#e9ecf1" stroke-width="2.6"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 챙이 평평한 막대였습니다. 끝을 <b>위로 살짝 들어올리고 두께를 줬습니다</b>. 관에 봉제선 한 줄을 넣어 천이라는 걸 알립니다.</p>
+  </div>
+
+  <!-- 털모자 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">털모자</span><span class="verdict">털이 없음</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <path d="M19 34 Q32 20 45 34 Z" fill="#b07a45"/>
+          <rect x="17" y="34" width="30" height="5" rx="2.5" fill="#b07a45"/>
+          <circle cx="32" cy="18" r="5" fill="#efe7d4"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16.4 36 Q14.6 18 32 18 Q49.4 18 47.6 36 Q32 39.6 16.4 36 Z" fill="#b07a45" stroke="#5c5348" stroke-width="3.4"/>
+          <path d="M14.6 34.6 Q32 30.6 49.4 34.6 Q51.4 40.6 49.4 44.6 Q32 48.6 14.6 44.6 Q12.6 40.6 14.6 34.6 Z" fill="#c98d55" stroke="#5c5348" stroke-width="3.4"/>
+          <path d="M19.4 38 V43.6 M26 39.8 V45.6 M32 40.4 V46.2 M38 39.8 V45.6 M44.6 38 V43.6" stroke="#5c5348" stroke-width="1.6" opacity=".5"/>
+          <circle cx="32" cy="14" r="5.4" fill="#efe7d4" stroke="#5c5348" stroke-width="3.4"/>
+          <path d="M32 8.6 V6 M27.2 11 L25 9.6 M36.8 11 L39 9.6" stroke="#5c5348" stroke-width="1.6"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="30" cy="27" r="10" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M23 25 Q23 17 30 17 Q37 17 37 25 Z" fill="#b07a45" stroke="#5c5348" stroke-width="2.4"/>
+          <path d="M21 25 Q21 29.5 24 29.5 H36 Q39 29.5 39 25 Q30 27 21 25 Z" fill="#c98d55" stroke="#5c5348" stroke-width="2.4"/>
+          <circle cx="30" cy="14.4" r="3.4" fill="#efe7d4" stroke="#5c5348" stroke-width="2.2"/>
+          <path d="M30 37 V50 M30 41 L23 47 M30 41 L37 47 M30 50 L25 60 M30 50 L35 60" stroke="#e9ecf1" stroke-width="2.6"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 사다리꼴에 공만 얹혀 있었습니다. <b>접어올린 털 단</b>을 별도 톤으로 만들고 짧은 결 다섯 줄을 넣었습니다. 방울에도 삐친 털을 줬습니다.</p>
+  </div>
+
+  <!-- 중절모 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">중절모</span><span class="verdict">납작한 덩어리</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <path d="M22 30 Q32 22 42 30 Z" fill="#9aa3b0"/>
+          <rect x="15" y="30" width="34" height="4" rx="2" fill="#7d8794"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 34 Q19.4 17.6 24.6 15.6 Q28.4 20.4 32 20.4 Q35.6 20.4 39.4 15.6 Q44.6 17.6 44 34 Q32 37.6 20 34 Z" fill="#9aa3b0" stroke="#4a515c" stroke-width="3.4"/>
+          <path d="M19.9 30.4 Q32 34 44.1 30.4 L44 34 Q32 37.6 20 34 Z" fill="#6f7885" stroke="#4a515c" stroke-width="2"/>
+          <path d="M12.6 35 Q32 29.4 51.4 35 Q55.4 39 51.4 42.6 Q32 48 12.6 42.6 Q8.6 39 12.6 35 Z" fill="#8791a0" stroke="#4a515c" stroke-width="3.4"/>
+          <path d="M17.6 38.4 Q32 34.8 46.4 38.4" stroke="#4a515c" stroke-width="1.6" opacity=".45"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="30" cy="27" r="10" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M24 25 Q24 17 27 16.4 Q28.6 19 30 19 Q31.4 19 33 16.4 Q36 17 36 25 Z" fill="#9aa3b0" stroke="#4a515c" stroke-width="2.4"/>
+          <path d="M23.8 24.4 H36.2" stroke="#4a515c" stroke-width="3.2"/>
+          <path d="M19 26 Q19 24 24 24 H36 Q41 24 41 26 Q41 28.6 36 28 H24 Q19 28.6 19 26 Z" fill="#8791a0" stroke="#4a515c" stroke-width="2.4"/>
+          <path d="M30 37 V50 M30 41 L23 47 M30 41 L37 47 M30 50 L25 60 M30 50 L35 60" stroke="#e9ecf1" stroke-width="2.6"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 중절모의 정체는 <b>눌린 관(crown)과 리본 띠</b>입니다. 둘 다 없었습니다. 위를 오목하게 파고 띠를 굵은 선 하나로 넣었습니다. 챙도 양끝이 살짝 올라갑니다.</p>
+  </div>
+
+  <!-- 왕관 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">왕관</span><span class="verdict">알파벳 M</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 34 L18 20 L26 28 L32 18 L38 28 L46 20 L46 34" stroke="#e0b64a" stroke-width="3"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 34.6 L18.6 20.6 L25.6 28 L32 16.6 L38.4 28 L45.4 20.6 L47 34.6 Q32 38 17 34.6 Z" fill="#f0d074" stroke="#8a6a1c" stroke-width="3.4"/>
+          <path d="M16 34 Q32 30 48 34 Q49.6 37.6 48 41 Q32 45 16 41 Q14.4 37.6 16 34 Z" fill="#e0b64a" stroke="#8a6a1c" stroke-width="3.4"/>
+          <circle cx="32" cy="37.6" r="2.2" fill="#8a6a1c"/>
+          <path d="M20.4 38.6 Q26 40 31 40.2" stroke="#8a6a1c" stroke-width="1.6" opacity=".4"/>
+          <circle cx="18.6" cy="19" r="2.3" fill="#f0d074" stroke="#8a6a1c" stroke-width="2"/>
+          <circle cx="32" cy="14.8" r="2.3" fill="#f0d074" stroke="#8a6a1c" stroke-width="2"/>
+          <circle cx="45.4" cy="19" r="2.3" fill="#f0d074" stroke="#8a6a1c" stroke-width="2"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="30" cy="27" r="10" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M23 22 L23 15.6 L27 19.4 L30 13.6 L33 19.4 L37 15.6 L37 22 Z" fill="#f0d074" stroke="#8a6a1c" stroke-width="2.4"/>
+          <path d="M22 22 H38 Q39 22 39 24 Q39 26 38 26 H22 Q21 26 21 24 Q21 22 22 22 Z" fill="#e0b64a" stroke="#8a6a1c" stroke-width="2.4"/>
+          <path d="M30 37 V50 M30 41 L23 47 M30 41 L37 47 M30 50 L25 60 M30 50 L35 60" stroke="#e9ecf1" stroke-width="2.6"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 지그재그 선 하나뿐이라 왕관으로 안 읽혔습니다. <b>아래 테를 닫고</b> 뿔 끝에 구슬 셋, 테 가운데 보석 하나를 넣었습니다. 테가 왕관을 왕관으로 만듭니다.</p>
+  </div>
+</div>
+
+<!-- ============================ 안경 ============================ -->
+<div class="slot"><span class="dot" style="background:var(--silver)"></span>안경 · EYES</div>
+<div class="grid">
+
+  <!-- 선글라스 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">선글라스</span><span class="verdict">펼친 책</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <path d="M16 26 L30 24 L30 38 L16 36 Z" fill="#b9c0cb"/>
+          <path d="M34 24 L48 26 L48 36 L34 38 Z" fill="#8e97a4"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 26 H52" stroke="#3c424c" stroke-width="3.4"/>
+          <path d="M13 27 H29 Q30 27 30 29 Q30 37 24 38.6 Q15 40 13.4 33 Q12.4 28 13 27 Z" fill="#5b636f" stroke="#3c424c" stroke-width="3.2"/>
+          <path d="M51 27 H35 Q34 27 34 29 Q34 37 40 38.6 Q49 40 50.6 33 Q51.6 28 51 27 Z" fill="#5b636f" stroke="#3c424c" stroke-width="3.2"/>
+          <path d="M30 28.4 Q32 30 34 28.4" stroke="#3c424c" stroke-width="3"/>
+          <path d="M52 26 Q56 25.4 56.6 30" stroke="#3c424c" stroke-width="3"/>
+          <path d="M16.5 30 Q19 32.6 22 33" stroke="#c9d0da" stroke-width="2.2" opacity=".8"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="30" cy="27" r="10" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M22 25 H36.5" stroke="#3c424c" stroke-width="2.6"/>
+          <path d="M22.4 25.4 H28.6 Q29.2 25.4 29.2 26.6 Q29.2 30.4 26.4 31 Q22.6 31.6 22 28.4 Q21.6 26 22.4 25.4 Z" fill="#5b636f" stroke="#3c424c" stroke-width="2.2"/>
+          <path d="M36.6 25.4 H30.8 Q30.2 25.4 30.2 26.6 Q30.2 30.4 33 31 Q36.6 31.6 37.2 28.4 Q37.6 26 36.6 25.4 Z" fill="#5b636f" stroke="#3c424c" stroke-width="2.2"/>
+          <path d="M37 25 Q39.4 24.6 39.8 27" stroke="#3c424c" stroke-width="2.2"/>
+          <path d="M30 37 V50 M30 41 L23 47 M30 41 L37 47 M30 50 L25 60 M30 50 L35 60" stroke="#e9ecf1" stroke-width="2.6"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 가장 심했습니다. 두 판이 가운데서 접혀 책으로 읽혔습니다. <b>위쪽 일자 브로우 바</b>로 두 렌즈를 하나로 묶고, 렌즈 아래를 둥글게 깎고, <b>안경다리</b>를 뒤로 뺐습니다. 하이라이트 한 줄이 유리임을 알립니다.</p>
+  </div>
+
+  <!-- 동그란안경 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">동그란안경</span><span class="verdict">다리 없음</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round">
+          <circle cx="22" cy="32" r="7" fill="#e9ecf1" stroke="#9aa3b0" stroke-width="3"/>
+          <circle cx="42" cy="32" r="7" fill="#e9ecf1" stroke="#9aa3b0" stroke-width="3"/>
+          <path d="M29 30 Q32 27 35 30" stroke="#5fb8c4" stroke-width="3"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="22" cy="32" r="8.2" fill="#dfe4ea" stroke="#4a515c" stroke-width="3.2"/>
+          <circle cx="42" cy="32" r="8.2" fill="#dfe4ea" stroke="#4a515c" stroke-width="3.2"/>
+          <path d="M30.2 31 Q32 28.6 33.8 31" stroke="#4a515c" stroke-width="3"/>
+          <path d="M50.2 30 Q55 28.8 56 33.6" stroke="#4a515c" stroke-width="3"/>
+          <path d="M13.8 30 Q11.4 29.4 10.6 31.4" stroke="#4a515c" stroke-width="3"/>
+          <path d="M18 29 Q20 27.4 22.6 27.6" stroke="#ffffff" stroke-width="2.2" opacity=".85"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="30" cy="27" r="10" stroke="#e9ecf1" stroke-width="2.6"/>
+          <circle cx="26" cy="27" r="3.6" fill="#dfe4ea" stroke="#4a515c" stroke-width="2.2"/>
+          <circle cx="34" cy="27" r="3.6" fill="#dfe4ea" stroke="#4a515c" stroke-width="2.2"/>
+          <path d="M29.6 26.4 Q30 25.4 30.4 26.4" stroke="#4a515c" stroke-width="2.2"/>
+          <path d="M37.6 26 Q39.6 25.4 40 27.4" stroke="#4a515c" stroke-width="2.2"/>
+          <path d="M30 37 V50 M30 41 L23 47 M30 41 L37 47 M30 50 L25 60 M30 50 L35 60" stroke="#e9ecf1" stroke-width="2.6"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 셋 중 가장 나았지만 <b>안경다리가 없어</b> 얼굴에 붙은 고리 두 개로 보였습니다. 양쪽에 다리를 달고 브릿지를 낮췄습니다.</p>
+  </div>
+
+  <!-- 고글 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">고글</span><span class="verdict">건전지</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <rect x="15" y="26" width="34" height="13" rx="6" fill="#e0873f"/>
+          <rect x="22" y="29" width="20" height="7" rx="3.5" fill="#c3cad6"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 27 Q6 32.5 8 38" stroke="#a85f21" stroke-width="3.4"/>
+          <path d="M56 27 Q58 32.5 56 38" stroke="#a85f21" stroke-width="3.4"/>
+          <path d="M8.5 28.6 H16 M8.5 36.4 H16 M48 28.6 H55.5 M48 36.4 H55.5" stroke="#a85f21" stroke-width="3.4"/>
+          <path d="M16 25.5 H48 Q51 25.5 51 30 V35 Q51 39.5 48 39.5 H16 Q13 39.5 13 35 V30 Q13 25.5 16 25.5 Z" fill="#e0873f" stroke="#a85f21" stroke-width="3.2"/>
+          <path d="M20 29.5 H44 Q45.6 29.5 45.6 32.5 Q45.6 35.5 44 35.5 H20 Q18.4 35.5 18.4 32.5 Q18.4 29.5 20 29.5 Z" fill="#c3cad6" stroke="#a85f21" stroke-width="2.6"/>
+          <path d="M32 29.5 V35.5" stroke="#a85f21" stroke-width="2.4"/>
+          <path d="M21.5 31.4 Q24 30.6 26 31.2" stroke="#ffffff" stroke-width="2" opacity=".8"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="30" cy="27" r="10" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M21 25 H39 Q40.6 25 40.6 27 V28.6 Q40.6 30.6 39 30.6 H21 Q19.4 30.6 19.4 28.6 V27 Q19.4 25 21 25 Z" fill="#e0873f" stroke="#a85f21" stroke-width="2.4"/>
+          <path d="M23 26.6 H37 Q38 26.6 38 28 Q38 29.2 37 29.2 H23 Q22 29.2 22 28 Q22 26.6 23 26.6 Z" fill="#c3cad6" stroke="#a85f21" stroke-width="1.9"/>
+          <path d="M30 26.6 V29.2" stroke="#a85f21" stroke-width="1.8"/>
+          <path d="M19.6 26 Q20 24.6 20.8 24" stroke="#a85f21" stroke-width="2.2"/>
+          <path d="M30 37 V50 M30 41 L23 47 M30 41 L37 47 M30 50 L25 60 M30 50 L35 60" stroke="#e9ecf1" stroke-width="2.6"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 알약 안에 알약이라 건전지로 읽혔습니다. 고글의 정체는 <b>머리를 감는 스트랩</b>입니다. 양옆으로 밴드를 빼고 가운데 브릿지 한 줄을 넣었습니다.</p>
+  </div>
+
+  <!-- 외알안경 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">외알안경</span><span class="verdict">사슬이 흐지부지</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round">
+          <circle cx="26" cy="28" r="8" stroke="#e0b64a" stroke-width="3"/>
+          <path d="M32 34 Q38 38 34 42" stroke="#e0b64a" stroke-width="3"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="26" cy="27" r="9.4" fill="#f6efdc" stroke="#8a6a1c" stroke-width="3.4"/>
+          <circle cx="26" cy="27" r="6" fill="none" stroke="#8a6a1c" stroke-width="1.6" opacity=".5"/>
+          <path d="M21.6 23.4 Q24 21.2 27 21.6" stroke="#ffffff" stroke-width="2.4" opacity=".9"/>
+          <circle cx="34.6" cy="33.6" r="2.2" fill="#e0b64a" stroke="#8a6a1c" stroke-width="2"/>
+          <path d="M36 35.4 Q42 40 40 46 Q38.6 50 34 50" stroke="#e0b64a" stroke-width="3"/>
+          <circle cx="32.4" cy="50" r="2" fill="#e0b64a" stroke="#8a6a1c" stroke-width="1.8"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="30" cy="27" r="10" stroke="#e9ecf1" stroke-width="2.6"/>
+          <circle cx="26" cy="26.6" r="4.2" fill="#f6efdc" stroke="#8a6a1c" stroke-width="2.4"/>
+          <path d="M29.4 29.4 Q32.6 32.4 31.4 36.4" stroke="#e0b64a" stroke-width="2.2"/>
+          <circle cx="31" cy="37.6" r="1.5" fill="#e0b64a"/>
+          <path d="M30 37 V50 M30 41 L23 47 M30 41 L37 47 M30 50 L25 60 M30 50 L35 60" stroke="#e9ecf1" stroke-width="2.6"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 사슬이 허공에서 끊겼습니다. <b>테에 물리는 고리</b>와 <b>끝의 추</b>를 양끝에 달아 사슬이 어디서 시작해 어디로 가는지 보이게 했습니다.</p>
+  </div>
+</div>
+
+<!-- ============================ 넥타이 ============================ -->
+<div class="slot"><span class="dot" style="background:var(--green)"></span>넥타이 · NECK</div>
+<div class="grid">
+
+  <!-- 나비넥타이 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">나비넥타이</span><span class="verdict">날개가 평평</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16 24 L28 32 L16 40 Z" stroke="#8fc46b" stroke-width="3"/>
+          <path d="M48 24 L36 32 L48 40 Z" stroke="#8fc46b" stroke-width="3"/>
+          <circle cx="32" cy="32" r="4" stroke="#8fc46b" stroke-width="3"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M27 29.5 Q18 22 15 24 Q13 32 15 40 Q18 42 27 34.5 Z" fill="#a5d67f" stroke="#4d7a2e" stroke-width="3.2"/>
+          <path d="M37 29.5 Q46 22 49 24 Q51 32 49 40 Q46 42 37 34.5 Z" fill="#a5d67f" stroke="#4d7a2e" stroke-width="3.2"/>
+          <path d="M27.5 27.5 H36.5 Q38.5 27.5 38.5 32 Q38.5 36.5 36.5 36.5 H27.5 Q25.5 36.5 25.5 32 Q25.5 27.5 27.5 27.5 Z" fill="#8fc46b" stroke="#4d7a2e" stroke-width="3.2"/>
+          <path d="M20 29 Q22 31.4 21.6 34" stroke="#4d7a2e" stroke-width="1.8" opacity=".55"/>
+          <path d="M44 29 Q42 31.4 42.4 34" stroke="#4d7a2e" stroke-width="1.8" opacity=".55"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="30" cy="20" r="8.4" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M30 28.6 V44 M30 32 L23 38 M30 32 L37 38 M30 44 L25.4 57 M30 44 L34.6 57" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M28.4 30 Q24.6 27 23.4 28 Q22.6 31 23.4 33.6 Q24.6 34.6 28.4 31.6 Z" fill="#a5d67f" stroke="#4d7a2e" stroke-width="2.2"/>
+          <path d="M31.6 30 Q35.4 27 36.6 28 Q37.4 31 36.6 33.6 Q35.4 34.6 31.6 31.6 Z" fill="#a5d67f" stroke="#4d7a2e" stroke-width="2.2"/>
+          <path d="M29 29.4 H31 Q31.8 29.4 31.8 31 Q31.8 32.6 31 32.6 H29 Q28.2 32.6 28.2 31 Q28.2 29.4 29 29.4 Z" fill="#8fc46b" stroke="#4d7a2e" stroke-width="2"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 삼각형 두 개는 리본이 아니라 화살표로 읽힙니다. 날개 바깥을 <b>불룩하게</b>, 매듭 쪽을 <b>잘록하게</b> 만들고 주름 한 줄을 넣었습니다.</p>
+  </div>
+
+  <!-- 줄무늬타이 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">줄무늬타이</span><span class="verdict">너무 얇아 안 보임</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M30 20 L34 20 L34 44 L32 47 L30 44 Z" stroke="#8fc46b" stroke-width="2.6"/>
+          <path d="M30 26 L34 26 M30 32 L34 32 M30 38 L34 38" stroke="#8fc46b" stroke-width="2"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M26.5 16 L37.5 16 L35 24 H29 Z" fill="#8fc46b" stroke="#4d7a2e" stroke-width="3.2"/>
+          <path d="M29 24 H35 L39 42 L32 50 L25 42 Z" fill="#a5d67f" stroke="#4d7a2e" stroke-width="3.2"/>
+          <path d="M27.4 30 L36.6 30 M28.6 36 L37.8 36" stroke="#4d7a2e" stroke-width="2.6" opacity=".62"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="30" cy="20" r="8.4" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M30 28.6 V44 M30 32 L23 38 M30 32 L37 38 M30 44 L25.4 57 M30 44 L34.6 57" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M27.6 28.6 H32.4 L31.4 31.6 H28.6 Z" fill="#8fc46b" stroke="#4d7a2e" stroke-width="2"/>
+          <path d="M28.6 31.6 H31.4 L32.8 39 L30 42.4 L27.2 39 Z" fill="#a5d67f" stroke="#4d7a2e" stroke-width="2"/>
+          <path d="M28 34.4 H32.2" stroke="#4d7a2e" stroke-width="1.7" opacity=".6"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 폭이 4px라 카드에서 사라졌습니다. <b>매듭을 따로 만들고</b> 아래로 갈수록 넓어지다 <b>뾰족하게</b> 끝나게 했습니다. 넥타이의 정체는 이 실루엣입니다. 줄무늬는 두 줄이면 충분합니다.</p>
+  </div>
+
+  <!-- 목도리 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">목도리</span><span class="verdict">토리이 문</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <path d="M18 22 H46 L44 30 H20 Z" fill="#e0873f"/>
+          <path d="M22 30 L20 46 H26 L27 30 Z" fill="#e0873f"/>
+          <path d="M42 30 L44 46 H38 L37 30 Z" fill="#e0873f"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 22 Q32 30 47 22 Q49 27 47 31 Q32 38 17 31 Q15 27 17 22 Z" fill="#e0873f" stroke="#8f5216" stroke-width="3.2"/>
+          <path d="M23 33.6 Q21 42 23.6 48 H30 Q28.4 41 29 33 Z" fill="#eda05f" stroke="#8f5216" stroke-width="3.2"/>
+          <path d="M23.8 48.6 V52.4 M26 48.8 V52.6 M28.2 48.6 V52.4" stroke="#8f5216" stroke-width="2.2"/>
+          <path d="M38 32.6 Q40.6 39 39.6 43.4 H34.4 Q34 38 34.6 32.4 Z" fill="#eda05f" stroke="#8f5216" stroke-width="3.2"/>
+          <path d="M35.2 44 V47.6 M37.2 44 V47.6" stroke="#8f5216" stroke-width="2.2"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="30" cy="20" r="8.4" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M30 28.6 V44 M30 32 L23 38 M30 32 L37 38 M30 44 L25.4 57 M30 44 L34.6 57" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M23.6 28 Q30 31.4 36.4 28 Q37.2 30.2 36.4 32 Q30 35 23.6 32 Q22.8 30.2 23.6 28 Z" fill="#e0873f" stroke="#8f5216" stroke-width="2.2"/>
+          <path d="M26 33 Q25 38.4 26.2 42.4 H29 Q28.2 37.6 28.6 32.6 Z" fill="#eda05f" stroke="#8f5216" stroke-width="2.2"/>
+          <path d="M26.4 43 V45 M28 43 V45" stroke="#8f5216" stroke-width="1.7"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 가로 막대에 기둥 둘이라 문으로 읽혔습니다. 목을 <b>감는 곡선</b>으로 바꾸고 두 자락의 <b>길이를 다르게</b> 했습니다. 끝에 술(fringe)을 넣으면 천이라는 게 확정됩니다.</p>
+  </div>
+
+  <!-- 방울목걸이 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">방울목걸이</span><span class="verdict">읽히지 않음</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round">
+          <path d="M40 22 Q28 26 34 34 Q40 40 30 44" stroke="#e0873f" stroke-width="3"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16 22 Q32 34 48 22" stroke="#a85f21" stroke-width="3.6"/>
+          <path d="M30.4 31.4 H33.6 Q34.4 31.4 34.4 33 Q34.4 34 33.6 34 H30.4 Q29.6 34 29.6 33 Q29.6 31.4 30.4 31.4 Z" fill="#e0873f" stroke="#a85f21" stroke-width="2.4"/>
+          <path d="M32 34 Q24.6 34.6 24.6 42.6 Q24.6 46 23.2 47.4 H40.8 Q39.4 46 39.4 42.6 Q39.4 34.6 32 34 Z" fill="#f0a95e" stroke="#a85f21" stroke-width="3.2"/>
+          <path d="M24.6 44.6 H39.4" stroke="#a85f21" stroke-width="2.6"/>
+          <circle cx="32" cy="49.6" r="2.4" fill="#e0873f" stroke="#a85f21" stroke-width="2.4"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="30" cy="20" r="8.4" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M30 28.6 V44 M30 32 L23 38 M30 32 L37 38 M30 44 L25.4 57 M30 44 L34.6 57" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M24 28.4 Q30 33.4 36 28.4" stroke="#a85f21" stroke-width="2.4"/>
+          <path d="M30 33 Q26.6 33.4 26.6 36.6 Q26.6 38 26 38.6 H34 Q33.4 38 33.4 36.6 Q33.4 33.4 30 33 Z" fill="#f0a95e" stroke="#a85f21" stroke-width="2.2"/>
+          <path d="M26.6 37.4 H33.4" stroke="#a85f21" stroke-width="1.8"/>
+          <circle cx="30" cy="40" r="1.4" fill="#e0873f"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 곡선 하나뿐이라 아무것도 아니었습니다. <b>목을 두르는 줄</b> + <b>고리</b> + <b>방울</b> 세 부분으로 나눴습니다. 방울의 가로 틈과 아래 구슬이 이걸 방울로 만듭니다.</p>
+  </div>
+</div>
+
+<!-- ============================ 망토 ============================ -->
+<div class="slot"><span class="dot" style="background:var(--red)"></span>망토 · BACK</div>
+<div class="grid">
+
+  <!-- 짧은망토 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">짧은망토</span><span class="verdict">여밈이 없음</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <path d="M26 18 L38 18 L42 46 L22 46 Z" fill="#d1564a"/>
+          <path d="M30 20 V44 M34 20 V44" stroke="#a83f36" stroke-width="1.6"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M25 21 Q32 25 39 21 L45 42 Q32 47 19 42 Z" fill="#d1564a" stroke="#8c2f26" stroke-width="3.2"/>
+          <path d="M19 42 Q22.6 45 26 42.4 Q29 45.4 32 42.6 Q35 45.4 38 42.4 Q41.4 45 45 42" fill="none" stroke="#8c2f26" stroke-width="3.2"/>
+          <path d="M28.4 25 L26 41" stroke="#8c2f26" stroke-width="2" opacity=".5"/>
+          <path d="M35.6 25 L38 41" stroke="#8c2f26" stroke-width="2" opacity=".5"/>
+          <path d="M25 21 Q32 17 39 21" stroke="#8c2f26" stroke-width="3.4"/>
+          <circle cx="32" cy="19.6" r="2.6" fill="#e8c05a" stroke="#8c2f26" stroke-width="2.4"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M25 29 Q30 31.6 35 29 L39 43 Q30 46.4 21 43 Z" fill="#d1564a" stroke="#8c2f26" stroke-width="2.4"/>
+          <path d="M21 43 Q24 45 27 43.2 Q30 45.2 33 43.2 Q36 45 39 43" fill="none" stroke="#8c2f26" stroke-width="2.4"/>
+          <circle cx="30" cy="20" r="8.4" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M30 28.6 V44 M30 32 L23 38 M30 32 L37 38 M30 44 L25.4 57 M30 44 L34.6 57" stroke="#e9ecf1" stroke-width="2.6"/>
+          <circle cx="30" cy="28.4" r="1.9" fill="#e8c05a" stroke="#8c2f26" stroke-width="2"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 직사각 천이라 앞치마로 읽혔습니다. <b>목의 여밈(브로치)</b>과 <b>물결치는 밑단</b>을 넣었습니다. 이 둘이 망토를 망토로 만듭니다.</p>
+  </div>
+
+  <!-- 긴망토 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">긴망토</span><span class="verdict">종이비행기</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <path d="M32 16 L20 50 L32 42 Z" fill="#d1564a"/>
+          <path d="M32 16 L44 50 L32 42 Z" fill="#b8483d"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M25 19 Q32 23 39 19 L48 48 Q32 54 16 48 Z" fill="#d1564a" stroke="#8c2f26" stroke-width="3.2"/>
+          <path d="M16 48 Q20.6 52.4 25 48.6 Q28.6 52.6 32 48.8 Q35.4 52.6 39 48.6 Q43.4 52.4 48 48" fill="none" stroke="#8c2f26" stroke-width="3.2"/>
+          <path d="M28.6 23 L24 47" stroke="#8c2f26" stroke-width="2" opacity=".5"/>
+          <path d="M35.4 23 L40 47" stroke="#8c2f26" stroke-width="2" opacity=".5"/>
+          <path d="M32 23 V47.6" stroke="#8c2f26" stroke-width="2" opacity=".35"/>
+          <path d="M25 19 Q32 15 39 19" stroke="#8c2f26" stroke-width="3.4"/>
+          <circle cx="32" cy="17.6" r="2.6" fill="#e8c05a" stroke="#8c2f26" stroke-width="2.4"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M25 29 Q30 31.6 35 29 L41 54 Q30 58.4 19 54 Z" fill="#d1564a" stroke="#8c2f26" stroke-width="2.4"/>
+          <path d="M19 54 Q22.6 57 26 54.6 Q30 57.4 34 54.6 Q37.4 57 41 54" fill="none" stroke="#8c2f26" stroke-width="2.4"/>
+          <circle cx="30" cy="20" r="8.4" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M30 28.6 V44 M30 32 L23 38 M30 32 L37 38 M30 44 L25.4 57 M30 44 L34.6 57" stroke="#e9ecf1" stroke-width="2.6"/>
+          <circle cx="30" cy="28.4" r="1.9" fill="#e8c05a" stroke="#8c2f26" stroke-width="2"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 뾰족한 삼각형 둘이라 비행기가 됐습니다. 짧은망토와 <b>같은 문법</b>(여밈 + 물결 밑단)을 쓰되 길이와 퍼짐만 키웠습니다. 같은 계열은 같은 문법을 써야 세트로 읽힙니다.</p>
+  </div>
+
+  <!-- 날개 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">날개</span><span class="verdict">깃털이 없음</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <path d="M30 30 L10 22 L18 34 L8 34 Z" fill="#c3cad6"/>
+          <path d="M34 30 L54 22 L46 34 L56 34 Z" fill="#e9ecf1"/>
+          <path d="M32 26 V46" stroke="#a58fd8" stroke-width="2.4"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M29 26 Q18 20 9 24 Q17 27 12 31 Q19 31.4 15 36 Q23 35 29 33 Z" fill="#dfe4ea" stroke="#68707d" stroke-width="3.2"/>
+          <path d="M35 26 Q46 20 55 24 Q47 27 52 31 Q45 31.4 49 36 Q41 35 35 33 Z" fill="#dfe4ea" stroke="#68707d" stroke-width="3.2"/>
+          <path d="M24 27.6 L21 25.4 M20 29.4 L17.6 28 M18.4 32.6 L16.4 32" stroke="#68707d" stroke-width="1.8" opacity=".6"/>
+          <path d="M40 27.6 L43 25.4 M44 29.4 L46.4 28 M45.6 32.6 L47.6 32" stroke="#68707d" stroke-width="1.8" opacity=".6"/>
+          <path d="M32 24 V40" stroke="#68707d" stroke-width="3.2"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M27 31 Q19 27 13 30 Q19 32 15.4 34.6 Q20.6 34.6 18 38 Q23.6 37 27 35.6 Z" fill="#dfe4ea" stroke="#68707d" stroke-width="2.4"/>
+          <path d="M33 31 Q41 27 47 30 Q41 32 44.6 34.6 Q39.4 34.6 42 38 Q36.4 37 33 35.6 Z" fill="#dfe4ea" stroke="#68707d" stroke-width="2.4"/>
+          <circle cx="30" cy="20" r="8.4" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M30 28.6 V44 M30 32 L23 38 M30 32 L37 38 M30 44 L25.4 57 M30 44 L34.6 57" stroke="#e9ecf1" stroke-width="2.6"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 넷 중 가장 나았지만 뾰족한 조각이라 종이 같았습니다. 바깥선을 <b>세 번 파도치게</b> 해서 깃털 층을 만들고 짧은 결선을 넣었습니다.</p>
+  </div>
+
+  <!-- 배낭 -->
+  <div class="item">
+    <div class="item-head"><span class="item-name">배낭</span><span class="verdict">대괄호</span></div>
+    <div class="views">
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round">
+          <path d="M38 20 Q26 22 26 32 Q26 42 38 44" stroke="#e0b64a" stroke-width="3.4"/>
+        </svg>
+        <figcaption>현재</figcaption>
+      </figure>
+      <figure class="view after">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M24 20 Q19 22 19.4 28" stroke="#8a6a1c" stroke-width="3.4"/>
+          <path d="M40 20 Q45 22 44.6 28" stroke="#8a6a1c" stroke-width="3.4"/>
+          <path d="M21 26 H43 Q46.5 26 46.5 30 V44 Q46.5 48 43 48 H21 Q17.5 48 17.5 44 V30 Q17.5 26 21 26 Z" fill="#e0b64a" stroke="#8a6a1c" stroke-width="3.2"/>
+          <path d="M17.8 34 H46.2 Q46.5 30 43 30 H21 Q17.5 30 17.8 34 Z" fill="#f0d074" stroke="#8a6a1c" stroke-width="3.2"/>
+          <path d="M29 34 H35 Q36 34 36 36 Q36 38 35 38 H29 Q28 38 28 36 Q28 34 29 34 Z" fill="#f6efdc" stroke="#8a6a1c" stroke-width="2.6"/>
+          <path d="M23 41.6 H27.4" stroke="#8a6a1c" stroke-width="2.4" opacity=".6"/>
+        </svg>
+        <figcaption>리디자인</figcaption>
+      </figure>
+      <figure class="view">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 30 H37 Q39 30 39 32.6 V42 Q39 44.6 37 44.6 H23 Q21 44.6 21 42 V32.6 Q21 30 23 30 Z" fill="#e0b64a" stroke="#8a6a1c" stroke-width="2.4"/>
+          <path d="M21.2 35 H38.8 Q39 32.6 37 32.6 H23 Q21 32.6 21.2 35 Z" fill="#f0d074" stroke="#8a6a1c" stroke-width="2.2"/>
+          <circle cx="30" cy="20" r="8.4" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M30 28.6 V44 M30 32 L23 38 M30 32 L37 38 M30 44 L25.4 57 M30 44 L34.6 57" stroke="#e9ecf1" stroke-width="2.6"/>
+          <path d="M26 28.8 Q23.6 30 24 32.4 M34 28.8 Q36.4 30 36 32.4" stroke="#8a6a1c" stroke-width="2.2"/>
+        </svg>
+        <figcaption>착용</figcaption>
+      </figure>
+    </div>
+    <p class="fix"><b>고친 것</b> — 곡선 하나라 괄호였습니다. <b>몸통 + 윗덮개 + 어깨끈 두 개 + 버클</b> 네 부분으로 만들었습니다. 어깨끈이 있어야 "메는 물건"으로 읽힙니다.</p>
+  </div>
+</div>
+
+<!-- ============================ 머리 ============================ -->
+<section>
+  <p class="eyebrow">머리 · HAIR</p>
+  <h2>얹는 모자가 아니라 얼굴을 감싸는 덩어리</h2>
+  <p class="lede">
+    지금 <code>HairSilhouette</code>은 스팬이 <code>-16°~196°</code>, 아래 경계가 <code>-0.06R</code>입니다 —
+    <b>머리 중심선 아래로 사실상 내려가지 않습니다.</b> 그래서 어떤 스타일을 넣어도 "머리에 씌운 뚜껑"으로 보입니다.
+    참고한 스틱맨 애니메이션의 머리가 다른 건 두 가지뿐입니다.
+  </p>
+  <div class="rules" style="margin-top:18px">
+    <div class="rule"><b>턱 아래로 내려온다</b><span>옆머리가 머리 반지름의 1.5~2.2배까지 떨어집니다. 이 길이가 존재감의 전부입니다.</span></div>
+    <div class="rule"><b>끝이 뾰족하다</b><span>가닥 끝은 <b>점</b>으로 수렴합니다. 캡슐 획으로는 절대 안 되고, <b>닫힌 채움 도형</b>의 꼭짓점으로만 됩니다.</span></div>
+    <div class="rule"><b>얼굴은 파인 공간</b><span>머리카락은 채운 덩어리, 얼굴은 그 안쪽 경계가 만드는 빈 자리입니다. 이미 <code>Filled</code>로 가능합니다.</span></div>
+    <div class="rule"><b>좌우가 다르다</b><span>진행 방향 쪽이 짧고 반대쪽이 깁니다. 완전 대칭이면 가발처럼 보입니다.</span></div>
+  </div>
+
+  <div class="grid" style="margin-top:20px">
+
+    <div class="item">
+      <div class="item-head"><span class="item-name">긴생머리</span><span class="verdict">신규</span></div>
+      <div class="views">
+        <figure class="view">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 26 Q20 12 32 12 Q44 12 44 26 Q44 17 32 17 Q20 17 20 26 Z" fill="#3a4150" stroke="#3a4150" stroke-width="2"/>
+            <circle cx="32" cy="26" r="12" stroke="#e9ecf1" stroke-width="3"/>
+            <path d="M32 38 V52 M32 42 L24 48 M32 42 L40 48" stroke="#e9ecf1" stroke-width="3"/>
+          </svg>
+          <figcaption>지금 방식</figcaption>
+        </figure>
+        <figure class="view after">
+          <svg width="76" height="76" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="32" cy="25" r="12" stroke="#e9ecf1" stroke-width="3"/>
+            <path d="M32 37 V50 M32 41 L24 47 M32 41 L40 47" stroke="#e9ecf1" stroke-width="3"/>
+            <path d="M18 60 Q11.5 42 13 25 Q13 6 32 6 Q51 6 51 25 Q52.5 44 46 63 L39.5 47 Q43 34 42 25 Q42 13.5 32 13.5 Q22 13.5 22 25 Q21 35 24.5 47 Z" fill="#3a4150"/>
+          </svg>
+          <figcaption>리디자인</figcaption>
+        </figure>
+        <figure class="view">
+          <svg width="76" height="76" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <g transform="translate(18.6 12.4) scale(0.42)">
+              <circle cx="32" cy="25" r="12" stroke="#e9ecf1" stroke-width="6.5"/>
+              <path d="M32 37 V50 M32 41 L24 47 M32 41 L40 47" stroke="#e9ecf1" stroke-width="6.5"/>
+              <path d="M18 60 Q11.5 42 13 25 Q13 6 32 6 Q51 6 51 25 Q52.5 44 46 63 L39.5 47 Q43 34 42 25 Q42 13.5 32 13.5 Q22 13.5 22 25 Q21 35 24.5 47 Z" fill="#3a4150"/>
+            </g>
+          </svg>
+          <figcaption>실제 크기</figcaption>
+        </figure>
+      </div>
+      <p class="fix"><b>핵심</b> — 옆머리가 <b>2.2R까지</b> 떨어지고 끝이 점으로 수렴합니다. 안쪽 경계가 이마선을 따라가 <b>얼굴이 파입니다</b>. 앞쪽이 짧고 뒤쪽이 길어 방향감이 생깁니다.</p>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="item-name">단발</span><span class="verdict">신규</span></div>
+      <div class="views">
+        <figure class="view">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 26 Q21 13 32 13 Q43 13 43 26 Q43 18 32 18 Q21 18 21 26 Z" fill="#3a4150" stroke="#3a4150" stroke-width="2"/>
+            <circle cx="32" cy="26" r="12" stroke="#e9ecf1" stroke-width="3"/>
+            <path d="M32 38 V52 M32 42 L24 48 M32 42 L40 48" stroke="#e9ecf1" stroke-width="3"/>
+          </svg>
+          <figcaption>지금 방식</figcaption>
+        </figure>
+        <figure class="view after">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.5 44 Q17.5 32 19 27 Q19 11 32 11 Q45 11 45 27 Q47 34 44 45 L39.6 39.6 Q41 32 40 26.6 Q40 17 32 17 Q24 17 24 26.6 Q23 33 24.4 39.6 Z" fill="#3a4150"/>
+            <circle cx="32" cy="26" r="12" stroke="#e9ecf1" stroke-width="3"/>
+            <path d="M32 38 V52 M32 42 L24 48 M32 42 L40 48" stroke="#e9ecf1" stroke-width="3"/>
+          </svg>
+          <figcaption>리디자인</figcaption>
+        </figure>
+        <figure class="view">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M25.2 38.6 Q23.4 31.6 24.4 28 Q24.4 17.6 32 17.6 Q39.6 17.6 39.6 28 Q40.8 32.6 39 39.2 L36.4 36 Q37.2 31.6 36.6 28.4 Q36.6 22.6 32 22.6 Q27.4 22.6 27.4 28.4 Q26.8 31.4 27.6 36 Z" fill="#3a4150"/>
+            <circle cx="32" cy="27" r="7" stroke="#e9ecf1" stroke-width="2.2"/>
+            <path d="M32 34 V44 M32 37 L27 41 M32 37 L37 41 M32 44 L28 54 M32 44 L36 54" stroke="#e9ecf1" stroke-width="2.2"/>
+          </svg>
+          <figcaption>실제 크기</figcaption>
+        </figure>
+      </div>
+      <p class="fix"><b>핵심</b> — 턱선(1.5R)에서 끝나고 끝이 <b>안쪽으로 말립니다</b>. 긴생머리와 같은 문법이고 길이만 다릅니다 — 세트로 읽히는 이유입니다.</p>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="item-name">포니테일</span><span class="verdict">신규</span></div>
+      <div class="views">
+        <figure class="view">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 26 Q21 13 32 13 Q43 13 43 26 Q43 18 32 18 Q21 18 21 26 Z" fill="#3a4150" stroke="#3a4150" stroke-width="2"/>
+            <path d="M43 22 Q50 26 48 34" stroke="#3a4150" stroke-width="4"/>
+            <circle cx="32" cy="26" r="12" stroke="#e9ecf1" stroke-width="3"/>
+            <path d="M32 38 V52 M32 42 L24 48 M32 42 L40 48" stroke="#e9ecf1" stroke-width="3"/>
+          </svg>
+          <figcaption>지금 방식</figcaption>
+        </figure>
+        <figure class="view after">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M43.5 20 Q55 25 54 39 Q53.4 50 47.5 55 L44 47.6 Q49 41 48.6 33.6 Q48.2 26.4 41.6 25 Z" fill="#3a4150"/>
+            <path d="M19.6 30 Q19.6 11 32 11 Q44.4 11 44.4 30 Q43.4 20.4 40 26.4 Q40 17 32 17 Q24 17 24 26.4 Q20.6 20.4 19.6 30 Z" fill="#3a4150"/>
+            <circle cx="43.6" cy="22.6" r="2.6" fill="#e9ecf1" stroke="#3a4150" stroke-width="2.4"/>
+            <circle cx="32" cy="26" r="12" stroke="#e9ecf1" stroke-width="3"/>
+            <path d="M32 38 V52 M32 42 L24 48 M32 42 L40 48" stroke="#e9ecf1" stroke-width="3"/>
+          </svg>
+          <figcaption>리디자인</figcaption>
+        </figure>
+        <figure class="view">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M38.8 23.4 Q45.6 26.4 45 34.6 Q44.6 41 41.2 44 L39.2 39.6 Q42 35.8 41.8 31.4 Q41.6 27.2 37.6 26.4 Z" fill="#3a4150"/>
+            <path d="M24.2 29 Q24.2 17.6 32 17.6 Q39.8 17.6 39.8 29 Q39.2 23.4 36.6 26.8 Q36.6 22.6 32 22.6 Q27.4 22.6 27.4 26.8 Q24.8 23.4 24.2 29 Z" fill="#3a4150"/>
+            <circle cx="32" cy="27" r="7" stroke="#e9ecf1" stroke-width="2.2"/>
+            <path d="M32 34 V44 M32 37 L27 41 M32 37 L37 41 M32 44 L28 54 M32 44 L36 54" stroke="#e9ecf1" stroke-width="2.2"/>
+          </svg>
+          <figcaption>실제 크기</figcaption>
+        </figure>
+      </div>
+      <p class="fix"><b>핵심</b> — 지금은 묶음이 <b>굵기 일정한 획</b>이라 끝이 뭉툭했습니다. 채움 도형으로 바꿔 <b>뿌리는 굵고 끝은 점</b>이 되게 했습니다. 묶는 고리 하나가 "묶었다"를 확정합니다.</p>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="item-name">삐친머리</span><span class="verdict">개선</span></div>
+      <div class="views">
+        <figure class="view">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 26 Q21 13 32 13 Q43 13 43 26 Q43 18 32 18 Q21 18 21 26 Z" fill="#3a4150" stroke="#3a4150" stroke-width="2"/>
+            <path d="M40 16 L47 9 L43 18 Z" fill="#3a4150"/>
+            <circle cx="32" cy="26" r="12" stroke="#e9ecf1" stroke-width="3"/>
+            <path d="M32 38 V52 M32 42 L24 48 M32 42 L40 48" stroke="#e9ecf1" stroke-width="3"/>
+          </svg>
+          <figcaption>지금 방식</figcaption>
+        </figure>
+        <figure class="view after">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19.6 30 L20.6 17.6 L25 23.4 L27.6 9.6 L32.4 19.4 L37 8 L39.6 21 L44.6 13.4 L44.4 30 Q42 19.4 32 19.4 Q22 19.4 19.6 30 Z" fill="#3a4150"/>
+            <circle cx="32" cy="26" r="12" stroke="#e9ecf1" stroke-width="3"/>
+            <path d="M32 38 V52 M32 42 L24 48 M32 42 L40 48" stroke="#e9ecf1" stroke-width="3"/>
+          </svg>
+          <figcaption>리디자인</figcaption>
+        </figure>
+        <figure class="view">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M24.6 29 L25.2 21.8 L27.8 25.2 L29.2 17.2 L32 22.8 L34.6 16.4 L36.2 24 L39 19.6 L39 29 Q37.6 22.8 32 22.8 Q26.4 22.8 24.6 29 Z" fill="#3a4150"/>
+            <circle cx="32" cy="27" r="7" stroke="#e9ecf1" stroke-width="2.2"/>
+            <path d="M32 34 V44 M32 37 L27 41 M32 37 L37 41 M32 44 L28 54 M32 44 L36 54" stroke="#e9ecf1" stroke-width="2.2"/>
+          </svg>
+          <figcaption>실제 크기</figcaption>
+        </figure>
+      </div>
+      <p class="fix"><b>핵심</b> — 매끈한 돔에 삼각형 하나를 붙여 뒀습니다. 그러지 말고 <b>바깥 윤곽 자체를 다섯 번 뾰족하게</b> 만듭니다. 실루엣만으로 "뻗친 머리"가 읽힙니다.</p>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="item-name">곱슬머리</span><span class="verdict">개선</span></div>
+      <div class="views">
+        <figure class="view">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 26 Q20 12 32 12 Q44 12 44 26 Q44 17 32 17 Q20 17 20 26 Z" fill="#3a4150" stroke="#3a4150" stroke-width="2"/>
+            <circle cx="32" cy="26" r="12" stroke="#e9ecf1" stroke-width="3"/>
+            <path d="M32 38 V52 M32 42 L24 48 M32 42 L40 48" stroke="#e9ecf1" stroke-width="3"/>
+          </svg>
+          <figcaption>지금 방식</figcaption>
+        </figure>
+        <figure class="view after">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 33 Q11.6 27.4 17.4 22.6 Q13.4 14.6 22 13.4 Q24.4 6 32 9.6 Q39.6 6 42 13.4 Q50.6 14.6 46.6 22.6 Q52.4 27.4 47 33 Q45.6 39.6 40.6 38 Q41.6 20 32 20 Q22.4 20 23.4 38 Q18.4 39.6 17 33 Z" fill="#3a4150"/>
+            <circle cx="32" cy="26" r="12" stroke="#e9ecf1" stroke-width="3"/>
+            <path d="M32 38 V52 M32 42 L24 48 M32 42 L40 48" stroke="#e9ecf1" stroke-width="3"/>
+          </svg>
+          <figcaption>리디자인</figcaption>
+        </figure>
+        <figure class="view">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23.4 31.4 Q20.2 28.2 23.6 25.4 Q21.2 20.8 26.2 20 Q27.6 15.8 32 17.8 Q36.4 15.8 37.8 20 Q42.8 20.8 40.4 25.4 Q43.8 28.2 40.6 31.4 Q39.8 35.2 36.8 34.4 Q37.4 23.8 32 23.8 Q26.6 23.8 27.2 34.4 Q24.2 35.2 23.4 31.4 Z" fill="#3a4150"/>
+            <circle cx="32" cy="27" r="7" stroke="#e9ecf1" stroke-width="2.2"/>
+            <path d="M32 34 V44 M32 37 L27 41 M32 37 L37 41 M32 44 L28 54 M32 44 L36 54" stroke="#e9ecf1" stroke-width="2.2"/>
+          </svg>
+          <figcaption>실제 크기</figcaption>
+        </figure>
+      </div>
+      <p class="fix"><b>핵심</b> — 사인파로 물결을 준 원은 작아지면 그냥 원입니다. <b>바깥 윤곽을 일곱 개의 둥근 덩어리</b>로 만들고 옆으로 부풀렸습니다. 곱슬의 정체는 굴곡이 아니라 <b>부피</b>입니다.</p>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="item-name">바가지머리</span><span class="verdict">개선</span></div>
+      <div class="views">
+        <figure class="view">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 27 Q20 13 32 13 Q44 13 44 27 L40 27 L40 22 L24 22 L24 27 Z" fill="#3a4150"/>
+            <circle cx="32" cy="26" r="12" stroke="#e9ecf1" stroke-width="3"/>
+            <path d="M32 38 V52 M32 42 L24 48 M32 42 L40 48" stroke="#e9ecf1" stroke-width="3"/>
+          </svg>
+          <figcaption>지금 방식</figcaption>
+        </figure>
+        <figure class="view after">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18.6 36 Q18.6 11 32 11 Q45.4 11 45.4 36 L40 34.6 Q40.6 25.4 39.6 23 Q32 26 24.4 23 Q23.4 25.4 24 34.6 Z" fill="#3a4150"/>
+            <circle cx="32" cy="26" r="12" stroke="#e9ecf1" stroke-width="3"/>
+            <path d="M32 38 V52 M32 42 L24 48 M32 42 L40 48" stroke="#e9ecf1" stroke-width="3"/>
+          </svg>
+          <figcaption>리디자인</figcaption>
+        </figure>
+        <figure class="view">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23.8 32.6 Q23.8 17.6 32 17.6 Q40.2 17.6 40.2 32.6 L37 31.8 Q37.4 26.4 36.8 25 Q32 26.8 27.2 25 Q26.6 26.4 27 31.8 Z" fill="#3a4150"/>
+            <circle cx="32" cy="27" r="7" stroke="#e9ecf1" stroke-width="2.2"/>
+            <path d="M32 34 V44 M32 37 L27 41 M32 37 L37 41 M32 44 L28 54 M32 44 L36 54" stroke="#e9ecf1" stroke-width="2.2"/>
+          </svg>
+          <figcaption>실제 크기</figcaption>
+        </figure>
+      </div>
+      <p class="fix"><b>핵심</b> — 옆머리를 <b>귀 아래까지</b> 내리고 앞머리 선을 <b>가운데가 처진 곡선</b>으로 바꿨습니다. 직선 앞머리는 자로 그은 것처럼 보입니다.</p>
+    </div>
+  </div>
+
+  <p class="note">
+    <b>코드에서 바뀌어야 하는 값 셋.</b>
+    <code>HairSpanEndDegrees</code>를 늘려 옆머리가 아래로 내려가게 하고,
+    <code>HairlineEdgeRatio</code>(현재 <code>-0.06</code>)를 <code>-1.5R ~ -2.2R</code>까지 확장하며,
+    가닥 끝은 <b>둥근 획이 아니라 닫힌 채움 도형의 꼭짓점</b>으로 만듭니다.
+    지금 구조로 <code>Filled=true</code>가 이미 되므로 렌더러 변경은 없습니다.
+  </p>
+</section>
+
+<!-- ============================ 구현 ============================ -->
+<section>
+  <p class="eyebrow">구현</p>
+  <h2>기존 그리기 구조를 그대로 씁니다</h2>
+  <div class="impl">
+    <p>
+      새 렌더러도, 셰이더도, 이미지 에셋도 필요 없습니다. 위 도형은 전부
+      <code>AccessoryShapeBuilder.Shape</code>가 이미 표현할 수 있는 것들입니다 —
+      <code>Vector3[] Points</code> 폴리라인, <code>Loop</code>, <code>Filled</code>,
+      <code>Tone</code> 0/1, <code>SortingOrder</code>.
+    </p>
+    <p>
+      바뀌는 것은 <b>점 좌표와 부분 개수</b>뿐입니다. 지금 한 아이템이 도형 1~2개인데,
+      리디자인은 3~5개를 씁니다(예: 배낭 = 몸통 + 덮개 + 버클 + 끈 2개).
+      좌표는 전부 기존과 같이 <code>Rig</code> 상대값(<code>HeadRadius</code>,
+      <code>ShoulderY</code>, <code>TorsoLength</code>)으로 잡아 배율 불변을 유지합니다.
+    </p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>항목</th><th>지금</th><th>바꿀 값</th></tr></thead>
+        <tbody>
+          <tr><td>선 두께</td><td>아이템마다 다름</td><td>세트 전체 하나로 통일 (카드 40px 기준 3.2 상당)</td></tr>
+          <tr><td>채움</td><td>기준 없이 혼용</td><td><code>Filled=true</code>는 <b>안쪽을 가려야 하는 것만</b> — 모자관, 렌즈, 가방 몸통</td></tr>
+          <tr><td>도형 수</td><td>1~2개</td><td>3~5개 (특징을 별도 부분으로 분리)</td></tr>
+          <tr><td>보조톤</td><td>거의 안 씀</td><td>같은 아이템 안에서 면을 나눌 때 <code>Tone=1</code> 사용 (털 단, 가방 덮개)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">
+      <b>착용 상태를 반드시 함께 확인해야 합니다.</b> 카드에서 예쁜 도형이 머리 지름 32pt 위에서는
+      뭉개질 수 있습니다. 위 세 번째 칸이 그 크기를 그대로 재현한 것이고,
+      각 아이템은 두 크기를 <b>다른 점 개수</b>로 그려도 됩니다(카드용 상세 / 착용용 축약).
+    </p>
+  </div>
+</section>
+
+<section>
+  <p class="eyebrow">남은 것</p>
+  <h2>확인이 필요한 두 가지</h2>
+  <div class="impl">
+    <p>
+      <b>1. 적용 범위가 아직 고르지 않습니다.</b> 참고 이미지 셋을 받으며 기준이 두 번 올라갔고,
+      그때마다 앞쪽부터 다시 그렸습니다. 지금 상태는 이렇습니다:
+      <b>모자 넷</b> = 입체 + 감쌈 + 선 위계 전부 적용 · <b>머리 여섯</b> = 덩어리 + 뾰족한 끝 적용 ·
+      <b>안경·넥타이·망토 열둘</b> = 실루엣 오독만 고침, <b>아직 평면</b>.
+      카드 미리보기(가운데 칸)는 새 기준이고, 일부 <b>착용 칸은 이전 버전</b>이라 둘이 다를 수 있습니다 —
+      방향 판단은 가운데 칸으로 봐주세요.
+    </p>
+    <p>
+      <b>2. 참고한 것과 가져오지 않은 것.</b> Alan Becker의 스틱맨 애니메이션 둘과 게임 캐릭터 하나를
+      기준으로 삼았습니다. 형태를 옮기지 않았고, 가져온 것은 <b>만드는 방식</b>입니다 —
+      타원 원근, 감싸는 덩어리, 뒤로 뻗는 실루엣, 점으로 수렴하는 끝, 선 굵기 3단계.
+    </p>
+    <p>
+      <b>3. 다음 단계</b> — 모자 넷과 머리 여섯이 방향에 맞으면, 같은 문법으로
+      (가) 안경·넥타이·망토 열두 종에 부피를 넣고, (나) 나머지 아이템으로 확장하겠습니다.
+      방향이 아니면 여기서 멈추는 편이 낫습니다 — 열두 종을 먼저 그려놓고 기준이 또 바뀌면 두 번 일하게 됩니다.
+    </p>
+  </div>
+</section>
+
+</div>

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using NUnit.Framework;
 using StickMate.Core;
+using StickMate.Platform;
 
 namespace StickMate.Tests.EditMode
 {
@@ -33,10 +34,13 @@ namespace StickMate.Tests.EditMode
     /// </summary>
     public sealed class ShortcutLabelParityTests
     {
-        /// <summary>이 앱이 안내하는 동작키 전부(문자 10개 + 쉼표). 표기 규칙은 키 종류와 무관해야 한다.</summary>
+        /// <summary>이 앱이 안내하는 동작키 전부. 표기 규칙은 키 종류와 무관해야 한다.
+        /// <para><c>V</c>는 아직 배선 대기(설정창 [일반] 숨기기/보이기)라 <see cref="GlobalKey"/>에
+        /// 없지만 화면에는 안내되므로 여기 있다. <b>2026-09-01 <c>","</c>가 <c>"P"</c>로 바뀌었다</b> —
+        /// 아래 "OS가 예약한 조합" 절 참고.</para></summary>
         private static readonly string[] Keys =
         {
-            "A", "B", "C", "D", "F", "G", "H", "I", "J", "K", "N", "Q", "R", "S", "T", "V", "X", ",",
+            "A", "B", "C", "D", "F", "G", "H", "I", "J", "K", "N", "P", "Q", "R", "S", "T", "V", "X",
         };
 
         private static bool IsLatinLetter(char c) => (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
@@ -167,6 +171,118 @@ namespace StickMate.Tests.EditMode
 
             Assert.AreNotEqual(oldHardcodedArcheryLabel, ShortcutLabel.WindowsChord("A"),
                 "Windows 표기가 옛 하드코딩과 같습니다 — 그렇다면 C3 결함이 그대로 살아 있습니다.");
+        }
+
+        // ============================================================================
+        // ★ 4. OS가 이미 가져간 조합을 우리가 안내하고 있지는 않은가 (2026-09-01 신설)
+        // ============================================================================
+
+        /// <summary>
+        /// <b>이 파일에 뚫려 있던 구멍.</b> 위 검사들은 "표기가 플랫폼마다 옳은 말을 하는가"만 본다.
+        /// <b>그 조합을 눌러도 되는가</b>는 아무도 보지 않았고, 정확히 그 틈으로 결함이 들어왔다.
+        ///
+        /// <para><b>사고</b>: 설정창 단축키가 <c>⌃⌥⌘,</c>였다. 그건 macOS 접근성 시스템 단축키
+        /// <b>"대비 줄이기"</b>(symbolic hotkey <b>26</b>)다. 키 한 번에 두 가지 일이 일어났고,
+        /// 창을 열고 닫는 왕복 2회 누름마다 <c>com.apple.universalaccess</c>의 <c>contrast</c>가
+        /// 0.10씩 <b>실제로</b> 내려갔다 — 불변 원칙 2(비침해)·3(유저 자산 불변) 위반이며, 하필
+        /// <b>대비를 조절해 쓰는 접근성 사용자만</b> 골라서 맞는다. 2026-09-01 <c>P</c>로 옮겼다.</para>
+        ///
+        /// <para><b>재현 절차</b>(이 단언이 무엇을 막는지 손으로 확인할 때):
+        /// <code>
+        /// defaults read com.apple.universalaccess contrast   # 키 없음(=0)
+        /// # ⌃⌥⌘. 주입  -> contrast = 0.05   (OS 훅이 살아 있다는 증명)
+        /// # ⌃⌥⌘, 주입  -> contrast = 0      AND 설정창도 토글된다  ← 두 가지 일이 함께 일어난다
+        /// # ⌃⌥⌘P 주입  -> contrast 불변     AND 설정창만 토글된다  ← 고침 후 기대값
+        /// </code></para>
+        ///
+        /// <para><b>금지 목록을 여기에 숫자로 베끼지 않는다</b>(CLAUDE.md). 목록의 단일 정의처는
+        /// 프로덕션의 <see cref="ShortcutLabel.MacReservedActionKeys"/> /
+        /// <see cref="ShortcutLabel.WindowsReservedActionKeys"/>이고, 근거(symbolic hotkey ID
+        /// 21/25/26)와 "왜 이 세 글자뿐인가"도 거기 적혀 있다. 새 예약이 발견되면 그쪽에 한 줄
+        /// 추가하는 것만으로 이 검사가 곧바로 적용된다.</para>
+        /// </summary>
+        [Test]
+        public void 안내하는_동작키는_OS가_예약한_조합이_아니다()
+        {
+            AssertNoneReserved(Keys, "안내 문구가 쓰는 동작키");
+        }
+
+        /// <summary>
+        /// ★ 위 검사의 <b>공허함 방지</b> — 표기 목록(<see cref="Keys"/>)은 테스트가 들고 있는
+        /// 사본이라, 실제 배선이 예약 조합으로 돌아가도 위 검사만으로는 초록일 수 있다. 그래서
+        /// <b>실제로 폴링되는 키</b>(<see cref="GlobalKey"/> 열거형 그 자체)도 같은 잣대로 본다.
+        ///
+        /// <para>조합키 3개(<c>Command</c>/<c>Option</c>/<c>Control</c>)는 동작키가 아니므로 뺀다.
+        /// 나머지는 전부 한 글자 이름이며, <b>그 이름이 곧 사용자가 누르는 글자</b>다 — 이름이
+        /// 여러 글자인 항목이 생기면(옛 <c>Comma</c>가 그랬다) 그 글자를 알 수 없으므로 여기서
+        /// 실패시킨다. 명시적 매핑 없이 조용히 검사 밖으로 빠져나가는 항목을 만들지 않기 위해서다.</para>
+        /// </summary>
+        [Test]
+        public void 실제_배선된_전역키도_OS가_예약한_조합이_아니다()
+        {
+            var actionKeys = new List<string>();
+            foreach (GlobalKey key in (GlobalKey[])System.Enum.GetValues(typeof(GlobalKey)))
+            {
+                if (key == GlobalKey.Command || key == GlobalKey.Option || key == GlobalKey.Control) continue;
+
+                string name = key.ToString();
+                Assert.AreEqual(1, name.Length,
+                    $"GlobalKey.{name}은 이름이 한 글자가 아닙니다 — 사용자가 실제로 누르는 글자를 " +
+                    "이 검사가 알 수 없어 예약 조합 판정에서 조용히 빠져나갑니다. 옛 GlobalKey.Comma가 " +
+                    "정확히 그런 항목이었고, 그 사각지대에서 ⌃⌥⌘,(macOS 대비 줄이기) 충돌이 살아남았습니다. " +
+                    "여러 글자 이름이 필요하면 ShortcutLabel에 이름→글자 매핑을 두고 이 검사에 물리세요.");
+                actionKeys.Add(name);
+            }
+
+            Assert.IsNotEmpty(actionKeys, "GlobalKey에 동작키가 하나도 없습니다 — 검사가 공허합니다.");
+            AssertNoneReserved(actionKeys, "실제 배선된 GlobalKey");
+        }
+
+        /// <summary>
+        /// ★ 네거티브 컨트롤 — <b>이 검사가 실제로 결함을 잡을 수 있는가.</b>
+        /// 금지 목록이 비거나 비교가 헛돌면 위 두 검사는 아무것도 안 하면서 초록이다. 그래서
+        /// <b>2026-09-01 이전에 실제로 출하돼 있던 동작키</b>(<c>","</c>)를 넣어 보고 잡히는지 본다.
+        /// </summary>
+        [Test]
+        public void 컨트롤_옛_설정창_단축키는_이_검사에_걸린다()
+        {
+            const string shippedActionKeyBeforeFix = ",";
+
+            CollectionAssert.Contains(ShortcutLabel.MacReservedActionKeys, shippedActionKeyBeforeFix,
+                "금지 목록에서 쉼표가 빠졌습니다 — 그렇다면 위 검사들은 이 저장소가 실제로 겪은 결함조차 " +
+                "잡지 못합니다(⌃⌥⌘, = macOS 접근성 '대비 줄이기', symbolic hotkey 26).");
+
+            CollectionAssert.DoesNotContain(Keys, shippedActionKeyBeforeFix,
+                "안내 문구가 아직 쉼표를 동작키로 쓰고 있습니다 — 고침이 되돌아갔습니다.");
+
+            // 이 검사의 잣대가 "무엇이든 다 금지"가 아님을 함께 보인다(과잉 금지 방지).
+            CollectionAssert.DoesNotContain(ShortcutLabel.MacReservedActionKeys, "P",
+                "P가 금지 목록에 들어가 있습니다 — 지금 설정창이 쓰는 글자입니다. 실측상 ⌃⌥⌘ 마스크에 " +
+                "macOS가 예약한 것은 8 / , / . 셋뿐입니다.");
+        }
+
+        /// <summary>플랫폼 양쪽 금지 목록을 <b>같은 코드 경로로</b> 검사한다 — 한쪽만 도는 감사는
+        /// 반대쪽 갭이 조용히 쌓이는 이 저장소의 단골 실패다(CLAUDE.md 플랫폼 동시 검토).</summary>
+        private static void AssertNoneReserved(IEnumerable<string> actionKeys, string what)
+        {
+            var hits = new List<string>();
+            foreach (string key in actionKeys)
+            {
+                foreach (string bad in ShortcutLabel.MacReservedActionKeys)
+                {
+                    if (key == bad) hits.Add($"  · macOS — {ShortcutLabel.MacChord(key)} ({what})");
+                }
+                foreach (string bad in ShortcutLabel.WindowsReservedActionKeys)
+                {
+                    if (key == bad) hits.Add($"  · Windows — {ShortcutLabel.WindowsChord(key)} ({what})");
+                }
+            }
+
+            Assert.IsEmpty(hits,
+                "OS가 이미 예약한 조합을 이 앱의 단축키로 쓰고 있습니다 — 사용자가 한 번 누르면 " +
+                "두 가지 일이 일어나고, 그중 하나는 우리가 통제하지 못하는 OS 설정 변경입니다 " +
+                "(불변 원칙 2 비침해 / 3 유저 자산 불변):\n" + string.Join("\n", hits) +
+                "\n금지 목록과 근거는 Core/ShortcutLabel.MacReservedActionKeys 문서를 보세요.");
         }
     }
 }

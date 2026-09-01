@@ -329,12 +329,12 @@ namespace StickMate.Interaction
             view.IconParts = BuildIcon(command, view.Icon);
 
             view.Name = UiChrome.AddText(view.Rect, "Name", UiChrome.FontBody,
-                TextAnchor.MiddleLeft, UiChrome.TextPrimary);
+                TextAnchor.MiddleLeft, UiChrome.InkTitle(true));
             UiChrome.PlaceTopLeft(view.Name.rectTransform, 48f, -10f, 130f, 18f);
             view.Name.text = CommandNames[index];
 
             view.Description = UiChrome.AddText(view.Rect, "Desc", UiChrome.FontCaption,
-                TextAnchor.MiddleLeft, UiChrome.TextTertiary);
+                TextAnchor.MiddleLeft, UiChrome.InkMeta);
             UiChrome.PlaceTopLeft(view.Description.rectTransform, 48f, -28f, RowWidth - 56f, 16f);
             view.Description.text = CommandDescriptions[index];
 
@@ -345,7 +345,7 @@ namespace StickMate.Interaction
         private void BuildFooter(RectTransform content)
         {
             _footerHint = UiChrome.AddText(content, "FooterHint", UiChrome.FontCaption,
-                TextAnchor.MiddleLeft, UiChrome.TextQuaternary);
+                TextAnchor.MiddleLeft, UiChrome.InkMeta);
             UiChrome.PlaceTopLeft(_footerHint.rectTransform, 0f, FooterY,
                 ContentWidth - QuitButtonWidth - UiChrome.Space4, QuitButtonHeight);
             _footerHint.text = "내가 누를 때만 실행돼요.";
@@ -512,6 +512,7 @@ namespace StickMate.Interaction
 
         protected override void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.UiWindows);   // [스톨구간] 계측
             base.Update();
             if (!IsOpen) return;
 
@@ -532,12 +533,17 @@ namespace StickMate.Interaction
             CollapseFanAndClose();
         }
 
-        /// <summary>성공 후에는 창만이 아니라 <b>부채꼴도 함께</b> 접는다 — 화면에 캐릭터만 남아야 한다(36-7).</summary>
+        /// <summary>성공 후에는 창만이 아니라 <b>부채꼴도 함께</b> 접는다 — 화면에 캐릭터만 남아야 한다(36-7).
+        /// <para>★ 2026-09-01 — 종전 구현은
+        /// <c>if (fan != null) { fan.ForceCloseAll(...); return; }</c>였다. 부채꼴이 있는 <b>정식
+        /// 조립에서는 아래 Close()가 한 번도 실행되지 않고</b>, 이 창이 닫히는 일이 "부채꼴이 자기
+        /// 팝오버 참조를 해석해 준다"는 간접 경로에만 매달려 있었다 — 정보창 겹침 사고
+        /// (<see cref="IExclusiveSurface"/> 문서)와 <b>완전히 같은 모양의 조기 반환</b>이다.
+        /// 자기 자신을 먼저 닫고, 나머지는 배타 규칙의 단일 집행 지점에 맡긴다.</para></summary>
         private void CollapseFanAndClose()
         {
-            var fan = GetComponent<GearRadialMenuWidget>();
-            if (fan != null) { fan.ForceCloseAll("행동 명령 실행 — 화면을 비운다"); return; }
             Close("행동 명령 실행");
+            ExclusiveSurfaces.CloseAllExcept(this, "행동 명령 실행 — 화면을 비운다");
         }
 
         private void TickTileFeedback(float dt)
@@ -618,8 +624,10 @@ namespace StickMate.Interaction
             tile.Ready = ready;
             tile.Reason = availability.Reason;
 
-            Color nameColor = ready ? UiChrome.TextPrimary : UiChrome.TextDisabled;
-            Color iconColor = ready ? UiChrome.IconInk : UiChrome.TextDisabled;
+            // 이름과 이유를 <b>같은 사다리</b>에서 뽑는다 — 옛 코드는 여기서 이름 2.10 : 이유 3.51로
+            // 서열이 뒤집혀 있었다(설정창에서도 같은 역전이 독립적으로 났다).
+            Color nameColor = UiChrome.InkTitle(ready);
+            Color iconColor = UiChrome.InkIcon(ready);
             if (tile.Name.color != nameColor) tile.Name.color = nameColor;
             for (int i = 0; i < tile.IconParts.Length; i++)
             {
@@ -630,7 +638,8 @@ namespace StickMate.Interaction
             // 사용자는 "왜 안 되는지"를 영영 알 수 없다.
             string body = ready ? CommandDescriptions[(int)command] : availability.Reason;
             if (tile.Description.text != body) tile.Description.text = body;
-            Color bodyColor = ready ? UiChrome.TextTertiary : UiChrome.TextQuaternary;
+            // ★ 이유 문장은 비활성 타일에서 <b>가장 중요한 글자</b>다. 흐려지지 않는다.
+            Color bodyColor = UiChrome.InkMeta;
             if (tile.Description.color != bodyColor) tile.Description.color = bodyColor;
         }
 

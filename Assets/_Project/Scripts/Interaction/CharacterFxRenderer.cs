@@ -265,6 +265,7 @@ namespace StickMate.Interaction
 
         private void LateUpdate()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Renderers);   // [스톨구간] 계측
             if (_agent == null) return; // 자기 캐릭터가 없는 사본 — 아무것도 하지 않는다.
 
             float dt = Time.deltaTime;

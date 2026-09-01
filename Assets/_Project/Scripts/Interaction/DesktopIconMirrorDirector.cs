@@ -64,6 +64,7 @@ namespace StickMate.Interaction
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Directors);   // [스톨구간] 계측
             if (_cooldownRemaining > 0f) _cooldownRemaining -= Time.deltaTime;
             if (_player == null || _config == null) return;
 

@@ -233,7 +233,9 @@ namespace StickMate.Tests.PlayMode
 
             Debug.Log($"{LogPrefix} 준비 완료 — 물리바닥 상단 월드Y={_groundWorldY:F3}, 발판 OS y={groundOs.y:F1}, " +
                 $"신장={_characterHeight:F3}유닛(배율 {_clonedConfig.ResolveCharacterScale():F2}), " +
-                $"서 있을 때 머리 로컬높이={_standingHeadY:F3}, 구르기 임계={_clonedConfig.rollLandingHeightThreshold:F2}유닛, " +
+                $"서 있을 때 머리 로컬높이={_standingHeadY:F3}, " +
+                $"T0.5 진입 임계={_clonedConfig.ResolveLandingSoftAbsorbThreshold(_characterHeight):F2}유닛, " +
+                $"무릎앉아(T1) 임계={_clonedConfig.ResolveLandingReactionThreshold(_characterHeight):F2}유닛, " +
                 $"랙돌 임계 충격량={_clonedConfig.ragdollForceThreshold:F1}, 중력배율={_clonedConfig.gravityScale:F1}.");
         }
 
@@ -342,8 +344,8 @@ namespace StickMate.Tests.PlayMode
             yield return SetUpFlatGround();
 
             // 전제: 이 낙하가 구르기 임계값을 확실히 넘는다(넘지 않으면 연출 자체가 발동하지 않는다).
-            Assert.Greater(HighDropUnits, _clonedConfig.rollLandingHeightThreshold,
-                $"{LogPrefix} 전제 실패 — 낙하 높이가 구르기 임계값 이하라 연출이 애초에 발동하지 않습니다.");
+            Assert.Greater(HighDropUnits, _clonedConfig.ResolveLandingReactionThreshold(_characterHeight),
+                $"{LogPrefix} 전제 실패 — 낙하 높이가 무릎앉아(T1) 임계값 이하라 연출이 애초에 발동하지 않습니다.");
             // "랙돌로 가지 않는다"가 우연이 아님을 보이는 책임은 아래 (4)번(차단 스위치 대조)에 있다 —
             // 이 정상 착지 경로에서는 FallState의 스냅이 먼저 하강 속도를 지워 충돌 충격량이 0이 되므로,
             // 여기서 "충격량이 임계값을 넘었을 것"이라고 전제하면 사실과 다르다(실측 로그 [착지충격]).
@@ -391,27 +393,60 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
-        // (2) 낮은 낙차(Dock 단차)에서는 연출이 발동하지 않는다
+        // (2) Dock 단차 — "무릎을 꿇지는 않지만 무반응도 아니다"(T0.5)
+        //
+        // ★ 2026-09-01 계약 변경(MOTION_SPEC 4-3). 이 테스트는 원래 "Dock 단차에서는 연출이 전혀
+        //   발동하지 않는다"를 잠갔다. 그 계약이 막으려던 것은 **무릎 꿇기 실루엣**이었는데, 구현이
+        //   그것을 "완전 무반응"으로 과잉 달성해 캐릭터가 1분에 열 번 넘게 Dock에서 내려오면서
+        //   무릎이 1도도 굽지 않았다(발이 바닥에 스며드는 그림).
+        //
+        //   그래서 잠그는 대상을 바꾼다: **연출이 도는가**가 아니라 **무릎을 꿇는가**다.
+        //   Dock 단차는 T0.5(가벼운 흡수)로 들어가되 깊이가 landingCrouchMinDepth01(= T1의 최저 깊이)
+        //   **미만**이어야 한다 — 그 위로 올라가는 순간 "한 계단마다 무릎 꿇기"가 되기 때문이다.
         // ============================================================================
 
         [UnityTest]
-        public IEnumerator DockStepDropDoesNotTriggerCrouch()
+        public IEnumerator DockStepDropAbsorbsSoftlyWithoutKneeling()
         {
             yield return SetUpFlatGround();
 
-            Assert.Less(DockStepDropUnits, _clonedConfig.rollLandingHeightThreshold,
-                $"{LogPrefix} 전제 실패 — Dock 단차({DockStepDropUnits:F3})가 구르기 임계값" +
-                $"({_clonedConfig.rollLandingHeightThreshold:F2}) 이상이 되어버렸습니다. " +
+            float softThreshold = _clonedConfig.ResolveLandingSoftAbsorbThreshold(_characterHeight);
+            float kneelThreshold = _clonedConfig.ResolveLandingReactionThreshold(_characterHeight);
+
+            Assert.Greater(DockStepDropUnits, softThreshold,
+                $"{LogPrefix} 전제 실패 — Dock 단차({DockStepDropUnits:F3})가 T0.5 진입 임계값" +
+                $"({softThreshold:F3}) 이하입니다. 그러면 계단을 내려서도 완전 무반응이 됩니다.");
+            Assert.Less(DockStepDropUnits, kneelThreshold,
+                $"{LogPrefix} 전제 실패 — Dock 단차({DockStepDropUnits:F3})가 무릎앉아(T1) 임계값" +
+                $"({kneelThreshold:F3}) 이상이 되어버렸습니다. " +
                 "이 경우 한 계단 내려올 때마다 무릎을 꿇게 됩니다(리더가 명시적으로 금지한 거동).");
+
+            var crouchState = ResolveLandingCrouchState();
 
             var obs = new DropObservation();
             yield return DropAndObserve(DockStepDropUnits, obs);
 
-            Assert.IsFalse(obs.SawLandingCrouch,
-                $"{LogPrefix} 낙차 {DockStepDropUnits:F3}유닛(Dock 단차)에서 무릎앉아가 발동했습니다 — " +
-                "임계값 판정이 무력화됐습니다.");
+            Assert.IsTrue(obs.SawLandingCrouch,
+                $"{LogPrefix} 낙차 {DockStepDropUnits:F3}유닛(Dock 단차)에서 착지 연출이 전혀 돌지 " +
+                "않았습니다 — T0.5(가벼운 흡수)가 무력화됐습니다.");
+            Assert.AreEqual(LandingCrouchState.LandingTier.SoftAbsorb, crouchState.Tier,
+                $"{LogPrefix} Dock 단차의 티어가 T0.5(SoftAbsorb)가 아닙니다(실측 {crouchState.Tier}, " +
+                $"낙차 {crouchState.HeightsFallen:F3} H).");
+            Assert.Less(crouchState.Depth01, _clonedConfig.landingCrouchMinDepth01,
+                $"{LogPrefix} Dock 단차의 앉는 깊이({crouchState.Depth01:F3})가 무릎앉아 최저 깊이" +
+                $"({_clonedConfig.landingCrouchMinDepth01:F3}) 이상입니다 — 한 계단마다 무릎을 꿇는 " +
+                "그림이 됩니다.");
             Assert.IsFalse(obs.SawRagdoll, $"{LogPrefix} 작은 낙차에서 랙돌로 전이했습니다.");
             Assert.IsTrue(obs.Settled, $"{LogPrefix} 작은 낙차에서 Idle/Walk로 복귀하지 못했습니다(최종 {obs.FinalState}).");
+        }
+
+        /// <summary>지금 상태머신에 등록된 LandingCrouchState 인스턴스(티어/깊이 스냅샷 조회용).</summary>
+        private LandingCrouchState ResolveLandingCrouchState()
+        {
+            var bb = _agent.Blackboard;
+            var state = bb.Machine.GetState(StickmanStateId.LandingCrouch) as LandingCrouchState;
+            Assert.IsNotNull(state, $"{LogPrefix} 상태머신에 LandingCrouchState가 등록돼 있지 않습니다.");
+            return state;
         }
 
         // ============================================================================
@@ -423,8 +458,8 @@ namespace StickMate.Tests.PlayMode
         {
             yield return SetUpFlatGround();
 
-            Assert.Greater(ModerateDropUnits, _clonedConfig.rollLandingHeightThreshold,
-                $"{LogPrefix} 전제 실패 — 대조군 낙하가 임계값 이하라 무릎앉아가 발동하지 않습니다.");
+            Assert.Greater(ModerateDropUnits, _clonedConfig.ResolveLandingReactionThreshold(_characterHeight),
+                $"{LogPrefix} 전제 실패 — 대조군 낙하가 무릎앉아(T1) 임계값 이하라 무릎앉아가 발동하지 않습니다.");
 
             var shallow = new DropObservation();
             yield return DropAndObserve(ModerateDropUnits, shallow);

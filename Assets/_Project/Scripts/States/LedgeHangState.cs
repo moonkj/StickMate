@@ -64,10 +64,19 @@ namespace StickMate.States
         /// (AutoWanderController의 배회 통계와 달리 관찰 가능한 패턴을 만들지 않는다) 공용 Random을 쓴다.</summary>
         private static readonly System.Random Rng = new System.Random();
 
-        /// <summary>BUG-M7 파라미터 파이프라인(UX_FLOW.md 31-2 #4) — 매달린 곳에서 내려갈 높이(월드 유닛).</summary>
+        /// <summary>
+        /// BUG-M7 파라미터 파이프라인(UX_FLOW.md 31-2 <b>#6</b>) — 매달린 곳에서 내려갈 높이(월드 유닛)와
+        /// <b>그 프레임의 신장 H</b>.
+        ///
+        /// ★ 2026-09-01 — H가 함께 실린 이유(교차 레이어 로그 L6): 개정 임계값이 <c>1.6 × H</c>라
+        /// 매핑 함수가 신장을 알아야 하는데, 매핑 함수가 설정/에이전트를 직접 읽으면 31-1(하나의
+        /// Enter, 하나의 스냅샷)이 깨진다.
+        /// </summary>
         public sealed class LedgeHangDialogueParams
         {
             public float DropHeightUnits;
+            /// <summary>이 전이 프레임의 캐릭터 실측 신장(월드 유닛).</summary>
+            public float CharacterHeightWorld;
         }
 
         private readonly LedgeHangDialogueParams _dialogueParams = new LedgeHangDialogueParams();
@@ -80,6 +89,11 @@ namespace StickMate.States
         }
 
         public StickmanStateId StateId => StickmanStateId.LedgeHang;
+
+        /// <summary>"어우... 꽤 깊네"가 나오는 낙차(신장 배수 H). 그 아래는 "여기로 내려가자".
+        /// ★ 판단값이지 실측이 아니다 — UX_FLOW.md 31-2 #6 / MOTION_SPEC 2-7. 거리이므로 반드시
+        /// H 배수다(31-4 C1 축 ①).</summary>
+        private const float DeepDescentHeights = 1.6f;
 
         public void Enter(StateTransitionContext context)
         {
@@ -98,7 +112,7 @@ namespace StickMate.States
             _hasDescendTarget = _blackboard.TryFindDescendTarget(info, _direction,
                 out _descendTargetHandle, out _descendTargetTopWorldY);
 
-            float holdMin = _blackboard.Config != null ? _blackboard.Config.ledgeHangHoldDurationMin : 0.55f;
+            float holdMin = _blackboard.Config != null ? _blackboard.Config.ledgeHangHoldDurationMin : 0.84f;
             float holdMax = _blackboard.Config != null ? _blackboard.Config.ledgeHangHoldDurationMax : 1.5f;
             _holdDuration = holdMax > holdMin ? holdMin + (float)Rng.NextDouble() * (holdMax - holdMin) : holdMin;
 
@@ -118,13 +132,31 @@ namespace StickMate.States
             _dialogueParams.DropHeightUnits = _hasDescendTarget
                 ? Mathf.Max(0f, (_ledgeTopWorldY - _dropDepth) - _descendTargetTopWorldY)
                 : 0f;
+            _dialogueParams.CharacterHeightWorld = _blackboard.CharacterHeightWorld;
 
-            _ = new DialogueIntent(context, (id, dialogueParams) =>
+            // ★ 2026-09-01 개정(UX_FLOW.md 31-2 #6 신규 등재 / MOTION_SPEC 1절 표 #3) — 임계값을
+            //   **절대 월드 유닛에서 신장 배수(H)로** 옮긴다. 구 임계값 3.0유닛은 배율 1.0에서
+            //   1.32H이고, 이 상태가 성립하는 최소 낙차 자체가 1.10H(아래 진입 임계값 주석 참고)라
+            //   "어우... 꽤 깊네"가 나오려면 낙차가 최소치의 1.2배를 넘어야 했다. 신장 배수로 적어
+            //   배율 슬라이더와 플랫폼(작업표시줄 높이)에 불변이 되게 한다.
+            //
+            //   ★ 1.6이라는 계수는 design-motion의 **판단값이지 실측이 아니다**. 실기에서 창-창
+            //     사이 낙차 분포를 본 뒤 조정될 수 있다.
+            //
+            //   종류 = Narrative(진행 서술: "여기로 내려가자" = 지금 내려가는 중이라는 서술).
+            //   계획 잔여 체류 = 잡기 보간 + 매달림 유지시간(둘 다 Enter에서 확정).
+            float grabDuration = _blackboard.Config != null ? _blackboard.Config.ledgeHangGrabDuration : 0.28f;
+            _ = DialogueIntent.TryCreate(context, (id, dialogueParams) =>
             {
                 var p = dialogueParams as LedgeHangDialogueParams;
                 float drop = p != null ? p.DropHeightUnits : 0f;
-                return drop < 3f ? "여기로 내려가자" : "어우... 꽤 깊네";
-            });
+                float h = p != null && p.CharacterHeightWorld > 0.0001f
+                    ? p.CharacterHeightWorld
+                    : StickConfig.BaselineCharacterTotalHeight;
+                return drop < DeepDescentHeights * h
+                    ? DialogueLine.Say("여기로 내려가자")
+                    : DialogueLine.Say("어우... 꽤 깊네");
+            }, grabDuration + _holdDuration);
 
             Debug.Log($"[매달리기] 진입 — 방향={(_direction > 0 ? "오른쪽" : "왼쪽")}, " +
                 $"모서리핸들={_ledgeHandle}, 모서리(X={_ledgeEdgeWorldX:F3}, Y={_ledgeTopWorldY:F3}), " +

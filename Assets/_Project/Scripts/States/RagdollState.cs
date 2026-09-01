@@ -77,13 +77,15 @@ namespace StickMate.States
             float threshold = _blackboard.Config != null ? _blackboard.Config.ragdollForceThreshold : 8f;
             _dialogueParams.ImpactRatio = threshold > 0f ? _blackboard.LastImpactMagnitude / threshold : 0f;
 
+            // 종류=Reaction(UX_FLOW.md 5절 규칙 4-a): "방금 맞았다"는 랙돌이 끝나도 **여전히 참**이라
+            // 상태 종료 후에도 가독예산을 채우고 사라진다.
             _ = new DialogueIntent(context, (id, dialogueParams) =>
             {
                 var p = dialogueParams as RagdollDialogueParams;
                 float ratio = p != null ? p.ImpactRatio : 0f;
-                if (ratio < 2.0f) return "윽...!";
-                if (ratio < 4.0f) return "으악!";
-                return "으아아아악?!";
+                if (ratio < 2.0f) return DialogueLine.React("윽...!");
+                if (ratio < 4.0f) return DialogueLine.React("으악!");
+                return DialogueLine.React("으아아아악?!");
             });
         }
 

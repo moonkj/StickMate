@@ -16,7 +16,7 @@ namespace StickMate.Tests.PlayMode
     /// 무엇을 잠그는가 (절대 불변 원칙 1의 이 라운드판)
     /// ============================================================================
     /// 어제까지 배율을 바꾸는 UI는 구석 호버 다이얼 하나뿐이었다. 설정창 슬라이더가 생기는 순간
-    /// <b>표시가 갈라질 수 있는 경로</b>가 열린다: 설정창에서 1.20×로 바꾸고 구석 패널을 열었을 때
+    /// <b>표시가 갈라질 수 있는 경로</b>가 열린다: 설정창에서 한 눈금 옮기고 구석 패널을 열었을 때
     /// 다이얼이 옛 값을 가리키면, "켜진 눈금 = 표시 숫자 = 실제 값"(34-3-4)이라는 구조적 보증이 깨진다.
     ///
     ///   (1) 슬라이더로 바꾸면 <b>다이얼/저장 모델/실제 캐릭터</b>가 전부 같은 값이 된다.
@@ -24,16 +24,15 @@ namespace StickMate.Tests.PlayMode
     ///   (3) 적용 게이트(랙돌 중 유예 + 최대 3초 후 강제)는 <b>한 곳에만</b> 있고, 유예 중에도
     ///       두 UI의 <b>표시</b>는 사용자가 고른 값으로 즉시 같아진다(유예는 몸이 늦는 것이지
     ///       선택이 취소된 것이 아니다).
-    ///   (4) 슬라이더는 다이얼과 <b>같은 0.05 격자</b>에 스냅된다 — 격자가 두 벌이면 같은 값이
-    ///       한쪽에서 1.15, 다른 쪽에서 1.20으로 보인다.
+    ///   (4) 슬라이더는 컨트롤러와 <b>같은 격자</b>(CharacterScaleController.ValueStep)에 스냅된다 —
+    ///       격자가 두 벌이면 같은 값이 두 UI에서 한 눈금씩 어긋나 보인다.
     ///
     /// ============================================================================
     /// 왜 <see cref="SettingsWindow.FeedClickForTests"/>로 누르는가
     /// ============================================================================
     /// PlayMode는 진짜 전역 클릭을 만들 수 없다(이 앱의 클릭 경로는 OS 커서 폴링이다).
     /// 그래서 <b>실제 입력과 완전히 같은 처리 경로</b>의 입구에 좌표를 먹인다 —
-    /// <c>InfoGearIconWidget.FeedPointerForTests</c> / <c>CornerHoverPanel.FeedPointerForTests</c>가
-    /// 확립한 관례다. 좌표는 손으로 적지 않고 <b>실제 부품의 화면 사각형</b>에서 얻는다
+    /// <c>InfoGearIconWidget.FeedPointerForTests</c>가 확립한 관례다. 좌표는 손으로 적지 않고 <b>실제 부품의 화면 사각형</b>에서 얻는다
     /// (레이아웃이 바뀌면 엉뚱한 곳을 누르는 대신 테스트가 실패해야 한다).
     /// </summary>
     public sealed class SettingsCharacterScaleSingleSourceTests
@@ -41,7 +40,6 @@ namespace StickMate.Tests.PlayMode
         private const string LogPrefix = "[크기단일소스-TEST]";
 
         private SettingsWindow _window;
-        private CornerHoverPanel _panel;
         private StickmanAgent _agent;
 
         private IEnumerator LoadScene()
@@ -56,17 +54,16 @@ namespace StickMate.Tests.PlayMode
             Assert.IsNotNull(_window, $"{LogPrefix} 씬에서 SettingsWindow를 찾지 못했습니다 — " +
                 "Assets/Editor/SceneBootstrapper.cs의 EnsurePrefabComponents가 프리팹에 이 컴포넌트를 " +
                 "붙였는지 확인하세요(33-9 #10 / 34-9 #10과 같은 함정).");
-            _panel = Object.FindFirstObjectByType<CornerHoverPanel>();
-            Assert.IsNotNull(_panel, $"{LogPrefix} 씬에서 CornerHoverPanel을 찾지 못했습니다.");
-
-            yield return new WaitForSeconds(0.3f);   // 저장 복원(RestoreSavedScale)이 끝날 시간을 준다.
+            // 저장 복원은 CharacterProgressionDirector.Start가 CharacterSaveStore.Load() 직후에
+            // 한 번만 한다(2026-09-01 구석 패널 삭제로 이사). 씬 로드 두 프레임 뒤면 이미 끝나 있다.
+            yield return new WaitForSeconds(0.3f);
         }
 
         /// <summary>
         /// ★ 정적 상태를 <b>반드시</b> 되돌린다. <see cref="UiLayoutModel"/>/<see cref="CharacterScaleController"/>는
         /// 정적이라 씬을 다시 로드해도 살아남고, 그러면 <b>뒤에 오는 다른 스위트</b>가 이 테스트가 고른
-        /// 배율(1.35× 등)로 캐릭터를 띄운 채 돌게 된다 — 2026-08-31에 하루치 PlayMode가 0.35배로 돌았던
-        /// 그 사고의 전파 경로다(<c>CornerHoverPanelTests</c>가 같은 이유로 같은 정리를 한다).
+        /// 배율로 캐릭터를 띄운 채 돌게 된다 — 2026-08-31에 하루치 PlayMode가 0.35배로 돌았던
+        /// 그 사고의 전파 경로다.
         /// </summary>
         [TearDown]
         public void TearDown()
@@ -83,7 +80,6 @@ namespace StickMate.Tests.PlayMode
             //   모델을 비운 <b>뒤에</b> 한 번 더 저장해 파일을 기본값 상태로 되돌린다.
             CharacterSaveStore.Save();
             _window = null;
-            _panel = null;
             _agent = null;
         }
 
@@ -98,6 +94,55 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} [캐릭터] 탭으로 전환되지 않았습니다 — 탭 클릭 경로가 죽었습니다.");
         }
 
+        // ============================================================================
+        // 목표 배율은 <b>숫자로 적지 않는다</b> — 상한에서 파생시킨다
+        // ============================================================================
+
+        /// <summary>
+        /// 상한보다 <paramref name="steps"/> 눈금 아래의 배율. <b>값을 손으로 적지 않는 것이 요점이다.</b>
+        ///
+        /// <para>★ 2026-09-02 사고: 이 파일에 <c>1.20</c>/<c>1.35</c>가 박혀 있었고, 사용자 지시
+        /// <i>"사이즈 max를 1배로 변경"</i>으로 <see cref="StickConfig.MaxCharacterScale"/>이 1.5 → 1.0이 된
+        /// 순간 두 테스트가 <b>도달할 수 없는 값</b>을 눌렀다. 그때 로그는
+        /// <c>설정창=1.00 / 저장모델=1.00 / 실캐릭터=1.000 / 컨트롤러=1.00</c>이었다 — <b>네 곳이 완벽히
+        /// 일치</b>했고, 즉 이 파일이 잠그려던 사실(단일 소스)은 처음부터 멀쩡했다. <b>테스트만 낡았다.</b></para>
+        ///
+        /// <para>왜 하필 "상한보다 아래"인가: 목표가 상한에 <b>붙어</b> 있으면 "슬라이더가 누른 자리를
+        /// 따라왔다"와 "clamp가 걸려서 우연히 같아졌다"를 구분할 수 없다 — 그 상태의 초록은 초록이
+        /// 아니다. 그래서 아래에서 상한 미만임을 <b>테스트 자신이 확인</b>한다.</para>
+        ///
+        /// <para>★ 여기서 상수를 참조하는 것과, (5)에서 <c>1.0</c>을 직접 적는 것은 <b>모순이 아니다</b> —
+        /// 잠그는 대상이 다르다. 근거는 그 테스트의 주석에 있다.</para>
+        /// </summary>
+        private static float TargetStepsBelowMax(int steps)
+        {
+            float target = CharacterScaleController.Snap(
+                StickConfig.MaxCharacterScale - steps * CharacterScaleController.ValueStep);
+
+            Assert.Less(target, StickConfig.MaxCharacterScale,
+                $"{LogPrefix} 목표 배율 {target:F2}이 상한 {StickConfig.MaxCharacterScale:F2}에 붙어 있습니다 — " +
+                "그러면 '슬라이더가 따라왔다'와 'clamp가 걸렸다'를 구분할 수 없어 이 테스트가 아무것도 " +
+                "잠그지 못합니다. 눈금 수를 늘리거나 상한/눈금 간격을 다시 보세요.");
+            Assert.GreaterOrEqual(target, StickConfig.MinCharacterScale,
+                $"{LogPrefix} 목표 배율 {target:F2}이 하한 {StickConfig.MinCharacterScale:F2} 아래입니다 — " +
+                $"상한({StickConfig.MaxCharacterScale:F2})과 눈금({CharacterScaleController.ValueStep:F2})으로는 " +
+                $"{steps}눈금 아래를 만들 수 없습니다.");
+            return target;
+        }
+
+        /// <summary>
+        /// 목표가 <b>지금 값과 실제로 다른지</b> 확인한다. 같으면 트랙을 눌러도 값이 안 바뀌고
+        /// (<c>SettingsSlider.SetValueFromUser</c>가 같은 값이면 조기 반환한다) 모든 단언이 통과해
+        /// <b>거짓 초록</b>이 된다 — "아무 일도 안 일어났는데 전부 일치"는 이 스위트의 최악 실패 모드다.
+        /// </summary>
+        private static void AssertTargetIsRealChange(float target, float current)
+        {
+            Assert.Greater(Mathf.Abs(target - current), CharacterScaleController.ValueStep * 0.5f,
+                $"{LogPrefix} 목표 {target:F2}이 지금 값 {current:F2}과 같은 눈금입니다 — 슬라이더를 눌러도 " +
+                "아무 일이 일어나지 않으므로 이 테스트는 통과해도 아무것도 증명하지 않습니다. " +
+                "기본 배율(StickConfig.characterScale)이 목표와 겹쳤는지 확인하세요.");
+        }
+
         /// <summary>트랙 위에서 <paramref name="value"/>에 해당하는 지점을 누른다(실제 클릭 경로).</summary>
         private void ClickTrackFor(float value)
         {
@@ -110,32 +155,32 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
-        // (1) 설정창 → 다이얼 / 저장 모델 / 실제 캐릭터
+        // (1) 설정창 → 컨트롤러 / 저장 모델 / 실제 캐릭터
         // ============================================================================
 
         [UnityTest]
         [Timeout(120000)]
-        public IEnumerator 설정창_슬라이더로_바꾸면_구석_다이얼과_저장모델과_실캐릭터가_같은_값이_된다()
+        public IEnumerator 설정창_슬라이더로_바꾸면_컨트롤러와_저장모델과_실캐릭터가_같은_값이_된다()
         {
             yield return LoadScene();
             yield return OpenCharacterTab();
 
-            const float Target = 1.20f;   // 0.05 격자 위의 값이면서 기본값(0.75)과 확실히 다르다.
+            float Target = TargetStepsBelowMax(1);   // 상한 바로 아래 눈금 — 숫자를 적지 않는다.
+            AssertTargetIsRealChange(Target, CharacterScaleController.Value);
             ClickTrackFor(Target);
             yield return null;
 
             Debug.Log($"{LogPrefix} 슬라이더 클릭 후 — 설정창={_window.DisplayedCharacterScale:F2}, " +
-                $"구석 다이얼={_panel.DialValue:F2}, 저장모델={UiLayoutModel.CharacterScale:F2}, " +
+                $"저장모델={UiLayoutModel.CharacterScale:F2}, " +
                 $"실캐릭터={_agent.CurrentCharacterScale:F3}, " +
                 $"컨트롤러={CharacterScaleController.Value:F2}.");
 
             Assert.AreEqual(Target, _window.DisplayedCharacterScale, 1e-3f,
                 $"{LogPrefix} 슬라이더가 누른 자리의 값을 가리키지 않습니다.");
-            Assert.AreEqual(Target, _panel.DialValue, 1e-3f,
-                $"{LogPrefix} ★ 구석 다이얼이 옛 값({_panel.DialValue:F2}×)을 가리키고 있습니다 — " +
-                "설정창에서 바꾼 뒤 구석 패널을 열면 '표시 숫자와 실제 값이 다른' 화면이 됩니다. " +
-                "이것이 35-1-3 ①이 경고한 원칙 1 위반이며, StickmanEventBus.CharacterScaleChanged " +
-                "구독이 끊겼을 때 정확히 이렇게 실패합니다.");
+            Assert.AreEqual(Target, CharacterScaleController.Value, 1e-3f,
+                $"{LogPrefix} ★ 단일 소스가 옛 값({CharacterScaleController.Value:F2}×)을 들고 있습니다 — " +
+                "슬라이더가 컨트롤러를 지나지 않고 어딘가에 직접 썼다는 뜻이고, 그 순간 '표시 숫자와 " +
+                "실제 값이 다른' 화면이 가능해집니다(원칙 1).");
             Assert.AreEqual(Target, UiLayoutModel.CharacterScale, 1e-3f,
                 $"{LogPrefix} 저장 모델이 따라오지 않았습니다 — 앱을 껐다 켜면 옛 크기로 돌아갑니다.");
             Assert.AreEqual(Target, _agent.CurrentCharacterScale, 1e-2f,
@@ -143,29 +188,38 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
-        // (2) 반대 방향 — 다이얼이 바꾸면 설정창이 따라온다
+        // (2) 반대 방향 — 설정창 <b>밖</b>에서 바꿔도 슬라이더가 따라온다
         // ============================================================================
 
+        /// <summary>
+        /// 2026-09-01 구석 다이얼이 삭제되어 "다른 UI"는 지금 없다. 그래도 이 방향을 계속 잠그는 이유:
+        /// 설정창 밖에서 배율을 바꾸는 경로는 <b>지금도 있다</b>(저장 복원, 우클릭/단축키, 미래의 두 번째
+        /// UI). 설정창이 구독을 놓치면 열어 둔 창의 숫자가 실제 캐릭터와 갈라진다(원칙 1) — 옛 다이얼이
+        /// 있을 때와 <b>정확히 같은 결함</b>이다.
+        /// </summary>
         [UnityTest]
         [Timeout(120000)]
-        public IEnumerator 구석_다이얼_경로로_바꾸면_설정창_슬라이더가_같은_프레임에_따라온다()
+        public IEnumerator 설정창_밖에서_바꾸면_슬라이더가_같은_프레임에_따라온다()
         {
             yield return LoadScene();
             yield return OpenCharacterTab();
 
-            // 다이얼이 손을 뗄 때 실제로 부르는 것과 <b>같은 한 줄</b>이다
-            // (CornerHoverPanel.OnDialValueChanged). 드래그 제스처를 흉내 내는 대신 그 문을 직접 두드린다.
-            CharacterScaleController.Request(0.60f, "구석 다이얼(테스트)");
+            // 목표는 상한에서 파생시킨다 — 상한이 내려가면 손으로 적은 값은 조용히 사거리를 벗어난다.
+            float target = TargetStepsBelowMax(3);
+            AssertTargetIsRealChange(target, CharacterScaleController.Value);
+
+            // 모든 UI가 지나는 그 문을 직접 두드린다(제스처를 흉내 내지 않는다).
+            CharacterScaleController.Request(target, "설정창 밖 경로(테스트)");
             yield return null;
 
-            Debug.Log($"{LogPrefix} 다이얼 경로 후 — 설정창={_window.DisplayedCharacterScale:F2}, " +
-                $"구석 다이얼={_panel.DialValue:F2}, 실캐릭터={_agent.CurrentCharacterScale:F3}.");
+            Debug.Log($"{LogPrefix} 외부 경로 후 — 목표={target:F2}, 설정창={_window.DisplayedCharacterScale:F2}, " +
+                $"컨트롤러={CharacterScaleController.Value:F2}, 실캐릭터={_agent.CurrentCharacterScale:F3}.");
 
-            Assert.AreEqual(0.60f, _window.DisplayedCharacterScale, 1e-3f,
-                $"{LogPrefix} ★ 설정창 슬라이더가 다이얼의 변경을 따라오지 않았습니다 — " +
-                "설정창을 열어 둔 채 다이얼을 돌리면 두 숫자가 갈라집니다(원칙 1).");
-            Assert.AreEqual(0.60f, _panel.DialValue, 1e-3f,
-                $"{LogPrefix} 다이얼 자신이 요청한 값을 반영하지 않았습니다.");
+            Assert.AreEqual(target, _window.DisplayedCharacterScale, 1e-3f,
+                $"{LogPrefix} ★ 설정창 슬라이더가 외부 변경을 따라오지 않았습니다 — " +
+                "설정창을 열어 둔 채 값이 바뀌면 두 숫자가 갈라집니다(원칙 1).");
+            Assert.AreEqual(target, CharacterScaleController.Value, 1e-3f,
+                $"{LogPrefix} 컨트롤러가 요청한 값을 반영하지 않았습니다.");
         }
 
         // ============================================================================
@@ -185,21 +239,23 @@ namespace StickMate.Tests.PlayMode
             machine.ChangeState(StickmanStateId.Ragdoll, isForcedInterrupt: true);
             yield return null;
 
-            const float Target = 1.35f;
+            float Target = TargetStepsBelowMax(2);
+            AssertTargetIsRealChange(Target, before);
             ClickTrackFor(Target);
             yield return null;
 
             Debug.Log($"{LogPrefix} 랙돌 중 요청 — 유예={CharacterScaleController.HasPendingApply}, " +
                 $"남은 시간={CharacterScaleController.PendingSecondsRemaining:F2}초, " +
-                $"설정창={_window.DisplayedCharacterScale:F2}, 다이얼={_panel.DialValue:F2}, " +
+                $"설정창={_window.DisplayedCharacterScale:F2}, " +
                 $"실캐릭터={_agent.CurrentCharacterScale:F3}(요청 전 {before:F3}).");
 
             Assert.IsTrue(CharacterScaleController.HasPendingApply,
                 $"{LogPrefix} 랙돌 중인데 유예가 걸리지 않았습니다 — 게이트가 사라졌습니다(34-3-6).");
             Assert.AreEqual(Target, _window.DisplayedCharacterScale, 1e-3f,
                 $"{LogPrefix} 유예 중이라고 슬라이더가 되돌아가면 안 됩니다(선택은 취소되지 않았습니다).");
-            Assert.AreEqual(Target, _panel.DialValue, 1e-3f,
-                $"{LogPrefix} 유예 중에도 두 UI의 표시는 같아야 합니다.");
+            Assert.AreEqual(Target, CharacterScaleController.Value, 1e-3f,
+                $"{LogPrefix} 유예 중에도 '사용자가 고른 값'은 목표값이어야 합니다 — 유예는 몸이 늦는 " +
+                "것이지 선택이 취소된 것이 아닙니다.");
             Assert.AreEqual(before, _agent.CurrentCharacterScale, 1e-2f,
                 $"{LogPrefix} 랙돌 중인데 실캐릭터가 즉시 커졌습니다 — 게이트가 통과됐습니다.");
 
@@ -217,26 +273,43 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
-        // (4) 두 UI가 <b>같은 격자</b>에 스냅된다
+        // (4) 슬라이더가 컨트롤러와 <b>같은 격자</b>에 스냅된다
         // ============================================================================
 
+        /// <summary>
+        /// 격자를 UI가 따로 들고 있으면 같은 값이 두 UI에서 한 눈금씩 어긋나 보인다(원칙 1).
+        /// 옛 구석 다이얼과의 대조는 그 위젯이 삭제되면서 사라졌으므로, 이제는 <b>설정창 슬라이더가
+        /// 자기 격자를 발명하지 않고 컨트롤러 상수를 그대로 참조하는가</b>를 잠근다.
+        /// </summary>
         [Test]
-        public void 슬라이더와_다이얼은_같은_0_05_격자를_쓴다()
+        public void 슬라이더는_자기_격자를_발명하지_않고_컨트롤러_상수를_쓴다()
         {
-            Assert.AreEqual(CharacterScaleController.ValueStep, SizeDialWidget.ValueStep, 1e-6f,
-                "[크기단일소스-TEST] 다이얼과 컨트롤러의 스냅 간격이 다릅니다 — 같은 값이 한쪽에서 " +
-                "1.15, 다른 쪽에서 1.20으로 보이게 됩니다(원칙 1).");
+            string settings = ReadProductionSource("SettingsWindow.cs");
+            StringAssert.Contains("CharacterScaleController.ValueStep", settings,
+                "[크기단일소스-TEST] 설정창 슬라이더가 컨트롤러의 스냅 간격을 참조하지 않습니다 — " +
+                "격자가 두 벌이 되면 같은 값이 서로 다른 숫자로 보입니다(원칙 1).");
 
-            // 격자 밖의 값을 두 경로에 각각 넣어 <b>같은 답</b>이 나오는지 본다.
+            // 컨트롤러의 스냅이 실제로 그 격자 위에 떨어지는지도 함께 본다(상수만 맞고 구현이
+            // 어긋나는 경우를 막는다).
             float[] probes = { 0.34f, 0.371f, 0.774f, 1.126f, 1.49f, 1.73f };
             for (int i = 0; i < probes.Length; i++)
             {
-                float viaController = CharacterScaleController.Snap(probes[i]);
-                float viaDial = SizeDialWidget.IndexToValue(SizeDialWidget.ValueToIndex(probes[i]));
-                Assert.AreEqual(viaDial, viaController, 1e-4f,
-                    $"[크기단일소스-TEST] {probes[i]:F3}을 스냅한 결과가 갈립니다 " +
-                    $"(다이얼 {viaDial:F2} vs 컨트롤러 {viaController:F2}).");
+                float snapped = CharacterScaleController.Snap(probes[i]);
+                float steps = (snapped - StickConfig.MinCharacterScale) / CharacterScaleController.ValueStep;
+                Assert.AreEqual(Mathf.Round(steps), steps, 1e-3f,
+                    $"[크기단일소스-TEST] {probes[i]:F3}을 스냅한 {snapped:F3}이 " +
+                    $"{CharacterScaleController.ValueStep:F2} 격자 위에 있지 않습니다.");
             }
+        }
+
+        /// <summary>프로덕션 소스를 문자열로 읽는다(구조 잠금 전용).</summary>
+        private static string ReadProductionSource(string fileName)
+        {
+            string path = System.IO.Path.Combine(Application.dataPath, "_Project", "Scripts",
+                "Interaction", fileName);
+            Assert.IsTrue(System.IO.File.Exists(path),
+                $"[크기단일소스-TEST] 프로덕션 파일을 찾지 못했습니다: {path}");
+            return System.IO.File.ReadAllText(path);
         }
 
         // ============================================================================
@@ -246,9 +319,16 @@ namespace StickMate.Tests.PlayMode
         [Test]
         public void 슬라이더_상한은_StickConfig_MaxCharacterScale을_그대로_따른다()
         {
-            Assert.AreEqual(1.5f, StickConfig.MaxCharacterScale, 1e-4f,
-                "[크기단일소스-TEST] 상한이 1.5가 아닙니다 — 2026-08-31 사용자 지시 '캐릭터 사이즈는 " +
-                "max를 1.5까지만'이 되돌려졌습니다.");
+            // ★ 이 단언은 CLAUDE.md "테스트에 프로덕션 상수를 숫자로 베끼지 않는다"의 **의도된 예외**다.
+            //   여기서 잠그는 것은 "구현이 상수와 일치하는가"(그건 아래 두 단언이 한다)가 아니라
+            //   **"사용자가 고른 값이 조용히 되돌려지지 않았는가"**다. 그래서 값을 직접 적는 것이
+            //   목적 그 자체이며, 상수를 참조하면 이 단언은 항상 참이 되어 아무것도 잠그지 못한다.
+            //   값을 바꾸려면 사용자 지시가 있어야 하고, 그 지시를 아래 메시지에 함께 남긴다.
+            Assert.AreEqual(1.0f, StickConfig.MaxCharacterScale, 1e-4f,
+                "[크기단일소스-TEST] 상한이 1.0이 아닙니다 — 2026-09-01 사용자 지시 '사이즈 max를 " +
+                "1배로 변경'이 되돌려졌습니다. (이력: 2026-08-31 'max를 1.5까지만'으로 2.0 → 1.5, " +
+                "2026-09-01 1.5 → 1.0.) 이 값을 올리면 Dock 등반 결함 구간(배율 > 1.125)이 다시 " +
+                "사거리에 들어옵니다 — StickConfig.MaxCharacterScale 문서 참고.");
             Assert.AreEqual(StickConfig.MaxCharacterScale, CharacterScaleController.Snap(99f), 1e-4f,
                 "[크기단일소스-TEST] 컨트롤러가 상한 위의 값을 잘라 내지 않습니다.");
             Assert.AreEqual(StickConfig.MinCharacterScale, CharacterScaleController.Snap(-1f), 1e-4f,

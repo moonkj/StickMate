@@ -78,11 +78,28 @@ namespace StickMate.Interaction
             // (Platform/PlayerLogPolicy.RoutineNarrationEnabled = StickConfig.verboseDiagnosticsLogging)
             if (!Platform.PlayerLogPolicy.RoutineNarrationEnabled) return;
 
-            Debug.Log($"[유휴동작] {Describe(motion)} 재생 — " +
+            string line = $"[유휴동작] {Describe(motion)} 재생 — " +
                 $"진행 중 상태={blackboard.Machine?.CurrentStateId}, " +
                 $"{blackboard.IdleAmbientDurationSeconds:F2}초. " +
-                "(트리거는 26-3 그대로 + 발행자 최소 간격, 이 구독자에는 새 확률 0개)");
+                "(트리거는 26-3 그대로 + 발행자 최소 간격, 이 구독자에는 새 확률 0개)";
+
+            // ★ 2026-09-02 로그 감량 — 연속 동일 줄 접기. 실측에서 이 태그가 71.5분 세션의 26%를
+            //   차지했고 661/662줄이 **글자 하나 다르지 않았다**. 접어도 횟수는 보존되므로
+            //   불변 원칙 1(행동-텍스트 싱크) 원격 검증에 필요한 정보는 하나도 잃지 않는다.
+            //   판정 규칙 자체는 Platform/RepeatedLogFolder.cs(순수 정책, EditMode에서 검증)에 있다.
+            double now = Time.realtimeSinceStartupAsDouble;
+            bool emit = _logFolder.ShouldEmit(line, now, IdleLogFoldHoldSeconds, out int folded);
+            if (folded > 0) Debug.Log(Platform.RepeatedLogFolder.Describe(LogTag, folded));
+            if (emit) Debug.Log(line);
         }
+
+        /// <summary>접힌 채로 침묵하는 최대 시간(초). 이보다 길어지면 "몇 번 반복 중"을 한 줄로 낸다 —
+        /// 로그만 보고 있는 사람이 "멈췄나?"라고 오해하지 않게 하는 최소한의 생존 신호다.</summary>
+        private const double IdleLogFoldHoldSeconds = 60.0;
+
+        private const string LogTag = "[유휴동작]";
+
+        private Platform.RepeatedLogFolder _logFolder;
 
         /// <summary>로그 문구는 <b>확정된 신호 값에서만</b> 파생한다(불변 원칙 1의 텍스트-액션 싱크 규약을
         /// 진단 로그에도 그대로 적용 — 문구를 먼저 정하고 동작을 끼워 맞추지 않는다).</summary>

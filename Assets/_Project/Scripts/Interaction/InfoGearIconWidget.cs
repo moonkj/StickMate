@@ -6,24 +6,30 @@ using StickMate.Platform;
 namespace StickMate.Interaction
 {
     /// <summary>
-    /// ★ 화면 우상단 상시 <b>맞물린 톱니 두 개</b> — 정보/장비 창의 주 진입점.
+    /// ★ 화면 우상단 상시 <b>톱니 한 개</b> — 정보/장비 창의 주 진입점.
+    /// (2026-09-01 P0-3로 두 개 -> 한 개가 됐다. 아래 "단일 기어로 바꿨다" 절이 그 산술 근거다 —
+    ///  이 첫 줄이 여덟 줄 뒤에서 스스로 부정당하고 있었다.)
     /// 2026-08-29 사용자 원문: "바탕화면 오른쪽 상단에 기어 표시같은걸 띄워놓고 클릭하면 기어가
     /// 회전하면서 캐릭터 창이 나오게끔".
-    /// 2026-08-30 사용자 원문(이번 라운드): "바탕화면 기어표시도 지금 너무 단순하게 되어있잖아 클릭하면
+    /// 2026-08-30 사용자 원문: "바탕화면 기어표시도 지금 너무 단순하게 되어있잖아 클릭하면
     /// <b>큰기어와 작은기어가 맞물려 움직이면서</b> 캐릭터 창이뜨게.. 기어의 디자인도 좀 멋있게 바꿔줘".
     ///
     /// ============================================================================
-    /// "진짜 맞물린 것처럼 보이는가" — 이 요구의 핵심은 기구학이다
+    /// ★ 2026-09-01 — 맞물린 두 기어를 <b>단일 기어</b>로 바꿨다 (P0-3, 리더 승인)
     /// ============================================================================
-    /// 두 기어를 대충 같이 돌리면 그림이 거짓말을 한다. 그래서 실제 기어의 관계를 그대로 코드로 지킨다:
-    ///  · <b>모듈(이 크기)이 같다</b>: 잇수 ∝ 피치 반지름. 큰 기어 <see cref="BigToothCount"/>개,
-    ///    작은 기어 <see cref="SmallToothCount"/>개이고 반지름 비도 정확히 그 비율이다.
-    ///  · <b>중심 거리 = 두 피치 반지름의 합</b>(<see cref="CenterDistancePoints"/>) — 이 값이어야
-    ///    한쪽의 이 끝(팁원)이 다른 쪽의 이 뿌리(루트원)까지 파고들어 "물린" 그림이 된다.
-    ///  · <b>회전은 반대 방향, 속도는 잇수에 반비례</b>: ω작 = −ω큰 × (N큰 / N작).
-    ///    맞물림 위상도 초기에 한 번 맞춰두면(작은 기어의 이가 큰 기어의 골에 오도록) 그 비율을
-    ///    지키는 한 영원히 유지된다 — 즉 애니메이션 중에 이가 서로 파고드는 그림이 나오지 않는다.
-    /// 회귀 테스트: Tests/PlayMode/InfoGearMeshingTests.cs가 방향/속도비/중심거리를 절대 조건으로 잠근다.
+    /// 위 요청("큰기어와 작은기어가 맞물려")은 <b>지켜지지 않는다</b>. 그 사실을 여기 남겨 둔다.
+    ///
+    /// 이유는 취향이 아니라 산술이다. 사용자 신고 "깔끔한 게 하나도 없어"의 최상위 결함이
+    /// <b>이 아이콘이 배경에 따라 아예 안 보인다</b>(회색 전 구간 보장 대비 1.00:1)는 것이었고,
+    /// 그 해법인 역상 헤일로 2겹은 <b>획 폭의 2.2배(3.74pt)</b>를 먹는다. 그런데 옛 작은 기어의
+    /// 이 골은 <b>1.68pt</b>뿐이라(이 높이 − 획 = −0.02pt = 톱니가 물리적으로 없다) 헤일로를
+    /// <b>한 겹도</b> 넣을 수 없었다. 두 기어를 유지하려면 묶음을 2.82배(bbox 약 102pt)로 키워야 하고,
+    /// 그건 화면 구석 아이콘이 아니다. 자세한 계산은 아래 형태 상수 블록에 적어 뒀다.
+    ///
+    /// 남긴 것: 클릭하면 <b>기어가 회전하며</b> 창이 뜨는 연출(원문의 "회전하면서"), 그리고
+    /// "단순하지 않은" 조형(사다리꼴 6이 + 허브 링). 잃은 것: 두 번째 기어와 맞물림 기구학.
+    /// 되돌리려면 이 파일의 형태 상수와 Tests/PlayMode/InfoGearMeshingTests.cs를 함께 되살리면 된다
+    /// (그 테스트는 지우지 않고 <c>Assert.Ignore</c>로 남겨 러너에 계속 보이게 해 뒀다).
     ///
     /// ============================================================================
     /// 왜 uGUI가 아니라 LineRenderer인가
@@ -58,7 +64,7 @@ namespace StickMate.Interaction
     /// 짧게 클릭 vs 길게 눌러 옮기기 (2026-08-30 사용자 요청)
     /// ============================================================================
     /// 사용자 원문: "캐릭터 설정 기어들도 길게 클릭해서 위치 옮길 수 있게 해줘".
-    ///  · <b>짧게 클릭</b> — 두 기어가 맞물려 도는 것과 <b>동시에</b> 부채꼴 버튼 4개가 펼쳐진다
+    ///  · <b>짧게 클릭</b> — 기어가 도는 것과 <b>동시에</b> 부채꼴 버튼 4개가 펼쳐진다
     ///    (2026-08-31에 [행동]이 늘어 3 -> 4가 됐다. 개수의 단일 출처는 <see cref="GearRadialMenuWidget.ButtonCount"/>).
     ///  · <b>길게 누르기</b>(<see cref="LongPressSeconds"/> 이상) 또는 누른 채
     ///    <see cref="DragMoveThresholdPoints"/> 이상 이동 — 드래그로 전환되어 커서를 따라간다.
@@ -83,7 +89,7 @@ namespace StickMate.Interaction
     /// 사용자 원문: "기어메뉴를 클릭했을때 집중모드 버튼 캐릭터 버튼 오늘 할일 버튼 3가지가 촤르륵
     /// 원버튼 3개가 나오고 각 버튼을 클릭했을때 세부 메뉴로 들어가도록".
     /// 클릭한 프레임에 <see cref="GearRadialMenuWidget"/>가 원형 버튼 4개를 펼치기 시작하고, 동시에
-    /// 두 기어가 <see cref="SpinSeconds"/> 동안 맞물려 돈다.
+    /// 기어가 <see cref="SpinSeconds"/> 동안 돈다(P0-3 이전에는 두 기어가 맞물려 돌았다).
     /// <b>회전과 펼침은 동시에 시작한다</b>(docs/UX_FLOW.md 32-9 (B)) — 회전이 끝나기를 기다리면
     /// 클릭부터 첫 픽셀까지 520ms가 걸리고, 그동안 아무 변화가 없으면 사용자는 "안 먹었다"고 판단해
     /// 한 번 더 누른다. 그 두 번째 클릭이 토글 접힘이 되어 메뉴가 깜빡이는 실패 모드가 구조적으로
@@ -111,44 +117,108 @@ namespace StickMate.Interaction
         /// 확실히 아래여야 한다 — 클래스 문서 "메뉴바를 피한다" 참고.</summary>
         private const float MarginTopPoints = 58f;
 
-        // ---- 큰 기어 ----
-        private const float BigOuterPoints = 13f;   // 이 끝(팁원).
-        private const float BigRootPoints = 10.2f;  // 이 뿌리(루트원).
-        private const float BigHubPoints = 3.6f;    // 가운데 축.
-        private const float BigRimPoints = 7.0f;    // 안쪽 림(스포크가 닿는 원).
-        private const int BigToothCount = 10;
+        // ============================================================================
+        // ★ 2026-09-01 P0-3 — <b>어떤 잉크색으로도 안 보이던 아이콘</b>을 2겹(헤일로 + 잉크)으로 고친다
+        // ============================================================================
+        //
+        // 결함(docs/UI_SURFACE_SPEC.md §5.1): 잉크는 캐릭터 잉크 고정(기본 검정)이고 배경 보정이 없는데,
+        // 이 아이콘만은 <b>유저의 임의의 데스크톱</b> 위에 맨몸으로 놓인다.
+        //     검정 잉크의 회색 전 구간 <b>최악 대비 = 1.00 : 1</b>  (거의 검은 배경에서 완전히 사라진다)
+        //     흰 잉크로 뒤집어도 흰 배경에서 1.00 : 1 — 문제가 이동할 뿐이다.
+        // <b>단색으로는 원리상 해결 불가</b>다. 그래서 만화 레터링의 Outline과 같은 관용구를 쓴다:
+        // 같은 경로를 <b>잉크의 역상</b>으로 먼저 굵게 긋고(헤일로), 그 위에 잉크를 긋는다.
+        // 보장 대비는 <see cref="ResolveHaloColor"/>가 계산하고
+        // Tests/PlayMode/InfoGearContrastTests가 회색 0~255 전 구간을 훑어 ≥3:1을 확인한다.
+        //
+        // ---------------------------------------------------------------------------
+        // ★ 왜 형태까지 함께 바꿨나 — 헤일로와 옛 형태는 <b>공존이 불가능</b>했다 (산술)
+        // ---------------------------------------------------------------------------
+        // 두 획 사이의 <b>남는 빈 폭</b> = (중심선 간격) − (획 폭)이다. 옛 형태의 반지름 간격은
+        //     큰 기어  허브3.6→림7.0 = 3.4 / 림7.0→뿌리10.2 = 3.2 / 뿌리10.2→팁13.0 = <b>2.8</b>
+        //     작은 기어 허브2.92→뿌리6.12 = 3.20 / 뿌리6.12→팁7.80 = <b>1.68</b>
+        // 헤일로 폭은 <c>획 × 2.2 = 3.74pt</c>다. <b>1.68 &lt; 3.74</b> 이므로 작은 기어의 이 골은
+        // 헤일로만으로 완전히 메워진다. 옛 형태에서 가능한 최대 헤일로 배율은 1.68/1.7 = <b>0.99배</b>
+        // — 즉 <b>헤일로를 한 겹도 넣을 수 없다</b>. 형태를 안 바꾸면 P0-3은 구현이 불가능하다.
+        //
+        // 그리고 애초에 옛 작은 기어에는 <b>이가 없었다</b>: 이 높이 1.68 − 획 1.7 = <b>−0.02pt</b>
+        // (= −0.01획). 톱니바퀴가 아니라 울퉁불퉁한 고리 하나였다(§5.2 실측).
+        //
+        // <b>두 기어를 유지한 채</b> 헤일로를 넣으려면 작은 기어의 이 높이가 3.74 + 여유 1.0 = 4.74pt
+        // 이상이어야 하고, 그러려면 지금의 2.82배로 키워야 한다 — 묶음 bbox가 36×31pt에서 약
+        // <b>102pt</b>가 된다. 화면 구석 아이콘으로 성립하지 않는다. <b>단일 기어가 강제된다.</b>
+        //
+        // ---------------------------------------------------------------------------
+        // 신규 형태 — 요소 3겹(허브 링 / 이 윤곽) · 6이 · 획 1.7 · 헤일로 2.2배
+        // ---------------------------------------------------------------------------
+        // 잇수 6은 <b>헤일로까지 계산한 상한</b>이다. 이 하나와 골 하나가 각각 헤일로 폭 + 여유 1.0pt
+        // (= 4.74pt)를 먹으므로 뿌리원 둘레는 N × 9.48pt 이상이어야 한다. 뿌리 r 9.0의 둘레는
+        // 56.5pt라 N ≤ 5.96 → <b>6</b>. (스펙 문서의 8이는 헤일로를 계산에 넣지 않은 값이다.)
+        //
+        //  구간                     중심선Δ    잉크 여유      헤일로 여유
+        //  허브4.2 → 뿌리9.0         4.80      3.10 = 1.82획   1.06pt
+        //  뿌리9.0 → 팁13.8(이 높이)  4.80      3.10 = 1.82획   1.06pt
+        //  이 폭 @뿌리(호)           4.71      3.01 = 1.77획   0.97pt
+        //  골 폭 @뿌리(호)           4.71      3.01 = 1.77획   0.97pt
+        //  이 폭 @팁(호)             4.91      3.21 = 1.89획   1.17pt
+        // 전 구간 <b>잉크 여유 ≥ 1.77획</b>(규칙 1.5획) · <b>헤일로 여유 ≥ 0.97pt</b>(Retina에서 2물리픽셀).
+        // bbox 31.3 × 31.3pt — 옛 묶음(36.2 × 31.2)보다 작고, 방사 대칭이라 <b>광학 중심 = 히트 중심</b>이다.
 
-        /// <summary>작은 기어의 크기비 = 잇수비(모듈이 같아야 물린다 — 클래스 문서 참고).</summary>
-        private const int SmallToothCount = 6;
-        private const float SmallScale = (float)SmallToothCount / BigToothCount;
-
-        private const float SmallOuterPoints = BigOuterPoints * SmallScale;
-        private const float SmallRootPoints = BigRootPoints * SmallScale;
-        private const float SmallHubPoints = BigHubPoints * SmallScale * 1.35f; // 너무 작아지지 않게 살짝 키운다.
-
-        /// <summary>피치 반지름 = (팁 + 루트) / 2. 중심 거리는 두 피치 반지름의 합이어야 물린다.</summary>
-        private const float BigPitchPoints = (BigOuterPoints + BigRootPoints) * 0.5f;
-        private const float SmallPitchPoints = (SmallOuterPoints + SmallRootPoints) * 0.5f;
-        private const float CenterDistancePoints = BigPitchPoints + SmallPitchPoints;
-
-        /// <summary>작은 기어 중심이 큰 기어 중심에서 놓이는 방향(도) — 회전각이 아니라 <b>배치 각</b>이다. 화면 우상단이라 <b>왼쪽 아래</b>로 물려야 화면 안에 남는다.</summary>
-        private const float SmallGearOffsetAngleDegrees = 214f;
+        private const float TipRadiusPoints = 13.8f;    // 이 끝(팁원).
+        private const float RootRadiusPoints = 9.0f;    // 이 뿌리(루트원).
+        private const float HubRadiusPoints = 4.2f;     // 가운데 축(링).
+        private const int ToothCount = 6;
 
         private const float StrokeWidthPoints = 1.7f;
         private const float HitPaddingPoints = 5f;
 
+        /// <summary>헤일로 획 폭 = 잉크 획 × 이 값. 2.2는 스펙 값이면서 <b>이 형태가 감당하는 상한</b>이다
+        /// (위 표: 가장 좁은 구간이 4.71pt이고 2.2배 헤일로가 3.74pt라 0.97pt가 남는다).
+        /// 더 키우면 이 골이 메워져 톱니가 원반이 된다 — 스펙의 호버 3.0배를 채택하지 않은 이유다.</summary>
+        private const float HaloWidthFactor = 2.2f;
+
+        /// <summary>헤일로가 잉크 바깥으로 번져 나가는 반경(양쪽 각각). 히트/클램프 계산에 쓴다.</summary>
+        private const float HaloOverhangPoints = StrokeWidthPoints * (HaloWidthFactor - 1f) * 0.5f;
+
+        /// <summary>시각 반경 = 팁원 + 헤일로가 삐져나온 만큼.</summary>
+        private const float VisualRadiusPoints = TipRadiusPoints + HaloOverhangPoints;
+
         // 이 프로필(피치 대비 비율) — 사다리꼴 이를 또렷하게 만든다.
         private const float ToothTipHalfFraction = 0.17f;    // 이 끝(마루)의 반각.
-        private const float ToothRootHalfFraction = 0.30f;   // 이 뿌리의 반각(마루보다 넓어야 사다리꼴).
+        private const float ToothRootHalfFraction = 0.25f;   // 이 뿌리의 반각(마루보다 넓어야 사다리꼴).
 
-        private const float SpinSeconds = 1.4f;     // 2026-09-01 페르소나(민지) 발견 M5: BigSpinTurns를 4까지 올리면서
+        private const float SpinSeconds = 1.4f;     // 2026-09-01 페르소나(민지) 발견 M5: SpinTurns를 4까지 올리면서
                                                      // 이 값을 그대로 두면 ease-out 시작 순간 각속도가 138°/프레임(60fps)까지
-                                                     // 치솟아 잇수10 기어의 맞물림이 앨리어싱으로 안 보인다. 회전량에 비례해
+                                                     // 치솟아 이 6개가 앨리어싱으로 뭉개진다(옛 잇수10 묶음에서 처음 발견). 회전량에 비례해
                                                      // 늘려 체감 가독 구간을 넓힌다(0.52 -> 1.4, 민지 권장 범위 1.2~1.6 중간값).
-        private const float BigSpinTurns = 4f;      // 큰 기어 기준 회전량(2026-09-01 사용자 요청으로 0.75 -> 1.25 -> 4). 작은 기어는 잇수비만큼 더 돈다.
-        private const float IdleAlpha = 0.70f;      // 평소에는 은은하게(관찰형 앱 — 화면을 지배하지 않는다).
+        private const float SpinTurns = 4f;         // 회전량(2026-09-01 사용자 요청으로 0.75 -> 1.25 -> 4).
+        /// <summary>
+        /// 평소 불투명도. "관찰형 앱이라 은은하게"가 이 값의 근거였고 그 근거는 지금도 유효하지만,
+        /// <b>0.70은 P0-3의 대비 보장을 먹어 버린다</b>.
+        ///
+        /// <para>알파는 <b>두 겹 모두</b>에 걸리므로, 화면에 실제로 나오는 색은
+        /// <c>헤일로' = mix(헤일로, 배경, α)</c> / <c>잉크' = mix(잉크, 헤일로', α)</c>다.
+        /// 즉 알파가 낮을수록 두 겹이 <b>배경 쪽으로 함께 끌려간다</b>. 회색 전 구간 실측:</para>
+        /// <code>
+        ///   α 0.70 → 보장 대비 2.65 : 1   ✘ (비텍스트 최소 3:1 미달)
+        ///   α 0.75 → 2.90 : 1             ✘
+        ///   α 0.80 → 3.19 : 1             ✔
+        ///   α 1.00 → 4.37 : 1
+        /// </code>
+        /// <para>스펙(§5.1)이 계산한 4.18은 <b>α = 1 전제</b>였고, 이 앱이 실제로 그리는 알파를
+        /// 계산에 넣지 않았다. 그래서 0.70 → <b>0.80</b>. 여전히 "은은하게"이면서 최소 보장을 넘는다.
+        /// Tests/EditMode/InfoGearHaloContrastTests가 <b>이 상수를 읽어</b> 합성까지 재현해 검사한다.</para>
+        /// </summary>
+        private const float IdleAlpha = 0.80f;
+
         private const float ActiveAlpha = 0.95f;    // 커서가 위에 있거나 창이 열려 있을 때.
         private const float AlphaFadeSpeed = 6f;
+
+        /// <summary>호버할 때 살짝 커진다 — <b>알파가 아니라 크기</b>가 주 단서다.
+        /// α 0.70 → 0.95(36% 변화)는 저대비 배경에서 사실상 아무 일도 안 일어난 것과 같다(§5.1).
+        /// 스펙은 "헤일로를 3.0배로"라고 했지만 그러면 이 골(4.71pt)이 헤일로(5.1pt)에 메워져
+        /// 톱니가 원반이 된다 — 배경 휘도와 무관한 단서라는 <b>목적은 같고</b> 형태가 안 무너지는
+        /// 수단으로 바꿨다. 균일 배율이라 위 여유 표의 <b>비율이 전부 보존</b>된다.</summary>
+        private const float HoverScale = 1.10f;
 
         private const float ClickPollInterval = 0.05f;
         private const int SortingOrder = 40;        // 캐릭터/액세서리보다 위(화면 UI다).
@@ -178,14 +248,14 @@ namespace StickMate.Interaction
         private Camera _camera;
 
         private GameObject _container;
-        private Transform _bigGear;
-        private Transform _smallGear;
+        private Transform _gear;
         private readonly List<LineRenderer> _lines = new List<LineRenderer>(10);
         private BoxCollider2D _clickTarget;
         private Material _lineMaterial;
 
         private float _spinTimer = -1f;   // 음수 = 회전 중 아님.
         private float _alpha = IdleAlpha;
+        private bool _highlighted;
         private float _clickPollTimer;
         private bool _leftPrev;
         private bool _leftInitialized;
@@ -269,24 +339,41 @@ namespace StickMate.Interaction
         public static float MenuReadySeconds
             => Mathf.Max(GearRadialMenuWidget.ExpandTotalSeconds, SpinSeconds);
 
-        /// <summary>큰 기어의 현재 회전각(도). 회귀 테스트가 방향/속도를 직접 잰다.</summary>
-        public float BigGearAngleDegrees => _bigGear != null ? _bigGear.localEulerAngles.z : 0f;
+        /// <summary>기어의 현재 회전각(도). 회귀 테스트가 회전 연출이 살아 있는지 직접 잰다.</summary>
+        public float GearAngleDegrees => _gear != null ? _gear.localEulerAngles.z : 0f;
 
-        /// <summary>작은 기어의 현재 회전각(도).</summary>
-        public float SmallGearAngleDegrees => _smallGear != null ? _smallGear.localEulerAngles.z : 0f;
+        /// <summary>잇수 — 형태 회귀 테스트가 이 값에서 이/골의 호 길이를 다시 계산한다.</summary>
+        public static int Teeth => ToothCount;
 
-        /// <summary>맞물림 속도비 = 큰 기어 잇수 / 작은 기어 잇수. 작은 기어가 이만큼 <b>더 빨리</b> 돈다.</summary>
-        public static float MeshRatio => (float)BigToothCount / SmallToothCount;
+        /// <summary>형태 여유 계산에 필요한 반지름 3종과 획/헤일로(전부 OS 포인트).
+        /// 테스트가 숫자를 베끼지 않고 <b>이 값들로 직접 재도록</b> 열어 둔다(CLAUDE.md).</summary>
+        public static float TipRadius => TipRadiusPoints;
 
-        /// <summary>두 기어 중심 사이 거리(OS 포인트) — 두 피치 반지름의 합이어야 한다.</summary>
-        public static float CenterDistance => CenterDistancePoints;
+        public static float RootRadius => RootRadiusPoints;
+        public static float HubRadius => HubRadiusPoints;
+        public static float StrokeWidth => StrokeWidthPoints;
+        public static float HaloWidth => StrokeWidthPoints * HaloWidthFactor;
+        public static float ToothTipHalfFraction_ForTests => ToothTipHalfFraction;
+        public static float ToothRootHalfFraction_ForTests => ToothRootHalfFraction;
 
-        public static int BigTeeth => BigToothCount;
-        public static int SmallTeeth => SmallToothCount;
+        /// <summary>
+        /// ★ 헤일로 색 — <b>잉크에서 더 멀리 떨어진 쪽</b>을 고른다(임계값을 손으로 정하지 않는다).
+        /// 잉크가 검정이면 밝은 쪽(#f2f4f7), 흰색이면 어두운 쪽(#0b1016)이 뽑힌다.
+        /// <para>이 한 쌍이 명도 축의 양 끝에 있으므로, <b>어떤 배경이 와도</b> 둘 중 하나는 반드시
+        /// 충분한 대비를 낸다: 회색 전 구간 최악값이 <b>4.37 : 1</b>(WCAG 비텍스트 최소 3:1을
+        /// 46% 상회). 그 단언은 Tests/PlayMode/InfoGearContrastTests가 전 구간을 훑어서 한다.</para>
+        /// </summary>
+        public static Color ResolveHaloColor(Color ink)
+            => UiChrome.ContrastRatio(ink, UiChrome.TextPrimary) >= UiChrome.ContrastRatio(ink, UiChrome.OnAccentSolid)
+                ? UiChrome.TextPrimary
+                : UiChrome.OnAccentSolid;
 
-        /// <summary>큰 기어의 이를 두 중심을 잇는 선에 맞추는 각(도). 작은 기어는 그 반대 위상으로
-        /// 도형이 구워져 있어, 이 각에서 출발해 회전비만 지키면 맞물림이 계속 유지된다.</summary>
-        private static float BuildPhaseAngle => SmallGearOffsetAngleDegrees % (360f / BigToothCount);
+        /// <summary>지금 쓰이는 잉크색(테스트/진단).</summary>
+        public Color InkColorForTests => ResolveInk();
+
+        /// <summary>평상시 불투명도 — <b>대비 보장은 이 값에서 계산해야 한다</b>(IdleAlpha 문서 참고).
+        /// 드래그 중(더 옅다)은 커서가 위치를 말해 주는 직접 조작 상태라 이 보장의 대상이 아니다.</summary>
+        public static float IdleOpacity => IdleAlpha;
 
         /// <summary>지금 길게 눌러 옮기는 중인가(테스트/진단 전용).</summary>
         public bool IsDraggingIcon => _dragging;
@@ -294,7 +381,7 @@ namespace StickMate.Interaction
         /// <summary>사용자가 한 번이라도 옮겼는가 — false면 화면 우상단 기본 위치를 쓰고 있다.</summary>
         public bool HasCustomPosition => _hasCustomCenter;
 
-        /// <summary>큰 기어 중심의 현재 위치(창 좌상단 원점, OS 포인트). 저장값과 같은 좌표계다.</summary>
+        /// <summary>기어 중심의 현재 위치(창 좌상단 원점, OS 포인트). 저장값과 같은 좌표계다.</summary>
         public Vector2 IconCenterPoints => _hasCustomCenter ? _customCenterPoints : DefaultCenterPoints();
 
         /// <summary>드래그 전환 임계값(초) — 테스트가 이 숫자를 직접 기준으로 삼는다.</summary>
@@ -304,7 +391,7 @@ namespace StickMate.Interaction
         public static float DragMoveThreshold => DragMoveThresholdPoints;
 
         /// <summary>테스트 전용 — 클릭 없이 회전 연출만 시작한다(창은 회전이 끝나면 정상적으로 열린다).</summary>
-        public void StartSpinForTests() => _spinTimer = 0f;
+public void StartSpinForTests() => _spinTimer = 0f;
 
         /// <summary>
         /// 테스트 전용 진입점 — <b>실제 입력과 완전히 같은 처리 경로</b>(<see cref="ProcessPointer"/>)에
@@ -347,11 +434,13 @@ namespace StickMate.Interaction
                 return;
             }
             _buttonService = _agent.PlatformService as IGlobalPointerButtonService;
-            Debug.Log("[톱니] 준비 완료 — 화면 우상단에 맞물린 기어 2개가 상시 표시됩니다(오른쪽 " +
-                $"{MarginRightPoints:F0}pt / 위 {MarginTopPoints:F0}pt, 큰 기어 반지름 {BigOuterPoints:F0}pt / " +
-                $"잇수 {BigToothCount}, 작은 기어 {SmallOuterPoints:F1}pt / 잇수 {SmallToothCount}, " +
-                $"중심 거리 {CenterDistancePoints:F1}pt). 클릭하면 두 기어가 **반대 방향으로** 돌고" +
-                $"(작은 쪽이 {MeshRatio:F2}배 빠르게) 그 뒤 **아이콘 전용** 부채꼴 버튼 " +
+            // ★ 2026-09-01 — 문구를 <b>실물에 맞춘다</b>. P0-3에서 두 기어가 단일 기어로 바뀌었는데
+            //   이 배너만 "맞물린 기어 2개"로 남아, 로그를 읽는 사람이 화면과 다른 그림을 상상하게
+            //   만들고 있었다(사용자 신고). 형태를 되돌리면 이 문구도 함께 되돌린다.
+            Debug.Log("[톱니] 준비 완료 — 화면 우상단에 기어 1개가 상시 표시됩니다(오른쪽 " +
+                $"{MarginRightPoints:F0}pt / 위 {MarginTopPoints:F0}pt, 기어 팁 반지름 {TipRadiusPoints:F1}pt / " +
+                $"잇수 {ToothCount} / 획 {StrokeWidthPoints:F1}pt + 역상 헤일로 {HaloWidth:F1}pt, " +
+                $"시각 지름 {VisualRadiusPoints * 2f:F1}pt). 클릭하면 기어가 돌고 그 뒤 **아이콘 전용** 부채꼴 버튼 " +
                 $"{GearRadialMenuWidget.ButtonCount}개([집중 모드]/[캐릭터]/[오늘 할일]/[행동], " +
                 $"Ø{GearRadialMenuWidget.ButtonDiameterPoints:F0}pt / 궤도 " +
                 $"{GearRadialMenuWidget.OrbitRadiusPoints:F0}pt / 간격 " +
@@ -370,6 +459,7 @@ namespace StickMate.Interaction
 
         private void LateUpdate()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.UiWindows);   // [스톨구간] 계측
             if (_agent == null) return;
 
             // ★★ 절대 불변 원칙 2(비침해) — 전체화면 게임 감지 시 상시 표면을 전부 거둔다.
@@ -494,16 +584,11 @@ namespace StickMate.Interaction
             IconScreenCenter = LocalPointsToUnityScreen(centerPoints);
 
             float pxPerPoint = ScreenCoordinateConverter.CanvasToUnityScreen(1f, _config);
-            Vector2 smallOffsetPx = SmallGearDirection * (CenterDistancePoints * pxPerPoint);
 
-            // 두 기어를 함께 덮는 최소 사각형(+여유). 그 이상은 넓히지 않는다(비침해).
-            float bigR = (BigOuterPoints + HitPaddingPoints) * pxPerPoint;
-            float smallR = (SmallOuterPoints + HitPaddingPoints) * pxPerPoint;
-            float minX = Mathf.Min(IconScreenCenter.x - bigR, IconScreenCenter.x + smallOffsetPx.x - smallR);
-            float maxX = Mathf.Max(IconScreenCenter.x + bigR, IconScreenCenter.x + smallOffsetPx.x + smallR);
-            float minY = Mathf.Min(IconScreenCenter.y - bigR, IconScreenCenter.y + smallOffsetPx.y - smallR);
-            float maxY = Mathf.Max(IconScreenCenter.y + bigR, IconScreenCenter.y + smallOffsetPx.y + smallR);
-            IconScreenRect = new Rect(minX, minY, maxX - minX, maxY - minY);
+            // 기어를 덮는 최소 정사각형(+여유). 그 이상은 넓히지 않는다(비침해).
+            // 단일 기어는 방사 대칭이라 <b>광학 중심과 히트 중심이 일치</b>한다(옛 묶음은 어긋나 있었다).
+            float r = (VisualRadiusPoints + HitPaddingPoints) * pxPerPoint;
+            IconScreenRect = new Rect(IconScreenCenter.x - r, IconScreenCenter.y - r, r * 2f, r * 2f);
 
             Vector3 centerWorld = _camera.ScreenToWorldPoint(new Vector3(IconScreenCenter.x, IconScreenCenter.y, depth));
             Vector3 unitEdgeWorld = _camera.ScreenToWorldPoint(new Vector3(IconScreenCenter.x + pxPerPoint, IconScreenCenter.y, depth));
@@ -544,12 +629,6 @@ namespace StickMate.Interaction
 
         // ==================== 좌표/경계 (전부 OS 포인트, 창 좌상단 원점) ====================
 
-        /// <summary>작은 기어가 놓이는 방향(단위 벡터, 화면 기준 x=오른쪽 / y=위). const 각도라 한 번만
-        /// 구하면 된다 — 매 프레임 삼각함수를 다시 부르지 않는다.</summary>
-        private static readonly Vector2 SmallGearDirection = new Vector2(
-            Mathf.Cos(SmallGearOffsetAngleDegrees * Mathf.Deg2Rad),
-            Mathf.Sin(SmallGearOffsetAngleDegrees * Mathf.Deg2Rad));
-
         /// <summary>사용자가 옮긴 적이 없을 때의 위치 — 예전과 완전히 같은 화면 우상단이다.
         /// 상수로 굳히지 않고 매번 계산하는 이유: 창 크기(그리고 실측 DPI 배율)가 실행 중에 바뀌므로
         /// "오른쪽 끝에서 30pt"라는 정의를 그때그때 다시 풀어야 정확하다.</summary>
@@ -579,17 +658,10 @@ namespace StickMate.Interaction
             Vector2 screen = ScreenSizePoints();
             if (screen.x <= 0f || screen.y <= 0f) return centerPoints;
 
-            float bigR = BigOuterPoints + HitPaddingPoints;
-            float smallR = SmallOuterPoints + HitPaddingPoints;
-            Vector2 smallOffset = SmallGearDirection * CenterDistancePoints; // y는 위가 양수.
+            float r = VisualRadiusPoints + HitPaddingPoints;   // 방사 대칭 — 네 방향이 같다.
 
-            float left = Mathf.Max(bigR, smallR - smallOffset.x);
-            float right = Mathf.Max(bigR, smallR + smallOffset.x);
-            float up = Mathf.Max(bigR, smallR + smallOffset.y);
-            float down = Mathf.Max(bigR, smallR - smallOffset.y);
-
-            float minX = left, maxX = Mathf.Max(left, screen.x - right);
-            float minY = up, maxY = Mathf.Max(up, screen.y - down);   // y는 위에서 아래로 자란다.
+            float minX = r, maxX = Mathf.Max(r, screen.x - r);
+            float minY = r, maxY = Mathf.Max(r, screen.y - r);   // y는 위에서 아래로 자란다.
             return new Vector2(Mathf.Clamp(centerPoints.x, minX, maxX), Mathf.Clamp(centerPoints.y, minY, maxY));
         }
 
@@ -621,59 +693,29 @@ namespace StickMate.Interaction
             _container.transform.SetParent(null, false); // 씬 루트 — 캐릭터가 걷거나 랙돌로 회전해도 따라 돌면 안 된다.
 
             float stroke = StrokeWidthPoints * worldPerPoint;
+            float halo = HaloWidth * worldPerPoint;
+            Color haloColor = ResolveHaloColor(ink);
 
-            // ---- 큰 기어 ----
-            var bigGo = new GameObject("BigGear");
-            bigGo.transform.SetParent(_container.transform, false);
-            _bigGear = bigGo.transform;
+            var gearGo = new GameObject("Gear");
+            gearGo.transform.SetParent(_container.transform, false);
+            _gear = gearGo.transform;
 
-            AddLine(_bigGear, "Teeth", BuildGearOutline(BigToothCount,
-                BigOuterPoints * worldPerPoint, BigRootPoints * worldPerPoint, 0f), ink, stroke, loop: true);
-            AddLine(_bigGear, "Rim", BuildCircle(BigRimPoints * worldPerPoint, 20), ink, stroke * 0.85f, loop: true);
-            AddLine(_bigGear, "Hub", BuildCircle(BigHubPoints * worldPerPoint, 14), ink, stroke * 0.85f, loop: true);
-            // 스포크(살) 4개 — 각각 <b>독립된 선</b>이다. 한 LineRenderer로 왕복시키면 중심을 가로지르는
-            // 연결선이 함께 그려져 기어가 아니라 조준경처럼 보인다(첫 육안 검증에서 실제로 그랬다).
-            for (int i = 0; i < 4; i++)
-            {
-                float a = Mathf.PI * 0.5f * i + Mathf.PI * 0.25f;
-                var dir = new Vector3(Mathf.Cos(a), Mathf.Sin(a), 0f);
-                AddLine(_bigGear, "Spoke" + i, new[]
-                {
-                    dir * (BigHubPoints * worldPerPoint * 1.05f),
-                    dir * (BigRimPoints * worldPerPoint * 0.98f),
-                }, ink, stroke * 0.7f, loop: false);
-            }
+            Vector3[] teeth = BuildGearOutline(ToothCount,
+                TipRadiusPoints * worldPerPoint, RootRadiusPoints * worldPerPoint, 0f);
+            Vector3[] hub = BuildCircle(HubRadiusPoints * worldPerPoint, 20);
 
-            // ---- 작은 기어 ----
-            var smallGo = new GameObject("SmallGear");
-            smallGo.transform.SetParent(_container.transform, false);
-            _smallGear = smallGo.transform;
-            float rad = SmallGearOffsetAngleDegrees * Mathf.Deg2Rad;
-            _smallGear.localPosition = new Vector3(Mathf.Cos(rad), Mathf.Sin(rad), 0f) * (CenterDistancePoints * worldPerPoint);
+            // ★ 2겹 — <b>헤일로 먼저(뒤), 잉크 나중(앞)</b>.
+            //   형제 순서가 아니라 sortingOrder로 순서를 정한다: 같은 sortingOrder의 LineRenderer들은
+            //   그리기 순서가 보장되지 않아 프레임마다 앞뒤가 뒤집힐 수 있다(그러면 잉크가 헤일로에
+            //   먹혀 아이콘이 통째로 역상 색으로 보인다).
+            AddLine(_gear, "TeethHalo", teeth, haloColor, halo, loop: true, sortingOrder: SortingOrder);
+            AddLine(_gear, "HubHalo", hub, haloColor, halo, loop: true, sortingOrder: SortingOrder);
+            AddLine(_gear, "Teeth", teeth, ink, stroke, loop: true, sortingOrder: SortingOrder + 1);
+            AddLine(_gear, "Hub", hub, ink, stroke, loop: true, sortingOrder: SortingOrder + 1);
 
-            // ★ 맞물림 위상: 두 중심을 잇는 선 위에서 작은 기어의 <b>이</b>가 큰 기어의 <b>골</b>에
-            //   오도록 초기 각을 맞춘다. 이 관계는 회전비를 지키는 한 계속 유지된다.
-            float smallPitchAngle = 360f / SmallToothCount;
-            float smallPhase = SmallGearOffsetAngleDegrees + 180f + smallPitchAngle * 0.5f; // 중심선 반대편에 골이 오게.
-
-            AddLine(_smallGear, "Teeth", BuildGearOutline(SmallToothCount,
-                SmallOuterPoints * worldPerPoint, SmallRootPoints * worldPerPoint, smallPhase), ink, stroke * 0.9f, loop: true);
-            AddLine(_smallGear, "Hub", BuildCircle(SmallHubPoints * worldPerPoint, 12), ink, stroke * 0.8f, loop: true);
-            // 작은 기어에도 살 3개 — 회전이 <b>눈에 보이게</b> 하는 최소 장치다(이만 있으면 6갈래
-            // 대칭이라 돌고 있는지 알아보기 어렵다. 육안 검증에서 실제로 그랬다).
-            for (int i = 0; i < 3; i++)
-            {
-                float a = Mathf.PI * 2f / 3f * i;
-                var dir = new Vector3(Mathf.Cos(a), Mathf.Sin(a), 0f);
-                AddLine(_smallGear, "SmallSpoke" + i, new[]
-                {
-                    dir * (SmallHubPoints * worldPerPoint * 1.1f),
-                    dir * (SmallRootPoints * worldPerPoint * 0.82f),
-                }, ink, stroke * 0.65f, loop: false);
-            }
-
-            // 큰 기어의 이 위상도 중심선에 맞춘다. 도형을 다시 만들지 않고 각도만 준다.
-            _bigGear.localRotation = Quaternion.Euler(0f, 0f, BuildPhaseAngle);
+            // ★ 림/스포크를 지웠다. 옛 형태는 허브3.6–림7.0–뿌리10.2의 간격이 1.00/0.88획(규칙 1.5획
+            //   위반)이라 잉크만으로도 이미 뭉쳐 있었고, 헤일로(3.74pt)를 얹으면 세 원이 한 덩어리가
+            //   된다. 요소를 줄이는 것이 <b>이 크기에서 유일하게 성립하는 조형</b>이다.
 
             if (_clickTarget == null)
             {
@@ -724,7 +766,8 @@ namespace StickMate.Interaction
             return pts;
         }
 
-        private void AddLine(Transform parent, string name, Vector3[] points, Color color, float width, bool loop)
+        private void AddLine(Transform parent, string name, Vector3[] points, Color color, float width, bool loop,
+            int sortingOrder = SortingOrder)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
@@ -737,7 +780,7 @@ namespace StickMate.Interaction
             lr.endWidth = width;
             lr.numCapVertices = 4;
             lr.numCornerVertices = 2;
-            lr.sortingOrder = SortingOrder;
+            lr.sortingOrder = sortingOrder;
             lr.loop = loop;
             lr.positionCount = points.Length;
             lr.SetPositions(points);
@@ -747,33 +790,25 @@ namespace StickMate.Interaction
         // ==================== 회전 연출 ====================
 
         /// <summary>
-        /// 두 기어를 <b>반대 방향</b>으로, <b>잇수에 반비례하는 속도</b>로 돌린다(클래스 문서 기구학).
-        /// ease-out(감속)은 기계가 돌다 멈추는 느낌 — 등속으로 돌리면 뚝 끊겨 보인다.
+        /// 기어를 시계 방향으로 돌린다. ease-out(감속)은 기계가 돌다 멈추는 느낌 — 등속으로 돌리면
+        /// 뚝 끊겨 보인다. 잇수 6이라 60도마다 같은 그림이 되지만, 4바퀴를 1.4초에 걸쳐 감속하므로
+        /// "돌았다"는 <b>속도 변화</b>에서 읽힌다(정지 위상이 같은 것은 오히려 안정적이다).
         /// </summary>
         private void TickSpin()
         {
-            if (_container == null || _bigGear == null || _smallGear == null) return;
+            if (_container == null || _gear == null) return;
             if (_spinTimer < 0f) return;
 
             _spinTimer += Time.unscaledDeltaTime;
             float t = Mathf.Clamp01(_spinTimer / SpinSeconds);
             float eased = 1f - (1f - t) * (1f - t) * (1f - t);
 
-            float bigDelta = -eased * 360f * BigSpinTurns;             // 시계 방향.
-            float smallDelta = -bigDelta * MeshRatio;                   // 반시계 + 잇수비만큼 빠르게.
-
-            // 작은 기어의 맞물림 위상은 도형에 이미 구워져 있으므로(BuildGearOutline의 phaseDegrees)
-            // 회전에는 델타만 준다. 큰 기어는 중심선 정렬 각(BuildPhaseAngle)에서 출발한다.
-            float bigPhase = BuildPhaseAngle;
-
-            _bigGear.localRotation = Quaternion.Euler(0f, 0f, bigPhase + bigDelta);
-            _smallGear.localRotation = Quaternion.Euler(0f, 0f, smallDelta);
+            _gear.localRotation = Quaternion.Euler(0f, 0f, -eased * 360f * SpinTurns);   // 시계 방향.
 
             if (t < 1f) return;
 
             _spinTimer = -1f;
-            _bigGear.localRotation = Quaternion.Euler(0f, 0f, bigPhase);
-            _smallGear.localRotation = Quaternion.identity;
+            _gear.localRotation = Quaternion.identity;
 
             // 부채꼴은 <b>클릭 프레임에 이미</b> 펼쳐지기 시작했다(32-9 (B)) — 회전이 끝나기를
             // 기다리지 않는다. 그래서 여기서는 각도만 원위치로 돌려놓고 끝난다.
@@ -799,6 +834,7 @@ namespace StickMate.Interaction
         private void TickHoverAlpha()
         {
             bool highlight = IsSpinning || IsMenuExpanded || (_window != null && _window.IsOpen) || IsCursorOverIcon();
+            _highlighted = highlight;   // TickDragVisual이 같은 프레임에 크기로도 표현한다(§5.1).
             // 드래그 중에는 옅게 — "지금 들려서 떠 있다"는 표시다(호버 강조보다 우선한다).
             float target = _dragging ? DragAlpha : (highlight ? ActiveAlpha : IdleAlpha);
             float next = Mathf.MoveTowards(_alpha, target, AlphaFadeSpeed * Time.unscaledDeltaTime);
@@ -1007,7 +1043,7 @@ namespace StickMate.Interaction
             ExpandMenu();   // ★ 회전과 <b>동시에</b> 펼친다.
             // 개수를 손으로 적지 않는다 — 2026-08-31에 버튼이 3 -> 4로 늘었을 때 이 줄만 3에 남아
             // 로그가 화면과 다른 말을 했다(페르소나 소은 #8). 세는 곳은 부채꼴 자신이다.
-            Debug.Log($"[톱니] 클릭 — 두 기어가 맞물려 도는 것과 동시에 부채꼴 버튼 " +
+            Debug.Log($"[톱니] 클릭 — 기어가 도는 것과 동시에 부채꼴 버튼 " +
                 $"{GearRadialMenuWidget.ButtonCount}개가 펼쳐집니다.");
         }
 
@@ -1020,12 +1056,14 @@ namespace StickMate.Interaction
             _menu.Activate(index);
         }
 
-        /// <summary>드래그 중임을 눈으로 알 수 있게 살짝 키운다. 회전(자식의 각도)과 겹치지 않는
-        /// 부모의 스케일이라 회전 연출과 충돌하지 않는다.</summary>
+        /// <summary>드래그/호버를 눈으로 알 수 있게 살짝 키운다. 회전(자식의 각도)과 겹치지 않는
+        /// 부모의 스케일이라 회전 연출과 충돌하지 않는다.
+        /// <para>★ 호버가 여기 들어온 이유(P0-3): 알파만으로는 <b>배경이 어두우면 아무 일도 일어나지
+        /// 않는다</b>. 크기는 배경 휘도와 무관한 단서다. 균일 배율이라 형태 여유 비율도 보존된다.</para></summary>
         private void TickDragVisual()
         {
             if (_container == null) return;
-            float target = _dragging ? DragScale : 1f;
+            float target = _dragging ? DragScale : (_highlighted ? HoverScale : 1f);
             if (!Mathf.Approximately(_visualScale, target))
                 _visualScale = Mathf.MoveTowards(_visualScale, target, DragScaleSpeed * Time.unscaledDeltaTime);
 

@@ -83,16 +83,19 @@ namespace StickMate.Platform
         /// Interaction/CharacterInfoWindow.cs 참고.</summary>
         I,
 
-        /// <summary>★ 설정창 열기·닫기(Ctrl+Opt+Cmd+<b>쉼표</b>) — 2026-09-01 신설, docs/UX_FLOW.md 36-11.
-        /// macOS에서 <c>⌘,</c>는 "환경설정"의 관례이고, 이 앱은 조합키 3개를 강제하므로 다른 앱의
-        /// <c>⌘,</c>와 충돌하지 않는다. I(정보창)/A(활쏘기)/F(집중 모드)와 같은 <b>정식 진입점</b>이지
-        /// 확률을 건너뛰는 데모 지름길이 아니다.
+        /// <summary>★ 설정창 열기·닫기(Ctrl+Opt+Cmd+<b>P</b>, Preferences) — docs/UX_FLOW.md 36-11.
+        /// I(정보창)/A(활쏘기)/F(집중 모드)와 같은 <b>정식 진입점</b>이지 확률을 건너뛰는 데모
+        /// 지름길이 아니다.
         ///
-        /// <para><b>이 목록에 처음 들어온 문자 아닌 키</b>다. 두 플랫폼 구현 모두 문자 키를 ASCII 규약으로
-        /// 처리하는 지름길을 갖고 있으므로(Win32는 <c>VK_A == 'A'</c>, macOS는 표), 쉼표는 각자
-        /// <b>명시적인 한 줄</b>이 필요하다 — Win32 <c>VK_OEM_COMMA(0xBC)</c> /
-        /// macOS <c>kVK_ANSI_Comma(0x2B)</c>. 그 한 줄이 없으면 조용히 false만 돌아온다.</para></summary>
-        Comma,
+        /// <para><b>★ 2026-09-01 쉼표에서 P로 옮겼다 — 원칙 2·3 위반이었다.</b> 이 자리는 원래
+        /// <c>Comma</c>였고 <c>⌘,</c>(환경설정) 관례를 따른 것이었다. 그런데 macOS는
+        /// <c>⌃⌥⌘,</c>를 접근성 시스템 단축키 <b>"대비 줄이기"</b>로 <b>이미 예약</b>해 두었다
+        /// (symbolic hotkey 26). 즉 키 한 번에 두 가지 일이 일어났고, 우리가 설정창을 열고 닫을
+        /// 때마다(2회 누름) <c>com.apple.universalaccess</c>의 <c>contrast</c> 값이 0.10씩
+        /// <b>실제로 내려갔다</b> — 하필 대비 조절을 쓰는 접근성 사용자만 골라서 맞는 결함이다.
+        /// 금지 목록과 재현 절차는 <c>Core/ShortcutLabel.MacReservedActionKeys</c>에 있고,
+        /// <c>Tests/EditMode/ShortcutLabelParityTests</c>가 재발을 막는다.</para></summary>
+        P,
     }
 
     /// <summary>

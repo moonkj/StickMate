@@ -12,7 +12,7 @@ namespace StickMate.Tests.EditMode
     /// 코드에서 조용히 어긋나면 그 근거 전체가 무너지는데, 씬을 띄우는 PlayMode 테스트는 폴백 사다리
     /// (회전/평행이동/축소/세로일렬)에 가려 <b>확정치가 틀린 것을 못 잡는다</b> — 폴백이 화면 안에만
     /// 넣어주면 통과하기 때문이다. 그래서 <see cref="GearRadialMenuWidget.Snap45"/>와 같은 관례로
-    /// 순수 함수만 직접 잠근다(<see cref="SizeDialWidgetHitTestTests"/>와 같은 형태).
+    /// 순수 함수만 직접 잠근다.
     /// </summary>
     public sealed class GearRadialFanGeometryTests
     {

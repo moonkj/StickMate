@@ -137,11 +137,28 @@ namespace StickMate.Tests.EditMode
             yield return new TestCaseData(EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackFairyWings).SetName("BACK 요정날개");
         }
 
+        /// <summary>
+        /// ★ 2026-09-01(3차) — <b>드러난 눈</b>(이름이 <c>*Eye</c>로 끝나는 도형)은 이 검사에서 뺀다.
+        ///
+        /// <para>이유는 예외가 아니라 <b>정의</b>다. 외알안경·안대의 눈은 <b>액세서리의 부품이 아니라
+        /// 캐릭터의 눈</b>이고, 규칙 4가 그것을 가리개에서 <b>1.5획 이상 떼어 놓으라</b>고 요구한다
+        /// (붙으면 "가리개가 눈까지 덮은" 한 덩어리로 보인다).
+        /// 즉 이 검사가 막으려는 실패("떨어진 조각은 <b>다른 물건</b>으로 읽힌다")는 여기서
+        /// 실패가 아니라 <b>의도</b>다 — 눈은 실제로 다른 물건이다.</para>
+        ///
+        /// <para>눈이 정확히 1개이고 진행 반대쪽에 있으며 가리개와 1.5획 이상 떨어져 있다는 계약은
+        /// <c>EyesVisorOpacityTests.한쪽만_가리는_물건만_반대쪽_눈을_보여준다</c>가 따로 잠근다.</para>
+        /// </summary>
         [TestCaseSource(nameof(ConnectedItems))]
         public void 부품이_하나의_덩어리로_묶인다(EquipmentSlot slot, int item)
         {
             AccessoryShapeBuilder.Rig rig = Rig();
-            List<AccessoryShapeBuilder.Shape> shapes = Build(slot, item);
+            var shapes = new List<AccessoryShapeBuilder.Shape>();
+            foreach (AccessoryShapeBuilder.Shape shape in Build(slot, item))
+            {
+                if (shape.Name != null && shape.Name.EndsWith("Eye")) continue;
+                shapes.Add(shape);
+            }
             float tol = W * rig.HeadRadius * MaxJoinGapInStrokes;
 
             Assert.IsTrue(IsConnected(shapes, tol, out string worst),
@@ -159,11 +176,15 @@ namespace StickMate.Tests.EditMode
             // 알은 <b>살아 있는 것</b>을 쓰고 체인만 옛 좌표로 얼린다 — 알 크기가 바뀌면 함께 움직인다.
             // 알도 <b>옛 반지름(0.40R)</b>으로 얼린다 — 이 컨트롤이 재는 것은 "옛 설계의 간격"이고,
             // 지금 알(0.44R)과 섞으면 존재한 적 없는 쌍을 재게 된다(그 상태에서 첫 실행이 통과했다).
+            // ★ 2026-09-01(3차) — 알의 중심 x도 <b>옛 값(눈 중립 좌표 0.3409R)</b>으로 얼린다.
+            //   지금 알은 드러난 눈과 대칭인 +0.62R에 있고, 살아 있는 상수를 쓰면 이 컨트롤이
+            //   "옛 체인 + 새 알"이라는 존재한 적 없는 쌍을 재게 된다(이 파일이 이미 두 번 겪은 실패).
+            const float OldMonocleOffsetRatio = 0.075f / 0.22f;   // = 옛 EyeOffsetXInHeadRadii
             var oldPod = new Vector3[12];
             for (int i = 0; i < 12; i++)
             {
                 float ang = Mathf.PI * 2f * i / 12f;
-                oldPod[i] = rig.F(r * AccessoryShapeBuilder.MonocleOffsetRatio + Mathf.Cos(ang) * r * 0.40f,
+                oldPod[i] = rig.F(r * OldMonocleOffsetRatio + Mathf.Cos(ang) * r * 0.40f,
                     cy + Mathf.Sin(ang) * r * 0.40f);
             }
             var pod = new AccessoryShapeBuilder.Shape("OldPod", oldPod, true,
@@ -273,9 +294,10 @@ namespace StickMate.Tests.EditMode
 
         /// <summary>
         /// 카드에서 <b>획 하나가 도형 전체 폭의 몇 배</b>인가. 이 자가 채움뿐 아니라 <b>선</b>까지
-        /// 봐야 하는 이유는 실측이다 — 나비넥타이·왕관·줄무늬타이는 채움이 <b>0개</b>인 선화라,
-        /// 채움만 세면 이 자는 그 카드들을 <b>아예 보지 못한다</b>(첫 실행에서 "채움이 비었습니다"로
-        /// 걸렸다).
+        /// 봐야 하는 이유는 실측이다 — 나비넥타이·왕관·줄무늬타이는 <b>채움이 0개인 선화</b>였고,
+        /// 채움만 세면 이 자는 그 카드들을 <b>아예 보지 못했다</b>(첫 실행에서 "채움이 비었습니다"로
+        /// 걸렸다). 2026-09-01(3차) 재설계로 셋 다 채움이 생겼지만, "선까지 본다"는 이 규약은
+        /// 그대로 둔다 — 다음 아이템이 다시 선화일 수 있고, 획은 실제로 카드 그림의 일부다.
         /// <para>값의 유도(Interaction/CharacterInfoWindow의 아이콘 규약):
         /// 획 = <c>1.7 × (IconSize / 40)</c>, 도형이 차지하는 폭 = <c>IconSize × FitFraction(0.86)</c>.
         /// IconSize가 약분되어 <c>(1.7 / 40) / 0.86 = 0.0494</c>가 남는다 — 아이콘 크기와 무관한 비율이다.</para>

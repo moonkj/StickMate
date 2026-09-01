@@ -29,10 +29,10 @@ namespace StickMate.Interaction
     /// ============================================================================
     /// 배타 규칙 / 탈출구 (35-1-7)
     /// ============================================================================
-    ///  · 열면 정보창·부채꼴·팝오버·구석 패널을 <b>여는 쪽에서 한 번에</b> 거둔다(CharacterInfoWindow가
+    ///  · 열면 정보창·부채꼴·팝오버를 <b>여는 쪽에서 한 번에</b> 거둔다(CharacterInfoWindow가
     ///    확립한 관례 — 진입점마다 정리 코드를 흩뿌리면 네 번째 진입점에서 반드시 샌다).
     ///  · 탈출구: [✕] / 창 밖 클릭 / 진입점 재선택. <b>ESC는 쓰지 않는다</b> — 이미 클릭관통 긴급
-    ///    해제와 구석 패널 숨김에 묶여 있다.
+    ///    해제에 묶여 있다.
     ///  · 전체화면 감지 시 창·차단막 즉시 정리, 복귀해도 자동으로 다시 열지 않는다(원칙 2).
     ///
     /// ============================================================================
@@ -43,7 +43,7 @@ namespace StickMate.Interaction
     /// <c>StickConfig</c>의 직렬화 필드에 직접 쓰면 그 순간 출하 기본값이 오염된다(2026-08-31에 두 번
     /// 겪은 실패 모드 — <see cref="AppSettingsModel"/> 클래스 문서 참고).
     /// </summary>
-    public sealed class SettingsWindow : MonoBehaviour
+    public sealed class SettingsWindow : MonoBehaviour, IExclusiveSurface
     {
         // ==================== 치수 (35-1-5 와이어프레임) ====================
 
@@ -61,7 +61,12 @@ namespace StickMate.Interaction
         private const int SortingOrderTopMost = 31950;
 
         private const float ClickPollInterval = 0.05f;
-        private const float ActionDedupSeconds = 0.35f;
+        /// <summary>같은 컨트롤의 연타를 한 번으로 접는 시간(초). ★ <b>public</b>인 이유: 같은 토글을
+        /// 껐다 켜는 것을 검증하는 PlayMode 테스트가 이 창의 실제 대기 시간을 <b>숫자로 베끼지 않고</b>
+        /// 참조해야 한다(CLAUDE.md — 프로덕션 상수 하드코딩 금지). 이 파일의 다른 테스트 관측점
+        /// (<c>FeedClickForTests</c>/<c>*ScreenRect</c>)과 같은 사정이다 — PlayMode 어셈블리는
+        /// <c>InternalsVisibleTo</c> 대상이 아니다.</summary>
+        public const float ActionDedupSeconds = 0.35f;
 
         /// <summary>[지금 종료]의 2단 확인 시간 — <see cref="ActionCommandPopover"/>와 같은 값, 같은 이유
         /// (한 번의 오조준으로 앱이 꺼지면 안 된다).</summary>
@@ -77,6 +82,44 @@ namespace StickMate.Interaction
         private const int TabCount = 5;
 
         private static readonly string[] TabNames = { "일반", "캐릭터", "이벤트", "접근성 · 성능", "데이터" };
+
+        // ==================== 탭바 배지 (docs/UI_SURFACE_SPEC.md 12) ====================
+
+        /// <summary>탭 라벨 한 글자의 폭 근사(pt). 한글은 폭이 pt에 가깝다는 <see cref="SettingsControls"/>의
+        /// 세그먼트 주석과 같은 근거다.</summary>
+        private const float TabLabelCharWidth = 11f;
+
+        /// <summary>탭 안쪽 좌우 여백. 배지가 붙어도 <b>양쪽 10pt 대칭</b>이 유지된다.</summary>
+        private const float TabPadX = 10f;
+
+        /// <summary>라벨 상자 높이(본문 12pt의 행 상자).</summary>
+        private const float TabLabelHeight = 16f;
+
+        /// <summary>
+        /// 미구현 탭 라벨 오른쪽에 붙는 <b>보조 어절</b> — "기능이 없는 건가, 내가 못 찾은 건가"에
+        /// <b>누르기 전에</b> 답하는 유일한 자리다(docs/UX_FLOW.md 43-3).
+        ///
+        /// <para>왜 기호가 아니라 글자인가: 이 앱의 자물쇠는 이미 <b>"놀면 열린다"</b>(장비 카드의
+        /// <c>Lv.n에 열림</c>)라 미구현 탭에 붙이면 거짓 약속이 되고, 탭바의 도트는 관례상 <b>"새 것"</b>
+        /// 이라 뜻이 뒤집히며, 밑줄은 이 앱에서 <b>"지금 여기"</b>다. 남는 것은 글자이고, 글자는
+        /// 해독이 필요 없고 스크린리더가 읽는다.</para>
+        ///
+        /// <para>★ 캡션 접두사와 <b>같은 단어</b>다(<see cref="SettingsControls.NotBuiltWord"/>) —
+        /// 탭에서 읽은 어휘가 행 캡션으로 그대로 이어진다. <b>public</b>인 이유: 회귀 테스트가 이
+        /// 문자열을 <b>베끼지 않고</b> 참조해야 한다(CLAUDE.md).</para>
+        /// </summary>
+        public const string TabBadgeText = SettingsControls.NotBuiltWord;
+
+        /// <summary>라벨과 배지 사이. <see cref="UiChrome.Space1"/>(4)은 글자 크기가 다른 두 덩어리를
+        /// 붙여 놓기에 좁다 — 한 어구로 읽히되 두 덩어리인 것은 보여야 한다.</summary>
+        private const float TabBadgeGap = UiChrome.Space2;
+
+        /// <summary>배지 상자 폭. ★ 숫자를 손으로 적지 않는다 — 글자 수 × 캡션 폰트에서 파생시킨다
+        /// (10pt 실측 모델로 33pt → 여유 7pt).</summary>
+        private static readonly float TabBadgeWidth = TabBadgeText.Length * UiChrome.FontCaption;
+
+        /// <summary>배지 상자 높이(캡션 10pt의 행 상자 — <c>SettingsControls.BeginRow</c>와 같은 값).</summary>
+        private const float TabBadgeHeight = 14f;
 
         /// <summary>탭마다 "이 탭을 여는 순간"을 한 줄로 — 35-1-4의 정의를 그대로 화면에 쓴다.</summary>
         private static readonly string[] TabEyebrows =
@@ -117,13 +160,15 @@ namespace StickMate.Interaction
         // 값이 바뀌면 화면을 다시 칠해야 하는 부품들(다른 UI가 같은 값을 바꿀 수 있다).
         private SettingsSlider _scaleSlider;
         private SettingsSwatchRow _inkSwatches;
-        private SettingsToggle _cornerPanelToggle;
         private SettingsToggle _gearIconToggle;
         private SettingsToggle _autoHideToggle;
         private SettingsToggle _bubbleToggle;
         private SettingsSlider _fontSizeSlider;
-        private SettingsSlider _visibleSecondsSlider;
+        private SettingsSegment _visibleLengthSegment;
         private SettingsSlider _chatterSlider;
+
+        /// <summary>말풍선을 끄면 함께 무효가 되는 세 행(42-11 판정 G).</summary>
+        private SettingsRowGate _speechGate;
         private Text _gearWarnCaption;
         private Image _quitSurface;
         private Text _quitLabel;
@@ -141,15 +186,20 @@ namespace StickMate.Interaction
         private bool _leftPrev;
         private bool _leftInitialized;
         private int _dragIndex = -1;
+
+        /// <summary>커서가 이 창 위에 있었거나 조작이 있었던 마지막 시각(프레임 페이싱 홀드용).
+        /// <see cref="TickFramePacingHold"/> 참고.</summary>
+        private float _lastSurfaceTouchTime = float.NegativeInfinity;
+
         private string _lastActionKey;
         private float _lastActionTime;
         private bool _quitArmed;
         private float _quitArmedAt;
         private bool _saveRequested;
 
-        private GearRadialMenuWidget _menu;
+        // 부채꼴 참조는 더 이상 이 창이 들고 있지 않다 — 배타 규칙의 집행이 ExclusiveSurfaces로
+        // 옮겨가면서 여기서 부채꼴을 직접 아는 이유가 사라졌다(닫을 대상을 손으로 적지 않는다).
         private CharacterInfoWindow _infoWindow;
-        private CornerHoverPanel _cornerPanel;
 
         /// <summary>설정창을 열 때 <b>내가 닫은</b> 정보창이 있었는가 — 닫을 때 그 자리로 돌려보내기 위해.
         /// 자세한 이유는 <see cref="RestoreInfoWindowIfNeeded"/>.</summary>
@@ -160,6 +210,11 @@ namespace StickMate.Interaction
         // ==================== 진단/테스트용 공개 상태 ====================
 
         public bool IsOpen => _open;
+
+        // ★ 배타 표면 등록(2026-09-01) — 정보창과 같은 배선. 이 한 줄이 없어서 <c>I</c>를 눌러도
+        //   설정창이 정보창 위에 남아 있었다(사용자 신고 "케릭터창도 겹쳐서보이는 문제있고").
+        bool IExclusiveSurface.IsSurfaceOpen => _open;
+        void IExclusiveSurface.CloseSurface(string reason) => Close(reason);
         public bool IsCanvasActive => _canvas != null && _canvas.gameObject.activeSelf;
         public bool IsClickBlockerEnabled => _clickBlocker != null && _clickBlocker.enabled;
         public Tab ActiveTab => _tab;
@@ -213,10 +268,20 @@ namespace StickMate.Interaction
             ? SettingsControlHost.ScreenRectOf(_fontSizeSlider.PlusRect)
             : new Rect();
 
-        /// <summary>구석 크기 패널 토글의 사각형(테스트 전용).</summary>
-        public Rect CornerPanelToggleScreenRect => _cornerPanelToggle != null
-            ? SettingsControlHost.ScreenRectOf(_cornerPanelToggle.HitRect)
+        /// <summary>`대사 표시 시간` 세그먼트 i번 칸의 사각형(테스트 전용).</summary>
+        public Rect DialogueVisibleLengthSegmentScreenRect(int index)
+            => _visibleLengthSegment != null && _visibleLengthSegment.Rects != null
+               && index >= 0 && index < _visibleLengthSegment.Rects.Length
+                ? SettingsControlHost.ScreenRectOf(_visibleLengthSegment.Rects[index])
+                : new Rect();
+
+        /// <summary>`말풍선 표시` 토글의 사각형(테스트 전용).</summary>
+        public Rect DialogueBubbleToggleScreenRect => _bubbleToggle != null
+            ? SettingsControlHost.ScreenRectOf(_bubbleToggle.HitRect)
             : new Rect();
+
+        /// <summary>말풍선을 끄면 함께 무효가 되는 세 행이 지금 활성인가(테스트 전용).</summary>
+        public bool SpeechRowsEnabledForTests => _speechGate == null || _speechGate.Enabled;
 
         /// <summary>테스트 전용 — 실제 입력과 <b>완전히 같은</b> 처리 경로에 커서를 먹인다
         /// (PlayMode는 진짜 전역 클릭을 만들 수 없다. InfoGearIconWidget.FeedPointerForTests와 같은 사정).</summary>
@@ -239,7 +304,7 @@ namespace StickMate.Interaction
 
             Debug.Log($"[설정창] 준비 완료({PanelWidth:F0}×{PanelHeight:F0}, 탭 5개: " +
                 $"{string.Join("/", TabNames)}) — 여는 방법: (1) 정보창 헤더의 작은 톱니, " +
-                $"(2) 전역 단축키 **{ShortcutLabel.Chord(",")}**. 이번 라운드는 [일반][캐릭터]만 내용이 있습니다. " +
+                $"(2) 전역 단축키 **{ShortcutLabel.Chord("P")}**. 이번 라운드는 [일반][캐릭터]만 내용이 있습니다. " +
                 $"전역 폴링 경로={(_buttonService != null ? "사용 가능" : "미지원 — uGUI 경로만")}.");
             LogRoadmapNotes();
         }
@@ -298,6 +363,8 @@ namespace StickMate.Interaction
             if (_open) return;
             _open = true;
             _leftInitialized = false;   // 창을 여는 그 클릭이 곧바로 행 클릭으로 오인되지 않게.
+            // 여는 그 순간은 정의상 조작 중이다 — 첫 커서 폴링(최대 0.05초)까지의 공백을 메운다.
+            _lastSurfaceTouchTime = Time.unscaledTime;
             _dragIndex = -1;
             DisarmQuit();
             CloseOverlappingSurfaces($"설정창 열림({source})");
@@ -356,33 +423,28 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// 배타적 모달 — 이 창이 뜨면 정보창/부채꼴/팝오버/구석 패널을 거둔다.
-        /// <see cref="CharacterInfoWindow.CloseOverlappingSurfaces"/>와 <b>같은 규약</b>이며, 정리 책임을
-        /// 여는 쪽 한 곳에만 둔다(진입점마다 흩뿌리면 네 번째 진입점에서 반드시 샌다).
+        /// 배타적 모달 — 이 창이 뜨면 <b>다른 모든 배타 표면</b>을 거둔다.
+        /// <see cref="CharacterInfoWindow.CloseOverlappingSurfaces"/>와 <b>같은 규약</b>이며,
+        /// 이제는 같은 규약이 아니라 <b>같은 코드</b>다(<see cref="ExclusiveSurfaces.CloseAllExcept"/>) —
+        /// "규약"으로만 묶여 있던 동안 한쪽에만 상대가 등록돼 있어서 <c>I</c> 방향만 새고 있었다.
+        ///
+        /// <para>여기 남는 유일한 고유 로직은 <b>시트 복귀 예약</b>(M8)이다. 이건 배타 규칙이 아니라
+        /// 이 창만의 성격이라 공통 집행 지점에 올리지 않는다.</para>
         /// </summary>
         private void CloseOverlappingSurfaces(string reason)
         {
-            if (_cornerPanel == null) _cornerPanel = GetComponent<CornerHoverPanel>();
-            if (_cornerPanel != null) _cornerPanel.ForceHide(reason);
-
             if (_infoWindow == null) _infoWindow = GetComponent<CharacterInfoWindow>();
             // 닫기 <b>전에</b> 기억한다 — 이 한 줄이 없으면 되돌아갈 자리가 사라진다(M8).
             _restoreInfoWindowOnClose = _infoWindow != null && _infoWindow.IsOpen;
-            if (_infoWindow != null) _infoWindow.Close(reason);
 
-            if (_menu == null) _menu = GetComponent<GearRadialMenuWidget>();
-            if (_menu != null) { _menu.ForceCloseAll(reason); return; }
-
-            var focus = GetComponent<FocusSessionPopover>();
-            if (focus != null) focus.Close(reason);
-            var todo = GetComponent<TodoBoardPopover>();
-            if (todo != null) todo.Close(reason);
+            ExclusiveSurfaces.CloseAllExcept(this, reason);
         }
 
         // ==================== 루프 ====================
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.UiWindows);   // [스톨구간] 계측
             if (!_open) return;
 
             // ★★ 원칙 2 — 전체화면 게임이 감지되면 창과 차단막을 그 프레임에 거둔다. 복귀 시 자동으로
@@ -397,14 +459,15 @@ namespace StickMate.Interaction
                 return;
             }
 
-            // 이 창이 열려 있다는 것은 사용자가 지금 이것을 보고 있다는 관측된 사실이다 — 적응형
-            // 프레임 페이싱이 "무입력 = 한가함"으로 오판해 30Hz로 내려가면 슬라이더 드래그가 계단처럼
-            // 끊긴다(2026-08-31 정보창에서 실제로 신고된 인과). 홀드는 만료 시각 방식이라 해제 책임이 없다.
-            FramePacing.HoldActiveForInteraction();
+            // ★★ 프레임 페이싱 홀드는 TickGlobalPointer() 안에 있다 — "창이 열려 있는 동안"이
+            //    아니라 <b>"지금 이 창을 조작 중일 때"</b>만 걸어야 한다(근거: TickFramePacingHold
+            //    문서. 정보창이 125분 열린 채 절전을 통째로 죽인 실측 사고와 같은 배선이었다).
 
-            // 배율 적용 유예(랙돌/스펙터클 중)를 푸는 일은 구석 패널도 매 프레임 하고 있지만, 그 컴포넌트가
-            // 없는 조립(테스트 씬/미래의 다른 진입점)에서도 유예가 반드시 끝나야 한다. 경과 시간 기반이라
-            // 두 곳에서 불려도 결과가 같다(멱등).
+            // 배율 적용 유예(랙돌/스펙터클 중) 풀기. ★ 이 창은 <b>구동자가 아니다</b> — 위 Update는
+            // `if (!_open) return;`으로 시작하므로 창을 닫으면 여기가 안 돈다. 상시 구동자는
+            // CharacterProgressionDirector이고(2026-09-01 구석 패널 삭제로 그쪽이 물려받았다),
+            // 여기 한 줄은 "창이 열려 있는 동안 반응이 한 프레임도 늦지 않게" 하는 보조다.
+            // 경과 시간 기반이라 두 곳에서 불려도 결과가 같다(멱등).
             CharacterScaleController.Tick();
 
             ApplyCanvasScaleFactor();
@@ -424,6 +487,10 @@ namespace StickMate.Interaction
         {
             if (_buttonService == null || _panel == null) return;
 
+            // 홀드 판정도 이 가드 뒤에 있다 — 전역 포인터 서비스가 없으면 커서를 관측할 수단이
+            // 자체가 없다. 그 환경(에디터/Null 서비스)에서는 적응형 페이싱도 함께 꺼져 있으므로
+            // 홀드가 없어서 생기는 손해가 없다.
+
             // 드래그(슬라이더) 중에는 폴링 간격을 없앤다 — 20Hz로 끌면 손잡이가 커서에서 뚝뚝 떨어진다.
             if (_dragIndex < 0)
             {
@@ -438,8 +505,36 @@ namespace StickMate.Interaction
                 ? ScreenCoordinateConverter.OsScreenToUnityScreen(osScreen, _config)
                 : Vector2.zero;
 
+            TickFramePacingHold(hasCursor, cursor);
+
             if (!_buttonService.TryGetPrimaryButtonPressed(out bool left)) return;
             ProcessPointer(left, cursor, hasCursor);
+        }
+
+        /// <summary>
+        /// "지금 이 창을 <b>조작 중</b>인가"를 프레임 페이싱에 알린다 —
+        /// <see cref="CharacterInfoWindow"/>와 <b>같은 배선</b>이고 판정도 같은 플랫폼 중립 함수
+        /// (<see cref="FramePacingPolicy.ShouldHoldForSurface"/>)를 쓴다. 두 창이 서로 다른 규칙을
+        /// 갖게 되면 다음 사람이 어느 쪽이 진짜인지 알 수 없다.
+        ///
+        /// <para><b>왜 바꿨나</b>: 원래 <c>Update()</c>에서 무조건 걸려 있었다. 정보창의 실측
+        /// (125분 열림 = 등급 전이 0회, 활성 등급 체류 100%)이 그 배선이 적응형 절전을 통째로
+        /// 무력화한다는 것을 확정했고, 이 창은 <b>같은 패턴</b>이었다. 슬라이더 드래그가 끊기지
+        /// 않는 이유는 <c>_dragIndex</c>가 그 자체로 "조작 중"이기 때문이다 — 커서가 창 밖으로
+        /// 나가도 홀드가 유지된다.</para>
+        /// </summary>
+        private void TickFramePacingHold(bool hasCursor, Vector2 cursor)
+        {
+            // _quitArmed는 "정말 종료?"가 떠 있는 몇 초 — 그 순간의 클릭이 굼뜨면 안 된다.
+            bool manipulating = _dragIndex >= 0 || _quitArmed;
+            bool cursorOver = hasCursor && RectContainsScreenPoint(_panel, cursor);
+            if (manipulating || cursorOver) _lastSurfaceTouchTime = Time.unscaledTime;
+
+            if (FramePacingPolicy.ShouldHoldForSurface(cursorOver, manipulating,
+                    Time.unscaledTime - _lastSurfaceTouchTime))
+            {
+                FramePacing.HoldActiveForInteraction();
+            }
         }
 
         /// <summary>실제 입력과 테스트가 <b>공유하는</b> 포인터 처리(정보창과 같은 관례).</summary>
@@ -519,9 +614,9 @@ namespace StickMate.Interaction
         // ==================== 값 동기화 ====================
 
         /// <summary>
-        /// ★ 35-1-3 ①의 핵심 — 구석 다이얼이 배율을 바꾸면 이 슬라이더가 <b>같은 프레임에</b> 따라온다.
-        /// 반대 방향(슬라이더 → 다이얼)도 같은 이벤트로 흐른다. 두 UI가 서로를 모른 채 같은 숫자를
-        /// 가리키는 것이 이 구조의 목적이다.
+        /// ★ 35-1-3 ①의 핵심 — 이 창 <b>밖</b>에서 배율이 바뀌면 슬라이더가 <b>같은 프레임에</b>
+        /// 따라온다(저장 복원, 유예 해제 후 강제 적용 등). 반대 방향도 같은 이벤트로 흐른다.
+        /// 값을 만지는 쪽들이 서로를 모른 채 같은 숫자를 가리키는 것이 이 구조의 목적이다.
         /// </summary>
         private void OnCharacterScaleChanged(CharacterScaleChangeEvent e)
         {
@@ -533,16 +628,24 @@ namespace StickMate.Interaction
         {
             if (_scaleSlider != null) _scaleSlider.SetValueSilently(CharacterScaleController.Value);
             if (_inkSwatches != null) _inkSwatches.SetIndexSilently(_config != null && _config.IsWhiteInk() ? 1 : 0);
-            if (_cornerPanelToggle != null) _cornerPanelToggle.SetOn(UiLayoutModel.CornerPanelEnabled);
             if (_gearIconToggle != null) _gearIconToggle.SetOn(AppSettingsModel.GearIconVisible);
             if (_autoHideToggle != null) _autoHideToggle.SetOn(AppSettingsModel.AutoHideOnFullscreen);
             if (_bubbleToggle != null) _bubbleToggle.SetOn(AppSettingsModel.ResolveDialogueBubbleEnabled(_config));
             if (_fontSizeSlider != null) _fontSizeSlider.SetValueSilently(AppSettingsModel.ResolveDialogueFontSize(_config));
-            if (_visibleSecondsSlider != null)
-                _visibleSecondsSlider.SetValueSilently(AppSettingsModel.ResolveDialogueMaxVisibleSeconds(_config));
+            if (_visibleLengthSegment != null)
+                _visibleLengthSegment.SetIndexSilently((int)AppSettingsModel.DialogueVisibleLength);
             if (_chatterSlider != null) _chatterSlider.SetValueSilently(AppSettingsModel.ChatterPercent);
+            SyncSpeechGate();
             SyncGearWarning();
             ApplyTabVisibility();
+        }
+
+        /// <summary>★ 42-11 G — <c>말풍선 표시</c>가 꺼져 있으면 그 아래 세 행은 만져도 화면이 바뀌지
+        /// 않는다. 활성인 채로 두면 "컨트롤이 움직이는데 화면이 약속과 다르다"가 된다.</summary>
+        private void SyncSpeechGate()
+        {
+            if (_speechGate == null) return;
+            _speechGate.SetEnabled(AppSettingsModel.ResolveDialogueBubbleEnabled(_config));
         }
 
         private void SyncGearWarning()
@@ -582,8 +685,11 @@ namespace StickMate.Interaction
 
             // 그림 없는 컨테이너 + [그림자 → 본체(α1) → 보더] 형제 배치. 컨테이너에 Graphic을 붙이면
             // 그림자가 본체 위로 올라가 창 알파가 무너진다(InfoWindowPanelOpacityTests가 잠근 규칙).
+            // 번짐 22 / 오프셋 -7. ★ 2026-09-01: 옛 값은 (18, -18)로 <b>오프셋이 번짐과 같았다</b> —
+            // 감쇠 그림자에서 그 비율은 패널 실루엣과 어긋난 자리에 알파 1짜리 코어를 통째로 드러내
+            // 다시 "두 번째 창"이 된다(UiChrome.AddShadow의 offset 문서).
             _panel = UiChrome.AddOpaquePanel(canvasGo.transform, "SettingsPanel", UiChrome.RadiusPanel,
-                18f, new Vector2(0f, -18f), out Image panelImage);
+                22f, new Vector2(0f, -7f), out Image panelImage);
             _panel.anchorMin = _panel.anchorMax = _panel.pivot = new Vector2(0.5f, 0.5f);
             _panel.anchoredPosition = Vector2.zero;
             _panel.sizeDelta = new Vector2(PanelWidth, PanelHeight);
@@ -647,7 +753,13 @@ namespace StickMate.Interaction
             float x = ContentPadX;
             for (int i = 0; i < TabCount; i++)
             {
-                float width = 20f + TabNames[i].Length * 11f;
+                // ★ 배지 유무 · 탭 폭 · (아래 ApplyTabVisibility의) 밑줄색이 전부 IsTabReady <b>하나</b>에서
+                //   나온다. 그래서 탭이 채워지는 날 <b>아무도 아무것도 지우지 않아도</b> 배지가 사라진다.
+                //   판정을 두 벌로 두면 반드시 한쪽만 갱신된다 — M7이 정확히 그 사고였다.
+                bool ready = IsTabReady((Tab)i);
+                float labelWidth = TabNames[i].Length * TabLabelCharWidth;
+                float width = TabPadX * 2f + labelWidth
+                    + (ready ? 0f : TabBadgeGap + TabBadgeWidth);
 
                 var tabGo = new GameObject("Tab" + i, typeof(RectTransform));
                 tabGo.transform.SetParent(bar, false);
@@ -660,10 +772,26 @@ namespace StickMate.Interaction
                 UiChrome.Stretch(hit.rectTransform);
 
                 Text label = UiChrome.AddText(rt, "Label", UiChrome.FontBody, TextAnchor.MiddleCenter,
-                    UiChrome.TabInactive);
-                UiChrome.Stretch(label.rectTransform);
+                    UiChrome.InkTab(selected: false));
+                // ★ Stretch가 아니라 <b>라벨 폭만큼의 상자</b>다. 이 상자는 옛 Stretch 상자
+                //   (폭 20 + n×11)의 <b>정중앙 구간과 같아서</b> MiddleCenter 렌더 결과가 1pt도
+                //   안 움직인다(배지가 붙어 부모가 넓어져도 마찬가지다 — 그래서 준비된 탭도 같은 길로
+                //   보낸다). 왼쪽 정렬로 바꾸면 11f 근사 오차만큼 밀린다.
+                UiChrome.PlaceTopLeft(label.rectTransform, TabPadX,
+                    -(TabBarHeight - TabLabelHeight) * 0.5f, labelWidth, TabLabelHeight);
                 label.text = TabNames[i];
                 _tabLabels[i] = label;
+
+                if (!ready)
+                {
+                    // 잉크는 <b>전 상태 상수</b>(InkMeta)다 — ApplyTabVisibility에 코드를 더하지 않고,
+                    //   생성 시 1회 도색으로 끝난다(하루 종일 켜져 있는 앱: 프레임 비용 0).
+                    Text badge = UiChrome.AddText(rt, "Badge", UiChrome.FontCaption, TextAnchor.MiddleLeft,
+                        UiChrome.InkMeta);
+                    UiChrome.PlaceTopLeft(badge.rectTransform, TabPadX + labelWidth + TabBadgeGap,
+                        -(TabBarHeight - TabBadgeHeight) * 0.5f, TabBadgeWidth, TabBadgeHeight);
+                    badge.text = TabBadgeText;
+                }
 
                 // 활성 탭 밑줄 2pt(35-1-5). 비활성은 색만 투명하게 둔다 — 껐다 켜면 배치가 흔들린다.
                 Image underline = UiChrome.AddSurface(rt, "Underline", UiChrome.Accent, 2);
@@ -718,7 +846,7 @@ namespace StickMate.Interaction
         private static float AddEyebrow(RectTransform page, string text, float y)
         {
             Text eyebrow = UiChrome.AddText(page, "Eyebrow", UiChrome.FontLabel, TextAnchor.MiddleLeft,
-                UiChrome.TextTertiary);
+                UiChrome.InkMeta);
             UiChrome.PlaceTopLeft(eyebrow.rectTransform, 2f, y, SettingsControls.CardWidth, 14f);
             eyebrow.text = text;
             return y - 20f;
@@ -757,19 +885,14 @@ namespace StickMate.Interaction
 
             display.AddToggle("general.hideHotkey", "숨기기 / 보이기 단축키", false, null,
                 hotkey: ShortcutLabel.Chord("V"), enabled: false,
-                disabledNote: "이 단축키는 다음 업데이트에서 켜집니다.");
+                disabledNote: DisabledReason.NotBuilt("이 단축키는 다음 업데이트에서 켜집니다."));
             y = display.Finish(y);
 
             var screenUi = new SettingsCardBuilder(page, "화면 위 UI", y, _host);
-            _cornerPanelToggle = screenUi.AddToggle("general.cornerPanel", "구석 크기 패널 (왼쪽 아래 모서리)",
-                UiLayoutModel.CornerPanelEnabled,
-                on =>
-                {
-                    UiLayoutModel.SetCornerPanelEnabled(on);
-                    CharacterSaveStore.Save();
-                    Debug.Log($"[설정창] 구석 호버 패널 {(on ? "켬" : "끔")} — " +
-                        "34-8 탈출구 ③(영구 off)이 드디어 제 집을 찾았습니다(36-11의 부채 정리).");
-                });
+            // ★ 2026-09-01 — 여기 있던 "구석 크기 패널 (왼쪽 아래 모서리)" 토글을 <b>지웠다</b>.
+            //   사용자가 세 번 요청한 것은 "끌 수 있게"가 아니라 <b>삭제</b>였고, 그 패널
+            //   (CornerHoverPanel/SizeDialWidget)은 이 라운드에 통째로 제거됐다. 크기 조정은
+            //   아래 [캐릭터] 탭의 "캐릭터 크기" 슬라이더 하나로 일원화된다.
 
             _gearIconToggle = screenUi.AddToggle("general.gearIcon", "톱니 아이콘",
                 AppSettingsModel.GearIconVisible,
@@ -795,7 +918,8 @@ namespace StickMate.Interaction
 
             var startStop = new SettingsCardBuilder(page, "시작 / 종료", y, _host);
             startStop.AddToggle("general.autoLaunch", "로그인할 때 자동 실행", false, null,
-                enabled: false, disabledNote: "이 기능은 다음 업데이트에 들어옵니다.");
+                enabled: false,
+                disabledNote: DisabledReason.NotBuilt("이 기능은 다음 업데이트에 들어옵니다."));
 
             Image[] quitButtons = startStop.AddButtons("general.quit", "종료",
                 new[] { QuitLabelText }, _ => OnQuitClicked());
@@ -872,7 +996,7 @@ namespace StickMate.Interaction
             var look = new SettingsCardBuilder(page, "모양", y, _host);
 
             // ★ 크기는 반드시 단일 소스를 지난다(35-1-3 ①). 여기서 UiLayoutModel/Agent를 직접 부르면
-            //   구석 다이얼의 게이트(랙돌 중 유예)가 이 경로에만 없는 상태가 되어 규칙이 두 벌이 된다.
+            //   적용 게이트(랙돌 중 유예)가 이 경로에만 없는 상태가 되어 규칙이 두 벌이 된다.
             _scaleSlider = look.AddSlider("character.scale", "캐릭터 크기",
                 StickConfig.MinCharacterScale, StickConfig.MaxCharacterScale, CharacterScaleController.ValueStep,
                 CharacterScaleController.Value, v => v.ToString("0.00") + "×",
@@ -897,43 +1021,73 @@ namespace StickMate.Interaction
             //   말고 같은 색을 두 번 그리지도 말고, <b>지금 이 앱에 실제로 있는 두 색</b>만 놓는다.
             look.AddSwatches("character.point", "포인트 컬러 (눈 · 윤곽선)",
                 new[] { UiChrome.Accent, UiChrome.TextPrimary }, -1, null,
-                enabled: false, disabledNote: "포인트 컬러 팔레트는 다음 업데이트에 들어옵니다.");
+                enabled: false,
+                disabledNote: DisabledReason.NotBuilt("포인트 컬러 팔레트는 다음 업데이트에 들어옵니다."));
             y = look.Finish(y);
 
             var speech = new SettingsCardBuilder(page, "말과 행동", y, _host);
 
-            speech.AddSegment("character.tone", "말투", new[] { "반말", "존댓말" }, 0, null,
-                enabled: false, disabledNote: "말투 고르기는 다음 업데이트에 들어옵니다.");
-
-            _fontSizeSlider = speech.AddSlider("character.fontSize", "말풍선 글자 크기",
-                AppSettingsModel.MinDialogueFontSize, AppSettingsModel.MaxDialogueFontSize, 1f,
-                AppSettingsModel.ResolveDialogueFontSize(_config), v => Mathf.RoundToInt(v) + "pt",
-                v => { AppSettingsModel.SetDialogueFontSize(Mathf.RoundToInt(v)); RequestSave(); });
-
-            _visibleSecondsSlider = speech.AddSlider("character.visibleSeconds", "대사 표시 시간",
-                AppSettingsModel.MinVisibleSecondsChoice, AppSettingsModel.MaxVisibleSecondsChoice, 0.5f,
-                AppSettingsModel.ResolveDialogueMaxVisibleSeconds(_config), v => v.ToString("0.0") + "s",
-                v => { AppSettingsModel.SetDialogueMaxVisibleSeconds(v); RequestSave(); });
-
-            _chatterSlider = speech.AddSlider("character.chatter", "잡담 빈도",
-                0f, AppSettingsModel.MaxChatterPercent, 10f,
-                AppSettingsModel.ChatterPercent, v => Mathf.RoundToInt(v) + "%",
-                v => { AppSettingsModel.SetChatterPercent(Mathf.RoundToInt(v)); RequestSave(); },
-                caption: "100%가 기본값입니다. 0%로 두면 혼잣말을 하지 않아요.");
-
+            // ★ 42-11 판정 G — <b>원인이 결과보다 먼저</b>. 이 토글이 카드 맨 아래에 있던 동안, 아래
+            //   세 행이 왜 비활성인지 알려면 그 이유를 찾아 <b>아래로 내려가</b> 읽어야 했다.
             _bubbleToggle = speech.AddToggle("character.bubble", "말풍선 표시",
                 AppSettingsModel.ResolveDialogueBubbleEnabled(_config),
                 on =>
                 {
                     AppSettingsModel.SetDialogueBubbleEnabled(on);
+                    SyncSpeechGate();
                     CharacterSaveStore.Save();
                     Debug.Log($"[설정창] 말풍선 표시 {(on ? "켬" : "끔")} — 대사 생성 파이프라인은 그대로 돕니다" +
-                        "(원칙 1의 행동-텍스트 싱크는 설정으로 끌 수 있는 물건이 아닙니다). 그리지 않을 뿐입니다.");
+                        "(원칙 1의 행동-텍스트 싱크는 설정으로 끌 수 있는 물건이 아닙니다). 그리지 않을 뿐입니다." +
+                        $" 아래 세 행은 {(on ? "다시 조절할 수 있습니다" : "지금 만져도 화면이 바뀌지 않으므로 함께 비활성이 됩니다")}.");
                 });
+
+            speech.AddSegment("character.tone", "말투", new[] { "반말", "존댓말" }, 0, null,
+                enabled: false,
+                disabledNote: DisabledReason.NotBuilt("말투 고르기는 다음 업데이트에 들어옵니다."));
+
+            // 아래 세 행은 말풍선을 그리지 않으면 전부 무효다 — 한 손잡이로 함께 내린다(42-11 G).
+            _speechGate = new SettingsRowGate("말풍선 표시를 켜면 조절할 수 있어요.");
+
+            _fontSizeSlider = speech.AddSlider("character.fontSize", "말풍선 글자 크기",
+                AppSettingsModel.MinDialogueFontSize, AppSettingsModel.MaxDialogueFontSize, 1f,
+                AppSettingsModel.ResolveDialogueFontSize(_config), v => Mathf.RoundToInt(v) + "pt",
+                v => { AppSettingsModel.SetDialogueFontSize(Mathf.RoundToInt(v)); RequestSave(); },
+                gate: _speechGate);
+
+            // ★ 2026-09-02(42-4) — 초 슬라이더 폐기. 값 라벨이 없는 것은 빠뜨린 게 아니라 판정이다:
+            //   보여줄 정직한 숫자가 없다(효과가 대사마다 다르고 눈으로 0.3초를 잴 수 없다).
+            _visibleLengthSegment = speech.AddSegment("character.visibleLength", "대사 표시 시간",
+                DialogueVisibleLengthOptions, (int)AppSettingsModel.DialogueVisibleLength,
+                i =>
+                {
+                    AppSettingsModel.SetDialogueVisibleLength((DialogueVisibleLength)i);
+                    RequestSave();
+                },
+                caption: "대사가 떠 있는 시간은 글자 수에 맞춰 정해집니다. 천천히 읽는 편이면 늘려 두세요.",
+                gate: _speechGate);
+
+            _chatterSlider = speech.AddSlider("character.chatter", "잡담 빈도",
+                0f, AppSettingsModel.MaxChatterPercent, 10f,
+                AppSettingsModel.ChatterPercent, v => Mathf.RoundToInt(v) + "%",
+                v => { AppSettingsModel.SetChatterPercent(Mathf.RoundToInt(v)); RequestSave(); },
+                caption: "100%가 기본값입니다. 0%로 두면 혼잣말을 하지 않아요.",
+                gate: _speechGate);
+
+            SyncSpeechGate();
             y = speech.Finish(y);
 
             return y;
         }
+
+        /// <summary>
+        /// `대사 표시 시간` 세그먼트 문구(docs/UX_FLOW.md 42-7 확정형). <b>순서가 곧
+        /// <see cref="DialogueVisibleLength"/>의 순서</b>다 — 둘이 어긋나면 사용자가 고른 칸과 저장되는
+        /// 값이 갈린다.
+        ///
+        /// <para>`기본`이라는 낱말이 "배포 기본값이 어느 것인지"를 캡션 한 문장 없이 알려 준다.
+        /// 폭 검산(42-7): 42 + 42 + 69 + 간격 8 = <b>161pt</b>, 라벨 상자(420pt)와 여유 71pt.</para>
+        /// </summary>
+        private static readonly string[] DialogueVisibleLengthOptions = { "기본", "길게", "아주 길게" };
 
         /// <summary>스와치 색은 <b>반드시 불투명</b>이어야 한다 — 반투명 판이 하나라도 얹히면 그 자리의
         /// 창 알파가 내려간다(SettingsControls 클래스 문서의 알파 규칙).</summary>
@@ -963,8 +1117,12 @@ namespace StickMate.Interaction
         private float BuildPlaceholderTab(RectTransform page, float y, Tab tab)
         {
             var card = new SettingsCardBuilder(page, TabNames[(int)tab], y, _host);
+            // ★ 문구는 <b>세 탭 공통</b>이라 세 탭 전부에서 참이어야 한다(43-1 ③). "이 스위치들"은
+            //   [데이터] 탭의 `저장 파일 위치`가 스위치가 아니라서 거짓이 된다 — "여기 적힌 항목들"은
+            //   바로 윗줄 라벨을 가리키고 컨트롤 종류를 약속하지 않는다.
             card.AddToggle("placeholder." + (int)tab, PlaceholderLabel(tab), false, null,
-                enabled: false, disabledNote: "이 탭의 내용은 다음 업데이트에 채워집니다.");
+                enabled: false,
+                disabledNote: DisabledReason.NotBuilt("여기 적힌 항목들은 다음 업데이트에 들어옵니다."));
             return card.Finish(y);
         }
 
@@ -996,8 +1154,10 @@ namespace StickMate.Interaction
             SettingsControls.PlaceTopRight(right.rectTransform, ContentPadX, -(FooterHeight - 14f) * 0.5f, 380f, 14f);
             // 시안의 문구는 "톱니 아이콘 클릭 · ⌃⌥⌘,"였지만, <b>실제로 존재하는 경로</b>만 적는다 —
             // 없는 문을 알려 주는 것은 이 프로젝트가 원칙 1로 금지한 "표시와 실제의 불일치"다.
+            // ★ 그 시안의 쉼표도 지금은 죽은 표기다 — 2026-09-01에 P로 옮겼다(⌃⌥⌘,는 macOS 접근성
+            //   "대비 줄이기" 예약 조합이라 우리가 누를 때마다 사용자 OS 설정이 바뀌었다).
             // 부채꼴 5번째 버튼은 36-11이 "만들지 않는다"로 결론지어 두었으므로 리더 판단 사항으로 남겼다.
-            right.text = $"이 창을 여는 방법: 캐릭터 정보창 [설정] · {ShortcutLabel.Chord(",")}";
+            right.text = $"이 창을 여는 방법: 캐릭터 정보창 [설정] · {ShortcutLabel.Chord("P")}";
         }
 
         /// <summary>
@@ -1023,7 +1183,8 @@ namespace StickMate.Interaction
         /// "100%" 값 라벨을 덮었고, [▲]는 그 행의 [+] 스텝 버튼과 거의 붙어 <c>[−] ▬▬ [+] [▲] [▼]</c>로
         /// <b>같은 줄의 미세 조정 버튼</b>처럼 읽혔다(실제로는 페이지 스크롤이다 — 표시와 실제의 불일치).</para>
         ///
-        /// <para>탭바는 오른쪽 375pt가 비어 있다(탭 5개가 x 20~345). 콘텐츠 밖이면서 사용자가 이미
+        /// <para>탭바는 오른쪽이 비어 있다(탭 5개가 x 20~489 — 미구현 탭 3개의 `준비 중` 배지를 포함한
+        /// 값이고, 칩은 x 646~700이라 사이가 157pt 남는다). 콘텐츠 밖이면서 사용자가 이미
         /// 보는 자리라 거터를 새로 만들 필요도, 카드 폭(680)을 건드릴 필요도 없다 — 이 창의 세로
         /// 예산은 이미 꽉 차 있어서 거터를 만들려면 모든 행이 다시 계산된다.</para>
         /// </summary>
@@ -1105,16 +1266,17 @@ namespace StickMate.Interaction
                 {
                     // 준비 중인 탭은 <b>고르기 전에</b> 그렇게 보인다. 다만 골랐을 때는 완전히 죽이지
                     // 않는다 — "내가 지금 어디에 있는지"는 빈 탭에서도 읽혀야 한다.
-                    _tabLabels[i].color = active
-                        ? (ready ? UiChrome.TextPrimary : UiChrome.TextSecondary)
-                        : (ready ? UiChrome.TabInactive : UiChrome.TextDisabled);
+                    // ★ 고르지 않은 탭은 준비 여부로 <b>더 흐려지지 않는다</b>. 옛 코드의 2.35:1이
+                    //   "죽은 탭에는 글자가 한 자도 없다"는 신고를 만들었다 — 글자는 있었다.
+                    //   준비 중이라는 사실은 아래 밑줄과 탭 내용이 말한다.
+                    _tabLabels[i].color = UiChrome.InkTab(active, ready);
                     _tabLabels[i].fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
                 }
                 if (_tabUnderlines[i] != null)
                 {
                     // 밑줄 색도 같은 말을 한다: 파란 밑줄(Accent)은 "여기 내용이 있다"의 표시였다.
                     _tabUnderlines[i].color = active
-                        ? (ready ? UiChrome.Accent : UiChrome.TextQuaternary)
+                        ? (ready ? UiChrome.Accent : UiChrome.NonTextMuted)
                         : Color.clear;
                 }
             }

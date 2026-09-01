@@ -16,7 +16,7 @@ namespace StickMate.States
     /// 개체별 독립 RNG(26-3, Phase 5 세포분열 대비 "모든 개체가 같은 시드로 동기화되어 보이면 안 됨"):
     /// 호출자(StickmanAgent)가 인스턴스마다 서로 다른 System.Random을 주입한다.
     /// </summary>
-    public sealed class AutoWanderController : IMovementIntentSource
+    public sealed class AutoWanderController : IMovementIntentSource, IPlannedDwellSource
     {
         /// <summary>StickmanAgent.TryGetCursorPosition과 시그니처가 동일한 델리게이트(out 매개변수라
         /// System.Func로 표현할 수 없어 별도 선언). 26-4 커서 근접 반응 훅 예약용.</summary>
@@ -139,6 +139,30 @@ namespace StickMate.States
         public bool LedgeHangRequested => _ledgeHangRequestedThisTick;
         public bool HopDownRequested => _hopDownRequestedThisTick;
         public bool StepUpRequested => _stepUpRequestedThisTick;
+
+        /// <summary>
+        /// ★ 발화 자격 게이트(docs/UX_FLOW.md 5절 규칙 8)가 읽는 **계획 잔여 체류 시간**(초).
+        ///
+        /// 지어낸 값이 아니다 — 휴식/이동 길이는 각 페이즈 진입에서 이미 한 번 추첨되어 확정돼 있고
+        /// (26-1: Idle 2~6초 / Walk 1.5~4초), 여기서는 그 확정값에서 경과분을 뺀 나머지를 그대로
+        /// 노출할 뿐이다. 계획은 외부 사건(모서리 도달·피격·발판 소실)으로 깨질 수 있는데, 깨진
+        /// 경우는 규칙 3-b(즉시 취소)와 4-c ③(즉시 컷)이 받는다 — 즉 <b>게이트가 다수(예측 가능한
+        /// 종료)를, 즉시 컷이 소수(예측 불가 인터럽트)를</b> 담당한다.
+        ///
+        /// ★ 2026-09-01 — 경계 정지(_isEdgePaused)를 <b>별도의 갈래로</b> 답한다. 예전에는 정지 중에도
+        ///   Walk 페이즈의 잔여(_moveDuration - _moveTimer)를 그대로 답했는데, 정지 중에는 _moveTimer가
+        ///   멈추므로 그 값은 <b>지금 서 있는 시간</b>과 아무 관계가 없었다. 경계 정지는 길이가
+        ///   BeginEdgePause()에서 <b>이미 추첨돼 확정된</b> 계획이므로, 그것을 답하는 것이 지어내기가
+        ///   아니라 오히려 정직한 답이다. 정지가 끝나면 방향만 뒤집어 계속 걷는 경우가 많아 실제
+        ///   정지 시간은 이보다 길 수 있지만, 게이트는 <b>짧게 잡는 쪽이 안전</b>하다(과대평가가
+        ///   "말할 시간이 있다고 판정해 놓고 잘리는" 번쩍임을 만든다).
+        /// </summary>
+        public float PlannedDwellRemainingSeconds =>
+            _phase == Phase.Resting
+                ? Mathf.Max(0f, _restDuration - _restTimer)
+                : _isEdgePaused
+                    ? Mathf.Max(0f, _edgePauseDuration - _edgePauseTimer)
+                    : Mathf.Max(0f, _moveDuration - _moveTimer);
 
         public AutoWanderController(StickmanBlackboard blackboard, StickConfig config, System.Random rng)
         {
@@ -500,7 +524,7 @@ namespace StickMate.States
         ///      발이 먼저 닿는 면은 언제나 더 가까운 쪽이다. 매달리기를 먼저 채택하면 매달린 몸이 그
         ///      가까운 발판을 파고든다(StickmanBlackboard.TryFindHopDownTarget 문서 참고).
         ///   2. **매달려 내려가기**(낙차 >= 매달리기 최소치) — 기존 동작 그대로.
-        ///   3. **되올라가기**(진행 방향에 stepUpMaxHeight 이하의 턱) — 내려갈 곳이 없을 때만 본다.
+        ///   3. **되올라가기**(진행 방향에 stepUpMaxHeights x 신장 이하의 턱) — 내려갈 곳이 없을 때만 본다.
         ///      아래로 갈 수 있는 자리에서 위를 함께 보면 한 경계에서 방향이 왔다갔다한다.
         ///
         /// 반환값 true = 이번 프레임에 의도를 발행했으니 호출부는 즉시 return해야 한다.
@@ -568,7 +592,7 @@ namespace StickMate.States
         // ============================================================================
         // ★ 되올라가기 상한을 **실측 Dock 낙차**에서 유도한다 (2026-08-30 횡단 리뷰 M3)
         // ============================================================================
-        // 리뷰가 찾아낸 사실: StickConfig.stepUpMaxHeight = 2.4는 **이 개발 머신의 tilesize(49) 하나**에
+        // 리뷰가 찾아낸 사실: StickConfig의 되올라가기 상한 2.4(당시 절대 유닛)는 **이 개발 머신의 tilesize(49) 하나**에
         // 맞춰 고른 절대값이었다. macOS의 tilesize 범위는 16~128이고 낙차는 tilesize+18pt이므로,
         //     tilesize  16 → 0.83유닛 / 48 → 1.61 / 80 → 2.40(여기서 상한과 같아짐) / 128 → 3.57
         // tilesize 80 이상을 쓰는 사용자에게는 "한 번 Dock 아래로 내려가면 영영 못 올라온다"가
@@ -580,21 +604,26 @@ namespace StickMate.States
         // 좌표계 변환도 하나 늘지 않는다. Dock을 못 찾으면(자동 숨김 / 좌우 세로 Dock / 비-macOS /
         // 전체화면 감지 중) 예전과 100% 같은 절대값으로 되돌아간다.
 
-        /// <summary>되올라갈 수 있는 최대 턱 높이(월드 유닛). 위 문단 참고.</summary>
+        /// <summary>되올라갈 수 있는 최대 턱 높이(월드 유닛). 위 문단 참고.
+        /// <para>★ 2026-09-02 — 설정값이 절대 유닛에서 <b>신장 배수</b>가 됐다(StickConfig.stepUpMaxHeights).
+        /// 그래서 여기서 신장을 곱해 월드로 환산한 뒤 예전과 똑같이 DockGeometry에 넘긴다 —
+        /// 유도식(max(설정, 실측 낙차 + 여유))은 한 줄도 바뀌지 않는다.</para></summary>
         private float ResolveStepUpMaxHeight()
         {
-            float configured = Cfg(c => c.stepUpMaxHeight, 1.5f);
+            float configured = _blackboard != null && _blackboard.Config != null
+                ? _blackboard.Config.ResolveStepUpMaxHeightWorld(_blackboard.CharacterHeightWorld)
+                : StickConfig.BaselineCharacterTotalHeight * 1.0551f;
             if (!TryMeasureDockDropWorldUnits(out float dockDrop)) return configured;
 
             float resolved = DockGeometry.ResolveStepUpMaxHeight(configured, dockDrop);
 
             // 설정값만으로는 못 올라오는 환경이라는 사실 자체를 한 번은 남긴다 — 이 로그가 뜬다는 것은
-            // "이 사용자의 Dock에서는 stepUpMaxHeight 절대값이 무의미하다"는 뜻이고, 위 유도가 없었다면
+            // "이 사용자의 Dock에서는 stepUpMaxHeights 설정값이 무의미하다"는 뜻이고, 위 유도가 없었다면
             // 그대로 갇혔을 환경이라는 뜻이다.
             if (dockDrop > configured && !_loggedDockDropExceedsConfiguredStepUp)
             {
                 _loggedDockDropExceedsConfiguredStepUp = true;
-                Debug.LogWarning($"[되올라가기] 실측 Dock 낙차 {dockDrop:F3}유닛이 stepUpMaxHeight 설정값 " +
+                Debug.LogWarning($"[되올라가기] 실측 Dock 낙차 {dockDrop:F3}유닛이 stepUpMaxHeights 환산값 " +
                     $"{configured:F3}을 넘습니다(Dock 아이콘이 큰 설정). 상한을 {resolved:F3}유닛으로 올려 " +
                     "되올라가기를 유지합니다 — 이 유도가 없으면 한 번 내려간 캐릭터가 영영 못 올라옵니다.");
             }

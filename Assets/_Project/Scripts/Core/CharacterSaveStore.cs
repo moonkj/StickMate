@@ -85,7 +85,18 @@ namespace StickMate.Core
         /// <para>버전을 올릴 때 실제로 잠가야 하는 것은 "숫자가 바뀌었는가"가 아니라 <b>새 필드가 없는
         /// 옛 파일이 여전히 옳게 읽히는가</b>다. 그 잠금은 버전마다 하나씩 있는 하위 호환 테스트가 맡는다
         /// (v5→구석 패널, v6→잉크색, v7→설정창 2종 — Tests/EditMode/EquipmentMigrationTests.cs).</para>
-        internal const int CurrentVersion = 8;
+        /// 9 = 2026-09-02 <b>대사 표시 시간</b> 컨트롤 재설계(docs/UX_FLOW.md 42절). 초 슬라이더
+        /// (1.5~6.0초)가 폐기되고 3단 세그먼트(<c>DialogueVisibleLength</c>)로 바뀌면서 저장 필드도
+        /// <c>dialogueVisibleSeconds</c>(float) → <c>dialogueVisibleLengthName</c>(문자열)로 교체됐다.
+        /// <para>★ <b>옛 값은 의도적으로 버린다</b> — 마이그레이션 매핑은 "저장된 값 전부 → 기본(100%)"이다.
+        /// 근거: 그 슬라이더는 2.5초를 넘는 구간에서 <b>화면을 한 톨도 바꾸지 못했고</b>(35줄 전수 실측
+        /// 0/35), 그래서 옛 값의 대부분은 "사용자가 고른 뜻"이 아니라 <b>아무 일도 일어나지 않던
+        /// 숫자</b>다. 그 숫자를 억지로 배율로 환산하면 <b>겪어본 적 없는 화면</b>을 사용자에게
+        /// 새로 만들어 주게 된다. 1.5~2.5초를 고른 소수에게도 새 기본값과의 차이는 최대 1.16초다.</para>
+        /// <para>하위 호환은 <c>dialogueVisibleLengthSaved</c>가 v8 이하 파일에서 false로 채워지는
+        /// 것으로 저절로 성립한다(v6 <c>characterScaleSaved</c>와 같은 구조). 검증은
+        /// Tests/EditMode/EquipmentMigrationTests.cs의 v8 하위 호환 테스트가 한다.</para>
+        internal const int CurrentVersion = 9;
 
         /// <summary>설정창 값이 처음 들어간 버전. 이 값보다 낮은 파일에는 <c>autoHideOnFullscreen</c>/
         /// <c>gearIconVisible</c> 키가 없으므로 읽으면 안 된다(false = 꺼짐으로 오해된다 —
@@ -196,8 +207,12 @@ namespace StickMate.Core
             /// 것이 곧 "배포 기본값을 쓴다"는 정확한 사실이다(characterScaleSaved와 같은 구조).</summary>
             public bool dialogueFontSizeSaved;
             public int dialogueFontSize;
-            public bool dialogueVisibleSecondsSaved;
-            public float dialogueVisibleSeconds;
+            /// <summary>★ v9 — 3단 세그먼트. 값은 숫자가 아니라 <b>이름 문자열</b>("Default"/"Long"/
+            /// "VeryLong")이다: 열거형에 칸이 끼어들어도 파일이 밀리지 않는다(<c>inkColorName</c>과
+            /// 같은 관례). v8 이하 파일에는 <c>dialogueVisibleSeconds</c>(float)가 있었지만 <b>읽지
+            /// 않는다</b> — JsonUtility는 모르는 키를 조용히 버린다(wornFace가 겪은 그 경로).</summary>
+            public bool dialogueVisibleLengthSaved;
+            public string dialogueVisibleLengthName;
             public bool chatterPercentSaved;
             public int chatterPercent;
             public bool dialogueBubbleEnabledSaved;
@@ -398,12 +413,15 @@ namespace StickMate.Core
                 CharacterAppearanceModel.RestoreFromSave(data.inkColorSaved, data.inkColorName);
                 // v7 이하에는 설정창 키가 없다 — 기본이 true인 두 값만 버전으로 갈라 준다(나머지는
                 // "고른 적 있는가" 플래그가 false로 채워져 저절로 배포 기본값이 된다).
+                // ★ v8 이하의 dialogueVisibleSeconds(초)는 여기서 <b>읽지 않는다</b> — v9 마이그레이션
+                //   매핑이 "저장된 값 전부 → 기본(100%)"이기 때문이다(CurrentVersion 문서의 9 항목).
+                //   그 결과 dialogueVisibleLengthSaved가 false로 채워지고, 그 false가 정확한 사실이 된다.
                 bool hasAppSettings = data.version >= FirstVersionWithAppSettings;
                 AppSettingsModel.RestoreFromSave(
                     hasAppSettings ? data.autoHideOnFullscreen : true,
                     hasAppSettings ? data.gearIconVisible : true,
                     data.dialogueFontSizeSaved, data.dialogueFontSize,
-                    data.dialogueVisibleSecondsSaved, data.dialogueVisibleSeconds,
+                    data.dialogueVisibleLengthSaved, data.dialogueVisibleLengthName,
                     data.chatterPercentSaved, data.chatterPercent,
                     data.dialogueBubbleEnabledSaved, data.dialogueBubbleEnabled);
                 TodoListModel.RestoreFromSave(ToItems(data.todos), ToItems(data.todoArchive));
@@ -735,6 +753,17 @@ namespace StickMate.Core
         /// <summary>성공하면 true. 실패해도 예외를 밖으로 던지지 않는다(클래스 문서 참고).</summary>
         public static bool Save()
         {
+            // ★ [스톨구간] 계측 (2026-09-01 2차 스파이크 라운드).
+            // 이 메서드는 <b>동기 파일 IO 3연타</b>다: (1) 임시 파일에 쓰고 fs.Flush(true)로 fsync,
+            // (2) 대상 파일을 통째로 다시 읽어 version 확인, (3) File.Replace.
+            // Windows에서 이 셋은 각각 커널/필터 드라이버(실시간 검사)를 통과하므로 수십~수백 ms를
+            // 막을 수 있고, <b>Debug.Log가 아니라 [스톨귀인]의 "로그" 항목에는 절대 잡히지 않는다.</b>
+            // 그리고 이 경로는 Update 안에서 동기로 불린다(CharacterProgressionDirector.Update의
+            // 60초 자동 저장 + 정보창/설정창/할일의 즉시 저장) = 곧 "기타로직"의 유력 후보다.
+            // 여기 이름표를 붙여 두면 다음 실기 로그가 추측 없이 답한다.
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(
+                global::StickMate.Platform.StallSection.Save);
+
             // ★ 저장 보류 — 이번 실행이 "나보다 새로운 저장 파일"을 이미 만났다면 두 번 다시 쓰지 않는다.
             //   거는 자리는 둘: 기동 시 Load()의 다운그레이드 방어(m6), 그리고 저장 직전 버전 재확인
             //   (AbandonWriteToNewerFile). 여기서 일찍 끊어야 60초마다 같은 경고가 반복되지 않고,
@@ -772,8 +801,8 @@ namespace StickMate.Core
                     gearIconVisible = AppSettingsModel.GearIconVisible,
                     dialogueFontSizeSaved = AppSettingsModel.HasDialogueFontSize,
                     dialogueFontSize = AppSettingsModel.DialogueFontSize,
-                    dialogueVisibleSecondsSaved = AppSettingsModel.HasDialogueVisibleSeconds,
-                    dialogueVisibleSeconds = AppSettingsModel.DialogueMaxVisibleSeconds,
+                    dialogueVisibleLengthSaved = AppSettingsModel.HasDialogueVisibleLength,
+                    dialogueVisibleLengthName = AppSettingsModel.DialogueVisibleLengthSaveName(),
                     chatterPercentSaved = AppSettingsModel.HasChatterPercent,
                     chatterPercent = AppSettingsModel.ChatterPercent,
                     dialogueBubbleEnabledSaved = AppSettingsModel.HasDialogueBubbleEnabled,

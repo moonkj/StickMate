@@ -45,6 +45,13 @@ namespace StickMate.Dialogue
         /// <summary>이 전이가 확정된 상태로부터 파생된 대사 텍스트.</summary>
         public string Text { get; }
 
+        /// <summary>
+        /// 이 대사의 종류(docs/UX_FLOW.md 5절 규칙 4-a). 텍스트와 **같은 매핑 함수 호출 한 번**에서
+        /// 함께 나온 값이며, 문자열에서 역추론된 것이 아니다 — 그래야 같은 상태가 상황에 따라
+        /// 서술/반응을 갈라 쓸 수 있다(BattleMinigame: 개시 = 서술 / 판정 = 반응).
+        /// </summary>
+        public DialogueKind Kind { get; }
+
         /// <summary>이 대사가 파생된 상태.</summary>
         public StickmanStateId StateId { get; }
 
@@ -79,20 +86,23 @@ namespace StickMate.Dialogue
         /// 생성되어 IStickmanState.Enter(context)로 전달되므로, 정상적인 경로에서는 상태 구현체의
         /// Enter() 안에서만 이 값을 가질 수 있다.
         /// </param>
-        /// <param name="textFromState">
-        /// context.To(확정된 상태)만 입력받는 텍스트 파생 함수. 파라미터가 필요 없는 단순 상태(예: Idle
-        /// 유휴 잡담)를 위한 편의 오버로드 — 내부적으로 아래 파라미터 포함 생성자에 위임한다.
+        /// <param name="lineFromState">
+        /// context.To(확정된 상태)만 입력받는 대사 파생 함수. 반환형이 string이 아니라
+        /// <see cref="DialogueLine"/>(텍스트 + 종류)인 이유는 UX_FLOW.md 5절 규칙 4-a 참고 —
+        /// 종류를 문자열에서 역추론하지 않기 위해서다. 파라미터가 필요 없는 단순 상태를 위한 편의
+        /// 오버로드이며 내부적으로 아래 파라미터 포함 생성자에 위임한다.
         /// </param>
-        public DialogueIntent(StateTransitionContext context, Func<StickmanStateId, string> textFromState)
-            : this(context, WrapSimpleTextFunc(textFromState))
+        public DialogueIntent(StateTransitionContext context, Func<StickmanStateId, DialogueLine> lineFromState)
+            : this(context, WrapSimpleLineFunc(lineFromState))
         {
         }
 
-        // Func<StickmanStateId,string> -> Func<StickmanStateId,object,string> 어댑터. textFromState가
-        // null이면 그대로 null을 전달해(파라미터 포함 생성자가) 동일한 ArgumentNullException을 던지게 한다.
-        private static Func<StickmanStateId, object, string> WrapSimpleTextFunc(Func<StickmanStateId, string> textFromState)
+        // Func<StickmanStateId,DialogueLine> -> Func<StickmanStateId,object,DialogueLine> 어댑터.
+        // lineFromState가 null이면 그대로 null을 전달해(파라미터 포함 생성자가) 동일한
+        // ArgumentNullException을 던지게 한다.
+        private static Func<StickmanStateId, object, DialogueLine> WrapSimpleLineFunc(Func<StickmanStateId, DialogueLine> lineFromState)
         {
-            return textFromState == null ? (Func<StickmanStateId, object, string>)null : (id, _) => textFromState(id);
+            return lineFromState == null ? (Func<StickmanStateId, object, DialogueLine>)null : (id, _) => lineFromState(id);
         }
 
         /// <param name="context">
@@ -100,12 +110,62 @@ namespace StickMate.Dialogue
         /// 생성되어 IStickmanState.Enter(context)로 전달되므로, 정상적인 경로에서는 상태 구현체의
         /// Enter() 안에서만 이 값을 가질 수 있다.
         /// </param>
-        /// <param name="textFromState">
+        /// <param name="lineFromState">
         /// context.To(확정된 상태)와 그 상태의 파라미터(IHasDialogueParams.DialogueParams, 구현하지
-        /// 않은 상태라면 null)를 입력받는 텍스트 파생 함수(BUG-M7 대응). 상태와 무관한 자유 문자열/
+        /// 않은 상태라면 null)를 입력받는 대사 파생 함수(BUG-M7 대응). 상태와 무관한 자유 문자열/
         /// 파라미터 전달을 막기 위해 파라미터는 항상 context.OriginMachine.CurrentState에서 직접 읽는다.
+        ///
+        /// ★ 이 생성자는 <b>게이트를 거치지 않는다</b> — <see cref="DialogueKind.Reaction"/>(점 사건
+        /// 서술)처럼 계획 체류 시간과 무관한 대사 전용이다. <see cref="DialogueKind.Narrative"/>는
+        /// 반드시 <see cref="TryCreate"/>로 만든다(UX_FLOW.md 5절 규칙 8).
         /// </param>
-        public DialogueIntent(StateTransitionContext context, Func<StickmanStateId, object, string> textFromState)
+        public DialogueIntent(StateTransitionContext context, Func<StickmanStateId, object, DialogueLine> lineFromState)
+            : this(context, ConsumeAndResolve(context, lineFromState))
+        {
+        }
+
+        /// <summary>
+        /// ★ 발화 자격 게이트 경로(docs/UX_FLOW.md 5절 규칙 8, 2026-09-01 신설).
+        ///
+        /// <see cref="DialogueKind.Narrative"/>(진행 서술)는 상태가 끝나는 순간 문장이 거짓이 되므로
+        /// 규칙 4-c ③에 따라 **즉시 컷**된다. 그것만 넣으면 "0.08초 번쩍이고 사라지는 글자"라는 새
+        /// 노이즈가 생기므로, 제거 시점이 아니라 **발화 시점에** 막는다 — 지금 확정된 상태의 계획
+        /// 잔여 체류 시간이 "페이드인 + 가독예산"에 못 미치면 <b>대사를 아예 만들지 않고 null을
+        /// 돌려준다</b>. 침묵은 거짓말이 아니다.
+        ///
+        /// 반환값이 null이어도 <b>토큰은 소비된다</b>. "말할지 말지"를 같은 전이에서 두 번 묻는 경로를
+        /// 남기면, 첫 판정을 나중에 번복하는 구조가 되어 31-1(하나의 Enter, 하나의 스냅샷)이 깨진다.
+        /// </summary>
+        /// <param name="plannedDwellSeconds">
+        /// 지금 확정된 상태의 **계획 잔여 체류 시간**(초). 지어내는 값이 아니라 각 상태가 이미
+        /// <c>Enter()</c>에서 확정해 둔 값이다(규칙 8 표). 알 수 없으면 <see cref="float.NaN"/>을
+        /// 넘긴다 — 그때는 막지 않는다(침묵보다 안전한 쪽).
+        /// </param>
+        public static DialogueIntent TryCreate(StateTransitionContext context,
+            Func<StickmanStateId, object, DialogueLine> lineFromState, float plannedDwellSeconds)
+        {
+            DialogueLine line = ConsumeAndResolve(context, lineFromState);
+            if (!DialogueBudget.IsEligible(line, plannedDwellSeconds, DialogueTiming.FadeInSeconds))
+            {
+                // 화면을 볼 수 없는 검증 환경에서 "왜 이 상태에서 대사가 안 나왔는가"를 로그만으로
+                // 재구성할 수 있어야 한다 — 침묵이 계약의 결과인지 버그인지 구분되지 않으면 규칙 8은
+                // 검증 불가능한 규칙이 된다.
+                UnityEngine.Debug.Log($"[말풍선] 발화 보류 ({context.To}) \"{line.Text}\" — 서술 대사인데 " +
+                    $"계획 잔여 체류 {plannedDwellSeconds:F2}초 < 필요체류 " +
+                    $"{DialogueBudget.RequiredDwellSeconds(line.Text, DialogueTiming.FadeInSeconds):F2}초" +
+                    $"(페이드인 {DialogueTiming.FadeInSeconds:F2} + 가독예산 {DialogueBudget.ReadingSeconds(line.Text):F2}). " +
+                    $"규칙 8 — 말할 시간이 없으면 말하지 않는다. frame={UnityEngine.Time.frameCount}");
+                return null;
+            }
+            return new DialogueIntent(context, line);
+        }
+
+        /// <summary>
+        /// 컨텍스트 검증 -> 토큰 1회 소비 -> 파라미터 조회 -> 매핑 함수 1회 호출. 공개 생성자와
+        /// <see cref="TryCreate"/>가 **정확히 같은 순서**를 밟도록 한 곳에 모아 둔다.
+        /// </summary>
+        private static DialogueLine ConsumeAndResolve(StateTransitionContext context,
+            Func<StickmanStateId, object, DialogueLine> lineFromState)
         {
             if (context == null)
             {
@@ -120,7 +180,7 @@ namespace StickMate.Dialogue
                     "OriginMachine이 없는 컨텍스트로는 DialogueIntent를 만들 수 없습니다.",
                     nameof(context));
             }
-            if (textFromState == null) throw new ArgumentNullException(nameof(textFromState));
+            if (lineFromState == null) throw new ArgumentNullException(nameof(lineFromState));
 
             // BUG-M1 Phase 2 완결: 같은 컨텍스트로 DialogueIntent를 두 번 만드는 시도를 여기서 차단한다.
             // 검증(null 체크)이 모두 끝난 뒤에만 토큰을 소비해, 무관한 사유로 예외가 나는 경우까지
@@ -132,15 +192,24 @@ namespace StickMate.Dialogue
                     "같은 상태 전이 확정 시점으로 DialogueIntent를 두 번 만들 수 없습니다(BUG-M1 Phase 2 대응).");
             }
 
+            // BUG-M7 대응: 파라미터는 호출자가 넘기는 게 아니라 "지금 실제로 Enter() 중인 상태 인스턴스"
+            // 에서 직접 읽는다(StickmanStateMachine.CurrentState 참고) — 상태와 무관한 파라미터 위조 불가.
+            object dialogueParams = (context.OriginMachine.CurrentState as IHasDialogueParams)?.DialogueParams;
+            return lineFromState(context.To, dialogueParams);
+        }
+
+        /// <summary>
+        /// 실제 발급부. 위 <see cref="ConsumeAndResolve"/>가 이미 검증/토큰소비/매핑을 끝냈다는 전제
+        /// 하에만 호출된다(공개 생성자의 <c>: this(...)</c> 체인과 <see cref="TryCreate"/> 두 곳뿐).
+        /// </summary>
+        private DialogueIntent(StateTransitionContext context, in DialogueLine line)
+        {
             StateId = context.To;
             CreatedFrame = context.ConfirmedFrame;
             _transitionGeneration = context.TransitionGeneration;
             _originMachine = context.OriginMachine;
-
-            // BUG-M7 대응: 파라미터는 호출자가 넘기는 게 아니라 "지금 실제로 Enter() 중인 상태 인스턴스"
-            // 에서 직접 읽는다(StickmanStateMachine.CurrentState 참고) — 상태와 무관한 파라미터 위조 불가.
-            object dialogueParams = (_originMachine.CurrentState as IHasDialogueParams)?.DialogueParams;
-            Text = textFromState(context.To, dialogueParams);
+            Text = line.Text;
+            Kind = line.Kind;
 
             // 이후 이 전이가 추월/취소되는 첫 순간을 감지하기 위해 구독한다. Expire()에서 반드시 해제한다.
             StickmanEventBus.StateTransitioned += OnAnyStateTransitioned;

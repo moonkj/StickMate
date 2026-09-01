@@ -380,6 +380,7 @@ namespace StickMate.Interaction
         /// </summary>
         private void LateUpdate()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Accessory);   // [스톨구간] 계측
             if (_agent == null) return; // 복제본 방어(클래스 문서).
 
             bool wantVisible = ResolveWantVisible();
@@ -793,7 +794,9 @@ namespace StickMate.Interaction
                 Transform parent = AccessoryShapeBuilder.IsHeadAttached(slot) ? _headGroup : _container.transform;
                 for (int k = start; k < _shapes.Count; k++)
                 {
-                    AddShape(_shapes[k], ToneColor(_shapes[k].Tone, primary, secondary), parent);
+                    // k − start = <b>이 아이템 안에서 몇 번째</b>. 채움끼리 겹칠 때의 순서를 정한다
+                    // (AccessoryShapeBuilder.FillDepthStep — sortingOrder는 건드리지 않는다).
+                    AddShape(_shapes[k], ToneColor(_shapes[k].Tone, primary, secondary), parent, k - start);
                 }
             }
         }
@@ -812,7 +815,8 @@ namespace StickMate.Interaction
             return primary;
         }
 
-        private void AddShape(in AccessoryShapeBuilder.Shape shape, Color color, Transform parent)
+        private void AddShape(in AccessoryShapeBuilder.Shape shape, Color color, Transform parent,
+            int orderWithinItem)
         {
             // ★ 채움 면 먼저(윤곽선 바로 아래). 2026-08-30 사용자 신고 "모자가 투명해보임" —
             //   선화만으로는 모자 관 안쪽으로 머리 링이 그대로 비친다(AccessoryShapeBuilder.Shape.Filled).
@@ -820,7 +824,7 @@ namespace StickMate.Interaction
             Mesh fillMesh = null;
             if (shape.Filled)
             {
-                fillMesh = AddFill(shape, color, parent);
+                fillMesh = AddFill(shape, color, parent, orderWithinItem);
                 outline = AccessoryShapeBuilder.FillOutlineColor(color);
             }
 
@@ -848,13 +852,18 @@ namespace StickMate.Interaction
         /// <summary>채움 면 하나를 만든다. 재질은 캐릭터 선의 것을 그대로 빌려 쓰고 색은 정점 색으로
         /// 넣는다(AccessoryShapeBuilder.BuildFillMesh 문서). 메시는 <see cref="_fillMeshes"/>가
         /// 들고 있다가 재구성/파괴 때 직접 지운다 — GameObject를 지워도 메시는 남는다.</summary>
-        private Mesh AddFill(in AccessoryShapeBuilder.Shape shape, Color color, Transform parent)
+        private Mesh AddFill(in AccessoryShapeBuilder.Shape shape, Color color, Transform parent,
+            int orderWithinItem)
         {
             Mesh mesh = AccessoryShapeBuilder.BuildFillMesh(shape.Points, color);
             if (mesh == null) return null;
 
             var go = new GameObject(shape.Name + "Fill");
             go.transform.SetParent(parent != null ? parent : _container.transform, false);
+            // 같은 아이템의 채움끼리는 sortingOrder가 동률이라 순서가 미정이다. 로컬 z로 가른다 —
+            // 나중에 넣은 것이 위로 온다(AccessoryShapeBuilder.FillDepthStep).
+            go.transform.localPosition =
+                new Vector3(0f, 0f, orderWithinItem * AccessoryShapeBuilder.FillDepthStep);
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
 
             var mr = go.AddComponent<MeshRenderer>();

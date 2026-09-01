@@ -38,10 +38,20 @@ namespace StickMate.States
         private float _startWorldX;
         private bool _hasMantleTarget;
 
-        /// <summary>BUG-M7 파라미터 파이프라인 시연(UX_FLOW.md 31-2 #4) — 오를 거리(월드 유닛).</summary>
+        /// <summary>
+        /// BUG-M7 파라미터 파이프라인 시연(UX_FLOW.md 31-2 #4) — 오를 거리(월드 유닛)와
+        /// <b>그 프레임의 신장 H</b>.
+        ///
+        /// ★ 2026-09-01 — H가 파라미터에 함께 실린 이유(교차 레이어 로그 L6): 개정된 임계값이
+        /// <c>0.95 × H</c> / <c>2.2 × H</c>라 매핑 함수가 신장을 알아야 하는데, 매핑 함수가
+        /// 설정이나 에이전트를 직접 읽으면 31-1(하나의 Enter, 하나의 스냅샷)이 깨진다. 그래서
+        /// 신장도 스냅샷의 일부로 넘긴다.
+        /// </summary>
         public sealed class ParkourClimbDialogueParams
         {
             public float ClimbHeightUnits;
+            /// <summary>이 전이 프레임의 캐릭터 실측 신장(월드 유닛).</summary>
+            public float CharacterHeightWorld;
         }
 
         private readonly ParkourClimbDialogueParams _dialogueParams = new ParkourClimbDialogueParams();
@@ -54,6 +64,15 @@ namespace StickMate.States
         }
 
         public StickmanStateId StateId => StickmanStateId.ParkourClimb;
+
+        /// <summary>"가뿐하네"의 상한(신장 배수 H). Dock 단차(0.72H)는 이 아래라 가볍게 읽힌다.
+        /// ★ 판단값이지 실측이 아니다 — UX_FLOW.md 31-2 #4 / MOTION_SPEC 2-7. 실기 분포 확인 후
+        /// 조정될 수 있다. 각도가 아니라 거리이므로 반드시 H 배수다(31-4 C1 축 ①).</summary>
+        private const float LightClimbHeights = 0.95f;
+
+        /// <summary>"영차..."의 상한(신장 배수 H). 이 위는 창 상단 등반급 — "헉... 높다".
+        /// ★ 위와 같은 이유로 판단값이며 실측 조정 대상이다.</summary>
+        private const float HardClimbHeights = 2.2f;
 
         public void Enter(StateTransitionContext context)
         {
@@ -80,20 +99,58 @@ namespace StickMate.States
             // 감지 실패(_hasWall==false) 시에는 0으로 두어 "가뿐하네" 쪽으로 안전하게 수렴시킨다(어차피
             // 다음 Tick에서 곧바로 Fall로 전이되어 이 대사는 즉시 만료된다).
             _dialogueParams.ClimbHeightUnits = _hasWall ? Mathf.Max(0f, _wallTopWorldY - _startWorldY) : 0f;
+            _dialogueParams.CharacterHeightWorld = _blackboard.CharacterHeightWorld;
 
-            _ = new DialogueIntent(context, (id, dialogueParams) =>
+            // ★ 2026-09-01 개정(UX_FLOW.md 31-2 #4 / MOTION_SPEC 1절 표 #2) — 임계값을 **절대 월드
+            //   유닛에서 신장 배수(H)로** 옮기고 분기를 3종으로 늘렸다.
+            //
+            //   구 임계값 2.0유닛은 배율 1.0에서 0.88H인데, 실제 데스크톱의 유일한 상시 단차인
+            //   Dock이 0.72H라 **"헉... 높다"가 구조적으로 도달 불가**였다(실측 0/7, 전부 "가뿐하네").
+            //   신장 배수로 적으면 배율 슬라이더에도, Windows 작업표시줄처럼 높이가 다른 환경에도
+            //   그대로 성립한다(플랫폼 분기 없음 — 높이가 다르면 배수가 달라져 티어가 알아서 갈린다).
+            //
+            //   ★ 0.95 / 2.2라는 두 계수는 design-motion의 **판단값이지 실측이 아니다**(MOTION_SPEC
+            //     2-7). 실기에서 창 상단 등반의 분포를 본 뒤 조정될 수 있다.
+            //
+            //   종류 = Narrative(진행 서술: "지금 오르고 있고 그게 이만큼 힘들다"). 그래서 등반이
+            //   끝나면 즉시 컷되고, 계획 잔여 체류(= 등반 총 길이 x (1 - 진행도), Enter에서 진행도 0)가
+            //   가독예산에 못 미치면 애초에 발화하지 않는다(규칙 8).
+            // ★ 2026-09-02 (디버거) — 폴백 0.5는 Phase 2의 코드 기본값이 굳은 **낡은 사본**이다(세 번째 사본).
+            //   코드 기본값과 배포 에셋은 0.5 -> 1.05 -> **1.20**으로 움직였는데 이 두 줄만 0.5에 남아 있었다.
+            //   (1.05 -> 1.20은 이 라운드가 도는 **도중에** 또 일어났다 — 사본이 얼마나 빨리 낡는지의 실물 증거다.
+            //    그래서 이 자리는 리터럴로 남겨 드리프트 스캐너의 감시 아래 둔다.)
+            //   여기는 특히 위험한 자리다: 이 값이 곧 규칙 8 게이트에 넘기는 **계획 잔여 체류**이고
+            //   (Enter의 _climbProgress가 0이라 곱셈이 항등), 0.5초는 이 상태의 대사 **세 갈래 전부**의
+            //   필요체류보다 짧다 — 실측: 가뿐하네 0.680 / 영차... 0.715 / 헉... 높다 0.865초
+            //   (= DialogueTiming.FadeInSeconds 0.06 + DialogueBudget.ReadingSeconds). 즉 낡은 폴백
+            //   하나 때문에 이 상태는 **한 마디도 하지 못한다**. 규칙 8은 침묵을 정상 결과로 취급하므로
+            //   로그 말고는 아무 증상이 없다 — 그래서 조용히 살아남았다.
+            float climbDurationForGate = _blackboard.Config != null ? _blackboard.Config.parkourClimbDuration : 1.20f;
+            _ = DialogueIntent.TryCreate(context, (id, dialogueParams) =>
             {
                 var p = dialogueParams as ParkourClimbDialogueParams;
                 float height = p != null ? p.ClimbHeightUnits : 0f;
-                return height < 2.0f ? "가뿐하네" : "헉... 높다";
-            });
+                float h = p != null && p.CharacterHeightWorld > 0.0001f
+                    ? p.CharacterHeightWorld
+                    : StickConfig.BaselineCharacterTotalHeight;
+                if (height < LightClimbHeights * h) return DialogueLine.Say("가뿐하네");
+                if (height < HardClimbHeights * h) return DialogueLine.Say("영차...");
+                return DialogueLine.Say("헉... 높다");
+            }, climbDurationForGate * (1f - _climbProgress));
 
             Debug.Log($"[벽타기] 진입 — 방향={(_direction > 0 ? "오른쪽" : "왼쪽")}, " +
                 $"벽핸들={_wallHandle}, 시작 월드=({_startWorldX:F3},{_startWorldY:F3}), " +
                 $"벽 상단 Y={_wallTopWorldY:F3}(오를 높이 {(_hasWall ? _wallTopWorldY - _startWorldY : 0f):F3}유닛), " +
                 $"올라설 X={(_hasMantleTarget ? mantleTargetX.ToString("F3") : "없음(수평 이동 생략)")}.");
 
-            // TODO(Phase 2 렌더링): 양손 IK 그립 포즈, 손끝 마찰 먼지 파티클, 매달리기 Perlin 흔들림(UX_FLOW.md 4절).
+            // ★ 오르는 벽을 바라본다(2026-09-01). 등반 자세는 "앞쪽"을 기준으로 팔다리를 뻗으므로
+            // (StickmanPoseAnimator의 방향 중립 공간 규약), 등지고 서면 손이 뒤로 뻗는다. 활쏘기가
+            // 같은 이유로 SetFacingSign을 쓰는 것과 동일하다(FacingLocked는 걸지 않는다 — 이 상태는
+            // 1초 남짓이고, 배회 AI의 이동 의도도 어차피 벽 쪽을 향하고 있다).
+            if (_hasWall) _blackboard.SetFacingSign(_direction);
+
+            // TODO(Phase 2 렌더링): 손끝 마찰 먼지 파티클, 매달리기 Perlin 흔들림(UX_FLOW.md 4절).
+            //   양손 그립 포즈는 2026-09-01에 들어왔다 -> StickmanPoseAnimator.ApplyParkourClimbPose.
         }
 
         /// <summary>
@@ -104,11 +161,19 @@ namespace StickMate.States
         /// "가까운 쪽 모서리"는 진행 방향의 **반대편** 모서리다: 오른쪽으로 오르면 그 턱의 왼쪽 끝,
         /// 왼쪽으로 오르면 오른쪽 끝. 턱이 inset보다 좁으면 반대편 끝을 넘지 않도록 클램프한다.
         /// </summary>
-        private bool TryComputeMantleTargetX(out float targetX)
+        private bool TryComputeMantleTargetX(out float targetX) => TryComputeMantleTargetX(out targetX, out _);
+
+        /// <summary>위 오버로드에 <b>붙잡는 모서리의 월드 X</b>를 함께 내보내는 버전 — 등반 자세가
+        /// "손을 어디에 짚는가"를 알아야 하는데, 그 값은 이미 여기서 구하고 있다. 같은 값을 두 번째
+        /// 계산원에서 다시 구하지 않기 위해 out 파라미터로 흘려보낼 뿐, <b>맨틀 계산은 한 줄도
+        /// 바뀌지 않았다</b>(이 프로젝트가 두 번 겪은 "같은 값의 두 번째 계산원" 함정 회피).</summary>
+        private bool TryComputeMantleTargetX(out float targetX, out float nearEdgeWorldX)
         {
             targetX = _startWorldX;
+            nearEdgeWorldX = _startWorldX;
             if (!_hasWall) return false;
             if (!_blackboard.TryGetFootholdEdgeWorld(_wallHandle, -_direction, out _, out float nearEdgeX)) return false;
+            nearEdgeWorldX = nearEdgeX;
             if (!_blackboard.TryGetFootholdEdgeWorld(_wallHandle, _direction, out _, out float farEdgeX)) return false;
 
             // ★ 2026-08-31 — 설정값을 직접 읽지 않는다. 인셋은 이제 경계 판정 거리와 같은 입력에서
@@ -138,7 +203,7 @@ namespace StickMate.States
                 return;
             }
 
-            float climbDuration = _blackboard.Config != null ? _blackboard.Config.parkourClimbDuration : 0.5f;
+            float climbDuration = _blackboard.Config != null ? _blackboard.Config.parkourClimbDuration : 1.20f;
             _climbProgress += climbDuration > 0f ? deltaTime / climbDuration : 1f;
             if (_climbProgress > 1f) _climbProgress = 1f;
 
@@ -146,13 +211,14 @@ namespace StickMate.States
             pos.y = Mathf.Lerp(_startWorldY, _wallTopWorldY, _climbProgress);
             // 맨틀 수평 이동(위 _startWorldX 필드 주석 참고). 목표를 매 프레임 다시 구해 창이 움직여도
             // 따라간다. 구하지 못하면(테스트 리그 등 발판 조회 실패) 예전처럼 x를 건드리지 않는다.
-            if (_hasMantleTarget && TryComputeMantleTargetX(out float mantleTargetX))
+            bool hasEdge = TryComputeMantleTargetX(out float mantleTargetX, out float nearEdgeWorldX);
+            if (_hasMantleTarget && hasEdge)
             {
                 pos.x = Mathf.Lerp(_startWorldX, mantleTargetX, _climbProgress);
             }
             // 몸 위치를 쓰는 유일한 창구(StickmanBlackboard.MoveBodyToWorld) — Rigidbody2D.position만
             // 쓰면 그 프레임에 그려지는 Transform이 낡은 좌표로 남는다(autoSyncTransforms 꺼짐).
-            // 여기는 0.5초 보간이라 프레임당 이동량이 작지만, 창이 갑자기 크게 움직이면 그만큼 튄다.
+            // 여기는 1.20초 보간이라 프레임당 이동량이 작지만, 창이 갑자기 크게 움직이면 그만큼 튄다.
             _blackboard.MoveBodyToWorld(pos);
 
             // BUG-P2-M1 대응(Major, docs/BUG_REPORT_PHASE2.md): Enter()의 1회성 속도 제로화만으로는
@@ -164,6 +230,8 @@ namespace StickMate.States
             // x도 함께 0으로 확정한다 — 이제 이 상태가 x를 직접 구동하므로(맨틀), 진입 직전 걷던 속도가
             // 남아 있으면 매 프레임 위치 대입과 물리 적분이 서로 밀어내며 미세하게 어긋난다.
             _blackboard.Body.linearVelocity = Vector2.zero;
+
+            DriveClimbPose(deltaTime, pos, hasEdge, nearEdgeWorldX);
 
             if (_climbProgress >= 1f)
             {
@@ -188,6 +256,58 @@ namespace StickMate.States
                 _blackboard.Machine.ChangeState(next);
             }
         }
+
+        /// <summary>
+        /// ★ 등반 자세 구동(2026-09-01, 사용자 신고 "사람처럼 손으로 집고 다리를 올려서 올라가야지").
+        /// LandingCrouch/Archery와 같은 관례로 <b>상태가 자기 진행 곡선으로 포즈를 직접 구동</b>한다
+        /// (StickmanBlackboard.TickPoseRouting의 ParkourClimb 분기가 그래서 아무것도 하지 않는다).
+        ///
+        /// <para>이 메서드는 <b>몸 좌표를 한 번도 쓰지 않는다</b> — 위치/맨틀/전이는 전부 예전 그대로이며,
+        /// 여기서는 이미 확정된 좌표를 <b>읽어서</b> "턱이 지금 몸에서 어디에 있는가"를 포즈에 알려줄
+        /// 뿐이다. 매 프레임 다시 알려주는 이유는 잡을 곳 재확인과 같다: 오르던 창이 움직이면
+        /// 짚는 자리도 함께 움직여야 한다.</para>
+        ///
+        /// <para>거리 성분은 전부 <see cref="StickmanBlackboard.CharacterHeightWorld"/>에서 유도한다
+        /// (리더 지시: "거리·속도 성분은 StickmanMetrics에서 파생시켜라"). 그래서 캐릭터 크기 다이얼을
+        /// 0.35로 줄이든 2.0으로 키우든 짚는 자리와 딛는 자리가 몸에 대해 같은 비율을 유지한다.</para>
+        /// </summary>
+        private void DriveClimbPose(float deltaTime, Vector2 pos, bool hasEdge, float nearEdgeWorldX)
+        {
+            StickmanPoseAnimator pose = _blackboard.GetPoseAnimator();
+            if (pose == null || !_hasWall) return;
+
+            float height = _blackboard.CharacterHeightWorld;
+            StickConfig cfg = _blackboard.Config;
+
+            // 포즈의 각도 공간은 **바라보는 방향이 앞**이다. 등반 방향과 바라보는 방향이 어긋나 있어도
+            // (배회 AI가 프레임 중간에 의도를 뒤집는 경우) 손이 엉뚱한 쪽으로 가지 않도록 부호로 흡수한다.
+            float toFacing = _blackboard.FacingSign * _direction >= 0f ? 1f : -1f;
+
+            // 모서리를 못 구하면(테스트 리그 등 발판 조회 실패) 신장 비율로 폴백한다 — 그래도 자세는
+            // 성립한다(손이 실제 모서리가 아니라 "몸 앞 어딘가"를 잡을 뿐이다).
+            float edgeForward = hasEdge
+                ? (nearEdgeWorldX - pos.x) * _direction
+                : height * FallbackEdgeForwardRatio;
+
+            float gripInset = height * (cfg != null ? cfg.parkourClimbGripInsetRatio : 0.10f);
+            float footAhead = height * (cfg != null ? cfg.parkourClimbFootPlantAheadRatio : 0.18f);
+
+            pose.ApplyParkourClimbPose(deltaTime,
+                _blackboard.BuildPoseSettings(),
+                _blackboard.BuildLedgeHangPoseSettings(),
+                _blackboard.BuildParkourClimbPoseSettings(),
+                _blackboard.ParkourClimbPoseSmoothingRate,
+                _climbProgress,
+                _wallTopWorldY - _startWorldY,
+                _wallTopWorldY - pos.y,
+                (edgeForward + gripInset) * toFacing,
+                (edgeForward + gripInset + footAhead) * toFacing,
+                edgeForward * toFacing);
+        }
+
+        /// <summary>모서리 X를 구하지 못했을 때 손을 짚을 앞쪽 거리(신장 대비). 실제 경로에서는 쓰이지
+        /// 않고(발판이 있어야 이 상태에 들어온다) 발판 조회가 없는 테스트 리그를 위한 폴백이다.</summary>
+        private const float FallbackEdgeForwardRatio = 0.2f;
 
         public void Exit() { }
     }

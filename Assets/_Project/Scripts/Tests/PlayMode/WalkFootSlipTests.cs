@@ -22,8 +22,8 @@ namespace StickMate.Tests.PlayMode
     ///
     /// ★★ 2026-08-31 BUG-WALK-B2 — <b>배율 3점에서 각각 잰다</b>(예전에는 1점뿐이었다).
     /// 예전 판본은 배율을 명시하지 않고 "씬이 주는 배율"로 돌았는데, 그 배율은 실행 시점에
-    /// Interaction/CornerHoverPanel이 <b>사용자의 저장 파일</b>(stickmate_character.json)을 제때
-    /// 읽었는지에 따라 0.75(프리팹 구운 값)가 되기도 하고 0.35(사용자 저장값)가 되기도 했다.
+    /// 저장 복원이 <b>사용자의 저장 파일</b>(stickmate_character.json)을 제때 읽었는지에 따라
+    /// 0.75(프리팹 구운 값)가 되기도 하고 0.35(사용자 저장값)가 되기도 했다.
     /// 그래서 같은 코드가 실행마다 통과/실패를 오갔고(로그 증거: 몸 전진 5.625유닛=배율 0.75 통과 /
     /// 2.625유닛=배율 0.35 실패, 미끄러짐 0.54), 그 실패가 "플레이크"로 넘겨져 <b>진짜 버그가
     /// 여러 라운드 살아남았다</b>. 이제는 세 테스트가 각자 배율을 명시적으로 적용하므로
@@ -159,8 +159,8 @@ namespace StickMate.Tests.PlayMode
             ScreenCoordinateConverter.OverlayOriginOsScreen = Vector2.zero;
 
             // ★ 배율을 명시적으로 못박는다(위 클래스 문서의 "저장 파일 의존" 문단). 저장 복원은
-            //   씬 로드 후 2초 안에만 시도되므로(CornerHoverPanel.RestoreGraceSeconds) 여기서 적용한
-            //   값이 나중에 덮이지 않는다.
+            //   CharacterProgressionDirector.Start에서 <b>한 번만</b> 일어나므로(2026-09-01 구석 패널
+            //   삭제로 이사 — 옛 2초 유예 재시도는 사라졌다) 여기서 적용한 값이 나중에 덮이지 않는다.
             _agent.ApplyCharacterScale(characterScale, "발 미끄러짐 실측");
             yield return null;
 

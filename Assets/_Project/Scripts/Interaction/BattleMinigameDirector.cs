@@ -137,6 +137,7 @@ namespace StickMate.Interaction
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Directors);   // [스톨구간] 계측
             if (_clickCapture != null && _player != null &&
                 _player.Blackboard.Machine.CurrentStateId == StickmanStateId.BattleMinigame)
             {

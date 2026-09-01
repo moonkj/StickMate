@@ -76,6 +76,7 @@ namespace StickMate.Interaction
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Directors);   // [스톨구간] 계측
             if (_player == null || _config == null) return;
             // 6-4절: 전체화면 게임 감지 중에는 모든 하드웨어 반응 연출도 함께 숨김.
             // 2026-08-29 시각 레이어 라운드 보강: 지금까지는 여기서 그냥 return만 했다. 구독자가 0명일

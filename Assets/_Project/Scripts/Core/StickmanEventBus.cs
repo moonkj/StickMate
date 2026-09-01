@@ -114,7 +114,7 @@ namespace StickMate.Core
         /// 짧은 능동 상태(States/LandingCrouchState.cs). docs/UX_FLOW.md 4절의 "구르기(ROLL)" 행이
         /// 요구하던 "부드러운 착지 연출"의 실체이며, 그 판정 신호였던
         /// <see cref="StickmanEventBus.LandingRollRequested"/>와 **같은 조건**
-        /// (낙하 높이 &gt;= StickConfig.rollLandingHeightThreshold)에서 FallState가 직접 전이시킨다.
+        /// (낙하 높이 &gt;= StickConfig.landingSoftAbsorbThresholdHeights x 신장)에서 FallState가 직접 전이시킨다.
         ///
         /// 왜 이벤트 구독자가 아니라 FallState의 직접 전이인가: 착지 직후의 상태 전이는 "있으면 좋은
         /// 연출"이 아니라 **다음 상태를 결정하는 흐름 그 자체**다. 이벤트 구독자에게 맡기면 FallState가
@@ -410,12 +410,43 @@ namespace StickMate.Core
 
     /// <summary>UX_FLOW.md 10절 격파 미니게임 한 차례 시도의 결과. StickmanEventBus가 트리거 조건만
     /// 발행하고(실제 파티클/파괴 연출은 Phase 2+ 렌더링 담당, WanderAmbientMotionRequested와 동일 패턴),
-    /// Success/Exhausted는 상태 종료(Idle 복귀)로 이어지고 Fail은 같은 상태 안에서 재시도로 이어진다.</summary>
+    /// Success/RetriesExhausted/InputTimeout은 상태 종료(Idle 복귀)로 이어지고 Fail은 같은 상태 안에서
+    /// 재시도로 이어진다.
+    ///
+    /// ============================================================================
+    /// ★ 2026-09-02 — <c>Exhausted</c> 하나를 <b>둘로 쪼갰다</b>(디버거 조사 + 리더 결정)
+    /// ============================================================================
+    /// 종전에는 "재도전을 다 썼다"와 "5초 동안 클릭이 없어 유저가 이탈했다"가 <b>같은 값 하나</b>로
+    /// 발행됐다. 구독자는 둘을 구분할 방법이 전혀 없었는데, <b>화면 결과는 서로 달랐다</b>:
+    /// 재도전 소진은 캐릭터가 "오늘은 여기까지"라고 말하고 끝나고, 무입력 타임아웃은 <b>대사가 아예
+    /// 없다</b>. 실제로 렌더러의 로그가 "재도전 횟수를 다 썼거나 5초 동안 클릭이 없었습니다"라는
+    /// <b>둘 중 하나</b> 문장을 찍고 있었고, 창을 볼 수 없는 이 프로젝트의 검증 환경에서 그 문장은
+    /// 진단 정보가 아니었다(GroundSensor.DescribeGroundLoss가 같은 이유로 사유를 하나로 확정하게
+    /// 바뀐 것과 정확히 같은 병이다 — <b>하나의 신호가 두 사실을 겸하면 읽는 쪽이 알 수 없다</b>).
+    ///
+    /// <para>왜 "사유 필드를 얹기"가 아니라 <b>값을 쪼개기</b>인가: 사유 필드를 얹으면 구독자가
+    /// 여전히 <c>Exhausted</c> 하나만 보고 분기할 수 있고, 그러면 모호성이 <b>타입 안에 그대로
+    /// 남는다</b>. 값을 쪼개면 컴파일러가 모든 소비자에게 둘 중 어느 쪽인지 고르도록 강제한다 —
+    /// 모호한 것을 <b>표현할 수 없게</b> 만드는 쪽이 이 저장소의 관례다.</para>
+    ///
+    /// <para>★ 무인 도달 가능성 실측(2026-09-02, 실기 로그 2개 인스턴스): 무클릭이면 판정은
+    /// <b>1회 또는 2회</b>만 일어나고 항상 <see cref="InputTimeout"/>으로 끝난다. 소진에 필요한
+    /// 4회 판정은 10.5~12.5초가 걸리는데 타임아웃이 5초이기 때문이다. 즉
+    /// <see cref="RetriesExhausted"/>는 <b>사람이 클릭하는 경로에서만</b> 발생한다(클릭이 무입력
+    /// 타이머를 리셋하므로). 이 관계는 Tests/EditMode/BattleUnattendedReachabilityTests가 잠근다.</para>
+    /// </summary>
     public enum BattleMinigamePhase
     {
         Success,
         Fail,
-        Exhausted,
+
+        /// <summary>재도전 횟수(<c>battleMaxRetries</c>)를 전부 소진했다 — 캐릭터가 "오늘은 여기까지"를
+        /// 말하고 끝난다. <b>무인(무클릭) 경로에서는 구조적으로 도달하지 않는다.</b></summary>
+        RetriesExhausted,
+
+        /// <summary>무입력 타임아웃(<c>battleInputTimeoutSeconds</c>) — "유저가 다른 작업으로 이탈".
+        /// 판정이 아니라 <b>중단</b>이므로 <b>대사가 없다</b>(할 말이 확정된 사건이 아니다).</summary>
+        InputTimeout,
     }
 
     /// <summary>
@@ -442,7 +473,7 @@ namespace StickMate.Core
     /// </summary>
     public readonly struct LandingImpactEvent
     {
-        /// <summary>실제 낙하 높이(월드 유닛). StickConfig.rollLandingHeightThreshold 이상일 때만 발행된다.</summary>
+        /// <summary>실제 낙하 높이(월드 유닛). StickConfig.landingSoftAbsorbThresholdHeights x 신장 이상일 때만 발행된다.</summary>
         public readonly float FallHeight;
 
         /// <summary>착지 확정 시점의 발밑 월드 좌표(캐릭터 루트 원점 = 발바닥).</summary>
@@ -554,7 +585,7 @@ namespace StickMate.Core
 
         /// <summary>
         /// FallState/ThrowTumbleState가 착지를 확정한 순간, 낙하 높이가
-        /// StickConfig.rollLandingHeightThreshold 이상이었을 때 발생(UX_FLOW.md 4절 "구르기(ROLL)").
+        /// StickConfig.landingSoftAbsorbThresholdHeights x 신장 이상이었을 때 발생(UX_FLOW.md 4절 "구르기(ROLL)").
         ///
         /// <b>착지의 물리적 반응 자체는 이 이벤트가 아니라 StickmanStateId.LandingCrouch가 담당한다</b>
         /// (같은 조건에서 상태가 직접 전이한다 — 그 이유 전문은 LandingCrouch 열거값 문서). 이 이벤트는

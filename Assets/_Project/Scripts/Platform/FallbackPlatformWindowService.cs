@@ -45,7 +45,7 @@ namespace StickMate.Platform
     /// 한다(UX_FLOW.md 3절/9절-7). 여기서 항상 발판이 있는 것처럼 위장하면 그 온보딩 게이트가 조용히
     /// 무력화된다 — 배선은 StickmanAgent.CreatePlatformService() 참고.
     /// </summary>
-    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService, IGlobalKeyStateService, IReservedBottomBarService, IRawWindowRectSource
+    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService, IGlobalKeyStateService, IReservedBottomBarService, IRawWindowRectSource, IWindowEnumerationCostSource
     {
         private readonly IPlatformWindowService _inner;
         private readonly ICursorPositionService _innerCursor; // null이면 내부 서비스가 커서 조회를 지원하지 않음
@@ -66,6 +66,21 @@ namespace StickMate.Platform
         private readonly IGlobalKeyStateService _innerKeyState;     // null이면 내부 서비스가 전역 키 조회를 지원하지 않음
         // null이면 내부 서비스가 "가려짐 필터 이전 원본 창 목록"을 지원하지 않음 -> RawWindows가 빈 목록.
         private readonly IRawWindowRectSource _innerRawWindows;
+
+        // ★★ 2026-09-01 계측 결함 수정 — 사용자 실기 로그가 `전체 창 -1개, 정밀검사 -1회`로 찍혔다.
+        //
+        // 원인은 이 데코레이터다. Windows에서 StickmanAgent가 만드는 서비스는
+        // `new FallbackPlatformWindowService(new Win32WindowService())`인데, 계측을 소비하는
+        // FootholdPoller는 `service as IWindowEnumerationCostSource`로 캐스팅한다. 이 데코레이터가
+        // 그 인터페이스를 통과시키지 않아 캐스팅이 **항상 null**이었고, 폴러는 규약대로 -1(모르는 값)을
+        // 보고했다. 즉 "창이 800개일 때 비싸지는가"를 원격에서 확인할 수단이 통째로 죽어 있었다.
+        //
+        // 이 저장소는 **같은 결함을 이미 두 번 겪었다**: IGlobalPointerButtonService(2026-08-28,
+        // "전역버튼경로=미지원")와 IRawWindowRectSource가 그것이다. 세 번째다 —
+        // 그래서 Tests/EditMode/FallbackServicePassthroughTests가 이제 "IPlatformWindowService를
+        // 구현한 서비스가 노출하는 선택적 인터페이스는 전부 이 데코레이터를 통과한다"를
+        // 인터페이스 이름 하드코딩 없이 리플렉션으로 잠근다(네 번째를 막는 것이 목적이다).
+        private readonly IWindowEnumerationCostSource _innerCost;
         private readonly StickConfig _config; // desktopDpiScale만 읽는다 — null이면 배율 1로 취급.
 
         // 합성 발판 캐시 무효화 판정에 쓰는 직전 오버레이 창 원점(아래 AppendBottomSafetyNet 참고).
@@ -88,6 +103,13 @@ namespace StickMate.Platform
         private bool _cachedHasDock;
         private float _cachedDockLeftOsX = float.NaN;
         private float _cachedDockRightOsX = float.NaN;
+        // ★ 2026-09-01 — 권위 있는 화면 경계(모니터 좌/우/하단)도 캐시 키에 넣는다. 창을 다른 모니터로
+        // 옮기면 Dock 구간은 그대로여도 경계가 바뀌는 경우가 있어, 이게 키에 없으면 안전망이 이전
+        // 모니터 기준으로 굳는다(= 다시 화면 밖 조각이 생긴다).
+        private bool _cachedHasScreenBounds;
+        private float _cachedScreenLeftOsX = float.NaN;
+        private float _cachedScreenRightOsX = float.NaN;
+        private float _cachedScreenBottomOsY = float.NaN;
 
         public FallbackPlatformWindowService(IPlatformWindowService inner, StickConfig config = null)
         {
@@ -100,6 +122,7 @@ namespace StickMate.Platform
             _innerButton = inner as IGlobalPointerButtonService;
             _innerKeyState = inner as IGlobalKeyStateService;
             _innerRawWindows = inner as IRawWindowRectSource;
+            _innerCost = inner as IWindowEnumerationCostSource;
             _config = config;
         }
 
@@ -112,6 +135,20 @@ namespace StickMate.Platform
 
         // 미지원 내부 서비스일 때 돌려줄 빈 목록 — 매 조회마다 새 배열/리스트를 만들지 않도록 1회만 만든다.
         private static readonly IReadOnlyList<PlatformFoothold> EmptyRawWindows = new List<PlatformFoothold>(0).AsReadOnly();
+
+        /// <summary>
+        /// IWindowEnumerationCostSource 통과. <b>미지원을 0으로 위장하지 않는다</b> — 내부 서비스가
+        /// 계측을 지원하지 않으면 그 인터페이스의 규약대로 -1을 그대로 내보낸다(0개 열거와 미지원은
+        /// 완전히 다른 사실이고, 원격 진단에서 그 둘을 섞으면 잘못된 결론이 나온다).
+        ///
+        /// <para>이 데코레이터가 목록 끝에 덧붙이는 합성 발판(Dock/안전망)은 <b>OS 열거를 거치지
+        /// 않으므로</b> 이 숫자에 더하지 않는다 — 이 채널이 답하는 질문은 "OS가 콜백한 최상위 창이 몇
+        /// 개였나"이고, 합성 발판은 그 질문과 무관하다.</para>
+        /// </summary>
+        public int LastEnumeratedWindowCount => _innerCost != null ? _innerCost.LastEnumeratedWindowCount : -1;
+
+        /// <inheritdoc cref="IWindowEnumerationCostSource.LastDwmProbeCount"/>
+        public int LastDwmProbeCount => _innerCost != null ? _innerCost.LastDwmProbeCount : -1;
 
         /// <summary>
         /// IRawWindowRectSource 통과(ICursorPositionService 등과 동일한 위임 패턴). 이 데코레이터가
@@ -415,10 +452,20 @@ namespace StickMate.Platform
             // 잘라낼 구멍 = Dock 발판과 **정확히 같은** X 구간(위 문서 참고, 단일 소스).
             bool hasDock = TryGetDockSpanOsScreen(out float dockLeftOsX, out float dockRightOsX);
 
+            // ★ 2026-09-01 — 좌표 출처 통일(BottomSafetyNetPolicy 문서 참고). 안전망은 **오버레이 창**
+            // 기하에서 나오고 작업표시줄은 **모니터** 기하에서 나와, 둘이 어긋나면 화면 밖 + 막대 뒤에
+            // 발판 조각이 생겼다(실측: 모니터 오른쪽 밖 2pt, 모니터 하단보다 39px 아래).
+            bool hasScreenBounds = TryGetScreenEdgesOsScreen(
+                out float screenLeftOsX, out float screenRightOsX, out float screenBottomOsY);
+
             if (!Mathf.Approximately(width, _cachedScreenWidth) || !Mathf.Approximately(height, _cachedScreenHeight)
                 || !Mathf.Approximately(overlayOrigin.x, _cachedOverlayOrigin.x) || !Mathf.Approximately(overlayOrigin.y, _cachedOverlayOrigin.y)
                 || hasDock != _cachedHasDock
-                || !Mathf.Approximately(dockLeftOsX, _cachedDockLeftOsX) || !Mathf.Approximately(dockRightOsX, _cachedDockRightOsX))
+                || !Mathf.Approximately(dockLeftOsX, _cachedDockLeftOsX) || !Mathf.Approximately(dockRightOsX, _cachedDockRightOsX)
+                || hasScreenBounds != _cachedHasScreenBounds
+                || !Mathf.Approximately(screenLeftOsX, _cachedScreenLeftOsX)
+                || !Mathf.Approximately(screenRightOsX, _cachedScreenRightOsX)
+                || !Mathf.Approximately(screenBottomOsY, _cachedScreenBottomOsY))
             {
                 _cachedScreenWidth = width;
                 _cachedScreenHeight = height;
@@ -426,6 +473,10 @@ namespace StickMate.Platform
                 _cachedHasDock = hasDock;
                 _cachedDockLeftOsX = dockLeftOsX;
                 _cachedDockRightOsX = dockRightOsX;
+                _cachedHasScreenBounds = hasScreenBounds;
+                _cachedScreenLeftOsX = screenLeftOsX;
+                _cachedScreenRightOsX = screenRightOsX;
+                _cachedScreenBottomOsY = screenBottomOsY;
 
                 // BUG-P1-R5-B2 대응(Coder 발견/수정, 2026-08-28) — "바로 바탕화면에서 구동" 라운드가 처음
                 // 만든 실제 Standalone .app을 직접 실행해 Player.log에 캐릭터 위치를 초 단위로 남기는
@@ -456,22 +507,17 @@ namespace StickMate.Platform
                 float netRightOsX = netLeftOsX + widenedWidth;
                 float netTopOsY = overlayOrigin.y + height - thickness;
 
-                // Dock이 없으면 구멍의 좌우 끝을 둘 다 안전망 오른쪽 끝에 두어, 왼쪽 조각이 전체 폭을
-                // 차지하고 오른쪽 조각이 폭 0이 되게 한다(= 예전의 한 장짜리 안전망과 완전히 동일).
-                // Clamp는 Dock이 안전망보다 넓거나 밖으로 벗어난 병리적 설정에서도 조각 폭이 음수가
-                // 되지 않게 한다.
-                float holeLeftOsX = hasDock ? Mathf.Clamp(dockLeftOsX, netLeftOsX, netRightOsX) : netRightOsX;
-                float holeRightOsX = hasDock ? Mathf.Clamp(dockRightOsX, netLeftOsX, netRightOsX) : netRightOsX;
+                // 화면 경계 접기 + 구멍 잘라내기는 전부 BottomSafetyNetPolicy 하나에 있다(플랫폼 중립
+                // 순수 함수라 EditMode에서 실기 좌표를 그대로 재현해 검증할 수 있다 — 그 문서 참고).
+                BottomSafetyNetPolicy.Pieces pieces = BottomSafetyNetPolicy.Resolve(
+                    new Rect(netLeftOsX, netTopOsY, Mathf.Max(0f, netRightOsX - netLeftOsX), thickness),
+                    hasScreenBounds, screenLeftOsX, screenRightOsX, screenBottomOsY,
+                    hasDock, dockLeftOsX, dockRightOsX);
 
-                float leftPieceWidth = holeLeftOsX - netLeftOsX;
-                float rightPieceWidth = netRightOsX - holeRightOsX;
-
-                _hasSafetyNetLeft = leftPieceWidth > MinSafetyNetPieceWidthOsPoints;
-                _hasSafetyNetRight = rightPieceWidth > MinSafetyNetPieceWidthOsPoints;
-                _safetyNetLeft = new PlatformFoothold(SyntheticFootholdHandle,
-                    new Rect(netLeftOsX, netTopOsY, Mathf.Max(0f, leftPieceWidth), thickness), isTopmost: true);
-                _safetyNetRight = new PlatformFoothold(SyntheticFootholdHandleRight,
-                    new Rect(holeRightOsX, netTopOsY, Mathf.Max(0f, rightPieceWidth), thickness), isTopmost: true);
+                _hasSafetyNetLeft = pieces.HasLeft;
+                _hasSafetyNetRight = pieces.HasRight;
+                _safetyNetLeft = new PlatformFoothold(SyntheticFootholdHandle, pieces.Left, isTopmost: true);
+                _safetyNetRight = new PlatformFoothold(SyntheticFootholdHandleRight, pieces.Right, isTopmost: true);
             }
 
             if (_hasSafetyNetLeft) target.Add(_safetyNetLeft);
@@ -479,12 +525,36 @@ namespace StickMate.Platform
         }
 
         /// <summary>
-        /// 안전망 조각을 발판으로 인정하는 최소 폭(OS 포인트). 이보다 얇은 조각은 캐릭터가 설 수 없는
-        /// 실오라기라 오히려 접지/낙하가 매 프레임 뒤집히는 채터링만 만든다. Dock이 화면 폭 전체를
-        /// 차지하도록 설정한 극단적인 경우(dockFootholdWidthFraction=1)에는 두 조각 모두 사라지고
-        /// Dock 발판만 남는다 — 그때는 "Dock 바깥"이라는 X 구간 자체가 없으므로 정상이다.
+        /// ★ 2026-09-01 — OS가 확언하는 <b>화면 경계</b>(모니터 좌/우/하단). 안전망을 이 안으로 접어
+        /// "화면 밖 + 막대 뒤" 조각이 생기는 것을 막는다(<see cref="BottomSafetyNetPolicy"/> 문서).
+        ///
+        /// <para>출처는 하단 예약 막대 사각형 하나다. Win32 구현이 그것을
+        /// <c>Rect(rcMonitor.Left, rcWork.Bottom, rcMonitor.Right − rcMonitor.Left,
+        /// rcMonitor.Bottom − rcWork.Bottom)</c>로 만들기 때문에, 그 사각형의
+        /// <c>xMin/xMax/yMax</c>가 곧 <c>rcMonitor</c>의 좌/우/하단이다. 즉 새 네이티브 호출을 만들지
+        /// 않고도 <b>작업표시줄과 완전히 같은 관측</b>에서 화면 경계를 얻는다 — 출처를 하나로 모으는
+        /// 것이 이번 수정의 전부이므로, 여기서 다른 API를 하나 더 부르면 고치려던 문제를 다시 만든다.</para>
+        ///
+        /// <para>막대가 없으면(자동 숨김 / 좌·우·상단 배치) false다. 그때는 접지 않는다 — 접을 근거가
+        /// 없는데 지어내면 그게 새 버그다. <b>macOS는 <see cref="IReservedBottomBarService"/>를 구현하지
+        /// 않으므로 언제나 이 경로</b>이고, 따라서 macOS 동작은 이 라운드에서 한 글자도 바뀌지 않는다.
+        /// (막대가 없어도 화면 경계를 알고 싶다면 모니터 사각형 전용 캐퍼빌리티가 따로 있어야 한다 —
+        /// 이번 신고 경로는 막대가 <b>있는</b> 상태였으므로 그 확장은 별도 배정으로 남긴다.)</para>
         /// </summary>
-        private const float MinSafetyNetPieceWidthOsPoints = 1f;
+        private bool TryGetScreenEdgesOsScreen(out float leftOsX, out float rightOsX, out float bottomOsY)
+        {
+            leftOsX = 0f;
+            rightOsX = 0f;
+            bottomOsY = 0f;
+            if (_innerBottomBar == null) return false;
+            if (!_innerBottomBar.TryGetReservedBottomBarOsScreen(out Rect barRect)) return false;
+            if (barRect.width <= 0f || barRect.height <= 0f) return false;
+
+            leftOsX = barRect.xMin;
+            rightOsX = barRect.xMax;
+            bottomOsY = barRect.yMax;
+            return true;
+        }
 
         public bool CreateOverlayWindow() => _inner.CreateOverlayWindow();
 

@@ -88,7 +88,7 @@ namespace StickMate.Tests.EditMode
         public void 안전망_인셋과_화면높이_기준이_단일소스여야_한다()
         {
             Assert.AreEqual(8f, NullPlatformWindowService.BottomSafetyNetInsetPoints, 0.0001f,
-                "BottomSafetyNetInsetPoints가 8pt가 아닙니다 — 바뀌었다면 Dock 낙차/stepUpMaxHeight/" +
+                "BottomSafetyNetInsetPoints가 8pt가 아닙니다 — 바뀌었다면 Dock 낙차/stepUpMaxHeights/" +
                 "CharacterScaleInvarianceTests의 임계 배율을 전부 다시 계산해야 합니다(그 값들은 " +
                 "DockGeometry에서 자동으로 따라오지만, 문서 상수 DockHopDownCriticalScale은 손으로 갱신해야 합니다).");
             Assert.AreEqual(982f, NullPlatformWindowService.ReferenceScreenHeightPoints, 0.0001f,
@@ -132,14 +132,19 @@ namespace StickMate.Tests.EditMode
                 DockGeometry.MaxTileSizePoints
             };
 
+            // ★ 2026-09-02 — 설정 필드가 절대 유닛에서 **신장 배수**(stepUpMaxHeights)가 됐다.
+            //   숫자를 베끼지 않고 프로덕션 리졸버를 그대로 호출해 월드 유닛으로 환산한다.
+            float deployedHeight = StickConfig.BaselineCharacterTotalHeight * deployed.ResolveCharacterScale();
+            float configuredWorld = deployed.ResolveStepUpMaxHeightWorld(deployedHeight);
+
             foreach (float tile in tileSizes)
             {
                 float drop = DockGeometry.DockDropWorldUnits(deployed, tile);
-                float resolved = DockGeometry.ResolveStepUpMaxHeight(deployed.stepUpMaxHeight, drop);
+                float resolved = DockGeometry.ResolveStepUpMaxHeight(configuredWorld, drop);
 
                 Debug.Log($"[DOCK-GEOM] tilesize={tile:F0}pt → 낙차 {drop:F4}유닛, " +
-                    $"설정 상한 {deployed.stepUpMaxHeight:F3} → 유도 상한 {resolved:F4}유닛 " +
-                    $"(여유 {(resolved - drop):F4})");
+                    $"설정 상한 {deployed.stepUpMaxHeights:F4} H x 신장 {deployedHeight:F4} = {configuredWorld:F4}유닛 " +
+                    $"→ 유도 상한 {resolved:F4}유닛 (여유 {(resolved - drop):F4})");
 
                 Assert.Greater(resolved, drop,
                     $"tilesize {tile:F0}pt(낙차 {drop:F3}유닛)에서 유도된 되올라가기 상한({resolved:F3})이 " +
@@ -153,13 +158,21 @@ namespace StickMate.Tests.EditMode
             StickConfig deployed = LoadDeployedConfig();
 
             // ★ 네거티브 컨트롤 그 자체 — M3의 근거를 테스트로 박제한다. 이 단언이 실패한다면
-            // stepUpMaxHeight가 3.57유닛 이상으로 올라갔다는 뜻이고, 그때는 DockGeometry의 유도가
+            // 되올라가기 상한이 3.57유닛 이상으로 올라갔다는 뜻이고, 그때는 DockGeometry의 유도가
             // 불필요해진 것이 아니라 **일반 창까지 자동 등반 대상이 됐다**는 뜻이므로 재검토해야 한다.
+            //
+            // ★ 2026-09-02 — 설정값이 신장 배수가 됐으므로 **가장 큰 캐릭터**(MaxCharacterScale)에서
+            //   재는 것이 가장 엄격하다. 그보다 작은 배율은 자동으로 더 못 덮는다.
             float maxDrop = DockGeometry.DockDropWorldUnits(deployed, DockGeometry.MaxTileSizePoints);
-            Assert.Less(deployed.stepUpMaxHeight, maxDrop,
-                $"stepUpMaxHeight({deployed.stepUpMaxHeight:F3})가 최대 tilesize의 낙차({maxDrop:F3})를 " +
-                "절대값만으로 덮고 있습니다 — 값이 이렇게 커지면 Dock이 아닌 일반 창 발판까지 " +
-                "0.5초 만에 순간이동하듯 기어오르게 됩니다. 유도 방식(DockGeometry)으로 되돌리세요.");
+            float biggestCharacterWorld = deployed.ResolveStepUpMaxHeightWorld(
+                StickConfig.BaselineCharacterTotalHeight * StickConfig.MaxCharacterScale);
+            Debug.Log($"[DOCK-GEOM] 최대 tilesize 낙차 {maxDrop:F4}유닛 vs 되올라가기 설정 상한 " +
+                $"{deployed.stepUpMaxHeights:F4} H (가장 큰 캐릭터에서 {biggestCharacterWorld:F4}유닛).");
+            Assert.Less(biggestCharacterWorld, maxDrop,
+                $"되올라가기 설정 상한({deployed.stepUpMaxHeights:F4} H = 가장 큰 캐릭터에서 " +
+                $"{biggestCharacterWorld:F3}유닛)이 최대 tilesize의 낙차({maxDrop:F3})를 " +
+                "설정값만으로 덮고 있습니다 — 값이 이렇게 커지면 Dock이 아닌 일반 창 발판까지 " +
+                "1.2초 만에 순간이동하듯 기어오르게 됩니다. 유도 방식(DockGeometry)으로 되돌리세요.");
         }
 
         // ============================================================================
@@ -169,50 +182,63 @@ namespace StickMate.Tests.EditMode
 
         /// <summary>
         /// R3 리뷰가 잡은 산술 오기의 박제. `DockTileSizeStepUpTests`의 네거티브 컨트롤 게이트가
-        /// `tileSizePoints >= 80f`였는데, 실제 교차점은 80이 아니라 **80.2**다.
-        ///     stepUpMaxHeight 2.400유닛 ÷ ReferenceWorldUnitsPerPoint(24/982 = 0.0244399) = 98.2pt
-        ///     낙차(pt) = tilesize + 26 − 8 = tilesize + 18   ⇒  tilesize = 80.2
-        /// 그래서 **80 → 2.3951은 아직 덮고, 81 → 2.4196부터 못 덮는다.**
+        /// `tileSizePoints >= 80f`였는데, 그 시절의 실제 교차점은 80이 아니라 **80.2**였다
+        /// (설정 절대값 2.400유닛 ÷ ReferenceWorldUnitsPerPoint(24/982 = 0.0244399) = 98.2pt,
+        /// 낙차(pt) = tilesize + 26 − 8 = tilesize + 18 ⇒ tilesize = 80.2).
+        ///
+        /// <para>★ 2026-09-02 — <b>교차점 자체를 상수로 적는 것을 그만둔다.</b> 되올라가기 상한이
+        /// 신장 배수(<c>StickConfig.stepUpMaxHeights</c>)가 되면서 교차점이 <b>배포 배율에 따라
+        /// 움직이는 값</b>이 됐다(배율 0.75에서 약 55.6pt). 80/81을 그대로 두면 이 테스트는
+        /// "산술을 잠그는 것"이 아니라 "옛 배율을 잠그는 것"이 된다 — 그건 협업 프로토콜이 금지한
+        /// '테스트에 프로덕션 상수를 숫자로 베끼기'의 다른 얼굴이다. 그래서 교차점을 유도한 뒤
+        /// <b>그 바로 아래 정수(floor) / 바로 위 정수(ceil)</b>에서 부등호를 양방향으로 단언한다.
+        /// 잠그는 대상은 숫자가 아니라 <b>관계</b>다.</para>
         ///
         /// 이 검증을 PlayMode가 아니라 여기 두는 이유: PlayMode는 OS↔월드 좌표를 왕복하며 재기 때문에
-        /// 허용오차(0.02유닛)가 붙는데, 교차점과 tilesize 80의 거리는 0.005유닛뿐이라 **측정 노이즈가
-        /// 부등호를 뒤집을 수 있다**. 여기(순수 산술)에는 그 오차가 존재하지 않는다.
+        /// 허용오차(0.02유닛)가 붙는데 교차점 근방의 여유는 그보다 작다 — **측정 노이즈가 부등호를
+        /// 뒤집을 수 있다**. 여기(순수 산술)에는 그 오차가 존재하지 않는다.
         ///
-        /// 네거티브 컨트롤: 아래 CoveredTileSize를 81로, NotCoveredTileSize를 80으로 맞바꾸면
-        /// 두 단언이 즉시 실패한다(2026-08-30 디버거가 실제로 뒤집어 확인).
+        /// 네거티브 컨트롤: 아래 두 tilesize를 맞바꾸면 두 단언이 즉시 실패한다.
         /// </summary>
         [Test]
-        public void 설정_절대값_커버리지_교차점은_tilesize_80과_81_사이다()
+        public void 설정값_커버리지_교차점이_유도식과_정확히_일치한다()
         {
-            const float CoveredTileSize = 80f;      // 여기까지는 절대값 2.4가 아직 덮는다
-            const float NotCoveredTileSize = 81f;   // 여기부터 못 덮는다(= 유도가 없으면 갇힌다)
-
             StickConfig deployed = LoadDeployedConfig();
-            float configured = deployed.stepUpMaxHeight;
+
+            // 프로덕션 리졸버를 그대로 부른다(숫자를 베끼지 않는다).
+            float deployedHeight = StickConfig.BaselineCharacterTotalHeight * deployed.ResolveCharacterScale();
+            float configured = deployed.ResolveStepUpMaxHeightWorld(deployedHeight);
 
             float crossoverTileSize = configured / DockGeometry.ReferenceWorldUnitsPerPoint
                 - deployed.dockThicknessTilePaddingPoints
                 + NullPlatformWindowService.BottomSafetyNetInsetPoints;
 
-            float coveredDrop = DockGeometry.DockDropWorldUnits(deployed, CoveredTileSize);
-            float notCoveredDrop = DockGeometry.DockDropWorldUnits(deployed, NotCoveredTileSize);
+            // 전제 — 교차점이 macOS가 실제로 허용하는 tilesize 구간 안에 있어야 이 테스트가 의미를 갖는다.
+            // (구간 밖이면 "모든 Dock을 덮는다" 또는 "어떤 Dock도 못 덮는다"가 되어 양방향 단언이 성립하지 않는다.)
+            Assert.That(crossoverTileSize,
+                Is.GreaterThan(DockGeometry.MinTileSizePoints + 1f).And.LessThan(DockGeometry.MaxTileSizePoints - 1f),
+                $"유도한 교차 tilesize({crossoverTileSize:F2}pt)가 macOS tilesize 구간" +
+                $"({DockGeometry.MinTileSizePoints:F0}~{DockGeometry.MaxTileSizePoints:F0}) 밖입니다 — " +
+                "그러면 '설정값 단독으로 덮는다/못 덮는다'가 한쪽으로만 존재해 이 검사가 아무것도 잠그지 못합니다.");
 
-            Debug.Log($"[DOCK-GEOM] 절대값 커버리지 교차 tilesize = {crossoverTileSize:F2}pt " +
-                $"(stepUpMaxHeight {configured:F3}유닛). " +
-                $"tilesize {CoveredTileSize:F0} → 낙차 {coveredDrop:F5}유닛 (여유 {(configured - coveredDrop):F5}) / " +
-                $"tilesize {NotCoveredTileSize:F0} → 낙차 {notCoveredDrop:F5}유닛 (부족 {(notCoveredDrop - configured):F5})");
+            float coveredTileSize = Mathf.Floor(crossoverTileSize);
+            float notCoveredTileSize = Mathf.Ceil(crossoverTileSize);
+            if (Mathf.Approximately(coveredTileSize, notCoveredTileSize)) notCoveredTileSize += 1f;
+
+            float coveredDrop = DockGeometry.DockDropWorldUnits(deployed, coveredTileSize);
+            float notCoveredDrop = DockGeometry.DockDropWorldUnits(deployed, notCoveredTileSize);
+
+            Debug.Log($"[DOCK-GEOM] 설정값 커버리지 교차 tilesize = {crossoverTileSize:F2}pt " +
+                $"(되올라가기 상한 {deployed.stepUpMaxHeights:F4} H x 신장 {deployedHeight:F4} = {configured:F4}유닛). " +
+                $"tilesize {coveredTileSize:F0} → 낙차 {coveredDrop:F5}유닛 (여유 {(configured - coveredDrop):F5}) / " +
+                $"tilesize {notCoveredTileSize:F0} → 낙차 {notCoveredDrop:F5}유닛 (부족 {(notCoveredDrop - configured):F5})");
 
             Assert.Greater(configured, coveredDrop,
-                $"tilesize {CoveredTileSize:F0}pt의 낙차({coveredDrop:F5})를 설정 절대값({configured:F3})이 " +
-                "못 덮습니다 — 교차점이 80 아래로 내려왔다는 뜻이니 이 경계를 문서/테스트 전부에서 재산출하세요.");
+                $"tilesize {coveredTileSize:F0}pt의 낙차({coveredDrop:F5})를 설정값({configured:F3}유닛)이 " +
+                "못 덮습니다 — 교차점 유도식이 실제 커버리지와 어긋났습니다(환산 상수/인셋을 재산출하세요).");
             Assert.Less(configured, notCoveredDrop,
-                $"tilesize {NotCoveredTileSize:F0}pt의 낙차({notCoveredDrop:F5})를 설정 절대값({configured:F3})이 " +
-                "아직 덮고 있습니다 — 교차점이 81 위로 올라갔다는 뜻이니 마찬가지로 재산출하세요.");
-
-            Assert.That(crossoverTileSize, Is.GreaterThan(CoveredTileSize).And.LessThan(NotCoveredTileSize),
-                $"유도한 교차 tilesize({crossoverTileSize:F2}pt)가 {CoveredTileSize:F0}~{NotCoveredTileSize:F0} " +
-                "구간 밖입니다 — 위 두 단언과 모순되므로 환산 상수(ReferenceWorldUnitsPerPoint)나 " +
-                "안전망 인셋이 바뀐 것입니다.");
+                $"tilesize {notCoveredTileSize:F0}pt의 낙차({notCoveredDrop:F5})를 설정값({configured:F3}유닛)이 " +
+                "아직 덮고 있습니다 — 마찬가지로 유도식이 어긋났습니다.");
 
             // 유도 상한은 교차점 위에서도 두 tilesize 모두를 덮어야 한다(M3의 본체).
             Assert.Greater(DockGeometry.ResolveStepUpMaxHeight(configured, notCoveredDrop), notCoveredDrop,
@@ -355,13 +381,31 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// ★ 위 테스트의 <b>네거티브 컨트롤</b> — "유도를 끄면 실제로 깨진다"를 박제한다.
-        /// 유도 함수를 <b>거치지 않고</b> 옛 고정 상수를 그대로 쓰는 계산을 재현해, 배율 상한 1.125와
-        /// 그 위에서 여유가 음수가 되는 사실을 그대로 확인한다. 이 단언이 실패한다면 유도가 없어도
-        /// 안전하다는 뜻이므로, 위 테스트는 아무것도 지키지 않고 있는 것이다.
+        /// ★ <b>2026-09-01 범위 재조정</b> — 사용자 지시로 다이얼 상한이 1.5 → <b>1.0</b>이 되면서
+        /// (<see cref="StickConfig.MaxCharacterScale"/>) 이 자리가 지키는 것이 <b>뒤집혔다</b>.
+        ///
+        /// <para><b>옛 의도</b>(상한 1.5 시절): "고정 상수가 버티는 천장(1.125)이 상한 <b>아래</b>다"
+        /// = 사용자가 도달할 수 있는 <c>(1.125, 1.5]</c> 구간에 결함이 있다는 사실을 박제했다.
+        /// 사용자 신고 <i>"캐릭터도 독 올라갈때 이상하게 올라감"</i>(당시 저장 배율 1.5)이 정확히
+        /// 그 구간이었다.</para>
+        ///
+        /// <para><b>지금</b>: 상한이 1.0이라 <b>도달 가능한 모든 배율이 천장 아래</b>다. 그러므로 이제
+        /// 잠글 값어치가 있는 성질은 정반대다 — <b>"결함 구간이 사거리 밖에 있다"</b>.
+        /// 그래서 부등호를 뒤집는다. <b>상한을 다시 천장 위로 올리는 순간 이 테스트가 실패한다</b> —
+        /// 그것이 정확히 원하는 동작이다.</para>
+        ///
+        /// <para>★★ <b>근본 결함은 고쳐지지 않았다.</b> "고정 상수가 배율에 비례하지 않는다"는 결함은
+        /// 그대로 남아 있고, 이번 변경은 <b>수정이 아니라 사거리 축소</b>다
+        /// (<see cref="StickConfig.MaxCharacterScale"/> 문서의 같은 취지 문단 참고). 그래서 유도
+        /// (<see cref="DockGeometry.ResolveParkourMantleInset"/>)를 지우면 안 되고, 아래 (4)가 그것이
+        /// 여전히 옳은지 계속 확인한다.</para>
+        ///
+        /// <para>천장 값(1.125)을 숫자로 적지 않는다 — 그 값을 만드는 상수들에서 매번 다시 계산한다
+        /// (CLAUDE.md: 프로덕션 상수를 테스트에 베끼지 않는다). 설정 인셋이나 여유 요구치가 바뀌면
+        /// 천장도 따라 움직여야 하고, 숫자를 적어 두면 그 순간 이 테스트가 거짓말을 시작한다.</para>
         /// </summary>
         [Test]
-        public void 네거티브컨트롤_유도를_끄면_큰_배율에서_맨틀_인셋이_경계에_먹힌다()
+        public void 맨틀_인셋_결함_구간이_다이얼_상한_밖에_있다()
         {
             StickConfig deployed = LoadDeployedConfig();
 
@@ -378,19 +422,50 @@ namespace StickMate.Tests.EditMode
             float derivedClearance =
                 DockGeometry.ResolveParkourMantleInset(deployed.parkourMantleInset, stop, halfWidth) - stop;
 
-            Debug.Log($"[DOCK-GEOM] (네거티브 컨트롤) 고정 상수 {deployed.parkourMantleInset:F3}이 버티는 배율 천장 = " +
-                $"{ceiling:F3}. 배율 {bigScale:F2}에서 여유 — 유도 끔 {legacyClearance:F4} / 유도 켬 {derivedClearance:F4}. " +
-                $"(배포 배율 {deployed.ResolveCharacterScale():F3}은 천장 아래라 화면 거동은 무변경)");
+            Debug.Log($"[DOCK-GEOM] (사거리) 고정 상수 {deployed.parkourMantleInset:F3}이 버티는 배율 천장 = " +
+                $"{ceiling:F3} vs 다이얼 상한 {StickConfig.MaxCharacterScale:F2} " +
+                $"→ {(ceiling > StickConfig.MaxCharacterScale ? "결함 구간이 사거리 밖" : "★ 사거리 안 — 노출됨")}. " +
+                $"상한 배율에서 여유 — 유도 끔 {legacyClearance:F4} / 유도 켬 {derivedClearance:F4} " +
+                $"(요구 {RequiredClearanceUnits:F2}). 배포 배율 {deployed.ResolveCharacterScale():F3}.");
 
-            Assert.Less(ceiling, StickConfig.MaxCharacterScale,
-                $"고정 상수가 버티는 천장({ceiling:F3})이 다이얼 상한({StickConfig.MaxCharacterScale:F2}) 이상입니다 — " +
-                "그렇다면 유도가 없어도 안전하다는 뜻이라 위 테스트가 아무것도 지키지 않습니다. " +
-                "parkourMantleInset을 손으로 올려 덮은 것이라면 되돌리고 유도를 유지하세요.");
+            // ── (1) 결함 구간이 사거리 밖이다 ────────────────────────────────────────────
+            // 상한을 천장 위로 다시 올리면 여기서 실패한다. 그때는 "사거리 축소"가 더 이상 성립하지
+            // 않으므로, 유도를 손보든 상한을 되돌리든 **판단을 강제**하는 것이 이 단언의 목적이다.
+            Assert.Greater(ceiling, StickConfig.MaxCharacterScale,
+                $"고정 상수가 버티는 천장({ceiling:F3})이 다이얼 상한({StickConfig.MaxCharacterScale:F2}) " +
+                "이하입니다 — 사용자가 도달할 수 있는 배율에 Dock 등반 결함 구간이 다시 열렸습니다. " +
+                "근본 결함(고정 상수가 배율에 비례하지 않음)은 2026-09-01 시점에도 고쳐지지 않았고, " +
+                "그때는 상한을 1.0으로 내려 사거리 밖으로 밀어낸 것뿐입니다(StickConfig.MaxCharacterScale " +
+                "문서 참고). 상한을 올리려면 그 결함을 먼저 고치십시오.");
 
-            Assert.Less(legacyClearance, RequiredClearanceUnits,
-                $"유도를 끈 계산에서도 배율 {bigScale:F2}의 여유가 {legacyClearance:F4}로 충분합니다 — " +
-                "네거티브 컨트롤이 성립하지 않습니다(재현 조건이 바뀌었는지 확인하세요).");
+            // ── (2) 공허하지 않다 ───────────────────────────────────────────────────────
+            // (1)만 있으면 "천장이 아주 커서 언제나 참"인 경우와 구분되지 않는다. 천장 **바로 위**
+            // 배율에서는 고정 상수가 실제로 무너진다는 것을 같은 계산으로 보여, 천장이 진짜 경계임을
+            // 박제한다. 이 한 줄이 없으면 (1)은 "항상 참인 단언"이 될 수 있다.
+            float justAboveCeiling = ceiling * 1.05f;
+            float aboveStop = DockGeometry.ResolveEdgeStopDistance(deployed.wanderEdgeStopDistance,
+                StickConfig.BaselineBodyPhysicsHalfWidth * justAboveCeiling);
+            Assert.Less(deployed.parkourMantleInset - aboveStop, RequiredClearanceUnits,
+                $"천장({ceiling:F3}) 바로 위 배율 {justAboveCeiling:F3}에서도 고정 상수만으로 여유가 " +
+                $"{deployed.parkourMantleInset - aboveStop:F4}로 충분합니다 — 그렇다면 이 '천장'은 경계가 " +
+                "아니고, 위 (1)은 아무것도 지키지 않습니다(천장 계산식을 확인하십시오).");
 
+            // ── (3) 도달 가능한 양 끝에서 실제로 안전하다 ────────────────────────────────
+            // 천장 비교는 유도된 부등식이다. 실제 값으로도 한 번 확인해 둔다 — 하한/배포/상한 셋.
+            foreach (float scale in new[]
+                     { StickConfig.MinCharacterScale, deployed.ResolveCharacterScale(), StickConfig.MaxCharacterScale })
+            {
+                float s = DockGeometry.ResolveEdgeStopDistance(deployed.wanderEdgeStopDistance,
+                    StickConfig.BaselineBodyPhysicsHalfWidth * scale);
+                Assert.GreaterOrEqual(deployed.parkourMantleInset - s, RequiredClearanceUnits,
+                    $"도달 가능한 배율 {scale:F3}에서 고정 상수만으로는 여유가 " +
+                    $"{deployed.parkourMantleInset - s:F4}뿐입니다(요구 {RequiredClearanceUnits:F2}) — " +
+                    "천장 계산과 실제 값이 어긋납니다.");
+            }
+
+            // ── (4) 유도는 여전히 옳아야 한다 ───────────────────────────────────────────
+            // 지금은 유도가 없어도 도달 가능 구간이 안전하다. 그렇다고 유도를 지우면, 누가 상한을
+            // 올리는 날 방어가 통째로 사라진다. 근본 결함이 남아 있는 한 이 검사는 계속 돈다.
             Assert.GreaterOrEqual(derivedClearance, RequiredClearanceUnits,
                 $"유도를 켰는데도 배율 {bigScale:F2}의 여유가 {derivedClearance:F4}입니다 — " +
                 "DockGeometry.ResolveParkourMantleInset의 여유 계산을 확인하세요.");
@@ -440,16 +515,36 @@ namespace StickMate.Tests.EditMode
         /// <summary>
         /// ★ 위 테스트의 <b>네거티브 컨트롤</b> — "유도를 끄면 실제로 깨진다"를 박제한다.
         /// 유도 함수를 우회하고 옛 절대값(parkourDetectionRadius)을 그대로 게이트로 쓰는 계산을
-        /// 재현해, 그 방식이 무너지는 배율 천장을 계산하고 그것이 다이얼 상한(2.00) 안쪽임을 확인한다.
+        /// 재현해, 그 방식이 무너지는 배율 천장을 계산하고 그것이
+        /// <see cref="StickConfig.MaxCharacterScale"/> <b>안쪽</b>임을 확인한다(숫자를 베끼지 않는다 —
+        /// 상한이 바뀌면 이 관계가 자동으로 다시 평가되어야 한다).
         /// 이 단언이 실패한다면 유도 없이도 안전하다는 뜻이므로 위 테스트는 아무것도 지키지 않는다.
+        ///
+        /// <para>★ 2026-09-01 다이얼 상한이 1.5 → 1.0으로 내려온 뒤에도 <b>이 네거티브 컨트롤은
+        /// 유효하다</b>. 천장이 0.875라 도달 가능한 구간 <c>[0.875, 1.00]</c>이 여전히 결함에 노출돼
+        /// 있기 때문이다 — 맨틀 인셋 쪽(위 (3-1))과 달리 여기는 사거리 축소로 해결되지 않았다.</para>
         /// </summary>
         [Test]
         public void 네거티브컨트롤_유도를_끄면_큰_배율에서_탐지가_평가거리를_못_따라간다()
         {
             StickConfig deployed = LoadDeployedConfig();
 
-            // 옛 방식이 버티는 천장: 0.4×배율 + EdgeStopWallStandoffMargin ≤ parkourDetectionRadius.
-            float ceiling = (deployed.parkourDetectionRadius - DockGeometry.EdgeStopWallStandoffMarginUnits)
+            // 옛 방식이 버티는 천장 = 고정 게이트가 **요구 여유까지** 대주는 마지막 배율.
+            //   parkourDetectionRadius ≥ (0.4×배율 + EdgeStopWallStandoffMargin) + RequiredClearance
+            //
+            // ★ 2026-09-01 수정 — 여기서 RequiredClearanceUnits가 빠져 있었다. 그래서 이 식은 "여유가
+            //   0이 되는 배율"(1.000)을 천장이라 불렀는데, 아래 단언들이 재는 것은 "여유가 요구치에
+            //   못 미치는가"다. 둘이 어긋난 채로 다이얼 상한이 1.5 → 1.0으로 내려오자 천장(1.000)과
+            //   상한(1.00)이 정확히 같아져 `Assert.Less`가 경계에서 깨졌다. 실패의 원인은 상한 변경이
+            //   아니라 **이 식의 정의가 위 테스트와 달랐던 것**이다(위 (3-1) 맨틀 쪽은 처음부터
+            //   RequiredClearanceUnits를 빼고 있었다 — 두 식이 같은 뜻이어야 한다).
+            //
+            //   고친 뒤 천장은 (0.5 - 0.10 - 0.05) / 0.4 = 0.875로, 다이얼 상한 1.00보다 **아래**다.
+            //   즉 배율 0.875~1.00 구간의 사용자는 유도가 없으면 실제로 Dock을 오르내릴 수 없다 —
+            //   이 네거티브 컨트롤은 여전히 <b>살아 있는 결함</b>을 박제하고 있다.
+            float ceiling = (deployed.parkourDetectionRadius
+                             - DockGeometry.EdgeStopWallStandoffMarginUnits
+                             - RequiredClearanceUnits)
                             / StickConfig.BaselineBodyPhysicsHalfWidth;
 
             float bigScale = StickConfig.MaxCharacterScale;

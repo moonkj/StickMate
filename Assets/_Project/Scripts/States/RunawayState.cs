@@ -87,7 +87,7 @@ namespace StickMate.States
                 RestoreCharacter();
                 StickmanEventBus.RaiseRunawayLifecycleChanged(RunawayLifecyclePhase.Reconciled, default);
                 // 간식을 못 이기는 척 받아먹는 확정 리액션에서 파생된 화해 대사(20절) — 예고 아님.
-                _ = new DialogueIntent(context, id => "흥... 그럼 한 입만이다");
+                _ = new DialogueIntent(context, id => DialogueLine.React("흥... 그럼 한 입만이다"));
                 return;
             }
 
@@ -99,7 +99,7 @@ namespace StickMate.States
                 _phase = Phase.SelfReturning;
                 RestoreCharacter();
                 StickmanEventBus.RaiseRunawayLifecycleChanged(RunawayLifecyclePhase.SelfReturned, default);
-                _ = new DialogueIntent(context, id => text);
+                _ = new DialogueIntent(context, id => DialogueLine.React(text));
                 return;
             }
 
@@ -125,7 +125,7 @@ namespace StickMate.States
 
             StickmanEventBus.RaiseRunawayLifecycleChanged(RunawayLifecyclePhase.Fleeing, default);
             // "나 안 해!" — 확정된 RUNAWAY 전이에서 파생된 현재형 선언(예고형 아님, 20절 원문 그대로).
-            _ = new DialogueIntent(context, id => "나 안 해!");
+            _ = new DialogueIntent(context, id => DialogueLine.React("나 안 해!"));
         }
 
         public void Tick(float deltaTime)

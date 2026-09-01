@@ -102,6 +102,69 @@ namespace StickMate.States
         public bool StepUpPressed => IntentSource != null && IntentSource.StepUpRequested;
 
         /// <summary>
+        /// ★ 배회 페이즈의 **계획 잔여 체류 시간**(초) — 발화 자격 게이트(docs/UX_FLOW.md 5절 규칙 8)가
+        /// 읽는 유일한 상태 입력. 의도 소스가 <see cref="IPlannedDwellSource"/>를 구현한 경우에만
+        /// 값이 있고(위 다섯 채널과 같은 "IntentSource에서 조회" 패턴), 구현하지 않았거나 계획을
+        /// 모르면 <see cref="float.NaN"/>이다 — 그때 게이트는 막지 않는다
+        /// (침묵보다 발화가 안전한 쪽이다: 규칙 8은 "컷될 대사를 줄이는" 최적화이지 검열이 아니다).
+        /// </summary>
+        public float PlannedWanderDwellRemainingSeconds =>
+            IntentSource is IPlannedDwellSource planned ? planned.PlannedDwellRemainingSeconds : float.NaN;
+
+        /// <summary>
+        /// ★★ 2026-09-01 — <b>"이 상태"의 계획 잔여 체류 시간</b>(초). 발화 자격 게이트(규칙 8)는
+        /// 이제 위 <see cref="PlannedWanderDwellRemainingSeconds"/>가 아니라 <b>이쪽</b>에 묻는다.
+        ///
+        /// ============================================================================
+        /// 왜 갈랐나 — 게이트가 물은 것과 소스가 답한 것이 서로 다른 대상이었다
+        /// ============================================================================
+        /// <c>PlannedWanderDwellRemainingSeconds</c>는 <b>배회 AI 페이즈의 잔여</b>이지 <b>이 상태의
+        /// 잔여</b>가 아니다. 둘이 같은 값인 것은 <b>상태가 배회 페이즈 전환 때문에 들어왔을 때뿐</b>이다.
+        /// 실제로는 다음 경로들이 전부 "배회는 Moving 한복판인데 Idle로 들어오는" 모양이다:
+        /// 격파 종료 → Idle / Getup → Idle / LandingCrouch → Idle·Walk / ParkourClimb 완료 → Idle /
+        /// GroundLossHang 복귀 → Idle·Walk. 이때 Idle은 <b>다음 프레임</b>에
+        /// <c>MoveInputX &gt; deadzone</c>으로 곧장 Walk로 나가는데, 게이트에게 물으면 "2.8초 남았다"고
+        /// 답한다. 실측(frame 11110~11114): 4프레임 안에 글자 블록 두 개가 각각 <b>0.02초</b>씩 번쩍였다 —
+        /// 규칙 8이 없애려던 바로 그 현상이, 규칙 8이 들어간 빌드에서.
+        ///
+        /// ============================================================================
+        /// 왜 여기이고, 왜 "From != X" 예외가 아닌가
+        /// ============================================================================
+        /// 이미 한 경로(<c>context.From != GroundLossHang</c>)를 손으로 막아 둔 전례가 있고, 나머지
+        /// 네 경로가 그대로 남아 있었다. 예외를 하나 더 박으면 여섯 번째 경로가 생기는 날 또 샌다.
+        /// 그래서 <b>진입 경로를 열거하지 않고</b>, 두 사실을 각자의 소유자에게 묻는 형태로 나눈다:
+        /// <list type="number">
+        ///   <item><b>계획의 길이</b>는 배회 AI가 안다(<see cref="IPlannedDwellSource"/>). 상태는
+        ///         모른다 — IdleState가 계획을 지어내면 그게 원칙 1이 금지하는 "확정되지 않은 사실"이다.</item>
+        ///   <item><b>그 계획이 지금 이 상태를 서술하는가</b>는 <b>상태의 탈출 조건</b>이 안다. Idle은
+        ///         이동 의도가 데드존을 넘으면 나가고(IdleState.Tick), Walk는 데드존 이하가 되면
+        ///         나간다(WalkState.Tick). 즉 <b>의도와 상태가 어긋나 있으면 잔여는 0이다</b> —
+        ///         추정이 아니라 다음 Tick에 실제로 일어나는 일이다.</item>
+        /// </list>
+        /// 판정에 쓰는 데드존은 두 상태의 탈출 조건과 <b>같은 설정 필드</b>(moveInputDeadzone)여야 한다.
+        /// 다른 값을 쓰면 "게이트는 남았다고 보는데 상태는 이미 나간" 틈이 그 차이만큼 생긴다.
+        ///
+        /// <para>배회 계획이 <b>서술하지 않는 상태</b>(격파·파쿠르·랙돌 등)에는 <see cref="float.NaN"/>을
+        /// 답한다. 그 상태들은 자기 길이를 스스로 알고 게이트에 직접 넘기며(BattleMinigameState의
+        /// 게이지 길이), 배회 잔여는 그들에 대해 아무 말도 하지 않기 때문이다. NaN이면 게이트는 막지
+        /// 않는다 — 규칙 8은 컷될 대사를 줄이는 최적화이지 검열이 아니다.</para>
+        /// </summary>
+        public float PlannedDwellRemainingSecondsFor(StickmanStateId stateId)
+        {
+            bool stateWantsMove;
+            if (stateId == StickmanStateId.Walk) stateWantsMove = true;
+            else if (stateId == StickmanStateId.Idle) stateWantsMove = false;
+            else return float.NaN; // 배회 계획이 서술하지 않는 상태 — 모른다고 답한다.
+
+            float phaseRemaining = PlannedWanderDwellRemainingSeconds;
+            if (float.IsNaN(phaseRemaining)) return float.NaN;
+
+            float deadzone = Config != null ? Config.moveInputDeadzone : 0.15f;
+            bool intentWantsMove = Mathf.Abs(MoveInputX) > deadzone;
+            return intentWantsMove == stateWantsMove ? phaseRemaining : 0f;
+        }
+
+        /// <summary>
         /// StickmanAgent.TryGetCursorPosition과 동일한 시그니처(CursorPositionQuery, UX_FLOW.md 9절-3
         /// 전역 커서 폴링 채널 재사용) — 드래그&던지기(DragThrowState)/로데오 커서(RodeoCursorState)가
         /// 커서 월드 좌표를 조회하기 위해 사용한다(Phase 3). AutoWanderController.CursorProvider(26-4 훅)와는
@@ -1619,6 +1682,13 @@ namespace StickMate.States
             // 아래 ApplyIdlePose가 매 프레임 그 위에 중립 포즈를 덧씌워 활 자세가 통째로 사라진다.
             if (Machine.CurrentStateId == StickmanStateId.Archery) return;
 
+            // ★ 등반(2026-09-01, 사용자 신고 "사람처럼 손으로 집고 다리를 올려서 올라가야지") —
+            // Walk/LandingCrouch/Archery와 **완전히 같은 이유**로 여기서 아무것도 하지 않는다:
+            // 포즈를 이미 ParkourClimbState.Tick()이 자기 진행 곡선으로 세팅했다. 이 분기가 없어서
+            // 지금까지 등반 내내 아래 ApplyIdlePose가 중립 포즈를 덧씌웠고, 그래서 차렷 자세의
+            // 막대기가 위로 평행이동하기만 했다(= 사용자가 말한 "어설픈 점프").
+            if (Machine.CurrentStateId == StickmanStateId.ParkourClimb) return;
+
             // ★ 낙하 중 공중 자세(2026-08-29, 사용자 요청 "떨어질때 관절이 이상하게 꺾이면서 넘어지는데").
             // 여기에 분기가 없어서 지금까지 낙하 중에도 아래 Idle 중립 포즈가 적용됐다 — 막대기가 그대로
             // 내려오는 그림이었다. Jump도 같은 포즈를 쓰되 상승 중에는 세기가 0이라 사실상 중립이고,
@@ -1942,15 +2012,20 @@ namespace StickMate.States
 
         /// <summary>활 쏘는 자세 각도 묶음(StickConfig -> StickmanPoseAnimator). BuildPoseSettings와
         /// 동일한 패턴 — Config가 없는 테스트/폴백 경로에서도 안전하도록 각 값에 기본값을 둔다.
+        ///
+        /// ★ 그 기본값은 <b>StickConfig의 실효값과 같아야 한다</b>(2026-09-01). 이 자리의 리터럴은
+        /// <c>Config == null</c>일 때만 쓰이므로 어긋나도 화면이 안 바뀌고, 그래서 조용히 낡는다 —
+        /// 실제로 이 메서드의 네 각도가 전부 옛 값에 멈춰 있었다(88/93/-100/100 vs 104/108/-99/119).
+        /// <c>Tests/EditMode/ConfigFallbackLiteralDriftTests</c>가 이제 자동으로 대조한다.
         /// 마지막 인자(몸이 가라앉는 거리)만 <b>신장 비율 -> 월드 거리</b>로 여기서 환산한다
         /// (각도는 크기 무관, 거리는 신장 비례 — 리더 지시).</summary>
         public StickmanPoseAnimator.ArcheryPoseSettings BuildArcheryPoseSettings()
         {
             return new StickmanPoseAnimator.ArcheryPoseSettings(
-                Config != null ? Config.archeryBowArmDegrees : 88f,
-                Config != null ? Config.archeryBowForearmDegrees : 93f,
-                Config != null ? Config.archeryDrawUpperDegrees : -100f,
-                Config != null ? Config.archeryDrawForearmDegrees : 100f,
+                Config != null ? Config.archeryBowArmDegrees : 104f,
+                Config != null ? Config.archeryBowForearmDegrees : 108f,
+                Config != null ? Config.archeryDrawUpperDegrees : -99f,
+                Config != null ? Config.archeryDrawForearmDegrees : 119f,
                 Config != null ? Config.archeryRecoilOpenDegrees : -38f,
                 Config != null ? Config.archeryRecoilStraighten01 : 0.75f,
                 Config != null ? Config.archeryFrontHipDegrees : 16f,
@@ -1992,13 +2067,15 @@ namespace StickMate.States
         public float BodyLeanSmoothingRate => Config != null ? Config.bodyLeanSmoothingRate : 12f;
 
         /// <summary>유휴 앰비언트 동작(26-3) 각도/거리 묶음. 거리 성분 2개만 신장을 곱해 환산한다
-        /// (BuildArcheryPoseSettings와 완전히 같은 관례).</summary>
+        /// (BuildArcheryPoseSettings와 완전히 같은 관례 — 폴백 리터럴이 StickConfig 실효값과 같아야
+        /// 한다는 것까지 포함해서. 팔꿈치 122°와 머리 이동 0.035는 각각 98°/0으로 바뀐 뒤에도 여기만
+        /// 옛 값에 남아 있었다).</summary>
         public StickmanPoseAnimator.IdleAmbientPoseSettings BuildIdleAmbientPoseSettings()
         {
             return new StickmanPoseAnimator.IdleAmbientPoseSettings(
                 Config != null ? Config.idleAmbientLookArmDegrees : 107f,
-                Config != null ? Config.idleAmbientLookElbowDegrees : 122f,
-                CharacterHeightWorld * (Config != null ? Config.idleAmbientLookHeadShiftRatio : 0.035f),
+                Config != null ? Config.idleAmbientLookElbowDegrees : 98f,
+                CharacterHeightWorld * (Config != null ? Config.idleAmbientLookHeadShiftRatio : 0f),
                 Config != null ? Config.idleAmbientStretchArmSpreadDegrees : 13f,
                 Config != null ? Config.idleAmbientStretchElbowDegrees : 16f,
                 Config != null ? Config.idleAmbientStretchKneeStraighten01 : 0.7f,
@@ -2177,13 +2254,70 @@ namespace StickMate.States
         /// 않도록 그 값으로 바닥을 받쳐둔다 — 2026-08-29 이전에 GroundSensor 안에 하드코딩돼 있던
         /// Mathf.Max(detectionRadius, dropDepth)를 그대로 옮겨온 것이라 기존 거동과 100% 동일하다.
         /// 이 값이 곧 "매달리기 / 뛰어내리기"의 분기 임계값이다.
+        ///
+        /// ============================================================================
+        /// ★ 2026-09-01 — "매달리기 진입 0회"에 대한 답: 이 값은 임계값이 아니라 **기하학이다**
+        /// ============================================================================
+        /// MOTION_SPEC 1절 표 #5와 UX_FLOW.md 31-4-3은 이 값(배율 1.0에서 약 2.507유닛 = <b>1.10 H</b>)을
+        /// "Dock 단차 0.72 H보다 높아서 매달리기가 구조적으로 도달 불가"인 **임계값 문제**로 분류했다.
+        /// 코드를 실제로 재보면 그 분류는 절반만 맞다 — 증상은 참이지만 원인은 튜닝 상수가 아니다.
+        ///
+        /// <code>
+        /// 매달린 루트(=발) Y = 모서리 Y − LedgeHangDropDepth      (LedgeHangState.Tick의 hangPos)
+        /// 진입 조건(이 클래스의 불변식): 목적지 발판 상단 ≤ 매달린 발
+        ///   ⟺ 낙차 ≥ LedgeHangDropDepth
+        /// </code>
+        ///
+        /// 즉 이 임계값은 "얼마나 깊어야 매달릴 맛이 나는가"라는 <b>연출 판단</b>이 아니라,
+        /// <b>"매달린 발이 아래 발판을 파고들지 않으려면"</b>이라는 물리 조건 그 자체다. 아래 낙차에서
+        /// 매달리면 다리가 창(발판) 안으로 들어간 그림이 된다 — LedgeHangState 클래스 문서의
+        /// "발이 목적지를 지나치지 않음" 항목이 그 불변식이다.
+        ///
+        /// 그리고 이 값은 낮출 수도 없다. <see cref="LedgeHangDropDepth"/>는 어깨 높이 + 팔 길이인데,
+        /// 팔을 아무리 접어도 <b>어깨 높이(≈ 0.8 H) 아래로는 내려가지 않는다</b>. Dock 단차는 0.72 H라
+        /// 어깨보다도 낮다 — 자기 어깨보다 낮은 턱을 두 손으로 붙잡고 매달릴 수는 없다.
+        /// <b>Dock에서 매달리기가 안 나오는 것은 버그가 아니라 그 자세가 성립하지 않기 때문이고,</b>
+        /// 그래서 그 구간은 설계대로 "뛰어내리기"(HopDown)가 전담한다(두 밴드는 이 값에서 정확히 맞물린다).
+        /// 매달리기가 실제로 나오는 자리는 창-창 사이처럼 1.10 H 이상 낙차가 있는 배치다.
+        ///
+        /// ★ 그러므로 31-2 #6의 대사 임계값(1.6 H)만 H 배수로 옮겼고, 이 값의 <b>기하 성분</b>은
+        ///   <b>의도적으로 그대로 둔다</b>. 여기를 낮추면 위 불변식이 깨져 "다리가 창을 파고드는" 그림이
+        ///   돌아온다. Dock 단차에서도 매달리는 그림을 원한다면 임계값이 아니라 **접힌 팔 매달림(tucked hang)
+        ///   자세**를 새로 만들어야 하고, 그건 StickmanPoseAnimator의 신규 곡선이다(리더 판단 대상).
+        ///
+        /// ============================================================================
+        /// ★★ 2026-09-02 — 기하 조건 <b>위에</b> 연출 조건 하나를 더 얹었다
+        /// ============================================================================
+        /// 위 기하 조건("발이 목적지를 파고들지 않는다")은 <b>필요조건이지 충분조건이 아니었다</b>.
+        /// 낙차가 그 임계에 딱 걸린 배치에서는 매달린 발이 착지면 <b>바로 위</b>에 있어서, 손을 놓아도
+        /// 실질적으로 떨어지지 않았다 — 실측(배율 0.60) 발바닥~바닥 <b>5.44pt</b> = 다리 획 두께의 1.77배.
+        /// 그래서 <see cref="StickConfig.ledgeHangMinVisibleDropHeights"/>(0.50 H)를 <b>이 유도에만</b> 더한다:
+        /// <code>
+        /// LedgeHangMinDropDepth = LedgeHangDropDepth + ledgeHangMinVisibleDropHeights x 신장
+        ///                       = 1.1022 H + 0.50 H = 1.6022 H  (배율 1.0에서 3.6445유닛)
+        /// </code>
+        /// 0.50 H인 이유: <see cref="StickConfig.landingSoftAbsorbThresholdHeights"/>(0.35 H) <b>아래는
+        /// LandingCrouch에 진입조차 못 한다</b>. 그 값을 갓 넘긴 낙차는 T0.5 램프의 t0=0이라 깊이 0.08/
+        /// 지속 0.14초 — "반응은 있는데 안 보인다". 0.50 H에서 깊이 0.185 / 지속 0.191초 / 먼지 0.127이 된다.
+        ///
+        /// <para><b>손 위치 계약은 무영향이다</b>: 매달린 루트 Y를 정하는 것은 여전히
+        /// <see cref="LedgeHangDropDepth"/>이고(LedgeHangState.Tick의 hangPos), 이 프로퍼티는 오직
+        /// <b>진입 판정</b>과 <see cref="HopDownMaxDropHeight"/>만 쓴다. 그래서 두 밴드는 여전히 정확히
+        /// 맞물리고(틈도 겹침도 없다) LedgeHangHandAlignmentTests의 단언은 그대로 성립한다.</para>
+        ///
+        /// <para><b>네거티브 컨트롤</b>: 그 설정값을 0으로 두면 이 프로퍼티는 2026-09-01까지의 값과
+        /// 비트 단위로 같아진다.</para>
         /// </summary>
         public float LedgeHangMinDropDepth
         {
             get
             {
                 float detectionRadius = Config != null ? Config.parkourDetectionRadius : 0.5f;
-                return Mathf.Max(detectionRadius, LedgeHangDropDepth);
+                // 0.50f 폴백은 StickConfig.ledgeHangMinVisibleDropHeights의 코드 기본값과 같아야 한다
+                // (Tests/EditMode/ConfigFallbackLiteralDriftTests가 이 짝을 자동으로 감시한다).
+                float visibleHeights = Config != null ? Config.ledgeHangMinVisibleDropHeights : 0.50f;
+                float visibleDrop = Mathf.Max(0f, visibleHeights) * CharacterHeightWorld;
+                return Mathf.Max(detectionRadius, LedgeHangDropDepth + visibleDrop);
             }
         }
 
@@ -2246,5 +2380,35 @@ namespace StickMate.States
                 Config != null ? Config.ledgeHangSwayAmplitudeDegrees : 5f,
                 Config != null ? Config.ledgeHangSwayFrequencyHz : 0.9f);
         }
+
+        /// <summary>
+        /// 등반 4박자 포즈 설정 묶음(StickConfig -> StickmanPoseAnimator). 위 Build*PoseSettings와
+        /// 완전히 같은 패턴이며, 전부 <b>각도와 무차원 비율</b>이라 캐릭터 배율 환산이 필요 없다.
+        /// 거리 성분(짚는 위치/딛는 위치)은 여기가 아니라 States/ParkourClimbState.cs가
+        /// <see cref="CharacterHeightWorld"/>에서 유도해 월드 유닛으로 넘긴다 — 이 프로젝트의
+        /// "거리·속도는 실측 신장에서 파생" 규약 그대로다.
+        /// </summary>
+        public StickmanPoseAnimator.ParkourClimbPoseSettings BuildParkourClimbPoseSettings()
+        {
+            return new StickmanPoseAnimator.ParkourClimbPoseSettings(
+                Config != null ? Config.parkourClimbReachFraction : 0.1833f,
+                Config != null ? Config.parkourClimbHangFraction : 0.3250f,
+                Config != null ? Config.parkourClimbPullFraction : 0.6583f,
+                Config != null ? Config.parkourClimbReleaseFraction : 0.8917f,
+                Config != null ? Config.parkourClimbRiseAtReach01 : 0.02f,
+                Config != null ? Config.parkourClimbRiseAtHang01 : 0.10f,
+                Config != null ? Config.parkourClimbRiseAtPull01 : 0.80f,
+                Config != null ? Config.parkourClimbMantleHipDegrees : 40f,
+                Config != null ? Config.parkourClimbMantleKneeDegrees : 39f,
+                Config != null ? Config.parkourClimbTorsoLeanDegrees : 24f,
+                Config != null ? Config.parkourClimbMaxBodySagHeights : 0.75f,
+                Config != null ? Config.parkourClimbWallFootDropLegRatio : 0.62f,
+                Config != null ? Config.parkourClimbMantleArmDegrees : 62f,
+                Config != null ? Config.parkourClimbMantleElbowDegrees : 18f);
+        }
+
+        /// <summary>등반 자세의 각도 보간 계수(1/초). PoseSmoothingRate와 같은 성격의 창구다.</summary>
+        public float ParkourClimbPoseSmoothingRate =>
+            Config != null ? Config.parkourClimbPoseSmoothingRate : 44f;
     }
 }

@@ -6,7 +6,7 @@ namespace StickMate.States
     /// <summary>
     /// 능동 상태: StickConfig.gravityScale에 따라 자유낙하(중력 자체는 Rigidbody2D 설정으로 처리 —
     /// 이 상태는 착지/화면이탈 감지만 담당).
-    /// 전이: 발판 착지 감지 -> LandingCrouch(낙하 높이 >= StickConfig.rollLandingHeightThreshold) /
+    /// 전이: 발판 착지 감지 -> LandingCrouch(낙하 높이 >= StickConfig.landingSoftAbsorbThresholdHeights x 신장) /
     ///                        Idle/Walk(그 미만 — 착지 시 이동 입력 유무로 분기) /
     ///       화면(발판 좌우 범위) 이탈 -> Fall 유지(사실상 no-op) /
     ///       외력 임계값 초과 -> Ragdoll(강제 인터럽트, Phase 2).
@@ -163,7 +163,12 @@ namespace StickMate.States
             // 착지 확정 — 낙하 높이가 임계값 이상이면 구르기 착지 훅 발행(UX_FLOW.md 4절 "구르기(ROLL)").
             // 부수 연출(먼지 파티클 등)을 위한 신호로 그대로 유지한다.
             float fallHeight = _fallStartWorldY - landingWorldY;
-            float rollThreshold = _blackboard.Config != null ? _blackboard.Config.rollLandingHeightThreshold : 2f;
+            // ★ 2026-09-01 — 절대 유닛(2.0)에서 **신장 배수**로 전환(MOTION_SPEC 4-5).
+            //   여기가 "착지 연출이 시작되는" 문턱이며, T0.5(가벼운 흡수)가 생기면서 0.88 H -> 0.35 H로
+            //   내려왔다. 그 아래(T0)는 예전과 100% 동일하게 곧바로 Idle/Walk로 복귀한다.
+            float rollThreshold = _blackboard.Config != null
+                ? _blackboard.Config.ResolveLandingSoftAbsorbThreshold(_blackboard.CharacterHeightWorld)
+                : 0.35f * StickConfig.BaselineCharacterTotalHeight;
             bool crouchLanding = fallHeight >= rollThreshold;
             if (crouchLanding)
             {

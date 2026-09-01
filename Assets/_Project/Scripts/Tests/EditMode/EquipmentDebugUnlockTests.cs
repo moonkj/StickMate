@@ -77,7 +77,17 @@ namespace StickMate.Tests.EditMode
 
             Assert.AreEqual(ItemCatalog.EquipmentCount, checkedItems,
                 "확인한 장비 수가 카탈로그가 말하는 장비 수와 다릅니다.");
-            Assert.AreEqual(42, checkedItems, "장비가 42종이 아닙니다(2026-09-01 카테고리당 +2종으로 7×6).");
+            // ★ (개선 R2, 2026-09-01 리더 판정) 여기 원래 `AreEqual(42, checkedItems)`가 있었다.
+            // 프로덕션 상수(ItemCatalog.EquipmentCount)를 숫자로 베낀 것이라 CLAUDE.md 위반이었고,
+            // 바로 윗줄이 이미 그 상수로 같은 것을 검증하고 있어 중복이기도 했다. 무엇보다 장비
+            // 종수가 바뀌는 순간 이 줄이 <b>무관한 라운드를 막는다</b> — 사람이 한 번 보게 하는
+            // 지뢰선이 아니라 그냥 지뢰였다.
+            //
+            // 대신 "공허하지 않은가"만 성질로 남긴다: 카탈로그가 비면 윗줄이 0 == 0으로 통과해
+            // 이 테스트 전체가 아무것도 안 보게 되는데, 그건 숫자를 베끼지 않고도 막을 수 있다.
+            Assert.Greater(checkedItems, 0,
+                "장비를 하나도 확인하지 못했습니다 — 카탈로그가 비었거나 슬롯 순회가 깨졌습니다. "
+                + "이 상태면 위 EquipmentCount 단언이 0 == 0으로 공허하게 통과합니다.");
             Assert.AreEqual(ItemCatalog.EquipmentCount, ItemCatalog.UnlockedEquipmentCount(config),
                 "보관함 헤더의 보유 수(분자)가 전체 장비 수(분모)와 다릅니다 — 스위치가 켜져 있으면 " +
                 "둘이 같아야 합니다. 숫자를 적지 않고 세는 이유는 아이템이 늘 때마다 여기가 뒤처지기 때문입니다.");

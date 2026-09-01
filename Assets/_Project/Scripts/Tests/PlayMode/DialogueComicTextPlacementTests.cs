@@ -109,7 +109,11 @@ namespace StickMate.Tests.PlayMode
             private readonly string _text;
             public TalkingState(StickmanStateId id, string text) { StateId = id; _text = text; }
             public StickmanStateId StateId { get; }
-            public void Enter(StateTransitionContext context) => _ = new DialogueIntent(context, id => _text);
+            // 종류는 매핑 함수가 텍스트와 함께 돌려준다(UX_FLOW.md 5절 규칙 4-a). 이 스텁은 최소 노출
+            // 계약(가독예산)을 검증하는 리그라 Reaction을 쓴다 — Narrative는 상태 종료 시 즉시 컷되므로
+            // 최소 노출 자체가 적용되지 않는다.
+            public void Enter(StateTransitionContext context)
+                => _ = new DialogueIntent(context, id => DialogueLine.React(_text));
             public void Tick(float deltaTime) { }
             public void Exit() { }
         }
@@ -423,11 +427,17 @@ namespace StickMate.Tests.PlayMode
                 "글자 외곽선이 없다 — 배경이 사라진 뒤 글자와 바탕화면을 가르는 유일한 수단이다 " +
                 "(검은 글자 + 어두운 바탕화면에서 글자가 그대로 사라진다).");
             Assert.Greater(outline.effectDistance.x, 0.3f, "외곽선 두께가 0에 가깝다.");
-            // ★ 외곽선은 **글자 크기에 비례**해야 한다(고정 두께면 작은 글자를 잡아먹는다).
-            //   글자 크기의 20%를 넘으면 이웃 글자의 후광이 붙어 한글 자모 사이가 메워진다.
-            Assert.Less(outline.effectDistance.x, texts[0].fontSize * 0.2f,
-                $"외곽선({outline.effectDistance.x:F2})이 글자 크기({texts[0].fontSize})에 비해 너무 두껍다 — " +
-                "한글은 자모 사이가 메워져 읽을 수 없게 된다.");
+            // ★ 2026-09-01 상한을 실측 기반으로 조인다(사용자 신고 "텍스트들도 선명하지 않고").
+            //   종전 상한은 `fontSize x 0.2`였는데, 실제로 뭉개진 값(0.06em)이 그 상한의 <b>1/3</b>이라
+            //   이 단언은 결함을 통과시켰다. 진짜 상한은 <b>한글 속공간</b>이다: uGUI Outline은 사방으로
+            //   t만큼 팽창하므로 속공간은 2t만큼 줄고, 2t가 속공간을 넘으면 ㅇ/ㅁ의 속이 메워진다.
+            //   숫자를 베끼지 않고 프로덕션 상수를 참조한다(CLAUDE.md).
+            float counterBudgetPoints =
+                texts[0].fontSize * DialogueBubbleRenderer.NarrowestHangulCounterEmRatio * 0.5f;
+            Assert.Less(outline.effectDistance.x, counterBudgetPoints,
+                $"외곽선({outline.effectDistance.x:F2}pt)이 글자 크기({texts[0].fontSize}pt)의 한글 속공간 " +
+                $"예산({counterBudgetPoints:F2}pt)을 넘는다 — 속공간이 양쪽에서 2t만큼 좁아지므로 " +
+                "ㅇ/ㅁ의 속이 원리적으로 메워진다(2026-09-01 실측: 0.06em에서 속공간 열림 0.000).");
 
             // 기본 프리셋은 검은 잉크 -> 외곽선은 흰색이어야 한다(반대색).
             float inkLuma = texts[0].color.grayscale;
@@ -636,8 +646,11 @@ namespace StickMate.Tests.PlayMode
         /// 나머지 PlayMode 리그는 DPI가 1이라 실제 사용자 화면(Retina 2x)과 조건이 다르다 —
         /// 그쪽에서만 확인하면 "테스트는 통과하는데 화면은 그대로 수평"이 성립해 버린다.
         /// 그래서 여기서는 출하 조합을 그대로 재현한다:
-        ///   dialogueFontSize 16(배포 에셋) x characterScale 0.75(출하) x 0.875(만화 배율) = 10pt,
-        ///   x Retina 캔버스 배율 2.0 = 물리 20px >= 하한 14px  ->  <b>켜져야 한다</b>.
+        ///   dialogueFontSize 16(배포 에셋) x characterScale 0.75(출하) x 0.875(만화 배율) = 10pt이지만,
+        ///   ★ 2026-09-01부터 <see cref="DialogueBubbleRenderer.ResolveMinComicFontSize"/>(외곽선 링이
+        ///   1 물리픽셀이 되는 크기)가 바닥을 받쳐 <b>13pt</b>가 되고,
+        ///   x Retina 캔버스 배율 2.0 = 물리 26px >= 하한 14px  ->  <b>켜져야 한다</b>.
+        ///   (하한이 오르기 전에도 20px로 켜져 있었으므로 이 테스트의 판정은 바뀌지 않는다.)
         /// (desktopDpiScale = 0.5 = "OS 포인트 / Unity 픽셀"이 곧 캔버스 배율 2.0의 역수다.)
         /// </summary>
         [UnityTest]
@@ -653,7 +666,8 @@ namespace StickMate.Tests.PlayMode
 
             float z = SignedZDegrees(FindTextPanel(renderer));
             Assert.GreaterOrEqual(Mathf.Abs(z), MinVisibleTiltDegrees,
-                $"출하 그대로의 설정(16pt x 0.75 x 0.875 = 10pt, Retina 2x = 물리 20px)에서 기울기가 " +
+                $"출하 그대로의 설정(16pt x 0.75 x 0.875 -> 만화 하한 " +
+                $"{DialogueBubbleRenderer.ResolveMinComicFontSize(DialogueBubbleRenderer.VerifiedCanvasScale)}pt, Retina 2x)에서 기울기가 " +
                 $"{Mathf.Abs(z):F2}도뿐이다 — 사용자 화면에서 글자가 수평으로 보인다는 뜻이다. " +
                 "회전 하한(ComicTiltMinGlyphPixels)이 출하 조합을 잘라내고 있는지 확인할 것.");
             Assert.Greater(z, 0f, "오른쪽으로 걷는 중이라 글자는 왼쪽 위 = 반시계여야 한다.");

@@ -136,8 +136,88 @@ namespace StickMate.Tests.EditMode
                 Reason = "OS 배경화면을 실제로 변경하는 SystemParametersInfo 플래그(27-3 그라피티가 " +
                     "명시적으로 금지) — 보강 항목, 현재 코드베이스에 등장하지 않음(0건이어야 정상).",
             },
+
+            // ★★ 2026-09-01 (폴링 제거 검토 라운드) 추가 8건.
+            //
+            // 이 라운드는 "초당 3.3회 전체 창 열거"를 user32 이벤트 훅(SetWinEventHook)으로 바꾸려다
+            // **실측으로 중단**됐다(창 열거는 실행 시간의 0.5%, 스톨 귀인 판정은 '로직밖'). 구현은
+            // 되돌렸지만 **이 항목들은 남긴다** — 되돌린 이유가 "위험해서"가 아니라 "이득이 작아서"라,
+            // 언젠가 같은 방향이 다시 열릴 가능성이 높기 때문이다. 그때 훅과 함께 들어오기 쉬운 것이
+            // 아래 API들이다: hwnd를 손에 쥔 코드 옆에 "남의 창을 조작하는" 호출을 붙이는 것은
+            // 코드상 매우 자연스럽고, 그 순간 원칙 3이 조용히 무너진다.
+            //
+            // 지금 전부 0건이며, **0건인 상태를 유지하는 것 자체가 이 항목의 목적**이다.
+            // (SetWinEventHook / UnhookWinEvent 자체는 순수 관찰이라 금지 목록에 넣지 않는다 —
+            //  금지 대상은 '관찰'이 아니라 '조작'이다.)
+            new ForbiddenPattern
+            {
+                Needle = "SetWindowsHookEx(",
+                Reason = "SetWinEventHook과 이름이 비슷하지만 **완전히 다른 물건**이다 — 이쪽은 우리 DLL을 " +
+                    "다른 프로세스에 주입하는 훅이라 남의 프로세스 안에서 코드가 돈다. 원칙 3/비침해 " +
+                    "정면 위반이며, 관찰만 필요한 이 앱에는 필요가 없다(SetWinEventHook + " +
+                    "WINEVENT_OUTOFCONTEXT로 충분하다).",
+            },
+            new ForbiddenPattern
+            {
+                Needle = "ShowWindow(",
+                Reason = "타 윈도우를 최소화/최대화/숨김/복원시키는 Win32 API — 원칙 3 위반. " +
+                    "우리는 최소화 '이벤트를 통보받을' 뿐 최소화를 '시키지' 않는다.",
+            },
+            new ForbiddenPattern
+            {
+                Needle = "SetForegroundWindow(",
+                Reason = "타 윈도우를 강제로 앞으로 끌어와 포커스를 빼앗는 API — 비침해 원칙 2 위반. " +
+                    "EVENT_SYSTEM_FOREGROUND를 '구독'하는 것과 포커스를 '바꾸는' 것은 정반대 행위다.",
+            },
+            new ForbiddenPattern
+            {
+                Needle = "BringWindowToTop(",
+                Reason = "SetForegroundWindow와 동급인 z-order 강제 변경 API — 원칙 2/3 위반.",
+            },
+            new ForbiddenPattern
+            {
+                Needle = "SwitchToThisWindow(",
+                Reason = "타 윈도우를 강제 활성화하는 API — 원칙 2/3 위반.",
+            },
+            new ForbiddenPattern
+            {
+                Needle = "EndTask(",
+                Reason = "타 윈도우/앱을 강제로 끝내는 API — 원칙 3 정면 위반.",
+            },
+            new ForbiddenPattern
+            {
+                Needle = "PostMessage(",
+                Reason = "WM_CLOSE / WM_SYSCOMMAND(SC_MOVE, SC_MINIMIZE) 한 줄이면 남의 창을 닫거나 " +
+                    "옮길 수 있다 — SetWindowPos를 금지하고 이걸 열어 두면 금지가 무의미해진다. " +
+                    "우리가 남의 창에 보낼 메시지는 하나도 없다(전부 조회/통보 수신이다).",
+            },
+            new ForbiddenPattern
+            {
+                Needle = "AttachThreadInput(",
+                Reason = "다른 스레드의 입력 큐에 우리를 붙이는 API. 포커스/커서 조작 우회의 표준 수단이라 " +
+                    "원칙 2/3의 표면적을 크게 넓힌다 — 관찰 전용 앱에는 필요가 없다.",
+            },
         };
 
+        // ★★ 2026-09-01 — 이 스캔은 이제 **주석을 걷어낸 뒤** 본다(BlankOutCommentLines).
+        //
+        // 그동안은 원문 그대로 훑었고, 이 파일 아래쪽 레지스트리 스캔의 주석이 그 차이를 이렇게
+        // 정당화했다: "위 스캔은 주석을 걷어내지 않는다(그리고 지금까지 그래도 됐다 — 어떤 주석도
+        // File.Delete( 같은 형태를 인용하지 않는다)". **그 전제가 오늘 깨졌다.**
+        //
+        // 같은 날 다른 라운드 두 개가 <b>금지를 지키는 이유를 설명하려고</b> 금지 API를 주석에 인용했다:
+        //   Platform/TopmostBandOcclusion.cs        — "밴드 안에서 위로 올라가는 유일한 수단은
+        //                                              SetWindowPos(HWND_TOPMOST)이고, 그러면
+        //                                              작업표시줄 위에 영구히 올라앉는다"
+        //   Platform/Windows/WindowsTopmostWatchdog.cs — 같은 취지
+        //
+        // 즉 **정직하게 적을수록 감사가 빨개지는** 상태가 됐고, 그러면 다음 사람은 사실을 지운다.
+        // 그건 감사가 지키려던 것을 정확히 반대로 만드는 결과다. 그래서 판단 기준(아래쪽 레지스트리
+        // 스캔 주석에 이미 적혀 있던 것)을 그대로 적용한다 — **"주석에 인용될 수 있는 이름인가"**.
+        // 이제 답은 '그렇다'이므로 이 스캔도 같은 처리를 받는다.
+        //
+        // 감사의 힘은 줄지 않는다: BlankOutCommentLines는 <b>줄 전체가 주석인 줄</b>만 비우므로,
+        // 실제 호출은 그런 줄에 있을 수 없다(있으면 컴파일이 안 된다).
         [Test]
         public void 금지된_API_호출_패턴이_소스코드_어디에도_없다()
         {
@@ -147,7 +227,7 @@ namespace StickMate.Tests.EditMode
             foreach (var filePath in files)
             {
                 string fileName = Path.GetFileName(filePath);
-                string[] lines = File.ReadAllLines(filePath);
+                string[] lines = BlankOutCommentLines(File.ReadAllLines(filePath));
 
                 for (int i = 0; i < lines.Length; i++)
                 {
@@ -185,9 +265,11 @@ namespace StickMate.Tests.EditMode
         //   레지스트리를 만지는 코드가 언젠가 Platform/Windows/ 밖에 생기면(예: 자동 실행 등록,
         //   35-1-9 P3의 "로그인 항목") 옛 스캔은 그것을 영영 못 본다. 원칙은 폴더에 걸지 않는다.
         //
-        // <b>왜 위 ForbiddenPatterns에 합치지 않았나</b>: 위 스캔은 주석을 걷어내지 않는다(그리고
-        //   지금까지 그래도 됐다 — 어떤 주석도 File.Delete( 같은 형태를 인용하지 않는다).
-        //   반면 레지스트리 쓰기 API는 <b>금지 사실을 적은 주석</b>이 실제로 존재한다
+        // <b>왜 위 ForbiddenPatterns에 합치지 않았나</b>: 원래 이유는 "위 스캔은 주석을 걷어내지
+        //   않는다"였다. ★ 2026-09-01부터 위 스캔도 주석을 걷어내므로 **그 차이는 사라졌다**
+        //   (위 스캔의 해당 주석에 경위가 있다). 그럼에도 두 리스트를 합치지 않는 이유는 남아 있다:
+        //   대상 범위가 다르다(이쪽은 '선언조차 없어야 하는' 이름 + 접근 권한 플래그까지 본다).
+        //   레지스트리 쓰기 API는 <b>금지 사실을 적은 주석</b>이 실제로 존재한다
         //   (WindowsGameProcessProbe.cs가 "RegSetValueEx / RegCreateKeyEx는 선언조차 하지 않는다"고
         //   써 두었다). 정직하게 적을수록 감사가 빨개지면 다음 사람은 사실을 지운다.
         //   그래서 이 항목만 <b>주석을 제외한 스캔</b>으로 따로 둔다 — 두 리스트의 차이는 취향이 아니라
@@ -411,5 +493,6 @@ namespace StickMate.Tests.EditMode
                     "수정할 수 없는 읽기 전용이어야 한다(원칙 3 '읽기 전용 열거').");
             }
         }
+
     }
 }

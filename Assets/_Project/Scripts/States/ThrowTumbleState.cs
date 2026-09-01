@@ -669,7 +669,9 @@ namespace StickMate.States
             StickConfig cfg = _blackboard.Config;
             bool crouchEnabled = cfg == null || cfg.landingCrouchEnabled;
             bool always = cfg == null || cfg.throwTumbleAlwaysCrouchOnLanding;
-            float threshold = cfg != null ? cfg.rollLandingHeightThreshold : 2f;
+            float threshold = cfg != null
+                ? cfg.ResolveLandingSoftAbsorbThreshold(_blackboard.CharacterHeightWorld)
+                : 0.35f * StickConfig.BaselineCharacterTotalHeight;
 
             float landedRotation = body != null ? body.rotation : 0f;
             Debug.Log($"[던지기회전] 착지 — 총 회전={MaxAbsAngleDegrees:F0}도(착지 각도={landedRotation:F2}도), " +

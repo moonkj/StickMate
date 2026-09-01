@@ -86,7 +86,7 @@ namespace StickMate.Interaction
         private bool _prevS, _prevN, _prevJ, _prevF;
         private bool _prevA;
         private bool _prevI;
-        private bool _prevComma;
+        private bool _prevP;
 
         // 지연 탐색 후 캐시.
         private BattleMinigameDirector _battleDirector;
@@ -127,8 +127,7 @@ namespace StickMate.Interaction
             FocusWatch,         // (다) 90초 데모
             Archery,
             CharacterInfo,
-            Settings,           // ★ 2026-09-01 신설 — 설정창(⌃⌥⌘,)
-            CornerPanel,        // (다) 임시 — 거처는 설정창 [일반](36-11의 부채)
+            Settings,           // ★ 2026-09-01 신설 — 설정창(⌃⌥⌘P)
         }
 
         private void Awake()
@@ -165,14 +164,14 @@ namespace StickMate.Interaction
             string userKeys = "사용자 단축키: " + ShortcutLabel.Chord("C") + "(잉크색 전환) / R(로데오 커서 on-off) / " +
                 "**B(말 걸기)** / **K(격파 놀이)** / **G(그라피티)** / **T(창 도둑)** / " +
                 "**X(창 부수기)** / **A(활쏘기)** / **N(가출 중이면 돌아오라고 부르기)** / " +
-                "**I(캐릭터 정보/장비 창)** / **,(설정창)**. 이 명령들의 주 경로는 부채꼴 ④ [행동] 창이고, \n" +
+                "**I(캐릭터 정보/장비 창)** / **P(설정창)**. 이 명령들의 주 경로는 부채꼴 ④ [행동] 창이고, \n" +
                 "설정창의 주 경로는 캐릭터 정보창 헤더의 [설정]입니다. ";
 
             string devKeys = StickMateDevTools.Enabled
                 ? "★ 개발 전용 단축키(게이트 열림 — " + StickMateDevTools.SourceLabel + "): " +
                   "D(진단 로그 on-off) / H(하드웨어 반응 미리보기) / S(스트레스 게이지 순환) / " +
-                  "J(할일 알림 강제) / F(집중 모드 90초 데모) / N(가출 강제 발동) / " +
-                  "구석 크기 패널 토글. 이 6개는 사용자 UI에 노출되지 않습니다(원칙 1 — 표시된 것과 " +
+                  "J(할일 알림 강제) / F(집중 모드 90초 데모) / N(가출 강제 발동). " +
+                  "이 6개는 사용자 UI에 노출되지 않습니다(원칙 1 — 표시된 것과 " +
                   "실제가 달라지는 경로라서). "
                 : $"개발 전용 단축키는 잠겨 있습니다({StickMateDevTools.SourceLabel}) — " +
                   $"환경변수 {StickMateDevTools.EnvironmentVariableName}=1 로 실행하면 열립니다. ";
@@ -189,6 +188,7 @@ namespace StickMate.Interaction
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Directors);   // [스톨구간] 계측
             _pollTimer += Time.unscaledDeltaTime;
             if (_pollTimer < PollInterval) return;
             _pollTimer = 0f;
@@ -221,7 +221,7 @@ namespace StickMate.Interaction
             bool x = chord && IsKeyDown(GlobalKey.X);
             bool aKey = chord && IsKeyDown(GlobalKey.A);
             bool iKey = chord && IsKeyDown(GlobalKey.I);
-            bool comma = chord && IsKeyDown(GlobalKey.Comma);
+            bool pKey = chord && IsKeyDown(GlobalKey.P);
 
             // N은 반쪽만 사용자용이다: 가출 중이면 [돌아와!](상시 탈출구, 원칙 4)이고 그 밖에는 강제
             // 발동(개발 전용)이다. 키 조회는 항상 하고, 갈래는 RunawayDirector가 상태로 나눈다.
@@ -241,7 +241,7 @@ namespace StickMate.Interaction
                 _prevS = sKey; _prevN = n; _prevJ = j; _prevF = f;
                 _prevA = aKey;
                 _prevI = iKey;
-                _prevComma = comma;
+                _prevP = pKey;
                 return;
             }
 
@@ -261,13 +261,13 @@ namespace StickMate.Interaction
             bool fRise = f && !_prevF;
             bool aRise = aKey && !_prevA;
             bool iRise = iKey && !_prevI;
-            bool commaRise = comma && !_prevComma;
+            bool pRise = pKey && !_prevP;
             _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevK = k; _prevG = g;
             _prevT = t; _prevX = x; _prevH = h;
             _prevS = sKey; _prevN = n; _prevJ = j; _prevF = f;
             _prevA = aKey;
             _prevI = iKey;
-            _prevComma = comma;
+            _prevP = pKey;
 
             if (qRise) Invoke(ControlAction.Quit, HotkeySource("Q"));
             else if (cRise) Invoke(ControlAction.InkColor, HotkeySource("C"));
@@ -285,7 +285,7 @@ namespace StickMate.Interaction
             else if (fRise) Invoke(ControlAction.FocusWatch, HotkeySource("F"));
             else if (aRise) Invoke(ControlAction.Archery, HotkeySource("A"));
             else if (iRise) Invoke(ControlAction.CharacterInfo, HotkeySource("I"));
-            else if (commaRise) Invoke(ControlAction.Settings, HotkeySource(","));
+            else if (pRise) Invoke(ControlAction.Settings, HotkeySource("P"));
         }
 
         /// <summary>
@@ -341,13 +341,6 @@ namespace StickMate.Interaction
                     _config.rodeoCursorEnabled = !_config.rodeoCursorEnabled;
                     Debug.Log($"[앱제어] 로데오 커서 {(_config.rodeoCursorEnabled ? "켬" : "끔")}({source}) — " +
                         "이건 자동 발동 게이트이지 발동 명령이 아닙니다(거처는 설정창 [이벤트], 36-1).");
-                    break;
-
-                case ControlAction.CornerPanel:
-                    UiLayoutModel.SetCornerPanelEnabled(!UiLayoutModel.CornerPanelEnabled);
-                    Debug.Log($"[앱제어] 구석 호버 패널 {(UiLayoutModel.CornerPanelEnabled ? "켬" : "끔")}({source}) — " +
-                        "끄면 화면 좌하단 감지 영역이 통째로 비활성화됩니다(저장됨). " +
-                        "★ 이 토글은 갈 곳(설정창 [일반])이 아직 없어 개발 게이트 뒤에 임시로 있습니다(36-11 부채).");
                     break;
 
                 case ControlAction.Diagnostics:
@@ -445,8 +438,10 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// 설정창 토글(전역 단축키 ⌃⌥⌘,). 주 진입점은 <b>정보창 헤더의 [설정]</b>이고 이쪽은 보조
-        /// 경로다(docs/UX_FLOW.md 36-11). 배타 모달 정리는 <see cref="SettingsWindow.Open"/> 한 곳이
+        /// 설정창 토글(전역 단축키 ⌃⌥⌘P, Preferences). 주 진입점은 <b>정보창 헤더의 [설정]</b>이고
+        /// 이쪽은 보조 경로다(docs/UX_FLOW.md 36-11).
+        /// <para>2026-09-01 <c>⌃⌥⌘,</c>에서 옮겼다 — 그 조합은 macOS 접근성 "대비 줄이기"라
+        /// 창을 여닫을 때마다 사용자의 OS 대비 설정이 실제로 내려갔다(<c>Core/ShortcutLabel</c>).</para> 배타 모달 정리는 <see cref="SettingsWindow.Open"/> 한 곳이
         /// 책임진다 — 여기서 다른 창을 닫지 않는다(정보창 경로가 실제로 그렇게 새고 있었다).
         /// </summary>
         private void ToggleSettings(string source)

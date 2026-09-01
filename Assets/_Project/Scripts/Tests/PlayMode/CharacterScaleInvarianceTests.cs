@@ -203,12 +203,30 @@ namespace StickMate.Tests.PlayMode
             AssertRatio(metrics.HipLocalY, 0.9346944f * scale, "엉덩이 Y");
 
             // ── 파생값(매달리기 최소 낙차)도 자동으로 따라와야 한다 — 이게 "단일 소스"의 증거다.
+            //
+            // ★ 2026-09-02 — 예전에는 여기 `2.5072f * scale` 한 줄이 박혀 있었다. 그 숫자는 두 가지를
+            //   한꺼번에 뜻했다: (가) 프리팹 실측 기하(손끝~발끝), (나) "매달리기 임계 = 그 기하 그대로".
+            //   (나)는 **프로덕션 정책**이라 테스트가 숫자로 베끼면 안 되는 쪽이고, 실제로 이번 라운드에
+            //   StickConfig.ledgeHangMinVisibleDropHeights(0.50 H)가 더해지면서 그 한 줄이 깨졌다
+            //   (협업 프로토콜 "테스트에 프로덕션 상수를 숫자로 베끼지 않는다"의 잠복 위반이었다).
+            //   그래서 둘을 분리한다 — (가)는 핀으로 계속 잠그고, (나)는 설정 필드를 **참조**한다.
             StickmanBlackboard bb = _agent.Blackboard;
-            float expectedHang = 2.5072f * scale;
-            Debug.Log($"{LogPrefix} 매달리기 최소 낙차 실측={bb.LedgeHangMinDropDepth:F4}(기대 {expectedHang:F4}).");
-            Assert.AreEqual(expectedHang, bb.LedgeHangMinDropDepth, 0.02f,
-                $"{LogPrefix} 매달리기 최소 낙차가 배율을 따라오지 않았습니다 — 팔 길이/어깨 높이 중 하나에 " +
+
+            // (가) 기하 성분 — 프리팹 실측이라 핀이 맞다(이 테스트의 존재 이유 그 자체).
+            float expectedReach = HangReachHeightsAtScaleOne * StickConfig.BaselineCharacterTotalHeight * scale;
+            Debug.Log($"{LogPrefix} 손끝~발끝 실측={bb.LedgeHangDropDepth:F4}(기대 {expectedReach:F4}).");
+            Assert.AreEqual(expectedReach, bb.LedgeHangDropDepth, 0.02f,
+                $"{LogPrefix} 손끝~발끝 거리가 배율을 따라오지 않았습니다 — 팔 길이/어깨 높이 중 하나에 " +
                 "배율이 적용되지 않았다는 뜻입니다(StickmanPoseAnimator가 프리팹을 실측하므로 원인은 프리팹입니다).");
+
+            // (나) 정책 성분 — 설정값을 **읽어서** 더한다. 0으로 두면 (가)와 같아진다(설계자가 넣어 둔 네거티브 컨트롤).
+            float visibleDrop = Mathf.Max(0f, shipped.ledgeHangMinVisibleDropHeights) * metrics.TotalHeight;
+            float expectedHang = bb.LedgeHangDropDepth + visibleDrop;
+            Debug.Log($"{LogPrefix} 매달리기 최소 낙차 실측={bb.LedgeHangMinDropDepth:F4}(기대 {expectedHang:F4} = " +
+                $"손끝~발끝 {bb.LedgeHangDropDepth:F4} + 보이는 낙차 {shipped.ledgeHangMinVisibleDropHeights:F3} H x 신장 {metrics.TotalHeight:F4}).");
+            Assert.AreEqual(expectedHang, bb.LedgeHangMinDropDepth, 0.02f,
+                $"{LogPrefix} 매달리기 최소 낙차가 '손끝~발끝 + ledgeHangMinVisibleDropHeights x 신장'과 다릅니다 — " +
+                "StickmanBlackboard.LedgeHangMinDropDepth의 유도가 바뀌었습니다.");
         }
 
         // ============================================================================
@@ -251,6 +269,63 @@ namespace StickMate.Tests.PlayMode
                 "구워지지 않았거나 렌더러 폴백 상수(2.27)가 쓰이고 있습니다.");
         }
 
+        // ============================================================================
+        // ★ 네거티브 컨트롤 — ledgeHangMinVisibleDropHeights = 0 이면 예전 값으로 정확히 돌아간다
+        // ============================================================================
+        //
+        // 이 저장소는 "항상 참인 단언"으로 초록불을 내는 사고를 여러 번 겪었다. 위
+        // PrefabGeometryFollowsCharacterScale의 기대식이 실제로 **설정값을 읽어서** 만들어졌는지를
+        // 증명하려면, 그 설정값을 바꿨을 때 결과가 **따라 움직이는지**를 봐야 한다.
+        //
+        // 0은 설계자가 일부러 남겨 둔 되돌리기 스위치다: 그 값이면 LedgeHangMinDropDepth가
+        // 2026-09-01까지의 유도(= Max(감지반경, 손끝~발끝))와 **비트 단위로 같아진다.**
+        //
+        // ★ 배포 에셋을 건드리지 않는다(절대 불변 원칙 3) — 복제본에만 쓰고 TearDown이 되돌린다.
+
+        [UnityTest]
+        public IEnumerator 네거티브_컨트롤_보이는_낙차를_0으로_두면_예전_임계로_돌아간다()
+        {
+            yield return LoadSceneAndFindAgent();
+
+            StickmanBlackboard bb = _agent.Blackboard;
+            _originalConfig = bb.Config;
+            _clonedConfig = Object.Instantiate(_originalConfig);
+            bb.Config = _clonedConfig;
+
+            float reach = bb.LedgeHangDropDepth;
+            float detection = _clonedConfig.parkourDetectionRadius;
+            float legacy = Mathf.Max(detection, reach);   // 2026-09-01까지의 유도식 그대로.
+
+            // (1) 켜져 있을 때 — 임계가 '보이는 낙차'만큼 위로 올라가 있어야 한다.
+            float on = bb.LedgeHangMinDropDepth;
+            float expectedOn = Mathf.Max(detection, reach + _clonedConfig.ledgeHangMinVisibleDropHeights * bb.CharacterHeightWorld);
+
+            // (2) 0으로 끄면 — 예전 값과 같아져야 한다.
+            _clonedConfig.ledgeHangMinVisibleDropHeights = 0f;
+            float off = bb.LedgeHangMinDropDepth;
+
+            Debug.Log($"{LogPrefix} 네거티브 컨트롤 — 손끝~발끝={reach:F4}, 신장={bb.CharacterHeightWorld:F4}, " +
+                $"설정 켜짐({_originalConfig.ledgeHangMinVisibleDropHeights:F3} H) 임계={on:F4}(기대 {expectedOn:F4}) / " +
+                $"0으로 끔 임계={off:F4}(예전 유도 {legacy:F4}).");
+
+            Assert.AreEqual(expectedOn, on, 0.0005f,
+                $"{LogPrefix} 설정이 켜진 상태의 임계가 '손끝~발끝 + 설정 x 신장'과 다릅니다.");
+            Assert.AreEqual(legacy, off, 0.0001f,
+                $"{LogPrefix} ledgeHangMinVisibleDropHeights를 0으로 두었는데 예전 임계({legacy:F4})로 " +
+                $"돌아가지 않았습니다(실측 {off:F4}) — 되돌리기 스위치가 작동하지 않습니다.");
+            // ★ 그리고 두 값이 실제로 **달라야** 한다. 같으면 위 두 단언은 아무것도 증명하지 못한다.
+            Assert.Greater(on - off, bb.CharacterHeightWorld * 0.4f,
+                $"{LogPrefix} 스위치를 켠 값({on:F4})과 끈 값({off:F4})의 차이가 너무 작습니다 — " +
+                "이 컨트롤이 '항상 참인 단언'이 되었습니다(배포 설정값이 0에 가깝게 내려갔는지 확인하세요).");
+        }
+
+        /// <summary>배율 1.0에서의 손끝~발끝 거리(= 어깨 높이 + 팔 길이)를 <b>신장 배수</b>로 적은 핀.
+        /// 2.5072유닛 / BaselineCharacterTotalHeight(2.2746944) = 1.10222 H.
+        /// <para>이것은 <b>프리팹 실측 기하</b>이지 튜닝 상수가 아니다 — 프리팹의 어깨/팔 비율이 바뀌면
+        /// 여기서 빨간불이 나는 것이 이 테스트의 목적이다. 반대로 매달리기 <b>정책</b>
+        /// (StickConfig.ledgeHangMinVisibleDropHeights)은 절대 여기 적지 않는다.</para></summary>
+        private const float HangReachHeightsAtScaleOne = 1.10222f;
+
         private static void AssertRatio(float actual, float expected, string label)
         {
             Assert.AreEqual(expected, actual, 0.002f,
@@ -271,20 +346,23 @@ namespace StickMate.Tests.PlayMode
             StickConfig cfg = _agent.Config;
             float scale = cfg.ResolveCharacterScale();
 
-            float hangMin = bb.LedgeHangMinDropDepth;      // = 2.5072 x scale
+            float hangMin = bb.LedgeHangMinDropDepth;      // = (손끝~발끝 + 보이는 낙차) x scale = 3.6445 x scale
             float hopMin = cfg.hopDownMinDropHeight;       // 절대값(0.35) — 배율과 무관
             float hangPerScale = hangMin / scale;          // 배율 1.0에서의 매달리기 최소 낙차
             float criticalScale = DockDropUnits / hangPerScale;
 
             float minScaleHangMin = hangPerScale * StickConfig.MinCharacterScale;
-            float resolvedStepUpMax = DockGeometry.ResolveStepUpMaxHeight(cfg.stepUpMaxHeight, DockDropUnits);
+            // ★ 2026-09-02 — 되올라가기 상한 설정값이 신장 배수(stepUpMaxHeights)가 됐다. 숫자를 베끼지 않고
+            //   프로덕션 리졸버로 월드 유닛을 만든 뒤 예전과 같은 유도식에 넘긴다.
+            float stepUpConfiguredWorld = cfg.ResolveStepUpMaxHeightWorld(bb.CharacterHeightWorld);
+            float resolvedStepUpMax = DockGeometry.ResolveStepUpMaxHeight(stepUpConfiguredWorld, DockDropUnits);
 
             Debug.Log($"{LogPrefix} Dock 밴드 — 배율={scale:F3}, 뛰어내리기 밴드=[{hopMin:F3}, {hangMin:F3}), " +
                 $"Dock 낙차={DockDropUnits:F4}(tilesize {DockGeometry.DeveloperMachineTileSizePoints:F0} 실측 파생), " +
                 $"배율 1.0 기준 매달리기 최소={hangPerScale:F4}, 임계 배율={criticalScale:F4}, " +
                 $"슬라이더 하한={StickConfig.MinCharacterScale:F3}, 문서 상수={StickConfig.DockHopDownCriticalScale:F4}, " +
                 $"기본 배율 여유={(hangMin - DockDropUnits):F4}유닛, " +
-                $"되올라가기 상한 설정값={cfg.stepUpMaxHeight:F3} -> 유도값={resolvedStepUpMax:F3}");
+                $"되올라가기 상한 설정값={cfg.stepUpMaxHeights:F4} H -> 월드 {stepUpConfiguredWorld:F3} -> 유도값={resolvedStepUpMax:F3}");
 
             // ★ 절대 조건 1 — 뛰어내리기 하한이 Dock 낙차보다 작다(밴드의 아래쪽 끝).
             // 이 조건은 배율과 무관하다(hopDownMinDropHeight가 절대값이므로). 깨지면 캐릭터가 Dock
@@ -327,7 +405,7 @@ namespace StickMate.Tests.PlayMode
                 "Tooltip의 경고 문구도 갱신해야 합니다.");
 
             // ★ 절대 조건 4 — 되올라가기 상한이 Dock 단차를 덮는다. **이것이 진짜 갇힘을 막는 조건이다.**
-            // 2026-08-30: 설정 절대값(stepUpMaxHeight)이 아니라 DockGeometry가 실측 낙차에서 유도한 값을
+            // 2026-08-30: 설정값(stepUpMaxHeights x 신장)이 아니라 DockGeometry가 실측 낙차에서 유도한 값을
             // 본다 — tilesize 80 이상에서는 설정 절대값 2.4가 낙차를 못 덮기 때문이다(M3).
             Assert.Greater(resolvedStepUpMax, DockDropUnits,
                 $"{LogPrefix} 유도된 되올라가기 상한({resolvedStepUpMax:F3})이 Dock 낙차({DockDropUnits:F3}) " +
@@ -438,8 +516,15 @@ namespace StickMate.Tests.PlayMode
                 {
                     Assert.AreEqual(DockHandle, wallHandle,
                         $"{LogPrefix} 되올라갈 벽이 Dock 발판이 아닙니다(핸들 {wallHandle}).");
-                    Assert.LessOrEqual(wallTopY - i2.GroundWorldY, _clonedConfig.stepUpMaxHeight,
-                        $"{LogPrefix} Dock 턱 높이가 stepUpMaxHeight를 넘어 자율 배회로는 올라갈 수 없습니다.");
+                    // ★ 2026-09-02 — 비교 대상은 **자율 배회가 실제로 쓰는 유도 상한**이다
+                    //   (max(설정값 x 신장, 실측 Dock 낙차 + 여유)). 설정값 단독으로 비교하면
+                    //   작은 배율에서 이 단언만 빨개지는데, 정작 런타임은 유도 경로로 잘 올라간다.
+                    float stepUpMaxWorld = DockGeometry.ResolveStepUpMaxHeight(
+                        _clonedConfig.ResolveStepUpMaxHeightWorld(bb.CharacterHeightWorld),
+                        _dockTopWorldY - _floorTopWorldY);
+                    Assert.LessOrEqual(wallTopY - i2.GroundWorldY, stepUpMaxWorld,
+                        $"{LogPrefix} Dock 턱 높이가 되올라가기 유도 상한({stepUpMaxWorld:F3})을 넘어 " +
+                        "자율 배회로는 올라갈 수 없습니다.");
                     _intent.StepUpRequested = true;
                 }
 

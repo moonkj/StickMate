@@ -64,6 +64,11 @@ namespace StickMate.Platform.Windows
     /// 이 파일이 여전히 Win32를 직접 쓰는 곳 — 전부 조회 전용
     /// ============================================================================
     ///   · 창 열거(EnumWindows/GetWindowRect/...)          — 발판 계산의 원천
+    ///   · 창 제목 유무(InternalGetWindowText, 폴백 GetWindowTextW) — "사용자가 보는 창인가" 필터.
+    ///     ★ 2026-09-01: 여기는 GetWindowTextLength였고 그것이 대상 창의 메시지 루프를 깨워
+    ///     응답을 기다리는 호출이라 실기에서 열거 1회 최대 199ms를 만들었다. 지금은 커널 구조체를
+    ///     직접 읽어 다른 앱의 상태와 무관하다(선언부 문서에 실기 로그와 대안 비교가 있다).
+    ///     읽은 제목은 보관하지 않는다 — "비었는가"만 보고 즉시 버린다.
     ///   · 창의 시각적 경계(DwmGetWindowAttribute + DWMWA_EXTENDED_FRAME_BOUNDS) — 보이지 않는
     ///     리사이즈 테두리(~7px)를 뺀 진짜 창 경계. 발판/가림 계산의 기준 사각형이다.
     ///   · 창 투명도(GetLayeredWindowAttributes)           — macOS kCGWindowAlpha 대응 필터
@@ -125,8 +130,52 @@ namespace StickMate.Platform.Windows
         [DllImport("user32.dll")]
         private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern int GetWindowTextLength(IntPtr hWnd);
+        /// <summary>
+        /// ★★ 2026-09-01 — <b>창 제목 유무</b> 조회. 실기 로그로 확정된 스톨 원인을 제거한 자리다.
+        ///
+        /// <para><b>여기 있던 것과 무엇이 문제였나.</b> 이 자리에는 <c>GetWindowTextLength</c>가 있었다.
+        /// 그 함수는 대상 창에 <c>WM_GETTEXTLENGTH</c>를 보내고 <b>그 창의 메시지 루프가 응답할
+        /// 때까지 블로킹한다</b>. 즉 우리 프레임 시간이 <b>남의 앱의 응답성</b>에 묶여 있었다.
+        /// 사용자 실기 로그(릴리즈 20260901d, 계측 포함)가 그 서명을 그대로 찍었다:</para>
+        /// <code>
+        /// [발판열거] 1회 평균 14.09ms / 최대 199.27ms, 94회/30초
+        /// [발판진단] 사유별 [IsWindowVisible=false=796, 최소화=20, 제목 없음=19, ...]  (합 846개)
+        /// </code>
+        /// <para>846개를 훑는데 1회 최대 199ms — 창 하나당 0.23ms다. 커널의 창 구조체를 읽는 단순
+        /// 검사로는 나올 수 없는 값이고, 편차(1.36ms ~ 199ms)가 <b>"그 순간 다른 앱들이 뭘 하고
+        /// 있었나"</b>에 달렸다는 점이 블로킹의 결정적 증거다. 796개가 <c>IsWindowVisible</c>에서
+        /// 걸러지고 남은 ~50개가 이 검사까지 왔는데, 그중 <b>하나만</b> 바쁜 앱이어도 우리가 멈췄다.
+        /// "켜둘수록 심해진다"는 신고도 같은 원인이다 — 작업할수록 창이 늘고 바쁜 앱이 는다.</para>
+        ///
+        /// <para><b>macOS에 같은 증상이 없는 이유</b>도 이것으로 설명된다:
+        /// <c>CGWindowListCopyWindowInfo</c>는 창 목록을 <b>한 번에 스냅샷으로</b> 받아오므로
+        /// 창별 왕복이 원리적으로 없다. 리더가 맥에서 20분 넘게 실측했는데 재현되지 않았다.</para>
+        ///
+        /// <para><b>왜 이 함수인가.</b> <c>InternalGetWindowText</c>는 커널이 보관한 캡션을
+        /// <b>직접</b> 읽는다. 대상 프로세스에 아무 메시지도 보내지 않으므로 그 앱이 멎어 있어도
+        /// 우리는 멎지 않고, 비용이 창 하나당 상수다. 문서화되지 않은 export지만 Windows 2000
+        /// 이래 user32에 안정적으로 존재하며 창 열거 도구들이 쓰는 표준 경로다. 대안 비교와
+        /// 없을 때의 폴백은 <see cref="ProbeHasTitle"/> 문서에 있다.</para>
+        ///
+        /// <para>조회 전용이다. 읽은 제목은 <b>보관하지 않는다</b> — "비었는가"만 보고 즉시 버린다
+        /// (열거한 남의 창 정보를 최소화한다는 이 파일의 기존 원칙과 같다).</para>
+        /// </summary>
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "InternalGetWindowText")]
+        private static extern int InternalGetWindowText(IntPtr hWnd, [Out] char[] pString, int cchMaxCount);
+
+        /// <summary>
+        /// 위 함수가 없는 환경을 위한 폴백. <c>GetWindowTextW</c>는 <b>문서화된 동작</b>으로
+        /// "대상 창이 다른 프로세스 소유이면 메시지를 보내지 않고 캡션을 직접 가져온다 —
+        /// 그 프로세스가 멎어 있어도 호출자가 멎지 않게 하기 위한 의도된 설계"라고 명시돼 있다.
+        /// 즉 <b>남의 창에 대해서는</b> 이쪽도 블로킹하지 않는다.
+        ///
+        /// <para>단, <b>우리 자신의 창</b>에는 실제로 WM_GETTEXT를 보낸다. 그것은 EnumWindows
+        /// 콜백 한복판에서 우리 WndProc이 재진입한다는 뜻이라 그 자체로 위험하다. 그래서
+        /// <see cref="ClassifyWindowStyle"/>은 <b>자기 프로세스 검사를 제목 조회보다 먼저</b> 둔다 —
+        /// 그 순서가 성능 최적화이면서 동시에 이 폴백의 안전 조건이다.</para>
+        /// </summary>
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetWindowTextW")]
+        private static extern int GetWindowTextW(IntPtr hWnd, [Out] char[] lpString, int nMaxCount);
 
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
@@ -312,13 +361,66 @@ namespace StickMate.Platform.Windows
         private int _enumeratedWindowCount;
         private int _dwmProbeCount;
 
+        // ============================================================================
+        // ★★ 2026-09-01 — 제목 조회 경로의 상태와 계측(블로킹 호출 제거 라운드)
+        // ============================================================================
+
+        /// <summary>어느 제목 조회 API로 도는가. 최초 1회만 결정하고 그 뒤로는 분기 하나로 끝난다.</summary>
+        private enum TitleProbeApi
+        {
+            Unresolved = 0,
+            /// <summary>InternalGetWindowText — 커널 구조체 직접 읽기. 메시지를 보내지 않는다.</summary>
+            Kernel,
+            /// <summary>GetWindowTextW — 문서화된 폴백(타 프로세스 창에는 역시 메시지를 보내지 않는다).</summary>
+            DocumentedFallback,
+        }
+
+        private TitleProbeApi _titleProbeApi = TitleProbeApi.Unresolved;
+        private bool _titleProbeApiLogged;
+
+        /// <summary>
+        /// 제목 조회 버퍼. <b>"비었는가"만</b> 알면 되므로 1글자 + 널 종단이면 충분하다 —
+        /// 제목이 아무리 길어도 복사 비용이 늘지 않는다. 인스턴스당 1개를 재사용하므로
+        /// 열거 경로 할당은 그대로 0이다(24시간 상주 앱 컨벤션).
+        /// </summary>
+        private const int TitleProbeBufferChars = 2;
+        private readonly char[] _titleProbeBuffer = new char[TitleProbeBufferChars];
+
+        // 이번 패스의 제목 조회 누적 — Stopwatch 틱으로 모으고 보고할 때만 ms로 바꾼다.
+        private long _titleProbeTicksThisPass;
+        private int _titleProbeCountThisPass;
+
+        // 30초 창(window)의 최악값. "이 수정이 먹었는가"를 한 숫자로 답하는 값이다.
+        private float _titleProbeWorstMsInWindow;
+        private float _titleProbeWindowStartTime = float.NegativeInfinity;
+
+        private static readonly double TitleProbeTicksToMs =
+            1000.0 / System.Diagnostics.Stopwatch.Frequency;
+
+        /// <summary>마지막 패스에서 제목 조회를 실제로 몇 번 했는가(값싼 필터를 통과한 창 수).</summary>
+        public int LastTitleProbeCount { get; private set; }
+
+        /// <summary>
+        /// 마지막 패스에서 <b>제목 조회에만</b> 쓴 시간(ms). 이 값이 이 라운드의 성패 지표다:
+        /// 이전 구현에서는 이 한 단계가 열거 전체의 199ms를 만들 수 있었고, 지금은 원리적으로
+        /// 창 수에 비례하는 상수 시간이라 두 자릿수 마이크로초여야 정상이다.
+        /// </summary>
+        public float LastTitleProbeMs { get; private set; }
+
         /// <summary>마지막 패스에서 <c>EnumWindows</c> 콜백이 불린 총 횟수(필터 이전 전체 창 수).</summary>
         public int LastEnumeratedWindowCount { get; private set; }
 
         /// <summary>
         /// 마지막 패스에서 <b>크로스 프로세스 DWM 조회</b>(<c>DwmGetWindowAttribute</c>)가 실제로
         /// 몇 번 일어났는가. 값싼 필터를 뚫고 온 창만 이 비용을 낸다 —
-        /// <c>IsCloaked</c> 1회 + <c>TryGetVisualWindowRect</c> 1회이므로 보통 "제목 있는 보이는 창 x2"다.
+        /// <c>IsCloaked</c> 1회 + <c>TryGetVisualWindowRect</c> 1회다.
+        ///
+        /// <para>★ 2026-09-01 필터 순서 수정으로 <b>이 값이 줄어드는 것이 정상</b>이다. 이전에는
+        /// <c>IsCloaked</c>가 도구 창(<c>WS_EX_TOOLWINDOW</c>) 검사와 자기 프로세스 검사보다 앞에 있어
+        /// "어차피 버릴 창"에도 DWM 왕복을 지불했다. 지금은 그 둘을 통과한 창만 낸다 —
+        /// 따라서 이 수치는 이제 대략 "제목 있고, 보이고, 도구 창이 아니고, 남의 프로세스인 창 x2"다.
+        /// 전후 비교를 할 때 이 정의 변경을 감안해야 한다.</para>
+        ///
         /// <b>이 값이 작으면 DWM 호출은 스파이크의 범인이 아니다</b>가 실측으로 확정된다.
         /// </summary>
         public int LastDwmProbeCount { get; private set; }
@@ -358,11 +460,35 @@ namespace StickMate.Platform.Windows
         private WindowsFootholdRejection ClassifyWindowStyle(IntPtr hWnd, out float alpha)
         {
             alpha = 1f;
+
+            // ★★ 2026-09-01 — 순서 자체가 성능이다(리더 지시, 저위험 고확실성).
+            //
+            // 이 필터들은 전부 "탈락시키는" 일만 하므로 **어떤 순서로 놓아도 결과 집합은 같다**.
+            // 그런데 비용은 세 계단으로 갈린다:
+            //
+            //   [1] 순수 커널 구조체 읽기 — IsWindowVisible / IsIconic / GetWindowLong /
+            //       GetWindowThreadProcessId. 창 하나당 수십~수백 나노초, 편차 없음.
+            //   [2] 제목 조회 — 역시 커널 구조체를 읽지만 문자열을 버퍼로 복사한다.
+            //       [1]보다 조금 비싸므로 [1] 뒤에 둔다.
+            //   [3] IsCloaked(= DwmGetWindowAttribute) — **DWM 프로세스로 가는 크로스 프로세스
+            //       호출**. 이 함수에서 압도적으로 비싼 단 하나다. 반드시 맨 뒤.
+            //
+            // ★ 2026-09-01 2차 라운드에서 [2]의 성질이 바뀌었다. 이전에는 여기가
+            //   GetWindowTextLength였고 그것은 **대상 창의 메시지 루프를 깨워 응답을 기다리는**
+            //   호출이었다(선언부 문서에 실기 로그와 함께 근거를 적어 두었다). 그때는 [2]가 사실상
+            //   [3]보다도 비싸고 **상한이 없는** 구간이었다 — 실기 최대 199ms/열거.
+            //   지금은 [2]도 커널 읽기이므로 상한이 생겼고, 위 계단이 실제 비용 순서와 일치한다.
+            //
+            // ★ 자기 프로세스 검사가 제목 조회보다 **앞에** 있는 것은 성능 이유만이 아니다.
+            //   폴백 경로(GetWindowTextW)는 우리 자신의 창에 대해서만 WM_GETTEXT를 보내는데,
+            //   그것은 EnumWindows 콜백 한복판에서 우리 WndProc이 재진입한다는 뜻이다.
+            //   여기서 먼저 걸러 두면 그 상황 자체가 성립하지 않는다. 순서를 바꾸지 말 것.
+            //
+            // ★ 부작용 하나를 명시해 둔다: 여러 조건에 동시에 걸리는 창의 <b>탈락 '사유'</b>가 바뀔 수
+            // 있다(예: 제목 없는 도구 창이 이제 NoTitle이 아니라 ToolWindow로 집계된다). 사유는
+            // [발판진단] 로그의 분류일 뿐 발판 채택 여부와 무관하므로 기능적 영향은 없다.
             if (!IsWindowVisible(hWnd)) return WindowsFootholdRejection.NotVisible;
             if (IsIconic(hWnd)) return WindowsFootholdRejection.Minimized;   // 최소화 = 화면에 없음
-            if (GetWindowTextLength(hWnd) == 0) return WindowsFootholdRejection.NoTitle;
-            _dwmProbeCount++;                                                // 계측 전용(아래는 크로스 프로세스 DWM 호출이다)
-            if (IsCloaked(hWnd)) return WindowsFootholdRejection.Cloaked;    // DWM 수준에서 숨겨진 UWP 껍데기
 
             int exStyle = GetWindowLong(hWnd, GWL_EXSTYLE);
             if ((exStyle & WS_EX_TOOLWINDOW) != 0) return WindowsFootholdRejection.ToolWindow;
@@ -370,8 +496,111 @@ namespace StickMate.Platform.Windows
             GetWindowThreadProcessId(hWnd, out uint pid);
             if (pid == _currentProcessId) return WindowsFootholdRejection.SelfProcess;
 
+            if (!ProbeHasTitle(hWnd)) return WindowsFootholdRejection.NoTitle;
+
+            // 여기부터가 비싼 구간 — 값싼 필터를 전부 통과한 창만 도달한다.
+            _dwmProbeCount++;                                                // 계측 전용(바로 아래가 크로스 프로세스 DWM 호출이다)
+            if (IsCloaked(hWnd)) return WindowsFootholdRejection.Cloaked;    // DWM 수준에서 숨겨진 UWP 껍데기
+
             alpha = ReadWindowAlpha(hWnd, exStyle);
             return WindowsFootholdRejection.None;
+        }
+
+        /// <summary>
+        /// ★★ 2026-09-01 — "이 창에 제목이 있는가"를 <b>블로킹 없이</b> 묻는다.
+        ///
+        /// ============================================================================
+        /// 대안 비교 (둘 다 검토한 근거를 남긴다)
+        /// ============================================================================
+        /// <b>후보 A — SendMessageTimeout(WM_GETTEXTLENGTH, SMTO_ABORTIFHUNG, 프레임 예산에서 유도한
+        /// 타임아웃).</b> 채택하지 않았다. 세 가지가 걸린다:
+        /// <list type="number">
+        /// <item><b>고치는 것이 원인이 아니라 상한이다.</b> 여전히 창마다 다른 프로세스로 왕복하고,
+        ///   응답이 느린(멎지는 않은) 앱에는 타임아웃이 걸리지도 않아 그대로 기다린다. 이 검사에
+        ///   도달하는 창이 실기에서 ~50개였으므로, 타임아웃을 프레임 예산의 1/8(약 2ms)로 잡아도
+        ///   최악은 50 x 2 = 100ms다. 199ms를 100ms로 줄이는 것은 해결이 아니다.</item>
+        /// <item><b>판정이 달라진다.</b> 타임아웃이 걸린 창을 '제목 있음'으로 보면 <b>사용자 눈에
+        ///   보이지 않는 창 위에 캐릭터가 서는</b> 실패 모드가 열리고(이 파일이 명시적으로 경고하는
+        ///   바로 그것), '제목 없음'으로 보면 멀쩡한 창이 발판에서 사라진다. 어느 쪽도 이전과 같은
+        ///   집합이 아니다 — <b>이 라운드의 요구는 판정을 그대로 두는 것</b>이다.</item>
+        /// <item><b>원칙 3의 표면적이 넓어진다.</b> 이 앱은 "남의 창에 보낼 메시지가 하나도 없다"를
+        ///   감사(<c>UserAssetImmutabilityAuditTests</c>)로 잠가 두었다. 조회용 메시지를 한 번
+        ///   열어 주면 그 다음 사람이 다른 메시지를 붙이는 것이 자연스러워진다.</item>
+        /// </list>
+        ///
+        /// <b>후보 B — InternalGetWindowText(채택).</b> 커널이 보관한 캡션을 직접 읽으므로
+        /// 대상 프로세스와 아무 상호작용이 없다. 비용이 창 하나당 상수이고 <b>다른 앱의 상태와
+        /// 무관</b>하다 — 관측된 극심한 편차의 원인 자체가 사라진다. 판정도 그대로다:
+        /// 캡션이 비었으면 0, 있으면 1 이상이고 이전 코드가 보던 것도 정확히 그 구분이었다
+        /// (동치 근거는 <see cref="WindowsFootholdFilter.HasWindowTitle"/> 문서).
+        ///
+        /// <b>유일한 약점</b>은 문서화되지 않은 export라는 점이다. 그래서 최초 1회 존재 여부를
+        /// 확인하고(<see cref="ResolveTitleProbeApi"/>), 없으면 문서화된 <c>GetWindowTextW</c>로
+        /// 내려간다. 그쪽도 <b>타 프로세스 창에는 메시지를 보내지 않는다</b>고 문서에 명시돼 있어
+        /// 폴백 경로에서도 블로킹 성질은 되살아나지 않는다.
+        ///
+        /// <para><b>계측.</b> 이 함수에 쓴 시간만 따로 누적한다(패스당 Stopwatch 2회 x 창 수 —
+        /// 실기 기준 ~50회, QPC 1회가 약 25ns이므로 패스당 2.5us 수준). 이 값이
+        /// <c>[발판진단]</c> 줄과 예산 초과 경보에 그대로 실린다 = 다음 실기 로그가 이 수정의
+        /// 성패를 스스로 증명한다.</para>
+        /// </summary>
+        private bool ProbeHasTitle(IntPtr hWnd)
+        {
+            long start = System.Diagnostics.Stopwatch.GetTimestamp();
+            int copied = _titleProbeApi == TitleProbeApi.Kernel
+                ? InternalGetWindowText(hWnd, _titleProbeBuffer, TitleProbeBufferChars)
+                : GetWindowTextW(hWnd, _titleProbeBuffer, TitleProbeBufferChars);
+            _titleProbeTicksThisPass += System.Diagnostics.Stopwatch.GetTimestamp() - start;
+            _titleProbeCountThisPass++;
+            return WindowsFootholdFilter.HasWindowTitle(copied);
+        }
+
+        /// <summary>
+        /// 어느 제목 조회 API를 쓸지 <b>패스 시작 전에 한 번만</b> 정한다.
+        ///
+        /// <para>try/catch를 열거 루프 안에 두지 않는 것이 요점이다: 없는 export를 부르면
+        /// <c>EntryPointNotFoundException</c>이 나는데, 그걸 창마다 잡으면 그 환경에서는 열거가
+        /// 예외 수백 개를 던지는 경로가 된다. 여기서 한 번 불러 <b>존재만</b> 확인한다 —
+        /// 우리가 알고 싶은 것은 반환값이 아니라 "이 심볼이 로드되는가"다.</para>
+        ///
+        /// <para>넘기는 핸들은 이번 패스의 포그라운드 창이다(없으면 <c>IntPtr.Zero</c>). 어느 쪽이든
+        /// 결과를 쓰지 않으므로 유효성은 상관없지만, <b>실제 창 핸들</b> 쪽이 문서화되지 않은 함수의
+        /// 인자 검증 경로에 의존하지 않아 더 보수적이다.</para>
+        /// </summary>
+        private void ResolveTitleProbeApi()
+        {
+            if (_titleProbeApi != TitleProbeApi.Unresolved) return;
+
+            try
+            {
+                InternalGetWindowText(_foregroundHwndThisPass, _titleProbeBuffer, TitleProbeBufferChars);
+                _titleProbeApi = TitleProbeApi.Kernel;
+            }
+            catch (EntryPointNotFoundException)
+            {
+                _titleProbeApi = TitleProbeApi.DocumentedFallback;
+            }
+            catch (Exception e)
+            {
+                // 여기서 예외가 새어 나가면 **발판 열거가 통째로 죽는다** = 캐릭터가 영원히 낙하한다.
+                // 조회 실패를 이유로 기능을 멈추지 않는다(이 파일의 IsCloaked/DWM 폴백과 같은 보수 원칙).
+                // 폴백 경로는 기능적으로 완전한 대체재이므로 잃는 것이 없다 — 다만 문서화되지 않은
+                // export가 예상 밖의 방식으로 실패했다는 사실 자체는 반드시 남긴다(1회).
+                _titleProbeApi = TitleProbeApi.DocumentedFallback;
+                Debug.LogWarning("[Win32WindowService][제목조회] InternalGetWindowText 확인 중 예외 — " +
+                    "문서화된 폴백으로 내려간다(기능은 동일). " + e.GetType().Name + ": " + e.Message);
+            }
+        }
+
+        /// <summary>진단 로그용 — 지금 어느 경로로 도는지. 상수 문자열이라 할당이 없다.</summary>
+        private string DescribeTitleProbeApi()
+        {
+            switch (_titleProbeApi)
+            {
+                case TitleProbeApi.Kernel: return "InternalGetWindowText(커널 구조체 직접 읽기)";
+                case TitleProbeApi.DocumentedFallback: return "GetWindowTextW(문서화된 폴백)";
+                default: return "미결정";
+            }
         }
 
         /// <summary>
@@ -544,15 +773,21 @@ namespace StickMate.Platform.Windows
             LastFullyOccludedWindowCount = 0;
             _enumeratedWindowCount = 0;
             _dwmProbeCount = 0;
+            _titleProbeTicksThisPass = 0;
+            _titleProbeCountThisPass = 0;
 
             _foregroundHwndThisPass = GetForegroundWindow();
+            ResolveTitleProbeApi();   // 최초 1회만 실제 작업을 한다(위 핸들을 쓰므로 순서 유지)
             _hasVirtualScreenThisPass = TryGetVirtualScreenBounds(out _virtualScreenThisPass);
 
             EnumWindows(_enumWindowsCallback, IntPtr.Zero);
             LastEnumeratedWindowCount = _enumeratedWindowCount;
             LastDwmProbeCount = _dwmProbeCount;
+            LastTitleProbeCount = _titleProbeCountThisPass;
+            LastTitleProbeMs = (float)(_titleProbeTicksThisPass * TitleProbeTicksToMs);
             LastRawWindowCount = _rawBuffer.Count;
             BuildVisibleTopEdgeFootholds();
+            ReportTitleProbeCost();
             ReportFootholdAnomaly();
             CaptureOverlayOrigin();
             return _footholdBuffer;
@@ -641,6 +876,60 @@ namespace StickMate.Platform.Windows
         private const float AnomalyLogMinIntervalSeconds = 30f;
 
         /// <summary>
+        /// ★★ 2026-09-01 — <b>제목 조회가 다시 비싸지지 않았는가</b>를 지키는 감시선.
+        ///
+        /// <para>이 라운드가 없앤 것은 "창 하나를 물어보는 데 남의 앱이 대답해 줄 때까지 기다린다"는
+        /// 성질이다. 그 성질이 되살아나면(누군가 다시 메시지 기반 API로 바꾸거나, 폴백 경로가
+        /// 예상 밖으로 비싸거나) <b>증상은 똑같이 돌아온다</b>. 그래서 시간을 따로 잰다.</para>
+        ///
+        /// <para><b>로그 정책</b>은 이 파일의 기존 원칙 그대로다 — 24시간 상주 앱이므로 조용함이
+        /// 기본이다. 남기는 것은 둘뿐이다:</para>
+        /// <list type="number">
+        /// <item><b>기동 후 첫 열거에 한 줄</b> — 어느 API 경로로 도는지. 이게 없으면 원격에서
+        ///   "고쳤다는데 왜 그대로냐"를 판별할 수 없다(폴백으로 내려갔는지 알 방법이 없다).</item>
+        /// <item><b>예산 초과 시에만</b> 30초 간격으로 경고. 예산은 하드코딩이 아니라 프레임
+        ///   예산에서 유도한다(<see cref="WindowsFootholdFilter.DeriveTitleProbeBudgetMs"/>).</item>
+        /// </list>
+        ///
+        /// <para>정상 상태의 수치는 침묵하지만 사라지지는 않는다 — <c>[발판진단]</c> 줄이
+        /// 이미 이 값을 함께 싣는다(<see cref="AppendWindowDiagnostics"/>). 그 줄은 사용자가 그대로
+        /// 복사해 보내는 물건이라, 다음 실기 로그가 스스로 전후 비교를 제공한다.</para>
+        /// </summary>
+        private void ReportTitleProbeCost()
+        {
+            if (!_titleProbeApiLogged)
+            {
+                // ★ 이 한 줄은 폴러의 스톱워치 <b>안쪽</b>에서 찍힌다(기존 [발판진단]도 마찬가지다).
+                // 그래서 첫 30초 창의 [발판열거] '최대'에는 로그 쓰기 1회분이 섞인다 — 두 번째
+                // 창부터가 순수한 열거 비용이다. 전후 비교는 두 번째 창 이후로 할 것.
+                _titleProbeApiLogged = true;
+                Debug.Log($"[Win32WindowService][제목조회] {DescribeTitleProbeApi()} 경로로 동작한다 — " +
+                    "대상 창의 메시지 루프를 깨우지 않으므로 다른 앱이 바쁘거나 멎어 있어도 우리 " +
+                    "프레임은 그만큼 멈추지 않는다. (이전 구현 GetWindowTextLength는 그 반대였고, " +
+                    "실기 로그에서 [발판열거] 1회 최대 199.27ms의 원인이었다.)");
+            }
+
+            float now = Time.realtimeSinceStartup;
+            if (LastTitleProbeMs > _titleProbeWorstMsInWindow) _titleProbeWorstMsInWindow = LastTitleProbeMs;
+
+            if (_titleProbeWindowStartTime < 0f) _titleProbeWindowStartTime = now;
+            if (now - _titleProbeWindowStartTime < AnomalyLogMinIntervalSeconds) return;
+            _titleProbeWindowStartTime = now;
+
+            float worst = _titleProbeWorstMsInWindow;
+            _titleProbeWorstMsInWindow = 0f;
+
+            // 여기서만 Application을 조회한다(30초에 1회) — 열거 경로의 비용이 아니다.
+            float budgetMs = WindowsFootholdFilter.DeriveTitleProbeBudgetMs(Application.targetFrameRate);
+            if (worst <= budgetMs) return;
+
+            Debug.LogWarning($"[Win32WindowService][제목조회] 30초 최악 {worst:F2}ms > 예산 {budgetMs:F2}ms " +
+                $"({DescribeTitleProbeApi()}, 마지막 패스 {LastTitleProbeCount}회/{LastTitleProbeMs:F2}ms). " +
+                "제목 조회는 커널 구조체 읽기라 창 수에 비례하는 상수 시간이어야 한다 — 예산을 넘었다면 " +
+                "이 단계에 다시 크로스 프로세스 대기가 들어왔다는 뜻이다. [발판열거]의 '최대' 값과 함께 볼 것.");
+        }
+
+        /// <summary>
         /// macOS <c>MacWindowService.AppendWindowDiagnostics</c>의 Windows 대응물 — 이번 패스의
         /// 채택/탈락 내역을 한 줄로 덤프한다. 호출한 순간에만 문자열이 만들어진다(폴링 경로 할당 0).
         /// 창 제목/경로/사용자명은 <b>남기지 않는다</b>: 이 로그는 사용자가 그대로 복사해 보내는
@@ -678,6 +967,12 @@ namespace StickMate.Platform.Windows
                 sb.Append(WindowsFootholdFilter.Describe((WindowsFootholdRejection)i)).Append('=').Append(_rejectCounts[i]);
             }
             sb.Append(']');
+
+            // ★ 2026-09-01 — 제목 조회 실측치. 이 줄은 사용자가 그대로 복사해 보내는 물건이라,
+            // 다음 실기 로그가 "블로킹 제거가 먹었는가"를 스스로 답하게 된다. 이전 구현
+            // (GetWindowTextLength)에서는 이 한 단계가 열거 전체의 199ms를 만들 수 있었다.
+            sb.Append(" / 제목조회 ").Append(LastTitleProbeCount).Append("회 ")
+              .Append(LastTitleProbeMs.ToString("F3")).Append("ms(").Append(DescribeTitleProbeApi()).Append(')');
         }
 
         /// <summary>
@@ -990,9 +1285,6 @@ namespace StickMate.Platform.Windows
 
         #region IGlobalPointerButtonService / IGlobalKeyStateService (조회 전용)
 
-        /// <summary>VK_OEM_COMMA(0xBC) — winuser.h. 미국식 배열에서 <c>,</c>/<c>&lt;</c> 키.</summary>
-        private const int VK_OEM_COMMA = 0xBC;
-
         private static bool IsDown(int virtualKey) => (GetAsyncKeyState(virtualKey) & KeyDownMask) != 0;
 
         public bool TryGetPrimaryButtonPressed(out bool pressed)
@@ -1017,6 +1309,16 @@ namespace StickMate.Platform.Windows
         /// 때 발동하므로 Ctrl+Alt가 함께 눌린 상태에서는 발동하지 않고, 시작 메뉴는 Win 키를 단독으로
         /// 눌렀다 뗐을 때만 열린다(사이에 문자 키가 들어가면 열리지 않는다).
         ///
+        /// <para>★ 2026-09-01 — 이 "정확히 그 조합만" 성질은 <b>이 앱의 안전 근거 전체</b>다.
+        /// 동작키에는 이미 Win 셸이 단독 조합으로 쓰는 글자가 여럿 들어와 있다(Win+D 바탕화면 /
+        /// Win+R 실행 / Win+I 설정 / Win+S 검색 / Win+X 전원 메뉴, 그리고 이번에 추가된
+        /// <b>Win+P 디스플레이 전환</b>). 셋 다 <c>RegisterHotKey</c> 계열의 <b>정확 일치</b>
+        /// 매칭이라 Ctrl+Alt가 함께 눌린 우리 조합에서는 발동하지 않는다.
+        /// <b>macOS는 사정이 다르다</b> — 그쪽 접근성 단축키는 <c>⌃⌥⌘</c> 마스크를 통째로 예약해
+        /// 두었고(<c>8</c>/<c>,</c>/<c>.</c>), 그래서 원래 쉼표였던 설정창 단축키가 사용자의 OS
+        /// 대비 설정을 실제로 바꾸는 사고를 냈다. 금지 목록은 플랫폼 중립 위치인
+        /// <c>Core/ShortcutLabel</c>에 있다.</para>
+        ///
         /// **비침해 원칙 유지(macOS와 동일)**: 조회만 하고 어떤 입력도 주입하지 않으며, 아래 switch에
         /// 열거된 키 외에는 애초에 물어볼 수단이 없다. 소비자(AppControlDirector)가 조합키 3개가 모두
         /// 눌린 상태에서만 동작키를 확인하므로, 사용자가 다른 앱에서 타이핑하는 내용은 이 채널로
@@ -1030,10 +1332,6 @@ namespace StickMate.Platform.Windows
                 case GlobalKey.Control: pressed = IsDown(VK_CONTROL); return true;
                 case GlobalKey.Option:  pressed = IsDown(VK_MENU);    return true;
                 case GlobalKey.Command: pressed = IsDown(VK_LWIN) || IsDown(VK_RWIN); return true;
-
-                // ★ 문자 키가 아닌 유일한 동작키(2026-09-01 설정창). 아래 ASCII 지름길이 통하지 않으므로
-                //   여기서 명시적으로 처리한다 — VK_OEM_COMMA는 미국식 배열에서 쉼표다.
-                case GlobalKey.Comma: pressed = IsDown(VK_OEM_COMMA); return true;
             }
 
             // 문자 키의 가상 키코드는 대문자 ASCII와 같다(VK_A = 0x41 ... VK_Z = 0x5A). 이는
@@ -1057,6 +1355,10 @@ namespace StickMate.Platform.Windows
                 case GlobalKey.F: letter = 'F'; break;
                 case GlobalKey.A: letter = 'A'; break;
                 case GlobalKey.I: letter = 'I'; break;
+                // 설정창(Preferences). 2026-09-01 이전에는 GlobalKey.Comma(VK_OEM_COMMA)였고, 이 목록
+                // 바깥에서 명시적으로 처리하던 유일한 항목이었다 — macOS가 ⌃⌥⌘,를 접근성 단축키로
+                // 예약해 둔 것이 밝혀져 P로 옮기면서, 이제 모든 동작키가 이 ASCII 규약 하나로 끝난다.
+                case GlobalKey.P: letter = 'P'; break;
                 default:
                     pressed = false;
                     return false;
@@ -1163,6 +1465,28 @@ namespace StickMate.Platform.Windows
         //   (3) 판정이 바뀔 때만 로그          — 24시간 상주 앱이라 매 폴링 로그는 금지
         // 한쪽만 고치면 다른 쪽에서 같은 버그가 그대로 살아남는다(이 프로젝트가 VisibleTopEdgeSolver /
         // WindowsFootholdFilter에서 이미 두 번 겪은 실패라, 2026-09-01 패리티 감사에서 맞췄다).
+        //
+        // ============================================================================
+        // ★★ 2026-09-02 정정 — "1:1"은 위 **뼈대 3단계**에만 해당한다. 기하 판정은 갈라져 있다.
+        // ============================================================================
+        // 같은 날 macOS 쪽이 두 곳에서 넓어졌고, Windows는 **의도적으로 따라가지 않았다**.
+        // 이 줄이 없으면 다음 사람이 "1:1"이라는 문구를 믿고 갭으로 오해한다.
+        //
+        //  (A) macOS: 투명 보조 창 알파 거부권(kCGWindowAlpha < 0.05면 건너뜀).
+        //      Windows에는 **해당 코드 경로 자체가 없다** — 여기는 창 목록을 훑지 않고
+        //      GetForegroundWindow() 단일 조회다. 전경 창은 정의상 알파 0짜리 보조 창이 아니다.
+        //      즉 이건 갭이 아니라 "그 문제가 존재하지 않음"이다.
+        //
+        //  (B) macOS: 상단 시스템 스트립(메뉴바/노치) 만큼의 여백을 허용하는
+        //      FullscreenGeometry.CoversDisplay(). Windows는 관용 없는
+        //      FullscreenGeometry.MatchesExactly()와 **같은 의미**의 정수 비교를 계속 쓴다.
+        //      근거: Windows에는 "OS가 화면 상단에 항상 남겨두는 띠"라는 개념이 없고, 오히려 상단
+        //      도킹 작업표시줄이 흔하다. 여백 허용을 그대로 켜면 상단 작업표시줄 환경에서 **최대화한
+        //      업무 창이 전부 전체화면 게임으로 오판**된다 — macOS 쪽이 "하단 밀착" 조건으로 방금
+        //      피한 것과 정확히 같은 사고이며, 원칙 2의 반대편을 깨는 방향이다.
+        //      실기 검증이 불가능한 이 환경에서 관용을 켜지 않는다. 이 분기는 **결정**이지 갭이 아니다.
+        //      (해당 정책과 그 반증 기록은 Platform/FullscreenSuspendPolicy.cs의
+        //       FullscreenGeometry 클래스 문서에 함께 적혀 있다.)
 
         /// <summary>디바운스 이후의 확정 판정 — "바뀔 때만 로그"용 상태.</summary>
         private bool _lastFullscreenVerdict;

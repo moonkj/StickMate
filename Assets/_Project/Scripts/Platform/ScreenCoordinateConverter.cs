@@ -124,19 +124,97 @@ namespace StickMate.Platform
 
         private static void ReportOverlayWindowOsRect(Rect overlayRectOsPoints, Rect desktopBoundsOsPoints, bool hasDesktopBounds)
         {
+            _acceptedOffDesktopThisReport = false;
+
             if (!IsOverlayRectPlausible(overlayRectOsPoints, desktopBoundsOsPoints, hasDesktopBounds, out string reason))
             {
                 RejectedOverlayRectCount++;
                 LastRejectedOverlayRectReason = reason;
+                LogRejectionAtLowFrequency(overlayRectOsPoints, reason);
                 // 직전 유효값을 그대로 유지한다(원점도 배율도 건드리지 않는다).
                 return;
             }
 
+            // ★ "화면 밖인데 안정적이라 탈출구로 통과한" 보고는 **받아들이기 전에** 경보를 남긴다.
+            //   좌표계가 오염된 뒤에 남기면 이미 늦다 — 이 줄과 그 다음 줄 사이가 정확히 접지가
+            //   무너지는 지점이라, 로그의 선후가 곧 원인-결과의 선후가 된다.
+            if (_acceptedOffDesktopThisReport)
+            {
+                OffDesktopAcceptedByRepeatCount++;
+                WarnOffDesktopAcceptedOnce(overlayRectOsPoints, desktopBoundsOsPoints);
+            }
+            else
+            {
+                // 정상 보고가 통과했다 = 에피소드 종료. 다음 에피소드의 첫 줄이 다시 보이게 부기를 푼다.
+                _rejectStreak = 0;
+                _nextRejectLogAt = 1;
+                _lastAcceptWarnRect = Vector4.zero;
+            }
+
             OverlayOriginOsScreen = overlayRectOsPoints.position;
+            // 이 순간부터 "직전 관측"이 존재한다 = 튐(변화율) 판정의 기준선이 생긴다.
+            _hasOriginBaseline = true;
             if (overlayRectOsPoints.width > 0f && Screen.width > 0)
             {
                 AutoDpiScale = overlayRectOsPoints.width / Screen.width;
             }
+        }
+
+        /// <summary>
+        /// 거부를 **침묵시키지 않기** 위한 저빈도 로그. 예전에는 사유를
+        /// <see cref="LastRejectedOverlayRectReason"/>에만 담고 한 줄도 남기지 않아서, 실기 로그만 보던
+        /// 사람은 "원점이 왜 안 갱신되지"를 알 방법이 없었다(실제로 한 라운드를 통째로 날렸다).
+        ///
+        /// <para>빈도: 연속 거부 구간(에피소드) 안에서 1, 2, 4, 8, ...번째만 남긴다. 정상 보고가 하나라도
+        /// 통과하면 부기가 풀려 다음 에피소드의 첫 줄은 반드시 보인다. 시계를 쓰지 않으므로 배치모드
+        /// 테스트에서도 결정적이다.</para>
+        ///
+        /// ============================================================================
+        /// 이 줄을 봤을 때 읽는 법 (★ 설명은 <b>로그에 싣지 않는다</b> — 2026-09-02 로그 감량)
+        /// ============================================================================
+        /// 이 줄이 보이면 좌표계는 <b>보호되고 있다</b>(사고가 아니라 방어가 동작한 기록이다).
+        /// 원인 후보는 둘뿐이다:
+        /// <list type="number">
+        /// <item><b>창이 실제로 밀려났다</b> — 창 플래그 쪽을 본다(macOS: <c>collectionBehavior</c>의
+        ///   <c>.stationary</c> 누락 / Windows: 최소화).</item>
+        /// <item><b>전환 애니메이션의 중간 프레임을 읽었다</b> — 전체화면(Space) 전환/창 슬라이드.
+        ///   이쪽이면 원점이 곧 제자리로 돌아오고 이 줄도 멎는다(정상). 사유 문구가 "튀었습니다"면
+        ///   이쪽일 가능성이 높다.</item>
+        /// </list>
+        /// 예전에는 이 설명이 <b>로그 줄마다</b> 실려 줄당 1,069B였다(Player.log 바이트 6위인데 줄
+        /// 수는 훨씬 적다 = 줄당 비용이 비정상). 설명은 매번 같고 숫자만 다르다.
+        /// </summary>
+        private static void LogRejectionAtLowFrequency(Rect rect, string reason)
+        {
+            _rejectStreak++;
+            if (_rejectStreak < _nextRejectLogAt) return;
+            _nextRejectLogAt = _rejectStreak * 2;
+
+            Debug.Log($"[원점위생] 오버레이 창 사각형 보고를 버렸습니다(누적 {RejectedOverlayRectCount}회, " +
+                $"이번 연속 {_rejectStreak}회째, 저빈도 1·2·4·8...) — 보고={rect}, " +
+                $"유지 중인 원점={OverlayOriginOsScreen}. 사유: {reason}");
+        }
+
+        /// <summary>
+        /// 탈출구로 "화면 밖 사각형"을 받아들이기 직전의 경보. 한 에피소드에 한 번만 남긴다
+        /// (같은 사각형이 계속 오는 동안 0.6초마다 도배하지 않기 위해).
+        ///
+        /// <para><b>이 줄을 봤을 때</b>(설명은 로그에 싣지 않는다 — 2026-09-02 로그 감량): 이 순간부터
+        /// 모든 OS 좌표가 통째로 이동하므로 <b>발 OS y와 발판 상단 y의 비교가 무너져 접지가 풀릴 수
+        /// 있다</b>. 정상 원인은 "보조 모니터로 창을 옮겼다" 하나뿐이다. 그게 아니라면 창 플래그를
+        /// 의심한다 — macOS: <c>collectionBehavior</c>에 <c>.stationary</c>가 빠져 데스크톱 표시(F11)/
+        /// Exposé가 창을 치웠거나, Windows: Win+D 등으로 창이 최소화되어 <c>GetWindowRect</c>가
+        /// <c>(-32000,-32000)</c>을 돌려주는 경우.</para>
+        /// </summary>
+        private static void WarnOffDesktopAcceptedOnce(Rect rect, Rect desktopBounds)
+        {
+            var key = new Vector4(rect.x, rect.y, rect.width, rect.height);
+            if (key == _lastAcceptWarnRect) return;
+            _lastAcceptWarnRect = key;
+
+            Debug.LogWarning($"[원점위생] 의심 사각형이 {OffDesktopConfirmReports}회 연속으로 안정 보고되어 " +
+                $"**실제 이동으로 인정**합니다 — 사유: {_lastSuspectKind}. 보고={rect}, 데스크톱={desktopBounds}, " +
+                $"이동량={rect.position - OverlayOriginOsScreen}.");
         }
 
         // ============================================================================
@@ -144,10 +222,30 @@ namespace StickMate.Platform
         // ============================================================================
         // 실측 증거(디버거, Player.log.prevround): 원점이
         //     (0,0) -> (0,-805) -> (0,-936) -> (0,-937) -> (0,-78) -> (0,0)
-        // 으로 한 차례 요동친 직후 [발판상실]이 발생했다. 화면 높이는 982pt이므로 -936은 창의
-        // 95%가 화면 위로 빠져나간 값이다 — 실제로 그런 창은 존재할 수 없고, 창 애니메이션 도중의
-        // 일시적 오독이다. 원점이 틀리면 WorldToOsScreen이 통째로 틀어져 "발 OS y"와 "발판 상단 y"의
-        // 비교가 무너진다 = 창은 그대로인데 접지가 풀린다.
+        // 으로 한 차례 요동친 직후 [발판상실]이 발생했다. 원점이 틀리면 WorldToOsScreen이 통째로
+        // 틀어져 "발 OS y"와 "발판 상단 y"의 비교가 무너진다 = 창은 그대로인데 접지가 풀린다.
+        //
+        // ============================================================================
+        // ★★ 정정 (2026-09-01 저녁, 대조 실험 확정) — 이 시퀀스는 "센서 노이즈"가 아니었다
+        // ============================================================================
+        // 이 자리의 예전 주석은 위 시퀀스 **전체**를 "창 애니메이션 도중의 일시적 오독"으로 해석했다.
+        // 그 해석은 부분적으로 틀렸고, 팀은 그 오진 때문에 같은 버그를 두 번 만났다. 정확히는:
+        //
+        //   · -805 / -936 / -78  : 맞다. 매 표본이 다른 값 = 슬라이드 애니메이션 중간 프레임.
+        //   · ★ -937            : **아니다. 데스크톱 표시(F11)/Exposé 상태의 정상 상태값이다.**
+        //                          화면 높이 982pt짜리 주 디스플레이에서 OS가 우리 창을 통째로 위로
+        //                          치워 놓은 좌표이며, 그 상태가 유지되는 내내 **같은 값**이 계속 온다.
+        //
+        // 근거(실기 로그, 프로덕션 앱이 직접 남긴 것): `origin=(0.00,-937.00), size=(1512x982)`가 26회,
+        // 그로부터 유도된 `발판상단OS y=-30.0`(= 907-937)이 정상값 907.0(13회)과 거의 같은 빈도로
+        // 나왔다. 노이즈는 이런 분포를 만들지 않는다.
+        //
+        // 원인은 이 파일이 아니라 창 플래그에 있었다: 우리 창의 collectionBehavior에 `.stationary`가
+        // 빠져 있어 Exposé가 창을 옮길 수 있었다(Platform/MacOS/MacSpaceBehaviorNative.cs의
+        // ".stationary가 필수인 이유" 문단 = **근본 처방**). 이 파일의 검사는 그 뒤에 남는 방어선이다.
+        //
+        // → 다음 사람에게: 원점이 **한 화면 높이만큼** 밀린 값이 **안정적으로** 들어오면 센서를 의심하지
+        //   말고 **창 플래그(macOS: .stationary / Windows: IsIconic 최소화)를 먼저 의심해라.**
         //
         // ★ 이 검사만으로 위 시퀀스 전부를 잡지는 못한다(정직한 한계):
         //   -805(18% 남음) / -936(4.7% 남음)은 걸리지만 -78(92% 남음)은 "명백히 밖"이 아니라 통과한다.
@@ -163,23 +261,114 @@ namespace StickMate.Platform
         //   정상 창인데도 이 검사에 걸린다. 그래서 거부는 **잠정적**이다: 같은 사각형이
         //   OffDesktopConfirmReports회 연속으로 보고되면 실제 이동으로 인정하고 받아들인다.
         //   창 애니메이션 중의 오독은 매 표본이 다른 값이라 이 카운터를 채우지 못한다(= 계속 거부).
+        //
+        // ★★ 그 탈출구의 **알려진 오인 통과**(2026-09-01, 위 "정정" 문단과 한 쌍) —
+        //   "화면 밖 + 값이 안정적"은 보조 모니터만의 서명이 아니다. 아래 둘도 정확히 같은 모양이다:
+        //     · macOS  : 데스크톱 표시(F11)/Exposé가 창을 치워 놓은 상태 (.stationary 누락 시)
+        //     · Windows: Win+D 등으로 우리 창이 최소화되어 GetWindowRect가 (-32000,-32000)을 주는 상태
+        //   둘 다 상태가 유지되는 내내 같은 값이라 2회(약 0.6초) 만에 "실제 이동"으로 인정된다.
+        //
+        //   그럼에도 탈출구를 **없애지 않는다**: 낡은 원점에 영원히 갇히는 쪽이 더 나쁘고(보조 모니터
+        //   사용자는 복구 경로가 없다), 두 오인 통과는 각각 **원인 쪽에서** 막아야 하는 문제다
+        //   (macOS는 .stationary — 이미 처방됨 / Windows는 IsIconic 필터 — 미배정, 아래 참고).
+        //   대신 **침묵하지 않는다**: 거부할 때도, 탈출구로 인정할 때도 로그를 남긴다. 다음 사람이
+        //   같은 오진(= "센서 노이즈")을 반복하지 않게 하는 것이 이 로그의 유일한 목적이다.
 
         /// <summary>창 넓이의 이만큼이 데스크톱 안에 남아 있어야 "그럴듯한 보고"로 본다.
         /// 절반은 "명백히 화면 밖"의 보수적 해석이다 — 실측 오독(4.7%/18% 잔존)은 걸러내고,
         /// 창을 화면 밖으로 절반쯤 끌어다 놓는 정상 사용은 통과시킨다.</summary>
         private const float MinOnDesktopAreaFraction = 0.5f;
 
-        /// <summary>위 문단의 "연속 확인" 횟수. 폴링 주기가 0.3초이므로 2회 = 약 0.6초 안에 스스로 풀린다.</summary>
-        private const int OffDesktopConfirmReports = 2;
+        // ============================================================================
+        // ★★ 2026-09-01 (2) — 면적 비율만으로는 **부족하다**: ±755pt까지 통과한다
+        // ============================================================================
+        // 위 면적 판정은 "창이 화면 밖으로 나갔는가"를 잰다. 그런데 실제 위험은 **"한 폴링에 얼마나
+        // 튀었는가"**다. 두 질문은 다르고, 그 차이가 정확히 다음 실측으로 드러났다
+        // (실기 로그 /tmp/stickmate-run/stickmate.log, 전체화면 진입/해제 24회):
+        //
+        //     받아들여진 |원점 x| : 1, 2, 39, 40, 43, 72, 75, 93, 110, 114, 135, 140, 156, 156,
+        //                          173, 184, 227, 227, 228, 246, 285, 305, 368, 371, 372, 407,
+        //                          548, 559, 636, 666, 667, 732, 742      <- 최대 742
+        //     거부된   |원점 x| : 759, 766, 773, 782, 785, 788, 802, 966, 966, 1007, 1007,
+        //                          1083, 1123, 1327, 1384, 1410, 1433, 1435, 1457, 1553, 1562
+        //
+        // 경계가 756(=1512 x 0.5)에서 칼같이 갈린다 — 설계대로 동작한 결과다. 문제는 **분포에 틈이
+        // 없다**는 것이다: 1부터 742까지가 연속으로 채워져 있다. 즉 "크기"만으로는 창 슬라이드
+        // 애니메이션의 중간 프레임과 진짜 이동을 절대 가를 수 없다. 가를 수 있는 것은 두 가지뿐이다:
+        //   (a) **지속성** — 애니메이션 프레임은 매 표본이 다르고, 진짜 이동은 같은 값이 계속 온다.
+        //       (이미 아래 OffDesktopConfirmReports 탈출구가 이 성질을 쓰고 있다.)
+        //   (b) **변화율** — 이 오버레이는 데스크톱을 통째로 덮는 창이라 원점이 사실상 정지 상태다.
+        //       한 폴링(0.3초) 만에 화면의 몇 %씩 움직이는 것은 정상 동작이 아니다.
+        //
+        // 그래서 (b)를 추가하고, 걸린 보고는 버리는 대신 **(a)의 같은 탈출구로 보낸다**. 결과적으로
+        // "급하게 튄 값은 잠정 거부하되, 그 값이 계속 오면 실제 이동으로 인정"이 된다. 위 실측
+        // 시퀀스는 전부 매 표본이 다른 값이었으므로 전량 걸러지고, 진짜 이동(보조 모니터/해상도 변경)은
+        // 0.3초 뒤 두 번째 보고에서 그대로 통과한다 — 영구 고착이 생기지 않는다.
+        //
+        // ★ 왜 "첫 보고"에는 적용하지 않는가: 기동 직후에는 비교할 직전값 자체가 없다(기본값 (0,0)은
+        //   관측된 적 없는 가정값이다). 그때까지 이 검사를 걸면 메뉴바 아래에서 시작하는 정상 배포
+        //   형상(실측 (0,75,1512,846))이 첫 관측부터 0.3초 늦게 들어와 그동안 좌표가 틀린다.
+        //   그래서 **한 번이라도 관측을 받아들인 뒤부터**(_hasOriginBaseline) 적용한다.
 
-        private static Vector4 _lastOffDesktopRect;
-        private static int _offDesktopRepeatCount;
+        /// <summary>한 번의 보고로 원점이 이만큼(데스크톱 긴 변 대비 비율)을 넘게 움직이면
+        /// "확인 없이는 못 믿을 튐"으로 본다. 0.02 x 1512pt = 약 30pt이며, 폴링 0.3초 기준
+        /// <b>약 100pt/초</b>가 무확인 상한이라는 뜻이다.
+        ///
+        /// <para>왜 0.02인가(숫자의 근거): 아래 두 요구를 동시에 만족하는 가장 넓은 구간이다.
+        /// (i) 창장식(타이틀바) 제거로 원점이 한 번에 바뀌는 폭 28pt
+        /// (<c>OverlayContentRectPolicy.TryStripTopDecoration</c>)는 <b>즉시</b> 통과해야 한다 —
+        /// 기동 직후 반드시 일어나는 정상 전이라 여기서 지연시키면 매 실행이 손해다.
+        /// (ii) 실측된 애니메이션 오독의 최솟값 39pt는 걸러야 한다. 30pt는 그 사이에 있다.
+        /// 1~2pt짜리 반올림 흔들림도 당연히 통과한다.</para>
+        ///
+        /// <para>public인 이유: 회귀 테스트가 "문턱 바로 아래/위"를 만들려면 이 값을 참조해야 한다.
+        /// 테스트에 0.02를 베끼면 값을 바꾸는 순간 테스트가 조용히 무의미해진다
+        /// (CLAUDE.md — 프로덕션 상수를 테스트에 복사 금지).</para></summary>
+        public const float MaxUnconfirmedOriginJumpFraction = 0.02f;
+
+        /// <summary>관측을 한 번이라도 받아들였는가. 위 "첫 보고" 문단 참고 —
+        /// 기본값 (0,0)은 관측값이 아니라 가정값이라 튐 판정의 기준으로 쓸 수 없다.</summary>
+        private static bool _hasOriginBaseline;
+
+        /// <summary>이번 보고가 "의심스럽다"고 판정된 사유(탈출구 경보에 그대로 실어 보낸다).
+        /// 면적 때문인지 튐 때문인지 구분되지 않으면 실기 로그로 원인을 가릴 수 없다.</summary>
+        private static string _lastSuspectKind = string.Empty;
+
+        /// <summary>위 문단의 "연속 확인" 횟수. 폴링 주기가 0.3초이므로 2회 = 약 0.6초 안에 스스로 풀린다.
+        ///
+        /// <para>public인 이유: 회귀 테스트가 "탈출구가 열리기 직전/직후"를 재현하려면 이 횟수만큼
+        /// 반복해야 하는데, 테스트에 2를 숫자로 베끼면 값을 바꾸는 순간 테스트가 조용히 무의미해진다
+        /// (CLAUDE.md — 프로덕션 상수를 테스트에 복사 금지).</para></summary>
+        public const int OffDesktopConfirmReports = 2;
+
+        // "의심스러운 보고"(화면 밖 **또는** 급격한 튐)의 연속 확인 부기. 두 판정이 같은 탈출구를
+        // 공유하므로 부기도 하나여야 한다 — 따로 두면 두 사유가 번갈아 오는 구간에서 카운터가 서로를
+        // 리셋해 탈출구가 영영 열리지 않는다(= 영구 고착, 이 검사의 가장 나쁜 실패 모드).
+        private static Vector4 _lastSuspectRect;
+        private static int _suspectRepeatCount;
+
+        /// <summary>직전 <see cref="IsOverlayRectPlausible"/> 호출이 <b>탈출구로</b> 통과시켰는지.
+        /// 판정 함수를 순수하게 유지하면서 그 사실만 호출자에게 넘기는 한 칸짜리 통로다.</summary>
+        private static bool _acceptedOffDesktopThisReport;
 
         /// <summary>위생 검사로 버린 보고의 누적 횟수(진단/테스트용).</summary>
         public static int RejectedOverlayRectCount { get; private set; }
 
         /// <summary>마지막으로 버린 보고의 사유(진단/테스트용). 버린 적이 없으면 빈 문자열.</summary>
         public static string LastRejectedOverlayRectReason { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// 탈출구(연속 확인)로 "화면 밖 사각형"을 받아들인 누적 횟수(진단/테스트용).
+        /// 0이 아니면 창 플래그 쪽에 원인이 있을 가능성이 높다 — 위 "알려진 오인 통과" 문단 참고.
+        /// </summary>
+        public static int OffDesktopAcceptedByRepeatCount { get; private set; }
+
+        // --- 로그를 저빈도로 유지하기 위한 부기 (24시간 상주 앱 — 정상 동작을 도배하지 않는다) ---
+        // 한 "에피소드"(연속된 거부 구간) 안에서 1, 2, 4, 8, ... 번째 거부만 남기고, 정상 보고가
+        // 한 번이라도 받아들여지면 부기를 리셋한다. 시계에 의존하지 않아 테스트에서도 결정적이다.
+        private static int _rejectStreak;
+        private static int _nextRejectLogAt = 1;
+        private static Vector4 _lastAcceptWarnRect;
 
         /// <summary>
         /// 플랫폼 계층이 매 폴링 직전에 스위치 상태를 밀어 넣는 통로(Platform/FootholdPoller).
@@ -193,8 +382,15 @@ namespace StickMate.Platform
         {
             RejectedOverlayRectCount = 0;
             LastRejectedOverlayRectReason = string.Empty;
-            _offDesktopRepeatCount = 0;
-            _lastOffDesktopRect = Vector4.zero;
+            OffDesktopAcceptedByRepeatCount = 0;
+            _suspectRepeatCount = 0;
+            _lastSuspectRect = Vector4.zero;
+            _hasOriginBaseline = false;
+            _lastSuspectKind = string.Empty;
+            _rejectStreak = 0;
+            _nextRejectLogAt = 1;
+            _lastAcceptWarnRect = Vector4.zero;
+            _acceptedOffDesktopThisReport = false;
         }
 
         /// <summary>
@@ -229,27 +425,44 @@ namespace StickMate.Platform
             float rectArea = rect.width * rect.height;
             float onDesktopFraction = rectArea > 0f ? onDesktopArea / rectArea : 0f;
 
-            if (onDesktopFraction >= MinOnDesktopAreaFraction)
+            bool offDesktop = onDesktopFraction < MinOnDesktopAreaFraction;
+
+            // ★ 튐(변화율) 판정 — 위 "±755pt까지 통과한다" 문단 참고. 데스크톱 긴 변을 기준으로
+            //   삼는 이유: 세로 모니터/가로 모니터에서 같은 뜻("화면의 몇 %")이 되게 하기 위해서다.
+            float jumpLimit = Mathf.Max(desktopBounds.width, desktopBounds.height)
+                * MaxUnconfirmedOriginJumpFraction;
+            float jump = _hasOriginBaseline
+                ? Vector2.Distance(rect.position, OverlayOriginOsScreen)
+                : 0f;
+            bool jumped = _hasOriginBaseline && jump > jumpLimit;
+
+            if (!offDesktop && !jumped)
             {
-                _offDesktopRepeatCount = 0;
+                _suspectRepeatCount = 0;
                 return true;
             }
+
+            _lastSuspectKind = offDesktop
+                ? $"창의 {(onDesktopFraction * 100f):F1}%만 데스크톱 안에 있습니다(최소 {(MinOnDesktopAreaFraction * 100f):F0}%)"
+                : $"원점이 한 보고 만에 {jump:F0}pt 튀었습니다(무확인 상한 {jumpLimit:F0}pt = 데스크톱 긴 변의 {(MaxUnconfirmedOriginJumpFraction * 100f):F0}%)";
 
             // 같은 사각형이 연속으로 다시 오면 실제 이동으로 인정한다(영구 고착 방지, 위 문서 참고).
             var key = new Vector4(rect.x, rect.y, rect.width, rect.height);
-            _offDesktopRepeatCount = key == _lastOffDesktopRect ? _offDesktopRepeatCount + 1 : 1;
-            _lastOffDesktopRect = key;
-            if (_offDesktopRepeatCount >= OffDesktopConfirmReports)
+            _suspectRepeatCount = key == _lastSuspectRect ? _suspectRepeatCount + 1 : 1;
+            _lastSuspectRect = key;
+            if (_suspectRepeatCount >= OffDesktopConfirmReports)
             {
-                _offDesktopRepeatCount = 0;
+                _suspectRepeatCount = 0;
+                // 판정 함수는 계속 "순수"하게 두고(로그 없음), 이 사실만 호출자에게 넘긴다 —
+                // 경보는 좌표계를 실제로 바꾸는 곳(ReportOverlayWindowOsRect)에서 그 **직전에** 남긴다.
+                _acceptedOffDesktopThisReport = true;
                 return true;
             }
 
-            reason = $"창의 {(onDesktopFraction * 100f):F1}%만 데스크톱 안에 있습니다" +
-                $"(최소 {(MinOnDesktopAreaFraction * 100f):F0}%) — rect={rect}, 데스크톱={desktopBounds}. " +
+            reason = $"{_lastSuspectKind} — rect={rect}, 데스크톱={desktopBounds}. " +
                 $"직전 유효 원점 {OverlayOriginOsScreen}을 유지합니다. " +
                 $"같은 값이 {OffDesktopConfirmReports}회 연속으로 오면 실제 이동으로 인정합니다" +
-                $"(현재 {_offDesktopRepeatCount}회).";
+                $"(현재 {_suspectRepeatCount}회).";
             return false;
         }
 

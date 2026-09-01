@@ -269,6 +269,7 @@ namespace StickMate.Interaction
 
         private void LateUpdate()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Renderers);   // [스톨구간] 계측
             bool wantRing = _director != null && _director.IsSessionActive && _agent != null;
 
             if (wantRing && _container == null) BuildRing();

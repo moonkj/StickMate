@@ -52,10 +52,24 @@ namespace StickMate.Core
         /// <summary>사용자가 고른 캐릭터 배율(StickConfig.Min/MaxCharacterScale 구간).</summary>
         public static float CharacterScale { get; private set; } = 0.75f;
 
-        /// <summary>구석 호버 패널을 쓸 것인가(34-4-6의 "거부" 상태 — 영구 설정). 기본 ON.</summary>
+        /// <summary>
+        /// ★ <b>죽은 설정이다 — 저장 파일 호환을 위해서만 살아 있다.</b> 2026-09-01 사용자 요청으로
+        /// 좌하단 구석 호버 패널이 통째로 삭제되면서 이 값을 보는 기능이 하나도 남지 않았다.
+        ///
+        /// <para>그래도 지우지 않는 이유는 <b>하위 호환</b>이다. 저장 스키마 v6부터 <c>cornerPanelEnabled</c>
+        /// 키가 실제 사용자 파일에 들어 있고, <see cref="CharacterSaveStore"/>가 그 키를 읽고 쓴다.
+        /// 여기서 이 속성을 지우면 스키마 버전을 올려야 하고, 그러면 <b>이미 배포된 파일</b>의 마이그레이션이
+        /// 한 벌 더 늘어난다 — 아무 기능도 없는 bool 하나 때문에. 지금처럼 값만 왕복시키면 옛 파일도
+        /// 새 파일도 경고 없이 열리고, 스키마 버전은 그대로다.</para>
+        ///
+        /// <para>바꾸는 문(<c>SetCornerPanelEnabled</c>)은 <b>없앴다</b> — 아무도 못 바꾸는 값이어야
+        /// 나중에 "이 토글이 왜 아무 일도 안 하지"가 생기지 않는다. 훗날 스키마 버전을 올릴 일이
+        /// 생기면 그때 이 속성과 저장 필드를 함께 정리하면 된다.</para>
+        /// </summary>
         public static bool CornerPanelEnabled { get; private set; } = true;
 
-        /// <summary>배율의 "의미 있는 변화" 하한. 다이얼 스냅 단위가 0.05라 그 절반보다 작으면
+        /// <summary>배율의 "의미 있는 변화" 하한. 스냅 단위(CharacterScaleController.ValueStep)가
+        /// 0.05라 그 절반보다 작으면
         /// 같은 눈금이다(부동소수 흔들림만으로 저장을 두드리지 않는다 — 위 MeaningfulMovePoints와 같은 이유).</summary>
         private const float MeaningfulScaleDelta = 0.001f;
 
@@ -65,13 +79,6 @@ namespace StickMate.Core
             if (HasCharacterScale && Mathf.Abs(CharacterScale - scale) < MeaningfulScaleDelta) return;
             CharacterScale = scale;
             HasCharacterScale = true;
-            IsDirty = true;
-        }
-
-        public static void SetCornerPanelEnabled(bool enabled)
-        {
-            if (CornerPanelEnabled == enabled) return;
-            CornerPanelEnabled = enabled;
             IsDirty = true;
         }
 
@@ -99,7 +106,11 @@ namespace StickMate.Core
             IsDirty = false;
         }
 
-        /// <summary>저장 파일 복원 전용 — 구석 호버 패널 몫(34-9 #8). 위 RestoreFromSave와 같은 규약.</summary>
+        /// <summary>저장 파일 복원 전용. 위 RestoreFromSave와 같은 규약.
+        ///
+        /// <para>이름에 CornerPanel이 남아 있는 것은 이 메서드가 <b>캐릭터 크기</b>도 함께 복원하기
+        /// 때문이다(둘이 v6에서 같이 들어왔다). 구석 패널은 2026-09-01에 삭제됐지만 크기 복원은
+        /// 이 경로가 유일하다 — 세 번째 인자만 죽은 값이다(<see cref="CornerPanelEnabled"/> 문서 참고).</para></summary>
         internal static void RestoreCornerPanelFromSave(bool hasScale, float scale, bool cornerPanelEnabled)
         {
             HasCharacterScale = hasScale && !float.IsNaN(scale) && scale > 0f;

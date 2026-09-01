@@ -36,7 +36,7 @@ namespace StickMate.Core
     /// ============================================================================
     /// macOS `com.apple.dock tilesize`의 사용자 설정 범위는 16~128이다. 즉 같은 코드가 도는 다른
     /// 사용자의 화면에서 낙차는 0.83유닛(tilesize 16) ~ 3.57유닛(tilesize 128)까지 **4.3배** 변한다.
-    /// 그런데 StickConfig.stepUpMaxHeight는 2.4라는 절대값이었고, tilesize 80 이상에서 그 상한을
+    /// 그런데 StickConfig의 되올라가기 상한은 2.4라는 절대값이었고, tilesize 80 이상에서 그 상한을
     /// 넘는다 — "한 번 Dock 아래로 내려가면 영영 못 올라온다"(이 세션이 세 번 신고받고 두 번 고쳤다고
     /// 믿었던 바로 그 버그)가 **큰 Dock 아이콘을 쓰는 사용자에게 그대로 남아 있었다.**
     /// 그래서 <see cref="ResolveStepUpMaxHeight"/>는 설정 절대값과 **실측 낙차 + 여유** 중 큰 쪽을
@@ -133,14 +133,15 @@ namespace StickMate.Core
 
         /// <summary>
         /// Dock 단차가 '뛰어내리기' 밴드에 남아 있으려면 필요한 최소 캐릭터 배율
-        /// = 낙차 / (배율 1.0에서의 손끝~발끝 거리 ≈ 2.5072).
+        /// = 낙차 / (배율 1.0에서의 매달리기 최소 낙차 ≈ 3.6445 — 손끝~발끝 2.5072 +
+        /// ledgeHangMinVisibleDropHeights 0.50 H, 2026-09-02).
         ///
         /// ★ 이 배율 **아래에서 벌어지는 일**을 정확히 적어 둔다(2026-08-30 재검증):
         /// Dock 단차가 뛰어내리기 밴드를 벗어나 **매달려 내려가기**로 분류된다. 이는 고장이 아니다 —
         /// 매달리기는 "낙차 ≥ 손끝~발끝 거리"일 때만 선택되므로 그 구간에서는 매달린 발끝이 착지면을
         /// 지나치지 않는다(기하학적으로 안전한 쪽이다). 따라서 이 임계값은 **금지선이 아니라 거동
         /// 분기점**이다. 진짜 금지선은 두 개뿐이고 둘 다 따로 잠겨 있다:
-        ///   (1) stepUpMaxHeight가 낙차를 덮을 것 — <see cref="ResolveStepUpMaxHeight"/>
+        ///   (1) 되올라가기 상한(stepUpMaxHeights x 신장)이 낙차를 덮을 것 — <see cref="ResolveStepUpMaxHeight"/>
         ///   (2) ledgeHangChance > 0 일 것 — 0이면 이 배율 아래에서 뛰어내리기도 매달리기도 성립하지
         ///       않아 캐릭터가 Dock 위에서 영원히 되돌아서기만 한다(Tests/EditMode 불변식으로 잠금).
         /// </summary>
@@ -154,12 +155,14 @@ namespace StickMate.Core
         /// <summary>
         /// ★ 자율 배회의 되올라가기 상한을 정한다 = max(설정 절대값, 실측 Dock 낙차 + 여유).
         ///
-        /// 설정 절대값(StickConfig.stepUpMaxHeight)을 그대로 쓰면 tilesize 80 이상에서 낙차가 그 값을
+        /// 설정값(StickConfig.stepUpMaxHeights x 신장)을 그대로 쓰면 큰 tilesize에서 낙차가 그 값을
         /// 넘어 되올라가기가 영구히 실패한다. 반대로 실측값만 쓰면 Dock을 못 찾은 프레임(전체화면 게임
         /// 감지 중 / Dock 자동 숨김 / 비-macOS)에 상한이 0이 되어 되올라가기가 통째로 죽는다.
         /// 그래서 **둘 중 큰 쪽**이다 — 어느 한쪽이 실패해도 다른 쪽이 받친다.
         /// </summary>
-        /// <param name="configuredMaxHeight">StickConfig.stepUpMaxHeight.</param>
+        /// <param name="configuredMaxHeight">StickConfig.ResolveStepUpMaxHeightWorld(신장) — <b>월드 유닛</b>.
+        /// ★ 2026-09-02: 설정 필드 자체는 신장 배수(stepUpMaxHeights)가 됐으므로 그 값을 그대로 넘기면
+        /// 안 된다. 이 함수는 예전과 같이 월드 유닛 두 개를 비교하는 순수 산술이다.</param>
         /// <param name="measuredDockDropWorldUnits">실측 낙차. 측정 실패 시 0 이하 또는 NaN을 넘길 것.</param>
         public static float ResolveStepUpMaxHeight(float configuredMaxHeight, float measuredDockDropWorldUnits)
         {

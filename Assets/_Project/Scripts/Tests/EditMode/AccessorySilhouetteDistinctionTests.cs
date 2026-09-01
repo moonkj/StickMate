@@ -60,33 +60,92 @@ namespace StickMate.Tests.EditMode
                 "페르소나가 실물에서 '두 장이 같은 그림'이라고 확인한 그 상태입니다(37-6 규칙 5 [필수]).");
         }
 
+        // ============================================================================
+        // ★ 옛 머리카락 도형의 박제 — 2026-09-01(2차) HAIR 재설계로 프로덕션에서 사라진 코드
+        // ============================================================================
+        // 아래 상수들과 <see cref="OldHairSilhouette"/>는 <b>옛 프로덕션 코드를 그대로 옮겨 얼린 것</b>이다
+        // (<c>HairSpanStartDegrees</c> −16 / <c>HairSpanEndDegrees</c> 196 / <c>HairlineEdgeRatio</c> −0.06
+        //  / <c>HairlineCrestRatio</c> 0.50 / <c>HairlineHalfWidthRatio</c> 0.88 / <c>HairlineSegments</c> 6
+        //  / <c>HairCapSegments</c> 14). 프로덕션에서는 폐기됐다 — "돔 + 커튼 2 + 두피 안쪽 호"로
+        // 구성 자체가 바뀌었고, 옛 구성은 <b>반경이 일정한 극좌표 호</b>라 상수 조정으로는 고칠 수
+        // 없었기 때문이다(docs/EQUIPMENT_SHAPE_SPEC.md 4-2).
+        //
+        // 여기 남긴 이유는 하나다: 이 파일의 네거티브 컨트롤이 <b>역사를 재현</b>하기 때문이다.
+        // 살아 있는 상수를 참조하면 컨트롤이 "옛 그림"이 아니라 "현재 그림"을 재게 되어 스스로 무너진다.
+        // (같은 사고가 이 파일의 펜던트 컨트롤에서 실제로 한 번 났다 — 아래 2절 문단 참고.)
+        private const float OldHairSpanStartDegrees = -16f;
+        private const float OldHairSpanEndDegrees = 196f;
+        private const int OldHairCapSegments = 14;
+        private const int OldHairlineSegments = 6;
+        private const float OldHairlineHalfWidthRatio = 0.88f;
+        private const float OldHairlineEdgeRatio = -0.06f;
+        private const float OldHairlineCrestRatio = 0.50f;
+        private const float OldBowlCapRadiusRatio = 1.34f;
+        private const float OldNeatCapRadiusRatio = 1.14f;
+        private const float OldNeatFrontLiftRatio = 0.16f;
+
+        /// <summary>옛 <c>AccessoryShapeBuilder.HairSilhouette</c> — 돔 + 포물선 이마선.</summary>
+        private static Vector3[] OldHairSilhouette(in AccessoryShapeBuilder.Rig rig,
+            float baseRadiusRatio, float frontLiftRatio)
+        {
+            float r = rig.HeadRadius;
+            float hc = rig.HeadCenterY;
+            var pts = new Vector3[OldHairCapSegments + 1 + OldHairlineSegments + 1];
+
+            for (int i = 0; i <= OldHairCapSegments; i++)
+            {
+                float t = i / (float)OldHairCapSegments;
+                float rad = Mathf.Lerp(OldHairSpanStartDegrees, OldHairSpanEndDegrees, t) * Mathf.Deg2Rad;
+                float radius = baseRadiusRatio + frontLiftRatio * (1f - t);
+                pts[i] = rig.F(Mathf.Cos(rad) * radius * r, hc + Mathf.Sin(rad) * radius * r);
+            }
+            for (int i = 0; i <= OldHairlineSegments; i++)
+            {
+                float u = -1f + 2f * i / OldHairlineSegments;
+                float y = OldHairlineEdgeRatio + (OldHairlineCrestRatio - OldHairlineEdgeRatio) * (1f - u * u);
+                pts[OldHairCapSegments + 1 + i] =
+                    rig.F(u * OldHairlineHalfWidthRatio * r, hc + y * r);
+            }
+            return pts;
+        }
+
+        private static List<AccessoryShapeBuilder.Shape> Frozen(string name, Vector3[] points)
+            => new List<AccessoryShapeBuilder.Shape>
+            {
+                new AccessoryShapeBuilder.Shape(name, points, true,
+                    AccessoryShapeBuilder.SortHair, filled: true),
+            };
+
         /// <summary>
         /// ★ 네거티브 컨트롤 — <b>지표가 실제로 빨간불을 낼 수 있는가.</b>
-        /// <para>옛 바가지머리(형제와 같은 돔을 반경만 1.34R로 키운 것)를 그대로 재구성해 같은 자로 잰다.
-        /// 이 값이 1획을 넘어 버리면 지표가 다시 눈이 먼 것이고, 위 검사는 공허하게 초록불이 된다.</para>
+        /// <para>옛 바가지머리(형제와 같은 돔을 반경만 1.34R로 키운 것)와 <b>옛 단정한머리</b>를
+        /// 나란히 재구성해 같은 자로 잰다. 이 값이 1획을 넘어 버리면 지표가 다시 눈이 먼 것이고,
+        /// 위 검사는 공허하게 초록불이 된다.</para>
+        /// <para>★ 2026-09-01(2차) — <b>비교 대상도 함께 얼렸다.</b> 처음 작성본은 옛 바가지머리만
+        /// 재구성하고 단정한머리는 <b>살아 있는 도형</b>을 읽었다. 그래서 HAIR 6종이 "덩어리"로
+        /// 재설계되자(커튼이 −2.12R까지 내려간다) 이 검사가 실패했다 — 실제로 잰 것이
+        /// "옛 바가지 vs 새 단정", 즉 <b>역사상 존재한 적 없는 쌍</b>이었기 때문이다.
+        /// 이 파일의 펜던트 컨트롤이 같은 사고를 이미 한 번 겪고 같은 방식으로 고쳤다(아래 2절).</para>
         /// </summary>
         [Test]
         public void 지표가_옛_바가지머리를_실제로_잡는다()
         {
             AccessoryShapeBuilder.Rig rig = Rig();
 
-            // 옛 좌표를 여기 박제한다(매직넘버가 아니라 <b>검사의 내용</b>이다):
-            //   HairSilhouette(rig, 1.34f, 0f, 0f, 0.02f, HairCapSegments) + 이마를 가로지르는 띠 1개.
-            // 띠는 실루엣을 넓히지 않으므로 반경 프로파일에는 캡만 넣어도 결과가 같다.
-            var old = new List<AccessoryShapeBuilder.Shape>
-            {
-                new AccessoryShapeBuilder.Shape("OldBowlCap",
-                    AccessoryShapeBuilder.HairSilhouette(rig, 1.34f, 0f, 0f, 0.02f,
-                        AccessoryShapeBuilder.HairCapSegments),
-                    true, AccessoryShapeBuilder.SortHair, filled: true),
-            };
+            Assert.AreNotEqual(OldBowlCapRadiusRatio, AccessoryShapeBuilder.BowlCapRadiusRatio,
+                "바가지머리 돔 반경이 옛 값으로 되돌아갔습니다 — 이 컨트롤이 재현하려는 결함이 곧 현재 상태입니다.");
+
+            List<AccessoryShapeBuilder.Shape> oldBowl =
+                Frozen("OldBowlCap", OldHairSilhouette(rig, OldBowlCapRadiusRatio, 0.02f));
+            List<AccessoryShapeBuilder.Shape> oldNeat =
+                Frozen("OldNeatCap", OldHairSilhouette(rig, OldNeatCapRadiusRatio, OldNeatFrontLiftRatio));
 
             float d = AccessorySilhouetteMetrics.MaxRadiusDelta(
-                AccessorySilhouetteMetrics.ProfileOf(rig, old, rig.HeadCenterY),
-                AccessorySilhouetteMetrics.Profile(rig, EquipmentSlot.Hair, AccessoryShapeBuilder.HairNeat));
+                AccessorySilhouetteMetrics.ProfileOf(rig, oldBowl, rig.HeadCenterY),
+                AccessorySilhouetteMetrics.ProfileOf(rig, oldNeat, rig.HeadCenterY));
 
             Assert.Less(d, W,
-                $"옛 바가지머리와 단정한머리의 차이가 {d / W:F2}획으로 측정됐습니다 — 페르소나 실측은 0.58획입니다. " +
+                $"옛 바가지머리와 옛 단정한머리의 차이가 {d / W:F2}획으로 측정됐습니다 — 페르소나 실측은 0.58획입니다. " +
                 "지표가 다시 부풀리고 있습니다(옛 지표는 정점만·상반구만 봐서 같은 쌍을 3.77획으로 셌습니다). " +
                 "이 검사가 실패하면 위 '갈린다' 검사들은 전부 공허합니다.");
         }
@@ -102,10 +161,10 @@ namespace StickMate.Tests.EditMode
             List<AccessoryShapeBuilder.Shape> bowl =
                 AccessorySilhouetteMetrics.Build(rig, EquipmentSlot.Hair, AccessoryShapeBuilder.HairBowl);
 
-            AccessoryShapeBuilder.Shape cap = AccessorySilhouetteMetrics.Find(bowl, "HairCap");
+            AccessoryShapeBuilder.Shape mass = AccessorySilhouetteMetrics.Find(bowl, "HairMass");
             AccessoryShapeBuilder.Shape fringe = AccessorySilhouetteMetrics.Find(bowl, "HairFringe");
 
-            float gap = AccessorySilhouetteMetrics.MaxGapToShape(rig, fringe.Points, cap);
+            float gap = AccessorySilhouetteMetrics.MaxGapToShape(rig, fringe.Points, mass);
             Assert.That(gap, Is.LessThan(1e-4f).Or.GreaterThanOrEqualTo(W * 1.5f),
                 $"앞머리 선이 실루엣 경계에서 {gap / W:F2}획 떨어져 있습니다 — 0(겹침)이거나 1.5획 이상이어야 합니다. " +
                 "그 사이는 붙은 것도 뗀 것도 아니라 선을 두 번 그린 실수로 보입니다(37-6 규칙 4).");
@@ -296,10 +355,10 @@ namespace StickMate.Tests.EditMode
             List<AccessoryShapeBuilder.Shape> beret =
                 AccessorySilhouetteMetrics.Build(rig, EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret);
 
-            AccessoryShapeBuilder.Shape crown = AccessorySilhouetteMetrics.Find(beret, "BeretCrown");
+            AccessoryShapeBuilder.Shape body = AccessorySilhouetteMetrics.Find(beret, "BeretBody");
             AccessoryShapeBuilder.Shape rim = AccessorySilhouetteMetrics.Find(beret, "BeretRim");
 
-            float gap = AccessorySilhouetteMetrics.MaxGapToShape(rig, rim.Points, crown);
+            float gap = AccessorySilhouetteMetrics.MaxGapToShape(rig, rim.Points, body);
             Assert.That(gap, Is.LessThan(1e-4f).Or.GreaterThanOrEqualTo(W * 1.5f),
                 $"베레모 테가 관 실루엣에서 {gap / W:F2}획 떨어져 있습니다(옛 값 0.26획). " +
                 "0 < 간격 < 1획은 규칙 4가 '최악'이라고 못박은 구간이라, 테가 밑단이 아니라 " +
@@ -317,7 +376,7 @@ namespace StickMate.Tests.EditMode
 
             AccessoryShapeBuilder.Shape crown = AccessorySilhouetteMetrics.Find(
                 AccessorySilhouetteMetrics.Build(rig, EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret),
-                "BeretCrown");
+                "BeretBody");
 
             var oldRim = new[] { rig.F(-r * 1.10f, brimY), rig.F(r * 0.84f, brimY) };
             float gap = AccessorySilhouetteMetrics.MaxGapToShape(rig, oldRim, crown);

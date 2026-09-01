@@ -60,11 +60,12 @@ namespace StickMate.States
 
             // BUG-M7 대응: 텍스트가 "한 발 더!/오늘은 여기까지"로 파생되되, 그 근거(ShotsRemaining)가
             // 이 상태 인스턴스에서 구조적으로 노출된 값이라는 점이 핵심(UX_FLOW.md 31-2 표 #1 리터럴 그대로).
+            // 종류=Reaction: 확정된 점 사건("이번 타격이 어떤 타격이었나")의 서술이라 상태 종료 후에도 참.
             _ = new DialogueIntent(context, (id, dialogueParams) =>
             {
                 var p = dialogueParams as AttackDialogueParams;
                 int remaining = p != null ? p.ShotsRemaining : 0;
-                return remaining >= 1 ? "한 발 더!" : "오늘은 여기까지";
+                return remaining >= 1 ? DialogueLine.React("한 발 더!") : DialogueLine.React("오늘은 여기까지");
             });
         }
 

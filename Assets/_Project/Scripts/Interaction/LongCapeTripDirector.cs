@@ -117,6 +117,7 @@ namespace StickMate.Interaction
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Directors);   // [스톨구간] 계측
             if (!ResolveArmed()) return;
 
             // 포아송: 매 프레임 p = dt / 평균간격. 프레임레이트가 달라져도 기대 빈도가 같다.

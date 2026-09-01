@@ -38,11 +38,39 @@ MonoBehaviour:
   getupDuration: 0.6
   getupFloorClearanceEnabled: 1
   parkourDetectionRadius: 0.5
-  parkourClimbDuration: 0.5
-  rollLandingHeightThreshold: 2
+  parkourClimbDuration: 1.2
+  parkourClimbReachFraction: 0.1833
+  parkourClimbHangFraction: 0.325
+  parkourClimbPullFraction: 0.6583
+  parkourClimbReleaseFraction: 0.8917
+  parkourClimbRiseAtReach01: 0.02
+  parkourClimbRiseAtHang01: 0.1
+  parkourClimbRiseAtPull01: 0.8
+  parkourClimbGripInsetRatio: 0.1
+  parkourClimbFootPlantAheadRatio: 0.18
+  parkourClimbWallFootDropLegRatio: 0.62
+  parkourClimbMantleArmDegrees: 62
+  parkourClimbMantleElbowDegrees: 18
+  parkourClimbMantleHipDegrees: 40
+  parkourClimbMantleKneeDegrees: 39
+  parkourClimbTorsoLeanDegrees: 24
+  parkourClimbMaxBodySagHeights: 0.75
+  parkourClimbPoseSmoothingRate: 44
+  landingReactionThresholdHeights: 0.88
+  landingSoftAbsorbThresholdHeights: 0.35
+  landingSoftAbsorbMinDepth01: 0.08
+  landingSoftAbsorbDurationShallow: 0.14
+  landingCrouchBraceTailHeights: 7.1
+  landingCrouchDurationBrace: 0.88
+  landingCrouchHoldFractionBrace: 0.4
+  landingCrouchTorsoPitchShallowDegrees: 6
+  landingCrouchTorsoPitchDegrees: 22
+  landingCrouchTorsoPitchBraceDegrees: 30
+  landingCollapseThresholdHeights: 11
+  landingCollapseEnabled: 0
   ledgeHangChance: 0.35
   ledgeHangGrabDuration: 0.28
-  ledgeHangHoldDurationMin: 0.55
+  ledgeHangHoldDurationMin: 0.84
   ledgeHangHoldDurationMax: 1.5
   ledgeHangMaxDuration: 3
   ledgeHangEdgeOffset: 0.14
@@ -52,6 +80,7 @@ MonoBehaviour:
   ledgeHangKneeBendDegrees: 14
   ledgeHangSwayAmplitudeDegrees: 5
   ledgeHangSwayFrequencyHz: 0.9
+  ledgeHangMinVisibleDropHeights: 0.5
   hopDownChance: 0.5
   hopDownMinDropHeight: 0.35
   hopDownMaxDropHeight: 0
@@ -60,7 +89,7 @@ MonoBehaviour:
   hopDownEdgeCommitDistance: 0.12
   hopDownStepOffSpeedScale: 0.8
   stepUpChance: 0.85
-  stepUpMaxHeight: 2.4
+  stepUpMaxHeights: 1.0551
   parkourMantleInset: 0.6
   parkourMantleInsetDerived: 1
   postClimbDescendCooldown: 8
@@ -204,8 +233,8 @@ MonoBehaviour:
   eyeTrackingNeutralRadiusWorld: 0.6
   eyeTrackingFullRangeWorld: 4
   dialogueBubbleEnabled: 1
-  dialogueMinVisibleSeconds: 0.7
-  dialogueMaxVisibleSeconds: 4
+  dialogueMinVisibleSeconds: 0
+  dialogueMaxVisibleSeconds: 0
   dialogueFontSize: 16
   dialogueTiltDegrees: 8
   idleChatterChance: 0.28
@@ -241,7 +270,7 @@ MonoBehaviour:
   sinkholeLiftRestSeconds: 0.35
   dockPhysicsStepEnabled: 1
   sinkholeLiftMaxHeights: 1.5
-  landingCrouchDeepFallHeights: 3
+  landingCrouchDeepFallHeights: 3.02
   landingCrouchMinDepth01: 0.45
   landingCrouchDurationShallow: 0.32
   landingCrouchDurationDeep: 0.62
@@ -341,7 +370,7 @@ MonoBehaviour:
   idleAmbientMotionEnabled: 1
   idleAmbientLookAroundSeconds: 0.9
   idleAmbientLookArmDegrees: 107
-  idleAmbientLookElbowDegrees: 122
+  idleAmbientLookElbowDegrees: 98
   idleAmbientLookHeadShiftRatio: 0
   idleAmbientStretchSeconds: 2
   idleAmbientStretchArmSpreadDegrees: 13
@@ -376,3 +405,5 @@ MonoBehaviour:
   groundLossHangElbowBendDegrees: 22
   groundLossHangFallTellLeanDegrees: 26
   groundLossHangHardTimeoutGraceMultiplier: 3
+  logStallAttribution: 1
+  suppressInfoLogStackTraces: 1

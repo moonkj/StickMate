@@ -335,9 +335,23 @@ namespace StickMate.Interaction
                     _failShakeTimer = FailShakeSeconds; // 판자는 그대로 유지되고 흔들리기만 한다(10절 실패 UX).
                     break;
 
-                case BattleMinigamePhase.Exhausted:
-                    Debug.Log("[격파] 판정=소진/타임아웃 — 재도전 횟수를 다 썼거나 5초 동안 클릭이 없었습니다. " +
-                        "판자가 쪼그라들며 사라지는 '민망한 퇴장'으로 정상 종료합니다.");
+                // ★ 2026-09-02 — 예전에는 이 두 갈래가 Exhausted 하나였고, 로그도 "재도전 횟수를 다
+                //   썼거나 5초 동안 클릭이 없었습니다"라는 **둘 중 하나** 문장이었다. 창을 볼 수 없는
+                //   환경에서 "둘 중 하나"는 진단 정보가 아니다(GroundSensor.DescribeGroundLoss가 같은
+                //   이유로 사유를 하나로 확정하도록 바뀐 것과 같은 판단). 퇴장 연출은 두 경로가
+                //   똑같지만, **화면에 대사가 뜨는지 아닌지**가 다르므로 로그는 반드시 갈라야 한다.
+                case BattleMinigamePhase.RetriesExhausted:
+                    Debug.Log($"[격파] 종료=재도전 소진 — 릴리즈 게이지 {ratio:P1}로 마지막 시도까지 " +
+                        "실패했습니다. 캐릭터가 \"오늘은 여기까지\"라고 말하고, 판자가 쪼그라들며 " +
+                        "사라지는 '민망한 퇴장'으로 정상 종료합니다.");
+                    BeginMode(Mode.Retreat);
+                    break;
+
+                case BattleMinigamePhase.InputTimeout:
+                    Debug.Log("[격파] 종료=무입력 타임아웃 — 유저가 이탈한 것으로 보고 중단합니다. " +
+                        "**대사는 없습니다**(판정이 아니라 중단이라 할 말이 확정된 사건이 아닙니다). " +
+                        "판자는 같은 '민망한 퇴장'으로 정리합니다. 무클릭 무인 실행에서는 격파가 " +
+                        "항상 이쪽으로 끝납니다 — 재도전 소진은 사람이 클릭해야 도달합니다.");
                     BeginMode(Mode.Retreat);
                     break;
             }
@@ -662,6 +676,7 @@ namespace StickMate.Interaction
 
         private void LateUpdate()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Renderers);   // [스톨구간] 계측
             if (_mode == Mode.None) return;
 
             _elapsed += Time.deltaTime;

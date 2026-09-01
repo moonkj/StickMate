@@ -2,6 +2,7 @@ using System.IO;
 using NUnit.Framework;
 using UnityEditor;
 using StickMate.Core;
+using StickMate.Dialogue;
 
 namespace StickMate.Tests.EditMode
 {
@@ -317,16 +318,19 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// ★ v6 신설 필드(캐릭터 크기 / 구석 패널 on/off)의 하위 호환 — <b>"없으면 기본값"이 저절로
-        /// 성립하지 않는 유일한 종류의 필드</b>가 여기 하나 있다.
+        /// ★ v6 신설 필드의 하위 호환 + <b>삭제된 기능의 설정 키가 남아 있어도 안전한가</b>.
         ///
-        /// <c>characterScaleSaved</c>는 없으면 false로 채워지고 그 false는 "아직 크기를 고른 적 없다"는
-        /// 정확한 사실이라 v3 톱니 위치 때와 같은 방식으로 성립한다. 그런데 <c>cornerPanelEnabled</c>는
-        /// <b>기본이 true</b>라 없으면 false로 채워져 뜻이 정확히 뒤집힌다 — 업데이트만으로 옛 사용자의
-        /// 구석 패널이 조용히 꺼진다. 그래서 Load가 버전으로 분기하는지 여기서 잠근다.
+        /// <para>2026-09-01 좌하단 구석 호버 패널이 사용자 요청으로 통째로 삭제됐다. 그 패널의 설정
+        /// <c>cornerPanelEnabled</c>는 <b>이미 배포된 v6+ 저장 파일에 실제로 들어 있다</b>. 기능을
+        /// 지울 때 가장 흔한 사고가 "그 키를 읽던 코드까지 지워서 옛 파일이 안 열리는 것"이라,
+        /// 이 프로젝트는 스키마 버전을 올리는 대신 <b>값만 왕복시키는 쪽</b>을 택했다
+        /// (<see cref="UiLayoutModel.CornerPanelEnabled"/> 문서). 이 테스트가 그 선택을 잠근다.</para>
+        ///
+        /// <para>함께 잠그는 원래 계약: <c>characterScaleSaved</c>는 없으면 false로 채워지고 그 false는
+        /// "아직 크기를 고른 적 없다"는 정확한 사실이라 v3 톱니 위치 때와 같은 방식으로 성립한다.</para>
         /// </summary>
         [Test]
-        public void v5_파일을_읽어도_구석_패널이_꺼지지_않는다()
+        public void v5_파일은_구석_패널_키가_없어도_그대로_열린다()
         {
             string json =
                 "{\n" +
@@ -340,17 +344,59 @@ namespace StickMate.Tests.EditMode
             CharacterSaveStore.Load();
 
             Assert.IsTrue(CharacterSaveStore.LoadedFromFile, "v5 파일을 통째로 버렸습니다.");
-            Assert.IsTrue(UiLayoutModel.CornerPanelEnabled,
-                "v5 파일(그 키가 애초에 없는 파일)을 읽었더니 구석 호버 패널이 꺼졌습니다 — " +
-                "JsonUtility가 채운 false를 사용자의 선택으로 오해한 것입니다(CharacterSaveStore." +
-                "FirstVersionWithCornerPanel 분기 확인).");
+            Assert.AreEqual(7, CharacterProgressionModel.Level, "v5 파일의 레벨이 사라졌습니다.");
             Assert.IsFalse(UiLayoutModel.HasCharacterScale,
                 "v5 파일에 없는 크기가 '사용자가 고른 값'으로 복원됐습니다.");
         }
 
         /// <summary>
-        /// ★ v8 신설 필드(설정창)의 하위 호환 — v6의 <c>cornerPanelEnabled</c>와 <b>완전히 같은 종류의
-        /// 함정</b>이 두 개 더 생겼다. <c>autoHideOnFullscreen</c>/<c>gearIconVisible</c>는 기본이
+        /// ★ <b>삭제된 기능의 설정이 남아 있는 실제 사용자 파일</b>이 경고 없이 열린다 —
+        /// 2026-09-01 구석 호버 패널 삭제 라운드의 하위 호환 잠금.
+        ///
+        /// <para>이 파일은 그 패널을 <b>꺼 둔</b> 사용자의 파일이다(<c>cornerPanelEnabled: false</c>).
+        /// 기능이 사라졌으므로 그 값이 무엇이든 화면은 똑같아야 하고, 무엇보다 <b>같은 파일에 실려 있는
+        /// 다른 값들</b>(레벨·이름·사용자가 고른 캐릭터 크기)이 그 키 하나 때문에 유실되면 안 된다.</para>
+        ///
+        /// <para>스키마 버전은 이 라운드에서 <b>올리지 않았다</b> — 저장 필드를 그대로 두고 읽는 쪽만
+        /// 죽였기 때문이다. 그래서 마이그레이션도 새로 생기지 않는다.</para>
+        /// </summary>
+        [Test]
+        public void 삭제된_구석_패널_설정이_적힌_파일도_다른_값을_잃지_않는다()
+        {
+            string json =
+                "{\n" +
+                "    \"version\": 6,\n" +
+                "    \"level\": 12,\n" +
+                "    \"characterName\": \"구버전동료\",\n" +
+                "    \"characterScaleSaved\": true,\n" +
+                "    \"characterScale\": 1.25,\n" +
+                "    \"cornerPanelEnabled\": false,\n" +
+                "    \"wornHead\": \"\"\n" +
+                "}";
+            File.WriteAllText(CharacterSaveStore.FilePath, json);
+            UiLayoutModel.ResetForTesting();
+
+            Assert.DoesNotThrow(() => CharacterSaveStore.Load(),
+                "삭제된 기능의 설정 키가 들어 있는 저장 파일에서 로드가 터졌습니다.");
+
+            Assert.IsTrue(CharacterSaveStore.LoadedFromFile,
+                "구석 패널 설정이 적힌 파일을 통째로 버렸습니다 — 그 사용자의 레벨/이름/크기가 전부 날아갑니다.");
+            Assert.AreEqual(12, CharacterProgressionModel.Level, "같은 파일의 레벨이 사라졌습니다.");
+            Assert.IsTrue(UiLayoutModel.HasCharacterScale, "같은 파일의 캐릭터 크기 선택이 사라졌습니다.");
+            Assert.AreEqual(1.25f, UiLayoutModel.CharacterScale, 0.0001f,
+                "같은 파일의 캐릭터 크기 값이 바뀌었습니다.");
+
+            // 저장을 한 번 더 해도 파일이 깨지지 않는다(죽은 필드가 왕복만 하는지 확인).
+            Assert.IsTrue(CharacterSaveStore.Save(), "삭제 기능 키가 남은 상태에서 재저장에 실패했습니다.");
+            Assert.DoesNotThrow(() => CharacterSaveStore.Load(),
+                "재저장한 파일을 다시 읽는 데 실패했습니다.");
+            Assert.AreEqual(1.25f, UiLayoutModel.CharacterScale, 0.0001f,
+                "왕복 후 캐릭터 크기가 달라졌습니다.");
+        }
+
+        /// <summary>
+        /// ★ v8 신설 필드(설정창)의 하위 호환 — v6의 <c>cornerPanelEnabled</c>가 겪었던 것과
+        /// <b>완전히 같은 종류의 함정</b>이 두 개 더 생겼다. <c>autoHideOnFullscreen</c>/<c>gearIconVisible</c>는 기본이
         /// true인데, v7 이하 파일에는 그 키가 아예 없어 JsonUtility가 false로 채운다 — 그대로 읽으면
         /// 업데이트만 했는데 옛 사용자의 <b>전체화면 자동 숨김이 꺼지고</b>(절대 불변 원칙 2 위반) 톱니
         /// 아이콘이 사라진다. 나머지 말풍선 4종은 "고른 적 있는가 + 값" 두 벌이라 false가 곧 정확한
@@ -395,22 +441,95 @@ namespace StickMate.Tests.EditMode
                 "v7 파일에 없는 말풍선 on/off가 '사용자가 고른 값'으로 복원됐습니다.");
         }
 
+        /// <summary>
+        /// ★ v9 신설 필드(<c>대사 표시 시간</c> 3단)의 하위 호환 — 2026-09-02(docs/UX_FLOW.md 42절).
+        ///
+        /// <para>v8 파일에는 <c>dialogueVisibleSeconds</c>(초, 1.5~6.0)가 들어 있다. v9는 그 필드를
+        /// <b>읽지 않는다</b> — 마이그레이션 매핑이 <b>"저장된 값 전부 → 기본(100%)"</b>이기 때문이다.
+        /// 근거: 그 슬라이더는 2.5초를 넘는 구간에서 화면을 한 톨도 바꾸지 못했으므로(35줄 전수 실측
+        /// 0/35) 옛 값의 대부분은 "사용자가 고른 뜻"이 아니라 <b>아무 일도 일어나지 않던 숫자</b>다.
+        /// 억지로 배율로 환산하면 <b>겪어본 적 없는 화면</b>을 새로 만들어 주게 된다.</para>
+        ///
+        /// <para>여기서 잠그는 것은 둘이다: (1) 신규 필드가 <b>안전한 기본값</b>으로 채워지는가,
+        /// (2) 같은 파일의 <b>다른 v8 값들은 그대로 살아남는가</b>(= 파일을 통째로 버리거나 전부
+        /// 기본값으로 밀어 버리지 않았는가). (2)가 없으면 (1)은 "아무것도 안 읽어서" 통과한다.</para>
+        ///
+        /// <para>네거티브 컨트롤: <c>CharacterSaveStore.SaveData</c>에 <c>dialogueVisibleSeconds</c>를
+        /// 되살려 <c>AppSettingsModel</c>에 흘려 넣으면 <c>HasDialogueVisibleLength</c> 단언이 즉시
+        /// 실패한다(고른 적 없음이 고른 값으로 뒤바뀐다).</para>
+        /// </summary>
         [Test]
-        public void v6_왕복은_사용자가_고른_크기와_패널_설정을_보존한다()
+        public void v8_파일을_읽어도_대사_표시_시간이_기본으로_떨어진다()
+        {
+            string json =
+                "{\n" +
+                "    \"version\": 8,\n" +
+                "    \"level\": 11,\n" +
+                "    \"characterName\": \"여덟동료\",\n" +
+                "    \"autoHideOnFullscreen\": true,\n" +
+                "    \"gearIconVisible\": true,\n" +
+                "    \"dialogueFontSizeSaved\": true,\n" +
+                "    \"dialogueFontSize\": 22,\n" +
+                "    \"dialogueVisibleSecondsSaved\": true,\n" +
+                "    \"dialogueVisibleSeconds\": 6.0,\n" +
+                "    \"wornHead\": \"\"\n" +
+                "}";
+            File.WriteAllText(CharacterSaveStore.FilePath, json);
+            CharacterSaveStore.Load();
+
+            Assert.IsTrue(CharacterSaveStore.LoadedFromFile, "v8 파일을 통째로 버렸습니다.");
+
+            Assert.IsFalse(AppSettingsModel.HasDialogueVisibleLength,
+                "v8의 초 값(6.0)이 '사용자가 고른 대사 표시 시간'으로 되살아났습니다 — 그 값은 화면을 " +
+                "한 톨도 바꾸지 못하던 죽은 숫자입니다(UX_FLOW.md 42-1).");
+            Assert.AreEqual(DialogueVisibleLength.Default, AppSettingsModel.DialogueVisibleLength,
+                "v8 파일을 읽었더니 대사 표시 시간이 `기본`이 아닙니다 — 사용자가 겪어본 적 없는 " +
+                "화면을 새로 만들어 준 것입니다.");
+            Assert.AreEqual(DialogueBudget.MinVisibleScale,
+                AppSettingsModel.ResolveDialogueVisibleScale(), 1e-4f);
+
+            // ★ 위 단언이 "파일을 아예 안 읽어서" 통과한 것이 아님을 보인다.
+            Assert.AreEqual(11, CharacterProgressionModel.Level, "v8 파일의 레벨이 사라졌습니다.");
+            Assert.IsTrue(AppSettingsModel.HasDialogueFontSize,
+                "v8 파일의 말풍선 글자 크기 선택이 함께 지워졌습니다 — 마이그레이션이 필요 이상으로 " +
+                "많이 버렸습니다.");
+            Assert.AreEqual(22, AppSettingsModel.DialogueFontSize);
+            Assert.IsTrue(AppSettingsModel.AutoHideOnFullscreen);
+            Assert.IsTrue(AppSettingsModel.GearIconVisible);
+        }
+
+        /// <summary>v9 왕복 — 사용자가 고른 대사 표시 시간이 재시작을 넘어 살아남는다.
+        /// (하위 호환만 보면 "언제나 기본으로 떨어뜨리기"라는 오답이 통과한다.)</summary>
+        [Test]
+        public void v9_왕복은_사용자가_고른_대사_표시_시간을_보존한다()
+        {
+            AppSettingsModel.SetDialogueVisibleLength(DialogueVisibleLength.VeryLong);
+            Assert.IsTrue(CharacterSaveStore.Save(), "저장에 실패했습니다.");
+
+            AppSettingsModel.ResetForTesting();
+            Assert.IsFalse(AppSettingsModel.HasDialogueVisibleLength, "사전 조건 — 초기화됐어야 한다.");
+
+            CharacterSaveStore.Load();
+            Assert.IsTrue(AppSettingsModel.HasDialogueVisibleLength,
+                "왕복 후 사용자의 선택이 사라졌습니다 — 껐다 켜면 초기화됩니다.");
+            Assert.AreEqual(DialogueVisibleLength.VeryLong, AppSettingsModel.DialogueVisibleLength);
+        }
+
+        /// <summary>v6 왕복 — 사용자가 고른 캐릭터 크기가 재시작을 넘어 살아남는다.
+        /// (같은 v6에 들어왔던 구석 패널 on/off는 2026-09-01 기능 삭제로 단언 대상에서 뺐다.)</summary>
+        [Test]
+        public void v6_왕복은_사용자가_고른_크기를_보존한다()
         {
             UiLayoutModel.ResetForTesting();
             UiLayoutModel.SetCharacterScale(1.35f);
-            UiLayoutModel.SetCornerPanelEnabled(false);
             Assert.IsTrue(CharacterSaveStore.Save(), "저장에 실패했습니다.");
 
             UiLayoutModel.ResetForTesting();
-            Assert.IsTrue(UiLayoutModel.CornerPanelEnabled, "리셋 기본값 전제가 바뀌었습니다.");
+            Assert.IsFalse(UiLayoutModel.HasCharacterScale, "리셋 전제가 바뀌었습니다.");
 
             CharacterSaveStore.Load();
             Assert.IsTrue(UiLayoutModel.HasCharacterScale);
             Assert.AreEqual(1.35f, UiLayoutModel.CharacterScale, 0.0001f);
-            Assert.IsFalse(UiLayoutModel.CornerPanelEnabled,
-                "사용자가 끈 구석 패널이 재시작 후 다시 켜졌습니다.");
         }
 
         [Test]

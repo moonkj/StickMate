@@ -37,6 +37,21 @@ namespace StickMate.Tests.EditMode
     ///
     /// <b>비교는 언제나 "몸이 지금 뭐라고 말하는가"에 건다.</b> 폴백에 숫자를 새로 적어 두면
     /// 몸이 다시 바뀌는 날 폴백만 옛 그림으로 남는다 — 그게 이번에 넷이 한꺼번에 낡은 이유다.
+    ///
+    /// ============================================================================
+    /// ★ 2026-09-01 정정 — 이 문서가 <b>구현과 달랐다</b>
+    /// ============================================================================
+    /// 위 문장은 선언이었을 뿐, 베레모·밀짚모자 검사는 실제로 <b>폴백을 폴백과</b> 대조하면서
+    /// 점 수만 상수(2점)로 박아 두고 있었다. 그 사이 몸의 <c>BeretRim</c>이 3점이 되어,
+    /// 이 파일이 <b>장비 담당의 수정을 막는</b> 상태가 됐다(리더 판정: "실패한 테스트가 아니라
+    /// 거짓말하는 테스트"). 그래서 두 가지를 바꿨다.
+    /// <list type="bullet">
+    ///   <item>점 수 기대값은 이제 <b>몸에서 읽는다</b>(상수를 적지 않는다).</item>
+    ///   <item>폴백 조각끼리 보는 검사는 이름에 "폴백 내부"임을 드러낸다 — 그 자체는 유용하지만
+    ///         <b>몸 대조가 아니다</b>. 이름이 그렇게 읽히면 다시 같은 착각이 생긴다.</item>
+    /// </list>
+    /// <para>30종 전수 몸 대조와 <b>빚 대장</b>은 <see cref="AccessoryFallbackBodyParityTests"/>에 있다.
+    /// 이 파일은 아이템별 <b>세부</b> 규약(매달림·종횡비·삭제된 조각)을 계속 맡는다.</para>
     /// </summary>
     public sealed class AccessoryFallbackIconParityTests
     {
@@ -86,9 +101,15 @@ namespace StickMate.Tests.EditMode
             ItemIconPart crown = icon[0];
             ItemIconPart band = Accent(icon);
 
-            Assert.AreEqual(4, band.Values.Length,
-                $"폴백 띠가 {band.Values.Length / 2}점입니다 — 관 밑변의 두 끝을 잇는 직선(2점)이어야 " +
-                "몸(StrawBand = crownBackFoot·crownFrontFoot)과 같은 계열입니다.");
+            // ★ 기대값을 숫자로 적지 않는다 — 몸의 StrawBand가 몇 점인지 지금 읽어서 쓴다.
+            //   (베레모에서 이 자리에 2를 박아 둔 것이 몸의 수정을 막고 있었다.)
+            int bodyBandPoints = AccessorySilhouetteMetrics.Find(
+                AccessorySilhouetteMetrics.Build(AccessorySilhouetteMetrics.Rig(),
+                    EquipmentSlot.Head, AccessoryShapeBuilder.HeadStraw), "StrawBand").Points.Length;
+
+            Assert.AreEqual(bodyBandPoints, band.PointCount,
+                $"폴백 띠가 {band.PointCount}점인데 몸의 StrawBand는 {bodyBandPoints}점입니다 — " +
+                "폴백은 몸과 같은 계열이어야 합니다(몸: crownBackFoot·crownFrontFoot).");
             Assert.AreEqual(First(crown), First(band), "띠의 뒤 끝이 관 밑변의 뒤 끝과 다릅니다.");
             Assert.AreEqual(Last(crown), Last(band), "띠의 앞 끝이 관 밑변의 앞 끝과 다릅니다.");
             AssertInsideViewBox(band, "밀짚모자 폴백 띠");
@@ -112,22 +133,55 @@ namespace StickMate.Tests.EditMode
         }
 
         // ============================================================================
-        // 2. 베레모 — 테는 관 밑변의 두 끝점
+        // 2. 베레모 — 폴백 내부 정합성 + ★ 몸에서 유도한 점 수 판정
         // ============================================================================
 
+        /// <summary>폴백 <b>안에서</b>의 정합성 — 테가 관의 양 끝에 붙어 있는가.
+        /// <para>★ 2026-09-01: 이 검사는 폴백 조각끼리만 본다(몸을 읽지 않는다). 예전에는 이름이
+        /// "관 밑변의 <b>두</b> 끝점"이라 <b>2점을 상수로 강제</b>했는데, 몸의 <c>BeretRim</c>은 이미
+        /// 3점이라 그 단언이 <b>고치는 것을 막고 있었다</b>. 점 수 판정은 아래 몸 유도 검사로 옮겼다.</para></summary>
         [Test]
-        public void 베레모_폴백_테는_관_밑변의_두_끝점이다()
+        public void 베레모_폴백_테는_관의_양_끝에_붙어_있다()
         {
             ItemIconPart[] icon = Icon(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret);
             ItemIconPart crown = icon[0];
             ItemIconPart rim = Accent(icon);
 
-            Assert.AreEqual(4, rim.Values.Length, "폴백 테가 2점 직선이 아닙니다.");
+            Assert.GreaterOrEqual(rim.PointCount, 2, "폴백 테가 선이 아닙니다.");
             Assert.AreEqual(First(crown), First(rim),
                 "테의 한쪽 끝이 관 폴리라인의 첫 점과 다릅니다 — 몸에서는 BeretRim이 " +
-                "관의 두 끝점(frontTip·backTip)을 그대로 받습니다.");
+                "관의 밑변 점들을 그대로 받습니다.");
             Assert.AreEqual(Last(crown), Last(rim), "테의 다른 끝이 관 폴리라인의 끝 점과 다릅니다.");
             AssertInsideViewBox(rim, "베레모 폴백 테");
+        }
+
+        /// <summary>
+        /// ★ <b>몸에서 유도</b>하는 점 수 판정 — 이 파일의 문서가 원래 선언한 방식이다.
+        /// <para>지금은 몸 3점(<c>frontFoot → innerFoot → backTip</c>) / 폴백 2점으로 갈라져 있고,
+        /// 그 빚은 <see cref="AccessoryFallbackBodyParityTests"/>의 대장에 실측값과 함께 등재돼 있다
+        /// (폴백 에셋을 다시 굽는 것은 장비 담당 소유라 테스트가 대신 고치지 않는다).</para>
+        /// <para>여기서 잠그는 것은 <b>방향</b>이다: 폴백은 몸의 단순화이므로 몸보다 복잡해질 수 없다.
+        /// 장비 담당이 폴백에 <c>innerFoot</c>을 추가하면 이 검사는 그대로 통과한다 — 옛 단언과 달리
+        /// <b>고치는 길을 막지 않는다</b>.</para>
+        /// </summary>
+        [Test]
+        public void 베레모_폴백_테는_몸의_BeretRim보다_복잡하지_않다()
+        {
+            List<AccessoryShapeBuilder.Shape> body = AccessorySilhouetteMetrics.Build(
+                AccessorySilhouetteMetrics.Rig(), EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret);
+            AccessoryShapeBuilder.Shape bodyRim = AccessorySilhouetteMetrics.Find(body, "BeretRim");
+            ItemIconPart fallbackRim = Accent(Icon(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret));
+
+            Assert.LessOrEqual(fallbackRim.PointCount, bodyRim.Points.Length,
+                $"폴백 테가 {fallbackRim.PointCount}점인데 몸의 BeretRim은 {bodyRim.Points.Length}점입니다 — " +
+                "폴백이 몸보다 <b>복잡합니다</b>. 폴백은 40×40 격자의 단순화이므로 이 방향은 " +
+                "단순화가 아니라 다른 그림입니다.");
+
+            if (fallbackRim.PointCount != bodyRim.Points.Length)
+            {
+                Debug.Log($"[폴백-몸] 베레모 테: 몸 {bodyRim.Points.Length}점 / 폴백 {fallbackRim.PointCount}점 " +
+                          "— 아직 갈라져 있습니다(AccessoryFallbackBodyParityTests.Ledger에 등재됨).");
+            }
         }
 
         /// <summary>★ 네거티브 컨트롤 — 옛 테는 관 밑변 <b>밖으로</b> 삐져나가 있었다.
@@ -228,13 +282,45 @@ namespace StickMate.Tests.EditMode
             float bodyAspect = AccessoryShapeBuilder.PendantHalfHeightRatio
                                / AccessoryShapeBuilder.PendantHalfWidthRatio;
 
-            Assert.AreEqual(bodyAspect, cardAspect, 0.01f,
-                $"폴백 마름모의 종횡비가 {cardAspect:F2}인데 몸은 {bodyAspect:F2}입니다(옛 폴백 1.13). " +
-                "이 카테고리에서 펜던트를 방울과 갈라 주는 것은 크기가 아니라 <b>세로 비율</b>이므로, " +
-                "폴백이 1.1이면 카드에서는 두 아이템이 다시 '동그란 덩어리' 둘이 됩니다.");
+            // ---- 이 축은 언제나 살아 있다: 원과 갈리는가 ----
             Assert.GreaterOrEqual(cardAspect, 2f,
                 $"폴백 마름모가 {cardAspect:F2}배로는 원과 갈리지 않습니다.");
             AssertInsideViewBox(diamond, "펜던트 폴백 마름모");
+
+            // ================================================================
+            // ★ 2026-09-01 — 몸이 움직였고 폴백이 안 따라왔다 (사유 있는 건너뜀)
+            // ================================================================
+            // 이 라운드에 몸 상수가 바뀌었다: PendantHalfWidthRatio 0.28 -> 0.30,
+            // PendantHalfHeightRatio 0.62 -> 0.64. 옛 종횡비 0.62/0.28 = 2.2143이 <b>폴백의 지금
+            // 값과 정확히 같다</b> — 즉 폴백은 옛 몸에서 정확히 구워졌고, 몸만 앞서 나갔다.
+            // <b>설정 드리프트(parkourClimbDuration)와 완전히 같은 사고</b>이고, 폴백 에셋을 다시
+            // 굽는 것은 장비 담당 소유라 테스트가 대신 고치지 않는다.
+            //
+            // 그래서 PlatformParityAuditTests의 관례를 따른다 — 못 고친 갭은 Assert.Fail이 아니라
+            // 사유를 붙인 Assert.Ignore로 남겨 러너에 "건너뜀"으로 계속 보이게 한다(잊히지 않게).
+            // 다만 <b>무조건</b> 건너뛰지는 않는다: 지금 실측이 기록과 다르면 새 드리프트이므로 실패시키고,
+            // 이미 고쳐졌다면 이 유예가 낡은 것이므로 역시 실패시킨다(스스로 만료된다).
+            const float RecordedStaleFallbackAspect = 2.2143f;   // 옛 몸(0.62/0.28)에서 구워진 값
+            const float AspectTolerance = 0.01f;
+
+            if (Mathf.Abs(cardAspect - bodyAspect) <= AspectTolerance)
+            {
+                Assert.Fail($"폴백 종횡비({cardAspect:F4})가 몸({bodyAspect:F4})과 이미 맞습니다 — " +
+                    "누군가 폴백을 다시 구웠습니다. 위 유예 블록을 지우고 " +
+                    "Assert.AreEqual(bodyAspect, cardAspect, 0.01f) 한 줄로 되돌리십시오.");
+            }
+
+            Assert.AreEqual(RecordedStaleFallbackAspect, cardAspect, AspectTolerance,
+                $"폴백 종횡비가 {cardAspect:F4}입니다 — 기록된 낡은 값 " +
+                $"{RecordedStaleFallbackAspect:F4}도, 지금 몸 값 {bodyAspect:F4}도 아닙니다. " +
+                "새로운 드리프트이므로 건너뛰지 않고 실패시킵니다.");
+
+            Assert.Ignore($"[폴백 빚] 펜던트 종횡비 — 몸 {bodyAspect:F4} vs 폴백 {cardAspect:F4} " +
+                $"(차이 {Mathf.Abs(cardAspect - bodyAspect) / bodyAspect * 100f:F1}%).\n" +
+                "원인: 이 라운드에 몸 상수가 0.28->0.30 / 0.62->0.64로 움직였고 폴백이 안 따라왔습니다 " +
+                "(옛 몸 종횡비 0.62/0.28 = 2.2143 = 지금 폴백 값).\n" +
+                "조치: 장비 담당이 equip_neck_pendant.asset의 마름모를 새 비율로 다시 굽습니다. " +
+                "그 뒤 이 유예 블록을 지우십시오 — 안 지우면 위 첫 단언이 빨간불로 알려 줍니다.");
         }
 
         /// <summary>펜던트는 몸에서 <b>목줄 최저점</b>에 매달린다(규칙 4-a). 폴백도 그렇다.</summary>

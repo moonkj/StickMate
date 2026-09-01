@@ -81,6 +81,7 @@ namespace StickMate.Interaction
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Directors);   // [스톨구간] 계측
             // 15절 제약 1(동적 히트박스 추적): 드래그 중엔 매 프레임 히트박스 영역을 최신 좌표로 갱신한다.
             if (_clickCapture == null || _player == null) return;
             if (_player.Blackboard.Machine.CurrentStateId != StickmanStateId.Dragged) return;

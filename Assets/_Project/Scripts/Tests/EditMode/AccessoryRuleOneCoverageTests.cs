@@ -72,33 +72,27 @@ namespace StickMate.Tests.EditMode
         /// </summary>
         private static readonly Waiver[] Waivers =
         {
-            // ---- HEAD. 천모자 챙(0.29획) · 중절모 크리스(1.26획)는 2026-09-01 마지막 정리
-            //      라운드가 고쳐서 여기서 <b>빠졌다</b>. 남은 하나는 리더가 백로그로 뺀 실루엣 재설계다.
-            new Waiver(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeanie, "BeanieBand",
-                "띠 좌우 변이 0.58획(띠 높이 0.20R). 1.0획을 채우려면 높이가 0.344R이어야 하는데, " +
-                "밑변은 이 모자의 커버선(HatCoverLocalY 0.42R — HAIR 클리핑이 읽는다)이고 " +
-                "윗변을 올리면 관이 밀려 폼폼 꼭대기가 액자(1.80R)를 넘는다. 관 높이까지 함께 " +
-                "다시 잡아야 하는 큰 수정이라 리더 판단 대상(2026-09-01 리더 결정: 백로그)."),
-
-            // ---- NECK (3종 8도형)
-            new Waiver(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBowTie, "BowTieKnot",
-                "매듭 잉크 사각형 0.91획 / 변 0.53획. RoundedBox 8각 근사가 이 크기에서 통째로 먹힌다."),
-            new Waiver(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckStriped, "TieKnot",
-                "매듭 잉크 사각형 1.40획 / 밑변 0.95획."),
-            new Waiver(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckStriped, "TieBlade",
-                "끝 V의 세 변이 0.60~0.87획. blade 폭 0.15R이 획의 87%뿐이다."),
-            new Waiver(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckStriped, "TieStripeA",
-                "줄무늬 잉크 사각형 0.87획 — 화면에 존재하지 않는 선이다."),
-            new Waiver(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckStriped, "TieStripeB",
-                "줄무늬 잉크 사각형 0.87획."),
-            // ---- 목도리 3개(ScarfWrap 0.99획 / ScarfTailA·B 각 0.64획)는 2026-09-01(2차)
-            //      "카드 단독 판독" 라운드가 도형을 다시 그리면서 <b>빠졌다</b>. 그 라운드의 목적은
-            //      규칙 1이 아니라 "카드가 장화로 보인다"(리더 육안 검증 V8)였는데, 자락이 획에
-            //      먹혀 <b>한 덩어리 기둥</b>으로 합쳐진 것이 바로 그 장화의 세로선이었다 —
-            //      즉 두 결함은 같은 원인이었고 한 번에 닫혔다.
-
-            // ---- BACK. 날개 두 깃(0.90 / 0.86획)과 배낭 어깨끈(1.32획)은 2026-09-01 마지막 정리
-            //      라운드가 고쳐서 여기서 빠졌다. 이 카테고리에는 이제 면제가 하나도 없다.
+            // ★ 2026-09-01(3차) 장비 30종 도형 재설계로 <b>면제 6건이 전부 닫혔다</b>.
+            //   대장이 비었다는 것은 "린트에서 빠진 도형이 하나도 없다"는 뜻이다.
+            //
+            //   ---- HEAD 털모자 'BeanieBand'(띠 좌우 변 0.58획)
+            //        옛 사유는 "밑변이 커버선(0.42R)이라 못 내리고, 윗변을 올리면 폼폼이 액자를 넘는다"
+            //        였다. 이번 라운드가 <b>그 전제를 통째로 바꿨다</b> — 커버선이 +0.42R에서 −0.06R로
+            //        내려오면서 띠가 접힌 단(cuff)이 되어 높이가 0.46R(1.34획)이 됐다.
+            //        도형 이름도 'BeanieCuff'가 됐다(대장에 이름이 남아 있으면 못 찾아 죽는다).
+            //
+            //   ---- NECK 나비넥타이 'BowTieKnot'(0.91획) — 매듭 반폭 0.13R -> 0.28R(1.63획).
+            //        RoundedBox 8각 근사를 버리고 채운 직사각형으로 바꾼 것이 함께 닫았다.
+            //
+            //   ---- NECK 줄무늬타이 'TieKnot'(1.40획) / 'TieBlade'(0.60~0.87획)
+            //        blade 반폭 0.15R -> 0.34R(폭 1.98획). 매듭도 함께 커졌다.
+            //
+            //   ---- NECK 줄무늬타이 'TieStripeA' / 'TieStripeB'(각 0.87획)
+            //        열린 선 2개 -> <b>채운 띠 1개</b>('TieStripe'). 덤으로 보조색 도형이 2개 -> 1개가
+            //        되어 규칙 3-2("아이템당 정확히 1개")까지 닫혔다 — 미보고 위반이었다.
+            //
+            //   대장을 비워 두는 것이 목적이 아니다. 다음에 못 고치는 도형이 생기면 <b>여기 한 줄</b>을
+            //   적고 BudgetedItems에서 그 아이템을 빼라. 그게 이 파일의 사용법이다.
         };
 
         private readonly struct Waiver
@@ -260,9 +254,10 @@ namespace StickMate.Tests.EditMode
         public void 커버리지가_2026_09_01_수준_아래로_내려가지_않는다()
         {
             // 래칫은 <b>올라간 자리에서 다시 잠근다</b> — 옛 값으로 두면 방금 갚은 빚을 다시 질 수 있다.
-            // 2026-09-01(2차) 목도리가 합류해 26 -> 27종 / 면제 9 -> 6개가 됐다.
-            const int itemsAtRatchet = 27;      // 30종 중 완전 통과
-            const int waivedShapesAtRatchet = 6;
+            // 2026-09-01(2차) 목도리가 합류해 26 -> 27종 / 면제 9 -> 6개.
+            // 2026-09-01(3차) 30종 도형 재설계로 <b>30종 전부 / 면제 0개</b>가 됐다.
+            const int itemsAtRatchet = 30;      // 30종 전부 통과
+            const int waivedShapesAtRatchet = 0;
 
             int items = 0, clean = 0;
             ForEachItem((slot, item) =>

@@ -21,6 +21,31 @@ namespace StickMate.States
         // ScreenEdgeEpsilon과 같은 성격(디자이너 튜닝 값이 아니라 휴리스틱 여유값)이라 StickConfig가
         // 아니라 여기 상수로 둔다 — 실제 프리팹/씬으로 검증되면 조정될 수 있다.
         private const float AdjacentFootholdSearchRadiusMultiplier = 4f;
+
+        // ────────────────────────────────────────────────────────────────────────────
+        // ★ 2026-09-02 (디버거) — Config == null 경로의 폴백. **실효값(배포 에셋)과 같아야 한다.**
+        // ────────────────────────────────────────────────────────────────────────────
+        // 여기 있던 리터럴은 groundSnapTolerance 6 / gravityScale 1이었다. 둘 다 **낡은 사본**이다:
+        //   · 6 = 2026-08-30 이전의 코드 기본값. 그날 라운드가 코드 기본값 6 -> 20을 에셋과 통일하면서
+        //     "테스트가 한 곳이라도 20을 빠뜨리면 접지 밴드가 0.489 -> 0.147유닛으로 3.3배 좁아져
+        //     '가끔만 접지에 실패하는' 재현 어려운 실패가 난다"고 적었는데(StickConfig.groundSnapTolerance
+        //     툴팁), 정작 **이 폴백 세 곳이 그 통일에서 빠졌다**.
+        //   · 1 = 어느 시점에도 이 프로젝트의 값이었던 적이 없다(Phase 0부터 3f). 프리팹 베이커
+        //     Editor/SceneBootstrapper.cs가 Rigidbody2D를 구울 때 쓰는 폴백도 3f이고 프리팹에도
+        //     m_GravityScale: 3이 구워져 있으므로, "설정이 없으면 몸의 중력도 1이다"라는 해석은
+        //     성립하지 않는다(그쪽 폴백은 이미 실효값이다 — 이 파일만 갈라져 있었다).
+        //
+        // ★ 두 값은 **반드시 함께** 관리한다. ComputeGroundLossFrameTimeThreshold()가 둘을 나눗셈으로
+        //   묶어 쓰기 때문에 한쪽만 고치면 오차가 오히려 커진다(실측: 둘 다 낡았을 때 173ms로 참값
+        //   182ms와 5% 차이였는데, 허용오차만 고치면 316ms(+73%), 중력만 고치면 100ms(-45%)가 된다).
+        //   두 오차가 우연히 상쇄되고 있었을 뿐이다.
+        //
+        // ★ 이 값들을 이름 있는 const로 뽑지 않는다(한 번 뽑았다가 되돌렸다). 드리프트 스캐너
+        //   Tests/EditMode/ConfigFallbackLiteralDriftTests는 `X != null ? X.f : 리터럴` 형태의
+        //   **숫자 리터럴**만 본다 — const 이름으로 바꾸는 순간 이 세 자리가 스캐너의 시야에서
+        //   사라져, 다음에 누가 20f를 다시 6f로 되돌려도 아무도 못 잡는다. 사본을 없앨 수 없다면
+        //   최소한 **감시받는 자리**에 두는 편이 낫다. 설정에서 읽어 오는 것도 불가능하다 —
+        //   Sense()는 매 프레임 경로라 ScriptableObject.CreateInstance를 부를 수 없다.
         public readonly struct GroundInfo
         {
             /// <summary>캐릭터 발이 어떤 발판 상단의 접지 허용 오차(StickConfig.groundSnapTolerance) 안에 있는지.</summary>
@@ -117,7 +142,7 @@ namespace StickMate.States
             }
 
             Vector2 footOs = ScreenCoordinateConverter.WorldToOsScreen(cam, footWorldPos, config, out float depth);
-            float tolerance = config != null ? config.groundSnapTolerance : 6f;
+            float tolerance = config != null ? config.groundSnapTolerance : 20f;
 
             bool grounded = false;
             long groundedHandle = 0L;
@@ -606,12 +631,12 @@ namespace StickMate.States
         /// </summary>
         public static float ComputeGroundLossFrameTimeThreshold(float osPointsPerWorldUnit, StickConfig config)
         {
-            float gravityScale = config != null ? config.gravityScale : 1f;
+            float gravityScale = config != null ? config.gravityScale : 3f;
             float g = Mathf.Abs(Physics2D.gravity.y) * gravityScale;
             if (g <= 0f) return float.PositiveInfinity;
             if (osPointsPerWorldUnit <= 0f) return float.PositiveInfinity;
 
-            float toleranceWorld = (config != null ? config.groundSnapTolerance : 6f) / osPointsPerWorldUnit;
+            float toleranceWorld = (config != null ? config.groundSnapTolerance : 20f) / osPointsPerWorldUnit;
             if (toleranceWorld <= 0f) return 0f;
 
             return Mathf.Sqrt(2f * toleranceWorld / g);
@@ -665,7 +690,7 @@ namespace StickMate.States
             }
 
             Vector2 footOs = ScreenCoordinateConverter.WorldToOsScreen(cam, footWorldPos, config, out _);
-            float tolerance = config != null ? config.groundSnapTolerance : 6f;
+            float tolerance = config != null ? config.groundSnapTolerance : 20f;
 
             bool found = false;
             float bestDx = float.MaxValue;   // X 범위 밖으로 벗어난 거리(안이면 0)

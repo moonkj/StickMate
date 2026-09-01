@@ -48,7 +48,8 @@ namespace StickMate.States
                 _phase = Phase.GiveUp;
 
                 // 확정된 실패(2회 시도 소진) 상태에서 파생된 유일한 대사 — 원칙 1 그대로.
-                _ = new DialogueIntent(context, (id) => "헥헥... 안 되겠다...");
+                // 종류=Reaction: "방금 포기했다"는 다음 상태에서도 참이다(5절 규칙 4-a).
+            _ = new DialogueIntent(context, (id) => DialogueLine.React("헥헥... 안 되겠다..."));
                 return;
             }
 

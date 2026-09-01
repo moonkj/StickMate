@@ -324,7 +324,7 @@ namespace StickMate.Core
                 { StickmanStateId.Jump, new JumpState(_blackboard) },
                 { StickmanStateId.Fall, new FallState(_blackboard) },
                 // 무릎앉아 착지(사용자 명시 요청 2026-08-29) — FallState가 착지를 확정하면서 낙하 높이가
-                // StickConfig.rollLandingHeightThreshold 이상일 때만 전이시킨다. 등록을 빠뜨리면
+                // StickConfig.landingSoftAbsorbThresholdHeights x 신장 이상일 때만 전이시킨다. 등록을 빠뜨리면
                 // ChangeState가 BUG-M2 방어 코드(에러 로그 + 현재 상태 유지)를 밟아 연출이 통째로 사라진다.
                 { StickmanStateId.LandingCrouch, new LandingCrouchState(_blackboard) },
                 { StickmanStateId.ParkourClimb, new ParkourClimbState(_blackboard) },
@@ -517,6 +517,7 @@ namespace StickMate.Core
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Agent);   // [스톨구간] 계측
             // 클릭 관통 긴급 종료 안전장치(클래스 상단 문서 참고) — Suspended 여부와 무관하게 항상 먼저
             // 확인한다(다른 모든 early-return보다 위에 둬서, 어떤 상태에서도 이 키만은 항상 반응하게).
             // Unity Input 시스템은 우리 창이 키보드 포커스를 가진 동안만 이 입력을 받을 수 있다는 한계가

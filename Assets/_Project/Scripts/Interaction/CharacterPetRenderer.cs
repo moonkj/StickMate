@@ -72,6 +72,19 @@ namespace StickMate.Interaction
         private const float MiniScale = AppearanceShapeBuilder.MiniScale;
         private const float MiniLegSwingPeriod = 0.5f;
         private const float MiniLegSwingDegrees = 22f;
+
+        /// <summary>보행 중 무릎이 접히는 최대 각도(도). <b>숫자를 정하지 않고 유도한다</b>:
+        /// 펫의 다리 스윙 진폭(<see cref="MiniLegSwingDegrees"/>)에 주인 보행 키표의
+        /// <c>무릎 봉우리 ÷ 엉덩이 봉우리</c> 비율을 곱한다. 주인 키표를 그대로 베끼면 펫의 보폭
+        /// (주인의 22/25)과 어긋나 무릎만 과하게 접힌다 — 미니어처는 <b>비율</b>이 같아야 한다.
+        /// <para>실제 값은 규칙 B 상한(<see cref="LimbCurveRenderer.MaxSafeBendDegrees"/>)으로 한 번 더
+        /// 잘린다. 배율 0.35에서 펫 무릎 상한은 91.5도이므로 이 진폭은 전 배율에서 여유가 있다.</para></summary>
+        private static float MiniKneeWalkFlexDegrees =>
+            MiniLegSwingDegrees * SafeRatio(StickmanPoseAnimator.WalkPeakKneeDegrees,
+                                            StickmanPoseAnimator.WalkPeakHipDegrees);
+
+        private static float SafeRatio(float numerator, float denominator)
+            => denominator > 0.0001f ? numerator / denominator : 1f;
         private const float MiniMovingSpeedGateInHeight = 0.05f;
 
         // ---- 리틀스틱메이트 낙하 동기화(2026-08-31 사용자 신고: "높은 곳에서 떨어질 때 작은 졸라맨도
@@ -301,6 +314,7 @@ namespace StickMate.Interaction
 
         private void LateUpdate()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Renderers);   // [스톨구간] 계측
             if (_agent == null) return; // 자기 캐릭터가 없는 사본.
 
             int item = ResolveActiveItem();
@@ -485,16 +499,21 @@ namespace StickMate.Interaction
                 _position.x = targetX;
                 _position.y = ownerFoot.y;
             }
-            ClampToScreen(ref _position, h * MiniScale * 0.5f);
+            // 원점이 <b>발바닥</b>이므로 세로 여백은 0이다(위 ClampToScreen 오버로드 문서 = 신고 확정 원인).
+            ClampToScreen(ref _position, h * MiniScale * 0.5f,
+                GroundedPetVerticalMargin, GroundedPetVerticalMargin);
 
             // ---- 보행 스윙: 예전 그대로(접지 중에만). 자세 가중치와 달리 감쇠를 걸지 않는다.
             float speed = dt > 0.0001f ? Mathf.Abs(_position.x - previousX) / dt : 0f;
             bool moving = grounded && speed > h * MiniMovingSpeedGateInHeight;
             if (moving) _legPhase += dt * Mathf.PI * 2f / MiniLegSwingPeriod;
             float swing = moving ? Mathf.Sin(_legPhase) * MiniLegSwingDegrees : 0f;
+            // 무릎은 <b>다리가 앞으로 나가는 국면</b>에서 접힌다 — 그 국면은 스윙각의 미분(cos)이
+            // 진행 방향과 같은 부호일 때다. 사인/코사인을 여기서 한 번만 재고 넘긴다.
+            float kneeFlexPhase = moving ? Mathf.Cos(_legPhase) * facing : 0f;
 
             TickMiniPosture(bb, dt, grounded);
-            ApplyMiniPose(facing, swing);
+            ApplyMiniPose(facing, swing, kneeFlexPhase);
 
             float miniH = h * MiniScale;
             float drop = ResolveMiniCrouchDrop(miniH);
@@ -574,7 +593,7 @@ namespace StickMate.Interaction
         /// <b>가중치가 전부 0이면 결과가 예전과 정확히 같다</b>(보행 스윙만 남는다) — 스위치를 끄면
         /// 예전 거동이 되는 이 프로젝트의 관례를 코드 구조로 보장한다.
         /// </summary>
-        private void ApplyMiniPose(float facing, float swingDegrees)
+        private void ApplyMiniPose(float facing, float swingDegrees, float kneeFlexPhase)
         {
             if (_lines == null || _lines.Length < 6 || _miniLimbNeutral == null) return;
 
@@ -598,7 +617,71 @@ namespace StickMate.Interaction
                 if (isLeg) delta += i == 2 ? swingDegrees : -swingDegrees;
 
                 RotateLimb(_lines[i + 2], delta);
+
+                // ★ 그리고 <b>관절을 접는다</b>(2026-09-01). 위 delta가 마디 <b>전체</b>를 뿌리 축으로
+                //   돌리는 것이라면, 이쪽은 마디 <b>안쪽</b>의 무릎/팔꿈치 각도다. 둘은 독립이며,
+                //   양 끝점이 고정이라 접어도 발끝이 움직이지 않는다(PrepareMiniLimbs 문서).
+                RebuildMiniLimb(_lines[i + 2], i, isLeg, i % 2 == 1, kneeFlexPhase);
             }
+        }
+
+        /// <summary>
+        /// 마디 하나의 <b>관절 각도</b>를 자세 가중치에서 유도해 다시 굽는다.
+        ///
+        /// <para>각도는 전부 <see cref="StickConfig"/>의 <b>주인 값</b>에서 온다 — 펫이 자기 각도표를
+        /// 따로 들면 주인이 자세를 바꿀 때 펫만 옛 자세로 남는다(2026-08-31 신고 "작은 졸라맨도
+        /// 캐릭터와 동일한 형태로 떨어져야 하는데 제대로 동작 안 함"의 재발 경로다).</para>
+        ///
+        /// <para>구조는 위 <see cref="ApplyMiniPose"/>의 delta와 같다: 전부 "기본값으로부터의 차이"라
+        /// <b>가중치가 전부 0이면 기본 굽힘(주인 Idle 값) 그대로</b>다.</para>
+        /// </summary>
+        private void RebuildMiniLimb(LineRenderer lr, int index, bool isLeg, bool isFront, float kneeFlexPhase)
+        {
+            if (_miniLimbs == null || index >= _miniLimbs.Length) return;
+            MiniLimb limb = _miniLimbs[index];
+            if (limb == null || lr == null) return;
+
+            StickConfig config = _agent != null ? _agent.Config : null;
+            float neutral = NeutralBendDegrees(isLeg);
+            float magnitude = neutral;
+
+            if (config != null)
+            {
+                float air = Mathf.Abs(isLeg ? config.fallPoseKneeBendDegrees : config.fallPoseElbowBendDegrees);
+                float tumble = Mathf.Abs(isLeg ? config.throwTumbleKneeBendDegrees : config.throwTumbleElbowBendDegrees);
+                float crouch = Mathf.Abs(isLeg
+                    ? (isFront ? config.landingCrouchFrontKneeDegrees : config.landingCrouchRearKneeDegrees)
+                    : (isFront ? config.landingCrouchFrontElbowDegrees : config.landingCrouchRearElbowDegrees));
+
+                magnitude += _miniAir01 * (air - neutral)
+                           + _miniTumble01 * (tumble - neutral)
+                           + _miniCrouch * (crouch - neutral);
+            }
+
+            // 보행 무릎: 앞으로 나가는 반주기에만 접힌다(뒤/앞 다리가 반대 위상).
+            if (isLeg)
+            {
+                float phase = isFront ? -kneeFlexPhase : kneeFlexPhase;
+                magnitude += MiniKneeWalkFlexDegrees * Mathf.Max(0f, phase);
+            }
+
+            float bend = limb.BendSign * Mathf.Clamp(magnitude, 0f, limb.MaxBendDegrees);
+            if (limb.Primed && Mathf.Abs(bend - limb.LastBendDegrees) < LimbCurveRenderer.RebuildEpsilonDegrees)
+            {
+                return;   // 정지 화면에서는 LineRenderer 쓰기가 0회다(본체 곡선과 같은 게이트).
+            }
+
+            int count = LimbCurveRenderer.BuildLimbPolylineBetween(limb.Root, limb.Tip, bend,
+                limb.UpperFraction, RenderStroke, _miniPolyline);
+            if (count <= 0 || lr.positionCount != count) return;
+
+            // MakeLine이 뿌리를 오브젝트 위치로 옮기고 점을 상대 좌표로 적어 두었다 — 같은 규약을 지킨다.
+            Vector3 pivot = limb.Root;
+            for (int k = 0; k < count; k++) _miniPolyline[k] -= pivot;
+            lr.SetPositions(_miniPolyline);
+
+            limb.LastBendDegrees = bend;
+            limb.Primed = true;
         }
 
         /// <summary>
@@ -760,7 +843,10 @@ namespace StickMate.Interaction
             }
             _position.y = ResolveGroundY(bb, grounded, bb.Body.position.y);
             ClampToOwnerFoothold(bb, grounded, ref _position, r * SnailSizeInR);
-            ClampToScreen(ref _position, r * SnailSizeInR);
+            // 달팽이도 원점이 <b>접지선</b>이다(껍데기 링 아랫변이 발 선에 닿게 설계되어 있다 —
+            // AppearanceShapeBuilder.SnailShellCenterYRatio 문서). 미니와 같은 이유로 세로 여백 0.
+            ClampToScreen(ref _position, r * SnailSizeInR,
+                GroundedPetVerticalMargin, GroundedPetVerticalMargin);
 
             float breath = 1f + Mathf.Sin(_legPhase) * SnailBreathScale;
 
@@ -940,12 +1026,94 @@ namespace StickMate.Interaction
             return true;
         }
 
+        /// <summary>
+        /// 원점이 <b>도형의 중심</b>인 펫(공)용 대칭 클램프. 세로 여백이 가로 여백과 같아도 되는 것은
+        /// 중심 원점일 때뿐이다 — 그 외에는 아래 오버로드로 위/아래 뻗음을 따로 준다.
+        /// </summary>
         private void ClampToScreen(ref Vector2 p, float margin)
+            => ClampToScreen(ref p, margin, margin, margin);
+
+        /// <summary>
+        /// ★★ 사용자 신고 (2026-09-01) — <b>"크기를 키웠을때 작은 졸라맨은 독아래에 있으면 공중에 떠 있음"</b>
+        ///
+        /// ============================================================================
+        /// 확정된 원인 (코드 + 실측으로 확정, 추측 아님)
+        /// ============================================================================
+        /// 예전 <c>ClampToScreen(ref p, margin)</c>은 <b>스칼라 하나</b>를 가로·세로 양방향에 그대로 썼다.
+        /// 그 규약은 원점이 도형의 <b>중심</b>일 때만 옳다. 그런데 이 파일의 펫들은 원점 규약이 서로 다르다:
+        ///   · 공(<see cref="TickBall"/>) — 원점 = <b>중심</b>. <c>ResolveGroundY + radius</c>로 올려놓고
+        ///     여백도 <c>radius</c>다. 대칭 클램프가 정확히 맞는다(그래서 공은 멀쩡했다).
+        ///   · 리틀스틱메이트 / 달팽이 — 원점 = <b>발바닥</b>이다
+        ///     (<see cref="AppearanceShapeBuilder.MiniFigure"/>의 다리는 <c>hipY</c>에서 정확히 0까지
+        ///     내려온다. 즉 y=0이 접지선이고 <c>ResolveGroundY</c>를 오프셋 없이 그대로 쓰는 게 옳다).
+        ///     그런데 여백은 <b>자기 키의 절반</b>을 넣고 있었다.
+        ///
+        /// 그래서 아래 부등식이 성립하는 발판 위에서 펫만 위로 밀려 올라갔다:
+        /// <code>
+        ///   발판상단Y &lt; 화면바닥Y + 키/2      ->  부양량 = (화면바닥Y + 키/2) − 발판상단Y
+        /// </code>
+        /// 실측(2026-09-01, 배율 1.5 / 1512x982pt / orthographicSize 12):
+        ///   · 화면바닥 y=−12.000, <b>Dock 상단 y=−10.167</b>, <b>바닥 안전망 상단 y=−11.804</b>
+        ///   · 신장 3.412 -> 미니 키 1.5354(62.8pt) -> 옛 여백 0.7677(31.4pt)
+        ///   · Dock(−10.167) &gt; −11.232 이므로 <b>Dock 위에서는 부양 0</b>
+        ///   · 안전망(−11.804) &lt; −11.232 이므로 <b>부양 0.5717유닛 = 23.4pt = 자기 키의 37%</b>
+        /// 화면 캡처에서 잰 값은 미니 키 62.81pt / 부양 23.47pt로 위 계산과 0.1pt 안에서 일치했다.
+        /// 신고의 "독 <b>아래</b>"가 바로 이 바닥 안전망(Dock 상단보다 67pt 낮다)이고, 여백이 키에
+        /// 비례하므로 <b>배율을 키울수록 부양이 커진다</b>("크기를 키웠을때")는 신고와도 맞는다.
+        ///
+        /// <para>★ 위 실측은 <c>MaxCharacterScale</c>이 1.5이던 시점의 값이다. 같은 날 <b>다른 라운드가
+        /// 상한을 1.0으로 내렸지만</b>(Dock 등반 결함의 사거리 축소) 이 결함은 <b>사라지지 않는다</b> —
+        /// 상한 1.0에서도 부양은 12.9pt(미니 키 41.9pt의 31%)다. 배율 0.40 언저리부터 부양이 시작된다.
+        /// 즉 이건 배율 상한 문제가 아니라 <b>원점 규약 문제</b>이며, 그래서 상한이 아니라 여기를 고친다.</para>
+        ///
+        /// ============================================================================
+        /// 수정 — 발바닥 원점 펫은 세로 여백이 <b>0</b>이다
+        /// ============================================================================
+        /// 발바닥 원점 펫의 y는 <see cref="ResolveGroundY"/>가 정한다. 그 값은 <b>주인이 지금 딛고 있는
+        /// 발판의 상단</b>이고, 주인이 화면 안에 있는 한 그 높이도 화면 안이다. 즉 세로 클램프는 원래
+        /// 아무 것도 구해 주지 않으면서 <b>발을 땅에서 떼는 부작용만</b> 냈다. 여백을 0으로 두면
+        /// "발바닥이 화면 밖으로는 안 나간다"만 남고 접지는 절대 깨지지 않는다.
+        ///
+        /// <para>위쪽도 <b>0</b>이다. 화면 꼭대기에 붙은 창 위에 주인이 서면 예전 규약(키/2)은 펫을
+        /// 발판 아래로 <b>키의 절반만큼 가라앉혔다</b> — 부양의 거울상이다. 머리가 화면 위로 잘리는 것은
+        /// 주인(펫보다 2.2배 크다)도 똑같이 겪는 일이라 그림이 어긋나지 않는다. <b>접지가 먼저다.</b></para>
+        ///
+        /// <para>도형이 화면보다 커서 상/하한이 뒤집히면 Clamp는 미정의 결과를 낸다 — 중앙으로 보낸다
+        /// (<see cref="ClampToOwnerFoothold"/>가 좁은 발판에서 쓰는 처리와 같은 규약).</para>
+        /// </summary>
+        /// <param name="halfWidth">원점에서 <b>좌우로</b> 뻗은 반폭.</param>
+        /// <param name="below">원점에서 <b>아래로</b> 뻗은 거리(발바닥 원점이면 0).</param>
+        /// <param name="above">원점에서 <b>위로</b> 뻗은 거리.</param>
+        private void ClampToScreen(ref Vector2 p, float halfWidth, float below, float above)
         {
             if (!TryGetScreenRect(out Rect view)) return;
-            p.x = Mathf.Clamp(p.x, view.xMin + margin, view.xMax - margin);
-            p.y = Mathf.Clamp(p.y, view.yMin + margin, view.yMax - margin);
+            ClampOriginToRect(ref p, view, halfWidth, below, above);
         }
+
+        /// <summary>
+        /// 위 클램프의 <b>순수 함수</b> 본체 — 카메라 없이 값만 받는다.
+        ///
+        /// <para>왜 분리했는가: 이 규칙이 곧 "펫이 땅에서 뜨는가"의 전부인데, 카메라와 에이전트를
+        /// 세우지 않으면 검증할 수 없으면 회귀 테스트가 붙지 않는다. 실제로 이 버그는
+        /// <b>산술 한 줄</b>이었고 그 한 줄만 잠그면 재발을 막을 수 있다
+        /// (Tests/EditMode/PetGroundContactClampTests). <c>internal</c>은
+        /// <c>InternalsVisibleTo(StickMate.Tests.EditMode)</c>로 테스트 어셈블리에만 열려 있다.</para>
+        /// </summary>
+        internal static void ClampOriginToRect(ref Vector2 p, Rect view, float halfWidth, float below, float above)
+        {
+            float xLo = view.xMin + Mathf.Max(0f, halfWidth), xHi = view.xMax - Mathf.Max(0f, halfWidth);
+            p.x = xHi >= xLo ? Mathf.Clamp(p.x, xLo, xHi) : (xLo + xHi) * 0.5f;
+
+            float yLo = view.yMin + Mathf.Max(0f, below), yHi = view.yMax - Mathf.Max(0f, above);
+            p.y = yHi >= yLo ? Mathf.Clamp(p.y, yLo, yHi) : (yLo + yHi) * 0.5f;
+        }
+
+        /// <summary>
+        /// 발바닥/접지선이 원점인 펫이 <b>세로로 쓰는 여백</b>. 값은 0이고, 그 <b>0이라는 사실 자체가
+        /// 이 버그의 수정</b>이라서 상수로 둔다 — 테스트가 숫자를 베끼지 않고 이 상수를 참조한다
+        /// (CLAUDE.md: 테스트에 프로덕션 상수를 숫자로 베끼지 않는다).
+        /// </summary>
+        internal const float GroundedPetVerticalMargin = 0f;
 
         /// <summary>
         /// OS 1포인트가 몇 월드 유닛인가. <b>DPI 계산을 새로 적지 않는다</b> —
@@ -1045,7 +1213,15 @@ namespace StickMate.Interaction
         /// </summary>
         private void BuildMini()
         {
-            Vector3[][] parts = AppearanceShapeBuilder.MiniFigure(Height * MiniScale, FacingSign);
+            float miniHeight = Height * MiniScale;
+            float facing = FacingSign;
+            Vector3[][] parts = AppearanceShapeBuilder.MiniFigure(miniHeight, facing);
+
+            // ★ 2026-09-01 — 마디 4개는 도형 빌더의 <b>활</b>이 아니라 본체와 같은 <b>필렛 관절</b>로
+            //   다시 굽는다(docs/CHARACTER_FORM_SPEC.md 3-4-A / 3-5). 양 끝점은 빌더가 준 그대로
+            //   쓰므로 계약은 하나도 바뀌지 않는다 — 아래 PrepareMiniLimbs 문서 참고.
+            PrepareMiniLimbs(parts, facing);
+
             // 이름 6개는 순서 계약을 사람이 읽을 수 있게 남긴다(팔 2 + 다리 2가 마지막 넷 — ApplyMiniPose).
             _lines = new[]
             {
@@ -1062,6 +1238,146 @@ namespace StickMate.Interaction
             // 좌우 반전은 도형 재구성으로 처리하므로 facing이 바뀌면 EnsureBuilt가 여기를 다시 지나간다.
             _miniLimbNeutral = new float[4];
             for (int i = 0; i < 4; i++) _miniLimbNeutral[i] = LimbNeutralDegrees(_lines[i + 2]);
+        }
+
+        // ====================================================================
+        // ★ 리틀스틱메이트의 무릎/팔꿈치 (2026-09-01)
+        // ====================================================================
+        //
+        // <b>왜.</b> design-character의 실측 결론(docs/CHARACTER_FORM_SPEC.md 3-4):
+        // 펫과 주인의 시각 언어 차이 중 <b>진짜 결함은 하나뿐</b>이고 그것은 "펫에 무릎이 없다"는 것이다.
+        // 획 두께(3-3)와 링 머리 크기(3-2)는 이미 참고 화풍과 오차 1% 안이다. 펫의 마디는 지금까지
+        // <b>고정된 활</b>(sagitta = 현의 9%)이라 걸어도 굽지 않았고, 그게 "몸이 뚝딱거린다"의 정체다.
+        //
+        // <b>어떻게.</b> 새 기하학을 만들지 않는다 — 본체(States/LimbCurveRenderer)와 정보창 초상화가
+        // 쓰는 <b>바로 그 static 수식</b>을 부른다. "같은 시각 언어"가 문자 그대로 같은 수식이 된다.
+        //
+        // <b>계약은 하나도 안 바뀐다</b>(이게 이 방식을 고른 이유다):
+        //   · 뿌리(0번 점)  — MakeLine이 스윙 회전축으로 옮긴다.
+        //   · 끝점(마지막 점) — LimbNeutralDegrees가 기본 각도를 실측하고, 다리는 그 y가 발바닥(0)이라
+        //     접지와 무릎앉아 내림 거리(ResolveMiniCrouchDrop)가 통째로 얹혀 있다.
+        // BuildLimbPolylineBetween은 <b>양 끝점을 고정한 채</b> 굽으므로 굽힘각이 아무리 변해도
+        // 두 점이 움직이지 않는다. 그래서 접지/스윙/무릎앉아 코드는 한 줄도 건드리지 않았다.
+        //
+        // ★ 남은 이중 정의(리더 보고 대상): AppearanceShapeBuilder.Limb / MiniLimbBowRatio /
+        //   MiniLimbPoints는 이제 <b>펫의 양 끝점만</b> 정하고 중간 모양은 여기서 덮어쓴다. 그 파일은
+        //   이번 라운드에 다른 담당자가 편집 중이라 손대지 않았다. 정리는 다음 라운드에 그쪽에서
+        //   "끝점만 돌려주는 함수"로 줄이는 것이 옳다.
+
+        /// <summary>펫 마디 하나가 자세를 따라 굽기 위해 들고 있어야 하는 것 전부.</summary>
+        private sealed class MiniLimb
+        {
+            public Vector3 Root;              // 몸 로컬(발바닥 원점) — MakeLine의 회전축이 되는 점.
+            public Vector3 Tip;               // 몸 로컬 — 다리는 y = 0(발바닥)이 계약이다.
+            public float UpperFraction;       // 위 마디가 가져가는 비율(주인에서 실측).
+            public float BendSign;            // 무릎/팔꿈치가 접히는 방향 × facing.
+            public float MaxBendDegrees;      // 규칙 B 상한(배율마다 다르다).
+            public float LastBendDegrees;     // 마지막으로 구운 각도(엡실론 게이트용).
+            public bool Primed;
+        }
+
+        private MiniLimb[] _miniLimbs;
+
+        /// <summary>마디를 다시 굽는 동안만 쓰는 재사용 버퍼 — 24시간 상주 앱이라 매 프레임 배열을
+        /// 새로 잡지 않는다(초상화 CharacterPortraitStage._limbPoints와 같은 이유).</summary>
+        private readonly Vector3[] _miniPolyline = new Vector3[LimbCurveRenderer.PolylinePointCount];
+
+        /// <summary>
+        /// <paramref name="parts"/>의 마디 4개(인덱스 2~5)를 <b>필렛 관절이 있는 폴리라인</b>으로
+        /// 갈아 끼우고, 매 프레임 다시 굽는 데 필요한 값을 캐시한다.
+        /// </summary>
+        private void PrepareMiniLimbs(Vector3[][] parts, float facing)
+        {
+            float stroke = RenderStroke;
+            _miniLimbs = new MiniLimb[4];
+
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3[] part = parts[i + 2];
+                bool isLeg = i >= 2;
+
+                var limb = new MiniLimb
+                {
+                    Root = part[0],
+                    Tip = part[part.Length - 1],
+                    UpperFraction = OwnerUpperFraction(isLeg),
+                    // 주인과 <b>같은 부호</b>를 쓴다(무릎은 뒤로, 팔꿈치는 앞으로). facing을 곱하는 이유는
+                    // 펫의 좌우 반전이 localScale이 아니라 <b>도형 재구성</b>이기 때문이다.
+                    BendSign = (isLeg ? StickmanPoseAnimator.KneeBendSign
+                                      : StickmanPoseAnimator.ElbowBendSign) * facing,
+                    LastBendDegrees = float.NaN,
+                };
+
+                // 규칙 B 상한은 <b>획 ÷ 마디 길이</b>에서 나오므로 배율마다 다르다(펫 획은 화면 하한에
+                // 눌려 전 배율에서 2pt로 고정인데 마디는 배율에 비례해 짧아진다). 굽힘 0에서 재는 것이
+                // 가장 보수적이다 — 각도가 커지면 끝점 고정 때문에 마디가 오히려 길어진다.
+                float chord = Vector3.Distance(limb.Root, limb.Tip);
+                limb.MaxBendDegrees = LimbCurveRenderer.MaxSafeBendDegrees(
+                    chord * limb.UpperFraction, chord * (1f - limb.UpperFraction), stroke);
+
+                _miniLimbs[i] = limb;
+                parts[i + 2] = BuildMiniLimbPoints(limb, NeutralBendDegrees(isLeg));
+            }
+
+        }
+
+        /// <summary>마디 하나를 굽어 <b>몸 로컬 좌표</b> 점 배열로 만든다.</summary>
+        private Vector3[] BuildMiniLimbPoints(MiniLimb limb, float bendMagnitudeDegrees)
+        {
+            float bend = limb.BendSign * Mathf.Clamp(bendMagnitudeDegrees, 0f, limb.MaxBendDegrees);
+            int count = LimbCurveRenderer.BuildLimbPolylineBetween(
+                limb.Root, limb.Tip, bend, limb.UpperFraction, RenderStroke, _miniPolyline);
+
+            // 폴리라인이 만들어지지 않는 경우(현 길이 0 등)에도 <b>양 끝점 계약</b>은 지킨다.
+            if (count <= 0) return new[] { limb.Root, limb.Tip };
+
+            var points = new Vector3[count];
+            System.Array.Copy(_miniPolyline, points, count);
+            limb.LastBendDegrees = bend;
+            limb.Primed = true;
+            return points;
+        }
+
+        /// <summary>
+        /// 마디 분할비를 <b>주인의 프리팹에서 실측</b>한다 — 펫은 "주인의 0.45배 미니어처"라는 정의를
+        /// 숫자로 다시 적지 않고 계층에서 읽는다(States/LimbCurveRenderer.BuildLimb과 같은 규약:
+        /// 마디 길이의 원본 정의는 그 선의 마지막 점이다).
+        /// <para>폴백은 출하 프리팹 실측값이다(다리 0.375:0.3375 → 0.5263, 팔 0.285:0.2775 → 0.5067).
+        /// 못 읽었을 때 0으로 나누거나 마디가 사라지는 것보다 낫다.</para>
+        /// </summary>
+        private float OwnerUpperFraction(bool isLeg)
+        {
+            float fallback = isLeg ? 0.5263f : 0.5067f;
+            if (_agent == null) return fallback;
+
+            string upperName = isLeg ? "LeftLeg" : "LeftArm";
+            Transform upper = _agent.transform.Find(upperName);
+            Transform lower = upper != null ? upper.Find(upperName + "Lower") : null;
+            if (upper == null || lower == null) return fallback;
+
+            float u = SegmentLength(upper.GetComponent<LineRenderer>());
+            float l = SegmentLength(lower.GetComponent<LineRenderer>());
+            if (u <= 0.0001f || l <= 0.0001f) return fallback;
+            return u / (u + l);
+        }
+
+        /// <summary>마디 길이 = 선의 <b>마디 끝점</b>의 |y|. 인덱스를 자르는 이유는 프로덕션
+        /// (States/LimbCurveRenderer.ReadSegmentLength)과 같다 — 옛 프리팹이 끝점 뒤에 점을 더 갖고
+        /// 있어도 마디 길이를 잘못 읽지 않는다.</summary>
+        private static float SegmentLength(LineRenderer lr)
+        {
+            if (lr == null || lr.positionCount < 2) return 0f;
+            int end = Mathf.Min(lr.positionCount - 1, LimbCurveRenderer.PointsPerSegment - 1);
+            return Mathf.Abs(lr.GetPosition(end).y);
+        }
+
+        /// <summary>기본(정지) 굽힘각 — <b>주인의 Idle 값 그대로</b>다. 펫이 자기 숫자를 따로 들면
+        /// 그 순간 미니어처가 아니라 다른 종족이 된다.</summary>
+        private float NeutralBendDegrees(bool isLeg)
+        {
+            StickConfig config = _agent != null ? _agent.Config : null;
+            if (config == null) return isLeg ? 4f : 10f;
+            return Mathf.Abs(isLeg ? config.idleKneeBendDegrees : config.idleElbowBendDegrees);
         }
 
         /// <summary>마디의 기본 각도(도, 0 = 곧게 아래, + = +x 쪽). <see cref="MakeLine"/>이 뿌리를
@@ -1190,6 +1506,7 @@ namespace StickMate.Interaction
             _body = null;
             _lines = null;
             _miniLimbNeutral = null;   // 선과 수명이 같다(다시 구우면 다시 실측한다).
+            _miniLimbs = null;         // 같은 이유 — 뿌리/끝점/상한이 전부 그 선의 규격이다.
             _builtItem = -1;
             _builtSignature = -1;
         }

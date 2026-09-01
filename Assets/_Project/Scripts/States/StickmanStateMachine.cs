@@ -15,7 +15,7 @@ namespace StickMate.States
     ///       BUG-P1-M5 — 캐주얼 데스크톱 토이라 관대한 조작감이 낫다는 판단). 발판 이탈→Fall 강제 전이
     ///       유예에 쓰이는 StickConfig.fallGraceDuration과 값은 같아도 되지만 개념적으로 분리된 필드다.
     /// - Jump -> Fall             : 상승 속도가 0 이하로 바뀌는 시점(정점 통과).
-    /// - Fall -> LandingCrouch    : 발판 착지 감지 + 낙하 높이 >= StickConfig.rollLandingHeightThreshold.
+    /// - Fall -> LandingCrouch    : 발판 착지 감지 + 낙하 높이 >= StickConfig.landingSoftAbsorbThresholdHeights x 신장.
     ///       "무릎앉아 착지"(사용자 명시 요청 2026-08-29) 연출 상태. StickConfig.landingCrouchEnabled를
     ///       끄면 이 갈래가 사라지고 아래 Fall -> Idle/Walk만 남는다(예전 거동과 100% 동일).
     /// - Fall -> Idle/Walk        : 발판 착지 감지 (StickConfig.fallGraceDuration 유예 적용).
@@ -71,6 +71,18 @@ namespace StickMate.States
         private int _transitionGeneration;
 
         public StickmanStateId CurrentStateId => _current != null ? _current.StateId : default;
+
+        /// <summary>
+        /// 등록된 상태 인스턴스를 ID로 조회한다(없으면 null). <b>읽기 전용 진단 창구</b>다 —
+        /// 상태를 갈아 끼우거나 Enter/Exit을 부르는 경로는 여기에 없다.
+        ///
+        /// 왜 필요한가: 상태가 <c>Enter()</c>에서 확정한 스냅샷(예: LandingCrouchState의 티어/깊이/
+        /// 지속시간)을 테스트가 <b>로그 문자열 파싱이 아니라 값으로</b> 단언할 수 있어야 한다.
+        /// <see cref="CurrentStateId"/>만으로는 이미 빠져나온 상태의 스냅샷을 볼 수 없고,
+        /// 로그 파싱은 포맷이 바뀌는 순간 조용히 통과해 버린다(이 저장소가 실제로 겪은 실패 유형).
+        /// </summary>
+        public IStickmanState GetState(StickmanStateId id)
+            => _states != null && _states.TryGetValue(id, out IStickmanState state) ? state : null;
 
         /// <summary>
         /// DialogueIntent.IsValid가 참조하는 "현재 유효한 전이 세대" 값.

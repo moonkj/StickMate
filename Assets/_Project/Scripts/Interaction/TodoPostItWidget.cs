@@ -72,9 +72,42 @@ namespace StickMate.Interaction
         [SerializeField] private bool _featureEnabledDefault = true;
 
         private const int SortingOrderTopMost = 30000;
-        private const float RowHeight = 26f;
+
+        // ============================================================================
+        // ★ 2026-09-01 P0-2 — 이 카드는 앱에서 <b>유일하게 디자인 시스템 밖</b>에 있었다
+        // ============================================================================
+        // 실측(docs/UI_SURFACE_SPEC.md §4): 표면 <c>new Color(1, 0.95, 0.6, 0.92)</c> · 직각 모서리 ·
+        // 그림자 0 · 테두리 0 · <c>fontSize = 14/12</c> 생 리터럴 · 색 생 리터럴 · 폰트 직접 로드.
+        //
+        // 그중 <b>알파 0.92가 치명적</b>이었다. 이 앱의 창 뒤에는 유저의 진짜 데스크톱이 있어서
+        // α&lt;1은 "반투명해 보인다"가 아니라 <b>카드 색 자체가 배경에 따라 변한다</b>는 뜻이다:
+        //     진한 파랑 데스크톱(#3b4fd8) 위 → #efe59e / 흰 문서(#ffffff) 위 → #fff3a1  (ΔL 11.1%p)
+        // 정보창·설정창·팝오버는 2026-08-31에 정확히 이 이유로 전부 α=1이 됐는데, 포스트잇만
+        // 그 라운드에서 빠져 <b>폐기된 알파 유리 규약이 여기만 살아남았다</b>.
+        //
+        // 이제 다른 창과 같은 <see cref="UiChrome.AddOpaquePanel"/> 구조[그림자 → 본체(α1) → 보더]를
+        // 쓴다. "노란 포스트잇"이라는 정체성은 표면 전체가 아니라 <b>왼쪽 4pt 띠</b>가 진다 —
+        // 색은 남고 알파 문제는 사라진다.
+
+        private const float RowHeight = 28f;          // 26 -> 28 (12pt 글자 + 위아래 8)
         private const float PanelWidth = 220f;
-        private const float PanelPadding = 8f;
+        private const float PanelPadding = UiChrome.Space3;   // 8 -> 12 (토큰)
+
+        /// <summary>"이건 메모다"를 말하는 왼쪽 세로 띠. 표면 전체를 노랗게 칠하는 대신 색만 남긴다.</summary>
+        private const float AccentStripeWidth = 4f;
+
+        /// <summary>포스트잇 노랑 — <b>띠에만</b> 쓴다(글자 배경으로 쓰지 않으므로 대비 규칙 대상이 아니다).</summary>
+        private static readonly Color PostItStripe = new Color(0.961f, 0.843f, 0.431f, 1f);   // #f5d76e
+
+        /// <summary>그림자 등급은 팝오버 3종과 같다 — 같은 위계(작고 화면에 떠 있는 카드)이므로
+        /// 같은 값이어야 한다. <see cref="PopoverPanel"/>이 이 두 값을 바꾸면 여기도 함께 바꾼다.</summary>
+        private const float ShadowSpread = 6f;
+        private static readonly Vector2 ShadowOffset = new Vector2(0f, -2f);
+
+        /// <summary>헤더의 [숨기기] 칩. 32-1 최소 클릭 타깃보다 작지만 <b>파괴적이지 않은</b> 행동이고
+        /// (그 세션 동안만 숨긴다) 카드 폭이 220pt뿐이라 여기서는 칩 크기로 둔다.</summary>
+        private const float ChipWidth = 52f;
+        private const float ChipHeight = 20f;
 
         private sealed class RowWidgets
         {
@@ -82,6 +115,13 @@ namespace StickMate.Interaction
             public Button CheckboxButton;
             public Text Label;
             public int TodoId;
+
+            /// <summary>완료 항목의 취소선. 레거시 uGUI <c>Text</c>에는 취소선 태그가 없어
+            /// <b>폭을 재서 직접 긋는다</b>. 글자 내용이나 완료 여부가 바뀐 순간에만 다시 잰다.</summary>
+            public Image Strike;
+
+            public string LastLabelText;
+            public bool LastCompleted;
         }
 
         private Canvas _canvas;
@@ -95,6 +135,7 @@ namespace StickMate.Interaction
 
         private bool _featureEnabled;
         private bool _sessionHidden; // 17절 "[숨기기]" — 그 세션 동안만, 데이터는 유지.
+        private bool _hiddenForFullscreen; // 원칙 2 자동 숨김(사용자 의사가 아니므로 _sessionHidden과 별개).
         private bool _expanded;
         private float _sweepTimer;
 
@@ -110,6 +151,16 @@ namespace StickMate.Interaction
         private bool _leftInitialized;
         private string _lastActionKey;
         private float _lastActionTime;
+
+        // ==================== 관측 창구(테스트/진단 전용, 읽기만) ====================
+
+        /// <summary>카드가 실제로 화면에 켜져 있는가. 플래그가 아니라 GameObject의 <b>실제 상태</b>를
+        /// 읽는다 — 원칙 2 회귀 테스트가 "플래그는 맞는데 화면엔 남아 있는" 경우를 잡아야 한다.</summary>
+        public bool IsCardVisible => _panelRoot != null && _panelRoot.gameObject.activeInHierarchy;
+
+        /// <summary>클릭관통 차단막이 켜져 있는가. 카드가 안 보이는데 이것이 켜져 있으면
+        /// "안 보이는데 클릭만 먹는" 최악의 형태다.</summary>
+        public bool IsClickBlockerEnabled => _clickThroughBlocker != null && _clickThroughBlocker.enabled;
 
         private void Awake()
         {
@@ -160,6 +211,27 @@ namespace StickMate.Interaction
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.UiWindows);   // [스톨구간] 계측
+
+            // ★★ 절대 불변 원칙 2(비침해) — 전체화면 게임이 감지되면 카드와 차단막을 그 프레임에 거둔다.
+            //
+            // 이 가드가 <b>없었다</b>(2026-09-01 실측 지적: 이 파일의 IsSuspended 참조가 0건).
+            // 같은 종류의 차단막을 가진 다른 표면들(정보창/설정창/톱니/팝오버)은 전부 폴링하는데
+            // 이 하나만 빠져 있었다. StickmanAgent.Suspend()는 Awake에서 캐시한 <b>캐릭터 렌더러만</b> 끄고, 이
+            // 카드는 씬 루트 캔버스 + 씬 루트 차단막이라 그 배열에 없다. 게다가 StickmanAgent가
+            // SetAlwaysOnTop(true)를 켜므로 전체화면 게임 <b>위에</b> 카드가 그대로 뜨고,
+            // SyncClickThroughBlocker()가 매 프레임 차단막을 켜므로 그 영역의 클릭까지 먹는다.
+            //
+            // 정보창/설정창과 달리 <b>복귀하면 다시 나타난다</b>. 저 둘은 "사용자가 연 창"이라 게임을
+            // 끄자마자 튀어나오면 그 자체가 방해지만, 이 카드는 할 일이 있는 동안 늘 떠 있는 상시
+            // HUD다(톱니 아이콘이 복귀하는 것과 같은 판단).
+            if (_agent != null && _agent.IsSuspended)
+            {
+                if (!_hiddenForFullscreen) EnterFullscreenHiding();
+                return;
+            }
+            if (_hiddenForFullscreen) ExitFullscreenHiding();
+
             ApplyCanvasScaleFactor(); // 배율은 실행 중에 바뀔 수 있다(모니터 이동/시작 직후 창 확장).
             TickGlobalClickPolling();
             SyncClickThroughBlocker();
@@ -297,6 +369,27 @@ namespace StickMate.Interaction
             _clickThroughBlocker.size = new Vector2(Mathf.Abs(tr.x - bl.x), Mathf.Abs(tr.y - bl.y));
         }
 
+        /// <summary>전체화면 감지 — 카드와 차단막을 한 프레임에 거둔다(원칙 2).
+        /// <see cref="_sessionHidden"/>(사용자가 누른 [숨기기])와 <b>다른 플래그</b>인 이유: 이것은
+        /// 사용자의 의사가 아니라 강제 숨김이라, 게임이 끝나면 되돌아와야 한다.</summary>
+        private void EnterFullscreenHiding()
+        {
+            _hiddenForFullscreen = true;
+            if (_clickThroughBlocker != null) _clickThroughBlocker.enabled = false;
+            if (_panelRoot != null) _panelRoot.gameObject.SetActive(false);
+            Debug.Log("[투두] 전체화면 감지 — 포스트잇 카드와 클릭 차단막을 거둡니다(비침해 원칙 2).");
+        }
+
+        /// <summary>전체화면이 끝났다 — 상시 HUD이므로 원래 규칙(RefreshView)대로 되돌린다.
+        /// 여기서 SetActive(true)를 직접 하지 않는 이유: 그 사이 할 일이 0건이 됐을 수도 있고,
+        /// 표시 여부의 진실은 <see cref="RefreshView"/> 한 곳에만 있어야 한다.</summary>
+        private void ExitFullscreenHiding()
+        {
+            _hiddenForFullscreen = false;
+            RefreshView();
+            Debug.Log("[투두] 전체화면 종료 — 포스트잇 표시 규칙을 다시 적용합니다.");
+        }
+
         private void OnTodoListChanged() => RefreshView();
 
         /// <summary>설정창(7절, 아직 미구현)이 기능 자체를 끌 때 호출할 공개 진입점(17절 "기능 자체를
@@ -333,7 +426,11 @@ namespace StickMate.Interaction
             if (_panelRoot == null) return;
 
             var items = TodoListModel.ActiveItems;
-            bool visible = _featureEnabled && !_sessionHidden && items.Count > 0; // 17절 빈 상태 예외
+            // _hiddenForFullscreen이 여기 들어가야 한다 — TodoListChanged는 전체화면 게임 중에도
+            // 날아오고(다른 경로가 할 일을 정리할 수 있다), 그때 RefreshView가 카드를 되살리면
+            // Update()의 가드가 있어도 한 프레임 동안 게임 위에 카드가 뜬다.
+            bool visible = _featureEnabled && !_sessionHidden && !_hiddenForFullscreen
+                && items.Count > 0; // 17절 빈 상태 예외
             _panelRoot.gameObject.SetActive(visible);
             if (!visible) return;
 
@@ -354,16 +451,30 @@ namespace StickMate.Interaction
                 row.Root.SetActive(true);
                 row.TodoId = item.Id;
                 string box = item.Completed ? "☑" : "☐"; // 완료: ☑ / 미완료: ☐
-                row.Label.text = box + " " + item.Text;
-                Color c = row.Label.color;
-                c.a = item.Completed ? 0.5f : 1f; // 완료 항목은 반투명(취소선 대신 최소 스코프 근사, 17절)
-                row.Label.color = c;
+                string wanted = box + " " + item.Text;
+
+                // ★ 알파로 흐리지 않는다 — α<1은 이 오버레이에서 그 글자 위 창 알파를 그대로 끌어내려
+                //   "완료 항목 자리만 데스크톱이 비치는" 결함이 된다(UiChrome '알파 채널의 법칙').
+                //   위계는 <b>크기와 색 토큰</b>이 진다: 미완료 T4(12 Primary) / 완료 T7(10 Tertiary).
+                row.Label.fontSize = item.Completed ? UiChrome.FontCaption : UiChrome.FontBody;
+                row.Label.color = item.Completed ? UiChrome.TextTertiary : UiChrome.TextPrimary;
+
+                bool changed = row.LastCompleted != item.Completed
+                    || !string.Equals(row.LastLabelText, wanted, System.StringComparison.Ordinal);
+                if (changed)
+                {
+                    row.Label.text = wanted;
+                    row.LastLabelText = wanted;
+                    row.LastCompleted = item.Completed;
+                    ApplyStrikethrough(row, item.Completed);
+                }
             }
 
             int hiddenCount = items.Count - visibleCount;
             bool showMore = !_expanded && hiddenCount > 0;
             _moreLabel.gameObject.SetActive(showMore);
-            if (showMore) _moreLabel.text = "[+" + hiddenCount + "개 더보기]";
+            // 대괄호를 붙이지 않는다 — 이 앱의 다른 어떤 버튼도 라벨에 대괄호를 쓰지 않는다.
+            if (showMore) _moreLabel.text = "+" + hiddenCount + "개 더보기";
 
             LayoutRows(visibleCount);
         }
@@ -373,19 +484,36 @@ namespace StickMate.Interaction
             while (_rows.Count < count) _rows.Add(CreateRow());
         }
 
+        /// <summary>완료 항목에 취소선을 긋는다. 레거시 uGUI <c>Text</c>에는 <c>&lt;s&gt;</c>가 없어서
+        /// (리치텍스트는 b/i/size/color뿐) 글자 폭을 재서 1pt 선을 직접 놓는다. 폭 측정은
+        /// 내용이 바뀐 순간에만 한다 — 상주 카드라 매 갱신 재측정은 낭비다.</summary>
+        private static void ApplyStrikethrough(RowWidgets row, bool completed)
+        {
+            if (row.Strike == null) return;
+            row.Strike.gameObject.SetActive(completed);
+            if (!completed) return;
+
+            float width = Mathf.Min(row.Label.preferredWidth, row.Label.rectTransform.rect.width);
+            var rt = row.Strike.rectTransform;
+            rt.sizeDelta = new Vector2(Mathf.Max(0f, width), 1f);
+        }
+
+        /// <summary>행의 왼쪽 시작 x — 안쪽 여백 + 노란 띠 폭. 글자가 띠 위로 올라타지 않게 한다.</summary>
+        private const float RowX = PanelPadding + AccentStripeWidth;
+
         private void LayoutRows(int visibleCount)
         {
             float y = -PanelPadding;
             for (int i = 0; i < visibleCount; i++)
             {
                 var rt = _rows[i].Root.GetComponent<RectTransform>();
-                rt.anchoredPosition = new Vector2(PanelPadding, y);
+                rt.anchoredPosition = new Vector2(RowX, y);
                 y -= RowHeight;
             }
             if (_moreLabel.gameObject.activeSelf)
             {
                 var rt = _moreButton.GetComponent<RectTransform>();
-                rt.anchoredPosition = new Vector2(PanelPadding, y);
+                rt.anchoredPosition = new Vector2(RowX, y);
                 y -= RowHeight;
             }
 
@@ -408,18 +536,30 @@ namespace StickMate.Interaction
             _scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
             ApplyCanvasScaleFactor();
 
-            var panelGo = new GameObject("PostItPanel", typeof(RectTransform), typeof(Image));
-            panelGo.transform.SetParent(canvasGo.transform, false);
-            _panelRoot = panelGo.GetComponent<RectTransform>();
+            // ★ P0-2 — 다른 창과 <b>같은 구조</b>[그림자 → 본체(α1) → 보더]. 컨테이너에는 Graphic이
+            //   없어야 그림자가 본체 뒤로 간다(UiChrome.AddOpaquePanel 문서).
+            _panelRoot = UiChrome.AddOpaquePanel(canvasGo.transform, "PostItPanel", UiChrome.RadiusPanel,
+                ShadowSpread, ShadowOffset, out _);
+            GameObject panelGo = _panelRoot.gameObject;
             _panelRoot.anchorMin = new Vector2(1f, 1f);
             _panelRoot.anchorMax = new Vector2(1f, 1f);
             _panelRoot.pivot = new Vector2(1f, 1f);
             _panelRoot.anchoredPosition = new Vector2(-16f, -16f); // 화면 우상단 기본 위치(17절 "유저가 위치 지정 가능"은 후속 과제)
             _panelRoot.sizeDelta = new Vector2(PanelWidth, RowHeight);
-            var panelImage = panelGo.GetComponent<Image>();
-            panelImage.color = new Color(1f, 0.95f, 0.6f, 0.92f); // 포스트잇 톤 플레이스홀더(디자이너 확정 전까지)
 
-            _hideButton = CreateSmallButton(panelGo.transform, "HideButton", "[숨기기]", new Vector2(1f, 1f), new Vector2(-6f, -4f));
+            // "이건 메모다"를 남기는 왼쪽 노란 띠. 위아래를 모서리 반지름만큼 들여 놓아야 둥근 모서리
+            // 바깥으로 삐져나오지 않는다(직선 구간에만 놓는다).
+            Image stripe = UiChrome.AddSurface(_panelRoot, "AccentStripe", PostItStripe, UiChrome.RadiusDot);
+            var srt = stripe.rectTransform;
+            srt.anchorMin = new Vector2(0f, 0f);
+            srt.anchorMax = new Vector2(0f, 1f);
+            srt.pivot = new Vector2(0f, 0.5f);
+            srt.offsetMin = new Vector2(0f, UiChrome.RadiusPanel);
+            srt.offsetMax = new Vector2(AccentStripeWidth, -UiChrome.RadiusPanel);
+            stripe.raycastTarget = false;
+
+            _hideButton = CreateSmallButton(panelGo.transform, "HideButton", "숨기기", new Vector2(1f, 1f),
+                new Vector2(-UiChrome.Space2, -UiChrome.Space1), chip: true);
             _hideButton.onClick.AddListener(() => { if (TryClaimAction("hide")) OnHideClicked(); });
 
             var rowContainerGo = new GameObject("Rows", typeof(RectTransform));
@@ -430,7 +570,7 @@ namespace StickMate.Interaction
             _rowContainer.offsetMin = Vector2.zero;
             _rowContainer.offsetMax = new Vector2(0f, -RowHeight); // 상단 [숨기기] 줄 아래부터 시작
 
-            _moreButton = CreateSmallButton(rowContainerGo.transform, "MoreButton", "[+N개 더보기]", new Vector2(0f, 1f), Vector2.zero);
+            _moreButton = CreateSmallButton(rowContainerGo.transform, "MoreButton", "+N개 더보기", new Vector2(0f, 1f), Vector2.zero);
             _moreButton.onClick.AddListener(() => { if (TryClaimAction("more")) OnMoreClicked(); });
             _moreLabel = _moreButton.GetComponentInChildren<Text>();
             _moreLabel.gameObject.SetActive(false);
@@ -454,7 +594,8 @@ namespace StickMate.Interaction
             rt.anchorMin = new Vector2(0f, 1f);
             rt.anchorMax = new Vector2(0f, 1f);
             rt.pivot = new Vector2(0f, 1f);
-            rt.sizeDelta = new Vector2(PanelWidth - PanelPadding * 2f, RowHeight);
+            // 좌측 노란 띠(4pt) 위에 글자가 올라타지 않도록 행 폭에서 띠 몫을 뺀다.
+            rt.sizeDelta = new Vector2(PanelWidth - RowX - PanelPadding, RowHeight);
 
             var buttonGo = new GameObject("Checkbox", typeof(RectTransform), typeof(Image), typeof(Button));
             buttonGo.transform.SetParent(rowGo.transform, false);
@@ -465,26 +606,27 @@ namespace StickMate.Interaction
             buttonRt.offsetMax = Vector2.zero;
             buttonGo.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.001f); // 거의 투명 — 히트테스트 대상용 배경
 
-            var labelGo = new GameObject("Label", typeof(RectTransform), typeof(Text));
-            labelGo.transform.SetParent(buttonGo.transform, false);
-            var labelRt = labelGo.GetComponent<RectTransform>();
-            labelRt.anchorMin = Vector2.zero;
-            labelRt.anchorMax = Vector2.one;
-            labelRt.offsetMin = Vector2.zero;
-            labelRt.offsetMax = Vector2.zero;
-            var label = labelGo.GetComponent<Text>();
-            label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            label.fontSize = 14;
-            label.alignment = TextAnchor.MiddleLeft;
-            label.color = Color.black;
-            label.horizontalOverflow = HorizontalWrapMode.Overflow;
+            Text label = UiChrome.AddText(buttonGo.transform, "Label", UiChrome.FontBody,
+                TextAnchor.MiddleLeft, UiChrome.TextPrimary);
+            UiChrome.Stretch(label.rectTransform);
             label.verticalOverflow = VerticalWrapMode.Truncate;
+
+            // 취소선 — 글자와 같은 줄 가운데. 완료 항목에서만 켜진다(ApplyStrikethrough).
+            Image strike = UiChrome.AddSurface(buttonGo.transform, "Strike", UiChrome.TextTertiary, UiChrome.RadiusDot);
+            var strt = strike.rectTransform;
+            strt.anchorMin = strt.anchorMax = new Vector2(0f, 0.5f);
+            strt.pivot = new Vector2(0f, 0.5f);
+            strt.anchoredPosition = Vector2.zero;
+            strt.sizeDelta = new Vector2(0f, 1f);
+            strike.raycastTarget = false;
+            strike.gameObject.SetActive(false);
 
             var row = new RowWidgets
             {
                 Root = rowGo,
                 CheckboxButton = buttonGo.GetComponent<Button>(),
                 Label = label,
+                Strike = strike,
             };
             row.CheckboxButton.onClick.AddListener(() =>
             {
@@ -493,7 +635,11 @@ namespace StickMate.Interaction
             return row;
         }
 
-        private Button CreateSmallButton(Transform parent, string name, string text, Vector2 anchor, Vector2 anchoredPos)
+        /// <summary>작은 버튼 한 개. <paramref name="chip"/>이면 <see cref="UiChrome.RadiusChip"/> 칩
+        /// (표면 CardSurface + 테두리 CardBorder)으로, 아니면 <b>글자만</b>인 링크형으로 만든다.
+        /// 색·폰트·크기는 전부 <see cref="UiChrome"/> 토큰이다 — 이 파일에 생 리터럴을 남기지 않는다.</summary>
+        private Button CreateSmallButton(Transform parent, string name, string text, Vector2 anchor,
+            Vector2 anchoredPos, bool chip = false)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
             go.transform.SetParent(parent, false);
@@ -502,23 +648,27 @@ namespace StickMate.Interaction
             rt.anchorMax = anchor;
             rt.pivot = anchor;
             rt.anchoredPosition = anchoredPos;
-            rt.sizeDelta = new Vector2(90f, RowHeight - 4f);
-            go.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.001f);
 
-            var labelGo = new GameObject("Label", typeof(RectTransform), typeof(Text));
-            labelGo.transform.SetParent(go.transform, false);
-            var labelRt = labelGo.GetComponent<RectTransform>();
-            labelRt.anchorMin = Vector2.zero;
-            labelRt.anchorMax = Vector2.one;
-            labelRt.offsetMin = Vector2.zero;
-            labelRt.offsetMax = Vector2.zero;
-            var label = labelGo.GetComponent<Text>();
-            label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            label.fontSize = 12;
-            label.alignment = TextAnchor.MiddleLeft;
-            label.color = new Color(0.2f, 0.2f, 0.2f, 0.85f);
+            var surface = go.GetComponent<Image>();
+            if (chip)
+            {
+                rt.sizeDelta = new Vector2(ChipWidth, ChipHeight);
+                surface.sprite = UiChrome.RoundedFill(UiChrome.RadiusChip);
+                surface.type = Image.Type.Sliced;
+                surface.color = UiChrome.CardSurface;
+                UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+            }
+            else
+            {
+                rt.sizeDelta = new Vector2(PanelWidth - RowX - PanelPadding, RowHeight - UiChrome.Space1);
+                surface.color = new Color(0f, 0f, 0f, 0.001f);   // 거의 투명 — 히트테스트 대상용 배경
+            }
+
+            Text label = UiChrome.AddText(go.transform, "Label", UiChrome.FontCaption,
+                chip ? TextAnchor.MiddleCenter : TextAnchor.MiddleLeft,
+                chip ? UiChrome.TextTertiary : UiChrome.Accent);   // 누를 수 있는 글자는 강조색으로 표시한다.
+            UiChrome.Stretch(label.rectTransform);
             label.text = text;
-            label.horizontalOverflow = HorizontalWrapMode.Overflow;
 
             return go.GetComponent<Button>();
         }

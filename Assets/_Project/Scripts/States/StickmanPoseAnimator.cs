@@ -68,11 +68,17 @@ namespace StickMate.States
     /// </summary>
     public sealed class StickmanPoseAnimator
     {
-        /// <summary>무릎이 접히는 방향(오른쪽을 보고 선 기준 뒤쪽). 사람 무릎은 이 반대로 꺾이지 않는다.</summary>
-        private const float KneeBendSign = -1f;
+        /// <summary>무릎이 접히는 방향(오른쪽을 보고 선 기준 뒤쪽). 사람 무릎은 이 반대로 꺾이지 않는다.
+        /// <para>★ 2026-09-01 <c>private</c> → <c>public</c>: 리틀스틱메이트(Interaction/CharacterPetRenderer)가
+        /// 무릎을 갖게 되면서 <b>같은 부호</b>를 써야 한다. 펫이 자기 부호를 따로 적으면 그 순간
+        /// 주인과 펫의 관절이 반대로 꺾일 수 있고, 그건 코드로는 절대 드러나지 않는 종류의 결함이다.
+        /// (Assets/Editor/SceneBootstrapper.cs도 같은 값을 자기 상수로 들고 있다 — 그쪽은 에디터
+        /// 어셈블리라 런타임에서 참조할 수 없어 남겨 둔다. 값이 갈라지면 첫 프레임에 자세가 튄다.)</para></summary>
+        public const float KneeBendSign = -1f;
 
-        /// <summary>팔꿈치가 접히는 방향(앞쪽). 무릎과 반대다.</summary>
-        private const float ElbowBendSign = 1f;
+        /// <summary>팔꿈치가 접히는 방향(앞쪽). 무릎과 반대다.
+        /// <para>★ 2026-09-01 공개 — 근거는 <see cref="KneeBendSign"/>과 같다.</para></summary>
+        public const float ElbowBendSign = 1f;
 
         // ─────────────────────────────────────────────────────────────────────────────────────
         // 명시적 키프레임 보행 사이클 (2026-08-28 리더 결정 — 사인파 방식 폐기)
@@ -108,6 +114,26 @@ namespace StickMate.States
 
         /// <summary>4키 팔꿈치 굽힘(도). 항상 15~25도로 굽어 있어 절대 완전히 펴지지 않는다.</summary>
         private static readonly float[] ArmElbowKeys = { 15f, 20f, 25f, 20f };
+
+        // ── 보행 키표의 봉우리값(2026-09-01 공개) ──────────────────────────────────────────
+        // 리틀스틱메이트가 <b>자기 보폭에 맞는 무릎 굽힘량</b>을 유도할 때 읽는다. 펫의 다리 스윙
+        // 진폭은 주인과 다르므로(펫은 22도, 주인 키표는 25도) 무릎 각도를 그대로 베끼면 어긋난다.
+        // 대신 <b>비율</b>(무릎 봉우리 ÷ 엉덩이 봉우리)을 가져가면 걸음걸이의 성격이 보존된다.
+        // 표를 통째로 공개하지 않는 이유: 표는 서로 정합성을 갖는 한 덩어리라 밖에서 개별 값을
+        // 읽어 쓰기 시작하면 표를 손볼 수 없게 된다(이 표 위 문단의 판단 그대로다).
+
+        /// <summary>보행 키표의 최대 엉덩이(대퇴) 각도(도, 절댓값).</summary>
+        public static float WalkPeakHipDegrees => PeakAbsolute(LegHipKeys);
+
+        /// <summary>보행 키표의 최대 무릎 굽힘(도, 절댓값). 스윙 국면의 봉우리다.</summary>
+        public static float WalkPeakKneeDegrees => PeakAbsolute(LegKneeKeys);
+
+        private static float PeakAbsolute(float[] keys)
+        {
+            float peak = 0f;
+            for (int i = 0; i < keys.Length; i++) peak = Mathf.Max(peak, Mathf.Abs(keys[i]));
+            return peak;
+        }
 
         // 몸통 상하 바운스는 더 이상 손으로 적은 8키 표(BounceKeys)가 아니다 — 2026-08-28 실측으로
         // 그 표의 **위상이 기하학과 반대**임이 드러났기 때문이다(아래 ComputeFootGroundingOffset 문서에
@@ -167,6 +193,36 @@ namespace StickMate.States
         /// 채찍처럼 이어지는 느낌이 난다.</summary>
         private const float LowerSegmentSmoothingRatio = 0.75f;
 
+        /// <summary>2마디 IK가 목표 거리를 클램프할 때 남겨두는 여유(루트 로컬 유닛). 완전히 편 자세
+        /// (r = L1+L2)와 완전히 접은 자세(r = |L1−L2|)는 acos 인자가 정확히 ±1이 되는 특이점이라,
+        /// 부동소수 오차가 그 밖으로 한 틱만 나가도 NaN이 되어 팔이 사라진다. 이 값 자체는 육안으로
+        /// 구분되지 않는 크기다(팔 길이의 0.2% 미만).</summary>
+        private const float IkReachEpsilon = 0.001f;
+
+        /// <summary>등반에서 두 손을 앞뒤로 어긋나게 짚는 거리(팔 전체 길이 대비). 2D 측면도라 좌우로
+        /// 벌릴 축이 없어서, 두 팔을 같은 점으로 IK하면 완전히 겹쳐 <b>한 팔만 그린 것처럼</b> 보인다.
+        /// 튜닝 스칼라가 아니라 실루엣이 성립하기 위한 최소 조건이라 여기 상수로 둔다(보행 키프레임 표를
+        /// StickConfig가 아니라 이 클래스에 둔 것과 같은 판단 기준).</summary>
+        private const float ClimbHandStaggerRatio = 0.17f;
+
+        /// <summary>등반에서 "팔이 몸을 지탱한다"고 볼 때 실제로 쓰는 팔 길이의 비율. 1.0으로 두면
+        /// 매달린 자세가 팔꿈치까지 완전히 잠긴 특이점 위에 놓여, 창이 1px만 움직여도 팔이 딱딱하게
+        /// 튄다. 살짝 남겨두면 IK가 항상 여유 있는 해를 고른다.</summary>
+        private const float ClimbGripReachUsable = 0.96f;
+
+        /// <summary>손을 완전히 놓는 지점 — 필요한 거리가 팔 길이의 이 배를 넘으면 그립 가중치가 0이다.
+        /// <b>왜 각도 표가 아니라 기하로 놓는가</b>: 몸이 턱 위로 올라오면 어깨가 모서리보다 팔 길이 이상
+        /// 위로 올라가는 순간이 반드시 오고, 그 뒤로는 손이 모서리에 닿는 자세가 <b>존재하지 않는다</b>.
+        /// 그때 계속 모서리를 목표로 두면 팔이 허공에서 모서리를 가리킨 채 굳는다(실측: 진행도 0.7에서
+        /// 손이 모서리보다 0.37유닛 위에 떠 있었다). 진행도로 시점을 못박지 않는 이유는 그 시점이
+        /// 턱 높이와 캐릭터 배율에 따라 달라지기 때문이다 — 기하가 스스로 알려주게 둔다.</summary>
+        private const float ClimbGripReleaseReach = 1.35f;
+
+        /// <summary>매달린 동안 앞다리 무릎을 뒷다리보다 더 접는 배수. 참고 이미지의 매달린 스틱맨들은
+        /// 두 다리 길이가 미세하게 다르다(한쪽만 살짝 접혀 있다) — 완전 대칭이면 다리 두 개가 한 개로
+        /// 보인다. 손 어긋내기(<see cref="ClimbHandStaggerRatio"/>)와 같은 목적의 값이다.</summary>
+        private const float ClimbHangFrontKneeRatio = 1.7f;
+
 
         /// <summary>한 마디(대퇴/정강이/상완/전완)의 절차적 제어에 필요한 것 전부. 매 프레임 재탐색 금지.</summary>
         private sealed class Segment
@@ -178,6 +234,7 @@ namespace StickMate.States
             public bool FollowsBodyLean;   // 상체(팔)만 true — 부착점이 엉덩이 피벗으로 함께 돈다(SetBodyLean).
             public float CurrentAngle;     // 지수 감쇠 보간의 상태값 = 지금 실제로 적용돼 있는 각도(도).
             public float GetupStartAngle;  // GETUP 보간 시작각(널브러진 실제 각도) 캡처값.
+            public float LandingEntryAngle; // 착지 진입 순간(= 낙하 자세)의 각도 캡처값. ApplyLandingCrouchPose 참고.
             public float Length;           // 이 마디의 길이(월드 유닛) — 보폭 계산/발끝 좌표 산출용.
         }
 
@@ -756,6 +813,326 @@ namespace StickMate.States
             return y * RootScaleY;
         }
 
+        // ============================================================================
+        // ★★ 등반 자세 (2026-09-01, 사용자 신고: "독을 올라갈때도 지금처럼 어설프게 점프로 올라가는게
+        //    아니고 사람처럼 손으로 집고 다리를 올려서 올라가야지")
+        // ============================================================================
+        // 지금까지 ParkourClimb에는 **포즈 코드가 한 줄도 없었다** — 상태는 정상 동작했지만
+        // (맨틀 계산까지 있어서 턱 위에 정확히 올라선다) 포즈 라우팅에 분기가 없어 Idle 중립 포즈가
+        // 그대로 적용됐다. 즉 차렷 자세의 막대기가 위로 평행이동만 했고, 그게 사용자가 "어설픈 점프"라
+        // 부른 것의 정체다.
+        //
+        // ── 왜 각도 표가 아니라 IK인가 ─────────────────────────────────────────────────
+        // 이 연출의 성패는 단 하나, **손이 실제로 턱 모서리에 붙어 있는가**다. 그런데 붙잡을 높이
+        // (턱 낙차)는 사용자의 Dock 타일 크기에 따라 0.83 ~ 3.57유닛으로 4배 넘게 변하고
+        // (StickConfig.stepUpMaxHeights 문서의 실측), 캐릭터 배율도 0.35~2.0으로 변한다. 고정 각도
+        // 표로는 그 어느 조합에서도 손이 모서리에 닿지 않는다 — 한 조합에 맞추면 나머지가 전부 틀린다.
+        // 그래서 손(과 디딤발) 각도는 **목표점에서 역산**한다. 이미 같은 계열의 계산이 이 클래스에
+        // 있다(<see cref="HangHandReachAboveRoot"/>는 정방향 FK고, 아래 <see cref="SolveTwoLinkIk"/>가
+        // 그 역방향이다). LedgeHang이 "루트를 움직여" 손을 모서리에 맞췄다면, 등반은 루트를 상태가
+        // 이미 소유하고 있으므로(선형 보간, 건드리면 안 됨) **관절 각도로** 맞춘다.
+        //
+        // ── 왜 몸이 루트보다 아래에 그려지는가(시각 오프셋) ────────────────────────────
+        // ParkourClimbState는 루트 Y를 시작~턱상단으로 **선형 보간**한다. 사람의 등반은 선형이 아니다:
+        // 뻗는 동안은 거의 안 올라가고, 당기는 순간 훅 올라간다. 상태의 좌표 계산은 건드리지 않기로
+        // 했으므로(리더 지시 — 맨틀/전이가 그 위에 서 있다) 차이를 **시각 전용 오프셋**으로 만든다:
+        //     그려지는 발밑 = 물리 루트 + (원하는 곡선 - 선형) x 오를 높이
+        // 진행도 1에서 두 곡선이 만나므로 오프셋은 정확히 0이 되고, Idle로 넘어가는 순간 튐이 없다.
+        // Rigidbody2D는 한 번도 건드리지 않는다 — 접지/맨틀/발판 고착은 전부 예전 그대로다.
+        //
+        // ── 참고 자료(사용자 제공 6장, 2026-09-01 실측) ────────────────────────────────
+        // Alan Becker 계열 스틱맨. 색 마스크로 관절을 재서 얻은 값이며 아래 기본값의 근거다.
+        //   · 아이콘에 매달린 3인(Slime Trampoline): 양팔을 **곧게** 위로 든 좁은 V자
+        //     (수직에서 14~20도), 팔꿈치 굽힘 없음, 두 손 끝이 **정확히 같은 Y**(모서리 선),
+        //     몸통 수직, 다리는 거의 곧게 늘어뜨리되 한쪽만 살짝 짧다(미세한 무릎 굽힘).
+        //     -> 우리 ledgeHang* 기본값(팔 11도/팔꿈치 8도/다리 6도/무릎 14도)이 이미 이 범위다.
+        //        그래서 매달림 박자는 **새 상수를 만들지 않고 그 값을 그대로 재사용**한다.
+        //   · 블록 위에 올라선 1인(같은 short): 몸통 앞으로 28도, **두 무릎 모두 35~43도 굽힘**,
+        //     정강이는 수직, 허벅지는 좌우로 37~44도, 발바닥이 윗면에 평평하게 닿는다.
+        //     -> 맨틀 마지막 프레임의 근거(parkourClimbMantle*Degrees / TorsoLeanDegrees).
+        //   · 나무에 붙은 1인(Workout): 한 팔은 **거의 곧게 위앞으로**, 반대 팔은 팔꿈치 90도로
+        //     접어 뒤로. 다리는 넓게 벌린 런지. -> 등반이 좌우 대칭이면 안 된다는 근거.
+        //   · 격투 스탠스 2장: 일하는 다리 무릎 35~48도 + 반대 다리는 곧게, 다리 벌림이 신장의
+        //     51~58%. -> 당기기 박자에서 뒷다리를 곧게 뻗어 벽을 미는 그림의 근거.
+
+        /// <summary>
+        /// 2마디 팔다리의 평면 IK — <b>부착점 기준 목표점에 끝(손/발)이 닿는</b> 위/아래 마디 각도.
+        /// <see cref="ApplyAngle"/>과 완전히 같은 각도 규약을 쓴다(0 = 곧게 아래, 양수 = 반시계,
+        /// 마디 끝 방향 = (sinθ, −cosθ)). 좌표는 전부 <b>방향 중립 루트 로컬</b>이며 +x가 앞이다.
+        ///
+        /// <para><paramref name="bendSign"/>은 접히는 방향으로, 이 클래스의 <see cref="KneeBendSign"/>
+        /// / <see cref="ElbowBendSign"/>을 그대로 넘긴다. 2마디 IK의 해는 항상 두 개(팔꿈치가 위/아래)이고
+        /// 그 부호가 어느 쪽을 고를지 정한다 — 즉 <b>관절이 반대로 꺾이는 해는 구조적으로 선택되지
+        /// 않는다</b>(이 클래스가 굽힘량에 Max(0,…)을 씌워 지키던 불변식과 같은 것을 IK 쪽에서 지킨다).</para>
+        ///
+        /// <para>목표가 팔 길이 밖이면 <b>도달 가능 거리로 클램프</b>한다(에러가 아니다): 손은 목표
+        /// 방향으로 최대한 뻗은 자세가 되며, 그게 실제로 "닿지 않는 곳을 향해 뻗은" 그림이라 연출로도
+        /// 옳다. 안쪽 한계(|L1−L2|)도 같은 이유로 클램프한다 — 그러지 않으면 acos 인자가 범위를 벗어나
+        /// NaN이 되고 팔이 사라진다.</para>
+        /// </summary>
+        private static void SolveTwoLinkIk(Vector2 pivotLocal, Vector2 targetLocal,
+            float upperLength, float lowerLength, float bendSign, out float upperAngle, out float lowerAngle)
+        {
+            upperAngle = 0f;
+            lowerAngle = 0f;
+            if (upperLength <= 0f || lowerLength <= 0f) return;
+
+            Vector2 d = targetLocal - pivotLocal;
+            float minReach = Mathf.Abs(upperLength - lowerLength) + IkReachEpsilon;
+            float maxReach = upperLength + lowerLength - IkReachEpsilon;
+            if (maxReach <= minReach) return; // 두 마디 길이가 사실상 같고 0에 가까움 — 풀 것이 없다.
+
+            float r = Mathf.Clamp(d.magnitude, minReach, maxReach);
+
+            // 목표 방향의 마디 각도. Atan2(x, −y)인 것은 각도 0이 −y(아래)이기 때문이다.
+            float gamma = Mathf.Atan2(d.x, -d.y) * Mathf.Rad2Deg;
+            float cosShoulder = Mathf.Clamp(
+                (upperLength * upperLength + r * r - lowerLength * lowerLength) / (2f * upperLength * r), -1f, 1f);
+            float cosJoint = Mathf.Clamp(
+                (upperLength * upperLength + lowerLength * lowerLength - r * r) / (2f * upperLength * lowerLength), -1f, 1f);
+
+            float sign = bendSign >= 0f ? 1f : -1f;
+            upperAngle = gamma - sign * Mathf.Acos(cosShoulder) * Mathf.Rad2Deg;
+            lowerAngle = sign * (180f - Mathf.Acos(cosJoint) * Mathf.Rad2Deg);
+        }
+
+        /// <summary>등반 진행도 -> <b>실제로 그려질 상승량</b>(0~1). 상태의 선형 보간을 이 곡선으로
+        /// 갈아끼우는 시각 오프셋의 분모다(위 문단 참고). 구간마다 SmoothStep이라 박자 경계에서
+        /// 속도가 튀지 않는다.</summary>
+        private static float ClimbRiseProfile(float p, in ParkourClimbPoseSettings climb)
+        {
+            if (p <= climb.ReachFraction)
+                return Mathf.SmoothStep(0f, climb.RiseAtReach01, Ratio01(p, 0f, climb.ReachFraction));
+            if (p <= climb.HangFraction)
+                return Mathf.SmoothStep(climb.RiseAtReach01, climb.RiseAtHang01, Ratio01(p, climb.ReachFraction, climb.HangFraction));
+            if (p <= climb.PullFraction)
+                return Mathf.SmoothStep(climb.RiseAtHang01, climb.RiseAtPull01, Ratio01(p, climb.HangFraction, climb.PullFraction));
+            return Mathf.SmoothStep(climb.RiseAtPull01, 1f, Ratio01(p, climb.PullFraction, 1f));
+        }
+
+        /// <summary>구간 내 진행 비율(a~b -> 0~1). 구간 길이가 0이면 1(이미 지나간 것으로 본다).</summary>
+        private static float Ratio01(float value, float a, float b)
+        {
+            return b > a ? Mathf.Clamp01((value - a) / (b - a)) : 1f;
+        }
+
+        /// <summary>어깨 부착점의 로컬 Y — 시각 오프셋 상한을 "몸 크기의 배수"로 잡는 기준자다.
+        /// 프리팹 실측이라 캐릭터 배율/기하가 바뀌어도 따라온다. 팔이 없으면 다리 길이 합으로 대체한다
+        /// (테스트 리그 방어 — 0을 돌려주면 상한이 0이 되어 연출이 조용히 사라진다).</summary>
+        private float ShoulderPivotLocalY
+        {
+            get
+            {
+                Limb arm = _rightArm ?? _leftArm;
+                if (arm != null && arm.Upper != null) return arm.Upper.PivotLocal.y;
+                return _legUpperLength + _legLowerLength;
+            }
+        }
+
+        /// <summary>
+        /// ★ 등반 자세 4박자 — 뻗기 / 매달림 / 당기기+다리올리기 / 맨틀.
+        /// States/ParkourClimbState.cs가 매 프레임 자기 진행도와 **턱의 실제 좌표**를 넘겨 호출한다
+        /// (LandingCrouch/Archery와 같은 관례: 포즈를 직접 구동하는 상태가 주인이다).
+        ///
+        /// <para>박자 경계와 각 박자가 소화하는 상승량은 <paramref name="climb"/>가 정한다. 네 박자는
+        /// <b>끊긴 포즈 네 개가 아니라</b> 하나의 연속 블렌드다 — 실제로 각 박자는 "무엇을 향해
+        /// 보간하는가"만 바꾼다(ApplyArcheryPose가 ready/draw/recoil을 순차 Lerp하는 것과 같은 구조).</para>
+        ///
+        /// <para>좌표 인자는 전부 <b>월드 유닛</b>이고 안에서 루트 로컬로 환산한다
+        /// (<see cref="HangHandReachAboveRoot"/>가 반대 방향으로 같은 환산을 하는 것과 같은 규약 —
+        /// 마디 길이/부착점은 루트 로컬이라 배율을 곱하지 않으면 배율 0.35에서 통째로 어긋난다).</para>
+        /// </summary>
+        /// <param name="progress01">등반 진행도 0~1(상태의 _climbProgress 그대로).</param>
+        /// <param name="climbRiseWorld">이번 등반의 총 상승량(턱 상단 − 시작 Y). 시각 오프셋의 크기.</param>
+        /// <param name="ledgeAboveRootWorld">지금 이 프레임 <b>물리 루트에서 턱 상단까지</b>의 높이.
+        /// 매 프레임 다시 받는다 — 오르던 창이 움직이면 잡을 곳도 함께 움직여야 하기 때문이다.</param>
+        /// <param name="gripForwardWorld">루트에서 <b>손으로 짚을 지점</b>까지의 앞쪽 거리(진행 방향이 +).
+        /// 등반 후반에는 몸이 모서리를 지나므로 <b>음수가 되고</b>, 그때 팔은 저절로 뒤아래를 짚는
+        /// 자세(맨틀 푸시)가 된다 — 별도 분기 없이 기하학이 만든다.</param>
+        /// <param name="footForwardWorld">루트에서 <b>디딤발을 올려놓을 지점</b>까지의 앞쪽 거리.</param>
+        /// <remarks>
+        /// ★★ <b>발이 들어오면 손볼 곳</b>(2026-09-01 기준 트리에는 아직 발이 없다 —
+        /// States/LimbCurveRenderer.cs에 FootBias/FootTipLocal이 존재하지 않는다. 병행 라운드 진행 중).
+        /// 발이 붙으면 <b>딱 두 군데</b>만 보면 된다. 나머지는 자동으로 맞는다:
+        /// <list type="number">
+        ///   <item><b>앞발 디딤 목표의 Y</b> — 아래 IK는 정강이 끝(=발목)을 <paramref name="ledgeAboveRootWorld"/>
+        ///     높이에 놓는다. 발이 생기면 화면에 닿아 보이는 지점은 발목이 아니라 <b>발바닥</b>이므로,
+        ///     발 두께만큼 목표를 <b>올려야</b> 발바닥이 턱 윗면에 놓인다(안 올리면 발이 턱에 파묻힌다).
+        ///     고칠 자리는 아래 <c>new Vector2(footFwdLocal, ledgeUpLocal)</c> 한 줄이다.</item>
+        ///   <item><b>맨틀 스탠스의 정강이 각도</b> — 지금 값(허벅지 40도 / 무릎 39도)은 정강이를 거의
+        ///     수직으로 만든다(40−39≈1도). 그 자세에서 발은 턱 윗면에 <b>평평하게</b> 놓이고, 그게 참고
+        ///     이미지(블록 위에 올라선 스틱맨)의 그림 그대로다. 두 값을 따로 만지면 이 관계가 깨지므로
+        ///     <b>차이(허벅지−무릎)를 0 근처로 유지</b>하면서 조정할 것.</item>
+        /// </list>
+        /// 매달린 구간은 손댈 필요가 없다: 정강이가 수직이라 발 방향이 모호해지고, 발 길이가 방향
+        /// 확실성에 비례하도록 이미 처리돼 있어(병행 라운드) 발끝이 벽을 뚫지 않는다.
+        /// </remarks>
+        /// <param name="wallFootForwardWorld">벽면(모서리 아래 수직면)을 미는 뒷발의 앞쪽 거리.
+        /// 뒷발의 <b>높이</b>는 인자가 아니라 다리 길이에서 유도한다 — 턱 기준으로 잡으면 몸이 낮게
+        /// 매달린 구간에서 목표가 엉덩이 높이로 올라와 다리가 완전히 접혀버린다(실측으로 확인).</param>
+        public void ApplyParkourClimbPose(float deltaTime, in PoseSettings idle, in LedgeHangPoseSettings hang,
+            in ParkourClimbPoseSettings climb, float smoothingRate, float progress01,
+            float climbRiseWorld, float ledgeAboveRootWorld,
+            float gripForwardWorld, float footForwardWorld, float wallFootForwardWorld)
+        {
+            float p = Mathf.Clamp01(progress01);
+
+            Limb gripArm = _rightArm ?? _leftArm;
+            float armReachLocal = gripArm != null && gripArm.Upper != null && gripArm.Lower != null
+                ? gripArm.Upper.Length + gripArm.Lower.Length
+                : 0f;
+
+            float invY = 1f / Mathf.Max(0.0001f, RootScaleY);
+            float invX = 1f / Mathf.Max(0.0001f, RootScaleX);
+            float riseLocal = climbRiseWorld * invY;
+            float ledgeUpLocal = ledgeAboveRootWorld * invY;
+            float gripFwdLocal = gripForwardWorld * invX;
+            float footFwdLocal = footForwardWorld * invX;
+            float wallFwdLocal = wallFootForwardWorld * invX;
+
+            // 시각 전용 상하 오프셋 — 상태의 선형 보간을 위 곡선으로 갈아끼운다(위 문단 참고).
+            // 상한을 두는 이유: 아주 높은 벽(일반 창 발판)에서는 riseLocal이 신장의 몇 배가 될 수 있고,
+            // 그러면 캐릭터가 화면에서 사라진 것처럼 보인다. 상한에 걸려도 진행도 1에서는 0으로
+            // 수렴하므로(아래 shaped(1)=1) 착지 튐은 여전히 없다.
+            float shaped = ClimbRiseProfile(p, climb);
+            float profileSag = riseLocal * (shaped - p);
+            float reachW = Mathf.SmoothStep(0f, 1f, Ratio01(p, 0f, climb.ReachFraction));
+
+            // ★ 매달린 몸은 **팔이 허락하는 만큼만** 내려간다. 이 한 줄이 없으면 위 상승 곡선이 몸을
+            // 팔 길이보다 더 아래로 끌어내려 손이 모서리에서 떨어진 채 허공을 잡는 그림이 된다
+            // (특히 턱이 높을수록 심하다 — 오를 높이가 팔 길이의 몇 배가 되는 순간 항상 그렇게 된다).
+            // 물리적으로도 이쪽이 옳다: 매달린 사람의 높이를 정하는 것은 곡선이 아니라 팔이다.
+            // 손을 잡기 **전**(뻗기 구간)에는 아직 팔이 몸을 지탱하지 않으므로 reachW로 서서히 넘긴다 —
+            // 그래야 등반 시작 순간에 캐릭터가 발판에서 붕 뜨지 않는다.
+            float armSpan = armReachLocal * ClimbGripReachUsable;
+            float gripHoriz = Mathf.Abs(gripFwdLocal);
+            float vertBudget = gripHoriz < armSpan ? Mathf.Sqrt(armSpan * armSpan - gripHoriz * gripHoriz) : 0f;
+            float hangFloor = ledgeUpLocal - ShoulderPivotLocalY - vertBudget;
+            float sag = Mathf.Lerp(profileSag, Mathf.Max(profileSag, hangFloor), reachW);
+
+            float sagLimit = Mathf.Max(0f, climb.MaxBodySagHeights) * ShoulderPivotLocalY;
+            sag = Mathf.Clamp(sag, -sagLimit, sagLimit);
+            SetBodyOffset(sag);
+
+            float pullW = Mathf.SmoothStep(0f, 1f, Ratio01(p, climb.HangFraction, climb.PullFraction));
+            float mantleW = Mathf.SmoothStep(0f, 1f, Ratio01(p, climb.PullFraction, climb.ReleaseFraction));
+            float settleW = Mathf.SmoothStep(0f, 1f, Ratio01(p, climb.ReleaseFraction, 1f));
+
+            // 상체 기울임 — 당기는 동안은 언제나 벽 쪽으로 기운다. 거기에 더해 **턱이 어깨보다 아래에
+            // 있을 때**(작은 Dock 타일처럼 낮은 턱) 짚는 구간에서도 기운다: 그때는 허리를 굽히지 않으면
+            // 손이 물리적으로 턱에 닿지 않는다(실측: 낙차 0.83유닛에서 손이 0.13유닛 떠 있었고, 24도
+            // 굽히자 필요 거리가 팔 길이 안으로 들어왔다). 반대로 높은 턱에 매달릴 때는 0이 되어 곧게
+            // 선다 — 참고 이미지의 매달린 스틱맨 3인이 정확히 수직이다. 진행도가 아니라 기하가 정한다.
+            // 정착 구간에서 0으로 돌아오므로 Idle에 기운 채로 넘어가지 않는다(TickBodyLean이 요청을
+            // 소비하는 구조라 별도 원복 배관이 필요 없다).
+            float gripBelowShoulder = armReachLocal > 0.0001f
+                ? Mathf.Clamp01((ShoulderPivotLocalY + sag - ledgeUpLocal) / armReachLocal)
+                : 0f;
+            RequestBodyLean(climb.TorsoLeanDegrees
+                * Mathf.Max(gripBelowShoulder * reachW, pullW) * (1f - settleW));
+
+            float stagger = armReachLocal * ClimbHandStaggerRatio;
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                bool front = limb.NeutralSign >= 0f;
+                float upper = NeutralUpperAngle(limb, idle);
+                float lower = NeutralLowerAngle(limb, idle);
+
+                if (limb.IsLeg)
+                {
+                    // (1) 뻗기·매달림 — 다리는 아래로 늘어진다. 매달리기 상태와 **같은 값**을 쓴다
+                    //     (참고 이미지의 매달린 3인이 정확히 이 모양이고, 그 값은 이미 검증돼 있다).
+                    upper = limb.NeutralSign * hang.LegSpreadDegrees;
+                    lower = KneeBendSign * Mathf.Max(0f, hang.KneeBendDegrees)
+                        * (front ? ClimbHangFrontKneeRatio : 1f);
+
+                    // (2) 당기기 — 앞다리는 **턱 위로 넘어가고**(사용자가 콕 집은 박자), 뒷다리는 벽면을
+                    //     민다. 둘 다 목표점 IK라 턱 높이/캐릭터 배율이 어떻게 변해도 발이 제자리를 찾는다.
+                    Vector2 hip = LegPivotLocal(limb) + new Vector2(0f, sag);
+                    if (front)
+                    {
+                        SolveTwoLinkIk(hip, new Vector2(footFwdLocal, ledgeUpLocal),
+                            LegUpperLengthOf(limb), LegLowerLengthOf(limb), KneeBendSign,
+                            out float plantUpper, out float plantLower);
+                        upper = Mathf.LerpAngle(upper, plantUpper, pullW);
+                        lower = Mathf.LerpAngle(lower, plantLower, pullW);
+                    }
+                    else
+                    {
+                        // 뒷발은 벽면을 민다. 높이를 **엉덩이에서 다리 길이의 몇 배 아래**로 잡는 이유는
+                        // 위 인자 문서 참고 — 턱 기준으로 잡으면 매달린 구간에서 다리가 접혀버린다.
+                        float legReach = LegUpperLengthOf(limb) + LegLowerLengthOf(limb);
+                        SolveTwoLinkIk(hip, new Vector2(wallFwdLocal, hip.y - legReach * climb.WallFootDropLegRatio),
+                            LegUpperLengthOf(limb), LegLowerLengthOf(limb), KneeBendSign,
+                            out float pushUpper, out float pushLower);
+                        upper = Mathf.LerpAngle(upper, pushUpper, pullW);
+                        lower = Mathf.LerpAngle(lower, pushLower, pullW);
+                    }
+
+                    // (3) 맨틀 — 두 다리가 턱 위 스탠스로 모인다(참고 이미지: 무릎 35~43도, 정강이 수직).
+                    float mantleHip = limb.NeutralSign * climb.MantleHipDegrees;
+                    float mantleKnee = KneeBendSign * Mathf.Max(0f, climb.MantleKneeDegrees);
+                    upper = Mathf.LerpAngle(upper, mantleHip, mantleW);
+                    lower = Mathf.LerpAngle(lower, mantleKnee, mantleW);
+                }
+                else
+                {
+                    // (1) 뻗기 — 두 손이 모서리를 잡는다. 좌우 손을 앞뒤로 조금 어긋나게 잡아야
+                    //     한 팔만 그린 것처럼 보이지 않는다(2D 측면도라 벌림을 좌우로 줄 수 없다).
+                    Vector2 shoulder = LeanedLocal(limb.Upper != null ? limb.Upper.PivotLocal : Vector2.zero)
+                        + new Vector2(0f, sag);
+                    Vector2 grip = new Vector2(gripFwdLocal + (front ? stagger : -stagger), ledgeUpLocal);
+                    SolveTwoLinkIk(shoulder, grip,
+                        limb.Upper != null ? limb.Upper.Length : 0f,
+                        limb.Lower != null ? limb.Lower.Length : 0f,
+                        ElbowBendSign, out float gripUpper, out float gripLower);
+
+                    // (2) 맨틀 — 손이 닿는 자세가 더 이상 **존재하지 않게 되면** 놓고 눌러 선다.
+                    // 판정은 진행도가 아니라 기하다(ClimbGripReleaseReach 문서 참고). 놓은 뒤의 팔은
+                    // 중립이 아니라 앞아래로 뻗은 "누르는" 자세다 — 참고 이미지에서 블록 위에 올라선
+                    // 스틱맨이 정확히 그 모양이고, 중립으로 바로 내리면 팔이 툭 떨어져 보인다.
+                    float need = (grip - shoulder).magnitude;
+                    float fit = armReachLocal > 0f
+                        ? 1f - Mathf.SmoothStep(0f, 1f, Ratio01(need,
+                            armReachLocal * ClimbGripReachUsable, armReachLocal * ClimbGripReleaseReach))
+                        : 0f;
+                    float pressUpper = limb.NeutralSign * idle.ArmSpreadDegrees + climb.MantleArmDegrees;
+                    float pressLower = ElbowBendSign * Mathf.Max(0f, climb.MantleElbowDegrees);
+                    float releaseW = (1f - fit) * pullW;
+                    float armUpper = Mathf.LerpAngle(gripUpper, pressUpper, releaseW);
+                    float armLower = Mathf.LerpAngle(gripLower, pressLower, releaseW);
+
+                    upper = Mathf.LerpAngle(upper, armUpper, reachW);
+                    lower = Mathf.LerpAngle(lower, armLower, reachW);
+                }
+
+                // (4) 정착 — 마지막 구간에서 중립으로 되돌린다. 진행도 1에서 정확히 Idle 중립이라
+                //     상태가 바뀌는 프레임에 포즈가 튀지 않는다(무릎앉아/활쏘기와 같은 마무리 규약).
+                upper = Mathf.LerpAngle(upper, NeutralUpperAngle(limb, idle), settleW);
+                lower = Mathf.LerpAngle(lower, NeutralLowerAngle(limb, idle), settleW);
+
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+
+            // 각도를 확정한 뒤 부착점을 새 오프셋으로 다시 적용한다(무릎앉아/활쏘기와 같은 이유 —
+            // 한 프레임 지연이 곧 손이 모서리에서 떨어져 보이는 것이 된다).
+            ReapplyCurrentAngles();
+        }
+
+        /// <summary>다리 부착점(엉덩이)의 로컬 좌표. 다리는 <see cref="Segment.FollowsBodyLean"/>이
+        /// false라 상체 기울임의 영향을 받지 않는다 — 팔과 달리 <see cref="LeanedLocal"/>을 통과시키지
+        /// 않는 이유이며, <see cref="ApplyAngle"/>의 처리와 정확히 같다.</summary>
+        private static Vector2 LegPivotLocal(Limb limb)
+        {
+            return limb.Upper != null ? limb.Upper.PivotLocal : Vector2.zero;
+        }
+
+        private static float LegUpperLengthOf(Limb limb) => limb.Upper != null ? limb.Upper.Length : 0f;
+
+        private static float LegLowerLengthOf(Limb limb) => limb.Lower != null ? limb.Lower.Length : 0f;
+
         /// <summary>루트의 월드 배율(X). 가로 길이(보폭)를 월드 유닛으로 바꿀 때 곱한다 — 세로를 다루는
         /// <see cref="RootScaleY"/>와 같은 규약이며, 배율은 균일하지만 축이 다른 값을 섞지 않으려고
         /// 가로는 가로 배율로 환산한다. 좌우 반전은 스케일이 아니라 각도 부호(_facingSign)로 하므로
@@ -1076,12 +1453,49 @@ namespace StickMate.States
         /// 가라앉게 한다. Mathf.LerpAngle은 t를 0~1로 clamp하므로 음수를 그대로 넘겨 외삽할 수 없어,
         /// 양수/음수 두 갈래를 명시적으로 나눠 섞는다. 무릎 굽힘은 어느 갈래에서도 0 미만이 될 수 없다
         /// (사람 무릎은 뒤로 꺾이지 않는다 — 이 클래스 전체의 불변식).
+        ///
+        /// ============================================================================
+        /// ★★ 2026-09-02 — 진입 블렌드(<paramref name="entryBlend01"/>): 팔이 몸을 <b>뒤따르게</b> 만든다
+        /// ============================================================================
+        /// <b>증상</b>: 높은 곳에서 떨어져 착지하는 첫 60ms 동안 <b>뒷팔 하나만</b> 목표를 지나쳤다가
+        /// 되돌아왔다(낙차 의존: 1.6 H에서 0.0도 → 3.0 H에서 19.5도 → 6.5 H 이상에서 <b>38.8도 포화</b>).
+        /// 앞팔은 143도 → 64도로 깨끗하게 단조 감소했고, <b>다리도 첫 프레임에 앞엉덩이가 9.4도 반대로
+        /// 내려갔다가</b> 올라왔다(이쪽은 낙차와 무관하게 전 구간).
+        ///
+        /// <b>원인</b>: 이 함수의 <paramref name="amount"/>가 0일 때의 의미가 "지금 자세"가 아니라
+        /// <b>"Idle 중립"</b>이다. 착지 첫 프레임의 amount는 0에 가까우므로 목표각이 낙하 자세(−143도)가
+        /// 아니라 Idle 중립(−40도) 근처가 되고, 실제로 가야 할 곳(−128도)과 <b>103도 떨어진 방향</b>으로
+        /// 출발한다. 팔은 <see cref="ArmSmoothingRatio"/>(0.55) 때문에 시상수가 다리의 1.8배(0.0379초 대
+        /// 0.0208초)라 그 잘못된 방향으로 실제로 <b>멀리</b> 가버린 뒤에 되돌아온다.
+        ///
+        /// <b>처방</b>: 압축(compress) 구간에 걸쳐 목표각을 "착지 진입 순간의 실제 각도"에서
+        /// "오늘의 목표각"으로 <b>smoothstep으로 넘긴다</b>.
+        /// <code>
+        /// entry01 = 1 − smoothstep(elapsed / (landingCrouchCompressFraction x duration))
+        /// 목표각  = LerpAngle(오늘목표, 진입스냅샷각, entry01)
+        /// </code>
+        /// 진입 스냅샷은 <see cref="CaptureLandingEntryPose"/>가 Enter()에서 잡는다 — 상수(낙하 자세각)를
+        /// 다시 계산하지 않고 <b>그 순간 화면에 그려져 있던 각도</b>를 그대로 쓰므로, 낙하 강도가 낮아
+        /// 만세 자세가 덜 완성된 채 착지해도 튀지 않는다.
+        ///
+        /// <b>왜 고정 시상수(τ)가 아닌가</b>: 압축 구간의 길이는 낙차에 따라 0.034초(T0.5)~0.158초(T3)로
+        /// 4.6배 변한다. 고정 τ는 짧은 쪽을 통째로 뭉갠다. 압축 구간에 비례시키면 어느 티어에서도
+        /// "압축이 끝날 때 블렌드도 끝난다"가 성립한다.
+        ///
+        /// <b>검산</b>(design/motion/2026-09-02_착지팔스윙_수치적분.py): 뒷팔 되돌림은 <b>모든 낙차에서
+        /// 0.0도</b>, 앞엉덩이 첫 프레임 딥도 <b>0.0도</b>. 그러면서 <b>다리(실루엣)의 압축 타이밍은 한
+        /// 프레임도 바뀌지 않는다</b>(앞엉덩이 81도 도달 200ms → 200ms). 결과적으로 "팔이 몸을 앞서 갔다
+        /// 되돌아오던 것"이 "팔이 몸을 뒤따르는 것"으로 바뀐다 = 오버래핑 액션.
         /// </summary>
+        /// <param name="entryBlend01">1 = 진입 스냅샷 그대로, 0 = 오늘의 목표각 그대로. 호출부가
+        /// 압축 구간에 걸쳐 1 → 0으로 내린다. <see cref="CaptureLandingEntryPose"/>를 부른 적이 없으면
+        /// 이 값은 무시된다(예전 곡선 100% 재현).</param>
         public void ApplyLandingCrouchPose(float deltaTime, in PoseSettings idle,
-            in LandingCrouchPoseSettings crouch, float smoothingRate, float amount)
+            in LandingCrouchPoseSettings crouch, float smoothingRate, float amount, float entryBlend01)
         {
             float down = Mathf.Clamp01(amount);
             float up = Mathf.Clamp01(-amount);
+            float entry = _hasLandingEntryPose ? Mathf.Clamp01(entryBlend01) : 0f;
 
             for (int i = 0; i < _limbs.Length; i++)
             {
@@ -1115,6 +1529,15 @@ namespace StickMate.States
                         upper = Mathf.LerpAngle(upper, limb.NeutralSign * (idle.ArmSpreadDegrees + ReboundArmSpreadDegrees), up);
                         lower = Mathf.LerpAngle(lower, ElbowBendSign * idle.IdleElbowBendDegrees * ReboundElbowRatio, up);
                     }
+                }
+
+                // ★ 진입 블렌드 — 위 문단 참고. 목표각을 "진입 순간의 실제 각도"에서 출발시킨다.
+                //   팔다리를 가리지 않고 같은 계수를 쓴다: 다리 쪽 딥(9.4도)도 같은 원인이었고,
+                //   서로 다른 계수를 쓰면 압축 박자가 팔과 다리에서 어긋난다.
+                if (entry > 0f)
+                {
+                    if (limb.Upper != null) upper = Mathf.LerpAngle(upper, limb.Upper.LandingEntryAngle, entry);
+                    if (limb.Lower != null) lower = Mathf.LerpAngle(lower, limb.Lower.LandingEntryAngle, entry);
                 }
 
                 ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
@@ -1475,6 +1898,27 @@ namespace StickMate.States
                 + (-p0 + p2) * u
                 + (2f * p0 - 5f * p1 + 4f * p2 - p3) * u2
                 + (-p0 + 3f * p1 - 3f * p2 + p3) * u3);
+        }
+
+        /// <summary>지금까지 <see cref="CaptureLandingEntryPose"/>가 한 번이라도 불렸는가.
+        /// 안 불렸으면 <see cref="ApplyLandingCrouchPose"/>의 진입 블렌드가 통째로 꺼진다 —
+        /// Enter()를 거치지 않고 포즈 함수만 직접 부르는 테스트 경로가 예전과 100% 같은 곡선을 타게 하려는 것이다.</summary>
+        private bool _hasLandingEntryPose;
+
+        /// <summary>
+        /// ★ 착지 진입 — 지금 화면에 그려져 있는 각 마디의 각도(= 낙하 자세)를
+        /// <see cref="ApplyLandingCrouchPose"/>의 <c>entryBlend01</c> 목표로 캡처한다.
+        /// States/LandingCrouchState.Enter()가 부른다. 이유는 그 함수의 문서 참고 —
+        /// 한 줄로 말하면 <b>"amount=0의 의미가 '지금 자세'가 아니라 'Idle 중립'이었다"</b>는 것이다.
+        /// </summary>
+        public void CaptureLandingEntryPose()
+        {
+            for (int i = 0; i < _segments.Length; i++)
+            {
+                if (_segments[i] == null) continue;
+                _segments[i].LandingEntryAngle = _segments[i].CurrentAngle;
+            }
+            _hasLandingEntryPose = true;
         }
 
         /// <summary>
@@ -1931,6 +2375,74 @@ namespace StickMate.States
                 KneeBendDegrees = kneeBend;
                 SwayAmplitudeDegrees = swayAmplitude;
                 SwayFrequencyHz = swayFrequencyHz;
+            }
+        }
+
+        /// <summary>
+        /// 등반 4박자의 <b>타이밍과 자세</b> 묶음(<see cref="ApplyParkourClimbPose"/>). 위 구조체들과
+        /// 같은 컨벤션(readonly struct + in 파라미터). StickmanBlackboard.BuildParkourClimbPoseSettings()가
+        /// StickConfig에서 구성해 넘긴다.
+        ///
+        /// <para>박자 경계(Reach/Hang/Pull/Release)와 각 박자가 소화하는 상승량(RiseAt*)은
+        /// <b>서로 짝</b>이라 반드시 함께 읽힌다. 생성자에서 순서를 강제 정렬하므로, 설정값을
+        /// 아무렇게나 넣어도 "매달림이 뻗기보다 먼저 끝나는" 같은 무의미한 조합이 만들어지지 않는다.</para>
+        /// </summary>
+        public readonly struct ParkourClimbPoseSettings
+        {
+            /// <summary>뻗기(Reach)가 끝나는 진행도.</summary>
+            public readonly float ReachFraction;
+            /// <summary>매달림(Hang)이 끝나는 진행도.</summary>
+            public readonly float HangFraction;
+            /// <summary>당기기+다리올리기(Pull)가 끝나는 진행도.</summary>
+            public readonly float PullFraction;
+            /// <summary>손을 떼고 중립으로 정착하기 시작하는 진행도(맨틀의 끝).</summary>
+            public readonly float ReleaseFraction;
+
+            /// <summary>뻗기가 끝난 시점까지 <b>실제로 그려진</b> 상승량(총 상승량 대비 0~1).</summary>
+            public readonly float RiseAtReach01;
+            /// <summary>매달림이 끝난 시점까지의 상승량.</summary>
+            public readonly float RiseAtHang01;
+            /// <summary>당기기가 끝난 시점까지의 상승량(여기서 대부분이 올라간다).</summary>
+            public readonly float RiseAtPull01;
+
+            /// <summary>맨틀 스탠스의 허벅지 벌림(도).</summary>
+            public readonly float MantleHipDegrees;
+            /// <summary>맨틀 스탠스의 무릎 굽힘(도).</summary>
+            public readonly float MantleKneeDegrees;
+            /// <summary>당기는 동안 상체가 벽 쪽으로 기우는 각도(도).</summary>
+            public readonly float TorsoLeanDegrees;
+            /// <summary>손을 놓은 뒤 턱을 눌러 서는 팔의 어깨 각도(도, + = 앞).</summary>
+            public readonly float MantleArmDegrees;
+            /// <summary>그때의 팔꿈치 굽힘(도).</summary>
+            public readonly float MantleElbowDegrees;
+            /// <summary>시각 전용 상하 오프셋의 상한(어깨 높이 배수).</summary>
+            public readonly float MaxBodySagHeights;
+            /// <summary>벽면을 미는 뒷발이 엉덩이보다 얼마나 아래를 딛는지(다리 전체 길이 대비).</summary>
+            public readonly float WallFootDropLegRatio;
+
+            public ParkourClimbPoseSettings(float reachFraction, float hangFraction, float pullFraction,
+                float releaseFraction, float riseAtReach01, float riseAtHang01, float riseAtPull01,
+                float mantleHipDegrees, float mantleKneeDegrees, float torsoLeanDegrees, float maxBodySagHeights,
+                float wallFootDropLegRatio, float mantleArmDegrees, float mantleElbowDegrees)
+            {
+                // 박자는 반드시 이 순서다 — 뒤엉킨 설정값이 들어와도 연출이 성립하도록 여기서 정렬한다.
+                ReachFraction = Mathf.Clamp(reachFraction, 0f, 1f);
+                HangFraction = Mathf.Clamp(hangFraction, ReachFraction, 1f);
+                PullFraction = Mathf.Clamp(pullFraction, HangFraction, 1f);
+                ReleaseFraction = Mathf.Clamp(releaseFraction, PullFraction, 1f);
+
+                // 상승량도 단조 증가여야 한다(뒤로 내려가는 등반은 없다).
+                RiseAtReach01 = Mathf.Clamp01(riseAtReach01);
+                RiseAtHang01 = Mathf.Clamp(riseAtHang01, RiseAtReach01, 1f);
+                RiseAtPull01 = Mathf.Clamp(riseAtPull01, RiseAtHang01, 1f);
+
+                MantleHipDegrees = mantleHipDegrees;
+                MantleKneeDegrees = mantleKneeDegrees;
+                TorsoLeanDegrees = torsoLeanDegrees;
+                MaxBodySagHeights = maxBodySagHeights;
+                WallFootDropLegRatio = Mathf.Clamp01(wallFootDropLegRatio);
+                MantleArmDegrees = mantleArmDegrees;
+                MantleElbowDegrees = mantleElbowDegrees;
             }
         }
 

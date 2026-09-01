@@ -8,19 +8,26 @@ using StickMate.Interaction;
 namespace StickMate.Tests.PlayMode
 {
     /// <summary>
-    /// ★ 우상단 맞물린 기어(Interaction/InfoGearIconWidget.cs) 회귀 테스트 — 2026-08-30
+    /// ★ 우상단 기어(Interaction/InfoGearIconWidget.cs) 회귀 테스트 — 2026-08-30
     /// 사용자 요청("클릭하면 큰기어와 작은기어가 맞물려 움직이면서").
     ///
     /// ============================================================================
-    /// 왜 "그림"이 아니라 "기구학"을 단언하는가
+    /// ★★ 2026-09-01 — 맞물림 단언 2건을 <b>Ignore로 내렸다</b>. 지우지 않았다.
     /// ============================================================================
-    /// 사용자 요구의 핵심은 <b>진짜 맞물린 것처럼 보이는가</b>였다. 그 판정은 눈으로 하지만, 눈으로 본
-    /// 것이 다음 라운드에 조용히 깨지는 것을 막으려면 <b>수치로 잠가야</b> 한다. 그래서 세 가지를
-    /// 절대 조건으로 못박는다:
-    ///  ① 두 기어는 <b>서로 반대 방향</b>으로 돈다.
-    ///  ② 작은 기어는 <b>정확히 잇수비만큼</b> 더 빨리 돈다(ω작 / ω큰 = N큰 / N작).
-    ///  ③ 중심 거리 = 두 피치 반지름의 합(이 값이 아니면 이가 겹치거나 떨어져 보인다).
-    /// 그리고 비침해 원칙: 히트 사각형은 두 기어를 덮되 <b>화면 대부분은 여전히 밖</b>이어야 한다.
+    /// P0-3(톱니가 어떤 배경에서도 보이게)을 구현하려면 잉크 뒤에 <b>역상 헤일로</b>를 깔아야 하고,
+    /// 그 헤일로는 획의 2.2배(3.74pt)를 먹는다. 그런데 옛 작은 기어의 이 골은 <b>1.68pt</b>뿐이라
+    /// (이 높이 − 획 = −0.02pt: 톱니가 물리적으로 없었다) 헤일로를 한 겹도 넣을 수 없었다.
+    /// 두 기어를 유지한 채 헤일로를 넣으려면 묶음을 2.82배(bbox 약 102pt)로 키워야 한다 —
+    /// 화면 구석 아이콘으로 성립하지 않는다. 그래서 <b>단일 기어</b>가 됐다.
+    /// (근거 전문: docs/UI_SURFACE_SPEC.md §5.1~§5.2 + InfoGearIconWidget 형태 상수 블록)
+    ///
+    /// <b>왜 파일을 안 지웠나</b>: 위 두 단언은 <b>사용자가 직접 요청한 연출</b>을 잠그고 있었다.
+    /// 삭제하면 "그런 요청이 있었다"는 사실이 저장소에서 사라진다. CLAUDE.md의 관례대로
+    /// <c>Assert.Ignore</c>로 남겨 러너에 "건너뜀"으로 계속 보이게 한다 — 두 기어를 되살리기로
+    /// 결정하면 이 두 메서드의 Ignore 한 줄만 지우면 그대로 다시 잠긴다.
+    ///
+    /// 지금도 <b>살아서 잠그는 것</b>: 회전 연출이 죽지 않았는가, 그리고 비침해 원칙(히트 사각형이
+    /// 아이콘만 덮고 화면 대부분은 밖인가).
     /// </summary>
     public sealed class InfoGearMeshingTests
     {
@@ -41,21 +48,23 @@ namespace StickMate.Tests.PlayMode
         [Test]
         public void GearRatioAndCenterDistanceFollowRealGearGeometry()
         {
-            Assert.AreEqual(10, InfoGearIconWidget.BigTeeth, "큰 기어 잇수가 바뀌었습니다.");
-            Assert.AreEqual(6, InfoGearIconWidget.SmallTeeth, "작은 기어 잇수가 바뀌었습니다.");
-            Assert.AreEqual(10f / 6f, InfoGearIconWidget.MeshRatio, 0.0001f,
-                "속도비가 잇수비와 다릅니다 — 맞물린 기어는 잇수에 반비례하는 속도로 돕니다.");
-
-            // 중심 거리 = 두 피치 반지름의 합. 값이 커지면 이가 떨어져 보이고, 작아지면 서로 파고든다.
-            const float BigOuter = 13f, BigRoot = 10.2f;
-            float scale = 6f / 10f;
-            float expected = (BigOuter + BigRoot) * 0.5f + (BigOuter * scale + BigRoot * scale) * 0.5f;
-            Assert.AreEqual(expected, InfoGearIconWidget.CenterDistance, 0.001f,
-                "중심 거리가 두 피치 반지름의 합이 아닙니다 — 두 기어가 물린 그림이 되지 않습니다.");
+            Assert.Ignore("2026-09-01 P0-3: 역상 헤일로(획 × 2.2 = 3.74pt)가 옛 작은 기어의 이 골(1.68pt)에 " +
+                          "물리적으로 들어가지 않아 단일 기어로 바꿨다. 두 기어를 되살리면 이 Ignore 한 줄만 " +
+                          "지우면 된다(클래스 문서 참고).");
         }
 
         [UnityTest]
         public IEnumerator TwoGearsSpinInOppositeDirectionsAtTheToothRatio()
+        {
+            Assert.Ignore("2026-09-01 P0-3: 작은 기어가 없어졌다(위 메서드의 사유와 같다). " +
+                          "회전 연출 자체가 살아 있는지는 아래 SpinAnimationStillTurnsTheGear가 잠근다.");
+            yield break;
+        }
+
+        /// <summary>맞물림은 사라졌지만 <b>"클릭하면 기어가 회전한다"</b>는 원래 사용자 요청
+        /// (2026-08-29 "클릭하면 기어가 회전하면서")의 핵심은 그대로다 — 그것만 따로 잠근다.</summary>
+        [UnityTest]
+        public IEnumerator SpinAnimationStillTurnsTheGear()
         {
             yield return LoadSceneAndResolve();
 
@@ -63,30 +72,20 @@ namespace StickMate.Tests.PlayMode
             yield return null;
             yield return null;
 
-            float bigStart = Mathf.DeltaAngle(0f, _gear.BigGearAngleDegrees);
-            float smallStart = Mathf.DeltaAngle(0f, _gear.SmallGearAngleDegrees);
+            float start = _gear.GearAngleDegrees;
 
-            // 몇 프레임 더 돌린 뒤 각 변화량을 잰다(회전 중에만 의미가 있으므로 짧게 본다).
-            for (int i = 0; i < 4; i++) yield return null;
+            // ★ 프레임 수가 아니라 <b>벽시계</b>로 기다린다(CLAUDE.md: 배치모드 PlayMode는 2,000fps를
+            //   넘겨서 "N프레임"이 0.01초밖에 안 되는 경우가 있다).
+            float deadline = Time.realtimeSinceStartup + 0.10f;
+            while (Time.realtimeSinceStartup < deadline) yield return null;
 
-            float bigDelta = Mathf.DeltaAngle(bigStart, _gear.BigGearAngleDegrees);
-            float smallDelta = Mathf.DeltaAngle(smallStart, _gear.SmallGearAngleDegrees);
-
-            Assert.Greater(Mathf.Abs(bigDelta), 0.5f,
-                $"큰 기어가 거의 돌지 않았습니다(Δ={bigDelta:F2}도) — 회전 연출이 죽어 있습니다.");
-            Assert.Less(bigDelta * smallDelta, 0f,
-                $"두 기어가 같은 방향으로 돕니다(큰 Δ={bigDelta:F2}, 작은 Δ={smallDelta:F2}) — " +
-                "맞물린 기어는 반드시 반대 방향입니다.");
-            Assert.Greater(Mathf.Abs(smallDelta), Mathf.Abs(bigDelta) * 1.2f,
-                $"작은 기어가 충분히 빠르지 않습니다(큰 |Δ|={Mathf.Abs(bigDelta):F2}, " +
-                $"작은 |Δ|={Mathf.Abs(smallDelta):F2}) — 잇수비 {InfoGearIconWidget.MeshRatio:F2}배여야 합니다.");
-
-            Debug.Log($"[기어테스트] 큰 기어 Δ={bigDelta:F2}도, 작은 기어 Δ={smallDelta:F2}도 " +
-                $"(비율 {Mathf.Abs(smallDelta / bigDelta):F2}, 기대 {InfoGearIconWidget.MeshRatio:F2}).");
+            float delta = Mathf.Abs(Mathf.DeltaAngle(start, _gear.GearAngleDegrees));
+            Assert.Greater(delta, 0.5f,
+                $"기어가 거의 돌지 않았습니다(Δ={delta:F2}도) — 회전 연출이 죽어 있습니다.");
         }
 
         [UnityTest]
-        public IEnumerator HitRectCoversBothGearsAndNothingElse()
+        public IEnumerator HitRectCoversTheGearAndNothingElse()
         {
             yield return LoadSceneAndResolve();
             yield return null;
@@ -94,8 +93,8 @@ namespace StickMate.Tests.PlayMode
             Rect rect = _gear.IconScreenRect;
             Assert.Greater(rect.width, 0f, "히트 사각형이 아직 계산되지 않았습니다.");
 
-            // 큰 기어 중심은 당연히 안에 있어야 하고,
-            Assert.IsTrue(rect.Contains(_gear.IconScreenCenter), "큰 기어 중심이 히트 사각형 밖입니다.");
+            // 기어 중심은 당연히 안에 있어야 하고,
+            Assert.IsTrue(rect.Contains(_gear.IconScreenCenter), "기어 중심이 히트 사각형 밖입니다.");
 
             // 화면 대부분은 밖이어야 한다(비침해 원칙 — 이 작은 영역만 클릭관통이 풀린다).
             float screenArea = Screen.width * (float)Screen.height;

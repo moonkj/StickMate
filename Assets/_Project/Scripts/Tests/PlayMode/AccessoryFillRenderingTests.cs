@@ -119,8 +119,24 @@ namespace StickMate.Tests.PlayMode
         // (2) 왕관은 의도적으로 안 채운다(리더 보류 확인 항목) — 네거티브 컨트롤
         // ============================================================================
 
+        /// <summary>
+        /// ★ 2026-09-01(3차) <b>뜻이 뒤집힌 검사</b>. 옛 이름은 <c>왕관은_채움이_없다는_사실을_기록한다</c>였고
+        /// 채움 0개를 단언했다.
+        ///
+        /// <para>그 단언은 <b>두 가지 다른 사실을 하나로 묶고 있었다</b>: (a) 왕관은 밑이 뚫려 있다,
+        /// (b) 그래서 채우지 않는다. (a)는 여전히 참이지만 (b)는 결론이 틀렸다 — 이 앱의 획은
+        /// <b>둥근 캡</b>이라 <b>선으로는 끝이 뾰족해질 수 없다</b>(37-6 규칙 6). 채움 없는 지그재그는
+        /// 봉우리 끝을 통째로 뭉개고, 그것이 사용자 신고 "장비들 모양이 너무 조잡해"의 왕관 쪽 정체다.
+        /// 뾰족해질 수 있는 것은 <b>채운 도형의 꼭짓점</b>뿐이다.</para>
+        ///
+        /// <para>그래서 왕관은 <b>채운다</b>. 밑이 뚫린 성질은 채움이 아니라
+        /// <c>AccessoryShapeBuilder.HatCoverLocalY = +∞</c>가 계속 보장한다 —
+        /// 그 값 때문에 머리카락이 한 점도 잘리지 않는다(EditMode
+        /// <c>AccessoryShapeCatalogTests.왕관은_머리카락을_한_점도_자르지_않는다</c>).
+        /// 즉 (a)와 (b)는 원래 독립이었고, 이제 코드가 그렇게 말한다.</para>
+        /// </summary>
         [UnityTest]
-        public IEnumerator 왕관은_채움이_없다는_사실을_기록한다()
+        public IEnumerator 왕관은_채워지되_얹는_물건으로_남는다()
         {
             yield return LoadSceneAndPinIdle();
             var agent = Object.FindFirstObjectByType<StickmanAgent>();
@@ -132,10 +148,29 @@ namespace StickMate.Tests.PlayMode
             var renderer = Object.FindFirstObjectByType<CharacterAccessoryRenderer>();
             Transform container = FindChild(renderer.transform, "EquipmentAccessories");
             var fills = container.GetComponentsInChildren<MeshRenderer>(true);
-            Debug.Log($"{LogPrefix} 왕관 착용 시 채움 면 {fills.Length}개(설계상 0 — HatCoverLocalY=+∞).");
-            Assert.AreEqual(0, fills.Length, $"{LogPrefix} 왕관에 채움이 생겼습니다(설계 위반).");
+            Debug.Log($"{LogPrefix} 왕관 착용 시 채움 면 {fills.Length}개: " +
+                string.Join(", ", System.Array.ConvertAll(fills, f => f.name)));
 
-            yield return Capture("fill_crown_none");
+            Assert.AreEqual(1, fills.Length,
+                $"{LogPrefix} 왕관의 채움이 {fills.Length}개입니다 — 몸통(CrownBody) 하나여야 합니다. " +
+                "테(CrownRim)는 밑변 네 점을 그대로 받는 <b>열린 선</b>이라 채우지 않습니다.");
+            Assert.IsTrue(fills[0].name.StartsWith("CrownBody"),
+                $"{LogPrefix} 채워진 도형이 '{fills[0].name}'입니다 — CrownBody여야 합니다.");
+
+            Mesh mesh = fills[0].GetComponent<MeshFilter>().sharedMesh;
+            Assert.IsNotNull(mesh, $"{LogPrefix} CrownBodyFill에 메시가 없습니다.");
+            Assert.Greater(mesh.triangles.Length, 0, $"{LogPrefix} CrownBodyFill 삼각형이 0개입니다.");
+
+            // ★ "얹는 물건"의 계측 가능한 형태 — 채움이 <b>턱까지 내려오지 않는다</b>.
+            //   여기가 무너지면 왕관이 모자가 된 것이고, 그때는 커버선도 함께 유한해져야 한다.
+            var metrics = renderer.GetComponent<StickmanMetrics>();
+            float cy = metrics.HeadCenterLocalY, r = metrics.HeadRadius;
+            var chin = new Vector2(0f, cy - r * 0.9f);
+            Assert.IsFalse(PointInMesh(chin, mesh.vertices, mesh.triangles),
+                $"{LogPrefix} 왕관 채움이 턱 근처({chin})까지 덮었습니다 — 왕관은 씌우는 것이 아니라 " +
+                "얹는 것입니다(HatCoverLocalY = +∞와 같은 사실의 그림 버전).");
+
+            yield return Capture("fill_crown_filled");
         }
 
         // ============================================================================

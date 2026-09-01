@@ -172,6 +172,7 @@ namespace StickMate.Interaction
 
         private void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Directors);   // [스톨구간] 계측
             if (_player == null || _config == null) return;
             // 18절 예외 상태: 전체화면 게임/영상 감지 중에는 감시 로직 자체를 일시정지.
             if (_player.IsSuspended) return;

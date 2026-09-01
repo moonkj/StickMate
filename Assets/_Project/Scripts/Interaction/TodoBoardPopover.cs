@@ -364,6 +364,7 @@ namespace StickMate.Interaction
 
         protected override void Update()
         {
+            using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.UiWindows);   // [스톨구간] 계측
             base.Update();
             if (!IsOpen || _confirmingId < 0) return;
 

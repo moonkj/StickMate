@@ -195,7 +195,8 @@ namespace StickMate.Tests.PlayMode
             _characterHeight = bb.CharacterHeightWorld;
 
             Debug.Log($"{LogPrefix} 준비 완료 — 바닥 월드Y={_groundWorldY:F3}, 신장={_characterHeight:F3}유닛, " +
-                $"구르기 임계={_clonedConfig.rollLandingHeightThreshold:F2}유닛.");
+                $"착지 연출 진입 임계={_clonedConfig.ResolveLandingSoftAbsorbThreshold(_characterHeight):F2}유닛, " +
+                $"무릎앉아(T1) 임계={_clonedConfig.ResolveLandingReactionThreshold(_characterHeight):F2}유닛.");
         }
 
         /// <summary>AutoWanderController(원본 config를 보는 자율 발행자)가 테스트 도중 자기 신호를

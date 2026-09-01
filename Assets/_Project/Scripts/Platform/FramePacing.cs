@@ -322,7 +322,9 @@ namespace StickMate.Platform
         /// 않는다(그쪽을 늦추면 걷기 시작이 끊긴다). 1초인 이유: 실측 유휴 에피소드가 평균 5.3초라
         /// Calm(0.4초)→Still(1.6초) 계단은 그대로 통과하면서, 상태머신이 한 프레임씩 튀는 병적인
         /// 왕복만 흡수한다.</summary>
-        private const float TierDescendCooldownSeconds = 1f;
+        // internal인 이유: 테스트가 이 값을 숫자로 베끼면 상수를 바꾼 날 테스트만 조용히 틀린다
+        // (CLAUDE.md "테스트에 프로덕션 상수를 숫자로 베끼지 않는다").
+        internal const float TierDescendCooldownSeconds = 1f;
 
         private static float _tierChangedAtTime = float.NegativeInfinity;
 
@@ -633,9 +635,15 @@ namespace StickMate.Platform
         // 확정됐다: ACTIVE-OFF=+12.09%p, AWAY-OFF=+3.06%p, 비율 0.25 = 코드상 제출비와 일치).
         //
         // 비용: 프레임당 int 비교 1회, 5분에 한 번 뺄셈 두 번. 할당 0.
+        //
+        // ★ 2026-09-01 정정 — 위 두 계기만으로는 못 가른다. Time.renderedFrameCount가 스킵을 반영하지
+        //   않을 가능성(가설 H3)이 남기 때문이다. 그래서 **실측 렌더 콜백**(Camera.onPostRender로 센
+        //   프레임 수)을 세 번째 계기로 함께 찍는다 — 근거와 판정표는 RenderDiagnostics의
+        //   "계기 정직성 라운드" 문단에 있다.
         private static bool _presentBaselineValid;
         private static int _presentBaselineLoopFrame;
         private static int _presentBaselineRenderedFrame;
+        private static int _presentBaselineActualRenderFrame;
 
         private static void SeedPresentCountersIfNeeded()
         {
@@ -643,6 +651,7 @@ namespace StickMate.Platform
             _presentBaselineValid = true;
             _presentBaselineLoopFrame = Time.frameCount;
             _presentBaselineRenderedFrame = Time.renderedFrameCount;
+            _presentBaselineActualRenderFrame = RenderDiagnostics.ActualRenderedFrameCount;
         }
 
         private static void AccumulateTierResidency(float dt)
@@ -662,8 +671,13 @@ namespace StickMate.Platform
 
             float loopFps = (Time.frameCount - _presentBaselineLoopFrame) / total;
             float renderFps = (Time.renderedFrameCount - _presentBaselineRenderedFrame) / total;
+            float actualFps = (RenderDiagnostics.ActualRenderedFrameCount - _presentBaselineActualRenderFrame) / total;
+            // 실측 콜백이 0이면 "0장 제출"이 아니라 **측정 불가**다(위 A/B 요약과 같은 규칙).
+            bool actualAvailable = actualFps > 0.01f || loopFps <= 1f;
+            float submittedFps = actualAvailable ? actualFps : renderFps;
             _presentBaselineLoopFrame = Time.frameCount;
             _presentBaselineRenderedFrame = Time.renderedFrameCount;
+            _presentBaselineActualRenderFrame = RenderDiagnostics.ActualRenderedFrameCount;
 
             // ★ 이 라운드가 줄이는 것은 **ms/프레임이 아니라 초당 장수**다. 그래서 둘의 곱
             //   (= 초당 GPU 점유)을 같이 찍는다 — 작업 관리자의 GPU %와 대응하는 유일한 숫자이며,
@@ -672,7 +686,7 @@ namespace StickMate.Platform
             if (RenderDiagnostics.TryDrainGpuLoad(out float gpuMeanMs, out float gpuWorstMs, out int gpuN))
             {
                 gpu = $"GPU {gpuMeanMs:F2}ms/프레임(최악 {gpuWorstMs:F2}, 표본 {gpuN}) " +
-                      $"x {renderFps:F1}장/초 = ★GPU 점유 추정 {gpuMeanMs * renderFps / 10f:F1}%";
+                      $"x {submittedFps:F1}장/초 = ★GPU 점유 추정 {gpuMeanMs * submittedFps / 10f:F1}%";
             }
             else
             {
@@ -682,7 +696,10 @@ namespace StickMate.Platform
             }
 
             Debug.Log($"[FramePacing/적응형] 최근 {total:F0}초 — " +
-                $"★ 실효 제출 {renderFps:F1}장/초 (루프 {loopFps:F1}Hz, 정지등급 분주 {_stillDivisor}). " +
+                $"★ 실효 제출 {submittedFps:F1}장/초({(actualAvailable ? "실측 렌더 콜백" : "renderedFrameCount — 실측 콜백 측정 불가")}) " +
+                $"[계기 대조: 루프 {loopFps:F1}Hz / renderedFrameCount {renderFps:F1} / " +
+                $"실측 콜백 {(actualAvailable ? $"{actualFps:F1}" : "측정 불가")}], " +
+                $"정지등급 분주 {_stillDivisor}. " +
                 $"{gpu}. " +
                 $"등급 체류: 활성 {TierSeconds[0] / total * 100f:F0}% / 정적 {TierSeconds[1] / total * 100f:F0}% / " +
                 $"정지 {TierSeconds[2] / total * 100f:F0}% / " +
@@ -691,7 +708,9 @@ namespace StickMate.Platform
                 $"전이 {_transitionCount - _transitionCountAtLastSummary}회(이 구간) / {_transitionCount}회(누적). " +
                 "(활성 비율이 100%에 가까우면 절감이 전혀 안 되고 있다는 뜻이다. " +
                 "실효 제출이 루프와 같으면 renderFrameInterval이 먹지 않은 것이다 — 그 경우 이 라운드의 " +
-                "절감은 0이므로 리더에게 보고할 것.)");
+                "절감은 0이므로 리더에게 보고할 것. " +
+                "★ '실측 콜백'과 'renderedFrameCount'가 다르면 후자가 거짓말하는 것이다 — " +
+                "그 값으로 낸 과거 판정은 다시 재야 한다.)");
 
             _transitionCountAtLastSummary = _transitionCount;
             for (int k = 0; k < TierSeconds.Length; k++) TierSeconds[k] = 0f;
@@ -886,6 +905,12 @@ namespace StickMate.Platform
             _sampling = false;
             _spikeCooldownLeft = 0f;
             _spikeCount = 0;
+            _spikeCountActionable = 0;
+            _spikeCountThrottled = 0;
+            _rateWindowElapsed = 0f;
+            _rateWindowCount = 0;
+            _ratePrevElapsed = 0f;
+            _ratePrevCount = 0;
             _lastGc0 = 0;
             _lastGc1 = 0;
             _spikeLastWidth = 0;
@@ -971,17 +996,69 @@ namespace StickMate.Platform
         /// 24시간 상주 앱에서 그걸 전부 찍으면 로그가 자원을 먹는다.</summary>
         private const float SpikeLogCooldownSeconds = 5f;
 
+        /// <summary>
+        /// **발생률 창**(초). 누적 단조증가 숫자는 24시간 상주 앱에서 언제나 "망가졌다"로 읽힌다 —
+        /// "누적 4,222회"는 그게 3분에 쌓였는지 20시간에 쌓였는지 말해 주지 않는다. 그래서 같은 줄에
+        /// **분당 발생률**을 함께 찍고, 그 분모가 되는 창을 이만큼마다 굴린다(텀블링).
+        /// </summary>
+        private const float SpikeRateWindowSeconds = 300f;
+
+        /// <summary>새 창이 이 시간보다 어리면 **직전 창을 합쳐서** 비율을 낸다. 없으면 창이 굴린
+        /// 직후 "0.3초에 1회 = 분당 200회" 같은 숫자가 나와, 계기를 고치려다 다시 못 읽게 만든다.</summary>
+        private const float SpikeRateMinSpanSeconds = 60f;
+
         private static float _spikeCooldownLeft;
         private static int _spikeCount;
+
+        // ★ 등급 축 분해 — 이것 하나로 "조인 구간의 정상적인 긴 프레임"과 "진짜 히치"가 갈린다.
+        //   Away/Suspended/DisplayOff에서 200ms 프레임은 **설계대로**이고, Active/Calm/Still에서
+        //   200ms 프레임은 사용자가 렉으로 느끼는 바로 그것이다. 두 숫자를 한 칸에 합쳐 두면
+        //   전자가 후자를 덮어 버려 로그가 "4,222회 망가짐"으로만 읽힌다.
+        private static int _spikeCountActionable;   // Active / Calm / Still
+        private static int _spikeCountThrottled;    // Away / Suspended / DisplayOff
+
+        private static float _rateWindowElapsed;
+        private static int _rateWindowCount;
+        private static float _ratePrevElapsed;
+        private static int _ratePrevCount;
+
         private static int _lastGc0;
         private static int _lastGc1;
         private static int _spikeLastWidth;
         private static int _spikeLastHeight;
         private static int _lastTransitionCountSeen;
 
+        /// <summary>이 등급의 긴 프레임은 <b>설계된 절감</b>이지 히치가 아니다.</summary>
+        private static bool IsThrottledTier(FramePacingTier tier) => tier >= FramePacingTier.Away;
+
+        /// <summary>
+        /// ============================================================================
+        /// ★ [프레임스파이크] 읽는 법 (이 설명은 <b>로그 줄에 싣지 않는다</b> — 2026-09-02)
+        /// ============================================================================
+        /// <list type="number">
+        /// <item><b>먼저 볼 것은 누적이 아니다.</b> <c>실사용등급</c> 수와 <c>분당 N회</c>를 본다.
+        ///   절감등급(Away/Suspended/DisplayOff)의 긴 프레임은 <b>설계된 절감</b>이지 히치가 아니다 —
+        ///   그 둘을 한 칸에 합쳐 놓았기 때문에 예전 로그가 언제나 "4,222회 망가짐"으로 읽혔다.</item>
+        /// <item>백버퍼가 바뀌었으면 원인은 <c>Screen.SetResolution</c> 재호출이다(창 크기 재적용 루프).</item>
+        /// <item>GC 증가분이 0이고 백버퍼도 그대로면 <c>[스톨귀인]</c>/<c>[스톨구간]</c> 줄을 본다 —
+        ///   같은 프레임#으로 짝이 맞춰져 있고, 그쪽이 "어디서 시간이 갔는가"를 계측으로 답한다.</item>
+        /// </list>
+        /// 로그는 <see cref="SpikeLogCooldownSeconds"/>초에 한 줄로 억제되지만 <b>카운트는 전부</b>
+        /// 센다(쿨다운 앞에서 증가시키는 것이 의도다 — 뒤로 옮기면 누적이 실제의 1/20이 된다).
+        /// </summary>
         private static void WatchSpike(float dtMs)
         {
             if (_spikeCooldownLeft > 0f) _spikeCooldownLeft -= Time.unscaledDeltaTime;
+
+            // 발생률 창 굴리기 — 벽시계 조회 없이 이미 읽은 dt만 누산한다(프레임당 float 덧셈 1회).
+            _rateWindowElapsed += Time.unscaledDeltaTime;
+            if (_rateWindowElapsed >= SpikeRateWindowSeconds)
+            {
+                _ratePrevElapsed = _rateWindowElapsed;
+                _ratePrevCount = _rateWindowCount;
+                _rateWindowElapsed = 0f;
+                _rateWindowCount = 0;
+            }
 
             int gc0 = System.GC.CollectionCount(0);
             int gc1 = System.GC.CollectionCount(1);
@@ -997,11 +1074,18 @@ namespace StickMate.Platform
             if (dtMs < SpikeAbsoluteMs) return;
 
             // 기대 프레임 시간 — 절감 등급의 "긴 프레임"은 스파이크가 아니다.
-            int cap = Application.targetFrameRate;
-            float expectedMs = cap > 0 ? 1000f / cap : 1000f / 60f;
+            // ★ 계산은 StallAttribution 한 곳에만 있다. 두 로그가 같은 프레임#으로 1:1 짝을 이루려면
+            //   분모가 같아야 하는데, 값을 복사해 두면 한쪽만 고쳤을 때 조용히 어긋난다.
+            float expectedMs = StallAttribution.ExpectedFrameMs();
             if (dtMs < expectedMs * SpikeRelativeFactor) return;
 
+            // ★ 카운트는 쿨다운 **앞**에 있는 것이 옳다 — 전부 세고 일부만 찍는 의도된 설계다.
+            //   뒤로 옮기면 누적값이 실제 발생의 1/20만 세게 된다(5초 쿨다운).
+            FramePacingTier tier = FramePacing.CurrentTier;
             _spikeCount++;
+            if (IsThrottledTier(tier)) _spikeCountThrottled++; else _spikeCountActionable++;
+            _rateWindowCount++;
+
             if (_spikeCooldownLeft > 0f) return;
             _spikeCooldownLeft = SpikeLogCooldownSeconds;
 
@@ -1017,15 +1101,27 @@ namespace StickMate.Platform
             _spikeLastWidth = w;
             _spikeLastHeight = h;
 
-            Debug.LogWarning($"[프레임스파이크] {dtMs:F0}ms 멈춤 (기대 {expectedMs:F1}ms, 누적 {_spikeCount}회). " +
+            // 발생률 — 창이 어리면 직전 창을 합쳐서 낸다(창을 막 굴린 직후의 허수 방지).
+            float rateSpan = _rateWindowElapsed;
+            int rateCount = _rateWindowCount;
+            if (rateSpan < SpikeRateMinSpanSeconds && _ratePrevElapsed > 0f)
+            {
+                rateSpan += _ratePrevElapsed;
+                rateCount += _ratePrevCount;
+            }
+            float perMinute = rateSpan > 0.001f ? rateCount * 60f / rateSpan : 0f;
+
+            Debug.LogWarning($"[프레임스파이크] {dtMs:F0}ms 멈춤 (기대 {expectedMs:F1}ms) — " +
+                // ★ 누적 하나만 찍던 시절의 로그는 "4,222회"만 말하고 그게 언제/어느 등급에서 쌓였는지
+                //   말하지 않아, 24시간 상주 앱에서 언제나 "망가졌다"로 읽혔다. 두 축을 함께 찍는다.
+                $"누적 {_spikeCount}회 = 실사용등급 {_spikeCountActionable}회 + 절감등급 {_spikeCountThrottled}회, " +
+                $"최근 {rateSpan:F0}초에 {rateCount}회 = 분당 {perMinute:F1}회. " +
                 $"백버퍼: {sizeNote}. " +
                 $"GC: gen0 +{gc0Delta} / gen1 +{gc1Delta}. " +
-                $"페이싱: 등급={FramePacing.CurrentTier}, 이번 프레임 전이 {transitionDelta}회, " +
-                $"targetFrameRate={cap}, renderFrameInterval={OnDemandRendering.renderFrameInterval}. " +
-                $"프레임#{Time.frameCount}. " +
-                "(백버퍼가 바뀌었으면 원인은 Screen.SetResolution 재호출이다 — 창 크기 재적용 루프를 " +
-                $"보라. GC 증가분이 0이고 백버퍼도 그대로면 네이티브 창 열거/파일 IO 쪽이다. " +
-                $"다음 {SpikeLogCooldownSeconds:F0}초간은 이 로그를 억제한다.)");
+                $"페이싱: 등급={tier}, 이번 프레임 전이 {transitionDelta}회, " +
+                $"vSyncCount={QualitySettings.vSyncCount}, targetFrameRate={Application.targetFrameRate}, " +
+                $"renderFrameInterval={OnDemandRendering.renderFrameInterval}. " +
+                $"프레임#{Time.frameCount}.");
         }
 
         /// <summary>
@@ -1162,6 +1258,7 @@ namespace StickMate.Platform
         //   차이는 창의 길이뿐이다: 여기는 A/B 한 판(약 55초), 저기는 상시 5분.
         private static int _measureBaselineLoopFrame;
         private static int _measureBaselineRenderedFrame;
+        private static int _measureBaselineActualRenderFrame;
         private static float _measureStartElapsed;
 
         // ============================================================================
@@ -1178,6 +1275,57 @@ namespace StickMate.Platform
         //   로그가 세 숫자를 **한 줄에 같이** 찍는다(ms, 제출/초, 그 곱).
         //
         // 비용: 렌더되는 프레임 8장마다 네이티브 호출 1회(= 제출 15장/초에서 초당 약 2회). 할당 0.
+        // ============================================================================
+        // ★★ 2026-09-01 계기 정직성 라운드 — "실효 제출"을 **세 번째 계기**로 교차 검증한다
+        // ============================================================================
+        // 문제: 지금까지 절전 효과의 판정 근거였던 두 숫자가 서로 다른 말을 했다.
+        //   (A) Time.renderedFrameCount - Time.frameCount 차이  -> "renderFrameInterval이 안 먹었다"
+        //   (B) GPU 표본 수가 활성 등급 비율에만 비례            -> "프레임을 건너뛰고 있다"
+        //
+        // ★ (B)는 **증거가 될 수 없다**(2026-09-01 확인, UnityCsReference
+        //   Runtime/Export/Graphics/OnDemandRendering.bindings.cs):
+        //       public static bool willCurrentFrameRender => Time.frameCount % renderFrameInterval == 0;
+        //   네이티브 바인딩이 없는 **순수 관리 코드 산술**이다. 즉 이 값은 "실제로 그렸는가"가 아니라
+        //   "그리기로 되어 있는가"이며, 엔진이 그 계획을 지켰는지와 무관하게 항상 1/interval의 비율로
+        //   true가 된다. 그것으로 걸러 센 표본 수가 interval에 비례하는 것은 **동어반복**이다.
+        //
+        // 그래서 계획이 아니라 **사건**을 센다: Camera.onPostRender는 카메라가 실제로 렌더를 마쳤을 때만
+        // 불린다(빌트인 렌더 파이프라인 — 이 프로젝트는 URP/HDRP를 쓰지 않는다: Packages/manifest.json에
+        // render-pipelines 패키지가 없고 GraphicsSettings.m_CustomRenderPipeline=0). 프레임이 정말로
+        // 건너뛰어졌다면 이 콜백은 그 프레임에 **오지 않는다**.
+        //
+        // 판정표(요약 로그가 세 숫자를 한 줄에 찍는다):
+        //   루프 == renderedFrameCount == 실측콜백  -> 절감 0. renderFrameInterval이 정말 안 먹었다.
+        //   루프 == renderedFrameCount >  실측콜백  -> 절감은 되고 있는데 renderedFrameCount가 거짓말.
+        //                                             (= 가설 H3 성립. 이 지표로 낸 과거 판정은 무효)
+        //   루프 >  renderedFrameCount == 실측콜백  -> 지표가 정확하다. H3 반증.
+        //
+        // 비용: 프레임당 int 비교 1회 + 대입 1회. 할당 0. 델리게이트 등록 1회.
+        private static int _actualRenderedFrames;
+        private static int _lastCountedRenderFrame = -1;
+        private static bool _renderCallbackHooked;
+
+        private static void EnsureRenderCallbackHooked()
+        {
+            if (_renderCallbackHooked) return;
+            _renderCallbackHooked = true;
+            Camera.onPostRender += CountActualRender;
+        }
+
+        private static void CountActualRender(Camera cam)
+        {
+            // 오프스크린 카메라(초상화 스테이지 등)는 화면에 제출되는 프레임이 아니다 — 세면
+            // "건너뛴 프레임"이 렌더된 것으로 잘못 잡힌다.
+            if (cam != null && cam.targetTexture != null) return;
+            // 한 프레임에 카메라가 여러 대면 콜백도 여러 번 온다. 세는 단위는 **프레임**이다.
+            if (Time.frameCount == _lastCountedRenderFrame) return;
+            _lastCountedRenderFrame = Time.frameCount;
+            _actualRenderedFrames++;
+        }
+
+        /// <summary>실제 렌더 콜백이 온 **프레임 수**(누적). 요약 로그가 구간 차분으로 쓴다.</summary>
+        internal static int ActualRenderedFrameCount => _actualRenderedFrames;
+
         private const int OngoingGpuSampleStride = 8;
         private static int _ongoingStride;
         private static double _ongoingGpuSumMs;
@@ -1233,7 +1381,16 @@ namespace StickMate.Platform
             _timingFeatureAvailable = false;
             _measureBaselineLoopFrame = 0;
             _measureBaselineRenderedFrame = 0;
+            _measureBaselineActualRenderFrame = 0;
             _measureStartElapsed = 0f;
+            // 델리게이트는 static이라 테스트 간에 새어 나간다 — 반드시 풀어 준다.
+            if (_renderCallbackHooked)
+            {
+                Camera.onPostRender -= CountActualRender;
+                _renderCallbackHooked = false;
+            }
+            _actualRenderedFrames = 0;
+            _lastCountedRenderFrame = -1;
             _ongoingStride = 0;
             _ongoingGpuSumMs = 0.0;
             _ongoingGpuWorstMs = 0.0;
@@ -1254,6 +1411,7 @@ namespace StickMate.Platform
         internal static void Tick(FramePacingTier tier)
         {
             float dt = Time.unscaledDeltaTime;
+            EnsureRenderCallbackHooked();
             SampleOngoingGpu();
 
             if (_summaryLogged)
@@ -1278,6 +1436,7 @@ namespace StickMate.Platform
                 _lastHeight = Screen.height;
                 _measureBaselineLoopFrame = Time.frameCount;
                 _measureBaselineRenderedFrame = Time.renderedFrameCount;
+                _measureBaselineActualRenderFrame = _actualRenderedFrames;
                 _measureStartElapsed = _elapsed;
                 LogSnapshot("콜드스타트");
                 return;
@@ -1373,6 +1532,40 @@ namespace StickMate.Platform
                 $"GPU 타이밍={(_timingFeatureAvailable ? "사용 가능" : "사용 불가(enableFrameTimingStats 꺼짐 또는 드라이버 미지원)")}.");
         }
 
+        /// <summary>
+        /// 세 계기(루프 / <c>Time.renderedFrameCount</c> / 실측 렌더 콜백)가 서로 무슨 말을 하는지
+        /// 로그가 **스스로** 판정한다. 사람이 세 숫자를 눈으로 비교하는 단계를 없애기 위한 것이다 —
+        /// 이 프로젝트는 계기 불일치를 사람이 놓쳐 여러 라운드를 날린 이력이 있다.
+        /// </summary>
+        private static string DescribeInstrumentAgreement(float loopFps, float renderFps, float actualFps,
+            bool actualAvailable)
+        {
+            if (OnDemandRendering.renderFrameInterval <= 1) return string.Empty;
+            if (!actualAvailable)
+            {
+                return " ※ 실측 렌더 콜백이 한 번도 오지 않았다 — Camera.onPostRender는 빌트인 렌더" +
+                       " 파이프라인 전용이다. 렌더 파이프라인을 바꿨다면 이 계기를 그 파이프라인의" +
+                       " endContextRendering으로 옮겨야 한다(옮기기 전까지 절전 판정은 근거가 없다)";
+            }
+
+            bool reportedSkips = renderFps < loopFps * 0.9f;
+            bool actuallySkipped = actualFps < loopFps * 0.9f;
+
+            if (actuallySkipped && !reportedSkips)
+            {
+                return " ★계기 불일치: 실제로는 건너뛰는데 Time.renderedFrameCount가 루프와 같다" +
+                       " — 이 값으로 낸 과거의 절전 판정은 근거가 없다(가설 H3 성립)";
+            }
+            if (!actuallySkipped && reportedSkips)
+            {
+                return " ★계기 불일치: renderedFrameCount만 줄었고 실제 렌더는 루프와 같다" +
+                       " — renderedFrameCount를 신뢰하지 말 것";
+            }
+            return actuallySkipped
+                ? " (계기 3종 일치: 실제로 건너뛰고 있다)"
+                : " (계기 3종 일치: 건너뛰지 않고 있다 = 절감 0)";
+        }
+
         private static void LogAbSummary(FramePacingTier tier)
         {
             float cpuMean = _cpuCount > 0 ? (float)(_cpuSumMs / _cpuCount) : 0f;
@@ -1389,8 +1582,17 @@ namespace StickMate.Platform
             float window = Mathf.Max(0.001f, _elapsed - _measureStartElapsed);
             float loopFps = (Time.frameCount - _measureBaselineLoopFrame) / window;
             float renderFps = (Time.renderedFrameCount - _measureBaselineRenderedFrame) / window;
+            float actualFps = (_actualRenderedFrames - _measureBaselineActualRenderFrame) / window;
+            // ★ 계기 자신의 정직성 — 콜백이 한 번도 안 왔는데 "0장/초 제출"이라고 찍으면 이 계기가
+            //   바로 그 거짓말을 하는 쪽이 된다. Camera.onPostRender는 **빌트인 렌더 파이프라인**
+            //   전용이라, 이 프로젝트가 URP/HDRP로 옮겨가면 조용히 0이 된다. 그때는 "측정 불가"라고
+            //   말하고 예전 지표(renderedFrameCount)로 되돌아간다.
+            bool actualAvailable = actualFps > 0.01f || loopFps <= 1f;
+            float submittedFps = actualAvailable ? actualFps : renderFps;
+            // ★ 판정은 **실측 콜백**으로 한다. renderedFrameCount는 이 라운드의 조사 대상이다
+            //   (위 "계기 정직성" 문단 — 두 계기가 다르면 세 번째가 심판이다).
             bool intervalTookEffect = OnDemandRendering.renderFrameInterval <= 1
-                || renderFps < loopFps * 0.9f;
+                || submittedFps < loopFps * 0.9f;
 
             Debug.Log($"[렌더진단] ★A/B 요약(정착 {SnapshotDelaySeconds:F0}초 제외, " +
                 $"측정 {window:F0}초) — " +
@@ -1399,11 +1601,14 @@ namespace StickMate.Platform
                 $"등급={tier}(강제={FramePacing.ForcedTierLabel}). " +
                 $"CPU 프레임시간 평균 {cpuMean:F2}ms / 최악 {_cpuWorstMs:F2}ms (표본 {_cpuCount}), {tail}. " +
                 $"{gpu}. " +
-                $"★ 실효 제출 {renderFps:F1}장/초 (루프 {loopFps:F1}Hz, " +
+                $"★ 실효 제출 {submittedFps:F1}장/초({(actualAvailable ? "실측 렌더 콜백" : "renderedFrameCount — 실측 콜백 측정 불가")}) " +
+                $"[계기 대조: 루프 {loopFps:F1}Hz / renderedFrameCount {renderFps:F1} / " +
+                $"실측 콜백 {(actualAvailable ? $"{actualFps:F1}" : "측정 불가")}], " +
                 $"renderFrameInterval={OnDemandRendering.renderFrameInterval}" +
-                $"{(intervalTookEffect ? string.Empty : " — ※ 걸리지 않았다: 렌더가 루프와 같은 속도다")}). " +
+                $"{(intervalTookEffect ? string.Empty : " — ※ 걸리지 않았다: 렌더가 루프와 같은 속도다")}" +
+                $"{DescribeInstrumentAgreement(loopFps, renderFps, actualFps, actualAvailable)}. " +
                 (_gpuCount > 0
-                    ? $"★GPU 점유 추정 {_gpuSumMs / _gpuCount * renderFps / 10.0:F1}% " +
+                    ? $"★GPU 점유 추정 {_gpuSumMs / _gpuCount * submittedFps / 10.0:F1}% " +
                       "(= ms/프레임 x 제출/초 / 10 — 작업 관리자 GPU %와 대응하는 값). "
                     : string.Empty) +
                 "※ 이 한 줄을 MSAA만 바꾼 다른 콜드스타트의 같은 줄과 비교하세요. " +
