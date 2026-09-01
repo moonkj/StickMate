@@ -74,19 +74,55 @@ namespace StickMate.Platform
         /// (2026-08-31 사용자 확정: 움직일 때는 60fps).</summary>
         Active = 0,
 
-        /// <summary>사용자가 보고는 있지만 캐릭터가 가만히 서 있고 최근 입력도 없다.</summary>
+        /// <summary>사용자가 보고는 있지만 캐릭터가 <b>잠깐</b> 서 있다(정지 지속 시간이 짧다).</summary>
         Calm = 1,
+
+        /// <summary>
+        /// 사용자는 있고 <b>입력도 하고 있을 수 있지만</b>, 캐릭터가 충분히 오래 제자리에 서 있다.
+        ///
+        /// <para><b>★ 2026-09-01 컴포지터 라운드에서 추가된 등급이고, 이 라운드의 전부다.</b>
+        /// 사용자 Windows 실측이 <c>StickMate 30% + dwm 30~40%</c>였다. 그런데 그 사용자는
+        /// <b>업무 중</b>이었다 — 즉 계속 키보드/마우스를 만지고 있었고, 그래서
+        /// <see cref="Calm"/>의 전제(<see cref="FramePacingPolicy.RecentInputSeconds"/> = 최근 2초간
+        /// 무입력)가 <b>하루 종일 한 번도 성립하지 않았다</b>. 결과: 캐릭터가 가만히 서 있는 그
+        /// 시간에도 초당 60장을 제출했고, 투명 레이어드 창은 제출할 때마다 DWM이 바탕화면 전체를
+        /// 다시 합성한다.</para>
+        ///
+        /// <para><b>그래서 이 등급은 "최근 입력"을 조건에서 뺀다.</b> 근거는 두 개다:
+        /// <list type="number">
+        /// <item><b>입력은 우리 앱을 향한 것이 아닐 수 있다</b>(대부분 아니다 — 상주 장식 앱이다).
+        ///   정말 우리 UI를 만지는 중이라면 그 표면이 <c>FramePacing.HoldActiveForInteraction()</c>으로
+        ///   스스로 알린다(관측). 무입력 시간은 그 관측을 대신하던 <b>추정</b>이었고, 홀드 배선이
+        ///   완성된 지금은 추정을 유지할 이유가 사라졌다.</item>
+        /// <item><b>캐릭터가 서 있을 때 실제로 움직이는 것의 크기를 재 봤다</b>(1080p 기준
+        ///   45픽셀/월드유닛, 캐릭터 배율 0.75):
+        ///   호흡 = 진폭 0.012유닛 x 0.8Hz -> <b>진폭 0.4픽셀</b>(peak-to-peak 0.8px, 서브픽셀),
+        ///   호흡 팔각도 ±1.5도 -> 손끝 <b>0.3픽셀</b>,
+        ///   눈동자 커서 추적 = 최대 오프셋 0.09유닛 -> <b>편도 3픽셀</b>.
+        ///   즉 이 구간에서 "부드러움"을 구성하는 움직임의 총량이 <b>수 픽셀</b>이다. 프레임을
+        ///   1/4로 줄여도 프레임당 변화가 1픽셀 남짓이라 사람 눈에 계단이 생길 크기가 아니다.
+        ///   (걷기는 다르다 — 한 걸음에 관절이 수십 도 움직인다. 그래서 걷는 순간 즉시 <see cref="Active"/>로
+        ///   복귀하며, 그 복귀는 폴링을 기다리지 않는다.)</item>
+        /// </list></para>
+        ///
+        /// <para><b>대가</b>: "캐릭터 상태 ID = Idle"은 <b>화면에 아무것도 안 움직인다</b>와 같은 말이
+        /// 아니다. 커서 추종 펫(<c>Interaction/CharacterPetRenderer.cs</c>의 PetCursor)은 캐릭터가
+        /// 서 있어도 커서를 따라 화면을 가로지른다. 그 하나는 렌더러가 스스로 홀드를 거는 방식으로
+        /// 처리했다(같은 파일 <c>TickCursorFriend</c>). 앞으로 "캐릭터와 독립적으로 크게 움직이는"
+        /// 연출을 추가하면 <b>같은 방식으로 자기 자신을 신고</b>해야 한다.</para>
+        /// </summary>
+        Still = 2,
 
         /// <summary>자리 비움 — 오랫동안 입력이 없고 <b>그 사이 캐릭터도 제자리에 서 있다</b>.
         /// 두 조건은 AND다. 무입력만으로는 이 등급이 아니다(<see cref="FramePacingPolicy.AwaySeconds"/>
         /// 문서의 "무입력은 이탈이 아니라 몰입 신호일 수 있다" 절).</summary>
-        Away = 2,
+        Away = 3,
 
         /// <summary>전체화면 게임 감지로 캐릭터를 숨긴 상태(기존 Suspend 경로).</summary>
-        Suspended = 3,
+        Suspended = 4,
 
         /// <summary>디스플레이가 잠들어 화면이 꺼졌다 — 볼 수 있는 사람이 물리적으로 없다.</summary>
-        DisplayOff = 4,
+        DisplayOff = 5,
     }
 
     /// <summary>
@@ -114,6 +150,20 @@ namespace StickMate.Platform
             RenderFrameInterval = Mathf.Max(1, renderFrameInterval);
         }
 
+        /// <summary>
+        /// <c>targetFrameRate</c> 기구(<see cref="VSyncCount"/> == 0, 즉 Windows)에서 이 계획이
+        /// 실제로 <b>내보내는</b> 초당 장수. vsync 기구(macOS)에서는 디스플레이 주사율을 알아야
+        /// 하므로 -1(모름)을 준다.
+        ///
+        /// <para><b>왜 필요한가</b>: 2026-09-01부터 같은 절감이 <c>targetFrameRate</c>가 아니라
+        /// <c>renderFrameInterval</c>로 표현될 수 있다(<see cref="FramePacingPolicy.BuildPlan"/>).
+        /// 그래서 <c>plan.TargetFrameRate</c>만 읽고 "몇 장 그리는가"를 판단하면 <b>틀린다</b> —
+        /// 60/2가 30인데 30으로 안 보인다. 그 실수를 구조적으로 막는 단 하나의 창구다.</para>
+        /// </summary>
+        public int EffectiveTargetFps => VSyncCount > 0 || TargetFrameRate <= 0
+            ? -1
+            : TargetFrameRate / RenderFrameInterval;
+
         public bool SameAs(in FramePacingPlan other) =>
             VSyncCount == other.VSyncCount
             && TargetFrameRate == other.TargetFrameRate
@@ -125,8 +175,9 @@ namespace StickMate.Platform
     ///
     /// <para><b>★ 설계 원칙 하나로 전부 설명된다: "보는 사람이 있을 때는 표시 기구를 바꾸지 않는다."</b>
     /// <list type="bullet">
-    /// <item>사람이 보고 있는 등급(Active/Calm)에서는 <c>vSyncCount</c>를 <b>절대 바꾸지 않고</b>
-    ///   <c>renderFrameInterval</c>만 조정한다. vSyncCount를 바꾸는 것은 표시 동기화 기구 자체를 바꾸는
+    /// <item>사람이 보고 있는 등급(Active/Calm/Still)에서는 <c>vSyncCount</c>도 <c>targetFrameRate</c>도
+    ///   <b>절대 바꾸지 않고</b> <c>renderFrameInterval</c>만 조정한다(2026-09-01부터 Windows 포함 —
+    ///   <see cref="BuildPlan"/> 문서). vSyncCount를 바꾸는 것은 표시 동기화 기구 자체를 바꾸는
     ///   일이라 전환 순간 한 프레임이 튈 수 있고, 이번 사용자 신고가 하필 "부드럽지 않다"였다.
     ///   renderFrameInterval은 디스플레이 위상을 그대로 둔 채 "이번 프레임은 안 그린다"만 정하므로
     ///   남는 프레임의 간격이 여전히 정확히 균일하다(60fps 위상 위의 30fps).</item>
@@ -135,8 +186,9 @@ namespace StickMate.Platform
     ///   맞다(메인 스레드가 전체 비용의 약 60%라 렌더만 건너뛰는 것으로는 절반밖에 못 줄인다).</item>
     /// </list></para>
     ///
-    /// <para><b>안전 설계 — 신호를 놓쳐도 절대 얼지 않는다</b>: 가장 얕은 절감 등급(Calm)조차 30fps다.
-    /// 즉 "캐릭터가 IDLE이다"라는 판단이 틀려도 최악의 결과가 <b>30fps로 그려지는 것</b>이지 정지 화면이
+    /// <para><b>안전 설계 — 신호를 놓쳐도 절대 얼지 않는다</b>: 가장 깊은 "보는 중" 등급(Still)조차
+    /// 기본 15fps이고 가장 얕은 절감 등급(Calm)은 30fps다.
+    /// 즉 "캐릭터가 IDLE이다"라는 판단이 틀려도 최악의 결과가 <b>15fps로 그려지는 것</b>이지 정지 화면이
     /// 아니다. 이것이 이 프로젝트에서 render-on-demand(변화가 없으면 아예 안 그림)를 채택하지 않고
     /// 적응형 프레임레이트를 택한 이유다 — 렌더러가 40개가 넘는 코드베이스에서 "깨우기 신호"를 하나라도
     /// 빠뜨리면 그 연출이 통째로 얼어붙는데, 그 실패는 사용자에게 <b>버그로 보인다</b>.</para>
@@ -241,6 +293,30 @@ namespace StickMate.Platform
         /// 호출부가 <c>FramePacing.HoldActiveForInteraction()</c>으로 갱신한 홀드의 유효 여부다.</param>
         public static FramePacingTier DecideTier(in ViewerPresenceSnapshot presence,
             bool suspendedForFullscreen, bool characterIdle, bool uiInteractionActive)
+            => DecideTier(presence, suspendedForFullscreen, characterIdle, uiInteractionActive,
+                characterStill: false);
+
+        /// <summary>
+        /// 위 규칙에 <b>"캐릭터가 충분히 오래 서 있다"</b>는 사실 하나를 더한 판정
+        /// (2026-09-01 컴포지터 라운드 — <see cref="FramePacingTier.Still"/> 도입).
+        ///
+        /// <para><b>왜 인자가 <c>characterIdle</c>과 따로 있는가</b>: 둘은 같은 사실의 서로 다른
+        /// 임계값이다(<c>characterIdle</c> = 지금 Idle 상태, <c>characterStill</c> = 그 상태가
+        /// <c>FramePacing.StillDwellSeconds</c> 이상 이어졌다). 지속 시간을 여기서 세지 않는 이유는
+        /// 이 함수가 <b>무상태 순수 함수</b>여야 하기 때문이다 — 시간은 호출부(FramePacing)가 센다.
+        /// <c>characterStill</c>이 true면 <c>characterIdle</c>도 반드시 true여야 하지만, 그 불변식을
+        /// 여기서 강제하지 않는다(호출부가 깨뜨려도 결과는 "조금 이르게 Still" 정도라 안전하다).</para>
+        ///
+        /// <para><b>★ 우선순위: Away 아래, Calm 위.</b> Away/Suspended/DisplayOff를 이기지 못하는
+        /// 이유는 위 4인자 오버로드의 목록과 같다(더 확실한 관측이 먼저다). UI 홀드도 이긴다 —
+        /// 홀드는 "사용자가 지금 우리 창을 만지고 있다"는 관측이고, 그때는 캐릭터가 얼마나 오래
+        /// 서 있었든 60fps가 맞다.</para>
+        /// </summary>
+        /// <param name="characterStill">캐릭터가 <b>충분히 오래</b> 제자리에 서 있는가
+        /// (호출부가 <c>FramePacing.StillDwellSeconds</c>로 판단해 넘긴다).</param>
+        public static FramePacingTier DecideTier(in ViewerPresenceSnapshot presence,
+            bool suspendedForFullscreen, bool characterIdle, bool uiInteractionActive,
+            bool characterStill)
         {
             if (presence.Valid && presence.DisplayAsleep) return FramePacingTier.DisplayOff;
             if (suspendedForFullscreen) return FramePacingTier.Suspended;
@@ -254,6 +330,14 @@ namespace StickMate.Platform
             }
 
             if (uiInteractionActive) return FramePacingTier.Active;
+
+            // ★ 여기서 관측(presence)을 보지 않는다는 것이 이 줄의 전부다. "사용자가 지금 무엇을
+            //   하고 있는가"와 무관하게 **캐릭터가 오래 서 있으면** 제출을 줄인다. 근거는
+            //   FramePacingTier.Still 문서(움직임의 총량이 수 픽셀)와 사용자 실측(업무 중이라
+            //   무입력 조건이 하루 종일 성립하지 않았다).
+            //   관측 실패(Valid=false)에서도 성립한다 — Still은 OS 관측을 필요로 하지 않는 유일한
+            //   절감 등급이다. 캐릭터 상태는 우리가 직접 아는 사실이므로 추정이 아니다.
+            if (characterStill) return FramePacingTier.Still;
 
             if (characterIdle && presence.Valid
                 && presence.SecondsSinceUserInput >= RecentInputSeconds)
@@ -283,14 +367,49 @@ namespace StickMate.Platform
             => presence.Valid && presence.LowPowerMode && !uiInteractionActive;
 
         /// <summary>
-        /// 등급 -> 실제 손잡이 값. <paramref name="baseVSyncCount"/>가 0이면(Windows처럼 vsync를 끄고
-        /// targetFrameRate로 제어하는 플랫폼) targetFrameRate 쪽을 나눈다.
+        /// <see cref="FramePacingTier.Still"/>에서 제출을 몇 분의 1로 줄일 것인가(기본 4 = 60 -> 15).
+        ///
+        /// <para><b>왜 상수가 아니라 인자인가</b>: 이 숫자만이 이 라운드에서 <b>실기 A/B가 필요한
+        /// 유일한 값</b>이다. 4와 8의 차이는 dwm 부하에서는 크지만(15 vs 7.5 제출/초) 화면에서는
+        /// 눈동자 3픽셀이 몇 프레임에 나뉘느냐의 차이뿐이라, 어느 쪽이 "충분히 부드러운가"는
+        /// 사용자 눈으로만 정해진다. 그래서 <c>FramePacing</c>이 환경변수
+        /// <c>STICKMATE_STILL_DIVISOR</c>로 이 값을 바꿔 넣을 수 있게 해 두고, 재빌드 없이
+        /// 비교할 수 있게 했다.</para>
+        /// </summary>
+        public const int DefaultStillDivisor = 4;
+
+        /// <summary>Still 분주의 허용 범위. 1이면 절감이 아예 없고(= 기능 끄기), 8을 넘으면
+        /// 호흡 주기(0.8Hz)의 표본이 한 주기당 8장 아래로 떨어져 <b>서브픽셀 움직임조차</b>
+        /// 깜빡임으로 보이기 시작한다.</summary>
+        public const int MinStillDivisor = 1;
+        public const int MaxStillDivisor = 8;
+
+        /// <summary>
+        /// 등급 -> 실제 손잡이 값.
+        ///
+        /// <para><b>★ 2026-09-01 — "보는 사람이 있는 등급"에서는 플랫폼과 무관하게
+        /// <c>renderFrameInterval</c>만 쓴다(Windows 거동 변경).</b> 그 전에는
+        /// <paramref name="baseVSyncCount"/>가 0인 플랫폼(Windows)에서 <c>targetFrameRate</c>를
+        /// 나눴는데, 그것은 <b>게임 루프 자체</b>를 늦추는 기구다:
+        /// <list type="bullet">
+        /// <item>입력/커서 폴링 주기가 같이 나뉜다 -> 신고 "기어 설정창조차 클릭하면 약간 렉걸린듯이
+        ///   움직임"의 직접 원인이었다(<see cref="RecentInputSeconds"/> 문서 참고).</item>
+        /// <item>그런데 <b>컴포지터 비용을 줄이는 데 필요한 것은 제출 횟수뿐</b>이다. 루프를 늦추는 것은
+        ///   그 목적에 아무 기여를 하지 않으면서 반응성만 깎는다.</item>
+        /// </list>
+        /// <c>renderFrameInterval</c>은 루프를 60Hz로 유지한 채 렌더/제출만 건너뛴다
+        /// (<c>OnDemandRendering.effectiveRenderFrameRate = targetFrameRate / renderFrameInterval</c>).
+        /// 즉 이 변경은 절감을 <b>더 깊게</b> 하면서 동시에 Windows의 입력 반응성을 <b>되돌려</b> 준다.
+        /// 보는 사람이 없는 등급(Away/Suspended/DisplayOff)은 그대로 루프까지 늦춘다 — 거기서는
+        /// 반응성보다 절감이 우선이고, 기존 거동을 바꿀 이유가 없다.</para>
         /// </summary>
         /// <param name="baseVSyncCount">평소(Active) vSyncCount. macOS 기본 2.</param>
         /// <param name="baseTargetFrameRate">평소(Active) targetFrameRate. Windows 기본 60.</param>
         /// <param name="lowPowerMode">OS 저전력 모드. Active 등급을 한 칸 낮추는 데만 쓴다.</param>
+        /// <param name="stillDivisor"><see cref="FramePacingTier.Still"/> 전용 분주
+        /// (<see cref="DefaultStillDivisor"/>). 범위를 벗어나면 clamp된다.</param>
         public static FramePacingPlan BuildPlan(FramePacingTier tier, int baseVSyncCount,
-            int baseTargetFrameRate, bool lowPowerMode)
+            int baseTargetFrameRate, bool lowPowerMode, int stillDivisor = DefaultStillDivisor)
         {
             // 화면이 꺼졌을 때만 예외적으로 절대값을 쓴다(디스플레이 주기와의 관계 자체가 무의미하다).
             if (tier == FramePacingTier.DisplayOff)
@@ -301,6 +420,7 @@ namespace StickMate.Platform
             int divisor = tier switch
             {
                 FramePacingTier.Calm => 2,       // 60 -> 30
+                FramePacingTier.Still => Mathf.Clamp(stillDivisor, MinStillDivisor, MaxStillDivisor),
                 FramePacingTier.Away => 4,       // 60 -> 15
                 FramePacingTier.Suspended => 2,  // 60 -> 30 (기존 동작 유지)
                 _ => 1,
@@ -311,19 +431,23 @@ namespace StickMate.Platform
             if (lowPowerMode && divisor == 1) divisor = 2;
             if (divisor == 1) return new FramePacingPlan(tier, baseVSyncCount, baseTargetFrameRate, 1);
 
-            bool viewerPresent = tier == FramePacingTier.Active || tier == FramePacingTier.Calm;
-
-            if (baseVSyncCount <= 0)
-            {
-                // targetFrameRate 기구(Windows). 위상 개념이 없으므로 등급과 무관하게 같은 방식으로 나눈다.
-                int fps = baseTargetFrameRate > 0 ? Mathf.Max(5, baseTargetFrameRate / divisor) : -1;
-                return new FramePacingPlan(tier, 0, fps, 1);
-            }
+            bool viewerPresent = tier == FramePacingTier.Active
+                || tier == FramePacingTier.Calm
+                || tier == FramePacingTier.Still;
 
             if (viewerPresent)
             {
-                // ★ 보는 사람이 있다 -> vSyncCount는 손대지 않는다(위 클래스 문서의 설계 원칙).
+                // ★ 보는 사람이 있다 -> 표시 기구(vSyncCount)도 게임 루프(targetFrameRate)도 손대지
+                //   않고 renderFrameInterval만 나눈다. **플랫폼 분기가 없다** — 위 문서의 2026-09-01
+                //   절 참고(Windows도 이 경로를 쓰도록 바뀌었다).
                 return new FramePacingPlan(tier, baseVSyncCount, baseTargetFrameRate, divisor);
+            }
+
+            if (baseVSyncCount <= 0)
+            {
+                // 보는 사람이 없다 + targetFrameRate 기구(Windows). 루프까지 늦춘다.
+                int fps = baseTargetFrameRate > 0 ? Mathf.Max(5, baseTargetFrameRate / divisor) : -1;
+                return new FramePacingPlan(tier, 0, fps, 1);
             }
 
             // 보는 사람이 없다 -> 게임 루프까지 늦춘다. vSyncCount는 4가 상한이므로 남는 몫만
@@ -338,7 +462,8 @@ namespace StickMate.Platform
         public static string DescribeTier(FramePacingTier tier) => tier switch
         {
             FramePacingTier.Active => "활성(사용자가 보고 있고 캐릭터가 움직인다)",
-            FramePacingTier.Calm => "정적(캐릭터가 서 있고 최근 입력 없음)",
+            FramePacingTier.Calm => "정적(캐릭터가 잠깐 서 있고 최근 입력 없음)",
+            FramePacingTier.Still => "정지(캐릭터가 오래 서 있음 — 사용자 입력 여부와 무관)",
             FramePacingTier.Away => "자리비움(오랫동안 입력 없고 캐릭터도 정지)",
             FramePacingTier.Suspended => "전체화면 숨김",
             FramePacingTier.DisplayOff => "디스플레이 꺼짐(볼 수 있는 사람 없음)",

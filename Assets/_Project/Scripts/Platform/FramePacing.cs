@@ -127,7 +127,14 @@ namespace StickMate.Platform
             _adaptiveEnabled = false;
             _forcedTier = null;
             _transitionCount = 0;
+            _transitionCountAtLastSummary = 0;
+            _tierChangedAtTime = float.NegativeInfinity;
             _summaryTimer = 0f;
+            _firstSummaryDone = false;
+            _stillDivisor = FramePacingPolicy.DefaultStillDivisor;
+            _presentBaselineValid = false;
+            _presentBaselineLoopFrame = 0;
+            _presentBaselineRenderedFrame = 0;
             _interactionHoldUntil = float.NegativeInfinity;
             for (int i = 0; i < TierSeconds.Length; i++) TierSeconds[i] = 0f;
             FrameTimeStats.ResetForTests();
@@ -268,14 +275,66 @@ namespace StickMate.Platform
         private const float PresencePollDormantSeconds = 0.2f;
 
         /// <summary>캐릭터가 이만큼(초) 계속 IDLE이어야 Calm으로 내려간다. 서 있다가 곧바로 다시
-        /// 걷는 짧은 정지에서 등급이 깜빡이지 않게 하는 히스테리시스.</summary>
-        private const float CalmDwellSeconds = 0.75f;
+        /// 걷는 짧은 정지에서 등급이 깜빡이지 않게 하는 히스테리시스.
+        ///
+        /// <para><b>★ 2026-09-01 0.75 -> 0.4로 낮췄다.</b> 이 값은 <b>순수한 낭비</b>다 — 캐릭터가
+        /// 이미 서 있는데 아직 60fps로 그리는 시간이다. 자율 배회 실측(Idle 2~6초, 이어붙임 확률
+        /// 0.75 -> 평균 연속 정지 약 5.3초 / 걷기 평균 2.75초, 대략 8초 주기)에서 0.75초는 주기의
+        /// 9%를 차지했다.</para>
+        ///
+        /// <para><b>왜 낮춰도 안전해졌는가</b>: 같은 라운드에서 <b>이탈을 즉시로</b> 만들었다
+        /// (<see cref="TickAdaptiveGovernor"/>의 "정지 -> 이동 엣지" 처리). 히스테리시스가 막으려던
+        /// 것은 "깜빡임"인데, 이제 내려가는 것만 지연되고 올라오는 것은 지연이 없으므로 깜빡여도
+        /// <b>보이는 쪽</b>은 항상 60fps다. 남는 비용은 손잡이 대입(int 2개)뿐이라 0으로 취급해도 된다.
+        /// 0으로 두지 않은 이유는 1~2프레임짜리 상태 경유(예: Landing -> Idle -> Walk)까지 등급을
+        /// 흔들 필요는 없기 때문이다.</para></summary>
+        private const float CalmDwellSeconds = 0.4f;
+
+        /// <summary>
+        /// 캐릭터가 이만큼(초) 계속 IDLE이면 <see cref="FramePacingTier.Still"/>로 내려간다 —
+        /// <b>사용자 입력 여부를 보지 않는</b> 유일한 절감 등급의 유일한 문턱값.
+        ///
+        /// <para><b>왜 1.6초인가(위/아래 양쪽에서 눌린 값이다)</b>:
+        /// <list type="bullet">
+        /// <item><b>위</b>: 자율 배회의 Idle 에피소드가 2.0~6.0초다(<c>StickConfig.wanderIdleDurationMin/Max</c>).
+        ///   문턱이 2.0초를 넘으면 <b>가장 짧은 에피소드에서는 절대 성립하지 않고</b>, 5초쯤 되면
+        ///   Still이 거의 발생하지 않아 이 라운드가 통째로 무의미해진다.</item>
+        /// <item><b>아래</b>: 너무 짧으면 걷기 사이의 순간 정지마다 제출률이 1/4로 튀었다가 돌아온다.
+        ///   Calm(0.4초)과의 간격이 최소 한 자릿수 프레임은 돼야 등급이 계단으로 읽힌다.</item>
+        /// </list>
+        /// 실측 주기로 계산한 기대 절감(기본 분주 4): 8.08초 주기당 제출
+        /// 60x3.15 + 30x1.2 + 15x3.73 = 281장 -> <b>34.8장/초(-42%)</b>.
+        /// 분주 8이면 31.3장/초(-48%). 이 숫자가 실기 로그의 "실효 제출"과 맞아야 한다.</para>
+        ///
+        /// <para><b>이 값보다 큰 지렛대가 하나 남아 있다(리더 보고 항목)</b>: 위 계산에서 Active가
+        /// 차지하는 3.15초 중 2.75초가 <b>걷기</b>다. 즉 남은 제출의 대부분은 "캐릭터가 하루의 약
+        /// 34%를 걸어다니기 때문"이며, 그것은 페이싱이 아니라 배회 AI의 듀티 사이클
+        /// (<c>wanderPostIdleWalkChance</c> 등) 문제다. 여기서는 손대지 않는다 — UX 결정이다.</para>
+        /// </summary>
+        internal const float StillDwellSeconds = 1.6f;
+
+        /// <summary>Still 등급의 분주(제출을 몇 분의 1로 줄일지). 기본
+        /// <see cref="FramePacingPolicy.DefaultStillDivisor"/>이며 환경변수
+        /// <c>STICKMATE_STILL_DIVISOR</c>로 실기에서 재빌드 없이 A/B할 수 있다(4 vs 8).</summary>
+        private static int _stillDivisor = FramePacingPolicy.DefaultStillDivisor;
+
+        /// <summary>등급이 <b>더 깊어지는</b> 전이 사이의 최소 간격(초). 얕아지는 방향에는 걸지
+        /// 않는다(그쪽을 늦추면 걷기 시작이 끊긴다). 1초인 이유: 실측 유휴 에피소드가 평균 5.3초라
+        /// Calm(0.4초)→Still(1.6초) 계단은 그대로 통과하면서, 상태머신이 한 프레임씩 튀는 병적인
+        /// 왕복만 흡수한다.</summary>
+        private const float TierDescendCooldownSeconds = 1f;
+
+        private static float _tierChangedAtTime = float.NegativeInfinity;
 
         /// <summary>지금 적용 중인 등급(진단/테스트 창구 — 제품 로직은 읽지 않는다).</summary>
         internal static FramePacingTier CurrentTier => _currentTier;
 
         /// <summary>마지막 OS 관측값(진단용).</summary>
         internal static ViewerPresenceSnapshot LastPresence => _presence;
+
+        /// <summary>누적 등급 전이 횟수(진단용 — <see cref="FrameTimeStats"/>의 스파이크 포렌식이
+        /// "이 프레임에 등급이 바뀌었는가"를 알아내는 데 쓴다).</summary>
+        internal static int TransitionCount => _transitionCount;
 
         // ============================================================================
         // UI 상호작용 홀드 (2026-08-31 — 사용자 신고 "기어 설정창조차 클릭하면 약간 렉걸린듯이 움직임")
@@ -369,6 +428,9 @@ namespace StickMate.Platform
         {
             _adaptiveEnabled = _presenceService != null && ReadEnvFlag("STICKMATE_ADAPTIVE_PACING", true);
             _forcedTier = ReadEnvTier("STICKMATE_FORCE_TIER");
+            _stillDivisor = Mathf.Clamp(
+                ReadEnvInt("STICKMATE_STILL_DIVISOR", FramePacingPolicy.DefaultStillDivisor),
+                FramePacingPolicy.MinStillDivisor, FramePacingPolicy.MaxStillDivisor);
             _baseVSyncCount = QualitySettings.vSyncCount;
             _baseTargetFrameRate = Application.targetFrameRate;
             _currentTier = FramePacingTier.Active;
@@ -385,7 +447,9 @@ namespace StickMate.Platform
 
             Debug.Log($"[FramePacing/적응형] 활성 — 기준 vSyncCount={_baseVSyncCount}, " +
                 $"targetFrameRate={_baseTargetFrameRate}. " +
-                $"등급: 활성(그대로) / 정적(1/2) / 자리비움(1/4) / 화면꺼짐({FramePacingPolicy.DisplayOffTargetFps}fps 고정). " +
+                $"등급: 활성(그대로) / 정적(1/2) / 정지(1/{_stillDivisor}) / 자리비움(1/4) / " +
+                $"화면꺼짐({FramePacingPolicy.DisplayOffTargetFps}fps 고정). " +
+                $"정지 등급 문턱={StillDwellSeconds:F1}초(캐릭터 정지 지속), 정적 문턱={CalmDwellSeconds:F1}초. " +
                 (_forcedTier.HasValue ? $"★ STICKMATE_FORCE_TIER={_forcedTier.Value} 강제 지정됨(계측용). " : "") +
                 "근거/실측은 FramePacing·FramePacingPolicy 클래스 문서 참고.");
         }
@@ -395,8 +459,38 @@ namespace StickMate.Platform
             if (!_applied || !_adaptiveEnabled) return;
 
             float dt = Time.unscaledDeltaTime;
+            bool wasIdle = _idleDwellSeconds > 0f;
             _idleDwellSeconds = characterIdle ? _idleDwellSeconds + dt : 0f;
             AccumulateTierResidency(dt);
+            SeedPresentCountersIfNeeded();
+
+            // ============================================================================
+            // ★ 정지 -> 이동 엣지: 폴링을 기다리지 않고 **그 프레임에** 올라온다
+            // ============================================================================
+            // 절감 등급에서 벗어나는 방향은 언제나 안전하므로(더 많이 그릴 뿐이다) OS 관측을 다시
+            // 읽지 않고 캐시된 _presence로 즉시 재평가한다. 관측 호출이 없으니 예산에 영향이 0이다.
+            //
+            // 왜 필요해졌는가: 이 라운드에서 Still(기본 15fps)이 생겼다. 기존처럼 다음 폴링
+            // (최대 0.2초)까지 기다리면 **걷기 시작의 첫 0.2초 = 3프레임**이 15fps로 그려진다.
+            // 보행 주기 1.35Hz에서 그 3프레임은 한 걸음의 4분의 1이라 "출발할 때 뚝 끊긴다"로
+            // 보인다 — 이 프로젝트가 이미 한 번 겪은 신고(AwaySeconds 문서)와 같은 부류다.
+            //
+            // 반대 방향(Active -> Calm/Still)은 일부러 즉시가 아니다. 그쪽은 늦어도 보이는 것이
+            // 없고(더 그릴 뿐), 급하게 내려가면 dwell 히스테리시스의 의미가 사라진다.
+            // ★ 조건을 Calm/Still로 **좁힌** 이유(리뷰에서 잡은 함정): "Active가 아니면"으로 두면
+            //   DisplayOff(4fps)에서도 캐릭터가 걷기 시작할 때마다 이 분기가 돌고, 여기서 관측
+            //   폴링 타이머를 만지면 **화면이 다시 켜진 것을 알아채는 폴링이 계속 뒤로 밀린다**.
+            //   이 엣지가 고치려는 것은 "보는 사람 앞에서 걷기가 끊기는 것" 하나뿐이므로, 보는
+            //   사람이 있는 절감 등급에서만 돈다. (Away에서 걷기 시작하는 경우도 여기 없다 —
+            //   그건 3분 무입력 = 아무도 안 보는 시간이라 0.2초 지연이 보이지 않는다.)
+            if (wasIdle && !characterIdle
+                && (_currentTier == FramePacingTier.Calm || _currentTier == FramePacingTier.Still))
+            {
+                // 폴링 타이머는 건드리지 않는다 — 예정된 관측이 이 즉시 재평가 때문에 밀리면
+                // 안 된다(위 함정과 같은 부류).
+                EvaluateAdaptiveTier(characterIdle: false, force: false);
+                return;
+            }
 
             _presencePollTimer += dt;
             float interval = _currentTier == FramePacingTier.Active
@@ -428,10 +522,14 @@ namespace StickMate.Platform
             // .ShouldApplyLowPowerDownshift 문서 참고).
             bool held = IsInteractionHeld;
 
+            // characterIdle(지금 서 있다)과 characterStill(오래 서 있다)은 같은 사실의 두 임계값이다.
+            // 지속 시간을 세는 곳은 이 파일 하나이고, 판단은 순수 함수 한 곳이다.
+            bool characterStill = characterIdle && _idleDwellSeconds >= StillDwellSeconds;
+
             FramePacingTier tier = _forcedTier
-                ?? FramePacingPolicy.DecideTier(_presence, _suspendedNow, characterIdle, held);
+                ?? FramePacingPolicy.DecideTier(_presence, _suspendedNow, characterIdle, held, characterStill);
             FramePacingPlan plan = FramePacingPolicy.BuildPlan(tier, _baseVSyncCount, _baseTargetFrameRate,
-                FramePacingPolicy.ShouldApplyLowPowerDownshift(_presence, held));
+                FramePacingPolicy.ShouldApplyLowPowerDownshift(_presence, held), _stillDivisor);
             ApplyPlan(plan);
         }
 
@@ -442,6 +540,32 @@ namespace StickMate.Platform
         private static void ApplyPlan(in FramePacingPlan plan)
         {
             if (_planValid && plan.SameAs(_currentPlan) && plan.Tier == _currentTier) return;
+
+            // ============================================================================
+            // ★ 등급 진동 제동 (2026-09-01 — 사용자 실기 로그에서 Active<->Calm이 4~7초마다 왕복)
+            // ============================================================================
+            // 캐릭터가 걷다 서다를 반복하는 것은 이 앱의 **정상 동작**(자율 배회)이므로, 그걸 등급에
+            // 직접 물리면 왕복은 필연이다. 그래서 처방은 두 겹이고, **순서가 중요하다**:
+            //
+            //   (A) 왕복을 **싸게** 만든다 — 이게 진짜 수정이다. 보는 사람이 있는 등급이 이제 양
+            //       플랫폼 모두 renderFrameInterval만 바꾸므로 **게임 루프 페이스가 변하지 않는다**.
+            //       실기 로그의 "루프 평균 25.31ms(39.5fps), p50 16.75ms"는 상당 부분이 Windows
+            //       Calm이 targetFrameRate를 30으로 내려 만든 **의도된** 33ms 프레임이었다
+            //       (히치가 아니라 설계였고, 그 설계가 틀렸다). 그 진동원이 사라진다.
+            //   (B) 그 위에 병적인 고속 왕복만 막는 최소 제동을 건다 — 아래.
+            //
+            // 제동은 **깊어지는 방향에만** 건다. 얕아지는 방향(더 그리는 쪽)을 늦추면 그게 곧
+            // "걷기 시작이 끊긴다"이므로 절대 늦추지 않는다. Suspended/DisplayOff는 관측된 사실이자
+            // 비침해 원칙이라 제동 대상이 아니다.
+            bool deeper = (int)plan.Tier > (int)_currentTier;
+            bool exempt = plan.Tier == FramePacingTier.Suspended
+                || plan.Tier == FramePacingTier.DisplayOff
+                || _forcedTier.HasValue;
+            if (deeper && !exempt && Time.unscaledTime - _tierChangedAtTime < TierDescendCooldownSeconds)
+            {
+                return;
+            }
+            _tierChangedAtTime = Time.unscaledTime;
 
             FramePacingTier before = _currentTier;
             _currentPlan = plan;
@@ -480,9 +604,46 @@ namespace StickMate.Platform
         // 얼마나 머무는가"를 알려주는 유일한 원격 계측 수단이기도 하다.
         private const int VerboseTransitionLogLimit = 6;
         private const float TierSummaryIntervalSeconds = 300f;
+
+        /// <summary>★ <b>첫</b> 요약만 60초에 낸다. 사용자가 "고쳤다"를 확인하는 데 5분을 기다리게
+        /// 하지 않기 위해서다(2026-09-01 리더 요청: "사용자가 몇 분 안에 검증할 수 있는 절차").
+        /// 이후에는 <see cref="TierSummaryIntervalSeconds"/> 주기로 돌아간다 — 24시간 상주 앱에서
+        /// 주기 로그를 늘리지 않는다는 원칙은 그대로다.</summary>
+        private const float FirstTierSummarySeconds = 60f;
+
         private static int _transitionCount;
+        private static int _transitionCountAtLastSummary;
         private static float _summaryTimer;
-        private static readonly float[] TierSeconds = new float[5];
+        private static bool _firstSummaryDone;
+        private static readonly float[] TierSeconds = new float[6];
+
+        // ============================================================================
+        // ★ 실효 제출 계측 (2026-09-01 컴포지터 라운드) — "정말 덜 내보내고 있는가"
+        // ============================================================================
+        // 이 라운드의 절감은 전부 renderFrameInterval 하나에 걸려 있다. 그런데 그 API가 어떤
+        // 플랫폼/파이프라인에서 **조용히 무시될** 가능성이 있고(이 프로젝트는 Screen.msaaSamples가
+        // 거짓말을 하는 것을 이미 두 번 겪었다 — RenderDiagnostics 클래스 문서), 그러면 사용자
+        // 기기에서 "고쳤는데 그대로"가 된다. 그래서 설정값이 아니라 **결과**를 센다:
+        //
+        //   루프fps  = Time.frameCount 증가분 / 경과   -> 입력/로직이 도는 속도
+        //   렌더fps  = Time.renderedFrameCount 증가분 / 경과 -> 실제로 그려 **제출한** 장수
+        //
+        // 두 값이 같으면 renderFrameInterval이 걸리지 않은 것이다(= 이 라운드의 절감이 0). 다르면
+        // 그 비율이 곧 컴포지터에 부과하는 비용의 비율이다(macOS 실측에서 제출 횟수 비례가
+        // 확정됐다: ACTIVE-OFF=+12.09%p, AWAY-OFF=+3.06%p, 비율 0.25 = 코드상 제출비와 일치).
+        //
+        // 비용: 프레임당 int 비교 1회, 5분에 한 번 뺄셈 두 번. 할당 0.
+        private static bool _presentBaselineValid;
+        private static int _presentBaselineLoopFrame;
+        private static int _presentBaselineRenderedFrame;
+
+        private static void SeedPresentCountersIfNeeded()
+        {
+            if (_presentBaselineValid) return;
+            _presentBaselineValid = true;
+            _presentBaselineLoopFrame = Time.frameCount;
+            _presentBaselineRenderedFrame = Time.renderedFrameCount;
+        }
 
         private static void AccumulateTierResidency(float dt)
         {
@@ -490,19 +651,49 @@ namespace StickMate.Platform
             if (i >= 0 && i < TierSeconds.Length) TierSeconds[i] += dt;
 
             _summaryTimer += dt;
-            if (_summaryTimer < TierSummaryIntervalSeconds) return;
+            float due = _firstSummaryDone ? TierSummaryIntervalSeconds : FirstTierSummarySeconds;
+            if (_summaryTimer < due) return;
             _summaryTimer = 0f;
+            _firstSummaryDone = true;
 
             float total = 0f;
             for (int k = 0; k < TierSeconds.Length; k++) total += TierSeconds[k];
             if (total <= 0f) return;
 
-            Debug.Log($"[FramePacing/적응형] 최근 {total:F0}초 등급 체류 — " +
-                $"활성 {TierSeconds[0] / total * 100f:F0}% / 정적 {TierSeconds[1] / total * 100f:F0}% / " +
-                $"자리비움 {TierSeconds[2] / total * 100f:F0}% / 전체화면숨김 {TierSeconds[3] / total * 100f:F0}% / " +
-                $"화면꺼짐 {TierSeconds[4] / total * 100f:F0}%, 전이 {_transitionCount}회 (누적). " +
-                "(활성 비율이 100%에 가까우면 절감이 전혀 안 되고 있다는 뜻이다.)");
+            float loopFps = (Time.frameCount - _presentBaselineLoopFrame) / total;
+            float renderFps = (Time.renderedFrameCount - _presentBaselineRenderedFrame) / total;
+            _presentBaselineLoopFrame = Time.frameCount;
+            _presentBaselineRenderedFrame = Time.renderedFrameCount;
 
+            // ★ 이 라운드가 줄이는 것은 **ms/프레임이 아니라 초당 장수**다. 그래서 둘의 곱
+            //   (= 초당 GPU 점유)을 같이 찍는다 — 작업 관리자의 GPU %와 대응하는 유일한 숫자이며,
+            //   ms만 보고 "안 줄었다"고 결론내는 함정을 로그 차원에서 막는다.
+            string gpu;
+            if (RenderDiagnostics.TryDrainGpuLoad(out float gpuMeanMs, out float gpuWorstMs, out int gpuN))
+            {
+                gpu = $"GPU {gpuMeanMs:F2}ms/프레임(최악 {gpuWorstMs:F2}, 표본 {gpuN}) " +
+                      $"x {renderFps:F1}장/초 = ★GPU 점유 추정 {gpuMeanMs * renderFps / 10f:F1}%";
+            }
+            else
+            {
+                gpu = RenderDiagnostics.GpuTimingAvailable
+                    ? "GPU: 드라이버가 타이머 질의를 돌려주지 않음(표본 0)"
+                    : "GPU: 측정 불가(enableFrameTimingStats 꺼짐)";
+            }
+
+            Debug.Log($"[FramePacing/적응형] 최근 {total:F0}초 — " +
+                $"★ 실효 제출 {renderFps:F1}장/초 (루프 {loopFps:F1}Hz, 정지등급 분주 {_stillDivisor}). " +
+                $"{gpu}. " +
+                $"등급 체류: 활성 {TierSeconds[0] / total * 100f:F0}% / 정적 {TierSeconds[1] / total * 100f:F0}% / " +
+                $"정지 {TierSeconds[2] / total * 100f:F0}% / " +
+                $"자리비움 {TierSeconds[3] / total * 100f:F0}% / 전체화면숨김 {TierSeconds[4] / total * 100f:F0}% / " +
+                $"화면꺼짐 {TierSeconds[5] / total * 100f:F0}%, " +
+                $"전이 {_transitionCount - _transitionCountAtLastSummary}회(이 구간) / {_transitionCount}회(누적). " +
+                "(활성 비율이 100%에 가까우면 절감이 전혀 안 되고 있다는 뜻이다. " +
+                "실효 제출이 루프와 같으면 renderFrameInterval이 먹지 않은 것이다 — 그 경우 이 라운드의 " +
+                "절감은 0이므로 리더에게 보고할 것.)");
+
+            _transitionCountAtLastSummary = _transitionCount;
             for (int k = 0; k < TierSeconds.Length; k++) TierSeconds[k] = 0f;
         }
 
@@ -559,6 +750,18 @@ namespace StickMate.Platform
                 string v = System.Environment.GetEnvironmentVariable(name);
                 if (string.IsNullOrEmpty(v)) return fallback;
                 return v != "0" && !v.Equals("false", System.StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return fallback; }
+        }
+
+        /// <summary>정수 환경변수 읽기(실기 A/B용). 값이 없거나 숫자가 아니면 기본값 그대로.</summary>
+        private static int ReadEnvInt(string name, int fallback)
+        {
+            try
+            {
+                string v = System.Environment.GetEnvironmentVariable(name);
+                if (string.IsNullOrEmpty(v)) return fallback;
+                return int.TryParse(v, out int parsed) ? parsed : fallback;
             }
             catch { return fallback; }
         }
@@ -681,6 +884,13 @@ namespace StickMate.Platform
             _reportTimer = 0f;
             _logEnabled = false;
             _sampling = false;
+            _spikeCooldownLeft = 0f;
+            _spikeCount = 0;
+            _lastGc0 = 0;
+            _lastGc1 = 0;
+            _spikeLastWidth = 0;
+            _spikeLastHeight = 0;
+            _lastTransitionCountSeen = 0;
         }
 
         internal static void Configure(Core.StickConfig config)
@@ -697,9 +907,12 @@ namespace StickMate.Platform
         {
             if (!_sampling) return;
 
-            Samples[_sampleHead] = Time.unscaledDeltaTime * 1000f;
+            float dtMs = Time.unscaledDeltaTime * 1000f;
+            Samples[_sampleHead] = dtMs;
             _sampleHead = (_sampleHead + 1) % SampleCapacity;
             if (_sampleCount < SampleCapacity) _sampleCount++;
+
+            WatchSpike(dtMs);
 
             _reportTimer += Time.unscaledDeltaTime;
             if (!_logEnabled) return;
@@ -723,6 +936,97 @@ namespace StickMate.Platform
         }
 
         private const int MinimumSamples = 16;
+
+        // ============================================================================
+        // ★ 스파이크 포렌식 (2026-09-01 — 사용자 실기 로그: p99 150ms / 최대 407ms)
+        // ============================================================================
+        // 분위수 요약은 "튄다"는 사실만 말하고 **왜** 튀는지는 말하지 않는다. 407ms짜리 멈춤은
+        // 분포 문제가 아니라 **단일 사건**이므로, 그 순간의 정황을 그때 찍지 않으면 영영 못 잡는다.
+        //
+        // 여기서 확인하는 용의자 3종(전부 프레임당 비용 0으로 잴 수 있는 것들만 골랐다):
+        //
+        //   (1) ★ 백버퍼 재생성 — 최우선 용의자. 같은 로그에서 창 폭이 재적용마다 1px씩 줄고
+        //       있었다(3840 -> 3839 -> ... -> 3831). 그 줄어듦은 곧 Screen.SetResolution 재호출이고,
+        //       D3D11에서 3840x2160 스왑체인 + 리디렉션 표면을 해제/재생성하는 것은 수백 ms짜리
+        //       스톨이다. 이 프로젝트는 이미 그 인과를 알고 있었다 —
+        //       Platform/DisplayTopologyWatcher.cs 클래스 문서: "그 중간 상태마다
+        //       Screen.SetResolution을 부르면 백버퍼 재할당이 연달아 일어나 사용자가 (히치를 본다)".
+        //       스파이크 순간에 Screen.width/height를 읽어 직전 값과 비교하면 **인과가 바로 갈린다.**
+        //   (2) GC — GC.CollectionCount(0/1) 증가분. 24시간 상주 앱에서 힙이 커지면 실제로 후보다.
+        //   (3) 페이싱 손잡이 전환 — 등급 전이가 그 프레임에 있었는가(전이 카운터 증가분).
+        //
+        // <b>비용</b>: 평상시 프레임당 float 비교 1회 + int 2회(GC 카운터는 런타임 카운터 읽기).
+        // Screen 조회는 **스파이크가 났을 때만** 한다. 로그는 쿨다운으로 폭주를 막는다.
+
+        /// <summary>이보다 긴 프레임을 "스파이크"로 본다(절대 하한). 사용자 실기 p99가 150ms이므로
+        /// 100ms면 그 꼬리를 잡으면서 평상시에는 절대 걸리지 않는다.</summary>
+        private const float SpikeAbsoluteMs = 100f;
+
+        /// <summary>그리고 <b>동시에</b> 기대 프레임 시간의 이 배수를 넘어야 한다. 절감 등급
+        /// (Away 15fps / DisplayOff 4fps)에서는 250ms 프레임이 <b>정상</b>이므로, 절대값만 보면
+        /// 밤새 "스파이크" 로그가 쌓인다.</summary>
+        private const float SpikeRelativeFactor = 2.5f;
+
+        /// <summary>스파이크 로그 사이의 최소 간격(초). 재생성 루프가 돌면 초당 여러 번 날 수 있는데,
+        /// 24시간 상주 앱에서 그걸 전부 찍으면 로그가 자원을 먹는다.</summary>
+        private const float SpikeLogCooldownSeconds = 5f;
+
+        private static float _spikeCooldownLeft;
+        private static int _spikeCount;
+        private static int _lastGc0;
+        private static int _lastGc1;
+        private static int _spikeLastWidth;
+        private static int _spikeLastHeight;
+        private static int _lastTransitionCountSeen;
+
+        private static void WatchSpike(float dtMs)
+        {
+            if (_spikeCooldownLeft > 0f) _spikeCooldownLeft -= Time.unscaledDeltaTime;
+
+            int gc0 = System.GC.CollectionCount(0);
+            int gc1 = System.GC.CollectionCount(1);
+            int gc0Delta = gc0 - _lastGc0;
+            int gc1Delta = gc1 - _lastGc1;
+            _lastGc0 = gc0;
+            _lastGc1 = gc1;
+
+            int transitions = FramePacing.TransitionCount;
+            int transitionDelta = transitions - _lastTransitionCountSeen;
+            _lastTransitionCountSeen = transitions;
+
+            if (dtMs < SpikeAbsoluteMs) return;
+
+            // 기대 프레임 시간 — 절감 등급의 "긴 프레임"은 스파이크가 아니다.
+            int cap = Application.targetFrameRate;
+            float expectedMs = cap > 0 ? 1000f / cap : 1000f / 60f;
+            if (dtMs < expectedMs * SpikeRelativeFactor) return;
+
+            _spikeCount++;
+            if (_spikeCooldownLeft > 0f) return;
+            _spikeCooldownLeft = SpikeLogCooldownSeconds;
+
+            // ★ 여기서만 Screen을 읽는다(네이티브 조회라 평상시에는 아깝다).
+            int w = Screen.width;
+            int h = Screen.height;
+            bool backbufferChanged = _spikeLastWidth != 0 && (w != _spikeLastWidth || h != _spikeLastHeight);
+            string sizeNote = _spikeLastWidth == 0
+                ? $"{w}x{h}(첫 관측)"
+                : backbufferChanged
+                    ? $"★{_spikeLastWidth}x{_spikeLastHeight} -> {w}x{h} — 백버퍼가 바뀌었다(스왑체인 재생성 유력)"
+                    : $"{w}x{h}(변화 없음)";
+            _spikeLastWidth = w;
+            _spikeLastHeight = h;
+
+            Debug.LogWarning($"[프레임스파이크] {dtMs:F0}ms 멈춤 (기대 {expectedMs:F1}ms, 누적 {_spikeCount}회). " +
+                $"백버퍼: {sizeNote}. " +
+                $"GC: gen0 +{gc0Delta} / gen1 +{gc1Delta}. " +
+                $"페이싱: 등급={FramePacing.CurrentTier}, 이번 프레임 전이 {transitionDelta}회, " +
+                $"targetFrameRate={cap}, renderFrameInterval={OnDemandRendering.renderFrameInterval}. " +
+                $"프레임#{Time.frameCount}. " +
+                "(백버퍼가 바뀌었으면 원인은 Screen.SetResolution 재호출이다 — 창 크기 재적용 루프를 " +
+                $"보라. GC 증가분이 0이고 백버퍼도 그대로면 네이티브 창 열거/파일 IO 쪽이다. " +
+                $"다음 {SpikeLogCooldownSeconds:F0}초간은 이 로그를 억제한다.)");
+        }
 
         /// <summary>
         /// 링 버퍼의 <b>현재 내용</b>(최근 최대 <see cref="SampleCapacity"/>프레임 = 60fps에서 약 8.5초)을
@@ -853,6 +1157,65 @@ namespace StickMate.Platform
         private static int _gpuCount;
         private static bool _timingFeatureAvailable;
 
+        // ★ 실효 제출 계측 — FramePacing의 5분 요약과 **같은 지표를 같은 방식으로** 잰다
+        //   (지표를 두 벌 만들면 두 로그가 서로 다른 숫자를 말할 때 누가 맞는지 알 수 없다).
+        //   차이는 창의 길이뿐이다: 여기는 A/B 한 판(약 55초), 저기는 상시 5분.
+        private static int _measureBaselineLoopFrame;
+        private static int _measureBaselineRenderedFrame;
+        private static float _measureStartElapsed;
+
+        // ============================================================================
+        // ★ 상시 GPU 표본 (2026-09-01) — "절감이 ms를 실제로 줄였는가"를 계속 볼 수 있어야 한다
+        // ============================================================================
+        // A/B 요약은 시작 후 60초에 **한 번** 찍고 끝난다. 그런데 이 라운드의 절감은 캐릭터가 서
+        // 있는 구간에서만 일어나므로, 한 번의 60초 창에 절감 구간이 얼마나 들어갔는지가 매번 다르다.
+        // 그래서 표본을 계속 모아 FramePacing의 주기 요약이 함께 찍게 한다.
+        //
+        // ★ 핵심 — **GPU ms/프레임은 이 라운드로 줄어들지 않는다.** 한 장을 그리는 비용은 그대로이고
+        //   줄어드는 것은 **장수**다. 작업 관리자의 GPU %에 대응하는 값은
+        //       GPU 점유 = (ms/프레임) x (제출/초) / 10   [%]
+        //   이고, 이 곱만이 이번 절감을 반영한다. ms만 보고 "안 줄었다"고 결론내는 함정을 막으려고
+        //   로그가 세 숫자를 **한 줄에 같이** 찍는다(ms, 제출/초, 그 곱).
+        //
+        // 비용: 렌더되는 프레임 8장마다 네이티브 호출 1회(= 제출 15장/초에서 초당 약 2회). 할당 0.
+        private const int OngoingGpuSampleStride = 8;
+        private static int _ongoingStride;
+        private static double _ongoingGpuSumMs;
+        private static double _ongoingGpuWorstMs;
+        private static int _ongoingGpuCount;
+
+        private static void SampleOngoingGpu()
+        {
+            if (!_timingFeatureAvailable) return;
+            // 건너뛴 프레임에서는 새 타이밍이 나오지 않는다 — 같은 표본을 다시 세지 않기 위해 거른다.
+            if (!OnDemandRendering.willCurrentFrameRender) return;
+            if (++_ongoingStride < OngoingGpuSampleStride) return;
+            _ongoingStride = 0;
+
+            FrameTimingManager.CaptureFrameTimings();
+            if (FrameTimingManager.GetLatestTimings(1, TimingScratch) <= 0) return;
+            double gpu = TimingScratch[0].gpuFrameTime;
+            if (gpu <= 0.0) return;   // 0 = 아직 질의가 안 돌아왔다는 뜻이지 "0ms"가 아니다.
+            _ongoingGpuSumMs += gpu;
+            _ongoingGpuCount++;
+            if (gpu > _ongoingGpuWorstMs) _ongoingGpuWorstMs = gpu;
+        }
+
+        /// <summary>주기 요약이 읽고 비운다. 표본이 없으면 false(0을 진짜 값인 척 찍지 않는다).</summary>
+        internal static bool TryDrainGpuLoad(out float meanMs, out float worstMs, out int samples)
+        {
+            samples = _ongoingGpuCount;
+            meanMs = samples > 0 ? (float)(_ongoingGpuSumMs / samples) : 0f;
+            worstMs = (float)_ongoingGpuWorstMs;
+            _ongoingGpuSumMs = 0.0;
+            _ongoingGpuWorstMs = 0.0;
+            _ongoingGpuCount = 0;
+            return samples > 0;
+        }
+
+        /// <summary>GPU 타이밍 질의를 이 실행에서 쓸 수 있는가(로그 문구 분기용).</summary>
+        internal static bool GpuTimingAvailable => _timingFeatureAvailable;
+
         internal static void ResetForTests()
         {
             _snapshotLogged = false;
@@ -868,6 +1231,13 @@ namespace StickMate.Platform
             _gpuWorstMs = 0.0;
             _gpuCount = 0;
             _timingFeatureAvailable = false;
+            _measureBaselineLoopFrame = 0;
+            _measureBaselineRenderedFrame = 0;
+            _measureStartElapsed = 0f;
+            _ongoingStride = 0;
+            _ongoingGpuSumMs = 0.0;
+            _ongoingGpuWorstMs = 0.0;
+            _ongoingGpuCount = 0;
         }
 
         /// <summary><see cref="FramePacing.ApplyOnce"/>가 부른다. 여기서는 로그를 남기지 않는다 —
@@ -884,6 +1254,7 @@ namespace StickMate.Platform
         internal static void Tick(FramePacingTier tier)
         {
             float dt = Time.unscaledDeltaTime;
+            SampleOngoingGpu();
 
             if (_summaryLogged)
             {
@@ -905,6 +1276,9 @@ namespace StickMate.Platform
                 _snapshotLogged = true;
                 _lastWidth = Screen.width;
                 _lastHeight = Screen.height;
+                _measureBaselineLoopFrame = Time.frameCount;
+                _measureBaselineRenderedFrame = Time.renderedFrameCount;
+                _measureStartElapsed = _elapsed;
                 LogSnapshot("콜드스타트");
                 return;
             }
@@ -992,7 +1366,7 @@ namespace StickMate.Platform
                 $"(참고: Screen.msaaSamples={Screen.msaaSamples} — 이 값은 백버퍼의 진실이 아니다). " +
                 $"카메라: {camInfo}. " +
                 $"추정 컬러버퍼 {colorMb:F1}MB, 프레임당 MSAA resolve 트래픽 {resolveMb:F1}MB, " +
-                $"프레임당 표면 복사 {bltMb:F1}MB -> 현재 프레젠트 {presentFps:F1}fps 기준 " +
+                $"프레임당 표면 복사 {bltMb:F1}MB -> 현재 프레젠트 {presentFps:F1}fps(설정값 기준 추정) 기준 " +
                 $"{(resolveMb + bltMb) * presentFps / 1024.0:F2}GB/s(산술 추정). " +
                 $"페이싱: vSyncCount={QualitySettings.vSyncCount}, targetFrameRate={cap}, " +
                 $"renderFrameInterval={interval}, runInBackground={Application.runInBackground}. " +
@@ -1012,15 +1386,29 @@ namespace StickMate.Platform
                     ? "GPU 프레임시간: 드라이버가 타이머 질의를 돌려주지 않음(표본 0)"
                     : "GPU 프레임시간: 측정 불가(enableFrameTimingStats 꺼짐 — 이 빌드로는 MSAA 비용을 잴 수 없다)");
 
+            float window = Mathf.Max(0.001f, _elapsed - _measureStartElapsed);
+            float loopFps = (Time.frameCount - _measureBaselineLoopFrame) / window;
+            float renderFps = (Time.renderedFrameCount - _measureBaselineRenderedFrame) / window;
+            bool intervalTookEffect = OnDemandRendering.renderFrameInterval <= 1
+                || renderFps < loopFps * 0.9f;
+
             Debug.Log($"[렌더진단] ★A/B 요약(정착 {SnapshotDelaySeconds:F0}초 제외, " +
-                $"측정 {WarmupSeconds - SnapshotDelaySeconds:F0}초) — " +
+                $"측정 {window:F0}초) — " +
                 $"MSAA {RenderQualityTuner.DescribeState()}, " +
                 $"백버퍼={Screen.width}x{Screen.height}, 그래픽API={SystemInfo.graphicsDeviceType}, " +
                 $"등급={tier}(강제={FramePacing.ForcedTierLabel}). " +
                 $"CPU 프레임시간 평균 {cpuMean:F2}ms / 최악 {_cpuWorstMs:F2}ms (표본 {_cpuCount}), {tail}. " +
                 $"{gpu}. " +
+                $"★ 실효 제출 {renderFps:F1}장/초 (루프 {loopFps:F1}Hz, " +
+                $"renderFrameInterval={OnDemandRendering.renderFrameInterval}" +
+                $"{(intervalTookEffect ? string.Empty : " — ※ 걸리지 않았다: 렌더가 루프와 같은 속도다")}). " +
+                (_gpuCount > 0
+                    ? $"★GPU 점유 추정 {_gpuSumMs / _gpuCount * renderFps / 10.0:F1}% " +
+                      "(= ms/프레임 x 제출/초 / 10 — 작업 관리자 GPU %와 대응하는 값). "
+                    : string.Empty) +
                 "※ 이 한 줄을 MSAA만 바꾼 다른 콜드스타트의 같은 줄과 비교하세요. " +
                 "CPU 프레임시간은 60fps 상한에 가려 잘 안 갈립니다 — **GPU 프레임시간**을 보세요. " +
+                "컴포지터(dwm/WindowServer) 부하는 **실효 제출**에 비례합니다. " +
                 "등급이 서로 다르면 그 비교는 무효입니다(STICKMATE_FORCE_TIER=Active로 고정하세요).");
         }
     }

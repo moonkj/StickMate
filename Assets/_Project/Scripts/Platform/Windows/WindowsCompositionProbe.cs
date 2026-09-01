@@ -47,10 +47,22 @@ namespace StickMate.Platform.Windows
         /// 어떤 값을 넣어도 "캔버스 배율이 정수인가"라는 결론은 같고, 숫자만 사람이 읽기 쉬워진다.</summary>
         private const int SampleFontSizePoints = 13;
 
+        /// <summary>지문이 바뀌어도 이 간격 안에서는 두 줄을 찍지 않는다(위 Update의 상한 문서 참고).
+        /// 15초면 사용자가 창을 다른 모니터로 옮기는 실험을 해도 각 전이가 한 줄씩 남고,
+        /// 드리프트로 인한 폭주는 분당 4줄로 묶인다.</summary>
+        private const float LogMinIntervalSeconds = 15f;
+
+        /// <summary>이 프로브가 프로세스 수명 동안 남길 상세 줄의 총량. 진단 가치는 초반 몇 줄에
+        /// 거의 전부 있고, 그 뒤로는 같은 사실의 반복이다.</summary>
+        private const int MaxLogs = 12;
+
         private UniWindowController _controller;
         private Core.StickConfig _config;
         private Core.StickmanAgent _agent;
         private float _timer;
+        private float _cooldown;
+        private int _logCount;
+        private int _suppressed;
         private string _lastSignature;
         private IntPtr _hwnd = IntPtr.Zero;
         private bool _hwndLookupFailedLogged;
@@ -78,6 +90,7 @@ namespace StickMate.Platform.Windows
         private void Update()
         {
             _timer += Time.unscaledDeltaTime;
+            if (_cooldown > 0f) _cooldown -= Time.unscaledDeltaTime;
             if (_timer < SampleIntervalSeconds) return;
             _timer = 0f;
 
@@ -86,12 +99,42 @@ namespace StickMate.Platform.Windows
             if (signature == _lastSignature) return;   // 전이 없음 — 아무것도 찍지 않는다.
             _lastSignature = signature;
 
+            // ★ 2026-09-01 2차 — "지문이 바뀔 때만"은 상한이 아니다.
+            //
+            // 이 프로브는 "정상 상태로 안정되면 로그가 완전히 멈춘다"를 전제로 설계됐다. 그런데 관측
+            // 항목 중 하나라도 **드리프트하거나 진동하면** 그 전제가 통째로 무너진다. 실제로 같은 날
+            // 창 크기가 1px씩 줄어드는 결함이 발견됐고(WindowsOverlayStateEnforcer.TickFullScreenBounds),
+            // Signature()는 창 크기를 정수로 포함하므로 그 드리프트마다 **1KB짜리 여러 줄 경고**가
+            // 2초에 한 번씩 영원히 찍혔을 것이다. 24시간 상주 앱에서 그것은 파일 IO와 GC 압력이다.
+            //
+            // 그래서 지문 판정은 그대로 두되(감도를 낮추면 진짜 결함을 놓친다) **찍는 빈도에 상한**을
+            // 건다. 억제된 전이는 개수를 세어 다음 줄에 함께 보고하므로 사실을 숨기지 않는다.
+            if (_cooldown > 0f || _logCount >= MaxLogs)
+            {
+                _suppressed++;
+                return;
+            }
+            _cooldown = LogMinIntervalSeconds;
+            _logCount++;
+
             var verdict = OverlayCompositionVerdict.Diagnose(snapshot);
             var sb = new StringBuilder(1024);
-            sb.Append(LogPrefix).Append(" 오버레이 알파/합성 상태가 바뀌었습니다 — 관측:\n");
+            sb.Append(LogPrefix).Append(" 오버레이 알파/합성 상태가 바뀌었습니다");
+            if (_suppressed > 0)
+            {
+                sb.Append($"(직전 줄 이후 {_suppressed}건은 상한으로 억제됨 — 무언가 계속 흔들리고 있다는 신호다)");
+                _suppressed = 0;
+            }
+            sb.Append($" [{_logCount}/{MaxLogs}] — 관측:\n");
             AppendObservations(sb, snapshot);
             sb.Append("  판정:\n");
             for (int i = 0; i < verdict.Count; i++) sb.Append("    ").Append(verdict[i]).Append('\n');
+            if (_logCount >= MaxLogs)
+            {
+                sb.Append("    ※ 이 줄이 이 프로브의 마지막 상세 보고입니다(수명 상한). " +
+                    "이후 합성 상태가 또 바뀌어도 로그를 남기지 않습니다 — " +
+                    "상주 앱에서 진단이 자원을 무제한으로 먹지 않게 하기 위한 의도된 상한입니다.\n");
+            }
 
             if (OverlayCompositionVerdict.HasFault(verdict)) Debug.LogWarning(sb.ToString());
             else Debug.Log(sb.ToString());

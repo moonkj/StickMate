@@ -153,6 +153,11 @@ namespace StickMate.Interaction
 
         private const float CursorIdleOrbitRadiusPoints = 6f;
 
+        /// <summary>커서 친구가 프레임 페이싱 홀드를 거는 커서 속도 문턱(포인트/초).
+        /// 40pt/s면 "손가락으로 아이콘 하나를 지나치는" 정도이며, 그보다 느리면 이 펫의 이동량이
+        /// 프레임당 1픽셀 미만이라 제출을 줄여도 계단이 보이지 않는다.</summary>
+        private const float CursorHoldSpeedPoints = 40f;
+
         /// <summary>보이기/숨기기 알파 전환 시간(가출 은신 / 전체화면 감지로 캐릭터가 사라질 때).</summary>
         private const float FadeSeconds = 0.25f;
         private const float StrokeRatio = 0.022f;
@@ -618,6 +623,27 @@ namespace StickMate.Interaction
 
             Vector2 anchor;
             float speed = _cursorVelocity.magnitude;
+
+            // ============================================================================
+            // ★ 프레임 페이싱 홀드 (2026-09-01 컴포지터 라운드)
+            // ============================================================================
+            // 적응형 페이싱의 Still 등급은 "캐릭터 상태 ID가 Idle이면 화면이 거의 안 움직인다"는
+            // 전제로 제출을 1/4로 줄인다(Platform/ViewerPresence.cs의 FramePacingTier.Still 문서:
+            // 호흡 0.4px, 눈동자 3px). 그 전제가 깨지는 곳이 **여기 하나**다 — 커서 친구는 캐릭터가
+            // 서 있어도 커서를 따라 화면을 가로지르므로, 15fps로 그리면 눈에 띄게 뚝뚝 끊긴다.
+            //
+            // 그래서 이 프로젝트의 확립된 관례(UI 표면이 자기가 활성임을 스스로 신고한다)를 그대로
+            // 따른다. 조건을 **속도**에 건 이유: 커서가 멈춰 있으면 이 펫도 반경 6pt짜리 아주 느린
+            // 원운동만 하므로(아래 else 분기) Still로 내려가도 잃는 것이 없다. 커서가 실제로
+            // 움직이는 동안에만 60fps를 붙잡는다.
+            //
+            // 다른 펫 5종은 캐릭터를 기준으로 수십 픽셀 안에서 초 단위 주기로만 움직이므로 홀드를
+            // 걸지 않는다(그것까지 걸면 펫을 낀 사용자는 절감이 통째로 사라진다).
+            if (speed > worldPerPoint * CursorHoldSpeedPoints)
+            {
+                FramePacing.HoldActiveForInteraction();
+            }
+
             if (speed * CursorLeadSeconds > gap)
             {
                 // 진행 반대쪽으로 끌려간다.

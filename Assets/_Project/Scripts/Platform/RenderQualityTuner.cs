@@ -104,7 +104,16 @@ namespace StickMate.Platform
         /// <b>GPU 프레임시간</b>을 비교한다. 2x가 4x에 가까우면 고정 성분이 지배하는 것이고(=2x는
         /// 나쁜 절충, 셰이더 AA로 가야 한다), 중간에 있으면 배수 성분이 지배하는 것이다.</para>
         /// </summary>
-        public const int WindowsDefaultSamples = 2;
+        /// <para><b>★ 2026-09-01 실기 측정으로 위 예측이 확정됐고, 그 결과 이 값은 4로 되돌아왔다.</b>
+        /// 사용자 Windows 실기에서 MSAA <b>4x / 2x / 0x 세 경우 모두 StickMate GPU 사용률이 약 30%로
+        /// 동일</b>했다("GPU 비슷함", "줄여도 해결이 안되는거 같음"). 즉 <b>MSAA는 이 앱의 GPU 비용과
+        /// 무관하다</b> — 고정 성분이 지배할 것이라는 예측을 넘어, 배수 성분과 고정 성분 어느 쪽도
+        /// 유의미하지 않았다.
+        /// 비용이 같다면 <b>화질이 가장 좋은 값을 쓰는 것이 옳다</b>. 사용자 판정은
+        /// 4x=좋음 / 2x="봐줄만함" / 0x="지저분함"이었으므로 4로 되돌린다(= macOS와 동일, 분기 없음).
+        /// 이에 따라 "MSAA를 끄고 셰이더 AA로 대체한다"는 후속 라운드도 전제가 무너져 중단됐다.
+        /// 진짜 병목은 다른 곳이다(제출 횟수 비례 비용 조사 중).</para>
+        public const int WindowsDefaultSamples = 4;
 
         /// <summary>이번 실행에서 실제로 요청한 배수(환경변수가 없으면 플랫폼 기본값/프로젝트 설정값).</summary>
         public static int RequestedSamples { get; private set; }

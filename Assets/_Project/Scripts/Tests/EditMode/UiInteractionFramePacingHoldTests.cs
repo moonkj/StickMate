@@ -198,7 +198,8 @@ namespace StickMate.Tests.EditMode
 
             FramePacingPlan win = FramePacingPolicy.BuildPlan(FramePacingTier.Active,
                 WinBaseVSync, WinBaseTarget, FramePacingPolicy.ShouldApplyLowPowerDownshift(p, true));
-            Assert.AreEqual(WinBaseTarget, win.TargetFrameRate, "Windows: 60fps 그대로여야 한다.");
+            Assert.AreEqual(WinBaseTarget, win.EffectiveTargetFps, "Windows: 60fps 그대로여야 한다.");
+            Assert.AreEqual(1, win.RenderFrameInterval);
 
             FramePacingPlan mac = FramePacingPolicy.BuildPlan(FramePacingTier.Active,
                 MacBaseVSync, MacBaseTarget, FramePacingPolicy.ShouldApplyLowPowerDownshift(p, true));
@@ -206,9 +207,11 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(MacBaseVSync, mac.VSyncCount);
 
             // 네거티브 컨트롤 — 홀드가 없으면 같은 관측에서 실제로 반값이 된다.
+            // (2026-09-01부터 Windows도 "반값"을 renderFrameInterval로 표현한다 — 루프는 60Hz 유지.
+            //  그래서 TargetFrameRate가 아니라 EffectiveTargetFps를 본다.)
             FramePacingPlan winIdle = FramePacingPolicy.BuildPlan(FramePacingTier.Active,
                 WinBaseVSync, WinBaseTarget, FramePacingPolicy.ShouldApplyLowPowerDownshift(p, false));
-            Assert.AreEqual(30, winIdle.TargetFrameRate);
+            Assert.AreEqual(30, winIdle.EffectiveTargetFps);
         }
 
         // ========================================================================

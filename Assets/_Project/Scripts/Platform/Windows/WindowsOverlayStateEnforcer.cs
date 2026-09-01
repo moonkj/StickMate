@@ -52,6 +52,33 @@ namespace StickMate.Platform.Windows
         /// 한두 프레임 걸려서 한 번에 성공하지 않을 수 있다.</summary>
         private const int MaxFullScreenApplyAttempts = 6;
 
+        /// <summary>
+        /// 창 기하 판정 불감대(픽셀). <b>"목표와 정확히 같은가"를 묻지 않는다.</b>
+        ///
+        /// <para>근거(2026-09-01 실기): 대입값 3840에 대해 되읽기가 3839로 돌아온다. 그 1px을 불일치로
+        /// 보면 <c>Screen.SetResolution</c>과 창 리사이즈가 에피소드마다 다시 실행되고, 둘 다
+        /// <b>클라이언트 영역 변경 = 스왑체인/리디렉션 표면 재생성</b>이라 수백 ms 정지를 만든다
+        /// (실기 최대 프레임 407ms). 재적용이 반복될수록 창이 1px씩 더 줄어드는 래칫까지 겹쳤다.</para>
+        ///
+        /// <para>값과 근거는 플랫폼 중립 순수 규칙
+        /// <see cref="StickMate.Platform.OverlayBoundsFitPolicy.DefaultEpsilonPixels"/> 한 곳에 있다 —
+        /// macOS판 Enforcer가 같은 결함을 갖고 있으므로 값이 두 벌로 갈라지면 안 된다.</para>
+        /// </summary>
+        private const float BoundsEpsilonPixels = OverlayBoundsFitPolicy.DefaultEpsilonPixels;
+
+        /// <summary>
+        /// 프로세스 수명 전체에서 <c>Screen.SetResolution</c>을 부를 수 있는 최대 횟수.
+        ///
+        /// <para>24시간 상주 앱에서 이 호출은 <b>절대 무제한이면 안 된다</b>. 한 번이 곧 백버퍼 재할당
+        /// 한 번이고, 어떤 이유로든 판정이 진동하면 사용자는 몇 초마다 수백 ms씩 얼어붙는 앱을 보게
+        /// 된다 — 그것이 이번 신고("계속 실행해 놓을수록 렉이 심해지는거 같음")의 모양 그대로다.
+        /// 상한에 닿으면 조용히 죽지 않고 <b>로그에 상한 도달을 명시</b>한다(정직한 실패 보고).</para>
+        ///
+        /// <para>4인 이유: 정상 경로는 기동 시 1회다. 디스플레이 구성 변경(모니터 착탈/해상도 변경)이
+        /// 세션당 몇 번 일어나도 감당하면서, 진동 루프는 즉시 멈춘다.</para>
+        /// </summary>
+        private const int MaxSetResolutionCalls = 4;
+
         private UniWindowController _controller;
         private Core.StickmanAgent _agent;
 
@@ -66,6 +93,11 @@ namespace StickMate.Platform.Windows
         private int _fullScreenApplyAttempts;
         private float _fullScreenTimer;
 
+        /// <summary>스왑체인 재생성을 유발하는 두 호출의 <b>프로세스 누적</b> 횟수. 로그에 항상 함께
+        /// 찍어 [프레임스파이크]의 "백버퍼가 바뀌었다" 줄과 시각 대조가 가능하게 한다.</summary>
+        private int _setResolutionCalls;
+        private int _windowResizeCalls;
+
         // 실행 중 디스플레이 구성 변경 추적(2026-08-31). 판단 로직은 플랫폼 공용
         // Platform/DisplayTopologyWatcher.cs 한 곳에 있고 여기서는 관측만 한다 — macOS판도 같은 클래스를
         // 같은 방식으로 쓴다(오늘 VisibleTopEdgeSolver에서 한쪽만 고쳐 재발한 사례의 재발 방지).
@@ -73,8 +105,14 @@ namespace StickMate.Platform.Windows
         /// <summary>전체화면 적합 에피소드가 끝난 뒤 기준값을 다시 잡았는가. 재무장할 때 false로 돌린다.</summary>
         private bool _topologyBaselineSynced;
         /// <summary>토폴로지 관측 주기(초). 디바운스 창(0.75초)보다 충분히 짧아 판정 해상도는 잃지 않으면서
-        /// OS 디스플레이 열거 호출을 초당 60회에서 10회로 줄인다.</summary>
-        private const float TopologySampleIntervalSeconds = 0.1f;
+        /// OS 디스플레이 열거 호출을 줄인다.
+        ///
+        /// <para>★ 2026-09-01 — 0.1초에서 0.25초로 늘렸다. 한 번의 관측은
+        /// <c>GetMonitorCount()</c> + 모니터 수만큼의 <c>GetMonitorRect()</c> P/Invoke이고,
+        /// 이 앱은 24시간 상주다. 디바운스가 0.75초이므로 0.25초면 안정 판정에 여전히 3표본이 들어가
+        /// <b>판정 품질은 그대로</b>이면서 상시 네이티브 호출이 60%↓ 한다. 이보다 늘리면 표본이
+        /// 2개 이하로 떨어져 디바운스가 사실상 무력해지므로 늘리지 말 것.</para></summary>
+        private const float TopologySampleIntervalSeconds = 0.25f;
         private float _topologySampleTimer;
 
         /// <summary>플랫폼 계층이 배선하는 "지금 즉시 오버레이 창 OS 사각형을 보고하라" 훅
@@ -126,10 +164,29 @@ namespace StickMate.Platform.Windows
 
         private Core.StickConfig ResolveConfig()
         {
-            if (_agent == null) _agent = UnityEngine.Object.FindAnyObjectByType<Core.StickmanAgent>();
+            EnsureAgentResolved();
             var blackboard = _agent != null ? _agent.Blackboard : null;
             return blackboard != null ? blackboard.Config : null;
         }
+
+        /// <summary>
+        /// 에이전트 참조 확보 — <b>실패해도 매 프레임 다시 찾지 않는다</b>(2026-09-01).
+        ///
+        /// <para><c>FindAnyObjectByType&lt;T&gt;()</c>는 씬 전체를 훑는 호출이다. 예전에는 이 줄이
+        /// <c>Update()</c>에서 조건 없이 돌았고, 에이전트가 아직/영영 없는 상황(기동 구간, 씬 전환 중,
+        /// 에이전트가 파괴된 뒤)에서는 <b>60fps × 24시간 = 500만 회</b>의 씬 스캔이 된다.
+        /// 찾으면 캐시되므로 정상 경로의 비용은 그대로 0이고, 못 찾는 경로만 초당 1회로 눌린다.</para>
+        /// </summary>
+        private void EnsureAgentResolved()
+        {
+            if (_agent != null) return;
+            if (Time.unscaledTime < _nextAgentLookupTime) return;
+            _nextAgentLookupTime = Time.unscaledTime + AgentLookupRetrySeconds;
+            _agent = UnityEngine.Object.FindAnyObjectByType<Core.StickmanAgent>();
+        }
+
+        private const float AgentLookupRetrySeconds = 1f;
+        private float _nextAgentLookupTime;
 
         private void Update()
         {
@@ -144,7 +201,7 @@ namespace StickMate.Platform.Windows
             if (!FramePacing.IsApplied) FramePacing.ApplyOnce(ResolveConfig());
             // 캐릭터가 제자리에 서 있는지를 넘긴다 — 적응형 프레임 등급의 입력이다(판정 자체는
             // 양 플랫폼 공용 FramePacing.ResolveCharacterIdle 한 곳에만 있다).
-            if (_agent == null) _agent = UnityEngine.Object.FindAnyObjectByType<Core.StickmanAgent>();
+            EnsureAgentResolved();
             FramePacing.Tick(FramePacing.ResolveCharacterIdle(_agent));
 
             if (_controller == null) return;
@@ -348,21 +405,68 @@ namespace StickMate.Platform.Windows
             // targetPixel*가 항상 Screen.width/height와 달라 조건이 늘 참이었고, 그래서 macOS는
             // 매번 Windowed로 내려갔다. **한쪽에서만 우연히 성립하던 전제**였던 셈이라, 조건에
             // fullScreenMode 자체를 명시적으로 넣어 우연에 기대지 않게 한다.
-            bool resolutionMismatch = Screen.width != targetPixelW || Screen.height != targetPixelH;
+            // ★★★ 2026-09-01 2차 — 여기가 "407ms 멈춤 / 켜둘수록 렉이 심해짐"의 진원지다(래칫).
+            //
+            // 실기 로그 실측: `windowSize=(3840) -> (3839) -> (3838) -> ... -> (3831)`.
+            // 되읽기가 대입값보다 1px 작게 돌아오는 것 자체는 **증상이 아니라 상수**다(원인은 아래
+            // "1px의 정체" 참고). 진짜 결함은 그 1px이 **다음 판정의 입력이 되어** 아래 두 줄을 계속
+            // 다시 실행시킨 것이다:
+            //   · `Screen.width(3839) != targetPixelW(3840)` -> 매 에피소드 Screen.SetResolution 재호출
+            //   · 창 크기 재대입 -> OS 창 리사이즈
+            // 둘 다 **클라이언트 영역 변경 = D3D 스왑체인 + DWM 리디렉션 표면 재생성**이며, 수백 ms짜리
+            // 정지다. `Platform/DisplayTopologyWatcher.cs` 클래스 문서가 바로 이 인과("중간 상태마다
+            // SetResolution을 부르면 백버퍼 재할당이 연달아 일어나 멈춤이 오히려 길어진다")를 이미
+            // 적어 두었는데, 여기 조건이 `!=` 완전일치라 그 경고를 우리 스스로 위반하고 있었다.
+            //
+            // ---- 1px의 정체(가설 2건, 실기 확인 항목) --------------------------------------------
+            // (a) `Screen.SetResolution`은 **프레임 끝에 지연 적용**된다. 그래서 같은 틱에서 우리가
+            //     `windowSize`로 세운 값을 프레임 끝의 Unity 리사이즈가 다시 덮어쓰고, 그쪽은 클라이언트
+            //     사각형 기준이라 테두리/DWM 확장 프레임 계산에서 1px이 남을 수 있다.
+            // (b) 라이브러리의 `SetSize`(SetWindowPos)와 `GetSize`(GetWindowRect)가 서로 다른 사각형을
+            //     보는 경우(레이어드+DWM 확장 프레임).
+            // 어느 쪽이든 **우리가 없앨 수 없는 상수 오차**다. 그러므로 옳은 처방은 "1px을 없애기"가
+            // 아니라 **1px이 재적용을 유발하지 못하게 막는 것**이다 — 아래 불감대.
+            //
+            // ---- 왜 불감대가 증상을 덮는 것이 아닌가 ----------------------------------------------
+            // 오버레이가 모니터보다 1px 좁아도 기능적 손실이 없다: 좌표 변환기는 "창 폭 == 모니터 폭"을
+            // 가정하지 않고 **실측 창 사각형**에서 배율/원점을 유도한다(ScreenCoordinateConverter.
+            // AutoDpiScale = 창 폭 / Screen.width). 반대로 스왑체인 재생성은 수백 ms 정지라 손실이
+            // 압도적으로 크다. 그리고 불감대가 진짜 어긋남을 숨기지 않도록 (1) 불감대를 2px로 좁게 잡고
+            // (2) 아래 로그가 실측 오차와 재생성 누적 횟수를 항상 함께 남긴다.
+            // 판정 자체는 플랫폼 중립 순수 규칙 한 곳(OverlayBoundsFitPolicy)에 있다 — 그래야 Windows
+            // 실기가 없는 이 개발 머신의 EditMode가 "래칫이 다시 생기지 않는다"를 실행으로 검증한다.
+            bool resolutionMismatch = !OverlayBoundsFitPolicy.Within(
+                Screen.width, Screen.height, targetPixelW, targetPixelH, BoundsEpsilonPixels);
             bool modeMismatch = Screen.fullScreenMode != FullScreenMode.Windowed;
-            if (resolutionMismatch || modeMismatch)
+            bool resolutionCapped = _setResolutionCalls >= MaxSetResolutionCalls;
+            if (OverlayBoundsFitPolicy.ShouldSetResolution(Screen.width, Screen.height,
+                    targetPixelW, targetPixelH, !modeMismatch, BoundsEpsilonPixels,
+                    _setResolutionCalls, MaxSetResolutionCalls))
             {
+                _setResolutionCalls++;
                 Screen.SetResolution(targetPixelW, targetPixelH, FullScreenMode.Windowed);
             }
 
+            // 크기/위치도 같은 불감대를 쓴다. **이미 목표 안에 들어와 있으면 대입 자체를 하지 않는다** —
+            // 대입 한 번이 곧 OS 리사이즈 한 번이고, 그것이 백버퍼 재할당 한 번이다.
             // 크기 -> 위치 순서(크기를 먼저 정해야 위치 대입이 최종 좌표가 된다).
-            _controller.windowSize = monitor.size;
-            _controller.windowPosition = monitor.position;
+            bool needsResize = OverlayBoundsFitPolicy.ShouldResize(sizeBefore.x, sizeBefore.y,
+                monitor.width, monitor.height, BoundsEpsilonPixels);
+            bool needsMove = OverlayBoundsFitPolicy.ShouldMove(posBefore.x, posBefore.y,
+                monitor.x, monitor.y, BoundsEpsilonPixels);
+            if (needsResize)
+            {
+                _windowResizeCalls++;
+                _controller.windowSize = monitor.size;
+            }
+            if (needsMove) _controller.windowPosition = monitor.position;
 
             Vector2 sizeAfter = _controller.windowSize;
             Vector2 posAfter = _controller.windowPosition;
-            bool ok = Mathf.Abs(sizeAfter.x - monitor.width) <= 1f && Mathf.Abs(sizeAfter.y - monitor.height) <= 1f
-                && Mathf.Abs(posAfter.x - monitor.x) <= 1f && Mathf.Abs(posAfter.y - monitor.y) <= 1f;
+            bool ok = OverlayBoundsFitPolicy.Within(sizeAfter.x, sizeAfter.y,
+                    monitor.width, monitor.height, BoundsEpsilonPixels)
+                && OverlayBoundsFitPolicy.Within(posAfter.x, posAfter.y,
+                    monitor.x, monitor.y, BoundsEpsilonPixels);
             if (ok)
             {
                 _fullScreenBoundsApplied = true;
@@ -378,6 +482,12 @@ namespace StickMate.Platform.Windows
             // 두 겹으로 번져 보인다(2026-08-31 신고와 같은 모양). 실기 로그 한 줄로 그 가설이 갈린다.
             Debug.Log($"[WindowsOverlayStateEnforcer] 전체화면 확장 시도 {_fullScreenApplyAttempts}/{MaxFullScreenApplyAttempts} — " +
                 $"모니터={monitor}, 이전(size={sizeBefore}, pos={posBefore}) -> 이후(size={sizeAfter}, pos={posAfter}), " +
+                // ★ 스왑체인 재생성 누적 — [프레임스파이크]의 "백버퍼가 바뀌었다" 줄과 짝을 이룬다.
+                //   두 줄의 시각이 겹치면 그 스파이크의 범인이 이 파일임이 확정된다.
+                $"재생성 누적(SetResolution {_setResolutionCalls}/{MaxSetResolutionCalls}회" +
+                $"{(resolutionCapped ? " ★상한 도달 — 더는 부르지 않는다" : "")}, 창리사이즈 {_windowResizeCalls}회), " +
+                $"이번 틱 실행(SetResolution={(resolutionMismatch || modeMismatch) && !resolutionCapped}, " +
+                $"리사이즈={needsResize}, 이동={needsMove}, 불감대={BoundsEpsilonPixels:F0}px), " +
                 $"clientSize={_controller.clientSize}, " +
                 $"Screen=({Screen.width}x{Screen.height}) [목표 {targetPixelW}x{targetPixelH} 픽셀, dpi배율={dpi:F3}], " +
                 // ★ fullScreenMode를 반드시 남긴다(2026-09-01): 이 값이 Windowed가 아니면 Unity가
@@ -450,7 +560,30 @@ namespace StickMate.Platform.Windows
                 ScreenCoordinateConverter.AutoUiDensityScale);
         }
 
-        /// <summary>창 중심이 속한 모니터의 사각형(실패 시 0번 = 주 모니터로 폴백).</summary>
+        /// <summary>
+        /// 창 중심이 속한 모니터의 사각형.
+        ///
+        /// ============================================================================
+        /// ★ 2026-09-01 — 되먹임 차단(히스테리시스). 이 함수는 <see cref="SampleTopology"/>의 입력이다
+        /// ============================================================================
+        /// <see cref="StickMate.Platform.DisplayTopologyWatcher"/> 클래스 문서는 시그니처에
+        /// <b>"우리 창의 크기/위치, 그리고 그로부터 유도되는 값"을 절대 넣지 말라</b>고 못박고 있다 —
+        /// 넣으면 "재적합 -> 시그니처 변화 -> 재적합"의 자기 되먹임 루프가 되고, 이 앱에서 재적합 한
+        /// 번은 <b>스왑체인 재생성 = 수백 ms 정지</b>다.
+        ///
+        /// 그런데 이 함수가 고르는 모니터는 <b>우리 창 중심</b>으로 결정되므로, 그 값이 시그니처로
+        /// 들어가는 순간 위 금지를 우리 스스로 어기고 있었다. 실제 경로:
+        ///   창이 1px 줄어 중심이 0.5px 이동 -> (창이 모니터 경계에 걸쳐 있거나 모든 모니터 밖으로
+        ///   벗어나면) 폴백이 <b>0번 모니터</b>로 튄다 -> 시그니처 변화 -> 재적합 -> 창 기하 변화 -> …
+        ///
+        /// 그래서 두 곳을 고정한다:
+        ///   (1) <b>직전에 고른 모니터를 먼저 검사</b>한다 — 중심이 여전히 그 안이면 목록 순서와
+        ///       무관하게 같은 답을 준다(모니터가 겹쳐 배치된 구성에서도 답이 흔들리지 않는다).
+        ///   (2) 어느 모니터에도 속하지 않으면 <b>0번으로 튀지 않고 직전 선택을 유지</b>한다.
+        ///       "잠깐 좌표를 못 읽었다"와 "사용자가 창을 다른 모니터로 옮겼다"는 완전히 다른 사건인데,
+        ///       0번 폴백은 전자를 후자로 오인해 재적합을 부른다.
+        /// 진짜 모니터 이동(중심이 다른 모니터 <b>안</b>으로 들어감)은 (1)의 검사가 그대로 잡는다.
+        /// </summary>
         private bool TryGetTargetMonitorRect(out Rect monitor)
         {
             monitor = default;
@@ -458,22 +591,41 @@ namespace StickMate.Platform.Windows
             if (count <= 0) return false;
 
             Vector2 center = _controller.windowPosition + _controller.windowSize * 0.5f;
+
+            // (1) 직전 선택 우선.
+            if (_lastMonitorIndex >= 0 && _lastMonitorIndex < count)
+            {
+                Rect last = UniWindowController.GetMonitorRect(_lastMonitorIndex);
+                if (last.width > 0f && last.height > 0f && last.Contains(center))
+                {
+                    monitor = last;
+                    return true;
+                }
+            }
+
             for (int i = 0; i < count; i++)
             {
                 Rect r = UniWindowController.GetMonitorRect(i);
                 if (r.width <= 0f || r.height <= 0f) continue;
                 if (r.Contains(center))
                 {
+                    _lastMonitorIndex = i;
                     monitor = r;
                     return true;
                 }
             }
 
-            Rect primary = UniWindowController.GetMonitorRect(0);
-            if (primary.width <= 0f || primary.height <= 0f) return false;
-            monitor = primary;
+            // (2) 어디에도 속하지 않음 — 직전 선택을 유지한다(없으면 그때만 0번).
+            int fallback = _lastMonitorIndex >= 0 && _lastMonitorIndex < count ? _lastMonitorIndex : 0;
+            Rect fallbackRect = UniWindowController.GetMonitorRect(fallback);
+            if (fallbackRect.width <= 0f || fallbackRect.height <= 0f) return false;
+            _lastMonitorIndex = fallback;
+            monitor = fallbackRect;
             return true;
         }
+
+        /// <summary>직전에 고른 모니터 인덱스(-1 = 아직 없음). 위 히스테리시스의 상태.</summary>
+        private int _lastMonitorIndex = -1;
 
         /// <summary>
         /// 투명이 실제로 확인된 뒤에만 카메라 배경 RGB를 검정으로 낮춘다(알파는 보존).

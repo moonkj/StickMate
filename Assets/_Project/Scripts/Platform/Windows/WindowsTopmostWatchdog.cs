@@ -105,25 +105,73 @@ namespace StickMate.Platform.Windows
         /// 감시 주기(초). 두 가지 요구가 부딪히는 값이라 근거를 남긴다:
         ///   · 24시간 상주 앱이므로 매 프레임 네이티브 호출은 금지(프로젝트 컨벤션).
         ///   · 그러나 "되돌리긴 하는데 눈에 보일 만큼 느리다"면 사용자에겐 버그가 안 고쳐진 것과 같다.
-        /// 평상시 호출은 <c>GetWindowLong</c> + <c>GetForegroundWindow</c> <b>두 번뿐</b>이라(z-order
-        /// 순위 계산 같은 비싼 작업은 전이 순간에만 한다) 0.1초는 사실상 공짜이면서 사람이 창을
-        /// 전환하고 눈이 반응하기 전에 복구가 끝난다. 같은 파일의 디스플레이 토폴로지 관측
-        /// (<c>TopologySampleIntervalSeconds</c>)과 같은 값이라 새 상수 등급을 만들지도 않는다.
+        /// 평상시 호출은 <c>IsWindow</c> + <c>GetWindowLong</c> + <c>GetForegroundWindow</c>
+        /// <b>세 번뿐</b>이라(z-order 순위 계산 같은 비싼 작업은 아래 상한을 통과한 전이에서만 한다)
+        /// 0.1초는 사실상 공짜이면서 사람이 창을 전환하고 눈이 반응하기 전에 복구가 끝난다.
+        ///
+        /// <para>★ 2026-09-01 2차 — 이 값은 <b>그대로 두는 것이 옳다</b>고 판단했다. "초당 10회 전체 창
+        /// 열거"가 렉의 원인으로 지목됐지만, 열거를 하던 것은 <b>주기 폴링이 아니라 전이 로그</b>였다
+        /// (<see cref="ResolveRelation"/> 문서). 주기 자체를 늘리면 복구가 눈에 보이게 느려지는
+        /// 대가만 치르고 비용은 거의 안 준다. 실제 비용은 로그 상한과 순회 제거로 잘랐고, 남은 비용은
+        /// 60초 요약이 <b>실측 ms로</b> 보고한다 — 그 숫자가 이 판단의 검증 수단이다.</para>
         ///
         /// <para>실제 해상도는 프레임률에 의해 위에서 눌린다(FramePacing이 유휴 시 프레임을 낮춘다).
         /// 그래서 로그에는 "관측 주기 상한"이 아니라 <b>실측 경과 시간</b>을 찍는다.</para>
         /// </summary>
         private const float WatchIntervalSeconds = 0.1f;
 
-        /// <summary>z-order 순위 순회 상한. 순회 도중 다른 프로세스가 z-order를 바꾸면 이론상 목록이
-        /// 흔들릴 수 있으므로 무한 루프 방지용 안전 상한을 둔다(전형적인 데스크톱은 수백 개).</summary>
-        private const int MaxZOrderWalk = 4000;
+        /// <summary>
+        /// z-order 순위 순회 상한.
+        ///
+        /// <para>★ 2026-09-01 2차 — 4000에서 256으로 낮췄다. 실기 로그에 <c>(열거 818개)</c>가 찍혔고,
+        /// 그 818은 <b>버그가 아니라 진짜 최상위 창 수</b>다(숨은 메시지 창 포함, 데스크톱에서 흔한
+        /// 규모). 문제는 그 수가 <b>앱 가동 시간에 비례해 늘어난다</b>는 것이다 — 사용자가 앱을 열수록
+        /// 창이 늘고, 그래서 "켜둘수록 렉이 심해진다"에 그대로 기여한다. 아래
+        /// <see cref="ResolveRelation"/>이 대부분의 경우 순회를 <b>0회</b>로 만들었으므로, 남은 순회는
+        /// 같은 z-order 밴드 안의 비교뿐이고 그때는 256이면 충분하다. 넘으면 조용히 틀린 답을 내지 않고
+        /// "상한 초과"라고 정직하게 보고한다.</para></summary>
+        private const int MaxZOrderWalk = 256;
+
+        /// <summary>
+        /// 상세 [Z-ORDER] 한 줄 사이의 최소 간격(초).
+        ///
+        /// <para>★ 왜 필요한가(2026-09-01 2차, 이 진단이 스스로 만든 결함): 원래 이 감시자는
+        /// <b>사건이 날 때마다 무조건</b> 상세 한 줄을 남겼다. 그런데 <c>DemotedAndRestored</c>는
+        /// 원리적으로 <b>매 틱 반복될 수 있다</b> — 우리가 되돌리면 <c>_alive</c>가 다시 true가 되므로,
+        /// 누군가 계속 강등시키는 환경에서는 초당 10회가 전부 "처음 발견한 강등"이 된다. 그 한 줄의
+        /// 비용은 (창 수에 비례하는 z-order 순회 + 프로세스명 조회 2회 + 1KB 문자열 + 스택트레이스가
+        /// 켜진 Debug.Log + Player.log 동기 쓰기)라 결코 싸지 않다.
+        /// <b>진단은 필요하지만 그 비용이 증상을 만들면 안 된다</b>(리더 지시). 그래서 상세는 드물게,
+        /// 대신 <b>누락된 사건은 집계로 반드시 보고</b>한다.</para></summary>
+        private const float DetailLogMinIntervalSeconds = 5f;
+
+        /// <summary>상세 한 줄의 프로세스 수명 총량. 여기 닿으면 이후로는 집계만 남긴다 —
+        /// 24시간 상주 앱에서 진단이 무제한으로 자원을 먹는 경로를 원천 차단한다.</summary>
+        private const int MaxDetailLogs = 40;
+
+        /// <summary>억제된 사건과 <b>감시 자체의 비용</b>을 요약하는 주기(초).</summary>
+        private const float SummaryIntervalSeconds = 60f;
 
         private float _timer;
         private TopmostWatchdogTracker _tracker;
         private int _reassertCount;
         private bool _staleHandleLogged;
         private bool _noHandleLogged;
+
+        // ── 로그 상한 상태 ──────────────────────────────────────────────────────────
+        private float _detailCooldown;
+        private int _detailLogCount;
+        private float _summaryTimer;
+        private int _suppressedDemotion;
+        private int _suppressedRestored;
+        private int _suppressedForeground;
+        private bool _capNoticeLogged;
+
+        // ── 감시자 자기 비용 계측(2026-09-01) ───────────────────────────────────────
+        // "진단이 렉의 원인인가"를 실기에서 **숫자로** 가르기 위한 최소 계측이다. Stopwatch의
+        // 타임스탬프 조회는 QueryPerformanceCounter 한 번(수십 ns, 할당 0)이라 상시 켜 둬도 된다.
+        private long _pollTicks, _logTicks, _worstLogTicks;
+        private int _pollCount, _walkTotal, _walkWorst;
 
         /// <summary>
         /// 매 프레임 호출. 내부에서 주기를 지켜 실제 조회는 <see cref="WatchIntervalSeconds"/>마다만 한다.
@@ -136,10 +184,17 @@ namespace StickMate.Platform.Windows
         internal void Tick(float unscaledDeltaTime, IntPtr overlayHwnd, bool desiredTopmost,
             bool suspended, Action reassertTopmost, Func<string> describeOverlay)
         {
+            // 상한 타이머는 실제 관측 여부와 무관하게 벽시계로 흘러야 한다(관측이 없으면 억제 집계가
+            // 영원히 안 나가는 일을 막는다). 아래 세 줄은 float 덧셈 3회로, 비용이 없다.
+            if (_detailCooldown > 0f) _detailCooldown -= unscaledDeltaTime;
+            _summaryTimer += unscaledDeltaTime;
+
             _timer += unscaledDeltaTime;
             if (_timer < WatchIntervalSeconds) return;
             float elapsed = _timer;
             _timer = 0f;
+
+            long pollStart = System.Diagnostics.Stopwatch.GetTimestamp();
 
             if (overlayHwnd == IntPtr.Zero)
             {
@@ -182,10 +237,95 @@ namespace StickMate.Platform.Windows
 
             TopmostWatchEvent evt = _tracker.Observe(desiredTopmost, aliveBefore, aliveAfter,
                 foreground.ToInt64(), now, out double demotedForSeconds);
+
+            _pollCount++;
+            _pollTicks += System.Diagnostics.Stopwatch.GetTimestamp() - pollStart;
+            TickSummary();
+
             if (evt == TopmostWatchEvent.None) return;
 
+            // ★ 2026-09-01 2차 — 상세 한 줄은 상한을 통과해야만 남긴다. 통과하지 못한 사건은
+            //   버리지 않고 종류별로 세어 두었다가 주기 요약이 반드시 보고한다(위 상수 문서 참고).
+            if (_detailCooldown > 0f || _detailLogCount >= MaxDetailLogs)
+            {
+                switch (evt)
+                {
+                    case TopmostWatchEvent.DemotedAndRestored:
+                    case TopmostWatchEvent.Demoted: _suppressedDemotion++; break;
+                    case TopmostWatchEvent.Restored: _suppressedRestored++; break;
+                    default: _suppressedForeground++; break;
+                }
+                return;
+            }
+
+            long logStart = System.Diagnostics.Stopwatch.GetTimestamp();
+            _detailCooldown = DetailLogMinIntervalSeconds;
+            _detailLogCount++;
             LogTransition(evt, overlayHwnd, foreground, aliveBefore, aliveAfter, reasserted,
                 suspended, demotedForSeconds, elapsed, describeOverlay);
+            long logTicks = System.Diagnostics.Stopwatch.GetTimestamp() - logStart;
+            _logTicks += logTicks;
+            if (logTicks > _worstLogTicks) _worstLogTicks = logTicks;
+        }
+
+        /// <summary>
+        /// 주기 요약 — <b>억제된 사건</b>과 <b>감시자 자신의 실측 비용</b>을 한 줄로 남기고 집계를 비운다.
+        ///
+        /// <para>이 줄이 존재하는 이유는 두 가지다.
+        /// (1) 상한 때문에 사건이 조용히 사라지면 진단이 거짓말을 하게 된다 — 억제분을 반드시 보고한다.
+        /// (2) "진단 장치가 증상을 키우는가"를 <b>추측이 아니라 숫자로</b> 가른다. 이 줄의
+        ///     <c>감시 비용</c>이 60초 중 수 ms 수준이면 이 감시자는 렉의 원인이 아니고,
+        ///     수백 ms면 원인이다. 사용자는 로그 한 줄만 보내면 된다.</para>
+        ///
+        /// <para>비용: 60초에 한 번. 아무 일도 없었고 억제도 없었으면 <b>한 줄도 남기지 않는다</b>.</para>
+        /// </summary>
+        private void TickSummary()
+        {
+            if (_summaryTimer < SummaryIntervalSeconds) return;
+            float window = _summaryTimer;
+            _summaryTimer = 0f;
+
+            int suppressed = _suppressedDemotion + _suppressedRestored + _suppressedForeground;
+            // 조용한 정상 구간에서는 아무 것도 찍지 않는다(24시간 상주 규약).
+            if (suppressed == 0 && _pollCount == 0) return;
+
+            double toMs = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            double pollMs = _pollTicks * toMs;
+            double logMs = _logTicks * toMs;
+            double worstLogMs = _worstLogTicks * toMs;
+            double busyPercent = window > 0f ? (pollMs + logMs) / (window * 1000.0) * 100.0 : 0.0;
+            int walkAvg = _pollCount > 0 ? _walkTotal / _pollCount : 0;
+
+            if (suppressed > 0 || busyPercent >= 0.5)
+            {
+                Debug.Log($"[Z-ORDER] 최근 {window:F0}초 요약 — " +
+                    $"억제된 사건: 밀림 {_suppressedDemotion}회 / 복구 {_suppressedRestored}회 / " +
+                    $"전경전환 {_suppressedForeground}회 (상세는 {DetailLogMinIntervalSeconds:F0}초에 한 줄, " +
+                    $"수명 {_detailLogCount}/{MaxDetailLogs}줄). " +
+                    $"누적 밀림 {_tracker.DemotionCount}회 / 재적용 {_reassertCount}회. " +
+                    // ★ 이것이 "진단이 렉의 원인인가"를 가르는 숫자다.
+                    $"감시 비용: 관측 {_pollCount}회 {pollMs:F1}ms + 상세로그 {logMs:F1}ms" +
+                    $"(최악 한 줄 {worstLogMs:F1}ms) = 창시간의 {busyPercent:F2}%. " +
+                    $"z-order 순회 평균 {walkAvg}개/최악 {_walkWorst}개.");
+            }
+
+            if (_detailLogCount >= MaxDetailLogs && !_capNoticeLogged)
+            {
+                _capNoticeLogged = true;
+                Debug.LogWarning($"[Z-ORDER] 상세 로그 수명 상한({MaxDetailLogs}줄)에 도달했습니다 — " +
+                    "이후로는 위 60초 요약만 남깁니다. 이 줄이 보인다는 것은 항상위가 " +
+                    "**지속적으로** 흔들리고 있다는 뜻이므로, 요약의 '누적 밀림' 증가 속도를 보세요.");
+            }
+
+            _suppressedDemotion = 0;
+            _suppressedRestored = 0;
+            _suppressedForeground = 0;
+            _pollTicks = 0;
+            _logTicks = 0;
+            _worstLogTicks = 0;
+            _pollCount = 0;
+            _walkTotal = 0;
+            _walkWorst = 0;
         }
 
         /// <summary>OS가 보는 진실 — 라이브러리 캐시가 아니라 확장 스타일 비트를 직접 읽는다.</summary>
@@ -238,13 +378,7 @@ namespace StickMate.Platform.Windows
                     break;
             }
 
-            ResolveZOrder(overlay, foreground, out int overlayRank, out int foregroundRank, out int walked);
-            string relation;
-            if (overlayRank < 0 || foregroundRank < 0) relation = "z-order 순위 조회 실패";
-            else if (overlay == foreground) relation = "전경 창이 우리 자신";
-            else relation = overlayRank < foregroundRank
-                ? $"우리가 위(우리 #{overlayRank} < 전경 #{foregroundRank})"
-                : $"★ 우리가 아래(우리 #{overlayRank} > 전경 #{foregroundRank}) — 캐릭터가 가려집니다";
+            string relation = ResolveRelation(overlay, foreground, aliveAfter, out int walked);
 
             Debug.Log($"[Z-ORDER] {headline} — " +
                 $"우리 창 0x{overlay.ToInt64():X} WS_EX_TOPMOST(재적용 전={aliveBefore}, 후={aliveAfter}), " +
@@ -258,9 +392,59 @@ namespace StickMate.Platform.Windows
         }
 
         /// <summary>
+        /// "우리가 전경 창보다 위인가"를 <b>가능한 한 순회 없이</b> 판정한다.
+        ///
+        /// ============================================================================
+        /// ★ 2026-09-01 2차 — 왜 순회를 없앴는가 (실기 로그 <c>(열거 818개)</c>의 정체)
+        /// ============================================================================
+        /// 이전 구현은 항상 <c>GetTopWindow(NULL)</c> + <c>GetWindow(GW_HWNDNEXT)</c>로 z-order를
+        /// 처음부터 훑어 두 창의 순위를 찾았다. 그런데 <b>이 순회는 원리적으로 길 수밖에 없었다</b>:
+        ///   · 우리 창은 topmost라 밴드 <b>맨 앞</b>에 있어 금방 찾힌다(실기 rank ≈ 15).
+        ///   · 전경 창(엑셀 등)은 topmost가 아니라 <b>모든 topmost 창 뒤</b>에 있다. 그래서 순회는
+        ///     항상 topmost 밴드 전체를 지나야 하고, 전경 창을 못 찾으면(<c>GetForegroundWindow</c>가
+        ///     0을 주는 순간 — 잠금화면/UAC/포커스 공백 — 이 흔하다) <b>목록 끝까지</b> 간다.
+        ///     실기의 818은 버그가 아니라 그 데스크톱의 진짜 최상위 창 수이고, 앱을 켜 둘수록 늘어난다.
+        ///
+        /// 그런데 <b>Windows의 z-order 규칙 자체가 답을 이미 알려준다</b>: <c>WS_EX_TOPMOST</c>인 창은
+        /// 예외 없이 모든 비-topmost 창보다 앞이다. 그러므로 두 창의 topmost 비트만 읽으면
+        /// (P/Invoke 1회) 대부분의 경우 순회 <b>0회</b>로 결론이 난다. 실제로 우리가 알고 싶은 것도
+        /// "몇 번째인가"가 아니라 "가려지는가" 하나뿐이다.
+        ///
+        /// 같은 밴드에 함께 있을 때만 순회하며, 그때는 밴드 안 비교라 대개 수십 개에서 끝난다.
+        /// 상한(<see cref="MaxZOrderWalk"/>)을 넘으면 <b>모른다고 정직하게</b> 보고한다.
+        /// </summary>
+        private string ResolveRelation(IntPtr overlay, IntPtr foreground, bool overlayTopmost, out int walked)
+        {
+            walked = 0;
+            if (foreground == IntPtr.Zero) return "전경 창 없음(GetForegroundWindow=0) — 순위 비교 생략";
+            if (overlay == foreground) return "전경 창이 우리 자신";
+
+            bool foregroundTopmost = IsTopmostAlive(foreground);
+            if (overlayTopmost != foregroundTopmost)
+            {
+                // 밴드가 다르면 순회할 필요가 없다 — topmost 밴드가 무조건 앞이다.
+                return overlayTopmost
+                    ? "우리가 위(topmost 밴드 / 전경 창은 일반 밴드 — 순회 0개)"
+                    : "★ 우리가 아래(우리는 일반 밴드 / 전경 창이 topmost 밴드) — 캐릭터가 가려집니다";
+            }
+
+            ResolveZOrder(overlay, foreground, out int overlayRank, out int foregroundRank, out walked);
+            _walkTotal += walked;
+            if (walked > _walkWorst) _walkWorst = walked;
+
+            if (overlayRank < 0 || foregroundRank < 0)
+            {
+                return $"같은 밴드지만 {MaxZOrderWalk}개 안에서 순위를 못 찾았습니다(판정 보류)";
+            }
+            return overlayRank < foregroundRank
+                ? $"우리가 위(우리 #{overlayRank} < 전경 #{foregroundRank})"
+                : $"★ 우리가 아래(우리 #{overlayRank} > 전경 #{foregroundRank}) — 캐릭터가 가려집니다";
+        }
+
+        /// <summary>
         /// z-order 앞에서 뒤로 순회하며 두 창의 순위를 찾는다(작을수록 앞 = 위).
         /// <c>GetTopWindow(NULL)</c> + <c>GetWindow(GW_HWNDNEXT)</c>는 최상위 창을 z-order 순서대로 준다.
-        /// 전이 순간에만 부르므로 비용은 신경 쓰지 않지만, 상한은 반드시 둔다.
+        /// <b>같은 밴드 비교에서만</b> 불린다(<see cref="ResolveRelation"/> 참고). 상한은 반드시 둔다.
         /// </summary>
         private static void ResolveZOrder(IntPtr a, IntPtr b, out int rankA, out int rankB, out int walked)
         {
@@ -313,24 +497,47 @@ namespace StickMate.Platform.Windows
                 && r.Right == mi.rcMonitor.Right && r.Bottom == mi.rcMonitor.Bottom;
         }
 
-        /// <summary>pid -> 프로세스명. 전이 순간에만 부르므로 관리 API의 할당을 감수한다
-        /// (P/Invoke를 더 늘리지 않는 쪽을 택했다 — 이 파일의 감사 표면을 좁게 유지한다).</summary>
+        /// <summary>
+        /// pid -> 프로세스명.
+        ///
+        /// <para>★ 2026-09-01 2차 — <b>작은 캐시를 붙였다.</b> <c>Process.GetProcessById</c>는 겉보기와
+        /// 달리 싸지 않다(프로세스 스냅샷 조회 + 관리 객체 할당). 게다가 상대 프로세스가 응답하지 않으면
+        /// <b>블로킹될 수 있어</b> 단일 프레임 스파이크의 후보가 된다. 사용자가 오가는 창은 보통 두세
+        /// 개뿐이므로 4칸이면 사실상 전부 적중한다. 캐시가 stale해질 위험(pid 재사용)은 진단 문자열의
+        /// 이름 하나가 틀리는 것뿐이라 감수한다 — 판정에는 쓰이지 않는 값이다.</para></summary>
         private static string DescribeProcess(uint pid)
         {
             if (pid == 0) return "pid?";
+
+            for (int i = 0; i < ProcessNameCacheSize; i++)
+            {
+                if (_pidCache[i] == pid && _pidNameCache[i] != null) return _pidNameCache[i];
+            }
+
+            string described;
             try
             {
                 using (var p = System.Diagnostics.Process.GetProcessById((int)pid))
                 {
-                    return $"pid {pid} \"{p.ProcessName}\"";
+                    described = $"pid {pid} \"{p.ProcessName}\"";
                 }
             }
             catch (Exception)
             {
                 // 이미 종료됐거나 권한이 없는 프로세스 — 진단 문자열일 뿐이라 실패해도 그냥 넘어간다.
-                return $"pid {pid}";
+                described = $"pid {pid}";
             }
+
+            _pidCache[_pidCacheCursor] = pid;
+            _pidNameCache[_pidCacheCursor] = described;
+            _pidCacheCursor = (_pidCacheCursor + 1) % ProcessNameCacheSize;
+            return described;
         }
+
+        private const int ProcessNameCacheSize = 4;
+        private static readonly uint[] _pidCache = new uint[ProcessNameCacheSize];
+        private static readonly string[] _pidNameCache = new string[ProcessNameCacheSize];
+        private static int _pidCacheCursor;
     }
 }
 #endif

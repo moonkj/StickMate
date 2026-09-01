@@ -130,7 +130,9 @@ namespace StickMate.Tests.EditMode
                 FramePacingPlan plan = FramePacingPolicy.BuildPlan(
                     tier, WinBaseVSync, WinBaseTarget, lowPowerMode: false);
 
-                float framesPerCycle = plan.TargetFrameRate / GaitCycleHz;
+                // 실효 제출(= targetFrameRate / renderFrameInterval)로 센다. 2026-09-01부터 절감이
+                // 두 손잡이 중 어느 쪽으로도 표현될 수 있어 TargetFrameRate만 보면 과대평가된다.
+                float framesPerCycle = plan.EffectiveTargetFps / GaitCycleHz;
                 Assert.GreaterOrEqual(framesPerCycle, MinFramesPerGaitCycle,
                     $"무입력 {sec}초, 등급 {tier}: 보행 한 주기가 {framesPerCycle:F1}프레임으로만 그려진다.");
             }
@@ -142,7 +144,7 @@ namespace StickMate.Tests.EditMode
             // 위 테스트가 "항상 참인 단언"이 아님을 보이는 대조군 = 신고된 증상의 재현이다.
             FramePacingPlan away = FramePacingPolicy.BuildPlan(
                 FramePacingTier.Away, WinBaseVSync, WinBaseTarget, lowPowerMode: false);
-            float framesPerCycle = away.TargetFrameRate / GaitCycleHz;
+            float framesPerCycle = away.EffectiveTargetFps / GaitCycleHz;
 
             Assert.Less(framesPerCycle, MinFramesPerGaitCycle,
                 "대조군 전제 실패 — Away 등급이 원래 보행에 모자라야 위 테스트가 의미를 가진다.");
@@ -290,7 +292,8 @@ namespace StickMate.Tests.EditMode
             FramePacingTier tier = FramePacingPolicy.DecideTier(p, false, characterIdle: false);
             Assert.AreEqual(FramePacingTier.Active, tier);
             Assert.AreEqual(30,
-                FramePacingPolicy.BuildPlan(tier, WinBaseVSync, WinBaseTarget, lowPowerMode: true).TargetFrameRate,
+                FramePacingPolicy.BuildPlan(tier, WinBaseVSync, WinBaseTarget, lowPowerMode: true)
+                    .EffectiveTargetFps,
                 "저전력 감쇄까지 사라졌다면 이번 수정이 범위를 넘었다.");
         }
 

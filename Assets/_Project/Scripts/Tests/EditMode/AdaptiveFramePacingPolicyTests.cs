@@ -168,13 +168,21 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 윈도우_기구에서도_같은_등급이_같은_비율로_내려간다()
         {
+            // ★ 2026-09-01 — "비율"은 그대로지만 **어느 손잡이로 표현되는가**가 바뀌었다.
+            //   보는 사람이 있는 등급(Calm)은 이제 Windows에서도 게임 루프를 늦추지 않고
+            //   renderFrameInterval만 나눈다. 그래서 TargetFrameRate가 아니라 실효 제출을 본다.
             FramePacingPlan calm = FramePacingPolicy.BuildPlan(
                 FramePacingTier.Calm, WinBaseVSync, WinBaseTarget, lowPowerMode: false);
-            Assert.AreEqual(30, calm.TargetFrameRate);
+            Assert.AreEqual(30, calm.EffectiveTargetFps, "제출은 절반이어야 한다.");
+            Assert.AreEqual(WinBaseTarget, calm.TargetFrameRate,
+                "★ 게임 루프는 60Hz 그대로여야 한다 — 이걸 나누면 입력/커서 폴링 주기까지 반이 되어 " +
+                "신고 '기어 설정창조차 클릭하면 약간 렉걸린듯이 움직임'이 되살아난다.");
 
             FramePacingPlan away = FramePacingPolicy.BuildPlan(
                 FramePacingTier.Away, WinBaseVSync, WinBaseTarget, lowPowerMode: false);
-            Assert.AreEqual(15, away.TargetFrameRate);
+            Assert.AreEqual(15, away.TargetFrameRate,
+                "보는 사람이 없는 등급은 예전대로 루프까지 늦춘다(거기서는 반응성보다 절감이 우선).");
+            Assert.AreEqual(1, away.RenderFrameInterval);
         }
 
         [Test]
