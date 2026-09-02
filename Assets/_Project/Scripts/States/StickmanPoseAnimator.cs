@@ -236,6 +236,12 @@ namespace StickMate.States
             public float GetupStartAngle;  // GETUP 보간 시작각(널브러진 실제 각도) 캡처값.
             public float LandingEntryAngle; // 착지 진입 순간(= 낙하 자세)의 각도 캡처값. ApplyLandingCrouchPose 참고.
             public float Length;           // 이 마디의 길이(월드 유닛) — 보폭 계산/발끝 좌표 산출용.
+
+            /// <summary>이 마디의 물리 바디. <b>거울이 아니라 사실을 읽기 위해</b> 들고 있다 —
+            /// RAGDOLL 동안 <see cref="RagdollRig"/>가 이 bodyType을 Dynamic으로 뒤집으므로,
+            /// "지금 마디의 주인이 물리인가"를 별도 플래그 없이 여기서 직접 물을 수 있다
+            /// (<see cref="PhysicsOwnsLimbs"/>). 상태를 복제한 bool은 언젠가 반드시 어긋난다.</summary>
+            public Rigidbody2D Body;
         }
 
         /// <summary>팔 또는 다리 하나 = 위 마디 + 아래 마디.</summary>
@@ -553,6 +559,8 @@ namespace StickMate.States
             return new Segment
             {
                 Transform = t,
+                // 생성 시점에 한 번만 찾는다(SetFacing이 매번 GetComponent를 돌지 않게).
+                Body = t.GetComponent<Rigidbody2D>(),
                 // 관절이 있으면 그 배선값을 그대로 쓴다(프리팹 배치가 바뀌어도 자동 추종). 없으면 현재
                 // 로컬 위치를 피벗으로 삼아 최소한 위치가 흐트러지지 않게 한다.
                 PivotLocal = joint != null ? joint.connectedAnchor : (Vector2)t.localPosition,
@@ -569,10 +577,77 @@ namespace StickMate.States
         /// 바라보는 방향 설정(+1 오른쪽 / -1 왼쪽). 이동 방향이 뚜렷할 때만 갱신하도록 호출부
         /// (StickmanBlackboard.TickPose)가 불감대를 적용한다 — 매 프레임 0 근처에서 부호가 떨리면
         /// 캐릭터가 좌우로 깜빡인다.
+        ///
+        /// ============================================================================
+        /// ★★ 2026-09-02 — <b>부호를 바꾸면 두 곳을 다 다시 적용한다.</b> 지우지 마라.
+        /// ============================================================================
+        /// 사용자 신고: <i>"활쏘기한 바로 직후 뒤돌았을때 다시 활쏘기 누르면 간헐적으로 몸에서 팔이
+        /// 분리됨"</i>. 실제로 분리된 것은 <b>팔이 아니라 몸통</b>이다 — 팔은 어깨 부착점에 정확히
+        /// 붙어 있었고, 상체만 반대 방향으로 미러링된 채 렌더된 것이다.
+        ///
+        /// <para><b>원인</b>: <see cref="_facingSign"/>은 <b>서로 다른 두 적용 지점</b>이 소비한다.
+        ///  · <see cref="ApplyAngle"/> — 팔다리(각도 부호 + 부착점 X 미러링)
+        ///  · <see cref="ApplyBodyPlacement"/> — 몸통·머리(기울임 회전에 부호를 싣는다)
+        /// 그런데 예전 이 메서드는 <b>필드 대입 한 줄이 전부</b>였다. 즉 새 부호가 화면에 반영되는
+        /// 시점이 <b>"누군가 다른 이유로 그 적용 지점을 다시 부를 때"</b>에 전적으로 달려 있었다.
+        /// 팔다리는 매 프레임 포즈 틱이 도니 거의 항상 즉시 따라오는데,
+        /// <see cref="ApplyBodyPlacement"/>의 호출부는 전 파일에 <b>둘뿐</b>이고
+        /// (<see cref="SetBodyOffset"/> / <see cref="SetBodyLean"/>) <b>그중 하나는 값이 바뀔 때만</b>
+        /// 부른다. 기울임이 이미 수렴해 있고 그 프레임의 포즈 경로가 <c>SetBodyOffset</c>을 부르지
+        /// 않으면, <b>팔다리는 새 방향 / 상체는 옛 방향</b>인 프레임이 그대로 렌더로 나간다.</para>
+        ///
+        /// <para><b>왜 "간헐적"인가</b>: 어긋남의 크기가 기울임 각도에 비례한다
+        /// (어깨 이탈 ≈ 0.73·H·sin(lean)). 직립(<c>lean=0</c>)이면 두 경로의 결과가 같아 아무 일도
+        /// 일어나지 않는다 — 그래서 서 있을 때는 절대 안 나고, 기운 상태에서 방향이 뒤집히는
+        /// 프레임에서만 난다. 활쏘기는 그 조건이 겹치기 쉬울 뿐이고 <b>활쏘기만의 문제가 아니다</b>:
+        /// ParkourClimb(24°)·GroundLossHang(26°)이 활쏘기(약 8°)보다 <b>3배 이상</b> 크게 벌어진다.</para>
+        ///
+        /// <para><b>그래서 규약을 <see cref="SetBodyLean"/>과 같게 맞춘다</b>: 값을 바꾸는 문이
+        /// <b>그 자리에서 확정까지 책임진다</b>. 아래 두 호출은 중복이 아니다 —
+        /// <b>서로 다른 오브젝트를 담당하는 두 적용 지점</b>이고, 하나를 지우면 지운 쪽이 다시
+        /// 옛 부호로 남는다(그게 이 버그였다).</para>
+        ///
+        /// <para><b>부호가 실제로 바뀔 때만 일한다</b> — 이 메서드는 <c>TickPoseRouting</c>에서 매 프레임
+        /// 불릴 수 있고 이 앱은 하루 종일 켜져 있다. 같은 부호면 즉시 빠지므로 정상 구간의 추가 비용은
+        /// float 비교 한 번이다.</para>
         /// </summary>
         public void SetFacing(float sign)
         {
-            _facingSign = sign >= 0f ? 1f : -1f;
+            float s = sign >= 0f ? 1f : -1f;
+            if (s == _facingSign) return;
+
+            _facingSign = s;
+
+            // (1) 몸통·머리 — 물리 바디가 아니라(Editor/SceneBootstrapper의 CreateLineSegmentVisual /
+            //     CreateHeadAnchor는 Rigidbody2D를 붙이지 않는다) 언제나 이 클래스가 소유한다.
+            //     RAGDOLL 중에도 안전하다.
+            ApplyBodyPlacement();
+
+            // (2) 팔다리 — ★ RAGDOLL 중에는 마디의 주인이 물리다. 그때 Transform에 쓰면 Dynamic
+            //     Rigidbody2D를 순간이동시켜 뒹굴던 팔다리가 포즈 자세로 튄다(새 버그를 만든다).
+            //     TickPoseRouting은 이 메서드를 <b>Ragdoll 분기보다 먼저</b> 부르고, 배회 AI의 이동
+            //     의도는 RAGDOLL 중에도 계속 나오므로(WanderIntentMayDriveFacing(Ragdoll) = true)
+            //     이 경로는 실제로 도달 가능하다 — 가드가 장식이 아니다.
+            if (!PhysicsOwnsLimbs()) ReapplyCurrentAngles();
+        }
+
+        /// <summary>지금 팔다리 Transform의 주인이 <b>물리</b>인가(= RAGDOLL 모드인가).
+        ///
+        /// <para><see cref="RagdollRig.IsRagdollMode"/>를 물어보지 않고 <b>마디의 bodyType을 직접</b>
+        /// 읽는 이유: 이 클래스는 리그를 참조하지 않으며, 참조를 새로 넣으면 "리그의 모드"와 "실제
+        /// bodyType"이라는 <b>같은 사실의 두 번째 사본</b>이 생긴다. 이 저장소가 반복해서 당한 형태가
+        /// 정확히 그것이다(거울이 원본과 갈라진다). 여기서는 원본만 읽는다.</para>
+        ///
+        /// <para>리그는 마디 바디를 <b>전부 함께</b> 뒤집으므로 첫 번째 실존 바디 하나면 답이 나온다.</para></summary>
+        private bool PhysicsOwnsLimbs()
+        {
+            for (int i = 0; i < _segments.Length; i++)
+            {
+                Segment segment = _segments[i];
+                if (segment == null || segment.Body == null) continue;
+                return segment.Body.bodyType == RigidbodyType2D.Dynamic;
+            }
+            return false;   // 물리 바디가 하나도 없는 리그(테스트 더미) — 포즈가 유일한 주인이다.
         }
 
         /// <summary>실측 검증/디버그용 — 현재 바라보는 방향 부호.</summary>

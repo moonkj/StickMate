@@ -22,6 +22,18 @@ namespace StickMate.Tests.EditMode
     ///   <item><b>연출 종료 분류 계약</b> — <see cref="SpectacleExitClassification"/>과, 그것을
     ///         <b>실제로 참조하는지</b>에 대한 디렉터 전수 감사.</item>
     /// </list>
+    ///
+    /// <para>★★ 2026-09-02 추가 — <b>축이 두 개 더 붙었다.</b> 리더 지적: "미끄러짐을 막은 그 계약은
+    /// <b>속도만 보고 방향 부호는 안 본다</b>"(이 파일의 facing 계열 언급 0건 / velocity 계열 6건).
+    /// <list type="number">
+    ///   <item><b>(1-B) 방향 부호 소유권</b> — <see cref="StickmanBlackboard.IsFacingSelfManaged"/>
+    ///         멤버십 + <b>소스 전수 감사</b>(SetFacingSign을 부르는 상태는 전부 여기 있어야 한다).
+    ///         활쏘기 접근 페이즈가 매 프레임 <c>SetFacingSign(진행 방향)</c>을 부르고도 같은 프레임
+    ///         뒤쪽 <c>TickPose</c>에 덮여 "몸은 과녁을 보는데 발은 반대로 가는" 그림이 됐다.</item>
+    ///   <item><b>(1-C) 화면 끝 제자리걸음</b> —
+    ///         <see cref="AutoWanderController.ResolveEffectiveEdgeBoundary"/>. 2026-08-29에 고친
+    ///         러닝머신이 <b>멀티모니터에서 되살아났다</b>(게이트 <c>isTrueScreenEdge</c>가 거짓이 된다).</item>
+    /// </list></para>
     /// </summary>
     public sealed class HorizontalMotionOwnershipContractTests
     {
@@ -133,6 +145,241 @@ namespace StickMate.Tests.EditMode
             Assert.IsTrue(StickmanBlackboard.IsHorizontalMotionSelfManaged(StickmanStateId.GroundLossHang),
                 "GroundLossHang의 수평 속도를 안전망이 지우면 허공에서 걸어가는 코요테 개그가 사라집니다 " +
                 "— 그 연출이 이 상태의 존재 이유입니다(2026-09-01 소은 실측).");
+        }
+
+        // ====================================================================
+        // (1-B) ★ 방향 부호(facing) 소유권 — 2026-09-02 신설
+        //
+        //   리더 지적: "미끄러짐을 막은 그 계약은 '속도'만 보고 '방향 부호'는 안 본다."
+        //   실제로 이 파일의 facing 계열 언급은 **0건**이었고, 그 사이 활쏘기 접근 페이즈가
+        //   매 프레임 SetFacingSign(dir)을 부르고도 TickPose에 덮여 뒷걸음질로 보였다.
+        //
+        //   ★ 리더가 제시한 계약 문구는 **한 군데 수정해서** 잠근다.
+        //     제시: "수평 이동을 자기가 소유하는 상태는 방향 부호도 소유한다."
+        //     반례: Walk. Walk는 수평 자기소유(true)지만 그 수평 속도를 배회 AI의 MoveInputX에서
+        //           그대로 유도한다 — 그 상태에서 방향 갱신을 막으면 캐릭터가 한쪽만 보고 걷는다.
+        //     확정: "이동 방향을 MoveInputX가 아닌 곳에서 정하는 상태(= SetFacingSign을 스스로
+        //           부르는 상태)는 방향 부호도 소유한다."
+        //     아래 (1-B-2) 소스 전수 감사가 그 '스스로 부르는' 쪽을 기계적으로 판정한다.
+        // ====================================================================
+
+        /// <summary>방향 부호를 스스로 소유한다고 선언된 상태들.</summary>
+        private static readonly StickmanStateId[] ExpectedFacingSelfManaged =
+        {
+            StickmanStateId.Archery,
+            StickmanStateId.ParkourClimb,
+        };
+
+        [Test]
+        public void 방향부호_자기소유_목록이_승인된_구성과_같다()
+        {
+            var actual = AllStates().Where(StickmanBlackboard.IsFacingSelfManaged).ToArray();
+
+            var added = actual.Except(ExpectedFacingSelfManaged).ToArray();
+            var removed = ExpectedFacingSelfManaged.Except(actual).ToArray();
+
+            Assert.IsEmpty(added,
+                "방향 부호 자기소유 목록에 승인되지 않은 상태가 들어왔습니다: " + string.Join(", ", added) +
+                ".\n여기 넣으면 그 상태 동안 배회 AI가 방향을 바꾸지 못합니다 — 이동 방향을 MoveInputX에서 " +
+                "유도하는 상태(Walk 등)를 넣으면 캐릭터가 한쪽만 보고 걷습니다.");
+            Assert.IsEmpty(removed,
+                "방향 부호 자기소유 목록에서 상태가 빠졌습니다: " + string.Join(", ", removed) +
+                ".\n여기서 빼면 그 상태가 부른 SetFacingSign이 같은 프레임 뒤쪽 TickPose에 덮여 **죽은 코드**가 " +
+                "됩니다(2026-09-02 활쏘기 접근 페이즈에서 실제로 일어난 일 — 몸은 과녁을 보는데 발은 반대로 갔다).");
+        }
+
+        /// <summary>
+        /// ★ 네거티브 컨트롤 — 배회로 움직이는 상태는 <b>반드시</b> 배회 AI가 방향을 준다.
+        /// 이 짝이 없으면 "전부 자기소유로 만들면 통과"하는 오답이 초록이 된다.
+        /// </summary>
+        [Test]
+        public void 배회_이동의도로_걷는_상태는_방향을_배회AI가_준다()
+        {
+            StickmanStateId[] wanderDriven =
+            {
+                StickmanStateId.Idle, StickmanStateId.Walk, StickmanStateId.Jump,
+                StickmanStateId.Fall, StickmanStateId.LedgeHang, StickmanStateId.Graffiti,
+            };
+
+            var blackboard = new StickmanBlackboard();
+            foreach (StickmanStateId id in wanderDriven)
+            {
+                Assert.IsFalse(StickmanBlackboard.IsFacingSelfManaged(id),
+                    $"{id}의 진행 방향은 배회 AI의 MoveInputX가 정합니다 — 방향 자기소유로 선언하면 " +
+                    "그 갱신이 멎어 캐릭터가 뒤를 본 채로 걷습니다(고치려던 버그와 정확히 같은 그림).");
+                Assert.IsTrue(blackboard.WanderIntentMayDriveFacing(id),
+                    $"{id}에서 배회 AI가 방향을 줄 수 없다고 판정됐습니다(FacingLocked 기본값은 false입니다).");
+            }
+
+            // FacingLocked(조준 구간 전용 동적 플래그)는 여전히 모든 상태에서 이깁니다.
+            blackboard.FacingLocked = true;
+            foreach (StickmanStateId id in wanderDriven)
+            {
+                Assert.IsFalse(blackboard.WanderIntentMayDriveFacing(id),
+                    $"{id}에서 FacingLocked가 켜졌는데도 배회 AI가 방향을 덮을 수 있다고 판정됐습니다 — " +
+                    "조준 중 몸이 홱 돌아가 화살이 뒤통수에서 나갑니다.");
+            }
+        }
+
+        /// <summary>
+        /// ★★ (1-B-2) 전수 감사 — <c>States/*.cs</c>에서 <c>SetFacingSign</c>을 스스로 부르는 상태는
+        /// 반드시 방향 자기소유여야 한다.
+        ///
+        /// <para>왜 소스 스캔인가: 목록만 잠그면 <b>새 상태</b>가 같은 함정에 그대로 빠진다. 활쏘기는
+        /// 이 호출을 매 프레임 하고도 한 달 가까이 덮이고 있었고, 아무도 몰랐던 이유는 "호출했으니
+        /// 됐다"가 코드상 완벽히 그럴듯해 보였기 때문이다. 곡괭이질·낚시·닦기·쓰다듬기가 전부 같은
+        /// 형태(접근 보행 → 제자리)로 예정돼 있다 — 그 사람들이 기억하기를 기대하지 않는다.</para>
+        /// </summary>
+        [Test]
+        public void SetFacingSign을_스스로_부르는_상태는_전부_방향_자기소유다()
+        {
+            string root = Path.Combine(Application.dataPath, "_Project", "Scripts", "States");
+            Assert.IsTrue(Directory.Exists(root), $"States 폴더를 찾지 못했습니다: {root}");
+
+            var offenders = new List<string>();
+            var audited = new List<string>();
+
+            foreach (string path in Directory.GetFiles(root, "*State.cs", SearchOption.AllDirectories))
+            {
+                string fileName = Path.GetFileNameWithoutExtension(path);           // 예: ArcheryState
+                string source = File.ReadAllText(path);
+                if (source.IndexOf("SetFacingSign", StringComparison.Ordinal) < 0) continue;
+
+                string idName = fileName.EndsWith("State", StringComparison.Ordinal)
+                    ? fileName.Substring(0, fileName.Length - "State".Length)
+                    : fileName;
+                if (!Enum.TryParse(idName, out StickmanStateId id))
+                {
+                    // 파일명 ↔ 상태 ID 규약이 깨졌다. 조용히 건너뛰면 감사가 껍데기가 되므로 드러낸다.
+                    offenders.Add($"{fileName}(상태 ID '{idName}'를 찾을 수 없음 — 파일명 규약 확인)");
+                    continue;
+                }
+
+                audited.Add(id.ToString());
+                if (!StickmanBlackboard.IsFacingSelfManaged(id)) offenders.Add(fileName);
+            }
+
+            Assert.Greater(audited.Count, 0,
+                "SetFacingSign을 부르는 상태 파일을 한 건도 찾지 못했습니다 — 스캔이 소스와 어긋났다는 뜻이고, " +
+                "그러면 이 감사는 언제나 초록인 껍데기입니다(거짓 통과).");
+
+            Assert.IsEmpty(offenders,
+                "다음 상태가 SetFacingSign을 부르면서 방향 자기소유로 선언돼 있지 않습니다: " +
+                string.Join(", ", offenders) +
+                ".\n그 호출은 같은 프레임 뒤쪽 StickmanBlackboard.TickPose가 배회 AI의 MoveInputX 부호로 " +
+                "덮어써 **아무 효과가 없습니다**(StickmanAgent.Update 순서: _autoWander.Tick -> _machine.Tick -> " +
+                "TickPose). StickmanBlackboard.IsFacingSelfManaged에 그 상태를 추가하십시오.");
+
+            Debug.Log($"[방향소유감사] SetFacingSign을 부르는 상태 {audited.Count}건({string.Join(", ", audited)})을 " +
+                "검사했고 전부 방향 자기소유로 선언돼 있습니다.");
+        }
+
+        // ====================================================================
+        // (1-C) ★ 화면 끝 제자리걸음(러닝머신) — 2026-09-02 사용자 신고(멀티모니터)
+        // ====================================================================
+
+        /// <summary>
+        /// 사용자 로그 실측값을 그대로 쓴다(월드 유닛 환산). 화면 오른쪽 끝 3838pt, 클램프가 붙잡은
+        /// 자리 ≈3803pt(좌우여유 35.2pt), 돌아서는 임계 ≈24pt(0.3유닛). 40pt = 1유닛으로 환산한다.
+        /// </summary>
+        private const float PtPerUnit = 40f;
+
+        [Test]
+        public void 클램프가_발판_끝보다_앞에서_막으면_그_지점이_화면_끝이다()
+        {
+            // 멀티모니터 재현: 2번 모니터의 창까지 발판으로 열거돼 통합 경계(union)가 화면 밖으로 뻗는다.
+            // 그래서 "지금 딛은 발판의 오른쪽 끝"은 통합 경계가 **아니다** — 옛 게이트가 꺼지던 조건.
+            float foothold = 3838f / PtPerUnit;   // 화면을 꽉 채운 창의 오른쪽 끝
+            float union    = 5000f / PtPerUnit;   // 2번 모니터 창까지 포함한 통합 경계
+            float walkable = 3802.8f / PtPerUnit; // 하드 클램프가 실제로 붙잡는 자리(사용자 로그 값)
+
+            float boundary = AutoWanderController.ResolveEffectiveEdgeBoundary(
+                foothold, union, hasWalkable: true, walkableBoundaryX: walkable,
+                direction: 1, out bool isTrueScreenEdge);
+
+            Assert.AreEqual(walkable, boundary, 1e-4f,
+                "발판 끝보다 앞에서 클램프가 막는데도 경계 판정이 발판 원시 끝을 쓰고 있습니다 — " +
+                $"캐릭터는 {foothold - walkable:F3}유닛(={(foothold - walkable) * PtPerUnit:F1}pt) 앞의 보이지 않는 벽에 " +
+                "막힌 채 '아직 남았다'고 계산해 제자리걸음합니다(2026-09-02 사용자 신고 그대로).");
+            Assert.IsTrue(isTrueScreenEdge,
+                "클램프가 막는 지점은 더 갈 곳이 없는 '화면의 끝'입니다 — false로 두면 그 자리에서 " +
+                "뛰어내리기/매달리기/되올라가기 추첨과 경계 점프가 살아나 화면 밖으로 나가려 합니다.");
+
+            // 실제로 돌아서는가 — 잔여 거리가 임계 이하가 되어야 BeginEdgePause로 간다.
+            float characterX = walkable;                       // 클램프에 붙잡혀 서 있는 자리
+            float remaining = boundary - characterX;
+            float stopDistance = 0.3f;                         // wanderEdgeStopDistance 기본값
+            Assert.LessOrEqual(remaining, stopDistance,
+                $"잔여 거리 {remaining:F3}유닛이 돌아서기 임계 {stopDistance:F2}유닛보다 큽니다 — " +
+                "임계가 영영 성립하지 않는 것이 러닝머신의 정의입니다.");
+        }
+
+        [Test]
+        public void 왼쪽도_대칭으로_동작한다()
+        {
+            float foothold = 0f;
+            float union = -30f;
+            float walkable = 0.88f;
+
+            float boundary = AutoWanderController.ResolveEffectiveEdgeBoundary(
+                foothold, union, hasWalkable: true, walkableBoundaryX: walkable,
+                direction: -1, out bool isTrueScreenEdge);
+
+            Assert.AreEqual(walkable, boundary, 1e-4f, "왼쪽 방향에서 클램프 한계가 반영되지 않았습니다.");
+            Assert.IsTrue(isTrueScreenEdge, "왼쪽 클램프 지점도 화면의 끝입니다.");
+        }
+
+        /// <summary>
+        /// ★ 네거티브 컨트롤 — 화면 한복판의 평범한 발판 경계는 <b>아무 것도 바뀌면 안 된다</b>.
+        /// 여기서 클램프를 끌어다 쓰면 캐릭터가 창 끝에서 뛰어내리지도, 매달리지도 못하게 된다.
+        /// </summary>
+        [Test]
+        public void 화면_안쪽의_평범한_발판_경계는_그대로다()
+        {
+            float foothold = 1000f / PtPerUnit;    // 화면 한복판 창의 오른쪽 끝
+            float union    = 5000f / PtPerUnit;
+            float walkable = 3802.8f / PtPerUnit;  // 클램프는 한참 바깥 — 구속하지 않는다
+
+            float boundary = AutoWanderController.ResolveEffectiveEdgeBoundary(
+                foothold, union, hasWalkable: true, walkableBoundaryX: walkable,
+                direction: 1, out bool isTrueScreenEdge);
+
+            Assert.AreEqual(foothold, boundary, 1e-4f,
+                "화면 안쪽 발판 경계까지 클램프 한계로 바뀌면, 창 끝에서 뛰어내리기/매달리기/되올라가기가 " +
+                "전부 죽습니다(그 세 갈래는 isTrueScreenEdge가 false일 때만 추첨합니다).");
+            Assert.IsFalse(isTrueScreenEdge,
+                "화면 한복판의 창 경계가 '화면의 끝'으로 판정됐습니다 — 그 자리에서 경계 행동 추첨이 통째로 막힙니다.");
+        }
+
+        /// <summary>
+        /// ★ 회귀 짝 — 2026-08-29에 고친 <b>단일 모니터</b> 경로(발판 경계 == 통합 경계)도 계속 통해야 한다.
+        /// </summary>
+        [Test]
+        public void 단일모니터_전폭_발판에서도_클램프_한계를_쓴다()
+        {
+            float foothold = 3838f / PtPerUnit;
+            float union    = 3838f / PtPerUnit;   // 발판이 하나뿐 = 통합 경계와 같다
+            float walkable = 3802.8f / PtPerUnit;
+
+            float boundary = AutoWanderController.ResolveEffectiveEdgeBoundary(
+                foothold, union, hasWalkable: true, walkableBoundaryX: walkable,
+                direction: 1, out bool isTrueScreenEdge);
+
+            Assert.AreEqual(walkable, boundary, 1e-4f, "2026-08-29 수정(단일 모니터 러닝머신)이 회귀했습니다.");
+            Assert.IsTrue(isTrueScreenEdge);
+        }
+
+        /// <summary>클램프 한계를 못 구한 경우(카메라/몸 미배선)에는 예전 그대로 원시 경계를 쓴다.</summary>
+        [Test]
+        public void 클램프_한계를_모르면_원시_경계로_되돌아간다()
+        {
+            float foothold = 3838f / PtPerUnit;
+            float boundary = AutoWanderController.ResolveEffectiveEdgeBoundary(
+                foothold, 5000f / PtPerUnit, hasWalkable: false, walkableBoundaryX: 0f,
+                direction: 1, out bool isTrueScreenEdge);
+
+            Assert.AreEqual(foothold, boundary, 1e-4f);
+            Assert.IsFalse(isTrueScreenEdge, "통합 경계와 다르고 클램프도 모르면 '화면 끝'이라 단정할 근거가 없습니다.");
         }
 
         // ====================================================================

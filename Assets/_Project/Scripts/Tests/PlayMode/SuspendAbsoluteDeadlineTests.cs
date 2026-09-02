@@ -202,32 +202,87 @@ namespace StickMate.Tests.PlayMode
         /// ★ 배선 검사 — 위 두 메서드를 실제로 부르는 곳이 <c>StickmanAgent</c>의 Suspend/Resume인가.
         /// 이 파일의 나머지는 블랙보드를 <b>직접</b> 부르므로, 배선이 끊겨도 전부 초록이다.
         /// (전체화면 판정은 플랫폼 서비스에 물려 있어 PlayMode에서 합성하기 어렵다 — 그래서 구조를 본다.)
+        ///
+        /// <para>★★ 2026-09-02 — <b>이 검사가 눈이 멀어 빨개졌다.</b> 다른 라운드가 시그니처를
+        /// <c>Suspend(string reason)</c> / <c>Resume(string reason)</c>으로 바꿨는데 여기서는
+        /// <c>"private void Suspend()"</c>를 <b>문자 그대로</b> 찾고 있었다. <b>계약 자체는 살아 있었다</b> —
+        /// 고칠 것은 프로덕션이 아니라 매처였다. 그래서 두 가지를 바꿨다:
+        /// (1) 시그니처를 <c>Suspend(</c>까지만 보고 <b>본문은 중괄호 짝</b>으로 떼어 온다 —
+        ///     인자가 늘거나 줄어도 따라온다. (2) <b>양성 대조</b>를 붙였다 — 배선을 지운 사본에서
+        ///     같은 판정이 실제로 빨개지는지 이 테스트 안에서 확인한다. 없으면 "언제나 참"과 구별되지 않는다.</para>
         /// </summary>
         [Test]
         public void 에이전트의_Suspend와_Resume이_절대기한을_얼리고_되살린다()
         {
             string src = System.IO.File.ReadAllText(System.IO.Path.Combine(
                 Application.dataPath, "_Project", "Scripts", "Core", "StickmanAgent.cs"));
+            string exec = StripLineComments(src);   // 주석에 적힌 이름이 배선으로 세어지지 않게.
 
+            string broken = DiagnoseSuspendWiring(exec);
+            Assert.IsNull(broken, $"{LogPrefix} 절대 기한 얼리기/되살리기 배선이 깨졌다 — {broken}.");
+
+            // ================= 양성 대조 — 이 매처가 진짜 결함을 잡는가 =================
+            Assert.IsNotNull(DiagnoseSuspendWiring(exec.Replace("SuspendAbsoluteTimeWindows()", "NoFreeze()")),
+                $"{LogPrefix} 양성 대조 실패 — 얼리기를 지운 사본에서도 초록이다(매처가 눈이 멀었다).");
+            Assert.IsNotNull(DiagnoseSuspendWiring(exec.Replace("ResumeAbsoluteTimeWindows()", "NoThaw()")),
+                $"{LogPrefix} 양성 대조 실패 — 되살리기를 지운 사본에서도 초록이다.");
+            Assert.IsNotNull(DiagnoseSuspendWiring(exec.Replace("private void Suspend(", "private void Gone(")),
+                $"{LogPrefix} 양성 대조 실패 — Suspend가 통째로 사라진 사본에서도 초록이다.");
+        }
+
+        /// <summary>배선이 성립하면 null, 아니면 깨진 이유. 판정과 양성 대조가 <b>같은 코드</b>를 쓴다 —
+        /// 두 벌로 나누면 대조만 통과하는 대조가 된다.</summary>
+        private static string DiagnoseSuspendWiring(string exec)
+        {
+            // ★ 인자를 보지 않는다. `Suspend()` -> `Suspend(string reason)` 처럼 시그니처가 바뀌어도
+            //   계약(무엇을 부르는가)은 그대로다 — 매처가 그것 때문에 빨개진 것이 이 주석의 사연이다.
+            string suspend = TryMethodBody(exec, "private void Suspend(");
+            if (suspend == null) return "StickmanAgent.Suspend(...)를 찾지 못했다(이 검사의 대상이 없다)";
+            string resume = TryMethodBody(exec, "private void Resume(");
+            if (resume == null) return "StickmanAgent.Resume(...)를 찾지 못했다";
+
+            if (!suspend.Contains("SuspendAbsoluteTimeWindows()"))
+                return "Suspend()가 절대 기한을 얼리지 않는다 — 숨어 있는 동안 유예가 계속 흘러가고, " +
+                       "그 클래스의 '타이머가 그대로 멈춰 있다'는 주석이 다시 거짓이 된다";
+            if (!resume.Contains("ResumeAbsoluteTimeWindows()"))
+                return "Resume()이 얼린 기한을 되살리지 않는다 — 한 번 숨으면 유예가 영영 닫힌 채로 남는다";
+
+            // 방향이 뒤바뀌면 "둘 다 있다"만으로는 잡히지 않는다.
+            if (suspend.Contains("ResumeAbsoluteTimeWindows()"))
+                return "Suspend()가 되살리기까지 부른다 — 얼리자마자 녹는다";
+            if (resume.Contains("SuspendAbsoluteTimeWindows()"))
+                return "Resume()이 얼리기를 부른다 — 깨어나는 순간 다시 언다";
+            return null;
+        }
+
+        /// <summary>줄 끝 <c>//</c> 주석을 걷는다(주석에 적힌 이름을 배선으로 세지 않기 위해).</summary>
+        private static string StripLineComments(string src)
+        {
             var sb = new System.Text.StringBuilder(src.Length);
             foreach (string line in src.Replace("\r\n", "\n").Split('\n'))
             {
                 int c = line.IndexOf("//", System.StringComparison.Ordinal);
                 sb.Append(c >= 0 ? line.Substring(0, c) : line).Append('\n');
             }
-            string exec = sb.ToString();
+            return sb.ToString();
+        }
 
-            int suspend = exec.IndexOf("private void Suspend()", System.StringComparison.Ordinal);
-            int resume = exec.IndexOf("private void Resume()", System.StringComparison.Ordinal);
-            Assert.Greater(suspend, 0, "Suspend()가 사라졌다 — 이 검사의 대상이 없다.");
-            Assert.Greater(resume, suspend, "Resume()이 Suspend()보다 앞에 있다 — 아래 구간 계산이 깨진다.");
+        /// <summary>이름으로 메서드 <b>본문</b>({...} 포함)을 떼어 온다 — 인자 목록은 보지 않는다.
+        /// 없거나 중괄호 짝이 맞지 않으면 null.</summary>
+        private static string TryMethodBody(string source, string signature)
+        {
+            int at = source.IndexOf(signature, System.StringComparison.Ordinal);
+            if (at < 0) return null;
+            int open = source.IndexOf('{', at);
+            if (open < 0) return null;
 
-            string suspendBody = exec.Substring(suspend, resume - suspend);
-            StringAssert.Contains("SuspendAbsoluteTimeWindows()", suspendBody,
-                "Suspend()가 절대 기한을 얼리지 않는다 — 숨어 있는 동안 유예가 계속 흘러가고, " +
-                "그 클래스의 '타이머가 그대로 멈춰 있다'는 주석이 다시 거짓이 된다.");
-            StringAssert.Contains("ResumeAbsoluteTimeWindows()", exec.Substring(resume),
-                "Resume()이 얼린 기한을 되살리지 않는다 — 한 번 숨으면 유예가 영영 닫힌 채로 남는다.");
+            int depth = 0;
+            for (int i = open; i < source.Length; i++)
+            {
+                if (source[i] == '{') depth++;
+                else if (source[i] == '}' && --depth == 0) return source.Substring(open, i - open + 1);
+            }
+            return null;
         }
     }
 }

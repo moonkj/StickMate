@@ -448,8 +448,37 @@ namespace StickMate.Tests.EditMode
             float mondayKnotTop = monday[0].Points[0].y;
             Assert.Less(mondayKnotTop, normalKnotTop,
                 "월요일인데 매듭이 내려가지 않았습니다 — 설명문 '월요일마다 조금 느슨해진다'가 성립하지 않습니다.");
-            Assert.AreEqual(0.22f * AccessoryShapeBuilder.TieMondayLoosenDropRatio,
-                normalKnotTop - mondayKnotTop, 1e-4f, "느슨해지는 양이 R·0.12가 아닙니다.");
+            // ★ 2026-09-02 — 느슨해지는 <b>양</b>의 정본은 이제 에셋이다(B-2 파일럿으로 목 형상이
+            //   equip_neck_striped.asset의 wornShapes로 내려갔고 TieMondayLoosenDropRatio는 사라졌다).
+            //   그 값을 여기 숫자로 다시 적으면 "에셋만 고친 날 조용히 통과"하는 사본이 생긴다.
+            //   그래서 이 검사는 <b>양이 배율에 비례한다</b>(= 절대 상수가 아니다)와
+            //   <b>"조금"이라는 설명문을 지킬 만큼 작다</b>만 잠근다.
+            //   정확한 값은 Tests/EditMode/Golden/NeckWornShapeGolden.txt가 비트 단위로 잠근다.
+            float drop = normalKnotTop - mondayKnotTop;
+
+            var halfNormal = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+            var halfMonday = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
+            AccessoryShapeBuilder.Rig half = Scaled(0.5f);
+            AccessoryShapeBuilder.Append(halfNormal, EquipmentSlot.Neck, AccessoryShapeBuilder.NeckStriped,
+                half, mondayLoosened: false);
+            AccessoryShapeBuilder.Append(halfMonday, EquipmentSlot.Neck, AccessoryShapeBuilder.NeckStriped,
+                half, mondayLoosened: true);
+            float halfDrop = halfNormal[0].Points[0].y - halfMonday[0].Points[0].y;
+
+            Assert.AreEqual(drop * 0.5f, halfDrop, 1e-6f,
+                "배율 0.5에서 느슨해지는 양이 절반이 아닙니다 — 이 양이 R 배수가 아니라 " +
+                "월드유닛 절대 상수로 굳었다는 뜻입니다.");
+            Assert.That(drop / Rig().HeadRadius, Is.GreaterThan(0.02f).And.LessThan(0.30f),
+                $"느슨해지는 양이 R의 {drop / Rig().HeadRadius:F3}배입니다 — " +
+                "설명문 '월요일마다 조금 느슨해진다'가 읽히는 범위(0.02R~0.30R)를 벗어났습니다.");
+        }
+
+        /// <summary>같은 비율의 <b>다른 배율</b> 리그. 값이 R 배수인지 절대 상수인지를 가른다.</summary>
+        private static AccessoryShapeBuilder.Rig Scaled(float scale)
+        {
+            AccessoryShapeBuilder.Rig one = Rig();
+            return new AccessoryShapeBuilder.Rig(one.HeadRadius * scale, one.HeadCenterY * scale,
+                one.ShoulderY * scale, one.HipY * scale, one.Facing);
         }
 
         /// <summary>다른 넥타이는 요일에 반응하지 않는다(월요일 처리가 카테고리 전체로 새지 않았는가).</summary>

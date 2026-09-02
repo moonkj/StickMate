@@ -621,3 +621,486 @@ if (dtMs < expectedMs * SpikeRelativeFactor) return;
 힙 13.1~15.0MB 추세 없음 / FD 63 고정 / 스레드 49 고정 / `화면안=아니오` 0 / 말풍선 미제거 0.
 → 9절에서 우연히 재확인됐고 **모두 일치**한다(FD 59·스레드 46~47은 인스턴스가 2개로 늘어난
 지금 값이며, 어느 쪽도 **증가 추세가 없다**는 결론은 동일).
+
+---
+---
+
+# 부록 A (2026-09-02) — Windows "덜 부드럽다" 라운드: `STICKMATE_VSYNC` 신설
+
+담당: perf-doc (Teammate4) · 대상: **Windows 실기 A/B 손잡이 신설** ·
+수정 파일 **`Assets/_Project/Scripts/Platform/FramePacing.cs` 1개뿐**.
+
+> ★ **이 부록은 아무것도 "고쳤다"고 말하지 않는다.** 이 개발 머신에는 Windows가 없다.
+> 여기 있는 것은 (a) 사용자가 스스로 A/B 할 수 있는 손잡이 하나와 (b) 그 후보가 왜 후보인지의
+> 1차 출처, 그리고 (c) **반대 결론도 똑같이 가능하다**는 사실이다.
+
+---
+
+## 12. 지금까지 무엇이 반증됐는가 (이 라운드의 출발점)
+
+| # | 가설 | 상태 | 근거 |
+|---|---|---|---|
+| 1 | GPU가 병목이라 렉이 난다 | **해결됨** | 사용자가 외장 → 내장(Intel Iris Xe) 전환. 10분 실측 **GPU 최악 222.48ms → 17.46ms(13배)**, 배회 중 스파이크 0회. 사용자 확인 "컴퓨터 렉은 확연히 줄은거 같음" |
+| 2 | 남은 "덜 부드럽다"는 **정지 등급 15fps**(`renderFrameInterval=4`) 때문이다 | **반증됨** | 사용자가 `STICKMATE_STILL_DIVISOR=1`로 절전을 완전히 끄고 시험 → **"1로 바꿔서 해도 썩 부드럽진 않네 원래 이런듯"** |
+| 3 | MSAA 배수가 원인이다 | **반증됨**(2026-09-01) | 4x/2x/0x 세 회차 모두 GPU 약 30%로 동일 |
+
+2가 반증된 것이 이 라운드의 핵심이다. **절전은 원인이 아니다.**
+그러면 "덜 부드럽다"는 **초당 장수가 아니라 프레임 간격**의 문제일 가능성이 남는다.
+
+---
+
+## 13. 남은 1순위 후보 — `vSyncCount = 0`이 코드에 박혀 있다
+
+`Platform/FramePacing.cs`의 클래스 문서는 두 플랫폼이 **정반대 처방**을 쓴다고 적어 두었다.
+
+```
+                macOS                          Windows
+합성 경로       CAMetalLayer → WindowServer    레거시 BitBlt → DWM 레이어드 창
+vsync           켠다 (vSyncCount=N)            끈다 (vSyncCount=0)
+상한 기구       vSyncCount(위상 고정)          Application.targetFrameRate(sleep)
+```
+
+### 13-1. 그 판단이 옳았을 수 있다 (먼저 이쪽을 적는다)
+
+원문 근거는 이렇다: 이 앱의 Windows 창은 `DwmExtendFrameIntoClientArea` 때문에
+**flip-model 스왑체인을 쓸 수 없고**, 레거시 BitBlt(리디렉션 표면) 경로로만 화면에 올라간다.
+레이어드 창은 스캔아웃이 아니라 **DWM 합성**을 거치므로 앱 쪽 vsync가 찢어짐을 막아주지 못하고
+**지연만 한 프레임 더한다**.
+
+이게 맞으면 vsync를 켜도 안 나아지고 **더 나빠질 수도** 있으며, 남는 결론은
+**"투명 오버레이 구조 자체의 한계"**다. → 그 경우의 후속 방향은 15절.
+
+### 13-2. 그런데 그 근거는 "찢어짐"에 대한 것이지 "위상 균일성"에 대한 것이 아니다
+
+같은 클래스 문서의 **macOS 절**이 이미 반대 방향의 논증을 갖고 있다:
+
+> `targetFrameRate`는 vsync를 끄고 sleep으로 속도를 맞추므로 앱의 위상이 디스플레이 주기와
+> 무관하게 떠다닌다 — 120Hz에서 60fps 평균이어도 어떤 프레임은 1회, 어떤 프레임은 2회 표시되는
+> 맥놀이가 생겨 **오히려 더 끊겨 보인다**.
+
+사용자 신고는 정확히 **"덜 부드럽다"**(= 평균이 아니라 균일성)이다.
+Windows에만 이 논증을 적용하지 않은 이유가 13-1인데, **13-1은 다른 질문에 대한 답이다.**
+둘 중 어느 쪽이 이 하드웨어에서 이기는지는 **실측 외에 결정할 방법이 없다.**
+
+### 13-3. ★ 1차 출처 — 이 앱의 Windows 프레임 타이밍 계기는 **문서상 못 쓰게 되어 있다**
+
+Unity의 D3D 백엔드는 프레임 시간을 주사율에서 유도하며, 그 계기는
+`IDXGISwapChain::GetFrameStatistics`다. Microsoft 공식 문서 Remarks 원문:
+
+> **"You cannot use GetFrameStatistics for swap chains that both use the bit-block transfer
+> (bitblt) presentation model and draw in windowed mode."**
+> "You can only use GetFrameStatistics for swap chains that either use the flip presentation
+> model or draw in full-screen mode."
+> "Statistics are not reliable in many multiple monitor scenarios, as well as scenarios where
+> other fullscreen apps are running."
+
+출처: <https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-getframestatistics>
+
+**이 앱은 정확히 그 금지 조합이다** — bitblt(flip 불가) **AND** 창 모드(전체화면 오버레이지만
+윈도우 모드다). 즉 Windows에서 이 앱의 프레임 타이밍 기반은 **처음부터 문서상 유효하지 않다.**
+
+> **미확인(정직한 한계)**: "Unity가 *바로 이* API를 쓴다"는 것은 Unity 소스를 직접 확인한 것이
+> 아니라 Unity 스태프 답변(14-2)에서 유도한 것이다. Unity 엔진 소스 접근이 없어 이 연결은
+> **강한 정황이지 확증이 아니다.**
+
+---
+
+## 14. 사용자 로그의 새 단서 — `Direct3D: ... time drift`
+
+사용자 로그에 **이번 실행에만** 새로 뜬 줄:
+
+```
+Direct3D: detected that using refresh rate causes time drift.
+          Will stop trusting refresh rate until the game window is moved.
+```
+
+### 14-1. 무슨 뜻인가
+
+Unity의 D3D 백엔드가 **주사율에서 유도한 프레임 시간이 실제 경과 시간과 어긋나는 것을 검출**하고,
+**주사율 기반 타이밍을 포기**한다는 뜻이다. 같은 계열의 형제 메시지가 결과를 더 노골적으로 적는다:
+
+```
+Direct3D: detected that vsync is broken (it does not limit frame rate properly).
+          Delta time will now be calculated using cpu-side time stampling until the game window is moved.
+```
+
+→ 즉 `Time.deltaTime`이 **presentation 타임스탬프 기반에서 CPU 타임스탬프 기반으로 강등**된다.
+
+### 14-2. 출처 (1차 / 준1차 / 미확인을 구분해서 적는다)
+
+| 급 | 내용 | 출처 |
+|---|---|---|
+| **1차** | bitblt + 창 모드에서 `GetFrameStatistics`를 쓸 수 없다 | [Microsoft Learn — IDXGISwapChain::GetFrameStatistics](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-getframestatistics) |
+| **준1차** (Unity 스태프 발언) | 이 메시지는 "게임에서 vsync를 켰는데 드라이버가 강제로 껐다"는 뜻 — *"VSync is enabled in the game but it's force disabled in the driver and is thus not working correctly"* (Tautvydas-Zilys, Unity) | [Unity Discussions — Direct3D: detected that using refresh rate causes time drift](https://discussions.unity.com/t/direct3d-detected-that-using-refresh-rate-causes-time-drift/866737) |
+| **준1차** (Unity 스태프 발언) | 주사율 기반 deltaTime 문제의 원인으로 *"a problem with the `IDXGISwapChain::GetFrameStatistics` function call"* / *"GetFrameStatistics reports broken values"* 를 지목(Dave-Hampson, Unity). 외부 모니터에서 `Time.deltaTime`이 `1/refreshRate`에 얼어붙고, **창을 옮기면 해소**된다 | [Unity Discussions — Time.deltaTime frozen to 1/refreshRate when using VSync on external monitors](https://discussions.unity.com/t/time-deltatime-frozen-to-1-refreshrate-when-using-vsync-on-external-monitors/1664527) |
+| **배경** | Unity 2020.2가 deltaTime을 CPU 타임스탬프에서 **presentation 타임스탬프** 기반으로 바꾼 이유 자체가 "미세한 jitter 제거"였다 | [Unity Blog — Fixing Time.deltaTime in Unity 2020.2 for smoother gameplay](https://unity.com/blog/engine-platform/fixing-time-deltatime-in-unity-2020-2-for-smoother-gameplay) ※ 자동 수집기에서 **403**이라 본문 원문 인용은 못 했다 — 제목/요지만 확인 |
+| **미확인** | 이 메시지가 실제로 **눈에 보이는 캐릭터 떨림**을 만드는가 | 어떤 1차 출처도 이걸 말하지 않는다. **가설이다.** |
+
+### 14-3. 왜 "vsync 설정"과 맞물리는가
+
+- 메시지는 **주사율/vsync를 신뢰할 수 있는가**에 관한 것이다. `STICKMATE_VSYNC`는 정확히 그 축을 만진다.
+- 두 메시지 모두 **"until the game window is moved"**(창을 옮길 때까지)로 끝난다. 즉 판정이
+  **창/스왑체인의 디스플레이 연결 상태**에 묶여 있다 — 이 앱처럼 **모든 모니터를 덮는 창**은
+  MS 문서가 경고한 *"not reliable in many multiple monitor scenarios"*에 그대로 걸린다.
+- **왜 하필 이번 실행에만 떴나(미확인)**: 직전 두 실행에는 없었고 달라진 것은 **GPU가 외장 →
+  내장으로 바뀐 것**뿐이다. 하이브리드 그래픽에서 외장 렌더 결과는 내장의 표시 엔진으로 복사되어
+  나가므로 **제시 경로가 통째로 다르다.** 상관은 강하지만 인과는 **확인되지 않았다.**
+
+### 14-4. 사용자가 이 줄을 실기에서 다시 확인하는 법 (재빌드 불필요)
+
+```
+%USERPROFILE%\AppData\LocalLow\<회사명>\StickMate\Player.log
+```
+를 메모장으로 열고 `time drift` 또는 `vsync is broken`을 찾는다. **회차마다 있는지 없는지를
+적어 두는 것**이 이번 A/B의 3번째 관측값이다(1=체감, 2=5분 요약 줄, 3=이 메시지 유무).
+
+---
+
+## 15. 이번 라운드가 만든 것 — `STICKMATE_VSYNC`
+
+수정 파일은 **`Platform/FramePacing.cs` 하나**다.
+
+### 15-1. 계약
+
+| 항목 | 값 |
+|---|---|
+| 변수명 | `STICKMATE_VSYNC` |
+| 값 | `0` = vsync 끔(**현행 Windows 기본**) / `1` = 매 vblank / `2` = 두 번에 한 번 / `3`,`4`도 받음 |
+| 범위 밖 | `0`~`4`로 **clamp** + `LogWarning`으로 요청값·clamp값을 함께 남긴다 |
+| 정수가 아님 | 무시하고 **기본 동작**으로 감 + `LogWarning` |
+| **변수 없음** | **기존 경로가 한 줄도 바뀌지 않은 채 그대로 돈다** |
+| 적용 시점 | `ApplyOnce` 1회(시작 시). 실행 중 변경 불가 → **콜드 스타트 A/B만 유효** |
+
+기존 7개 계측 변수(`STILL_DIVISOR` / `FORCE_MSAA` / `FORCE_TIER` / `ADAPTIVE_PACING` /
+`DEVTOOLS` / `KEEP_LAYERED` / `UNLOCK_ALL`)와 **같은 관례**다.
+
+### 15-2. ★ 코드에 이미 적혀 있던 함정을 코드로 막았다
+
+> `vSyncCount >= 1`이면 Unity가 `targetFrameRate`를 **통째로 무시한다.**
+
+둘을 같이 걸어 두면 **조용히 한쪽이 죽는데 로그는 둘 다 걸린 것처럼 보인다.** 그래서:
+
+- vsync를 켜면(`>=1`) `Application.targetFrameRate = -1`로 **명시 해제**한다(macOS 경로가 이미
+  쓰던 방식과 동일).
+- 그 상호작용을 **로그에 문장으로** 적는다 — *"이 상태에서 targetFrameRate는 Unity가 통째로
+  무시하므로 -1로 명시 해제했습니다"*.
+
+### 15-3. ★ 로그는 **설정값이 아니라 되읽은 값**을 찍는다
+
+이 저장소는 "설정을 믿고 결과를 안 본" 사고를 반복했다(`Screen.msaaSamples`가 백버퍼와 무관하게
+요청값을 되돌려준 건). 그래서 대입 **직후** `QualitySettings.vSyncCount` /
+`Application.targetFrameRate`를 **다시 읽어** 찍고, 요청값과 다르면
+`★경고: ... 이 회차의 vsync 측정은 무효입니다`를 붙인다.
+
+**되읽기도 완전하지 않다(정직한 한계)**: 그건 "Unity가 값을 받아 갔다"까지만 증명하고
+"드라이버가 실제로 vblank에 맞춘다"는 증명하지 못한다. 그래서 **5분 요약 줄**에
+`vsync 되읽음 N/target T, 주사율 H Hz`를 함께 찍는다 — 같은 줄의 **루프 Hz**와 나란히 놓으면
+사람이 눈으로 판정할 수 있다.
+
+> **판정 규칙**: vsync `N`을 켰으면 **루프 Hz ≈ 주사율/N** 이어야 한다.
+> 안 붙으면 드라이버가 vsync를 안 지킨 것이고, 그 회차의 "vsync 켬"은 **이름뿐**이다.
+
+### 15-4. 적응형 등급과의 상호작용 (자동으로 맞는다 — 확인함)
+
+`InitializeAdaptiveGovernor`가 `_baseVSyncCount = QualitySettings.vSyncCount`를 **ApplyWindows
+이후에** 읽으므로, 강제값이 그대로 계획 수립의 기준이 된다. 그리고
+`FramePacingPolicy.BuildPlan`은 이미 `baseVSyncCount > 0` 분기를 갖고 있다(macOS가 쓰던 경로).
+즉 **정책 코드는 한 줄도 고칠 필요가 없었다.**
+
+- 보는 사람이 있는 등급(활성/정적/정지): `vSyncCount`·`targetFrameRate`를 **안 건드리고**
+  `renderFrameInterval`만 나눈다 → **vsync 위상이 유지된 채** 절전이 걸린다.
+- 보는 사람이 없는 등급(자리비움/전체화면숨김): `vSyncCount`를 곱해 내리고 나머지를
+  `renderFrameInterval`로 넘긴다.
+
+---
+
+## 16. 사용자 실기 확인 목록 (이 머신에서 확인 **불가능**한 것들)
+
+아래는 전부 **미확인**이다. 개발 머신이 macOS라 Windows 실행 자체가 없다.
+
+| # | 확인할 것 | 어떻게 |
+|---|---|---|
+| 1 | `STICKMATE_VSYNC=1`이 실기에서 **적용되는가** | 시작 직후 로그에 `[FramePacing/Windows] ★STICKMATE_VSYNC=1 적용(계측용)` 줄 + `되읽음: vSyncCount 0 -> 1` |
+| 2 | vsync가 **실제로 잡아주는가** | 5분 요약의 **루프 Hz**가 `주사율/1`에 붙는가 |
+| 3 | 체감이 나아지는가 | 사용자 육안. **이것만이 최종 판정이다** |
+| 4 | `time drift` 메시지가 회차마다 뜨는가/사라지는가 | `Player.log`에서 `time drift` 검색 |
+| 5 | vsync를 켰을 때 **잔상/찢어짐이 돌아오지 않는가** | 13-1이 옳다면 여기서 회귀가 보인다. 글자 획이 유령처럼 겹치는지 확인 |
+| 6 | 입력 지연이 늘지 않는가 | 캐릭터 드래그·정보창 타이틀바 드래그가 커서를 늦게 따라오는지 |
+
+**5번과 6번이 이 실험의 대가다.** 3번이 좋아져도 5·6번이 나빠지면 채택하면 안 된다.
+
+### 16-1. 회차 설계 (콜드 스타트 3회, 각 10분 이상)
+
+| 회차 | 명령 | 보는 것 |
+|---|---|---|
+| A | `STICKMATE_VSYNC=0` (= 현행) | 기준선 |
+| B | `STICKMATE_VSYNC=1` | 주사율 그대로 vsync 켬 |
+| C | `STICKMATE_VSYNC=2` | 절반 주사율에 위상 고정 |
+
+각 회차마다 **완전 종료**(작업 관리자에 `StickMate.exe`가 남지 않게) 후 시작.
+`setx`는 쓰지 마라 — 사용자 환경에 영구 등록되어 나중에 평범하게 실행한 앱까지 계측 모드가 된다.
+
+### 16-2. 복붙용 `.bat` 문안 (PowerShell 몰라도 된다)
+
+메모장에 붙여 넣고 **`ANSI` 인코딩**으로 `vsync1.bat` 같은 이름으로 저장한 뒤 **더블클릭**한다.
+(탐색기에서 exe를 그냥 더블클릭하면 환경변수가 전달되지 않는다 — 반드시 이 `.bat`으로 실행.)
+
+**회차 B — vsync 켬 (`vsync1.bat`)**
+```bat
+@echo off
+set STICKMATE_VSYNC=1
+start "" "C:\Users\kjmoon\Downloads\StickMate-Windows-20260902b\Windows\StickMate.exe"
+```
+
+**회차 C — 절반 주사율 (`vsync2.bat`)**
+```bat
+@echo off
+set STICKMATE_VSYNC=2
+start "" "C:\Users\kjmoon\Downloads\StickMate-Windows-20260902b\Windows\StickMate.exe"
+```
+
+**회차 A — 기준선 (`vsync0.bat`)**. 그냥 평소처럼 더블클릭해도 같지만, 세 회차를 같은
+방식으로 띄우는 편이 비교가 깨끗하다.
+```bat
+@echo off
+set STICKMATE_VSYNC=0
+start "" "C:\Users\kjmoon\Downloads\StickMate-Windows-20260902b\Windows\StickMate.exe"
+```
+
+> ★ **경로는 다음 빌드에서 바뀐다.** 새 빌드를 받으면 폴더 이름(`...-20260902b`)이 달라지므로
+> `.bat` 안의 경로도 그때 같이 고쳐야 한다. 고치기 싫으면 `.bat`을 `StickMate.exe`와 **같은
+> 폴더**에 두고 경로를 `StickMate.exe` 한 단어로 줄여도 된다:
+> ```bat
+> @echo off
+> set STICKMATE_VSYNC=1
+> start "" "%~dp0StickMate.exe"
+> ```
+> `%~dp0`는 "이 .bat이 있는 폴더"라는 뜻이라 빌드가 바뀌어도 그대로 쓸 수 있다.
+
+**이미 쓰던 변수와 같이 줄 수도 있다** (줄만 늘리면 된다):
+```bat
+@echo off
+set STICKMATE_VSYNC=1
+set STICKMATE_STILL_DIVISOR=1
+start "" "%~dp0StickMate.exe"
+```
+
+---
+
+## 17. 만약 셋 다 나아지지 않으면 (13-1이 옳았던 경우)
+
+그러면 남는 결론은 **투명 오버레이 합성 구조 자체의 한계**이고, 다음 후보는 이렇게 갈린다.
+**이 라운드는 여기까지만 적고 착수하지 않는다**(전부 `dev-platform` 영역이다).
+
+1. **`Time.deltaTime` 강등이 진짜 원인인 경우** — 캐릭터 이동/애니메이션을 `Time.deltaTime`이
+   아니라 **평활화된 자체 시계**로 적분한다. 14절이 옳다면 이게 유일한 근본 수정이다.
+2. **DWM 합성 경합인 경우** — flip-model을 못 쓰는 제약(=`DwmExtendFrameIntoClientArea` 의존)
+   자체를 재검토해야 한다. **되돌리기 어려운 결정**이라 `game-architect` 판단이 먼저다.
+3. **주사율 자체가 높은 경우** — 사용자 패널이 예컨대 144Hz인데 60fps로 그리면 144/60=2.4라
+   비약수 맥놀이가 난다(macOS 절이 이미 같은 계산을 해 뒀다: 비약수는 균일할 수 없다).
+   그 경우 `STICKMATE_VSYNC=2`(=72fps) 쪽이 `1`보다 오히려 나을 수 있다 — 그래서 회차 C가 있다.
+
+---
+
+## 18. 플랫폼 영향
+
+- **Windows 영향: 함께 수정함.** 이번 라운드의 본체가 Windows다. **기본 동작은 무변경**
+  (`STICKMATE_VSYNC` 미지정 시 `ApplyWindows`의 기존 문장이 그대로 실행된다). 새 가지는
+  변수가 있을 때만 진입한다.
+- **macOS 영향: 함께 수정함(대칭 유지).** 같은 변수를 macOS 경로에도 넣어
+  `StickConfig.macVSyncInterval`을 덮어쓸 수 있게 했다. **한쪽에만 손잡이를 두면 그 자체가 새
+  플랫폼 갭**이 되기 때문이다(CLAUDE.md "플랫폼 동시 검토"). 변수 미지정 시 macOS도 무변경.
+- **모바일 영향: 없음.** `ApplyMacOS`/`ApplyWindows`는 각각 `#if UNITY_STANDALONE_*` 안이고,
+  모바일 타깃에서는 새 헬퍼가 호출되지 않는다(컴파일은 된다 — 플랫폼 중립 위치).
+
+### 18-1. 크로스 컴파일 결과
+
+`Tools/CrossCompile/xcheck.sh`는 라운드 중 `dev-platform`이 `IPlatformWindowService`에
+`GetForeignFullscreenTier()`를 추가하는 **작업 중 상태**라 테스트 어셈블리가 깨져 있었다
+(CS0535 다수, **전부 그 멤버 하나 때문이며 `FramePacing.cs`를 지목한 에러는 0건**).
+그래서 스크래치패드에 트리 사본을 만들고 **그 사본에서만** 해당 인터페이스 멤버에 기본 구현을
+넣어 `dev-platform`의 진행 중 작업이 내 검사를 가리지 않게 한 뒤 측정했다:
+
+```
+[win] 전부 통과   runtime(editor) 0 / runtime(player) 0 / Tests.EditMode 0 / Tests.PlayMode 0 / Assembly-CSharp-Editor 0
+[osx] 전부 통과   runtime(editor) 0 / runtime(player) 0 / Tests.EditMode 0 / Tests.PlayMode 0 / Assembly-CSharp-Editor 0
+```
+
+**거짓 초록 방지(양성 대조)**: `--selftest-only`로 반대 타깃 카나리아를 넣었더니 두 타깃 모두
+`XCHECK_CANARY ... 거짓 초록` 에러 3건으로 **실패했다**. 카나리아가 실제로 문다 = 위 0건은 진짜다.
+
+사용자 트리에서 직접 돌린 결과(진행 중 상태 포함)도 함께 남긴다:
+`osx/runtime(editor)=0`, `osx/runtime(player)=0` — **`FramePacing.cs`가 들어가는 어셈블리는
+사용자 트리에서도 0건**이다.
+
+---
+---
+
+# 부록 C (2026-09-02) — 오디오 재검토: `m_DisableAudio`를 되돌려도 되는가
+
+담당: perf-doc · **프로덕션 `.cs`/`ProjectSettings` 수정 0건.** 측정과 판정만 했다.
+계기 원본: `docs/perf/audio_device_probe.c` · `audio_open_latency_probe.c` · `README_audio_probe.md`
+
+## C-0. 세 줄
+
+1. **원래 결정의 근거는 남아 있다.** `BuildStandalone.cs:302~357` + `Tasklist.md:7677~7690`에
+   `sample` 스택과 **스레드 53→48**, **"측정 0.2%"**가 적혀 있다. **단 이 문서(`PERFORMANCE_NOTES.md`)에는
+   오디오가 한 글자도 없었다**(양성 대조 통과: 같은 grep이 `vSync` 49건을 찾는다). 커밋 메시지에도 없다.
+2. **그 0.2%는 맞았고, 동시에 틀렸다.** 오늘 다시 재니 **우리 프로세스는 0.19%**로 그대로 재현되는데,
+   **`coreaudiod`가 별도로 코어 1개의 4.2~5.1%를 쓴다.** 원래 계측은 우리 프로세스만 봤다 —
+   `dwm.exe`/WindowServer 함정이 오디오에서 그대로 재현됐다.
+3. **더 큰 것은 CPU가 아니다.** 출력 장치를 여는 순간 `coreaudiod`가
+   **`PreventUserIdleSystemSleep` 어서션을 잡는다**(실측). 즉 **오디오를 켜면 이 맥은 밤새 잠들지 않는다.**
+   그리고 Unity의 자체 완화책 `m_EnableOutputSuspension`은 **에디터 전용**이다(공식 문서 확인).
+
+## C-1. 과제 1 — 그때 무엇을 근거로 껐는가
+
+| 항목 | 기록됨? | 값 | 위치 |
+|---|:--:|---|---|
+| 기전(왜 도는가) | **O** | `com.apple.audio.IOThread.client` → `FMOD::OutputCoreAudio::renderProc()` → `mix()` | `BuildStandalone.cs:344-347` |
+| 스레드 감소 | **O** | **53 → 48** | `Tasklist.md:7690` |
+| CPU 지분 | **O(수치만)** | **"측정 0.2%"** — 원시 출력은 남아 있지 않다 | `BuildStandalone.cs:353` |
+| 전력/배터리 | **X** | *"오디오 하드웨어 전력 도메인이 계속 살아 있다"* — **기전 주장이고 측정이 아니다** | `BuildStandalone.cs:352` |
+| 절전 방해 | **X** | 그때는 **고려 자체를 안 했다** | — |
+| `coreaudiod` 비용 | **X** | **안 쟀다** | — |
+
+**git 추적**: `git log -S m_DisableAudio` → `c256a58`(2026-08-31, "R5 Major 2건 수정 + 오늘 8개 라운드 통합").
+**그 커밋 메시지에 오디오는 한 줄도 없다.** 8개 라운드 묶음 커밋에 딸려 들어갔다.
+→ **근거는 소스 주석과 `Tasklist.md`에만 있고, 성능 문서와 커밋 이력에는 없다.** 이 부록이 그 구멍을 메운다.
+
+## C-2. 과제 2 — 지금 다시 잰 결과 (2026-09-02 18:55~19:10, M2 Pro / 내장 스피커 44.1kHz)
+
+**계기**: AUHAL로 기본 출력 장치를 열고 무음을 렌더하는 프로브(= FMOD가 소리 0개일 때 하던 일).
+`OutputIsSilence` 플래그는 일부러 세우지 않았다(세우면 OS가 최적화해 비교가 무의미해진다).
+**구간은 전부 벽시계 90초**, OFF/ON을 왕복했다.
+
+| 구간 | 프로브 | **`coreaudiod` CPU** | 프로브 자신 | `coreaudiod` 스레드 |
+|---|---|---:|---:|---:|
+| OFF-1 | 없음 | **0.00 s / 90s = 0.00%** | — | 7 |
+| ON512-1 | 512프레임 | **4.43 s = 4.92%** | 0.19% | 8 |
+| ON512-2 | 512프레임 | **4.55 s = 5.06%** | 0.19% | 8 |
+| OFF-2 | 없음 | **0.00 s = 0.00%** | — | 7 |
+| ON4096-1 | 4096프레임 | **3.74 s = 4.16%** | 0.12% | 8 |
+| OFF-3 | 없음 | **0.00 s = 0.00%** | — | 7 |
+
+**겹침이 없다. 그리고 되돌아온다**(OFF-2·OFF-3이 정확히 기준선) — 히스테리시스 없음.
+
+### C-2-a. 양성 대조 (이 저장소 필수 절차)
+
+- **계기가 살아 있는가**: 512 → **94.1 콜백/초**, 4096 → **11.8 콜백/초**. 비율 **8.0배**로
+  `44100/512 : 44100/4096`과 정확히 일치. 콜백은 추정이 아니라 **프로브가 직접 센 값**이다.
+- **다른 클라이언트로 재현되는가**: 프로브를 버리고 **`afplay`로 무음 WAV**를 틀었다(구현이 완전히 다르다).
+  `coreaudiod` **0.00% → 5.11% → 0.01%**. **두 계기가 일치한다.**
+- **★ 내 사전 예측 1건은 반증됐다.** 나는 "버퍼를 8배로 키우면 `coreaudiod` 비용도 크게 준다"고
+  예측했는데 **4.99% → 4.16%(−17%)에 그쳤다.** → `coreaudiod`의 비용은 **클라이언트 깨우기가 아니라
+  "장치 스트림이 열려 있다"는 사실 자체**에 붙는다. **버퍼 크기로 못 피한다.**
+- **자릿수 교차 검산**: `coreaudiod`의 7일 누적은 18,167s / 633,388s = **코어의 2.87%**.
+  "열려 있을 때 5.1% / 닫혀 있을 때 0%"라면 **장치가 56% 시간 열려 있었다**는 뜻이고,
+  음악·회의를 쓰는 일반 사용에 대해 무리 없는 값이다. **오늘의 5%는 오늘 부하 때문에 생긴 값이 아니다.**
+
+### C-2-b. ★ 절전 — 이게 CPU보다 크다
+
+프로브를 켜자마자 어서션이 **생겼다**:
+
+```
+pid 414(coreaudiod): PreventUserIdleSystemSleep
+  named: "com.apple.audio.BuiltInSpeakerDevice.context.preventuseridlesleep"
+  Resources: audio-out BuiltInSpeakerDevice
+```
+
+프로브를 끄면 **사라진다**(사후 확인 0건). `afplay`에서도 **똑같이** 뜬다.
+
+의미: **디스플레이는 꺼져도 맥은 안 잔다.** 24시간 상주 + 사용자가 절전으로 등록해 쓰는 앱에서
+이건 %가 아니라 **"밤새 깨어 있음 vs 자고 있음"**의 차이다.
+★ **와트는 측정하지 못했다**(이 기계는 AC 연결이고 `powermetrics`는 sudo가 필요하다) —
+**어서션의 존재는 실측, 전력량은 미측정.** 정직하게 구분해 적는다.
+
+그리고 이건 팀이 **방금 고친 위반의 재발**이다. `FramePacing.ApplyDisplaySleepPolicy()`가
+`Screen.sleepTimeout`을 `SystemSetting`으로 돌려놓아 원칙 2를 지켰는데,
+**이 어서션은 우리가 아니라 `coreaudiod`가 잡으므로 `sleepTimeout`으로는 못 막는다.**
+
+### C-2-c. 지금 빌드가 실제로 깨끗한지 (읽기 전용 확인)
+
+실행 중인 사용자 인스턴스(pid 30572)를 `sample`로 떴다.
+- 오디오 IO 스레드 **0개**, `FMOD`/`HALC`/`renderProc` 스택 **0건** (양성 대조: `Unity` 513건 · `Metal` 89건 매치)
+- 스레드 **48개** — `Tasklist.md`의 "53 → 48"과 일치
+- ★ 다만 `AudioToolbox`/`CoreAudio`/`caulk` **dylib 자체는 여전히 로드돼 있다**(16건).
+  `m_DisableAudio`는 **장치와 스레드**를 없애지 나머지 프레임워크 링크를 없애지 않는다. 비용은 없다(주소공간뿐).
+
+### C-2-d. 측정의 한계 (반드시 같이 읽을 것)
+
+- **기계가 조용하지 않았다.** 측정 내내 다른 라운드의 의도적 8코어 부하 시험이 돌아 총 CPU가
+  **900~990%**였다. 3-7절 규약의 "조용한 기계" 조건을 **못 지켰다.** OFF가 세 번 다 0.00이고
+  ON이 세 번 다 4.2~5.1이라 **판정 방향은 안 흔들리지만, 절대값은 조용한 기계에서 다시 재야 한다.**
+- **내장 스피커 기준값이다.** Apple Silicon 내장 스피커 경로는 `coreaudiod` 안에서 스피커 보호·
+  다이내믹 처리를 돌린다. 헤드폰/외장 DAC에서는 값이 다를 수 있다(**미측정**).
+- **FMOD가 아니라 내 프로브였다.** 프로브는 `memset`만 하고 FMOD는 DSP 그래프를 돈다 —
+  즉 **우리 프로세스 쪽 0.19%는 하한**이다. `coreaudiod`의 4~5%는 클라이언트 구현과 무관하다
+  (`afplay`로 확인).
+
+## C-3. 과제 3 — "켠다 vs 끈다"가 아니라 "필요할 때만 켠다"가 되는가
+
+### C-3-a. Unity 데스크톱에는 그 API가 **없다** (확인)
+
+- `m_EnableOutputSuspension`(이 프로젝트는 이미 **1**): Unity 공식 문서 —
+  *"Automatically suspends audio output after it detects the output has been silent for a long duration
+  **(editor only)**."* → **빌드에서 안 먹는다.** `design-sound`의 판정과 독립적으로 같은 결론.
+- `AudioSettings.Mobile.StartAudioOutput()/StopAudioOutput()`: **iOS/Android 전용.** 데스크톱 등가물 없음.
+- `AudioSettings.Reset()`은 **재구성**이지 **해제**가 아니다.
+→ **`m_DisableAudio=false`로 가는 순간, 소리 설정을 OFF로 둔 사용자에게도 장치가 24시간 열린다.**
+
+### C-3-b. 그래서 남는 길은 **네이티브 온디맨드**다 — 그리고 대가를 실측했다
+
+장치를 **열고 3초 쓰고 완전히 닫기**를 5회 반복했다(같은 포화 기계, 즉 비관적 조건):
+
+| 회차 | 인스턴스 생성+Initialize | `Start()` 호출 | **Start → 첫 샘플** | 닫은 뒤 0.3초 `IsRunning` |
+|---|---:|---:|---:|---:|
+| 1(콜드) | 11.5ms | 28.5ms | 8.1ms | **0** |
+| 2~5 | 1.3~2.1ms | 26.1~26.7ms | 9.7~10.0ms | **0** |
+
+- **콜드 총 48ms, 이후 ~38ms.** `design-sound`의 최우선 소리가 **집중 세션 시작·완료**라
+  40ms는 지각되지 않는다. 버튼 클릭음(가장 빡빡한 경우)에도 100ms 아래다.
+- ★ **닫으면 진짜 닫힌다** — `kAudioDevicePropertyDeviceIsRunning`이 0.3초 안에 0으로 돌아온다.
+  **즉 어서션도 함께 풀린다**(C-2-b의 사후 확인 0건이 그것이다).
+- **pop 여부는 판정하지 않는다** — 청감 판단이고 나는 못 잰다. `design-sound`에게 넘긴다.
+  (다만 열기 시점에 무음을 몇십 ms 흘려 페이드인하면 회피 가능한 종류다.)
+
+### C-3-c. 선택지 3개 — 숫자만 놓는다 (판정은 리더)
+
+| 안 | 상주 비용 | 절전 | 필요한 일 |
+|---|---|---|---|
+| **A. `m_DisableAudio=false`** | `coreaudiod` **+4~5%/코어 24시간** + 우리 쪽 ≥0.2% | **밤새 안 잠 (원칙 2 재위반)** | 없음(설정 한 줄) |
+| **B. 유지 + `Platform/` 네이티브 온디맨드** | **0%** (안 낼 때) / 재생 순간만 | **영향 없음** | macOS: AudioToolbox, Windows: WASAPI 또는 `PlaySound`. `Platform/MacOS`·`Platform/Windows`에 각각, 정책은 플랫폼 중립 위치 |
+| **C. 유지 (소리 없음)** | 0% | 영향 없음 | — |
+
+**B의 대가**: 소리 자산이 Unity `AudioClip`이 아니라 **디스크 WAV**(StreamingAssets)가 된다.
+DLC 사운드팩도 같은 형태여야 한다 — `design-sound`의 14키 · 6팩 구조와 **충돌하지 않는다**(키→파일 매핑).
+**B의 이득**: `design-sound`가 이미 정한 **"기본 OFF"**가 비용 0과 정확히 맞물린다.
+A에서는 OFF로 둔 사용자도 24시간 비용을 낸다 — **정책과 비용이 어긋난다.**
+
+## C-4. 플랫폼 영향
+
+- **macOS 영향**: 위 전부가 macOS 실측이다. **프로덕션 변경 0건** → 런타임 영향 0건.
+- **Windows 영향: 미확인(이 기계에 Windows가 없다).** 다만 **같은 함정이 있을 근거가 있다** —
+  Windows에서 열린 오디오 스트림은 `powercfg /requests`에 **"An audio stream is currently in use"**로
+  뜨며 시스템 절전을 막는 것이 널리 보고돼 있다. FMOD는 Windows에서 WASAPI를 쓴다.
+  → **검증 명령(관리자 권한)**: 오디오를 켠 빌드 실행 중
+  `powercfg /requests` 에 오디오 항목이 뜨는가 / `powercfg /sleepstudy`.
+  그리고 **`audiodg.exe`(오디오 장치 그래프)**가 macOS의 `coreaudiod` 자리다 —
+  **우리 프로세스 CPU만 보면 여기서도 25배를 놓친다.**
+- **모바일**: 해당 없음(스크린샷 백드롭 모드). 단 iOS/Android는 `AudioSettings.Mobile`로
+  **온디맨드가 공식 API로 가능**하다 — 데스크톱만 없다.
+
+## C-5. 리더 판정 요청
+
+1. **A(그냥 켜기)는 원칙 2를 다시 깬다.** 방금 고친 `ApplyDisplaySleepPolicy` 위반과 **같은 결과**를
+   다른 기구로 만든다. 이 사실을 모른 채 `m_DisableAudio`만 되돌리면 **회귀 테스트가 못 잡는다**
+   (어서션 주인이 우리가 아니라 `coreaudiod`라서).
+2. **B로 간다면 `dev-platform` 배정이 필요하다** — `Platform/` 소유이고 양 플랫폼 동시 작업이다.
+3. **조용한 기계에서 C-2 표를 1회 재측정**할 것을 권한다(3-7절 규약 충족). 방향은 안 바뀔 것으로 보나
+   절대값은 재야 한다. 계기는 `docs/perf/`에 넣어 뒀다 — 10분이면 끝난다.
+4. **부수 관측(내 라운드 밖, 별도 배정 판단 요청)**: `pmset -g assertions`에
+   `UserIsActive … "com.apple.iohideventsystem.queue.tickle.nxevent … process:StickMate"`가 떠 있었다
+   (타임아웃 597초, `TimeoutActionRelease`). 사용자 입력 때문일 수도 있고 앱이 HID 이벤트를
+   만들어서일 수도 있다. **오디오와 무관하게 절전을 미루는 경로**라 확인할 값어치가 있다.
+   나는 사용자가 그때 기계를 만졌는지 알 수 없어 **판정하지 않는다.**

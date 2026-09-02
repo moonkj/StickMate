@@ -114,11 +114,11 @@ namespace StickMate.Tests.EditMode
             {
                 if (Exempt.ContainsKey(file)) continue;
                 string source = File.ReadAllText(Path.Combine(InteractionDirectory, file));
-                if (source.IndexOf("IsSuspended", StringComparison.Ordinal) < 0) missing.Add(file);
+                if (!PollsAnySuspendChannel(source)) missing.Add(file);
             }
 
             Assert.IsEmpty(missing,
-                "클릭 차단막을 만들면서 전체화면 감지(IsSuspended)를 한 번도 읽지 않는 표면이 있다: " +
+                "클릭 차단막을 만들면서 전체화면 감지(IsSuspended / ArePanelsSuppressed)를 한 번도 읽지 않는 표면이 있다: " +
                 $"{string.Join(", ", missing)}. 이 표면은 전체화면 게임 위에 그대로 그려지고 그 사각형의 " +
                 "클릭까지 먹는다(절대 불변 원칙 2 위반). 사유가 있어 면제하려면 Exempt에 이유와 함께 " +
                 "적어라 — 조용히 빼지 마라.");
@@ -146,6 +146,157 @@ namespace StickMate.Tests.EditMode
                     $"면제 목록의 {entry.Key}가 더 이상 존재하지 않는다 — 면제도 함께 지워라. 사유: {entry.Value}");
                 Assert.IsNotEmpty(entry.Value, $"{entry.Key}의 면제 사유가 비어 있다.");
             }
+        }
+
+        // ============================================================================
+        // 등급 1(ForeignFullscreenTier.PanelsOnly) — 2026-09-02 출시 Blocker
+        // ============================================================================
+        //
+        // 왜 <c>IsSuspended</c>만으로는 부족해졌는가:
+        // 페르소나 `재현`이 실기에서 재현한 것 — 카테고리를 선언하지 않은 앱(Zoom/Teams/Keynote 부류)을
+        // 네이티브 전체화면으로 올리면 <c>IsSuspended</c>가 <b>영원히 false</b>이고, 그 위에 정보창
+        // 877x853pt(화면 1512x982pt의 <b>면적 50.38%</b>)가 그대로 뜬 채 그 사각형의 클릭까지 먹었다.
+        // 그래서 표면이 읽어야 하는 값이 <c>ArePanelsSuppressed</c>로 바뀌었고, 이 검사가 그것을 잠근다.
+        //
+        // ★ <b>차단막(Blocker)과 히트타깃(ClickTarget)을 구분한다</b> — 리더 판정으로 톱니는 등급 2에
+        //   남았다(등급 1의 안전판이 "복구는 톱니 1클릭"인데, 톱니를 등급 1에 넣으면 그 안전판이 자기
+        //   자신을 지운다). 톱니가 소유한 것은 아이콘 크기의 <b>히트타깃</b>이지 화면을 덮는 차단막이
+        //   아니므로, 이 검사의 대상은 이름이 "Blocker"로 끝나는 소유자뿐이다.
+
+        /// <summary>"Blocker" 표식으로 GameObject를 만드는가 — 화면/패널을 덮는 <b>차단막</b> 소유자.
+        /// 톱니의 <c>InfoGearClickTarget</c>(아이콘 크기 히트타깃)은 여기 잡히지 않는다.</summary>
+        private static bool CreatesFullRectBlocker(string source)
+        {
+            const string needle = "new GameObject(";
+            int i = 0;
+            while ((i = source.IndexOf(needle, i, StringComparison.Ordinal)) >= 0)
+            {
+                int start = i + needle.Length;
+                int end = source.IndexOf('\n', start);
+                if (end < 0) end = source.Length;
+                if (source.IndexOf("Blocker", start, end - start, StringComparison.Ordinal) >= 0) return true;
+                i = start;
+            }
+            return false;
+        }
+
+        private static bool PollsAnySuspendChannel(string source)
+            => source.IndexOf("IsSuspended", StringComparison.Ordinal) >= 0
+               || source.IndexOf("ArePanelsSuppressed", StringComparison.Ordinal) >= 0;
+
+        private static bool PollsPanelChannel(string source)
+            => source.IndexOf("ArePanelsSuppressed", StringComparison.Ordinal) >= 0;
+
+        /// <summary>
+        /// <b>아직 배선되지 않은 차단막 소유자</b> — 사유와 함께. 비어 있는 것이 목표 상태다.
+        ///
+        /// <para>여기 있는 항목은 <c>Assert.Fail</c>이 아니라 <c>Assert.Ignore</c>로 떨어진다.
+        /// 러너에 <b>"건너뜀"으로 계속 보이게</b> 하려는 것이다(CLAUDE.md 플랫폼 갭 관례와 같은 처방) —
+        /// 빨간불로 두면 다른 진짜 실패를 가리고, 조용히 통과시키면 잊힌다.</para>
+        ///
+        /// <para>★ <b>2026-09-02 현재 비어 있다.</b> 유일한 항목이던 <c>TodoPostItWidget.cs</c>가
+        /// <c>_agent.ArePanelsSuppressed</c>로 배선되어 지워졌다(등급 배선 라운드 시점에는
+        /// 자동 접힘 P0 작업이 같은 파일을 점유 중이라 리더가 파일을 갈라 제외했던 항목이다).
+        /// <b>비어 있는 것이 기본값이자 목표 상태</b>이고, 그 사실을
+        /// <see cref="미배선_목록은_실제로_존재하고_아직_배선되지_않은_파일만_담는다"/>가
+        /// 기대값으로 못박는다 — 빈 컬렉션 위의 <c>foreach</c>는 아무것도 재지 않으면서 초록이 된다
+        /// (이 저장소의 거짓 통과 #5).</para>
+        /// </summary>
+        private static readonly Dictionary<string, string> PendingPanelWiring = new Dictionary<string, string>();
+
+        [Test]
+        public void 차단막_소유자는_등급1_창구를_읽는다()
+        {
+            var owners = new List<string>();
+            foreach (string path in Directory.GetFiles(InteractionDirectory, "*.cs", SearchOption.AllDirectories))
+            {
+                if (CreatesFullRectBlocker(File.ReadAllText(path))) owners.Add(Path.GetFileName(path));
+            }
+            owners.Sort(StringComparer.Ordinal);
+
+            // ★ 0개를 찾고 전부 통과하는 것을 먼저 막는다(이 저장소의 거짓 통과 #5 형태).
+            //   2026-09-02 현재 정확히 4개: CharacterInfoWindow / PopoverPanel / SettingsWindow / TodoPostItWidget.
+            Assert.GreaterOrEqual(owners.Count, 4,
+                $"차단막(Blocker) 소유자를 {owners.Count}개밖에 못 찾았다({string.Join(", ", owners)}) — " +
+                "이름 규약이 바뀌었다면 CreatesFullRectBlocker를 함께 고쳐라.");
+            CollectionAssert.Contains(owners, "PopoverPanel.cs",
+                "팝오버 기반 클래스가 차단막 소유자로 잡히지 않는다 — 스캔이 깨졌다.");
+
+            var missing = new List<string>();
+            foreach (string file in owners)
+            {
+                if (Exempt.ContainsKey(file)) continue;
+                if (!PollsPanelChannel(File.ReadAllText(Path.Combine(InteractionDirectory, file)))) missing.Add(file);
+            }
+
+            var stillPending = new List<string>();
+            var unexpected = new List<string>();
+            foreach (string file in missing)
+            {
+                if (PendingPanelWiring.ContainsKey(file)) stillPending.Add(file);
+                else unexpected.Add(file);
+            }
+
+            Assert.IsEmpty(unexpected,
+                "차단막을 만들면서 등급 1 창구(ArePanelsSuppressed)를 읽지 않는 표면이 있다: " +
+                $"{string.Join(", ", unexpected)}. 이 표면은 게임이 아닌 전체화면 앱(발표·화상회의) 위에 " +
+                "그대로 그려지고 그 사각형의 클릭까지 먹는다 — 정보창 하나가 화면의 50.38%를 덮은 것이 " +
+                "이번 출시 Blocker의 실측이다. IsSuspended는 등급 1에서 false이므로 그것만으로는 부족하다.");
+
+            if (stillPending.Count > 0)
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.Append("등급 1 배선이 아직 안 끝난 차단막 소유자 ").Append(stillPending.Count).Append("개: ");
+                foreach (string file in stillPending)
+                {
+                    sb.Append(file).Append(" — ").Append(PendingPanelWiring[file]).Append(' ');
+                }
+                Assert.Ignore(sb.ToString());
+            }
+        }
+
+        [Test]
+        public void 미배선_목록은_실제로_존재하고_아직_배선되지_않은_파일만_담는다()
+        {
+            // ★ 2026-09-02 — PendingPanelWiring이 <b>비었다</b>. 빈 컬렉션 위의 foreach는 아무것도
+            //   단언하지 않으면서 초록불이 된다(같은 파일의 Exempt가 이미 겪은 모양, 거짓 통과 #5).
+            //   그래서 "비어 있음"을 <b>기대값으로 명시</b>한다. 누군가 미배선을 다시 추가하면 이 단언이
+            //   먼저 걸려서, 아래 파일존재/역방향 검사가 실제로 도는지 눈으로 확인하게 만든다.
+            Assert.IsEmpty(PendingPanelWiring,
+                "미배선 항목이 새로 생겼다: " + string.Join(", ", PendingPanelWiring.Keys) + ". " +
+                "미배선 자체는 허용되지만(사유를 적었다면) 이 단언을 그때 함께 고쳐라 — 이 줄이 없으면 " +
+                "아래 foreach는 빈 목록 위에서 아무것도 재지 않는 초록불이 된다. 그리고 항목이 있는 동안 " +
+                "차단막_소유자는_등급1_창구를_읽는다는 Assert.Ignore로 떨어져 러너에서 사실상 사라진다.");
+
+            // 배선이 끝났는데 목록만 남으면 이 테스트는 <b>영원히 Ignore</b>가 되어 러너에서 사라진 것과
+            // 같아진다. 그래서 "이미 고쳐진 파일이 목록에 남아 있는가"를 반대 방향으로도 잰다.
+            foreach (KeyValuePair<string, string> entry in PendingPanelWiring)
+            {
+                string path = Path.Combine(InteractionDirectory, entry.Key);
+                Assert.IsTrue(File.Exists(path),
+                    $"미배선 목록의 {entry.Key}가 더 이상 존재하지 않는다 — 목록도 함께 지워라. 사유: {entry.Value}");
+                Assert.IsNotEmpty(entry.Value, $"{entry.Key}의 미배선 사유가 비어 있다.");
+                Assert.IsFalse(PollsPanelChannel(File.ReadAllText(path)),
+                    $"{entry.Key}는 이미 ArePanelsSuppressed를 읽는다 — 배선이 끝났으니 PendingPanelWiring에서 " +
+                    "지워라. 남겨 두면 위 테스트가 영원히 Ignore로 떨어져 러너에서 사실상 사라진다.");
+            }
+        }
+
+        [Test]
+        public void 네거티브컨트롤_등급1_스캔이_히트타깃을_차단막으로_보지_않는다()
+        {
+            // ★ 양성 대조 없는 "없음" 판정을 만들지 않는다(TEAM.md 거짓 통과 #4).
+            Assert.IsTrue(CreatesFullRectBlocker("var go = new GameObject(\"SettingsClickBlocker\");"));
+            Assert.IsTrue(CreatesFullRectBlocker("var go = new GameObject(GetType().Name + \"Blocker\");"));
+            Assert.IsFalse(CreatesFullRectBlocker("var hitGo = new GameObject(\"InfoGearClickTarget\");"),
+                "톱니 히트타깃까지 차단막으로 보면 등급 2로 남긴 리더 판정을 테스트가 뒤집는다.");
+            Assert.IsFalse(CreatesFullRectBlocker("var go = new GameObject(\"TodoRow\");"));
+
+            Assert.IsTrue(PollsPanelChannel("if (_agent.ArePanelsSuppressed) return;"));
+            Assert.IsFalse(PollsPanelChannel("if (_agent.IsSuspended) return;"),
+                "IsSuspended만 읽는 파일을 등급 1 배선으로 세면 이 검사 전체가 무의미해진다.");
+            Assert.IsTrue(PollsAnySuspendChannel("if (_agent.IsSuspended) return;"));
+            Assert.IsFalse(PollsAnySuspendChannel("if (_open) return;"));
         }
 
         [Test]

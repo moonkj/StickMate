@@ -342,8 +342,24 @@ namespace StickMate.Tests.EditMode
             }
 
             float cardAspect = (maxY - minY) / (maxX - minX);
-            float bodyAspect = AccessoryShapeBuilder.PendantHalfHeightRatio
-                               / AccessoryShapeBuilder.PendantHalfWidthRatio;
+
+            // ★ 2026-09-02 — 몸 종횡비를 <b>실제로 그려진 마름모에서 잰다</b>. 목 형상이 에셋으로
+            //   내려가면서(B-2 파일럿) PendantHalfWidth/HeightRatio 상수는 사라졌다. 여기서 그 값을
+            //   다시 적으면 "카드와 몸을 맞춘다"는 이 검사가 <b>에셋이 아니라 테스트 사본</b>과
+            //   맞추게 된다 — 그 순간 에셋만 고친 날 조용히 통과한다.
+            AccessoryShapeBuilder.Shape bodyDiamond = AccessorySilhouetteMetrics.Find(
+                AccessorySilhouetteMetrics.Build(AccessorySilhouetteMetrics.Rig(),
+                    EquipmentSlot.Neck, AccessoryShapeBuilder.NeckPendant), "Pendant");
+
+            float bMinX = float.MaxValue, bMaxX = float.MinValue, bMinY = float.MaxValue, bMaxY = float.MinValue;
+            for (int i = 0; i < bodyDiamond.Points.Length; i++)
+            {
+                bMinX = Mathf.Min(bMinX, bodyDiamond.Points[i].x);
+                bMaxX = Mathf.Max(bMaxX, bodyDiamond.Points[i].x);
+                bMinY = Mathf.Min(bMinY, bodyDiamond.Points[i].y);
+                bMaxY = Mathf.Max(bMaxY, bodyDiamond.Points[i].y);
+            }
+            float bodyAspect = (bMaxY - bMinY) / (bMaxX - bMinX);
 
             // ---- 이 축은 언제나 살아 있다: 원과 갈리는가 ----
             Assert.GreaterOrEqual(cardAspect, 2f,
@@ -354,8 +370,8 @@ namespace StickMate.Tests.EditMode
             //   몸과 같은 값(0.64/0.30 = 2.1333)이 됐다. 유예 블록이 스스로 지시한 대로,
             //   그 블록을 지우고 이 한 줄로 되돌린다.
             Assert.AreEqual(bodyAspect, cardAspect, 0.01f,
-                $"폴백 마름모 종횡비 {cardAspect:F4} vs 몸 {bodyAspect:F4}. 몸 상수" +
-                "(PendantHalfHeightRatio / PendantHalfWidthRatio)가 움직였다면 폴백도 다시 구워야 합니다 — " +
+                $"폴백 마름모 종횡비 {cardAspect:F4} vs 몸 {bodyAspect:F4}. 몸 마름모" +
+                "(equip_neck_pendant.asset의 wornShapes 'Pendant')가 움직였다면 폴백도 다시 구워야 합니다 — " +
                 "옛 사고: 몸이 0.28->0.30 / 0.62->0.64로 가고 폴백만 2.2143에 남았습니다.");
         }
 

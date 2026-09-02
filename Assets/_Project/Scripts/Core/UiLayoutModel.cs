@@ -25,7 +25,9 @@ namespace StickMate.Core
     /// </summary>
     public static class UiLayoutModel
     {
-        /// <summary>사용자가 톱니를 한 번이라도 옮겼는가. false면 위젯이 기본 위치(우상단)를 쓴다.</summary>
+        /// <summary>사용자가 톱니를 한 번이라도 옮겼는가. false면 위젯이 기본 위치(우상단)를 쓴다.
+        /// <para>세우는 문은 <see cref="SetGearCenter"/>, <b>내리는 문은
+        /// <see cref="ClearGearCenter"/></b>(설정창의 [처음 자리로]) 둘뿐이다.</para></summary>
         public static bool HasGearCenter { get; private set; }
 
         /// <summary>큰 기어 중심의 위치(창 좌상단 원점, OS 포인트). <see cref="HasGearCenter"/>가
@@ -97,6 +99,38 @@ namespace StickMate.Core
             IsDirty = true;
         }
 
+        /// <summary>
+        /// ★ <b>사용자가 옮긴 톱니 위치를 버리고 기본 위치(우상단)로 되돌린다</b> — 2026-09-02 P0.
+        ///
+        /// <para><b>왜 따로 만들었나</b>: <see cref="SetGearCenter"/>는 <see cref="HasGearCenter"/>를
+        /// <b>true로만</b> 만들고, 그것을 false로 되돌리는 경로는 <see cref="ResetForTesting"/> 하나뿐이었다.
+        /// 그런데 그건 <b>테스트 계약</b>이다(정적 상태 격리용이라 배율·구석 패널까지 통째로 밀어 버린다).
+        /// 그래서 톱니를 실수로 화면 구석에 끌어다 놓으면 <b>되돌릴 방법이 프로덕션에 존재하지 않았고</b>,
+        /// 그 자리는 세이브에 앉아 재시작해도 유지됐다. 이 메서드가 그 문이다
+        /// (UI: 설정창 [일반] &gt; <c>화면 위 UI</c> &gt; <c>톱니 위치 [처음 자리로]</c>, docs/UX_FLOW.md 41-8).</para>
+        ///
+        /// <para><b>스키마 버전은 올리지 않는다</b>: 이건 새 필드가 아니라 <c>gearPositionSaved</c>라는
+        /// <b>기존 필드의 값 변경</b>(true → false)이다. <see cref="CharacterSaveStore"/>의
+        /// <c>CurrentVersion</c> 주석이 정한 규칙 — <i>"필드의 「없음」이 그 필드의 0값과 다른 뜻일 때만
+        /// 버전을 강제한다"</i> — 에 비추면 여기서 바뀌는 것은 뜻이 아니라 값뿐이다.</para>
+        ///
+        /// <para>좌표도 함께 0으로 지운다. 플래그가 false인데 좌표만 남아 있으면 다음 사람이
+        /// "값이 있으니 쓰겠다"고 읽을 여지가 생긴다(<see cref="RestoreFromSave"/>가 같은 이유로
+        /// 실패 시 <see cref="Vector2.zero"/>를 넣는다).</para>
+        /// </summary>
+        /// <returns>실제로 되돌릴 것이 있었는가. 이미 기본 위치면 false이고 <see cref="IsDirty"/>도
+        /// 건드리지 않는다 — 아무것도 안 바뀐 저장으로 디스크를 두드리지 않기 위해서다
+        /// (하루 종일 켜져 있는 앱).</returns>
+        public static bool ClearGearCenter()
+        {
+            if (!HasGearCenter) return false;
+
+            HasGearCenter = false;
+            GearCenterPoints = Vector2.zero;
+            IsDirty = true;
+            return true;
+        }
+
         /// <summary>저장 파일 복원 전용(Core/CharacterSaveStore.cs). 이벤트를 쏘지 않는 이유는
         /// 다른 모델의 RestoreFromSave와 같다(복원은 변화가 아니라 초기 상태 확정).</summary>
         internal static void RestoreFromSave(bool hasCenter, float centerXPoints, float centerYPoints)
@@ -121,7 +155,11 @@ namespace StickMate.Core
 
         internal static void MarkSaved() => IsDirty = false;
 
-        /// <summary>테스트/디버그 전용 완전 초기화(정적 상태가 테스트 사이에 새지 않게).</summary>
+        /// <summary>테스트/디버그 전용 완전 초기화(정적 상태가 테스트 사이에 새지 않게).
+        /// <para>★ <b>프로덕션에서 부르지 마라.</b> 이건 이 모델이 담은 <b>전부</b>(톱니 위치 + 캐릭터
+        /// 배율 + 죽은 구석 패널 플래그)를 한꺼번에 미는 테스트 계약이고, <see cref="IsDirty"/>도
+        /// false로 눕혀 "되돌렸다"는 사실이 저장에 내려가지 <b>않는다</b>. 사용자에게 톱니 위치를
+        /// 되돌려 주는 문은 <see cref="ClearGearCenter"/>다.</para></summary>
         public static void ResetForTesting()
         {
             HasGearCenter = false;

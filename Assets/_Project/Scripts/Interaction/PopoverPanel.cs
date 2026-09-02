@@ -279,14 +279,20 @@ namespace StickMate.Interaction
             using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.UiWindows);   // [스톨구간] 계측
             if (!_open) return;
 
-            // ★★ 절대 불변 원칙 2(비침해) — 전체화면 게임이 감지되면 즉시 거둔다.
+            // ★★ 절대 불변 원칙 2(비침해) — 전체화면 앱이 감지되면 즉시 거둔다.
             // StickmanAgent.Suspend()가 끄는 것은 Awake에서 캐시한 캐릭터 렌더러뿐이라, 이 캔버스와
-            // 씬 루트 BoxCollider2D 차단막은 그대로 남아 있었다. macOS 히트테스트가 커서 아래 픽셀
-            // 알파를 보므로 남아 있으면 <b>전체화면 게임 위에서 클릭까지 먹는다</b>.
+            // 씬 루트 BoxCollider2D 차단막은 그대로 남아 있었다. 히트테스트가 커서 아래 Collider2D를
+            // 보므로 남아 있으면 <b>전체화면 앱 위에서 클릭까지 먹는다</b>.
             // 접힘 연출(0.12초) 대신 Hide()로 한 프레임에 치우는 이유: 이건 사용자가 닫은 게 아니고,
             // 그 0.12초 동안에도 차단막이 살아 있기 때문이다. 복귀 시 강제로 다시 열지는 않는다
             // (WindowCrashDirector가 오버레이를 되살리지 않는 것과 같은 판단).
-            if (Agent != null && Agent.IsSuspended)
+            //
+            // ★★★ 2026-09-02 — 읽는 값이 <c>IsSuspended</c>에서 <c>ArePanelsSuppressed</c>로 바뀌었다.
+            //    팝오버는 <b>등급 1</b>(기하만 일치 — 게임이 아닌 전체화면 앱)에서도 걷어야 한다.
+            //    페르소나 `재현` 실측: 카테고리를 선언하지 않은 화상회의/발표 앱을 전체화면으로 올리면
+            //    예전 조건은 <b>영원히 false</b>였고 패널이 그 위에 그대로 떠 클릭을 먹었다.
+            //    ArePanelsSuppressed는 IsSuspended를 항상 포함하므로 전체화면 게임에서의 동작은 불변이다.
+            if (Agent != null && Agent.ArePanelsSuppressed)
             {
                 if (!_closing) OnClosing();   // 이미 닫히는 중이면 Close()가 이미 불렀다(이중 호출 금지).
                 Hide();

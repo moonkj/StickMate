@@ -940,6 +940,67 @@ namespace StickMate.States
             }
         }
 
+        // ================================================================================
+        // ★★ 방향 부호(facing) 소유권 — 위 두 축(세로 접지 / 가로 이동)에 이어지는 **세 번째 축**
+        //    (2026-09-02, 페르소나 소은 실측 + 리더 코드 확인: "활쏘기 접근 중 캐릭터가 뒷걸음친다")
+        // ================================================================================
+        // 무엇이 고장났나(소스에서 확정, 추측 아님):
+        //   StickmanAgent.Update의 순서는 _autoWander.Tick → _machine.Tick → _blackboard.TickPose다.
+        //   활쏘기 접근 페이즈에서 ArcheryState.TickApproach()가 진행 방향으로 SetFacingSign(dir)을
+        //   부르지만, **바로 뒤에 도는 TickPose가 배회 AI의 MoveInputX 부호로 그 값을 덮어썼다.**
+        //   활쏘기는 과녁 반대쪽으로 한 걸음 물러선 자리에서 쏘므로(ArcheryDirector.BackStepRatio)
+        //   접근 방향은 **과녁의 반대쪽**인데, 배회 AI는 그 사실을 모른 채 직전까지 걷던 방향을 계속
+        //   내보낸다. 그 둘이 어긋난 프레임이 곧 "발은 왼쪽으로 가는데 몸은 오른쪽을 보는" 그림
+        //   — 유저 눈에는 미끄러짐(문워크)과 같은 계열이다.
+        //
+        // 왜 상태 ID 목록인가: 위 두 안전망과 같은 어법을 쓴다. FacingLocked(동적 플래그)만으로는
+        //   "이 상태는 원래 자기가 방향을 정한다"를 표현할 수 없다 — 그 플래그는 활쏘기의 **조준
+        //   구간**을 위한 것이고, 접근 구간에는 일부러 꺼져 있어야 한다(걸으면서 방향이 바뀐다).
+        //   두 개념을 한 플래그에 겹치면 "고정"의 의미가 넓어져 다른 연출이 이상해진다(리더 경고).
+
+        /// <summary>
+        /// 이 상태 ID가 <b>바라보는 방향 부호를 스스로 소유하는가</b>(= <see cref="TickPose"/>가 배회
+        /// AI의 이동 의도로 방향을 덮으면 안 되는가).
+        /// <see cref="IsGroundKeepingSelfManaged"/> / <see cref="IsHorizontalMotionSelfManaged"/>의
+        /// 세 번째 축이며, 어법도 같다 — <b>제외목록</b>이라 여기 없는 상태는 전부 배회 AI가 방향을 준다.
+        ///
+        /// <para>★ <b>멤버십 규칙은 하나다</b>: <c>_blackboard.SetFacingSign(...)</c>을 스스로 부르는
+        /// 상태는 반드시 여기 들어와야 한다. 안 넣으면 그 호출이 같은 프레임 뒤쪽 <c>TickPose</c>에
+        /// 덮여 <b>죽은 코드</b>가 된다(활쏘기 접근 페이즈에서 실제로 일어난 일).
+        /// 이 규칙은 <c>Tests/EditMode/HorizontalMotionOwnershipContractTests</c>가 소스를 읽어
+        /// 전수 감사하므로, 새 상태를 만드는 사람이 기억하지 못해도 러너가 말해 준다.</para>
+        ///
+        /// <para>★ <b>여기 넣으면 안 되는 것</b>: 수평 이동을 배회 AI의 <c>MoveInputX</c>에서 그대로
+        /// 유도하는 상태(Walk/Jump/Fall/LedgeHang 등)다. 그런 상태에서는 이동 의도가 곧 진행 방향이라
+        /// 배회 AI가 주는 부호가 <b>정답</b>이고, 여기 넣으면 그 방향 갱신이 통째로 멎어 캐릭터가 한쪽만
+        /// 보고 걷는다. 즉 "수평 자기소유 ⇒ 방향 자기소유"는 <b>성립하지 않는다</b>(Walk가 반례다).
+        /// 판정 기준은 "수평을 소유하는가"가 아니라 <b>"이동 방향을 MoveInputX가 아닌 다른 곳에서
+        /// 정하는가"</b>이다.</para>
+        /// </summary>
+        public static bool IsFacingSelfManaged(StickmanStateId id)
+        {
+            switch (id)
+            {
+                // 접근 보행은 목표 X(과녁 반대쪽 한 걸음)를 향하고, 도착 후에는 과녁을 겨눈다.
+                // 두 구간 모두 방향의 근거가 배회 AI가 아니라 이 상태의 좌표 계산이다.
+                case StickmanStateId.Archery:
+                // 오르는 벽을 바라본다(ParkourClimbState.Enter의 SetFacingSign). 등지고 오르면
+                // 등반 포즈의 손이 뒤로 뻗는다 — 그 상태의 주석이 이유를 적어 두었다.
+                case StickmanStateId.ParkourClimb:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// 이번 프레임에 <b>배회 AI의 이동 의도가 방향 부호를 정해도 되는가</b>.
+        /// <see cref="TickPose"/>의 실제 판정식이며, 테스트도 이 함수를 그대로 읽는다 —
+        /// 같은 판정을 두 곳에서 따로 적으면 반드시 어긋난다(이 저장소가 두 번 겪은 실패 유형).
+        /// </summary>
+        public bool WanderIntentMayDriveFacing(StickmanStateId id)
+            => !FacingLocked && !IsFacingSelfManaged(id);
+
         /// <summary>
         /// StickmanAgent.Update()가 상태 Tick **직후** 1회 호출하는 접지 유지 안전망(위 문서 참고).
         /// 상태가 이미 GroundedTick()을 불렀거나, 그 상태가 접지를 스스로 관리하는 종류이거나,
@@ -1946,7 +2007,11 @@ namespace StickMate.States
             float move = MoveInputX;
             // FacingLocked: 활쏘기처럼 한 방향을 겨누는 연출 중에는 배회 AI의 이동 의도로 몸이
             // 돌아가면 안 된다(그 필드 문서 참고).
-            if (!FacingLocked && Mathf.Abs(move) > deadzone)
+            // ★ 2026-09-02 — 판정을 WanderIntentMayDriveFacing 하나로 모았다. 예전에는 여기서
+            // FacingLocked만 봤는데, 그 플래그는 활쏘기 **조준** 구간 전용이라 **접근 구간**에서는
+            // 꺼져 있고, 그 사이 배회 AI의 이동 의도가 상태가 방금 정한 방향을 매 프레임 덮었다
+            // (IsFacingSelfManaged 문서의 실측 사례).
+            if (WanderIntentMayDriveFacing(Machine.CurrentStateId) && Mathf.Abs(move) > deadzone)
             {
                 _facingSign = move >= 0f ? 1f : -1f;
                 pose.SetFacing(_facingSign);

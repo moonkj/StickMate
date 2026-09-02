@@ -1,0 +1,114 @@
+==============================================================================
+출하 여부 재분류  (census.py OTHER 1125건)
+==============================================================================
+UI 싱크 파일 19개 / DLG 생산 파일 12개
+
+--- UI : 259건 / 14파일 ---
+      75  Interaction/SettingsWindow.cs
+      50  Interaction/CharacterInfoWindow.cs
+      28  Interaction/ActionCommandPopover.cs
+      25  Interaction/FocusSessionPopover.cs
+      18  Dialogue/DialogueBubbleRenderer.cs
+      18  Interaction/GearRadialMenuWidget.cs
+      18  Interaction/TodoBoardPopover.cs
+       9  Interaction/CharacterInfoWindow.Cards.cs
+       5  Interaction/CharacterInfoWindow.Tabs.cs
+       4  Interaction/CharacterInfoWindow.Inventory.cs
+       3  Interaction/PopoverPanel.cs
+       3  Interaction/TodoPostItWidget.cs
+       2  Interaction/CharacterInfoWindow.Input.cs
+       1  Interaction/SettingsControls.cs
+
+--- DLG : 37건 / 8파일 ---
+      13  Dialogue/AmbientChatter.cs
+       6  Dialogue/DialogueIntent.cs
+       5  States/RunawayState.cs
+       4  States/ParkourClimbState.cs
+       3  States/LedgeHangState.cs
+       3  States/RagdollState.cs
+       2  States/AttackState.cs
+       1  States/WindowTheftState.cs
+
+--- DATA : 206건 / 16파일 ---
+      57  Platform/FramePacing.cs   <- FramePacing 를 Interaction/CharacterInfoWindow.Input.cs 가 호출
+      30  Platform/StallAttribution.cs   <- StallAttribution 를 Dialogue/DialogueBubbleRenderer.cs 가 호출
+      29  Core/ItemCatalog.cs   <- ItemCatalog 를 Interaction/CharacterInfoWindow.Cards.cs 가 호출
+      20  States/GroundSensor.cs   <- GroundSensor 를 States/IdleState.cs 가 호출
+      14  Core/CharacterSaveStore.cs   <- CharacterSaveStore 를 Interaction/CharacterInfoWindow.Cards.cs 가 호출
+      12  Core/StickmanAgent.cs   <- StickmanAgent 를 Interaction/SettingsWindow.cs 가 호출
+       8  Platform/ScreenCoordinateConverter.cs   <- ScreenCoordinateConverter 를 Dialogue/DialogueBubbleRenderer.cs 가 호출
+       8  Platform/ViewerPresence.cs   <- FramePacingPolicy 를 Interaction/CharacterInfoWindow.Input.cs 가 호출
+       7  Core/EquipmentModel.cs   <- EquipmentModel 를 Interaction/CharacterInfoWindow.Cards.cs 가 호출
+       7  Interaction/CharacterPortraitStage.cs   <- CharacterPortraitStage 를 Interaction/CharacterInfoWindow.cs 가 호출
+       3  Core/CharacterScaleController.cs   <- CharacterScaleController 를 Interaction/SettingsWindow.cs 가 호출
+       3  States/RagdollImpactResolver.cs   <- RagdollImpactResolver 를 States/RagdollState.cs 가 호출
+       3  Interaction/StressGaugeRenderer.cs   <- StressGaugeRenderer 를 Interaction/CharacterInfoWindow.cs 가 호출
+       2  Core/CharacterStatsModel.cs   <- CharacterStatsModel 를 Interaction/CharacterInfoWindow.cs 가 호출
+       2  Core/CommandAvailability.cs   <- CommandAvailability 를 Interaction/ActionCommandPopover.cs 가 호출
+       1  Core/CharacterProgressionModel.cs   <- CharacterProgressionModel 를 Interaction/CharacterInfoWindow.cs 가 호출
+
+--- DIAG : 623건 / 57파일 ---
+      92  Platform/OverlayCompositionSnapshot.cs
+      49  Core/StickMateDisplayNames.cs
+      38  Interaction/AppControlDirector.cs
+      36  Platform/Windows/WindowsTopmostWatchdog.cs
+      33  Platform/MonitorTopologyReport.cs
+      33  Platform/MacOS/MacWindowService.cs
+      30  Platform/Windows/Win32WindowService.cs
+      26  Platform/Windows/WindowsCompositionProbe.cs
+      21  Platform/MacOS/MacOverlayStateEnforcer.cs
+      15  Interaction/WindowTheftDirector.cs
+      12  Platform/LayeredHybridPolicy.cs
+      11  Platform/FallbackPlatformWindowService.cs
+      11  Platform/ReservedBarRevealDirector.cs
+      11  Platform/ReservedBarRevealPolicy.cs
+      11  Interaction/InfoGearIconWidget.cs
+      10  Core/KoreanParticle.cs
+      10  Platform/Windows/WindowsFootholdFilter.cs
+      10  Platform/Windows/WindowsLayeredHybridResolver.cs
+       9  Platform/OverlayMonitorChoicePolicy.cs
+       9  Platform/TopmostBandOcclusion.cs
+       9  States/RagdollRig.cs
+       8  Platform/Windows/WindowsOverlayStateEnforcer.cs
+       8  States/GroundLossHangState.cs
+       8  Interaction/ArcheryDirector.cs
+       8  Interaction/FocusWatchRenderer.cs
+       7  Platform/DockPhysicsStep.cs
+       7  Platform/StrokeWidthDiagnostics.cs
+       7  Platform/Windows/WindowsGameProcessProbe.cs
+       7  Interaction/CharacterProgressionDirector.cs
+       5  Core/EquipmentDebugUnlock.cs
+       5  Core/ItemCatalogDigest.cs
+       5  Platform/OverlayGeometryOscillationGuard.cs
+       5  Platform/RenderQualityTuner.cs
+       4  Core/StickMateDevTools.cs
+       4  Platform/FullscreenSuspendPolicy.cs
+       4  Platform/OverlayStateReapplyPolicy.cs
+       4  Platform/MacOS/MacSpaceBehaviorNative.cs
+       4  Interaction/GraffitiRenderer.cs
+       4  Interaction/HardwareReactionRenderer.cs
+       3  Platform/DisplayTopologyWatcher.cs
+       3  States/ArcheryState.cs
+       3  Interaction/IdleAmbientMotionRenderer.cs
+       3  Interaction/StickmanClickHitbox.cs
+       2  Platform/ReservedBarRestoreLedger.cs
+       2  States/FallState.cs
+       2  States/StickmanBlackboard.cs
+       2  States/ThrowTumbleState.cs
+       2  Interaction/HardwareReactionDirector.cs
+       2  Interaction/WindowCrashDirector.cs
+       2  Interaction/WindowTheftRenderer.cs
+       1  Platform/RepeatedLogFolder.cs
+       1  Platform/SpikeTierLedger.cs
+       1  Platform/StallAttributionProbe.cs
+       1  Interaction/GraffitiDirector.cs
+       1  Interaction/RunawayDirector.cs
+       1  Interaction/TodoReminderDirector.cs
+       1  Interaction/WindowCrashRenderer.cs
+
+==============================================================================
+★ 출하 UI/대사 표면(.cs) = UI 259 + DLG 37 + DATA 206 = 502건
+★ 진단/로그/예외(비출하) = 623건
+★ .asset(디코드 후)      = 84건
+★ 1.0 번역 대상 합계      = 586건
+==============================================================================

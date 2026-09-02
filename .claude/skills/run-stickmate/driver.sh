@@ -12,13 +12,39 @@ BIN="$APP/Contents/MacOS/StickMate"
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="${STICKMATE_RUN_DIR:-/tmp/stickmate-run}"
 PID_FILE="$RUN_DIR/stickmate.pid"
-LOG_FILE="$RUN_DIR/stickmate.log"
+# ★ 2026-09-02 (디버거) — 로그를 **실행마다 새 파일**로 가른다.
+#   왜: 종전에는 모든 인스턴스가 $RUN_DIR/stickmate.log 한 개를 공유했고 cmd_start가 그걸
+#   `: >` 로 잘랐다. 앞 인스턴스가 살아 있으면 그 프로세스는 **자기 오프셋을 유지한 채** 계속
+#   쓰므로, 잘린 지점과 그 오프셋 사이가 커널이 채우는 NUL 구멍이 된다.
+#   실측(PID 30572, 2026-09-02): 2,547,334바이트 중 2,117,358바이트(83%)가 NUL이었다.
+#   실제 피해는 **로그 내용의 소실**이다: 부팅 배너가 12번 찍혔는데 세션 경계
+#   ("Initialize engine version")는 1개만 남았다 — 겹쳐 쓰기로 앞 세션 기록이 지워졌다.
+#   그리고 $PID_FILE 이 없는 지금 상태에서 start 를 다시 하면 **같은 일이 또 벌어진다**
+#   (our_pid 가 비어 is_alive 가 거짓 -> 살아 있는 30572 의 로그를 그대로 자른다).
+#
+#   ★ 정직성 기록 — 여기서 디버거가 세운 2차 가설 하나는 **반증됐다.**
+#     가설: "NUL 때문에 grep 이 파일을 바이너리로 보고 이 스크립트의 로그 프로브가 전부 죽는다."
+#     처음 실측이 그렇게 나왔으나(rc=1), 그건 **측정 도구가 틀린 것**이었다 — 조사자의 zsh
+#     `grep` 이 ugrep 래퍼(-I = 바이너리 건너뜀)였다. 이 스크립트는 bash 로 돌고 거기서
+#     `grep` 은 /usr/bin/grep(BSD grep 2.6.0-FreeBSD)이다. 같은 오염된 파일에 대해 BSD grep 은
+#     -q / -m1 / -o / -cE / -E **다섯 곳 전부 -a 유무와 동일하게 동작한다**(실측).
+#     즉 **드라이버의 판독 프로브는 이 오염으로 깨지지 않았다.**
+#     아래 grep 들에 붙은 -a 는 그래서 "버그 수정"이 아니라 **이식성 보험**이다(GNU grep 이나
+#     ugrep 처럼 바이너리를 다르게 다루는 구현에서 조용히 달라지지 않게 못 박는 것). 실측된
+#     동작 변화는 0이다. 이 문단을 지우지 마라 — 반증된 가설을 남기는 것이 이 저장소의 규칙이다.
+#   따라서 실제 처방은 하나다: **파일을 애초에 섞지 않는다**(아래).
+LOG_DIR="$RUN_DIR/logs"
+LOG_LINK="$RUN_DIR/current.log"
+# 나머지 서브커맨드(log/key/shot/keys/stop)는 예전처럼 $LOG_FILE 하나만 본다. 그 이름이
+# 심링크라 "가장 최근에 start한 인스턴스의 로그"를 자동으로 따라간다.
+# 심링크가 아직 없으면 구판 단일 파일로 떨어져 기존 로그도 계속 읽힌다(하위 호환).
+if [ -e "$LOG_LINK" ]; then LOG_FILE="$LOG_LINK"; else LOG_FILE="$RUN_DIR/stickmate.log"; fi
 SHOT_DIR="${STICKMATE_SHOT_DIR:-$RUN_DIR/screenshots}"
 SAVE_FILE="$HOME/Library/Application Support/DefaultCompany/StickMate/stickmate_character.json"
 USER_LOG="$HOME/Library/Logs/DefaultCompany/StickMate/Player.log"
 UNITY="${UNITY_BIN:-/Applications/Unity/Hub/Editor/6000.0.82f1/Unity.app/Contents/MacOS/Unity}"
 
-mkdir -p "$RUN_DIR" "$SHOT_DIR" "$SKILL_DIR/bin"
+mkdir -p "$RUN_DIR" "$SHOT_DIR" "$SKILL_DIR/bin" "$LOG_DIR"
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -131,22 +157,27 @@ cmd_start() {
     cp "$SAVE_FILE" "$bak" && say "세이브 백업: $bak"
   fi
 
-  : > "$LOG_FILE"
+  # ★ 이번 실행 전용 로그. 기존 파일을 자르지 않으므로 **살아 있는 다른 인스턴스의 로그를
+  #   절대 훼손하지 않는다**(위 LOG_FILE 주석의 NUL 구멍 사고 처방).
+  local run_log="$LOG_DIR/run-$(date +%Y%m%d-%H%M%S)-$$.log"
+  : > "$run_log"
+  ln -sfn "$run_log" "$LOG_LINK"
+  LOG_FILE="$LOG_LINK"
   # ★ `open` 이 아니라 셸에서 직접 exec 한다. 그래야 이 셸의 Input Monitoring 권한을 물려받아
   #   전역 단축키가 동작한다(SKILL.md "왜 open 을 쓰면 안 되는가" 참고).
   # ★ -logFile 로 로그를 분리한다. 그러지 않으면 Unity가 사용자 인스턴스의 Player.log를
   #   Player-prev.log로 밀어내며 로그 연속성을 망가뜨린다.
-  nohup "$BIN" -logFile "$LOG_FILE" >/dev/null 2>&1 &
+  nohup "$BIN" -logFile "$run_log" >/dev/null 2>&1 &
   local pid=$!
   disown "$pid" 2>/dev/null || true   # 나중에 kill 할 때 bash가 "Terminated: 15" 잡 제어 잡음을 찍지 않게
   echo "$pid" > "$PID_FILE"
   say "실행: PID $pid"
-  say "로그: $LOG_FILE"
+  say "로그: $run_log  (안정 이름 $LOG_LINK 이 여기를 가리킨다)"
 
   # 부팅 배너가 찍힐 때까지 최대 40초 기다린다.
   local i
   for i in $(seq 1 80); do
-    if grep -q "앱제어] 준비 완료" "$LOG_FILE" 2>/dev/null; then
+    if grep -aq "앱제어] 준비 완료" "$LOG_FILE" 2>/dev/null; then
       say "부팅 완료 (${i}회 폴링)"
       return 0
     fi
@@ -194,7 +225,7 @@ cmd_stop() {
   # 저장에 성공해도 앱은 저장 로그를 남기지 않기 때문이다.
   local n=0
   [ -f "$LOG_FILE" ] && n=$(tail -c +$((base+1)) "$LOG_FILE" \
-    | grep -cE "Physics::Module\] Cleanup|ShutdownInProgress|state changed to: Shutdown\.")
+    | grep -acE "Physics::Module\] Cleanup|ShutdownInProgress|state changed to: Shutdown\.")
   if [ "$n" -ge 3 ]; then
     say "종료됨: PID $pid — Unity 종료 시퀀스 ${n}/3줄 확인(정상 종료, 진행도 저장 경로 실행됨)."
   else
@@ -222,7 +253,7 @@ cmd_key() {
     # 넘기는 항목(A/K/G/T/X/H/S/N/J/F)은 그 디렉터 고유 태그로 찍힌다 — 실제로 A(활쏘기)를
     # [앱제어] 로만 찾다가 "반응 없음"으로 오판했다.
     local pat="\[앱제어\]|\[활쏘기\]|\[그라피티\]|\[창도둑\]|\[창 도둑\]|\[윈도우크래시\]|\[하드웨어|\[스트레스|\[가출\]|\[투두\]|\[집중|\[정보창\]|\[설정창\]|\[성장\]|\[기록\]"
-    local new; new="$(tail -c +$((base+1)) "$LOG_FILE" | grep -E "$pat" || true)"
+    local new; new="$(tail -c +$((base+1)) "$LOG_FILE" | grep -aE "$pat" || true)"
     if [ -n "$new" ]; then
       say "로그 확인:"; printf '%s\n' "$new" | head -6 | cut -c1-220 | sed 's/^/  /'
     else
@@ -240,7 +271,7 @@ cmd_shot() {
   local name="${1:-shot-$(date +%H%M%S)}"
   local band_y=780
   if [ -f "$LOG_FILE" ]; then
-    local y; y="$(grep -o '발판상단OS y=[0-9.]*' "$LOG_FILE" | tail -1 | sed 's/[^0-9.]*//')"
+    local y; y="$(grep -ao '발판상단OS y=[0-9.]*' "$LOG_FILE" | tail -1 | sed 's/[^0-9.]*//')"
     [ -n "$y" ] && band_y=$(printf '%.0f' "$(echo "$y" | awk '{print $1-125}')")
   fi
   local full="$SHOT_DIR/$name-full.png" band="$SHOT_DIR/$name-band.png"
@@ -260,13 +291,64 @@ cmd_status() {
   return 0
 }
 
+# ---------------------------------------------------------------- orphans
+# ★ 2026-09-02 (디버거) 신설 — **보고 전용. 어떤 프로세스도 죽이지 않는다.**
+#   계기: PID 30572가 13:18부터 5시간 49분 동안 PPID=1로 살아 있었는데 $PID_FILE이 없어서
+#   `status`/`doctor` 어디에도 "고아"라는 말이 뜨지 않았다. 그 상태에서 start를 또 하면
+#   공유 로그가 잘려 NUL 구멍이 생긴다(위 LOG_FILE 주석).
+#   판정 근거를 사람이 읽을 수 있게 **그대로 늘어놓기만** 한다 — 드라이버가 띄운 것인지
+#   사용자 것인지는 사람이 정한다. 자동 정리는 하지 않는다(사용자 인스턴스를 죽일 위험).
+cmd_orphans() {
+  local mine; mine="$(our_pid)"
+  say "== StickMate 인스턴스 전수 =="
+  say "PID 파일: ${PID_FILE}$([ -f "$PID_FILE" ] && echo " (내용 $mine)" || echo " (없음)")"
+  say ""
+  local any=0 pid
+  while read -r pid; do
+    [ -n "$pid" ] || continue
+    any=1
+    local ppid args started etime
+    ppid="$(ps -p "$pid" -o ppid= 2>/dev/null | tr -d ' ')"
+    started="$(ps -p "$pid" -o lstart= 2>/dev/null | sed 's/^ *//;s/ *$//')"
+    etime="$(ps -p "$pid" -o etime= 2>/dev/null | tr -d ' ')"
+    args="$(ps -p "$pid" -o command= 2>/dev/null)"
+    say "  PID $pid  (부모 ${ppid:-?}, 시작 ${started:-?}, 경과 ${etime:-?})"
+    say "    인자: $args"
+    # ★ PPID=1 자체는 신호가 아니다. 이 하니스는 `nohup ... &` 로 띄우고 호출한 셸이 곧
+    #   끝나므로 **정상적으로 띄운 인스턴스도 즉시 PPID=1이 된다**(2026-09-02 실측: 동시에
+    #   돌던 페르소나 라운드 3개가 전부 PPID=1이었다). 그걸 고아로 부르면 오탐만 쌓인다.
+    #   실제로 위험한 조합은 이것이다: **PID 파일에 없는데 + 드라이버 기본 로그 경로를 쓴다.**
+    #   그 둘이 겹치면 다음 start 가 그 파일을 잘라 NUL 구멍을 만든다.
+    if [ "$pid" = "${mine:-__none__}" ]; then
+      say "    판정: 드라이버가 띄운 것(PID 파일과 일치). stop 으로 정리된다."
+    else
+      case "$args" in
+        *"-logFile $RUN_DIR/"*)
+          say "    판정: ★★충돌 위험 — PID 파일에 없는데 **드라이버 기본 로그 경로**($RUN_DIR)를 쓴다."
+          say "         다음 start 가 이 로그를 자르면 이 프로세스의 쓰기가 NUL 구멍을 만든다."
+          say "         (이 스크립트의 최신판은 실행마다 로그를 갈라 더는 이 경로를 자르지 않는다.)";;
+        *"-logFile "*)
+          say "    판정: 자기 전용 로그를 쓰는 별도 인스턴스. 로그 충돌 없음.";;
+        *)
+          say "    판정: -logFile 인자가 없다 -> 사용자가 GUI로 띄운 것일 가능성이 높다.";;
+      esac
+      say "         ※ 어느 경우에도 여기서 죽이지 않는다. 사람이 확인하고 결정한다."
+    fi
+    say ""
+  done <<< "$(pgrep -f "StickMate.app/Contents/MacOS/StickMate" 2>/dev/null)"
+  [ "$any" = "1" ] || say "  실행 중인 인스턴스 없음."
+  say "로그 파일 목록(실행마다 분리):"
+  ls -1t "$LOG_DIR" 2>/dev/null | head -10 | sed 's/^/  /' || say "  (없음)"
+  return 0
+}
+
 cmd_log() { [ -f "$LOG_FILE" ] || die "로그 없음: $LOG_FILE"; if [ "${1:-}" = "-f" ]; then tail -f "$LOG_FILE"; else tail -"${1:-40}" "$LOG_FILE"; fi; }
 
 # 배너에서 최신 단축키 목록을 그대로 뽑는다(문서에 베껴 적지 않고 앱에게 직접 묻는다).
 cmd_keys() {
   local src="$LOG_FILE"; [ -s "$src" ] || src="$USER_LOG"
   [ -f "$src" ] || die "로그가 없다. driver.sh start 를 먼저 실행하라."
-  grep -m1 "앱제어] 준비 완료" "$src" || die "배너를 찾지 못했다."
+  grep -am1 "앱제어] 준비 완료" "$src" || die "배너를 찾지 못했다."
 }
 
 # ---------------------------------------------------------------- demo
@@ -317,6 +399,7 @@ usage() {
   key <글자> [ms]   전역 단축키 주입 후 [앱제어] 로그로 발동 확인 (기본 400ms 유지)
   shot [이름]       전체 화면 + 캐릭터가 있는 가로 띠 캡처
   log [-f|줄수]     로그 보기
+  orphans           실행 중인 인스턴스 전수 + 고아 판정 (★보고 전용, 절대 kill 하지 않는다)
   demo              start -> key B -> 캡처 -> stop 전체 왕복
   build --force     Unity 배치모드 macOS 빌드 (락 확인 후에만)
   test --force      EditMode 테스트 (락 확인 후에만)
@@ -332,6 +415,7 @@ case "${1:-}" in
   key)    shift; cmd_key "$@";;
   shot)   shift; cmd_shot "$@";;
   log)    shift; cmd_log "$@";;
+  orphans) shift; cmd_orphans "$@";;
   demo)   shift; cmd_demo "$@";;
   build)  shift; cmd_build "$@";;
   test)   shift; cmd_test "$@";;

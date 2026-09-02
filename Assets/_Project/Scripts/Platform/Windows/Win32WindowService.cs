@@ -92,6 +92,7 @@ namespace StickMate.Platform.Windows
         IReservedBottomBarService,
         IReservedTopBarService,
         IRawWindowRectSource,
+        IForeignFullscreenTierSource,
         IWindowEnumerationCostSource
     {
         #region Win32 선언 (이 리전 밖으로 유출 금지 — 전부 조회 전용)
@@ -265,6 +266,27 @@ namespace StickMate.Platform.Windows
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
 
+        // ============================================================================
+        // ★ 2026-09-02 Phase 0 계측 — 모니터 전수 열거(조회 전용, 쓰기 없음)
+        // ============================================================================
+        // 리더 배정문은 "새 P/Invoke 0"이라고 했으나 **정정한다**: 이미 있던 것은
+        // MONITORINFO(dwFlags 포함)와 GetMonitorInfo뿐이고, EnumDisplayMonitors와 그 콜백 델리게이트는
+        // 이 파일에 없었다 — 새 선언 2개가 필요하다. 다만 둘 다 순수 조회이며 어떤 창도 건드리지 않으므로
+        // 이 리전의 계약("전부 조회 전용")은 그대로다.
+        //
+        // 왜 MonitorFromWindow로는 대신할 수 없는가: 그것은 **한 창이 놓인 모니터 하나**만 준다.
+        // 우리가 지금 확정하려는 것은 "라이브러리 인덱스 i가 어느 모니터인가"라서 **전수 목록**이 필요하다.
+        private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdc, IntPtr lprcClip, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip,
+            MonitorEnumProc lpfnEnum, IntPtr dwData);
+
+        /// <summary>MONITORINFO.dwFlags의 주 모니터 비트(winuser.h 고정 리터럴).
+        /// <b>추론하지 않고 OS에게 직접 묻는 유일한 경로</b>다 — "좌표가 (0,0)이면 주 모니터"는
+        /// 네이티브 라이브러리들이 쓰는 <b>추정</b>이고, 우리는 그 추정이 맞는지를 이 비트로 검산한다.</summary>
+        private const uint MONITORINFOF_PRIMARY = 0x00000001;
+
         [DllImport("user32.dll")]
         private static extern bool GetCursorPos(out POINT lpPoint);
 
@@ -404,6 +426,11 @@ namespace StickMate.Platform.Windows
         // 이번 패스의 가상 화면(모든 모니터 외접 사각형). 창마다 조회하지 않고 패스당 1회만 조회한다.
         private bool _hasVirtualScreenThisPass;
         private Rect _virtualScreenThisPass;
+
+        /// <summary>이번 패스의 <b>발판 클리핑</b> 사각형 = 오버레이가 덮는 그 화면(조회 전이면 가상 화면).
+        /// <see cref="_virtualScreenThisPass"/>와 <b>절대 섞지 않는다</b> — 위 대입 지점의 주석 참고.</summary>
+        private bool _hasFootholdClipThisPass;
+        private Rect _footholdClipThisPass;
 
         // ★ 2026-08-31 (이월 결함 해소) — 진단용 부기. 전부 사전 할당 재사용이라 폴링 경로 할당 0이다.
         // _rawBuffer와 인덱스 1:1로 유지되는 것이 계약이다(macOS의 _rawAlphas/_rawVisibleWidth와 동일).
@@ -800,7 +827,7 @@ namespace StickMate.Platform.Windows
             if (!gotRect) return true;
 
             rejection = WindowsFootholdFilter.ClassifyGeometry(screenRect, alpha,
-                _hasVirtualScreenThisPass, _virtualScreenThisPass);
+                _hasFootholdClipThisPass, _footholdClipThisPass);
             if (rejection != WindowsFootholdRejection.None)
             {
                 _rejectCounts[(int)rejection]++;
@@ -878,6 +905,22 @@ namespace StickMate.Platform.Windows
             _foregroundHwndThisPass = GetForegroundWindow();
             ResolveTitleProbeApi();   // 최초 1회만 실제 작업을 한다(위 핸들을 쓰므로 순서 유지)
             _hasVirtualScreenThisPass = TryGetVirtualScreenBounds(out _virtualScreenThisPass);
+            // ★★ 2026-09-02 — <b>두 사각형이 서로 다른 질문에 답한다</b>(macOS와 같은 라운드·같은 구조).
+            //   · _virtualScreenThisPass — <b>원점 위생 검사</b>용. "우리 창이 명백히 화면 밖인가"이므로
+            //     <b>전체 가상 화면</b> 그대로 둔다(여기에 한 화면을 넣으면 우리가 우리 원점을 거부한다).
+            //   · _footholdClipThisPass  — <b>발판 클리핑</b>용. "캐릭터가 설 수 있는 창인가"이므로
+            //     <b>오버레이가 실제로 덮는 그 화면</b>이어야 한다.
+            //   Windows는 지금까지 발판을 <b>가상 화면</b>으로 잘라서 발판이 오버레이보다 <b>넓었다</b> —
+            //   보조 모니터 위의 창까지 발판으로 세었다는 뜻이고, 캐릭터는 그 위에 갈 수 없다.
+            //   (debugger가 ScreenRightWorldX에서 그 부류 하나를 막았지만 구조는 그대로였다.)
+            //   조회 전이면 가상 화면으로 폴백한다 = 오늘 동작 그대로.
+            _hasFootholdClipThisPass =
+                OverlayMonitorDirectory.TryGetOverlayScreenOsRect(out _footholdClipThisPass);
+            if (!_hasFootholdClipThisPass)
+            {
+                _hasFootholdClipThisPass = _hasVirtualScreenThisPass;
+                _footholdClipThisPass = _virtualScreenThisPass;
+            }
 
             EnumWindowsMeasured();   // ★ 원장의 OS창목록 칸(위 문서 참고) — 감싸지 않으면 0회로 찍힌다.
             LastEnumeratedWindowCount = _enumeratedWindowCount;
@@ -1320,6 +1363,9 @@ namespace StickMate.Platform.Windows
             // 재적합(전체화면 확장/해상도 변경 후 재무장)이 끝난 프레임에 좌표계를 즉시 갱신하는 훅.
             // 폴링(0.5초)을 기다리면 그 사이 원점/배율이 옛 값이라 캐릭터가 화면 밖으로 튄다.
             _enforcer.OverlayRectReporter = CaptureOverlayOrigin;
+            // Phase 0 계측(2026-09-02) — OS 모니터 전수 열거를 주입한다. 위 OverlayRectReporter와 같은
+            // 배선 형태이며, Enforcer는 Win32를 직접 부르지 않는다(P/Invoke 격리 컨벤션 유지).
+            _enforcer.OsMonitorEnumerator = TryEnumerateOsMonitors;
             // 항상위 상시 감시(2026-09-01)가 OS 실측(GetWindowLong(GWL_EXSTYLE))을 하려면 HWND가 필요하다.
             // 이 핸들은 이미 좌표계 원점 보고(CaptureOverlayOrigin)와 DPI 조회에 쓰이고 있어 실기에서
             // 검증된 값이며, 감시자 쪽에서 IsWindow()로 유효성을 한 번 더 확인한다.
@@ -1527,6 +1573,64 @@ namespace StickMate.Platform.Windows
         public bool IsLocalClickCaptureOwnedBy(object owner)
             => _clickCaptureGate.IsOwnedBy(owner);
 
+        #region Phase 0 계측 — OS 모니터 전수 열거(조회 전용)
+
+        // 열거 중에만 쓰는 수집 버퍼. 콜백이 정적일 수 없어(인스턴스 필드를 봐야 한다) 델리게이트를
+        // 필드에 캐시한다 — 매 호출 새 델리게이트를 만들면 GC 쓰레기이고, 네이티브가 콜백을 부르는
+        // 동안 수집되면 크래시다(이 파일의 _enumWindowsCallback과 같은 이유·같은 형태).
+        private List<OsMonitorFact> _osMonitorSink;
+        private MonitorEnumProc _monitorEnumCallback;
+
+        /// <summary>
+        /// 연결된 모든 모니터의 <c>rcMonitor</c>/<c>rcWork</c>/주 모니터 플래그를 그대로 담아 준다.
+        /// <b>사실 조회만 한다</b> — 이 값으로 무엇을 판단할지는 전부 플랫폼 중립
+        /// <see cref="MonitorTopologyReport"/>에 있다(<c>FullscreenSuspendPolicy</c>가
+        /// <c>Platform/MacOS/</c> 안에 있어 Windows가 부를 수 없었던 사고의 재발 방지 형태).
+        ///
+        /// <para>비용: 프로세스 수명 동안 <b>1회</b>만 불린다(기동 계측). 모니터 수만큼의
+        /// <c>GetMonitorInfo</c> 한 번씩이 전부다.</para>
+        /// </summary>
+        public bool TryEnumerateOsMonitors(List<OsMonitorFact> into)
+        {
+            if (into == null) return false;
+            into.Clear();
+
+            _osMonitorSink = into;
+            _monitorEnumCallback ??= OnMonitorEnumerated;
+            bool ok;
+            try
+            {
+                ok = EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, _monitorEnumCallback, IntPtr.Zero);
+            }
+            finally
+            {
+                _osMonitorSink = null;
+            }
+            return ok && into.Count > 0;
+        }
+
+        private bool OnMonitorEnumerated(IntPtr hMonitor, IntPtr hdc, IntPtr lprcClip, IntPtr lParam)
+        {
+            if (_osMonitorSink == null) return false;
+
+            var mi = new MONITORINFO { cbSize = (uint)Marshal.SizeOf<MONITORINFO>() };
+            if (!GetMonitorInfo(hMonitor, ref mi)) return true;   // 하나 실패해도 나머지는 계속 센다.
+
+            _osMonitorSink.Add(new OsMonitorFact(
+                ToRect(mi.rcMonitor),
+                ToRect(mi.rcWork),
+                (mi.dwFlags & MONITORINFOF_PRIMARY) != 0,
+                $"0x{hMonitor.ToInt64():X}"));
+            return true;
+        }
+
+        /// <summary>Win32 RECT(좌상단 원점, 하향 y)를 그대로 Rect로 옮긴다 —
+        /// <b>좌표계를 바꾸지 않는다</b>(yMax가 곧 bottom이다). 변환은 판정 쪽의 일이다.</summary>
+        private static Rect ToRect(RECT r)
+            => new Rect(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top);
+
+        #endregion
+
         #region IReservedBottomBarService — 작업표시줄(하단 예약 막대) 실측
 
         // 작업표시줄 구간 로그는 값이 바뀔 때만 남긴다(이 함수는 발판 폴링마다 불린다).
@@ -1725,9 +1829,27 @@ namespace StickMate.Platform.Windows
         private readonly WindowsGameProcessProbe _gameProbe = new WindowsGameProcessProbe();
 
         public bool IsFullscreenAppActive()
+            => ForeignFullscreenTierPolicy.SuspendsCharacter(GetForeignFullscreenTier());
+
+        /// <summary>
+        /// ★ 2026-09-02 — <b>등급 판정의 원본</b>(macOS판 <c>GetForeignFullscreenTier</c>와 같은 구조·같은 라운드).
+        /// 위 <see cref="IsFullscreenAppActive"/>는 이 값에서 유도되므로 네이티브 조회는 폴링당 <b>1회</b> 그대로다.
+        ///
+        /// <para>등급 2의 원시 판정(<c>기하 AND 게임</c>)은 <b>기존 디바운서에 그대로</b> 들어간다 —
+        /// 그래서 이 변경으로 값이 달라지는 입력 조합이 하나도 없고, 2026-08-31 신고
+        /// ("엑셀 전체화면에서 캐릭터가 사라진다")가 회귀할 경로가 구조적으로 없다.</para>
+        ///
+        /// <para><b>Windows의 안전판</b>: 기하 판정이 <c>MatchesExactly</c>(관용 없음)라 등급 1도
+        /// <b>정확히 모니터 사각형인 창</b>에서만 켜진다. 상단 도킹 작업표시줄 환경의 최대화 창은
+        /// <c>rcWork</c>를 따르므로 여기 걸리지 않는다 — 이 결정이 등급 1의 오탐을 원천에서 막는다.</para>
+        /// </summary>
+        public ForeignFullscreenTier GetForeignFullscreenTier()
         {
-            bool raw = EvaluateFullscreen(out string reason);
-            bool verdict = _fullscreenDebouncer.Update(raw, Time.realtimeSinceStartupAsDouble, FullscreenVerdictHoldSeconds);
+            EvaluateFullscreen(out bool rawCovers, out bool rawGame, out string reason);
+            bool raw = rawCovers && rawGame;
+            double now = Time.realtimeSinceStartupAsDouble;
+            bool coversVerdict = _coversDebouncer.Update(rawCovers, now, FullscreenVerdictHoldSeconds);
+            bool verdict = _fullscreenDebouncer.Update(raw, now, FullscreenVerdictHoldSeconds);
 
             if (raw != _lastRawFullscreenVerdict)
             {
@@ -1739,14 +1861,24 @@ namespace StickMate.Platform.Windows
                 }
             }
 
-            if (verdict != _lastFullscreenVerdict)
+            ForeignFullscreenTier tier = ForeignFullscreenTierPolicy.Resolve(coversVerdict, verdict);
+
+            if (tier != _lastFullscreenTier)
             {
+                _lastFullscreenTier = tier;
                 _lastFullscreenVerdict = verdict;
-                Debug.Log($"[전체화면판정] {(verdict ? "전체화면 앱 감지 -> 캐릭터를 숨깁니다" : "전체화면 해제 -> 캐릭터를 되돌립니다")} — {reason}");
+                Debug.Log($"[전체화면판정] {ForeignFullscreenTierPolicy.Describe(tier)} — {reason}");
             }
 
-            return verdict;
+            return tier;
         }
+
+        /// <summary>기하 축 전용 디바운서(등급 1). 등급 2용 <see cref="_fullscreenDebouncer"/>와 <b>별도</b>다 —
+        /// 한 디바운서를 두 축이 나눠 쓰면 한 축의 흔들림이 다른 축의 확정 시각을 옮긴다(macOS판과 동일).</summary>
+        private FullscreenVerdictDebouncer _coversDebouncer;
+
+        /// <summary>"등급이 바뀔 때만 로그"용 상태.</summary>
+        private ForeignFullscreenTier _lastFullscreenTier;
 
         /// <summary>
         /// 이번 폴링의 원시 전체화면 판정(디바운스 이전). 네이티브 조회는 전부 여기 모여 있고,
@@ -1762,18 +1894,20 @@ namespace StickMate.Platform.Windows
         /// 캐릭터가 사라졌다 — 사용자가 직접 신고한 바로 그 버그다. 원칙 2의 문구는 "전체화면
         /// <b>게임</b>"이고, 조회에 실패하면 <b>게임이 아닌 것으로</b> 처리해 숨기지 않는다.</para>
         /// </summary>
-        private bool EvaluateFullscreen(out string reason)
+        private void EvaluateFullscreen(out bool coversDisplay, out bool isGame, out string reason)
         {
+            coversDisplay = false;
+            isGame = false;
             IntPtr fg = GetForegroundWindow();
             if (fg == IntPtr.Zero)
             {
                 reason = "전경 창이 없음(GetForegroundWindow == 0) — 전체화면 아님으로 안전 처리.";
-                return false;
+                return;
             }
             if (fg == _overlayHwnd)
             {
                 reason = "전경 창이 우리 오버레이 자신이라 '다른 전체화면 앱'이 아님.";
-                return false;
+                return;
             }
 
             // 우리 프로세스의 다른 창(있다면)도 "다른 앱"이 아니다 — 오버레이가 전경일 때
@@ -1782,7 +1916,7 @@ namespace StickMate.Platform.Windows
             if (fgPid == _currentProcessId)
             {
                 reason = $"전경 창이 우리 프로세스(pid {fgPid})의 다른 창이라 '다른 전체화면 앱'이 아님.";
-                return false;
+                return;
             }
 
             // 여기만은 의도적으로 GetWindowRect를 유지한다(DWMWA_EXTENDED_FRAME_BOUNDS를 쓰지 않는다).
@@ -1793,7 +1927,7 @@ namespace StickMate.Platform.Windows
             if (!GetWindowRect(fg, out var winRect))
             {
                 reason = $"전경 창(pid {fgPid})의 사각형을 읽지 못함 — 전체화면 아님으로 처리.";
-                return false;
+                return;
             }
 
             IntPtr monitor = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST);
@@ -1801,7 +1935,7 @@ namespace StickMate.Platform.Windows
             if (!GetMonitorInfo(monitor, ref monitorInfo))
             {
                 reason = $"전경 창(pid {fgPid})이 놓인 모니터 정보를 읽지 못함 — 전체화면 아님으로 처리.";
-                return false;
+                return;
             }
 
             // 단순 휴리스틱: 전경 창 사각형이 모니터 전체 사각형과 정확히 일치하면 전체화면으로 간주.
@@ -1820,17 +1954,20 @@ namespace StickMate.Platform.Windows
             if (!match)
             {
                 reason = geometry + " -> 기하 일치=false.";
-                return false;
+                return;
             }
 
             // ★ 2026-09-01 — 기하만으로는 부족하다. 여기서 "그 앱이 게임인가"까지 확인한다
             //   (사용자 신고: 전체화면 엑셀을 클릭하면 캐릭터가 사라진다). 조회 실패는 전부
             //   "게임 아님"으로 떨어져 숨기지 않는다 — macOS의 카테고리 미선언 처리와 같은 계약.
-            bool isGame = _gameProbe.IsGameProcess(fgPid, out string gameReason);
+            // ★ 2026-09-02 — 두 사실을 <b>뭉개지 않고</b> 각각 올려 보낸다(macOS판과 같은 라운드·같은 형태).
+            //   기하는 맞았는데 게임이 아닌 경우가 지금까지 `return false` 하나로 사라지면서,
+            //   전체화면 회의/발표 앱 위에 정보창과 그 클릭 차단막이 그대로 남았다.
+            coversDisplay = true;
+            isGame = _gameProbe.IsGameProcess(fgPid, out string gameReason);
 
             reason = geometry + $" -> 기하 일치=true, {gameReason}" +
-                (isGame ? "." : " (게임이 아니므로 숨기지 않습니다 — 원칙 2는 '전체화면 게임'만 대상).");
-            return isGame;
+                (isGame ? "." : " (게임이 아니므로 **캐릭터는 남기고** 창·패널·클릭 차단막만 걷습니다 — 등급 1).");
         }
 
         // IDesktopIconLayoutService(UX_FLOW.md 27-2/27-5절) — 정직한 미구현 스텁. 실제 구현은

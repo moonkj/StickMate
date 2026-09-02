@@ -141,18 +141,11 @@ namespace StickMate.Interaction
         // 여기에 나비넥타이 반높이를 0.30R -> 0.26R로 줄여, 어깨선 기준에서도 위 끝(0.30R)이 턱(0.318R)
         // 아래에 머무는 것을 산술로 보장한다.
         internal const float NeckCollarRiseRatio = 0.04f;
-        internal const float BowTieHalfWidthRatio = 0.98f;
-
-        /// <summary>날개 <b>바깥 변</b>의 반높이. 위 끝(ty + 0.34R)이 턱(ty + 0.36R 상당)을 넘지 않는다.</summary>
-        internal const float BowTieHalfHeightRatio = 0.34f;
-
-        /// <summary>매듭 반폭. ★ 옛 값 0.13R은 잉크 사각형이 <b>0.91획</b>이라 매듭이 통째로 획에
-        /// 먹혔다(규칙 1 면제 대장에 그대로 적혀 있던 자리). 0.28R이면 1.63획이다.</summary>
-        internal const float BowTieKnotRatio = 0.28f;
-
-        /// <summary>매듭 반높이. 날개가 매듭 <b>안쪽 변</b>에서 시작하므로 이 값이 날개보다 작아야
-        /// 매듭이 날개 위에 얹힌 것으로 읽힌다.</summary>
-        internal const float BowTieKnotHalfHeightRatio = 0.30f;
+        // ★ 2026-09-02 B-2 파일럿 — NECK 6종의 <b>형상 비율은 여기 없다</b>.
+        //   전부 Resources/Items/equip_neck_*.asset의 wornShapes로 내려갔다(Core/AccessoryDefSO.cs).
+        //   여기 남은 것은 <b>부착 기준선</b>(NeckCollarRiseRatio -> NeckLocalY)뿐이고, 그것은
+        //   아이템의 조형이 아니라 <b>리그의 사실</b>이라 코드가 갖는 것이 옳다 —
+        //   데이터는 그 선을 기저 번호(AccessoryWornBasis.NeckLine)로 가리키기만 한다.
 
         // ==================== 망토 — 2026-08-30 사용자 신고로 실루엣 재설계 ====================
         // 신고: "망토가 좀 캐릭터에 펼쳐져서 착용이 되어야하는데 그냥 짐같이 디자인되어있음".
@@ -477,74 +470,6 @@ namespace StickMate.Interaction
         /// (2·0.62 − 0.36 − 0.34 = 0.56R = 1.63획).</summary>
         internal const float MonocleRadiusRatio = 0.36f;
 
-        // ---- 줄무늬 타이 / 목도리 / 방울 목걸이(33-2-3). 부착 기준선은 나비넥타이와 같은 BowTieLocalY.
-        //      ★ 2026-09-01(3차) — 몸통이 <b>선 하나</b>뿐이므로 목 아이템은 <b>폭이 곧 존재감</b>이다.
-        //      면제 대장에 남아 있던 5건(나비 매듭 0.91획 / 타이 blade 0.87획 · 줄무늬 2개)을 전부 닫았다.
-        internal const float TieKnotHalfWidthRatio = 0.36f;
-        internal const float TieKnotHalfHeightRatio = 0.30f;
-
-        /// <summary>매듭 <b>밑변</b>의 깊이(반높이와 다르다 — 매듭은 아래로 좁아지는 사다리꼴이다).</summary>
-        internal const float TieKnotBottomDropRatio = 0.28f;
-
-        internal const float TieBladeLengthInTorso = 0.55f;
-
-        /// <summary>blade 반폭. 옛 값 0.15R은 폭 0.87획이라 <b>획 하나보다 좁은 넥타이</b>였다 —
-        /// 화면에서는 그냥 선이다. 0.34R이면 폭 1.98획이라 천으로 읽힌다.</summary>
-        internal const float TieBladeHalfWidthRatio = 0.34f;
-
-        /// <summary>33-2-5 (D) — 줄무늬 타이 "월요일마다 조금 느슨해진다". 매듭을 R·0.12 내리고 blade를 3도 기울인다.</summary>
-        internal const float TieMondayLoosenDropRatio = 0.12f;
-        internal const float TieMondayLoosenTiltDegrees = 3f;
-
-        // ★ 목도리 — 목에 감긴 <b>고리</b>(보조색) + 앞뒤 길이가 다른 자락 2개(주색).
-        //   ★ 2026-09-01(3차) 미보고 결함 2건을 함께 닫았다:
-        //     (1) <b>보조색이 2개</b>였다(자락 둘 다 보조색) — 규칙 3-2("아이템당 정확히 1개") 위반이
-        //         조용히 살아 있었다. 지금은 고리 하나만 보조색이다.
-        //     (2) <b>도형을 넣는 순서가 반대</b>였다. 같은 채움 레이어에서는 나중에 넣은 것이 위로 오고,
-        //         목도리는 <b>고리가 자락을 덮어야</b> "감았다"로 읽힌다. 옛 순서(고리 먼저)에서는
-        //         자락이 고리 위로 떴다. 그래서 자락 2개를 <b>먼저</b>, 고리를 <b>나중에</b> 넣는다.
-        internal const float ScarfWrapHalfWidthRatio = 0.92f;
-        internal const float ScarfWrapTopRatio = 0.30f;
-        internal const float ScarfWrapCenterTopRatio = 0.06f;   // 윗변이 목덜미로 파이는 깊이
-        internal const float ScarfWrapSideRatio = -0.20f;
-        internal const float ScarfWrapDipRatio = -0.62f;        // 고리가 가슴으로 처지는 최저점
-        internal const float ScarfFrontTailLengthInTorso = 0.40f;
-        internal const float ScarfBackTailLengthInTorso = 0.62f;
-        internal const float CollarHalfWidthRatio = 0.78f;
-
-        /// <summary>목줄 양 끝의 높이(목선 기준). <see cref="CollarCurve"/>가 이 값을 쓴다.</summary>
-        internal const float CollarRiseRatio = 0.16f;
-
-        /// <summary>목줄 한가운데가 아래로 처지는 깊이. 매달리는 것(방울/펜던트)은 이 최저점에서
-        /// 시작해야 <b>매달린 지점이 보인다</b>(규칙 4) — 그래서 상수로 뽑아 유도한다(규칙 4-a).</summary>
-        internal const float CollarDipRatio = 0.32f;
-
-        // ★ 방울 목걸이 — 2026-09-01 규칙 1(획 예산) 위반 수정.
-        //
-        // 옛 방울은 반지름 0.17R(지름 0.34R = <b>0.99획</b>)이었다. 즉 <b>공 전체가 획 하나 굵기</b>라
-        // 2pt 획으로 그 원을 그리면 안쪽 구멍이 통째로 메워져 "뚱뚱한 점"이 된다(37-6 규칙 1의
-        // "잉크 사각형 ≥ 1.5획" 위반. 10각형 한 변도 0.31획이었다).
-        // 게다가 <b>매달린 지점이 어긋나 있었다</b>: 옛 드롭(0.34R)으로 잡은 공의 위 끝이 목줄 최저점보다
-        // 0.038R = 0.11획 아래라, 규칙 4가 "최악"이라고 못박은 0 &lt; 간격 &lt; 1획 구간이었다.
-        //
-        // 고침은 셋이다.
-        //   ① <b>지름을 1.63획</b>으로 키운다(반지름 0.28R). 1.5획 문턱에 8.7% 여유.
-        //   ② <b>채운다</b>. 방울은 속이 보여야 하는 물건이 아니라 <b>금속 덩어리</b>다 —
-        //      윤곽선으로 남기면 규칙 1이 요구하는 "내부를 보여주는 크기"가 3.0획(1.03R)이라
-        //      머리 반지름만 한 방울이 되어야 하고, 그러면 펜던트와 다시 붙는다.
-        //   ③ 매다는 위치를 <see cref="CollarLowLocalY"/>에서 <b>유도</b>한다(규칙 4-a). 드롭 상수를
-        //      따로 적어 두면 목줄 곡률을 고칠 때 방울만 공중에 남는다 — 펜던트가 이미 같은 유도를 쓴다.
-        //
-        // 왜 더 키우지 않았나: 방울이 커질수록 <b>펜던트와 다시 가까워진다</b>(둘은 같은 목줄에 매달린
-        // 형제고, 갈리는 축은 "얼마나 내려오는가"다). 실측 — 지름 1.63획일 때 펜던트와 1.98획 차이다.
-        internal const float BellRadiusRatio = 0.30f;
-
-        /// <summary>방울 원을 근사하는 변의 수. <b>10</b>인 이유는 두 가지다:
-        /// (1) 지름 1.63획에서 이 정도면 눈에 원으로 읽힌다. (2) 한 꼭짓점의 꺾임이 36도라
-        /// 획 예산 검사가 "매끄러운 곡선"으로 인정한다 — 8각형은 꺾임이 정확히 45도(문턱)라
-        /// 각 변이 <b>독립된 획</b>으로 요구되고, 그 조건을 만족하는 8각형은 지름이 2.6획이라
-        /// 펜던트와 다시 붙는다(실측). 원을 각지게 만들수록 커져야 한다.</summary>
-        internal const int BellSegments = 10;
 
         // ---- 긴 망토 / 날개 / 배낭(33-2-4)
         // 긴 망토도 같은 이유로 넓힌다. 길이는 2.10 -> 1.85로 줄였다 — 배율 0.75에서 옛 값의 밑단은
@@ -663,32 +588,7 @@ namespace StickMate.Interaction
         /// <summary>끈 끝점의 각도(도). 위쪽 끝이 이 각도, 아래쪽 끝이 360 − 이 각도다.</summary>
         internal const float PatchStrapDegrees = 122f;
 
-        // ★ 펜던트 목걸이(목 4번) — 2026-09-01 실루엣 재설계.
-        //
-        // 옛 마름모는 반폭 0.20R × 반높이 0.30R(폭 1.16획 × 높이 1.74획)이라 <b>2pt 획이 네 꼭짓점을
-        // 통째로 둥글려</b> 화면에서는 "작은 동그라미"였다. 방울(지름 0.99획)과의 외곽 차이가 0.54획뿐,
-        // 즉 규칙 1의 1.0획도 못 넘어 <b>형제와 갈리지 않았다</b>(페르소나 실물 확인).
-        // 보관함 설명은 "가는 줄에 <b>마름모</b> 장식 하나"라고 말한다 — 그림이 이름을 못 지킨 것이다.
-        //
-        // 그래서 <b>세로로 길게</b> 뺐다(종횡 1.50 -> 2.21). 원과 갈리는 것은 크기가 아니라 종횡비다:
-        // 원은 어떤 각도에서도 반경이 같고, 이 마름모는 세로가 가로의 2.2배다. 빗변도 1.05획 -> 1.98획이
-        // 되어 꼭짓점이 획에 먹히지 않는다. 실측: 방울과 외곽 차이 <b>2.50획</b>(옛 0.54획).
-        internal const float PendantHalfWidthRatio = 0.30f;
 
-        /// <summary>마름모 반높이. 위 꼭짓점은 <b>목줄 최저점</b>에 붙고 아래 꼭짓점은 가슴께로
-        /// 내려온다 — 방울(목선 아래 0.51R)과 <b>매달린 길이</b>로도 갈린다(목선 아래 1.38R).</summary>
-        internal const float PendantHalfHeightRatio = 0.64f;
-
-        // ---- 반다나(넥타이 5번) — 목도리 띠의 <b>납작 변주</b> + 앞으로 늘어진 삼각 자락 하나.
-        internal const float BandanaWrapRiseRatio = 0.06f;
-        internal const float BandanaWrapHalfWidthRatio = 0.84f;
-        internal const float BandanaWrapHalfHeightRatio = 0.22f;   // 위아래 변 간격 0.44R(= 1.28획)
-
-        /// <summary>자락 끝이 내려가는 길이(몸통 배수). 자락은 <b>채운 삼각형</b>이라 밑변이
-        /// 0.48R(1.40획)이어야 꼭짓점 두 개가 획에 안 먹힌다.</summary>
-        internal const float BandanaTailLengthRatio = 0.30f;
-
-        internal const float BandanaTailHalfWidthRatio = 0.24f;
 
         // ---- 판초(망토 4번) — 짧은 망토와 <b>같은 도형·다른 비율</b>. 짧고 앞까지 덮는다.
         internal const float PonchoLengthRatio = 1.05f;
@@ -1027,50 +927,6 @@ namespace StickMate.Interaction
             };
         }
 
-        /// <summary>나비넥타이 왼쪽 날개 — <b>채운</b> 4점. 옛 날개는 열린 선 3점이라 화면에서
-        /// 두께가 없었다(규칙 2 — 이 엔진에서 덩어리를 만드는 유일한 수단이 채움이다).</summary>
-        internal static Vector3[] BowTieLeftWing(in Rig rig)
-        {
-            float r = rig.HeadRadius;
-            float cy = BowTieLocalY(rig);
-            float hw = r * BowTieHalfWidthRatio, hh = r * BowTieHalfHeightRatio, knot = r * BowTieKnotRatio;
-            return new[]
-            {
-                rig.F(-hw * 0.878f, cy + hh),
-                rig.F(-knot, cy + r * 0.02f),
-                rig.F(-hw * 0.878f, cy - hh),
-                rig.F(-hw, cy),
-            };
-        }
-
-        internal static Vector3[] BowTieRightWing(in Rig rig)
-        {
-            float r = rig.HeadRadius;
-            float cy = BowTieLocalY(rig);
-            float hw = r * BowTieHalfWidthRatio, hh = r * BowTieHalfHeightRatio, knot = r * BowTieKnotRatio;
-            return new[]
-            {
-                rig.F(hw * 0.878f, cy + hh),
-                rig.F(hw, cy),
-                rig.F(hw * 0.878f, cy - hh),
-                rig.F(knot, cy + r * 0.02f),
-            };
-        }
-
-        /// <summary>매듭 — <b>채운 직사각형</b>. 옛 8각 근사(<c>RoundedBox</c>, 2026-09-01(3차)에
-        /// 마지막 소비자가 사라져 함께 지웠다)를 쓰지 않는 이유는 안대와 같다: 이 크기에서
-        /// 모따기 변이 획보다 짧아 화면에서 통째로 먹힌다(규칙 1).</summary>
-        internal static Vector3[] BowTieKnot(in Rig rig)
-        {
-            float r = rig.HeadRadius;
-            float cy = BowTieLocalY(rig);
-            float hw = r * BowTieKnotRatio, hh = r * BowTieKnotHalfHeightRatio;
-            return new[]
-            {
-                rig.F(-hw, cy + hh), rig.F(hw, cy + hh), rig.F(hw, cy - hh), rig.F(-hw, cy - hh),
-            };
-        }
-
         // ★ 2026-08-30 — 옛 짧은 망토 전용 CapeOutline/CapeFold(단일 인자)를 여기서 지웠다.
         //   같은 도형을 짧은/긴 망토가 매개변수로 공유하게 되면서 정의가 두 벌이 됐고,
         //   실루엣 재설계 때 <b>한쪽만 고쳐 두 망토가 다른 모양</b>이 되는 사고가 실제로 났다.
@@ -1177,7 +1033,10 @@ namespace StickMate.Interaction
             {
                 case EquipmentSlot.Head: AppendHead(sink, itemIndex, rig); break;
                 case EquipmentSlot.Eyes: AppendEyes(sink, itemIndex, rig); break;
-                case EquipmentSlot.Neck: AppendNeck(sink, itemIndex, rig, mondayLoosened); break;
+                // ★ NECK은 <b>에셋이 형상을 갖는다</b>(B-2 파일럿). 여기서 좌표를 만들지 않는다.
+                case EquipmentSlot.Neck:
+                    AppendWorn(sink, slot, itemIndex, rig, SortNeck, mondayLoosened);
+                    break;
                 case EquipmentSlot.Shoulders: AppendBack(sink, itemIndex, rig); break;
                 case EquipmentSlot.Hair: AppendHair(sink, itemIndex, rig, hatCoverLocalY, strokeHalfWidth); break;
 
@@ -1194,6 +1053,55 @@ namespace StickMate.Interaction
                     break;
             }
         }
+
+        // ==================== 에셋이 가진 형상 (2026-09-02 B-2 파일럿) ====================
+
+        /// <summary>
+        /// 에셋(<see cref="AccessoryDefSO.wornShapes"/>)이 가진 형상을 <paramref name="sink"/>에 넣는다.
+        ///
+        /// <para>이 함수는 <b>어떤 아이템인지 모른다</b> — 자리 번호로 데이터를 집어 스트림을 돌릴 뿐이다.
+        /// 그것이 이 이행의 목적이다: 7번째 목 아이템은 에셋 하나로 추가되고 이 파일은 안 바뀐다.</para>
+        ///
+        /// <para>레이어(<paramref name="sortingOrder"/>)는 <b>데이터에 넣지 않았다</b>. 그것은 아이템의
+        /// 조형이 아니라 <b>자리끼리의 겹침 규칙</b>이라, 팩 작성자가 정하게 두면 남의 아이템이
+        /// 내 모자 위로 올라오는 사고를 팩 하나가 일으킬 수 있다.</para>
+        ///
+        /// <para>데이터가 없으면 <see cref="AppendMissingMarker"/>가 크게 알린다 — 옛 <c>default:</c>와
+        /// 같은 자리다. 스트림이 <b>망가진</b> 경우는 여기까지 오지 않는다:
+        /// <c>ItemCatalog</c>가 읽을 때 한 번 검사해서 버리고 그때 큰 소리로 남긴다
+        /// (렌더 루프에서 프레임마다 같은 에러를 찍으면 로그가 원인을 덮는다).</para>
+        /// </summary>
+        /// <param name="stateOn">그 자리의 상태 하나. 지금은 줄무늬 타이의 "월요일" 뿐이다.</param>
+        internal static void AppendWorn(List<Shape> sink, EquipmentSlot slot, int item, in Rig rig,
+            int sortingOrder, bool stateOn)
+        {
+            AccessoryWornShapeData[] data = ItemCatalog.WornShapes(slot, item);
+            if (data == null || data.Length == 0)
+            {
+                AppendMissingMarker(sink, slot, item, rig);
+                return;
+            }
+
+            AccessoryWornFrame frame = Frame(rig);
+            for (int i = 0; i < data.Length; i++)
+            {
+                if (!AccessoryWornShapeReader.TryBuild(data[i], frame, stateOn, out Vector3[] points, out _))
+                {
+                    // 여기 오는 것은 카탈로그 검사를 통과한 스트림이 런타임에 깨졌다는 뜻이다.
+                    // 그 자리만 조용히 빠지면 "왜 반쪽만 그려지지"가 되므로 표식으로 알린다.
+                    AppendMissingMarker(sink, slot, item, rig);
+                    return;
+                }
+
+                sink.Add(new Shape(data[i].name, points, data[i].loop, sortingOrder,
+                    data[i].swayStart, data[i].swayCount, (byte)data[i].tone, data[i].filled));
+            }
+        }
+
+        /// <summary>리그 -> 형상 데이터가 가리키는 기저 값들. <b>유일한 변환 지점</b>이다.</summary>
+        internal static AccessoryWornFrame Frame(in Rig rig)
+            => new AccessoryWornFrame(rig.HeadRadius, rig.TorsoLength, NeckLocalY(rig),
+                rig.ShoulderY, rig.HeadCenterY, rig.HipY, rig.Facing);
 
         // ==================== 빠진 도형 표식 (2026-09-02) ====================
 
@@ -1683,203 +1591,21 @@ namespace StickMate.Interaction
         }
 
 
-        // ==================== NECK (넥타이) ====================
-
-        private static void AppendNeck(List<Shape> sink, int item, in Rig rig, bool mondayLoosened)
-        {
-            float r = rig.HeadRadius;
-            float ty = NeckLocalY(rig);
-
-            switch (item)
-            {
-                case NeckBowTie:
-                    // 날개도 매듭도 <b>채운다</b>. 옛 나비넥타이는 셋 다 열린 선이라 화면에서
-                    // "리본"이 아니라 "가는 획 몇 개"였다.
-                    sink.Add(new Shape("BowTieLeftWing", BowTieLeftWing(rig), true, SortNeck, filled: true));
-                    sink.Add(new Shape("BowTieRightWing", BowTieRightWing(rig), true, SortNeck, filled: true));
-                    sink.Add(new Shape("BowTieKnot", BowTieKnot(rig), true, SortNeck,
-                        tone: Accent, filled: true));
-                    break;
-
-                case NeckStriped:
-                {
-                    // 33-2-5 (D) — 월요일에는 매듭이 R·0.12 내려가고 blade가 3도 기운다.
-                    float knotY = mondayLoosened ? ty - r * TieMondayLoosenDropRatio : ty;
-                    float tilt = mondayLoosened ? TieMondayLoosenTiltDegrees * Mathf.Deg2Rad : 0f;
-                    float kw = r * TieKnotHalfWidthRatio;
-                    float kh = r * TieKnotHalfHeightRatio;
-                    float kb = r * TieKnotBottomDropRatio;
-
-                    sink.Add(new Shape("TieKnot", new[]
-                    {
-                        rig.F(-kw, knotY + kh),
-                        rig.F(kw, knotY + kh),
-                        rig.F(kw * 0.722f, knotY - kb),
-                        rig.F(-kw * 0.722f, knotY - kb),
-                    }, true, SortNeck, filled: true));
-
-                    float pivotY = knotY - kb;
-                    float len = rig.TorsoLength * TieBladeLengthInTorso;
-                    float bw = r * TieBladeHalfWidthRatio;
-
-                    // 매듭 아래변을 축으로 기울인다(도형 전체를 다시 정의하지 않는다).
-                    // in 파라미터는 로컬 함수가 캡처할 수 없어 한 번 복사한다(readonly struct라 안전).
-                    Rig bladeRig = rig;
-                    Vector3 Blade(float fx, float dy)
-                    {
-                        float rx = fx * Mathf.Cos(tilt) - dy * Mathf.Sin(tilt);
-                        float ry = fx * Mathf.Sin(tilt) + dy * Mathf.Cos(tilt);
-                        return bladeRig.F(rx, pivotY + ry);
-                    }
-
-                    // 끝 V의 3점(인덱스 2~4)이 흔들린다. 33절은 "끝 2점"이라고 적었지만 V의 꼭짓점만
-                    // 남기고 두 어깨점을 고정하면 V가 찢어져 보인다 — 세 점을 함께 흔든다.
-                    sink.Add(new Shape("TieBlade", new[]
-                    {
-                        Blade(-bw, 0f),
-                        Blade(bw, 0f),
-                        Blade(bw * 1.176f, -len * 0.72f),
-                        Blade(0f, -len),
-                        Blade(-bw * 1.176f, -len * 0.72f),
-                    }, true, SortNeck, filled: true, swayStart: 2, swayCount: 3));
-
-                    // ★ 줄무늬는 <b>하나</b>다. 옛 도형은 열린 선 2개였고 각각 잉크 사각형이 0.87획이라
-                    // 둘 다 화면에 존재하지 않았다(규칙 1 면제 대장의 나머지 두 줄). 지금은 blade를
-                    // 가로지르는 <b>채운 띠</b> 하나 — 보조색 정원도 2개 -> 1개가 되어 규칙 3-2를 지킨다.
-                    sink.Add(new Shape("TieStripe", new[]
-                    {
-                        Blade(-bw * 1.06f, -len * 0.30f),
-                        Blade(bw * 1.06f, -len * 0.30f - r * 0.20f),
-                        Blade(bw * 1.12f, -len * 0.52f - r * 0.20f),
-                        Blade(-bw * 1.12f, -len * 0.52f),
-                    }, true, SortNeck, tone: Accent, filled: true));
-                    break;
-                }
-
-                case NeckScarf:
-                {
-                    // ★ 자락을 <b>먼저</b>, 고리를 <b>나중에</b> 넣는다. 같은 채움 레이어에서는 나중에
-                    // 넣은 것이 위로 오고, 목도리는 고리가 자락을 덮어야 "감았다"로 읽힌다.
-                    // (옛 순서는 반대라 자락이 고리 위로 떴다 — 미보고 결함.)
-                    float back = rig.TorsoLength * ScarfBackTailLengthInTorso;
-                    sink.Add(new Shape("ScarfTailBack", new[]
-                    {
-                        rig.F(-r * 0.58f, ty - r * 0.32f),
-                        rig.F(-r * 0.06f, ty - r * 0.48f),
-                        rig.F(-r * 0.48f, ty - back),
-                        rig.F(-r * 1.04f, ty - back + rig.TorsoLength * 0.07f),
-                    }, true, SortNeck, swayStart: 2, swayCount: 2, filled: true));
-
-                    float front = rig.TorsoLength * ScarfFrontTailLengthInTorso;
-                    sink.Add(new Shape("ScarfTailFront", new[]
-                    {
-                        rig.F(r * 0.06f, ty - r * 0.48f),
-                        rig.F(r * 0.54f, ty - r * 0.34f),
-                        rig.F(r * 1.12f, ty - front),
-                        rig.F(r * 0.58f, ty - front - rig.TorsoLength * 0.07f),
-                    }, true, SortNeck, swayStart: 2, swayCount: 2, filled: true));
-
-                    float wh = r * ScarfWrapHalfWidthRatio;
-                    sink.Add(new Shape("ScarfWrap", new[]
-                    {
-                        rig.F(-wh, ty + r * ScarfWrapTopRatio),
-                        rig.F(0f, ty + r * ScarfWrapCenterTopRatio),
-                        rig.F(wh, ty + r * ScarfWrapTopRatio),
-                        rig.F(wh + r * 0.04f, ty + r * ScarfWrapSideRatio),
-                        rig.F(0f, ty + r * ScarfWrapDipRatio),
-                        rig.F(-wh - r * 0.04f, ty + r * ScarfWrapSideRatio),
-                    }, true, SortNeck, tone: Accent, filled: true));
-                    break;
-                }
-
-                case NeckBell:
-                {
-                    sink.Add(new Shape("Collar", CollarCurve(rig, ty), false, SortNeck));
-
-                    // 위 꼭짓점이 <b>목줄 최저점 그 자리</b>다 — 펜던트와 똑같은 유도(규칙 4-a).
-                    // 첫 점을 90도에서 시작하는 이유: 10각형을 위상 0도로 두면 가장 높은 꼭짓점이
-                    // 72도에 놓여 매단 자리가 0.11획 어긋난다(옛 방울이 정확히 그 상태였다).
-                    float bellR = r * BellRadiusRatio;
-                    float bellY = CollarLowLocalY(rig, ty) - bellR;
-                    sink.Add(new Shape("Bell", Polygon(rig, 0f, bellY, bellR, BellSegments, 90f),
-                        true, SortNeck, swayStart: 0, swayCount: BellSegments, tone: Accent, filled: true));
-                    break;
-                }
-
-                case NeckPendant:
-                {
-                    // 방울 목걸이의 목줄을 <b>그대로</b> 쓰고(같은 부착선·같은 곡률) 매달린 것만 바꾼다.
-                    sink.Add(new Shape("Chain", CollarCurve(rig, ty), false, SortNeck));
-
-                    float hangY = CollarLowLocalY(rig, ty);
-                    float phw = r * PendantHalfWidthRatio;
-                    float phh = r * PendantHalfHeightRatio;
-                    float py = hangY - phh;
-                    sink.Add(new Shape("Pendant", new[]
-                    {
-                        rig.F(0f, hangY),
-                        rig.F(phw, py),
-                        rig.F(0f, py - phh),
-                        rig.F(-phw, py),
-                    }, true, SortNeck, swayStart: 0, swayCount: 4, tone: Accent, filled: true));
-                    break;
-                }
-
-                case NeckBandana:
-                {
-                    // 목도리 고리의 납작 변주 + 앞으로 늘어진 <b>채운 삼각</b> 자락 하나.
-                    float wrapY = ty + r * BandanaWrapRiseRatio;
-                    float wh = r * BandanaWrapHalfWidthRatio;
-                    float wv = r * BandanaWrapHalfHeightRatio;
-                    sink.Add(new Shape("BandanaWrap", new[]
-                    {
-                        rig.F(-wh, wrapY + wv),
-                        rig.F(0f, wrapY + wv * 0.4545f),
-                        rig.F(wh, wrapY + wv),
-                        rig.F(wh, wrapY - wv),
-                        rig.F(0f, wrapY - wv * 1.909f),
-                        rig.F(-wh, wrapY - wv),
-                    }, true, SortNeck, filled: true));
-
-                    float thw = r * BandanaTailHalfWidthRatio;
-                    float baseY = wrapY - r * 0.30f;
-                    // 끝 꼭짓점(인덱스 2) 하나만 흔든다 — 밑변 두 점은 매듭이라 고정이다.
-                    sink.Add(new Shape("BandanaTail", new[]
-                    {
-                        rig.F(r * 0.04f, baseY),
-                        rig.F(r * 0.04f + thw * 2f, baseY),
-                        rig.F(r * 0.04f + thw * 0.75f, baseY - rig.TorsoLength * BandanaTailLengthRatio),
-                    }, true, SortNeck, swayStart: 2, swayCount: 1, tone: Accent, filled: true));
-                    break;
-                }
-
-                default:
-                    AppendMissingMarker(sink, EquipmentSlot.Neck, item, rig);
-                    break;
-            }
-        }
-
-
-        /// <summary>목줄 — 아래로 볼록한 5점 곡선. 방울 목걸이와 펜던트 목걸이가 <b>같은 하나</b>를 쓴다
-        /// (두 벌로 두면 부착선이 갈라져 한쪽만 목에서 뜬다 — 이 파일이 옛 망토에서 이미 겪은 실패다).</summary>
-        private static Vector3[] CollarCurve(in Rig rig, float neckY)
-        {
-            float r = rig.HeadRadius;
-            float ch = r * CollarHalfWidthRatio;
-            var collar = new Vector3[5];
-            for (int i = 0; i < 5; i++)
-            {
-                float t = i / 4f * 2f - 1f;
-                // 양 끝 +CollarRise, 한가운데 그보다 CollarDip 아래(= 아래로 볼록한 목줄)
-                collar[i] = rig.F(ch * t,
-                    neckY + r * CollarRiseRatio - (1f - t * t) * r * CollarDipRatio);
-            }
-            return collar;
-        }
-
-        /// <summary>목줄이 가장 아래로 처지는 점의 로컬 y. <b>매달리는 것</b>이 이 값에서 시작한다.</summary>
-        internal static float CollarLowLocalY(in Rig rig, float neckY)
-            => neckY + rig.HeadRadius * (CollarRiseRatio - CollarDipRatio);
+        // ==================== NECK (넥타이) — 형상이 <b>에셋으로 내려간 자리</b> ====================
+        //
+        // ★ 2026-09-02 DLC 이행 B-2 파일럿. 여기 있던 것:
+        //     AppendNeck의 아이템 case 6개(나비넥타이/줄무늬타이/목도리/방울/펜던트/반다나)
+        //     + BowTieLeftWing/RightWing/Knot + CollarCurve + CollarLowLocalY + 비율 상수 26개.
+        //   전부 Resources/Items/equip_neck_*.asset의 wornShapes로 옮겼고, 이 파일은 그 자리에
+        //   대해 <b>아무 좌표도 모른다</b>. 7번째 목 아이템은 이제 에셋 하나로 추가된다(원칙 4).
+        //
+        // 옮기면서 좌표가 <b>비트 하나도</b> 바뀌지 않았다는 증거:
+        //   Tests/EditMode/WornShapeDataGoldenTests.cs + Tests/EditMode/Golden/NeckWornShapeGolden.txt
+        //   (릭 10벌 × 6종 × 월요일 on/off의 모든 점을 float 비트 그대로 대조한다)
+        //
+        // 남은 것은 <b>부착 기준선</b> <see cref="NeckLocalY"/> 하나뿐이다 — 그것은 아이템의 조형이
+        // 아니라 리그의 사실이고, 자리가 비었을 때 표식을 어디 띄울지도 그 선이 정한다.
+        // 형상 데이터는 그 선을 AccessoryWornBasis.NeckLine 번호로 가리키기만 한다.
 
         // ==================== BACK (망토/날개/배낭) ====================
 

@@ -262,7 +262,27 @@ namespace StickMate.States
                     // 어긋나 있었다. ★ 쌍둥이가 하나 더 있다 — Interaction/ArcheryRenderer.cs의
                     // ConfigFloat 람다 폴백(archeryOutroSeconds, 0.75f). 그쪽은 이번 라운드 편집 금지 구역이라
                     // 손대지 않았고 리더에게 별도 보고했다(그 형태는 드리프트 스캐너의 정규식에도 안 걸린다).
-                    if (_timer >= (_cfg != null ? _cfg.archeryArrowFlightSeconds : 0.62f) + (_cfg != null ? _cfg.archeryOutroSeconds : 0.55f))
+                    //
+                    // ★★ 2026-09-02 — <b>기다리는 기준을 명목값에서 실제값으로 바꿨다.</b>
+                    //   예전 식은 설정의 <c>archeryArrowFlightSeconds</c>(명목 0.62)를 썼는데, 이번 발의
+                    //   진짜 비행 시간은 <see cref="ResolveFlightSeconds"/>가 <b>사거리에서 파생</b>한
+                    //   값이고 그것을 이미 <see cref="_lastFlightSeconds"/>에 담아 두고 있었다.
+                    //   그런데 <b>읽는 곳이 0건</b>이라 그 필드의 문서("Outro가 마지막 화살 도달까지
+                    //   기다리는 데 쓴다")가 코드와 어긋난 채로 있었다 — 죽은 필드가 살아 있는 척한 것이다.
+                    //
+                    //   <b>지금 안 터지는 것은 우연이다</b>(실측): 화살이 실제로 꽂히는 시점은 Outro 기준
+                    //   <c>flight − archeryRecoverSeconds</c>이고(발사는 Recover 시작 시점이다),
+                    //   현재 상수(사거리 상한 6.6H → 최장 비행 0.62·√(6.6/4.6) = 0.743초, recover 0.34)로는
+                    //   최대 0.403초다. 옛 식의 종료 시점 1.17초와의 여유가 <b>0.767초</b>였다.
+                    //   여유가 사라지는 조건은 <c>archeryOutroSeconds &lt; flight − 0.96</c>이므로,
+                    //   비행 상한(<c>archeryArrowFlightMaxSeconds</c> 1.25)까지 사거리를 늘리면서
+                    //   outro를 0.29초 아래로 내리면 <b>화살이 공중에 있는 채로 상태가 끝난다</b>.
+                    //   그때는 조용히 깨진다 — 예외도 로그도 없고, 화살만 사라진다.
+                    //
+                    //   ※ 부수 효과(의도적, 리더 보고 완료): 가까운 과녁은 비행이 짧으므로 Outro가
+                    //     최대 약 0.25초 <b>일찍</b> 끝난다. 그것이 이 필드가 원래 약속한 동작이다
+                    //     ("마지막 화살 도달까지" — 명목 0.62초를 무조건 기다리는 것이 아니라).
+                    if (_timer >= _lastFlightSeconds + (_cfg != null ? _cfg.archeryOutroSeconds : 0.55f))
                     {
                         _blackboard.Machine.ChangeState(StickmanStateId.Idle);
                     }
@@ -394,7 +414,13 @@ namespace StickMate.States
             return Mathf.Clamp(baseSeconds * scale, baseSeconds * 0.6f, maxSeconds);
         }
 
-        /// <summary>마지막으로 쏜 화살의 비행 시간(초) — Outro가 "마지막 화살이 도달할 때까지" 기다리는 데 쓴다.</summary>
+        /// <summary>마지막으로 쏜 화살의 비행 시간(초) — Outro가 "마지막 화살이 도달할 때까지" 기다리는 데 쓴다.
+        /// <para>★ 2026-09-02까지 이 문장은 <b>거짓이었다</b>: 쓰는 곳만 있고 읽는 곳이 0건이라 Outro는
+        /// 설정의 명목 비행 시간을 쓰고 있었다. 이제 <see cref="Tick"/>의 <c>Phase.Outro</c>가 실제로
+        /// 이 값을 읽는다 — 그 분기의 주석에 옛 식이 언제 깨지는지 실측 조건을 적어 두었다.</para>
+        /// <para>초기값은 첫 발이 발행되기 전에 읽힐 일이 없지만(Outro는 정의상 마지막 발 이후다)
+        /// 설정 기본값과 같은 수를 둔다 — 0으로 두면 배선이 끊겼을 때 Outro가 <b>즉시</b> 끝나
+        /// 실패가 "조금 빠름"으로 위장된다.</para></summary>
         private float _lastFlightSeconds = 0.62f;
 
         /// <summary>

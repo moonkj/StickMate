@@ -1,0 +1,58 @@
+==============================================================================
+출하 표면 정밀 계수 (프로덕션 .cs, Tests/ 제외)
+==============================================================================
+  INSPECTOR   1662
+  DEBUG       1185
+  EXC           21
+  LOGM         225
+  LOGF         478
+  SHIP         401
+  합계          3972
+
+  미출하 = INSPECTOR+DEBUG+EXC+LOGM+LOGF = 3571
+  ★ 출하(SHIP) = 401
+
+--- SHIP 파일별 ---
+     70  Interaction/SettingsWindow.cs
+     50  Interaction/CharacterInfoWindow.cs
+     49  Core/StickMateDisplayNames.cs   [생산자 화이트리스트] 근거: Interaction/AppControlDirector.cs:520, Interaction/ArcheryDirector.cs:155, Interaction/GraffitiDirector.cs:70
+     29  Core/ItemCatalog.cs   [생산자 화이트리스트] 근거: Interaction/CharacterInfoWindow.Cards.cs:81, Interaction/CharacterInfoWindow.Inventory.cs:25, Interaction/CharacterInfoWindow.cs:904
+     28  Interaction/ActionCommandPopover.cs
+     25  Interaction/FocusSessionPopover.cs
+     18  Interaction/GearRadialMenuWidget.cs
+     18  Interaction/TodoBoardPopover.cs
+     13  Dialogue/AmbientChatter.cs
+     13  Dialogue/DialogueBubbleRenderer.cs
+     10  Core/StickmanAgent.cs
+     10  Interaction/AppControlDirector.cs
+      8  Interaction/CharacterInfoWindow.Cards.cs
+      7  Core/EquipmentModel.cs   [생산자 화이트리스트] 근거: Interaction/CharacterInfoWindow.Cards.cs:34, Interaction/CharacterInfoWindow.Tabs.cs:175
+      5  States/RunawayState.cs
+      5  Interaction/CharacterInfoWindow.Tabs.cs
+      4  States/ParkourClimbState.cs
+      4  Interaction/ArcheryDirector.cs
+      4  Interaction/CharacterInfoWindow.Inventory.cs
+      3  States/LedgeHangState.cs
+      3  States/RagdollState.cs
+      3  Interaction/PopoverPanel.cs
+      3  Interaction/StressGaugeRenderer.cs   [생산자 화이트리스트] 근거: Interaction/CharacterInfoWindow.cs:893
+      3  Interaction/TodoPostItWidget.cs
+      2  Core/CharacterStatsModel.cs   [생산자 화이트리스트] 근거: Interaction/CharacterInfoWindow.cs:903
+      2  Core/CommandAvailability.cs   [생산자 화이트리스트] 근거: Interaction/ActionCommandPopover.cs:465, Interaction/AppControlDirector.cs:516, Interaction/ArcheryDirector.cs:152
+      2  States/AttackState.cs
+      2  Interaction/WindowCrashDirector.cs
+      2  Interaction/WindowTheftDirector.cs
+      1  Core/CharacterProgressionModel.cs   [생산자 화이트리스트] 근거: Interaction/CharacterInfoWindow.cs:885
+      1  States/WindowTheftState.cs
+      1  Interaction/GraffitiDirector.cs
+      1  Interaction/RunawayDirector.cs
+      1  Interaction/SettingsControls.cs
+      1  Interaction/TodoReminderDirector.cs
+  (파일 35개)
+
+--- .asset (디코드 후) ---
+  84건 / 42파일
+
+==============================================================================
+★ 1.0 번역 대상 = .cs SHIP 401 + .asset 84 = 485건
+==============================================================================

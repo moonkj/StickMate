@@ -158,5 +158,98 @@ namespace StickMate.Tests.EditMode
             Assert.IsTrue(d.Update(false, 1.3, Hold));
             Assert.IsFalse(d.Update(false, 2.5, Hold));
         }
+
+        // ============================================================================
+        // 등급(ForeignFullscreenTier) — 2026-09-02 출시 Blocker
+        // ============================================================================
+        //
+        // ★ 이 절이 잠그는 단 하나의 명제: <b>"등급 2의 조건은 한 글자도 바뀌지 않았다."</b>
+        //   양 플랫폼의 IsFullscreenAppActive()가 SuspendsCharacter(Resolve(기하, 게임))로 정의돼
+        //   있으므로, 그 합성이 예전의 `기하 AND 게임`과 <b>모든 입력 조합에서</b> 같다는 것을 여기서
+        //   전수로 확인한다. 이게 2026-08-31 신고("엑셀 전체화면에서 캐릭터가 사라진다")가 회귀하지
+        //   않는다는 주장의 근거다 — 문장이 아니라 4분기 전수다.
+
+        [Test]
+        public void 등급_진리표_4분기를_전부_실행한다()
+        {
+            Assert.AreEqual(ForeignFullscreenTier.None,
+                ForeignFullscreenTierPolicy.Resolve(coversDisplay: false, isGame: false));
+
+            // ★ 게임이어도 전체화면이 아니면 아무 일도 없다 — 창 모드 게임에 우리가 물러날 이유가 없다.
+            Assert.AreEqual(ForeignFullscreenTier.None,
+                ForeignFullscreenTierPolicy.Resolve(coversDisplay: false, isGame: true));
+
+            Assert.AreEqual(ForeignFullscreenTier.PanelsOnly,
+                ForeignFullscreenTierPolicy.Resolve(coversDisplay: true, isGame: false));
+            Assert.AreEqual(ForeignFullscreenTier.Full,
+                ForeignFullscreenTierPolicy.Resolve(coversDisplay: true, isGame: true));
+        }
+
+        [Test]
+        public void 캐릭터_숨김은_예전_bool_판정과_모든_입력에서_동일하다()
+        {
+            // 기대값을 ForeignFullscreenTierPolicy로 만들지 않는다 — 그러면 그 함수가 틀어질 때
+            // 기대값도 함께 틀어져 아무것도 못 잰다(TEAM.md "기대값을 프로덕션 함수로 만들지 마라").
+            // 여기서 쓰는 기대값은 <b>2026-08-31 시점의 규칙 문장 그 자체</b>인 `covers && game`이다.
+            bool[] bools = { false, true };
+            int checkedCount = 0;
+            foreach (bool covers in bools)
+            {
+                foreach (bool game in bools)
+                {
+                    bool legacy = covers && game;   // 등급 도입 <b>이전</b>의 IsFullscreenAppActive() 원시 판정.
+                    bool now = ForeignFullscreenTierPolicy.SuspendsCharacter(
+                        ForeignFullscreenTierPolicy.Resolve(covers, game));
+                    Assert.AreEqual(legacy, now,
+                        $"기하={covers}, 게임={game}에서 캐릭터 숨김 판정이 예전과 달라졌다. " +
+                        "이 한 칸이 달라지는 순간 2026-08-31 신고(엑셀 전체화면에서 캐릭터가 사라짐)가 " +
+                        "그대로 회귀한다.");
+                    checkedCount++;
+                }
+            }
+            Assert.AreEqual(4, checkedCount, "4분기를 전부 돌지 않았다 — 빈 루프 위의 초록불 방지.");
+        }
+
+        [Test]
+        public void 등급이_올라갈수록_더_걷는다_포함관계()
+        {
+            // 등급 2는 등급 1을 <b>포함</b>한다. 이 불변식이 깨지면 "캐릭터는 숨었는데 차단막은 남은"
+            // 상태가 구조적으로 가능해지고, 그게 이 앱에서 가장 나쁜 형태다(안 보이는데 클릭만 먹는다).
+            Assert.IsFalse(ForeignFullscreenTierPolicy.RetreatsPanels(ForeignFullscreenTier.None));
+            Assert.IsTrue(ForeignFullscreenTierPolicy.RetreatsPanels(ForeignFullscreenTier.PanelsOnly));
+            Assert.IsTrue(ForeignFullscreenTierPolicy.RetreatsPanels(ForeignFullscreenTier.Full));
+
+            Assert.IsFalse(ForeignFullscreenTierPolicy.SuspendsCharacter(ForeignFullscreenTier.None));
+            Assert.IsFalse(ForeignFullscreenTierPolicy.SuspendsCharacter(ForeignFullscreenTier.PanelsOnly),
+                "등급 1에서 캐릭터를 숨기면 그것이 곧 2026-08-31 신고의 회귀다.");
+            Assert.IsTrue(ForeignFullscreenTierPolicy.SuspendsCharacter(ForeignFullscreenTier.Full));
+
+            // 모든 등급에서 "캐릭터를 숨긴다 -> 표면도 걷는다"가 성립해야 한다(역은 성립하지 않는다).
+            foreach (ForeignFullscreenTier tier in System.Enum.GetValues(typeof(ForeignFullscreenTier)))
+            {
+                if (ForeignFullscreenTierPolicy.SuspendsCharacter(tier))
+                {
+                    Assert.IsTrue(ForeignFullscreenTierPolicy.RetreatsPanels(tier),
+                        $"{tier}: 캐릭터를 숨기면서 표면은 남긴다 — 포함관계 위반.");
+                }
+            }
+        }
+
+        [Test]
+        public void 등급_설명은_세_등급이_서로_다른_문장이다()
+        {
+            // Describe()는 전이 로그의 유일한 사유 문장이다. 두 등급이 같은 문장을 뱉으면
+            // Player.log만 보고는 "무엇이 걷혔는지"를 영영 가릴 수 없다(이 저장소의 실제 조사 비용).
+            string none = ForeignFullscreenTierPolicy.Describe(ForeignFullscreenTier.None);
+            string panels = ForeignFullscreenTierPolicy.Describe(ForeignFullscreenTier.PanelsOnly);
+            string full = ForeignFullscreenTierPolicy.Describe(ForeignFullscreenTier.Full);
+
+            Assert.AreNotEqual(none, panels);
+            Assert.AreNotEqual(panels, full);
+            Assert.AreNotEqual(none, full);
+            Assert.IsNotEmpty(none);
+            Assert.IsNotEmpty(panels);
+            Assert.IsNotEmpty(full);
+        }
     }
 }

@@ -1,7 +1,9 @@
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using StickMate.Interaction;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace StickMate.Tests.EditMode
 {
@@ -242,16 +244,41 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 네거티브_컨트롤_면만_푸는_풀이는_어떤_바탕에서_글자를_지운다()
         {
+            // ★ 2026-09-02 qa-regression — 이 검사는 <b>일부러</b> 프로덕션을 "읽히는 잉크가
+            //   존재하지 않는 면"으로 몰아넣는다. 그때 UiChrome.WarnUnreadableBackdrop이
+            //   Debug.LogError를 낸다(UNITY_EDITOR 조건부). 그것은 프로덕션이 <b>제대로 소리치는
+            //   것</b>인데, Unity 테스트 프레임워크는 선언되지 않은 LogError를 무조건 실패로 잡는다.
+            //   그래서 이 테스트가 <b>거짓 실패</b>로 여러 라운드를 떠돌았다(러너에 유일한 빨간불).
+            //
+            //   처방은 "무시"가 아니라 <b>2패스</b>다:
+            //     1패스 — 어느 바탕이 깨지는지 <b>알아낸다</b>(그동안만 로그 실패를 끈다).
+            //     2패스 — 깨지는 바탕마다 LogAssert.Expect를 <b>미리 선언하고</b> 다시 부른다.
+            //   이러면 삼킨 것이 아니라 <b>"프로덕션이 정확히 그만큼 소리쳤다"를 단언</b>하게 된다.
+            //   그냥 ignoreFailingMessages=true로 덮으면 프로덕션이 소리치기를 멈춰도 초록이다.
             var broken = new List<string>();
+            var brokenBackdrops = new List<Color>();
             int checkedCount = 0;
 
-            foreach ((string name, Color backdrop) in AllBackdrops())
+            bool prevIgnore = LogAssert.ignoreFailingMessages;
+            LogAssert.ignoreFailingMessages = true;
+            try
             {
-                Color face = FaceOnlySolution(backdrop);
-                Color ink = UiChrome.InkOnSurface(face, UiChrome.InkRole.Title, enabled: true);
-                float inkRatio = UiChrome.ContrastRatio(ink, face);
-                if (inkRatio < UiChrome.MinTextContrast) broken.Add($"{name} → {Hex(face)} / {inkRatio:F2}:1");
-                checkedCount++;
+                foreach ((string name, Color backdrop) in AllBackdrops())
+                {
+                    Color face = FaceOnlySolution(backdrop);
+                    Color ink = UiChrome.InkOnSurface(face, UiChrome.InkRole.Title, enabled: true);
+                    float inkRatio = UiChrome.ContrastRatio(ink, face);
+                    if (inkRatio < UiChrome.MinTextContrast)
+                    {
+                        broken.Add($"{name} → {Hex(face)} / {inkRatio:F2}:1");
+                        brokenBackdrops.Add(backdrop);
+                    }
+                    checkedCount++;
+                }
+            }
+            finally
+            {
+                LogAssert.ignoreFailingMessages = prevIgnore;
             }
 
             Assert.GreaterOrEqual(checkedCount, 10, $"{LogPrefix} 바탕을 {checkedCount}개밖에 훑지 않았습니다.");
@@ -260,6 +287,16 @@ namespace StickMate.Tests.EditMode
                 $"바탕 {checkedCount}종 어디에서도 글자를 깨지 않았습니다 — 그렇다면 " +
                 "ControlFaceOnSurface가 두 제약을 <b>동시에</b> 풀 이유가 없고, 위쪽 초록은 " +
                 "제약 하나짜리 풀이와 구분되지 않습니다.");
+
+            // ── 2패스: 깨지는 바탕마다 프로덕션이 <b>실제로 소리치는지</b>를 단언한다.
+            //    Expect를 미리 걸어 두면, 소리치지 않는 회귀는 "기대한 로그가 안 왔다"로 빨개진다.
+            //    (조용히 나쁜 잉크를 돌려주는 것이 이 저장소가 가장 자주 당한 실패 방식이다.)
+            foreach (Color backdrop in brokenBackdrops)
+            {
+                Color face = FaceOnlySolution(backdrop);
+                LogAssert.Expect(LogType.Error, new Regex(@"\[잉크\].*넘지 못합니다"));
+                UiChrome.InkOnSurface(face, UiChrome.InkRole.Title, enabled: true);
+            }
 
             Debug.Log($"{LogPrefix} 면만 푸는 풀이는 {broken.Count}/{checkedCount} 바탕에서 글자를 지웁니다:\n  " +
                 string.Join("\n  ", broken));

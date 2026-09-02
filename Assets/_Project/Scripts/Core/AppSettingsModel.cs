@@ -98,6 +98,49 @@ namespace StickMate.Core
         }
 
         // ============================================================================
+        // ★ 표시 모니터 (2026-09-02 사용자 확정: "멀티모니터일때 무조건 주모니터에서 실행하도록"
+        //   + "이게 기본이고 사용자가 설정할수있게 기능 넣어줘 다만 멀티모니터 인식이 됐을때만 활성화")
+        // ============================================================================
+        //
+        // 여기 두는 이유(리더 요청에 대한 판단): 이 값은 <b>설정창이 만지는 값</b>이고, 그 정의가
+        // 곧 이 클래스의 정의다. 대안이던 CharacterSaveStore 직접 보관은 <b>같은 파일에 저장된다</b> —
+        // AppSettingsModel의 값들은 이미 CharacterSaveStore가 읽고 쓰기 때문이다. 즉 두 후보는
+        // 저장 위치가 다른 것이 아니라 <b>소유권이 다른</b> 것이고, 소유권은 설정창 쪽이 맞다.
+        //
+        // ★ 형태는 v6 characterScaleSaved / v7 inkColorSaved와 <b>같은 "고른 적 있는가 + 값" 두 벌</b>이다.
+        //   그래서 옛 저장 파일에서 저절로 "고른 적 없음"이 되고, 그 값은 <b>정확한 사실</b>이다
+        //   (기본이 true인 AutoHideOnFullscreen이 겪은 "뜻이 뒤집히는" 함정이 여기엔 없다).
+
+        /// <summary>사용자가 표시 모니터를 <b>고른 적이 있는가</b>. false면 기본값(주 모니터)을 쓴다.</summary>
+        public static bool HasPreferredOverlayMonitor { get; private set; }
+
+        /// <summary>고른 <b>자리</b>의 이름(<c>"Start"</c> / <c>"End"</c> —
+        /// <see cref="StickMate.Platform.OverlayMonitorSlot"/>). 고른 적이 없으면 빈 문자열.
+        ///
+        /// <para>★ <b>2026-09-02 재판단(ux-designer §49 지적 채택)</b>: 원래는 모니터 원점 좌표
+        /// (<c>"x,y@wxh"</c>)를 저장했는데, <b>주 화면을 바꾸면 모든 원점이 재계산</b>되어
+        /// (macOS는 주 화면이 늘 (0,0)이라 나머지가 음수로 밀린다) <b>선택이 증발</b>한다.
+        /// 저장값이 UI보다 더 구체적이면 안 된다 — 칩은 영원히 둘이므로 <c>Start</c>/<c>End</c>가
+        /// 사용자가 표현할 수 있는 것과 <b>정확히 같은 해상도</b>이고, 재원점화·해상도 변경에 불변이다.</para>
+        ///
+        /// <para><b>이름 문자열로 두는 이유</b>: 잉크색/대사 표시 시간과 같은 관례다 —
+        /// 열거형에 칸이 끼어들어도 파일이 밀리지 않는다. 형식과 해석은 전부 플랫폼 중립 정책이
+        /// 소유하고 이 클래스는 <b>보관만</b> 한다(저장 모델이 배치 규약을 알면 규약이 두 곳으로 갈라진다).
+        /// 중간 빌드가 남긴 옛 좌표 문자열은 정책의 파서가 실패시켜 <b>조용히 기본값</b>이 된다.</para></summary>
+        public static string PreferredOverlayMonitorKey { get; private set; } = string.Empty;
+
+        /// <summary>표시 자리를 고른다. 빈 문자열/null이면 <b>선택 해제</b>(= 기본값 Start로 복귀).</summary>
+        public static void SetPreferredOverlayMonitor(string key)
+        {
+            bool has = !string.IsNullOrEmpty(key);
+            string value = has ? key : string.Empty;
+            if (HasPreferredOverlayMonitor == has && PreferredOverlayMonitorKey == value) return;
+            HasPreferredOverlayMonitor = has;
+            PreferredOverlayMonitorKey = value;
+            IsDirty = true;
+        }
+
+        // ============================================================================
         // [캐릭터] 탭 — 말과 행동
         // ============================================================================
         //
@@ -275,10 +318,17 @@ namespace StickMate.Core
             bool hasFontSize, int fontSize,
             bool hasVisibleLength, string visibleLengthName,
             bool hasChatterPercent, int chatterPercent,
-            bool hasBubbleEnabled, bool bubbleEnabled)
+            bool hasBubbleEnabled, bool bubbleEnabled,
+            bool hasPreferredMonitor, string preferredMonitorKey)
         {
             AutoHideOnFullscreen = autoHideOnFullscreen;
             GearIconVisible = gearIconVisible;
+
+            // ★ 표시 모니터 — "고른 적 있는가 + 값" 두 벌이라 옛 파일에서 저절로 false가 되고,
+            //   그 false는 "아직 고른 적 없다 = 주 모니터를 쓴다"는 정확한 사실이다(v6/v7과 같은 구조).
+            //   빈 키를 "골랐다"로 받아들이지 않는다 — 그러면 매칭이 영원히 실패해 로그만 시끄러워진다.
+            HasPreferredOverlayMonitor = hasPreferredMonitor && !string.IsNullOrEmpty(preferredMonitorKey);
+            PreferredOverlayMonitorKey = HasPreferredOverlayMonitor ? preferredMonitorKey : string.Empty;
 
             HasDialogueFontSize = hasFontSize;
             if (hasFontSize) DialogueFontSize = Mathf.Clamp(fontSize, MinDialogueFontSize, MaxDialogueFontSize);
@@ -305,6 +355,10 @@ namespace StickMate.Core
         internal static string DialogueVisibleLengthSaveName()
             => HasDialogueVisibleLength ? DialogueVisibleLength.ToString() : string.Empty;
 
+        /// <summary>저장 파일에 적히는 표시 모니터 키. 고른 적이 없으면 빈 문자열(위와 같은 관례).</summary>
+        internal static string PreferredOverlayMonitorSaveKey()
+            => HasPreferredOverlayMonitor ? PreferredOverlayMonitorKey : string.Empty;
+
         private static bool TryParseVisibleLength(string name, out DialogueVisibleLength value)
         {
             value = DialogueVisibleLength.Default;
@@ -327,6 +381,8 @@ namespace StickMate.Core
             ChatterPercent = 100;
             HasDialogueBubbleEnabled = false;
             DialogueBubbleEnabled = true;
+            HasPreferredOverlayMonitor = false;
+            PreferredOverlayMonitorKey = string.Empty;
             IsDirty = false;
         }
     }

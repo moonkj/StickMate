@@ -154,9 +154,13 @@ namespace StickMate.Interaction
         public const float ScreenMarginPoints = 8f;
 
         /// <summary>
-        /// 화면 <b>위쪽</b>만 여백이 다르다 — macOS 메뉴바(노치 기준 최대 약 38pt)를 덮지 않기 위해서다.
-        /// 톱니 자신이 같은 이유로 위에서 58pt에 놓이는데(InfoGearIconWidget.MarginTopPoints), 그 아래
-        /// 62pt 궤도를 도는 버튼은 위로 뻗으면 메뉴바를 가릴 수 있다(실측 스크린샷에서 실제로 그랬다).
+        /// 화면 <b>위쪽</b>만 여백이 다르다 — OS가 예약한 상단 띠(macOS 메뉴바 / Windows 상단 도킹
+        /// 작업표시줄)를 덮지 않기 위해서다. 궤도 62pt를 도는 버튼은 위로 뻗으면 그 띠를 가린다
+        /// (실측 스크린샷에서 실제로 그랬다).
+        ///
+        /// <para>★ 이 값은 <b>하한</b>이다. 실제로 쓰는 값은 <see cref="EffectiveTopMarginPoints"/>가
+        /// OS 보고값과 비교해 정한다 — 40은 macOS 메뉴바(33)를 넉넉히 덮지만 <b>Windows에는 그 근거가
+        /// 없다</b>(작업표시줄이 위에 도킹되면 40pt 이상이고 배율 150%에서 더 두껍다).</para>
         /// </summary>
         public const float TopMarginPoints = 40f;
 
@@ -759,8 +763,9 @@ namespace StickMate.Interaction
             using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.UiWindows);   // [스톨구간] 계측
             // ★★ 절대 불변 원칙 2(비침해) — 전체화면 게임이 감지되면 상시 표면을 <b>즉시</b> 거둔다.
             // StickmanAgent.Suspend()는 Awake에서 캐시한 캐릭터 렌더러만 끄므로, 씬 루트에 사는 이
-            // 캔버스는 그 배열에 없어 그대로 남았다. 히트테스트가 커서 아래 픽셀 알파를 보는 구조라
-            // (Platform/macOS의 MacWindowService) 남아 있으면 보이기만 하는 게 아니라 전체화면 게임의
+            // 캔버스는 그 배열에 없어 그대로 남았다. 히트테스트는 <b>커서 아래 Collider2D</b>를 본다
+            // (hitTestType=Raycast — InfoGearIconWidget.cs:51 참고. 픽셀 알파를 보는 구조가 <b>아니다</b>).
+            // 남아 있으면 보이기만 하는 게 아니라 전체화면 게임의
             // 클릭까지 먹는다. 애니메이션(0.13초 접힘)이 아니라 Hide()로 한 프레임에 치우는 이유:
             // 접힘 연출은 "사용자가 닫았다"는 뜻인데 여기는 사용자 동작이 아니고, 그 0.13초 동안에도
             // 클릭을 먹기 때문이다. 복귀는 강제로 다시 열지 않는다 — 톱니만 돌아오고 메뉴는 사용자가
@@ -768,7 +773,11 @@ namespace StickMate.Interaction
             // (이미 접혀 있으면 캔버스도 꺼져 있어 거둘 것이 없다 — 평소의 비용 0을 유지한다.)
             if (_phase == Phase.Hidden) return;
 
-            if (_agent != null && _agent.IsSuspended)
+            // ★★★ 2026-09-02 — <c>ArePanelsSuppressed</c>(등급 1 포함). 부채꼴은 <b>등급 1</b>이다:
+            //    게임이 아닌 전체화면 앱 위에서도 걷는다. 반대로 <b>톱니는 등급 2</b>로 남겨 뒀다
+            //    (InfoGearIconWidget) — 등급 1의 안전판이 "복구는 톱니 1클릭"인데 톱니까지 걷으면
+            //    그 안전판이 자기 자신을 지운다.
+            if (_agent != null && _agent.ArePanelsSuppressed)
             {
                 ClosePopovers("전체화면 감지 — 자동 숨김");
                 Hide();
@@ -1081,7 +1090,7 @@ namespace StickMate.Interaction
             if (maxX >= minX) center.x = Mathf.Clamp(center.x, minX, maxX);
 
             float minY = ScreenMarginPoints + halfH;
-            float maxY = _screenPointsAtLayout.y - TopMarginPoints - halfH;
+            float maxY = _screenPointsAtLayout.y - EffectiveTopMarginPoints - halfH;
             if (maxY >= minY) center.y = Mathf.Clamp(center.y, minY, maxY);
 
             return center;
@@ -1334,6 +1343,20 @@ namespace StickMate.Interaction
             for (int i = 0; i < ButtonCount; i++) _buttons[i].CenterPoints += shift;
         }
 
+        /// <summary>
+        /// ★ 2026-09-02 — 실제로 쓰는 상단 여백. <c>max(설계 하한 40, OS가 보고한 예약 띠 두께)</c>.
+        ///
+        /// <para><b>왜 max인가</b>: 40은 "메뉴바 위에 안 걸리게" 정한 <b>설계 여백</b>이고, 예약 띠
+        /// 두께는 <b>사실</b>이다. 둘 중 하나로 갈아치우면 한쪽을 잃는다 — 사실만 쓰면 띠가 없는
+        /// 환경에서 부채꼴이 화면 맨 위에 달라붙고, 설계값만 쓰면 띠가 40보다 두꺼운 환경
+        /// (Windows 상단 도킹 작업표시줄 · 배율 150%)에서 남의 막대를 덮는다.</para>
+        ///
+        /// <para>실측 대조: macOS 메뉴바 33 → <c>max(40, 33) = 40</c>으로 <b>지금과 한 픽셀도 다르지
+        /// 않다</b>. 값이 바뀌는 것은 두꺼운 상단 띠를 가진 Windows뿐이다(docs/UX_FLOW.md 51-13).</para>
+        /// </summary>
+        private float EffectiveTopMarginPoints => Mathf.Max(TopMarginPoints,
+            ReservedTopBarProbe.TopInsetPoints(_agent != null ? _agent.PlatformService : null));
+
         /// <summary>이 사각형을 화면 여백 안으로 넣는 최소 이동 벡터(들어와 있으면 0).</summary>
         private Vector2 ShiftToFit(Rect union)
         {
@@ -1342,8 +1365,8 @@ namespace StickMate.Interaction
             else if (union.xMax > _screenPointsAtLayout.x - ScreenMarginPoints)
                 shift.x = _screenPointsAtLayout.x - ScreenMarginPoints - union.xMax;
             if (union.yMin < ScreenMarginPoints) shift.y = ScreenMarginPoints - union.yMin;
-            else if (union.yMax > _screenPointsAtLayout.y - TopMarginPoints)
-                shift.y = _screenPointsAtLayout.y - TopMarginPoints - union.yMax;
+            else if (union.yMax > _screenPointsAtLayout.y - EffectiveTopMarginPoints)
+                shift.y = _screenPointsAtLayout.y - EffectiveTopMarginPoints - union.yMax;
             return shift;
         }
 
@@ -1365,7 +1388,7 @@ namespace StickMate.Interaction
         private bool IsBoxOnScreen(Rect box)
             => box.xMin >= ScreenMarginPoints && box.yMin >= ScreenMarginPoints
                && box.xMax <= _screenPointsAtLayout.x - ScreenMarginPoints
-               && box.yMax <= _screenPointsAtLayout.y - TopMarginPoints;
+               && box.yMax <= _screenPointsAtLayout.y - EffectiveTopMarginPoints;
 
         // ==================== 좌표 변환 ====================
 

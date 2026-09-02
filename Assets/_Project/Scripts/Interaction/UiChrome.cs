@@ -345,6 +345,83 @@ namespace StickMate.Interaction
         /// 단색이던 시절 전용" 값이다. 착용 표시는 이미 테두리·메타 문구·wash 셋이 함께 말한다.</para></summary>
         public static Color TintWash(Color tint) => new Color(tint.r, tint.g, tint.b, 30f / 255f);
 
+        // ============================================================================
+        // ★ 등급 램프 (2026-09-02) — design/art/PALETTE_SPEC.md §12 · §14-2
+        // ============================================================================
+        //
+        // ★★ <b>이 다섯 hex는 이 파일 밖에 존재하면 안 된다.</b> 등급색이 여기 말고 어디서든
+        //    다시 나타나는 순간 그게 드리프트의 시작이고, 색을 한 번 옮기면 두 벌이 갈라진다.
+        //    <c>Tests/EditMode/RarityColorSingleSourceTests</c>가 프로덕션 소스를 통째로 훑어
+        //    hex 표기와 <b>실수 3튜플 값</b> 양쪽으로 막는다(문자열만 보면 변수에 담아 넘기는 경로를 놓친다).
+        //
+        // 색은 등급의 <b>주 채널이 아니다</b>. 실측(PALETTE_SPEC §12-0 / §12-1):
+        //   · 인접 쌍 ΔE 15.16 / 17.69 / 17.22 — 변별 하한 7.8은 넘지만
+        //   · <b>식별 하한 48.6을 넘는 쌍은 「일반↔전설」 하나뿐</b>이다. 카드 한 장만 보고
+        //     "이건 영웅이다"를 색으로 맞히는 것은 <b>정상 시각에서도 안 된다</b>.
+        //   · 완전색맹·흑백 출력·저조도에서는 <b>변별마저</b> 무너진다(영웅↔전설 6.14).
+        //     이색각 3유형(1·2·3형)에서는 안 무너진다 — 색상각 하나 + 단조 명도라 명도축이 남기 때문.
+        // 그래서 <b>주 채널은 리본 칸 수</b>(= <c>(int)rarity + 1</c>)이고, 낱말이 확정을 맡고,
+        // 이 색은 "맞다, 그 등급이다"를 0.1초에 확인시키는 <b>보조</b>다.
+        // <b>이 색만으로 등급을 표시하는 화면을 만들지 마라.</b>
+        //
+        // ★ <c>ux-designer</c>에게 넘기는 배치 제약(PALETTE_SPEC §12-5, 리더 판정 A-11):
+        //   브라스 강조 칩(#C8A15A)과 <b>영웅</b> 리본(#DBBD7F)은 ΔE <b>12.17</b>이라 변별은 되지만
+        //   같은 가족으로 읽힌다. <b>둘을 한 화면에 붙여 놓지 않는다.</b> 붙일 수밖에 없는 자리에서는
+        //   등급을 <b>칸 수로만</b> 표시한다(주 채널이 이미 그것이므로 추가 비용 0).
+        //
+        // ★ 몸에 칠하지 않는다: 이 램프는 크롬 대역(L 0.31~0.64)에 살도록 설계돼 있어
+        //   <c>ItemCatalog.WornColor</c>를 통과시키면 배경 4종 최악 <b>1.73:1</b>로 사라지고
+        //   희귀↔영웅이 ΔE 5.77로 붙으며 전설이 영웅보다 어두워진다(휘도 단조 파괴).
+
+        /// <summary>등급 램프 4색(황동 함량). 순서 = <see cref="StickMate.Core.ItemRarity"/> 값 순서.
+        /// <b>배열을 재배열하면 등급색이 통째로 어긋난다</b> — <c>RarityColorSingleSourceTests</c>가
+        /// 길이와 휘도 단조성을 함께 잠근다.</summary>
+        private static readonly Color[] _rarityRamp =
+        {
+            RarityHex(0x9C978C),   // 일반   — 카드 바탕 대비 5.68:1
+            RarityHex(0xBCAC8B),   // 희귀   — 7.41:1
+            RarityHex(0xDBBD7F),   // 영웅   — 9.13:1
+            RarityHex(0xF9CB70),   // 전설   — 10.86:1
+        };
+
+        /// <summary>등급 리본의 <b>빈 칸</b>(#3A4049). 토큰 하나다.
+        /// <para>왜 빈 칸을 그리는가: 채워진 칸만 그리면 총 폭이 등급마다 달라져 <b>세는 일</b>이 되고,
+        /// 트랙을 두면 <b>채움 비율</b>이 되어 한눈에 읽힌다(배터리 눈금과 같다).</para>
+        /// <para>왜 이 값인가(PALETTE_SPEC §12-4 실측): 한 단 어두운 <c>#2A2F38</c>은 카드 바탕과
+        /// 1.23:1이라 트랙이 안 보이고, 한 단 밝은 <c>#4A515C</c>는 채움과 2.75:1로
+        /// <see cref="MinNonTextContrast"/> 미달이다. 이 값만 <b>양쪽</b>이 선다(1.58 / 최악 3.59).</para></summary>
+        public static readonly Color RarityTrack = RarityHex(0x3A4049);
+
+        /// <summary>
+        /// 등급색의 <b>유일한 출처</b>. 호출부는 색을 고르지 않고 등급만 말한다.
+        ///
+        /// <para>카드가 하는 일은 이것뿐이다 — <c>(int)rarity + 1</c>칸을 이 색으로,
+        /// 나머지를 <see cref="RarityTrack"/>으로 칠한다. <b>색 리터럴이 UI 쪽으로 한 개도 안 간다.</b></para>
+        /// </summary>
+        public static Color RarityColor(StickMate.Core.ItemRarity rarity)
+        {
+            int i = (int)rarity;
+            if (i >= 0 && i < _rarityRamp.Length) return _rarityRamp[i];
+
+            WarnUnknownRarity(i);
+            return _rarityRamp[i < 0 ? 0 : _rarityRamp.Length - 1];
+        }
+
+        /// <summary>범위 밖 등급을 <b>조용히</b> 물리면 색이 하나 밀린 화면이 그대로 출하된다.
+        /// 릴리스 빌드에서는 사라진다(개발 중에만 생기는 결함이다).</summary>
+        [System.Diagnostics.Conditional("UNITY_EDITOR")]
+        [System.Diagnostics.Conditional("DEVELOPMENT_BUILD")]
+        private static void WarnUnknownRarity(int value)
+        {
+            Debug.LogError($"[등급] ItemRarity 값 {value}에 해당하는 램프 색이 없습니다(램프 " +
+                $"{_rarityRamp.Length}색). 열거형에 단을 추가했다면 UiChrome._rarityRamp에도 색을 " +
+                "더해야 합니다 — 지금은 가장 가까운 끝 색으로 물러났고, 화면의 리본 칸 수와 색이 어긋납니다.");
+        }
+
+        /// <summary>등급 램프 전용 hex 리터럴 해석기. 이 파일 안에서 다섯 번만 쓰인다.</summary>
+        private static Color RarityHex(int hex)
+            => new Color(((hex >> 16) & 0xFF) / 255f, ((hex >> 8) & 0xFF) / 255f, (hex & 0xFF) / 255f, 1f);
+
         // ==================== 타이포그래피 위계 (33-1: 크기 위계만 채택, 서체는 내장 폰트 하나) ====
         //
         // ★★ 2026-09-01 — <b>전부 짝수 pt다. 홀수로 되돌리지 마라.</b>

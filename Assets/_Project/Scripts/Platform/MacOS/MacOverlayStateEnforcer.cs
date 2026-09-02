@@ -278,6 +278,11 @@ namespace StickMate.Platform.MacOS
                     $"clientSize={_controller.clientSize}, windowPosition={_controller.windowPosition}, " +
                     $"경과 {_elapsed:F2}초. 이제 목표 상태를 재적용합니다. " +
                     $"진단로그={(VerboseDiagnostics ? $"상세(발판리포트 {FootholdReportIntervalSecondsVerbose}초 + 창진단 {WindowDumpIntervalSeconds}초 + 히트테스트 프로브)" : $"조용함(발판리포트 {FootholdReportIntervalSecondsQuiet}초 심장박동만) — 더 보려면 DefaultStickConfig.asset의 verboseDiagnosticsLogging 체크")}.");
+                // Phase 0 계측 — 여기가 유일한 호출 지점이다(Windows판과 같은 자리).
+                // 창이 방금 붙었고 우리가 아직 아무것도 옮기지 않은 시점이라 "OS가 놓아 준 자리"가
+                // 그대로 찍힌다. 이 머신은 디스플레이 1대라 다중 모니터 매핑은 확정할 수 없지만,
+                // <b>1대에서도 줄이 나오는지</b>(= 계측이 죽어 있지 않은지)는 여기서 확인된다.
+                EmitMonitorTopologyOnce();
                 _timer = ReapplyIntervalSeconds;
             }
 
@@ -382,7 +387,7 @@ namespace StickMate.Platform.MacOS
             _timerFullScreen = 0f;
             _fullScreenApplyAttempts++;
 
-            if (!TryGetTargetMonitorRect(out Rect monitor, out bool isPrimaryMonitor))
+            if (!TryGetTargetMonitorRect(out Rect monitor, out bool isMainDisplay))
             {
                 Debug.LogWarning("[MacOverlayStateEnforcer] 전체화면 확장 실패 — 모니터 사각형을 조회하지 " +
                     $"못했습니다(GetMonitorCount={UniWindowController.GetMonitorCount()}). 창 크기를 그대로 둡니다.");
@@ -423,7 +428,7 @@ namespace StickMate.Platform.MacOS
             Rect targetRect = monitor;
             string coverageMode = "작업영역(visibleFrame)";
             var describer = ResolveDescriber();
-            if (isPrimaryMonitor && describer != null && describer.TryGetMainDisplayBounds(out Rect display))
+            if (isMainDisplay && describer != null && describer.TryGetMainDisplayBounds(out Rect display))
             {
                 // 주 모니터에서는 Cocoa 좌표 y=0이 곧 화면 맨 아래이므로, 창의 좌하단을 (0,0)에 두고
                 // 높이를 CGDisplayBounds가 알려준 화면 전체 높이로 늘리면 메뉴바 띠와 Dock 띠까지 전부
@@ -486,9 +491,11 @@ namespace StickMate.Platform.MacOS
             // 모드에서 포커스를 잃으면 창을 z-order 뒤로 보낸다(Windows판이 실기로 확인한 경로).
             bool modeMismatch = Screen.fullScreenMode != FullScreenMode.Windowed;
             bool resolutionCapped = _setResolutionCalls >= OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls;
-            if (OverlayBoundsFitPolicy.ShouldSetResolution(Screen.width, Screen.height,
-                    targetPixelW, targetPixelH, !modeMismatch, resolutionEpsilon,
-                    _setResolutionCalls, OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls))
+            bool calledSetResolution = OverlayBoundsFitPolicy.ShouldSetResolution(
+                Screen.width, Screen.height, targetPixelW, targetPixelH, !modeMismatch,
+                resolutionEpsilon, _setResolutionCalls,
+                OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls);
+            if (calledSetResolution)
             {
                 _setResolutionCalls++;
                 Screen.SetResolution(targetPixelW, targetPixelH, FullScreenMode.Windowed);
@@ -518,10 +525,26 @@ namespace StickMate.Platform.MacOS
 
             Vector2 sizeAfter = _controller.windowSize;
             Vector2 posAfter = _controller.windowPosition;
-            bool ok = OverlayBoundsFitPolicy.Within(sizeAfter.x, sizeAfter.y,
+            bool within = OverlayBoundsFitPolicy.Within(sizeAfter.x, sizeAfter.y,
                     monitor.width, monitor.height, BoundsEpsilonPoints)
                 && OverlayBoundsFitPolicy.Within(posAfter.x, posAfter.y,
                     monitor.x, monitor.y, BoundsEpsilonPoints);
+
+            // ★★★ 2026-09-02 — "완료" 확정을 <b>쓰기가 0인 틱</b>으로 미른다(Windows판과 같은 규칙).
+            //
+            // 직전까지 이 자리는 같은 틱에서 Screen.SetResolution을 부르고 <b>그것이 적용되기 전에</b>
+            // 창 기하를 재어 완료를 확정했다. Unity 계약상 SetResolution은 프레임 끝에 적용되므로,
+            // 그 측정은 <b>자기가 요청한 변화를 보기 전의 값</b>이다.
+            //
+            // ---- macOS는 "지금" 발현 중인가: 확인되지 않았다(정직하게) ----------------------
+            // 이 머신의 실측 로그에서는 확장 시도가 1회였고 결과가 성공이었다. 다만 그것은
+            // "SetResolution이 불리지 않았기 때문"(로그: SetResolution=False)일 수 있으며,
+            // <b>구조적 결함은 또같이 있다</b> — 모드/해상도가 어긋나는 환경에서 그 줄이 불리는 순간
+            // Windows와 같은 모양이 된다. 한쪽만 고치지 않는다(CLAUDE.md 플랫폼 동시 검토).
+            // 비용: 확정이 한 틱 밀리면 그 틱은 이미 불감대 안이라 needsResize/needsMove가 둘 다
+            // false여서 <b>대입을 한 줄도 하지 않는다</b> — OS 표면 재생성 횟수는 그대로다.
+            bool wroteThisTick = calledSetResolution || needsResize || needsMove;
+            bool ok = OverlayBoundsFitPolicy.ShouldLatchFitApplied(within, wroteThisTick);
             if (ok)
             {
                 _fullScreenBoundsApplied = true;
@@ -539,8 +562,11 @@ namespace StickMate.Platform.MacOS
                 $"모니터={monitor}, 이전(size={sizeBefore}, pos={posBefore}) -> 이후(size={sizeAfter}, pos={posAfter}), " +
                 $"재생성 누적(SetResolution {_setResolutionCalls}/{OverlayBoundsFitPolicy.DefaultMaxSetResolutionCalls}회" +
                 $"{(resolutionCapped ? " ★상한 도달 — 더는 부르지 않는다" : "")}, 창리사이즈 {_windowResizeCalls}/{OverlayBoundsFitPolicy.DefaultMaxWindowResizeCalls}회{(resizeCapped ? " ★상한 도달" : "")}), " +
-                $"이번 틱 실행(SetResolution={(resolutionMismatch || modeMismatch) && !resolutionCapped}, " +
+                // ★ 재-유도가 아니라 <b>실제로 부른 그 조건</b>을 찍는다(Windows판과 동일). 로그가
+                //   규칙과 다른 식으로 계산하면 언젠가 갈라지고, 갈라진 로그는 거짓말을 한다.
+                $"이번 틱 실행(SetResolution={calledSetResolution}, " +
                 $"리사이즈={needsResize}, 이동={needsMove}, 불감대={BoundsEpsilonPoints:F0}pt/{resolutionEpsilon:F1}px), " +
+                $"기하 일치={within}(쓰기 있던 틱={wroteThisTick} -> 확정={ok}), " +
                 $"Screen=({Screen.width}x{Screen.height}) [목표 {targetPixelW}x{targetPixelH} 픽셀, dpi배율={dpi:F3}], " +
                 $"fullScreenMode={Screen.fullScreenMode}(직전 불일치: 해상도={resolutionMismatch}, 모드={modeMismatch}), " +
                 $"isFreePositioningEnabled={_controller.isFreePositioningEnabled}, " +
@@ -631,16 +657,73 @@ namespace StickMate.Platform.MacOS
         }
 
         /// <summary>
-        /// 창 중심이 속한 모니터의 사각형을 라이브러리 좌표계 그대로 돌려준다. 멀티 모니터에서 어느
-        /// 화면을 덮을지 결정하는 유일한 기준이며, 실패 시 0번(주 모니터)로 폴백한다.
+        /// OS 디스플레이 전수 열거(조회 전용). <c>MacWindowService.CreateOverlayWindow()</c>가 주입한다 —
+        /// <see cref="OverlayRectReporter"/>와 같은 배선 형태이며, 이 클래스는 CoreGraphics를 직접
+        /// 부르지 않는다(P/Invoke 격리 컨벤션 유지). Windows판 Enforcer도 같은 이름의 필드를 갖는다.
         /// </summary>
-        private bool TryGetTargetMonitorRect(out Rect monitor, out bool isPrimary)
+        internal OsMonitorEnumerator OsMonitorEnumerator;
+
+        /// <summary>
+        /// Phase 0 계측 — 기동 시 <b>한 번만</b> 모니터 지형 한 줄을 낸다(동작 변경 0).
+        ///
+        /// <para>규약 인자가 Windows판과 <b>다르다</b>는 것이 이 줄의 핵심 정보 중 하나다:
+        /// macOS 네이티브(<c>LibUniWinC.swift</c> <c>getMonitorRectangle</c>)는
+        /// <c>NSScreen.visibleFrame</c>을 <b>그대로</b>(뒤집지 않고) 넘기고, Windows는
+        /// <c>nPrimaryMonitorHeight_ - rect.bottom</c>으로 뒤집는다. 같은 API 이름이 다른 값을 준다.</para>
+        /// </summary>
+        private void EmitMonitorTopologyOnce()
+        {
+            Rect overlayLibraryRect = new Rect(_controller.windowPosition, _controller.windowSize);
+            // ★ "아직 보고 전"과 "정말 (0,0)"을 구분할 방법이 없어서 추정하지 않는다.
+            //   ScreenCoordinateConverter에는 '한 번이라도 보고됐는가' 플래그가 없고, 이 라운드에
+            //   공유 클래스에 상태를 새로 넣지 않는다(다른 라운드가 같은 파일을 만지고 있다).
+            //   그래서 값을 그대로 찍고 <b>OS 실측이라고 부르지 않는다</b>(계측 줄의 라벨 참고).
+            Rect overlayOsRect = new Rect(ScreenCoordinateConverter.OverlayOriginOsScreen,
+                new Vector2(Screen.width, Screen.height));
+
+            MonitorTopologyReport.EmitOnce(
+                "macOS",
+                LibraryMonitorYConvention.CocoaBottomLeft,
+                UniWindowController.GetMonitorCount(),
+                UniWindowController.GetMonitorRect,
+                overlayLibraryRect,
+                OsMonitorEnumerator,
+                overlayOsRect,
+                true);
+        }
+
+        /// <summary>
+        /// 창 중심이 속한 모니터의 사각형을 라이브러리 좌표계 그대로 돌려준다. 멀티 모니터에서 어느
+        /// 화면을 덮을지 결정하는 유일한 기준이며, 실패 시 0번으로 폴백한다.
+        ///
+        /// <para>★★ <b>2026-09-02 — 이 함수가 갖고 있던 결함을 이 라운드에서 닫았다.</b>
+        /// 예전에는 <c>isPrimary = i == 0</c>, 즉 <b>0번을 주 모니터로 단정</b>했다. 그러나 두 네이티브가
+        /// 목록을 왼쪽부터 정렬하므로(macOS <c>_updateScreenInfo()</c>는 <c>minX</c> 오름차순,
+        /// Windows <c>updateMonitorRectangles()</c>는 <c>left</c> 오름차순 — Phase 0에서 원문으로 확정)
+        /// <b>0번은 "가장 왼쪽"일 뿐</b>이고, 주 화면 왼쪽에 보조 모니터를 둔 사용자에게는 거짓이었다.
+        /// 그 거짓이 <see cref="TickFullScreenBounds"/>의 "화면 전체(메뉴바/Dock 포함) 덮기" 경로로
+        /// 흘러들어 <b>엉뚱한 화면의 크기</b>로 창을 만들 수 있었다.</para>
+        ///
+        /// <para>이제 그 값은 <b>이름과 의미가 일치한다</b>: <c>isMainDisplay</c>이고,
+        /// <b>OS 플래그</b>(<c>CGMainDisplayID</c>)에서만 온다. 폴백 경로처럼 플래그를 모르는 자리에서는
+        /// <b>false</b>다 — 모를 때 true를 주면 그 잘못된 경로가 켜진다.</para>
+        ///
+        /// <para>한편 <b>기본 선택</b>은 주 모니터가 아니라 <b>가장 왼쪽</b>이다(사용자 확정 2026-09-02
+        /// "기본은 왼쪽"). 두 개념은 서로 다르고, 갈리는지는 <c>[모니터지형]</c> 계측 줄이 실측으로 말해 준다.</para>
+        /// </summary>
+        private bool TryGetTargetMonitorRect(out Rect monitor, out bool isMainDisplay)
         {
             monitor = default;
-            isPrimary = false;
+            isMainDisplay = false;
             int count = UniWindowController.GetMonitorCount();
             if (count <= 0) return false;
 
+            // ★★ 2026-09-02 사용자 확정 규칙이 먼저다 — "그럼 왼쪽 오른쪽 선택할수 있게 기본은 왼쪽".
+            //   판정은 플랫폼 중립 OverlayMonitorChoicePolicy 한 곳에 있고(Windows판과 같은 함수),
+            //   여기서는 사실 조회와 좌표계 변환만 한다.
+            if (TryResolveChosenMonitorRect(count, out monitor, out isMainDisplay)) return true;
+
+            // 아래는 <b>폴백 전용</b> — 모니터 목록을 아예 얻지 못했을 때만 온다(예전 동작 유지).
             Vector2 pos = _controller.windowPosition;
             Vector2 size = _controller.windowSize;
             Vector2 center = pos + size * 0.5f;
@@ -652,16 +735,157 @@ namespace StickMate.Platform.MacOS
                 if (r.Contains(center))
                 {
                     monitor = r;
-                    isPrimary = i == 0;
+                    // ★ 여기서 "i == 0이면 주 모니터"라고 쓰지 않는다(그것이 닫은 갭이다).
+                    //   폴백 경로에는 OS 플래그가 없으므로 <b>모른다</b>. 모를 때는 false가 안전하다 —
+                    //   true면 아래가 CGDisplayBounds(주 디스플레이) 크기로 <b>엉뚱한 화면</b>을 덮는다.
+                    isMainDisplay = false;
                     return true;
                 }
             }
 
-            Rect primary = UniWindowController.GetMonitorRect(0);
-            if (primary.width <= 0f || primary.height <= 0f) return false;
-            monitor = primary;
-            isPrimary = true;
+            Rect leftmost = UniWindowController.GetMonitorRect(0);
+            if (leftmost.width <= 0f || leftmost.height <= 0f) return false;
+            monitor = leftmost;
+            isMainDisplay = false;
             return true;
+        }
+
+        // ============================================================================
+        // 표시 모니터 선택 — Windows판(WindowsOverlayStateEnforcer)과 같은 구조·같은 라운드.
+        // ============================================================================
+
+        /// <summary>OS 디스플레이 목록 캐시. 이 함수는 토폴로지 관측(0.25초)에서도 불리므로
+        /// 매번 열거하지 않는다(24시간 상주 앱).</summary>
+        private readonly System.Collections.Generic.List<OsMonitorFact> _osMonitors =
+            new System.Collections.Generic.List<OsMonitorFact>(8);
+        private readonly System.Collections.Generic.List<Rect> _libraryRects =
+            new System.Collections.Generic.List<Rect>(8);
+        private float _osMonitorRefreshTimer = float.PositiveInfinity;   // 첫 호출에서 즉시 1회.
+
+        /// <summary>직전에 <b>목표로 삼은</b> 라이브러리 모니터 인덱스(-1 = 아직 없음).
+        /// 사용자가 표시 모니터를 바꾼 순간을 잡는 유일한 신호다.</summary>
+        private int _lastAppliedTargetIndex = -1;
+
+        /// <summary>
+        /// 표시 모니터 선택이 바뀌어 재적합 루프를 다시 무장한다.
+        ///
+        /// <para><b>되돌리는 것</b>: <c>_fullScreenBoundsApplied</c> / <c>_fullScreenApplyAttempts</c> / 타이머.
+        /// <b>절대 되돌리지 않는 것</b>: <c>_setResolutionCalls</c> · <c>_windowResizeCalls</c>
+        /// (프로세스 수명 상한) · 진동 래치. 그 둘을 풀면 상한이 사실상 사라진다.</para>
+        ///
+        /// <para>★ <b>정직한 한계</b>: 그 수명 상한(각 4회) 때문에, 두 모니터의 <b>크기가 다르면</b>
+        /// 한 세션에서 화면 전환이 <b>4회까지만</b> 온전히 반영된다(그 뒤로는 위치만 따라가고
+        /// 크기/해상도는 남는다). 크기가 같으면 위치 대입만 일어나므로 <b>횟수 제한이 없다</b>.
+        /// 이 상한은 스왑체인 재생성(수백 ms 정지)을 막는 장치라 여기서 풀지 않는다.</para>
+        /// </summary>
+        private void ReArmFullScreenFitForNewTarget()
+        {
+            if (_boundsOscillation.IsOscillating) return;
+            _fullScreenBoundsApplied = false;
+            _fullScreenApplyAttempts = 0;
+            _timerFullScreen = ReapplyIntervalSeconds;   // 다음 틱에서 곧바로 1회.
+            _topologyBaselineSynced = false;
+        }
+
+        private const float OsMonitorRefreshIntervalSeconds = 1f;
+        private OverlayMonitorChoiceSource _lastChoiceSource = (OverlayMonitorChoiceSource)(-1);
+
+        /// <summary>
+        /// 사용자 확정 규칙(기본 가장 왼쪽 / 사용자가 고르면 그 화면)으로 목표 사각형을 정한다.
+        ///
+        /// <para>★ <paramref name="isMainDisplay"/>가 이 라운드에서 닫은 갭이다. 예전에는
+        /// <c>i == 0</c>을 "주 모니터"로 단정했는데, 두 네이티브가 목록을 <b>왼쪽부터</b> 정렬하므로
+        /// 0번은 "가장 왼쪽"일 뿐이다(Phase 0에서 원문으로 확정). 이제 <b>OS 플래그</b>
+        /// (<c>CGMainDisplayID</c>)에서 받는다 — 그 값이 참일 때만 호출자가
+        /// <c>CGDisplayBounds(주 디스플레이)</c> 크기로 화면 전체를 덮기 때문에, 틀리면
+        /// <b>엉뚱한 화면 크기로 창을 만든다</b>.</para>
+        /// </summary>
+        private bool TryResolveChosenMonitorRect(int libraryCount, out Rect monitor, out bool isMainDisplay)
+        {
+            monitor = default;
+            isMainDisplay = false;
+
+            _osMonitorRefreshTimer += Time.unscaledDeltaTime;
+            if (_osMonitorRefreshTimer >= OsMonitorRefreshIntervalSeconds)
+            {
+                _osMonitorRefreshTimer = 0f;
+                if (OsMonitorEnumerator != null)
+                {
+                    try
+                    {
+                        if (OsMonitorEnumerator(_osMonitors)) OverlayMonitorDirectory.Publish(_osMonitors);
+                        else _osMonitors.Clear();
+                    }
+                    catch (System.Exception e)
+                    {
+                        _osMonitors.Clear();
+                        Debug.LogWarning($"[표시모니터] OS 디스플레이 열거 실패 — {e.GetType().Name}: {e.Message}. " +
+                            "이번 판정은 폴백으로 갑니다.");
+                    }
+                }
+            }
+
+            _libraryRects.Clear();
+            for (int i = 0; i < libraryCount; i++) _libraryRects.Add(UniWindowController.GetMonitorRect(i));
+
+            OverlayMonitorChoice choice = OverlayMonitorDirectory.Resolve();
+            int libIndex = choice.HasIndex
+                ? OverlayMonitorChoicePolicy.LibraryIndexForOsMonitor(_libraryRects, _osMonitors, choice.Index)
+                : -1;
+
+            if (libIndex < 0)
+            {
+                // OS 목록을 못 쓰더라도 <b>기본값은 지킬 수 있다</b>: "가장 왼쪽"은 라이브러리의
+                // 정렬 규칙 그 자체라 0번이 곧 답이다(Phase 0에서 Swift 원문으로 확정).
+                if (_libraryRects.Count > 0 && _libraryRects[0].width > 0f && _libraryRects[0].height > 0f)
+                {
+                    monitor = _libraryRects[0];
+                    isMainDisplay = false;   // 모른다 -> 화면 전체 덮기 경로를 켜지 않는다(안전한 쪽).
+                    LogChoiceOnce(choice,
+                        "★ OS 디스플레이 목록을 쓰지 못해 <b>라이브러리 정렬(가장 왼쪽 = 0번)</b>로 기본값을 지킵니다 — " +
+                        "사용자 선택과 '주 디스플레이 여부'는 이번 판정에 반영되지 않았습니다.");
+                    return true;
+                }
+                LogChoiceOnce(choice, "★ 라이브러리 모니터 목록도 비어 있어 폴백합니다.");
+                return false;
+            }
+
+            monitor = _libraryRects[libIndex];
+            if (monitor.width <= 0f || monitor.height <= 0f) return false;
+
+            // ★★ 2026-09-02 — <b>선택이 바뀌면 그 자리에서 창이 따라가야 한다</b>(ux-designer §49의
+            //   성립 조건). 그냥 두면 창을 옮기는 유일한 경로(TickFullScreenBounds)가
+            //   `_fullScreenBoundsApplied` 래치에 막혀 <b>다음 재시작에만</b> 반영된다.
+            //   토폴로지 감시가 목표 사각형 변화를 결국 잡아 주긴 하지만 디바운스까지 ~1초가 걸리고,
+            //   무엇보다 <b>진동 가드가 사용자의 왕복을 A↔B 진동으로 오인</b>해 4회 만에 영구 래치된다.
+            //   그래서 (1) 목표가 바뀐 순간 관측 이력을 버리고(래치는 건드리지 않는다)
+            //         (2) 재적합 루프를 즉시 재무장한다.
+            if (_lastAppliedTargetIndex != libIndex)
+            {
+                _lastAppliedTargetIndex = libIndex;
+                _boundsOscillation.ForgetSamplesForNewTarget();
+                ReArmFullScreenFitForNewTarget();
+            }
+
+
+            // ★ 갭 종료 지점 — "주 디스플레이인가"를 OS 플래그에서만 받는다.
+            isMainDisplay = choice.Index == OverlayMonitorDirectory.PrimaryIndex
+                && OverlayMonitorDirectory.PrimaryIndex >= 0;
+            LogChoiceOnce(choice);
+            return true;
+        }
+
+        /// <summary>선택 근거가 <b>바뀔 때만</b> 남긴다. 실패 근거(사용자 선택 미발견 등)는 반드시 찍힌다 —
+        /// 조용히 폴백하면 사용자가 "설정이 안 먹는다"고 신고한다(Windows판과 같은 계약).</summary>
+        private void LogChoiceOnce(OverlayMonitorChoice choice, string extra = null)
+        {
+            if (choice.Source == _lastChoiceSource && extra == null) return;
+            _lastChoiceSource = choice.Source;
+            Debug.Log("[표시모니터] " +
+                OverlayMonitorChoicePolicy.Describe(choice, Core.AppSettingsModel.PreferredOverlayMonitorKey) +
+                (extra != null ? " / " + extra : "") +
+                $" (인식 {OverlayMonitorDirectory.MonitorCount}대, 멀티={OverlayMonitorDirectory.IsMultiMonitor}, " +
+                $"축={OverlayMonitorDirectory.Axis}, 고를수있음={OverlayMonitorDirectory.CanChoose})");
         }
 
         /// <summary>

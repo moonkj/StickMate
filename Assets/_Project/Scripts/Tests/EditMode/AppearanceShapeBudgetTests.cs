@@ -399,10 +399,18 @@ namespace StickMate.Tests.EditMode
             {
                 // ★ 미완(건너뜀) — 규칙 1은 이미 닫혔고 정원/보조색만 남았다. Fail이 아니라 Ignore인
                 //   이유는 CLAUDE.md 규약이다: 못 고친 갭은 러너에 <b>건너뜀</b>으로 계속 보여야 잊히지 않는다.
+                // ★ 2026-09-02 qa-regression — <b>사유를 갱신했다</b>. 옛 사유는
+                //   "그 파일은 이번 라운드의 편집 금지 대상"이었는데 <b>그 라운드는 끝났다</b>
+                //   (CharacterPetRenderer.cs 마지막 커밋 4a5a4de, 2026-09-02 12:42).
+                //   그런데도 Ignore를 유지하는 이유는 <b>갭이 실제로 남아 있기 때문</b>이다 —
+                //   같은 파일의 아직_미완_커서친구는_머리와_꼬리로_안_쪼개졌다가 지금도 초록이고,
+                //   그것이 "아직 한 획(닫힌 8점)"이라는 뜻이다(그 검사가 빨개지면 여기도 함께 켜라).
+                //   고칠 파일은 프로덕션 .cs이므로 qa-regression이 손대지 않는다 — <b>배정 필요</b>.
                 Assert.Ignore("커서친구는 정원 1개 / 보조색 0개입니다(2~4개, 정확히 1개여야). " +
                     "스펙은 머리(주색)+꼬리(보조색) 2조각인데, 쪼개려면 " +
-                    "CharacterPetRenderer.BuildCursorFriend가 LineRenderer를 두 개 만들어야 합니다 — " +
-                    "그 파일은 이번 라운드의 편집 금지 대상이었습니다(제안 B와 겹치면 판정이 불가능해집니다). " +
+                    "CharacterPetRenderer.BuildCursorFriend가 LineRenderer를 두 개 만들어야 합니다. " +
+                    "★ 막던 사유(편집 잠금)는 2026-09-02 12:42에 소멸했습니다 — 지금 남은 것은 " +
+                    "'아직 아무도 안 했다'뿐이고, 프로덕션 렌더러 변경이라 배정이 필요합니다. " +
                     "쪼개는 자리는 AppearanceShapeBuilder.CursorArrow 배열의 2번/5번 점입니다.");
             }
 
@@ -459,18 +467,99 @@ namespace StickMate.Tests.EditMode
             Assert.IsNull(shortest, shortest);
         }
 
+        /// <summary>
+        /// ★ 2026-09-02 qa-regression — <b>켰다</b>. 이 검사는 <c>Assert.Ignore</c>였고 사유는
+        /// "AccessoryShapeBuilder.cs가 이번 라운드 편집 중"이었다. <b>그 라운드는 끝났다</b>
+        /// (그 파일의 마지막 커밋은 4a5a4de, 2026-09-02 12:42). 사유가 소멸한 면제는 되살린다 —
+        /// 안 그러면 "임시"라고 적힌 건너뜀이 영구히 러너에 눌러앉는다.
+        ///
+        /// <para>옛 처방은 "DescribeShortestEdgeViolation을 AccessoryStrokeBudgetTests로 올려라"였지만
+        /// <b>올릴 필요가 없다</b> — 두 파일은 <c>StickMate.Tests.EditMode</c> <b>같은 어셈블리</b>이고
+        /// 이 함수는 이미 <c>internal static</c>이다. 옮기면 그 자체가 드리프트 위험이므로,
+        /// <b>같은 함수를 그대로</b> 30종에 돌린다(자를 두 벌 만들지 않는다는 이 파일의 원칙).</para>
+        ///
+        /// <para>대장은 <see cref="AccessoryStrokeBudgetTests.BudgetedKeys"/> <b>하나</b>에서 읽는다.
+        /// 목록을 여기 다시 적으면 한쪽만 늘어난다.</para>
+        ///
+        /// <para>근거: 45° 함정이 FX/PET 12종에서만 6건을 숨기고 있었다 — 30종에 없다고 볼 이유가 없다.</para>
+        /// </summary>
         [Test]
         public void 최단_실제_변_검사를_액세서리_30종으로_확장한다()
         {
-            Assert.Ignore(
-                "★ 미적용(건너뜀) — DescribeShortestEdgeViolation을 " +
-                "AccessoryStrokeBudgetTests.DescribeRuleOneViolation에도 얹어 30종에 돌려야 합니다. " +
-                "지금 켜지 않는 이유: AccessoryShapeBuilder.cs가 '장비 30종 도형 재설계'로 편집 중이라 " +
-                "작업 중인 좌표를 재게 되고, 미완성 상태가 무더기로 빨개져 신호가 죽습니다. " +
-                "그 라운드가 끝나면 (1) 이 Ignore를 지우고 (2) 두 린트가 같은 자를 쓰도록 " +
-                "DescribeShortestEdgeViolation을 AccessoryStrokeBudgetTests로 올린 뒤 " +
-                "DescribeRuleOneViolation이 그것을 부르게 하세요. " +
-                "근거: 45도 함정이 12종에서만 6건을 숨기고 있었습니다 — 30종에 없다고 볼 이유가 없습니다.");
+            AccessoryShapeBuilder.Rig rig = AccessoryStrokeBudgetTests.Rig();
+            float w = AccessoryStrokeBudgetTests.BudgetWorld(rig);
+
+            var violations = new List<string>();
+            int items = 0;
+            int shapesChecked = 0;
+
+            foreach ((EquipmentSlot slot, int item) in AccessoryStrokeBudgetTests.BudgetedKeys())
+            {
+                items++;
+                var sink = new List<AccessoryShapeBuilder.Shape>();
+                AccessoryShapeBuilder.Append(sink, slot, item, rig);
+
+                string label = $"{slot} {item}번({ItemCatalog.Item(slot, item).DisplayName})";
+                Assert.Greater(sink.Count, 0, $"{label}: 도형이 하나도 없습니다.");
+
+                for (int i = 0; i < sink.Count; i++)
+                {
+                    shapesChecked++;
+                    string v = DescribeShortestEdgeViolation(
+                        sink[i].Name, sink[i].Points, sink[i].Loop, w);
+                    if (v != null) violations.Add($"{label} {v}");
+                }
+            }
+
+            // ★ 부재 판정에는 양성 대조. 대장이 비거나 Append가 조용히 아무것도 안 만들면
+            //   위 foreach가 0바퀴 돌고 이 검사는 "위반 없음"으로 초록이 된다.
+            Assert.GreaterOrEqual(items, 24,
+                $"액세서리 대장에서 {items}종만 읽혔습니다 — 30종 확장이라고 말할 수 없습니다. " +
+                "AccessoryStrokeBudgetTests.BudgetedKeys가 줄었는지 확인하세요.");
+            Assert.Greater(shapesChecked, items,
+                $"도형을 {shapesChecked}개밖에 재지 않았습니다(아이템 {items}종) — " +
+                "아이템당 도형이 1개 미만이면 Append가 사실상 비어 있는 것입니다.");
+
+            // 음성 대조 — 같은 자가 <b>일부러 짧은</b> 변을 실제로 잡는가.
+            // 이것이 null이면 위 '위반 0건'은 "규칙이 안 무는 것"과 구분되지 않는다.
+            var tiny = new[] { Vector3.zero, new Vector3(w * 0.2f, 0f, 0f), new Vector3(w * 0.2f, w * 3f, 0f) };
+            Assert.IsNotNull(DescribeShortestEdgeViolation("음성대조", tiny, false, w),
+                "일부러 획의 0.2배짜리 변을 넣었는데 린트가 통과시켰습니다 — 위 '위반 0건'은 무효입니다.");
+
+            // ────────────────────────────────────────────────────────────────────
+            // ★ 켜 보니 <b>14건</b>이 나왔다(2026-09-02 실측, HEAD aaac7b2 계열).
+            //   전부 같은 정체다 — <b>작은 둥근 것을 각이 많은 다각형으로 그린 자리</b>:
+            //     동그란안경 렌즈 앞/뒤 0.60획 · 방울 0.54 · 외알안경 테 0.54 · 털모자 방울 0.50 ·
+            //     선글라스 브릿지 0.89 · 민머리 림 앞/뒤 0.76/0.82 · 머리덩어리 4건 0.50~0.96 ·
+            //     곱슬 코일 0.95 · 포니테일 꼬리 0.95
+            //   즉 이 Ignore가 숨기고 있던 것은 "아직 안 켰다"가 아니라 <b>실재하는 위반 14건</b>이었다.
+            //
+            //   고치는 것은 도형 좌표/각수 변경 = 프로덕션 .cs다. qa-regression은 손대지 않는다.
+            //   그렇다고 빨간불로 두면 러너의 유일한 신호가 이 하나에 덮인다. 그래서 <b>래칫</b>이다:
+            //     · 14건보다 <b>늘면 즉시 빨간불</b>(악화는 못 들어온다)
+            //     · 남아 있는 동안은 <b>건너뜀</b>으로 러너에 계속 보인다(잊히지 않게)
+            //     · <b>0이 되면 초록</b>이 되고, 그때 아래 상수를 0으로 내리면 규칙이 영구히 잠긴다
+            //   숫자를 "그냥 통과시키는 상한"으로 쓰지 않는 이유가 이 세 줄이다.
+            const int KnownDebtOn20260902 = 14;
+
+            Assert.LessOrEqual(violations.Count, KnownDebtOn20260902,
+                $"최단 실제 변 위반이 {violations.Count}건으로 늘었습니다(2026-09-02 실측 " +
+                $"{KnownDebtOn20260902}건). 이 라운드가 <b>새 위반을 넣었습니다</b> — " +
+                $"래칫은 줄어드는 방향으로만 열립니다.\n  " + string.Join("\n  ", violations));
+
+            if (violations.Count > 0)
+            {
+                Assert.Ignore(
+                    $"★ 미완(건너뜀) — 액세서리 {items}종 / 도형 {shapesChecked}개에 규칙 1(최단 실제 변)을 " +
+                    $"켰고 위반 {violations.Count}건이 <b>실재</b>합니다(래칫 상한 {KnownDebtOn20260902}건 이하라 " +
+                    "악화는 아닙니다). 전부 '작은 둥근 것의 각수가 반지름에 비해 많다'는 한 가지 정체입니다 — " +
+                    "각수를 줄이거나 반지름을 키우면 닫힙니다. 프로덕션 도형 좌표 변경이라 배정이 필요합니다.\n  " +
+                    string.Join("\n  ", violations));
+            }
+
+            Assert.IsEmpty(violations,
+                $"액세서리 {items}종 / 도형 {shapesChecked}개에서 최단 실제 변 위반 {violations.Count}건:\n  " +
+                string.Join("\n  ", violations));
         }
 
         // ============================================================================

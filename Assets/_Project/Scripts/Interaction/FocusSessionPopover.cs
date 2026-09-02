@@ -292,6 +292,11 @@ namespace StickMate.Interaction
                 Debug.LogWarning("[집중팝오버] 시작 실패 — 씬에 FocusWatchDirector가 없습니다.");
                 return;
             }
+            // ★ 2026-09-02 등급 배선 — 이 파일의 <c>IsSuspended</c> 참조들은 <b>일부러 그대로 둔다</b>.
+            //   이 창(팝오버)을 걷는 일은 부모 <see cref="PopoverPanel.Update"/>가 <c>ArePanelsSuppressed</c>로
+            //   이미 한다(등급 1). 여기 남은 참조들이 묻는 것은 표면이 아니라 <b>캐릭터가 멈췄는가</b>다 —
+            //   집중 세션은 캐릭터가 지켜보고 말을 거는 기능이라 등급 2가 정확한 축이다. 등급 1에서는
+            //   캐릭터가 그대로 노므로 세션도 그대로 유효하다(닫힌 팝오버 때문에 도달할 일이 없을 뿐).
             if (Agent != null && Agent.IsSuspended)
             {
                 Debug.Log("[집중팝오버] 전체화면 앱 사용 중이라 시작하지 않습니다(비침해 원칙 2 — 자동 숨김 상태).");
@@ -394,7 +399,10 @@ namespace StickMate.Interaction
         /// <summary>표에 있는 실제 값에서만 파생한다(32-5). 문구를 여기서 지어내지 않는다.</summary>
         private string ResolveStatusLine()
         {
-            if (Agent != null && Agent.IsSuspended) return "일시정지 · 전체화면 앱 사용 중";
+            // 숨김 사유가 둘이 됐다(전체화면 감지 / 사용자가 직접). 고정 문장을 쓰면 수동 숨김일 때
+            // 화면이 거짓말을 한다 — 원칙 1은 "확정된 상태로부터만 파생"이므로 사유까지 파생시킨다.
+            if (Agent != null && Agent.IsSuspended)
+                return Agent.IsUserHidden ? "일시정지 · 잠시 숨겨 뒀어요" : "일시정지 · 전체화면 앱 사용 중";
             if (_director != null && !_director.DistractionDetectionEnabled) return "순수 타이머로만 재고 있어요";
             return _tier switch
             {

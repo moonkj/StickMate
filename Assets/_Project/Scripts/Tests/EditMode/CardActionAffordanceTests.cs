@@ -272,9 +272,27 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 칩_높이는_하한에서_파생되고_카드_예산_안에_들어간다()
         {
+            // ★ 2026-09-02 — 이 창은 partial 7개다. 한 파일만 읽으면 카드 상수가 조각으로 이사하는
+            //   순간 <b>프로덕션이 멀쩡한데도</b> 빨개진다(같은 라운드에 실제로 그렇게 깨진 매처가
+            //   둘 있었다). 표면 전체를 읽는다 — SourceConstantReader.ReadSurfaceText 문단 참고.
             string path = Path.Combine(Application.dataPath, "_Project", "Scripts", "Interaction", "CharacterInfoWindow.cs");
             Assert.IsTrue(File.Exists(path), $"{LogPrefix} 소스를 찾지 못했습니다: {path}");
-            string src = File.ReadAllText(path);
+            string src = SourceConstantReader.ReadSurfaceText(path);
+
+            // ---- 양성 대조: 이 판독기가 <b>조각까지 실제로 보는가</b> ----
+            // MinPanelWidth는 CharacterInfoWindow.Layout.cs에만 있는 상수다. 베이스 파일만 읽으면
+            // 못 찾고, 표면 전체를 읽으면 찾아야 한다. 둘 다 확인해야 "넓혔다"가 증명된다.
+            Assert.IsFalse(SourceConstantReader.TryReadFloat(path, "MinPanelWidth", out _),
+                $"{LogPrefix} 양성 대조 전제가 깨졌습니다 — MinPanelWidth가 베이스 파일로 돌아왔습니다. " +
+                "조각에만 있는 다른 상수로 탐침을 바꾸십시오(안 그러면 이 대조가 공허해집니다).");
+            Assert.IsTrue(SourceConstantReader.TryReadFloatInSurface(path, "MinPanelWidth", out float probe),
+                $"{LogPrefix} 양성 대조 실패 — 표면 판독기가 partial 조각을 보지 못합니다. " +
+                "이 파일은 다음 분할에서 또 눈이 멉니다.");
+            Assert.Greater(probe, 0f, $"{LogPrefix} 탐침 상수를 읽었는데 값이 {probe}입니다.");
+
+            // ---- 음성 대조: 없는 이름에는 확실히 거짓을 돌려주는가 ----
+            Assert.IsFalse(SourceConstantReader.TryReadFloatInSurface(path, "NoSuchConstantXYZ123", out _),
+                $"{LogPrefix} 음성 대조 실패 — 존재하지 않는 상수를 찾았다고 합니다(판독기가 아무 숫자나 셉니다).");
 
             Match decl = Regex.Match(src, @"CardActionHeight\s*=\s*(?<rhs>[^;]+);");
             Assert.IsTrue(decl.Success, $"{LogPrefix} CardActionHeight 선언을 찾지 못했습니다(이름이 바뀌었습니까?).");
@@ -285,8 +303,8 @@ namespace StickMate.Tests.EditMode
                 $"{nameof(UiChrome.MinTargetSizePoints)}가 움직여도 따라오지 않습니다(옛 값 22f가 그렇게 하한 아래에 있었습니다).");
 
             // 세로 예산: |CardActionY| + 높이 ≤ CardHeight.
-            float cardHeight = SourceConstantReader.ReadFloat(path, "CardHeight");
-            float actionY = SourceConstantReader.ReadFloat(path, "CardActionY");
+            float cardHeight = SourceConstantReader.ReadFloatInSurface(path, "CardHeight");
+            float actionY = SourceConstantReader.ReadFloatInSurface(path, "CardActionY");
             float bottom = Mathf.Abs(actionY) + UiChrome.MinTargetSizePoints;
 
             Assert.LessOrEqual(bottom, cardHeight,

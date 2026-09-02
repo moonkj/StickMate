@@ -214,7 +214,7 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>매달린 지점이 보여야 물건이 공중에 뜨지 않는다(규칙 4).
-        /// 펜던트와 <b>같은 유도</b>(<c>CollarLowLocalY</c>)를 쓰므로 위 끝이 목줄 최저점 그 자리다.</summary>
+        /// 방울과 펜던트가 <b>같은 목줄 좌표</b>에서 매달리므로 위 끝이 목줄 최저점 그 자리다.</summary>
         [Test]
         public void 방울은_목줄_최저점에_매달린다()
         {
@@ -262,7 +262,18 @@ namespace StickMate.Tests.EditMode
 
             float oldTop = float.MinValue;
             for (int i = 0; i < oldBell.Length; i++) oldTop = Mathf.Max(oldTop, oldBell[i].y);
-            float attachGap = Mathf.Abs(AccessoryShapeBuilder.CollarLowLocalY(rig, ty) - oldTop) / r;
+
+            // ★ 2026-09-02 — 목줄 최저점을 <b>실제로 그려진 목줄에서 잰다</b>.
+            //   옛 코드에는 AccessoryShapeBuilder.CollarLowLocalY(=CollarRise−CollarDip)가 있었지만,
+            //   목 형상이 에셋으로 내려가면서(B-2 파일럿) 그 비율의 주인은 에셋 하나가 됐다.
+            //   여기서 상수를 다시 적으면 <b>같은 사실이 두 곳</b>에 생기고, 에셋만 고친 날
+            //   이 대조가 조용히 옛 세상을 재게 된다.
+            Vector3[] chain = AccessorySilhouetteMetrics.Find(
+                Build(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell), "Collar").Points;
+            float collarLowY = float.MaxValue;
+            for (int i = 0; i < chain.Length; i++) collarLowY = Mathf.Min(collarLowY, chain[i].y);
+
+            float attachGap = Mathf.Abs(collarLowY - oldTop) / r;
             Assert.That(attachGap, Is.GreaterThan(1e-4f).And.LessThan(W),
                 $"옛 방울의 매단 자리 간격이 {attachGap / W:F2}획으로 측정됐습니다 — 실측은 0.11획(금지 구간)입니다.");
         }

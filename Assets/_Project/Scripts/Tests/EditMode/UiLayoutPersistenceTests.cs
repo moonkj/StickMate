@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
 using StickMate.Core;
@@ -160,6 +161,125 @@ namespace StickMate.Tests.EditMode
 
             UiLayoutModel.SetGearCenter(new Vector2(100f, 205f));
             Assert.IsTrue(UiLayoutModel.IsDirty, "실제로 옮겼는데 저장 대상이 되지 않았습니다.");
+        }
+
+        // ==================== 되돌리기(2026-09-02 P0, docs/UX_FLOW.md 41-8) ====================
+
+        /// <summary>
+        /// ★ <b>되돌린 사실이 메모리가 아니라 디스크까지 내려가는가.</b>
+        ///
+        /// <para>이 테스트가 없으면 <c>ClearGearCenter()</c>가 메모리만 지우고 다음 실행에 옛 자리가
+        /// 되살아나는 실패가 <b>초록으로 보인다</b>(설정창에서 눌렀을 때 톱니는 실제로 우상단으로
+        /// 돌아가므로 눈으로는 성공처럼 보인다 — 재시작해야 드러난다).</para>
+        ///
+        /// <para>★ 앞부분은 <b>양성 대조</b>다: 같은 저장/복원 경로로 <c>true</c>가 왕복하는 것을 먼저
+        /// 보인다. 그게 없으면 뒤의 <c>IsFalse</c>는 "되돌리기가 동작했다"와 "저장 자체가 죽었다"를
+        /// 구분하지 못한다.</para>
+        /// </summary>
+        [Test]
+        public void 톱니_위치_되돌리기가_저장_파일까지_내려간다()
+        {
+            // ---- 양성 대조: 옮긴 자리가 실제로 왕복한다 ----
+            UiLayoutModel.SetGearCenter(new Vector2(412.5f, 733.25f));
+            Assert.IsTrue(CharacterSaveStore.Save(), "준비 단계 저장에 실패했습니다.");
+            UiLayoutModel.ResetForTesting();
+            CharacterSaveStore.Load();
+            Assert.IsTrue(UiLayoutModel.HasGearCenter,
+                "양성 대조 실패 — 옮긴 자리조차 왕복하지 않습니다. 이 상태에서는 아래 '되돌아갔다'는 " +
+                "판정이 아무것도 증명하지 못합니다(프로브가 죽은 것과 구분되지 않습니다).");
+
+            // ---- 본 검증 ----
+            Assert.IsTrue(UiLayoutModel.ClearGearCenter(),
+                "되돌릴 것이 있는데 ClearGearCenter가 '할 일 없음'(false)을 돌려줬습니다.");
+            Assert.IsTrue(UiLayoutModel.IsDirty,
+                "되돌렸는데 저장 대상으로 표시되지 않았습니다 — 주기 저장이 이 변화를 흘려보냅니다.");
+            Assert.IsTrue(CharacterSaveStore.Save(), "되돌린 뒤 저장에 실패했습니다.");
+            Assert.IsFalse(UiLayoutModel.IsDirty, "저장했는데 여전히 저장 대상으로 남아 있습니다.");
+
+            UiLayoutModel.ResetForTesting();
+            CharacterSaveStore.Load();
+
+            Assert.IsTrue(CharacterSaveStore.LoadedFromFile, "되돌린 뒤의 저장 파일을 읽지 못했습니다.");
+            Assert.IsFalse(UiLayoutModel.HasGearCenter,
+                "되돌렸는데 재시작하면 옛 자리가 되살아납니다 — 되돌리기가 메모리에만 남았습니다.");
+            Assert.AreEqual(0f, UiLayoutModel.GearCenterPoints.x, 0.001f,
+                "'옮긴 적 없음'인데 좌표가 남아 있습니다 — 플래그와 좌표가 어긋났습니다.");
+            Assert.AreEqual(0f, UiLayoutModel.GearCenterPoints.y, 0.001f);
+        }
+
+        /// <summary>
+        /// ★ <b>디스크에 실제로 무엇이 쓰였는가</b> — 위 테스트와 <b>다른 방법</b>으로 다시 잰다.
+        /// 위 테스트는 <c>Load()</c>라는 <b>우리 코드</b>를 통해 봤다. 여기서는 JSON 원문을 직접 읽는다
+        /// (같은 함정에 같이 빠지지 않게 — 예: Save가 안 써도 Load가 메모리를 안 건드리면 초록이 된다).
+        ///
+        /// <para>그리고 <b>스키마 버전이 안 올라갔다</b>는 것도 여기서 잠근다: 되돌리기는 새 필드가
+        /// 아니라 <c>gearPositionSaved</c>의 값 변경일 뿐이므로 파일의 <c>version</c>은
+        /// <see cref="CharacterSaveStore.CurrentVersion"/> 그대로여야 한다(숫자를 베끼지 않고 상수를 참조한다).</para>
+        /// </summary>
+        [Test]
+        public void 되돌리기가_기존_필드의_값만_바꾼다_버전은_그대로()
+        {
+            // ---- 양성 대조: 같은 방법(원문 스캔)이 true도 실제로 잡아내는가 ----
+            UiLayoutModel.SetGearCenter(new Vector2(300f, 120f));
+            Assert.IsTrue(CharacterSaveStore.Save());
+            string movedJson = File.ReadAllText(CharacterSaveStore.FilePath);
+            Assert.IsTrue(GearSavedFlagInJson(movedJson, out bool movedFlag),
+                "저장 파일에서 gearPositionSaved 키를 찾지 못했습니다 — 스캐너가 죽었습니다(이 파일의 '없음' 판정 전부 무효).");
+            Assert.IsTrue(movedFlag,
+                "옮긴 직후인데 파일의 gearPositionSaved가 false입니다 — 양성 대조 실패.");
+
+            // ---- 본 검증 ----
+            UiLayoutModel.ClearGearCenter();
+            Assert.IsTrue(CharacterSaveStore.Save());
+            string clearedJson = File.ReadAllText(CharacterSaveStore.FilePath);
+
+            Assert.IsTrue(GearSavedFlagInJson(clearedJson, out bool clearedFlag),
+                "되돌린 뒤 저장 파일에서 gearPositionSaved 키가 사라졌습니다 — 스키마가 깨졌습니다.");
+            Assert.IsFalse(clearedFlag,
+                "되돌렸는데 파일에는 여전히 gearPositionSaved=true가 적혀 있습니다.");
+
+            Assert.IsTrue(VersionInJson(clearedJson, out int version),
+                "저장 파일에서 version 키를 찾지 못했습니다.");
+            Assert.AreEqual(CharacterSaveStore.CurrentVersion, version,
+                "되돌리기가 스키마 버전을 건드렸습니다 — 이건 새 필드가 아니라 기존 필드의 값 변경이라 " +
+                "버전을 올릴 이유가 없습니다(CharacterSaveStore.CurrentVersion 주석의 규칙).");
+        }
+
+        /// <summary>이미 기본 위치면 아무것도 하지 않는다 — 하루 종일 켜져 있는 앱에서 "할 일 없는 저장"이
+        /// 디스크를 두드리지 않게 하는 계약이다(SetGearCenter의 MeaningfulMovePoints와 같은 정신).</summary>
+        [Test]
+        public void 이미_기본_위치면_되돌리기가_아무것도_하지_않는다()
+        {
+            Assert.IsFalse(UiLayoutModel.HasGearCenter, "이 테스트는 '옮긴 적 없음'에서 시작해야 합니다.");
+            UiLayoutModel.MarkSaved();
+
+            Assert.IsFalse(UiLayoutModel.ClearGearCenter(),
+                "되돌릴 것이 없는데 '되돌렸다'(true)를 돌려줬습니다 — 호출부가 무의미한 저장을 합니다.");
+            Assert.IsFalse(UiLayoutModel.IsDirty,
+                "아무것도 안 바뀌었는데 저장 대상이 됐습니다.");
+
+            // 양성 대조 — 같은 메서드가 되돌릴 것이 있을 때는 true를 돌려준다(위 IsFalse가 '항상 false'가 아니다).
+            UiLayoutModel.SetGearCenter(new Vector2(77f, 88f));
+            Assert.IsTrue(UiLayoutModel.ClearGearCenter(),
+                "양성 대조 실패 — ClearGearCenter가 어떤 경우에도 false를 돌려줍니다.");
+        }
+
+        /// <summary><c>"gearPositionSaved": true</c> 를 공백/줄바꿈에 상관없이 읽는다. JsonUtility의
+        /// 들여쓰기 형식에 테스트가 묶이지 않게 정규식으로 푼다.</summary>
+        private static bool GearSavedFlagInJson(string json, out bool value)
+        {
+            value = false;
+            Match m = Regex.Match(json, @"""gearPositionSaved""\s*:\s*(true|false)");
+            if (!m.Success) return false;
+            value = m.Groups[1].Value == "true";
+            return true;
+        }
+
+        private static bool VersionInJson(string json, out int value)
+        {
+            value = 0;
+            Match m = Regex.Match(json, @"""version""\s*:\s*(-?\d+)");
+            return m.Success && int.TryParse(m.Groups[1].Value, out value);
         }
 
         [Test]

@@ -132,23 +132,50 @@ namespace StickMate.Platform.Windows
         /// 창의 "전체 알파"를 Win32 스타일 비트 + GetLayeredWindowAttributes 조회 결과로부터 판정한다.
         /// OS 호출은 호출부(Win32WindowService)가 하고, 이 함수는 그 결과만 해석한다.
         ///
-        /// 네 갈래의 근거:
+        /// ============================================================================
+        /// ★★ 2026-09-02 — <c>WS_EX_TRANSPARENT</c>를 <b>무조건 탈락</b>으로 승격했다(리더 승인)
+        /// ============================================================================
+        /// <b>승격 전</b>에는 이 비트를 <b>네 번째 갈래 안에서만</b> 봤다 — 즉 "레이어드이고 + 조회가
+        /// 실패했을 때"만 클릭 관통을 근거로 0을 돌려줬다. 그래서 아래 <b>세 조합이 그대로 발판이
+        /// 되고 동시에 <u>남의 발판을 가릴 자격</u>까지 가졌다</b>(솔버는 두 자격을 같은 목록으로 본다):
+        /// <list type="number">
+        ///  <item><c>TRANSPARENT</c> 단독(레이어드 아님) — 1번 갈래에서 1.0.</item>
+        ///  <item><c>LAYERED|TRANSPARENT</c> + <c>LWA_ALPHA</c>가 큰 값 — 2번 갈래에서 최대 1.0.</item>
+        ///  <item><c>LAYERED|TRANSPARENT</c> + 컬러키만 — 3번 갈래에서 1.0.</item>
+        /// </list>
+        /// 판정 근거는 한 줄이다: <b>사용자가 클릭조차 할 수 없는 창은 사용자가 쓰는 창이 아니다.</b>
+        /// 클릭 관통 창은 정의상 "아래 창을 위해 자리를 비켜 주는" 창이므로, 그 위에 캐릭터를 세우거나
+        /// 그것으로 아래 발판을 지우는 것은 어느 쪽도 사용자가 보는 화면과 맞지 않는다.
+        /// 이 승격은 macOS <c>layer != 0</c> 필터와 같은 방향이고(시스템/오버레이 레이어는 발판이
+        /// 아니다), 새 OS API를 한 개도 늘리지 않는다 — <c>exStyle</c>은 이미 읽고 있던 값이다.
+        ///
+        /// <para><b>정직하게 남기는 과잉 제거 위험</b>: 클릭 관통이면서 <u>눈에는 보이는</u> 창
+        /// (예: 클릭 관통 모드의 데스크톱 위젯)도 함께 빠진다. 다만 그런 창은 대부분
+        /// <c>UpdateLayeredWindow</c> 픽셀별 알파를 함께 쓰므로 <b>승격 전에도 이미 4번 갈래에서
+        /// 빠지고 있었다</b> — 이번 승격으로 새로 빠지는 것은 위 세 조합뿐이다.
+        /// <b>실기 미확인</b>: 이 개발 머신에 Windows가 없어 실제 데스크톱에서의 탈락 목록은 확인하지
+        /// 못했다. 확인 수단은 <c>[발판진단]</c> 로그의 알파 탈락 사각형 목록이다.</para>
+        ///
+        /// 남은 갈래의 근거(클릭 관통이 <b>아닌</b> 창에 대해서만 적용된다):
         ///  1. <b>WS_EX_LAYERED가 없다</b> — 창에 전체 알파를 부여할 수단이 없다. 불투명(1.0).
         ///  2. <b>LWA_ALPHA로 알파가 설정돼 있다</b> — 그 값이 곧 macOS의 kCGWindowAlpha 대응물이다.
         ///  3. <b>조회는 됐지만 LWA_ALPHA가 없다</b> — 컬러키(LWA_COLORKEY)만 쓰는 창. 특정 색만 투명하고
         ///     전체 알파는 불투명이므로 1.0.
         ///  4. <b>조회가 실패했다</b> — 이 창은 <c>UpdateLayeredWindow</c>로 <b>픽셀별 알파</b>를 쓴다
         ///     (문서화된 동작: 그 경우 GetLayeredWindowAttributes는 실패한다). 전체 알파라는 단일 값이
-        ///     존재하지 않으므로 알 방법이 없다. 여기서 <b>클릭 관통(WS_EX_TRANSPARENT)까지 켜져 있으면</b>
-        ///     사용자가 만질 수조차 없는 순수 HUD/오버레이로 보고 0으로 판정한다 — 위 문서의
-        ///     "전체화면 투명 오버레이가 아래 발판을 전부 지운다" 시나리오가 정확히 이 조합이다
-        ///     (우리 앱 자신의 오버레이도 이 조합이다. 자기 자신을 발판으로 삼지 않는 것과 같은 판단).
-        ///     클릭 관통이 아니라면 사용자가 실제로 조작하는 창이므로 보수적으로 불투명(1.0)으로 둔다 —
-        ///     <b>조회 실패를 이유로 멀쩡한 창을 발판에서 지우지 않는다</b>(IsCloaked와 같은 보수 원칙).
+        ///     존재하지 않으므로 알 방법이 없다. 클릭 관통이 아니라면 사용자가 실제로 조작하는 창이므로
+        ///     보수적으로 불투명(1.0)으로 둔다 — <b>조회 실패를 이유로 멀쩡한 창을 발판에서 지우지
+        ///     않는다</b>(IsCloaked와 같은 보수 원칙). 클릭 관통인 경우는 위 승격 게이트가 이미 처리했다
+        ///     (우리 앱 자신의 오버레이도 이 조합이다 — 자기 자신을 발판으로 삼지 않는 것과 같은 판단.
+        ///      다만 실제 열거에서는 그보다 앞선 SelfProcess 필터가 먼저 걸러낸다).
         /// </summary>
         public static float ResolveWindowAlpha(int exStyle, bool layeredAttributesQuerySucceeded,
             uint layeredFlags, byte layeredAlpha)
         {
+            // ★ 승격된 게이트. 레이어드 여부·조회 성공 여부·알파값과 <b>무관하게</b> 먼저 닫는다.
+            //   이 한 줄이 위 문서의 세 조합을 동시에 막는다. 순서를 아래로 내리면 승격이 무효가 된다.
+            if ((exStyle & WsExTransparent) != 0) return 0f;
+
             if ((exStyle & WsExLayered) == 0) return 1f;
 
             if (layeredAttributesQuerySucceeded)
@@ -156,7 +183,8 @@ namespace StickMate.Platform.Windows
                 return (layeredFlags & LwaAlpha) != 0 ? layeredAlpha / 255f : 1f;
             }
 
-            return (exStyle & WsExTransparent) != 0 ? 0f : 1f;
+            // 여기 도달하는 창은 반드시 클릭 관통이 아니다(위 게이트가 이미 돌려보냈다).
+            return 1f;
         }
 
         /// <summary>
@@ -198,7 +226,10 @@ namespace StickMate.Platform.Windows
                 case WindowsFootholdRejection.ToolWindow: return "WS_EX_TOOLWINDOW";
                 case WindowsFootholdRejection.SelfProcess: return "우리 자신의 창";
                 case WindowsFootholdRejection.DegenerateRect: return "사각형 폭/높이 0 이하";
-                case WindowsFootholdRejection.TransparentAlpha: return "알파≈0(투명/비표시)";
+                // 2026-09-02: WS_EX_TRANSPARENT 승격 이후 이 사유는 두 원인을 합친다 —
+                // (a) 실제로 알파가 문턱 미만  (b) 클릭 관통 창(알파를 0으로 판정). 로그를 읽는 사람이
+                // (b)를 모르면 "알파가 0인 창이 왜 이렇게 많지?"에서 조사가 멈춘다.
+                case WindowsFootholdRejection.TransparentAlpha: return "알파≈0(투명·클릭관통 오버레이)";
                 case WindowsFootholdRejection.TooSmall: return "너무 작음";
                 case WindowsFootholdRejection.OffVirtualScreen: return "가상 화면 밖";
                 case WindowsFootholdRejection.FullyOccluded: return "다른 창에 완전히 가려짐";

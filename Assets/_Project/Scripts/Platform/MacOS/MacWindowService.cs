@@ -61,7 +61,8 @@ namespace StickMate.Platform.MacOS
     /// 취급하므로 컴파일/런타임 모두 문제 없다(Win32WindowService가 실제로 두 인터페이스 다 구현한 것과
     /// 다른 점 — macOS는 이번 라운드에 그 두 캐퍼빌리티까지는 손대지 않는다).
     /// </summary>
-    public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService, IGlobalPointerButtonService, IGlobalKeyStateService, ILocalClickCaptureService, IDockMetricsService, IRawWindowRectSource, IWindowEnumerationCostSource
+    public sealed class MacWindowService : IPlatformWindowService, ICursorPositionService, IGlobalPointerButtonService, IGlobalKeyStateService, ILocalClickCaptureService, IDockMetricsService, IRawWindowRectSource,
+        IForeignFullscreenTierSource, IWindowEnumerationCostSource
     {
         #region CoreGraphics / CoreFoundation P/Invoke 선언 (이 리전 밖으로 유출 금지)
 
@@ -148,6 +149,18 @@ namespace StickMate.Platform.MacOS
 
         [DllImport(CoreGraphicsLib)]
         private static extern uint CGMainDisplayID();
+
+        // ============================================================================
+        // ★ 2026-09-02 Phase 0 계측 — 디스플레이 전수 열거(조회 전용)
+        // ============================================================================
+        // Windows판이 EnumDisplayMonitors로 하는 것과 같은 일. 공개 CoreGraphics C ABI이며 접근성
+        // 권한도, 어떤 창에 대한 쓰기도 없다. 반환하는 CGDirectDisplayID 목록의 각 항목에
+        // CGDisplayBounds를 한 번씩 물어 전체 사각형을 얻는다.
+        //   · maxDisplays=0으로 부르면 개수만 돌려주지만, 이 계측은 1회성이라 넉넉한 고정 배열을 쓴다.
+        //   · 반환 0(kCGErrorSuccess)만 성공이다.
+        [DllImport(CoreGraphicsLib)]
+        private static extern int CGGetActiveDisplayList(uint maxDisplays,
+            [Out] uint[] activeDisplays, out uint displayCount);
 
         // 디스플레이 백킹 배율(Retina 배율) 조회용 3종. CGDisplayModeGetWidth는 "포인트" 폭,
         // CGDisplayModeGetPixelWidth는 실제 "백킹 픽셀" 폭을 돌려주므로 둘의 비가 곧 backingScaleFactor다
@@ -935,11 +948,28 @@ namespace StickMate.Platform.MacOS
             LastFullyOccludedWindowCount = 0;
             _enumeratedWindowCount = 0;
             _detailProbeCount = 0;
-            bool hasDisplay = TryGetMainDisplayBounds(out Rect displayBounds);
+            // ★★ 2026-09-02 — 여기서 <b>두 사각형이 서로 다른 질문에 답한다</b>. 섞으면 둘 다 깨진다.
+            //
+            //   (1) hasDisplay/displayBounds — <b>발판 클리핑</b>. "캐릭터가 설 수 있는 창인가"이므로
+            //       <b>오버레이가 실제로 덮는 그 화면</b>이어야 한다. 지금까지는 주 디스플레이였고,
+            //       오버레이도 사실상 거기 떠서 <b>우연히</b> 맞았다. "기본은 왼쪽"이 들어오면서
+            //       주 화면이 오른쪽인 사용자에게 <b>둘이 다른 화면</b>이 될 수 있고, 그러면 실제 창
+            //       발판이 0개가 되어 합성 안전망만 남는다(= 캐릭터가 남의 창 위에 못 선다).
+            //
+            //   (2) _displayBoundsThisPass — <b>원점 위생 검사</b>. "우리 창이 명백히 화면 밖인가"이므로
+            //       <b>전체 데스크톱</b>이어야 한다. 여기에 한 화면을 넘기면 오버레이가 보조 화면에
+            //       있을 때 <b>우리가 우리 자신의 원점을 거부</b>한다(Windows는 원래 가상 화면이라
+            //       이 문제가 없었다 — macOS가 뒤처진 쪽이다).
+            //
+            //   둘 다 조회 실패 시에는 <b>기존 폴백(주 디스플레이)</b>을 그대로 쓴다 — "조회 실패를
+            //   이유로 멀쩡한 창을 발판에서 지우지 않는다"는 기존 계약을 깨지 않는다.
+            bool hasDisplay = OverlayMonitorDirectory.TryGetOverlayScreenOsRect(out Rect displayBounds)
+                || TryGetMainDisplayBounds(out displayBounds);
             _overlayOriginPassArea = 0.0; // CaptureOverlayOrigin()의 "이번 패스 최대 면적" 리셋.
             // ★ 2026-09-01 — 같은 관측을 CaptureOverlayOrigin()의 위생 검사에도 넘긴다(새 호출 0건).
-            _hasDisplayBoundsThisPass = hasDisplay;
-            _displayBoundsThisPass = displayBounds;
+            _hasDisplayBoundsThisPass =
+                OverlayMonitorDirectory.TryGetDesktopUnionOsRect(out _displayBoundsThisPass)
+                || TryGetMainDisplayBounds(out _displayBoundsThisPass);
             // ★ 2026-09-01 — 창 장식(타이틀바) 제거용 콘텐츠 크기를 이번 패스에 **한 번만** 읽는다.
             //   CaptureOverlayOrigin()은 패스당 여러 번 불릴 수 있는데(자기 창이 여러 개), 그때마다
             //   네이티브를 두드릴 이유가 없다. 부착 전에는 (0,0)이고 그러면 규칙이 보정을 포기한다.
@@ -1123,6 +1153,45 @@ namespace StickMate.Platform.MacOS
         }
 
         /// <summary>
+        /// Phase 0 계측용 — 활성 디스플레이 전수를 <b>Quartz 전역 좌표(좌상단 원점, 하향 y)</b> 그대로
+        /// 담아 준다. <b>사실 조회만 한다</b>; 판정은 전부 플랫폼 중립
+        /// <see cref="MonitorTopologyReport"/>에 있다(Windows판 <c>TryEnumerateOsMonitors</c>와 같은 계약).
+        ///
+        /// <para><b>정직한 비대칭 1건</b>: Windows는 같은 <c>MONITORINFO</c> 한 번에 <c>rcWork</c>
+        /// (예약 막대를 뺀 작업 영역)가 함께 들어 있지만, macOS의 대응물 <c>NSScreen.visibleFrame</c>은
+        /// <b>AppKit</b>이라 이 파일의 CoreGraphics 전용 경로로는 얻을 수 없다. 그래서 작업 영역은
+        /// 전체 사각형과 <b>같은 값</b>으로 채우고, 그 사실을 여기 적어 둔다 — 0이나 빈 값으로 채우면
+        /// 로그를 읽는 사람이 "메뉴바/Dock이 없다"로 오독한다.
+        /// (메뉴바/Dock 두께가 정말 필요하면 그 값은 라이브러리의 <c>GetMonitorRect</c>가 주는
+        /// <c>visibleFrame</c>과의 차로 이 계측 줄 안에서 그대로 읽힌다.)</para>
+        ///
+        /// <para>비용: 프로세스 수명 동안 1회(기동 계측). 배열 1개 할당 + 디스플레이 수만큼의
+        /// <c>CGDisplayBounds</c>가 전부다.</para>
+        /// </summary>
+        public bool TryEnumerateOsMonitors(List<OsMonitorFact> into)
+        {
+            if (into == null) return false;
+            into.Clear();
+
+            const int MaxDisplays = 16;
+            var ids = new uint[MaxDisplays];
+            if (CGGetActiveDisplayList(MaxDisplays, ids, out uint count) != 0) return false;
+            if (count == 0) return false;
+            if (count > MaxDisplays) count = MaxDisplays;
+
+            uint main = CGMainDisplayID();
+            for (int i = 0; i < count; i++)
+            {
+                CGRect r = CGDisplayBounds(ids[i]);
+                var full = new Rect((float)r.Origin.X, (float)r.Origin.Y,
+                    (float)r.Size.Width, (float)r.Size.Height);
+                if (full.width <= 0f || full.height <= 0f) continue;
+                into.Add(new OsMonitorFact(full, full, ids[i] == main, $"id={ids[i]}"));
+            }
+            return into.Count > 0;
+        }
+
+        /// <summary>
         /// 마지막 EnumerateFootholds() 결과에서 handle에 해당하는 창의 소유 앱 이름(진단 로그 전용).
         /// 찾지 못하면 null. 위 _footholdOwnerNames 선언부의 사용 제한(읽기 전용, 로그 전용) 참고.
         /// </summary>
@@ -1187,6 +1256,10 @@ namespace StickMate.Platform.MacOS
             // 재적합(전체화면 확장/해상도 변경 후 재무장)이 끝난 프레임에 좌표계를 즉시 갱신하는 훅.
             // 폴링을 기다리면 그 사이 원점/배율이 옛 값이라 캐릭터가 화면 밖으로 튄다.
             _enforcer.OverlayRectReporter = ReportOverlayRectNow;
+            // Phase 0 계측(2026-09-02) — OS 디스플레이 전수 열거를 주입한다. Windows판
+            // (Win32WindowService.CreateOverlayWindow)과 같은 배선 형태이며, Enforcer는 CoreGraphics를
+            // 직접 부르지 않는다(P/Invoke 격리 컨벤션 유지).
+            _enforcer.OsMonitorEnumerator = TryEnumerateOsMonitors;
             _enforcer.MarkDirty();
 
             Debug.Log("[MacWindowService] CreateOverlayWindow(): UniWindowController 확보 및 초기 상태 적용 완료 " +
@@ -1283,14 +1356,30 @@ namespace StickMate.Platform.MacOS
         ///       bounds가 요동쳐 Resume/Suspend가 반복되던 깜빡임 차단).
         /// </summary>
         public bool IsFullscreenAppActive()
+            => ForeignFullscreenTierPolicy.SuspendsCharacter(GetForeignFullscreenTier());
+
+        /// <summary>
+        /// ★ 2026-09-02 — <b>등급 판정의 원본</b>. 위 <see cref="IsFullscreenAppActive"/>는 이 값에서
+        /// 유도되므로 네이티브 조회는 여전히 폴링당 <b>1회</b>다.
+        ///
+        /// <para><b>디바운서를 축마다 하나씩 둔다.</b> 등급 2의 원시 판정(<c>기하 AND 게임</c>)은
+        /// 기존 디바운서에 <b>그대로</b> 들어가므로 <c>IsFullscreenAppActive()</c>의 값이 바뀌는 입력
+        /// 조합이 하나도 없다 — 2026-08-31 신고("엑셀 전체화면에서 캐릭터가 사라진다")가 회귀할 경로가
+        /// 구조적으로 없다는 뜻이다. 등급 1은 <b>새 디바운서</b>가 기하 축만 따로 흡수한다
+        /// (메뉴바 호출로 bounds가 요동치는 그 깜빡임이 등급 1에도 똑같이 있다).</para>
+        /// </summary>
+        public ForeignFullscreenTier GetForeignFullscreenTier()
         {
-            bool raw = EvaluateFullscreen(out string reason);
+            EvaluateFullscreen(out bool rawCovers, out bool rawGame, out string reason);
+            bool raw = rawCovers && rawGame;
+            double now = Time.realtimeSinceStartupAsDouble;
+            bool coversVerdict = _coversDebouncer.Update(rawCovers, now, FullscreenVerdictHoldSeconds);
 
             // ★ 2026-08-31 깜빡임(flapping) 차단. 같은 전체화면 창인데도 사용자가 커서를 화면 상단에
             //   올려 메뉴바를 부르면 CGWindow bounds가 (0,33 ...) <-> (0,0 ...) 로 오가서 기하 판정이
             //   뒤집힌다(디버거 실측). 그대로 두면 Resume/Suspend가 반복돼 캐릭터가 깜빡인다.
             //   규칙 자체는 FullscreenSuspendPolicy.cs에 순수 함수로 분리돼 EditMode 테스트가 검증한다.
-            bool verdict = _fullscreenDebouncer.Update(raw, Time.realtimeSinceStartupAsDouble, FullscreenVerdictHoldSeconds);
+            bool verdict = _fullscreenDebouncer.Update(raw, now, FullscreenVerdictHoldSeconds);
 
             if (raw != _lastRawFullscreenVerdict)
             {
@@ -1305,13 +1394,23 @@ namespace StickMate.Platform.MacOS
             // ★ 2026-08-29 — 판정이 **바뀔 때만** 사유와 함께 남긴다(리더 지시: 사용자 신고 "캐릭터가
             // 안 보이다가 클릭하면 나타난다"의 원인 추적 수단이 전혀 없었다). 매 폴링(1.5초)마다 찍으면
             // 로그가 잠기므로 전이 순간만 기록한다 — "언제 숨었고 어느 창 때문이었나"에는 그것으로 충분하다.
-            if (verdict != _lastFullscreenVerdict)
+            ForeignFullscreenTier tier = ForeignFullscreenTierPolicy.Resolve(coversVerdict, verdict);
+
+            if (tier != _lastFullscreenTier)
             {
+                _lastFullscreenTier = tier;
                 _lastFullscreenVerdict = verdict;
-                Debug.Log($"[전체화면판정] {(verdict ? "전체화면 앱 감지 -> 캐릭터를 숨깁니다" : "전체화면 해제 -> 캐릭터를 되돌립니다")} — {reason}");
+                Debug.Log($"[전체화면판정] {ForeignFullscreenTierPolicy.Describe(tier)} — {reason}");
             }
-            return verdict;
+            return tier;
         }
+
+        /// <summary>기하 축 전용 디바운서(등급 1). 등급 2용 <see cref="_fullscreenDebouncer"/>와 <b>별도</b>다 —
+        /// 한 디바운서를 둘이 나눠 쓰면 한 축의 흔들림이 다른 축의 확정 시각을 옮긴다.</summary>
+        private FullscreenVerdictDebouncer _coversDebouncer;
+
+        /// <summary>"등급이 바뀔 때만 로그"용 상태. 24시간 상주 앱이라 매 폴링 로그는 금지.</summary>
+        private ForeignFullscreenTier _lastFullscreenTier;
 
         /// <summary>
         /// ============================================================================
@@ -1336,13 +1435,15 @@ namespace StickMate.Platform.MacOS
         /// 아닌가"를 재빌드 없이 1초 만에 가를 수 있어야 하기 때문이다(이번 조사에서 그 수단이 없어
         /// 가설 하나를 세우는 데 로그 전수를 뒤져야 했다).
         /// </summary>
-        private bool EvaluateFullscreen(out string reason)
+        private void EvaluateFullscreen(out bool coversDisplay, out bool isGame, out string reason)
         {
+            coversDisplay = false;
+            isGame = false;
             IntPtr windowArray = CopyOnScreenWindowListMeasured(insideEnumerationPass: true);
             if (windowArray == IntPtr.Zero)
             {
                 reason = "창 목록 조회 실패(CGWindowListCopyWindowInfo == null) — 안전하게 '전체화면 아님'으로 처리.";
-                return false;
+                return;
             }
 
             try
@@ -1379,7 +1480,7 @@ namespace StickMate.Platform.MacOS
                     if (IsOwnAppWindow(windowDict))
                     {
                         reason = "최상단 일반(layer 0) 창이 우리 앱(같은 이름의 다른 인스턴스 포함)이라 전체화면 앱이 아님.";
-                        return false;
+                        return;
                     }
 
                     string owner = TryGetString(windowDict, _keyWindowOwnerName);
@@ -1389,12 +1490,12 @@ namespace StickMate.Platform.MacOS
                     if (boundsDict == IntPtr.Zero)
                     {
                         reason = $"최상단 창 '{owner}'의 bounds를 읽지 못함 — 전체화면 아님으로 처리.";
-                        return false;
+                        return;
                     }
                     if (!CGRectMakeWithDictionaryRepresentation(boundsDict, out CGRect winRect))
                     {
                         reason = $"최상단 창 '{owner}'의 bounds 파싱 실패 — 전체화면 아님으로 처리.";
-                        return false;
+                        return;
                     }
 
                     // 퇴화 사각형(0폭/0높이)은 판정 근거가 될 수 없다. 위 알파 필터와 같은 성격의
@@ -1416,24 +1517,29 @@ namespace StickMate.Platform.MacOS
                             $"{winRect.Size.Width:F0}x{winRect.Size.Height:F0}), 메인 디스플레이=" +
                             $"({displayBounds.Origin.X:F0},{displayBounds.Origin.Y:F0} " +
                             $"{displayBounds.Size.Width:F0}x{displayBounds.Size.Height:F0}) -> 기하 일치=false.";
-                        return false;
+                        return;
                     }
 
                     // ★ 2026-08-31 — 기하만으로는 부족하다. 여기서 "그 앱이 게임인가"까지 확인한다.
                     //   (원인 B: 엑셀/키노트/브라우저 전체화면에서도 캐릭터가 사라지던 문제.)
                     TryGetInt(windowDict, _keyWindowOwnerPID, out int ownerPid);
                     string category = TryGetAppCategory(ownerPid);
-                    bool isGame = FullscreenGameCategory.IsGameCategory(category);
+                    // ★ 2026-09-02 — 두 사실을 <b>뭉개지 않고</b> 각각 올려 보낸다. 이 한 줄이
+                    //   등급 1(패널 회수)의 전부다: 기하는 맞았는데 게임이 아닌 경우가 지금까지
+                    //   `return false` 하나로 사라지면서, 카테고리 미선언 앱(Zoom/Teams 부류)의
+                    //   전체화면 위에 정보창(화면 면적 50.38%)과 그 클릭 차단막이 그대로 남았다.
+                    coversDisplay = true;
+                    isGame = FullscreenGameCategory.IsGameCategory(category);
 
                     reason = $"판정 근거 창 = '{owner}'(pid {ownerPid}) bounds=({winRect.Origin.X:F0},{winRect.Origin.Y:F0} " +
                         $"{winRect.Size.Width:F0}x{winRect.Size.Height:F0}) 상단여백 {winRect.Origin.Y - displayBounds.Origin.Y:F0}pt " +
                         $"(허용 {displayBounds.Size.Height * FullscreenGeometry.MenuBarStripFraction:F0}pt) -> 기하 일치=true, " +
                         $"LSApplicationCategoryType={(string.IsNullOrEmpty(category) ? "(미선언)" : category)} -> 게임={isGame}" +
-                        (isGame ? "." : " (게임이 아니므로 숨기지 않습니다 — 원칙 2는 '전체화면 게임'만 대상).");
-                    return isGame;
+                        (isGame ? "." : " (게임이 아니므로 **캐릭터는 남기고** 창·패널·클릭 차단막만 걷습니다 — 등급 1).");
+                    return;
                 }
                 reason = "layer 0(일반 앱) 창이 하나도 없음(전부 최소화 등) — 전체화면 아님으로 안전 처리.";
-                return false;
+                return;
             }
             finally
             {

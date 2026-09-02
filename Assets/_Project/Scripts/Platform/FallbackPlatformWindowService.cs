@@ -45,7 +45,7 @@ namespace StickMate.Platform
     /// 한다(UX_FLOW.md 3절/9절-7). 여기서 항상 발판이 있는 것처럼 위장하면 그 온보딩 게이트가 조용히
     /// 무력화된다 — 배선은 StickmanAgent.CreatePlatformService() 참고.
     /// </summary>
-    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService, IGlobalKeyStateService, IReservedBottomBarService, IReservedTopBarService, IRawWindowRectSource, IWindowEnumerationCostSource
+    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService, IGlobalKeyStateService, IReservedBottomBarService, IReservedTopBarService, IRawWindowRectSource, IWindowEnumerationCostSource, IForeignFullscreenTierSource
     {
         private readonly IPlatformWindowService _inner;
         private readonly ICursorPositionService _innerCursor; // null이면 내부 서비스가 커서 조회를 지원하지 않음
@@ -84,6 +84,7 @@ namespace StickMate.Platform
         // (실측 로그: "전역버튼경로=미지원"). 그래서 창 포커스와 무관한 전역 버튼 폴링 경로가
         // 실제로는 한 번도 활성화된 적이 없었다. ICursorPositionService와 동일한 위임 패턴으로 통과시킨다.
         private readonly IGlobalPointerButtonService _innerButton; // null이면 내부 서비스가 전역 버튼 조회를 지원하지 않음
+        private readonly IForeignFullscreenTierSource _innerTier;  // null이면 등급 조회 미지원 -> bool로 강등
         private readonly IGlobalKeyStateService _innerKeyState;     // null이면 내부 서비스가 전역 키 조회를 지원하지 않음
         // null이면 내부 서비스가 "가려짐 필터 이전 원본 창 목록"을 지원하지 않음 -> RawWindows가 빈 목록.
         private readonly IRawWindowRectSource _innerRawWindows;
@@ -142,6 +143,10 @@ namespace StickMate.Platform
             _innerBottomBar = inner as IReservedBottomBarService;
             _innerTopBar = inner as IReservedTopBarService;
             _innerButton = inner as IGlobalPointerButtonService;
+            // 등급 조회는 <b>선택적 능력</b>이다(IForeignFullscreenTierSource 문서 참고).
+            // 지원하지 않는 내부 서비스(Null/모바일)에서는 null로 남고, 아래 조회가
+            // 기존 bool 하나로 강등한다 = 등급 1이 없던 예전 동작 그대로.
+            _innerTier = inner as IForeignFullscreenTierSource;
             _innerKeyState = inner as IGlobalKeyStateService;
             _innerRawWindows = inner as IRawWindowRectSource;
             _innerCost = inner as IWindowEnumerationCostSource;
@@ -615,6 +620,22 @@ namespace StickMate.Platform
             bool active = _inner.IsFullscreenAppActive();
             StallAttribution.RecordFullscreenProbe(System.Diagnostics.Stopwatch.GetTimestamp() - start);
             return active;
+        }
+
+        /// <summary>
+        /// 등급 조회도 <b>같은 원장 칸</b>에 잰다 — 실제 폴링 경로가 이쪽으로 옮겨가므로, 여기서
+        /// 재지 않으면 <c>[스톨구간]</c>의 전체화면 판정 비용이 <b>0으로 보고되는</b> 거짓 원장이 된다
+        /// (이 클래스 문서가 경고하는 그 사고 그대로다).
+        /// </summary>
+        public ForeignFullscreenTier GetForeignFullscreenTier()
+        {
+            long start = System.Diagnostics.Stopwatch.GetTimestamp();
+            ForeignFullscreenTier tier = _innerTier != null
+                ? _innerTier.GetForeignFullscreenTier()
+                // 강등 경로: 등급을 모르는 내부 서비스는 예전 계약(bool) 그대로 해석한다.
+                : (_inner.IsFullscreenAppActive() ? ForeignFullscreenTier.Full : ForeignFullscreenTier.None);
+            StallAttribution.RecordFullscreenProbe(System.Diagnostics.Stopwatch.GetTimestamp() - start);
+            return tier;
         }
 
         // IGlobalPointerButtonService — 위 _innerButton 선언부의 사고 기록 참고. 순수 통과.

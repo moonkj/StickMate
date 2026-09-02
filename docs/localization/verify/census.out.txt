@@ -1,0 +1,60 @@
+==============================================================================
+로컬라이제이션 표면 인구조사  (프로덕션 .cs = Tests/ 제외)
+==============================================================================
+
+--- .cs 한글 리터럴 분류 ---
+  INSPECTOR       1662
+  DEBUG           1185
+  OTHER           1125
+  (합계)            3972
+
+★ 출하 표면(OTHER) = 1125건
+★ 미출하(INSPECTOR+DEBUG) = 2847건
+
+--- OTHER 상위 파일 ---
+     92  Assets/_Project/Scripts/Platform/OverlayCompositionSnapshot.cs
+     75  Assets/_Project/Scripts/Interaction/SettingsWindow.cs
+     57  Assets/_Project/Scripts/Platform/FramePacing.cs
+     50  Assets/_Project/Scripts/Interaction/CharacterInfoWindow.cs
+     49  Assets/_Project/Scripts/Core/StickMateDisplayNames.cs
+     38  Assets/_Project/Scripts/Interaction/AppControlDirector.cs
+     36  Assets/_Project/Scripts/Platform/Windows/WindowsTopmostWatchdog.cs
+     33  Assets/_Project/Scripts/Platform/MonitorTopologyReport.cs
+     33  Assets/_Project/Scripts/Platform/MacOS/MacWindowService.cs
+     30  Assets/_Project/Scripts/Platform/StallAttribution.cs
+     30  Assets/_Project/Scripts/Platform/Windows/Win32WindowService.cs
+     29  Assets/_Project/Scripts/Core/ItemCatalog.cs
+     28  Assets/_Project/Scripts/Interaction/ActionCommandPopover.cs
+     26  Assets/_Project/Scripts/Platform/Windows/WindowsCompositionProbe.cs
+     25  Assets/_Project/Scripts/Interaction/FocusSessionPopover.cs
+     21  Assets/_Project/Scripts/Platform/MacOS/MacOverlayStateEnforcer.cs
+     20  Assets/_Project/Scripts/States/GroundSensor.cs
+     18  Assets/_Project/Scripts/Dialogue/DialogueBubbleRenderer.cs
+     18  Assets/_Project/Scripts/Interaction/GearRadialMenuWidget.cs
+     18  Assets/_Project/Scripts/Interaction/TodoBoardPopover.cs
+     15  Assets/_Project/Scripts/Interaction/WindowTheftDirector.cs
+     14  Assets/_Project/Scripts/Core/CharacterSaveStore.cs
+     13  Assets/_Project/Scripts/Dialogue/AmbientChatter.cs
+     12  Assets/_Project/Scripts/Core/StickmanAgent.cs
+     12  Assets/_Project/Scripts/Platform/LayeredHybridPolicy.cs
+     11  Assets/_Project/Scripts/Platform/FallbackPlatformWindowService.cs
+     11  Assets/_Project/Scripts/Platform/ReservedBarRevealDirector.cs
+     11  Assets/_Project/Scripts/Platform/ReservedBarRevealPolicy.cs
+     11  Assets/_Project/Scripts/Interaction/InfoGearIconWidget.cs
+     10  Assets/_Project/Scripts/Core/KoreanParticle.cs
+  (파일 수: 95)
+
+--- .asset (디코드 후) ---
+  ASSET:description         42
+  ASSET:displayName         42
+  파일 수: 42
+  합계: 84
+
+--- 함정 재현: raw grep vs 디코드 ---
+  .asset 전체 raw grep [가-힣] 히트: 0  <-- 영원히 0
+  .asset 전체 디코드 후 유저 노출 문자열: 84
+
+==============================================================================
+★ 총 지역화 표면 = OTHER(1125) + .asset(84) = 1209건
+==============================================================================
+상세: docs/localization/verify/census.json

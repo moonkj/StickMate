@@ -53,7 +53,7 @@ def count(blob: bytes, needle: str) -> int:
     return blob.count(needle.encode("utf-8")) + blob.count(needle.encode("utf-16-le"))
 
 
-def last_commit_time() -> float | None:
+def last_commit_time():
     """마지막 커밋 시각. git 이 없거나 실패하면 None(그때는 신선도 검사를 건너뛰되 알린다)."""
     try:
         out = subprocess.run(["git", "-C", str(REPO), "log", "-1", "--format=%ct"],

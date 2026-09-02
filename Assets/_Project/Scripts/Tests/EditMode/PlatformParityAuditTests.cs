@@ -8,6 +8,7 @@ using StickMate.Core;
 using StickMate.Dialogue;
 using StickMate.Interaction;
 using StickMate.Platform;
+using StickMate.Platform.Windows;   // WindowsFootholdFilter — #if가 없어 macOS 타깃에서도 타입이 존재한다(클릭관통 항목이 이것에 의존).
 using UnityEngine;
 
 namespace StickMate.Tests.EditMode
@@ -656,6 +657,68 @@ namespace StickMate.Tests.EditMode
                 "하위 네임스페이스로 내리면 반대쪽 플랫폼에서 using 없이 참조되지 않습니다.");
         }
 
+        /// <summary>
+        /// ★ 2026-09-02 신규 플랫폼 분기 — <b>등급 판정(<c>IForeignFullscreenTierSource</c>)</b>이
+        /// 두 플랫폼 모두에 있어야 한다.
+        ///
+        /// <para>이 분기는 이 저장소가 세 번 겪은 사고와 <b>정확히 같은 모양</b>으로 새기 쉽다:
+        /// 등급 1(게임이 아닌 전체화면 앱에서 창·차단막만 걷기)이 macOS에만 들어가면, Windows 사용자는
+        /// 전체화면 PowerPoint 슬라이드쇼/Teams 위에 우리 창이 그대로 뜬 채 그 사각형의 클릭을 빼앗기고,
+        /// 이 개발 머신에서는 <b>영원히 컴파일조차 되지 않아</b> 아무도 모른다.</para>
+        ///
+        /// <para><b>타입이 아니라 소스 파일</b>을 읽는다 — <c>Win32WindowService</c>는 파일 전체가
+        /// <c>#if UNITY_STANDALONE_WIN</c> 안이라 macOS 타깃에서는 타입이 존재하지 않는다.</para>
+        /// </summary>
+        [Test]
+        public void 전체화면_등급_판정이_양_플랫폼에_모두_배선되어_있다()
+        {
+            AssertBothContain(MacWindowServicePath, WinWindowServicePath,
+                "IForeignFullscreenTierSource",
+                "등급 조회 능력 인터페이스를 구현하지 않았습니다. 그 플랫폼에서는 StickmanAgent가 " +
+                "예전 bool 계약으로 강등되어 등급 1(게임이 아닌 전체화면 앱)이 통째로 없습니다.");
+
+            AssertBothContain(MacWindowServicePath, WinWindowServicePath,
+                "public ForeignFullscreenTier GetForeignFullscreenTier()",
+                "등급 판정의 원본 메서드가 없습니다.");
+
+            // ★ 등급 2의 원시 판정은 <b>기존 디바운서</b>에, 등급 1의 기하 축은 <b>별도 디바운서</b>에
+            //   들어가야 한다. 하나를 둘이 나눠 쓰면 한 축의 흔들림이 다른 축의 확정 시각을 옮긴다.
+            AssertBothContain(MacWindowServicePath, WinWindowServicePath,
+                "_coversDebouncer",
+                "등급 1(기하 축) 전용 디바운서가 없습니다 — 기존 디바운서를 두 축이 나눠 쓰면 " +
+                "메뉴바 호출/작업표시줄 자동 숨김 같은 흔들림이 반대 축의 확정 시각까지 옮깁니다.");
+
+            // ★★ 이 줄이 2026-08-31 신고의 회귀 방지 그 자체다: IsFullscreenAppActive()가 등급에서
+            //    <b>유도</b>돼야 (가) 네이티브 조회가 폴링당 1회로 유지되고 (나) 등급 2의 조건이
+            //    한 글자도 바뀌지 않았음이 코드 형태로 보장된다.
+            AssertBothContain(MacWindowServicePath, WinWindowServicePath,
+                "ForeignFullscreenTierPolicy.SuspendsCharacter(GetForeignFullscreenTier())",
+                "IsFullscreenAppActive()가 등급에서 유도되지 않습니다 — 두 경로가 각각 판정하면 " +
+                "네이티브 조회가 두 배가 되고, 두 판정이 갈라지는 순간 " +
+                "\"엑셀 전체화면에서 캐릭터가 사라진다\"(2026-08-31)가 한쪽 플랫폼에서만 되살아납니다.");
+        }
+
+        /// <summary>
+        /// 등급의 <b>뜻</b>(무엇을 걷는가)은 플랫폼 파일이 아니라 중립 정책이 정해야 한다.
+        /// 플랫폼 코드는 "기하가 맞는가"와 "게임인가"라는 두 <b>사실</b>만 올려 보낸다.
+        /// </summary>
+        [Test]
+        public void 등급의_뜻은_플랫폼_중립_정책이_정한다()
+        {
+            string policy = ReadSource(Path.Combine(PlatformRoot, "FullscreenSuspendPolicy.cs"));
+            StringAssert.Contains("enum ForeignFullscreenTier", policy,
+                "등급 열거형이 중립 정책 파일에 없습니다.");
+            StringAssert.Contains("static class ForeignFullscreenTierPolicy", policy,
+                "등급 합성 규칙이 중립 정책 파일에 없습니다 — 플랫폼 폴더로 내려가면 반대쪽이 " +
+                "같은 규칙을 부를 수 없습니다(FullscreenSuspendPolicy 사고와 같은 형태).");
+
+            // 두 플랫폼 모두 <b>규칙을 직접 쓰지 않고</b> 중립 정책의 Resolve를 부른다.
+            AssertBothContain(MacWindowServicePath, WinWindowServicePath,
+                "ForeignFullscreenTierPolicy.Resolve(",
+                "플랫폼 파일이 등급을 스스로 조립하고 있습니다 — 그러면 두 플랫폼의 등급 뜻이 " +
+                "조용히 갈라집니다.");
+        }
+
         // ====================================================================
         // 2. 전역 단축키 — 키 하나가 한쪽에만 들어가는 사고 방지
         // ====================================================================
@@ -855,6 +918,299 @@ namespace StickMate.Tests.EditMode
                     $"{Path.GetFileName(path)}가 진동 확정 뒤에도 재적용/재무장을 계속합니다 — " +
                     "확정 자체가 아무것도 멈추지 못하면 가드가 아닙니다.");
             }
+        }
+
+        /// <summary>
+        /// <b>Phase 0 모니터 지형 계측</b>(2026-09-02) — 사실 조회는 갈라지고 <b>판정은 중립 한 곳</b>인가.
+        ///
+        /// <para>이 형태를 강제하는 이유는 이 저장소의 실제 사고다: <c>FullscreenSuspendPolicy</c>가
+        /// <c>Platform/MacOS/</c> 안에 있어서 Windows가 <b>물리적으로 부를 수 없었다</b>. 그래서
+        /// 모니터 지형 해석(인덱스↔OS 매핑, y 반전 항등식, 0번이 주 모니터인가)은 전부
+        /// <c>Platform/MonitorTopologyReport.cs</c>에 두고, 두 플랫폼 서비스는
+        /// <c>TryEnumerateOsMonitors</c>로 <b>OS가 말한 사실만</b> 채운다.</para>
+        ///
+        /// <para>계측이 <b>한쪽에만</b> 있으면 이번 라운드의 목적(두 플랫폼 로그를 나란히 놓고
+        /// 대조)이 통째로 성립하지 않는다 — 그래서 배선까지 함께 잠근다.</para>
+        /// </summary>
+        [Test]
+        public void 모니터_지형_계측이_양_플랫폼에_같은_형태로_배선되어_있다()
+        {
+            // (1) 판정은 중립 위치에, 플랫폼 분기 0줄.
+            string neutral = Path.Combine(PlatformRoot, "MonitorTopologyReport.cs");
+            Assert.IsTrue(File.Exists(neutral),
+                $"플랫폼 중립 계측 파일이 없습니다: {neutral}");
+            string neutralSrc = StripLineComments(ReadSource(neutral));
+            StringAssert.DoesNotContain("UNITY_STANDALONE_", neutralSrc,
+                "중립 계측에 플랫폼 분기가 들어갔습니다 — 그 순간 한쪽 타깃에서 절반이 사라지고, " +
+                "리플렉션/컴파일 어느 쪽으로도 그 사실을 알 수 없습니다.");
+            StringAssert.DoesNotContain("DllImport", neutralSrc,
+                "중립 계측이 OS를 직접 부르면 EditMode가 이 규칙을 실행으로 검증할 수 없습니다.");
+
+            // (2) 사실 조회는 양 플랫폼 서비스에 같은 이름으로.
+            AssertBothContain(MacWindowServicePath, WinWindowServicePath,
+                "public bool TryEnumerateOsMonitors(List<OsMonitorFact> into)",
+                "OS 모니터 전수 열거가 한쪽에만 있습니다 — 그 플랫폼의 계측 줄은 " +
+                "'OS 전수 열거 실패'로만 찍히고 인덱스↔OS 매핑이 영원히 미확정으로 남습니다.");
+
+            // (3) 두 Enforcer가 실제로 주입받고 실제로 부른다(선언만 하고 안 부르는 형태 차단).
+            foreach (string path in new[] { MacEnforcerPath, WinEnforcerPath })
+            {
+                string src = StripLineComments(ReadSource(path));
+                StringAssert.Contains("internal OsMonitorEnumerator OsMonitorEnumerator;", src,
+                    $"{Path.GetFileName(path)}에 열거자 주입 지점이 없습니다.");
+                StringAssert.Contains("MonitorTopologyReport.EmitOnce(", src,
+                    $"{Path.GetFileName(path)}가 계측을 부르지 않습니다.");
+            }
+
+            // (4) 주입이 실제로 배선돼 있다 — 필드만 있고 아무도 채우지 않으면 조용히 null이다.
+            AssertBothContain(MacWindowServicePath, WinWindowServicePath,
+                "_enforcer.OsMonitorEnumerator = TryEnumerateOsMonitors;",
+                "열거자가 Enforcer에 주입되지 않습니다 — 필드는 있는데 영원히 null이라 " +
+                "계측 줄의 OS 구획이 통째로 비고, 그 사실은 로그에서 '조회 실패'로만 보입니다.");
+        }
+
+        /// <summary>
+        /// <b>창 기하 "완료" 확정은 쓰기가 0인 틱에서만</b> — 양 플랫폼 공통 규칙
+        /// (<c>OverlayBoundsFitPolicy.ShouldLatchFitApplied</c>).
+        ///
+        /// <para>결함(2026-09-02): 두 Enforcer 모두 같은 틱에서 <c>Screen.SetResolution</c>을 부르고,
+        /// <b>그것이 프레임 끝에 적용되기 전에</b> 창 기하를 재어 완료를 확정했다. 자기가 요청한
+        /// 변화를 보기도 전에 "다 맞았다"고 선언하는 구조라, 그 뒤에 창이 움직이면 되돌릴 주체가 없다.</para>
+        ///
+        /// <para>Windows 실기에서 그 "뒤에 움직이는 것"의 정체가 네이티브 <c>SetBorderless</c>였고,
+        /// 창이 모니터 원점 <b>+(11,45)</b>에 눌러앉았다. macOS는 발현이 확인되지 않았지만
+        /// <b>구조가 같아서</b> 함께 고친다 — "나중에 맞추자"는 금지다.</para>
+        /// </summary>
+        [Test]
+        public void 창기하_확정은_양_플랫폼_모두_쓰기가_없는_틱에서만_선다()
+        {
+            string neutral = Path.Combine(PlatformRoot, "OverlayBoundsFitPolicy.cs");
+            StringAssert.Contains("public static bool ShouldLatchFitApplied(",
+                StripLineComments(ReadSource(neutral)),
+                "확정 규칙이 중립 위치에 없습니다 — 두 Enforcer가 각자 판정하면 언젠가 갈라집니다.");
+
+            AssertBothContain(MacEnforcerPath, WinEnforcerPath,
+                "OverlayBoundsFitPolicy.ShouldLatchFitApplied(",
+                "이 플랫폼은 아직 '기하가 맞으면 즉시 확정'입니다 — 같은 틱에 요청한 " +
+                "Screen.SetResolution이 아직 적용되지 않은 값으로 확정하게 됩니다.");
+
+            foreach (string path in new[] { MacEnforcerPath, WinEnforcerPath })
+            {
+                StringAssert.Contains("bool wroteThisTick =", StripLineComments(ReadSource(path)),
+                    $"{Path.GetFileName(path)}가 '이번 틱에 썼는가'를 계산하지 않습니다 — " +
+                    "규칙을 부르더라도 인자가 상수면 아무것도 막지 못합니다.");
+            }
+        }
+
+        /// <summary>
+        /// <b>보더리스 재적용 뒤 재무장은 Windows에만 있어야 한다</b>(의도된 비대칭).
+        ///
+        /// <para>근거는 두 네이티브 원문이다. Windows <c>libuniwinc.cpp</c>의 <c>SetBorderless</c>는
+        /// 프레임→보더리스 전환에서 <c>newX = rcWin.left + bw; newY = rcWin.top + (dy - bh);</c>로
+        /// <b>창을 옮긴다</b>(옛 클라이언트 원점으로). 반면 macOS <c>LibUniWinC.swift</c>의
+        /// <c>_setWindowBorderless</c>는 <c>styleMask</c> 한 줄이고 <b>frame을 건드리지 않으며</b>
+        /// 동등성 가드까지 있다 — 같은 재무장을 macOS에 넣으면 <b>얻는 것 없이</b> 실측으로
+        /// 튜닝이 끝난 경로에 재적합 트리거만 추가된다.</para>
+        ///
+        /// <para>그래서 이 항목은 "패리티 맞추기"로 되돌리면 <b>실패한다</b>. 그것이 이 테스트의 목적이다.</para>
+        /// </summary>
+        [Test]
+        public void 해당없음_보더리스_재무장은_Windows에만_필요하다()
+        {
+            string win = StripLineComments(ReadSource(WinEnforcerPath));
+            StringAssert.Contains("ReArmFullScreenFitAfterNativeWindowMove()", win,
+                "Windows에 재무장이 없으면 네이티브 SetBorderless가 창을 옮긴 뒤 되돌릴 주체가 " +
+                "없습니다 — 실기에서 모니터 원점 +(11,45)에 눌러앉은 상태가 그것입니다.");
+
+            string mac = StripLineComments(ReadSource(MacEnforcerPath));
+            StringAssert.DoesNotContain("ReArmFullScreenFitAfterNativeWindowMove", mac,
+                "macOS에 같은 재무장을 넣지 마세요 — Swift의 _setWindowBorderless는 frame을 " +
+                "건드리지 않으므로 되돌릴 것이 없고, 재무장만 늘면 재적합(=OS 표면 재생성) " +
+                "트리거만 늘어납니다. 이 비대칭은 결함이 아니라 결정입니다.");
+
+            // 재무장이 수명 상한까지 되돌리면 1px 래칫이 되살아난다 — 그 문을 닫아 둔다.
+            int reArmAt = win.IndexOf("private void ReArmFullScreenFitAfterNativeWindowMove()",
+                StringComparison.Ordinal);
+            Assert.Greater(reArmAt, 0, "재무장 메서드 본문을 찾지 못했습니다.");
+            int bodyEnd = win.IndexOf("\n        }", reArmAt, StringComparison.Ordinal);
+            Assert.Greater(bodyEnd, reArmAt, "재무장 메서드 본문의 끝을 찾지 못했습니다.");
+            string body = win.Substring(reArmAt, bodyEnd - reArmAt);
+            StringAssert.DoesNotContain("_setResolutionCalls", body,
+                "재무장이 SetResolution 수명 상한을 되돌립니다 — 그러면 상한이 사실상 사라지고 " +
+                "스왑체인 재생성이 무제한이 됩니다(2026-09-01 407ms 스파이크의 그 경로).");
+            StringAssert.DoesNotContain("_windowResizeCalls", body,
+                "재무장이 창 리사이즈 수명 상한을 되돌립니다 — 1px 래칫이 되살아날 문입니다.");
+        }
+
+        /// <summary>
+        /// ★ <b>표시 모니터 선택이 실행 중에 실제로 창을 옮기는가</b>(ux-designer §49의 성립 조건).
+        ///
+        /// <para>창을 옮기는 경로는 <c>TickFullScreenBounds()</c> 하나뿐이고 그것은
+        /// <c>_fullScreenBoundsApplied</c> 래치에 막혀 있다. 선택이 바뀌어도 <b>재무장하지 않으면
+        /// 다음 재시작에만</b> 반영된다 — 그러면 ux-designer가 설계한 즉시 확인과 탈출구가 함께 죽는다.</para>
+        ///
+        /// <para>그리고 재무장만으로는 부족하다: 사용자가 좌↔우를 왕복하면 창 사각형이 두 값을 오가서
+        /// <b>진동 가드가 A↔B 진동으로 오인</b>하고, 4회 만에 영구 래치되어 <b>그 프로세스에서 다시는
+        /// 못 옮긴다</b>. 그래서 목표가 바뀐 순간 <b>관측 이력만</b> 버린다(래치는 건드리지 않는다).</para>
+        /// </summary>
+        [Test]
+        public void 표시_모니터_변경이_양_플랫폼_모두_창을_즉시_옮긴다()
+        {
+            AssertBothContain(MacEnforcerPath, WinEnforcerPath,
+                "ReArmFullScreenFitForNewTarget()",
+                "선택이 바뀌어도 재적합 루프를 재무장하지 않습니다 — 창이 <b>다음 재시작에만</b> " +
+                "옮겨집니다(설정 즉시 확인이 불가능해집니다).");
+
+            AssertBothContain(MacEnforcerPath, WinEnforcerPath,
+                "_boundsOscillation.ForgetSamplesForNewTarget()",
+                "목표가 바뀌었는데 진동 가드의 관측 이력을 버리지 않습니다 — 사용자가 좌우를 " +
+                "네 번 왕복하면 가드가 영구 래치되어 그 프로세스에서 다시는 화면을 못 옮깁니다.");
+
+            // 래치를 푸는 코드가 들어오면 안 된다(수명 상한과 같은 이유).
+            foreach (string path in new[] { MacEnforcerPath, WinEnforcerPath })
+            {
+                StringAssert.DoesNotContain("_boundsOscillation.Reset()", StripLineComments(ReadSource(path)),
+                    $"{Path.GetFileName(path)}가 진동 래치를 풉니다 — 그러면 상한이 사실상 사라집니다. " +
+                    "관측 이력만 버리는 ForgetSamplesForNewTarget()을 쓰세요.");
+            }
+        }
+
+        /// <summary>
+        /// ★ <b>미러링을 "세로 배치"로 읽지 않는가</b>(ux-designer §49, 절대 불변 원칙 1).
+        /// 두 화면이 같은 픽셀인데 칩 두 개가 서로 다른 척하면 행동-텍스트 싱크가 깨진다.
+        /// 처방은 <b>중심 일치 검사를 첫 줄에</b> 두는 것이다 — 겹침 비교를 먼저 하면
+        /// <c>overlapX &gt; overlapY</c>로 "세로"에 떨어진다.
+        /// </summary>
+        [Test]
+        public void 배치_축_판정은_중립이고_미러링을_구분한다()
+        {
+            string policy = StripLineComments(ReadSource(
+                Path.Combine(PlatformRoot, "OverlayMonitorChoicePolicy.cs")));
+
+            StringAssert.Contains("MonitorArrangementAxis.Indistinct", policy,
+                "축 판정이 bool입니다 — 미러링은 '가로가 아니다'이지 '세로다'가 아닙니다.");
+            StringAssert.Contains("public static bool CanChoose(", policy,
+                "게이트 입력이 없습니다. IsMultiMonitor만으로는 미러링에서 행이 살아 있습니다.");
+
+            // 축 판정은 반드시 FullOsRect를 본다 — WorkOsRect는 Dock 위치 때문에 macOS에서만 달라진다.
+            int at = policy.IndexOf("public static MonitorArrangementAxis ResolveAxis(", StringComparison.Ordinal);
+            Assert.Greater(at, 0, "ResolveAxis를 찾지 못했습니다.");
+            int end = policy.IndexOf("\n        }", at, StringComparison.Ordinal);
+            string body = policy.Substring(at, end - at);
+            StringAssert.DoesNotContain("WorkOsRect", body,
+                "축 판정이 WorkOsRect를 봅니다 — Dock 위치에 따라 macOS에서만 세로 겹침이 달라져서 " +
+                "같은 물리 배치가 OS마다 다른 축으로 판정됩니다(ux-designer 지적).");
+            StringAssert.Contains("FullOsRect", body);
+        }
+
+        /// <summary>
+        /// ★ <b>발판 클리핑 사각형 == 오버레이가 덮는 화면</b> — 양 플랫폼 동시(2026-09-02 회귀 수정).
+        ///
+        /// <para>"기본은 왼쪽"이 들어오면서 <b>우리가 만든</b> 위험이다. 두 사각형이 다른 화면이면
+        /// 실제 창 발판이 <b>0개</b>가 되고 합성 안전망만 남는다 — 캐릭터가 남의 창 위에 서지 못한다.</para>
+        ///
+        /// <para>양쪽이 <b>서로 반대 방향</b>으로 어긋나 있었다:</para>
+        /// <list type="bullet">
+        ///   <item><b>macOS</b> — <c>CGDisplayBounds(주 디스플레이)</c>로 잘라서 발판이 오버레이보다 <b>좁았다</b>.</item>
+        ///   <item><b>Windows</b> — <c>SM_*VIRTUALSCREEN</c>(전체 가상 화면)으로 잘라서 발판이 오버레이보다
+        ///     <b>넓었다</b>. <c>debugger</c>가 <c>ScreenRightWorldX</c>에서 그 부류 하나를 막았지만
+        ///     구조는 그대로였다.</item>
+        /// </list>
+        /// <para>둘을 <b>같은 함수 하나</b>(<c>OverlayMonitorDirectory.TryGetOverlayScreenOsRect</c>)로
+        /// 통일해 양쪽이 함께 닫힌다. 값 자체의 잠금은 <c>OverlayMonitorChoiceTests</c>가
+        /// <b>주 모니터 ≠ 가장 왼쪽</b>인 표본으로 실행 검증한다.</para>
+        ///
+        /// <para>★ <b>원점 위생 검사와 섞이지 않았는지</b>도 함께 잠근다. 그쪽은 "우리 창이 명백히
+        /// 화면 밖인가"라서 <b>전체 데스크톱</b>이어야 하고, 한 화면을 넘기면 오버레이가 보조 화면에
+        /// 있을 때 <b>우리가 우리 자신의 원점을 거부</b>한다.</para>
+        /// </summary>
+        [Test]
+        public void 발판_클리핑이_양_플랫폼_모두_오버레이_화면을_따른다()
+        {
+            AssertBothContain(MacWindowServicePath, WinWindowServicePath,
+                "OverlayMonitorDirectory.TryGetOverlayScreenOsRect(",
+                "이 플랫폼의 발판 클리핑이 오버레이가 덮는 화면을 따르지 않습니다 — 캐릭터가 " +
+                "실제 창 위에 설 수 없게 되는 경로입니다(macOS는 주 디스플레이로 좁게, " +
+                "Windows는 가상 화면으로 넓게 어긋나 있었습니다).");
+
+            // ★ 위생 검사용 사각형과 섞이지 않았는가 — 섞으면 우리가 우리 원점을 거부한다.
+            string mac = StripLineComments(ReadSource(MacWindowServicePath));
+            StringAssert.Contains("TryGetDesktopUnionOsRect(out _displayBoundsThisPass)", mac,
+                "macOS의 원점 위생 검사가 여전히 주 디스플레이를 봅니다 — 오버레이가 보조 화면에 " +
+                "있으면 우리 창의 0%만 '데스크톱 안'이 되어 원점 보고가 연속 거부됩니다.");
+
+            string win = StripLineComments(ReadSource(WinWindowServicePath));
+            StringAssert.Contains("ReportOverlayWindowOsRect(osRect, _virtualScreenThisPass)", win,
+                "Windows의 원점 위생 검사가 가상 화면을 잃었습니다 — 그 자리는 전체 데스크톱이어야 " +
+                "합니다(발판 클리핑용 사각형을 여기에 넣으면 안 됩니다).");
+            StringAssert.Contains("_hasFootholdClipThisPass, _footholdClipThisPass", win,
+                "Windows의 발판 필터가 여전히 가상 화면으로 자릅니다.");
+        }
+
+        /// <summary>
+        /// ★ <b>2026-09-02 — 이 갭은 닫혔다. <c>Assert.Ignore</c>를 실제 검사로 승격한다.</b>
+        ///
+        /// <para>갭이었던 것: <c>MacOverlayStateEnforcer.TryGetTargetMonitorRect</c>가
+        /// <c>isPrimary = i == 0</c>으로 <b>0번을 주 모니터라고 단정</b>했다. 두 네이티브가 목록을
+        /// 왼쪽부터 정렬하므로(Phase 0에서 원문 확정) 0번은 <b>"가장 왼쪽"</b>일 뿐이고, 주 화면 왼쪽에
+        /// 보조 모니터를 둔 사용자에게 그 단정은 거짓이었다. 그 거짓이
+        /// <c>TickFullScreenBounds</c>의 "화면 전체(메뉴바/Dock 포함) 덮기" 경로로 흘러들어
+        /// <c>CGDisplayBounds(주 디스플레이)</c> 크기로 <b>엉뚱한 화면</b>을 덮을 수 있었다.</para>
+        ///
+        /// <para>닫은 방법은 <b>이름과 의미를 일치시키는 것</b>이다(리더 지시):
+        /// 변수는 <c>isMainDisplay</c>가 됐고 값은 <b>OS 플래그</b>에서만 온다.
+        /// 기본 <b>선택</b>은 별개로 "가장 왼쪽"이다(사용자 확정) — 두 개념을 코드가 더는 섞지 않는다.</para>
+        ///
+        /// <para>Windows판에는 원래 이 단정이 없었다(폴백 주석이 "0번"이라고만 말했다) — 이 항목은
+        /// <b>macOS가 뒤처졌던 쪽</b>이고, 되살아나지 않도록 여기서 잠근다.</para>
+        /// </summary>
+        [Test]
+        public void 역방향_모니터0번을_주모니터로_단정하지_않는다()
+        {
+            string mac = StripLineComments(ReadSource(MacEnforcerPath));
+
+            StringAssert.DoesNotContain("isPrimary = i == 0", mac,
+                "0번을 주 모니터로 단정하는 코드가 되살아났습니다. 두 네이티브 모두 모니터 목록을 " +
+                "왼쪽부터 정렬하므로 0번은 '가장 왼쪽'입니다 — 주 모니터는 OS 플래그로만 알 수 있습니다.");
+            StringAssert.DoesNotContain("out bool isPrimary", mac,
+                "변수 이름이 여전히 isPrimary입니다. 이름이 뜻과 어긋나면 다음 사람이 같은 단정을 " +
+                "다시 넣습니다 — 이 갭을 닫은 방법이 곧 '이름과 의미를 맞추는 것'이었습니다.");
+
+            StringAssert.Contains("isMainDisplay", mac,
+                "주 디스플레이 여부를 가리키는 값이 없습니다 — macOS의 '화면 전체 덮기' 경로는 " +
+                "진짜 주 디스플레이일 때만 성립합니다.");
+            StringAssert.Contains("OverlayMonitorDirectory.PrimaryIndex", mac,
+                "주 디스플레이 판정이 OS 플래그(CGMainDisplayID)에서 오지 않습니다 — 인덱스나 좌표로 " +
+                "추정하면 이 갭이 그대로 되살아납니다.");
+        }
+
+        /// <summary>
+        /// <b>표시 모니터 선택</b>(2026-09-02 사용자 확정 "기본은 왼쪽" + "멀티모니터일 때만 활성화") —
+        /// 판정은 중립 한 곳, 플랫폼은 조회와 이동만.
+        /// </summary>
+        [Test]
+        public void 표시_모니터_선택이_양_플랫폼에_같은_정책으로_배선되어_있다()
+        {
+            string policyPath = Path.Combine(PlatformRoot, "OverlayMonitorChoicePolicy.cs");
+            Assert.IsTrue(File.Exists(policyPath), $"중립 정책 파일이 없습니다: {policyPath}");
+            string policy = StripLineComments(ReadSource(policyPath));
+            StringAssert.DoesNotContain("UNITY_STANDALONE_", policy,
+                "중립 정책에 플랫폼 분기가 들어갔습니다 — 한쪽 타깃에서 절반이 사라집니다.");
+            StringAssert.DoesNotContain("DllImport", policy,
+                "중립 정책이 OS를 직접 부르면 EditMode가 실행으로 검증할 수 없습니다.");
+
+            AssertBothContain(MacEnforcerPath, WinEnforcerPath,
+                "TryResolveChosenMonitorRect(",
+                "이 플랫폼은 표시 모니터 선택을 적용하지 않습니다 — 사용자가 고른 화면이 " +
+                "그 플랫폼에서만 무시됩니다.");
+            AssertBothContain(MacEnforcerPath, WinEnforcerPath,
+                "OverlayMonitorDirectory.Resolve()",
+                "Enforcer가 설정 UI와 <b>다른 계산</b>으로 모니터를 고르고 있습니다 — " +
+                "'설정에는 2번인데 창은 1번에 뜬다'가 됩니다.");
+            AssertBothContain(MacEnforcerPath, WinEnforcerPath,
+                "LogChoiceOnce(",
+                "선택 근거를 로그로 남기지 않습니다 — 조용히 폴백하면 사용자가 " +
+                "'설정이 안 먹는다'고 신고합니다(리더 지시 3항).");
         }
 
         /// <summary>
@@ -1239,6 +1595,139 @@ namespace StickMate.Tests.EditMode
         }
 
         // ============================================================================
+        // C5 — 클릭 관통 창 / z밴드 (2026-09-02 신설 · 유령 발판 조사 라운드의 산출)
+        // ============================================================================
+        // 조사 질문: "사용자 눈에 아무것도 없는데 캐릭터가 허공에 서 있다"를 만들 수 있는 창은 무엇인가.
+        // 두 갈래가 나왔고 성격이 다르다:
+        //   (a) 클릭 관통 창 — Windows가 놓치고 있었다. 아래 정식 검사가 그 수정을 얼린다.
+        //   (b) z밴드(잠금화면/UAC 등 셸 상위 밴드) — Windows에 대응물이 없다. 아래 미해결 항목.
+
+        /// <summary>
+        /// <b>정식 검사</b>: 클릭 관통 창(<c>WS_EX_TRANSPARENT</c>)은 발판이 되지도, 남의 발판을
+        /// 가리지도 못한다.
+        ///
+        /// <para><b>★ 2026-09-02 — 이 자리는 원래 미해결 항목으로 열릴 예정이었다.</b> 리더 지시서의
+        /// 예정 이름은 <c>미해결_Windows_알파필터가_WS_EX_TRANSPARENT_단독창을_놓친다</c>였고,
+        /// "①로 고쳐지면 이 항목은 지워야 한다"는 단서가 함께 붙어 있었다. 같은 라운드에서 ①이
+        /// 착지했으므로 <b>미해결로 적으면 그 순간 거짓말이 된다</b> — 이 파일의 규칙이 명시적으로
+        /// 금지하는 것("낡은 사유는 거짓말이고, 거짓말하는 감사는 없는 감사보다 나쁘다").
+        /// 그래서 대장 규칙이 시키는 대로 <b>접두사를 떼고 정식 검사로</b> 넣는다. 갭의 존재는
+        /// 지워지지 않고 이 문단에 남는다.</para>
+        ///
+        /// <para><b>고쳐진 갭의 정확한 모양</b>: <c>ResolveWindowAlpha</c>가 클릭 관통 비트를
+        /// <b>네 번째 갈래(레이어드 + 조회 실패) 안에서만</b> 읽었다. 그래서 세 조합
+        /// (관통 단독 / 관통+<c>LWA_ALPHA</c> / 관통+컬러키)이 알파 1.0을 받아 발판이 되고,
+        /// 가려짐 솔버가 "발판 자격 = 가림 자격"으로 보므로 <b>아래 멀쩡한 발판을 지울 권한까지</b>
+        /// 가졌다.</para>
+        ///
+        /// <para><b>왜 텍스트 스캔이 아니라 호출인가</b>: <c>WindowsFootholdFilter</c>에는
+        /// <c>#if UNITY_STANDALONE_WIN</c>이 없다(그것이 이 클래스가 <c>Win32WindowService</c> 밖에
+        /// 있는 이유 전부다). 그래서 이 항목만은 <b>macOS 타깃에서도 Windows 판정을 실제로 실행</b>할
+        /// 수 있다 — 이 파일에서 가장 강한 형태의 검사다. 문자열 검사는 열거 경로가 그 판정을
+        /// 부르는지에만 쓴다.</para>
+        /// </summary>
+        [Test]
+        public void 클릭관통_창_배제가_양_플랫폼에_모두_배선되어_있다()
+        {
+            // ---- (1) Windows 판정을 실제로 실행한다 ----
+            Assert.AreEqual(0f, WindowsFootholdFilter.ResolveWindowAlpha(
+                    WindowsFootholdFilter.WsExTransparent, false, 0u, 0), 0.0001f,
+                "WS_EX_TRANSPARENT 단독(레이어드 아님) 창이 여전히 불투명으로 판정됩니다 — " +
+                "사용자가 클릭조차 할 수 없는 창이 발판이 되고, 전체화면이면 그 아래 발판을 전부 " +
+                "지웁니다(캐릭터 영구 낙하).");
+
+            Assert.AreEqual(0f, WindowsFootholdFilter.ResolveWindowAlpha(
+                    WindowsFootholdFilter.WsExLayered | WindowsFootholdFilter.WsExTransparent,
+                    true, WindowsFootholdFilter.LwaAlpha, 255), 0.0001f,
+                "클릭 관통인데 LWA_ALPHA=255라는 이유로 불투명이 됐습니다 — 승격 게이트가 " +
+                "알파 갈래보다 뒤로 내려간 것입니다. 순서가 곧 판정입니다.");
+
+            // ★ 과잉 제거 방지(비공허성). 이 줄이 없으면 "무조건 0을 돌려주는" 망가진 구현도
+            //   위 두 단언을 통과한다 — 그 구현은 데스크톱의 모든 창을 발판에서 지운다.
+            Assert.AreEqual(1f, WindowsFootholdFilter.ResolveWindowAlpha(0, false, 0u, 0), 0.0001f,
+                "평범한(레이어드도 관통도 아닌) 창까지 투명으로 판정합니다 — 이 수정이 원래 " +
+                "버그보다 나쁜 버그가 된 상태입니다.");
+
+            // ---- (2) 열거 경로가 그 판정을 실제로 부르는가 ----
+            string win = StripLineComments(ReadSource(WinWindowServicePath));
+            StringAssert.Contains("WindowsFootholdFilter.ResolveWindowAlpha(", win,
+                "Win32WindowService가 공용 알파 판정을 부르지 않습니다 — 판정이 아무리 옳아도 " +
+                "열거 경로가 부르지 않으면 데스크톱에서는 아무 일도 일어나지 않습니다.");
+            StringAssert.Contains("ResolveWindowAlpha(exStyle,", win,
+                "알파 판정에 exStyle이 그대로 전달되지 않습니다. 레이어드가 아닌 경로에서 " +
+                "exStyle 대신 0을 넘기면 클릭 관통 비트가 판정에 영원히 도달하지 못하고, " +
+                "그러면 이 승격은 컴파일은 되지만 아무 창도 막지 못합니다(가장 조용한 실패).");
+
+            // ---- (3) macOS 대응물 — 오버레이/시스템 레이어를 발판에서 빼는 규칙 ----
+            string mac = StripLineComments(ReadSource(MacWindowServicePath));
+            StringAssert.Contains("layer != 0", mac,
+                "macOS가 kCGWindowLayer 필터를 잃었습니다. macOS에는 창별 '클릭 관통' 플래그를 " +
+                "CGWindowList에서 읽을 방법이 없고, 클릭 관통 오버레이는 관례적으로 0이 아닌 " +
+                "윈도우 레벨에 놓이므로 이 필터가 사실상의 대응물입니다(완전한 1:1은 아님 — " +
+                "docs/platform/GHOST_FOOTHOLDS.md의 잔여 비대칭 항목 참고).");
+        }
+
+        /// <summary>
+        /// <b>미해결 갭</b>: Windows에는 <b>셸보다 위 z밴드</b>(잠금 화면 / UAC 보안 데스크톱 /
+        /// 시스템 UI)에 있는 창을 발판 후보에서 빼는 규칙이 없다. macOS는
+        /// <c>kCGWindowLayer != 0</c> 하나로 그 밴드 전체를 이미 닫고 있다.
+        ///
+        /// <para><b>왜 이것이 유령 발판인가</b>: 잠금 화면이 떠 있는 동안에도 우리 앱은 계속 돌고
+        /// 계속 창을 열거한다. 그 시간에 열거되는 창 집합은 사용자가 잠금을 풀었을 때 보게 될 화면과
+        /// 아무 관계가 없다 — 캐릭터가 "있지도 않은 곳"에 서 있다가 복귀 순간 낙하하거나, 반대로
+        /// 발판이 전멸해 화면 밖으로 떨어진다.</para>
+        ///
+        /// <para><b>★ 2026-09-02 리더 판정: 보류.</b> 보류 사유를 여기 그대로 남긴다 — 나중에
+        /// "왜 안 넣었지"라고 묻는 사람에게 답이 여기 있어야 한다.</para>
+        /// </summary>
+        [Test]
+        public void 미해결_Windows에는_z밴드_필터가_없어_잠금화면_유령발판이_열려_있다()
+        {
+            string winDir = Path.Combine(PlatformRoot, "Windows");
+            string[] winFiles = Directory.GetFiles(winDir, "*.cs");
+
+            // ★ 비공허성 잠금: 폴더가 비거나 이름이 바뀌면 아래 루프가 아무 파일도 안 보고 지나가고,
+            //   그 상태의 Ignore는 "확인했다"가 아니라 "아무것도 안 봤다"다.
+            Assert.Greater(winFiles.Length, 0,
+                $"Platform/Windows/에서 .cs를 한 개도 읽지 못했습니다({winDir}) — 스캔이 공허합니다(거짓 초록).");
+
+            // macOS 쪽 대응물이 살아 있다는 것까지 확인해야 "비대칭"이라는 주장이 성립한다.
+            StringAssert.Contains("layer != 0", StripLineComments(ReadSource(MacWindowServicePath)),
+                "macOS의 kCGWindowLayer 필터가 사라졌습니다 — 그렇다면 이 항목은 '비대칭'이 아니라 " +
+                "'양쪽 다 열림'이고 우선순위가 완전히 달라집니다. 사유부터 다시 쓰세요.");
+
+            foreach (string f in winFiles)
+            {
+                if (StripLineComments(File.ReadAllText(f)).Contains("GetWindowBand"))
+                {
+                    Assert.Pass($"{Path.GetFileName(f)}에 z밴드 조회가 들어왔습니다 — 이 테스트를 " +
+                        "정식 검사로 승격하고, 비문서 API 의존이 늘어난 사실을 " +
+                        "docs/platform/GHOST_FOOTHOLDS.md에 반영하세요.");
+                }
+            }
+
+            Assert.Ignore("【미해결 갭 · 리더 판정으로 보류】 사유 기록 2026-09-02\n" +
+                "macOS: 해결됨 — CGWindowList 열거가 kCGWindowLayer != 0인 창을 전부 뺀다. " +
+                "잠금 화면/화면 보호기/메뉴바는 전부 0이 아닌 레벨이라 후보에 들어오지 않는다.\n" +
+                $"Windows: 미해결 — Platform/Windows/ {winFiles.Length}개 파일 어디에도 " +
+                "GetWindowBand 참조가 없다(주석 제외 후 0건). 현재 Windows가 z를 보는 유일한 " +
+                "수단은 EnumWindows의 콜백 순서뿐이고, 그것은 '앞/뒤'만 알려 줄 뿐 '어느 밴드'인지는 " +
+                "알려 주지 않는다.\n" +
+                "★ 보류 사유 1 — 잴 수 없는 것을 위해 비문서 API 의존을 늘리지 않는다. " +
+                "GetWindowBand는 user32의 미문서화 export다. 세션 잠금 감지(문서화된 " +
+                "WTSQuerySessionInformation / OpenInputDesktop)가 먼저 들어가면 잠금 구간과 UAC가 " +
+                "함께 덮이는데, 그 뒤에 남는 잔여가 얼마인지는 Windows 실기가 없는 이 머신에서 " +
+                "측정할 수 없다.\n" +
+                "★ 보류 사유 2 — 비용이 개수로 센다. 이 앱에는 이미 비문서 export 의존이 1건 " +
+                "있다(InternalGetWindowText, 제목 조회 블로킹 제거용). GetWindowBand를 넣으면 " +
+                "누적 개수가 1 -> 2가 되고, 백신·EDR 휴리스틱이 세는 것은 정확히 이 누적 개수다. " +
+                "스팀 단일 채널 출시라 스토어 정적 심사는 걸리지 않지만, 사용자 머신의 백신 오탐은 " +
+                "채널과 무관하게 그대로 남는다.\n" +
+                "선행 조건: 세션 잠금 감지가 착지하고, 그 뒤 실기에서 잠금/UAC 구간의 유령 발판이 " +
+                "실제로 남는지 [발판진단] 로그로 확인될 것. 그때 이 항목을 다시 연다.");
+        }
+
+        // ============================================================================
         // C4 — ★ 획 하한(2pt)의 월드 환산이 <b>DPI에 의존</b>한다 (2026-09-01 신설 · 미해결)
         // ============================================================================
 
@@ -1420,11 +1909,29 @@ namespace StickMate.Tests.EditMode
 
             foreach (string path in consumers)
             {
-                StringAssert.Contains("ShortcutLabel.Chord(", StripLineComments(ReadSource(path)),
+                // ★ 2026-09-02 — <b>표면 전체</b>를 읽는다. CharacterInfoWindow는 partial 7개라,
+                //   이 줄이 ReadSource(단일 파일)였을 때 안내 문자열이 조각으로 이사하기만 해도
+                //   "단일 정의처를 안 쓴다"는 <b>거짓 빨강</b>이 난다(같은 라운드에 매처 2건이 그렇게
+                //   깨졌다). 쪼개지지 않은 파일에서는 결과가 예전과 바이트까지 같다.
+                StringAssert.Contains("ShortcutLabel.Chord(",
+                    StripLineComments(SourceConstantReader.ReadSurfaceText(path)),
                     $"{Path.GetFileName(path)}이 단축키 표기를 단일 정의처에서 받지 않습니다 — " +
                     "이 파일들은 사용자에게 조합을 알려 주는 자리라, 표기가 빠지면 " +
                     "'무엇을 눌러야 하는지'가 화면에서 사라집니다.");
             }
+
+            // ================= 양성 대조 — 시야가 <b>실제로</b> 넓어졌는가 =================
+            // ArmCarouselDrag는 CharacterInfoWindow.Input.cs에만 있다. 베이스 파일만 읽으면 안 보이고,
+            // 표면 전체를 읽으면 보여야 한다. 이 두 줄이 없으면 위 루프는 "예전과 똑같이 좁은 시야로
+            // 우연히 통과하는" 상태와 구별되지 않는다.
+            string infoWindow = Path.Combine(root, "Interaction", "CharacterInfoWindow.cs");
+            Assert.IsFalse(ReadSource(infoWindow).Contains("private void ArmCarouselDrag("),
+                "양성 대조 전제가 깨졌습니다 — ArmCarouselDrag가 베이스 파일로 돌아왔습니다. " +
+                "조각에만 있는 다른 이름으로 탐침을 바꾸십시오.");
+            StringAssert.Contains("private void ArmCarouselDrag(",
+                SourceConstantReader.ReadSurfaceText(infoWindow),
+                "양성 대조 실패 — 표면 판독기가 partial 조각을 보지 못합니다. 이 감사는 다음 분할에서 " +
+                "또 눈이 멉니다.");
         }
 
         /// <summary>
@@ -1562,7 +2069,7 @@ namespace StickMate.Tests.EditMode
             // (3) 대신 네 변 정확일치를 **실제로** 본다(= '판정을 아예 안 한다'와 구분).
             //     ★ 파일 전체가 아니라 **그 메서드 본문 안**에서 찾는다. 같은 파일의 상단/하단 예약 띠
             //     조회도 rcMonitor를 읽으므로, 파일 전체 검사는 전체화면 판정이 통째로 사라져도 초록이다.
-            string winBody = MethodBody(win, "private bool EvaluateFullscreen(",
+            string winBody = MethodBody(win, "private void EvaluateFullscreen(",
                 "Win32WindowService.EvaluateFullscreen");
             foreach (string edge in new[] { "rcMonitor.Left", "rcMonitor.Top", "rcMonitor.Right", "rcMonitor.Bottom" })
             {
@@ -1611,7 +2118,7 @@ namespace StickMate.Tests.EditMode
             string win = StripLineComments(ReadSource(WinWindowServicePath));
 
             // macOS: 전체화면 평가 본문 **안**에 알파 거부권이 있는가(파일 어딘가가 아니라).
-            string macBody = MethodBody(mac, "private bool EvaluateFullscreen(",
+            string macBody = MethodBody(mac, "private void EvaluateFullscreen(",
                 "MacWindowService.EvaluateFullscreen");
             StringAssert.Contains("MinWindowAlpha", macBody,
                 "macOS 전체화면 판정에서 투명 보조 창 거부권이 사라졌습니다 — 네이티브 전체화면 " +
@@ -1619,7 +2126,7 @@ namespace StickMate.Tests.EditMode
                 "(2026-09-02에 이 한 줄이 없어서 원칙 2가 그 경로에서 통째로 죽어 있었습니다).");
 
             // Windows: 전경 창 **단일 조회**인가. 열거로 바뀌면 같은 문제가 새로 생긴다.
-            string winBody = MethodBody(win, "private bool EvaluateFullscreen(",
+            string winBody = MethodBody(win, "private void EvaluateFullscreen(",
                 "Win32WindowService.EvaluateFullscreen");
             StringAssert.Contains("GetForegroundWindow()", winBody,
                 "Windows 전체화면 판정이 전경 창 단일 조회가 아닙니다.");
@@ -1658,7 +2165,7 @@ namespace StickMate.Tests.EditMode
             string mac = StripLineComments(ReadSource(MacWindowServicePath));
 
             // (1) 나은 쪽(Windows)을 얼린다 — 여기서 후퇴하면 두 플랫폼이 함께 나빠진다.
-            string winBody = MethodBody(win, "private bool EvaluateFullscreen(",
+            string winBody = MethodBody(win, "private void EvaluateFullscreen(",
                 "Win32WindowService.EvaluateFullscreen");
             StringAssert.Contains("MonitorFromWindow(fg", winBody,
                 "Windows 전체화면 판정이 더 이상 '전경 창이 놓인 모니터'를 묻지 않습니다 — " +
@@ -1674,7 +2181,7 @@ namespace StickMate.Tests.EditMode
                 "사실 조회만 바꾸면 된다'는 진단이 낡았을 수 있으니 함께 갱신하세요.");
 
             // (3) 못한 쪽(macOS). 고쳐지면 스스로 알린다 — 실패로 막지 않는다.
-            string macBody = MethodBody(mac, "private bool EvaluateFullscreen(",
+            string macBody = MethodBody(mac, "private void EvaluateFullscreen(",
                 "MacWindowService.EvaluateFullscreen");
             if (!macBody.Contains("CGMainDisplayID()"))
             {

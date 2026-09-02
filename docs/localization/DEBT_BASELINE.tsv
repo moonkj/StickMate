@@ -1,0 +1,90 @@
+# 로컬라이제이션 부채 상한 원장 (localization, 2026-09-02)
+# 형식: <경로>\t<출하 한글 문자열 건수>
+# 규칙: 목록에 없는 파일의 기준선은 0이다 — 새 파일에 한글 출하 리터럴이 하나라도 들어오면 즉시 빨개진다.
+# 생성기: docs/localization/verify/ship.py  (양성 대조: ship.py --selftest)
+# 갱신 규칙: 숫자는 **내려갈 때만** 손으로 고친다. 올리려면 리더 승인이 필요하다.
+#
+# --- .cs (프로덕션, Tests/ 제외) ---
+Assets/_Project/Scripts/Core/CharacterProgressionModel.cs	1
+Assets/_Project/Scripts/Core/CharacterStatsModel.cs	2
+Assets/_Project/Scripts/Core/CommandAvailability.cs	2
+Assets/_Project/Scripts/Core/EquipmentModel.cs	7
+Assets/_Project/Scripts/Core/ItemCatalog.cs	29
+Assets/_Project/Scripts/Core/StickMateDisplayNames.cs	49
+Assets/_Project/Scripts/Core/StickmanAgent.cs	10
+Assets/_Project/Scripts/Dialogue/AmbientChatter.cs	13
+Assets/_Project/Scripts/Dialogue/DialogueBubbleRenderer.cs	13
+Assets/_Project/Scripts/Interaction/ActionCommandPopover.cs	28
+Assets/_Project/Scripts/Interaction/AppControlDirector.cs	10
+Assets/_Project/Scripts/Interaction/ArcheryDirector.cs	4
+Assets/_Project/Scripts/Interaction/CharacterInfoWindow.Cards.cs	8
+Assets/_Project/Scripts/Interaction/CharacterInfoWindow.Inventory.cs	4
+Assets/_Project/Scripts/Interaction/CharacterInfoWindow.Tabs.cs	5
+Assets/_Project/Scripts/Interaction/CharacterInfoWindow.cs	50
+Assets/_Project/Scripts/Interaction/FocusSessionPopover.cs	25
+Assets/_Project/Scripts/Interaction/GearRadialMenuWidget.cs	18
+Assets/_Project/Scripts/Interaction/GraffitiDirector.cs	1
+Assets/_Project/Scripts/Interaction/PopoverPanel.cs	3
+Assets/_Project/Scripts/Interaction/RunawayDirector.cs	1
+Assets/_Project/Scripts/Interaction/SettingsControls.cs	1
+Assets/_Project/Scripts/Interaction/SettingsWindow.cs	70
+Assets/_Project/Scripts/Interaction/StressGaugeRenderer.cs	3
+Assets/_Project/Scripts/Interaction/TodoBoardPopover.cs	18
+Assets/_Project/Scripts/Interaction/TodoPostItWidget.cs	3
+Assets/_Project/Scripts/Interaction/TodoReminderDirector.cs	1
+Assets/_Project/Scripts/Interaction/WindowCrashDirector.cs	2
+Assets/_Project/Scripts/Interaction/WindowTheftDirector.cs	2
+Assets/_Project/Scripts/States/AttackState.cs	2
+Assets/_Project/Scripts/States/LedgeHangState.cs	3
+Assets/_Project/Scripts/States/ParkourClimbState.cs	4
+Assets/_Project/Scripts/States/RagdollState.cs	3
+Assets/_Project/Scripts/States/RunawayState.cs	5
+Assets/_Project/Scripts/States/WindowTheftState.cs	1
+#
+# --- .asset (displayName/description, \uXXXX 디코드 후) ---
+Assets/_Project/Resources/Items/equip_eyes_browline.asset	2
+Assets/_Project/Resources/Items/equip_eyes_goggles.asset	2
+Assets/_Project/Resources/Items/equip_eyes_monocle.asset	2
+Assets/_Project/Resources/Items/equip_eyes_patch.asset	2
+Assets/_Project/Resources/Items/equip_eyes_round.asset	2
+Assets/_Project/Resources/Items/equip_eyes_sunglasses.asset	2
+Assets/_Project/Resources/Items/equip_head_beret.asset	2
+Assets/_Project/Resources/Items/equip_head_cap.asset	2
+Assets/_Project/Resources/Items/equip_head_crown.asset	2
+Assets/_Project/Resources/Items/equip_head_fedora.asset	2
+Assets/_Project/Resources/Items/equip_head_fur.asset	2
+Assets/_Project/Resources/Items/equip_head_straw.asset	2
+Assets/_Project/Resources/Items/equip_neck_bandana.asset	2
+Assets/_Project/Resources/Items/equip_neck_bell.asset	2
+Assets/_Project/Resources/Items/equip_neck_bowtie.asset	2
+Assets/_Project/Resources/Items/equip_neck_pendant.asset	2
+Assets/_Project/Resources/Items/equip_neck_scarf.asset	2
+Assets/_Project/Resources/Items/equip_neck_striped.asset	2
+Assets/_Project/Resources/Items/equip_shoulders_backpack.asset	2
+Assets/_Project/Resources/Items/equip_shoulders_cape.asset	2
+Assets/_Project/Resources/Items/equip_shoulders_fairy_wings.asset	2
+Assets/_Project/Resources/Items/equip_shoulders_long_cape.asset	2
+Assets/_Project/Resources/Items/equip_shoulders_poncho.asset	2
+Assets/_Project/Resources/Items/equip_shoulders_wings.asset	2
+Assets/_Project/Resources/Items/look_fx_bubble.asset	2
+Assets/_Project/Resources/Items/look_fx_dust.asset	2
+Assets/_Project/Resources/Items/look_fx_footprint.asset	2
+Assets/_Project/Resources/Items/look_fx_leaf.asset	2
+Assets/_Project/Resources/Items/look_fx_none.asset	2
+Assets/_Project/Resources/Items/look_fx_sparkle.asset	2
+Assets/_Project/Resources/Items/look_hair_bald.asset	2
+Assets/_Project/Resources/Items/look_hair_bowl.asset	2
+Assets/_Project/Resources/Items/look_hair_cowlick.asset	2
+Assets/_Project/Resources/Items/look_hair_curly.asset	2
+Assets/_Project/Resources/Items/look_hair_neat.asset	2
+Assets/_Project/Resources/Items/look_hair_ponytail.asset	2
+Assets/_Project/Resources/Items/look_pet_ball.asset	2
+Assets/_Project/Resources/Items/look_pet_balloon.asset	2
+Assets/_Project/Resources/Items/look_pet_cursor.asset	2
+Assets/_Project/Resources/Items/look_pet_mini.asset	2
+Assets/_Project/Resources/Items/look_pet_plane.asset	2
+Assets/_Project/Resources/Items/look_pet_snail.asset	2
+#
+# TOTAL_CS	401
+# TOTAL_ASSET	84
+# TOTAL	485

@@ -42,6 +42,11 @@ namespace StickMate.Tests.PlayMode
         /// <summary>화면 가로 전체를 덮는 발판(= 그 좌우 끝이 곧 "화면의 물리적 끝"인 배치).</summary>
         private const long FullWidthFloorHandle = 9101L;
 
+        /// <summary>★ 2026-09-02 — <b>두 번째 모니터의 창</b>을 흉내내는 발판. 우리 오버레이 화면
+        /// 바깥(OS x &gt; Screen.width)에 놓여 <c>GroundInfo.ScreenRightWorldX</c>(전체 발판 통합
+        /// 경계)만 바깥으로 밀어낸다 — 캐릭터가 딛는 발판은 여전히 화면 전폭 바닥 하나다.</summary>
+        private const long OffscreenNeighborHandle = 9102L;
+
         private const float SettleWaitSeconds = 2.5f;
 
         /// <summary>★ 절대 시한 — 화면 끝을 향해 걷기 시작한 뒤 이 시간 안에 스스로 돌아서야 한다.</summary>
@@ -344,6 +349,146 @@ namespace StickMate.Tests.PlayMode
             Assert.IsFalse(sawFall,
                 $"{LogPrefix} 화면 끝에서 낙하했습니다 — 화면 끝에서는 뛰어내리기/매달리기가 금지여야 합니다" +
                 "(isTrueScreenEdge 가드 회귀).");
+        }
+
+        // ============================================================================
+        // (3) ★★ 2026-09-02 — 멀티모니터에서 되살아난 러닝머신
+        //
+        //     사용자 신고: "지금 멀티모니터 쓰는데 창에서 다른 모니터로 못넘어가는데도
+        //                  끝 벽쪽에서 계속 걷고 있음. 제자리걸음인거지"
+        //
+        //     위 (2)와 **딱 한 가지만** 다르다: 화면 바깥에 발판이 하나 더 있다. 그것만으로
+        //     GroundInfo.ScreenRightWorldX(전체 발판 통합 경계)가 화면 밖으로 밀려나고,
+        //     2026-08-29 러닝머신 수정이 걸어 둔 게이트(isTrueScreenEdge)가 거짓이 되어
+        //     보정이 통째로 꺼진다. 캐릭터가 딛는 발판도, 클램프도, 화면도 (2)와 완전히 같다.
+        //
+        //     ★ 이 테스트는 수정 전 빨간불이어야 한다. 초록이면 재현 조건을 못 만든 것이다.
+        // ============================================================================
+
+        [UnityTest]
+        public IEnumerator 화면밖_이웃발판이_있어도_화면_끝에서_돌아선다()
+        {
+            yield return SetUpFullWidthFloor();
+            StickmanBlackboard bb = _agent.Blackboard;
+
+            // ── 재현 조건 주입: 화면 오른쪽 바깥에 발판 하나(2번 모니터의 창).
+            //    캐릭터가 닿을 수 없는 높이/위치라 접지 후보로는 절대 뽑히지 않는다 —
+            //    바뀌는 것은 오직 "전체 발판 통합 경계"뿐이다.
+            float w = Screen.width;
+            float h = Screen.height;
+            _service.Footholds.Add(new PlatformFoothold(OffscreenNeighborHandle,
+                new Rect(w + 200f, h * 0.20f, 800f, 40f), false));
+            _poller.PollImmediately();
+            yield return null;
+
+            GroundSensor.GroundInfo info0 = bb.SenseGround();
+            Assert.IsTrue(info0.Grounded, $"{LogPrefix} 이웃 발판 추가 후 접지를 잃었습니다 — 재현 조건이 잘못됐습니다.");
+            Assert.AreEqual(FullWidthFloorHandle, info0.GroundedFootholdHandle,
+                $"{LogPrefix} 캐릭터가 화면 밖 이웃 발판을 딛고 있습니다 — 재현 조건이 잘못됐습니다.");
+            Assert.Greater(info0.ScreenRightWorldX, info0.CurrentFootholdRightWorldX + 0.05f,
+                $"{LogPrefix} 재현 조건 실패 — 통합 경계({info0.ScreenRightWorldX:F3})가 딛고 있는 발판의 " +
+                $"오른쪽 끝({info0.CurrentFootholdRightWorldX:F3})보다 바깥이어야 합니다. " +
+                "이 부등호가 성립하지 않으면 옛 게이트가 그대로 참이라 버그가 재현되지 않습니다.");
+
+            // ── (2)와 같은 결정론 조임.
+            _clonedConfig.wanderIdleDurationMin = 0.05f;
+            _clonedConfig.wanderIdleDurationMax = 0.05f;
+            _clonedConfig.wanderWalkDurationMin = 30f;
+            _clonedConfig.wanderWalkDurationMax = 30f;
+            _clonedConfig.wanderDurationJitterRatio = 0f;
+            _clonedConfig.wanderSpontaneousTurnChance = 0f;
+            _clonedConfig.wanderPostIdleWalkChance = 1f;
+            _clonedConfig.wanderPostIdleJumpChance = 0f;
+            _clonedConfig.wanderEdgeJumpAttemptChance = 0f;
+            _clonedConfig.wanderEdgeTurnPauseMin = 0.15f;
+            _clonedConfig.wanderEdgeTurnPauseMax = 0.15f;
+            _clonedConfig.ledgeHangChance = 0f;
+            _clonedConfig.hopDownChance = 0f;
+            _clonedConfig.stepUpChance = 0f;
+
+            var wander = new AutoWanderController(bb, _clonedConfig, new System.Random(20260902));
+            bb.IntentSource = wander;
+
+            // ── 오른쪽(= 화면 밖 이웃이 있는 쪽)으로 강제로 걷게 만든다. (2)는 AI가 뽑은 방향을
+            //    존중하지만 여기서는 **재현 조건이 오른쪽에만 있으므로** 방향을 고정해야 한다.
+            float warmup = 0f;
+            while (wander.MoveInputX <= 0f && warmup < 6f)
+            {
+                yield return null;
+                float dt = Time.deltaTime;
+                warmup += dt;
+                wander.Tick(dt);
+            }
+            Assert.Greater(wander.MoveInputX, 0f,
+                $"{LogPrefix} 준비 실패 — {warmup:F2}초 동안 배회가 오른쪽 걷기를 뽑지 않았습니다.");
+
+            Assert.IsTrue(bb.TryGetWalkableScreenBoundsWorld(out _, out float walkableRight),
+                $"{LogPrefix} 걸을 수 있는 한계 조회 실패.");
+            const float StartInsetUnits = 1.5f;
+            float startX = walkableRight - StartInsetUnits;
+            PlaceOnFloor(bb, startX);
+            bb.Machine.ChangeState(StickmanStateId.Walk, isForcedInterrupt: true);
+
+            Debug.Log($"{LogPrefix} (멀티모니터) 관찰 시작 — 시작 X={startX:F3}, 갈 수 있는 한계={walkableRight:F3}, " +
+                $"딛은 발판 오른쪽 끝={info0.CurrentFootholdRightWorldX:F3}, 통합 경계={info0.ScreenRightWorldX:F3}, " +
+                $"클램프가 발판 끝보다 {(info0.CurrentFootholdRightWorldX - walkableRight) * 1f:F3}유닛 앞에서 막습니다. " +
+                $"Walk 지속시간={_clonedConfig.wanderWalkDurationMin:F0}초, 절대 시한={MaxTurnaroundSeconds:F1}초");
+
+            // ── 관찰: 벽시계(초) 기준. 프레임 수 예산 금지(배치모드는 2,000fps 이상으로 돈다).
+            float elapsed = 0f;
+            float turnedAtSeconds = -1f;
+            float xAtTurn = 0f;
+            float inwardTravel = 0f;
+            float maxOverrun = float.NegativeInfinity;
+            bool sawFall = false;
+
+            while (elapsed < MaxTurnaroundSeconds + PostTurnObserveSeconds)
+            {
+                yield return null;
+                float dt = Time.deltaTime;
+                elapsed += dt;
+                wander.Tick(dt);
+
+                float x = bb.Body.position.x;
+                if (bb.Machine.CurrentStateId == StickmanStateId.Fall) sawFall = true;
+                if (bb.TryGetWalkableScreenBoundsWorld(out _, out float r))
+                {
+                    float overrun = x - r;
+                    if (overrun > maxOverrun) maxOverrun = overrun;
+                }
+
+                if (turnedAtSeconds < 0f)
+                {
+                    if (wander.MoveInputX < 0f)
+                    {
+                        turnedAtSeconds = elapsed;
+                        xAtTurn = x;
+                    }
+                }
+                else
+                {
+                    inwardTravel = xAtTurn - x;
+                    if (elapsed - turnedAtSeconds >= PostTurnObserveSeconds) break;
+                }
+            }
+
+            Debug.Log($"{LogPrefix} (멀티모니터) 결과 — 방향전환={turnedAtSeconds:F2}초(시한 {MaxTurnaroundSeconds:F1}초), " +
+                $"전환 지점 X={xAtTurn:F3}, 한계 초과 최대치={maxOverrun:F4}유닛, " +
+                $"전환 후 안쪽 이동={inwardTravel:F3}유닛, Fall={sawFall}, 총 관찰={elapsed:F2}초");
+
+            Assert.GreaterOrEqual(turnedAtSeconds, 0f,
+                $"{LogPrefix} 화면 밖에 발판이 하나 더 있다는 이유만으로 캐릭터가 " +
+                $"{MaxTurnaroundSeconds + PostTurnObserveSeconds:F1}초 동안 돌아서지 못했습니다 — " +
+                "사용자가 신고한 멀티모니터 제자리걸음입니다. (Walk 지속시간 30초 + 즉흥 전환 0%이므로 " +
+                "방향이 바뀔 수 있는 경로는 경계 판정 하나뿐입니다.)");
+            Assert.Less(turnedAtSeconds, MaxTurnaroundSeconds,
+                $"{LogPrefix} 방향은 바꿨지만 절대 시한 {MaxTurnaroundSeconds:F1}초를 넘겼습니다({turnedAtSeconds:F2}초).");
+            Assert.LessOrEqual(maxOverrun, MaxWalkableOverrunUnits,
+                $"{LogPrefix} 캐릭터가 '갈 수 있는 한계'를 {maxOverrun:F4}유닛 넘어갔습니다.");
+            Assert.GreaterOrEqual(inwardTravel, MinInwardTravelUnits,
+                $"{LogPrefix} 돌아선 뒤 안쪽으로 {inwardTravel:F3}유닛밖에 이동하지 못했습니다(최소 {MinInwardTravelUnits:F1}유닛).");
+            Assert.IsFalse(sawFall,
+                $"{LogPrefix} 화면 끝에서 낙하했습니다 — 클램프가 막는 지점에서는 뛰어내리기/매달리기가 금지여야 합니다.");
         }
     }
 }

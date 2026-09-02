@@ -1211,6 +1211,11 @@ namespace StickMate.Interaction
         {
             if (!EquippedAndUnlocked(EquipmentSlot.Fx)) return;
             int item = EquipmentModel.WornIndex(EquipmentSlot.Fx);
+            // ★ FX 0번은 "없음"이다. IsEquipped는 WornIndex >= 0 이라 0번도 착용으로 보고하므로
+            // 여기서 거르지 않으면 아래 switch의 default:가 정상 기본값 사용자에게 거짓 경보를 찍는다.
+            // 월드 경로(CharacterFxRenderer.cs:304)는 같은 줄을 이미 갖고 있었고 여기만 빠져 있었다.
+            // PET은 PetBall=0에 실제 case가 있어 같은 함정에 빠지지 않는다.
+            if (item <= AppearanceShapeBuilder.FxNone) return;
 
             float h = TotalHeight;
             float r = HeadRadius;

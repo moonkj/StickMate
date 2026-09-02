@@ -256,6 +256,88 @@ namespace StickMate.Tests.EditMode
         }
 
         // ========================================================================
+        // ★ 2026-09-02 — 이 파일이 <b>눈이 먼</b> 채로 빨개졌다. 그 사고와 처방
+        // ========================================================================
+        // CharacterInfoWindow가 partial 7개로 쪼개지면서 홀드 배선이
+        // CharacterInfoWindow.Input.cs로 이사했다. 이 파일은 <c>CharacterInfoWindow.cs</c>
+        // <b>한 파일만</b> 읽고 있었으므로 "배선이 없다"고 단언했다 — <b>프로덕션은 멀쩡했다.</b>
+        //
+        // 처방으로 파일명 하나를 다른 파일명으로 바꾸지 <b>않는다</b>. 또 쪼개지면 또 깨진다.
+        // 대신 두 가지를 바꿨다:
+        //   (1) 표면 하나 = <c>X.cs</c> + <c>X.*.cs</c> 조각 <b>전부</b>(ReadSurfaceSource).
+        //   (2) 위치 비교(A가 B보다 앞인가)를 <b>메서드 본문 범위</b> 비교로 바꿨다(MethodBody).
+        //       파일이 이어 붙는 순서에 따라 "Update()가 뒤에 온다"는 전제가 뒤집히기 때문이다.
+        // 그리고 이 매처가 <b>진짜 결함을 잡는지</b>를 같은 테스트 안에서 양성 대조로 확인한다.
+
+        /// <summary>한 <b>표면</b>의 소스 전체 — <c>X.cs</c>와 그 partial 조각 <c>X.*.cs</c>를 모두 읽어 잇는다.
+        /// 쪼개지지 않은 표면(설정창/톱니/포스트잇)에서는 예전과 <b>바이트가 같다</b>.
+        /// <para>구현은 <see cref="SourceConstantReader.ReadSurfaceText"/> <b>한 벌</b>이다 — 같은 규칙의
+        /// 사본을 파일마다 두면 그것이 곧 다음 드리프트다(이 라운드에 눈먼 매처가 넷이었다).</para></summary>
+        private static string ReadSurfaceSource(string folder, string file)
+            => SourceConstantReader.ReadSurfaceText(
+                Path.Combine(Application.dataPath, "_Project", "Scripts", folder, file));
+
+        /// <summary>이름으로 메서드 <b>본문</b>({...} 포함)을 떼어 온다. 없으면 null.</summary>
+        private static string TryMethodBody(string source, string signature)
+        {
+            int at = source.IndexOf(signature, StringComparison.Ordinal);
+            if (at < 0) return null;
+            int open = source.IndexOf('{', at);
+            if (open < 0) return null;
+
+            int depth = 0;
+            for (int i = open; i < source.Length; i++)
+            {
+                if (source[i] == '{') depth++;
+                else if (source[i] == '}' && --depth == 0) return source.Substring(open, i - open + 1);
+            }
+            return null;
+        }
+
+        private static string MethodBody(string source, string signature, string what)
+        {
+            string body = TryMethodBody(source, signature);
+            Assert.IsNotNull(body, what);
+            return body;
+        }
+
+        /// <summary>
+        /// 표면 하나의 홀드 배선을 <b>한 벌로</b> 판정한다. 성립하면 null, 아니면 깨진 이유.
+        /// <para>진짜 소스와 <b>배선을 지운 사본</b>에 같은 함수를 돌려 양성 대조를 만든다 —
+        /// 판정과 대조가 같은 코드를 쓰지 않으면 "대조만 통과하는 대조"가 된다.</para>
+        /// </summary>
+        private static string DiagnoseHoldWiring(string source, string pollSignature)
+        {
+            int holds = CountOf(source, HoldCall);
+            if (holds != 1) return $"홀드 호출이 {holds}개다 — 하나여야 어느 조건이 진짜인지 알 수 있다";
+
+            string tick = TryMethodBody(source, "private void TickFramePacingHold(");
+            if (tick == null) return "TickFramePacingHold()가 없다";
+            int hold = tick.IndexOf(HoldCall, StringComparison.Ordinal);
+            if (hold < 0) return "홀드가 TickFramePacingHold() 밖에 있다(= 조건 없는 홀드와 같다)";
+            int policy = tick.IndexOf("FramePacingPolicy.ShouldHoldForSurface(", StringComparison.Ordinal);
+            if (policy < 0) return "플랫폼 중립 판정 함수(FramePacingPolicy.ShouldHoldForSurface)를 쓰지 않는다";
+            if (policy > hold) return "홀드가 판정보다 앞이다 — 조건 없는 홀드와 같다";
+
+            string poll = TryMethodBody(source, pollSignature);
+            if (poll == null) return $"{pollSignature}가 없다";
+            if (!poll.Contains("TickFramePacingHold("))
+                return $"{pollSignature}가 TickFramePacingHold()를 부르지 않는다 — 정의만 있고 아무도 안 부른다";
+            return null;
+        }
+
+        /// <summary>양성 대조용 사본 — <paramref name="signature"/> 본문 안의 <paramref name="call"/>만 지운다
+        /// (중괄호 짝은 그대로 둔다).</summary>
+        private static string WithCallRemovedInside(string source, string signature, string call)
+        {
+            string body = MethodBody(source, signature, $"양성 대조를 만들 수 없다 — {signature} 본문이 없다.");
+            Assert.IsTrue(body.Contains(call), $"양성 대조 전제 실패 — {signature} 안에 {call}가 없다.");
+            int at = source.IndexOf(body, StringComparison.Ordinal);
+            return source.Substring(0, at) + body.Replace(call, "RemovedForPositiveControl(")
+                   + source.Substring(at + body.Length);
+        }
+
+        // ========================================================================
         // ★ 2026-09-01 정정 — "열려 있는 동안 무조건 홀드"가 절전을 통째로 죽였다
         // ========================================================================
         // 원래 이 자리에는 "정보창 Update()가 <b>무조건</b> 홀드를 갱신한다"를 잠그는 테스트가
@@ -278,26 +360,29 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 정보창_홀드는_열려있음이_아니라_조작중일때만_걸린다()
         {
-            string source = ReadScript("Interaction", "CharacterInfoWindow.cs");
+            // ★ 이 창은 partial 7개다 — 한 조각만 읽으면 배선이 이사한 라운드에 <b>거짓 빨강</b>이 난다
+            //   (2026-09-02에 실제로 그렇게 빨개졌다. 위 ReadSurfaceSource 문단 참고).
+            const string poll = "private void TickGlobalPointer()";
+            string source = ReadSurfaceSource("Interaction", "CharacterInfoWindow.cs");
 
-            Assert.AreEqual(1, CountOf(source, HoldCall),
-                "정보창의 홀드가 없거나 둘 이상이다 — 하나여야 어느 조건이 진짜인지 알 수 있다.");
+            string broken = DiagnoseHoldWiring(source, poll);
+            Assert.IsNull(broken, $"정보창의 프레임 페이싱 홀드 배선이 깨졌다 — {broken}.");
 
-            int tick = IndexOfOrFail(source, "private void TickFramePacingHold(", 0,
-                "CharacterInfoWindow.TickFramePacingHold()가 사라졌다 — 이 테스트를 갱신하라.");
-            int call = IndexOfOrFail(source, HoldCall, tick,
-                "정보창의 홀드가 TickFramePacingHold() 안에 있지 않다.");
-            int policy = IndexOfOrFail(source, "FramePacingPolicy.ShouldHoldForSurface(", tick,
-                "정보창이 플랫폼 중립 판정 함수를 쓰지 않고 자기만의 조건을 만들었다 — 창마다 규칙이 " +
-                "갈리면 다음 사람이 어느 쪽이 진짜인지 알 수 없다.");
-            Assert.Less(policy, call, "홀드가 판정보다 앞이다 — 조건 없는 홀드와 같다.");
-
-            // ★ 되돌림 방지: Update() 본문(= TickFramePacingHold 정의 앞)에 홀드가 있으면 안 된다.
-            int update = IndexOfOrFail(source, "private void Update()", 0,
+            // ★ 되돌림 방지 — Update() 본문에 홀드가 직접 있으면 안 된다(125분 실측 사고 그 자체).
+            string update = MethodBody(source, "private void Update()",
                 "CharacterInfoWindow.Update()가 사라졌다 — 이 테스트를 갱신하라.");
-            Assert.Greater(call, tick,
-                "홀드가 TickFramePacingHold 밖(= Update 본문)에 있다 — 125분 실측 사고가 되살아난다.");
-            Assert.Greater(tick, update, "메서드 순서 전제가 깨졌다 — 이 테스트의 위치 비교를 갱신하라.");
+            Assert.IsFalse(update.Contains(HoldCall),
+                "홀드가 Update() 본문에 있다 — '창이 열려 있는 동안 무조건 홀드'가 되살아났다. " +
+                "사용자 로그에서 정보창 125분 동안 등급 전이 0회 / 활성 100%였던 그 사고다.");
+
+            // ================= 양성 대조 — 이 매처가 진짜 결함을 잡는가 =================
+            // 없으면 위 세 단언은 "언제나 참"과 구별되지 않는다. 두 가지 결함을 각각 심어 본다.
+            Assert.IsNotNull(DiagnoseHoldWiring(source.Replace(HoldCall, "NoHold("), poll),
+                "양성 대조 실패 — 홀드 호출을 통째로 지웠는데도 이 매처가 초록이다. 눈이 멀었다.");
+            Assert.IsNotNull(
+                DiagnoseHoldWiring(WithCallRemovedInside(source, poll, "TickFramePacingHold("), poll),
+                "양성 대조 실패 — 폴링 경로의 호출을 지웠는데도 초록이다. '정의만 있고 아무도 안 부른다'를 " +
+                "못 잡는다는 뜻이고, 그것이 이 파일이 막으려는 DisplaySleepPolicyTests의 실패 양식이다.");
         }
 
         [Test]
@@ -420,10 +505,20 @@ namespace StickMate.Tests.EditMode
 
             foreach (string[] surface in surfaces)
             {
-                string source = ReadScript(surface);
+                // ★ 표면 = 파일 하나가 아니다. partial로 쪼개진 표면도 <b>통째로</b> 읽는다 —
+                //   이 줄이 ReadScript였을 때 정보창 분할 라운드에서 거짓 빨강이 났다.
+                string source = ReadSurfaceSource(surface[0], surface[1]);
                 Assert.GreaterOrEqual(CountOf(source, HoldCall), 1,
-                    $"{surface[surface.Length - 1]}에 프레임 페이싱 홀드 배선이 없다.");
+                    $"{surface[1]}에 프레임 페이싱 홀드 배선이 없다.");
+
+                // 양성 대조 — 명부가 <b>실제로 세고 있는가</b>. 지웠는데도 0이 안 나오면 이 루프는
+                // 아무 것도 안 보고 있는 것이다(거짓 통과 #5의 형태: 빈 목록이 조용히 초록).
+                Assert.AreEqual(0, CountOf(source.Replace(HoldCall, "NoHold("), HoldCall),
+                    $"{surface[1]}: 양성 대조 실패 — 홀드를 지운 사본에서도 배선이 세어진다.");
             }
+
+            Assert.AreEqual(4, surfaces.Length,
+                "명부가 비었거나 줄었다 — 빈 명부는 foreach가 아무것도 안 재고 초록이 된다(거짓 통과 #5).");
         }
 
         // ========================================================================

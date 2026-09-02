@@ -75,11 +75,55 @@ namespace StickMate.Dialogue
     /// </summary>
     public static class DialogueBudget
     {
-        /// <summary>글자수와 무관한 기본 인지 시간(초) — 눈이 글자 블록을 찾아가는 데 드는 몫.</summary>
-        private const float BaseSeconds = 0.28f;
+        /// <summary>글자수와 무관한 기본 인지 시간(초) — 눈이 글자 블록을 찾아가는 데 드는 몫.
+        /// <b>문자체계와 무관</b>하다(글자 블록을 찾아가는 비용은 무엇으로 쓰였든 같다).
+        /// <para><c>internal</c>인 이유: 회귀 테스트가 이 값을 <b>숫자로 베끼지 않고 참조</b>해야 한다
+        /// (CLAUDE.md — 하드코딩 잔존으로 4건이 깨진 2026-09-01 사고 이후 확정).</para></summary>
+        internal const float BaseSeconds = 0.28f;
 
-        /// <summary>한 글자당 추가 가독 시간(초).</summary>
-        private const float PerGlyphSeconds = 0.075f;
+        /// <summary>
+        /// <b>글자 하나가 곧 음절 하나</b>인 문자체계의 글자당 추가 가독 시간(초) —
+        /// 한글 / 한자 / 가나. <see cref="IsSyllabicScript"/>가 고르는 쪽이다.
+        ///
+        /// <para>★★ 2026-09-02 — <b>이 값은 원래부터 "초/음절"이었다.</b> 그런데
+        /// <see cref="ReadingSeconds"/>가 <c>text.Length</c>(초/글자)로 청구했고,
+        /// <b>한글에서만 글자 = 음절이라 한 번도 안 들켰다.</b> 반증:</para>
+        /// <code>
+        ///   헉... 높다            음절 3 / 글자  7  ->  필요체류 0.865초  (ParkourClimb 분모 1.20)  발화
+        ///   Whoa, that's high    음절 3 / 글자 17  ->  필요체류 1.615초                             침묵
+        /// </code>
+        /// <b>음절 수가 같은데 — 즉 읽는 데 드는 시간이 같은데 — 영어만 침묵했다.</b> 더 나쁜 사례도 있다:
+        /// <c>어우... 꽤 깊네</c>(5음절)와 <c>Whoa... that's deep</c>(3음절)는 <b>영어 쪽이 읽기 더
+        /// 짧은데</b> 글자수가 1.9배라 영어만 침묵한다. 문안 문제가 아니라 <b>단위 오류</b>다.
+        ///
+        /// <para>증상이 로그 한 줄뿐이라(<c>발화 보류</c>) 그대로 출하되면 영어권 사용자에게는
+        /// <b>"이 캐릭터는 말을 안 한다"</b>로 보인다. 그래서 이 분기는 영어 대사보다 먼저 왔다.</para>
+        /// </summary>
+        internal const float PerGlyphSeconds = 0.075f;
+
+        /// <summary>
+        /// 라틴 글자 한 자당 추가 가독 시간(초) = <b>0.0472</b>.
+        ///
+        /// <para><b>고른 값이 아니라 푼 값이다.</b> 불변식은 <i>"같은 발화는 같은 가독예산을
+        /// 청구받는다"</i>(언어 간 정보 전달률이 거의 일정하다는 방향 — Coupé et al. 2019,
+        /// <i>Science Advances</i>):</para>
+        /// <code>
+        ///   0.28 + w·G_en  =  0.28 + 0.075·G_kr
+        ///   w = 0.075 × (한글 112자 / 영어 178자) = 0.075 × 0.629 = 0.0472
+        /// </code>
+        /// 실재 대사 17줄과 각각의 <b>영어 재창작</b>(번역 아님)으로 풀었다. 줄별 중앙값 0.0500 /
+        /// 평균 0.0494와 0.6% 차이라 어느 추정치를 써도 결과가 같다. 말뭉치 전체 비율을 쓰는 이유는
+        /// 불변식이 요구하는 것이 <b>"풀 전체가 두 언어에서 같은 예산을 청구받는다"</b>이기 때문이다.
+        ///
+        /// <para>근거 문서: <c>design/narrative/2026-09-02_R2_발화빈도_풀24_영어게이트.md</c> §5-3 /
+        /// <c>design/narrative/verify/en_budget.out.txt</c> /
+        /// <c>docs/localization/verify/gate.out.txt</c>(독립 재계산 + 양성 대조 4종).</para>
+        ///
+        /// <para>★ <b>"안전하게" 더 내리지 마라.</b> 낮추면 침묵은 줄지만 <b>글자가 읽히기 전에
+        /// 사라진다</b> — 그건 규칙 8이 없애려던 결함(<c>0.08초 번쩍이고 사라지는 글자</c>) 그 자체다.
+        /// <b>이 저장소에서 안전한 실패는 침묵이지 조기 소멸이 아니다.</b></para>
+        /// </summary>
+        internal const float PerLatinGlyphSeconds = 0.0472f;
 
         /// <summary>아주 짧은 감탄사에도 보장되는 하한(초).</summary>
         public const float MinSeconds = 0.62f;
@@ -89,13 +133,84 @@ namespace StickMate.Dialogue
         public const float MaxSeconds = 2.20f;
 
         /// <summary>
-        /// 이 텍스트를 읽는 데 필요한 시간(초) — <c>clamp(0.28 + 글자수 × 0.075, 0.62, 2.20)</c>.
-        /// 순수 함수다(시간/난수/전역 상태를 읽지 않는다).
+        /// ★★ 2026-09-02 — 이 문자열에 <b>글자 하나가 곧 음절 하나</b>인 문자체계가
+        /// <b>하나라도</b> 섞였는가(순수 함수).
+        ///
+        /// ============================================================================
+        /// ★ 이 함수가 <b>로케일을 보지 않는</b> 이유 — 이게 이 분기 설계의 핵심이다
+        /// ============================================================================
+        /// 가독예산은 <b>"이 사용자의 언어"</b>가 아니라 <b>"내가 지금 받은 이 문자열"</b>의 함수다.
+        /// 언어 설정을 읽는 형태로 만들면 세 곳에서 각각 틀린다:
+        /// <list type="number">
+        ///   <item><b><see cref="ReadingSeconds"/>는 순수 함수라고 이 파일이 스스로 선언했다</b>
+        ///     — "시간/난수/전역 상태를 읽지 않는다". 로케일은 전역 상태다. 그 계약을 우리가 먼저 깨게 된다.
+        ///     그리고 이 저장소는 <b>"받을 자리를 만들어 두면 언젠가 누가 채운다"</b>를 이미 한 번
+        ///     명시적으로 거부했다(<see cref="RequiredDwellSeconds"/>가 사용자 노출 배율을
+        ///     <b>인자로도 받지 않는</b> 이유). 같은 판단을 여기 적용한다.</item>
+        ///   <item><b>혼합 문자열이 실재한다</b> — <c>"Wi-Fi 끊겼네"</c>. 로케일로 갈랐다면 한국어
+        ///     사용자의 이 줄이 <b>라틴 계수로 과소 청구</b>되어 조기 소멸한다. 문자열로 가르면
+        ///     <b>비싼 쪽</b>으로 간다 — 과다 청구의 결과는 침묵이고, <b>침묵은 거짓말이 아니다</b>.</item>
+        ///   <item><b>★ 사용자가 타이핑한 문자열이 이 파이프라인에 실린다</b> —
+        ///     할일 리마인더 대사는 <c>TodoListModel.ConsumePendingReminderText</c>가 넘기는
+        ///     <b>사용자 원문</b>이다(<c>Interaction/TodoReminderDirector.cs</c>에서 설정).
+        ///     로케일 기준이면 <b>한국어 UI를 쓰는 사용자가 영어로 적은 할일이 침묵한다</b> —
+        ///     그건 우리가 만든 버그가 아니라 <b>사용자가 쓴 글자를 우리가 검열하는 것</b>이 된다.</item>
+        /// </list>
+        ///
+        /// <para><b>혼합이면 비싼 쪽(<see cref="PerGlyphSeconds"/>)으로 간다.</b> 한 글자만 섞여도
+        /// 그렇다 — 위 (2)의 이유다.</para>
+        ///
+        /// <para>포함 범위: 한글 음절/자모(호환·확장 포함) · 히라가나/가타카나 · CJK 통합한자(확장 A ·
+        /// 호환 한자 포함). <b>일본어/중국어는 아직 출시 계획에 없지만</b> 문자체계 기준이므로
+        /// 그때 이 함수를 고칠 일이 없다 — 그것이 로케일 기준 대비 이 설계의 덤이다.</para>
+        /// </summary>
+        internal static bool IsSyllabicScript(string text)
+        {
+            // 빈 문자열은 어느 쪽으로 가든 MinSeconds가 흡수한다. 기존 거동(= 한국어 경로) 유지.
+            if (string.IsNullOrEmpty(text)) return true;
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                if (c < '\u1100') continue;                          // 라틴/숫자/기호 — 절대다수는 여기서 끝난다
+                if (c >= '\uAC00' && c <= '\uD7A3') return true;     // 한글 음절
+                if (c >= '\u1100' && c <= '\u11FF') return true;     // 한글 자모
+                if (c >= '\u3130' && c <= '\u318F') return true;     // 한글 호환 자모
+                if (c >= '\uA960' && c <= '\uA97F') return true;     // 한글 자모 확장 A
+                if (c >= '\uD7B0' && c <= '\uD7FF') return true;     // 한글 자모 확장 B
+                if (c >= '\u3040' && c <= '\u30FF') return true;     // 히라가나 / 가타카나
+                if (c >= '\u31F0' && c <= '\u31FF') return true;     // 가타카나 음성 확장
+                if (c >= '\u3400' && c <= '\u4DBF') return true;     // CJK 통합한자 확장 A
+                if (c >= '\u4E00' && c <= '\u9FFF') return true;     // CJK 통합한자
+                if (c >= '\uF900' && c <= '\uFAFF') return true;     // CJK 호환 한자
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 이 텍스트를 읽는 데 필요한 시간(초) —
+        /// <c>clamp(0.28 + 글자수 × w, 0.62, 2.20)</c>,
+        /// <c>w</c> = <see cref="PerGlyphSeconds"/>(음절 문자체계) 또는
+        /// <see cref="PerLatinGlyphSeconds"/>(라틴 전용).
+        /// 순수 함수다(시간/난수/전역 상태를 읽지 않는다 — <see cref="IsSyllabicScript"/>도 인자만 본다).
+        ///
+        /// <para>★ <b>한국어 결과는 개정 전후로 비트 단위로 같다.</b> 현행 대사 33줄 전수에서
+        /// 최대 차이 <c>0.0</c>임을 <c>Tests/EditMode/DialogueLanguageBudgetTests</c>가 골든으로 잠근다.
+        /// 하나라도 달라지면 이 변경은 무효다.</para>
+        ///
+        /// <para>★ 이 함수를 쓰는 <b>세 소비자가 전부 함께</b> 언어 인식형이 된다 —
+        /// <see cref="RequiredDwellSeconds"/>(발화 자격) / <see cref="MinVisibleSecondsFor"/> /
+        /// <see cref="MaxVisibleSecondsFor"/>(노출 상한). 마지막 것 때문에 <b>영어 대사는 같은
+        /// 글자수의 한국어 대사보다 짧게 떠 있는다</b>. <b>그건 결함이 아니다</b> — 상한 식은
+        /// "가독예산 × 2"이고 가독예산은 <b>읽는 데 걸리는 시간</b>이다. 라틴 17자는 한글 10자보다
+        /// 빨리 읽힌다. 글자수에 대한 단조 비감소 성질은 <b>각 문자체계 안에서</b> 그대로 유지되므로
+        /// 2026-09-01이 없앤 역전은 재발하지 않는다. <b>"영어가 너무 빨리 사라진다"고 되돌리지 마라.</b></para>
         /// </summary>
         public static float ReadingSeconds(string text)
         {
             int glyphs = string.IsNullOrEmpty(text) ? 0 : text.Length;
-            return Mathf.Clamp(BaseSeconds + glyphs * PerGlyphSeconds, MinSeconds, MaxSeconds);
+            float perGlyph = IsSyllabicScript(text) ? PerGlyphSeconds : PerLatinGlyphSeconds;
+            return Mathf.Clamp(BaseSeconds + glyphs * perGlyph, MinSeconds, MaxSeconds);
         }
 
         /// <summary>

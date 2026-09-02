@@ -1,0 +1,82 @@
+[교정] 필요체류 10/8/7/4/2자 = 1.090/0.940/0.865/0.680/0.680 재현 OK
+[양성대조] BackLongCape sway 3건 검출 — 스캐너 작동 확인
+
+[실측] 세트 슬롯 아이템의 HemSway 등록 수 (0 = 그 아이템은 절대 흔들리지 않는다)
+   세트 A | 나비넥타이         (NeckBowTie) sway 0 | 짧은망토          (BackCape) sway 3
+   세트 B | 줄무늬타이         (NeckStriped) sway 1 | 긴망토           (BackLongCape) sway 3
+   세트 C | 목도리           (NeckScarf) sway 2 | 날개            (BackWings) sway 0
+   세트 D | 방울목걸이         (NeckBell) sway 1 | 배낭            (BackBackpack) sway 0
+   세트 E | 펜던트 목걸이       (NeckPendant) sway 1 | 판초            (BackPoncho) sway 3
+   세트 F | 반다나           (NeckBandana) sway 1 | 요정 날개         (BackFairyWings) sway 0
+   -> ★ 흔들리지 않는 것: NeckBowTie, BackWings, BackBackpack, BackFairyWings
+      **이 아이템에 움직임을 주장하는 대사를 쓰면 원칙 1 위반이다.**
+
+=== 1. 발화 자격 검산 — 60줄 + 중립 10줄, 한/영 양쪽 ===
+   여유 = 상태 잔여 하한 − 필요체류.  합격선 = 팝인 0.18초 이상.
+   풀 |슬롯      |상태 | 한국어           자 |  여유 | English              자 |  여유
+   중립 |PAUSE     |Idle | 음...              4 |+1.320 | Hmm...                6 |+1.320 
+   중립 |PLACE     |Idle | 여기 좋네             5 |+1.285 | Nice spot.           10 |+1.188 
+   중립 |REST      |Idle | 잠깐 쉬는 중           7 |+1.135 | Taking a break.      15 |+0.952 
+   중립 |GROUND    |Idle | 발밑이 단단해           7 |+1.135 | Solid footing.       14 |+0.999 
+   중립 |SELF      |Idle | 오늘 뭐 하지           7 |+1.135 | What now?             9 |+1.235 
+   중립 |MOVE      |Walk | 산책 중              4 |+0.820 | Out walking.         12 |+0.594 
+   중립 |DIR       |Walk | 저쪽으로 가볼까          8 |+0.560 | Let's go that way.   18 |+0.310 
+   중립 |RHYTHM    |Walk | 하나 둘 하나 둘         9 |+0.485 | Left, right, left.   18 |+0.310 
+   중립 |LEGS      |Walk | 다리 좀 풀자           7 |+0.635 | Stretching the legs. 20 |+0.216 
+   중립 |FLOURISH  |Walk | 다리가 잘 나가네         9 |+0.485 | Good stride today.   18 |+0.310 
+   A  |PAUSE     |Idle | 오...              4 |+1.320 | Oh.                   3 |+1.320 
+   A  |PLACE     |Idle | 여기 딱 좋네           7 |+1.135 | This spot's great.   18 |+0.810 
+   A  |REST      |Idle | 잠깐 쉬어가지           7 |+1.135 | Break time, then.    17 |+0.858 
+   A  |GROUND    |Idle | 발밑 단단하네           7 |+1.135 | Nice firm floor.     16 |+0.905 
+   A  |SELF      |Idle | 다 갖춰 입었다          8 |+1.060 | All dressed up.      15 |+0.952 
+   A  |MOVE      |Walk | 산책 나왔지            6 |+0.710 | Out for a walk.      15 |+0.452 
+   A  |DIR       |Walk | 저쪽 가볼까            6 |+0.710 | That way, maybe.     16 |+0.405 
+   A  |RHYTHM    |Walk | 하나 둘 하나 둘         9 |+0.485 | One, two, one, two.  19 |+0.263 
+   A  |LEGS      |Walk | 발걸음이 가볍네          8 |+0.560 | Light on my feet.    17 |+0.358 
+   A  |FLOURISH  |Walk | 망토가 따라온다          8 |+0.560 | Cape's coming too.   18 |+0.310 
+   F  |PAUSE     |Idle | 후...              4 |+1.320 | Hah...                6 |+1.320 
+   F  |PLACE     |Idle | 여기가 좋겠군           7 |+1.135 | Here'll do.          11 |+1.141 
+   F  |REST      |Idle | 숨 고른다             5 |+1.285 | Catching air.        13 |+1.046 
+   F  |GROUND    |Idle | 발 딛고 섰다           7 |+1.135 | Feet planted.        13 |+1.046 
+   F  |SELF      |Idle | 이 정도면 충분해         9 |+0.985 | This'll do fine.     16 |+0.905 
+   F  |MOVE      |Walk | 간다                2 |+0.820 | Off we go.           10 |+0.688 
+   F  |DIR       |Walk | 저기로               3 |+0.820 | Over there.          11 |+0.641 
+   F  |RHYTHM    |Walk | 성큼성큼              4 |+0.820 | Big strides.         12 |+0.594 
+   F  |LEGS      |Walk | 다리가 안 멈춘다         9 |+0.485 | Legs won't stop.     16 |+0.405 
+   F  |FLOURISH  |Walk | 반다나가 날린다          8 |+0.560 | Bandana's flying.    17 |+0.358 
+   ... (B/C/D/E 40줄은 같은 형식으로 전부 통과 — 아래 요약 참조)
+
+   총 70줄 | 탈락 0줄 | 최소 여유: 한국어 +0.485초 / 영어 +0.216초 (합격선 +0.180)
+
+=== 2. 글자수 상한 (R1 §3-4: 한국어 9자) ===
+   한국어 최장 = 9자 (흠, 나쁘지 않군 / D 풀)  ->  상한 9자 준수 ✔
+   영어  최장 = 20자 (This place suits me. / E 풀)
+   개정 게이트에서 Idle의 영어 상한 = 31자 (여유 0.18 확보 기준)
+   개정 게이트에서 Walk의 영어 상한 = 20자 (여유 0.18 확보 기준)
+
+=== 3. 어조 마커 — '어조만 바뀌고 사실은 그대로'가 측정되는가 ===
+   어조 = (템포, 격식, 시선) 3축. 세 축이 전부 같은 풀 쌍이 있으면 어조 전환이 체감되지 않는다.
+   풀   | 템포(평균자) | 격식(0무종결~3격식) | 시선(사물주어) | 무종결 | 쉼표·부호
+   중립   |      6.7자  |         0.40        |     30%      |  60%  |   0줄
+   A    |      7.0자  |         0.90        |     30%      |  30%  |   0줄
+   B    |      7.0자  |         1.60        |     30%      |  20%  |   0줄
+   C    |      5.8자  |         1.00        |     40%      |  50%  |   0줄
+   D    |      6.9자  |         2.50        |     40%      |  10%  |   1줄
+   E    |      7.1자  |         1.90        |     40%      |  10%  |   0줄
+   F    |      5.8자  |         1.40        |     30%      |  30%  |   0줄
+
+   ★ 쌍별 최소 분리 — 두 풀이 세 축에서 얼마나 떨어져 있는가
+   가장 가까운 쌍 = B vs E, 분리도 0.65 (기준 0.60 이상)  -> 전 쌍 분리 ✔
+   ※ 분리도 = |Δ템포|/2 + |Δ격식| + 3·|Δ시선|. 세 축 각각이 1점 안팎이 되도록 정규화한 값이다.
+
+=== 4. ★ 움직임 주장 감사 — 흔들린다고 말한 줄이 실제로 흔들리는가 ===
+   세트 A | 망토가 따라온다         -> BackCape       sway 3건 | 참 ✔
+   세트 C | 목도리가 날린다         -> NeckScarf      sway 2건 | 참 ✔
+   세트 D | 방울이 흔들린다         -> NeckBell       sway 1건 | 참 ✔
+   세트 E | 판초가 흔들린다         -> BackPoncho     sway 3건 | 참 ✔
+   세트 F | 반다나가 날린다         -> NeckBandana    sway 1건 | 참 ✔
+   움직임 주장 줄 중 거짓 0건.
+
+   ★ 반례 대조 — R1 §3-5가 실제로 낸 줄을 같은 검사에 통과시켜 본다:
+     배낭이 흔들린다         -> BackBackpack   sway 0건 | ★ 거짓 — 폐기 대상
+     목도리가 날린다         -> NeckScarf      sway 2건 | 참

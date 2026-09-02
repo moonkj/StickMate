@@ -93,6 +93,28 @@ namespace StickMate.Tests.PlayMode
             _gear.FeedPointerForTests(false, screen);
         }
 
+        /// <summary>
+        /// 톱니를 그 자리로 <b>끌어다 놓는다</b> — 누르고, <b>기다리고</b>, 끌고, 뗀다.
+        ///
+        /// <para>★ 2026-09-02(docs/UX_FLOW.md 41-8 3겹) 이후 드래그는 <b>시간 AND 거리</b>다.
+        /// 예전에는 "누르고 곧바로 멀리 끌기"만으로 됐고, 이 파일의 모서리 순회가 정확히 그 방식을 썼다 —
+        /// 그대로 두면 톱니가 <b>움직이지 않은 채</b> 같은 자리에서 5번 통과해 <b>아무것도 검사하지 않는다</b>.
+        /// 그래서 이동 성공 여부를 함께 단언한다.</para>
+        /// </summary>
+        private IEnumerator DragGearTo(Vector2 target)
+        {
+            Vector2 start = _gear.IconScreenCenter;
+            _gear.FeedPointerForTests(true, start);
+            yield return new WaitForSecondsRealtime(InfoGearIconWidget.DragLongPressSeconds + 0.05f);
+            _gear.FeedPointerForTests(true, target);
+            Assert.IsTrue(_gear.IsDraggingIcon,
+                $"톱니를 {target}로 끌지 못했습니다(시간 {InfoGearIconWidget.DragLongPressSeconds:F2}초 + " +
+                $"거리 {InfoGearIconWidget.DragMoveThreshold:F0}pt를 둘 다 채웠는데도) — " +
+                "아래 검사가 <b>옮기지 않은 톱니</b>를 반복해서 재게 됩니다.");
+            _gear.FeedPointerForTests(false, target);
+            yield return null;
+        }
+
         // ==================== ① 순차로 펼쳐진다 ====================
 
         [UnityTest]
@@ -251,11 +273,8 @@ namespace StickMate.Tests.PlayMode
 
             for (int k = 0; k < corners.Length; k++)
             {
-                // 톱니를 그 모서리로 끌어다 놓는다(거리 임계로 즉시 드래그되는 실제 경로 그대로).
-                _gear.FeedPointerForTests(true, _gear.IconScreenCenter);
-                _gear.FeedPointerForTests(true, corners[k]);
-                _gear.FeedPointerForTests(false, corners[k]);
-                yield return null;
+                // 톱니를 그 모서리로 끌어다 놓는다(실제 드래그 경로 그대로 — 시간 AND 거리).
+                yield return DragGearTo(corners[k]);
 
                 yield return OpenMenuByShortClick();
 
@@ -314,10 +333,7 @@ namespace StickMate.Tests.PlayMode
             ClickAt(_gear.IconScreenCenter);
             yield return new WaitForSecondsRealtime(0.2f);
             var center = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
-            _gear.FeedPointerForTests(true, _gear.IconScreenCenter);
-            _gear.FeedPointerForTests(true, center);
-            _gear.FeedPointerForTests(false, center);
-            yield return null;
+            yield return DragGearTo(center);
             yield return OpenMenuByShortClick();
 
             AssertNoOverlap("화면 중앙");

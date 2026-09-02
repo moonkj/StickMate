@@ -57,8 +57,9 @@ namespace StickMate.Interaction
     /// <b>비침해 보장</b>: (2)는 "버튼이 눌렸다"만으로는 아무 일도 하지 않는다. 반드시 그 순간 커서가
     /// 아이콘 사각형 <b>안</b>일 때만 반응한다.
     ///
-    /// <b>메뉴바를 피한다</b>: 세로 여백 <see cref="MarginTopPoints"/>는 macOS 메뉴바(노치 기준 최대 약
-    /// 38pt)보다 확실히 아래에 아이콘을 놓기 위한 값이다.
+    /// <b>메뉴바를 피한다</b>: 세로 여백은 상수가 아니라 <see cref="DefaultCenterPoints"/>가
+    /// <b>OS에게 물어본 예약 띠 두께</b>에서 유도한다(41-1 ③ / 41-8 1겹). 예전에는 "메뉴바 최대 약
+    /// 38pt"라는 <b>짐작</b>을 상수 58에 박아 뒀는데, 짐작이 틀리는 날 톱니가 남의 띠를 덮었다.
     ///
     /// ============================================================================
     /// 짧게 클릭 vs 길게 눌러 옮기기 (2026-08-30 사용자 요청)
@@ -66,9 +67,26 @@ namespace StickMate.Interaction
     /// 사용자 원문: "캐릭터 설정 기어들도 길게 클릭해서 위치 옮길 수 있게 해줘".
     ///  · <b>짧게 클릭</b> — 기어가 도는 것과 <b>동시에</b> 부채꼴 버튼 4개가 펼쳐진다
     ///    (2026-08-31에 [행동]이 늘어 3 -> 4가 됐다. 개수의 단일 출처는 <see cref="GearRadialMenuWidget.ButtonCount"/>).
-    ///  · <b>길게 누르기</b>(<see cref="LongPressSeconds"/> 이상) 또는 누른 채
-    ///    <see cref="DragMoveThresholdPoints"/> 이상 이동 — 드래그로 전환되어 커서를 따라간다.
-    ///    떼면 그 자리에 확정되고 저장 파일에 남아 <b>재시작해도 유지</b>된다(Core/UiLayoutModel.cs).
+    ///  · <b>길게 누르고 있다가 끌기</b> — <see cref="LongPressSeconds"/> 이상 누른 <b>그리고</b> 누른 채
+    ///    <see cref="DragMoveThresholdPoints"/> 이상 이동. <b>두 조건이 동시에</b> 참이라야 드래그다
+    ///    (<see cref="ShouldBeginDrag"/>). 떼면 그 자리에 확정되고 저장 파일에 남아
+    ///    <b>재시작해도 유지</b>된다(Core/UiLayoutModel.cs).
+    ///  · <b>되돌리기</b>(2026-09-02 P0) — 설정창 [일반] &gt; <c>화면 위 UI</c> &gt;
+    ///    <c>톱니 위치 [처음 자리로]</c>가 <see cref="ReturnToDefaultPosition"/>을 부른다.
+    ///    영구히 저장되는 것에는 되돌리는 문이 있어야 한다(docs/UX_FLOW.md 41-8).
+    ///
+    /// ============================================================================
+    /// ★ 위치의 소유권 — 저장되는 자리와 <b>빌려 준 자리</b>는 다르다 (2026-09-02 P0)
+    /// ============================================================================
+    /// 위치의 소스는 셋이고 해결자는 <see cref="PlaceOnScreen"/> 하나다:
+    /// <b>온보딩이 빌려 간 자리</b> &gt; <b>사용자가 옮긴 자리</b> &gt; <b>기본 위치(우상단)</b>.
+    /// 그런데 세이브에 내려가는 것은 <b>가운데 하나뿐</b>이다 — 톱니가 지금 어디 있느냐와
+    /// "사용자가 여기로 옮겼다"는 사실은 다른 값이다.
+    ///
+    /// 이걸 구분하지 않으면 <b>온보딩이 톱니를 한 프레임 옮기는 것만으로 모든 신규 사용자의
+    /// 세이브에 「사용자가 옮긴 위치」가 기록된다</b>. 저장에는 그것이 온보딩 자리였다는 표시가
+    /// 남지 않으므로 사후 복구가 불가능하다 — 그래서 사전 차단이다
+    /// (<see cref="BeginOnboardingPlacement"/> / <see cref="PersistGearCenter"/>).
     ///
     /// <b>왜 클릭 판정이 뗄 때로 옮겨갔는가</b>: 누른 순간에 창을 열면 그 클릭이 드래그가 될지 아직
     /// 모른다 — 옮기려고 눌렀는데 창부터 뜨는 것이 이 요구에서 가장 흔한 실패다. 그래서 "눌렀다"는
@@ -115,9 +133,13 @@ namespace StickMate.Interaction
         /// <summary>화면 오른쪽 끝에서 <b>큰 기어 중심</b>까지의 거리.</summary>
         private const float MarginRightPoints = 30f;
 
-        /// <summary>화면 위쪽 끝에서 <b>큰 기어 중심</b>까지의 거리. macOS 메뉴바(최대 약 38pt)보다
-        /// 확실히 아래여야 한다 — 클래스 문서 "메뉴바를 피한다" 참고.</summary>
-        private const float MarginTopPoints = 58f;
+        // ★ 2026-09-02 (41-1 ③ / 41-8 1겹) — 옛 <c>MarginTopPoints = 58f</c>는 폐기됐다.
+        //   그 58은 "macOS 메뉴바가 최대 약 38pt겠지"라는 <b>짐작</b>이었고, 짐작에는 세 가지 결함이
+        //   있었다: (1) 노치/글꼴 설정에 따라 메뉴바는 33도 되고 38도 된다, (2) <b>Windows에는 그
+        //   근거가 아예 없다</b> — 작업표시줄이 위에 도킹되면 40pt 이상이라 58로는 덮는다,
+        //   (3) 반대로 예약 띠가 <b>없는</b> 환경(자동 숨김 / 하단 도킹)에서는 58pt가 이유 없이 낭비다.
+        //   지금은 <see cref="DefaultCenterPoints"/>가 <c>ReservedTopBarProbe</c>가 실제로 물어 온
+        //   두께에서 유도한다. 세로 여백을 나타내는 상수는 이 파일에 더 이상 없다.
 
         // ============================================================================
         // ★ 2026-09-01 P0-3 — <b>어떤 잉크색으로도 안 보이던 아이콘</b>을 2겹(헤일로 + 잉크)으로 고친다
@@ -227,13 +249,18 @@ namespace StickMate.Interaction
 
         // ---- 길게 눌러 옮기기 ----
 
-        /// <summary>이만큼 누르고 있으면 드래그로 전환된다. 0.4초는 "실수로 길게 눌리는" 일이 드물면서
+        /// <summary>드래그 전환의 <b>시간</b> 조건. 0.4초는 "실수로 길게 눌리는" 일이 드물면서
         /// 옮기려는 사람이 답답함을 느끼기 전인 구간이다(macOS Dock/홈 화면 아이콘 정리와 같은 감각).</summary>
         private const float LongPressSeconds = 0.4f;
 
-        /// <summary>시간을 채우기 전이라도 이만큼(OS 포인트) 끌면 즉시 드래그다 — 일반적인 드래그 UX
-        /// 관례. 손떨림(1~2pt)으로는 넘지 않는 값이어야 짧은 클릭이 드래그로 오인되지 않는다.</summary>
-        private const float DragMoveThresholdPoints = 4f;
+        /// <summary>
+        /// 드래그 전환의 <b>거리</b> 조건(OS 포인트). 4 -> 6 (docs/UX_FLOW.md 41-8 3겹).
+        ///
+        /// <para><b>근거는 속도다.</b> 이 위젯의 커서 관측 주기는 <see cref="ClickPollInterval"/> =
+        /// 0.05초(20Hz)다. 한 표본에 6pt를 움직였다면 <b>120pt/s</b>다. 손을 멈추려는 의도일 때의
+        /// 표류는 보통 50pt/s 이하라 통과하지 못하고, 4pt(= 80pt/s)는 통과한다.</para>
+        /// </summary>
+        private const float DragMoveThresholdPoints = 6f;
 
         /// <summary>드래그 중 시각 피드백 — 살짝 커지고(들어올린 느낌) 살짝 옅어진다(화면에서 떠 있다는
         /// 표시). 회전과 충돌하지 않는다: 회전은 자식(큰/작은 기어)의 각도, 이건 부모의 스케일/알파다.</summary>
@@ -272,6 +299,15 @@ namespace StickMate.Interaction
         private Vector2 _pressStartCursor;      // Unity 스크린 픽셀.
         private Vector2 _grabOffsetPoints;      // 잡은 순간의 (중심 - 커서). 기어가 커서로 순간이동하지 않게 한다.
         private float _visualScale = 1f;
+
+        // ---- 온보딩이 잠시 빌려 간 위치 (2026-09-02 P0) ----
+        // ★ 이 두 필드가 막는 사고: 온보딩 연출이 톱니를 <b>한 프레임이라도</b> 옮기면 아래
+        //   PlaceOnScreen이 그것을 "사용자가 옮긴 것"으로 UiLayoutModel에 확정하고, 그 값은 세이브에
+        //   앉아 재시작해도 유지된다. 즉 <b>모든 신규 사용자가 온보딩 자리를 자기 설정으로 갖게 된다.</b>
+        //   되돌리는 사후 복구 코드는 만들 수 없다(무엇이 온보딩 자리였는지 저장에 안 남는다) —
+        //   그래서 <b>사전 차단</b>뿐이다. 자세한 계약은 BeginOnboardingPlacement 문서.
+        private bool _onboardingOwnsPosition;
+        private Vector2 _onboardingCenterPoints;
 
         // ---- 부채꼴 메뉴 ----
         private GearRadialMenuWidget _menu;
@@ -380,17 +416,84 @@ namespace StickMate.Interaction
         /// <summary>지금 길게 눌러 옮기는 중인가(테스트/진단 전용).</summary>
         public bool IsDraggingIcon => _dragging;
 
-        /// <summary>사용자가 한 번이라도 옮겼는가 — false면 화면 우상단 기본 위치를 쓰고 있다.</summary>
+        /// <summary>사용자가 한 번이라도 옮겼는가 — false면 화면 우상단 기본 위치를 쓰고 있다.
+        /// <para>★ 온보딩이 위치를 빌려 간 것은 <b>여기에 포함되지 않는다</b>
+        /// (<see cref="IsOnboardingPositionOwned"/>가 그쪽이다). 이 값은 "세이브에 내려갈 자리가
+        /// 있는가"와 같은 뜻이다.</para></summary>
         public bool HasCustomPosition => _hasCustomCenter;
 
-        /// <summary>기어 중심의 현재 위치(창 좌상단 원점, OS 포인트). 저장값과 같은 좌표계다.</summary>
-        public Vector2 IconCenterPoints => _hasCustomCenter ? _customCenterPoints : DefaultCenterPoints();
+        /// <summary>기어 중심의 <b>지금</b> 위치(창 좌상단 원점, OS 포인트). 저장값과 같은 좌표계다.
+        /// <para>우선순위는 <see cref="PlaceOnScreen"/>과 같다: 온보딩이 빌려 간 자리 &gt; 사용자가 옮긴
+        /// 자리 &gt; 기본 위치. 즉 <b>온보딩 중에는 저장값과 다를 수 있다</b> — 그게 이 라운드의 요점이다.</para></summary>
+        public Vector2 IconCenterPoints => _onboardingOwnsPosition
+            ? _onboardingCenterPoints
+            : (_hasCustomCenter ? _customCenterPoints : DefaultCenterPoints());
+
+        /// <summary>
+        /// ★ <b>온보딩이 톱니를 날려 보낼 「집」 좌표</b>(창 좌상단 원점, OS 포인트) —
+        /// <b>대여와 무관하게</b> "사용자가 옮긴 자리, 없으면 기본 위치"를 돌려준다.
+        ///
+        /// <para><b>왜 <see cref="IconCenterPoints"/>로는 안 되는가</b>: 그쪽은 대여 중이면
+        /// <b>대여 좌표</b>를 돌려준다(그게 그 값의 계약이다). 온보딩은 톱니를 캐릭터 위에서 제자리로
+        /// <b>날려 보내며</b> "여기가 원래 자리"를 가르치는데, 그 비행의 <b>목적지</b>를
+        /// <c>IconCenterPoints</c>로 읽으면 목적지 = 현재 위치가 되어 <b>궤적 길이가 0</b>이다 —
+        /// 톱니가 제자리 비행을 하고 아무도 아무것도 못 배운다(docs/UX_FLOW.md 51-4).</para>
+        ///
+        /// <para>여기 나오는 값은 <see cref="ClampCenterPoints"/>를 지난 <b>착지점 그대로</b>다.
+        /// 클램프 전 값을 주면 비행이 끝나는 프레임에 <see cref="PlaceOnScreen"/>이 한 번 더 끌어당겨
+        /// <b>착지 직후 한 프레임 튄다</b>.</para>
+        ///
+        /// <para>★ <b>읽기 전용이다.</b> 모델(세이브)에 쓰는 문은 <see cref="PersistGearCenter"/>
+        /// 하나뿐이고 이 창구는 그 문과 무관하다 — 여기서 아무것도 확정되지 않는다.</para>
+        /// </summary>
+        public Vector2 HomeCenterPoints
+            => ClampCenterPoints(_hasCustomCenter ? _customCenterPoints : DefaultCenterPoints());
 
         /// <summary>드래그 전환 임계값(초) — 테스트가 이 숫자를 직접 기준으로 삼는다.</summary>
         public static float DragLongPressSeconds => LongPressSeconds;
 
         /// <summary>드래그 전환 이동 임계값(OS 포인트).</summary>
         public static float DragMoveThreshold => DragMoveThresholdPoints;
+
+        /// <summary>
+        /// ★★ <b>누름이 「옮기기」인가를 판정하는 단 하나의 식</b> (docs/UX_FLOW.md 41-8 3겹, 2026-09-02).
+        ///
+        /// ============================================================================
+        /// 무엇이 틀려 있었나 — <b>OR</b>였다
+        /// ============================================================================
+        /// 옛 식은 <c>if (held &lt; 0.4 &amp;&amp; moved &lt; 4) return;</c> 였다. 드모르간을 풀면
+        /// <b>"0.4초 이상 <u>또는</u> 4pt 이상"</b>이고, 그래서 실제 로그에 이런 줄이 찍혔다:
+        /// <code>[톱니] 길게 누름 감지(0.02초 / 16.5pt 이동)</code>
+        /// <b>0.02초는 길게 누른 것이 아니다.</b> "길게 누름"이라는 이름 자체가 계약인데 그 계약이
+        /// 깨져 있었고, 결과는 <b>뗀 즉시 세이브에 기록</b>됐다. 스치듯 지나간 클릭 하나가 톱니를
+        /// 영구히 옮겼다 — 되돌리는 문(설정창 [처음 자리로])이 필요해진 <b>발생원</b>이 이 한 줄이다.
+        ///
+        /// <para>★ OR가 만든 사고는 하나가 더 있었다. <b>움직이지 않고 0.4초만 눌러도</b> 드래그로
+        /// 전환되어 <c>_hasCustomCenter</c>가 서고, 뗄 때 <b>지금 그 자리</b>가 "사용자가 고른 위치"로
+        /// 저장됐다. 화면상 아무 일도 안 일어나므로 눈으로는 절대 안 보이는데, 그 순간부터 톱니는
+        /// 화면 오른쪽 끝을 따라가는 것을 멈추고 <b>절대 좌표에 못 박힌다</b>(해상도/모니터가 바뀌면
+        /// 엉뚱한 자리에 남는다). AND가 이것도 함께 닫는다.</para>
+        ///
+        /// ============================================================================
+        /// AND는 짧은 클릭을 죽이지 않는다 — <b>넓힌다</b> (집합 포함 관계)
+        /// ============================================================================
+        /// 드래그로 판정되는 제스처 집합을 D라 하면 <c>D(AND) ⊂ D(OR)</c>이고, 클릭은 정확히 D의
+        /// 여집합이다. 따라서 <b>클릭 집합은 반드시 커진다</b> — 임계를 조여서 "눌렀는데 안 열린다"가
+        /// 생기는 방향이 <b>구조적으로 불가능</b>하다. 거리 임계를 4 -> 6으로 올린 것도 같은 방향이다.
+        /// 이 앱의 유일한 입구가 짧은 클릭이라 이 성질이 중요하다.
+        ///
+        /// <para>새로 생기는 동작은 하나뿐이다: <b>안 움직이고 오래 눌렀다 떼면 이제 부채꼴이 열린다</b>
+        /// (예전엔 같은 자리를 조용히 저장하고 아무것도 안 열렸다). 두 결과를 비교하면 열리는 쪽이
+        /// 사용자의 의도에 가깝다.</para>
+        ///
+        /// <para><b>순수 함수인 이유</b>: 시간과 화면과 입력에 매달린 채로는 "0.02초 + 16.5pt"를
+        /// 재현할 방법이 없다. 이 창구가 있으면 그 사고 표본 하나를 <b>수정 전/후 두 식에</b>
+        /// 그대로 먹여 볼 수 있다(Tests/PlayMode/InfoGearDragTests의 양성 대조).</para>
+        /// </summary>
+        /// <param name="heldSeconds">버튼을 누르고 있은 시간(초).</param>
+        /// <param name="movedPoints">누른 지점에서 커서가 움직인 거리(OS 포인트).</param>
+        public static bool ShouldBeginDrag(float heldSeconds, float movedPoints)
+            => heldSeconds >= LongPressSeconds && movedPoints >= DragMoveThresholdPoints;
 
         /// <summary>테스트 전용 — 클릭 없이 회전 연출만 시작한다(창은 회전이 끝나면 정상적으로 열린다).</summary>
 public void StartSpinForTests() => _spinTimer = 0f;
@@ -408,7 +511,9 @@ public void StartSpinForTests() => _spinTimer = 0f;
             => ProcessPointer(buttonDown, cursorUnityScreen, hasCursor: true);
 
         /// <summary>테스트/디버그 전용 — 기본 위치(우상단)로 되돌린다. 저장은 하지 않는다(호출한 쪽이
-        /// 필요하면 직접 저장한다).</summary>
+        /// 필요하면 직접 저장한다).
+        /// <para>★ 사용자용 문은 <see cref="ReturnToDefaultPosition"/>다 — 이쪽은 모델도 세이브도
+        /// 건드리지 않으므로 프로덕션에서 쓰면 다음 프레임에 저장된 값이 그대로 되살아난다.</para></summary>
         public void ResetPositionForTests()
         {
             _hasCustomCenter = false;
@@ -416,6 +521,104 @@ public void StartSpinForTests() => _spinTimer = 0f;
             _dragging = false;
             _menuPressIndex = -1;
             if (_menu != null) _menu.Collapse(GearMenuCollapseMode.User, "테스트 초기화");
+        }
+
+        // ==================== 위치 되돌리기 / 온보딩 대여 (2026-09-02 P0) ====================
+
+        /// <summary>
+        /// ★ <b>사용자가 옮긴 자리를 버리고 기본 위치(우상단)로 되돌린다</b> —
+        /// 설정창 [일반] &gt; <c>화면 위 UI</c> &gt; <c>톱니 위치 [처음 자리로]</c>(docs/UX_FLOW.md 41-8).
+        ///
+        /// <para><b>왜 모델만 지우면 안 되는가</b>: 이 위젯은 <c>_hasCustomCenter</c>를 자기 안에 따로
+        /// 들고 있고 <see cref="PlaceOnScreen"/>이 매 프레임 그 값을 모델로 되돌려 준다. 모델만 지우면
+        /// <b>같은 프레임에 위젯이 옛 값을 다시 써 넣어</b> 아무 일도 일어나지 않는다. 그래서 되돌리기는
+        /// 반드시 이 두 곳을 함께 지나야 한다.</para>
+        ///
+        /// <para>드래그/누름이 진행 중이면 먼저 취소한다 — 안 그러면 뗄 때 <see cref="CommitDragPosition"/>이
+        /// 방금 되돌린 것을 다시 확정한다.</para>
+        /// </summary>
+        /// <returns>실제로 되돌릴 것이 있었는가(이미 기본 위치면 false — 저장도 하지 않는다).</returns>
+        public bool ReturnToDefaultPosition(string reason)
+        {
+            bool hadCustom = _hasCustomCenter || UiLayoutModel.HasGearCenter;
+
+            _hasCustomCenter = false;
+            _customCenterPoints = Vector2.zero;
+            _pressActive = false;
+            _dragging = false;
+            _menuPressIndex = -1;
+
+            bool cleared = UiLayoutModel.ClearGearCenter();
+            if (!hadCustom && !cleared)
+            {
+                Debug.Log($"[톱니] 위치 되돌리기 요청({reason}) — 이미 기본 위치라 아무것도 하지 않습니다(저장 없음).");
+                return false;
+            }
+
+            // 드래그 확정과 같은 이유로 즉시 저장한다 — 되돌린 직후 종료하면 옛 자리가 되살아난다.
+            bool saved = CharacterSaveStore.Save();
+            Debug.Log($"[톱니] 위치 되돌리기({reason}) — 기본 위치(우상단)로 돌아갑니다. " +
+                $"저장 {(saved ? "완료" : "실패(메모리 값 유지, 다음 주기에 재시도)")}. " +
+                "이제 창 크기가 바뀌어도 매 프레임 '오른쪽 끝에서 일정 거리'로 다시 계산됩니다.");
+            return true;
+        }
+
+        /// <summary>지금 온보딩이 이 톱니의 위치를 빌려 가고 있는가(진단/테스트 창구).</summary>
+        public bool IsOnboardingPositionOwned => _onboardingOwnsPosition;
+
+        /// <summary>
+        /// ★ <b>온보딩이 톱니를 임시로 다른 자리에 세운다</b> — 그동안 그 자리는 <b>절대 저장되지 않는다.</b>
+        ///
+        /// <para><b>이 계약이 왜 P0인가</b>: 톱니의 자리는 <see cref="UiLayoutModel.HasGearCenter"/>가
+        /// true가 되는 순간 <b>"사용자가 직접 고른 값"</b>이 되어 세이브에 앉고 재시작해도 유지된다.
+        /// 온보딩이 한 프레임이라도 톱니를 옮긴 채 <see cref="PlaceOnScreen"/>이 돌면, 앱을 처음 켠
+        /// <b>모든 사람</b>이 "내가 옮긴 적 없는데 옮긴 것으로 기록된" 상태로 시작한다. 그리고 저장에는
+        /// "이건 온보딩이 만든 값"이라는 표시가 남지 않으므로 <b>사후에 걸러낼 방법이 없다</b> —
+        /// 사전 차단이 유일한 수단이라 이 문이 존재한다.</para>
+        ///
+        /// <para>사용자가 이전에 옮겨 둔 자리(<c>_customCenterPoints</c>)는 <b>그대로 보존</b>된다.
+        /// <see cref="EndOnboardingPlacement"/>를 부르면 그 자리로 그대로 돌아간다.</para>
+        ///
+        /// <para>진행 중이던 드래그는 <b>확정하지 않고</b> 취소한다 — 온보딩이 위치를 가져가는 순간
+        /// 그 드래그의 목적지는 이미 화면에 없다.</para>
+        /// </summary>
+        /// <param name="centerPoints">온보딩이 원하는 중심(창 좌상단 원점, OS 포인트). 화면 밖이면
+        /// <see cref="ClampCenterPoints"/>가 다음 프레임에 끌어당긴다.</param>
+        public void BeginOnboardingPlacement(Vector2 centerPoints, string reason)
+        {
+            if (float.IsNaN(centerPoints.x) || float.IsNaN(centerPoints.y))
+            {
+                Debug.LogWarning($"[톱니] 온보딩 위치 대여 거부({reason}) — NaN 좌표입니다. 지금 자리를 유지합니다.");
+                return;
+            }
+
+            _pressActive = false;
+            _dragging = false;
+            _menuPressIndex = -1;
+
+            _onboardingCenterPoints = centerPoints;
+            if (_onboardingOwnsPosition) return;   // 이미 빌려 간 상태면 목적지만 갱신한다(로그 도배 금지).
+
+            _onboardingOwnsPosition = true;
+            Debug.Log($"[톱니] 온보딩이 위치를 빌려 갑니다({reason}) — 중심 ({centerPoints.x:F0}, {centerPoints.y:F0})pt. " +
+                "이 자리는 저장되지 않습니다(사용자가 옮긴 값이 아니므로). " +
+                $"사용자가 옮겨 둔 자리 보존 여부={_hasCustomCenter}.");
+        }
+
+        /// <summary>온보딩이 위치를 돌려준다 — 사용자가 옮겨 둔 자리(없으면 기본 우상단)로 되돌아간다.
+        /// <b>세이브는 건드리지 않는다</b>: 빌려 갔다 돌려준 것은 변화가 아니다.
+        /// <para>★ 부르는 쪽은 둘이다: 온보딩 자신, 그리고 <b>대여 중에 사용자가 진짜 드래그를
+        /// 시작한 순간</b>(<see cref="UpdatePress"/>). 후자는 "가르치던 것을 사용자가 실제로 해냈다"이므로
+        /// 막지 않고 <b>넘긴다</b>(docs/UX_FLOW.md 51-6-1). 넘긴 뒤 저장되는 좌표는 사용자가 끌어다
+        /// 놓은 자리이지 대여 좌표가 아니다.</para></summary>
+        public void EndOnboardingPlacement(string reason)
+        {
+            if (!_onboardingOwnsPosition) return;
+            _onboardingOwnsPosition = false;
+            _onboardingCenterPoints = Vector2.zero;
+            Debug.Log($"[톱니] 온보딩이 위치를 돌려줍니다({reason}) — " +
+                (_hasCustomCenter ? "사용자가 옮겨 둔 자리로" : "기본 위치(우상단)로") +
+                $" 돌아갑니다. UiLayoutModel.HasGearCenter={UiLayoutModel.HasGearCenter}(온보딩은 이 값을 바꾸지 않습니다).");
         }
 
         private void Awake()
@@ -440,7 +643,10 @@ public void StartSpinForTests() => _spinTimer = 0f;
             //   이 배너만 "맞물린 기어 2개"로 남아, 로그를 읽는 사람이 화면과 다른 그림을 상상하게
             //   만들고 있었다(사용자 신고). 형태를 되돌리면 이 문구도 함께 되돌린다.
             Debug.Log("[톱니] 준비 완료 — 화면 우상단에 기어 1개가 상시 표시됩니다(오른쪽 " +
-                $"{MarginRightPoints:F0}pt / 위 {MarginTopPoints:F0}pt, 기어 팁 반지름 {TipRadiusPoints:F1}pt / " +
+                $"{MarginRightPoints:F0}pt / 위 {DefaultCenterPoints().y:F1}pt = OS 예약 띠 " +
+                $"{ReservedTopBarProbe.TopInsetPoints(_agent.PlatformService):F1}pt + 화면 여백 " +
+                $"{PopoverPanel.ScreenMarginPoints:F0}pt + 히트 반지름 " +
+                $"{VisualRadiusPoints + HitPaddingPoints:F2}pt, 기어 팁 반지름 {TipRadiusPoints:F1}pt / " +
                 $"잇수 {ToothCount} / 획 {StrokeWidthPoints:F1}pt + 역상 헤일로 {HaloWidth:F1}pt, " +
                 $"시각 지름 {VisualRadiusPoints * 2f:F1}pt). 클릭하면 기어가 돌고 그 뒤 **아이콘 전용** 부채꼴 버튼 " +
                 $"{GearRadialMenuWidget.ButtonCount}개([집중 모드]/[캐릭터]/[오늘 할일]/[행동], " +
@@ -448,8 +654,8 @@ public void StartSpinForTests() => _spinTimer = 0f;
                 $"{GearRadialMenuWidget.OrbitRadiusPoints:F0}pt / 간격 " +
                 $"{GearRadialMenuWidget.ButtonAngleStepDegrees:F0}도)가 **회전과 동시에** 촤르륵 펼쳐집니다. " +
                 $"전역 폴링 경로={(_buttonService != null ? "사용 가능" : "미지원 — 콜라이더 경로만")}. " +
-                $"★ {LongPressSeconds:F2}초 이상 누르고 있거나 누른 채 {DragMoveThresholdPoints:F0}pt 이상 끌면 " +
-                "드래그 모드로 바뀌어 커서를 따라가고, 떼면 그 자리에 고정되며 저장됩니다(재시작해도 유지). " +
+                $"★ {LongPressSeconds:F2}초 이상 누르고 <b>그 상태로</b> {DragMoveThresholdPoints:F0}pt 이상 끌면 " +
+                "(둘 다 만족해야 합니다) 드래그 모드로 바뀌어 커서를 따라가고, 떼면 그 자리에 고정되며 저장됩니다(재시작해도 유지). " +
                 "★ 클릭 판정은 두 기어를 덮는 작은 사각형 안에서만 일어나며, 그 밖은 100% 클릭관통 그대로입니다.");
         }
 
@@ -467,11 +673,24 @@ public void StartSpinForTests() => _spinTimer = 0f;
             // ★★ 절대 불변 원칙 2(비침해) — 전체화면 게임 감지 시 상시 표면을 전부 거둔다.
             // 여기가 이 계열의 <b>1차 관문</b>이다: 톱니는 이 앱에서 유일하게 24시간 화면에 떠 있는
             // UI이고(StickmanAgent가 SetAlwaysOnTop(true)를 켜므로 전체화면 게임 위에도 뜬다),
-            // 히트테스트가 커서 아래 픽셀 알파를 보므로 남아 있으면 그 영역의 클릭까지 먹는다.
+            // 히트테스트가 <b>커서 아래 Collider2D</b>를 보므로(hitTestType=Raycast — 바로 이 파일
+            // 위쪽 "클릭 판정" 절이 그 전제를 세운다. <b>픽셀 알파를 보는 구조가 아니다</b>)
+            // 남아 있으면 그 콜라이더가 덮는 영역의 클릭까지 먹는다 — 그림만 지우는 것으로는
+            // 부족하고 <b>차단막까지</b> 함께 걷어야 한다는 뜻이다.
             // StickmanAgent.Suspend()가 끄는 것은 Awake에서 캐시한 캐릭터 렌더러뿐인데 _container는
             // 씬 루트라 그 배열에 없다 — 액세서리가 겪었던 "몸이 사라진 자리에 모자만 남는다"와 같은 구조.
-            // 부채꼴/팝오버/정보창은 각자 IsSuspended를 폴링해 스스로 닫지만(소유권 분리), 여기서도
-            // 메뉴를 명시적으로 접어 "톱니는 사라졌는데 버튼만 남는" 한 프레임을 없앤다.
+            // 부채꼴/팝오버/정보창은 각자 폴링해 스스로 닫지만(소유권 분리), 여기서도 메뉴를 명시적으로
+            // 접어 "톱니는 사라졌는데 버튼만 남는" 한 프레임을 없앤다.
+            //
+            // ★★★ 2026-09-02 등급 배선 — <b>톱니만 <c>IsSuspended</c>(등급 2)에 남는다</b>. 다른
+            //   표면들은 <c>ArePanelsSuppressed</c>(등급 1 포함)로 옮겼지만 여기는 <b>일부러</b> 옮기지
+            //   않았다. 근거 두 가지:
+            //     (1) 등급 1의 안전판이 "복구는 톱니 1클릭"인데, 톱니를 등급 1에 넣으면 그 안전판이
+            //         <b>자기 자신을 지운다</b>. 게임이 아닌 전체화면 앱은 하루 종일 켜져 있을 수 있고
+            //         (발표·문서·IDE), 그동안 마우스 진입점이 0이 되면 남는 탈출구는 전역 단축키뿐이다.
+            //     (2) 등급 1은 캐릭터를 남기므로 <b>캐릭터 히트박스가 이미 남아</b> "클릭 방해 0"은
+            //         어차피 성립하지 않는다. 톱니 하나를 더 남기는 것이 여기서 새로 만드는 문제가 아니다.
+            //   이 줄을 ArePanelsSuppressed로 "정리"하지 마라 — 그건 결정을 되돌리는 것이다.
             // ★ 2026-09-01 설정창 [일반] "톱니 아이콘" 토글 — 끄면 전체화면 감지와 <b>같은 경로</b>로
             //   거둔다(그림/차단막/부채꼴/창까지 한 번에). 새 숨김 경로를 만들지 않는 이유: 숨기는
             //   방법이 둘이 되면 "무엇을 되살려야 하는가"의 목록도 둘이 되고, 그 목록은 반드시 갈라진다.
@@ -567,19 +786,41 @@ public void StartSpinForTests() => _spinTimer = 0f;
 
         // ==================== 화면 배치 ====================
 
-        /// <summary>현재 중심(기본 우상단 또는 사용자가 옮긴 위치)으로 매 프레임 옮긴다 —
-        /// <b>캐릭터 위치와 완전히 무관</b>하다.</summary>
+        /// <summary>
+        /// 현재 중심으로 매 프레임 옮긴다 — <b>캐릭터 위치와 완전히 무관</b>하고, 온보딩이 위치를
+        /// 빌려 간 동안에도 캐릭터를 따라가지 않는다(빌려 가는 것은 <b>이 위젯의 위치</b>뿐이다).
+        ///
+        /// <para>★ <b>이 메서드가 위치의 유일한 해결자다.</b> 소스가 셋이고 <b>우선순위가 있다</b>:
+        /// ① 온보딩이 빌려 간 임시 위치 → ② 사용자가 옮긴 위치 → ③ 기본 위치(우상단).
+        /// 셋 중 무엇이 이기든 마지막에 <see cref="ClampCenterPoints"/>를 지난다.
+        /// 해결자를 늘리지 않는 이유: 예전에 "복원 직후 클램프"가 별도 경로였을 때 두 곳이 서로
+        /// 다른 좌표를 쓰는 창이 생겼다.</para>
+        ///
+        /// <para>★ <b>모델(=세이브)에 쓰는 문은 <see cref="PersistGearCenter"/> 하나다.</b> 여기서
+        /// 직접 <c>UiLayoutModel.SetGearCenter</c>를 부르지 않는다 — 온보딩 가드가 두 벌이 되면
+        /// 한쪽만 고쳐지고, 그 실패는 <b>조용히 모든 신규 사용자의 세이브에</b> 나타난다.</para>
+        /// </summary>
         private void PlaceOnScreen()
         {
             float depth = Mathf.Abs(_camera.transform.position.z);
 
             // 화면 경계 클램프는 매 프레임 한다 — 저장된 위치가 화면 밖인 경우(외장 모니터 분리 등)도
-            // 여기서 자동 복구된다. 보정 결과를 모델로 되돌려 주어 다음 저장에 그 값이 남는다.
-            Vector2 centerPoints = ClampCenterPoints(_hasCustomCenter ? _customCenterPoints : DefaultCenterPoints());
-            if (_hasCustomCenter)
+            // 여기서 자동 복구된다. 보정 결과를 <b>그 값을 소유한 쪽</b>에만 되돌려 준다.
+            Vector2 source = _onboardingOwnsPosition
+                ? _onboardingCenterPoints
+                : (_hasCustomCenter ? _customCenterPoints : DefaultCenterPoints());
+            Vector2 centerPoints = ClampCenterPoints(source);
+
+            if (_onboardingOwnsPosition)
+            {
+                // 클램프 결과는 온보딩 값에만 되돌린다. _customCenterPoints를 건드리면 온보딩이 끝난 뒤
+                // 사용자의 원래 자리가 온보딩 자리로 덮여 있다.
+                _onboardingCenterPoints = centerPoints;
+            }
+            else if (_hasCustomCenter)
             {
                 _customCenterPoints = centerPoints;
-                if (!_dragging) UiLayoutModel.SetGearCenter(centerPoints); // 드래그 중에는 뗄 때 한 번만 확정한다.
+                if (!_dragging) PersistGearCenter(centerPoints); // 드래그 중에는 뗄 때 한 번만 확정한다.
             }
 
             // OS 포인트 -> Unity 픽셀(Retina 대응) -> 월드 유닛.
@@ -631,11 +872,49 @@ public void StartSpinForTests() => _spinTimer = 0f;
 
         // ==================== 좌표/경계 (전부 OS 포인트, 창 좌상단 원점) ====================
 
-        /// <summary>사용자가 옮긴 적이 없을 때의 위치 — 예전과 완전히 같은 화면 우상단이다.
-        /// 상수로 굳히지 않고 매번 계산하는 이유: 창 크기(그리고 실측 DPI 배율)가 실행 중에 바뀌므로
-        /// "오른쪽 끝에서 30pt"라는 정의를 그때그때 다시 풀어야 정확하다.</summary>
+        /// <summary>
+        /// 사용자가 옮긴 적이 없을 때의 위치 — 화면 우상단. 상수로 굳히지 않고 매번 계산하는 이유:
+        /// 창 크기(그리고 실측 DPI 배율)가 실행 중에 바뀌므로 "오른쪽 끝에서 30pt"라는 정의를
+        /// 그때그때 다시 풀어야 정확하다.
+        ///
+        /// ============================================================================
+        /// ★ 2026-09-02 — 세로는 상수가 아니라 <b>정책이 낸 값</b>이다 (41-1 ③ / 41-8 1겹)
+        /// ============================================================================
+        /// 옛 <c>MarginTopPoints = 58f</c>를 <see cref="SurfaceSafeAreaPolicy"/> 호출로 대체했다.
+        /// 여기서 <b>산수를 다시 하지 않는다</b> — "제일 위로 가고 싶다(y=0)"고 요청하면 정책이
+        /// <c>예약 띠 + 화면 여백 + 히트 반지름</c>을 돌려준다. 클램프와 기본 위치가 <b>같은 함수</b>를
+        /// 지나므로 한쪽만 고쳐지는 일이 구조적으로 불가능하다(두 벌이 되면 반드시 한쪽만 고쳐진다).
+        ///
+        /// <para><b>배선</b>: 사실 조회는 <c>ReservedTopBarProbe</c>(플랫폼별) / 판정은
+        /// <see cref="SurfaceSafeAreaPolicy"/>(플랫폼 중립). 정책이 <c>Platform/MacOS/</c> 안에 있으면
+        /// Windows가 물리적으로 호출할 수 없다(CLAUDE.md의 <c>FullscreenSuspendPolicy.cs</c> 사고).</para>
+        ///
+        /// <para><b>세 환경에서의 값</b>(히트 반지름 19.82 / 화면 여백 12):
+        /// <code>
+        ///   macOS 메뉴바 33pt      -> 33 + 12 + 19.82 = 64.82   (옛 58에서 6.8pt 내려간다)
+        ///   Windows 상단 작업표시줄 40pt -> 40 + 12 + 19.82 = 71.82   (옛 58은 이 띠를 덮었다)
+        ///   예약 띠 없음(자동 숨김 / 하단 도킹) -> 0 + 12 + 19.82 = 31.82
+        /// </code>
+        /// 마지막 값이 옛 58보다 <b>올라가는</b> 것은 결함이 아니다 — 가로 여백이 중심 기준 30pt인데
+        /// 세로만 58이었던 것은 순전히 <b>메뉴바를 피하려던 짐작</b>이었다. 예약 띠가 없으면
+        /// 세로 31.82 ≈ 가로 30으로 <b>구석에서 대칭</b>이 되고, 띠가 있으면 그 두께만큼만 내려간다.</para>
+        /// </summary>
         private Vector2 DefaultCenterPoints()
-            => new Vector2(ScreenSizePoints().x - MarginRightPoints, MarginTopPoints);
+        {
+            Vector2 screen = ScreenSizePoints();
+            float r = VisualRadiusPoints + HitPaddingPoints;
+            float topInset = ReservedTopBarProbe.TopInsetPoints(_agent != null ? _agent.PlatformService : null);
+
+            // "화면 맨 위(y=0)로 가고 싶다"고 요청하면 정책이 갈 수 있는 가장 위를 돌려준다.
+            float y = SurfaceSafeAreaPolicy.ClampTopDownCenterY(
+                0f, r * 2f, screen.y, topInset, PopoverPanel.ScreenMarginPoints);
+
+            // 화면 높이를 아직 못 읽는 병적인 순간(screen.y <= 0)에는 정책이 요청값을 그대로 돌려준다
+            // — 그때 0을 쓰면 톱니가 화면 위 끝에 붙으므로 최소한 히트 반지름만큼은 내려 둔다.
+            if (screen.y <= 0f) y = topInset + PopoverPanel.ScreenMarginPoints + r;
+
+            return new Vector2(screen.x - MarginRightPoints, y);
+        }
 
         private Vector2 ScreenSizePoints() => new Vector2(
             ScreenCoordinateConverter.UnityScreenToCanvas(Screen.width, _config),
@@ -949,8 +1228,10 @@ public void StartSpinForTests() => _spinTimer = 0f;
             _pressStartCursor = cursorUnityScreen;
 
             // 잡은 지점과 중심의 차이를 기억한다 — 드래그가 시작될 때 기어가 커서로 순간이동하지 않게.
-            Vector2 center = _hasCustomCenter ? _customCenterPoints : DefaultCenterPoints();
-            _grabOffsetPoints = center - UnityScreenToLocalPoints(cursorUnityScreen);
+            // ★ <b>지금 화면에 보이는 중심</b>(= IconCenterPoints)에서 잰다. 온보딩이 위치를 빌려 간
+            //   동안에는 톱니가 대여 좌표에 있으므로, 여기서 기본 위치를 쓰면 사용자가 <b>눈에 보이는
+            //   톱니</b>를 잡았는데 손에는 다른 곳이 딸려 오는 어긋남이 생긴다.
+            _grabOffsetPoints = IconCenterPoints - UnityScreenToLocalPoints(cursorUnityScreen);
         }
 
         private void UpdatePress(Vector2 cursorUnityScreen, bool hasCursor)
@@ -962,12 +1243,28 @@ public void StartSpinForTests() => _spinTimer = 0f;
                 float heldSeconds = Time.unscaledTime - _pressStartTime;
                 float movedPoints = ScreenCoordinateConverter.UnityScreenToCanvas(
                     (cursorUnityScreen - _pressStartCursor).magnitude, _config);
-                if (heldSeconds < LongPressSeconds && movedPoints < DragMoveThresholdPoints) return;
+
+                // ★ 판정식은 <see cref="ShouldBeginDrag"/> 하나다(41-8 3겹). 여기에 조건을 <b>다시
+                //   쓰지 않는다</b> — 두 벌이 되면 테스트가 재는 식과 실제로 도는 식이 갈라지고,
+                //   그 갈라짐은 "테스트는 초록인데 화면에서는 안 된다"로만 나타난다.
+                if (!ShouldBeginDrag(heldSeconds, movedPoints)) return;
+
+                // ★ 온보딩이 위치를 빌려 간 중이라면 <b>막지 않고 넘긴다</b>(docs/UX_FLOW.md 51-6-1).
+                //   ⑦단계는 "길게 누르면 옮길 수 있어요"를 <b>가르치는</b> 단계다 — 여기서 막으면
+                //   배운 대로 해 본 사람에게 그 순간에만 안 먹는다(행동-텍스트 싱크의 정확한 반례).
+                //
+                //   ★ P0 계약은 그대로다: 저장되는 값은 아래에서 <b>커서로부터</b> 만들어지는
+                //   좌표이지 대여 좌표가 아니다. _hasCustomCenter는 여전히 <b>사용자의 실제 드래그로만</b>
+                //   선다. 대여 좌표가 세이브로 가는 문(PersistGearCenter)은 이 시점에 이미 닫혀 있었고,
+                //   지금 여는 것은 사용자가 자기 손으로 만든 좌표에 대해서다.
+                if (_onboardingOwnsPosition)
+                    EndOnboardingPlacement("사용자가 톱니를 끌기 시작(소유권 이양)");
 
                 _dragging = true;
                 // 옮기는 동안 버튼들이 뒤에 남아 끌려다니면 안 된다. 접고 나서 옮긴다.
                 CollapseMenu(GearMenuCollapseMode.Drag, "톱니를 옮기기 시작");
-                Debug.Log($"[톱니] 길게 누름 감지({heldSeconds:F2}초 / {movedPoints:F1}pt 이동) — " +
+                Debug.Log($"[톱니] 길게 누르고 끌기 감지({heldSeconds:F2}초 ≥ {LongPressSeconds:F2} " +
+                    $"그리고 {movedPoints:F1}pt ≥ {DragMoveThresholdPoints:F0}) — " +
                     "드래그 모드로 전환합니다. 이제 커서를 따라가고, 떼면 그 자리에 고정됩니다(부채꼴 메뉴는 펼쳐지지 않습니다).");
             }
 
@@ -1024,12 +1321,28 @@ public void StartSpinForTests() => _spinTimer = 0f;
         {
             Vector2 center = ClampCenterPoints(_customCenterPoints);
             _customCenterPoints = center;
-            UiLayoutModel.SetGearCenter(center);
+            if (!PersistGearCenter(center)) return;
 
             // 즉시 저장한다 — 주기 저장(기본 60초)만 믿으면 옮긴 직후 종료했을 때 위치가 날아간다.
             bool saved = CharacterSaveStore.Save();
             Debug.Log($"[톱니] 위치 확정 — 중심 ({center.x:F0}, {center.y:F0})pt(창 좌상단 원점). " +
-                $"저장 {(saved ? "완료" : "실패(메모리 값 유지, 다음 주기에 재시도)")} — 재시작해도 이 자리에 뜹니다.");
+                $"저장 {(saved ? "완료" : "실패(메모리 값 유지, 다음 주기에 재시도)")} — 재시작해도 이 자리에 뜹니다. " +
+                "되돌리려면 설정창 [일반] > 화면 위 UI > 톱니 위치 [처음 자리로].");
+        }
+
+        /// <summary>
+        /// ★ <b>톱니 위치가 세이브로 내려가는 유일한 문.</b> 이 파일에서 <c>UiLayoutModel.SetGearCenter</c>를
+        /// 부르는 곳은 여기 한 줄뿐이고, 그래서 온보딩 가드도 한 줄뿐이다.
+        ///
+        /// <para>여기 오는 값은 이미 <see cref="ClampCenterPoints"/>를 지난 값이어야 한다 —
+        /// 모델은 화면 크기를 모르므로 클램프를 대신해 주지 못한다(Core/UiLayoutModel.cs 클래스 문서).</para>
+        /// </summary>
+        /// <returns>실제로 모델에 확정했는가. 온보딩이 위치를 소유한 동안에는 false다.</returns>
+        private bool PersistGearCenter(Vector2 centerPoints)
+        {
+            if (_onboardingOwnsPosition) return false;
+            UiLayoutModel.SetGearCenter(centerPoints);
+            return true;
         }
 
         /// <summary>짧은 클릭의 동작 — 부채꼴 메뉴 토글이다. 펼쳐져 있으면 접고, 아니면 회전 연출 뒤

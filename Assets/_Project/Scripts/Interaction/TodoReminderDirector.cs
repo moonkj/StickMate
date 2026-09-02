@@ -41,7 +41,11 @@ namespace StickMate.Interaction
         {
             using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Directors);   // [스톨구간] 계측
             if (_player == null || _config == null) return;
-            if (_player.IsSuspended) return;
+            // ★★★ 2026-09-02 — <c>ArePanelsSuppressed</c>(등급 1 포함). 리마인더는 사용자가 부른 적 없는
+            //    <b>밀어내기(push)</b>다. 게임이 아닌 전체화면 앱(발표·화상회의) 앞에서 캐릭터가 스스로
+            //    종이를 꺼내 말을 거는 것은 정확히 그때 가장 방해된다. 이 값은 IsSuspended를 항상
+            //    포함하므로 예전에 막히던 경우는 <b>전부 그대로</b> 막힌다(넓히기만 한 변경).
+            if (_player.ArePanelsSuppressed) return;
 
             var current = _player.Blackboard.Machine.CurrentStateId;
             if (current != StickmanStateId.Idle && current != StickmanStateId.Walk) { _checkTimer = 0f; return; }

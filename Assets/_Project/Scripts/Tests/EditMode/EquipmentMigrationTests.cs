@@ -3,6 +3,7 @@ using NUnit.Framework;
 using UnityEditor;
 using StickMate.Core;
 using StickMate.Dialogue;
+using UnityEngine;
 
 namespace StickMate.Tests.EditMode
 {
@@ -439,6 +440,95 @@ namespace StickMate.Tests.EditMode
                 "v7 파일에 없는 말풍선 글자 크기가 '사용자가 고른 값'으로 복원됐습니다.");
             Assert.IsFalse(AppSettingsModel.HasDialogueBubbleEnabled,
                 "v7 파일에 없는 말풍선 on/off가 '사용자가 고른 값'으로 복원됐습니다.");
+        }
+
+        /// <summary>
+        /// ★ <b>v10 신설 필드(표시 모니터 선택)의 하위 호환</b> — 2026-09-02.
+        /// CLAUDE.md: "저장 스키마 <c>CurrentVersion</c>을 올리는 라운드는 <c>vN-1</c> 구버전 파일을
+        /// 읽었을 때 신규 필드가 안전한 기본값으로 채워지는지 검증하는 하위 호환 테스트 1건을 반드시 동반한다."
+        ///
+        /// <para>v10은 <c>preferredMonitorSaved</c>(bool) + <c>preferredMonitorKey</c>(string) 두 벌을
+        /// 더한다. 형태가 v6 <c>characterScaleSaved</c> / v7 <c>inkColorSaved</c>와 같아서 하위 호환이
+        /// <b>저절로</b> 성립한다 — v9 파일에 그 키가 없으면 JsonUtility가 false/null로 채우고,
+        /// 그 false는 <b>"아직 고른 적 없다 = 기본값인 가장 왼쪽 모니터를 쓴다"</b>는 정확한 사실이다.
+        /// (기본이 <c>true</c>인 <c>autoHideOnFullscreen</c>류와 달리 뜻이 뒤집히지 않으므로
+        ///  버전 분기가 필요 없다 — 그 사실을 여기서 <b>실행으로</b> 확인한다.)</para>
+        ///
+        /// <para>여기서 잠그는 것도 둘이다: (1) 신규 필드가 안전한 기본값이 되는가,
+        /// (2) 같은 파일의 <b>다른 v9 값들이 그대로 살아남는가</b>. (2)가 없으면 (1)은
+        /// "파일을 아예 안 읽어서" 통과한다.</para>
+        /// </summary>
+        [Test]
+        public void v9_파일을_읽어도_표시_모니터가_고른_적_없음으로_떨어진다()
+        {
+            string json =
+                "{\n" +
+                "    \"version\": 9,\n" +
+                "    \"level\": 13,\n" +
+                "    \"characterName\": \"아홉동료\",\n" +
+                "    \"autoHideOnFullscreen\": true,\n" +
+                "    \"gearIconVisible\": true,\n" +
+                "    \"dialogueFontSizeSaved\": true,\n" +
+                "    \"dialogueFontSize\": 20,\n" +
+                "    \"wornHead\": \"\"\n" +
+                "}";
+            File.WriteAllText(CharacterSaveStore.FilePath, json);
+            CharacterSaveStore.Load();
+
+            Assert.IsTrue(CharacterSaveStore.LoadedFromFile, "v9 파일을 통째로 버렸습니다.");
+
+            Assert.IsFalse(AppSettingsModel.HasPreferredOverlayMonitor,
+                "v9 파일에 없는 표시 모니터 선택이 '사용자가 고른 값'으로 복원됐습니다 — " +
+                "그러면 존재하지 않는 키로 매칭을 시도해 매번 폴백 로그만 남습니다.");
+            Assert.IsEmpty(AppSettingsModel.PreferredOverlayMonitorKey,
+                "고른 적이 없는데 키가 비어 있지 않습니다.");
+
+            // ★ "안전한 기본값으로 채워진다"를 <b>플래그가 아니라 실제 판정 결과</b>로 확인한다.
+            //   플래그만 보면 "false이긴 한데 그래서 어느 화면에 뜨는가"가 검증되지 않는다.
+            //   사용자 확정 기본값은 <b>가장 왼쪽</b>이다(2026-09-02 "기본은 왼쪽").
+            var monitors = new System.Collections.Generic.List<StickMate.Platform.OsMonitorFact>
+            {
+                // 일부러 목록 순서를 오른쪽 먼저로 둔다 — OS 열거는 정렬을 보장하지 않으므로,
+                // 정책이 "0번"이 아니라 x 최솟값을 고르는지가 여기서 갈린다(음성 대조).
+                new StickMate.Platform.OsMonitorFact(new Rect(1920f, 0f, 2560f, 1440f), new Rect(1920f, 0f, 2560f, 1440f), true, "R"),
+                new StickMate.Platform.OsMonitorFact(new Rect(0f, 0f, 1920f, 1080f), new Rect(0f, 0f, 1920f, 1080f), false, "L"),
+            };
+            var choice = StickMate.Platform.OverlayMonitorChoicePolicy.Resolve(
+                monitors, AppSettingsModel.PreferredOverlayMonitorKey);
+            Assert.AreEqual(StickMate.Platform.OverlayMonitorChoiceSource.StartSlotDefault, choice.Source,
+                "고른 적 없는 저장 파일인데 기본값 경로로 가지 않았습니다.");
+            Assert.AreEqual(1, choice.Index,
+                "기본값이 <b>축의 시작(가장 왼쪽)</b>이 아닙니다. 목록 1번이 x=0으로 가장 왼쪽인데 " +
+                "0번(x=1920, 주 모니터 플래그까지 붙어 있다)을 골랐다면 정책이 여전히 " +
+                "'인덱스 0' 또는 '주 모니터'를 기본값으로 보고 있는 것입니다.");
+
+            // ★ 위 단언이 "파일을 아예 안 읽어서" 통과한 것이 아님을 보인다(음성 대조).
+            Assert.AreEqual(13, CharacterProgressionModel.Level, "v9 파일의 레벨이 사라졌습니다.");
+            Assert.IsTrue(AppSettingsModel.HasDialogueFontSize,
+                "v9 파일의 말풍선 글자 크기 선택이 함께 지워졌습니다 — 필요 이상으로 버렸습니다.");
+            Assert.AreEqual(20, AppSettingsModel.DialogueFontSize);
+            Assert.IsTrue(AppSettingsModel.AutoHideOnFullscreen);
+        }
+
+        /// <summary>
+        /// ★ v10 <b>왕복</b> — 고른 값이 저장되고 다시 읽힌다. 위 테스트가 "없을 때"를 잠그므로
+        /// 이것이 "있을 때"를 잠근다(둘 중 하나만 있으면 반대쪽이 조용히 죽는다).
+        /// </summary>
+        [Test]
+        public void v10_표시_모니터_선택이_저장되고_다시_읽힌다()
+        {
+            string key = StickMate.Platform.OverlayMonitorChoicePolicy.SlotSaveName(
+                StickMate.Platform.OverlayMonitorSlot.End);
+            AppSettingsModel.SetPreferredOverlayMonitor(key);
+            CharacterSaveStore.Save();
+
+            AppSettingsModel.ResetForTesting();
+            Assert.IsFalse(AppSettingsModel.HasPreferredOverlayMonitor, "초기화가 되지 않았습니다(테스트 전제).");
+
+            CharacterSaveStore.Load();
+            Assert.IsTrue(AppSettingsModel.HasPreferredOverlayMonitor,
+                "저장했는데 다시 읽히지 않았습니다 — 사용자가 고른 모니터가 재시작마다 사라집니다.");
+            Assert.AreEqual(key, AppSettingsModel.PreferredOverlayMonitorKey);
         }
 
         /// <summary>

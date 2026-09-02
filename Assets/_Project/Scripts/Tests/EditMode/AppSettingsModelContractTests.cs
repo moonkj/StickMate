@@ -140,7 +140,8 @@ namespace StickMate.Tests.EditMode
                 hasFontSize: false, fontSize: 0,
                 hasVisibleLength: false, visibleLengthName: null,
                 hasChatterPercent: false, chatterPercent: 0,
-                hasBubbleEnabled: false, bubbleEnabled: false);
+                hasBubbleEnabled: false, bubbleEnabled: false,
+                hasPreferredMonitor: false, preferredMonitorKey: null);
 
             Assert.IsTrue(AppSettingsModel.AutoHideOnFullscreen);
             Assert.IsTrue(AppSettingsModel.GearIconVisible);
@@ -166,7 +167,8 @@ namespace StickMate.Tests.EditMode
                 hasFontSize: false, fontSize: 0,
                 hasVisibleLength: true, visibleLengthName: "Eternal",
                 hasChatterPercent: false, chatterPercent: 0,
-                hasBubbleEnabled: false, bubbleEnabled: true);
+                hasBubbleEnabled: false, bubbleEnabled: true,
+                hasPreferredMonitor: false, preferredMonitorKey: null);
 
             Assert.IsFalse(AppSettingsModel.HasDialogueVisibleLength,
                 "모르는 이름이 '사용자가 고른 값'으로 복원됐습니다 — 그 값은 화면에서 아무 뜻도 없습니다.");
@@ -178,7 +180,8 @@ namespace StickMate.Tests.EditMode
                 hasFontSize: false, fontSize: 0,
                 hasVisibleLength: true, visibleLengthName: DialogueVisibleLength.Long.ToString(),
                 hasChatterPercent: false, chatterPercent: 0,
-                hasBubbleEnabled: false, bubbleEnabled: true);
+                hasBubbleEnabled: false, bubbleEnabled: true,
+                hasPreferredMonitor: false, preferredMonitorKey: null);
             Assert.IsTrue(AppSettingsModel.HasDialogueVisibleLength);
             Assert.AreEqual(DialogueVisibleLength.Long, AppSettingsModel.DialogueVisibleLength);
         }

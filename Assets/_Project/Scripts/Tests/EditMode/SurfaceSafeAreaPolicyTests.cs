@@ -130,8 +130,63 @@ namespace StickMate.Tests.EditMode
 
         // ==================== ④ 톱니(y가 아래로 자라는 계) 어댑터 ====================
 
-        /// <summary>톱니 히트 사각형 반지름 — 시각 반지름 + 히트 패딩(프로덕션과 같은 유도, 실측 19.8pt).</summary>
-        private const float GearHitRadius = 19.8f;
+        /// <summary>
+        /// 톱니 히트 사각형 반지름(pt) — <b>프로덕션에서 그대로 유도한다</b>.
+        ///
+        /// <para>★ 2026-09-02 <c>test-engineer</c> 교정. 여기 있던 <c>const float GearHitRadius = 19.8f</c>는
+        /// <b>프로덕션 상수를 숫자로 베낀 형태</b>였고(CLAUDE.md 금지 항목) 실제 값 <b>19.82</b>와
+        /// <b>0.02pt</b> 어긋나 있었다. 어긋난 양이 이 파일의 허용오차(0.01pt)보다 커서
+        /// <b>언제든 거짓 빨강/거짓 초록으로 뒤집힐 수 있는 자리</b>였다 — 지금 초록인 이유는 단지
+        /// 양변에 같은 값이 흘러 상쇄됐기 때문이고, 한쪽만 프로덕션을 참조하도록 바뀌는 순간 깨진다.</para>
+        ///
+        /// <para>유도는 <c>InfoGearIconWidget.ClampCenterPoints</c>(private)와 <b>같은 식</b>이다:
+        /// <c>VisualRadiusPoints + HitPaddingPoints</c>, 여기서
+        /// <c>VisualRadiusPoints = TipRadiusPoints + HaloOverhangPoints</c>이고
+        /// <c>HaloOverhangPoints = StrokeWidth × (HaloWidthFactor − 1) ÷ 2 = (HaloWidth − StrokeWidth) ÷ 2</c>다.
+        /// 앞의 세 항은 위젯이 <b>테스트용으로 열어 둔 공개 창구</b>로 읽고
+        /// (<see cref="InfoGearIconWidget.TipRadius"/> / <see cref="InfoGearIconWidget.HaloWidth"/> /
+        /// <see cref="InfoGearIconWidget.StrokeWidth"/> — 그 창구의 주석이 "테스트가 숫자를 베끼지 않고
+        /// 이 값들로 직접 재도록 열어 둔다"고 명시한다), 창구가 없는
+        /// <c>HitPaddingPoints</c>만 <see cref="SourceConstantReader"/>로 소스에서 읽는다.
+        /// 이름이 바뀌면 조용히 0이 되는 것이 아니라 <b>실패</b>한다(그 클래스의 계약).</para>
+        /// </summary>
+        private static float GearHitRadius =>
+            InfoGearIconWidget.TipRadius
+            + (InfoGearIconWidget.HaloWidth - InfoGearIconWidget.StrokeWidth) * 0.5f
+            + SourceConstantReader.ReadFloat(InfoGearWidgetSourcePath, "HitPaddingPoints");
+
+        private static string InfoGearWidgetSourcePath => System.IO.Path.Combine(
+            Application.dataPath, "_Project", "Scripts", "Interaction", "InfoGearIconWidget.cs");
+
+        /// <summary>★ 교정(calibration) — 유도식이 <b>알려진 실측값</b>을 되살리는지 먼저 확인한다.
+        /// 이 저장소의 규칙: 계산기를 만들면 알려진 값으로 먼저 교정하고, 교정이 깨지면 그 뒤 숫자를
+        /// 전부 폐기한다. 아래 검사들은 전부 이 반지름을 쓰므로 여기가 첫 관문이다.
+        /// <para>핀 19.82pt = 13.8(팁) + 1.02(헤일로 삐져나옴) + 5(히트 패딩), 2026-09-02 실측.
+        /// 옛 사본 19.8과 <b>0.02pt</b> 다르다는 것도 함께 못박는다 — 그 차이가 이 파일의 허용오차보다
+        /// 크다는 사실이 이 교정의 존재 이유다.</para></summary>
+        [Test]
+        public void 교정_톱니_히트_반지름은_프로덕션_유도와_정확히_같다()
+        {
+            const float MeasuredPin = 19.82f;      // 실측 핀(프로덕션 상수가 아니라 바깥의 관측값이다)
+            const float OldCopiedLiteral = 19.8f;  // 2026-09-02 이전 이 파일이 들고 있던 사본
+            const float FileTolerance = 0.01f;     // 이 파일의 다른 검사들이 쓰는 허용오차
+
+            float tip = InfoGearIconWidget.TipRadius;
+            float haloOverhang = (InfoGearIconWidget.HaloWidth - InfoGearIconWidget.StrokeWidth) * 0.5f;
+            float hitPadding = SourceConstantReader.ReadFloat(InfoGearWidgetSourcePath, "HitPaddingPoints");
+            float derived = GearHitRadius;
+            Debug.Log($"[안전영역] 톱니 히트 반지름 유도 = {derived:F4}pt " +
+                $"(팁 {tip:F2} + 헤일로삐짐 {haloOverhang:F2} + 패딩 {hitPadding:F2})");
+
+            Assert.AreEqual(MeasuredPin, derived, 0.001f,
+                $"유도값이 실측 핀과 다릅니다({derived:F4} vs {MeasuredPin}) — 톱니 형태가 바뀌었다면 " +
+                "핀도 함께 갱신하십시오. 갱신 전까지 아래 검사들의 숫자는 전부 무효입니다.");
+
+            // 네거티브 컨트롤 — 옛 사본이 실제로 허용오차를 넘게 틀렸다는 것을 수치로 남긴다.
+            Assert.Greater(Mathf.Abs(derived - OldCopiedLiteral), FileTolerance,
+                $"옛 사본 {OldCopiedLiteral}과 유도값의 차이가 이 파일 허용오차({FileTolerance}) 이하입니다 — " +
+                "그렇다면 이 교정은 아무 것도 잡지 않습니다(이 검사 자체가 무의미해집니다).");
+        }
 
         [Test]
         public void 톱니는_메뉴바_안으로_드래그되지_않는다()

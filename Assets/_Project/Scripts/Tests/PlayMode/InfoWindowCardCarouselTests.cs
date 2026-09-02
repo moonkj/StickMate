@@ -159,6 +159,34 @@ namespace StickMate.Tests.PlayMode
                 "지킬 것도 없습니다(카테고리 아이템 수가 줄었는지 확인하세요).");
         }
 
+        /// <summary>
+        /// ★ 드래그를 <b>실제로 걸 수 있는</b> 지점 — 줄이 마스크에 잘리고 <b>남은</b> 사각형의 중심.
+        ///
+        /// <para><b>왜 <c>row.center</c>가 아닌가</b>(2026-09-02 실측): 배치모드 PlayMode 화면은
+        /// 640×480이라 <c>ClampPanelToScreen</c>이 창을 608pt로 줄이는데 <b>내용은 함께 접히지 않는다</b> —
+        /// 카드줄은 폭 1042 기준 자리(패널 좌단 266..1020)에 그대로 있고 <c>Body</c> 마스크가 608에서
+        /// 자른다. 즉 <b>줄의 한가운데가 잘린 쪽</b>이고, 그 자리는 이 창의 규칙("보이지 않는 것은
+        /// 눌리지 않는다")대로 <b>정당하게</b> 잡히지 않는다. 날 중심을 잡으면 제품이 멀쩡해도
+        /// 화면 크기 때문에 빨개진다 — 실제로 폭이 880 -> 1042가 된 라운드에 이 세 테스트가 그렇게
+        /// 빨개졌다(줄 중심이 578 -> 659로 옮겨가 마스크 밖 624를 넘었다).</para>
+        ///
+        /// <para>대신 <b>잡을 수 있는 자리가 존재하는지</b>는 여기서 단언한다 — 그것이 0이 되면
+        /// 그때는 진짜로 밀 방법이 없는 것이고, 이 테스트가 조용히 무의미해지는 것을 막는다.</para>
+        /// </summary>
+        private Vector2 GrabPointOnRow(int section)
+        {
+            Rect raw = _window.CarouselRowScreenRect(section);
+            Rect visible = _window.CarouselRowVisibleScreenRect(section);
+            Debug.Log($"{LogPrefix} 화면 {Screen.width}×{Screen.height}, 창 {_window.PanelSizePoints.x:F0}×" +
+                $"{_window.PanelSizePoints.y:F0}pt, {section}번 줄 날 x[{raw.xMin:F0}..{raw.xMax:F0}] / " +
+                $"보이는 x[{visible.xMin:F0}..{visible.xMax:F0}] — 잡는 지점 x={visible.center.x:F0}.");
+
+            Assert.Greater(visible.width, 1f,
+                $"{LogPrefix} {section}번 카드줄이 화면에 한 조각도 보이지 않습니다(날 폭 {raw.width:F0}pt) — " +
+                "잡을 자리가 없으면 사용자도 밀 수 없습니다. 창이 화면보다 넓어 통째로 잘렸는지 확인하세요.");
+            return visible.center;
+        }
+
         /// <summary>카드가 <b>캐러셀 줄</b> 안에 들어와 있는 가로 비율(0 = 통째로 밖).</summary>
         private static float InsideRowFraction(Rect card, Rect row)
         {
@@ -187,7 +215,7 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 밀기도 전에 마지막 카드가 줄 안에 다 들어와 있습니다 — 지킬 것이 없습니다.");
 
             float max = _window.CarouselMaxScrollPoints(0);
-            Vector2 grab = row.center;
+            Vector2 grab = GrabPointOnRow(0);
             _window.FeedPointerForTests(false, grab);
             _window.FeedPointerForTests(true, grab);
             _window.FeedPointerForTests(true, grab + new Vector2(-(max + 500f), 0f));   // 끝까지
@@ -242,7 +270,7 @@ namespace StickMate.Tests.PlayMode
 
             // ★ 한 제스처는 <b>한 프레임 안에서</b> 끝내야 한다. 프레임을 넘기면 Update()의 실제 전역
             //    폴링이 "버튼 뗌"을 보고해 드래그가 그 자리에서 종료된다(제품에서는 그것이 옳은 동작이다).
-            Vector2 grab = row.center;
+            Vector2 grab = GrabPointOnRow(0);
             _window.FeedPointerForTests(false, grab);          // 첫 표본(창을 여는 클릭과의 혼동 방지)
             _window.FeedPointerForTests(true, grab);           // 누름
             _window.FeedPointerForTests(true, grab + new Vector2(-DragPoints, 0f));
@@ -273,8 +301,7 @@ namespace StickMate.Tests.PlayMode
         {
             yield return OpenWindow();
 
-            Rect row = _window.CarouselRowScreenRect(0);
-            Vector2 grab = row.center;
+            Vector2 grab = GrabPointOnRow(0);
             _window.FeedPointerForTests(false, grab);
             _window.FeedPointerForTests(true, grab);
             _window.FeedPointerForTests(true, grab + new Vector2(-DragPoints, 0f));

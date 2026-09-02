@@ -1,0 +1,102 @@
+교정 통과(16건)
+
+==============================================================================
+E. '휘도 순서를 지켰다'는 어느 기준틀에서 참인가
+==============================================================================
+  카탈로그 값 기준(카드)            색상대 ±15°     출하 -> W=0.00 역전  1쌍
+  카탈로그 값 기준(카드)            전체           출하 -> W=0.00 역전 17쌍
+  몸 위 기준(WornColor 후)      색상대 ±15°     출하 -> W=0.00 역전 10쌍
+  몸 위 기준(WornColor 후)      전체           출하 -> W=0.00 역전 49쌍
+  -> 재맵이 지킨 것은 **카탈로그 값의 순서**다. 몸 위 순서는 이미 이번 라운드가 바꿨다.
+
+==============================================================================
+F. 색 사용처 — 최근접 쌍이 한 화면/한 물건에서 만나는가
+==============================================================================
+  TintEyes   #20878C  (옛 #4FC0C6)  슬롯 ['눈']
+        equip_eyes_browline, equip_eyes_patch, equip_eyes_round
+  Accent     #3378CC  (옛 #5DA1F5)  슬롯 ['5', '6']
+        look_fx_bubble, look_pet_cursor
+  NeckDeep   #428C24  (옛 #6FA957)  슬롯 ['목']
+        equip_neck_bandana, equip_neck_striped
+  TintNeck   #4E8C2B  (옛 #8CC06E)  슬롯 ['5', '목', '어깨']
+        equip_neck_bandana, equip_neck_bowtie, equip_shoulders_backpack, look_fx_bubble, look_fx_dust, look_fx_footprint, look_fx_leaf, look_fx_sparkle
+  DarkLens   #5075B5  (옛 #7C8AA3)  슬롯 ['눈']
+        equip_eyes_browline, equip_eyes_sunglasses
+  Felt       #5577AE  (옛 #8C96A6)  슬롯 ['눈', '머리']
+        equip_eyes_patch, equip_head_beret, equip_head_fedora
+  Silver     #6183B4  (옛 #D3DAE4)  슬롯 ['눈', '목']
+        equip_eyes_goggles, equip_eyes_monocle, equip_eyes_round, equip_eyes_sunglasses, equip_neck_pendant
+  Paper      #6787B9  (옛 #EEF2F8)  슬롯 ['6', '어깨']
+        equip_shoulders_fairy_wings, equip_shoulders_wings, look_pet_ball, look_pet_balloon, look_pet_plane
+  무명         #936C3F  (옛 #8C7A66)  슬롯 ['4']
+        look_hair_bald
+  TintBack   #955CCC  (옛 #B08FD0)  슬롯 ['6', '어깨']
+        equip_shoulders_fairy_wings, equip_shoulders_wings, look_pet_plane
+  Ivory      #96814F  (옛 #E8E2D4)  슬롯 ['6', '머리', '목', '어깨']
+        equip_head_cap, equip_head_fur, equip_neck_bowtie, equip_neck_striped, equip_shoulders_cape, equip_shoulders_long_cape, look_pet_snail
+  GoldLight  #988540  (옛 #FFF0B8)  슬롯 ['머리']
+        equip_head_crown
+  Gold       #9B7922  (옛 #E8C15A)  슬롯 ['5', '눈', '머리', '목']
+        equip_eyes_monocle, equip_head_crown, equip_neck_bell, equip_neck_pendant, look_fx_leaf, look_fx_sparkle
+  무명         #A0622A  (옛 #7A5636)  슬롯 ['4']
+        look_hair_bowl, look_hair_neat
+  무명         #A07830  (옛 #F0C57A)  슬롯 ['4']
+        look_hair_bowl, look_hair_neat
+  HairBrown  #A16A28  (옛 #B8894F)  슬롯 ['4']
+        look_hair_cowlick
+  Canvas     #A26B2F  (옛 #C0925F)  슬롯 ['머리', '어깨']
+        equip_head_straw, equip_shoulders_backpack
+  Wool       #A66930  (옛 #C08F60)  슬롯 ['6', '머리', '어깨']
+        equip_head_fur, equip_shoulders_poncho, look_pet_snail
+  무명         #A86E1F  (옛 #E8A54A)  슬롯 ['4']
+        look_hair_cowlick
+  무명         #AF651C  (옛 #D98A3C)  슬롯 ['4']
+        look_hair_curly, look_hair_ponytail
+  Leather    #BA5928  (옛 #C9744A)  슬롯 ['목', '어깨']
+        equip_neck_bell, equip_neck_scarf, equip_shoulders_poncho
+  무명         #BD501F  (옛 #A6532E)  슬롯 ['4']
+        look_hair_curly, look_hair_ponytail
+  TintHead   #BE5B23  (옛 #E8834A)  슬롯 ['4', '눈', '머리', '목']
+        equip_eyes_goggles, equip_head_beret, equip_head_cap, equip_head_fedora, equip_head_straw, equip_neck_scarf, look_hair_bald
+  무명         #CC3C3C  (옛 #CC3333)  슬롯 ['어깨']
+        equip_shoulders_cape, equip_shoulders_long_cape
+  Toy        #CC423A  (옛 #E0574F)  슬롯 ['6']
+        look_pet_ball, look_pet_balloon
+
+==============================================================================
+G. 변별 하한 7.8 미달 쌍 전량
+==============================================================================
+
+  [W=0.00 (적용됨)] 17쌍
+    dE  1.84  색상각차  1.16°  Silver     #6183B4 ↔ Paper      #6787B9 
+    dE  2.73  색상각차  0.51°  무명         #A0622A ↔ Wool       #A66930 
+    dE  2.88  색상각차  1.42°  HairBrown  #A16A28 ↔ Canvas     #A26B2F 
+    dE  2.98  색상각차  2.32°  Canvas     #A26B2F ↔ Wool       #A66930 
+    dE  3.31  색상각차  3.29°  무명         #CC3C3C ↔ Toy        #CC423A 
+    dE  3.61  색상각차  1.54°  Leather    #BA5928 ↔ TintHead   #BE5B23 ★같은 아이템에서 만난다
+    dE  4.52  색상각차  3.74°  HairBrown  #A16A28 ↔ Wool       #A66930 
+    dE  4.70  색상각차  2.83°  무명         #A0622A ↔ Canvas     #A26B2F 
+    dE  4.93  색상각차  4.34°  NeckDeep   #428C24 ↔ TintNeck   #4E8C2B ★같은 아이템에서 만난다
+    dE  5.42  색상각차  0.94°  DarkLens   #5075B5 ↔ Felt       #5577AE 
+    dE  5.53  색상각차  3.07°  무명         #BD501F ↔ TintHead   #BE5B23 
+    dE  5.63  색상각차  4.25°  무명         #A0622A ↔ HairBrown  #A16A28 
+    dE  6.03  색상각차  1.66°  Felt       #5577AE ↔ Silver     #6183B4 
+    dE  6.14  색상각차  1.87°  HairBrown  #A16A28 ↔ 무명         #A86E1F ★같은 아이템에서 만난다
+    dE  6.32  색상각차  1.53°  Leather    #BA5928 ↔ 무명         #BD501F 
+    dE  6.52  색상각차  4.57°  Gold       #9B7922 ↔ 무명         #A07830 
+    dE  7.08  색상각차  0.49°  Felt       #5577AE ↔ Paper      #6787B9 
+
+  [W=0.10 (후보)] 7쌍
+    dE  5.14  색상각차  3.48°  무명         #CC3C3C ↔ Toy        #C6443C 
+    dE  5.42  색상각차  0.94°  DarkLens   #5075B5 ↔ Felt       #5577AE 
+    dE  5.63  색상각차  4.25°  무명         #A0622A ↔ HairBrown  #A16A28 
+    dE  6.14  색상각차  1.87°  HairBrown  #A16A28 ↔ 무명         #A86E1F ★같은 아이템에서 만난다
+    dE  6.32  색상각차  1.53°  Leather    #BA5928 ↔ 무명         #BD501F 
+    dE  6.52  색상각차  4.57°  Gold       #9B7922 ↔ 무명         #A07830 
+    dE  7.08  색상각차  0.49°  Felt       #5577AE ↔ Paper      #6787B9 
+
+==============================================================================
+H. PALETTE_SPEC §1-4 산문 수치 대조 (잉크 표식 2색 포함/제외)
+==============================================================================
+  [27색(잉크 표식 포함)] n=27  WornColor가 바꾸는 색 18 · dE 중앙 9.3 최악 42.3 · R=204 9 · 대역밖 21
+  [25색(제외 — 몸에서 잴 대상이 없다)] n=25  WornColor가 바꾸는 색 16 · dE 중앙 9.0 최악 42.3 · R=204 9 · 대역밖 20

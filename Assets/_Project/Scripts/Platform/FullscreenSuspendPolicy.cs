@@ -16,6 +16,12 @@ namespace StickMate.Platform
     /// 키노트, 브라우저를 전체화면으로 쓰는 동안에도 캐릭터가 사라졌다(사용자 신고 "타 앱 전체화면
     /// 클릭 시 캐릭터가 사라짐"의 한 축). 원칙 문구대로 **게임일 때만** 숨기도록 좁힌다.
     ///
+    /// ★ 2026-09-02 범위 정정 — 위 문장의 "숨긴다"는 이제 <b>캐릭터에 한정</b>된다. 게임이 아닌
+    /// 전체화면 앱에서도 <b>창·패널·팝오버·부채꼴과 그 클릭 차단막</b>은 물러난다
+    /// (<see cref="ForeignFullscreenTier.PanelsOnly"/>). 이 문단만 읽고 "게임이 아니면 아무것도 안 한다"로
+    /// 요약하면 <b>거짓</b>이다 — 실제로 그 요약 때문에 홍보 문구 한 줄이 사실과 어긋난 채 준비될
+    /// 뻔했다(marketing 라운드, 같은 날).
+    ///
     /// 판별 근거는 앱 번들 Info.plist의 <c>LSApplicationCategoryType</c>이다. 이건 App Store 카테고리를
     /// 앱이 스스로 선언해두는 메타데이터일 뿐이라, 읽어도 유저 자산에 어떤 영향도 없다(원칙 3 안전).
     ///
@@ -164,6 +170,121 @@ namespace StickMate.Platform
             double topInset = winY - dispY;
             if (topInset < -epsilon) return false;                       // 화면 위로 삐져나온 창.
             return topInset <= dispHeight * MenuBarStripFraction + epsilon;
+        }
+    }
+
+    /// <summary>
+    /// <b>남의 전체화면 앱이 떴을 때 우리가 물러나는 정도</b>. 값이 클수록 더 많이 걷는다.
+    ///
+    /// ============================================================================
+    /// 왜 등급이 필요한가 (2026-09-02, 페르소나 `재현` 실기 재현 — 출시 Blocker)
+    /// ============================================================================
+    /// 카테고리를 선언하지 않은 앱(Zoom/Teams/Keynote 부류)을 네이티브 전체화면으로 올리면
+    /// <b>자동 숨김이 0%</b>였다. 정보창이 그 위에 그대로 그려지고, <b>패널 안 클릭을 전체화면 앱이
+    /// 받지 못한다</b>(우리 차단막이 먹는다). 실측: 정보창 877x853pt / 화면 1512x982pt =
+    /// <b>면적 50.38% · 세로 86.86%</b>.
+    ///
+    /// <para><b>결정적 대조</b>: 같은 창에 게임 카테고리만 붙이니 숨김 5회/해제 5회로 <b>전부 정상
+    /// 동작</b>했다. 즉 <b>숨김 기계는 끝까지 배선돼 있고, 없는 것은 트리거 하나뿐</b>이다.</para>
+    ///
+    /// ============================================================================
+    /// 두 개의 반증된 처방 — 다시 시도하지 말 것
+    /// ============================================================================
+    /// <list type="bullet">
+    ///   <item><b>게임 카테고리 목록을 넓힌다</b>(<c>productivity</c> 등 추가) — <b>무효</b>.
+    ///     재현이 잡은 창은 카테고리를 <b>선언하지 않았다</b>. 20종을 추가해도 미선언은 영원히 안 걸린다.</item>
+    ///   <item><b>게임 조건을 없애고 기하만 쓴다</b> — <b>금지</b>. 2026-08-31 사용자 신고
+    ///     <i>"엑셀같은 프로그램 전체화면에서 엑셀 클릭하면 캐릭터가 없어져버림"</i>의 <b>완전한 회귀</b>다.
+    ///     <see cref="FullscreenGameCategory"/>와 <see cref="WindowsGameExecutablePolicy"/>의 클래스
+    ///     문서가 둘 다 이 처방을 명시적으로 반증해 뒀다.</item>
+    /// </list>
+    ///
+    /// ============================================================================
+    /// 채택 — <b>판정을 없애거나 넓히지 않고, 결과를 두 등급으로 가른다</b>
+    /// ============================================================================
+    /// 기하와 게임 여부는 <b>이미 따로 계산되고 있었다</b>(양 플랫폼 <c>EvaluateFullscreen</c>).
+    /// 그 두 사실을 하나의 <c>bool</c>로 뭉개던 것을 풀어 등급으로 만든다. 새 네이티브 0줄, 새 권한 0개.
+    /// </summary>
+    public enum ForeignFullscreenTier
+    {
+        /// <summary>남의 전체화면 앱 없음. 아무것도 걷지 않는다.</summary>
+        None = 0,
+
+        /// <summary>
+        /// <b>등급 1 — 패널 회수.</b> 기하만 일치(게임 아님).
+        /// 화면에 <b>고정된 표면</b>(창·패널·팝오버·부채꼴·포스트잇·화면 오버레이)과 그 <b>클릭 차단막</b>을
+        /// 걷는다. <b>캐릭터는 그대로 남는다</b> — 그것이 2026-08-31 신고를 회귀시키지 않는 유일한 선이다.
+        /// </summary>
+        PanelsOnly = 1,
+
+        /// <summary>
+        /// <b>등급 2 — 전면 숨김.</b> 기하 일치 <b>그리고</b> 게임.
+        /// 지금까지의 동작 그대로(캐릭터 렌더러까지 끈다). <b>이 등급의 조건은 한 글자도 바뀌지 않았다.</b>
+        /// </summary>
+        Full = 2
+    }
+
+    /// <summary>
+    /// <see cref="ForeignFullscreenTier"/>의 <b>순수 합성 규칙</b>. P/Invoke도 UnityEngine 의존도 없다 —
+    /// 그래야 EditMode가 네이티브 없이 4분기를 전부 실행해 검증한다
+    /// (<see cref="FullscreenGeometry"/>/<see cref="OverlayBoundsFitPolicy"/>와 같은 설계).
+    ///
+    /// <para><b>플랫폼 중립 위치에 있는 이유</b>: 이 파일의 <see cref="FullscreenGameCategory"/> 문서가
+    /// 적어 둔 실제 사고 — 정책이 <c>Platform/MacOS/</c> 안에 있어서 <b>Windows가 물리적으로 부를 수
+    /// 없었다</b> — 를 반복하지 않기 위해서다. 플랫폼 코드는 "기하가 맞는가"와 "게임인가"라는
+    /// <b>두 사실만</b> 올려 보내고, 그 뜻은 전부 여기서 정해진다.</para>
+    /// </summary>
+    public static class ForeignFullscreenTierPolicy
+    {
+        /// <summary>
+        /// 두 사실을 등급으로 합성한다.
+        ///
+        /// <para><b>진리표</b>(EditMode가 4분기를 전부 실행한다):</para>
+        /// <list type="table">
+        ///   <item><term>덮음=false, 게임=false</term><description><see cref="ForeignFullscreenTier.None"/></description></item>
+        ///   <item><term>덮음=false, 게임=true </term><description><see cref="ForeignFullscreenTier.None"/> —
+        ///     <b>게임이어도 전체화면이 아니면 아무 일도 없다.</b> 창 모드 게임을 켰다고 우리가 물러날 이유가 없다</description></item>
+        ///   <item><term>덮음=true,  게임=false</term><description><see cref="ForeignFullscreenTier.PanelsOnly"/></description></item>
+        ///   <item><term>덮음=true,  게임=true </term><description><see cref="ForeignFullscreenTier.Full"/></description></item>
+        /// </list>
+        /// </summary>
+        public static ForeignFullscreenTier Resolve(bool coversDisplay, bool isGame)
+        {
+            if (!coversDisplay) return ForeignFullscreenTier.None;
+            return isGame ? ForeignFullscreenTier.Full : ForeignFullscreenTier.PanelsOnly;
+        }
+
+        /// <summary>
+        /// 이 등급에서 <b>캐릭터 본체</b>를 숨기는가. <see cref="ForeignFullscreenTier.Full"/>에서만 참이다.
+        ///
+        /// <para>★ <b>이 함수가 이번 변경의 안전판이다.</b> 기존 <c>IsFullscreenAppActive()</c>의 의미가
+        /// 정확히 이것이며, 값이 바뀌는 입력 조합은 <b>하나도 없다</b> — 그래서 2026-08-31 신고
+        /// ("엑셀 전체화면에서 캐릭터가 사라진다")가 회귀할 경로가 구조적으로 없다.</para>
+        /// </summary>
+        public static bool SuspendsCharacter(ForeignFullscreenTier tier)
+            => tier == ForeignFullscreenTier.Full;
+
+        /// <summary>
+        /// 이 등급에서 <b>화면 고정 표면과 클릭 차단막</b>을 걷는가.
+        /// <see cref="ForeignFullscreenTier.PanelsOnly"/>와 <see cref="ForeignFullscreenTier.Full"/> 모두 참이다 —
+        /// 등급 2는 등급 1을 <b>포함</b>한다(등급이 올라갈수록 더 걷는다는 불변식).
+        /// </summary>
+        public static bool RetreatsPanels(ForeignFullscreenTier tier)
+            => tier != ForeignFullscreenTier.None;
+
+        /// <summary>로그용 한 줄 설명(전이 순간에만 조립 — 폴링 경로에서 문자열을 만들지 않는다).</summary>
+        public static string Describe(ForeignFullscreenTier tier)
+        {
+            switch (tier)
+            {
+                case ForeignFullscreenTier.Full:
+                    return "등급 2(전면 숨김) — 전체화면 **게임**이라 캐릭터까지 숨깁니다";
+                case ForeignFullscreenTier.PanelsOnly:
+                    return "등급 1(패널 회수) — 전체화면 앱이지만 게임이 아니라 창·패널·클릭 차단막만 " +
+                        "걷고 **캐릭터는 남깁니다**(2026-08-31 신고 회귀 방지)";
+                default:
+                    return "등급 0 — 남의 전체화면 앱 없음";
+            }
         }
     }
 

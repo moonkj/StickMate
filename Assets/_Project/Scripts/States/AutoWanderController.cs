@@ -463,7 +463,10 @@ namespace StickMate.States
         /// 옆에 다른 발판이 더 있다면 false(그 발판만의 끝일 뿐 화면의 끝은 아님).
         ///
         /// ★ 2026-08-29 수정 — "화면 물리적 끝에서 제자리 걷기"(러닝머신) 대응.
-        /// isTrueScreenEdge인 쪽에서는 **원시 발판 경계가 아니라 캐릭터가 실제로 갈 수 있는 한계**
+        /// (★ 2026-09-02: 아래 "isTrueScreenEdge인 쪽에서만"이라는 게이트가 멀티모니터에서 거짓이 되어
+        ///  같은 증상이 되살아났다 — 지금은 <see cref="ResolveEffectiveEdgeBoundary"/>가 게이트 없이
+        ///  언제나 클램프 한계를 반영한다. 그 함수 문서에 실측 로그와 근거가 있다.)
+        /// **원시 발판 경계가 아니라 캐릭터가 실제로 갈 수 있는 한계**
         /// (StickmanBlackboard.TryGetWalkableScreenBoundsWorld — 화면 하드 클램프가 붙잡아 세우는 바로
         /// 그 X)까지의 거리로 잔여 길이를 잰다. 예전에는 원시 경계(=화면 끝)에서 쟀기 때문에, 클램프가
         /// 화면 끝에서 약 58pt 안쪽에 캐릭터를 세워두는 동안 이 판정에 필요한 거리(0.3유닛 ≈ 24pt)가
@@ -491,16 +494,14 @@ namespace StickMate.States
 
             if (direction > 0)
             {
-                float boundaryX = info.CurrentFootholdRightWorldX;
-                isTrueScreenEdge = Mathf.Abs(boundaryX - info.ScreenRightWorldX) <= ScreenEdgeEpsilon;
-                if (isTrueScreenEdge && hasWalkable) boundaryX = Mathf.Min(boundaryX, walkableRightX);
+                float boundaryX = ResolveEffectiveEdgeBoundary(info.CurrentFootholdRightWorldX,
+                    info.ScreenRightWorldX, hasWalkable, walkableRightX, 1, out isTrueScreenEdge);
                 remainingToEdge = boundaryX - characterX;
             }
             else
             {
-                float boundaryX = info.CurrentFootholdLeftWorldX;
-                isTrueScreenEdge = Mathf.Abs(boundaryX - info.ScreenLeftWorldX) <= ScreenEdgeEpsilon;
-                if (isTrueScreenEdge && hasWalkable) boundaryX = Mathf.Max(boundaryX, walkableLeftX);
+                float boundaryX = ResolveEffectiveEdgeBoundary(info.CurrentFootholdLeftWorldX,
+                    info.ScreenLeftWorldX, hasWalkable, walkableLeftX, -1, out isTrueScreenEdge);
                 remainingToEdge = characterX - boundaryX;
             }
 
@@ -513,6 +514,56 @@ namespace StickMate.States
             LastEdgeDirection = direction >= 0 ? 1 : -1;
 
             return near;
+        }
+
+        /// <summary>
+        /// ★★ 2026-09-02 — 사용자 신고 <i>"지금 멀티모니터 쓰는데 창에서 다른 모니터로 못넘어가는데도
+        /// 끝 벽쪽에서 계속 걷고 있음. 제자리걸음인거지"</i>의 본체. <b>순수 함수</b>로 뽑아 EditMode가
+        /// 씬 없이 직접 잰다(같은 판정을 테스트가 다시 적으면 어긋난다).
+        ///
+        /// ============================================================================
+        /// 무엇이 고장났나 — 2026-08-29 러닝머신 수정에 <b>게이트가 하나 잘못 걸려 있었다</b>
+        /// ============================================================================
+        /// <para>그 라운드는 "화면 하드 클램프가 붙잡아 세우는 자리"를 경계로 삼아 러닝머신을 없앴다.
+        /// 그런데 그 보정을 <c>isTrueScreenEdge</c>(= 지금 딛은 발판의 경계가 <b>모든 발판을 통틀어</b>
+        /// 가장 바깥인가)일 때만 적용했다. 그 조건은 발판이 화면 하나에 다 들어 있을 때만 참이다.</para>
+        ///
+        /// <para><b>멀티모니터에서는 거짓이 된다</b>: 두 번째 모니터의 창도 발판으로 열거되므로
+        /// <c>GroundInfo.ScreenRightWorldX</c>(전체 발판 통합 경계)가 우리 오버레이 화면 바깥까지
+        /// 뻗는다. 그러면 화면을 꽉 채운 창 위를 걷고 있어도 그 창의 오른쪽 끝은 "통합 경계"가 아니라서
+        /// 보정이 통째로 꺼지고, 클램프가 화면 끝 35.2pt 안쪽에서 몸을 붙잡는 동안 배회 AI는
+        /// <b>아직 발판 끝까지 35.2pt 남았다</b>고 계산한다. 돌아서는 임계(≈24pt)에 영영 못 미쳐
+        /// 걷기 애니메이션만 도는 제자리걸음이 된다(사용자 로그: 같은 자리에서 <c>상태=Walk</c> 5연속,
+        /// 로그 throttle 2초 기준으로 최소 10초).</para>
+        ///
+        /// <para><b>처방</b>: 게이트를 없앤다. 클램프 한계는 통합 경계와 무관한 <b>물리적 사실</b>이므로
+        /// 언제나 적용해도 된다 — 발판 경계가 클램프보다 안쪽이면 아무 것도 바뀌지 않는다(그 경우
+        /// <c>clampBinds</c>가 false다). 그리고 클램프가 발판 끝보다 <b>앞에서</b> 막는다면 그 지점이
+        /// 곧 이 화면의 물리적 끝이므로 <c>isTrueScreenEdge</c>도 참으로 돌려준다 — 그래야 그 자리에서
+        /// 뛰어내리기/매달리기/되올라가기 추첨과 경계 점프가 그대로 금지되고(넘어갈 수 없는 벽이다),
+        /// 남는 갈래는 <b>정지 후 반대 방향</b> 하나가 된다.</para>
+        ///
+        /// <para><b>떨림이 생기지 않는 이유</b>: 이 함수는 방향을 뒤집지 않는다. 돌아서기는 기존
+        /// <c>BeginEdgePause</c> 경로(0.3~0.8초 정지 후 1회 반전)가 그대로 담당하므로 매 프레임
+        /// 좌우가 뒤집히는 경로 자체가 없다.</para>
+        /// </summary>
+        /// <param name="footholdBoundaryX">지금 딛고 있는 발판 하나의 그 방향 경계(월드 X).</param>
+        /// <param name="unionBoundaryX">모든 발판 통합 경계(월드 X) — <c>GroundInfo.Screen*WorldX</c>.</param>
+        /// <param name="hasWalkable">화면 하드 클램프 한계를 조회할 수 있었는가.</param>
+        /// <param name="walkableBoundaryX">그 방향으로 캐릭터가 실제로 갈 수 있는 한계(월드 X).</param>
+        /// <param name="direction">+1 오른쪽 / -1 왼쪽.</param>
+        /// <param name="isTrueScreenEdge">이 경계가 "더 갈 곳이 없는 화면의 끝"인가.</param>
+        /// <returns>경계 판정에 실제로 써야 할 월드 X.</returns>
+        internal static float ResolveEffectiveEdgeBoundary(float footholdBoundaryX, float unionBoundaryX,
+            bool hasWalkable, float walkableBoundaryX, int direction, out bool isTrueScreenEdge)
+        {
+            bool unionEdge = Mathf.Abs(footholdBoundaryX - unionBoundaryX) <= ScreenEdgeEpsilon;
+            bool clampBinds = hasWalkable && (direction > 0
+                ? walkableBoundaryX < footholdBoundaryX
+                : walkableBoundaryX > footholdBoundaryX);
+
+            isTrueScreenEdge = unionEdge || clampBinds;
+            return clampBinds ? walkableBoundaryX : footholdBoundaryX;
         }
 
         /// <summary>

@@ -33,6 +33,21 @@ namespace StickMate.Tests.EditMode
     ///       = W9가 항상 참인 단언이 아니라 진짜 결함을 잡고 있다는 증거.
     ///
     /// ============================================================================
+    /// ★★ 2026-09-02 — <c>WS_EX_TRANSPARENT</c> 무조건 배제 승격(리더 승인)
+    /// ============================================================================
+    /// 승격 전 <see cref="WindowsFootholdFilter.ResolveWindowAlpha"/>는 클릭 관통 비트를
+    /// <b>네 번째 갈래(레이어드 + 조회 실패) 안에서만</b> 봤다. 그래서 <b>클릭 관통인데도 발판이
+    /// 되는 조합이 셋</b> 남아 있었고, 이 파일에는 그 셋을 겨냥한 케이스가 <b>0건</b>이었다
+    /// (W5·W9는 <c>LAYERED | TRANSPARENT</c> + 조회 실패 조합만 쓴다). 네 갈래 표를 그대로 채운다:
+    ///  W10  <c>TRANSPARENT</c> 단독(레이어드 아님) — 승격 전 1.0이었다.
+    ///  W11  <c>LAYERED|TRANSPARENT</c> + <c>LWA_ALPHA</c>=255 — 승격 전 1.0이었다.
+    ///  W12  <c>LAYERED|TRANSPARENT</c> + 컬러키만 — 승격 전 1.0이었다.
+    ///  W13  ★양성 대조★ 위 셋이 <b>승격 전 규칙에서는 실제로 발판이 되고 남의 발판까지 지웠다</b>는
+    ///       것을 독립 재현으로 먼저 보이고, 그 다음 승격 후 그러지 못하는 것을 보인다.
+    ///       (독립 재현은 프로덕션 함수를 부르지 않는다 — 부르면 대조가 스스로 무너진다.)
+    ///  W14  ★과잉 제거 방지★ 클릭 관통이 <b>아닌</b> 창의 네 갈래는 한 칸도 바뀌지 않았다.
+    ///
+    /// ============================================================================
     /// 결함 2 (Minor, 이월) — DWMWA_EXTENDED_FRAME_BOUNDS 미적용
     /// ============================================================================
     /// <c>GetWindowRect</c>는 Windows 10/11에서 DWM의 <b>보이지 않는 리사이즈 테두리</b>(좌/우/하 약
@@ -91,6 +106,19 @@ namespace StickMate.Tests.EditMode
                 "요즘 애니메이션/둥근모서리 용도로도 널리 쓰인다).");
         }
 
+        /// <summary>
+        /// ★ 2026-09-02 — <b>이 테스트를 지우지 마라.</b> 같은 날 <c>WS_EX_TRANSPARENT</c>가 무조건
+        /// 탈락으로 승격되면서 <see cref="W12_클릭관통이면_컬러키만_쓰는_레이어드_창도_빠진다"/>가
+        /// "컬러키 창인데 0"을 단언하게 됐다. 두 테스트를 나란히 보면 <b>모순처럼 보이지만 모순이
+        /// 아니다</b> — 갈리는 축은 컬러키가 아니라 <b>클릭 관통 비트</b>다:
+        /// <list type="bullet">
+        ///  <item>클릭 관통 <b>없는</b> 컬러키 창 = 사용자가 실제로 클릭해 쓰는 창 → 불투명(이 테스트).</item>
+        ///  <item>클릭 관통 <b>있는</b> 컬러키 창 = 만질 수 없는 오버레이 → 0(W12).</item>
+        /// </list>
+        /// 이 테스트가 잠그는 원래 함정(<c>LWA_ALPHA</c> 비트가 없을 때 <c>pbAlpha</c>를 그대로 읽어
+        /// 컬러키 창을 통째로 지우는 것)은 승격과 <b>무관하게 그대로 살아 있다</b>. "일관성"을 이유로
+        /// 이 단언을 W12에 맞춰 바꾸면 그 함정이 조용히 되살아난다.
+        /// </summary>
         [Test]
         public void W4_컬러키만_쓰는_레이어드_창은_전체_알파가_불투명이다()
         {
@@ -103,6 +131,13 @@ namespace StickMate.Tests.EditMode
                 "그걸 그대로 알파로 읽으면(0) 컬러키 창이 통째로 사라진다 — 흔한 함정.");
         }
 
+        /// <summary>
+        /// ★ 2026-09-02 주석 — 이 조합의 <b>답</b>은 승격 전후가 같지만 <b>답이 나오는 자리</b>가 바뀌었다.
+        /// 승격 전에는 네 번째 갈래(조회 실패 + 클릭 관통)가 0을 냈고, 지금은 그보다 앞선 무조건
+        /// 게이트가 낸다. 그래서 이 테스트는 더 이상 "네 번째 갈래가 살아 있는가"를 재지 못한다 —
+        /// 그 역할은 <see cref="W14_클릭관통이_아니면_네_갈래_판정이_한_칸도_바뀌지_않았다"/>가 맡는다.
+        /// 여기 남기는 이유는 이 조합이 <b>이월 Major가 지목한 실제 시나리오</b>이기 때문이다.
+        /// </summary>
         [Test]
         public void W5_픽셀별_알파에_클릭관통까지_켜진_창은_순수_HUD로_보고_뺀다()
         {
@@ -216,6 +251,195 @@ namespace StickMate.Tests.EditMode
             {
                 Assert.AreNotEqual(1, solver.GetSegmentWindowIndex(s),
                     $"{LogPrefix} 네거티브 배치에서는 실제 창이 조각을 하나도 내지 못해야 한다.");
+            }
+        }
+
+        // ============================================================================
+        // ★★ 2026-09-02 — WS_EX_TRANSPARENT 무조건 배제 승격 (리더 승인)
+        //
+        // 승격 전 네 갈래 표에서 클릭 관통 비트는 **4번 갈래 안에서만** 읽혔다. 아래 세 조합은
+        // 클릭 관통인데도 알파 1.0을 받아 (a) 발판이 되고 (b) 남의 발판을 지울 자격까지 가졌다.
+        // 이 파일에는 그 셋을 겨냥한 케이스가 승격 전까지 **0건**이었다.
+        // ============================================================================
+
+        /// <summary>LWA_COLORKEY — dwFlags에 이 비트만 있으면 pbAlpha는 의미 없는 값이다.</summary>
+        private const uint LwaColorKeyOnly = 0x00000001;
+
+        /// <summary>
+        /// ★ <b>승격 전(2026-09-01까지) 규칙의 독립 재현.</b> 프로덕션 함수를 부르지 않는다 —
+        /// 부르면 승격이 기대값에도 그대로 반영되어 <b>대조가 스스로 무너진다</b>
+        /// (TEAM.md: "기대값을 프로덕션 함수로 만들지 마라. 그 함수가 틀어지면 기대값도 함께 틀어져
+        /// 아무것도 못 잰다"). 상수는 프로덕션 것을 참조한다 — 베끼면 안 되는 것은 <b>로직</b>이지
+        /// Win32 ABI 상수가 아니고, 오히려 상수를 베끼면 값이 바뀐 날 이 재현만 낡는다.
+        /// </summary>
+        private static float LegacyResolveWindowAlpha(int exStyle, bool queryOk, uint flags, byte alphaByte)
+        {
+            if ((exStyle & WindowsFootholdFilter.WsExLayered) == 0) return 1f;
+            if (queryOk) return (flags & WindowsFootholdFilter.LwaAlpha) != 0 ? alphaByte / 255f : 1f;
+            return (exStyle & WindowsFootholdFilter.WsExTransparent) != 0 ? 0f : 1f;
+        }
+
+        /// <summary>승격이 답을 <b>바꾸는</b> 정확히 그 세 조합. 이름이 실패 메시지에 그대로 실린다.</summary>
+        private static readonly (string Name, int ExStyle, bool QueryOk, uint Flags, byte Alpha)[]
+            ClickThroughCombos =
+        {
+            ("TRANSPARENT 단독(레이어드 아님)",
+                WindowsFootholdFilter.WsExTransparent,
+                false, 0u, (byte)0),
+            ("LAYERED|TRANSPARENT + LWA_ALPHA=255(완전 불투명)",
+                WindowsFootholdFilter.WsExLayered | WindowsFootholdFilter.WsExTransparent,
+                true, WindowsFootholdFilter.LwaAlpha, (byte)255),
+            ("LAYERED|TRANSPARENT + 컬러키만",
+                WindowsFootholdFilter.WsExLayered | WindowsFootholdFilter.WsExTransparent,
+                true, LwaColorKeyOnly, (byte)0),
+        };
+
+        /// <summary>
+        /// 승격이 답을 <b>바꾸면 안 되는</b> 조합 전수(네 갈래 표에서 클릭 관통 비트가 꺼진 칸 전부).
+        /// <para>기대 알파는 Win32가 정의한 의미(pbAlpha 0~255가 알파 0~1)에서 직접 온다. 이것은
+        /// 프로덕션 상수가 아니라 OS ABI라 여기 적어도 "기준과 대상이 같이 움직이는" 문제가 없다.</para>
+        /// </summary>
+        private static readonly (string Name, int ExStyle, bool QueryOk, uint Flags, byte Alpha, float Expected)[]
+            NonClickThroughCombos =
+        {
+            ("1번 갈래 — 레이어드 아님",
+                0, false, 0u, (byte)0, 1f),
+            ("2번 갈래 — LWA_ALPHA=255",
+                WindowsFootholdFilter.WsExLayered, true, WindowsFootholdFilter.LwaAlpha, (byte)255, 1f),
+            ("2번 갈래 — LWA_ALPHA=5(거의 투명)",
+                WindowsFootholdFilter.WsExLayered, true, WindowsFootholdFilter.LwaAlpha, (byte)5, 5f / 255f),
+            ("3번 갈래 — 컬러키만",
+                WindowsFootholdFilter.WsExLayered, true, LwaColorKeyOnly, (byte)0, 1f),
+            ("4번 갈래 — 픽셀별 알파(조회 실패), 클릭관통 아님",
+                WindowsFootholdFilter.WsExLayered, false, 0u, (byte)0, 1f),
+        };
+
+        [Test]
+        public void W10_클릭관통_단독창은_레이어드가_아니어도_후보에서_빠진다()
+        {
+            // WS_EX_TRANSPARENT의 값 자체를 못 박는다 — 이 상수가 틀리면 아래 모든 단언이 엉뚱한
+            // 비트를 검사하면서 초록으로 통과한다(값 출처: winuser.h).
+            Assert.AreEqual(0x00000020, WindowsFootholdFilter.WsExTransparent,
+                $"{LogPrefix} WS_EX_TRANSPARENT는 0x20이다. 값이 틀리면 이 필터는 아무 창도 못 잡는다.");
+
+            float alpha = WindowsFootholdFilter.ResolveWindowAlpha(
+                WindowsFootholdFilter.WsExTransparent,
+                layeredAttributesQuerySucceeded: false, layeredFlags: 0u, layeredAlpha: 0);
+
+            Assert.AreEqual(0f, alpha, 0.0001f,
+                $"{LogPrefix} WS_EX_LAYERED가 없어도 WS_EX_TRANSPARENT 단독이면 클릭이 그대로 " +
+                "통과한다 = 사용자가 이 창을 만질 수 없다. 만질 수 없는 창은 사용자가 쓰는 창이 " +
+                "아니므로 발판도 아니고 남의 발판을 지울 자격도 없다.");
+
+            Assert.AreEqual(WindowsFootholdRejection.TransparentAlpha,
+                WindowsFootholdFilter.ClassifyGeometry(TransparentFullscreenHud, alpha, false, NoVirtualScreen),
+                $"{LogPrefix} 알파 판정이 0이어도 기하 분류가 그것을 탈락으로 옮기지 못하면 " +
+                "열거 경로에서는 아무 일도 일어나지 않는다.");
+        }
+
+        [Test]
+        public void W11_클릭관통이면_LWA_ALPHA가_255여도_빠진다()
+        {
+            float alpha = WindowsFootholdFilter.ResolveWindowAlpha(
+                WindowsFootholdFilter.WsExLayered | WindowsFootholdFilter.WsExTransparent,
+                layeredAttributesQuerySucceeded: true,
+                layeredFlags: WindowsFootholdFilter.LwaAlpha, layeredAlpha: 255);
+
+            Assert.AreEqual(0f, alpha, 0.0001f,
+                $"{LogPrefix} 승격 게이트가 2번 갈래보다 **앞**에 있어야 한다. 뒤로 내려가면 " +
+                "이 조합이 알파 1.0을 받아 다시 발판이 된다 — 순서가 곧 판정이다.");
+        }
+
+        [Test]
+        public void W12_클릭관통이면_컬러키만_쓰는_레이어드_창도_빠진다()
+        {
+            float alpha = WindowsFootholdFilter.ResolveWindowAlpha(
+                WindowsFootholdFilter.WsExLayered | WindowsFootholdFilter.WsExTransparent,
+                layeredAttributesQuerySucceeded: true, layeredFlags: LwaColorKeyOnly, layeredAlpha: 0);
+
+            Assert.AreEqual(0f, alpha, 0.0001f,
+                $"{LogPrefix} W4와 모순처럼 보이지만 갈리는 축은 컬러키가 아니라 클릭 관통이다 " +
+                "(W4 문서 참고). 클릭 관통 컬러키 창은 화면 특정 색만 비치는 오버레이이고 " +
+                "사용자가 만질 수 없다.");
+        }
+
+        [Test]
+        public void W13_양성대조_승격_전_규칙에서는_그_세_조합이_전부_발판이_됐다()
+        {
+            // ---- (가) 교정 먼저. 독립 재현이 '승격을 뺀 나머지'에서 프로덕션과 같은 답을 내는가? ----
+            //      이 교정이 깨지면 아래 (나)(다)는 "그냥 서로 다른 함수 둘"을 비교한 것일 뿐이라
+            //      아무것도 증명하지 못한다(TEAM.md 공통 처방: 알려진 값으로 먼저 교정한다).
+            foreach ((string name, int ex, bool ok, uint flags, byte a, float _) in NonClickThroughCombos)
+            {
+                Assert.AreEqual(
+                    WindowsFootholdFilter.ResolveWindowAlpha(ex, ok, flags, a),
+                    LegacyResolveWindowAlpha(ex, ok, flags, a), 0.0001f,
+                    $"{LogPrefix} 교정 실패 [{name}] — 승격 전 규칙의 독립 재현이 클릭 관통과 " +
+                    "무관한 칸에서 프로덕션과 다른 답을 낸다. 재현이 틀렸다는 뜻이므로 " +
+                    "이 테스트의 대조 결과를 전부 폐기해야 한다.");
+            }
+
+            // ---- (나) 양성 대조 — 승격 전에는 세 조합이 전부 '불투명 = 채택'이었다 ----
+            foreach ((string name, int ex, bool ok, uint flags, byte a) in ClickThroughCombos)
+            {
+                float legacy = LegacyResolveWindowAlpha(ex, ok, flags, a);
+                Assert.AreEqual(1f, legacy, 0.0001f,
+                    $"{LogPrefix} 양성 대조 실패 [{name}] — 승격 전 규칙에서도 이 조합이 이미 " +
+                    "탈락했다면 이번 승격은 아무것도 닫지 않은 것이고, 아래 '승격 후 0' 단언은 " +
+                    "항상 참인 공허한 단언이다.");
+                Assert.AreEqual(WindowsFootholdRejection.None,
+                    WindowsFootholdFilter.ClassifyGeometry(TransparentFullscreenHud, legacy, false, NoVirtualScreen),
+                    $"{LogPrefix} 양성 대조 실패 [{name}] — 승격 전 이 창이 실제로 후보를 " +
+                    "'통과'했다는 것까지 보여야 대조가 성립한다.");
+
+                float now = WindowsFootholdFilter.ResolveWindowAlpha(ex, ok, flags, a);
+                Assert.AreEqual(0f, now, 0.0001f,
+                    $"{LogPrefix} 승격 후에도 [{name}]이 불투명으로 남았다.");
+                Assert.AreEqual(WindowsFootholdRejection.TransparentAlpha,
+                    WindowsFootholdFilter.ClassifyGeometry(TransparentFullscreenHud, now, false, NoVirtualScreen),
+                    $"{LogPrefix} [{name}]의 알파는 0인데 기하 분류가 채택으로 남긴다.");
+            }
+
+            // ---- (다) 결과 실측 — 그 통과가 실제로 무엇을 일으켰는가(솔버 결합) ----
+            var before = new VisibleTopEdgeSolver();
+            before.Begin();
+            before.AddWindow(TransparentFullscreenHud);   // 승격 전: 후보를 통과했으므로 솔버에 들어간다
+            before.AddWindow(RealAppWindow);
+            before.Solve(MinVisibleWidth, false, default);
+            Assert.AreEqual(0f, before.GetVisibleWidth(1), 0.001f,
+                $"{LogPrefix} 양성 대조 실패 — 클릭 관통 전체화면 창을 솔버에 넣어도 아래 발판이 " +
+                "살아남는다면, 이 승격이 막고 있다는 사고가 애초에 일어나지 않는다는 뜻이다.");
+
+            var after = new VisibleTopEdgeSolver();
+            after.Begin();
+            after.AddWindow(RealAppWindow);               // 승격 후: HUD는 필터에서 이미 탈락해 안 들어온다
+            after.Solve(MinVisibleWidth, false, default);
+            Assert.AreEqual(1, after.SegmentCount,
+                $"{LogPrefix} 승격 후에는 실제 앱 창의 발판이 남아야 한다.");
+            Assert.AreEqual(RealAppWindow.width, after.GetVisibleWidth(0), 0.001f,
+                $"{LogPrefix} 승격 후 발판 폭이 창 폭과 같아야 한다(가리는 창이 없으므로).");
+        }
+
+        [Test]
+        public void W14_클릭관통이_아니면_네_갈래_판정이_한_칸도_바뀌지_않았다()
+        {
+            // ★ 과잉 제거 방지. 승격이 클릭 관통 축에서만 작동하고 나머지 축을 건드리지 않았음을
+            //   전수로 잠근다. 여기서 하나라도 0이 되면 데스크톱의 멀쩡한 창들이 발판에서 사라진다
+            //   = 이 수정이 원래 버그보다 나쁜 버그가 된다(W6이 경고하는 바로 그 형태).
+            Assert.AreEqual(5, NonClickThroughCombos.Length,
+                $"{LogPrefix} 네 갈래 표의 칸이 줄었다 — 빈 목록을 도는 foreach는 초록인 채로 " +
+                "아무것도 재지 않는다(거짓 통과 #5).");
+
+            foreach ((string name, int ex, bool ok, uint flags, byte a, float expected) in NonClickThroughCombos)
+            {
+                Assert.AreEqual(0, ex & WindowsFootholdFilter.WsExTransparent,
+                    $"{LogPrefix} [{name}]에 클릭 관통 비트가 섞여 있다 — 이 표는 '관통이 아닌' " +
+                    "축만 담아야 대조가 성립한다.");
+
+                float alpha = WindowsFootholdFilter.ResolveWindowAlpha(ex, ok, flags, a);
+                Assert.AreEqual(expected, alpha, 0.0001f,
+                    $"{LogPrefix} [{name}]의 알파가 승격 때문에 바뀌었다. 승격은 클릭 관통 창만 " +
+                    "닫아야 한다.");
             }
         }
 

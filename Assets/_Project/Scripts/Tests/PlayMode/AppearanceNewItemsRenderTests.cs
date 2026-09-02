@@ -37,8 +37,29 @@ namespace StickMate.Tests.PlayMode
     {
         private const string LogPrefix = "[신규외형-TEST]";
 
-        // 카테고리 안의 자리(Interaction/AppearanceShapeBuilder.cs의 같은 이름 상수와 같은 값).
-        // 상수를 다시 적는 이 프로젝트의 관례를 따른다 — 어긋나면 아래 착용 단언이 즉시 빨개진다.
+        // ★ 2026-09-02 qa-regression — 아래 5줄은 <b>프로덕션 상수의 사본</b>이다.
+        //
+        // 옛 주석은 두 가지를 주장했고 <b>둘 다 거짓이었다</b>:
+        //   ① "상수를 다시 적는 이 프로젝트의 관례를 따른다"
+        //      → CLAUDE.md의 명시 규약은 정확히 <b>반대</b>다("테스트에 프로덕션 상수를 숫자로
+        //        베끼지 않는다"). 그 규약은 하드코딩 잔존으로 4건이 깨진 사고 뒤에 확정된 것이다.
+        //   ② "어긋나면 아래 착용 단언이 즉시 빨개진다"
+        //      → 빨개지지 않는다. 착용 단언은 <c>Assert.IsTrue(Wear(slot, index))</c>이고
+        //        <c>Wear</c>가 재는 것은 <b>"그 번호가 실제로 걸쳐졌는가"</b>뿐이다
+        //        (TryWear 후 WornIndex == index). 즉 <b>거부</b>(범위 밖/미해금)는 잡지만,
+        //        번호가 <b>다른 아이템을 가리키게 된 것</b>은 잡지 못한다 — 재배치된 4번도
+        //        멀쩡히 걸쳐지므로 Wear는 그대로 true이고, 이 테스트는 <b>엉뚱한 아이템을
+        //        착용한 채 초록</b>이 된다. 사본이 어긋나는 바로 그 경우가 이 단언의 사각지대다.
+        //
+        // 그런데 사본을 없앨 수는 없다 — 구조적 제약이다:
+        //   <c>Scripts/AssemblyInfo.cs</c>의 <c>InternalsVisibleTo</c>는
+        //   <b>StickMate.Tests.EditMode 하나뿐</b>이라, PlayMode 어셈블리는 internal인
+        //   <c>AppearanceShapeBuilder.FxBubble</c>을 <b>물리적으로 볼 수 없다</b>.
+        //
+        // 그래서 사본은 남기되 <b>드리프트를 EditMode에서 잠근다</b>:
+        //   Tests/EditMode/AppearanceItemIndexMirrorTests.cs 가 이 파일의 소스를 직접 읽어
+        //   아래 값들을 프로덕션 상수와 대조한다. 어긋나면 <b>그쪽이</b> 빨개진다.
+        //   ★ 아래 이름/값을 고치면 그 파일의 대장(MirroredIndices)도 함께 고쳐야 한다.
         private const int FxNone = 0;
         private const int FxBubble = 4;
         private const int FxLeaf = 5;

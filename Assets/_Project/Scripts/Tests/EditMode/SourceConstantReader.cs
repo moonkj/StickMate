@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -52,6 +53,70 @@ namespace StickMate.Tests.EditMode
 
             value = float.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
             return true;
+        }
+
+        // ====================================================================
+        // ★ partial 표면 — <b>파일 하나가 곧 클래스 하나가 아니다</b> (2026-09-02)
+        // ====================================================================
+        // CharacterInfoWindow가 partial 7개로 쪼개진 라운드에 소스 매처 2건이 <b>눈이 멀어</b>
+        // 빨개졌다 — 프로덕션은 멀쩡했고, 검사만 옛 파일 하나를 보고 있었다.
+        // 처방으로 "파일명 A를 파일명 B로" 바꾸면 <b>또 쪼개질 때 또 깨진다</b>.
+        // 그래서 "표면 하나 = X.cs + X.*.cs 조각 전부"라는 규칙을 이 클래스에 <b>한 벌만</b> 둔다
+        // (이 클래스가 존재하는 이유 그대로 — "사본을 세 번째로 만들 수는 없어서").
+
+        /// <summary>이 소스가 속한 <b>표면 전체</b>의 파일 경로 — 베이스 파일이 먼저, 그 뒤 조각들.
+        /// 쪼개지지 않은 파일이면 원소 1개다.</summary>
+        internal static string[] SurfacePaths(string filePath)
+        {
+            string dir = Path.GetDirectoryName(filePath);
+            Assert.IsTrue(Directory.Exists(dir), $"[소스상수] 폴더를 찾지 못했습니다: {dir}");
+            Assert.IsTrue(File.Exists(filePath), $"[소스상수] 소스 파일을 찾지 못했습니다: {filePath}");
+
+            string stem = Path.GetFileNameWithoutExtension(filePath);
+            var parts = new List<string> { filePath };
+            string[] siblings = Directory.GetFiles(dir, stem + ".*.cs");
+            System.Array.Sort(siblings, System.StringComparer.Ordinal);
+            foreach (string sibling in siblings)
+            {
+                // 3글자 확장자 유사매칭(.cshtml 등)을 명시적으로 막는다.
+                if (!sibling.EndsWith(".cs", System.StringComparison.Ordinal)) continue;
+                if (!parts.Contains(sibling)) parts.Add(sibling);
+            }
+            return parts.ToArray();
+        }
+
+        /// <summary>표면 전체의 소스를 이어 붙인 텍스트. 어떤 파일을 읽었는지 <b>로그로 남긴다</b> —
+        /// "0건 = 깨끗"이 실은 "아무것도 안 봤다"였던 사고와 같은 형태를 두 번 겪지 않기 위해서다.</summary>
+        internal static string ReadSurfaceText(string filePath)
+        {
+            string[] parts = SurfacePaths(filePath);
+            var sb = new System.Text.StringBuilder();
+            foreach (string part in parts) sb.Append(File.ReadAllText(part)).Append('\n');
+
+            Debug.Log($"[소스상수] 표면 '{Path.GetFileName(filePath)}' = 파일 {parts.Length}개: " +
+                string.Join(", ", System.Array.ConvertAll(parts, Path.GetFileName)));
+            return sb.ToString();
+        }
+
+        /// <summary>표면 <b>전체</b>에서 상수를 찾는다(조각에 있어도 찾는다). 못 찾으면 false.</summary>
+        internal static bool TryReadFloatInSurface(string filePath, string name, out float value)
+        {
+            foreach (string part in SurfacePaths(filePath))
+            {
+                if (TryReadFloat(part, name, out value)) return true;
+            }
+            value = 0f;
+            return false;
+        }
+
+        /// <summary>표면 전체에서 찾되, 못 찾으면 <b>테스트를 실패시킨다</b>.</summary>
+        internal static float ReadFloatInSurface(string filePath, string name)
+        {
+            Assert.IsTrue(TryReadFloatInSurface(filePath, name, out float value),
+                $"[소스상수] '{Path.GetFileName(filePath)}' 표면(조각 포함)에서 상수 '{name}'을 찾지 못했습니다.\n" +
+                "이름이 바뀌었다면 읽는 쪽도 함께 갱신하십시오 — 그 전까지 그 검산은 " +
+                "<b>대상 없이</b> 돌게 되고, 그 상태로 초록불이 뜨는 것이 이 저장소가 반복해 온 실패입니다.");
+            return value;
         }
 
         /// <summary>못 찾으면 <b>테스트를 실패시킨다</b>.</summary>

@@ -93,6 +93,41 @@ namespace StickMate.Platform
     /// 신고 "렉"을 함께 겨냥하며, (c) 아래 로그 한 줄로 실기에서 적용 여부와 실제 주사율이 즉시 확인된다.
     ///
     /// ============================================================================
+    /// ★ 위 "Windows는 vsync를 끈다"는 판단은 <b>아직 반증도 입증도 되지 않았다</b> (2026-09-02)
+    /// ============================================================================
+    /// 사용자가 GPU를 외장에서 내장(Intel Iris Xe)으로 바꿔 <b>렉</b>은 해결했다(10분 실측: GPU 최악
+    /// 222.48ms -> 17.46ms, 스파이크 0회). 그런데 신고 하나가 남았다 — <b>"캐릭터가 좀 덜 부드럽게
+    /// 움직이는 것 같다"</b>. 1순위 가설이던 정지 등급 15fps는 <c>STICKMATE_STILL_DIVISOR=1</c>
+    /// (절전 완전 해제)로 <b>반증됐다</b>("1로 바꿔서 해도 썩 부드럽진 않네").
+    ///
+    /// 남은 후보가 위 표의 <c>vSyncCount=0</c>이다. 근거는 세 겹인데 <b>어느 것도 이 머신에서
+    /// 확인할 수 없다</b>(개발 환경이 macOS다). 그래서 이 라운드는 <b>판정하지 않고 손잡이만</b>
+    /// 만든다 — <see cref="VSyncEnvironmentVariableName"/>.
+    ///
+    /// <list type="number">
+    /// <item><b>부드러움은 평균 fps가 아니라 프레임 간격의 균일성이다.</b> 이 표의 macOS 절이 이미
+    ///   같은 말을 하고 있다("targetFrameRate는 sleep으로 속도를 맞추므로 위상이 떠다닌다").
+    ///   Windows에만 그 논리를 적용하지 않은 이유가 4번(레이어드 창은 DWM 합성을 거친다)인데,
+    ///   그것은 <b>찢어짐</b>에 대한 논거이지 <b>위상 균일성</b>에 대한 논거가 아니다.</item>
+    /// <item><b>Unity의 D3D 백엔드는 프레임 시간을 주사율에서 유도한다.</b> 그 계기가
+    ///   <c>IDXGISwapChain::GetFrameStatistics</c>인데, Microsoft 문서가 <b>명시적으로</b> 이렇게
+    ///   적고 있다: "You cannot use GetFrameStatistics for swap chains that both use the
+    ///   bit-block transfer (bitblt) presentation model and draw in windowed mode."
+    ///   — 이 앱은 <b>정확히 그 조합</b>이다(위 1번: flip 모델을 못 쓴다 + 창 모드 오버레이).
+    ///   즉 이 앱의 Windows 프레임 타이밍 계기는 <b>문서상 못 쓰게 되어 있는 경로</b>다.</item>
+    /// <item>사용자 실기 로그에 <b>이번 실행에만</b> 다음 줄이 새로 떴다:
+    ///   <c>Direct3D: detected that using refresh rate causes time drift. Will stop trusting
+    ///   refresh rate until the game window is moved.</c> — Unity가 주사율 기반 타이밍을 포기하고
+    ///   CPU 타임스탬프로 되돌아갔다는 뜻이다. <c>Time.deltaTime</c>이 노이즈를 타면 <b>fps가
+    ///   일정해도 애니메이션은 미세하게 떤다</b>. 신고 문구가 하필 "덜 부드럽다"인 것과 맞물린다.</item>
+    /// </list>
+    ///
+    /// <b>★ 그러나 반대쪽도 그대로 살아 있다</b>: 레이어드 창에서 앱 vsync가 지연만 더한다는 4번이
+    /// 옳다면 vsync를 켜도 나아지지 않고 <b>더 나빠질 수도</b> 있다. 그 경우 남는 결론은
+    /// "투명 오버레이 구조 자체의 한계"다. <b>어느 쪽이라고 단정하지 마라 — 사용자 실기 A/B가
+    /// 판정한다.</b> 출처와 절차는 <c>docs/PERFORMANCE_NOTES.md</c> 12절.
+    ///
+    /// ============================================================================
     /// 프레임레이트를 바꿔도 게임 로직 타이밍은 안 변한다 (2026-08-31 확인 완료)
     /// ============================================================================
     /// 리더 지적("N프레임 동안" 식으로 시간을 재는 곳이 있으면 상한 변경에 타이밍이 딸려 변한다")에
@@ -132,6 +167,8 @@ namespace StickMate.Platform
             _summaryTimer = 0f;
             _firstSummaryDone = false;
             _stillDivisor = FramePacingPolicy.DefaultStillDivisor;
+            _vSyncForcedByEnv = false;
+            _vSyncRequestedByEnv = -1;
             _presentBaselineValid = false;
             _presentBaselineLoopFrame = 0;
             _presentBaselineRenderedFrame = 0;
@@ -695,7 +732,7 @@ namespace StickMate.Platform
                     : "GPU: 측정 불가(enableFrameTimingStats 꺼짐)";
             }
 
-            Debug.Log($"[FramePacing/적응형] 최근 {total:F0}초 — " +
+            Debug.Log($"[FramePacing/적응형] 최근 {total:F0}초 [{DescribeRunIdentity()}] — " +
                 $"★ 실효 제출 {submittedFps:F1}장/초({(actualAvailable ? "실측 렌더 콜백" : "renderedFrameCount — 실측 콜백 측정 불가")}) " +
                 $"[계기 대조: 루프 {loopFps:F1}Hz / renderedFrameCount {renderFps:F1} / " +
                 $"실측 콜백 {(actualAvailable ? $"{actualFps:F1}" : "측정 불가")}], " +
@@ -714,6 +751,55 @@ namespace StickMate.Platform
 
             _transitionCountAtLastSummary = _transitionCount;
             for (int k = 0; k < TierSeconds.Length; k++) TierSeconds[k] = 0f;
+        }
+
+        // ============================================================================
+        // ★ 실행 신원 (2026-09-02 perf-doc — 사용자 3번째 신고 "아직도 오래켜두면 렉 생김")
+        // ============================================================================
+        // 왜 **주기 요약에** 이 조각들을 붙이는가 — 신고된 증상이 "오래 켜두면"이기 때문이다.
+        //
+        //   · <c>[렌더진단] ★A/B 요약</c>은 <b>시작 후 60초에 딱 한 번</b> 찍고 그 뒤로는 측정 자체가
+        //     멈춘다(RenderDiagnostics.Tick의 `if (_summaryLogged) return;`). 즉 그 줄은 구조적으로
+        //     <b>첫 1분만</b> 말한다. 몇 시간에 걸쳐 자라는 현상을 그 줄로 A/B 하면 <b>반드시 "차이
+        //     없음"이 나온다</b> — 이 저장소가 가장 경계하는 종류의 거짓 통과다.
+        //   · 반면 이 5분 요약은 영원히 반복되고, GPU 평균/최악을 <b>구간마다 비워서</b> 다시 잰다
+        //     (RenderDiagnostics.TryDrainGpuLoad). 즉 <b>장시간 A/B의 올바른 비교 단위는 이 줄이다.</b>
+        //
+        // 그런데 이 줄에는 "어느 실행인가"가 없었다. MSAA·백버퍼·GPU는 실행당 한 번뿐인
+        // <c>[렌더진단] 콜드스타트</c>에만 있어서, 두 로그를 비교하려면 사람이 파일 맨 위로 올라가
+        // 대조해야 했다. 그 상관 단계가 곧 사고 지점이다(이 저장소 거짓통과 #2·#3이 전부
+        // "다른 시점의 파일을 현재로 착각"이었다). 그래서 <b>비교에 필요한 것을 같은 줄에</b> 둔다.
+        //
+        // <b>가동 시간</b>이 특히 중요하다 — "최악 GPU ms"를 가동 시간에 대해 늘어놓는 것이
+        // "오래 켜두면 나빠지는가"에 답하는 유일한 방법이고, 지금은 그 x축이 로그에 없다.
+        //
+        // 비용: 5분에 한 번. 문자열 보간 1회 + <c>SystemInfo.graphicsDeviceName</c> 조회 1회.
+        // 이 줄은 어차피 보간으로 만들어지므로 프레임당 비용 증가는 0이다.
+        //
+        // ※ GPU 이름을 굳이 매번 찍는 이유: 하이브리드 그래픽(Optimus) 노트북에서 이 앱이 내장인지
+        //   외장인지가 실행마다 달라질 수 있고, 그 선택을 <b>설정값이 아니라 결과로</b> 확인해야 하기
+        //   때문이다. StickMate.exe는 Unity 기본값으로 NvOptimusEnablement=1 /
+        //   AmdPowerXpressRequestHighPerformance=1을 export 한다(빌드 산출물 PE export 테이블 실측,
+        //   2026-09-02). 즉 <b>기본은 외장 GPU 강제</b>다. 사용자가 드라이버 설정으로 내장으로 돌렸을 때
+        //   그것이 실제로 먹었는지는 이 이름으로만 알 수 있다.
+
+        /// <summary>주기 요약 한 줄이 <b>스스로</b> "어느 실행의 몇 시간째인가"를 말하게 하는 조각.</summary>
+        private static string DescribeRunIdentity()
+        {
+            float up = Time.realtimeSinceStartup;
+            int h = (int)(up / 3600f);
+            int m = (int)((up - h * 3600f) / 60f);
+            return $"가동 {h}시간{m}분, MSAA 요청 {RenderQualityTuner.RequestedSamples}x" +
+                $"{(RenderQualityTuner.ForcedByEnvironment ? "(환경변수 강제)" : string.Empty)}" +
+                $"{(RenderQualityTuner.MutatedAfterStartup ? "★신뢰불가(시작 후 변경됨)" : string.Empty)}, " +
+                $"백버퍼 {Screen.width}x{Screen.height}, GPU {SystemInfo.graphicsDeviceName}, " +
+                // ★ 설정값이 아니라 되읽은 값이다. 주사율을 같은 줄에 두는 이유: 이 줄의 "루프 Hz"와
+                //   나란히 놓아야 "vsync가 실제로 잡아주고 있는가"를 사람이 눈으로 판정할 수 있다
+                //   (vsync N이면 루프 Hz가 주사율/N 근처여야 한다).
+                $"vsync 되읽음 {QualitySettings.vSyncCount}" +
+                $"{(_vSyncForcedByEnv ? $"(환경변수 요청 {_vSyncRequestedByEnv})" : string.Empty)}" +
+                $"/target {Application.targetFrameRate}, " +
+                $"주사율 {Screen.currentResolution.refreshRateRatio.value:F0}Hz";
         }
 
         /// <summary>
@@ -799,9 +885,148 @@ namespace StickMate.Platform
             return null;
         }
 
+        // ============================================================================
+        // ★ STICKMATE_VSYNC — 실기에서 vsync를 켜/끄고 A/B 하는 손잡이 (2026-09-02 perf-doc)
+        // ============================================================================
+        //
+        // 왜 필요한가: Windows 경로는 <c>vSyncCount = 0</c>이 **코드에 박혀** 있었다. 그 판단의 근거는
+        // 이 클래스 문서에 남아 있지만, 근거가 있다는 것과 그것이 이 사용자의 이 하드웨어에서
+        // 옳다는 것은 다른 이야기다. 그리고 그 차이를 가를 수 있는 사람은 실기를 가진 사용자뿐이다.
+        //
+        // 기존 7개 계측 변수(STICKMATE_STILL_DIVISOR / FORCE_MSAA / FORCE_TIER / ADAPTIVE_PACING /
+        // DEVTOOLS / KEEP_LAYERED / UNLOCK_ALL)와 **같은 관례**를 지킨다:
+        //   · 지정하지 않으면 제품 동작에 영향 0 — 아래 두 Apply* 는 변수가 없으면 기존 코드로
+        //     그대로 떨어진다(가지 하나가 앞에 붙을 뿐 기존 문장은 한 줄도 바뀌지 않았다).
+        //   · setx 로 영구 등록하지 마라(계측이 제품 동작을 오염시킨다).
+        //   · 탐색기 더블클릭으로는 전달되지 않는다 — 변수를 설정한 그 콘솔/배치에서 실행해야 한다.
+        //
+        // ★ **이 변수의 유일한 함정**: <c>vSyncCount >= 1</c>이면 Unity가 <c>targetFrameRate</c>를
+        //   **통째로 무시한다**(공식 문서). 둘을 같이 살려 두면 조용히 한쪽이 죽고, 로그만 보면
+        //   두 값이 다 걸려 있는 것처럼 보인다 — 이 저장소가 반복해서 당한 종류의 거짓 통과다.
+        //   그래서 아래 ApplyVSyncOverride 는 (a) vsync를 켜면 targetFrameRate를 **명시적으로 -1로
+        //   해제**하고, (b) 그 상호작용을 로그에 **문장으로** 적는다.
+
+        /// <summary>계측용 vsync 강제 지정 환경변수 이름. 0 = 끔(현행 Windows 기본),
+        /// 1 = 매 vblank, 2 = 두 번에 한 번. 3/4도 받는다(macOS의 <c>macVSyncInterval</c>과 같은
+        /// 범위). 범위를 벗어나면 clamp하고 그 사실을 로그에 남긴다.</summary>
+        internal const string VSyncEnvironmentVariableName = "STICKMATE_VSYNC";
+
+        /// <summary><see cref="VSyncEnvironmentVariableName"/>이 받는 최솟값(= vsync 끔).</summary>
+        internal const int MinVSyncOverride = 0;
+
+        /// <summary><see cref="VSyncEnvironmentVariableName"/>이 받는 최댓값. Unity의
+        /// <c>QualitySettings.vSyncCount</c> 유효 범위이자 <see cref="FramePacingPolicy.BuildPlan"/>이
+        /// 계획을 세울 때 쓰는 상한과 같다(그쪽도 1~4로 clamp한다).</summary>
+        internal const int MaxVSyncOverride = 4;
+
+        /// <summary>이번 실행에서 vsync가 환경변수로 강제됐는가(진단 줄에 함께 찍는다 —
+        /// "이 로그가 제품 기본값의 로그인가 계측 회차의 로그인가"를 그 줄만 보고 알 수 있어야 한다).</summary>
+        private static bool _vSyncForcedByEnv;
+
+        /// <summary>환경변수로 요청된 값(강제되지 않았으면 -1). <b>되읽은 값이 아니다</b> —
+        /// 되읽은 값은 <see cref="QualitySettings.vSyncCount"/>에서 직접 읽는다.</summary>
+        private static int _vSyncRequestedByEnv = -1;
+
+        /// <summary>vsync 강제 지정을 읽는다. 값이 없거나 숫자가 아니면 false(= 기존 동작 그대로).</summary>
+        private static bool TryReadVSyncOverride(out int vSync)
+        {
+            vSync = 0;
+            string raw;
+            try { raw = System.Environment.GetEnvironmentVariable(VSyncEnvironmentVariableName); }
+            catch { return false; }
+            if (string.IsNullOrEmpty(raw)) return false;
+
+            if (!int.TryParse(raw.Trim(), out int parsed))
+            {
+                Debug.LogWarning($"[FramePacing/vsync] {VSyncEnvironmentVariableName}=\"{raw}\" 는 정수가 " +
+                    $"아닙니다 — 무시하고 이 플랫폼의 기본 동작으로 갑니다. " +
+                    $"({MinVSyncOverride}~{MaxVSyncOverride} 사이의 정수만 받습니다.)");
+                return false;
+            }
+
+            vSync = Mathf.Clamp(parsed, MinVSyncOverride, MaxVSyncOverride);
+            if (vSync != parsed)
+            {
+                Debug.LogWarning($"[FramePacing/vsync] {VSyncEnvironmentVariableName}={parsed} 는 범위 밖입니다 — " +
+                    $"{MinVSyncOverride}~{MaxVSyncOverride}로 clamp해 {vSync}를 씁니다. " +
+                    "이 회차의 결과를 다른 회차와 비교할 때 요청값이 아니라 clamp된 값으로 적으세요.");
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// vsync 강제 지정을 실제로 적용하고 <b>되읽은 값</b>을 로그에 남긴다.
+        ///
+        /// <para><b>왜 되읽는가</b>: 이 저장소는 "설정을 믿고 결과를 안 본" 사고를 반복했다
+        /// (<c>Screen.msaaSamples</c>가 백버퍼와 무관하게 요청값을 되돌려준 건이 대표적이다).
+        /// 대입한 변수를 그대로 찍으면 <b>대입이 무시돼도 로그는 똑같이 생긴다</b>. 그래서 대입 직후
+        /// <c>QualitySettings.vSyncCount</c> / <c>Application.targetFrameRate</c>를 다시 읽어 찍는다.</para>
+        ///
+        /// <para><b>이것도 완전하지는 않다(정직한 한계)</b>: 되읽기는 "Unity가 값을 받아 갔다"까지만
+        /// 증명한다. "드라이버가 실제로 vblank에 맞춰 준다"는 증명하지 못한다 — 그건 5분 요약의
+        /// <b>루프 Hz가 주사율(또는 주사율/N)에 붙는가</b>로만 알 수 있고, 그래서
+        /// <see cref="DescribeRunIdentity"/>가 주사율을 같은 줄에 찍는다.</para>
+        /// </summary>
+        /// <param name="vSync">clamp가 끝난 vSyncCount 값.</param>
+        /// <param name="fallbackTargetFrameRate">vsync를 끌 때(0) 쓸 프레임 상한. 0 이하면 건드리지 않는다.</param>
+        /// <param name="platform">로그 접두어에 쓸 플랫폼 이름.</param>
+        private static void ApplyVSyncOverride(int vSync, int fallbackTargetFrameRate, string platform)
+        {
+            _vSyncForcedByEnv = true;
+            _vSyncRequestedByEnv = vSync;
+
+            int vSyncBefore = QualitySettings.vSyncCount;
+            int targetBefore = Application.targetFrameRate;
+
+            QualitySettings.vSyncCount = vSync;
+
+            // ★ 상호작용을 코드로 명시한다 — 둘을 같이 살려 두면 조용히 한쪽이 죽는다.
+            if (vSync >= 1)
+            {
+                Application.targetFrameRate = -1;
+            }
+            else if (fallbackTargetFrameRate > 0)
+            {
+                Application.targetFrameRate = fallbackTargetFrameRate;
+            }
+
+            // 여기서부터는 **대입한 값이 아니라 되읽은 값**만 쓴다.
+            int vSyncNow = QualitySettings.vSyncCount;
+            int targetNow = Application.targetFrameRate;
+            double hz = Screen.currentResolution.refreshRateRatio.value;
+
+            string mechanism = vSyncNow >= 1
+                ? $"vsync 기구 — 기대 {(hz > 0.0 ? (hz / vSyncNow).ToString("F1") : "?")}fps(주사율 {hz:F1}Hz / {vSyncNow}). " +
+                  "★ 이 상태에서 targetFrameRate는 Unity가 **통째로 무시**하므로 -1로 명시 해제했습니다 " +
+                  "(둘 다 걸어 두면 로그만 보고 어느 쪽이 먹었는지 알 수 없게 됩니다)."
+                : $"targetFrameRate 기구 — 상한 {targetNow}fps(sleep 기반). " +
+                  "vsync가 꺼져 있으므로 프레임 위상은 디스플레이와 무관하게 떠다닙니다.";
+
+            string mismatch = vSyncNow == vSync
+                ? string.Empty
+                : $" ★경고: 요청 {vSync}인데 되읽은 값이 {vSyncNow}입니다 — 이 회차의 vsync 측정은 무효입니다.";
+
+            Debug.Log($"[FramePacing/{platform}] ★{VSyncEnvironmentVariableName}={vSync} 적용(계측용) — " +
+                $"되읽음: vSyncCount {vSyncBefore} -> {vSyncNow}, targetFrameRate {targetBefore} -> {targetNow}. " +
+                $"{mechanism}{mismatch} " +
+                $"그래픽API={SystemInfo.graphicsDeviceType} ({SystemInfo.graphicsDeviceName}), " +
+                $"Screen=({Screen.width}x{Screen.height}). " +
+                "판정은 이 줄이 아니라 5분마다 나오는 [FramePacing/적응형] 요약의 **루프 Hz**로 합니다 — " +
+                "vsync를 켰는데 루프 Hz가 주사율/N에 붙지 않으면 드라이버가 vsync를 안 지킨 것입니다. " +
+                "Windows에서 그 경우 Player.log에 Direct3D의 'time drift' / 'vsync is broken' 줄이 함께 뜹니다.");
+        }
+
 #if UNITY_STANDALONE_OSX
         private static void ApplyMacOS(Core.StickConfig config)
         {
+            // 계측 변수가 있으면 그것이 StickConfig.macVSyncInterval을 대체한다. 변수가 없으면
+            // 아래 기존 경로가 **한 글자도 다르지 않게** 그대로 돈다.
+            if (TryReadVSyncOverride(out int forcedVSync))
+            {
+                ApplyVSyncOverride(forcedVSync, config.macTargetFrameRate, "macOS");
+                return;
+            }
+
             int vSyncBefore = QualitySettings.vSyncCount;
             int targetBefore = Application.targetFrameRate;
             int interval = Mathf.Clamp(config.macVSyncInterval, 0, 4);
@@ -842,6 +1067,15 @@ namespace StickMate.Platform
 #if UNITY_STANDALONE_WIN
         private static void ApplyWindows(Core.StickConfig config)
         {
+            // ★ 이번 라운드의 본체. 변수가 없으면 아래 기존 경로(vSyncCount=0 고정)가 그대로 돈다 —
+            //   즉 **기본 동작은 변하지 않는다**. 변수를 주면 그 판단 자체를 실기에서 A/B 할 수 있다.
+            //   왜 그 판단이 후보가 됐는지는 이 클래스 문서의 "2026-09-02" 절에 있다.
+            if (TryReadVSyncOverride(out int forcedVSync))
+            {
+                ApplyVSyncOverride(forcedVSync, config.windowsTargetFrameRate, "Windows");
+                return;
+            }
+
             int cap = config.windowsTargetFrameRate;
             if (cap <= 0)
             {

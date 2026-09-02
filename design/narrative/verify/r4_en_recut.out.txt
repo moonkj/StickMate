@@ -1,0 +1,141 @@
+[C1] 골든 33줄 비트 대조 — 불일치 0건  OK
+[C2] R2 §5-1 알려진 값 재현 — 7자 0.865(OK)  8자 0.940(OK)  10자 1.090(OK)
+[C3] 리더 영어 예산 재현 — Idle 23(기대 23)  Walk 15(기대 15)  ParkourClimb 14(기대 14)  LedgeHang 12(기대 12)  OK
+[교정] 3종 전부 통과. 이 아래 숫자를 믿어도 된다.
+
+[P1] 알려진 탈락 5줄이 실제로 탈락하는가 — 탈락 5/5 OK
+[P2] `Whoa, that's high`(17자) 마진0 통과 / 마진0.18 탈락  OK
+[P3] 문자체계 판정 5종 — 불일치 0 OK
+[P4] 초장문 40자 @Walk — 탈락  OK
+
+=== 0. 확정 예산 (마진 = PopInSeconds 0.18, FadeIn 0.06) ===
+   상태                 분모 | 영어(라틴) | 한국어(음절)
+   Idle             1.65 |  23자 (23자=1.606 / 24자=1.653) |  15자 (15자=1.645 / 16자=1.720)
+   Walk             1.24 |  15자 (15자=1.228 / 16자=1.275) |   9자 ( 9자=1.195 / 10자=1.270)
+   ParkourClimb     1.20 |  14자 (14자=1.181 / 15자=1.228) |   9자 ( 9자=1.195 / 10자=1.270)
+   LedgeHang        1.12 |  12자 (12자=1.086 / 13자=1.134) |   7자 ( 7자=1.045 /  8자=1.120)
+
+=== 1. R2 §3-4 풀 24줄 — 새 예산으로 다시 재기 (개정 전) ===
+  #   상태            한국어                자      여유 | English                  자      여유 | 판정
+  1   Idle          음...               4  +0.790 | Hmm...                   6  +0.790 | OK 상시
+  2   Idle          여기 좋네              5  +0.755 | Nice spot.              10  +0.658 | OK 상시
+  3   Idle          잠깐 쉬는 중            7  +0.605 | Taking a break.         15  +0.422 | OK 상시
+  4   Idle          오늘 뭐 하지            7  +0.605 | What now?                9  +0.705 | OK 상시
+  5   Idle          발밑이 단단해            7  +0.605 | Solid footing.          14  +0.469 | OK 상시
+  6   Walk          산책 중               4  +0.380 | Out walking.            12  +0.154 | OK 상시
+  7   Walk          저쪽으로 가볼까           8  +0.120 | Let's go that way.      18  -0.130 | ★탈락 상시
+  8   Walk          하나 둘 하나 둘          9  +0.045 | Left, right, left.      18  -0.130 | ★탈락 상시
+  9   Walk          다리 좀 풀자            7  +0.195 | Stretching the legs.    20  -0.224 | ★탈락 상시
+  10  Walk          다리가 잘 나가네          9  +0.045 | Good stride today.      18  -0.130 | ★탈락 상시
+  11  Idle          하암...              5  +0.755 | *yawn*                   6  +0.790 | OK 모션:앉기하품
+  12  Idle          구경 중이야             6  +0.680 | Just having a look.     19  +0.233 | OK 모션:두리번
+  13  Idle          월요일이네...           8  +0.530 | Monday again...         15  +0.422 | OK 요일:월
+  14  Idle          금요일이다!             6  +0.680 | It's Friday!            12  +0.564 | OK 요일:금
+  15  Idle          쉬는 날이네             6  +0.680 | Day off.                 8  +0.752 | OK 요일:주말
+  16  Walk          월요일이 왔네            7  +0.195 | Monday's here.          14  +0.059 | OK 요일:월
+  17  Walk          주말이 코앞이네           8  +0.120 | Weekend's close.        16  -0.035 | ★탈락 요일:금
+  18  Walk          주말 산책이네            7  +0.195 | Weekend walk.           13  +0.106 | OK 요일:주말
+  19  Idle          아침이네               4  +0.790 | Morning.                 8  +0.752 | OK 시간:아침
+  20  Idle          점심시간이네             6  +0.680 | Lunchtime.              10  +0.658 | OK 시간:점심
+  21  Idle          밤이 깊었네             6  +0.680 | It's late.              10  +0.658 | OK 시간:밤
+  22  Walk          아침 산책이네            7  +0.195 | Morning walk.           13  +0.106 | OK 시간:아침
+  23  Walk          점심때 걷네             6  +0.270 | Midday stroll.          14  +0.059 | OK 시간:점심
+  24  Walk          밤에도 걷네             6  +0.270 | Night walk.             11  +0.201 | OK 시간:밤
+  -> 탈락 5 / 24줄
+
+=== 2. ★ 개정안 — 영어 5줄 재창작 (한국어 24줄 무변경) ===
+  #   상태            한국어                자      여유 | English                  자      여유 | 판정
+  1   Idle          음...               4  +0.790 | Hmm...                   6  +0.790 | OK 유지
+  2   Idle          여기 좋네              5  +0.755 | Nice spot.              10  +0.658 | OK 유지
+  3   Idle          잠깐 쉬는 중            7  +0.605 | Taking a break.         15  +0.422 | OK 유지
+  4   Idle          오늘 뭐 하지            7  +0.605 | What now?                9  +0.705 | OK 유지
+  5   Idle          발밑이 단단해            7  +0.605 | Solid footing.          14  +0.469 | OK 유지
+  6   Walk          산책 중               4  +0.380 | Out walking.            12  +0.154 | OK 유지
+  7   Walk          저쪽으로 가볼까           8  +0.120 | Off that way.           13  +0.106 | OK ★재창작
+  8   Walk          하나 둘 하나 둘          9  +0.045 | Left, right.            12  +0.154 | OK ★재창작
+  9   Walk          다리 좀 풀자            7  +0.195 | Loosening up.           13  +0.106 | OK ★재창작
+  10  Walk          다리가 잘 나가네          9  +0.045 | Good stride.            12  +0.154 | OK ★재창작
+  11  Idle          하암...              5  +0.755 | *yawn*                   6  +0.790 | OK 유지
+  12  Idle          구경 중이야             6  +0.680 | Just having a look.     19  +0.233 | OK 유지
+  13  Idle          월요일이네...           8  +0.530 | Monday again...         15  +0.422 | OK 유지
+  14  Idle          금요일이다!             6  +0.680 | It's Friday!            12  +0.564 | OK 유지
+  15  Idle          쉬는 날이네             6  +0.680 | Day off.                 8  +0.752 | OK 유지
+  16  Walk          월요일이 왔네            7  +0.195 | Monday's here.          14  +0.059 | OK 유지
+  17  Walk          주말이 코앞이네           8  +0.120 | Weekend soon.           13  +0.106 | OK ★재창작
+  18  Walk          주말 산책이네            7  +0.195 | Weekend walk.           13  +0.106 | OK 유지
+  19  Idle          아침이네               4  +0.790 | Morning.                 8  +0.752 | OK 유지
+  20  Idle          점심시간이네             6  +0.680 | Lunchtime.              10  +0.658 | OK 유지
+  21  Idle          밤이 깊었네             6  +0.680 | It's late.              10  +0.658 | OK 유지
+  22  Walk          아침 산책이네            7  +0.195 | Morning walk.           13  +0.106 | OK 유지
+  23  Walk          점심때 걷네             6  +0.270 | Midday stroll.          14  +0.059 | OK 유지
+  24  Walk          밤에도 걷네             6  +0.270 | Night walk.             11  +0.201 | OK 유지
+  -> 탈락 0 / 24줄
+
+  [작업상한 Idle21·Walk14] 초과 0건 OK
+
+=== 3. R3 §7-7 세트 풀 — 새 예산으로 다시 재기 (개정 전) ===
+  세트 중립    한국어 탈락 0  영어 탈락 4
+        [EN] DIR       Let's go that way.     18자  여유 -0.130
+        [EN] RHYTHM    Left, right, left.     18자  여유 -0.130
+        [EN] LEGS      Stretching the legs.   20자  여유 -0.224
+        [EN] FLOURISH  Good stride today.     18자  여유 -0.130
+  세트 A     한국어 탈락 0  영어 탈락 4
+        [EN] DIR       That way, maybe.       16자  여유 -0.035
+        [EN] RHYTHM    One, two, one, two.    19자  여유 -0.177
+        [EN] LEGS      Light on my feet.      17자  여유 -0.082
+        [EN] FLOURISH  Cape's coming too.     18자  여유 -0.130
+  세트 B     한국어 탈락 0  영어 탈락 4
+        [EN] DIR       Heading over there.    19자  여유 -0.177
+        [EN] RHYTHM    One step, then one.    19자  여유 -0.177
+        [EN] LEGS      Light on the toes.     18자  여유 -0.130
+        [EN] FLOURISH  This cape is long.     18자  여유 -0.130
+  세트 C     한국어 탈락 0  영어 탈락 2
+        [EN] LEGS      Legs know the way.     18자  여유 -0.130
+        [EN] FLOURISH  Scarf's streaming.     18자  여유 -0.130
+  세트 D     한국어 탈락 0  영어 탈락 2
+        [EN] DIR       Onward, that way.      17자  여유 -0.082
+        [EN] RHYTHM    A measured stride.     18자  여유 -0.130
+  세트 E     한국어 탈락 0  영어 탈락 3
+        [EN] DIR       Facing that way.       16자  여유 -0.035
+        [EN] RHYTHM    Counting my steps.     18자  여유 -0.130
+        [EN] FLOURISH  The poncho stirs.      17자  여유 -0.082
+  세트 F     한국어 탈락 0  영어 탈락 2
+        [EN] LEGS      Legs won't stop.       16자  여유 -0.035
+        [EN] FLOURISH  Bandana's flying.      17자  여유 -0.082
+  -> 총 70줄 중 한국어 탈락 0 / 영어 탈락 21
+
+=== 4. ★ 세트 풀 개정안 — 영어 Walk 21줄 재창작 ===
+  세트 중립    줄 10  한국어 탈락 0  영어 탈락 0  작업상한 초과 0
+  세트 A     줄 10  한국어 탈락 0  영어 탈락 0  작업상한 초과 0
+  세트 B     줄 10  한국어 탈락 0  영어 탈락 0  작업상한 초과 0
+  세트 C     줄 10  한국어 탈락 0  영어 탈락 0  작업상한 초과 0
+  세트 D     줄 10  한국어 탈락 0  영어 탈락 0  작업상한 초과 0
+  세트 E     줄 10  한국어 탈락 0  영어 탈락 0  작업상한 초과 0
+  세트 F     줄 10  한국어 탈락 0  영어 탈락 0  작업상한 초과 0
+  -> 총 70줄: 한국어 탈락 0 / 영어 탈락 0 / 작업상한(Idle21·Walk14) 초과 0
+
+=== 5. 고유성 검사 — 계약 분모 N 이 실제로 유지되는가 ===
+  개정 24줄 KO      줄 24 / 고유 24 OK
+  개정 24줄 EN      줄 24 / 고유 24 OK
+  세트 간 영어 문자열 충돌: 없음 OK
+  ※ 세트는 동시에 활성화될 수 없다(4슬롯 전량 일치가 배타 선택자) — 세트 간 중복은 계약을 깨지 않는다.
+
+=== 6. 리더가 예산을 준 나머지 두 상태 — 현행 한국어 + 영어 신규 ===
+  ParkourClimb  가뿐하네            4자  +0.340 | Easy climb.          11자  +0.161 | OK 현행 KO / EN 신규
+  ParkourClimb  영차...           5자  +0.305 | Heave-ho...          11자  +0.161 | OK 현행 KO / EN 신규
+  ParkourClimb  헉... 높다         7자  +0.155 | Oof... high.         12자  +0.114 | OK 현행 KO / EN 신규
+  LedgeHang     여기로 내려가자        8자  -0.000 | Down we go.          11자  +0.081 | ★탈락 ★현행 KO — 경계에서 탈락
+  LedgeHang     내려가자            4자  +0.260 | Down we go.          11자  +0.081 | OK ★개정안
+  LedgeHang     어우... 꽤 깊네     10자  -0.150 | Whoa... that's deep  19자  -0.297 | ★탈락 ★현행 — 둘 다 탈락
+  LedgeHang     꽤 깊네            4자  +0.260 | Long drop.           10자  +0.128 | OK ★개정안
+
+=== 7. 영어 문자열 위생 — '통과했지만 이유가 틀린 것' 사냥 ===
+  (7-a) 영어 열에 음절 문자체계가 섞인 줄: 0건 OK
+  (7-b) 비 ASCII 문자: 0건 OK
+  (7-c) 양성 대조 — 일부러 섞은 `Wi-Fi 끊겼네` 는 음절 판정: OK
+  (7-d) 양성 대조 — 일부러 넣은 곡선 아포스트로피 `It’s late.` 검출: OK
+
+=== 8. 계약(세션 23분, 중복확률 <= 50%) — 영어 풀이 같은 분모를 받는가 ===
+  한국어: 실제 발화 가능 줄 24/24 (침묵 0)  ->  최악 N=10  최선 N=16  허용 k=4  필요 평균간격 345.0초
+  영어: 실제 발화 가능 줄 24/24 (침묵 0)  ->  최악 N=10  최선 N=16  허용 k=4  필요 평균간격 345.0초
+  ★ 두 언어의 N·k·필요간격이 같다 -> 운용점 F/300(395초)은 한/영 공통으로 계약을 만족한다.

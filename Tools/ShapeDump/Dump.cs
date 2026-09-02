@@ -59,6 +59,31 @@ public static class Dump
         }
         Console.WriteLine("@W\t" + AccessoryShapeBuilder.ShippingStrokeBudgetInHeadRadii.ToString("R", inv));
 
+        // ====================================================================
+        // ★ 등급 전수 덤프 (2026-09-02) — ItemCatalog.Rarity 를 <b>프로덕션 그대로</b> 부른다.
+        //   기대값을 여기서 다시 계산하지 않는다(계산기를 두 벌 만들면 둘이 같이 틀린다).
+        //   코호트 배선 같은 변경의 전/후를 이 줄들의 diff 로 판정한다 — 0줄이면 등급이 안 움직였다.
+        // ====================================================================
+        for (int s = 0; s < EquipmentModel.SlotCount; s++)
+        {
+            var slot = (EquipmentSlot)s;
+            int n = ItemCatalog.ItemCountIn(slot);
+            for (int i = 0; i < n; i++)
+            {
+                ItemCatalogEntry e = ItemCatalog.Item(slot, i);
+                if (e == null)
+                {
+                    Console.WriteLine($"@RARITY\t{EquipmentModel.SlotCode(slot)}\t{i}\t(빈자리)\t-\t-");
+                    continue;
+                }
+                Console.WriteLine($"@RARITY\t{EquipmentModel.SlotCode(slot)}\t{i}\t{e.Id}\t" +
+                    $"Lv{e.RequiredLevel}\t{ItemCatalog.RarityName(ItemCatalog.Rarity(slot, i))}");
+            }
+        }
+
+        // 로그는 버리지 않는다 — 이 하니스가 반쪽만 재고 있는지를 이 두 숫자가 알린다.
+        Console.WriteLine($"@LOG\t{Debug.ErrorCount}\t{Debug.WarningCount}");
+
         // 모자 6 × 머리 6 = 36조합. 프로덕션의 실제 클립 코드를 그대로 돈다.
         float strokeHalf = AccessoryShapeBuilder.BaselineStrokeWidth * 0.5f;
         string[] hats = {"야구모자","털모자","중절모","왕관","베레모","밀짚모자"};

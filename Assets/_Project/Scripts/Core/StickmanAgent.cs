@@ -30,6 +30,7 @@ namespace StickMate.Core
         private Camera _mainCamera;
         private IPlatformWindowService _platformService;
         private ICursorPositionService _cursorService; // 지원하는 구현체에서만 non-null (분리된 경로, ICursorPositionService.cs 참고)
+
         private FootholdPoller _footholdPoller;
         private StickmanStateMachine _machine;
         private StickmanBlackboard _blackboard;
@@ -53,6 +54,32 @@ namespace StickMate.Core
 
         private float _fullscreenPollTimer;
         private bool _isSuspended;
+
+        // ★★ 2026-09-02 — 숨김에는 <b>축이 셋</b>이다. 하나로 합치지 않는다.
+        //
+        //   축 1 _fullscreenAutoHide : 전체화면 <b>게임</b>을 우리가 <b>감지</b>해서 숨긴다(등급 2).
+        //                              오탐이 존재하고(엑셀 전체화면을 게임으로 오인한 실제 사고),
+        //                              사용자는 설정창에서 이 축을 통째로 끌 수 있다
+        //                              (AppSettingsModel.AutoHideOnFullscreen).
+        //   축 2 _userHidden         : 사용자가 <b>직접</b> 숨겼다(⌃⌥⌘K / 설정창 [일반]). 오탐이 0이다 —
+        //                              누가 눌렀는지가 확정적이라 "잘못 숨었다"가 성립하지 않는다.
+        //   축 3 _fullscreenPanelRetreat : 전체화면 앱이 떴지만 <b>게임이 아니다</b>(등급 1).
+        //                              창·패널·팝오버·부채꼴·화면 오버레이와 그 <b>클릭 차단막</b>만 걷고
+        //                              <b>캐릭터는 남긴다</b>. 이 축은 축 1을 <b>포함</b>한다
+        //                              (ForeignFullscreenTierPolicy.RetreatsPanels).
+        //
+        // 축 1과 축 2는 실패 비용의 방향이 반대라, 두 축을 한 조건식에 얹으면 <b>설정창 토글 하나가 두 축을
+        // 동시에 끈다</b>. 화면공유 중에 "전체화면 자동 숨김"을 끄는 순간 사용자가 직접 숨겨 둔 캐릭터가
+        // 발표 화면에 튀어나오는 경로가 그것이다. 그래서 각 축이 자기 스위치와 자기 사유를 갖고,
+        // 합성은 ApplySuspendDecision() 한 곳에서만 일어난다.
+        //
+        // ★ 축 3이 <b>_isSuspended에 들어가지 않는</b> 이유가 이 라운드 전체의 안전판이다: 들어가는 순간
+        //   2026-08-31 사용자 신고 "엑셀같은 프로그램 전체화면에서 엑셀 클릭하면 캐릭터가 없어져버림"의
+        //   완전한 회귀가 된다. 축 3은 <see cref="ArePanelsSuppressed"/>로만 새 나가고, 그 프로퍼티를
+        //   읽는 소비자는 전부 "화면에 고정된 표면"이다.
+        private bool _fullscreenAutoHide;
+        private bool _userHidden;
+        private bool _fullscreenPanelRetreat;
 
         // ============================================================================
         // 클릭 관통 긴급 종료 안전장치("바로 바탕화면에서 구동" 라운드, 사용자 명시 요청, 2026-08-28).
@@ -105,10 +132,92 @@ namespace StickMate.Core
         /// </summary>
         public StickConfig Config => _config;
 
-        /// <summary>전체화면 게임 감지로 현재 Suspended 상태인지 — "전체화면 감지 시 즉시 취소"가
-        /// 필요한데 아래 Suspend()의 일반 처리(상태머신 강제 전이) 대상이 아닌 소비자들이 직접
-        /// 폴링한다(WindowCrashDirector의 오버레이 수명, 정보창/부채꼴/팝오버의 자동 닫기 등).</summary>
+        /// <summary>지금 <b>캐릭터가 멈춰 있는지</b> — 물리·Tick·렌더러가 전부 정지한 상태.
+        /// Suspend()의 일반 처리(상태머신 강제 전이) 대상이 아닌 소비자들이 직접 폴링한다.
+        /// <para>★ 2026-09-02 — 축 1 <b>또는</b> 축 2의 합이다(전체화면 <b>게임</b> 감지 / 사용자 명시 숨김).
+        /// 소비자는 <b>왜</b> 숨었는지 몰라도 된다 — 사유를 알아야 하는 소비자만
+        /// <see cref="IsUserHidden"/>을 함께 본다.</para>
+        /// <para>★★ <b>화면 표면을 걷을지</b>를 묻는 소비자는 이 값이 아니라
+        /// <see cref="ArePanelsSuppressed"/>를 읽어야 한다. 이 값은 등급 1(게임이 아닌 전체화면 앱)에서
+        /// <b>false</b>이며, 그것이 2026-08-31 신고를 회귀시키지 않는 유일한 선이다.
+        /// 이 프로퍼티에 등급 1을 얹지 마라 — 얹는 순간 그 신고가 그대로 돌아온다.</para></summary>
         public bool IsSuspended => _isSuspended;
+
+        /// <summary>
+        /// ★ <b>화면에 고정된 표면</b>(창·패널·팝오버·부채꼴·포스트잇·화면 오버레이)과 그
+        /// <b>클릭 차단막</b>을 지금 걷어야 하는가. <b>등급 1 소비자가 읽는 유일한 창구</b>다.
+        ///
+        /// ============================================================================
+        /// 왜 <see cref="IsSuspended"/>와 <b>다른</b> 값이 필요한가 (2026-09-02, 출시 Blocker)
+        /// ============================================================================
+        /// 페르소나 `재현`이 실기에서 재현했다: 카테고리를 선언하지 않은 앱(Zoom/Teams/Keynote 부류)을
+        /// 네이티브 전체화면으로 올리면 <b>자동 숨김이 0%</b>였고, 정보창 877x853pt가 화면 1512x982pt 위에
+        /// 그대로 떠 <b>면적 50.38%</b>를 덮은 채 그 사각형의 클릭까지 먹었다(차단막이 살아 있으므로).
+        ///
+        /// <para>그렇다고 게임 조건을 없앨 수는 없다 — 그건 2026-08-31 신고
+        /// <i>"엑셀같은 프로그램 전체화면에서 엑셀 클릭하면 캐릭터가 없어져버림"</i>의 완전한 회귀다.
+        /// 그래서 <b>판정을 넓히지 않고 결과를 두 등급으로 가른다</b>
+        /// (<see cref="ForeignFullscreenTier"/>): 등급 1은 <b>표면만</b>, 등급 2는 <b>캐릭터까지</b>.</para>
+        ///
+        /// ============================================================================
+        /// 불변식 — <b>이 값은 <see cref="IsSuspended"/>를 항상 포함한다</b>
+        /// ============================================================================
+        /// 필드에 캐시하지 않고 읽을 때마다 OR로 계산한다. 캐시하면 "숨었는데 차단막은 남은" 한 프레임이
+        /// 구조적으로 가능해지고, <b>그 한 프레임이 정확히 이 앱에서 가장 나쁜 상태</b>다(안 보이는데
+        /// 클릭만 먹는다). bool OR 하나라 24시간 폴링에서도 비용이 없다.
+        ///
+        /// <para><b>이 형태가 기존 테스트를 살린다</b>: <c>FullscreenSuspendUiHidingTests</c>는
+        /// 리플렉션으로 <c>_isSuspended</c>를 직접 세운다(주입 지점이 없어서). 캐시 필드였다면 그
+        /// 주입이 이 값에 도달하지 못해 등급 2 회귀 잠금이 통째로 거짓 통과했을 것이다.</para>
+        /// </summary>
+        public bool ArePanelsSuppressed => _isSuspended || _fullscreenPanelRetreat;
+
+        /// <summary>
+        /// ★ <b>사용자 명시 숨김</b>이 켜져 있는가 — 화면공유·발표 중에 "지금은 나오지 마"를
+        /// 사용자가 직접 지시한 상태(⌃⌥⌘K / 설정창 [일반] "지금 즉시").
+        ///
+        /// <para><b>왜 <see cref="IsSuspended"/>와 따로 노출하는가</b>: 전체화면 감지가 왕복해도 이
+        /// 축은 흔들리지 않아야 한다. 설정창 토글이 이 상태를 <b>표시</b>하려면 "지금 숨어 있다"가
+        /// 아니라 "사용자가 숨기라고 했다"를 읽어야 한다 — 둘을 같은 값으로 읽으면 전체화면 게임을
+        /// 켠 동안 토글이 저절로 켜진 것처럼 보인다.</para>
+        ///
+        /// <para><b>저장하지 않는다</b>(리더 판정 2026-09-02): 숨긴 채 앱을 껐다 켜면 톱니
+        /// 아이콘조차 숨어 마우스 진입점이 0이 되고, 남는 탈출구가 전역 단축키 하나뿐이 된다.
+        /// 재시작은 언제나 "보이는 상태"로 출발한다 = 저장 스키마 무변경.</para>
+        /// </summary>
+        public bool IsUserHidden => _userHidden;
+
+        /// <summary>
+        /// 사용자 명시 숨김을 켜고 끈다. 반환값은 <b>적용 후</b> 상태(숨김이면 true).
+        ///
+        /// <para>폴링 주기를 기다리지 않고 <b>그 프레임에</b> 반영한다 — 이 명령의 사용 맥락이
+        /// "지금 화면을 공유한다"라, <c>fullscreenPollInterval</c>(기본 1초)만큼 늦게 사라지는 것은
+        /// 기능이 없는 것과 다르지 않다.</para>
+        /// </summary>
+        public bool SetUserHidden(bool hidden, string source)
+        {
+            if (_userHidden == hidden)
+            {
+                Debug.Log($"[사용자숨김] 요청({source}) 무시 — 이미 {(hidden ? "숨김" : "보임")} 상태입니다.");
+                return _userHidden;
+            }
+
+            _userHidden = hidden;
+            Debug.Log($"[사용자숨김] {(hidden ? "숨김" : "해제")}({source}) — 사용자가 직접 지시한 축입니다. " +
+                "전체화면 자동 숨김(설정창 [일반])과 <b>독립</b>이라, 이 상태에서 전체화면 앱을 오갔다 " +
+                "와도 되살아나지 않습니다. 되돌리는 방법은 같은 단축키 " +
+                ShortcutLabel.Chord(UserHideHotkeyLetter) + " 한 가지입니다.");
+            ApplySuspendDecision();
+            return _userHidden;
+        }
+
+        /// <summary>사용자 명시 숨김 토글. 반환값은 적용 후 상태(숨김이면 true).</summary>
+        public bool ToggleUserHidden(string source) => SetUserHidden(!_userHidden, source);
+
+        /// <summary>사용자 명시 숨김의 동작키 한 글자. 로그·안내 문구가 이 상수 하나만 본다 —
+        /// 조합키 <b>표기</b>는 플랫폼마다 다르므로 반드시 <see cref="ShortcutLabel.Chord"/>를 거친다
+        /// (Windows에서는 <c>Ctrl+Alt+Win+K</c>로 렌더된다).</summary>
+        public const string UserHideHotkeyLetter = "K";
 
         // ============================================================================
         // ★ 캐릭터 전신 높이의 단일 소스 (리더 지시 2026-08-29 — 크기 조정 가능해야 함)
@@ -1062,13 +1171,142 @@ namespace StickMate.Core
             //   기본값은 켬이고(AppSettingsModel), 끄는 것은 사용자의 명시적 선택이다 — 절대 불변 원칙 2를
             //   사용자가 스스로 면제하는 자리이므로 그 판단을 코드가 대신하지 않는다.
             //   판정을 여기 한 줄로 둔 이유: Suspend/Resume의 대칭이 자동으로 성립한다. 숨어 있는 동안
-            //   토글을 끄면 fullscreenActive가 false가 되어 다음 폴링에서 Resume()이 정확히 한 번 돈다.
-            bool fullscreenActive = _platformService.IsFullscreenAppActive() && AppSettingsModel.AutoHideOnFullscreen;
-            if (fullscreenActive && !_isSuspended) Suspend();
-            else if (!fullscreenActive && _isSuspended) Resume();
+            //   토글을 끄면 이 축이 false가 되어 다음 폴링에서 Resume()이 정확히 한 번 돈다.
+            //
+            // ★★ 2026-09-02 — 이 줄에 <b>|| 로 사용자 숨김을 얹지 않는다</b>. 얹으면 뒤의
+            //    `&& AutoHideOnFullscreen`이 사용자 숨김까지 함께 끄게 되어, 화면공유 중에 설정창
+            //    토글 하나가 캐릭터를 발표 화면으로 되돌린다. 여기는 <b>축 1의 사실</b>만 계산하고,
+            //    두 축의 합성은 ApplySuspendDecision()이 한다.
+            //
+            // ★★★ 2026-09-02 등급 배선 — <b>네이티브 조회는 여전히 폴링당 1회</b>다.
+            //    GetForeignFullscreenTier()가 원본이고 IsFullscreenAppActive()는 그 값에서 유도된다
+            //    (IForeignFullscreenTierSource의 "구현 계약" 절). 여기서 두 메서드를 각각 부르면
+            //    창 열거/카테고리 조회가 두 배가 되고, 디바운서가 같은 폴링에서 두 번 갱신된다.
+            ForeignFullscreenTier tier = PollForeignFullscreenTier();
+
+            // ★ 축 1은 <b>비트 단위로 예전 그대로</b>다: 양 플랫폼 구현체가
+            //   IsFullscreenAppActive() => SuspendsCharacter(GetForeignFullscreenTier())로 정의돼 있어
+            //   이 줄과 예전 줄이 같은 함수를 같은 입력에 적용한다. 값이 달라지는 입력 조합이 하나도
+            //   없다 = 2026-08-31 신고가 회귀할 경로가 구조적으로 없다.
+            //
+            // ★ 두 줄 모두 <c>AppSettingsModel.AutoHideOnFullscreen</c>을 <b>지역 변수로 빼지 않고</b>
+            //   그대로 적는다. ManualHideAxisSeparationAuditTests가 이 줄들을 <b>소스로 읽어</b>
+            //   "설정창 게이트가 붙어 있는가 / 사용자 숨김이 얹히지 않았는가"를 검사하기 때문이다 —
+            //   지역 변수로 빼면 그 감사가 게이트를 못 보고 조용히 무의미해진다(정적 bool 읽기 2회이고
+            //   이 함수는 폴링 주기당 1회 돈다).
+            _fullscreenAutoHide = AppSettingsModel.AutoHideOnFullscreen
+                && ForeignFullscreenTierPolicy.SuspendsCharacter(tier);
+
+            // ★ 축 3(등급 1)도 <b>같은 설정 스위치</b> 아래 둔다. 사용자가 "전체화면 자동 숨김"을 껐다면
+            //   그건 원칙 2의 면제를 스스로 선택한 것이고, 그 면제를 우리가 절반만 들어줄 이유가 없다
+            //   (설정창 [일반] 문구도 "설정창/팝오버/부채꼴이 모두"라고 이미 전체를 약속하고 있다).
+            _fullscreenPanelRetreat = AppSettingsModel.AutoHideOnFullscreen
+                && ForeignFullscreenTierPolicy.RetreatsPanels(tier);
+
+            ApplySuspendDecision();
         }
 
-        private void Suspend()
+        /// <summary>
+        /// 이번 폴링의 확정 등급. 등급을 모르는 서비스(Null/모바일/테스트 스텁)는 예전 계약 그대로
+        /// <c>true → Full</c> / <c>false → None</c>으로 강등한다 — <b>등급 1이 없던 동작</b>과 정확히 같다.
+        /// (에디터/PlayMode는 NullPlatformWindowService라 항상 <see cref="ForeignFullscreenTier.None"/>이고,
+        ///  그래서 기존 PlayMode 테스트들의 리플렉션 주입 경로가 그대로 유효하다.)
+        ///
+        /// <para>★ <b>캐스팅을 Awake에 캐시하지 않는다</b>(<see cref="_cursorService"/>와 다른 판단).
+        /// 이 저장소의 PlayMode 테스트는 <c>_platformService</c>를 리플렉션으로 <b>통째로 갈아끼워</b>
+        /// 전체화면을 흉내 낸다(<c>FullscreenSuspendCharacterInkTests</c>의 <c>FullscreenSpoofService</c>).
+        /// 캐스팅을 Awake에 굳혀 두면 그 교체가 <b>조용히 무시되어</b> 스푸핑이 아무 일도 하지 않는데
+        /// 테스트는 초록일 수 있다. 커서 경로는 매 프레임이라 캐시가 값싸지만, 여기는 폴링 주기
+        /// (기본 1.5초)당 <c>isinst</c> 한 번이라 캐시로 얻을 것이 없다.</para>
+        /// </summary>
+        private ForeignFullscreenTier PollForeignFullscreenTier()
+        {
+            if (_platformService is IForeignFullscreenTierSource tierSource)
+                return tierSource.GetForeignFullscreenTier();
+
+            return _platformService.IsFullscreenAppActive()
+                ? ForeignFullscreenTier.Full
+                : ForeignFullscreenTier.None;
+        }
+
+        /// <summary>
+        /// 두 축(<see cref="_fullscreenAutoHide"/> / <see cref="_userHidden"/>)을 합쳐 Suspend/Resume을
+        /// <b>정확히 한 번씩</b> 부른다. 위 폴링 주석의 "대칭"이 여기로 그대로 옮겨왔다 — 어느 축이
+        /// 바뀌든 이 한 함수를 부르면 되고, 그래서 축이 셋이 되어도 대칭이 깨질 자리가 없다.
+        ///
+        /// <para>★ <b>네거티브 컨트롤이 여기서 성립한다</b>: 사용자가 숨긴 동안 전체화면 앱을 왕복하면
+        /// 축 1만 true→false로 흔들리고 OR은 계속 true다. 즉 Resume()이 <b>불리지 않는다</b>.
+        /// 예전 <c>SettingsWindow.SetCharacterVisibleNow</c>(렌더러만 끄는 1회성)가 바로 이 지점에서
+        /// 되살아났다.</para>
+        ///
+        /// <para>★ 2026-09-02 등급 배선 — 축 3은 <b>여기서도 캐릭터를 건드리지 않는다</b>.
+        /// 이 함수의 첫 줄은 한 글자도 바뀌지 않았고, 축 3은 <see cref="ArePanelsSuppressed"/>가 읽을
+        /// 뿐이다. "합성 지점 한 곳"이라는 성질을 지키기 위해 축 3의 <b>전이 로그</b>만 이 함수 끝에
+        /// 붙인다 — 그러지 않으면 등급 1이 켜지고 꺼진 사실이 Player.log에 한 줄도 남지 않는다
+        /// (표면이 사라진 이유를 다음 신고에서 가릴 수단이 없어진다).</para>
+        /// </summary>
+        private void ApplySuspendDecision()
+        {
+            bool shouldSuspend = _fullscreenAutoHide || _userHidden;
+            if (shouldSuspend != _isSuspended)
+            {
+                if (shouldSuspend)
+                {
+                    _lastSuspendReason = DescribeSuspendReason();
+                    Suspend(_lastSuspendReason);
+                }
+                else
+                {
+                    // 해제 로그는 <b>무엇이 풀렸는가</b>를 말해야 쓸모가 있다. 지금 시점의 두 축은 이미
+                    // 둘 다 false라 여기서 다시 계산하면 "두 축 모두 해제"밖에 못 적는다.
+                    Resume(_lastSuspendReason);
+                    _lastSuspendReason = null;
+                }
+            }
+
+            LogPanelRetreatTransition();
+        }
+
+        /// <summary>"등급 1이 켜졌다/꺼졌다"를 <b>전이 순간에만</b> 한 줄 남긴다. 매 폴링의 정상 경로는
+        /// bool 비교 하나로 빠져나가 문자열을 만들지 않는다(24시간 상주 앱).
+        ///
+        /// <para>등급 2는 이미 <c>[숨김]</c> 두 줄이 같은 사건을 적으므로 여기서 중복해 적지 않는다 —
+        /// 이 함수가 말하는 것은 <b>"캐릭터는 그대로인데 표면만 걷힌"</b> 그 경우뿐이다.</para></summary>
+        private void LogPanelRetreatTransition()
+        {
+            bool panels = ArePanelsSuppressed;
+            if (panels == _lastLoggedPanelsSuppressed) return;
+            _lastLoggedPanelsSuppressed = panels;
+            if (_isSuspended) return;   // [숨김]/[숨김] 해제 로그가 같은 전이를 이미 적었다.
+
+            Debug.Log(panels
+                ? "[표면회수] 등급 1 — 전체화면 앱이 떴지만 <b>게임이 아니라</b> 창·패널·팝오버·부채꼴과 " +
+                  "그 클릭 차단막만 걷습니다. 캐릭터는 그대로 둡니다(2026-08-31 신고 회귀 방지). " +
+                  "어느 창 때문인지는 직전 [전체화면판정] 줄에 있습니다."
+                : "[표면회수] 등급 1 해제 — 표면을 다시 열 수 있는 상태입니다. 단, 걷힌 창/팝오버를 " +
+                  "저절로 되살리지는 않습니다(사용자가 부르지 않은 창이 튀어나오는 것이 더 방해라는 확정 설계). " +
+                  "톱니와 포스트잇처럼 상시 HUD인 표면만 스스로 돌아옵니다.");
+        }
+
+        /// <summary>위 로그의 중복 방지 상태. <b>로그 전용</b>이라 판정에는 절대 쓰이지 않는다 —
+        /// 판정은 언제나 <see cref="ArePanelsSuppressed"/>를 그 자리에서 다시 계산한다.</summary>
+        private bool _lastLoggedPanelsSuppressed;
+
+        /// <summary>숨을 때의 사유를 그대로 들고 있다가 해제 로그에 붙인다(전이에서만 갱신 — 매 폴링 할당 없음).</summary>
+        private string _lastSuspendReason;
+
+        /// <summary>지금 숨어 있는(또는 방금 풀린) 사유 한 줄. 두 축이 동시에 참일 수 있으므로 둘 다 적는다 —
+        /// "왜 아직 안 나오지"가 다음 신고가 되지 않게 한다.</summary>
+        private string DescribeSuspendReason()
+        {
+            if (_fullscreenAutoHide && _userHidden)
+                return "전체화면 감지 + 사용자 직접 숨김(둘 다 켜져 있어 한쪽만 풀려도 계속 숨습니다)";
+            if (_userHidden) return "사용자 직접 숨김(" + ShortcutLabel.Chord(UserHideHotkeyLetter) + " / 설정창 [일반])";
+            if (_fullscreenAutoHide) return "전체화면 앱 감지(자동 숨김, 원칙 2)";
+            return "두 축 모두 해제";
+        }
+
+        private void Suspend(string reason)
         {
             _isSuspended = true;
 
@@ -1120,14 +1358,20 @@ namespace StickMate.Core
             // 전혀 없어서 Player.log 전수를 뒤져야 했다. 캐릭터가 화면에서 사라지는 것은 이 앱에서
             // 가장 눈에 띄는 사건이므로 사유와 함께 반드시 남긴다(판정 근거 창 이름/bounds는 바로 앞
             // 줄에 [전체화면판정] 로그로 남는다 — Platform/MacOS/MacWindowService.cs 참고).
-            Debug.Log($"[전체화면숨김] 전체화면 앱이 감지되어 캐릭터를 숨기고 물리를 멈춥니다(비침해 원칙 2) — " +
+            //
+            // ★ 2026-09-02 — 사유가 <b>두 가지</b>가 되어 로그도 사유를 받는다. 예전에는 문장이
+            //   "전체화면 앱이 감지되어"로 고정이라, 사용자가 직접 숨긴 경우에도 있지도 않은
+            //   전체화면 앱을 범인으로 지목하게 된다(다음 신고를 통째로 잘못된 방향으로 보낸다).
+            Debug.Log($"[숨김] 캐릭터를 숨기고 물리를 멈춥니다 — 사유: {reason}. " +
                 $"숨기기 직전 상태={current}, 몸 렌더러 {( _renderers != null ? _renderers.Length : 0)}개 + " +
                 $"액세서리/펫/FX {_dynamicVisuals.Count}개 비활성화. " +
-                "직전 [전체화면판정] 줄에 어느 창 때문인지가 적혀 있습니다.");
+                "열린 창과 그 클릭 차단막은 각 표면이 ArePanelsSuppressed를 폴링해 같은 프레임에 스스로 걷습니다 " +
+                "(그 값은 IsSuspended를 항상 포함하므로 이 경로에서도 참이다). " +
+                "전체화면 사유라면 직전 [전체화면판정] 줄에 어느 창 때문인지가 적혀 있습니다.");
             // TODO(Phase 2 렌더링 레이어): 즉시 on/off 대신 ≤200ms 페이드 아웃/인 연출 추가.
         }
 
-        private void Resume()
+        private void Resume(string reason)
         {
             _isSuspended = false;
             // Suspend()에서 얼려 둔 절대 기한을 **지금**을 기준으로 다시 세운다(그 주석 참고) —
@@ -1154,7 +1398,9 @@ namespace StickMate.Core
             // Suspend()와 짝을 이루는 로그(위 주석 참고). 가출 은신 중이라 일부러 감춰둔 경우를
             // 명시적으로 구분해 적는다 — 그러지 않으면 "Resume 했는데도 캐릭터가 안 보인다"가
             // 또 원인 불명 신고가 된다.
-            Debug.Log("[전체화면숨김] 해제 — 물리를 재개했습니다. " +
+            // 사유가 비어 있는 경로는 하나뿐이다 — 테스트가 _isSuspended를 리플렉션으로 직접 주입한 경우
+            // (Tests/PlayMode/FullscreenSuspendUiHidingTests). 그 사실을 그대로 적는다.
+            Debug.Log($"[숨김] 해제 — 물리를 재개했습니다(직전 사유: {reason ?? "미기록 — 외부 주입"}). " +
                 (hiddenByRunaway
                     ? "단, 지금은 가출(Runaway) 은신 중이라 캐릭터는 일부러 계속 숨겨둡니다(클릭해 찾으면 나타납니다)."
                     : "캐릭터를 다시 보이게 했습니다."));

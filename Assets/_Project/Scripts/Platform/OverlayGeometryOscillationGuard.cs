@@ -129,6 +129,29 @@ namespace StickMate.Platform
             return false;
         }
 
+        /// <summary>
+        /// ★ <b>목표가 바뀌었으니 관측 이력만 버린다</b>(2026-09-02). <see cref="IsOscillating"/> 래치는
+        /// <b>절대 건드리지 않는다</b> — "래치는 풀지 않는다"는 위 문단이 그대로 유효하다.
+        ///
+        /// <para><b>왜 필요한가</b>: 이 가드는 "재적용이 <b>원리적으로</b> 수렴하지 않는다"를 잡는다.
+        /// 그런데 사용자가 표시 모니터를 <b>왼쪽↔오른쪽으로 바꾸면</b> 창 사각형이 두 값 사이를
+        /// 오가고, 그것은 가드가 보기에 A↔B 진동과 <b>구별되지 않는다</b>. 네 번 왕복하면 래치가
+        /// 걸려 <b>그 프로세스에서 다시는 모니터를 옮길 수 없다</b>(재무장 자체가 막힌다).
+        /// 사용자가 의도적으로 만든 변화를 "수렴 실패"로 읽는 것은 이 가드의 계약 밖이다.</para>
+        ///
+        /// <para>그래서 <b>목표가 달라진 순간</b>에만 과거 표본을 버린다. 이전 표본들은 <b>다른 목표</b>에
+        /// 대한 관측이라 새 목표의 수렴 여부와 아무 관계가 없다 — 지우는 것이 옳다.
+        /// 목표가 그대로인 진짜 진동은 이력이 유지되므로 <b>여전히 잡힌다</b>.</para>
+        /// </summary>
+        public void ForgetSamplesForNewTarget()
+        {
+            AlternationCount = 0;
+            _hasRecent = false;
+            _hasPrevious = false;
+            _recent = default;
+            _previous = default;
+        }
+
         /// <summary>테스트 전용 초기화(프로덕션 경로는 부르지 않는다 — 위 "왜 래치는 풀지 않는가" 참고).</summary>
         public void Reset()
         {

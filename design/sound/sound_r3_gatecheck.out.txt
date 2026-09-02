@@ -1,0 +1,95 @@
+==============================================================================
+0. 교정 (calibration) — 알려진 참 6건 + 알려진 거짓 3건(음성 대조)
+==============================================================================
+  [OK ] C1 m_DisableAudio=1 (오디오는 빌드에서 꺼져 있다)
+  [OK ] C2 AudioModule 소비 코드 0건 (AudioSource/PlayOneShot)
+  [OK ] C3 CurrentVersion = 9
+  [OK ] C4 설정창 탭 5개
+  [OK ] C5 RecentInputSeconds = 2f
+  [OK ] C6 ForeignFullscreenTier 3값 존재
+  [OK ] N1 (음성) 존재하지 않는 심볼 SoundMasterEnabled 가 코드에 없다
+  [OK ] N2 (음성) m_DisableAudio: 0 이 아니다
+  [OK ] N3 (음성) TabCount = 4 가 아니다
+
+==============================================================================
+1. 소스에서 읽은 판정 규칙 (독립 재구현의 근거)
+==============================================================================
+  [OK ] R1 Resolve(covers,isGame) 규칙 원문 일치
+  [OK ] R2 _isSuspended = _fullscreenAutoHide || _userHidden
+  [OK ] R3 ArePanelsSuppressed = _isSuspended || _fullscreenPanelRetreat
+  [OK ] R4 RetreatsPanels(tier) = tier != None
+  [OK ] R5 SuspendsCharacter(tier) = tier == Full
+  [OK ] R6 FramePacing.Suspended 는 _isSuspended 로만 켜진다(Tier1 경로 없음)
+
+==============================================================================
+2. ★ 진리표 — 현행 게이트(IsSuspended) vs 제안 게이트(ArePanelsSuppressed)
+==============================================================================
+덮음   게임   숨김   등급          IsSusp  APS    현행     제안     차이
+FalseFalseFalseNone        False   False  소리     소리     
+FalseFalseTrue None        True    True   무음     무음     
+FalseTrue FalseNone        False   False  소리     소리     
+FalseTrue True None        True    True   무음     무음     
+True FalseFalsePanelsOnly  False   True   소리     무음     ★
+True FalseTrue PanelsOnly  True    True   무음     무음     
+True True FalseFull        True    True   무음     무음     
+True True True Full        True    True   무음     무음     
+
+  전체 8행 중 갈리는 행 = 1행 (12.5%)
+  ★ 갈리는 조건: 덮음=True 게임=False 사용자숨김=False → 등급 PanelsOnly
+     현행 게이트로는 '소리 남'. 이것이 발표/화상회의 전체화면이다.
+  [OK ] T1 갈리는 행이 정확히 1행이다
+  [OK ] T2 그 1행이 PanelsOnly & 미숨김이다
+  [OK ] T3 제안 게이트는 현행을 항상 포함한다(약화 없음)  — 현행 무음인데 제안이 소리인 행 = 0
+
+==============================================================================
+3. FramePacingTier.Active 의 실제 의미 — R1 §3-2 주장 검증
+==============================================================================
+  [OK ] A1 DecideTier 본문 추출  — 4686자
+  [OK ] A2 마지막 문장이 무조건 return Active 다(= 폴백)
+  [OK ] A3 Calm 은 characterIdle AND 무입력>=2s 를 요구한다
+  [OK ] A4 Away 는 characterIdle 을 AND 로 요구한다
+
+  반례 탐색 — '무입력인데 Active' 가 성립하는가
+    배회 중(걷는다) · 무입력 600초         → Active  ← ★ 반례: 무입력인데 Active
+    가만히 서 있음 · 무입력 600초          → Away
+    발표 중 슬라이드 클릭(1초 전)           → Active
+  [OK ] A5 '무입력이면 Active 가 아니다'는 반증된다  — 반례 1건 — 캐릭터가 움직이면 무입력 600초여도 Active
+
+  집중 세션 중(캐릭터 정지) 무입력 시간별 등급 — 소리가 나는 구간이 있는가
+    무입력     0.0초 → Still
+    무입력     1.9초 → Still
+    무입력     2.0초 → Still
+    무입력     5.0초 → Still
+    무입력    30.0초 → Still
+    무입력    60.0초 → Still
+    무입력   179.9초 → Still
+    무입력   180.0초 → Away
+    무입력   600.0초 → Away
+    무입력  1500.0초 → Away
+  [OK ] A6 집중 세션 중에는 어떤 무입력 시간에도 Active 가 아니다  — Active 구간 0개 / 10개 → 'Active만 소리'는 focus.complete 를 구조적으로 죽인다
+  [OK ] A7 그 등급은 전부 R1 §3-2 의 무음 등급(Still/Away/Calm)이다  — 관측된 등급 = ['Away', 'Still']
+
+==============================================================================
+4. focus.complete 배선 — 상태 전이는 best-effort 다
+==============================================================================
+  [OK ] F1 CompleteSession 은 TryTriggerPoseState 로만 포즈를 건다
+  [OK ] F2 TryTriggerPoseState 는 Idle/Walk 가 아니면 조용히 스킵한다
+  [OK ] F3 SpectacleEventLock 이 잡혀 있어도 조용히 스킵한다
+  [OK ] F4 Update 는 IsSuspended 에서만 멈춘다(= 등급 1에서는 타이머가 계속 간다)
+
+==============================================================================
+5. ★ 인용 줄번호 감사 — R2가 틀린 이유가 정확히 이것이었다
+==============================================================================
+  [OK ] X StickmanAgent.cs:140-143 에 «ArePanelsSuppressed» 가 있다
+  [OK ] X StickmanAgent.cs:153 에 «Zoom/Teams/Keynote» 가 있다
+  [OK ] X StickmanAgent.cs:1250 에 «_fullscreenAutoHide || _userHidden» 가 있다
+  [OK ] X ViewerPresence.cs:385-416 에 «return FramePacingTier.Active;» 가 있다
+  [OK ] X SettingsWindow.cs:176-182 에 «TabCount = 5» 가 있다
+  [OK ] X* 문서의 모든 .cs 줄번호 인용이 파일 범위 안이다  — 검사 14건 / 범위 밖 0건
+
+  (범위 검사는 '그 줄이 존재하는가'까지다. 내용 일치는 위 X 항목이 본다.)
+
+==============================================================================
+최종: 검사 35건 / 실패 0건
+==============================================================================
+전건 통과.

@@ -4,7 +4,6 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using StickMate.Core;
 using StickMate.Platform;
-using StickMate.States;
 
 namespace StickMate.Interaction
 {
@@ -114,7 +113,7 @@ namespace StickMate.Interaction
         /// 두 시간 게임을 한 것은 다른 사건이다. 그래서 <b>짧게 지나간 경우에만</b> 되돌린다 —
         /// 그 사이 사용자가 하던 일을 기억하고 있을 시간이다.</para>
         ///
-        /// <para><b>원칙 2는 구조적으로 안 깨진다</b>: 복귀 조건이 <c>!IsSuspended</c>이므로
+        /// <para><b>원칙 2는 구조적으로 안 깨진다</b>: 복귀 조건이 <c>!ArePanelsSuppressed</c>이므로
         /// 게임이 아직 전체화면이면 <b>실행될 수 없다</b>(문자열 사유가 아니라 상태를 본다 —
         /// <see cref="RestoreInfoWindowIfNeeded"/>와 같은 관례).</para>
         /// </summary>
@@ -153,7 +152,9 @@ namespace StickMate.Interaction
             if (!_reopenArmed) return;
             if (_open) { _reopenArmed = false; return; }               // 사용자가 이미 다시 열었다.
             if (_agent == null) { _reopenArmed = false; return; }
-            if (_agent.IsSuspended) return;                            // 아직 전체화면 — 원칙 2.
+            // 등급 1(게임이 아닌 전체화면 앱)에서도 되돌리지 않는다 — 우리가 빼앗은 이유가 아직
+            // 그대로 있는데 돌려주면 같은 프레임에 다시 빼앗게 된다(무한 왕복).
+            if (_agent.ArePanelsSuppressed) return;                    // 아직 전체화면 — 원칙 2.
 
             _reopenArmed = false;
             float away = Time.unscaledTime - _suspendClosedAt;
@@ -233,6 +234,32 @@ namespace StickMate.Interaction
         [SerializeField] private StickConfig _config;
 
         private StickmanAgent _agent;
+
+        // ==================== 사용자 명시 숨김(2026-09-02) ====================
+
+        /// <summary>
+        /// ★ <b>탈출구 고지</b>. 이 문장은 장식이 아니라 이 행의 <b>안전장치</b>다.
+        ///
+        /// <para>숨기는 순간 톱니·부채꼴·이 창·포스트잇이 전부 <c>IsSuspended</c>/<c>ArePanelsSuppressed</c>를
+        /// 보고 스스로 내려간다(사용자 명시 숨김은 축 2라 두 창구 모두에서 참이다)
+        /// (그게 이 기능의 요구사항이다). 그러면 <b>마우스로 되돌릴 경로가 0</b>이 되고 남는 것은 단축키
+        /// 하나뿐이다. 그 사실은 <b>누르기 전에</b> 읽혀야 한다 — 누른 뒤에는 읽을 화면이 없다.</para>
+        ///
+        /// <para><b>왜 화면 위 안내(토스트)로 띄우지 않는가</b>: 이 기능이 발동하는 순간이 정확히
+        /// "내 화면이 남에게 공개되는 순간"이다. 그때 뜨는 안내는 <b>반드시 공유 화면에 찍힌다</b> —
+        /// 캐릭터를 치우려고 누른 버튼이 대신 안내문을 띄우면 목적이 뒤집힌다. 그래서 안내는
+        /// 여기(캡션) · 행 옆 단축키 표기 · 부팅 배너, 즉 <b>전부 누르기 전</b>에만 둔다.</para>
+        /// </summary>
+        private static readonly string HideEscapeCaption =
+            "캐릭터도 열린 창도 함께 사라져요. 다시 부르려면 " +
+            ShortcutLabel.Chord(StickmanAgent.UserHideHotkeyLetter) + " — 이 방법뿐입니다.";
+
+        private SettingsToggle _manualHideToggle;
+
+        /// <summary>전역 단축키를 쓸 수 없는 환경에서 <b>숨기기 자체를 막는</b> 게이트.
+        /// <para>그 환경에서 숨으면 되돌릴 경로가 0이 된다(톱니도 부채꼴 [✕ 앱 종료]도 함께 사라지므로
+        /// 남는 것은 강제 종료뿐이다). "안내"보다 강한 보증이라 안내와 <b>함께</b> 둔다.</para></summary>
+        private SettingsRowGate _manualHideGate;
         private IGlobalPointerButtonService _buttonService;
 
         private Canvas _canvas;
@@ -267,6 +294,13 @@ namespace StickMate.Interaction
         /// <summary>말풍선을 끄면 함께 무효가 되는 세 행(42-11 판정 G).</summary>
         private SettingsRowGate _speechGate;
         private Text _gearWarnCaption;
+
+        /// <summary>[톱니 위치] 행의 게이트 — 아직 한 번도 옮긴 적이 없으면 되돌릴 것이 없다.
+        /// <b>사유 한 줄</b>(docs/UX_FLOW.md C16)이 그 자리에 뜬다(35-1-7 "회색 + 사유").</summary>
+        private SettingsRowGate _gearHomeGate;
+
+        /// <summary>[처음 자리로] 버튼의 면 — 테스트가 그 자리를 좌표로 물을 수 있게 붙잡아 둔다.</summary>
+        private Image _gearHomeButton;
         private Image _quitSurface;
         private RectTransform _quitRect;
         private Text _quitLabel;
@@ -365,6 +399,15 @@ namespace StickMate.Interaction
 
         public Rect ContentViewportScreenRect => SettingsControlHost.ScreenRectOf(_viewport);
 
+        /// <summary>[톱니 위치] &gt; [처음 자리로] 버튼의 화면 사각형 — 회귀 테스트가 <b>실제 클릭 경로</b>로
+        /// 이 행을 누르는 창구. 좌표를 손으로 적으면 카드가 한 줄 늘어날 때 조용히 엉뚱한 곳을 누른다.</summary>
+        public Rect GearHomeButtonScreenRect => _gearHomeButton != null
+            ? SettingsControlHost.ScreenRectOf(_gearHomeButton.rectTransform)
+            : new Rect();
+
+        /// <summary>[톱니 위치] 행이 지금 눌리는 상태인가(테스트/진단). 옮긴 적이 없으면 false다.</summary>
+        public bool GearHomeRowEnabledForTests => _gearHomeGate != null && _gearHomeGate.Enabled;
+
         /// <summary>잉크 스와치의 화면 사각형(0=검정, 1=흰색). 테스트가 "배포 에셋을 건드리지 않는가"를
         /// <b>실제 클릭 경로로</b> 확인하기 위해 필요하다 — 좌표를 손으로 적으면 레이아웃이 바뀔 때
         /// 조용히 엉뚱한 곳을 누른다.</summary>
@@ -434,8 +477,9 @@ namespace StickMate.Interaction
         /// </summary>
         private static void LogRoadmapNotes()
         {
+            // ★ 2026-09-02 — "[일반] 숨기기/보이기 단축키 ⌃⌥⌘V = 배선 대기" 줄을 지웠다. 그 행은 이제
+            //   실제로 동작한다(GlobalKey.K). 잠긴 행 목록에 남겨두면 이 로그 자체가 거짓이 된다.
             Debug.Log("[설정창/로드맵] 지금 회색으로 잠긴 행들의 내부 사정(사용자 화면에는 나오지 않습니다): " +
-                $"[일반] 숨기기/보이기 단축키 {ShortcutLabel.Chord("V")} = GlobalKey에 V 항목이 없어 배선 대기 / " +
                 "[일반] 로그인 자동 실행 = 네이티브 로그인 항목 등록(35-1-9 P3) / " +
                 "[캐릭터] 포인트 컬러 팔레트 = 회의록 6 소관 / " +
                 "[캐릭터] 말투(반말·존댓말) = 대사 두 벌 작성(35-3-3) / " +
@@ -515,7 +559,7 @@ namespace StickMate.Interaction
         /// 분기하면 새 진입점이 생길 때마다 조용히 어긋나고, 사용자가 배우는 규칙도 하나여야 한다.</para>
         ///
         /// <para><b>단 하나의 예외는 전체화면 감지</b>다(원칙 2). 그 경로에서 정보창을 되살리면 게임 위에
-        /// 방금 치운 창을 다시 얹는 셈이라 자동 숨김의 목적 자체가 뒤집힌다. <see cref="StickmanAgent.IsSuspended"/>를
+        /// 방금 치운 창을 다시 얹는 셈이라 자동 숨김의 목적 자체가 뒤집힌다. <see cref="StickmanAgent.ArePanelsSuppressed"/>를
         /// 직접 보므로 호출부가 그 사실을 잊어도 안전하다(문자열 사유에 기대지 않는다).</para>
         /// </summary>
         private void RestoreInfoWindowIfNeeded(string source)
@@ -524,7 +568,7 @@ namespace StickMate.Interaction
             _restoreInfoWindowOnClose = false;
             if (!restore) return;
 
-            if (_agent != null && _agent.IsSuspended)
+            if (_agent != null && _agent.ArePanelsSuppressed)
             {
                 Debug.Log("[설정창] 정보창 복귀를 건너뜁니다 — 전체화면이 감지된 상태입니다(원칙 2). " +
                     "사용자가 부르지 않은 창이 게임 위로 돌아오는 것이 자동 숨김보다 나쁩니다.");
@@ -568,10 +612,12 @@ namespace StickMate.Interaction
             // ★★ 원칙 2 — 전체화면 게임이 감지되면 창과 차단막을 그 프레임에 거둔다. 복귀 시 자동으로
             //    다시 열지 않는다(정보창/팝오버와 같은 판단 — 사용자가 부르지 않은 창이 게임을 끄자마자
             //    튀어나오면 그 자체가 방해다).
-            if (_agent != null && _agent.IsSuspended)
+            // ★★★ 2026-09-02 — <c>ArePanelsSuppressed</c>(등급 1 포함). 설정창은 720x560 차단막을
+            //    소유하므로 게임이 아닌 전체화면 앱 위에서도 그 사각형의 클릭을 먹었다.
+            if (_agent != null && _agent.ArePanelsSuppressed)
             {
-                // 복귀 예약을 여기서 명시적으로 지운다 — RestoreInfoWindowIfNeeded의 IsSuspended 가드와
-                // 이중이지만, 둘 중 하나가 사라져도 게임 위에 창이 되살아나지 않는다(원칙 2).
+                // 복귀 예약을 여기서 명시적으로 지운다 — RestoreInfoWindowIfNeeded의 같은 가드와
+                // 이중이지만, 둘 중 하나가 사라져도 전체화면 앱 위에 창이 되살아나지 않는다(원칙 2).
                 _restoreInfoWindowOnClose = false;
                 Close("전체화면 감지 — 자동 숨김(비침해 원칙 2)");
                 // ★ 무장은 Close <b>뒤에</b> — Close()가 "사용자가 닫았다"로 보고 예약을 지운다.
@@ -594,6 +640,7 @@ namespace StickMate.Interaction
             ApplyCanvasScaleFactor();
             SyncClickBlocker();
             TickQuitConfirm();
+            SyncGearHomeGate();
             TickGlobalPointer();
         }
 
@@ -768,7 +815,26 @@ namespace StickMate.Interaction
             if (_chatterSlider != null) _chatterSlider.SetValueSilently(AppSettingsModel.ChatterPercent);
             SyncSpeechGate();
             SyncGearWarning();
+            SyncGearHomeGate();
+            SyncManualHide();
             ApplyTabVisibility();
+        }
+
+        /// <summary>
+        /// 사용자 명시 숨김 행의 <b>값</b>과 <b>게이트</b>를 지금 사실에 맞춘다.
+        ///
+        /// <para>왜 <see cref="RefreshAll"/>에서(=<c>Start</c>와 매 <see cref="Open"/>) 하는가:
+        /// 게이트 조건이 <c>_agent.PlatformService</c>에서 나오는데, 이 창의 UI는 <c>Awake</c>에서
+        /// 조립된다. 같은 GameObject의 <c>Awake</c> 순서는 보장되지 않으므로 조립 시점에 물으면
+        /// "아직 없음"을 <b>영구 비활성</b>으로 굳혀 버린다. <c>Start</c>는 모든 <c>Awake</c> 뒤다.</para>
+        ///
+        /// <para>토글이 읽는 값은 <c>IsSuspended</c>가 아니라 <see cref="StickmanAgent.IsUserHidden"/>다 —
+        /// 전체화면 게임 때문에 숨어 있는 동안 이 토글이 저절로 켜진 것처럼 보이면 안 된다.</para>
+        /// </summary>
+        private void SyncManualHide()
+        {
+            if (_manualHideToggle != null) _manualHideToggle.SetOn(_agent != null && _agent.IsUserHidden);
+            _manualHideGate?.SetEnabled(_agent != null && _agent.PlatformService is IGlobalKeyStateService);
         }
 
         /// <summary>★ 42-11 G — <c>말풍선 표시</c>가 꺼져 있으면 그 아래 세 행은 만져도 화면이 바뀌지
@@ -1020,9 +1086,10 @@ namespace StickMate.Interaction
                     AppSettingsModel.SetAutoHideOnFullscreen(on);
                     CharacterSaveStore.Save();
                     Debug.Log($"[설정창] 전체화면 자동 숨김 {(on ? "켬" : "끔")} — 이 스위치는 캐릭터만이 " +
-                        "아니라 StickmanAgent.IsSuspended를 통째로 좌우합니다(설정창/팝오버/부채꼴이 모두 " +
-                        "그것을 봅니다). 끄면 전체화면 게임 위에 이 창들과 그 클릭관통 차단막" +
-                        "(BoxCollider2D)까지 남습니다 — 절대 불변 원칙 2의 사용자 예외이므로 " +
+                        "아니라 StickmanAgent의 <b>두 창구를 함께</b> 좌우합니다: IsSuspended(등급 2, " +
+                        "전체화면 게임 → 캐릭터까지)와 ArePanelsSuppressed(등급 1, 게임이 아닌 전체화면 앱 → " +
+                        "창·팝오버·부채꼴과 그 차단막만). 끄면 전체화면 앱 위에 이 창들과 그 클릭관통 " +
+                        "차단막(BoxCollider2D)까지 남습니다 — 절대 불변 원칙 2의 사용자 예외이므로 " +
                         "그 대가를 캡션에 적어 두었습니다.");
                 },
                 // ★ 2026-09-01(페르소나 J3) — 예전 캡션은 "게임 · 영상이 전체화면이 되면 즉시
@@ -1031,17 +1098,32 @@ namespace StickMate.Interaction
                 //   캐릭터가 남는 데 동의한 것이지 "클릭이 안 먹는 구멍"에 동의한 적이 없다.
                 caption: "켜면 캐릭터도 열린 창도 함께 사라집니다. 끄면 창이 막는 클릭까지 그대로 남아요.");
 
-            // ★ 캡션은 장식이 아니라 <b>이 버튼의 한계 고지</b>다 — SetCharacterVisibleNow의 XML 문서가
-            //   "한계를 캡션 없이 숨기지 않는다"고 선언해 놓고 정작 caption을 안 넘겨, 그 한계가
-            //   Debug.Log에만 있었다(페르소나 M9). 방해받아서 숨긴 캐릭터가 말없이 되살아나는 것은
-            //   이 창이 존재하는 이유(클래스 문서 첫 문단) 바로 그 자리에서의 배신이다.
-            display.AddButtons("general.hideNow", "지금 즉시", new[] { "숨기기", "보이기" },
-                index => SetCharacterVisibleNow(index == 1),
-                caption: "지금 한 번만 숨깁니다 — 전체화면 앱을 오갔다 오면 다시 나타나요.");
+            // ★★ 2026-09-02 — 이 두 행은 <b>같은 하나의 상태</b>(StickmanAgent.IsUserHidden)를 본다.
+            //   예전에는 [숨기기]가 렌더러만 끄는 1회성이라 캡션이 "전체화면 앱을 오갔다 오면 다시
+            //   나타나요"라고 <b>자기 한계를 자백</b>하고 있었다. 화면공유 중에 되살아나는 숨김은
+            //   숨김이 아니고, 무엇보다 그때 <b>열린 창과 클릭 차단막은 애초에 걷히지도 않았다</b> —
+            //   캐릭터만 사라지고 설정창이 발표 화면에 남는 쪽이 더 이상하다.
+            //   이제 두 행 모두 전체화면 감지와 같은 Suspend 경로를 탄다.
+            _manualHideGate = new SettingsRowGate(
+                "이 컴퓨터에서는 전역 단축키를 쓸 수 없어요. 숨기면 되돌릴 방법이 없어서 잠가 두었습니다.");
 
-            display.AddToggle("general.hideHotkey", "숨기기 / 보이기 단축키", false, null,
-                hotkey: ShortcutLabel.Chord("V"), enabled: false,
-                disabledNote: DisabledReason.NotBuilt("이 단축키는 다음 업데이트에서 켜집니다."));
+            display.AddButtons("general.hideNow", "지금 즉시", new[] { "숨기기", "보이기" },
+                index => SetUserHiddenFromSettings(index == 0),
+                caption: HideEscapeCaption, gate: _manualHideGate);
+
+            // ★ 리더 판정 2026-09-02 — V가 아니라 <b>K</b>. V는 GlobalKey에 없어 양 플랫폼 파일을
+            //   고쳐야 했고, K는 두 플랫폼 모두 이미 키코드가 매핑돼 있으면서 바인딩만 비어 있었다
+            //   (Platform/IGlobalKeyStateService.cs의 GlobalKey.K 문서가 이 자리를 예약해 뒀다).
+            //   그래서 플랫폼 파일은 이 기능 때문에 <b>한 줄도</b> 바뀌지 않았다.
+            _manualHideToggle = display.AddToggle("general.hideHotkey", "숨기기 / 보이기 단축키",
+                _agent != null && _agent.IsUserHidden,
+                on => SetUserHiddenFromSettings(on),
+                // ★ 이 행은 위 [숨기기]/[보이기]와 <b>같은 하나의 스위치</b>다. 그 사실을 캡션이 먼저
+                //   말하지 않으면 "단축키"라는 라벨 때문에 <i>"이 단축키를 켜고 끄는 스위치"</i>로 읽히고,
+                //   그렇게 읽은 사용자가 켜는 순간 캐릭터가 사라져 놀란다.
+                caption: "위 [숨기기] 버튼과 같은 스위치예요. 창을 열지 않아도 어디서든 눌립니다.",
+                hotkey: ShortcutLabel.Chord(StickmanAgent.UserHideHotkeyLetter),
+                gate: _manualHideGate);
             y = display.Finish(y);
 
             var screenUi = new SettingsCardBuilder(page, "화면 위 UI", y, _host);
@@ -1070,6 +1152,21 @@ namespace StickMate.Interaction
                 // 글리프라 그대로 쓴다. 경고라는 사실은 색(WarmAccent)이 이미 말하고 있다.
                 $"끄면 캐릭터 정보창은 {ShortcutLabel.Chord("I")} 로만 열 수 있어요.", UiChrome.WarmAccent);
             _gearWarnCaption.gameObject.SetActive(false);
+
+            // ★★ 2026-09-02 P0 (docs/UX_FLOW.md 41-8 2겹) — <b>영구히 저장되는 것에는 되돌리는 문이 있다.</b>
+            //   톱니를 끌어다 놓은 자리는 세이브에 앉아 재시작해도 유지되는데, 그것을 되돌리는 UI가
+            //   이 앱에 <b>하나도 없었다</b>(Core/UiLayoutModel은 세우는 문만 있고 내리는 문이
+            //   ResetForTesting뿐이었다). 실수로 화면 구석에 놓으면 영구히 구석이었다.
+            //
+            //   ★ 왜 [데이터] 탭이 아니라 여기인가: 이 카드는 이미 <b>같은 톱니</b>의 on/off를 들고 있고,
+            //     "톱니가 이상해졌다"고 느낀 사람이 여는 곳이 정확히 여기다. [데이터] 탭은 지금 0%(죽은 탭)
+            //     이라 살아 있는 행 하나를 그 안에 넣으면 "안 켜지는 탭"이라는 그 탭의 유일한 약속이 깨진다.
+            //   ★ 새 컨트롤은 0개다 — 위 [숨기기][보이기] 행과 <b>완전히 같은 부품</b>(AddButtons)이다.
+            _gearHomeGate = new SettingsRowGate("아직 옮긴 적이 없어요.");
+            _gearHomeButton = screenUi.AddButtons("general.gearHome", "톱니 위치", new[] { "처음 자리로" },
+                _ => OnGearHomeClicked(),
+                caption: "드래그해서 옮긴 자리를 화면 오른쪽 위로 되돌립니다.", gate: _gearHomeGate)[0];
+
             y = screenUi.Finish(y);
 
             // ★ 2026-09-02 (41-2 / C9) — 카드 이름이 <c>시작 / 종료</c>에서 <b><c>시작할 때</c></b>로
@@ -1089,25 +1186,85 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// "지금 즉시" 숨기기/보이기 — <see cref="StickmanBlackboard.SetCharacterVisible"/>를 쓴다.
-        /// 이 통로는 가출(20절)이 쓰던 것과 <b>같은 것</b>이라 새 배관을 만들지 않는다.
+        /// ★★ 2026-09-02 — "지금 즉시" 숨기기/보이기의 <b>실제 배선</b>.
         ///
-        /// <para><b>한계를 캡션 없이 숨기지 않는다</b>: 이것은 <b>1회성 동작</b>이지 영구 상태가 아니다.
-        /// 전체화면 감지가 왕복하면 <c>StickmanAgent.Resume()</c>이 렌더러를 되살린다(그쪽 소유권).
-        /// 영구 숨김이 필요하면 <see cref="StickmanAgent"/>에 상태를 하나 두어야 하는데, 그 파일은
-        /// 이번 라운드에 다른 작업자가 잡고 있어 리더 배정 사항으로 남긴다.</para>
+        /// <para><b>무엇이 바뀌었나</b>: 예전 구현(<c>SetCharacterVisibleNow</c>)은
+        /// <c>StickmanBlackboard.SetCharacterVisible</c>로 <b>렌더러만</b> 껐다. 그래서
+        /// (1) 전체화면 감지가 한 번만 왕복하면 <c>StickmanAgent.Resume()</c>이 렌더러를 되살렸고,
+        /// (2) <b>열린 창과 그 클릭 차단막은 애초에 걷히지도 않았다</b> — 발표 화면에 캐릭터 대신
+        /// 이 설정창이 그대로 찍혔다. 이제는 <see cref="StickmanAgent.SetUserHidden"/>을 통해
+        /// 전체화면 감지와 <b>같은 Suspend 경로</b>를 탄다.</para>
+        ///
+        /// <para><b>이 창이 스스로 닫히는 것은 결함이 아니라 요구사항이다</b>: 숨김이 확정되면
+        /// <see cref="Update"/>의 <c>ArePanelsSuppressed</c> 가드가 이 창과 720×560 차단막을 그 프레임에 거둔다.
+        /// 그리고 <see cref="ArmReopenAfterSuspend"/>가 걸려, 숨김을 <b>짧게</b> 풀면 빼앗긴 이 창이
+        /// 돌아온다(우리가 닫은 게 아니라 빼앗았으므로).</para>
         /// </summary>
-        private void SetCharacterVisibleNow(bool visible)
+        private void SetUserHiddenFromSettings(bool hidden)
         {
-            StickmanBlackboard bb = _agent != null ? _agent.Blackboard : null;
-            if (bb == null || bb.SetCharacterVisible == null)
+            if (_agent == null)
             {
-                Debug.LogWarning("[설정창] 지금 즉시 숨기기/보이기 실패 — 캐릭터 블랙보드가 없습니다.");
+                Debug.LogWarning("[설정창] 지금 즉시 숨기기/보이기 실패 — 씬에 StickmanAgent가 없습니다.");
                 return;
             }
-            bb.SetCharacterVisible(visible);
-            Debug.Log($"[설정창] 캐릭터를 지금 즉시 {(visible ? "보입니다" : "숨깁니다")} — " +
-                "1회성 동작입니다(전체화면 감지가 왕복하면 다시 나타납니다).");
+
+            bool applied = _agent.SetUserHidden(hidden, "설정창 [일반] 지금 즉시");
+            if (_manualHideToggle != null) _manualHideToggle.SetOn(applied);
+            Debug.Log($"[설정창] 캐릭터 {(applied ? "숨김" : "다시 보이기")} — " +
+                (applied
+                    ? "캐릭터·열린 창·클릭 차단막을 함께 걷었습니다. 이 창도 같은 프레임에 닫힙니다" +
+                      "(요구사항입니다). 되돌리는 방법은 " +
+                      ShortcutLabel.Chord(StickmanAgent.UserHideHotkeyLetter) + " 하나뿐이고, " +
+                      "그 사실은 이 행의 캡션에 적혀 있습니다."
+                    : "다시 보이게 했습니다."));
+        }
+
+        /// <summary>
+        /// ★ [톱니 위치] &gt; [처음 자리로]. <b>확인 대화상자를 띄우지 않는다</b> — 대신 결과가
+        /// 화면에 바로 보이고(톱니가 우상단으로 돌아간다) 이 행이 <b>그 자리에서 회색이 되며</b>
+        /// 캡션이 <c>아직 옮긴 적이 없어요.</c>로 바뀐다. 그것이 이 조작의 확인이다.
+        ///
+        /// <para><b>왜 2단 확인(=[지금 종료] 방식)을 붙이지 않았나</b>: 그 장치는 <b>되돌릴 수 없는</b>
+        /// 조작을 위한 것이다. 이건 잘못 눌러도 다시 끌어다 놓으면 끝이고, 되돌리는 비용이 이 버튼을
+        /// 한 번 더 누르는 비용과 같은 수준이다. 확인을 붙이면 <b>고치러 온 사람에게 관문을 하나 더</b>
+        /// 세우는 셈이라 이 행의 목적과 반대로 간다(docs/UX_FLOW.md 41-8 ②는 확인 단계를 두지 않는다).</para>
+        ///
+        /// <para>저장은 <see cref="InfoGearIconWidget.ReturnToDefaultPosition"/>이 <b>즉시</b> 한다 —
+        /// 드래그 확정과 같은 이유다(되돌린 직후 앱을 끄면 옛 자리가 되살아난다). 그래서 여기서는
+        /// <see cref="RequestSave"/>를 부르지 않는다(같은 값을 두 번 쓰지 않는다).</para>
+        /// </summary>
+        private void OnGearHomeClicked()
+        {
+            InfoGearIconWidget gear = ResolveGearWidget();
+            if (gear != null)
+            {
+                gear.ReturnToDefaultPosition("설정창 [일반] 톱니 위치 [처음 자리로]");
+            }
+            else
+            {
+                // 씬에 톱니 위젯이 없어도(비정상 씬/테스트) 저장된 값은 지울 수 있어야 한다 —
+                // 이 행이 고치려는 대상은 화면의 아이콘이 아니라 <b>세이브에 앉은 좌표</b>다.
+                if (UiLayoutModel.ClearGearCenter()) CharacterSaveStore.Save();
+                Debug.LogWarning("[설정창] 톱니 위젯을 찾지 못해 저장값만 되돌렸습니다 — " +
+                    "화면의 아이콘은 다음 실행에 기본 위치로 뜹니다.");
+            }
+
+            SyncGearHomeGate();
+        }
+
+        /// <summary>톱니 위젯은 이 컴포넌트와 <b>같은 GameObject</b>에 있다(씬 조립 관례).
+        /// 찾은 결과를 캐시하지 않는 이유: 이 행은 사용자가 누를 때만 도는 <b>1회성</b>이라
+        /// 캐시가 벌어 주는 것이 없고, 캐시가 죽은 참조를 들고 있는 위험만 남는다.</summary>
+        private InfoGearIconWidget ResolveGearWidget() => GetComponent<InfoGearIconWidget>();
+
+        /// <summary>되돌릴 것이 있는가에 맞춰 [톱니 위치] 행을 켜고 끈다.
+        /// <para><see cref="SettingsRowGate.SetEnabled"/>는 값이 <b>바뀐 때만</b> 다시 칠하므로
+        /// (bool 비교 한 번, 할당 0) 이 창이 열려 있는 동안 매 프레임 불러도 된다. 매 프레임 부르는
+        /// 이유는 실제로 그 사이에 바뀔 수 있기 때문이다 — 이 창은 <b>창 밖 클릭으로 닫히지 않으므로</b>
+        /// 설정창을 열어 둔 채 톱니를 끌어 옮기는 것이 가능하다.</para></summary>
+        private void SyncGearHomeGate()
+        {
+            _gearHomeGate?.SetEnabled(UiLayoutModel.HasGearCenter);
         }
 
         private void OnQuitClicked()

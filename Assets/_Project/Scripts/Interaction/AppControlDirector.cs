@@ -57,7 +57,9 @@ namespace StickMate.Interaction
     /// 않는다</b>. 우클릭까지 없앤 뒤 그 환경에 남는 종료 수단이 0이 되면 그건 강제 종료(활성 상태
     /// 보기/작업 관리자) 외에는 끌 수 없는 상주 오버레이이며, 원칙 2·4의 명백한 위반이다.
     ///   ① <b>⌃⌥⌘Q</b> — 여기. <b>개발 게이트 대상이 아니다</b>(릴리스에서 반드시 산다).
-    ///   ② <b>행동 명령창 푸터 [✕ 앱 종료]</b>(2단 확인 3초) — 마우스만으로 도달하는 유일한 경로.
+    ///   ② <b>행동 명령창 푸터 [✕ 앱 종료]</b>(2단 확인 3초) — 마우스 경로 1.
+    ///   ③ <b>설정창 [지금 종료]</b>(2단 확인 3초) — 마우스 경로 2. ★ 2026-09-02 정정: 여기 원래
+    ///      "②가 마우스만으로 도달하는 유일한 경로"라고 적혀 있었으나 <b>거짓</b>이었다(ux-designer 발견).
     /// 저장은 <c>CharacterProgressionDirector.OnApplicationQuit()</c>이 담당하므로 어느 쪽으로 끄든
     /// 데이터 손실이 없다.
     ///
@@ -87,6 +89,7 @@ namespace StickMate.Interaction
         private bool _prevA;
         private bool _prevI;
         private bool _prevP;
+        private bool _prevK;
 
         // 지연 탐색 후 캐시.
         private GraffitiDirector _graffitiDirector;
@@ -126,6 +129,7 @@ namespace StickMate.Interaction
             Archery,
             CharacterInfo,
             Settings,           // ★ 2026-09-01 신설 — 설정창(⌃⌥⌘P)
+            UserHide,           // ★ 2026-09-02 신설 — 사용자 명시 숨김 토글(⌃⌥⌘K)
         }
 
         private void Awake()
@@ -153,24 +157,40 @@ namespace StickMate.Interaction
             //   (Win32WindowService는 GlobalKey.Command를 VK_LWIN으로 읽는다 = Windows 키).
             //   글리프가 아니라 "Control+Option+Command"처럼 **낱말**로 적혀 있었던 탓에
             //   Tests/EditMode/PlatformParityAuditTests의 글리프 스캐너도 잡지 못했다.
-            string quitLine = "[앱제어] 준비 완료 — 종료 방법 2가지: " +
+            string quitLine = "[앱제어] 준비 완료 — 종료 방법 3가지: " +
                 "(1) 전역 단축키 **" + ShortcutLabel.Chord("Q") + "**, " +
-                "(2) **기어 아이콘 → 부채꼴 ④[행동] → 창 푸터 [✕ 앱 종료]**(2단 확인 3초). " +
+                "(2) **기어 아이콘 → 부채꼴 ④[행동] → 창 푸터 [✕ 앱 종료]**(2단 확인 3초), " +
+                "(3) **설정창 [지금 종료]**(2단 확인 3초). " +
                 "★ 캐릭터 우클릭 메뉴는 2026-08-31에 폐지됐습니다 — 우클릭은 이제 밑에 있는 앱으로 " +
                 "그대로 관통합니다(비침해 개선, UX_FLOW 36-9). ";
 
             string userKeys = "사용자 단축키: " + ShortcutLabel.Chord("C") + "(잉크색 전환) / R(로데오 커서 on-off) / " +
                 "**B(말 걸기)** / **G(그라피티)** / **T(창 도둑)** / " +
                 "**X(창 부수기)** / **A(활쏘기)** / **N(가출 중이면 돌아오라고 부르기)** / " +
-                "**I(캐릭터 정보/장비 창)** / **P(설정창)**. 이 명령들의 주 경로는 부채꼴 ④ [행동] 창이고, \n" +
+                "**I(캐릭터 정보/장비 창)** / **P(설정창)** / " +
+                // ★ 2026-09-02 — K를 다시 목록에 올린다. 격파 놀이 삭제 라운드에 바인딩만 지워지면서
+                //   이 자리가 비어 있었고(GlobalKey.K 문서의 "예약" 주석), 이제 사용자 명시 숨김이 쓴다.
+                //   ★ 이 줄은 <b>탈출구 고지</b>를 겸한다: 숨는 동안에는 톱니도 창도 전부 사라지므로
+                //   같은 키를 다시 누르는 것 외에 되돌릴 방법이 없다. 그 사실을 여기 적어 둔다.
+                "**" + StickmanAgent.UserHideHotkeyLetter + "(지금 숨기기 / 다시 보이기 — <b>같은 키를 다시 누르면 돌아옵니다</b>. " +
+                "숨는 동안에는 톱니도 함께 사라집니다)**. " +
+                "이 명령들의 주 경로는 부채꼴 ④ [행동] 창이고, \n" +
                 "설정창의 주 경로는 캐릭터 정보창 헤더의 [설정]입니다. ";
 
             string devKeys = StickMateDevTools.Enabled
                 ? "★ 개발 전용 단축키(게이트 열림 — " + StickMateDevTools.SourceLabel + "): " +
                   "D(진단 로그 on-off) / H(하드웨어 반응 미리보기) / S(스트레스 게이지 순환) / " +
-                  "J(할일 알림 강제) / F(집중 모드 90초 데모) / N(가출 강제 발동). " +
-                  "이 6개는 사용자 UI에 노출되지 않습니다(원칙 1 — 표시된 것과 " +
-                  "실제가 달라지는 경로라서). "
+                  "J(할일 알림 강제) / F(집중 모드 90초 데모). " +
+                  "이 5개는 사용자 UI에 노출되지 않습니다(원칙 1 — 표시된 것과 " +
+                  "실제가 달라지는 경로라서). " +
+                  // ★ 2026-09-02 정정 — 여기 원래 N이 6번째로 실려 있었고 "이 6개"라고 적었으나
+                  //   거짓이었다(verify-change 실측). dev 게이트가 걸린 것은 위 다섯 개뿐이다
+                  //   (:244~248의 `dev && chord && ...` 다섯 줄이 전부다). N은 :242에서
+                  //   `chord && IsKeyDown(GlobalKey.N)` — 게이트가 없고, 바로 위 userKeys에도
+                  //   실려 있어 같은 로그 한 줄이 스스로 모순됐다.
+                  //   N의 "가출 강제 발동" 절반만 ForceRunaway 내부에서 게이트를 보고,
+                  //   "돌아오라고 부르기" 절반은 릴리스에서 항상 산다 — 그래서 사용자 키다.
+                  "(N은 개발 전용이 아닙니다 — 위 사용자 단축키 목록을 보세요.) "
                 : $"개발 전용 단축키는 잠겨 있습니다({StickMateDevTools.SourceLabel}) — " +
                   $"환경변수 {StickMateDevTools.EnvironmentVariableName}=1 로 실행하면 열립니다. ";
 
@@ -220,6 +240,11 @@ namespace StickMate.Interaction
             bool iKey = chord && IsKeyDown(GlobalKey.I);
             bool pKey = chord && IsKeyDown(GlobalKey.P);
 
+            // ★ 2026-09-02 — 사용자 명시 숨김(K). <b>개발 게이트 대상이 아니다</b>: Q(종료)와 같은 이유로
+            //   릴리스에서 반드시 살아야 한다. 이 키가 죽으면 숨긴 사용자에게 남는 탈출구가 0이 된다
+            //   (숨는 동안 톱니·부채꼴·창이 전부 IsSuspended를 보고 스스로 내려간다 = 마우스 경로 없음).
+            bool kKey = chord && IsKeyDown(GlobalKey.K);
+
             // N은 반쪽만 사용자용이다: 가출 중이면 [돌아와!](상시 탈출구, 원칙 4)이고 그 밖에는 강제
             // 발동(개발 전용)이다. 키 조회는 항상 하고, 갈래는 RunawayDirector가 상태로 나눈다.
             bool n = chord && IsKeyDown(GlobalKey.N);
@@ -239,6 +264,7 @@ namespace StickMate.Interaction
                 _prevA = aKey;
                 _prevI = iKey;
                 _prevP = pKey;
+                _prevK = kKey;
                 return;
             }
 
@@ -258,12 +284,14 @@ namespace StickMate.Interaction
             bool aRise = aKey && !_prevA;
             bool iRise = iKey && !_prevI;
             bool pRise = pKey && !_prevP;
+            bool kRise = kKey && !_prevK;
             _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevG = g;
             _prevT = t; _prevX = x; _prevH = h;
             _prevS = sKey; _prevN = n; _prevJ = j; _prevF = f;
             _prevA = aKey;
             _prevI = iKey;
             _prevP = pKey;
+            _prevK = kKey;
 
             if (qRise) Invoke(ControlAction.Quit, HotkeySource("Q"));
             else if (cRise) Invoke(ControlAction.InkColor, HotkeySource("C"));
@@ -281,6 +309,7 @@ namespace StickMate.Interaction
             else if (aRise) Invoke(ControlAction.Archery, HotkeySource("A"));
             else if (iRise) Invoke(ControlAction.CharacterInfo, HotkeySource("I"));
             else if (pRise) Invoke(ControlAction.Settings, HotkeySource("P"));
+            else if (kRise) Invoke(ControlAction.UserHide, HotkeySource(StickmanAgent.UserHideHotkeyLetter));
         }
 
         /// <summary>
@@ -391,6 +420,10 @@ namespace StickMate.Interaction
                 case ControlAction.Settings:
                     ToggleSettings(source);
                     break;
+
+                case ControlAction.UserHide:
+                    ToggleUserHide(source);
+                    break;
             }
         }
 
@@ -445,6 +478,35 @@ namespace StickMate.Interaction
                 return;
             }
             _settingsWindow.Toggle(source);
+        }
+
+        /// <summary>
+        /// ★ <b>사용자 명시 숨김</b> 토글(⌃⌥⌘K) — 2026-09-02. 화면공유·발표·녹화 중에 "지금은 나오지 마"를
+        /// 사용자가 직접 지시하는 유일한 경로다.
+        ///
+        /// <para><b>왜 렌더러만 끄지 않는가</b>: 예전에 설정창이 갖고 있던 "지금 즉시 숨기기"는
+        /// <c>SetCharacterVisibleNow</c>로 <b>렌더러만</b> 껐다. 그러면 열려 있던 설정창/정보창/부채꼴과
+        /// 그 <b>클릭 차단막</b>이 그대로 남아, 발표 화면에는 캐릭터 대신 UI가 찍혔다 — 캐릭터만 사라지고
+        /// 창이 남는 쪽이 더 이상하다. 그래서 이 경로는 <see cref="StickmanAgent.SetUserHidden"/>을 통해
+        /// 전체화면 감지와 <b>같은 Suspend 경로</b>를 탄다(표면들이 IsSuspended를 폴링해 스스로 걷는다).</para>
+        ///
+        /// <para><b>왜 개발 게이트 뒤가 아닌가</b>: Q(종료)와 같다. 이 키가 죽으면 숨긴 사용자에게 남는
+        /// 탈출구가 0이 된다.</para>
+        /// </summary>
+        private void ToggleUserHide(string source)
+        {
+            if (_agent == null)
+            {
+                Debug.LogWarning($"[앱제어] 숨기기/보이기 실패({source}) — 씬에 StickmanAgent가 없습니다.");
+                return;
+            }
+
+            bool hidden = _agent.ToggleUserHidden(source);
+            Debug.Log($"[앱제어] 캐릭터 {(hidden ? "숨김" : "다시 보이기")}({source}) — " +
+                (hidden
+                    ? "캐릭터·열린 창·클릭 차단막을 함께 걷었습니다. 전체화면 앱을 오갔다 와도 " +
+                      "되살아나지 않습니다. 같은 키를 다시 누르면 돌아옵니다."
+                    : "캐릭터를 다시 보이게 했습니다."));
         }
 
         // ==================== 말 걸기 (행동 명령창의 7번째 명령) ====================

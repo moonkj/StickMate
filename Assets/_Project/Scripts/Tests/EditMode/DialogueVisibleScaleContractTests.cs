@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
@@ -62,47 +63,35 @@ namespace StickMate.Tests.EditMode
         // ==================================================================================
 
         /// <summary>
-        /// 앰비언트 대사표(리플렉션) + <c>States/*.cs</c>의 <c>DialogueLine.Say/React</c> 리터럴(소스 스캔).
+        /// 앱에 실재하는 대사 전수. 수집은 <see cref="DialogueCorpus"/> 하나가 한다 —
+        /// 앰비언트 대사표(리플렉션) + <c>States/*.cs</c>의 <c>DialogueLine.Say|React</c> +
+        /// <c>RunawayState.TriggerSelfReturn</c> + <c>StickmanAgent</c>의 <c>cfg =&gt; "…"</c> 람다.
         /// <para><b>왜 소스를 읽는가</b>: 상태 대사는 인라인 리터럴이라 리플렉션이 닿지 않는다.
         /// 여기에 문장을 손으로 베껴 적으면 <b>대사가 추가되는 날 이 검사가 조용히 옛 표를 훑는다</b>
         /// (<see cref="SourceConstantReader"/>가 정리한 그 판단과 같다).</para>
         /// </summary>
         private static List<string> AllLines()
         {
-            var lines = new List<string>(40);
-            lines.AddRange(AmbientLines("IdleLines"));
-            lines.AddRange(AmbientLines("WalkLines"));
+            // ★★ 2026-09-02 — 수집을 <see cref="DialogueCorpus"/>로 옮겼다. 종전 구현은 여기 인라인
+            //   정규식이었고 <b>33줄 중 26줄만</b> 훑았다: States/ 폴더의 DialogueLine.Say|React 만 보느라
+            //   RunawayState.TriggerSelfReturn(2줄)과 Core/StickmanAgent.cs 의 집중모드 람다(5줄)를
+            //   통째로 놓쳤다. 더 나쁜 것은 표본 하한이 Assert.Greater(lines.Count, 20)이라
+            //   <b>5줄이 더 사라져도 초록</b>이었다는 점이다(design-narrative 2026-09-02 R2 §5-5 지적).
+            //
+            //   지금은 (1) 수집기가 한 곳이고 (2) 기대값이 <b>골든 파일의 줄 수</b>다 —
+            //   숫자를 여기 적지 않으므로 대사가 늘면 골든을 다시 굽는 것 외의 선택지가 없다.
+            List<string> lines = DialogueCorpus.ScanAll();
 
-            string statesDir = Path.Combine(Application.dataPath, "_Project", "Scripts", "States");
-            Assert.IsTrue(Directory.Exists(statesDir), $"{LogPrefix} States 폴더를 찾지 못했습니다: {statesDir}");
-
-            var literal = new Regex(@"DialogueLine\.(?:Say|React)\(\s*""([^""]*)""");
-            foreach (string file in Directory.GetFiles(statesDir, "*.cs", SearchOption.AllDirectories))
-            {
-                foreach (Match m in literal.Matches(File.ReadAllText(file)))
-                {
-                    string text = m.Groups[1].Value;
-                    if (!string.IsNullOrEmpty(text)) lines.Add(text);
-                }
-            }
-
-            // 표본이 비거나 쪼그라들면 아래 모든 단언이 "0건을 훑고 통과"한다 — 최악의 거짓 초록이다.
-            Assert.Greater(lines.Count, 20,
-                $"{LogPrefix} 대사 표본이 {lines.Count}건뿐입니다 — 대사표 이름이나 리터럴 형태가 " +
-                "바뀌었다면 이 스캐너도 함께 고쳐야 합니다(조용히 통과하는 것이 최악입니다).");
+            int expectedDistinct = DialogueCorpus.ReadGolden().Count;
+            int actualDistinct = lines.Distinct().Count();
+            Assert.AreEqual(expectedDistinct, actualDistinct,
+                $"{LogPrefix} 대사 표본(고유)이 {actualDistinct}건인데 골든은 {expectedDistinct}건입니다 — " +
+                "대사가 늘거나 줄었거나 수집기가 형태를 놓치고 있습니다. 어느 쪽이든 " +
+                "조용히 통과시키지 않습니다(DialogueLanguageBudgetTests가 어느 줄인지 알려줍니다).");
             return lines;
         }
 
-        private static string[] AmbientLines(string fieldName)
-        {
-            FieldInfo field = typeof(AmbientChatter).GetField(fieldName,
-                BindingFlags.NonPublic | BindingFlags.Static);
-            Assert.IsNotNull(field, $"{LogPrefix} AmbientChatter.{fieldName}을 찾지 못했습니다.");
-            var lines = (string[])field.GetValue(null);
-            Assert.IsNotNull(lines);
-            Assert.Greater(lines.Length, 0, $"{LogPrefix} {fieldName}이 비어 있습니다.");
-            return lines;
-        }
+        private static string[] AmbientLines(string fieldName) => DialogueCorpus.AmbientLines(fieldName);
 
         private static float Cap(string text, float scale)
             => DialogueBudget.MaxVisibleSecondsFor(text, DialogueTiming.PopInSeconds,

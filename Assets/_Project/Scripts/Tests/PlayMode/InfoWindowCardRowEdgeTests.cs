@@ -79,12 +79,22 @@ namespace StickMate.Tests.PlayMode
                 Assert.Greater(row.width, 1f, $"{LogPrefix} {s}번 카드줄의 사각형이 비었습니다.");
                 Assert.Greater(header.width, 1f, $"{LogPrefix} {s}번 헤더 카운터의 사각형이 비었습니다.");
 
+                // ★ 2026-09-02 — 이 메시지가 <b>읽는 사람을 반대로 몰았다.</b> 예전 문장은 부호와 무관하게
+                //   "카드줄이 헤더보다 …안쪽에서 끝납니다"라고 단정했는데, 실제로 터진 것은 그 반대
+                //   (헤더가 592, 카드줄이 754)였다. 그래서 검증 담당이 "카드줄이 폭을 못 받았다"로 읽고
+                //   엉뚱한 곳을 파게 됐다. 이제 <b>어느 쪽이 짧은지</b>를 말로 밝히고 두 xMax를 함께 찍는다 —
+                //   부호를 거꾸로 읽을 여지를 남기지 않는다.
                 float dead = header.xMax - row.xMax;
+                string which = dead < 0f
+                    ? "헤더('n / 6')가 카드줄보다 왼쪽에서 먼저 끝납니다(헤더가 짧다)"
+                    : "카드줄이 헤더('n / 6')보다 왼쪽에서 먼저 끝납니다(카드줄이 짧다)";
                 Assert.LessOrEqual(Mathf.Abs(dead), EdgeTolerancePoints,
-                    $"{LogPrefix} {s}번 카드줄이 헤더('n / 6')보다 {dead:F1}pt 안쪽에서 끝납니다. " +
+                    $"{LogPrefix} {s}번 줄의 오른쪽 끝선이 {Mathf.Abs(dead):F1}pt 어긋납니다 — {which}. " +
+                    $"[카드줄 xMax={row.xMax:F1} / 헤더 xMax={header.xMax:F1}] " +
                     "잘린 카드가 아무 모서리에도 걸리지 않으면 \"오른쪽에 더 있다\"가 아니라 " +
                     "\"카드가 깨졌다\"로 읽힙니다(2026-09-01 사용자 신고: \"어설픈데서 절반 짤려있어서 더 이상함\"). " +
-                    "카드 폭/간격을 바꿨다면 CarouselViewportWidth와의 관계를 다시 맞추세요.");
+                    "둘 다 RightContentWidth에서 파생돼야 합니다 — 한쪽만 숫자로 박혀 있으면 창 폭이 바뀔 때 " +
+                    "정확히 이 증상이 납니다(SectionCountX / CarouselViewportWidth 문서 참고).");
             }
         }
 

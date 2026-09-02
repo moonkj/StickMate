@@ -543,6 +543,15 @@ namespace StickMate.Tests.EditMode
             if (float.IsPositiveInfinity(cover))
             {
                 // 왕관 — 얹는 물건이라고 스스로 선언한 아이템. 감쌈을 요구하지 않는다.
+                //
+                // ★ 2026-09-02 qa-regression — 여기가 <b>맨 return</b>이었다. 그 상태에서는
+                //   커버선이 +∞로 뒤집힌 모자가 몇 개든 이 검사가 조용히 빠져나가고 6건 전부 초록이
+                //   된다(거짓 통과 유형 5 — 면제가 늘어도 아무도 세지 않는다). 면제를 <b>받는 순간
+                //   그 면제가 왕관 하나인지</b>를 여기서 못 박는다. 개수는 아래 전용 검사가 센다.
+                Assert.AreEqual(AccessoryShapeBuilder.HeadCrown, itemIndex,
+                    $"{label}(#{itemIndex})가 커버선 +∞로 감쌈 검사를 면제받았습니다 — " +
+                    "이 면제는 왕관 전용입니다. 다른 모자가 +∞가 됐다면 그 모자는 " +
+                    "'씌우는 것'인데 '얹는 것'으로 선언된 것이고, 머리카락 클리핑도 함께 틀어집니다.");
                 return;
             }
 
@@ -565,6 +574,71 @@ namespace StickMate.Tests.EditMode
             Assert.IsTrue(wraps,
                 $"{label}에 관자놀이 바깥(|x| ≥ 0.85R)이면서 머리 중심 아래(y ≤ 0.05R)인 잉크가 없습니다 — " +
                 "머리에 씌운 것이 아니라 위에 올려 둔 것입니다(37-6 규칙 4).");
+        }
+
+        /// <summary>
+        /// ★ 2026-09-02 qa-regression — <b>면제 개수를 세는 자리</b>. 이 저장소에 없었다.
+        ///
+        /// <para>왕관 면제는 세 곳이 각자 알고 있었지만 <b>"몇 개가 면제인가"를 단언하는 곳은
+        /// 어디에도 없었다</b>:
+        /// <list type="bullet">
+        /// <item><see cref="AccessoryShapeCatalogTests"/>는 "왕관이 +∞인가"만 본다(다른 모자가
+        /// 함께 +∞가 돼도 통과한다 — 검사 이름에 "왕관만"이 들어 있는데도 그렇다).</item>
+        /// <item><c>CoveringHats()</c>는 <c>Count &gt; 0</c>만 본다(6개 중 5개가 면제로 새도 통과).</item>
+        /// <item>바로 위 감쌈 검사는 면제를 받으면 그냥 빠져나갔다.</item>
+        /// </list>
+        /// 세 구멍의 합집합이 "면제가 조용히 늘어난다"이고, 그 결과는 화면에서
+        /// <b>모자가 머리에 얹히기만 하고 머리카락이 통째로 삐져나오는</b> 것이다.</para>
+        ///
+        /// <para>개수를 숫자 1로 적지 않고 <see cref="AccessoryShapeBuilder.HeadCrown"/> 한 개로
+        /// 표현한다 — 새 모자가 늘어도 이 검사는 따라온다.</para>
+        /// </summary>
+        [Test]
+        public void 커버선_면제는_왕관_하나뿐이고_그_개수가_고정돼_있다()
+        {
+            AccessoryShapeBuilder.Rig rig = Rig();
+            int count = ItemCatalog.ItemCountIn(EquipmentSlot.Head);
+            Assert.Greater(count, 1, "HEAD 카테고리가 비었거나 1종뿐이라 면제 개수 검사가 공허합니다.");
+
+            var exempt = new List<int>();
+            for (int i = 0; i < count; i++)
+            {
+                if (float.IsPositiveInfinity(AccessoryShapeBuilder.HatCoverLocalY(i, rig))) exempt.Add(i);
+            }
+
+            Assert.AreEqual(1, exempt.Count,
+                $"커버선이 +∞인 HEAD 아이템이 {exempt.Count}개입니다(번호: " +
+                $"{string.Join(", ", exempt)}). 정확히 1개(왕관)여야 합니다 — " +
+                "면제가 늘면 그만큼 감쌈 검사가 조용히 꺼지고, 그 자리는 러너에서 초록으로 보입니다.");
+            Assert.AreEqual(AccessoryShapeBuilder.HeadCrown, exempt[0],
+                $"면제받은 HEAD 아이템이 {exempt[0]}번인데 왕관은 " +
+                $"{AccessoryShapeBuilder.HeadCrown}번입니다 — 면제가 다른 아이템으로 옮겨갔습니다.");
+
+            // ★ 음성 대조 — 이 세는 방식이 <b>2를 2로 셀 수 있는가</b>.
+            //   합성 데이터가 아니라 프로덕션의 진짜 값으로 한다: 미착용(-1)도 +∞를 돌려주므로
+            //   목록에 넣으면 면제가 2개가 된다. 그때 위 단언이 쓰는 것과 <b>같은 식</b>이
+            //   2를 내야 한다. 이게 1을 내면 위 "정확히 1개"는 셀 줄 몰라서 나온 초록이다.
+            int withNotWorn = exempt.Count;
+            if (float.IsPositiveInfinity(
+                    AccessoryShapeBuilder.HatCoverLocalY(EquipmentModel.NotWorn, rig))) withNotWorn++;
+            Assert.AreEqual(exempt.Count + 1, withNotWorn,
+                "미착용(-1)을 목록에 넣었는데 면제 개수가 늘지 않았습니다 — 세는 식이 " +
+                "+∞를 알아보지 못하고 있고, 그렇다면 위 '정확히 1개'는 " +
+                "아무것도 못 센 결과일 수 있습니다(양성 대조 실패).");
+            Assert.AreNotEqual(1, withNotWorn,
+                "면제를 하나 더 넣었는데도 개수가 1입니다 — 위 단언은 어떤 입력에도 1을 봅니다.");
+
+            // 양성 대조 — 나머지가 실제로 <b>유한한</b> 값을 돌려주는지도 같이 본다.
+            // (전부 +∞면 위 Count 단언이 잡지만, 전부 NaN이면 IsPositiveInfinity가 false라
+            //  Count=1을 통과해 버린다. NaN은 비교 연산이 전부 false인 조용한 값이다.)
+            for (int i = 0; i < count; i++)
+            {
+                if (i == AccessoryShapeBuilder.HeadCrown) continue;
+                float cover = AccessoryShapeBuilder.HatCoverLocalY(i, rig);
+                Assert.IsFalse(float.IsNaN(cover),
+                    $"모자 {i}번의 커버선이 NaN입니다 — NaN은 모든 비교가 false라 " +
+                    "'면제도 아니고 위반도 아닌' 상태로 모든 검사를 조용히 통과합니다.");
+            }
         }
 
         /// <summary>점 하나가 <b>양옆 두 점을 잇는 선</b>에서 가장 멀리 벗어난 거리(월드 유닛).

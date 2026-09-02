@@ -347,6 +347,12 @@ namespace StickMate.Interaction
         public RectTransform HitRect;
         public Image Track;
         public RectTransform Knob;
+
+        /// <summary>손잡이의 면. <b>게이트가 실행 중에 이 행을 내릴 수 있게</b> 들고 있는다 —
+        /// 예전에는 손잡이 색이 생성 시점의 <c>enabled</c>로 한 번만 칠해져서, 게이트로 내린 토글은
+        /// 트랙만 회색이 되고 손잡이는 계속 밝게 남았다(2026-09-02).</summary>
+        public Image KnobImage;
+
         public bool On { get; private set; }
         public bool Interactable = true;
 
@@ -365,6 +371,10 @@ namespace StickMate.Interaction
                 Track.color = !Interactable
                     ? SettingsControls.DividerOnCard
                     : On ? SettingsControls.AccentSolid : SettingsControls.TrackOnCard;
+            }
+            if (KnobImage != null)
+            {
+                KnobImage.color = Interactable ? UiChrome.TextPrimary : UiChrome.DisabledControlInk;
             }
             if (Knob != null)
             {
@@ -851,11 +861,11 @@ namespace StickMate.Interaction
 
         public SettingsToggle AddToggle(string key, string label, bool on, Action<bool> changed,
             string caption = null, string hotkey = null, bool enabled = true,
-            DisabledReason disabledNote = default)
+            DisabledReason disabledNote = default, SettingsRowGate gate = null)
         {
             RectTransform row = BeginRow(key, label,
                 ComposeCaption(caption, enabled, disabledNote.Text, disabledNote.Kind), hotkey,
-                enabled, out float rowHeight);
+                enabled, gate, out float rowHeight, out Text labelText, out Text captionText);
 
             var toggle = new SettingsToggle { Interactable = enabled };
 
@@ -877,6 +887,7 @@ namespace StickMate.Interaction
             knob.rectTransform.anchorMin = knob.rectTransform.anchorMax = knob.rectTransform.pivot = new Vector2(0f, 1f);
             knob.rectTransform.sizeDelta = new Vector2(SettingsControls.SwitchKnob, SettingsControls.SwitchKnob);
             toggle.Knob = knob.rectTransform;
+            toggle.KnobImage = knob;
 
             toggle.SetOn(on);
             toggle.Apply();
@@ -886,6 +897,9 @@ namespace StickMate.Interaction
                 toggle.SetOn(!toggle.On);
                 changed?.Invoke(toggle.On);
             }, null, () => toggle.Interactable);
+
+            gate?.Register(new[] { labelText }, null, captionText, caption,
+                onGate => { toggle.Interactable = onGate; toggle.Apply(); });
 
             return toggle;
         }
@@ -1047,11 +1061,18 @@ namespace StickMate.Interaction
 
         /// <summary>오른쪽에 버튼 1~3개가 붙은 행([숨기기][보이기] / [지금 종료]).</summary>
         public Image[] AddButtons(string key, string label, string[] captions, Action<int> clicked,
-            string caption = null, bool enabled = true, DisabledReason disabledNote = default)
+            string caption = null, bool enabled = true, DisabledReason disabledNote = default,
+            SettingsRowGate gate = null)
         {
             RectTransform row = BeginRow(key, label,
                 ComposeCaption(caption, enabled, disabledNote.Text, disabledNote.Kind), null,
-                enabled, out float rowHeight);
+                enabled, gate, out float rowHeight, out Text labelText, out Text captionText);
+
+            // ★ 상수 캡처(() => enabled)가 아니라 <b>지금 값</b>을 본다 — 게이트가 내려간 뒤에도 클릭이
+            //   그대로 먹는 "회색인데 눌리는" 행을 만들지 않기 위해서다(AddSlider의 clickable과 같은 이유).
+            //   C# 클로저는 로컬을 <b>참조로</b> 잡으므로 아래 게이트 람다의 대입이 그대로 보인다.
+            bool rowInteractable = enabled;
+            var buttonLabels = new Text[captions.Length];
 
             var results = new Image[captions.Length];
             float centerY = -(rowHeight - SettingsControls.ButtonHeight) * 0.5f;
@@ -1069,13 +1090,23 @@ namespace StickMate.Interaction
                 UiChrome.Stretch(text.rectTransform);
                 text.text = captions[i];
                 results[i] = surface;
+                buttonLabels[i] = text;
 
                 int captured = i;
                 _host?.Register(surface.rectTransform, surface, key + "." + i,
-                    () => clicked?.Invoke(captured), null, () => enabled);
+                    () => clicked?.Invoke(captured), null, () => rowInteractable);
 
                 x += width + UiChrome.Space2;
             }
+
+            // ★ 게이트가 내렸을 때의 모습은 <b>enabled:false로 태어난 행과 픽셀 단위로 같아야 한다</b>.
+            //   그 행은 면(ButtonSurfaceOnCard)을 그대로 두고 잉크만 InkTitle(false)로 죽인다 — 여기서
+            //   면까지 따로 어둡게 하면 같은 상태가 두 가지 모습을 갖고, 대비 하한 검사도 두 벌이 된다.
+            var titleInk = new Text[buttonLabels.Length + 1];
+            titleInk[0] = labelText;
+            System.Array.Copy(buttonLabels, 0, titleInk, 1, buttonLabels.Length);
+            gate?.Register(titleInk, null, captionText, caption, onGate => rowInteractable = onGate);
+
             return results;
         }
 

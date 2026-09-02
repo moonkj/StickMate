@@ -112,20 +112,46 @@ namespace StickMate.Tests.PlayMode
             // 오염시킨다(간헐적 실패로 관측됨: 482.72pt). 착지가 실제로 확인될 때까지
             // WaitForSeconds(실시간 기준)로 기다리고, 혹시 착지 자체가 영영 안 되는 회귀라면
             // 타임아웃으로 그 사실 자체를 실패로 드러낸다(무한 대기 금지).
+            // ★ 2026-09-02 qa-regression — 위 처방(실시간 대기)은 <b>절반만</b> 고쳤다.
+            //   남은 구멍: 종료 조건이 "지금 Idle/Walk인가"였는데, <b>캐릭터는 스폰 직후에도
+            //   Idle이다</b>(낙하는 그다음 물리 스텝부터 시작한다). 그래서 첫 0.05초 샘플에서
+            //   s == Idle이 성립해 루프가 <b>즉시</b> 빠져나가고, landedOnce는 "떨어졌다 착지했다"가
+            //   아니라 "지금 가만히 있다"를 뜻하게 된다. 그 상태로 다음 루프(measureGap:true)가
+            //   시작되면 스폰 높이 좌표(실측 489pt)가 접지 간격으로 새어 들어간다 —
+            //   관측된 간헐 실패 482.72pt가 정확히 그 값이다. 즉 이 실패는 접지 회귀가 아니라
+            //   <b>측정이 스폰 좌표를 재고 있던 것</b>이다(거짓 실패).
+            //
+            //   고침: 착지로 인정하기 전에 <b>낙하를 실제로 관측</b>해야 한다.
+            //   Fall(공중) 또는 LandingCrouch(무릎앉아 착지)를 한 번이라도 본 뒤의 Idle/Walk만
+            //   착지다. 낙하를 영영 못 보면 타임아웃이 그 사실 자체를 실패로 드러낸다.
             const float FallTimeoutSeconds = 10f;
             float fallElapsed = 0f;
+            bool sawAirborne = false;
             bool landedOnce = false;
+            StickmanStateId lastSeenState = agent.Blackboard.Machine.CurrentStateId;
             while (fallElapsed < FallTimeoutSeconds)
             {
                 yield return new WaitForSeconds(0.05f);
                 fallElapsed += 0.05f;
                 Sample(measureGap: false);
                 StickmanStateId s = agent.Blackboard.Machine.CurrentStateId;
-                if (s == StickmanStateId.Idle || s == StickmanStateId.Walk) { landedOnce = true; break; }
+                lastSeenState = s;
+                if (s == StickmanStateId.Fall || s == StickmanStateId.LandingCrouch) sawAirborne = true;
+                if (sawAirborne && (s == StickmanStateId.Idle || s == StickmanStateId.Walk))
+                {
+                    landedOnce = true;
+                    break;
+                }
             }
+            Assert.IsTrue(sawAirborne,
+                $"{LogPrefix} {FallTimeoutSeconds:F0}초 안에 스폰 낙하(Fall/LandingCrouch)를 한 번도 " +
+                $"관측하지 못했습니다(마지막 상태={lastSeenState}). 씬이 캐릭터를 화면 세로 중앙에 " +
+                "스폰시켜 떨어뜨린다는 전제가 깨졌거나, 낙하 자체가 안 되는 회귀입니다. " +
+                "이 단언이 없으면 스폰 순간 좌표(실측 489pt)가 아래 접지 간격 검증으로 새어 들어가 " +
+                "'발이 482pt 떠 있다'는 거짓 실패가 됩니다.");
             Assert.IsTrue(landedOnce,
                 $"{LogPrefix} {FallTimeoutSeconds:F0}초 안에 스폰 낙하 후 착지(Idle/Walk 전이)를 확인하지 " +
-                "못했습니다 — 착지 자체가 안 되는 회귀일 수 있습니다.");
+                $"못했습니다(마지막 상태={lastSeenState}) — 착지 자체가 안 되는 회귀일 수 있습니다.");
             // 배회(Idle/Walk) 관찰 — 여기부터 간격도 함께 잰다.
             for (int i = 0; i < 300; i++) { yield return new WaitForSeconds(0.05f); Sample(measureGap: true); }
             // RAGDOLL 강제 — 팔다리가 가장 크게 벌어지는 케이스까지 포함시킨다.

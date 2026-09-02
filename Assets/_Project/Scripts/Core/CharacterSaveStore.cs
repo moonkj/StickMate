@@ -97,6 +97,25 @@ namespace StickMate.Core
         /// <para>하위 호환은 <c>dialogueVisibleLengthSaved</c>가 v8 이하 파일에서 false로 채워지는
         /// 것으로 저절로 성립한다(v6 <c>characterScaleSaved</c>와 같은 구조). 검증은
         /// Tests/EditMode/EquipmentMigrationTests.cs의 v8 하위 호환 테스트가 한다.</para>
+        /// 10 = 2026-09-02 <b>표시 모니터 선택</b>(사용자 확정: "멀티모니터일때 무조건 주모니터에서
+        /// 실행하도록" + "이게 기본이고 사용자가 설정할수있게 … 멀티모니터 인식이 됐을때만 활성화").
+        /// 필드는 <c>preferredMonitorSaved</c>(bool) + <c>preferredMonitorKey</c>(string) 두 벌이다.
+        /// <para>하위 호환은 v6 <c>characterScaleSaved</c>/v7 <c>inkColorSaved</c>와 <b>같은 방식으로
+        /// 저절로</b> 성립한다 — v9 이하 파일에는 두 키가 없어 JsonUtility가 <c>false</c>/<c>null</c>로
+        /// 채우고, 그 false는 <b>"아직 고른 적 없다 = 기본값인 주 모니터를 쓴다"</b>는 정확한 사실이다.
+        /// (기본이 <c>true</c>인 <c>autoHideOnFullscreen</c>/<c>cornerPanelEnabled</c>류와 달리 뜻이
+        ///  뒤집히지 않으므로 <b>버전 분기를 두지 않는다</b>.) 검증은 EquipmentMigrationTests의
+        /// v9 하위 호환 테스트가 한다.</para>
+        // ★ 2026-09-02 리더 판정 — 10으로 올렸다가 9로 되돌렸다. 되돌린 이유를 여기 남긴다.
+        //   이 저장소의 실제 규칙은 "버전을 올려라"가 아니라 이것이다:
+        //     **필드의 「없음」이 그 필드의 0값과 다른 뜻일 때만 버전을 강제한다.**
+        //   preferredMonitorSaved는 JsonUtility가 없는 키를 false로 채우는데 false가 곧
+        //   "고른 적 없음" = 정확히 옳은 뜻이다. 그래서 버전이 필요 없다.
+        //   (FirstVersionWithAppSettings/CornerPanel/WornItemIds가 버전을 요구한 이유는
+        //    그쪽은 「없음」과 「0값」의 뜻이 달랐기 때문이다. 여기는 같다.)
+        //   ★ 그리고 문을 닫는 것은 커밋이 아니라 **빌드**다 — v10 트리로 한 번 실행하면
+        //   모니터 필드만 든 v10이 디스크에 앉고, 재화·스탯·유예기산점이 v11·v12·v13이 되어
+        //   하위 호환 테스트가 3배가 된다. v10은 게임화 묶음이 **한 번에** 쓴다.
         internal const int CurrentVersion = 9;
 
         /// <summary>설정창 값이 처음 들어간 버전. 이 값보다 낮은 파일에는 <c>autoHideOnFullscreen</c>/
@@ -208,6 +227,18 @@ namespace StickMate.Core
             /// 읽으면 안 된다(위 <see cref="FirstVersionWithAppSettings"/> 문서).</summary>
             public bool autoHideOnFullscreen;
             public bool gearIconVisible;
+
+            // ---- v10: 표시 모니터(Core/AppSettingsModel.cs) ----
+
+            /// <summary>사용자가 표시 모니터를 고른 적이 있는가 + 고른 <b>자리 이름</b>(<c>"Start"</c>/<c>"End"</c>).
+            /// (2026-09-02 재판단으로 좌표 키에서 자리 이름으로 바뀌었다 — <b>필드 이름과 스키마
+            ///  버전은 그대로</b>이고, 옛 좌표 문자열은 파서가 실패시켜 조용히 기본값이 된다.)
+            /// <b>"고른 적 있는가 + 값" 두 벌</b>이라 v9 이하 파일에서 JsonUtility가 false/null로 채우고,
+            /// 그 false가 곧 <b>"아직 고른 적 없다 = 기본값인 주 모니터를 쓴다"</b>는 정확한 사실이다
+            /// (v6 <c>characterScaleSaved</c> / v7 <c>inkColorSaved</c>와 같은 구조 —
+            /// 기본이 true인 <c>autoHideOnFullscreen</c>류와 달리 <b>버전 분기가 필요 없다</b>).</summary>
+            public bool preferredMonitorSaved;
+            public string preferredMonitorKey;
 
             /// <summary>말풍선 설정 4종. 전부 "고른 적 있는가 + 값" 두 벌이라 옛 파일에서 false로 채워지는
             /// 것이 곧 "배포 기본값을 쓴다"는 정확한 사실이다(characterScaleSaved와 같은 구조).</summary>
@@ -494,7 +525,10 @@ namespace StickMate.Core
                     data.dialogueFontSizeSaved, data.dialogueFontSize,
                     data.dialogueVisibleLengthSaved, data.dialogueVisibleLengthName,
                     data.chatterPercentSaved, data.chatterPercent,
-                    data.dialogueBubbleEnabledSaved, data.dialogueBubbleEnabled);
+                    data.dialogueBubbleEnabledSaved, data.dialogueBubbleEnabled,
+                    // ★ v10 표시 모니터 — 버전 분기가 없다. v9 이하 파일에는 이 키가 없어
+                    //   preferredMonitorSaved가 false로 채워지고, 그것이 "고른 적 없음"의 정확한 표현이다.
+                    data.preferredMonitorSaved, data.preferredMonitorKey);
                 TodoListModel.RestoreFromSave(ToItems(data.todos), ToItems(data.todoArchive));
                 LoadedFromFile = true;
 
@@ -1089,6 +1123,8 @@ namespace StickMate.Core
                     inkColorName = CharacterAppearanceModel.InkColorSaveName(),
                     autoHideOnFullscreen = AppSettingsModel.AutoHideOnFullscreen,
                     gearIconVisible = AppSettingsModel.GearIconVisible,
+                    preferredMonitorSaved = AppSettingsModel.HasPreferredOverlayMonitor,
+                    preferredMonitorKey = AppSettingsModel.PreferredOverlayMonitorSaveKey(),
                     dialogueFontSizeSaved = AppSettingsModel.HasDialogueFontSize,
                     dialogueFontSize = AppSettingsModel.DialogueFontSize,
                     dialogueVisibleLengthSaved = AppSettingsModel.HasDialogueVisibleLength,
