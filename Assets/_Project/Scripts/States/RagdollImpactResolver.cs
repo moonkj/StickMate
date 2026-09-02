@@ -196,7 +196,7 @@ namespace StickMate.States
             // 예전에는 Fall/Jump/LandingCrouch/ThrowTumble 넷일 때만 차단했다. 그런데 이 프로젝트의
             // 발판(Dock/창 상단)은 논리 발판일 뿐 물리 콜라이더가 없어서, **접지 스냅을 부르지 않는
             // 어떤 상태든** 그 위에서 자유낙하해 물리 바닥에 전속력으로 부딪힌다. 그때 상태가 저 넷에
-            // 없으면(Attack/Getup/BattleMinigame/…) 자기 착지가 외력으로 오판되어 RAGDOLL이 됐다 —
+            // 없으면(Attack/Getup/… — 당시엔 BattleMinigame도) 자기 착지가 외력으로 오판되어 RAGDOLL이 됐다 —
             // 실제 앱 로그의 "[착지충격] 충돌 충격량=10.01 ... 상태=BattleMinigame ... -> RAGDOLL 전이"가
             // 그 증거이고, 사용자 신고 "갑자기 독 아래로 떨어지면서 관절이 이상하게 꺾임"의 그림이다.
             // 목록을 늘리는 것은 같은 실패를 다음 상태에 미루는 일이라, 판정 기준 자체를 상태가 아니라

@@ -128,8 +128,14 @@ namespace StickMate.Tests.EditMode
             }
 
             Assert.AreEqual(ItemCatalog.ActionCount, actions);
-            Assert.GreaterOrEqual(actions, 13,
-                "행동 항목이 13개보다 적습니다 — 보관함이 빈 화면이 될 수 있어 디자이너가 13개 이상을 요구했습니다.");
+            // ★ 2026-09-02 하한 13 -> 12. 격파 놀이 기능이 사용자 지시로 삭제되면서
+            //   action.battle 한 항목이 빠졌다(승인된 감소). 하한은 "목표"가 아니라
+            //   "여기서 더 줄면 누가 모르는 사이에 지운 것"을 잡는 그물이므로, 승인된 감소가
+            //   있을 때만 현재 개수로 다시 맞춘다 — 그래야 다음 번 예고 없는 감소가 걸린다.
+            Assert.GreaterOrEqual(actions, 12,
+                $"행동 항목이 {actions}개입니다(하한 12) — 보관함이 빈 화면이 될 수 있어 " +
+                "디자이너가 충분한 개수를 요구했습니다. 의도적으로 줄인 것이라면 이 하한을 " +
+                "현재 개수로 낮추고 사유를 위 주석에 적으세요.");
         }
 
         [Test]

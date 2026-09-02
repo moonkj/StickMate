@@ -65,7 +65,7 @@ namespace StickMate.Tests.EditMode
             Assert.Less(StickConfig.MinFillOutlineScreenPoints, StickConfig.MinStrokeScreenPoints,
                 $"{LogPrefix} 채움 경계선 하한({StickConfig.MinFillOutlineScreenPoints}pt)이 낱선 하한" +
                 $"({StickConfig.MinStrokeScreenPoints}pt)보다 낮지 않습니다 — M6이 무효화됐습니다. " +
-                "이 둘이 같아지면 채움 61개가 다시 자기 윤곽선에 색면을 잃습니다.");
+                "이 둘이 같아지면 채움 60개가 다시 자기 윤곽선에 색면을 잃습니다.");
 
             // ★ 아래 한계 — 이 값을 정한 것은 macOS가 아니라 <b>Windows</b>다.
             //   지원하는 가장 낮은 픽셀 밀도는 Windows 표시배율 100%(dpiScale = 1)이고,

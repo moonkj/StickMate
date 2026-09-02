@@ -52,7 +52,6 @@ namespace StickMate.Core
             var names = new string[max + 1];
             for (int i = 0; i < names.Length; i++) names[i] = "다른 일";
 
-            Set(names, SpectacleEventKind.BattleMinigame, "격파 놀이");
             Set(names, SpectacleEventKind.DragAndThrow, "붙잡혀 있는");
             Set(names, SpectacleEventKind.RodeoCursor, "커서 타기");
             Set(names, SpectacleEventKind.WindowTheft, "창 도둑");
@@ -106,7 +105,6 @@ namespace StickMate.Core
             Set(names, StickmanStateId.Attack, "공격");
             Set(names, StickmanStateId.Ragdoll, "넘어져 있는");
             Set(names, StickmanStateId.Getup, "일어나는");
-            Set(names, StickmanStateId.BattleMinigame, "격파 놀이");
             Set(names, StickmanStateId.Dragged, "붙잡혀 있는");
             Set(names, StickmanStateId.RodeoCursor, "커서 타기");
             Set(names, StickmanStateId.WindowTheft, "창 도둑");

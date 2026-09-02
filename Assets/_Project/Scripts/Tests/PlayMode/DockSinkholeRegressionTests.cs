@@ -19,6 +19,7 @@ namespace StickMate.Tests.PlayMode
     /// ============================================================================
     /// [증거 1 — 실제 앱 Player.log]
     ///   `[착지충격] 충돌 충격량=10.01(랙돌 임계 8.0), 상태=BattleMinigame, 접촉 1개(최저 y=-11.881),
+    ///   ※ 인용은 2026-08-30 실제 로그 원문이다. BattleMinigame 상태는 2026-09-02에 삭제됐다.
     ///    발 y=-11.886, 차단스위치=True -> 외력으로 판정, 임계값 초과 -> RAGDOLL 전이.`
     ///   그 뒤로 `[RagdollRig] RAGDOLL 관절 제한 적용` -> `[발판변경] -2 -> 0 (Fall 진입 — 공중)`
     ///   -> `[캐릭터구조] 6초 이상 착지하지 못해 강제 복귀` 가 **6회 반복**됐다(복귀 지점 전부
@@ -33,7 +34,7 @@ namespace StickMate.Tests.PlayMode
     ///     = 화면 가로 중앙으로 순간이동.
     ///
     /// 근본 원인 두 가지:
-    ///  (1) **접지 유지(GroundedTick) 호출이 상태마다 흩어져 있었고 Attack/Getup/BattleMinigame에
+    ///  (1) **접지 유지(GroundedTick) 호출이 상태마다 흩어져 있었고 Attack/Getup/BattleMinigame(당시)에
     ///      빠져 있었다.** Dock/창 상단은 논리 발판일 뿐 물리 콜라이더가 없으므로, 그런 상태에
     ///      들어가는 순간 자유낙하해 화면 최하단 물리 바닥에 전속력으로 부딪힌다.
     ///  (2) **그 충돌을 "내 착지"로 걸러내는 차단막이 상태 허용목록(Fall/Jump/LandingCrouch/
@@ -326,16 +327,28 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
-        // T1b — 실제 앱 로그에 남은 바로 그 상태(BattleMinigame)로도 같은 조건을 잠근다.
-        //       `[착지충격] ... 상태=BattleMinigame ... -> RAGDOLL 전이`가 사용자 환경에서 실제로
-        //       찍힌 유일한 "원인이 로그로 확인된" 사례라, 그 상태를 이름으로 못박아 둔다.
+        // T1b — 접지를 스스로 관리하지 않는 세 번째 상태로 같은 조건을 잠근다.
+        //
+        // ★ 2026-09-02 — 이 검사는 원래 BattleMinigame이었다. 실제 앱 로그에
+        //   `[착지충격] ... 상태=BattleMinigame ... -> RAGDOLL 전이`가 찍힌, 이 사고에서 유일하게
+        //   "원인이 로그로 확인된" 사례라 그 상태를 이름으로 못박아 뒀었다. 격파 놀이 기능이
+        //   삭제되면서 그 앵커는 물리적으로 재현할 수 없게 됐다.
+        //
+        //   검사를 지우지 않고 WindowTheft로 옮긴 이유: 이 테스트가 재는 것은 "그 상태"가 아니라
+        //   규칙(IsGroundKeepingSelfManaged가 false인 상태는 안전망이 대신 접지를 유지한다)이고,
+        //   WindowTheft는 T1a(Attack)/T1d(Getup)와 겹치지 않는 같은 부류의 상태다. 즉 검사 대상
+        //   수는 3개 그대로다. 로그 원문은 위 클래스 문서에 인용으로 남아 있다.
         // ============================================================================
 
         [UnityTest]
-        public IEnumerator T1b_BattleMinigameOnDockDoesNotRagdoll()
+        public IEnumerator T1b_WindowTheftOnDockDoesNotRagdoll()
         {
+            Assert.IsFalse(StickmanBlackboard.IsGroundKeepingSelfManaged(StickmanStateId.WindowTheft),
+                "WindowTheft가 접지 자기관리 상태로 분류되면 이 시나리오는 아무것도 재지 않는다 " +
+                "— 안전망이 애초에 돌지 않는 상태를 놓고 '안전망이 지켰다'고 통과한다.");
+
             yield return SetUpDockLayout(0.13f, 0.885f);
-            yield return RunNoGroundedTickStateScenario(StickmanStateId.BattleMinigame, expectRagdoll: false);
+            yield return RunNoGroundedTickStateScenario(StickmanStateId.WindowTheft, expectRagdoll: false);
         }
 
         // ============================================================================

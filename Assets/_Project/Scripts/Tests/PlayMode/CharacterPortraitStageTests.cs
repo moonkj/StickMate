@@ -114,7 +114,7 @@ namespace StickMate.Tests.PlayMode
             Assert.IsNotNull(stats);
             Assert.IsNotNull(progression);
 
-            // 기록 디렉터가 두 개면 격파/활쏘기 기록이 두 배로 쌓인다(중복 배치 사고의 재현).
+            // 기록 디렉터가 두 개면 활쏘기 기록이 두 배로 쌓인다(중복 배치 사고의 재현).
             Debug.Log("[초상화테스트] 배선 검증 통과 — 정보창/기록 디렉터/성장 디렉터가 각각 1개.");
         }
 
@@ -300,7 +300,7 @@ namespace StickMate.Tests.PlayMode
                 "'넘어져 있는 중'인데 초상화가 서 있으면 그림과 문구가 어긋납니다.");
             Assert.AreEqual(PortraitPose.Fallen, CharacterPortraitStage.PoseForState(StickmanStateId.ThrowTumble));
             Assert.AreEqual(PortraitPose.Busy, CharacterPortraitStage.PoseForState(StickmanStateId.Archery));
-            Assert.AreEqual(PortraitPose.Busy, CharacterPortraitStage.PoseForState(StickmanStateId.BattleMinigame));
+            Assert.AreEqual(PortraitPose.Busy, CharacterPortraitStage.PoseForState(StickmanStateId.Graffiti));
             Assert.AreEqual(PortraitPose.Standing, CharacterPortraitStage.PoseForState(StickmanStateId.Idle));
             Assert.AreEqual(PortraitPose.Standing, CharacterPortraitStage.PoseForState(StickmanStateId.Walk));
         }

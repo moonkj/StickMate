@@ -879,38 +879,6 @@ namespace StickMate.Core
         [Tooltip("Attack 상태의 모션 재생 지속 시간(초). 완료 시 진입 직전 능동 상태로 복귀한다.")]
         public float attackDuration = 0.4f;
 
-        [Header("격파 미니게임 (docs/UX_FLOW.md 10절, Phase 3)")]
-        [Tooltip("기 모으기 게이지가 채워지는 데 걸리는 시간(초) 최소. 재시도마다 이 구간에서 새로 랜덤 추첨.")]
-        public float battleChargeDurationMin = 1.5f;
-
-        [Tooltip("기 모으기 게이지 지속 시간 최대(초).")]
-        public float battleChargeDurationMax = 2.0f;
-
-        [Tooltip("스위트 스팟 구간 시작 비율(0~1, 게이지 전체 대비). 관대하게(성공 경험 우선) 잡을 것.")]
-        public float battleSweetSpotStart = 0.70f;
-
-        [Tooltip("스위트 스팟 구간 종료 비율(0~1).")]
-        public float battleSweetSpotEnd = 0.85f;
-
-        [Tooltip("실패 시 최대 재도전 횟수. 이 횟수를 초과하면 오브젝트가 스스로 사라지는 퇴장으로 종료.")]
-        public int battleMaxRetries = 3;
-
-        [Tooltip("실패 후 게이지가 자동으로 재시작되기까지의 대기 시간(초).")]
-        public float battleFailRetryDelaySeconds = 1.5f;
-
-        [Tooltip("성공 판정 후 파괴 연출을 위해 머무는 시간(초) — 실제 파티클/애니메이션은 Phase 2+ 렌더링 담당.")]
-        public float battleSuccessResolveDelaySeconds = 1.0f;
-
-        [Tooltip("이벤트 시작 후 이만큼(초) 클릭 입력이 전혀 없으면 자동 취소(유저 이탈 감지).")]
-        public float battleInputTimeoutSeconds = 5f;
-
-        [Tooltip("자동(유휴) 발동 확률 판정 주기(초).")]
-        public float battleAutoTriggerCheckInterval = 60f;
-
-        [Tooltip("판정 주기마다 자동으로 격파 미니게임이 발동할 확률(0~1). 임시 추정치 — 체감 빈도로 튜닝 필요. " +
-                 "★ 2026-08-29 기본 OFF — 사용자 피드백 '머리위에 저 주황색이랑 눈같이 내리는건 뭐야 캐릭하고 겹치는데' / 총평 '제대로 동작하는게 하나도 없음'. 요청하지도 않은 구경거리가 자율 확률로 계속 떠서 캐릭터를 가리고, 유저는 그게 무엇인지도 알 수 없었다. 이 사용자가 프로젝트 내내 원해온 것은 '깔끔한 졸라맨이 돌아다니는 것'이다. 기능을 지우지 않고 **자율 발동만** 끈다 — 단축키/우클릭 메뉴의 수동(강제) 발동 경로는 이 값을 읽지 않으므로 그대로 살아 있다. 구경거리를 다시 켜고 싶으면 이 값만 올리면 된다(원래 기본값은 아래 괄호). 원래 기본값 0.05.")]
-        public float battleAutoTriggerChance = 0f;
-
         [Header("드래그&던지기 (docs/UX_FLOW.md 12절, Phase 3)")]
         [Tooltip("던지기 속도 계산에 쓰는 최근 커서 이동 구간 길이(초). UX 명시값 0.12초.")]
         public float dragThrowVelocitySampleWindowSeconds = 0.12f;
@@ -1192,10 +1160,11 @@ namespace StickMate.Core
         public float pomodoroNudgeDialogueHoldSeconds = 2f;
 
         [Header("스트레스 게이지 (docs/UX_FLOW.md 19절, Phase 5)")]
-        [Tooltip("격파훈련 과다 판정 관찰 창 길이(초). UX 명시값 5분.")]
+        [Tooltip("과다 상호작용 판정 관찰 창 길이(초). UX 명시값 5분.")]
         public float stressOveruseWindowSeconds = 300f;
 
-        [Tooltip("위 창 안에서 격파 미니게임/드래그&던지기 진입이 이 횟수를 넘으면 초과분마다 스트레스 증가. UX 명시값 8회.")]
+        [Tooltip("위 창 안에서 드래그&던지기 진입이 이 횟수를 넘으면 초과분마다 스트레스 증가. UX 명시값 8회. " +
+                 "★ 2026-09-02 격파 놀이 삭제 전에는 격파 진입도 함께 셌다 — 지금은 드래그&던지기 한 종류다.")]
         public int stressOveruseTriggerCount = 8;
 
         [Tooltip("과다 상호작용 초과 1건마다 더해지는 스트레스 증가량(0~1 게이지 기준).")]
@@ -1898,8 +1867,8 @@ namespace StickMate.Core
         /// 한쪽만 바뀌어 "구운 두께와 런타임 두께가 다른" 조용한 어긋남이 생긴다.
         ///
         /// <para><b>적용 대상</b>(= 이 선이 없어지면 그 요소가 그림에서 사라지는 쪽): 몸 팔/몸통/다리,
-        /// 낱선 액세서리 20개(왕관 테·안대 끈·방울 목줄·외알안경 체인·배낭 끈 등), 펫/FX 전 선,
-        /// 잡기 영역. <b>비적용</b>: 채운 도형 61개의 윤곽선과 머리 링 — 아래 상수를 쓴다.</para>
+        /// 낱선 액세서리 21개(왕관 테·안대 끈·방울 목줄·외알안경 체인·배낭 끈·털모자 단 등), 펫/FX 전 선,
+        /// 잡기 영역. <b>비적용</b>: 채운 도형 60개의 윤곽선과 머리 링 — 아래 상수를 쓴다.</para>
         /// </summary>
         public const float MinStrokeScreenPoints = 2f;
 
@@ -1908,7 +1877,8 @@ namespace StickMate.Core
         /// (docs/CHARACTER_FORM_SPEC.md 19절 M6, 사용자 신고 <i>"아직도 전부다 조잡한데"</i>의 직접 처방).
         ///
         /// <para><b>왜 하한이 둘이어야 하는가 — 범주가 둘이기 때문이다.</b>
-        /// 액세서리 도형 81개는 <b>채움 61 / 낱선 20</b>으로 갈리고 두 집합은 겹치지 않는다.
+        /// 액세서리 도형 81개는 <b>채움 60 / 낱선 21</b>으로 갈리고 두 집합은 겹치지 않는다
+        /// (2026-09-02 61/20 -&gt; 60/21: 털모자 접힌 단이 채움에서 낱선이 됐다).
         /// 낱선은 "그 선이 사라지면 그 요소가 사라지는" 쪽이라 하한이 정당하다. 그러나 채움의
         /// 윤곽선은 <b>보이게 하는 일을 채움이 한다</b> — 윤곽선을 굵히면 두 채움을 가르는 대신
         /// 자기 색면을 정확히 W/2씩 먹는다. 같은 하한을 걸어 온 것은 범주 오류였고,
@@ -2079,7 +2049,7 @@ namespace StickMate.Core
         // 같은 라운드에 다른 작업자가 위쪽 섹션들을 동시에 편집 중이라 리더가 맨 끝 신규 섹션으로
         // 지정했다. 기능적으로는 위 hardware* 필드 전체를 지배하는 상위 게이트다.
         //
-        // 다른 구경거리 연출(격파/창도둑/그라피티/크래시/투두 등)은 "자율 발동 확률"을 0으로 내려서
+        // 다른 구경거리 연출(활쏘기/창도둑/그라피티/크래시/투두 등)은 "자율 발동 확률"을 0으로 내려서
         // 조용하게 만들 수 있었지만, 하드웨어 반응만은 그 방법이 통하지 않는다 — 트리거가 확률이 아니라
         // **실제 배터리 잔량 / 프레임타임 / 네트워크 연결성 / 충전 상태**이기 때문이다. 확률 필드가
         // 애초에 존재하지 않으므로 0으로 내릴 대상도 없고, 그래서 다른 연출을 전부 끈 뒤에도 이것만
@@ -2210,6 +2180,9 @@ namespace StickMate.Core
         //   그 접지 스냅 호출은 2026-08-29 라운드에 WindowTheft/TimedSpectacle에만 추가됐고
         //   Attack/Getup/BattleMinigame에는 여전히 빠져 있었다("안전장치를 한 곳만 고치고 같은 패턴의
         //   다른 경로에는 안 넣는" 이 프로젝트의 반복 실패 유형).
+        //   ※ 위 인용은 2026-08-30 당시의 실제 Player.log 원문이라 그대로 둔다. BattleMinigame 상태는
+        //     2026-09-02 격파 놀이 삭제로 더 이상 존재하지 않는다 — 아래 안전망 자체는 상태 목록을
+        //     열거하지 않는 "공중/자기구동만 제외" 방식이라 삭제의 영향을 받지 않는다.
         [Header("접지 유지 안전망 / Dock 사각지대 회수 (2026-08-30 디버거)")]
 
         [Tooltip("★ 접지 유지 안전망(기본 ON). 상태가 스스로 GroundedTick()을 부르지 않아도 " +
@@ -2775,10 +2748,6 @@ namespace StickMate.Core
         [Tooltip("패시브 XP 적립 주기(초). 분당 값을 이 간격으로 나눠 조금씩 넣는다 — 60초마다 " +
                  "한 번에 넣으면 정보창의 XP 바가 뚝뚝 끊겨 보인다. 너무 짧으면 이벤트 발행만 잦아진다.")]
         public float progressionPassiveTickSeconds = 10f;
-
-        [Tooltip("격파 미니게임 성공 1회당 보너스 XP. ★ 승패 판정 자체는 건드리지 않는다 — " +
-                 "Interaction/CharacterProgressionDirector.cs가 StickmanEventBus를 읽기 전용으로 구독할 뿐이다.")]
-        public float progressionBattleWinXp = 25f;
 
         [Tooltip("활쏘기 정중앙 명중(Bullseye) 1회당 보너스 XP.")]
         public float progressionBullseyeXp = 15f;

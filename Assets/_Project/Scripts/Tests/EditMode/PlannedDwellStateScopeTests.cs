@@ -17,7 +17,7 @@ namespace StickMate.Tests.EditMode
     /// 무엇이 잡혔나
     /// ============================================================================
     /// <code>
-    /// frame=11110 표시 (BattleMinigame) "어... 힘이 다 샜다"  가독예산 1.18초
+    /// frame=11110 표시 (BattleMinigame — 2026-09-02 삭제) "어... 힘이 다 샜다"  가독예산 1.18초
     /// frame=11111 교체 — 이전 노출 0.02초, 새 "여기 좋네"(Idle)
     /// frame=11112 즉시 컷 (Idle) "여기 좋네" 노출 0.02초
     /// frame=11114 제거, 노출 0.05초
@@ -30,7 +30,7 @@ namespace StickMate.Tests.EditMode
     /// ============================================================================
     /// <c>PlannedWanderDwellRemainingSeconds</c>는 <b>배회 AI 페이즈의 잔여</b>이지 <b>이 상태의
     /// 잔여</b>가 아니었다. 둘이 같은 값인 것은 상태가 배회 페이즈 전환으로 들어왔을 때뿐이고,
-    /// 격파 종료 → Idle / Getup → Idle / LandingCrouch → Idle·Walk / ParkourClimb 완료 → Idle /
+    /// ParkourClimb 완료 → Idle / Getup → Idle / LandingCrouch → Idle·Walk / 활쏘기 종료 → Idle /
     /// GroundLossHang 복귀 → Idle·Walk 는 <b>전부 배회가 Moving 한복판인데 Idle로 들어오는</b>
     /// 경로다. 그때 게이트에 물으면 "2.8초 남았다"고 답하고 실제 체류는 1프레임이다.
     ///
@@ -281,10 +281,13 @@ namespace StickMate.Tests.EditMode
         {
             _intent.MoveInputX = MovingInput;
 
-            Assert.IsTrue(float.IsNaN(_blackboard.PlannedDwellRemainingSecondsFor(StickmanStateId.BattleMinigame)),
-                "격파는 자기 게이지 길이를 스스로 알고 게이트에 직접 넘긴다 — 배회 잔여는 그 상태에 " +
+            Assert.IsTrue(float.IsNaN(_blackboard.PlannedDwellRemainingSecondsFor(StickmanStateId.ParkourClimb)),
+                "파쿠르는 자기 등반 길이를 스스로 알고 게이트에 직접 넘긴다 — 배회 잔여는 그 상태에 " +
                 "대해 아무 말도 하지 않으므로 0(=침묵 강제)이 아니라 NaN(=모름)이어야 한다.");
-            Assert.IsTrue(float.IsNaN(_blackboard.PlannedDwellRemainingSecondsFor(StickmanStateId.ParkourClimb)));
+            Assert.IsTrue(float.IsNaN(_blackboard.PlannedDwellRemainingSecondsFor(StickmanStateId.Ragdoll)));
+            // ★ 2026-09-02 — 첫 단언의 대상은 원래 BattleMinigame이었다(격파 놀이 삭제).
+            //   재는 성질("배회 계획이 서술하지 않는 상태 = NaN")은 상태 이름과 무관하므로
+            //   살아 있는 같은 부류의 상태로 옮겼을 뿐, 검사 대상은 줄지 않았다(2개 -> 2개).
         }
 
         [Test]
@@ -370,18 +373,21 @@ namespace StickMate.Tests.EditMode
         }
 
         [Test]
-        public void 격파_종료에서_들어온_Idle은_배회가_걷는_중이면_침묵한다()
+        public void 스펙터클_종료에서_들어온_Idle은_배회가_걷는_중이면_침묵한다()
         {
-            Assert.AreEqual(0, EnterIdleAndCountDialogue(MovingInput, StickmanStateId.BattleMinigame),
-                "실측 frame=11111의 그 대사다 — 격파가 끝나 Idle로 들어왔지만 배회는 Moving 한복판이라 " +
+            Assert.AreEqual(0, EnterIdleAndCountDialogue(MovingInput, StickmanStateId.ParkourClimb),
+                "실측 frame=11111의 그 대사다 — 스펙터클이 끝나 Idle로 들어왔지만 배회는 Moving 한복판이라 " +
                 "Idle은 다음 Tick에 곧바로 Walk로 나간다. 손으로 막아 둔 GroundLossHang 한 경로 말고 " +
-                "나머지 네 경로가 전부 이 모양이었다.");
+                "나머지 네 경로가 전부 이 모양이었다.\n" +
+                "※ 실측 당시의 진입 상태는 BattleMinigame이었다(2026-09-02 격파 놀이 삭제). 이 규칙은 " +
+                "진입 상태를 열거하지 않으므로 같은 부류의 다른 상태로 그대로 재현된다 — 아래 " +
+                "착지/기상 검사가 그 사실 자체를 따로 잠근다.");
         }
 
         [Test]
         public void 네거티브_배회가_쉬는_중이면_같은_진입에서도_말한다()
         {
-            Assert.AreEqual(1, EnterIdleAndCountDialogue(0f, StickmanStateId.BattleMinigame),
+            Assert.AreEqual(1, EnterIdleAndCountDialogue(0f, StickmanStateId.ParkourClimb),
                 "배회 계획과 상태가 일치하는데도 침묵하면 위 검사는 '어떤 Idle이든 침묵'으로 " +
                 "통과한다 — 그러면 아무것도 검사하지 않는 단언이 된다.");
         }

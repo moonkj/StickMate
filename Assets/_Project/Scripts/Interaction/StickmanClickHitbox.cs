@@ -64,8 +64,9 @@ namespace StickMate.Interaction
         private IGlobalPointerButtonService _buttonService;
 
         /// <summary>
-        /// 캐릭터 계층 <b>바깥</b>에 런타임 생성된 임시 클릭 대상(현재 유일한 사용처: 격파 미니게임에서
-        /// 소환되는 기와 스택/기 모으기 게이지 — Interaction/BattleMinigameRenderer.cs).
+        /// 캐릭터 계층 <b>바깥</b>에 런타임 생성된 임시 클릭 대상(현재 사용처: 가출 연출의
+        /// [간식 주기] 과자 — Interaction/RunawayRenderer.cs. 2026-09-02까지는 격파 미니게임의
+        /// 기와 스택/기 모으기 게이지가 이 경로의 최초 사용처였다).
         ///
         /// 왜 _colliders 배열을 다시 스캔하지 않는가: 그 배열은 Awake()에서 GetComponentsInChildren으로
         /// 한 번만 캐시되고, 소환 오브젝트는 (캐릭터가 걸어도 허공의 제자리에 남아야 하므로) 캐릭터의
@@ -166,7 +167,7 @@ namespace StickMate.Interaction
                 if (c.OverlapPoint(cursorWorld)) return true;
             }
 
-            // 임시 클릭 대상(격파 미니게임의 기와/게이지). 파괴된 항목은 만나는 즉시 목록에서 지운다 —
+            // 임시 클릭 대상(가출 연출의 과자 등). 파괴된 항목은 만나는 즉시 목록에서 지운다 —
             // 등록자가 해제하기 전에 GameObject가 먼저 Destroy되는 경우에도 목록이 새지 않게 한다.
             for (int i = _extraColliders.Count - 1; i >= 0; i--)
             {

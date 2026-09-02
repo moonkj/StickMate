@@ -13,7 +13,7 @@ namespace StickMate.Interaction
     /// "찾기" 상호작용(20절)은 신규 입력 경로를 만들지 않는다 — 은신 중에도 캐릭터의 Rigidbody2D/
     /// Collider2D는 살아있고(States/RunawayState.cs 문서 참고, Kinematic이지 simulated=false가 아님)
     /// 렌더러만 꺼지므로, 기존 Interaction/StickmanClickHitbox.cs의 OnMouseDown이 "안 보이는 캐릭터를
-    /// 클릭"했을 때 그대로 발동한다 — BattleMinigameDirector/DragThrowController와 같은 히트박스를
+    /// 클릭"했을 때 그대로 발동한다 — DragThrowController와 같은 히트박스를
     /// 공유하는 세 번째 구독자일 뿐이다.
     ///
     /// SpectacleEventLock: 20절/24절/25절-20이 명시적으로 요구하는 상호배제 세트 편입 — 가출 중에는

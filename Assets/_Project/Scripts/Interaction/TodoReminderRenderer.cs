@@ -77,7 +77,8 @@ namespace StickMate.Interaction
         /// <summary>
         /// 이 렌더러가 담당하는 캐릭터. <b>같은 GameObject의 StickmanAgent만</b> 쓰고 씬 전체 탐색
         /// 폴백은 쓰지 않는다 — 이 프리팹이 복제되면 폴백을 두었을 때 사본 손에도 종이가
-        /// 한 벌 더 생긴다(2026-08-29 격파 미니게임에서 실측 확인된 버그와 같은 함정).
+        /// 한 벌 더 생긴다(2026-08-29 격파 미니게임에서 실측 확인된 버그와 같은 함정 —
+        /// 그 기능은 2026-09-02에 삭제됐지만 함정은 모든 렌더러에 그대로 남아 있다).
         /// </summary>
         private StickmanAgent _agent;
         private Material _lineMaterial;

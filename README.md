@@ -36,15 +36,19 @@ MAC/Windows 바탕화면(그리고 iPad/iPhone 홈 화면 - 추후 검토 예정
 
 `Assets/_Project/Scripts/` 하위:
 
-| 폴더 | 파일 수 | 담당 |
+> **파일 수는 2026-09-02 실측값이다.** 이 열은 오래 방치돼 실제와 크게 어긋나 있었다
+> (`Core/` 7→실제 30, `Interaction/` 18→실제 50). 격파 놀이 삭제 라운드에서 두 칸을 고치려다
+> 발견해 전 열을 다시 셌다 — 숫자를 손으로 적는 표는 이렇게 샌다.
+
+| 폴더 | 파일 수 (2026-09-02 실측) | 담당 |
 |---|---|---|
-| `Core/` | 7 | 진입점(`StickmanAgent`), 이벤트 버스/상태 ID(`StickmanEventBus`), 튜닝값(`StickConfig`), 스펙터클 상호배제 락(`SpectacleEventLock`), 투두/스트레스 모델 |
-| `Platform/` | 11 (+ `Windows/`, `MacOS/`, `Mobile/`) | 창 열거·오버레이 인터페이스(`IPlatformWindowService`), Win32 구현체, 모바일 스크린샷 백드롭 구현체, Null/Fallback 폴백 |
-| `States/` | 22 | 상태머신(`StickmanStateMachine`) + `IStickmanState` 구현 14종(Idle/Walk/Jump/Fall/ParkourClimb/Attack/Ragdoll/Getup/BattleMinigame/DragThrow/RodeoCursor/WindowTheft/TimedSpectacle/Runaway) + 지원 유틸(`GroundSensor`, `RagdollRig`, `AutoWanderController`) |
-| `Interaction/` | 18 | 각 기능의 트리거 감시/대상 선정/락 획득을 전담하는 Director 컴포넌트(격파, 드래그&던지기, 로데오커서, 창도둑, 그라피티, 청소부/블랙홀, 크래시, 하드웨어반응, 포모도로, 스트레스, 투두) |
-| `Dialogue/` | 2 | 텍스트-액션 계약 핵심(`DialogueIntent`, `IHasDialogueParams`) |
+| `Core/` | 30 | 진입점(`StickmanAgent`), 이벤트 버스/상태 ID(`StickmanEventBus`), 튜닝값(`StickConfig`), 스펙터클 상호배제 락(`SpectacleEventLock`), 투두/스트레스/성장/기록 모델, 저장소(`CharacterSaveStore`) |
+| `Platform/` | 44 (하위 `Windows/`, `MacOS/`, `Mobile/` 포함 시 60) | 창 열거·오버레이 인터페이스(`IPlatformWindowService`), Win32/macOS 구현체, 모바일 스크린샷 백드롭 구현체, Null/Fallback 폴백 |
+| `States/` | 29 | 상태머신(`StickmanStateMachine`) + `IStickmanState` 구현 18종(Idle/Walk/Jump/Fall/LandingCrouch/ParkourClimb/LedgeHang/GroundLossHang/Attack/Ragdoll/Getup/ThrowTumble/DragThrow/RodeoCursor/WindowTheft/Archery/TimedSpectacle/Runaway) + 지원 유틸(`GroundSensor`, `RagdollRig`, `AutoWanderController`, `StickmanBlackboard`) |
+| `Interaction/` | 50 | 각 기능의 트리거 감시/대상 선정/락 획득을 전담하는 Director + 그 시각 레이어 Renderer, 그리고 uGUI 표면(정보창/설정창/행동 명령창/부채꼴/포스트잇) |
+| `Dialogue/` | 5 | 텍스트-액션 계약 핵심(`DialogueIntent`, `DialogueKind`, `AmbientChatter`, `DialogueBubbleRenderer`) |
 | `Plugins/` | 2 | DLC 매니페스트(`MotionPluginSO`, `EffectPluginSO`) |
-| `Tests/` | 2 | EditMode 회귀 테스트(아래 [테스트](#테스트) 참고) |
+| `Tests/` | 217 | EditMode/PlayMode 회귀 테스트(아래 [테스트](#테스트) 참고) |
 
 ## 빌드/실행 방법
 
@@ -59,7 +63,7 @@ MAC/Windows 바탕화면(그리고 iPad/iPhone 홈 화면 - 추후 검토 예정
 | 0 | 스캐폴딩(플랫폼서비스/이벤트버스/상태머신 골격/`DialogueIntent` 스캐폴딩) | 완료 |
 | 1 | 코어 루프(중력·발판인식·화면이탈낙하, IDLE/WALK/JUMP/FALL, 자율 배회 AI, 전체화면 감지) | 완료 |
 | 2 | Active Ragdoll(RAGDOLL/GETUP), 파쿠르(PARKOUR_CLIMB), `DialogueIntent` 파라미터 파이프라인 | 완료 |
-| 3 | 전투(격파 미니게임), 커서 상호작용(드래그&던지기/로데오 커서), 부분적 클릭관통 해제 인프라 | 완료 |<br>*(라이벌 AI는 2026-08-30 사용자 지시로 전체 삭제 — docs/UX_FLOW.md 11절)*
+| 3 | 커서 상호작용(드래그&던지기/로데오 커서), 부분적 클릭관통 해제 인프라 | 완료 |<br>*(라이벌 AI는 2026-08-30, 격파 미니게임은 2026-09-02 사용자 지시로 전체 삭제 — docs/UX_FLOW.md 11절 / 10절)*
 | 4 | OS 장난(창도둑/청소부/그라피티/크래시/블랙홀), PC 하드웨어 반응(CPU/배터리/충전/네트워크) | 완료 |
 | 5 | 생산성(투두 말풍선/포모도로 감시자), 반항·스트레스(스트레스 게이지/가출) | 완료 |
 | 5 | 던전 파밍 / 세포분열·군대 | **보류 (P3)** — 스코프 아웃이 아니라 우선순위 최저로 의도적 연기(`ARCHITECTURE.md` 1절 근거) |

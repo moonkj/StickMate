@@ -13,7 +13,7 @@ namespace StickMate.Interaction
     /// ============================================================================
     /// Interaction/GraffitiDirector.cs는 "캐릭터 근처 200~300px 안에서, 어떤 발판(창) 사각형과도 겹치지
     /// 않는 빈 영역"을 찾아 StickmanEventBus.GraffitiOverlayChanged를 발행하는 데까지 이미 완성돼 있었다.
-    /// 그런데 <b>그 이벤트를 구독하는 코드가 어디에도 없었다</b>(BattleMinigamePhaseChanged와 똑같은
+    /// 그런데 <b>그 이벤트를 구독하는 코드가 어디에도 없었다</b>(당시 BattleMinigamePhaseChanged와 똑같은
     /// 상황). 영역 선정도 취소 감시도 정확히 동작했지만 화면에는 아무것도 그려지지 않았다.
     ///
     /// ============================================================================
@@ -49,7 +49,8 @@ namespace StickMate.Interaction
         private const float CancelFadeSeconds = 0.18f; // 창이 덮쳐온 경우 — 최대한 빨리 걷어낸다.
         private const float StrokeWidthRatio = 0.055f;  // 영역 한 변 대비 획 두께(영역이 커지면 같이 굵어진다).
         private const float JitterRatio = 0.012f;    // 손그림 느낌을 주는 좌표 지터(영역 한 변 대비).
-        private const int SortingOrder = 9;          // 캐릭터 획(0~5) 위, 격파 연출(10~15) 아래.
+        private const int SortingOrder = 9;          // 캐릭터 획(0~5) 위. 10~15는 비어 있다
+                                                     // (2026-09-02까지 격파 연출이 쓰던 대역).
 
         private static readonly Color[] SprayColors =
         {
@@ -407,8 +408,11 @@ namespace StickMate.Interaction
             return pts;
         }
 
-        /// <summary>BattleMinigameRenderer와 같은 이유로 캐릭터 LineRenderer의 머티리얼을 빌려 쓴다
-        /// (Shader.Find는 빌드 스트리핑 위험이 있어 쓰지 않는다).</summary>
+        /// <summary>★ 캐릭터 LineRenderer의 머티리얼을 <b>빌려 쓴다</b> — 이 관례의 기준 구현이다
+        /// (WindowTheftRenderer / WindowCrashRenderer / HardwareReactionRenderer가 여기를 가리킨다).
+        /// <c>Shader.Find</c>로 런타임에 찾지 않는 이유: 그 셰이더를 참조하는 에셋이 씬에 없으면
+        /// 빌드 스트리핑이 통째로 걷어내 <b>에디터에서만 되고 빌드에서 안 되는</b> 실패가 된다.
+        /// 캐릭터의 LineRenderer는 항상 존재하므로 그 sharedMaterial은 반드시 살아남는다.</summary>
         private Material ResolveLineMaterial()
         {
             if (_lineMaterial != null) return _lineMaterial;

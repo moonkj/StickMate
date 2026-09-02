@@ -84,7 +84,7 @@ namespace StickMate.Core
         }
 
         /// <summary>
-        /// Phase 3 Interaction 레이어(드래그&던지기/로데오 커서/격파 미니게임 컨트롤러)가
+        /// Phase 3 Interaction 레이어(드래그&던지기/로데오 커서 컨트롤러)가
         /// 읽기 전용으로 접근하기 위한 통로. 이 프로퍼티들을 새로 추가한 이유: UX_FLOW.md 10~13절 기능들은
         /// 의도적으로 StickmanAgent 밖의 별도 컴포넌트(Interaction/*)로 구현되었는데(관심사 분리 — Core는
         /// Phase 3 개별 기능의 존재 자체를 몰라도 된다), 그 컴포넌트들이 상태 전이를 트리거하거나(Machine),
@@ -114,7 +114,7 @@ namespace StickMate.Core
         // ★ 캐릭터 전신 높이의 단일 소스 (리더 지시 2026-08-29 — 크기 조정 가능해야 함)
         // ============================================================================
         // 왜 필요한가: 사용자가 "캐릭터 사이즈가 지금의 절반 정도 되어야 하고 추후 조정 가능해야 한다"고
-        // 요구했다. 머리 위 연출(말풍선/하드웨어 이모트)과 정면 연출(격파 미니게임)이 지금처럼 절대
+        // 요구했다. 머리 위 연출(말풍선/하드웨어 이모트)과 정면 연출(활쏘기 과녁)이 지금처럼 절대
         // 유닛 상수로 위치를 잡고 있으면, 캐릭터 크기가 바뀌는 순간 전부 다시 겹친다 — 실제로 이번
         // 라운드의 "이모트가 머리와 겹친다"가 정확히 그 방식(값 하나만 올림)으로 생긴 버그다.
         //
@@ -136,8 +136,8 @@ namespace StickMate.Core
         // 씬 지면 Y vs 발판 상수 이중 정의). 크기 배율(StickConfig.characterScale)을 소유하는 쪽이
         // StickmanMetrics이므로 그쪽을 유일한 생산자로 삼고, 이 프로퍼티는 **얇은 위임**만 남긴다.
         //
-        // 이 프로퍼티를 지우지 않는 이유: 이미 커밋된 렌더러 3종(DialogueBubbleRenderer /
-        // HardwareReactionRenderer / BattleMinigameRenderer)이 이 이름으로 값을 읽고 있다. 위임으로
+        // 이 프로퍼티를 지우지 않는 이유: 이미 커밋된 렌더러들(DialogueBubbleRenderer /
+        // HardwareReactionRenderer / ArcheryRenderer 등)이 이 이름으로 값을 읽고 있다. 위임으로
         // 바꾸면 그 파일들을 한 줄도 건드리지 않고 값이 하나로 수렴한다.
         //
         // 두 구현의 실질적 차이는 없었다 — 둘 다 루트의 **비-트리거** CapsuleCollider2D.size.y를 읽는다
@@ -178,7 +178,7 @@ namespace StickMate.Core
         /// 캐릭터 전신 높이(월드 유닛) — 발끝(로컬 y=0)부터 정수리까지. 머리 위/정면 연출은
         /// <b>전부 이 값의 비율</b>로 자기 위치를 잡는다(절대 유닛 상수를 두지 않는다).
         /// 소비자: Dialogue/DialogueBubbleRenderer, Interaction/HardwareReactionRenderer,
-        /// Interaction/BattleMinigameRenderer.
+        /// Interaction/ArcheryRenderer.
         ///
         /// ★ 값의 생산자는 <see cref="Metrics"/>(Core/StickmanMetrics.cs) 하나뿐이다 — 위 통합 문단 참고.
         /// </summary>
@@ -337,11 +337,10 @@ namespace StickMate.Core
                 { StickmanStateId.Attack, new AttackState(_blackboard) },
                 { StickmanStateId.Ragdoll, new RagdollState(_blackboard) },
                 { StickmanStateId.Getup, new GetupState(_blackboard) },
-                // Phase 3 신규(UX_FLOW.md 10/12/13절) — 전부 Interaction/* 컨트롤러가 부분적 클릭관통
+                // Phase 3 신규(UX_FLOW.md 12/13절) — 전부 Interaction/* 컨트롤러가 부분적 클릭관통
                 // 해제/SpectacleEventLock을 확보한 뒤에만 ChangeState를 호출한다(States/*.cs는 그 획득
-                // 절차를 전혀 모른다). 11종을 전부 등록해두는 이유는 위와 동일(BUG-M2 방어 코드를 밟을
-                // 일 자체를 없앰).
-                { StickmanStateId.BattleMinigame, new BattleMinigameState(_blackboard) },
+                // 절차를 전혀 모른다). 남김없이 등록해두는 이유는 위와 동일(BUG-M2 방어 코드를 밟을
+                // 일 자체를 없앰). ※ 2026-09-02 격파 놀이(구 10절) 삭제로 한 종이 빠졌다.
                 { StickmanStateId.Dragged, new DragThrowState(_blackboard) },
                 // ★ 던지기 공중 회전(사용자 명시 요청 2026-08-29) — DragThrowState가 놓는 순간
                 // "깨끗하게 던져진 자유 비행"이면 이 상태로 보낸다. 등록을 빠뜨리면 ChangeState가
@@ -585,7 +584,7 @@ namespace StickMate.Core
             // 관절이 이상하게 꺾임"). 상태가 스스로 GroundedTick()을 부르지 않아도 **여기 한 곳에서**
             // 대신 불러준다. TickPose()가 "포즈는 상태 ID 하나로 한 곳에서 결정된다"를 보장하는 것과
             // 정확히 같은 이유이며(상태가 14개가 넘고 하나라도 빠뜨리면 그 상태에서만 깨진다),
-            // 실제로 Attack/Getup/BattleMinigame이 그렇게 빠져 있었다.
+            // 실제로 Attack/Getup/BattleMinigame(당시)이 그렇게 빠져 있었다.
             // 상태가 이미 불렀으면 프레임 번호로 감지해 중복하지 않는다
             // (StickmanBlackboard.TickGroundKeepingSafetyNet 문서 참고).
             _blackboard.TickGroundKeepingSafetyNet(dt);
@@ -1063,13 +1062,13 @@ namespace StickMate.Core
         {
             _isSuspended = true;
 
-            // Phase 3 예외(UX_FLOW.md 10/12/13절): 격파 미니게임/드래그&던지기/로데오 커서는 "능동 개입"
+            // Phase 3 예외(UX_FLOW.md 12/13절): 드래그&던지기/로데오 커서는 "능동 개입"
             // 스펙터클이라 전체화면 감지 시 일반 Suspend(상태 보존 후 재개)가 아니라 즉시 취소되어야
-            // 한다 — "비침해 원칙이 항상 이 기능들보다 우선"이라고 세 절 모두 명시적으로 못박았다.
+            // 한다 — "비침해 원칙이 항상 이 기능들보다 우선"이라고 두 절 모두 명시적으로 못박았다.
             // RAGDOLL/GETUP/ParkourClimb 등 물리 기반 상태는 아래의 일반 Suspend(보존)를 그대로 유지한다.
             // ChangeState(Idle, isForcedInterrupt:true)가 각 상태의 Exit()을 실행시켜 Kinematic->Dynamic
             // 복구(DragThrowState/RodeoCursorState) 및 StateTransitioned 발행(Interaction 컨트롤러들의
-            // 락 해제 트리거, DragThrowController/BattleMinigameDirector/RodeoCursorWatcher 참고)을
+            // 락 해제 트리거, DragThrowController/RodeoCursorWatcher 참고)을
             // 자연스럽게 유발한다 — 이 메서드는 그 사실만 트리거할 뿐 락 해제 자체에는 관여하지 않는다.
             // Phase 4 확장(UX_FLOW.md 27절 각 절, "전체화면 게임 감지 시 즉시 취소" 공통 예외 상태):
             // 창 도둑/그라피티/청소부/블랙홀/크래시(캐릭터 스윙 쪽)도 동일한 이유로 이 강제 목록에 편입.
@@ -1077,7 +1076,7 @@ namespace StickMate.Core
             // IsSuspended를 직접 폴링해 별도로 취소한다(다른 Director들의 IsSuspended 폴링과 동일 패턴).
             StickmanStateId current = _machine.CurrentStateId;
             if (current == StickmanStateId.Dragged || current == StickmanStateId.RodeoCursor ||
-                current == StickmanStateId.BattleMinigame || current == StickmanStateId.WindowTheft ||
+                current == StickmanStateId.WindowTheft ||
                 current == StickmanStateId.Graffiti || current == StickmanStateId.DesktopTidy ||
                 current == StickmanStateId.BlackholeSummon || current == StickmanStateId.WindowCrash)
             {

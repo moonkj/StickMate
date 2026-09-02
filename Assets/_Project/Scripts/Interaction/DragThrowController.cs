@@ -59,7 +59,7 @@ namespace StickMate.Interaction
             StickmanEventBus.StateTransitioned -= OnStateTransitioned;
             StickmanEventBus.GlobalEmergencyStopRequested -= OnEmergencyStop;
 
-            // BUG-P3-M1(Major, docs/BUG_REPORT_PHASE3.md) 대응 — BattleMinigameDirector와 동일한
+            // BUG-P3-M1(Major, docs/BUG_REPORT_PHASE3.md) 대응 — (당시) BattleMinigameDirector와 동일한
             // 근거: OnStateTransitioned 구독을 이미 위에서 해제했으므로 더 이상 자동으로 락이
             // 풀리지 않는다. 여기서 직접 반환한다(멱등 — Release()/ReleaseLocalClickCapture()가
             // 소유자 확인 후 no-op하므로 중복 호출해도 안전).
@@ -68,7 +68,7 @@ namespace StickMate.Interaction
 
         /// <summary>
         /// 개선 R2(docs/CODE_REVIEW_FINAL.md): 3단계 보일러플레이트를 SpectacleEventLock.ReleaseIfOwned로
-        /// 추출했다(BattleMinigameDirector.ReleaseOwnedLocks()와 동일한 근거로 소유권 선확인을 추가해도
+        /// 추출했다(당시 BattleMinigameDirector.ReleaseOwnedLocks()와 동일한 근거로 소유권 선확인을 추가해도
         /// 동작은 동일 — SpectacleEventLock.ReleaseIfOwned 문서 참고). Exit()가 Kinematic->Dynamic
         /// 방어적 복구를 담당하므로 강제 Idle 전이로 안전하게 놓아준다.
         /// </summary>

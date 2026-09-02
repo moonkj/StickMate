@@ -48,7 +48,8 @@ namespace StickMate.Dialogue
         /// <summary>
         /// 이 대사의 종류(docs/UX_FLOW.md 5절 규칙 4-a). 텍스트와 **같은 매핑 함수 호출 한 번**에서
         /// 함께 나온 값이며, 문자열에서 역추론된 것이 아니다 — 그래야 같은 상태가 상황에 따라
-        /// 서술/반응을 갈라 쓸 수 있다(BattleMinigame: 개시 = 서술 / 판정 = 반응).
+        /// 서술/반응을 갈라 쓸 수 있다(<see cref="DialogueKind"/> 문서의 2026-09-02 메모 참고 —
+        /// 지금 실제로 그렇게 쓰는 상태는 없다).
         /// </summary>
         public DialogueKind Kind { get; }
 

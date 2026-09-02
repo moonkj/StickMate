@@ -9,7 +9,7 @@ namespace StickMate.Interaction
     /// ★ 윈도우 창 도둑 시각 레이어 — docs/UX_FLOW.md 27-1절의 "유저가 보는 것"을 실제로 그리는 소비자.
     ///
     /// ============================================================================
-    /// 왜 이 파일이 이제야 생겼는가 (DialogueBubbleRenderer/BattleMinigameRenderer/GraffitiRenderer와 같은 이야기)
+    /// 왜 이 파일이 이제야 생겼는가 (DialogueBubbleRenderer/GraffitiRenderer와 같은 이야기)
     /// ============================================================================
     /// Interaction/WindowTheftDirector.cs(트리거·대상 선정·취소 감시)와 States/WindowTheftState.cs
     /// (2회 시도 후 포기하는 페이즈 + 포기 대사 self-transition)는 진작 완성돼 있었는데,
@@ -121,7 +121,7 @@ namespace StickMate.Interaction
         /// 이 렌더러가 담당하는 캐릭터. <b>같은 GameObject의 StickmanAgent만</b> 쓰고 씬 전체 탐색
         /// 폴백은 쓰지 않는다 — 이 프리팹이 복제되면 사본도 이 컴포넌트를 함께 갖게 되는데,
         /// 씬 폴백을 두면 사본 렌더러가 플레이어의 이벤트에 반응해 고스트 창이 두 벌 그려진다
-        /// (2026-08-29 격파 미니게임에서 실측으로 확인된 버그 — GraffitiRenderer/BattleMinigameRenderer의
+        /// (2026-08-29 격파 미니게임에서 실측으로 확인된 버그 — GraffitiRenderer의
         /// 같은 가드 주석 참고). 애초에 사본에 배치하지 않는 것이 1차 방어이고,
         /// 이 가드가 2차 방어다.
         /// </summary>
@@ -559,7 +559,7 @@ namespace StickMate.Interaction
             return pts;
         }
 
-        /// <summary>GraffitiRenderer/BattleMinigameRenderer와 같은 이유로 캐릭터 LineRenderer의 머티리얼을
+        /// <summary>GraffitiRenderer와 같은 이유로 캐릭터 LineRenderer의 머티리얼을
         /// 빌려 쓴다(Shader.Find는 빌드 스트리핑 위험이 있어 쓰지 않는다).</summary>
         private Material ResolveLineMaterial()
         {

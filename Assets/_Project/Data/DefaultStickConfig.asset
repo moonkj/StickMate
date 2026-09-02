@@ -120,16 +120,6 @@ MonoBehaviour:
   wanderRestExtendSitChance: 0.15
   wanderCursorReactionRadiusPx: 150
   attackDuration: 0.4
-  battleChargeDurationMin: 1.5
-  battleChargeDurationMax: 2
-  battleSweetSpotStart: 0.7
-  battleSweetSpotEnd: 0.85
-  battleMaxRetries: 3
-  battleFailRetryDelaySeconds: 1.5
-  battleSuccessResolveDelaySeconds: 1
-  battleInputTimeoutSeconds: 5
-  battleAutoTriggerCheckInterval: 60
-  battleAutoTriggerChance: 0
   dragThrowVelocitySampleWindowSeconds: 0.12
   dragThrowMaxSpeed: 12
   dragThrowMaxHoldSeconds: 10
@@ -358,7 +348,6 @@ MonoBehaviour:
   progressionXpCurveExponent: 1.05
   progressionPassiveXpPerMinute: 1.5
   progressionPassiveTickSeconds: 10
-  progressionBattleWinXp: 25
   progressionBullseyeXp: 15
   progressionAutoSaveIntervalSeconds: 60
   landingDustEnabled: 1

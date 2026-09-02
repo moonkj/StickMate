@@ -22,7 +22,7 @@ namespace StickMate.Interaction
         /// 2026-08-30 사용자 신고 참고(<see cref="PoseForState"/>의 Dragged 주석).</summary>
         Fallen = 1,
 
-        /// <summary>뭔가 하는 중(활쏘기/격파/낙서/붙잡혀 버둥거림 등) — 한쪽 팔을 들어
+        /// <summary>뭔가 하는 중(활쏘기/낙서/붙잡혀 버둥거림 등) — 한쪽 팔을 들어
         /// "작업 중 / 들려 있는 중"으로 읽힌다.</summary>
         Busy = 2,
 
@@ -405,7 +405,6 @@ namespace StickMate.Interaction
                 case StickmanStateId.Dragged:
 
                 case StickmanStateId.Attack:
-                case StickmanStateId.BattleMinigame:
                 case StickmanStateId.Archery:
                 case StickmanStateId.Graffiti:
                 case StickmanStateId.WindowTheft:

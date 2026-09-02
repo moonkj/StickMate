@@ -902,27 +902,18 @@ namespace StickMate.EditorTools
             rodeoSo.ApplyModifiedPropertiesWithoutUndo();
 
             // ================================================================================
-            // Phase 3/4 스펙터클 배선 (격파 미니게임 / 그라피티) — 2026-08-29
+            // Phase 3/4 스펙터클 배선 (그라피티) — 2026-08-29
             // ================================================================================
-            // 위 DragThrowController/RodeoCursorWatcher와 **완전히 같은 유형의 누락**이었다: 두 기능의
+            // 위 DragThrowController/RodeoCursorWatcher와 **완전히 같은 유형의 누락**이었다: 기능의
             // 상태 머신/트리거/락 로직은 진작 완성돼 있었는데 Director가 씬 어디에도 배치되지 않았고,
             // 그 위에 이벤트를 구독해 실제로 그리는 렌더러조차 존재하지 않아 화면에는 한 픽셀도 나오지
-            // 않았다. 여기서 Director 2개 + 이번 라운드에 신설한 렌더러 2개를 함께 배치한다.
-            var battle = root.AddComponent<BattleMinigameDirector>();
-            var battleSo = new SerializedObject(battle);
-            battleSo.FindProperty("_player").objectReferenceValue = agent;
-            battleSo.FindProperty("_hitbox").objectReferenceValue = hitbox;
-            // 드래그&던지기와 같은 이유로 물리 캡슐이 아니라 넉넉한 GrabArea를 넘긴다(부분적 클릭관통
-            // 해제 영역 부기가 사용자가 실제로 누르는 영역과 일치해야 한다).
-            battleSo.FindProperty("_hitboxCollider").objectReferenceValue = grabArea;
-            battleSo.FindProperty("_config").objectReferenceValue = config;
-            battleSo.ApplyModifiedPropertiesWithoutUndo();
-
-            // 소환 판자/기 모으기 게이지/파편을 그리는 시각 레이어. 직렬화 필드가 없고 Awake()에서 같은
-            // GameObject의 StickmanAgent/StickmanClickHitbox를 직접 찾으므로 배선이 필요 없다
-            // (AppControlDirector와 동일한 관례).
-            root.AddComponent<BattleMinigameRenderer>();
-
+            // 않았다. 여기서 Director + 이번 라운드에 신설한 렌더러를 함께 배치한다.
+            //
+            // ★ 2026-09-02 — 이 블록에는 원래 격파 미니게임(BattleMinigameDirector +
+            //   BattleMinigameRenderer) 배선이 함께 있었다. 격파 놀이 기능 삭제로 제거했다.
+            //   <b>씬 에셋을 다시 만들려면 이 부트스트래퍼를 반드시 다시 돌려야 한다</b> —
+            //   기존 씬 파일에는 지금도 두 컴포넌트의 MonoBehaviour 참조가 남아 있고,
+            //   스크립트가 사라졌으므로 Unity가 "Missing (Mono Script)"로 표시한다.
             var graffiti = root.AddComponent<GraffitiDirector>();
             var graffitiSo = new SerializedObject(graffiti);
             graffitiSo.FindProperty("_player").objectReferenceValue = agent;
@@ -934,7 +925,7 @@ namespace StickMate.EditorTools
             // ================================================================================
             // Phase 4 시각 레이어 배선 (창 도둑 / 창 크래시 / PC 하드웨어 반응) — 2026-08-29
             // ================================================================================
-            // 격파/그라피티와 **완전히 같은 유형의 누락**이 3건 더 있었다: 세 기능의 Director/State
+            // 그라피티와 **완전히 같은 유형의 누락**이 3건 더 있었다: 세 기능의 Director/State
             // 로직은 Phase 4에 이미 완성돼 있었지만 Director가 씬 어디에도 배치되지 않았고(따라서
             // Update()가 한 번도 돌지 않아 트리거 추첨조차 일어나지 않았다), 그 위에
             // WindowTheftOverlayChanged / WindowCrashOverlayChanged / HardwareReactionChanged를
@@ -949,7 +940,7 @@ namespace StickMate.EditorTools
             theftSo.FindProperty("_player").objectReferenceValue = agent;
             // 27-1 대상 창 선정("캐릭터 신장의 3배 이하 폭")에 쓰는 신장 측정용 콜라이더.
             // 클릭 표적이 아니라 **몸 크기**를 재는 용도이므로, 넉넉한 GrabArea가 아니라 실제 물리
-            // 캡슐을 넘긴다(DragThrow/Battle이 GrabArea를 넘기는 것과 목적이 다르다).
+            // 캡슐을 넘긴다(DragThrow가 GrabArea를 넘기는 것과 목적이 다르다).
             theftSo.FindProperty("_characterCollider").objectReferenceValue = capsule;
             theftSo.FindProperty("_config").objectReferenceValue = config;
             theftSo.ApplyModifiedPropertiesWithoutUndo();
@@ -1016,7 +1007,7 @@ namespace StickMate.EditorTools
             runawaySo.ApplyModifiedPropertiesWithoutUndo();
 
             // 속도선/먼지/은신처 힌트 파문/발견 폭발/[간식 주기] 과자. 과자만 클릭 대상이며 그 콜라이더는
-            // StickmanClickHitbox.RegisterExtraCollider로 등록된다(BattleMinigameRenderer와 동일 경로).
+            // StickmanClickHitbox.RegisterExtraCollider로 등록된다(캐릭터 계층 바깥 클릭 대상의 공통 경로).
             root.AddComponent<RunawayRenderer>();
 
             var todoReminder = root.AddComponent<TodoReminderDirector>();
@@ -1079,14 +1070,14 @@ namespace StickMate.EditorTools
             // 액세서리는 순수 오버레이, 정보창은 UI). 참여 기준은 "단일 상태 슬롯을 다투는가"다
             // (StressGaugeRenderer/HardwareReactionRenderer와 같은 논리).
             //
-            // XP 훅은 전부 StickmanEventBus **구독**이라 격파/활쏘기의 판정 로직은 이 라운드에
+            // XP 훅은 전부 StickmanEventBus **구독**이라 활쏘기의 판정 로직은 이 라운드에
             // 한 줄도 수정되지 않았다(리더 지시 "읽기 전용으로 훅만").
             var progression = root.AddComponent<CharacterProgressionDirector>();
             var progressionSo = new SerializedObject(progression);
             progressionSo.FindProperty("_config").objectReferenceValue = config;
             progressionSo.ApplyModifiedPropertiesWithoutUndo();
 
-            // 기록 카운터(격파/활쏘기/함께한 시간) — 전부 StickmanEventBus **구독**이라 격파/
+            // 기록 카운터(활쏘기/함께한 시간) — 전부 StickmanEventBus **구독**이라
             // 활쏘기의 판정 로직은 이번 라운드에도 한 줄도 수정되지 않았다(2026-08-30 정보창 리디자인).
             // 직렬화 필드가 없고 Awake()에서 같은 GameObject의 StickmanAgent를 직접 찾으므로 배선 불필요.
             root.AddComponent<CharacterStatsDirector>();

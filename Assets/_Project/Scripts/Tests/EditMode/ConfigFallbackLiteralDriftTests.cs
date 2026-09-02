@@ -151,8 +151,6 @@ namespace StickMate.Tests.EditMode
             new Drift("Interaction/CharacterProgressionDirector.cs", "progressionPassiveXpPerMinute", 0f, 1.5f,
                 "\"설정이 없으면 XP를 주지 않는다\" — Grant() 호출부가 `> 0f`로 거르는 형태라 " +
                 "0이 곧 비활성이다. 의도 확인함."),
-            new Drift("Interaction/CharacterProgressionDirector.cs", "progressionBattleWinXp", 0f, 25f,
-                "위와 같다(Grant(0)은 무보상)."),
             new Drift("Interaction/CharacterProgressionDirector.cs", "progressionBullseyeXp", 0f, 15f, "위와 같다."),
             new Drift("Core/AppSettingsModel.cs", "dialogueMinVisibleSeconds", 0.7f, 0f,
                 "구판 고정 하한 0.7초. 규칙 4-b(2026-09-01) 이후 실제 하한은 글자수 비례 가독예산이 " +

@@ -56,9 +56,16 @@ namespace StickMate.Tests.PlayMode
 
         // 렌더러의 비율 상수(CharacterAccessoryRenderer와 같은 값 — 바깥에서 손으로 옮겨 적은 사본이라
         // 렌더러 쪽 상수가 바뀌면 이 테스트가 먼저 빨개진다. 그게 이 사본의 목적이다).
-        private const float HatBrimLineRatio = 0.62f;
-        private const float HatCrownHeightRatio = 1.05f;
-        private const float HatBrimReachRatio = 1.95f;
+        /// <summary>모자 3종의 골든값. ★ 2026-09-02 갱신 — 셋 다 프로덕션과 <b>어긋난 채 방치</b>돼
+        /// 있었다(0.62 vs 0.06 / 1.05 vs 1.18 / 1.95 vs 1.92). 사본이 원본을 따라오지 않으면 이 검사는
+        /// 무엇도 지키지 못한다.
+        /// <para>출처는 <c>AccessoryShapeBuilder</c>의 같은 이름 상수를 <b>손으로 옮겨 적은 것</b>이다.
+        /// 0.06 = <c>HatBrimLineRatio</c>(= 야구모자의 커버선, 옛 0.62는 머리 위쪽 1/3 자리였다),
+        /// 1.18 = <c>HatCrownHeightRatio</c>, 1.92 = <c>HatBrimReachRatio</c>.
+        /// <b>상수를 참조로 바꾸지 마라</b> — 아래 문단이 설명하는 이 사본의 존재 이유가 사라진다.</para></summary>
+        private const float HatBrimLineRatio = 0.06f;
+        private const float HatCrownHeightRatio = 1.18f;
+        private const float HatBrimReachRatio = 1.92f;
         private const float GlassesCenterRatio = 0.00f;
         private const float GlassesTempleReachRatio = 1.02f;
         private const float NeckCollarRiseRatio = 0.04f;   // 2026-08-30: 머리 중심 기준 -> 어깨선 기준으로 이전
@@ -286,7 +293,7 @@ namespace StickMate.Tests.PlayMode
             CharacterAccessoryRenderer r = Renderer(0.5f, 1f);
             StickmanMetrics m = MetricsOf(r);
 
-            float legacyHatTop = BaseHeadCenterY + BaseHeadRadius * (HatBrimLineRatio + HatCrownHeightRatio); // 2.3253
+            float legacyHatTop = BaseHeadCenterY + BaseHeadRadius * (HatBrimLineRatio + HatCrownHeightRatio); // 2.3275
             Assert.Greater(legacyHatTop, m.HeadTopLocalY + m.TotalHeight * 0.15f,
                 $"배율 0.5에서 절대 상수 모자 꼭대기 {legacyHatTop:F4}가 허용 상한 " +
                 $"{(m.HeadTopLocalY + m.TotalHeight * 0.15f):F4}을 넘지 않습니다 — (B)의 모자 조건이 헐겁습니다.");

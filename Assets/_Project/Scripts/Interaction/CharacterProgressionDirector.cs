@@ -13,14 +13,17 @@ namespace StickMate.Interaction
     /// XP 소스 — 기존 판정 로직을 <b>한 줄도</b> 건드리지 않는다
     /// ============================================================================
     /// 리더 지시: "기존 판정 로직에 읽기 전용으로 훅만 걸어라 — 승패 판정 자체를 바꾸지 마라."
-    /// 그래서 세 소스 중 보너스 2종은 <b>전부 StickmanEventBus 구독</b>으로만 구현했다. 이 파일은
-    /// BattleMinigameDirector / ArcheryState를 <b>참조조차 하지 않는다</b>
-    /// (grep으로 검증 가능) — 그 두 곳의 소스 코드는 이번 라운드에 수정되지 않았다.
+    /// 그래서 보너스는 <b>전부 StickmanEventBus 구독</b>으로만 구현했다. 이 파일은
+    /// ArcheryState를 <b>참조조차 하지 않는다</b>
+    /// (grep으로 검증 가능) — 그곳의 소스 코드는 이번 라운드에 수정되지 않았다.
     ///
     ///  · 패시브        : progressionPassiveTickSeconds 주기로 분당 값을 쪼개 적립.
     ///                    "아무것도 안 해도 자란다"(관찰형 앱 철학)가 주 경로다.
-    ///  · 격파 승리      : BattleMinigamePhaseChanged == Success
     ///  · 활쏘기 명중    : ArcheryShotChanged.Result == Bullseye (Release 시점 1회)
+    ///
+    /// ★ 2026-09-02 — 보너스 소스가 <b>2종에서 1종</b>이 됐다(격파 승리 +25XP 삭제, 격파 놀이 기능
+    ///   제거). 패시브가 주 경로라는 설계 덕에 성장 속도에 미치는 영향은 사실상 없다 —
+    ///   위 XP 곡선 표(CharacterProgressionModel)는 애초에 패시브만으로 계산된 값이다.
     ///
     /// ============================================================================
     /// 매 프레임 할당 금지 (24시간 상주 앱)
@@ -83,13 +86,11 @@ namespace StickMate.Interaction
 
         private void OnEnable()
         {
-            StickmanEventBus.BattleMinigamePhaseChanged += OnBattlePhaseChanged;
             StickmanEventBus.ArcheryShotChanged += OnArcheryShotChanged;
         }
 
         private void OnDisable()
         {
-            StickmanEventBus.BattleMinigamePhaseChanged -= OnBattlePhaseChanged;
             StickmanEventBus.ArcheryShotChanged -= OnArcheryShotChanged;
         }
 
@@ -139,12 +140,6 @@ namespace StickMate.Interaction
                || AppSettingsModel.IsDirty;           // v8 — 설정창(슬라이더는 드래그 중 즉시 저장을 부르지 않는다).
 
         // ==================== 보너스 훅(전부 읽기 전용 구독) ====================
-
-        private void OnBattlePhaseChanged(BattleMinigamePhase phase)
-        {
-            if (phase != BattleMinigamePhase.Success) return;
-            Grant(_config != null ? _config.progressionBattleWinXp : 0f, "격파 성공");
-        }
 
         private void OnArcheryShotChanged(ArcheryShotEvent shot)
         {

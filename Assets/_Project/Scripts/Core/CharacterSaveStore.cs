@@ -37,7 +37,8 @@ namespace StickMate.Core
         private const string FileName = "stickmate_character.json";
 
         /// <summary>스키마 버전. 2 = 2026-08-30 정보창 리디자인 라운드에서 기록 7종
-        /// (격파/대결/활쏘기 2종/누적 시간/넘어진 횟수/첫 만남 시각)이 추가된 버전. <b>버전 1 파일도 그대로 읽힌다</b> —
+        /// (격파/대결/활쏘기 2종/누적 시간/넘어진 횟수/첫 만남 시각)이 추가된 버전
+        /// (격파·대결은 그 뒤 기능이 삭제됐지만 <b>스키마는 그대로다</b> — v2의 사실 기술이다). <b>버전 1 파일도 그대로 읽힌다</b> —
         /// 새 필드는 JsonUtility가 0으로 채우고, 그 0은 "아직 기록이 없다"는 정확한 사실이다.
         /// 3 = 2026-08-30 톱니 아이콘 길게 눌러 옮기기 라운드에서 <b>사용자가 옮긴 톱니 위치</b>
         /// (Core/UiLayoutModel.cs)가 추가된 버전. 여기서도 하위 호환은 같은 방식으로 성립한다 —
@@ -134,6 +135,11 @@ namespace StickMate.Core
             public bool equippedShoulders;
 
             // ---- v2: 정보창 하단 스탯 블록의 기록(Core/CharacterStatsModel.cs) ----
+            // ★ battleWins는 2026-09-02 격파 놀이 삭제 뒤에도 <b>남긴다</b>(리더 판정). 아래 rivalWins와
+            //   정반대 처리인데, 이유가 다르다: rivalWins는 값이 실제로 <b>없던</b> 필드였고, battleWins는
+            //   사용자 세이브(v9)에 3회가 실제로 들어 있다. 필드를 빼면 CurrentVersion을 올려야 하고
+            //   그 라운드는 v8 하위 호환 테스트를 의무로 달아야 한다(CLAUDE.md) — 죽은 필드 하나를
+            //   지우려고 마이그레이션 위험을 사지 않는다. 읽고 그대로 다시 쓴다. 화면에는 안 나온다.
             public int battleWins;
             // ※ v2에는 rivalWins가 있었다(라이벌 대결 승리). 라이벌 기능 전체 삭제(2026-08-30)로
             //   필드를 없앴다 — JsonUtility는 모르는 키를 조용히 무시하므로 옛 저장 파일도 그대로 읽힌다

@@ -2,7 +2,7 @@
 # 형식: F5 고정소수 / InvariantCulture / 표 순서 고정. 손으로 고치지 말 것.
 slots=7
 equipment=42
-actions=13
+actions=12
 [slot 0 Head count=6]
   item id=equip.head.cap cat=Equipment slot=Head idx=0 lv=1 invocable=1
     name=천모자
@@ -377,12 +377,6 @@ actions=13
     name=혼잣말
     desc=가만히 있거나 걷는 동안 가끔 혼자 중얼거린다. 단축키를 누르면 지금 당장 한마디 한다.
     status=<chord>B
-    primary=(0.83922,0.85882,0.89020,1.00000) secondary=(0.83922,0.85882,0.89020,1.00000)
-    icon=none
-  item id=action.battle cat=Action slot=- idx=-1 lv=- invocable=1
-    name=격파 놀이
-    desc=허공에 송판을 세우고 발차기 한 번. 부서지는 건 그려낸 송판뿐이다.
-    status=<chord>K
     primary=(0.83922,0.85882,0.89020,1.00000) secondary=(0.83922,0.85882,0.89020,1.00000)
     icon=none
   item id=action.graffiti cat=Action slot=- idx=-1 lv=- invocable=1

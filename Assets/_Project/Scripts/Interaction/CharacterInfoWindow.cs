@@ -299,11 +299,18 @@ namespace StickMate.Interaction
         private enum Tab { Equipment = 0, Appearance = 1, Inventory = 2 }
         private const int TabCount = 3;
 
-        /// <summary>좌측 스탯 행 수. 6 -> <b>5</b>(2026-09-01 사용자 요청 "넘어진 횟수 삭제").
-        /// <b>지운 것은 표시뿐이다</b> — <see cref="CharacterStatsModel.RagdollFalls"/> 카운터는 그대로
-        /// 살아 있다(오늘 낮에 긴 망토 걸림 오계수를 고치고 0으로 리셋한 그 값이다). 데이터를 함께
-        /// 지우면 훗날 다른 화면에서 다시 쓸 때 계수 로직을 <b>처음부터 다시</b> 만들어야 한다.</summary>
-        private const int StatCount = 5;
+        /// <summary>좌측 스탯 행 수. 6 -> 5(2026-09-01 "넘어진 횟수 삭제") -> <b>4</b>
+        /// (2026-09-02 격파 놀이 기능 삭제).
+        /// <b>두 번 다 지운 것은 표시뿐이다</b> — <see cref="CharacterStatsModel.RagdollFalls"/>도
+        /// <see cref="CharacterStatsModel.BattleWins"/>도 값은 그대로 살아 저장 파일을 왕복한다.
+        /// 데이터를 함께 지우면 훗날 다른 화면에서 다시 쓸 때 계수 로직을 <b>처음부터 다시</b>
+        /// 만들어야 하고, BattleWins 쪽은 그에 더해 저장 스키마 버전을 올려야 한다.
+        ///
+        /// <para>행을 빼도 <b>창 높이는 바뀌지 않는다</b>: 이 창의 높이는 우측 컬럼이 정하고
+        /// (<see cref="PanelHeightForTab"/> ← PanelMaxHeight), 좌측 스탯은 그보다 훨씬 위에서 끝난다.
+        /// 즉 여기서 한 행이 빠져도 "푸터 아래 빈 띠" 같은 것은 생기지 않는다 — 같은 이유로
+        /// 2026-09-01의 6→5도 창 치수를 건드리지 않았다.</para></summary>
+        private const int StatCount = 4;
 
         private static readonly string[] TabNames = { "장비", "외형", "보관함" };
         private static readonly string[] StatLabels =
@@ -312,7 +319,9 @@ namespace StickMate.Interaction
             //    죽은 칸이 되어 "보유 장비"(레벨에 따라 실제로 늘어나는 값)로 교체했다.
             // ※ "넘어진 횟수"(옛 6번째 칸)는 2026-09-01 사용자 요청으로 <b>표시만</b> 뺐다.
             //    CharacterStatsModel.RagdollFalls는 그대로 세고 있다(위 StatCount 문서 참고).
-            "근속", "함께한 시간", "격파 성공", "보유 장비", "활쏘기 명중",
+            // ※ "격파 성공"(옛 3번째 칸)은 2026-09-02 격파 놀이 기능 삭제로 뺐다. 대결 승리와 같은
+            //    이유(영구 0이 되는 죽은 칸)다. BattleWins 값 자체는 저장 파일에 그대로 남는다.
+            "근속", "함께한 시간", "보유 장비", "활쏘기 명중",
         };
 
         /// <summary>자물쇠 배지의 고리(스펙 SVG viewBox 20×21, 호는 미리 5점으로 샘플링).
@@ -831,16 +840,16 @@ namespace StickMate.Interaction
             SetBarFill(_xpFill, need > 0f ? Mathf.Clamp01(have / need) : 0f);
             if (_xpValue != null) _xpValue.text = $"{have:F0} / {need:F0}";
 
-            // 스탯 5행. 0인 항목은 숫자 대신 회색 "아직 없음"으로 — 0이 성취처럼 보이지 않게 한다.
+            // 스탯 4행. 0인 항목은 숫자 대신 회색 "아직 없음"으로 — 0이 성취처럼 보이지 않게 한다.
             SetStat(0, $"{CharacterStatsModel.DaysTogether}일차", true);
             SetStat(1, CharacterStatsModel.FormatCompanionTime(), true);
-            SetStat(2, CharacterStatsModel.BattleWins > 0 ? $"{CharacterStatsModel.BattleWins}번" : null, CharacterStatsModel.BattleWins > 0);
             int ownedItems = ItemCatalog.UnlockedEquipmentCount(_config);
-            SetStat(3, $"{ownedItems} / {ItemCatalog.EquipmentCount}종", ownedItems > 0);
-            SetStat(4, CharacterStatsModel.TryGetArcheryAccuracy01(out float acc)
+            SetStat(2, $"{ownedItems} / {ItemCatalog.EquipmentCount}종", ownedItems > 0);
+            SetStat(3, CharacterStatsModel.TryGetArcheryAccuracy01(out float acc)
                 ? $"{CharacterStatsModel.ArcheryBullseyes} / {CharacterStatsModel.ArcheryShots} ({acc * 100f:F0}%)"
                 : "기록 없음", CharacterStatsModel.ArcheryShots > 0);
-            // ※ 옛 5번 칸(넘어진 횟수)은 표시에서 빠졌다. CharacterStatsModel.RagdollFalls는 계속 센다.
+            // ※ 표시에서 빠진 칸: 넘어진 횟수(2026-09-01) / 격파 성공(2026-09-02).
+            //    CharacterStatsModel.RagdollFalls·BattleWins 둘 다 값은 계속 살아 있다.
         }
 
         /// <summary>스탯 한 칸. <paramref name="value"/>가 null이면 회색 "아직 없음"으로 대신한다.</summary>
@@ -1156,7 +1165,8 @@ namespace StickMate.Interaction
 
         // ==================== 보관함(가상 목록) ====================
 
-        /// <summary>목록의 논리적 줄 수 = 헤더 2줄 + 카탈로그 전체(장비 42 + 행동 13 = 55).
+        /// <summary>목록의 논리적 줄 수 = 헤더 2줄 + 카탈로그 전체(장비 42 + 행동 12 = 54).
+        /// <para>2026-09-02 격파 놀이 삭제로 행동이 13 → 12가 됐다.</para>
         /// <para>★ 2026-09-02 — 여기 "장비 32"라고 적혀 있었다. 실제는 <b>42종</b>이고
         /// (<c>Resources/Items/*.asset</c> 42개), 페이지 수가 32든 42든 3이라 <b>화면에는 티가 나지
         /// 않았다</b>. 숫자를 손으로 적지 않는 것이 원칙이지만 주석은 예외가 없어 이렇게 샌다 —
@@ -2768,7 +2778,7 @@ namespace StickMate.Interaction
             _stressFill = BuildGauge(left, "STRESS", StressLabelY, StressTrackY, UiChrome.TextPrimary, out _stressValue);
             _xpFill = BuildGauge(left, "EXP", XpLabelY, XpTrackY, UiChrome.Accent, out _xpValue);
 
-            // ---- 스탯 5행 ----
+            // ---- 스탯 4행 ----
             Image statsTop = UiChrome.AddSurface(left, "StatsTopLine", UiChrome.Divider, 2);
             UiChrome.PlaceTopLeft(statsTop.rectTransform, LeftPadX, StatsTopY, LeftContentWidth, 1f);
             statsTop.raycastTarget = false;
@@ -3467,7 +3477,6 @@ namespace StickMate.Interaction
                 case StickmanStateId.Ragdoll: return "넘어져 있는 중";
                 case StickmanStateId.ThrowTumble: return "날아가는 중";
                 case StickmanStateId.Getup: return "일어나는 중";
-                case StickmanStateId.BattleMinigame: return "격파 놀이 중";
                 case StickmanStateId.Dragged: return "붙잡혀 있는 중";
                 case StickmanStateId.RodeoCursor: return "커서 타는 중";
                 case StickmanStateId.WindowTheft: return "창 도둑 놀이 중";

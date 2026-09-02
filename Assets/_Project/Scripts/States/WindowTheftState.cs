@@ -9,7 +9,7 @@ namespace StickMate.States
     /// Interaction/WindowTheftDirector.cs가 전담하고, 이 상태는 "확정된 시도 진행 상황"만 표현한다.
     ///
     /// 대사(원칙 1): 1/2회차 시도 자체는 대사가 없다(UX 원문에 명시된 대사가 없음 — 순수 애니메이션).
-    /// 2회 시도 후 "포기" 만큼은 확정된 실패 상태에서 파생되어야 하므로, BattleMinigameState/RagdollState와
+    /// 2회 시도 후 "포기" 만큼은 확정된 실패 상태에서 파생되어야 하므로, RagdollState(반복 피격)와
     /// 동일한 self-transition 패턴(Architect 결정, Tasklist.md 교차 레이어 로그)을 재사용한다 — Attempt2가
     /// 끝나는 순간 자기 자신에게 재전이해 Enter()를 다시 실행시키고, 그 재실행된 Enter()가 GiveUp 페이즈로
     /// 진입하며 대사를 만든다. Tick() 도중에는 어떤 DialogueIntent도 생성하지 않는다(9절-1/31-1 원칙).
@@ -85,7 +85,7 @@ namespace StickMate.States
                     if (_timer >= attemptDuration)
                     {
                         // 포기 대사는 Enter() 안에서만 만들 수 있으므로(원칙 1), 자기 자신에게 재전이시켜
-                        // Enter()를 다시 태운다(BattleMinigameState와 동일한 self-transition 패턴).
+                        // Enter()를 다시 태운다(RagdollState의 반복 피격과 동일한 self-transition 패턴).
                         _pendingGiveUp = true;
                         _blackboard.Machine.ChangeState(StickmanStateId.WindowTheft, isForcedInterrupt: false);
                     }

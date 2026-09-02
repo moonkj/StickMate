@@ -12,14 +12,15 @@ namespace StickMate.Interaction
     /// States/ArcheryState.cs가 담당하고, 이 클래스는 그 둘이 발행한 이벤트만 소비한다.
     ///
     /// ============================================================================
-    /// 관례는 BattleMinigameRenderer / WindowTheftRenderer를 그대로 따른다
+    /// 관례는 GraffitiRenderer / WindowTheftRenderer를 그대로 따른다
     /// ============================================================================
     /// · 전역 이벤트 구독 -> LineRenderer로만 그림(이 프로젝트에는 스프라이트 에셋이 하나도 없다).
     /// · 머티리얼은 <b>캐릭터 LineRenderer의 것을 빌려 쓴다</b>. Shader.Find는 빌드 스트리핑 위험이
     ///   있어 쓰지 않는다(스탠드얼론에서만 분홍색으로 깨질 수 있다).
     /// · 씬 전체 탐색 폴백 없이 <b>같은 GameObject의 StickmanAgent만</b> 쓴다 — 이 프리팹이 복제되면
     ///   사본도 이 컴포넌트를 갖게 되고, 씬 폴백을 두면 사본 렌더러가 전역 이벤트에 함께 반응해
-    ///   과녁이 두 벌 그려진다(격파 미니게임에서 실측 확인된 버그).
+    ///   과녁이 두 벌 그려진다(2026-08-29 격파 미니게임에서 실측 확인된 버그 — 그 기능은 2026-09-02에
+    ///   삭제됐지만 함정은 그대로다).
     /// · 종료 시 <see cref="Teardown"/>, <see cref="OnDisable"/>에서도 정리.
     ///
     /// ============================================================================
@@ -445,7 +446,7 @@ namespace StickMate.Interaction
             _container = new GameObject("ArcheryVisuals");
             _container.transform.SetParent(null, false);
             // 캐릭터의 자식으로 붙이지 않는 이유: 과녁은 "땅에 세워둔 물건"이라 캐릭터가 움직여도
-            // 제자리에 있어야 한다(BattleMinigameRenderer의 판자와 같은 판단).
+            // 제자리에 있어야 한다(캐릭터를 따라 움직이면 "세워 둔 물건"으로 읽히지 않는다).
             _container.transform.position = new Vector3(_anchorWorld.x, _anchorWorld.y, 0f);
 
             Color ink = ResolveInk();
@@ -471,7 +472,7 @@ namespace StickMate.Interaction
 
             // "채워진 원"은 별도 메시/스프라이트 없이 만든다: 반지름 r/2인 원 경로를 두께 r로 그으면
             // 스트로크가 [0, r] 구간을 덮어 결과적으로 반지름 r의 원판이 된다(굵은 선분으로 사각형을
-            // 만드는 BattleMinigameRenderer의 트릭과 같은 발상 — 새 에셋/셰이더를 도입하지 않는다).
+            // 새 에셋/셰이더를 도입하지 않는다).
             AddTargetLine(CreateDisk(_targetRoot, "FaceOuter", FaceWhite, r, SortingFaceOuter));
             AddTargetLine(CreateDisk(_targetRoot, "FaceMid", FaceRed, r * Ring2Ratio, SortingFaceMid));
             AddTargetLine(CreateDisk(_targetRoot, "FaceInner", FaceWhite, r * Ring3Ratio, SortingFaceInner));
@@ -553,12 +554,12 @@ namespace StickMate.Interaction
                 //
                 // ⚠ 구조적 결함 기록(다음 라운드 대상): 같은 값을 **두 파일이 각자 리터럴로** 들고
                 //   있는 것 자체가 문제다. outro 길이는 사이클의 성질이지 렌더러의 성질이 아니므로,
-                //   상태가 소유하고 렌더러는 통보받는 편이 옳다(BattleChargeRatio가 이미 그 관례다).
+                //   상태가 소유하고 렌더러는 통보받는 편이 옳다(ArcheryTargetWorld가 이미 그 관례다).
                 //   지금 합치지 않는 이유는 이번 라운드 범위가 "폴백 값 정합"이기 때문이다.
                 float outro = ConfigFloat(c => c.archeryOutroSeconds, 0.55f);
                 float t = outro > 0.0001f ? Mathf.Clamp01(_modeTimer / outro) : 1f;
                 alpha = 1f - t;
-                // 과녁이 쪼그라들며 옅어진다(격파 미니게임의 "민망한 퇴장"과 같은 정리 관례).
+                // 과녁이 쪼그라들며 옅어진다(연출이 끝났음을 스스로 말하는 정리 관례).
                 if (_targetRoot != null)
                 {
                     float s = Mathf.Lerp(1f, 0.4f, t * t);
@@ -831,7 +832,7 @@ namespace StickMate.Interaction
 
             _impactBurst = CreateLine(go.transform, "Rays", ResolveInk(), StrokeWidth * 0.7f, SortingBurst, loop: false, capVertices: 2);
             // 하나의 LineRenderer로 여러 갈래를 그리기 위해 중심을 매번 되짚는 지그재그 폴리라인을 쓴다
-            // (BattleMinigameRenderer.CreateImpactBurst와 같은 기법).
+            // (짧은 선분 여러 개를 방사형으로 뿌려 충격을 표현하는 기법).
             _impactBurst.positionCount = ImpactRayCount * 2 + 1;
             float len = Height * ImpactBurstRatio;
             for (int i = 0; i < ImpactRayCount; i++)
@@ -1030,7 +1031,7 @@ namespace StickMate.Interaction
 
         /// <summary>
         /// 캐릭터가 이미 쓰고 있는 LineRenderer 머티리얼(Sprites-Default)을 그대로 빌려 쓴다.
-        /// Shader.Find로 런타임에 찾지 않는 이유는 BattleMinigameRenderer 문서와 같다(빌드 스트리핑).
+        /// Shader.Find로 런타임에 찾지 않는 이유는 GraffitiRenderer 문서와 같다(빌드 스트리핑).
         /// </summary>
         private Material ResolveLineMaterial()
         {

@@ -1,4 +1,5 @@
 #if UNITY_STANDALONE_WIN
+using System;
 using UnityEngine;
 using Kirurobo;
 
@@ -42,10 +43,15 @@ namespace StickMate.Platform.Windows
     {
         private const string HostObjectName = "StickMate_WindowsOverlayStateEnforcer";
 
-        /// <summary>부착 확인 후 목표 상태를 재적용할 최대 횟수(macOS와 동일한 값/이유). 무한 반복은
-        /// 하지 않는다 — 사용자가 창을 직접 조작했을 때 우리가 계속 되돌리는 것이 더 나쁘다.</summary>
-        private const int ReapplyAttempts = 5;
-        private const float ReapplyIntervalSeconds = 0.5f;
+        /// <summary>부착 확인 후 목표 상태를 재적용할 최대 횟수. 무한 반복은 하지 않는다 —
+        /// 사용자가 창을 직접 조작했을 때 우리가 계속 되돌리는 것이 더 나쁘다.
+        ///
+        /// <para>★ 2026-09-02 — 값이 <b>플랫폼 중립</b> <see cref="OverlayStateReapplyPolicy"/>로
+        /// 옮겨졌다. 이 파일은 <c>#if UNITY_STANDALONE_WIN</c> 안이라 이 머신의 EditMode 테스트가
+        /// 상수를 참조할 방법이 없었고, 그래서 회귀 테스트가 숫자 5를 베낄 수밖에 없었다
+        /// (CLAUDE.md 금지 사항). macOS판 Enforcer도 같은 상수를 참조한다.</para></summary>
+        private const int ReapplyAttempts = OverlayStateReapplyPolicy.ReapplyAttempts;
+        private const float ReapplyIntervalSeconds = OverlayStateReapplyPolicy.ReapplyIntervalSeconds;
         private const float AttachTimeoutSeconds = 15f;
 
         /// <summary>전체화면 확장 재시도 상한 — 해상도 변경이 프레임 끝에 반영되고 창 스타일 확정에도
@@ -59,6 +65,14 @@ namespace StickMate.Platform.Windows
         /// 보면 <c>Screen.SetResolution</c>과 창 리사이즈가 에피소드마다 다시 실행되고, 둘 다
         /// <b>클라이언트 영역 변경 = 스왑체인/리디렉션 표면 재생성</b>이라 수백 ms 정지를 만든다
         /// (실기 최대 프레임 407ms). 재적용이 반복될수록 창이 1px씩 더 줄어드는 래칫까지 겹쳤다.</para>
+        ///
+        /// <para>★ <b>2026-09-02 정정</b> — 위 문단이 지목한 "1px 래칫"의 원인은 <b>이 불감대가 막는
+        /// 경로가 아니었다</b>. 2차 신고 실기 로그에서 <c>ApplyFullScreenBounds</c>는 세션당 <b>한 번만</b>
+        /// 실행됐고 그때조차 크기를 건드리지 않았는데(<c>리사이즈=False</c>, 결과 2560 유지) 창은 계속
+        /// 줄었다. 진짜 래칫은 <b>재적용 루프의 <c>isTransparent</c> 대입</b>이 부르는 네이티브
+        /// <c>SetBorderless</c>의 폭 흔들기였다(<see cref="Update"/> 안의 해당 블록 주석과
+        /// <see cref="OverlayStateReapplyPolicy"/> 참고). 불감대는 그대로 유효하지만 — 이쪽 경로에는
+        /// 원래 자기 몫의 방어가 필요했다 — <b>이 신고의 원인은 아니었다</b>.</para>
         ///
         /// <para>값과 근거는 플랫폼 중립 순수 규칙
         /// <see cref="StickMate.Platform.OverlayBoundsFitPolicy.DefaultEpsilonPixels"/> 한 곳에 있다 —
@@ -97,6 +111,12 @@ namespace StickMate.Platform.Windows
         /// 찍어 [프레임스파이크]의 "백버퍼가 바뀌었다" 줄과 시각 대조가 가능하게 한다.</summary>
         private int _setResolutionCalls;
         private int _windowResizeCalls;
+
+        /// <summary>라이브러리 <c>isTransparent</c> 대입(= 네이티브 <c>SetBorderless</c>)이 실제로
+        /// 실행된 <b>프로세스 누적</b> 횟수. 1회당 <c>SetWindowPos</c> 4회(클라이언트 영역 변경 4회)다.
+        /// 정상 동작이면 이 값은 <b>0에서 멈춰 있어야 한다</b> — 세션 내내 늘고 있으면 OS 실측이
+        /// "보더리스 아님"을 계속 돌려주고 있다는 뜻이고, 다음 라운드가 볼 곳은 그 스타일 값이다.</summary>
+        private int _borderlessResizeEpisodes;
 
         /// <summary>
         /// 창 기하 A↔B 진동 가드. 판정은 플랫폼 중립 한 곳
@@ -301,14 +321,67 @@ namespace StickMate.Platform.Windows
             // WS_EX_TOPMOST)으로 바꾼다. 실측을 못 읽는 상황(핸들 미확보 등)에서는 가드를 걸지 않고
             // 무조건 재적용한다 — 모를 때는 거는 쪽이 안전하다.
             //
-            //   · isTransparent / isClickThrough 게터는 <b>캐시된 C# 필드</b>를 그대로 돌려준다
-            //     (UniWindowController.cs:136-141, :126-131). 네이티브가 값을 조용히 버려도 캐시는
-            //     목표값 그대로다. 여기에 같은 가드를 걸면 "투명이 실제로는 안 걸렸는데 걸린 줄 알고
-            //     재적용을 건너뛰는" 최악의 경우가 생긴다 — 회색 불투명 전체화면 창이다.
-            //     이 enforcer가 존재하는 이유 자체가 그 사고를 막는 것이므로 절대 가드하지 않는다.
+            //   · isClickThrough 게터는 <b>캐시된 C# 필드</b>를 그대로 돌려준다
+            //     (UniWindowController.cs:126-131). 네이티브가 값을 조용히 버려도 캐시는 목표값
+            //     그대로이므로 여기에 캐시 기반 가드를 걸면 안 된다. 그리고 그 세터의 네이티브 끝은
+            //     SetWindowLong(GWL_EXSTYLE) 뿐이라(libuniwinc.cpp:954) <b>창 사각형을 건드리지
+            //     않는다</b> — 무조건 재대입해도 스왑체인 재생성이 없다. 원칙 2(클릭 관통)를 지키기
+            //     위해 앞으로도 가드하지 않는다.
             //   · isHitTestEnabled는 네이티브 부작용이 없는 평범한 public 필드라 대입 비용이 0이다.
             _controller.isHitTestEnabled = DesiredHitTest;
-            _controller.isTransparent = DesiredTransparent;
+
+            // ★★★ 2026-09-02 — 여기가 2차 신고("윈도우 버전인데 여전히 사용할수록 렉생김")의 진원지다.
+            //
+            // 이 루프는 크기를 한 줄도 대입하지 않는데도 실기에서 창 폭이 재적용 1회당 정확히 1px씩
+            // 줄었다(높이 1600은 불변). 범인은 바로 아래 한 줄이었다:
+            //
+            //     _controller.isTransparent = DesiredTransparent;
+            //       -> UniWinCore.EnableTransparent(true)              (UniWinCore.cs:535)
+            //          -> LibUniWinC.SetTransparent(true)   ... 유리(DWM). 창 사각형 안 건드림
+            //          -> LibUniWinC.SetBorderless(true)    ... ★ SetWindowPos 4회, 폭을 ±1 흔든다
+            //
+            // SetBorderless에는 동등성 가드가 없어서, 이미 보더리스여도 매번 폭 흔들기를 다시 한다.
+            // 흔들기가 폭에만 걸리고(newH 고정) 보더리스일 때 offset이 -1이라 중간 상태가 항상 더
+            // 좁은 쪽인 것까지 실기 로그와 정확히 일치한다. 그리고 다음 호출의 기준값을
+            // GetWindowRect/GetClientRect로 다시 읽으므로 한 번 잃은 1px이 새 기준이 된다(래칫).
+            // 더 큰 피해는 폭 1px이 아니라 <b>클라이언트 영역 변경 4회 = 스왑체인 재생성 4회</b>이며,
+            // MarkDirty()로 라운드가 재무장될 때마다(UI 표면 개폐 1회당) 최대 20회가 된다.
+            // 근거 전문(패키지 C++ 원문 인용 포함)은 Platform/OverlayStateReapplyPolicy.cs.
+            //
+            // 처방: <b>무조건 재적용을 없애지 않는다. 반으로 쪼갠다.</b>
+            //   · 유리 = 되읽을 API가 없고 비용도 없다        -> 매 회차 <b>무조건</b> 다시 건다.
+            //   · 보더리스 = OS 실측 가능, 대신 비용이 크다   -> 실측이 이미 목표면 부르지 않는다.
+            // 즉 캐시를 믿고 생략하는 것이 아니라 <b>OS에게 물어보고</b> 생략한다 — isTopmost에서
+            // 이미 한 번 데였던 그 함정(캐시 게터를 진실로 착각)을 반복하지 않는 유일한 방법이다.
+            // ★ 핸들 주의 — 이 실측만은 <b>OverlayHandle이 아니라 네이티브 핸들</b>을 먼저 쓴다.
+            //   판정 대상은 "LibUniWinC가 실제로 SetBorderless를 건 창"이어야 하는데,
+            //   OverlayHandle은 Win32WindowService가 .NET Process.MainWindowHandle로 잡은 값이고
+            //   두 규칙이 같은 창을 고른다는 보장이 없다(UniWinCNativeHandle 클래스 문서).
+            //   여기서 엉뚱한 창을 재면 "보더리스 아님"이 매 회차 참이 되어 <b>고치려는 래칫이 그대로
+            //   되살아난다</b>. 네이티브를 못 얻을 때만 기존 핸들로 물러난다.
+            IntPtr styleProbeHandle = UniWinCNativeHandle.TryGetNative();
+            bool styleHandleIsNative = styleProbeHandle != IntPtr.Zero;
+            if (!styleHandleIsNative) styleProbeHandle = OverlayHandle;
+            bool styleReadOk = WindowsWindowStyleProbe.TryReadStyle(styleProbeHandle, out long osStyle);
+            bool osBorderless = styleReadOk && OverlayStateReapplyPolicy.IsBorderless(osStyle);
+            TransparencyReapply transparency = OverlayStateReapplyPolicy.DecideTransparencyReapply(
+                DesiredTransparent, styleReadOk, osBorderless,
+                !UniWinCNativeHandle.GlassOnlyPathKnownUnavailable);
+
+            // 유리 전용 경로가 이번 호출에서 실패하면 <b>같은 틱에</b> 전체 경로로 물러난다 —
+            // 투명화를 못 거는 것(회색 불투명 전체화면 창)이 1px 래칫보다 훨씬 나쁘다.
+            if (transparency == TransparencyReapply.GlassOnly
+                && !UniWinCNativeHandle.TrySetTransparent(DesiredTransparent))
+            {
+                transparency = TransparencyReapply.ReassignGlassPathUnavailable;
+            }
+
+            if (OverlayStateReapplyPolicy.CausesWindowResize(transparency))
+            {
+                _controller.isTransparent = DesiredTransparent;
+                _borderlessResizeEpisodes++;
+            }
+
             bool topmostSkipped = _topmostWatchdog.TryReadOsTopmost(OverlayHandle, out bool osTopmost)
                 && osTopmost == DesiredTopmost;
             if (!topmostSkipped) _controller.isTopmost = DesiredTopmost;
@@ -316,6 +389,10 @@ namespace StickMate.Platform.Windows
 
             Debug.Log($"[WindowsOverlayStateEnforcer] 재적용 {_appliedCount}/{ReapplyAttempts} " +
                 $"(isTopmost 재적용={(topmostSkipped ? "생략(이미 목표값)" : "실행")}) — " +
+                $"투명 재적용: {OverlayStateReapplyPolicy.Describe(transparency)} " +
+                $"[OS 실측 GWL_STYLE=0x{osStyle:X}(읽기={(styleReadOk ? "성공" : "실패")}, " +
+                $"보더리스={osBorderless}, 핸들={(styleHandleIsNative ? "네이티브" : ".NET폴백")}), " +
+                $"SetBorderless 실행 누적 {_borderlessResizeEpisodes}회] / " +
                 $"목표(transparent={DesiredTransparent}, topmost={DesiredTopmost}, " +
                 $"clickThrough={DesiredClickThrough}, hitTest={DesiredHitTest}) / " +
                 $"되읽음(isTransparent={_controller.isTransparent}, isTopmost={_controller.isTopmost}, " +

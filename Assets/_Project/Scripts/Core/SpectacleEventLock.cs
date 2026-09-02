@@ -3,10 +3,11 @@ using StickMate.States;
 
 namespace StickMate.Core
 {
-    /// <summary>격파 미니게임/드래그&던지기/로데오 커서 — 어느 것이 이 락을 걸고 있는지.</summary>
+    /// <summary>드래그&던지기/로데오 커서/창 도둑… — 어느 것이 이 락을 걸고 있는지.
+    /// <para>★ 2026-09-02 <c>BattleMinigame</c>을 뺐다(격파 놀이 기능 삭제, 사용자 지시). 이 enum은
+    /// 어디에도 직렬화되지 않으므로 값이 밀려도 저장 파일에 영향이 없다.</para></summary>
     public enum SpectacleEventKind
     {
-        BattleMinigame,
         DragAndThrow,
         RodeoCursor,
 
@@ -62,7 +63,7 @@ namespace StickMate.Core
     /// Platform.ILocalClickCaptureService/LocalClickCaptureGate의 "부분적 클릭관통 해제 단일 소유자
     /// 락"(15절-4)과는 목적이 다른 별개의 락이다 — 이 락은 "한 번에 하나의 스펙터클 이벤트만"을
     /// 강제하고, 저 락은 "한 번에 하나만 캐릭터 클릭을 가로챌 수 있음"을 강제한다. 로데오 커서(13절)는
-    /// 클릭을 전혀 쓰지 않으므로(15절 대상 아님) 이 스펙터클 락만 걸면 되고, 격파 미니게임/드래그&던지기는
+    /// 클릭을 전혀 쓰지 않으므로(15절 대상 아님) 이 스펙터클 락만 걸면 되고, 드래그&던지기는
     /// 이 락과 저 락을 둘 다 걸어야 한다(오너 토큰은 보통 같은 object를 재사용).
     /// </summary>
     public static class SpectacleEventLock
@@ -96,25 +97,25 @@ namespace StickMate.Core
         /// Director들의 OnDisable() 등이 각자 손으로 반복해온 3단계(소유권 확인 → 필요시 강제 Idle
         /// 전이 → Release(+옵션으로 ILocalClickCaptureService 해제))를 추출한 공용 헬퍼.
         ///
-        /// ★ 2026-08-30 R3-m1 — 개수 정정. **지금 이 메서드를 부르는 파일은 12개**다:
-        /// ArcheryDirector / BattleMinigameDirector / DesktopIconMirrorDirector / DragThrowController /
+        /// ★ 2026-08-30 R3-m1 — 개수 정정. **지금 이 메서드를 부르는 파일은 11개**다:
+        /// ArcheryDirector / DesktopIconMirrorDirector / DragThrowController /
         /// FocusWatchDirector / GraffitiDirector / RodeoCursorWatcher / RunawayDirector /
         /// StressGaugeDirector / TodoReminderDirector / WindowCrashDirector / WindowTheftDirector.
+        /// (2026-09-02 격파 놀이 삭제로 BattleMinigameDirector가 빠져 12 → 11이 됐다.)
         /// 아래 "11곳"은 <b>추출 당시(개선 R2)의 숫자</b>이고 그대로 둔다 — 그때의 분류 근거이기
-        /// 때문이다. ArcheryDirector는 그 뒤(2026-08-29 활쏘기 연출 라운드)에 **처음부터 이 헬퍼를
-        /// 쓰며** 태어난 12번째 호출자라 아래 8/3 분류에는 애초에 등장하지 않는다.
-        /// (같은 트리의 Interaction/LongCapeTripDirector.cs가 "12곳"이라고 적고 있던 것이 맞다.)
+        /// 때문이다. 그 11곳과 지금의 11곳은 <b>구성이 다르다</b>: ArcheryDirector는 그 뒤
+        /// (2026-08-29 활쏘기 연출 라운드)에 **처음부터 이 헬퍼를 쓰며** 태어나 아래 8/3 분류에는
+        /// 애초에 등장하지 않고, 그 자리를 채우고 있던 BattleMinigameDirector는 이제 없다.
         ///
         /// 값을 고정한 이유: fallback 상태는 항상 <see cref="StickmanStateId.Idle"/>, 전이는 항상
-        /// isForcedInterrupt:true — 12곳 전부 예외 없이 이 두 값을 쓴다(파라미터로 열어두지 않는다,
-        /// 과설계 방지). clickCapture는 옵션(기본 null) — BattleMinigameDirector/DragThrowController
-        /// 2곳만 실제로 넘긴다.
+        /// isForcedInterrupt:true — 11곳 전부 예외 없이 이 두 값을 쓴다(파라미터로 열어두지 않는다,
+        /// 과설계 방지). clickCapture는 옵션(기본 null) — DragThrowController 1곳만 실제로 넘긴다.
         ///
         /// 소유권 확인을 항상 먼저 하는 이유: 추출 당시 11곳 중 8곳(GraffitiDirector/TodoReminderDirector/
         /// RunawayDirector/WindowTheftDirector/DesktopIconMirrorDirector/RodeoCursorWatcher/
         /// StressGaugeDirector/FocusWatchDirector)은 원래도 이 가드가 있었다.
-        /// BattleMinigameDirector/DragThrowController/WindowCrashDirector 3곳은 원래 이 가드 없이
-        /// 상태 비교만 했지만, 세 곳 모두 "SpectacleEventLock.TryAcquire 성공 직후에만 guardedState로
+        /// (당시) BattleMinigameDirector/DragThrowController/WindowCrashDirector 3곳은 원래 이 가드
+        /// 없이 상태 비교만 했지만, 세 곳 모두 "SpectacleEventLock.TryAcquire 성공 직후에만 guardedState로
         /// ChangeState한다"는 불변식을 코드 전체에서 예외 없이 지킨다(다른 어떤 컴포넌트도 이 세
         /// state로 전이하지 않는다) — 즉 CurrentStateId==guardedState이면 항상 CurrentOwner==owner이기도
         /// 하므로, 이 가드를 추가해도 실제로 관찰 가능한 동작은 전혀 달라지지 않는다(Tasklist.md 개선

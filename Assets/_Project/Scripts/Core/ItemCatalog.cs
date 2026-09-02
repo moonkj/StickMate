@@ -94,7 +94,7 @@ namespace StickMate.Core
         /// <see cref="ItemCatalog"/> 문서의 "새 enum 값을 만들지 않은 이유" 참고).</summary>
         Equipment = 0,
 
-        /// <summary>할 줄 아는 것(활쏘기/격파/그라피티…). 슬롯도 잠금도 없다.</summary>
+        /// <summary>할 줄 아는 것(활쏘기/그라피티/창 도둑…). 슬롯도 잠금도 없다.</summary>
         Action = 1,
     }
 
@@ -308,7 +308,8 @@ namespace StickMate.Core
         // <b>예전과 똑같은 모양</b>으로 내주는 파사드다(공개 API는 한 줄도 바뀌지 않았다).
         //
         // 옮기면서 값이 하나도 안 바뀌었다는 증거:
-        //   Tests/EditMode/Golden/ItemCatalogGolden.txt  = 전환 직전 카탈로그 전문(28종 + 행동 13종)
+        //   Tests/EditMode/Golden/ItemCatalogGolden.txt  = 카탈로그 전문(전환 직전 28종 + 행동 13종에서
+        //     출발해, 그 뒤의 실제 카탈로그 변경을 그대로 반영한다 — 2026-09-02 격파 놀이 삭제로 행동 12종)
         //   Tests/EditMode/ItemCatalogAssetParityTests.cs = 지금 카탈로그를 같은 형식으로 찍어 완전 대조
         // 좌표 한 칸, 색 한 채널만 흔들려도 빨개진다.
         //
@@ -502,8 +503,6 @@ namespace StickMate.Core
             //   보관함 목록에만 빠져 있었다. 라이벌 대결 항목이 삭제되며 발견됐다.
             ItemCatalogEntry.ForAction("action.chatter", "혼잣말", ShortcutLabel.Chord("B"),
                 "가만히 있거나 걷는 동안 가끔 혼자 중얼거린다. 단축키를 누르면 지금 당장 한마디 한다."),
-            ItemCatalogEntry.ForAction("action.battle", "격파 놀이", ShortcutLabel.Chord("K"),
-                "허공에 송판을 세우고 발차기 한 번. 부서지는 건 그려낸 송판뿐이다."),
             ItemCatalogEntry.ForAction("action.graffiti", "그라피티", ShortcutLabel.Chord("G"),
                 "남의 창 위에 낙서를 한 장 남긴다. 잠시 뒤 저절로 옅어져 사라진다."),
             ItemCatalogEntry.ForAction("action.window_theft", "창 도둑", ShortcutLabel.Chord("T"),

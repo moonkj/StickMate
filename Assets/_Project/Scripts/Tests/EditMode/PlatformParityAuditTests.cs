@@ -465,6 +465,58 @@ namespace StickMate.Tests.EditMode
         }
 
         // ====================================================================
+        // 3-1. 투명화 재적용 경로 (2026-09-02 추가 — 1px 래칫 라운드)
+        // ====================================================================
+
+        /// <summary>
+        /// 재적용 루프의 <b>투명화 처리 방식 결정</b>은 플랫폼 중립
+        /// <c>OverlayStateReapplyPolicy</c> 한 곳에만 있어야 한다.
+        ///
+        /// <para><b>이 항목이 생긴 이유(새 플랫폼 분기)</b>: Windows에서만
+        /// <c>_controller.isTransparent</c> 재대입이 네이티브 <c>SetBorderless</c>의 폭 ±1 흔들기
+        /// (<c>SetWindowPos</c> 4회)를 유발해 1px 래칫 + 스왑체인 재생성을 만들었다.
+        /// 그래서 Windows만 "OS 실측 후 필요할 때만 부르는" 분기를 갖게 됐다.</para>
+        ///
+        /// <para><b>macOS는 일부러 갈라 두었다(갭이 아니다)</b>: Swift 원본
+        /// <c>LibUniWinC.swift · _setWindowBorderless</c>는 <c>window.styleMask = [.borderless]</c>
+        /// 한 줄이라 프레임을 건드리지 않고, <c>window.styleMask != [.borderless]</c> 동등성 가드까지
+        /// 이미 걸려 있다. 같은 수술을 하면 얻는 것 없이 실측 튜닝이 끝난 경로에 위험만 넣는다.
+        /// 그 판단 근거를 macOS Enforcer 주석에 남겼는지까지 여기서 확인한다 — 근거가 사라지면
+        /// 다음 사람이 "한쪽만 고쳐졌다"고 오판한다.</para>
+        /// </summary>
+        [Test]
+        public void 투명화_재적용_정책은_플랫폼_중립_위치에_있다()
+        {
+            string policyPath = Path.Combine(PlatformRoot, "OverlayStateReapplyPolicy.cs");
+            Assert.IsTrue(File.Exists(policyPath),
+                "OverlayStateReapplyPolicy.cs가 없습니다 — 정책이 다시 플랫폼 폴더로 내려갔다면 " +
+                "다른 플랫폼이 물리적으로 호출할 수 없습니다(FullscreenSuspendPolicy 사고와 같은 형태).");
+
+            string policy = StripLineComments(ReadSource(policyPath));
+            StringAssert.DoesNotContain("UNITY_STANDALONE_", policy,
+                "플랫폼 중립이어야 할 정책에 플랫폼 조건부 컴파일이 들어왔습니다.");
+            StringAssert.DoesNotContain("DllImport", policy,
+                "정책에 P/Invoke가 들어왔습니다 — 그러면 이 머신의 EditMode가 규칙을 실행할 수 없습니다.");
+
+            // 두 Enforcer 모두 공용 재적용 상수를 참조한다(값이 갈라지면 패리티가 말뿐이 된다).
+            AssertBothContain(MacEnforcerPath, WinEnforcerPath,
+                "OverlayStateReapplyPolicy.ReapplyAttempts",
+                "재적용 횟수 상수를 그 플랫폼이 자체 리터럴로 들고 있습니다.");
+
+            // Windows만 갖는 분기 — 있어야 한다.
+            string win = StripLineComments(ReadSource(WinEnforcerPath));
+            StringAssert.Contains("OverlayStateReapplyPolicy.DecideTransparencyReapply(", win,
+                "Windows Enforcer가 투명화 재적용 방식을 정책에 묻지 않습니다 — 무조건 재대입으로 " +
+                "돌아갔다면 1px 래칫과 스왑체인 재생성 4회/회차가 되살아납니다.");
+
+            // macOS는 갈라 둔 것이 맞다 — 다만 그 사유가 코드 옆에 남아 있어야 한다.
+            string macRaw = ReadSource(MacEnforcerPath);
+            StringAssert.Contains("_setWindowBorderless", macRaw,
+                "macOS Enforcer에 '왜 같은 수술을 하지 않는가'의 근거(Swift 원본 실측)가 없습니다. " +
+                "근거 없는 비대칭은 다음 라운드에서 '한쪽만 고쳐진 갭'으로 오판됩니다.");
+        }
+
+        // ====================================================================
         // 3-2. 오버레이 창 기하 — 적합 규칙 / 창 장식 / 진동 가드 (2026-09-01 추가)
         // ====================================================================
 

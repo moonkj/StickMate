@@ -71,7 +71,7 @@ namespace StickMate.Interaction
         private float BobAmplitude => Height * BobAmplitudeRatio;
         private float IconScale => Height * IconScaleRatio;
         private float StrokeWidth => Height * StrokeWidthRatio;
-        private const int SortingOrder = 8;           // 캐릭터 획(0~5) 위, 그라피티(9)/격파(10~15) 아래.
+        private const int SortingOrder = 8;           // 캐릭터 획(0~5) 위, 그라피티(9) 아래.
 
         private const float SparkleLifeSeconds = 0.85f;
         private const float SparkleSpawnInterval = 0.30f;
@@ -653,7 +653,7 @@ namespace StickMate.Interaction
             }
         }
 
-        /// <summary>GraffitiRenderer/BattleMinigameRenderer와 같은 이유로 캐릭터 LineRenderer의 머티리얼을
+        /// <summary>GraffitiRenderer와 같은 이유로 캐릭터 LineRenderer의 머티리얼을
         /// 빌려 쓴다(Shader.Find는 빌드 스트리핑 위험이 있어 쓰지 않는다).</summary>
         private Material ResolveLineMaterial()
         {

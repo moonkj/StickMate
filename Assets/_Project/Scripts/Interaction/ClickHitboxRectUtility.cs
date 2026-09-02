@@ -6,7 +6,7 @@ namespace StickMate.Interaction
 {
     /// <summary>
     /// Collider2D의 월드 바운즈를 OS 화면 좌표(Platform.ILocalClickCaptureService가 요구하는 좌표계)로
-    /// 변환하는 공용 유틸. DragThrowController/BattleMinigameDirector 둘 다 "캐릭터 히트박스의 현재
+    /// 변환하는 공용 유틸. DragThrowController가 "캐릭터 히트박스의 현재
     /// OS 화면 사각형"을 계산해야 해서(부분적 클릭관통 해제 요청의 hitboxOsScreen 인자) 이 유틸로 분리한다
     /// — Platform/ScreenCoordinateConverter.cs의 좌표 변환 컨벤션을 그대로 재사용한다.
     /// </summary>

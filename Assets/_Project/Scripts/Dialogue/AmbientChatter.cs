@@ -10,7 +10,7 @@ namespace StickMate.Dialogue
     /// ============================================================================
     /// 왜 필요했나
     /// ============================================================================
-    /// 대사를 만드는 상태는 Attack/Ragdoll/ParkourClimb/LedgeHang/BattleMinigame/Runaway 등
+    /// 대사를 만드는 상태는 Attack/Ragdoll/ParkourClimb/LedgeHang/WindowTheft/Runaway 등
     /// "사건이 일어났을 때"뿐이고, 캐릭터가 실제로 대부분의 시간을 보내는 Idle/Walk에는 대사가 전혀
     /// 없었다(States/IdleState.cs의 `TODO(Phase 2)` 주석이 그 자리를 비워두고 있었다). 그래서 말풍선
     /// 렌더링을 붙여도 사용자가 몇 분씩 아무것도 못 보는 상태가 될 수 있었다. 이 클래스가 그 빈자리를
@@ -177,7 +177,7 @@ namespace StickMate.Dialogue
             {
                 DialogueLine line = Resolve(stateId, target);
                 // ★ 2026-09-01 — 배회 페이즈 잔여가 아니라 **이 상태의** 잔여를 묻는다. 둘이 같은
-                //   값인 것은 상태가 배회 페이즈 전환으로 들어왔을 때뿐이고, 격파/기상/착지/등반
+                //   값인 것은 상태가 배회 페이즈 전환으로 들어왔을 때뿐이고, 기상/착지/등반
                 //   복귀는 전부 "배회는 걷는 중인데 Idle로 들어오는" 경로라 예전 질문으로는 게이트가
                 //   2.8초를 보고 실제 체류는 1프레임이었다(StickmanBlackboard의 그 프로퍼티 문서 참고).
                 float plannedDwell = blackboard.PlannedDwellRemainingSecondsFor(stateId);

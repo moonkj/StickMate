@@ -38,11 +38,15 @@ namespace StickMate.Platform.MacOS
 
         /// <summary>부착 확인 후 목표 상태를 재적용할 최대 횟수. 창 스타일이 부착 직후 한두 프레임에
         /// 걸쳐 확정되는 경우가 있어 한 번만 적용하고 끝내지 않는다. 무한 반복은 하지 않는다 —
-        /// 사용자가 창을 직접 조작했을 때 우리가 그것을 계속 되돌려버리는 것이 더 나쁘기 때문이다.</summary>
-        private const int ReapplyAttempts = 5;
+        /// 사용자가 창을 직접 조작했을 때 우리가 그것을 계속 되돌려버리는 것이 더 나쁘기 때문이다.
+        ///
+        /// <para>★ 2026-09-02 — 값 자체는 그대로(5)이고 <b>출처만</b> 플랫폼 중립
+        /// <see cref="OverlayStateReapplyPolicy"/>로 옮겼다. Windows판과 이 파일이 각자 리터럴 5를
+        /// 들고 있었고 둘 다 <c>#if</c> 안이라 테스트가 참조할 수 없었다.</para></summary>
+        private const int ReapplyAttempts = OverlayStateReapplyPolicy.ReapplyAttempts;
 
-        /// <summary>재적용 간격(초).</summary>
-        private const float ReapplyIntervalSeconds = 0.5f;
+        /// <summary>재적용 간격(초). 위와 같은 이유로 출처는 플랫폼 중립 상수다.</summary>
+        private const float ReapplyIntervalSeconds = OverlayStateReapplyPolicy.ReapplyIntervalSeconds;
 
         private UniWindowController _controller;
         private int _appliedCount;
@@ -299,6 +303,15 @@ namespace StickMate.Platform.MacOS
 
             // 순서 주의: 히트테스트 자동 제어를 먼저 목표값으로 맞춘 뒤 나머지를 적용한다.
             _controller.isHitTestEnabled = DesiredHitTest;
+            // ★ 2026-09-02 — Windows판은 이 줄을 "유리만 재적용 / 보더리스는 OS 실측 후 필요할 때만"으로
+            //   쪼갰다(1px 래칫 + 스왑체인 재생성 4회). <b>macOS는 쪼개지 않는다</b> — 그 결함이 여기에
+            //   없다는 것을 Swift 원본에서 확인했다:
+            //     LibUniWinC.swift `_setWindowBorderless`는 `window.styleMask = [.borderless]` 한 줄이고
+            //     프레임(frame)을 건드리지 않으며, `window.styleMask != [.borderless]` 동등성 가드까지
+            //     이미 걸려 있다. 반면 Windows판 `SetBorderless`는 가드가 없고 SetWindowPos로 폭을
+            //     ±1 흔든다(libuniwinc.cpp:694~).
+            //   즉 여기서 같은 수술을 하면 <b>얻는 것 없이</b> 실측으로 튜닝이 끝난 경로에 위험만 넣는다.
+            //   근거 전문: Platform/OverlayStateReapplyPolicy.cs.
             _controller.isTransparent = DesiredTransparent;
             _controller.isTopmost = DesiredTopmost;
             _controller.isClickThrough = DesiredClickThrough;

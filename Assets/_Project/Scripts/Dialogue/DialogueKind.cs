@@ -14,7 +14,12 @@ namespace StickMate.Dialogue
     ///
     /// ★ 종류는 텍스트 문자열에서 역추론하지 않는다. 매핑 함수가 <see cref="DialogueLine"/>으로
     ///   (텍스트, 종류)를 **함께** 돌려준다 — 같은 상태가 상황에 따라 두 종류를 갈라 쓸 수 있어야
-    ///   하기 때문이다(BattleMinigame: 개시 = 서술 / 판정 = 반응).
+    ///   하기 때문이다.
+    ///   <para>★ 2026-09-02 — 이 자리의 예시는 "BattleMinigame: 개시 = 서술 / 판정 = 반응"이었고,
+    ///   격파 놀이 삭제로 <b>지금 두 종류를 실제로 갈라 쓰는 상태는 하나도 없다</b>(전수 확인:
+    ///   서술만 = ParkourClimb/LedgeHang/AmbientChatter, 반응만 = Ragdoll/Attack/WindowTheft/
+    ///   Runaway/TimedSpectacle). 설계 능력은 그대로 두되 <b>없는 예시를 있는 척 적지 않는다</b> —
+    ///   다음에 그런 상태가 생기면 여기에 실명으로 적어라.</para>
     /// </summary>
     public enum DialogueKind
     {
@@ -220,11 +225,10 @@ namespace StickMate.Dialogue
         /// <summary>
         /// 발화 자격 게이트(규칙 8). <paramref name="plannedDwellSeconds"/>는 "지금 확정된 <b>상태</b>의
         /// 계획 잔여 체류 시간"이며, 지어내는 값이 아니라 이미 확정된 사실에서만 나온다
-        /// (ParkourClimb = 등반 길이, LedgeHang = 잡기+매달림, 격파 개시 = 게이지 길이와 무입력
-        ///  타임아웃 잔여 중 짧은 쪽).
+        /// (ParkourClimb = 등반 길이, LedgeHang = 잡기+매달림).
         ///
         /// ★ Idle/Walk는 <b>배회 페이즈 잔여를 그대로 쓰지 않는다</b>(2026-09-01) — 그것은 "배회
-        /// 페이즈의 잔여"이지 "이 상태의 잔여"가 아니어서, 격파/기상/착지/등반 복귀처럼 배회가 걷는
+        /// 페이즈의 잔여"이지 "이 상태의 잔여"가 아니어서, 기상/착지/등반 복귀처럼 배회가 걷는
         /// 한복판인데 Idle로 들어오는 경로에서 실제 체류 1프레임을 2.8초로 답했다. 지금은
         /// <c>StickmanBlackboard.PlannedDwellRemainingSecondsFor</c>가 상태의 탈출 조건과 대조한 값을
         /// 준다.

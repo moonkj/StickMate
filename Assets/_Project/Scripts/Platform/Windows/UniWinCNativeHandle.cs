@@ -92,6 +92,65 @@ namespace StickMate.Platform.Windows
             return native != IntPtr.Zero ? native : managed;
         }
 
+        // ────────────────────────────────────────────────────────────────────────
+        // 유리(DWM 확장 프레임)만 다시 거는 경로 — 2026-09-02 (1px 래칫 라운드)
+        // ────────────────────────────────────────────────────────────────────────
+
+        private static bool _glassPathUnavailable;
+        private static bool _glassPathFailureLogged;
+
+        /// <summary>
+        /// 유리 전용 경로를 <b>이미 못 쓴다고 확인된</b> 상태인가. 처음에는 false(낙관)이며,
+        /// <see cref="TrySetTransparent"/>가 한 번이라도 실패하면 그때 true가 된다.
+        ///
+        /// <para>"쓸 수 있는지 미리 알아보려고 한 번 호출해 보는" 방식은 일부러 쓰지 않았다 —
+        /// 그 탐침 자체가 부작용 있는 호출이라, 결정을 내리기도 전에 상태를 바꾸게 된다.
+        /// 대신 실패하면 <b>같은 틱 안에서</b> 호출자가 전체 경로로 물러난다.</para>
+        /// </summary>
+        internal static bool GlassOnlyPathKnownUnavailable => _glassPathUnavailable;
+
+        /// <summary>
+        /// <b>유리만</b> 다시 건다 — 네이티브 <c>SetTransparent</c>는
+        /// <c>DwmExtendFrameIntoClientArea(hWnd, MARGINS{-1})</c> 한 줄이라 <b>창 사각형을 건드리지
+        /// 않는다</b>(libuniwinc.cpp <c>enableTransparentByDWM</c>).
+        ///
+        /// <para>라이브러리의 <c>isTransparent</c> 세터를 쓰지 않는 이유는 그것이
+        /// <c>SetTransparent</c>와 <c>SetBorderless</c>를 한 덩어리로 부르기 때문이다
+        /// (<c>UniWinCore.EnableTransparent</c>). 그 <c>SetBorderless</c>가 매번 창 폭을 ±1 흔들어
+        /// <b>리사이즈 4회 = 스왑체인 재생성 4회</b>를 만들고, 그 잔차가 1px 래칫이 됐다.
+        /// 근거 전문은 <c>Platform/OverlayStateReapplyPolicy.cs</c>.</para>
+        ///
+        /// <para>대상은 네이티브가 이미 붙잡고 있는 <b>우리 자신의 창</b>이다(핸들 인자가 없는 이유 —
+        /// 원칙 3 준수). 부착 전이면 네이티브가 <c>if (hTargetWnd_)</c>에서 조용히 아무것도 하지 않는다.</para>
+        /// </summary>
+        /// <returns>호출이 실제로 내려갔으면 true. false면 호출자는 <b>같은 틱에</b> 라이브러리 전체
+        /// 경로로 물러나야 한다 — 회색 불투명 전체화면 창보다는 1px 래칫이 낫다.</returns>
+        internal static bool TrySetTransparent(bool enabled)
+        {
+            if (_glassPathUnavailable) return false;
+            try
+            {
+                SetTransparent(enabled);
+                return true;
+            }
+            catch (Exception e)
+            {
+                _glassPathUnavailable = true;
+                if (!_glassPathFailureLogged)
+                {
+                    _glassPathFailureLogged = true;
+                    Debug.LogWarning("[오버레이핸들] LibUniWinC.SetTransparent를 쓸 수 없습니다 " +
+                        $"({e.GetType().Name}) — 재적용은 라이브러리 전체 경로(isTransparent 대입)로 " +
+                        "물러납니다. 투명화는 유지되지만 재적용 1회마다 창 리사이즈 4회가 " +
+                        "되살아납니다(1px 래칫).");
+                }
+                return false;
+            }
+        }
+
+        [DllImport("LibUniWinC", CallingConvention = CallingConvention.Winapi)]
+        private static extern void SetTransparent([MarshalAs(UnmanagedType.U1)] bool bEnabled);
+
         [DllImport("LibUniWinC")]
         private static extern IntPtr GetWindowHandle();
     }

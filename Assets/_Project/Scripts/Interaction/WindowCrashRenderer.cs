@@ -14,7 +14,7 @@ namespace StickMate.Interaction
     /// Interaction/WindowCrashDirector.cs는 대상(포그라운드) 창 선정 · 3초 오버레이 수명 · 대상 창이
     /// 닫히거나 전체화면 게임이 뜨면 즉시 취소하는 로직까지 이미 완성돼 있었다. 그런데
     /// <b>StickmanEventBus.WindowCrashOverlayChanged를 구독하는 코드가 어디에도 없었고</b> Director 자신도
-    /// 씬 어디에도 배치돼 있지 않았다 — 창 도둑/그라피티/격파와 똑같은 "로직은 완성, 화면엔 0픽셀" 실패다.
+    /// 씬 어디에도 배치돼 있지 않았다 — 창 도둑/그라피티와 똑같은 "로직은 완성, 화면엔 0픽셀" 실패다.
     ///
     /// ============================================================================
     /// 절대 원칙 2 + 27-4의 가장 중요한 요구: 100% 클릭관통
@@ -25,7 +25,7 @@ namespace StickMate.Interaction
     ///
     ///  · 콜라이더를 <b>단 하나도</b> 만들지 않는다. 이 프로젝트에서 클릭관통이 풀리는 유일한 경로는
     ///    UniWindowController의 Raycast 히트테스트가 콜라이더를 발견하는 것뿐이므로(참고:
-    ///    Interaction/AppControlDirector.cs의 _menuBlocker, BattleMinigameRenderer의 CreateClickTarget),
+    ///    Interaction/AppControlDirector.cs의 _menuBlocker, RunawayRenderer의 [간식 주기] 과자),
     ///    콜라이더가 없으면 클릭이 막힐 방법 자체가 없다. <see cref="ActiveColliderCount"/>가 이를
     ///    테스트에서 절대 조건으로 단언할 수 있게 노출한다(항상 0).
     ///  · Platform.ILocalClickCaptureService / Interaction.StickmanClickHitbox를 이 파일 어디서도
@@ -105,7 +105,8 @@ namespace StickMate.Interaction
         /// <summary>
         /// 이 렌더러가 담당하는 캐릭터. <b>같은 GameObject의 StickmanAgent만</b> 쓰고 씬 전체 탐색
         /// 폴백은 쓰지 않는다 — 이 프리팹이 복제되면 사본도 이 컴포넌트를 함께 갖게 되고,
-        /// 폴백을 두면 크랙이 두 벌 그려진다(2026-08-29 격파 미니게임에서 실측 확인된 버그).
+        /// 폴백을 두면 크랙이 두 벌 그려진다(2026-08-29 격파 미니게임에서 실측 확인된 버그 — 기능은
+        /// 2026-09-02에 삭제됐지만 이 함정은 모든 렌더러에 그대로 남아 있다).
         /// </summary>
         private StickmanAgent _agent;
         private Material _lineMaterial;
@@ -507,7 +508,7 @@ namespace StickMate.Interaction
             return pts;
         }
 
-        /// <summary>GraffitiRenderer/BattleMinigameRenderer와 같은 이유로 캐릭터 LineRenderer의 머티리얼을
+        /// <summary>GraffitiRenderer와 같은 이유로 캐릭터 LineRenderer의 머티리얼을
         /// 빌려 쓴다(Shader.Find는 빌드 스트리핑 위험이 있어 쓰지 않는다).</summary>
         private Material ResolveLineMaterial()
         {

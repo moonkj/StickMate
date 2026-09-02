@@ -36,7 +36,7 @@ namespace StickMate.Interaction
     /// </summary>
     public sealed class LandingDustRenderer : MonoBehaviour
     {
-        /// <summary>캐릭터 획(0~5) 바로 위, 그라피티(9)/격파(10~15) 아래.</summary>
+        /// <summary>캐릭터 획(0~5) 바로 위, 그라피티(9) 아래.</summary>
         private const int SortingOrder = 6;
 
         /// <summary>먼지 한 점의 부채꼴 배치 반각(도, 수직 기준). 75도면 거의 눕는 부채꼴이라
@@ -268,7 +268,7 @@ namespace StickMate.Interaction
             lr.endColor = e;
         }
 
-        /// <summary>BattleMinigameRenderer/GraffitiRenderer와 같은 이유로 캐릭터 LineRenderer의
+        /// <summary>GraffitiRenderer와 같은 이유로 캐릭터 LineRenderer의
         /// 머티리얼을 빌려 쓴다(Shader.Find는 빌드 스트리핑 위험이 있어 쓰지 않는다).</summary>
         private Material ResolveLineMaterial()
         {

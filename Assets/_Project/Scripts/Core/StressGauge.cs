@@ -7,7 +7,7 @@ namespace StickMate.Core
     /// SpectacleEventLock/TodoListModel과 동일한 이유(24시간 상주 앱, 씬 생명주기와 무관한 단일
     /// 프로세스 전역 상태)로 정적 클래스로 구현한다.
     ///
-    /// 이 클래스 자신은 언제/왜 값이 바뀌는지 전혀 모른다 — 트리거 판정(격파훈련 과다/장시간 방치/
+    /// 이 클래스 자신은 언제/왜 값이 바뀌는지 전혀 모른다 — 트리거 판정(과다 상호작용/장시간 방치/
     /// 긴급정지 반복 사용/시간당 자연 감소)은 전부 Interaction/StressGaugeDirector.cs의 책임이고,
     /// 이 클래스는 오직 "현재 값 보관 + 변경 시 StickmanEventBus.StressLevelChanged 통지"만 한다
     /// (StickmanBlackboard.LastImpactMagnitude처럼 "값의 의미"와 "값을 읽어 반응하는 로직"을 분리하는

@@ -11,10 +11,12 @@ namespace StickMate.Core
     /// 참고한 RPG 캐릭터 창의 2열x3행 스탯 배치는 그대로 쓰되, <b>내용은 이 앱에 실제로 존재하는
     /// 사실</b>로만 채운다(리더 확정). 이 앱에는 HP도 데미지도 없다 — 없는 숫자를 그럴듯하게 적으면
     /// 그 순간부터 창 전체가 장식이 되고, 사용자는 어느 숫자가 진짜인지 구분할 수 없게 된다.
-    /// 그래서 여섯 칸은 근속 / 함께한 시간 / 격파 성공 / 보유 장비 / 활쏘기 명중률 / 넘어진 횟수다.
+    /// 그래서 다섯 칸은 근속 / 함께한 시간 / 보유 장비 / 활쏘기 명중률 / 넘어진 횟수다.
     /// ("대결 승리"는 라이벌 기능 전체 삭제(2026-08-30)로 영구 0이 되는 죽은 칸이 되어 "보유 장비"
     /// — ItemCatalog.UnlockedEquipmentCount/EquipmentCount — 로 교체했다. 없는 숫자를 적지 않는다는
-    /// 위 원칙은 그대로다: 보유 장비는 레벨에 따라 실제로 변하는 값이다.)
+    /// 위 원칙은 그대로다: 보유 장비는 레벨에 따라 실제로 변하는 값이다.
+    /// <b>"격파 성공"은 2026-09-02 격파 놀이 기능 삭제로 같은 이유(영구 0)로 빠졌다</b> — 다만
+    /// 저장 필드는 지우지 않았다. 아래 <see cref="BattleWins"/> 참고.)
     ///
     /// ============================================================================
     /// 이 클래스는 "언제 세는지"를 모른다
@@ -28,7 +30,20 @@ namespace StickMate.Core
     /// </summary>
     public static class CharacterStatsModel
     {
-        /// <summary>격파 미니게임 성공 횟수(BattleMinigamePhase.Success 누적).</summary>
+        /// <summary>
+        /// ★ <b>죽은 값이지만 일부러 살려둔다</b> — 2026-09-02 격파 놀이 삭제(리더 판정).
+        ///
+        /// <para>이 값을 올리는 코드는 이제 하나도 없다(<c>AddBattleWin()</c>은 같은 날 삭제됐다).
+        /// 그런데도 프로퍼티와 <see cref="RestoreFromSave"/>의 인자가 남아 있는 이유는 <b>단 하나</b>,
+        /// 저장 파일의 <c>battleWins</c> 필드를 <b>읽은 그대로 다시 쓰기</b> 위해서다. 실제 사용자
+        /// 세이브(스키마 v9)에 3회 전적이 들어 있고, 필드를 빼면 (a) <c>CurrentVersion</c>을 올려야 하고
+        /// (b) CLAUDE.md가 그 라운드에 v8 하위 호환 테스트를 의무화한다. 죽은 필드 하나를 지우려고
+        /// 마이그레이션 위험을 사지 않는다. 화면에서 사라지면 그만이고, 되살리고 싶어지면 전적이 남아
+        /// 있다(지우면 못 돌린다).</para>
+        ///
+        /// <para>회귀 잠금: <c>Tests/EditMode/CharacterStatsPersistenceTests</c>의
+        /// "격파_전적은_기능이_사라진_뒤에도_저장_왕복에서_살아남는다".</para>
+        /// </summary>
         public static int BattleWins { get; private set; }
 
         /// <summary>지금까지 쏜 화살 수(Release 시점 기준). 명중률의 분모다.</summary>
@@ -83,12 +98,6 @@ namespace StickMate.Core
             }
             accuracy01 = Mathf.Clamp01((float)ArcheryBullseyes / ArcheryShots);
             return true;
-        }
-
-        public static void AddBattleWin()
-        {
-            BattleWins++;
-            IsDirty = true;
         }
 
         /// <summary>한 발 기록. 명중 여부와 발사 수를 <b>한 번에</b> 올려 둘이 어긋날 수 없게 한다

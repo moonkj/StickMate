@@ -47,18 +47,13 @@ namespace StickMate.Tests.EditMode
         /// <summary>
         /// 검사 면제 — <b>사유가 있는 것만</b>, 사유와 함께.
         ///
-        /// <para><c>BattleMinigameRenderer</c>: 이 표적은 씬 루트가 아니라 미니게임 컨테이너의
-        /// 자식이고, <c>StickmanAgent.Suspend()</c>가 <c>BattleMinigame</c> 상태를 강제로 Idle로
-        /// 바꾸면 디렉터가 렌더러를 걷어내면서 <c>DestroyClickTarget()</c>이 표적을 파괴한다. 즉
-        /// 원칙 2는 지켜지지만 <b>자기 파일에서 IsSuspended를 읽지는 않는다</b>. 이 면제를 지우려면
-        /// 그 경로가 실제로 살아 있는지 먼저 재라.</para>
+        /// <para>★ 2026-09-02 현재 <b>비어 있다</b>. 유일한 항목이던 <c>BattleMinigameRenderer</c>는
+        /// 격파 놀이 기능이 통째로 삭제되면서 파일 자체가 사라졌다(간접 경로 면제였다: 표적이
+        /// 미니게임 컨테이너의 자식이라 디렉터가 걷힐 때 함께 파괴됐고, 자기 파일에서
+        /// <c>IsSuspended</c>를 읽지는 않았다). 비어 있는 것이 정상이며 <b>기본값</b>이다 —
+        /// 새로 면제를 넣으려면 사유를 반드시 함께 적어라.</para>
         /// </summary>
-        private static readonly Dictionary<string, string> Exempt = new Dictionary<string, string>
-        {
-            ["BattleMinigameRenderer.cs"] =
-                "표적이 미니게임 컨테이너의 자식이고, StickmanAgent.Suspend()의 강제 Idle 전이가 " +
-                "디렉터를 통해 DestroyClickTarget()까지 이어진다(간접 경로).",
-        };
+        private static readonly Dictionary<string, string> Exempt = new Dictionary<string, string>();
 
         private static string InteractionDirectory =>
             Path.Combine(Application.dataPath, "_Project", "Scripts", "Interaction");
@@ -101,8 +96,10 @@ namespace StickMate.Tests.EditMode
         {
             List<string> owners = FindBlockerOwners();
 
-            // ★ 스캔이 망가져 "0개를 찾고 전부 통과"하는 것을 먼저 막는다(2026-09-01 기준 소유자 6개.
-            //   구석 호버 패널 삭제가 진행 중이라 하한은 5로 둔다 — 하한이지 목표가 아니다).
+            // ★ 스캔이 망가져 "0개를 찾고 전부 통과"하는 것을 먼저 막는다.
+            //   2026-09-01 기준 6개 → 2026-09-02 기준 <b>정확히 5개</b>(격파 놀이 삭제로
+            //   BattleMinigameRenderer.cs가 사라졌다). 하한 5는 지금 실제 개수와 같으므로
+            //   표면이 하나라도 더 줄면 이 단언이 바로 걸린다 — 하한이지 목표가 아니다.
             Assert.GreaterOrEqual(owners.Count, 5,
                 $"차단막 소유자를 {owners.Count}개밖에 못 찾았다({string.Join(", ", owners)}) — " +
                 "GameObject 이름 규약이 바뀌었다면 BlockerNameMarkers를 함께 고쳐라. " +
@@ -132,6 +129,16 @@ namespace StickMate.Tests.EditMode
         {
             // 면제는 "지금은 사유가 있다"는 기록이다. 파일이 사라졌는데 면제만 남으면 그 기록은
             // 다음 사람에게 거짓말이 된다.
+            //
+            // ★ 2026-09-02 — Exempt가 <b>비었다</b>. 빈 컬렉션 위의 foreach는 아무것도 단언하지
+            //   않으면서 초록불이 된다(이 저장소가 같은 밤에 '거짓 통과 9건'을 겪은 바로 그 모양).
+            //   그래서 "비어 있음"을 <b>기대값으로 명시</b>한다: 누군가 면제를 추가하면 이 단언이
+            //   먼저 걸려서, 아래 파일존재/사유 검사가 실제로 도는지 눈으로 확인하게 만든다.
+            Assert.IsEmpty(Exempt,
+                "면제가 새로 생겼다: " + string.Join(", ", Exempt.Keys) + ". 면제 자체는 허용되지만 " +
+                "(사유를 적었다면) 이 단언을 그때 함께 고쳐라 — 이 줄이 없으면 아래 foreach는 " +
+                "빈 목록 위에서 아무것도 재지 않는 초록불이 된다.");
+
             foreach (KeyValuePair<string, string> entry in Exempt)
             {
                 string path = Path.Combine(InteractionDirectory, entry.Key);

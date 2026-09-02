@@ -7,14 +7,19 @@ using StickMate.Core;
 namespace StickMate.Tests.EditMode
 {
     /// <summary>
-    /// ★ 기록(근속/함께한 시간/격파/활쏘기/넘어짐)의 <b>영속화</b> 회귀 테스트 —
+    /// ★ 기록(근속/함께한 시간/활쏘기/넘어짐)의 <b>영속화</b> 회귀 테스트 —
     /// 2026-08-30 정보창 리디자인 라운드.
     ///
     /// ============================================================================
     /// 무엇을 잡으려는가
     /// ============================================================================
-    ///  (1) 저장 -> 초기화 -> 로드 왕복에서 <b>다섯 값이 전부</b> 그대로 돌아온다(리더 지시의 명시 항목:
+    ///  (1) 저장 -> 초기화 -> 로드 왕복에서 <b>값이 전부</b> 그대로 돌아온다(리더 지시의 명시 항목:
     ///      "카운터 영속화 테스트(재시작 후 유지) 추가").
+    ///  (1b) ★ 2026-09-02 신규 — <b>격파 전적(battleWins)</b>은 격파 놀이 기능이 삭제된 뒤에도
+    ///      왕복에서 살아남는다. 리더 판정: 필드를 빼면 스키마 버전을 올려야 하고 그 라운드는
+    ///      하위 호환 테스트를 의무로 달아야 한다 — 죽은 필드 하나 때문에 마이그레이션 위험을
+    ///      사지 않는다. 실제 사용자 세이브(v9)에 3회가 들어 있다. 이 검사가 없으면 "화면에서
+    ///      뺐으니 저장도 빼자"가 다음 라운드에 조용히 일어난다.
     ///  (2) <b>구버전(v1) 저장 파일</b>도 그대로 읽힌다 — 이 라운드에서 스키마 버전을 올렸으므로,
     ///      이미 며칠 키운 사용자의 레벨이 날아가면 그게 최악의 회귀다. 새 필드는 0으로 시작하고
     ///      그 0은 "아직 기록이 없다"는 정확한 사실이다.
@@ -58,10 +63,8 @@ namespace StickMate.Tests.EditMode
         }
 
         [Test]
-        public void 기록_다섯_값이_저장하고_다시_불러온_뒤에도_같다()
+        public void 기록_값들이_저장하고_다시_불러온_뒤에도_같다()
         {
-            CharacterStatsModel.AddBattleWin();
-            CharacterStatsModel.AddBattleWin();
             CharacterStatsModel.AddArcheryShot(bullseye: true);
             CharacterStatsModel.AddArcheryShot(bullseye: false);
             CharacterStatsModel.AddArcheryShot(bullseye: false);
@@ -77,11 +80,10 @@ namespace StickMate.Tests.EditMode
 
             // 프로세스를 새로 켠 것과 같은 상태로 만든 뒤 로드.
             CharacterStatsModel.ResetForTesting();
-            Assert.AreEqual(0, CharacterStatsModel.BattleWins, "초기화가 되지 않아 아래 검증이 무의미해집니다.");
+            Assert.AreEqual(0, CharacterStatsModel.ArcheryShots, "초기화가 되지 않아 아래 검증이 무의미해집니다.");
 
             CharacterSaveStore.Load();
 
-            Assert.AreEqual(2, CharacterStatsModel.BattleWins, "격파 성공 횟수가 복원되지 않았습니다.");
             Assert.AreEqual(3, CharacterStatsModel.ArcheryShots, "활쏘기 발사 수가 복원되지 않았습니다.");
             Assert.AreEqual(1, CharacterStatsModel.ArcheryBullseyes, "활쏘기 명중 수가 복원되지 않았습니다.");
             Assert.AreEqual(1, CharacterStatsModel.RagdollFalls, "넘어진 횟수가 복원되지 않았습니다.");
@@ -89,6 +91,46 @@ namespace StickMate.Tests.EditMode
                 "함께한 시간이 복원되지 않았습니다.");
             Assert.AreEqual(firstRun, CharacterStatsModel.FirstRunUnixSeconds, "첫 만남 시각이 복원되지 않았습니다.");
             Assert.AreEqual("3시간 12분", CharacterStatsModel.FormatCompanionTime());
+        }
+
+        /// <summary>
+        /// ★ 2026-09-02 — 격파 놀이 기능이 <b>삭제된 뒤</b>에도 전적이 저장 왕복에서 살아남는가.
+        ///
+        /// <para>이제 <c>BattleWins</c>를 올리는 코드는 하나도 없다(<c>AddBattleWin()</c> 삭제).
+        /// 그래서 씨앗은 "저장 파일에서 읽어온 값"이어야 한다 — 실제 사용자 세이브가 그 상태다.
+        /// 읽은 값이 다음 저장에 <b>그대로 다시 실려야</b> 사용자의 3회가 보존된다.</para>
+
+        /// <para>네거티브 컨트롤을 함께 둔다: 씨앗이 0이면 "안 지워졌다"와 "원래 0이었다"가
+        /// 똑같이 생겨서 이 검사가 아무것도 재지 않는다.</para>
+        /// </summary>
+        [Test]
+        public void 격파_전적은_기능이_사라진_뒤에도_저장_왕복에서_살아남는다()
+        {
+            const int SeededWins = 3;   // 실제 사용자 세이브(v9)에 들어 있던 값.
+
+            // 저장 파일에서 복원된 상태를 만든다(기능이 없으므로 이 경로가 유일한 씨앗이다).
+            CharacterStatsModel.RestoreFromSave(SeededWins, 0, 0, 0f, 0, 0L);
+            Assert.AreEqual(SeededWins, CharacterStatsModel.BattleWins,
+                "씨앗이 심기지 않아 아래 검증이 전부 무의미해집니다(네거티브 컨트롤).");
+
+            // 다른 값 하나를 실제로 바꿔 저장을 유발한다 — RestoreFromSave는 IsDirty를 끄기 때문에
+            // 그것만으로는 Save()가 의미 있는 왕복이 되지 않는다.
+            CharacterStatsModel.AddArcheryShot(bullseye: true);
+            Assert.IsTrue(CharacterSaveStore.Save(), "저장에 실패했습니다.");
+
+            // 저장된 JSON에 필드가 물리적으로 들어 있는가(스키마 계약 자체를 직접 본다).
+            StringAssert.Contains("battleWins", File.ReadAllText(CharacterSaveStore.FilePath),
+                "저장 파일에서 battleWins 키가 사라졌습니다 — 리더 판정은 \"읽고 쓰는 코드는 남기고 " +
+                "화면에 표시하는 곳만 없앤다\"였습니다. 필드를 빼려면 CurrentVersion을 올리고 " +
+                "구버전 하위 호환 테스트를 함께 달아야 합니다(CLAUDE.md).");
+
+            CharacterStatsModel.ResetForTesting();
+            Assert.AreEqual(0, CharacterStatsModel.BattleWins, "초기화가 되지 않았습니다(네거티브 컨트롤).");
+
+            CharacterSaveStore.Load();
+            Assert.AreEqual(SeededWins, CharacterStatsModel.BattleWins,
+                "격파 전적이 저장 왕복에서 사라졌습니다 — 사용자의 실제 전적(윈도우 로그 " +
+                "'[기록] 격파 성공 누적 3회')이 이 경로로 지워집니다. 되돌릴 수 없습니다.");
         }
 
         [Test]

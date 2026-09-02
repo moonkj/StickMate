@@ -145,10 +145,15 @@ namespace StickMate.Tests.PlayMode
         public void ActionWindowExposesNoDeveloperOnlyCommand()
         {
             string[] names = Enum.GetNames(typeof(ActionCommandPopover.Command));
-            Assert.AreEqual(6, names.Length,
-                $"명령 개수가 {names.Length}개입니다 — 36-1이 (가)로 분류한 것은 6개(말 걸기/활쏘기/격파/" +
-                "그라피티/창 도둑/창 부수기)이고 [돌아와!]는 타일이 아니라 헤더 칩입니다.");
-            Assert.AreEqual(6, ActionCommandPopover.CommandCount);
+
+            // ★ 개수를 숫자로 베끼지 않는다(CLAUDE.md 협업 프로토콜). 여기서 재는 것은 "몇 개인가"가
+            //   아니라 <b>enum과 창이 같은 것을 세는가</b>다 — 둘이 어긋나면 _tiles 배열이 짧아져
+            //   타일이 조용히 사라진다. 2026-09-02 격파 놀이 삭제(6 -> 5)에서 이 단언이
+            //   "Assert.AreEqual(6, ...)" 두 줄로 하드코딩돼 있어 함께 깨졌다.
+            Assert.AreEqual(names.Length, ActionCommandPopover.CommandCount,
+                $"Command enum은 {names.Length}개인데 CommandCount는 {ActionCommandPopover.CommandCount}입니다 " +
+                "— _tiles 배열 길이가 여기서 나오므로 어긋나면 타일이 만들어지지 않거나 인덱스가 넘칩니다.");
+            Assert.Greater(names.Length, 0, "명령이 하나도 없으면 이 창은 존재할 이유가 없습니다.");
 
             // (다) 개발 전용 5개 + 가출 발동은 어떤 이름으로도 여기 들어오면 안 된다.
             string[] forbidden =

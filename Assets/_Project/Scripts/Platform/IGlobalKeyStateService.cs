@@ -22,16 +22,24 @@ namespace StickMate.Platform
         /// <summary>말풍선 즉시 발화 데모(Ctrl+Opt+Cmd+B) — Interaction/AppControlDirector.cs.</summary>
         B,
 
-        /// <summary>격파 미니게임 강제 발동 데모(Ctrl+Opt+Cmd+K, "격파"/breaK) — 자동 발동이 60초마다
-        /// 5% 추첨이라 확률만으로는 검증이 사실상 불가능하다. Interaction/AppControlDirector.cs.</summary>
+        /// <summary>★ <b>비어 있다(예약).</b> 2026-09-02까지 격파 미니게임 강제 발동 데모였고, 격파 놀이
+        /// 기능이 삭제되면서 <b>바인딩만</b> 사라졌다 — 지금 이 키를 눌러도 아무 일도 일어나지 않고,
+        /// 부팅 배너의 단축키 목록에도 나오지 않는다.
+        ///
+        /// <para>왜 열거값을 지우지 않았나: 이 값을 지우면 <c>Platform/Windows/Win32WindowService.cs</c>의
+        /// <c>case GlobalKey.K</c>가 컴파일되지 않아 그 파일을 함께 고쳐야 하는데, 삭제 라운드와
+        /// 동시에 다른 라운드가 <c>Platform/Windows/</c>를 편집 중이었다(리더 지시로 접근 금지).
+        /// 양쪽 플랫폼의 키코드 매핑은 그대로 살아 있으므로 다시 배선하기만 하면 즉시 쓸 수 있다.
+        /// <b>다음에 새 기능이 단축키를 필요로 하면 이 자리를 먼저 써라.</b></para></summary>
         K,
 
         /// <summary>그라피티 강제 발동 데모(Ctrl+Opt+Cmd+G, Graffiti) — 자동 발동이 60초마다 4% 추첨 +
-        /// 10분 쿨다운이라 K와 같은 이유로 강제 경로가 필요하다. Interaction/AppControlDirector.cs.</summary>
+        /// 10분 쿨다운이라 확률만으로는 검증이 사실상 불가능해 강제 경로가 필요하다.
+        /// Interaction/AppControlDirector.cs.</summary>
         G,
 
         /// <summary>창 도둑 강제 발동 데모(Ctrl+Opt+Cmd+T, Theft) — 자동 발동이 60초마다 3% 추첨 +
-        /// 15분 쿨다운이라 K/G와 같은 이유로 강제 경로가 필요하다. Interaction/AppControlDirector.cs.</summary>
+        /// 15분 쿨다운이라 G와 같은 이유로 강제 경로가 필요하다. Interaction/AppControlDirector.cs.</summary>
         T,
 
         /// <summary>윈도우 크래시 강제 발동 데모(Ctrl+Opt+Cmd+X, 부서짐) — 자동 발동이 60초마다 2% 추첨 +
@@ -47,7 +55,7 @@ namespace StickMate.Platform
 
         /// <summary>스트레스 게이지 단계 순환 미리보기(Ctrl+Opt+Cmd+S, Stress) — 하드웨어 반응(H)과 같은
         /// 성격이다. 실사용에서 게이지가 실제로 차오르는 데는 수 시간~반나절이 걸려(19절: 반나절 방치 /
-        /// 5분 내 8회 격파훈련) 확률을 건너뛰는 것만으로는 검증이 불가능하다.
+        /// 5분 내 8회 과다 상호작용) 확률을 건너뛰는 것만으로는 검증이 불가능하다.
         /// Interaction/StressGaugeDirector.ForceTriggerNow 문서 참고.</summary>
         S,
 

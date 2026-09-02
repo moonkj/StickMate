@@ -81,7 +81,7 @@ namespace StickMate.Interaction
         // 전역 단축키 엣지 판정 — 첫 폴링은 기록만 하고 넘어가, 앱 시작 순간 이미 눌려 있던 키를
         // 명령으로 오인하지 않는다(StickmanClickHitbox의 _globalPressedInitialized와 동일한 관례).
         private bool _hotkeyInitialized;
-        private bool _prevQ, _prevC, _prevD, _prevR, _prevB, _prevK, _prevG;
+        private bool _prevQ, _prevC, _prevD, _prevR, _prevB, _prevG;
         private bool _prevT, _prevX, _prevH;
         private bool _prevS, _prevN, _prevJ, _prevF;
         private bool _prevA;
@@ -89,7 +89,6 @@ namespace StickMate.Interaction
         private bool _prevP;
 
         // 지연 탐색 후 캐시.
-        private BattleMinigameDirector _battleDirector;
         private GraffitiDirector _graffitiDirector;
         private WindowTheftDirector _windowTheftDirector;
         private WindowCrashDirector _windowCrashDirector;
@@ -116,7 +115,6 @@ namespace StickMate.Interaction
             Rodeo,
             Diagnostics,        // (다)
             SayNow,
-            BattleMinigame,
             Graffiti,
             WindowTheft,
             WindowCrash,
@@ -162,7 +160,7 @@ namespace StickMate.Interaction
                 "그대로 관통합니다(비침해 개선, UX_FLOW 36-9). ";
 
             string userKeys = "사용자 단축키: " + ShortcutLabel.Chord("C") + "(잉크색 전환) / R(로데오 커서 on-off) / " +
-                "**B(말 걸기)** / **K(격파 놀이)** / **G(그라피티)** / **T(창 도둑)** / " +
+                "**B(말 걸기)** / **G(그라피티)** / **T(창 도둑)** / " +
                 "**X(창 부수기)** / **A(활쏘기)** / **N(가출 중이면 돌아오라고 부르기)** / " +
                 "**I(캐릭터 정보/장비 창)** / **P(설정창)**. 이 명령들의 주 경로는 부채꼴 ④ [행동] 창이고, \n" +
                 "설정창의 주 경로는 캐릭터 정보창 헤더의 [설정]입니다. ";
@@ -215,7 +213,6 @@ namespace StickMate.Interaction
             bool c = chord && IsKeyDown(GlobalKey.C);
             bool r = chord && IsKeyDown(GlobalKey.R);
             bool b = chord && IsKeyDown(GlobalKey.B);
-            bool k = chord && IsKeyDown(GlobalKey.K);
             bool g = chord && IsKeyDown(GlobalKey.G);
             bool t = chord && IsKeyDown(GlobalKey.T);
             bool x = chord && IsKeyDown(GlobalKey.X);
@@ -236,7 +233,7 @@ namespace StickMate.Interaction
             if (!_hotkeyInitialized)
             {
                 _hotkeyInitialized = true;
-                _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevK = k; _prevG = g;
+                _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevG = g;
                 _prevT = t; _prevX = x; _prevH = h;
                 _prevS = sKey; _prevN = n; _prevJ = j; _prevF = f;
                 _prevA = aKey;
@@ -250,7 +247,6 @@ namespace StickMate.Interaction
             bool dRise = d && !_prevD;
             bool rRise = r && !_prevR;
             bool bRise = b && !_prevB;
-            bool kRise = k && !_prevK;
             bool gRise = g && !_prevG;
             bool tRise = t && !_prevT;
             bool xRise = x && !_prevX;
@@ -262,7 +258,7 @@ namespace StickMate.Interaction
             bool aRise = aKey && !_prevA;
             bool iRise = iKey && !_prevI;
             bool pRise = pKey && !_prevP;
-            _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevK = k; _prevG = g;
+            _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevG = g;
             _prevT = t; _prevX = x; _prevH = h;
             _prevS = sKey; _prevN = n; _prevJ = j; _prevF = f;
             _prevA = aKey;
@@ -274,7 +270,6 @@ namespace StickMate.Interaction
             else if (rRise) Invoke(ControlAction.Rodeo, HotkeySource("R"));
             else if (dRise) Invoke(ControlAction.Diagnostics, HotkeySource("D"));
             else if (bRise) Invoke(ControlAction.SayNow, HotkeySource("B"));
-            else if (kRise) Invoke(ControlAction.BattleMinigame, HotkeySource("K"));
             else if (gRise) Invoke(ControlAction.Graffiti, HotkeySource("G"));
             else if (tRise) Invoke(ControlAction.WindowTheft, HotkeySource("T"));
             else if (xRise) Invoke(ControlAction.WindowCrash, HotkeySource("X"));
@@ -351,10 +346,6 @@ namespace StickMate.Interaction
 
                 case ControlAction.SayNow:
                     ForceSayNow(source);
-                    break;
-
-                case ControlAction.BattleMinigame:
-                    ForceBattleMinigame(source);
                     break;
 
                 case ControlAction.Graffiti:
@@ -509,17 +500,6 @@ namespace StickMate.Interaction
         }
 
         // ==================== (가) 사용자 명령 진입점 ====================
-
-        private void ForceBattleMinigame(string source)
-        {
-            if (_battleDirector == null) _battleDirector = Object.FindFirstObjectByType<BattleMinigameDirector>();
-            if (_battleDirector == null)
-            {
-                Debug.LogWarning($"[앱제어] 격파 놀이({source}) — 씬에 BattleMinigameDirector가 없어 건너뜁니다.");
-                return;
-            }
-            _battleDirector.ForceTriggerNow($"앱제어 {source}");
-        }
 
         private void ForceGraffiti(string source)
         {

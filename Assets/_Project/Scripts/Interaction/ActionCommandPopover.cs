@@ -65,10 +65,28 @@ namespace StickMate.Interaction
         // ==================== 확정 치수 (36-6) ====================
 
         private const float Width = 480f;
-        private const float Height = 560f;
 
-        /// <summary>세로는 설정창(720×560)과 <b>같은 560</b> — 같은 앱 가족으로 보이게 한다.
-        /// 가로는 셋 중 가장 좁다: 면적 순서(정보창 &gt; 설정창 &gt; 행동창)가 곧 중요도 순서다.</summary>
+        /// <summary>
+        /// ★ 2026-09-02 <b>560 → 508</b> (격파 놀이 타일 삭제). 세로는 <b>내용에 정확히 맞춘 값</b>이지
+        /// 임의의 라운드 수가 아니다 — 검산:
+        /// <code>
+        /// 콘텐츠 높이 = Height - (Space3 + 22 + Space2) - Space4 = 508 - 42 - 16 = 450
+        /// 푸터 바닥   = FooterY - QuitButtonHeight = -422 - 28 = -450
+        /// </code>
+        /// 둘이 같다. 종전 560도 같은 방식의 <b>정확히 맞는 값</b>이었고(502 = 502), 타일을 하나 빼면서
+        /// 그대로 두면 푸터 아래에 <b>정확히 한 행(52pt)의 빈 띠</b>가 생긴다. 그 띠는 아무것도 말하지
+        /// 않으면서 창을 아래로 무겁게 만든다("빈 상태를 굳이 보여주지 않는다", 17절).
+        ///
+        /// <para><b>깨진 것</b>: 예전 주석은 "세로는 설정창(720×560)과 같은 560 — 같은 앱 가족으로
+        /// 보이게 한다"고 적고 있었다. 이제 그 정렬은 성립하지 않는다. 둘 중 하나를 골라야 했고
+        /// <b>빈 띠를 없애는 쪽</b>을 골랐다 — 가족처럼 보이게 하는 것은 모서리 반경·간격 토큰·타이포가
+        /// 이미 하고 있고(UiChrome 한 벌), 세로 치수 일치는 그중 가장 약한 신호이기 때문이다.
+        /// 가로 480은 그대로다: 면적 순서(정보창 &gt; 설정창 &gt; 행동창)가 곧 중요도 순서라는 근거는
+        /// 세로가 줄어도 유지된다.</para>
+        /// <para>★ 이 판단은 <b>UI 표면</b> 영역이라 리더를 거쳐 ux-designer 확인을 받아야 한다
+        /// (coder 단독 결정이 아니다 — 완료 보고에 명시했다).</para>
+        /// </summary>
+        private const float Height = 508f;
         private const float ContentWidth = Width - UiChrome.Space4 * 2f;   // 448.
 
         private const float StatusRowHeight = 26f;
@@ -90,12 +108,13 @@ namespace StickMate.Interaction
         // ---- 세로 배치(콘텐츠 상단 기준, 아래로 음수) ----
         private const float StatusY = 0f;
         private const float Group1Y = -(StatusRowHeight + 8f);                       // -34.
-        private const float Group1Height = CardPadding * 2f + GroupTitleHeight + 4f + RowHeight * 4f;  // 250.
-        private const float Group2Y = Group1Y - Group1Height - 12f;                  // -296.
+        /// <summary>그룹1은 <b>3행</b>(말 걸기/활쏘기/그라피티). 2026-09-02까지는 4행이었다(격파 놀이).</summary>
+        private const float Group1Height = CardPadding * 2f + GroupTitleHeight + 4f + RowHeight * 3f;  // 198.
+        private const float Group2Y = Group1Y - Group1Height - 12f;                  // -244.
         private const float Group2CaptionHeight = 16f;
         private const float Group2Height = CardPadding * 2f + GroupTitleHeight + 4f + RowHeight * 2f
                                            + 4f + Group2CaptionHeight;              // 166.
-        private const float FooterY = Group2Y - Group2Height - 12f;                  // -474.
+        private const float FooterY = Group2Y - Group2Height - 12f;                  // -422.
 
         /// <summary>
         /// 2단 확인이 열려 있는 시간. <see cref="TodoBoardPopover"/>의 삭제 확인과 <b>같은 3초, 같은
@@ -125,7 +144,7 @@ namespace StickMate.Interaction
         /// 명령이 <b>접수됐다</b>는 순간 신호 — 눌린 타일 바닥이 액센트로 한 번 밝아졌다 꺼진다.
         ///
         /// <para>★ 왜 필요한가: 종전에는 <b>창이 닫히는 것</b>이 곧 "눌렸다"는 신호였다. 창을 유지하기로
-        /// 한 이상 그 신호가 통째로 사라진다. 대부분의 명령은 실행 즉시 상호배제 락이 잡혀 여섯 타일이
+        /// 한 이상 그 신호가 통째로 사라진다. 대부분의 명령은 실행 즉시 상호배제 락이 잡혀 다섯 타일이
         /// 전부 "지금 ○○ 중이에요"로 바뀌므로 화면이 크게 변하지만, <b>[말 걸기]는 그렇지 않다</b> —
         /// <c>AppControlDirector.ForceSayNow</c>가 <b>같은 상태로 재진입</b>할 뿐이라 가용성이 Ready
         /// 그대로고, 창에는 아무 변화도 남지 않는다. 그 한 칸 때문에 "눌렀는데 반응이 없다"가 생긴다.</para>
@@ -144,24 +163,28 @@ namespace StickMate.Interaction
         {
             SayNow = 0,
             Archery = 1,
-            Battle = 2,
-            Graffiti = 3,
-            WindowTheft = 4,
-            WindowCrash = 5,
+            Graffiti = 2,
+            WindowTheft = 3,
+            WindowCrash = 4,
         }
 
-        public const int CommandCount = 6;
+        /// <summary>★ 이 값은 <see cref="Command"/>에서 <b>파생</b>된다 — 손으로 적으면 enum과
+        /// 어긋나는 순간 <c>_tiles</c> 배열이 짧아져 타일 하나가 조용히 사라진다(36-7 "조용한 실패
+        /// 금지"). 2026-09-02 격파 놀이 삭제로 6 → 5가 됐고, 그때 이 값을 상수로 두는 것이 정확히
+        /// 그 사고의 재료였다.</summary>
+        // System.Enum을 정규화해 쓴다 — 이 파일은 UnityEngine.Object를 이름으로 부르므로
+        // `using System;`을 넣으면 System.Object와 CS0104(모호한 참조)로 충돌한다.
+        public static readonly int CommandCount = System.Enum.GetValues(typeof(Command)).Length;
 
         private static readonly string[] CommandNames =
         {
-            "말 걸기", "활쏘기", "격파 놀이", "그라피티", "창 도둑", "창 부수기",
+            "말 걸기", "활쏘기", "그라피티", "창 도둑", "창 부수기",
         };
 
         private static readonly string[] CommandDescriptions =
         {
             "지금 상태 그대로 한마디 합니다",
             "과녁을 세우고 세 발 쏩니다",
-            "기를 모아 판을 격파합니다",
             "빈 자리에 낙서했다 지웁니다",
             "작은 창을 미는 시늉을 합니다",
             "금 간 유리를 3초 덮어 보입니다",
@@ -200,7 +223,6 @@ namespace StickMate.Interaction
 
         private AppControlDirector _appControl;
         private ArcheryDirector _archery;
-        private BattleMinigameDirector _battle;
         private GraffitiDirector _graffiti;
         private WindowTheftDirector _theft;
         private WindowCrashDirector _crash;
@@ -294,7 +316,6 @@ namespace StickMate.Interaction
                 if (_appControl == null) _appControl = Object.FindFirstObjectByType<AppControlDirector>();
             }
             if (_archery == null) _archery = Object.FindFirstObjectByType<ArcheryDirector>();
-            if (_battle == null) _battle = Object.FindFirstObjectByType<BattleMinigameDirector>();
             if (_graffiti == null) _graffiti = Object.FindFirstObjectByType<GraffitiDirector>();
             if (_theft == null) _theft = Object.FindFirstObjectByType<WindowTheftDirector>();
             if (_crash == null) _crash = Object.FindFirstObjectByType<WindowCrashDirector>();
@@ -310,8 +331,7 @@ namespace StickMate.Interaction
             RectTransform group1 = BuildGroupCard(content, "Group1", "혼자 노는 것", Group1Y, Group1Height);
             _tiles[(int)Command.SayNow] = BuildTile(group1, Command.SayNow, 0);
             _tiles[(int)Command.Archery] = BuildTile(group1, Command.Archery, 1);
-            _tiles[(int)Command.Battle] = BuildTile(group1, Command.Battle, 2);
-            _tiles[(int)Command.Graffiti] = BuildTile(group1, Command.Graffiti, 3);
+            _tiles[(int)Command.Graffiti] = BuildTile(group1, Command.Graffiti, 2);
 
             RectTransform group2 = BuildGroupCard(content, "Group2", "남의 창으로 노는 것", Group2Y, Group2Height);
             _tiles[(int)Command.WindowTheft] = BuildTile(group2, Command.WindowTheft, 0);
@@ -445,8 +465,6 @@ namespace StickMate.Interaction
                     return _appControl != null ? _appControl.GetSayNowAvailability() : CommandAvailability.Missing;
                 case Command.Archery:
                     return _archery != null ? _archery.GetAvailability() : CommandAvailability.Missing;
-                case Command.Battle:
-                    return _battle != null ? _battle.GetAvailability() : CommandAvailability.Missing;
                 case Command.Graffiti:
                     return _graffiti != null ? _graffiti.GetAvailability() : CommandAvailability.Missing;
                 case Command.WindowTheft:
@@ -464,7 +482,6 @@ namespace StickMate.Interaction
             {
                 case Command.SayNow: return _appControl != null && _appControl.ForceSayNow(source);
                 case Command.Archery: return _archery != null && _archery.ForceTriggerNow(source);
-                case Command.Battle: return _battle != null && _battle.ForceTriggerNow(source);
                 case Command.Graffiti: return _graffiti != null && _graffiti.ForceTriggerNow(source);
                 case Command.WindowTheft: return _theft != null && _theft.ForceTriggerNow(source);
                 default: return _crash != null && _crash.ForceTriggerNow(source);
@@ -530,7 +547,7 @@ namespace StickMate.Interaction
 
             if (availability.IsReady && Execute(command, $"행동 명령창 [{CommandNames[i]}]"))
             {
-                // ★ 실행이 상태 전이를 일으켰다면 StateTransitioned가 이미 RefreshContent를 돌려 여섯 타일을
+                // ★ 실행이 상태 전이를 일으켰다면 StateTransitioned가 이미 RefreshContent를 돌려 다섯 타일을
                 //   "지금 ○○ 중이에요"로 바꿔 놓았다. 접수 플래시는 그 위에 "이 칸을 눌렀다"만 얹는다.
                 _tiles[i].AcceptTimer = 0f;
                 Debug.Log($"[행동창] [{CommandNames[i]}] 실행 — 창은 닫지 않습니다" +
@@ -798,7 +815,7 @@ namespace StickMate.Interaction
             }
         }
 
-        // ==================== 명령 아이콘 6종 (28×28, 두께 1.8, 프로시저럴) ====================
+        // ==================== 명령 아이콘 5종 (28×28, 두께 1.8, 프로시저럴) ====================
 
         /// <summary>부채꼴 심볼과 <b>같은 프로시저럴 규약</b>이다: 상자 중심 원점, +y 위, 스트로크만으로
         /// 그린다. 비트맵을 쓰지 않는 이유는 32-4와 같다 — 임의의 배율/잉크색에서 선 굵기를 우리가
@@ -807,7 +824,6 @@ namespace StickMate.Interaction
         {
             Command.SayNow => BuildSpeechIcon(box),
             Command.Archery => BuildArcheryIcon(box),
-            Command.Battle => BuildBreakIcon(box),
             Command.Graffiti => BuildSprayIcon(box),
             Command.WindowTheft => BuildWindowPushIcon(box),
             _ => BuildWindowCrackIcon(box),
@@ -836,17 +852,6 @@ namespace StickMate.Interaction
             var fletch0 = Stroke(p, "Fletch0", 4.5f, 20f, new Vector2(11.0f, 7.5f));
             var fletch1 = Stroke(p, "Fletch1", 4.5f, -85f, new Vector2(9.5f, 9.2f));
             return new[] { outer, inner, shaft, fletch0, fletch1 };
-        }
-
-        /// <summary>격파 놀이 — 세로 판 2조각(좌우로 5° 벌어짐) + 가운데 지그재그 균열 3획.</summary>
-        private static Image[] BuildBreakIcon(RectTransform p)
-        {
-            var leftPlank = Stroke(p, "PlankL", 20f, 95f, new Vector2(-5.5f, 0f));
-            var rightPlank = Stroke(p, "PlankR", 20f, 85f, new Vector2(5.5f, 0f));
-            var crack0 = Stroke(p, "Crack0", 6f, -60f, new Vector2(-1.5f, 6f));
-            var crack1 = Stroke(p, "Crack1", 6f, -120f, new Vector2(1.5f, 0f));
-            var crack2 = Stroke(p, "Crack2", 6f, -60f, new Vector2(-1.5f, -6f));
-            return new[] { leftPlank, rightPlank, crack0, crack1, crack2 };
         }
 
         /// <summary>그라피티 — 캔 몸통(둥근 사각 아웃라인 4획) + 노즐 1획 + 분사 점 3개.</summary>

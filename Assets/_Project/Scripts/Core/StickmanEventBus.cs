@@ -18,11 +18,10 @@ namespace StickMate.Core
         Ragdoll,
         Getup,
 
-        // ==== Phase 3 (docs/UX_FLOW.md 10/12/13절) — 커서 상호작용/전투 미니게임 ====
-
-        /// <summary>격파 미니게임(10절): 기 모으기 게이지 → 스위트스팟 클릭 판정 → 성공/실패(최대
-        /// battleMaxRetries회 재도전)/5초 무입력 타임아웃. Idle/Walk에서 진입, 정상 종료 시 Idle 복귀.</summary>
-        BattleMinigame,
+        // ==== Phase 3 (docs/UX_FLOW.md 12/13절) — 커서 상호작용 ====
+        // ★ 2026-09-02 격파 미니게임(구 10절) 삭제 — 사용자 지시 "격파놀이는 아예없애줘 별로임".
+        //   상태/디렉터/렌더러/전용 테스트 전부 제거했다. 세이브의 battleWins 필드만 스키마 무변경을
+        //   위해 남아 있다(Core/CharacterStatsModel.BattleWins 문서 참고).
 
         /// <summary>드래그&던지기(12절): 유저가 캐릭터 히트박스를 마우스다운으로 붙잡아 끄는 동안의 상태.
         /// Kinematic으로 커서를 추종하다가 놓으면 계산된 속도로 Dynamic 던지기 → 임계값 초과 시 Ragdoll,
@@ -408,47 +407,6 @@ namespace StickMate.Core
         }
     }
 
-    /// <summary>UX_FLOW.md 10절 격파 미니게임 한 차례 시도의 결과. StickmanEventBus가 트리거 조건만
-    /// 발행하고(실제 파티클/파괴 연출은 Phase 2+ 렌더링 담당, WanderAmbientMotionRequested와 동일 패턴),
-    /// Success/RetriesExhausted/InputTimeout은 상태 종료(Idle 복귀)로 이어지고 Fail은 같은 상태 안에서
-    /// 재시도로 이어진다.
-    ///
-    /// ============================================================================
-    /// ★ 2026-09-02 — <c>Exhausted</c> 하나를 <b>둘로 쪼갰다</b>(디버거 조사 + 리더 결정)
-    /// ============================================================================
-    /// 종전에는 "재도전을 다 썼다"와 "5초 동안 클릭이 없어 유저가 이탈했다"가 <b>같은 값 하나</b>로
-    /// 발행됐다. 구독자는 둘을 구분할 방법이 전혀 없었는데, <b>화면 결과는 서로 달랐다</b>:
-    /// 재도전 소진은 캐릭터가 "오늘은 여기까지"라고 말하고 끝나고, 무입력 타임아웃은 <b>대사가 아예
-    /// 없다</b>. 실제로 렌더러의 로그가 "재도전 횟수를 다 썼거나 5초 동안 클릭이 없었습니다"라는
-    /// <b>둘 중 하나</b> 문장을 찍고 있었고, 창을 볼 수 없는 이 프로젝트의 검증 환경에서 그 문장은
-    /// 진단 정보가 아니었다(GroundSensor.DescribeGroundLoss가 같은 이유로 사유를 하나로 확정하게
-    /// 바뀐 것과 정확히 같은 병이다 — <b>하나의 신호가 두 사실을 겸하면 읽는 쪽이 알 수 없다</b>).
-    ///
-    /// <para>왜 "사유 필드를 얹기"가 아니라 <b>값을 쪼개기</b>인가: 사유 필드를 얹으면 구독자가
-    /// 여전히 <c>Exhausted</c> 하나만 보고 분기할 수 있고, 그러면 모호성이 <b>타입 안에 그대로
-    /// 남는다</b>. 값을 쪼개면 컴파일러가 모든 소비자에게 둘 중 어느 쪽인지 고르도록 강제한다 —
-    /// 모호한 것을 <b>표현할 수 없게</b> 만드는 쪽이 이 저장소의 관례다.</para>
-    ///
-    /// <para>★ 무인 도달 가능성 실측(2026-09-02, 실기 로그 2개 인스턴스): 무클릭이면 판정은
-    /// <b>1회 또는 2회</b>만 일어나고 항상 <see cref="InputTimeout"/>으로 끝난다. 소진에 필요한
-    /// 4회 판정은 10.5~12.5초가 걸리는데 타임아웃이 5초이기 때문이다. 즉
-    /// <see cref="RetriesExhausted"/>는 <b>사람이 클릭하는 경로에서만</b> 발생한다(클릭이 무입력
-    /// 타이머를 리셋하므로). 이 관계는 Tests/EditMode/BattleUnattendedReachabilityTests가 잠근다.</para>
-    /// </summary>
-    public enum BattleMinigamePhase
-    {
-        Success,
-        Fail,
-
-        /// <summary>재도전 횟수(<c>battleMaxRetries</c>)를 전부 소진했다 — 캐릭터가 "오늘은 여기까지"를
-        /// 말하고 끝난다. <b>무인(무클릭) 경로에서는 구조적으로 도달하지 않는다.</b></summary>
-        RetriesExhausted,
-
-        /// <summary>무입력 타임아웃(<c>battleInputTimeoutSeconds</c>) — "유저가 다른 작업으로 이탈".
-        /// 판정이 아니라 <b>중단</b>이므로 <b>대사가 없다</b>(할 말이 확정된 사건이 아니다).</summary>
-        InputTimeout,
-    }
-
     /// <summary>
     /// docs/UX_FLOW.md 26-3절 "살아있는 느낌" 디테일 — AutoWanderController가 타이밍/확률 조건만 판정해
     /// 발행하는 유휴 연출 신호. 실제 동작 재생은 Interaction/IdleAmbientMotionRenderer.cs가 구독해
@@ -594,10 +552,6 @@ namespace StickMate.Core
         /// </summary>
         public static event Action<LandingImpactEvent> LandingRollRequested;
 
-        /// <summary>격파 미니게임(10절) 한 차례 시도의 결과가 확정되었을 때 발생 — 실제 파괴/코믹리액션
-        /// 연출은 Phase 2+ 렌더링 레이어가 이 이벤트를 구독해 담당한다(지금은 트리거 조건만 계산).</summary>
-        public static event Action<BattleMinigamePhase> BattleMinigamePhaseChanged;
-
         /// <summary>활쏘기(2026-08-29) 과녁 오버레이 생애주기 변경 — Interaction/ArcheryRenderer.cs가
         /// 구독해 과녁을 세우고 걷는다.</summary>
         public static event Action<ArcheryOverlayEvent> ArcheryOverlayChanged;
@@ -685,9 +639,6 @@ namespace StickMate.Core
 
         public static void RaiseLandingRollRequested(float fallHeight, Vector2 footWorldPosition)
             => LandingRollRequested?.Invoke(new LandingImpactEvent(fallHeight, footWorldPosition));
-
-        public static void RaiseBattleMinigamePhaseChanged(BattleMinigamePhase phase)
-            => BattleMinigamePhaseChanged?.Invoke(phase);
 
         public static void RaiseArcheryOverlayChanged(Vector2 targetWorld, float groundWorldY, float facing, SpectacleOverlayPhase phase)
             => ArcheryOverlayChanged?.Invoke(new ArcheryOverlayEvent(targetWorld, groundWorldY, facing, phase));

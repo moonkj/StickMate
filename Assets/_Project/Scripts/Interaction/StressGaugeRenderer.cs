@@ -28,7 +28,7 @@ namespace StickMate.Interaction
     /// ============================================================================
     /// 왜 이 파일이 이제야 생겼는가
     /// ============================================================================
-    /// Core/StressGauge.cs(값 보관 + 통지)와 Interaction/StressGaugeDirector.cs(격파훈련 과다/장시간
+    /// Core/StressGauge.cs(값 보관 + 통지)와 Interaction/StressGaugeDirector.cs(과다 상호작용/장시간
     /// 방치/긴급정지 반복/자연 감소 4개 트리거 + SULKY 전이)는 Phase 5에 완성돼 있었다. 그런데
     /// <b>StickmanEventBus.StressLevelChanged를 구독하는 코드가 프로젝트 전체에 0건이었고</b> Director
     /// 자신도 씬 어디에도 배치돼 있지 않았다 — 창 도둑/크래시/하드웨어 반응과 완전히 같은 유형의
@@ -127,7 +127,7 @@ namespace StickMate.Interaction
         // 한숨 퍼프는 머리 중심에서 머리 반경의 이만큼 위에 난다(종전 1.62 - 머리중심 1.57 = 0.05, 반경 0.22 기준).
         private const float SighAboveHeadCenterRatio = 0.05f / 0.22f;
 
-        private const int SortingOrder = 8;            // 캐릭터 획(0~5) 위, 그라피티(9)/격파(10~15) 아래.
+        private const int SortingOrder = 8;            // 캐릭터 획(0~5) 위, 그라피티(9) 아래.
 
         private const float SighLifeSeconds = 1.5f;
         private const int SighMaxAlive = 3;

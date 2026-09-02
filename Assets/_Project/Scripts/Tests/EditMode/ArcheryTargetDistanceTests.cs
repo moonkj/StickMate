@@ -26,7 +26,8 @@ namespace StickMate.Tests.EditMode
     /// 리팩터했다 — 씬/카메라/MonoBehaviour 없이 EditMode에서 그대로 돌아간다.
     ///
     /// 좌표 기준값은 실행 환경 실측(1512x982pt, orthographicSize 12, 종횡비 1.54 → 가시 반폭 18.48유닛)과
-    /// 출하 배율(characterScale 0.75)에서 왔다. BattleMinigamePlacementTests와 같은 기준이다.
+    /// 출하 배율(characterScale 0.75)에서 왔다.
+    /// (2026-09-02까지는 BattleMinigamePlacementTests가 같은 기준을 공유했다 — 격파 놀이와 함께 삭제.)
     /// </summary>
     public class ArcheryTargetDistanceTests
     {

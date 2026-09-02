@@ -15,7 +15,7 @@ namespace StickMate.States
     /// 긴급 강제소환으로 스스로 복귀하는 대사) → Idle.
     ///
     /// 대사(원칙 1): Fleeing 최초 진입에서 "나 안 해!"(확정 상태에서 파생, 예고형 아님 — 이미 삐져서
-    /// 뛰쳐나가는 중이라는 현재형 사실). Reconciling/SelfReturning 진입 대사도 BattleMinigameState/
+    /// 뛰쳐나가는 중이라는 현재형 사실). Reconciling/SelfReturning 진입 대사도 RagdollState/
     /// WindowTheftState와 동일한 self-transition 패턴(Architect 결정, Tasklist.md 교차 레이어 로그)을
     /// 재사용한다 — 페이즈 전환 순간의 판정과 그 판정에서 파생된 대사가 항상 같은 프레임의 같은
     /// Enter() 호출 안에서 함께 확정되도록 강제한다.

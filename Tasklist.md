@@ -20252,3 +20252,478 @@ hover 한 단에서 글자 3.99(붕괴), 면만 푸는 풀이는 **15개 바탕 
 Tests.PlayMode 107소스, Assembly-CSharp-Editor). 신규 테스트 2파일이 **실제로 소스 목록에 들어갔는지**
 생성된 rsp에서 직접 확인했다(낡은 목록으로 인한 거짓 초록 방지).
 **단, 위 C5(Windows 폰트의 `✕` 글리프)는 여전히 미확인이다** — 낱말 교체 보류가 macOS 한정 판정이므로.
+
+---
+
+## 그라피티 "미끄러져 이동" 조사 (Debugger, 2026-09-02) — 상태: 원인 확정 / coder 배정 대기
+
+| 작업 | 담당 | 상태 | 메모 |
+|---|---|---|---|
+| 사용자 신고 "그라피티 그릴때 윈도우버전은 캐릭터가 미끄러져이동함" 원인 규명 | Debugger | 완료(수정은 coder) | **플랫폼 중립 결함**으로 확정. macOS 실기(PID 20214)에서 재현 성공 — Dock 콜라이더 위에서 3.24초 동안 **-192pt를 등속(-61.3pt/s, 감속 ~0)으로** 미끄러짐. 같은 결함이 `격파(BattleMinigame)`에서도 재현됨. |
+
+### 과학적 토론 로그 — 그라피티 미끄러짐
+
+| # | 가설 | 검증 방법 | 결과 |
+|---|------|-----------|------|
+| G1 | 진입 조건이 `Idle` 또는 `Walk`라 **걷는 중 진입**하면 잔여 수평속도가 남는다 (리더) | `GraffitiDirector.GetAvailability()` 코드 + macOS 실기 2회 시행(Idle 진입 / Walk 진입 대조) | **성립**. Idle 진입 시행(t1)에서는 이동 0.5pt(정지), Walk 진입 시행(t2)에서는 -192pt/3.24초. 잔여속도 유무가 유일한 차이 |
+| G2 | `TimedSpectacleState`가 수평속도를 손대지 않아 속도가 유지된다 (리더) | `Enter()`/`Tick()` 코드 + 실기 등속 측정 | **성립**. `Enter()`는 대사만, `Tick()`은 `GroundedTick`(y만)만. 루트 `Rigidbody2D.linearDamping=0`(SceneBootstrapper가 의도적으로 0 유지) |
+| G3 | Dock에는 콜라이더가 있어 쿨롱 마찰이 0.061유닛 만에 세우므로 **Dock 위에서는 안 보인다** (리더, `StickmanBlackboard.cs:544~` 주석) | macOS 실기에서 **Dock 위**(발판핸들 -2, y=907) 그라피티 발동 후 프레임 53장 추적 | **반증**. 2차 적합 가속도 **-0.68pt/s²**(잔차 RMS 1.06pt) = 감속 없음. 주장된 정지거리 0.061유닛(2.5pt) 대비 실측 161pt 이동. 리더의 Windows 로그(`상태=Graffiti`로 화면 왼쪽 끝 클램프, y=1552=작업표시줄 윗면)도 같은 결론 |
+| G4 | Windows는 작업표시줄 자동숨김/측면 도킹이면 마찰원이 아예 없어 더 심하다 (리더) | 리더가 사용자 Windows 로그로 직접 검증 | **반증**(리더 스스로 반증). `rect=(0,1552,2560,48)` 하단 실측 성공 + `[Dock계단] 적용`. 마찰원이 있는데도 미끄러졌다 |
+| G5 | 마찰이 안 걸리는 이유는 **접지 중력 억제**(`ApplyGroundedGravitySuppression`이 `gravityScale=0`)로 수직항력이 0이 되기 때문 | 코드 경로 + 저장소 자체 자연실험(같은 콜라이더/같은 몸: 중력 ON인 `Fall`에서는 a=11.77u/s²로 0.061유닛 만에 정지 — `WalkState` 뛰어내리기 주석의 64건 실측 / 중력 억제된 `Graffiti`에서는 3.94유닛 동안 a≈0) | **성립(강한 지지)**. `Graffiti`는 `IsGroundKeepingSelfManaged` 목록에 없고 `GroundedTick`이 접지를 확정하므로 매 프레임 끝에서 `gravityScale=0`이 얹힌다. 배포 기본값 `groundedGravitySuppressionEnabled=1` |
+| G6 | 리더 대안: `GroundedTick`의 위치 스냅이 물리 마찰을 무력화한다 | `SnapToGround` 코드 | **기여도 낮음(사실상 반증)**. `MoveBodyToWorld`는 `\|delta\|>0.001`일 때만 실행되는데, 중력 억제 + `v.y=0`이라 평평한 Dock 위에서는 y가 어긋나지 않아 **텔레포트가 거의 발생하지 않는다**. 반대로 중력이 켜져 있었다면 매 프레임 침투가 생겨 `FixedUpdate` 안에서 마찰이 정상 작동했을 것이다 |
+
+**실측 방법(재현 가능)**: `.claude/skills/run-stickmate/bin/keyhold`로 ⌃⌥⌘G를 주입하되, 주입 **전에** 연속 캡처로
+"캐릭터가 실제로 이동 중"임을 확인한 뒤에만 주입(벽시계 기준, 프레임 수 예산 아님). 155ms 간격 `screencapture`
+버스트 + 중앙값 배경 차분으로 프레임별 x를 뽑았다. 하니스/원본 프레임은 세션 스크래치패드에 있다.
+
+**Windows 영향: 프로덕션 코드 수정 없음(조사만).** 결함 자체는 `States/TimedSpectacleState.cs` /
+`States/BattleMinigameState.cs` / `States/WindowTheftState.cs` / `States/StickmanBlackboard.cs` —
+전부 `#if` 분기가 없는 플랫폼 중립 코드다. 즉 macOS와 Windows가 **같은 결함을 공유**하며, 신고가
+Windows에서 온 것은 그 환경에서 더 눈에 띈 것일 뿐이다(수정도 한 번에 양쪽에 적용된다).
+
+---
+
+## [Coder] 2026-09-02 — 모자 6종 "머리를 다 가린다" 처방 이식 — **완료(빌드 캡처 판정은 리더)**
+
+대상: `design/equipment/HAT_HEADROOM_PRESCRIPTION.md` (design-equipment 작성, 리더가 hatfix.py/control_hatfix.py로 사전 검증).
+사용자 신고 2건: *"털모자착용시 거의 머리전체를가림"* / *"지금 모자도 과하게 머리를 덮는거 같아 ㅁ자 창때문에 이것도 대부분의 머리를 가림"*.
+
+### 반영한 것 (`Assets/_Project/Scripts/Interaction/AccessoryShapeBuilder.cs`)
+
+| 항목 | 현행 -> 새 값 |
+|---|---|
+| `HatBrimRootDropRatio` | 0.46f -> **0.18f** (+ XML 문서 재작성 — "뿌리 두께"가 아니라 "뒤쪽 수렴점의 닫힘변") |
+| `BeanieBandBottomRatio` | −0.64f -> **−0.26f** |
+| `BeanieCuffBottomHalfWidthRatio` | 0.64f -> **0.56f** |
+| `BeanieCuffFlareHalfWidthRatio` / `BeanieCuffFlareBottomRatio` | **삭제**(허리 파임 0.08R = 0.23획, 어느 배율에서도 안 보였다) |
+| `HatBrim` | 7점 중 4점 이동 — 부피를 머리 원 **밖**(x=+1.22R)으로, x=0 구간은 0.184R 얇은 판 |
+| `FedoraBrim` / `StrawBrim` | 7점 -> **8점**(뒤 챙 밑면 추가), 같은 원리 |
+| 털모자 | 관+단을 **한 채움**으로 합치고 접힌 자리를 `tone: Shade` **낱선 하나**로 |
+
+**커버선 6종 무변경**(+0.06 / −0.06 / +0.08 / +∞ / +0.02 / +0.08 — 덤프로 실측 확인). 머리카락 자르기 계약 그대로.
+**왕관·베레모 무변경.**
+
+### 왜 털모자만 구조가 바뀌는가
+남는 머리 목표(1.20획)를 채우려면 단 밑단이 −0.26R 위여야 하고, 그러면 단 두께가 0.20R뿐이라
+`ρ_max ≈ 0.10R` — 규칙 1-C(`ρ_max ≥ 0.21818R`)를 **채움으로는 통과 불가능**하다. 두 요구가 배타적이라
+"덩어리 = 채움 / 디테일 = 선 1개"(스펙 3절 원칙 7)로 풀었다. 실루엣 합집합이 같아 실루엣은 불변이고,
+겹치는 채움이 사라져 `ApplyAlpha` 페이드 중 이음매 위험이 0이 된다.
+
+### 검증
+
+| 검사 | 결과 |
+|---|---|
+| **`python3 Tools/ShapeDump/prodverify.py`** (프로덕션 좌표 실측 — 이게 진짜 판정) | **총 위반 0건.** 남는 머리 12행 전부 하한(1.00) + 목표(1.20) 통과. before 4건 -> **0건** |
+| 좌표 일치 | 덤프 실측이 처방서 §3-2/3-3/3-4/3-5 좌표와 **한 자리도 안 틀림** |
+| 남는 머리 @0.60 | 야구 0.85 -> **1.51** / 털 0.34 -> **1.22** / 중절 0.88 -> **1.25** / 밀짚 1.03 -> **1.25**획 |
+| EditMode 1381건 | **1369 통과 / 2 실패 / 10 스킵** — 클린 HEAD 베이스라인과 **완전 동일**(그 2건은 내 변경 전부터 빨갛다) |
+| 규칙 1-C 로그 | `채운 도형 60개 / 게이트 펜 0.21818R / 위반 4개(전부 대장 등재)` — 모자는 한 줄도 안 들어갔다 |
+| 도형 수 | 81개 = 채움 **60** / 낱선 **21** (전 61/20) |
+| 크로스 컴파일 | `xcheck.sh win` / `osx` **양쪽 errors=0** (내 변경분 기준) |
+
+### 함께 고친 것
+
+- `Tests/PlayMode/CharacterAccessoryScaleTests.cs` 골든 3개가 프로덕션과 **어긋난 채 방치**돼 있었다:
+  `HatBrimLineRatio` 0.62 -> **0.06** / `HatCrownHeightRatio` 1.05 -> **1.18** / `HatBrimReachRatio` 1.95 -> **1.92**.
+  ★ 이 사본은 **의도된 것**이라 상수 참조로 바꾸지 않았다 — 손으로 옮겨 적고 출처를 주석에 남겼다.
+  PlayMode 실행에서 이 클래스 12케이스 전부 통과.
+- 주석의 "채움 61 / 낱선 20" 3곳(`Core/StickConfig.cs` 2곳, `Tests/EditMode/FillOutlineStrokeFloorTests.cs` 1곳)을
+  60/21로. `AccessoryFillAreaRuleTests`의 2곳은 **과거 실측 기록**이라 "당시 61개"로만 표기.
+
+### ★ 교차 레이어 영향 로그 (리더 판단 필요)
+
+1. **`AccessoryBeaniePomTests.모자_6종_실루엣_차이가_2_95획_아래로_내려가지_않는다`가 빨개졌다.**
+   모자 6종 쌍별 최소 실루엣 차 **1.84획(왕관↔베레모) -> 1.50획(털모자↔왕관)**. 처방서 §5 표가 예고한
+   값 그대로다(규칙 5 하한은 1.00획 — **여유 50%**). 이 검사는 규칙이 아니라 **래칫**이라, 하한을
+   1.80 -> **1.45**(직전 실측 −0.05, 1.84->1.80 때와 같은 폭)로 낮추고 사유를 문서에 남겼다.
+   이름에 박힌 `2_95획`이 두 라운드째 실제 하한과 어긋나 있어 **메서드명도 숫자 없는 이름으로 바꿨다**
+   (`모자_6종_실루엣_차이가_직전_실측_아래로_내려가지_않는다`). **래칫을 낮춘 판단은 리더가 뒤집을 수 있다.**
+2. 털모자 `BeanieCuff`가 **채움 -> 낱선**이 되면서 렌더 레이어의 채움/낱선 집합이 60/21로 바뀐다.
+   `MinStrokeScreenPoints`(낱선 2.00pt)와 `MinFillOutlineScreenPoints`(채움 1.00pt) 중 이 도형에
+   적용되는 하한이 바뀐다 — 화면에서 단이 **더 굵게** 그려진다(의도된 것: 그래야 접힌 단으로 읽힌다).
+
+### 미확인 (추측으로 메우지 않는다)
+
+- **실제 빌드 착용 캡처로 판정하지 않았다.** 오프라인 렌더러가 둥근 캡으로 코너 붕괴를 가린 사고가
+  이 저장소에 있으므로 최종 판정은 리더의 빌드 캡처로만 한다.
+- **"접힌 단이 낱선 하나로 읽히는가"는 캡처로만 확정된다.** 배율 0.60에서 낱선 폭 0.4298R이
+  −0.06R에서 −0.275R까지 퍼지는 그림이다.
+- ★ **PlayMode 전체(558건)의 실패 5건을 내 것으로/남의 것으로 확정하지 못했다.**
+  - 확정: `DialogueComicTextPlacementTests.TiltFollowsTheConfig...`와
+    `FloorContactVisibilityTests.FeetVisuallyTouchScreenBottom...`은 **내 작업 전(09-02 05:52,
+    09-01 14:18)부터 이미 빨갰다** — 과거 결과 xml로 확인.
+  - **미확인 3건**: `AppearanceNewItemsRenderTests` 달팽이/풍선(`EquipmentSlot.Pet`),
+    `LiveObjectGrowthGuardTests.G1`. 05:52에는 통과했고 그 사이 커밋 4개(`b6f1b4f`/`ecc2e28`/
+    `2978d56`/`079327d`)가 있다. **클린 HEAD PlayMode 베이스라인을 못 돌렸다** — 검증 도중
+    다른 에이전트가 `BattleMinigame` 제거를 진행해 공유 트리가 **컴파일되지 않는 상태**가 됐다
+    (`StickmanAgent.cs` / `CharacterPortraitStage.cs` / `ActionCommandPopover.cs`, 09:45~09:51).
+    내 6개 파일에는 컴파일 에러가 **0건**이고, 세 실패 모두 HEAD 모자 도형과 코드 경로가 닿지 않는다
+    (PET 렌더러 / 오브젝트 누수 감시)는 것이 구조적 근거지만 **실측 반증은 못 했다.**
+
+**Windows 영향: 없음.** `Interaction/AccessoryShapeBuilder.cs`는 `UNITY_STANDALONE_*` 분기가 없는
+플랫폼 중립 런타임이고, 좌표가 전부 `Rig` 상대값(`HeadRadius`/`HeadCenterY`)이라 DPI·배율·플랫폼과 무관하다.
+그럼에도 `xcheck.sh win` / `osx` 양쪽을 돌려 errors=0을 확인했다.
+다만 남겨 둔다 — 규칙 1-C가 쓰는 `MinFillOutlineScreenPoints = 1f`의 하한 근거는 **Windows 표시배율
+100%(1pt = 1 물리픽셀)**이므로, 그 상수를 나중에 누가 만지면 **Windows에서 먼저 깨진다.**
+
+---
+
+## 2026-09-02 — coder: 1px 창 폭 래칫 원인 특정 + 차단 (Windows 2차 신고) ✅
+
+**신고**: "윈도우 버전인데 여전히 사용할수록 렉생김" / (이전) "쓸수록 느려지고 재시작하면 회복"
+
+### ★ 원인 확정 — 추측 아님, 패키지 C++ 원본 실측
+
+재적용 루프는 **크기를 한 줄도 대입하지 않는다**. 그런데도 폭만(높이 1600 고정) 1px씩 줄었다.
+범인은 `_controller.isTransparent = DesiredTransparent;` **한 줄**이었다.
+
+```
+_controller.isTransparent = true
+  -> UniWinCore.EnableTransparent(true)                  (UniWinCore.cs:535)
+     -> LibUniWinC.SetTransparent(true)    ... DWM 유리. 창 사각형 안 건드림
+     -> LibUniWinC.SetBorderless(true)     ... ★ 범인
+```
+
+`SetBorderless`(kirurobo/UniWindowController `VisualStudio/LibUniWinC/libuniwinc.cpp:694~`, 원본 인용):
+
+```cpp
+int offset = 1;
+if (bBorderless) { newStyle = (WS_VISIBLE | WS_POPUP); offset = -1; }   // ★ 보더리스면 -1
+...
+SetWindowPos(hWnd, NULL, newX, newY, newW + offset, newH, SWP_FRAMECHANGED|...);  // 폭 -1
+SetWindowPos(hWnd, NULL, newX, newY, newW,          newH, SWP_FRAMECHANGED|...);  // 폭 복구
+SetWindowLong(hWnd, GWL_STYLE, newStyle);
+SetWindowPos(hWnd, NULL, newX, newY, newW + offset, newH, SWP_FRAMECHANGED|...);  // 폭 -1
+SetWindowPos(hWnd, NULL, newX, newY, newW,          newH, SWP_FRAMECHANGED|...);  // 폭 복구
+```
+
+**동등성 가드가 없다.** 이미 보더리스여도 매번 다시 한다. 소스 주석이 흔들기의 목적을 직접 밝힌다:
+*"Unity2019까지의 순서로는 Unity2020에서 크기가 되돌아간다. 크기 변경을 반복하거나…"* —
+즉 **Unity가 리사이즈를 알아채게 하려고 일부러 폭을 흔드는** 코드다. 관측과 세 군데가 일치한다:
+
+| 실기 관측 | 코드 사실 |
+|---|---|
+| 폭만 줄고 높이 1600 불변 | 흔들기는 `newW + offset`에만 걸린다(`newH` 고정) |
+| 잔차 부호가 **음수** | 보더리스일 때 `offset = **-1**`이라 중간 상태가 항상 더 좁은 쪽 |
+| 회차마다 **누적** | 다음 호출 기준값을 `GetWindowRect`/`GetClientRect`로 다시 읽는다 |
+
+**더 큰 피해는 1px이 아니다**: 흔들기 자체가 **클라이언트 영역 변경 4회 = 스왑체인/리디렉션 표면
+재생성 4회**다. `MarkDirty()`가 라운드를 재무장하므로 **UI 표면 개폐 1회당 최대 20회**.
+`[프레임스파이크] 268ms`, `[프레임시간] 최대 2142.89ms`의 정체가 이것이다.
+
+**무죄 확정**(같은 소스 실측): `SetClickThrough`는 `SetWindowLong(GWL_EXSTYLE)`뿐(:954),
+`SetTopmost`는 `SWP_NOSIZE|SWP_NOMOVE`(:833), `isHitTestEnabled`는 순수 C# 필드. 셋 다 창 사각형
+무관. 리더가 지목한 대로 **`isTransparent`가 범인**이었다.
+
+### 처방 — "무조건 재적용을 없애지 않는다. 반으로 쪼갠다."
+
+라이브러리가 한 덩어리로 묶은 두 일은 성질이 정반대다.
+
+| | 실측 가능? | 비용 | 처리 |
+|---|---|---|---|
+| 유리(DWM 확장 프레임) | **불가**(되읽는 공개 API 없음) | 0(사각형 무관) | **매 회차 무조건** 다시 건다 |
+| 보더리스(스타일) | **가능**(`GetWindowLong(GWL_STYLE)`) | 리사이즈 4회 | 실측이 이미 목표면 **안 부른다** |
+
+즉 캐시를 믿고 생략하는 것이 아니라 **OS에게 물어보고** 생략한다 — `isTopmost`에서 데인
+그 함정(캐시 게터를 진실로 착각)을 반복하지 않는 유일한 방법이고, 리더의 제약("없애려면 네이티브
+실측으로 대체하라")을 그대로 이행한 것이다. 화면을 실제로 비치게 만드는 쪽(유리)은 여전히 무조건
+재적용되므로 "회색 불투명 전체화면 창" 방어는 손상되지 않는다.
+
+**리더가 제시한 대안(사후 복원)은 기각했다**: 깎인 만큼 되돌리는 것 자체가 또 하나의 클라이언트
+영역 변경이라, 리사이즈 4회를 5회로 늘리면서 폭만 맞추는 거래가 된다. 정지 시간(신고의 본체)은
+오히려 나빠진다.
+
+### 파일
+
+| 파일 | 내용 |
+|---|---|
+| `Platform/OverlayStateReapplyPolicy.cs` **(신설)** | 순수 규칙. `ReapplyAttempts`/`ReapplyIntervalSeconds` 공용화, `IsBorderless(style)`, `DecideTransparencyReapply(...)`, 한국어 `Describe`. P/Invoke·UnityEngine 0줄 |
+| `Platform/Windows/WindowsWindowStyleProbe.cs` **(신설)** | `GetWindowLong(GWL_STYLE)` **사실 조회 전용**. 판정 0줄(정책은 중립 위치) |
+| `Platform/Windows/UniWinCNativeHandle.cs` | `TrySetTransparent(bool)` 추가 — 유리만 다시 거는 직접 P/Invoke. 실패하면 **같은 틱에** 전체 경로로 폴백 |
+| `Platform/Windows/WindowsOverlayStateEnforcer.cs` | 재적용 루프의 투명 처리를 정책에 위임. `SetBorderless 실행 누적 N회`를 로그에 노출 |
+| `Platform/MacOS/MacOverlayStateEnforcer.cs` | 상수 출처만 공용화(값 5 불변). **왜 macOS는 같은 수술을 안 하는가**를 근거와 함께 주석으로 남김 |
+| `Tests/EditMode/OverlayTransparencyReapplyTests.cs` **(신설 14건)** | 래칫 재현 + 차단 + 안전 방향 + 배선 |
+| `Tests/EditMode/PlatformParityAuditTests.cs` | 새 플랫폼 분기 1건 추가 |
+
+### macOS는 왜 안 고치는가 — 관측이 아니라 **원인**까지 확인했다
+
+이전 라운드는 "macOS 로그에 안 나타난다"까지만 알았다. 이번에 Swift 원본을 열어 이유를 확정했다:
+`Xcode/LibUniWinC/LibUniWinC.swift · _setWindowBorderless`는 `window.styleMask = [.borderless]`
+한 줄이라 **프레임을 건드리지 않고**, 심지어 `window.styleMask != [.borderless]` **동등성 가드까지
+이미 걸려 있다**. Windows판에만 그 가드가 없다. → 같은 수술은 얻는 것 없이 실측 튜닝이 끝난 경로에
+위험만 넣는다. 그 판단 근거를 macOS Enforcer 주석과 패리티 감사에 남겨, 다음 사람이 "한쪽만
+고쳐진 갭"으로 오판하지 않게 했다.
+
+### 검증 — 무엇을 확인했고 무엇을 **못** 했는가
+
+**확인함**
+- `Tools/CrossCompile/xcheck.sh` 동등 격리판으로 **win / osx 양쪽 errors=0**
+  (runtime editor·player, Tests.EditMode, Tests.PlayMode). 표준 `xcheck.sh`는 **다른 라운드가
+  `Interaction/BattleMinigame*`를 제거 중이라 트리가 일시적으로 안 깨진 상태가 아니어서**
+  `ActionCommandPopover.cs:203`에서 실패한다(내 변경과 무관). 그래서 `git archive HEAD` +
+  이 라운드 파일 7개만 얹어 격리 컴파일했고, **"내 파일이 7개 다 얹혔는가"를 스크립트가 스스로
+  검사**해 "아무것도 안 검사하고 초록"을 막았다.
+- 신설 테스트 **14건 전부 통과**. Unity 배치모드는 위 컴파일 에러로 거부되므로,
+  **프로덕션 규칙 파일과 테스트 파일 원본을 한 글자도 고치지 않고** .NET 6으로 컴파일해
+  리플렉션으로 `[Test]` 메서드를 실행했다(대체물은 둘뿐 — Unity 밖에서 존재할 수 없는
+  `Application.dataPath`와, 동봉본이 net40이라 참조 불가한 NUnit 단정문).
+- **네거티브 컨트롤 2종으로 하네스가 실제로 무는 것을 확인**했다(거짓 초록 방지):
+  (A) 정책 가드를 떼어낸 사본 → 배선 테스트 1건 실패. (B) 규칙을 "수정 전"으로 되돌린 사본 →
+  래칫 차단 3건 실패.
+
+**못 했음 (정직한 한계)**
+- **이 머신에는 Windows가 없다. 실기에서 1px이 실제로 사라졌는지 확인하지 못했다.**
+  "고쳤다"가 아니라 **"이 코드가 왜 1px을 깎는지 특정했고, 이렇게 바꾸면 안 깎일 것으로 판단한다.
+  실기 미확인"**이 이 라운드의 정확한 상태다.
+- `PlatformParityAuditTests`의 신규 1건은 **컴파일만** 확인했다(전체 런타임 어셈블리를 요구해
+  하네스로 실행 불가). 그 단정문들이 참임은 같은 파일들을 grep으로 하나씩 확인했다 — 테스트
+  실행이 아니라 수동 확인이다.
+
+### 다른 소유자에게 (내 파일이 아니라 보고만)
+
+1. **`Win32WindowService.cs:1297`의 `_overlayHwnd = self.MainWindowHandle`은 여전히 .NET 규칙이다.**
+   `UniWinCNativeHandle` 문서가 경고하는 그 불일치가 실제로 나면, 그 핸들을 쓰는
+   **`WindowsTopmostWatchdog`의 `GWL_EXSTYLE` 실측도 엉뚱한 창**을 재게 된다. 이번 라운드의 스타일
+   실측은 그래서 네이티브 핸들을 먼저 쓰고 .NET으로 폴백하게 했지만(로그에 `핸들=네이티브/.NET폴백`
+   표기), **근본 통일은 별도 배정이 필요하다**(발판/DPI/모니터 선택까지 영향).
+2. 작업 트리가 지금 컴파일되지 않는다(위 `BattleMinigameDirector`). 그 라운드가 끝나면 표준
+   `xcheck.sh`를 한 번 돌려야 한다.
+
+### 교차 레이어 영향 로그
+- **네이티브 계층**: `Platform/Windows/`에 `LibUniWinC.SetTransparent` 직접 P/Invoke가 1건
+  늘었다(우리 자신의 창 대상, 읽기 아님이지만 **우리 창에만** 작용 — 원칙 3 무관). 실패 시
+  자동으로 옛 경로로 폴백한다.
+- **렌더 계층**: 정상 경로에서 재적용당 `SetWindowPos` 4회가 **0회**가 된다. 백버퍼 크기가 세션
+  내내 고정되므로 `[RESAMPLE]`(백버퍼≠클라이언트) 계열 진단의 관측값이 바뀔 수 있다 —
+  다음 실기 로그를 볼 때 참고.
+- **입력/AI 계층**: 영향 없음. 클릭 관통·항상위·히트테스트 경로는 한 글자도 바뀌지 않았다.
+
+### 실기 확인 요청 목록 (리더 -> 사용자)
+1. 새 빌드로 30분 이상 평소처럼 사용(정보창/설정창/투두 등을 여러 번 열고 닫는다).
+2. `Player.log`에서 `SetBorderless 실행 누적` 검색.
+   - **계속 `0회`면 이 라운드가 정답이다.**
+   - 숫자가 늘고 있으면 같은 줄의 `OS 실측 GWL_STYLE=0x...`와 `보더리스=False`, `핸들=` 값을
+     그대로 보내 달라 — 그 세 값이 "왜 실측이 목표와 다른가"를 바로 가른다.
+3. `windowSize=(...)`가 세션 내내 **첫 값 그대로인지** 확인(예: 2560이 계속 2560).
+4. `[프레임스파이크] ... 백버퍼가 바뀌었다`가 더 이상 안 나오는지 확인.
+5. 캐릭터가 **회색 사각형 안이 아니라 바탕화면 위에 그대로** 보이는지, 캐릭터 바깥을 클릭하면
+   아래 창이 눌리는지(클릭 관통) 확인 — 이 두 가지가 이번 변경의 회귀 감시 대상이다.
+
+**Windows 영향: 함께 수정함(이 라운드의 본체가 Windows다).**
+**macOS 영향: 상수 출처 공용화 + 주석뿐 — 동작 변경 0.** 값(5 / 0.5초)이 그대로이고
+`osx` 크로스 컴파일 errors=0으로 확인했다. macOS에 같은 결함이 없다는 것은 Swift 원본에서
+원인까지 확인했다(위 절).
+
+---
+
+## 2026-09-02 — coder: 격파 놀이(BattleMinigame) 기능 전체 제거 ✅
+
+사용자 지시: *"격파놀이는 아예없애줘 별로임"*. 리더 배정.
+
+### 삭제 완전성 — 양성 대조 (지우기 전/후 실측)
+
+`BattleMinigame|격파|BattleWins|battleWins` 전수 검색(`.git` 제외):
+
+| | 파일 | 매치 |
+|---|---|---|
+| 착수 전 | 84 | 671 |
+| 완료 후 | 55 | 404 |
+
+**"0건"이 목표가 아니다.** 남은 404건의 분류는 아래와 같고, 각각 왜 남아도 되는지 적었다.
+
+**프로덕션 `.cs`에서 주석이 아닌 실제 코드로 남은 것은 정확히 8줄이며, 전부 저장 스키마 경로다:**
+
+```
+CharacterSaveStore.cs:143   public int battleWins;
+CharacterSaveStore.cs:410   CharacterStatsModel.RestoreFromSave(data.battleWins, ...)
+CharacterSaveStore.cs:792   battleWins = CharacterStatsModel.BattleWins,
+CharacterStatsModel.cs:47   public static int BattleWins { get; private set; }
+CharacterStatsModel.cs:138  internal static void RestoreFromSave(int battleWins, ...)
+CharacterStatsModel.cs:143  BattleWins = Mathf.Max(0, battleWins);
+CharacterStatsModel.cs:157  BattleWins = 0;                       // ResetForTesting
+```
+
+나머지 프로덕션 매치는 **전부 주석**이고 세 부류다: ① 실제 Player.log 원문 인용(사실 기록),
+② "당시 이런 사고가 있었다"는 날짜 붙은 이력, ③ 이번 삭제 자체를 설명하는 신규 메모.
+③은 남는 게 목적이다. ①②는 원문을 고치면 증거가 훼손되므로 "(2026-09-02 삭제)" 표식만 붙였다.
+
+### 리더 판정 이행 — 세이브 스키마 무변경
+
+`CharacterSaveStore`의 직렬화 계약을 **한 글자도 바꾸지 않았다**. `CurrentVersion`도 그대로(v9).
+
+- **`CharacterStatsModel.BattleWins`는 남겼다.** 판단 근거: 이 값을 지우면 `CharacterSaveStore`가
+  `battleWins`에 쓸 값의 출처가 없어져 결국 어딘가에 원본 int를 들고 있어야 한다. 즉 "지운다"가
+  실제로는 "이름만 바꾼다"가 된다. 그럴 바엔 이름을 유지하는 쪽이 정직하다.
+- **`AddBattleWin()`은 지웠다.** 프로덕션 호출자가 0이 된 public 뮤테이터는 "이 기능이 아직
+  있다"는 거짓말이다. 값을 **올리는** 경로만 없애고 **읽고 그대로 다시 쓰는** 경로는 살렸다.
+- 회귀 잠금 신설: `CharacterStatsPersistenceTests.격파_전적은_기능이_사라진_뒤에도_저장_왕복에서_살아남는다`
+  — 저장 JSON에 `battleWins` 키가 물리적으로 있는지 + 왕복 후 값이 보존되는지를 본다.
+  씨앗이 0이면 "안 지워졌다"와 "원래 0이었다"가 똑같이 생기므로 네거티브 컨트롤을 함께 뒀다.
+- v2/v6/v7 픽스처가 `battleWins`를 담고 있는 기존 테스트 4건(`EquipmentMigrationTests` /
+  `UiLayoutPersistenceTests` / `InkColorPersistenceTests` / `TodoPersistenceTests`)은 **손대지 않았다.**
+  이제 그것들이 "삭제 후에도 구버전 파일이 그대로 읽힌다"의 증거로 승격됐다.
+
+### 빈 자리를 남기지 않았다 (36-7 "조용한 실패 금지")
+
+**[행동] 팝오버**: 종전 레이아웃은 **정확히 딱 맞는 값**이었다 — 콘텐츠 높이 502 = 푸터 바닥 −502.
+타일을 하나 빼면 푸터 **아래에 정확히 한 행(52pt)의 빈 띠**가 생긴다. 그래서 창 세로를
+**560 → 508**로 줄여 딱 맞음을 복원했다(검산: 508−42−16 = 450 = 422+28).
+`Group1Height` 250→198, `Group2Y` −296→−244, `FooterY` −474→−422.
+`CommandCount`는 상수 6에서 `System.Enum.GetValues(typeof(Command)).Length`로 바꿨다 — 이 값이
+`_tiles` 배열 길이를 정하므로 손으로 적으면 어긋나는 날 타일이 조용히 사라진다.
+
+**정보창 스탯**: 6→5→**4행**. 여기는 창 높이가 우측 컬럼에서 나오고 좌측 스탯은 훨씬 위에서
+끝나므로 빈 띠가 생기지 않는다(2026-09-01의 6→5도 같은 이유로 치수를 안 건드렸다).
+
+### 참조만 하던 테스트 — 의도를 죽이지 않았다
+
+| 테스트 | 처리 | 근거 |
+|---|---|---|
+| `SuspendClickBlockerAuditTests` | 면제 항목 삭제(→ 빈 목록) + **빈 목록 위 vacuous pass 차단** | 빈 컬렉션 foreach는 아무것도 재지 않고 초록이 된다. `Assert.IsEmpty(Exempt)`로 "비어 있음"을 기대값으로 명시했다. 차단막 소유자 수는 6→5, 하한 5와 같아져 하나만 더 줄면 걸린다 |
+| `PlannedDwellStateScopeTests` | 진입 상태를 `ParkourClimb`로 교체 | 재는 성질("배회가 서술 안 하는 상태 = NaN", "스펙터클 종료 Idle 침묵")이 상태 이름과 무관하다. 검사 대상 수 2→2로 유지 |
+| `DockSinkholeRegressionTests` T1b | `WindowTheft`로 교체 + **선행 단언 추가** | 규칙(`IsGroundKeepingSelfManaged == false`)을 재는 것이지 그 상태를 재는 게 아니다. 새 상태가 자기관리로 분류되면 시나리오가 무의미해지므로 `Assert.IsFalse(...)`를 먼저 둬 "안전망이 안 도는 상태를 놓고 안전망이 지켰다고 통과"하는 것을 막았다. 검사 대상 3→3 |
+| `ExclusiveSurfaceOverlapTests` | 주석의 스탯 행 목록만 갱신 | 겹침 측정 자체는 무관 |
+| `ActionCommandPopoverTests` | `Assert.AreEqual(6, ...)` 두 줄 → enum과 `CommandCount`의 **일치**를 잰다 | 협업 규칙("테스트에 프로덕션 상수를 숫자로 베끼지 않는다") 위반이 실제로 이 라운드에서 깨졌다 |
+| `CharacterPortraitStageTests` | Busy 포즈 대상을 `Graffiti`로 교체 | 같은 Busy 분류의 살아 있는 상태 |
+
+### 거짓말이 될 문서·주석·로그를 함께 정리했다
+
+- **`docs/UX_FLOW.md` 10절** — 11절(라이벌 삭제)과 **같은 선례**로 (삭제) 배너 처리. 절 번호는
+  12절 이하가 상호 참조하므로 재번호하지 않았다. 11절 배너의 *"격파는 그대로 살아 있다"* 문장이
+  이번 삭제로 거짓이 됐으므로 함께 고쳤다.
+- **현재 상태를 주장하던 표/목업 25곳**을 갱신: 정보창 스탯 목업 2개, 행동 명령창 목업·아이콘표·
+  종료조건표, 단축키 표, 보관함 행동 13→12종, XP 보너스 목록, 설정 토글 그룹 라벨, 초상화 포즈 표.
+- **U2 사용자 검증 항목 폐기** — *"격파 미니게임 1회 녹화"*를 사용자에게 요청하고 있었다. 재현 불가.
+- **사라진 파일을 선례로 들던 곳**(`BattleMinigameRenderer`의 4겹 게이지 / `LocalClickCaptureGate`
+  선례 / `orthographicSize` 실사용처 목록 / `BattleMinigameDirector.cs:64`)을 살아 있는 파일로 교체.
+- **`docs/MOTION_SPEC.md`** — 이 문서의 최우선 배정 M1이 통째로 무의미해졌다. 다른 에이전트의
+  산출물이라 본문을 고치지 않고 **폐기 배너**를 머리에 달았다(0절 "4건 중 3건" → "3건 중 3건").
+- **`.claude/skills/run-stickmate/SKILL.md`** — `K` 키가 격파를 발동한다고 안내하고 있었다. 지금은
+  눌러도 아무 일이 없으므로 그 사실을 명시했다(`driver.sh`의 로그 필터 패턴도 정리).
+- `README.md`(States 14→13종 / Interaction 18→17) / `docs/ARCHITECTURE.md` / `design/surface/WIREFRAMES.md`
+  / `docs/UI_SURFACE_SPEC.md` / `.claude/agents/design-motion.md`.
+
+### ★ 덤 — 리더가 지적한 "우클릭 메뉴" 오기 수정
+
+`ArcheryDirector`의 활쏘기 **종료 로그**가 2026-08-31에 폐지된 우클릭 메뉴를 아직도 안내하고 있었다:
+
+> *(자율 발동 확률은 기본 0이라 실제로는 단축키 Ctrl+Opt+Cmd+A / **우클릭 메뉴**로만 다시 볼 수 있습니다)*
+
+→ `기어 아이콘 → 부채꼴 ④[행동] → [활쏘기]`로 고쳤다. 조합키 표기도 리터럴 대신
+`ShortcutLabel.Chord("A")`를 쓰게 해 Windows에서 macOS 글리프가 찍히던 문제까지 같이 막았다.
+같은 파일의 클래스 문서 1곳도 함께 고쳤다.
+
+**남은 같은 종류의 오기: 프로덕션 `.cs`에 "우클릭 메뉴" 문구가 26곳 더 있다**(대부분 주석,
+`StickConfig` 툴팁 3곳은 **설정창에 실제로 보이는 문자열**). 이번 라운드 범위 밖이라 손대지 않았다 —
+별도 배정 필요.
+
+### 남긴 것 — `GlobalKey.K`(예약, 비어 있음)
+
+열거값과 macOS/Windows 양쪽 키코드 매핑을 **그대로 뒀다**. 지우려면
+`Platform/Windows/Win32WindowService.cs`의 `case GlobalKey.K`를 함께 고쳐야 하는데, 이 라운드와
+동시에 다른 라운드가 `Platform/Windows/`(창 1px 래칫)를 편집 중이라 리더가 접근을 막았다.
+바인딩만 끊었으므로 지금 `⌃⌥⌘K`는 아무 일도 하지 않고 부팅 배너에도 나오지 않는다.
+문서에 "다음에 단축키가 필요한 기능은 이 자리를 먼저 써라"라고 적어 뒀다.
+
+### 검증
+
+- **크로스 컴파일**: `Tools/CrossCompile/xcheck.sh osx` / `win` **양쪽 전부 통과(errors=0)**.
+  runtime(editor) / runtime(player·릴리스) / Tests.EditMode / Tests.PlayMode / Assembly-CSharp-Editor
+  5개 어셈블리 × 2플랫폼. 첫 시도에 `ActionCommandPopover`가 CS0104(`using System;`이
+  `UnityEngine.Object`와 충돌) 6건을 냈고 `System.Enum`으로 정규화해 해결했다 —
+  **osx는 통과하는데 win만 깨지는 종류가 아니었다(양쪽 동일).**
+- **골든 파일**: `ItemCatalogGolden.txt`에서 `action.battle` 블록 6줄 삭제 + `actions=13`→`12`.
+  `ItemCatalogAssetParityTests`가 전문 완전 일치를 요구하므로 이건 선택이 아니라 필수다.
+- **`DefaultStickConfig.asset`**: `battle*` 10줄 + `progressionBattleWinXp` 1줄 = 11줄 제거.
+
+### 교차 레이어 영향 로그
+
+- **입력 계층**: `GlobalKey.K` 바인딩 제거. 열거값/플랫폼 매핑은 유지 → **양 플랫폼 동작 동일**.
+- **UI 표면 계층(★ ux-designer 확인 필요)**: [행동] 팝오버 세로 **560 → 508**.
+  기존 주석의 근거 *"설정창(720×560)과 같은 560 — 같은 앱 가족으로 보이게 한다"* 가 깨진다.
+  "가족처럼 보이기"와 "푸터 아래 빈 띠 없애기"가 충돌해 후자를 골랐다(가족감은 UiChrome의
+  모서리 반경·간격 토큰·타이포가 이미 담당하고, 세로 치수 일치는 그중 가장 약한 신호라는 판단).
+  **coder 단독으로 확정할 판단이 아니다 — 리더를 거쳐 ux-designer 확인 요청.**
+- **AI/대사 계층**: `DialogueKind`의 "같은 상태가 서술/반응 두 종류를 갈라 쓴다"는 설계의
+  **유일한 실례가 격파였다.** 전수 확인 결과 지금 두 종류를 갈라 쓰는 상태는 **하나도 없다**
+  (서술만: ParkourClimb/LedgeHang/AmbientChatter, 반응만: Ragdoll/Attack/WindowTheft/Runaway/
+  TimedSpectacle). 설계 능력은 남기되 없는 예시를 있는 척 적지 않도록 문서를 고쳤다.
+- **성장 계층**: XP 보너스 소스가 2종(격파 25 / 명중 15) → **1종**. 패시브가 주 경로라 곡선표는
+  영향 없음(그 표는 애초에 패시브만으로 계산됐다).
+- **스트레스 계층**: "과다 상호작용" 카운트 대상이 격파+드래그 2종 → **드래그 1종**. 임계값 8회는
+  **그대로 뒀다** — 셀 수 있는 행동이 줄었으니 발동은 더 어려워졌고, 이는 안전한 방향이다.
+  격파의 self-transition을 제외하던 가드는 Dragged가 자기-전이를 하지 않으므로 함께 지웠다.
+- **씬 에셋(★ 리더 확인 필요)**: `SceneBootstrapper`에서 배선을 뺐지만 **기존 씬 파일에는 아직
+  두 컴포넌트 참조가 남아 있어** Unity가 "Missing (Mono Script)"로 표시한다. 부트스트래퍼를
+  다시 돌려 씬을 재생성해야 완결된다. 그 사실을 부트스트래퍼 주석에 적어 뒀다.
+
+### 리더가 지정한 "건드리지 마라" 준수
+
+- `Platform/Windows/` — **한 글자도 안 건드렸다**(그래서 `GlobalKey.K`를 남겼다).
+- `Interaction/AccessoryShapeBuilder.cs` — 안 건드렸다.
+- `States/StickmanBlackboard.cs` — **최소만**: 죽은 필드 3개(`BattleClickSignaled` /
+  `BattleChargeRatio` / `BattleChargeGaugeVisible`) 제거 + 삭제된 클래스를 가리키던 XML 문서 3곳.
+  로직·메서드·시그니처는 하나도 안 바꿨다.
+- `Core/StickmanAgent.cs` — **최소만**: 상태 등록 1줄 삭제, `Suspend()`의 강제취소 목록에서
+  `BattleMinigame` 조건 1개 제거, 나머지는 주석. 다른 메서드는 손대지 않았다.
+- `driver.sh stop` / 전역 `Q` — **실행하지 않았다.**
+
+### 테스트 실기 결과 (배치모드, `-quit` 없이 실행 / 결과 파일 선삭제 후 mtime 확인)
+
+**EditMode `1367개: 통과 1355 / 실패 2 / 건너뜀 10`**
+**PlayMode `558개: 통과 549 / 실패 5 / 건너뜀 4`**
+
+1차 EditMode에서 **내 변경이 만든 실패 2건**이 나왔고 둘 다 고쳤다. 둘 다 "감시 그물이 제 일을
+한" 경우다:
+
+| 실패 | 원인 | 처리 |
+|---|---|---|
+| `ConfigFallbackLiteralDriftTests` | 폴백 리터럴 대장에 `progressionBattleWinXp`가 등재돼 있는데 소스에서 사라졌다("대장이 낡았습니다") | 대장 항목 삭제 |
+| `ItemCatalogTests.행동_항목은_레벨과_무관하게_항상_보유다` | 행동 개수 하한 13인데 12가 됐다 | 하한 12로 재기준. **"목표"가 아니라 "예고 없는 감소를 잡는 그물"**이므로 승인된 감소가 있을 때만 현재 개수로 맞춘다는 사유를 주석에 남겼다 |
+
+**내가 신설·수정한 테스트가 실제로 돌고 통과했는지 개별 확인**(합계만 보고 넘기지 않았다):
+`격파_전적은_기능이_사라진_뒤에도_저장_왕복에서_살아남는다` / `기록_값들이_저장하고_다시_불러온_뒤에도_같다` /
+`면제_목록은_실제로_존재하는_파일만_담는다` / `차단막을_만드는_모든_표면이_전체화면_감지를_폴링한다` /
+`배회_계획이_서술하지_않는_상태에는_모른다고_답한다` / `스펙터클_종료에서_들어온_Idle은…` /
+`네거티브_배회가_쉬는_중이면…` / `T1b_WindowTheftOnDockDoesNotRagdoll` /
+`ActionWindowExposesNoDeveloperOnlyCommand` / `EveryCommandTileHasAClickableRect` /
+`GreyOutAlwaysMatchesTheRealAvailabilityJudgement` / `PoseIsDerivedFromStateSo…` —
+**전부 Passed.** 특히 `전환_전_골든_스냅샷과_지금_카탈로그가_한_글자도_다르지_않다`가 통과했다는 것이
+`ItemCatalogGolden.txt` 편집이 바이트 단위로 정확하다는 증거다.
+
+### 남은 실패 7건은 **내 변경과 무관**하다 (근거를 붙인다)
+
+| 실패 | 왜 내 것이 아닌가 |
+|---|---|
+| `FallbackServicePassthroughTests` (`Win32WindowService`가 `IReservedTopBarService`를 통과 안 시킴) | `Win32WindowService.cs` / `FallbackPlatformWindowService.cs` **둘 다 내 변경 목록에 없다.** 동시 진행 중인 `Platform/Windows/` 라운드 소관 |
+| `CloseChipAffordanceTests` (잉크 대비 4.5:1) | 잉크/`UiChrome`/`StickColors` 계열 파일을 하나도 안 건드렸다 |
+| `AppearanceNewItemsRenderTests` 달팽이·풍선 2건 | `AccessoryShapeBuilder.cs`(리더가 접근 금지한 동시 라운드) 소관 |
+| `DialogueComicTextPlacementTests` (`dialogueTiltDegrees`) | `DialogueBubbleRenderer.cs`를 안 건드렸다. `StickConfig`는 건드렸지만 **`git diff`에 `dialogueTilt` 매치 0건**이고 에셋의 `dialogueTiltDegrees: 8`도 그대로다 |
+| `FloorContactVisibilityTests` (발이 482pt 떠 있음) | `NullPlatformWindowService.BottomSafetyNetInsetPoints` 소관. 해당 파일 미수정, `git diff` 매치 0건 |
+| `LiveObjectGrowthGuardTests` (오브젝트 37개 증가) | 이 라운드는 렌더러를 **없앴다** — 오브젝트를 늘리는 방향의 변경이 하나도 없다 |
+
+★ 위 "무관하다"를 **주장이 아니라 측정으로** 확인한 방법: `DefaultStickConfig.asset`의 `git diff`가
+**11줄 삭제 / 0줄 추가**이고 그 11줄이 전부 `battle*`·`progressionBattleWinXp`임을 출력으로 확인했다.
+
+### 덤 2 — README 파일 수 표가 통째로 낡아 있었다
+
+`States/ 22`, `Interaction/ 18` 두 칸을 격파 삭제분만큼 줄이려다, **원래 숫자부터 실제와 크게
+달랐다**는 것을 발견했다(`Core/` 7 → 실제 30, `Interaction/` 18 → 실제 50). 이미 틀린 숫자를 1 빼서
+"다르게 틀린 숫자"로 만드는 것은 이 저장소가 반복해서 당해온 실패라, 전 열을 실측해 고치고
+그 사실을 표 위에 적었다.
+
+### 미확인 (추측으로 메우지 않는다)
+
+- **실제 화면** — [행동] 창 508pt와 정보창 4행 스탯을 **육안으로 보지 않았다**. 빌드를 돌리려면
+  리더 승인이 필요해 실행하지 않았다. 레이아웃 근거는 산술 검산(450 = 450)뿐이다.
+- **씬 파일의 Missing 스크립트** — PlayMode 로그에 `The referenced script (Unknown) on this
+  Behaviour is missing!`가 **실제로 찍혔다**(예측이 아니라 관측). 기존 씬에 남은
+  BattleMinigameDirector/Renderer 참조다. 테스트는 전부 통과했지만 `SceneBootstrapper`를 다시
+  돌려 씬을 재생성해야 완결된다 — **리더 판단 필요**.
+- **`GlobalKey.K`를 실제로 눌렀을 때** 아무 일도 안 일어나는지 실기 확인 못 했다(코드상 바인딩이
+  없다는 것만 확인).
+
+**Windows 영향: 함께 검토함 — 코드 변경은 전부 플랫폼 중립이라 동작 차이 0.**
+`Platform/Windows/`는 리더 지시로 접근 금지였고 실제로 한 글자도 안 바꿨다. 그 결과로 남긴 유일한
+항목이 `GlobalKey.K` 열거값이며(양 플랫폼 매핑 유지, 바인딩만 제거 → **두 플랫폼 동일하게 무동작**),
+사유와 함께 위에 적었다. `xcheck.sh win` / `osx` 양쪽 errors=0으로 확인했다.

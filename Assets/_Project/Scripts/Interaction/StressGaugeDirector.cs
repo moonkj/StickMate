@@ -5,7 +5,7 @@ using StickMate.Core;
 namespace StickMate.Interaction
 {
     /// <summary>
-    /// docs/UX_FLOW.md 19절 스트레스 게이지 — 트리거 판정(격파훈련 과다/장시간 방치/긴급정지 반복 사용/
+    /// docs/UX_FLOW.md 19절 스트레스 게이지 — 트리거 판정(과다 상호작용/장시간 방치/긴급정지 반복 사용/
     /// 시간당 자연 감소)을 전담하고 값 자체는 Core.StressGauge(정적)에 보관한다. 이 라운드 지시사항의
     /// 명시적 스코프 축소에 따라 3단 노출(표정 암시/트레이 점/설정창 상세) UI는 구현하지 않는다 —
     /// Core.StressGauge가 발행하는 StickmanEventBus.StressLevelChanged 이벤트 훅까지만 확정한다.
@@ -64,7 +64,7 @@ namespace StickMate.Interaction
         /// <summary>
         /// 스트레스 게이지 데모 순환(Ctrl+Opt+Cmd+S / 우클릭 메뉴). 다른 Director의 ForceTriggerNow가
         /// "확률/쿨다운만 건너뛴다"는 성격인 것과 달리, 스트레스는 확률이 아니라 <b>실제로 쌓이는 데
-        /// 수 시간~반나절이 걸리는 값</b>이라(19절: 5분 내 8회 격파훈련 / 반나절 방치 / 자연 감소
+        /// 수 시간~반나절이 걸리는 값</b>이라(19절: 5분 내 8회 과다 상호작용 / 반나절 방치 / 자연 감소
         /// 0.05per시간) 같은 의미의 강제 경로가 존재할 수 없다. 그래서 이것만은
         /// HardwareReactionDirector.ForceTriggerNow와 같은 성격 — <b>실제로는 아직 쌓이지 않은 값의
         /// 연출만</b> 미리 보여주는 경로다.
@@ -161,10 +161,14 @@ namespace StickMate.Interaction
 
         private void OnStateTransitioned(StateTransitionEvent evt)
         {
-            // 격파훈련 과다(19절): 격파 미니게임/드래그&던지기 "진입"만 센다 — BattleMinigameState의
-            // 재도전 self-transition(From==To==BattleMinigame)은 같은 시도의 연장이라 새 진입이 아니므로 제외.
-            bool qualifyingEntry = (evt.To == StickmanStateId.BattleMinigame && evt.From != StickmanStateId.BattleMinigame)
-                || evt.To == StickmanStateId.Dragged;
+            // 과다 상호작용(19절): 드래그&던지기 "진입"만 센다.
+            // ★ 2026-09-02 격파 놀이 삭제 — 종전에는 격파 진입도 함께 셌고, 그 조건에는
+            //   "재도전 self-transition(From==To)은 같은 시도의 연장이라 제외"라는 가드가 붙어 있었다.
+            //   Dragged는 자기-전이를 하지 않으므로 그 가드는 함께 사라졌다(죽은 조건을 남기지 않는다).
+            //   ※ 임계값 8회는 그대로다. 셀 수 있는 행동이 두 종류에서 한 종류로 줄었으므로 사용자가
+            //     스트레스 과다 판정에 도달하기는 <b>더 어려워졌다</b> — 안전한 방향의 변화라 튜닝하지
+            //     않는다(19절 명시값 8회를 임의로 바꾸지 않는다는 뜻이기도 하다).
+            bool qualifyingEntry = evt.To == StickmanStateId.Dragged;
             if (qualifyingEntry) RecordOveruseEntry();
 
             if (evt.From == StickmanStateId.Sulky && evt.To != StickmanStateId.Sulky)

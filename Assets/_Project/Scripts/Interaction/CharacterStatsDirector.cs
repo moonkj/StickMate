@@ -10,7 +10,7 @@ namespace StickMate.Interaction
     /// 기존 판정 로직을 <b>한 줄도</b> 건드리지 않는다
     /// ============================================================================
     /// 리더 지시: "기존 판정 로직을 건드리지 말고 읽기 전용 이벤트 구독으로 카운트를 누적해라
-    /// (직전 라운드의 XP 보너스 훅과 같은 패턴)". 그래서 이 파일은 BattleMinigameDirector /
+    /// (직전 라운드의 XP 보너스 훅과 같은 패턴)". 그래서 이 파일은
     /// ArcheryState를 <b>참조조차 하지 않는다</b>(grep으로 검증 가능) —
     /// 전부 <see cref="StickmanEventBus"/> 구독뿐이다. Interaction/CharacterProgressionDirector.cs와
     /// 같은 이벤트를 보지만 하는 일이 다르다(저쪽은 XP 적립, 이쪽은 횟수 기록).
@@ -66,19 +66,17 @@ namespace StickMate.Interaction
         {
             // 값 요약은 첫 Update(EnsureFirstRunStamped)에서 찍는다 — 여기서는 저장 파일 로드 전일 수
             // 있어 0으로 보일 수 있다(Start 실행 순서 비보장).
-            Debug.Log("[기록] 준비 완료 — 격파/활쏘기/넘어짐/함께한 시간을 읽기 전용으로 집계합니다.");
+            Debug.Log("[기록] 준비 완료 — 활쏘기/넘어짐/함께한 시간을 읽기 전용으로 집계합니다.");
         }
 
         private void OnEnable()
         {
-            StickmanEventBus.BattleMinigamePhaseChanged += OnBattlePhaseChanged;
             StickmanEventBus.ArcheryShotChanged += OnArcheryShotChanged;
             StickmanEventBus.ArcheryOverlayChanged += OnArcheryOverlayChanged;
         }
 
         private void OnDisable()
         {
-            StickmanEventBus.BattleMinigamePhaseChanged -= OnBattlePhaseChanged;
             StickmanEventBus.ArcheryShotChanged -= OnArcheryShotChanged;
             StickmanEventBus.ArcheryOverlayChanged -= OnArcheryOverlayChanged;
             Flush(); // 씬 종료/컴포넌트 비활성에서 마지막 조각을 잃지 않게.
@@ -110,7 +108,6 @@ namespace StickMate.Interaction
             CharacterStatsModel.EnsureFirstRunInitialized();
             Debug.Log($"[기록] 근속 {CharacterStatsModel.DaysTogether}일차, " +
                 $"함께한 시간 {CharacterStatsModel.FormatCompanionTime()}, " +
-                $"격파 {CharacterStatsModel.BattleWins}회, " +
                 $"활쏘기 {CharacterStatsModel.ArcheryBullseyes}/{CharacterStatsModel.ArcheryShots}발, " +
                 $"넘어짐 {CharacterStatsModel.RagdollFalls}회.");
         }
@@ -120,13 +117,6 @@ namespace StickMate.Interaction
             if (_pendingSeconds <= 0f) return;
             CharacterStatsModel.AddCompanionSeconds(_pendingSeconds);
             _pendingSeconds = 0f;
-        }
-
-        private void OnBattlePhaseChanged(BattleMinigamePhase phase)
-        {
-            if (phase != BattleMinigamePhase.Success) return;
-            CharacterStatsModel.AddBattleWin();
-            Debug.Log($"[기록] 격파 성공 누적 {CharacterStatsModel.BattleWins}회.");
         }
 
         /// <summary>

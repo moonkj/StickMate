@@ -121,7 +121,7 @@ namespace StickMate.States
         /// <c>PlannedWanderDwellRemainingSeconds</c>는 <b>배회 AI 페이즈의 잔여</b>이지 <b>이 상태의
         /// 잔여</b>가 아니다. 둘이 같은 값인 것은 <b>상태가 배회 페이즈 전환 때문에 들어왔을 때뿐</b>이다.
         /// 실제로는 다음 경로들이 전부 "배회는 Moving 한복판인데 Idle로 들어오는" 모양이다:
-        /// 격파 종료 → Idle / Getup → Idle / LandingCrouch → Idle·Walk / ParkourClimb 완료 → Idle /
+        /// ParkourClimb 완료 → Idle / Getup → Idle / LandingCrouch → Idle·Walk / 활쏘기 종료 → Idle /
         /// GroundLossHang 복귀 → Idle·Walk. 이때 Idle은 <b>다음 프레임</b>에
         /// <c>MoveInputX &gt; deadzone</c>으로 곧장 Walk로 나가는데, 게이트에게 물으면 "2.8초 남았다"고
         /// 답한다. 실측(frame 11110~11114): 4프레임 안에 글자 블록 두 개가 각각 <b>0.02초</b>씩 번쩍였다 —
@@ -144,9 +144,9 @@ namespace StickMate.States
         /// 판정에 쓰는 데드존은 두 상태의 탈출 조건과 <b>같은 설정 필드</b>(moveInputDeadzone)여야 한다.
         /// 다른 값을 쓰면 "게이트는 남았다고 보는데 상태는 이미 나간" 틈이 그 차이만큼 생긴다.
         ///
-        /// <para>배회 계획이 <b>서술하지 않는 상태</b>(격파·파쿠르·랙돌 등)에는 <see cref="float.NaN"/>을
-        /// 답한다. 그 상태들은 자기 길이를 스스로 알고 게이트에 직접 넘기며(BattleMinigameState의
-        /// 게이지 길이), 배회 잔여는 그들에 대해 아무 말도 하지 않기 때문이다. NaN이면 게이트는 막지
+        /// <para>배회 계획이 <b>서술하지 않는 상태</b>(파쿠르·랙돌·활쏘기 등)에는 <see cref="float.NaN"/>을
+        /// 답한다. 그 상태들은 자기 길이를 스스로 알고 게이트에 직접 넘기며(ParkourClimbState의
+        /// 등반 길이), 배회 잔여는 그들에 대해 아무 말도 하지 않기 때문이다. NaN이면 게이트는 막지
         /// 않는다 — 규칙 8은 컷될 대사를 줄이는 최적화이지 검열이 아니다.</para>
         /// </summary>
         public float PlannedDwellRemainingSecondsFor(StickmanStateId stateId)
@@ -193,35 +193,11 @@ namespace StickMate.States
         /// </summary>
         public bool DragReleaseSignaled;
 
-        /// <summary>
-        /// 격파 미니게임(10절) 클릭 판정 신호. BattleMinigameDirector(Interaction)가 캐릭터 히트박스
-        /// 클릭을 감지하면 true로 세팅하고, BattleMinigameState.Tick()이 다음 틱에 소비 후 false로
-        /// 되돌린다(DragReleaseSignaled와 동일한 소비-후-리셋 펄스 계약).
-        /// </summary>
-        public bool BattleClickSignaled;
-
-        /// <summary>
-        /// 격파 미니게임(10절) "기 모으기" 게이지의 현재 채움 비율(0~1) — <b>순수 렌더 힌트</b>다.
-        /// BattleMinigameState.TickCharging()이 매 프레임 자기가 이미 계산한 값을 그대로 여기에
-        /// 복사해두고, Interaction/BattleMinigameRenderer가 읽어 게이지 바를 그린다.
-        ///
-        /// 왜 이벤트가 아니라 블랙보드 필드인가: 이 값은 "매 프레임 바뀌는 연속량"이라 이벤트로 쏘면
-        /// 초당 60회 델리게이트 호출이 되고, 무엇보다 <b>판정에는 전혀 쓰이지 않는다</b>(성공/실패는
-        /// 여전히 상태 내부의 _chargeElapsed만으로 결정된다). 렌더러가 이 필드를 못 읽거나 잘못 읽어도
-        /// 게임 판정은 1비트도 달라지지 않는다 — SetCharacterVisible(가출 렌더러 토글)과 같은
-        /// "상태 → 렌더링 레이어 단방향 통보" 관례를 따른다.
-        /// </summary>
-        public float BattleChargeRatio;
-
-        /// <summary>
-        /// 지금 게이지를 그려야 하는지(=Charging 페이즈인지). Resolving(판정 후 대기/재도전 간격) 동안은
-        /// false가 되어 게이지가 사라지고, 다음 재도전에서 다시 true로 돌아온다. 게이지 유무 자체가
-        /// "지금 클릭이 판정에 먹히는 구간인가"의 시각 신호라 사용자가 헛클릭하지 않게 해준다.
-        /// </summary>
-        public bool BattleChargeGaugeVisible;
-
         // ==== 활쏘기(2026-08-29 사용자 요청) — Director -> State 계획 스냅샷 + State -> 렌더러 힌트.
-        // 위 BattleChargeRatio와 완전히 같은 관례다(이벤트가 아니라 필드인 이유는 그 문서 참고).
+        // "매 프레임 바뀌는 연속량"이라 이벤트가 아니라 필드다(초당 60회 델리게이트 호출을 피한다).
+        // 렌더러가 이 값을 못 읽거나 잘못 읽어도 판정은 1비트도 달라지지 않는다 —
+        // SetCharacterVisible(가출 렌더러 토글)과 같은 "상태 → 렌더링 레이어 단방향 통보" 관례다.
+        // (2026-09-02까지는 이 관례의 원본이 격파 게이지 필드였다. 격파 놀이 삭제로 함께 사라졌다.)
 
         /// <summary>이번 활쏘기 사이클의 과녁 중심(월드). Interaction/ArcheryDirector가 자리를 확정한
         /// 직후, <b>ChangeState(Archery)를 호출하기 전에</b> 써둔다 — ArcheryState.Enter()가 이 값에서
@@ -282,7 +258,7 @@ namespace StickMate.States
         /// <summary>
         /// "지금 즉시 혼잣말을 하라"는 강제 발화 펄스(Interaction/AppControlDirector.cs의 데모 단축키
         /// Ctrl+Opt+Cmd+B). AmbientChatter.TryRollChatter()가 소비 즉시 리셋하며, 소비되면 확률/쿨다운을
-        /// 모두 건너뛴다(DragReleaseSignaled/BattleClickSignaled와 동일한 1프레임 펄스 계약).
+        /// 모두 건너뛴다(DragReleaseSignaled와 동일한 1프레임 펄스 계약).
         /// </summary>
         public bool ForcedChatterSignaled;
 
@@ -846,7 +822,7 @@ namespace StickMate.States
         //
         // 왜 각 상태에 GroundedTick을 하나씩 더 넣지 않는가:
         //   그게 정확히 2026-08-29 라운드가 한 일이고(WindowTheft/TimedSpectacle에만 추가),
-        //   그때 Attack/Getup/BattleMinigame이 빠져 이번 신고로 돌아왔다. 이 프로젝트에서 반복된
+        //   그때 Attack/Getup/BattleMinigame(2026-09-02 삭제)이 빠져 이번 신고로 돌아왔다. 이 프로젝트에서 반복된
         //   실패 유형("안전장치를 한 곳만 고치고 같은 패턴의 다른 경로에는 안 넣기")이므로, 목록의
         //   방향을 뒤집는다: **공중/자기구동 상태만 제외하고 나머지는 전부 기본 보호**한다.
         //   앞으로 새 상태를 추가하는 사람이 아무것도 하지 않아도 안전한 쪽이 기본값이 된다.

@@ -33,7 +33,7 @@ iOS/iPadOS는 앱 샌드박스 정책상 "다른 앱 창 열거"·"시스템 전
 | 코어 | 텍스트-액션 싱크 계약 (말풍선은 상태에서 파생, 역방향 금지) | P0 |
 | 비침해 | 클릭 관통 기본 ON / 대결모드 시 전환 | P0 |
 | 비침해 | 전체화면 게임 감지 → 자동 숨김 | P0 |
-| 전투 | 격파 미니게임(기 모으기+타이밍 클릭) | P1 |
+| ~~전투~~ | ~~격파 미니게임(기 모으기+타이밍 클릭)~~ — **2026-09-02 사용자 지시로 삭제**(UX_FLOW 10절) | — |
 | 전투 | 라이벌 스틱메이트 AI 추적/공격 | P1 |
 | OS 장난 | 창 끌기 시늉/아이콘 정렬 시늉/그라피티 (전부 read-only 시각 연출) | P1 |
 | 파괴효과 | 윈도우 크래시(3초 원복)/블랙홀 | P2 |
@@ -69,7 +69,7 @@ iOS/iPadOS는 앱 샌드박스 정책상 "다른 앱 창 열거"·"시스템 전
 - **Phase 0**: Unity 프로젝트 스캐폴딩, 플랫폼 서비스 인터페이스, 이벤트 버스, 상태머신 골격
 - **Phase 1**: 코어 루프 — 중력/발판인식/화면이탈, IDLE/WALK/JUMP/FALL, 클릭관통, 전체화면 감지
 - **Phase 2**: Active Ragdoll 전환(RAGDOLL/GETUP), 파쿠르(PARKOUR_CLIMB), 텍스트-액션 계약 시스템
-- **Phase 3**: 전투(격파/라이벌 AI), 커서 상호작용(드래그&던지기, 로데오)
+- **Phase 3**: 커서 상호작용(드래그&던지기, 로데오) *(같은 Phase의 격파/라이벌 AI는 각각 2026-09-02 / 2026-08-30 사용자 지시로 삭제)*
 - **Phase 4**: OS 장난(창 끌기/그라피티/블랙홀/크래시), PC 하드웨어 연동
 - **Phase 5**: 생산성/반항·스트레스/육성 요소, DLC 매니페스트 실제 콘텐츠
 - **Phase 6**: 최적화, 문서화, 리뷰 사이클 마감
@@ -310,7 +310,7 @@ iOS/iPadOS는 앱 샌드박스 정책상 "다른 앱 창 열거"·"시스템 전
 | 집중모드(포모도로) | **출하됨, 사양 변경 필요** | `FocusWatchDirector`(감시 민감도 3단계 포함), `FocusWatchRenderer` | 중간 | OK |
 | 유휴 행동 9종 | 없음(공용 스케줄러 부재) | `AutoWanderController` Resting 페이즈, `TimedSpectacleState`, `SpectacleEventLock` | 중간 | 1건 위험 |
 | 인질극 이벤트 | 없음 | 스펙터클 취소 선례(`e18ac09`), 클릭관통 유지 원칙 | 중간 | 주의 |
-| 스케치북 무기 제작 | 없음 | `LocalClickCaptureGate`(격파 미니게임의 일시 입력 캡처 선례) | 큼 | 4번 주의 |
+| 스케치북 무기 제작 | 없음 | `LocalClickCaptureGate`(드래그&던지기의 일시 입력 캡처 선례. 격파 미니게임이 원래의 선례였으나 2026-09-02 삭제) | 큼 | 4번 주의 |
 | 창문-던전 파밍 | 없음 | `CharacterProgressionModel`, `ItemCatalog`, 세이브 v6 | 큼 | OK |
 | 미니보스 레이드 | 없음 + **라이벌 서브시스템이 삭제됨**(2026-08-30 사용자 결정) | — | 큼 | **확인 필요** |
 | Steam P2P 친구 방문 | 없음 | — | 장기 프로젝트 | 오프라인 원칙 충돌 |
@@ -435,7 +435,7 @@ iOS/iPadOS는 앱 샌드박스 정책상 "다른 앱 창 열거"·"시스템 전
   (macOS 좌상단 신호등 / Windows 우상단) → `IPlatformWindowService`를 부풀리지 말고 **별도
   `IWindowChromeGeometryService`** 로 분리 권고(핵심 인터페이스를 작게 유지하는 기존 방침).
   Windows에서는 5-2-1의 ~7px 이슈를 먼저 고쳐야 조준이 맞는다.
-- **스케치북 무기(큼)**: 입력 캡처가 필요 → 격파 미니게임이 쓰는 `LocalClickCaptureGate` 선례를 따라
+- **스케치북 무기(큼)**: 입력 캡처가 필요 → 드래그&던지기가 쓰는 `LocalClickCaptureGate` 선례를 따라
   **그림 그리는 동안만** 관통을 끄고 끝나면 반드시 복구(원칙 2). **원칙 4 사전 결정 필요**: "컬러 잉크
   팩"이 색을 해금하므로, 사용 가능한 색 목록은 **하드코딩 enum이 아니라 DLC 매니페스트에서 읽어야
   한다.** 이걸 나중에 고치려면 저장된 유저 낙서 데이터까지 마이그레이션해야 하므로 **설계 시점에 못박을 것.**
@@ -695,7 +695,7 @@ Windows 실기가 이 개발 환경에 없고, 다른 에이전트 3명이 `Plat
 
 | # | 난제 | 실제 확인된 내용 | 난이도 |
 |---|---|---|---|
-| 1 | **`orthographicSize`의 의미가 갈라진다** | `SceneBootstrapper`가 ortho=12로 굽고 픽셀/월드 비가 여기서 파생된다. 창을 400pt로 줄이면 화질 유지를 위해 ortho도 12→4.89로 줄여야 하고, 그 순간 `cam.orthographicSize`를 **"화면 절반 높이"로 쓰던 코드가 전부 "창 절반 높이"로 의미가 바뀐다**. 실사용처: `TodoReminderRenderer:326`, `HardwareReactionRenderer:369`, `StressGaugeRenderer:460`, `RunawayRenderer:509`, `FocusWatchRenderer:403`, `BattleMinigameRenderer:433`, `ArcheryDirector:306,347`, `ArcheryRenderer:307`, `CharacterPetRenderer:463`, `DockPhysicsStep:211`. 전부 "화면 가장자리로 클램프" 의도라 소형 창에서는 **캐릭터 코앞에 클램프**된다. 총 18개 파일이 `orthographicSize`를, 21개 파일이 `Screen.width/height`를 참조한다 | **특대** |
+| 1 | **`orthographicSize`의 의미가 갈라진다** | `SceneBootstrapper`가 ortho=12로 굽고 픽셀/월드 비가 여기서 파생된다. 창을 400pt로 줄이면 화질 유지를 위해 ortho도 12→4.89로 줄여야 하고, 그 순간 `cam.orthographicSize`를 **"화면 절반 높이"로 쓰던 코드가 전부 "창 절반 높이"로 의미가 바뀐다**. 실사용처: `TodoReminderRenderer:326`, `HardwareReactionRenderer:369`, `StressGaugeRenderer:460`, `RunawayRenderer:509`, `FocusWatchRenderer:403`, `ArcheryDirector:306,347`, `ArcheryRenderer:307`, `CharacterPetRenderer:463`, `DockPhysicsStep:211`. 전부 "화면 가장자리로 클램프" 의도라 소형 창에서는 **캐릭터 코앞에 클램프**된다. 총 18개 파일이 `orthographicSize`를, 21개 파일이 `Screen.width/height`를 참조한다 | **특대** |
 | 2 | **전역 UI가 물리적으로 안 들어간다** | `CharacterInfoWindow`는 **880×861pt**(`PanelWidth`/`PanelHeight`) — 640×640 창에도 안 들어간다. 최소 클램프 320×320으로 접히면 UI가 붕괴한다. `CornerHoverPanel`은 **화면 좌하단 모서리 기준** 264×392pt인데 소형 창에는 "화면 모서리"라는 앵커 자체가 없다. 둘 다 ScreenSpaceOverlay 캔버스라 **창 밖으로 1픽셀도 못 나간다** → 뜰 때마다 전체화면 복귀 필요 → 그때마다 6-3의 미검증 끊김 발생 | **특대** |
 | 3 | **좌표계** — 유일한 좋은 소식 | `ScreenCoordinateConverter.OverlayOriginOsScreen`이 "창 좌상단의 OS 좌표"를 **이미 흡수하고 있고**, macOS에서 실전 사용 중이다. `Win32WindowService.CaptureOverlayOrigin()`이 `GetWindowRect`로 원점/배율을 갱신한다. `VisibleTopEdgeSolver`는 순수 OS 좌표 산술이라 창 크기와 **무관**하다. `CheckScreenBoundsOrFall`의 경계도 카메라가 아니라 **발판 합집합**(`GroundSensor.ScreenLeft/RightWorldX`)에서 나오므로 소형 창에서도 캐릭터가 데스크톱 전폭을 걸을 수 있다. **주의 1건**: 창을 옮기는 코드가 **같은 프레임에** `ReportOverlayWindowOsRect`를 직접 불러야 한다(폴링에 맡기면 그 사이 프레임에서 커서↔월드가 틀어진다) | **소** |
 | 4 | **멀티모니터** | 지금은 한 모니터 고정이라 토폴로지 변경 훅이 아예 없다. 소형 창은 모니터 경계를 자유롭게 넘나들게 되므로 `WM_DISPLAYCHANGE` / `NSApplicationDidChangeScreenParameters` 훅이 **새로 필요**하다 | 중 |

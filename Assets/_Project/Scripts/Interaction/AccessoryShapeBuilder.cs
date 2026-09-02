@@ -63,11 +63,17 @@ namespace StickMate.Interaction
         /// <summary>챙 끝이 진행 방향으로 뻗는 거리.</summary>
         internal const float HatBrimReachRatio = 1.92f;
 
-        /// <summary>챙 <b>뿌리</b>(관 쪽 끝)의 두께. ★ 2026-09-01 규칙 1 위반 수정의 이력:
-        /// 0.10R(닫힘변 0.29획) -&gt; 0.38R(1.10획) -&gt; 지금 0.46R(<b>1.34획</b>).
-        /// <para>왜 "뒤로 길게"가 아니라 "두껍게"인가: 변을 뒤로 눕혀 길이만 채우면 챙 뿌리는 여전히
-        /// 얇은 띠라 <b>화면에서는 그대로 선 하나</b>다. 린트만 통과하고 결함은 남는다(규칙 8 — 부피).</para></summary>
-        internal const float HatBrimRootDropRatio = 0.46f;
+        /// <summary>챙의 <b>뒤쪽 수렴점</b>이 커버선 아래로 내려가는 깊이 = 그 자리의 닫힘변 길이.
+        /// <b>"챙의 두께"가 아니다</b> — 뒤는 점으로 수렴하고 부피는 앞(머리 원 <b>밖</b>)에서 만든다.
+        /// <para>★ 2026-09-02 0.46R -&gt; 0.18R. 이력은 0.10 -&gt; 0.38 -&gt; 0.46 -&gt; <b>0.18</b>이고,
+        /// 0.38·0.46은 "뿌리를 두껍게"라는 <b>틀린 전제</b>에서 나온 값이다: 그 두께가 전부 머리 원 위에
+        /// 얹혀 사용자가 신고한 "ㅁ자 창"이 됐다(챙이 머리 원반에 얹은 색 0.643 R² = 72%).</para>
+        /// <para>챙은 원반이라 <b>옆에서 보면 얼굴 앞 구간이 가장 얇고 앞뒤 끝이 두껍다</b>. 옛 좌표는 그
+        /// 순서가 뒤집혀 있었다. 지금 닫힘변은 0.3847R = <b>1.12획</b>(규칙 1 하한 1.0)이고, 규칙 1-C가
+        /// 요구하는 두꺼운 자리(ρ_max 0.2561R)는 x = +1.22R — 머리 밖이다.</para>
+        /// <para><b>얇아졌다고 다시 키우지 마라.</b> 키우는 만큼 그대로 머리를 지운다(그것이 이 값의
+        /// 0.38 -&gt; 0.46 회귀가 취한 형태였다). 검산: <c>python3 Tools/ShapeDump/prodverify.py</c>.</para></summary>
+        internal const float HatBrimRootDropRatio = 0.18f;
 
         // ============================================================================
         // ★ EYES — 2026-09-01(3차) "가리개 옆에 눈" (docs/EQUIPMENT_SHAPE_SPEC.md 6절)
@@ -314,31 +320,37 @@ namespace StickMate.Interaction
             return stroke / (BaselineHeadVisualRadius * scale);
         }
 
-        // ---- 털모자(33-2-1 #2). ★ 2026-09-01(2차) — "띠(band)"가 <b>접힌 단(cuff)</b>이 됐다.
-        //      옛 띠는 머리 위쪽(0.42~0.62R)을 가로지르는 납작한 사각형이라 <b>얹혀</b> 있었고,
-        //      이 카테고리에서 가장 깊이 눌러쓰는 모자라는 정체와 정반대였다. 지금은 단이 −0.64R까지
-        //      내려와 귀를 덮는다 — 그것이 이 모자의 감쌈(|x| ≥ 0.85R · y ≤ 0.05R)을 만든다.
+        // ---- 털모자(33-2-1 #2). ★ 2026-09-02 — 접힌 단이 <b>채움에서 낱선으로</b> 바뀌었다.
+        //
+        //      사용자 신고: "털모자착용시 거의 머리전체를가림". 실측이 그대로였다 — 배율 0.60에서
+        //      남는 머리 0.34획 / 면적 3.2%. 단 채움 하나가 머리 원반의 <b>94%</b>를 덮고 있었다.
+        //
+        //      ★ 왜 "단을 얇게"가 아니라 "선으로"인가 — 두 요구가 <b>배타적</b>이기 때문이다:
+        //        · 남는 머리 1.20획(목표)을 얻으려면 단 밑단이 −0.26R 위여야 한다.
+        //        · 그러면 단의 두께는 커버선(−0.06R)과의 차 0.20R뿐이라 ρ_max ≈ 0.10R —
+        //          규칙 1-C(색면 조건, ρ_max ≥ 0.21818R)를 <b>채움으로는 절대 통과할 수 없다</b>.
+        //        · 통과시키려면 밑단을 −0.50R까지 내려야 하고, 그러면 남는 머리가 0.66획으로 무너진다.
+        //      풀이: 관과 단을 <b>한 채움</b>으로 합치고 접힌 자리는 <b>그늘색 낱선 하나</b>로 긋는다
+        //      (EQUIPMENT_SHAPE_SPEC 3절 원칙 7 — "실루엣 = 채운 덩어리 / 디테일 = 선 1개").
+        //      이 배율에서 접힌 단은 덩어리가 아니라 선이고, 낱선은 규칙 1-C의 대상이 아니다.
+        //      합집합이 같아 <b>실루엣은 한 점도 안 변하고</b>, 겹치는 채움이 사라져 ApplyAlpha
+        //      페이드 중 이음매가 드러날 위험도 0이 된다.
+        //
+        //      ★ 관 밑변 두 점(±<see cref="BeanieBandHalfWidthRatio"/>, <see cref="BeanieBandTopRatio"/>)은
+        //      <b>커버선</b>이라 여전히 손대지 않았다 — 움직이면 머리카락 자르기가 따라 움직인다(9-1절).
 
-        // ★ 2026-09-02 배율 0.60 실루엣 수정(스펙 12-3-a, 안 A "깊게").
-        //    옆벽 변 1→2 / 5→0이 0.3622R이라 배율 0.60(획 0.4298R)에서 <b>0.84획</b>이었다 —
-        //    획보다 짧은 변은 둥근 캡에 먹혀 <b>모서리가 통째로 뭉갠다</b>(발 사고와 같은 계열).
-        //    이건 [선택] 디테일이 아니라 <b>실루엣 조각의 꼭짓점</b>이라 LOD로 끌 수 없다.
-        //    단을 더 내리고(−0.52 → −0.64) 더 벌려(1.00 → 1.04) 옆벽을 0.4866R = 1.13획으로 만든다.
-        //    ★ 관 밑변 두 점(±<see cref="BeanieBandHalfWidthRatio"/>, <see cref="BeanieBandTopRatio"/>)은
-        //    <b>커버선</b>이라 손대지 않았다 — 움직이면 머리카락 자르기가 따라 움직인다(9-1절).
+        /// <summary>접힌 단의 <b>아래</b> 끝. 카테고리에서 가장 깊이 내려온다.
+        /// <para>★ 2026-09-02 −0.64R -&gt; −0.26R. 잉크 밑단 −0.475R이 되어 남는 머리가
+        /// 0.34획 -&gt; <b>1.22획</b>(배율 0.60, 목표 1.20 통과). −0.52R로 되돌리는 것은 답이 아니다 —
+        /// <b>−0.52R 시절에도 사용자는 같은 신고를 했고</b> 그 값의 실측이 0.62획이었다.</para></summary>
+        internal const float BeanieBandBottomRatio = -0.26f;
 
-        /// <summary>접힌 단의 <b>아래</b> 끝. 카테고리에서 가장 깊이 내려온다.</summary>
-        internal const float BeanieBandBottomRatio = -0.64f;
-
-        /// <summary>접힌 단이 가장 넓어지는 <b>어깨</b>의 반폭. 관 밑변(0.96R)보다 밖으로 나가야
-        /// 단이 관에 얹힌 게 아니라 <b>귀를 감싼</b> 것으로 읽힌다(감쌈 판정 |x| ≥ 0.85R).</summary>
-        internal const float BeanieCuffFlareHalfWidthRatio = 1.04f;
-
-        /// <summary>그 어깨점의 y. <see cref="BeanieBandBottomRatio"/>와 이 값의 차가 곧 옆벽 길이다.</summary>
-        internal const float BeanieCuffFlareBottomRatio = -0.54f;
-
-        /// <summary>단 밑변의 반폭. 어깨보다 좁아 단이 안쪽으로 말려 들어간다.</summary>
-        internal const float BeanieCuffBottomHalfWidthRatio = 0.64f;
+        /// <summary>단 밑변의 반폭. <para>★ 2026-09-02 0.64R -&gt; 0.56R. 밑단이 올라가 짧아진 옆변을
+        /// 수평 성분으로 벌충한다 — 0.4472R = <b>1.30획 @0.75 / 1.04획 @0.60</b>(획보다 짧은 변은
+        /// 둥근 캡에 먹혀 모서리가 뭉갠다).</para>
+        /// <para>옛 <c>BeanieCuffFlare*</c> 두 점은 삭제했다: 플레어가 만들던 허리 파임 0.08R은
+        /// 배율 0.75에서 0.23획 = 화면상 0.46pt로 <b>어느 배율에서도 보이지 않았다</b>.</para></summary>
+        internal const float BeanieCuffBottomHalfWidthRatio = 0.56f;
 
         /// <summary>접힌 단의 <b>위</b> 끝 = 관의 밑변 = <b>이 모자의 <see cref="HatCoverLocalY"/></b>.
         /// 세 사실이 한 값이라 어긋날 자리가 없다(규칙 4-a).</summary>
@@ -893,8 +905,12 @@ namespace StickMate.Interaction
         internal static Vector3 HatCrownFrontFoot(in Rig rig)
             => rig.F(rig.HeadRadius * 0.60f, HatBrimLocalY(rig) - rig.HeadRadius * 0.02f);
 
-        /// <summary>챙 — <b>닫힌 띠</b>다(규칙 8). 뿌리가 1.34획 두껍고 끝이 점으로 수렴한다.
-        /// 옛 챙은 뿌리가 얇아 화면에서 선 하나였다.</summary>
+        /// <summary>챙 — <b>닫힌 띠</b>다(규칙 8). 부피는 머리 원 <b>밖</b>(x = +1.22R, 두께 0.531R)에
+        /// 있고 얼굴 앞을 지나는 구간(x = 0)은 0.184R짜리 <b>얇은 판</b>이다 — 원반을 모서리로 보는
+        /// 자리라서 그렇다. 뒤는 점으로 수렴한다(<see cref="HatBrimRootDropRatio"/>).
+        /// <para>★ 2026-09-02: 옛 좌표는 이 관계가 뒤집혀 머리 위에서 가장 두꺼웠고, 그것이
+        /// 사용자 신고 "ㅁ자 창"이다. 머리 원반에 얹는 색 0.643 R²(72%) -&gt; <b>0.319 R²(50%)</b>.
+        /// 남는 머리 두께 0.85획 -&gt; <b>1.51획</b>(배율 0.60). ρ_max 0.2561R = 1.17획(규칙 1-C 통과).</para></summary>
         internal static Vector3[] HatBrim(in Rig rig)
         {
             float r = rig.HeadRadius;
@@ -903,11 +919,11 @@ namespace StickMate.Interaction
             {
                 HatCrownBackFoot(rig),
                 HatCrownFrontFoot(rig),
-                rig.F(r * 1.36f, hc - r * 0.06f),
+                rig.F(r * 1.36f, hc - r * 0.02f),
                 rig.F(r * HatBrimReachRatio, hc - r * 0.34f),   // 끝 — 점으로 수렴
-                rig.F(r * 1.20f, hc - r * 0.42f),
-                rig.F(r * 0.40f, hc - r * 0.44f),
-                rig.F(-r * 0.42f, HatBrimLocalY(rig) - r * HatBrimRootDropRatio),
+                rig.F(r * 1.22f, hc - r * 0.54f),               // ★ 부피는 여기(머리 밖)
+                rig.F(r * 0.62f, hc - r * 0.26f),               // ★ 머리 위 구간은 얇은 판
+                rig.F(-r * 0.06f, HatBrimLocalY(rig) - r * HatBrimRootDropRatio),
             };
         }
 
@@ -1161,8 +1177,14 @@ namespace StickMate.Interaction
                     float crownTop = cuffTop + r * BeanieCrownHeightRatio;
                     float crownHalf = r * BeanieCrownHalfWidthRatio;
 
+                    float hemY = hc + r * BeanieBandBottomRatio;
+                    float hemHalf = r * BeanieCuffBottomHalfWidthRatio;
+
+                    // 관 + 접힌 단이 <b>한 채움</b>이다. 감쌈(|x| ≥ 0.85R · y ≤ 0.05R)은 커버선의
+                    // 두 점(±0.96R, −0.06R)이 그대로 만든다 — 단을 선으로 바꿔도 안 사라진다.
                     sink.Add(new Shape("BeanieCrown", new[]
                     {
+                        rig.F(-hemHalf, hemY),
                         cuffBack,
                         rig.F(-crownHalf, hc + r * 0.52f),
                         rig.F(-r * 0.62f, hc + r * 1.16f),
@@ -1170,18 +1192,14 @@ namespace StickMate.Interaction
                         rig.F(r * 0.62f, hc + r * 1.14f),
                         rig.F(crownHalf, hc + r * 0.50f),
                         cuffFront,
+                        rig.F(hemHalf, hemY),
                     }, true, SortHead, filled: true));
 
-                    // 접힌 단(cuff) — 귀를 덮고 −0.64R까지 내려온다. 이 모자의 감쌈은 여기서 나온다.
-                    sink.Add(new Shape("BeanieCuff", new[]
-                    {
-                        cuffBack,
-                        cuffFront,
-                        rig.F(r * BeanieCuffFlareHalfWidthRatio, hc + r * BeanieCuffFlareBottomRatio),
-                        rig.F(r * BeanieCuffBottomHalfWidthRatio, hc + r * BeanieBandBottomRatio),
-                        rig.F(-r * BeanieCuffBottomHalfWidthRatio, hc + r * BeanieBandBottomRatio),
-                        rig.F(-r * BeanieCuffFlareHalfWidthRatio, hc + r * BeanieCuffFlareBottomRatio),
-                    }, true, SortHead, filled: true));
+                    // 접힌 자리 = <b>낱선 하나</b>. 관의 허리 두 점을 그대로 받는다(좌표를 새로 적지
+                    // 않는다 — 규칙 4-a). tone은 <b>반드시</b> Shade다: 0이면 관 채움색과 같아져
+                    // 화면에서 통째로 사라진다.
+                    sink.Add(new Shape("BeanieCuff", new[] { cuffBack, cuffFront },
+                        false, SortHead, tone: Shade));
 
                     sink.Add(new Shape("BeaniePom",
                         Polygon(rig, -r * BeaniePomBackShiftRatio, crownTop + r * BeaniePomOffsetRatio,
@@ -1200,16 +1218,22 @@ namespace StickMate.Interaction
                     Vector3 crownBackFoot = rig.F(-crownHalf, brimY + r * 0.02f);
                     Vector3 crownFrontFoot = rig.F(crownHalf, brimY - r * 0.02f);
 
-                    // 챙은 양쪽 다 뻗지만 앞이 더 길어 방향이 읽힌다. 뿌리 두께 0.52R(1.51획).
+                    // 챙은 양쪽 다 뻗지만 앞이 더 길어 방향이 읽힌다.
+                    // ★ 2026-09-02 7점 -> 8점. 부피를 머리 원 <b>밖</b>(x = +1.44R, 두께 0.614R)으로
+                    //    옮기고 얼굴 앞 구간은 0.330R짜리 얇은 판으로 눕혔다 — 챙은 원반이라 옆에서
+                    //    보면 그 순서가 맞다. 머리 원반에 얹는 색 0.902 R²(68%) -> 0.655 R²(52%),
+                    //    남는 머리 0.88획 -> 1.25획(배율 0.60). ρ_max 0.2673R = 1.22획(규칙 1-C).
+                    //    감쌈(|x| ≥ 0.85R · y ≤ 0.05R)은 x = ±0.94R의 두 점이 머리 <b>안</b>에서 만든다.
                     sink.Add(new Shape("FedoraBrim", new[]
                     {
-                        rig.F(-r * FedoraBrimBackRatio, hc + r * 0.24f),
+                        rig.F(-r * FedoraBrimBackRatio, hc + r * 0.16f),
                         crownBackFoot,
                         crownFrontFoot,
-                        rig.F(r * FedoraBrimFrontRatio, hc + r * 0.18f),
-                        rig.F(r * 1.24f, hc - r * 0.30f),
-                        rig.F(r * 0.20f, hc - r * 0.42f),
-                        rig.F(-r * 1.00f, hc - r * 0.34f),   // 감쌈을 만드는 챙 뿌리
+                        rig.F(r * FedoraBrimFrontRatio, hc + r * 0.28f),
+                        rig.F(r * 1.44f, hc - r * 0.46f),    // ★ 부피는 여기(머리 밖)
+                        rig.F(r * 0.94f, hc - r * 0.24f),    // ★ 얼굴 앞 구간은 얇은 판
+                        rig.F(-r * 0.94f, hc - r * 0.26f),   // 감쌈을 만드는 자리
+                        rig.F(-r * 1.40f, hc - r * 0.22f),   // 뒤 챙 밑면
                     }, true, SortHead, filled: true));
 
                     float crownTop = brimY + r * FedoraCrownHeightRatio;
@@ -1300,15 +1324,20 @@ namespace StickMate.Interaction
                     Vector3 crownBackFoot = rig.F(-crownHalf, brimY + r * 0.02f);
                     Vector3 crownFrontFoot = rig.F(crownHalf, brimY);
 
+                    // ★ 2026-09-02 7점 -> 8점. 중절모와 같은 처방(부피를 머리 밖으로).
+                    //    머리 원반에 얹는 색 0.790 R²(60%) -> 0.677 R²(48%), 남는 머리 1.03획 -> 1.25획.
+                    //    ρ_max 0.2726R = 1.25획. 도달 거리(StrawBrim*Ratio)는 아이템 정체를 만드는
+                    //    값이라 무변경 — 중절모와의 실루엣 차가 거기서 나온다.
                     sink.Add(new Shape("StrawBrim", new[]
                     {
-                        rig.F(-r * StrawBrimBackRatio, hc + r * 0.28f),
+                        rig.F(-r * StrawBrimBackRatio, hc + r * 0.16f),
                         crownBackFoot,
                         crownFrontFoot,
-                        rig.F(r * StrawBrimFrontRatio, hc + r * 0.26f),
-                        rig.F(r * 1.30f, hc - r * 0.24f),
-                        rig.F(r * 0.20f, hc - r * 0.36f),
-                        rig.F(-r * 1.20f, hc - r * 0.22f),   // 감쌈을 만드는 챙 뿌리
+                        rig.F(r * StrawBrimFrontRatio, hc + r * 0.30f),
+                        rig.F(r * 1.56f, hc - r * 0.40f),    // ★ 부피는 여기(머리 밖)
+                        rig.F(r * 0.92f, hc - r * 0.24f),    // ★ 얼굴 앞 구간은 얇은 판
+                        rig.F(-r * 0.92f, hc - r * 0.26f),   // 감쌈을 만드는 자리
+                        rig.F(-r * 1.52f, hc - r * 0.20f),   // 뒤 챙 밑면
                     }, true, SortHead, filled: true));
 
                     sink.Add(new Shape("StrawCrown", new[]

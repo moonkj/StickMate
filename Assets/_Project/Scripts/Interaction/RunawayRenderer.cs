@@ -37,7 +37,7 @@ namespace StickMate.Interaction
     /// 과자를 클릭할 수 있게 만드는 방식 — 새 입력 경로를 만들지 않는다
     /// ============================================================================
     /// 과자에는 <b>isTrigger=true BoxCollider2D</b> 하나가 붙고, 그것을
-    /// StickmanClickHitbox.RegisterExtraCollider()로 등록한다 — Interaction/BattleMinigameRenderer.cs가
+    /// StickmanClickHitbox.RegisterExtraCollider()로 등록한다 — 2026-09-02까지 BattleMinigameRenderer가
     /// 소환 판자/게이지를 클릭 가능하게 만든 것과 <b>완전히 같은 검증된 경로</b>다(전역 폴링 히트테스트 +
     /// UniWindowController의 Raycast 히트테스트가 둘 다 같은 Collider2D를 본다). uGUI 버튼을 쓰지 않는
     /// 이유는 이 앱의 창이 평소 클릭관통 + 비활성 앱이라 EventSystem 경로의 도달이 보장되지 않기 때문이다
@@ -461,7 +461,7 @@ namespace StickMate.Interaction
                     BuildCircle(chipOffsets[i], chipRadius, 6), SnackColor, stroke * 0.8f, loop: true));
             }
 
-            // 클릭 대상. isTrigger인 이유는 AppControlDirector의 메뉴 차단막/BattleMinigameRenderer의
+            // 클릭 대상. isTrigger인 이유는 AppControlDirector의 메뉴 차단막의
             // 판자 클릭 대상과 동일하다 — 히트테스트에는 잡히지만 물리 충돌은 절대 일으키지 않는다
             // (캐릭터가 과자에 부딪혀 튕기면 안 된다).
             _snackCollider = _snackRoot.AddComponent<BoxCollider2D>();

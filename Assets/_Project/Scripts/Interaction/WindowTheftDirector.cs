@@ -340,7 +340,7 @@ namespace StickMate.Interaction
             if (evt.From != StickmanStateId.WindowTheft) return;
             // WindowTheftState는 2회 시도 소진 시 자기 자신에게 재전이(self-transition)해 포기 대사를
             // 만든다 — From==To==WindowTheft인 이 경우는 "빠져나가는 것"이 아니므로 락을 풀면 안 된다
-            // (BattleMinigameDirector의 동일한 self-transition 가드와 같은 이유).
+            // (이 상태 자신의 "포기" self-transition 가드와 같은 이유).
             if (evt.To == StickmanStateId.WindowTheft) return;
 
             // 2026-08-29 시각 레이어 라운드에서 메운 계약 구멍: 지금까지 이 Director는 Started/Cancelled만

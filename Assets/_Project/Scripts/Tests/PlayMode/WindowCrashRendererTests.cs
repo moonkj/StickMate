@@ -20,7 +20,7 @@ namespace StickMate.Tests.PlayMode
     /// ============================================================================
     /// 27-7 체크리스트의 검증 포인트는 <b>"크랙 레이어가 3초 내내 100% 클릭관통 상태인지"</b>다.
     /// 이 프로젝트에서 클릭관통이 풀리는 유일한 경로는 콜라이더 존재이므로(UniWindowController의
-    /// Raycast 히트테스트 — Interaction/AppControlDirector.cs의 _menuBlocker, BattleMinigameRenderer의
+    /// Raycast 히트테스트 — Interaction/AppControlDirector.cs의 _menuBlocker, RunawayRenderer의
     /// CreateClickTarget이 그 경로를 의도적으로 쓰는 두 사례다), <b>오버레이가 만든 콜라이더 개수가
     /// 항상 정확히 0</b>임을 생성 직후 · 유지 중 · 파편 낙하 중 세 시점에서 각각 단언한다.
     /// "적어도 이전보다는 적다" 같은 상대적 여유를 쓰지 않는 이유는, 이 프로젝트가 그 방식으로 버그를

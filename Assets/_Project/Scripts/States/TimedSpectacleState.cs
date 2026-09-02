@@ -19,7 +19,7 @@ namespace StickMate.States
     ///
     /// 취소(전체화면 감지/유저 실제 조작 감지 등)는 이 클래스의 책임이 아니다 — 각 Director가
     /// StickmanStateMachine.ChangeState(Idle, isForcedInterrupt: true)를 직접 호출해 강제 종료시킨다
-    /// (BattleMinigameDirector/DragThrowController의 ReleaseOwnedLocks() 관행과 동일).
+    /// (DragThrowController의 ReleaseOwnedLocks() 관행과 동일).
     ///
     /// [Phase 5 일반화, docs/UX_FLOW.md 17/18/19절] 선택적 4번째 생성자 인자(dialogueTextSelector)를
     /// 추가했다 — 투두 리마인더("확정된 할일 텍스트")/포모도로 시작-종료-넛지("좋아, 감시 시작"/
