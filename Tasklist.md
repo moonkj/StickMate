@@ -21080,3 +21080,249 @@ H-11 톱니 반려 유지 / **H-12 `[행동]` 508 승인**
 **로그를 읽을 때는 아무 가드가 없다.** 로그로 현재 상태를 판정할 때는 **파일 mtime을 먼저
 확인하고, 드라이버 로그(`/tmp/stickmate-run/stickmate.log`)와 사용자 인스턴스 로그
 (`~/Library/Logs/.../Player.log`)를 구분**해라 — 둘은 다른 프로세스, 다른 빌드일 수 있다.
+
+---
+
+## 2026-09-02 — debugger: 데코레이터 통과 누락 감사 빨강 — **인과 반증 + 진짜 뿌리(감사가 절반만 본다) 수정** ✅
+
+**대상 파일**: `Assets/_Project/Scripts/Platform/FallbackPlatformWindowService.cs`,
+`Assets/_Project/Scripts/Tests/EditMode/FallbackServicePassthroughTests.cs`
+
+### 1) 넘겨받은 서술은 **틀렸다** — 실측으로 반증
+
+인계 내용: "`FallbackPlatformWindowService`가 `IReservedTopBarService`를 통과시키지 않아
+소비 측 `as` 캐스팅이 항상 null → **Windows 상단 인셋이 조용히 0**."
+
+- **통과 누락 자체는 사실**(감사 실패는 진짜다).
+- **그러나 인셋은 소비 측에 도달하고 있었다.** 상단 인셋의 유일한 소비 경로인
+  `ReservedTopBarProbe.Resolve()`는 `as`가 아니라 **`decorator.Inner`로 한 겹 벗긴 뒤** 캐스팅한다.
+  Windows 조립은 `new FallbackPlatformWindowService(new Win32WindowService(), _config)`이므로
+  벗긴 결과가 곧 `IReservedTopBarService` 구현체다.
+- **실측**: `상단_인셋은_데코레이터를_거쳐도_소비_측에_도달한다`(33pt 스텁)를 **수정 전에** 돌려
+  **초록**이었다. 네거티브 컨트롤(통과를 다시 제거)에서도 이 테스트만 계속 초록이고
+  감사 2건만 빨개졌다 — 통과 경로가 소비 경로가 아님이 양방향으로 확정됐다.
+- 인계 서술의 출처는 감사 **실패 메시지의 템플릿 문구**다("소비자의 `PlatformService as X` 캐스팅이
+  항상 null"). 템플릿을 관측으로 읽었다. 이 형태를 로그로 남긴다.
+
+### 2) 전수 조사 — 새는 인터페이스는 **이 하나뿐**
+
+`Platform/` 전체를 소스 텍스트로 훑어(빌드 타깃 무관) `IPlatformWindowService` 구현 5종의 기반 목록 대조:
+
+| 서비스 | 미통과 |
+|---|---|
+| `Win32WindowService` | `IReservedTopBarService` ← 유일 |
+| `MacWindowService` | `IDockMetricsService`(의도적 소비, 등록됨) |
+| `NullPlatformWindowService` / `ScreenshotBackdropPlatformService` | 없음 |
+
+`PlatformService as I...` 캐스팅 소비자 12곳도 전수 확인 — 전부 이미 통과되는 인터페이스다.
+`IReservedBarAutoHideControl`은 `PlatformService`를 경유하지 않고 `RunStartup(control)`로 직접 주입되므로 같은 형태가 아니다.
+
+### 3) ★★ 진짜 뿌리 — **감사가 활성 빌드 타깃의 절반만 본다**
+
+"왜 그동안 못 잡았나"의 답은 "04:32 라운드의 갭"이 아니다. 러너 이력이 말한다:
+
+```
+04:52 커밋(Win32에 IReservedTopBarService 부착)
+05:15 05:26 05:31 05:52 06:01 06:05 06:14 06:15 06:22 07:22  → Passed   (코드 무변경)
+09:28 09:29 09:31                                            → Failed
+```
+
+바뀐 것은 코드가 아니라 **에디터의 활성 빌드 타깃**이다(Bee 응답 파일 실측:
+`.../StickMate.Runtime.rsp` 07:32 `UNITY_STANDALONE_OSX` → 07:54·11:04 `UNITY_STANDALONE_WIN`).
+`Win32WindowService.cs`는 파일 전체가 `#if UNITY_STANDALONE_WIN` 안이라 macOS 타깃에서는
+**타입이 존재하지 않고**, 리플렉션 감사는 없는 타입을 셀 수 없다.
+이 저장소의 평소 상태(macOS 타깃)에서 이 감사는 **Windows 절반을 구조적으로 못 본다** —
+하필 갭이 실제로 쌓이는 쪽이다.
+
+실측 증거(현재 Windows 타깃에서 대칭으로 재현):
+```
+[데코레이터통과] 활성 빌드 타깃에서 리플렉션이 못 보는 플랫폼 서비스 1종: MacWindowService.
+                 소스 스캔 5종 / 리플렉션 4종.
+```
+
+### 4) 수정
+
+- `FallbackPlatformWindowService`에 `IReservedTopBarService` 통과 추가(`_innerTopBar` 위임).
+  ★ 정책은 옮기지 않았다 — 데코레이터는 `Platform/` 중립 위치이고 사실 조회를 그대로 흘릴 뿐이다.
+  `SurfaceSafeAreaPolicy`/`ReservedTopBarProbe` 무변경.
+- 감사에 **빌드 타깃 무관 소스 스캔 쌍둥이** 신설(`빌드타깃과_무관하게_소스에서도_통과_누락을_감사한다`).
+  파서 자기검증 포함: 데코레이터·`Win32WindowService`·`MacWindowService`를 못 찾으면 실패,
+  주석에만 있는 인터페이스 이름을 구현으로 세면 실패(미끼 테스트).
+- `리플렉션_감사는_활성_빌드타깃에_컴파일된_것만_본다` — 사각지대를 **러너에 상시 노출**한다.
+  `#if` 가드가 사라져 사각지대가 없어지면 이 테스트가 실패해 "소스 감사 정리해도 된다"고 알린다.
+
+### 5) 검증 (전부 결과 파일 삭제 → mtime·testcasecount 확인)
+
+| 측정 | 결과 |
+|---|---|
+| 재현(수정 전, 필터) | 3건 실행 / 1 실패, 종료코드 2 |
+| 인과 실험(수정 **전**) | 5건 / `상단_인셋..도달한다` **Passed** ← 인계 서술 반증 |
+| 수정 후(필터) | 8건 / 8 통과, 종료코드 0 |
+| **네거티브 컨트롤**(통과 제거) | 7건 / **감사 2건만 빨강**, 소비 경로 테스트는 초록 유지 |
+| EditMode 전량 | 1394건 / 1382 통과 / **실패 1**(`CloseChipAffordanceTests` — 09:28부터 있던 **타 라운드** 선재 결함) / 건너뜀 11 |
+| PlayMode 표적 | `ReservedBottomBarFootholdTests` 6/6 |
+| `xcheck.sh win` / `osx` | 각각 errors=0 (runtime editor/player, EditMode, PlayMode, Editor 어셈블리 전부) |
+
+### 6) 확인 못 한 것 (정직하게)
+
+- **상단 도킹 작업표시줄의 실제 거동은 미확인** — 이 머신에 Windows가 없다.
+- **macOS 타깃에서 새 소스 감사를 실행하지 못했다.** 활성 빌드 타깃 전환은 전역 상태 변경이라
+  동시 진행 라운드에 영향을 준다(리더 승인 필요). 대신 (a) `xcheck osx`로 **컴파일** 확인,
+  (b) 그 테스트가 타입이 아니라 **파일만** 읽는다는 구조적 근거로 갈음했다.
+- ★ **활성 빌드 타깃이 지금 Windows다.** 그 상태에서 EditMode를 돌리면 `MacWindowService`가
+  컴파일되지 않아 **macOS 쪽 리플렉션 검사가 조용히 비어 있다.** 다른 라운드의 "초록"도 같은
+  한계를 갖는다 — 리더가 알아야 할 사항.
+
+**Windows 영향**: 함께 수정함(통과 누락 당사자가 `Win32WindowService`. 다만 사용자 체감 변화는
+없다 — 인셋은 이미 도달하고 있었다. 이번 수정은 한 겹 벗기기에 의존하던 배선을 관례대로 되돌린 것).
+**macOS 영향**: 없음. `MacWindowService`는 이 인터페이스를 직접 달지 않으므로 `_innerTopBar`가
+항상 null이고, macOS 인셋은 종전대로 `ReservedTopBarProbe`가 `MacReservedTopBarService`로 조립한다
+(`상단_인셋이_없으면_0으로_접는다`가 그 false 경로를 잠근다).
+
+---
+
+## 2026-09-02 — coder: 씬 Missing 스크립트 제거(빌드 차단 해제) + 카드 [착용] 칩 면 대비 ✅
+
+### ① Missing 스크립트 — **씬이 아니라 프리팹이었다**
+
+넘겨받은 지시는 `Assets/_Project/Scenes/Main.unity`에서 `m_Script: {fileID: 0}`을 찾으라는
+것이었는데, **Main.unity는 멀쩡했다.** 스크립트 참조 4개가 전부 해석된다:
+
+| GUID | 대상 |
+|---|---|
+| `0ad1d399…` | `Platform/DockPhysicsStep.cs` |
+| `e17090da…` | `Core/StickmanAgent.cs` |
+| `4f231c4f…` | UGUI `StandaloneInputModule` (패키지) |
+| `76c392e4…` | UGUI `EventSystem` (패키지) |
+
+깨진 것은 씬이 인스턴스화하는 **`Assets/_Project/Prefabs/Stickman.prefab`**이었다. 두 GUID가
+7ab0468(격파 놀이 제거)에서 `.meta`째 삭제된 스크립트를 가리키고 있었다:
+
+```
+b3c9d46f4d7e7445cb95ad00dbd9964f -> Interaction/BattleMinigameDirector.cs  (삭제됨)
+b45ed3881a68a4cbd8c658b8942ea6f1 -> Interaction/BattleMinigameRenderer.cs  (삭제됨)
+```
+
+★ **`m_Script: {fileID: 0}`으로는 절대 못 찾는 형태다.** 그 표기는 Unity가 에셋을 *다시 저장*해야
+생긴다. 저장된 적이 없으면 **원래 GUID가 그대로 남아** 있고, 파일만 봐서는 멀쩡해 보인다.
+판정은 "GUID가 해석되는가"로 해야 한다.
+
+**조치**: 프리팹에서 MonoBehaviour 블록 2개 + 루트 GameObject의 `m_Component` 항목 2개를 함께 제거
+(총 30줄). `SceneBootstrapper`는 답이 아니었다 —
+
+- `EnsurePrefabComponents`는 **더하기만** 한다(`AddComponent`). 빼는 경로가 없다.
+- `BuildAll --force`는 모든 fileID를 재할당해(BUG-SW-M3) `Main.unity`의 오버라이드를 고아로
+  만들고 config 튜닝값까지 덮어쓴다. 뺄셈 2건에 치를 값이 아니다(부트스트래퍼 자신의 주석이
+  같은 이유로 `--force`를 말린다).
+
+→ **Unity 배치모드 실행은 필요 없었다.** 다른 라운드를 멈추지 않았다.
+
+**부트스트래퍼 주석 정정**: 이 사고의 직접적 원인 제공자였다. 912행 주석이 "기존 **씬 파일**에
+참조가 남아 있다"고 적어 두어 수사를 엉뚱한 파일로 보냈다. 실제 위치(프리팹)와 제거 경위로 고쳤다.
+
+**검증** (전체 19개 씬·프리팹): 깨진 스크립트 참조 **0건**. 프리팹 앵커 115 / 컴포넌트 참조 102,
+**dangling 0**.
+
+### ② 카드 [착용]/[해제]/[잠김] 칩 — 면이 없었다
+
+`[✕]`(1.00:1)와 **같은 종류**. 카드 24장 × 4탭. 계산기는 흰/검 21.0000 · 동일색 1.0000으로 먼저
+교정했고, before/after를 **같은 방법**으로 쟀다.
+
+★ **UX가 넘긴 숫자 중 두 개를 정정했다** — 둘 다 "바탕을 잘못 잡으면 결함이 가벼워 보인다"는 사례:
+
+1. **잠김은 1.08:1이 아니라 `1.00:1`이다.** 잠긴 카드는 카드 **바탕 자체**가 `CardSurfaceMuted`로
+   갈아탄다. 칩과 바탕의 RGB가 **완전히 같았다** — 오늘 밤 `[✕]`와 같은 값, 같은 원인.
+2. **넘겨받은 α 구간(0.3293 / 0.3842 / 0.4312)은 이 자리 것이 아니다.** 그 셋은 `PanelSurface`
+   (= `[✕]`의 바탕) 기준이다. 후보 7개를 훑어 재현해 확인했다(일치 오차 0.0001). 카드 바탕의
+   실제 구간은 **`0.3303 / 0.3620 / 0.4107`**(사구간 0.3620~0.4107). 그대로 베꼈으면 사구간을
+   빗나갔다.
+
+**해결** — 면은 반드시 **밝아져야** 했다. 어둡게 해서 3.0에 도달하는 길은 **존재하지 않는다**:
+순검정까지 내려도 최대 1.27:1(`CardSurface`) / 1.18:1(`CardSurfaceMuted`). 그래서 두 활성 상태는
+밝기가 아니라 **색상**으로 갈랐다.
+
+| 상태 | 면 (before → after) | 면 대비 | 잉크 | 잉크 대비 |
+|---|---|---|---|---|
+| 착용 | `#32353C` → **`#838589`** | 1.35 → **4.49:1** | `#0B1016` | 11.14 → **5.19:1** |
+| 해제 | `#243143` → **`#5087CC`** | 1.26 → **4.48:1** | `#0B1016` | 7.16 → **5.18:1** |
+| 잠김 | `#15181E` (유지) | 1.00:1 → **면제** | `#8B939F` | 5.73:1 (유지) |
+
+- 신설 `UiChrome.ControlFaceOnSurface(backdrop, tint)` — 기존 1인자 판은 여기에 위임하는
+  **기계적 추출**이다(동작 동일). `CardActionSurface` / `CardActionSurfaceWorn`은 규칙이 만든다.
+- 잉크는 **면에서 파생**(`InkOnSurface`) — 면을 먼저 정하고 잉크를 뒤에 뽑는다.
+- 테두리: 생 `CardBorder`(α0.10) → `Flatten`. 그 화소의 창 알파 0.91(바탕화면 9% 비침)을 없앴다.
+- `Button.transition = None` — 기본 `ColorTint` pressed(×0.7843137)가 **누르는 동안** 글자를
+  5.19 → **3.45:1**(착용) / 5.18 → **3.44:1**(해제)로 떨어뜨린다(실측).
+- 칩 높이 22 → **`UiChrome.MinTargetSizePoints`**(24pt, WCAG 2.5.8). 숫자를 베끼지 않고 파생.
+  세로 예산 검산: 80 + 24 = 104 ≤ 카드 108(여백 6 → 4pt).
+
+★ **잠김의 면제는 공짜가 아니다.** WCAG 2.2 1.4.11은 *inactive* 컴포넌트만 면제하는데, 그 칩은
+`interactable == true`인 채 클릭만 무시하고 있었다 — **면제를 받을 자격이 없는 상태**였다.
+`button.interactable = owned`를 넣어 실제로 비활성으로 만들었다.
+
+★ **P0-4를 다시 깨지 않았다**(이게 핵심이다): 새 두 면의 휘도 0.2355 / 0.2349는 P0-4 상한
+(흰 채움과 카드 바탕의 중간 = 0.4584)의 **절반**이다. 기존 PlayMode 가드
+`CardEquipButtonNeverGoesBackToTheWhiteFill`은 그대로 통과한다.
+
+### 재발 방지 (신규 EditMode 2종)
+
+- `MissingMonoScriptAuditTests` — **씬과 프리팹을 모두** 훑는다. 씬만 봤다면 이번 사고를 놓쳤다.
+  판정은 `AssetDatabase.GUIDToAssetPath`로 한다(손 grep은 UGUI·uniwinc 3건을 오탐했다).
+  **네거티브 컨트롤**이 일부러 깨뜨린 입력 2건을 잡고 정상 1건을 통과시키는지 먼저 증명한다.
+- `CardActionAffordanceTests` — **면과 잉크를 한 테스트 안에서 쌍으로** 잰다(나누면 "면 초록 /
+  글자 소멸" 회귀를 구조적으로 못 잡는다). 교정 1건 + 네거티브 3건(옛 값이 실제로 빨간불인가 /
+  면만 밝히는 풀이가 실제로 무너지는가 / 아래쪽에 답이 없다는 전제) + P0-4 가드 + 크기 파생.
+
+### 검증
+
+| 항목 | 결과 |
+|---|---|
+| 계산기 교정 | 흰/검 **21.0000**, 동일색 **1.0000** (교정 실패 시 전 수치 폐기 규칙 적용) |
+| 토큰 값 재확인 | Unity 동봉 Roslyn으로 **단정밀도 C#** 실행 — 16진값 일치, 비율은 배정밀도 대비 2번째 소수에서 갈려(4.47→**4.49**) **문서 수치를 프로덕션 정밀도로 전부 정정** |
+| 씬·프리팹 무결성 | 19개 파일, 깨진 스크립트 참조 **0건** / dangling 컴포넌트 참조 **0건** |
+| `xcheck.sh osx` | errors=0 (runtime editor/player, EditMode 116, PlayMode 108, Editor) |
+| `xcheck.sh win` | errors=0 (동일) |
+
+### 확인 못 한 것 (정직하게)
+
+- **화면 픽셀로는 재지 못했다.** 위 수치는 전부 프로덕션과 **같은 함수**를 단정밀도로 돌린
+  값 층 측정이다. 빌드는 리더가 하므로 **캡처 대조를 요청한다**(`Tools/ContrastProbe/measure_chip.py`).
+- **Unity 배치모드 테스트를 돌리지 않았다**(다른 라운드 진행 중, 리더 승인 대기). 신규 EditMode
+  2종은 컴파일만 확인했다.
+- 선재 실패 `CloseChipAffordanceTests`(09:28~, 타 라운드)는 **내 변경이 원인이 아니다** —
+  1인자 `ControlFaceOnSurface`는 기계적 추출이라 동작이 동일하고, 그 파일에서 내 영역과 맞닿는
+  두 경로를 직접 반증했다: `손으로_고른_면은_규칙이_내는_최소해보다_어둡지_않다`는 통과
+  (5.2637 ≥ 4.8813), 바탕 10종 전수 스윕에서 **unsolvable 0건**(= `Debug.LogError` 유발 없음).
+  나머지는 그 라운드 소관이라 더 들어가지 않았다.
+
+### 교차 레이어 영향 로그
+
+- **ux-designer** — 카드 칩이 (a) 밝아지고(#32353C→#838589, #243143→#5087CC), (b) 22→24pt로
+  커지며 카드 아래 여백이 6→4pt가 되고, (c) 잠김 칩이 `interactable=false`가 된다(클릭 시
+  콘솔 로그 "Lv.N에서 열립니다"가 더는 나오지 않는다 — 유저 가시 동작은 종전과 같이 무반응).
+  ★ (a)는 P0-4 문서의 "조용한 칩" 서술과 **정면으로 맞닿는다**. 접근성 하한과 양립하는 유일한
+  방향이었고(아래쪽엔 해가 없다) P0-4 가드는 통과하지만, **판정은 리더/디자인 몫**이다.
+- **test-engineer** — PlayMode `InfoWindowSurfaceRegressionTests` 2건은 그대로 통과할 것으로
+  계산되나(휘도 0.2355 < 0.4584, 라벨 5.19 ≥ 4.5) **실행으로 확인하지 않았다.**
+  칩 높이 22→24로 카드 내부 좌표가 바뀌므로 클리핑/히트테스트 계열 재확인 권장.
+
+**Windows 영향**: 없음 — 만진 4개 파일(`Editor/SceneBootstrapper.cs`, `Prefabs/Stickman.prefab`,
+`Interaction/UiChrome.cs`, `Interaction/CharacterInfoWindow.cs`)에 플랫폼 분기가 없다. 색·좌표·
+프리팹은 플랫폼 중립이고 `xcheck win` errors=0. **다만 이 수정이 곧 나갈 Windows 릴리즈의
+빌드 차단 사유를 푸는 것이므로 실질 수혜자는 Windows다.**
+**macOS 영향**: 없음(같은 이유). `xcheck osx` errors=0.
+
+### 🔒 사용자 확정 4건 (2026-09-02, 총괄 아키텍트 검토 후)
+
+총괄이 올린 결정 대기 4건을 사용자가 전부 확정했다. **이 넷은 화면 내용을 바꾸므로,
+하나라도 미정인 채 4탭 코드를 쓰면 그 코드는 버려진다**는 것이 배정 순서의 근거였다.
+
+| # | 결정 | 이유 |
+|---|---|---|
+| 1 | **「외형」 탭 = 착용 화면 유지** | 핸드오프는 이 탭을 설정 페이지로 바꾼다. 그러면 이미 출하된 `look.hair/fx/pet` **18개 `.asset`**(요구 레벨까지 붙어 있고 `look.pet.snail`은 Lv.30)의 착용 UI가 사라지고, 캐릭터 크기 설정이 두 곳에 생긴다(`SettingsWindow.cs:1051`이 "슬라이더 하나로 일원화"라고 못박았고 `[접근성·성능]` 탭은 "다음 업데이트"로 사용자에게 이미 약속했다) |
+| 2 | **캐릭터창 가로 = 1042 (2열)** | 핸드오프 1242는 Windows 2560×1600@200%에서 화면의 **97.3%**, 1920×1080@150%에서 **108.1%**. 바깥 클릭으로 안 닫히는 창이라 화면을 다 덮으면 갇힌다. 1042 = 81.6% |
+| 3 | **미니 보스 레이드 되살리지 않음** | 2026-08-31 사용자 확정을 유지. 유예 자동 해금이 그 요구를 이미 흡수한다 — 집중모드를 한 번도 안 써도 87일차에 42종 전부를 갖는다 |
+| 4 | **관찰력 → 동전 쿨다운 단축 적용** | 적용 안 하면 관찰력이 기본 설정에서 아무 일도 안 하는 스탯이 되고, 카드의 "관찰력 +6"이 원칙 1에 걸린다. 신규 조절값 0개 — `ECONOMY_SPEC` 4-4 완주 일수 표만 재검산하면 된다 |
+
+**후속 필요**: ①은 4탭 설계 재작업(ux-designer), ②는 리플로우 없이 2열 확정,
+④는 `design-systems`가 완주 일수 재검산.
