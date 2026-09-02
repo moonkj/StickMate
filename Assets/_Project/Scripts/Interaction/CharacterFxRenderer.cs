@@ -310,6 +310,13 @@ namespace StickMate.Interaction
                 case FxDust: TickDust(state, dt, previous); break;
                 case FxBubble: TickBubbles(state, dt); break;
                 case FxLeaf: TickLeaves(dt); break;
+
+                // ★ 2026-09-02 — 표(Resources/Items)에 FX가 늘었는데 여기 case가 없으면 그 이펙트만
+                //   조용히 아무 일도 안 한다. 중복 억제가 걸려 있어 매 프레임 도는 이 자리에서도
+                //   로그는 최초 1회뿐이다(Interaction/ShapeCoverageGuard.cs).
+                default:
+                    ShapeCoverageGuard.ReportMissingFxShape(item, nameof(CharacterFxRenderer));
+                    break;
             }
         }
 

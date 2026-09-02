@@ -911,9 +911,15 @@ namespace StickMate.EditorTools
             //
             // ★ 2026-09-02 — 이 블록에는 원래 격파 미니게임(BattleMinigameDirector +
             //   BattleMinigameRenderer) 배선이 함께 있었다. 격파 놀이 기능 삭제로 제거했다.
-            //   <b>씬 에셋을 다시 만들려면 이 부트스트래퍼를 반드시 다시 돌려야 한다</b> —
-            //   기존 씬 파일에는 지금도 두 컴포넌트의 MonoBehaviour 참조가 남아 있고,
-            //   스크립트가 사라졌으므로 Unity가 "Missing (Mono Script)"로 표시한다.
+            //
+            //   ※ 이 자리에 있던 옛 메모는 "기존 <b>씬 파일</b>에 두 컴포넌트 참조가 남아 있다"고
+            //     적고 있었는데 <b>틀린 위치였다</b>. Main.unity의 스크립트 참조 4개는 전부 멀쩡했고,
+            //     깨진 것은 씬이 인스턴스화하는 <b>Stickman.prefab</b>이었다(구워진 에셋은
+            //     이 부트스트래퍼를 고쳐도 자동으로 따라오지 않는다). 그 두 MonoBehaviour 블록과
+            //     m_Component 항목은 2026-09-02에 프리팹에서 직접 제거했다 —
+            //     <c>BuildAll --force</c>는 모든 fileID를 재할당해(BUG-SW-M3) Main.unity의
+            //     오버라이드를 고아로 만들므로, 뺄셈 두 건에 쓰기에는 값이 너무 컸다.
+            //     재발은 <c>MissingMonoScriptAuditTests</c>가 씬·프리팹 양쪽을 훑어 잡는다.
             var graffiti = root.AddComponent<GraffitiDirector>();
             var graffitiSo = new SerializedObject(graffiti);
             graffitiSo.FindProperty("_player").objectReferenceValue = agent;

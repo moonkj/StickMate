@@ -45,7 +45,7 @@ namespace StickMate.Platform
     /// 한다(UX_FLOW.md 3절/9절-7). 여기서 항상 발판이 있는 것처럼 위장하면 그 온보딩 게이트가 조용히
     /// 무력화된다 — 배선은 StickmanAgent.CreatePlatformService() 참고.
     /// </summary>
-    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService, IGlobalKeyStateService, IReservedBottomBarService, IRawWindowRectSource, IWindowEnumerationCostSource
+    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService, IGlobalKeyStateService, IReservedBottomBarService, IReservedTopBarService, IRawWindowRectSource, IWindowEnumerationCostSource
     {
         private readonly IPlatformWindowService _inner;
         private readonly ICursorPositionService _innerCursor; // null이면 내부 서비스가 커서 조회를 지원하지 않음
@@ -56,6 +56,27 @@ namespace StickMate.Platform
         // null이면 이 플랫폼이 "하단 예약 막대의 정확한 사각형"을 알려주지 못함(macOS가 그렇다).
         // 있으면 그 값이 **절대적**이다 — 아래 TryGetDockRectOsScreen 0순위 참고.
         private readonly IReservedBottomBarService _innerBottomBar;
+
+        // ★★ 2026-09-02 — **네 번째** 통과 누락. FallbackServicePassthroughTests가 잡았다.
+        // Win32WindowService가 IReservedTopBarService(상단 도킹 작업표시줄/툴바 두께 실측)를 달았는데
+        // 이 데코레이터가 통과시키지 않았다.
+        //
+        // ★ 다만 **이번 것은 앞의 셋과 달리 사용자에게 보이는 결함이 아니었다** — 그 차이를 여기 적어
+        //   두지 않으면 다음 사람이 "또 조용히 죽었다"고 잘못 읽는다. 상단 인셋의 유일한 소비 경로인
+        //   ReservedTopBarProbe.Resolve()는 `as`가 아니라 **decorator.Inner로 벗긴 뒤** 캐스팅하므로
+        //   Windows 인셋은 실제로 도달하고 있었다(Tests/EditMode/FallbackServicePassthroughTests의
+        //   `상단_인셋은_데코레이터를_거쳐도_소비_측에_도달한다`가 수정 **전**에도 초록이었다 — 실측).
+        //   그래도 통과시키는 이유는 두 가지다:
+        //     (1) 벗기기는 **한 겹**만 한다. 데코레이터가 하나 더 끼는 날 조용히 null이 된다.
+        //     (2) 이 저장소의 모든 선택적 캐퍼빌리티 소비자는 `PlatformService as I...` 관례를 쓴다.
+        //         다음 소비자가 관례대로 쓰면 그때 죽는다.
+        //
+        // null이면 이 플랫폼이 상단 예약 띠 두께를 알려주지 못함.
+        // ★ macOS에서는 여기가 **항상 null**이다 — MacWindowService는 이 인터페이스를 직접 달지 않고
+        //   ReservedTopBarProbe가 MacReservedTopBarService로 조립한다(그 조립은 프로브가 벗긴
+        //   inner를 보고 하므로 이 필드와 무관하게 계속 동작한다). 즉 이 통과 경로가 macOS에서
+        //   false를 돌려주는 것은 정상이며, 그것이 macOS 인셋을 0으로 만들지 않는다.
+        private readonly IReservedTopBarService _innerTopBar;
 
         // ★ 사용자 신고 "마우스로 안 잡힘" 조사 중 함께 발견(2026-08-28): 이 데코레이터가
         // IGlobalPointerButtonService를 통과시키지 않아, StickmanClickHitbox의
@@ -119,6 +140,7 @@ namespace StickMate.Platform
             _innerIconLayout = inner as IDesktopIconLayoutService;
             _innerDockMetrics = inner as IDockMetricsService;
             _innerBottomBar = inner as IReservedBottomBarService;
+            _innerTopBar = inner as IReservedTopBarService;
             _innerButton = inner as IGlobalPointerButtonService;
             _innerKeyState = inner as IGlobalKeyStateService;
             _innerRawWindows = inner as IRawWindowRectSource;
@@ -662,6 +684,16 @@ namespace StickMate.Platform
         {
             if (_innerBottomBar != null) return _innerBottomBar.TryGetReservedBottomBarOsScreen(out osScreenRect);
             osScreenRect = default;
+            return false;
+        }
+
+        // IReservedTopBarService — 순수 통과. 이 데코레이터는 이 값을 **소비하지 않는다**(합성 발판은
+        // 화면 하단에만 놓는다). 위 _innerTopBar 선언부에 "왜 이번 것은 사용자 결함이 아니었는가"와
+        // "macOS에서 여기가 항상 false인 것이 왜 정상인가"가 적혀 있다.
+        public bool TryGetReservedTopInsetPoints(out float insetPoints)
+        {
+            if (_innerTopBar != null) return _innerTopBar.TryGetReservedTopInsetPoints(out insetPoints);
+            insetPoints = 0f;
             return false;
         }
     }

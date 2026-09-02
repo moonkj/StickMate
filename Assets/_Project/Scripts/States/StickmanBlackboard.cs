@@ -862,6 +862,84 @@ namespace StickMate.States
             }
         }
 
+        // ================================================================================
+        // ★★ 수평 표류 안전망 — 위 세로축 어법을 **가로축에 그대로 옮긴 쌍둥이**
+        //    (2026-09-02, 사용자 신고 "그라피티 그릴때 윈도우버전은 캐릭터가 미끄러져이동함")
+        // ================================================================================
+        // 왜 마찰이 안 먹었나(디버거 실측으로 확정, 반증된 가설은 다시 파지 않는다):
+        //   바로 아래 ApplyGroundedGravitySuppression()이 접지 중 gravityScale=0으로 만든다 =
+        //   **수직항력 N이 0**이다. 쿨롱 마찰 상한은 μN이므로 N=0이면 마찰 상한도 0이다.
+        //   즉 걷다가 연출 상태로 들어가면 잔여 수평속도가 **감속 없이 등속으로** 연출이 끝날
+        //   때까지 유지된다. 실측: 3.4초 동안 192pt 이동, 감속 -0.68 pt/s^2(사실상 0).
+        //   같은 몸·같은 Dock 콜라이더에서 중력 ON(Fall)은 11.77 u/s^2로 0.061유닛 만에 서는데,
+        //   중력 억제(Graffiti)는 3.94유닛을 가속도 0으로 갔다. 대조군(Idle 진입)은 8초에 0.5pt다
+        //   — IdleState.Enter()가 v.x를 **한 번** 0으로 대입하기 때문이고, 그 한 번뿐이라
+        //   Idle 도중 외력이 들어오면 그때부터는 Idle도 똑같이 미끄러진다.
+        //
+        // 이것은 중력 억제의 부작용이지 그 수정의 결함이 아니다 — 세로 적분을 막는 것이 그 수정의
+        // 본체이고(프레임 길이와 독립인 유일한 처방), 마찰을 되살리려면 중력을 되살려야 하므로
+        // 원래 버그가 돌아온다. 그래서 **세로에서 한 일을 가로에도 똑같이 한다**: 상태가 스스로
+        // 소유하지 않는 축은 안전망이 대신 0으로 유지한다.
+        //
+        // ★ 플랫폼 중립 결함이다. Windows 로그에 "[화면클램프] ... 상태=Graffiti"로 화면 끝까지
+        //   밀린 증거가 있고, macOS에서도 그대로 재현됐다. 이 파일은 플랫폼 분기가 없다.
+
+        /// <summary>
+        /// 이 상태 ID가 <b>수평 이동을 스스로 소유하는가</b>(= 수평 표류 안전망이 손대면 안 되는가).
+        /// <see cref="IsGroundKeepingSelfManaged"/>의 가로축 쌍둥이이며, 어법도 같다 —
+        /// <b>허용목록이 아니라 제외목록</b>이다. 여기 없는 상태는 전부 안전망의 보호를 받으므로,
+        /// 새 상태를 추가하는 사람이 아무것도 하지 않아도 "제자리 연출인데 미끄러진다"가 기본으로 막힌다.
+        ///
+        /// <para>★★ <b>새 상태를 여기 추가하려는 사람이 반드시 읽어야 할 계약</b>(2026-09-02, 모션
+        /// 담당이 찾은 구멍): 상태 ID 단위 목록만으로는 <b>한 상태 안에서 소유권이 바뀌는 상태</b>를
+        /// 표현할 수 없다. 접근 페이즈에는 목표 지점까지 걸어가고 그 뒤로는 제자리에 서는 형태
+        /// (활쏘기, 그리고 앞으로 올 곡괭이질·낚시·닦기·쓰다듬기)가 그렇다.
+        /// <list type="bullet">
+        ///   <item>여기 넣지 <b>않으면</b>(false) 안전망이 접근 보행 속도를 매 프레임 지워 <b>영원히
+        ///         도착하지 못한다</b>.</item>
+        ///   <item>여기 넣으면(true) 안전망이 손을 떼므로 <b>제자리 페이즈의 표류가 안 막힌다</b>.</item>
+        /// </list>
+        /// 처방은 <b>true로 넣고, 그 상태가 제자리 페이즈 동안 매 프레임 스스로 수평 속도를 0으로
+        /// 재확인</b>하는 것이다(한 번만 대입하고 끝내면 안 된다 — 위 Idle 대조군이 그 반례다).
+        /// 참고 구현은 <see cref="States.ArcheryState"/>의 비-Approach 분기와
+        /// <see cref="States.LandingCrouchState"/>이며, 둘 다 지수 감쇠로 **매 프레임** 죽인다.
+        /// 지수 감쇠를 쓰는 이유는 이 안전망이 브레이크 박자를 두는 이유와 같다(아래 문서).</para>
+        ///
+        /// <para>★ <see cref="StickmanStateId.LandingCrouch"/>가 여기 있는 이유(승인 목록에서 빠져
+        /// 있던 항목 — 리더에게 보고함): <see cref="States.LandingCrouchState"/>는 이미
+        /// <c>landingCrouchHorizontalDamping</c>(12/초)으로 매 프레임 수평 속도를 죽이고 있고, 그
+        /// 코드 주석이 "0으로 즉시 대입하지 않는 이유: 공중에서의 수평 이동이 착지 순간 뚝 끊기면
+        /// 오히려 더 부자연스럽다"고 명시한다. 안전망은 상태 Tick <b>직후</b>에 도므로 여기서 빼면
+        /// 그 튜닝된 감쇠가 통째로 죽은 코드가 되고 착지 박자가 바뀐다.</para>
+        ///
+        /// <para>★ <see cref="StickmanStateId.GroundLossHang"/>이 여기 <b>있는</b> 이유는
+        /// <see cref="IsGroundKeepingSelfManaged"/>에서 <b>없는</b> 이유와 정반대다: 세로는 붙잡아야
+        /// 하지만(중력 억제 대상), 가로는 들고 온 속도를 그대로 유지해야 한다 — 허공을 계속 걸어가는
+        /// 그 그림이 이 상태의 존재 이유(코요테 개그)다.</para>
+        /// </summary>
+        public static bool IsHorizontalMotionSelfManaged(StickmanStateId id)
+        {
+            switch (id)
+            {
+                case StickmanStateId.Walk:          // 이동 의도를 매 프레임 속도로 바꾼다.
+                case StickmanStateId.Jump:          // 도약 수평 성분을 스스로 싣는다.
+                case StickmanStateId.Fall:          // 발 떼기 이송/낙하 궤적을 스스로 소유한다.
+                case StickmanStateId.ThrowTumble:   // 던져진 포물선.
+                case StickmanStateId.Ragdoll:       // 전신 물리 위임(아키텍처 0절).
+                case StickmanStateId.Dragged:       // 커서 추종(유저가 들고 있다).
+                case StickmanStateId.RodeoCursor:   // 커서 위에 올라타 있다.
+                case StickmanStateId.LedgeHang:     // 몸 위치를 직접 보간한다.
+                case StickmanStateId.ParkourClimb:  // 몸 위치를 직접 보간한다.
+                case StickmanStateId.Runaway:       // 은신처로 순간이동/은닉한다.
+                case StickmanStateId.GroundLossHang:// 들고 온 수평 속도를 유지해야 코요테 개그가 산다.
+                case StickmanStateId.Archery:       // 접근 보행 -> 제자리(위 계약: 제자리 페이즈를 스스로 죽인다).
+                case StickmanStateId.LandingCrouch: // 착지 감쇠를 스스로 소유한다(위 계약과 같은 형태).
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         /// <summary>
         /// StickmanAgent.Update()가 상태 Tick **직후** 1회 호출하는 접지 유지 안전망(위 문서 참고).
         /// 상태가 이미 GroundedTick()을 불렀거나, 그 상태가 접지를 스스로 관리하는 종류이거나,
@@ -885,6 +963,86 @@ namespace StickMate.States
                 $"발판을 잃어 {Machine.CurrentStateId}로 전이시켰습니다. 이 안전망이 없으면 이 상태에 머무는 동안 " +
                 "논리 발판(Dock/창 상단, 물리 콜라이더 없음) 위에서 그대로 자유낙하해 화면 최하단 " +
                 "물리 바닥에 전속력으로 부딪히고 RAGDOLL이 됩니다(2026-08-30 신고의 근본 원인).");
+        }
+
+        // 이번 표류 구간에서 쓰는 감속률(월드 유닛/초^2). 구간이 시작될 때 진입 속도에서 유도하며,
+        // 구간이 끊기면(자기소유 상태로 나갔다 / 프레임이 건너뛰었다) 다음 구간에서 다시 유도한다.
+        private float _horizontalBrakeRate;
+        private int _horizontalBrakeFrame = -1;
+
+        /// <summary>이번 프레임에 안전망이 실제로 쓴 감속률(유닛/초^2). 진단/테스트가 "브레이크가
+        /// 걸렸는가 / 감속률이 진입 속도에서 유도됐는가"를 로그가 아니라 값으로 단언하는 데 쓴다.
+        /// <para>0 = 개입하지 않았거나 <b>즉시 대입 모드</b>(정지 박자가 0 이하)다 — 후자는 램프가
+        /// 존재하지 않으므로 보고할 감속률 자체가 없다.</para></summary>
+        public float HorizontalDriftBrakeRate => _horizontalBrakeFrame == Time.frameCount ? _horizontalBrakeRate : 0f;
+
+        /// <summary>
+        /// StickmanAgent.Update()가 상태 Tick <b>직후</b>(접지 안전망 바로 다음) 1회 호출하는 수평 표류
+        /// 안전망. 위 <see cref="IsHorizontalMotionSelfManaged"/> 문서의 반대편 절반이다.
+        ///
+        /// <para><b>왜 상태 Tick 직후인가</b>: 세로축 안전망과 완전히 같은 계약이다 — 상태가 이 프레임에
+        /// 스스로 쓴 값을 덮지 않기 위해서다. 상태보다 <b>먼저</b> 돌면 상태가 그 뒤에 다시 속도를
+        /// 세우므로 안전망이 아무 일도 하지 못하고, 프레임 맨 끝(중력 억제 자리)으로 미루면 그 사이의
+        /// 화면 클램프/구조 회수가 이미 낡은 속도를 보고 판단하게 된다.</para>
+        ///
+        /// <para><b>왜 접지 안전망보다 뒤인가</b>: 접지 안전망이 발판 상실을 감지해 Fall로 보낼 수 있고,
+        /// Fall은 수평을 스스로 소유한다(발 떼기 이송). 순서를 뒤집으면 그 이송 속도를 이 안전망이
+        /// 먼저 지운 다음 Fall이 시작되어, 뛰어내리기가 제자리 낙하가 된다.</para>
+        ///
+        /// <para><b>즉시 0이 아니라 정지 박자를 두는 이유</b>(모션 담당 권고 0.14초, 리더 승인 범위 안의
+        /// 구현 판단): 이 저장소는 같은 질문에 이미 두 번 답했고 두 번 다 "즉시 대입하지 않는다"였다
+        /// (<c>landingCrouchHorizontalDamping</c> 12/초, <c>archeryHorizontalDamping</c> 14/초 —
+        /// 그 툴팁이 "뚝 끊기면 오히려 부자연스럽다"고 적어 두었다). 게다가 포즈는
+        /// <c>TickPose</c>의 지수 스무딩으로 수십 ms에 걸쳐 녹아드는데 몸만 한 프레임에 정지하면
+        /// 다리가 계속 도는 채로 몸이 얼어붙는 그림이 된다.
+        /// 대신 <b>지수 감쇠가 아니라 선형 램프</b>를 쓴다: 지수는 원리적으로 0에 도달하지 못해
+        /// "안전망이 표류를 0으로 만든다"는 보증을 줄 수 없지만, 선형 램프는
+        /// <c>horizontalDriftBrakeSeconds</c> 안에 <b>정확히 0</b>에 도달하고 그 뒤로는 0에 못박힌다.
+        /// 총 표류 거리는 진입 속도 v0에 대해 0.5 x v0 x 0.14초로 <b>상한이 닫혀 있다</b>
+        /// (걷기 속도에서 약 0.18유닛 = 배포 환산 약 8.5pt. 실측 표류 192pt의 1/22).</para>
+        ///
+        /// <para>감속률을 진입 속도에서 <b>유도</b>하고 상수로 적지 않는 이유: 숫자를 pt/s^2로 박으면
+        /// 캐릭터 배율/화면 기하가 바뀔 때 정지 박자가 함께 바뀐다. 시간(초)을 고정하면 어떤 속도로
+        /// 들어와도 같은 박자로 선다. 구간 중 외력으로 속도가 커지면 감속률도 함께 올려(최댓값 유지)
+        /// 박자 상한을 지킨다.</para>
+        ///
+        /// <para><see cref="StickConfig.horizontalDriftSafetyNetEnabled"/>가 꺼져 있으면 아무 것도 하지
+        /// 않는다(네거티브 컨트롤). <c>horizontalDriftBrakeSeconds</c>가 0 이하이면 즉시 0으로 대입한다.</para>
+        /// </summary>
+        public void TickHorizontalDriftSafetyNet(float deltaTime)
+        {
+            if (Machine == null || Body == null) return;
+            if (Config != null && !Config.horizontalDriftSafetyNetEnabled) { _horizontalBrakeFrame = -1; return; }
+
+            if (IsHorizontalMotionSelfManaged(Machine.CurrentStateId)) { _horizontalBrakeFrame = -1; return; }
+
+            Vector2 v = Body.linearVelocity;
+            int frame = Time.frameCount;
+
+            float brakeSeconds = Config != null ? Config.horizontalDriftBrakeSeconds : 0.14f;
+            if (brakeSeconds <= 0f)
+            {
+                // 즉시 대입 모드. 구간을 열지 않는다(_horizontalBrakeFrame = -1) — 열어 두면 박자를
+                // 다시 양수로 되돌린 순간 낡은 무한대 감속률을 물려받아 램프가 영영 안 생긴다.
+                _horizontalBrakeFrame = -1;
+                _horizontalBrakeRate = 0f;
+                if (v.x != 0f) { v.x = 0f; Body.linearVelocity = v; }
+                return;
+            }
+
+            // 새 표류 구간인가 — 직전 프레임에 개입하지 않았으면(자기소유 상태였거나 Suspend로 건너뛰었거나)
+            // 지금 속도에서 감속률을 새로 유도한다.
+            if (_horizontalBrakeFrame != frame - 1) _horizontalBrakeRate = 0f;
+            _horizontalBrakeFrame = frame;
+
+            float needed = Mathf.Abs(v.x) / brakeSeconds;
+            if (needed > _horizontalBrakeRate) _horizontalBrakeRate = needed;   // 구간 중 외력이 들어와도 박자 상한을 지킨다.
+            if (_horizontalBrakeRate <= 0f) return;                            // 이미 정확히 0이다.
+
+            float next = Mathf.MoveTowards(v.x, 0f, _horizontalBrakeRate * deltaTime);
+            if (next == v.x) return;
+            v.x = next;
+            Body.linearVelocity = v;
         }
 
         // ================================================================================

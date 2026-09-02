@@ -246,7 +246,13 @@ namespace StickMate.Interaction
         /// 했는데 왜 옛날처럼 하단에 착용상자가 따로 있음?") 그쪽을 걷어냈다. 상태→라벨/색 매핑은
         /// 여전히 <see cref="StyleActionButton"/> 한 곳뿐이다.</para></summary>
         private const float CardActionY = -80f;
-        private const float CardActionHeight = 22f;
+
+        /// <summary>★ 2026-09-02: 22 → <b>24</b>. 리터럴이 아니라 <see cref="UiChrome.MinTargetSizePoints"/>
+        /// (WCAG 2.2 2.5.8 Target Size (Minimum))에서 가져온다 — 하한이 움직이면 여기가 따라와야지,
+        /// 숫자를 베껴 두면 하한과 조용히 갈라진다.
+        /// <para>세로 예산 검산: <see cref="CardActionY"/> 80 + 24 = 104 ≤ <see cref="CardHeight"/> 108.
+        /// 카드 아래 여백이 6 → <b>4pt</b>로 줄지만 넘치지 않는다.</para></summary>
+        private const float CardActionHeight = UiChrome.MinTargetSizePoints;
         private const float CardActionWidth = ThumbWidth;   // 썸네일과 같은 폭 = 카드 좌우 여백 11pt와 정렬
 
         /// <summary>한 탭에 들어갈 수 있는 카테고리 수의 <b>상한</b>. 실제로 보여줄 수는 탭마다 다르고
@@ -439,6 +445,12 @@ namespace StickMate.Interaction
             public Image ActionOutline;
             public RectTransform ActionRect;
             public Text ActionLabel;
+
+            /// <summary>★ 2026-09-02 — 잠긴 카드의 칩을 <b>진짜로</b> 비활성으로 만들기 위해 들고 있는다.
+            /// 코드는 예전부터 잠긴 클릭을 무시했지만(<see cref="OnActionClicked"/>) <c>interactable</c>은
+            /// <c>true</c>였다. 그래서 그 칩은 "동작하지 않는데 활성인 척하는 컨트롤"이었고,
+            /// WCAG 2.2 1.4.11이 비활성 컴포넌트에 주는 <b>면제를 받을 자격이 없었다</b>.</summary>
+            public Button ActionButton;
             public readonly RectTransform[] IconRoot = new RectTransform[IconSetCount];
             public readonly Image[][] IconGraphics = new Image[IconSetCount][];
 
@@ -1051,7 +1063,7 @@ namespace StickMate.Interaction
             if (card.LockBadge != null) card.LockBadge.gameObject.SetActive(!owned);
 
             // 카드 하단 버튼 — 이 창의 유일한 착용 손잡이(상세 패널은 읽기 전용이다).
-            StyleActionButton(card.ActionSurface, card.ActionOutline, card.ActionLabel, owned, worn);
+            StyleActionButton(card.ActionSurface, card.ActionOutline, card.ActionLabel, card.ActionButton, owned, worn);
         }
 
         /// <summary>
@@ -1064,39 +1076,66 @@ namespace StickMate.Interaction
         /// 등급 파라미터도 함께 지웠다 — 분기 하나짜리 등급은 다음 사람에게 "두 자리가 있다"는 거짓말이 된다.
         /// 이제 <b>카드 버튼이 이 창의 1차 행동</b>이다.</para>
         ///
-        /// <para>★ 그렇다고 흰 채움으로 되돌리지 <b>않는다</b>. P0-4가 실측으로 걷어낸 이유가 그대로 살아
-        /// 있기 때문이다: 카드 안 최고 휘도 면적비가 [착용] 버튼 면(119×22 = 2,618pt², 카드 대비 15.0:1) :
-        /// 아이템 아이콘 잉크(≈290pt², 11.9:1) = <b>약 9 : 1</b>이고, 한 화면에 이 막대가 12개 뜬다.
-        /// 유저가 고르는 대상은 <i>아이템</i>인데 가장 밝은 것이 <i>동사</i>가 된다. <b>1차 행동이라는 것은
-        /// 경쟁자가 없다는 뜻이지 가장 밝아야 한다는 뜻이 아니다</b> — 이 창에 남은 다른 채움 버튼이
-        /// 0개라, 조용한 채움만으로도 위계는 이미 서 있다.</para>
+        /// <para>★ 흰 채움으로 되돌리지 <b>않는다</b> — P0-4가 실측으로 걷어낸 이유가 살아 있다:
+        /// 한 화면에 이 막대가 12개 뜨는데 유저가 고르는 대상은 <i>아이템</i>이다. <b>1차 행동이라는 것은
+        /// 경쟁자가 없다는 뜻이지 가장 밝아야 한다는 뜻이 아니다.</b></para>
+        ///
+        /// <para>★★ <b>2026-09-02 — 그렇다고 이대로 둘 수도 없었다.</b> "조용한 칩"이 조용한 정도를
+        /// 넘어 <b>면이 아예 없는</b> 지점까지 가 있었다(실측, 각 상태의 <b>진짜</b> 바탕 기준):
+        /// <code>
+        ///   착용 #32353C on #1B1F26 = 1.35 : 1      글리프 11.14 : 1
+        ///   해제 #243143 on #1B1F26 = 1.26 : 1      글리프  7.16 : 1
+        ///   잠김 #15181E on #15181E = <b>1.00 : 1</b>      글리프  5.73 : 1
+        /// </code>
+        /// 글자는 셋 다 잘 읽혔다 — <b>고칠 것은 잉크가 아니라 면</b>이다([✕]와 같은 결함, 같은 처방).
+        /// 잠김이 1.00인 것은 잠긴 카드의 <b>바탕 자체</b>가 CardSurfaceMuted로 바뀌기 때문이다.</para>
+        ///
+        /// <para><b>어둡게 해서 구분할 수는 없다</b> — 카드 바탕이 이미 어두워 순검정까지 내려가도
+        /// 최대 1.27:1이다. 3.0은 아래쪽에 존재하지 않는다. 그래서 면은 반드시 밝아지고, 두 활성
+        /// 상태는 밝기가 아니라 <b>색상</b>으로 갈린다(<see cref="UiChrome.CardActionSurface"/> /
+        /// <see cref="UiChrome.CardActionSurfaceWorn"/>, 각각 4.49 / 4.48 : 1).</para>
+        ///
+        /// <para><b>P0-4 가드는 그대로 통과한다</b>(이게 핵심이다): 새 두 면의 휘도는 0.2355 / 0.2349로,
+        /// 흰 채움과 카드 바탕의 중간값 0.4584의 <b>절반</b>이다. 접근성 하한을 넘기면서도 카드에서
+        /// 가장 밝은 것은 여전히 아이템 쪽이다.</para>
         ///
         /// <para>색은 전부 불투명값이다 — 투명 오버레이에서 알파를 겹치면 그 자리만 뒤 창이 비친다
-        /// (UiChrome '알파 채널의 법칙'). 새 색을 만들지 않고 기존 토큰을 <see cref="UiChrome.Flatten"/>
-        /// 으로 합성한다: <c>Flatten(CardBorder, CardSurface)</c> = #32353c는
-        /// <see cref="SettingsControls"/>가 이미 쓰는 값이고, <c>Flatten(AccentSurface, CardSurface)</c>
-        /// = #243143은 착용 중 썸네일 wash와 <b>같은 값</b>이다.</para>
+        /// (UiChrome '알파 채널의 법칙'). 테두리도 생 <c>CardBorder</c>가 아니라
+        /// <see cref="UiChrome.Flatten"/>을 거친다.</para>
         /// </summary>
-        private static void StyleActionButton(Image surface, Image outline, Text label, bool owned, bool worn)
+        private static void StyleActionButton(Image surface, Image outline, Text label, Button button, bool owned, bool worn)
         {
+            // ★ 잠긴 칩은 <b>실제로</b> 비활성이다 — 클릭은 예전부터 무시됐다(OnActionClicked).
+            //   이 한 줄이 있어야 WCAG 2.2 1.4.11의 "inactive user interface components" 면제를
+            //   정당하게 받는다. 없으면 그 칩은 1.00:1짜리 <b>활성</b> 컨트롤로 남는다.
+            if (button != null) button.interactable = owned;
+
+            // ★ 2026-09-02 — <b>면</b>을 고친다. 잉크는 멀쩡했다(11.14 / 7.16 / 5.73:1).
+            //   고치기 전 면은 1.35 / 1.26 / <b>1.00</b> : 1 이었고, 셋 다 자체 하한 3.0 미달이다.
+            //   특히 잠김은 칩과 카드 바탕이 <b>같은 RGB</b>였다 — 오늘 밤 [✕](1.00:1)와 같은 결함이다.
+            //   면을 먼저 정하고 잉크를 그 면에서 <b>파생</b>시킨다. 순서가 뒤집히면 둘이 갈라진다.
+            Color face = !owned ? UiChrome.CardSurfaceMuted
+                : worn ? UiChrome.CardActionSurfaceWorn
+                       : UiChrome.CardActionSurface;
+
+            if (surface != null) surface.color = face;
+
             if (label != null)
             {
                 // 잠긴 카드에 "LV.20"이라고 적지 않는다 — 바로 위 메타 줄이 이미 그 숫자를 말하고 있다.
                 label.text = !owned ? "잠김" : worn ? "해제" : "착용";
-                label.color = !owned ? UiChrome.TextTertiary        // 2.09:1 -> 5.73:1
-                    : worn ? UiChrome.TextOnAccent                  // 7.14:1 on #243143
-                           : UiChrome.TextPrimary;                  // 11.10:1 on #32353c
-            }
-            if (surface != null)
-            {
-                surface.color = !owned ? UiChrome.CardSurfaceMuted
-                    : worn ? UiChrome.Flatten(UiChrome.AccentSurface, UiChrome.CardSurface)
-                           : UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface);
+                // 면에서 파생 — 밝은 면 위에서는 InkOnSurface가 알아서 어두운 잉크로 뒤집는다.
+                label.color = UiChrome.InkOnSurface(face,
+                    owned ? UiChrome.InkRole.Title : UiChrome.InkRole.Meta, enabled: owned);
             }
             if (outline != null)
             {
-                outline.color = !owned ? UiChrome.CardBorder
-                    : worn ? UiChrome.AccentBorder : UiChrome.CardBorder;
+                // ★ 생 CardBorder/AccentBorder(α<1)를 그대로 얹지 않는다 — 그 화소의 창 알파가
+                //   0.91로 내려가 <b>유저의 바탕화면이 9% 비친다</b>(어두운 배경일수록 더 안 보였다).
+                //   Flatten이 겉보기 색을 그대로 두고 α=1만 보장한다.
+                outline.color = UiChrome.Flatten(
+                    !owned ? UiChrome.CardBorder : worn ? UiChrome.AccentBorder : UiChrome.CardBorder,
+                    face);
             }
         }
 
@@ -3037,17 +3076,28 @@ namespace StickMate.Interaction
             //   중복 버튼은 2026-09-01 사용자 신고로 걷어냈다). 1차 행동이지만 P0-4의 조용한 칩을
             //   그대로 유지한다 — 이유는 StyleActionButton 문서 참고(한 화면에 12개가 반복된다).
             card.ActionSurface = UiChrome.AddSurface(rt, "Action",
-                UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface), UiChrome.RadiusChip);
+                UiChrome.CardActionSurface, UiChrome.RadiusChip);
             card.ActionRect = card.ActionSurface.rectTransform;
             UiChrome.PlaceTopLeft(card.ActionRect, ThumbX, CardActionY, CardActionWidth, CardActionHeight);
-            card.ActionOutline = UiChrome.AddOutline(card.ActionRect, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+            card.ActionOutline = UiChrome.AddOutline(card.ActionRect, "Outline",
+                UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardActionSurface), UiChrome.RadiusChip);
             card.ActionLabel = UiChrome.AddText(card.ActionRect, "Label", UiChrome.FontCaption,
-                TextAnchor.MiddleCenter, UiChrome.TextPrimary, bold: true);
+                TextAnchor.MiddleCenter,
+                UiChrome.InkOnSurface(UiChrome.CardActionSurface, UiChrome.InkRole.Title, enabled: true),
+                bold: true);
             UiChrome.Stretch(card.ActionLabel.rectTransform);
             card.ActionLabel.text = "착용";
 
             var actionButton = card.ActionSurface.gameObject.AddComponent<Button>();
             actionButton.targetGraphic = card.ActionSurface;
+            // ★ Unity 기본 ColorTint는 pressed에 ×0.7843137을 곱한다. 새 면은 <b>밝아서</b> 그 곱이
+            //   어두운 잉크(#0B1016)와의 대비를 무너뜨린다 — 실측:
+            //     착용 #838589 5.19:1 → pressed #67696C <b>3.45:1</b>
+            //     해제 #5087CC 5.18:1 → pressed #3F6AA0 <b>3.44:1</b>
+            //   즉 <b>누르고 있는 동안 글자가 AA 미달</b>이 된다. 상태 색은 StyleActionButton이 값으로
+            //   정하므로 uGUI의 자동 틴트는 꺼 둔다([✕]와 같은 처방).
+            actionButton.transition = Selectable.Transition.None;
+            card.ActionButton = actionButton;
             actionButton.onClick.AddListener(() =>
             {
                 if (SuppressedByCarousel()) return;   // 방금 민 손짓의 끝을 클릭으로 오인하지 않는다.
@@ -3189,6 +3239,13 @@ namespace StickMate.Interaction
                     case ItemIconPartKind.Dot:
                         UiChrome.AddCircle(root, "Dot", v[2] * 2f * IconScale, part.Color, 0f,
                             FromViewBox(v[0], v[1], 40f, 40f, IconSize, IconSize));
+                        break;
+
+                    // ★ 2026-09-02 — 종류가 늘면(Polygon이 2026-09-02에 실제로 늘었다) 그 조각만
+                    //   조용히 빠진다. 아이콘 한 조각이 빠진 그림은 "원래 그런 아이콘"으로 읽혀
+                    //   아무도 신고하지 않는다 — 그래서 코드가 대신 신고한다.
+                    default:
+                        ShapeCoverageGuard.ReportUnknownIconKind(part.Kind);
                         break;
                 }
             }

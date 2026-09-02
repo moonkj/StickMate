@@ -71,6 +71,12 @@ namespace StickMate.Tests.EditMode
         private static void CleanTemp()
         {
             if (File.Exists(CharacterSaveStore.TempFilePath)) File.Delete(CharacterSaveStore.TempFilePath);
+
+            // ★ 2026-09-02 — 직전 세대 파일도 함께 치운다. 이것이 남아 있으면 아래 네거티브 컨트롤이
+            //   "본체가 깨졌는데도" 세대에서 복구돼 초록이 된다(= 전손을 감지하지 못하는 검사가 된다).
+            //   EditMode 스위트는 임시 폴더 하나를 전 픽스처가 공유하므로 다른 픽스처가 남긴 것도 온다.
+            if (File.Exists(CharacterSaveStore.PreviousGenerationPath))
+                File.Delete(CharacterSaveStore.PreviousGenerationPath);
         }
 
         private static void ResetModels()

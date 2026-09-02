@@ -117,6 +117,9 @@ namespace StickMate.Tests.EditMode
             if (File.Exists(CharacterSaveStore.TempFilePath)) File.Delete(CharacterSaveStore.TempFilePath);
             if (File.Exists(LegacySharedTempPath)) File.Delete(LegacySharedTempPath);
             if (File.Exists(BackupCopyPath)) File.Delete(BackupCopyPath);
+            // 직전 세대(2026-09-02) — 다른 픽스처가 남긴 것이 이 픽스처의 판정을 흔들지 않게.
+            if (File.Exists(CharacterSaveStore.PreviousGenerationPath))
+                File.Delete(CharacterSaveStore.PreviousGenerationPath);
         }
 
         private static void ResetModels()

@@ -589,6 +589,16 @@ namespace StickMate.Core
             // (StickmanBlackboard.TickGroundKeepingSafetyNet 문서 참고).
             _blackboard.TickGroundKeepingSafetyNet(dt);
 
+            // ★★ 수평 표류 안전망(2026-09-02, 사용자 신고 "그라피티 그릴때 윈도우버전은 캐릭터가
+            // 미끄러져이동함"). 바로 위 세로축 안전망의 **쌍둥이**이며 계약도 같다 — 상태가 스스로
+            // 수평 이동을 소유하지 않는 종류이면(IsHorizontalMotionSelfManaged가 false) 잔여 수평
+            // 속도를 정지 박자 안에 0으로 되돌린다.
+            // 왜 접지 안전망 **뒤**인가: 위 호출이 발판 상실을 감지해 Fall로 보낼 수 있고, Fall은
+            // 수평을 스스로 소유한다(발 떼기 이송). 순서를 뒤집으면 그 이송 속도를 여기서 먼저
+            // 지운 뒤 낙하가 시작되어 뛰어내리기가 제자리 낙하가 된다
+            // (StickmanBlackboard.TickHorizontalDriftSafetyNet 문서 참고).
+            _blackboard.TickHorizontalDriftSafetyNet(dt);
+
             // 상태 로직이 끝난 뒤(= 이번 프레임의 최종 상태가 확정된 뒤) 물리 모드와 팔다리 포즈를
             // 그 상태에 맞게 재적용한다. 멱등이며 상태 ID만 보고 판단하므로, 강제 인터럽트/전체화면
             // 취소/외부 ChangeState 등 어떤 경로로 상태가 바뀌어도 물리 모드가 상태와 어긋난 채

@@ -1129,6 +1129,33 @@ namespace StickMate.Interaction
         public static readonly Color ChromeButtonSurfacePressed =
             Flatten(new Color(1f, 1f, 1f, ControlFaceLiftPressed), PanelSurface);
 
+        // ================================================================================
+        // ★★ 2026-09-02 — 카드 하단 [착용]/[해제]. <b>[✕]와 같은 종류의 결함</b>이 24장 × 4탭에
+        //    살아 있었다. 실측(계산기는 흰/검 21.00 · 동일색 1.00 으로 먼저 교정했다):
+        //        착용 면 #32353C on #1B1F26 = <b>1.35 : 1</b>   (글리프 11.14:1 — 잘 읽힌다)
+        //        해제 면 #243143 on #1B1F26 = <b>1.26 : 1</b>   (글리프  7.16:1)
+        //        잠김 면 #15181E on <b>#15181E</b> = <b>1.00 : 1</b>  (글리프  5.73:1)
+        //    ★ 잠김이 1.08이 아니라 <b>1.00</b>인 이유: 잠긴 카드는 카드 <b>바탕 자체</b>가
+        //      CardSurfaceMuted로 바뀐다(CharacterInfoWindow). 즉 칩과 바탕의 RGB가 완전히 같다 —
+        //      오늘 밤 [✕]가 1.00:1이던 것과 <b>같은 값, 같은 원인</b>이다.
+        //
+        // ★ 왜 어둡게 해서 구분하지 않는가 — <b>물리적으로 불가능하다</b>. 카드 바탕이 이미 어두워
+        //   순검정까지 내려가도 최대 1.27:1(CardSurface) / 1.18:1(CardSurfaceMuted)이다. 3.0은
+        //   아래쪽에 <b>존재하지 않는다</b>. 그래서 면은 반드시 밝아지고, 두 활성 상태는 밝기가
+        //   아니라 <b>색상</b>으로 갈린다(<see cref="ControlFaceOnSurface(Color, Color)"/>).
+        //
+        // ★ "그럼 카드에서 제일 밝은 것이 또 동사가 되지 않나" — 아니다. 실측으로 확인했다:
+        //   두 면의 휘도는 0.2355 / 0.2349 이고 P0-4가 세운 상한(흰 채움과 카드 바탕의 중간
+        //   = 0.4584)의 <b>절반</b>이다. 그 가드(InfoWindowSurfaceRegressionTests)는 그대로 통과한다.
+
+        /// <summary>카드 하단 [착용] 칩의 면(#838589). 카드 바탕 대비 <b>4.49 : 1</b>, 그 위 잉크 5.19:1.
+        /// <para>규칙이 만든다 — 상수를 손으로 적으면 <see cref="CardSurface"/>가 바뀔 때 조용히 갈라진다.</para></summary>
+        public static readonly Color CardActionSurface = ControlFaceOnSurface(CardSurface);
+
+        /// <summary>카드 하단 [해제](착용 중) 칩의 면(#5087CC). 같은 4.48:1 등급이되 <b>강조색</b>이라
+        /// "지금 걸치고 있는 것"이라는 신호를 면 자체가 낸다.</summary>
+        public static readonly Color CardActionSurfaceWorn = ControlFaceOnSurface(CardSurface, Accent);
+
         /// <summary>
         /// ★ <b>"누를 수 있는 것"의 면을 고르는 단 하나의 문</b>. <see cref="InkOnSurface"/>의 형제다.
         /// 두 제약을 <b>동시에</b> 만족하는 최소 혼합을 돌려준다(둘 중 하나만 풀면 위 주석의 함정에 빠진다):
@@ -1153,7 +1180,27 @@ namespace StickMate.Interaction
         {
             // 위로 갈 수 있는가 — 목표 대비를 만족하는 휘도가 1.0을 넘으면 위쪽에 답이 없다.
             bool up = ControlFaceContrastTarget * (RelativeLuminance(backdrop) + 0.05f) - 0.05f <= 1f;
-            Color mix = up ? new Color(1f, 1f, 1f, 1f) : new Color(0f, 0f, 0f, 1f);
+            return ControlFaceOnSurface(backdrop, up ? new Color(1f, 1f, 1f, 1f) : new Color(0f, 0f, 0f, 1f));
+        }
+
+        /// <summary>
+        /// ★ <see cref="ControlFaceOnSurface(Color)"/>와 <b>같은 두 제약</b>을 풀되, 흰/검이 아니라
+        /// <paramref name="tint"/> 쪽으로 섞는다 — <b>상태를 밝기가 아니라 색상(hue)으로</b> 구분해야
+        /// 할 때 쓴다.
+        ///
+        /// <para><b>왜 필요한가</b>(2026-09-02 카드 [착용]/[해제]): 한 자리에 상태가 둘 이상이면
+        /// 중립 해 하나로는 <b>둘을 구분할 수 없다</b>. 그렇다고 한쪽을 어둡게 해서 구분하면 그 어두운
+        /// 쪽이 다시 <see cref="MinNonTextContrast"/>를 깬다 — 카드 바탕은 이미 어두워서 <b>아래로는
+        /// 3.0에 도달할 방법이 아예 없다</b>(실측: 카드 바탕에서 순검정까지 가도 최대 1.27:1).
+        /// 그래서 두 상태를 <b>같은 대비 등급</b>에 두고 색상만 갈라놓는다.</para>
+        ///
+        /// <para>반환값은 여기서도 항상 <c>alpha = 1</c>이고(<see cref="Flatten"/>), 잉크는 여전히
+        /// <see cref="InkOnSurface"/>가 고른다 — 면만 바꾸고 잉크를 손으로 적으면 그 조합이 갈라진다.</para>
+        /// <para><b>Update()에서 부르지 마라</b> — 부모와 같은 격자 탐색이다.</para>
+        /// </summary>
+        public static Color ControlFaceOnSurface(Color backdrop, Color tint)
+        {
+            Color mix = tint;
 
             // ★ 이분 탐색이 아니라 <b>격자 탐색</b>인 이유: 잉크 대비는 α에 대해 단조가 아니다.
             //   밝은 잉크가 4.5를 놓치기 직전까지는 <b>내려가다가</b>, 어두운 잉크로 뒤집히는 순간

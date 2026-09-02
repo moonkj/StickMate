@@ -1,0 +1,48 @@
+[상수] 읽어온 값 {'BASE': 0.28, 'PER': 0.075, 'MINS': 0.62, 'MAXS': 2.2, 'FADE_IN': 0.06, 'FADE_OUT': 0.12, 'POP_IN': 0.18, 'READS': 2.0}
+[교정] '가뿐하네'         필요체류 0.680 / ParkourClimbState.cs 주석 0.680  OK
+[교정] '영차...'        필요체류 0.715 / ParkourClimbState.cs 주석 0.715  OK
+[교정] '헉... 높다'      필요체류 0.865 / ParkourClimbState.cs 주석 0.865  OK
+
+=== 1. 실재 대사 전수(코드 기준) ===
+  AmbientChatter.IdleLines             8줄
+  AmbientChatter.WalkLines             5줄
+  States/*.cs  DialogueLine 리터럴     13줄
+  States/RunawayState 자진복귀(변수)    2줄  ← 소스 스캐너 사각지대
+  Core/StickmanAgent 주입(TimedSpectacle)  5줄  ← 소스 스캐너 사각지대
+  Interaction/TodoListModel 동적(유저 할일)  0줄(작성 대사 아님)
+  ------------------------------------------
+  합계 작성 대사                       33줄
+  대사 생성 호출부(프로덕션)            11곳
+
+=== 2. 발화 자격 게이트(규칙 8) 검산 — 서술 대사만 ===
+  계획 잔여 하한: Idle 2.00초 / Walk 1.50초 / ParkourClimb 1.20초 / LedgeHang 1.12초
+  Idle         음...             4자 필요0.680 잔여하한2.00 여유+1.320 OK
+  Idle         여기 좋네            5자 필요0.715 잔여하한2.00 여유+1.285 OK
+  Idle         심심하다             4자 필요0.680 잔여하한2.00 여유+1.320 OK
+  Idle         잠깐 쉬는 중          7자 필요0.865 잔여하한2.00 여유+1.135 OK
+  Idle         오늘 뭐 하지          7자 필요0.865 잔여하한2.00 여유+1.135 OK
+  Idle         하암...            5자 필요0.715 잔여하한2.00 여유+1.285 OK
+  Idle         발밑이 단단해          7자 필요0.865 잔여하한2.00 여유+1.135 OK
+  Idle         구경 중이야           6자 필요0.790 잔여하한2.00 여유+1.210 OK
+  Walk         산책 중             4자 필요0.680 잔여하한1.50 여유+0.820 OK
+  Walk         저쪽으로 가볼까         8자 필요0.940 잔여하한1.50 여유+0.560 OK
+  Walk         하나 둘 하나 둘        9자 필요1.015 잔여하한1.50 여유+0.485 OK
+  Walk         다리 좀 풀자          7자 필요0.865 잔여하한1.50 여유+0.635 OK
+  Walk         다리가 잘 나가네        9자 필요1.015 잔여하한1.50 여유+0.485 OK
+  LedgeHang    여기로 내려가자         8자 필요0.940 잔여하한1.12 여유+0.180 OK
+  LedgeHang    어우... 꽤 깊네      10자 필요1.090 잔여하한1.12 여유+0.030 OK
+  ParkourClimb 가뿐하네             4자 필요0.680 잔여하한1.20 여유+0.520 OK
+  ParkourClimb 영차...            5자 필요0.715 잔여하한1.20 여유+0.485 OK
+  ParkourClimb 헉... 높다          7자 필요0.865 잔여하한1.20 여유+0.335 OK
+  서술 18줄 중 침묵 0건. **최소 여유 +0.030초** (LedgeHang "어우... 꽤 깊네" 필요 1.090 vs 잔여하한 1.12)
+
+=== 3. 감사 사각지대 ===
+  Tests/EditMode/DialogueVisibleScaleContractTests 가 훑는 대사  26줄
+  훑지 못하는 대사                                            7줄  (21%)
+    · RunawayState.cs     "어... 알았어, 갈게"
+    · RunawayState.cs     "심심해서 왔어..."
+    · StickmanAgent.cs    "좋아, 감시 시작"
+    · StickmanAgent.cs    "수고했어!"
+    · StickmanAgent.cs    "그래 쉬자"
+    · StickmanAgent.cs    "어? 딴 데 보고 있네?"
+    · StickmanAgent.cs    "아 몰라..."

@@ -323,14 +323,60 @@ namespace StickMate.Core
         {
             s_testingDirectoryOverride = null;
             LoadedFromFile = false;
+            LoadedFromPreviousGeneration = false;
             NewerVersionFileDetected = false;
             NewerVersionBackupPath = null;
             SaveSuspended = false;
             LastSaveWasAtomic = false;
+            LastSaveKeptPreviousGeneration = false;
+            ConsecutiveAtomicCommitFailures = 0;
+            s_forcedAtomicCommitFailures = 0;
+            s_deathAfterBytesForTesting = -1;
         }
 
         /// <summary>저장 파일의 절대 경로. 진단 로그/테스트에서만 쓴다.</summary>
         public static string FilePath => Path.Combine(SaveDirectory, FileName);
+
+        // ============================================================================
+        // ★ 읽기는 남의 교체를 막지 않는 공유 모드로 연다 (2026-09-02)
+        // ============================================================================
+        // File.ReadAllText는 대상을 FileShare.Read로 연다 = "내가 읽는 동안 아무도 쓰거나 지우거나
+        // 이름을 바꿀 수 없다". Windows에서 File.Replace의 첫 단계는 대상 파일을 <b>치우는 것</b>
+        // (rename 또는 delete)이라, 그 핸들이 하나라도 살아 있으면 커널이 ERROR_UNABLE_TO_REMOVE_REPLACED
+        // (1175, "바꿀 파일을 제거할 수 없습니다")로 거절한다. 그런데 이 저장 파일은 <b>설계상 여러
+        // 인스턴스가 공유한다</b>(.claude/skills/run-stickmate/SKILL.md) — 즉 우리가 저장 직전에 하는
+        // 버전 재확인 읽기와 남의 기동 시 Load()가, 서로의 원자적 교체를 막는 구조였다.
+        // FileShare.Delete를 얹으면 "읽는 동안 치워도 된다"가 되어 그 자충수가 구조적으로 사라진다.
+        // (POSIX에는 이 개념 자체가 없어 macOS/Linux에서는 무해한 no-op이다.)
+        private static string ReadAllTextShared(string path)
+        {
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                       FileShare.ReadWrite | FileShare.Delete))
+            using (var reader = new StreamReader(stream, new UTF8Encoding(false), true))
+            {
+                return reader.ReadToEnd();
+            }
+        }
+
+        // ============================================================================
+        // ★ 직전 세대 (2026-09-02 — "원자성이 실패하는 환경에서도 직전 저장으로 되돌아간다")
+        // ============================================================================
+        // 원자적 교체가 성공하는 한 손상은 일어나지 않는다. 문제는 <b>교체 자체가 거절되는 환경이
+        // 실기에 존재한다</b>는 것이고(아래 WriteAtomically 문서), 그때 예전 코드는 대상 파일에 직접
+        // 써서 손상 창을 스스로 열었다. 지금은 그 마지막 경로에서도 <b>덮어쓰기 전에 지금 내용을 이
+        // 파일로 대피</b>시킨다. 그래서 어느 순간에 죽어도 {본체, 직전 세대} 중 최소 하나는 온전하고,
+        // Load()가 본체를 못 읽으면 이쪽을 집는다. 잃는 것은 최대 한 주기(60초)다.
+        //
+        // 이름이 다운그레이드 백업(character_save.v{N}.backup.json)과 다른 이유: 역할이 다르다.
+        // 저쪽은 "해석할 수 없는 신버전 원본을 딱 한 번 보존"이고, 이쪽은 "매 저장마다 갱신되는
+        // 바로 앞 세대"다. 한 파일에 두 역할을 맡기면 둘 중 하나가 반드시 틀린 시점에 덮인다.
+        private const string PreviousFileName = "stickmate_character.prev.json";
+
+        /// <summary>직전 세대 파일의 절대 경로. 진단/테스트에서만 쓴다.</summary>
+        public static string PreviousGenerationPath => Path.Combine(SaveDirectory, PreviousFileName);
+
+        /// <summary>마지막 로드가 본체를 못 읽어 <b>직전 세대로 되돌아갔는가</b>. 진단/테스트용.</summary>
+        public static bool LoadedFromPreviousGeneration { get; private set; }
 
         /// <summary>마지막 로드가 실제 파일에서 값을 읽었는가(false면 파일이 없어 기본값으로 시작).
         /// 진단 로그 전용.</summary>
@@ -383,19 +429,38 @@ namespace StickMate.Core
         public static void Load()
         {
             LoadedFromFile = false;
+            LoadedFromPreviousGeneration = false;
             NewerVersionFileDetected = false;
             NewerVersionBackupPath = null;
             SaveSuspended = false;
             try
             {
                 string path = FilePath;
+
+                // ★ 파일이 <b>아예 없으면</b> 직전 세대를 뒤지지 않는다(의도적). 없음은 이 클래스가
+                //   처음부터 "첫 실행"으로 정의한 신호이고, 사용자가 캐릭터를 초기화하려고 파일을 치운
+                //   경우도 같은 모양이다. 여기서 세대를 되살리면 "지웠는데 돌아온다"가 된다.
+                //   되살리는 대상은 <b>있는데 못 읽는</b> 파일 하나뿐이다 — 그것만이 손상이다.
                 if (!File.Exists(path)) return;
 
-                string json = File.ReadAllText(path);
-                if (string.IsNullOrWhiteSpace(json)) return;
+                if (!TryReadSaveData(path, out SaveData data, out string failure))
+                {
+                    if (!TryReadSaveData(PreviousGenerationPath, out data, out _))
+                    {
+                        // 손상된 파일을 지우지 않는다 — 사용자가 나중에 들여다볼 수 있게 남겨두고,
+                        // 다음 저장이 정상 내용으로 덮어쓴다.
+                        Debug.LogWarning($"[성장] 저장 파일을 읽지 못했습니다({failure}). " +
+                            "기본값(Lv.1)으로 시작합니다 — 다음 저장이 정상 내용으로 덮어씁니다.");
+                        return;
+                    }
 
-                var data = JsonUtility.FromJson<SaveData>(json);
-                if (data == null || data.version <= 0) return;
+                    path = PreviousGenerationPath;
+                    LoadedFromPreviousGeneration = true;
+                    Debug.LogWarning($"[성장] 저장 파일을 읽지 못해({failure}) " +
+                        $"직전 저장으로 되돌렸습니다: {path}. " +
+                        "마지막 한 주기(최대 60초) 분량만 사라지고 나머지는 그대로입니다 — " +
+                        "손상된 본체는 지우지 않고 남겨 둡니다(다음 저장이 정상 내용으로 덮어씁니다).");
+                }
 
                 // ★ 다운그레이드 — 위 "다운그레이드 방어" 문단 참고. 스키마를 모르므로 읽지는 않되,
                 // 원본이 다음 저장에 덮여 사라지는 것만은 막는다.
@@ -444,6 +509,37 @@ namespace StickMate.Core
                 // 다음 저장이 정상 내용으로 덮어쓴다.
                 Debug.LogWarning($"[성장] 저장 파일을 읽지 못했습니다({e.GetType().Name}: {e.Message}). " +
                     "기본값(Lv.1)으로 시작합니다 — 다음 저장이 정상 내용으로 덮어씁니다.");
+            }
+        }
+
+        /// <summary>
+        /// 저장 파일 하나를 읽어 해석해 본다. <b>던지지 않는다</b> — 못 읽는 이유를
+        /// <paramref name="failure"/>에 사람이 읽을 문장으로 담고 false를 돌려준다.
+        /// "없음 / 빈 파일 / 해석 실패 / version 0 이하"를 전부 <b>같은 등급</b>(못 쓰는 파일)으로 본다:
+        /// 그 넷은 사용자에게 똑같이 "캐릭터가 초기화됐다"로 보이고, 넷 다 직전 세대가 구해 줄 수 있다.
+        /// </summary>
+        private static bool TryReadSaveData(string path, out SaveData data, out string failure)
+        {
+            data = null;
+            try
+            {
+                if (!File.Exists(path)) { failure = "파일 없음"; return false; }
+
+                string json = ReadAllTextShared(path);
+                if (string.IsNullOrWhiteSpace(json)) { failure = "빈 파일"; return false; }
+
+                var parsed = JsonUtility.FromJson<SaveData>(json);
+                if (parsed == null) { failure = "JSON 해석 실패"; return false; }
+                if (parsed.version <= 0) { failure = $"version {parsed.version}(손상/미완성)"; return false; }
+
+                data = parsed;
+                failure = null;
+                return true;
+            }
+            catch (Exception e)
+            {
+                failure = $"{e.GetType().Name}: {e.Message}";
+                return false;
             }
         }
 
@@ -563,9 +659,44 @@ namespace StickMate.Core
         //     만들고** 교체한다. 거기서 죽어도 잃을 것은 없고(그 전에 저장된 내용이 없다), 남는 것은
         //     빈 파일이라 Load()가 IsNullOrWhiteSpace 가드로 조용히 "새 캐릭터"로 시작한다 —
         //     반쯤 쓰인 JSON이 남아 경고 로그를 내는 것보다 정확한 상태다.
-        //   · 교체 자체가 실패하는 플랫폼/파일시스템이 있으면(예: 임시 폴더와 대상이 다른 볼륨)
-        //     예전 방식으로 물러선다. 그 경로는 지금보다 나빠지지 않으며, 조용히 넘어가지 않고
-        //     경고를 남긴다(무엇이 원자적이지 않았는지 나중에 알 수 있게).
+        //
+        // ============================================================================
+        // ★ 2026-09-02 — 그 폴백이 실기에서 실제로 밟혔다. 폴백이 손상 창을 스스로 열고 있었다.
+        // ============================================================================
+        // 사용자 Windows 로그:
+        //   "[성장] 저장 파일을 원자적으로 교체하지 못해 직접 쓰기로 물러섰습니다
+        //    (IOException: 바꿀 파일을 제거할 수 없습니다)."
+        //
+        // ---- 무엇이 실패했는지부터 좁힌다(추측 금지) ----
+        // 그 문장은 우리가 지어낸 것이 아니라 <b>OS 메시지 테이블</b>에서 온 것이다
+        // (.NET은 매핑되지 않은 Win32 오류를 FormatMessage 문구 그대로 IOException에 담는다).
+        // 한국어 "바꿀 파일을 제거할 수 없습니다" = ERROR_UNABLE_TO_REMOVE_REPLACED(1175).
+        // ReplaceFile은 [대상 치우기] → [임시를 대상 이름으로] 두 걸음인데, 1175는 <b>첫 걸음</b>이
+        // 거절됐다는 뜻이다. 이 한 줄이 후보를 실제로 잘라낸다:
+        //   · "임시와 대상이 다른 볼륨"(옛 주석이 유일한 근거로 적어 둔 가설) → <b>반증</b>.
+        //     그 경우 오류는 ERROR_NOT_SAME_DEVICE(17)이고, 무엇보다 두 경로는 코드 구조상
+        //     같은 SaveDirectory에서 Path.Combine으로 만들어져 다른 볼륨이 될 수가 없다.
+        //   · 읽기 전용 속성 / 권한 없음 → ERROR_ACCESS_DENIED(5). 게다가 <b>같은 순간 직접 쓰기는
+        //     성공했다</b> — 즉 그 파일은 "쓸 수는 있는데 치울 수는 없는" 상태였다.
+        // 남는 것은 <b>대상 파일에 DELETE(치우기)를 허용하지 않는 핸들이 열려 있었다</b> 하나다.
+        // 그런 핸들을 여는 것은 (a) 실시간 검사/색인기/백업 도구 같은 필터 드라이버, 그리고
+        // (b) <b>우리 자신</b> — File.ReadAllText는 FileShare.Read로 열고, 이 저장 파일은 설계상
+        // 여러 인스턴스가 공유한다. 즉 남의 Load()나 저장 직전 버전 재확인이 내 교체를 막을 수 있었다.
+        // ★ (a)와 (b) 중 실기에서 어느 쪽이었는지는 이 머신에 Windows가 없어 <b>확정하지 못했다</b>.
+        //   다만 둘 다 "잠깐"이라는 성질이 같고, 처방(공유 모드 + 재시도)도 같다.
+        //
+        // ---- 고친 방식: 물러서더라도 원자성은 마지막에 놓는다 ----
+        //   (0) 읽기를 FileShare.Delete로 연다        → 우리가 우리 교체를 막던 (b)를 구조적으로 제거
+        //   (a) File.Replace(임시, 본체, 직전세대)     → 성공하면 세대 보존까지 공짜(커널 한 덩어리)
+        //   (b) 짧은 재시도 3회(4/12/32ms)            → 1175는 대개 밀리초 안에 풀린다
+        //   (c) File.Replace(임시, 본체, null)        → 세대 보존만 포기하고 원자성은 지킨다
+        //   (d) 그림자 커밋: 본체를 직전 세대로 복사한 <b>뒤</b> 직접 쓰기
+        //       → 원자적이지는 않지만 <b>손상돼도 직전 저장이 남는다</b>. 최대 손실 한 주기(60초).
+        //
+        // (d)를 아예 없애고 "저장하지 않고 다음 주기에 다시"로 갈지 따졌고 <b>기각</b>했다:
+        // 1175를 만드는 조건 중에는 지속형(ACL이 DELETE만 막는 등)도 있어서, 그 환경에서는
+        // "영원히 한 번도 저장되지 않는" 앱이 된다 — 종료 시 저장까지 포함해서. 손상 위험보다
+        // 확정 전손이 나쁘다. 대신 (d)의 손상 창은 직전 세대가 받아 낸다.
 
         // ============================================================================
         // ★ 임시 파일 이름은 인스턴스마다 다르다 (2026-09-01, 페르소나 재현 J2)
@@ -623,8 +754,58 @@ namespace StickMate.Core
         /// <summary>쓰는 중인 임시 파일의 절대 경로. 진단/테스트에서만 쓴다.</summary>
         public static string TempFilePath => Path.Combine(SaveDirectory, TempFileName);
 
-        /// <summary>마지막 저장이 원자적 교체 경로로 끝났는가(false = 폴백으로 물러섰다). 진단/테스트용.</summary>
+        /// <summary>마지막 저장이 원자적 교체 경로로 끝났는가(false = 그림자 커밋으로 물러섰다). 진단/테스트용.</summary>
         public static bool LastSaveWasAtomic { get; private set; }
+
+        /// <summary>마지막 저장이 <b>직전 세대</b>를 남겼는가. 첫 저장에는 남길 것이 없어 false다.
+        /// 진단/테스트용.</summary>
+        public static bool LastSaveKeptPreviousGeneration { get; private set; }
+
+        /// <summary>원자적 교체가 연속으로 실패한 횟수(성공하면 0). 로그 도배를 막는 데도 쓴다.</summary>
+        public static int ConsecutiveAtomicCommitFailures { get; private set; }
+
+        // ============================================================================
+        // ★ 원자적 교체 실패를 테스트가 강제로 만든다 (2026-09-02)
+        // ============================================================================
+        // 이 사다리의 아래쪽 단은 <b>Windows에서만, 그것도 가끔</b> 밟힌다. 이 개발 머신(macOS)에서
+        // File.Replace는 그냥 성공하므로, 주입구가 없으면 폴백 경로는 <b>영원히 한 줄도 실행되지 않고</b>
+        // 검증도 불가능하다 — 사용자 실기에서 처음 밟히는 코드가 되어 버린다. 그래서 "몇 번 실패한
+        // 것으로 칠 것인가"만 테스트가 정한다. 프로덕션에서는 0이라 분기 하나 값이 비용의 전부다.
+        private static int s_forcedAtomicCommitFailures;
+
+        /// <summary>원자적 교체 사다리가 <b>전부</b> 실패하려면 몇 번을 막아야 하는가.
+        /// 테스트가 숫자를 베껴 적지 않도록 프로덕션 상수에서 파생시킨다(CLAUDE.md 협업 프로토콜).</summary>
+        internal static int AtomicCommitAttemptBudget => ReplaceRetryBackoffMilliseconds.Length + 2;
+
+        /// <summary>테스트 전용 — 다음 <paramref name="count"/>번의 교체 시도를 실패한 것으로 만든다.
+        /// <see cref="AtomicCommitAttemptBudget"/>을 주면 "이 환경에서는 교체가 아예 안 된다"가 된다.</summary>
+        internal static void ForceAtomicCommitFailuresForTesting(int count) => s_forcedAtomicCommitFailures = count;
+
+        // ★ 그림자 커밋의 값어치는 "깨지는 순간"에만 있다. 그래서 <b>깨지는 순간을 실제로 만든다</b> —
+        //   테스트가 밖에서 파일을 잘라 상태를 흉내내는 것이 아니라, 프로덕션 순서(대피 → 덮어쓰기)를
+        //   그대로 밟다가 덮어쓰기 <b>도중</b>에 멈춘다. 그때 디스크에 남는 모양은 프로세스가 그 자리에서
+        //   사라졌을 때와 같고(앞부분만 쓰인 본체), 이어지는 예외는 "그 뒤로 아무 일도 일어나지 않는다"를
+        //   재현한다(Save()가 false를 돌려주고 모델은 더티로 남는다 = 저장되지 않았다).
+        private static int s_deathAfterBytesForTesting = -1;
+
+        /// <summary>테스트 전용 — 그림자 커밋의 덮어쓰기를 <paramref name="afterBytes"/>바이트에서
+        /// 끊고 프로세스가 사라진 것처럼 만든다. 음수면 꺼진다(1회용).</summary>
+        internal static void SimulateDeathDuringOverwriteForTesting(int afterBytes) =>
+            s_deathAfterBytesForTesting = afterBytes;
+
+        /// <summary>본체 덮어쓰기 한 곳. 테스트 주입이 걸려 있으면 앞부분만 쓰고 그대로 멈춘다.</summary>
+        private static void OverwriteDestination(string path, string json)
+        {
+            if (s_deathAfterBytesForTesting >= 0)
+            {
+                int cut = Math.Min(s_deathAfterBytesForTesting, json.Length);
+                s_deathAfterBytesForTesting = -1;
+                File.WriteAllText(path, json.Substring(0, cut));
+                throw new IOException("[테스트 주입] 덮어쓰기 도중 프로세스가 사라진 상황을 흉내냅니다.");
+            }
+
+            File.WriteAllText(path, json);
+        }
 
         // ============================================================================
         // ★ 저장 직전 버전 재확인 — "내 것보다 새로운 저장을 조용히 덮어쓰지 않는다"
@@ -664,7 +845,7 @@ namespace StickMate.Core
             {
                 if (!File.Exists(path)) return false;
 
-                string json = File.ReadAllText(path);
+                string json = ReadAllTextShared(path);
                 if (string.IsNullOrWhiteSpace(json)) return false;
 
                 var probe = JsonUtility.FromJson<VersionProbe>(json);
@@ -702,12 +883,100 @@ namespace StickMate.Core
                 "되돌릴 수 있는 불편을 택했습니다(이 클래스의 다운그레이드 방어와 같은 저울).");
         }
 
+        // ============================================================================
+        // ★ 교체 재시도 — 1175는 "지금은 안 된다"이지 "여기서는 안 된다"가 아니다 (2026-09-02)
+        // ============================================================================
+        // 실기 로그가 남긴 결정적 단서: 교체가 거절된 <b>바로 그 순간</b>에 이어진 직접 쓰기는
+        // 성공했다. 즉 그 시점의 대상 파일은 <b>쓸 수는 있는데 치울 수는 없는</b> 상태였고,
+        // 그 상태는 대개 밀리초 단위로 사라진다(검사 필터/색인기/백업 도구가 손을 뗀다).
+        // 그래서 첫 대응은 "물러서기"가 아니라 "조금 기다렸다 다시"다. 즉시 재시도는 같은 실패를
+        // 반복할 뿐이라 아주 짧게 재운다 — <b>실패했을 때만</b> 최대 48ms(4+12+32).
+        // 이 대기는 Save()의 [스톨구간] 안에서 일어나므로 스톨 귀인에 정직하게 잡힌다.
+        private static readonly int[] ReplaceRetryBackoffMilliseconds = { 4, 12, 32 };
+
+        /// <summary>연속 실패가 이어질 때 경고를 몇 번에 한 번 남길 것인가. 60초 주기 저장 기준
+        /// 약 한 시간에 한 줄이다 — 하루 종일 켜 두는 앱이라 매 분 같은 줄을 남기면 로그가 죽는다.</summary>
+        private const int AtomicCommitFailureLogEvery = 60;
+
+        /// <summary>교체 1회. 테스트 주입이 걸려 있으면 실제로 만지지 않고 실패한 것으로 친다
+        /// (임시 파일이 소모되지 않으므로 다음 단이 그대로 이어서 시도할 수 있다 — 실기와 같은 모양).</summary>
+        private static void ReplaceOnce(string temp, string path, string backup)
+        {
+            if (s_forcedAtomicCommitFailures > 0)
+            {
+                s_forcedAtomicCommitFailures--;
+                throw new IOException("[테스트 주입] 원자적 교체 실패를 흉내냅니다 " +
+                    "(Windows ERROR_UNABLE_TO_REMOVE_REPLACED 재현).");
+            }
+
+            File.Replace(temp, path, backup);
+        }
+
+        /// <summary>원자성을 잃지 않는 범위에서 할 수 있는 것을 전부 해 본다.
+        /// 성공하면 null, 전부 실패하면 마지막 예외를 돌려준다.</summary>
+        private static Exception TryCommitAtomically(string temp, string path, string previous)
+        {
+            Exception last = null;
+
+            // (a) 직전 세대를 남기는 교체. 커널이 "대상→직전 세대 / 임시→대상"을 한 덩어리로 처리하므로
+            //     우리 쪽 추가 IO는 0이고, 성공하면 언제나 바로 앞 세대가 디스크에 남는다.
+            for (int attempt = 0; attempt <= ReplaceRetryBackoffMilliseconds.Length; attempt++)
+            {
+                if (attempt > 0) System.Threading.Thread.Sleep(ReplaceRetryBackoffMilliseconds[attempt - 1]);
+
+                try
+                {
+                    // 첫 저장이면 교체 대상이 있어야 하므로 빈 파일을 만든다. 그 빈 파일을 세대로
+                    // 남길 이유는 없으므로(잃을 것이 없다) 이때만 백업 인자를 비운다.
+                    bool firstSave = !File.Exists(path);
+                    if (firstSave) File.WriteAllText(path, string.Empty);
+
+                    ReplaceOnce(temp, path, firstSave ? null : previous);
+                    LastSaveKeptPreviousGeneration = !firstSave;
+                    return null;
+                }
+                catch (Exception e) { last = e; }
+            }
+
+            // (b) 마지막 원자적 시도 — 세대 보존을 <b>포기</b>한다. 세대를 남기는 형태는 대상 파일을
+            //     지우는 대신 이름을 바꾸므로 실패 지점이 하나 더 있다. 그 하나 때문에 원자성을
+            //     통째로 잃는 것은 손해다(직전 세대는 앞선 성공이 남긴 것이 그대로 남아 있다).
+            try
+            {
+                if (!File.Exists(path)) File.WriteAllText(path, string.Empty);
+                ReplaceOnce(temp, path, null);
+                LastSaveKeptPreviousGeneration = false;
+                return null;
+            }
+            catch (Exception e) { return e; }
+        }
+
+        /// <summary>지금 디스크에 있는 <b>온전한</b> 내용을 직전 세대로 대피시킨다.
+        /// 온전하지 <b>않으면</b> 손대지 않는다 — 그때 기존 세대가 유일한 복구원이고,
+        /// 깨진 본체로 그것을 덮으면 마지막 안전망까지 함께 잃는다.</summary>
+        private static bool TryShelterCurrentGeneration(string path, string previous)
+        {
+            try
+            {
+                if (!File.Exists(path)) return false;            // 첫 저장 — 대피시킬 것이 없다
+                if (!TryReadDiskVersion(path, out _)) return false;  // 이미 못 쓰는 내용이다
+
+                File.Copy(path, previous, true);
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         /// <returns>대상 저장 파일을 실제로 갱신했으면 true. 위 가드에 걸려 <b>쓰지 않고 물러섰으면</b>
         /// false — 그때 호출자는 모델을 "저장됨"으로 표시하면 안 된다.</returns>
         private static bool WriteAtomically(string json)
         {
             string path = FilePath;
             string temp = TempFilePath;
+            string previous = PreviousGenerationPath;
 
             // (1) 전량을 임시 파일에 쓰고 디스크에 확정한다. 여기서 죽으면 대상 파일은 손도 대지 않은
             //     옛 내용 그대로다(이 수정의 핵심).
@@ -720,7 +989,7 @@ namespace StickMate.Core
             }
 
             // (2) ★ 교체 **직전** 확인 — 그 사이 다른 인스턴스가 더 새로운 버전으로 저장했는가.
-            //     일부러 아래 try 밖에 둔다: 이 확인이 예외를 내면 폴백(직접 쓰기)으로 떨어져
+            //     일부러 아래 사다리 밖에 둔다: 이 확인이 예외를 내면 아래로 떨어져
             //     막으려던 덮어쓰기를 스스로 저지르게 된다. TryReadDiskVersion은 던지지 않는다.
             if (TryReadDiskVersion(path, out int diskVersion) && diskVersion > CurrentVersion)
             {
@@ -729,27 +998,42 @@ namespace StickMate.Core
                 return false;
             }
 
-            try
+            // (3) 원자적 커밋 사다리.
+            Exception failure = TryCommitAtomically(temp, path, previous);
+            if (failure == null)
             {
-                // (3) 첫 저장이면 교체 대상이 있어야 하므로 빈 파일을 만든다(위 문단 참고).
-                if (!File.Exists(path)) File.WriteAllText(path, string.Empty);
-
-                // (4) 원자적 교체. 백업 사본은 만들지 않는다(null) — 다운그레이드 백업(m6)과 역할이
-                //     다르고, 매 저장마다 사본을 남기면 디스크만 두 배로 쓴다.
-                File.Replace(temp, path, null);
+                ConsecutiveAtomicCommitFailures = 0;
                 LastSaveWasAtomic = true;
-            }
-            catch (Exception e)
-            {
-                // 물러서기: 예전과 같은 직접 쓰기. 지금보다 나빠지지는 않지만 원자적이지 않다.
-                LastSaveWasAtomic = false;
-                File.WriteAllText(path, json);
-                Debug.LogWarning($"[성장] 저장 파일을 원자적으로 교체하지 못해 직접 쓰기로 물러섰습니다" +
-                    $"({e.GetType().Name}: {e.Message}). 저장 자체는 성공했지만, 이번 쓰기 도중 " +
-                    "강제 종료되면 파일이 손상될 수 있습니다.");
+                return true;
             }
 
+            // (4) 그림자 커밋 — 원자성을 잃는 유일한 경로다. 그래서 <b>잃을 것을 먼저 대피시킨다</b>.
+            //     순서가 전부다: 대피(복사) → 덮어쓰기. 어느 순간에 죽어도 {본체, 직전 세대} 중
+            //     최소 하나는 온전하고, 다음 Load()가 그 하나를 집는다.
+            //       · 대피 중 사망      → 본체 온전, 세대 깨짐 → 본체를 읽는다
+            //       · 덮어쓰기 중 사망  → 본체 깨짐, 세대 온전 → 세대를 읽는다(최대 한 주기 손실)
+            ConsecutiveAtomicCommitFailures++;
+            LastSaveWasAtomic = false;
+            bool sheltered = TryShelterCurrentGeneration(path, previous);
+            LastSaveKeptPreviousGeneration = sheltered;
+            OverwriteDestination(path, json);
+            LogAtomicCommitFallback(failure, sheltered, previous);
             return true;
+        }
+
+        private static void LogAtomicCommitFallback(Exception failure, bool sheltered, string previous)
+        {
+            int n = ConsecutiveAtomicCommitFailures;
+            if (n != 1 && n % AtomicCommitFailureLogEvery != 0) return;
+
+            Debug.LogWarning($"[성장] 저장 파일을 원자적으로 교체하지 못했습니다" +
+                $"({failure.GetType().Name}: {failure.Message}) — 재시도 {AtomicCommitAttemptBudget}회 전부 실패" +
+                (n > 1 ? $", 연속 {n}회째" : string.Empty) + ". " +
+                (sheltered
+                    ? $"덮어쓰기 전에 직전 저장을 {previous} 로 대피시켰습니다 — 이번 쓰기 도중 강제 " +
+                      "종료되더라도 다음 실행이 직전 저장으로 자동 복구합니다(최대 한 주기 손실)."
+                    : "대피시킬 온전한 직전 내용이 없어(첫 저장이거나 본체가 이미 손상) 직전 세대를 " +
+                      "갱신하지 못했습니다 — 이번 쓰기 도중 강제 종료되면 이번 분량을 잃을 수 있습니다."));
         }
 
         /// <summary>미착용을 <c>null</c>이 아니라 빈 문자열로 적는다 — JsonUtility는 null 문자열을

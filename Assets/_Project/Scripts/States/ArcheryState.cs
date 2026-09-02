@@ -146,6 +146,21 @@ namespace StickMate.States
             else if (_blackboard.Body != null)
             {
                 // "캐릭터가 멈춰 서고" — 남은 수평 속도를 지수 감쇠로 죽인다(프레임레이트 독립, 프로젝트 표준).
+                //
+                // ★★ 2026-09-02 — 이 한 줄이 곧 <b>수평 소유권 계약의 이행</b>이다. 이 상태는
+                // StickmanBlackboard.IsHorizontalMotionSelfManaged에서 **true**라 수평 표류 안전망이
+                // 손을 대지 않는다. true여야 하는 이유는 위 Approach 분기가 목표 지점까지 실제로
+                // 걸어가기 때문이고(false면 안전망이 그 보행 속도를 매 프레임 지워 영원히 도착하지
+                // 못한다), 그 대가로 **제자리 페이즈의 정지는 이 상태가 직접 책임진다.**
+                // 한 번만 대입하고 끝내면 안 된다 — 그렇게 하면 그 뒤에 들어온 외력이 그대로 남아
+                // 미끄러진다(IdleState.Enter가 그 반례이며, 이번 라운드 신고의 대조군이 정확히 그것이다).
+                // 지수 감쇠는 0에 점근할 뿐이지만 실효 잔량은 무시할 수 있다: 감쇠 14/초에서 0.5초 뒤
+                // 계수 e^-7 = 9.1e-4라 걷기 속도 진입분이 0.11pt/s로 줄고, 남은 사이클(약 4초)의 총
+                // 표류가 약 0.45pt다(디버거가 잰 대조군 "8초에 0.5pt"보다도 작다).
+                //
+                // ★ 같은 형태의 상태(접근 페이즈 뒤 제자리)를 새로 만드는 사람은 이 처리를 반드시
+                //   함께 넣어라 — 곡괭이질/낚시/닦기/쓰다듬기가 모두 이 형태다.
+                //   계약 전문은 IsHorizontalMotionSelfManaged의 XML 문서에 있다.
                 float damping = (_cfg != null ? _cfg.archeryHorizontalDamping : 14f);
                 Vector2 v = _blackboard.Body.linearVelocity;
                 v.x = damping > 0f ? v.x * Mathf.Exp(-damping * deltaTime) : 0f;

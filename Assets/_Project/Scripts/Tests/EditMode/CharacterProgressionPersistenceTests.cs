@@ -190,6 +190,11 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 손상된_저장_파일은_기본값으로_떨어지고_크래시하지_않는다()
         {
+            // ★ 2026-09-02 — 이 테스트가 재는 것은 "복구원이 하나도 없을 때 기본값으로 떨어지는가"다.
+            //   직전 세대(stickmate_character.prev.json)가 남아 있으면 새 복구 경로가 그것을 집으므로,
+            //   전제를 파일로 만들어 둔다(EditMode 임시 폴더는 전 픽스처가 공유한다).
+            if (File.Exists(CharacterSaveStore.PreviousGenerationPath))
+                File.Delete(CharacterSaveStore.PreviousGenerationPath);
             File.WriteAllText(CharacterSaveStore.FilePath, "{ this is not valid json ]]]");
 
             CharacterProgressionModel.ResetForTesting();

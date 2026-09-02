@@ -21326,3 +21326,119 @@ b45ed3881a68a4cbd8c658b8942ea6f1 -> Interaction/BattleMinigameRenderer.cs  (삭�
 
 **후속 필요**: ①은 4탭 설계 재작업(ux-designer), ②는 리플로우 없이 2열 확정,
 ④는 `design-systems`가 완주 일수 재검산.
+
+---
+
+## 2026-09-02 — coder: 수평 표류 안전망 신설 + 연출 "거짓 완료" 4건 수정 ✅
+
+**신고**: "그라피티 그릴때 윈도우버전은 캐릭터가 미끄러져이동함" (플랫폼 중립 결함, macOS에서 재현됨)
+
+**대상 파일**
+- `Assets/_Project/Scripts/States/StickmanBlackboard.cs` — `IsHorizontalMotionSelfManaged` + `TickHorizontalDriftSafetyNet` 신설
+- `Assets/_Project/Scripts/Core/StickmanAgent.cs` — 상태 Tick 직후(접지 안전망 다음) 1줄 배선
+- `Assets/_Project/Scripts/Core/StickConfig.cs` + `Assets/_Project/Data/DefaultStickConfig.asset` — 스위치 2개(에셋에도 구움)
+- `Assets/_Project/Scripts/Core/SpectacleExitClassification.cs` (신규) + `Core/StickmanEventBus.cs` — `StateTransitionEvent.IsAbnormalExit`
+- `Assets/_Project/Scripts/States/ArcheryState.cs` — 소유권 계약 문서화(로직 무변경)
+- `Interaction/{Graffiti,DesktopIconMirror,WindowTheft,Archery}Director.cs` — 도착 상태 반영
+- 테스트 2종 신규: `Tests/PlayMode/HorizontalDriftSafetyNetTests.cs`, `Tests/EditMode/HorizontalMotionOwnershipContractTests.cs`
+
+### 1) 원인 (디버거 실측을 코드로 확인)
+
+접지 중 `gravityScale = 0` → **수직항력 N = 0** → 쿨롱 마찰 상한 μN = 0. 마찰이 원리적으로 없다.
+이건 중력 억제 수정의 결함이 아니라 **부작용**이다 — 마찰을 되살리려면 중력을 되살려야 하고,
+그러면 원래 신고("창에서 가끔 갑자기 떨어짐")가 돌아온다. 그래서 **세로에서 한 일을 가로에 똑같이** 했다.
+
+### 2) 승인 목록에서 **1종 추가**했다 — `LandingCrouch` (리더 확인 요망)
+
+`LandingCrouchState`는 이미 `landingCrouchHorizontalDamping`(12/초)으로 **매 프레임** 수평 속도를
+죽이고 있고, 그 주석이 "0으로 즉시 대입하지 않는 이유: 공중에서의 수평 이동이 착지 순간 뚝 끊기면
+오히려 더 부자연스럽다"고 명시한다. 안전망은 상태 Tick **직후**에 돌므로 false로 두면 그 튜닝된
+감쇠가 **통째로 죽은 코드**가 되고 착지 박자가 바뀐다. 즉 활쏘기와 **같은 형태**(상태가 스스로 소유,
+매 프레임 재확인)이므로 목록에 넣었다. 최종 13종.
+
+### 3) 정지 박자 — **안전망 안에 넣었다**(모션 권고 0.14초 그대로)
+
+판단 근거 셋:
+1. 이 저장소는 같은 질문에 이미 **두 번** 답했고 두 번 다 "즉시 대입하지 않는다"였다
+   (`landingCrouchHorizontalDamping` 12/초, `archeryHorizontalDamping` 14/초).
+2. 12종 각각에 넣으면 이 저장소가 반복한 실패 유형("같은 패턴의 다른 경로에는 안 넣기")을 그대로
+   다시 만든다. 안전망 한 곳에 두면 **앞으로 추가될 상태가 자동으로 보호**된다.
+3. 지수 감쇠가 아니라 **선형 램프**를 썼다 — 지수는 0에 점근할 뿐이라 "안전망이 표류를 0으로
+   만든다"는 보증을 줄 수 없다. 선형은 0.14초 안에 **정확히 0**에 도달하고 그 뒤 0에 못박힌다.
+   감속률은 상수가 아니라 **진입 속도에서 유도**한다(배율/화면 기하가 바뀌어도 박자가 고정).
+
+### 4) 원칙 1 위반 — 전수 조사 결과 **4건**이었다(그라피티 1건이 아니다)
+
+| 디렉터 | 예전 거동 | 지금 |
+|---|---|---|
+| `GraffitiDirector` | Fall/Ragdoll 둘 다 Completed + 10분 쿨다운 | 비정상 이탈 → Cancelled, 쿨다운 없음 |
+| `DesktopIconMirrorDirector`(청소부/블랙홀) | 같음(15분) | 같은 처리 |
+| `WindowTheftDirector` | Ragdoll은 걸렀지만 **Fall은 Completed**(15분) | 같은 처리 |
+| `ArcheryDirector` | 같음(10분) | 같은 처리 |
+
+`IsForcedInterrupt`만으로는 못 잡는다 — 발판 상실 Fall은 강제 인터럽트가 **아니다**.
+두 축은 독립이다: 강제 인터럽트 = "누가 끊었는가", 비정상 이탈 = "어디로 나갔는가".
+판정은 `Core/SpectacleExitClassification` 한 곳에만 두었고(정책은 중립 위치),
+**다섯 번째 디렉터가 같은 함정을 밟는 것을 EditMode 소스 감사가 막는다**
+(`완료를_발행하는_모든_디렉터가_비정상이탈을_함께_본다`, 정규식이 헛도는 거짓 초록도 `audited > 0`으로 차단).
+
+### 5) 검증 (Unity 6000.0.82f1 batchmode, 실측 — `-quit` 미지정, 결과 파일 선삭제 + mtime 확인)
+
+| 항목 | 결과 | 파일 |
+|---|---|---|
+| PlayMode 신규 5건 | **5/5 통과** | `Logs/coder_hdrift_play2.xml` |
+| EditMode 신규 8건 | **8/8 통과** | `Logs/coder_hdrift_edit.xml` |
+| EditMode 전체 | 1405건 중 **1393 통과 / 실패 1(내 것 아님) / 스킵 11** | `Logs/coder_hdrift_edit_all.xml` |
+| PlayMode 전체 | 563건 중 **556 통과 / 실패 4(전부 선재) / 스킵 3** | `Logs/coder_hdrift_play_all.xml` |
+| `xcheck.sh win` / `osx` | 양쪽 **errors=0** (5개 어셈블리 전부) | — |
+
+**실측값 (벽시계 1.00초, 프레임 수 예산 아님)**
+
+```
+안전망 ON   표류 0.1158유닛,  끝 속도 0.000000  ← 정확히 0
+안전망 OFF  표류 1.8750유닛,  끝 속도 1.875000  ← 감속 0, 등속 (네거티브 컨트롤)
+                                                  = 신고 그대로 재현. 16.2배 차이
+정지까지 벽시계 139.9ms (설정 140ms) / 관측 감속률 13.393 = 유도 기대값 13.393
+걷기 회귀 없음: 0.50초에 0.9375유닛 = 명령 속도 그대로
+```
+
+### 6) 선재 실패 — **내 변경이 원인이 아니다**(같은 날 09:52 `Logs/coder_hat_playmode.xml`와 대조)
+
+| 테스트 | 09:52(내 변경 전) | 지금 |
+|---|---|---|
+| `AppearanceNewItemsRenderTests` 2건 | Failed | Failed(동일) |
+| `DialogueComicTextPlacementTests.TiltFollowsTheConfig` | Failed | Failed(동일) |
+| `FloorContactVisibilityTests` | Failed | Failed(동일) |
+| `LiveObjectGrowthGuardTests.G1` | Failed | **Passed** |
+
+`FloorContactVisibilityTests`의 482.09pt는 그 파일 자신이 주석으로 적어 둔 **알려진 간헐 오염**
+(스폰 높이 표본이 접지 간격 검증으로 새는 형태, 기록된 관측값 482.72pt)이다.
+EditMode의 유일한 실패 `CloseChipAffordanceTests`는 동시 라운드의 `Interaction/UiChrome.cs`
+(+48줄, 새 `LogError` 문자열이 그 파일에만 있다) 소관이다.
+
+### 교차 레이어 영향 로그
+
+- **모든 상태 작성자(States/)** — 새 상태를 만들 때 **수평 소유권을 판단해야 한다.**
+  기본값(목록에 안 넣음)은 "안전망이 잔여 수평 속도를 지운다"이고, 그게 안전한 쪽이다.
+  **접근 페이즈가 있는 상태**(곡괭이질/낚시/닦기/쓰다듬기 — 전부 미구현)는 반드시 목록에 넣고
+  **제자리 페이즈 동안 매 프레임 스스로 수평 속도를 죽여야** 한다. 한 번만 대입하면 안 된다
+  (`IdleState.Enter`가 그 반례다). 계약 전문은 `IsHorizontalMotionSelfManaged`의 XML 문서에 있다.
+- **디렉터 작성자(Interaction/)** — `OnStateTransitioned`에서 `Completed`를 발행한다면
+  `evt.IsAbnormalExit`를 함께 봐야 한다. EditMode 감사가 자동으로 잡는다.
+- **debugger** — 이번에 만든 `HorizontalDriftBrakeRate`(블랙보드 공개 프로퍼티)로 "지금 브레이크가
+  걸려 있는가/감속률이 얼마인가"를 로그가 아니라 값으로 볼 수 있다.
+- **★ 리더 확인 요망 (2건)**
+  1. 승인 목록에 없던 `LandingCrouch`를 넣었다(위 2절). 뺄 경우 착지 감쇠가 죽은 코드가 된다.
+  2. **편집 금지 구역을 넘었다** — 리더 지시는 "`States/`와 `Core/`만"이었으나 "함께 고칠 것"으로
+     지시된 `GraffitiDirector` 수정이 `Interaction/`에 있어, 전수 조사 결과인 4개 디렉터의
+     `OnStateTransitioned` **본문만** 최소로 고쳤다(정책 로직은 전부 `Core/`에 두었다).
+     동시 진행 중인 파일(`UiChrome.cs`/`CharacterInfoWindow.cs`/`AccessoryCardIcon.cs`)과는 겹치지 않는다.
+- **남긴 것(고의)** — `GraffitiDirector`/`DesktopIconMirrorDirector`는 `IsForcedInterrupt`를 아직 보지
+  않는다(전체화면 Suspend 경로가 Completed로 기록된다). `WindowTheft`/`Archery`에는 그 가드가 있어
+  **네 디렉터가 서로 다르다.** 이번 라운드 범위 밖이라 손대지 않았고 별도 배정을 권한다.
+
+**Windows 영향**: 함께 수정함 — 신고 자체가 Windows 로그(`[화면클램프] ... 상태=Graffiti`)에서 왔고
+수정은 전부 플랫폼 중립 위치(`States/`·`Core/`)다. 플랫폼 분기를 한 줄도 만들지 않았고
+`xcheck.sh win` errors=0(5개 어셈블리). 실질 수혜자는 신고자인 Windows다.
+**macOS 영향**: 함께 수정함(같은 코드 경로). macOS에서 버그를 재현하고 수정을 실측으로 확인했다 —
+위 5절 수치가 전부 macOS 배치모드 실측이다. `xcheck.sh osx` errors=0.

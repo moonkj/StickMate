@@ -219,13 +219,33 @@ namespace StickMate.Interaction
             return false;
         }
 
+        /// <summary>
+        /// ★ 2026-09-02 — <b>도착 상태를 함께 본다</b>(절대 불변 원칙 1 위반 수정). 예전에는
+        /// <c>From == Graffiti &amp;&amp; _hasRegion</c>만 보고 <c>Completed</c>를 발행하고 10분 쿨다운까지
+        /// 걸었다. 그래서 <b>그림을 그리다 미끄러져 발판 밖으로 떨어져도 "정상 완료"로 기록</b>됐고,
+        /// 사용자는 실패한 연출 하나 때문에 10분을 기다렸다. 판정은
+        /// <see cref="SpectacleExitClassification"/> 한 곳에만 있다(같은 형태가 4개 디렉터에 있었다 —
+        /// 그 클래스 문서의 전수 조사 목록 참고).
+        /// </summary>
         private void OnStateTransitioned(StateTransitionEvent evt)
         {
             if (evt.From != StickmanStateId.Graffiti) return;
             bool wasCancelled = !_hasRegion; // CancelDrawing()이 이미 _hasRegion=false + Cancelled 이벤트를 발행했으면 여기서는 완료 처리하지 않는다.
             _hasRegion = false;
-            if (!wasCancelled) RaiseOverlay(SpectacleOverlayPhase.Completed); // 정상 완료(시간 경과)
-            _cooldownRemaining = _config != null ? _config.graffitiCooldownSeconds : 600f;
+            bool abnormal = evt.IsAbnormalExit;
+            if (!wasCancelled) RaiseOverlay(abnormal ? SpectacleOverlayPhase.Cancelled : SpectacleOverlayPhase.Completed);
+
+            // 비정상 이탈에는 쿨다운을 걸지 않는다 — 쿨다운은 "방금 충분히 보여줬으니 쉬자"는 뜻인데
+            // 보여주다 만 연출에 그걸 걸면 실패 한 번이 10분 침묵이 된다.
+            if (abnormal)
+            {
+                Debug.Log($"[그라피티] 비정상 이탈({evt.To}) — 그리던 도중 몸이 발판에서 밀려났습니다. " +
+                    "완료가 아니라 취소로 기록하고 쿨다운을 걸지 않습니다.");
+            }
+            else
+            {
+                _cooldownRemaining = _config != null ? _config.graffitiCooldownSeconds : 600f;
+            }
             SpectacleEventLock.Release(this);
         }
 

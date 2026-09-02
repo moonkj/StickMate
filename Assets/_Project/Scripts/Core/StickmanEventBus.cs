@@ -5,19 +5,40 @@ using StickMate.Dialogue;
 
 namespace StickMate.Core
 {
-    /// <summary>스틱맨의 상태 식별자. Core에 두는 이유: States/Dialogue/Plugins 등 상위 레이어가
-    /// 모두 이 값을 공유해야 하는데, Core는 프로젝트의 최하위 레이어라 순환 참조가 생기지 않는다.</summary>
+    /// <summary>
+    /// 스틱맨의 상태 식별자. Core에 두는 이유: States/Dialogue/Plugins 등 상위 레이어가
+    /// 모두 이 값을 공유해야 하는데, Core는 프로젝트의 최하위 레이어라 순환 참조가 생기지 않는다.
+    ///
+    /// <para>
+    /// ★ <b>값을 명시로 박았다 — 2026-09-02.</b> <see cref="EquipmentSlot"/>이 이미 같은 이유로
+    /// 박혀 있고(FACE 삭제 사고), 이 enum은 그때 빠져 있었다.
+    /// </para>
+    ///
+    /// <para><b>왜 지금인가.</b> Unity는 enum을 <b>정수</b>로 직렬화하고
+    /// <c>Plugins/MotionPluginSO.applicableStates</c> · <c>Plugins/EffectPluginSO.applicableStates</c>가
+    /// <c>StickmanStateId[]</c>다. 즉 DLC 매니페스트 <c>.asset</c> 안에 이 값이 <b>숫자로</b> 남는다.
+    /// 그런데 <b>오늘 이미 중간 값이 지워졌다</b> — 격파 미니게임(<c>BattleMinigame</c>)이 8번 자리에
+    /// 있었고 삭제되면서 <c>Dragged</c>(9 -&gt; 8) 이후 전부가 한 칸씩 당겨졌다. 지금은 매니페스트
+    /// 에셋이 0개라 피해가 없지만, <b>첫 팩이 나간 뒤 같은 일이 벌어지면 출하된 팩 전부가 조용히
+    /// 다른 상태에 배선된다</b>(모션이 안 나오는 게 아니라 <b>엉뚱한 상태에서</b> 나온다 — 더 나쁘다).
+    /// 지금 비용은 한 줄씩, 나중 비용은 마이그레이션 표다.</para>
+    ///
+    /// <para><b>규칙.</b> ① 새 값은 <b>맨 끝에 다음 번호로</b> 더한다. ② 값을 지울 때는 번호를
+    /// 재사용하지 않는다 — 지운 자리는 비워 두고 주석으로 무엇이 있었는지 남긴다. ③ 순서를 바꾸지
+    /// 않는다. 표시 이름표(<c>Core/StickMateDisplayNames</c>)가 <c>(int)state</c>로 배열을 인덱싱하지만
+    /// 그쪽은 최대값+1로 배열을 잡으므로 번호가 비어도 안전하다.
+    /// 이 계약은 <c>Tests/EditMode/StickmanStateIdWireFormatTests.cs</c>가 잠근다.</para>
+    /// </summary>
     public enum StickmanStateId
     {
-        Idle,
-        Walk,
-        Jump,
-        Fall,
-        ParkourClimb,
-        Attack,
-        Ragdoll,
-        Getup,
-
+        Idle = 0,
+        Walk = 1,
+        Jump = 2,
+        Fall = 3,
+        ParkourClimb = 4,
+        Attack = 5,
+        Ragdoll = 6,
+        Getup = 7,
         // ==== Phase 3 (docs/UX_FLOW.md 12/13절) — 커서 상호작용 ====
         // ★ 2026-09-02 격파 미니게임(구 10절) 삭제 — 사용자 지시 "격파놀이는 아예없애줘 별로임".
         //   상태/디렉터/렌더러/전용 테스트 전부 제거했다. 세이브의 battleWins 필드만 스키마 무변경을
@@ -26,37 +47,30 @@ namespace StickMate.Core
         /// <summary>드래그&던지기(12절): 유저가 캐릭터 히트박스를 마우스다운으로 붙잡아 끄는 동안의 상태.
         /// Kinematic으로 커서를 추종하다가 놓으면 계산된 속도로 Dynamic 던지기 → 임계값 초과 시 Ragdoll,
         /// 아니면 Fall로 자연 전이.</summary>
-        Dragged,
-
+        Dragged = 8,
         /// <summary>로데오 커서(13절): 클릭 없이 커서 정지만으로 발동, 캐릭터가 커서 위치에 올라타 따라
         /// 다니다가 거친 흔들기/10초 타임아웃/트레이 긴급정지 3중 안전망으로 종료.</summary>
-        RodeoCursor,
-
+        RodeoCursor = 9,
         // ==== Phase 4 (docs/UX_FLOW.md 27절) — OS 장난 / 파괴효과. 전부 "실제로는 아무것도 건드리지
         // 않는 착시" 스펙터클(27-7 체크리스트)이며, 실제 창/아이콘 좌표는 읽기 전용으로만 참조한다. ====
 
         /// <summary>윈도우 창 도둑(27-1): 작은 창을 붙잡고 미는/당기는 시늉을 2회 시도한 뒤 포기하는
         /// 순수 연출. 실제 창 좌표를 변경하는 API는 절대 호출하지 않는다(성공 케이스 자체가 설계에 없음).
         /// Interaction/WindowTheftDirector.cs가 대상 선정/취소 감시를 전담한다.</summary>
-        WindowTheft,
-
+        WindowTheft = 10,
         /// <summary>화면 낙서 그라피티(27-3): 캐릭터 근처 발판과 안 겹치는 빈 영역에 스프레이 낙서를
         /// 그렸다가 페이드아웃하는 순수 오버레이. 배경화면 파일/설정 API는 전혀 호출하지 않는다.</summary>
-        Graffiti,
-
+        Graffiti = 11,
         /// <summary>바탕화면 청소부(27-2): 복제 스프라이트로 아이콘을 정렬하는 시늉. 실제 아이콘 좌표는
         /// 읽기 전용 조회로만 쓰이고, 오버레이는 항상 100% 클릭관통이다. 27-5(블랙홀)와 상호배제.</summary>
-        DesktopTidy,
-
+        DesktopTidy = 12,
         /// <summary>블랙홀 소환(27-5): 27-2와 동일한 복제 스프라이트 파이프라인을 재사용하는 코믹 물리
         /// 스펙터클. 27-2(청소부)와 상호배제.</summary>
-        BlackholeSummon,
-
+        BlackholeSummon = 13,
         /// <summary>윈도우 크래시(27-4): 활성 창에 해머를 내리치는 캐릭터 스윙 모션(짧게 재생 후 자동
         /// Idle 복귀). 크랙 유리 오버레이 자체의 3초 수명은 이 상태와 독립적으로
         /// Interaction/WindowCrashDirector.cs가 관리하며, 그 오버레이는 예외 없이 100% 클릭관통이다.</summary>
-        WindowCrash,
-
+        WindowCrash = 14,
         // ==== Phase 5 (docs/UX_FLOW.md 17~20절) — 생산성(투두/포모도로) + 반항/스트레스(SULKY/가출).
         // TodoReminder/FocusStart/FocusComplete/FocusCancelled/FocusNudge/Sulky는 전부 "물리/입력 변경
         // 없는 순수 타이머 + 고정 대사 1회" 형태라 States/TimedSpectacleState.cs(선택적 대사 지원으로
@@ -65,29 +79,22 @@ namespace StickMate.Core
 
         /// <summary>투두 말풍선 '들고 다니는 모드'(17절): 종이를 꺼내 확정된 할일 1개를 대사로 보여주고
         /// 다시 접어 넣는 순수 연출. Interaction/TodoReminderDirector.cs가 유휴 판정으로 트리거한다.</summary>
-        TodoReminder,
-
+        TodoReminder = 15,
         /// <summary>포모도로 감시자(18절) 타이머 시작 포즈(안경+팔짱) + "좋아, 감시 시작" 대사.</summary>
-        FocusStart,
-
+        FocusStart = 16,
         /// <summary>포모도로 감시자 타이머 정상 만료 축하 포즈 + "수고했어!" 대사.</summary>
-        FocusComplete,
-
+        FocusComplete = 17,
         /// <summary>포모도로 감시자 유저의 중도 취소 시 패널티 없는 톤의 포즈 + "그래 쉬자" 대사.</summary>
-        FocusCancelled,
-
+        FocusCancelled = 18,
         /// <summary>포모도로 감시자 2단계 "부드러운 리마인드" — "어? 딴 데 보고 있네?" 대사 1회.</summary>
-        FocusNudge,
-
+        FocusNudge = 19,
         /// <summary>스트레스 게이지(19절)가 임계값(80%) 근접 시 확정 발동하는 SULKY(부루퉁함) — 한숨/짜증
         /// 대사와 처진 자세. "곧 가출한다"는 예고가 아니라 "지금 기분이 안 좋다"는 현재형 사실 보고.</summary>
-        Sulky,
-
+        Sulky = 20,
         /// <summary>가출(20절, 반항 2단계): 스트레스 게이지가 확정 임계값에 도달하면 확률이 아니라
         /// 확정 발동. "나 안 해!" → 은신 → 유저 탐색(클릭)/자동 타임아웃/긴급 강제소환 → 복귀까지
         /// 여러 페이즈를 States/RunawayState.cs가 전담한다.</summary>
-        Runaway,
-
+        Runaway = 21,
         // ==== 매달려 내려가기 (docs/UX_FLOW.md 4절 "매달리기(HANG)", 사용자 명시 요청 2026-08-28
         // "내려갈때도 매달려서 내려가는형태로") ====
 
@@ -103,8 +110,7 @@ namespace StickMate.Core
         /// 않고도 그대로 재사용된다). 모드 플래그를 넣으면 거의 모든 줄에 분기가 생겨 이미 검증된
         /// 등반 경로까지 회귀 위험에 노출된다.
         /// </summary>
-        LedgeHang,
-
+        LedgeHang = 22,
         // ==== 무릎앉아 착지 (사용자 명시 요청 2026-08-29: "떨어질때 관절이 이상하게 꺾이면서 넘어지는데
         // 떨어질때 무릎앉아 형태로 멋지게 착지해야지") ====
 
@@ -124,8 +130,7 @@ namespace StickMate.Core
         /// 정상 종료는 Idle/Walk(착지 시점의 이동 의도로 분기)이며, 도중 외력 임계값 초과 시 다른 능동
         /// 상태와 똑같이 Ragdoll로 강제 인터럽트될 수 있다.
         /// </summary>
-        LandingCrouch,
-
+        LandingCrouch = 23,
         // ==== 던져졌을 때 공중 회전 후 무릎앉아 착지 (사용자 명시 요청 2026-08-29:
         // "마우스로 던졌을때도 이상하게 관절꺽이면서 넘어지는데 던져도 공중에서 회전하면서
         // 무릎앉아 착지할수있게 해줘") ====
@@ -145,8 +150,7 @@ namespace StickMate.Core
         /// 자유 비행"에서만 빠진 것이다(States/DragThrowState.ReleaseAndThrow의 갈림 기준 주석 참고).
         /// StickConfig.throwTumbleEnabled를 끄면 던지기가 예전처럼 곧바로 Ragdoll/Fall로 간다.
         /// </summary>
-        ThrowTumble,
-
+        ThrowTumble = 24,
         // ==== 활쏘기 (사용자 명시 요청 2026-08-29: "하는 행동중 하나가 활을 들고 화살을 쏘는건데
         // 과녁이 생성되고 3번정도 포물선을 그리는 활을 쏘는 행동을 하는거지") ====
 
@@ -159,8 +163,7 @@ namespace StickMate.Core
         /// 도달점을 지나도록 역산한다 — 물리로 던져놓고 우연에 맡기지 않는다(리더 지시).
         /// 정상 종료는 Idle이며, 다른 스펙터클과 동일하게 SpectacleEventLock에 참여한다.
         /// </summary>
-        Archery,
-
+        Archery = 25,
         // ==== 발판 상실 공중 유예 (2026-09-01, 소은 실측 + 리더 결정 "시간은 두고 연출을 붙인다") ====
 
         /// <summary>
@@ -188,7 +191,7 @@ namespace StickMate.Core
         /// <b>이 상태에 갇히면 캐릭터가 영원히 공중에 뜬다</b> — 원래 버그보다 나쁘므로
         /// Tests/PlayMode/GroundLossHangStateTests.cs가 모든 경로를 잠근다.</para>
         /// </summary>
-        GroundLossHang,
+        GroundLossHang = 26,
     }
 
     /// <summary>
@@ -491,6 +494,17 @@ namespace StickMate.Core
         /// DialogueIntent의 IsValid(같은 프레임 만료) 메커니즘과는 별개로 이벤트에 함께 실어 보낸다.
         /// </summary>
         public readonly bool IsForcedInterrupt;
+
+        /// <summary>
+        /// 이 전이가 <b>비정상 이탈</b>(연출 도중 몸이 발판 밖으로 밀려나거나 넘어진 것)인가 —
+        /// 판정은 <see cref="SpectacleExitClassification.IsAbnormalExit"/> 한 곳에만 있다.
+        ///
+        /// <para><see cref="IsForcedInterrupt"/>와 <b>독립된 축</b>이다: 그 플래그는 "누가 끊었는가"
+        /// (외부 개입)를 말하고 이쪽은 "어디로 나갔는가"(물리적 이탈)를 말한다. 발판 상실로 인한
+        /// Fall 전이는 강제 인터럽트가 <b>아니라서</b> 지금까지 네 개 디렉터에서 "정상 완료"로
+        /// 기록됐다(2026-09-02 수정, 그 클래스 문서 참고).</para>
+        /// </summary>
+        public bool IsAbnormalExit => SpectacleExitClassification.IsAbnormalExit(To);
 
         public StateTransitionEvent(StickmanStateId from, StickmanStateId to, bool isForcedInterrupt)
         {

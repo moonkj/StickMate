@@ -390,16 +390,179 @@ namespace StickMate.Tests.EditMode
                 "(b) System Events 어펠스크립트 = TCC **자동화 권한 동의 창**이 첫 실행에 뜬다 — " +
                 "처음 쓰는 사용자에게 '이 앱이 시스템을 제어하려 합니다'를 띄우는 대가가 " +
                 "'Dock이 안 숨는다'보다 크다.\n" +
-                "  근거 3 — 크래시 복구의 난도가 다르다. Windows는 비트 하나를 되돌리면 끝이지만, " +
-                "macOS는 **파일을 고쳐 놨을 수 있는 상태**를 복구해야 한다. 원칙 3의 예외를 " +
-                "승인받은 조건이 '실행 중에만'인데, 그 조건을 지킬 수 있는 구조가 macOS에는 아직 없다.\n" +
+                "  근거 3 — **이 라운드에 격하한다(dev-platform 재판정 2026-09-02).** 원문은 '크래시 " +
+                "복구의 난도가 다르다(Windows는 비트, macOS는 파일)'였는데 이건 판정을 지탱하지 " +
+                "못한다: ReservedBarRestoreLedger는 원래 값의 **출처**를 모르고 write-ahead로 " +
+                "복구할 뿐이라 비트든 파일이든 절차가 같다. 게다가 이 머신 실측(defaults read " +
+                "com.apple.dock autohide = **키 없음**)대로면 우리가 쓰는 경우는 '자동 숨김을 켠 " +
+                "사용자'뿐이고, 그때 복원은 이미 있던 키에 true를 되쓰는 **대칭 연산**이라 " +
+                "잔여물도 남지 않는다. 반증됐으므로 근거에서 뺀다 — 틀린 근거를 남겨 두면 " +
+                "다음 사람이 그것부터 반박하고 진짜 이유를 못 본다.\n" +
                 "\n" +
-                "★ 그래서 **코드 갭이 아니라 결정 대기**로 남긴다. 사용자에게 물어야 할 것: " +
-                "'macOS에서는 Dock 자동 숨김을 그대로 두어도 괜찮은가? 원하면 첫 실행에 권한 동의 " +
-                "창이 한 번 뜨는 방식으로 구현할 수 있다.'\n" +
-                "★ 판정이 끝나면 새로 쓸 것은 **사실 조회 한 벌**뿐이다 — 규칙(ReservedBarRevealPolicy) " +
-                "과 원복 장치(ReservedBarRestoreLedger)는 이미 플랫폼 중립으로 서 있다.\n" +
+                "★★ 대신 이 라운드가 찾은 **결정적인 근거 두 건**(2026-09-02 dev-platform).\n" +
+                "  근거 4 — **쓰기가 조용히 실패하는데, 그 실패가 성공과 똑같이 생겼다.** " +
+                "Dock은 자기 설정을 메모리에 들고 있다가 스스로 plist에 되쓴다 — `defaults write " +
+                "com.apple.dock` 뒤에 `killall Dock`이 관례가 된 이유가 그것이다. 재시작 없이 쓰면 " +
+                "(a) 화면은 안 바뀌고 (b) **되읽기가 우리가 쓴 값을 그대로 돌려준다**. 그러면 " +
+                "WindowsReservedBarAutoHideControl이 쓰는 '쓰고 되읽어 확인'이라는 유일한 검증이 " +
+                "**초록으로 거짓 통과**하고, 흔적(ledger)은 열린 채 남는다. 그 다음 실행은 있지도 " +
+                "않은 '빚'을 갚겠다며 **사용자 설정을 진짜로 쓴다** — 아무 것도 안 바꾸려고 만든 " +
+                "안전장치가 유일하게 실제로 바꾸는 경로가 된다. 이건 이 저장소가 2026-09-02 하루에 " +
+                "9건 겪은 거짓 통과 패턴 그 자체다(docs/TEAM.md 4절).\n" +
+                "  근거 5 — **상품 전략과 맞물린다(product-strategy 판정 대기).** 맥앱스토어로 내면 " +
+                "App Sandbox가 강제되고, 샌드박스에서 타 앱 도메인 prefs 쓰기는 우리 컨테이너로 " +
+                "리다이렉트된다 = 근거 4가 **100% 확정적으로** 일어난다. 게다가 **읽기**까지 막혀 " +
+                "지금 쓰고 있는 Dock 폭 실측(MacWindowService.TryGetDockMetrics의 com.apple.dock " +
+                "조회)도 함께 무력화된다. 유통 채널이 정해지기 전에 착수하면 두 번 만든다.\n" +
+                "  ※ 근거 2의 보강 — Apple DTS가 '시스템 환경설정 파일은 공식 API가 아니다'라고 " +
+                "명시했고 실제로 **macOS 14.0에서 com.apple.dock.plist가 바뀌어** 이 경로에 기대던 " +
+                "앱들이 깨졌다(developer.apple.com/forums/thread/747595). 같은 스레드가 System " +
+                "Events 대안에 TCC 경고가 뜬다는 것도 확인해 준다. 이 머신은 macOS 26.6.2다.\n" +
+                "\n" +
+                "★ 비침해 대안도 **관측 불가로 닫혔다**: '자동 숨김을 켠 채로 두되 Dock이 나타난 " +
+                "순간만 발판을 준다'는 경로는 '지금 Dock이 보이는가'를 알 수 없어 성립하지 않는다 — " +
+                "CGWindowList 전수 덤프(143창, optionAll 포함)에서 Dock 막대 모양 창이 소유자를 " +
+                "불문하고 **하나도 없었다**(Platform/IDockMetricsService.cs 1절 실측). 화면 기록/" +
+                "접근성 권한 없이는 관측 자체가 불가능하고, 그 두 권한은 이미 금지다.\n" +
+                "\n" +
+                "★ 그리고 Windows와 달리 **지금 macOS는 깨져 있지 않다.** 자동 숨김이 켜져 있으면 " +
+                "Dock 발판을 끄고 화면 전폭 바닥 안전망만 남긴다(FallbackPlatformWindowService의 " +
+                "Dock 합성 분기 — 'Dock 발판 비활성화 — 자동 숨김이 켜져 있음'). 캐릭터가 허공에 " +
+                "서지 않는다. 잃는 것은 'Dock 위를 걷는 연출' 하나뿐이고, 그건 버그가 아니라 " +
+                "콘텐츠 손실이다. Windows에서 이 기능이 필요했던 실질 이유(막대 없음↔있음 전이가 " +
+                "안전망 두 조각을 동시에 폭 0으로 만든다)는 macOS에 **존재하지 않는다**.\n" +
+                "\n" +
+                "★ 결론: **구조적으로 지킬 길이 없다.** '실행 중에만 + 종료 시 원복'을 만족하는 " +
+                "macOS 경로는 공개 API에 없고, 효과가 있는 모든 경로는 (i) 사용자 환경설정 파일을 " +
+                "고치고 (ii) 다른 프로세스를 죽였다 살리거나 TCC 동의 창을 띄운다. 코드 갭이 아니라 " +
+                "**승인 범위 재협상**이다.\n" +
+                "★ 사용자에게 물을 것 — 3택으로 제시한다(리더 경유):\n" +
+                "   (1) 그대로 둔다. Dock 자동 숨김 사용자는 화면 바닥에서만 논다. 추가 코드 0줄.\n" +
+                "   (2) **안내만 한다.** 설정창에 'Dock이 자동 숨김이라 Dock 위를 걸을 수 없어요' 한 " +
+                "줄 + [시스템 설정 열기] 버튼(x-apple.systempreferences:com.apple.Dock-Settings." +
+                "extension). 시스템 쓰기 0회 · TCC 0회 · 사용자가 직접 바꾸므로 원칙 3에 걸리지 " +
+                "않는다. **다만 '종료 시 원복'은 성립하지 않는다** — 되돌리는 주체가 사용자다. " +
+                "(UI 표면이므로 ux-designer 배정 필요)\n" +
+                "   (3) 강제한다. 첫 실행 TCC 동의 창 1회 + 환경설정 파일 수정 + Dock 재시작. " +
+                "**지금 감사가 금지하는 행위 2종(프로세스 종료 / 타 앱 설정 파일 쓰기)을 풀어야 " +
+                "한다.** 원칙 3의 예외를 한 번 더, 더 넓게 승인받는 일이다.\n" +
+                "★ 만약 (3)으로 간다면 새로 쓸 것 — 사실 조회는 **이미 있다**(MacWindowService." +
+                "TryGetDockMetrics가 com.apple.dock의 autohide를 CFPreferences로 읽는다). 필요한 " +
+                "것은 그것을 IReservedBarAutoHideControl로 감싸는 얇은 어댑터 + 쓰기 1건, 그리고 " +
+                "**되읽기가 아닌 다른 방법으로** 쓰기 성공을 확인하는 장치다(근거 4). 규칙" +
+                "(ReservedBarRevealPolicy)과 원복 장치(ReservedBarRestoreLedger)는 이미 플랫폼 " +
+                "중립으로 서 있다.\n" +
                 "★ 실기 확인 필요(Windows): docs/TASKBAR_REVEAL.md 6절의 목록.");
+        }
+
+        // ====================================================================
+        // 모바일(iPad/iPhone) — 이 감사에 항목이 **0건**이었다 (2026-09-02 신설)
+        // ====================================================================
+
+        /// <summary>
+        /// ★ CLAUDE.md는 <b>4플랫폼 동시 지원</b>(macOS/Windows/iPad/iPhone)을 목표로 두는데, 이 감사
+        /// 파일에는 2026-09-02까지 "모바일"이라는 낱말이 <b>한 번도</b> 나오지 않았다. 감사가 보지
+        /// 않는 축은 갭이 쌓여도 러너에 뜨지 않는다 — Windows가 정확히 그래서 뒤처졌다.
+        ///
+        /// <para>이 항목은 <b>측정된 숫자</b>를 들고 있다. 숫자가 낡으면 다시 재라는 뜻이지
+        /// 지우라는 뜻이 아니다.</para>
+        /// </summary>
+        [Test]
+        public void 미해결_모바일_스크린샷_백드롭_모드가_서비스_1개_외에는_배선되지_않았다()
+        {
+            string mobileDir = Path.Combine(PlatformRoot, "Mobile");
+            Assert.IsTrue(Directory.Exists(mobileDir),
+                $"Platform/Mobile/ 가 없습니다({mobileDir}). 폴더째 옮겼다면 이 감사의 경로를 " +
+                "갱신하세요 — 그대로 두면 이 항목은 아무것도 보지 않습니다(거짓 통과).");
+
+            string[] mobileFiles = Directory.GetFiles(mobileDir, "*.cs");
+            Assert.Greater(mobileFiles.Length, 0,
+                "Platform/Mobile/ 에 소스가 한 개도 없습니다 — 모바일 구현체가 지워졌거나 옮겨졌습니다.");
+
+            // ---- 자동 승격 조건 ① : 모바일 구현체가 캐퍼빌리티를 하나라도 달면 판정이 진전된 것이다.
+            // 데스크톱은 IPlatformWindowService(핵심) 위에 선택적 캐퍼빌리티를 `as` 캐스팅으로 얹는
+            // 구조다. 모바일이 그중 하나라도 구현하기 시작하면 이 항목을 정식 검사로 바꿔야 한다.
+            var optionalCapabilities = new List<string>();
+            foreach (string file in Directory.GetFiles(PlatformRoot, "I*.cs"))
+            {
+                string src = StripLineComments(File.ReadAllText(file));
+                string name = Path.GetFileNameWithoutExtension(file);
+                if (!src.Contains("public interface " + name)) continue;
+                if (name == nameof(IPlatformWindowService)) continue;   // 핵심 계약은 선택적이 아니다.
+                optionalCapabilities.Add(name);
+            }
+
+            // ★ 비공허성 잠금 — 선택적 캐퍼빌리티를 하나도 못 찾았다면 아래 루프가 아무것도 재지 않는다.
+            Assert.Greater(optionalCapabilities.Count, 5,
+                "Platform/ 루트에서 선택적 캐퍼빌리티 인터페이스를 거의 못 찾았습니다 " +
+                $"({optionalCapabilities.Count}개). 파일명 규칙(I*.cs)이 바뀌었다면 이 스캔이 눈이 " +
+                "먼 채로 초록입니다 — 그 상태의 '0개 구현'은 아무 뜻이 없습니다(양성 대조 실패).");
+
+            var implemented = new List<string>();
+            foreach (string file in mobileFiles)
+            {
+                string src = StripLineComments(File.ReadAllText(file));
+                foreach (string cap in optionalCapabilities)
+                {
+                    // 선언부에만 나타나야 의미가 있다. 본문 언급은 StripLineComments 이후에도 남을 수
+                    // 있으므로 ": ... 인터페이스명" 형태의 기반 목록으로 좁힌다.
+                    if (TryGetBaseList(src, Path.GetFileNameWithoutExtension(file), out string bases)
+                        && bases.Contains(cap) && !implemented.Contains(cap))
+                    {
+                        implemented.Add(cap);
+                    }
+                }
+            }
+
+            if (implemented.Count > 0)
+            {
+                Assert.Pass("모바일 구현체가 캐퍼빌리티를 달기 시작했습니다(" +
+                    string.Join(", ", implemented) + ") — 이 항목을 정식 검사로 승격하고, " +
+                    "데스크톱 소비 측의 `as` 캐스팅이 모바일에서도 의미 있는 값을 받는지 확인하세요.");
+            }
+
+            Assert.Ignore("【미해결 · 배선 갭 · 실측 완료 / 착수 미배정】 신설 2026-09-02 (dev-platform)\n" +
+                "항목: 4플랫폼 목표(CLAUDE.md)의 모바일 축 — '스크린샷 백드롭 모드'가 서비스 " +
+                "구현체 1개 외에는 아무 데도 연결되어 있지 않다.\n" +
+                "\n" +
+                "★ 실측 (2026-09-02, 추정 아님):\n" +
+                "  · Platform/ 는 65파일 21,572줄. iOS 타깃에서 **통째로 빠지는 것**이 " +
+                "Windows/ 11파일 5,402줄 + MacOS/ 5파일 3,802줄 = **9,204줄(42.7%)**.\n" +
+                "  · 남는 루트 48파일 12,258줄의 성격: 그대로 유효 15파일 2,673줄 / " +
+                "모바일 사실 조회만 새로 필요 5파일 4,436줄(FramePacing · ViewerPresence · " +
+                "ScreenCoordinateConverter · StallAttribution · RenderQualityTuner) / " +
+                "모바일에서 개념 자체가 사라짐 28파일 5,149줄(오버레이 합성 · 클릭 관통 · " +
+                "최상단 · 창 열거 · 예약 막대).\n" +
+                "  · 모바일 코드는 Mobile/ScreenshotBackdropPlatformService.cs **110줄 1개**뿐이고, " +
+                $"선택적 캐퍼빌리티 {optionalCapabilities.Count}종 중 **0종**을 구현한다.\n" +
+                "  · 그 서비스의 설정 API(SetBackdropScreenshot / AddUserDefinedFoothold / " +
+                "IsConfigured)는 프로덕션 호출부가 **0건**이다 — 유일한 호출은 StickmanAgent." +
+                "CreatePlatformService()의 `new` 한 줄. 즉 iOS 빌드는 배경도 발판도 " +
+                "**영원히 설정되지 않은 채** 시작된다.\n" +
+                "  · **컴파일 갭은 아니다.** iOS 타깃 크로스 컴파일을 실제로 돌려 확인했다 — " +
+                "런타임(플레이어 판) 184소스 errors=0, 산출물 생성됨. UniWinC 참조를 빼고 " +
+                "UNITY_STANDALONE_* 계열 정의를 전부 제거한 조건이며, 양성 대조 2건" +
+                "(카나리아 물기 / OSX 정의 + UniWinC 참조 제거 시 errors=7)을 통과했다. " +
+                "즉 모든 Kirurobo 사용이 플랫폼 가드 안에 제대로 들어 있다.\n" +
+                "\n" +
+                "★ 설계 모순 1건 — **리더 판정 필요.** docs/UX_FLOW.md 351행은 '발판 미지정 또는 " +
+                "스크린샷 미설정 → 화면 최하단 고정 발판으로 즉시 대체'라고 쓰는데, " +
+                "StickmanAgent.CreatePlatformService()는 모바일만 " +
+                "FallbackPlatformWindowService로 **감싸지 않는다**(주석: '빈 결과는 버그가 아니라 " +
+                "의도된 신호'). 바닥 안전망(BottomSafetyNetPolicy)이 그 래퍼 안에 있으므로 " +
+                "지금 설계대로면 모바일에는 안전망이 없다. 둘 중 하나가 틀렸다.\n" +
+                "\n" +
+                "★ 새로 써야 하는 것(현재 0줄): 사진첩 접근(PHPicker — Unity 공개 API 없음, " +
+                "네이티브 플러그인 필요) / 백드롭 렌더링 / 발판 탭 지정 UI + 저장(세이브 스키마 " +
+                "상승 → 하위 호환 테스트 동반 의무) / 터치 입력이 IGlobalPointerButtonService " +
+                "소비처 6곳을 대체 / Screen.safeArea → SurfaceSafeAreaPolicy 배선 / " +
+                "앱 라이프사이클(백그라운드·메모리 경고) / iOS 열·배터리 사실 조회.\n" +
+                "★ 도구 갭: Tools/CrossCompile/xcheck.sh 는 win|osx만 받는다. 위 iOS 검사는 " +
+                "이번 라운드에 스크래치패드에서 1회성으로 돌린 것이라 **회귀로 남지 않는다** — " +
+                "ios 타깃 추가는 Tools/ 소유자에게 별도 배정 필요.\n" +
+                "★ 착수 순서는 product-strategy의 유통 채널 판정(docs/strategy/ · 2026-09-02 " +
+                "시점 미생성)과 맞물린다 — 맥앱스토어 축소판이 확정되면 App Sandbox 제약이 " +
+                "모바일과 같은 방향의 제약이라 설계를 한 번에 묶을 수 있다.");
         }
 
         private static string ReadSource(string path)

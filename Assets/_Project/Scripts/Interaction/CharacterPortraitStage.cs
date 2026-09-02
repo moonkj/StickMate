@@ -1272,6 +1272,12 @@ namespace StickMate.Interaction
                     AddLeafPreview("FxLeafB", x - h * 0.07f, HeadCenterY - r * 0.60f, length, -22f, ink);
                     break;
                 }
+
+                // ★ 2026-09-02 — 표에 FX가 늘었는데 미리보기 case가 없으면 초상화에서만 조용히
+                //   빠져 "실물과 미리보기가 다르다"가 된다(이 파일이 존재하는 이유의 정반대).
+                default:
+                    ShapeCoverageGuard.ReportMissingFxShape(item, nameof(CharacterPortraitStage));
+                    break;
             }
         }
 
@@ -1357,6 +1363,10 @@ namespace StickMate.Interaction
                         x, 0f, true, secondary);
                     break;
                 }
+
+                default:
+                    ShapeCoverageGuard.ReportMissingPetShape(item, nameof(CharacterPortraitStage));
+                    break;
             }
         }
 

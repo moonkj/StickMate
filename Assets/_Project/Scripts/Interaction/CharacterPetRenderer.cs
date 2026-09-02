@@ -354,6 +354,11 @@ namespace StickMate.Interaction
                 case PetCursor: TickCursorFriend(dt); break;
                 case PetBalloon: TickBalloon(dt); break;
                 case PetSnail: TickSnail(dt); break;
+
+                // 아래 EnsureBuilt 쪽 default와 <b>같은 키</b>로 신고되므로 로그는 합쳐서 최초 1회다.
+                default:
+                    ShapeCoverageGuard.ReportMissingPetShape(item, nameof(CharacterPetRenderer));
+                    break;
             }
             ApplyAlpha();
         }
@@ -1181,6 +1186,12 @@ namespace StickMate.Interaction
                 case PetCursor: BuildCursorFriend(); break;
                 case PetBalloon: BuildBalloon(); break;
                 case PetSnail: BuildSnail(); break;
+
+                // ★ 2026-09-02 — 표에 PET이 늘었는데 여기 case가 없으면 컨테이너만 만들어지고
+                //   그림이 하나도 안 들어가, 화면에서는 "펫을 착용했는데 아무것도 안 나온다"가 된다.
+                default:
+                    ShapeCoverageGuard.ReportMissingPetShape(item, nameof(CharacterPetRenderer));
+                    break;
             }
         }
 

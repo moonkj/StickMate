@@ -115,6 +115,12 @@ namespace StickMate.Tests.EditMode
         {
             // 테스트가 만든 사본만 지운다(사용자 저장 파일은 절대 건드리지 않는다).
             if (File.Exists(BackupCopyPath)) File.Delete(BackupCopyPath);
+
+            // ★ 2026-09-02 — 직전 세대(stickmate_character.prev.json)도 함께. 이 픽스처의
+            //   "version 0" 테스트는 <b>못 읽는 본체</b>를 만들어 놓고 기본값으로 떨어지는지를 보는데,
+            //   세대 파일이 남아 있으면 새 복구 경로가 그것을 집어 테스트가 다른 것을 재게 된다.
+            if (File.Exists(CharacterSaveStore.PreviousGenerationPath))
+                File.Delete(CharacterSaveStore.PreviousGenerationPath);
         }
 
         private static void ResetModels()

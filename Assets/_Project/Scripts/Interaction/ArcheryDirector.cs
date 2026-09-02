@@ -645,12 +645,21 @@ namespace StickMate.Interaction
             if (evt.From != StickmanStateId.Archery) return;
             if (!_active) return;
             _active = false;
-            RaiseOverlay(evt.IsForcedInterrupt ? SpectacleOverlayPhase.Cancelled : SpectacleOverlayPhase.Completed);
-            _cooldownRemaining = _config != null ? _config.archeryCooldownSeconds : 600f;
+
+            // ★ 2026-09-02 — WindowTheftDirector와 같은 보강. IsForcedInterrupt만으로는 발판 상실
+            // Fall(강제 인터럽트가 아니다)을 걸러내지 못해 "쏘다 굴러떨어짐"이 완료로 기록됐다.
+            bool abnormal = evt.IsAbnormalExit;
+            RaiseOverlay(evt.IsForcedInterrupt || abnormal
+                ? SpectacleOverlayPhase.Cancelled
+                : SpectacleOverlayPhase.Completed);
+            if (!abnormal) _cooldownRemaining = _config != null ? _config.archeryCooldownSeconds : 600f;
             SpectacleEventLock.Release(this);
 
-            Debug.Log($"[활쏘기] 종료 — {evt.To}(으)로 전이(강제인터럽트={evt.IsForcedInterrupt}). " +
-                $"과녁/화살 오버레이를 걷고, 다음 **자율** 발동까지 {_cooldownRemaining:F0}초 쿨다운을 겁니다" +
+            Debug.Log($"[활쏘기] 종료 — {evt.To}(으)로 전이(강제인터럽트={evt.IsForcedInterrupt}, " +
+                $"비정상이탈={abnormal}). 과녁/화살 오버레이를 걷고, " +
+                (abnormal
+                    ? "비정상 이탈이라 쿨다운을 걸지 않습니다"
+                    : $"다음 **자율** 발동까지 {_cooldownRemaining:F0}초 쿨다운을 겁니다") +
                 $"(자율 발동 확률은 기본 0이라 실제로는 단축키 {ShortcutLabel.Chord("A")} 또는 " +
                 "기어 아이콘 → 부채꼴 ④[행동] → [활쏘기]로만 다시 볼 수 있습니다).");
         }

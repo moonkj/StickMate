@@ -398,3 +398,5 @@ MonoBehaviour:
   groundLossHangHardTimeoutGraceMultiplier: 3
   logStallAttribution: 1
   suppressInfoLogStackTraces: 1
+  horizontalDriftSafetyNetEnabled: 1
+  horizontalDriftBrakeSeconds: 0.14

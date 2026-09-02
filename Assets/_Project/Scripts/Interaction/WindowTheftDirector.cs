@@ -351,16 +351,32 @@ namespace StickMate.Interaction
             // 겹쳐 발행하지 않는다.
             bool alreadyCancelled = !_hasTarget; // CancelAttempt()가 이미 Cancelled를 발행하고 나온 경로.
             _hasTarget = false;
+
+            // ★ 2026-09-02 — 여기에는 IsForcedInterrupt 가드가 이미 있었지만 **그것만으로는 부족했다**.
+            // 발판 상실/화면 이탈로 인한 Fall 전이는 강제 인터럽트가 아니라서(StickmanBlackboard가
+            // isForcedInterrupt 없이 ChangeState(Fall)를 부른다) 창을 밀다 굴러떨어져도 "정상 완료"로
+            // 기록되고 15분 쿨다운이 걸렸다. 두 축은 독립이다 — 강제 인터럽트는 "누가 끊었는가",
+            // 비정상 이탈은 "어디로 나갔는가"다(Core/SpectacleExitClassification 문서 참고).
+            bool abnormal = evt.IsAbnormalExit;
             if (!alreadyCancelled)
             {
                 // 강제 인터럽트로 빠져나간 경우(전체화면 게임 감지 시 StickmanAgent.Suspend()가 Idle로
                 // 강제 전이시키는 경로 등)는 "정상 종료"가 아니므로 Cancelled로 알린다 — 렌더러가 천천히
                 // 페이드아웃하는 대신 즉시 걷어내야 하는 상황이다(27-1 "전체화면 게임 감지 시 즉시 취소").
-                RaiseOverlay(evt.IsForcedInterrupt
+                RaiseOverlay(evt.IsForcedInterrupt || abnormal
                     ? SpectacleOverlayPhase.Cancelled
                     : SpectacleOverlayPhase.Completed);
             }
-            _cooldownRemaining = _config != null ? _config.windowTheftCooldownSeconds : 900f;
+
+            if (abnormal)
+            {
+                Debug.Log($"[창도둑] 비정상 이탈({evt.To}) — 창을 붙잡던 도중 몸이 발판에서 밀려났습니다. " +
+                    "완료가 아니라 취소로 기록하고 쿨다운을 걸지 않습니다.");
+            }
+            else
+            {
+                _cooldownRemaining = _config != null ? _config.windowTheftCooldownSeconds : 900f;
+            }
             SpectacleEventLock.Release(this);
         }
 

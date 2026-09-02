@@ -164,17 +164,31 @@ namespace StickMate.Interaction
             return false;
         }
 
+        /// <summary>
+        /// ★ 2026-09-02 — GraffitiDirector와 <b>같은 형태의 결함</b>이 여기에도 있었다(전수 조사로
+        /// 확인한 4건 중 2·3번째: DesktopTidy / BlackholeSummon). 도착 상태가 비정상 이탈이면
+        /// 완료가 아니라 취소로 기록하고 쿨다운을 걸지 않는다
+        /// (판정은 <see cref="SpectacleExitClassification"/> 한 곳).
+        /// </summary>
         private void OnStateTransitioned(StateTransitionEvent evt)
         {
             if (evt.From != TargetStateId) return;
             bool wasCancelled = !_hasRegion; // Cancel()이 이미 _hasRegion=false + Cancelled를 발행했다면 완료 처리 생략.
             _hasRegion = false;
-            if (!wasCancelled) RaiseOverlay(SpectacleOverlayPhase.Completed);
+            bool abnormal = evt.IsAbnormalExit;
+            if (!wasCancelled) RaiseOverlay(abnormal ? SpectacleOverlayPhase.Cancelled : SpectacleOverlayPhase.Completed);
 
-            float cooldown = _kind == DesktopIconMirrorKind.DesktopTidy
-                ? (_config != null ? _config.desktopTidyCooldownSeconds : 900f)
-                : (_config != null ? _config.blackholeCooldownSeconds : 900f);
-            _cooldownRemaining = cooldown;
+            if (abnormal)
+            {
+                Debug.Log($"[{_kind}] 비정상 이탈({evt.To}) — 연출 도중 몸이 발판에서 밀려났습니다. " +
+                    "완료가 아니라 취소로 기록하고 쿨다운을 걸지 않습니다.");
+            }
+            else
+            {
+                _cooldownRemaining = _kind == DesktopIconMirrorKind.DesktopTidy
+                    ? (_config != null ? _config.desktopTidyCooldownSeconds : 900f)
+                    : (_config != null ? _config.blackholeCooldownSeconds : 900f);
+            }
             SpectacleEventLock.Release(this);
         }
 

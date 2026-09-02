@@ -857,12 +857,24 @@ namespace StickMate.Interaction
         /// ★ 33-4-1 — <b>모자가 스스로 선언하는 "내가 덮는 아래 한계선"</b>(로컬 Y).
         /// 머리(HAIR) 도형은 이 선 <b>위쪽이 잘려 나간다</b>(2026-09-01, 옛 "선 통째로 생략"에서 변경 —
         /// <see cref="AppendClippedBelowCover"/> 문단 참고).
-        /// <para><see cref="float.PositiveInfinity"/> = 아무것도 가리지 않는다. 미착용도, <b>왕관</b>도 여기다 —
-        /// 왕관이 예외인 것은 if 분기가 아니라 <b>이 표의 값</b>이다. 왕관은 씌우는 것이 아니라 얹는
-        /// 것이라 밑이 뚫려 있고, 그래서 머리 모양이 함께 보이는 것이 옳다.</para>
+        /// <para><see cref="NothingCovered"/>(= +∞) = 아무것도 가리지 않는다. 미착용도, <b>왕관</b>도
+        /// 여기다 — 왕관이 예외인 것은 if 분기가 아니라 <b>이 표의 값</b>이다. 왕관은 씌우는 것이 아니라
+        /// 얹는 것이라 밑이 뚫려 있고, 그래서 머리 모양이 함께 보이는 것이 옳다.</para>
+        ///
+        /// <para>★ 2026-09-02 — <b>"알 수 없는 번호"를 그 둘과 분리했다.</b> 그 전에는 셋 다
+        /// <c>default: return +∞</c> 하나로 뭉뚱그려져 있어서, 7번째 모자를 표에 넣으면 그 모자가
+        /// <b>조용히 왕관 취급</b>을 받았다(= 머리카락을 안 자른다 -> 머리카락이 모자를 뚫고 나온다).
+        /// 지금은 미착용을 먼저 거르고, 왕관은 <b>명시된 case</b>이며, 남은 default는 결함이므로
+        /// <see cref="ShapeCoverageGuard"/>가 큰 소리로 알린다. 돌려주는 값이 여전히 +∞인 이유는
+        /// "모르는 모자 밑에서 머리카락을 자르는 것"이 더 파괴적이기 때문이다 — 잘라 버리면 화면에서
+        /// 머리카락까지 함께 사라져 원인이 두 겹이 된다.</para>
         /// </summary>
         internal static float HatCoverLocalY(int hatItemIndex, in Rig rig)
         {
+            // 미착용(-1). 알 수 없는 번호와 <b>같은 값</b>을 돌려주지만 다른 사실이라 먼저 거른다 —
+            // 미착용은 정상이고 알 수 없는 번호는 결함이다.
+            if (hatItemIndex < 0) return NothingCovered;
+
             switch (hatItemIndex)
             {
                 case HeadCap: return HatBrimLocalY(rig);
@@ -870,9 +882,20 @@ namespace StickMate.Interaction
                 case HeadFedora: return rig.HeadCenterY + rig.HeadRadius * FedoraBrimLineRatio;
                 case HeadBeret: return rig.HeadCenterY + rig.HeadRadius * BeretBrimLineRatio;
                 case HeadStraw: return rig.HeadCenterY + rig.HeadRadius * StrawBrimLineRatio;
-                default: return float.PositiveInfinity; // 왕관 / 미착용 / 알 수 없는 자리
+
+                // 왕관 — <b>의도된</b> 면제. 얹는 물건이라 밑이 뚫려 있다(위 문단).
+                case HeadCrown: return NothingCovered;
+
+                default:
+                    ShapeCoverageGuard.ReportUnknownHatCover(hatItemIndex);
+                    return NothingCovered;
             }
         }
+
+        /// <summary>"이 모자는 머리카락을 하나도 가리지 않는다"를 뜻하는 커버선 값.
+        /// <c>float.PositiveInfinity</c>를 그대로 적으면 그 자리가 <b>선언</b>인지 <b>폴백</b>인지
+        /// 코드만 봐서는 구분되지 않는다 — 이름이 그 구분을 대신한다.</summary>
+        internal const float NothingCovered = float.PositiveInfinity;
 
         // ==================== 도형 ====================
 
@@ -1132,8 +1155,15 @@ namespace StickMate.Interaction
 
         /// <summary>
         /// 착용 중인 아이템 하나가 만드는 선들을 <paramref name="sink"/>에 넣는다.
-        /// 알 수 없는 자리(표가 늘어났는데 도형이 아직 없는 경우)는 <b>아무것도 넣지 않는다</b> —
-        /// 예외를 던지면 24시간 상주 앱이 도형 하나 때문에 멈춘다.
+        ///
+        /// <para>★ 2026-09-02 — 알 수 없는 자리/번호는 <b>더 이상 조용히 넘어가지 않는다.</b>
+        /// 옛 주석은 "아무것도 넣지 않는다"였고 그것이 곧 이 저장소가 금지한 <b>조용한 실패</b>였다:
+        /// 7번째 모자를 표에 넣으면 카드는 뜨는데 몸에는 아무것도 안 그려지고 에러도 로그도 없었다.
+        /// 지금은 <see cref="ShapeCoverageGuard"/>가 로그로 알리고, 개발 게이트가 열려 있으면
+        /// 그 자리에 <b>빠졌다는 표식</b>(<see cref="MissingMarker"/>)을 그린다.</para>
+        ///
+        /// <para>예외는 여전히 던지지 않는다 — 24시간 상주 앱이 도형 하나 때문에 멈추면 안 되고,
+        /// 이 경로는 렌더 루프 안이라 예외가 화면 전체를 날린다.</para>
         /// </summary>
         /// <param name="hatCoverLocalY">HAIR 전용. 지금 쓴 모자가 선언한 커버선(<see cref="HatCoverLocalY"/>).</param>
         /// <param name="strokeHalfWidth">HAIR 전용. 잘라 낸 조각이 <b>획 하나보다 작으면</b> 버린다
@@ -1150,6 +1180,86 @@ namespace StickMate.Interaction
                 case EquipmentSlot.Neck: AppendNeck(sink, itemIndex, rig, mondayLoosened); break;
                 case EquipmentSlot.Shoulders: AppendBack(sink, itemIndex, rig); break;
                 case EquipmentSlot.Hair: AppendHair(sink, itemIndex, rig, hatCoverLocalY, strokeHalfWidth); break;
+
+                // ★ FX/PET은 몸에 붙는 도형이 <b>원래</b> 없다(Interaction/AppearanceShapeBuilder.cs 소관).
+                //   default로 흘려보내면 정상 경로가 매 재구성마다 결함으로 신고된다 — 렌더러는 7개 자리를
+                //   전부 순회하며 이 함수를 부르고, 카드(AccessoryCardIcon)도 FX/PET으로 부른다.
+                //   그래서 "여기서는 아무것도 그리지 않는다"를 <b>명시한다</b>.
+                case EquipmentSlot.Fx:
+                case EquipmentSlot.Pet:
+                    break;
+
+                default:
+                    ShapeCoverageGuard.ReportUnknownSlot(slot);
+                    break;
+            }
+        }
+
+        // ==================== 빠진 도형 표식 (2026-09-02) ====================
+
+        /// <summary>표식 네모의 반폭·반높이(머리 반경 배수). 관자놀이 폭(0.85R)보다 작게 잡아
+        /// <b>어느 자리가 비었는지</b>는 보이되 캐릭터 실루엣 자체를 삼키지는 않게 한다.</summary>
+        internal const float MissingMarkerHalfRatio = 0.55f;
+
+        /// <summary>표식이 <b>머리에서</b> 떠 있는 높이(HEAD/HAIR 전용). 정수리(1.0R) 위로 올려
+        /// 머리 링과 겹치지 않게 한다 — 겹치면 "머리가 깨졌다"로 오해된다.</summary>
+        internal const float MissingMarkerHeadRiseRatio = 1.55f;
+
+        /// <summary>
+        /// ★ "이 자리에 있어야 할 도형이 없다"를 <b>화면에서</b> 알리는 폴백 표식(빗금 친 네모).
+        ///
+        /// <para>로그(<see cref="ShapeCoverageGuard"/>)만으로는 부족하다 — 이 결함의 첫 증상이
+        /// "화면에서 안 보인다"이고, 화면을 보는 사람(디자이너·페르소나 검증단)은 콘솔을 안 본다.
+        /// 반대로 출하된 앱의 사용자 캐릭터에 이 네모가 24시간 붙어 있으면 결함보다 나쁘므로,
+        /// <see cref="ShapeCoverageGuard.ShowVisibleFallback"/>(개발 게이트)가 열렸을 때만 그린다.</para>
+        ///
+        /// <para>좌표는 전부 머리 반경 R의 배수다(이 파일의 규약) — 배율이 바뀌어도 표식만
+        /// 뒤에 남지 않는다. 자리마다 <b>다른 높이</b>에 놓아 "어느 카테고리가 비었는지"를
+        /// 로그 없이도 읽을 수 있게 한다.</para>
+        /// </summary>
+        internal static void AppendMissingMarker(List<Shape> sink, EquipmentSlot slot, int item, in Rig rig)
+        {
+            ShapeCoverageGuard.ReportMissingItemShape(slot, item);
+            if (!ShapeCoverageGuard.ShowVisibleFallback || sink == null) return;
+
+            float r = rig.HeadRadius;
+            float half = r * MissingMarkerHalfRatio;
+            float cy = MissingMarkerLocalY(slot, rig);
+
+            sink.Add(new Shape("MissingBox", new[]
+            {
+                rig.F(-half, cy - half),
+                rig.F(-half, cy + half),
+                rig.F(half, cy + half),
+                rig.F(half, cy - half),
+            }, true, SortHead));
+
+            // 빗금 — 네모만 있으면 "새 아이템의 도형"으로 오독될 수 있다. 빗금이 "지워졌다"를 말한다.
+            sink.Add(new Shape("MissingSlash", new[]
+            {
+                rig.F(-half, cy - half),
+                rig.F(half, cy + half),
+            }, false, SortHead, tone: Accent));
+        }
+
+        /// <summary>표식을 놓을 로컬 Y. 그 자리의 <b>진짜 도형이 걸리는 기준선</b>을 그대로 쓴다 —
+        /// 표식이 엉뚱한 데 뜨면 어느 카테고리가 비었는지 읽을 수 없다.</summary>
+        internal static float MissingMarkerLocalY(EquipmentSlot slot, in Rig rig)
+        {
+            switch (slot)
+            {
+                case EquipmentSlot.Head:
+                case EquipmentSlot.Hair:
+                    return rig.HeadCenterY + rig.HeadRadius * MissingMarkerHeadRiseRatio;
+                case EquipmentSlot.Eyes:
+                    return GlassesLocalY(rig);
+                case EquipmentSlot.Neck:
+                    return NeckLocalY(rig);
+                case EquipmentSlot.Shoulders:
+                    return CapeCollarLocalY(rig) - rig.HeadRadius * MissingMarkerHalfRatio;
+                default:
+                    // 자리 자체를 모르면 놓을 기준선도 모른다 — 머리 위(가장 잘 보이는 곳)에 띄운다.
+                    return rig.HeadCenterY + rig.HeadRadius * MissingMarkerHeadRiseRatio;
             }
         }
 
@@ -1353,6 +1463,10 @@ namespace StickMate.Interaction
                         false, SortHead, tone: Accent));
                     break;
                 }
+
+                default:
+                    AppendMissingMarker(sink, EquipmentSlot.Head, item, rig);
+                    break;
             }
         }
 
@@ -1537,6 +1651,10 @@ namespace StickMate.Interaction
                         tone: Accent, filled: true));
                     break;
                 }
+
+                default:
+                    AppendMissingMarker(sink, EquipmentSlot.Eyes, item, rig);
+                    break;
             }
         }
 
@@ -1734,6 +1852,10 @@ namespace StickMate.Interaction
                     }, true, SortNeck, swayStart: 2, swayCount: 1, tone: Accent, filled: true));
                     break;
                 }
+
+                default:
+                    AppendMissingMarker(sink, EquipmentSlot.Neck, item, rig);
+                    break;
             }
         }
 
@@ -1966,6 +2088,10 @@ namespace StickMate.Interaction
                     sink.Add(new Shape("WingFeatherB", FairyWingBlade(rig, +1f), true, SortBack, filled: true));
                     break;
                 }
+
+                default:
+                    AppendMissingMarker(sink, EquipmentSlot.Shoulders, item, rig);
+                    break;
             }
         }
 
@@ -2240,6 +2366,13 @@ namespace StickMate.Interaction
                         rig.F(-1.30f * rig.HeadRadius, rig.HeadCenterY - 0.46f * rig.HeadRadius),
                         HeadPolar(rig, 196f, 1.06f),
                     }, true, SortHair, tone: Accent, filled: true));
+                    break;
+
+                // ★ 표식은 _hairScratch가 아니라 sink에 <b>직접</b> 넣는다 — 아래 클립 루프는 모자
+                //   커버선 위를 잘라내므로, 표식을 거기 태우면 모자를 쓴 순간 표식까지 잘려
+                //   "빠졌다는 사실"이 다시 조용해진다.
+                default:
+                    AppendMissingMarker(sink, EquipmentSlot.Hair, item, rig);
                     break;
             }
 

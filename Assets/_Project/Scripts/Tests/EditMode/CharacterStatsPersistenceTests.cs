@@ -214,6 +214,9 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 손상된_JSON에서도_기록이_기본값으로_떨어지고_크래시하지_않는다()
         {
+            // ★ 2026-09-02 — 직전 세대가 남아 있으면 새 복구 경로가 그것을 집는다(위 진행도 테스트와 동일).
+            if (File.Exists(CharacterSaveStore.PreviousGenerationPath))
+                File.Delete(CharacterSaveStore.PreviousGenerationPath);
             File.WriteAllText(CharacterSaveStore.FilePath, "{ broken json ]]]");
 
             LogAssert.ignoreFailingMessages = true;   // 이 경로는 경고 로그를 내는 것이 정상 동작이다.
