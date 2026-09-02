@@ -814,11 +814,50 @@ namespace StickMate.Interaction
             ApplyVisuals();
         }
 
-        /// <summary>6초 무반응 자동 접힘. 팝오버가 떠 있는 동안에는 돌지 않는다 — 사용자가 읽고 있는
-        /// 창을 시간으로 닫아버리면 그건 편의가 아니라 사고다.</summary>
+        /// <summary>
+        /// 6초 무반응 자동 접힘. 팝오버가 떠 있는 동안에는 돌지 않는다 — 사용자가 읽고 있는
+        /// 창을 시간으로 닫아버리면 그건 편의가 아니라 사고다.
+        ///
+        /// <para>★ 2026-09-03 — 멈춤 조건이 <b>3개에서 4개</b>가 됐다. 네 번째는 <b>최초 1회 안내가
+        /// 떠 있는 동안</b>이다(ux-widgets R3-4-4 【C-2】 채택안). 그 전까지 이 시계는 이렇게 돌았다:
+        /// <see cref="Expand"/>가 <c>_idleTimer = 0f</c>와 <see cref="TryStartOnboardingHint"/>를
+        /// <b>같은 함수 안에서 연달아</b> 부르므로 두 시계가 같은 순간에 출발했고, 그 사이에 시계를
+        /// 되돌리는 줄이 하나도 없었다. 그런데 톱니를 막 누른 사람의 커서는 <b>톱니 위</b>에 있고
+        /// 톱니는 어떤 클램프 상자에도 들어가지 않으므로(<see cref="ContainsCursor"/>)
+        /// <see cref="KeepAlive"/>가 한 번도 불리지 않는다 — <b>앱이
+        /// <see cref="OnboardingHintText"/>라고 말해 놓고, 그 문장을 읽는 동안 카운트다운을
+        /// 멈추지 않았다.</b></para>
+        ///
+        /// <para>★ 그리고 실패의 대가가 영구적이다: "봤다"는
+        /// <see cref="TryStartOnboardingHint"/>가 안내가 <b>뜨는 순간</b> 디스크에 적으므로, 그 창을
+        /// 놓치면 이 컴퓨터에서 다시는 뜨지 않는다. <b>그 기록 시점은 일부러 건드리지 않았다</b> —
+        /// "끝까지 읽었는가"를 조건으로 삼으면 0.2초 보고 접은 사용자에게 내일 또 띄우는 경로가
+        /// 반드시 생기고 그건 방해다(원칙 2). <b>고칠 곳은 기록의 의미가 아니라 창의 길이다.</b></para>
+        ///
+        /// <para>예산 검산(상수는 전부 이 파일에서 읽은 값이다):
+        /// 최초 1회 = <see cref="OnboardingHintSeconds"/>(4.5) + <see cref="AutoCollapseIdleSeconds"/>(6.0)
+        /// = <b>10.5초</b>. 커서가 클램프 상자에 <b>한 번도 안 들어간다</b>고 최악으로 가정한 소요는
+        /// 안내 읽기 1.78(<c>DialogueBudget.ReadingSeconds</c> 20자) + 톱니→첫 버튼 0.38 +
+        /// 버튼 4개(<see cref="HoverLabelFadeSeconds"/> + 이름 읽기) 2.91 + 이웃 이동 3회 0.96
+        /// = <b>6.03초</b> → 여유 <b>1.74배</b>. 고치기 전 예산은
+        /// <see cref="ExpandTotalSeconds"/>(0.301) + 6.0 = <b>6.30초</b>여서 여유가 <b>1.04배</b>였다
+        /// (= 0.27초만 머뭇거려도 안내가 영구히 사라졌다).
+        /// <b>2회차부터는 안내가 안 뜨므로 아래 한 줄이 아예 안 걸리고 비용은 0이다.</b></para>
+        ///
+        /// <para>★ <b>멈추는 것이지 끄는 것이 아니다.</b> 안내가 스스로 물러나는 세 경로
+        /// (4.5초 만료 · 호버 시작 · 접히는 중 — <see cref="ApplyOnboardingHint"/>)가 전부
+        /// <c>_onboardingHintTimer</c>를 음수로 되돌리고, 그 밖의 종료 경로(<see cref="Hide"/>)도
+        /// 같은 값을 되돌린다. <b>영구히 멈추는 경로는 없다.</b></para>
+        /// </summary>
         private void TickAutoCollapse(float dt)
         {
             if (_phase != Phase.Open || _activeIndex >= 0 || AnyPopoverOpen()) { _idleTimer = 0f; return; }
+
+            // ★ 4번째 멈춤 조건 — 최초 1회 안내가 떠 있는 동안(위 문단). 음수 = 안내 중이 아님.
+            //   이 판정은 같은 프레임의 ApplyOnboardingHint보다 <b>앞</b>에서 돌므로 직전 프레임 값을
+            //   본다 = 해제가 최대 한 프레임 늦다. 늦는 방향이 안전한 쪽이라 그대로 둔다.
+            if (_onboardingHintTimer >= 0f) { _idleTimer = 0f; return; }
+
             _idleTimer += dt;
             if (_idleTimer < AutoCollapseIdleSeconds) return;
             Collapse(GearMenuCollapseMode.Auto, $"{AutoCollapseIdleSeconds:F0}초 동안 커서가 부채꼴 밖");
@@ -1085,8 +1124,8 @@ namespace StickMate.Interaction
             float reach = Mathf.Abs(outward.x) * halfW + Mathf.Abs(outward.y) * halfH;
             Vector2 center = anchorCenter + outward * (_diameterPoints * 0.5f + HoverLabelGapPoints + reach);
 
-            float minX = ScreenMarginPoints + halfW;
-            float maxX = _screenPointsAtLayout.x - ScreenMarginPoints - halfW;
+            float minX = EffectiveLeftMarginPoints + halfW;
+            float maxX = _screenPointsAtLayout.x - EffectiveRightMarginPoints - halfW;
             if (maxX >= minX) center.x = Mathf.Clamp(center.x, minX, maxX);
 
             float minY = ScreenMarginPoints + halfH;
@@ -1354,16 +1393,54 @@ namespace StickMate.Interaction
         /// <para>실측 대조: macOS 메뉴바 33 → <c>max(40, 33) = 40</c>으로 <b>지금과 한 픽셀도 다르지
         /// 않다</b>. 값이 바뀌는 것은 두꺼운 상단 띠를 가진 Windows뿐이다(docs/UX_FLOW.md 51-13).</para>
         /// </summary>
-        private float EffectiveTopMarginPoints => Mathf.Max(TopMarginPoints,
+        private float EffectiveTopMarginPoints => EffectiveMarginPoints(TopMarginPoints,
             ReservedTopBarProbe.TopInsetPoints(_agent != null ? _agent.PlatformService : null));
+
+        /// <summary>
+        /// ★★ 2026-09-03 — 실제로 쓰는 <b>왼쪽/오른쪽</b> 여백. 상단과 <b>같은 식</b>이다:
+        /// <c>max(설계 여백 8, OS가 보고한 그 변의 예약 띠 두께)</c>.
+        ///
+        /// <para><b>왜 필요했나</b>: 톱니가 화면 오른쪽 끝에 사는데 <c>IsBoxOnScreen</c>·
+        /// <c>ShiftToFit</c>가 오른쪽 한계를 <c>화면폭 − 8</c>로만 봤다. 그래서 <b>우측 도킹
+        /// 작업표시줄</b>(48~62pt) 앞에서 부채꼴이 그 띠 안으로 40pt까지 들어갔다(실측 계산:
+        /// 화면 1512 / 띠 48 / 기본 배치에서 슬롯 0의 상자 xMax = 1504, 띠 시작 1464).
+        /// 톱니를 <b>눌러서 여는 것</b>이 이 부채꼴이라, 톱니만 고치고 여기를 두면
+        /// 열린 메뉴가 여전히 남의 막대를 덮는다.</para>
+        ///
+        /// <para><b>회귀 없음</b>: 띠가 0이면 <c>max(8, 0) = 8</c>로 <b>지금과 비트 동일</b>하다.
+        /// 못 쟀을 때도 프로브가 0을 주므로 같다 — 짐작으로 메우지 않는다
+        /// (<see cref="ReservedEdgeProbe"/> 규약).</para>
+        /// </summary>
+        private float EffectiveLeftMarginPoints => EffectiveMarginPoints(ScreenMarginPoints,
+            ReservedEdgeProbe.EdgeInsetPoints(_agent != null ? _agent.PlatformService : null, ReservedEdge.Left));
+
+        /// <inheritdoc cref="EffectiveLeftMarginPoints"/>
+        private float EffectiveRightMarginPoints => EffectiveMarginPoints(ScreenMarginPoints,
+            ReservedEdgeProbe.EdgeInsetPoints(_agent != null ? _agent.PlatformService : null, ReservedEdge.Right));
+
+        /// <summary>
+        /// <b>설계 여백</b>과 <b>관측된 예약 띠 두께</b>를 합치는 식 — 네 변이 <b>이 한 줄</b>을 공유한다.
+        ///
+        /// <para><b>왜 max인가</b>: 설계 여백은 "화면 끝에 달라붙지 않게" 정한 값이고 띠 두께는
+        /// <b>사실</b>이다. 하나로 갈아치우면 한쪽을 잃는다 — 사실만 쓰면 띠가 없는 환경에서 부채꼴이
+        /// 화면 끝에 달라붙고, 설계값만 쓰면 띠가 그보다 두꺼운 환경에서 남의 막대를 덮는다.</para>
+        ///
+        /// <para><b>public static 순수 함수</b>인 이유는 <see cref="Snap45"/>와 같다 — 씬 없이
+        /// EditMode에서 잠글 수 있어야 하고, 테스트가 <c>Mathf.Max</c>를 <b>다시 타이핑</b>하면
+        /// 그 사본이 프로덕션과 조용히 갈라진다.</para>
+        /// </summary>
+        public static float EffectiveMarginPoints(float designMarginPoints, float reservedInsetPoints)
+            => Mathf.Max(designMarginPoints, reservedInsetPoints);
 
         /// <summary>이 사각형을 화면 여백 안으로 넣는 최소 이동 벡터(들어와 있으면 0).</summary>
         private Vector2 ShiftToFit(Rect union)
         {
             var shift = Vector2.zero;
-            if (union.xMin < ScreenMarginPoints) shift.x = ScreenMarginPoints - union.xMin;
-            else if (union.xMax > _screenPointsAtLayout.x - ScreenMarginPoints)
-                shift.x = _screenPointsAtLayout.x - ScreenMarginPoints - union.xMax;
+            // ★ 2026-09-03 — 좌·우도 상단과 같이 <b>예약 띠</b>를 본다(EffectiveLeftMarginPoints 문서).
+            float leftMargin = EffectiveLeftMarginPoints, rightMargin = EffectiveRightMarginPoints;
+            if (union.xMin < leftMargin) shift.x = leftMargin - union.xMin;
+            else if (union.xMax > _screenPointsAtLayout.x - rightMargin)
+                shift.x = _screenPointsAtLayout.x - rightMargin - union.xMax;
             if (union.yMin < ScreenMarginPoints) shift.y = ScreenMarginPoints - union.yMin;
             else if (union.yMax > _screenPointsAtLayout.y - EffectiveTopMarginPoints)
                 shift.y = _screenPointsAtLayout.y - EffectiveTopMarginPoints - union.yMax;
@@ -1386,8 +1463,8 @@ namespace StickMate.Interaction
         private static Rect BoxFor(Vector2 center, float diameter) => ButtonClampBox(center, diameter);
 
         private bool IsBoxOnScreen(Rect box)
-            => box.xMin >= ScreenMarginPoints && box.yMin >= ScreenMarginPoints
-               && box.xMax <= _screenPointsAtLayout.x - ScreenMarginPoints
+            => box.xMin >= EffectiveLeftMarginPoints && box.yMin >= ScreenMarginPoints
+               && box.xMax <= _screenPointsAtLayout.x - EffectiveRightMarginPoints
                && box.yMax <= _screenPointsAtLayout.y - EffectiveTopMarginPoints;
 
         // ==================== 좌표 변환 ====================

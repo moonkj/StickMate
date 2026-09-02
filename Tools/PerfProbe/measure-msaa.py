@@ -100,15 +100,48 @@ def launch_app(msaa):
 
 
 WS = pid_of("WindowServer")
-LOG = os.path.expanduser("~/Library/Logs/DefaultCompany/StickMate/Player.log")
+
+
+def _player_log_path():
+    """Player.log 경로. 회사명/제품명을 **여기에 베끼지 않고 ProjectSettings.asset에서 읽는다.**
+
+    Unity는 ~/Library/Logs/<companyName>/<productName>/Player.log 로 조립한다. 이 값을 상수로
+    복사해 두면 companyName이 바뀔 때(2026-09-02: DefaultCompany -> Vibelab) 이 스크립트만
+    조용히 옛 경로를 보게 되고, `except OSError: return None`이 그것을 "로그에 MSAA 줄이 없다"와
+    **똑같은 출력으로** 뭉갠다. 그래서 기준을 하나로 유지한다.
+    """
+    settings = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))), "ProjectSettings", "ProjectSettings.asset")
+    company, product = None, None
+    with open(settings, encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("  companyName: "):
+                company = line[len("  companyName: "):].strip()
+            elif line.startswith("  productName: "):
+                product = line[len("  productName: "):].strip()
+            if company and product:
+                break
+    if not company or not product:
+        raise RuntimeError(f"ProjectSettings.asset에서 companyName/productName을 못 읽었다: {settings}")
+    return os.path.expanduser(f"~/Library/Logs/{company}/{product}/Player.log")
+
+
+LOG = _player_log_path()
 
 
 def verify_msaa(expected):
     """Player.log에서 Screen.msaaSamples 실측치를 회수한다 — 요청과 실측이 다를 수 있다."""
+    if not os.path.exists(LOG):
+        # "파일이 없다"와 "변화가 없다"는 다르다. 뭉개면 실측이 조용히 무효가 된다.
+        print(f"  ! Player.log가 없다: {LOG} "
+              f"(ProjectSettings.asset의 companyName/productName과 실제 빌드가 어긋났을 수 있다)",
+              flush=True)
+        return None
     try:
         with open(LOG, encoding="utf-8", errors="ignore") as f:
             txt = f.read()
-    except OSError:
+    except OSError as e:
+        print(f"  ! Player.log를 못 읽었다: {LOG} ({e})", flush=True)
         return None
     hits = re.findall(r"실측 Screen\.msaaSamples=(\d+)x", txt)
     return int(hits[-1]) if hits else None

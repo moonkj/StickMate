@@ -14,7 +14,11 @@ namespace StickMate.States
     /// 넘으면 "거친 흔들기"로 판정해 즉시 튕겨 떨어진다.
     ///
     /// 3중 안전망(13절): (1) 암묵적 — 거친 흔들기로 낙하(RagdollImpactResolver를 통해 확정적으로
-    /// RAGDOLL 진입, "튕겨 떨어진다"가 항상 성립하도록 임계값보다 큰 충격량을 강제한다). (2) 타임아웃 —
+    /// RAGDOLL 진입, "튕겨 떨어진다"가 항상 성립하도록 임계값보다 큰 충격량을 강제한다.
+    /// ★ 2026-09-02 — 이 (1)이 <b>배포 기본값에서 RAGDOLL이 확실히 도는 사실상 유일한 경로</b>다:
+    /// 던짐은 폐지, 추락 충격은 차단막으로 끊김, 긴 망토는 기본 OFF, 팔다리 릴레이 8개는 질량 단위
+    /// 불일치로 도달 불가. 그래서 여기서 임계값을 넘기는 <b>강제</b>가 장식이 아니라 마지막 보루다 —
+    /// 정본 목록은 States/RagdollImpactResolver 클래스 문서). (2) 타임아웃 —
     /// rodeoMaxDurationSeconds(10초) 도달 시 정상 종료(EndClean, 5절 (a) 경로). (3) 트레이 긴급정지 —
     /// Interaction/RodeoCursorWatcher가 StickmanEventBus.GlobalEmergencyStopRequested를 구독해 이
     /// 상태를 강제로 Idle 전이시킨다(이 상태 자신은 긴급정지 이벤트를 직접 구독하지 않는다 — 소유권을

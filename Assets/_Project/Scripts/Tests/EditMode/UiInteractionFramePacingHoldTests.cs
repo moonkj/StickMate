@@ -54,7 +54,10 @@ namespace StickMate.Tests.EditMode
 
         private static ViewerPresenceSnapshot Presence(bool asleep = false, float idleSeconds = 0f,
             bool lowPower = false, bool onBattery = false)
-            => new ViewerPresenceSnapshot(asleep, idleSeconds, lowPower, onBattery);
+            => new ViewerPresenceSnapshot(asleep, idleSeconds, lowPower, onBattery,
+                // 이 픽스처들은 세션 잠금 축을 재지 않는다(프레임 페이싱 등급 전용).
+                // 잠금 축은 SessionVisibilityPolicyTests가 따로 겨눈다.
+                sessionLocked: false);
 
         /// <summary>창을 읽는 동안의 관측: 사람은 있고(Valid) 화면도 켜져 있지만 한동안 입력이 없다.</summary>
         private static ViewerPresenceSnapshot ReadingTheWindow() => Presence(idleSeconds: 5f);
@@ -442,8 +445,22 @@ namespace StickMate.Tests.EditMode
                 "GearRadialMenuWidget.LateUpdate()가 사라졌다 — 이 테스트를 갱신하라.");
             int hiddenGuard = IndexOfOrFail(source, "if (_phase == Phase.Hidden) return;", loop,
                 "'접혀 있으면 즉시 반환' 가드가 사라졌다.");
-            int suspend = IndexOfOrFail(source, "_agent.IsSuspended", loop,
-                "전체화면 숨김(비침해 원칙 2) 가드가 사라졌다.");
+            // ★ 2026-09-02 qa-regression — **거짓 빨강을 7시간 15분 / 연속 10회 실행 동안 방치한 자리다.**
+            //   옛 니들은 `"_agent.IsSuspended"` 문자열 리터럴이었다. 프로덕션이 같은 날
+            //   <c>ArePanelsSuppressed</c>(= <c>_isSuspended || _fullscreenPanelRetreat</c>)로 **넓어지자**
+            //   가드는 멀쩡한데 IndexOf가 -1이 되어 "가드가 사라졌다"고 소리쳤다.
+            //   → 이제 이름을 <c>nameof</c>로 프로덕션에서 가져온다. 프로퍼티가 사라지면 **컴파일이**
+            //     깨진다 — 조용히 -1이 되는 것보다 시끄럽게 깨지는 쪽이 낫다(CLAUDE.md 협업 프로토콜).
+            string guardNeedle = "." + nameof(StickMate.Core.StickmanAgent.ArePanelsSuppressed);
+            int suspend = IndexOfOrFail(source, guardNeedle, loop,
+                $"전체화면 숨김(비침해 원칙 2) 가드가 사라졌다 — '{guardNeedle}'를 LateUpdate에서 찾지 못했다.");
+
+            // ★ 부재 단언의 자격 검증(CLAUDE.md): 옛 이름이 **정말로 사라진 것**인지, 아니면
+            //   애초에 존재한 적 없는 오타인지를 같은 테스트 안에서 가른다. 옛 이름이 다시 나타나면
+            //   가드가 등급 2로 **좁아진** 것이므로 그것도 회귀다.
+            Assert.AreEqual(-1, source.IndexOf("_agent.IsSuspended", StringComparison.Ordinal),
+                "가드가 옛 좁은 판정(_agent.IsSuspended)으로 되돌아갔다 — 부채꼴은 등급 1이라 " +
+                "게임이 아닌 전체화면 앱 위에서도 걷어야 한다(StickmanAgent.ArePanelsSuppressed).");
             int call = IndexOfOrFail(source, HoldCall, loop,
                 "부채꼴 메뉴가 프레임 페이싱 홀드를 갱신하지 않는다 — 메뉴를 띄워 놓고 겨누는 동안 " +
                 "Calm으로 내려가 버튼 클릭/호버 반응이 절반 프레임레이트로 시작한다.");

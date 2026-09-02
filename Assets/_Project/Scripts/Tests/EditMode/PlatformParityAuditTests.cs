@@ -75,6 +75,13 @@ namespace StickMate.Tests.EditMode
         private static string WinEnforcerPath =>
             Path.Combine(PlatformRoot, "Windows", "WindowsOverlayStateEnforcer.cs");
 
+        // 세션 가시성 게이트(2026-09-02). 두 파일 모두 전체가 #if 안이라 **소스로만** 볼 수 있다.
+        private static string MacPresenceServicePath =>
+            Path.Combine(PlatformRoot, "MacOS", "MacViewerPresenceService.cs");
+
+        private static string WinPresenceServicePath =>
+            Path.Combine(PlatformRoot, "Windows", "WindowsViewerPresenceService.cs");
+
         // ==================== 상단 예약 띠(메뉴바 / 상단 도킹 작업표시줄) ====================
 
         /// <summary>
@@ -564,6 +571,191 @@ namespace StickMate.Tests.EditMode
                 "★ 착수 순서는 product-strategy의 유통 채널 판정(docs/strategy/ · 2026-09-02 " +
                 "시점 미생성)과 맞물린다 — 맥앱스토어 축소판이 확정되면 App Sandbox 제약이 " +
                 "모바일과 같은 방향의 제약이라 설계를 한 번에 묶을 수 있다.");
+        }
+
+        /// <summary>
+        /// ★ 2026-09-02 (dev-platform) — <b>오디오 온디맨드</b>의 판정/계약이 중립 위치에 있고,
+        /// 계약에 <b>캡처(입력) 동사가 하나도 없는가</b>.
+        ///
+        /// <para>왜 이 두 가지를 한 테스트에서 묻는가: 오디오는 <b>양 플랫폼이 다른 API로 같은 규칙</b>을
+        /// 수행하는 전형적인 자리다(macOS AudioToolbox / Windows <c>winmm</c>). 규칙이 한쪽
+        /// 플랫폼 폴더로 들어가면 반대쪽은 그것을 물리적으로 못 부르고 규칙을 다시 쓴다 —
+        /// <c>FullscreenSuspendPolicy</c> 사고 그대로다. 그리고 오디오에는 그 사고에 없던 축이
+        /// 하나 더 있다: <b>입력 API를 하나라도 들이면 앱의 백신 프로필이 「도청」으로 바뀌고</b>,
+        /// macOS에서는 첫 실행에 <b>마이크 동의 창</b>이 뜬다. 되돌릴 수 없는 신뢰 사고라 계약
+        /// 단계에서 잠근다(<c>docs/security/ENTITLEMENT_CONTRACT.md</c> S-3).</para>
+        /// </summary>
+        [Test]
+        public void 오디오_온디맨드는_판정이_중립이고_계약에_캡처가_없다()
+        {
+            // ---- (1) 판정과 계약이 중립 위치에 ----
+            string policy = Path.Combine(PlatformRoot, "AudioActivationPolicy.cs");
+            string contract = Path.Combine(PlatformRoot, "IAudioOutputDevice.cs");
+            foreach (string required in new[] { policy, contract })
+            {
+                Assert.IsTrue(File.Exists(required),
+                    $"{Path.GetFileName(required)}가 Platform/ 중립 위치에 없습니다 — 개폐 규칙이 " +
+                    "플랫폼 폴더로 들어가면 반대쪽 플랫폼은 그것을 재사용할 수 없고, Windows가 없는 " +
+                    "이 개발 머신의 EditMode는 그 규칙을 한 번도 검증하지 못합니다.");
+            }
+
+            string policySrc = StripLineComments(ReadSource(policy));
+
+            // ★ 스캐너 생존 확인(양성 대조). 이걸 먼저 통과하지 못하면 아래 "없다" 판정은 전부 무의미하다 —
+            //   이 저장소는 "0건 = 깨끗"을 잘못 읽은 사고를 이미 겪었다.
+            StringAssert.Contains(nameof(AudioActivationPolicy.Evaluate), policySrc,
+                "양성 대조 실패 — 주석 제거 뒤 소스에서 알려진 코드 토큰조차 못 찾았습니다. " +
+                "이 스캐너는 지금 눈이 멀어 있고, 아래의 모든 '없음' 판정은 무효입니다.");
+
+            StringAssert.DoesNotContain("UNITY_STANDALONE_", policySrc,
+                "개폐 규칙에 플랫폼 분기가 들어왔습니다 — 이 파일은 순수 함수여야 합니다.");
+            StringAssert.DoesNotContain("DllImport", policySrc,
+                "개폐 규칙이 OS를 직접 부릅니다 — 사실 조회는 IAudioOutputDevice 구현체의 몫입니다.");
+            StringAssert.DoesNotContain("UnityEngine", policySrc,
+                "개폐 규칙이 Unity API에 붙었습니다 — 24시간 시나리오를 초 단위로 접어 검증할 수 없게 됩니다.");
+
+            // ---- (2) 상한은 플랫폼이 소유한다 ----
+            //     숫자를 베끼지 않는다(CLAUDE.md). 상수를 직접 참조해 관계만 검증한다.
+            Assert.Greater(AudioActivationPolicy.MaxLingerSeconds, 0f,
+                "잔류 상한이 0 이하입니다 — 그러면 열자마자 닫혀 온디맨드가 성립하지 않습니다.");
+            Assert.LessOrEqual(AudioActivationPolicy.DefaultLingerSeconds, AudioActivationPolicy.MaxLingerSeconds,
+                "기본 잔류가 상한을 넘습니다 — design-sound가 고를 수 있는 구간이 비어 있습니다.");
+            Assert.AreEqual(AudioActivationPolicy.MaxLingerSeconds,
+                AudioActivationPolicy.ClampLinger(AudioActivationPolicy.MaxLingerSeconds * 1000f),
+                "상한을 넘는 요청이 잘리지 않습니다 — design-sound가 상한을 넘겨 설정할 수 있게 됩니다.");
+
+            // ---- (3) ★ 캡처(입력) 동사가 Platform/ 어디에도 없는가 ----
+            string[] captureNeedles =
+            {
+                "waveIn", "AudioQueueNewInput", "IAudioCaptureClient",
+                "AUDCLNT_STREAMFLAGS_LOOPBACK", "kAudioUnitSubType_HALInput",
+                "kAudioObjectPropertyScopeInput", "NSMicrophoneUsageDescription",
+            };
+
+            // ★ 매처 생존 확인(양성 대조 2). 니들 하나하나가 실제로 물리는지 먼저 증명한다.
+            //   비교 규칙(Ordinal)이나 인코딩이 어긋나면 여기서 죽는다 — 죽은 프로브의 0건은
+            //   성공한 프로브의 0건과 똑같이 생겼다는 것이 이 저장소의 반복 사고다.
+            foreach (string needle in captureNeedles)
+            {
+                string synthetic = "prefix " + needle + " suffix";
+                Assert.IsTrue(synthetic.IndexOf(needle, StringComparison.Ordinal) >= 0,
+                    $"양성 대조 실패 — 니들 '{needle}'이 자기 자신을 담은 문자열에서도 안 잡힙니다.");
+            }
+
+            int scanned = 0;
+            var offenders = new List<string>();
+            foreach (string file in Directory.GetFiles(PlatformRoot, "*.cs", SearchOption.AllDirectories))
+            {
+                scanned++;
+                string body = StripLineComments(File.ReadAllText(file));
+                foreach (string needle in captureNeedles)
+                {
+                    if (body.IndexOf(needle, StringComparison.Ordinal) >= 0)
+                    {
+                        offenders.Add($"{Path.GetFileName(file)} : {needle}");
+                    }
+                }
+            }
+
+            // ★ 빈 루프 잠금 — 파일을 한 개도 안 읽었으면 위 0건은 공허하다(거짓 통과 5번째 형태).
+            Assert.Greater(scanned, 10,
+                $"Platform/ 아래에서 .cs를 {scanned}개밖에 못 읽었습니다 — 경로가 틀렸을 수 있고, " +
+                "그렇다면 '캡처 API 0건'은 아무것도 확인하지 않은 결과입니다.");
+
+            CollectionAssert.IsEmpty(offenders,
+                "★ 오디오 **입력(캡처)** API가 Platform/에 들어왔습니다:\n  " +
+                string.Join("\n  ", offenders) + "\n\n" +
+                "재생과 캡처는 위험 등급이 다릅니다. (a) 우리 Win32 표면은 이미 창 제목 열거 + 키 상태 " +
+                "폴링 조합이라 백신 휴리스틱상 애드웨어/키로거 모양이고(ENTITLEMENT_CONTRACT S-3), " +
+                "사용자 실기 환경은 AhnLab V3입니다. 여기에 캡처가 더해지면 프로필이 '도청'이 됩니다. " +
+                "(b) macOS에서는 입력 장치를 여는 순간 첫 실행에 마이크 동의 창이 뜹니다 — " +
+                "바탕화면 캐릭터가 마이크를 요구하는 것은 되돌릴 수 없는 신뢰 사고입니다.");
+        }
+
+        /// <summary>
+        /// ★ 네이티브 개폐 구현이 <b>아직 양 플랫폼 모두 없다</b>. 잊히지 않게 러너에 띄운다.
+        ///
+        /// <para>한쪽만 생기면 이 테스트는 <b>건너뜀이 아니라 실패</b>한다 — 그것이 이 저장소가
+        /// 반복해 겪은 비대칭이다(macOS만 고치고 Windows를 놓친 사고 3건).</para>
+        /// </summary>
+        [Test]
+        public void 미해결_오디오_네이티브_개폐가_양_플랫폼_모두_미구현이다()
+        {
+            bool mac = AnyFileImplements(Path.Combine(PlatformRoot, "MacOS"), nameof(IAudioOutputDevice));
+            bool win = AnyFileImplements(Path.Combine(PlatformRoot, "Windows"), nameof(IAudioOutputDevice));
+
+            if (mac && win)
+            {
+                Assert.Pass("양 플랫폼 구현이 생겼습니다 — 이 항목을 정식 검사로 승격하고, " +
+                    "① 종료/일시정지 훅에서 반드시 닫는지 ② 열기 성공을 되읽어 확인하는지 " +
+                    "③ 셸 정숙 구간 진입 시 즉시 닫는지를 각각 검사로 옮기세요.");
+            }
+
+            Assert.IsFalse(mac ^ win,
+                "★ 오디오 네이티브 개폐가 **한쪽 플랫폼에만** 구현됐습니다 " +
+                $"(macOS={mac}, Windows={win}). 이것이 이 저장소가 세 번 반복한 실패 모드입니다. " +
+                "반대쪽은 이 개발 머신에서 컴파일조차 되지 않으므로 갭이 조용히 살아남습니다.");
+
+            Assert.Ignore("【미해결 · 계약과 판정은 착지, 네이티브 구현 미착수】 신설 2026-09-02 (dev-platform)\n" +
+                "\n" +
+                "착지한 것: AudioActivationPolicy.cs(순수 판정) + IAudioOutputDevice.cs(계약).\n" +
+                "남은 것: 양 플랫폼 IAudioOutputDevice 구현 + 이를 구동하는 중립 실행부(Director).\n" +
+                "\n" +
+                "★ 지금 착수하지 않은 이유(코드가 아니라 선행 결과가 막고 있다):\n" +
+                "  (a) design-sound가 잔류 초·48ms 허용 여부·pop 처리를 아직 확정하지 않았다. " +
+                "그 값 없이 구현하면 실기에서 잰 것이 무엇인지 말할 수 없다.\n" +
+                "  (b) 재생할 자산이 0개다 — 이 저장소에 WAV가 없고, 온디맨드 경로는 Unity AudioClip이 " +
+                "아니라 디스크 PCM을 쓴다(StreamingAssets). 자산 형식이 정해지기 전의 디코더는 버린다.\n" +
+                "\n" +
+                "★ 구현 시 쓸 API는 이미 실측으로 확정돼 있다(양쪽 다 공개 문서 API, 비문서 누적 0 증가):\n" +
+                "  macOS — AudioToolbox: AudioQueueNewOutput / AudioQueueAllocateBuffer / " +
+                "AudioQueueEnqueueBuffer / AudioQueueStart / AudioQueueStop(immediate:true) / " +
+                "AudioQueueDispose. 개폐 지연 실측 콜드 48ms, 이후 ~38ms, 닫은 뒤 0.3초 내 " +
+                "kAudioDevicePropertyDeviceIsRunning=0 (docs/perf/audio_open_latency_probe.c).\n" +
+                "  Windows — winmm: waveOutOpen(CALLBACK_NULL) / waveOutPrepareHeader / waveOutWrite / " +
+                "waveOutReset / waveOutClose. ★ CALLBACK_NULL이라 **역방향 P/Invoke가 없다** — " +
+                "실시간 오디오 스레드가 관리 코드를 부르지 않는다는 뜻이고, GC 정지가 오디오 " +
+                "스레드를 건드릴 자리가 원천적으로 없다.\n" +
+                "\n" +
+                "★ 구현 라운드가 반드시 실측해야 하는 항목 3건(전부 이 머신에서 불가능하다):\n" +
+                "  M1. **Windows 콜드 개방 지연**. design-sound의 '48ms 허용' 판정은 그 지연이 " +
+                "트랜지언트 융합창(AudioActivationPolicy.FusionWindowSeconds=50ms) 안쪽이라 " +
+                "개방 클릭이 어택에 흡수된다는 **단 하나의 전제** 위에 있다. 48ms는 macOS AUHAL " +
+                "실측이고 Windows는 audiodg.exe + WASAPI 공유 모드라 **그대로 옮겨 쓰면 안 된다**. " +
+                "창 밖이면 Q3 판정을 다시 연다.\n" +
+                "  M2. **블루투스 / USB DAC 재개방**(양 플랫폼 공통). 자릿수가 다르고 " +
+                "**스트림 머리를 삼킬 수 있다**. 실측 창구는 IAudioOutputDevice.LastOpenLatencySeconds.\n" +
+                "  M3. **어서션이 실제로 풀리는가**. macOS: `pmset -g assertions`에 3.0초 동안 뜨고 " +
+                "**4.1초 안에 사라지는가**. Windows(관리자 권한): `powercfg /requests`의 AUDIO 항목이 " +
+                "**4.1초 안에 비는가**.\n" +
+                "\n" +
+                "★ 이 머신에서 실기가 불가능한 이유: macOS는 사용자 화면 잠금으로 앱을 띄울 수 없고, " +
+                "Windows는 기계 자체가 없다.");
+        }
+
+        /// <summary>지정한 폴더의 어떤 .cs가 그 인터페이스를 <b>기반 목록에</b> 달았는가.
+        /// 주석에 이름만 적힌 것은 세지 않는다(결함을 정직하게 적을수록 감사가 눈머는 함정 회피).</summary>
+        private static bool AnyFileImplements(string directory, string interfaceName)
+        {
+            if (!Directory.Exists(directory)) return false;
+            foreach (string file in Directory.GetFiles(directory, "*.cs", SearchOption.AllDirectories))
+            {
+                string body = StripLineComments(File.ReadAllText(file));
+                int at = body.IndexOf("class ", StringComparison.Ordinal);
+                while (at >= 0)
+                {
+                    int brace = body.IndexOf('{', at);
+                    if (brace < 0) break;
+                    string head = body.Substring(at, brace - at);
+                    int colon = head.IndexOf(':');
+                    if (colon >= 0 && head.IndexOf(interfaceName, colon, StringComparison.Ordinal) >= 0)
+                    {
+                        return true;
+                    }
+                    at = body.IndexOf("class ", at + 6, StringComparison.Ordinal);
+                }
+            }
+            return false;
         }
 
         private static string ReadSource(string path)
@@ -1667,6 +1859,221 @@ namespace StickMate.Tests.EditMode
                 "docs/platform/GHOST_FOOTHOLDS.md의 잔여 비대칭 항목 참고).");
         }
 
+        // ====================================================================
+        // 세션 가시성 게이트 (2026-09-02 신규 플랫폼 분기)
+        // ====================================================================
+        //
+        // ★ 이 분기의 특이점: **두 플랫폼이 서로 반대쪽 칸을 채운다.**
+        //     macOS   = DisplayAsleep(CGDisplayIsAsleep)  / SessionLocked 항상 false
+        //     Windows = DisplayAsleep 항상 false          / SessionLocked(WTS + OpenInputDesktop)
+        //   그래서 "한쪽 플랫폼만 고치고 넘어갔는가"를 묻는 평소 형태(AssertBothContain으로 같은
+        //   조각을 양쪽에서 찾는 것)가 **여기서는 그대로 통하지 않는다** — 양쪽이 같은 코드를 갖는
+        //   것이 정답이 아니기 때문이다. 대신 (a) 정책이 중립 위치에 있고 (b) 양쪽이 각자의 방식으로
+        //   그 필드를 채우며 (c) 배선이 한 곳에서 정책을 부르는가를 나눠 묻는다.
+
+        /// <summary>
+        /// 세션 가시성 판정이 <b>플랫폼 중립 위치</b>에 있어야 한다.
+        ///
+        /// <para><c>FullscreenSuspendPolicy</c>가 한때 <c>Platform/MacOS/</c> 안에 있었고, 그 자리에
+        /// 있는 동안 Windows 구현은 같은 규칙을 <b>부를 수조차 없었다</b>. 그 사고가 이 항목의 존재
+        /// 이유 전부다.</para>
+        ///
+        /// <para><b>★ 부재 단언에는 양성 대조를 붙인다</b>(CLAUDE.md: 부재 단언은 썩으면 조용히
+        /// 초록이 된다). 아래 "정책 파일에 P/Invoke가 없다"는 단언 바로 앞에서, <b>같은 니들이
+        /// 실제로 존재하는 파일</b>(Windows 관측 서비스)을 먼저 확인한다 — 니들이 죽었으면 그
+        /// 대조가 먼저 빨개진다.</para>
+        /// </summary>
+        [Test]
+        public void 세션_가시성_정책은_플랫폼_중립_위치에_있다()
+        {
+            string neutral = Path.Combine(PlatformRoot, "SessionVisibilityPolicy.cs");
+            string macOnly = Path.Combine(PlatformRoot, "MacOS", "SessionVisibilityPolicy.cs");
+            string winOnly = Path.Combine(PlatformRoot, "Windows", "SessionVisibilityPolicy.cs");
+
+            Assert.IsTrue(File.Exists(neutral),
+                "SessionVisibilityPolicy.cs가 Platform/ 바로 아래에 없습니다. 이 파일은 두 플랫폼이 " +
+                "함께 쓰는 순수 규칙이므로 플랫폼 폴더에 두면 반대쪽이 참조할 수 없습니다.");
+            Assert.IsFalse(File.Exists(macOnly),
+                "SessionVisibilityPolicy.cs가 Platform/MacOS/ 로 들어갔습니다 — 그 순간 Windows는 " +
+                "같은 규칙을 부를 수 없게 되고, FullscreenSuspendPolicy 사고가 그대로 재발합니다.");
+            Assert.IsFalse(File.Exists(winOnly),
+                "SessionVisibilityPolicy.cs가 Platform/Windows/ 로 들어갔습니다 — 그러면 이 개발 " +
+                "머신에서 그 규칙이 한 줄도 컴파일되지 않고, 한 줄도 실행되지 않습니다.");
+
+            string policy = ReadSource(neutral);
+            StringAssert.Contains("namespace StickMate.Platform\n", policy.Replace("\r\n", "\n"),
+                "SessionVisibilityPolicy.cs의 네임스페이스가 StickMate.Platform이 아닙니다 — " +
+                "하위 네임스페이스로 내리면 반대쪽 플랫폼에서 using 없이 참조되지 않습니다.");
+
+            // ---- 양성 대조: 'DllImport'라는 니들이 이 저장소에서 여전히 P/Invoke를 뜻하는가 ----
+            string winPresence = ReadSource(WinPresenceServicePath);
+            StringAssert.Contains("DllImport", winPresence,
+                "양성 대조 실패 — Windows 관측 서비스에서 'DllImport'를 못 찾았습니다. 니들 자체가 " +
+                "죽었다는 뜻이고, 그러면 바로 아래 '정책에 P/Invoke가 없다'는 부재 단언은 " +
+                "무엇을 넣어도 통과하는 빈 검사입니다.");
+
+            StringAssert.DoesNotContain("DllImport", StripLineComments(policy),
+                "판정 규칙 파일에 P/Invoke가 들어왔습니다. 이 파일이 순수하게 남아야 Windows 실기가 " +
+                "없는 이 개발 머신에서 규칙을 **실제로 실행해** 검증할 수 있습니다(그 검증이 " +
+                "SessionVisibilityPolicyTests입니다). 사실 조회는 플랫폼 파일로 내리세요.");
+        }
+
+        /// <summary>
+        /// 양 플랫폼이 <b>각자의 방식으로</b> <c>ViewerPresenceSnapshot.SessionLocked</c>를 채우는가.
+        ///
+        /// <para>같은 조각을 양쪽에서 찾는 형태로 쓸 수 없다 — 정답이 서로 다르기 때문이다.
+        /// macOS는 <b>명시적으로 false</b>를 넣는 것이 결론이고(문서화된 수단이 없다: 공개
+        /// <c>kCGSessionOnConsoleKey</c>는 평범한 화면 잠금에서 true로 남고, <c>CGSSessionScreenIsLocked</c>·
+        /// <c>com.apple.screenIsLocked</c>는 비문서라 <c>GetWindowBand</c>를 보류시킨 것과 같은 종류의
+        /// 의존이다), Windows는 <b>문서화된 두 수단</b>으로 실제로 채운다.</para>
+        ///
+        /// <para><b>타입이 아니라 소스 파일</b>을 읽는다 — 두 서비스 모두 파일 전체가 <c>#if</c> 안이라
+        /// 반대 타깃에서는 타입이 존재하지 않고, 리플렉션은 없는 타입을 셀 수 없다.</para>
+        /// </summary>
+        [Test]
+        public void 세션_잠금_관측이_양_플랫폼에_각자의_방식으로_배선되어_있다()
+        {
+            string mac = StripLineComments(ReadSource(MacPresenceServicePath));
+            string win = StripLineComments(ReadSource(WinPresenceServicePath));
+
+            // ---- 양쪽이 새 필드를 실제로 넘기는가(생성자에 기본값이 없으므로 컴파일러도 함께 막는다) ----
+            StringAssert.Contains("sessionLocked:", mac,
+                "MacViewerPresenceService가 sessionLocked 인자를 이름으로 넘기지 않습니다 — " +
+                "위치 인자로 넘기면 bool 4개가 나란히 선 자리에서 순서를 바꿔도 컴파일이 통과합니다.");
+            StringAssert.Contains("sessionLocked:", win,
+                "WindowsViewerPresenceService가 sessionLocked 인자를 이름으로 넘기지 않습니다 — 같은 이유.");
+
+            // ---- macOS: '수단이 없어서 false'라는 판정이 코드에 남아 있는가 ----
+            StringAssert.Contains("sessionLocked: false", mac,
+                "macOS가 SessionLocked를 false 아닌 값으로 채우기 시작했습니다. 그 자체가 잘못은 " +
+                "아니지만, 후보 3종(kCGSessionOnConsoleKey / CGSSessionScreenIsLocked / " +
+                "com.apple.screenIsLocked)을 배제한 판정을 뒤집는 결정입니다 — " +
+                "docs/platform/GHOST_FOOTHOLDS.md 2-3절을 먼저 갱신하세요.");
+
+            // ---- Windows: (A) 주 신호 + (B) 보조 신호가 둘 다 있는가 ----
+            StringAssert.Contains("WTSQuerySessionInformation", win,
+                "(A) 주 신호가 사라졌습니다 — 문서화된 잠금/해제 조회는 이것뿐입니다.");
+            StringAssert.Contains("OpenInputDesktop", win,
+                "(B) 보조 신호가 사라졌습니다. **(B)만이 UAC 보안 데스크톱을 덮습니다** — " +
+                "그 구간에는 (A)가 '잠기지 않음'이라고 답합니다.");
+
+            // ---- Windows: '쓰레기를 성공으로 읽는' 경로를 닫는 검산이 살아 있는가 ----
+            // 구조체 레이아웃을 틀리면 에러 없이 쓰레기 플래그가 나온다 = 실패한 측정과 성공한 측정이
+            // 똑같이 생긴 형태. 그것을 가르는 것이 아래 두 줄이다.
+            StringAssert.Contains("ProcessIdToSessionId", win,
+                "WTSINFOEX 레이아웃 검산의 핵심(우리 실제 세션 ID와의 대조)이 사라졌습니다 — " +
+                "레이아웃이 어긋나도 '성공'으로 읽히고, 그러면 쓰레기 플래그가 잠금 판정이 됩니다.");
+            StringAssert.Contains("Level == 1", win,
+                "WTSINFOEX의 Level 검사가 사라졌습니다 — Level이 1이 아닌데 LEVEL1로 해석하면 " +
+                "그 순간부터 읽는 값이 전부 무의미합니다.");
+
+            // ---- Windows: 자원 반납 ----
+            StringAssert.Contains("WTSFreeMemory", win,
+                "WTS 반환 버퍼를 반납하지 않습니다 — 24시간 상주 앱에서 폴링당 하나씩 샙니다.");
+            StringAssert.Contains("CloseDesktop", win,
+                "OpenInputDesktop이 성공했을 때 핸들을 닫지 않습니다 — 위와 같은 누수입니다.");
+
+            // ---- Windows: 시한 판정을 자기 파일에 다시 짓지 않고 중립 규칙을 부르는가 ----
+            StringAssert.Contains("SessionVisibilityPolicy.ShouldTrustSecureDesktopSignal", win,
+                "보조 신호 신뢰 시한을 Windows 파일 안에서 자체 판정하고 있습니다 — 그 자리는 이 " +
+                "머신에서 한 줄도 실행되지 않아 검증이 불가능합니다. 판정은 중립 규칙에 두세요.");
+        }
+
+        /// <summary>
+        /// 게이트가 <b>실제로 배선돼 있고</b>, 그러면서 <b>캐시를 비우지 않는가</b>.
+        ///
+        /// <para>두 번째가 더 중요하다: 중단하면서 캐시를 비우면 그 순간이 곧 <b>발판 전멸</b>이고,
+        /// 이 라운드가 고치려던 버그를 스스로 만드는 것이다(잠금 해제 순간 캐릭터가 화면 밖으로
+        /// 떨어진다).</para>
+        ///
+        /// <para><b>★ 개수로 잠근다</b>: <c>_cache.Clear()</c>가 <b>정확히 1회</b>(정상 폴링 경로)만
+        /// 나와야 한다. 존재 단언(니들이 살아 있다)과 개수 단언(늘지 않았다)을 같은 테스트에 두어,
+        /// 니들이 죽어 조용히 초록이 되는 경로를 막는다.</para>
+        /// </summary>
+        [Test]
+        public void 발판_폴러가_세션_게이트를_부르고_캐시를_비우지_않는다()
+        {
+            string poller = StripLineComments(ReadSource(Path.Combine(PlatformRoot, "FootholdPoller.cs")));
+
+            StringAssert.Contains("SessionVisibilityPolicy.ShouldSuspendFootholdScan(", poller,
+                "FootholdPoller가 세션 가시성 판정을 부르지 않습니다 — 규칙이 아무리 옳아도 " +
+                "폴러가 부르지 않으면 두 플랫폼 어디에서도 아무 일이 일어나지 않습니다.");
+
+            StringAssert.Contains("PollImmediately();", poller,
+                "게이트 해제 직후의 즉시 재열거가 사라졌습니다 — 잠금을 푼 첫 순간(사용자가 화면을 " +
+                "보는 바로 그 순간)에 최대 footholdPollInterval 동안 낡은 발판 집합으로 접지 판정을 " +
+                "하게 됩니다.");
+
+            int clears = CountOccurrences(poller, "_cache.Clear();");
+            Assert.Greater(clears, 0,
+                "양성 대조 실패 — '_cache.Clear();'를 한 번도 못 찾았습니다. 니들이 죽었다면 " +
+                "아래 개수 단언은 '캐시를 비우는 코드가 늘어도 통과하는' 빈 검사입니다.");
+            Assert.AreEqual(1, clears,
+                $"발판 캐시를 비우는 자리가 {clears}곳입니다(정상 폴링 경로 1곳이어야 합니다). " +
+                "세션 게이트 중단 경로에서 캐시를 비우면 그 순간이 곧 발판 전멸입니다 — " +
+                "우리가 멈추는 것은 '다시 묻는 일'뿐이고, 마지막으로 확정된 목록은 그대로 유효합니다.");
+        }
+
+        /// <summary>
+        /// <b>코드는 닫혔고 Windows 하드웨어만 남았다.</b> 세션 잠금 감지의 <b>규칙</b>과 <b>배선</b>은
+        /// 이 머신에서 실제로 실행해 검증했지만, <c>WTSQuerySessionInformationW</c>와
+        /// <c>OpenInputDesktop</c>이 <b>진짜 Windows에서 무엇을 돌려주는지는 한 번도 보지 못했다.</b>
+        ///
+        /// <para><b>왜 <c>미해결_</c>이 아니라 <c>실기미확인_</c>인가</b>: 둘은 성격이 다르고 닫는 방법도
+        /// 다르다 — 구조는 코드로 닫고 실측은 하드웨어로 닫는다. 하나로 뭉치면 "절반이 닫혔다"는 사실이
+        /// 목록에서 사라진다(이 파일의 <c>실기미확인_획_하한...</c> 항목이 같은 이유로 이름을 바꿨다).</para>
+        ///
+        /// <para><b>[닫힌 절반 — 코드]</b> 판정(<c>SessionVisibilityPolicy</c>)과 배선
+        /// (<c>FootholdPoller.Tick</c>)은 <c>SessionVisibilityPolicyTests</c>가 <b>실제로 실행</b>해
+        /// 확인한다: 잠김에서 열거가 서고, 풀리면 그 틱에 즉시 한 번 돌고, 중단 중에도 캐시가 유지된다.
+        /// 크로스 컴파일(<c>xcheck.sh win</c>)로 Windows 전용 파일의 0에러도 확인했다.</para>
+        ///
+        /// <para><b>[열린 절반 — 실측]</b> 이 머신에 Windows가 없다. 확인 못 한 것 셋:</para>
+        /// <list type="number">
+        /// <item><c>WTSINFOEX</c> 레이아웃 검산 4겹이 <b>실제로 통과하는가</b>. 통과하지 못하면
+        ///   경고 한 줄을 남기고 잠금 감지가 조용히 "모름"으로 내려앉는다(동작은 지금과 같다).</item>
+        /// <item>잠금 구간에 <c>SessionFlags</c>가 <b>Win10 의미(0=잠김)</b>로 오는가.
+        ///   Win7/2008R2 반전은 코드로 대응하지 않고 <b>{0,1} 밖은 전부 모름</b>으로만 막아 두었다.</item>
+        /// <item><c>OpenInputDesktop</c>이 평상시에 <b>성공하는가</b>. 어떤 환경에서 늘 실패하면
+        ///   보조 신호가 고착되는데, 그 경우를 <c>SecureDesktopTrustSeconds</c> 시한이 잘라 낸다
+        ///   (그 시한 규칙 자체는 이 머신에서 실행해 검증했다).</item>
+        /// </list>
+        ///
+        /// <para><b>확인 수단</b>: 실기 Player.log의 <c>[세션가시성]</c> 태그.
+        /// 잠갔다 풀 때 <c>발판 스캔 중단 — 사유=세션잠금</c> / <c>발판 스캔 재개</c>가 한 쌍으로
+        /// 찍히면 (A)가 살아 있는 것이고, <c>WTSINFOEX 검산 실패</c>가 찍히면 레이아웃이 어긋난 것이다.
+        /// <b>두 경우가 로그에서 서로 다르게 생기도록 일부러 나눠 놓았다</b> — 이 저장소가 반복해서
+        /// 당한 "실패한 측정과 성공한 측정이 똑같이 생긴" 형태를 피하기 위해서다.</para>
+        /// </summary>
+        [Test]
+        public void 실기미확인_세션잠금_게이트가_Windows_실기에서_확인되지_않았다()
+        {
+            // 비공허성 — 아래 Ignore가 "확인했다"가 아니라 "아무것도 안 봤다"가 되지 않게,
+            // 주장의 근거가 되는 두 파일이 실제로 존재하는지부터 확인한다.
+            Assert.IsTrue(File.Exists(WinPresenceServicePath),
+                $"Windows 관측 서비스를 찾지 못했습니다({WinPresenceServicePath}) — 이 항목의 사유는 " +
+                "존재하지 않는 코드를 설명하고 있습니다. 사유부터 다시 쓰세요.");
+            Assert.IsTrue(File.Exists(Path.Combine(PlatformRoot, "SessionVisibilityPolicy.cs")),
+                "세션 가시성 정책 파일이 없습니다 — 코드 절반이 닫혔다는 이 항목의 전제가 무너졌습니다.");
+
+            Assert.Ignore("【실기 미확인 · 코드는 닫힘】 기록 2026-09-02\n" +
+                "닫힘(코드): 판정 SessionVisibilityPolicy + 배선 FootholdPoller.Tick. " +
+                "SessionVisibilityPolicyTests가 이 머신에서 실제로 실행해 확인했다 — " +
+                "잠김에서 열거가 서고(양성 대조: 잠기기 전에는 돌고 있었다), 풀리면 주기를 " +
+                "기다리지 않고 그 틱에 1회 돌며(음성 대조: 중단을 안 겪은 폴러는 같은 틱에 안 돈다), " +
+                "중단 중에도 캐시가 비지 않는다.\n" +
+                "열림(실측): 이 개발 머신에 Windows가 없다. WTSINFOEX 레이아웃 검산 4겹의 실제 " +
+                "통과 여부, 잠금 시 SessionFlags가 Win10 의미(0=잠김)로 오는지, OpenInputDesktop이 " +
+                "평상시에 성공하는지 — 셋 다 한 번도 보지 못했다.\n" +
+                "★ 오판 방향은 전부 안전 쪽으로 접어 두었다: 검산 실패/해석 불가/{0,1} 밖은 모두 " +
+                "'모름 -> 보고 있다'라 지금까지의 동작(계속 스캔)이 그대로 유지된다. " +
+                "보조 신호(OpenInputDesktop)만 고착되는 경우는 SecureDesktopTrustSeconds 시한이 " +
+                "잘라 낸다(그 규칙은 이 머신에서 실행해 검증했다).\n" +
+                "확인 수단: 실기 Player.log의 [세션가시성] 태그. 잠갔다 풀 때 " +
+                "'발판 스캔 중단 — 사유=세션잠금'과 '발판 스캔 재개'가 한 쌍으로 찍혀야 (A)가 " +
+                "살아 있는 것이고, 'WTSINFOEX 검산 실패'가 찍히면 레이아웃이 어긋난 것이다.");
+        }
+
         /// <summary>
         /// <b>미해결 갭</b>: Windows에는 <b>셸보다 위 z밴드</b>(잠금 화면 / UAC 보안 데스크톱 /
         /// 시스템 UI)에 있는 창을 발판 후보에서 빼는 규칙이 없다. macOS는
@@ -1714,17 +2121,22 @@ namespace StickMate.Tests.EditMode
                 "수단은 EnumWindows의 콜백 순서뿐이고, 그것은 '앞/뒤'만 알려 줄 뿐 '어느 밴드'인지는 " +
                 "알려 주지 않는다.\n" +
                 "★ 보류 사유 1 — 잴 수 없는 것을 위해 비문서 API 의존을 늘리지 않는다. " +
-                "GetWindowBand는 user32의 미문서화 export다. 세션 잠금 감지(문서화된 " +
-                "WTSQuerySessionInformation / OpenInputDesktop)가 먼저 들어가면 잠금 구간과 UAC가 " +
-                "함께 덮이는데, 그 뒤에 남는 잔여가 얼마인지는 Windows 실기가 없는 이 머신에서 " +
-                "측정할 수 없다.\n" +
+                "GetWindowBand는 user32의 미문서화 export다. ★ 2026-09-02 갱신: 세션 잠금 감지" +
+                "(문서화된 WTSQuerySessionInformation / OpenInputDesktop)는 **코드가 착지했다** " +
+                "— Platform/SessionVisibilityPolicy + Windows/WindowsViewerPresenceService. " +
+                "그래서 이 문장은 더 이상 '먼저 들어가면'이 아니라 '들어갔고, 그것이 잠금 구간과 " +
+                "UAC를 덮는다'이다. 다만 **그 뒤에 남는 잔여 유령 발판의 양은 여전히 0으로 잴 수 " +
+                "없다** — 이 머신에 Windows가 없어 잠금 구간을 재현할 수 없기 때문이다. " +
+                "보류를 떠받치던 다리는 그대로 서 있다(측정 불가).\n" +
                 "★ 보류 사유 2 — 비용이 개수로 센다. 이 앱에는 이미 비문서 export 의존이 1건 " +
                 "있다(InternalGetWindowText, 제목 조회 블로킹 제거용). GetWindowBand를 넣으면 " +
                 "누적 개수가 1 -> 2가 되고, 백신·EDR 휴리스틱이 세는 것은 정확히 이 누적 개수다. " +
                 "스팀 단일 채널 출시라 스토어 정적 심사는 걸리지 않지만, 사용자 머신의 백신 오탐은 " +
                 "채널과 무관하게 그대로 남는다.\n" +
-                "선행 조건: 세션 잠금 감지가 착지하고, 그 뒤 실기에서 잠금/UAC 구간의 유령 발판이 " +
-                "실제로 남는지 [발판진단] 로그로 확인될 것. 그때 이 항목을 다시 연다.");
+                "선행 조건(2026-09-02 현재 1/2 충족): (가) 세션 잠금 감지 착지 — **완료**. " +
+                "(나) 실기에서 잠금/UAC 구간에 유령 발판이 실제로 남는지 확인 — **미충족**. " +
+                "확인 수단은 [세션가시성] 태그로 게이트가 실제로 서는 것을 먼저 보고, 그럼에도 " +
+                "[발판진단]에 셸 상위 밴드 창이 남는지 보는 것이다. 그때 이 항목을 다시 연다.");
         }
 
         // ============================================================================

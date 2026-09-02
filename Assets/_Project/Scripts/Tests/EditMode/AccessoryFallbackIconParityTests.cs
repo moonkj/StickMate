@@ -134,6 +134,16 @@ namespace StickMate.Tests.EditMode
         // 1. 밀짚모자 — 띠는 관 밑변 그 자체
         // ============================================================================
 
+        /// <summary>
+        /// ★★ 2026-09-03(스펙 14-1) — <b>몸이 앞서갔고 폴백은 아랫변만 그린 상태로 남았다.</b>
+        /// <para>몸의 <c>StrawBand</c>가 낱선(아랫변 2점)에서 닫힌 채움 띠(아랫변 2 + 올린 윗변 2)가
+        /// 됐다. 폴백 에셋을 다시 굽는 것은 <b>장비 담당 소유</b>라 이 라운드가 대신 고치지 않는다.
+        /// 그래서 베레모가 세운 선례를 그대로 따른다: 여기서는 <b>방향</b>만 잠그고
+        /// (폴백은 몸의 단순화이므로 몸보다 복잡해질 수 없다), 갈라진 <b>실측값</b>은
+        /// <see cref="AccessoryFallbackBodyParityTests"/>의 대장이 자동 만료 장치와 함께 든다.</para>
+        /// <para>바뀌지 않은 것: 폴백 띠의 두 끝은 <b>여전히 관 밑변의 두 끝점 그 자체</b>다.
+        /// 그것이 "같은 계열"의 실체이고, 몸의 띠 아랫변도 정확히 같은 두 점이다(아래 검사).</para>
+        /// </summary>
         [Test]
         public void 밀짚모자_폴백_띠는_관_밑변의_두_끝점이다()
         {
@@ -147,16 +157,28 @@ namespace StickMate.Tests.EditMode
                 AccessorySilhouetteMetrics.Build(AccessorySilhouetteMetrics.Rig(),
                     EquipmentSlot.Head, AccessoryShapeBuilder.HeadStraw), "StrawBand").Points.Length;
 
-            Assert.AreEqual(bodyBandPoints, band.PointCount,
+            Assert.LessOrEqual(band.PointCount, bodyBandPoints,
                 $"폴백 띠가 {band.PointCount}점인데 몸의 StrawBand는 {bodyBandPoints}점입니다 — " +
-                "폴백은 몸과 같은 계열이어야 합니다(몸: crownBackFoot·crownFrontFoot).");
+                "폴백이 몸보다 <b>복잡합니다</b>. 폴백은 40×40 격자의 단순화이므로 이 방향은 " +
+                "단순화가 아니라 다른 그림입니다.");
             Assert.AreEqual(First(crown), First(band), "띠의 뒤 끝이 관 밑변의 뒤 끝과 다릅니다.");
             Assert.AreEqual(LastDistinct(crown), Last(band), "띠의 앞 끝이 관 밑변의 앞 끝과 다릅니다.");
             AssertInsideViewBox(band, "밀짚모자 폴백 띠");
+
+            if (band.PointCount != bodyBandPoints)
+            {
+                Debug.Log($"[폴백-몸] 밀짚모자 띠: 몸 {bodyBandPoints}점 / 폴백 {band.PointCount}점 " +
+                          "— 2026-09-03 스펙 14-1로 몸이 닫힌 채움 띠가 되면서 갈라졌습니다" +
+                          "(AccessoryFallbackBodyParityTests.Ledger에 등재됨).");
+            }
         }
 
         /// <summary>몸이 같은 규약을 <b>지금도</b> 지키는지 함께 본다 — 이게 깨지면 위 검사는
-        /// "폴백이 몸을 따라간다"가 아니라 "폴백이 어떤 옛 그림을 따라간다"가 된다.</summary>
+        /// "폴백이 몸을 따라간다"가 아니라 "폴백이 어떤 옛 그림을 따라간다"가 된다.
+        /// <para>★ 2026-09-03 — 몸의 띠는 이제 <b>닫힌 채움 띠</b>다. 그래도 잠글 사실은 같다:
+        /// <b>아랫변이 관 밑변의 두 끝점 그 자체</b>다. 점 수를 숫자로 적지 않고
+        /// <see cref="AccessoryFilledBandRuler.AssertRaisedBandForm"/>의 규약("아랫변 + 역순 윗변")에서
+        /// 유도한다 — 옛 검사가 여기에 <c>2</c>를 박아 둔 것이 정확히 이번 변경을 막는 형태였다.</para></summary>
         [Test]
         public void 몸의_밀짚모자_띠도_관_밑변의_두_끝점이다()
         {
@@ -167,9 +189,28 @@ namespace StickMate.Tests.EditMode
             AccessoryShapeBuilder.Shape crown = AccessorySilhouetteMetrics.Find(straw, "StrawCrown");
             AccessoryShapeBuilder.Shape band = AccessorySilhouetteMetrics.Find(straw, "StrawBand");
 
-            Assert.AreEqual(2, band.Points.Length, "몸의 띠가 2점 직선이 아닙니다.");
-            Assert.AreEqual(crown.Points[0], band.Points[0]);
-            Assert.AreEqual(crown.Points[crown.Points.Length - 1], band.Points[1]);
+            AccessoryFilledBandRuler.AssertRaisedBandForm(rig, band, "밀짚모자 띠");
+
+            // ★ 점 수를 적지 않는다 — "아랫변의 <b>모든</b> 점이 곧 관의 꼭짓점이고, 양 끝이
+            //   관 밑변의 두 발이다"로 잠근다. 중간 점이 늘어도 그것이 관 위에 있으면 통과하고
+            //   (고치는 길을 막지 않는다), 관 밖의 좌표를 새로 적으면 그 자리에서 걸린다.
+            Vector3[] bottom = AccessoryFilledBandRuler.BottomEdge(band);
+            Assert.AreEqual(crown.Points[0], bottom[0],
+                "띠 아랫변의 뒤 끝이 관 밑변의 뒤 끝(crownBackFoot)과 다릅니다.");
+            Assert.AreEqual(crown.Points[crown.Points.Length - 1], bottom[bottom.Length - 1],
+                "띠 아랫변의 앞 끝이 관 밑변의 앞 끝(crownFrontFoot)과 다릅니다.");
+
+            for (int i = 0; i < bottom.Length; i++)
+            {
+                bool onCrown = false;
+                for (int k = 0; k < crown.Points.Length && !onCrown; k++)
+                {
+                    onCrown = crown.Points[k] == bottom[i];
+                }
+                Assert.IsTrue(onCrown,
+                    $"띠 아랫변의 {i}번 점 {bottom[i]}이 관 폴리라인의 꼭짓점이 아닙니다 — " +
+                    "아랫변은 좌표를 새로 적지 않고 관에서 <b>그대로</b> 받아야 합니다(규칙 4-a).");
+            }
         }
 
         // ============================================================================

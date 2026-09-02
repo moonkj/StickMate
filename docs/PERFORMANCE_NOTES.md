@@ -379,17 +379,17 @@ HOME=/tmp/stickmate-perf-home \
 - **왜 복사본인가**: `Builds/macOS`를 다른 담당이 덮어써도 이 프로세스와 무관하다. 그리고
   A/B에 필요한 "지금 재고 있는 빌드가 무엇인지"가 고정된다.
 - **왜 `HOME` 격리인가**: ★ **원칙 3**. 모든 인스턴스가
-  `~/Library/Application Support/DefaultCompany/StickMate/stickmate_character.json`을 공유한다.
+  `~/Library/Application Support/Vibelab/StickMate/stickmate_character.json`을 공유한다.
   관측용 인스턴스가 사용자의 진행도(레벨/XP/장비)를 덮어쓰면 안 된다. `HOME`을 바꾸면
   `Application.persistentDataPath`와 `Player.log`가 함께 격리**될 것으로 본다**
   (저장소에 `/tmp/stickmate-probe-home` 선례가 있다).
   ★ **이건 아직 검증 안 했다 — 반드시 먼저 확인하고 본 관측을 시작할 것.** 10초짜리 확인 절차:
   ```bash
   # 슬롯을 띄우고 20초 뒤
-  ls -la /tmp/stickmate-perf-home/Library/Application\ Support/DefaultCompany/StickMate/
+  ls -la /tmp/stickmate-perf-home/Library/Application\ Support/Vibelab/StickMate/
   #  -> stickmate_character.json 이 여기 생겼으면 격리 성공.
   #  실제 사용자 세이브의 mtime 이 그동안 안 변했는지도 같이 확인한다:
-  stat -f '%Sm' "$HOME/Library/Application Support/DefaultCompany/StickMate/stickmate_character.json"
+  stat -f '%Sm' "$HOME/Library/Application Support/Vibelab/StickMate/stickmate_character.json"
   ```
   **격리가 안 되면 이 슬롯을 띄우지 않는다.** 원칙 3(유저 자산 불변)이 성능 관측보다 위다.
 - **왜 `open`이 아니라 직접 exec인가**: 이 슬롯은 **전역 단축키를 물려받지 않는 편이 낫다.**

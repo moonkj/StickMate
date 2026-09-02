@@ -81,7 +81,7 @@
 - [ ] **회사·타사 로고와 UI가 크게 찍히지 않는가** — 스토어 심사와 상표 문제
 
 ### 2-3. 앱 상태
-- [ ] **저장 파일 초기화** 여부를 정한다. `~/Library/Application Support/DefaultCompany/StickMate/stickmate_character.json`
+- [ ] **저장 파일 초기화** 여부를 정한다. `~/Library/Application Support/Vibelab/StickMate/stickmate_character.json`
       - 첫 실행 연출을 찍으려면 초기화 필요. **다만 사용자의 진행도를 지우지 않도록 백업 필수**
 - [ ] 캐릭터 배율: 배포 기본값 사용. 개인 저장값(과거 0.35 사례)이 섞이면 실측이 어긋난다
 - [ ] `verboseDiagnosticsLogging` **OFF**(진단 문자열이 화면/로그에 남는다)

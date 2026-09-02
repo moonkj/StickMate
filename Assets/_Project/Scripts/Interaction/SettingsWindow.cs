@@ -116,6 +116,14 @@ namespace StickMate.Interaction
         /// <para><b>원칙 2는 구조적으로 안 깨진다</b>: 복귀 조건이 <c>!ArePanelsSuppressed</c>이므로
         /// 게임이 아직 전체화면이면 <b>실행될 수 없다</b>(문자열 사유가 아니라 상태를 본다 —
         /// <see cref="RestoreInfoWindowIfNeeded"/>와 같은 관례).</para>
+        ///
+        /// <para>★★★ <b>2026-09-03 — 무장 조건이 좁아졌다</b>: 이제 <c>ArePanelsSuppressed</c>가 아니라
+        /// <see cref="StickmanAgent.IsSuspended"/>(등급 2)일 때만 무장한다. 이 장치의 존재 이유는
+        /// 위 문단의 <i>"마우스 재진입 경로가 3홉이라 되돌려주지 않으면 대가가 가장 크다"</i>인데,
+        /// 등급 1에서는 그 3홉이 <b>실제로 걸을 수 있게 됐다</b>(톱니 클릭이 사용자 허가를 낸다).
+        /// 걸을 수 있는데도 예약을 걸면, 사용자가 톱니를 눌러 부채꼴을 부른 그 프레임에
+        /// <b>부르지도 않은 설정창</b>이 그 위로 튀어나온다. 등급 2에서는 톱니가 아예 없으므로
+        /// 이 안전망이 그대로 필요하다.</para>
         /// </summary>
         public const float DefaultReopenAfterSuspendGraceSeconds = 20f;
 
@@ -167,7 +175,8 @@ namespace StickMate.Interaction
             }
 
             Open($"전체화면이 {away:F0}초 만에 지나가 자동으로 닫혔던 창을 돌려놓습니다 " +
-                "(우리가 닫은 게 아니라 빼앗은 것이므로 되돌립니다)");
+                "(우리가 닫은 게 아니라 빼앗은 것이므로 되돌립니다)",
+                userInitiated: false);
         }
 
         /// <summary>[▲][▼] 한 번에 넘기는 양. 화면 높이에서 한 행쯤 겹쳐 남겨 맥락이 끊기지 않게 한다.</summary>
@@ -254,7 +263,10 @@ namespace StickMate.Interaction
             "캐릭터도 열린 창도 함께 사라져요. 다시 부르려면 " +
             ShortcutLabel.Chord(StickmanAgent.UserHideHotkeyLetter) + " — 이 방법뿐입니다.";
 
-        private SettingsToggle _manualHideToggle;
+        // ★ 2026-09-03 — 여기 있던 <c>_manualHideToggle</c>(숨김 상태를 <b>표시</b>하던 토글)을 지웠다.
+        //   같은 상태를 조작하는 컨트롤이 둘이면 사용자가 <b>둘의 관계</b>부터 풀어야 하고, 그 오독이
+        //   실제로 발생했다(BuildGeneralTab의 「두 행을 하나로 합쳤다」 절). 지금 숨김 상태는
+        //   화면에 <b>캐릭터가 있느냐 없느냐</b>로 직접 보이고, 되돌리는 법은 캡션과 단축키 칩에 있다.
 
         /// <summary>전역 단축키를 쓸 수 없는 환경에서 <b>숨기기 자체를 막는</b> 게이트.
         /// <para>그 환경에서 숨으면 되돌릴 경로가 0이 된다(톱니도 부채꼴 [✕ 앱 종료]도 함께 사라지므로
@@ -512,9 +524,29 @@ namespace StickMate.Interaction
             else Open(source);
         }
 
-        public void Open(string source)
+        public void Open(string source) => Open(source, userInitiated: true);
+
+        /// <summary>
+        /// ★★★ 2026-09-03 — <c>userInitiated</c>가 갈라 놓는 것은 <b>등급 1 탈출구의 허가</b> 하나다.
+        ///
+        /// <para><b>true(사용자가 열었다)</b>: 전역 단축키, 정보창 [설정] 칩, 부채꼴 경로.
+        /// 등급 1 체류 중이면 <see cref="StickmanAgent.TryGrantUserSummon"/>으로 허가를 받아
+        /// <b>이 창이 열리자마자 자기 Update에 닫히는 루프</b>를 연다. 이 창이 등급 1을 끄는
+        /// <b>유일한 스위치</b>를 들고 있으므로, 이 한 줄이 없으면 등급 1은 끌 수 없는 상태로 남는다.</para>
+        ///
+        /// <para><b>false(우리가 되돌린다)</b>: <see cref="TickReopenAfterSuspend"/>의 자동 복귀.
+        /// 사용자의 <b>새</b> 행위가 아니므로 허가를 내지 않는다. 애초에 그 경로는
+        /// <c>!ArePanelsSuppressed</c>일 때만 실행되므로 허가가 필요하지도 않다 — 여기서 허가를 내면
+        /// "우리가 스스로에게 발급하는 면제"가 되어 원칙 2의 구멍이 열린다.</para>
+        /// </summary>
+        private void Open(string source, bool userInitiated)
         {
             if (_open) return;
+
+            // ★ 열기 <b>전에</b> 허가를 받는다. 이 창의 Update는 첫 프레임에 ArePanelsSuppressed를
+            //   보고 닫으므로, 허가가 늦으면 "열렸다가 같은 프레임에 닫힌" 로그 두 줄만 남는다.
+            if (userInitiated && _agent != null) _agent.TryGrantUserSummon($"설정창 열기({source})");
+
             _open = true;
             DisarmReopenAfterSuspend();
             _leftInitialized = false;   // 창을 여는 그 클릭이 곧바로 행 클릭으로 오인되지 않게.
@@ -609,6 +641,15 @@ namespace StickMate.Interaction
 
             if (!_open) return;
 
+            // ★★★ 2026-09-03 — 등급 1 탈출구의 <b>임대 갱신</b>. 반드시 아래 회수 가드 <b>앞</b>이다.
+            //   이 창은 톱니 경로의 <b>마지막 홉</b>이라, 여기까지 오면 부채꼴도 정보창도 이미 닫혀
+            //   앞 홉의 갱신자가 사라진다. 갱신이 끊기면 임대는
+            //   UserSurfaceSummonPolicy.LeaseSeconds 안에 만료되어 이 창이 스스로 닫힌다 —
+            //   즉 <b>사용자가 설정을 만지는 도중에</b> 창이 사라진다(고치려던 바로 그 증상).
+            //   ★ 갱신은 만료된 임대를 되살리지 않으므로(정책 문서) 이 줄이 스스로에게 면제를
+            //     발급하는 경로는 아니다 — 허가는 Open(userInitiated: true)에서만 난다.
+            if (_agent != null) _agent.RenewUserSummonGrant();
+
             // ★★ 원칙 2 — 전체화면 게임이 감지되면 창과 차단막을 그 프레임에 거둔다. 복귀 시 자동으로
             //    다시 열지 않는다(정보창/팝오버와 같은 판단 — 사용자가 부르지 않은 창이 게임을 끄자마자
             //    튀어나오면 그 자체가 방해다).
@@ -622,7 +663,14 @@ namespace StickMate.Interaction
                 Close("전체화면 감지 — 자동 숨김(비침해 원칙 2)");
                 // ★ 무장은 Close <b>뒤에</b> — Close()가 "사용자가 닫았다"로 보고 예약을 지운다.
                 //   순서를 뒤집으면 이 기능은 <b>영원히 발동하지 않으면서 컴파일도 테스트도 통과</b>한다.
-                ArmReopenAfterSuspend();
+                //
+                // ★★★ 2026-09-03 — 무장은 <b>등급 2일 때만</b> 한다(<c>IsSuspended</c>).
+                //   등급 1은 이제 <b>톱니 1클릭으로 되돌아올 수 있다</b>(사용자 허가). 그 상태에서까지
+                //   예약을 걸면 사용자가 톱니를 눌러 부채꼴을 부른 그 순간, 허가로 회수가 풀리면서
+                //   <b>부르지도 않은 설정창이 부채꼴 위로 튀어나온다</b> — 자동 복귀는 "마우스 진입점이
+                //   0인 동안"의 안전망이었고, 등급 1에서는 그 전제가 사라졌다.
+                //   등급 2(전체화면 게임 / 사용자 명시 숨김)에서는 톱니 자체가 없으므로 그대로 남긴다.
+                if (_agent.IsSuspended) ArmReopenAfterSuspend();
                 return;
             }
 
@@ -821,19 +869,20 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// 사용자 명시 숨김 행의 <b>값</b>과 <b>게이트</b>를 지금 사실에 맞춘다.
+        /// 사용자 명시 숨김 행의 <b>게이트</b>를 지금 사실에 맞춘다.
         ///
         /// <para>왜 <see cref="RefreshAll"/>에서(=<c>Start</c>와 매 <see cref="Open"/>) 하는가:
         /// 게이트 조건이 <c>_agent.PlatformService</c>에서 나오는데, 이 창의 UI는 <c>Awake</c>에서
         /// 조립된다. 같은 GameObject의 <c>Awake</c> 순서는 보장되지 않으므로 조립 시점에 물으면
         /// "아직 없음"을 <b>영구 비활성</b>으로 굳혀 버린다. <c>Start</c>는 모든 <c>Awake</c> 뒤다.</para>
         ///
-        /// <para>토글이 읽는 값은 <c>IsSuspended</c>가 아니라 <see cref="StickmanAgent.IsUserHidden"/>다 —
-        /// 전체화면 게임 때문에 숨어 있는 동안 이 토글이 저절로 켜진 것처럼 보이면 안 된다.</para>
+        /// <para>★ 2026-09-03 — <b>값</b>을 맞추던 절반이 사라졌다. 숨김 상태를 <b>표시</b>하던 토글이
+        /// 삭제됐기 때문이다(BuildGeneralTab의 「두 행을 하나로 합쳤다」 절). 남은 것은 게이트뿐이고,
+        /// 그래서 이 함수는 이제 <b>"전역 단축키를 쓸 수 있는 환경인가"</b> 하나만 반영한다 —
+        /// 숨김 상태 자체는 화면에 캐릭터가 있느냐 없느냐로 이미 보인다.</para>
         /// </summary>
         private void SyncManualHide()
         {
-            if (_manualHideToggle != null) _manualHideToggle.SetOn(_agent != null && _agent.IsUserHidden);
             _manualHideGate?.SetEnabled(_agent != null && _agent.PlatformService is IGlobalKeyStateService);
         }
 
@@ -1098,32 +1147,42 @@ namespace StickMate.Interaction
                 //   캐릭터가 남는 데 동의한 것이지 "클릭이 안 먹는 구멍"에 동의한 적이 없다.
                 caption: "켜면 캐릭터도 열린 창도 함께 사라집니다. 끄면 창이 막는 클릭까지 그대로 남아요.");
 
-            // ★★ 2026-09-02 — 이 두 행은 <b>같은 하나의 상태</b>(StickmanAgent.IsUserHidden)를 본다.
+            // ★★ 2026-09-02 — 이 행은 <b>하나의 상태</b>(StickmanAgent.IsUserHidden)를 본다.
             //   예전에는 [숨기기]가 렌더러만 끄는 1회성이라 캡션이 "전체화면 앱을 오갔다 오면 다시
             //   나타나요"라고 <b>자기 한계를 자백</b>하고 있었다. 화면공유 중에 되살아나는 숨김은
             //   숨김이 아니고, 무엇보다 그때 <b>열린 창과 클릭 차단막은 애초에 걷히지도 않았다</b> —
             //   캐릭터만 사라지고 설정창이 발표 화면에 남는 쪽이 더 이상하다.
-            //   이제 두 행 모두 전체화면 감지와 같은 Suspend 경로를 탄다.
+            //   이제 이 행은 전체화면 감지와 같은 Suspend 경로를 탄다.
             _manualHideGate = new SettingsRowGate(
                 "이 컴퓨터에서는 전역 단축키를 쓸 수 없어요. 숨기면 되돌릴 방법이 없어서 잠가 두었습니다.");
 
+            // ★★★ 2026-09-03 — <b>두 행을 하나로 합쳤다</b>(리더 확정, 페르소나 실측 후속).
+            //
+            //   무엇이 있었나: 바로 아래에 <c>"숨기기 / 보이기 단축키"</c>라는 <b>토글</b> 행이 하나 더
+            //   있었고, 그 행의 값은 이 버튼 행과 <b>같은 상태</b>(IsUserHidden)였다. 코드는 이 결함을
+            //   <b>미리 예측했고</b>(옛 주석: <i>"「단축키」라는 라벨 때문에 「이 단축키를 켜고 끄는
+            //   스위치」로 읽히고, 그렇게 읽은 사용자가 켜는 순간 캐릭터가 사라져 놀란다"</i>) 캡션
+            //   한 줄로 막으려 했다. <b>페르소나가 정확히 예측된 그대로 읽었다</b> — 완화가 현실에서
+            //   반증됐다. ⇒ 고칠 것은 컨트롤 종류가 아니라 <b>라벨의 낱말 하나(「단축키」)</b>였다.
+            //
+            //   처방 세 가지가 전부 여기 한 줄에 들어 있다:
+            //     (1) 토글 삭제 — 같은 상태를 조작하는 컨트롤이 둘이면 사용자는 <b>둘의 관계</b>를
+            //         먼저 풀어야 한다. 카드가 60pt(RowHeightWithCaption) 줄어드는 것은 덤이다.
+            //     (2) 칩 이동 — <c>hotkey:</c>는 "이 행의 동작에 전역 단축키가 있다"는 <b>표시</b>이지
+            //         스위치가 아니다. 그것이 원래 이 정보가 있어야 할 자리다.
+            //     (3) 라벨에서 「단축키」 제거 — 남은 라벨은 <c>지금 즉시</c>다.
+            //
+            //   ★★ <b>버튼 라벨(["숨기기","보이기"])은 한 글자도 바꾸지 마라.</b> 폭 식이
+            //      <c>26 + 글자수 × 9</c>라(SettingsControls.AddButtons) 글자 수가 바뀌면 <b>옆 버튼이
+            //      통째로 미끄러진다</b>. 지금 두 버튼은 각각 53pt이고 합계 114pt다.
             display.AddButtons("general.hideNow", "지금 즉시", new[] { "숨기기", "보이기" },
                 index => SetUserHiddenFromSettings(index == 0),
-                caption: HideEscapeCaption, gate: _manualHideGate);
-
-            // ★ 리더 판정 2026-09-02 — V가 아니라 <b>K</b>. V는 GlobalKey에 없어 양 플랫폼 파일을
-            //   고쳐야 했고, K는 두 플랫폼 모두 이미 키코드가 매핑돼 있으면서 바인딩만 비어 있었다
-            //   (Platform/IGlobalKeyStateService.cs의 GlobalKey.K 문서가 이 자리를 예약해 뒀다).
-            //   그래서 플랫폼 파일은 이 기능 때문에 <b>한 줄도</b> 바뀌지 않았다.
-            _manualHideToggle = display.AddToggle("general.hideHotkey", "숨기기 / 보이기 단축키",
-                _agent != null && _agent.IsUserHidden,
-                on => SetUserHiddenFromSettings(on),
-                // ★ 이 행은 위 [숨기기]/[보이기]와 <b>같은 하나의 스위치</b>다. 그 사실을 캡션이 먼저
-                //   말하지 않으면 "단축키"라는 라벨 때문에 <i>"이 단축키를 켜고 끄는 스위치"</i>로 읽히고,
-                //   그렇게 읽은 사용자가 켜는 순간 캐릭터가 사라져 놀란다.
-                caption: "위 [숨기기] 버튼과 같은 스위치예요. 창을 열지 않아도 어디서든 눌립니다.",
-                hotkey: ShortcutLabel.Chord(StickmanAgent.UserHideHotkeyLetter),
-                gate: _manualHideGate);
+                caption: HideEscapeCaption, gate: _manualHideGate,
+                // ★ 리더 판정 2026-09-02 — V가 아니라 <b>K</b>. V는 GlobalKey에 없어 양 플랫폼 파일을
+                //   고쳐야 했고, K는 두 플랫폼 모두 이미 키코드가 매핑돼 있으면서 바인딩만 비어 있었다
+                //   (Platform/IGlobalKeyStateService.cs의 GlobalKey.K 문서가 이 자리를 예약해 뒀다).
+                //   그래서 플랫폼 파일은 이 기능 때문에 <b>한 줄도</b> 바뀌지 않았다.
+                hotkey: ShortcutLabel.Chord(StickmanAgent.UserHideHotkeyLetter));
             y = display.Finish(y);
 
             var screenUi = new SettingsCardBuilder(page, "화면 위 UI", y, _host);
@@ -1209,7 +1268,6 @@ namespace StickMate.Interaction
             }
 
             bool applied = _agent.SetUserHidden(hidden, "설정창 [일반] 지금 즉시");
-            if (_manualHideToggle != null) _manualHideToggle.SetOn(applied);
             Debug.Log($"[설정창] 캐릭터 {(applied ? "숨김" : "다시 보이기")} — " +
                 (applied
                     ? "캐릭터·열린 창·클릭 차단막을 함께 걷었습니다. 이 창도 같은 프레임에 닫힙니다" +

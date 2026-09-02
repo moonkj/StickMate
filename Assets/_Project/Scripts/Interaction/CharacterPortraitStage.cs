@@ -1205,8 +1205,18 @@ namespace StickMate.Interaction
             DrawPetPreview(ink);
         }
 
-        /// <summary>FX는 캐릭터가 <b>자기 펜으로 남기는 자국</b>이라 실시간 렌더러와 같이 잉크색으로
-        /// 그린다(Interaction/CharacterFxRenderer.cs와 같은 규약 — 미리보기가 실물과 달라지면 안 된다).</summary>
+        /// <summary>
+        /// FX 미리보기. 색은 <b>실시간 렌더러와 같은 데이터</b>에서 온다 —
+        /// <c>CharacterFxRenderer.ResolvePieceColor</c>와 같은 식(카탈로그 주색 → <see cref="ItemCatalog.WornColor"/>)이고,
+        /// 펫이 양쪽에서 각각 <see cref="ItemCatalog.ResolveWornPalette"/>를 부르는 것과 같은 관례다.
+        ///
+        /// <para>★ 2026-09-02 — 예전에는 이 함수도, 실시간 렌더러도 <b>무조건 잉크색</b>이었다("FX는 자기
+        /// 펜으로 남기는 자국"). 그 규약은 발자국·먼지에는 맞지만 반짝임·물방울·나뭇잎에는 틀렸고,
+        /// 애셋에 있는 색이 화면에 한 픽셀도 도달하지 못했다. 이제 <b>애셋이 말한다</b> — 잉크를 따라야
+        /// 하는 것은 카탈로그 색이 잉크 표식이라 <see cref="ItemCatalog.WornColor"/>가 잉크로 돌려준다.
+        /// 그래서 <b>여기에도 "어느 FX가 잉크인가"를 판정하는 분기가 없다.</b> 한쪽만 고치면 이 파일이
+        /// 막으려는 바로 그 결함("미리보기가 실물과 다르다")이 색으로 재발한다.</para>
+        /// </summary>
         private void DrawFxPreview(Color ink)
         {
             if (!EquippedAndUnlocked(EquipmentSlot.Fx)) return;
@@ -1217,6 +1227,12 @@ namespace StickMate.Interaction
             // PET은 PetBall=0에 실제 case가 있어 같은 함정에 빠지지 않는다.
             if (item <= AppearanceShapeBuilder.FxNone) return;
 
+            // 아이템을 못 찾으면 잉크로 되돌아간다(실시간 렌더러와 같은 규약) — 표가 늘었는데 도형이
+            // 아직 없는 자리에서도 예전과 같은 그림이 나온다. 이 폴백에는 경고를 찍지 않는다:
+            // 빠진 FX를 신고하는 자리는 아래 default: 하나뿐이다.
+            ItemCatalogEntry fxEntry = ItemCatalog.Item(EquipmentSlot.Fx, item);
+            Color fx = fxEntry != null ? ItemCatalog.WornColor(fxEntry.PrimaryColor, ink) : ink;
+
             float h = TotalHeight;
             float r = HeadRadius;
             float x = h * FxPreviewXRatio;
@@ -1226,16 +1242,16 @@ namespace StickMate.Interaction
                 case AppearanceShapeBuilder.FxFootprint:
                 {
                     float radius = Stroke * 0.9f;
-                    AddDotPreview("FxFootprintA", x, radius, ink);
-                    AddDotPreview("FxFootprintB", x - h * 0.11f, radius, ink);
+                    AddDotPreview("FxFootprintA", x, radius, fx);
+                    AddDotPreview("FxFootprintB", x - h * 0.11f, radius, fx);
                     break;
                 }
 
                 case AppearanceShapeBuilder.FxSparkle:
                 {
                     float arm = r * AppearanceShapeBuilder.SparkleArmInR;
-                    AddSparklePreview("FxSparkleA", x, HeadCenterY + r * 1.15f, arm, ink);
-                    AddSparklePreview("FxSparkleB", x - h * 0.09f, HeadCenterY + r * 0.35f, arm * 0.7f, ink);
+                    AddSparklePreview("FxSparkleA", x, HeadCenterY + r * 1.15f, arm, fx);
+                    AddSparklePreview("FxSparkleB", x - h * 0.09f, HeadCenterY + r * 0.35f, arm * 0.7f, fx);
                     break;
                 }
 
@@ -1246,7 +1262,7 @@ namespace StickMate.Interaction
                     {
                         Vector3[] pts = AppearanceShapeBuilder.DustCrescent(radius, i);
                         Offset(pts, x, Stroke);
-                        AddLine(i == 0 ? "FxDustA" : "FxDustB", pts, ink, false, PreviewSortingOrder);
+                        AddLine(i == 0 ? "FxDustA" : "FxDustB", pts, fx, false, PreviewSortingOrder);
                     }
                     break;
                 }
@@ -1259,10 +1275,10 @@ namespace StickMate.Interaction
                     // 왼쪽인 것도 실물과 같은 이유다(진행 반대쪽으로 벗어난다).
                     AddPreviewLine("FxBubbleA",
                         AppearanceShapeBuilder.BubbleRing(r * AppearanceShapeBuilder.BubbleMaxRadiusInR, 12),
-                        x - h * 0.09f, HipY + r * 2.6f, true, ink);
+                        x - h * 0.09f, HipY + r * 2.6f, true, fx);
                     AddPreviewLine("FxBubbleB",
                         AppearanceShapeBuilder.BubbleRing(r * AppearanceShapeBuilder.BubbleMinRadiusInR, 12),
-                        x - h * 0.04f, HipY, true, ink);
+                        x - h * 0.04f, HipY, true, fx);
                     break;
                 }
 
@@ -1273,8 +1289,8 @@ namespace StickMate.Interaction
                     // "바닥에 놓인 잎"으로 읽힌다. 실물의 발생 높이(머리 위 2.2R)를 그대로 쓰면
                     // 위쪽 잎이 액자 밖으로 나가므로 머리 옆으로 내려 잡았다.
                     float length = r * AppearanceShapeBuilder.LeafLengthInR;
-                    AddLeafPreview("FxLeafA", x, HeadCenterY + r * 1.10f, length, 34f, ink);
-                    AddLeafPreview("FxLeafB", x - h * 0.07f, HeadCenterY - r * 0.60f, length, -22f, ink);
+                    AddLeafPreview("FxLeafA", x, HeadCenterY + r * 1.10f, length, 34f, fx);
+                    AddLeafPreview("FxLeafB", x - h * 0.07f, HeadCenterY - r * 0.60f, length, -22f, fx);
                     break;
                 }
 

@@ -45,7 +45,7 @@ namespace StickMate.Platform
     /// 한다(UX_FLOW.md 3절/9절-7). 여기서 항상 발판이 있는 것처럼 위장하면 그 온보딩 게이트가 조용히
     /// 무력화된다 — 배선은 StickmanAgent.CreatePlatformService() 참고.
     /// </summary>
-    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService, IGlobalKeyStateService, IReservedBottomBarService, IReservedTopBarService, IRawWindowRectSource, IWindowEnumerationCostSource, IForeignFullscreenTierSource
+    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService, IGlobalKeyStateService, IReservedBottomBarService, IReservedTopBarService, IReservedScreenEdgeService, IRawWindowRectSource, IWindowEnumerationCostSource, IForeignFullscreenTierSource
     {
         private readonly IPlatformWindowService _inner;
         private readonly ICursorPositionService _innerCursor; // null이면 내부 서비스가 커서 조회를 지원하지 않음
@@ -77,6 +77,34 @@ namespace StickMate.Platform
         //   inner를 보고 하므로 이 필드와 무관하게 계속 동작한다). 즉 이 통과 경로가 macOS에서
         //   false를 돌려주는 것은 정상이며, 그것이 macOS 인셋을 0으로 만들지 않는다.
         private readonly IReservedTopBarService _innerTopBar;
+
+        // ★★ 2026-09-03 — **다섯 번째** 통과 누락. FallbackServicePassthroughTests의 **소스 감사**가 잡았다
+        // (리플렉션판은 못 잡는다 — Win32WindowService는 이 머신의 활성 타깃에서 타입 자체가 없다).
+        //
+        // ★ 판정: 이것은 '소비'가 아니라 '통과'다. 근거는 호출 경로를 따라간 실측이다.
+        //   - 이 데코레이터는 네 변 인셋을 **한 줄도 읽지 않는다**(합성 발판은 하단 Dock 사각형만 쓴다
+        //     — 그쪽이 DeliberatelyConsumedNotForwarded에 IDockMetricsService 하나만 있는 이유다).
+        //   - 소비자는 InfoGearIconWidget / TodoPostItWidget / GearRadialMenuWidget 세 곳이고
+        //     전부 ReservedEdgeProbe.Insets(agent.PlatformService)를 지난다.
+        //
+        // ★ 그리고 IReservedTopBarService 때와 **똑같이**, 지금 당장 사용자에게 보이는 결함은 아니었다:
+        //   ReservedEdgeProbe.Resolve()가 `as`가 아니라 `decorator.Inner`로 **한 겹 벗긴 뒤** 캐스팅하므로
+        //   Windows 인셋은 실제로 도달하고 있었다(같은 라운드의
+        //   `네_변이_데코레이터를_거쳐도_소비_측에_도달한다`가 이 수정 **전에도** 초록이었다 — 실측).
+        //   그래도 통과시키는 이유는 위 _innerTopBar와 한 글자도 다르지 않다:
+        //     (1) 벗기기는 **한 겹**만 한다. 데코레이터가 하나 더 끼는 날 조용히 null이 된다.
+        //     (2) 이 저장소의 선택적 캐퍼빌리티 소비자는 `PlatformService as I...` 관례를 쓴다.
+        //         다음 소비자가 관례대로 쓰면 그때 죽는다(그 경로를 ReservedScreenEdgeContractTests의
+        //         `네_변은_관례대로_as_캐스팅해도_데코레이터를_통과한다`가 값으로 못 박는다).
+        //
+        // null이면 이 플랫폼이 네 변 예약 띠를 알려주지 못함.
+        // ★ macOS에서는 여기가 **항상 null**이다 — MacWindowService는 이 인터페이스를 직접 달지 않고
+        //   ReservedEdgeProbe가 MacReservedScreenEdgeService로 조립한다(벗긴 inner를 보고 조립하므로
+        //   이 필드와 무관하게 계속 동작한다). 즉 macOS에서 이 통과 경로가 false를 돌려주는 것은
+        //   정상이며, 그것이 macOS 인셋을 0으로 만들지 않는다. **그 비대칭이 이 감사에서 Windows만
+        //   빨갛고 macOS는 초록이었던 이유이기도 하다** — 소스 감사는 `IPlatformWindowService`를 단
+        //   클래스의 기반 목록만 보는데, macOS 쪽 구현은 별도 어댑터라 그 목록에 애초에 없다.
+        private readonly IReservedScreenEdgeService _innerEdges;
 
         // ★ 사용자 신고 "마우스로 안 잡힘" 조사 중 함께 발견(2026-08-28): 이 데코레이터가
         // IGlobalPointerButtonService를 통과시키지 않아, StickmanClickHitbox의
@@ -142,6 +170,7 @@ namespace StickMate.Platform
             _innerDockMetrics = inner as IDockMetricsService;
             _innerBottomBar = inner as IReservedBottomBarService;
             _innerTopBar = inner as IReservedTopBarService;
+            _innerEdges = inner as IReservedScreenEdgeService;
             _innerButton = inner as IGlobalPointerButtonService;
             // 등급 조회는 <b>선택적 능력</b>이다(IForeignFullscreenTierSource 문서 참고).
             // 지원하지 않는 내부 서비스(Null/모바일)에서는 null로 남고, 아래 조회가
@@ -715,6 +744,19 @@ namespace StickMate.Platform
         {
             if (_innerTopBar != null) return _innerTopBar.TryGetReservedTopInsetPoints(out insetPoints);
             insetPoints = 0f;
+            return false;
+        }
+
+        // IReservedScreenEdgeService — 순수 통과. 이 데코레이터는 네 변 인셋을 **소비하지 않는다**
+        // (합성 발판은 IDockMetricsService/IReservedBottomBarService의 하단 사각형만 쓴다).
+        // 위 _innerEdges 선언부에 "왜 통과가 맞고 소비가 아닌가"와 "macOS에서 false가 왜 정상인가"가 있다.
+        //
+        // ★ 실패는 0이다. 내부 서비스가 못 재면 Unknown(네 변 0 · 측정 비트 없음)이고, 소비 측은
+        //   그때 아무것도 바꾸지 않는다 — 화면 폭에서 빼서 추정하지 않는다(IReservedScreenEdgeService 계약).
+        public bool TryGetReservedEdgeInsetsPoints(out ReservedEdgeInsets insets)
+        {
+            if (_innerEdges != null) return _innerEdges.TryGetReservedEdgeInsetsPoints(out insets);
+            insets = ReservedEdgeInsets.Unknown;
             return false;
         }
     }

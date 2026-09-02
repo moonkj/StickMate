@@ -25,6 +25,17 @@ namespace StickMate.Tests.PlayMode
         private const int Cap = 0;      // 천 모자
         private const int Curly = 2;    // 곱슬(머리 링 위로 얹히는 것)
 
+        /// <summary>털모자. ★ PlayMode 어셈블리에는 <c>InternalsVisibleTo</c>가 없어
+        /// <c>AccessoryShapeBuilder.HeadBeanie</c>를 참조할 수 없다(위 두 상수와 같은 사정).
+        /// 번호가 재배치되면 <c>Wear</c>는 <b>여전히 true</b>이므로 착용 단언은 못 잡는다 —
+        /// 그래서 이 번호를 쓰는 검사는 <b>도형 이름</b>(<c>BeanieCuff</c>)이 실제로 나왔는지를
+        /// 함께 확인한다. 그것이 "이 번호가 아직 털모자다"의 유일한 증거다.</summary>
+        private const int Beanie = 1;
+
+        /// <summary>털모자의 <b>접힌 단</b> — 2026-09-02에 채움에서 낱선이 된 도형.
+        /// 아래 양성 대조가 "낱선이 실재한다"를 증명하는 데 쓰는 증인이다.</summary>
+        private const string BeanieCuffShapeName = "BeanieCuff";
+
         private static string OutDir => Path.Combine(Application.dataPath, "..", "Logs", "evidence_20260830_te_fill");
 
         [UnityTearDown]
@@ -134,6 +145,24 @@ namespace StickMate.Tests.PlayMode
         /// 그 값 때문에 머리카락이 한 점도 잘리지 않는다(EditMode
         /// <c>AccessoryShapeCatalogTests.왕관은_머리카락을_한_점도_자르지_않는다</c>).
         /// 즉 (a)와 (b)는 원래 독립이었고, 이제 코드가 그렇게 말한다.</para>
+        ///
+        /// <para>★★ <b>2026-09-03(스펙 14-1) — 채움 개수를 숫자로 적지 않게 고쳤다.</b>
+        /// 이 검사는 <c>Assert.AreEqual(1, fills.Length)</c>로 <b>「채움은 CrownBody 하나뿐」</b>을
+        /// 박아 두고 있었다. 그런데 그건 규약이 아니라 <b>그날의 형태</b>였다 — 테(<c>CrownRim</c>)가
+        /// 낱선에서 닫힌 채움 띠가 되자 2개가 되어, 이 파일이 <b>고치는 것을 막는 테스트</b>가 됐다
+        /// (이 저장소가 베레모 폴백에서 이미 겪은 형태).</para>
+        ///
+        /// <para>대신 <b>씬 자신에게 묻는다</b>: 프로덕션 렌더러는 <c>shape.Filled</c> <b>하나</b>로
+        /// (a) 채움 메시를 만들고 (b) 그 윤곽선에 <see cref="FillOutlineStroke"/> 표식을 붙인다
+        /// (<c>CharacterAccessoryRenderer.AddShape</c>). 그러면 <b>{표식 붙은 선} ↔ {채움 메시}</b>는
+        /// 이름으로 <b>일대일</b>이어야 하고, 그 대응이 깨지는 것은 실제 결함이다
+        /// (선은 얇아졌는데 면이 없다 / 면은 있는데 선이 낱선 두께다).
+        /// PlayMode 어셈블리에는 <c>InternalsVisibleTo</c>가 없어 <c>AccessoryShapeBuilder</c>를 읽을 수
+        /// 없으므로, 이것이 "몸에서 유도"할 수 있는 <b>유일한 경로</b>다.</para>
+        ///
+        /// <para>바뀌지 않은 것: <b>CrownBody는 반드시 채워져 있어야 한다</b>. 그것이 이 파일이 처음
+        /// 생긴 이유(누가 <c>filled: true</c>를 지워도 전 스위트가 초록이던 구멍)이고,
+        /// 위 일대일 대응만으로는 <b>0개 ↔ 0개</b>도 통과하므로 반드시 함께 잠근다.</para>
         /// </summary>
         [UnityTest]
         public IEnumerator 왕관은_채워지되_얹는_물건으로_남는다()
@@ -148,21 +177,24 @@ namespace StickMate.Tests.PlayMode
             var renderer = Object.FindFirstObjectByType<CharacterAccessoryRenderer>();
             Transform container = FindChild(renderer.transform, "EquipmentAccessories");
             var fills = container.GetComponentsInChildren<MeshRenderer>(true);
-            Debug.Log($"{LogPrefix} 왕관 착용 시 채움 면 {fills.Length}개: " +
-                string.Join(", ", System.Array.ConvertAll(fills, f => f.name)));
 
-            Assert.AreEqual(1, fills.Length,
-                $"{LogPrefix} 왕관의 채움이 {fills.Length}개입니다 — 몸통(CrownBody) 하나여야 합니다. " +
-                "테(CrownRim)는 밑변 네 점을 그대로 받는 <b>열린 선</b>이라 채우지 않습니다.");
-            Assert.IsTrue(fills[0].name.StartsWith("CrownBody"),
-                $"{LogPrefix} 채워진 도형이 '{fills[0].name}'입니다 — CrownBody여야 합니다.");
+            AssertFillsMatchOutlineMarks(container, "왕관");
 
-            Mesh mesh = fills[0].GetComponent<MeshFilter>().sharedMesh;
+            MeshRenderer bodyFill = FindFill(fills, "CrownBody");
+            Assert.IsNotNull(bodyFill,
+                $"{LogPrefix} 왕관의 채움 중 CrownBody가 없습니다(있는 것: " +
+                string.Join(", ", System.Array.ConvertAll(fills, f => f.name)) + "). " +
+                "봉우리 끝이 뾰족해질 수 있는 것은 <b>채운 도형의 꼭짓점</b>뿐이라(37-6 규칙 6), " +
+                "CrownBody의 채움이 사라지면 왕관이 다시 둥근 캡에 뭉개진 지그재그가 됩니다.");
+
+            Mesh mesh = bodyFill.GetComponent<MeshFilter>().sharedMesh;
             Assert.IsNotNull(mesh, $"{LogPrefix} CrownBodyFill에 메시가 없습니다.");
             Assert.Greater(mesh.triangles.Length, 0, $"{LogPrefix} CrownBodyFill 삼각형이 0개입니다.");
 
             // ★ "얹는 물건"의 계측 가능한 형태 — 채움이 <b>턱까지 내려오지 않는다</b>.
             //   여기가 무너지면 왕관이 모자가 된 것이고, 그때는 커버선도 함께 유한해져야 한다.
+            //   ★ 이름으로 찾은 <b>CrownBody</b>에 대해서만 묻는다 — 예전에는 fills[0]이었고,
+            //     채움이 둘이 되는 순간 그 인덱스 가정은 다른 도형을 재게 된다.
             var metrics = renderer.GetComponent<StickmanMetrics>();
             float cy = metrics.HeadCenterLocalY, r = metrics.HeadRadius;
             var chin = new Vector2(0f, cy - r * 0.9f);
@@ -171,6 +203,134 @@ namespace StickMate.Tests.PlayMode
                 "얹는 것입니다(HatCoverLocalY = +∞와 같은 사실의 그림 버전).");
 
             yield return Capture("fill_crown_filled");
+        }
+
+        /// <summary>
+        /// ★★ <b>양성 대조 — 「전부 채움」이 아니라는 것을 씬에서 증명한다.</b>
+        ///
+        /// <para>위 검사의 핵심 단언(<see cref="AssertFillsMatchOutlineMarks"/>)은 <b>대응</b>을 본다.
+        /// 만약 렌더러가 <b>모든</b> 선에 표식을 붙이는 상태가 되면 그 대응은 언제나 성립하고,
+        /// 검사는 아무것도 재지 않으면서 초록이 된다. 그래서 <b>표식이 없는 선</b>이 실제로
+        /// 존재하는 장비를 하나 걸쳐 본다.</para>
+        ///
+        /// <para>고른 것은 <b>털모자</b>다. 접힌 단(<c>BeanieCuff</c>)은 2026-09-02에 <b>채움에서
+        /// 낱선으로</b> 바뀐 도형이라, 이 저장소에서 "낱선이 실재한다"는 사실의 가장 최근 증인이다
+        /// (그 변경의 사유는 <c>AccessoryShapeBuilder</c> 털모자 절에 적혀 있다).</para>
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 양성대조_낱선은_표식도_채움도_없다()
+        {
+            yield return LoadSceneAndPinIdle();
+            var agent = Object.FindFirstObjectByType<StickmanAgent>();
+            RaiseLevelTo(24, agent.Config);
+            ClearAll(agent.Config);
+            Wear(EquipmentSlot.Head, Beanie, agent.Config);
+            for (int i = 0; i < 8; i++) yield return null;
+
+            var renderer = Object.FindFirstObjectByType<CharacterAccessoryRenderer>();
+            Transform container = FindChild(renderer.transform, "EquipmentAccessories");
+
+            AssertFillsMatchOutlineMarks(container, "털모자");
+
+            var unmarked = new List<string>();
+            var marked = new List<string>();
+            foreach (LineRenderer lr in container.GetComponentsInChildren<LineRenderer>(true))
+            {
+                if (FillOutlineStroke.Is(lr)) marked.Add(lr.name);
+                else unmarked.Add(lr.name);
+            }
+
+            Debug.Log($"{LogPrefix} 털모자 — 표식 있는 선 [{string.Join(", ", marked)}] / " +
+                $"표식 없는 선(낱선) [{string.Join(", ", unmarked)}].");
+
+            // 존재/부재를 <b>같은 검사 안</b>에서 맞세운다(CLAUDE.md 부재 단언 규칙).
+            Assert.IsNotEmpty(marked,
+                $"{LogPrefix} 표식이 붙은 선이 하나도 없습니다 — 털모자에는 채움이 있어야 합니다. " +
+                "탐지기가 표식을 못 읽고 있을 수도 있습니다.");
+            Assert.IsNotEmpty(unmarked,
+                $"{LogPrefix} <b>표식 없는 선이 하나도 없습니다.</b> 그렇다면 위 일대일 대응 검사는 " +
+                "'모든 선이 채움'이라는 자명한 상태에서 통과한 것이라 아무것도 증명하지 못합니다. " +
+                $"털모자 접힌 단({BeanieCuffShapeName})이 다시 채움이 됐는지 확인하십시오 — " +
+                "그 도형이 낱선이라는 것이 2026-09-02 사용자 신고('털모자착용시 거의 머리전체를가림')의 처방입니다.");
+
+            // ★ 번호 사본이 썩지 않았는가 — 이 검사가 실제로 <b>털모자</b>를 보고 있음을 도형 이름으로
+            //   못 박는다. 번호가 재배치돼 다른 아이템이 걸쳐졌다면 Wear는 여전히 true라 안 걸린다.
+            Assert.Contains(BeanieCuffShapeName, unmarked,
+                $"{LogPrefix} 표식 없는 선 중에 '{BeanieCuffShapeName}'이 없습니다(있는 것: " +
+                $"[{string.Join(", ", unmarked)}]). HEAD {Beanie}번이 더 이상 털모자가 아니거나, " +
+                "접힌 단이 채움으로 되돌아갔습니다. 어느 쪽이든 이 양성 대조는 지금 " +
+                "<b>다른 것을 재고 있습니다</b>.");
+
+            Transform strayFill = null;
+            foreach (MeshRenderer mr in container.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                foreach (string name in unmarked)
+                {
+                    if (mr.name == name + "Fill") strayFill = mr.transform;
+                }
+            }
+            Assert.IsNull(strayFill,
+                $"{LogPrefix} 표식 없는 선({(strayFill != null ? strayFill.name : "-")})에 채움 면이 " +
+                "붙어 있습니다 — 선 두께는 낱선 하한(2.00pt)인데 면은 그려진 상태입니다. " +
+                "두 갈래가 같은 shape.Filled에서 나오지 않고 있습니다.");
+        }
+
+        /// <summary>
+        /// <b>{채움 메시} ↔ {채움 윤곽선 표식이 붙은 선}</b>이 이름으로 일대일인가.
+        /// <para>프로덕션에서 이 둘은 <c>shape.Filled</c> <b>하나</b>에서 갈라져 나온다
+        /// (<c>AddFill</c> / <c>AddLine(..., isFillOutline: shape.Filled)</c>). 그래서 이 대응이
+        /// 깨졌다는 것은 <b>두 갈래가 서로 다른 근거를 쓰기 시작했다</b>는 뜻이고,
+        /// 화면에서는 "면 없는 얇은 선" 또는 "낱선 두께로 그려진 채움 경계"로 나온다.</para>
+        /// <para>개수를 숫자로 적지 않으므로, 장비 담당이 어떤 도형을 채움으로 바꾸든
+        /// <b>이 검사가 막지 않는다</b> — 막는 것은 <b>어긋남</b>뿐이다.</para>
+        /// </summary>
+        private static void AssertFillsMatchOutlineMarks(Transform container, string label)
+        {
+            var markedLines = new List<string>();
+            foreach (LineRenderer lr in container.GetComponentsInChildren<LineRenderer>(true))
+            {
+                if (FillOutlineStroke.Is(lr)) markedLines.Add(lr.name);
+            }
+
+            var fillNames = new List<string>();
+            foreach (MeshRenderer mr in container.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                fillNames.Add(mr.name);
+            }
+
+            Debug.Log($"{LogPrefix} {label} — 채움 면 {fillNames.Count}개 [{string.Join(", ", fillNames)}] / " +
+                $"채움 윤곽선 표식 {markedLines.Count}개 [{string.Join(", ", markedLines)}].");
+
+            Assert.AreEqual(markedLines.Count, fillNames.Count,
+                $"{LogPrefix} {label}의 채움 면이 {fillNames.Count}개인데 채움 윤곽선 표식은 " +
+                $"{markedLines.Count}개입니다 — 둘 다 shape.Filled 하나에서 나오므로 같아야 합니다.");
+
+            foreach (string line in markedLines)
+            {
+                Assert.Contains(line + "Fill", fillNames,
+                    $"{LogPrefix} {label}: 선 '{line}'은 채움 경계선 표식(두께 1.00pt 하한)을 달고 있는데 " +
+                    "같은 이름의 채움 면이 없습니다 — 면 없는 채움 경계선은 그냥 <b>얇은 낱선</b>입니다.");
+            }
+
+            foreach (string fill in fillNames)
+            {
+                Assert.IsTrue(fill.EndsWith("Fill"),
+                    $"{LogPrefix} {label}: 채움 면 이름 '{fill}'이 'Fill'로 끝나지 않습니다 — " +
+                    "렌더러의 명명 규약(shape.Name + \"Fill\")이 바뀌었다면 이 대조도 함께 고쳐야 합니다.");
+                Assert.Contains(fill.Substring(0, fill.Length - "Fill".Length), markedLines,
+                    $"{LogPrefix} {label}: 채움 면 '{fill}'에 대응하는 <b>표식 붙은 선</b>이 없습니다 — " +
+                    "면은 그려졌는데 경계선은 낱선 하한(2.00pt)으로 그려지고 있다는 뜻이라, " +
+                    "그 도형은 자기 윤곽선에 색면을 잃습니다(규칙 1-C).");
+            }
+        }
+
+        private static MeshRenderer FindFill(MeshRenderer[] fills, string shapeName)
+        {
+            for (int i = 0; i < fills.Length; i++)
+            {
+                if (fills[i].name == shapeName + "Fill") return fills[i];
+            }
+            return null;
         }
 
         // ============================================================================

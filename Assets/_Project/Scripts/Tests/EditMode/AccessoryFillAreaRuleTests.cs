@@ -165,7 +165,8 @@ namespace StickMate.Tests.EditMode
                         $"배율 {GateScales[g]:F2}의 윤곽선 펜 {wOut:F4}R보다 얇습니다 " +
                         $"({rhoInR / wOut:F2}획 < {GateStrokes:F2}획).\n" +
                         "폭 W 펜은 경계에 중심을 두므로 이 도형은 안쪽으로 W/2를 잃습니다 — " +
-                        $"화면에서 채움색이 아니라 윤곽색(채움 × 0.62) 한 덩어리로 보입니다.\n" +
+                        $"화면에서 채움색이 아니라 윤곽색(채움 × {AccessoryShapeBuilder.FillOutlineShadeFactor:F2}) " +
+                        "한 덩어리로 보입니다.\n" +
                         $"필요: ρ_max ≥ {wOut:F4}R(1획) / 권장: {wOut * TargetStrokes:F4}R(1.20획, " +
                         "오프라인 모형이 낙관적이라 여유를 둡니다).\n" +
                         "못 고치는 도형이면 Ledger에 사유와 실측 ρ_max를 함께 등재하십시오.");

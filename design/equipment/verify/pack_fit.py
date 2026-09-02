@@ -20,6 +20,19 @@ from rig import Shape
 import pack_nightshift as P
 INF = float("inf")
 
+
+def _base_eyes_avg(w):
+    """출하 모자6 x 안경6 = **36조합** 평균 생존율. 상수를 베끼지 않고 그 자리에서 잰다."""
+    cells = []
+    for en, ef in items.EYES.items():
+        es = ef() if callable(ef) else ef
+        b = vis(es, [], w)
+        if b <= 1e-9: continue
+        for hn, hf in HATS.items():
+            cells.append(vis(es, hf(), w) / b)
+    return sum(cells) / len(cells)
+
+
 HATS = {"야구모자": items.cap, "털모자": items.beanie, "중절모": items.fedora,
         "왕관": items.crown_hat, "베레모": items.beret, "밀짚모자": items.straw}
 PACK_COVER = 0.50          # 팩 모자의 커버선 = 관의 밑변(다른 모자와 같은 정의)
@@ -112,9 +125,16 @@ def run(scale):
     es = P.eyes_respirator()
     b1 = vis(es, [], w)
     v2 = vis(es, P.head_havelock(), w) / b1
-    BASE_EYES_AVG = {0.75: 0.064, 0.60: 0.039}[scale]     # eyesunderhat.py 실측
-    (ok if v2 >= 8 * BASE_EYES_AVG else bad)(
-        "팩 EYES + 팩 HEAD 생존 %.1f%%  = 기본 평균(%.1f%%)의 %.1f배" % (v2*100, BASE_EYES_AVG*100, v2/BASE_EYES_AVG))
+    # ★ R5 자기정정: 여기 박혀 있던 {0.75:0.064, 0.60:0.039} 는 **36조합 평균이 아니라
+    #   「선글라스 행」 평균**이었다(eyesunderhat.py 표의 한 줄을 손으로 베낀 값).
+    #   상수를 베끼지 말라는 규칙(CLAUDE.md)에 정면으로 걸린다 — 그 자리에서 다시 계산한다.
+    BASE_EYES_AVG = _base_eyes_avg(w)
+    # 문턱은 내가 고른 배수가 아니라 **다른 팀이 독립으로 제안한 값**을 쓴다 —
+    # design/character/DLC_PACK_R2_WOOCHEON_SPEC.md §6 P-2 「모자 밑 안경 생존율 ≥ 65%」.
+    P2_FLOOR = 0.65
+    (ok if v2 >= P2_FLOOR else bad)(
+        "팩 EYES + 팩 HEAD 생존 %.1f%% (P-2 문턱 %.0f%%)  = 출하 36조합 평균 %.1f%%의 %.1f배"
+        % (v2*100, P2_FLOOR*100, BASE_EYES_AVG*100, v2/BASE_EYES_AVG))
     print("     기본 모자와 혼용: " + " ".join("%s %.0f%%" % (n, vis(es, f(), w)/b1*100) for n, f in HATS.items()))
 
     # ── ④ 팩 안 상호 가림 ──

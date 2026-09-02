@@ -171,7 +171,8 @@
 | 3.5~4 kHz | 광대역 대비 -6 dB 이하 |
 | 길이 | 원샷 ≤400 ms / 성취 ≤800 ms |
 | 페이드아웃 | 마지막 20 ms 필수(클릭 노이즈 방지) |
-| 무음 여백 | 앞 0 ms(어택이 바로) / 뒤 0 ms |
+| **페이드인** | **첫 1.5 ms 필수, 첫 샘플 = 0** ★R4 (온디맨드 개방 시 갓 열린 스트림의 DC 스텝 방지 — `SILENCE_POLICY.md` §11-3) |
+| 무음 여백 | 앞 0 ms(어택이 바로) / 뒤 0 ms — ★R4에서 근거 추가: 앞 여백이 있으면 장치 개방 클릭이 소리와 **융합되지 못하고** 홀로 들린다 |
 | Unity 임포트 | Decompress On Load, Force To Mono ON, Preload Audio Data **OFF**, Load In Background ON |
 | 파일명 | 트리거 키 그대로 + 팩 접미사 — `sfx.land.ambient.ink.wav` |
 

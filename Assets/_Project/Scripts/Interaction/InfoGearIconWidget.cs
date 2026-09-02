@@ -62,6 +62,33 @@ namespace StickMate.Interaction
     /// 38pt"라는 <b>짐작</b>을 상수 58에 박아 뒀는데, 짐작이 틀리는 날 톱니가 남의 띠를 덮었다.
     ///
     /// ============================================================================
+    /// ★★ 2026-09-03 — <b>좌·우 도킹 작업표시줄</b>도 피한다 (41-1 가로축)
+    /// ============================================================================
+    /// 세로만 고친 다음 날, <b>가로가 통째로 비어 있다</b>는 것이 드러났다. 실측:
+    /// <code>
+    ///   기본 중심 x = 화면폭 − 30 · 히트 반지름 19.82pt
+    ///     -> 톱니가 화면 오른쪽 끝에서 10.18 ~ 49.82pt 구간을 차지한다
+    ///   우측 도킹 작업표시줄 48pt -> 히트 폭 39.64pt 중 37.82pt(95%)가 그 띠 안
+    /// </code>
+    /// 작업표시줄은 최상위 창이라 <b>그 위의 클릭은 우리에게 오지 않는다</b> — 즉 톱니가 보이지도
+    /// 눌리지도 않는다. 그리고 이 앱에는 <b>등급 1을 끄는 탈출구가 톱니 1클릭뿐</b>이라
+    /// (<c>Platform/UserSurfaceSummonPolicy</c>), 그 전제가 Windows에서 통째로 거짓이 된다.
+    ///
+    /// <para>고친 방식은 세로와 <b>완전히 같다</b>: 사실 조회는 <c>ReservedEdgeProbe</c>(네 방향),
+    /// 판정은 <see cref="SurfaceSafeAreaPolicy.ClampCenterX"/>(플랫폼 중립). <b>못 쟀으면 0</b>이고
+    /// 0이면 좌표가 예전과 <b>비트 동일</b>하다 — 띠가 없는 사용자(= 압도적 다수)의 화면은
+    /// 한 픽셀도 움직이지 않는다.</para>
+    ///
+    /// <para><b>사용자가 끌어다 놓은 자리가 띠 안이면?</b> — <b>옮긴다.</b> 세로축이 2026-09-02에
+    /// 내린 것과 같은 판정이고 근거도 같다: 띠 뒤의 톱니는 <b>눌리지 않는 버튼</b>이라 사용자가
+    /// 스스로 되돌릴 수단조차 없어진다(끌어내려면 먼저 눌러야 하는데 그 클릭이 안 온다).
+    /// <c>SettingsWindow</c>가 전체화면에 빼앗긴 창을 돌려놓으며 적은 문장이 여기에도 그대로 맞는다 —
+    /// <i>"빼앗은 것을 돌려주는 것은 「부르지 않은 창을 띄우는 것」이 아니라 되돌리기다."</i>
+    /// 이동량은 <b>띠를 벗어나는 데 필요한 최소</b>이고(<c>Mathf.Clamp</c>), 세로는 건드리지 않으며,
+    /// 되돌리는 문도 이미 있다(설정 [일반] &gt; <see cref="ReturnToDefaultPosition"/>).
+    /// 띠가 사라지면 저장된 자리가 아니라 <b>그때 클램프된 자리</b>가 남는다는 것이 이 선택의 대가다.</para>
+    ///
+    /// ============================================================================
     /// 짧게 클릭 vs 길게 눌러 옮기기 (2026-08-30 사용자 요청)
     /// ============================================================================
     /// 사용자 원문: "캐릭터 설정 기어들도 길게 클릭해서 위치 옮길 수 있게 해줘".
@@ -132,6 +159,20 @@ namespace StickMate.Interaction
 
         /// <summary>화면 오른쪽 끝에서 <b>큰 기어 중심</b>까지의 거리.</summary>
         private const float MarginRightPoints = 30f;
+
+        /// <summary>
+        /// ★ 2026-09-03 — 좌·우 예약 띠를 피할 때 <b>띠 위에 얹는 추가 여백</b>. <b>0이다.</b>
+        ///
+        /// <para><b>왜 0인가</b>(같은 파일의 세로 클램프가 0을 쓰는 것과 같은 이유): 지금 고치는 것은
+        /// <b>남의 띠를 덮는 것</b>뿐이다. 여기에 12를 얹으면 띠가 <b>없는</b> 사용자의 톱니까지
+        /// <see cref="MarginRightPoints"/> 30 → 31.82pt로 밀려난다 — 압도적 다수의 화면이 이유 없이
+        /// 움직이고, 그건 이 라운드가 고치려는 결함이 아니라 <b>새로 만드는 회귀</b>다.</para>
+        ///
+        /// <para><b>0이라서 시각적으로 붙는 것도 아니다</b>: 클램프가 미는 것은 <b>히트 반지름</b>
+        /// (19.82pt)이고 실제로 보이는 톱니 반지름은 <see cref="VisualRadiusPoints"/>(14.82pt)라,
+        /// 띠 앞에 붙어도 그림과 띠 사이에는 <see cref="HitPaddingPoints"/> 5pt가 남는다.</para>
+        /// </summary>
+        private const float SideMarginPoints = 0f;
 
         // ★ 2026-09-02 (41-1 ③ / 41-8 1겹) — 옛 <c>MarginTopPoints = 58f</c>는 폐기됐다.
         //   그 58은 "macOS 메뉴바가 최대 약 38pt겠지"라는 <b>짐작</b>이었고, 짐작에는 세 가지 결함이
@@ -449,6 +490,20 @@ namespace StickMate.Interaction
         public Vector2 HomeCenterPoints
             => ClampCenterPoints(_hasCustomCenter ? _customCenterPoints : DefaultCenterPoints());
 
+        /// <summary>
+        /// 히트/클램프에 쓰는 <b>반지름</b>(OS 포인트) = 시각 반지름 + 히트 여백.
+        /// 클램프가 화면·예약 띠에 대고 미는 것이 <b>이 값</b>이다(그림 반지름이 아니다).
+        /// <para>테스트가 숫자를 베끼지 않게 내보낸다 — <see cref="DragMoveThreshold"/>와 같은 관례.</para>
+        /// </summary>
+        public static float HitRadiusPoints => VisualRadiusPoints + HitPaddingPoints;
+
+        /// <summary>기본 위치에서 화면 오른쪽 끝과 기어 중심 사이의 설계 거리(OS 포인트).</summary>
+        public static float DefaultRightMarginPoints => MarginRightPoints;
+
+        /// <summary>좌·우 예약 띠를 피할 때 띠 위에 얹는 추가 여백(OS 포인트). <b>0</b> — 근거는
+        /// <see cref="SideMarginPoints"/> 문서에 있다.</summary>
+        public static float SideBandMarginPoints => SideMarginPoints;
+
         /// <summary>드래그 전환 임계값(초) — 테스트가 이 숫자를 직접 기준으로 삼는다.</summary>
         public static float DragLongPressSeconds => LongPressSeconds;
 
@@ -642,8 +697,13 @@ public void StartSpinForTests() => _spinTimer = 0f;
             // ★ 2026-09-01 — 문구를 <b>실물에 맞춘다</b>. P0-3에서 두 기어가 단일 기어로 바뀌었는데
             //   이 배너만 "맞물린 기어 2개"로 남아, 로그를 읽는 사람이 화면과 다른 그림을 상상하게
             //   만들고 있었다(사용자 신고). 형태를 되돌리면 이 문구도 함께 되돌린다.
+            // ★ 2026-09-03 — 가로도 <b>실제로 나온 값</b>을 찍는다. 예전에는 설계 상수 30을 그대로
+            //   찍었는데, 우측 예약 띠가 있으면 실물이 다른 자리에 있다. 로그가 화면과 다른 그림을
+            //   보여 주면 원격 진단이 틀린 결론에 도달한다(P0-3에서 같은 형태의 사고가 있었다).
+            SideInsetPoints(out float bannerLeftInset, out float bannerRightInset);
             Debug.Log("[톱니] 준비 완료 — 화면 우상단에 기어 1개가 상시 표시됩니다(오른쪽 " +
-                $"{MarginRightPoints:F0}pt / 위 {DefaultCenterPoints().y:F1}pt = OS 예약 띠 " +
+                $"{ScreenSizePoints().x - DefaultCenterPoints().x:F1}pt = 설계 {MarginRightPoints:F0}pt / " +
+                $"OS 예약 띠 좌{bannerLeftInset:F1} 우{bannerRightInset:F1}pt / 위 {DefaultCenterPoints().y:F1}pt = OS 예약 띠 " +
                 $"{ReservedTopBarProbe.TopInsetPoints(_agent.PlatformService):F1}pt + 화면 여백 " +
                 $"{PopoverPanel.ScreenMarginPoints:F0}pt + 히트 반지름 " +
                 $"{VisualRadiusPoints + HitPaddingPoints:F2}pt, 기어 팁 반지름 {TipRadiusPoints:F1}pt / " +
@@ -700,6 +760,19 @@ public void StartSpinForTests() => _spinTimer = 0f;
                 return;
             }
             if (_hiddenBySuspend) ReleaseSuspendHide();
+
+            // ★★★ 2026-09-03 — 등급 1 탈출구의 <b>임대 갱신</b>(StickmanAgent.RenewUserSummonGrant).
+            //   허가를 <b>내는</b> 곳은 ActivateClick() 하나이고, 여기는 "사용자가 부른 그 표면이
+            //   아직 떠 있다"는 사실만 매 프레임 알린다. 갱신은 <b>만료된 임대를 되살리지 않으므로</b>
+            //   (정책 문서 참고) 등급 1 진입 전부터 떠 있던 창이 스스로를 연장하는 경로는 없다.
+            //
+            //   ★ 조건이 <c>IsMenuExpanded || 정보창 열림</c>인 이유: 이 둘이 톱니에서 시작한
+            //     사용자 경로의 <b>중간 홉</b>이다(톱니 → 부채꼴 → 정보창 → 설정창). 마지막 홉인
+            //     설정창은 자기 Update에서 스스로 갱신한다 — 각 표면이 자기 생존만 보고하는 형태라
+            //     새 표면이 생겨도 여기 목록을 고칠 필요가 없다.
+            //   ★ 여기 <b>포스트잇/리마인더/크래시 오버레이를 넣지 마라</b> — 사용자가 부른 적이 없다.
+            //     넣는 순간 이 장치가 원칙 2의 구멍이 된다.
+            if (IsMenuExpanded || (_window != null && _window.IsOpen)) _agent.RenewUserSummonGrant();
 
             if (_camera == null) _camera = _agent.Blackboard != null ? _agent.Blackboard.MainCamera : Camera.main;
             if (_camera == null) return;
@@ -913,7 +986,35 @@ public void StartSpinForTests() => _spinTimer = 0f;
             // — 그때 0을 쓰면 톱니가 화면 위 끝에 붙으므로 최소한 히트 반지름만큼은 내려 둔다.
             if (screen.y <= 0f) y = topInset + PopoverPanel.ScreenMarginPoints + r;
 
-            return new Vector2(screen.x - MarginRightPoints, y);
+            // ★ 2026-09-03 — 가로도 같은 관례를 따른다. "오른쪽 끝에서 30pt"를 <b>요청</b>하고
+            //   정책이 좌·우 예약 띠를 보고 잘라 준다. 띠가 0이면 요청값이 그대로 나온다
+            //   (30 > 히트 반지름 19.82라 상한에 안 걸린다 -> Mathf.Clamp가 입력 float을 그대로 반환).
+            //   여기서 x를 클램프하지 않으면 <see cref="IconCenterPoints"/>가 "지금 위치"라면서
+            //   실제로 그려지는 자리(PlaceOnScreen -> ClampCenterPoints)와 띠 두께만큼 갈라진다.
+            SideInsetPoints(out float leftInset, out float rightInset);
+            float x = SurfaceSafeAreaPolicy.ClampCenterX(
+                screen.x - MarginRightPoints, r * 2f, screen.x, leftInset, rightInset, SideMarginPoints);
+
+            return new Vector2(x, y);
+        }
+
+        /// <summary>
+        /// ★ 2026-09-03 — 화면 <b>좌·우</b> 예약 띠 두께(OS 포인트) 한 쌍.
+        ///
+        /// <para><b>조회는 한 번이다.</b> 좌·우를 따로 물으면 캐시 갱신 경계에서 <b>서로 다른 순간의
+        /// 화면</b>을 반씩 섞어 쓸 수 있다(왼쪽은 갱신 전, 오른쪽은 갱신 후). 그런 좌표는 어느
+        /// 프레임에도 실재하지 않는다.</para>
+        ///
+        /// <para><b>못 쟀으면 둘 다 0</b>이고, 0이면 이 값을 쓰는 두 곳이 예전과 <b>한 비트도 다르지
+        /// 않은</b> 좌표를 낸다. 짐작으로 메우지 않는다 — <see cref="ReservedEdgeProbe"/>의
+        /// <i>"실패는 0이다"</i> 규약이고, <see cref="ReservedEdgeInsets"/>는 「측정된 0」과
+        /// 「미측정 0」을 마스크로 가르지만 <b>소비 측 동작은 둘 다 같다</b>(아무것도 바꾸지 않는다).</para>
+        /// </summary>
+        private void SideInsetPoints(out float leftPoints, out float rightPoints)
+        {
+            ReservedEdgeInsets insets = ReservedEdgeProbe.Insets(_agent != null ? _agent.PlatformService : null);
+            leftPoints = insets.PointsFor(ReservedEdge.Left);
+            rightPoints = insets.PointsFor(ReservedEdge.Right);
         }
 
         private Vector2 ScreenSizePoints() => new Vector2(
@@ -941,7 +1042,25 @@ public void StartSpinForTests() => _spinTimer = 0f;
 
             float r = VisualRadiusPoints + HitPaddingPoints;   // 방사 대칭 — 네 방향이 같다.
 
-            float minX = r, maxX = Mathf.Max(r, screen.x - r);
+            // ★★ 2026-09-03 (41-1 가로축) — 옛 코드의 <c>minX = r / maxX = screen.x − r</c>는
+            //   <b>화면 경계</b>만 봤고 <b>OS가 예약한 좌·우 띠는 보지 않았다</b>. 그래서 기본 위치
+            //   (오른쪽 끝에서 중심 30pt)의 톱니는 <b>48pt 우측 도킹 작업표시줄 뒤에 37.82pt가 들어가</b>
+            //   (히트 폭 39.64pt의 95%) 사실상 눌리지 않았다. 작업표시줄은 최상위 창이라 그 위의
+            //   클릭은 우리에게 오지 않는다.
+            //   ★ 이게 왜 중대한가: 「등급 1을 끄는 유일한 탈출구가 톱니 1클릭」이라는 전제가
+            //   Windows에서 거짓이 된다(UserSurfaceSummonPolicy). 눌리지 않는 탈출구는 탈출구가 아니다.
+            //
+            //   상단과 <b>같은 판정 한 벌</b>(SurfaceSafeAreaPolicy)을 쓴다. 사실 조회만 상단 전용
+            //   프로브에서 네 방향 프로브로 넓어진다. 못 쟀으면 좌·우 0이고, 0이면 Mathf.Clamp가
+            //   범위 안의 입력 float을 <b>그대로</b> 돌려주므로 예전과 비트 동일하다.
+            //
+            //   ※ 한 곳만 옛 동작과 갈린다: <b>화면 폭이 히트 지름(39.64pt)보다 좁을 때</b>.
+            //     옛 코드는 중심을 r에 박아 오른쪽으로 넘쳤고, 정책은 "예약 띠가 얇은 쪽으로 넘긴다"에
+            //     따라 반대로 넘긴다. 40pt보다 좁은 화면은 실재하지 않지만, 조용히 바뀌지 않게
+            //     Tests/EditMode/ReservedScreenEdgeContractTests가 이 구간을 못박아 둔다.
+            SideInsetPoints(out float leftInset, out float rightInset);
+            float x = SurfaceSafeAreaPolicy.ClampCenterX(
+                centerPoints.x, r * 2f, screen.x, leftInset, rightInset, SideMarginPoints);
 
             // ★ 2026-09-02 (41-1 ③) — 세로만 대칭이 아니다. 옛 코드의 minY = r 은 톱니를 드래그해서
             //   히트 사각형을 <b>macOS 메뉴바(0~33pt) 안에 통째로 집어넣게</b> 허용했고, 그 자리는
@@ -950,7 +1069,7 @@ public void StartSpinForTests() => _spinTimer = 0f;
             //   이유 없이 바뀐다. 지금 고치는 것은 <b>남의 띠를 덮는 것</b>뿐이다.
             float topInset = ReservedTopBarProbe.TopInsetPoints(_agent != null ? _agent.PlatformService : null);
             float y = SurfaceSafeAreaPolicy.ClampTopDownCenterY(centerPoints.y, r * 2f, screen.y, topInset, 0f);
-            return new Vector2(Mathf.Clamp(centerPoints.x, minX, maxX), y);
+            return new Vector2(x, y);
         }
 
         /// <summary>배율(화면 해상도/DPI)이나 잉크색이 바뀌지 않으면 도형을 다시 만들지 않는다 —
@@ -1369,6 +1488,15 @@ public void StartSpinForTests() => _spinTimer = 0f;
                 CollapseMenu(GearMenuCollapseMode.User, "톱니 재클릭(토글 닫기)");
                 return;
             }
+
+            // ★★★ 2026-09-03 — <b>등급 1의 탈출구는 여기서 열린다.</b> 반드시 ExpandMenu() <b>앞</b>이다:
+            //   부채꼴은 자기 Update에서 ArePanelsSuppressed를 폴링해 스스로 접으므로, 허가가 펼침보다
+            //   늦으면 <b>펼쳐지는 그 프레임에 회수되어</b> 사용자 눈에는 "톱니가 안 눌린다"로 보인다.
+            //   (그것이 2026-09-03 이전의 실제 증상이었다 — 톱니는 보이고 눌리는데 아무 일도 안 일어났다.)
+            //
+            //   등급 1이 아니면 이 호출은 아무 일도 하지 않고 false를 돌려준다(정책의 CanGrant).
+            //   등급 2에서는 애초에 이 함수까지 오지 않는다 — LateUpdate 첫 게이트가 톱니를 거두기 때문이다.
+            if (_agent != null) _agent.TryGrantUserSummon("톱니 클릭");
 
             _spinTimer = 0f;
             ExpandMenu();   // ★ 회전과 <b>동시에</b> 펼친다.

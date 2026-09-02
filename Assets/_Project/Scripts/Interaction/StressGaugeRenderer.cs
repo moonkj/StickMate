@@ -252,8 +252,13 @@ namespace StickMate.Interaction
             _container != null ? _container.GetComponentsInChildren<Collider2D>(true).Length : 0;
 
         /// <summary>
-        /// 게이지 값 -> 3단계. <b>경계 계산의 유일한 생산자</b>다 — Interaction/AppControlDirector.cs의
-        /// 메뉴 라벨("스트레스: ● 주의")도 이 메서드만 호출한다.
+        /// 게이지 값 -> 3단계. <b>경계 계산의 유일한 생산자</b>다.
+        ///
+        /// <para>★ 2026-09-03 정정 — 원래 여기에 "Interaction/AppControlDirector.cs의 메뉴 라벨
+        /// ("스트레스: ● 주의")도 이 메서드만 호출한다"고 적혀 있었으나, 그 <b>우클릭 메뉴는 삭제됐다</b>
+        /// (docs/UX_FLOW.md 36-13 #6). 그 문자열은 이제 프로덕션 어디에도 없다.
+        /// 지금 유일한 프로덕션 호출자는 <c>Interaction/CharacterInfoWindow</c>의 스트레스 줄이다.
+        /// "유일한 생산자"라는 앞 문장 자체는 여전히 참이다(호출자가 하나로 줄었을 뿐).</para>
         ///
         /// 경고 경계를 별도 상수로 두지 않고 <see cref="StickConfig.stressSulkyThreshold"/>를 그대로
         /// 재사용하는 이유: 19절이 "임계값 근접(예: 80%) 시 SULKY로 전이"라고 정한 그 지점이 곧 유저가

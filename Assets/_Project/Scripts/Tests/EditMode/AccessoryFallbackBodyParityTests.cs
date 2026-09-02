@@ -21,9 +21,11 @@ namespace StickMate.Tests.EditMode
     /// <see cref="AccessoryShapeBuilder"/>를 한 번도 읽지 않았다. 폴백을 폴백과 대조한 것이다.
     ///
     /// <para>그 결과 <c>Assert.AreEqual(4, rim.Values.Length)</c>(= 2점 직선)가 <b>갈라진 상태를
-    /// 잠그고 있었다</b> — 몸의 <c>BeretRim</c>은 이미 <b>3점</b>
+    /// 잠그고 있었다</b> — 그때 몸의 <c>BeretRim</c>은 이미 <b>3점</b>
     /// (<c>frontFoot → innerFoot → backTip</c>, 밑변 전체)인데도. 이건 실패한 테스트가 아니라
-    /// <b>장비 담당이 몸을 고칠 때마다 "고치지 마라"고 막는 테스트</b>였다.</para>
+    /// <b>장비 담당이 몸을 고칠 때마다 "고치지 마라"고 막는 테스트</b>였다.
+    /// <br/>★ <b>2026-09-03 현재 그 3점은 6점이다</b>(닫힌 채움 띠 = 아랫변 3 + 올린 윗변 3).
+    /// 위 "3점"은 <b>2026-09-01 시점의 역사</b>다 — 지금 값은 언제나 몸에서 읽는다.</para>
     ///
     /// ============================================================================
     /// 무엇을 몸에서 유도하는가 (30종 = 5슬롯 × 6)
@@ -120,7 +122,41 @@ namespace StickMate.Tests.EditMode
         /// </summary>
         private static readonly Debt[] Ledger =
         {
-            // ★ 2026-09-02 — <b>비었다.</b> 20줄 전부 한 번에 갚혔다.
+            // ★★ 2026-09-03 (스펙 14-1) — <b>5줄이 한꺼번에 새로 생겼다. 원인은 하나다.</b>
+            //
+            // A군 5종의 보조색 조각(중절모·밀짚모자 띠 / 왕관 테 / 베레모 테 / 바가지 앞머리)이
+            // <b>낱선에서 닫힌 채움 띠</b>가 됐다. 새 도형 = <b>옛 아랫변 + 그것을
+            // AccentBandThicknessRatio만큼 올려 역순으로 이은 윗변</b>이므로 점 수가 <b>정확히 두 배</b>다.
+            // 폴백 에셋은 아직 <b>아랫변만</b> 그린 옛 형태 그대로다 — 그래서 몸 N / 폴백 N/2 다섯 줄이다.
+            //
+            // ★ 이 라운드는 <b>테스트만</b> 배정받았다. Resources/Items/*.asset을 다시 굽는 것은
+            //   장비 담당(design-equipment) 소유이고 리더를 거친다. 그래서 고치지 않고 <b>등재</b>한다.
+            //   갚는 방법은 2026-09-02와 같다 — 30종 폴백을 카드 본경로와 같은 투영식으로 몸에서
+            //   다시 구우면 다섯 줄이 <b>정의상</b> 함께 닫힌다.
+            //
+            // ★ 이 다섯 줄의 <b>사유가 참인지</b>를 아래 대장_5건은_전부_몸이_아랫변을_올린_결과다가
+            //   매 실행 다시 잰다(핀 숫자만 믿지 않는다).
+            new Debt(EquipmentSlot.Head, AccessoryShapeBuilder.HeadFedora, Axis.AccentVertexCount, 4, 2,
+                "2026-09-03 스펙 14-1 — FedoraBand가 닫힌 채움 띠(아랫변 2 + 올린 윗변 2)가 됐다. " +
+                "폴백은 아직 아랫변 2점. 에셋 재굽기는 design-equipment 소관(리더 경유)."),
+            new Debt(EquipmentSlot.Head, AccessoryShapeBuilder.HeadCrown, Axis.AccentVertexCount, 8, 4,
+                "2026-09-03 스펙 14-1 — CrownRim이 닫힌 채움 띠(아랫변 4 + 올린 윗변 4)가 됐다. " +
+                "폴백은 아직 아랫변 4점."),
+            new Debt(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret, Axis.AccentVertexCount, 6, 3,
+                "2026-09-03 스펙 14-1 — BeretRim이 닫힌 채움 띠(아랫변 3 + 올린 윗변 3)가 됐다. " +
+                "폴백은 2026-09-02에 몸에 맞춰 3점으로 갚았던 그 값 그대로다 — 즉 <b>같은 빚이 아니라 " +
+                "새 빚</b>이고, innerFoot은 여전히 살아 있다."),
+            new Debt(EquipmentSlot.Head, AccessoryShapeBuilder.HeadStraw, Axis.AccentVertexCount, 4, 2,
+                "2026-09-03 스펙 14-1 — StrawBand가 닫힌 채움 띠(아랫변 2 + 올린 윗변 2)가 됐다. " +
+                "폴백은 아직 아랫변 2점."),
+            new Debt(EquipmentSlot.Hair, AccessoryShapeBuilder.HairBowl, Axis.AccentVertexCount, 10, 5,
+                "2026-09-03 스펙 14-1 — HairFringe가 닫힌 채움 띠(아랫변 5 + 올린 윗변 5)가 됐다. " +
+                "아랫변 점 수는 BowlFringeSegments+1에서 나온다."),
+
+            // ── 이력 ─────────────────────────────────────────────────────────────
+            // ★ 2026-09-02 — 이 대장이 한 번 <b>비었다</b>. 20줄 전부 한 번에 갚혔다.
+            //   (위 다섯 줄은 그 뒤 2026-09-03에 <b>몸이 다시 움직여</b> 새로 생긴 빚이다 —
+            //    같은 빚이 되살아난 것이 아니다. 갚는 방법은 아래와 <b>똑같다</b>.)
             //
             // 방법은 좌표를 21번 손으로 고치는 것이 아니라 <b>한 번 유도</b>하는 것이었다:
             // 30종 폴백을 카드 본경로(AccessoryCardIcon.TryBuild)와 <b>같은 투영식</b>으로
@@ -134,6 +170,7 @@ namespace StickMate.Tests.EditMode
             // 새 갈라짐은 아무것도 안 적어도 아래 첫 테스트가 잡는다. 못 고칠 것이 다시 생기면
             // 실측값 두 개와 사유를 달아 여기 등재한다:
             //     new Debt(슬롯, 번호, Axis.…, 몸실측, 폴백실측, "왜 아직 못 고쳤는가")
+            // ★ 2026-09-03이 정확히 그 경로로 다섯 줄을 등재했다 — 그때 이 장치가 실제로 작동했다.
         };
 
         internal readonly struct Debt
@@ -504,32 +541,127 @@ namespace StickMate.Tests.EditMode
                 "정규화가 진짜 추가 점까지 삼키고 있습니다 — 그러면 이 검사는 아무것도 안 잡습니다.");
         }
 
+        /// <summary>
+        /// ★ 원 신고 건의 <b>현재 상태</b>. 이력이 세 단계다.
+        /// <list type="number">
+        ///   <item>옛 검사가 이 자리에 <b>2점을 상수로 박아</b> 두어 장비 담당이 폴백에
+        ///     <c>innerFoot</c>을 추가하는 것을 <b>막고</b> 있었다.</item>
+        ///   <item>2026-09-02 — 폴백을 몸에서 유도해 다시 구워 3점으로 갚았다(몸 3 = 폴백 3).</item>
+        ///   <item>★ 2026-09-03(스펙 14-1) — 몸이 <b>닫힌 채움 띠</b>가 되어 6점이 됐다.
+        ///     폴백 3점은 그 띠의 <b>아랫변</b>과 정확히 같다. 즉 <b>새 빚</b>이고,
+        ///     2번에서 갚은 것(<c>innerFoot</c>이 살아 있다)은 <b>여전히 참</b>이다.</item>
+        /// </list>
+        /// <para>그래서 이 검사는 "같은 점 수"가 아니라 <b>"폴백 = 몸 띠의 아랫변"</b>을 잠근다.
+        /// 기대값은 여전히 <b>몸에서 읽는다</b>. 장비 담당이 폴백을 다시 구워 6점이 되면
+        /// 이 단언이 <b>빨개져서</b> 대장 줄과 함께 갱신하게 만든다 — 갚았는데 아무도 모르는
+        /// 상태가 되지 않는다.</para></summary>
         [Test]
-        public void 실제_베레모_폴백_테는_이제_몸과_같은_점수다()
+        public void 실제_베레모_폴백_테는_몸_띠의_아랫변_그대로다()
         {
-            // ★ 원 신고 건. 옛 검사는 이 자리에 <b>2점을 상수로 박아</b> 두어 장비 담당이 폴백에
-            //   innerFoot을 추가하는 것을 막고 있었고, 그 뒤에는 "3점 대 2점으로 아직 갈라져 있다"를
-            //   잠갔다. 2026-09-02에 폴백을 몸에서 유도해 다시 구워 그 빚을 갚았다.
-            //   기대값은 여전히 <b>몸에서 읽는다</b> — 몸이 바뀌면 기대값도 함께 바뀐다.
             List<AccessoryShapeBuilder.Shape> body = BodyShapes(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret);
             AccessoryShapeBuilder.Shape rim = AccessorySilhouetteMetrics.Find(body, "BeretRim");
 
             Assert.AreEqual(1, rim.Tone, "BeretRim이 보조색이 아니게 됐습니다 — 이 검사의 전제가 깨집니다.");
 
-            ItemIconPart[] fallback = Fallback(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret);
-            Assert.IsEmpty(Compare(body, fallback),
-                "베레모 폴백이 다시 몸과 갈라졌습니다 — 유도한 값을 누가 손으로 덮어썼는지 확인하십시오.");
+            // ★ 「채운 올린 띠」인지부터 코드로 확인한다. 낱선으로 되돌아가면 아래 「절반」 계산의
+            //   전제가 통째로 사라지므로 여기서 먼저 멈춰야 한다.
+            AccessoryFilledBandRuler.AssertRaisedBandForm(
+                AccessorySilhouetteMetrics.Rig(), rim, "베레모 테", slantedTopCorners: 1);
 
+            ItemIconPart[] fallback = Fallback(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret);
             ItemIconPart fallbackRim = default;
             for (int i = 0; i < fallback.Length; i++)
             {
                 if (fallback[i].Tone == 1) fallbackRim = fallback[i];
             }
-            Assert.AreEqual(rim.Points.Length, DistinctPointCount(fallbackRim),
-                "기대값이 몸에서 오지 않았습니다 — 그게 이 파일이 처음 잡은 버그입니다.");
 
-            Debug.Log($"{LogPrefix} 베레모 — 몸 BeretRim {rim.Points.Length}점 = 폴백 " +
-                      $"{DistinctPointCount(fallbackRim)}점. innerFoot(밑변 안쪽 꺾임 = 베레모의 정체)이 살아 있다.");
+            int bottomPoints = rim.Points.Length / 2;   // 「아랫변 + 역순 윗변」 규약에서 유도한다.
+            Assert.AreEqual(bottomPoints, DistinctPointCount(fallbackRim),
+                $"폴백 테가 {DistinctPointCount(fallbackRim)}점인데 몸 띠의 아랫변은 {bottomPoints}점입니다. " +
+                "폴백이 몸 전체에 맞춰졌다면(= 빚을 갚았다면) 위 Ledger의 베레모 줄과 이 단언을 " +
+                "함께 갱신하십시오 — 갚았는데 대장이 남으면 대장이 다음 갈라짐을 덮습니다.");
+
+            // ★ 존재/부재 대조 — 이 갈라짐이 <b>실제로 있고</b>, <b>대장에 등재돼 있다</b>.
+            //   둘 중 하나만 두면 썩었을 때 조용히 초록이 된다.
+            List<Gap> gaps = Compare(body, fallback);
+            Assert.AreEqual(1, gaps.Count,
+                $"{LogPrefix} 베레모의 갈라진 축이 {gaps.Count}개입니다(기대 1: 꼭짓점 수). " +
+                "0개면 폴백이 이미 갚아진 것이므로 대장 줄을 지우십시오. " +
+                "2개 이상이면 보조색 조각 수까지 갈라진 것이라 다른 사고입니다.");
+            Assert.AreEqual(Axis.AccentVertexCount, gaps[0].Axis);
+            Assert.IsTrue(TryFindDebt(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret,
+                    Axis.AccentVertexCount, out _),
+                $"{LogPrefix} 베레모의 갈라짐이 대장에 없습니다 — 등재 없이 조용히 통과할 뻔했습니다.");
+
+            Debug.Log($"{LogPrefix} 베레모 — 몸 BeretRim {rim.Points.Length}점" +
+                      $"(아랫변 {bottomPoints} + 올린 윗변 {bottomPoints}) / 폴백 " +
+                      $"{DistinctPointCount(fallbackRim)}점 = 아랫변 그대로. " +
+                      "innerFoot(밑변 안쪽 꺾임 = 베레모의 정체)은 양쪽에 살아 있다.");
+        }
+
+        /// <summary>
+        /// ★★ <b>대장이 적어 둔 「사유」를 기계가 다시 잰다</b> — 2026-09-03.
+        ///
+        /// <para>대장 줄의 핀(몸 N / 폴백 N/2)은 <b>숫자</b>일 뿐이고, 숫자만 맞으면
+        /// <see cref="대장_항목은_지금도_실제로_어긋난다"/>는 초록이다. 그런데 이 다섯 줄이 주장하는
+        /// 것은 숫자가 아니라 <b>원인</b>이다: <i>"몸이 옛 아랫변을 그대로 두고 그 위로 같은 수의
+        /// 점을 올렸을 뿐"</i>. 원인이 참이면 <b>폴백 점 수 × 2 = 몸 점 수</b>가 되고, 몸은
+        /// 「올린 띠」 규약을 만족한다.</para>
+        ///
+        /// <para>왜 필요한가: 이 저장소의 대장들은 <b>사유를 산문으로만</b> 들고 있었다. 산문은
+        /// 늙어도 아무도 모른다(<c>TestClaimExpiryAuditTests</c>가 신설된 이유가 그것이다).
+        /// 누가 몸 도형을 <b>다른 이유로</b> 바꿔 우연히 같은 비율이 유지되면 핀은 맞고 사유는
+        /// 거짓인 상태가 된다 — 여기서 규약 자체를 재면 그 경우가 걸린다.</para>
+        /// </summary>
+        [Test]
+        public void 대장_5건은_전부_몸이_아랫변을_올린_결과다()
+        {
+            AccessoryShapeBuilder.Rig rig = AccessorySilhouetteMetrics.Rig();
+            int checkedRows = 0;
+
+            foreach (Debt debt in Ledger)
+            {
+                if (debt.Axis != Axis.AccentVertexCount) continue;
+
+                List<AccessoryShapeBuilder.Shape> body = BodyShapes(debt.Slot, debt.Item);
+                AccessoryShapeBuilder.Shape accent = default;
+                int accents = 0;
+                for (int i = 0; i < body.Count; i++)
+                {
+                    if (body[i].Tone != 1) continue;
+                    accent = body[i];
+                    accents++;
+                }
+                Assert.AreEqual(1, accents,
+                    $"{LogPrefix} {debt}: 몸 보조색이 {accents}개라 이 검사의 전제가 깨집니다.");
+
+                // 사유가 참이면 몸은 「올린 띠」다.
+                AccessoryFilledBandRuler.AssertRaisedBandForm(rig, accent, $"{Label(debt.Slot, debt.Item)} 보조색",
+                    slantedTopCorners: debt.Item == AccessoryShapeBuilder.HeadBeret
+                                       && debt.Slot == EquipmentSlot.Head ? 1 : 0);
+
+                // 그리고 폴백은 그 아랫변만 그린 상태다 = 정확히 절반.
+                Assert.AreEqual(debt.FallbackPin * 2, debt.BodyPin,
+                    $"{LogPrefix} {debt}: 대장이 적은 사유는 '몸이 아랫변을 두 배로 올렸다'인데 " +
+                    $"핀은 몸 {debt.BodyPin} / 폴백 {debt.FallbackPin}입니다(2배가 아닙니다). " +
+                    "사유와 숫자 중 하나가 거짓입니다 — 둘을 맞추기 전에 <b>무엇이 실제로 바뀌었는지</b>를 " +
+                    "먼저 다시 재십시오.");
+                Assert.AreEqual(debt.BodyPin, accent.Points.Length,
+                    $"{LogPrefix} {debt}: 대장의 몸 핀({debt.BodyPin})과 실제 도형" +
+                    $"({accent.Points.Length}점)이 다릅니다.");
+
+                checkedRows++;
+            }
+
+            // ★ 비공허성 — 대장에 이 축이 하나도 없으면 위 foreach는 0바퀴 돌고 조용히 초록이 된다.
+            //   빚을 다 갚아 0줄이 된 날에는 이 단언이 빨개져서 "이 검사도 함께 지워라"라고 말한다.
+            Assert.Greater(checkedRows, 0,
+                $"{LogPrefix} 꼭짓점 축 대장이 비었습니다 — 이 검사가 아무것도 재지 않았습니다. " +
+                "빚을 전부 갚았다면 이 테스트를 지우거나, 남길 이유가 있으면 그 이유를 여기에 적으십시오.");
+
+            Debug.Log($"{LogPrefix} 대장 꼭짓점 축 {checkedRows}줄 — 전부 「몸이 아랫변을 " +
+                      $"{AccessoryShapeBuilder.AccentBandThicknessRatio:F2}R 올려 두 배가 됐다」로 설명된다. " +
+                      "폴백 에셋 재굽기(design-equipment)가 다섯 줄을 한 번에 닫는다.");
         }
 
         /// <summary>★ 대장이 <b>비어서</b> 초록인 것과 <b>검사가 죽어서</b> 초록인 것을 가른다.

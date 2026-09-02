@@ -1059,13 +1059,18 @@ namespace StickMate.Interaction
             return segment;
         }
 
-        /// <summary>오른쪽에 버튼 1~3개가 붙은 행([숨기기][보이기] / [지금 종료]).</summary>
+        /// <summary>오른쪽에 버튼 1~3개가 붙은 행([숨기기][보이기] / [지금 종료]).
+        /// <para>★ 2026-09-03 — <paramref name="hotkey"/> 추가. 여기가 <b>유일하게</b>
+        /// <see cref="BeginRow"/>에 <c>null</c>을 넘기던 부품이었고, 그래서 "이 동작에는 전역 단축키가
+        /// 있다"를 말하려면 <b>토글 행을 따로 만드는 수밖에 없었다</b>. 그 토글이
+        /// <i>"이 단축키를 켜고 끄는 스위치"</i>로 오독되어(페르소나 실측) 켜는 순간 캐릭터가 사라졌다.
+        /// 기본값 <c>null</c>이라 기존 호출부의 동작은 <b>비트 단위로 같다</b>.</para></summary>
         public Image[] AddButtons(string key, string label, string[] captions, Action<int> clicked,
             string caption = null, bool enabled = true, DisabledReason disabledNote = default,
-            SettingsRowGate gate = null)
+            SettingsRowGate gate = null, string hotkey = null)
         {
             RectTransform row = BeginRow(key, label,
-                ComposeCaption(caption, enabled, disabledNote.Text, disabledNote.Kind), null,
+                ComposeCaption(caption, enabled, disabledNote.Text, disabledNote.Kind), hotkey,
                 enabled, gate, out float rowHeight, out Text labelText, out Text captionText);
 
             // ★ 상수 캡처(() => enabled)가 아니라 <b>지금 값</b>을 본다 — 게이트가 내려간 뒤에도 클릭이

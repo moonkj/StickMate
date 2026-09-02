@@ -11,23 +11,31 @@
 #   그게 의도다. 리뷰어가 diff에서 예산 변화를 직접 보게 하려는 것이다.
 #   생성기: docs/localization/verify/golden_gen.py
 #
-# 표본 = AmbientChatter + States/ DialogueLine.Say|React +
-#        RunawayState.TriggerSelfReturn + StickmanAgent 집중모드 람다  (고유 33줄)
+# 표본 = AmbientChatter 배열 + GrabReactionLines 배열 + States/ DialogueLine.Say|React +
+#        RunawayState.TriggerSelfReturn + StickmanAgent 집중모드 람다  (고유 42줄)
 #
 3F1EB852	0.620000	가뿐하네
+3F3AE148	0.730000	거긴 다리야
+3F3AE148	0.730000	거긴 머리야
 3F3AE148	0.730000	구경 중이야
 3F27AE15	0.655000	그래 쉬자
 3F3AE148	0.730000	나 안 해!
+3F1EB852	0.620000	놔, 놔
+3F1EB852	0.620000	다리 놔
 3F4E147B	0.805000	다리 좀 풀자
 3F747AE2	0.955000	다리가 잘 나가네
+3F1EB852	0.620000	머리 놔
 3F4E147B	0.805000	발밑이 단단해
 3F1EB852	0.620000	산책 중
 3F27AE15	0.655000	수고했어!
 3F1EB852	0.620000	심심하다
 3F83D70A	1.030000	심심해서 왔어...
 3F4E147B	0.805000	아 몰라...
+3F1EB852	0.620000	안 놔?
+3F1EB852	0.620000	야!
 3F970A3E	1.180000	어... 알았어, 갈게
 3FA0A3D7	1.255000	어? 딴 데 보고 있네?
+3F27AE15	0.655000	어딜 잡아
 3F83D70A	1.030000	어우... 꽤 깊네
 3F27AE15	0.655000	여기 좋네
 3F6147AE	0.880000	여기로 내려가자
@@ -39,6 +47,7 @@
 3F27AE15	0.655000	윽...!
 3F1EB852	0.620000	음...
 3F4E147B	0.805000	잠깐 쉬는 중
+3F1EB852	0.620000	잡혔다
 3F6147AE	0.880000	저쪽으로 가볼까
 3F747AE2	0.955000	좋아, 감시 시작
 3F747AE2	0.955000	하나 둘 하나 둘

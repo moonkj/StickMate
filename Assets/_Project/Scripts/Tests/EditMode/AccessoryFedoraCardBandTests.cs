@@ -64,6 +64,15 @@ namespace StickMate.Tests.EditMode
         // 1. 몸 — 띠가 관 밑변의 두 끝점을 <b>그대로</b> 받는다
         // ============================================================================
 
+        /// <summary>
+        /// ★★ 2026-09-03(스펙 14-1) — 띠가 <b>낱선에서 닫힌 채움 띠</b>가 됐다. 그래도 이 검사가
+        /// 잠그는 사실은 바뀌지 않는다: <b>띠의 아랫변이 관 밑변의 두 끝점 그 자체</b>다.
+        /// <para>옛 단언은 <c>Assert.AreEqual(2, band.Points.Length)</c>였고, 그것은 "좌표를 새로
+        /// 적지 않는다"는 규약이 아니라 <b>그 규약이 그날 취했던 형태</b>였다. 그래서 형태가
+        /// 바뀌자 이 파일이 <b>고치는 것을 막는 테스트</b>가 됐다 — 이 저장소가 베레모에서 이미 한 번
+        /// 겪은 사고와 정확히 같은 형태다(<see cref="AccessoryFallbackBodyParityTests"/> 클래스 문서).
+        /// 이제는 점 수를 적지 않고 <see cref="AccessoryFilledBandRuler.AssertRaisedBandForm"/>의
+        /// 규약("아랫변 + 그 아랫변을 띠 두께만큼 올려 역순으로 이은 윗변")에서 유도한다.</para></summary>
         [Test]
         public void 몸의_중절모_띠는_관_밑변의_두_끝점_그_자체다()
         {
@@ -74,11 +83,26 @@ namespace StickMate.Tests.EditMode
             AccessoryShapeBuilder.Shape band = AccessorySilhouetteMetrics.Find(shapes, "FedoraBand");
             AccessoryShapeBuilder.Shape crown = AccessorySilhouetteMetrics.Find(shapes, "FedoraCrown");
 
-            Assert.AreEqual(2, band.Points.Length, "띠는 관 밑변 두 끝점만으로 된 직선이어야 합니다.");
-            Assert.AreEqual(crown.Points[0], band.Points[0],
-                "띠의 뒤 끝이 관 밑변의 뒤 끝과 다릅니다 — 좌표를 새로 적으면 어긋날 자리가 생깁니다.");
-            Assert.AreEqual(crown.Points[crown.Points.Length - 1], band.Points[1],
-                "띠의 앞 끝이 관 밑변의 앞 끝과 다릅니다.");
+            AccessoryFilledBandRuler.AssertRaisedBandForm(rig, band, "중절모 띠");
+
+            Vector3[] bottom = AccessoryFilledBandRuler.BottomEdge(band);
+            Assert.AreEqual(crown.Points[0], bottom[0],
+                "띠 아랫변의 뒤 끝이 관 밑변의 뒤 끝과 다릅니다 — 좌표를 새로 적으면 어긋날 자리가 생깁니다.");
+            Assert.AreEqual(crown.Points[crown.Points.Length - 1], bottom[bottom.Length - 1],
+                "띠 아랫변의 앞 끝이 관 밑변의 앞 끝과 다릅니다.");
+
+            for (int i = 0; i < bottom.Length; i++)
+            {
+                bool onCrown = false;
+                for (int k = 0; k < crown.Points.Length && !onCrown; k++)
+                {
+                    onCrown = crown.Points[k] == bottom[i];
+                }
+                Assert.IsTrue(onCrown,
+                    $"띠 아랫변의 {i}번 점 {bottom[i]}이 관 폴리라인의 꼭짓점이 아닙니다 — " +
+                    "아랫변은 관에서 <b>그대로</b> 받아야 합니다(규칙 4-a).");
+            }
+
             Assert.AreEqual(AccessoryShapeBuilder.Accent, band.Tone,
                 "띠가 보조색이 아닙니다 — 중절모의 식별 특징이 사라집니다(규칙 3-2).");
         }
@@ -141,14 +165,34 @@ namespace StickMate.Tests.EditMode
                 "폴백 관의 밑변 두 끝 높이가 같습니다 — 몸은 챙이 기울어 두 발의 y가 갈립니다. " +
                 "같아졌다면 폴백이 몸에서 유도된 값이 아닙니다.");
 
+            // ★ 2026-09-03 — 여기에 <b>4</b>(= 2점)를 박아 두면 장비 담당이 폴백을 몸(닫힌 채움 띠)에
+            //   맞춰 다시 굽는 순간 이 파일이 그것을 <b>막는다</b>. 위 몸 검사가 겪은 것과 같은
+            //   형태의 사고다. 그래서 상한을 <b>몸에서 유도</b>하고(폴백은 몸보다 복잡할 수 없다),
+            //   갈라진 실측값은 AccessoryFallbackBodyParityTests의 대장이 만료 장치와 함께 든다.
+            AccessoryShapeBuilder.Shape bodyBand = AccessorySilhouetteMetrics.Find(
+                AccessorySilhouetteMetrics.Build(AccessorySilhouetteMetrics.Rig(),
+                    EquipmentSlot.Head, AccessoryShapeBuilder.HeadFedora), "FedoraBand");
+
             ItemIconPart band = FindAccent(entry.Icon);
-            Assert.AreEqual(4, band.Values.Length,
-                $"폴백 띠가 {band.Values.Length / 2}점입니다 — 관 밑변의 두 끝을 잇는 " +
-                "직선(2점)이어야 몸과 같은 계열입니다.");
-            Assert.AreEqual(baseBackX, band.Values[0], 1e-4f, "폴백 띠의 뒤 끝 x가 관 밑변과 다릅니다.");
-            Assert.AreEqual(baseBackY, band.Values[1], 1e-4f, "폴백 띠의 뒤 끝 y가 관 밑변과 다릅니다.");
-            Assert.AreEqual(baseFrontX, band.Values[2], 1e-4f, "폴백 띠의 앞 끝 x가 관 밑변과 다릅니다.");
-            Assert.AreEqual(baseFrontY, band.Values[3], 1e-4f, "폴백 띠의 앞 끝 y가 관 밑변과 다릅니다.");
+            Assert.GreaterOrEqual(band.PointCount, 2,
+                $"폴백 띠가 {band.PointCount}점입니다 — 관 밑변의 두 끝을 잇는 선이 아닙니다.");
+            Assert.LessOrEqual(band.PointCount, bodyBand.Points.Length,
+                $"폴백 띠가 {band.PointCount}점인데 몸의 FedoraBand는 {bodyBand.Points.Length}점입니다 — " +
+                "폴백이 몸보다 <b>복잡합니다</b>. 폴백은 40×40 격자의 단순화이므로 이 방향은 " +
+                "단순화가 아니라 다른 그림입니다.");
+
+            // 잠글 것은 <b>순서</b>가 아니라 "관 밑변의 두 발을 좌표로 다시 적지 않고 그대로
+            // 받았는가"다. 순서로 잠그면(옛 검사가 그랬다) 폴백이 몸처럼 닫힌 띠가 되는 날
+            // 마지막 점이 <b>올린 윗변의 뒤 모서리</b>가 되어 또 한 번 고치는 것을 막는다.
+            AssertBandTouches(band, baseBackX, baseBackY, "관 밑변의 뒤 발");
+            AssertBandTouches(band, baseFrontX, baseFrontY, "관 밑변의 앞 발");
+
+            if (band.PointCount != bodyBand.Points.Length)
+            {
+                Debug.Log($"[폴백-몸] 중절모 띠: 몸 {bodyBand.Points.Length}점 / 폴백 {band.PointCount}점 " +
+                          "— 2026-09-03 스펙 14-1로 몸이 닫힌 채움 띠가 되면서 갈라졌습니다" +
+                          "(AccessoryFallbackBodyParityTests.Ledger에 등재됨).");
+            }
 
             for (int i = 0; i < band.Values.Length; i++)
             {
@@ -205,6 +249,24 @@ namespace StickMate.Tests.EditMode
             }
             Assert.Fail($"몸 도형에 '{shapeName}'이 없습니다.");
             return default;
+        }
+
+        /// <summary>폴백 띠의 점 중 하나가 <paramref name="x"/>,<paramref name="y"/>와 같은가.
+        /// <b>순서를 묻지 않는다</b> — 물어야 할 것은 "그 좌표를 그대로 받았는가"이지
+        /// "몇 번째에 두었는가"가 아니다.</summary>
+        private static void AssertBandTouches(ItemIconPart band, float x, float y, string what)
+        {
+            for (int i = 0; i < band.PointCount; i++)
+            {
+                if (Mathf.Abs(band.Values[i * 2] - x) <= 1e-4f
+                    && Mathf.Abs(band.Values[i * 2 + 1] - y) <= 1e-4f)
+                {
+                    return;
+                }
+            }
+            Assert.Fail($"폴백 띠의 어느 점도 {what}({x:F2}, {y:F2})과 같지 않습니다 — " +
+                "띠는 좌표를 새로 적지 않고 관 밑변의 두 발을 그대로 받아야 몸과 같은 계열입니다. " +
+                "옛 폴백은 여기서 5점짜리 곡선으로 관 밑변을 <b>가로질렀다</b>(아래 네거티브 컨트롤).");
         }
 
         private static ItemIconPart FindAccent(ItemIconPart[] icon)

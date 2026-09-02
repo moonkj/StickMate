@@ -457,7 +457,8 @@ namespace StickMate.Interaction
 
         /// <summary>리틀스틱메이트의 선 6개(머리 원 / 몸통 / 팔 2 / 다리 2). 원점은 <b>발바닥</b>.
         /// <b>순서는 계약이다</b> — 실시간 렌더러가 인덱스 2~5(팔뒤/팔앞/다리뒤/다리앞)를 뿌리 기준으로
-        /// 돌려 보행 스윙·낙하 만세·무릎앉아를 만든다(CharacterPetRenderer.ApplyMiniLimbDeltas).</summary>
+        /// 돌려 보행 스윙·낙하 만세·무릎앉아를 만든다(CharacterPetRenderer.ApplyMiniPose →
+        /// RebuildMiniLimb — 2026-09-03 정정, 옛 이름 <c>ApplyMiniLimbDeltas</c>는 존재한 적이 없다).</summary>
         internal static Vector3[][] MiniFigure(float height, float facing)
         {
             float h = height;

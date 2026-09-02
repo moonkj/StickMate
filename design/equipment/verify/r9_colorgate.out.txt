@@ -1,0 +1,15 @@
+╔══ 지금 트리 ══╗
+  고유색(잉크 표식 포함) 26 · 아트 고유색 24
+  대역 밖 [0.1632, 0.2396]      0건  
+  WornColor 바이트 비항등    0건  
+  주↔보조 ΔE 쌍 42개 · 변별 하한 7.8 미달 3건
+     ★ look_fx_footprint      #D6DBE3 / #D6DBE3  ΔE 0.00
+     ★ look_fx_none           #8B939F / #8B939F  ΔE 0.00
+     ★ look_pet_mini          #D6DBE3 / #D6DBE3  ΔE 0.00
+  최소 3쌍: look_fx_footprint 0.00 · look_fx_none 0.00 · look_pet_mini 0.00
+  ★ FX/PET 조각에 남은 카테고리 틴트색 1건  [('look_fx_leaf', 0, '#5A8C3C', 'TintNeck')]
+
+╔══ 기준선 대조 ══╗
+  새로 생긴 hex 0개 
+  사라진 hex    0개 
+  고유색 26 -> 26 · 아트 24 -> 24

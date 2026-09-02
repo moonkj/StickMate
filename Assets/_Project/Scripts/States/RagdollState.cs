@@ -9,12 +9,16 @@ namespace StickMate.States
     /// 완전히 위임하고 모터/IK 힘 인가를 전부 중단한다.
     ///
     /// 진입 조건 (-> Ragdoll): 어떤 능동 상태(Idle/Walk/Jump/Fall/ParkourClimb/Attack)에서든
-    /// 외력(피격/투척/낙하 충격량의 크기)이 StickConfig.ragdollForceThreshold 이상이면 즉시 강제 전이한다.
+    /// 외력의 크기가 StickConfig.ragdollForceThreshold 이상이면 즉시 강제 전이한다(★ 2026-09-02 정정 —
+    /// 원래 «피격/투척/낙하 충격»이라 적혀 있었으나 「투척」은 2026-08-29 폐지, 「낙하 충격」은
+    /// landingImpactRagdollShield=1로 끊겼다. 실재 경로 정본 목록은 States/RagdollImpactResolver 클래스 문서).
     /// 이는 인터럽트형 전이이므로 진행 중이던 모션/대사가 무엇이든 취소된다. 이 전이를 호출할 때는
     /// 반드시 StateMachine.ChangeState(StickmanStateId.Ragdoll, isForcedInterrupt: true)로 호출해
     /// UI 레이어가 "정상 종료"와 "강제 취소"를 구분해 연출할 수 있게 한다 (UX_FLOW.md 5절/9절-2).
-    /// 실제 진입 트리거는 StickmanAgent.ReportExternalImpact()(충돌 콜백 기반, Core/StickmanAgent.cs와
-    /// Core/RagdollLimbImpactRelay.cs 참고)가 현재 상태와 무관하게 단일 진입점으로 처리한다 — 이 상태
+    /// 실제 진입 판정은 States/RagdollImpactResolver가 현재 상태와 무관하게 단일 진입점으로 처리한다
+    /// (충돌 콜백 경로는 StickmanAgent.ReportCollisionImpact -> TryApplyCollisionImpact, 직접 호출 경로는
+    /// TryApplyImpact. ★ 2026-09-02 정정: 원래 «ReportExternalImpact()»만 적혀 있었는데 충돌 경로는 그
+    /// 메서드를 거치지 않는다) — 이 상태
     /// 자신은 "이미 Ragdoll로 확정된 뒤"의 물리 위임/기상 판정만 책임진다.
     ///
     /// 이탈 조건 (-> Getup): 몸통/사지 각 Rigidbody2D 속도 크기가 StickConfig.ragdollSettleSpeedThreshold

@@ -4,8 +4,12 @@ using StickMate.Core;
 namespace StickMate.Interaction
 {
     /// <summary>UX_FLOW.md 18절 "감시 민감도(관대/보통/예민) 3단계 슬라이더" — 연속 관찰 주기 임계값에
-    /// 곱해지는 배율만 다르다(관대=더 오래 지속돼야 반응, 예민=더 빨리 반응). 설정창(7절, 미구현)이
-    /// 나중에 이 프로퍼티를 바꿔 끼우면 된다.</summary>
+    /// 곱해지는 배율만 다르다(관대=더 오래 지속돼야 반응, 예민=더 빨리 반응).
+    /// <para>★ 2026-09-03 정정 — 원래 "설정창(7절, <b>미구현</b>)이 나중에 이 프로퍼티를 바꿔 끼우면 된다"고
+    /// 적혀 있었으나 <c>Interaction/SettingsWindow.cs</c>는 <b>이미 있고 씬에도 배선돼 있다</b>
+    /// (Assets/Editor/SceneBootstrapper.cs). 참인 것은 그쪽이 아니라 이것이다:
+    /// <b>이 값을 실제로 바꾸는 곳은 <c>Interaction/FocusSessionPopover</c>의 관대/보통/예민 칩 3개뿐이고,
+    /// 설정창에는 이 항목이 없다.</b> "설정창이 없어서 못 바꾼다"가 아니라 "설정창에 안 넣었다"이다.</para></summary>
     public enum PomodoroSensitivity
     {
         Lenient,

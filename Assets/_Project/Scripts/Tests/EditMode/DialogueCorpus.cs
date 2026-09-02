@@ -23,6 +23,10 @@ namespace StickMate.Tests.EditMode
     ///     <c>DialogueLine.</c>으로 시작하지 않는다.</item>
     ///   <item><c>Core/StickmanAgent.cs</c> — <c>new TimedSpectacleState(…, cfg =&gt; "좋아, 감시 시작")</c> 5줄.
     ///     <b><c>States/</c> 폴더 밖</b>이고 형태도 람다다. 스캐너는 폴더조차 보지 않았다.</item>
+    ///   <item>★ 2026-09-02 추가 — <c>Dialogue/GrabReactionLines.cs</c>의 붙잡힘 반응 <b>9줄</b>.
+    ///     <c>AmbientChatter</c>와 같은 <b>배열</b> 형태라 리터럴 스캐너가 구조적으로 못 본다.
+    ///     <c>design-narrative</c>가 인계 시점에 이 사각지대를 미리 경고했고, 그래서 대사가 늘어난
+    ///     같은 라운드에 수집기를 함께 넓혔다(<see cref="GrabLines"/>).</item>
     /// </list>
     /// 그래서 <b>21%가 어떤 회귀 검사에도 닿지 않았다.</b> 게다가 그 파일의 표본 하한이
     /// <c>Assert.Greater(lines.Count, 20)</c>이라 <b>5줄이 더 사라져도 초록</b>이었다.
@@ -82,25 +86,60 @@ namespace StickMate.Tests.EditMode
         // 수집 — 실제 트리
         // ================================================================================
 
-        /// <summary><c>AmbientChatter</c>의 대사표(리플렉션). 소스 파싱이 아니라 <b>실제 배열</b>을 읽는다.</summary>
-        internal static string[] AmbientLines(string fieldName)
+        /// <summary>
+        /// ★ 배열형 대사표를 <b>리플렉션으로</b> 읽는다(소스 파싱이 아니라 <b>실제 배열</b>).
+        ///
+        /// <para><b>왜 <see cref="Assert"/>를 안 쓰고 bool을 돌려주는가</b>: 이 함수 자체의
+        /// <b>양성/음성 대조</b>를 짜기 위해서다. 안에서 단언해 버리면 "없을 때 정말 false인가"를
+        /// 테스트가 확인할 방법이 없고, 그러면 <b>수집기가 죽었는데 0건이 나온 것</b>과
+        /// <b>정말 0건인 것</b>이 또 똑같이 생긴다. 실제 트리에서는 아래
+        /// <see cref="RequireStringArray"/>가 시끄럽게 실패한다.</para>
+        /// </summary>
+        internal static bool TryReadStringArray(System.Type owner, string fieldName, out string[] lines)
         {
-            FieldInfo field = typeof(AmbientChatter).GetField(fieldName,
-                BindingFlags.NonPublic | BindingFlags.Static);
-            Assert.IsNotNull(field, $"{LogPrefix} AmbientChatter.{fieldName}을 찾지 못했습니다 — " +
-                "대사표 이름이 바뀌었다면 이 수집기도 함께 고쳐야 합니다(조용히 통과하는 것이 최악입니다).");
-            var lines = (string[])field.GetValue(null);
-            Assert.IsNotNull(lines, $"{LogPrefix} AmbientChatter.{fieldName}이 null입니다.");
-            Assert.Greater(lines.Length, 0, $"{LogPrefix} AmbientChatter.{fieldName}이 비어 있습니다.");
+            lines = null;
+            if (owner == null || string.IsNullOrEmpty(fieldName)) return false;
+            FieldInfo field = owner.GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Static);
+            if (field == null || field.FieldType != typeof(string[])) return false;
+            var value = field.GetValue(null) as string[];
+            if (value == null || value.Length == 0) return false;
+            lines = value;
+            return true;
+        }
+
+        /// <summary>실제 트리용 — 못 읽으면 <b>실패</b>한다. 조용히 0건을 돌려주는 것이 최악이다.</summary>
+        internal static string[] RequireStringArray(System.Type owner, string fieldName)
+        {
+            Assert.IsTrue(TryReadStringArray(owner, fieldName, out string[] lines),
+                $"{LogPrefix} {owner?.Name}.{fieldName}(string[])을 읽지 못했습니다 — " +
+                "대사표 이름/형태가 바뀌었다면 이 수집기도 함께 고쳐야 합니다. " +
+                "고치지 않으면 그 표의 대사가 어떤 회귀 검사에도 닿지 않습니다(조용한 초록).");
             return lines;
         }
 
-        /// <summary>앱에 실재하는 대사 <b>전수</b>(중복 포함). 네 갈래를 전부 훑는다.</summary>
+        /// <summary><c>AmbientChatter</c>의 대사표.</summary>
+        internal static string[] AmbientLines(string fieldName)
+            => RequireStringArray(typeof(AmbientChatter), fieldName);
+
+        /// <summary>★ 사각지대 3(2026-09-02 신설) — <c>GrabReactionLines</c>의 붙잡힘 반응 대사표.
+        /// <c>AmbientChatter</c>와 같은 <b>배열</b> 형태라 소스 리터럴 스캐너에는 걸리지 않는다.</summary>
+        internal static string[] GrabLines(string fieldName)
+            => RequireStringArray(typeof(GrabReactionLines), fieldName);
+
+        /// <summary>앱에 실재하는 대사 <b>전수</b>(중복 포함). 다섯 갈래를 전부 훑는다 —
+        /// AmbientChatter 배열 / GrabReactionLines 배열 / States의 DialogueLine.Say|React 리터럴 /
+        /// RunawayState.TriggerSelfReturn / StickmanAgent 집중모드 람다.</summary>
         internal static List<string> ScanAll()
         {
-            var lines = new List<string>(40);
+            var lines = new List<string>(48);
             lines.AddRange(AmbientLines("IdleLines"));
             lines.AddRange(AmbientLines("WalkLines"));
+
+            // ★ 사각지대 3 — 붙잡힘 반응 4표(2026-09-02). 배열이라 리터럴 스캐너에 안 걸린다.
+            lines.AddRange(GrabLines("HeadLines"));
+            lines.AddRange(GrabLines("LegLines"));
+            lines.AddRange(GrabLines("AnyLines"));
+            lines.AddRange(GrabLines("FallbackLines"));
 
             string statesDir = Path.Combine(ScriptsRoot, "States");
             Assert.IsTrue(Directory.Exists(statesDir), $"{LogPrefix} States 폴더를 찾지 못했습니다: {statesDir}");

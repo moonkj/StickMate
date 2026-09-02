@@ -7,6 +7,7 @@ using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using StickMate.Core;
 using StickMate.Interaction;
+using StickMate.Platform;
 
 namespace StickMate.Tests.PlayMode
 {
@@ -71,27 +72,47 @@ namespace StickMate.Tests.PlayMode
         private StickConfig _config;
         private float _savedPollInterval;
 
-        private string _backup;
-        private bool _hadFile;
 
         /// <summary>축 3 — 등급 1의 원시 사실. 이름이 바뀌면 아래 단언이 먼저 실패한다.</summary>
         private static readonly FieldInfo PanelRetreatField =
             typeof(StickmanAgent).GetField("_fullscreenPanelRetreat", BindingFlags.Instance | BindingFlags.NonPublic);
 
+        /// <summary>
+        /// ★★ 2026-09-02 — 여기 있던 <b>백업/복원</b>은 <b>오염 보존기</b>였다. 걷어냈다. 되살리지 마라.
+        ///
+        /// <para><b>원래 근거가 사라졌다.</b> 옛 코드는 <c>OneTimeSetUp</c>에서 저장 파일을 통째로 읽어
+        /// 두고 <c>OneTimeTearDown</c>에서 <b>그대로 다시 썼다</b>. 그 정당화는 이 클래스가 적어 둔
+        /// <i>"저장 파일은 실행 중인 실제 앱의 것과 같은 경로"</i>였는데, 그 전제는 2026-08-31에
+        /// <c>GlobalPlayModeTestIsolation</c>이 경로를 임시 폴더로 옮기면서 <b>거짓이 됐다</b>.
+        /// 주석은 갱신되지 않았고 코드는 <b>목적 없이</b> 살아남았다.</para>
+        ///
+        /// <para><b>그리고 뜻이 정반대로 뒤집혔다.</b> 격리된 폴더에서 <c>_hadFile == true</c>는
+        /// "개발자 파일이 있다"가 아니라 <b>"앞선 픽스처나 앞선 실행이 남긴 오염이 있다"</b>는 뜻이다.
+        /// 옛 TearDown은 그 오염을 <b>다시 써서 되살렸다</b> — 뒤따르는 어떤 정리도 무효화하는 형태였고,
+        /// 픽스처마다 같은 코드가 있어 오염이 스위트 전체를 타고 <b>세탁</b>됐다.</para>
+        ///
+        /// <para>실행 사이의 이월은 별도 원인이었다 — 리디렉션 폴더를 아무도 비우지 않았다. 그쪽은
+        /// <c>GlobalPlayModeTestIsolation.PurgeIsolatedDirectories</c>가 막는다.</para>
+        ///
+        /// <para><b>대신 가드를 남긴다.</b> 격리가 꺼진 채로 이 픽스처가 돌면 씬 로드가 개발자의 실제
+        /// 저장 파일을 읽고 쓰게 된다. 그때는 조용히 진행하지 않고 <b>즉시 실패</b>한다 —
+        /// 백업/복원이 하던 안전 역할은 이 한 줄이 <b>더 정직하게</b> 대신한다.</para>
+        /// </summary>
         [OneTimeSetUp]
-        public void BackupRealSaveFile()
+        public void RequireIsolatedSaveFileAndStartClean()
         {
-            string path = CharacterSaveStore.FilePath;
-            _hadFile = File.Exists(path);
-            _backup = _hadFile ? File.ReadAllText(path) : null;
+            Assert.IsTrue(CharacterSaveStore.IsRedirectedForTesting,
+                "저장 경로가 격리되지 않았습니다 — GlobalPlayModeTestIsolation이 돌지 않았습니다. " +
+                "이대로 진행하면 개발자의 실제 저장 파일을 읽고 씁니다(절대 불변 원칙 3).");
+            GlobalPlayModeTestIsolation.PurgeIsolatedDirectories();
         }
 
+        /// <summary>격리 폴더를 다음 픽스처에 <b>넘기지 않는다</b> — 이 픽스처가 만든 저장 파일을 지운다.
+        /// 옛 <c>RestoreRealSaveFile</c>이 하던 "다시 쓰기"의 정확한 반대다(위 문단 참고).</summary>
         [OneTimeTearDown]
-        public void RestoreRealSaveFile()
+        public void ClearIsolatedSaveFile()
         {
-            string path = CharacterSaveStore.FilePath;
-            if (_hadFile) File.WriteAllText(path, _backup);
-            else if (File.Exists(path)) File.Delete(path);
+            GlobalPlayModeTestIsolation.PurgeIsolatedDirectories();
             UiLayoutModel.ResetForTesting();
         }
 
@@ -180,6 +201,15 @@ namespace StickMate.Tests.PlayMode
             for (int i = 0; i < count; i++) yield return null;
         }
 
+        /// <summary>★ <b>벽시계</b>로 기다린다(CLAUDE.md — 배치모드 PlayMode는 2,000fps 이상으로 돌아
+        /// 프레임 수 기반 예산이 실제로는 0.0N초밖에 안 되는 사고가 있었다). 임대(초 단위)를 재는
+        /// 아래 도달성 테스트는 <b>반드시</b> 이쪽을 쓴다.</summary>
+        private static IEnumerator WaitWallClock(float seconds)
+        {
+            float until = Time.realtimeSinceStartup + seconds;
+            while (Time.realtimeSinceStartup < until) yield return null;
+        }
+
         /// <summary>
         /// 지금 <b>켜져 있는</b> 캐릭터 렌더러들의 스냅샷.
         ///
@@ -212,7 +242,17 @@ namespace StickMate.Tests.PlayMode
         /// <summary>이름이 "Blocker"로 끝나는 <b>차단막</b> 콜라이더 중 지금 켜진 것.
         /// 톱니의 <c>InfoGearClickTarget</c>(아이콘 크기 히트타깃)은 여기 세지 않는다 —
         /// 톱니는 리더 판정으로 <b>등급 2</b>에 남았기 때문이다("복구는 톱니 1클릭"이 등급 1의 안전판인데
-        /// 톱니를 등급 1에 넣으면 그 안전판이 자기 자신을 지운다).</summary>
+        /// 톱니를 등급 1에 넣으면 그 안전판이 자기 자신을 지운다).
+        ///
+        /// <para>★★★ <b>2026-09-03 — 이 면제의 근거가 이 라운드 전까지 <i>거짓</i>이었다.</b>
+        /// 위 문장("복구는 톱니 1클릭")은 이 파일 세 곳과 <c>InfoGearIconWidget</c> 한 곳이
+        /// <b>주장</b>했지만, 그것이 참인지 재는 테스트는 <b>0건</b>이었다. 실제로는 톱니를 눌러도
+        /// 부채꼴이 같은 프레임에 회수되어 <b>아무 일도 일어나지 않았다</b> — 즉 면제는 존재하는데
+        /// 면제가 지키려던 탈출구는 없었다(거짓 통과 10번째 형태: 기준과 대상이 같이 틀린다).</para>
+        ///
+        /// <para>그래서 이 면제를 남기되 <b>그 전제를 실제로 재는 테스트</b>를 같은 파일에 신설했다 —
+        /// <c>등급1에서_톱니를_누르면_설정창까지_도달한다()</c>. 그 테스트가 빨개지면 이 면제는
+        /// 근거를 잃는다. <b>둘은 함께 산다</b>.</para></summary>
         private static int CountEnabledFullRectBlockers(out string names)
         {
             var all = Object.FindObjectsByType<Collider2D>(FindObjectsInactive.Include, FindObjectsSortMode.None);
@@ -280,12 +320,17 @@ namespace StickMate.Tests.PlayMode
             Assert.AreEqual(renderersBefore, CountStillEnabled(litRenderers),
                 $"{LogPrefix} 등급 1에서 캐릭터 렌더러가 꺼졌습니다 — 게임이 아닌 전체화면 앱에서 " +
                 "캐릭터가 사라지는 것이 바로 2026-08-31 신고입니다.");
+            // ★★★ 2026-09-03 — 이 두 줄은 <b>톱니가 남아 있다</b>까지만 잰다. 「그 톱니를 눌러
+            //   설정창까지 갈 수 있는가」는 <b>여기서 재지 않는다</b> — 그것을 재는 것이
+            //   등급1에서_톱니를_누르면_설정창까지_도달한다()이고, 그 테스트가 없던 동안 이 두 줄이
+            //   "탈출구가 있다"를 <b>주장만</b> 하며 초록으로 떠 있었다.
             Assert.IsTrue(_gear.IsIconVisible,
-                $"{LogPrefix} 등급 1에서 톱니가 사라졌습니다 — 등급 1의 안전판(\"복구는 톱니 1클릭\")이 " +
-                "자기 자신을 지웠습니다. 톱니는 등급 2로 남긴다는 것이 리더 판정입니다.");
+                $"{LogPrefix} 등급 1에서 톱니가 사라졌습니다 — 등급 1 탈출구의 <b>첫 홉</b>이 없어졌습니다. " +
+                "톱니는 등급 2로 남긴다는 것이 리더 판정입니다(도달성은 별도 테스트가 잽니다).");
             Assert.IsTrue(_gear.IsClickBlockerEnabled,
                 $"{LogPrefix} 톱니는 보이는데 히트타깃이 꺼졌습니다 — 보이지만 눌리지 않는 톱니는 " +
-                "탈출구가 아닙니다.");
+                "탈출구가 아닙니다. ★ 눌리는 것과 <b>눌러서 무언가 열리는 것</b>도 다릅니다 — " +
+                "후자는 등급1에서_톱니를_누르면_설정창까지_도달한다()가 잽니다.");
 
             Debug.Log($"{LogPrefix} 등급 1 확인 — 창/팝오버/부채꼴은 걷혔고 캐릭터 렌더러 " +
                 $"{renderersBefore}개와 톱니는 그대로 남았습니다.");
@@ -431,6 +476,234 @@ namespace StickMate.Tests.PlayMode
             Assert.IsFalse(_menu.IsVisible, $"{LogPrefix} 캐릭터가 숨었는데 부채꼴이 남아 있습니다.");
 
             Debug.Log($"{LogPrefix} 포함관계 실측 통과 — 캐릭터가 숨은 경로에서도 표면이 전부 함께 걷혔습니다.");
+        }
+
+        // ==================== ⑤ ★★★ R1-I 도달성 — 이 라운드의 핵심 산출물 ====================
+
+        /// <summary>
+        /// ★★★ <b>등급 1이 켜져 있는 동안 등급 1을 끄는 통제에 도달할 수 있는가</b>(불변식 R1-I).
+        ///
+        /// ============================================================================
+        /// 왜 이 테스트가 <b>없어서</b> 사고가 났는가 — 이 파일의 자백
+        /// ============================================================================
+        /// 이 파일 두 곳(<c>CountEnabledFullRectBlockers</c>의 톱니 면제 · 등급 1 테스트의 톱니 단언)과
+        /// <c>InfoGearIconWidget</c> 한 곳이 전부 <b>같은 전제</b>를 주장했다 —
+        /// <i>"복구는 톱니 1클릭"</i>. 그런데 <b>그 전제가 참인지 재는 테스트는 0건이었다.</b>
+        /// 그리고 실제로는 <b>거짓</b>이었다: 톱니는 보이고 눌렸지만, 눌러서 펼쳐진 부채꼴이
+        /// <b>같은 프레임에 회수</b>되어 화면에서는 아무 일도 일어나지 않았다.
+        ///
+        /// <para>루프의 정체: 등급 1을 끄는 유일한 스위치(설정창 [일반] "전체화면 게임 감지 시 자동
+        /// 숨김")가 <b>등급 1 때문에 닫히는 창 안에</b> 있었다. 경로 4개가 전부 막혀 있었고
+        /// (톱니 → 부채꼴 → 정보창 → 설정 / 전역 단축키 / 자동 복귀 예약 / 사용자 숨김 단축키),
+        /// 즉 <b>앱 안에 탈출구가 하나도 없었다</b>.</para>
+        ///
+        /// ============================================================================
+        /// 이 테스트가 재는 것 — <b>주장이 아니라 도달</b>
+        /// ============================================================================
+        /// 톱니 클릭에서 시작해 <b>설정창이 실제로 떠서 머무를 때까지</b>를 한 번에 걷는다.
+        /// 중간 홉을 건너뛰지 않는다 — 건너뛰면 "부채꼴은 살아남는데 정보창에서 끊긴다" 같은
+        /// 부분 회귀를 그대로 놓친다.
+        ///
+        /// <para>★ <b>양성 대조가 뒤에 붙어 있다</b>: 사용자가 표면을 전부 닫으면 허가(임대)가 만료되어
+        /// <b>같은 측정으로</b> 회수가 돌아오는 것을 관측한다. 그게 없으면 이 테스트는
+        /// "등급 1이 애초에 아무것도 안 걷는다"로도 초록이 되고, 그때 이 장치는 원칙 2의 구멍이다.</para>
+        ///
+        /// <para>★ 시간 예산은 전부 <b>벽시계</b>다(<see cref="WaitWallClock"/>) — 임대는 초 단위 계약이고,
+        /// 배치모드 PlayMode의 프레임 수는 시간과 무관하다.</para>
+        /// </summary>
+        [UnityTest]
+        [Timeout(120000)]
+        public IEnumerator 등급1에서_톱니를_누르면_설정창까지_도달한다()
+        {
+            yield return LoadSceneAndResolve();
+
+            var settings = _gear.GetComponent<SettingsWindow>();
+            Assert.IsNotNull(settings,
+                $"{LogPrefix} SettingsWindow를 찾지 못했습니다 — 등급 1을 끄는 <b>유일한 스위치</b>가 " +
+                "그 창 안에 있으므로, 창이 없으면 이 테스트가 재려는 도달성 자체가 성립하지 않습니다.");
+
+            // ---------- ① 아무것도 열려 있지 않은 상태에서 등급 1로 <b>진입</b>한다 ----------
+            SetPanelRetreat(true);
+            yield return WaitFrames(SettleFrames);
+
+            Assert.IsTrue(_agent.ArePanelsSuppressed,
+                $"{LogPrefix} 등급 1을 세웠는데 회수가 켜지지 않았습니다 — 이 테스트의 전제가 없습니다.");
+            Assert.IsFalse(_agent.IsSuspended,
+                $"{LogPrefix} 등급 1인데 IsSuspended가 참입니다(2026-08-31 신고 회귀).");
+            Assert.IsFalse(_agent.IsUserSummonGrantActive,
+                $"{LogPrefix} 등급 1 <b>진입 직후</b>인데 사용자 허가가 이미 살아 있습니다 — " +
+                "「등급 1 진입 시 전부 회수」가 깨졌습니다. 이 상태로는 아래 단언들이 " +
+                "'원래 허가가 있어서 통과'가 되어 아무것도 재지 못합니다.");
+            Assert.IsFalse(_menu.IsVisible, $"{LogPrefix} 준비 단계에서 부채꼴이 이미 펼쳐져 있습니다.");
+            Assert.IsFalse(_window.IsOpen, $"{LogPrefix} 준비 단계에서 정보창이 이미 열려 있습니다.");
+            Assert.IsFalse(settings.IsOpen, $"{LogPrefix} 준비 단계에서 설정창이 이미 열려 있습니다.");
+
+            // 톱니는 등급 2에만 걷히므로 여기서는 살아 있어야 한다 — <b>탈출구의 첫 홉</b>.
+            Assert.IsTrue(_gear.IsIconVisible && _gear.IsClickBlockerEnabled,
+                $"{LogPrefix} 등급 1에서 톱니가 보이지 않거나 눌리지 않습니다 — 첫 홉이 없으면 " +
+                "나머지 경로를 잴 필요도 없습니다.");
+
+            // ---------- ② 톱니 클릭(실제 입력과 <b>같은</b> 처리 경로) ----------
+            Vector2 center = _gear.IconScreenCenter;
+            _gear.FeedPointerForTests(true, center);
+            _gear.FeedPointerForTests(false, center);
+            yield return WaitFrames(SettleFrames);
+
+            // ★★★ 이 세 줄이 이 라운드의 계약이다.
+            Assert.IsTrue(_agent.IsUserSummonGrantActive,
+                $"{LogPrefix} 톱니를 눌렀는데 사용자 허가가 나지 않았습니다 — 등급 1 탈출구가 " +
+                "열리는 지점이 여기입니다(InfoGearIconWidget.ActivateClick).");
+            Assert.IsFalse(_agent.ArePanelsSuppressed,
+                $"{LogPrefix} 허가는 났는데 회수가 여전히 켜져 있습니다 — 허가가 소비자 창구" +
+                "(ArePanelsSuppressed)에 도달하지 않습니다.");
+            Assert.IsTrue(_menu.IsVisible,
+                $"{LogPrefix} ★ <b>톱니를 눌렀는데 부채꼴이 회수됐습니다.</b> 이것이 2026-09-03 " +
+                "이전의 실제 증상입니다 — 톱니는 보이고 눌리는데 화면에서는 아무 일도 일어나지 않아, " +
+                "사용자에게는 '톱니가 고장났다'로 보입니다. 그리고 이 경로가 막히면 등급 1을 끄는 " +
+                "방법이 앱 안에 하나도 없습니다(경로 4개 전수 확인).");
+
+            // ---------- ③ 임대가 <b>끊기지 않는다</b>(다음 클릭이 먹을 때까지 벽시계로 기다린다) ----------
+            yield return WaitWallClock(InfoGearIconWidget.MenuReadySeconds + 0.25f);
+            Assert.IsTrue(_menu.IsVisible,
+                $"{LogPrefix} 부채꼴이 {InfoGearIconWidget.MenuReadySeconds:F2}초 뒤에 사라졌습니다 — " +
+                $"허가 임대({UserSurfaceSummonPolicy.LeaseSeconds:F2}초)를 아무도 갱신하지 않았다는 뜻입니다. " +
+                "회전 게이트가 끝나기도 전에 만료되면 사용자는 다음 홉을 누를 수조차 없습니다.");
+
+            // ---------- ④ 두 번째 홉 — 부채꼴 [캐릭터] → 정보창 ----------
+            // 인덱스를 숫자로 베끼지 않는다(CLAUDE.md) — 프로덕션 열거형을 그대로 쓴다.
+            _menu.Activate((int)GearMenuButton.Character);
+            yield return WaitFrames(SettleFrames);
+            Assert.IsTrue(_window.IsOpen,
+                $"{LogPrefix} [{GearRadialMenuWidget.NameOf((int)GearMenuButton.Character)}]를 눌렀는데 " +
+                "정보창이 살아남지 못했습니다 — 두 번째 홉에서 끊깁니다.");
+
+            // ---------- ⑤ 마지막 홉 — 정보창 [설정] 칩과 <b>같은 호출</b> ----------
+            // CharacterInfoWindow.OpenSettings()가 하는 일이 정확히 이 한 줄이다(그 함수는 private이라
+            // 여기서 직접 부른다 — 문자열 사유만 다르고 경로는 같다).
+            settings.Open("등급 1 도달성 테스트 — 정보창 [설정] 칩과 같은 호출");
+            yield return WaitFrames(SettleFrames);
+            Assert.IsTrue(settings.IsOpen,
+                $"{LogPrefix} ★ <b>설정창이 열리자마자 닫혔습니다.</b> 등급 1을 끄는 유일한 스위치가 " +
+                "이 창 안에 있으므로, 이것이 곧 '등급 1을 끌 방법이 없다'입니다(불변식 R1-I 위반).");
+            Assert.IsTrue(settings.IsClickBlockerEnabled,
+                $"{LogPrefix} 설정창은 떴는데 차단막이 꺼졌습니다 — 그리면서 클릭은 안 받는 창입니다.");
+
+            // ---------- ⑥ <b>머문다</b> — 임대 수명의 4배를 벽시계로 버틴다 ----------
+            yield return WaitWallClock(UserSurfaceSummonPolicy.LeaseSeconds * 4f);
+            Assert.IsTrue(settings.IsOpen,
+                $"{LogPrefix} 설정창이 {UserSurfaceSummonPolicy.LeaseSeconds * 4f:F2}초 뒤에 사라졌습니다 — " +
+                "설정을 읽는 도중에 창이 없어지는 것은 고치려던 증상 그 자체입니다. " +
+                "이 창이 자기 Update에서 임대를 갱신하는지 확인하십시오.");
+
+            // 축 3은 <b>여전히 켜져 있어야</b> 한다 — 꺼져 있었다면 위 단언들은 등급 1을 한 번도
+            // 마주치지 않은 채 통과한 것이다(거짓 통과 #5의 형태).
+            Assert.IsTrue((bool)PanelRetreatField.GetValue(_agent),
+                $"{LogPrefix} 축 3이 저절로 꺼졌습니다 — 위 단언들은 '등급 1이 아니어서' 통과했을 뿐이고 " +
+                "이 테스트는 아무것도 재지 않았습니다.");
+
+            Debug.Log($"{LogPrefix} R1-I 도달성 통과 — 등급 1 중 톱니 → 부채꼴 → 정보창 → 설정창까지 " +
+                $"네 홉이 전부 살아남았고, 설정창이 {UserSurfaceSummonPolicy.LeaseSeconds * 4f:F2}초를 버텼습니다.");
+
+            // ================================================================
+            // ⑦ ★ 양성 대조 — 허가는 <b>백지수표가 아니다</b>
+            // ================================================================
+            // 이 절이 없으면 위 전체가 "등급 1이 애초에 아무것도 안 걷는다"로도 초록이 된다.
+            // 그 경우 이 라운드의 장치는 탈출구가 아니라 <b>원칙 2의 구멍</b>이다.
+            settings.Close("양성 대조 — 사용자가 [✕]를 눌렀다");
+            yield return WaitFrames(SettleFrames);
+
+            // 설정창은 자기가 밀어낸 정보창을 되돌린다(M8 시트 복귀). 그것도 사용자 표면이므로
+            // 임대가 이어진다 — 만료를 보려면 그것까지 닫아야 한다. 이 한 줄이 없으면 아래 대조가
+            // "왜 안 만료되지"로 흐려진다.
+            if (_window.IsOpen) _window.Close("양성 대조 — 사용자가 정보창도 닫았다");
+            yield return WaitFrames(SettleFrames);
+            Assert.IsFalse(_menu.IsVisible,
+                $"{LogPrefix} 양성 대조 준비 — 부채꼴이 아직 떠 있어 임대를 계속 갱신합니다.");
+
+            // 이제 갱신자가 하나도 없다. 임대는 스스로 만료되어야 한다.
+            yield return WaitWallClock(UserSurfaceSummonPolicy.LeaseSeconds * 3f);
+            Assert.IsFalse(_agent.IsUserSummonGrantActive,
+                $"{LogPrefix} ★ 양성 대조 실패 — 사용자가 표면을 전부 닫았는데도 허가가 " +
+                $"{UserSurfaceSummonPolicy.LeaseSeconds * 3f:F2}초 뒤까지 살아 있습니다. 허가가 " +
+                "'한 번 켜면 안 꺼지는' 형태라면 이 전체화면 세션 내내 사용자가 부르지도 않은 표면" +
+                "(할 일 리마인더 · 크래시 오버레이 · 포스트잇)이 발표 화면으로 돌아옵니다.");
+            Assert.IsTrue(_agent.ArePanelsSuppressed,
+                $"{LogPrefix} ★ 양성 대조 실패 — 허가가 만료됐는데도 회수가 돌아오지 않았습니다. " +
+                "같은 측정(ArePanelsSuppressed)으로 '회수 켜짐'을 관측하지 못한다는 뜻이므로 " +
+                "위 ②~⑥의 판정도 함께 폐기해야 합니다.");
+
+            // 그리고 허가 없이 연 표면은 <b>즉시</b> 걷힌다 — 갱신은 죽은 임대를 되살리지 않는다.
+            _window.Open("양성 대조 — 허가 없이 연 창은 살아남지 못한다");
+            yield return WaitFrames(SettleFrames);
+            Assert.IsFalse(_window.IsOpen,
+                $"{LogPrefix} ★ 양성 대조 실패 — 허가 없이 등급 1에서 연 창이 살아남았습니다. " +
+                "갱신(RenewUserSummonGrant)이 만료된 임대를 되살리고 있다는 뜻이고, 그러면 " +
+                "「등급 1 진입 시 전부 회수」가 구조적으로 깨집니다.");
+
+            Debug.Log($"{LogPrefix} 양성 대조 통과 — 허가는 사용자가 부른 표면이 살아 있는 동안만 " +
+                $"유지되고({UserSurfaceSummonPolicy.LeaseSeconds:F2}초 임대), 만료 뒤에는 같은 측정으로 " +
+                "회수가 돌아오는 것을 실제로 관측했습니다.");
+        }
+
+        // ==================== ⑥ 아직 막혀 있는 경로 — 러너에 계속 보이게 ====================
+
+        /// <summary>
+        /// ★ <b>미해결 갭 · 배정 대기</b> — 등급 1 중 <c>정보창 단축키</c>로 정보창을 여는 경로는
+        /// <b>여전히 열자마자 닫힌다</b>.
+        ///
+        /// <para><b>왜 남았나(파일 소유 문제이지 설계 문제가 아니다)</b>: 이 라운드의 허가는
+        /// <b>명시적 사용자 진입점</b>에서만 난다. 그 진입점 중 두 개는 이 라운드가 배정받은 파일 안에
+        /// 있어 닫혔다 — 톱니 클릭(<c>InfoGearIconWidget.ActivateClick</c>)과
+        /// 설정창 열기(<c>SettingsWindow.Open</c>, 전역 단축키 경로 포함). 세 번째인
+        /// <c>CharacterInfoWindow.Open</c>은 <b>이 라운드의 배정 파일이 아니다</b>(동시 진행 라운드가
+        /// 같은 폴더를 잡고 있어 리더가 파일을 갈랐다 — 2026-09-02에 겹쳐 돌다 두 건의 사고가 났다).</para>
+        ///
+        /// <para><b>영향은 「불편」이지 「막힘」이 아니다</b>: 등급 1을 <b>끄는</b> 통제(설정창)에는
+        /// 두 경로로 도달한다 — 톱니 4홉과 설정창 전역 단축키. 불변식 R1-I는 그 둘로 닫혔고,
+        /// 여기 남은 것은 정보창 단축키라는 <b>보조 경로</b> 하나다.</para>
+        ///
+        /// <para><b>고치는 법(한 줄)</b>: <c>CharacterInfoWindow.Open(string)</c>이
+        /// <c>SettingsWindow.Open</c>과 <b>같은 형태로</b> <c>TryGrantUserSummon</c>을 부르면 된다.
+        /// 그때 이 테스트를 <c>Assert.Ignore</c>에서 <b>실측으로 승격</b>하라 — 위
+        /// <c>등급1에서_톱니를_누르면_설정창까지_도달한다</c>가 그대로 본이 된다.</para>
+        ///
+        /// <para>★ <c>Assert.Fail</c>이 아니라 <c>Assert.Ignore</c>인 이유(CLAUDE.md): 빨간불로 두면
+        /// 다른 진짜 실패를 가리고, 조용히 통과시키면 잊힌다. <b>건너뜀으로 러너에 계속 떠 있어야</b>
+        /// 다음 라운드가 본다.</para>
+        /// </summary>
+        [Test]
+        public void 미해결_등급1에서_정보창_단축키_경로는_아직_허가를_받지_못한다()
+        {
+            // ★ 갭이 <b>아직 실재하는지</b>를 소스로 확인한다 — 고쳐졌는데 Ignore만 남으면 이 항목은
+            //   러너에서 영원히 "건너뜀"으로 굳어 아무 뜻도 없어진다(이 저장소의 명부 노화 사고).
+            string info = File.ReadAllText(Path.Combine(
+                Application.dataPath, "_Project", "Scripts", "Interaction", "CharacterInfoWindow.cs"));
+
+            // 니들은 프로덕션 멤버 이름에서 가져온다(문자열 하드코딩 금지 — 이름이 바뀌면 컴파일이 깨진다).
+            string grantNeedle = nameof(StickmanAgent.TryGrantUserSummon);
+
+            // ★ 부재 단언의 자격 검증: 같은 스캐너가 <b>실재하는 것</b>을 실제로 찾아내는지 먼저 보인다.
+            //   이 대조가 없으면 "0건"이 '고쳐졌다'인지 '스캐너가 죽었다'인지 구분되지 않는다.
+            StringAssert.Contains(nameof(StickmanAgent.ArePanelsSuppressed), info,
+                "양성 대조 실패 — CharacterInfoWindow.cs에서 이미 있는 이름조차 못 찾았습니다. " +
+                "경로/인코딩이 깨졌다는 뜻이므로 아래 '없음' 판정은 무효입니다.");
+
+            if (info.IndexOf(grantNeedle, System.StringComparison.Ordinal) >= 0)
+            {
+                Assert.Fail($"CharacterInfoWindow.cs가 이미 {grantNeedle}을 부릅니다 — 갭이 닫혔습니다. " +
+                    "이 Assert.Ignore를 지우고 실측 테스트로 승격하십시오(위 도달성 테스트가 본입니다). " +
+                    "남겨 두면 러너에서 영원히 '건너뜀'으로 굳어 아무것도 말하지 않습니다.");
+            }
+
+            Assert.Ignore("【미해결 갭 · 배정 대기】 신설 2026-09-03 (dev-platform)\n" +
+                "등급 1 체류 중 <정보창 전역 단축키>로 정보창을 열면 그 프레임에 다시 닫힌다 — " +
+                $"CharacterInfoWindow.Open이 {grantNeedle}을 부르지 않기 때문이다.\n" +
+                "· 왜 이 라운드가 못 고쳤나: CharacterInfoWindow.cs가 이 라운드의 배정 파일이 아니다" +
+                "(동시 진행 라운드와 파일이 겹치면 사고가 난다 — 리더가 파일을 가른다).\n" +
+                "· 심각도: 보조 경로 1개. 등급 1을 끄는 통제(설정창)에는 톱니 4홉과 설정창 단축키 " +
+                "두 경로로 여전히 도달한다(불변식 R1-I는 닫혔다).\n" +
+                "· 처방: SettingsWindow.Open과 같은 형태로 한 줄. 사용자가 부르지 않은 복귀 경로에서는 " +
+                "부르지 말 것(그 구분이 이 장치가 원칙 2의 구멍이 되지 않는 유일한 이유다).");
         }
     }
 }

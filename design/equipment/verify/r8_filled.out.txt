@@ -1,0 +1,59 @@
+╔══ 교정 — 프로브가 살아 있는가 (깨지면 뒤 숫자를 전부 폐기한다) ══╗
+  [A1] 합성 YAML 두 값 판별      True   [('Yes', 1, True), ('No', 0, False)]
+  [A2] wornShapes 없음 -> None   True 
+  [B1] 합성 C# 4형태 판별        True   [('T', 1, True, True), ('F', 1, False, False), ('S', 2, False, False), ('P', 0, True, True)]
+  [B2] 주석 안 filled 는 무시     True 
+  교정 OK
+
+╔══ census — tone==1(보조색) 조각의 filled 분포 ══╗
+  코드(.cs)  보조색 조각 24개 · filled 값 종류 [False, True]
+  애셋       보조색 조각 6개 · filled 값 종류 [True]
+  애셋 전체(tone 무관) filled 값 종류 [False, True]
+  ⇒ 두 파서 모두 실제로 두 값을 낸다. 판정으로 넘어간다.
+
+╔══ 판정 — 13종의 보조색 조각 ══╗
+  슬롯   #  이름         자유윤곽     보조색 조각           filled 출처       처방 ×0.35
+  BACK 1  긴망토          0.00획  CapeCollar       true   코드       듣는다
+  BACK 3  배낭           0.00획  PackBuckle       true   코드       듣는다
+  BACK 0  짧은망토         0.00획  CapeCollar       true   코드       듣는다
+  BACK 4  판초           0.00획  CapeCollar       true   코드       듣는다
+  HAIR 1  단정한머리        0.00획  HairPart         true   코드       듣는다
+  HAIR 4  바가지머리        0.00획  HairFringe       false  코드(생략=기본 false) ★ 안 듣는다
+  HEAD 5  밀짚모자         0.00획  StrawBand        false  코드(생략=기본 false) ★ 안 듣는다
+  HEAD 4  베레모          0.00획  BeretRim         false  코드(생략=기본 false) ★ 안 듣는다
+  HEAD 3  왕관           0.00획  CrownRim         false  코드(생략=기본 false) ★ 안 듣는다
+  HEAD 2  중절모          0.00획  FedoraBand       false  코드(생략=기본 false) ★ 안 듣는다
+  NECK 1  줄무늬타이        0.00획  TieStripe        true   애셋       듣는다
+  EYES 0  선글라스         0.43획  SunglassBridge   false  코드(생략=기본 false) ★ 안 듣는다
+  EYES 1  동그란안경        0.82획  RoundBridge      false  코드(생략=기본 false) ★ 안 듣는다
+
+  filled=true 6건 (처방이 듣는다) · filled=false 7건 (★ 처방이 안 듣는다)
+
+╔══ 대조군 — 자유 윤곽 ≥ 1획인 아이템의 보조색 조각 ══╗
+  BACK 2  날개         WingSpine        filled=false
+  BACK 5  요정날개       WingSpine        filled=false
+  EYES 2  고글         GoggleStrap      filled=true
+  EYES 3  외알안경       MonocleEye       filled=true
+  EYES 4  뿔테안경       BrowlineBar      filled=true
+  EYES 5  안대         PatchEye         filled=true
+  HAIR 0  삐침머리       HairCrest        filled=true
+  HAIR 2  곱슬머리       HairCoil         filled=true
+  HAIR 3  민머리        HairRimFront     filled=true
+  HAIR 5  묶은머리       HairTail         filled=true
+  HEAD 0  야구모자       HatBrim          filled=true
+  HEAD 1  털모자        BeaniePom        filled=true
+  NECK 0  bowtie     BowTieKnot       filled=true
+  NECK 2  scarf      ScarfWrap        filled=true
+  NECK 3  bell       Bell             filled=true
+  NECK 4  pendant    Pendant          filled=true
+  NECK 5  bandana    BandanaTail      filled=true
+
+╔══ 부수 영향 — tone==2(Shade) 조각은 filled 와 무관하게 ×0.35를 탄다 ══╗
+  BACK 0  짧은망토       CapeFold         filled=false
+  BACK 0  짧은망토       CapeFold2        filled=false
+  BACK 1  긴망토        CapeFold         filled=false
+  BACK 1  긴망토        CapeFold2        filled=false
+  BACK 4  판초         CapeFold         filled=false
+  BACK 4  판초         CapeFold2        filled=false
+  HEAD 1  털모자        BeanieCuff       filled=false
+  계 7건 — design-art §23-3 이 안 적은 두 번째 소비처다(ToneColor).

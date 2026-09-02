@@ -1581,8 +1581,18 @@ namespace StickMate.Dialogue
         // (말풍선=Head 트랜스폼 / 이모트=Body 위치)를 쓰기 때문이다 — 상수로 맞추면 포즈가 바뀔 때마다
         // 어긋난다.
         //
-        // 이모트 쪽은 같은 시간 동안 가로로 비켜 준다(HardwareReactionRenderer.TickDialogueDodge).
-        // 세로/가로를 나눠 각자 자기 좌표만 만지므로 서로의 배치 로직을 알 필요가 없다.
+        // 이모트 쪽은 애초에 머리 **옆**으로 나가 있다(HardwareReactionRenderer.ChooseSide /
+        // HeadWorldPosition의 HeadSideOffsetX). 세로/가로를 나눠 각자 자기 좌표만 만지므로 서로의
+        // 배치 로직을 알 필요가 없다.
+        //
+        // ★ 2026-09-03 정정 — 원래 "이모트 쪽은 **같은 시간 동안 가로로 비켜 준다**
+        // (HardwareReactionRenderer.TickDialogueDodge)"라고 적혀 있었으나 **두 군데가 다 거짓**이었다:
+        //   (가) `TickDialogueDodge`라는 메서드는 존재하지 않는다(그 이름은 이 주석에만 있었다).
+        //   (나) 이모트의 가로 오프셋은 **말풍선과 무관한 상수**다 — ChooseSide()가 소환 시점에
+        //        화면 중앙 쪽으로 한 번 정하고 이모트가 사라질 때까지 바꾸지 않으며, 말풍선이 떴는지
+        //        여부를 **조회조차 하지 않는다**. "같은 시간 동안"이라는 동기화는 코드에 없다.
+        // 즉 두 연출을 겹치지 않게 하는 것은 **이쪽의 세로 회피(TickEmoteLift) 한 방향뿐**이다.
+        // 그것을 지우면서 "가로는 저쪽이 비켜 주니까 괜찮다"고 판단하면 겹침이 그대로 돌아온다.
         //
         // 화면 위 잘림: 아래 UpdatePlacement의 기존 클램프
         //   panelBottom = Min(panelBottom, screenH - ScreenEdgeMargin - panelSize.y)

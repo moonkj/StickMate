@@ -150,10 +150,17 @@ namespace StickMate.Tests.EditMode
                 "이 검사가 실패하면 위 '갈린다' 검사들은 전부 공허합니다.");
         }
 
-        /// <summary>앞머리 선은 실루엣의 안쪽 경계와 <b>정확히 겹친다</b>(간격 0).
+        /// <summary>앞머리 <b>띠</b>의 아랫변은 실루엣의 안쪽 경계와 <b>정확히 겹친다</b>(간격 0)이고,
+        /// 그 위로 세운 윗변은 <b>확실히 떨어져</b>(≥1.5 윤곽선 펜) 있다.
         /// <para>규칙 4가 "최악"이라고 못박은 것은 <c>0 &lt; 간격 &lt; 1획</c>이지 겹침이 아니다.
         /// 겹치면 화면에서 선 하나(보조색)로 읽히고, 조금이라도 어긋나면 그 순간
-        /// "선을 두 번 그린 실수"가 된다 — 베레모가 정확히 그 상태였다(아래 3절).</para></summary>
+        /// "선을 두 번 그린 실수"가 된다 — 베레모가 정확히 그 상태였다(아래 3절).</para>
+        ///
+        /// <para>★★ <b>2026-09-03(스펙 14-1)</b> — 앞머리가 <b>낱선에서 닫힌 채움 띠</b>가 됐다.
+        /// 그래서 (a) 재는 자가 낱선 예산(2.00pt)에서 <b>채움 윤곽선 예산</b>(1.00pt)으로 바뀌고,
+        /// (b) 최댓값 하나로 재던 것을 <b>이음매 / 두께</b> 둘로 나눈다. 나누지 않으면
+        /// "아랫변이 통째로 떠도 윗변이 멀어서 통과"하는 구멍이 생긴다.
+        /// 근거와 양성 대조는 <see cref="AccessoryFilledBandRuler"/>에 있다.</para></summary>
         [Test]
         public void 바가지_앞머리_선은_실루엣_경계와_정확히_겹친다()
         {
@@ -164,10 +171,26 @@ namespace StickMate.Tests.EditMode
             AccessoryShapeBuilder.Shape mass = AccessorySilhouetteMetrics.Find(bowl, "HairMass");
             AccessoryShapeBuilder.Shape fringe = AccessorySilhouetteMetrics.Find(bowl, "HairFringe");
 
-            float gap = AccessorySilhouetteMetrics.MaxGapToShape(rig, fringe.Points, mass);
-            Assert.That(gap, Is.LessThan(1e-4f).Or.GreaterThanOrEqualTo(W * 1.5f),
-                $"앞머리 선이 실루엣 경계에서 {gap / W:F2}획 떨어져 있습니다 — 0(겹침)이거나 1.5획 이상이어야 합니다. " +
-                "그 사이는 붙은 것도 뗀 것도 아니라 선을 두 번 그린 실수로 보입니다(37-6 규칙 4).");
+            // ★ 「채운 도형인가」를 코드로 확인 — 자 선택의 근거 전부가 이 한 줄이다.
+            AccessoryFilledBandRuler.AssertRaisedBandForm(rig, fringe, "바가지 앞머리 띠");
+
+            float seamGap = AccessorySilhouetteMetrics.MaxGapToShape(
+                rig, AccessoryFilledBandRuler.BottomEdge(fringe), mass);
+            Assert.Less(seamGap, AccessoryFilledBandRuler.CoincidenceInR,
+                $"앞머리 띠의 <b>아랫변</b>이 실루엣 경계에서 {seamGap / W:F2}획(낱선 획 기준) 떠 있습니다 — " +
+                "아랫변은 BowlSilhouette의 안쪽 경계와 <b>같은 식</b>을 써야 합니다. " +
+                "두 벌로 적으면 한쪽만 고쳐 선이 어긋나고, 그 어긋남은 띠 두께에 묻혀 " +
+                "최댓값 검사로는 보이지 않습니다.");
+
+            float pen = AccessoryFilledBandRuler.PenInR(fringe);
+            Assert.AreEqual(AccessoryFilledBandRuler.FillOutlinePenInR, pen, 1e-6f,
+                "앞머리 띠에 낱선 자가 배정됐습니다 — 채움을 확인했는데 자가 안 따라왔습니다.");
+
+            float thickness = AccessorySilhouetteMetrics.MaxGapToShape(rig, fringe.Points, mass);
+            Assert.GreaterOrEqual(thickness, pen * AccessoryFilledBandRuler.SeparationStrokes,
+                $"앞머리 띠의 두께가 {thickness / pen:F2}획(윤곽선 펜 {pen:F5}R 기준)뿐입니다 — " +
+                "1.5획 미만이면 윗변과 실루엣 경계가 각자의 잉크로 맞붙어 " +
+                "'선을 두 번 그린 실수'로 읽힙니다(37-6 규칙 4).");
         }
 
         /// <summary>
@@ -348,6 +371,12 @@ namespace StickMate.Tests.EditMode
         // 3. 베레모 — 보조색 테를 밑변 그 자체로
         // ============================================================================
 
+        /// <summary>테의 아랫변은 몸통 밑변 <b>그 자체</b>(간격 0)이고, 그 위로 세운 윗변은
+        /// 자기 <b>윤곽선 펜</b> 1.5개 이상 떨어져 있다.
+        /// <para>★★ 2026-09-03(스펙 14-1) — 테가 <b>낱선에서 닫힌 채움 띠</b>가 됐다. 자와 판정 구조가
+        /// 바뀐 근거는 <see cref="AccessoryFilledBandRuler"/>에 있다. 베레모만 윗변 꼭짓점 <b>하나</b>가
+        /// 수직 압출이 아니다 — 몸통 왼쪽 변이 기울어 있어 그 자리를 변 위로 물리기 때문이고,
+        /// 그 사유는 도형 주석에 적혀 있다. 그 예외 <b>개수</b>를 여기서 못 박는다(늘면 실패한다).</para></summary>
         [Test]
         public void 베레모_보조색_테는_자기_밑변과_정확히_겹친다()
         {
@@ -358,11 +387,25 @@ namespace StickMate.Tests.EditMode
             AccessoryShapeBuilder.Shape body = AccessorySilhouetteMetrics.Find(beret, "BeretBody");
             AccessoryShapeBuilder.Shape rim = AccessorySilhouetteMetrics.Find(beret, "BeretRim");
 
-            float gap = AccessorySilhouetteMetrics.MaxGapToShape(rig, rim.Points, body);
-            Assert.That(gap, Is.LessThan(1e-4f).Or.GreaterThanOrEqualTo(W * 1.5f),
-                $"베레모 테가 관 실루엣에서 {gap / W:F2}획 떨어져 있습니다(옛 값 0.26획). " +
-                "0 < 간격 < 1획은 규칙 4가 '최악'이라고 못박은 구간이라, 테가 밑단이 아니라 " +
-                "관을 가로지르는 띠로 읽혀 베레모가 '띠 두른 정모'가 됩니다.");
+            // ★ 「채운 도형인가」+ 「올린 띠 규약」. 기운 꼭짓점은 정확히 1개여야 한다.
+            AccessoryFilledBandRuler.AssertRaisedBandForm(rig, rim, "베레모 테", slantedTopCorners: 1);
+
+            float seamGap = AccessorySilhouetteMetrics.MaxGapToShape(
+                rig, AccessoryFilledBandRuler.BottomEdge(rim), body);
+            Assert.Less(seamGap, AccessoryFilledBandRuler.CoincidenceInR,
+                $"베레모 테의 <b>아랫변</b>이 몸통 실루엣에서 {seamGap / W:F2}획(낱선 획 기준) 떠 " +
+                "있습니다(옛 값 0.26획). 아랫변은 몸통 밑변의 점들(frontFoot·innerFoot·backTip)을 " +
+                "<b>그대로</b> 받아야 합니다 — 그 어긋남은 띠 두께에 묻혀 최댓값 검사로는 안 보입니다.");
+
+            float pen = AccessoryFilledBandRuler.PenInR(rim);
+            Assert.AreEqual(AccessoryFilledBandRuler.FillOutlinePenInR, pen, 1e-6f,
+                "베레모 테에 낱선 자가 배정됐습니다 — 채움을 확인했는데 자가 안 따라왔습니다.");
+
+            float thickness = AccessorySilhouetteMetrics.MaxGapToShape(rig, rim.Points, body);
+            Assert.GreaterOrEqual(thickness, pen * AccessoryFilledBandRuler.SeparationStrokes,
+                $"베레모 테의 두께가 {thickness / pen:F2}획(윤곽선 펜 {pen:F5}R 기준)뿐입니다 — " +
+                "1.5획 미만이면 테가 밑단이 아니라 관을 가로지르는 띠로 읽혀 베레모가 " +
+                "'띠 두른 정모'가 됩니다(37-6 규칙 4).");
         }
 
         /// <summary>★ 네거티브 컨트롤 — 옛 테(x −1.10R ~ +0.84R, y = brimY)를 그대로 재구성한다.

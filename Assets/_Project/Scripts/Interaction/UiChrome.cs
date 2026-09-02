@@ -318,24 +318,39 @@ namespace StickMate.Interaction
         /// <summary>얇은 구분선 rgba(255,255,255,0.07) — <see cref="CardBorder"/>보다 한 단 더 옅다.</summary>
         public static readonly Color Divider = new Color(1f, 1f, 1f, 0.07f);
 
-        // ==================== 착용 카테고리 틴트 (핸드오프) ====================
-        // 8개 카테고리에 4가지 색이 두 번 돌아간다(장비 계열 4 + 외형 계열 4). 카테고리 → 색 매핑을
-        // 여기서만 한다 — 카드/아이콘/상세 패널이 각자 색을 고르면 같은 카테고리가 화면마다 다른 색이 된다.
+        // ==================== 착용 카테고리 틴트 ====================
+        // 카테고리 7종이 색 4가지를 나눠 쓴다. 매핑은 여기서만 한다 — 카드/아이콘/상세 패널이 각자
+        // 색을 고르면 같은 카테고리가 화면마다 다른 색이 된다.
         // ★ 34-1: 어두운 바탕에서 33-1의 값(#c4622d 등)은 진흙색으로 가라앉는다 — 명도를 올렸다.
-        //   EYES/HAIR만 파랑에서 <b>청록으로 이동</b>했다: 신규 Accent(#5da1f5)와 같은 색상대라
-        //   "강조"와 "카테고리"가 구분되지 않기 때문이다.
+        //   그때 파랑에서 <b>청록으로 이동</b>한 것은 아래 두 번째 색 하나다: 신규 Accent(#5da1f5)와
+        //   같은 색상대라 "강조"와 "카테고리"가 구분되지 않기 때문이다(당시 그 자리는 EYES/HAIR 몫이었다).
         private static readonly Color[] _categoryTints =
         {
-            new Color(0.910f, 0.514f, 0.290f, 1f),   // #e8834a 살구빛 주황 — HEAD / FACE
-            new Color(0.310f, 0.753f, 0.776f, 1f),   // #4fc0c6 청록 — EYES / HAIR
-            new Color(0.549f, 0.753f, 0.431f, 1f),   // #8cc06e 연둣빛 초록 — NECK / FX
-            new Color(0.690f, 0.561f, 0.816f, 1f),   // #b08fd0 라벤더 — BACK / PET
+            new Color(0.910f, 0.514f, 0.290f, 1f),   // #e8834a 살구빛 주황 — HEAD
+            new Color(0.310f, 0.753f, 0.776f, 1f),   // #4fc0c6 청록 — EYES + PET
+            new Color(0.549f, 0.753f, 0.431f, 1f),   // #8cc06e 연둣빛 초록 — NECK + HAIR
+            new Color(0.690f, 0.561f, 0.816f, 1f),   // #b08fd0 라벤더 — BACK + FX
         };
 
-        /// <summary>이 카테고리의 대표색. 장비 계열(0~3)과 외형 계열(4~7)이 같은 4색을 나눠 쓴다 —
-        /// 두 계열이 같은 자리에 대응한다는 것을 색으로 읽히게 한 핸드오프의 의도다.</summary>
+        /// <summary>슬롯 → <see cref="_categoryTints"/> 자리. ★ <b>산술로 되돌리지 마라 — 깨진 것이
+        /// 그 산술이었다.</b>
+        /// <para>옛 코드는 <c>(int)slot &amp; 3</c>이었고 <b>태어날 때부터 틀렸다</b>. 회전이 아니다:
+        /// 핸드오프의 <b>8칸 표</b>를 <b>7칸 enum</b>에 옮겨 적은 것이고(FACE 자리는 커밋된 어느 판본에도
+        /// 존재한 적이 없다), 그 결과 HEAD와 HAIR가 같은 색을 받았다. 하필 그 둘이 몸 위에서 가장 크게
+        /// 겹치는 쌍이고(잉크 봉투 IoU <b>0.371</b>) <c>hidesHair</c>로 기능까지 얽혀 있다 — 색이
+        /// "이 둘은 한 몸"이라고 먼저 말해 버린다. 지금 짝의 최대 겹침은 <b>0.015</b>(옛 값의 4%)이고
+        /// 새로 만든 색은 0개다(design-art 실측).</para>
+        /// <para>라벤더의 짝이 PET이 아니라 FX인 이유는 정렬층이다: 몸 뒤(음수 층)에 그려지는 것은
+        /// <c>AccessoryShapeBuilder.SortBack</c>(−1)과 <c>CharacterFxRenderer.SortFootprint</c>(−2)
+        /// 둘뿐이고, PET은 <c>CharacterPetRenderer.SortDefault</c>(4)라 <b>앞</b>이다.</para>
+        /// <para>슬롯이 늘면 여기서 <b>던진다</b> — 조용히 엉뚱한 색을 주는 것보다 낫다. 그전에
+        /// <c>Tests/EditMode/CategoryTintMappingTests</c>가 길이 불일치로 먼저 잡는다.</para></summary>
+        private static readonly int[] _categoryTintIndex = { 0, 1, 2, 3, 2, 3, 1 };
+
+        /// <summary>이 카테고리의 대표색. 몸 위에서 크게 겹치는 쌍끼리는 서로 다른 색이 되도록
+        /// 짝지어져 있다 — 근거는 <see cref="_categoryTintIndex"/>.</summary>
         public static Color CategoryTint(StickMate.Core.EquipmentSlot slot)
-            => _categoryTints[(int)slot & 3];
+            => _categoryTints[_categoryTintIndex[(int)slot]];
 
         /// <summary>틴트를 <b>넓은 면</b>에 깔 때(카드 썸네일 배경 등) 쓰는 옅은 채움.
         /// <para>알파 <b>30/255</b>. 34-1은 46/255를 제안했지만 실제로 찍어 보고 낮췄다 — 그 표가 쓰이는

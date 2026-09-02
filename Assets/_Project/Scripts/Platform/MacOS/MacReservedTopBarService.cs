@@ -1,15 +1,12 @@
 #if UNITY_STANDALONE_OSX
-using Kirurobo;
-using UnityEngine;
-
 namespace StickMate.Platform.MacOS
 {
     /// <summary>
     /// ★ 2026-09-02 — macOS <b>메뉴바 두께</b>의 사실 조회. docs/UX_FLOW.md 41-1 ③.
     ///
     /// <para>이 클래스는 <b>판정을 하지 않는다</b> — "그러니까 팝오버를 어디에 놓아라"는
-    /// <see cref="SurfaceSafeAreaPolicy"/>(플랫폼 중립)의 몫이다. 여기 있는 것은 뺄셈 한 줄뿐이다
-    /// (CLAUDE.md: "플랫폼 전용 코드는 사실 조회만").</para>
+    /// <see cref="SurfaceSafeAreaPolicy"/>(플랫폼 중립)의 몫이다. 여기 있는 것은 네 방향 조회에서
+    /// <c>Top</c> 한 값을 꺼내는 일뿐이다(CLAUDE.md: "플랫폼 전용 코드는 사실 조회만").</para>
     ///
     /// ============================================================================
     /// 새 네이티브 코드가 0줄인 이유 — 두 조회가 이미 있다
@@ -40,17 +37,29 @@ namespace StickMate.Platform.MacOS
     ///        어긋난 것이다(멀티모니터 원점 혼선 등). 그때는 <b>0으로 접는다</b> — 화면 위쪽을
     ///        근거 없이 잘라 먹는 쪽이 더 나쁘다.</item>
     /// </list>
+    ///
+    /// ============================================================================
+    /// ★ 2026-09-03 — 뺄셈은 이제 여기 없다. <see cref="MacReservedScreenEdgeService"/>가 한 벌로 갖는다
+    /// ============================================================================
+    /// 같은 날 화면 <b>좌·우</b> 예약 띠(Dock 좌/우 배치, Windows 좌/우 도킹 작업표시줄)를 다루는
+    /// 네 방향 계약 <see cref="IReservedScreenEdgeService"/>가 생겼고, 그 구현이 <b>같은 두 조회</b>에서
+    /// 네 변을 한 번에 뺀다. 상단 산술을 여기에 남겨 두면 <b>두 벌</b>이 되고, 이 저장소의 규칙대로
+    /// 다음 라운드에 반드시 한쪽만 고쳐진다. 그래서 이 클래스는 네 방향 조회의 <c>Top</c>만 꺼내는
+    /// <b>좁은 창</b>이 됐다.
+    ///
+    /// <para><b>이 클래스를 지우지 않는 이유</b>: 상단 계약의 소비 호출부가 이미 다섯 곳이고
+    /// (<c>Interaction/InfoGearIconWidget.cs</c> · <c>Interaction/GearRadialMenuWidget.cs</c> ·
+    /// <c>Interaction/CharacterInfoWindow.Layout.cs</c> · <c>Interaction/TodoPostItWidget.cs</c> ·
+    /// <c>Interaction/PopoverPanel.cs</c>) 전부 <see cref="ReservedTopBarProbe"/>를 지난다.
+    /// 계약을 갈아엎는 것과 산술을 한 벌로 만드는 것은 다른 일이고, 지금 필요한 것은 뒤쪽이다.</para>
     /// </summary>
     public sealed class MacReservedTopBarService : IReservedTopBarService
     {
-        /// <summary>이보다 두꺼우면 메뉴바가 아니라 조회가 어긋난 것으로 본다(화면 높이 대비 비율).</summary>
-        private const float SanityMaxInsetFraction = 0.25f;
-
-        private readonly MacWindowService _display;
+        private readonly MacReservedScreenEdgeService _edges;
 
         public MacReservedTopBarService(MacWindowService display)
         {
-            _display = display;
+            _edges = new MacReservedScreenEdgeService(display);
         }
 
         /// <summary>플랫폼 서비스에서 <see cref="MacWindowService"/>를 찾아 조립한다. 못 찾으면 false —
@@ -65,17 +74,12 @@ namespace StickMate.Platform.MacOS
         public bool TryGetReservedTopInsetPoints(out float insetPoints)
         {
             insetPoints = 0f;
-            if (_display == null) return false;
-            if (!_display.TryGetMainDisplayBounds(out Rect display) || display.height <= 0f) return false;
+            if (_edges == null) return false;
+            if (!_edges.TryGetReservedEdgeInsetsPoints(out ReservedEdgeInsets insets)) return false;
+            if (!insets.IsMeasured(ReservedEdge.Top)) return false;   // 상식 범위 밖 / 조회 어긋남.
 
-            // GetMonitorRect(0)은 macOS에서 visibleFrame(Cocoa 좌하단 원점)이다 — 실측 (0,75,1512,874).
-            Rect visible = UniWindowController.GetMonitorRect(0);
-            if (visible.height <= 0f) return false;
-
-            float inset = display.height - (visible.y + visible.height);
-            if (float.IsNaN(inset) || float.IsInfinity(inset)) return false;
-            if (inset <= 0f) return false;                                       // 자동 숨김 / 보조 화면.
-            if (inset > display.height * SanityMaxInsetFraction) return false;   // 조회가 어긋났다.
+            float inset = insets.PointsFor(ReservedEdge.Top);
+            if (inset <= 0f) return false;                            // 자동 숨김 / 보조 화면.
 
             insetPoints = inset;
             return true;

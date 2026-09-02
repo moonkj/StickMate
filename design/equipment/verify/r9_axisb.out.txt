@@ -1,0 +1,74 @@
+╔══ 교정 ══╗
+  [OK] 점-다각형 안/밖 판정
+  [OK] CR 흰/검 21.0
+  [OK] 변 표본 600점
+
+╔══ 모집단 재구성 — 보조색 조각이 Filled 이고 그 윤곽이 주색 채움 위를 지나는가 ══╗
+  슬롯   #  이름          보조색 조각           Filled       주채움위
+  HEAD 0  야구모자        HatBrim          true        18.9%
+  HEAD 1  털모자         BeaniePom        true        27.5%
+  HEAD 2  중절모         FedoraBand       false        0.0%
+  HEAD 3  왕관          CrownRim         false        0.0%
+  HEAD 4  베레모         BeretRim         false        0.0%
+  HEAD 5  밀짚모자        StrawBand        false        0.0%
+  EYES 0  선글라스        SunglassBridge   false        0.0%
+  EYES 1  동그란안경       RoundBridge      false        0.0%
+  EYES 2  고글          GoggleStrap      true         5.4%
+  EYES 3  외알안경        MonocleEye       true         0.0%
+  EYES 4  뿔테안경        BrowlineBar      true        17.3%
+  EYES 5  안대          PatchEye         true         0.0%
+  NECK 0  나비넥타이       BowTieKnot       true         0.0%
+  NECK 1  줄무늬타이       TieStripe        true       100.0%
+  NECK 2  목도리         ScarfWrap        true        21.1%
+  NECK 3  방울목걸이       Bell             true         0.0%
+  NECK 4  펜던트         Pendant          true         0.0%
+  NECK 5  반다나         BandanaTail      true        20.4%
+  BACK 0  짧은망토        CapeCollar       true        57.4%
+  BACK 1  긴망토         CapeCollar       true        57.4%
+  BACK 2  날개          WingSpine        false        0.0%
+  BACK 3  배낭          PackBuckle       true       100.0%
+  BACK 4  판초          CapeCollar       true        57.2%
+  BACK 5  요정날개        WingSpine        false        0.0%
+  HAIR 0  삐친머리        HairCrest        true        32.9%
+  HAIR 1  단정한머리       HairPart         true       100.0%
+  HAIR 2  곱슬머리        HairCoil         true         0.0%
+  HAIR 3  민머리         HairRimFront     true         0.0%
+  HAIR 4  바가지머리       HairFringe       false        0.0%
+  HAIR 5  포니테일        HairTail         true        41.0%
+
+  ⇒ 축 B 모집단 **14종** (제외 16종: 보조색이 안 채워졌거나 주색 채움 위를 안 지난다)
+     제외: HEAD 중절모, HEAD 왕관, HEAD 베레모, HEAD 밀짚모자, EYES 선글라스, EYES 동그란안경, EYES 외알안경, EYES 안대, NECK 나비넥타이, NECK 방울목걸이, NECK 펜던트, BACK 날개, BACK 요정날개, HAIR 곱슬머리, HAIR 민머리, HAIR 바가지머리
+     ★ FX 6 · PET 6 은 애초에 모집단이 아니다(아이콘에 Polygon 0개 = FillOutlineColor 미호출)
+
+╔══ 축 B — CR(보조색×k, 주색), 모집단 14종 ══╗
+  배수           최악       최고    3.0미달   최악 아이템
+  ×0.62     1.611    2.496       14   BACK 긴망토
+  ×0.45     2.284    3.398       10   BACK 긴망토
+  ×0.40     2.522    3.700        8   BACK 긴망토
+  ×0.36     2.722    3.948        5   BACK 긴망토
+  ×0.35     2.774    4.011        5   BACK 긴망토
+  ×0.32     2.929    4.198        3   BACK 긴망토
+  ×0.30     3.033    4.322        0   BACK 긴망토
+  ×0.28     3.137    4.445        0   BACK 긴망토
+  ×0.25     3.292    4.625        0   BACK 긴망토
+  ★ 모집단 전원이 3.0을 넘는 **최대 배수 = 0.3063**  (×0.35 여유 -0.0437 · ×0.30 여유 +0.0063)
+  ×0.35 미달 5건: BACK 긴망토 2.774, BACK 짧은망토 2.774, HAIR 단정한머리 2.836, EYES 고글 2.966, HAIR 포니테일 2.989
+  ×0.30 미달 0건: (없음)
+
+╔══ 참고 — 제외된 종의 값(모집단이었다면 어땠는가) ══╗
+  HEAD 중절모         ×0.35 3.182 · ×0.30 3.446
+  HEAD 왕관          ×0.35 3.294 · ×0.30 3.613
+  HEAD 베레모         ×0.35 3.182 · ×0.30 3.446
+  HEAD 밀짚모자        ×0.35 3.806 · ×0.30 4.122
+  EYES 선글라스        ×0.35 3.215 · ×0.30 3.453
+  EYES 동그란안경       ×0.35 2.940 · ×0.30 3.186
+  EYES 외알안경        ×0.35 3.637 · ×0.30 3.908
+  EYES 안대          ×0.35 3.155 · ×0.30 3.419
+  NECK 나비넥타이       ×0.35 3.404 · ×0.30 3.722
+  NECK 방울목걸이       ×0.35 3.032 · ×0.30 3.298
+  NECK 펜던트         ×0.35 2.881 · ×0.30 3.133
+  BACK 날개          ×0.35 3.967 · ×0.30 4.285
+  BACK 요정날개        ×0.35 3.967 · ×0.30 4.285
+  HAIR 곱슬머리        ×0.35 2.989 · ×0.30 3.229
+  HAIR 민머리         ×0.35 3.060 · ×0.30 3.313
+  HAIR 바가지머리       ×0.35 2.836 · ×0.30 3.088

@@ -25,7 +25,7 @@ Tests/EditMode/Golden/DialogueBudgetKoGolden.txt 생성기.
     그래서 지금은 아래 CALIBRATION 이 <b>러너가 실제로 뱉은 비트</b>로 계산기를 먼저 교정하고,
     교정이 깨지면 <b>굽기를 거부</b>한다(TEAM.md 공통 처방: 교정이 깨지면 그 뒤 숫자를 전부 폐기).
 """
-import re, io, os, glob, struct
+import re, io, os, sys, glob, struct   # sys: 교정 실패 시 sys.exit(1) — 빠져 있으면 NameError로 죽는다
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 S = os.path.join(ROOT, 'Assets', '_Project', 'Scripts')
@@ -83,14 +83,28 @@ def calibrate():
 
 def scan():
     """C# DialogueCorpus 와 **같은 규칙**으로 훑는다. 한쪽만 고치면 테스트가 빨개진다."""
-    src = rd('Dialogue/AmbientChatter.cs')
 
-    def arr(name):
+    def arr(src, name):
         m = re.search(r'private static readonly string\[\]\s+' + name + r'\s*=\s*\{(.*?)\n        \};', src, re.S)
+        if m is None:
+            print('  ★ 대사표를 찾지 못했다: %s — 이름이 바뀌었으면 이 스캐너도 함께 고쳐라.' % name)
+            sys.exit(1)
         body = '\n'.join(l for l in m.group(1).split('\n') if not l.strip().startswith('//'))
-        return re.findall(r'"([^"]*)"', body)
+        found = re.findall(r'"([^"]*)"', body)
+        if not found:
+            print('  ★ 대사표가 비었다: %s — 0건을 그대로 구우면 골든이 조용히 쪼그라든다.' % name)
+            sys.exit(1)
+        return found
 
-    texts = arr('IdleLines') + arr('WalkLines')
+    ambient = rd('Dialogue/AmbientChatter.cs')
+    texts = arr(ambient, 'IdleLines') + arr(ambient, 'WalkLines')
+
+    # ★ 사각지대 3(2026-09-02) — 붙잡힘 반응 9줄. AmbientChatter 와 같은 **배열** 형태라
+    #   DialogueLine.Say|React 리터럴 스캐너에는 구조적으로 걸리지 않는다.
+    #   HeadPool/LegPool 은 위 표들의 **합본**이라 훑지 않는다(중복만 늘어난다).
+    grab = rd('Dialogue/GrabReactionLines.cs')
+    for name in ('HeadLines', 'LegLines', 'AnyLines', 'FallbackLines'):
+        texts += arr(grab, name)
     for f in sorted(glob.glob(os.path.join(S, 'States', '**', '*.cs'), recursive=True)):
         texts += re.findall(r'DialogueLine\.(?:Say|React)\(\s*"([^"]*)"',
                             io.open(f, encoding='utf-8').read())
@@ -113,7 +127,7 @@ HEADER = u"""# 한국어 가독예산 골든 — DialogueBudget.ReadingSeconds �
 #   그게 의도다. 리뷰어가 diff에서 예산 변화를 직접 보게 하려는 것이다.
 #   생성기: docs/localization/verify/golden_gen.py
 #
-# 표본 = AmbientChatter + States/ DialogueLine.Say|React +
+# 표본 = AmbientChatter 배열 + GrabReactionLines 배열 + States/ DialogueLine.Say|React +
 #        RunawayState.TriggerSelfReturn + StickmanAgent 집중모드 람다  (고유 {n}줄)
 #
 """

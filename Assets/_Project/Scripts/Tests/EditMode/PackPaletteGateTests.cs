@@ -422,7 +422,7 @@ namespace StickMate.Tests.EditMode
         /// (PALETTE_SPEC §13-1). 같은 판정 함수에 넣어 빨간불이 나는지 본다 —
         /// 대조용 판정기를 따로 짜면 그건 대조가 아니다.
         /// </summary>
-        [TestCase(0x8D56CC, "「컬러 잉크」 옛 주색 — 카탈로그 #955CCC(요정날개·날개·종이비행기)와 ΔE 4.26")]
+        [TestCase(0x8D56CC, "「컬러 잉크」 옛 주색 — 카탈로그 #955CCC(요정날개·날개)와 ΔE 4.26")]
         [TestCase(0x5C709E, "「오피스 워커」 옛 보조색 — 카탈로그 #587398과 6.21 · #5577AE와 6.33")]
         [TestCase(0xCC3D3D, "「컬러 잉크」를 0°로 돌렸을 때의 주색 — 카탈로그 #CC3C3C(망토)와 ΔE 0.54")]
         public void 양성_대조_옛_충돌색을_게이트가_잡는다(int hex, string why)

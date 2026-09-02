@@ -222,21 +222,21 @@ namespace StickMate.Interaction
         public float HeadAnchorAboveHeadCenter => HeadRadius * SparkleHeightInR;
 
         /// <summary>
-        /// 테스트/진단용 — 살아 있는 조각 중 <b>지금 잉크색과 다른 색</b>으로 칠해진 것의 수.
-        /// 0이 아니면 조각이 잉크색 전환을 따라오지 못한 것이다(R2 M2 회귀 창구). 플래그가 아니라
-        /// 실제 <see cref="LineRenderer.startColor"/>를 읽는다.
+        /// 테스트/진단용 — 살아 있는 조각 중 <b>그 FX가 지금 칠해야 할 색</b>(<see cref="ResolvePieceColor"/>)이 아닌 것의 수.
+        /// 기준은 그룹마다 <b>자기 아이템</b>이다(지금 착용 중인 것이 아니다) — 갈아입는 동안 아직 떠 있는 옛 조각이
+        /// 거짓 경보를 내지 않는다. 잉크 표식(발자국·먼지)은 기대색이 곧 잉크색이라 R2 M2 회귀 창구가 그대로 남는다.
+        /// 플래그가 아니라 실제 <see cref="LineRenderer.startColor"/>를 읽고, 색은 <see cref="LivePieceColorsForTests"/>가 준다.
         /// </summary>
-        public int StaleInkPieceCount
+        public int StalePieceCount
         {
             get
             {
-                Color ink = ResolveInk();
                 int n = 0;
-                n += CountStaleInk(_footprints, ink);
-                n += CountStaleInk(_sparkles, ink);
-                n += CountStaleInk(_dusts, ink);
-                n += CountStaleInk(_bubbles, ink);
-                n += CountStaleInk(_leaves, ink);
+                n += CountStale(_footprints, ResolvePieceColor(FxFootprint));
+                n += CountStale(_sparkles, ResolvePieceColor(FxSparkle));
+                n += CountStale(_dusts, ResolvePieceColor(FxDust));
+                n += CountStale(_bubbles, ResolvePieceColor(FxBubble));
+                n += CountStale(_leaves, ResolvePieceColor(FxLeaf));
                 return n;
             }
         }
@@ -301,7 +301,7 @@ namespace StickMate.Interaction
             }
 
             int item = ResolveActiveItem();
-            if (item <= FxNone) { _idleSeconds = 0f; return; }
+            if (item <= FxNone) { _idleSeconds = 0f; return; }   // ★ 이 줄은 CommentReferenceAuditTests의 줄번호 앵커다 — 위쪽에 줄을 넣거나 빼면 그 감사가 빨개진다.
 
             switch (item)
             {
@@ -448,7 +448,7 @@ namespace StickMate.Interaction
             if (p == null) return;
             BuildDot(p.Lines[0], Stroke * 0.9f);
             p.Root.position = new Vector3(printX, surfaceY, 0f);
-            Revive(p, FootprintLifeSeconds, Vector2.zero, 1f, 1f);
+            Revive(p, FxFootprint, FootprintLifeSeconds, Vector2.zero, 1f, 1f);
         }
 
         private void TickSparkle(StickmanStateId state, float dt)
@@ -483,7 +483,7 @@ namespace StickMate.Interaction
             if (p == null) return;
             BuildCross(p.Lines, r * SparkleArmInR);
             p.Root.position = new Vector3(cx, cy, 0f);
-            Revive(p, lifeSeconds, Vector2.zero, SparkleStartScale, 1f);
+            Revive(p, FxSparkle, lifeSeconds, Vector2.zero, SparkleStartScale, 1f);
 
             _nextSparkleIn = Random.Range(intervalMin, intervalMax);
         }
@@ -519,7 +519,7 @@ namespace StickMate.Interaction
             BuildCrescents(p.Lines, r * 0.5f);
             p.Root.position = new Vector3(px, surfaceY + Stroke, 0f);
             // 뒤로 퍼지며 옅어진다.
-            Revive(p, DustLifeSeconds, new Vector2(-facing * r * 0.9f, r * 0.25f), 0.5f, 1.25f);
+            Revive(p, FxDust, DustLifeSeconds, new Vector2(-facing * r * 0.9f, r * 0.25f), 0.5f, 1.25f);
 
             if (!jumpedThisFrame) _dustCooldown = DustIntervalSeconds;
         }
@@ -554,7 +554,7 @@ namespace StickMate.Interaction
             p.Root.position = new Vector3(bb.Body.position.x - facing * r * BubbleSideInR,
                 bb.Body.position.y + HipLocalY, 0f);
             // 뒤쪽 위로 떠오르며 커졌다가 사라진다("톡" 터지는 그림).
-            Revive(p, BubbleLifeSeconds,
+            Revive(p, FxBubble, BubbleLifeSeconds,
                 new Vector2(-facing * r * BubbleSideInR, r * BubbleRiseInR),
                 BubbleStartScale, BubbleEndScale);
         }
@@ -595,7 +595,7 @@ namespace StickMate.Interaction
             // 아래로 내려가는 거리는 "여기서 지면까지"다 — 잎이 땅에 닿는 순간 수명이 끝난다.
             // 지면이 스폰 지점보다 위인 병적인 경우(발판이 머리 위)에는 0으로 눌러 위로 솟지 않게 한다.
             float fall = Mathf.Min(0f, surfaceY + Stroke - spawnY);
-            Revive(p, LeafLifeSeconds, new Vector2(0f, fall), 1f, 1f,
+            Revive(p, FxLeaf, LeafLifeSeconds, new Vector2(0f, fall), 1f, 1f,
                 swayAmplitude: r * LeafSwayInR, swayCycles: LeafSwayCycles,
                 spinDegrees: Random.value < 0.5f ? -LeafSpinDegrees : LeafSpinDegrees);
         }
@@ -682,7 +682,10 @@ namespace StickMate.Interaction
             return p;
         }
 
-        private void Revive(Puff p, float life, Vector2 drift, float startScale, float endScale,
+        /// <param name="fxItem">이 조각을 낳은 FX 자리. <b>색이 여기서 나온다</b> — 그룹과 아이템은
+        /// 1:1이라 부르는 쪽이 언제나 알고 있고, 조각에 색을 저장하지 않으므로 잉크를 바꿔도
+        /// 다음 <c>Revive</c>가 알아서 따라간다.</param>
+        private void Revive(Puff p, int fxItem, float life, Vector2 drift, float startScale, float endScale,
             float swayAmplitude = 0f, float swayCycles = 0f, float spinDegrees = 0f)
         {
             p.Age = 0f;
@@ -702,9 +705,17 @@ namespace StickMate.Interaction
                 // 돌고 난 각도에서 다음 방울/발자국이 시작한다.
                 p.Pivot.localRotation = Quaternion.identity;
             }
-            // 원형 버퍼가 이 조각을 앱 수명 내내 재사용한다 — 생성 시점 색에 머무르면 잉크색 전환을
+            // 원형 버퍼가 이 조각을 앱 수명 내내 재사용한다 — 생성 시점 색에 머무르면 색 전환을
             // 영영 못 따라간다(흰 잉크로 바꿔도 검은 발자국이 계속 찍혔다). 되살릴 때마다 다시 칠한다.
-            SetGroupInk(p.Lines, ResolveInk());
+            //
+            // ★ 2026-09-02 — 여기가 오래 ResolveInk() 한 줄이었다. 그래서 FX 6종 <b>전부</b>가 잉크로
+            //   칠해졌고, 애셋에 색이 있는 반짝임(#9B7922)·물방울(#3378CC)·나뭇잎(#5A8C3C)이 화면에
+            //   한 픽셀도 도달하지 못했다(persona-immersion 실측: 26초·261프레임에서 초록 0픽셀).
+            //   위 R2 M2 회귀를 고치면서 애셋 색 경로를 통째로 덮은 것이다. 이제 색은
+            //   <see cref="ResolvePieceColor"/>가 <b>데이터에서</b> 정하고, 잉크를 따라야 하는 것은
+            //   애셋이 잉크 표식(ItemCatalog.InkTone/InkDimTone)으로 그렇게 말한다 —
+            //   <b>어느 FX가 잉크를 따르는지 판정하는 분기가 이 파일에 없다.</b>
+            SetGroupColor(p.Lines, ResolvePieceColor(fxItem));
             SetGroupAlpha(p.Lines, 0f);
         }
 
@@ -720,10 +731,13 @@ namespace StickMate.Interaction
             lr.sortingOrder = sortingOrder;
             lr.startWidth = RenderStroke;
             lr.endWidth = RenderStroke;
-            Color ink = ResolveInk();
-            ink.a = 0f;
-            lr.startColor = ink;
-            lr.endColor = ink;
+            // 첫 색은 <b>의미가 없다</b> — 알파 0(안 보임)으로 만들어 두고, 이 조각을 실제로 쓰는
+            // Revive가 그 프레임에 ResolvePieceColor로 다시 칠한다. 여기 잉크가 남아 있다고 해서
+            // "FX는 잉크색"이라고 읽지 말 것(그 오해가 이번 라운드가 고친 결함이다).
+            Color initial = ResolveInk();
+            initial.a = 0f;
+            lr.startColor = initial;
+            lr.endColor = initial;
             lr.positionCount = 0;
             return lr;
         }
@@ -807,8 +821,11 @@ namespace StickMate.Interaction
             lr.SetPositions(pts);
         }
 
-        /// <summary>RGB만 갈아끼운다 — 알파는 수명 곡선이 소유하므로 유지한다.</summary>
-        private static void SetGroupInk(LineRenderer[] lines, Color ink)
+        /// <summary>RGB만 갈아끼운다 — 알파는 수명 곡선이 소유하므로 유지한다.
+        /// <para>★ 옛 이름은 <c>SetGroupInk</c>였다. 이제 넘어오는 것이 잉크가 아니라
+        /// <see cref="ResolvePieceColor"/>가 정한 <b>그 FX의 색</b>이라 이름을 바꿨다 — 이름이
+        /// 잉크를 말하면 다음 사람이 여기에 <c>ResolveInk()</c>를 다시 꽂는다(그게 이번 결함이었다).</para></summary>
+        private static void SetGroupColor(LineRenderer[] lines, Color color)
         {
             if (lines == null) return;
             for (int i = 0; i < lines.Length; i++)
@@ -816,8 +833,8 @@ namespace StickMate.Interaction
                 LineRenderer lr = lines[i];
                 if (lr == null) continue;
                 Color current = lr.startColor;
-                if (current.r == ink.r && current.g == ink.g && current.b == ink.b) continue;
-                Color next = ink;
+                if (current.r == color.r && current.g == color.g && current.b == color.b) continue;
+                Color next = color;
                 next.a = current.a;
                 lr.startColor = next;
                 lr.endColor = next;
@@ -839,7 +856,49 @@ namespace StickMate.Interaction
             }
         }
 
-        private static int CountStaleInk(Puff[] group, Color ink)
+        /// <summary>
+        /// ★ 테스트/진단용 — 지금 살아 있는 모든 조각의 <b>실제 색</b>(획 하나당 하나).
+        ///
+        /// <para><see cref="StalePieceCount"/>는 <b>세기만</b> 한다. "몇 개가 틀렸다"로는
+        /// <i>무슨 색으로</i> 틀렸는지를 못 재고, 그래서 "잉크를 따라갔다"와 "엉뚱한 색이다"가
+        /// 구분되지 않는다. 이 창구는 그 구분을 테스트가 직접 하게 열어 둔다.</para>
+        ///
+        /// <para>알파는 그대로 실어 보낸다(수명 곡선이 소유한다) — 색 동일성은 RGB로만 판정할 것.
+        /// 정의상 <b>0개일 수 있다</b>(살아 있는 조각이 없을 때). 0개를 "통과"로 읽지 않도록,
+        /// 부르는 쪽은 먼저 <see cref="LiveEffectCount"/>로 관측 전제를 세워야 한다.</para>
+        /// </summary>
+        public System.Collections.Generic.IEnumerable<Color> LivePieceColorsForTests
+        {
+            get
+            {
+                var colors = new System.Collections.Generic.List<Color>();
+                CollectColors(_footprints, colors);
+                CollectColors(_sparkles, colors);
+                CollectColors(_dusts, colors);
+                CollectColors(_bubbles, colors);
+                CollectColors(_leaves, colors);
+                return colors;
+            }
+        }
+
+        private static void CollectColors(Puff[] group, System.Collections.Generic.List<Color> sink)
+        {
+            if (group == null) return;
+            for (int i = 0; i < group.Length; i++)
+            {
+                Puff p = group[i];
+                if (p == null || !p.Alive || p.Lines == null) continue;
+                for (int k = 0; k < p.Lines.Length; k++)
+                {
+                    LineRenderer lr = p.Lines[k];
+                    if (lr != null) sink.Add(lr.startColor);
+                }
+            }
+        }
+
+        /// <summary>이 그룹에서 <paramref name="expected"/>가 아닌 색으로 칠해진 조각 수.
+        /// 비교자는 프로덕션이 칠할 때 쓰는 것과 같은 <see cref="Mathf.Approximately"/>다.</summary>
+        private static int CountStale(Puff[] group, Color expected)
         {
             if (group == null) return 0;
             int n = 0;
@@ -852,8 +911,8 @@ namespace StickMate.Interaction
                     LineRenderer lr = p.Lines[k];
                     if (lr == null) continue;
                     Color c = lr.startColor;
-                    if (Mathf.Approximately(c.r, ink.r) && Mathf.Approximately(c.g, ink.g) &&
-                        Mathf.Approximately(c.b, ink.b)) continue;
+                    if (Mathf.Approximately(c.r, expected.r) && Mathf.Approximately(c.g, expected.g) &&
+                        Mathf.Approximately(c.b, expected.b)) continue;
                     n++;
                     break; // 조각 단위로 센다.
                 }
@@ -963,6 +1022,36 @@ namespace StickMate.Interaction
         {
             StickConfig config = _agent != null ? _agent.Config : null;
             return config != null ? config.ResolveInkColor() : Color.black;
+        }
+
+        /// <summary>
+        /// ★ 이 FX 자리의 조각을 <b>몸(월드)에 그릴 때</b> 쓰는 색. 카드 썸네일과 같은 데이터에서 온다.
+        ///
+        /// <para><b>왜 분기가 없는가</b> — "발자국은 잉크, 나뭇잎은 초록"을 이 파일이 판정하면 표가 늘 때마다
+        /// 여기에 <c>case</c>가 하나씩 늘고, 빠뜨린 항목은 <b>조용히</b> 잉크가 된다. 대신 애셋이 말한다:
+        /// 잉크를 따라야 하는 조각은 카탈로그 색이 잉크 표식(<see cref="ItemCatalog.InkTone"/> /
+        /// <see cref="ItemCatalog.InkDimTone"/>)이고, <see cref="ItemCatalog.WornColor"/>가 그것을
+        /// 실제 잉크색으로 바꿔 준다. 지금 잉크 표식인 것은 <b>발자국·먼지</b>이고, 고정색인 것은
+        /// <b>반짝임·물방울·나뭇잎</b>이다. 새 FX가 늘어도 이 함수는 그대로다.</para>
+        ///
+        /// <para><b>주색만 쓴다</b>(보조색을 걸지 않는다). 규칙 39-P — 입자 한 알에 정원과 보조색을 함께
+        /// 걸지 않는다는 <b>의도된 예외</b>이며, 근거 산술은 <c>AppearanceShapeBudgetTests</c>의
+        /// <c>FX는_입자라_월드_한_알에_정원과_보조색을_걸지_않는다</c>에 있다. 그래서 여기서
+        /// <c>ItemCatalog.ResolveWornPalette</c>(두 색을 한꺼번에 주는 창구)를 부르지 않는다 —
+        /// 그것을 부르면 <b>안 쓸 보조색</b>이 생기고, 그 순간 "보조색이 구조적으로 없다"는 그 테스트의
+        /// 근거 문장이 거짓이 된다(<c>TestClaimExpiryAuditTests</c> R2-1이 그 문장을 지키고 있다).</para>
+        ///
+        /// <para>표에는 있는데 카탈로그가 못 찾는 자리는 잉크로 돌려준다 — 도형이 아직 없는 신규 항목에서
+        /// 예전과 같은 그림이 나오게 하는 <see cref="ItemCatalog.ResolveWornPalette"/>의 규약과 같다.
+        /// <b>여기에 경고를 찍지 않는다</b>: 이 경로는 정상 사용자에게 도달하지 않고, 정상값을 경고로
+        /// 보내면 전원에게 거짓 경보가 찍힌다. 빠진 FX를 신고하는 자리는 <see cref="LateUpdate"/>의
+        /// <c>default:</c> 하나뿐이다(<see cref="ShapeCoverageGuard"/>).</para>
+        /// </summary>
+        private Color ResolvePieceColor(int fxItem)
+        {
+            Color ink = ResolveInk();
+            ItemCatalogEntry entry = ItemCatalog.Item(EquipmentSlot.Fx, fxItem);
+            return entry != null ? ItemCatalog.WornColor(entry.PrimaryColor, ink) : ink;
         }
 
         /// <summary>다른 렌더러들과 같은 이유로 캐릭터 LineRenderer의 머티리얼을 빌려 쓴다

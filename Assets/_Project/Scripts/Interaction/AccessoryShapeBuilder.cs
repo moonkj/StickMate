@@ -313,6 +313,21 @@ namespace StickMate.Interaction
             return stroke / (BaselineHeadVisualRadius * scale);
         }
 
+        /// <summary>
+        /// A군 5종(중절모·밀짚모자·왕관·베레모의 띠 + 바가지머리 앞머리)이 <b>열린 낱선에서
+        /// 닫힌 채움 띠</b>가 되면서 갖는 두께(R 배수) — 스펙 14-1, 2026-09-03.
+        ///
+        /// <para>구속 조건은 규칙 1-C(색면 조건)다: 색면이 1획 폭을 가지려면
+        /// <c>ρ_max ≥ W_out</c>이고, 여기서 <c>W_out = <see cref="FillOutlineBudgetInHeadRadii"/></c>가
+        /// 배율 0.509 이상에서 상수 <b>0.21818 R</b>이다. 얇은 띠는 <c>ρ_max ≈ h/2</c>이므로
+        /// 하한이 <b>h ≥ 0.43636 R</b>가 된다.</para>
+        ///
+        /// <para><c>h = 0.4298 R</c>(배율 0.60에서의 1획)은 <c>ρ_max = 0.2149</c>로 <b>여유 0</b>이라
+        /// 기각했다. <c>h = 0.46 R</c>은 5종 실측 <c>ρ_max = 0.22988 ~ 0.23000</c>, 여유
+        /// <b>+0.0117 R(+5.4%)</b>이고 다섯 도형 모두 자기교차가 없다.</para>
+        /// </summary>
+        internal const float AccentBandThicknessRatio = 0.46f;
+
         // ---- 털모자(33-2-1 #2). ★ 2026-09-02 — 접힌 단이 <b>채움에서 낱선으로</b> 바뀌었다.
         //
         //      사용자 신고: "털모자착용시 거의 머리전체를가림". 실측이 그대로였다 — 배율 0.60에서
@@ -1265,10 +1280,19 @@ namespace StickMate.Interaction
                         crownFrontFoot,
                     }, true, SortHead, filled: true));
 
-                    // 띠 — 관 밑변 <b>그 자체</b>(간격 0). 규칙 4가 금지하는 것은 0 < 간격 < 1획이지
-                    // 겹침이 아니다. 관 높이로는 1.5획을 띄우는 것이 산술적으로 불가능하다.
-                    sink.Add(new Shape("FedoraBand", new[] { crownBackFoot, crownFrontFoot },
-                        false, SortHead, tone: Accent));
+                    // 띠 — 아랫변은 관 밑변 <b>그 자체</b>(간격 0)고, 거기서 위로
+                    // AccentBandThicknessRatio만큼 세운 <b>닫힌 채움</b>이다(스펙 14-1, 2026-09-03).
+                    // 규칙 4가 금지하는 것은 0 < 간격 < 1획이지 겹침이 아니다. 관 높이로는 1.5획을
+                    // 띄우는 것이 산술적으로 불가능하다.
+                    // ★ 윗변 좌표를 새로 적지 않고 관 밑변의 <b>같은 식</b>에 두께를 더한다 —
+                    //   관이 움직이면 띠가 따라간다.
+                    sink.Add(new Shape("FedoraBand", new[]
+                    {
+                        crownBackFoot,
+                        crownFrontFoot,
+                        rig.F(crownHalf, brimY - r * 0.02f + r * AccentBandThicknessRatio),
+                        rig.F(-crownHalf, brimY + r * 0.02f + r * AccentBandThicknessRatio),
+                    }, true, SortHead, tone: Accent, filled: true));
                     break;
                 }
 
@@ -1292,14 +1316,20 @@ namespace StickMate.Interaction
                         rig.F(-r * 0.60f, hc - r * 0.10f),
                     }, true, SortHead, filled: true));
 
-                    // 테는 몸의 밑변 네 점을 그대로 받는다(좌표를 새로 적지 않는다).
+                    // 테는 몸의 밑변 네 점을 그대로 받고(좌표를 새로 적지 않는다), 그 위로
+                    // AccentBandThicknessRatio만큼 세운 윗변을 <b>역순</b>으로 이어 고리를 닫는다
+                    // (스펙 14-1, 2026-09-03). 역순이라야 띠가 자기 자신을 가로지르지 않는다.
                     sink.Add(new Shape("CrownRim", new[]
                     {
                         rig.F(-half, baseY),
                         rig.F(-r * 0.60f, hc - r * 0.10f),
                         rig.F(r * 0.60f, hc - r * 0.10f),
                         rig.F(half, baseY),
-                    }, false, SortHead, tone: Accent));
+                        rig.F(half, baseY + r * AccentBandThicknessRatio),
+                        rig.F(r * 0.60f, hc - r * 0.10f + r * AccentBandThicknessRatio),
+                        rig.F(-r * 0.60f, hc - r * 0.10f + r * AccentBandThicknessRatio),
+                        rig.F(-half, baseY + r * AccentBandThicknessRatio),
+                    }, true, SortHead, tone: Accent, filled: true));
                     break;
                 }
 
@@ -1311,25 +1341,47 @@ namespace StickMate.Interaction
                     Vector3 frontFoot = rig.F(r * BeretFrontRatio, brimY);
                     Vector3 innerFoot = rig.F(-r * 0.30f, brimY - r * 0.04f);
 
+                    // ★ 몸통 왼쪽 변의 위 끝. 테의 윗변 왼끝을 <b>이 변 위에서</b> 유도하므로
+                    //   좌표를 두 벌로 적지 않는다(적으면 몸을 고칠 때 테만 옛 자리에 남는다).
+                    Vector3 backUpper = rig.F(-r * 1.02f, hc + r * 0.62f);
+
                     sink.Add(new Shape("BeretBody", new[]
                     {
                         backTip,
-                        rig.F(-r * 1.02f, hc + r * 0.62f),
+                        backUpper,
                         rig.F(-r * 0.20f, brimY + r * BeretCrownHeightRatio),
                         rig.F(r * 0.62f, hc + r * 0.90f),
                         // ★ 2026-09-02 배율 0.60 실루엣 수정(스펙 12-3-b). y를 0.44 → 0.54로만 올린다.
                         //    아래 변(→ frontFoot)이 0.4243R이라 배율 0.60에서 0.99획 = 획보다 짧아
                         //    앞 어깨 모서리가 뭉갰다. 0.5235R = 1.22획. x·뒤쪽 처짐은 그대로 —
-                        //    <b>테(BeretRim)는 [5][6][0]만 받으므로 이 점이 안 들어가 그림이 안 바뀐다.</b>
+                        //    <b>테(BeretRim)의 아랫변은 [5][6][0]이므로 이 점이 안 들어가 그림이 안 바뀐다.</b>
+                        //    (2026-09-03 정정: 테는 윗변 왼끝을 [1] backUpper에서 <b>유도</b>하지만
+                        //     이 점 [4]는 여전히 안 쓴다 — 위 문장은 이 점에 대해 계속 참이다.)
                         rig.F(r * BeretFrontShoulderRatio, hc + r * BeretFrontShoulderTopRatio),
                         frontFoot,
                         innerFoot,
                     }, true, SortHead, filled: true));
 
-                    // 테 = 밑변 그 자체(간격 0). 관 높이로 1.5획을 띄우면 테가 관을 가로질러
-                    // <b>띠 두른 정모</b>가 된다 — 페르소나가 실물에서 본 그 그림이다.
-                    sink.Add(new Shape("BeretRim", new[] { frontFoot, innerFoot, backTip },
-                        false, SortHead, tone: Accent));
+                    // 테 = 밑변 그 자체(간격 0)에서 위로 세운 닫힌 채움 띠(스펙 14-1, 2026-09-03).
+                    // 관 높이로 1.5획을 띄우면 테가 관을 가로질러 <b>띠 두른 정모</b>가 된다 —
+                    // 페르소나가 실물에서 본 그 그림이다.
+                    //
+                    // ★ 윗변 왼끝만 <b>수직 압출이 아니다.</b> 몸통 왼쪽 변(backTip → backUpper)이
+                    //   기울어 있어 그대로 올리면 띠가 몸통 밖으로 면적 6.29% 나가고, 최대 이탈이
+                    //   0.2397R로 획 반폭 0.1719R(배율 0.75)보다 커서 <b>자기 윤곽선에 안 가려지고
+                    //   눈에 보인다</b>. 그래서 그 꼭짓점 하나만 몸통 변 위로 물린다 — 값은 손으로
+                    //   적지 않고 backTip·backUpper에서 유도한다(현재 좌표에서 x = −1.1789R).
+                    float rimTopY = backTip.y + r * AccentBandThicknessRatio;
+                    float rimTopT = Mathf.InverseLerp(backTip.y, backUpper.y, rimTopY);
+                    sink.Add(new Shape("BeretRim", new[]
+                    {
+                        frontFoot,
+                        innerFoot,
+                        backTip,
+                        new Vector3(Mathf.Lerp(backTip.x, backUpper.x, rimTopT), rimTopY, 0f),
+                        new Vector3(innerFoot.x, innerFoot.y + r * AccentBandThicknessRatio, 0f),
+                        new Vector3(frontFoot.x, frontFoot.y + r * AccentBandThicknessRatio, 0f),
+                    }, true, SortHead, tone: Accent, filled: true));
                     break;
                 }
 
@@ -1367,8 +1419,14 @@ namespace StickMate.Interaction
                         crownFrontFoot,
                     }, true, SortHead, filled: true));
 
-                    sink.Add(new Shape("StrawBand", new[] { crownBackFoot, crownFrontFoot },
-                        false, SortHead, tone: Accent));
+                    // 중절모와 같은 처방 — 관 밑변에서 위로 세운 닫힌 채움 띠(스펙 14-1).
+                    sink.Add(new Shape("StrawBand", new[]
+                    {
+                        crownBackFoot,
+                        crownFrontFoot,
+                        rig.F(crownHalf, brimY + r * AccentBandThicknessRatio),
+                        rig.F(-crownHalf, brimY + r * 0.02f + r * AccentBandThicknessRatio),
+                    }, true, SortHead, tone: Accent, filled: true));
                     break;
                 }
 
@@ -1988,16 +2046,20 @@ namespace StickMate.Interaction
             return HairToLocal(rig, _hairPath);
         }
 
-        /// <summary>이마를 가로지르는 앞머리 선. <see cref="BowlSilhouette"/>의 안쪽 경계와
-        /// <b>같은 식</b>을 쓴다 — 두 벌로 적어 두면 한쪽만 고쳐 선이 어긋난다.</summary>
+        /// <summary>이마를 가로지르는 앞머리 <b>띠</b>. 아랫변은 <see cref="BowlSilhouette"/>의 안쪽
+        /// 경계와 <b>같은 식</b>을 쓴다 — 두 벌로 적어 두면 한쪽만 고쳐 선이 어긋난다.
+        /// <para>★ 2026-09-03(스펙 14-1) 낱선 → <b>닫힌 채움</b>. 윗변은 같은 x를 <b>역순</b>으로
+        /// 되짚어 고리를 닫는다 — 순서대로 이으면 띠가 자기 자신을 가로지른다.</para></summary>
         internal static Vector3[] BowlFringeLine(in Rig rig)
         {
-            var pts = new Vector3[BowlFringeSegments + 1];
+            var pts = new Vector3[(BowlFringeSegments + 1) * 2];
             for (int i = 0; i <= BowlFringeSegments; i++)
             {
                 float x = Mathf.Lerp(-BowlSideHalfWidthRatio, BowlSideHalfWidthRatio,
                     i / (float)BowlFringeSegments);
                 pts[i] = rig.F(x * rig.HeadRadius, rig.HeadCenterY + BowlFringeLineRatio * rig.HeadRadius);
+                pts[pts.Length - 1 - i] = rig.F(x * rig.HeadRadius, rig.HeadCenterY
+                    + (BowlFringeLineRatio + AccentBandThicknessRatio) * rig.HeadRadius);
             }
             return pts;
         }
@@ -2070,10 +2132,15 @@ namespace StickMate.Interaction
 
                 case HairBowl:
                     _hairScratch.Add(new Shape("HairMass", BowlSilhouette(rig), true, SortHair, filled: true));
-                    // 식별 특징 — 자른 앞머리 선. 실루엣의 안쪽 경계와 <b>정확히 겹친다(간격 0)</b>:
-                    // 규칙 4가 "최악"이라고 못박은 것은 0 &lt; 간격 &lt; 1획이지 겹침이 아니다.
-                    _hairScratch.Add(new Shape("HairFringe", BowlFringeLine(rig), false, SortHair,
-                        tone: Accent));
+                    // 식별 특징 — 자른 앞머리 띠. <b>아랫변</b>이 실루엣의 안쪽 경계와
+                    // <b>정확히 겹친다(간격 0)</b>: 규칙 4가 "최악"이라고 못박은 것은
+                    // 0 &lt; 간격 &lt; 1획이지 겹침이 아니다.
+                    // ★ 2026-09-03 낱선 → 채운 띠(스펙 14-1). 윗변은 아랫변에서 0.46R 위이므로
+                    //   실루엣 경계까지의 거리가 0이 아니라 0.46R이다 — 그 값은 채운 도형의 윤곽선
+                    //   예산(1pt 하한, 0.21818R)으로 재야 1.5획 밖이다. 낱선 예산(2pt, 0.3439R)으로
+                    //   재면 1.34획으로 읽혀 금지 구간 안으로 오판된다.
+                    _hairScratch.Add(new Shape("HairFringe", BowlFringeLine(rig), true, SortHair,
+                        tone: Accent, filled: true));
                     break;
 
                 case HairPonytail:
@@ -2558,11 +2625,36 @@ namespace StickMate.Interaction
         /// </summary>
         internal const float FillDepthStep = -0.0001f;
 
+        /// <summary>
+        /// 채움 색을 <b>그 위에 얹는 윤곽선 색</b>으로 낮추는 계수 — 스펙 14-2(리더 판정 2026-09-03).
+        ///
+        /// <para>★ <b>0.62 → 0.28.</b> 이 하나의 계수가 서로 다른 세 축에 동시에 걸리고, 천장을
+        /// 정하는 것은 <b>축 B</b>다(보조색 조각의 윤곽선 vs 그 밑에 깔린 <b>주색 채움</b>).
+        /// 각 축에서 대비 3.0을 지키는 <b>최대</b> 계수는
+        /// A(자기 채움) 0.3585 / <b>B(부모 채움) 0.3063</b> / S(그늘 낱선) 0.3678이라 B가 구속한다.</para>
+        ///
+        /// <para><c>0.30</c>은 그 천장까지 여유가 <b>+0.0063(2.1%)</b>뿐이라 기각했다 — 색이든
+        /// 모집단이든 조금만 움직이면 아무 소리 없이 다시 꺼진다. <c>0.28</c>은 여유 <b>+0.0263</b>이고
+        /// 세 축의 최저 대비가 A 3.349 / B 3.137 / S 3.392다(<c>0.62</c>에서는 1.934 / 1.611 / 1.955라
+        /// 망토 접힘선과 털모자 단이 화면에서 보이지 않았다).</para>
+        ///
+        /// <para><c>tone == Shade</c> 낱선용 상수를 따로 두지 않는 이유: 축 S의 식은 축 A와 <b>같은 식</b>이고
+        /// 천장도 더 느슨하다(0.3678 &gt; 0.3063). 나누면 그늘 쪽이 오히려 나빠진다.</para>
+        ///
+        /// <para>★ <b>이 값을 찾아 바꾸려고 파일 안의 <c>0.62f</c>를 일괄 치환하지 마라.</b> 계수를
+        /// 상수로 뺀 이유가 그것이다 — 예전에는 이 파일에 <c>0.62f</c>가 23곳 있었고 그늘 계수는
+        /// 그중 <b>3개뿐</b>이었다. 나머지는 <see cref="DrawnEyeOffsetRatio"/>·
+        /// <see cref="CapeCollarBackRatio"/>·<see cref="RoundLensOffsetRatio"/>와 도형 좌표 17곳이라,
+        /// 일괄 치환하면 눈 위치·망토 옷깃·렌즈 간격이 조용히 함께 움직인다.</para>
+        /// </summary>
+        internal const float FillOutlineShadeFactor = 0.28f;
+
         /// <summary>채움 위에 얹는 윤곽선 색 — 같은 색을 그대로 쓰면 면과 선이 붙어 <b>실루엣만 남은
         /// 덩어리</b>가 된다(털모자의 띠와 관이 한 덩어리로 뭉치는 자리). 같은 색을 어둡게 한 값이라
-        /// 팔레트를 늘리지 않으면서 경계를 만든다.</summary>
+        /// 팔레트를 늘리지 않으면서 경계를 만든다. 계수는 <see cref="FillOutlineShadeFactor"/>.</summary>
         internal static Color FillOutlineColor(Color fill)
-            => new Color(fill.r * 0.62f, fill.g * 0.62f, fill.b * 0.62f, fill.a);
+            => new Color(fill.r * FillOutlineShadeFactor, fill.g * FillOutlineShadeFactor,
+                fill.b * FillOutlineShadeFactor, fill.a);
 
         // ==================== 공용 도형 유틸 ====================
 

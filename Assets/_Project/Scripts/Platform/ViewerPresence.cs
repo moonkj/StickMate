@@ -43,6 +43,25 @@ namespace StickMate.Platform
         /// <summary>디스플레이가 잠들어 있는가(화면이 꺼져 있다). 이때는 <b>누구도 이 앱을 볼 수 없다</b>.</summary>
         public readonly bool DisplayAsleep;
 
+        /// <summary>
+        /// 세션이 잠겨 있는가(잠금 화면 / UAC 보안 데스크톱이 입력 데스크톱을 차지하고 있다).
+        /// 이때 우리가 열거하는 창 집합은 <b>사용자가 잠금을 푼 뒤 보게 될 화면과 아무 관계가 없다</b>.
+        ///
+        /// <para>★★ <b>이 필드와 <see cref="DisplayAsleep"/>은 플랫폼별로 정확히 반대쪽이 비어 있다.
+        /// 한쪽이 "항상 false"인 것을 보고 지우지 마라</b> — 두 플랫폼이 서로의 사각지대를 덮는
+        /// 구조이고, <see cref="SessionVisibilityPolicy.ShouldSuspendFootholdScan"/> 한 줄이
+        /// <b>양쪽에서 각각 다른 다리로 선다</b>:</para>
+        /// <code>
+        ///           | DisplayAsleep                    | SessionLocked
+        ///   --------+----------------------------------+-------------------------------------
+        ///   macOS   | 채워짐 (CGDisplayIsAsleep)        | 항상 false — 문서화된 수단이 없다
+        ///   Windows | 항상 false — 창 프로시저 필요     | 채워짐 (WTSQuerySessionInformation
+        ///           |   (WindowsViewerPresenceService)  |            + OpenInputDesktop)
+        /// </code>
+        /// <para>근거와 각 수단의 취사 선택은 <c>docs/platform/GHOST_FOOTHOLDS.md</c> 2절.</para>
+        /// </summary>
+        public readonly bool SessionLocked;
+
         /// <summary>마지막 사용자 입력(키/마우스/트랙패드)으로부터 지난 초. 알 수 없으면 음수.</summary>
         public readonly float SecondsSinceUserInput;
 
@@ -52,18 +71,27 @@ namespace StickMate.Platform
         /// <summary>배터리로 구동 중인가(AC 연결이 아님).</summary>
         public readonly bool OnBattery;
 
+        /// <summary>
+        /// ★ <paramref name="sessionLocked"/>에 <b>기본값을 주지 않는다</b>(2026-09-02 세션 잠금 라운드).
+        /// 기본값을 주면 새 플랫폼 구현이 그 필드를 채우지 않아도 조용히 컴파일되고, 그 결과는
+        /// "에러 없이 항상 false" — 이 저장소가 반복해서 당한 <b>실패한 측정과 성공한 측정이 똑같이
+        /// 생긴</b> 형태 그 자체다. 인자를 필수로 두면 <b>컴파일러가</b> 양 플랫폼 구현을 같은
+        /// 라운드에 열게 강제한다(CLAUDE.md 「플랫폼 동시 검토」의 물리적 실물).
+        /// </summary>
         public ViewerPresenceSnapshot(bool displayAsleep, float secondsSinceUserInput,
-            bool lowPowerMode, bool onBattery)
+            bool lowPowerMode, bool onBattery, bool sessionLocked)
         {
             Valid = true;
             DisplayAsleep = displayAsleep;
             SecondsSinceUserInput = secondsSinceUserInput;
             LowPowerMode = lowPowerMode;
             OnBattery = onBattery;
+            SessionLocked = sessionLocked;
         }
 
         public override string ToString() => Valid
-            ? $"화면꺼짐={DisplayAsleep}, 무입력={SecondsSinceUserInput:F0}초, 저전력={LowPowerMode}, 배터리={OnBattery}"
+            ? $"화면꺼짐={DisplayAsleep}, 세션잠금={SessionLocked}, 무입력={SecondsSinceUserInput:F0}초, " +
+              $"저전력={LowPowerMode}, 배터리={OnBattery}"
             : "(조회실패)";
     }
 

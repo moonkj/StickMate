@@ -33,23 +33,42 @@ namespace StickMate.Tests.PlayMode
         private const string LogPrefix = "[외형탭-TEST]";
 
         private CharacterInfoWindow _window;
-        private string _backup;
-        private bool _hadFile;
 
+        /// <summary>
+        /// ★★ 2026-09-02 <c>test-engineer</c> — 여기 있던 <b>백업/복원</b>은 <b>오염 보존기</b>였다.
+        /// 걷어냈다. 되살리지 마라. (<c>FullscreenPanelRetreatTests</c>가 같은 날 먼저 걷어낸 것과
+        /// <b>같은 코드</b>가 8개 픽스처에 남아 있었다.)
+        ///
+        /// <para><b>원래 근거가 사라졌다.</b> 옛 코드는 <c>OneTimeSetUp</c>에서 저장 파일을 통째로 읽어
+        /// 두고 <c>OneTimeTearDown</c>에서 <b>그대로 다시 썼다</b>. 정당화는 <i>"저장 파일이 실제 앱의
+        /// 것과 같은 경로"</i>였는데, 그 전제는 2026-08-31에 <c>GlobalPlayModeTestIsolation</c>이
+        /// 경로를 임시 폴더로 옮기면서 <b>거짓이 됐다</b>.</para>
+        ///
+        /// <para><b>그리고 뜻이 정반대로 뒤집혔다.</b> 격리된 폴더에서 <c>_hadFile == true</c>는
+        /// "개발자 파일이 있다"가 아니라 <b>"앞선 픽스처가 남긴 오염이 있다"</b>는 뜻이다. 옛 TearDown은
+        /// 그 오염을 <b>다시 써서 되살렸고</b>, 같은 코드가 여러 픽스처에 있었으므로 오염이 스위트
+        /// 전체를 타고 <b>세탁</b>됐다 — 어떤 정리도 그 다음 픽스처의 복원 한 줄에 무효화됐다.
+        /// 2026-09-02 실측이 그 결과다: <c>c1-play</c>가 씬 로드 430회 중 "없음 161 → 불러옴 278"로
+        /// 도중에 뒤집혔고 <c>스틱메이트 Lv.127</c>이 로그에 505회 찍혔다.</para>
+        ///
+        /// <para><b>대신 가드를 남긴다.</b> 격리가 꺼진 채로 이 픽스처가 돌면 씬 로드가 개발자의 실제
+        /// 저장 파일을 읽고 쓴다. 그때는 조용히 진행하지 않고 <b>즉시 실패</b>한다.</para>
+        /// </summary>
         [OneTimeSetUp]
-        public void BackupRealSaveFile()
+        public void RequireIsolatedSaveFileAndStartClean()
         {
-            string path = CharacterSaveStore.FilePath;
-            _hadFile = File.Exists(path);
-            _backup = _hadFile ? File.ReadAllText(path) : null;
+            Assert.IsTrue(CharacterSaveStore.IsRedirectedForTesting,
+                "저장 경로가 격리되지 않았습니다 — GlobalPlayModeTestIsolation이 돌지 않았습니다. " +
+                "이대로 진행하면 개발자의 실제 저장 파일을 읽고 씁니다(절대 불변 원칙 3).");
+            GlobalPlayModeTestIsolation.PurgeIsolatedDirectories();
         }
 
+        /// <summary>격리 폴더를 다음 픽스처에 <b>넘기지 않는다</b> — 이 픽스처가 만든 저장 파일을 지운다.
+        /// 옛 <c>RestoreRealSaveFile</c>이 하던 "다시 쓰기"의 정확한 반대다(위 문단 참고).</summary>
         [OneTimeTearDown]
-        public void RestoreRealSaveFile()
+        public void ClearIsolatedSaveFile()
         {
-            string path = CharacterSaveStore.FilePath;
-            if (_hadFile) File.WriteAllText(path, _backup);
-            else if (File.Exists(path)) File.Delete(path);
+            GlobalPlayModeTestIsolation.PurgeIsolatedDirectories();
         }
 
         [UnityTearDown]

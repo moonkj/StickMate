@@ -40,14 +40,93 @@ LOG_LINK="$RUN_DIR/current.log"
 # 심링크가 아직 없으면 구판 단일 파일로 떨어져 기존 로그도 계속 읽힌다(하위 호환).
 if [ -e "$LOG_LINK" ]; then LOG_FILE="$LOG_LINK"; else LOG_FILE="$RUN_DIR/stickmate.log"; fi
 SHOT_DIR="${STICKMATE_SHOT_DIR:-$RUN_DIR/screenshots}"
-SAVE_FILE="$HOME/Library/Application Support/DefaultCompany/StickMate/stickmate_character.json"
-USER_LOG="$HOME/Library/Logs/DefaultCompany/StickMate/Player.log"
+# ★ 회사명은 ProjectSettings.asset 의 companyName 과 반드시 같아야 한다(2026-09-02: DefaultCompany
+#   -> Vibelab). Unity 는 persistentDataPath / Player.log 를 companyName 으로 조립하므로, 이 값이
+#   어긋나면 아래 두 경로가 **존재하지 않는 디렉터리**를 가리킨다. 그때 `[ -f ]` 는 조용히 거짓이
+#   되고 세이브 백업이 건너뛰어지는데, 출력은 "백업할 게 없었다"와 **완전히 똑같이 생겼다**.
+#   그래서 아래 cmd_start 는 파일이 없을 때 반드시 한 줄을 찍는다(침묵 금지).
+STICKMATE_COMPANY="${STICKMATE_COMPANY:-Vibelab}"
+SAVE_FILE="$HOME/Library/Application Support/$STICKMATE_COMPANY/StickMate/stickmate_character.json"
+USER_LOG="$HOME/Library/Logs/$STICKMATE_COMPANY/StickMate/Player.log"
 UNITY="${UNITY_BIN:-/Applications/Unity/Hub/Editor/6000.0.82f1/Unity.app/Contents/MacOS/Unity}"
 
 mkdir -p "$RUN_DIR" "$SHOT_DIR" "$SKILL_DIR/bin" "$LOG_DIR"
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+# ------------------------------------------------------- 런타임 플래그 신고/되읽기
+# ★ 2026-09-02 (dev-platform). persona-stress 신고:
+#   "driver.sh에 STICKMATE_* 설정이 한 줄도 없다 — 기본값(켬)으로 도는 것으로 보이지만
+#    드라이버가 명시적으로 켜 주지 않으므로 우리 실기 측정이 적응형 페이싱 게이트를
+#    실제로 통과했는지 보증되지 않는다."
+#
+#   ★ 사실 정정: 이 파일에는 STICKMATE_ 가 3건 있다(REPO/RUN_DIR/SHOT_DIR). 다만 그건 전부
+#     **드라이버 자신의 경로 오버라이드**이고, **런타임 기능 플래그는 정말로 0건**이다.
+#     신고의 실질은 옳다.
+#
+#   ★ 그런데 처방은 "드라이버가 =1 로 켠다"가 **아니다.** 그건 두 가지를 동시에 망친다:
+#     (a) 드라이버가 **프로덕션 기본값을 베끼는 것**이 된다. 코드 기본값이 언젠가 꺼지는 쪽으로
+#         바뀌어도 드라이버가 계속 켜 주므로 러너는 그 회귀를 **영원히 못 본다**
+#         (CLAUDE.md: 기준과 대상이 함께 움직이면 아무것도 못 잰다).
+#     (b) 이 변수들의 존재 이유가 재빌드 없는 A/B인데, 드라이버가 값을 고정하면 A/B가 막힌다.
+#
+#   ★ 진짜 문제는 "안 켜 준다"가 아니라 **"무엇으로 돌았는지 기록이 없다"**이다.
+#     앱은 셸 환경을 그대로 상속하므로, 어떤 라운드가 STICKMATE_FORCE_TIER=Active 를 export 한
+#     셸에서 start 를 부르면 **다음 측정이 조용히 다른 구성으로 돈다** — 이 저장소의 서명 사고
+#     ("실패한 측정과 성공한 측정이 똑같이 생겼다")가 그대로 재현되는 자리다.
+#
+#   그래서 하는 일은 값 설정이 아니라 둘이다:
+#     1) declare_runtime_flags — 지금 셸에서 **무엇이 자식에게 상속되는가**를 찍는다.
+#        목록은 **소스 트리에서 뽑는다.** 손으로 적으면 변수가 늘어난 날 목록만 낡는다.
+#     2) report_resolved_gates — 부팅 뒤 **앱 자신의 로그에서 해석된 상태를 되읽는다.**
+#        "설정했다"가 아니라 "그렇게 해석됐다"가 측정의 근거다.
+declare_runtime_flags() {
+  local names n v set_count=0
+  names="$(grep -rhoE 'STICKMATE_[A-Z_]+' "$REPO/Assets/_Project/Scripts" 2>/dev/null \
+           | sort -u | grep -vE '^STICKMATE_(REPO|RUN_DIR|SHOT_DIR|COMPANY)$')"
+  if [ -z "$names" ]; then
+    # 침묵 금지 — "변수가 없다"와 "소스를 못 읽었다"를 구분해 준다(이 파일의 기존 규약).
+    say "런타임 플래그: ★ 소스에서 STICKMATE_* 를 한 개도 못 뽑았다 — $REPO/Assets 경로를 확인하라."
+    say "               (이 상태에서는 아래 '상속되는 플래그' 목록이 비어도 아무 뜻이 없다.)"
+    return 0
+  fi
+  say "런타임 플래그(자식에게 그대로 상속된다. 드라이버는 값을 정하지 않는다):"
+  while read -r n; do
+    [ -n "$n" ] || continue
+    v="$(printenv "$n" 2>/dev/null)"
+    if [ -n "${v:-}" ]; then
+      say "  · $n=$v   ← ★ 이 셸에 설정돼 있다. 이번 측정은 이 구성이다."
+      set_count=$((set_count+1))
+    fi
+  done <<< "$names"
+  [ "$set_count" -eq 0 ] && say "  · (설정된 것 없음 — 전부 코드 기본값으로 해석된다. 그 해석 결과는 아래에서 되읽는다.)"
+  return 0
+}
+
+# 앱이 **스스로 찍은** 해석 결과를 읽는다. 드라이버의 가정이 아니라 앱의 사실이다.
+# 세 갈래로 갈린다: 활성 / 비활성 / 못 찾음. 셋을 구분하지 않으면 '못 찾음'이 '활성'으로 읽힌다.
+report_resolved_gates() {
+  local line
+  line="$(grep -am1 '\[FramePacing/적응형\]' "$LOG_FILE" 2>/dev/null)"
+  if [ -z "$line" ]; then
+    say "해석된 게이트: ★ 못 찾음 — 로그에 [FramePacing/적응형] 줄이 없다."
+    say "               이 인스턴스로 잰 관측 의존 수치(발판 스캔 억제 등)는 구성 미상이다."
+    return 0
+  fi
+  case "$line" in
+    *"적응형] 활성"*)
+      say "해석된 게이트: 적응형 페이싱 = 활성 (관측 갱신됨 → FramePacing.LastPresence 유효)" ;;
+    *"적응형] 비활성"*)
+      say "해석된 게이트: ★ 적응형 페이싱 = **비활성**."
+      say "               이때 FramePacing.LastPresence 는 Valid=false 로 남고, 그것을 읽는"
+      say "               게이트(FootholdPoller 의 세션 가시성 억제 등)는 **영원히 거짓**이 된다."
+      say "               기능은 안전한 쪽으로 꺼질 뿐이지만, 그 게이트를 잰다고 주장하면 그건 거짓 측정이다." ;;
+    *)
+      say "해석된 게이트: ★ 판독 실패 — 줄은 찾았으나 활성/비활성을 못 갈랐다: $line" ;;
+  esac
+  return 0
+}
 
 # ---------------------------------------------------------------- 헬퍼 빌드
 # swiftc는 Xcode Command Line Tools에 포함된다. 소스가 더 새로우면 다시 컴파일한다.
@@ -155,6 +234,10 @@ cmd_start() {
   if [ -f "$SAVE_FILE" ]; then
     local bak="$RUN_DIR/save-backup-$(date +%Y%m%d-%H%M%S).json"
     cp "$SAVE_FILE" "$bak" && say "세이브 백업: $bak"
+  else
+    # 침묵 금지. "세이브가 원래 없다"와 "회사명이 어긋나 엉뚱한 곳을 봤다"를 구분해 준다.
+    say "세이브 백업 건너뜀 — 파일이 없다: $SAVE_FILE"
+    say "      (회사명=$STICKMATE_COMPANY. ProjectSettings.asset 의 companyName 과 다르면 이 경로가 틀린 것이다.)"
   fi
 
   # ★ 이번 실행 전용 로그. 기존 파일을 자르지 않으므로 **살아 있는 다른 인스턴스의 로그를
@@ -163,6 +246,8 @@ cmd_start() {
   : > "$run_log"
   ln -sfn "$run_log" "$LOG_LINK"
   LOG_FILE="$LOG_LINK"
+  declare_runtime_flags
+
   # ★ `open` 이 아니라 셸에서 직접 exec 한다. 그래야 이 셸의 Input Monitoring 권한을 물려받아
   #   전역 단축키가 동작한다(SKILL.md "왜 open 을 쓰면 안 되는가" 참고).
   # ★ -logFile 로 로그를 분리한다. 그러지 않으면 Unity가 사용자 인스턴스의 Player.log를
@@ -179,6 +264,7 @@ cmd_start() {
   for i in $(seq 1 80); do
     if grep -aq "앱제어] 준비 완료" "$LOG_FILE" 2>/dev/null; then
       say "부팅 완료 (${i}회 폴링)"
+      report_resolved_gates
       return 0
     fi
     is_alive "$pid" || { say "프로세스가 죽었다. 로그 마지막:"; tail -20 "$LOG_FILE"; return 1; }

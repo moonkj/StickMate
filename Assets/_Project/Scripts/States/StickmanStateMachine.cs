@@ -32,7 +32,9 @@ namespace StickMate.States
     ///       화면 이탈/안전 상한 초과 시에는 평범한 Fall로 빠지고, 회전 중 **진짜 충격**(벽 충돌/타격)이
     ///       들어오면 다른 능동 상태와 똑같이 Ragdoll로 강제 인터럽트된다.
     /// - Idle/Walk/Jump/Fall/ParkourClimb/Attack -> Ragdoll :
-    ///       외력(피격/투척/충격량 크기)이 StickConfig.ragdollForceThreshold 이상이면
+    ///       외력의 크기가 StickConfig.ragdollForceThreshold 이상이면
+    ///       (★ 2026-09-02 정정 — 원래 «피격/투척»이었으나 「투척」은 2026-08-29 폐지됐다.
+    ///        실재 경로 정본 목록은 States/RagdollImpactResolver 클래스 문서)
     ///       "능동 상태가 무엇이든" 즉시 강제 인터럽트 전이. (진행 중이던 Attack/ParkourClimb도 취소됨)
     /// - Ragdoll -> Getup         : 전신 Rigidbody2D의 속도 크기가 StickConfig.ragdollSettleSpeedThreshold
     ///       이하로 StickConfig.ragdollSettleHoldDuration초 이상 지속될 때 자동 전이.

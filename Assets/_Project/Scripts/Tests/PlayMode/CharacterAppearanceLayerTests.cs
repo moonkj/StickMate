@@ -597,18 +597,18 @@ namespace StickMate.Tests.PlayMode
 
             Assert.AreEqual(FootprintCapacity, fx.LiveEffectCount,
                 $"{LogPrefix} 발자국이 버퍼를 채우지 못했습니다 — 재사용 구간에 들어가지 못해 이 회귀를 볼 수 없습니다.");
-            Assert.AreEqual(0, fx.StaleInkPieceCount, $"{LogPrefix} 검정 잉크인데 검정이 아닌 조각이 있습니다.");
+            Assert.AreEqual(0, fx.StalePieceCount, $"{LogPrefix} 검정 잉크인데 검정이 아닌 조각이 있습니다.");
 
             // ---- 여기서 색을 바꾼다. 재사용되는 조각이 따라와야 한다 ----
             SetInk(agent, StickmanInkColor.White);
-            Assert.AreNotEqual(0, fx.StaleInkPieceCount,
+            Assert.AreNotEqual(0, fx.StalePieceCount,
                 $"{LogPrefix} 색을 바꾼 직후인데 옛 색 조각이 0개입니다 — 관측 전제(재사용 대기 중인 조각)가 " +
                 "성립하지 않아 이 테스트가 아무것도 검사하지 못합니다.");
 
             yield return StampFootprints(agent, fx, FootprintCapacity + 4);
 
             Assert.AreEqual(FootprintCapacity, fx.LiveEffectCount, $"{LogPrefix} 재사용 후 조각 수가 달라졌습니다.");
-            Assert.AreEqual(0, fx.StaleInkPieceCount,
+            Assert.AreEqual(0, fx.StalePieceCount,
                 $"{LogPrefix} 잉크색을 바꿨는데 옛 색 그대로인 FX 조각이 남았습니다 — " +
                 "흰 잉크 사용자에게 검은 발자국이 계속 찍힙니다(Revive에서 다시 칠하지 않은 것).");
 

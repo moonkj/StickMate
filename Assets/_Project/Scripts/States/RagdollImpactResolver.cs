@@ -14,6 +14,35 @@ namespace StickMate.States
     /// (참조 대상이 다름). 이 정적 유틸로 로직을 분리해
     /// 세 곳 이상에서 같은 판정식이 어긋나지 않게 한다 — StickmanAgent.ReportExternalImpact()도 내부적으로
     /// 이 메서드를 호출하도록 리팩터했다(공개 시그니처는 그대로, 내부 구현만 위임).
+    ///
+    /// ════════════════════════════════════════════════════════════════════════════════════
+    /// ★ 2026-09-02 — RAGDOLL 진입 경로의 <b>정본 목록</b>(전부 실측. CLAUDE.md "캐릭터 무빙 방식" 절과 짝)
+    /// ════════════════════════════════════════════════════════════════════════════════════
+    /// 이 목록이 실재와 갈라진 채로 여러 파일에 복사돼 있었고, 그 때문에 <b>"랙돌이 고장났다"는 오진이
+    /// 반복해서 올라왔다.</b> 그래서 목록은 <b>여기 한 곳에만</b> 두고 다른 파일은 이 절을 가리키기만 한다.
+    /// <list type="bullet">
+    /// <item><b>커서로 거칠게 털어내기 — 살아 있다.</b> States/RodeoCursorState가 임계값 x
+    ///   rodeoShakeImpactMultiplier(1.25)를 <b>강제</b>하므로 구조적으로 항상 전이한다. 배포 기본값에서
+    ///   확실히 도는 사실상 유일한 경로다.</item>
+    /// <item><b>「던짐」 — 폐지됐다.</b> 사용자 요청 2026-08-29(원문은 States/DragThrowState.cs의
+    ///   "★★ 던진 뒤 무엇이 되는가" 절이 인용한다). throwTumbleEnabled=1이라 깨끗한 던지기는
+    ///   ThrowTumble(공중 회전 -> 무릎앉아)로 가고, 랙돌 분기는 그 스위치를 꺼야만 닿는다.
+    ///   <b>되살리지 마라 — 사용자가 닫은 문이다.</b></item>
+    /// <item><b>「추락 충격」 — 끊겨 있다.</b> landingImpactRagdollShield=1이 아래
+    ///   <see cref="IsOwnLandingContact"/>로 자기 착지를 걸러낸다.</item>
+    /// <item><b>루트의 물리 충돌 — 원리상 살아 있다.</b> 루트 질량 1.00이라 필요 상대속도가 곧 임계값
+    ///   8.0이고 dragThrowMaxSpeed 12.0 안에 든다. 다만 차단막이 <b>발밑에서 올라온 접촉</b>을 걸러내므로,
+    ///   남는 것은 그 예외를 벗어난 접촉(옆/윗면, Dynamic 상대)뿐이다.</item>
+    /// <item><b>긴 망토 자락 밟기 — 잠재.</b> Interaction/LongCapeTripDirector가 임계값 x1.02를 넣지만
+    ///   longCapeTripMeanSeconds=0(2026-08-31 사용자 요청으로 기본 OFF)이라 배포 기본값에서는 돌지 않는다.
+    ///   켜면 즉시 살아나므로 <b>"경로가 없다"고 적으면 안 된다.</b></item>
+    /// <item><b>팔다리 8개의 물리 충돌 — 도달 불가</b>(2026-09-02 실측, <b>이번 라운드 미수정</b>).
+    ///   Core/RagdollLimbImpactRelay가 <c>relativeVelocity.magnitude * _body.mass</c>를 넘기는데 그
+    ///   <c>_body</c>는 팔다리다(프리팹 실측 질량 0.06 x4 / 0.09 x4, 루트만 1.00). 임계값 8.0에 닿으려면
+    ///   상대속도 88.9~133.3 유닛/초가 필요한데 dragThrowMaxSpeed는 12.0이다.
+    ///   아래 <see cref="LogCollisionImpact"/>의 <c>보고바디</c> 항목이 이것을 로그로 가르려고 생겼다 —
+    ///   <b>가르기 전에 임계값이나 릴레이 질량을 만지지 마라</b>(어느 경로를 고쳤는지 모르게 된다).</item>
+    /// </list>
     /// </summary>
     public static class RagdollImpactResolver
     {
@@ -48,8 +77,9 @@ namespace StickMate.States
         /// Dock 구간으로 던지거나 떨어뜨렸을 때 밟게 되는 경로가 그것이다.
         /// Tests/PlayMode/LandingCrouchTests가 그 시나리오로 이 스위치의 on/off 대조를 실측한다.
         ///
-        /// 판정 근거는 아키텍처 0절이다 — RAGDOLL이 배정된 대상은 **피격/던져짐 같은 외력**이고, 자기가
-        /// 떨어져서 땅에 닿는 것은 외력이 아니라 착지다. 그래서 다음 두 조건을 **동시에** 만족할 때만
+        /// 판정 근거는 아키텍처 0절이다 — RAGDOLL이 배정된 대상은 **외력**이고, 자기가
+        /// 떨어져서 땅에 닿는 것은 외력이 아니라 착지다(★ 2026-09-02 정정: 원래 «피격/던져짐 같은
+        /// 외력»이었는데 「던져짐」은 2026-08-29에 폐지됐다 — 실재 경로는 이 클래스 문서의 정본 목록 참고). 그래서 다음 두 조건을 **동시에** 만족할 때만
         /// 무시한다(★ 2026-08-30 갱신 — (1)이 상태 허용목록에서 "부딪힌 대상"으로 바뀌었다.
         /// 근거는 <see cref="IsOwnLandingContact"/> 본문 주석):
         ///   (1) 부딪힌 상대가 Dynamic 바디가 아니다(= 정적 지면/바닥이지 움직이는 물체가 아니다),
@@ -139,9 +169,46 @@ namespace StickMate.States
         /// 무너뜨릴 수 있는 유일한 경우는 "RAGDOLL이 폭주하는 상황" 뿐이다 — 그건 정확히 로그가 필요한
         /// 상황이다. 반대로 **표본 예산은 소비하지 않는다**: 그 예산의 목적은 "충돌이 아예 안 나는 것"과
         /// "나는데 약한 것"을 구분하는 초기 표본이므로, RAGDOLL 사건이 그 자리를 빼앗으면 안 된다.
+        ///
+        /// ★★★ 2026-09-02 (진단 전용 — 판정 거동은 한 줄도 바뀌지 않았다) — <b>누가 보고했는지</b>를
+        /// 이 줄이 말하게 했다. 그 전까지 이 줄은 충격량·상태·접촉수·발y만 적고 <b>보고한 바디를
+        /// 적지 않았다</b>. 충돌 통지는 루트(Core/StickmanAgent.OnCollisionEnter2D)와 비루트 파츠 8개
+        /// (Core/RagdollLimbImpactRelay)가 <b>같은 진입점</b>으로 모이는데, 두 경로는 임계값
+        /// (StickConfig.ragdollForceThreshold)을 <b>같은 숫자</b>로 비교하면서 곱하는 질량이 다르다
+        /// (프리팹 실측: 루트 1.00 / 팔다리 0.06·0.09). 그래서 관측된 랙돌 전이가 어느 쪽에서 왔는지
+        /// <b>로그만으로는 가를 수 없었고</b>, 그 상태로 임계값을 만지면 "고쳤는데 안 고쳐진 것"을 못 본다.
+        ///
+        /// <para>보고 바디는 <c>Collision2D.otherRigidbody</c>(= 이 콜백을 받은 쪽, 상대는
+        /// <c>Collision2D.rigidbody</c> — <see cref="IsOwnLandingContact"/>가 이미 쓰는 그 규약)에서
+        /// 뽑는다. 호출부를 한 줄도 건드리지 않아도 되기 때문이다.</para>
+        ///
+        /// <para>★ 다만 "그것이 정말 충격량을 만든 바디인가"는 <b>별개의 주장</b>이라 같은 줄 안에서
+        /// 되잰다. 두 호출부 모두 충격량 = <c>relativeVelocity.magnitude * mass</c>이므로
+        /// <c>역산질량 = 충격량 / 상대속도</c>가 <c>질량</c>과 어긋나면 이 줄의 보고 바디를 믿으면 안 된다.
+        /// 이 저장소가 반복해서 당한 형태가 <b>"죽은 프로브의 출력이 성공한 프로브와 똑같이 생긴 것"</b>이라,
+        /// 진단용 줄일수록 자기 자신을 반증할 수 있어야 한다.</para>
         /// </summary>
-        private static int _collisionLogSamplesLeft = CollisionLogSampleCount;
         private const int CollisionLogSampleCount = 6;
+
+        // ★ 2026-09-02 — 표본 예산을 **루트/비루트로 갈랐다**(하나였을 때의 결함은 위 문서 참고).
+        // 예산이 하나면 시작 직후 루트의 낙하 충돌이 6건을 전부 먹고, 팔다리가 보고를 하는지조차
+        // 로그에 한 줄도 안 남는다 — 그러면 "팔다리 경로가 죽었다"는 가설을 반증도 입증도 못 한다.
+        // 상주 비용은 시작 직후 최대 6+6줄로 여전히 상수다.
+        private static int _rootCollisionLogSamplesLeft = CollisionLogSampleCount;
+        private static int _limbCollisionLogSamplesLeft = CollisionLogSampleCount;
+
+        /// <summary>표본 예산 한 칸을 쓰고 "이번 건을 적어도 되는가"를 답한다. 규칙은 예산이 하나였을
+        /// 때와 글자 그대로 같고, 버킷만 둘로 갈렸다. 문자열을 전혀 만들지 않는다(24시간 상주 앱).</summary>
+        private static bool ConsumeCollisionLogSample(ref int samplesLeft, bool verbose,
+            float impulseMagnitude, float threshold)
+        {
+            if (samplesLeft > 0)
+            {
+                samplesLeft--;
+                return true;
+            }
+            return verbose && impulseMagnitude >= threshold;
+        }
 
         private static void LogCollisionImpact(StickmanBlackboard blackboard, Collision2D collision,
             float impulseMagnitude, bool shielded)
@@ -154,6 +221,12 @@ namespace StickMate.States
             // "전이"라고 단정해 로그만 보고 오판하게 만들었다(디버거가 실사용 조사 중 발견).
             bool willRagdoll = !shielded && impulseMagnitude >= blackboard.Config.ragdollForceThreshold;
 
+            // 보고 바디 식별은 게이트보다 **앞**에서 끝낸다(버킷을 고르는 데 필요하다). 여기까지는
+            // 참조 비교와 네이티브 조회뿐이라 할당이 없다 — UnityEngine.Object.name은 호출마다 새
+            // string을 만들므로 게이트를 통과한 뒤에만 읽는다.
+            Rigidbody2D reporter = collision != null ? collision.otherRigidbody : null;
+            bool reporterIsRoot = reporter != null && ReferenceEquals(reporter, blackboard.Body);
+
             // ★★ 2026-08-30 — RAGDOLL로 이어지는 충돌은 표본 예산을 **소비하지도, 확인하지도 않는다**
             // (위 메서드 문서의 근거 참고). 그 외의 약한 충돌만 예전 규칙(초기 표본 6건 + verbose 토글)을 탄다.
             if (!willRagdoll)
@@ -161,9 +234,15 @@ namespace StickMate.States
                 // 충돌 진입은 이산 이벤트(매 프레임이 아니다)라 시작 직후 몇 건은 세기와 무관하게 전부 남긴다 —
                 // "충돌이 아예 발생하지 않는 것"과 "발생했는데 약한 것"을 구분하지 못하면 진단이 불가능하기 때문이다.
                 // 그 표본을 다 쓰면 임계값 이상만, 그것도 verboseDiagnosticsLogging이 켜져 있을 때만 남긴다.
+                //
+                // ★ 보고 바디가 불명(otherRigidbody 없음)이면 **비루트 버킷**으로 보낸다 — 루트 예산을
+                //   잠식하지 않게 하려는 것뿐이고, 아래 로그는 그런 건을 "루트"라고 주장하지 않는다.
                 bool verbose = blackboard.Config.verboseDiagnosticsLogging;
-                if (_collisionLogSamplesLeft > 0) _collisionLogSamplesLeft--;
-                else if (!verbose || impulseMagnitude < blackboard.Config.ragdollForceThreshold) return;
+                float threshold = blackboard.Config.ragdollForceThreshold;
+                bool allowed = reporterIsRoot
+                    ? ConsumeCollisionLogSample(ref _rootCollisionLogSamplesLeft, verbose, impulseMagnitude, threshold)
+                    : ConsumeCollisionLogSample(ref _limbCollisionLogSamplesLeft, verbose, impulseMagnitude, threshold);
+                if (!allowed) return;
             }
 
             float footY = blackboard.Body != null ? blackboard.Body.position.y : float.NaN;
@@ -178,7 +257,18 @@ namespace StickMate.States
             string verdict = shielded ? "착지로 판정해 무시"
                 : willRagdoll ? "외력으로 판정, 임계값 초과 -> RAGDOLL 전이"
                 : "외력으로 판정했으나 임계값 미만 -> 전이 없음";
-            Debug.Log($"[착지충격] 충돌 충격량={impulseMagnitude:F2}(랙돌 임계 " +
+
+            // 보고 바디의 자기검증(위 문서 참고): 두 호출부 모두 충격량 = 상대속도 x 질량이므로
+            // 역산질량과 질량이 같아야 한다. 상대속도가 0이면(스냅 뒤 안착 접촉) 역산이 불가능해 NaN이고,
+            // 그것은 자기검증을 못 했다는 뜻이지 불일치가 아니다 — "재지 못함"과 "맞음"을 같게 적지 않는다.
+            float reporterMass = reporter != null ? reporter.mass : float.NaN;
+            float relativeSpeed = collision != null ? collision.relativeVelocity.magnitude : float.NaN;
+            float impliedMass = relativeSpeed > 0.0001f ? impulseMagnitude / relativeSpeed : float.NaN;
+            string reporterRole = reporter == null ? "불명" : reporterIsRoot ? "루트" : "비루트";
+
+            Debug.Log($"[착지충격] 보고바디={(reporter != null ? reporter.name : "?")}" +
+                $"({reporterRole}, 질량={reporterMass:F3}, 역산질량={impliedMass:F3}, " +
+                $"상대속도={relativeSpeed:F2}), 충돌 충격량={impulseMagnitude:F2}(랙돌 임계 " +
                 $"{blackboard.Config.ragdollForceThreshold:F1}), 상태=" +
                 $"{(blackboard.Machine != null ? blackboard.Machine.CurrentStateId.ToString() : "?")}, " +
                 $"접촉 {count}개(최저 y={lowestContactY:F3}), 발 y={footY:F3}, " +

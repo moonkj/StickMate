@@ -461,6 +461,29 @@ run() {   # $1=edit|play  $2=라벨
   [ "$target_after" != "$target" ] && \
     echo "⚠ 활성 타깃이 실행 전후로 달라졌다: [$target] -> [$target_after]. 이 실행 중에 재컴파일이 있었다."
 
+  # ---- .meta 사이드카 -------------------------------------------------------
+  # ★ 2026-09-02 qa-regression 신설. BASELINE.md 생성기(docs/verify/baseline.py)가 이 파일을
+  #   **잰 값**으로 읽는다. 없으면 생성기는 로그의 Bee dag 해시로 **추론**하고 `~`를 붙인다.
+  #
+  #   왜 필요한가: 리더가 19:07 빌드로 활성 타깃을 OSX로 바꿔 놓고 그 뒤로도 「WIN이다」라고
+  #   계속 알렸다. 원인은 **실행마다 타깃을 적어 두는 칸이 없었던 것**이다.
+  #
+  # ★ target= 에는 **실행 후(target_after)** 값을 적는다. 실행 전 값은 '직전 컴파일'의 산물이라
+  #   재부팅 직후·타깃 전환 직후에 구조적으로 거짓말을 한다(실측). 실행 전 값은 별도 칸으로
+  #   남겨 두 값이 갈렸다는 **사실 자체**가 대장에 보이게 한다.
+  {
+    echo "label=$label"
+    echo "mode=$mode"
+    echo "head=$head"
+    echo "dirty=$dirty"
+    echo "target=$target_after"
+    echo "target_before=$target"
+    echo "target_shifted=$([ "$target_after" = "$target" ] && echo 0 || echo 1)"
+    echo "started=$started"
+    echo "finished=$(date +%s)"
+    echo "unity_rc=$unity_rc"
+  } > "$OUTDIR/${label}_${mode}.meta"
+
   report "$xml" "$minc" "$started" "$prevn" "$prevwho"
   local rrc=$?
   echo

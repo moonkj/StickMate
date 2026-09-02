@@ -42,23 +42,43 @@ namespace StickMate.Tests.PlayMode
     {
         private InfoGearIconWidget _gear;
         private CharacterInfoWindow _window;
-        private string _backup;
-        private bool _hadFile;
 
+        /// <summary>
+        /// ★★ 2026-09-02 — 여기 있던 <b>백업/복원</b>은 <b>오염 보존기</b>였다. 걷어냈다. 되살리지 마라.
+        ///
+        /// <para><b>원래 근거가 사라졌다.</b> 옛 코드는 <c>OneTimeSetUp</c>에서 저장 파일을 통째로 읽어
+        /// 두고 <c>OneTimeTearDown</c>에서 <b>그대로 다시 썼다</b>. 그 정당화는 이 클래스가 적어 둔
+        /// <i>"저장 파일은 실행 중인 실제 앱의 것과 같은 경로"</i>였는데, 그 전제는 2026-08-31에
+        /// <c>GlobalPlayModeTestIsolation</c>이 경로를 임시 폴더로 옮기면서 <b>거짓이 됐다</b>.
+        /// 주석은 갱신되지 않았고 코드는 <b>목적 없이</b> 살아남았다.</para>
+        ///
+        /// <para><b>그리고 뜻이 정반대로 뒤집혔다.</b> 격리된 폴더에서 <c>_hadFile == true</c>는
+        /// "개발자 파일이 있다"가 아니라 <b>"앞선 픽스처나 앞선 실행이 남긴 오염이 있다"</b>는 뜻이다.
+        /// 옛 TearDown은 그 오염을 <b>다시 써서 되살렸다</b> — 뒤따르는 어떤 정리도 무효화하는 형태였고,
+        /// 픽스처마다 같은 코드가 있어 오염이 스위트 전체를 타고 <b>세탁</b>됐다.</para>
+        ///
+        /// <para>실행 사이의 이월은 별도 원인이었다 — 리디렉션 폴더를 아무도 비우지 않았다. 그쪽은
+        /// <c>GlobalPlayModeTestIsolation.PurgeIsolatedDirectories</c>가 막는다.</para>
+        ///
+        /// <para><b>대신 가드를 남긴다.</b> 격리가 꺼진 채로 이 픽스처가 돌면 씬 로드가 개발자의 실제
+        /// 저장 파일을 읽고 쓰게 된다. 그때는 조용히 진행하지 않고 <b>즉시 실패</b>한다 —
+        /// 백업/복원이 하던 안전 역할은 이 한 줄이 <b>더 정직하게</b> 대신한다.</para>
+        /// </summary>
         [OneTimeSetUp]
-        public void BackupRealSaveFile()
+        public void RequireIsolatedSaveFileAndStartClean()
         {
-            string path = CharacterSaveStore.FilePath;
-            _hadFile = File.Exists(path);
-            _backup = _hadFile ? File.ReadAllText(path) : null;
+            Assert.IsTrue(CharacterSaveStore.IsRedirectedForTesting,
+                "저장 경로가 격리되지 않았습니다 — GlobalPlayModeTestIsolation이 돌지 않았습니다. " +
+                "이대로 진행하면 개발자의 실제 저장 파일을 읽고 씁니다(절대 불변 원칙 3).");
+            GlobalPlayModeTestIsolation.PurgeIsolatedDirectories();
         }
 
+        /// <summary>격리 폴더를 다음 픽스처에 <b>넘기지 않는다</b> — 이 픽스처가 만든 저장 파일을 지운다.
+        /// 옛 <c>RestoreRealSaveFile</c>이 하던 "다시 쓰기"의 정확한 반대다(위 문단 참고).</summary>
         [OneTimeTearDown]
-        public void RestoreRealSaveFile()
+        public void ClearIsolatedSaveFile()
         {
-            string path = CharacterSaveStore.FilePath;
-            if (_hadFile) File.WriteAllText(path, _backup);
-            else if (File.Exists(path)) File.Delete(path);
+            GlobalPlayModeTestIsolation.PurgeIsolatedDirectories();
             UiLayoutModel.ResetForTesting();
         }
 

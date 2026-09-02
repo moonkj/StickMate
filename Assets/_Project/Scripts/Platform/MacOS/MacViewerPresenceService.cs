@@ -21,6 +21,38 @@ namespace StickMate.Platform.MacOS
     /// <para><b>권한</b>: 여기 쓰이는 세 조회는 모두 접근성/화면기록 권한이 필요 없다.
     /// <c>CGEventSourceSecondsSinceLastEventType</c>은 이벤트를 <b>가로채는</b> 것이 아니라 "마지막
     /// 이벤트로부터 몇 초 지났는가"라는 스칼라 하나만 돌려주므로 입력 감시가 아니다.</para>
+    ///
+    /// ============================================================================
+    /// ★★ 세션 잠금 — <b>여기는 비워 두는 것이 결론이다</b> (2026-09-02)
+    /// ============================================================================
+    /// <c>ViewerPresenceSnapshot.SessionLocked</c>에 <b>항상 false</b>를 넣는다.
+    /// <b>이것은 "아직 구현하지 않았다"가 아니라 "쓸 수 있는 문서화된 수단이 없다"라는 판정이다.</b>
+    /// 후보 세 개를 전부 검토했다(전문: <c>docs/platform/GHOST_FOOTHOLDS.md</c> 2-3절):
+    /// <list type="bullet">
+    /// <item><c>CGSessionCopyCurrentDictionary()</c> → <c>kCGSessionOnConsoleKey</c> — <b>공개 API지만
+    ///   우리가 원하는 사건을 못 잡는다.</b> 빠른 사용자 전환에서만 false가 되고 <b>평범한 화면
+    ///   잠금에서는 true로 남는다.</b></item>
+    /// <item>같은 딕셔너리의 <c>CGSSessionScreenIsLocked</c> — <b>비문서 키.</b> 이 프로젝트가
+    ///   <c>GetWindowBand</c>(user32 비문서 export)를 보류시킨 것과 <b>정확히 같은 종류의 의존</b>이다.
+    ///   한쪽만 허용하면 판정이 일관되지 않는다 → 배제.</item>
+    /// <item><c>com.apple.screenIsLocked</c> 분산 알림 — 널리 쓰이지만 <b>Apple 문서에 없다</b> →
+    ///   위와 같은 이유로 배제.</item>
+    /// </list>
+    ///
+    /// <para><b>그런데도 macOS에서 이 기능은 동작한다</b> — 다른 다리로 서기 때문이다.
+    /// <see cref="SessionVisibilityPolicy.ShouldSuspendFootholdScan"/>은 OR 한 줄이고,
+    /// 두 플랫폼이 <b>정확히 반대쪽 칸을 채운다</b>:</para>
+    /// <code>
+    ///           | DisplayAsleep                     | SessionLocked
+    ///   --------+-----------------------------------+------------------------------------------
+    ///   macOS   | ★ 채워짐 — 바로 이 파일           | 항상 false — 위 세 후보가 전부 배제됐다
+    ///           |   (CGDisplayIsAsleep)             |
+    ///   Windows | 항상 false — 창 프로시저가 필요해  | 채워짐 (WTSQuerySessionInformation
+    ///           |   포기했다                         |            + OpenInputDesktop)
+    /// </code>
+    /// <b>"한쪽은 항상 false네, 정리하자"고 어느 칸이든 지우면 그 플랫폼에서 기능이 통째로 사라진다.</b>
+    /// macOS에서 잠금은 잠금 지연 뒤 대개 디스플레이 슬립으로 이어지고 화면 보호기도 마찬가지라,
+    /// <c>CGDisplayIsAsleep</c>이 실질적으로 같은 시간대를 덮는다.
     /// </summary>
     internal sealed class MacViewerPresenceService : IViewerPresenceService
     {
@@ -133,7 +165,11 @@ namespace StickMate.Platform.MacOS
                 double remaining = IOPSGetTimeRemainingEstimate();
                 bool onBattery = Math.Abs(remaining - TimeRemainingUnlimited) > 0.001;
 
-                snapshot = new ViewerPresenceSnapshot(asleep, idleSeconds, ProbeLowPowerMode(), onBattery);
+                // ★ SessionLocked = false는 "아직 구현 안 함"이 아니라 **수단이 없어서 false**다.
+                //   채우려 들기 전에 아래 클래스 문서의 「세션 잠금」 절을 반드시 먼저 읽을 것 —
+                //   후보 세 개를 전부 검토했고 셋 다 배제 사유가 있다.
+                snapshot = new ViewerPresenceSnapshot(asleep, idleSeconds, ProbeLowPowerMode(), onBattery,
+                    sessionLocked: false);
                 return true;
             }
             catch (Exception e)

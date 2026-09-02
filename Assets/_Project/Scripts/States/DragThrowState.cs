@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using UnityEngine;
 using StickMate.Core;
+using StickMate.Dialogue;
 
 namespace StickMate.States
 {
@@ -24,9 +26,22 @@ namespace StickMate.States
     ///
     /// 최근 dragThrowVelocitySampleWindowSeconds(0.12초) 구간의 **커서** 위치 이력을 원형 버퍼에 쌓아두었다가,
     /// 놓는 순간 평균 속도를 계산해 dragThrowMaxSpeed로 clamp한 뒤 Dynamic 복귀 + 그 속도로 던진다 —
-    /// clamp가 없으면 "실종 버그"(화면 밖으로 사라져 안 돌아옴)로 이어질 수 있다(12절 명시). 던진 속도
-    /// (질량 곱 = 충격량)가 ragdollForceThreshold를 넘으면 RagdollImpactResolver를 통해 즉시 Ragdoll로
-    /// 자연 전이하고, 아니면 Fall로 보내 평범한 포물선 낙하가 되게 한다.
+    /// clamp가 없으면 "실종 버그"(화면 밖으로 사라져 안 돌아옴)로 이어질 수 있다(12절 명시).
+    ///
+    /// ★ 2026-09-02 정정 — 이 자리에 «던진 속도(질량 곱 = 충격량)가 ragdollForceThreshold를 넘으면 즉시
+    /// Ragdoll로 자연 전이한다»고 적혀 있었다. <b>2026-08-29에 사용자 요청으로 폐지된 거동</b>인데 클래스
+    /// 문서만 예전 그대로 남아, 아래 본문(★★ "던진 뒤 무엇이 되는가")과 <b>정면으로 어긋나 있었다.</b>
+    /// 실제 거동: throwTumbleEnabled(배포 기본 1)가 켜져 있고 ThrowTumbleState.IsCleanThrow가 참이면
+    /// <b>ThrowTumble</b>(공중 회전 -> 무릎앉아 착지)이고, 그렇지 않을 때만 예전 경로(임계값 이상이면
+    /// Ragdoll, 미만이면 Fall)로 내려간다. <b>「던짐 -> 랙돌」을 되살리지 마라 — 사용자가 닫은 문이다.</b>
+    /// 진입 경로 정본 목록은 States/RagdollImpactResolver 클래스 문서에 있다.
+    ///
+    /// ★ 2026-09-02 붙잡힘 반응 대사 신설(사용자 요청 "마우스로 잡고 있을때 놔줘 놔줘 라는 멘트 같은거
+    /// 넣는것도 좋아보임"). 문안·구역표는 Dialogue/GrabReactionLines.cs에 있고 이 상태는 <b>사실 확정</b>만
+    /// 한다 — 잡힌 높이(신장비)를 StickmanMetrics 랜드마크로 구역화해 스냅샷하고, 그 스냅샷에서만 대사가
+    /// 파생된다(원칙 1). <b>한 번 잡기 = 대사 1줄</b>이며(Enter()가 유일한 발화 기회) 종료·타임아웃에는
+    /// 대사가 <b>없다</b> — ReleaseAndThrow()가 종료 사유를 인자로 받지 않아 사유가 구조적으로 보이지
+    /// 않기 때문이다(없는 구분을 지어내지 않는다).
     ///
     /// 종료 경로(전부 이 상태의 Tick()이 자체 판정): (1) DragReleaseSignaled 펄스(마우스업/트레이
     /// 긴급정지 모두 이 신호 하나로 통일), (2) dragThrowMaxHoldSeconds(10초) 초과, (3) 커서 좌표를 더
@@ -37,7 +52,7 @@ namespace StickMate.States
     /// 감지할 수 없다 — 렌더링 레이어가 붙을 때 발판 사각형과의 거리 기반 근사 판정을 추가로 설계해야
     /// 한다(Phase 2+ 과제, WanderAmbientMotionRequested류 "트리거 조건은 나중" 패턴 재사용 권고).
     /// </summary>
-    public sealed class DragThrowState : IStickmanState
+    public sealed class DragThrowState : IStickmanState, IHasDialogueParams
     {
         // 0.12초 창이면 200fps에서도 24개 표본이면 충분 — 여유 있게 32.
         private const int SampleCapacity = 32;
@@ -61,6 +76,33 @@ namespace StickMate.States
         // 잡은 순간의 "커서 -> 몸통 원점" 오프셋. FollowCursor()가 이 오프셋을 유지한 채 커서를 따라가므로
         // 캐릭터는 **사용자가 실제로 붙잡은 그 지점**이 커서에 붙은 것처럼 움직인다(아래 문서 참고).
         private Vector2 _grabOffset;
+
+        // ── 붙잡힘 반응 대사(2026-09-02, 사용자 요청 "마우스로 잡고 있을때 놔줘 놔줘 라는 멘트 같은거") ──
+        /// <summary>대사 매핑 함수에 노출하는 스냅샷(BUG-M7 파이프라인) — 상태 인스턴스가 하나를 들고
+        /// 재사용한다(RagdollState.RagdollDialogueParams와 동일 관례).</summary>
+        private readonly GrabReactionLines.GrabParams _dialogueParams = new GrabReactionLines.GrabParams();
+
+        public object DialogueParams => _dialogueParams;
+
+        /// <summary>
+        /// 다음 붙잡힘 반응을 허용하는 시각(Time.unscaledTime).
+        /// <b>이 상태가 자기 타이머를 직접 들고 있는 것이 설계다</b>(design-narrative R7 §2-6 d):
+        /// <list type="bullet">
+        ///   <item><b>앰비언트 쿨다운은 읽지 않는다</b> — 3초 전 혼잣말 때문에 유저가 잡았는데 침묵하면
+        ///     그건 <b>고장으로 읽힌다</b>. 유저가 원인인 사건이 유휴 잡담에 종속되면 안 된다.</item>
+        ///   <item>대신 앰비언트 쿨다운은 <b>밀어낸다</b>(아래 <see cref="TryStartGrabReaction"/>) —
+        ///     착지 직후 Idle 잡담이 아직 읽는 중인 잡기 반응을 교체해 버리는 것을 막는다.</item>
+        ///   <item>막는 대상은 홀드 길이가 아니라 <b>연타</b>다. 캐릭터를 클릭하면 그 클릭은 반드시
+        ///     Dragged를 거치므로(다른 클릭 동작이 없다) 5번 클릭 = 진입 5번이 된다.</item>
+        /// </list>
+        /// 상태 인스턴스는 에이전트마다 하나씩 재사용되므로(Core/StickmanAgent의 상태 등록표)
+        /// 이 값은 Enter/Exit를 건너 살아남는다 — 그게 연타 방어가 성립하는 이유다.
+        /// </summary>
+        private float _nextGrabReactionAllowedUnscaledTime;
+
+        /// <summary>루트에 달린 콜라이더 조회용 재사용 버퍼 — GetComponents(List)는 할당이 없다
+        /// (상주 앱이라 잡을 때마다 배열을 만들지 않는다).</summary>
+        private readonly List<Collider2D> _colliderScratch = new List<Collider2D>(4);
 
         // ── 발버둥(2026-08-29, 사용자 요청 "잡았을때 막 벗어날려는듯이 몸부림 치게끔") ──
         /// <summary>발버둥 전용 누적 시간(초). Idle 호흡/보행 위상과 독립이라 **잡을 때마다 0에서
@@ -111,11 +153,12 @@ namespace StickMate.States
             }
 
             _grabOffset = Vector2.zero;
+            bool grabOffsetClamped = false;
             if (_blackboard.TryGetCursorWorldPosition(out Vector2 cursorWorld))
             {
                 _cursorEverAvailable = true;
                 PushSample(cursorWorld);
-                _grabOffset = CaptureGrabOffset(cursorWorld);
+                _grabOffset = CaptureGrabOffset(cursorWorld, out grabOffsetClamped);
             }
 
             _followLogTimer = 0f;
@@ -123,9 +166,14 @@ namespace StickMate.States
                 $"몸통={_blackboard.Body?.position.ToString("F2")}, 잡은 오프셋={_grabOffset.ToString("F2")}, " +
                 $"물리모드={_blackboard.Body?.bodyType}.");
 
-            // UX 12절에는 드래그 "진입" 시점의 대사가 명시되어 있지 않다 — WalkState/JumpState와 동일한
-            // 관례로, 정말 필요한 대사가 없는 상태는 DialogueIntent를 만들지 않는 것도 원칙 1을 지키는
-            // 방법이다(없는 대사를 억지로 채워 넣지 않음).
+            // ★ 2026-09-02 붙잡힘 반응 대사 신설(사용자 요청 "마우스로 잡고 있을때 놔줘 놔줘 라는 멘트
+            // 같은거 넣는것도 좋아보임"). 이 자리에는 원래 "대사를 만들지 않는다"가 적혀 있었고 그 이유는
+            // **"사용자가 요청하지 않은 자율 연출"**이었다 — 이번 요청이 그 전제를 해제한다.
+            //
+            // 순서가 계약이다: 위에서 **잡힌 자리라는 물리적 사실이 먼저 확정**되고(ResolveGrabPoint),
+            // 대사는 그 스냅샷에서만 파생된다(원칙 1). 대사를 먼저 고르고 부위를 끼워 맞추지 않는다.
+            ResolveGrabPoint(grabOffsetClamped);
+            TryStartGrabReaction(context);
         }
 
         public void Tick(float deltaTime)
@@ -214,9 +262,15 @@ namespace StickMate.States
         ///
         /// 다만 오프셋이 무한정 커지면(예: 좌표계가 크게 어긋난 상태에서 전역 폴링 경로로 잡힌 경우)
         /// 캐릭터가 커서에서 한참 떨어진 채 끌려다니게 되므로, 전신 높이를 넘지 않는 선으로 clamp한다.
+        ///
+        /// <para>★ 2026-09-02 — <paramref name="clamped"/>를 <b>밖으로 보고</b>한다. 추종에는 필요 없지만
+        /// <b>대사에는 필요하다</b>: clamp가 걸렸다는 것은 좌표계가 크게 어긋났다는 뜻이고, 그때의 오프셋은
+        /// <b>몸이 아니라 오차를 가리킨다</b>. 그 값으로 부위를 주장하면 "머리 놔"가 거짓이 된다
+        /// (<see cref="ResolveGrabPoint"/> 문서의 (c) 항 참고).</para>
         /// </summary>
-        private Vector2 CaptureGrabOffset(Vector2 cursorWorld)
+        private Vector2 CaptureGrabOffset(Vector2 cursorWorld, out bool clamped)
         {
+            clamped = false;
             if (_blackboard.Body == null) return Vector2.zero;
             Vector2 offset = _blackboard.Body.position - cursorWorld;
 
@@ -225,8 +279,160 @@ namespace StickMate.States
             var collider = _blackboard.Body.GetComponent<Collider2D>();
             if (collider != null) maxOffset = Mathf.Max(0.1f, collider.bounds.size.magnitude);
 
-            if (offset.magnitude > maxOffset) offset = offset.normalized * maxOffset;
+            if (offset.magnitude > maxOffset)
+            {
+                offset = offset.normalized * maxOffset;
+                clamped = true;
+            }
             return offset;
+        }
+
+        // ============================================================================
+        // ★ 붙잡힘 반응 대사 (2026-09-02, 사용자 요청)
+        //   설계: design/narrative/2026-09-02_R7_붙잡힘대사_회전침묵_재확인.md §2
+        //   문안·구역 표: Dialogue/GrabReactionLines.cs (이 파일은 "사실 확정"만 한다)
+        // ============================================================================
+
+        /// <summary>
+        /// 잡힌 자리를 <b>사실로</b> 확정해 대사 파라미터에 스냅샷한다. 대사를 고르기 <b>전에</b> 호출된다.
+        ///
+        /// ============================================================================
+        /// ★★ 왜 <c>HasGrabPoint</c>가 별도 필드인가 — 이 메서드의 존재 이유
+        /// ============================================================================
+        /// <c>_grabOffset == Vector2.zero</c>는 <b>「발끝을 정확히 잡았다」와 「커서를 못 읽었다」가
+        /// 똑같이 생겼다.</b> 오프셋만 보고 구역을 고르면 <b>좌표 조회 실패가 전부 「다리 놔」로
+        /// 위장한다</b> — 이 저장소가 반복해서 당한 그 형태(실패한 측정과 성공한 측정이 같은 모양).
+        ///
+        /// <para>★ 그리고 이 대사만 갖는 특이 위험이 있다. <see cref="CaptureGrabOffset"/> 문서가 적어둔
+        /// <b>"좌표 변환에 상수 오차가 남아 있어도 드래그 추종에서는 그 오차가 상쇄된다"</b>는 성질이
+        /// <b>대사에는 성립하지 않는다.</b> 상수 오차가 있으면 <b>드래그는 완벽해 보이는데 「머리 놔」만
+        /// 틀린다.</b> 그러니 <b>"드래그가 잘 되니까 좌표는 맞다"는 추론을 쓰지 마라.</b></para>
+        ///
+        /// <para>그래서 셋이 전부 참일 때만 부위를 주장한다:
+        /// <list type="number">
+        ///   <item>Enter()에서 커서 월드 좌표를 실제로 읽었다(<c>_cursorEverAvailable</c>).</item>
+        ///   <item>오프셋 clamp가 발동하지 <b>않았다</b> — 발동했다면 그 값은 몸이 아니라 오차다.</item>
+        ///   <item>잡힌 높이가 <b>실제 히트박스 세로 범위</b> 안이다. 이 범위는 상수로 지어내지 않고
+        ///     루트에 달린 콜라이더 바운즈에서 <b>읽는다</b>(클릭 잡기 영역은 전신 위아래로 여유를 두고
+        ///     있어서 h가 0 미만이나 1 초과로 나오는 것이 정상이다 — Editor/SceneBootstrapper의 GrabArea).</item>
+        /// </list>
+        /// 하나라도 어긋나면 <see cref="GrabReactionLines.GrabZone.Unknown"/>으로 두고 폴백 1줄만 쓴다.
+        /// <b>모르면 부위를 주장하지 않는다.</b></para>
+        /// </summary>
+        private void ResolveGrabPoint(bool grabOffsetClamped)
+        {
+            _dialogueParams.GrabHeightRatio = float.NaN;
+            _dialogueParams.HasGrabPoint = false;
+            _dialogueParams.Zone = GrabReactionLines.GrabZone.Unknown;
+            _dialogueParams.LineIndex = 0;
+
+            if (!_cursorEverAvailable || grabOffsetClamped) return;
+
+            // 루트 원점은 **발끝**이다(SenseGround 규약) → 잡힌 높이 = 커서Y - 발끝Y = -오프셋Y.
+            float height = _blackboard.CharacterHeightWorld;
+            if (height <= 0.0001f) return;
+            float heightRatio = -_grabOffset.y / height;
+            _dialogueParams.GrabHeightRatio = heightRatio;
+
+            if (!TryGetHitboxHeightBand(out float minRatio, out float maxRatio)) return;
+            if (heightRatio < minRatio || heightRatio > maxRatio) return;
+
+            StickmanMetrics metrics = _blackboard.Metrics;
+            if (metrics == null) return;
+            float total = metrics.TotalHeight;
+            if (total <= 0.0001f) return;
+
+            // 경계는 **고른 값이 아니다** — 머리 링의 실제 아랫끝과 고관절이다(설계 §2-4).
+            // 숫자를 여기 베끼지 않는다: 조형이 바뀌면 StickmanMetrics가 다시 재고 이 판정이 함께 따라온다.
+            GrabReactionLines.GrabZone zone = GrabReactionLines.Classify(heightRatio,
+                (metrics.HeadCenterLocalY - metrics.HeadRadius) / total,
+                metrics.HipLocalY / total);
+            if (zone == GrabReactionLines.GrabZone.Unknown) return;
+
+            _dialogueParams.Zone = zone;
+            _dialogueParams.HasGrabPoint = true;
+        }
+
+        /// <summary>
+        /// 루트에 달린 콜라이더 전체가 덮는 세로 범위(신장비). "0 ~ 1 사이여야 한다"는 상수 대신
+        /// <b>실제 히트박스</b>를 읽는 이유는, 클릭 잡기 영역(GrabArea 트리거)이 전신 위아래로 여유를
+        /// 두고 있어 <b>정상적인 클릭에서도 h가 0 미만/1 초과로 나오기 때문</b>이다. 그 여유 폭을
+        /// 상수로 지어내면 프리팹이 바뀔 때 조용히 어긋난다.
+        /// </summary>
+        private bool TryGetHitboxHeightBand(out float minRatio, out float maxRatio)
+        {
+            minRatio = 0f;
+            maxRatio = 0f;
+
+            Rigidbody2D body = _blackboard.Body;
+            if (body == null) return false;
+            float height = _blackboard.CharacterHeightWorld;
+            if (height <= 0.0001f) return false;
+
+            body.GetComponents(_colliderScratch);
+            float footY = body.position.y;
+            float min = float.MaxValue;
+            float max = float.MinValue;
+            for (int i = 0; i < _colliderScratch.Count; i++)
+            {
+                Collider2D c = _colliderScratch[i];
+                if (c == null) continue;
+                Bounds b = c.bounds;
+                if (b.min.y < min) min = b.min.y;
+                if (b.max.y > max) max = b.max.y;
+            }
+            _colliderScratch.Clear();   // 참조를 들고 있지 않는다(파괴된 콜라이더를 붙잡지 않기 위해).
+
+            if (min > max) return false;   // 콜라이더가 하나도 없었다 = 히트박스를 모른다.
+            minRatio = (min - footY) / height;
+            maxRatio = (max - footY) / height;
+            return maxRatio > minRatio;
+        }
+
+        /// <summary>
+        /// 붙잡힘 반응 대사를 만든다(만들지 않을 수도 있다). <b>종류는 전부 Reaction</b>이고 그 이유는
+        /// <see cref="GrabReactionLines"/> 클래스 문서에 있다 — 요약하면 <c>Dragged</c>의 계획 잔여 체류가
+        /// <b>정의상 NaN</b>이라 발화 자격 게이트(규칙 8)가 아무것도 막지 못하고, Narrative였다면
+        /// 0.1초짜리 클릭이 <b>번쩍임</b>이 된다.
+        ///
+        /// <para>순서: 쿨다운 → 난수 1회 소진 → 텍스트 확정 → 타이머 기록 → DialogueIntent 발급.
+        /// 난수는 여기서 <b>한 번만</b> 뽑히고 그 결과가 파라미터 스냅샷으로 남는다 —
+        /// 매핑 함수(<see cref="GrabReactionLines.Resolve"/>)는 난수를 쓰지 않는 순수 함수다(31-1 관례).</para>
+        /// </summary>
+        private void TryStartGrabReaction(StateTransitionContext context)
+        {
+            float now = Time.unscaledTime;
+            if (now < _nextGrabReactionAllowedUnscaledTime)
+            {
+                // 침묵이 계약의 결과인지 버그인지 로그만으로 구분되어야 한다(규칙 8 로그와 같은 이유).
+                Debug.Log($"[DragThrowState] [잡기대사] 발화 보류 — 직전 잡기 반응이 아직 화면에 있다" +
+                    $"(남은 {(_nextGrabReactionAllowedUnscaledTime - now):F2}초). 연타 방어이며 홀드 길이와 무관하다.");
+                return;
+            }
+
+            int poolSize = GrabReactionLines.PoolSizeFor(_dialogueParams.Zone, _dialogueParams.HasGrabPoint);
+            _dialogueParams.LineIndex = poolSize > 1 ? Random.Range(0, poolSize) : 0;
+
+            // 텍스트를 여기서 한 번 풀어 보는 이유는 **쿨다운 길이가 그 줄의 노출 상한**이기 때문이다
+            // (고른 숫자가 아니다 — "앞의 말이 화면에 있는 동안엔 새로 말하지 않는다"). 순수 함수라
+            // 아래 DialogueIntent가 같은 파라미터로 다시 부르면 반드시 같은 줄이 나온다.
+            DialogueLine line = GrabReactionLines.Resolve(StickmanStateId.Dragged, _dialogueParams);
+            float visibleMax = DialogueBudget.MaxVisibleSecondsFor(line.Text,
+                DialogueTiming.PopInSeconds, DialogueTiming.FadeOutSeconds,
+                AppSettingsModel.ResolveDialogueVisibleScale());
+
+            _nextGrabReactionAllowedUnscaledTime = now + visibleMax;
+            // ★ 비대칭이다. 앰비언트 쿨다운을 **읽지는 않고 쓰기만** 한다(_nextGrabReactionAllowedUnscaledTime
+            // 문서 참고): 유저가 잡았는데 3초 전 혼잣말 때문에 침묵하면 고장으로 읽히고, 반대로 착지 직후
+            // Idle 잡담이 아직 읽는 중인 잡기 반응을 교체해 버리는 것은 실제로 일어난다.
+            _blackboard.NextChatterAllowedUnscaledTime = Mathf.Max(
+                _blackboard.NextChatterAllowedUnscaledTime, _nextGrabReactionAllowedUnscaledTime);
+
+            _ = new DialogueIntent(context, GrabReactionLines.Resolve);
+
+            Debug.Log($"[DragThrowState] [잡기대사] \"{line.Text}\" — 구역={_dialogueParams.Zone}, " +
+                $"부위확신={_dialogueParams.HasGrabPoint}, 잡힌높이={_dialogueParams.GrabHeightRatio:F3}신장비, " +
+                $"풀 {poolSize}줄 중 {_dialogueParams.LineIndex}번, 노출상한 {visibleMax:F2}초(= 다음 잡기 반응까지).");
         }
 
         /// <summary>
@@ -369,8 +575,14 @@ namespace StickMate.States
         // 2026-08-28 수정(dragFollowSmoothTime=0 즉시 대입)이 그대로 무효가 된다. 몸부림은 그 위에
         // 얹히는 팔다리 각도 + 몸통 회전이다.
         //
-        // 대사는 만들지 않는다 — 사용자는 요청하지 않은 자율 연출에 반복적으로 민감했다. 나중에
-        // 붙인다면 전이가 확정된 Enter()에서 이 상태의 파라미터로부터만 파생시켜야 한다(불변 원칙 1).
+        // ★ 2026-09-02 정정 — 여기에는 «대사는 만들지 않는다 — 사용자는 요청하지 않은 자율 연출에
+        // 반복적으로 민감했다»가 적혀 있었고, 그 전제를 사용자 요청("마우스로 잡고 있을때 놔줘 놔줘
+        // 라는 멘트 같은거 넣는것도 좋아보임")이 해제했다. 대사는 그 옛 주석이 요구한 그대로 붙였다 —
+        // **전이가 확정된 Enter()에서 이 상태의 파라미터로부터만** 파생된다(TryStartGrabReaction).
+        //
+        // ★ 그리고 발버둥은 여전히 **말이 아니라 몸**이 하는 답이다. 커서를 빠르게 흔들면 세기가
+        // 최대 +60% 격렬해지는데(아래 boost), 그 사실을 대사로 한 번 더 말하지 않는다 — 잡기 대사는
+        // Enter() 시점 값에 묶여 있어서 흔들기를 말하면 그건 중복이 아니라 **지연된 거짓말**이 된다.
 
         private void TickStruggle(float deltaTime, Vector2 cursorWorld)
         {

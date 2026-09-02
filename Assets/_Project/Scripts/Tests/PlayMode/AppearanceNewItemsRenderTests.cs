@@ -72,6 +72,36 @@ namespace StickMate.Tests.PlayMode
         /// <summary>관측 창(실시간 초). 물방울은 0.55초 간격, 나뭇잎은 착용 직후 첫 장이 바로 진다.</summary>
         private const float ObserveSeconds = 2.5f;
 
+        /// <summary>렌더러가 만드는 펫 컨테이너 개체의 이름.
+        /// <para>★ 프로덕션 문자열의 사본이다(<c>CharacterPetRenderer.EnsureBuilt</c>가
+        /// <c>new GameObject("CharacterPet")</c>로 만든다). PlayMode 어셈블리는 그 상수를 볼 수 없으므로
+        /// 사본을 피할 수 없는데, 이 니들은 <b>존재 단언</b>에만 쓴다 — 이름이 바뀌면 아래
+        /// <c>Assert.AreEqual(1, ...)</c>가 <b>0개</b>로 시끄럽게 빨개진다(조용히 초록이 되는
+        /// 부재 단언용이 아니다, CLAUDE.md).</para></summary>
+        private const string PetContainerName = "CharacterPet";
+
+        /// <summary>펫이 <b>완전히 사라지거나 완전히 나타날</b> 때까지의 예산(벽시계 초).
+        /// <c>CharacterPetRenderer.FadeSeconds</c>(0.25초)의 열 배가 넘는다 — 넉넉하되 무한대가 아니다.
+        /// ★ 프레임 수가 아니라 <b>벽시계</b>인 이유: 이 저장소의 배치모드 PlayMode는 2,000fps 이상으로
+        /// 돌아서 "N프레임 대기"가 실제로는 0.01초인 경우가 있다(CLAUDE.md 협업 프로토콜).</summary>
+        private const float PetSettleSeconds = 3f;
+
+        /// <summary>
+        /// "보인다"의 기준 알파.
+        ///
+        /// <para>★★ 2026-09-02 <b>BUG-1의 정체가 이 상수가 한 벌이 아니었던 것</b>이다(debugger 확정).
+        /// 옛 코드는 <c>while (… &amp;&amp; pet.Alpha &lt; 0.9f)</c>로 <b>알파</b>를 기다린 뒤
+        /// <c>Assert.AreEqual(itemIndex, pet.ActivePetItemIndex)</c>로 <b>인덱스</b>를 단언했다 —
+        /// <b>기다린 것과 잰 것이 다른 값</b>이다. 세이브가 "펫 착용"으로 복원되면 알파는 착용 순간
+        /// 이미 1.0이라 루프가 <b>0프레임</b> 돌고, 아직 갱신되지 않은 인덱스를 단언한다.
+        /// 근본 원인은 <c>CharacterPetRenderer</c>가 아이템 교체 시 <c>_alpha</c>를 리셋하지 않는
+        /// <b>의도된 설계</b>다 — 즉 알파는 "새 펫이 준비됐다"의 지표가 아니다.</para>
+        ///
+        /// <para>독립 측정(debugger): 실패 실행 2.162~2.187초 / 성공 실행 2.391~2.501초로 <b>겹침 0</b>,
+        /// 평균차 0.242초 ≈ <c>FadeSeconds × 0.9 = 0.225초</c>. <b>초록일 때만 루프가 돌았다.</b></para>
+        /// </summary>
+        private const float VisibleAlpha = 0.9f;
+
         [UnityTearDown]
         public IEnumerator TearDownAll()
         {
@@ -176,20 +206,85 @@ namespace StickMate.Tests.PlayMode
             var pet = Object.FindFirstObjectByType<CharacterPetRenderer>();
             Assert.IsNotNull(pet, $"{LogPrefix} CharacterPetRenderer가 씬에 없습니다.");
 
+            // ════════════════════════════════════════════════════════════════════════
+            // ① 관측 전제를 <b>만든 뒤 단언</b>한다 (2026-09-02, debugger 제안 ①)
+            // ════════════════════════════════════════════════════════════════════════
+            // Ready()가 모든 슬롯을 벗겼지만 그건 <b>모델</b>이다. 렌더러는 다음 LateUpdate부터
+            // 알파를 내리고, 0에 닿아야 Teardown에서 _builtItem을 -1로 되돌린다. 그 <b>완전 해제</b>를
+            // 실제로 기다리지 않으면 이 테스트에는 <b>거짓 초록</b>이 숨는다:
+            //   앞 테스트/세이브에서 누출된 펫이 우연히 검사 대상과 <b>같은 번호</b>면,
+            //   착용→재빌드 경로를 <b>한 번도 안 거치고</b> 모든 단언이 통과한다.
+            // 그래서 "지금 그리고 있는 것이 아무것도 없다"를 만들고, 그것을 단언한 뒤에 걸친다.
+            int settleFrames = 0;
+            yield return PumpUntil(() => pet.ActivePetItemIndex < 0 && pet.Alpha <= 0.001f,
+                PetSettleSeconds, n => settleFrames = n);
+
+            Assert.Less(pet.ActivePetItemIndex, 0,
+                $"{LogPrefix} 걸치기 <b>전</b>인데 펫 렌더러가 아직 {pet.ActivePetItemIndex}번을 " +
+                $"그리고 있습니다(알파 {pet.Alpha:F2}, {settleFrames}프레임 기다림). " +
+                "누출된 펫이 검사 대상과 같으면 '착용→재빌드'를 건너뛴 채 초록이 됩니다 — " +
+                "여기서 멈추는 편이 그 거짓 초록보다 낫습니다.");
+            Assert.LessOrEqual(pet.Alpha, 0.001f,
+                $"{LogPrefix} 걸치기 전 펫 알파가 {pet.Alpha:F3}입니다 — 완전히 사라지지 않았습니다.");
+
             Assert.IsTrue(Wear(EquipmentSlot.Pet, itemIndex),
                 $"{LogPrefix} {label}을(를) 걸치지 못했습니다 — 관측 전제가 성립하지 않습니다.");
 
-            // 알파 페이드(0.25초)가 끝날 때까지 기다린다 — "존재하지만 완전히 투명"을 통과시키지 않는다.
-            float deadline = Time.realtimeSinceStartup + 3f;
-            while (Time.realtimeSinceStartup < deadline && pet.Alpha < 0.9f) yield return null;
+            // ════════════════════════════════════════════════════════════════════════
+            // ② <b>기다리는 조건</b>과 <b>단언하는 값</b>을 같게 맞춘다 (BUG-1 본체)
+            // ════════════════════════════════════════════════════════════════════════
+            // 인덱스와 알파를 <b>둘 다</b> 기다린다. 옛 코드는 알파만 기다리고 인덱스를 단언했다.
+            int buildFrames = 0;
+            yield return PumpUntil(() => pet.ActivePetItemIndex == itemIndex && pet.Alpha > VisibleAlpha,
+                PetSettleSeconds, n => buildFrames = n);
+
+            // ★ 0프레임은 구조적으로 불가능하다 — 바로 위에서 인덱스 -1 / 알파 0을 단언했으므로
+            //   최소한 재빌드 1프레임 + 페이드가 필요하다. 0이 나오면 위 ①이 실제로는 안 돈 것이고,
+            //   그건 정확히 BUG-1이 재발한 형태다. 조용히 통과시키지 않는다.
+            Assert.Greater(buildFrames, 0,
+                $"{LogPrefix} {label}을(를) 걸친 직후 <b>0프레임</b> 만에 조건이 참이 됐습니다 — " +
+                "해제 대기(①)가 실제로는 성립하지 않았다는 뜻입니다(BUG-1 재발 형태).");
 
             Assert.AreEqual(itemIndex, pet.ActivePetItemIndex,
-                $"{LogPrefix} {label}을(를) 걸쳤는데 렌더러가 그리고 있는 자리는 {pet.ActivePetItemIndex}번입니다.");
-            Assert.Greater(pet.Alpha, 0.9f,
-                $"{LogPrefix} {label}의 알파가 {pet.Alpha:F2}입니다 — 그려졌지만 보이지 않습니다.");
+                $"{LogPrefix} {label}을(를) 걸쳤는데 렌더러가 그리고 있는 자리는 {pet.ActivePetItemIndex}번입니다 " +
+                $"({PetSettleSeconds}초 · {buildFrames}프레임 기다린 결과, 알파 {pet.Alpha:F2}).");
+            Assert.Greater(pet.Alpha, VisibleAlpha,
+                $"{LogPrefix} {label}의 알파가 {pet.Alpha:F2}입니다 — 그려졌지만 보이지 않습니다 " +
+                $"({buildFrames}프레임 기다림).");
 
-            GameObject root = GameObject.Find("CharacterPet");
-            Assert.IsNotNull(root, $"{LogPrefix} {label}을(를) 걸쳤는데 'CharacterPet' 개체가 씬에 없습니다.");
+            // ════════════════════════════════════════════════════════════════════════
+            // ③ 'CharacterPet'을 <b>집기 전에</b> 프레임 경계를 하나 넘긴다 (2026-09-02, debugger 제안 ②)
+            // ════════════════════════════════════════════════════════════════════════
+            // CharacterPetRenderer.EnsureBuilt는 교체 시 <c>DestroyVisuals()</c>로 옛 컨테이너를
+            // <b>Destroy</b>한 뒤 <b>같은 프레임에</b> 같은 이름("CharacterPet")으로 새 컨테이너를
+            // 만든다. 유니티의 Destroy는 <b>프레임 끝</b>에 처리되므로 그 프레임 안에서는 같은 이름의
+            // 개체가 <b>둘</b> 존재할 수 있고, GameObject.Find는 그중 <b>죽을 쪽</b>을 집을 수 있다.
+            // 그러면 아래 선 검사가 <b>이미 버려진 껍데기</b>를 재게 된다.
+            //
+            // ★ 프레임 하나를 더 도는 것으로 끝내지 않는다 — 그건 "그럴 것이다"이지 측정이 아니다.
+            //   실제로 <b>한 개뿐</b>임을 센다. 둘이면 여기서 멈추고, 하나도 없으면 그것도 멈춘다.
+            //   (비활성 포함으로 세는 이유: 죽기 직전의 껍데기가 비활성일 수 있고, 그 경우
+            //    GameObject.Find는 <b>못 보는데</b> 이 검사는 본다 — 못 보는 쪽이 위험하다.)
+            yield return null;
+
+            int namedPetRoots = 0;
+            Transform livePetRoot = null;
+            Transform[] allTransforms = Object.FindObjectsByType<Transform>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            for (int i = 0; i < allTransforms.Length; i++)
+            {
+                if (allTransforms[i] == null || allTransforms[i].name != PetContainerName) continue;
+                namedPetRoots++;
+                livePetRoot = allTransforms[i];
+            }
+
+            Assert.AreEqual(1, namedPetRoots,
+                $"{LogPrefix} {label}을(를) 걸친 뒤 '{PetContainerName}' 개체가 {namedPetRoots}개입니다 — " +
+                "1개여야 합니다. 0개면 컨테이너가 만들어지지 않은 것이고, 2개 이상이면 교체 프레임의 " +
+                "지연 파괴가 아직 처리되지 않은 것입니다(그 상태에서 GameObject.Find는 죽을 쪽을 집을 수 " +
+                "있고, 그러면 아래 선 검사가 버려진 껍데기를 잽니다).");
+
+            GameObject root = livePetRoot.gameObject;
 
             LineRenderer[] lines = root.GetComponentsInChildren<LineRenderer>(true);
             Assert.AreEqual(expectedLineNames.Length, lines.Length,
@@ -220,7 +315,9 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} {label}이(가) 주인에게서 {distance:F2}유닛(신장 {height:F2}) 떨어져 있습니다.");
 
             Debug.Log($"{LogPrefix} {label} — 선 {lines.Length}개, 알파 {pet.Alpha:F2}, " +
-                $"주인과의 거리 {distance:F2}유닛(신장 {height:F2}).");
+                $"주인과의 거리 {distance:F2}유닛(신장 {height:F2}). " +
+                $"해제 대기 {settleFrames}프레임 → 재빌드·페이드 {buildFrames}프레임 " +
+                "(둘 다 0이면 이 테스트는 아무 전이도 관측하지 않은 것이다).");
 
             EquipmentModel.TryWear(EquipmentSlot.Pet, EquipmentModel.NotWorn, null);
             yield return null;
@@ -229,6 +326,30 @@ namespace StickMate.Tests.PlayMode
         // ============================================================================
         // 관측 도구
         // ============================================================================
+
+        /// <summary>
+        /// 벽시계 예산 안에서 <paramref name="condition"/>이 참이 될 때까지 프레임을 돌리고,
+        /// <b>실제로 돈 프레임 수</b>를 <paramref name="frames"/>로 돌려준다.
+        ///
+        /// <para>★ 프레임 수를 돌려주는 것이 핵심이다. <b>0프레임</b>은 "조건이 이미 참이었다"는 뜻이고,
+        /// 그 경우 호출부는 <b>전이를 하나도 관측하지 않은 채</b> 단언하게 된다 — 2026-09-02 BUG-1이
+        /// 정확히 그 형태였다(알파를 기다리고 인덱스를 단언 → 0프레임 → 갱신 전 값). 호출부가
+        /// "0프레임이면 실패"를 <b>명시적으로</b> 걸 수 있게 값을 밖으로 낸다.</para>
+        ///
+        /// <para>예산이 벽시계인 이유는 CLAUDE.md 협업 프로토콜(배치모드 PlayMode가 2,000fps 이상)이다.</para>
+        /// </summary>
+        private static IEnumerator PumpUntil(System.Func<bool> condition, float seconds,
+            System.Action<int> frames)
+        {
+            int n = 0;
+            float deadline = Time.realtimeSinceStartup + seconds;
+            while (!condition() && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+                n++;
+            }
+            frames(n);
+        }
 
         private struct Sample
         {

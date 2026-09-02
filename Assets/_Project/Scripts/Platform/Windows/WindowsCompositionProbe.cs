@@ -31,8 +31,8 @@ namespace StickMate.Platform.Windows
     /// 관측 비용은 user32/dwmapi 호출 4개(≈수 마이크로초)이며 2초에 한 번이다.
     ///
     /// <b>로그 위치(사용자 안내용)</b>:
-    /// <c>%USERPROFILE%\AppData\LocalLow\DefaultCompany\StickMate\Player.log</c>
-    /// (탐색기 주소창에 <c>%USERPROFILE%\AppData\LocalLow\DefaultCompany\StickMate</c> 붙여넣기).
+    /// <c>%USERPROFILE%\AppData\LocalLow\Vibelab\StickMate\Player.log</c>
+    /// (탐색기 주소창에 <c>%USERPROFILE%\AppData\LocalLow\Vibelab\StickMate</c> 붙여넣기).
     /// 검색어는 <c>[합성진단]</c> 한 단어면 된다.
     /// </summary>
     internal sealed class WindowsCompositionProbe : MonoBehaviour

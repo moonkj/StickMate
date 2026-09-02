@@ -63,7 +63,7 @@ def load_assets(folder):
         items.append(dict(file=os.path.basename(p), id=iid, slot=slot, index=idx, level=lvl))
     return items
 
-SLOTNAME = {0:"Head",1:"Eyes",2:"Neck",3:"Shoulders",4:"Hair",5:"Pet",6:"Fx"}
+SLOTNAME = {0:"Head",1:"Eyes",2:"Neck",3:"Shoulders",4:"Hair",5:"Fx",6:"Pet"}  # ★ 2026-09-02 수정: EquipmentModel.cs 실측상 Fx=5, Pet=6 (구판은 뒤집혀 있었다)
 
 def build_populations(items, extra=None):
     """slot -> [ (cohort, level) ... ] index 순"""
@@ -88,13 +88,30 @@ def report(items, extra=None, title=""):
     print(f"--- {title}: 기본 42종 등급 분포 {dict(c)}")
     return res
 
-if __name__ == "__main__":
+DEFAULT_FOLDER = "Assets/_Project/Resources/Items"
+
+def main(argv):
+    # ---- 인자 검증 (2026-09-02 수리: 구판은 argv[1] 을 그냥 읽어 IndexError 로 죽었다.
+    #      단독 실행 rc 는 1이었지만 파이프에 물리면 rc=0 이 되어 "돌았는데 조용했다"로 읽힌다.) ----
+    if len(argv) > 1 or (argv and argv[0] in ("-h", "--help")):
+        print(f"usage: rarity.py [아이템 애셋 폴더]   (기본값 {DEFAULT_FOLDER})", file=sys.stderr)
+        return 2
+    folder = argv[0] if argv else DEFAULT_FOLDER
+    if not os.path.isdir(folder):
+        print(f"★ 폴더가 없다: {folder} — 측정 무효", file=sys.stderr); return 2
+
     fails = calibrate()
     if fails:
-        print("교정 실패 — 이후 숫자 전부 폐기:"); [print("   ", f) for f in fails]; sys.exit(2)
+        print("교정 실패 — 이후 숫자 전부 폐기:")
+        for f in fails: print("   ", f)
+        return 2
     print("교정 통과: 6종 사다리 / 1종 / 12종 비율환산 / 클램프")
-    folder = sys.argv[1]
+
     items = load_assets(folder)
+    # ★ 0건은 "깨끗하다"가 아니라 "프로브가 죽었다"일 수 있다. 여기서 끊는다.
+    if not items:
+        print(f"★ {folder} 에서 파싱된 아이템 0건 — 정규식이 죽었을 수 있다. 측정 무효", file=sys.stderr)
+        return 3
     print(f"애셋 {len(items)}건, 슬롯 {sorted(set(i['slot'] for i in items))}")
     base = report(items, None, "코호트 고정 (지금 트리)")
     for s in sorted(set(i["slot"] for i in items)):
@@ -115,3 +132,8 @@ if __name__ == "__main__":
     after2 = report(items, pack2, "팩 6종 추가 + cohortId=1 (설계 의도)")
     moved2 = [i for i in items if base[i["id"]] != after2[i["id"]]]
     print(f"  ★ 등급이 움직인 기본 아이템: {len(moved2)}건")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

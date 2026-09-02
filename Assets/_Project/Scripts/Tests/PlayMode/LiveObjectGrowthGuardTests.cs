@@ -89,6 +89,12 @@ namespace StickMate.Tests.PlayMode
         /// </summary>
         private const int TrailingFloorSamples = 12;
 
+        /// <summary>정착 판정 창(표본). 8 x 0.25초 = 2초 동안 바닥선이 오르지 않으면 정착으로 본다.</summary>
+        private const int SettleWindowSamples = 8;
+
+        /// <summary>정착 대기의 벽시계 상한(초). 무한 대기를 막는 안전장치이며, 여기 걸리면 로그로 알린다.</summary>
+        private const float SettleMaxSeconds = 20f;
+
         private static int CountLiveObjects()
             => Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length;
 
@@ -105,6 +111,63 @@ namespace StickMate.Tests.PlayMode
             Assert.IsNotNull(agent, $"{LogPrefix} 씬에서 StickmanAgent를 찾지 못했습니다 — Main.unity 배선 확인.");
 
             yield return WaitWallClock(SettleSeconds);
+            yield return SettleUntilFloorStopsRisingAsync();
+        }
+
+        /// <summary>
+        /// ★★ 2026-09-02 — <b>고정 예산으로 "정착했다"고 가정하지 않는다.</b>
+        ///
+        /// <para><b>무엇이 거짓 빨강을 냈나</b>(qa-regression 실패 표본 실측): 후반부 24표본이
+        /// <b>완전히 평탄</b>했다. <b>누수는 평탄할 수 없다</b> — 즉 후반부가 진짜 정상 상태였고,
+        /// 낮았던 쪽은 <b>전반부</b>였다. <c>SettleSeconds</c> 2초가 끝난 뒤에도 앱이 여전히 상주
+        /// 위젯을 만들고 있었고, 전반부 <b>전체</b>의 최소치가 그 <b>정착 이전</b> 값을 집어 들었다.
+        /// 프로덕션은 멀쩡한데 기준선이 잘못 잡힌 것이다.</para>
+        ///
+        /// <para><b>그래서 시간을 늘리는 대신 조건을 본다</b>: 꼬리 최소치가 더 이상 오르지 않을 때까지
+        /// 기다린다. 예산을 키우는 것도 결국 같은 종류의 추측이고, 기기가 느려지면 다시 깨진다.
+        /// 상한(<see cref="SettleMaxSeconds"/>)은 무한 대기를 막는 안전장치일 뿐이며, 상한에 걸렸다는
+        /// 사실 자체를 <b>로그로 남긴다</b> — 그때는 이 검사의 전제가 성립하지 않았다는 뜻이다.</para>
+        ///
+        /// <para>★ <b>허용 오차(<see cref="GrowthToleranceObjects"/>)는 한 톨도 건드리지 않았다.</b>
+        /// 문턱을 올리면 증상만 사라지고 진짜 누수 검출력이 그만큼 깎인다.</para>
+        /// </summary>
+        private static IEnumerator SettleUntilFloorStopsRisingAsync()
+        {
+            var window = new List<int>(64);
+            float start = Time.realtimeSinceStartup;
+            float nextAt = 0f;
+            int previousFloor = int.MinValue;
+            int stableRuns = 0;
+
+            while (Time.realtimeSinceStartup - start < SettleMaxSeconds)
+            {
+                float t = Time.realtimeSinceStartup - start;
+                if (t >= nextAt)
+                {
+                    window.Add(CountLiveObjects());
+                    nextAt += SampleIntervalSeconds;
+
+                    if (window.Count >= SettleWindowSamples)
+                    {
+                        int floor = TrailingMin(window, SettleWindowSamples);
+                        // 바닥선이 더 오르지 않으면 정착으로 본다. 내려가는 것은 연출이 걷힌 것이라
+                        // 정착을 방해하지 않는다(오히려 바닥선이 제 값을 찾아가는 중이다).
+                        stableRuns = floor <= previousFloor ? stableRuns + 1 : 0;
+                        previousFloor = floor;
+                        if (stableRuns >= SettleWindowSamples)
+                        {
+                            Debug.Log($"{LogPrefix} 정착 확인 — {Time.realtimeSinceStartup - start:F2}초 만에 " +
+                                $"바닥선이 {floor}개에서 멈췄습니다(표본 {window.Count}개).");
+                            yield break;
+                        }
+                    }
+                }
+                yield return null;
+            }
+
+            Debug.LogWarning($"{LogPrefix} 정착 상한 {SettleMaxSeconds:F0}초에 걸렸습니다 — 바닥선이 " +
+                $"아직 움직이는 중일 수 있습니다(마지막 바닥선 {previousFloor}개, 표본 {window.Count}개). " +
+                "아래 비교의 전제가 약해집니다.");
         }
 
         /// <summary>★ 벽시계 대기. <c>WaitForSeconds</c>는 timeScale에 묶이므로 쓰지 않는다.</summary>
@@ -187,14 +250,24 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 후반부 표본이 {secondObj.Count}개로 꼬리 구간({TrailingFloorSamples}개)보다 " +
                 "많지 않습니다 — 꼬리가 곧 구간 전체가 되어 바닥선 비교가 다시 눈이 멉니다.");
 
-            // 기준선은 전반부 전체의 골, 비교 대상은 후반부 **꼬리 구간**의 골이다(위 클래스 문서의
-            // 2026-09-01 문단 참고 — 후반부 전체로 재면 누수가 구간 시작부터 자랄 때 첫 표본이 최소치를
-            // 붙들어 매 G1이 '항상 참인 단언'이 된다).
-            int troughA = Min(firstObj);
+            // ★★ 2026-09-02 — 기준선도 **꼬리**에서 뽑는다(양쪽 대칭).
+            //   옛 코드는 기준선만 전반부 **전체**의 골이었다. 정착이 덜 끝난 채 전반부가 시작되면
+            //   그 골은 "정착 이전"의 낮은 값이라, 정상 상태인 후반부와 비교해 **없는 증가**를 만든다
+            //   (qa-regression 실패 표본: 후반부 24표본 완전 평탄 = 누수 아님).
+            //   양쪽 다 꼬리에서 재면 "정착된 바닥선 vs 6초 뒤 정착된 바닥선"이라는 같은 종류의 비교가 된다.
+            //   ★ 검출력은 줄지 않는다: 전반부에는 누수가 없으므로 꼬리 골 >= 전체 골이고,
+            //     G1n이 만드는 240개는 허용 오차 32의 7배라 그 차이에 흔들리지 않는다(G1n이 그것을 잠근다).
+            int troughA = TrailingMin(firstObj, TrailingFloorSamples);
             int troughB = TrailingMin(secondObj, TrailingFloorSamples);
-            int colTroughA = Min(firstCol);
+            int colTroughA = TrailingMin(firstCol, TrailingFloorSamples);
             int colTroughB = TrailingMin(secondCol, TrailingFloorSamples);
 
+            // 진단 — 전반부가 실제로 정착해 있었는가. 이 값이 크면 정착 대기가 모자랐다는 뜻이다.
+            int settleDrift = troughA - Min(firstObj);
+
+            Debug.Log($"{LogPrefix} G1 정착 드리프트 — 전반부 전체 골 {Min(firstObj)} vs 꼬리 골 {troughA} " +
+                $"(차이 {settleDrift}개). 이 값이 크면 관측 시작 시점에 앱이 아직 정착 중이었다는 뜻이고, " +
+                "옛 코드는 바로 그 차이를 '누수'로 읽어 거짓 빨강을 냈습니다.");
             Debug.Log($"{LogPrefix} G1 관측 — 전반부 오브젝트 {Describe(firstObj)} / 후반부 {Describe(secondObj)} " +
                 $"| 전반부 Collider2D {Describe(firstCol)} / 후반부 {Describe(secondCol)} " +
                 $"(각 {HalfWindowSeconds:F0}초, {SampleIntervalSeconds:F2}초 간격, 벽시계)");
@@ -203,6 +276,7 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 상주 오브젝트 바닥선이 {troughA} -> {troughB}개로 {troughB - troughA}개 올라갔습니다 " +
                 $"(허용 {GrowthToleranceObjects}개). 연출이 아니라 **지워지지 않는 오브젝트**가 쌓이고 있다는 뜻이며, " +
                 "이것이 곧 사용자가 신고한 '쓸수록 느려지고 재시작하면 회복'의 형태입니다. " +
+                $"정착 드리프트 {settleDrift}개(전반부 전체 골 {Min(firstObj)} vs 꼬리 골 {troughA}). " +
                 $"전반부 표본: [{string.Join(",", firstObj)}] / 후반부 표본: [{string.Join(",", secondObj)}]");
 
             Assert.LessOrEqual(colTroughB, colTroughA + GrowthToleranceObjects,
@@ -243,12 +317,10 @@ namespace StickMate.Tests.PlayMode
                 }
             });
 
-            // 기준선은 전반부 전체의 골, 비교 대상은 후반부 **꼬리 구간**의 골이다(위 클래스 문서의
-            // 2026-09-01 문단 참고 — 후반부 전체로 재면 누수가 구간 시작부터 자랄 때 첫 표본이 최소치를
-            // 붙들어 매 G1이 '항상 참인 단언'이 된다).
-            int troughA = Min(firstObj);
+            // G1과 **정확히 같은 식**으로 잰다 — 네거티브 컨트롤이 다른 자를 쓰면 아무것도 증명하지 못한다.
+            int troughA = TrailingMin(firstObj, TrailingFloorSamples);
             int troughB = TrailingMin(secondObj, TrailingFloorSamples);
-            int colTroughA = Min(firstCol);
+            int colTroughA = TrailingMin(firstCol, TrailingFloorSamples);
             int colTroughB = TrailingMin(secondCol, TrailingFloorSamples);
             int madeTotal = leaked.Count;
 

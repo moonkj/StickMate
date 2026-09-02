@@ -38,12 +38,29 @@
 "재화·보유·임계 해금 전부, 다시 못 번다"에서 "최대 한 주기 60초"로 내려왔다.**
 → **환불 사건이 될 수 있는 손실이 아니다. 선결 조건 목록에서 제거한다.**
 
+### 2회차 (2026-09-02 후반) — ★ **내 판정 1건이 1차 출처로 뒤집혔다**
+
+| # | 지난 회차 내가 적은 것 | 2회차 실측 | 결과 |
+|---|---|---|---|
+| 1 | *"스팀은 서명을 요구하지 않는다"* | Windows는 참. ★ **macOS는 거짓** — 스팀은 신규 macOS 앱에 **Apple 공증을 요구**한다 | **R-6a 신설. 1.0 차단 항목으로 승격** |
+| 2 | R-6 = "MS 스토어/Windows 배포 신뢰 항목" | 채널 **스팀 단독** 확정 → MS 스토어 요구사항 전부 **소멸** | N1·N2·B12·인스톨러 **폐기** |
+| 3 | (없었음) EV 인증서 | *"Paying a premium for EV solely to avoid SmartScreen warnings is no longer justified"* | **EV 기각 확정** |
+| 4 | (없었음) 싼 서명 대안 | ★ **Artifact Signing은 개인 개발자 USA·Canada 한정** — 한국 개인은 못 산다 | **OV가 현실 기본**(3-4-3-d) |
+| 5 | 본편 $7.99 전제 | 사용자 확정 **F2P** | 가격표·손익분기 전면 개정(`CHANNEL_PRICING_DECISIONS.md` 0-0절) |
+| 6 | (없었음) 번들 ID | `com.DefaultCompany.StickMate` + 세이브·원복원장이 `persistentDataPath`에 삶 | **B15 신설 — 되돌릴 수 없음** |
+
+★ **2회차에 내가 새로 낸 오류는 없지만, 1회차 오류 1건을 내가 스스로 찾아 뒤집었다.**
+패턴이 같다: **한쪽 플랫폼만 확인하고 양쪽에 적용했다.** CLAUDE.md "플랫폼 동시 검토"가
+코드뿐 아니라 **채널 정책 조사에도 그대로 적용된다**는 것이 이번 교훈이다.
+
+---
+
 ### 이번 회차에 **새로 생긴** 것
 
 | # | 새 항목 | 성격 |
 |---|---|---|
-| **N1** | ★ **MS 스토어는 입점 비용 $0가 아니다** — MSI/EXE 경로가 **코드서명 인증서**(Microsoft Trusted Root 체인, **자체서명 불가**)와 **퍼블리셔 호스팅 HTTPS 인스톨러 URL**과 **무음 설치 가능 인스톨러**를 요구한다. 우리 Windows 산출물은 오늘 **폴더**다(인스톨러 없음) | **내 지난 회 문서의 오류를 내가 정정한다.** 3-4절 |
-| **N2** | ★ **MS 스토어에서 DLC(애드온)를 팔 수 있는지 미확인** — MSI/EXE 제출 체크리스트에 애드온 항목이 없고, 언패키지 앱은 package identity가 없다. Free/Paid/Freemium/Subscription + **무료 체험판**은 지원 확인 | F2P 시나리오에서 치명적. 3-4절 |
+| ~~N1~~ | ★ **2회차 폐기 — 채널이 스팀 단독으로 확정.** 아래는 기록으로만 남긴다. ~~MS 스토어는 입점 비용 $0가 아니다~~ — MSI/EXE 경로가 **코드서명 인증서**(Microsoft Trusted Root 체인, **자체서명 불가**)와 **퍼블리셔 호스팅 HTTPS 인스톨러 URL**과 **무음 설치 가능 인스톨러**를 요구한다. 우리 Windows 산출물은 오늘 **폴더**다(인스톨러 없음) | **내 지난 회 문서의 오류를 내가 정정한다.** 3-4절 |
+| ~~N2~~ | ★ **2회차 폐기 — 잴 대상이 사라졌다.** ~~MS 스토어에서 DLC(애드온)를 팔 수 있는지 미확인~~ — MSI/EXE 제출 체크리스트에 애드온 항목이 없고, 언패키지 앱은 package identity가 없다. Free/Paid/Freemium/Subscription + **무료 체험판**은 지원 확인 | F2P 시나리오에서 치명적. 3-4절 |
 | **N3** | ★ **스팀 30일 시계** — 앱 수수료 결제 후 **30일이 지나야** 출시할 수 있다. Coming Soon도 **최소 14일**. 이건 제품 작업과 **병렬로 흐르는 시계**다 | 3-1절. **오늘의 실행 권고 1번** |
 | **N4** | ★ **Coming Soon 페이지는 빌드를 요구하지 않는다** — 선결 6건 중 **어느 것도 Coming Soon을 막지 않는다** | 2절. 이번 라운드의 핵심 |
 | **N5** | ★ **"창을 발판으로 딛는다"는 차별점이 아니다** — eSheep(1990s) · Shimeji(2009~) · Desktop Mate(2025, 리뷰 5,274) · PixelPet · Convai가 전부 한다 | `MARKET_LANDSCAPE.md` 1-2절 |
@@ -132,18 +149,41 @@ T0 = Steam Direct $100 결제 + 신원/은행/세무 제출
 
 | # | 조건 | **안 하면 무엇이 막히는가** | 소관 | 규모 |
 |---|---|---|---|---|
-| **R-1** | **화면 공유·녹화 중 자동 숨김** | 직장인 채널 **전체**. 환불이 아니라 **삭제 + 부정 리뷰**로 나온다(2시간·14일이 지난 뒤 터진다) | `dev-platform`(사실 조회) + 정책은 `Platform/` 중립 | **미확인** — 플랫폼별 감지 API 조사 필요 |
+| **R-1** | ★ **【2026-09-02 재정의 — `game-architect`】 「화면 공유·녹화 중 자동 숨김」은 완료 정의가 될 수 없다.** `docs/SCREEN_SHARE_DETECTION.md` 0절·6절이 **양 OS에 그 API가 없음**을 1차 출처로 못박았다 — 즉 이 항목은 일정이 아니라 **무한 대기**였다. **새 완료 정의 = S0(사용자 숨김이 도달 가능할 것) + S1(등급 분할)**. 상세·게이트는 `docs/GAME_ARCHITECTURE_REVIEW.md` §9 | 직장인 채널 **전체**. 환불이 아니라 **삭제 + 부정 리뷰**로 나온다 | `Interaction/`(표면 4개) — `dev-platform` 아님. 등급 배선은 이미 끝났다 | **S1-a 착지 완료**(2026-09-02 14:39, 양 플랫폼 + PlayMode 4건 Passed). **잔여는 S1-b 하나** — §9-2 자기부정 루프 |
 | **R-2** | **영어화** | 스팀 글로벌 모수 전체. **가격표 3-3절이 통째로 글로벌 모수를 전제한다** | 리더 판정 → `coder` + `design-narrative` | **큼.** 3-3절 |
 | **R-3** | **업적 시스템** | 슈퍼히어로 팩(무료·유료 경계 1칸). ★ 카테고리 기본값이기도 하다 — 경쟁 Desktop Pets도 업적 6개 | 기획·총괄 | 중간 |
 | R-4 | 팩 구매 직후 착용 보장(P-5) | **DLC 출시만** 막는다. 정식 출시는 안 막는다 | `design-systems` | 작음(규칙 1줄) |
 | R-5 | DLC 단계 C(팩 매니페스트 + Addressables + 6팩) | **DLC 출시만** 막는다 | `game-architect` → `coder` | **큼.** 3-3절 |
-| R-6 | 인스톨러 + 코드서명 | **MS 스토어 채널만** 막는다 | 별도 배정 필요 | 3-4절 |
+| **R-6a** | ★ **macOS 서명 + 공증** | ★ **1.0 전체를 막는다.** 스팀 파트너 문서가 신규 macOS 앱에 **공증을 요구**한다 — 스팀은 우리의 유일한 채널이다 | `dev-platform` **배정 필요** | 3-4절 |
+| R-6b | Windows 코드서명(OV) | **아무것도 막지 않는다.** 스팀은 Windows 서명을 요구하지 않는다. 단 **무서명은 업데이트마다 SmartScreen 평판이 0으로 리셋**된다 | `dev-platform` | 3-4절 |
+| ~~R-6c~~ | ~~무음 설치 인스톨러~~ | ★ **폐기 — MS 스토어 채널 제외 확정.** 요구한 주체가 사라졌다 | — | 3-4절 |
 
 > ### 판정 — 답 2
-> **정식 출시일 = max(R-1 완료일, R-2 완료일).** 오늘 둘 다 0%다.
-> **즉 "언제 출시하는가"의 답은 "영어화와 화면공유 숨김 중 늦게 끝나는 쪽이 끝나는 날"이다.**
+> **정식 출시일 = max(R-2 완료일, ★ R-6a 완료일).** ★ **2026-09-02 3회차 정정 — R-1을 공식에서 뺀다.**
+> ~~정식 출시일 = max(R-1 완료일, R-2 완료일, R-6a 완료일). 오늘 셋 다 0%다.~~
+> ★ **「셋 다 0%」는 이 문서가 쓰인 시점(20:54)에 이미 거짓이었다** — S1은 같은 날 **14:39**에 착지해 있었고
+>   (`Assets/_Project/Scripts/Platform/IForeignFullscreenTierSource.cs` 신설, 양 플랫폼 배선,
+>   PlayMode `FullscreenPanelRetreatTests` 4건 Passed — `docs/verify/runs/c2-play_play.xml` 20:16),
+>   **문서가 코드보다 4시간 늦게 쓰이면서 코드를 보지 않았다.** 이 저장소가 반복해 겪은 문서-실재 괴리다.
+> ★ **2회차 정정: 차단 항목이 2개에서 3개가 됐다.** R-6a(macOS 공증)가 새로 들어왔다 —
+> 지난 회차에 내가 **"스팀은 서명을 요구하지 않는다"**고 적은 것이 **macOS에 대해 거짓**이었다.
 > R-3·R-4·R-5는 출시를 막지 않고 **DLC 출시**를 막는다.
+> ★ **R-6a는 규모가 작고(파이프라인 1회 구성) 병목이 아니다. 그러나 빠뜨리면 출시가 통째로 막힌다** —
+> 크기가 아니라 **위치** 때문에 위험한 항목이다.
 > **플랫폼 시계 30일은 그 안에 다 들어간다** — 병목이 아니다. 단 **시작하지 않으면 병목이 된다.**
+
+> ---
+> ### ★ R-1을 공식에서 빼면서 함께 못박는 것 (`game-architect`, 2026-09-02)
+> **R-1은 「완료」가 아니다. 「무한 대기 아님」이 됐을 뿐이다.**
+> 남은 잔여(S1-b — 등급 1에서 사용자 통제가 도달 불가능한 자기부정 루프)는 **차단 항목으로 세우지 않는다.**
+> 근거는 R-6a와 **정확히 반대**다:
+> - R-6a: 규모는 작지만 **위치**가 채널 게이트라 빠뜨리면 출시가 통째로 막힌다 → 차단 항목.
+> - S1-b: 규모가 작고(`Interaction/` 표면 4개 + 테스트 3건) **R-2(영어화 7,968 리터럴)의 임계경로 안에 완전히 들어간다**
+>   → 병목이 아니므로 공식에 넣을 필요가 없다.
+>
+> ★ **다만 순서 제약이 하나 붙는다 — S1-b와 D(토글 라벨/분할)는 R-2의 문자열 동결보다 먼저 끝나야 한다.**
+> 둘 다 **UI 문구를 바꾸는 작업**이고, 3-3절이 실측한 대로 이 저장소의 번역 부채는 **작업할수록 자란다**(+103건/3시간).
+> 문구를 확정하지 않은 채 영어화하면 **같은 문구를 두 번 번역한다.** 이건 취향이 아니라 **비용의 순서**다.
 
 ### 3-3. R-2(영어화)의 규모 — 실측
 
@@ -173,30 +213,114 @@ T0 = Steam Direct $100 결제 + 신원/은행/세무 제출
 > `CharacterSaveStore.CurrentVersion`은 여전히 **9**(=`coinBalance`/`ownedItemIds` 없음).
 > **재화·상점은 아직 UI 골격만이고 v10은 안 왔다.** 즉 4-2절 권고는 **아직 늦지 않았다.**
 
-### 3-4. R-6(인스톨러 + 코드서명) — ★ 내 지난 회 문서의 오류를 정정한다
+### 3-4. R-6(서명) — ★ **내 지난 회 판정을 다시 뒤집는다. 이번엔 반대 방향이다**
 
-지난 회 나는 채널 표에 **"MS 스토어 입점 비용 $0"**이라고 적었다. **그건 개발자 계정 등록비만
-맞고, 채널 진입 비용이 아니다.** Microsoft Learn(2026-08-29 갱신본) 확인 결과:
+지난 회차에 나는 R-6을 **"MS 스토어 채널 항목"**에서 **"Windows 배포 신뢰 항목"**으로 승격시키면서
+이렇게 못박았다:
 
-| MS 스토어 MSI/EXE 제출 요구사항 | 우리 현재 상태 |
+> *"단 출시 순서는 바꾸지 않는다(여전히 스팀 다음). **스팀은 서명을 요구하지 않는다.**"*
+
+**그 문장은 절반만 참이었다.** Windows에 대해서는 참이고, **macOS에 대해서는 거짓이다.**
+그리고 채널이 **스팀 단독**으로 확정되면서 지난 회차 논의의 나머지 절반(MS 스토어 인스톨러·애드온)은
+**논의 대상 자체가 사라졌다.**
+
+#### 3-4-1. 1차 출처 — 무엇이 채널 게이트이고 무엇이 위험 완화인가
+
+| | Windows | macOS |
+|---|---|---|
+| 스팀이 서명을 요구하는가 | **아니다** (Steamworks 플랫폼 문서에 항목 없음) | ★ **그렇다** |
+| 원문 | — | *"Starting October 14th, 2019 Steam will require all new macOS Applications to be 64-bit and **notarized by Apple**."* |
+| 성격 | **위험 완화** | **채널 게이트** |
+| 1.0 차단 | 아니다 → **R-6b** | ★ **그렇다 → R-6a** |
+
+★ **"없다"는 부재 단언이므로 양성 대조를 붙인다**: **같은 페이지**가 macOS에 대해서는 공증·64비트·
+엔타이틀먼트 요구를 **실제로 출력했다.** 즉 이 페이지는 플랫폼별 요구사항을 싣는 페이지가 맞고,
+**Windows 칸이 비어 있는 것은 프로브가 죽어서가 아니다.**
+
+★ **비대칭이 지난 회차 내 직관과 반대다.** 나는 Windows를 걱정하고 macOS를 비워 뒀는데,
+**막고 있는 쪽은 macOS다.**
+
+#### 3-4-2. macOS(R-6a) — 실측과 비용
+
+`codesign -dv`로 재측정(**`security`가 쓴 `spctl`과 다른 도구로 다시 쟀다**):
+
+```
+Builds/macOS/StickMate.app   Signature=adhoc   flags=0x2(adhoc)
+                             Identifier=com.DefaultCompany.StickMate
+```
+애드혹이라 **공증이 물리적으로 불가능**하다(공증은 Developer ID Application 인증서를 요구).
+
+| 항목 | 값 |
 |---|---|
-| **무음 설치를 지원하는 EXE/MSI 인스톨러** | **없다.** Unity 산출물은 폴더 |
-| **퍼블리셔가 호스팅하는 버전별 HTTPS 인스톨러 URL** | 없다(GitHub Release로 될지 **미확인**) |
-| **인스톨러와 모든 PE 파일에 Microsoft Trusted Root 체인 인증서 서명. 자체서명 불가** | 없다. 저장소에 `codesign`/`signtool` 흔적 **0건**(grep) |
-| Store 관리 업데이트 | **제공되지 않는다**(MSIX 경로에만) — 자체 업데이터 필요. `ARCHITECTURE.md` 5-1-2와 정합 |
-| 가격 | Free / Paid / Freemium / Subscription **+ 무료 체험판** 지원 **확인됨** |
-| **애드온(DLC) 판매** | ★ **미확인.** MSI/EXE 제출 체크리스트에 애드온 항목이 없고, 언패키지 앱은 package identity가 없다 |
+| Apple Developer Program | **$99/년.** ★ CLAUDE.md의 **iPad/iPhone 타깃에 어차피 필요** → 신규 비용이 아니라 **선지출** |
+| 작업 | 하드닝 런타임 + Developer ID 서명 + `notarytool` + `stapler`. **중첩 Mach-O 딥서명 필요** — 저장소에 `LibUniWinC.bundle` 존재 |
+| 스팀 제약 | 하드닝 런타임에 `com.apple.security.cs.disable-library-validation` + `com.apple.security.cs.allow-dyld-environment-variables` 필요(오버레이 주입) |
 
-**추가 비용(2026-09-02 Microsoft Learn 표기):** Azure Artifact Signing 약 **$10/월**,
-또는 전통 OV 인증서 **연 $150~300**.
+> **★ 미확인 1건**: 2019년 Valve 모더레이터 답변(*"we will allow your game to ship on Steam
+> without notarization at this time"*)이 파트너 문서와 어긋난다. **현행 집행 여부는 Steamworks
+> 로그인 후에만 확인 가능**하고 나는 계정을 조작하지 않는다.
+> **판정을 바꾸지 않는 이유**: 스팀 밖으로 나가는 macOS 빌드(베타 배포·개발일지 데모)는
+> `com.apple.quarantine`이 붙어 **애드혹이 그 자리에서 막힌다.** Apple 쪽은 느슨해지지 않는다.
 
-> **★ 그런데 이 비용의 성격을 `MARKET_LANDSCAPE.md` 3-3절이 뒤집는다.**
-> Shimeji를 실질적으로 죽인 것은 기능이 아니라 **배포**였다 — 캐릭터 팩이 팬사이트에서 오고
-> **백신 경고와 "이거 안전한가요"가 상수**가 됐다. 이 카테고리 유저는 그 질문을 실제로 한다.
-> **서명은 비용이 아니라 이 카테고리의 최대 이탈 요인을 사는 값이다.**
-> 그리고 그 값은 MS 스토어뿐 아니라 **GitHub Release 직배포와 Windows SmartScreen에도 그대로 쓰인다.**
-> → **판정: R-6은 "MS 스토어 항목"이 아니라 "Windows 배포 신뢰 항목"으로 승격한다.**
-> 단 **출시 순서는 바꾸지 않는다**(여전히 스팀 다음). 스팀은 서명을 요구하지 않는다.
+#### 3-4-3. Windows(R-6b) — EV 기각, OV 채택, 단 비차단
+
+**(a) EV 기각.** *"EV certificates no longer bypass SmartScreen … Paying a premium for EV solely to
+avoid SmartScreen warnings is no longer justified."* (Microsoft Learn, 갱신 2026-08-17). 표기 가격 **$400+/년**.
+
+**(b) ★ OV도 첫 경고를 없애 주지 않는다** — 같은 페이지 표:
+`Valid Certificate (OV/EV) → ⚠️ Warning — app flagged as unrecognized until reputation accumulates`.
+**서명해도 첫 경고는 뜬다.** 서명이 사는 것은 (1) 경고에 퍼블리셔 이름이 뜨는 것,
+(2) ★ *"Unsigned files must build reputation anew with every update."* — **버전을 넘는 평판 연속성**뿐이다.
+
+**(c) 스팀 단독 채널에서의 실제 노출.** SmartScreen 다운로드 경고는 MOTW가 붙은 파일에 걸리고
+스팀은 자체 다운로더를 쓴다(★ **"스팀이 MOTW를 안 붙인다"는 1차 출처 없음 — 미확인**).
+**남는 확실한 노출은 Smart App Control이다**: *"Smart App Control signature checks apply to all
+executable files, **not just those downloaded from the Internet**."* → **스팀 경유로 못 비킨다.**
+★ **SAC 활성 기기 비율은 미확인** — Microsoft가 공개하지 않는다. **숫자를 지어내지 않는다.**
+
+**(d) ★★ 선택지가 브리프와 다르다 — 우리는 싼 쪽을 못 살 수 있다**
+
+> *"Azure Artifact Signing is available to organizations in the USA, Canada, the European Union, and
+> the United Kingdom. **Individual developers are currently limited to the USA and Canada.**"*
+> — Microsoft Learn, Code signing options (갱신 2026-08-29)
+
+**한국의 개인 개발자에게 $9.99/월 경로는 닫혀 있다.**
+★ 단 Artifact Signing Quickstart(갱신 2026-08-11)의 **조직** 목록에는 **대한민국이 포함**된다 —
+**두 Microsoft 문서가 조직 국가 목록에서 어긋난다.** 개인 기준(USA/Canada)은 양쪽이 일치한다.
+→ **사업자등록이 있으면 열릴 수 있다. "가격 문제"가 아니라 "법인격 문제"다. 미확인.**
+
+| 안 | 비용 | 가능한가 | 부대 조건 |
+|---|---|---|---|
+| Artifact Signing | $9.99/월(≈$120/년) | **개인 자격 불가.** 사업자등록 시 가능성(미확인) | 토큰 불필요, CI/CD 직결 |
+| **OV** | **$150~300/년** | 가능 | 2023-06 CA/B Forum 규정으로 **개인키 HSM/하드웨어 토큰 필수** → 토큰 국제 배송 또는 클라우드 HSM |
+| EV | $400+/년 | 가능 | **기각** |
+| 무서명 | $0 | 가능 | SAC 차단 위험 + **업데이트마다 평판 리셋** |
+
+★ **미확인**: OV는 *Organization* Validated이고 MS 문서도 *"the CA validates your organization's
+legal identity"*로 쓴다. **개인 대상 발급(IV) 경로의 현행 조건·가격은 확인 못 했다.**
+
+**(e) 판정**
+
+> **채택하되 1.0을 막지 않는다. 데드라인은 「1.0」이 아니라 「첫 업데이트를 내기 전」.**
+> 서명이 사는 것은 평판 **연속성**이고 그건 서명을 시작한 릴리스부터 쌓인다 —
+> 1.0을 놓쳐도 영구히 잃는 것이 없다. 반대로 **무서명으로 업데이트를 N번 내면 평판이 N번 리셋**되고
+> 그건 되돌릴 수 없다. **상주 앱은 업데이트가 잦다.**
+
+#### 3-4-4. ★ F2P 확정이 서명의 값을 올렸다
+
+| | 서명했는데 아무도 경고를 안 봤다 | 서명 안 했는데 SAC/백신이 막았다 |
+|---|---|---|
+| 잃는 것 | 연 $120~300 | **그 유저를 영구히 잃는다** |
+| 되돌릴 수 있나 | 예 | **아니오** |
+
+유료 앱이면 유저가 **이미 돈을 냈으므로** 경고를 뚫을 동기가 있다.
+**무료 앱에서 경고를 만난 유저는 그냥 지운다 — 뚫을 이유가 없다.**
+`security` 정의서 기준(*"정당한 유저 한 명 잠그기 > 무단 사용 열 건"*)을 대입하면 방향이 한쪽으로만 난다.
+
+★ **백신 오탐 축은 분리한다.** 우리 표면(`EnumWindows`·`GetWindowTextW`·`GetAsyncKeyState`·
+`GetLayeredWindowAttributes`·`SHAppBarMessage`·`GetLastInputInfo`, 저장소 grep 실측) × 종일 상주는
+휴리스틱과 형태가 겹친다. **그러나 "서명하면 오탐이 준다"는 나에게 1차 출처가 없다 — 직관이다.**
+서명이 확실히 하는 일은 **오탐 신고 창구에서 신원을 증명하는 것**이다. **소재로 쓰지 마라.**
 
 ---
 
@@ -247,14 +371,17 @@ T0 = Steam Direct $100 결제 + 신원/은행/세무 제출
 > **비용 대비**: 지금 스키마만 넣으면 신규 문자열이 키로 들어온다. 나중에 넣으면
 > 재화·상점·4탭이 낳은 수백 건을 **되짚어야** 한다. **되짚는 비용은 지금 넣는 비용보다 크다.**
 
-### 4-3. 어긋남 B — **"MS 스토어 무료"의 뜻이 총괄 순서를 인질로 잡고 있다**
+### 4-3. ~~어긋남 B~~ — ★ **2회차 해소됨. 답이 왔다: F2P + 스팀 단독**
+
+> **아래는 답이 오기 전 기록이다.** 결론: **F2P 쪽이 참**이었으므로 **DLC가 유일 매출원**이고,
+> **순서가 앞으로 당겨지고 R-4(P-5)의 등급이 올라간다**가 확정된 판정이다.
 
 - 유료 본편($7.99) 전제: DLC는 **부가 매출** → 총괄 순서 8·9번(맨 뒤)이 옳다.
 - **F2P 전제: DLC가 유일한 매출원** → 순서 5번쯤으로 올라온다. 그리고 R-4(P-5 팩 착용 보장)가
   "환불 방지"가 아니라 **"유일한 매출 경로의 첫 인상"**이 되어 등급이 올라간다.
 
-> **→ 사용자 답변 1건이 착수 순서를 바꾼다.** 답이 오기 전에 순서를 확정하면
-> F2P로 판명될 때 재배치 비용이 발생한다. **6절에 양쪽 안을 다 준비해 뒀다.**
+> ~~→ 사용자 답변 1건이 착수 순서를 바꾼다.~~ **→ 답이 왔다. F2P다.** 위 두 줄 중
+> **아래(F2P)가 집행안**이다. 6절의 【안 B】가 채택안이고 【안 A】는 폐기다.
 
 ### 4-4. 어긋남 C — `default:` 안전망의 데드라인이 총괄 예상보다 이르다
 
@@ -263,11 +390,23 @@ T0 = Steam Direct $100 결제 + 신원/은행/세무 제출
 그리고 CS-3(스크린샷)은 **Coming Soon 게이트**에 있고, DLC 조형은 훨씬 뒤다.
 → **데드라인이 몇 단계 당겨진다.** 규모는 총괄 실측대로 "6곳 수정, 작음".
 
-### 4-5. 어긋남 D — 인스톨러·코드서명이 **어느 문서에도 없다**
+### 4-5. 어긋남 D — 서명이 **어느 문서에도 없다** (★ 2회차에 심각도가 올라갔다)
 
-`ARCHITECTURE.md` §5-4 C-16 "자동 업데이트(유통 채널 확정 후)"가 가장 가깝지만
-**서명과 인스톨러 오서링은 별개 작업**이다. `Assets/Editor/BuildStandalone.cs` 바깥이고
-`Tools/`에도 없다(grep 0건). → **주인 없는 항목. 리더 배정 필요.**
+`ARCHITECTURE.md` §5-4 C-16 "자동 업데이트(유통 채널 확정 후)"가 가장 가깝지만 **서명은 별개 작업**이다.
+`Assets/Editor/BuildStandalone.cs` 바깥이고 `Tools/`에도 없다.
+
+**2회차 재측정(양성 대조 포함):**
+```
+grep -rIl -i "notarytool|signtool|codesign |Developer ID|hardened.runtime|altool"  (Library 제외)
+→ Tasklist.md, docs/security/ENTITLEMENT_CONTRACT.md, docs/strategy/ROADMAP.md   (문서 3건뿐)
+→ 빌드 스크립트·CI·엔타이틀먼트 파일 히트 0건.  find -name "*.entitlements" → 0건
+[양성 대조] grep -rIl "StickMate" *.md → process.md, README.md, Tasklist.md  (프로브 살아 있음)
+```
+**여전히 파이프라인 0건.** 그런데 이제 이건 *"MS 스토어를 막는 부채"*가 아니라
+★ **macOS 1.0 출시를 막는 차단 항목(R-6a)**이다. → **`dev-platform` 배정 필요.**
+
+★ **그리고 서명이 선행 결정 1건을 끌고 나왔다** — `com.DefaultCompany.StickMate`.
+상세는 `CHANNEL_PRICING_DECISIONS.md` 10-S-4. **되돌릴 수 없고 주인이 없다.**
 
 ### 4-6. 일치하는 지점 — 보고할 가치가 있다
 
@@ -327,24 +466,22 @@ T0 = Steam Direct $100 결제 + 신원/은행/세무 제출
 
 ---
 
-## 6. ★ 【사용자 답변 대기】 "MS 스토어 무료" — 양쪽 안을 다 준비한다
+## 6. ~~【사용자 답변 대기】~~ ★ **해소됨 — 【안 B】(F2P) 채택 확정**
 
-> **질문**: 사용자 조사표의 "MS 스토어 무료"가 **입점 비용 $0**인가 **제품 가격 0원**인가.
-> 리더가 물었고 **답이 없다.** 아래 두 안은 **답이 오는 즉시 그대로 집행 가능한 상태**로 둔다.
+> **2회차 결론**: 사용자가 **F2P**를 확정했고(`MILESTONES.md` D-2),
+> **채널은 스팀 단독**으로 확정되어 "MS 스토어 무료"라는 질문 자체가 소멸했다.
+> **아래 【안 B】가 집행안이고 【안 A】는 폐기다.** 안 A는 판단 근거 기록용으로만 남긴다.
 
-### 6-A. 【안 A】 "입점 비용 $0"이었다 — **유료 본편 전제 (기본안, 이미 확정된 것)**
+### 6-A. ~~【안 A】~~ **폐기** — 유료 본편 전제 (기록용)
 
-`CHANNEL_PRICING_DECISIONS.md` 3절·4절 그대로. 변경 없음.
-본편 $7.99 / DLC $2.99 / 6팩 번들 $11.99 / 본편+전DLC $15.99 / 동전 판매 없음.
+★ **폐기된 값이다. 여기서 가격을 읽지 마라** — 현행 가격표는
+`CHANNEL_PRICING_DECISIONS.md` 3-3절이다.
+~~본편 $7.99 / DLC $2.99 / 6팩 번들 $11.99 / 본편+전DLC $15.99~~ / 동전 판매 없음(이건 유지).
 ★ **단 N1으로 "입점 비용 $0"이라는 전제 자체가 부분적으로 틀렸다**(3-4절) — 그 정정은 A안에도 적용된다.
 
-### 6-B. 【안 B】 "제품 가격 0원"이었다 — **F2P 전제안 (신규)**
+### 6-B. ★ 【안 B】 **채택 확정** — F2P
 
-#### B-1. 먼저 기각하는 것: 채널별 가격 차등
-
-스팀 $7.99 / MS 스토어 $0 = **기각.**
-같은 exe가 한쪽에서 공짜인 이유를 유저에게 설명할 수 없고, **그 사실은 스팀 리뷰 첫 줄에 적힌다.**
-→ F2P로 간다면 **전 채널 F2P**다.
+#### B-1. ~~채널별 가격 차등 기각~~ — ★ **논점 소멸.** 채널이 하나뿐이라 차등할 대상이 없다
 
 #### B-2. F2P 가격표 (안 A 대비 무엇이 바뀌나)
 
@@ -367,7 +504,8 @@ T0 = Steam Direct $100 결제 + 신원/은행/세무 제출
 | **F2P 허브** | *"스팀 전체에서 가장 인기 있는 콘텐츠 허브"* → 노출 기회 |
 | Daily / Midweek / Weekend Deals | ★ **자격 없음**(F2P 제외) → **출시 주 할인 전술을 못 쓴다** |
 | 환불 | 본편에 환불이 없다 → **P-5(구매 직후 착용 가능)의 긴급도가 DLC로 이동한다** |
-| **MS 스토어** | ★ **가장 큰 위험.** N2대로 **애드온 판매 가능 여부가 미확인**이면, F2P에서 MS 스토어는 **매출 0 채널**이 된다. 유료 안에서는 본편이라도 팔리지만 F2P에서는 아무것도 안 팔린다 |
+| ~~MS 스토어~~ | ★ **2회차 폐기 — 채널이 스팀 단독으로 확정.** 이 위험은 채널과 함께 사라졌다 |
+| ★ **서명** | **F2P가 서명의 값을 올렸다.** 유료 앱은 유저가 이미 돈을 내서 경고를 뚫을 동기가 있지만, **무료 앱에서 경고를 만난 유저는 그냥 지운다.** 3-4-4절 |
 
 #### B-4. ★ F2P에서 절대 하지 않을 것 — 이게 안 B의 핵심이다
 
@@ -424,8 +562,8 @@ T0 = Steam Direct $100 결제 + 신원/은행/세무 제출
 | # | 항목 | **걸려 있는 곳** | 내가 못 하는 이유 |
 |---|---|---|---|
 | B1 | **Steam Direct $100 + 신원·세무** | **사용자** | 결제·스토어 계정 조작 금지 |
-| B2 | **"MS 스토어 무료"의 뜻** | **사용자** (리더가 이미 질문함, 미응답) | 6절에 양쪽 안 준비 완료 |
-| B3 | **이 제품이 매출원인가 인지도 자산인가** | **사용자** (★ 내가 이번에 새로 낸 질문) | 6-B 판정요청 |
+| ~~B2~~ | ~~"MS 스토어 무료"의 뜻~~ | ★ **해소 — 채널 스팀 단독 확정으로 질문 자체가 소멸** | — |
+| ~~B3~~ | ~~이 제품이 매출원인가 인지도 자산인가~~ | ★ **해소 — 사용자 확정: 매출원. F2P + DLC·장비 유료**(`MILESTONES.md` D-2) | — |
 | B4 | 캡슐 4종 + 스크린샷 5장 + 영문 문안 | `marketing` + `design-art` | 디자인·소재는 내 소관 아님 |
 | B5 | **출하 27색 중 21색 대비 미달** | `design-art` (수정 중) | — |
 | B6 | `AccessoryShapeBuilder` `default:` 안전망 | `coder` (총괄 I-4 S1) | 프로덕션 `.cs` 수정 금지 |
@@ -433,8 +571,11 @@ T0 = Steam Direct $100 결제 + 신원/은행/세무 제출
 | B8 | **문자열 테이블 스키마 + `KoreanParticle` 언어 분기 지점**(R-2 선두) | 리더 판정 → `coder`·`design-narrative` | ★ 4-2절. **총괄 순서 4번과 같은 라운드 권고** |
 | B9 | 업적 시스템(R-3) | 기획·총괄 | 신규 인프라 0 후보: `CharacterStatsModel.TotalCompanionSeconds` |
 | B10 | P-5 팩 구매 직후 착용 보장 | `design-systems` | 동전 수치·규칙 형태는 그쪽 소관 |
-| B11 | **인스톨러 오서링 + 코드서명** (R-6) | ★ **주인 없음. 배정 필요** | 4-5절 |
-| B12 | **MS 스토어 애드온 판매 가능 여부**(N2) | 사용자(Partner Center 확인) 또는 리더 | 계정 조작 금지 |
+| **B11a** | ★ **macOS 서명 + 공증** (R-6a) — **1.0 차단** | `dev-platform` **배정 필요** | 3-4-2절. 선행: Apple Developer Program $99/년 결제(**사용자**) |
+| B11b | Windows OV 서명 (R-6b) — 비차단, 데드라인 "첫 업데이트 전" | `dev-platform` | 3-4-3절 |
+| ~~B12~~ | ~~MS 스토어 애드온 판매 가능 여부~~ | ★ **폐기 — 채널 제외 확정** | — |
+| **B15** | ★ **`companyName`/번들 ID 확정** (`com.DefaultCompany.StickMate`) — **되돌릴 수 없음** | `game-architect` + 리더 (**나는 이름을 고르지 않는다**) | `CHANNEL_PRICING_DECISIONS.md` 10-S-4. 서명·공증의 **선행**이고, 출시 후 변경 시 **세이브 + 작업표시줄 원복 원장 경로가 이사한다** |
+| **B16** | **Artifact Signing 지역 자격** — 사업자등록 여부에 따라 연 $120 vs $150~300 + 토큰 | **사용자**(Azure 포털) 또는 리더 | 계정 조작 금지. Microsoft 문서 2개가 조직 국가 목록에서 **어긋난다**(3-4-3-d) |
 | B13 | `ARCHITECTURE.md` 5-3-3 / 5-4 B-10 드리프트 | `game-architect` | 나는 총괄 문서를 고치지 않는다 |
 | B14 | **원칙 4의 개방성과 유료 팩의 경계 명시** | `game-architect` + 리더 | ★ 신규. Desktop Mate 실패의 직접 대응(`MARKET_LANDSCAPE.md` 3-1) |
 
@@ -478,15 +619,26 @@ grep -n "단계 A\|단계 B\|단계 C" docs/ARCHITECTURE.md
 
 ## 10. 플랫폼 영향
 
-- **Windows 영향: 없음(이 라운드) — 단 신규 작업 2건을 신고한다.**
-  프로덕션 `.cs` 0줄 수정. 새로 드러난 Windows 전용 요구사항:
-  **(a) 무음 설치 가능한 EXE/MSI 인스톨러**(오늘 없음 — Unity 산출물은 폴더),
-  **(b) Microsoft Trusted Root 체인 코드서명**(오늘 없음 — `codesign`/`signtool` grep 0건).
-  둘 다 `Assets/Editor/BuildStandalone.cs` 바깥이고 주인이 없다.
-  → **별도 배정 필요(사유: 인스톨러 오서링·서명 파이프라인은 기존 담당 범위 밖).**
-  이건 MS 스토어 채널을 막지만 **스팀 출시는 막지 않는다**(스팀은 서명을 요구하지 않는다).
-- **macOS 영향: 없음(이 라운드).**
-  이번 조사는 macOS 판정 2건을 **재확인만** 했다 — 위젯형 기각 유지(WidgetKit는 스냅샷 타임라인,
+- **Windows 영향: 없음(이 라운드) — 프로덕션 `.cs` 0줄 수정. 단 신고 2건.**
+  **(1) 지난 회차 항목 (a) 무음 설치 인스톨러는 폐기한다** — 요구한 주체(MS 스토어)가 채널에서 빠졌다.
+  **(2) Windows 코드서명(R-6b)은 유지하되 「비차단」으로 내린다.** 스팀은 Windows 서명을 요구하지 않는다
+  (Steamworks 플랫폼 문서에 항목 없음). 남는 노출은 **Smart App Control** 하나이고
+  (*"signature checks apply to all executable files, not just those downloaded from the Internet"*),
+  **SAC 활성 기기 비율은 미확인**이다.
+  ★ **되돌릴 수 없는 Windows 부작용 1건 신고**: `companyName`을 출시 후에 바꾸면
+  `Application.persistentDataPath`가 이사해 **`ReservedBarRestoreLedger`가 안 읽힌다**
+  (`ReservedBarRestoreLedger.cs:99` 실측). 그 원장은 CLAUDE.md 원칙 3의 **승인된 예외가 성립하기 위한
+  안전장치**이므로, 경로가 끊기면 **유저의 작업표시줄 자동 숨김이 꺼진 채 복구 불가**가 된다.
+  → **B15를 출시 전으로 못박아야 하는 Windows측 사유.**
+- **macOS 영향: ★ 있음 — 1.0 차단 항목 1건을 신설했다(R-6a).** 프로덕션 `.cs`는 0줄 수정.
+  스팀 파트너 문서가 **신규 macOS 앱에 Apple 공증을 요구**하고 우리 산출물은 실측상 **애드혹 서명**이라
+  공증이 불가능하다. `dev-platform` 배정이 따라온다(하드닝 런타임 + 엔타이틀먼트 2종 + 딥서명 + 공증 + 스테이플).
+  ★ **`Platform/MacOS/` 코드 변경은 이 항목에 포함되지 않는다** — 빌드 후처리·서명 파이프라인이고
+  런타임 정책이 아니다. 정책을 `Platform/MacOS/`로 끌어들이지 마라(`FullscreenSuspendPolicy` 사고 재현 금지).
+  ★ **부수 확인 1건**: Steamworks 문서 *"Steam is not currently compatible with the
+  `com.apple.security.app-sandbox` entitlement."* → **맥 앱스토어(샌드박스 의무)와 스팀은 같은 빌드일 수 없다.**
+  `CHANNEL_PRICING_DECISIONS.md` 1절의 "축소판 재설계 필요" 판정이 **독립 출처로 보강**됐다.
+  아래는 지난 회차 재확인 내용이다 — 이번 조사는 macOS 판정 2건을 **재확인만** 했다 — 위젯형 기각 유지(WidgetKit는 스냅샷 타임라인,
   Unity 런타임 호스팅 불가), 맥 앱스토어 1차 출시 제외 유지(게이트 G1~G3 미변경).
   새 macOS 작업을 만들지 않았고, `Platform/MacOS/` 어떤 파일도 읽기 외로 건드리지 않았다.
   ★ 관측 1건(**미검증**): macOS Sequoia 15.0 이후 화면 기록·손쉬운 사용 권한이 주기적 재승인을
@@ -499,6 +651,18 @@ grep -n "단계 A\|단계 B\|단계 C" docs/ARCHITECTURE.md
 ---
 
 ## 11. 출처 (전부 2026-09-02 확인)
+
+### 2회차 추가 출처
+
+- **★ 스팀의 macOS 공증 요구 / `app-sandbox` 비호환 / 오버레이 엔타이틀먼트 2종** — https://partner.steamgames.com/doc/store/application/platforms
+  *"Starting October 14th, 2019 Steam will require all new macOS Applications to be 64-bit and notarized by Apple."*
+  *"Steam is not currently compatible with the com.apple.security.app-sandbox entitlement."*
+- **EV 기각 근거 / OV도 첫 경고는 뜬다 / 무서명은 업데이트마다 평판 리셋 / SAC는 MOTW 무관** — https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation (갱신 2026-08-17)
+- **서명 옵션·가격 비교 및 ★ 지역 제한** — https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options (갱신 2026-08-29)
+- **Artifact Signing 지역 목록(조직에 대한민국 포함, 개인은 USA·Canada)** — https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart (갱신 2026-08-11) ★ 위 문서와 **조직 국가 목록이 어긋난다**
+- Smart App Control 활성화 조건 — https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions
+- Apple Developer Program $99/년 · Developer ID·공증은 유료 멤버십 전용 — https://developer.apple.com/support/compare-memberships/
+- 저장소 실측: `codesign -dv Builds/macOS/StickMate.app` / `ProjectSettings.asset` / `grep persistentDataPath`
 
 **스팀 절차·요건**
 - Coming Soon 요건(스토어 프레즌스 체크리스트, 빌드 불요, 최소 2주, 심사 7영업일 전 제출) — https://partner.steamgames.com/doc/store/coming_soon

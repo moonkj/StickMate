@@ -671,11 +671,117 @@ namespace StickMate.Tests.EditMode
                 },
                 new IgnoreEntry
                 {
+                    File = "ItemRarityDerivationTests.cs",
+                    Method = "감사_코호트_안_등급_혼재를_잡는다",
+                    Kind = RatchetKind.자동,
+                    Why = "★ <b>조건부</b> Ignore다 — 실행에 따라 통과하기도 한다(2026-09-02 러너에서는 통과). " +
+                          "그래서 더 위험하다: 조건이 참이 되는 날 <b>조용히 건너뜀</b>이 되고, 초록 러너에서는 " +
+                          "통과와 구분되지 않는다(이 저장소의 대표 실패 형태). 소스 기반 감사가 " +
+                          "<b>잠재 경로까지</b> 보는 것은 결함이 아니라 이 감사의 값이다. " +
+                          "역방향 장치는 <b>원 작성자가 Ignore 메시지에 이미 적어 두었다</b> — " +
+                          "\"상한이 올라가면 이 검사가 자동으로 살아납니다\"(ItemCatalog.MaxDeclaredRarityForPack이 " +
+                          "올라 허용 범위 안에 단이 둘 이상 생기면 조건이 거짓이 되어 실검사로 돈다). " +
+                          "test-engineer가 등록만 했고 장치를 새로 지어내지 않았다.",
+                },
+                new IgnoreEntry
+                {
+                    File = "FacingFlipBodySplitTests.cs",
+                    Method = "무릎앉아_착지는_실기_미재현이라_보류한다",
+                    Kind = RatchetKind.동반,
+                    Companion = "던지기회전_붙잡힘_기상은_자기_기울임이_없고_잔류_최대치에서도_갈라지지_않는다",
+                    Why = "2026-09-02 test-engineer 등록(원 작성자). <b>기하는 이미 잠겨 있다</b> — " +
+                          "동반 테스트가 네 기울임 출처의 <b>최대값</b>에서 같은 불변식을 거는데, 그 최대값이 " +
+                          "바로 LandingCrouch의 landingCrouchTorsoPitchBraceDegrees(출하 30도, 적용 상한과 동일)다. " +
+                          "이 Ignore가 남기는 미확인은 각도의 기하가 아니라 <b>실기 프레임 순서 재현</b> 하나뿐이다" +
+                          "(debugger가 2026-09-02에 재현하지 못했다). " +
+                          "되살리는 방법: 실기에서 착지 연출 도중 방향 전환이 한 프레임 어긋나는 것이 " +
+                          "관측되면 이 Ignore를 AssertNoSplitAt(brace, ...) 호출로 바꾼다. " +
+                          "동반 테스트가 사라지면 이 감사가 먼저 빨개져 그 사실을 알린다.",
+                },
+                new IgnoreEntry
+                {
+                    File = "EntitlementFailOpenAuditTests.cs",
+                    Method = "C층_소유판정은_Unknown을_NotOwned로_붕괴시키지_않는다",
+                    Kind = RatchetKind.동반,
+                    Companion = "스토어_SDK가_들어오면_이_경보가_먼저_울린다",
+                    Why = "2026-09-02 security 등록(ENTITLEMENT_CONTRACT §E-9 #3). 유료 권한(C층) 코드가 " +
+                          "<b>오늘 0줄</b>이라 검사할 대상이 자체가 없다. 역방향 장치를 <b>서로 독립인 두 축</b>으로 " +
+                          "걸었다 — ① <b>자동(축 A)</b>: Entitlement/Ownership/License가 들어간 타입 선언이 " +
+                          "프로덕션에 생기면 보류가 스스로 풀려 실검사로 돈다(아무도 켤 필요가 없다). " +
+                          "② <b>동반(축 B)</b>: 같은 파일의 이 동반 테스트가 항상 실행되며 " +
+                          "Steamworks/BIsDlcInstalled 같은 <b>스토어 SDK 식별자</b>가 프로덕션에 나타나면 빨개진다. " +
+                          "두 축을 일부러 다른 신호로 고른 이유는 TEAM.md가 기록한 열 번째 거짓 통과 형태 " +
+                          "(생성기와 검사기가 같은 잘못된 흉내를 공유해 서로를 확인해 주지 못했다) 때문이다 — " +
+                          "축 A가 이름을 못 알아봐도 축 B가 대신 알린다. " +
+                          "★ 이 명부의 <b>동반 실재 확인</b>이 축 B를 조용히 치우는 경로를 막는다.",
+                },
+                new IgnoreEntry
+                {
                     File = "PortraitTextureResolutionTests.cs",
                     Method = "PortraitTextureIsSupersampledAgainstPhysicalPixelsOnRetina",
                     Kind = RatchetKind.없음,
                     Why = "헤드리스(-nographics) 환경 가드다. 닫힐 '갭'이 없고 " +
                           "환경이 바뀌면 저절로 실검사로 돈다 — 래칫을 붙일 대상이 아니다.",
+                },
+                new IgnoreEntry
+                {
+                    File = "FullscreenPanelRetreatTests.cs",
+                    Method = "미해결_등급1에서_정보창_단축키_경로는_아직_허가를_받지_못한다",
+                    Kind = RatchetKind.자동,
+                    Why = "2026-09-03 dev-platform 등록(등급 1 도달성 R1-I 라운드). 갭 자체: 등급 1 체류 중 " +
+                          "정보창 전역 단축키로 정보창을 열면 그 프레임에 다시 닫힌다 — " +
+                          "CharacterInfoWindow.Open이 StickmanAgent.TryGrantUserSummon을 부르지 않기 때문이다. " +
+                          "★ 역방향 장치는 <b>같은 메서드 안</b>에 있다: 그 파일에서 그 식별자가 발견되면 " +
+                          "Ignore 앞에서 Assert.Fail이 먼저 터져 '갭이 닫혔으니 실측으로 승격하라'고 말한다. " +
+                          "니들은 nameof로 프로덕션 멤버에서 가져오므로, 멤버 이름이 바뀌면 문자열이 조용히 " +
+                          "썩는 대신 <b>컴파일이 깨진다</b>. 그리고 같은 메서드가 부재 판정 앞에 " +
+                          "<b>양성 대조</b>(실재하는 이름을 같은 스캐너로 찾아낸다)를 두어, " +
+                          "'0건'이 '고쳐졌다'인지 '스캐너가 죽었다'인지를 가른다.",
+                },
+                new IgnoreEntry
+                {
+                    File = "TodoPostItReservedTopBarTests.cs",
+                    Method = "발산_구간에서도_카드가_톱니를_덮지_않는다_상단_도킹",
+                    Kind = RatchetKind.자동,
+                    Why = "2026-09-03 coder-ui 등록(포스트잇 예약 띠 라운드). ★ <b>닫힐 프로덕션 갭이 아니라 " +
+                          "환경 가드</b>다 — 게임 뷰가 작아 톱니를 발산 구간 한가운데로 <b>끌어다 놓을 수</b> " +
+                          "없을 때만 걸린다(Ignore는 그 파일의 private 도우미 AssertNoDivergenceGap 안에 있고, " +
+                          "메서드 절단기가 바로 위 public 테스트에 귀속시킨다). " +
+                          "★ 그런데 <b>장치없음이 아니다</b>. 되살리는 장치가 둘이고 <b>둘 다 같은 메서드 안</b>에 " +
+                          "있으며 아무도 스위치를 켤 필요가 없다: " +
+                          "① 이 결함의 서명인 '발산 구간 폭 == 띠 두께' 단언이 <b>이 Ignore보다 먼저, 조건 없이</b> " +
+                          "실행된다 — 화면이 작아도 <b>짝 변경 회귀(배치와 판정이 갈라지는 것)는 계속 빨갛게 잡힌다</b>. " +
+                          "이 Ignore가 건너뛰는 것은 '드래그로 실제 자리에 놓아 보는 것' 하나뿐이다. " +
+                          "② 게임 뷰가 커지면 조건이 거짓이 되어 Ignore를 지나 실검사로 간다(Ignore 메시지가 " +
+                          "필요 높이를 그때그때 계산해 찍는다 — 상수로 굳히지 않았다). " +
+                          "PortraitTextureResolutionTests의 헤드리스 가드를 '없음'으로 둔 것과 갈리는 지점이 " +
+                          "정확히 여기다: 저쪽은 -nographics 러너에서 <b>언제나</b> 걸려 본문이 한 번도 안 돌지만, " +
+                          "이쪽은 조건이 거짓일 때 본문이 <b>전부</b> 돌고 게다가 핵심 단언은 조건 앞에 있다.",
+                },
+                new IgnoreEntry
+                {
+                    File = "ReservedScreenEdgeContractTests.cs",
+                    Method = "팝오버와_정보창의_가로축은_아직_예약띠를_모른다_미해결",
+                    Kind = RatchetKind.자동,
+                    Why = "2026-09-03 승계 등록. ★ 원래 항목(화면_오른쪽_표면의_소비_배선은_아직_없다_미해결)은 " +
+                          "<b>래칫이 의도대로 발동해 실단언으로 승격됐다</b> — 톱니·부채꼴·할일 카드 세 표면이 " +
+                          "네 방향 프로브를 실제로 소비하게 되자 Ignore 앞의 Assert.Fail이 먼저 터졌고, " +
+                          "그 자리는 이제 화면_오른쪽에_사는_표면이_네방향_프로브를_소비한다()가 잰다. " +
+                          "남은 갭은 좁아졌다: <b>팝오버(PopoverPanel)와 정보창(CharacterInfoWindow.Layout)의 " +
+                          "가로축</b>이 아직 예약 띠를 모른다. 실측(계산)상 정보창은 우측 도킹 48pt에서 32pt " +
+                          "(띠 62면 46pt) 침해하고 <b>드래그로 도달 가능</b>하며, 팝오버는 구조적 여지 36pt가 " +
+                          "있으나 앵커가 전부 부채꼴 버튼이고 부채꼴이 띠를 알게 되어 <b>현재 도달 불가 0pt</b>다. " +
+                          "★ 이 라운드에 안 고친 이유는 핑계가 아니라 기술적 제약이다 — 둘 다 <b>띠 0에서 " +
+                          "비트 동일이 이 방식으로는 안 나온다</b>(정보창은 ClampCenterOriginOffsetX의 " +
+                          "(W/2 + dx) - W/2 왕복이 dx 하위 비트를 잃고, 팝오버는 상·하한 뺄셈 순서가 옛 식과 " +
+                          "달라 경계에서 1 ULP가 갈릴 수 있다). 성립시키려면 정책에 새 창구가 필요하다. " +
+                          "★ 역방향 장치는 <b>같은 메서드 안</b>: PopoverPanel.cs에 ClampCenterX가, " +
+                          "CharacterInfoWindow.Layout.cs에 ClampCenterOriginOffsetX가 나타나면 Assert.Fail이 " +
+                          "Ignore보다 먼저 터진다. 그리고 <b>존재 대조</b>가 붙어 있다 — 같은 스캐너로 두 파일의 " +
+                          "세로축 호출이 실재함을 먼저 증명해 '0건'이 '아직 없다'인지 '스캐너가 죽었다'인지를 가른다. " +
+                          "★ 실기 미확인(Windows 좌/우 도킹 4항목)은 승격된 테스트 쪽에 남아 있다. 그중 " +
+                          "<b>자동 숨김 작업표시줄을 우리가 강제로 보이게 한 상태(승인된 예외 1건)에서 rcWork가 " +
+                          "실제로 좁아지는가</b>가 가장 무겁다 — 안 좁아지면 이 회피 전체가 헛돈다.",
                 },
             };
         }

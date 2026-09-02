@@ -77,6 +77,12 @@ namespace StickMate.Core
         //   2026-08-31 사용자 신고 "엑셀같은 프로그램 전체화면에서 엑셀 클릭하면 캐릭터가 없어져버림"의
         //   완전한 회귀가 된다. 축 3은 <see cref="ArePanelsSuppressed"/>로만 새 나가고, 그 프로퍼티를
         //   읽는 소비자는 전부 "화면에 고정된 표면"이다.
+        //
+        // ★★★ 2026-09-03 — 축 3에는 <b>사용자 허가(임대)</b>라는 예외가 하나 붙는다
+        //   (<see cref="TryGrantUserSummon"/> / <see cref="Platform.UserSurfaceSummonPolicy"/>).
+        //   축 3을 끄는 유일한 스위치가 축 3 때문에 닫히는 창 안에 있어서, 등급 1이 켜진 동안
+        //   그것을 끄는 경로가 앱 안에 하나도 없었다. 허가는 <b>축 3에만</b> 작용하고 축 1·2는
+        //   건드리지 않는다 — 등급 2는 허가로 뚫리지 않는다.
         private bool _fullscreenAutoHide;
         private bool _userHidden;
         private bool _fullscreenPanelRetreat;
@@ -169,8 +175,111 @@ namespace StickMate.Core
         /// <para><b>이 형태가 기존 테스트를 살린다</b>: <c>FullscreenSuspendUiHidingTests</c>는
         /// 리플렉션으로 <c>_isSuspended</c>를 직접 세운다(주입 지점이 없어서). 캐시 필드였다면 그
         /// 주입이 이 값에 도달하지 못해 등급 2 회귀 잠금이 통째로 거짓 통과했을 것이다.</para>
+        ///
+        /// ============================================================================
+        /// ★★★ 2026-09-03 — 세 번째 항: <b>사용자가 직접 부른 표면</b>(등급 1 한정)
+        /// ============================================================================
+        /// 등급 1을 끄는 유일한 스위치(설정창 [일반])가 <b>등급 1 때문에 닫히는 창 안에</b> 있어서,
+        /// 등급 1이 켜진 동안 그것을 끄는 경로가 앱 안에 <b>하나도 없었다</b>(경로 4개 전수 확인).
+        /// 그래서 회수 기준을 「표면의 종류」가 아니라 <b>「누가 열었는가」</b>로 바꾼다 —
+        /// 규칙 본문은 <see cref="Platform.UserSurfaceSummonPolicy"/>에 있다(플랫폼 중립).
+        ///
+        /// <para><b>포함관계는 그대로다</b>: 허가는 <c>||</c>의 <b>오른쪽 항 안</b>에만 작용하므로
+        /// <c>_isSuspended</c>가 참이면 여전히 무조건 참이다. 등급 2(전체화면 게임 / 사용자 명시 숨김)는
+        /// 허가로 뚫리지 않는다.</para>
+        ///
+        /// <para><b>비용</b>: 예전 한 줄은 bool OR 하나였다. 지금은 거기에 임대 만료 비교
+        /// (<c>Time.unscaledTime</c> 읽기 1회 + float 비교 1회)가 붙는다. 매 프레임 이 값을 읽는
+        /// 표면이 7개이므로 60fps에서 초당 420회 — 24시간 상주 앱에서도 계측 한계 아래다.
+        /// 캐시하지 않는 이유는 위 불변식 문단 그대로다.</para>
         /// </summary>
-        public bool ArePanelsSuppressed => _isSuspended || _fullscreenPanelRetreat;
+        public bool ArePanelsSuppressed => Platform.UserSurfaceSummonPolicy.SuppressesPanels(
+            _isSuspended, _fullscreenPanelRetreat, IsUserSummonGrantActive);
+
+        // ==================== 등급 1 — 사용자가 직접 부른 표면의 허가(임대) ====================
+
+        /// <summary>임대 만료 시각(<c>Time.unscaledTime</c> 기준). 0 이하 = 허가 없음.</summary>
+        private float _userSummonLeaseUntil;
+
+        /// <summary>직전 폴링에서 본 축 3의 값 — <b>등급 1 진입(상승 에지)</b>을 잡기 위한 것이고
+        /// 판정에는 쓰이지 않는다.</summary>
+        private bool _panelRetreatWasActive;
+
+        /// <summary>지금 "사용자가 직접 부른 표면" 허가가 살아 있는가(진단/테스트 창구).
+        /// <para>임대라서 갱신이 끊기면 <see cref="Platform.UserSurfaceSummonPolicy.LeaseSeconds"/>
+        /// 안에 저절로 false가 된다 — 끄는 코드를 아무도 부르지 않아도 원칙 2로 돌아온다.</para></summary>
+        public bool IsUserSummonGrantActive => Time.unscaledTime < _userSummonLeaseUntil;
+
+        /// <summary>
+        /// ★★★ 2026-09-03 — <b>사용자가 지금 이 표면을 직접 불렀다</b>고 알린다(등급 1 탈출구).
+        /// 반환값은 <b>허가가 실제로 났는가</b>.
+        ///
+        /// <para><b>부르는 곳은 「명시적 사용자 행위」의 진입점뿐이다</b> — 톱니 클릭
+        /// (<c>InfoGearIconWidget.ActivateClick</c>)과 설정창의 <b>사용자 열기</b>
+        /// (<c>SettingsWindow.Open</c>). 자동 복귀·리마인더·연출 같은 <b>사용자가 부르지 않은</b>
+        /// 경로에서 이 함수를 부르면 안 된다 — 그 순간 이 장치는 원칙 2의 구멍이 된다.</para>
+        ///
+        /// <para>허가 여부의 판정은 <see cref="Platform.UserSurfaceSummonPolicy.CanGrant"/>가 한다:
+        /// 등급 2에서는 절대 나지 않고(게임 위 / 사용자가 직접 숨긴 상태), 등급 1이 <b>이미</b> 켜져
+        /// 있을 때만 난다(그래서 "등급 1 진입 시 전부 회수"가 구조적으로 유지된다).</para>
+        /// </summary>
+        public bool TryGrantUserSummon(string source)
+        {
+            if (!Platform.UserSurfaceSummonPolicy.CanGrant(_isSuspended, _fullscreenPanelRetreat))
+                return false;
+
+            bool renewal = IsUserSummonGrantActive;
+            _userSummonLeaseUntil = Time.unscaledTime + Platform.UserSurfaceSummonPolicy.LeaseSeconds;
+            if (renewal) return true;
+
+            Debug.Log($"[표면회수] 등급 1 중 사용자가 표면을 직접 불렀습니다({source}) — " +
+                $"임대 {Platform.UserSurfaceSummonPolicy.LeaseSeconds:F2}초로 회수를 보류합니다. " +
+                "등급 1을 끄는 스위치(설정창 [일반])가 등급 1 때문에 닫히던 루프를 여는 것이 이 허가의 " +
+                "유일한 목적입니다. 사용자가 부른 표면이 전부 닫히면 임대가 만료되어 회수가 돌아옵니다. " +
+                "★ 등급 2(전체화면 게임 / 사용자 명시 숨김)에서는 이 허가가 아예 나지 않습니다.");
+            return true;
+        }
+
+        /// <summary>
+        /// 사용자가 부른 표면이 <b>아직 살아 있다</b>고 알린다(매 프레임 호출 전제 — 할당 0).
+        ///
+        /// <para><b>부활은 없다</b>: 이미 만료된 임대는 이 호출로 살아나지 않는다
+        /// (<see cref="Platform.UserSurfaceSummonPolicy.RenewedLeaseUntil"/>). 갱신자는 "내가 떠 있다"는
+        /// 사실만 말할 뿐이고, 허가를 <b>내는</b> 권한은 <see cref="TryGrantUserSummon"/>에만 있다.
+        /// 이 구분이 없으면 등급 1이 켜지기 전부터 떠 있던 창이 스스로를 갱신해 영원히 남는다.</para>
+        /// </summary>
+        public void RenewUserSummonGrant()
+        {
+            _userSummonLeaseUntil = Platform.UserSurfaceSummonPolicy.RenewedLeaseUntil(
+                _userSummonLeaseUntil, Time.unscaledTime);
+        }
+
+        /// <summary>허가를 그 자리에서 만료시킨다. 부르는 곳은 <b>등급 1 진입</b>과 <see cref="Suspend"/>
+        /// 두 곳뿐이다 — 둘 다 "지금부터는 전부 회수한다"가 확정되는 순간이다.</summary>
+        private void ExpireUserSummonGrant(string why)
+        {
+            bool wasActive = IsUserSummonGrantActive;
+            _userSummonLeaseUntil = 0f;
+            if (!wasActive) return;   // 만료할 것이 없었다 — 24시간 상주 앱이라 로그도 남기지 않는다.
+            Debug.Log($"[표면회수] 사용자 표면 허가를 만료시켰습니다 — {why}. " +
+                "지금 열려 있는 표면은 각자 다음 폴링에서 스스로 걷습니다(원칙 2).");
+        }
+
+        /// <summary>
+        /// <b>등급 1 진입(false → true) 순간에만</b> 허가를 만료시킨다 — 「등급 1 진입 시 전부 회수」.
+        ///
+        /// <para>왜 필요한가: 임대는 사용자가 부른 표면이 살아 있는 동안 갱신된다. 그 표면을 띄운 채
+        /// 전체화면 앱이 <b>지나갔다가 다시</b> 뜨면(다른 앱으로 교체되는 경우 포함) 갱신이 끊긴 적이
+        /// 없어 임대가 그대로 살아 있고, 새 전체화면 앱은 회수를 한 번도 못 하게 된다.
+        /// 진입은 언제나 <b>백지</b>에서 시작해야 한다.</para>
+        /// </summary>
+        private void TickPanelRetreatEntry()
+        {
+            bool was = _panelRetreatWasActive;
+            _panelRetreatWasActive = _fullscreenPanelRetreat;
+            if (!_fullscreenPanelRetreat || was) return;
+            ExpireUserSummonGrant("등급 1 진입 — 이미 떠 있던 표면은 예외 없이 걷는다");
+        }
 
         /// <summary>
         /// ★ <b>사용자 명시 숨김</b>이 켜져 있는가 — 화면공유·발표 중에 "지금은 나오지 마"를
@@ -1203,6 +1312,10 @@ namespace StickMate.Core
             _fullscreenPanelRetreat = AppSettingsModel.AutoHideOnFullscreen
                 && ForeignFullscreenTierPolicy.RetreatsPanels(tier);
 
+            // ★ 2026-09-03 — 「등급 1 진입 시 전부 회수」. 반드시 ApplySuspendDecision() <b>앞</b>이다:
+            //   같은 폴링에서 표면들이 새 등급을 보기 전에 백지가 되어 있어야 한다.
+            TickPanelRetreatEntry();
+
             ApplySuspendDecision();
         }
 
@@ -1309,6 +1422,12 @@ namespace StickMate.Core
         private void Suspend(string reason)
         {
             _isSuspended = true;
+
+            // ★ 2026-09-03 — 등급 2로 올라가는 순간 등급 1의 사용자 허가는 뜻을 잃는다.
+            //   ArePanelsSuppressed는 _isSuspended를 항상 포함하므로 이 줄이 없어도 판정은 옳지만,
+            //   Resume() 직후 <b>남아 있는 임대</b>가 등급 1 회수를 한 박자 건너뛰게 만들 수 있다.
+            //   허가는 언제나 사용자의 <b>새</b> 행위에서만 나야 한다.
+            ExpireUserSummonGrant("등급 2 진입(" + reason + ")");
 
             // Phase 3 예외(UX_FLOW.md 12/13절): 드래그&던지기/로데오 커서는 "능동 개입"
             // 스펙터클이라 전체화면 감지 시 일반 Suspend(상태 보존 후 재개)가 아니라 즉시 취소되어야

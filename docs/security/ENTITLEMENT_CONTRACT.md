@@ -186,9 +186,25 @@ Steam 환불 정책 원문:
 ★ 3번은 **지금 `Assert.Ignore`로 넣어 둔다**(CLAUDE.md의 "못 고친 갭은 Fail이 아니라 Ignore" 규칙).
 그래야 C층 배선 라운드가 이 테스트를 **켜는 것을 잊을 수 없다.**
 
+### ★ 착지 기록 (2026-09-02, 리더 승인 후 `security`가 작성)
+
+| 파일 | 내용 |
+|---|---|
+| `Tests/EditMode/EntitlementAuditSource.cs` | 3종 공용 스캐너(주석 제거 · 낱말 경계 · 직렬화 타입 발견 · 낱말 조각 분해). **정규식 0줄 · 리플렉션 0줄** |
+| `Tests/EditMode/EntitlementNotInSaveAuditTests.cs` | #1. 직렬화 필드 **이름**만 검사(값은 안 본다). 면제표는 비었고 **비었음을 단언**한다 |
+| `Tests/EditMode/UnlockSwitchScopeAuditTests.cs` | #2. 선언 파일 밖 참조 **파일 집합 등호** + 멤버는 `UnlockAll`만 + **public 테스트 강제값 래칫(≤1)** |
+| `Tests/EditMode/EntitlementFailOpenAuditTests.cs` | #3. **`Assert.Ignore` 1건 + 항상 도는 동반 경보 1건.** 명부(`TestClaimExpiryAuditTests`)에 등록 완료 |
+
+**오프라인 실측(러너 아님)**: 프로덕션 199파일 기준 — 직렬화 필드 66개 중 위반 **0**,
+해금 스위치 선언 **1파일**·외부 참조 **정확히 2파일**(`EquipmentModel.cs:180` / `ItemCatalog.cs:286`, 둘 다 `UnlockAll`),
+테스트 강제값 선언 **2건 중 public 1건**, C층 표면 **0건**(⇒ #3은 Ignore로 간다).
+★ **이 숫자들은 러너 결과가 아니다.** E-12-6을 읽어라.
+
 ---
 
-## E-10. 서명 — **1.0에 필요하다. 근거는 SmartScreen이 아니다** (S절)
+## E-10. 서명 — **macOS는 1.0 하드 블로커, Windows는 「첫 업데이트 전」이 마지노선** (S절)
+
+★ **2026-09-02 2차 개정.** 초판은 *"1.0에 필요하다"*로 양 플랫폼을 묶었다. 1차 출처 재확인(S-4·S-6) 결과 **Windows만 완화**됐다. 근거는 「OV가 첫 경고를 없애 준다」가 **아니라**(그건 거짓이다) 「이월할 평판이 아직 0이라 지금 서명하지 않아 잃는 것이 없다」이다.
 
 ### S-1. macOS: **선택이 아니다 — 채널 요구이자 OS 요구다**
 
@@ -254,45 +270,311 @@ RegOpenKeyExW · RegEnumKeyExW · RegQueryValueExW · OpenProcess · QueryFullPr
 → **서명은 이 앱에서 백신 오탐을 「늘리는」 조치가 아니라 「줄이는」 유일한 조치다.**
 선 3(백신 오탐 금지)과 **충돌하지 않고 오히려 같은 편**이다.
 
-### S-4. 무엇을 사고 무엇을 사지 않는가
+### S-4. 무엇을 사고 무엇을 사지 않는가 — ★ 2026-09-02 **2차 정정**(1차 출처 직접 확인)
 
-| | 판정 | 근거 |
+> **초판은 틀렸다.** 초판은 「OV / Azure Artifact Signing」을 **한 칸에 묶어** *"채택 권고 · 월 $9.99부터 ·
+> 하드웨어 토큰 불필요"*라고 적었다. 둘은 **다른 상품**이고, **한쪽은 우리에게 물리적으로 닫혀 있다.**
+> `product-strategy`가 실측으로 잡아냈고, 아래는 내가 1차 출처 두 개를 직접 열어 재확인한 결과다.
+
+#### S-4-1. 개인 개발자에게 Azure Artifact Signing 경로는 **없다** — 두 문서가 이 점에서는 일치한다
+
+**문서 A** — MS Learn `windows/apps/package-and-deploy/code-signing-options` (갱신 2026-08-29):
+> **Geographic limitation:** Azure Artifact Signing is available to organizations in the USA, Canada,
+> the European Union, and the United Kingdom. **Individual developers are currently limited to the USA
+> and Canada.** If you are an individual developer outside those regions, see OV certificates below.
+
+**문서 B** — MS Learn `azure/artifact-signing/quickstart` § Prerequisites (갱신 2026-08-11):
+> Public Trust certificates are available to organizations in the United States, Canada, the European
+> Union, the United Kingdom, Australia, New Zealand, Japan, **South Korea**, Singapore, Switzerland,
+> Norway, and Israel. **Individual developers must be located in the United States or Canada.**
+> These geographic restrictions do not apply to Private Trust certificates.
+
+★ **두 문서는 「개인」에 대해 글자 하나까지 같다** — 미국·캐나다뿐. **한국 개인 개발자에게 월 $9.99 경로는 없다. 확정.**
+
+#### S-4-2. ★ 조직 목록에서만 두 문서가 어긋난다 — 그리고 그 차이가 우리에게 **정확히** 걸린다
+
+| | 조직 허용 국가 | 한국 포함? |
 |---|---|---|
-| **EV 인증서** | ★ **사지 않는다** | MS 1차 출처: *"EV certificates no longer bypass SmartScreen … Paying a premium for EV solely to avoid SmartScreen warnings is no longer justified."* `tft-competitive` R1 확인 사항이 **1차 출처로 재확인됨** |
-| **OV / Azure Artifact Signing** | **채택 권고** | MS 문서가 비스토어 배포에 권장. **월 $9.99부터**, 하드웨어 토큰 불필요, CI 연동 |
-| **Steam DRM 래퍼** | **쓰지 않는다** | ① F2P라 보호할 exe가 없다 ② 래퍼가 `.bind` 섹션을 추가하고 체크섬을 다시 계산하므로 **먼저 한 서명이 무효화**된다. 굳이 쓴다면 **래핑 후 서명**이어야 한다 |
-| **난독화·패킹** | **기각** | 선 3 정면 위반. 그리고 §E-8-1에 의해 얻는 것도 없다 |
+| 문서 A (2026-08-29) | USA · Canada · EU · UK | ❌ |
+| 문서 B (2026-08-11) | USA · Canada · EU · UK · 호주 · 뉴질랜드 · 일본 · **한국** · 싱가포르 · 스위스 · 노르웨이 · 이스라엘 | ✅ |
 
-> **서명의 진짜 값어치는 「최초 경고 회피」가 아니라 「평판의 이월」이다.**
-> MS 문서: *"Unsigned files must build reputation anew with **every update**."*
-> 상주 앱은 업데이트가 잦다. **무서명이면 릴리스마다 평판이 0으로 리셋된다.**
+**즉 「사업자등록이 있는가」가 연 $150~300 + 하드웨어 토큰과 월 $9.99를 가른다 — 만약 문서 B가 맞다면.**
+★ **미확인.** 어느 쪽이 현행인지 문서만으로는 못 가린다. FAQ 자신이 그 해소법을 지정한다:
+> *"What if my country/region isn't listed in country/region drop-down list on the Identity validation page?
+> Check Pre-requisites to get the list of supported countries/regions for onboarding."*
+⇒ **Azure 포털의 국가 드롭다운이 최종 판정자다.** 이건 계정을 만들어 봐야 알 수 있고, 그건 사용자 결정이다.
 
-### S-5. 비용표 (정의서 요구 형식)
+**그리고 조직 경로는 「$9.99만 내면 되는 문」이 아니다** (전부 문서 B 원문):
+- `Website url` — *"the website that belongs to the legal business entity"*
+- `Primary Email` — *"a monitored email address **on a domain owned by the legal business entity**"*
+- `Business Identifier` — 사업자 식별자
+- 처리 기간 *"from 1 to 20 business days"*
+- FAQ: *"Artifact Signing doesn't support free, trial, or sponsored Azure subscriptions … you must have a
+  **paid Azure subscription**."*
+
+⇒ **사업자등록 + 회사 소유 도메인 + 유료 Azure 구독**이 한 세트다. 이걸 서명 하나 때문에 만들 것인지는
+**내 소관이 아니라 `product-strategy`·리더·사용자의 결정**이다. 나는 "닫혀 있는 문을 열려 있다고 적었던 것"을
+정정할 뿐이다.
+
+#### S-4-3. 정정된 판정표
+
+| | 판정 | 근거(1차 출처) |
+|---|---|---|
+| **Azure Artifact Signing** (개인 자격) | ★ **불가** | S-4-1. 미국·캐나다 한정 |
+| **Azure Artifact Signing** (사업자 자격) | ★ **가능성 있음 — 미확인** | S-4-2. 문서 두 개가 어긋난다. 포털 드롭다운으로 확인 |
+| **OV 인증서** | **현실적으로 유일한 경로** | 문서 A: *"Cost: Typically **$150–300/year** … "* / *"**HSM requirement:** As of June 2023, the CA/Browser Forum requires private keys for OV certificates to be stored on a **hardware security module (HSM) or hardware token**."* |
+| **EV 인증서** | **사지 않는다** | 문서 A: *"That behavior was removed in 2024."* / *"Paying the EV premium (**$400+/year**) solely to avoid SmartScreen warnings is **no longer justified**"* |
+| **Steam DRM 래퍼** | **쓰지 않는다** | ① F2P라 보호할 exe가 없다 ② 래퍼가 `.bind` 섹션을 추가하고 체크섬을 다시 계산 → **먼저 한 서명이 무효화**된다. 굳이 쓴다면 **래핑 후 서명** |
+| **자체 서명(self-signed)** | **기각** | 문서 A: *"Blocks installation for public users"* — 무서명보다 나쁘다 |
+| **난독화·패킹** | **기각** | 선 3 정면 위반. §E-8-1에 의해 얻는 것도 없다 |
+
+#### S-4-4. ★ HSM/토큰이 개인 개발자에게 갖는 진짜 비용은 **돈이 아니라 절차다**
+
+CA/B Forum(2023-06) 이후 OV 개인키는 **물리 토큰 또는 클라우드 HSM**에 있어야 한다.
+**물리 토큰은 CI에서 서명할 수 없다** — 릴리스마다 사람이 토큰을 꽂고 서명해야 한다.
+그 마찰이 하는 일은 하나다: **「이번 핫픽스는 그냥 무서명으로 낸다」를 만든다.**
+그리고 S-2가 방금 확인한 대로 **평판은 서명된 릴리스에만 이월된다** — 건너뛴 릴리스는 그 사슬을 끊는다.
+
+> **S-4-a (구매 시 조건):** OV를 살 때 **클라우드 HSM 서명 옵션이 있는 CA**를 고른다.
+> 이건 편의가 아니라 **평판 사슬을 사람 손에 맡기지 않기 위한 요구사항**이다.
+
+---
+
+### S-5. 비용표 (정의서 요구 형식) — ★ 정정판
 
 | 조치 | 구현 비용 | 백신 위험 | 유저 마찰 | 오탐 시 피해 |
 |---|---|---|---|---|
-| macOS 서명+공증 | Apple $99/년(iOS에 어차피 필요) + 빌드 파이프라인 1회 + 엔타이틀먼트 3종 확인 | **감소** | **감소**(현재 Gatekeeper 거부 상태) | 없음 |
-| Windows OV 서명 | ~$120/년 + CI 서명 단계 1개 | **감소** | **감소** | 없음 |
-| EV 인증서 | $300~600/년 | 변화 없음 | 변화 없음 | — → **기각** |
+| macOS 서명+공증 | Apple **$99/년**(iOS 타깃에 어차피 필요 — 신규 비용이 아니라 선지출) + 파이프라인 1회 + 엔타이틀먼트 3종 확인 | **감소** | **감소**(현재 Gatekeeper `rejected` 실측) | 없음 |
+| **Windows OV 서명** | ~~$120/년~~ → **$150~300/년** + **HSM/토큰**(S-4-4) + 서명 단계 1개 | **감소** | **감소** | 없음 |
+| Azure Artifact Signing | 월 $9.99 · 토큰 불필요 · CI 연동 | 감소 | 감소 | — → ★ **개인 자격 불가**(S-4-1). 사업자면 재검토 |
+| EV 인증서 | ~~$300~600/년~~ → **$400+/년** | 변화 없음 | 변화 없음 | — → **기각** |
 | Steam DRM | 빌드 단계 1개 | 증가(패커 유사) | 스팀 미실행 시 실행 불가 | **높음** → **기각** |
 | 세이브 무결성 검증 | 중 | 증가 | — | ★ **정당한 유저 잠금** → **기각**(§E-8) |
 
 ---
 
+### S-6. ★ 리더 질의에 대한 판정 — **「Windows 데드라인 = 첫 업데이트 전」에 동의한다. 단 근거를 바꿔라.**
+
+`product-strategy`가 문서 A의 같은 페이지에서 찾아낸 줄이 맞다. 1차 출처 표 원문:
+
+| Option | SmartScreen behavior |
+|---|---|
+| Azure Artifact Signing | ⚠️ *Reputation builds over time; **initial warnings expected*** |
+| **OV certificate** | ⚠️ ***Same as Azure Artifact Signing** — reputation builds over time* |
+| EV certificate | ⚠️ *Same as OV since 2024 — **no longer instant bypass*** |
+| **No signature** | ❌ ***Strong SmartScreen block**; enterprises may block entirely* |
+
+본문:
+> New files can show a SmartScreen warning until they accumulate sufficient reputation. Azure Artifact
+> Signing does **not** provide instant SmartScreen trust, but **signing consecutive releases with a
+> consistent publisher/signing identity lets publisher reputation build over time, so later releases can
+> inherit trust.**
+
+> (OV) As with any trusted certificate, signing releases with a consistent identity lets publisher
+> reputation accumulate **across versions, rather than starting from zero each time.**
+
+#### 동의하는 부분
+
+1. **서명이 사는 것은 「첫 경고 제거」가 아니라 「평판의 이월」이다** — 1차 출처가 정확히 그렇게 말한다.
+   ★ 초판 S-4 마지막 문단이 **이미 그렇게 적혀 있었다**(*"서명의 진짜 값어치는 「최초 경고 회피」가 아니라
+   「평판의 이월」이다"*). 이번 실측은 그 문장을 **뒤집은 것이 아니라 굳혔다.**
+2. **사용자 확정 「외부 배포 이력 0」이 결정적이다.** 이월할 평판이 **아직 존재하지 않는다.**
+   ⇒ 지금 서명하지 않아서 **잃는 것이 0이다.** 1.0을 무서명으로 내도 **되돌릴 수 없는 손실이 없다.**
+   (이건 강한 논거다. 평판은 시간이 만들지만, 없는 평판은 잃을 수도 없다.)
+
+#### 동의하지 않는 부분 — **근거를 SmartScreen에 두면 안 된다**
+
+초판 S-2의 제목이 *"서명한다. 단 SmartScreen 때문이 아니다"*였다. **SmartScreen 평판은 원래 우리 결론의
+근거가 아니었으므로, 그 사실이 바뀌어도 결론이 자동으로 따라 움직이지 않는다.** 남은 두 관문은 이렇다:
+
+| 관문 | 평판으로 해결되는가 | 왜 |
+|---|---|---|
+| **Smart App Control (Win11)** | ★ **사실상 아니다** | MS 원문은 *"blocks unsigned files **unless the file has a positive reputation**"*이다. 즉 이론상 무서명도 평판을 쌓을 수 있다. 그러나 **무서명 평판은 파일 해시 단위**라 **빌드할 때마다 0으로 돌아간다.** 자주 업데이트하는 상주 앱에서 그건 "영원히 못 쌓는다"와 같다 |
+| **백신 휴리스틱(사용자 실기 = AhnLab V3)** | **아니다** | 평판 모델이 다르다. **릴리스마다 새로 판정된다.** 그리고 우리 Win32 표면(S-3)이 정확히 애드웨어/키로거 모양이다 |
+
+★ 그리고 **되돌릴 수 없는 손실은 기술이 아니라 사람 쪽에 있다.**
+`MARKET_LANDSCAPE`: **Shimeji를 죽인 건 기능이 아니라 백신 경고였다.**
+첫 리뷰나 커뮤니티 글에 *"이거 바이러스 아니냐"*가 한 번 박히면 **나중에 서명해도 그 글은 지워지지 않는다.**
+평판은 이월되지만 **불신도 이월된다.**
+
+#### 최종 판정 (리더 결재용)
+
+| 플랫폼 | 데드라인 | 성격 |
+|---|---|---|
+| **macOS** | **1.0** | ★ **하드 블로커, 변화 없음.** 실측: 애드혹 서명 + `spctl` **rejected**(양성 대조 Calculator.app = accepted). 이 상태로는 공증 자체가 불가능하다. 비용 $99/년은 iPad/iPhone 타깃에 **어차피 필요한 선지출** |
+| **Windows** | **목표 1.0 / 마지노선 「첫 업데이트 전」** | **연기는 허용, 무기한은 불가** |
+
+- **연기해도 되는 이유**: 외부 배포 이력 0 → 이월할 평판 0. 스팀 단독 → MOTW가 대부분 비켜진다(★ 이 줄은
+  여전히 **1차 출처 없음 · 업계 통념**이다. E-12-3 참조).
+- **마지노선이 「첫 업데이트 전」인 이유**: 평판은 **서명을 켠 시점부터** 쌓인다. 업데이트를 여러 번 낸 뒤
+  켜면 그 사이 릴리스가 전부 평판 0으로 소모되고, 그 기간의 백신 오탐도 그대로 누적된다.
+- ★ **데드라인이 즉시 1.0으로 앞당겨지는 조건 (이건 조건부가 아니라 자동이다)**:
+  **스팀 밖 직배포를 하는 순간**(itch.io · 홈페이지 zip · 디스코드 첨부 등). 그때부터 MOTW가 붙고,
+  무서명은 표 마지막 행 그대로 ***"Strong SmartScreen block"***이 된다.
+  `product-strategy`가 채널을 늘리는 판단을 할 때 **이 줄을 함께 올려야 한다.**
+
+---
+
+### S-7. ★ 신규 — **앱 신원 동결**: 서명 평판과 세이브 경로는 **같은 문자열**이 결정한다
+
+`companyName`/`productName`/`applicationIdentifier`는 서명·평판의 열쇠이면서 **동시에**
+`Application.persistentDataPath`를 결정한다. 그래서 이 절은 S절(서명)에 속한다.
+
+#### S-7-1. 실측 (2026-09-02)
+
+| 항목 | 값 |
+|---|---|
+| `ProjectSettings.asset` | `companyName: DefaultCompany` → **`Vibelab`** / `applicationIdentifier: {}` → **`com.Vibelab.StickMate`**(Standalone·iPhone) / `overrideDefaultApplicationIdentifier: 0 → 1` |
+| macOS 세이브 실경로 형태 | **`~/Library/Application Support/<companyName>/<productName>`** — ★ 디스크로 확인. `DefaultCompany/StickMate/`가 실재하고 **`com.DefaultCompany.StickMate/`는 없다**(번들 ID 형태가 아니다) |
+| 이관 상태(macOS) | 리더가 `Vibelab/StickMate/`로 **복사 완료, 원본 보존**. `stickmate_character.json`(1279B)·`.prev.json`·v8/v9 백업 확인. ★ 고아 `stickmate_character.json.67542.writing`은 **이관되지 않았고 그게 맞다** |
+| PlayerPrefs | ★ **프로덕션에 실재한다** — `Interaction/GearRadialMenuWidget.cs`의 `StickMate.GearMenu.OnboardingSeen.v1`. macOS `~/Library/Preferences/unity.<회사>.<제품>.plist` / **Windows `HKCU\Software\<회사>\<제품>`(레지스트리)** |
+| 작업표시줄 원복 원장 | **`stickmate_reserved_bar_restore.json`이 양쪽 디렉터리 어디에도 없다** |
+
+#### S-7-2. ★ 원장 위험 판정 — **오늘은 0이다. 그런데 이유가 중요하다**
+
+리더 질의: *"원장이 안 읽히면 사용자 작업표시줄 자동 숨김이 꺼진 채 복구 불가 = 원칙 3의 승인된 예외가
+사후에 무너지는 유일한 경로."* **논리는 정확하다. 그런데 오늘 그 경로는 열려 있지 않다.**
+
+**실측**: `ReservedBarRevealDirector.RunStartup` / `RunShutdown`의 **프로덕션 호출처가 0건**이다.
+`Platform/` 밖의 어떤 프로덕션 파일도 `ReservedBar`를 **한 글자도 언급하지 않는다.**
+> **양성 대조**(0건이 「없다」인지 「못 본다」인지 가른다): 같은 명령으로 `.Save(` **22건**, `.Load(` **1건**이
+> 잡힌다. 스캐너는 살아 있고, `RunStartup`은 정말로 0건이다.
+
+⇒ **승인된 예외(CLAUDE.md 원칙 3)는 지금 한 줄도 실행되지 않는다.** 원장이 만들어진 적이 없으니
+**이름이 바뀌어도 고아가 될 원장이 없다.** 디스크 실측(파일 부재)이 이 결론과 일치한다 — 두 축이 같은 답을 냈다.
+
+#### S-7-3. 그러므로 위험은 **미래형**이다 — 그리고 배선 라운드가 그 문을 연다
+
+> **S-7-a (필수 · 배선 라운드 선행조건):** `RunStartup`을 배선하기 **전에**
+> `companyName` · `productName` · `applicationIdentifier`를 **동결**한다.
+> 배선 **후**의 이름 변경은 **열린 원장을 고아로 만들고**, 그 결과가 정확히
+> 「사용자 작업표시줄 자동 숨김이 꺼진 채 복구 불가」다.
+> ★ **세이브와는 성질이 다르다**: 세이브가 안 옮겨지면 사용자가 **즉시 알아챈다**(캐릭터가 초기화된 것처럼 보인다).
+> **고아 원장은 사용자가 영원히 모른다** — 작업표시줄이 왜 안 숨겨지는지 우리 앱과 연결짓지 못한다.
+> **조용한 실패이므로 더 비싸다.**
+
+> **S-7-b (유지):** 원장이 **없을 때의 동작이 「아무것도 하지 않는다」**임을 유지한다.
+> 현재 그렇다(`ReservedBarLedgerState.None` → 시스템을 바꾸지 않는다).
+> **이 성질이 신원 이사에 대한 유일한 구조적 방어**다 — 경로가 바뀌어 원장을 못 읽으면
+> 앱은 아무 일도 하지 않고, 최악이 「기능이 안 켜진다」이지 「사용자 설정 파괴」가 아니다.
+
+> **S-7-c (조건부):** 배선 후에 이름 변경이 불가피해지면, **그 라운드 안에서** 구 경로의 원장을 읽어
+> 갚는 **1회성 회수**를 넣고 **다음 릴리스에서 지운다**. 오늘은 불필요하다(원장이 존재하지 않는다).
+
+#### S-7-4. ★ 정정 — 원장 주석이 실재보다 넓다 (`game-architect` 지적 확인. **그리고 지적보다 더 나쁘다**)
+
+`Platform/ReservedBarRestoreLedger.cs:70-73`:
+> *"(1) Windows에서 PlayerPrefs는 **레지스트리**에 쓴다 — 이 저장소는 레지스트리 쓰기를 감사로 금지하고
+> 있고(`UserAssetImmutabilityAuditTests`), 그 금지를 이 기능 때문에 흐리게 만들 이유가 없다."*
+
+**두 군데가 사실과 다르다.**
+
+1. 그 감사가 금지하는 것은 **Win32 레지스트리 쓰기 API 선언 11종**
+   (`RegSetValue`·`RegCreateKey`·`RegDeleteKey`·`RegDeleteValue`·`RegDeleteTree`·`RegSaveKey`·
+   `RegRestoreKey`·`RegLoadKey`·`RegReplaceKey`·`RegSetKeySecurity`·`RegUnLoadKey`)이다.
+   ★ 실측: 그 감사 파일 전체에 **`PlayerPrefs`가 0건**이다. PlayerPrefs 경유 레지스트리 쓰기는 **사거리 밖**이다.
+2. ★ 더 중요한 것: **이 저장소는 이미 레지스트리에 쓰고 있다.**
+   `GearRadialMenuWidget.cs`의 `PlayerPrefs.SetInt`가 Windows에서 `HKCU\Software\<회사>\<제품>`을 만든다.
+   그러므로 *"이 저장소는 레지스트리 쓰기를 금지하고 있다"*는 **문장 자체가 거짓**이다.
+
+**판정: 원칙 3 위반은 아니다.** `HKCU\Software\<우리 회사>\<우리 제품>`은 OS가 이 앱에 배정한 **자기 자리**이고
+남의 자산이 아니다(`persistentDataPath`와 같은 논리). **고쳐야 할 것은 코드가 아니라 문장이다.**
+
+★ **왜 문장 하나를 굳이 고치라고 하는가**: 그 파일은 CLAUDE.md가
+*"원칙 3 위반으로 오해해 되돌리기 전에 먼저 읽으라"*고 지정한 문서군의 일부다.
+**되돌리기 전에 읽을 문서에 과장이 있으면, 다음 사람이 "감사가 막아 주고 있다"고 믿고 검사를 생략한다.**
+그 사람은 PlayerPrefs 한 줄을 추가하면서 아무 저항도 만나지 않는다.
+
+> **권고 문구**(프로덕션 `.cs`는 내가 못 고친다 — `coder`/`dev-platform` 배정 요청):
+> *"(1) Windows에서 PlayerPrefs는 레지스트리(`HKCU\Software\<회사>\<제품>`)에 쓴다. 원칙 3 위반은
+> 아니지만(우리에게 배정된 자리다) **신원 문자열이 바뀌면 함께 이사한다** — 크래시 복구용 흔적을 그런
+> 저장소에 둘 수는 없다. ★ 참고: `UserAssetImmutabilityAuditTests`가 막는 것은 **Win32 레지스트리 쓰기 API
+> 선언**이지 PlayerPrefs가 아니다. 이 저장소에는 실제로 PlayerPrefs 사용처가 1곳 있다
+> (`Interaction/GearRadialMenuWidget`)."*
+
+#### S-7-5. `CFBundleVersion = "0"` — 공증·업데이트 식별 (실측 확인)
+
+`Builds/macOS/StickMate.app/Contents/Info.plist` 실측(양성 대조: 없는 키 조회 시 정상적으로 오류가 난다):
+
+| 키 | 값 |
+|---|---|
+| `CFBundleVersion` | **`0`** ← 출처는 `ProjectSettings.asset`의 `buildNumber: Standalone: 0` |
+| `CFBundleShortVersionString` | `1.0` (마케팅 버전, `bundleVersion: 1.0`) |
+| `CFBundleIdentifier` | `com.DefaultCompany.StickMate` ← ★ **이 빌드는 개명 전 것이다**(08-31) |
+
+- **"0" 때문에 공증이 지금 당장 거절되는지는 미확인이다.** Apple이 `CFBundleVersion`을 요구하는 것은 확실하지만,
+  **"0"이 위법 형식이라는 1차 근거를 찾지 못했다.** 지어내지 않고 미확인으로 둔다.
+- **그러나 단조 증가는 우리가 지켜야 하는 쪽이다.** 업데이트 판별 · 크래시 리포트 그룹핑 ·
+  (향후 iPad/iPhone) App Store 제출이 전부 이 값으로 릴리스를 구분한다.
+  **1.0을 `0`으로 내면 1.0.1을 무엇으로 부를지 그때 급하게 정해야 한다.**
+
+> **S-7-d (권고, 판정은 리더 · 구현은 `dev-platform`):** 1.0 **이전에**
+> `buildNumber.Standalone`을 **1에서 시작해 릴리스마다 +1**로 고정하고 **되돌리지 않는다.**
+> `bundleVersion`(1.0)은 마케팅 버전이라 별개 축이다.
+> ★ **서명·공증 파이프라인과 같은 라운드에 처리한다.** 따로 하면 두 번째 릴리스에서
+> "같은 버전 두 개"가 생기고, 그건 공증 이력에서 되돌릴 수 없다.
+
+#### S-7-6. 사용자 안내문 — **무엇이 들어가야 하는가** (리더 요청)
+
+★ **Windows 쪽은 사용자가 직접 해야 한다**(이 머신에 Windows가 없어 리더가 복사하지 못했다).
+아래는 문안 초안이 아니라 **들어가야 하는 것과 그 근거**다. 문구 다듬기는 `ux-designer` 소관이다.
+
+**반드시 들어가야 하는 것 5가지 — 각각 보안·무결성 근거가 있다**
+
+| # | 들어갈 것 | 왜 (보안·무결성 근거) |
+|---:|---|---|
+| 1 | **"복사"라고 쓴다. "이동/잘라내기"라고 쓰지 않는다** | 원칙 3의 정신은 「되돌릴 수 있음」이다. **우리가 시키는 조작도 되돌릴 수 있어야 한다.** 잘라내기를 시키면 사용자가 중간에 실수했을 때 복구 지점이 사라진다 |
+| 2 | **옛 폴더를 지우지 말라고 명시** | 위와 같은 이유. 리더도 macOS에서 원본을 보존했다 — 사용자에게 다른 기준을 요구하지 않는다 |
+| 3 | ★ **`*.json.<숫자>.writing` 파일은 복사하지 말라고 명시** | 중단된 저장의 잔해다. 실제로 디스크에 남아 있었다(`stickmate_character.json.67542.writing`, `SECURITY_MODEL` §4-1-4). 이걸 옮기면 새 폴더가 첫날부터 오염된 상태로 시작한다 |
+| 4 | **안 옮겼을 때 무슨 일이 생기는지** — *"새 캐릭터로 시작합니다. 예전 진행도는 지워지지 않고 옛 폴더에 그대로 있습니다"* | ★ **이게 가장 중요하다.** 이 안내를 놓친 사용자가 앱을 켜면 **"내 캐릭터가 사라졌다"**로 읽는다. 그 순간의 공포가 실제 피해보다 크고, 그때 사용자가 하는 행동(재설치·폴더 삭제)이 **진짜 데이터 손실을 만든다** |
+| 5 | ★ **레지스트리는 건드리지 말라고 명시** | Windows에서 톱니 메뉴 첫 사용 힌트(`StickMate.GearMenu.OnboardingSeen.v1`)가 `HKCU\Software\<회사>\<제품>`에 있고, 이건 **함께 옮겨지지 않는다.** 결과는 **힌트가 한 번 더 뜨는 것**뿐이다. **얻는 것이 힌트 한 번인데 잃을 수 있는 것이 사용자의 레지스트리다** — 시키면 안 된다. "한 번 보고 넘기면 끝"이라고 적는다 |
+
+**넣지 말아야 할 것**
+- 명령줄·`reg` 편집·스크립트. **이 앱은 사용자에게 그런 것을 시키는 앱이 아니다**(비침해 원칙의 연장선).
+- "보안상 필요합니다" 같은 설명. 사실이 아니다 — 이건 **회사명 설정 변경의 부수 효과**이지 보안 조치가 아니다.
+  거짓 근거를 대면 다음에 진짜 보안 안내를 할 때 신뢰가 없다.
+
+**경로 (실측 확인)**
+- macOS: `~/Library/Application Support/DefaultCompany/StickMate/` → `.../Vibelab/StickMate/` — **완료됨**
+- Windows: `%USERPROFILE%\AppData\LocalLow\DefaultCompany\StickMate\` → `...\Vibelab\StickMate\` — **사용자 조치 필요**
+- 옮길 파일: `stickmate_character.json`(진행도 본체) · `stickmate_character.prev.json` ·
+  `character_save.v8.backup.json` · `character_save.v9.backup.json` — **안전망까지 전부**
+
+**★ 리더가 다음 macOS 빌드 첫 실행 뒤 반드시 확인할 것 (거짓 통과 방지)**
+`~/Library/Application Support/Vibelab/StickMate/stickmate_character.json`의 **mtime이 갱신되는가.**
+갱신되지 않고 **다른 디렉터리가 새로 생기면**(예: `com.Vibelab.StickMate/`) **복사 대상이 틀린 것이다.**
+오늘 실측으로는 `<회사>/<제품>` 형태가 맞다 — 디스크에 `DefaultCompany/StickMate/`가 실재하고
+`com.DefaultCompany.StickMate/`는 **없다**. 그러나 그건 **개명 전 빌드로 잰 값**이고,
+`overrideDefaultApplicationIdentifier`가 `0 → 1`로 바뀌었다. **한 번은 실물로 확인해야 한다.**
+
+★ **부수 관측(리더 장부와 대조 필요)**: `~/Library/Preferences/unity.Vibelab.StickMate.plist`가
+2026-09-02 23:50에 생겼고 `unity.player_session_count`가 **325 → 326**이다.
+즉 **새 이름으로 Unity 세션이 한 번 돌았다.** 플레이어 빌드인지 배치모드 에디터인지는 **미확정**이다
+(양쪽 다 이 파일을 건드린다). 확인 시점에 실행 중인 인스턴스는 **0개**였다
+(`pgrep` 실측, 양성 대조로 없는 이름이 0을 내는 것 확인).
+
+---
+
 ## E-11. 플랫폼 영향
 
-- **Windows 영향: 함께 검토함.** S-2·S-3·S-4가 Windows 전용 판정이다.
+- **Windows 영향: 함께 검토함.** S-2·S-3·S-4·S-6이 Windows 전용 판정이다.
   실측은 **출하 zip(`Builds/StickMate-Windows-20260902b.zip`, 09-02 12:42)의 IL을 직접 디스어셈블**해
   이뤄졌다 — 활성 빌드 타깃(macOS) 사각지대를 우회한 측정이다.
+  ★ **이번 라운드 추가**: ① 세이브·PlayerPrefs 경로가 **회사명 변경으로 함께 이사한다**
+  (`AppData\LocalLow\<회사>\<제품>` · `HKCU\Software\<회사>\<제품>`) — **사용자 수동 조치 필요**(S-7-6).
+  ② 작업표시줄 원복 원장은 **아직 한 번도 쓰인 적이 없다**(배선 0건, S-7-2) — 오늘 고아 위험 0.
   ★ 미해결 이월: `Platform/Windows/WindowsGameProcessProbe.cs:159`가 **남의 exe 풀 경로**(계정 실명 포함)를
   로그에 인쇄한다(`SECURITY_MODEL` §1-3-b, **아직 미수정**).
-- **macOS 영향: 함께 검토함.** S-1이 macOS 전용이고 **1.0 차단 후보**다.
+- **macOS 영향: 함께 검토함.** S-1·S-7-5가 macOS 전용이고 **S-1은 1.0 차단 후보**다.
+  ★ **이번 라운드 추가**: 세이브 이관은 **완료**(원본 보존). `CFBundleVersion = 0` 확인(S-7-5).
   ★ 미해결 이월: `Platform/MacOS/MacWindowService.cs:1516,1534`가 남의 앱 이름을 로그에 인쇄한다(미수정).
+- **E-9 감사 3건은 플랫폼 중립이다.** 전부 **소스 텍스트 스캔**이라 활성 빌드 타깃과 무관하게 같은 것을 본다
+  (리플렉션이면 반대편 타깃의 절반을 구조적으로 못 본다 — CLAUDE.md 활성 빌드 타깃 규칙).
+  win·osx **양쪽 크로스 컴파일 0에러** 확인(각 5/5 유닛).
 - **엔타이틀먼트 조회 자체는 플랫폼 분기가 없다**(스팀이 양 플랫폼에 같은 API를 준다).
   단 **정책 판정(E-1~E-3)은 반드시 `Platform/` 중립 위치**에 둔다 — `FullscreenSuspendPolicy.cs` 사고 재발 자리.
 - **모바일**: 1.0 밖. E-1~E-4는 StoreKit에 그대로 재사용된다(C층 저장소만 바뀐다).
-
----
+  ★ 단 S-7-d(빌드 번호 단조 증가)는 **App Store 제출에서 강제**되므로 모바일 라운드 전에 정해져 있어야 한다.
 
 ## E-12. 이 문서가 보장하지 않는 것 (정직성 규칙)
 
@@ -305,4 +587,14 @@ RegOpenKeyExW · RegEnumKeyExW · RegQueryValueExW · OpenProcess · QueryFullPr
 4. **2026년 현재 Valve의 macOS 공증 강제 여부 미확인**(문서와 모더레이터 답변이 어긋난다).
    Apple 쪽 요구는 어긋나지 않으므로 결론은 바뀌지 않는다.
 5. **Mono JIT × 하드닝 런타임 엔타이틀먼트 미확인** — `dev-platform` 확인 필요.
-6. **테스트를 돌리지 않았다**(`qa-regression`이 배치모드 사용 중).
+6. **테스트를 돌리지 않았다**(Unity 배치모드가 다른 라운드 대기열에 있다).
+   E-9 감사 3건은 **Unity 동봉 Roslyn 크로스 컴파일로 win·osx 양쪽 0에러**를 확인했고
+   (`StickMate.Tests.EditMode` 143소스, 5/5 유닛, 신규 4파일이 소스 목록에 실제로 포함됨을
+   rsp에서 대조 — 양성/음성 대조 포함), **스캔 결과는 파이썬 독립 재구현으로 예측**했다.
+   ★ **그 예측은 러너를 대체하지 않는다.** 재구현과 본 구현이 같은 머릿속에서 나왔으므로
+   TEAM.md가 기록한 열 번째 형태(생성기와 검사기가 같은 함정에 같이 빠진다)에 노출돼 있다.
+   **러너를 반드시 돌려라.**
+7. ★ **S-4-2의 조직 국가 목록 충돌은 문서로 해소되지 않는다.** Azure 포털 국가 드롭다운이 최종 판정자이고,
+   그건 계정 생성이 필요하다 — **사용자 결정 사항**이다.
+8. **"0"인 `CFBundleVersion`이 공증을 실제로 막는지 미확인**(S-7-5). 결론(단조 증가로 고정)은
+   그 미확인에 의존하지 않는다.

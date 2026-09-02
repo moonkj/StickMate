@@ -32,6 +32,13 @@ namespace StickMate.Platform
     /// <c>Platform/FootholdScanPolicy.cs</c>에 <b>배선하지 않은 채</b> 남겨 두었다 — 근거와 함께
     /// 그 파일 문서에 적혀 있으니, 나중에 열거 비용이 실제로 문제가 되면 그것부터 읽으면 된다.
     ///
+    /// ★★ 2026-09-02 — <b>세션 가시성 게이트</b>가 이 클래스에 배선됐다(유령 발판 라운드 ②).
+    /// 잠금 화면 / UAC 보안 데스크톱 / 화면 꺼짐 동안에는 <c>Tick()</c>이 <c>Poll()</c>을 통째로
+    /// 건너뛰고, 해제되는 그 틱에 <c>PollImmediately()</c>를 1회 부른다. <b>중단 중에도 캐시는
+    /// 그대로 유지한다</b> — 비우는 순간 그것이 곧 발판 전멸이고, 고치려던 버그를 스스로 만든다.
+    /// 판정은 이 파일에 없다(<c>Platform/SessionVisibilityPolicy</c>). 근거는 그 파일 문서와
+    /// <c>docs/platform/GHOST_FOOTHOLDS.md</c> 2절.
+    ///
     /// 모바일(ScreenshotBackdropPlatformService)에서는 유저가 발판을 추가/삭제할 때 그 서비스가 스스로
     /// StickmanEventBus.RaiseFootholdsChanged()를 즉시 호출해 UX_FLOW.md 3절이 요구하는 "탭 즉시 피드백"을
     /// 보장한다. 이 폴러가 그 위에 추가로 주기 폴링을 얹는 것은 중복이지만 무해하다(캐시가 이미
@@ -104,14 +111,113 @@ namespace StickMate.Platform
             Poll(); // 첫 프레임부터 발판 정보가 있어야 "빈 화면에 멈춰 보임"을 피할 수 있다 (UX_FLOW.md 6-1절).
         }
 
+        // ============================================================================
+        // ★ 세션 가시성 게이트 (2026-09-02) — 아무도 못 보는 동안에는 열거하지 않는다
+        // ============================================================================
+        // 판정은 이 파일에 없다. Platform/SessionVisibilityPolicy가 전부 가지고 있고 여기는 그
+        // 결과에 따라 Poll()을 건너뛰거나 재개하는 배선뿐이다(정책은 플랫폼 중립 위치에, 플랫폼
+        // 코드는 사실 조회만 — FullscreenSuspendPolicy 사고의 재발 방지 규칙).
+
+        /// <summary>지금 세션 가시성 게이트로 스캔을 멈춘 상태인가(진단·테스트 창구).</summary>
+        internal bool IsScanSuspended => _scanSuspended;
+
+        /// <summary>게이트가 <b>참으로 전이한</b> 누적 횟수(진단·테스트 창구).</summary>
+        internal int ScanSuspendCount => _scanSuspendCount;
+
+        /// <summary>게이트가 <b>풀린</b> 누적 횟수 = 즉시 재열거가 일어난 횟수(진단·테스트 창구).</summary>
+        internal int ScanResumeCount => _scanResumeCount;
+
+        /// <summary>
+        /// 관측값을 어디서 읽을지 갈아 끼우는 <b>테스트 전용</b> 창구. null이면 제품 경로
+        /// (<see cref="FramePacing.LastPresence"/>)를 그대로 쓴다.
+        ///
+        /// <para>왜 필요한가: 제품 경로의 <c>_presence</c>는 <c>FramePacing._applied</c>가 true일 때만
+        /// 갱신되고 그 값은 <b>에디터/테스트에서 언제나 false</b>다. 그 상태로는 이 게이트가 한 번도
+        /// 참이 되지 않아 <b>"잠기면 실제로 서는가"를 아무도 못 재게 된다</b> — 이 저장소가 싫어하는
+        /// "아무것도 안 재고 초록"이다. <b>쓰는 테스트는 반드시 TearDown에서 null로 되돌린다</b>
+        /// (정적이라 다음 테스트로 샌다).</para>
+        /// </summary>
+        internal static IViewerPresenceService PresenceProbeOverride;
+
+        /// <summary>전이 로그의 상한. 신호가 병적으로 깜빡여도 Player.log를 채우지 않게 한다
+        /// (24시간 상주 앱: 로그 감량 라운드의 규칙). 넘어가면 조용히 동작만 계속한다.</summary>
+        private const int MaxTransitionLogs = 20;
+
+        private bool _scanSuspended;
+        private int _scanSuspendCount;
+        private int _scanResumeCount;
+        private int _transitionLogs;
+
         /// <summary>매 프레임 호출해도 안전 — 내부적으로 StickConfig.footholdPollInterval 주기를 스스로 지킨다.</summary>
         public void Tick(float deltaTime)
         {
+            // ---- (5) 세션 가시성 게이트: 참이면 Poll()을 통째로 건너뛴다 ----------------------
+            ViewerPresenceSnapshot presence = ResolvePresence();
+            if (SessionVisibilityPolicy.ShouldSuspendFootholdScan(presence))
+            {
+                if (!_scanSuspended)
+                {
+                    _scanSuspended = true;
+                    _scanSuspendCount++;
+                    LogTransition("중단", SessionVisibilityPolicy.DescribeSuspendReason(presence));
+                }
+
+                // ★★ 캐시를 절대 비우지 않는다. 비우는 순간 그것이 곧 **발판 전멸**이고, 이 게이트가
+                //    고치려던 버그를 스스로 만드는 셈이 된다(잠금 해제 순간 캐릭터가 화면 밖으로
+                //    떨어진다). 우리가 멈추는 것은 "다시 묻는 일"뿐이고, 마지막으로 확정된 발판
+                //    목록은 그대로 유효하게 남는다.
+                //    타이머도 건드리지 않는다 — 여기서 return하므로 누적되지 않고 그대로 얼어붙는다.
+                return;
+            }
+
+            // ---- (6) 참 -> 거짓 전이: 다음 주기를 기다리지 않고 즉시 한 번 재열거한다 ----------
+            // 이것이 없으면 잠금 해제 직후 최대 footholdPollInterval(0.3초) 동안 **잠금 이전의 낡은
+            // 집합**으로 접지 판정을 한다. 사용자가 보는 첫 화면이 정확히 그 순간이라, 여기서 늦으면
+            // "돌아왔더니 캐릭터가 엉뚱한 데 서 있다"로 보인다.
+            if (_scanSuspended)
+            {
+                _scanSuspended = false;
+                _scanResumeCount++;
+                LogTransition("재개", "관측 해제");
+                PollImmediately();
+                return;
+            }
+
             _timer += deltaTime;
             float interval = _config != null ? Mathf.Max(0.05f, _config.footholdPollInterval) : 0.5f;
             if (_timer < interval) return;
             _timer = 0f;
             Poll();
+        }
+
+        /// <summary>
+        /// 관측값 한 개를 읽어 온다. 제품 경로는 <see cref="FramePacing"/>이 이미 0.2~0.5초 주기로
+        /// 갱신해 둔 값을 <b>그대로 재사용</b>한다 — 여기서 OS를 다시 두드리면 유휴 비용을 줄이려는
+        /// 이 게이트가 스스로 비용을 만든다.
+        ///
+        /// <para><b>정직하게 남기는 한계</b>: <c>FramePacing</c>의 관측은 적응형 페이싱이 꺼져 있으면
+        /// (<c>STICKMATE_ADAPTIVE_PACING=0</c> 또는 에디터/테스트) 갱신되지 않고 <c>Valid=false</c>로
+        /// 남는다. 그러면 이 게이트는 <b>영원히 거짓</b>이 되어 지금까지의 동작(계속 스캔)이 그대로
+        /// 유지된다. 즉 <b>기능이 조용히 꺼지는 방향은 안전한 쪽</b>이다(보수 규칙과 같은 방향).
+        /// 반대로 잘못 멈추는 경로는 없다.</para>
+        /// </summary>
+        private static ViewerPresenceSnapshot ResolvePresence()
+        {
+            IViewerPresenceService probe = PresenceProbeOverride;
+            if (probe == null) return FramePacing.LastPresence;
+            return probe.TryGetPresence(out ViewerPresenceSnapshot snapshot) ? snapshot : default;
+        }
+
+        private void LogTransition(string what, string reason)
+        {
+            if (_transitionLogs >= MaxTransitionLogs) return;
+            _transitionLogs++;
+            // ★ UnityEngine을 명시한다 — 이 파일은 System.Diagnostics(Stopwatch)도 using하고 있어
+            //   맨 이름 Debug는 CS0104(모호한 참조)가 된다.
+            UnityEngine.Debug.Log($"[세션가시성] 발판 스캔 {what} — 사유={reason}, 캐시 {_cache.Count}개 유지."
+                + (_transitionLogs == MaxTransitionLogs
+                    ? " (이 줄이 마지막입니다 — 전이 로그 상한 도달)"
+                    : string.Empty));
         }
 
         /// <summary>다음 Tick을 기다리지 않고 즉시 재열거하고 싶을 때(예: 모바일 온보딩 완료 직후) 사용.</summary>

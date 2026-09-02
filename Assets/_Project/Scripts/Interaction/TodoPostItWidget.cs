@@ -93,9 +93,19 @@ namespace StickMate.Interaction
         private const float PanelWidth = 220f;
         private const float PanelPadding = UiChrome.Space3;   // 8 -> 12 (토큰)
 
-        /// <summary>화면 우상단 구석에서 카드까지의 기본 여백(가로·세로 공통). 톱니와 겹치지 않는
-        /// 평상시에는 이 값 그대로다 — <see cref="ResolveRightInsetPoints"/>.</summary>
-        private const float PanelInsetPoints = UiChrome.Space4;   // 16
+        /// <summary>화면 구석에서 카드까지의 기본 여백(가로·세로 공통).
+        /// <list type="bullet">
+        ///  <item><b>가로</b>: 이 값은 <b>화면 여백</b>이지 화면 오른쪽 끝에서의 거리가 아니다. OS가 예약한
+        ///        <b>측면</b> 띠(우측 도킹 작업표시줄 48~62pt / 우측 Dock)가 있으면 그 두께가 앞에 더 붙고,
+        ///        톱니와 겹치면 거기서 더 밀린다 — <see cref="ResolveRightInsetBoundsPoints"/> ·
+        ///        <see cref="ResolveRightInsetPoints"/>. 측면 띠가 0이거나 <b>못 쟀으면</b> 이 값 그대로다.</item>
+        ///  <item><b>세로</b>: 이 값은 <b>화면 여백</b>이지 화면 꼭대기에서의 거리가 아니다. OS가 예약한
+        ///        상단 띠가 있으면 그 두께가 앞에 더 붙는다 — <see cref="ResolveTopInsetPoints"/>.
+        ///        예약 띠가 0이면 세로도 이 값 그대로다(회귀 없음이 구조적으로 보장된다).</item>
+        /// </list>
+        /// <para>★ <b>public</b>인 이유는 <see cref="ExpandedMaxRows"/>와 같다 — 테스트가 이 값을
+        /// 숫자로 베끼지 않고 참조해야 한다(CLAUDE.md — 프로덕션 상수 하드코딩 금지).</para></summary>
+        public const float PanelInsetPoints = UiChrome.Space4;   // 16
 
         /// <summary>"이건 메모다"를 말하는 왼쪽 세로 띠. 표면 전체를 노랗게 칠하는 대신 색만 남긴다.</summary>
         private const float AccentStripeWidth = 4f;
@@ -450,9 +460,12 @@ namespace StickMate.Interaction
         /// 사용자는 아무 이유 없이 가로 42pt를 잃는다. 그래서 <b>톱니의 라이브 히트 사각형</b>에서
         /// 매 프레임 다시 푼다.
         /// <code>
-        ///   겹치지 않으면 : 16                                   (평상시 그대로)
+        ///   겹치지 않으면 : 기준선                                (측면 띠가 없으면 16 — 평상시 그대로)
         ///   겹치면       : (화면폭 − 톱니히트.xMin) + 8           (8 = GearRadialMenuWidget.ScreenMarginPoints)
         /// </code>
+        /// <para>★ 2026-09-03 — "16"이던 자리가 <b>기준선</b>(<see cref="ResolveRightInsetBoundsPoints"/>)으로
+        /// 바뀌었다. OS가 화면 <b>오른쪽</b>에 예약한 띠를 카드가 덮지 않게 하려면 기준선 자체가
+        /// 그 띠 바깥이어야 하고, <b>겹침 판정도 같은 기준선</b>을 봐야 한다.</para>
         ///
         /// <para><b>기본 톱니 위치에서의 검산</b>(톱니 히트 좌변이 오른쪽 끝에서 49.82pt일 때):
         /// 49.82 + 8 = <b>57.82</b> → 카드 우변 57.82 &gt; 톱니 히트 좌변 49.82, 여유 8.00pt.
@@ -470,29 +483,96 @@ namespace StickMate.Interaction
         /// 패널이 밀리면 칩도 함께 밀려 <b>겹침이 0이 된다</b>(패널 본체는 <c>raycastTarget = false</c>라
         /// 원래부터 클릭을 먹지 않는다).</para>
         ///
-        /// <para><b>발진(oscillation)이 없는 이유</b>: 겹침 판정의 입력은 언제나 <b>기본 인셋(16)으로 놓은
-        /// 카드</b>다. 판정이 자기 출력에 의존하지 않으므로 "밀었다 → 안 겹치네 → 되돌림 → 겹치네"
-        /// 진동이 구조적으로 불가능하다.</para>
+        /// <para><b>발진(oscillation)이 없는 이유</b>: 겹침 판정의 <b>가로</b> 입력은 언제나 <b>기본
+        /// 인셋(16)으로 놓은 카드</b>다. 판정이 자기 출력에 의존하지 않으므로 "밀었다 → 안 겹치네 →
+        /// 되돌림 → 겹치네" 진동이 구조적으로 불가능하다.</para>
+        ///
+        /// <para>★ <b>세로는 사정이 다르고, 그래서 반대로 한다</b>(2026-09-03). 세로 위치는 톱니가
+        /// 아니라 <b>OS 예약 띠</b>가 정하므로(<see cref="ResolveTopInsetPoints"/>) 이 판정의 출력이
+        /// 세로에 되먹임되지 않는다. 되먹임이 없으니 <b>실제 배치값을 그대로 쓰는 것이 안전하고,
+        /// 안 쓰면 틀린다</b> — 세로만 기본값 16에 묶어 두면 배치가 띠 아래로 내려간 만큼 판정이
+        /// 뒤처져 <b>발산 구간</b>이 생기고 그 안에서 카드가 톱니를 다시 덮는다(51-9-3 재발).</para>
         /// </summary>
         private void SyncPanelInsetToGear()
         {
             if (_panelRoot == null) return;
 
             float inset = ResolveRightInsetPoints();
-            var want = new Vector2(-inset, -PanelInsetPoints);
+            var want = new Vector2(-inset, -ResolveTopInsetPoints());
             if ((_panelRoot.anchoredPosition - want).sqrMagnitude < 0.0001f) return;
             _panelRoot.anchoredPosition = want;
         }
 
-        /// <summary>위 문서의 파생식. 톱니를 못 찾거나 톱니가 안 보이면 <b>예전 값(16)</b> 그대로다 —
-        /// 실패가 카드를 이상한 자리로 보내지 않는다.</summary>
+        /// <summary>
+        /// ★★ <b>카드 상단이 화면 위 끝에서 얼마나 떨어지는가</b>(OS 포인트, 아래로 자란다) —
+        /// 2026-09-03, docs/UX_FLOW.md 41-1 ③의 다섯 번째 소비처.
+        ///
+        /// ============================================================================
+        /// 무엇이 문제였나 (persona-newcomer 신고 + 실측 일치)
+        /// ============================================================================
+        /// 세로 위치가 <see cref="PanelInsetPoints"/>(16)로 굳어 있어서 카드가 <b>macOS 메뉴 막대의
+        /// 아래 절반을 덮었다</b>:
+        /// <code>
+        ///   메뉴 막대 0 ~ 33pt / 카드 상단 16pt  ->  겹침 17pt = 띠의 51.5%   (절대 불변 원칙 2)
+        /// </code>
+        /// 16은 <b>화면 여백</b>으로 고른 값이지 "메뉴바를 피한 값"이 아니었다 — 톱니가 2026-09-02에
+        /// 옛 <c>MarginTopPoints = 58</c>을 버린 것과 <b>정확히 같은 병</b>이고, 같은 처방을 쓴다.
+        ///
+        /// ============================================================================
+        /// 배선 — 사실 조회 / 판정이 갈라져 있다
+        /// ============================================================================
+        /// 사실 조회는 <see cref="ReservedTopBarProbe"/>(플랫폼별: macOS <c>visibleFrame</c> 뺄셈 /
+        /// Windows <c>rcWork.Top − rcMonitor.Top</c>), 판정은 <see cref="SurfaceSafeAreaPolicy"/>
+        /// (플랫폼 중립). <b>여기서 산수를 다시 하지 않는다</b> — "화면 맨 위(y=0)로 가고 싶다"고
+        /// 요청하면 정책이 갈 수 있는 가장 위를 돌려주고, 이 함수는 중심을 상단 모서리로 되돌리기만 한다.
+        /// 정책이 <c>Platform/MacOS/</c> 안에 있으면 Windows가 물리적으로 호출할 수 없다
+        /// (CLAUDE.md의 <c>FullscreenSuspendPolicy.cs</c> 사고).
+        ///
+        /// <para><b>세 환경에서의 값</b>(여백 = <see cref="PanelInsetPoints"/> 16):
+        /// <code>
+        ///   macOS 메뉴 막대 33pt        -> 33 + 16 = 49    (겹침 17pt -> 0pt)
+        ///   Windows 상단 도킹 40pt      -> 40 + 16 = 56
+        ///   예약 띠 없음(자동 숨김/하단·좌·우 도킹) -> 0 + 16 = 16   ★ 한 픽셀도 바뀌지 않는다
+        /// </code>
+        /// 마지막 줄이 이 변경의 <b>회귀 없음 보증</b>이다 — 띠가 0인 환경에서는 옛 상수와 같은 값이
+        /// 나오는 것이 아니라 <b>같은 식</b>이 된다.</para>
+        ///
+        /// <para>★ <b>이 함수의 결과는 톱니에 의존하지 않는다.</b> 그래서
+        /// <see cref="ResolveRightInsetPoints"/>가 이것을 겹침 판정에 써도 발진이 생기지 않는다
+        /// (판정 → 가로 인셋 → 이 값, 이라는 되먹임 경로가 없다).</para>
+        ///
+        /// <para><b>실패는 0이다</b> — 띠를 못 물으면 <see cref="ReservedTopBarProbe"/>가 0을 돌려주고
+        /// 이 함수는 16을 돌려준다. 짐작값으로 메우지 않는다.</para>
+        /// </summary>
+        private float ResolveTopInsetPoints()
+        {
+            float reserved = ReservedTopBarProbe.TopInsetPoints(_agent != null ? _agent.PlatformService : null);
+            float screenHeightPoints = ScreenCoordinateConverter.UnityScreenToCanvas(Screen.height, _agentConfig);
+            float panelHeight = _panelRoot != null ? _panelRoot.sizeDelta.y : 0f;
+
+            // 화면 높이를 아직 못 읽는 병적인 순간에는 정책이 요청값(0)을 그대로 돌려주므로 직접 푼다
+            // (InfoGearIconWidget.DefaultCenterPoints와 같은 관례).
+            if (screenHeightPoints <= 0f) return reserved + PanelInsetPoints;
+
+            // "화면 맨 위(y=0)로 가고 싶다" -> 정책이 갈 수 있는 가장 위의 <b>중심</b>을 돌려준다.
+            float centerTopDown = SurfaceSafeAreaPolicy.ClampTopDownCenterY(
+                0f, panelHeight, screenHeightPoints, reserved, PanelInsetPoints);
+            return centerTopDown - panelHeight * 0.5f;   // 중심 -> 상단 모서리(카드 피벗이 상단이다).
+        }
+
+        /// <summary>위 문서의 파생식. 톱니를 못 찾거나 톱니가 안 보이면 <b>기준선</b>
+        /// (<see cref="ResolveRightInsetBoundsPoints"/>) 그대로다 — 실패가 카드를 이상한 자리로 보내지 않는다.</summary>
         private float ResolveRightInsetPoints()
         {
-            if (_gear == null || !_gear.isActiveAndEnabled) return PanelInsetPoints;
+            // ★★ 기준선과 왼쪽 한계를 <b>한 번에</b> 받는다. 아래 겹침 판정과 반환값이 같은 값을 쓰도록
+            //   강제하는 것이 이 호출의 목적이다(두 벌이 되면 반드시 한쪽만 고쳐진다).
+            ResolveRightInsetBoundsPoints(out float baseInset, out float maxInset);
+
+            if (_gear == null || !_gear.isActiveAndEnabled) return baseInset;
 
             Rect hit = _gear.IconScreenRect;                    // Unity 스크린 픽셀(원점 좌하단).
-            if (hit.width <= 0f || hit.height <= 0f) return PanelInsetPoints;
-            if (Screen.width <= 0 || Screen.height <= 0) return PanelInsetPoints;
+            if (hit.width <= 0f || hit.height <= 0f) return baseInset;
+            if (Screen.width <= 0 || Screen.height <= 0) return baseInset;
 
             // 화면 <b>우상단</b>이 원점인 pt 좌표로 옮긴다 — 카드의 앵커/피벗과 같은 계라 비교가 산수 없이 된다.
             float gearNear = ScreenCoordinateConverter.UnityScreenToCanvas(Screen.width - hit.xMin, _agentConfig);
@@ -500,22 +580,127 @@ namespace StickMate.Interaction
             float gearTop = ScreenCoordinateConverter.UnityScreenToCanvas(Screen.height - hit.yMax, _agentConfig);
             float gearBottom = ScreenCoordinateConverter.UnityScreenToCanvas(Screen.height - hit.yMin, _agentConfig);
 
-            // 판정 입력은 항상 <b>기본 인셋으로 놓인 카드</b>다(발진 방지 — 위 문서).
+            // 판정 입력은 언제나 <b>기준선에 놓인 카드</b>다 — 톱니에 밀린 <i>결과</i>가 아니다(발진 방지, 위 문서).
+            //
+            // ★★ 2026-09-03 — <b>세로는 기본값이 아니라 실제 배치값을 쓴다</b>. 여기가
+            //   <see cref="PanelInsetPoints"/>로 굳어 있으면 배치(<see cref="SyncPanelInsetToGear"/>)가
+            //   카드를 예약 띠 아래로 내린 만큼 판정이 <b>뒤처져</b> 발산 구간이 생기고, 그 구간에서
+            //   카드가 톱니를 다시 덮는다(51-9-3 재발). 실측 발산 구간(메뉴 막대 33pt, 톱니 중심 y):
+            //   <c>1행 115.82~148.82pt / 8행 311.82~344.82pt</c> — 폭이 정확히 띠 두께(33)와 같다.
+            //   Windows 상단 도킹 40pt에서는 <c>115.82~155.82 / 311.82~351.82</c>로 더 넓다.
+            //   그래서 <b>배치와 판정이 같은 한 곳</b>(<see cref="ResolveTopInsetPoints"/>)에서 값을 뽑는다.
+            //   가로와 달리 되먹임이 없다 — 이 값은 톱니를 보지 않는다.
+            //
+            // ★★ 2026-09-03(같은 날, 가로축) — <b>가로도 같은 병에 걸린다</b>. 아래 두 줄이
+            //   <see cref="PanelInsetPoints"/>로 굳어 있고 반환값만 기준선을 쓰면 발산 구간이 <b>둘</b>
+            //   생기는데, 근변 구간은 아래 클램프 하한이 삼키고 <b>원변 구간</b>
+            //   (톱니 우변이 기준선+카드폭 근처)만 남아 <b>카드가 톱니를 덮는다</b>
+            //   (<see cref="ResolveRightInsetBoundsPoints"/> 문서의 계산표).
+            //   그래서 <c>baseInset</c> 하나가 판정과 배치 양쪽에 들어간다.
             float panelHeight = _panelRoot.sizeDelta.y;
-            bool overlapX = gearFar < PanelInsetPoints + PanelWidth && gearNear > PanelInsetPoints;
-            bool overlapY = gearTop < PanelInsetPoints + panelHeight && gearBottom > PanelInsetPoints;
-            if (!overlapX || !overlapY) return PanelInsetPoints;
+            float panelTop = ResolveTopInsetPoints();
+            bool overlapX = gearFar < baseInset + PanelWidth && gearNear > baseInset;
+            bool overlapY = gearTop < panelTop + panelHeight && gearBottom > panelTop;
+            if (!overlapX || !overlapY) return baseInset;
 
             float required = gearNear + GearRadialMenuWidget.ScreenMarginPoints;
 
             // 밀다가 화면 왼쪽 밖으로 나가지는 않는다(톱니를 화면 한가운데로 옮긴 사용자).
+            return Mathf.Clamp(required, baseInset, maxInset);
+        }
+
+        /// <summary>
+        /// ★★ <b>카드의 가로 기준선</b>(톱니를 보지 않은, 평상시 자리)과 <b>왼쪽 한계</b>를 한 번에 낸다 —
+        /// 2026-09-03, docs/UX_FLOW.md 41-1 ③ 가로축.
+        ///
+        /// ============================================================================
+        /// 무엇이 문제였나
+        /// ============================================================================
+        /// 이 카드는 화면 <b>오른쪽</b>에 <see cref="PanelInsetPoints"/>(16)로 붙는데, Windows 작업표시줄을
+        /// <b>우측에 도킹</b>하면 그 띠가 통상 48~62pt다. 16 &lt; 48이므로 카드가 그 띠를 <b>통째로</b> 덮었다.
+        /// 상단 프로브로는 원리상 못 잡는다 — 우측 도킹이면 상단 차이가 0이라 "띠 없음"이 <b>참</b>이다.
+        ///
+        /// ============================================================================
+        /// 배선 — 사실 조회 / 판정이 갈라져 있다 (세로축과 같은 관례)
+        /// ============================================================================
+        /// 사실 조회는 <see cref="ReservedEdgeProbe"/>(네 변을 한 번에), 판정은
+        /// <see cref="SurfaceSafeAreaPolicy.ClampRightAnchoredInset"/>(플랫폼 중립). <b>여기서 산수를
+        /// 다시 하지 않는다</b> — "여백 16으로 오른쪽에 붙고 싶다"고 요청하면 정책이 실제로 가져야 하는
+        /// 인셋을 돌려준다.
+        ///
+        /// <para><b>★ 「측정된 0」과 「미측정 0」을 가른다.</b> 값은 같지만 사실은 정반대다
+        /// (<see cref="ReservedEdgeInsets.MeasuredEdges"/>). 좌·우 어느 쪽도 측정 비트가 없으면
+        /// <b>아무것도 바꾸지 않는다</b> — 화면 폭에서 카드 폭을 빼서 "아마 48pt쯤 되겠지"라고 메우는 것은
+        /// <see cref="ReservedEdgeProbe"/>의 <i>"실패는 0이다 / 짐작값으로 메우지 않는다"</i> 규약을
+        /// 정면으로 깬다. 추정값이 실제보다 크면 멀쩡한 화면을 낭비하고, 작으면 그대로 덮는다.</para>
+        ///
+        /// <para><b>세 환경에서의 값</b>(여백 = <see cref="PanelInsetPoints"/> 16):
+        /// <code>
+        ///   우측 도킹 작업표시줄 48pt -> 48 + 16 = 64
+        ///   우측 도킹 작업표시줄 62pt -> 62 + 16 = 78
+        ///   측면 띠 없음(측정된 0) / 못 잼(미측정) -> 16   ★ 한 픽셀도 바뀌지 않는다
+        /// </code>
+        /// 마지막 줄이 이 변경의 <b>회귀 없음 보증</b>이고, 두 경로 모두 <b>float32 비트 동일</b>하다:
+        /// 미측정은 <c>PanelInsetPoints</c>를 <b>그대로</b> 돌려주고(정책을 아예 안 부른다),
+        /// 측정된 0은 정책이 <c>W − ((W − 16 − 110) + 110)</c>을 계산하는데 화면 폭이 2^24보다 훨씬
+        /// 작은 정수/반정수라 중간값이 전부 정확히 표현되어 <b>정확히 16</b>이 나온다.</para>
+        ///
+        /// ============================================================================
+        /// ★ 가로축 발산 구간 — 세로축과 <b>서명(폭 == 띠 두께)은 같은데 개수가 둘이고, 하나는 흡수된다</b>
+        /// ============================================================================
+        /// 배치만 기준선으로 옮기고 <b>겹침 판정을 옛 상수 16에 남겨 두면</b> 판정이 배치보다 뒤처진
+        /// 구간이 생긴다. 세로는 하나였는데 가로는 <b>둘</b>이고, <b>그중 하나는 최종 클램프가 삼킨다</b>.
+        /// (우측 띠 R, 기준선 B = R + 16, 카드 폭 220, 톱니 여유 8. 좌표는 화면 오른쪽 끝 기준 pt.)
+        /// <code>
+        ///   ① 근변 구간  톱니 좌변 gearNear ∈ (16, B]        폭 = B − 16 = R
+        ///        옛 판정 "겹친다" -> gearNear+8 로 밀려는데, 아래 <c>Mathf.Clamp(..., baseInset, ...)</c>의
+        ///        <b>하한이 기준선</b>이라 R+8 이하는 통째로 흡수된다. 남는 차이는
+        ///        <b>gearNear ∈ (B−8, B]</b>(폭 8 = 톱니 여유)뿐이고, 거기서도 결과는
+        ///        <b>필요보다 최대 8pt 더 왼쪽</b>이다 — 화면 낭비이지 <b>침해가 아니다</b>.
+        ///        ★ 즉 <b>①은 우측 띠를 절대 덮지 않는다</b>(결과가 언제나 기준선 ≥ R 이상이다).
+        ///   ② 원변 구간  톱니 우변 gearFar ∈ [16+220, B+220)  폭 = B − 16 = R   ← 띠 두께와 같다
+        ///        여기는 <b>흡수되지 않는다</b>. 옛 판정이 "안 겹친다"고 말해 카드가 기준선에 그대로 남고,
+        ///        그 자리는 톱니 위다 -> <b>카드가 톱니를 덮는다</b>(51-9-3 재발). 이쪽이 진짜다.
+        ///
+        ///   검산(게임 뷰 640pt · 우측 띠 62 · 기준선 78 · 1행 카드):
+        ///     ② gearFar = 267(구간 [236, 298)의 한가운데) -> gearNear = 306.64
+        ///        옛 판정: 267 &lt; 236 이 거짓 -> 안 민다 -> 카드 [78, 298] 이 톱니 [267, 306.64] 를 덮는다.
+        ///        지금 코드: 267 &lt; 298 이 참 -> 306.64 + 8 = 314.64 로 민다 -> 여유 정확히 8.00pt.
+        ///     ① gearNear = 74 -> 옛 판정 82 / 지금 78. 차이 4pt는 낭비이고 침해가 아니다.
+        /// </code>
+        /// 그래서 이 함수의 <c>baseInset</c> <b>하나</b>가 판정과 배치 양쪽에 들어간다.
+        /// (②를 <c>Tests/PlayMode/TodoPostItReservedTopBarTests</c>의
+        /// <c>우측_띠_발산_구간에서_배치와_판정이_갈라지지_않는다</c>가 실측으로 잠근다.)
+        /// </summary>
+        /// <param name="baseInset">톱니를 보지 않은 가로 인셋(화면 오른쪽 끝 -> 카드 우변, OS 포인트).</param>
+        /// <param name="maxInset">톱니를 피해 왼쪽으로 밀 수 있는 한계. 좌측 예약 띠를 <b>측정했으면</b>
+        /// 그 앞에서 멈춘다(못 쟀으면 예전대로 화면 왼쪽 끝까지).</param>
+        private void ResolveRightInsetBoundsPoints(out float baseInset, out float maxInset)
+        {
+            baseInset = PanelInsetPoints;
             float screenWidth = ScreenCoordinateConverter.UnityScreenToCanvas(Screen.width, _agentConfig);
-            float maxInset = Mathf.Max(PanelInsetPoints, screenWidth - PanelWidth);
-            return Mathf.Clamp(required, PanelInsetPoints, maxInset);
+            maxInset = Mathf.Max(PanelInsetPoints, screenWidth - PanelWidth);
+            if (screenWidth <= 0f) return;
+
+            ReservedEdgeInsets edges = ReservedEdgeProbe.Insets(_agent != null ? _agent.PlatformService : null);
+
+            // ★ 미측정이면 여기서 끝이다 — 요청값(옛 상수)이 그대로 나간다. 0으로 읽고 배치하는 것도,
+            //   짐작으로 메우는 것도 하지 않는다. "측정된 0"은 아래로 내려가 정책을 지나지만 결과는 같다.
+            if (!edges.IsMeasured(ReservedEdge.Left) && !edges.IsMeasured(ReservedEdge.Right)) return;
+
+            float left = edges.PointsFor(ReservedEdge.Left);
+            baseInset = SurfaceSafeAreaPolicy.ClampRightAnchoredInset(
+                PanelInsetPoints, PanelWidth, screenWidth, left, edges.PointsFor(ReservedEdge.Right),
+                PanelInsetPoints);
+            maxInset = Mathf.Max(baseInset, screenWidth - left - PanelWidth);
         }
 
         /// <summary>지금 적용 중인 가로 인셋(OS 포인트) — 진단/테스트 창구. 읽기만 한다.</summary>
         public float RightInsetPointsForTests => _panelRoot != null ? -_panelRoot.anchoredPosition.x : 0f;
+
+        /// <summary>지금 적용 중인 <b>세로</b> 인셋(OS 포인트, 화면 위 끝 -> 카드 상단) — 진단/테스트 창구.
+        /// 읽기만 한다. 예약 띠가 0이면 <see cref="PanelInsetPoints"/>와 같다.</summary>
+        public float TopInsetPointsForTests => _panelRoot != null ? -_panelRoot.anchoredPosition.y : 0f;
 
         /// <summary>ScreenSpaceOverlay 캔버스에서는 RectTransform의 월드 좌표가 곧 스크린 픽셀 좌표다
         /// (AppControlDirector.HitTestMenuRow와 같은 전제 — CanvasScaler.scaleFactor가 1이 아니어도
@@ -844,9 +1029,12 @@ namespace StickMate.Interaction
             _panelRoot.anchorMax = new Vector2(1f, 1f);
             _panelRoot.pivot = new Vector2(1f, 1f);
             // 화면 우상단 기본 위치(17절 "유저가 위치 지정 가능"은 후속 과제).
-            // ★ 가로 인셋은 매 프레임 SyncPanelInsetToGear()가 톱니 실측에서 다시 푼다.
-            _panelRoot.anchoredPosition = new Vector2(-PanelInsetPoints, -PanelInsetPoints);
+            // ★ 가로 인셋은 매 프레임 SyncPanelInsetToGear()가 톱니 실측에서, 세로 인셋은
+            //   ResolveTopInsetPoints()가 예약 띠 실측에서 다시 푼다. 여기서 좌표를 직접 쓰지 않고
+            //   <b>같은 함수를 한 번 부르는</b> 이유: 두 벌이 되면 반드시 한쪽만 고쳐진다.
+            //   (Awake 시점이라 플랫폼 서비스도 톱니도 아직 없어 결과는 (16, 16) — 옛 값 그대로다.)
             _panelRoot.sizeDelta = new Vector2(PanelWidth, RowHeight);
+            SyncPanelInsetToGear();
 
             // "이건 메모다"를 남기는 왼쪽 노란 띠. 위아래를 모서리 반지름만큼 들여 놓아야 둥근 모서리
             // 바깥으로 삐져나오지 않는다(직선 구간에만 놓는다).

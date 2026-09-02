@@ -1,0 +1,153 @@
+C0. 교정 — 프로덕션 상수 읽기 + 골든 비트 대조
+  읽은 상수: Base=0.28 PerKr=0.075 PerLatin=0.0472 Min=0.62 Max=2.2 FadeIn=0.06 FadeOut=0.12 PopIn=0.18 Reads=2.0 m∈[1.0,2.0]
+  [OK]   상수 읽기 — None 없음
+  [OK]   상수 읽기 양성 대조 — 없는 이름은 None
+  [OK]   골든 33줄 비트 일치  불일치 0건
+  [OK]   골든 대조 양성 대조 — 계수 0.075→0.076이면 불일치가 난다  28건
+
+C1. Dragged / ThrowTumble 대사 0건 (양성 대조 포함)
+  [OK]   States/DragThrowState.cs: 리터럴 0건 (기대 0)
+  [OK]   States/ThrowTumbleState.cs: 리터럴 0건 (기대 0)
+  [OK]   States/RagdollState.cs: 리터럴 3건 (기대 3)  ['윽...!', '으악!', '으아아아악?!']
+  [OK]   States/AttackState.cs: 리터럴 2건 (기대 2)  ['한 발 더!', '오늘은 여기까지']
+  [OK]   Dialogue/AmbientChatter.cs: 리터럴 0건 (기대 0)
+  [OK]   AmbientChatter 배열 Idle=8 Walk=5
+  [OK]   현행 고유 대사 33줄 = 골든 33줄
+  [OK]   Dragged 대사 0 — 프로브 생존 확인(같은 프로브가 다른 파일에서 3건을 찾았다)
+
+C2. DragThrowState 구조 실측
+  [OK]   dragThrowMaxHoldSeconds: 코드 10.0 = 애셋 10.0
+  [OK]   dragThrowMaxSpeed: 코드 12.0 = 애셋 12.0
+  [OK]   dragThrowVelocitySampleWindowSeconds: 코드 0.12 = 애셋 0.12
+  [OK]   throwTumbleMinSpeedHeightsPerSecond: 코드 1.2 = 애셋 1.2
+  [OK]   throwTumbleDegreesPerHeightSpeed: 코드 90.0 = 애셋 90.0
+  [OK]   throwTumbleMinSpinDegreesPerSecond: 코드 220.0 = 애셋 220.0
+  [OK]   throwTumbleMaxSpinDegreesPerSecond: 코드 720.0 = 애셋 720.0
+  [OK]   throwTumbleMaxSeconds: 코드 6.0 = 애셋 6.0
+  [OK]   ambientChatterCooldownSeconds: 코드 11.0 = 애셋 11.0
+  [OK]   gravityScale: 코드 3.0 = 애셋 3.0
+  [OK]   characterScale: 코드 0.75 = 애셋 0.75
+  [OK]   애셋 대조 양성 대조 — 없는 필드는 양쪽 None
+  [OK]   Enter() 블록 안의 PushSample 호출이 정확히 1회 = 커서 표본 1개  Enter 1회 / 파일 전체 4회
+  [OK]   ComputeThrowVelocity는 표본 2개 미만이면 0을 돌려준다
+  [OK]   Enter()에서 _cursorSpeedHeights = 0, _hasPrevCursor = false
+  [OK]   ReleaseAndThrow()는 종료 사유를 인자로 받지 않는다(사유 구분 불가)
+  [OK]   DragThrowState는 IHasDialogueParams를 구현하지 않는다
+  [OK]   Dragged 진입은 Idle/Walk에서만 (재진입에 새 MouseDown이 필요)
+  [OK]   PlannedDwellRemainingSecondsFor: Walk/Idle 외 전부 NaN
+  [OK]   IsEligible: NaN이면 막지 않는다
+  ⇒ 한 번 잡으면 최대 10초. 그 뒤 강제로 놓아진다 = **30초 연속 홀드는 성립하지 않는다.**
+
+C3. 잡힌 높이 구역 — StickmanMetrics에서 파생(고른 값 아님)
+  [OK]   랜드마크 4종 읽기  머리중심 2.0546944 반경 0.22 어깨 1.7646944 고관절 0.9346944
+  전신 2.2746944 / 어깨 1.7646944(0.77579) / 고관절 0.9346944(0.41091) / 머리 아랫끝 0.80657
+  ⇒ 구역 경계 = 어깨비 0.7758 · 고관절비 0.4109  (둘 다 실측 랜드마크)
+  배포 배율 0.75 → 실신장 1.7060유닛
+
+C4. ThrowTumble 회전·궤도
+  신장 1.7060유닛 · 던지기 속도 상한 12.0유닛/초 = 7.0339신장/초
+  회전 = clamp(90.0×h/s, 220.0, 720.0) → **실제 도달 상한 633.1도/초** (설정 상한 720.0는 도달 불가: 그러려면 13.65유닛/초가 필요)
+  진입 하한 1.2신장/초 = 2.047유닛/초 → 그때 회전은 220도/초(하한에 걸림)
+    회전  220.0도/초 → 머리 앵커 궤도 반경 0.8400유닛, 접선 속도 3.225유닛/초 (≈132 OS-pt/초), 한 바퀴 1.636초
+    회전  633.1도/초 → 머리 앵커 궤도 반경 0.8400유닛, 접선 속도 9.281유닛/초 (≈380 OS-pt/초), 한 바퀴 0.569초
+  중력 29.43유닛/초² — 자유낙하 비행시간: 낙차0.5유닛=0.184초 낙차1유닛=0.261초 낙차2유닛=0.369초 낙차5유닛=0.583초 낙차10유닛=0.824초 
+  ⇒ 어떤 대사든 필요체류 하한 = 페이드인 0.06 + Min 0.62 = 0.68초
+     낙차 6.804유닛(= 신장의 3.99배)보다 낮게 던지면 **가장 짧은 대사조차 상태보다 길다.**
+
+  ★ 결과: ThrowTumble은 Enter 시점에 자기 길이를 모른다(TryPlanRotation은 첫 Tick).
+  [OK]   Enter()가 PredictSecondsToGround를 부르지 않는다
+  [OK]   교체 게이트: 노출 0.18초 미만이면 다음 대사를 **버린다**(큐잉 없음)
+
+C5. 제안 대사 전수 예산표
+  슬롯       구역                  한국어        자      R    최소노출    노출상한    상한m2   English           자      R     상한
+  HEAD_A   위: 머리링 안 (h >= 0.80657)머리 놔       4  0.620   0.620   1.540   2.780   Not the head.    13  0.894  2.087
+  HEAD_B   위: 머리링 안 (h >= 0.80657)거긴 머리야     6  0.730   0.730   1.760   3.220   That's my head.  15  0.988  2.276
+  LEG_A    아래: 고관절 밑 (h < 0.41091)다리 놔       4  0.620   0.620   1.540   2.780   Not the leg.     12  0.846  1.993
+  LEG_B    아래: 고관절 밑 (h < 0.41091)거긴 다리야     6  0.730   0.730   1.760   3.220   That's my leg.   14  0.941  2.182
+  ANY_A    공통                  야!         2  0.620   0.620   1.540   2.780   Hey!              4  0.620  1.540
+  ANY_B    공통                  놔, 놔       4  0.620   0.620   1.540   2.780   Let go. Let go.  15  0.988  2.276
+  ANY_C    공통                  안 놔?       4  0.620   0.620   1.540   2.780   Let go.           7  0.620  1.540
+  ANY_D    공통                  어딜 잡아      5  0.655   0.655   1.610   2.920   Watch it.         9  0.705  1.710
+  FALLBACK 불명 (HasGrabPoint = false)잡혔다        3  0.620   0.620   1.540   2.780   Grabbed.          8  0.658  1.615
+
+  풀 최장 노출상한: 한국어 '거긴 머리야' 1.760초(m=1) / 3.220초(m=2)
+                    영어  'That's my head.' 2.276초(m=1) / 4.252초(m=2)
+  ⇒ 연타 억제 쿨다운 = 그 줄의 노출상한(새 숫자 없음). m=2에서도 3.22초.
+  정독 천장(한국어 13자 / 영어 21자) 초과: 0건
+  작업 상한(R6 §1-3, 한국어 14 / 라틴 22) 초과: 0건
+
+C6. 문자열 충돌
+  [OK]   제안 18개 문자열 vs 기존 58개 — 충돌  []
+  [OK]   제안 풀 내부 중복 0  []
+  [OK]   충돌 검사 양성 대조 — 기존 줄 '으악!'을 넣으면 걸린다
+  [OK]   충돌 검사 양성 대조(영어) — 'Left, right.'가 대조집합에 실재
+
+C7. R6 영어 Walk 5줄 재확인 (분모 1.2375)
+  [OK]   wanderWalkDurationMin 코드 1.5 = 애셋 1.5
+  [OK]   wanderIdleDurationMin 코드 2.0 = 애셋 2.0
+  [OK]   wanderDurationJitterRatio 코드 0.175 = 애셋 0.175
+  Walk 분모 = 1.5 × (1−0.175) = 1.2374999999999998   (Idle 1.65)
+  [OK]   분모가 1.2375다(1.24 아님)  1.2374999999999998
+  슬롯        한국어           자      R      여유   English          자      R      여유
+  MOVE      산책 중          4  0.620   0.377   Out walking.    12  0.846   0.151
+  DIR       저쪽으로 가볼까      8  0.880   0.118   Off that way.   13  0.894   0.104
+  RHYTHM    하나 둘 하나 둘     9  0.955   0.042   Left, right.    12  0.846   0.151
+  LEGS      다리 좀 풀자       7  0.805   0.192   Loosening up.   13  0.894   0.104
+  FLOURISH  다리가 잘 나가네     9  0.955   0.042   Good stride.    12  0.846   0.151
+  [OK]   영어 5줄 전부 규칙 8 통과(여유 > 0)
+  [OK]   마진 없는 물리 하한에서도 전부 통과
+  [OK]   영어 5줄 ≤ 작업상한 22자
+  [OK]   한국어 5줄 무변경 — AmbientChatter.WalkLines와 1:1
+
+C8. 팩「야간 정비반」 재확인 + 조건부 FLOURISH
+  [OK]   팩 6종 .asset 착지 = 0/6  (아직 0건)
+  [OK]   착지 프로브 양성 대조 — 기존 equip_head_beret.asset은 보인다
+  ⇒ FLOURISH 조건부: swayStart 착지 X → **형태 주장 폴백 `앞치마가 길다`가 현재 유효**
+  [OK]   swayStart 필드를 가진 애셋 6종 — 전부 NECK인가  ['equip_neck_bandana.asset', 'equip_neck_bell.asset', 'equip_neck_bowtie.asset', 'equip_neck_pendant.asset', 'equip_neck_scarf.asset', 'equip_neck_striped.asset']
+  [OK]   sway 프로브 양성 대조 — 목도리에서 실제로 찾는다
+  [OK]   sway 프로브 음성 대조 — 망토(BACK)에는 없다(=BACK 움직임 주장 금지는 스키마가 강제)
+  자...            4자 R=0.620  Idle여유 +0.790  Walk여유 +0.377
+  이 구역 이상 무       9자 R=0.955  Idle여유 +0.455  Walk여유 +0.042
+  정비 대기           5자 R=0.655  Idle여유 +0.755  Walk여유 +0.342
+  바닥 단단함          6자 R=0.730  Idle여유 +0.680  Walk여유 +0.267
+  난 이게 편해         7자 R=0.805  Idle여유 +0.605  Walk여유 +0.192
+  순찰 중            4자 R=0.620  Idle여유 +0.790  Walk여유 +0.377
+  다음 구역으로         7자 R=0.805  Idle여유 +0.605  Walk여유 +0.192
+  보폭 일정           5자 R=0.655  Idle여유 +0.755  Walk여유 +0.342
+  보행 정상           5자 R=0.655  Idle여유 +0.755  Walk여유 +0.342
+  앞치마 흔들림         7자 R=0.805  Idle여유 +0.605  Walk여유 +0.192
+  [OK]   팩 Idle 5줄 규칙 8 통과
+  [OK]   팩 Walk 5줄 규칙 8 통과
+  [OK]   팩 10줄 ≤ 정독 천장 13자
+  [OK]   팩 대사에 시각 주장 0건
+  [OK]   팩 대사·설명에 발광 주장 0건
+
+C9. ★ 앞 라운드 자백의 재현 — 「클램프가 계수를 삼킨다」
+  클램프 바닥 0.62초를 넘기는 최소 글자수: 한국어 5자(경계 4.533) / 라틴 8자(경계 7.203)
+  ⇒ 한국어 4자 이하 · 라틴 7자 이하는 **계수를 아무 값으로 바꿔도 결과가 안 변한다.**
+  [OK]   실재 대사 중 클램프에 눌린 한국어 5줄 — 계수를 0.075→0.076으로 바꿔도 전부 불변  5/5줄이 무반응
+     그 5줄: ['가뿐하네', '산책 중', '심심하다', '으악!', '음...']
+  ⇒ **짧은 대사만으로 계수 양성 대조를 짜면 그 대조는 초록인데 아무것도 못 잰다.**
+     이번 라운드의 C0 대조가 살아남은 이유는 골든 33줄 전수(=긴 줄 포함)를 썼기 때문이다(28건 검출).
+  ★★ 내 제안 풀 9줄 중 **6줄이 클램프 바닥**이다: ['머리 놔', '다리 놔', '야!', '놔, 놔', '안 놔?', '잡혔다']
+     ⇒ test-engineer 경고: 이 풀로 계수 회귀를 검증하면 구조적으로 못 본다. 긴 대사를 따로 써라.
+
+C10. 10초 홀드 · 던지기 낙차 문턱
+  m=1.0: 최장 줄 '거긴 머리야' 노출상한 1.760초 → 10초 홀드 중 침묵 8.240초 (82.4%)
+  m=1.5: 최장 줄 '거긴 머리야' 노출상한 2.490초 → 10초 홀드 중 침묵 7.510초 (75.1%)
+  m=2.0: 최장 줄 '거긴 머리야' 노출상한 3.220초 → 10초 홀드 중 침묵 6.780초 (67.8%)
+  ThrowTumble이 최단 대사(0.68초)를 견디려면 순수 자유낙하 기준 낙차 6.804유닛 = 신장의 3.99배가 필요하다.
+  최고 회전에서 한 바퀴 0.569초 < 최단 가독예산 0.62초 ⇒ **가장 짧은 대사를 다 읽기 전에 말풍선이 캐릭터를 한 바퀴 돈다.**
+  [OK]   한 바퀴 < 최단 가독예산  0.569 < 0.62
+
+C11. Dragged 놓기 분기 — 잡기 Reaction이 Ragdoll 대사를 먹을 수 있는가
+  [OK]   ragdollForceThreshold 코드 8.0 = 애셋 8.0
+  [OK]   Rigidbody2D.mass는 배율을 따라가지 않는다(= 임계가 순수 속도 8유닛/초로 축약)
+  IsCleanThrow 하한 = 1.2신장/초 × 신장 1.7060 = **2.047유닛/초**
+  Ragdoll 임계     = 충격량 8.0 ÷ 질량 1 = **8.000유닛/초**   (던지기 상한 12.0)
+  [OK]   ReleaseAndThrow는 IsCleanThrow를 **먼저** 보고, 참이면 return한다(랙돌 분기 도달 불가)
+  ⇒ 기본 설정에서 놓기 속도 2.047~12.0 유닛/초는 전부 ThrowTumble(대사 0줄)로 간다.
+    Dragged -> Ragdoll 직행은 **throwTumbleEnabled = 0** 일 때만 열린다(애셋 값 1).
+
+======================================================================
+실패 0건 — 전부 통과

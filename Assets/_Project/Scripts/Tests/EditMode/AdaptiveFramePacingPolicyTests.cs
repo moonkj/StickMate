@@ -36,7 +36,10 @@ namespace StickMate.Tests.EditMode
 
         private static ViewerPresenceSnapshot Presence(bool asleep = false, float idleSeconds = 0f,
             bool lowPower = false, bool onBattery = false)
-            => new ViewerPresenceSnapshot(asleep, idleSeconds, lowPower, onBattery);
+            => new ViewerPresenceSnapshot(asleep, idleSeconds, lowPower, onBattery,
+                // 이 픽스처들은 세션 잠금 축을 재지 않는다(프레임 페이싱 등급 전용).
+                // 잠금 축은 SessionVisibilityPolicyTests가 따로 겨눈다.
+                sessionLocked: false);
 
         // ========================================================================
         // 등급 판정

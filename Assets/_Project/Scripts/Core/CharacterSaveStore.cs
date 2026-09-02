@@ -309,7 +309,9 @@ namespace StickMate.Core
         //    (2026-08-31, R3 Blocker 2 동반 조치)
         // ============================================================================
         // 무슨 일이 있었나: PlayMode 테스트는 Stickman 프리팹을 그대로 띄우고, 그 프리팹에는
-        // CharacterProgressionDirector가 붙어 있어 Awake에서 Load()를 부른다. 그래서 스위트 전체가
+        // CharacterProgressionDirector가 붙어 있어 **Start()**에서 Load()를 부른다
+        // (Interaction/CharacterProgressionDirector.cs의 Start() — Awake가 아니다. 2026-09-02 실측 정정:
+        //  이 문장을 순서 추론의 기준으로 삼은 라운드가 실제로 시간을 버렸다). 그래서 스위트 전체가
         // **그 머신에서 앱을 실제로 가지고 논 사람의 저장 파일**을 읽고 있었다. 개발자 파일에
         // characterScale 0.35가 들어 있던 하루 동안 모든 PlayMode가 0.35배 캐릭터로 돌았고, 네 명이
         // 같은 실패를 보고도 원인을 프리팹으로 오인했다 — "내 변경을 되돌려도 그대로다"라는 네거티브

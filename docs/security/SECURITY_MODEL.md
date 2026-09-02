@@ -180,8 +180,8 @@ public static bool IsItemOwned(EquipmentSlot slot, int itemIndex)
 ```json
 { "version": 9, "level": 6, "currentXp": 433.89, ... "wornHead": "equip.head.fur" }
 ```
-경로: `~/Library/Application Support/DefaultCompany/StickMate/stickmate_character.json`
-(Windows: `AppData/LocalLow/DefaultCompany/StickMate/`) — **평문, 메모장으로 편집 가능, 경로는 로그에 인쇄됨.**
+경로: `~/Library/Application Support/Vibelab/StickMate/stickmate_character.json`
+(Windows: `AppData/LocalLow/Vibelab/StickMate/`) — **평문, 메모장으로 편집 가능, 경로는 로그에 인쇄됨.**
 
 **두 문서가 각자 옳은 판단을 하면서 같은 지점으로 수렴하고 있다.** `ux-designer`는 "구매했으니 저장해야
 한다"는 당연한 결론을 냈고, `EquipmentDebugUnlock`은 "보유 판정은 한 곳이어야 한다"는 옳은 결론을 냈다.

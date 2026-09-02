@@ -1460,7 +1460,18 @@ namespace StickMate.Interaction
 
         /// <summary>상태 ID를 사람이 읽는 한 마디로. <b>대사가 아니다</b> — 원칙 1의 적용 대상이 아니며
         /// (DialogueIntent를 만들지 않는다), 상태가 확정된 뒤 그것을 그대로 옮겨 적을 뿐이다.
-        /// 초상화 포즈도 <b>같은 상태 값</b>에서 파생된다(CharacterPortraitStage.PoseForState).</summary>
+        ///
+        /// <para>★ 2026-09-03 정정 — 원래 "초상화 포즈도 <b>같은 상태 값</b>에서 파생된다
+        /// (CharacterPortraitStage.PoseForState)"라고 적혀 있었으나 <b>거짓</b>이다. 그 함수는
+        /// 2026-09-02에 <b>프로덕션 호출자가 0개</b>가 됐고(정보창이 부르던 한 줄을 걷어냈다),
+        /// <c>CharacterPortraitStage.SetPose</c>도 마찬가지다 — 같은 파일이 "새 프로덕션 호출자를
+        /// 만들지 마라"고 명시적으로 못박고 있다. 즉 <b>액자는 상태를 따라가지 않고 이 글자만 따라간다.</b>
+        /// 두 파일이 정면으로 어긋난 채 남아 있었다.</para>
+        ///
+        /// <para>★ 같은 이름이 두 벌이다 — <c>Core/StickMateDisplayNames.Of(StickmanStateId)</c>가
+        /// 같은 27개 상태를 <b>다른 낱말</b>로 옮겨 행동 명령창의 "지금 ○○ 중이라 못 해요"에 쓴다
+        /// (27개 중 19개가 다르다). 판정·통합안은 <c>docs/inspection/R2_거짓주석_전수조사.md</c> §2.
+        /// <b>여기에 상태를 추가하면 저기에도 추가해야 한다</b> — 안 하면 저쪽은 "딴 일"로 조용히 샌다.</para></summary>
         public static string StateLabel(StickmanStateId id)
         {
             switch (id)

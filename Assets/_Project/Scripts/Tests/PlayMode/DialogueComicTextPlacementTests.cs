@@ -85,8 +85,34 @@ namespace StickMate.Tests.PlayMode
         private const float ExpectedGapYRatio = 0.10f;
 
         // ---- (E) 기울기 계약의 바깥 숫자 ----
-        /// <summary>이 테스트가 렌더러에 주입하는 기울기 기준값(도). 출하 기본값과 같다.</summary>
-        private const float TiltBaseDegrees = 8f;
+        /// <summary>
+        /// 이 테스트가 렌더러에 <b>주입하는</b> 기울기 기준값(도) — 출하 값이 아니라 <b>테스트 입력</b>이다.
+        ///
+        /// <para>★★ 2026-09-02 <c>test-engineer</c> — 옛 값은 <b>출하 기본값과 똑같은 수</b>였다.
+        /// 같으면 <i>"렌더러가 내 설정을 읽었다"</i>와 <i>"렌더러가 그 수를 하드코딩했다(또는 내 주입이
+        /// 통째로 무시됐다)"</i>가 <b>구분되지 않는다</b> — 두 세계에서 관측값이 완전히 같기 때문이다
+        /// (이 저장소 거짓 통과의 공통 형태: <i>"실패한 측정과 성공한 측정이 똑같이 생겼다"</i>).</para>
+        ///
+        /// <para><b>지금은 두 겹으로 막는다.</b>
+        /// <list type="number">
+        ///   <item><b>값을 갈라 둔다</b> — 출하 기본값과 다른 수를 쓴다. 두 수가 다시 같아지는 날
+        ///     <c>ShippingConfigurationOnARetinaScreen_ActuallyTiltsTheText</c>의
+        ///     <c>Assert.AreNotEqual</c>이 <b>시끄럽게</b> 막는다(출하 값을 이 파일에 <b>적지 않고</b>
+        ///     설정 객체에서 직접 읽어 비교한다 — 상수를 베끼지 않는다, CLAUDE.md).</item>
+        ///   <item><b>두 값으로 두 번 잰다</b> — <see cref="TiltAltDegrees"/> 참고. 이쪽이 본체다.
+        ///     하드코딩이면 관측 크기의 비가 1이 되어 폴백 값을 <b>몰라도</b> 걸린다.</item>
+        /// </list>
+        /// 14도는 <c>StickConfig.dialogueTiltDegrees</c>의 <c>[Range(0, 20)]</c> 안이고,
+        /// 편차 ±<see cref="TiltJitterRatio"/>를 얹은 관측 대역이 아래 상·하한 단언과 맞물린다.</para>
+        /// </summary>
+        private const float TiltBaseDegrees = 14f;
+
+        /// <summary>같은 계약을 <b>두 번째 값</b>으로 한 번 더 재기 위한 주입값(도).
+        /// <para>이것이 T4의 본체다: 기울기 크기는 <c>기준값 × (글자에서 결정적으로 뽑은 편차 계수)</c>라
+        /// 같은 대사면 계수가 같다. 따라서 두 주입값의 <b>관측 크기 비</b>는 <b>주입값의 비와 정확히
+        /// 같아야</b> 한다. 어떤 상수를 하드코딩하든 이 비는 1이 되어 즉시 걸린다 — 폴백 값이
+        /// 얼마인지 <b>몰라도</b> 성립하는 검사다.</para></summary>
+        private const float TiltAltDegrees = 6f;
         /// <summary>DialogueBubbleRenderer.ComicTiltJitterRatio와 같은 값 — 크기에만 붙는 결정적 편차.</summary>
         private const float TiltJitterRatio = 0.25f;
         /// <summary>
@@ -578,8 +604,7 @@ namespace StickMate.Tests.PlayMode
             Assert.IsTrue(renderer.IsBubbleVisible, "대사가 표시되지 않았다 — 기울기를 잴 수 없다.");
             yield return null;
 
-            RectTransform panel = FindTextPanel(renderer);
-            Assert.IsNotNull(panel, "글자 블록(BubblePanel)을 찾지 못했다.");
+            RectTransform panel = VisibleTextPanel(renderer);
 
             float z = SignedZDegrees(panel);
             float side = renderer.LastTextSideSign;
@@ -659,22 +684,62 @@ namespace StickMate.Tests.PlayMode
 
             machine.Start(StickmanStateId.Attack);
             yield return null;
-            Assert.GreaterOrEqual(Mathf.Abs(SignedZDegrees(FindTextPanel(renderer))), MinVisibleTiltDegrees,
-                "기준 조건(기울기 8도 + 충분히 큰 글자)에서부터 기울지 않았다 — 아래 비교가 무의미해진다.");
+            float baseMagnitude = Mathf.Abs(SignedZDegrees(VisibleTextPanel(renderer)));
+            Assert.GreaterOrEqual(baseMagnitude, MinVisibleTiltDegrees,
+                $"기준 조건(기울기 {TiltBaseDegrees}도 + 충분히 큰 글자)에서부터 기울지 않았다 " +
+                $"({baseMagnitude:F4}도) — 아래 비교가 무의미해진다.");
 
             // (1) 설정으로 끄면 정확히 수평이 된다.
             config.dialogueTiltDegrees = 0f;
-            yield return RespeakAsync(machine);
-            Assert.AreEqual(0f, SignedZDegrees(FindTextPanel(renderer)), 1e-3f,
-                "dialogueTiltDegrees = 0인데 글자가 여전히 기울어 있다 — 각도가 설정을 읽지 않는다.");
+            yield return RespeakAsync(machine, renderer);
+            // ★★ 2026-09-02 test-engineer — <b>실패 메시지가 틀린 원인을 말하고 있었다.</b>
+            //   옛 메시지: "각도가 설정을 읽지 않는다". 실측은 그 반대다 —
+            //   DialogueBubbleRenderer.ResolveTiltDegrees()는 _config.dialogueTiltDegrees를 정직하게 읽고,
+            //   _config는 null일 때만 다시 대입되므로(그 파일 924/936행) 주입도 살아 있다.
+            //   실제로 안 일어나는 것은 <b>기울기 크기의 재계산</b>이다: 그 값은 "새 대사가 확정되는
+            //   순간"에 딱 한 번 잡히고(_tiltMagnitudeDegrees), 다시 말하기가 새 대사를 만들지 못하면
+            //   옛 값이 그대로 남는다.
+            //   ★ 근거: 서로 다른 6회 실행에서 관측값이 <b>비트까지 동일한 7.3733735</b>였다
+            //     (qa-r3 / qa-r4b / ui-postit / c1 / c2 / te-play). 타이밍 경합이면 값이 흔들린다.
+            //     즉 이것은 프레임 예산 문제가 아니라 <b>결정적</b> 문제다.
+            //   그래서 벽시계 예산(RespeakSettleSeconds)은 CLAUDE.md 규칙대로 바로잡되,
+            //   메시지는 관측된 사실만 말한다.
+            //   ★ 2026-09-02 후속 — 그 진단을 <b>RespeakAsync가 구조적으로</b> 해결했다(HideImmediate).
+            //     그래서 여기서는 더 이상 "새 대사가 떴는가"를 추측하지 않는다. RespeakAsync 안에서
+            //     이미 <b>사라졌다 → 다시 떴다</b>가 단언됐고, 이 자리는 순수하게 각도만 본다.
+            Assert.AreEqual(0f, SignedZDegrees(VisibleTextPanel(renderer)), 1e-3f,
+                $"dialogueTiltDegrees = 0으로 바꾸고 다시 말하게 했는데 기울기가 그대로다 " +
+                $"(직전 관측 {baseMagnitude:F4}도). 새 대사가 떴다는 것은 RespeakAsync가 이미 " +
+                "단언했으므로, 남은 설명은 <b>설정을 읽지 않는다</b> 하나뿐이다.");
+
+            // ── (1b) ★ T4의 본체 — "설정을 읽는다"와 "상수를 하드코딩했다"를 <b>가른다</b> ──────
+            //   기울기 크기 = 기준값 × Lerp(1-지터, 1+지터, hash(대사)) 이고 대사가 같으므로
+            //   계수는 같다. 따라서 두 주입값의 관측 크기 비 == 주입값의 비여야 한다.
+            //   어떤 값을 하드코딩하든 비는 1이 되어 여기서 걸린다 — 폴백 값을 몰라도 성립한다.
+            config.dialogueTiltDegrees = TiltAltDegrees;
+            yield return RespeakAsync(machine, renderer);
+            float altMagnitude = Mathf.Abs(SignedZDegrees(VisibleTextPanel(renderer)));
+
+            Assert.Greater(altMagnitude, 0f,
+                $"두 번째 기준값 {TiltAltDegrees}도를 넣었는데 기울기가 0이다 — 이 값으로는 회전 하한에 " +
+                "걸릴 이유가 없다(글자 크기는 그대로다).");
+            Assert.AreEqual(TiltAltDegrees / TiltBaseDegrees, altMagnitude / baseMagnitude, 1e-2f,
+                $"기준값을 {TiltBaseDegrees}도 → {TiltAltDegrees}도로 바꿨는데 관측 크기가 " +
+                $"{baseMagnitude:F4}도 → {altMagnitude:F4}도로 <b>비례하지 않는다</b> " +
+                $"(기대 비 {TiltAltDegrees / TiltBaseDegrees:F4}, 실제 비 {altMagnitude / baseMagnitude:F4}). " +
+                "같은 대사는 같은 편차 계수를 쓰므로 크기는 기준값에 정비례해야 한다. " +
+                "비가 1에 가깝다면 렌더러가 설정이 아니라 <b>고정된 값</b>을 쓰고 있다는 뜻이다.");
+            Debug.Log($"[대사배치] 기준값 {TiltBaseDegrees}도 → {baseMagnitude:F4}도 / " +
+                $"{TiltAltDegrees}도 → {altMagnitude:F4}도. 비 = {altMagnitude / baseMagnitude:F6} " +
+                $"(기대 {TiltAltDegrees / TiltBaseDegrees:F6}) — 설정을 실제로 읽는다.");
 
             // (2) 글리프가 회전 하한(물리 14px)보다 작으면 설정과 무관하게 꺼진다.
             //     32 -> 8pt: 8 x 0.75(배율) x 0.875(만화 배율) = 5.25 -> 만화 모드 폰트 하한 9pt로 받쳐지고,
             //     dpi 오버라이드 1이라 물리 9px < 14px이므로 기울기가 꺼져야 한다.
             config.dialogueTiltDegrees = TiltBaseDegrees;
             config.dialogueFontSize = 8;
-            yield return RespeakAsync(machine);
-            Assert.AreEqual(0f, SignedZDegrees(FindTextPanel(renderer)), 1e-3f,
+            yield return RespeakAsync(machine, renderer);
+            Assert.AreEqual(0f, SignedZDegrees(VisibleTextPanel(renderer)), 1e-3f,
                 "물리 9px짜리 글리프인데도 기울였다 — 회전 리샘플링으로 한글 자모 획이 뭉개진다 " +
                 "(2026-08-29 실측). 이 크기대에서는 '대각선으로'보다 '읽힌다'가 먼저다.");
             Assert.AreEqual(0f, renderer.LastTextTiltDegrees, 1e-3f,
@@ -700,14 +765,27 @@ namespace StickMate.Tests.PlayMode
         public IEnumerator ShippingConfigurationOnARetinaScreen_ActuallyTiltsTheText()
         {
             DialogueBubbleRenderer renderer = SpawnRig(0.75f, facing: 1f, out StickmanStateMachine machine);
-            StickConfig config = InjectTiltConfig(renderer, TiltBaseDegrees, fontSize: 16);
+
+            // ★ 2026-09-02 — 기울기 기준값은 <b>주입하지 않는다</b>. 이 테스트의 질문은
+            //   "출하 조합에서 기울어지는가"이므로 값도 출하 것이어야 한다. tiltDegrees: null이면
+            //   StickConfig의 필드 기본값(= 배포 에셋이 담은 값)이 그대로 쓰인다.
+            //   옛 코드는 TiltBaseDegrees를 넣었는데, 그 상수가 마침 출하 값과 같아서 구분이 안 됐다
+            //   (T4). 이제 그 둘은 다른 값이므로 <b>여기서 섞으면 즉시 거짓말이 된다</b>.
+            StickConfig config = InjectTiltConfig(renderer, tiltDegrees: null, fontSize: 16);
+            Assert.Greater(config.dialogueTiltDegrees, 0f,
+                "출하 기본값 dialogueTiltDegrees가 0이다 — 그러면 아래 '기울어진다' 단언은 " +
+                "제품이 옳아도 통과할 수 없고, 이 테스트는 아무 계약도 지키지 못한다.");
+            Assert.AreNotEqual(TiltBaseDegrees, config.dialogueTiltDegrees,
+                $"출하 기본값이 테스트 주입값({TiltBaseDegrees}도)과 같아졌다 — 그러면 (E)의 " +
+                "'설정을 읽는다'가 '이 값을 하드코딩했다'와 다시 구분되지 않는다(T4 재발). " +
+                "TiltBaseDegrees를 출하 값과 겹치지 않는 다른 값으로 옮길 것.");
             config.desktopDpiScale = 0.5f; // Retina 2x — 캔버스 1유닛 = 물리 2픽셀.
             yield return null;
 
             machine.Start(StickmanStateId.Attack);
             yield return null;
 
-            float z = SignedZDegrees(FindTextPanel(renderer));
+            float z = SignedZDegrees(VisibleTextPanel(renderer));
             Assert.GreaterOrEqual(Mathf.Abs(z), MinVisibleTiltDegrees,
                 $"출하 그대로의 설정(16pt x 0.75 x 0.875 -> 만화 하한 " +
                 $"{DialogueBubbleRenderer.ResolveMinComicFontSize(DialogueBubbleRenderer.VerifiedCanvasScale)}pt, Retina 2x)에서 기울기가 " +
@@ -791,10 +869,14 @@ namespace StickMate.Tests.PlayMode
         ///  테스트 전용 setter를 뚫지 않기 위한 선택이고, 같은 파일의 외곽선 테스트와 같은 방식이다.)
         /// desktopDpiScale을 1로 못박는 이유: 회전 하한이 **물리 픽셀** 단위라 앞선 테스트가 남긴
         /// 전역 DPI 실측값에 따라 결과가 달라지면 안 된다.</summary>
-        private StickConfig InjectTiltConfig(DialogueBubbleRenderer renderer, float tiltDegrees, int fontSize)
+        /// <param name="tiltDegrees"><b>null이면 손대지 않는다</b> — 갓 만든 <see cref="StickConfig"/>의
+        /// 필드 기본값이 곧 <b>출하 값</b>이고, 배포 에셋(<c>Data/DefaultStickConfig.asset</c>)이 그 값을
+        /// 담는다. 출하 조합을 재현하는 테스트는 그 값을 <b>이 파일에 적지 않고</b> 이렇게 가져온다
+        /// (상수를 숫자로 베끼지 않는다, CLAUDE.md).</param>
+        private StickConfig InjectTiltConfig(DialogueBubbleRenderer renderer, float? tiltDegrees, int fontSize)
         {
             var config = ScriptableObject.CreateInstance<StickConfig>();
-            config.dialogueTiltDegrees = tiltDegrees;
+            if (tiltDegrees.HasValue) config.dialogueTiltDegrees = tiltDegrees.Value;
             config.dialogueFontSize = fontSize;
             config.desktopDpiScale = 1f;
             _configs.Add(config);
@@ -806,24 +888,106 @@ namespace StickMate.Tests.PlayMode
             return config;
         }
 
-        /// <summary>같은 대사를 한 번 더 시키고(상태를 빠져나갔다 다시 들어간다) 배치가 갱신될 때까지
-        /// 기다린다. 기울기 크기는 대사가 뜨는 순간 한 번 확정되므로, 설정을 바꾼 뒤에는 반드시
-        /// 새 대사를 띄워야 새 값이 반영된다.</summary>
-        private static IEnumerator RespeakAsync(StickmanStateMachine machine)
+        /// <summary>배치가 확정될 때까지 <b>벽시계(초)</b> 기준으로 프레임을 돌린다.
+        ///
+        /// <para>★ 2026-09-02 — 프레임 수로 세지 않는다. 이 저장소의 배치모드 PlayMode는
+        /// <b>2,000fps 이상</b>으로 돌아 "2프레임"이 실제로는 <b>0.001초</b>다(CLAUDE.md 확정 사항).
+        /// 그 예산으로는 렌더러의 <c>LateUpdate</c> 배치가 끝났다는 보장이 없고, 프로덕션은 멀쩡한데
+        /// 테스트만 간헐적으로 빨개진다 — 이 파일이 정확히 그 형태로 거짓 빨강을 냈다.</para></summary>
+        private static IEnumerator SettleAsync(float seconds)
         {
-            machine.ChangeState(StickmanStateId.Ragdoll);
-            yield return null;
-            machine.ChangeState(StickmanStateId.Attack);
-            yield return null;
+            float deadline = Time.realtimeSinceStartup + seconds;
+            do { yield return null; } while (Time.realtimeSinceStartup < deadline);
         }
 
-        /// <summary>글자 블록(회전/팝인 스케일을 먹는 컨테이너) RectTransform.</summary>
+        /// <summary>상태 전이 하나가 렌더러까지 도달하는 데 주는 벽시계 예산(초).
+        /// 60fps에서 약 6프레임, 2,000fps에서 약 200프레임 — <b>어느 쪽에서도</b> 상태 Enter와
+        /// 뒤따르는 LateUpdate 배치가 끝난다. 프로덕션 상수의 사본이 아니라 <b>테스트 예산</b>이다.</summary>
+        private const float RespeakSettleSeconds = 0.1f;
+
+        /// <summary>같은 대사를 <b>다시 띄운다</b>. 기울기 크기는 대사가 확정되는 순간 한 번 잡히므로
+        /// (<c>DialogueBubbleRenderer</c>의 <c>_tiltMagnitudeDegrees</c>), 설정을 바꾼 뒤에는 반드시
+        /// 새 대사를 띄워야 새 값이 반영된다.
+        ///
+        /// <para>★★ 2026-09-02 <c>test-engineer</c> — <b>예산을 늘리는 것으로는 절대 통과할 수 없었다</b>
+        /// (<c>debugger</c> 반사실 B). 옛 구현은 Ragdoll을 거쳐 Attack으로 돌아오기만 했는데, 그때
+        /// 앞선 말풍선이 <b>아직 떠 있으면</b> 새 인텐트는 같은 글자·같은 상태·같은 종류라
+        /// <c>DialogueBudget.CanReplaceVisible</c>의 <c>if (replacesItself) return false;</c>에
+        /// <b>영구히</b> 막힌다. 시간 문제가 아니라 <b>가드 문제</b>다 — 그래서 예산을 키우지 않고
+        /// <b>가드가 볼 것을 없앤다</b>: 이미 있는 공개 API <see cref="DialogueBubbleRenderer.HideImmediate"/>로
+        /// 지금 떠 있는 것을 지우고 나서 다시 들어간다. 그러면 교체 경로 자체를 타지 않는다.</para>
+        ///
+        /// <para><b>죽은 프로브를 걷어냈다</b>: 옛 코드는 글자 블록의 인스턴스 ID가 바뀌었는지로
+        /// "새 대사가 떴다"를 판정했다. 그런데 그 블록은 <c>BuildUi()</c>에서 <b>Awake에 한 번</b>
+        /// 만들어지고 이후 재사용되므로 ID는 <b>영원히 그대로</b>다 — 그 프로브는 항상 false였고,
+        /// 이번에 우연히 옳은 방향을 가리켰을 뿐 <b>측정이 아니라 운</b>이었다. 대신 실제로 변하는
+        /// 것을 본다: 지웠으면 <c>IsBubbleVisible</c>이 false, 다시 들어갔으면 true.</para></summary>
+        private IEnumerator RespeakAsync(StickmanStateMachine machine, DialogueBubbleRenderer renderer)
+        {
+            // 같은 상태로 다시 들어가려면 일단 나가야 한다(Ragdoll은 SilentState — 대사를 만들지 않는다).
+            machine.ChangeState(StickmanStateId.Ragdoll);
+
+            // ★ 가드를 우회하는 것이 아니라 <b>가드의 전제를 없앤다</b> — 떠 있는 것이 없으면
+            //   replacesItself 판정 자체가 성립하지 않는다.
+            renderer.HideImmediate();
+            Assert.IsFalse(renderer.IsBubbleVisible,
+                "HideImmediate() 뒤에도 말풍선이 떠 있다고 보고한다 — 이 상태로 다시 말하면 " +
+                "CanReplaceVisible의 replacesItself 가드에 막혀 새 대사가 뜨지 않고, " +
+                "뒤따르는 각도 단언은 <b>옛 각도</b>를 재게 된다.");
+
+            machine.ChangeState(StickmanStateId.Attack);
+            yield return SettleAsync(RespeakSettleSeconds);
+
+            // ★ 살아 있는 프로브(위 문단). 이 두 줄이 "새 대사가 실제로 떴다"의 유일한 근거다.
+            Assert.IsTrue(renderer.IsBubbleVisible,
+                $"다시 말하기 뒤 {RespeakSettleSeconds:F2}초(벽시계)를 기다렸는데도 말풍선이 뜨지 않았다 — " +
+                "각도를 다시 계산할 계기 자체가 없었다는 뜻이다.");
+            RectTransform after = VisibleTextPanel(renderer);
+
+            Debug.Log($"[대사배치] 다시 말하기 — 즉시 제거 -> 재진입 성공(보이는 글자=\"{renderer.VisibleText}\"), " +
+                $"렌더러 보고 기울기 {renderer.LastTextTiltDegrees:F4}도, " +
+                $"실제 적용 {SignedZDegrees(after):F4}도, 대기 {RespeakSettleSeconds:F2}초(벽시계).");
+        }
+
+        /// <summary>글자 블록(회전/팝인 스케일을 먹는 컨테이너) RectTransform. <b>없으면 null</b>.
+        /// <para>비활성 포함으로 찾는다 — 말풍선이 숨겨진 상태에서도 <b>존재 여부</b>는 물을 수 있어야
+        /// 하기 때문이다. 다만 <b>회전각을 읽으려면</b> 반드시 <see cref="VisibleTextPanel"/>을 쓴다.</para></summary>
         private RectTransform FindTextPanel(DialogueBubbleRenderer renderer)
         {
             Canvas canvas = FindRendererCanvas(renderer);
             if (canvas == null) return null;
             Text label = canvas.GetComponentInChildren<Text>(true);
             return label != null ? label.transform.parent as RectTransform : null;
+        }
+
+        /// <summary>
+        /// ★★ 2026-09-02 <c>test-engineer</c> — <b>지금 화면에 떠 있는</b> 글자 블록만 돌려준다.
+        ///
+        /// <para><b>왜 필요한가.</b> <see cref="FindTextPanel"/>은 <c>GetComponentInChildren&lt;Text&gt;(true)</c>
+        /// 로 <b>비활성까지</b> 훑는다. 그런데 <c>DialogueBubbleRenderer.HideImmediateInternal</c>은
+        /// 캔버스를 끄기만 하고 <c>_panel.localRotation</c>을 <b>되돌리지 않는다</b> — 즉 말풍선이
+        /// 사라진 뒤에도 <b>낡은 회전각이 그대로 읽힌다</b>. 그 값으로 "기울기가 0이 됐다/8도가 됐다"를
+        /// 판정하면 <b>화면에 아무것도 없는 상태를 재고</b> 초록/빨강을 내게 된다.</para>
+        ///
+        /// <para>그래서 회전각을 읽는 모든 자리는 이 함수를 거친다. 두 가지를 <b>같이</b> 요구한다:
+        /// 렌더러가 "떠 있다"고 보고할 것(<c>IsBubbleVisible</c>)과 캔버스 개체가 <b>실제로 활성</b>일 것.
+        /// 둘 중 하나만 보면 "플래그는 켜졌는데 화면은 꺼짐"(또는 그 반대)을 통과시킨다.</para>
+        /// </summary>
+        private RectTransform VisibleTextPanel(DialogueBubbleRenderer renderer)
+        {
+            Assert.IsTrue(renderer.IsBubbleVisible,
+                "말풍선이 떠 있지 않은데 글자 블록의 회전각을 읽으려 한다 — HideImmediateInternal은 " +
+                "회전을 되돌리지 않으므로 그 값은 <b>사라지기 직전의 잔상</b>이다(측정이 아니다).");
+
+            Canvas canvas = FindRendererCanvas(renderer);
+            Assert.IsNotNull(canvas, "말풍선 캔버스를 찾지 못했다 — 회전각을 읽을 대상이 없다.");
+            Assert.IsTrue(canvas.gameObject.activeInHierarchy,
+                "렌더러는 말풍선이 떠 있다고 보고하는데 캔버스 개체는 꺼져 있다 — 화면에는 아무것도 " +
+                "없다. 이 상태의 회전각은 잔상이다.");
+
+            RectTransform panel = FindTextPanel(renderer);
+            Assert.IsNotNull(panel, "글자 블록(BubblePanel)을 찾지 못했다.");
+            return panel;
         }
 
         /// <summary>Z축 회전을 -180~+180 범위의 **부호 있는** 각도로 읽는다

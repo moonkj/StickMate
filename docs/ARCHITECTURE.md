@@ -1036,7 +1036,7 @@ macOS에서 쓴 것과 **같은 방법**(누적 CPU 시간 델타 + OFF/ON 교�
 `GPU=...`). 즉 **면적을 메모리로 역추정할 이유가 애초에 없다.** 파일 하나면 끝난다:
 
 ```
-%USERPROFILE%\AppData\LocalLow\DefaultCompany\StickMate\Player.log
+%USERPROFILE%\AppData\LocalLow\Vibelab\StickMate\Player.log
 ```
 
 이 한 파일이 동시에 답하는 것: ① 우리가 정말 4K 전체를 합성 중인가 ② `TickFullScreenBounds`가
@@ -1659,7 +1659,7 @@ set STICKMATE_FORCE_TIER=Away
 set STICKMATE_FORCE_TIER=Calm
 ```
 
-**적용 확인(선택)**: `%USERPROFILE%\AppData\LocalLow\DefaultCompany\StickMate\Player.log` 에
+**적용 확인(선택)**: `%USERPROFILE%\AppData\LocalLow\Vibelab\StickMate\Player.log` 에
 `★ STICKMATE_FORCE_TIER=Away 강제 지정됨(계측용)` 이 있으면 걸린 것이다.
 (가능하면 이 파일도 함께 보내주면 **MSAA 실제 배수**와 **등급 전환 이력**까지 추측 없이 확정된다.)
 

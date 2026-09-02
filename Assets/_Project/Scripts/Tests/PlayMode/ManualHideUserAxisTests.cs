@@ -62,8 +62,6 @@ namespace StickMate.Tests.PlayMode
         private CharacterInfoWindow _info;
 
         private float _savedPollInterval;
-        private string _backup;
-        private bool _hadFile;
 
         private static readonly FieldInfo FullscreenAxisField =
             typeof(StickmanAgent).GetField("_fullscreenAutoHide", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -73,20 +71,41 @@ namespace StickMate.Tests.PlayMode
 
         // ==================== 준비 / 정리 ====================
 
+        /// <summary>
+        /// ★★ 2026-09-02 <c>test-engineer</c> — 여기 있던 <b>백업/복원</b>은 <b>오염 보존기</b>였다.
+        /// 걷어냈다. 되살리지 마라. (<c>FullscreenPanelRetreatTests</c>가 같은 날 먼저 걷어낸 것과
+        /// <b>같은 코드</b>가 8개 픽스처에 남아 있었다.)
+        ///
+        /// <para><b>원래 근거가 사라졌다.</b> 옛 코드는 <c>OneTimeSetUp</c>에서 저장 파일을 통째로 읽어
+        /// 두고 <c>OneTimeTearDown</c>에서 <b>그대로 다시 썼다</b>. 정당화는 <i>"저장 파일이 실제 앱의
+        /// 것과 같은 경로"</i>였는데, 그 전제는 2026-08-31에 <c>GlobalPlayModeTestIsolation</c>이
+        /// 경로를 임시 폴더로 옮기면서 <b>거짓이 됐다</b>.</para>
+        ///
+        /// <para><b>그리고 뜻이 정반대로 뒤집혔다.</b> 격리된 폴더에서 <c>_hadFile == true</c>는
+        /// "개발자 파일이 있다"가 아니라 <b>"앞선 픽스처가 남긴 오염이 있다"</b>는 뜻이다. 옛 TearDown은
+        /// 그 오염을 <b>다시 써서 되살렸고</b>, 같은 코드가 여러 픽스처에 있었으므로 오염이 스위트
+        /// 전체를 타고 <b>세탁</b>됐다 — 어떤 정리도 그 다음 픽스처의 복원 한 줄에 무효화됐다.
+        /// 2026-09-02 실측이 그 결과다: <c>c1-play</c>가 씬 로드 430회 중 "없음 161 → 불러옴 278"로
+        /// 도중에 뒤집혔고 <c>스틱메이트 Lv.127</c>이 로그에 505회 찍혔다.</para>
+        ///
+        /// <para><b>대신 가드를 남긴다.</b> 격리가 꺼진 채로 이 픽스처가 돌면 씬 로드가 개발자의 실제
+        /// 저장 파일을 읽고 쓴다. 그때는 조용히 진행하지 않고 <b>즉시 실패</b>한다.</para>
+        /// </summary>
         [OneTimeSetUp]
-        public void BackupRealSaveFile()
+        public void RequireIsolatedSaveFileAndStartClean()
         {
-            string path = CharacterSaveStore.FilePath;
-            _hadFile = File.Exists(path);
-            _backup = _hadFile ? File.ReadAllText(path) : null;
+            Assert.IsTrue(CharacterSaveStore.IsRedirectedForTesting,
+                "저장 경로가 격리되지 않았습니다 — GlobalPlayModeTestIsolation이 돌지 않았습니다. " +
+                "이대로 진행하면 개발자의 실제 저장 파일을 읽고 씁니다(절대 불변 원칙 3).");
+            GlobalPlayModeTestIsolation.PurgeIsolatedDirectories();
         }
 
+        /// <summary>격리 폴더를 다음 픽스처에 <b>넘기지 않는다</b> — 이 픽스처가 만든 저장 파일을 지운다.
+        /// 옛 <c>RestoreRealSaveFile</c>이 하던 "다시 쓰기"의 정확한 반대다(위 문단 참고).</summary>
         [OneTimeTearDown]
-        public void RestoreRealSaveFile()
+        public void ClearIsolatedSaveFile()
         {
-            string path = CharacterSaveStore.FilePath;
-            if (_hadFile) File.WriteAllText(path, _backup);
-            else if (File.Exists(path)) File.Delete(path);
+            GlobalPlayModeTestIsolation.PurgeIsolatedDirectories();
         }
 
         [UnityTearDown]
@@ -185,13 +204,31 @@ namespace StickMate.Tests.PlayMode
             yield return LoadScene();
 
             Assert.IsNotNull(_settings, $"{LogPrefix} 씬에 SettingsWindow가 없습니다.");
+            // ★★ 2026-09-02 — 여기 있던 `_info.Open("테스트 준비")` 한 줄을 걷어냈다. 되살리지 마라.
+            //
+            // 그 줄은 **프로덕션 배타 규칙과 정면으로 모순**이었다. CharacterInfoWindow와
+            // SettingsWindow는 둘 다 IExclusiveSurface이고, 양쪽 Open()이
+            // ExclusiveSurfaces.CloseAllExcept(this, reason)를 부른다 — 즉 **정보창을 여는 순간
+            // 설정창은 반드시 닫힌다**. 그런데 바로 다음 줄이 `_settings.IsOpen`을 요구했다.
+            // 이 테스트는 프로덕션 버그를 잡은 것이 아니라 **태어날 때부터 빨갰다**.
+            // (그 배타 동작은 의도된 것이고 Tests/PlayMode/InfoWindowExclusiveModalTests가 잠근다.)
+            //
+            // 그래서 배타 표면은 **하나만** 연다. 이 검사에 필요한 것은 "열린 창 + 켜진 차단막이
+            // 최소 하나 있는 상태"이고 설정창 하나로 충분하다(아래 CountEnabledClickBlockers가
+            // 개별 표면을 손으로 적지 않고 전수로 훑으므로, 표면을 더 띄워야 할 이유도 없다).
             _settings.Open("테스트 준비");
-            if (_info != null && !_info.IsOpen) _info.Open("테스트 준비");
             yield return Wait(SettleSeconds);
 
             Assert.IsTrue(_settings.IsOpen && _settings.IsCanvasActive && _settings.IsClickBlockerEnabled,
                 $"{LogPrefix} 준비 단계에서 설정창이 열리지 않았습니다 — 이 단언이 없으면 아래 " +
                 "'전부 걷혔다'가 '애초에 아무것도 안 떠 있었다'로도 통과합니다.");
+
+            // ★ 같은 실수가 다시 들어오면 여기서 먼저 잡는다 — 정보창이 열려 있으면 위 단언은
+            //   배타 규칙 때문에 반드시 깨진다. 그때 "설정창이 안 열렸다"가 아니라 **진짜 이유**를 말한다.
+            Assert.IsTrue(_info == null || !_info.IsOpen,
+                $"{LogPrefix} 준비 단계에서 정보창이 열려 있습니다 — 배타 규칙(ExclusiveSurfaces)상 " +
+                "그 순간 설정창은 닫힙니다. 배타 표면을 둘 이상 띄우는 준비는 프로덕션에서 " +
+                "재현 불가능한 상태이며, 그렇게 짜면 이 테스트는 태어날 때부터 빨갛습니다.");
 
             int before = CountEnabledClickBlockers(out string beforeNames);
             Assert.GreaterOrEqual(before, 1,

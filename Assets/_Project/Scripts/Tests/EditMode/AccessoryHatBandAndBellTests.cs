@@ -43,7 +43,22 @@ namespace StickMate.Tests.EditMode
         /// <para>중절모는 관 높이가 0.72R, 밀짚모자는 0.54R뿐이라 "위로 1.5획 올린다"는
         /// <b>산술적으로 불가능</b>하다(위아래로 1.5획씩 두려면 관이 1.03R이어야 한다).
         /// 그래서 규칙 4가 허용하는 나머지 안전 구간인 <b>겹침</b>을 택했고, 띠는 좌표를 새로 적지 않고
-        /// 관 밑변의 두 끝점을 그대로 받는다 — 어긋날 자리 자체가 없다(베레모와 같은 해법).</para></summary>
+        /// 관 밑변의 두 끝점을 그대로 받는다 — 어긋날 자리 자체가 없다(베레모와 같은 해법).</para>
+        ///
+        /// <para>★★ <b>2026-09-03 — 재던 것이 하나에서 둘로 갈렸다</b>(스펙 14-1). 띠가
+        /// <b>낱선에서 닫힌 채움 띠</b>가 되면서 <see cref="AccessorySilhouetteMetrics.MaxGapToShape"/>가
+        /// 돌려주는 값의 <b>뜻이 바뀌었다</b>: 예전에는 "선 하나가 관에서 얼마나 떴는가"였는데
+        /// 이제는 <b>"띠의 가장 먼 부분(= 윗변)이 얼마나 떨어졌는가" = 띠 두께</b>다.
+        /// 아랫변은 여전히 관 밑변 그 자체(간격 0)인데, <b>최댓값 하나로는 그 사실이 안 보인다</b> —
+        /// 아랫변이 통째로 떠도 윗변이 멀면 옛 단언은 통과한다. 그래서 둘로 나눠 잰다.</para>
+        /// <list type="number">
+        ///   <item><b>이음매</b>(아랫변만) — 간격이 0이어야 한다. 이것이 "정확히 겹친다"의 실체다.</item>
+        ///   <item><b>두께</b>(도형 전체) — 자기 <b>윤곽선 펜</b> 1.5개 이상이어야 한다.</item>
+        /// </list>
+        /// <para>2번의 자는 <see cref="AccessoryFilledBandRuler.PenInR"/>가 <c>Filled</c> 하나로 고른다.
+        /// 낱선 자(2.00pt)로 재면 0.46R이 1.34획으로 읽혀 금지 구간으로 <b>오판</b>되는데,
+        /// 그 하한의 정의(<see cref="StickConfig.MinStrokeScreenPoints"/>)가 <i>"그 자리의 유일한
+        /// 잉크인 획"</i>이라 <b>채움의 경계선에는 적용되지 않는다</b>고 프로덕션 문서가 직접 못 박는다.</para></summary>
         [TestCase(AccessoryShapeBuilder.HeadFedora, "FedoraBand", "FedoraCrown")]
         [TestCase(AccessoryShapeBuilder.HeadStraw, "StrawBand", "StrawCrown")]
         public void 모자_띠는_자기_관_밑변과_정확히_겹친다(int item, string bandName, string crownName)
@@ -52,13 +67,38 @@ namespace StickMate.Tests.EditMode
             List<AccessoryShapeBuilder.Shape> hat = AccessorySilhouetteMetrics.Build(rig, EquipmentSlot.Head, item);
             AccessoryShapeBuilder.Shape band = AccessorySilhouetteMetrics.Find(hat, bandName);
             AccessoryShapeBuilder.Shape crown = AccessorySilhouetteMetrics.Find(hat, crownName);
+            string label = ItemCatalog.Item(EquipmentSlot.Head, item).DisplayName;
 
-            float gap = AccessorySilhouetteMetrics.MaxGapToShape(rig, band.Points, crown);
-            Assert.That(gap, Is.LessThan(1e-4f).Or.GreaterThanOrEqualTo(W * 1.5f),
-                $"{ItemCatalog.Item(EquipmentSlot.Head, item).DisplayName}의 띠가 관 밑변에서 " +
-                $"{gap / W:F2}획 떨어져 있습니다(옛 값 중절모 0.41 / 밀짚모자 0.47획). " +
-                "0 < 간격 < 1획은 규칙 4가 '최악'이라고 못박은 구간입니다 — 획을 얹으면 두 선의 잉크가 " +
-                "겹쳐 절반은 주색 절반은 보조색인 굵은 막대 하나로 뭉갭니다.");
+            // ★ 「채운 도형인가」를 먼저 코드로 확인한다 — 이 한 줄이 아래 자 선택의 근거 전부다.
+            //   낱선으로 되돌아가면 여기서 먼저 멈춘다(조용한 초록이 되지 않는다).
+            AccessoryFilledBandRuler.AssertRaisedBandForm(rig, band, $"{label} 띠");
+
+            // (1) 이음매 — 아랫변만 잘라 재면 "겹쳤는가"가 그대로 나온다.
+            //     아랫변이 관 밑변 그 자체라는 것이 이 도형의 규약이고, 그 아랫변이 점 배열의
+            //     앞 절반이라는 것은 위 AssertRaisedBandForm이 방금 잠근 사실이다.
+            float seamGap = AccessorySilhouetteMetrics.MaxGapToShape(
+                rig, AccessoryFilledBandRuler.BottomEdge(band), crown);
+            Assert.Less(seamGap, AccessoryFilledBandRuler.CoincidenceInR,
+                $"{label}의 띠 <b>아랫변</b>이 관 밑변에서 {seamGap / W:F2}획(낱선 획 기준) 떠 있습니다 " +
+                "(옛 값 중절모 0.41 / 밀짚모자 0.47획). 아랫변은 관 밑변의 두 끝점을 <b>그대로</b> " +
+                "받아야 합니다 — 좌표를 새로 적는 순간 어긋날 자리가 생기고, 그 어긋남은 " +
+                "'띠 두께'에 묻혀 최댓값 검사로는 보이지 않습니다.");
+
+            // (2) 두께 — 자기 윤곽선 펜으로 잰다.
+            float pen = AccessoryFilledBandRuler.PenInR(band);
+            Assert.AreEqual(AccessoryFilledBandRuler.FillOutlinePenInR, pen, 1e-6f,
+                $"{label}의 띠에 낱선 자가 배정됐습니다 — 위 형태 검사가 채움을 확인했는데도 " +
+                "자가 안 따라왔다면 AccessoryFilledBandRuler.PenInR의 분기가 깨진 것입니다.");
+
+            float thickness = AccessorySilhouetteMetrics.MaxGapToShape(rig, band.Points, crown);
+            Assert.GreaterOrEqual(thickness, pen * AccessoryFilledBandRuler.SeparationStrokes,
+                $"{label}의 띠 두께가 {thickness / pen:F2}획(윤곽선 펜 {pen:F5}R 기준)뿐입니다. " +
+                $"1.5획({pen * AccessoryFilledBandRuler.SeparationStrokes:F4}R) 미만이면 띠의 윗변과 " +
+                "관 밑변이 각자의 잉크로 맞붙어, 화면에서 '선을 두 번 그린 실수'로 읽힙니다(규칙 4).");
+
+            Debug.Log($"{AccessoryFilledBandRuler.LogPrefix} {label} 띠 — 이음매 {seamGap:E2}R(겹침), " +
+                $"두께 {thickness:F4}R = {thickness / pen:F2}획(윤곽선 펜) / " +
+                $"{thickness / W:F2}획(낱선 획, <b>이 자로 재면 오판</b>).");
         }
 
         /// <summary>띠는 <b>보조색 그대로</b>여야 한다 — 겹치게 만들면서 톤까지 바꾸면 모자에서

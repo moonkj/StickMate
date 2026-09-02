@@ -405,7 +405,10 @@ namespace StickMate.Interaction
 
         /// <summary>
         /// ScreenSpaceOverlay 캔버스에서는 RectTransform의 월드 좌표가 곧 스크린 픽셀 좌표다
-        /// (AppControlDirector.HitTestMenuRow / TodoPostItWidget과 같은 전제).
+        /// (TodoPostItWidget.ContainsScreenPoint와 같은 전제).
+        /// <para>★ 2026-09-03 정정 — 여기 함께 적혀 있던 <c>AppControlDirector.HitTestMenuRow</c>는
+        /// <b>존재하지 않는다.</b> 우클릭 제어 메뉴 UI가 통째로 삭제되면서 같이 없어졌다
+        /// (docs/UX_FLOW.md 36-13 #6). 전제를 확인하러 그 이름을 찾아가면 빈손으로 돌아온다.</para>
         ///
         /// ★ 2026-08-30(R2 M3): <b>마스크에 잘린 자리는 눌리지 않는다.</b> 세로가 짧은 화면에서
         /// <see cref="ClampPanelToScreen"/>이 패널을 줄이면 본문 아래쪽([착용] 버튼 포함)이

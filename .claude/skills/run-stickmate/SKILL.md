@@ -104,7 +104,7 @@ $SK/driver.sh stop
 ## 로그 읽기
 
 로그가 이 앱의 진짜 계기판이다. 드라이버가 띄운 인스턴스는 `/tmp/stickmate-run/stickmate.log`,
-사용자 인스턴스는 `~/Library/Logs/DefaultCompany/StickMate/Player.log`.
+사용자 인스턴스는 `~/Library/Logs/Vibelab/StickMate/Player.log`.
 
 ```bash
 grep -E "\[앱제어\]|\[발판리포트\]|\[말풍선\]" /tmp/stickmate-run/stickmate.log | tail -20
@@ -216,7 +216,7 @@ osascript -l JavaScript -e "ObjC.import('AppKit'); \
 
 `doctor` 와 `status` 가 "그 밖의 인스턴스"를 알려준다. 그건 사용자가 실제로 쓰는 것일 수 있다.
 그리고 **모든 인스턴스가 세이브 파일 하나를 공유한다**:
-`~/Library/Application Support/DefaultCompany/StickMate/stickmate_character.json`
+`~/Library/Application Support/Vibelab/StickMate/stickmate_character.json`
 
 즉 `key A`(활쏘기) 같은 걸 쏘면 사용자 캐릭터의 XP/전적이 실제로 올라간다(이번 세션에도
 `[성장] 보너스 +15 XP` 가 찍혔다). `start` 가 매번 `/tmp/stickmate-run/save-backup-*.json` 으로
