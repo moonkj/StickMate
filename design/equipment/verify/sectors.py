@@ -259,3 +259,96 @@ if __name__ == "__main__":
             print("      %-6s 돌출 %d개%-22s r_max %.2fR  볼록결손 %.3f  종횡비 %.2f"
                   % (n, len(pg), " " + ",".join("%d°" % d for d, _, _ in pg),
                      rmax, convex_deficiency(sh), aspect(sh)))
+
+
+# ---------------------------------------------------------------------------
+# ★ 돌출 지수 — 좌우 대칭쌍을 1로 세는 돌출 개수.
+#   안경은 대칭이라 돌출이 언제나 짝수로 잡힌다(선글라스 350°/185°). 그대로 세면 "대칭인가"가
+#   등급으로 새어 들어간다. 대칭쌍은 **한 특징**이므로 1로 센다.
+# ---------------------------------------------------------------------------
+def prong_index(shapes, anchor_y=0.0, mirror_tol_deg=12.0, **kw):
+    pg, rmax = prongs(shapes, anchor_y, **kw)
+    used = [False] * len(pg)
+    idx = 0
+    for i in range(len(pg)):
+        if used[i]: continue
+        used[i] = True; idx += 1
+        m = (180.0 - pg[i][0]) % 360.0            # y축 거울상
+        for j in range(i + 1, len(pg)):
+            if used[j]: continue
+            d = abs(pg[j][0] - m); d = min(d, 360 - d)
+            if d <= mirror_tol_deg: used[j] = True
+    return idx, pg, rmax
+
+
+#: ★ 등급 조형 점수 = 돌출지수 + (볼록결손 >= 0.30) + (그늘선 tone 2 가 있으면 1)
+#   전부 **크기 불변량**이다 — 카드(44px)가 아이템을 경계상자에 맞춰 정규화하므로
+#   "크다/작다"에 기댄 등급 규칙은 카드에서 통째로 사라진다.
+GRADE_DEFICIENCY_BONUS = 0.30
+GRADE_NAMES = {1: "일반", 2: "희귀", 3: "영웅"}
+
+
+def grade_score(shapes, anchor_y=0.0):
+    idx, pg, rmax = prong_index(shapes, anchor_y)
+    cd = convex_deficiency(shapes)
+    shade = 1 if any(s.tone == 2 for s in shapes) else 0
+    sc = idx + (1 if cd >= GRADE_DEFICIENCY_BONUS else 0) + shade
+    return sc, idx, cd, shade, rmax
+
+
+def grade_name(score):
+    return GRADE_NAMES.get(min(score, 4), "전설")
+
+
+# ---------------------------------------------------------------------------
+# ★ 등급 조형 규칙 (5-2) — 세 갈래 중 **가장 높은 것**이 그 아이템의 등급이다.
+#   셋 다 카드 44px에서 셀 수 있는 것만 쓴다(크기 불변량 또는 색 대비).
+#     · 부품 등급   : 도형 수(2/3/4) + 그늘선 유무      — "몇 조각으로 되어 있나"
+#     · 돌출 등급   : 돌출지수                          — "실루엣이 몇 번 튀어나오나"
+#     · 보조색 등급 : 보조색 조각이 실루엣에서 하는 역할 — "결정적 특징이 어디까지 나가나"
+#   크기(도달 반경)는 **쓰지 않는다** — 카드가 경계상자로 정규화하는 순간 사라진다.
+# ---------------------------------------------------------------------------
+TIERS = ["일반", "희귀", "영웅", "전설"]
+
+
+def part_tier(shapes):
+    n = len(shapes)
+    shade = any(s.tone == 2 for s in shapes)
+    if n >= 4 and shade: return 2          # 영웅
+    if n >= 3: return 1                    # 희귀
+    return 0                               # 일반
+
+
+def prong_tier(shapes, anchor_y=0.0):
+    idx, _, _ = prong_index(shapes, anchor_y)
+    return min(3, max(0, idx - 1))
+
+
+def accent_tier(shapes, anchor_y=0.0, table=None, sector=None, clearance=SECTOR_CLEARANCE_R):
+    """보조색 조각이 실루엣에서 하는 역할.
+       0 일반 : 선이거나 실루엣 안쪽에 있다
+       1 희귀 : 실루엣 **경계에 닿는다**(어느 방향에선가 그 아이템의 최대 반경을 보조색이 만든다)
+       3 전설 : **예약 대역의 돌출을 보조색 혼자서** 담당한다"""
+    acc = [s for s in shapes if s.tone == 1]
+    if not acc: return 0
+    a = acc[0]
+    if not a.filled: return 0
+    pa = profile([a], anchor_y); pi = profile(shapes, anchor_y)
+    touches = any(pa[i] > 0 and pa[i] >= pi[i] - 1e-9 for i in range(BINS))
+    if table is not None and sector is not None:
+        env = envelope(table, anchor_y)
+        st, n = sector
+        idx = [(int(st / BIN_DEG) + k) % BINS for k in range(n)]
+        if max(pa[i] for i in idx) - max(env[i] for i in idx) >= clearance: return 3
+    return 1 if touches else 0
+
+
+def item_tier(shapes, anchor_y=0.0, table=None, sector=None):
+    """★ 세 갈래의 **최댓값**. 단 영웅 이상은 **부품 등급이 영웅 이상**이어야 한다.
+    (양성 대조에서 잡았다: 그늘선을 빼도 보조색 축 하나로 전설이 유지돼 강등이 안 됐다.
+     "돌출 하나로 전설"이면 도형 2개짜리 전설이 나온다 — 화면에서 앙상하다.)"""
+    p = part_tier(shapes); g = prong_tier(shapes, anchor_y)
+    a = accent_tier(shapes, anchor_y, table, sector)
+    t = max(p, g, a)
+    if t >= 2 and p < 2: t = 1
+    return t, (p, g, a)

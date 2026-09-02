@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using StickMate.Core;
+using StickMate.Platform;
 using UnityEngine;
 
 /// <summary>
@@ -28,6 +29,13 @@ public sealed class GlobalPlayModeTestIsolation
     [OneTimeSetUp]
     public void RedirectSaveFile()
     {
+        // ★ 2026-09-02 — 작업표시줄 자동 숨김 원복 흔적도 함께 옮긴다. PlayMode는 실제로 씬을
+        // 띄우므로 ReservedBarRevealDirector의 BeforeSceneLoad 훅이 돈다. 그 훅은 기본 경로
+        // (Application.persistentDataPath)의 흔적 파일을 읽고, 상황에 따라 쓴다 — 테스트가
+        // 개발자의 실제 원복 흔적을 건드리면 그 사람의 작업표시줄 복구가 조용히 망가진다.
+        string barDir = ReservedBarRestoreLedger.RedirectToTemporaryDirectoryForTesting("playmode");
+        Debug.Log($"[테스트격리] PlayMode 작업표시줄 원복 흔적 경로를 임시 폴더로 옮겼습니다 — {barDir}");
+
         string dir = CharacterSaveStore.RedirectToTemporaryDirectoryForTesting("playmode");
         Debug.Log($"[테스트격리] PlayMode 저장 경로를 임시 폴더로 옮겼습니다 — {dir} " +
                   $"(개발자 실제 저장 파일은 이번 실행에서 열리지 않습니다). " +
@@ -38,6 +46,7 @@ public sealed class GlobalPlayModeTestIsolation
     public void RestoreSaveFilePath()
     {
         CharacterSaveStore.ResetForTesting();
+        ReservedBarRestoreLedger.ResetForTesting();
         Debug.Log($"[테스트격리] PlayMode 저장 경로를 원래대로 되돌렸습니다 — 리디렉션={CharacterSaveStore.IsRedirectedForTesting}.");
     }
 }

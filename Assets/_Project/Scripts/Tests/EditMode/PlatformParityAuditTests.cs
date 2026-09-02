@@ -286,6 +286,122 @@ namespace StickMate.Tests.EditMode
                 "팝오버/정보창을 열어 하단 막대를 덮는지 본다.");
         }
 
+        // ==================== 작업표시줄/Dock 자동 숨김 강제 해제 (2026-09-02 신설) ====================
+
+        /// <summary>
+        /// ★ 원칙 3의 <b>승인된 예외</b>가 구조 규약을 지키고 있는가.
+        ///
+        /// <para>사용자 지시("실행하면 작업표시줄 숨김처리가 되어 있어도 강제로 보이게 해야함")로
+        /// 2026-09-02에 열린 예외다. 지금은 Windows만 구현하고 macOS는 판단 보류다(바로 아래 항목).
+        /// <b>그 비대칭 자체는 정상</b>이지만, 비대칭이 <b>잘못된 자리</b>에 생기면 나중에 macOS를
+        /// 구현할 때 규칙을 통째로 다시 써야 한다 — 이 저장소가 <c>FullscreenSuspendPolicy</c>에서
+        /// 정확히 그렇게 당했다.</para>
+        ///
+        /// <para>그래서 묻는 것은 "양쪽에 다 있는가"가 아니라 <b>"한쪽에만 있어도 되는 것만
+        /// 한쪽에 있는가"</b>다: 판정은 중립에, 사실 조회만 Windows에.</para>
+        /// </summary>
+        [Test]
+        public void 작업표시줄_자동숨김_해제는_판정이_중립이고_사실조회만_플랫폼에_있다()
+        {
+            // ---- (1) 판정과 계약과 흔적 장치는 전부 중립 위치에 ----
+            string policy = Path.Combine(PlatformRoot, "ReservedBarRevealPolicy.cs");
+            string contract = Path.Combine(PlatformRoot, "IReservedBarAutoHideControl.cs");
+            string ledger = Path.Combine(PlatformRoot, "ReservedBarRestoreLedger.cs");
+            string director = Path.Combine(PlatformRoot, "ReservedBarRevealDirector.cs");
+
+            foreach (string required in new[] { policy, contract, ledger, director })
+            {
+                Assert.IsTrue(File.Exists(required),
+                    $"{Path.GetFileName(required)}가 Platform/ 중립 위치에 없습니다 — 자동 숨김 해제의 " +
+                    "판정/계약/원복 장치가 플랫폼 폴더로 들어가면 macOS는 그것을 물리적으로 " +
+                    "재사용할 수 없고, 그 라운드는 규칙을 처음부터 다시 씁니다(FullscreenSuspendPolicy 사고).");
+            }
+
+            string policySrc = StripLineComments(ReadSource(policy));
+            StringAssert.DoesNotContain("UNITY_STANDALONE_", policySrc,
+                "판정 규칙에 플랫폼 분기가 들어왔습니다 — 이 파일은 순수 함수여야 하고, 그래야 " +
+                "Windows가 없는 이 개발 머신의 EditMode가 크래시 복구 규칙을 검증할 수 있습니다.");
+            StringAssert.DoesNotContain("DllImport", policySrc, "판정 규칙이 OS를 직접 부릅니다.");
+
+            // ---- (2) Windows 구현이 **기반 목록에** 계약을 달았는가 ----
+            //     메서드 이름은 nameof로 뽑는다 — 이름이 바뀌면 이 테스트가 컴파일되지 않는다
+            //     (문자열을 베끼면 계약이 바뀐 날 검사만 낡는다).
+            string winControl = Path.Combine(PlatformRoot, "Windows", "WindowsReservedBarAutoHideControl.cs");
+            AssertDeclaresInterface(winControl, "WindowsReservedBarAutoHideControl",
+                nameof(IReservedBarAutoHideControl), nameof(IReservedBarAutoHideControl.TryReadAutoHide));
+            StringAssert.Contains(nameof(IReservedBarAutoHideControl.TrySetAutoHide) + "(",
+                StripLineComments(ReadSource(winControl)),
+                "쓰기 계약 메서드가 없습니다.");
+
+            // ---- (3) 실행부가 그 구현을 실제로 배선하는가 ----
+            //     "구현은 있는데 아무도 안 부른다"가 이 저장소가 반복해 겪은 조용한 실패다.
+            string directorSrc = StripLineComments(ReadSource(director));
+            StringAssert.Contains("new StickMate.Platform.Windows.WindowsReservedBarAutoHideControl()", directorSrc,
+                "실행부가 Windows 구현을 만들지 않습니다 — 파일만 있고 한 번도 실행되지 않는 상태입니다.");
+            StringAssert.Contains("UNITY_STANDALONE_WIN && !UNITY_EDITOR", directorSrc,
+                "에디터 가드가 없습니다 — Windows 개발자가 에디터에서 Play를 누를 때마다 그 사람의 " +
+                "실제 작업표시줄이 바뀝니다.");
+
+            // ---- (4) 쓰기 능력이 읽기 전용 계약으로 새어 들어가지 않았는가 ----
+            //     IReservedBottomBarService 문서는 "이 인터페이스의 구현체는 작업표시줄을 바꾸는 API를
+            //     절대 부르지 않는다"고 못박고 있다. Win32WindowService가 그 계약의 구현체다.
+            StringAssert.DoesNotContain(nameof(IReservedBarAutoHideControl),
+                GetBaseListOrEmpty(WinWindowServicePath, "Win32WindowService"),
+                "읽기 전용 조회 서비스가 쓰기 능력까지 겸했습니다 — IReservedBottomBarService 문서의 " +
+                "'조회만 한다'는 보증이 그 순간 거짓이 되고, 다음 사람이 조회 경로 옆에 쓰기를 " +
+                "하나 더 붙이는 것이 자연스러워집니다.");
+        }
+
+        /// <summary>기반 목록만 뽑아 온다(못 찾으면 빈 문자열). 위 (4)처럼 <b>없어야 하는 것</b>을
+        /// 확인할 때 쓴다 — 이 경우에는 "못 찾음"과 "안 달림"이 같은 결론이라 안전하다.</summary>
+        private static string GetBaseListOrEmpty(string path, string className)
+            => TryGetBaseList(StripLineComments(ReadSource(path)), className, out string list) ? list : string.Empty;
+
+        /// <summary>
+        /// ★ macOS Dock 자동 숨김도 같이 해제할 것인가 — <b>이번 라운드에서 하지 않기로 판단했다.</b>
+        /// 잊히지 않게 러너에 띄워 둔다.
+        /// </summary>
+        [Test]
+        public void 미해결_macOS_Dock_자동숨김을_같이_해제할지_판단되지_않았다()
+        {
+            // macOS 쪽 사실 조회가 생기면(= 이 계약을 구현한 파일이 Platform/MacOS/에 나타나면)
+            // 판단이 끝난 것이므로 자동으로 승격시킨다.
+            foreach (string file in Directory.GetFiles(Path.Combine(PlatformRoot, "MacOS"), "*.cs"))
+            {
+                if (StripLineComments(File.ReadAllText(file)).Contains(nameof(IReservedBarAutoHideControl)))
+                {
+                    Assert.Pass($"macOS 구현이 생겼습니다({Path.GetFileName(file)}) — 이 항목을 정식 검사로 " +
+                        "승격하고, Dock 발판(Core/DockGeometry)과 안전망 전이가 함께 검증됐는지 확인하세요.");
+                }
+            }
+
+            Assert.Ignore("【미해결 · 판정은 끝났고 실행이 보류됐다】 사유 갱신 2026-09-02\n" +
+                "항목: 실행 중 Dock 자동 숨김을 강제 해제할 것인가(Windows 작업표시줄과 같은 처리).\n" +
+                "\n" +
+                "★ 이번 라운드 판단: **Windows만 한다.** 같게 만드는 것이 정답이 아니다.\n" +
+                "  근거 1 — 되돌릴 수 있는 성질이 다르다. Windows는 셸이 제공하는 공개 메시지 하나로 " +
+                "런타임 상태 비트를 바꾸고 같은 호출로 되돌린다(권한 요구 없음, 파일 안 건드림). " +
+                "macOS에는 대응 API가 없다: NSApplication.presentationOptions는 우리 앱이 활성일 때의 " +
+                "우리 표현만 바꿀 뿐 Dock 설정을 못 만진다.\n" +
+                "  근거 2 — macOS의 알려진 경로는 전부 더 침해적이다. " +
+                "(a) defaults write com.apple.dock autohide + Dock 재시작 = **다른 프로세스를 죽였다 " +
+                "살리는 행위**이고, 사용자의 **환경설정 파일**을 실제로 고친다(원칙 3의 훨씬 깊은 " +
+                "위반이며, 프로세스 종료는 이 저장소의 감사가 이미 금지한다). " +
+                "(b) System Events 어펠스크립트 = TCC **자동화 권한 동의 창**이 첫 실행에 뜬다 — " +
+                "처음 쓰는 사용자에게 '이 앱이 시스템을 제어하려 합니다'를 띄우는 대가가 " +
+                "'Dock이 안 숨는다'보다 크다.\n" +
+                "  근거 3 — 크래시 복구의 난도가 다르다. Windows는 비트 하나를 되돌리면 끝이지만, " +
+                "macOS는 **파일을 고쳐 놨을 수 있는 상태**를 복구해야 한다. 원칙 3의 예외를 " +
+                "승인받은 조건이 '실행 중에만'인데, 그 조건을 지킬 수 있는 구조가 macOS에는 아직 없다.\n" +
+                "\n" +
+                "★ 그래서 **코드 갭이 아니라 결정 대기**로 남긴다. 사용자에게 물어야 할 것: " +
+                "'macOS에서는 Dock 자동 숨김을 그대로 두어도 괜찮은가? 원하면 첫 실행에 권한 동의 " +
+                "창이 한 번 뜨는 방식으로 구현할 수 있다.'\n" +
+                "★ 판정이 끝나면 새로 쓸 것은 **사실 조회 한 벌**뿐이다 — 규칙(ReservedBarRevealPolicy) " +
+                "과 원복 장치(ReservedBarRestoreLedger)는 이미 플랫폼 중립으로 서 있다.\n" +
+                "★ 실기 확인 필요(Windows): docs/TASKBAR_REVEAL.md 6절의 목록.");
+        }
+
         private static string ReadSource(string path)
         {
             Assert.IsTrue(File.Exists(path), $"플랫폼 소스를 찾지 못했습니다: {path}");

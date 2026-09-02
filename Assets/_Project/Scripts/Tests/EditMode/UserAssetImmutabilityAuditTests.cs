@@ -197,7 +197,118 @@ namespace StickMate.Tests.EditMode
                 Reason = "다른 스레드의 입력 큐에 우리를 붙이는 API. 포커스/커서 조작 우회의 표준 수단이라 " +
                     "원칙 2/3의 표면적을 크게 넓힌다 — 관찰 전용 앱에는 필요가 없다.",
             },
+
+            // ★★★ 2026-09-02 — 작업표시줄 앱바 메시지. **원칙 3의 승인된 예외가 여기 하나 생겼다.**
+            //
+            // 경위(숨기지 않고 적는다): 사용자 지시 "일단 우리 프로그램을 실행하면 작업표시줄 숨김처리가
+            // 되어 있어도 강제로 보이게 해야함". 리더가 원칙 3과의 충돌을 명시하고 선택지 3개를 제시했고,
+            // 사용자가 "실행 중에만 + 종료 시 원복"을 택했다. CLAUDE.md 원칙 3에 예외 조항이 있고 상세는
+            // docs/TASKBAR_REVEAL.md다.
+            //
+            // ★ 승인은 **한 메시지에만** 내려졌다. 그래서 나머지 앱바 쓰기 메시지를 여기서 함께 잠근다 —
+            //   예외가 하나 열리면 "이왕 앱바를 만지는 김에"가 가장 자연스러운 다음 걸음이고, 그 순간
+            //   원칙 3이 조용히 무너진다. 아래 넷은 예외가 **없다**(현재 코드베이스 0건, 0건 유지가 목적).
+            new ForbiddenPattern
+            {
+                Needle = "ABM_SETPOS",
+                Reason = "작업표시줄/도킹 툴바의 **위치·크기**를 바꾸는 앱바 메시지 — 남의 창을 옮기는 " +
+                    "행위 그 자체다(원칙 3 정면 위반). 승인된 예외는 자동 숨김 비트 하나뿐이다.",
+            },
+            new ForbiddenPattern
+            {
+                Needle = "ABM_NEW",
+                Reason = "우리를 **도킹 앱바로 등록**해 화면 영역을 영구 예약하는 메시지. 다른 모든 앱의 " +
+                    "작업 영역(rcWork)을 줄인다 — 오버레이가 할 일이 아니다(원칙 2 비침해 위반).",
+            },
+            new ForbiddenPattern
+            {
+                Needle = "ABM_REMOVE",
+                Reason = "ABM_NEW의 짝. 등록이 금지이므로 해제도 등장할 이유가 없다 — 이 이름이 " +
+                    "나타났다면 어딘가에서 앱바 등록을 했다는 뜻이다.",
+            },
+            new ForbiddenPattern
+            {
+                Needle = "ABM_SETAUTOHIDEBAR",
+                Reason = "특정 화면 가장자리의 **자동 숨김 앱바 자리를 우리가 차지**하는 메시지. " +
+                    "실제 작업표시줄을 그 자리에서 밀어낼 수 있다 — 이름이 비슷하다고 승인된 " +
+                    "ABM_SETSTATE와 같은 물건이 아니다. 예외 없음.",
+            },
+            new ForbiddenPattern
+            {
+                Needle = "ABM_SETSTATE",
+                Reason = "작업표시줄의 자동 숨김/항상위 **상태를 쓰는** 시스템 전역 설정 변경. " +
+                    "원칙 3의 승인된 예외(2026-09-02, 사용자 확정)이며, 허용되는 자리는 " +
+                    "Platform/Windows/WindowsReservedBarAutoHideControl.cs **한 파일**뿐이다. " +
+                    "그 파일 밖에서 이 이름이 보이면 예외가 번지고 있는 것이다.",
+                ExceptionsByFileName = new Dictionary<string, Func<string, bool>>(StringComparer.Ordinal)
+                {
+                    { TaskbarStateExceptionFileName, IsApprovedTaskbarAutoHideStateUsage },
+                },
+            },
         };
+
+        // ============================================================================
+        // ★ 승인된 예외 1건의 라인 단위 재검증 (2026-09-02)
+        // ============================================================================
+        // 파일명만 보고 통과시키지 않는다. 그러면 같은 파일에 나중에 추가되는 진짜 위반까지
+        // 화이트리스트가 함께 숨겨 준다(이 파일 위쪽 ForbiddenPattern 문서의 설계 의도).
+        // 허용하는 형태는 정확히 둘뿐이다:
+        //   (a) 상수 선언   — private const uint ABM_SETSTATE = ...;
+        //   (b) 그 한 호출 — SHAppBarMessage(ABM_SETSTATE, ref ...);
+        // (a)를 허용하는 이유: Win32 이름을 그대로 쓰지 않고 다른 이름으로 감추면 이 감사가
+        // 물 대상 자체가 사라진다 — 이름을 숨기는 것은 예외를 없애는 것이 아니라 감시를 없애는 것이다.
+
+        private const string TaskbarStateExceptionFileName = "WindowsReservedBarAutoHideControl.cs";
+
+        private static bool IsApprovedTaskbarAutoHideStateUsage(string line)
+        {
+            string t = line.Trim();
+
+            // ★ 접두/접미만 보면 뒤에 무엇이든 이어 붙일 수 있다. 실제로 이 파일의 네거티브 컨트롤이
+            //   "SHAppBarMessage(ABM_SETSTATE, ref evil); Kill();"을 통과시키는 것을 잡아냈다(2026-09-02).
+            //   그래서 **가운데까지** 본다 — 남는 부분이 식별자 하나여야 한다.
+            const string declPrefix = "private const uint ABM_SETSTATE = ";
+            if (t.StartsWith(declPrefix, StringComparison.Ordinal) && t.EndsWith(";", StringComparison.Ordinal))
+            {
+                string value = t.Substring(declPrefix.Length, t.Length - declPrefix.Length - 1);
+                return IsHexOrDecimalLiteral(value);
+            }
+
+            const string callPrefix = "SHAppBarMessage(ABM_SETSTATE, ref ";
+            if (t.StartsWith(callPrefix, StringComparison.Ordinal) && t.EndsWith(");", StringComparison.Ordinal))
+            {
+                string arg = t.Substring(callPrefix.Length, t.Length - callPrefix.Length - 2);
+                return IsIdentifier(arg);
+            }
+
+            return false;
+        }
+
+        /// <summary>식별자 하나인가(문자/숫자/밑줄만, 비어 있지 않음).</summary>
+        private static bool IsIdentifier(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return false;
+            foreach (char c in s)
+            {
+                if (!char.IsLetterOrDigit(c) && c != '_') return false;
+            }
+            return true;
+        }
+
+        /// <summary>16진/10진 리터럴 하나인가. 함수 호출이나 추가 문장이 붙으면 false.</summary>
+        private static bool IsHexOrDecimalLiteral(string s)
+        {
+            s = s.Trim();
+            if (s.Length == 0) return false;
+            if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) s = s.Substring(2);
+            if (s.EndsWith("U", StringComparison.OrdinalIgnoreCase)) s = s.Substring(0, s.Length - 1);
+            if (s.Length == 0) return false;
+            foreach (char c in s)
+            {
+                if (!Uri.IsHexDigit(c)) return false;
+            }
+            return true;
+        }
 
         // ★★ 2026-09-01 — 이 스캔은 이제 **주석을 걷어낸 뒤** 본다(BlankOutCommentLines).
         //
@@ -254,6 +365,60 @@ namespace StickMate.Tests.EditMode
                 "다음 위치에서 금지된 API 호출 패턴이 발견되었습니다 " +
                 "(CLAUDE.md / docs/ARCHITECTURE.md 3절 '유저 자산 불변' 원칙 위반 가능성):\n\n" +
                 string.Join("\n\n", violations));
+        }
+
+        // ============================================================================
+        // 1-a. ★ 승인된 예외 1건이 "죽은 화이트리스트"가 되지 않게 (2026-09-02)
+        // ============================================================================
+        // 이 저장소는 예외가 사라진 뒤에도 화이트리스트만 남아 있던 적이 있다(2026-08-30 SetWindowPos —
+        // 그때는 예외 검증 함수와 이 검사를 함께 지웠다). 화이트리스트가 가리키는 자리가 비면
+        // "예외 0건"과 "감사가 눈이 멀었다"가 구분되지 않는다.
+
+        [Test]
+        public void 승인된_작업표시줄_예외는_정확히_그_한_파일_두_형태로만_존재한다()
+        {
+            string target = null;
+            foreach (string path in CollectScannedSourceFiles())
+            {
+                if (Path.GetFileName(path) == TaskbarStateExceptionFileName) { target = path; break; }
+            }
+
+            Assert.IsNotNull(target,
+                $"화이트리스트가 가리키는 파일({TaskbarStateExceptionFileName})이 없습니다. " +
+                "예외가 정말 사라졌다면 위 ForbiddenPatterns의 ExceptionsByFileName 항목과 " +
+                "IsApprovedTaskbarAutoHideStateUsage를 함께 지우세요 — 그러면 이 이름은 " +
+                "예외 없이 금지되고 원칙 3의 보장이 다시 강해집니다(2026-08-30 SetWindowPos와 같은 처리).");
+
+            string[] lines = BlankOutCommentLines(File.ReadAllLines(target));
+            var hits = new List<string>();
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].Contains("ABM_SETSTATE")) hits.Add($"{i + 1}: {lines[i].Trim()}");
+            }
+
+            Assert.AreEqual(2, hits.Count,
+                "승인된 예외의 등장 횟수가 2(상수 선언 1 + 호출 1)가 아닙니다. 늘었다면 예외가 " +
+                "번지고 있고, 줄었다면 이름이 숨겨져 감사가 물 대상을 잃었습니다.\n" +
+                string.Join("\n", hits));
+
+            foreach (string hit in hits)
+            {
+                Assert.IsTrue(IsApprovedTaskbarAutoHideStateUsage(hit.Substring(hit.IndexOf(':') + 1)),
+                    $"승인된 형태가 아닌 사용입니다 — {hit}");
+            }
+
+            // 네거티브 컨트롤: 검증 함수가 실제로 판정을 가르는가(무조건 true면 위 단언이 공허하다).
+            Assert.IsFalse(IsApprovedTaskbarAutoHideStateUsage("SHAppBarMessage(ABM_SETSTATE, ref evil); Kill();"),
+                "검증 함수가 아무 줄이나 통과시킵니다 — 화이트리스트가 파일 전체를 열어 준 것과 같습니다.");
+            Assert.IsFalse(IsApprovedTaskbarAutoHideStateUsage("int x = ABM_SETSTATE;"),
+                "선언/호출이 아닌 사용까지 통과시킵니다.");
+            Assert.IsFalse(IsApprovedTaskbarAutoHideStateUsage(
+                    "private const uint ABM_SETSTATE = Evil(); DoBad();"),
+                "선언 줄 뒤에 문장을 붙이면 통과합니다 — 화이트리스트가 그 파일에 자유 통행권을 줍니다.");
+            Assert.IsTrue(IsApprovedTaskbarAutoHideStateUsage("                SHAppBarMessage(ABM_SETSTATE, ref data);"),
+                "실제 호출 형태를 통과시키지 못합니다(오탐).");
+            Assert.IsTrue(IsApprovedTaskbarAutoHideStateUsage("        private const uint ABM_SETSTATE = 0x0000000A;"),
+                "실제 선언 형태를 통과시키지 못합니다 — 감사가 자기 예외를 위반으로 잡습니다(미탐이 아니라 오탐).");
         }
 
         // ================= 1-b. 레지스트리 쓰기 금지 (2026-09-01 이관) =================

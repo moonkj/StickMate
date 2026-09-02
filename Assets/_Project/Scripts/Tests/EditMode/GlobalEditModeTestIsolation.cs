@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using StickMate.Core;
+using StickMate.Platform;
 using UnityEngine;
 
 /// <summary>
@@ -25,6 +26,11 @@ public sealed class GlobalEditModeTestIsolation
         // 스위치를 끄는 날 그 회귀를 아무도 못 잡는다. 테스트는 언제나 <b>제품 규칙</b>을 본다.
         EquipmentDebugUnlock.SetTestOverride(false);
 
+        // ★ 2026-09-02 — 작업표시줄 자동 숨김 원복 흔적도 스위트 전체에서 임시 폴더로 옮긴다.
+        // ReservedBarRevealPolicyTests가 테스트마다 다시 옮기지만, 그 앞뒤로 도는 다른 테스트가
+        // 흔적 API를 스치더라도 개발자의 실제 파일이 열리지 않게 바닥을 깔아 둔다.
+        ReservedBarRestoreLedger.RedirectToTemporaryDirectoryForTesting("editmode");
+
         string dir = CharacterSaveStore.RedirectToTemporaryDirectoryForTesting("editmode");
         Debug.Log($"[테스트격리] EditMode 저장 경로를 임시 폴더로 옮겼습니다 — {dir} " +
                   $"(개발자 실제 저장 파일은 이번 실행에서 열리지 않습니다). " +
@@ -36,6 +42,7 @@ public sealed class GlobalEditModeTestIsolation
     {
         EquipmentDebugUnlock.SetTestOverride(null);
         CharacterSaveStore.ResetForTesting();
+        ReservedBarRestoreLedger.ResetForTesting();
         Debug.Log($"[테스트격리] EditMode 저장 경로를 원래대로 되돌렸습니다 — 리디렉션={CharacterSaveStore.IsRedirectedForTesting}.");
     }
 }

@@ -49,3 +49,21 @@ Tools/ContrastProbe/measure_chip.py <캡처> <x> <y> <w> <h> "AFTER 닫기칩"
 ```
 
 기대값(**캡처 전까지는 예측이다**): 면 5.26 : 1 / 글리프 5.59 : 1.
+
+
+---
+
+## 같은 폴더의 다른 계산기 (2026-09-02, ux-designer)
+
+`measure_chip.py`가 **캡처 픽셀**을 재는 것과 달리, 아래 둘은 **선언된 상수·토큰**을 잰다.
+셋 다 `lin/L/CR`이 **같은 함수**이고 **같은 5건으로 교정**한다 — 방법이 갈리면 비교가 성립하지 않는다.
+
+| 스크립트 | 무엇을 재는가 |
+|---|---|
+| `handoff_palette_audit.py` | 핸드오프 「브라스 아카이브」 팔레트를 우리 하한(`MinTextContrast 4.5` / `MinNonTextContrast 3.0` / `ControlFaceContrastTarget 3.60`)으로 전수 측정 |
+| `handoff_layout_audit.py` | 타입 스케일의 DPI 배율 정수성 / 창 크기 클램프 / 화면 점유율 / 리플로우 임계점 / 등급 램프 휘도 단조성 |
+
+산출물: `docs/UX_HANDOFF_REVIEW_BRASS_ARCHIVE.md`
+
+> ⚠ **이 둘은 캡처가 아니라 계산이다.** 최종 판정은 여전히 실기 빌드 캡처 +
+> `measure_chip.py`다(이 저장소의 거짓 초록은 전부 "계산은 맞는데 화면은 다른" 형태였다).
