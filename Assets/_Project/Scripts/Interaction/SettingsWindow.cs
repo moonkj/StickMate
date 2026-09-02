@@ -856,17 +856,22 @@ namespace StickMate.Interaction
             UiChrome.PlaceTopLeft(title.rectTransform, ContentPadX, -(HeaderHeight - 20f) * 0.5f, 320f, 20f);
             title.text = "StickMate 설정";
 
-            Image close = UiChrome.AddSurface(bar, "Close", UiChrome.CardSurfaceMuted, UiChrome.RadiusChip);
+            // ★ 2026-09-02 — 세 표면(정보창/설정창/팝오버)이 <b>같은 세 줄</b>을 쓴다: 면은
+            //   ChromeButtonSurface, 잉크는 InkOnSurface가 고르고, 테두리는 없다. 종전에는 세 표면이
+            //   면 2종 · 잉크 2종 · 테두리 합성 여부 2종으로 갈려 있었고(3-way 분기, 아무도 의도한 적
+            //   없다) 그래서 같은 결함이 세 번 따로 샜다. 근거는 UiChrome "창을 닫는 법" 절.
+            Image close = UiChrome.AddSurface(bar, "Close", UiChrome.ChromeButtonSurface, UiChrome.RadiusChip);
             _closeRect = close.rectTransform;
-            SettingsControls.PlaceTopRight(_closeRect, ContentPadX, -(HeaderHeight - 24f) * 0.5f, 24f, 24f);
-            UiChrome.AddOutline(_closeRect, "Outline", UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurfaceMuted),
-                UiChrome.RadiusChip);
+            // 폭 인자만 24 → 44(WCAG 2.2 SC 2.5.8). 오른쪽 정렬이라 x/y 식은 한 글자도 안 바뀌고
+            // 칩이 왼쪽으로 20pt 자란다. 제목 상자는 x20 w320(=20~340)이라 316pt 여유. 충돌 없음.
+            SettingsControls.PlaceTopRight(_closeRect, ContentPadX, -(HeaderHeight - 24f) * 0.5f, 44f, 24f);
             Text closeLabel = UiChrome.AddText(_closeRect, "Label", UiChrome.FontBody, TextAnchor.MiddleCenter,
-                UiChrome.TextSecondary);
+                UiChrome.InkOnSurface(UiChrome.ChromeButtonSurface, UiChrome.InkRole.Title, enabled: true));
             UiChrome.Stretch(closeLabel.rectTransform);
             closeLabel.text = "✕";
             var closeButton = close.gameObject.AddComponent<Button>();
             closeButton.targetGraphic = close;
+            closeButton.transition = Selectable.Transition.None;   // ColorTint pressed(×0.7843) 함정 — UiChrome 절 참고.
             closeButton.onClick.AddListener(() => { if (TryClaimAction("close")) Close("[✕] 클릭"); });
 
             // ★ 2026-09-02 — 헤더의 닫기 힌트("창 밖을 클릭해도 닫혀요")는 <b>같은 날 걷어냈다</b>.

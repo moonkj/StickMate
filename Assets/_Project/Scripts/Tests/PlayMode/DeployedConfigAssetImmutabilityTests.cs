@@ -174,8 +174,19 @@ namespace StickMate.Tests.PlayMode
         {
             yield return LoadSceneAndFindAgent();
 
-            Assert.IsTrue(_agent.ApplyCharacterScale(1.5f, "누수 확인용"),
-                $"{LogPrefix} 사전 조건: 배율 1.50 적용이 무시됐습니다.");
+            // ★ 이 검사에 필요한 성질은 "배포 기본값과 다른 유효 배율" 하나뿐이다. 값 자체는 상관없다.
+            //   예전에는 1.5f 를 박아 뒀는데, 상한이 1.0 으로 내려온 뒤로 그 값은 조용히 clamp 되고도
+            //   true 를 돌려준다 — 1.5 를 넣었다고 믿으며 실제로는 1.0 을 재는 거짓 통과였다.
+            //   그래서 배포 기본값에서 **더 먼 쪽 끝점**을 고른다. 상한이 어디로 움직여도 성질이 남는다.
+            float probe =
+                Mathf.Abs(StickConfig.MaxCharacterScale - _deployed.characterScale) >=
+                Mathf.Abs(_deployed.characterScale - StickConfig.MinCharacterScale)
+                    ? StickConfig.MaxCharacterScale
+                    : StickConfig.MinCharacterScale;
+
+            Assert.IsTrue(_agent.ApplyCharacterScale(probe, "누수 확인용"),
+                $"{LogPrefix} 사전 조건: 배율 {probe:F2} 적용이 무시됐습니다 " +
+                $"(배포 기본 {_deployed.characterScale:F2}).");
             Assert.IsTrue(_deployed.HasRuntimeCharacterScale, $"{LogPrefix} 런타임 배율이 기록되지 않았습니다.");
 
             yield return LoadSceneAndFindAgent();   // 같은 에셋 인스턴스가 그대로 살아 있는 상태에서 재로드.

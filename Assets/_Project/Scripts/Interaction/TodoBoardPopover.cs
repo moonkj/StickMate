@@ -159,8 +159,15 @@ namespace StickMate.Interaction
             {
                 int index = i;
                 Image chip = UiChrome.AddSurface(Panel, "Tab" + i, UiChrome.CardSurface, UiChrome.RadiusChip);
+                // ★ 2026-09-02 — 여기 있던 <c>Width - Space4 - 22f - ...</c>는 닫기 칩 폭 22를 숫자로
+                //   베낀 식이었다. 칩이 44로 넓어지자 탭 칩과 <b>18pt 겹쳤다</b>(계산: 탭1 212~258 대
+                //   닫기 240~284). 이제 CloseChipLeft에서 파생한다 — 유지되는 것은 <b>닫기 칩과의
+                //   간격 Space1(4pt)</b>이고, 탭 두 개는 칩이 자란 만큼 왼쪽으로 22pt 밀린다
+                //   (@300: 164/212 → 142/190). 제목 <b>상자</b>(16~236)는 전부터 탭 칩 위를 덮고 있었고
+                //   지금도 그렇다 — 제목 글자는 MiddleLeft + Overflow라 "오늘 할일"이 x≈76에서 끝나므로
+                //   글리프는 겹치지 않는다(상자끼리의 겹침은 이번 변경 이전부터 있던 상태다).
                 UiChrome.PlaceTopLeft(chip.rectTransform,
-                    Width - UiChrome.Space4 - 22f - UiChrome.Space1 - (2 - i) * 46f - (1 - i) * 2f,
+                    CloseChipLeft - UiChrome.Space1 - (2 - i) * 46f - (1 - i) * 2f,
                     -UiChrome.Space3, 46f, 22f);
                 UiChrome.AddOutline(chip.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
                 Text label = UiChrome.AddText(chip.rectTransform, "Label", UiChrome.FontCaption,

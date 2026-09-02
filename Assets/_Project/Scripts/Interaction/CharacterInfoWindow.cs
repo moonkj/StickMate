@@ -2572,8 +2572,13 @@ namespace StickMate.Interaction
             rt.offsetMax = Vector2.zero;
             _titleBarRect = rt;   // 드래그 손잡이 — 여기를 잡은 동안만 창이 움직인다.
 
+            // ★ 2026-09-02 — 상자 폭 200 → 180. [닫기]가 24 → 44로 넓어지면서 [설정]이 −68로 밀렸고,
+            //   패널이 최소 폭(MinPanelWidth 320)까지 줄면 [설정]의 왼쪽 끝이 208pt가 된다 — 옛 200폭
+            //   상자(16~216)와 8pt 겹친다. 글자는 MiddleLeft + Overflow라 상자 폭을 줄여도 <b>그림이
+            //   한 픽셀도 바뀌지 않고</b>("내 책상 동료"는 x≈106에서 끝난다), 좁은 화면에서의 상자 겹침만
+            //   사라진다(16~196 대 208 = 12pt 여유 = 옛 값과 같다).
             Text title = Label(barGo.transform, "Title", UiChrome.FontTitle, TextAnchor.MiddleLeft,
-                UiChrome.TextPrimary, 16f, -13f, 200f, 14f, "내 책상 동료", bold: true);
+                UiChrome.TextPrimary, 16f, -13f, 180f, 14f, "내 책상 동료", bold: true);
             title.raycastTarget = false;
 
             Image divider = UiChrome.AddSurface(parent, "TitleDivider", UiChrome.CardBorder, 2);
@@ -2588,20 +2593,31 @@ namespace StickMate.Interaction
 
             // 스펙의 "ESC" 힌트 자리에 [✕]를 둔다 — 이유는 클래스 문서 참고(ESC는 이미 클릭관통
             // 긴급 해제에 묶여 있어서, 창 닫기를 겹치면 보이지 않는 부수효과가 생긴다).
-            Image closeSurface = UiChrome.AddSurface(barGo.transform, "CloseButton", UiChrome.CardSurfaceMuted, UiChrome.RadiusChip);
+            //
+            // ★ 2026-09-02 — 면을 밝혔다. 근거·수치·왜 테두리가 아니라 면인지는 전부
+            //   UiChrome "창을 닫는 법" 절 한 곳에 있다(세 표면 + 아래 [설정]이 같은 세 줄을 쓴다).
+            Image closeSurface = UiChrome.AddSurface(barGo.transform, "CloseButton",
+                UiChrome.ChromeButtonSurface, UiChrome.RadiusChip);
             _closeRect = closeSurface.rectTransform;
             // 오른쪽 끝에 건다(고정 x였다면 좁은 화면에서 패널이 줄 때 [✕]만 창 밖에 남는다).
             // 880 폭에서의 결과 좌표는 예전과 같다(오른쪽에서 16, 위에서 8).
             _closeRect.anchorMin = _closeRect.anchorMax = _closeRect.pivot = new Vector2(1f, 1f);
-            _closeRect.sizeDelta = new Vector2(24f, 24f);
+            // ★ 44×24 — WCAG 2.2 SC 2.5.8 Target Size(Minimum, AA) 24×24를 넘고, [설정]과 같은
+            //   사각형이 된다. 낱말([닫기])로 바꾸는 안은 보류됐지만 칩은 미리 그 크기로 맞춰 둔다.
+            _closeRect.sizeDelta = new Vector2(44f, 24f);
             _closeRect.anchoredPosition = new Vector2(-16f, -8f);
-            UiChrome.AddOutline(_closeRect, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
-            Text closeLabel = UiChrome.AddText(_closeRect, "Label", UiChrome.FontBody, TextAnchor.MiddleCenter, UiChrome.TextTertiary);
+            Text closeLabel = UiChrome.AddText(_closeRect, "Label", UiChrome.FontBody, TextAnchor.MiddleCenter,
+                UiChrome.InkOnSurface(UiChrome.ChromeButtonSurface, UiChrome.InkRole.Title, enabled: true));
             UiChrome.Stretch(closeLabel.rectTransform);
             closeLabel.text = "✕";
 
             var closeButton = closeSurface.gameObject.AddComponent<Button>();
             closeButton.targetGraphic = closeSurface;
+            // ★ ColorTint를 끈다. pressed는 targetGraphic.color에 0.7843을 곱하는데, 밝은 면에서는
+            //   그 곱셈이 대비를 <b>내린다</b>(면 5.26 → 3.47, 글리프 5.59 → 3.68 = MinTextContrast 미달).
+            //   어두운 칩에서는 같은 곱셈이 대비를 올려서 이 함정이 보이지 않았다 — 면을 밝히는 순간
+            //   부호가 뒤집힌다.
+            closeButton.transition = Selectable.Transition.None;
             closeButton.onClick.AddListener(() => { if (TryClaimAction("close")) Close("[✕] 클릭"); });
 
             // ★ 2026-09-01 — 설정창(35-1)의 <b>주 진입점</b>. docs/UX_FLOW.md 36-11이 우클릭 메뉴 폐지에
@@ -2610,23 +2626,28 @@ namespace StickMate.Interaction
             //   있다는 보장이 없고, 없으면 두부(□)가 뜬다. 아이콘을 선으로 그리는 방법도 있지만
             //   24pt 칩 안의 톱니는 결국 읽히지 않는다 — 32-1이 "심볼만 있는 원은 반드시 오독된다"고
             //   적어 둔 그 문제다.
+            //   ★ 2026-09-02 — [설정]도 [닫기]와 <b>같은 면</b>을 쓴다. 리더가 실행 중인 빌드의 픽셀에서
+            //     직접 재니 이 칩의 바탕도 창 바탕과 <b>1.01:1</b>이었다 — 닫기와 <b>같은 결함</b>이다.
+            //     나란히 붙은 두 칩 중 하나만 고치면 그 자리가 새로 어긋난다.
             Image settingsSurface = UiChrome.AddSurface(barGo.transform, "SettingsButton",
-                UiChrome.CardSurfaceMuted, UiChrome.RadiusChip);
+                UiChrome.ChromeButtonSurface, UiChrome.RadiusChip);
             _settingsRect = settingsSurface.rectTransform;
             _settingsRect.anchorMin = _settingsRect.anchorMax = _settingsRect.pivot = new Vector2(1f, 1f);
             _settingsRect.sizeDelta = new Vector2(44f, 24f);
-            _settingsRect.anchoredPosition = new Vector2(-48f, -8f);
-            UiChrome.AddOutline(_settingsRect, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+            // [닫기]가 24 → 44로 자라 왼쪽 끝이 −60이 됐다. 두 칩 사이 8pt를 유지하려면 −68이다.
+            _settingsRect.anchoredPosition = new Vector2(-68f, -8f);
             // 글자 크기는 [✕]와 <b>같은 등급</b>(FontBody 12)이다 — 앱 전체 설정의 주 진입점이 닫기 버튼보다
             // 작게 그려져 있었다(페르소나 M2). 10pt(FontCaption)는 이 디자인 시스템에서 캡션/카운트 전용
             // 최소 등급이라, 그 자리에 있는 것만으로 "부수적인 것"이라고 말한다.
             Text settingsLabel = UiChrome.AddText(_settingsRect, "Label", UiChrome.FontBody,
-                TextAnchor.MiddleCenter, UiChrome.TextSecondary);
+                TextAnchor.MiddleCenter,
+                UiChrome.InkOnSurface(UiChrome.ChromeButtonSurface, UiChrome.InkRole.Title, enabled: true));
             UiChrome.Stretch(settingsLabel.rectTransform);
             settingsLabel.text = "설정";
 
             var settingsButton = settingsSurface.gameObject.AddComponent<Button>();
             settingsButton.targetGraphic = settingsSurface;
+            settingsButton.transition = Selectable.Transition.None;   // [닫기]와 같은 이유(§ColorTint 함정).
             settingsButton.onClick.AddListener(() =>
             {
                 if (TryClaimAction("settings")) OpenSettings("정보창 헤더 [설정]");
@@ -2635,9 +2656,9 @@ namespace StickMate.Interaction
             // ★ 2026-09-02 — 여기 있던 닫기 힌트("창 밖을 클릭해도 닫혀요")를 <b>같은 날 걷어냈다</b>.
             //   같은 라운드에서 바깥 클릭이 더 이상 닫지 않게 됐으므로 그 문장은 거짓이 됐고, 화면이
             //   거짓말을 하느니 아무 말도 안 하는 쪽이 낫다. 닫는 자리는 바로 오른쪽 [✕]다.
-            //   ★ 대체 문구가 필요한지는 UX 소관으로 넘겼다(UiChrome "창을 닫는 법" 절의 실측 참고:
-            //     ✕ 글리프는 5.73:1로 읽히지만 그것을 담은 칩은 창 바탕과 1.01:1이라 <b>버튼으로</b>
-            //     읽히지 않는다 — 이 앱 스스로 정한 비텍스트 하한 3.0:1 미달).
+            //   ★ 2026-09-02 후속 — "칩이 버튼으로 안 읽힌다"(면 1.01:1)는 대체 <b>문구</b>가 아니라
+            //     <b>면</b>으로 고쳤다. 지금 두 칩 모두 UiChrome.ChromeButtonSurface(5.26:1)다.
+            //     근거는 UiChrome "창을 닫는 법" 절.
         }
 
         /// <summary>

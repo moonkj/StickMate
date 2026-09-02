@@ -170,6 +170,24 @@ namespace StickMate.Interaction
         protected abstract Vector2 PanelSizePoints { get; }
         protected abstract string TitleText { get; }
 
+        /// <summary>
+        /// 닫기 칩의 크기(44 × 24pt). ★ <b>이 값을 손으로 베끼지 마라.</b>
+        ///
+        /// <para>실제 사고(2026-09-02): <see cref="TodoBoardPopover"/>의 탭 칩이 옛 폭 <c>22f</c>를
+        /// 식 안에 <b>숫자로 베껴</b> 두고 있었다. 칩이 22 → 44로 넓어지는 순간 탭 칩과 닫기 칩이
+        /// <b>18pt 겹쳤다</b>. 겹침은 조용하다 — 컴파일도 되고 테스트도 안 깨진다.
+        /// 타이틀 줄에 무언가를 놓는 코드는 <see cref="CloseChipLeft"/>에서 시작해서 왼쪽으로 세라.</para>
+        /// <para>24pt는 WCAG 2.2 SC 2.5.8 Target Size(Minimum, AA)의 하한이다. 44는 정보창 [설정]과
+        /// 같은 값이라 낱말([닫기])로 바꾸는 날 좌표를 다시 만지지 않아도 된다.</para>
+        /// </summary>
+        public const float CloseChipWidth = 44f;
+
+        /// <inheritdoc cref="CloseChipWidth"/>
+        public const float CloseChipHeight = 24f;
+
+        /// <summary>타이틀 줄에서 닫기 칩의 <b>왼쪽 끝</b>. 제목 상자도 탭 칩도 전부 여기서 파생한다.</summary>
+        protected float CloseChipLeft => PanelSizePoints.x - UiChrome.Space4 - CloseChipWidth;
+
         /// <summary>내용은 자식이 만든다. <paramref name="content"/>는 여백이 적용된 안쪽 영역이다.</summary>
         protected abstract void BuildContent(RectTransform content);
 
@@ -540,11 +558,12 @@ namespace StickMate.Interaction
         }
 
         /// <summary>같은 클릭을 uGUI와 전역 폴링이 둘 다 처리하지 않게, 버튼 배선은 이 한 곳을 지난다.</summary>
-        protected void Wire(Image surface, string actionKey, System.Action action)
+        protected Button Wire(Image surface, string actionKey, System.Action action)
         {
             var button = surface.gameObject.AddComponent<Button>();
             button.targetGraphic = surface;
             button.onClick.AddListener(() => { if (TryClaimAction(actionKey)) action(); });
+            return button;   // 밝은 면 위의 버튼은 ColorTint를 꺼야 한다(BuildChrome의 닫기 칩 참고).
         }
 
         // ==================== 크롬 만들기 ====================
@@ -588,9 +607,17 @@ namespace StickMate.Interaction
 
             // ★ 2026-09-02 — 닫기 힌트("창 밖을 클릭해도 닫혀요")를 <b>같은 날 걷어냈다</b>. 바깥 클릭이
             //   더 이상 닫지 않으므로 그 문장은 거짓이 됐고, 화면이 거짓말을 하느니 아무 말도 안 하는
-            //   쪽이 낫다(UiChrome "창을 닫는 법" 절). 제목은 힌트가 있기 전과 <b>한 픽셀도 다르지 않은</b>
-            //   폭으로 돌아간다(closeLeft - 16 - 4 = 422 @480).
-            float closeLeft = PanelSizePoints.x - UiChrome.Space4 - 22f;
+            //   쪽이 낫다(UiChrome "창을 닫는 법" 절). 제목은 힌트가 있기 전과 같은 식으로 돌아갔다
+            //   (2026-09-02에 닫기 칩이 22 → 44로 넓어져 @480 기준 값은 422 → 400이 됐다. 식은 그대로).
+            // ★ 2026-09-02 — 닫기 칩이 22×22 → 44×24가 됐다(WCAG 2.2 SC 2.5.8 Target Size 24×24 하한을
+            //   팝오버만 2pt 미달하고 있었다. 정보창·설정창과 같은 사각형으로 맞춘다).
+            //   최소 폭 검산: 집중 모드 244에서 closeLeft = 244−16−44 = 184, titleWidth = 184−4−16 = 164.
+            //   제목 "집중 모드"(FontTitle 14 bold)는 그 안에 들어간다.
+            //   ※ 타이틀 <b>줄 높이</b> 22 → 24는 <b>이번에 넣지 않았다</b> — 그 변경은 Content 높이를
+            //     2pt 줄여서 팝오버 3종의 마지막 행을 자를 수 있고, 리더 지시가 "빌드 캡처로 3종 전부
+            //     확인하지 못하면 적용하지 마라"였다. 칩(높이 24)은 −Space3에서 시작해 아래로 24pt이고
+            //     Content는 −(12+22+8)=−42에서 시작하므로 <b>6pt 여유</b>가 있어 겹치지 않는다.
+            float closeLeft = CloseChipLeft;
             float titleWidth = closeLeft - UiChrome.Space1 - UiChrome.Space4;
 
             Text title = UiChrome.AddText(_panel, "Title", UiChrome.FontTitle, TextAnchor.MiddleLeft,
@@ -599,15 +626,23 @@ namespace StickMate.Interaction
             UiChrome.PlaceTopLeft(title.rectTransform, UiChrome.Space4, -UiChrome.Space3, titleWidth, 22f);
             title.text = TitleText;
 
-            Image close = UiChrome.AddSurface(_panel, "Close", UiChrome.CardSurface, UiChrome.RadiusChip);
-            UiChrome.PlaceTopLeft(close.rectTransform, closeLeft, -UiChrome.Space3, 22f, 22f);
-            UiChrome.AddOutline(close.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+            // 세 표면 공통 세 줄 — 면은 ChromeButtonSurface, 잉크는 InkOnSurface, 테두리는 없다.
+            // (생 CardBorder α0.10 테두리를 지운 부수 효과: 그 화소의 창 알파가 0.91 → 1.00으로
+            //  돌아와 어두운 바탕화면에서 데스크톱이 9% 비치던 것이 사라진다. UiChrome 절 참고.)
+            Image close = UiChrome.AddSurface(_panel, "Close", UiChrome.ChromeButtonSurface, UiChrome.RadiusChip);
+            UiChrome.PlaceTopLeft(close.rectTransform, closeLeft, -UiChrome.Space3,
+                CloseChipWidth, CloseChipHeight);
             Text closeLabel = UiChrome.AddText(close.rectTransform, "Label", UiChrome.FontBody,
-                TextAnchor.MiddleCenter, UiChrome.TextSecondary);
+                TextAnchor.MiddleCenter,
+                UiChrome.InkOnSurface(UiChrome.ChromeButtonSurface, UiChrome.InkRole.Title, enabled: true));
             UiChrome.Stretch(closeLabel.rectTransform);
             closeLabel.text = "✕";
             CloseButtonRect = close.rectTransform;
-            Wire(close, "close", () => Close("[✕] 클릭"));
+            Button closeButton = Wire(close, "close", () => Close("[✕] 클릭"));
+            // ★ ColorTint pressed는 targetGraphic.color에 0.7843을 곱한다. 밝은 면에서는 그 곱셈이
+            //   글리프 대비를 5.59 → 3.68로 <b>내려</b> MinTextContrast 미달을 만든다.
+            //   다른 팝오버 버튼은 어두운 면이라 같은 곱셈이 대비를 올린다 — 그래서 여기만 끈다.
+            closeButton.transition = Selectable.Transition.None;
 
             var contentGo = new GameObject("Content", typeof(RectTransform));
             contentGo.transform.SetParent(_panel, false);

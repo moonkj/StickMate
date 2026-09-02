@@ -404,18 +404,38 @@ namespace StickMate.Interaction
         //   막아도 어차피 6초 뒤 접힌다 — 반응만 굼떠질 뿐 사용자가 얻는 것이 없다.
         //   InfoGearIconWidget.BeginPress의 판단 근거 주석 참고.
         //
-        // ★ 그럼 닫는 법을 화면이 어떻게 말하는가 — <b>[✕] 하나로 버틴다</b>(실측 근거)
-        //   ✕ 글리프 대비: 정보창 5.73:1(TextTertiary on CardSurfaceMuted) /
-        //                  설정창·팝오버 7.93:1(TextSecondary on CardSurface).
-        //                  둘 다 <see cref="MinTextContrast"/> 4.5:1을 넘는다 — <b>글자는 읽힌다</b>.
-        //   ✕ 칩(면/테두리) 대비: 면 1.01~1.09:1, 테두리 1.34~1.47:1 vs 창 바탕(PanelSurface).
-        //                  <see cref="MinNonTextContrast"/> 3.0:1에 <b>한참 못 미친다</b> — 즉 글리프는
-        //                  읽히지만 그것이 <b>누를 수 있는 버튼</b>이라는 신호는 거의 없다.
-        //   ★ 이 갭은 이번 라운드가 만든 것이 아니라 <b>원래 있던 것</b>이고, 종전에는 창 밖 클릭이
-        //     그것을 가려 주고 있었다. 탈출구가 2개에서 1개로 줄었으므로 이제는 가려지지 않는다.
-        //     대체 문구를 넣을지 / 칩을 밝힐지는 <b>UX 소관</b>으로 리더에게 보고했다.
-        //     설정창 푸터만은 문장을 지우지 않고 거짓인 절반만 도려냈다("[✕]를 누르면 닫혀요.") —
-        //     그 줄이 바로 윗줄 "이 창을 여는 방법"과 짝을 이루는 자리이기 때문이다.
+        // ★ 그럼 닫는 법을 화면이 어떻게 말하는가 — <b>칩을 버튼으로 보이게 만들었다</b>(2026-09-02)
+        //
+        //   BEFORE(같은 날 낮까지 — 위 두 줄은 <b>원래 라벨이 틀려 있었다</b>. 값은 맞고 라벨만 어긋났다):
+        //     ✕ 글리프: 정보창 5.73:1(TextTertiary on CardSurfaceMuted) /
+        //               <b>설정창 8.54:1(TextSecondary on CardSurfaceMuted)</b> ← "7.93 on CardSurface"로
+        //               적혀 있었으나 설정창의 면은 CardSurfaceMuted다(SettingsWindow.BuildHeader) /
+        //               팝오버 7.93:1(TextSecondary on CardSurface). 셋 다 4.5:1을 넘어 <b>글자는 읽혔다</b>.
+        //     ✕ 칩 면: <b>1.01~1.09:1</b> / 테두리 1.34~1.47:1 vs 창 바탕 — <see cref="MinNonTextContrast"/>
+        //               3.0:1에 한참 미달. 즉 글리프는 읽히는데 <b>버튼이라는 신호가 없었다</b>.
+        //               리더가 실행 중인 빌드를 캡처해 픽셀에서 직접 재니 <b>1.00:1</b>이었다 — 면이 아예 없었다.
+        //
+        //   AFTER: 세 표면의 닫기 칩과 정보창 [설정] 칩이 전부 <see cref="ChromeButtonSurface"/>(#898B8E,
+        //          창 바탕 대비 <b>5.26:1</b>)를 쓰고, 글자는 <see cref="InkOnSurface"/>가 고른
+        //          <see cref="OnAccentSolid"/>(#0B1016, 면 대비 <b>5.59:1</b>)다. 테두리는 지웠다 —
+        //          면이 그 일을 대신하고, 그 대신 <b>창 알파가 0.91에서 1.00으로 돌아왔다</b>(위 (2) 참고).
+        //          <b>면과 잉크는 언제나 한 쌍으로 잰다</b>: 면만 3.0에 맞추면 그 위의 ✕가 지워진다.
+        //
+        //   ★ 왜 [설정]까지 같이 밝혔나 — 결함이 "면이 없다"이므로 [설정](1.01:1)도 <b>같은 결함</b>이다.
+        //     나란히 붙은 두 칩 중 하나만 고치면 그 자리가 새로 어긋난다(리더 판정 2026-09-02).
+        //     대가: "창에서 가장 밝은 칩이 정확히 하나"라는 서열이 사라진다. 이 팔레트에는 3.0을 넘으면서
+        //     밝은 잉크를 유지하는 <b>중간 밝기 칩이 존재하지 않으므로</b>(면 하한 α0.329 &gt;
+        //     TextSecondary 상한 α0.206, 교집합 공집합) 서열을 밝기로 주려면 둘 중 하나는 반드시
+        //     3.0 미달로 남아야 한다. 결함을 남기는 쪽을 고르지 않았다.
+        //
+        //   ★ 글리프 <c>✕</c>(U+2715)를 <b>낱말 [닫기]로 바꾸는 안은 보류됐다</b>(리더 판정, macOS 한정).
+        //     근거는 "LegacyRuntime.ttf 폴백에 U+2715가 없으면 두부(□)"였는데, 리더가 실제 캡처에서
+        //     <b>정상 글리프</b>임을 확인했다. <b>Windows(Segoe UI / Malgun Gothic)는 여전히 미확인</b>이다 —
+        //     그쪽에서 두부가 뜨면 낱말 칩이 답이고, 칩은 이미 44×24라 낱말이 그대로 들어간다.
+        //
+        //   ★ 설정창 푸터 문장("[✕]를 누르면 닫혀요.")은 <b>그대로 둔다</b> — 낱말 교체를 보류했으므로
+        //     화면과 어긋나지 않는다. 낱말을 바꾸는 날 이 문장과 SettingsEscapeHatchTests의 단언을
+        //     <b>같은 커밋에서</b> 함께 바꿔야 한다.
         //
         // ★ "Esc는 안 됩니다"는 <b>적지 않는다</b>. 안 되는 키를 화면에 적으면 사용자는 그 키를
         //   시도한다 — 문장을 읽고 나서. 되는 것만 적는다(SettingsWindow.BuildFooter의 선례).
@@ -1035,6 +1055,136 @@ namespace StickMate.Interaction
         public const float MinNonTextContrast = 3.0f;
 
         /// <summary>
+        /// 누를 수 있는 것의 크기 하한(pt). 출처: <b>WCAG 2.2 성공기준 2.5.8 Target Size (Minimum), AA</b>
+        /// (https://www.w3.org/TR/WCAG22/#target-size-minimum). 이 저장소는 같은 문서의 1.4.3 / 1.4.11을
+        /// 이미 자기 하한으로 인용하고 있으므로 2.5.8도 같은 문서에서 가져온다.
+        /// <para>캔버스 1유닛 = OS 논리 포인트 1이다(<c>ScreenCoordinateConverter.ResolveCanvasScaleFactor</c>)
+        /// — 그래서 이 값은 화면에서 그대로 24pt다.</para>
+        /// </summary>
+        public const float MinTargetSizePoints = 24f;
+
+        // ================================================================================
+        // ★★ 2026-09-02 — "누를 수 있는 것"의 <b>면</b>. 결함은 잉크가 아니라 면이었다
+        // ================================================================================
+        //
+        // 실측(리더가 <b>실행 중인 빌드를 캡처해 픽셀에서 직접</b> 잰 값이다 — 계산값이 아니다):
+        //     패널 배경 rgb(21,23,28) · [✕] 칩 바탕 rgb(21,23,28) · [설정] 칩 바탕 rgb(22,24,29)
+        //     → 면 대 창 바탕 = <b>1.00 : 1</b> / <b>1.01 : 1</b>. 즉 <b>면이 아예 없었다</b>.
+        //     같은 캡처에서 글리프는 5.79:1(✕) / 8.54:1(설정)로 <b>잘 읽혔다</b>.
+        // 그래서 고칠 것은 잉크가 아니라 면이고, [✕]만이 아니라 <b>[설정]도 같다</b> — 나란히 붙은
+        // 두 칩 중 하나만 고치면 그 자리가 새로 어긋난다(리더 판정, 처방서 §4-5를 뒤집은 지점).
+        //
+        // ★ 왜 테두리가 아니라 면인가 (셋 다 실측 근거가 있다)
+        //   (1) 배율 1에서 1px 테두리는 물리 1픽셀이다 — 이 저장소가 이미 한 번 잃어 본 적이 있다
+        //       (커밋 39ab690 "선 화질 조사"). 면은 24pt 덩어리라 배율에 상관없이 남는다.
+        //   (2) <b>생 <see cref="CardBorder"/>(α0.10)를 얹으면 그 화소의 창 알파가 0.91로 내려간다</b>
+        //       (dstA' = srcA² + dstA(1−srcA) = 0.01 + 0.90). 데스크톱이 9% 비치므로 <b>어두운
+        //       바탕화면에서 테두리가 더 안 보였다</b>(1.34 → 1.26). 유일한 탈출구가 바탕화면에
+        //       의존하고 있었다. 면은 α=1이라 그 축이 통째로 사라진다.
+        //   (3) 테두리만 있는 것은 버튼이 아니라 <b>입력칸</b>으로 읽힌다.
+        //
+        // ★ 두 지표는 <b>반대 방향</b>이다 — 면을 밝히면 면 대비는 오르고 그 위의 밝은 잉크는 죽는다.
+        //   "3.0만 넘기면 된다"로 고치면(흰색 α=0.34, 면 3.11:1) <see cref="MinNonTextContrast"/>
+        //   검사는 <b>초록</b>이 되고 화면에서는 ✕가 사라진다. 면만 재는 검사는 그 붕괴를 못 본다.
+        //   그래서 아래 두 목표는 <b>언제나 한 쌍으로</b> 쓴다(테스트도 한 쌍으로 잰다).
+
+        /// <summary>면(비텍스트)의 <b>목표</b> 대비. 하한(<see cref="MinNonTextContrast"/>)을 그대로
+        /// 쓰지 않고 마진을 곱한다 — 하한에 딱 맞추면 8비트 양자화·감마·모니터 프로파일 중 하나만
+        /// 어긋나도 그 자리에서 미달이 된다(실측: 양자화만으로 3.60 → 3.59로 내려앉는 조합이 있다).</summary>
+        public const float ControlFaceContrastTarget = MinNonTextContrast * 1.20f;   // = 3.60
+
+        /// <summary>그 면 위 글자의 <b>목표</b> 대비. 같은 이유로 <see cref="MinTextContrast"/>에 마진.</summary>
+        public const float ControlInkContrastTarget = MinTextContrast * 1.15f;       // = 5.175
+
+        /// <summary>창 바탕 위에서 크롬 버튼의 면을 띄우는 흰색 α.
+        /// <para>★ <b>왜 0.50인가</b> — 규칙(<see cref="ControlFaceOnSurface"/>)이 <see cref="PanelSurface"/>에서
+        /// 내는 <b>최소</b> 해는 α≈0.475다. 0.50은 그보다 위이고, 사람이 읽기 좋은 값이며, 양자화 여유가
+        /// 있다. 최소 해를 그대로 상수로 박으면 여유가 0이 된다.
+        /// 이 관계는 <c>CloseChipAffordanceTests</c>가 <b>값으로</b> 못 박는다(두 값이 갈라지면 빨간불).</para></summary>
+        public const float ControlFaceLift = 0.50f;
+
+        /// <summary>hover/pressed용 α. 어두운 잉크 구간에서는 밝힐수록 <b>면과 잉크가 함께</b> 오르므로
+        /// 어느 쪽으로 움직여도 하한을 깰 수 없다(밝은 잉크 구간은 폭이 0.055뿐이라 상태 변화를 넣을
+        /// 자리가 없다 — 그래서 어두운 잉크 쪽을 골랐다).
+        /// <para>★ 아직 <b>배선하지 않았다</b>(P2). hover는 이 앱에서 <b>발견 수단이 될 수 없다</b> —
+        /// uGUI 입력은 창을 클릭해 앱이 활성화된 뒤에야 도착하고, <b>처음 창을 열었을 때가 정확히
+        /// 그 상황</b>이다. 기본 상태만으로 발견 가능해야 한다. 이 둘은 그때가 오면 쓸 값이고,
+        /// 지금은 <see cref="BrightTextBackdrops"/>에 들어가 "이 밝기에서도 잉크 규칙이 성립한다"를
+        /// 지키는 역할을 한다.</para></summary>
+        public const float ControlFaceLiftHover = 0.58f;
+
+        /// <inheritdoc cref="ControlFaceLiftHover"/>
+        public const float ControlFaceLiftPressed = 0.66f;
+
+        /// <summary>★ 크롬 버튼([닫기]/[설정])의 면(#898B8E). 창 바탕 대비 <b>5.26 : 1</b>이고
+        /// <see cref="Flatten"/>이 α=1을 보장하므로 <b>바탕화면이 비치지 않는다</b>.</summary>
+        public static readonly Color ChromeButtonSurface =
+            Flatten(new Color(1f, 1f, 1f, ControlFaceLift), PanelSurface);
+
+        /// <summary>크롬 버튼 hover 면(#9C9EA0, 6.66:1). <see cref="ControlFaceLiftHover"/> 참고 — 미배선.</summary>
+        public static readonly Color ChromeButtonSurfaceHover =
+            Flatten(new Color(1f, 1f, 1f, ControlFaceLiftHover), PanelSurface);
+
+        /// <summary>크롬 버튼 pressed 면(#AFB0B2, 8.29:1). <see cref="ControlFaceLiftPressed"/> 참고 — 미배선.</summary>
+        public static readonly Color ChromeButtonSurfacePressed =
+            Flatten(new Color(1f, 1f, 1f, ControlFaceLiftPressed), PanelSurface);
+
+        /// <summary>
+        /// ★ <b>"누를 수 있는 것"의 면을 고르는 단 하나의 문</b>. <see cref="InkOnSurface"/>의 형제다.
+        /// 두 제약을 <b>동시에</b> 만족하는 최소 혼합을 돌려준다(둘 중 하나만 풀면 위 주석의 함정에 빠진다):
+        /// <list type="number">
+        ///   <item>면 대 바탕 ≥ <see cref="ControlFaceContrastTarget"/></item>
+        ///   <item><see cref="InkOnSurface"/>(면) 대 면 ≥ <see cref="ControlInkContrastTarget"/></item>
+        /// </list>
+        /// <para>방향은 값이 정한다: 목표 대비를 만족하는 휘도가 1.0을 넘으면 위로 갈 수 없으므로
+        /// 아래로 간다. <b>어두운 바탕에서는 밝아지고 밝은 바탕에서는 어두워진다</b>. 반환값은 항상
+        /// <c>alpha = 1</c>(<see cref="Flatten"/> 결과)이라 창 알파를 건드리지 않는다.</para>
+        /// <para><b>이 앱에 테마 전환은 없다</b>(팔레트 1벌). 이 함수는 테마 배선이 아니라, 앱 안에
+        /// 실재하는 밝은 면(<see cref="PortraitSurface"/>)이나 새 표면 위에 크롬 버튼을 놓게 될 때
+        /// 고정 상수 #898B8E가 조용히 무너지는 것을 막는 <b>규칙</b>이다.</para>
+        /// <para><b>Update()에서 부르지 마라</b> — 격자 탐색이라 최대 <c>1025</c>회 반복한다.
+        /// 표면을 만들 때 한 번 부르고 결과를 <b>상수/필드에 담아</b> 쓸 것.</para>
+        /// <para>지금 화면에 나가는 <see cref="ChromeButtonSurface"/>는 이 함수를 부르지 않는다 —
+        /// 창 바탕이 하나뿐이라 손으로 고른 값(<see cref="ControlFaceLift"/>)이 더 읽기 쉽고 양자화
+        /// 여유도 크다. <b>둘이 갈라지지 않게</b> <c>CloseChipAffordanceTests</c>가 "상수는 이 함수의
+        /// 최소해보다 어둡지 않다"를 값으로 못 박는다.</para>
+        /// </summary>
+        public static Color ControlFaceOnSurface(Color backdrop)
+        {
+            // 위로 갈 수 있는가 — 목표 대비를 만족하는 휘도가 1.0을 넘으면 위쪽에 답이 없다.
+            bool up = ControlFaceContrastTarget * (RelativeLuminance(backdrop) + 0.05f) - 0.05f <= 1f;
+            Color mix = up ? new Color(1f, 1f, 1f, 1f) : new Color(0f, 0f, 0f, 1f);
+
+            // ★ 이분 탐색이 아니라 <b>격자 탐색</b>인 이유: 잉크 대비는 α에 대해 단조가 아니다.
+            //   밝은 잉크가 4.5를 놓치기 직전까지는 <b>내려가다가</b>, 어두운 잉크로 뒤집히는 순간
+            //   튀어 오른다. 그 골짜기를 이분 탐색은 건너뛴다. 격자 폭 1/1024는 8비트 한 계단
+            //   (1/255)의 1/4이라 화면에서 구분되지 않는다.
+            const int Steps = 1024;
+            for (int i = 0; i <= Steps; i++)
+            {
+                Color face = Flatten(new Color(mix.r, mix.g, mix.b, i / (float)Steps), backdrop);
+                if (ContrastRatio(face, backdrop) < ControlFaceContrastTarget) continue;
+
+                Color ink = SelectInkOnSurface(face, Ink(InkRole.Title, true), out bool readable);
+                if (!readable) continue;
+                if (ContrastRatio(ink, face) >= ControlInkContrastTarget) return face;
+            }
+
+            // 여기까지 오면 그 바탕 위에는 두 제약을 동시에 푸는 면이 없다. 조용히 넘기지 않는다.
+            WarnUnsolvableControlFace(backdrop);
+            return Flatten(new Color(mix.r, mix.g, mix.b, 1f), backdrop);
+        }
+
+        [System.Diagnostics.Conditional("UNITY_EDITOR")]
+        [System.Diagnostics.Conditional("DEVELOPMENT_BUILD")]
+        private static void WarnUnsolvableControlFace(Color backdrop)
+        {
+            Debug.LogError($"[컨트롤면] 바탕 #{ColorUtility.ToHtmlStringRGB(backdrop)} 위에서는 " +
+                $"면 {ControlFaceContrastTarget:F2}:1과 글자 {ControlInkContrastTarget:F2}:1을 " +
+                "동시에 만족하는 면이 없습니다. 버튼을 그 바탕에 직접 놓지 말고 한 겹 띄우십시오.");
+        }
+
+        /// <summary>
         /// ★ <b>글자가 실제로 얹히는 바탕 전부</b>. 잉크 하한은 이 목록의 <b>어느 하나에서도</b>
         /// 무너지면 안 된다.
         ///
@@ -1073,9 +1223,12 @@ namespace StickMate.Interaction
         /// 버튼·칩처럼 <b>한 단 들뜬 중성 면</b>(흰색 α0.10을 얹은 결과).
         /// <para>★ 실측: 이 면 위에서 <see cref="InkRole.Meta"/>(<see cref="TextTertiary"/>)는
         /// 카드 위 <b>3.94 : 1</b> / 창 위 <b>4.38 : 1</b>로 <b>둘 다 AA 미달</b>이다. 지금 이 면에
-        /// 놓이는 글자는 전부 <see cref="InkRole.Title"/> 단(5.87 / 6.52 ✔)이라 사고는 없었지만,
-        /// <b>선언되지 않은 바탕은 다음에 반드시 사고를 낸다</b>. 이제 선언되어 있고
-        /// <see cref="InkOnSurface"/>가 자동으로 한 단 올려 준다.</para>
+        /// 놓이는 글자는 전부 <c>Ink(Title, enabled:false)</c> = <see cref="TextSecondary"/>
+        /// (5.87 / 6.52 ✔)라 사고는 없었지만, <b>선언되지 않은 바탕은 다음에 반드시 사고를 낸다</b>.
+        /// 이제 선언되어 있고 <see cref="InkOnSurface"/>가 자동으로 한 단 올려 준다.</para>
+        /// <para>※ 2026-09-02 정정 — 이 줄은 원래 "전부 <c>InkRole.Title</c> 단"이라고 적혀 있었다.
+        /// <b>값(5.87 / 6.52)은 맞고 라벨만 한 단 어긋나 있었다</b>: <c>Ink(Title, true)</c> =
+        /// <see cref="TextPrimary"/>는 같은 면에서 11.10 / 12.34다.</para>
         /// </summary>
         public static readonly Color[] RaisedTextBackdrops =
         {
@@ -1096,6 +1249,13 @@ namespace StickMate.Interaction
         {
             Accent,        // 채워진 강조 면(선택된 칩 / 켜진 스위치 트랙 / 슬라이더 채움)
             TextPrimary,   // 흰 채움 위에 기호를 얹는 자리
+
+            // ★ 크롬 버튼 3단(2026-09-02). 여기 넣는 것은 선택이 아니라 <b>이 배열의 정의</b>다 —
+            //   세 면 모두 사다리 6단이 전부 4.5 아래로 무너진다(최댓값 3.10 / 2.45 / 1.97).
+            //   넣는 순간 InkOnSurface가 자동으로 OnAccentSolid를 골라 준다.
+            ChromeButtonSurface,
+            ChromeButtonSurfaceHover,
+            ChromeButtonSurfacePressed,
         };
 
         /// <summary>
@@ -1112,7 +1272,22 @@ namespace StickMate.Interaction
         /// </summary>
         public static Color InkOnSurface(Color backdrop, InkRole role, bool enabled)
         {
-            Color ladder = Ink(role, enabled);
+            Color ink = SelectInkOnSurface(backdrop, Ink(role, enabled), out bool readable);
+            if (!readable) WarnUnreadableBackdrop(backdrop, ink);
+            return ink;
+        }
+
+        /// <summary>
+        /// <see cref="InkOnSurface"/>의 <b>고르는 부분만</b> 떼어낸 것. 경고를 내지 않는다.
+        ///
+        /// <para><b>왜 나눴나</b>: <see cref="ControlFaceOnSurface"/>는 답을 찾는 동안 <b>일부러</b>
+        /// 읽히지 않는 면을 지나간다(중간 밝기 구간). 그때마다 <c>Debug.LogError</c>가 나오면 콘솔이
+        /// 거짓 경보로 덮여 진짜 사고를 가린다. 그렇다고 판정 로직을 복사하면 두 곳이 갈라진다 —
+        /// 그래서 <b>같은 함수</b>를 쓰되 경고 여부만 호출부가 정한다.</para>
+        /// </summary>
+        private static Color SelectInkOnSurface(Color backdrop, Color ladder, out bool readable)
+        {
+            readable = true;
             if (ContrastRatio(ladder, backdrop) >= MinTextContrast) return ladder;
 
             // (1) 밝은 면 — 어두운 잉크로 뒤집는다.
@@ -1123,11 +1298,10 @@ namespace StickMate.Interaction
             if (ContrastRatio(TextPrimary, backdrop) >= MinTextContrast) return TextPrimary;
 
             // (3) 여기까지 왔으면 그 면 위에 읽히는 글자가 <b>존재하지 않는다</b>. 가장 나은 것을
-            //     돌려주되 조용히 넘기지 않는다 — 면을 바꿔야 하는 상황이기 때문이다.
-            Color best = ContrastRatio(TextPrimary, backdrop) >= ContrastRatio(OnAccentSolid, backdrop)
+            //     돌려주되 호출부가 조용히 넘기지 못하게 readable=false로 알린다.
+            readable = false;
+            return ContrastRatio(TextPrimary, backdrop) >= ContrastRatio(OnAccentSolid, backdrop)
                 ? TextPrimary : OnAccentSolid;
-            WarnUnreadableBackdrop(backdrop, best);
-            return best;
         }
 
         [System.Diagnostics.Conditional("UNITY_EDITOR")]

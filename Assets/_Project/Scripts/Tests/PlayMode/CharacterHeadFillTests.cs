@@ -217,7 +217,15 @@ namespace StickMate.Tests.PlayMode
         {
             yield return LoadScene();
 
-            float[] scales = { StickConfig.MinCharacterScale, 0.5f, 1f, StickConfig.MaxCharacterScale };
+            // ★ 상·하한에서 유도한다. 리터럴 1f 는 MaxCharacterScale 이 1.0 이 된 순간 상한과 겹쳐
+            //   배열에 같은 값이 두 번 들어갔고, 두 번째 호출이 "적용 실패"를 돌려주며 빨개졌다.
+            float[] scales =
+            {
+                StickConfig.MinCharacterScale,
+                Mathf.Lerp(StickConfig.MinCharacterScale, StickConfig.MaxCharacterScale, 1f / 3f),
+                Mathf.Lerp(StickConfig.MinCharacterScale, StickConfig.MaxCharacterScale, 2f / 3f),
+                StickConfig.MaxCharacterScale
+            };
             foreach (float s in scales)
             {
                 Assert.IsTrue(_agent.ApplyCharacterScale(s, "머리채움 테스트"),

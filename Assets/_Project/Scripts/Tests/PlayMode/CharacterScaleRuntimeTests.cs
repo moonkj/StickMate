@@ -65,9 +65,16 @@ namespace StickMate.Tests.PlayMode
         /// 주의하라 — 실측 여유는 0.35에서 0.300, 0.75에서 0.200, 1.00에서 <b>0.100</b>(가장 빠듯),
         /// 1.50에서 0.150이다(하한 0.05).</para>
         /// </summary>
+        // ★ 상한에서 유도한다 — 리터럴을 적으면 상한이 내려온 순간 조용히 중복되거나 구간을 벗어난다.
+        //   실제 사고(2026-09-02): MaxCharacterScale 1.5 -> 1.0 이 되자 리터럴 1.0f 가 상한과 같은 값이
+        //   되어 배열에 1.0 이 두 번 들어갔고, 이미 1.0 인 상태에서 또 1.0 을 넣은 호출이 "무시됨"을
+        //   돌려주며 테스트가 빨개졌다. 프로덕션은 멀쩡했다.
         private static readonly float[] Scales =
         {
-            StickConfig.MinCharacterScale, 0.75f, 1.0f, StickConfig.MaxCharacterScale
+            StickConfig.MinCharacterScale,
+            Mathf.Lerp(StickConfig.MinCharacterScale, StickConfig.MaxCharacterScale, 1f / 3f),
+            Mathf.Lerp(StickConfig.MinCharacterScale, StickConfig.MaxCharacterScale, 2f / 3f),
+            StickConfig.MaxCharacterScale
         };
 
         private StickmanAgent _agent;
@@ -481,7 +488,15 @@ namespace StickMate.Tests.PlayMode
             //   필요한 조건은 (a) 전부 유효 구간 안, (b) 연속한 두 값이 서로 다름, (c) 첫 값이 현재 값과
             //   다름뿐이다. 첫 값을 상한에서 유도해 그 세 조건을 유지한다(기대값은 아래에서 v로부터
             //   다시 계산되므로 옛 2.0 시절의 수를 베껴 오는 자리가 없다).
-            float[] sequence = { StickConfig.MaxCharacterScale, 0.5f, 1.25f, 0.75f };
+            //   ★ 네 값 전부 상·하한에서 유도한다. 첫 값만 유도하고 나머지를 리터럴로 두었더니
+            //     1.25f 가 상한 1.0 을 넘어 clamp 되었고(전신 높이가 ×1.0 에서 멈춤) 조건 (a)가 깨졌다.
+            float[] sequence =
+            {
+                StickConfig.MaxCharacterScale,
+                StickConfig.MinCharacterScale,
+                Mathf.Lerp(StickConfig.MinCharacterScale, StickConfig.MaxCharacterScale, 0.5f),
+                Mathf.Lerp(StickConfig.MinCharacterScale, StickConfig.MaxCharacterScale, 0.85f)
+            };
 
             foreach (float v in sequence)
             {
