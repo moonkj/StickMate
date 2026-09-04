@@ -137,7 +137,11 @@ namespace StickMate.Interaction
             => CharacterProgressionModel.IsDirty || CharacterStatsModel.IsDirty || UiLayoutModel.IsDirty
                || TodoListModel.IsDirty    // v4 — 사용자가 적은 할일은 반드시 남아야 한다.
                || CharacterAppearanceModel.IsDirty    // v7 — 잉크색(우클릭 메뉴/단축키 경로는 즉시 저장을 부르지 않는다).
-               || AppSettingsModel.IsDirty;           // v8 — 설정창(슬라이더는 드래그 중 즉시 저장을 부르지 않는다).
+               || AppSettingsModel.IsDirty            // v8 — 설정창(슬라이더는 드래그 중 즉시 저장을 부르지 않는다).
+               // ★ v10 — 동전·구매 이력·등급 해금·장착한 춤. 이 한 줄이 빠지면 유휴 수급이 60초 주기
+               //   저장에도 종료 시 저장에도 실리지 않고, 사용자는 하루 종일 번 동전을 통째로 잃는다.
+               //   (그리고 그 실패는 초록 테스트와 똑같이 생겼다 — 즉시 저장 경로만 보는 테스트는 통과한다.)
+               || CurrencyModel.IsDirty;
 
         // ==================== 보너스 훅(전부 읽기 전용 구독) ====================
 

@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+<style>
+  body { margin:0; background:#0A0A0B; }
+  a { color:#C8A15A; } a:hover { color:#E5C079; }
+  *::-webkit-scrollbar { width:8px; }
+  *::-webkit-scrollbar-thumb { background:#2A2622; border-radius:8px; }
+  *::-webkit-scrollbar-track { background:transparent; }
+</style>
+</helmet>
+
+<section style="padding:56px 56px 96px;display:flex;flex-direction:column;gap:28px;font-family:Pretendard,sans-serif">
+  <div style="display:flex;align-items:baseline;gap:14px;color:#8B8578">
+    <span style="font-size:13px;letter-spacing:0.18em;text-transform:uppercase">Turn 1</span>
+    <span style="font-size:15px;color:#5C574E">장비 화면 리디자인 · 시안 2종</span>
+  </div>
+
+  <div style="display:flex;gap:44px;align-items:flex-start;flex-wrap:wrap">
+
+    <div id="1a" style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:24px;padding:0 8px;border-radius:6px;background:#C8A15A;color:#0D0C0B;font-size:13px;font-weight:700">1a</span>
+        <span style="color:#EDE7DB;font-size:16px;font-weight:600">브라스 아카이브 · 스틱메이트 기획 반영</span>
+        <span style="color:#6E665C;font-size:13px">탭 4종(장비 · 외형 · 보관함 · 상점) 전환 가능 — 상단 탭을 클릭하세요</span>
+      </div>
+
+      <div data-screen-label="1a 장비 화면" style="width:1240px;height:800px;background:#0D0C0B;border:1px solid #2A2622;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;color:#EDE7DB;box-shadow:0 40px 80px -30px rgba(0,0,0,0.9)">
+
+        <div style="height:66px;flex:0 0 66px;border-bottom:1px solid #1E1B18;display:flex;align-items:center;justify-content:space-between;padding:0 24px 0 28px">
+          <div style="display:flex;align-items:center;gap:20px">
+            <div style="display:flex;align-items:baseline;gap:9px">
+              <span style="font-family:'Noto Serif KR',serif;font-size:17px;font-weight:600">스틱메이트</span>
+              <span style="font-size:11px;color:#6E665C">Lv.7</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:2px;padding:3px;border-radius:9px;background:#141210;border:1px solid #221E1A">
+              <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+                <span onClick="{{ t.onClick }}" style="height:28px;padding:0 14px;display:flex;align-items:center;gap:6px;border-radius:7px;background:{{ t.bg }};color:{{ t.color }};font-size:12.5px;font-weight:{{ t.weight }};cursor:pointer" style-hover="filter:brightness(1.2)">{{ t.label }}<span style="width:5px;height:5px;border-radius:3px;background:#C8A15A;opacity:{{ t.dot }}"></span></span>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 14px;border:1px solid #2A2622;border-radius:16px;font-size:12px;color:#A79E90">보유 <span style="color:#EDE7DB;font-weight:600">13</span> / 16</div>
+            <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 14px;border:1px solid #3A3026;border-radius:16px;background:#17130E;font-size:12px;color:#C8A15A">◎ 동전 <span style="font-weight:600">1,240</span></div>
+          </div>
+        </div>
+
+        <sc-if value="{{ isEquip }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:1;min-height:0;display:grid;grid-template-columns:306px 292px 1fr">
+
+          <div style="border-right:1px solid #1E1B18;padding:20px;display:flex;flex-direction:column;gap:13px;min-height:0">
+            <div style="position:relative;height:238px;border-radius:14px;border:1px solid #1E1B18;background:radial-gradient(120% 90% at 50% 12%, #1C1815 0%, #0F0D0C 62%, #0B0A09 100%);overflow:hidden">
+              <div style="position:absolute;left:0;right:0;bottom:0;height:74px;background:radial-gradient(60% 100% at 50% 100%, rgba(200,161,90,0.16), transparent 70%)"></div>
+              <svg viewBox="0 0 200 240" style="position:absolute;left:50%;top:26px;transform:translateX(-50%);width:158px;height:auto;overflow:visible;z-index:1">
+                <ellipse cx="100" cy="218" rx="44" ry="6" fill="#000" opacity="0.55"></ellipse>
+                <g fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="100" cy="46" r="28" fill="#111111"></circle>
+                  <path d="M100 74 V140"></path>
+                  <path d="M52 138 L100 88 L148 138"></path>
+                  <path d="M100 140 L66 212"></path>
+                  <path d="M100 140 L134 212"></path>
+                </g>
+                <circle cx="90" cy="43" r="3.4" fill="#FFFFFF"></circle>
+                <circle cx="110" cy="43" r="3.4" fill="#FFFFFF"></circle>
+              </svg>
+              <svg viewBox="0 0 200 240" style="position:absolute;left:50%;top:26px;transform:translateX(-50%);width:158px;height:auto;overflow:visible;z-index:0">
+                <sc-if value="{{ a.eq.capeLong }}" hint-placeholder-val="{{ false }}">
+                  <path d="M86 78 Q68 138 70 184 Q100 193 130 184 Q132 138 114 78 Z" fill="#A8332A" stroke="#7E1F17" stroke-width="2"></path>
+                </sc-if>
+                <sc-if value="{{ a.eq.capeShort }}" hint-placeholder-val="{{ false }}">
+                  <path d="M87 78 Q74 106 74 132 Q100 140 126 132 Q126 106 113 78 Z" fill="#A8332A" stroke="#7E1F17" stroke-width="2"></path>
+                </sc-if>
+              </svg>
+              <div style="position:absolute;left:50%;top:72px;transform:translateX(-50%);width:88px;height:88px;opacity:0.4;z-index:0">
+                <sc-if value="{{ a.eq.back }}" hint-placeholder-val="{{ true }}">
+                  <dc-import name="ItemIcon" kind="{{ a.eq.back }}" color="{{ a.eq.backPc }}" accent="{{ a.eq.backAc }}" stroke="{{ 2 }}" hint-size="88px,88px"></dc-import>
+                </sc-if>
+              </div>
+              <svg viewBox="0 0 200 240" style="position:absolute;left:50%;top:26px;transform:translateX(-50%);width:158px;height:auto;overflow:visible;z-index:4;pointer-events:none">
+                <sc-if value="{{ a.eq.capeLong }}" hint-placeholder-val="{{ false }}">
+                  <g>
+                    <path d="M74 72 Q100 88 126 72 L128 80 Q100 96 72 80 Z" fill="#8E241C" stroke="#7E1F17" stroke-width="2"></path>
+                    <circle cx="100" cy="85" r="4.6" fill="#C8A15A" stroke="#7E1F17" stroke-width="1.8"></circle>
+                  </g>
+                </sc-if>
+                <sc-if value="{{ a.eq.capeShort }}" hint-placeholder-val="{{ false }}">
+                  <g>
+                    <path d="M74 72 Q100 88 126 72 L128 80 Q100 96 72 80 Z" fill="#8E241C" stroke="#7E1F17" stroke-width="2"></path>
+                    <circle cx="100" cy="85" r="4.6" fill="#C8A15A" stroke="#7E1F17" stroke-width="1.8"></circle>
+                  </g>
+                </sc-if>
+              </svg>
+              <div style="position:absolute;left:50%;top:6px;transform:translateX(-50%);width:70px;height:70px;z-index:5">
+                <sc-if value="{{ a.eq.head }}" hint-placeholder-val="{{ true }}">
+                  <dc-import name="ItemIcon" kind="{{ a.eq.head }}" color="{{ a.eq.headPc }}" accent="{{ a.eq.headAc }}" stroke="{{ 2.8 }}" hint-size="70px,70px"></dc-import>
+                </sc-if>
+              </div>
+              <div style="position:absolute;left:50%;top:38px;transform:translateX(-50%);width:48px;height:48px;z-index:6">
+                <sc-if value="{{ a.eq.eyes }}" hint-placeholder-val="{{ true }}">
+                  <dc-import name="ItemIcon" kind="{{ a.eq.eyes }}" color="{{ a.eq.eyesPc }}" accent="{{ a.eq.eyesAc }}" stroke="{{ 3.4 }}" hint-size="48px,48px"></dc-import>
+                </sc-if>
+              </div>
+              <div style="position:absolute;left:50%;top:78px;transform:translateX(-50%);width:54px;height:54px;z-index:6">
+                <sc-if value="{{ a.eq.neck }}" hint-placeholder-val="{{ true }}">
+                  <dc-import name="ItemIcon" kind="{{ a.eq.neck }}" color="{{ a.eq.neckPc }}" accent="{{ a.eq.neckAc }}" stroke="{{ 3.4 }}" hint-size="54px,54px"></dc-import>
+                </sc-if>
+              </div>
+              <div style="position:absolute;left:14px;top:14px;font-size:10px;letter-spacing:0.2em;color:#5C574E">PREVIEW</div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <sc-for list="{{ a.slots }}" as="s" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:10px;height:46px;padding:0 12px;border:1px solid {{ s.bc }};border-radius:9px;background:{{ s.bg }}">
+                  <div style="width:24px;height:24px;flex:0 0 24px;opacity:{{ s.op }}">
+                    <dc-import name="ItemIcon" kind="{{ s.kind }}" color="{{ s.ic }}" accent="#C8A15A" stroke="{{ 3 }}" hint-size="24px,24px"></dc-import>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+                    <span style="font-size:9.5px;letter-spacing:0.14em;color:#6E665C">{{ s.ko }} · {{ s.main }}</span>
+                    <span style="font-size:12.5px;font-weight:500;color:{{ s.nc }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.name }}</span>
+                  </div>
+                  <span style="font-size:11px;color:#C8A15A;white-space:nowrap">{{ s.mainText }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="margin-top:auto;border:1px solid #2A2622;border-radius:12px;background:linear-gradient(180deg,#151311,#100E0D);padding:14px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="width:52px;height:52px;flex:0 0 52px;border:1px solid {{ a.detail.rc }};border-radius:10px;background:#0E0C0B;padding:8px;box-sizing:border-box">
+                  <dc-import name="ItemIcon" kind="{{ a.detail.kind }}" color="#EDE7DB" accent="{{ a.detail.rc }}" hint-size="36px,36px"></dc-import>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <span style="font-family:'Noto Serif KR',serif;font-size:16px;font-weight:600">{{ a.detail.name }}</span>
+                  <span style="font-size:11px;letter-spacing:0.1em;color:{{ a.detail.rc }}">{{ a.detail.rarLabel }} · {{ a.detail.slotKo }} · {{ a.detail.themeKo }}</span>
+                </div>
+              </div>
+              <p style="margin:0;font-size:12.5px;line-height:1.6;color:#9A9184">{{ a.detail.desc }}</p>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <sc-for list="{{ a.detail.stats }}" as="st" hint-placeholder-count="2">
+                  <span style="font-size:11px;padding:4px 9px;border-radius:6px;background:#1B1713;color:#C8A15A">{{ st }}</span>
+                </sc-for>
+                <span style="font-size:11px;padding:4px 9px;border-radius:6px;background:#161311;color:#8A8578">{{ a.detail.priceText }}</span>
+              </div>
+              <button onClick="{{ a.detail.onEquip }}" style="height:38px;border:1px solid {{ a.detail.mainBorder }};border-radius:9px;background:{{ a.detail.mainBg }};color:{{ a.detail.mainColor }};font-family:Pretendard,sans-serif;font-size:13px;font-weight:600;cursor:pointer;letter-spacing:0.02em" style-hover="filter:brightness(1.12)">{{ a.detail.mainLabel }}</button>
+            </div>
+          </div>
+
+          <div style="border-right:1px solid #1E1B18;padding:20px 18px;display:flex;flex-direction:column;gap:14px;min-height:0;overflow-y:auto">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="width:3px;height:14px;background:#C8A15A;border-radius:2px"></span>
+              <span style="font-family:'Noto Serif KR',serif;font-size:14px;font-weight:600">능력치</span>
+              <span style="font-size:9.5px;letter-spacing:0.18em;color:#6E665C">STATUS</span>
+              <span style="margin-left:auto;font-size:11px;color:#C8A15A">장비 합 +{{ a.power }}</span>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ a.statRows }}" as="s" hint-placeholder-count="4">
+                <div style="border:1px solid #221E1A;border-radius:11px;background:linear-gradient(180deg,#141210,#100E0D);padding:11px 12px;display:flex;flex-direction:column;gap:8px">
+                  <div style="display:flex;align-items:baseline;gap:7px">
+                    <span style="font-size:12.5px;font-weight:600;color:#EDE7DB">{{ s.name }}</span>
+                    <span style="font-size:9.5px;color:#6E665C">{{ s.slotKo }} 주스탯</span>
+                    <span style="margin-left:auto;font-family:'Noto Serif KR',serif;font-size:17px;font-weight:600;line-height:1">{{ s.total }}</span>
+                    <span style="font-size:10.5px;font-weight:600;color:{{ s.bonusColor }};width:26px;text-align:right">{{ s.bonusText }}</span>
+                  </div>
+                  <div style="position:relative;height:5px;border-radius:3px;background:#221E1A;overflow:hidden">
+                    <span style="position:absolute;left:0;top:0;bottom:0;width:{{ s.pct }};background:linear-gradient(90deg,#8A6C33,#C8A15A)"></span>
+                    <span style="position:absolute;left:{{ s.t1 }};top:0;bottom:0;width:1px;background:#0D0C0B"></span>
+                    <span style="position:absolute;left:{{ s.t2 }};top:0;bottom:0;width:1px;background:#0D0C0B"></span>
+                    <span style="position:absolute;left:{{ s.t3 }};top:0;bottom:0;width:1px;background:#0D0C0B"></span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:7px">
+                    <span style="font-size:10px;font-weight:600;padding:2.5px 7px;border-radius:5px;background:#1B1713;color:{{ s.stageColor }}">{{ s.stageLabel }}</span>
+                    <span style="font-size:10.5px;color:#8A8578;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.effect }}</span>
+                    <span style="font-size:10px;color:#5C574E;white-space:nowrap">{{ s.nextText }}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="margin-top:auto;border:1px solid #2A2622;border-radius:12px;background:linear-gradient(180deg,#151311,#100E0D);padding:13px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span style="font-family:'Noto Serif KR',serif;font-size:13px;font-weight:600">테마 세트</span>
+                <span style="font-size:9.5px;letter-spacing:0.18em;color:#6E665C">SET</span>
+                <span style="margin-left:auto;display:flex;gap:3px">
+                  <sc-for list="{{ a.setPanel.dots }}" as="d" hint-placeholder-count="4">
+                    <span style="width:14px;height:4px;border-radius:2px;background:{{ d.bg }}"></span>
+                  </sc-for>
+                </span>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <span style="font-size:13.5px;font-weight:600;color:#EDE7DB">{{ a.setPanel.themeKo }}</span>
+                <span style="font-size:11.5px;color:#C8A15A">{{ a.setPanel.countText }}</span>
+                <span style="margin-left:auto;font-size:10.5px;color:{{ a.setPanel.statusColor }}">{{ a.setPanel.statusText }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <sc-for list="{{ a.setPanel.rows }}" as="r" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:baseline;gap:8px">
+                    <span style="font-size:9px;color:{{ r.markColor }}">{{ r.mark }}</span>
+                    <span style="font-size:11.5px;color:{{ r.color }};white-space:nowrap">{{ r.label }}</span>
+                    <span style="font-size:10.5px;color:#5C574E;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.desc }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <p style="margin:0;font-size:10.5px;line-height:1.5;color:#5C574E">세트 효과는 4부위를 모두 착용한 동안에만 활성됩니다. 일반 임계 해금은 한 번 달성하면 영구 유지.</p>
+            </div>
+          </div>
+
+          <div style="min-height:0;overflow-y:auto;padding:22px 26px 30px;display:flex;flex-direction:column;gap:24px">
+            <sc-for list="{{ a.cats }}" as="cat" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;align-items:center;gap:11px">
+                  <span style="width:3px;height:15px;background:#C8A15A;border-radius:2px"></span>
+                  <span style="font-family:'Noto Serif KR',serif;font-size:15px;font-weight:600">{{ cat.ko }}</span>
+                  <span style="font-size:10px;letter-spacing:0.2em;color:#6E665C">{{ cat.en }}</span>
+                  <span style="font-size:10.5px;color:#C8A15A">주스탯 {{ cat.main }}</span>
+                  <span style="flex:1;height:1px;background:#1E1B18"></span>
+                  <span style="font-size:11px;color:#6E665C">{{ cat.count }}</span>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+                  <sc-for list="{{ cat.items }}" as="it" hint-placeholder-count="3">
+                    <div onClick="{{ it.onSelect }}" style="position:relative;border:1px solid {{ it.bc }};border-radius:12px;background:{{ it.bg }};padding:13px;display:flex;flex-direction:column;gap:9px;cursor:pointer;transition:transform .16s ease,border-color .16s ease;box-shadow:{{ it.shadow }}" style-hover="transform:translateY(-3px)">
+                      <span style="position:absolute;top:0;left:14px;right:14px;height:2px;border-radius:0 0 2px 2px;background:{{ it.rc }};opacity:{{ it.ribbon }}"></span>
+                      <div style="height:78px;border-radius:9px;background:{{ it.iconBg }};display:flex;align-items:center;justify-content:center;padding:11px;box-sizing:border-box;opacity:{{ it.op }}">
+                        <div style="width:58px;height:58px">
+                          <dc-import name="ItemIcon" kind="{{ it.kind }}" color="{{ it.ic }}" accent="{{ it.rc }}" hint-size="58px,58px"></dc-import>
+                        </div>
+                      </div>
+                      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px">
+                        <span style="font-size:13px;font-weight:600;color:{{ it.nc }}">{{ it.name }}</span>
+                        <span style="font-size:10px;font-weight:600;letter-spacing:0.06em;color:{{ it.rc }}">{{ it.rarLabel }}</span>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:3px">
+                        <div style="display:flex;align-items:baseline;justify-content:space-between">
+                          <span style="font-size:11px;color:#C8A15A">{{ it.mainText }}</span>
+                          <span style="font-size:10.5px;color:#8A8578">{{ it.subText }}</span>
+                        </div>
+                        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px">
+                          <span style="font-size:10px;color:#6E665C;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ it.themeKo }}</span>
+                          <span style="font-size:10px;color:#5C574E;white-space:nowrap">{{ it.priceText }}</span>
+                        </div>
+                      </div>
+                      <button onClick="{{ it.onEquip }}" style="height:29px;border:1px solid {{ it.btnBorder }};border-radius:7px;background:{{ it.btnBg }};color:{{ it.btnColor }};font-family:Pretendard,sans-serif;font-size:11.5px;font-weight:600;cursor:pointer" style-hover="filter:brightness(1.15)">{{ it.btnLabel }}</button>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ isLook }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;min-height:0;display:grid;grid-template-columns:400px 1fr">
+          <div style="border-right:1px solid #1E1B18;padding:22px;display:flex;flex-direction:column;gap:16px;min-height:0">
+            <div style="position:relative;flex:1;min-height:0;border-radius:14px;border:1px solid #1E1B18;background:radial-gradient(120% 90% at 50% 12%, #1C1815 0%, #0F0D0C 62%, #0B0A09 100%);overflow:hidden">
+              <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg, rgba(200,161,90,0.035) 0 1px, transparent 1px 28px)"></div>
+              <svg viewBox="0 0 200 240" style="position:absolute;left:50%;top:14%;transform:translateX(-50%);width:210px;height:auto;overflow:visible">
+                <ellipse cx="100" cy="218" rx="44" ry="6" fill="#000" opacity="0.55"></ellipse>
+                <g fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="100" cy="46" r="28" fill="#111111"></circle>
+                  <path d="M100 74 V140"></path>
+                  <path d="M52 138 L100 88 L148 138"></path>
+                  <path d="M100 140 L66 212"></path>
+                  <path d="M100 140 L134 212"></path>
+                </g>
+                <circle cx="90" cy="43" r="3.4" fill="#FFFFFF"></circle>
+                <circle cx="110" cy="43" r="3.4" fill="#FFFFFF"></circle>
+              </svg>
+              <div style="position:absolute;left:16px;top:14px;font-size:10px;letter-spacing:0.2em;color:#5C574E">APPEARANCE</div>
+              <div style="position:absolute;left:16px;bottom:14px;display:flex;align-items:center;gap:8px">
+                <span style="font-size:11px;color:#6E665C">데스크톱 실제 크기</span>
+                <span style="font-size:11px;color:#C8A15A">{{ cfg.scaleText }}</span>
+              </div>
+            </div>
+            <div style="border:1px solid #2A2622;border-radius:12px;background:linear-gradient(180deg,#151311,#100E0D);padding:16px;display:flex;flex-direction:column;gap:10px">
+              <span style="font-size:10px;letter-spacing:0.18em;color:#6E665C">캐릭터 이름</span>
+              <div style="display:flex;align-items:center;gap:10px;height:42px;padding:0 14px;border:1px solid #3A3026;border-radius:9px;background:#0E0C0B">
+                <span style="font-family:'Noto Serif KR',serif;font-size:17px;font-weight:600;color:#EDE7DB">{{ cfg.name }}</span>
+                <span style="width:1px;height:18px;background:#C8A15A;margin-left:1px"></span>
+                <span style="margin-left:auto;font-size:11px;color:#5C574E">최대 8자 · 무료 변경</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="min-height:0;overflow-y:auto;padding:22px 26px 30px;display:flex;flex-direction:column;gap:22px">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;gap:11px">
+                <span style="width:3px;height:15px;background:#C8A15A;border-radius:2px"></span>
+                <span style="font-family:'Noto Serif KR',serif;font-size:15px;font-weight:600">표시</span>
+                <span style="font-size:10px;letter-spacing:0.2em;color:#6E665C">DISPLAY</span>
+                <span style="flex:1;height:1px;background:#1E1B18"></span>
+              </div>
+              <div style="border:1px solid #241F1B;border-radius:12px;background:linear-gradient(180deg,#141210,#100E0D);padding:16px;display:flex;flex-direction:column;gap:16px">
+                <div style="display:flex;flex-direction:column;gap:9px">
+                  <div style="display:flex;align-items:baseline;gap:8px">
+                    <span style="font-size:12.5px;color:#EDE7DB">캐릭터 크기</span>
+                    <span style="font-size:11px;color:#6E665C">70% ~ 150%</span>
+                    <span style="margin-left:auto;font-family:'Noto Serif KR',serif;font-size:15px;font-weight:600;color:#C8A15A">{{ cfg.scaleText }}</span>
+                  </div>
+                  <div style="position:relative;height:5px;border-radius:3px;background:#221E1A">
+                    <span style="position:absolute;left:0;top:0;bottom:0;width:{{ cfg.scalePct }};border-radius:3px;background:linear-gradient(90deg,#8A6C33,#C8A15A)"></span>
+                    <span style="position:absolute;left:{{ cfg.scalePct }};top:-5px;width:15px;height:15px;margin-left:-8px;border-radius:8px;background:#EDE7DB;border:2px solid #0D0C0B"></span>
+                  </div>
+                </div>
+                <div style="height:1px;background:#1E1B18"></div>
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div style="display:flex;flex-direction:column;gap:3px">
+                    <span style="font-size:12.5px;color:#EDE7DB">윤곽선 강조</span>
+                    <span style="font-size:11px;color:#6E665C">밝은 배경에서도 캐릭터 실루엣 유지 (접근성)</span>
+                  </div>
+                  <span style="margin-left:auto;font-size:11px;color:{{ cfg.outline.labelColor }}">{{ cfg.outline.label }}</span>
+                  <span onClick="{{ cfg.onOutline }}" style="position:relative;width:40px;height:23px;border-radius:12px;background:{{ cfg.outline.bg }};cursor:pointer;flex:0 0 40px">
+                    <span style="position:absolute;top:3px;left:{{ cfg.outline.knob }};width:17px;height:17px;border-radius:9px;background:{{ cfg.outline.knobBg }}"></span>
+                  </span>
+                </div>
+                <div style="height:1px;background:#1E1B18"></div>
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div style="display:flex;flex-direction:column;gap:3px">
+                    <span style="font-size:12.5px;color:#EDE7DB">저전력 렌더링</span>
+                    <span style="font-size:11px;color:#6E665C">구형 하드웨어용 수동 프레임레이트</span>
+                  </div>
+                  <div style="margin-left:auto;display:flex;gap:2px;padding:3px;border-radius:8px;background:#0E0C0B;border:1px solid #241F1B">
+                    <sc-for list="{{ cfg.fpsOpts }}" as="f" hint-placeholder-count="3">
+                      <span onClick="{{ f.onClick }}" style="height:26px;padding:0 12px;display:flex;align-items:center;border-radius:6px;background:{{ f.bg }};color:{{ f.color }};font-size:11.5px;font-weight:600;cursor:pointer">{{ f.label }}</span>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;gap:11px">
+                <span style="width:3px;height:15px;background:#C8A15A;border-radius:2px"></span>
+                <span style="font-family:'Noto Serif KR',serif;font-size:15px;font-weight:600">소품 · 팩 색상</span>
+                <span style="font-size:10px;letter-spacing:0.2em;color:#6E665C">PROPS</span>
+                <span style="flex:1;height:1px;background:#1E1B18"></span>
+              </div>
+              <div style="border:1px solid #241F1B;border-radius:12px;background:linear-gradient(180deg,#141210,#100E0D);padding:16px;display:flex;flex-direction:column;gap:16px">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div style="display:flex;flex-direction:column;gap:3px">
+                    <span style="font-size:12.5px;color:#EDE7DB">아침 커피컵</span>
+                    <span style="font-size:11px;color:#6E665C">시간대 소품 · 기본 무료</span>
+                  </div>
+                  <span style="margin-left:auto;font-size:11px;color:{{ cfg.morning.labelColor }}">{{ cfg.morning.label }}</span>
+                  <span onClick="{{ cfg.onMorning }}" style="position:relative;width:40px;height:23px;border-radius:12px;background:{{ cfg.morning.bg }};cursor:pointer;flex:0 0 40px">
+                    <span style="position:absolute;top:3px;left:{{ cfg.morning.knob }};width:17px;height:17px;border-radius:9px;background:{{ cfg.morning.knobBg }}"></span>
+                  </span>
+                </div>
+                <div style="height:1px;background:#1E1B18"></div>
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div style="display:flex;flex-direction:column;gap:3px">
+                    <span style="font-size:12.5px;color:#EDE7DB">밤 잠옷</span>
+                    <span style="font-size:11px;color:#6E665C">시간대 소품 · 기본 무료</span>
+                  </div>
+                  <span style="margin-left:auto;font-size:11px;color:{{ cfg.night.labelColor }}">{{ cfg.night.label }}</span>
+                  <span onClick="{{ cfg.onNight }}" style="position:relative;width:40px;height:23px;border-radius:12px;background:{{ cfg.night.bg }};cursor:pointer;flex:0 0 40px">
+                    <span style="position:absolute;top:3px;left:{{ cfg.night.knob }};width:17px;height:17px;border-radius:9px;background:{{ cfg.night.knobBg }}"></span>
+                  </span>
+                </div>
+                <div style="height:1px;background:#1E1B18"></div>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <div style="display:flex;align-items:baseline;gap:8px">
+                    <span style="font-size:12.5px;color:#EDE7DB">파쿠르 파티클 색상</span>
+                    <span style="font-size:11px;color:#6E665C">보유 팩 테마 색을 따릅니다</span>
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <sc-for list="{{ cfg.packSwatches }}" as="p" hint-placeholder-count="6">
+                      <span onClick="{{ p.onClick }}" style="display:flex;align-items:center;gap:7px;height:32px;padding:0 12px;border:1px solid {{ p.border }};border-radius:8px;background:#0E0C0B;font-size:11.5px;color:#A79E90;cursor:pointer">
+                        <span style="width:10px;height:10px;border-radius:5px;background:{{ p.color }}"></span>{{ p.themeKo }}
+                      </span>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ isBag }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 306px">
+          <div style="min-height:0;overflow-y:auto;padding:22px 24px 30px;display:flex;flex-direction:column;gap:14px;border-right:1px solid #1E1B18">
+            <div style="display:flex;align-items:center;gap:11px">
+              <span style="width:3px;height:15px;background:#C8A15A;border-radius:2px"></span>
+              <span style="font-family:'Noto Serif KR',serif;font-size:15px;font-weight:600">보관함</span>
+              <span style="font-size:10px;letter-spacing:0.2em;color:#6E665C">INVENTORY</span>
+              <span style="flex:1;height:1px;background:#1E1B18"></span>
+              <span style="font-size:11px;color:#6E665C">{{ bagCount }}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+              <sc-for list="{{ bag }}" as="it" hint-placeholder-count="8">
+                <div style="border:1px solid #231F1B;border-radius:11px;background:linear-gradient(180deg,#161311,#111010);padding:11px;display:flex;flex-direction:column;gap:8px;cursor:pointer" style-hover="transform:translateY(-2px)">
+                  <div style="height:64px;border-radius:8px;background:{{ it.iconBg }};display:flex;align-items:center;justify-content:center;padding:10px;box-sizing:border-box">
+                    <div style="width:46px;height:46px">
+                      <dc-import name="ItemIcon" kind="{{ it.kind }}" color="#E8E2D6" accent="{{ it.rc }}" hint-size="46px,46px"></dc-import>
+                    </div>
+                  </div>
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:5px">
+                    <span style="font-size:12px;font-weight:600;color:#EDE7DB">{{ it.name }}</span>
+                    <span style="font-size:9.5px;font-weight:600;color:{{ it.rc }}">{{ it.rarLabel }}</span>
+                  </div>
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:5px">
+                    <span style="font-size:10px;color:#6E665C;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ it.themeKo }}</span>
+                    <span style="font-size:10px;color:#5C574E;white-space:nowrap">{{ it.slotKo }}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;height:26px;padding:0 9px;border-radius:6px;background:#141210">
+                    <span style="font-size:10px;color:#6E665C">판매 환급</span>
+                    <span style="font-size:10.5px;color:#C8A15A">{{ it.refund }}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="padding:22px 20px;display:flex;flex-direction:column;gap:14px;min-height:0;overflow-y:auto">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-family:'Noto Serif KR',serif;font-size:14px;font-weight:600">세트 프리셋</span>
+              <span style="font-size:9.5px;letter-spacing:0.18em;color:#6E665C">PRESET</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <sc-for list="{{ presets }}" as="p" hint-placeholder-count="3">
+                <div style="border:1px solid #241F1B;border-radius:11px;background:linear-gradient(180deg,#141210,#100E0D);padding:13px;display:flex;flex-direction:column;gap:9px">
+                  <div style="display:flex;align-items:baseline;gap:8px">
+                    <span style="font-size:13px;font-weight:600;color:#EDE7DB">{{ p.name }}</span>
+                    <span style="margin-left:auto;font-size:10px;color:{{ p.tagColor }}">{{ p.tag }}</span>
+                  </div>
+                  <span style="font-size:11px;line-height:1.5;color:#8A8578">{{ p.body }}</span>
+                  <button onClick="{{ p.onApply }}" style="height:30px;border:1px solid {{ p.btnBorder }};border-radius:7px;background:{{ p.btnBg }};color:{{ p.btnColor }};font-family:Pretendard,sans-serif;font-size:11.5px;font-weight:600;cursor:pointer" style-hover="filter:brightness(1.15)">{{ p.btnLabel }}</button>
+                </div>
+              </sc-for>
+            </div>
+            <div style="margin-top:auto;border:1px solid #2A2622;border-radius:12px;background:#141210;padding:14px;display:flex;flex-direction:column;gap:8px">
+              <span style="font-size:12.5px;font-weight:600;color:#EDE7DB">스탯 재분배</span>
+              <p style="margin:0;font-size:11px;line-height:1.55;color:#8A8578">레벨업당 1회 무료. 지금 사용하면 다음 레벨까지 추가 재분배는 동전이 필요합니다.</p>
+              <button style="height:32px;border:1px solid #3A3026;border-radius:8px;background:#17130E;color:#C8A15A;font-family:Pretendard,sans-serif;font-size:11.5px;font-weight:600;cursor:pointer" style-hover="filter:brightness(1.15)">무료 재분배 1회 사용</button>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ isShop }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;min-height:0;display:grid;grid-template-columns:352px 1fr">
+          <div style="border-right:1px solid #1E1B18;padding:22px 20px;display:flex;flex-direction:column;gap:14px;min-height:0;overflow-y:auto">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="width:3px;height:15px;background:#C8A15A;border-radius:2px"></span>
+              <span style="font-family:'Noto Serif KR',serif;font-size:15px;font-weight:600">단품 구매</span>
+              <span style="font-size:10px;letter-spacing:0.2em;color:#6E665C">COINS</span>
+            </div>
+            <p style="margin:0;font-size:11.5px;line-height:1.6;color:#8A8578">전 등급을 동전으로 구매할 수 있습니다. DLC 팩으로도 판매되는 아이템은 동전 가격이 크게 책정됩니다.</p>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <sc-for list="{{ shopItems }}" as="it" hint-placeholder-count="3">
+                <div style="border:1px solid #231F1B;border-radius:11px;background:linear-gradient(180deg,#161311,#111010);padding:11px;display:flex;align-items:center;gap:11px">
+                  <div style="width:52px;height:52px;flex:0 0 52px;border-radius:9px;background:{{ it.iconBg }};display:flex;align-items:center;justify-content:center;padding:9px;box-sizing:border-box">
+                    <div style="width:38px;height:38px">
+                      <dc-import name="ItemIcon" kind="{{ it.kind }}" color="#E8E2D6" accent="{{ it.rc }}" hint-size="38px,38px"></dc-import>
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+                    <div style="display:flex;align-items:baseline;gap:7px">
+                      <span style="font-size:13px;font-weight:600;color:#EDE7DB">{{ it.name }}</span>
+                      <span style="font-size:9.5px;font-weight:600;color:{{ it.rc }}">{{ it.rarLabel }}</span>
+                    </div>
+                    <span style="font-size:10.5px;color:#C8A15A;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ it.statText }}</span>
+                    <span style="font-size:10px;color:#5C574E;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ it.themeKo }} · {{ it.priceText }}</span>
+                  </div>
+                  <button style="height:30px;padding:0 14px;border:1px solid {{ it.btnBorder }};border-radius:7px;background:{{ it.btnBg }};color:{{ it.btnColor }};font-family:Pretendard,sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="filter:brightness(1.15)">{{ it.btnLabel }}</button>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="min-height:0;overflow-y:auto;padding:22px 26px 30px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:center;gap:11px">
+              <span style="width:3px;height:15px;background:#C8A15A;border-radius:2px"></span>
+              <span style="font-family:'Noto Serif KR',serif;font-size:15px;font-weight:600">DLC 팩</span>
+              <span style="font-size:10px;letter-spacing:0.2em;color:#6E665C">PACKS</span>
+              <span style="flex:1;height:1px;background:#1E1B18"></span>
+              <span style="font-size:11px;color:#6E665C">모자 · 안경 · 넥타이 · 망토 4종 + 파티클 색상</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <sc-for list="{{ packs }}" as="p" hint-placeholder-count="6">
+                <div style="border:1px solid {{ p.border }};border-radius:12px;background:linear-gradient(180deg,#161311,#111010);padding:14px;display:flex;flex-direction:column;gap:11px">
+                  <div style="display:flex;align-items:baseline;gap:8px">
+                    <span style="font-family:'Noto Serif KR',serif;font-size:14.5px;font-weight:600;color:#EDE7DB">{{ p.themeKo }}</span>
+                    <span style="margin-left:auto;font-size:10px;font-weight:600;color:{{ p.badgeColor }}">{{ p.badge }}</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:7px">
+                    <sc-for list="{{ p.kinds }}" as="k" hint-placeholder-count="4">
+                      <div style="height:52px;border-radius:8px;background:#0F0D0C;border:1px solid #1E1B18;display:flex;align-items:center;justify-content:center;padding:8px;box-sizing:border-box">
+                        <div style="width:36px;height:36px">
+                          <dc-import name="ItemIcon" kind="{{ k.kind }}" color="#E8E2D6" accent="#C8A15A" hint-size="36px,36px"></dc-import>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <span style="font-size:11px;line-height:1.5;color:#8A8578">{{ p.note }}</span>
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <span style="font-size:12.5px;font-weight:600;color:#C8A15A">{{ p.price }}</span>
+                    <button style="margin-left:auto;height:30px;padding:0 14px;border:1px solid {{ p.btnBorder }};border-radius:7px;background:{{ p.btnBg }};color:{{ p.btnColor }};font-family:Pretendard,sans-serif;font-size:11.5px;font-weight:600;cursor:pointer" style-hover="filter:brightness(1.15)">{{ p.btnLabel }}</button>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <div id="1b" style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:24px;padding:0 8px;border-radius:6px;background:#57E0C8;color:#080B12;font-size:13px;font-weight:700">1b</span>
+        <span style="color:#EDE7DB;font-size:16px;font-weight:600">네온 콘솔</span>
+        <span style="color:#6E665C;font-size:13px">차가운 슬레이트 + 시안 악센트, 떠 있는 상세 툴팁</span>
+      </div>
+
+      <div data-screen-label="1b 장비 화면" style="width:1240px;height:800px;background:#080B12;border:1px solid #1D2534;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;color:#E6ECF5;font-family:'IBM Plex Sans KR',sans-serif;box-shadow:0 40px 80px -30px rgba(0,0,0,0.9)">
+
+        <div style="height:66px;flex:0 0 66px;border-bottom:1px solid #141B27;display:flex;align-items:center;justify-content:space-between;padding:0 26px;background:linear-gradient(180deg,#0C111B,#080B12)">
+          <div style="display:flex;align-items:center;gap:16px">
+            <span style="font-size:19px;font-weight:700;letter-spacing:-0.01em">장비</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:0.24em;color:#57E0C8">EQUIPMENT</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="display:flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:8px;background:#111827;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6C7A90">OWNED <span style="color:#E6ECF5">13/16</span></div>
+            <div style="display:flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:8px;background:#0F1F2C;border:1px solid #1E3A44;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#57E0C8">◆ 1,240</div>
+          </div>
+        </div>
+
+        <div style="flex:1;min-height:0;display:grid;grid-template-columns:330px 1fr">
+
+          <div style="padding:20px;display:flex;flex-direction:column;gap:14px;min-height:0;background:#0A0F18;border-right:1px solid #141B27">
+            <div style="position:relative;flex:1;min-height:0;border-radius:14px;background:linear-gradient(180deg,#0E1725 0%,#0A0F18 100%);border:1px solid #182234;overflow:hidden">
+              <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg, rgba(87,224,200,0.045) 0 1px, transparent 1px 26px)"></div>
+              <div style="position:absolute;left:50%;bottom:26px;transform:translateX(-50%);width:200px;height:34px;border-radius:50%;background:radial-gradient(50% 100% at 50% 50%, rgba(87,224,200,0.28), transparent 72%)"></div>
+              <svg viewBox="0 0 200 240" style="position:absolute;left:50%;top:56px;transform:translateX(-50%);width:176px;height:auto;overflow:visible;z-index:1">
+                <g fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="100" cy="46" r="28" fill="#0B1018"></circle>
+                  <path d="M100 74 V140"></path>
+                  <path d="M52 138 L100 88 L148 138"></path>
+                  <path d="M100 140 L66 212"></path>
+                  <path d="M100 140 L134 212"></path>
+                </g>
+                <circle cx="90" cy="43" r="3.4" fill="#FFFFFF"></circle>
+                <circle cx="110" cy="43" r="3.4" fill="#FFFFFF"></circle>
+              </svg>
+              <svg viewBox="0 0 200 240" style="position:absolute;left:50%;top:56px;transform:translateX(-50%);width:176px;height:auto;overflow:visible;z-index:0">
+                <sc-if value="{{ b.eq.capeLong }}" hint-placeholder-val="{{ false }}">
+                  <path d="M76 80 Q48 148 50 202 Q100 214 150 202 Q152 148 124 80 Z" fill="#A8332A" stroke="#7E1F17" stroke-width="2"></path>
+                </sc-if>
+                <sc-if value="{{ b.eq.capeShort }}" hint-placeholder-val="{{ false }}">
+                  <path d="M78 80 Q56 114 54 142 Q100 154 146 142 Q144 114 122 80 Z" fill="#A8332A" stroke="#7E1F17" stroke-width="2"></path>
+                </sc-if>
+              </svg>
+              <div style="position:absolute;left:50%;top:106px;transform:translateX(-50%);width:102px;height:102px;opacity:0.4;z-index:0">
+                <sc-if value="{{ b.eq.back }}" hint-placeholder-val="{{ true }}">
+                  <dc-import name="ItemIcon" kind="{{ b.eq.back }}" color="{{ b.eq.backPc }}" accent="{{ b.eq.backAc }}" stroke="{{ 2 }}" hint-size="102px,102px"></dc-import>
+                </sc-if>
+              </div>
+              <svg viewBox="0 0 200 240" style="position:absolute;left:50%;top:56px;transform:translateX(-50%);width:176px;height:auto;overflow:visible;z-index:4;pointer-events:none">
+                <sc-if value="{{ b.eq.capeLong }}" hint-placeholder-val="{{ false }}">
+                  <g>
+                    <path d="M74 72 Q100 88 126 72 L128 80 Q100 96 72 80 Z" fill="#8E241C" stroke="#7E1F17" stroke-width="2"></path>
+                    <circle cx="100" cy="85" r="4.6" fill="#57E0C8" stroke="#7E1F17" stroke-width="1.8"></circle>
+                  </g>
+                </sc-if>
+                <sc-if value="{{ b.eq.capeShort }}" hint-placeholder-val="{{ false }}">
+                  <g>
+                    <path d="M74 72 Q100 88 126 72 L128 80 Q100 96 72 80 Z" fill="#8E241C" stroke="#7E1F17" stroke-width="2"></path>
+                    <circle cx="100" cy="85" r="4.6" fill="#57E0C8" stroke="#7E1F17" stroke-width="1.8"></circle>
+                  </g>
+                </sc-if>
+              </svg>
+              <div style="position:absolute;left:50%;top:31px;transform:translateX(-50%);width:80px;height:80px;z-index:5">
+                <sc-if value="{{ b.eq.head }}" hint-placeholder-val="{{ true }}">
+                  <dc-import name="ItemIcon" kind="{{ b.eq.head }}" color="{{ b.eq.headPc }}" accent="{{ b.eq.headAc }}" stroke="{{ 2.6 }}" hint-size="80px,80px"></dc-import>
+                </sc-if>
+              </div>
+              <div style="position:absolute;left:50%;top:70px;transform:translateX(-50%);width:54px;height:54px;z-index:6">
+                <sc-if value="{{ b.eq.eyes }}" hint-placeholder-val="{{ true }}">
+                  <dc-import name="ItemIcon" kind="{{ b.eq.eyes }}" color="{{ b.eq.eyesPc }}" accent="{{ b.eq.eyesAc }}" stroke="{{ 3 }}" hint-size="54px,54px"></dc-import>
+                </sc-if>
+              </div>
+              <div style="position:absolute;left:50%;top:112px;transform:translateX(-50%);width:60px;height:60px;z-index:6">
+                <sc-if value="{{ b.eq.neck }}" hint-placeholder-val="{{ true }}">
+                  <dc-import name="ItemIcon" kind="{{ b.eq.neck }}" color="{{ b.eq.neckPc }}" accent="{{ b.eq.neckAc }}" stroke="{{ 3 }}" hint-size="62px,62px"></dc-import>
+                </sc-if>
+              </div>
+              <div style="position:absolute;left:14px;top:12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.18em;color:#3E4D63">AVATAR</div>
+              <div style="position:absolute;right:14px;top:12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.18em;color:#57E0C8">SET 3/4</div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <sc-for list="{{ b.slots }}" as="s" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:10px;height:42px;padding:0 12px;border-radius:9px;background:{{ s.bg }};border-left:2px solid {{ s.bc }}">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.14em;color:#4E5C72;width:44px">{{ s.en }}</span>
+                  <div style="width:20px;height:20px;flex:0 0 20px;opacity:{{ s.op }}">
+                    <dc-import name="ItemIcon" kind="{{ s.kind }}" color="{{ s.ic }}" accent="#57E0C8" stroke="{{ 3 }}" hint-size="20px,20px"></dc-import>
+                  </div>
+                  <span style="font-size:12.5px;font-weight:500;color:{{ s.nc }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.name }}</span>
+                  <span style="margin-left:auto;font-size:11px;color:{{ s.bc }}">{{ s.badge }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="position:relative;min-height:0;display:flex">
+            <div style="flex:1;min-width:0;overflow-y:auto;padding:20px 22px 28px;display:flex;flex-direction:column;gap:22px">
+              <sc-for list="{{ b.cats }}" as="cat" hint-placeholder-count="4">
+                <div style="display:flex;flex-direction:column;gap:11px">
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <span style="font-size:14px;font-weight:700">{{ cat.ko }}</span>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.2em;color:#4E5C72">{{ cat.en }}</span>
+                    <span style="flex:1;height:1px;background:linear-gradient(90deg,#1B2433,transparent)"></span>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#4E5C72">{{ cat.count }}</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+                    <sc-for list="{{ cat.items }}" as="it" hint-placeholder-count="3">
+                      <div onClick="{{ it.onSelect }}" style="position:relative;border-radius:12px;background:{{ it.bg }};border:1px solid {{ it.bc }};padding:12px;display:flex;flex-direction:column;gap:9px;cursor:pointer;overflow:hidden;transition:transform .16s ease;box-shadow:{{ it.shadow }}" style-hover="transform:translateY(-3px)">
+                        <span style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,{{ it.rc }},transparent);opacity:{{ it.ribbon }}"></span>
+                        <div style="height:76px;border-radius:9px;background:{{ it.iconBg }};display:flex;align-items:center;justify-content:center;padding:11px;box-sizing:border-box;opacity:{{ it.op }}">
+                          <div style="width:56px;height:56px">
+                            <dc-import name="ItemIcon" kind="{{ it.kind }}" color="{{ it.ic }}" accent="{{ it.rc }}" hint-size="56px,56px"></dc-import>
+                          </div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:3px">
+                          <span style="font-size:12.5px;font-weight:600;color:{{ it.nc }}">{{ it.name }}</span>
+                          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:0.14em;color:{{ it.rc }}">{{ it.rarEn }}</span>
+                        </div>
+                        <button onClick="{{ it.onEquip }}" style="height:28px;border:none;border-radius:7px;background:{{ it.btnBg }};color:{{ it.btnColor }};font-family:'IBM Plex Sans KR',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer" style-hover="filter:brightness(1.15)">{{ it.btnLabel }}</button>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="flex:0 0 274px;margin:20px 20px 20px 0;align-self:flex-start;border-radius:14px;background:rgba(13,19,30,0.96);border:1px solid #223349;box-shadow:0 24px 48px -18px rgba(0,0,0,0.9);padding:16px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:0.2em;color:#4E5C72">DETAILS</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:0.14em;color:{{ b.detail.rc }}">{{ b.detail.rarEn }}</span>
+              </div>
+              <div style="height:96px;border-radius:10px;background:{{ b.detail.iconBg }};display:flex;align-items:center;justify-content:center">
+                <div style="width:70px;height:70px">
+                  <dc-import name="ItemIcon" kind="{{ b.detail.kind }}" color="#E6ECF5" accent="{{ b.detail.rc }}" hint-size="70px,70px"></dc-import>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <span style="font-size:15px;font-weight:700">{{ b.detail.name }}</span>
+                <span style="font-size:11.5px;color:#6C7A90">{{ b.detail.rarLabel }} · {{ b.detail.slotKo }}</span>
+              </div>
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#8494A8">{{ b.detail.desc }}</p>
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <sc-for list="{{ b.detail.stats }}" as="st" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:center;justify-content:space-between;height:26px;padding:0 9px;border-radius:6px;background:#101A28;font-size:11.5px;color:#9FB0C4">{{ st }}</div>
+                </sc-for>
+              </div>
+              <button onClick="{{ b.detail.onEquip }}" style="height:36px;border:none;border-radius:9px;background:{{ b.detail.mainBg }};color:{{ b.detail.mainColor }};font-family:'IBM Plex Sans KR',sans-serif;font-size:13px;font-weight:700;cursor:pointer" style-hover="filter:brightness(1.12)">{{ b.detail.mainLabel }}</button>
+
+              <div style="margin-top:2px;padding-top:14px;border-top:1px solid #1A2432;display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:0.2em;color:#4E5C72">STATUS</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#57E0C8">+{{ b.power }}</span>
+                </div>
+                <sc-for list="{{ b.statRows }}" as="s" hint-placeholder-count="4">
+                  <div style="display:flex;flex-direction:column;gap:5px">
+                    <div style="display:flex;align-items:baseline;justify-content:space-between">
+                      <span style="font-size:11.5px;color:#8494A8">{{ s.name }}</span>
+                      <span style="display:flex;align-items:baseline;gap:5px">
+                        <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:500;color:#E6ECF5">{{ s.total }}</span>
+                        <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:{{ s.bonusColor }}">{{ s.bonusText }}</span>
+                      </span>
+                    </div>
+                    <div style="position:relative;height:3px;border-radius:2px;background:#16202E;overflow:hidden">
+                      <span style="position:absolute;left:0;top:0;bottom:0;width:{{ s.pct }};background:linear-gradient(90deg,#2F7F72,#57E0C8)"></span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:1000}}">
+const SLOT_MAIN = { HEAD: '집중력', EYES: '관찰력', NECK: '매력', BACK: '민첩' };
+const THEME = {
+  office: '오피스 워커', cyber: '사이버 아포칼립스', neon: '네온 낙서',
+  sport: '스포츠 이펙트', ink: '컬러 잉크', mil: '밀리터리'
+};
+const MAINV = [3, 6, 10, 15];
+const SUBV = [1, 2, 4, 6];
+
+const CATS = [
+  { key: 'HEAD', ko: '모자', en: 'HEAD', main: '집중력', items: [
+    { id: 'h1', name: '천모자', kind: 'clothhat', rar: 0, owned: true, theme: 'ink', sub: '매력', price: 600, desc: '수수한 천모자. 집중모드 성과물이 조금 더 쌓인다.' },
+    { id: 'h2', name: '털모자', kind: 'furhat', rar: 1, owned: true, theme: 'sport', sub: '민첩', price: 1400, desc: '두툼한 털모자. 유휴 졸음 연출이 자주 나온다.' },
+    { id: 'h3', name: '중절모', kind: 'fedora', rar: 1, owned: true, theme: 'office', sub: '관찰력', price: 1400, desc: '단정하게 접힌 중절모. 책상업무 성과물 배율이 오른다.' },
+    { id: 'h4', name: '왕관', kind: 'crown', rar: 3, owned: false, dlc: true, theme: 'cyber', sub: '매력', desc: '사이버 아포칼립스 팩 시그니처. 집중력 임계를 단번에 끌어올린다.' }
+  ] },
+  { key: 'EYES', ko: '안경', en: 'EYES', main: '관찰력', items: [
+    { id: 'e1', name: '선글라스', kind: 'sunglasses', rar: 2, owned: true, theme: 'mil', sub: '민첩', price: 3200, desc: '짙게 코팅된 렌즈. 활쏘기 자동발동 쿨다운이 짧아진다.' },
+    { id: 'e2', name: '동그란안경', kind: 'roundglasses', rar: 0, owned: true, theme: 'office', sub: '집중력', price: 600, desc: '얇은 금속테. 화살 궤적을 조금 더 정확히 읽는다.' },
+    { id: 'e3', name: '고글', kind: 'goggles', rar: 1, owned: true, theme: 'cyber', sub: '민첩', price: 1400, desc: '방풍 고글. 창 던전 파밍 중 시야가 흐려지지 않는다.' },
+    { id: 'e4', name: '외알안경', kind: 'monocle', rar: 2, owned: false, theme: 'ink', sub: '집중력', price: 3200, desc: '감정용 렌즈. 신규 화살 잔상 이펙트가 해금된다.' }
+  ] },
+  { key: 'NECK', ko: '넥타이', en: 'NECK', main: '매력', items: [
+    { id: 'n1', name: '나비넥타이', kind: 'bowtie', rar: 1, owned: true, theme: 'office', sub: '집중력', price: 1400, desc: '연회용 나비넥타이. 주변 오라 범위가 넓어진다.' },
+    { id: 'n2', name: '줄무늬타이', kind: 'stripedtie', rar: 0, owned: true, theme: 'office', sub: '집중력', price: 600, desc: '기본 사무용 넥타이. 오피스 워커 세트의 기본 부품.' },
+    { id: 'n3', name: '목도리', kind: 'scarf', rar: 0, owned: true, theme: 'sport', sub: '민첩', price: 600, desc: '손뜨개 목도리. 겨울 유휴 동작이 추가된다.' },
+    { id: 'n4', name: '방울목걸이', kind: 'bellnecklace', rar: 2, owned: true, theme: 'neon', sub: '관찰력', price: 3200, desc: '움직일 때마다 소리가 난다. 오라 이펙트 강도가 한 단계 올라간다.' }
+  ] },
+  { key: 'BACK', ko: '망토', en: 'BACK', main: '민첩', items: [
+    { id: 'b1', name: '짧은망토', kind: 'shortcape', rar: 0, owned: true, theme: 'mil', sub: '집중력', price: 600, desc: '어깨를 덮는 짧은 망토. 이동속도가 조금 오른다.' },
+    { id: 'b2', name: '긴망토', kind: 'longcape', rar: 1, owned: true, theme: 'cyber', sub: '매력', price: 1400, desc: '발끝까지 흐르는 망토. 던지기 회전 잔상이 길게 남는다.' },
+    { id: 'b3', name: '날개', kind: 'wings', rar: 3, owned: false, dlc: true, theme: 'neon', sub: '관찰력', desc: '네온 낙서 팩 시그니처. 최소 회전수가 보장되고 트레일이 팩 색으로 바뀐다.' },
+    { id: 'b4', name: '배낭', kind: 'backpack', rar: 0, owned: true, theme: 'office', sub: '집중력', price: 600, desc: '튼튼한 배낭. 파쿠르 착지 시 소품이 흔들린다.' }
+  ] }
+];
+
+const RAR_A = [
+  { l: '일반', e: 'COMMON', c: '#8A8F98' },
+  { l: '희귀', e: 'RARE', c: '#6E9BE8' },
+  { l: '영웅', e: 'EPIC', c: '#B07BE0' },
+  { l: '전설', e: 'LEGEND', c: '#E0B24A' }
+];
+const RAR_B = [
+  { l: '일반', e: 'COMMON', c: '#7E8B9C' },
+  { l: '희귀', e: 'RARE', c: '#4FB8FF' },
+  { l: '영웅', e: 'EPIC', c: '#9B7BFF' },
+  { l: '전설', e: 'LEGEND', c: '#FFC24B' }
+];
+
+const STAT_ORDER = ['집중력', '관찰력', '매력', '민첩'];
+const STAT_SLOT = { 집중력: '모자', 관찰력: '안경', 매력: '넥타이', 민첩: '망토' };
+const BASE = { 집중력: 8, 관찰력: 6, 매력: 5, 민첩: 7 };
+const TIERS = [{ l: '초급', v: 10 }, { l: '중급', v: 20 }, { l: '고급', v: 32 }];
+const CAP = 40;
+const EFFECT = {
+  집중력: ['성과물 배율 +10%', '명상 유휴 연출 해금', '성과물 배율 +25% · 졸음 연출'],
+  관찰력: ['활쏘기 쿨다운 −10%', '궤적 잔상 이펙트', '쿨다운 −25% · 잔상 강화'],
+  매력: ['오라 이펙트 발현', '오라 범위 확대', '오라 강도 최대 · 팩 색 연동'],
+  민첩: ['이동속도 +8%', '던지기 최소 회전 보장', '이동속도 +18% · 트레일 이펙트']
+};
+
+const findItem = (id) => {
+  for (const c of CATS) { const it = c.items.find(x => x.id === id); if (it) return { it, cat: c }; }
+  return null;
+};
+
+class Component extends DCLogic {
+  state = {
+    tab: '장비',
+    cfg: { name: '스틱', scale: 100, outline: true, fps: 60, morning: true, night: false, pack: 'office' },
+    selA: 'b4', selB: 'e1',
+    eqA: { HEAD: 'h3', EYES: 'e2', NECK: 'n2', BACK: 'b2' },
+    eqB: { HEAD: 'h3', EYES: 'e1', NECK: 'n4', BACK: 'b2' }
+  };
+
+  select(opt, id) { this.setState(opt === 'a' ? { selA: id } : { selB: id }); }
+
+  equip(opt, id) {
+    const f = findItem(id); if (!f || !f.it.owned) return;
+    const key = opt === 'a' ? 'eqA' : 'eqB';
+    this.setState(s => {
+      const eq = Object.assign({}, s[key]);
+      eq[f.cat.key] = eq[f.cat.key] === id ? null : id;
+      return Object.assign({ [key]: eq }, opt === 'a' ? { selA: id } : { selB: id });
+    });
+  }
+
+  build(opt) {
+    const A = opt === 'a';
+    const RAR = A ? RAR_A : RAR_B;
+    const eq = A ? this.state.eqA : this.state.eqB;
+    const sel = A ? this.state.selA : this.state.selB;
+
+    const cats = CATS.map(c => {
+      const items = c.items.map(it => {
+        const r = RAR[it.rar];
+        const equipped = eq[c.key] === it.id;
+        const isSel = sel === it.id;
+        const dim = !it.owned;
+        const accent = A ? '#C8A15A' : '#57E0C8';
+        return {
+          id: it.id, name: it.name, kind: it.kind,
+          rarLabel: r.l, rarEn: r.e, rc: r.c,
+          ribbon: dim ? 0.25 : 1,
+          op: dim ? 0.34 : 1,
+          nc: dim ? (A ? '#6E665C' : '#54637A') : (A ? '#EDE7DB' : '#E6ECF5'),
+          ic: dim ? (A ? '#6E665C' : '#54637A') : (A ? '#E8E2D6' : '#DCE6F2'),
+          bg: A
+            ? (equipped ? 'linear-gradient(180deg,#1D1813,#141110)' : 'linear-gradient(180deg,#161311,#111010)')
+            : (equipped ? 'linear-gradient(180deg,#0F2029,#0B121C)' : 'linear-gradient(180deg,#0E1420,#0A0F18)'),
+          bc: equipped ? accent : (isSel ? (A ? '#4A4036' : '#2C4256') : (A ? '#231F1B' : '#161F2E')),
+          shadow: equipped
+            ? (A ? '0 0 0 1px rgba(200,161,90,0.25), 0 10px 24px -14px rgba(200,161,90,0.6)' : '0 0 0 1px rgba(87,224,200,0.22), 0 10px 26px -14px rgba(87,224,200,0.55)')
+            : 'none',
+          iconBg: A
+            ? 'radial-gradient(70% 70% at 50% 42%, ' + r.c + '1F, transparent 72%), #0F0D0C'
+            : 'radial-gradient(70% 70% at 50% 42%, ' + r.c + '22, transparent 72%), #0A101A',
+          mainText: c.main + ' +' + MAINV[it.rar],
+          subText: it.sub + ' +' + SUBV[it.rar],
+          themeKo: THEME[it.theme],
+          priceText: it.dlc ? 'DLC 전용' : (it.owned ? '보유' : '동전 ' + it.price.toLocaleString()),
+          btnLabel: it.dlc && !it.owned ? '스토어에서 구매' : (!it.owned ? '동전 ' + it.price.toLocaleString() : (equipped ? '해제' : '착용')),
+          btnBg: !it.owned ? (A ? '#141210' : '#0C121C') : (equipped ? (A ? '#2A2119' : '#12303A') : (A ? '#C8A15A' : '#57E0C8')),
+          btnColor: !it.owned ? (A ? '#5C574E' : '#445266') : (equipped ? (A ? '#C8A15A' : '#57E0C8') : (A ? '#160F06' : '#04211C')),
+          btnBorder: !it.owned ? (A ? '#231F1B' : '#141C28') : (equipped ? (A ? '#4A3A26' : '#1E4A55') : 'transparent'),
+          onSelect: () => this.select(opt, it.id),
+          onEquip: (ev) => { ev.stopPropagation(); this.equip(opt, it.id); }
+        };
+      });
+      const owned = c.items.filter(i => i.owned).length;
+      return { ko: c.ko, en: c.en, main: c.main, count: owned + '/' + c.items.length, items };
+    });
+
+    const slots = CATS.map(c => {
+      const id = eq[c.key];
+      const f = id ? findItem(id) : null;
+      const accent = A ? '#C8A15A' : '#57E0C8';
+      return {
+        en: c.en, ko: c.ko, main: c.main, kind: f ? f.it.kind : c.items[0].kind,
+        name: f ? f.it.name : '비어 있음',
+        badge: f ? '착용 중' : '—',
+        mainText: f ? c.main + ' +' + MAINV[f.it.rar] : '—',
+        themeKo: f ? THEME[f.it.theme] : '',
+        bc: f ? accent : (A ? '#231F1B' : '#1B2534'),
+        bg: f ? (A ? '#17130E' : '#0D1922') : (A ? '#111010' : '#0C111A'),
+        nc: f ? (A ? '#EDE7DB' : '#E6ECF5') : (A ? '#5C574E' : '#445266'),
+        ic: f ? (A ? '#E8E2D6' : '#DCE6F2') : (A ? '#3A342D' : '#26313F'),
+        op: f ? 1 : 0.5
+      };
+    });
+
+    const f = findItem(sel) || findItem('h1');
+    const r = RAR[f.it.rar];
+    const equipped = eq[f.cat.key] === f.it.id;
+    const detail = {
+      name: f.it.name, kind: f.it.kind, desc: f.it.desc,
+      stats: [f.cat.main + ' +' + MAINV[f.it.rar] + ' (주)', f.it.sub + ' +' + SUBV[f.it.rar] + ' (부)'],
+      themeKo: THEME[f.it.theme],
+      priceText: f.it.dlc ? 'DLC 전용 · 스토어 구매' : '동전 ' + (f.it.price || 0).toLocaleString(),
+      rarLabel: r.l, rarEn: r.e, rc: r.c, slotKo: f.cat.ko,
+      iconBg: 'radial-gradient(70% 70% at 50% 45%, ' + r.c + '26, transparent 74%), ' + (A ? '#0F0D0C' : '#0A101A'),
+      mainLabel: f.it.dlc && !f.it.owned ? '스토어에서 구매' : (!f.it.owned ? '동전 ' + f.it.price.toLocaleString() + '으로 해금' : (equipped ? '해제하기' : '착용하기')),
+      mainBg: !f.it.owned ? (A ? '#17130E' : '#101A28') : (equipped ? (A ? '#221B14' : '#12303A') : (A ? '#C8A15A' : '#57E0C8')),
+      mainColor: !f.it.owned ? (A ? '#C8A15A' : '#57E0C8') : (equipped ? (A ? '#C8A15A' : '#57E0C8') : (A ? '#160F06' : '#04211C')),
+      mainBorder: !f.it.owned ? (A ? '#3A3026' : '#1E3A44') : 'transparent',
+      onEquip: () => this.equip(opt, f.it.id)
+    };
+
+    const WEAR = A
+      ? ['#D8B27A', '#7FB0F2', '#C08FEC', '#F0C25C']
+      : ['#9FB4CC', '#5CC8FF', '#A98BFF', '#FFCF6B'];
+    const at = (k) => {
+      const id = eq[k]; const g = id ? findItem(id) : null;
+      if (!g) return { kind: null, ac: A ? '#C8A15A' : '#57E0C8', pc: A ? '#C8A15A' : '#57E0C8' };
+      return { kind: g.it.kind, ac: RAR[g.it.rar].c, pc: WEAR[g.it.rar] };
+    };
+    const head = at('HEAD'), eyes = at('EYES'), neck = at('NECK'), back = at('BACK');
+    const isCape = back.kind === 'shortcape' || back.kind === 'longcape';
+
+    const bonus = { 집중력: 0, 관찰력: 0, 매력: 0, 민첩: 0 };
+    const themeCount = {};
+    CATS.forEach(c => {
+      const id = eq[c.key]; if (!id) return;
+      const g = findItem(id);
+      bonus[c.main] += MAINV[g.it.rar];
+      bonus[g.it.sub] += SUBV[g.it.rar];
+      themeCount[g.it.theme] = (themeCount[g.it.theme] || 0) + 1;
+    });
+
+    const statRows = STAT_ORDER.map(n => {
+      const total = BASE[n] + bonus[n];
+      let stage = -1;
+      TIERS.forEach((t, i) => { if (total >= t.v) stage = i; });
+      const next = TIERS[stage + 1];
+      return {
+        name: n, slotKo: STAT_SLOT[n], base: BASE[n], bonus: bonus[n],
+        bonusText: bonus[n] > 0 ? '+' + bonus[n] : '—',
+        bonusColor: bonus[n] > 0 ? (A ? '#8FBF6A' : '#5EE08C') : (A ? '#5C574E' : '#445266'),
+        total: total,
+        stageLabel: stage < 0 ? '미달' : TIERS[stage].l,
+        stageColor: stage < 0 ? (A ? '#5C574E' : '#445266') : [A ? '#9AA1AB' : '#7E8B9C', A ? '#C8A15A' : '#4FB8FF', A ? '#E0B24A' : '#FFC24B'][stage],
+        effect: stage < 0 ? '임계 미달 · 효과 없음' : EFFECT[n][stage],
+        nextText: next ? next.l + '까지 ' + (next.v - total) : '최고 단계',
+        pct: Math.min(100, Math.round(total / CAP * 100)) + '%',
+        basePct: Math.min(100, Math.round(BASE[n] / CAP * 100)) + '%',
+        t1: Math.round(TIERS[0].v / CAP * 100) + '%',
+        t2: Math.round(TIERS[1].v / CAP * 100) + '%',
+        t3: Math.round(TIERS[2].v / CAP * 100) + '%'
+      };
+    });
+
+    const wornCount = CATS.filter(c => eq[c.key]).length;
+    let topTheme = null, topN = 0;
+    Object.keys(themeCount).forEach(t => { if (themeCount[t] > topN) { topN = themeCount[t]; topTheme = t; } });
+    const complete = topN === 4;
+    const setPanel = {
+      themeKo: topTheme ? THEME[topTheme] : '테마 없음',
+      countText: topN + '/4',
+      dots: [0, 1, 2, 3].map(i => ({ on: i < topN, bg: i < topN ? (A ? '#C8A15A' : '#57E0C8') : (A ? '#2A2622' : '#1B2534') })),
+      statusText: complete ? '세트 완성 · 활성' : '미완성 · 기본 중립 대사',
+      statusColor: complete ? (A ? '#8FBF6A' : '#5EE08C') : (A ? '#8A8578' : '#6C7A90'),
+      rows: [
+        { label: '부분 착용 플레이버', desc: '개별 아이템 유휴 동작 (거수경례 등)', active: topN > 0 },
+        { label: '대사 풀 전환', desc: '테마 전용 대사로 교체', active: complete },
+        { label: '연출 스킨 교체', desc: '격파 성공 시 테마 이펙트', active: complete },
+        { label: '스탯 총합 보너스', desc: '4부위 합계 +8', active: complete }
+      ].map(r => ({
+        label: r.label, desc: r.desc,
+        color: r.active ? (A ? '#EDE7DB' : '#E6ECF5') : (A ? '#5C574E' : '#445266'),
+        mark: r.active ? '●' : '○',
+        markColor: r.active ? (A ? '#C8A15A' : '#57E0C8') : (A ? '#332E28' : '#1E2937')
+      }))
+    };
+
+    return {
+      cats, slots, detail, statRows, setPanel,
+      setLabel: wornCount + '/4 슬롯 착용',
+      power: STAT_ORDER.reduce((t, n) => t + bonus[n], 0),
+      eq: {
+        head: head.kind, headAc: head.ac, headPc: head.pc,
+        eyes: eyes.kind, eyesAc: eyes.ac, eyesPc: eyes.pc,
+        neck: neck.kind, neckAc: neck.ac, neckPc: neck.pc,
+        back: isCape ? null : back.kind, backAc: back.ac, backPc: back.pc,
+        capeLong: back.kind === 'longcape', capeShort: back.kind === 'shortcape'
+      }
+    };
+  }
+
+  setTab(t) { this.setState({ tab: t }); }
+  setCfg(k, v) { this.setState(s => ({ cfg: Object.assign({}, s.cfg, { [k]: v }) })); }
+
+  renderVals() {
+    const tab = this.state.tab || '장비';
+    const cfg = this.state.cfg || { name: '스틱', scale: 100, outline: true, fps: 60, morning: true, night: false, pack: 'office' };
+    const tabs = ['장비', '외형', '보관함', '상점'].map(t => ({
+      label: t, active: t === tab,
+      bg: t === tab ? '#C8A15A' : 'transparent',
+      color: t === tab ? '#160F06' : '#8A8578',
+      weight: t === tab ? 600 : 400,
+      dot: t === '상점' ? 1 : 0,
+      onClick: () => this.setTab(t)
+    }));
+
+    const own = (id) => { const g = findItem(id); return g && g.it.owned; };
+    const presets = [
+      { name: '오피스 워커 풀세트', body: '중절모 · 동그란안경 · 줄무늬타이 · 배낭', tag: '세트 완성', tagColor: '#8FBF6A', ready: true },
+      { name: '야간 잠행', body: '털모자 · 고글 · 목도리 · 긴망토', tag: '이종 조합', tagColor: '#8A8578', ready: true },
+      { name: '연회장', body: '왕관 · 외알안경 · 나비넥타이 · 짧은망토', tag: '2종 미보유', tagColor: '#6E665C', ready: false }
+    ].map(p => ({
+      name: p.name, body: p.body, tag: p.tag, tagColor: p.tagColor,
+      btnLabel: p.ready ? '적용' : '미보유',
+      btnBg: p.ready ? '#C8A15A' : '#17130E',
+      btnColor: p.ready ? '#160F06' : '#5C574E',
+      btnBorder: p.ready ? 'transparent' : '#2A2622'
+    }));
+
+    const RARL = ['일반', '희귀', '영웅', '전설'];
+    const RARC = ['#8A8F98', '#6E9BE8', '#B07BE0', '#E0B24A'];
+    const bag = [];
+    CATS.forEach(c => c.items.forEach(it => {
+      if (!it.owned) return;
+      bag.push({
+        name: it.name, kind: it.kind, slotKo: c.ko,
+        rarLabel: RARL[it.rar], rc: RARC[it.rar],
+        themeKo: THEME[it.theme],
+        refund: '동전 ' + Math.round((it.price || 0) * 0.4).toLocaleString(),
+        iconBg: 'radial-gradient(70% 70% at 50% 42%, ' + RARC[it.rar] + '1F, transparent 72%), #0F0D0C'
+      });
+    }));
+
+    const packs = [
+      { key: 'office', price: '기본 제공', owned: true, kinds: ['fedora', 'roundglasses', 'stripedtie', 'backpack'], note: '책상업무 성과물 · 서류더미' },
+      { key: 'cyber', price: '₩4,900', owned: false, kinds: ['crown', 'goggles', 'monocle', 'longcape'], note: '글리치 파티클 · 전설 왕관 포함' },
+      { key: 'neon', price: '₩4,900', owned: false, kinds: ['sunglasses', 'bellnecklace', 'fedora', 'wings'], note: '낙서 트레일 · 전설 날개 포함' },
+      { key: 'sport', price: '₩3,900', owned: false, kinds: ['furhat', 'goggles', 'scarf', 'shortcape'], note: '스포츠 이펙트 · 응원 대사 풀' },
+      { key: 'ink', price: '₩3,900', owned: false, kinds: ['clothhat', 'monocle', 'bowtie', 'longcape'], note: '잉크 번짐 파티클 · 드로잉 무기 색' },
+      { key: 'mil', price: '₩4,900', owned: false, kinds: ['sunglasses', 'furhat', 'stripedtie', 'shortcape'], note: '거수경례 유휴 · 경례 격파 연출' }
+    ].map(p => ({
+      themeKo: THEME[p.key], price: p.price, note: p.note,
+      kinds: p.kinds.map(k => ({ kind: k })),
+      badge: p.owned ? '보유' : 'DLC',
+      badgeColor: p.owned ? '#8FBF6A' : '#C8A15A',
+      btnLabel: p.owned ? '적용 중' : '스팀에서 구매',
+      btnBg: p.owned ? '#221B14' : '#C8A15A',
+      btnColor: p.owned ? '#C8A15A' : '#160F06',
+      btnBorder: p.owned ? '#4A3A26' : 'transparent',
+      border: p.owned ? '#4A4036' : '#231F1B'
+    }));
+
+    const shopItems = [];
+    CATS.forEach(c => c.items.forEach(it => {
+      if (it.owned) return;
+      shopItems.push({
+        name: it.name, kind: it.kind, slotKo: c.ko,
+        rarLabel: RARL[it.rar], rc: RARC[it.rar], themeKo: THEME[it.theme],
+        statText: c.main + ' +' + MAINV[it.rar] + ' · ' + it.sub + ' +' + SUBV[it.rar],
+        priceText: it.dlc ? 'DLC 전용' : '동전 ' + it.price.toLocaleString(),
+        btnLabel: it.dlc ? '스토어' : '구매',
+        btnBg: it.dlc ? '#17130E' : '#C8A15A',
+        btnColor: it.dlc ? '#C8A15A' : '#160F06',
+        btnBorder: it.dlc ? '#3A3026' : 'transparent',
+        iconBg: 'radial-gradient(70% 70% at 50% 42%, ' + RARC[it.rar] + '22, transparent 72%), #0F0D0C'
+      });
+    }));
+
+    const fpsOpts = [30, 45, 60].map(v => ({
+      label: v + 'fps', active: cfg.fps === v,
+      bg: cfg.fps === v ? '#C8A15A' : 'transparent',
+      color: cfg.fps === v ? '#160F06' : '#8A8578',
+      onClick: () => this.setCfg('fps', v)
+    }));
+    const packSwatches = ['office', 'cyber', 'neon', 'sport', 'ink', 'mil'].map(k => ({
+      themeKo: THEME[k],
+      color: { office: '#C8A15A', cyber: '#6E9BE8', neon: '#B07BE0', sport: '#8FBF6A', ink: '#D2402F', mil: '#8A8578' }[k],
+      border: cfg.pack === k ? '#EDE7DB' : '#231F1B',
+      onClick: () => this.setCfg('pack', k)
+    }));
+    const tog = (on) => ({
+      bg: on ? '#C8A15A' : '#231F1B',
+      knob: on ? 'calc(100% - 17px)' : '3px',
+      knobBg: on ? '#160F06' : '#6E665C',
+      label: on ? '켜짐' : '꺼짐',
+      labelColor: on ? '#C8A15A' : '#5C574E'
+    });
+
+    return {
+      a: this.build('a'), b: this.build('b'),
+      tabs,
+      isEquip: tab === '장비', isLook: tab === '외형', isBag: tab === '보관함', isShop: tab === '상점',
+      cfg: {
+        name: cfg.name,
+        scaleText: cfg.scale + '%',
+        scalePct: Math.round((cfg.scale - 70) / 80 * 100) + '%',
+        outline: tog(cfg.outline), morning: tog(cfg.morning), night: tog(cfg.night),
+        onOutline: () => this.setCfg('outline', !cfg.outline),
+        onMorning: () => this.setCfg('morning', !cfg.morning),
+        onNight: () => this.setCfg('night', !cfg.night),
+        fpsOpts, packSwatches
+      },
+      presets, bag, bagCount: bag.length + '종 보유', packs, shopItems
+    };
+  }
+}
+</script>
+</body>
+</html>

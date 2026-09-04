@@ -45,7 +45,12 @@ namespace StickMate.Interaction
             //    <b>밀어내기(push)</b>다. 게임이 아닌 전체화면 앱(발표·화상회의) 앞에서 캐릭터가 스스로
             //    종이를 꺼내 말을 거는 것은 정확히 그때 가장 방해된다. 이 값은 IsSuspended를 항상
             //    포함하므로 예전에 막히던 경우는 <b>전부 그대로</b> 막힌다(넓히기만 한 변경).
-            if (_player.ArePanelsSuppressed) return;
+            // ★★★ 2026-09-03 — <c>|| IsSuspended</c>가 붙었다. 이 값들은 이제 <b>포함관계가 아니다</b>:
+            //    사용자 명시 숨김 단독은 표면을 걷지 않으므로 ArePanelsSuppressed가 false다. 그런데
+            //    리마인더는 <b>캐릭터가 종이를 꺼내 말을 거는</b> 연출이라, 그 상태에서 발동하면
+            //    보이지 않는 캐릭터가 말을 건다(원칙 1 — 행동-텍스트 싱크가 화면과 어긋난다).
+            //    표면 축과 캐릭터 축을 <b>둘 다</b> 본다.
+            if (_player.ArePanelsSuppressed || _player.IsSuspended) return;
 
             var current = _player.Blackboard.Machine.CurrentStateId;
             if (current != StickmanStateId.Idle && current != StickmanStateId.Walk) { _checkTimer = 0f; return; }
@@ -79,6 +84,12 @@ namespace StickMate.Interaction
         {
             if (_player == null || _config == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
                 return CommandAvailability.Missing;
+
+            // ★★★ 2026-09-03 — <b>캐릭터가 안 보이면 캐릭터가 하는 일도 못 시킨다</b>(원칙 1).
+            //   근거·대상·비대상은 Core/HiddenCharacterCommandGate.cs 한 곳에 있다.
+            //   가드 값은 <c>IsSuspended</c>다 — <c>HidesScreenSurfaces</c>로 바꾸면 사용자 명시
+            //   숨김에서 안 막히고, 그게 정확히 이 줄이 고치는 결함이다.
+            if (HiddenCharacterCommandGate.BlocksNow(_player)) return HiddenCharacterCommandGate.WhileHidden;
 
             if (TodoListModel.UncompletedCount <= 0)
                 return CommandAvailability.Blocked(NoTodoReason);

@@ -536,6 +536,82 @@ namespace StickMate.Tests.EditMode
                 $"{LogPrefix} 알파/크기 필터가 열거 경로에서 빠지면 이월 Major가 그대로 재발한다.");
         }
 
+        /// <summary>
+        /// ★★ 2026-09-05 (M-10 재조사) — <b>W10~W14가 구조적으로 못 보는 축을 잠근다.</b>
+        ///
+        /// <para>W10~W14는 <see cref="WindowsFootholdFilter.ResolveWindowAlpha"/>를 <b>직접</b> 부른다.
+        /// 그래서 세 클릭 관통 조합이 "필터에 들어가면 0이 된다"는 것만 증명하고, <b>열거 경로가
+        /// 실제로 그 필터를 그 인자로 부르는가</b>는 한 건도 증명하지 않는다. 그 글루는
+        /// <c>Win32WindowService.ReadWindowAlpha</c>에 있고 이 파일은 통째로
+        /// <c>#if UNITY_STANDALONE_WIN</c>이라 <b>이 개발 머신에서 한 번도 컴파일되지 않는다</b>.</para>
+        ///
+        /// <para><b>구체적인 재발 경로</b>(오늘 실측으로 코드는 맞지만 아무것도 이 상태를 잠그고
+        /// 있지 않았다): 누군가 <c>ReadWindowAlpha</c>의 비레이어드 조기 반환을
+        /// <c>return 1f;</c>로 "최적화"하면 <b>케이스 1(TRANSPARENT 단독, 레이어드 아님)이 즉시
+        /// 되살아난다</b> — 그 창은 <c>GetLayeredWindowAttributes</c>를 부르지 않는 갈래로 가기
+        /// 때문이다. 그리고 W10~W14는 <b>한 건도 빨개지지 않는다</b>. 정확히 이 저장소가 반복해서
+        /// 당한 형태(성공한 측정과 실패한 측정이 똑같이 생겼다)다.</para>
+        ///
+        /// <para>실행이 불가능하므로 <b>소스로</b> 잠근다 — D2~D5와 같은 수단이다.</para>
+        /// </summary>
+        [Test]
+        public void W15_열거_글루가_클릭관통_비트를_필터까지_실제로_전달한다()
+        {
+            string src = ReadWin32Source();
+
+            int start = src.IndexOf("private static float ReadWindowAlpha", System.StringComparison.Ordinal);
+            Assert.Greater(start, 0,
+                $"{LogPrefix} ReadWindowAlpha를 찾지 못했다 — 앵커가 낡았으면 이 감사는 " +
+                "'고쳐져도 영원히 통과'가 된다. 이름이 바뀌었다면 여기도 함께 갱신하라.");
+            int end = src.IndexOf("private static bool TryGetVisualWindowRect", start,
+                System.StringComparison.Ordinal);
+            Assert.Greater(end, start, $"{LogPrefix} ReadWindowAlpha 본문 끝 앵커를 찾지 못했다.");
+            string body = src.Substring(start, end - start);
+
+            // (가) 두 갈래 **모두** 필터를 거쳐야 한다. 하나라도 자체 판단으로 값을 만들면
+            //      W10~W14의 초록은 그 갈래에 대해 아무 뜻이 없다.
+            int viaFilter = 0;
+            for (int i = 0; ; )
+            {
+                int hit = body.IndexOf("WindowsFootholdFilter.ResolveWindowAlpha(exStyle",
+                    i, System.StringComparison.Ordinal);
+                if (hit < 0) break;
+                viaFilter++;
+                i = hit + 1;
+            }
+            Assert.AreEqual(2, viaFilter,
+                $"{LogPrefix} ReadWindowAlpha의 반환 지점 중 필터를 거치는 것이 {viaFilter}개다(2개여야 " +
+                "한다: 비레이어드 조기 반환 · 레이어드 조회 후). 한 갈래라도 자체 판단으로 알파를 " +
+                "만들면 그 갈래의 창은 필터를 통과한 적이 없다 — 특히 비레이어드 갈래를 " +
+                "'return 1f'로 최적화하면 WS_EX_TRANSPARENT 단독 창(케이스 1)이 즉시 되살아나고 " +
+                "W10~W14는 한 건도 빨개지지 않는다.");
+
+            // (나) 음성 대조 — 필터를 우회한 상수 반환이 남아 있지 않은가.
+            //      (가)만으로는 "필터 호출 2개 + 그 위에 상수 반환 하나 더"를 구분하지 못한다.
+            Assert.IsFalse(System.Text.RegularExpressions.Regex.IsMatch(body, @"return\s+[01](\.\d+)?f\s*;"),
+                $"{LogPrefix} ReadWindowAlpha에 필터를 우회하는 상수 알파 반환이 있다. " +
+                "'해석은 전부 WindowsFootholdFilter가 한다'는 계약이 깨지면 그 갈래는 macOS " +
+                "EditMode에서 영원히 검증 불가 영역으로 들어간다.");
+
+            // (다) 넘기는 것이 **마스킹되지 않은 exStyle 원본**인가. 레이어드 비트만 추려 넘기면
+            //      승격 게이트(WS_EX_TRANSPARENT)가 볼 것이 사라진다.
+            Assert.IsFalse(body.Contains("ResolveWindowAlpha(exStyle &"),
+                $"{LogPrefix} exStyle을 마스킹해서 넘긴다 — 승격 게이트가 검사하는 " +
+                "WS_EX_TRANSPARENT 비트가 그 마스크에서 빠지면 세 조합이 통째로 되살아난다.");
+
+            // (라) 호출부가 그 결과를 실제로 알파로 쓰는가. D4는 ClassifyGeometry의 '존재'만 보고
+            //      값의 출처는 보지 않는다.
+            StringAssert.Contains("alpha = ReadWindowAlpha(hWnd, exStyle);", src,
+                $"{LogPrefix} 후보 분류가 ReadWindowAlpha의 결과를 alpha로 채우지 않는다 — " +
+                "필터가 옳아도 그 답이 열거 결과에 도달하지 않는다.");
+
+            // (마) 양성 대조 — 위 니들들이 살아 있는 프로브인지 같은 테스트 안에서 확인한다.
+            //      (이 파일이 엉뚱한 소스를 읽고 있으면 위 IsFalse 3개가 전부 조용히 초록이다.)
+            StringAssert.Contains("GetLayeredWindowAttributes(hWnd, out _, out byte alphaByte, out uint flags)", src,
+                $"{LogPrefix} 양성 대조 실패 — 레이어드 알파 조회 호출조차 찾지 못했다. " +
+                "읽은 소스가 기대한 파일이 아니므로 이 테스트의 '없음' 단언 전부가 무효다.");
+        }
+
         [Test]
         public void D5_알파는_읽기만_하고_쓰기_API는_들어오지_않았다()
         {

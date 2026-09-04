@@ -261,6 +261,101 @@ namespace StickMate.Tests.EditMode
                 "macOS가 예약한 것은 8 / , / . 셋뿐입니다.");
         }
 
+        // ============================================================================
+        // ★ M-6 (2026-09-05) — 「확정 충돌」과 「의심 후보」를 가른 결과를 잠근다
+        // ============================================================================
+
+        /// <summary>
+        /// <b>「빈 배열 = 미조사」 상태로 되돌아가지 못하게 못박는다.</b>
+        ///
+        /// <para>이 항목이 M-6로 올라온 이유가 정확히 그것이었다 —
+        /// <c>WindowsReservedActionKeys</c>가 비어 있었고, 그 옆 주석이 <i>"그것이 조사 결과다
+        /// (추정이 아니다)"</i>라고 단언하고 있어서 <b>아무도 다시 안 봤다.</b> 빈 목록과
+        /// 조사된 빈 목록은 <b>출력이 똑같이 생겼다</b>(이 저장소 거짓 통과의 공통 형태).</para>
+        ///
+        /// <para>그래서 조사 결과를 <b>비지 않는 배열</b>로 남긴다. 확정 충돌은 여전히 0건이
+        /// 맞지만(1차 출처에 <c>Win+Ctrl+Alt+&lt;글자&gt;</c>가 0건), <b>의심 후보는 0건이 아니다.</b></para>
+        /// </summary>
+        [Test]
+        public void M6_의심_후보_목록이_비어_있지_않다()
+        {
+            Assert.IsNotEmpty(ShortcutLabel.WindowsSuspectActionKeys,
+                "의심 후보 목록이 비었습니다 — 그러면 아래 검사들이 전부 빈 foreach가 되어 " +
+                "아무것도 재지 않으면서 초록이 됩니다(TEAM.md 거짓 통과 #5). 그리고 M-6가 " +
+                "고쳐지기 전 상태(= 빈 배열을 조사 결과라고 적어 둔 상태)로 그대로 되돌아간 것입니다.");
+        }
+
+        /// <summary>
+        /// <b>두 목록은 서로 다른 축이다 — 겹치면 어느 쪽이 참인지 알 수 없다.</b>
+        /// 실기로 확정되면 의심에서 <b>빼고</b> 금지에 <b>넣는다</b>(양쪽에 두지 않는다).
+        /// </summary>
+        [Test]
+        public void M6_확정_금지와_의심_후보는_겹치지_않는다()
+        {
+            foreach (string suspect in ShortcutLabel.WindowsSuspectActionKeys)
+            {
+                CollectionAssert.DoesNotContain(ShortcutLabel.WindowsReservedActionKeys, suspect,
+                    $"[{suspect}]이(가) 금지 목록과 의심 목록에 동시에 있습니다. 실기로 확정된 글자는 " +
+                    "의심에서 빼고 금지로 옮기세요 — 양쪽에 두면 'AssertNoneReserved가 이미 막고 있다'와 " +
+                    "'아직 실기 확인이 필요하다'가 동시에 참인 상태가 되어 다음 사람이 판단할 수 없습니다.");
+            }
+        }
+
+        /// <summary>
+        /// ★ <b>양성 대조</b> — 의심 후보가 <b>실제로 우리가 폴링하는 글자</b>인가.
+        /// 쓰지도 않는 글자를 의심 목록에 넣으면 실기 세션 시간만 먹고 아무것도 안 가른다.
+        /// (<c>GlobalKey</c> 열거형에서 직접 유도한다 — 프로덕션 목록을 테스트로 베끼지 않는다.)
+        /// </summary>
+        [Test]
+        public void M6_의심_후보는_전부_실제로_배선된_글자다()
+        {
+            var wired = new List<string>();
+            foreach (GlobalKey key in (GlobalKey[])System.Enum.GetValues(typeof(GlobalKey)))
+            {
+                if (key == GlobalKey.Command || key == GlobalKey.Option || key == GlobalKey.Control) continue;
+                wired.Add(key.ToString());
+            }
+            Assert.IsNotEmpty(wired, "GlobalKey에 동작키가 없습니다 — 이 검사가 공허합니다.");
+
+            foreach (string suspect in ShortcutLabel.WindowsSuspectActionKeys)
+            {
+                CollectionAssert.Contains(wired, suspect,
+                    $"의심 후보 [{suspect}]은(는) 이 앱이 폴링하지 않는 글자입니다. 목록이 실제 배선과 " +
+                    "갈라졌다는 뜻이고, 실기 세션은 존재하지 않는 조합을 눌러 보게 됩니다.");
+            }
+        }
+
+        /// <summary>
+        /// ★ <b>네거티브 컨트롤</b> — 이 목록이 <b>실제로 가르는가</b>.
+        /// 폴링하는 글자를 전부 담았다면 "의심"은 아무 정보도 아니다. 조사 결과 편집 거리 1에서
+        /// 아무것도 안 걸린 글자가 <b>실재</b>하고, 그것이 목록 밖에 있음을 보인다.
+        /// </summary>
+        [Test]
+        public void M6_편집거리1에서_안_걸린_글자는_의심_목록_밖에_있다()
+        {
+            // 이 셋은 조사 결과 Win+Ctrl+<글자> · Win+Alt+<글자> 어느 쪽에도 문서화된 것이 없다.
+            // 상수를 베끼는 것이 아니라 GlobalKey에서 유도한다 — 이름이 바뀌면 컴파일이 깨진다.
+            string[] documentedSafe =
+            {
+                GlobalKey.I.ToString(), GlobalKey.P.ToString(), GlobalKey.A.ToString(),
+                GlobalKey.T.ToString(), GlobalKey.X.ToString(), GlobalKey.N.ToString(),
+            };
+
+            foreach (string safe in documentedSafe)
+            {
+                CollectionAssert.DoesNotContain(ShortcutLabel.WindowsSuspectActionKeys, safe,
+                    $"[{safe}]이(가) 의심 목록에 들어갔습니다. 2026-09-05 조사에서 이 글자는 " +
+                    "Win+Ctrl+<글자>에도 Win+Alt+<글자>에도 문서화된 것이 없었습니다 — 새 1차 출처를 " +
+                    "찾았다면 ShortcutLabel.WindowsSuspectActionKeys 문서의 '글자별 근거'에 그 출처를 " +
+                    "먼저 적으세요. 근거 없이 넣으면 목록이 '전부 의심'이 되어 아무것도 가르지 못합니다.");
+            }
+
+            Assert.Less(ShortcutLabel.WindowsSuspectActionKeys.Length,
+                System.Enum.GetValues(typeof(GlobalKey)).Length - 3,
+                "의심 후보가 폴링하는 동작키 전부와 같아졌습니다 — 그러면 이 목록은 아무것도 " +
+                "가르지 않고, 실기 세션의 우선순위를 정해 준다는 목적도 사라집니다.");
+        }
+
         /// <summary>플랫폼 양쪽 금지 목록을 <b>같은 코드 경로로</b> 검사한다 — 한쪽만 도는 감사는
         /// 반대쪽 갭이 조용히 쌓이는 이 저장소의 단골 실패다(CLAUDE.md 플랫폼 동시 검토).</summary>
         private static void AssertNoneReserved(IEnumerable<string> actionKeys, string what)

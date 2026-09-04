@@ -157,6 +157,17 @@ namespace StickMate.Interaction
                 return;
             }
 
+            // ★★★ 2026-09-03 — 캐릭터가 안 보이면 자세 변형/이모트를 시켜도 화면에 아무것도 없다.
+            //   이 경로에는 CommandAvailability 창구가 없어(개발 전용 (다) 항목이라 UI 타일이 없다)
+            //   같은 판정을 여기서 직접 한다. 아래 Update()의 IsSuspended 가드와 <b>같은 값</b>이라
+            //   자동 경로와 강제 경로가 갈라지지 않는다.
+            if (HiddenCharacterCommandGate.BlocksNow(_player))
+            {
+                Debug.Log($"[하드웨어] 데모 미리보기 건너뜀({reason}) — {HiddenCharacterCommandGate.HiddenReason}. " +
+                    "보이지 않는 캐릭터의 자세를 바꿔도 화면에는 아무 일도 일어나지 않습니다(원칙 1).");
+                return;
+            }
+
             // 실제 신호가 표현 중이면 먼저 걷어 두 표현이 겹치지 않게 한다(23절 우선순위 원칙).
             if (_currentlyShown.HasValue)
             {

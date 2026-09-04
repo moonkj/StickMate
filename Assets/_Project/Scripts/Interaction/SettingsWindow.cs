@@ -123,7 +123,11 @@ namespace StickMate.Interaction
         /// 등급 1에서는 그 3홉이 <b>실제로 걸을 수 있게 됐다</b>(톱니 클릭이 사용자 허가를 낸다).
         /// 걸을 수 있는데도 예약을 걸면, 사용자가 톱니를 눌러 부채꼴을 부른 그 프레임에
         /// <b>부르지도 않은 설정창</b>이 그 위로 튀어나온다. 등급 2에서는 톱니가 아예 없으므로
-        /// 이 안전망이 그대로 필요하다.</para>
+        /// 이 안전망이 그대로 필요하다.
+        ///   ★★★ <b>2026-09-03 한 번 더 좁아졌다</b>: <c>IsSuspended</c>가 아니라
+        ///   <see cref="StickmanAgent.HidesScreenSurfaces"/>를 본다. 사용자 명시 숨김 단독은 이 창을
+        ///   <b>빼앗지 않으므로</b>(창이 그대로 열려 있다) 되돌려 줄 것도 없다 — 그 상태에서
+        ///   무장하면 나중에 <b>사용자가 닫아 둔</b> 창이 혼자 되살아난다.</para>
         /// </summary>
         public const float DefaultReopenAfterSuspendGraceSeconds = 20f;
 
@@ -192,9 +196,19 @@ namespace StickMate.Interaction
 
         // ==================== 탭바 배지 (docs/UI_SURFACE_SPEC.md 12) ====================
 
-        /// <summary>탭 라벨 한 글자의 폭 근사(pt). 한글은 폭이 pt에 가깝다는 <see cref="SettingsControls"/>의
-        /// 세그먼트 주석과 같은 근거다.</summary>
-        private const float TabLabelCharWidth = 11f;
+        // ★★ 2026-09-03 — 여기 있던 <c>TabLabelCharWidth = 11f</c>(탭 라벨 한 글자 폭 근사)를 <b>지웠다</b>.
+        //
+        //    그 11f는 <b>한글에서만</b> 맞는 수였다. 라틴 자폭은 절반 이하인데 같은 11f를 청구하니
+        //    상자가 글리프의 두 배 가까이 부풀었고, 탭 5개가 왼쪽에서 오른쪽으로 쌓이는 이 줄에서는
+        //    그 부풀음이 그대로 누적되어 <b>창 밖으로 밀려났다</b>. 즉 넘침의 원인은 «영어 단어가
+        //    길어서»가 아니라 <b>모형이 청구한 가짜 폭</b>이었다.
+        //
+        //    ※ 같은 11f가 «접근성 · 성능»처럼 <b>공백·가운뎃점이 섞인 한국어</b>에서도 이미 틀리고
+        //      있었다 — 공백 한 칸에 한글 한 글자와 같은 11pt를 물렸다.
+        //
+        //    이제 라벨 상자와 배지 상자는 둘 다 <see cref="SettingsControls.MeasuredWidth"/>
+        //    (= <c>Text.preferredWidth</c>, 폰트가 실제로 잰 값)로 잡는다. 여백 상수
+        //    (<see cref="TabPadX"/> / <see cref="TabBadgeGap"/>)는 <b>한 글자도 바뀌지 않았다</b>.
 
         /// <summary>탭 안쪽 좌우 여백. 배지가 붙어도 <b>양쪽 10pt 대칭</b>이 유지된다.</summary>
         private const float TabPadX = 10f;
@@ -221,9 +235,9 @@ namespace StickMate.Interaction
         /// 붙여 놓기에 좁다 — 한 어구로 읽히되 두 덩어리인 것은 보여야 한다.</summary>
         private const float TabBadgeGap = UiChrome.Space2;
 
-        /// <summary>배지 상자 폭. ★ 숫자를 손으로 적지 않는다 — 글자 수 × 캡션 폰트에서 파생시킨다
-        /// (10pt 실측 모델로 33pt → 여유 7pt).</summary>
-        private static readonly float TabBadgeWidth = TabBadgeText.Length * UiChrome.FontCaption;
+        // ★ 2026-09-03 — 배지 폭 상수(<c>TabBadgeText.Length × UiChrome.FontCaption</c>)도 지웠다.
+        //   배지는 탭마다 <b>같은 글자</b>라 굽는 동안 한 번만 재고 나머지 탭이 그 값을 쓴다
+        //   (BuildTabBar의 지역변수). 정적 필드로 두면 폰트를 재려고 Text를 만들 자리가 없다.
 
         /// <summary>배지 상자 높이(캡션 10pt의 행 상자 — <c>SettingsControls.BeginRow</c>와 같은 값).</summary>
         private const float TabBadgeHeight = 14f;
@@ -247,31 +261,39 @@ namespace StickMate.Interaction
         // ==================== 사용자 명시 숨김(2026-09-02) ====================
 
         /// <summary>
-        /// ★ <b>탈출구 고지</b>. 이 문장은 장식이 아니라 이 행의 <b>안전장치</b>다.
+        /// ★ 이 행이 <b>무엇을 가리는지</b> 한 줄로. 누르기 전에 읽히는 유일한 자리다.
         ///
-        /// <para>숨기는 순간 톱니·부채꼴·이 창·포스트잇이 전부 <c>IsSuspended</c>/<c>ArePanelsSuppressed</c>를
-        /// 보고 스스로 내려간다(사용자 명시 숨김은 축 2라 두 창구 모두에서 참이다)
-        /// (그게 이 기능의 요구사항이다). 그러면 <b>마우스로 되돌릴 경로가 0</b>이 되고 남는 것은 단축키
-        /// 하나뿐이다. 그 사실은 <b>누르기 전에</b> 읽혀야 한다 — 누른 뒤에는 읽을 화면이 없다.</para>
+        /// ============================================================================
+        /// ★★★ 2026-09-03 — 옛 문장은 <b>두 군데가 거짓</b>이 됐다
+        /// ============================================================================
+        /// 옛 문장: <i>"캐릭터도 열린 창도 함께 사라져요. 다시 부르려면 ⌃⌥⌘K — 이 방법뿐입니다."</i>
+        /// <list type="number">
+        ///   <item><b>"열린 창도 함께 사라져요"</b> — 이제 사라지지 않는다. 사용자 명시 숨김은
+        ///     캐릭터만 가린다(<c>StickmanAgent.HidesScreenSurfaces</c>, 사용자 확정 <i>"캐릭만 가리고"</i>).</item>
+        ///   <item><b>"이 방법뿐입니다"</b> — 톱니도 이 창도 남으므로 마우스 경로가 살아 있다.</item>
+        /// </list>
+        /// <b>유일성 주장을 다시 쓰지 마라.</b> 그 형태가 이번 신고에서 실제로 무너졌다 —
+        /// 사용자는 <i>"전부 다 없어져버려서 다시 나오게 할 방법이 없어"</i>라고 신고했고, 경고는
+        /// <b>누르기 직전</b>에만 읽히는데 필요한 순간은 <b>누른 직후</b>였다. 그때 화면엔 아무것도 없었다.
+        /// 이제 그 순간에도 <b>이 창과 [보이기] 버튼이 그대로 남는다</b> — 문장이 아니라 구조가 고쳤다.
         ///
-        /// <para><b>왜 화면 위 안내(토스트)로 띄우지 않는가</b>: 이 기능이 발동하는 순간이 정확히
-        /// "내 화면이 남에게 공개되는 순간"이다. 그때 뜨는 안내는 <b>반드시 공유 화면에 찍힌다</b> —
-        /// 캐릭터를 치우려고 누른 버튼이 대신 안내문을 띄우면 목적이 뒤집힌다. 그래서 안내는
-        /// 여기(캡션) · 행 옆 단축키 표기 · 부팅 배너, 즉 <b>전부 누르기 전</b>에만 둔다.</para>
+        /// <para><b>단축키는 여기 적지 않는다</b>: 같은 행의 <c>hotkey:</c> 칩이 이미 보여 준다
+        /// (한 정보를 두 번 적으면 옮기는 날 한쪽만 낡는다).</para>
         /// </summary>
-        private static readonly string HideEscapeCaption =
-            "캐릭터도 열린 창도 함께 사라져요. 다시 부르려면 " +
-            ShortcutLabel.Chord(StickmanAgent.UserHideHotkeyLetter) + " — 이 방법뿐입니다.";
+        private const string HideEscapeCaption =
+            "캐릭터만 사라져요. 이 창도 톱니도 남으니 옆의 [보이기]로 되돌립니다.";
 
         // ★ 2026-09-03 — 여기 있던 <c>_manualHideToggle</c>(숨김 상태를 <b>표시</b>하던 토글)을 지웠다.
         //   같은 상태를 조작하는 컨트롤이 둘이면 사용자가 <b>둘의 관계</b>부터 풀어야 하고, 그 오독이
         //   실제로 발생했다(BuildGeneralTab의 「두 행을 하나로 합쳤다」 절). 지금 숨김 상태는
         //   화면에 <b>캐릭터가 있느냐 없느냐</b>로 직접 보이고, 되돌리는 법은 캡션과 단축키 칩에 있다.
 
-        /// <summary>전역 단축키를 쓸 수 없는 환경에서 <b>숨기기 자체를 막는</b> 게이트.
-        /// <para>그 환경에서 숨으면 되돌릴 경로가 0이 된다(톱니도 부채꼴 [✕ 앱 종료]도 함께 사라지므로
-        /// 남는 것은 강제 종료뿐이다). "안내"보다 강한 보증이라 안내와 <b>함께</b> 둔다.</para></summary>
-        private SettingsRowGate _manualHideGate;
+        // ★★★ 2026-09-03 — 여기 있던 <c>_manualHideGate</c>(전역 단축키를 쓸 수 없는 환경에서 [숨기기]
+        //   행 자체를 잠그던 게이트)를 <b>지웠다</b>. 그 게이트의 사유 문구는
+        //   <i>"숨기면 되돌릴 방법이 없어서 잠가 두었습니다"</i>였고, 그 전제가 통째로 사라졌다 —
+        //   이제 숨겨도 이 창과 톱니가 남아 [보이기]가 손에 닿는다(HidesScreenSurfaces).
+        //   전제가 거짓이 된 잠금을 남기면 <b>화면이 거짓말을 하면서 기능까지 막는다</b>.
+        //   되살리지 마라 — 되살리려면 먼저 "표면도 함께 걷는다"로 되돌아가야 한다.
         private IGlobalPointerButtonService _buttonService;
 
         private Canvas _canvas;
@@ -323,6 +345,11 @@ namespace StickMate.Interaction
         /// "정말 종료?"에서 되돌아올 때 문구가 달라진다. 단축키 표기가 플랫폼별로 갈리면서
         /// 그 위험이 실제가 되므로 한 곳으로 합친다.</summary>
         private static string QuitLabelText => $"지금 종료 ({ShortcutLabel.Chord("Q")})";
+
+        /// <summary>2단 확인 중의 문구. ★ 2026-09-03 — 같은 이유로 상수화했다: 이 문자열이
+        /// <see cref="ApplyQuitStyle"/>에만 있으면 <b>칩 폭을 재는 쪽이 볼 수 없어서</b> 폭 계산이
+        /// 평상시 문구만 담게 된다(문안이 길어지는 날 조용히 넘친다).</summary>
+        private const string QuitConfirmText = "정말 종료?";
 
         private bool _open;
         private Tab _tab = Tab.General;
@@ -410,6 +437,17 @@ namespace StickMate.Interaction
         public Rect PageDownScreenRect => SettingsControlHost.ScreenRectOf(_pageDownRect);
 
         public Rect ContentViewportScreenRect => SettingsControlHost.ScreenRectOf(_viewport);
+
+        /// <summary>
+        /// 그 탭 페이지가 뷰포트를 <b>몇 pt 넘치는가</b>(0이면 스크롤할 것이 없다).
+        ///
+        /// <para>★ 2026-09-03 신설. <c>SettingsDisabledSurfaceTests</c>가 "[일반] 탭은 내용이 넘친다"를
+        /// <b>전제</b>로 깔고 [▲][▼]의 죽은/산 잉크를 검사하는데, 그 전제가 참인지는 지금까지
+        /// <b>아무도 숫자로 못 봤다</b>. 넘침이 0이 되는 날 그 테스트는 실패하지 않고 <b>공허해진다</b> —
+        /// 이 저장소가 가장 자주 당한 형태다. 여기서 여유를 pt로 내주면 그 전제를 <b>단언</b>할 수 있다.</para>
+        /// </summary>
+        public float PageOverflowPointsForTests(Tab tab)
+            => Mathf.Max(0f, _pageHeights[(int)tab] - ContentHeight);
 
         /// <summary>[톱니 위치] &gt; [처음 자리로] 버튼의 화면 사각형 — 회귀 테스트가 <b>실제 클릭 경로</b>로
         /// 이 행을 누르는 창구. 좌표를 손으로 적으면 카드가 한 줄 늘어날 때 조용히 엉뚱한 곳을 누른다.</summary>
@@ -670,7 +708,7 @@ namespace StickMate.Interaction
                 //   <b>부르지도 않은 설정창이 부채꼴 위로 튀어나온다</b> — 자동 복귀는 "마우스 진입점이
                 //   0인 동안"의 안전망이었고, 등급 1에서는 그 전제가 사라졌다.
                 //   등급 2(전체화면 게임 / 사용자 명시 숨김)에서는 톱니 자체가 없으므로 그대로 남긴다.
-                if (_agent.IsSuspended) ArmReopenAfterSuspend();
+                if (_agent.HidesScreenSurfaces) ArmReopenAfterSuspend();
                 return;
             }
 
@@ -864,27 +902,14 @@ namespace StickMate.Interaction
             SyncSpeechGate();
             SyncGearWarning();
             SyncGearHomeGate();
-            SyncManualHide();
             ApplyTabVisibility();
         }
 
-        /// <summary>
-        /// 사용자 명시 숨김 행의 <b>게이트</b>를 지금 사실에 맞춘다.
-        ///
-        /// <para>왜 <see cref="RefreshAll"/>에서(=<c>Start</c>와 매 <see cref="Open"/>) 하는가:
-        /// 게이트 조건이 <c>_agent.PlatformService</c>에서 나오는데, 이 창의 UI는 <c>Awake</c>에서
-        /// 조립된다. 같은 GameObject의 <c>Awake</c> 순서는 보장되지 않으므로 조립 시점에 물으면
-        /// "아직 없음"을 <b>영구 비활성</b>으로 굳혀 버린다. <c>Start</c>는 모든 <c>Awake</c> 뒤다.</para>
-        ///
-        /// <para>★ 2026-09-03 — <b>값</b>을 맞추던 절반이 사라졌다. 숨김 상태를 <b>표시</b>하던 토글이
-        /// 삭제됐기 때문이다(BuildGeneralTab의 「두 행을 하나로 합쳤다」 절). 남은 것은 게이트뿐이고,
-        /// 그래서 이 함수는 이제 <b>"전역 단축키를 쓸 수 있는 환경인가"</b> 하나만 반영한다 —
-        /// 숨김 상태 자체는 화면에 캐릭터가 있느냐 없느냐로 이미 보인다.</para>
-        /// </summary>
-        private void SyncManualHide()
-        {
-            _manualHideGate?.SetEnabled(_agent != null && _agent.PlatformService is IGlobalKeyStateService);
-        }
+        // ★★★ 2026-09-03 — 여기 있던 SyncManualHide()를 지웠다. 하는 일이 «전역 단축키를 쓸 수
+        //   있는 환경인가»로 [숨기기] 행을 잠그는 것 하나뿐이었는데, 그 잠금의 사유가 거짓이 됐다
+        //   (위 HideEscapeCaption 절). 남길 상태가 0개라 함수께 지운다 — 빈 함수를 남기면
+        //   다음 사람이 «무엇을 동기화하던 자리인가»를 다시 조사해야 한다.
+
 
         /// <summary>★ 42-11 G — <c>말풍선 표시</c>가 꺼져 있으면 그 아래 세 행은 만져도 화면이 바뀌지
         /// 않는다. 활성인 채로 두면 "컨트롤이 움직이는데 화면이 약속과 다르다"가 된다.</summary>
@@ -1010,40 +1035,49 @@ namespace StickMate.Interaction
                 //   나온다. 그래서 탭이 채워지는 날 <b>아무도 아무것도 지우지 않아도</b> 배지가 사라진다.
                 //   판정을 두 벌로 두면 반드시 한쪽만 갱신된다 — M7이 정확히 그 사고였다.
                 bool ready = IsTabReady((Tab)i);
-                float labelWidth = TabNames[i].Length * TabLabelCharWidth;
-                float width = TabPadX * 2f + labelWidth
-                    + (ready ? 0f : TabBadgeGap + TabBadgeWidth);
 
                 var tabGo = new GameObject("Tab" + i, typeof(RectTransform));
                 tabGo.transform.SetParent(bar, false);
                 var rt = tabGo.GetComponent<RectTransform>();
-                UiChrome.PlaceTopLeft(rt, x, 0f, width, TabBarHeight);
                 _tabRects[i] = rt;
 
                 // 탭 전체가 클릭 타깃이어야 한다(글자만 누르면 오조준이 잦다).
+                // Stretch라 부모 폭이 <b>나중에</b> 정해져도 그대로 따라온다.
                 Image hit = SettingsControls.AddHitArea(rt, "Hit");
                 UiChrome.Stretch(hit.rectTransform);
 
                 Text label = UiChrome.AddText(rt, "Label", UiChrome.FontBody, TextAnchor.MiddleCenter,
                     UiChrome.InkTab(selected: false));
-                // ★ Stretch가 아니라 <b>라벨 폭만큼의 상자</b>다. 이 상자는 옛 Stretch 상자
-                //   (폭 20 + n×11)의 <b>정중앙 구간과 같아서</b> MiddleCenter 렌더 결과가 1pt도
-                //   안 움직인다(배지가 붙어 부모가 넓어져도 마찬가지다 — 그래서 준비된 탭도 같은 길로
-                //   보낸다). 왼쪽 정렬로 바꾸면 11f 근사 오차만큼 밀린다.
-                UiChrome.PlaceTopLeft(label.rectTransform, TabPadX,
-                    -(TabBarHeight - TabLabelHeight) * 0.5f, labelWidth, TabLabelHeight);
-                label.text = TabNames[i];
+                // ★ 2026-09-03 — 라벨 상자 폭을 <b>폰트에게 묻는다</b>. 상자를 먼저 놓고 글자를 넣던
+                //   순서를 뒤집었다: 재고 나서 놓는다.
+                float labelWidth = SettingsControls.MeasuredWidth(label, TabNames[i]);
                 _tabLabels[i] = label;
 
+                Text badge = null;
+                float badgeWidth = 0f;
                 if (!ready)
                 {
                     // 잉크는 <b>전 상태 상수</b>(InkMeta)다 — ApplyTabVisibility에 코드를 더하지 않고,
                     //   생성 시 1회 도색으로 끝난다(하루 종일 켜져 있는 앱: 프레임 비용 0).
-                    Text badge = UiChrome.AddText(rt, "Badge", UiChrome.FontCaption, TextAnchor.MiddleLeft,
+                    badge = UiChrome.AddText(rt, "Badge", UiChrome.FontCaption, TextAnchor.MiddleLeft,
                         UiChrome.InkMeta);
+                    badgeWidth = SettingsControls.MeasuredWidth(badge, TabBadgeText);
+                }
+
+                float width = TabPadX * 2f + labelWidth + (ready ? 0f : TabBadgeGap + badgeWidth);
+                UiChrome.PlaceTopLeft(rt, x, 0f, width, TabBarHeight);
+
+                // ★ Stretch가 아니라 <b>라벨 폭만큼의 상자</b>다. 이 상자는 탭 상자의 <b>왼쪽 여백
+                //   바로 다음</b>에 놓이고 폭이 곧 글리프 폭이라, MiddleCenter로 그려도 글자가
+                //   상자를 정확히 채운다(배지가 붙어 부모가 넓어져도 마찬가지다 — 그래서 준비된 탭도
+                //   같은 길로 보낸다).
+                UiChrome.PlaceTopLeft(label.rectTransform, TabPadX,
+                    -(TabBarHeight - TabLabelHeight) * 0.5f, labelWidth, TabLabelHeight);
+
+                if (badge != null)
+                {
                     UiChrome.PlaceTopLeft(badge.rectTransform, TabPadX + labelWidth + TabBadgeGap,
-                        -(TabBarHeight - TabBadgeHeight) * 0.5f, TabBadgeWidth, TabBadgeHeight);
-                    badge.text = TabBadgeText;
+                        -(TabBarHeight - TabBadgeHeight) * 0.5f, badgeWidth, TabBadgeHeight);
                 }
 
                 // 활성 탭 밑줄 2pt(35-1-5). 비활성은 색만 투명하게 둔다 — 껐다 켜면 배치가 흔들린다.
@@ -1061,6 +1095,22 @@ namespace StickMate.Interaction
                 });
 
                 x += width + UiChrome.Space1;
+            }
+
+            // ★ 2026-09-03 신설 — 탭바에는 넘침 검사가 <b>없었다</b>(정보창 탭바에는 예전부터 있다).
+            //   탭 줄은 마스크 밖이라 넘치면 잘리지도 않고 <b>창 밖에 글자가 떠 있는</b> 상태가 되고,
+            //   그 증상은 "왜 저기 글씨가 있지"라 원인 추적이 비싸다. 문안이 길어지는 그 라운드에
+            //   즉시 알려 준다.
+            //
+            //   ※ <b>정상값에서는 절대 찍히지 않는다</b>: 이 검사는 라벨을 실측으로 잰 뒤 남는 자리를
+            //     보는 것이라, 지금 한국어 배치(끝 500pt 미만)에서 한 번도 참이 될 수 없다.
+            //     정상 사용자에게 찍히는 경보는 경보가 아니라 소음이다(FX 0번 사고).
+            float tabsEnd = x - UiChrome.Space1;
+            if (tabsEnd > PanelWidth)
+            {
+                Debug.LogError($"[설정창] 탭 {TabCount}개가 {tabsEnd:F0}pt에서 끝나 창 폭({PanelWidth:F0}pt)을 " +
+                               $"{tabsEnd - PanelWidth:F0}pt 넘겼습니다 — 마지막 탭이 창 밖으로 나갑니다. " +
+                               "탭 이름이나 '준비 중' 배지 문안을 줄이십시오.");
             }
 
             AddHorizontalDivider(_panel, -(HeaderHeight + TabBarHeight));
@@ -1153,9 +1203,14 @@ namespace StickMate.Interaction
             //   숨김이 아니고, 무엇보다 그때 <b>열린 창과 클릭 차단막은 애초에 걷히지도 않았다</b> —
             //   캐릭터만 사라지고 설정창이 발표 화면에 남는 쪽이 더 이상하다.
             //   이제 이 행은 전체화면 감지와 같은 Suspend 경로를 탄다.
-            _manualHideGate = new SettingsRowGate(
-                "이 컴퓨터에서는 전역 단축키를 쓸 수 없어요. 숨기면 되돌릴 방법이 없어서 잠가 두었습니다.");
-
+            //
+            // ★★★ 2026-09-03 사용자 확정 — <b>범위가 「캐릭터만」으로 좁아졌다</b>(<i>"캐릭만 가리고"</i>).
+            //   위 문단의 «설정창이 발표 화면에 남는 쪽이 더 이상하다»는 <b>화면공유</b>를 전제한
+            //   판단이었고, 사용자가 실제로 겪은 것은 <b>갇힘</b>이었다 —
+            //   <i>"전부 다 없어져버려서 다시 나오게 할 방법이 없어"</i>.
+            //   이제 이 버튼은 캐릭터(와 말풍선·이펙트·장비·펫)만 가리고 <b>이 창은 열린 채로 남는다</b>.
+            //   그래서 바로 옆 [보이기]가 계속 손에 닿는다 — 탈출구가 안내문이 아니라 <b>구조</b>가 된다.
+            //   전체화면 게임 감지(축 1)는 <b>한 비트도 바뀌지 않았다</b>(원칙 2).
             // ★★★ 2026-09-03 — <b>두 행을 하나로 합쳤다</b>(리더 확정, 페르소나 실측 후속).
             //
             //   무엇이 있었나: 바로 아래에 <c>"숨기기 / 보이기 단축키"</c>라는 <b>토글</b> 행이 하나 더
@@ -1177,7 +1232,7 @@ namespace StickMate.Interaction
             //      통째로 미끄러진다</b>. 지금 두 버튼은 각각 53pt이고 합계 114pt다.
             display.AddButtons("general.hideNow", "지금 즉시", new[] { "숨기기", "보이기" },
                 index => SetUserHiddenFromSettings(index == 0),
-                caption: HideEscapeCaption, gate: _manualHideGate,
+                caption: HideEscapeCaption,
                 // ★ 리더 판정 2026-09-02 — V가 아니라 <b>K</b>. V는 GlobalKey에 없어 양 플랫폼 파일을
                 //   고쳐야 했고, K는 두 플랫폼 모두 이미 키코드가 매핑돼 있으면서 바인딩만 비어 있었다
                 //   (Platform/IGlobalKeyStateService.cs의 GlobalKey.K 문서가 이 자리를 예약해 뒀다).
@@ -1254,10 +1309,12 @@ namespace StickMate.Interaction
         /// 이 설정창이 그대로 찍혔다. 이제는 <see cref="StickmanAgent.SetUserHidden"/>을 통해
         /// 전체화면 감지와 <b>같은 Suspend 경로</b>를 탄다.</para>
         ///
-        /// <para><b>이 창이 스스로 닫히는 것은 결함이 아니라 요구사항이다</b>: 숨김이 확정되면
-        /// <see cref="Update"/>의 <c>ArePanelsSuppressed</c> 가드가 이 창과 720×560 차단막을 그 프레임에 거둔다.
-        /// 그리고 <see cref="ArmReopenAfterSuspend"/>가 걸려, 숨김을 <b>짧게</b> 풀면 빼앗긴 이 창이
-        /// 돌아온다(우리가 닫은 게 아니라 빼앗았으므로).</para>
+        /// <para>★★★ <b>2026-09-03 — 이 창은 이제 닫히지 않는다</b>(사용자 확정 <i>"캐릭만 가리고"</i>).
+        /// 여기 있던 옛 문장은 <i>"이 창이 스스로 닫히는 것은 결함이 아니라 요구사항이다"</i>였다.
+        /// 그 요구사항이 뒤집혔다: 사용자 명시 숨김 단독에서는
+        /// <see cref="StickmanAgent.HidesScreenSurfaces"/>가 false라 <see cref="Update"/>의
+        /// <c>ArePanelsSuppressed</c> 가드가 걸리지 않고, 창도 720×560 차단막도 그대로 남는다.
+        /// <b>그래서 바로 옆 [보이기]가 손에 닿는다</b> — 이 라운드가 고친 것이 정확히 이 한 가지다.</para>
         /// </summary>
         private void SetUserHiddenFromSettings(bool hidden)
         {
@@ -1270,10 +1327,10 @@ namespace StickMate.Interaction
             bool applied = _agent.SetUserHidden(hidden, "설정창 [일반] 지금 즉시");
             Debug.Log($"[설정창] 캐릭터 {(applied ? "숨김" : "다시 보이기")} — " +
                 (applied
-                    ? "캐릭터·열린 창·클릭 차단막을 함께 걷었습니다. 이 창도 같은 프레임에 닫힙니다" +
-                      "(요구사항입니다). 되돌리는 방법은 " +
-                      ShortcutLabel.Chord(StickmanAgent.UserHideHotkeyLetter) + " 하나뿐이고, " +
-                      "그 사실은 이 행의 캡션에 적혀 있습니다."
+                    ? "캐릭터와 거기 붙은 것(말풍선·이펙트·장비·펫)만 가렸습니다. <b>이 창은 열린 채로 " +
+                      "남습니다</b> — 바로 옆 [보이기]로 되돌리세요(" +
+                      ShortcutLabel.Chord(StickmanAgent.UserHideHotkeyLetter) + " 도 같은 동작입니다). " +
+                      "톱니와 부채꼴도 그대로입니다."
                     : "다시 보이게 했습니다."));
         }
 
@@ -1355,7 +1412,7 @@ namespace StickMate.Interaction
         private void ApplyQuitStyle()
         {
             if (_quitLabel == null || _quitSurface == null) return;
-            _quitLabel.text = _quitArmed ? "정말 종료?" : QuitLabelText;
+            _quitLabel.text = _quitArmed ? QuitConfirmText : QuitLabelText;
             _quitLabel.color = _quitArmed ? UiChrome.WarmAccent : UiChrome.InkTitle(true);
             // 푸터는 창 바탕(PanelSurface) 위다 — 카드용 합성값을 쓰면 한 단 어둡게 앉는다.
             _quitSurface.color = _quitArmed
@@ -1557,22 +1614,62 @@ namespace StickMate.Interaction
             // 2단 확인은 <b>그대로</b>다 — 창 크롬으로 올라갔다고 위험도가 내려가지 않는다.
             _quitSurface = UiChrome.AddSurface(foot, "Quit", SettingsControls.ButtonSurfaceOnPanel,
                 UiChrome.RadiusChip);
-            SettingsControls.PlaceTopRight(_quitSurface.rectTransform, ContentPadX,
-                -(FooterTopRowHeight + 2f), QuitButtonWidth, SettingsControls.ButtonHeight);
             _quitRect = _quitSurface.rectTransform;
             UiChrome.AddOutline(_quitRect, "Outline", SettingsControls.OutlineOnPanel, UiChrome.RadiusChip);
             // 색은 사다리를 경유한다(직접 고르지 않는다) — 탈출구는 이 창에서 가장 높은 단이다.
             _quitLabel = UiChrome.AddText(_quitRect, "Label", UiChrome.FontBody,
                 TextAnchor.MiddleCenter, UiChrome.InkTitle(true), bold: true);
             UiChrome.Stretch(_quitLabel.rectTransform);
+
+            // ★★ 2026-09-03 — 이 칸이 <b>이 창에서 가장 위험한 칸</b>이다. 라벨은 플랫폼마다
+            //   물리적으로 다르다: macOS <c>지금 종료 (⌃⌥⌘Q)</c> vs Windows
+            //   <c>지금 종료 (Ctrl+Alt+Win+Q)</c> — 조합키 표기만 10자 길다(Core/ShortcutLabel).
+            //   그런데 폭은 132pt 상수 하나였고, 이 라벨은 <c>HorizontalWrapMode.Overflow</c>라
+            //   넘쳐도 <b>잘리지 않고 칩 밖으로 흘러</b> "테두리를 뚫고 나온 글자"가 된다.
+            //   ⇒ 상수는 <b>하한</b>으로만 남기고, 실제 폭은 두 문안 중 <b>넓은 쪽</b>을 실측해 정한다.
+            //     (2단 확인 중에는 라벨이 "정말 종료?"로 바뀌므로 그 문안도 같이 잰다 — 폭은 굽는
+            //      시점에 한 번만 정해지니 둘 다 담을 수 있어야 한다.)
+            float quitInk = Mathf.Max(SettingsControls.MeasuredWidth(_quitLabel, QuitLabelText),
+                                      SettingsControls.MeasuredWidth(_quitLabel, QuitConfirmText));
+            float quitWidth = Mathf.Max(QuitButtonWidth, quitInk + SettingsControls.ButtonPadX * 2f);
+            SettingsControls.PlaceTopRight(_quitSurface.rectTransform, ContentPadX,
+                -(FooterTopRowHeight + 2f), quitWidth, SettingsControls.ButtonHeight);
+
             _quitLabel.text = QuitLabelText;
             var quitButton = _quitSurface.gameObject.AddComponent<Button>();
             quitButton.targetGraphic = _quitSurface;
             quitButton.onClick.AddListener(() => { if (TryClaimAction("quit")) OnQuitClicked(); });
         }
 
-        /// <summary>푸터 [지금 종료] 버튼 폭(pt). <c>지금 종료 (⌃⌥⌘Q)</c>가 들어가고, Windows에서
-        /// <c>Ctrl+Alt+Win+Q</c>로 늘어나도 담기는 값이다.</summary>
+        /// <summary>
+        /// 푸터 [지금 종료] 버튼 폭의 <b>하한</b>(pt).
+        ///
+        /// <para>★ 2026-09-03 — 예전 주석은 <i>"Windows에서 <c>Ctrl+Alt+Win+Q</c>로 늘어나도 담기는
+        /// 값"</i>이라고 적고 있었는데 <b>거짓이었다</b>. 라틴 평균 자폭을 5.5pt로만 잡아도
+        /// <c>지금 종료 (Ctrl+Alt+Win+Q)</c>는 132pt를 넘고, 6.5pt면 162pt다 —
+        /// <b>어떤 라틴 자폭 가정에서도</b> 초과한다. 게다가 이 개발 머신에는 Windows 폰트 스택이
+        /// 없어 그 주석은 <b>한 번도 검증된 적이 없었다</b>.</para>
+        ///
+        /// <para>지금은 실제 폭을 <see cref="SettingsControls.MeasuredWidth"/>로 재고 이 상수는
+        /// <b>하한</b>으로만 쓴다(승인된 시안의 최소 칩 크기). 하한을 남기는 이유는 문안이
+        /// 짧아졌을 때 탈출구 칩이 눌러야 할 만큼도 안 되게 쪼그라들지 않게 하기 위해서다.</para>
+        ///
+        /// <para>★★ 2026-09-05 (M-4 종결) — <b>「영어 × Windows」 칸까지 러너로 실측했다.</b>
+        /// 활성 빌드 타깃이 <c>UNITY_STANDALONE_WIN</c>인 상태라 라벨이 실제로
+        /// <c>지금 종료 (Ctrl+Alt+Win+Q)</c>로 조립된 채 잰 값이다(12pt Bold, 라틴 평균 자폭 6.13pt):
+        /// <list type="bullet">
+        ///   <item>한국어 × Windows — 잉크 <b>150pt</b> → 칩 <b>176pt</b></item>
+        ///   <item>영어 × Windows(<c>Quit now …</c>) — 잉크 <b>148pt</b> → 칩 <b>174pt</b></item>
+        ///   <item>푸터 아랫줄 가용 폭 <b>587pt</b> ⇒ 최악에서도 여유 <b>+413pt</b></item>
+        ///   <item>2단 확인 <c>정말 종료?</c>는 84pt라 <b>이 하한이 실제로 이긴다</b> — 상수가
+        ///     하는 일이 있다는 증거다.</item>
+        /// </list>
+        /// 만약 폭을 다시 <b>고정 132pt</b>로 되돌리면 영어에서 <b>16pt</b>, 한국어에서 <b>18pt</b>가
+        /// 칩 밖으로 샌다(<c>HorizontalWrapMode.Overflow</c>라 잘리지도 않는다).
+        /// 실측·회귀는 <c>Tests/PlayMode/SettingsQuitChipLatinBudgetTests</c>가 지킨다.
+        /// <b>한계</b>: 이 머신은 Windows 폰트 스택이 아니다 — 자폭은 실기에서 다를 수 있고,
+        /// 이 숫자가 닫는 것은 «예산 안인가»이지 «실기 픽셀»이 아니다.</para>
+        /// </summary>
         private const float QuitButtonWidth = 132f;
 
         // ==================== 오른쪽 세로 스크롤 레일 (41-2 결정 3) ====================

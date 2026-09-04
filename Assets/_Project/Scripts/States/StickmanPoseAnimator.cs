@@ -1464,6 +1464,11 @@ namespace StickMate.States
         /// ★ 이 함수는 **루트의 회전에 일절 관여하지 않는다.** 몸 전체의 회전은 상태가 루트의 시각
         /// 회전을 직접 구동한다(아키텍처 0절 — 회전을 물리에 맡기면 그것이 곧 "관절이 이상하게 꺾이는"
         /// 그림이다). 여기서는 어디까지나 사지의 로컬 각도만 만든다.
+        ///
+        /// ★ 2026-09-03 — <paramref name="tumble"/>은 **던진 세기가 이미 반영된 각도**로 들어온다
+        /// (<see cref="ThrowTumblePoseSettings.ScaledBy"/>를 호출부가 먼저 태운다). 이 함수는 세기를
+        /// 모르고, 알 필요도 없다 — 세기 정책이 여기 들어오면 "주어진 각도를 바른다"는 계약이 깨지고
+        /// 같은 각도표가 두 곳에 생긴다(이 저장소가 반복해서 겪은 실패 유형).
         /// </summary>
         public void ApplyThrowTumblePose(float deltaTime, in PoseSettings idle, in ThrowTumblePoseSettings tumble,
             float smoothingRate, float tuck01)
@@ -2624,6 +2629,32 @@ namespace StickMate.States
                 ArmDegrees = arm;
                 ElbowBendDegrees = elbowBend;
                 LimbSpreadDegrees = limbSpread;
+            }
+
+            /// <summary>
+            /// ★ 던진 세기로 웅크림 깊이를 바꾼 사본(2026-09-03, design-motion R8 축 B).
+            /// 실제 텀블링에서 각속도와 웅크림 깊이는 관성모멘트라는 <b>같은 것의 두 얼굴</b>인데,
+            /// 지금까지 이 다섯 각도는 세기와 무관한 고정값이라 그 인과가 화면에 없었다.
+            ///
+            /// <para>배율을 <b>여기</b>(각도 묶음의 대수)에 두고 세기 정책은 호출부
+            /// (<c>States/ThrowTumbleState</c>)가 정한다 — 이 클래스는 "주어진 각도를 바르는" 순수
+            /// 적용기라는 계약을 지키기 위해서다. 그래야 <see cref="ApplyThrowTumblePose"/>의 문서가
+            /// 말하는 "tuck01=1일 때의 각도"가 여전히 참이다.</para>
+            ///
+            /// <para>★ <paramref name="spreadScale"/>만 따로 받는 이유: 벌림은 방향이 <b>반대</b>다.
+            /// 느슨하게 도는 몸은 팔다리가 벌어져야 두 개로 보이고, 꽉 만 몸은 포개진다.</para>
+            ///
+            /// <para>★ 탈출구: 두 배율이 정확히 1이면 <c>x * 1f</c>가 IEEE-754에서 항등이라
+            /// <b>비트 단위로 같은 구조체</b>가 나온다. 힙 할당이 없다(readonly struct).</para>
+            /// </summary>
+            public ThrowTumblePoseSettings ScaledBy(float jointScale, float spreadScale)
+            {
+                return new ThrowTumblePoseSettings(
+                    HipDegrees * jointScale,
+                    KneeBendDegrees * jointScale,
+                    ArmDegrees * jointScale,
+                    ElbowBendDegrees * jointScale,
+                    LimbSpreadDegrees * spreadScale);
             }
         }
 

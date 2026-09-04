@@ -43,13 +43,70 @@ namespace StickMate.Tests.EditMode
         private sealed class Rig
         {
             public GameObject Root;
+            /// <summary>★ 2026-09-03 마디 병합 — 팔다리 <b>전체</b>를 그리는 폴리라인 하나
+            /// (<see cref="LimbCurveRenderer.PolylinePointCount"/>점). 이름은 그대로 두었다:
+            /// 이 선은 여전히 <b>위 마디 Transform</b>에 붙어 있고 좌표계도 위 마디 로컬이다.</summary>
             public LineRenderer Upper;
-            public LineRenderer Lower;
+            /// <summary>병합 이후 <b>아래 마디에는 선이 없다.</b> 대신 합쳐진 폴리라인의 뒤쪽 절반을
+            /// <b>아래 마디 로컬</b>로 되돌린 것을 담는다 — 기존 단언들이 쓰던 좌표계 그대로다.
+            /// (되돌리기는 프로덕션 변환의 역함수를 테스트가 직접 적는다. 프로덕션 함수를 부르면
+            /// 그 함수가 틀어질 때 기대값도 함께 틀어져 아무것도 못 잰다 — TEAM.md 규칙.)</summary>
+            public Vector3[] LowerLocal;
             public Transform LowerTransform;
             public float UpperLength;
             public float LowerLength;
             public float Width;
             public float RootScale;
+        }
+
+        /// <summary>병합 폴리라인의 뒤쪽 절반을 아래 마디 로컬 좌표계로 되돌린다
+        /// (p = Rz(−θ)·(p′ − 관절)). 프로덕션이 하는 변환의 <b>역</b>을 테스트가 직접 적는다.</summary>
+        private static Vector3[] LowerLocalFromMerged(LineRenderer merged, float bendDegrees, float upperLength)
+        {
+            int n = LimbCurveRenderer.PointsPerSegment;
+            var r = new Vector3[n];
+            float rad = -bendDegrees * Mathf.Deg2Rad;
+            float c = Mathf.Cos(rad), sn = Mathf.Sin(rad);
+            for (int i = 0; i < n; i++)
+            {
+                Vector3 p = merged.GetPosition(LimbCurveRenderer.PolylineJointIndex + i);
+                float dx = p.x, dy = p.y + upperLength;   // 관절 = (0, −Lu)
+                r[i] = new Vector3(dx * c - dy * sn, dx * sn + dy * c, 0f);
+            }
+            return r;
+        }
+
+        /// <summary>
+        /// ★ <b>위 반호만으로</b> 이음매 꼭짓점이 있어야 할 자리를 예측한다(2026-09-03 마디 병합 대응).
+        ///
+        /// <para><b>왜 예측이 필요해졌나.</b> 병합 이전에는 위/아래 마디가 각자 LineRenderer를 갖고 있어서
+        /// "위 마디의 마지막 점"과 "아래 마디의 첫 점"이 <b>서로 다른 두 계산의 산물</b>이었고, 그래서
+        /// 그 둘을 빼는 것이 진짜 측정이었다. 병합 이후 그 자리는 <b>칸 하나</b>이고 값도 아래 반호가 쓴
+        /// 것 하나뿐이다 — 같은 칸을 두 번 읽어 빼면 <b>언제나 정확히 0</b>이 나온다. 인덱스만 고치고
+        /// 넘어가면 이 단언은 영원히 통과하는 죽은 단언이 된다.</para>
+        ///
+        /// <para><b>어떻게 재는가.</b> 균등 표본된 원호에서는 이웃한 현(chord)이 <b>길이가 같고 Δφ씩
+        /// 돌아간다</b>. 그래서 위 반호의 마지막 두 점만으로 그 다음 꼭짓점을 정확히 찍을 수 있다.
+        /// 원의 중심을 구하지 않는 이유는 수치다 — 곧게 편 자세(4도)에서는 세 점이 거의 일직선이라
+        /// 외심이 무너진다. 현 점화식은 뺄셈과 회전뿐이라 4도에서도 잔차가 4.9e-08 유닛이다.</para>
+        ///
+        /// <para>Δφ의 출처는 <b>프로덕션 상수</b>다(반호 하나를 <see cref="LimbCurveRenderer.ArcSamplesPerHalf"/>−1개
+        /// 변으로 나눈다). 좌표 수식은 한 줄도 옮겨 적지 않는다 — 그것을 검증하는 것이 이 테스트의 일이다.</para>
+        ///
+        /// <para>★ 부수 효과로 이 방식은 <b>옛 테스트가 구조적으로 못 보던 것</b>까지 본다:
+        /// 병합 변환(관절 오프셋 + 회전)의 정확성이다. 예전에는 그 변환을 Transform 계층이 대신 해 줘서
+        /// 테스트가 볼 수 없었다. 실측 감도 — 회전 부호 뒤집기 0.14유닛 / 관절 오프셋 누락 0.37유닛 /
+        /// 오프셋 0.001 어긋남 0.001유닛(전부 임계 1e-4 초과로 빨개진다).</para>
+        /// </summary>
+        private static Vector2 PredictSeamFromUpperArc(Vector3[] merged, float bendDegrees)
+        {
+            int j = LimbCurveRenderer.PolylineJointIndex;
+            Vector3 chord = merged[j - 1] - merged[j - 2];
+            // 호 전체(|bend|)를 2×(ArcSamplesPerHalf−1)개 변으로 나눈 것이 변 하나의 회전각.
+            // 부호를 그대로 두면 굽는 쪽(무릎은 뒤, 팔꿈치는 앞)까지 따라간다.
+            float stepDegrees = bendDegrees / (2f * (LimbCurveRenderer.ArcSamplesPerHalf - 1));
+            Vector3 turned = Quaternion.Euler(0f, 0f, stepDegrees) * chord;
+            return new Vector2(merged[j - 1].x + turned.x, merged[j - 1].y + turned.y);
         }
 
         /// <summary>네 팔다리를 모두 같은 규격으로 만든 리그. 넷 다 만드는 이유는
@@ -76,7 +133,7 @@ namespace StickMate.Tests.EditMode
         {
             var root = new GameObject("CurveRig");
             root.transform.localScale = new Vector3(rootScale, rootScale, 1f);
-            LineRenderer probeUpper = null, probeLower = null;
+            LineRenderer probeUpper = null;
             Transform probeLowerT = null;
 
             string[] names = { "LeftLeg", "RightLeg", "LeftArm", "RightArm" };
@@ -90,19 +147,33 @@ namespace StickMate.Tests.EditMode
                 lower.transform.SetParent(upper.transform, false);
                 lower.transform.localPosition = new Vector3(0f, -upperLength, 0f);
                 lower.transform.localRotation = Quaternion.Euler(0f, 0f, bendDegrees);
-                LineRenderer ll = MakeLine(lower, lowerLength, width);
+                // ★ 마디 병합 — 아래 마디에는 <b>선이 없다.</b> Editor/SceneBootstrapper가 굽는 것과 같이
+                //   BoxCollider2D만 남고, 그것이 아래 마디 길이의 출처다
+                //   (LimbCurveRenderer.ReadLowerSegmentLength의 세 번째 출처).
+                var box = lower.AddComponent<BoxCollider2D>();
+                box.size = new Vector2(width, lowerLength);
+                box.offset = new Vector2(0f, -lowerLength * 0.5f);
 
-                if (probeUpper == null)
-                {
-                    probeUpper = ul; probeLower = ll; probeLowerT = lower.transform;
-                }
+                if (probeUpper == null) { probeUpper = ul; probeLowerT = lower.transform; }
             }
 
             root.AddComponent<LimbCurveRenderer>().BakeEditorPreview();
 
+            // ★ 이 파일의 단언들은 <b>합쳐진 폴리라인의 칸 배치</b>를 전제로 인덱스를 집는다
+            //   (0 = 뿌리 / PolylineJointIndex = 관절 / 마지막 = 마디 끝). 배치가 바뀌면 단언은
+            //   빨개지는 대신 <b>엉뚱한 점을 조용히 재기 시작한다</b> — 2026-09-03에 실제로 그랬다
+            //   (관절인 줄 알고 발끝을 쟀고, 그래서 (4) 크리즈 검사가 여유 1.17을 5.52로 잘못 읽는
+            //   거짓 초록이 됐다). 그래서 리그를 만들 때마다 배치를 먼저 못박는다.
+            Assert.AreEqual(LimbCurveRenderer.PolylinePointCount, probeUpper.positionCount,
+                $"{LogPrefix} 리그의 팔다리 선이 {probeUpper.positionCount}점입니다 — 이 파일의 인덱스 " +
+                "계약(뿌리 0 / 관절 PolylineJointIndex / 끝 마지막)이 깨졌습니다. " +
+                "인덱스를 쓰는 단언 전부를 다시 맞추기 전까지는 아래 측정값을 믿을 수 없습니다.");
+
             return new Rig
             {
-                Root = root, Upper = probeUpper, Lower = probeLower, LowerTransform = probeLowerT,
+                Root = root, Upper = probeUpper,
+                LowerLocal = LowerLocalFromMerged(probeUpper, bendDegrees, upperLength),
+                LowerTransform = probeLowerT,
                 UpperLength = upperLength, LowerLength = lowerLength, Width = width, RootScale = rootScale,
             };
         }
@@ -124,13 +195,6 @@ namespace StickMate.Tests.EditMode
             var p = new Vector3[lr.positionCount];
             lr.GetPositions(p);
             return p;
-        }
-
-        /// <summary>아래 마디 로컬 좌표를 위 마디 로컬 좌표로 옮긴다(무릎/팔꿈치 = (0, −Lu)).</summary>
-        private static Vector2 ToUpperFrame(Vector3 lowerLocal, float bendDegrees, float upperLength)
-        {
-            Vector3 rotated = Quaternion.Euler(0f, 0f, bendDegrees) * lowerLocal;
-            return new Vector2(rotated.x, rotated.y - upperLength);
         }
 
         /// <summary>세 점을 지나는 원의 반지름(외접원). 곡선 위 연속한 세 표본에 쓰면 그 구간의
@@ -168,17 +232,19 @@ namespace StickMate.Tests.EditMode
             Assert.IsNotNull(lower, $"{LogPrefix} 프리팹에 '{limbName}Lower'가 없습니다.");
 
             var ul = upper.GetComponent<LineRenderer>();
-            var ll = lower.GetComponent<LineRenderer>();
-            Assert.IsNotNull(ul); Assert.IsNotNull(ll);
+            Assert.IsNotNull(ul);
+            // ★ 2026-09-03 마디 병합 — 아래 마디에는 선이 없다. 두 길이를 <b>합쳐진 폴리라인 하나</b>에서 읽는다.
+            //   · 위 마디: 인덱스를 PointsPerSegment−1로 자른다(프로덕션 ReadSegmentLength와 같은 규칙 —
+            //     2026-09-01에 잠깐 있었던 "발"이 붙은 프리팹이 남아 있어도 안전하다).
+            //   · 아래 마디: 관절에서 마지막 점까지의 <b>거리</b>. 그 구간은 관절을 원점으로 한 강체 회전의
+            //     상(像)이므로 굽힘각과 무관하게 정확히 Ll이다.
+            int upperEnd = Mathf.Min(ul.positionCount - 1, LimbCurveRenderer.PointsPerSegment - 1);
+            Vector3 joint = lower.localPosition;
+            Vector3 tip = ul.GetPosition(ul.positionCount - 1);
 
-            // 마디 끝 인덱스를 PointsPerSegment−1로 자르는 이유는 프로덕션
-            // (LimbCurveRenderer.ReadSegmentLength)과 같다: 2026-09-01에 잠깐 있었던 "발"이
-            // 마디 끝 뒤에 점을 하나 더 붙인 프리팹이 남아 있어도 마디 길이를 잘못 읽지 않는다.
-            int lowerEnd = Mathf.Min(ll.positionCount - 1, LimbCurveRenderer.PointsPerSegment - 1);
-
-            return (Mathf.Abs(ul.GetPosition(ul.positionCount - 1).y),
-                    Mathf.Abs(ll.GetPosition(lowerEnd).y),
-                    ll.startWidth);
+            return (Mathf.Abs(ul.GetPosition(upperEnd).y),
+                    new Vector2(tip.x - joint.x, tip.y - joint.y).magnitude,
+                    ul.startWidth);
         }
 
         /// <summary>
@@ -334,16 +400,20 @@ namespace StickMate.Tests.EditMode
                 try
                 {
                     Vector3[] up = Read(rig.Upper);
-                    Vector3[] lo = Read(rig.Lower);
 
-                    Vector2 upEnd = up[up.Length - 1];
-                    Vector2 loStart = ToUpperFrame(lo[0], bend, spec.upper);
-                    float gap = Vector2.Distance(upEnd, loStart);
+                    // ★ 이음매는 폴리라인의 <b>관절 칸</b> 하나다(PolylineJointIndex). 마지막 칸이 아니다 —
+                    //   마지막 칸은 발끝/손끝이고, 그것을 이음매로 착각하면 벌어짐 대신 <b>아래 마디 길이</b>가
+                    //   측정된다(2026-09-03 실패: 0.3374유닛 = LeftLegLower 길이 0.3375).
+                    Vector2 seam = up[LimbCurveRenderer.PolylineJointIndex];
+                    Vector2 beforeJoint = up[LimbCurveRenderer.PolylineJointIndex - 1];
+                    Vector2 afterJoint = up[LimbCurveRenderer.PolylineJointIndex + 1];
+
+                    // 위 반호만으로 그 칸이 어디여야 하는지 예측하고 실제 값과 견준다
+                    // (같은 칸을 두 번 읽어 빼면 0이 나올 뿐이다 — PredictSeamFromUpperArc 문서).
+                    float gap = Vector2.Distance(PredictSeamFromUpperArc(up, bend), seam);
 
                     // 이음매의 꺾임이 다른 표본 간격의 꺾임과 같아야 "이음매가 특별한 자리가 아님"이다.
-                    Vector2 beforeJoint = up[up.Length - 2];
-                    Vector2 afterJoint = ToUpperFrame(lo[1], bend, spec.upper);
-                    float jointTurn = Vector2.Angle(upEnd - beforeJoint, afterJoint - loStart);
+                    float jointTurn = Vector2.Angle(seam - beforeJoint, afterJoint - seam);
                     // 호 전체를 (2 × (ArcSamplesPerHalf−1))개 변으로 나누므로 변 하나의 회전각.
                     float expectedTurn = Mathf.Abs(bend) / (2f * (LimbCurveRenderer.ArcSamplesPerHalf - 1));
                     float turnError = Mathf.Abs(jointTurn - expectedTurn);
@@ -354,13 +424,14 @@ namespace StickMate.Tests.EditMode
                 finally { Object.DestroyImmediate(rig.Root); }
             }
 
-            Debug.Log($"{LogPrefix} 이음매 최대 벌어짐 = {worstGap:E2}유닛 ({worstWhere}), " +
+            Debug.Log($"{LogPrefix} 이음매 최대 어긋남(위 반호 예측 ↔ 실제 관절 칸) = {worstGap:E2}유닛 ({worstWhere}), " +
                 $"이음매 꺾임과 일반 표본 꺾임의 최대 차이 = {worstTurn:F4}도. " +
                 $"검사 각도 {angles.Count}종 × 부호 2 × 팔다리 2종.");
 
             Assert.Less(worstGap, 1e-4f,
-                $"{LogPrefix} 위/아래 마디의 곡선이 관절에서 {worstGap:E2}유닛 벌어집니다({worstWhere}) — " +
-                "두 반호는 같은 원 위에 있어야 하므로 정확히 만나야 합니다.");
+                $"{LogPrefix} 관절 칸이 위 반호의 연장에서 {worstGap:E2}유닛 벗어났습니다({worstWhere}) — " +
+                "두 반호는 같은 원 위에 있어야 하므로 이음매에 단차가 없어야 합니다. " +
+                "병합 변환(관절 오프셋 + 회전)이 어긋나면 여기서 먼저 드러납니다.");
             Assert.Less(worstTurn, 0.5f,
                 $"{LogPrefix} 이음매의 꺾임이 다른 표본 구간보다 {worstTurn:F3}도 더 큽니다 — " +
                 "관절 자리에만 각이 남아 있다는 뜻이고, 그것이 바로 없애려던 그 각진 모서리입니다.");
@@ -383,7 +454,7 @@ namespace StickMate.Tests.EditMode
                 try
                 {
                     Vector3[] up = Read(rig.Upper);
-                    Vector3[] lo = Read(rig.Lower);
+                    Vector3[] lo = rig.LowerLocal;
 
                     Assert.AreEqual(0f, up[0].magnitude, 1e-6f,
                         $"{LogPrefix} 위 마디의 첫 점이 관절(0,0)에서 벗어났습니다 — 회전 중심과 " +
@@ -424,10 +495,13 @@ namespace StickMate.Tests.EditMode
                     {
                         Vector3[] up = Read(rig.Upper);
                         // 원래 관절 끝점(각진 corner) = (0, −Lu). 곡선의 관절부 최고점과의 거리 = sagitta.
+                        // ★ 관절부 최고점은 <b>PolylineJointIndex 칸</b>이다. 병합 이후 마지막 칸은
+                        //   발끝/손끝이라, 그것을 쓰면 sagitta 대신 <b>아래 마디 길이</b>를 재게 된다
+                        //   (2026-09-03 실패: 3.5885배 = LlLeg 0.3375 ÷ 획 0.09405).
                         // 점은 로컬이고 획은 월드다 — 이 어긋남이 바로 4-3의 버그였다. 점에 루트
                         // 스케일을 곱해 둘 다 월드로 맞춘 뒤에 비교한다.
                         Vector2 corner = new Vector2(0f, -limb.Spec.upper);
-                        float sagitta = Vector2.Distance(up[up.Length - 1], corner) * k;
+                        float sagitta = Vector2.Distance(up[LimbCurveRenderer.PolylineJointIndex], corner) * k;
                         float ratio = sagitta / worldWidth;
                         if (ratio > worstRatio)
                         {
@@ -492,12 +566,15 @@ namespace StickMate.Tests.EditMode
                     try
                     {
                         Vector3[] up = Read(rig.Upper);
-                        Vector3[] lo = Read(rig.Lower);
 
                         // 관절을 가로지르는 연속 세 점의 외접원 = 그 구간의 곡률 반경(원호이므로 정확).
-                        Vector2 a = up[up.Length - 2];
-                        Vector2 b = up[up.Length - 1];
-                        Vector2 c = ToUpperFrame(lo[1], bend, limb.Spec.upper);
+                        // ★ <b>관절을 가로질러야</b> 한다 — 병합 이후 마지막 세 칸은 아래 마디의 직선
+                        //   구간이라 외접원이 사실상 무한대가 되고, 이 검사는 조용히 초록이 된다
+                        //   (2026-09-03 실측: 진짜 여유 1.168을 5.524로 잘못 읽고 있었다).
+                        int j = LimbCurveRenderer.PolylineJointIndex;
+                        Vector2 a = up[j - 1];
+                        Vector2 b = up[j];
+                        Vector2 c = up[j + 1];
                         float radius = Circumradius(a, b, c) * k;   // 로컬 → 월드(획과 같은 단위로)
 
                         // 획 폭 W인 선의 **안쪽** 가장자리 반경 = r − W/2. 이것이 0 이하가 되는 순간
@@ -769,11 +846,12 @@ namespace StickMate.Tests.EditMode
                 Rig rig = BuildRig(spec.upper, spec.lower, spec.width, bend);
                 try
                 {
-                    Assert.AreEqual(LimbCurveRenderer.PointsPerSegment, rig.Upper.positionCount,
-                        $"{LogPrefix} 굽힘 {bend}도에서 위 마디 점 개수가 달라집니다 — " +
+                    Assert.AreEqual(LimbCurveRenderer.PolylinePointCount, rig.Upper.positionCount,
+                        $"{LogPrefix} 굽힘 {bend}도에서 팔다리 폴리라인의 점 개수가 달라집니다 — " +
                         "positionCount가 매 프레임 바뀌면 LineRenderer가 메시를 다시 할당합니다.");
-                    Assert.AreEqual(LimbCurveRenderer.PointsPerSegment, rig.Lower.positionCount,
-                        $"{LogPrefix} 굽힘 {bend}도에서 아래 마디 점 개수가 달라집니다.");
+                    Assert.IsNull(rig.LowerTransform.GetComponent<LineRenderer>(),
+                        $"{LogPrefix} 굽힘 {bend}도에서 아래 마디에 선이 생겼습니다 — " +
+                        "마디 병합이 무효화되면 렌더러가 다시 11개가 됩니다.");
                 }
                 finally { Object.DestroyImmediate(rig.Root); }
             }
@@ -1166,15 +1244,18 @@ namespace StickMate.Tests.EditMode
                 Transform lower = upper.Find(name + "Lower");
                 Assert.IsNotNull(lower, $"{LogPrefix} 프리팹에 '{name}Lower'가 없습니다.");
 
-                foreach (Transform t in new[] { upper, lower })
-                {
-                    var lr = t.GetComponent<LineRenderer>();
-                    Assert.IsNotNull(lr, $"{LogPrefix} '{t.name}'에 LineRenderer가 없습니다.");
-                    Assert.AreEqual(LimbCurveRenderer.PointsPerSegment, lr.positionCount,
-                        $"{LogPrefix} '{t.name}'이 점 {lr.positionCount}개입니다 — 프리팹이 곡선화 이전이거나 " +
-                        "2026-09-01에 잠깐 있었던 '발'이 붙은 채로 남아 있습니다" +
-                        "(메뉴 StickMate/Rebuild Character Geometry 필요).");
-                }
+                // ★ 2026-09-03 마디 병합 — 위 마디에 <b>팔다리 전체</b>가 한 폴리라인으로 들어 있고,
+                //   아래 마디에는 선이 <b>없다</b>. 둘을 함께 단언해야 "합치기만 하고 아래를 안 지운"
+                //   중간 상태(같은 그림을 두 번 그린다)가 드러난다.
+                var ul = upper.GetComponent<LineRenderer>();
+                Assert.IsNotNull(ul, $"{LogPrefix} '{upper.name}'에 LineRenderer가 없습니다.");
+                Assert.AreEqual(LimbCurveRenderer.PolylinePointCount, ul.positionCount,
+                    $"{LogPrefix} '{upper.name}'이 점 {ul.positionCount}개입니다 — 프리팹이 마디 병합 이전이거나 " +
+                    "2026-09-01에 잠깐 있었던 '발'이 붙은 채로 남아 있습니다" +
+                    "(메뉴 StickMate/Rebuild Character Geometry 필요).");
+                Assert.IsNull(lower.GetComponent<LineRenderer>(),
+                    $"{LogPrefix} '{lower.name}'에 아직 LineRenderer가 있습니다 — 마디 병합 이전 프리팹입니다. " +
+                    "그대로 두면 같은 그림을 두 번 그리고 몸의 선이 7개가 아니라 11개로 남습니다.");
             }
 
             Assert.IsNotNull(prefab.GetComponent<LimbCurveRenderer>(),

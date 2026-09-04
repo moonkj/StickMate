@@ -342,9 +342,13 @@ namespace StickMate.Core
     }
 
     /// <summary>활쏘기(2026-08-29) 한 발의 <b>사전 확정된</b> 결과. 물리 판정 결과가 아니라
-    /// States/ArcheryState.Enter()가 시나리오로 미리 뽑아둔 값이며(마지막 발은 항상 Bullseye,
-    /// 앞 두 발 중 정확히 하나가 Miss), 렌더러는 이 값에 맞는 도달점을 지나도록 궤적을 역산할 뿐
-    /// 스스로 명중 여부를 판단하지 않는다 — 판정과 그림이 어긋날 경우의 수를 없앤다.</summary>
+    /// States/ArcheryState.Enter()가 미리 뽑아둔 값이며, 렌더러는 이 값에 맞는 도달점을 지나도록
+    /// 궤적을 역산할 뿐 스스로 명중 여부를 판단하지 않는다 — 판정과 그림이 어긋날 경우의 수를 없앤다.
+    /// <para>★★ 2026-09-03 정정 — 예전 이 문장은 "(마지막 발은 항상 Bullseye, 앞 두 발 중 정확히
+    /// 하나가 Miss)"라고 <b>고정 시나리오</b>를 명시했다. 사용자 신고(<i>"무조건 2대만 과녁에 명중하고
+    /// 1대는 무조건 실패"</i>)의 원인이 그 결정론이었고, 사용자 지시로 폐지됐다. 지금은
+    /// <c>StickConfig.archeryHitChance</c>로 <b>발마다 독립 추첨</b>한다(States/ArcheryState의
+    /// BuildScenario / ResolveShotResult). <b>인덱스와 결과 사이에 어떤 고정 관계도 없다.</b></para></summary>
     public enum ArcheryShotResult
     {
         /// <summary>과녁에 못 미치고 그 앞 땅에 꽂힌다(흙먼지가 함께 난다).</summary>
@@ -353,7 +357,18 @@ namespace StickMate.Core
         /// <summary>과녁 바깥 링에 꽂힌다.</summary>
         Hit,
 
-        /// <summary>정중앙에 꽂힌다. 연출의 클라이맥스라 항상 마지막 발이다.</summary>
+        /// <summary>정중앙에 꽂힌다.
+        /// <para>★★ 2026-09-03 — 예전 이 자리에는 "연출의 클라이맥스라 항상 마지막 발이다"라고
+        /// 적혀 있었다. <b>그 보장만</b> 사용자 지시로 폐지됐다. 지금은 <b>명중한 발에 한 번 더
+        /// 추첨</b>해서 정한다(<c>StickConfig.archeryBullseyeChance</c>, 기본 0.5 = P(정중앙|명중) —
+        /// 리더 판정 ②안). 그래서 <b>어느 발에서도 나올 수 있고, 한 사이클에 0~3회 나온다.</b>
+        /// 옛 모델은 정확히 1회, 그것도 항상 마지막 자리였다.</para>
+        /// <para>★ <b>빗나간 발은 이 값이 될 수 없다</b>(States/ArcheryState.ResolveShotResult가
+        /// Miss를 두 번째 추첨에 넣지 않는다). 빗나감의 도달점은 과녁 앞 땅이라, 결과만 정중앙이면
+        /// 그림과 판정이 어긋난다. 성장/기록 레이어(Interaction/CharacterStatsDirector ·
+        /// CharacterProgressionDirector)가 이 값을 명중률 분자와 보너스 XP 조건으로 쓰는데,
+        /// 두 곳 모두 <b>코드 수정 없이</b> 그대로 동작한다 — 기대값이 옛 모델과 같도록
+        /// 기본 확률을 유도했기 때문이다(그 계산은 StickConfig 쪽 Tooltip).</para></summary>
         Bullseye,
     }
 

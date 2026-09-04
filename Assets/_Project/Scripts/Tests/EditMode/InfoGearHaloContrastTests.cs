@@ -129,6 +129,44 @@ namespace StickMate.Tests.EditMode
                 "'은은하게'를 이유로 알파를 더 내리려면 그만큼 헤일로/잉크 조합을 바꿔야 합니다.");
         }
 
+        /// <summary>
+        /// ★★★ <b>2026-09-03 — 「숨김 중」 옅은 상태도 같은 하한을 지킨다.</b>
+        ///
+        /// <para>사용자 명시 숨김이 «캐릭터만» 가리도록 바뀌면서 톱니가 남았고, 그 상태를 알리려고
+        /// 평상 알파를 <see cref="InfoGearIconWidget.UserHiddenOpacity"/>로 낮췄다. 그런데 톱니는
+        /// <b>임의의 바탕화면 위에 맨몸으로</b> 놓이므로 이 상태에서도 비텍스트 하한을 지켜야 한다 —
+        /// 숨김은 <b>몇 시간</b> 갈 수 있고 그동안 톱니는 <b>유일한 마우스 진입점</b>이다
+        /// (드래그의 하한 면제 근거 «커서가 위치를 말해 주는 몇 초짜리 직접 조작»이 정반대다).</para>
+        ///
+        /// <para><b>값을 베끼지 않는다</b>: 프로덕션 상수를 <b>참조</b>해 같은 합성으로 다시 잰다.
+        /// design-art가 값을 바꾸면 이 테스트가 <b>그 값으로</b> 다시 재고, 하한을 깨면 빨개진다.</para>
+        ///
+        /// <para><b>양성 대조를 함께 건다</b>: 「숨김 중」이 평상보다 실제로 <b>옅은가</b>.
+        /// 이 줄이 없으면 누군가 두 상수를 같게 만들어도 하한 단언은 그대로 초록이고,
+        /// 「숨김 표시」는 <b>존재하지 않으면서 존재하는 척</b>하게 된다.</para>
+        /// </summary>
+        [Test]
+        public void UserHiddenDimStillClearsTheNonTextFloorOnEveryBackground()
+        {
+            Assert.Less(InfoGearIconWidget.UserHiddenOpacity, InfoGearIconWidget.IdleOpacity,
+                $"{LogPrefix} 「숨김 중」 불투명도({InfoGearIconWidget.UserHiddenOpacity:F3})가 평상값" +
+                $"({InfoGearIconWidget.IdleOpacity:F3})보다 옅지 않습니다 — 그러면 아래 하한 검사는 " +
+                "통과하지만 화면에는 <b>아무 상태 표시도 없습니다</b>(있는 척하는 초록불).");
+
+            foreach (Color ink in InkPresets)
+            {
+                Color halo = InfoGearIconWidget.ResolveHaloColor(ink);
+                float worst = WorstGuaranteedContrast(ink, halo, InfoGearIconWidget.UserHiddenOpacity,
+                    out int level);
+                Assert.GreaterOrEqual(worst, NonTextMinimumContrast,
+                    $"{LogPrefix} 「숨김 중」 불투명도 {InfoGearIconWidget.UserHiddenOpacity:F3}에서 " +
+                    $"보장 대비가 {worst:F3}:1입니다(최악 배경 회색 {level}, 잉크 {Hex(ink)}). " +
+                    "이 상태의 톱니는 몇 시간 동안 화면에 남는 <b>유일한 진입점</b>이라 " +
+                    "드래그처럼 하한을 면제받지 못합니다. 더 옅게 만들려면 알파가 아니라 " +
+                    "다른 채널을 써야 합니다(design-art 판정).");
+            }
+        }
+
         [Test]
         public void HaloIsDistinguishableFromTheInkItself()
         {

@@ -97,15 +97,18 @@ namespace StickMate.Core
         /// <para>하위 호환은 <c>dialogueVisibleLengthSaved</c>가 v8 이하 파일에서 false로 채워지는
         /// 것으로 저절로 성립한다(v6 <c>characterScaleSaved</c>와 같은 구조). 검증은
         /// Tests/EditMode/EquipmentMigrationTests.cs의 v8 하위 호환 테스트가 한다.</para>
-        /// 10 = 2026-09-02 <b>표시 모니터 선택</b>(사용자 확정: "멀티모니터일때 무조건 주모니터에서
-        /// 실행하도록" + "이게 기본이고 사용자가 설정할수있게 … 멀티모니터 인식이 됐을때만 활성화").
-        /// 필드는 <c>preferredMonitorSaved</c>(bool) + <c>preferredMonitorKey</c>(string) 두 벌이다.
+        /// ★ <b>표시 모니터 선택</b>(2026-09-02, 사용자 확정: "멀티모니터일때 무조건 주모니터에서
+        /// 실행하도록" + "이게 기본이고 사용자가 설정할수있게 … 멀티모니터 인식이 됐을때만 활성화")은
+        /// <b>v9에 그대로 실렸다 — 버전을 올리지 않았다.</b> 필드는 <c>preferredMonitorSaved</c>(bool) +
+        /// <c>preferredMonitorKey</c>(string) 두 벌이다.
+        /// <para>(한때 이 항목을 "10 ="이라 적어 뒀는데, 아래 리더 판정으로 버전이 9로 되돌아간 뒤에도
+        ///  그 번호표가 남아 있었다. 그 상태로 v10을 쓰면 <b>10이 두 가지를 가리키게</b> 되므로
+        ///  2026-09-03 게임화 라운드에서 번호표를 뗐다. 필드 이름과 디스크 내용은 한 글자도 안 바뀐다.)</para>
         /// <para>하위 호환은 v6 <c>characterScaleSaved</c>/v7 <c>inkColorSaved</c>와 <b>같은 방식으로
-        /// 저절로</b> 성립한다 — v9 이하 파일에는 두 키가 없어 JsonUtility가 <c>false</c>/<c>null</c>로
-        /// 채우고, 그 false는 <b>"아직 고른 적 없다 = 기본값인 주 모니터를 쓴다"</b>는 정확한 사실이다.
+        /// 저절로</b> 성립한다 — 그 키가 없는 파일에서는 JsonUtility가 <c>false</c>/<c>null</c>로
+        /// 채우고, 그 false는 <b>"아직 고른 적 없다 = 기본값을 쓴다"</b>는 정확한 사실이다.
         /// (기본이 <c>true</c>인 <c>autoHideOnFullscreen</c>/<c>cornerPanelEnabled</c>류와 달리 뜻이
-        ///  뒤집히지 않으므로 <b>버전 분기를 두지 않는다</b>.) 검증은 EquipmentMigrationTests의
-        /// v9 하위 호환 테스트가 한다.</para>
+        ///  뒤집히지 않으므로 <b>버전 분기를 두지 않는다</b>.)</para>
         // ★ 2026-09-02 리더 판정 — 10으로 올렸다가 9로 되돌렸다. 되돌린 이유를 여기 남긴다.
         //   이 저장소의 실제 규칙은 "버전을 올려라"가 아니라 이것이다:
         //     **필드의 「없음」이 그 필드의 0값과 다른 뜻일 때만 버전을 강제한다.**
@@ -116,7 +119,29 @@ namespace StickMate.Core
         //   ★ 그리고 문을 닫는 것은 커밋이 아니라 **빌드**다 — v10 트리로 한 번 실행하면
         //   모니터 필드만 든 v10이 디스크에 앉고, 재화·스탯·유예기산점이 v11·v12·v13이 되어
         //   하위 호환 테스트가 3배가 된다. v10은 게임화 묶음이 **한 번에** 쓴다.
-        internal const int CurrentVersion = 9;
+        //
+        /// 10 = 2026-09-03 <b>게임화(재화 · 소유 · 등급 · 댄스) 묶음</b> — 위 문단이 예약해 둔 그 버전이다.
+        /// 한 라운드에 <b>14필드</b>를 전부 넣는다(`docs/DESIGN_SYSTEMS_STATS.md` §20-1의 13필드 +
+        /// §20-4의 <c>itemGraceBaselines</c> 자리). 나눠 넣지 않는 이유는 §20-5·§12-2-b가 같은 자리에서
+        /// 만난 결론이다 — <b>필드를 나눌 때마다 다운그레이드 창이 한 번씩 열린다.</b>
+        /// <para>★ <b>이 버전 상승의 근거는 「없음 ≠ 0」이 아니다.</b> §20-1 표의 그 칸은 전부 「아니오」이고
+        /// (유일한 예외 <c>dayBoundaryOffsetMinutes</c>는 동반 불리언 <c>dayBoundaryOffsetSaved</c>가
+        /// 해소했다 — <c>0</c>이 UTC+0이라는 <b>실재 시간대</b>여서 "아직 안 정함"과 뜻이 다르다),
+        /// 즉 위 규칙만으로는 v10이 강제되지 않는다. 올리는 진짜 이유는 <b>다운그레이드 방어</b>다:
+        /// v10 필드를 v9 번호로 디스크에 앉히면 구버전 빌드가 <c>data.version &gt; CurrentVersion</c>
+        /// 검사를 <b>못 타고</b>, <see cref="SaveSuspended"/>가 안 걸리고, 60초 뒤 자동 저장이
+        /// <c>coinBalance</c>·<c>purchasedItemIds</c>·<c>statTierReached</c>를 덮어 지운다.
+        /// 그건 가설이 아니다 — 아래 "다운그레이드 방어" 문단이 <b>같은 사고</b>를 이미 기록해 뒀다
+        /// (11:06:03에 설정창 키 10개 소실). <b>설정창 키 10개는 다시 고르면 되지만 동전 잔액은 못 되번다.</b></para>
+        /// <para>하위 호환은 v6 <c>characterScaleSaved</c> 계열과 <b>같은 방식으로 저절로</b> 성립한다 —
+        /// v9 이하 파일에 14개 키가 없으면 JsonUtility가 0/false/null로 채우고, 그 값들이 전부
+        /// <b>"오늘 아무것도 안 받았다 / 아직 아무것도 안 샀다"</b>는 정확한 사실이다. 그래서 이 버전은
+        /// <c>FirstVersionWith…</c> 분기를 <b>하나도 추가하지 않는다</b>(기본이 <c>true</c>인 값이 없다).
+        /// 집합 필드 3종(<c>purchasedItemIds</c>·<c>equippedDanceIds</c>·<c>itemGraceBaselines</c>)은
+        /// <c>null</c>과 <c>빈 배열</c>의 뜻이 같아지도록 <b>정규화</b>로 받는다
+        /// (§20-2-a·b — <c>IsOwned</c> 합집합과 「장착 ≥ 1」이 그 등가성의 근거다).
+        /// 검증은 <c>Tests/EditMode/EquipmentMigrationTests</c>의 v9 하위 호환 테스트가 한다.</para>
+        internal const int CurrentVersion = 10;
 
         /// <summary>설정창 값이 처음 들어간 버전. 이 값보다 낮은 파일에는 <c>autoHideOnFullscreen</c>/
         /// <c>gearIconVisible</c> 키가 없으므로 읽으면 안 된다(false = 꺼짐으로 오해된다 —
@@ -130,6 +155,20 @@ namespace StickMate.Core
 
         /// <summary>착용 상태가 아이템 아이디로 바뀐 첫 버전. 이 값보다 낮은 파일은 bool 4개를 읽는다.</summary>
         private const int FirstVersionWithWornItemIds = 5;
+
+        /// <summary>
+        /// ★ 재화·소유·등급·댄스(게임화 묶음)가 처음 들어간 버전.
+        /// <b>로드 분기용이 아니다</b> — 위 <c>FirstVersionWith…</c> 셋과 달리 이 버전의 필드는
+        /// "없으면 0/false/빈"이 전부 정확한 사실이라 <b>버전을 보고 갈라야 할 값이 하나도 없다</b>.
+        ///
+        /// <para>그런데도 상수로 두는 이유는 <b>다운그레이드 방어를 테스트가 참조하기 위해서</b>다.
+        /// 이 파일에 <c>coinBalance</c>가 들어 있는데 <see cref="CurrentVersion"/>이 이 값보다 낮으면,
+        /// 구버전 빌드가 그 파일을 <b>자기 버전</b>으로 읽어 <see cref="SaveSuspended"/>가 안 걸리고
+        /// 60초 뒤 자동 저장이 동전 잔액을 덮어 지운다. 테스트가 숫자를 베끼는 대신 이 상수를
+        /// 참조하면(<c>Tests/EditMode/EquipmentMigrationTests</c>), 훗날 v11·v12로 올라가도
+        /// 그 검사가 <b>낡지 않는다</b>.</para>
+        /// </summary>
+        internal const int FirstVersionWithGameplayCurrency = 10;
 
         /// <summary>
         /// 직렬화 스키마. JsonUtility는 프로퍼티를 직렬화하지 않으므로 public 필드로만 구성한다.
@@ -228,7 +267,7 @@ namespace StickMate.Core
             public bool autoHideOnFullscreen;
             public bool gearIconVisible;
 
-            // ---- v10: 표시 모니터(Core/AppSettingsModel.cs) ----
+            // ---- 표시 모니터(Core/AppSettingsModel.cs) — v9에 실렸다(위 CurrentVersion 문서) ----
 
             /// <summary>사용자가 표시 모니터를 고른 적이 있는가 + 고른 <b>자리 이름</b>(<c>"Start"</c>/<c>"End"</c>).
             /// (2026-09-02 재판단으로 좌표 키에서 자리 이름으로 바뀌었다 — <b>필드 이름과 스키마
@@ -266,6 +305,78 @@ namespace StickMate.Core
             public string wornHair;
             public string wornFx;
             public string wornPet;
+
+            // ================================================================
+            // ---- v10: 게임화 묶음 — 재화 · 소유 · 등급 · 날짜 경계 · 채널 카운터 · 댄스 ----
+            // ================================================================
+            // 정본: docs/DESIGN_SYSTEMS_STATS.md §20-1(13필드 표) + §20-4(유예 자리 1필드).
+            // 값의 뜻·클램프·상한은 전부 Core/CurrencyRules.cs 한 곳에 있다 — 여기는 <b>그릇</b>이다.
+            //
+            // ★ 여기에 <b>만들면 안 되는</b> 필드(§20-2가 이유를 적어 뒀다. 되살리지 마라):
+            //   · dailyCap / todayLimit 계열   — 상한은 필드가 아니라 함수다(T-D-9)
+            //   · tonicOwned / potionStock 계열 — 재고는 저장하지 않는다(T-D-8). 당일 소멸이라 개념이 없다
+            //   · lastArcheryCoinUnix / todoCoinPaidDateUnix — 벽시계 유닉스 초(T-3-a 위반)
+            //   · ownedItemIds / ownedDanceIds — `own`은 C층 세이브 금지 토큰이다
+            //     (Tests/EditMode/EntitlementNotInSaveAuditTests). 그리고 댄스 보유는 파생이라 적을 것이 없다
+            //   · freePotionClaimedToday — 롤오버 단일 사건에 흡수됐다(T-D-10)
+
+            /// <summary>지금 가진 동전. v9 파일에는 없고, 그때의 0은 "한 푼도 없다"는 정확한 사실이다.</summary>
+            public int coinBalance;
+
+            /// <summary>첫 실행 시드를 받았는가. <c>coinBalance</c>만으로는 "다 썼다"와 "받은 적 없다"가
+            /// 구분되지 않아 별도 플래그가 필요하다(§20-1 #2).</summary>
+            public bool seedGranted;
+
+            /// <summary>★ <b>상점에서 산 것만</b>. 42종의 레벨 파생 보유는 여기 없다 —
+            /// <c>ItemCatalogEntry.IsOwned</c>가 <b>합집합</b>으로 본다. 그 합집합이 이 필드의 하위 호환을
+            /// 성립시킨다(v9 파일에서 null이어도 레벨 파생 항이 그대로 살아 있어 아무것도 안 잃는다).</summary>
+            public string[] purchasedItemIds;
+
+            /// <summary>스탯 4슬롯의 등급 high-water mark(영구 해금). 길이가 모자라거나 남아도
+            /// <c>CurrencyModel.RestoreFromSave</c>가 정확히 4칸으로 정규화한다.</summary>
+            public int[] statTierReached;
+
+            /// <summary>★ <b>래칫된 최대 일자</b>(단순 "오늘"이 아니다 — T-4-b). 0 = "아직 아무 날도
+            /// 못 봤다"이고, 첫 로드에서 즉시 전진한다.</summary>
+            public int dayIndex;
+
+            /// <summary>오늘 유휴로 지급된 동전. 로드 시 <c>[0, DailyCap()]</c>로 클램프된다.</summary>
+            public int todayGrantedCoins;
+
+            /// <summary>오늘 쓴 회복제 개수. 로드 시 <c>[0, MaxPotionsPerDay]</c>로 클램프된다 —
+            /// ★ <b>I-12′의 유일한 방어선</b>이라 9999를 써 넣어도 상한이 2,500에서 멈춘다.</summary>
+            public int potionsUsedToday;
+
+            /// <summary>오늘 갉아 먹은 8시간 창(초). ★ <b>NaN은 0이 아니라 상한으로</b> 간다 —
+            /// 이유는 <c>CurrencyRules.ClampIdleWindowSeconds</c> 문서(방향이 반대인 유일한 클램프).</summary>
+            public float idleWindowUsedSeconds;
+
+            /// <summary>날짜 경계 오프셋을 고정한 적이 있는가. ★ <b>이 스키마에서 「없음 ≠ 0」인 유일한
+            /// 값</b>(<c>dayBoundaryOffsetMinutes</c>)의 동반 불리언이다 — <c>0</c>은 UTC+0이라는
+            /// <b>실재 시간대</b>여서 "아직 안 정했다"와 뜻이 다르다. <c>gearPositionSaved</c>/
+            /// <c>characterScaleSaved</c>/<c>inkColorSaved</c>/<c>preferredMonitorSaved</c>와 같은 관례.</summary>
+            public bool dayBoundaryOffsetSaved;
+
+            /// <summary>고정된 날짜 경계 오프셋(분). 첫 실행에 그 순간의 로컬 오프셋으로 굳고 다시 안 바뀐다
+            /// (T-D-4 — 시간대 여행/서머타임으로 하루가 여러 번 오는 것을 막는다).</summary>
+            public int dayBoundaryOffsetMinutes;
+
+            /// <summary>[오늘 할일] 하루 1회 지급을 받았는가. 벽시계 <c>todoCoinPaidDateUnix</c>의 대체다.</summary>
+            public bool todoCoinPaidToday;
+
+            /// <summary>오늘 활쏘기로 받은 동전. 벽시계 <c>lastArcheryCoinUnix</c>의 대체다(§20-3).</summary>
+            public int archeryCoinsToday;
+
+            /// <summary>장착한 춤. <c>null</c>과 <c>빈 배열</c>이 <b>같은 뜻</b>이라 같은 분기가 받는다
+            /// (§20-2-b — 「장착 ≥ 1」이 빈 집합을 합법 상태에서 배제하므로 두 값의 뜻이 같아진다).
+            /// ★ <b>보유</b> 집합은 여기 없다 — 무료 2종(파생) ∪ 엔타이틀먼트(C층)라 적을 것이 없다.</summary>
+            public string[] equippedDanceIds;
+
+            /// <summary>★ <b>U-2 자리 확보</b>(§20-4). 로직 0줄 — 읽은 그대로 다시 쓴다.
+            /// 스칼라(<c>float itemReachedAtSeconds</c>)로 만들면 "없음 = 0초에 도달"이 되어 42종을
+            /// 즉시 열어 주는데, 가변 길이 목록은 "없음 = 기록 없음"이라 안전하다. 지금 자리를 안 잡으면
+            /// U-2가 「존치」로 나오는 순간 v11이다.</summary>
+            public ItemGraceBaseline[] itemGraceBaselines;
         }
 
         /// <summary>
@@ -360,6 +471,9 @@ namespace StickMate.Core
             NewerVersionFileDetected = false;
             NewerVersionBackupPath = null;
             SaveSuspended = false;
+            RestoreAbortedMidway = false;
+            s_restoreInFlight = false;
+            s_forcedRestoreFailure = false;
             LastSaveWasAtomic = false;
             LastSaveKeptPreviousGeneration = false;
             ConsecutiveAtomicCommitFailures = 0;
@@ -466,6 +580,8 @@ namespace StickMate.Core
             NewerVersionFileDetected = false;
             NewerVersionBackupPath = null;
             SaveSuspended = false;
+            RestoreAbortedMidway = false;
+            s_restoreInFlight = false;
             try
             {
                 string path = FilePath;
@@ -503,8 +619,13 @@ namespace StickMate.Core
                     return;
                 }
 
+                // ★ 여기서부터 "여러 모델을 차례로 되살리는" 구간이다. 도중에 예외가 나면 앞쪽은
+                //   파일 값, 뒤쪽은 기본값인 <b>섞인 상태</b>가 남는다 — 아래 catch가 그걸 받는다.
+                s_restoreInFlight = true;
+
                 CharacterProgressionModel.RestoreFromSave(data.level, data.currentXp, data.totalXpEarned, data.characterName);
                 RestoreEquipment(data);
+                ThrowIfRestoreFailureInjected();
                 CharacterStatsModel.RestoreFromSave(data.battleWins,
                     data.archeryShots, data.archeryBullseyes, data.companionSeconds,
                     data.ragdollFalls, data.firstRunUnixSeconds);
@@ -532,6 +653,33 @@ namespace StickMate.Core
                     //   preferredMonitorSaved가 false로 채워지고, 그것이 "고른 적 없음"의 정확한 표현이다.
                     data.preferredMonitorSaved, data.preferredMonitorKey);
                 TodoListModel.RestoreFromSave(ToItems(data.todos), ToItems(data.todoArchive));
+                // ★ v10 게임화 묶음 — 버전 분기가 없다. v9 이하 파일에는 14개 키가 하나도 없어
+                //   JsonUtility가 0/false/null로 채우고, 그 값들이 전부 정확한 사실이다
+                //   ("오늘 아무것도 안 받았다 / 아직 아무것도 안 샀다").
+                //   유일한 예외였던 dayBoundaryOffsetMinutes는 동반 불리언이 해소한다.
+                CurrencyModel.RestoreFromSave(new CurrencySaveState
+                {
+                    CoinBalance = data.coinBalance,
+                    SeedGranted = data.seedGranted,
+                    PurchasedItemIds = data.purchasedItemIds,
+                    StatTierReached = data.statTierReached,
+
+                    DayIndex = data.dayIndex,
+                    TodayGrantedCoins = data.todayGrantedCoins,
+                    PotionsUsedToday = data.potionsUsedToday,
+                    IdleWindowUsedSeconds = data.idleWindowUsedSeconds,
+
+                    DayBoundaryOffsetSaved = data.dayBoundaryOffsetSaved,
+                    DayBoundaryOffsetMinutes = data.dayBoundaryOffsetMinutes,
+
+                    TodoCoinPaidToday = data.todoCoinPaidToday,
+                    ArcheryCoinsToday = data.archeryCoinsToday,
+
+                    EquippedDanceIds = data.equippedDanceIds,
+                    ItemGraceBaselines = data.itemGraceBaselines,
+                });
+
+                s_restoreInFlight = false;
                 LoadedFromFile = true;
 
                 // 복원이 끝난 뒤 한 번만 통지한다(중간 상태를 UI가 그리지 않게 — RestoreFromSave가
@@ -541,11 +689,77 @@ namespace StickMate.Core
             }
             catch (Exception e)
             {
+                // ============================================================
+                // ★★ 복원이 <b>도중에</b> 끊긴 경우 — 저장을 보류한다 (2026-09-03, v10 선행 수정)
+                // ============================================================
+                // 쓰기 경로의 원자성은 이미 두 겹이다(원자적 교체 사다리 + 직전 세대). 그런데
+                // <b>읽기 경로에는 그 장치가 없었다.</b> 위 복원 구간은 모델 7~8개를 차례로 되살리는데,
+                // 중간에서 예외가 나면 앞쪽은 파일 값 · 뒤쪽은 기본값인 <b>섞인 메모리 상태</b>가 남는다.
+                // 그리고 이 클래스는 그 상태를 아무 표시 없이 그대로 두었고, 60초 뒤 자동 저장이
+                // 그 혼합물을 <b>한 덩어리 JSON으로 원자적으로</b> 디스크에 굳혔다 —
+                // 즉 "원자적으로 쓴다"가 "옳은 것을 쓴다"를 보장하지 않는 지점이 정확히 여기다.
+                //
+                // v9까지 이 사고의 최대 피해는 "레벨은 남고 할일은 사라진다"였다. v10부터는
+                // <c>coinBalance</c>가 같은 목록에 있고, <b>동전은 되벌 수 없다</b>(§7-2: 75일치 집중 세션).
+                // 그래서 이 클래스가 이미 채택한 저울을 여기에도 그대로 적용한다 —
+                // <b>"못 저장하는 불편은 되돌릴 수 있지만, 덮어쓴 데이터는 못 되돌린다."</b>
+                //
+                // 왜 "다시 로드"나 "기본값으로 초기화"가 아닌가:
+                //   · 다시 로드 → 같은 파일이 같은 지점에서 또 터진다(무한 반복).
+                //   · 전부 기본값 → 화면이 Lv.1로 보이고, 사용자가 그 화면을 진짜로 믿고 조작한다.
+                //     혼합 상태를 그대로 두면 적어도 <b>있던 것은 계속 보인다</b>.
+                //   · 저장 보류 → 디스크의 옛 파일이 한 바이트도 안 바뀐 채 남는다. 앱을 다시 켜면
+                //     그 파일을 처음부터 다시 읽는다. <b>유일하게 되돌릴 수 있는 선택지</b>다.
+                if (s_restoreInFlight)
+                {
+                    s_restoreInFlight = false;
+                    RestoreAbortedMidway = true;
+                    SaveSuspended = true;
+                    Debug.LogWarning($"[성장] 저장 파일을 읽는 <b>도중</b>에 실패했습니다" +
+                        $"({e.GetType().Name}: {e.Message}). 일부 값만 복원된 <b>섞인 상태</b>라, " +
+                        "그대로 저장하면 아직 못 읽은 값(동전 잔액·구매 이력·등급 해금 등)이 " +
+                        "기본값으로 디스크에 굳어 <b>되돌릴 수 없게</b> 됩니다. " +
+                        "그래서 이번 실행에서는 **저장을 보류**합니다 — 디스크의 파일은 그대로 있고, " +
+                        "앱을 다시 켜면 처음부터 다시 읽습니다(이 실행에서 얻은 것만 저장되지 않습니다).");
+                    return;
+                }
+
                 // 손상된 파일을 지우지 않는다 — 사용자가 나중에 들여다볼 수 있게 남겨두고,
                 // 다음 저장이 정상 내용으로 덮어쓴다.
                 Debug.LogWarning($"[성장] 저장 파일을 읽지 못했습니다({e.GetType().Name}: {e.Message}). " +
                     "기본값(Lv.1)으로 시작합니다 — 다음 저장이 정상 내용으로 덮어씁니다.");
             }
+        }
+
+        /// <summary>복원이 <b>도중에</b> 끊겨 섞인 상태가 남았는가. 진단/테스트용.
+        /// 이 값이 true면 <see cref="SaveSuspended"/>도 반드시 true다(둘은 한 사건이다).</summary>
+        public static bool RestoreAbortedMidway { get; private set; }
+
+        /// <summary>복원 구간 안인가. <see cref="Load"/>의 catch가 "파일을 못 읽음"과
+        /// "읽다가 도중에 끊김"을 구분하는 데 쓴다 — 둘은 처방이 정반대다.</summary>
+        private static bool s_restoreInFlight;
+
+        // ============================================================================
+        // ★ 복원 중단을 테스트가 강제로 만든다 (2026-09-03)
+        // ============================================================================
+        // 위 방어가 실제로 도는 조건(모델 하나가 복원 중에 던진다)은 이 트리에서 자연 발생하지
+        // 않는다 — 모든 RestoreFromSave가 null/빈 값을 방어적으로 받도록 짜여 있기 때문이다.
+        // 주입구가 없으면 그 분기는 <b>영원히 한 줄도 실행되지 않고</b> 사용자 실기에서 처음
+        // 밟히는 코드가 된다(원자적 교체 사다리에 ForceAtomicCommitFailuresForTesting을 둔 것과
+        // 같은 이유, 같은 관례). 프로덕션에서는 플래그가 false라 분기 하나 값이 비용의 전부다.
+        private static bool s_forcedRestoreFailure;
+
+        /// <summary>테스트 전용 — 다음 <see cref="Load"/>의 복원 <b>도중</b>에 한 번 예외를 던진다.
+        /// 던지는 자리는 "레벨·착용은 복원됐고 재화는 아직"인 지점이라, 실기에서 가장 비싼
+        /// 혼합 상태(<c>coinBalance</c>만 기본값)를 그대로 재현한다.</summary>
+        internal static void SimulateRestoreFailureForTesting() => s_forcedRestoreFailure = true;
+
+        private static void ThrowIfRestoreFailureInjected()
+        {
+            if (!s_forcedRestoreFailure) return;
+            s_forcedRestoreFailure = false;
+            throw new InvalidOperationException(
+                "[테스트 주입] 복원 도중 모델 하나가 던진 상황을 흉내냅니다.");
         }
 
         /// <summary>
@@ -1098,6 +1312,7 @@ namespace StickMate.Core
 
             try
             {
+                CurrencySaveState currency = CurrencyModel.CaptureSaveState();
                 var data = new SaveData
                 {
                     version = CurrentVersion,
@@ -1144,6 +1359,22 @@ namespace StickMate.Core
                     wornHair = WornId(EquipmentSlot.Hair),
                     wornFx = WornId(EquipmentSlot.Fx),
                     wornPet = WornId(EquipmentSlot.Pet),
+
+                    // ---- v10 게임화 묶음 ----
+                    coinBalance = currency.CoinBalance,
+                    seedGranted = currency.SeedGranted,
+                    purchasedItemIds = currency.PurchasedItemIds,
+                    statTierReached = currency.StatTierReached,
+                    dayIndex = currency.DayIndex,
+                    todayGrantedCoins = currency.TodayGrantedCoins,
+                    potionsUsedToday = currency.PotionsUsedToday,
+                    idleWindowUsedSeconds = currency.IdleWindowUsedSeconds,
+                    dayBoundaryOffsetSaved = currency.DayBoundaryOffsetSaved,
+                    dayBoundaryOffsetMinutes = currency.DayBoundaryOffsetMinutes,
+                    todoCoinPaidToday = currency.TodoCoinPaidToday,
+                    archeryCoinsToday = currency.ArcheryCoinsToday,
+                    equippedDanceIds = currency.EquippedDanceIds,
+                    itemGraceBaselines = currency.ItemGraceBaselines,
                 };
 
                 string dir = SaveDirectory;
@@ -1159,6 +1390,7 @@ namespace StickMate.Core
                 CharacterAppearanceModel.MarkSaved();
                 AppSettingsModel.MarkSaved();
                 TodoListModel.MarkSaved();
+                CurrencyModel.MarkSaved();   // v10 — 이 줄이 빠지면 동전이 매 주기 저장을 다시 부른다.
                 return true;
             }
             catch (Exception e)

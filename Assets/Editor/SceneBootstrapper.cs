@@ -1968,20 +1968,28 @@ namespace StickMate.EditorTools
         {
             GameObject upper = CreateLimbSegment(hierarchyParent, connectedBody, name, attachLocal, upperLength,
                 width, upperAngle, useLimits: true, minAngle: upperMinAngle, maxAngle: upperMaxAngle,
-                color, mass, gravityScale, sortingOrder, limbLayer, agent);
+                color, mass, gravityScale, sortingOrder, limbLayer, agent, withLine: true);
 
             // 아래 마디는 위 마디의 자식이고, 그 관절 부착점은 위 마디 로컬 공간의 (0, -upperLength)
             // (= 무릎/팔꿈치). 위 마디의 Rigidbody2D에 연결한다.
+            //
+            // ★ 2026-09-03 마디 병합(리더 판정 CH-8) — 아래 마디는 <b>LineRenderer를 갖지 않는다.</b>
+            //   팔다리 하나를 위 마디에 붙은 폴리라인 하나가 통째로 그리기 때문이다
+            //   (States/LimbCurveRenderer 클래스 문서의 "마디 병합" 절). Transform / Rigidbody2D /
+            //   HingeJoint2D / BoxCollider2D / RagdollLimbImpactRelay는 <b>그대로</b>다 — 물리와 포즈의
+            //   소비자는 전부 이 Transform을 찾지 선을 찾지 않는다.
+            //   ⇒ 몸의 LineRenderer가 11개에서 7개가 된다.
             CreateLimbSegment(upper.transform, upper.GetComponent<Rigidbody2D>(), name + "Lower",
                 new Vector2(0f, -upperLength), lowerLength, width, lowerAngle,
                 useLimits: true, minAngle: lowerMinAngle, maxAngle: lowerMaxAngle,
-                color, mass, gravityScale, sortingOrder, limbLayer, agent);
+                color, mass, gravityScale, sortingOrder, limbLayer, agent, withLine: false);
         }
 
         private static GameObject CreateLimbSegment(Transform hierarchyParent, Rigidbody2D connectedBody, string name,
             Vector2 attachLocal, float length, float width, float neutralAngleDegrees,
             bool useLimits, float minAngle, float maxAngle,
-            Color color, float mass, float gravityScale, int sortingOrder, int limbLayer, StickmanAgent agent)
+            Color color, float mass, float gravityScale, int sortingOrder, int limbLayer, StickmanAgent agent,
+            bool withLine)
         {
             var segment = new GameObject(name);
             segment.transform.SetParent(hierarchyParent, false);
@@ -2036,12 +2044,18 @@ namespace StickMate.EditorTools
             relaySo.ApplyModifiedPropertiesWithoutUndo();
 
             // 레퍼런스 스타일의 굵은 검은 획 — 관절(로컬 원점)에서 마디 끝까지. 시작점이 정확히 원점이라
-            // 회전 중심과 선의 시작점이 항상 같고, 둥근 캡(LineCapVertices=8)이 관절에서 자연스럽게
-            // 겹쳐 매끄럽게 이어진다.
-            var lr = ConfigureLine(segment, color, sortingOrder, loop: false, width);
-            lr.positionCount = 2;
-            lr.SetPosition(0, Vector3.zero);
-            lr.SetPosition(1, new Vector3(0f, -length, 0f));
+            // 회전 중심과 선의 시작점이 항상 같다.
+            // ★ 아래 마디는 여기를 건너뛴다(withLine: false) — 위 마디의 폴리라인이 팔다리 전체를 그린다.
+            //   그래도 <b>BoxCollider2D.size.y가 남는다</b>: States/LimbCurveRenderer.ReadLowerSegmentLength가
+            //   프리팹을 굽는 이 순간(선이 아직 2점)에 아래 마디 길이를 읽는 유일한 출처다.
+            //   콜라이더 size를 여기서 length로 주는 위 코드와 <b>한 쌍</b>이다 — 한쪽만 바꾸지 마라.
+            if (withLine)
+            {
+                var lr = ConfigureLine(segment, color, sortingOrder, loop: false, width);
+                lr.positionCount = 2;
+                lr.SetPosition(0, Vector3.zero);
+                lr.SetPosition(1, new Vector3(0f, -length, 0f));
+            }
             return segment;
         }
 

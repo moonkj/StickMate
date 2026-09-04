@@ -43,6 +43,16 @@ namespace StickMate.Tests.EditMode
     ///
     /// <para>리플렉션은 한 줄도 쓰지 않는다 — 활성 빌드 타깃 반대편 파일은 타입이 존재하지 않아
     /// 리플렉션 감사가 구조적으로 눈이 먼다(CLAUDE.md 활성 빌드 타깃 규칙).</para>
+    ///
+    /// ============================================================================
+    /// ★★ 2026-09-03 정정 — 사거리를 <b>「디스크 평문 JSON에 닿는 파일」</b>로 좁혔다
+    /// ============================================================================
+    /// 옛 판은 프로덕션의 <b>모든</b> <c>[Serializable]</c> 타입을 훑었고, 그래서 팩 매니페스트
+    /// (<c>ScriptableObject</c>, 앱 번들 안의 <c>.asset</c>)까지 세이브로 오인했다.
+    /// 근거·실측·잃은 것과 안 잃은 것은 <see cref="DiskJsonReachable"/> 문단에 있고,
+    /// <b>양방향 대조 두 건</b>이 매 실행 그 좁힘을 검증한다
+    /// (한 칸 건너 타입은 <b>들어오고</b>, JSON에 안 닿는 에셋 스키마는 <b>빠진다</b>).
+    /// <b>둘 중 하나만 보면 「좁혔다」와 「꺼 버렸다」를 구분할 수 없다.</b>
     /// </summary>
     public sealed class EntitlementNotInSaveAuditTests
     {
@@ -148,6 +158,77 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
+        /// ★★ 2026-09-03 coder-systems — <b>사거리</b>: 「디스크에 나가는 평문 JSON」에 닿는 파일만.
+        ///
+        /// ============================================================================
+        /// 왜 좁혔나 — 좁히지 않으면 <b>매니페스트 에셋</b>이 세이브로 오인된다
+        /// ============================================================================
+        /// 이 감사가 지키는 문장은 클래스 문서에 있는 그대로다:
+        /// <i>"이 파일은 <b>평문 JSON</b>이고 앞으로도 평문입니다 … 여기에 소유를 적으면
+        /// 메모장으로 DLC가 열립니다."</i> 즉 대상은 <b>유저가 손댈 수 있는 디스크 파일</b>이다.
+        ///
+        /// <para>그런데 옛 판은 프로덕션의 <b>모든</b> <c>[Serializable]</c> 타입을 훑었다.
+        /// 2026-09-03 팩 통로 라운드가 <c>StickPackManifestSO</c> 에
+        /// <c>PackEntitlementRef { channel, entitlementId }</c> 를 넣자 <c>entitle</c> 토큰에 걸렸다.
+        /// <b>그건 스토어 조회 <u>결과의 캐시</u>가 아니라 조회할 <u>대상(SKU)</u>이고</b>,
+        /// 앱 번들 안의 <c>.asset</c> 이지 유저 저장 파일이 아니다.
+        /// 그리고 그 값을 에셋에서 빼면 <b>팩 하나 추가에 프로덕션 코드 수정이 필요해진다</b> —
+        /// 사용자 확정 「출시 이후부터 계속 추가팩」이 그 자리에서 깨진다.</para>
+        ///
+        /// <para>★ <b>무엇을 잃지 않았는가</b>(이게 핵심이다): 좁힌 기준은 「파일 이름」이 아니라
+        /// <b>「JsonUtility 에 닿는가」</b>이고, <b>한 칸 건너</b>까지 따라간다 —
+        /// 세이브 스키마가 다른 파일의 <c>[Serializable]</c> 타입(클래스 문서가 예로 든
+        /// <c>PurchaseRecord</c> 같은 것)을 품어도 그 파일이 함께 잡힌다.
+        /// <see cref="NegativeControl_한_칸_건너_직렬화_타입도_사거리에_들어온다"/> 가 매 실행 증명한다.
+        /// 반대 방향은 <see cref="NegativeControl_디스크_JSON에_안_닿는_에셋_스키마는_사거리_밖이다"/>.
+        /// <b>두 대조가 짝이다</b> — 하나만 보면 「좁혔다」와 「꺼 버렸다」를 구분할 수 없다.</para>
+        /// </summary>
+        private static List<(string Path, string Stripped)> DiskJsonReachable(
+            List<(string Path, string Stripped)> all)
+        {
+            var primary = new List<(string Path, string Stripped)>();
+            foreach ((string path, string stripped) in all)
+            {
+                if (stripped.IndexOf("JsonUtility", StringComparison.Ordinal) < 0) continue;
+                primary.Add((path, stripped));
+            }
+
+            var result = new List<(string Path, string Stripped)>(primary);
+            var taken = new HashSet<string>(StringComparer.Ordinal);
+            foreach ((string p, string _) in primary) taken.Add(p);
+
+            foreach ((string path, string stripped) in all)
+            {
+                if (taken.Contains(path)) continue;
+
+                bool referenced = false;
+                foreach (string typeName in EntitlementAuditSource.SerializableTypeNames(stripped))
+                {
+                    foreach ((string _, string primaryStripped) in primary)
+                    {
+                        if (!EntitlementAuditSource.ContainsIdentifier(primaryStripped, typeName)) continue;
+                        referenced = true;
+                        break;
+                    }
+                    if (referenced) break;
+                }
+                if (!referenced) continue;
+                result.Add((path, stripped));
+                taken.Add(path);
+            }
+            return result;
+        }
+
+        /// <summary>프로덕션 <c>.cs</c> 전량을 (경로, 주석제거본)으로.</summary>
+        private static List<(string Path, string Stripped)> AllProduction()
+        {
+            var all = new List<(string, string)>();
+            foreach (string path in EntitlementAuditSource.ProductionSourceFiles())
+                all.Add((path, EntitlementAuditSource.StripComments(File.ReadAllText(path))));
+            return all;
+        }
+
+        /// <summary>
         /// 세이브 스키마를 <b>선언하는</b> 프로덕션 파일. 파일명이 아니라 <b>선언</b>으로 찾는다:
         /// <c>[Serializable]</c> 타입 + <c>JsonUtility</c>를 함께 가진 후보 중
         /// <b>직렬화 필드가 가장 많은</b> 것. 순서(정렬)에 기대지 않는다.
@@ -205,9 +286,14 @@ namespace StickMate.Tests.EditMode
             var report = new StringBuilder();
             report.Append(LogPrefix).Append(" 직렬화 스키마 스캔 (후보 파일 ").Append(candidates).Append("개)\n");
 
-            foreach (string path in EntitlementAuditSource.ProductionSourceFiles())
+            List<(string Path, string Stripped)> scanned = DiskJsonReachable(AllProduction());
+            Assert.IsNotEmpty(scanned,
+                $"{LogPrefix} 디스크 JSON에 닿는 파일을 하나도 찾지 못했습니다 — " +
+                "직렬화 방식이 바뀌었다면 이 감사를 그 자리로 따라가게 고치기 전에는 " +
+                "C층이 세이브에 새는지 아무도 보고 있지 않습니다.");
+
+            foreach ((string path, string stripped) in scanned)
             {
-                string stripped = EntitlementAuditSource.StripComments(File.ReadAllText(path));
                 if (EntitlementAuditSource.SerializableTypeNames(stripped).Count == 0) continue;
 
                 SchemaScan scan = Scan(stripped);
@@ -378,6 +464,85 @@ namespace StickMate.Tests.EditMode
                 "그러면 런타임 전용 모델(디스크에 안 나가는 것)이 위반으로 잡혀 " +
                 "감사가 엉뚱한 곳을 가리킵니다.");
             Assert.IsEmpty(scan.Violations, $"{LogPrefix} 위와 같음 — 위반이 잡혔습니다.");
+        }
+
+        // ====================================================================
+        // 3. ★ 사거리 대조 (2026-09-03 coder-systems) — 좁힌 만큼 눈이 멀지 않았는가
+        //    두 테스트는 <b>짝</b>이다. 하나만 보면 「좁혔다」와 「꺼 버렸다」가 구분되지 않는다.
+        // ====================================================================
+
+        private static List<(string Path, string Stripped)> FakeTree(params (string Path, string Source)[] parts)
+        {
+            var list = new List<(string, string)>();
+            foreach ((string path, string source) in parts)
+                list.Add((path, EntitlementAuditSource.StripComments(source)));
+            return list;
+        }
+
+        private static bool Contains(List<(string Path, string Stripped)> set, string path)
+        {
+            foreach ((string p, string _) in set) if (p == path) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// ★ <b>존재 방향</b>: 세이브 스키마가 <b>다른 파일</b>의 <c>[Serializable]</c> 타입을 품으면
+        /// 그 파일도 사거리에 들어온다. 클래스 문서가 예로 든 <c>PurchaseRecord</c> 가 정확히 이 모양이다.
+        /// </summary>
+        [Test]
+        public void NegativeControl_한_칸_건너_직렬화_타입도_사거리에_들어온다()
+        {
+            List<(string Path, string Stripped)> tree = FakeTree(
+                ("Store.cs",
+                    "public static class Store\n" +
+                    "{\n" +
+                    "    public static string Write(SaveData d) => JsonUtility.ToJson(d);\n" +
+                    "    [Serializable] private sealed class SaveData { public int version; public PurchaseRecord[] buys; }\n" +
+                    "}\n"),
+                ("PurchaseRecord.cs",
+                    "[Serializable] public sealed class PurchaseRecord { public string entitlementId; }\n"));
+
+            List<(string Path, string Stripped)> scanned = DiskJsonReachable(tree);
+            Assert.IsTrue(Contains(scanned, "PurchaseRecord.cs"),
+                $"{LogPrefix} 세이브 스키마가 품은 <b>다른 파일</b>의 직렬화 타입이 사거리 밖으로 " +
+                "떨어졌습니다. 그러면 스키마를 두 파일로 쪼개는 것만으로 이 감사가 무력해집니다.");
+
+            var found = new List<string>();
+            foreach ((string path, string stripped) in scanned)
+                foreach (string v in Scan(stripped).Violations) found.Add(path + " :: " + v);
+            Assert.IsNotEmpty(found,
+                $"{LogPrefix} 사거리에는 들어왔는데 위반을 못 잡았습니다 — 스캐너가 눈이 멀었습니다.");
+        }
+
+        /// <summary>
+        /// ★ <b>부재 방향</b>: <c>JsonUtility</c> 에 <b>닿지 않는</b> 에셋 스키마는 사거리 밖이다.
+        /// <b>이건 결함이 아니라 정의다</b> — 이 감사가 지키는 문장은 「유저가 메모장으로 열 수 있는
+        /// 평문 JSON에 소유를 적지 않는다」이고, 앱 번들 안의 <c>.asset</c> 은 그 대상이 아니다
+        /// (그걸 고칠 수 있는 사람에게는 <c>StickMate.Runtime.dll</c> 을 고치는 더 넓은 옆문이 있다 — §E-8-1).
+        ///
+        /// <para>실물 예: <c>StickPackManifestSO</c> 의 <c>PackEntitlementRef.entitlementId</c> 는
+        /// <b>스토어 조회 결과의 캐시가 아니라 조회할 대상(SKU)</b>이고, 그 값을 에셋에서 빼면
+        /// 팩 하나 추가에 프로덕션 코드 수정이 필요해진다.</para>
+        /// </summary>
+        [Test]
+        public void NegativeControl_디스크_JSON에_안_닿는_에셋_스키마는_사거리_밖이다()
+        {
+            List<(string Path, string Stripped)> tree = FakeTree(
+                ("Store.cs",
+                    "public static class Store\n" +
+                    "{\n" +
+                    "    public static string Write(SaveData d) => JsonUtility.ToJson(d);\n" +
+                    "    [Serializable] private sealed class SaveData { public int version; public string wornHead; }\n" +
+                    "}\n"),
+                ("ManifestSO.cs",
+                    "[Serializable] public struct PackEntitlementRef { public string entitlementId; }\n"));
+
+            List<(string Path, string Stripped)> scanned = DiskJsonReachable(tree);
+            Assert.IsFalse(Contains(scanned, "ManifestSO.cs"),
+                $"{LogPrefix} 디스크 JSON에 안 닿는 에셋 스키마가 사거리에 들어왔습니다 — " +
+                "그러면 팩 매니페스트가 세이브로 오인되고, 무관한 빨강은 감사를 꺼지게 만듭니다.");
+            Assert.IsTrue(Contains(scanned, "Store.cs"),
+                $"{LogPrefix} 정작 세이브 스키마 파일이 사거리에서 빠졌습니다 — 좁힌 것이 아니라 껐습니다.");
         }
     }
 }

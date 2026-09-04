@@ -65,8 +65,9 @@ namespace StickMate.Tests.PlayMode
                 Assert.IsNotNull(container, $"{LogPrefix} round {round}: 컨테이너가 사라졌습니다.");
 
                 var fills = new List<MeshRenderer>(container.GetComponentsInChildren<MeshRenderer>(true));
-                Assert.AreEqual(2, fills.Count,
-                    $"{LogPrefix} round {round}(facing {want:+0;-0}): 채움 MeshRenderer가 {fills.Count}개입니다(기대 2 — 관/챙). " +
+                Assert.AreEqual(3, fills.Count,
+                    $"{LogPrefix} round {round}(facing {want:+0;-0}): 채움 MeshRenderer가 {fills.Count}개입니다(기대 3 — 관/챙/띠, " +
+                    "AccessoryShapeBuilder.AppendHead의 HeadCap 케이스가 2026-09-0x에 HatBand를 추가함). " +
                     "이 숫자가 0이면 반전 시 채움이 통째로 생성되지 않는 것입니다.");
 
                 foreach (MeshRenderer mr in fills)

@@ -139,9 +139,16 @@ namespace StickMate.Tests.EditMode
             new Debt(EquipmentSlot.Head, AccessoryShapeBuilder.HeadFedora, Axis.AccentVertexCount, 4, 2,
                 "2026-09-03 스펙 14-1 — FedoraBand가 닫힌 채움 띠(아랫변 2 + 올린 윗변 2)가 됐다. " +
                 "폴백은 아직 아랫변 2점. 에셋 재굽기는 design-equipment 소관(리더 경유)."),
-            new Debt(EquipmentSlot.Head, AccessoryShapeBuilder.HeadCrown, Axis.AccentVertexCount, 8, 4,
-                "2026-09-03 스펙 14-1 — CrownRim이 닫힌 채움 띠(아랫변 4 + 올린 윗변 4)가 됐다. " +
-                "폴백은 아직 아랫변 4점."),
+            // ★★ 2026-09-03(R12 HEAD 이식 1단계) — <b>왕관 줄을 지웠다.</b> 갚아서가 아니라
+            //    <b>이 축이 더는 그것을 못 보기 때문</b>이다. 지우지 않으면
+            //    「대장_항목은_지금도_실제로_어긋난다」가 낡은 줄로 빨개진다.
+            //      · 몸: CrownRim이 인계본 처방(§5-5-1 #9)으로 <b>곧은 띠</b>가 되어 8점 -> <b>4점</b>.
+            //      · 폴백: 옛 사다리꼴의 아랫변 <b>4점</b> 그대로.
+            //    ⇒ 개수는 4 == 4로 <b>같아졌지만 좌표는 여전히 다르다</b>(직사각 vs 사다리꼴).
+            //      이 대장의 두 축은 <b>개수</b>만 보므로 그 차이를 구조적으로 못 본다 —
+            //      "초록"을 "일치"로 읽지 마라. 좌표까지 닫으려면 30종 폴백을 카드 본경로와 같은
+            //      투영식으로 <b>다시 구워야</b> 하고, 그것은 아래 이력이 적은 대로
+            //      design-equipment 소관(리더 경유)이며 ItemCatalogGolden.txt 재생성을 동반한다.
             new Debt(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret, Axis.AccentVertexCount, 6, 3,
                 "2026-09-03 스펙 14-1 — BeretRim이 닫힌 채움 띠(아랫변 3 + 올린 윗변 3)가 됐다. " +
                 "폴백은 2026-09-02에 몸에 맞춰 3점으로 갚았던 그 값 그대로다 — 즉 <b>같은 빚이 아니라 " +

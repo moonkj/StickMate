@@ -180,9 +180,16 @@ namespace StickMate.Tests.EditMode
             return false;
         }
 
+        /// <summary>★ 2026-09-03 — 채널이 <b>셋</b>이 됐다.
+        /// <c>HidesScreenSurfaces</c>(= 표면까지 걷는 숨김인가)가 톱니의 새 창구다. 이 줄에 넣지 않으면
+        /// 톱니는 «전체화면 감지를 한 번도 읽지 않는 표면»으로 잡혀 <b>거짓 빨강</b>이 되고,
+        /// 반대로 이름만 문자열로 베끼면 프로퍼티를 옮기는 날 조용히 <b>거짓 초록</b>이 된다.
+        /// 그래서 <c>nameof</c>로 <b>참조</b>한다 — 이름이 바뀌면 이 파일이 컴파일되지 않는다.</summary>
         private static bool PollsAnySuspendChannel(string source)
             => source.IndexOf("IsSuspended", StringComparison.Ordinal) >= 0
-               || source.IndexOf("ArePanelsSuppressed", StringComparison.Ordinal) >= 0;
+               || source.IndexOf("ArePanelsSuppressed", StringComparison.Ordinal) >= 0
+               || source.IndexOf(nameof(StickMate.Core.StickmanAgent.HidesScreenSurfaces),
+                      StringComparison.Ordinal) >= 0;
 
         private static bool PollsPanelChannel(string source)
             => source.IndexOf("ArePanelsSuppressed", StringComparison.Ordinal) >= 0;
@@ -296,6 +303,13 @@ namespace StickMate.Tests.EditMode
             Assert.IsFalse(PollsPanelChannel("if (_agent.IsSuspended) return;"),
                 "IsSuspended만 읽는 파일을 등급 1 배선으로 세면 이 검사 전체가 무의미해진다.");
             Assert.IsTrue(PollsAnySuspendChannel("if (_agent.IsSuspended) return;"));
+            Assert.IsTrue(
+                PollsAnySuspendChannel("if (_agent." + nameof(StickMate.Core.StickmanAgent.HidesScreenSurfaces) + ") return;"),
+                "표면 채널(2026-09-03 신설)을 읽는 파일이 '전체화면 감지를 안 읽는다'로 잡히면 " +
+                "톱니가 영원히 거짓 빨강이 된다.");
+            Assert.IsFalse(
+                PollsPanelChannel("if (_agent." + nameof(StickMate.Core.StickmanAgent.HidesScreenSurfaces) + ") return;"),
+                "표면 채널은 등급 1 창구가 아니다 — 그렇게 세면 톱니를 등급 1에 넣은 것과 같아진다.");
             Assert.IsFalse(PollsAnySuspendChannel("if (_open) return;"));
         }
 

@@ -15,9 +15,13 @@ namespace StickMate.Tests.EditMode
     /// ============================================================================
     /// 왜 이 감사가 필요한가
     /// ============================================================================
-    /// design-art 판정(PALETTE_SPEC §14-2): *"<c>#9C978C</c> / <c>#BCAC8B</c> / <c>#DBBD7F</c> /
-    /// <c>#F9CB70</c> / <c>#3A4049</c> 다섯 리터럴은 **<c>UiChrome.cs</c> 안에서만** 존재해야 한다.
-    /// 이 다섯 개 밖에서 등급색 hex가 나타나면 그것이 드리프트의 시작이다."*
+    /// design-art 판정(PALETTE_SPEC §14-2): *"등급 램프 4색 + 리본 트랙 1색, 이 <b>다섯 리터럴</b>은
+    /// **<c>UiChrome.cs</c> 안에서만** 존재해야 한다. 이 다섯 개 밖에서 등급색 hex가 나타나면
+    /// 그것이 드리프트의 시작이다."*
+    ///
+    /// ★ <b>여기에 그 다섯 hex를 적지 않는다.</b> 초안에는 적혀 있었고, 2026-09-03 R9 보정판에서
+    /// 영웅·전설 두 색이 바뀌자 <b>이 문서가 곧바로 거짓</b>이 됐다. 값은 <see cref="OwnedColors"/>가
+    /// 프로덕션에서 읽는다 — 감사 문서가 감사 대상의 두 번째 출처가 되면 안 된다.
     ///
     /// 그리고 이 저장소는 그 드리프트를 <b>이미 겪었다</b> — 카드용으로 밝게 잡은 색을 몸에 그대로
     /// 칠해 카드↔몸 ΔE가 최악 42.3까지 벌어졌던 사건(<c>ItemPaletteBandGateTests</c> 참조).
@@ -202,7 +206,11 @@ namespace StickMate.Tests.EditMode
         [TestCase(0x2A2F38, "카드 바탕", "트랙이 거의 안 보인다(§12-4에서 기각)")]
         [TestCase(0x4A515C, "채움", "채움이 비텍스트 하한 미달(§12-4에서 기각)")]
         [TestCase(0x14171C, "카드 바탕", "패널 바탕과 같은 값 — 트랙이 사라진다")]
-        [TestCase(0xF9CB70, "채움", "전설 채움과 같은 값 — 빈 칸과 찬 칸이 구분되지 않는다")]
+        // ★ 2026-09-03 — 여기 <c>0xF9CB70</c>(구 전설)이 박혀 있었다. R9 보정판으로 전설이
+        //   <c>#FFD375</c>가 되면서 이 후보는 <b>더 이상 "전설과 같은 값"이 아니게</b> 됐고,
+        //   그대로 뒀다면 대조가 <b>다른 이유로</b> 통과하며 조용히 늙었을 자리다.
+        //   ⇒ 값을 프로덕션에서 <b>읽어</b> 쓴다. 램프가 또 움직여도 이 대조는 따라온다.
+        [TestCaseSource(nameof(LegendaryFillCase))]
         public void 양성_대조_기각된_트랙_후보를_판정이_잡는다(int hex, string expectedSide, string why)
         {
             AssertCalculatorCalibrated();
@@ -332,13 +340,31 @@ namespace StickMate.Tests.EditMode
             }
 
             // 그리고 관계없는 색은 잡지 않는다(무엇이든 빨개지는 판정기는 판정기가 아니다).
+            // ★ 2026-09-03 — 이 샘플은 <c>#5DA1F5</c>다. 예전에는 「강조색」이었지만 강조색이 브라스로
+            //   바뀌면서 지금은 <c>UiChrome.CardBorderWorn</c>(착용 중 테두리, 예약색)의 값이다.
+            //   <b>어느 쪽이든 등급색이 아니라는 점이 이 대조의 요지</b>이고, 하필 브라스 램프와
+            //   가장 먼 색이라 음성 대조로 여전히 적합하다(브라스 강조색과 ΔE 90.52).
             Assert.IsEmpty(ScanText("가짜파일.cs",
-                    "var c = new Color(0.365f, 0.631f, 0.961f, 1f); // Accent\nvar d = Rgb(0x5DA1F5);"),
-                $"{LogPrefix} ★대조 실패 — 등급색이 아닌 강조색을 등급색으로 잡았습니다.");
+                    "var c = new Color(0.365f, 0.631f, 0.961f, 1f); // CardBorderWorn\nvar d = Rgb(0x5DA1F5);"),
+                $"{LogPrefix} ★대조 실패 — 등급색이 아닌 예약색을 등급색으로 잡았습니다.");
 
             // 주석 줄은 보지 않는다 — 문서가 팔레트를 인용하는 것은 드리프트가 아니다.
             Assert.IsEmpty(ScanText("가짜파일.cs", $"        // 참고: 영웅 리본은 #{hex}다."),
                 $"{LogPrefix} 주석 줄을 위반으로 셌습니다 — 문서 인용까지 막으면 감사가 못 쓰게 됩니다.");
+        }
+
+        /// <summary>「가장 밝은 채움과 같은 값」 대조 후보. <b>hex를 적지 않고 프로덕션에서 읽는다</b> —
+        /// 램프가 움직이면 이 대조도 함께 움직여야 한다(2026-09-03 R9 보정판에서 실제로 움직였다).</summary>
+        private static System.Collections.Generic.IEnumerable<TestCaseData> LegendaryFillCase()
+        {
+            ItemRarity top = ItemRarity.Common;
+            foreach (ItemRarity r in System.Enum.GetValues(typeof(ItemRarity))) top = r;
+            Color fill = UiChrome.RarityColor(top);
+            int hex = ((int)Mathf.Round(fill.r * 255f) << 16)
+                      | ((int)Mathf.Round(fill.g * 255f) << 8)
+                      | (int)Mathf.Round(fill.b * 255f);
+            yield return new TestCaseData(hex, "채움",
+                $"가장 밝은 채움({ItemCatalog.RarityName(top)})과 같은 값 — 빈 칸과 찬 칸이 구분되지 않는다");
         }
 
         // ============================================================================

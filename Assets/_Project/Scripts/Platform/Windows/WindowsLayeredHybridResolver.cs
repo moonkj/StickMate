@@ -351,6 +351,59 @@ namespace StickMate.Platform.Windows
             catch (DllNotFoundException) { return false; }
         }
 
+        // ====================================================================
+        // ★ 2026-09-03 — 자기 창 확장 스타일 <b>비트 추가</b> 공용 창구
+        // ====================================================================
+
+        /// <summary>
+        /// 우리 자신의 창 <c>GWL_EXSTYLE</c>에 <b>비트를 켜기만</b> 한다. 다른 비트는 읽은 그대로
+        /// 되쓰고, <b>어떤 비트도 끄지 못한다</b>.
+        ///
+        /// <para><b>왜 이 함수가 여기 있는가</b>: <c>LayeredHybridPolicyTests.자기창_스타일_쓰기_API는_해소기_한_파일에만_있다</c>가
+        /// <c>SetWindowLongPtrW</c>/<c>SetWindowLongW</c>를 <b>이 파일 한 곳</b>에 가둔다. 그 규약이
+        /// 생긴 이유가 이 해소기가 검증 실패로 <b>영구 비활성</b>된 사고다 — 자기 창 스타일을 여러
+        /// 곳에서 쓰면 누가 무엇을 되돌렸는지 아무도 모른다. 그 감사의 실패 메시지가 직접 처방을
+        /// 적어 두었다: <i>"새 쓰기가 필요하면 그 파일에 넣고 같은 검증 절차를 붙이세요."</i>
+        /// 2026-09-03에 앱 전환기 제외(<c>WS_EX_TOOLWINDOW</c>)가 새 쓰기를 필요로 했고,
+        /// 예외를 늘리는 대신 <b>규약대로 이 파일로 들여왔다</b>.</para>
+        ///
+        /// <para>★ <b>"추가만" 인 것이 안전 설계의 핵심이다.</b> 임의 값을 대입하는 창구였다면
+        /// 호출자가 실수로 <c>WS_EX_TRANSPARENT</c>를 지워 <b>클릭 관통(절대 불변 원칙 2)</b>을
+        /// 깨뜨릴 수 있다. 비트를 끄는 능력은 이 파일 안의 <see cref="SetLayered"/>에만 남아 있고,
+        /// 그쪽에는 대조군·실험군·되돌림이 붙어 있다.</para>
+        ///
+        /// <para>대상은 <b>우리 자신의 창</b>이다 — 호출자는 <see cref="UniWinCNativeHandle"/>에서
+        /// 얻은 핸들만 넘긴다(절대 불변 원칙 3).</para>
+        /// </summary>
+        /// <param name="hwnd">우리 오버레이 창.</param>
+        /// <param name="bitsToAdd">켤 비트. 0이면 아무 일도 하지 않고 성공으로 돌려준다.</param>
+        /// <param name="before">쓰기 전 실측값(진단/로그용).</param>
+        /// <param name="after">쓰기 뒤 되읽은 값. 쓰지 않았으면 <paramref name="before"/>와 같다.</param>
+        /// <returns>실측과 (필요했다면) 쓰기가 모두 성공했으면 true. false의 뜻은 "지금은 모른다"이며
+        /// 호출자는 아무것도 단정하지 않아야 한다.</returns>
+        internal static bool TryAddExStyleBits(IntPtr hwnd, long bitsToAdd, out long before, out long after)
+        {
+            before = 0L;
+            after = 0L;
+            try
+            {
+                if (!IsWindow(hwnd)) return false;
+                long ex = GetWindowLongPtr(hwnd, GwlExStyle).ToInt64();
+                // 0은 사실상 실패다(위 TryReadExStyle과 같은 판정).
+                if (ex == 0L) return false;
+                before = ex;
+
+                long next = ex | bitsToAdd;
+                if (next == ex) { after = ex; return true; }   // 멱등 — 쓰기를 하지 않는다.
+
+                SetWindowLongPtr(hwnd, GwlExStyle, new IntPtr(next));
+                after = GetWindowLongPtr(hwnd, GwlExStyle).ToInt64();
+                return true;
+            }
+            catch (EntryPointNotFoundException) { return false; }
+            catch (DllNotFoundException) { return false; }
+        }
+
         // ==================== Win32 ====================
 
         [StructLayout(LayoutKind.Sequential)]

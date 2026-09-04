@@ -16,6 +16,42 @@ namespace StickMate.Interaction
     {
         // ==================== 보관함(가상 목록) ====================
 
+        // ---- 등급 리본 (2026-09-03, 카드와 같은 규칙) ----
+        //
+        // ★ <b>인계본의 「4열 46px 격자」가 우리 보관함이 아니다.</b> 우리 [보관함]은 격자가 아니라
+        //   <b>24pt 줄 20개</b>짜리 가상 목록이고, 썸네일이 아예 없다. 그래서 "카드 상단 여백"에
+        //   해당하는 <b>세로</b> 빈칸이 없다 — 리본은 <b>가로</b>로 자리를 얻어야 한다.
+        //
+        // 실측으로 남는 자리는 하나뿐이었다: 설명 칸(434pt)의 <b>꼬리</b>다. 다른 후보는 전부 임자가 있다 —
+        //   · 왼쪽 도트(6pt): 착용/보유/잠김을 이미 말한다. 그리고 4칸이 안 들어간다.
+        //   · 이름(110) · 부제(48): 두 상자 사이가 2pt다.
+        //   · 상태 슬롯(96pt): 최장 문구 <c>Lv.20에 열림</c>이 대부분을 쓰고, 훗날 가격표 자리다.
+        // 그래서 설명 칸에서 <b>54pt(리본 46 + 틈 8)</b>를 떼어 낸다 = 434 -> 380pt(12.4% 감소).
+        // 그 대가는 정직하게 적어 둔다: 설명 한 줄이 그만큼 일찍 말줄임된다. <b>전문은 아래 상세 카드에
+        // 그대로 있고</b>, 등급은 아래 상세 카드에 <b>없던</b> 정보다 — 없던 채널을 얻고 있던 채널을
+        // 조금 줄인 거래다.
+
+        /// <summary>보관함 줄의 리본 폭(pt).
+        /// <para>칸 폭 = (46 − <see cref="UiChrome.RarityCellGap"/> × 3) ÷ 4 = <b>10.0pt</b>.
+        /// PALETTE_SPEC §12-3이 잰 개수 채널의 하한은 <b>총 15pt</b>(칸 3px + 틈 1px, ×1 배율)이므로
+        /// 3.07배 여유다. 같은 절이 「가정 44pt 카드」에서 통과시킨 칸 폭 8.25pt보다도 넓다.</para></summary>
+        private const float InventoryRibbonWidth = 46f;
+
+        /// <summary>리본 몫을 뺀 <b>설명 글자</b> 폭. 상자 폭과 말줄임 예산이 <b>같은 값</b>이어야 한다는
+        /// 기존 규약을 그대로 잇는다(예전에 상자는 폭으로, 자르기는 글자 수로 정해져 단위가 갈라졌었다).
+        /// <para>0에서 막는 이유: 창이 극단적으로 좁아져 원본 상자가 하한에 닿으면 <b>설명이 먼저</b>
+        /// 사라지고 리본이 남는다. 등급은 주 채널이고 설명은 아래 상세 카드에 전문이 있다.</para></summary>
+        private static float InventoryDescriptionTextWidth
+            => Mathf.Max(0f, InventoryDescriptionBoxWidth - InventoryRibbonWidth - UiChrome.Space2);
+
+        /// <summary>리본의 왼쪽 x — 설명 칸 <b>바로 뒤</b>, 상태 슬롯 <b>바로 앞</b>.</summary>
+        private static float InventoryRibbonX
+            => InventoryDescriptionX + InventoryDescriptionTextWidth + UiChrome.Space2;
+
+        /// <summary>줄마다 한 벌. <see cref="_inventoryViews"/>와 <b>같은 인덱스</b>다
+        /// (<see cref="InventoryRowView"/>는 <c>CharacterInfoWindow.cs</c> 소유라 이 라운드가 열지 않는다).</summary>
+        private readonly RarityRibbon[] _inventoryRibbons = new RarityRibbon[InventoryVisibleRows];
+
         /// <summary>목록의 논리적 줄 수 = 헤더 2줄 + 카탈로그 전체(장비 42 + 행동 12 = 54).
         /// <para>2026-09-02 격파 놀이 삭제로 행동이 13 → 12가 됐다.</para>
         /// <para>★ 2026-09-02 — 여기 "장비 32"라고 적혀 있었다. 실제는 <b>42종</b>이고
@@ -70,12 +106,14 @@ namespace StickMate.Interaction
                 if (catalogIndex < 0)
                 {
                     // 헤더 줄 — 표면을 지우고 제목만 남긴다.
+                    HideRarityRibbon(_inventoryRibbons[i]);
                     view.Surface.color = Color.clear;
                     view.Outline.color = Color.clear;
                     view.Dot.color = Color.clear;
                     view.Title.text = string.Empty;
                     view.Subtitle.text = string.Empty;
                     view.Description.text = string.Empty;
+                    view.DescriptionSource = string.Empty;
                     view.StatusSlot.text = string.Empty;
                     view.HeaderText.text = HeaderTextForLine(line);
                     continue;
@@ -91,13 +129,47 @@ namespace StickMate.Interaction
                 view.HeaderText.text = string.Empty;
                 view.Title.text = owned ? entry.DisplayName : "???";
                 view.Subtitle.text = entry.CategoryLabel;
-                view.Description.text = owned ? Ellipsize(entry.ShortDescription, InventoryDescriptionChars) : string.Empty;
+                // ★ 2026-09-03 — 글자 수가 아니라 <b>실제 폭</b>으로 자른다(UiChrome.Ellipsize).
+                //   그 함수는 폭을 재려고 Text.text를 여러 번 바꾸므로 <b>내용이 바뀐 순간에만</b>
+                //   부른다 — 원본을 캐시해 비교하는 것이 그 함수의 호출부 규약이다.
+                string wantedDescription = owned ? entry.ShortDescription : string.Empty;
+                if (!string.Equals(view.DescriptionSource, wantedDescription, System.StringComparison.Ordinal))
+                {
+                    view.DescriptionSource = wantedDescription;
+                    view.Description.text = UiChrome.Ellipsize(view.Description, wantedDescription,
+                        InventoryDescriptionTextWidth);
+                }
                 view.StatusSlot.text = entry.ResolveStatusSlot(_config);
+
+                // ★ 등급은 <b>장비에만</b> 있다. 「할 줄 아는 것」(행동 12종)은 슬롯이 없고 등급도 없다 —
+                //   그 줄에서는 리본을 <b>통째로 숨긴다</b>. 빈 트랙만 남기면 "등급이 없다"가 아니라
+                //   <b>"0칸짜리 등급"</b>으로 읽힌다(HideRarityRibbon 문서).
+                // ★ 잠긴 장비도 리본을 <b>흐리지 않는다</b> — 카드와 같은 규칙이고 이유도 같다.
+                bool hasRarity = entry.Slot.HasValue && entry.ItemIndex >= 0;
+                if (hasRarity)
+                {
+                    ApplyRarityRibbon(_inventoryRibbons[i],
+                        ItemCatalog.Rarity(entry.Slot.Value, entry.ItemIndex));
+                }
+                else
+                {
+                    HideRarityRibbon(_inventoryRibbons[i]);
+                }
 
                 view.Surface.color = selected ? UiChrome.CardSurface
                     : owned ? UiChrome.CardSurface : UiChrome.CardSurfaceMuted;
+                // ★ 2026-09-03 — 카드와 <b>같은 규칙</b>으로 「기본」 자리를 등급이 승계한다
+                //   (사용자 지시: *"카드 외곽선을 각 레벨별로 분류하는게 어때"*).
+                //   여기는 호버가 없어 <b>3상태</b>라 충돌이 카드보다 한 단 적다.
+                //   ★ <b>한쪽만 고치면 같은 창 안에서 등급 표기가 갈라진다</b> — 카드 페이지와 이 줄은
+                //     같은 아이템을 서로 다른 테두리로 그리게 된다.
+                //   ★ 등급이 <b>없는</b> 줄(「할 줄 아는 것」)은 현행 CardBorder를 유지한다 — 없는 것을
+                //     「일반」으로 칠하면 0단짜리 등급이 생긴다(HideRarityRibbon과 같은 규칙).
                 view.Outline.color = selected ? UiChrome.TextPrimary
-                    : worn ? UiChrome.CardBorderWorn : UiChrome.CardBorder;
+                    : worn ? UiChrome.CardBorderWorn
+                    : hasRarity ? UiChrome.RarityBorder(
+                        ItemCatalog.Rarity(entry.Slot.Value, entry.ItemIndex))
+                    : UiChrome.CardBorder;
                 // 도트만 글자가 아니다 — 나머지 셋은 전부 같은 사다리에서 나온다.
                 view.Dot.color = entry.Slot.HasValue
                     ? (worn ? UiChrome.CategoryTint(entry.Slot.Value)
@@ -131,14 +203,19 @@ namespace StickMate.Interaction
             RefreshInventoryDetail();
         }
 
-        /// <summary>목록 한 줄에 들어갈 길이로 자른다. 자동 줄바꿈에 맡기면 두 번째 줄이 행 높이에
-        /// 걸려 <b>반쯤 잘린 글자</b>가 남는다 — 잘렸다는 사실을 말줄임표로 <b>드러내는</b> 편이
-        /// 정직하고 깔끔하다. 전문은 아래 상세 카드가 보여준다.</summary>
-        private static string Ellipsize(string text, int maxChars)
-        {
-            if (string.IsNullOrEmpty(text) || text.Length <= maxChars) return text;
-            return text.Substring(0, maxChars).TrimEnd() + "...";
-        }
+        // ★★ 2026-09-03 — 여기 있던 <b>글자 수 기준 Ellipsize</b>를 지웠다.
+        //
+        //    (가) 이름이 <c>UiChrome.Ellipsize</c>와 같았다. "같은 이름 두 벌은 반드시 한쪽만
+        //        갱신된다" — 실제로 그랬다: 저쪽은 <c>Text.preferredWidth</c> 실측 + 이진 탐색으로
+        //        진화했는데 이쪽은 <c>Substring(0, n) + "..."</c>에 멈춰 있었다.
+        //    (나) 말줄임표도 달랐다. 저쪽은 한 글자짜리 U+2026(<c>…</c>), 이쪽은 마침표 세 개.
+        //        같은 창의 두 자리가 서로 다른 기호로 "잘렸다"를 말하고 있었다.
+        //    (다) 글자 수 상한은 한글에서만 맞았다(CharacterInfoWindow.cs의 <c>CaptionKoreanAdvance</c>
+        //        삭제 주석 참고).
+        //
+        //    자동 줄바꿈에 맡기지 <b>않는</b> 이유는 그대로다 — 두 번째 줄이 행 높이에 걸려
+        //    <b>반쯤 잘린 글자</b>가 남는다. 잘렸다는 사실은 말줄임표로 드러내고, 전문은 아래
+        //    상세 카드가 보여준다.
 
         private void RefreshInventoryDetail()
         {
@@ -148,9 +225,15 @@ namespace StickMate.Interaction
 
             if (_inventoryDetailName != null)
             {
+                // ★ 2026-09-03 — 등급 <b>낱말</b>. 리본(칸 수)이 못 하는 일을 이 한 토막이 한다.
+                //   장비에만 붙는다 — 행동에는 등급이 없고, 없는 것을 「일반」이라고 적으면 그건
+                //   원칙 1이 금지하는 <b>없는 사실</b>이다(가격이 없을 때 0을 그리지 않는 것과 같은 규칙).
+                string rarity = entry.Slot.HasValue && entry.ItemIndex >= 0
+                    ? ItemCatalog.RarityName(ItemCatalog.Rarity(entry.Slot.Value, entry.ItemIndex)) + "   ·   "
+                    : string.Empty;
                 _inventoryDetailName.text = owned
-                    ? $"{entry.DisplayName}   ·   {entry.CategoryLabel}   ·   {entry.ResolveStatusSlot(_config)}"
-                    : $"???   ·   {entry.CategoryLabel}   ·   {entry.ResolveStatusSlot(_config)}";
+                    ? $"{entry.DisplayName}   ·   {rarity}{entry.CategoryLabel}   ·   {entry.ResolveStatusSlot(_config)}"
+                    : $"???   ·   {rarity}{entry.CategoryLabel}   ·   {entry.ResolveStatusSlot(_config)}";
             }
             if (_inventoryDetailBody != null)
             {
@@ -243,10 +326,18 @@ namespace StickMate.Interaction
 
                 Text description = Label(rt, "Description", UiChrome.FontCaption, TextAnchor.MiddleLeft,
                     UiChrome.TextSecondary, InventoryDescriptionX, 0f,
-                    Mathf.Max(40f, InventoryDescriptionWidth), InventoryRowHeight, string.Empty);
-                // 줄바꿈하지 않는다 — 길이는 Ellipsize가 미리 자른다(위 상수 참고).
+                    InventoryDescriptionTextWidth, InventoryRowHeight, string.Empty);
+                // 줄바꿈하지 않는다 — 길이는 UiChrome.Ellipsize가 InventoryDescriptionWidth로 미리 자른다.
+                // ★ 상자 폭과 자르기 예산이 <b>같은 상수</b>다. 예전에는 상자는 폭으로, 자르기는
+                //   글자 수로 정해져 둘이 서로 다른 단위였고, 창이 넓어지면 상자만 커졌다.
                 description.horizontalOverflow = HorizontalWrapMode.Overflow;
                 description.verticalOverflow = VerticalWrapMode.Truncate;
+
+                // 등급 리본 — 설명 꼬리와 상태 슬롯 사이. 줄 높이(24) 한가운데에 놓는다.
+                // 세로 검산: (24 − 4) ÷ 2 = 10pt가 위아래 여백이고, 캡션 글리프 상자(≈14pt)와
+                // 같은 줄에 있지만 <b>가로로 겹치지 않는다</b>(설명 칸이 리본 폭만큼 줄었다).
+                _inventoryRibbons[i] = BuildRarityRibbon(rt, InventoryRibbonX,
+                    -(InventoryRowHeight - UiChrome.RarityRibbonHeight) * 0.5f, InventoryRibbonWidth);
 
                 Text statusSlot = Label(rt, "StatusSlot", UiChrome.FontCaption, TextAnchor.MiddleRight,
                     UiChrome.TextTertiary, InventoryListWidth - StatusSlotWidth - UiChrome.Space2, 0f,

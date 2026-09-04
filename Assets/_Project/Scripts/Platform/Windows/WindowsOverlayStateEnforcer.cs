@@ -162,6 +162,13 @@ namespace StickMate.Platform.Windows
         /// 같다는 보장이 없다</b>는 것이 이 라운드의 발견 중 하나다(UniWinCNativeHandle 문서 참고).</summary>
         private readonly WindowsLayeredHybridResolver _layeredHybridResolver = new WindowsLayeredHybridResolver();
 
+        /// <summary>앱 전환 표면(작업표시줄 버튼 · Alt+Tab) 제외(2026-09-03). macOS가 시작 시
+        /// <c>NSApplicationActivationPolicyAccessory</c>로 Dock/⌘Tab에서 빠지는 것과 <b>같은 목적</b>이며,
+        /// 이 라운드에 두 플랫폼이 처음으로 대칭이 됐다. 규칙은 플랫폼 중립
+        /// <see cref="StickMate.Platform.AppSwitcherPresencePolicy"/>에 있고 여기는 실행만 한다.
+        /// 위 해소기와 마찬가지로 자기 HWND를 스스로 해석하므로 <see cref="OverlayHandle"/>에 의존하지 않는다.</summary>
+        private readonly WindowsToolWindowStyleControl _toolWindowStyle = new WindowsToolWindowStyleControl();
+
         // 목표 상태 — Win32WindowService가 자기 API 호출 때마다 갱신한다.
         internal bool DesiredTransparent = true;
         internal bool DesiredTopmost;
@@ -240,6 +247,15 @@ namespace StickMate.Platform.Windows
             EnsureAgentResolved();
             FramePacing.Tick(FramePacing.ResolveCharacterIdle(_agent));
 
+            // ★ 2026-09-03 (사용자 확정 "실행시 시스템 트레이에 표시되어야함") — 트레이 아이콘.
+            //   <b>이 자리가 중요하다.</b> 아래 `if (_controller == null) return;`와 부착 판정
+            //   (`if (!attached) return;`)보다 **위**에 있어야 한다: 트레이는 우리 전용 호스트 창
+            //   위에서 도는 물건이라 오버레이 창의 부착과 아무 상관이 없고, 오히려 **부착이 영영
+            //   실패한 환경에서야말로 유일한 탈출구**가 된다(그 환경에서는 캐릭터도 톱니도 화면에
+            //   없다). 부착 뒤로 내리면 "앱은 떠 있는데 끌 방법이 없는" 상태를 그대로 방치하게 된다.
+            //   상한/옵트아웃 판정은 플랫폼 중립 SystemTrayPresencePolicy가 내린다.
+            WindowsSystemTrayIcon.Tick(Time.unscaledDeltaTime);
+
             if (_controller == null) return;
 
             _elapsed += Time.unscaledDeltaTime;
@@ -264,6 +280,12 @@ namespace StickMate.Platform.Windows
             {
                 _attachDetected = true;
                 ApplyTransparentSafeCameraBackground();
+                // 창이 실제로 존재하는 이 시점에 앱 전환 표면에서 뺀다.
+                // macOS판(MacOverlayStateEnforcer)이 <b>같은 자리</b>에서
+                // MacSpaceBehaviorNative.ApplyAccessoryActivationPolicyOnce()를 부른다 —
+                // 그 대칭 자체를 PlatformParityAuditTests가 잠근다. 근거/한계는
+                // Platform/AppSwitcherPresencePolicy.cs 클래스 문서 참고.
+                _toolWindowStyle.ApplyOnce();
                 Debug.Log($"[WindowsOverlayStateEnforcer] 창 부착 감지 — windowSize={windowSize}, " +
                     $"clientSize={_controller.clientSize}, windowPosition={_controller.windowPosition}, " +
                     $"경과 {_elapsed:F2}초. 이제 목표 상태를 재적용합니다.");
@@ -284,6 +306,18 @@ namespace StickMate.Platform.Windows
             //   TickTopmostWatchdog와 마찬가지로 재적용 상한과 무관하게 앱 수명 내내 돈다 —
             //   라이브러리가 커서 이동마다 레이어드를 다시 켜기 때문이다.
             _layeredHybridResolver.Tick(Time.unscaledDeltaTime, (int)_controller.transparentType);
+            // ★ 2026-09-03 — 앱 전환 표면 제외 비트가 <아직 서 있는지> 2초마다 되묻는다.
+            //   라이브러리의 SetClickThrough는 같은 GWL_EXSTYLE을 읽고-고쳐-쓰기 하므로 우리 비트를
+            //   보존할 것으로 판단하지만, 이 개발 머신에 Windows가 없어 실행으로 확인할 수 없다.
+            //   그래서 추측을 코드에 박는 대신 <감시>를 둔다 — 사라지면 다시 켜고 한 번 경고한다.
+            _toolWindowStyle.Tick(Time.unscaledDeltaTime);
+            // ★ 2026-09-03 (리더 판정 (b)) — 스타일 비트는 Alt+Tab만 닫는다. 이미 만들어진
+            //   <작업표시줄 버튼>은 셸에게 직접 지우게 한다(ITaskbarList::DeleteTab).
+            //   ShowWindow 왕복은 기각됐다 — 우리 창의 표시 상태를 바꾸면 바로 이 루프와
+            //   TickTopmostWatchdog이 재적용하려 다툰다(같은 종류의 충돌로 영구 비활성된 해소기가
+            //   이미 있다). DeleteTab은 창 상태를 한 비트도 건드리지 않는다.
+            //   상한(3회)에 도달하면 내부에서 즉시 반환하므로 상주 비용은 0으로 수렴한다.
+            WindowsTaskbarButtonRemover.Tick(Time.unscaledDeltaTime);
 
             // ★ 위 TickTopmostWatchdog()이 이 return **위에** 있는 것이 핵심이다(2026-09-01).
             //   아래 재적용 루프는 ReapplyAttempts(5) x 0.5초 = 2.5초로 상한이 걸려 있어, 기동 몇 초 뒤엔
@@ -442,7 +476,12 @@ namespace StickMate.Platform.Windows
             _reassertTopmost ??= ReassertTopmost;
             _describeOverlay ??= DescribeOverlay;
 
-            bool suspended = _agent != null && _agent.IsSuspended;
+            // ★★★ 2026-09-03 — <c>IsSuspended</c> → <c>HidesScreenSurfaces</c>. 이 워치독이 보류하는
+            //   이유는 <i>"게임 위로 기어 올라가지 않는다"</i>(원칙 2)인데, 사용자 명시 숨김 단독에서는
+            //   전체화면 게임이 없고 <b>톱니와 열린 창이 그대로 떠 있다</b> — 그 표면들이 항상위를
+            //   잃으면 사용자가 [보이기]를 누를 창이 다른 창 밑으로 가라앉는다(탈출구 손실).
+            //   축 1(전체화면 게임 감지)에서는 이 값이 참이라 보류 동작이 예전 그대로다.
+            bool suspended = _agent != null && _agent.HidesScreenSurfaces;
             _topmostWatchdog.Tick(
                 Time.unscaledDeltaTime, OverlayHandle, DesiredTopmost, suspended,
                 _reassertTopmost, _describeOverlay);

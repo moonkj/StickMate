@@ -6,8 +6,9 @@ using StickMate.Platform;
 namespace StickMate.Interaction
 {
     /// <summary>
-    /// 부채꼴 메뉴의 네 칸. <b>값이 곧 슬롯 순서</b>다 — θ₀ + (1.5 − i)·30°
-    /// (i=0 → θ₀+45°, i=3 → θ₀−45°). docs/UX_FLOW.md 36-3-4.
+    /// 부채꼴 메뉴의 칸. <b>값이 곧 슬롯 순서</b>다 — 호 넷은 θ₀ + (1.5 − i)·30°
+    /// (i=0 → θ₀+45°, i=3 → θ₀−45°)이고, <b>i=4는 호가 아니라 축 위의 위성</b>이다
+    /// (θ₀ + 0°, 궤도 168pt). docs/UX_FLOW.md 36-3-4 / 53-2.
     ///
     /// ★ <b>기존 0/1/2는 재번호하지 않는다.</b> 32절이 "값이 곧 슬롯 순서"라고 못박았으므로 중간 삽입은
     /// Todo 2→3 재번호를 일으키고, 그 값을 읽는 switch가 조용히 어긋날 수 있다. 네 버튼이 기어에서
@@ -23,6 +24,20 @@ namespace StickMate.Interaction
         /// <summary>2026-08-31 신설 — 행동 명령창(<see cref="ActionCommandPopover"/>) 진입점.
         /// 이 버튼은 캐릭터의 상태를 <b>보는</b> 곳이 아니라 캐릭터에게 <b>시키는</b> 곳이다(36-5).</summary>
         Action = 3,
+
+        /// <summary>
+        /// ★ 2026-09-03 신설 — <b>앱 종료</b>(사용자 지시: *"프로그램 종료버튼은 나사 메뉴 지금 4개중에
+        /// 버튼 하나 추가해서 종료버튼으로 만들어줘"*).
+        ///
+        /// <para><b>이 하나만 호(弧) 위에 없다.</b> 기준각 축 위 궤도
+        /// <see cref="GearRadialMenuWidget.SatelliteOrbitRadiusPoints"/>pt에 홀로 선 <b>위성</b>이다 —
+        /// 되돌릴 수 없는 버튼을 <b>가장 멀고 가장 다른 자리</b>에 두는 것이 이 표면의 유일한 설계
+        /// 목표이고, 그것을 색이나 심볼이 아니라 <b>위치</b>로 달성한다(UX_FLOW 53-0 / UX_WIDGETS R4-3).</para>
+        ///
+        /// <para>★ 번호는 <b>끝</b>이다. 36-3-4가 [행동]을 넣을 때 못박은 규칙과 같다 — 기존 0~3을
+        /// 재번호하면 그 값을 읽는 switch가 조용히 어긋난다.</para>
+        /// </summary>
+        Quit = 4,
     }
 
     /// <summary>접힘의 종류 — <b>움직임이 서로 달라야</b> "내가 접었다"와 "시간이 지나 닫혔다"가 구분된다.</summary>
@@ -39,11 +54,13 @@ namespace StickMate.Interaction
     }
 
     /// <summary>
-    /// ★ 톱니를 짧게 클릭했을 때 <b>촤르륵 펼쳐지는 원버튼 4개</b> — docs/UX_FLOW.md <b>32절 + 36절</b>.
+    /// ★ 톱니를 짧게 클릭했을 때 <b>촤르륵 펼쳐지는 원버튼 5개</b>(호 4 + 위성 1) —
+    /// docs/UX_FLOW.md <b>32절 + 36절 + 53절</b>.
     /// 2026-08-30 사용자 원문: "기어메뉴를 클릭했을때 집중모드 버튼 캐릭터 버튼 오늘 할일 버튼 3가지가
     /// 촤르륵 원버튼 3개가 나오고 각 버튼을 클릭했을때 세부 메뉴로 들어가도록".
     /// 2026-08-31 사용자 원문: "버튼 메뉴들의 텍스트는 전부삭제 필요 ... 기어아이콘에 메뉴하나 추가해서
     /// 행동들은 거기서 클릭하면 창 하나가 떠서 행동 명령 내릴수 있게".
+    /// 2026-09-03 사용자 원문: "프로그램 종료버튼은 나사 메뉴 지금 4개중에 버튼 하나 추가해서 종료버튼으로 만들어줘".
     ///
     /// ============================================================================
     /// 왜 버튼을 4개로 늘렸는데 부채꼴이 <b>더</b> 튼튼해지는가 (36-3, 반직관적이지만 계산이 그렇다)
@@ -54,6 +71,12 @@ namespace StickMate.Interaction
     /// 111pt로 키우면 스팬이 <b>90°</b>가 되어 평행이동이 사실상 0이 된다(실측 격자 전수 계산: 평균
     /// 0.7pt / 최대 9pt, 세로일렬 폴백 0건). 반지름은 기어에서 화면 <b>안쪽</b>으로 뻗는 방향이라 화면
     /// 여백을 거의 소모하지 않는다. 결과적으로 기어→버튼 실거리가 118~123pt로 균일해진다.
+    ///
+    /// ★★ <b>그리고 다섯 번째는 호에 끼우지 않았다</b>(2026-09-03, 53-1). 간격 30°를 지킨 채 5칸이 되면
+    /// 스팬이 90° -> <b>120°</b>가 되는데, 실측 화면 1512×982의 <b>네 모서리 각도창이 73.3~73.8°</b>라
+    /// 회전 ±90°로도 못 메우고 평행이동 상한 48pt도 넘는다 — <b>네 모서리 전부에서 세로 일렬 폴백</b>,
+    /// 즉 사용자가 보게 될 기본 화면이 폴백이 된다. 그래서 [앱 종료]는 <b>축 위 궤도 168pt의 위성</b>으로
+    /// 나갔고, 그 덕분에 <b>위 문단의 계산이 한 줄도 안 바뀐다</b>(스팬은 여전히 90°다).
     ///
     /// ============================================================================
     /// 라벨(이름표)은 <b>전부 지웠다</b> — 그리고 그 비용은 다른 데서 갚는다 (36-4)
@@ -114,10 +137,10 @@ namespace StickMate.Interaction
     /// ============================================================================
     /// 화면 밖으로 나가지 않는다 — <b>부채꼴 전체를 회전</b>시킨다 (32-1)
     /// ============================================================================
-    /// 개별 버튼을 화면 안으로 밀어 넣으면 모서리에서 네 버튼이 한 점으로 뭉개져 히트 원이 겹치고,
+    /// 개별 버튼을 화면 안으로 밀어 넣으면 모서리에서 버튼들이 한 점으로 뭉개져 히트 원이 겹치고,
     /// 그러면 <b>보이는 것과 실제로 눌리는 것이 달라진다</b>(먼저 검사되는 버튼이 이긴다). 그래서
     /// 형태를 유지한 채 문제를 푼다: ① θ₀를 ±15°씩 최대 ±90°까지 돌려보고 → ② 세로 일렬 폴백 →
-    /// ③ 지름 축소(44→36) → ④ 그래도 안 되면 <b>네 버튼을 같은 벡터로</b> 평행이동(형태 보존).
+    /// ③ 지름 축소(44→36) → ④ 그래도 안 되면 <b>전체를 같은 벡터로</b> 평행이동(형태 보존).
     ///
     /// 기준각 θ₀는 사분면 부호가 아니라 <b>(화면 중심 − 기어 중심)의 실제 각도를 45° 단위로 스냅</b>한
     /// 값이다. 부호 방식이면 기어가 화면 위쪽 한가운데 있을 때 아래로 곧게 못 펼치고, 중앙선 근처에서
@@ -125,7 +148,55 @@ namespace StickMate.Interaction
     /// </summary>
     public sealed class GearRadialMenuWidget : MonoBehaviour, IExclusiveSurface
     {
-        public const int ButtonCount = 4;
+        /// <summary>부채꼴이 가진 버튼의 <b>총수</b>(배열/루프 크기). 2026-09-03에 4 -> 5가 됐다.
+        /// <para>★★ <b>각도식의 분모로 쓰지 마라.</b> 그 자리는 <see cref="ArcButtonCount"/>다 —
+        /// 아래 그 상수의 문서에 이 라운드에서 가장 위험했던 한 줄이 적혀 있다.</para></summary>
+        public const int ButtonCount = 5;
+
+        /// <summary>호(弧) 위에 <b>있지 않은</b> 버튼의 수 = 위성. 지금은 [앱 종료] 하나다.
+        /// <para>★ 위성을 하나 더 늘리는 것은 <b>새 문제</b>다(UX_WIDGETS R4-4): 위성열이 둘이 되면
+        /// 그 둘 사이의 이격·각도 배분을 다시 계산해야 한다. <b>여기 숫자만 올리지 마라.</b></para></summary>
+        public const int SatelliteButtonCount = 1;
+
+        /// <summary>
+        /// ★★ <b>각도식의 분모.</b> 호에 나란히 서는 버튼의 수이고, <see cref="ButtonCount"/>와 <b>다르다</b>.
+        ///
+        /// <para><b>이 라운드에서 가장 위험했던 한 줄이 여기다</b>(UX_FLOW 53-3). 옛 식은
+        /// <c>((ButtonCount − 1) · 0.5 − i) · step</c>이었고, <see cref="ButtonCount"/>를 4에서 5로
+        /// 올리면서 그 식을 그대로 뒀다면 <b>컴파일도 되고 테스트도 대부분 통과한다 — 화면만 틀어진다.</b></para>
+        ///
+        /// <para>★★ <b>2026-09-03 정정 — 그 「틀어짐」이 무엇인지 처음에 잘못 적혀 있었다.</b>
+        /// 설계 문서와 이 주석은 *"스팬이 90° -> 120°가 된다"*고 했는데 <b>실측하면 스팬은 안 변한다</b>:
+        /// <code>
+        ///   되돌린 식 (분모 5): (2 − i)·30°   -> 호 i=0..3 = +60 / +30 /   0 / −30   스팬 <b>90°</b>
+        ///   현행     (분모 4): (1.5 − i)·30° -> 호 i=0..3 = +45 / +15 / −15 / −45   스팬 <b>90°</b>
+        /// </code>
+        /// 위성(i=4)은 자기 가지를 타므로 되돌림에 안 끌려가고, 그래서 호에 실제로 놓이는 것은 넷뿐이다.
+        /// <b>진짜로 무너지는 것은 「축 대칭」이다</b> — 부채꼴이 평균 15° 기울고, 그 결과
+        /// <b>위성(0°)이 3번째 호 슬롯(0°)과 같은 반직선 위에 겹친다</b>:
+        /// <code>
+        ///   각도 오프셋 총합        0°     ->  60°
+        ///   위성 ↔ 최근접 호 각거리  15°    ->   <b>0°</b>      (위성이 호 버튼 <b>뒤에 숨는다</b>)
+        ///   위성 ↔ 최근접 호 거리    67.23  ->  <b>57.00pt</b>  (호 이웃 하한 57.46pt 미달)
+        ///   톱니->위성 접근 직선 여유 +2.73  -> <b>−26.00pt</b>  (히트 원을 <b>관통</b>)
+        /// </code>
+        /// 마지막 줄이 실질이다. 53-4는 *"위성을 향해 가다 빗나가면 창이 열릴 뿐"*이라는
+        /// <b>오폭 방향의 비대칭</b>을 이 안의 안전 근거로 들었는데, 되돌림은 그 근거를 <b>정반대로
+        /// 뒤집는다</b> — 종료 버튼을 향해 곧게 그은 선이 다른 버튼을 정통으로 지난다.</para>
+        ///
+        /// <para>★ <b>그래서 되돌림이 더 위험하다.</b> 스팬이 넓어지는 결함은 화면 밖으로 나가 눈에
+        /// 띄지만, <b>비대칭은 조용히 틀어진 채로 돈다</b>. (스팬 120°가 네 모서리 전부에서 세로 일렬
+        /// 폴백을 만든다는 계산은 <b>「5칸을 호에 나란히 붙이는 안」</b>에 대한 것이고 그쪽은 여전히
+        /// 참이다 — 53-1. 두 서술이 섞여 있었다.)</para>
+        ///
+        /// <para><c>GearRadialFanGeometryTests</c>가 이 관계(<c>ArcButtonCount == ButtonCount −
+        /// SatelliteButtonCount</c>)와 슬롯 각도 5개를 <b>프로덕션 상수를 참조해</b> 잠근다.</para>
+        /// </summary>
+        public const int ArcButtonCount = ButtonCount - SatelliteButtonCount;
+
+        /// <summary>이 슬롯이 호가 아니라 <b>위성</b>인가. 위성은 언제나 <b>끝 번호</b>다 —
+        /// 세로 일렬 폴백에서 "가장 위험한 것이 가장 멀다"가 자동으로 유지되는 것도 이 때문이다.</summary>
+        public static bool IsSatelliteSlot(int index) => index >= ArcButtonCount && index < ButtonCount;
 
         // ==================== 확정 수치 (docs/UX_FLOW.md 32-1 / 32-2) ====================
 
@@ -136,8 +207,36 @@ namespace StickMate.Interaction
         /// 여유 53.6pt다. 반지름은 화면 안쪽으로 뻗어 여백을 거의 소모하지 않는다.</summary>
         public const float OrbitRadiusPoints = 111f;
 
-        /// <summary>36-3-3: 60 → 30°. 4개 × 30° = 스팬 90°(기존 3개 × 60° = 120°보다 <b>좁다</b>).</summary>
+        /// <summary>36-3-3: 60 → 30°. <see cref="ArcButtonCount"/>개 × 30° = 스팬 90°
+        /// (기존 3개 × 60° = 120°보다 <b>좁다</b>). ★ 2026-09-03에 버튼이 5개가 됐어도 <b>스팬은 90°
+        /// 그대로다</b> — 다섯 번째는 호에 끼지 않고 위성으로 나갔기 때문이다.</summary>
         public const float ButtonAngleStepDegrees = 30f;
+
+        /// <summary>
+        /// ★ 위성([앱 종료])의 궤도(pt). 호보다 <b>한 겹 바깥</b>이다(UX_FLOW 53-2).
+        ///
+        /// <para><b>왜 168인가</b> — 두 조건의 교집합이다:
+        /// <list type="number">
+        ///   <item><b>오폭 방지.</b> 최근접 호 버튼(±15° 슬롯)까지의 중심거리가
+        ///     <c>√(168² + 111² − 2·168·111·cos15°) = 67.23pt</c>로, 호 이웃끼리의 57.46pt보다
+        ///     <b>1.17배</b> 멀다. 히트 원(반경 <c>지름/2 + HitPadding</c> = 26)이 겹치는 조건은
+        ///     중심거리 &lt; 52pt이므로 여유 <b>15.23pt</b>다.</item>
+        ///   <item><b>DPI.</b> 168 = 4 × 42라 ×1.25 / ×1.50 / ×1.75에서 210 / 252 / 294px로
+        ///     <b>세 배율 전부 정수</b>다(등급 리본 3->4pt 사건과 같은 처방).</item>
+        /// </list></para>
+        ///
+        /// <para>★ <b>부채꼴 좌표가 정수 픽셀이 되는 것은 아니다</b> — 기준각 θ₀가 45°의 홀수배일 때
+        /// 계수가 √2/2이기 때문이고, 그건 궤도 111도 마찬가지인 <b>기존 성질</b>이다. 4의 배수 규칙은
+        /// <b>양자화되는 스칼라</b>(두께·지름·여백·궤도)에만 적용한다(53-8).</para>
+        ///
+        /// <para>★ 차단막(<see cref="UnionScreenRect"/>) 비용: 기본 톱니 위치에서 167×167 -> 175×175
+        /// (<b>+9.6%</b>). 5칸을 호에 끼우는 안은 +49.2%였다(R4-3) — 비침해 원칙 2에서 이 차이가 판정을 갈랐다.</para>
+        /// </summary>
+        public const float SatelliteOrbitRadiusPoints = 168f;
+
+        /// <summary>위성의 각도 오프셋 — <b>기준각 축 위</b>(0°). 이웃(±15°)까지 각거리가 15°로
+        /// <b>얻을 수 있는 최대값</b>이고, 좌우 대칭도 깨지지 않는다.</summary>
+        public const float SatelliteAngleOffsetDegrees = 0f;
 
         // ★ 2026-09-02 — <b>원버튼 그림자와 그 번짐 상수(3pt)가 여기 있었다.</b> 사용자 지시
         //   "캐릭터창 둘레로도 그림자들이 있는데 다 없애줘 깔끔하게"로 UI 그림자를 전부 걷어냈다
@@ -171,10 +270,17 @@ namespace StickMate.Interaction
 
         public const float ExpandSecondsPerButton = 0.19f;
 
-        /// <summary>36-3-3: 0.055 → 0.037초. "촤르륵"의 예산은 <b>0.30초로 정해져 있다</b>(32-2).
-        /// 0.055를 그대로 두면 버튼 4개에서 0.355초가 된다 — 버튼이 하나 늘었다고 사용자를 매번 18%
-        /// 더 기다리게 만들지 않는다. 0.19 + 0.037×3 = 0.301초로 예산 안에 들어온다.</summary>
-        public const float ExpandStaggerSeconds = 0.037f;
+        /// <summary>36-3-3: 0.055 → 0.037 → <b>0.0275</b>초. "촤르륵"의 예산은 <b>0.30초로 정해져
+        /// 있다</b>(32-2). <b>버튼이 하나 늘었다고 사용자를 매번 더 기다리게 만들지 않는다</b> —
+        /// 이 값은 그 예산을 지키기 위해 버튼 수에서 <b>역산</b>된다:
+        /// <code>
+        ///   0.055 × 3 + 0.19 = 0.355   (3버튼 시절, 예산 초과)
+        ///   0.037 × 3 + 0.19 = 0.301   (4버튼)
+        ///   0.0275 × 4 + 0.19 = <b>0.300</b>  (5버튼 — 2026-09-03, 예산 정확히)
+        /// </code>
+        /// ★ 버튼을 또 늘릴 때 <b>여기를 안 고치면 열림이 길어진다.</b>
+        /// <c>GearRadialFanGeometryTests</c>가 <see cref="ExpandTotalSeconds"/> ≤ 0.30을 잠근다.</summary>
+        public const float ExpandStaggerSeconds = 0.0275f;
 
         public const float AlphaFadeInSeconds = 0.11f;
         public const float StartRadiusFraction = 0.35f;
@@ -255,12 +361,12 @@ namespace StickMate.Interaction
         /// 800×600 같은 좁은 화면에서는 여전히 39pt까지 필요하고, 이 사다리가 없으면 그 화면은 곧장
         /// 세로 일렬 폴백으로 떨어진다.
         ///
-        /// 평행이동은 <b>형태를 완전히 보존</b>한다(네 버튼의 상대 위치가 그대로다). 32-1이 금지한 것은
+        /// 평행이동은 <b>형태를 완전히 보존</b>한다(버튼들의 상대 위치가 그대로다). 32-1이 금지한 것은
         /// 버튼을 <b>따로따로</b> 밀어 호를 찌그러뜨리는 일이지 강체 이동이 아니다.
         /// </summary>
         public const float MaxGroupShiftPoints = 48f;
 
-        /// <summary>네 버튼이 전부 안착하기까지(0.19 + 0.037×3 = 0.301초 — 32-2의 0.30초 예산).</summary>
+        /// <summary>버튼이 전부 안착하기까지(0.19 + 0.0275×4 = <b>0.300초</b> — 32-2의 0.30초 예산).</summary>
         public static float ExpandTotalSeconds => ExpandSecondsPerButton + ExpandStaggerSeconds * (ButtonCount - 1);
 
         /// <summary>포스트잇(30000)·캐릭터 창(31000)보다 위, 팝오버(31700)보다 아래 —
@@ -277,7 +383,16 @@ namespace StickMate.Interaction
         /// 두 용도가 같은 배열을 쓰는 이유: 로그와 화면이 다른 이름을 부르면 사용자 신고("행동 버튼이
         /// 안 눌려요")를 로그에서 찾을 수 없다. 이름은 한 곳에서만 정의한다.
         /// </summary>
-        private static readonly string[] ButtonNames = { "집중 모드", "캐릭터", "오늘 할일", "행동" };
+        private static readonly string[] ButtonNames = { "집중 모드", "캐릭터", "오늘 할일", "행동", "앱 종료" };
+
+        /// <summary>위성이 <b>무장</b>됐을 때 이름표 알약에 적히는 글자.
+        /// <para>★ 새 문자열이 아니다 — 행동창 푸터의 [앱 종료]가 쓰던 확인 문구를 <b>그대로</b> 옮겨
+        /// 왔다(그 칩은 같은 라운드에 삭제됐다). 되돌릴 수 없는 행동의 확인 문구가 앱 안에서 두 벌이
+        /// 되지 않게 한다. 최종 문구 확정은 <c>design-narrative</c> 소관이다.</para>
+        /// <para>왜 원 안에 안 적는가: Ø<see cref="ButtonDiameterPoints"/> 안에 6글자가 안 들어간다
+        /// (FontCaption 10pt 기준 폭 약 62pt &gt; 44pt). 그래서 <b>글자는 이미 있는 호버 이름표 알약에,
+        /// 카운트다운은 이미 있는 링에</b> 싣는다 — 새 부품을 만들지 않는다(53-4).</para></summary>
+        public const string QuitArmedLabel = "정말 종료?";
 
         /// <summary>버튼 이름(테스트/진단 전용) — 호버 이름표가 실제로 이 값을 쓰는지 대조한다.</summary>
         public static string NameOf(int index)
@@ -331,6 +446,17 @@ namespace StickMate.Interaction
         private float _diameterPoints = ButtonDiameterPoints;
         private float _baseAngleDegrees = 225f;
         private Vector2 _gearCenterPoints;
+
+        // ---- 배치 결과에서 파생되는 것들(이름표 기하가 이 셋만 본다) ----
+        //
+        // ★★ 2026-09-03 — <b>여기가 없어서 이름표가 [앱 종료]를 5.93pt 덮고 있었다.</b>
+        //   배치 사다리의 ③단계(평행이동)는 <b>버튼만</b> 옮기고 <see cref="_gearCenterPoints"/>는
+        //   그대로 둔다. 그런데 이름표는 방향을 <c>버튼중심 − 기어중심</c>으로 잡았으므로,
+        //   평행이동이 걸린 순간 그 방향이 <b>진짜 반지름 방향이 아니게</b> 됐다.
+        //   기본 톱니 위치는 평행이동 (−6, −36.2)가 걸리는 자리라 <b>출하 기본 화면이 그 상태였다.</b>
+        private Vector2 _layoutShiftPoints;
+        private bool _columnLayout;
+        private float _labelRingRadiusPoints;
         private Vector2 _screenPointsAtLayout;
         // 호버 이름표 — 인스턴스 하나뿐이다(클래스 문서 ②).
         private RectTransform _hoverLabel;
@@ -340,6 +466,7 @@ namespace StickMate.Interaction
         private float _hoverLabelAlpha;
         private int _hoverLabelIndex = -1;      // 지금 알약에 적혀 있는 이름의 버튼(-1 = 없음).
         private readonly float[] _nameWidths = new float[ButtonCount];
+        private float _quitArmedLabelWidth;
 
         // 온보딩 안내 알약 — 호버 이름표와 <b>다른 인스턴스</b>다(둘은 절대 동시에 보이지 않는다:
         // 호버가 시작되는 순간 이쪽이 물러난다. 아래 ApplyOnboardingHint 참고).
@@ -355,6 +482,14 @@ namespace StickMate.Interaction
         private int _lastShownRemainingSeconds = -1;
         private int _lastShownBadgeCount = -1;
 
+        // ---- 위성 [앱 종료]의 2단 확인(53-4) ----
+        //
+        // ★ <b>새 관용구를 만들지 않았다.</b> 시간은 ActionCommandPopover.QuitConfirmSeconds(3초)를
+        //   <b>참조</b>하고(TodoBoardPopover의 삭제 확인과도 같은 값), 글자는 이미 있는 호버 이름표
+        //   알약에, 카운트다운은 이미 있는 링(ButtonView.RingFill)에 싣는다.
+        private bool _quitArmed;
+        private float _quitArmTimer;
+
         // ==================== 공개 상태 ====================
 
         /// <summary>펼쳐져 있는가(펼치는 중 + 팝오버 앵커 상태 포함). 클릭을 받는 상태의 기준.</summary>
@@ -366,18 +501,40 @@ namespace StickMate.Interaction
         /// <summary>팝오버를 띄운 채 남아 있는 버튼(-1 = 없음).</summary>
         public int AnchoredButton => _activeIndex;
 
-        /// <summary>네 버튼의 <b>클램프 상자</b>를 모두 덮는 사각형(Unity 스크린 픽셀). 톱니가 클릭관통
+        /// <summary>버튼 전부의 <b>클램프 상자</b>를 덮는 사각형(Unity 스크린 픽셀). 톱니가 클릭관통
         /// 차단 콜라이더를 이만큼 넓혀야 버튼 클릭이 밑의 앱으로 새지 않는다.</summary>
         public Rect UnionScreenRect { get; private set; }
 
         /// <summary>지금 부채꼴이 쓰는 기준각(도). 회귀 테스트가 45° 스냅을 직접 확인한다.</summary>
         public float BaseAngleDegrees => _baseAngleDegrees;
 
+        /// <summary>버튼들이 <b>실제로</b> 그 둘레에 배열된 점(캔버스 포인트) =
+        /// 기어 중심 + 배치 사다리가 적용한 평행이동. <b>기어 중심과 다를 수 있다.</b>
+        /// <para>이름표 방향은 반드시 이 점에서 파생해야 한다 — 기어 중심에서 재면 평행이동이 걸린
+        /// 배치에서 방향이 틀어지고, 그게 2026-09-03 이름표 겹침의 원인이었다.</para></summary>
+        public Vector2 FanOriginPoints => _gearCenterPoints + _layoutShiftPoints;
+
+        /// <summary>세로 일렬 폴백으로 떨어졌는가(진단/테스트 창구).</summary>
+        public bool IsColumnFallback => _columnLayout;
+
+        /// <summary>이름표 알약의 <b>안쪽 모서리</b>가 놓이는 반지름(<see cref="FanOriginPoints"/> 기준).
+        /// = 가장 바깥 버튼까지의 거리 + 버튼 반지름 + <see cref="HoverLabelGapPoints"/>.</summary>
+        public float HoverLabelRingRadiusPoints => _labelRingRadiusPoints;
+
         /// <summary>호버 이름표에 지금 보이는 글자(안 보이면 빈 문자열) — "선택된 것만 이름이 보인다"를
         /// 회귀 테스트가 직접 확인한다.</summary>
         public string VisibleHoverLabel
             => _hoverLabel != null && _hoverLabelAlpha > 0.5f && _hoverLabelText != null
                 ? _hoverLabelText.text : string.Empty;
+
+        /// <summary>위성 [앱 종료]가 1차 클릭을 받아 <b>"정말 종료?"</b> 상태인가(53-4).</summary>
+        public bool IsQuitArmed => _quitArmed;
+
+        /// <summary>무장이 저절로 풀리기까지 남은 시간(초). 무장 중이 아니면 0.
+        /// <para>카운트다운 링의 <c>fillAmount</c>가 <b>이 값에서만</b> 파생된다 — 화면과 실제가
+        /// 갈라질 자리를 만들지 않는다(원칙 1의 UI판).</para></summary>
+        public float QuitArmRemainingSeconds
+            => _quitArmed ? Mathf.Max(0f, ActionCommandPopover.QuitConfirmSeconds - _quitArmTimer) : 0f;
 
         /// <summary>지금 온보딩 안내 알약에 보이는 글자(안 보이면 빈 문자열) — 회귀 테스트 창구.</summary>
         public string VisibleOnboardingHint
@@ -434,7 +591,9 @@ namespace StickMate.Interaction
             return new Rect(c.x - r, c.y - r, r * 2f, r * 2f);
         }
 
-        /// <summary>네 버튼 <b>중심</b> 사이의 최소 거리(포인트) — 겹침 회귀 테스트용.
+        /// <summary>버튼 <b>중심</b> 사이의 최소 거리(포인트) — 겹침 회귀 테스트용.
+        /// <para>★ 위성을 포함한 <b>전 쌍</b>을 잰다. 위성↔최근접 호는 67.23pt라 최소값은 여전히
+        /// 호 이웃끼리의 57.46pt다 — 즉 이 값의 뜻이 위성 도입으로 바뀌지 않는다.</para>
         /// 아직 <see cref="BuildUi"/> 전(Awake 이전)이면 <see cref="float.MaxValue"/>를 돌려준다:
         /// "가장 좁은 간격"의 항등원이라 어떤 최소값 단언도 통과시키지 않고 조용히 넘어가지 않는다.</summary>
         public float MinimumCenterSpacingPoints()
@@ -477,10 +636,15 @@ namespace StickMate.Interaction
             _focusPopover = GetComponent<FocusSessionPopover>();
             _todoPopover = GetComponent<TodoBoardPopover>();
             _actionPopover = GetComponent<ActionCommandPopover>();
-            Debug.Log("[부채꼴] 준비 완료 — 톱니를 짧게 클릭하면 [집중 모드]/[캐릭터]/[오늘 할일]/[행동] " +
-                $"**아이콘 전용** 원버튼 {ButtonCount}개가 Ø{ButtonDiameterPoints:F0}pt, 궤도 " +
-                $"{OrbitRadiusPoints:F0}pt, 간격 {ButtonAngleStepDegrees:F0}도(스팬 " +
-                $"{ButtonAngleStepDegrees * (ButtonCount - 1):F0}도)로 {ExpandTotalSeconds:F2}초 동안 " +
+            Debug.Log("[부채꼴] 준비 완료 — 톱니를 짧게 클릭하면 [집중 모드]/[캐릭터]/[오늘 할일]/[행동]" +
+                $"/[{NameOf((int)GearMenuButton.Quit)}] " +
+                // ★ 스팬은 <b>ArcButtonCount</b>로 센다. ButtonCount로 세면 로그가 120도라고 말하는데
+                //   화면은 90도인 상태가 된다 — 원격 진단이 틀린 결론에 도달하는 종류의 거짓말이다.
+                $"**아이콘 전용** 원버튼 {ButtonCount}개(호 {ArcButtonCount} + 위성 {SatelliteButtonCount})가 " +
+                $"Ø{ButtonDiameterPoints:F0}pt, 호 궤도 {OrbitRadiusPoints:F0}pt, 간격 " +
+                $"{ButtonAngleStepDegrees:F0}도(스팬 " +
+                $"{ButtonAngleStepDegrees * (ArcButtonCount - 1):F0}도), 위성 궤도 " +
+                $"{SatelliteOrbitRadiusPoints:F0}pt(축 위)로 {ExpandTotalSeconds:F2}초 동안 " +
                 "촤르륵 펼쳐집니다. 상시 이름표(라벨)는 2026-08-31 사용자 지시로 전부 삭제됐고, " +
                 "대신 **커서가 올라간 버튼 하나만** 그 이름이 원 <b>바깥쪽</b>에 뜹니다" +
                 // ★ 예전에는 $"0.{v*100:F0}초"였다 — v=0.09에서 9를 찍어 <b>"0.9초"</b>가 됐다
@@ -548,6 +712,8 @@ namespace StickMate.Interaction
             if (_phase == Phase.Hidden || _phase == Phase.Collapsing) return;
 
             ClosePopovers(reason);
+            // 해제 조건 ③ — 부채꼴이 접히면 무장은 화면 밖으로 살아 나가지 않는다(53-4 / 53-7).
+            DisarmQuit($"부채꼴 접힘({reason})");
             _activeIndex = -1;
             _phase = Phase.Collapsing;
             _collapseMode = mode;
@@ -601,9 +767,92 @@ namespace StickMate.Interaction
                 case GearMenuButton.Action:
                     AnchorPopover(index, OpenActionPopover());
                     return;
-                default:
+                case GearMenuButton.Quit:
+                    ActivateQuit();
+                    return;
+                case GearMenuButton.Todo:
                     AnchorPopover(index, OpenTodoPopover());
                     return;
+                default:
+                    // ★ 2026-09-03 — 예전에는 [오늘 할일]이 이 <c>default:</c>로 흘렀다. 그래서 슬롯을
+                    //   하나 더 늘리면 <b>그 새 버튼이 아무 소리 없이 할일 창을 열었다</b>.
+                    //   이제 정상값은 전부 위에서 잡히므로 여기 오는 것은 <b>진짜로 배선이 빠진 경우</b>뿐이다
+                    //   — 정상 사용자에게 거짓 경보가 찍히지 않으면서 누락은 시끄럽게 드러난다.
+                    Debug.LogError($"[부채꼴] 슬롯 {index}({NameOf(index)})에 동작이 배선되지 않았습니다 — " +
+                        "GearMenuButton에 값을 더했다면 Activate의 switch에도 그 가지를 더해야 합니다. " +
+                        "지금 이 버튼은 눌러도 아무 일도 하지 않습니다.");
+                    return;
+            }
+        }
+
+        /// <summary>
+        /// ★ 위성 [앱 종료]의 2단 확인(53-4). <b>1차 클릭은 아무것도 끝내지 않는다</b> — 무장만 한다.
+        ///
+        /// <para><b>왜 팝오버를 안 여는가</b>: 다른 셋과 달리 이 버튼은 <b>창을 여는 진입점이 아니라
+        /// 그 자체가 행동</b>이다. 창을 하나 더 만들면 되돌릴 수 없는 행동의 확인 구현이 앱 안에서
+        /// <b>세 벌</b>이 된다(설정창 · 할일 삭제 · 여기).</para>
+        ///
+        /// <para><b>미스가 안전한 쪽으로 실패한다</b>: 정지 등급 15fps에서 아주 짧은 클릭이 폴링을
+        /// 스쳐 지나가면 <b>아무 일도 일어나지 않는다</b>(종료가 아니라 <b>무장 실패</b>).
+        /// 되돌릴 수 없는 쪽으로 실패하는 경로는 없다.</para>
+        /// </summary>
+        private void ActivateQuit()
+        {
+            if (!_quitArmed)
+            {
+                _quitArmed = true;
+                _quitArmTimer = 0f;
+                Debug.Log($"[부채꼴] [{ButtonNames[(int)GearMenuButton.Quit]}] 1차 클릭 — " +
+                    $"{ActionCommandPopover.QuitConfirmSeconds:F0}초 안에 다시 누르면 종료합니다" +
+                    "(다른 버튼으로 커서를 옮기거나 부채꼴이 접히면 그냥 풀립니다).");
+                return;
+            }
+
+            Debug.Log("[부채꼴] [앱 종료] 확정 — Application.Quit()을 호출합니다. " +
+                "에디터에서는 재생 모드만 멈춥니다.");
+            DisarmQuit("확정");
+            AppControlDirector.QuitApplication("부채꼴 [앱 종료]");
+        }
+
+        /// <summary>무장을 푼다. <b>해제 조건은 넷</b>이고 전부 여기로 모인다(53-4):
+        /// ① 3초 경과 ② 커서가 <b>다른 버튼</b>으로 옮겨감 ③ 부채꼴이 접힘 ④ 앱이 숨김으로 전환.
+        /// <para>★ ②가 라벨 경쟁을 <b>구조적으로</b> 없앤다 — 무장 중에는 다른 버튼에 커서가 있을 수
+        /// 없으므로 "무장 알약과 호버 알약 중 누가 이기는가"라는 질문 자체가 성립하지 않는다
+        /// (알약 인스턴스는 하나다).</para></summary>
+        private void DisarmQuit(string reason)
+        {
+            if (!_quitArmed) return;
+            _quitArmed = false;
+            _quitArmTimer = 0f;
+            ButtonView quit = _buttons[(int)GearMenuButton.Quit];
+            if (quit?.RingFill != null && quit.RingFill.gameObject.activeSelf)
+            {
+                quit.RingFill.gameObject.SetActive(false);
+            }
+            Debug.Log($"[부채꼴] [앱 종료] 무장 해제 — {reason}.");
+        }
+
+        /// <summary>무장 시계. <b>매 프레임</b> 돈다 — 최대 3초짜리라 초 단위로 그리면 3칸짜리 계단이
+        /// 된다(집중 모드 링이 초 단위인 것은 25분짜리라서다).
+        /// <para>★ <b>여기서 <c>FramePacing.HoldActiveForInteraction()</c>을 부르지 않는다.</b>
+        /// 부채꼴이 열려 있는 동안은 <see cref="LateUpdate"/>의 홀드 한 줄이 이미 덮고 있고,
+        /// 정지 등급 15fps에서도 3초 = <b>45단계(2.2%/단계)</b>라 카운트다운은 충분히 읽힌다.
+        /// 상주 앱이 3초 동안 60fps를 <b>추가로</b> 잡아둘 근거가 없다(원칙 2).</para></summary>
+        private void TickQuitArm(float dt)
+        {
+            if (!_quitArmed) return;
+
+            _quitArmTimer += dt;
+            if (_quitArmTimer >= ActionCommandPopover.QuitConfirmSeconds)
+            {
+                DisarmQuit($"{ActionCommandPopover.QuitConfirmSeconds:F0}초 경과");
+                return;
+            }
+
+            // 해제 조건 ② — 커서가 다른 버튼 위로 갔다(마음이 바뀐 신호).
+            if (_hoverIndex >= 0 && _hoverIndex != (int)GearMenuButton.Quit)
+            {
+                DisarmQuit($"커서가 [{ButtonNames[_hoverIndex]}]로 옮겨감");
             }
         }
 
@@ -808,6 +1057,7 @@ namespace StickMate.Interaction
                     break;
             }
 
+            TickQuitArm(dt);
             TickAutoCollapse(dt);
             TickAnchoredPopover();
             RefreshDynamicContent(force: false);
@@ -840,7 +1090,7 @@ namespace StickMate.Interaction
         /// 안내 읽기 1.78(<c>DialogueBudget.ReadingSeconds</c> 20자) + 톱니→첫 버튼 0.38 +
         /// 버튼 4개(<see cref="HoverLabelFadeSeconds"/> + 이름 읽기) 2.91 + 이웃 이동 3회 0.96
         /// = <b>6.03초</b> → 여유 <b>1.74배</b>. 고치기 전 예산은
-        /// <see cref="ExpandTotalSeconds"/>(0.301) + 6.0 = <b>6.30초</b>여서 여유가 <b>1.04배</b>였다
+        /// <see cref="ExpandTotalSeconds"/>(0.300) + 6.0 = <b>6.30초</b>여서 여유가 <b>1.04배</b>였다
         /// (= 0.27초만 머뭇거려도 안내가 영구히 사라졌다).
         /// <b>2회차부터는 안내가 안 뜨므로 아래 한 줄이 아예 안 걸리고 비용은 0이다.</b></para>
         ///
@@ -876,6 +1126,9 @@ namespace StickMate.Interaction
 
         private void Hide()
         {
+            // 해제 조건 ④ — 전체화면 감지로 즉시 거둘 때도 무장이 남지 않는다. Collapse를 거치지 않는
+            // 유일한 경로가 여기라, 이 한 줄이 없으면 다음에 열었을 때 <b>이미 장전된 채</b> 뜬다.
+            DisarmQuit("부채꼴 숨김");
             _phase = Phase.Hidden;
             _activeIndex = -1;
             _hoverIndex = -1;
@@ -912,6 +1165,9 @@ namespace StickMate.Interaction
             float collapseK = Mathf.Clamp01(_timer / Mathf.Max(0.001f, collapseSeconds));
             float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
             bool anyVisible = false;
+
+            // 링의 켜짐/꺼짐이 먼저 정해져야 아래 ApplyButtonStyle의 activeSelf 검사가 같은 프레임을 본다.
+            ApplyQuitCountdown();
 
             for (int i = 0; i < ButtonCount; i++)
             {
@@ -985,6 +1241,29 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
+        /// 무장 카운트다운 링 — <b>남은 시간에서만</b> 파생된다(원칙 1의 UI판).
+        ///
+        /// <para><b>매 프레임</b> 갱신한다. 집중 모드 링은 "초 단위로 바뀐 프레임에만" 쓰지만 그건
+        /// 25분짜리라서고, 이건 <b>최대 3초</b>다 — 초 단위로 그리면 3칸짜리 계단이 된다.
+        /// 비용 상한은 3초 × 프레임률이고, 그 3초 동안 프레임을 <b>추가로</b> 붙잡지도 않는다
+        /// (<see cref="TickQuitArm"/> 문서).</para>
+        /// </summary>
+        private void ApplyQuitCountdown()
+        {
+            ButtonView quit = _buttons[(int)GearMenuButton.Quit];
+            if (quit?.RingFill == null) return;
+
+            if (quit.RingFill.gameObject.activeSelf != _quitArmed)
+            {
+                quit.RingFill.gameObject.SetActive(_quitArmed);
+            }
+            if (!_quitArmed) return;
+
+            quit.RingFill.fillAmount = Mathf.Clamp01(
+                QuitArmRemainingSeconds / Mathf.Max(0.0001f, ActionCommandPopover.QuitConfirmSeconds));
+        }
+
+        /// <summary>
         /// "마우스로 선택되고 있는 메뉴만 이름이 보인다"(2026-08-31 사용자 지시)를 실행한다.
         ///
         /// 이름표는 <b>커서가 올라간 버튼 하나</b>를 따라다니고, 커서가 벗어나면 같은 시간에 걸쳐
@@ -995,7 +1274,10 @@ namespace StickMate.Interaction
         {
             if (_hoverLabel == null) return;
 
-            int target = _hoverIndex;
+            // ★ 무장 중에는 알약이 <b>위성에 고정</b>되고 확인 문구를 문다(53-4). 커서가 다른 버튼으로
+            //   가면 그 순간 무장이 풀리므로(TickQuitArm) 두 문구가 경쟁하는 상태는 <b>존재할 수 없다</b> —
+            //   알약 인스턴스가 하나뿐이라는 클래스 문서 ②의 성질이 그대로 유지된다.
+            int target = _quitArmed ? (int)GearMenuButton.Quit : _hoverIndex;
             if (target >= 0 && (target == _activeIndex || _buttons[target] == null
                 || _buttons[target].CollapsingNow || _buttons[target].Progress < MinClickableProgress))
             {
@@ -1007,11 +1289,18 @@ namespace StickMate.Interaction
                 dt / Mathf.Max(0.0001f, HoverLabelFadeSeconds));
 
             // 글자는 <b>값이 바뀐 프레임에만</b> 쓴다(Text.text 대입은 메시 재생성이다).
-            if (target >= 0 && target != _hoverLabelIndex)
+            // ★ 비교 대상이 인덱스가 아니라 <b>문자열</b>인 이유: 같은 버튼(위성)에서 이름 -> 확인 문구로
+            //   글자만 바뀌는 전이가 생겼다. 인덱스만 보면 그 전이를 놓쳐 알약이 "앱 종료"인 채로 남는다.
+            if (target >= 0)
             {
+                string wanted = _quitArmed ? QuitArmedLabel : ButtonNames[target];
+                if (!string.Equals(_hoverLabelText.text, wanted, System.StringComparison.Ordinal))
+                {
+                    _hoverLabelText.text = wanted;
+                    _hoverLabel.sizeDelta = new Vector2(
+                        _quitArmed ? _quitArmedLabelWidth : _nameWidths[target], HoverLabelHeightPoints);
+                }
                 _hoverLabelIndex = target;
-                _hoverLabelText.text = ButtonNames[target];
-                _hoverLabel.sizeDelta = new Vector2(_nameWidths[target], HoverLabelHeightPoints);
             }
 
             if (_hoverLabelAlpha <= 0.001f)
@@ -1071,19 +1360,24 @@ namespace StickMate.Interaction
 
             // 부채꼴의 <b>이등분 방향</b>으로, 가장 바깥 버튼만큼 나간 자리를 기준점으로 삼는다.
             // 그래야 이름표와 같은 기하 보장(ResolveHoverLabelCenter 문단)이 안내 알약에도 그대로
-            // 적용된다 — 네 버튼 중심의 평균을 그대로 쓰면 기준점이 호 <b>안쪽</b>이라 보장이 약해진다.
+            // 적용된다 — 버튼 중심의 평균을 그대로 쓰면 기준점이 호 <b>안쪽</b>이라 보장이 약해진다.
+            // ★ reach가 <b>최대 투영</b>이라 위성(168pt)이 자동으로 기준이 된다 — 안내 알약은 위성
+            //   <b>바깥</b>에 선다(UX_WIDGETS R4-5). 위성 도입에 코드 수정이 필요 없었던 이유가 이것이다.
+            // ★ 2026-09-03 — 기준을 <see cref="FanOriginPoints"/>로 옮겼다. 평행이동이 걸린 배치에서
+            //   기어 중심으로 재면 이등분 방향이 실제 대칭축에서 벗어난다(이름표와 같은 결함).
+            Vector2 origin = FanOriginPoints;
             Vector2 middle = Vector2.zero;
             for (int i = 0; i < ButtonCount; i++) middle += _buttons[i].CenterPoints;
-            middle = middle / ButtonCount - _gearCenterPoints;
+            middle = middle / ButtonCount - origin;
             if (middle.sqrMagnitude < 1e-4f) middle = Vector2.down;
             middle.Normalize();
 
             float reach = 0f;
             for (int i = 0; i < ButtonCount; i++)
-                reach = Mathf.Max(reach, Vector2.Dot(_buttons[i].CenterPoints - _gearCenterPoints, middle));
+                reach = Mathf.Max(reach, Vector2.Dot(_buttons[i].CenterPoints - origin, middle));
 
             _onboardingHint.anchoredPosition =
-                ResolveHoverLabelCenter(_gearCenterPoints + middle * reach, _onboardingHintWidth);
+                ResolveHoverLabelCenter(origin + middle * reach, _onboardingHintWidth);
             _onboardingHintSurface.color = Fade(UiChrome.PanelSurface, _onboardingHintAlpha);
             _onboardingHintBorder.color = Fade(UiChrome.AccentBorder, _onboardingHintAlpha);
             _onboardingHintText.color = Fade(UiChrome.TextPrimary, _onboardingHintAlpha);
@@ -1112,28 +1406,84 @@ namespace StickMate.Interaction
         /// <para>★ 여전히 <b>이름표만</b> 움직인다 — 버튼 위치는 건드리지 않는다. 이름표가 배치에
         /// 개입하는 순간 36-3의 기하 근거(56×56 정사각 상자 전수 계산)가 무너진다.</para>
         /// </summary>
-        private Vector2 ResolveHoverLabelCenter(Vector2 anchorCenter, float pillWidth)
+        /// <summary>
+        /// ★★ 이름표 알약의 중심 — <b>public static 순수 함수</b>다(<see cref="SlotCenterPoints"/>와 같은 이유).
+        ///
+        /// <para><b>2026-09-03 — 여기가 두 가지로 틀려 있었다.</b> 러너 실패:
+        /// <c>[오늘 할일] 이름표가 [앱 종료]를 5.9px 덮습니다 (16.07 &lt; 22.0)</c>.
+        /// <b>세로 일렬 폴백이 아니라 정상 부채꼴에서</b>, 그리고 <b>기본 톱니 위치에서</b> 났다
+        /// (실측 스윕: 640×480부터 2560×1440까지 전 해상도 동일하게 −5.93pt, 기어 위치 격자의
+        /// <b>61~71%</b>가 위반). 원인 둘:</para>
+        /// <list type="number">
+        ///   <item><b>방향이 틀렸다.</b> <c>버튼중심 − 기어중심</c>으로 쟀는데, 배치 사다리 ③단계
+        ///     (평행이동)는 <b>버튼만</b> 옮긴다. 기본 위치는 평행이동 (−6, −36.2)가 걸리는 자리라
+        ///     방향이 실제 반지름에서 벗어나 있었다 → <see cref="FanOriginPoints"/>에서 잰다.</item>
+        ///   <item><b>반지름이 틀렸다.</b> 36-4의 「폭 무관 보장」은 <c>궤도 111 + 버튼반경 + 간격</c>을
+        ///     전제로 세워졌는데, 위성이 궤도 <b>168</b>로 나가면서 그 전제가 깨졌다 — 호 버튼의
+        ///     이름표가 놓이던 반지름(≈170pt)이 <b>위성 궤도와 같은 자리</b>였다.
+        ///     이제 <see cref="HoverLabelRingRadiusPoints"/>(= 가장 바깥 버튼 + 버튼반경 + 간격)를 쓴다.</item>
+        /// </list>
+        ///
+        /// <para><b>보장이 되살아난다</b>(36-4와 같은 지지 함수 논증): 모든 버튼 원은 원점에서 반지름
+        /// <c>ring − 간격</c> 안에 있고, 알약의 <b>모든 점</b>은 <c>ring</c> 밖에 있다
+        /// (축 정렬 사각형의 지지 함수 = <c>|u.x|·반폭 + |u.y|·반높이</c> = <paramref name="labelSizePoints"/>의
+        /// reach). <b>알약이 아무리 넓어져도 형제를 물 수 없다</b> — 각도에도, 평행이동에도, 축소
+        /// 폴백에도 의존하지 않는다.</para>
+        ///
+        /// <para>★ <b>세로 일렬 폴백은 규칙이 다르다</b>(<paramref name="columnLayout"/>). 거기서는 모든
+        /// 버튼이 <b>한 직선 위</b>에 있어서 위 규칙을 쓰면 이름표 다섯 개가 맨 끝 버튼 바깥 <b>한 자리에
+        /// 겹쳐 쌓인다</b>. 그래서 <b>가로로</b> 민다 — 세로로 밀면 간격 52pt짜리 이웃을 문다
+        /// (검산: 안쪽 모서리 30pt 옆 · 이웃까지 세로 52 − 반높이 9 = 43 → 거리 52.4 &gt; 반경 22).
+        /// <b>이건 이번 라운드가 만든 결함이 아니라 원래 깨져 있던 자리다</b>(4칸 시절에도 간격은 52였다).</para>
+        ///
+        /// <para>화면 밖으로 나가면 <b>클램프만</b> 하고 반대쪽으로 뒤집지 않는다. 뒤집으면 부채꼴
+        /// 안쪽으로 들어가 정확히 위 문제가 되살아난다. 클램프가 걸리는 구성에서는 보장이 그만큼
+        /// 약해지지만, 화면 밖으로 나간 이름표는 아예 읽을 수 없으므로 그쪽이 먼저다.</para>
+        /// </summary>
+        public static Vector2 HoverLabelCenterPoints(
+            Vector2 anchorCenter, Vector2 patternOrigin, float ringRadiusPoints, float diameterPoints,
+            bool columnLayout, Vector2 labelSizePoints, Vector2 screenPoints,
+            float leftMargin, float rightMargin, float bottomMargin, float topMargin)
         {
-            float halfW = pillWidth * 0.5f;
-            float halfH = HoverLabelHeightPoints * 0.5f;
+            float halfW = labelSizePoints.x * 0.5f;
+            float halfH = labelSizePoints.y * 0.5f;
 
-            Vector2 outward = anchorCenter - _gearCenterPoints;
-            if (outward.sqrMagnitude < 1e-4f) outward = Vector2.down;
-            outward.Normalize();
+            Vector2 center;
+            if (columnLayout)
+            {
+                // 화면 <b>안쪽</b>으로 민다 — 바깥으로 밀면 곧장 클램프에 걸려 되돌아온다.
+                float dir = patternOrigin.x <= screenPoints.x * 0.5f ? 1f : -1f;
+                center = anchorCenter
+                    + new Vector2(dir, 0f) * (diameterPoints * 0.5f + HoverLabelGapPoints + halfW);
+            }
+            else
+            {
+                Vector2 outward = anchorCenter - patternOrigin;
+                if (outward.sqrMagnitude < 1e-4f) outward = Vector2.down;
+                outward.Normalize();
 
-            float reach = Mathf.Abs(outward.x) * halfW + Mathf.Abs(outward.y) * halfH;
-            Vector2 center = anchorCenter + outward * (_diameterPoints * 0.5f + HoverLabelGapPoints + reach);
+                float reach = Mathf.Abs(outward.x) * halfW + Mathf.Abs(outward.y) * halfH;
+                center = patternOrigin + outward * (ringRadiusPoints + reach);
+            }
 
-            float minX = EffectiveLeftMarginPoints + halfW;
-            float maxX = _screenPointsAtLayout.x - EffectiveRightMarginPoints - halfW;
+            float minX = leftMargin + halfW;
+            float maxX = screenPoints.x - rightMargin - halfW;
             if (maxX >= minX) center.x = Mathf.Clamp(center.x, minX, maxX);
 
-            float minY = ScreenMarginPoints + halfH;
-            float maxY = _screenPointsAtLayout.y - EffectiveTopMarginPoints - halfH;
+            float minY = bottomMargin + halfH;
+            float maxY = screenPoints.y - topMargin - halfH;
             if (maxY >= minY) center.y = Mathf.Clamp(center.y, minY, maxY);
 
             return center;
         }
+
+        /// <summary>인스턴스의 지금 상태로 위 순수 함수를 부른다 — 여백 네 개를 부르는 쪽마다
+        /// 다시 적지 않게 하는 한 줄짜리 어댑터다.</summary>
+        private Vector2 ResolveHoverLabelCenter(Vector2 anchorCenter, float pillWidth)
+            => HoverLabelCenterPoints(anchorCenter, FanOriginPoints, _labelRingRadiusPoints,
+                _diameterPoints, _columnLayout, new Vector2(pillWidth, HoverLabelHeightPoints),
+                _screenPointsAtLayout, EffectiveLeftMarginPoints, EffectiveRightMarginPoints,
+                EffectiveBottomMarginPoints, EffectiveTopMarginPoints);
 
         private void SetHoverLabelAlpha(float alpha)
         {
@@ -1142,14 +1492,39 @@ namespace StickMate.Interaction
             _hoverLabelText.color = Fade(UiChrome.TextPrimary, alpha);
         }
 
+        /// <summary>
+        /// ★ 위성 [앱 종료]는 <b>호버에서 강조색까지 가지 않는다</b>(53-4).
+        ///
+        /// <para>다른 넷은 호버에서 <c>AccentSurface</c>/<c>Accent</c>까지 가지만, 위성은 호버에서
+        /// 겨우 <b>다른 버튼의 평상 수준</b>(<c>CardSurface</c>)에 도달한다. 강조색은 <b>무장 전용</b>이다 —
+        /// 그래야 이 표면에서 "이 버튼이 밝아졌다"의 뜻이 <b>「되돌릴 수 없는 것이 장전됐다」 하나</b>가 된다.</para>
+        ///
+        /// <para>새 색은 <b>하나도</b> 만들지 않았다: <c>WarmAccent</c>/<c>AccentSurface</c>/
+        /// <c>AccentBorder</c>는 삭제된 행동창 [앱 종료] 무장 스타일이 쓰던 <b>바로 그 색</b>이다.
+        /// 위험색(빨강)은 <b>도입하지 않았다</b> — 필요 판단이 서면 <c>design-art</c> 판정을 거친다.</para>
+        /// </summary>
         private void ApplyButtonStyle(ButtonView b, int index, float alpha)
         {
             bool active = index == _activeIndex;
             float hover = EaseOutQuad(b.Hover);
+            bool armedQuit = _quitArmed && index == (int)GearMenuButton.Quit;
 
-            Color surface = Color.Lerp(UiChrome.CardSurface, UiChrome.AccentSurface, active ? 1f : hover);
-            Color border = Color.Lerp(UiChrome.CardBorder, UiChrome.AccentBorder, active ? 1f : hover);
-            Color symbol = Color.Lerp(UiChrome.TextPrimary, UiChrome.Accent, active ? 1f : hover);
+            Color surface, border, symbol;
+            if (index == (int)GearMenuButton.Quit)
+            {
+                // 평상 SubtleSurface -> 호버 CardSurface -> 무장 AccentSurface. 호버는 강조까지 안 간다.
+                surface = armedQuit ? UiChrome.AccentSurface
+                    : Color.Lerp(UiChrome.SubtleSurface, UiChrome.CardSurface, hover);
+                border = armedQuit ? UiChrome.AccentBorder : UiChrome.CardBorder;
+                symbol = armedQuit ? UiChrome.WarmAccent
+                    : Color.Lerp(UiChrome.TextSecondary, UiChrome.TextPrimary, hover);
+            }
+            else
+            {
+                surface = Color.Lerp(UiChrome.CardSurface, UiChrome.AccentSurface, active ? 1f : hover);
+                border = Color.Lerp(UiChrome.CardBorder, UiChrome.AccentBorder, active ? 1f : hover);
+                symbol = Color.Lerp(UiChrome.TextPrimary, UiChrome.Accent, active ? 1f : hover);
+            }
 
             b.Surface.color = Fade(surface, alpha);
             b.Border.color = Fade(border, alpha);
@@ -1189,7 +1564,9 @@ namespace StickMate.Interaction
             if (b.RingFill != null && b.RingFill.gameObject.activeSelf)
             {
                 b.RingFill.color = Fade(UiChrome.WarmAccent, alpha);
-                b.RingTrack.color = Fade(UiChrome.TrackBackground, alpha);
+                // ★ 위성의 카운트다운 링에는 트랙이 없다(전원 기호의 원호가 그 자리에 이미 있다).
+                //   가드 없이 쓰면 [앱 종료] 무장 첫 프레임에 NullReference로 죽는다.
+                if (b.RingTrack != null) b.RingTrack.color = Fade(UiChrome.TrackBackground, alpha);
             }
         }
 
@@ -1266,16 +1643,50 @@ namespace StickMate.Interaction
             _screenPointsAtLayout = ScreenSizePoints();
             _baseAngleDegrees = Snap45(_screenPointsAtLayout * 0.5f - _gearCenterPoints);
 
-            if (TrySearchRotation(ButtonDiameterPoints, allowShift: false)) return;
-            if (TrySearchRotation(ButtonDiameterPoints, allowShift: true)) return;
-            if (TrySearchRotation(ShrunkDiameterPoints, allowShift: false)) return;
-            if (TrySearchRotation(ShrunkDiameterPoints, allowShift: true)) return;
-            if (TryColumn(ButtonDiameterPoints)) return;
-            if (TryColumn(ShrunkDiameterPoints)) return;
+            if (TrySearchRotation(ButtonDiameterPoints, allowShift: false)) { FinalizeLayout(false); return; }
+            if (TrySearchRotation(ButtonDiameterPoints, allowShift: true)) { FinalizeLayout(false); return; }
+            if (TrySearchRotation(ShrunkDiameterPoints, allowShift: false)) { FinalizeLayout(false); return; }
+            if (TrySearchRotation(ShrunkDiameterPoints, allowShift: true)) { FinalizeLayout(false); return; }
+            if (TryColumn(ButtonDiameterPoints)) { FinalizeLayout(true); return; }
+            if (TryColumn(ShrunkDiameterPoints)) { FinalizeLayout(true); return; }
 
             PlaceColumn(ShrunkDiameterPoints);
             ShiftGroupIntoScreen();
+            FinalizeLayout(true);
         }
+
+        /// <summary>
+        /// 배치가 끝난 뒤 <b>이름표 기하가 쓸 세 값</b>을 확정한다 — 사다리의 <b>모든</b> 출구가 여기를 지난다.
+        ///
+        /// <para><b>왜 링 반지름을 여기서 「재는가」</b>: 상수(168)로 적으면 축소 폴백(Ø36)·평행이동·
+        /// 세로 일렬에서 값이 어긋난다. <b>실제로 놓인 버튼까지의 최대 거리</b>를 재면 어떤 경로로
+        /// 배치됐든 «모든 버튼 원이 이 반지름 안에 있다»가 사실이 된다 — 그것이 36-4가 말한
+        /// <b>폭 무관 보장</b>의 전제다.</para>
+        ///
+        /// <para>★ 36-4의 원래 보장은 <c>궤도 111 + 버튼반경 + 간격</c>이었고, <b>위성이 궤도 168로
+        /// 나가면서 그 전제가 깨졌다</b> — 호 버튼의 이름표가 놓이던 반지름(약 170pt)이 위성의
+        /// 궤도(168)와 <b>같은 자리</b>였기 때문이다. 보장을 되살리는 방법은 하나뿐이다:
+        /// <b>가장 바깥 버튼</b>을 기준으로 삼는 것.</para>
+        /// </summary>
+        private void FinalizeLayout(bool column)
+        {
+            _columnLayout = column;
+
+            Vector2 origin = FanOriginPoints;
+            float farthest = 0f;
+            for (int i = 0; i < ButtonCount; i++)
+            {
+                if (_buttons[i] == null) continue;
+                farthest = Mathf.Max(farthest, (_buttons[i].CenterPoints - origin).magnitude);
+            }
+            _labelRingRadiusPoints = HoverLabelRingRadius(farthest, _diameterPoints);
+        }
+
+        /// <summary>가장 바깥 버튼까지의 거리에서 <b>이름표 링 반지름</b>을 만든다.
+        /// <para><b>public static 순수 함수</b>인 이유는 <see cref="EffectiveMarginPoints"/>와 같다 —
+        /// 테스트가 <c>+ 반지름 + 간격</c>을 <b>다시 타이핑하면</b> 그 사본이 프로덕션과 조용히 갈라진다.</para></summary>
+        public static float HoverLabelRingRadius(float farthestButtonDistancePoints, float diameterPoints)
+            => farthestButtonDistancePoints + diameterPoints * 0.5f + HoverLabelGapPoints;
 
         private bool TrySearchRotation(float diameter, bool allowShift)
         {
@@ -1304,26 +1715,58 @@ namespace StickMate.Interaction
             for (int i = 0; i < ButtonCount; i++) _buttons[i].CenterPoints = FanCenter(baseDegrees, i) + shift;
             _baseAngleDegrees = Mathf.Repeat(baseDegrees, 360f);
             _diameterPoints = diameter;
+            _layoutShiftPoints = shift;   // ★ 이름표 방향이 이 값을 봐야 한다(FanOriginPoints).
             return true;
         }
 
-        /// <summary>슬롯 i의 각도 오프셋. θ₀ + ((n−1)/2 − i)·step — <b>부채꼴은 언제나 θ₀를 기준으로
-        /// 좌우 대칭</b>이라 버튼 개수가 바뀌어도 "가운데가 화면 안쪽"이라는 성질이 유지된다.
-        /// n=3이면 (1−i)·60°, n=4면 (1.5−i)·30°(36-3-3).
+        /// <summary>슬롯 i의 각도 오프셋. 호는 θ₀ + ((<see cref="ArcButtonCount"/>−1)/2 − i)·step —
+        /// <b>부채꼴은 언제나 θ₀를 기준으로 좌우 대칭</b>이라 버튼 개수가 바뀌어도 "가운데가 화면
+        /// 안쪽"이라는 성질이 유지된다. n=3이면 (1−i)·60°, n=4면 (1.5−i)·30°(36-3-3).
+        ///
+        /// <para>★★ <b>분모는 <see cref="ArcButtonCount"/>이지 <see cref="ButtonCount"/>가 아니다.</b>
+        /// 2026-09-03에 위성([앱 종료])이 들어오면서 둘이 갈라졌다. 여기를 <c>ButtonCount</c>로
+        /// 되돌리면 <b>컴파일도 되고 대부분의 테스트도 통과하는데</b> 호가 <b>축에서 30° 비대칭으로
+        /// 기울고</b>, 그 결과 <b>위성이 3번째 호 슬롯과 같은 반직선 위에 겹친다</b>
+        /// (각거리 15° -> 0° · 이격 67.23 -> 57.00pt · 접근 직선 여유 +2.73 -> −26.00pt = 관통).
+        /// 스팬은 <b>안 변한다</b> — 그래서 화면 밖으로 안 나가고 <b>조용히 틀어진 채로 돈다</b>.
+        /// 숫자와 유도는 <see cref="ArcButtonCount"/> 문서에 있고,
+        /// <c>GearRadialFanGeometryTests</c>가 이 되돌림을 네 갈래로 잡는다.</para>
+        ///
+        /// <para>위성은 <b>기준각 축 위</b>(<see cref="SatelliteAngleOffsetDegrees"/> = 0°)다 —
+        /// 각도 오프셋의 총합이 0이라는 좌우 대칭 성질도 그대로 유지된다.</para>
         ///
         /// <see cref="Snap45"/>와 같은 이유로 <b>public static 순수 함수</b>다 — 기하 확정치는 씬 없이
         /// EditMode에서 잠글 수 있어야 한다(36절의 계산이 코드에서 조용히 어긋나는 것을 막는 유일한 방법).</summary>
-        public static float SlotOffsetDegrees(int index) => ((ButtonCount - 1) * 0.5f - index) * ButtonAngleStepDegrees;
+        public static float SlotOffsetDegrees(int index)
+            => IsSatelliteSlot(index)
+                ? SatelliteAngleOffsetDegrees
+                : ((ArcButtonCount - 1) * 0.5f - index) * ButtonAngleStepDegrees;
+
+        /// <summary>슬롯 i가 도는 <b>궤도 반지름</b>(pt). 호는 <see cref="OrbitRadiusPoints"/>,
+        /// 위성만 <see cref="SatelliteOrbitRadiusPoints"/>다.
+        /// <para>이 함수를 따로 둔 이유는 <see cref="SlotOffsetDegrees"/>와 같다 — 반지름이 슬롯마다
+        /// 다르다는 사실이 <b>한 자리</b>에만 있어야 배치 사다리·클램프·테스트가 같은 값을 본다.</para></summary>
+        public static float SlotRadiusPoints(int index)
+            => IsSatelliteSlot(index) ? SatelliteOrbitRadiusPoints : OrbitRadiusPoints;
 
         /// <summary>기어 중심과 기준각이 주어졌을 때 슬롯 i 버튼의 중심(캔버스 포인트). 순수 함수.</summary>
         public static Vector2 SlotCenterPoints(Vector2 gearCenterPoints, float baseDegrees, int index)
         {
             float a = (baseDegrees + SlotOffsetDegrees(index)) * Mathf.Deg2Rad;
-            return gearCenterPoints + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * OrbitRadiusPoints;
+            return gearCenterPoints + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * SlotRadiusPoints(index);
         }
 
         private Vector2 FanCenter(float baseDegrees, int index)
             => SlotCenterPoints(_gearCenterPoints, baseDegrees, index);
+
+        /// <summary>세로 일렬 폴백에서 슬롯 <paramref name="index"/>의 중심. <paramref name="sign"/>은
+        /// 화면 안쪽 수직 방향(+1 = 위, −1 = 아래).
+        /// <para><see cref="SlotCenterPoints"/>와 같은 이유로 <b>public static 순수 함수</b>다 —
+        /// 폴백 기하도 씬 없이 EditMode에서 잠글 수 있어야 하고, 테스트가 이 식을 <b>베껴 적으면</b>
+        /// 그 사본이 프로덕션과 조용히 갈라진다.</para></summary>
+        public static Vector2 ColumnSlotCenterPoints(Vector2 originPoints, float sign, int index)
+            => new Vector2(originPoints.x,
+                originPoints.y + sign * (OrbitRadiusPoints + index * ColumnFallbackSpacingPoints));
 
         /// <summary>이 각도의 부채꼴을 화면 안으로 넣는 데 필요한 <b>최소 평행이동</b>.</summary>
         private Vector2 RequiredShift(float baseDegrees, float diameter)
@@ -1360,14 +1803,13 @@ namespace StickMate.Interaction
             float sign = _gearCenterPoints.y > _screenPointsAtLayout.y * 0.5f ? -1f : 1f;
             for (int i = 0; i < ButtonCount; i++)
             {
-                _buttons[i].CenterPoints = new Vector2(
-                    _gearCenterPoints.x,
-                    _gearCenterPoints.y + sign * (OrbitRadiusPoints + i * spacing));
+                _buttons[i].CenterPoints = ColumnSlotCenterPoints(_gearCenterPoints, sign, i);
             }
             _diameterPoints = diameter;
+            _layoutShiftPoints = Vector2.zero;
         }
 
-        /// <summary>네 버튼을 <b>같은 벡터로</b> 평행이동해 화면 안으로 넣는다(형태 보존 — 개별 클램프 금지).</summary>
+        /// <summary>버튼 전부를 <b>같은 벡터로</b> 평행이동해 화면 안으로 넣는다(형태 보존 — 개별 클램프 금지).</summary>
         private void ShiftGroupIntoScreen()
         {
             Rect union = BoxFor(_buttons[0].CenterPoints, _diameterPoints);
@@ -1380,6 +1822,7 @@ namespace StickMate.Interaction
 
             Vector2 shift = ShiftToFit(union);
             for (int i = 0; i < ButtonCount; i++) _buttons[i].CenterPoints += shift;
+            _layoutShiftPoints += shift;
         }
 
         /// <summary>
@@ -1419,6 +1862,31 @@ namespace StickMate.Interaction
             ReservedEdgeProbe.EdgeInsetPoints(_agent != null ? _agent.PlatformService : null, ReservedEdge.Right));
 
         /// <summary>
+        /// ★★ 2026-09-03 — <b>마지막 남은 변.</b> 좌·우·상은 이미 예약 띠를 보는데 <b>하단만
+        /// <c>ScreenMarginPoints</c> 8pt 고정</b>이었다. 그런데 <b>Windows 작업표시줄의 기본 도킹
+        /// 위치가 하단</b>이다(UX_FLOW 53-9 / UX_WIDGETS R4-6 #5).
+        ///
+        /// <para><b>실측 계산</b>: 하단 막대 48pt 구성에서 톱니를 화면 아래로 옮기면 부채꼴 상자의
+        /// <c>yMin</c>이 8까지 내려갈 수 있으므로 최대 <b>40pt가 막대 뒤</b>로 들어간다. 작업표시줄은
+        /// 최상위 창이라 <b>그 위의 클릭은 우리에게 오지 않는다</b> — 보이는데 안 눌리는 버튼이 된다.</para>
+        ///
+        /// <para>★★ <b>「Dock은 캐릭터의 발판이다」와 충돌하지 않는다.</b> 그 원칙은
+        /// <c>SurfaceSafeAreaPolicy.ClampCenterY</c>가 지키고 있고 그쪽은 <b>안 건드렸다</b>.
+        /// 두 규칙의 대상이 다르기 때문이다:
+        /// <list type="bullet">
+        ///   <item><b>캐릭터</b>는 Dock 위를 <b>걷는다</b> — 그림이고, 가려도 잃는 것이 없다.</item>
+        ///   <item><b>부채꼴 버튼</b>은 <b>눌러야 하는 것</b>이다 — 막대 뒤로 들어가면 클릭 자체가
+        ///     도착하지 않는다. 「발판」 설계는 그림에 대한 것이지 클릭 표면에 대한 것이 아니다.</item>
+        /// </list></para>
+        ///
+        /// <para><b>회귀 없음</b>: 띠가 0이면 <c>max(8, 0) = 8</c>로 <b>지금과 비트 동일</b>하다.
+        /// macOS Dock이 있는 환경에서는 부채꼴이 Dock 위로 올라선다 — 그쪽도 클릭을 먹는 최상위
+        /// 표면이므로 같은 이유로 올바르다.</para>
+        /// </summary>
+        private float EffectiveBottomMarginPoints => EffectiveMarginPoints(ScreenMarginPoints,
+            ReservedEdgeProbe.EdgeInsetPoints(_agent != null ? _agent.PlatformService : null, ReservedEdge.Bottom));
+
+        /// <summary>
         /// <b>설계 여백</b>과 <b>관측된 예약 띠 두께</b>를 합치는 식 — 네 변이 <b>이 한 줄</b>을 공유한다.
         ///
         /// <para><b>왜 max인가</b>: 설계 여백은 "화면 끝에 달라붙지 않게" 정한 값이고 띠 두께는
@@ -1441,7 +1909,8 @@ namespace StickMate.Interaction
             if (union.xMin < leftMargin) shift.x = leftMargin - union.xMin;
             else if (union.xMax > _screenPointsAtLayout.x - rightMargin)
                 shift.x = _screenPointsAtLayout.x - rightMargin - union.xMax;
-            if (union.yMin < ScreenMarginPoints) shift.y = ScreenMarginPoints - union.yMin;
+            float bottomMargin = EffectiveBottomMarginPoints;
+            if (union.yMin < bottomMargin) shift.y = bottomMargin - union.yMin;
             else if (union.yMax > _screenPointsAtLayout.y - EffectiveTopMarginPoints)
                 shift.y = _screenPointsAtLayout.y - EffectiveTopMarginPoints - union.yMax;
             return shift;
@@ -1463,7 +1932,7 @@ namespace StickMate.Interaction
         private static Rect BoxFor(Vector2 center, float diameter) => ButtonClampBox(center, diameter);
 
         private bool IsBoxOnScreen(Rect box)
-            => box.xMin >= EffectiveLeftMarginPoints && box.yMin >= ScreenMarginPoints
+            => box.xMin >= EffectiveLeftMarginPoints && box.yMin >= EffectiveBottomMarginPoints
                && box.xMax <= _screenPointsAtLayout.x - EffectiveRightMarginPoints
                && box.yMax <= _screenPointsAtLayout.y - EffectiveTopMarginPoints;
 
@@ -1552,6 +2021,10 @@ namespace StickMate.Interaction
                 _hoverLabelText.text = ButtonNames[i];
                 _nameWidths[i] = _hoverLabelText.preferredWidth + HoverLabelPaddingPoints;
             }
+            // 무장 문구도 <b>여기서 한 번만</b> 잰다 — 무장 중에는 매 프레임 도는 코드가 있으므로
+            // 그쪽에서 preferredWidth를 부르면 3초 동안 폰트 메시를 매 프레임 다시 재게 된다.
+            _hoverLabelText.text = QuitArmedLabel;
+            _quitArmedLabelWidth = _hoverLabelText.preferredWidth + HoverLabelPaddingPoints;
             _hoverLabelText.text = string.Empty;
 
             SetHoverLabelAlpha(0f);
@@ -1623,7 +2096,9 @@ namespace StickMate.Interaction
                 GearMenuButton.FocusMode => BuildStopwatchSymbol(view),
                 GearMenuButton.Character => BuildStickmanSymbol(view),
                 GearMenuButton.Action => BuildMegaphoneSymbol(view.Symbol),
-                _ => BuildChecklistSymbol(view),
+                GearMenuButton.Quit => BuildPowerSymbol(view),
+                GearMenuButton.Todo => BuildChecklistSymbol(view),
+                _ => UnknownSymbolFallback(view, index),
             };
 
             // ★ 라벨 알약 서브트리는 2026-08-31에 통째로 삭제됐다(36-4, 사용자 지시). 되살릴 때는
@@ -1651,6 +2126,19 @@ namespace StickMate.Interaction
             }
 
             return view;
+        }
+
+        /// <summary>배선이 빠진 슬롯 — <b>조용히 넘어가지 않는다</b>.
+        /// <para>예전에는 [오늘 할일]이 <c>_ =&gt;</c>로 흘러 들어와서, 슬롯을 하나 더 늘리면 그 버튼이
+        /// <b>체크리스트 그림을 달고</b> 나타났다. 정상값을 전부 명시로 옮긴 지금 여기 도달하는 것은
+        /// 배선 누락뿐이다 — 그림은 뭐라도 그려야 하므로 물러나되, <b>화면과 뜻이 어긋났다는 사실</b>을
+        /// 로그로 남긴다.</para></summary>
+        private Image[] UnknownSymbolFallback(ButtonView view, int index)
+        {
+            Debug.LogError($"[부채꼴] 슬롯 {index}({NameOf(index)})에 심볼이 없습니다 — " +
+                "GearMenuButton에 값을 더했다면 BuildButton의 switch에도 그 가지를 더해야 합니다. " +
+                "지금은 체크리스트 심볼로 물러났고, 그 버튼의 그림과 뜻이 어긋난 상태입니다.");
+            return BuildChecklistSymbol(view);
         }
 
         /// <summary>① 집중 모드 — 스톱워치(용두 + 링 + 바늘 2). 세션이 돌면 이 링이 그대로 잔여 시간 호가 된다.</summary>
@@ -1746,6 +2234,64 @@ namespace StickMate.Interaction
             var waveUp = UiChrome.AddStroke(p, "WaveUpper", 4.6f, 1.6f, 30f, new Vector2(9.6f, 3.4f), UiChrome.TextPrimary);
             var waveDown = UiChrome.AddStroke(p, "WaveLower", 4.6f, 1.6f, -30f, new Vector2(9.6f, -3.4f), UiChrome.TextPrimary);
             return new[] { upper, lower, neck, mouth, waveUp, waveDown };
+        }
+
+        /// <summary>위쪽이 트인 원호의 <b>틈 각도</b>(도). 세로획이 그 틈을 지난다.</summary>
+        private const float PowerGapDegrees = 50f;
+
+        /// <summary>전원 기호가 쓰는 원의 지름(pt) — 무장 카운트다운 링과 <b>같은 값</b>이다.
+        /// <para>53-4가 "링이 그 원호와 같은 반지름에 겹치므로 도형이 하나 더 늘지 않는다"고 적은 것이
+        /// 이 한 줄이다. 두 곳에 따로 적으면 하나만 바뀌는 날 카운트다운이 원호에서 벗어난다.</para>
+        /// <para>DPI: 20 = 4×5라 ×1.25 / 1.5 / 1.75에서 25 / 30 / 35px로 <b>전부 정수</b>다.</para></summary>
+        private const float PowerRingDiameterPoints = 20f;
+
+        /// <summary>
+        /// ⑤ 앱 종료 — <b>전원 기호</b>(위가 트인 원호 + 세로획). 2획.
+        ///
+        /// <para>★ <b><c>✕</c>를 쓰지 않는다</b>(53-5). <c>✕</c>는 이 앱에서 <b>「창 닫기」 전용
+        /// 글리프</b>다(정보창 · 팝오버 · 설정창 · 할일 삭제 = 4곳). 부채꼴 위의 <c>✕</c>는
+        /// <b>"메뉴 닫기"</b>로 먼저 읽힌다 — 되돌릴 수 없는 버튼에 가장 나쁜 오독이다.</para>
+        ///
+        /// <para>36-5의 규칙(<b>서로 다른 실루엣</b>)도 만족한다: 스톱워치(원+바늘) · 스틱맨(수직 대칭
+        /// 인체) · 체크리스트(수평 줄) · 확성기(오른쪽 비대칭) 넷 중 어느 것과도 형태가 겹치지 않는다.
+        /// 원은 스톱워치와 공유하지만 <b>트인 틈 + 관통하는 세로획</b>이 구분한다.</para>
+        ///
+        /// <para>★ 조형 최종 확정은 <c>design-art</c> 인계다 — 여기 값은 계산상 통과일 뿐 실기 캡처가 없다.</para>
+        /// </summary>
+        private Image[] BuildPowerSymbol(ButtonView view)
+        {
+            Transform p = view.Symbol;
+
+            Image ring = UiChrome.AddCircle(p, "PowerRing", PowerRingDiameterPoints,
+                UiChrome.TextPrimary, SymbolStroke);
+            // 위쪽을 <b>틔운다</b>. Filled/Radial360은 시작점(Top)에서 시계 방향으로 채우므로 남는
+            // 틈이 시작점 <b>바로 앞</b>에 생긴다 — 그대로 두면 틈이 왼쪽 위로 치우친다. 링은 틈만
+            // 빼면 회전 대칭이라, 링 자체를 틈의 <b>절반</b>만큼 되돌리면 틈이 정확히 위로 온다.
+            ring.type = Image.Type.Filled;
+            ring.fillMethod = Image.FillMethod.Radial360;
+            ring.fillOrigin = (int)Image.Origin360.Top;
+            ring.fillClockwise = true;
+            ring.fillAmount = 1f - PowerGapDegrees / 360f;
+            ring.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -PowerGapDegrees * 0.5f);
+
+            // 세로획 — 원 중심에서 틈을 지나 위로. 길이는 원 반지름에서 파생시킨다(원이 커지면 같이 큰다).
+            float stem = PowerRingDiameterPoints * 0.55f;
+            Image stroke = UiChrome.AddStroke(p, "PowerStem", stem, SymbolStroke, 90f,
+                new Vector2(0f, stem * 0.5f), UiChrome.TextPrimary);
+
+            // ---- 무장 카운트다운 링 ---- 평소에는 꺼져 있다(도형이 하나 더 늘지 않는다는 말의 실체는
+            //   "같은 반지름 위에 겹친다"이지 "Image가 0개"가 아니다 — 채움 비율을 그리려면 별도 채널이
+            //   필요하고, 그건 집중 모드의 잔여 시간 호와 <b>같은 부품(RingFill)</b>을 재사용한다).
+            view.RingFill = UiChrome.AddCircle(p, "QuitCountdown", PowerRingDiameterPoints,
+                UiChrome.WarmAccent, SymbolStroke);
+            view.RingFill.type = Image.Type.Filled;
+            view.RingFill.fillMethod = Image.FillMethod.Radial360;
+            view.RingFill.fillOrigin = (int)Image.Origin360.Top;
+            view.RingFill.fillClockwise = true;
+            view.RingFill.fillAmount = 1f;
+            view.RingFill.gameObject.SetActive(false);
+
+            return new[] { ring, stroke };
         }
 
         private static Image AddSmallBox(Transform parent, string name, Vector2 center)

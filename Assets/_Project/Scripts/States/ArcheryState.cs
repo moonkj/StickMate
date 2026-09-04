@@ -27,6 +27,10 @@ namespace StickMate.States
     /// 도달점과 비행 시간이 주어지면 초기 속도가 유일하게 결정된다). 화살에 Rigidbody2D를 달아 힘을
     /// 주는 방식이 아니므로 프레임레이트/충돌 우연에 따라 연출이 매번 달라지는 일이 원리적으로 없다.
     ///
+    /// ┌─ ★ 아래 두 문단은 <b>【폐지된 옛 설계】를 이력으로 보존한 것</b>이다(2026-09-03). 현재
+    /// │  동작이 아니다 — 정정 전문은 바로 다음 절에 있다. 지우지 않는 이유는 사용자 신고의 원인이
+    /// └─ 정확히 이 설계였기 때문이다. <b>여기 적힌 대로 코드를 되돌리지 마라.</b>
+    ///
     /// 시나리오 구성(3발이 똑같으면 지루하다 — 리더 지시):
     ///   · <b>마지막 발은 항상 정중앙</b>(Bullseye). 연출의 클라이맥스를 고정한다.
     ///   · 앞의 두 발 중 <b>정확히 하나가 빗나간다</b>(Miss, 과녁에 못 미치고 앞 땅에 꽂힘).
@@ -35,6 +39,39 @@ namespace StickMate.States
     /// 즉 "빗나감 1 + 외곽 1 + 정중앙 1"의 순서만 섞이는 구조다. 3발 전부를 독립 추첨하면
     /// "3발 다 빗나감"/"3발 다 정중앙" 같은 김빠지는 조합이 나오고, 그걸 사후에 걸러내는 코드는
     /// 결국 여기서 하는 일과 같아진다.
+    ///
+    /// ============================================================================
+    /// ★★ 2026-09-03 — <b>바로 위 "시나리오 구성" 절은 사용자 지시로 뒤집혔다</b>(원문 보존)
+    /// ============================================================================
+    /// 위 두 문단은 <b>이력으로 남긴 것이지 현재 동작이 아니다.</b> 지우지 않는 이유는 사용자 신고의
+    /// 원인이 바로 저 설계였기 때문이다 — 신고 원문:
+    /// <i>"활쏘기는 무조건 66.6%아니야? 계속 시도해봐도 무조건 2대만 과녁에 명중하고 1대는 무조건
+    /// 실패하는데"</i>. <b>그 관찰은 정확했다.</b> "빗나감 1 + 외곽 1 + 정중앙 1"이 고정이므로 명중률은
+    /// 사이클마다 예외 없이 정확히 2/3였고, 바뀌는 것은 <b>어느 발이 빗나가는가</b>뿐이었다. 버그가
+    /// 아니라 의도된 결정론이었고, 그래서 아무리 반복해도 달라지지 않았다.
+    ///
+    /// 사용자 지시(2026-09-03): <i>"확률제로 바꿔야지.. 어쩔땐 다맞고 어쩔땐 하나도 안맞고 어쩔땐
+    /// 1대 어쩔땐 2대 이런식으로"</i>. 그래서 지금은:
+    ///   · <b>발마다 독립 추첨</b>한다 — <c>StickConfig.archeryHitChance</c>(기본 0.667)로
+    ///     그 자리에서 Hit/Miss를 정하고, <b>명중한 발에만</b> 한 번 더 추첨해
+    ///     (<c>StickConfig.archeryBullseyeChance</c>, 기본 0.5 = P(정중앙|명중)) 정중앙/외곽을 가른다
+    ///     (리더 판정 ②안, 2026-09-03). 빗나간 발은 두 번째 추첨에 들어가지 않는다.
+    ///     ★ 두 기본값은 <b>옛 고정 시나리오의 기대값을 보존하도록 유도</b>한 것이다:
+    ///     3 × 0.667 × 0.5 = 1.0005회/세션(옛 모델은 정중앙 정확히 1회 고정),
+    ///     정보창 명중률 기대 33.4%(옛 고정 33.3%), 보너스 XP 15.0점/세션(옛 고정 15점).
+    ///     유도 전문은 <c>StickConfig.archeryBullseyeChance</c>의 Tooltip에 있다.
+    ///   · <b>"마지막은 항상 정중앙" 보장은 없다.</b> 마지막 발도 빗나갈 수 있고, 특정 인덱스에
+    ///     특정 결과가 묶이는 자리는 한 곳도 없다(정렬/재배치도 하지 않는다 — 그러면 "2발 명중"이
+    ///     항상 [Hit,Hit,Miss]가 되어 같은 병이 형태만 바꿔 되살아난다).
+    ///   · "3발 다 명중"도 "3발 다 빗나감"도 나온다. <b>그것이 사용자가 요구한 것이다</b> —
+    ///     옛 설계의 우려("김빠지는 조합")는 사용자의 명시적 반대 지시로 <b>무효화됐다.</b>
+    /// 기본값 0.667은 옛 시나리오의 평균 명중률(2/3)과 같아 체감 난이도는 유지된다.
+    ///
+    /// <b>바뀌지 않은 것</b>: "우연에 맡기지 않는다"의 <b>나머지 절반</b>은 그대로다. 결과는 여전히
+    /// <see cref="Enter"/>에서 <b>미리</b> 확정되고, 궤적은 그 확정된 도달점을 지나도록 역산된다.
+    /// 확률이 들어간 자리는 <b>"어느 발이 Hit인가"</b> 하나뿐이고, 물리 시뮬레이션이 승패를 정하는
+    /// 구조로 되돌아간 것이 <b>아니다</b>. 착탄 위치 규칙(Hit=반경 0.45~0.80 링, Miss=과녁 앞 땅)도
+    /// 손대지 않았다.
     ///
     /// ============================================================================
     /// 대사를 넣지 않았다 (원칙 1과 별개의 판단)
@@ -48,9 +85,13 @@ namespace StickMate.States
     {
         private readonly StickmanBlackboard _blackboard;
 
-        /// <summary>한 사이클에 쏘는 화살 수. 사용자 요청 "3번정도"의 그 3이며, 시나리오 구성
-        /// (빗나감 1 + 외곽 1 + 정중앙 1)이 이 값에 맞춰져 있으므로 튜닝 스칼라가 아니라 구조 상수다.
-        /// StickConfig가 아니라 여기 상수로 두는 이유는 보행 키프레임 표와 같은 판단 기준이다.</summary>
+        /// <summary>한 사이클에 쏘는 화살 수. 사용자 요청 "3번정도"의 그 3이다.
+        /// <para>★ 2026-09-03 정정 — 예전 이 자리에는 "시나리오 구성(빗나감 1 + 외곽 1 + 정중앙 1)이
+        /// 이 값에 맞춰져 있으므로 구조 상수"라고 적혀 있었다. 그 시나리오는 폐지됐고, 지금 결과는
+        /// 발마다 독립 추첨이라 <b>ShotCount에 묶인 결과 배분이 없다</b>. 그래도 여전히 튜닝 스칼라가
+        /// 아니라 구조 상수다 — 사용자가 요청한 연출 길이 자체가 3발이고, 페이즈 머신·Outro 대기·
+        /// 테스트가 전부 이 개수를 전제로 잡혀 있다. StickConfig가 아니라 여기 상수로 두는 이유는
+        /// 보행 키프레임 표와 같은 판단 기준이다.</para></summary>
         public const int ShotCount = 3;
 
         /// <summary>Approach = 과녁을 세울 자리까지 <b>실제로 걸어가는</b> 구간(사용자 명시 요구:
@@ -115,20 +156,81 @@ namespace StickMate.States
                 $"x={_blackboard.ArcheryStandWorldX:F2}까지 걸어간 뒤 과녁을 세웁니다. " +
                 $"과녁 예정 {_blackboard.ArcheryTargetWorld.ToString("F2")}, " +
                 $"지면 y={_blackboard.ArcheryGroundWorldY:F2}, 방향={(_blackboard.ArcheryFacingSign > 0f ? "오른쪽" : "왼쪽")}. " +
-                $"시나리오 = {_results[0]} / {_results[1]} / {_results[2]} " +
-                "(마지막은 항상 정중앙, 앞 두 발 중 하나는 반드시 빗나감 — 미리 확정한 뒤 그 도달점을 " +
-                "지나도록 궤적을 역산하므로 물리 우연에 맡기지 않는다).");
+                $"결과 = {_results[0]} / {_results[1]} / {_results[2]} " +
+                $"(발마다 명중확률 {(_cfg != null ? _cfg.archeryHitChance : 0.667f):P1}, " +
+                $"명중 시 정중앙확률 {(_cfg != null ? _cfg.archeryBullseyeChance : 0.5f):P1}로 독립 추첨 — " +
+                "2026-09-03 사용자 지시. 고정 시나리오가 아니므로 3발 다 명중/다 빗나감도 나온다. " +
+                "뽑은 뒤에는 그 도달점을 지나도록 궤적을 역산하므로 그림과 판정이 어긋나지 않는다).");
         }
 
-        /// <summary>클래스 문서 "시나리오 구성" 그대로 — 마지막은 정중앙 고정, 앞 두 발 중 하나만 빗나감.</summary>
+        /// <summary>
+        /// ★★ 2026-09-03 사용자 지시 — <b>발마다 독립 추첨</b>. 옛 결정론 시나리오(빗나감 1 + 외곽 1 +
+        /// 정중앙 1, 순서만 섞임)는 폐지됐다. 근거는 클래스 문서의 "2026-09-03" 절에 있다.
+        ///
+        /// <para><b>정렬하거나 재배치하지 않는다.</b> "명중 수를 먼저 뽑고 그 개수만큼 앞쪽에 채우는"
+        /// 식으로 짜면 같은 2/3에서도 배열이 항상 <c>[Hit,Hit,Miss]</c>로 고정돼, 사용자가 신고한
+        /// 병(<i>"무조건 2대만 명중하고 1대는 무조건 실패"</i>)이 <b>형태만 바꿔 되살아난다</b>.
+        /// 그래서 i번째 자리에서 곧바로 뽑아 그 자리에 넣는다 — 개수도 순서도 매번 달라진다.</para>
+        /// </summary>
         private void BuildScenario()
         {
-            int missIndex = Random.Range(0, ShotCount - 1); // 0 또는 1.
-            for (int i = 0; i < ShotCount - 1; i++)
+            float hitChance = _cfg != null ? _cfg.archeryHitChance : 0.667f;
+            float bullseyeChance = _cfg != null ? _cfg.archeryBullseyeChance : 0.5f;
+            for (int i = 0; i < ShotCount; i++)
             {
-                _results[i] = i == missIndex ? ArcheryShotResult.Miss : ArcheryShotResult.Hit;
+                // 자리별 즉시 추첨 — i와 결과 사이에 어떤 규칙도 두지 않는다(위 문단).
+                _results[i] = ResolveShotResult(hitChance, bullseyeChance, Random.value, Random.value);
             }
-            _results[ShotCount - 1] = ArcheryShotResult.Bullseye;
+        }
+
+        /// <summary>
+        /// 한 발의 결과를 정하는 <b>순수 함수</b> — 난수를 주입받는다(EditMode에서 씬 없이 분포를
+        /// 검사할 수 있게. ArcheryDirector.ResolvePlacement가 같은 이유로 이 형태다).
+        ///
+        /// <para>★ 경계를 부등호에 맡기지 않는 이유: <c>UnityEngine.Random.value</c>는 <b>1.0을
+        /// 포함</b>하는 [0,1] 구간이라 <c>value &lt; 1f</c>가 아주 드물게 거짓이 된다. 그러면
+        /// "확률 1.0인데 빗나갔다"가 재현 불가능한 형태로 튀어나온다. 0f/1f를 먼저 확정 분기로
+        /// 걸러 두 극값을 <b>결정론</b>으로 못박는다(테스트가 그 두 경계를 잠근다).</para>
+        /// </summary>
+        /// <param name="hitChance">명중 확률(0~1). 0이면 반드시 Miss, 1이면 반드시 Hit.</param>
+        /// <param name="roll01">[0,1] 난수 한 개.</param>
+        public static ArcheryShotResult ResolveShotResult(float hitChance, float roll01)
+            => RollsTrue(hitChance, roll01) ? ArcheryShotResult.Hit : ArcheryShotResult.Miss;
+
+        /// <summary>
+        /// ★★ 2026-09-03 (리더 판정 ②안) — 명중한 발에 <b>한 번 더 추첨</b>해서 정중앙인지 외곽인지
+        /// 정한다. 확률제 원칙을 명중/빗나감에서 멈추지 않고 <b>정중앙 여부까지</b> 끌고 간 것이다
+        /// ("어쩔 땐 다 맞고 어쩔 땐 하나도 안 맞고"가 명중/실패에만 적용될 이유가 없다 — 리더).
+        ///
+        /// <para>★ <b>Miss는 이 추첨에 들어가지도 않는다.</b> 빗나간 발이 어떤 난수에서도 Bullseye로
+        /// 승격되지 않는 것이 이 함수의 계약이고, 테스트가 <c>bullseyeChance = 1</c>에서 그 누수
+        /// 경로를 음성 대조로 잠근다. 빗나감의 도달점은 과녁 <b>앞 땅</b>인데 결과만 Bullseye면
+        /// 그림과 판정이 정면으로 어긋난다(이 상태가 애초에 결과를 미리 확정하는 이유가 그것이다).</para>
+        ///
+        /// <para>난수 두 개를 <b>따로</b> 받는 이유: 같은 난수를 재사용하면 "명중한 발은 난수가 이미
+        /// hitChance 아래임이 확정"이라 정중앙 판정이 조건부로 편향된다(예: 두 확률이 같으면 명중은
+        /// 전부 정중앙이 된다). 두 사건은 독립이어야 한다.</para>
+        /// </summary>
+        /// <param name="hitChance">명중 확률(0~1).</param>
+        /// <param name="bullseyeChance">P(정중앙 | 명중). 0이면 정중앙이 없고 1이면 명중이 전부 정중앙.</param>
+        /// <param name="hitRoll01">명중 판정용 [0,1] 난수.</param>
+        /// <param name="bullseyeRoll01">정중앙 판정용 [0,1] 난수(위와 <b>다른</b> 뽑기).</param>
+        public static ArcheryShotResult ResolveShotResult(float hitChance, float bullseyeChance,
+            float hitRoll01, float bullseyeRoll01)
+        {
+            ArcheryShotResult shot = ResolveShotResult(hitChance, hitRoll01);
+            if (shot != ArcheryShotResult.Hit) return shot;   // ★ 빗나감은 승격되지 않는다.
+            return RollsTrue(bullseyeChance, bullseyeRoll01) ? ArcheryShotResult.Bullseye : shot;
+        }
+
+        /// <summary>확률 하나를 난수 하나로 판정하는 <b>단일 구현</b> — 명중 판정과 정중앙 판정이
+        /// 경계 처리를 각자 복사해 두면 한쪽만 고쳐져 갈라진다(이 저장소가 반복해서 당한 형태).
+        /// 반개구간 계약: 난수가 확률과 <b>같으면</b> 거짓이다.</summary>
+        private static bool RollsTrue(float chance, float roll01)
+        {
+            if (chance <= 0f) return false;
+            if (chance >= 1f) return true;
+            return roll01 < chance;
         }
 
         public void Tick(float deltaTime)
@@ -439,6 +541,11 @@ namespace StickMate.States
             switch (result)
             {
                 case ArcheryShotResult.Bullseye:
+                    // ★ 2026-09-03 — 이 분기는 **로직 변경 없이 그대로** 둔다(리더 지시: 착탄 위치
+                    // 로직 불변). ②안 채택으로 Bullseye는 여전히 도달 가능하다 — 명중한 발이
+                    // archeryBullseyeChance 추첨에 통과하면 여기로 온다. 그래서 성장/기록 레이어
+                    // (CharacterStatsDirector / CharacterProgressionDirector)의 Bullseye 조건도
+                    // 코드 수정 없이 그대로 살아 있다.
                     return center;
 
                 case ArcheryShotResult.Hit:

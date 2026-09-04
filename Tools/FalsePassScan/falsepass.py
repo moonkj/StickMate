@@ -29,10 +29,24 @@ import sys
 
 ATTR = re.compile(r'\[\s*(Test|UnityTest|TestCase|TestCaseSource)\b')
 # 무언가를 실제로 재는 호출. LogAssert/Expect 는 Unity 테스트에서 유효한 단언이다.
+# ★★ 2026-09-03 실측으로 좁혔다 — 옛 정규식은 `Assert.` 로 시작하면 **뭐든** 단언으로 셌다.
+#   그래서 `Assert.Pass(...)` 하나만 있는 «덤프 하네스»가 **깨끗**으로 나왔다.
+#   실제 사례: `Tests/PlayMode/LineRendererUvBandProbeTests.cs` — [UnityTest] 6개가 전부
+#   파일을 쓰고 `Assert.Pass("덤프 완료 — 판정하지 않는다")` 로 끝난다. 아무것도 재지 않는데
+#   러너에서는 **초록 6건**이고, 그 6건이 전량 건수(G9의 기준선)까지 부풀린다.
+#   ⇒ `Assert.Pass` / `Assert.Ignore` / `Assert.Inconclusive` 는 **측정이 아니다.**
+#     (판정을 «하지 않겠다»는 선언이다 — 통과와 미측정이 똑같이 생기는 바로 그 자리다.)
+NON_MEASURING = re.compile(r'\bAssert\s*\.\s*(Pass|Ignore|Inconclusive)\s*\(')
 ASSERT = re.compile(
     r'\b(Assert|StringAssert|CollectionAssert|FileAssert|DirectoryAssert|LogAssert)\s*\.'
     r'|\bAssert\.That\b|\bExpect\s*\('
 )
+
+
+def measuring_hits(text):
+    """측정하는 단언만 센다. Assert.Pass/Ignore/Inconclusive 는 제외."""
+    stripped = NON_MEASURING.sub('/*non-measuring*/', text)
+    return ASSERT.findall(stripped)
 # 단언을 감싸는 반복문 머리
 LOOPHEAD = re.compile(r'^\s*(foreach\s*\(|for\s*\(|while\s*\()')
 # "이 목록이 비어 있지 않다"를 먼저 못 박는 형태들
@@ -110,9 +124,32 @@ def analyze(name, body, line_no):
     lines = code_lines(body)
     code = '\n'.join(lines)
 
-    asserts = [i for i, ln in enumerate(lines) if ASSERT.search(strip_noise(ln))]
+    # ★ Assert.Pass / Ignore / Inconclusive 는 단언으로 세지 않는다(2026-09-03).
+    #   그것만 있는 메서드는 «판정하지 않겠다»고 선언한 덤프 하네스이고, 러너에서는 초록으로 보인다.
+    asserts = [i for i, ln in enumerate(lines)
+               if ASSERT.search(NON_MEASURING.sub('', strip_noise(ln)))]
     if not asserts:
-        findings.append(('A', '단언이 한 줄도 없다 — 예외만 안 나면 무조건 초록이다'))
+        # ★ 같은 «재지 않음»이라도 러너에 보이는 모습이 다르다 — 그래서 나눠 말한다.
+        #   Assert.Pass  → 러너에 **Passed**로 찍힌다(조용하다). 이쪽이 진짜 위험하다.
+        #   Assert.Ignore/Inconclusive → **Skipped**로 찍힌다(러너에 보인다).
+        #     이 저장소는 그것들을 TestClaimExpiryAuditTests의 Ignore 명부로 이미 다스린다.
+        kinds = set(m.group(1) for m in NON_MEASURING.finditer(code))
+        # ★ 2026-09-03 교정 — Pass 와 Ignore 가 **같이** 있으면 그건 이 저장소의 정상 래칫이다:
+        #   "갭이 닫혔으면 Assert.Pass 로 승격을 알리고, 아니면 Assert.Ignore 로 건너뛴다."
+        #   러너에는 Skipped 로 찍혀 **보인다**. 그러니 Ignore 가 있으면 Pass 로 분류하지 않는다.
+        #   실측으로 잡았다: PlatformParityAuditTests:264/374 를 '조용한 초록'이라고 잘못 불렀는데
+        #   실제 러너 결과는 둘 다 **Skipped** 였다(qa-r7_edit.xml 대조).
+        if 'Pass' in kinds and not (kinds & {'Ignore', 'Inconclusive'}):
+            findings.append(('A', '재는 단언이 없고 **Assert.Pass** 뿐이다 — 러너에는 '
+                                  '**Passed(초록)**로 찍히지만 아무것도 재지 않는다. 건너뜀과 달리 '
+                                  '러너 화면에서 통과와 구분되지 않고, 전량 건수(G9 기준선)까지 '
+                                  '부풀린다. [Explicit]로 빼거나 실단언을 붙여라'))
+        elif kinds:
+            findings.append(('A', f'재는 단언이 없고 Assert.{"/".join(sorted(kinds))} 뿐이다 — '
+                                  '러너에는 **Skipped**로 찍혀 보이기는 한다. Ignore 명부'
+                                  '(TestClaimExpiryAuditTests)에 등록돼 있는지 확인하라'))
+        else:
+            findings.append(('A', '단언이 한 줄도 없다 — 예외만 안 나면 무조건 초록이다'))
         return findings
 
     # (B) 모든 단언이 반복문 안에만 있는가 + 그 반복 대상이 비지 않음을 먼저 못 박았는가
@@ -222,6 +259,26 @@ def _built_at_runtime(lines, idx, name):
 # ---------------------------------------------------------------------------
 CALIB = [
     # (소스, 메서드명, 기대 종류들)
+    # ★ 2026-09-03 추가 — 실제로 뚫려 있던 자리. 이 두 표본이 깨지면 그날 숫자를 전부 버려라.
+    ("""
+    [UnityTest]
+    public IEnumerator 덤프만_하고_통과한다()
+    {
+        yield return null;
+        Write("dump.txt", all.ToString());
+        Assert.Pass("덤프 완료 — 판정하지 않는다");
+    }
+    """, '덤프만_하고_통과한다', {'A'}),
+
+    ("""
+    [Test]
+    public void PassA와_실단언이_같이_있으면_깨끗하다()
+    {
+        Assert.AreEqual(3, Compute());
+        Assert.Pass("여기까지 왔으면 됐다");
+    }
+    """, 'PassA와_실단언이_같이_있으면_깨끗하다', set()),
+
     ("""
     [Test]
     public void 아무것도_재지_않는다()

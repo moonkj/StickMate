@@ -14,6 +14,22 @@
     python3 mirrordrift.py          # 어긋난 도형 목록 (종료코드 1이면 어긋남)
     python3 mirrordrift.py -v       # 점 단위 차이까지
 
+    python3 mirrordrift.py --selftest   # ★ 탐지 경로 생존 + 양성/음성 대조 3종
+
+★ --selftest 가 왜 필요한가 (2026-09-03, docs/TEAM.md 「미러 검증 3종」)
+------------------------------------------------------------------
+이 저장소는 **초록이 「일치한다」가 아니라 「아무것도 안 쟀다」였던 사고**를 여러 번 냈다.
+같은 가족의 실패가 최소 셋이다 — `--selftest`가 `errors != 0`만 보고 통과를 찍은 건,
+`grep -v Hub`가 도는 Unity를 지운 건, `pgrep -f`가 자기 형제 셸을 잡은 건.
+**「어긋남 0건」은 그 자체로는 아무것도 증명하지 않는다.** 아래 셋을 같이 봐야 한다:
+
+  1. 탐지 경로 생존 — 설계 거울에 고의로 어긋남을 심으면 **실제로 빨개지는가**
+  2. 양성 대조     — 심은 **그 도형이** 지목되는가 (에러가 났다는 것만으로는 부족하다)
+  3. 음성 대조     — 안 심은 도형은 **조용한가** (전부 빨개지는 자도 아무것도 안 잰다)
+
+★ 덤프가 **비어 있어도** main()은 카테고리마다 ✗를 찍어 빨개진다. 그 형태를 「탐지됨」으로
+  오해하지 않도록 selftest는 **도형 개수 census부터** 찍는다 — 0이면 그 뒤는 전부 무의미하다.
+
 허용 오차는 dump가 float32를 거치며 생기는 반올림뿐(1e-4 R = 배율 0.75에서 0.0006pt).
 """
 import os, subprocess, sys, math
@@ -23,6 +39,7 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 BUILD = os.path.join(ROOT, "Tools", "ShapeDump", "build.sh")
 TOL = 1e-4
 VERBOSE = "-v" in sys.argv
+SELFTEST = "--selftest" in sys.argv
 
 
 def production():
@@ -60,44 +77,113 @@ def _align(a, b, loop):
     return best
 
 
+def compare(design, prod, quiet=False):
+    """설계 거울 ↔ 프로덕션 대조. (어긋남 건수, 지목된 태그 집합)을 돌려준다."""
+    bad, hits = 0, set()
+
+    def say(msg):
+        if not quiet: print(msg)
+
+    for cat, table in design.items():
+        if cat not in prod:
+            say("  ✗ %s 카테고리가 덤프에 없다" % cat); bad += 1; hits.add(cat); continue
+        for item, shapes in table.items():
+            ps = prod[cat].get(item)
+            if ps is None:
+                say("  ✗ %s %s 이(가) 프로덕션에 없다" % (cat, item))
+                bad += 1; hits.add("%s/%s" % (cat, item)); continue
+            if len(ps) != len(shapes):
+                say("  ✗ %s %s 도형 수 설계 %d ≠ 프로덕션 %d" % (cat, item, len(shapes), len(ps)))
+                bad += 1; hits.add("%s/%s" % (cat, item)); continue
+            for d, p in zip(shapes, ps):
+                tag = "%s/%s/%s" % (cat, item, d.name)
+                label = "%s %s '%s'" % (cat, item, d.name)
+                if d.name != p["name"]:
+                    say("  ✗ %s 이름 ≠ '%s'" % (label, p["name"])); bad += 1; hits.add(tag); continue
+                if d.loop != p["loop"] or bool(d.filled) != p["filled"] or d.tone != p["tone"]:
+                    say("  ✗ %s 속성 설계(loop=%s,fill=%s,tone=%d) ≠ 프로덕션(loop=%s,fill=%s,tone=%d)"
+                        % (label, d.loop, bool(d.filled), d.tone, p["loop"], p["filled"], p["tone"]))
+                    bad += 1; hits.add(tag); continue
+                e = _align(d.pts, p["pts"], d.loop)
+                if e is None:
+                    say("  ✗ %s 점 수 설계 %d ≠ 프로덕션 %d" % (label, len(d.pts), len(p["pts"])))
+                    bad += 1; hits.add(tag); continue
+                if e > TOL:
+                    say("  ✗ %s 최대 점오차 %.4f R (= %.2f획 @0.75)" % (label, e, e / 0.343864))
+                    bad += 1; hits.add(tag)
+                    if VERBOSE and not quiet:
+                        for i, (u, v) in enumerate(zip(d.pts, p["pts"])):
+                            if math.dist(u, v) > TOL:
+                                print("        %2d  설계 (%+.3f,%+.3f)  프로덕션 (%+.3f,%+.3f)"
+                                      % (i, u[0], u[1], v[0], v[1]))
+    return bad, hits
+
+
+def selftest():
+    """★ 미러 검증 3종. 하나라도 빠지면 이 자의 초록은 아무것도 증명하지 않는다."""
+    sys.path.insert(0, HERE)
+    import copy
+    import items, hair
+    prod = production()
+    design = {"HEAD": items.HEAD, "EYES": items.EYES, "NECK": items.NECK,
+              "BACK": items.BACK, "HAIR": hair.SET}
+
+    print("╔══ mirrordrift --selftest ══╗")
+
+    # ── 0. census — 덤프가 비어 있으면 아래 전부가 무의미하다 ──
+    n_prod = sum(len(v) for cat in prod.values() for v in cat.values())
+    n_design = sum(len(v) for cat in design.values() for v in cat.values())
+    print("  [0] census  프로덕션 도형 %d개 · 설계 거울 도형 %d개" % (n_prod, n_design))
+    if n_prod == 0 or n_design == 0:
+        print("  ✗✗ 한쪽이 비어 있다. 「어긋남 0」이든 「전부 어긋남」이든 아무 뜻이 없다.")
+        return 1
+    ok = True
+
+    # ── 1. 음성 대조 — 손대지 않은 상태는 조용해야 한다 ──
+    base_bad, base_hits = compare(design, prod, quiet=True)
+    print("  [1] 음성 대조 (원본 그대로)                       어긋남 %d건 %s"
+          % (base_bad, "OK" if base_bad == 0 else "✗ 원본부터 어긋나 있다"))
+    if base_bad: ok = False
+
+    # ── 2. 탐지 경로 생존 + 양성 대조 — 심은 그 도형«만» 지목되는가 ──
+    victim_cat, victim_item = "HEAD", next(iter(design["HEAD"]))
+    victim = design[victim_cat][victim_item][0]
+    tag = "%s/%s/%s" % (victim_cat, victim_item, victim.name)
+    hurt = copy.deepcopy(victim)
+    hurt.pts = [(x + TOL * 10, y) for x, y in victim.pts]      # 허용오차의 10배
+    poisoned = dict(design)
+    poisoned[victim_cat] = dict(design[victim_cat])
+    poisoned[victim_cat][victim_item] = [hurt] + list(design[victim_cat][victim_item][1:])
+
+    bad, hits = compare(poisoned, prod, quiet=True)
+    alive = bad > 0
+    named = tag in hits
+    only = hits == {tag}
+    print("  [2] 탐지 경로 생존 (%s 를 %.0e R 밀었다)" % (tag, TOL * 10))
+    print("        → 어긋남 %d건 %s"
+          % (bad, "OK" if alive else "✗✗ 안 빨개졌다 — 이 자는 죽어 있다"))
+    print("  [3] 양성 대조 — 심은 그 도형이 지목됐는가          %s"
+          % ("OK" if named else "✗ 다른 것만 지목됐다: %s" % sorted(hits)))
+    print("  [4] 음성 대조 — 안 심은 도형은 조용한가            %s"
+          % ("OK (지목 1건뿐)" if only else "✗ 부수 지목 %d건: %s"
+             % (len(hits) - 1, sorted(hits - {tag}))))
+    if not (alive and named and only): ok = False
+
+    print("╚══ selftest %s ══╝" % ("통과 — 위 「어긋남 0건」은 신뢰할 수 있다"
+                                   if ok else "★ 실패 — 이 자의 초록을 믿지 마라"))
+    return 0 if ok else 1
+
+
 def main():
+    if SELFTEST:
+        return selftest()
     sys.path.insert(0, HERE)
     import items, hair
     prod = production()
     design = {"HEAD": items.HEAD, "EYES": items.EYES, "NECK": items.NECK,
               "BACK": items.BACK, "HAIR": hair.SET}
-    bad = 0
     print("╔══ 설계 거울 ↔ 프로덕션 좌표 대조 (허용 %.0e R) ══╗" % TOL)
-    for cat, table in design.items():
-        if cat not in prod:
-            print("  ✗ %s 카테고리가 덤프에 없다" % cat); bad += 1; continue
-        for item, shapes in table.items():
-            ps = prod[cat].get(item)
-            if ps is None:
-                print("  ✗ %s %s 이(가) 프로덕션에 없다" % (cat, item)); bad += 1; continue
-            if len(ps) != len(shapes):
-                print("  ✗ %s %s 도형 수 설계 %d ≠ 프로덕션 %d" % (cat, item, len(shapes), len(ps)))
-                bad += 1; continue
-            for d, p in zip(shapes, ps):
-                tag = "%s %s '%s'" % (cat, item, d.name)
-                if d.name != p["name"]:
-                    print("  ✗ %s 이름 ≠ '%s'" % (tag, p["name"])); bad += 1; continue
-                if d.loop != p["loop"] or bool(d.filled) != p["filled"] or d.tone != p["tone"]:
-                    print("  ✗ %s 속성 설계(loop=%s,fill=%s,tone=%d) ≠ 프로덕션(loop=%s,fill=%s,tone=%d)"
-                          % (tag, d.loop, bool(d.filled), d.tone, p["loop"], p["filled"], p["tone"]))
-                    bad += 1; continue
-                e = _align(d.pts, p["pts"], d.loop)
-                if e is None:
-                    print("  ✗ %s 점 수 설계 %d ≠ 프로덕션 %d" % (tag, len(d.pts), len(p["pts"])))
-                    bad += 1; continue
-                if e > TOL:
-                    print("  ✗ %s 최대 점오차 %.4f R (= %.2f획 @0.75)" % (tag, e, e / 0.343864))
-                    bad += 1
-                    if VERBOSE:
-                        for i, (u, v) in enumerate(zip(d.pts, p["pts"])):
-                            if math.dist(u, v) > TOL:
-                                print("        %2d  설계 (%+.3f,%+.3f)  프로덕션 (%+.3f,%+.3f)"
-                                      % (i, u[0], u[1], v[0], v[1]))
+    bad, _ = compare(design, prod)
     print("╚══ 어긋남 %d건 ══╝" % bad)
     return 1 if bad else 0
 

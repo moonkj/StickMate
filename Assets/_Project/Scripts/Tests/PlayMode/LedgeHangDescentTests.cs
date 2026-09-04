@@ -18,6 +18,8 @@ namespace StickMate.Tests.PlayMode
     ///   (1) 정상 시퀀스 — Walk -> LedgeHang(매달림) -> Fall -> 아래 발판 착지
     ///   (2) 안전 규칙 A  — 매달린 도중 붙잡은 발판이 사라지면 **즉시** Fall
     ///   (3) 안전 규칙 B  — 유지시간이 아무리 길어도 ledgeHangMaxDuration 상한에서 반드시 손을 놓는다
+    ///   (4) ★ 가로축(2026-09-03 추가) — 매달린 **모든 프레임**에서 몸이 발판 모서리 바깥으로 나가지 않는다
+    ///       (사용자 신고 2026-09-02 "맥같은 경우도 창모서리가 타원이라 끝은 비어있는 공간에 매달려있음")
     ///
     /// 검증 방식: 실제 씬(Main.unity)의 StickmanAgent를 그대로 쓰되, **결정론적 발판 배치**와
     /// **결정론적 이동 의도**만 주입한다(둘 다 StickmanBlackboard의 public 필드라 새 훅이 필요 없다).
@@ -336,6 +338,66 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 절대 상한을 넘겼는데도 계속 매달려 있습니다 — '무한 매달림 금지' 위반입니다.");
             Assert.AreEqual(_clonedConfig.ledgeHangMaxDuration, hangDuration, 0.25f,
                 $"{LogPrefix} 손을 놓은 시점이 절대 상한과 어긋납니다 — 실제 {hangDuration:F3}초.");
+        }
+
+        // ============================================================================
+        // (4) ★ 「완전 끝말고 적당히 끝쪽」(사용자 요청 2026-09-03) — <b>매 프레임</b> 축으로 잰다
+        //
+        //     Tests/PlayMode/LedgeHangHandAlignmentTests의 (5)는 자세가 정착한 뒤 <b>한 번</b> 재는데,
+        //     예전 결함은 **붙잡기 보간 구간**(ledgeHangGrabDuration)에도 있었다 — 서 있던 자리에서
+        //     '모서리 + ledgeHangEdgeOffset'까지 Lerp하므로 그 사이 프레임들이 모서리를 **가로질러
+        //     바깥으로 나갔다.** 한 번만 재면 그 구간을 통째로 못 본다. 그래서 여기서는
+        //     매달린 **모든 프레임**의 X를 본다.
+        // ============================================================================
+
+        [UnityTest]
+        public IEnumerator LedgeHangNeverPutsTheBodyOutsideTheLedgeEdge()
+        {
+            yield return SetUpAtLedgeEdge();
+            StickmanBlackboard bb = _agent.Blackboard;
+
+            float standingX = bb.Body.position.x;
+            _intent.LedgeHangRequested = true;
+
+            bool sawHang = false;
+            float worstX = float.NegativeInfinity;   // 매달린 동안 가장 바깥(오른쪽)으로 나간 X
+            float worstEdgeX = float.NaN;
+            float elapsed = 0f;
+
+            // ★ 벽시계 기준 예산이다(배치모드는 2,000fps 이상이라 프레임 수 대기는 실제로 0.01초일 수 있다).
+            while (elapsed < MaxObserveSeconds)
+            {
+                yield return null;
+                elapsed += Time.deltaTime;
+
+                if (bb.Machine.CurrentStateId != StickmanStateId.LedgeHang)
+                {
+                    if (sawHang) break;             // 매달림이 끝났다 — 관찰 종료
+                    continue;
+                }
+
+                if (!sawHang)
+                {
+                    sawHang = true;
+                    _intent.LedgeHangRequested = false;
+                }
+
+                if (!bb.TryGetFootholdEdgeWorld(UpperHandle, 1, out _, out float edgeX)) continue;
+                float x = bb.Body.position.x;
+                if (x > worstX) { worstX = x; worstEdgeX = edgeX; }
+            }
+
+            Assert.IsTrue(sawHang, $"{LogPrefix} 전제 실패 — LedgeHang에 진입하지 못했습니다.");
+            Assert.IsFalse(float.IsNaN(worstEdgeX), $"{LogPrefix} 전제 실패 — 매달린 프레임을 한 번도 재지 못했습니다.");
+
+            float outsideBy = worstX - worstEdgeX;
+            Debug.Log($"{LogPrefix} 가로축 최악값 — 서 있던 X={standingX:F4}, 매달린 동안 가장 바깥 X={worstX:F4}, " +
+                $"그때의 모서리 X={worstEdgeX:F4}, 모서리 대비 {outsideBy:+0.0000;-0.0000}유닛(양수 = 바깥).");
+
+            Assert.Less(outsideBy, 0f,
+                $"{LogPrefix} 매달리는 동안 몸이 발판 모서리 바깥({outsideBy:F4}유닛)으로 나갔습니다 — " +
+                "붙잡기 보간이 '모서리 + ledgeHangEdgeOffset'으로 끌어내는 예전 강제 스냅입니다. " +
+                "macOS 창은 그 자리가 둥글게 잘려 있어 손이 빈 공간을 잡습니다(사용자 신고 2026-09-02).");
         }
     }
 }

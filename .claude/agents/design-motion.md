@@ -28,10 +28,14 @@ model: opus
 
 ## 이 프로젝트에서 이미 확정된 것
 
-- **등반 전용 자세가 존재하지 않는다.** `ParkourClimbState`는 기능적으로 정상이지만
+- ★ **2026-09-03 정정 — 아래 문단은 낡았다.** 「개선 R2」 라운드(2026-09-02)가
+  `StickmanPoseAnimator.cs:1048 ApplyParkourClimbPose` + `:2470 ParkourClimbPoseSettings`
+  (4박자·상승량·맨틀 각도)로 등반 전용 자세를 **실제로 구현했다.** 아래 원문은
+  구현 전 상태의 기록으로만 남긴다 — 되살릴 근거로 인용하지 마라.
+- ~~**등반 전용 자세가 존재하지 않는다.** `ParkourClimbState`는 기능적으로 정상이지만
   (맨틀 계산까지 있어 턱 위에 정확히 올라선다) `StickmanPoseAnimator`에 그 상태를 위한
-  포즈 코드가 **한 줄도 없다.** 그래서 기본 자세로 평행이동만 하고, 사용자는 그걸
-  **"어설픈 점프"**라고 신고했다.
+  포즈 코드가 한 줄도 없다. 그래서 기본 자세로 평행이동만 하고, 사용자는 그걸
+  "어설픈 점프"라고 신고했다.~~
 - **재사용할 것이 있다**: `LedgeHangState`(매달리기)와
   `Tests/PlayMode/LedgeHangHandAlignmentTests`가 "손이 턱 모서리에 붙는가"를 이미 잠그고 있다.
 - **팔다리 곡선화가 들어갔다**(`States/LimbCurveRenderer.cs`). 관절이 부드럽게 이어지므로

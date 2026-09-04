@@ -117,6 +117,18 @@ namespace StickMate.Interaction
                 return;
             }
 
+            // ★★★ 2026-09-03 — <b>시작만</b> 막는다. 바로 위 «이미 세션 중이면 끈다» 분기는
+            //   이 줄보다 앞에 있으므로 <b>끄는 길은 숨은 동안에도 열려 있다</b> — 켜 둔 채 숨긴
+            //   사용자에게서 정지 수단을 빼앗지 않는다(HiddenCharacterCommandGate "무엇을 막지
+            //   않는가"와 같은 판단). 시작 쪽은 캐릭터가 안경+팔짱 포즈로 전이하고 발밑에 링을
+            //   그리는 연출이라 보이지 않으면 성립하지 않는다(원칙 1).
+            if (HiddenCharacterCommandGate.BlocksNow(_player))
+            {
+                Debug.Log($"[포모도로] 집중 모드 시작 건너뜀({reason}) — {HiddenCharacterCommandGate.HiddenReason}. " +
+                    "지켜보는 캐릭터가 화면에 없으면 이 기능은 순수 타이머가 됩니다(19절/18절 연출 전제).");
+                return;
+            }
+
             float demoMinutes = DemoSessionSeconds / 60f;
             StartFocusSession(demoMinutes);
             // 데모 전용 유예 단축. StickConfig.pomodoroGraceSeconds(기본 120초)는 실사용 15~50분

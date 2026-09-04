@@ -1,0 +1,104 @@
+╔══ 1. 조각 census — 인계본 16종 ══╗
+아이템           조각    구성                       정원     보조색    하이라이트    채움알파(고유)
+clothhat      4     B F B H                  OK     OK     1        그라디언트x2 0.50
+furhat        5     CB B H B S               위반 5   OK     1        그라디언트x2 0.22
+fedora        4     B F B H                  OK     OK     1        그라디언트x2 0.55
+crown         9     B B CF CF CF CB CB CB H  위반 9   위반 6   1        그라디언트x5 1.00
+sunglasses    6     B B S S S H              위반 6   위반 2   1        0.60
+roundglasses  7     CB CB S S S H H          위반 7   위반 2   2        0.16
+goggles       7     B CB CB S S S H          위반 7   위반 2   1        그라디언트x1 0.60
+monocle       4     CB H S CB                OK     위반 2   1        그라디언트x1 0.20
+bowtie        4     B B RB H                 OK     OK     1        그라디언트x2 0.65
+stripedtie    5     B B F F H                위반 5   위반 2   1        그라디언트x2 0.55
+scarf         6     B B S S S H              위반 6   위반 0   1        그라디언트x2 
+bellnecklace  8     S CF CF CF B RB CB H     위반 8   위반 6   1        그라디언트x1 0.40 0.55 0.80
+shortcape     4     B B S H                  OK     OK     1        그라디언트x1 0.45
+longcape      6     B B CB S S H             위반 6   위반 2   1        그라디언트x2 0.45
+wings         6     B B S S RB H             위반 6   OK     1        그라디언트x2 0.40
+backpack      6     S B B RB RB H            위반 6   위반 3   1        그라디언트x1 0.14 0.28 0.70
+  ⇒ 정원(2~4) 위반 11종 · 보조색(정확히 1) 위반 10종
+
+╔══ 2. 카드 규칙 — 인계본 자기 획(2.2/64) 기준 ══╗
+  우리 카드: viewBox 40 · 획 1.7 · FitFraction 0.86 · 아이콘 44px → 획 1.87 캔버스px
+  인계본  : viewBox 64 · 획 2.2 · 아이콘 58px(자기 창) → 획 1.994 px
+            같은 아트를 **우리 44px 카드**에 넣으면 획 1.513 px (현행 대비 81%)
+
+아이템               잉크폭(획)     최단변(획)      꼭짓점     자기교차 규칙1 @카드
+clothhat           22.73    2.51(F)        7        0 OK
+furhat             19.32   10.45(B)        8        0 OK
+fedora             23.64    2.46(F)        9        0 OK
+crown              18.64    2.99(B)       11        0 OK
+sunglasses         27.73          —        0        0 OK
+roundglasses       27.73          —        0        0 OK
+goggles            27.73          —        0        0 OK
+monocle            19.41          —        0        0 OK
+bowtie             21.82          —        2        0 OK
+stripedtie         21.82    1.78(F)       15        0 OK
+scarf              20.00    3.86(B)        7        0 OK
+bellnecklace       19.09    8.18(B)        2        0 OK
+shortcape          18.26    2.37(B)       11        0 OK
+longcape           22.85    2.59(B)       11        0 OK
+wings              21.82          —       10        0 OK
+backpack           20.00          —        0        0 OK
+  ⇒ 인계본 자기 획 기준 규칙1 위반 0종
+
+╔══ 3. 착용 — 인계본 좌표를 우리 몸(R)에 얹었을 때 ══╗
+  변환식은 handoff_cal.py 에서 교정됐다(±1.0R 앵커 4건 · 최악 3.4%%).
+
+아이템                 슬롯        획비      최단변W      잉크폭W      조각간격W 규칙1 @0.75 / @0.60
+clothhat          head      0.32      0.79      7.19       0.01 2건 / 2건
+furhat            head      0.32      3.31      6.11       0.00 2건 / 2건
+fedora            head      0.32      0.78      7.48       0.00 2건 / 2건
+crown             head      0.32      0.95      5.90       0.03 8건 / 8건
+sunglasses        eyes      0.22         —      6.01       0.00 4건 / 4건
+roundglasses      eyes      0.22         —      6.01       0.01 5건 / 5건
+goggles           eyes      0.22         —      6.01       0.02 6건 / 6건
+monocle           eyes      0.22         —      4.21       0.00 2건 / 3건
+bowtie            neck      0.24         —      5.32       0.07 2건 / 2건
+stripedtie        neck      0.24      0.43      5.32       0.00 5건 / 5건
+scarf             neck      0.24      0.94      4.88       0.01 5건 / 6건
+bellnecklace      neck      0.24      2.00      4.66       0.00 5건 / 5건
+shortcape         back      0.40      0.94      7.26       0.00 1건 / 1건
+longcape          back      0.40      1.03      9.09       0.00 1건 / 2건
+wings             back      0.40         —      8.68       0.02 0건 / 3건
+backpack          back      0.40         —      7.95       0.00 1건 / 2건
+
+  ★ '획비' = 인계본이 자기 그림에서 쓴 획을 우리 몸에 옮겼을 때 우리 W의 몇 배인가.
+     1.0 미만이면 **인계본은 우리보다 가는 펜을 전제로 그렸다** = 우리 화면에선 그만큼 뭉친다.
+  ★ '조각간격' < 1.5 W 면 서로 다른 조각의 윤곽이 화면에서 **한 줄로 합쳐진다**(머리카락 '뚜껑'과 같은 병).
+  ⇒ 1.5W 미만으로 뭉치는 아이템 16/16종:
+       stripedtie    0.00 W   B0 ↔ B1
+       shortcape     0.00 W   B0 ↔ B1
+       longcape      0.00 W   B0 ↔ B1
+       backpack      0.00 W   B1 ↔ B2
+       bellnecklace  0.00 W   CF2 ↔ B4
+       sunglasses    0.00 W   B0 ↔ S3
+       fedora        0.00 W   B0 ↔ H3
+       furhat        0.00 W   CB0 ↔ B1
+       monocle       0.00 W   S2 ↔ CB3
+       clothhat      0.01 W   F1 ↔ B2
+       roundglasses  0.01 W   CB1 ↔ S2
+       scarf         0.01 W   B0 ↔ B1
+       wings         0.02 W   B1 ↔ RB4
+       goggles       0.02 W   B0 ↔ S4
+       crown         0.03 W   B0 ↔ CF2
+       bowtie        0.07 W   B0 ↔ RB2
+
+╔══ 4. 우리 현행 30종과의 조각 수 / 폭 대조 ══╗
+인계본           우리                조각(인)    조각(우)       폭R(인)       폭R(우)   높이R(인/우)
+clothhat      야구모자                  4        2        2.47        2.94  1.24/1.78
+furhat        털모자                   5        3        2.10        2.12  2.09/1.98
+fedora        중절모                   4        3        2.57        3.74  1.48/1.62
+crown         왕관                    9        2        2.03        1.96  1.82/1.62
+sunglasses    선글라스                  6        3        2.07        2.08  0.54/0.90
+roundglasses  동그란안경                 7        3        2.07        2.04  0.71/0.88
+goggles       고글                    7        2        2.07        3.04  0.64/1.24
+monocle       외알안경                  4        3        1.18        1.94  1.45/1.54
+bowtie        나비넥타이                 4        3        1.83        1.96  0.92/0.68
+stripedtie    줄무늬타이                 5        3        0.53        0.80  1.83/2.66
+scarf         목도리                   6        3        1.68        2.16  1.49/2.64
+bellnecklace  방울목걸이                 8        2        1.60        1.56  1.34/0.92
+shortcape     짧은망토                  4        4        2.50        3.30  2.11/5.27
+longcape      긴망토                   6        4        2.89        4.15  3.13/7.17
+wings         날개                    6        3        2.98        4.60  2.05/2.92
+backpack      배낭                    6        4        2.49        1.72  2.74/2.91

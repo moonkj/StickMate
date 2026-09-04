@@ -370,6 +370,12 @@ namespace StickMate.States
         // 머리 안 눈동자 점 제어(States/EyeController.cs). 같은 지연 생성/캐싱 패턴.
         private EyeController _eyeController;
 
+        // 팔다리 곡선 렌더러(States/LimbCurveRenderer.cs). 같은 지연 수집/캐싱 패턴.
+        // ★ 없을 수도 있다(옛 테스트 리그) — 그래서 "찾아봤다"를 따로 기억해 매 프레임
+        //   GetComponentInChildren을 반복하지 않는다.
+        private LimbCurveRenderer _limbCurve;
+        private bool _limbCurveSearched;
+
         // 몸 바깥에서 잉크를 더 얹는 부품들(Core/ICharacterInkExtentProvider) — 지금은 액세서리
         // 렌더러 하나뿐이다. 같은 지연 생성/캐싱 패턴(계층은 런타임에 컴포넌트가 늘지 않는다는
         // 이 프로젝트의 전제를 따른다 — 씬 부트스트랩이 캐릭터 루트에 전부 붙여 둔다).
@@ -1993,6 +1999,40 @@ namespace StickMate.States
             // 상태 목록을 여기 다시 적지 않는 것이 핵심이다 — 그러면 새 상태가 생길 때마다 빠뜨린다.
             StickmanPoseAnimator leanPose = GetPoseAnimator();
             if (leanPose != null) leanPose.TickBodyLean(deltaTime, BodyLeanSmoothingRate);
+
+            // ★★ 2026-09-03 — 포즈가 확정됐으면 **그 포즈의 그림도 같은 프레임 안에서** 확정한다.
+            //
+            // 왜 이 한 줄이 필요해졌나(마디 병합의 유일한 부작용): 병합 전에는 아래 마디의 점들이
+            // 아래 마디 Transform의 로컬 공간에 있었으므로, LineRenderer를 다시 굽지 않아도
+            // **Transform 계층이 매 프레임 공짜로 월드 좌표를 맞춰 줬다**(지연 0). 병합 후에는 아래
+            // 절반이 위 마디 로컬 공간에 **구운 각도/관절 오프셋으로 박제**되므로, 다시 굽기 전까지
+            // 그 절반은 **지난 프레임의 자세**를 들고 있다. LimbCurveRenderer의 재굽기는 LateUpdate라,
+            // Update 구간에서 이 선의 점을 읽는 소비자는 전부 한 프레임 낡은 그림을 본다.
+            //
+            // 실측(디버거 프로브, spin=-240): RAGDOLL->GETUP 전이 직후 프레임에서 낡은 폴리라인이
+            // 갱신본보다 **8.9pt 아래**를 가리켰다. 화면은 멀쩡했다(LateUpdate가 렌더 전에 돌므로).
+            // 그러나 Update 구간 소비자 — StickmanAgent.TickVisualHalfWidth(화면 클램프 반폭),
+            // 그리고 이 불변식을 재는 PlayMode 테스트 — 는 그 유령을 그대로 읽었다.
+            //
+            // 여기(TickPose 끝)인 이유는 바로 위 상체 기울임과 같다: 포즈 주인이 상태마다 다르고
+            // 라우팅에 조기 return이 열 개가 넘어서, **감싸는 한 곳**에서만 확정해야 빠짐이 없다.
+            // LateUpdate 호출은 그대로 둔다 — 여기서 이미 맞춰졌으면 그쪽은 더러움 판정에서 통째로
+            // 건너뛰므로(각도/두께/관절 오프셋이 그대로다) LineRenderer 쓰기는 늘지 않는다.
+            GetLimbCurveRenderer()?.RefreshNow();
+        }
+
+        /// <summary>
+        /// 팔다리 곡선 렌더러 캐시 — GetPoseAnimator()와 동일한 지연 수집/캐싱 패턴.
+        /// 못 찾으면 다시 찾지 않는다(옛 테스트 리그에는 없다. 그 경우 팔다리는 직선으로 남는다).
+        /// </summary>
+        public LimbCurveRenderer GetLimbCurveRenderer()
+        {
+            if (!_limbCurveSearched && Body != null)
+            {
+                _limbCurveSearched = true;
+                _limbCurve = Body.GetComponentInChildren<LimbCurveRenderer>(true);
+            }
+            return _limbCurve;
         }
 
         private void TickPoseRouting(float deltaTime)

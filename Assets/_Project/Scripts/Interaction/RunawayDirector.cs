@@ -113,6 +113,12 @@ namespace StickMate.Interaction
         {
             if (_player == null || _config == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
                 return CommandAvailability.Missing;
+
+            // ★★★ 2026-09-03 — <b>여기에 숨김 게이트를 넣지 마라.</b> 위 GetForcedRunawayAvailability에는
+            //   붙었지만 이쪽은 <b>일부러</b> 비워 둔다: 20절이 «찾기 미니게임을 강제하지 않는 상시
+            //   탈출구»라고 못박은 자리이고, 가출 중에 사용자가 캐릭터를 숨겼다면 되돌릴 유일한 길이
+            //   이 소환이다. 막는 쪽은 <b>발동</b>이고 되돌리는 쪽은 <b>언제나</b> 열려 있다
+            //   (Core/HiddenCharacterCommandGate.cs "무엇을 막지 않는가" 절).
             return IsRunawayActive ? CommandAvailability.Ready : CommandAvailability.Blocked(NotRunawayReason);
         }
 
@@ -139,6 +145,10 @@ namespace StickMate.Interaction
         {
             if (_player == null || _config == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
                 return CommandAvailability.Missing;
+
+            // ★★★ 2026-09-03 — 캐릭터가 안 보이면 캐릭터가 하는 일도 못 시킨다(원칙 1).
+            //   근거·대상·비대상은 Core/HiddenCharacterCommandGate.cs 한 곳에 있다.
+            if (HiddenCharacterCommandGate.BlocksNow(_player)) return HiddenCharacterCommandGate.WhileHidden;
 
             StickmanStateId current = _player.Blackboard.Machine.CurrentStateId;
             if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)

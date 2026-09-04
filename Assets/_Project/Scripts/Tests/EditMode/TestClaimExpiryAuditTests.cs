@@ -685,6 +685,19 @@ namespace StickMate.Tests.EditMode
                 },
                 new IgnoreEntry
                 {
+                    File = "SteamEntitlementAdapterAuditTests.cs",
+                    Method = "스팀_어댑터는_정확히_한_파일이고_승인된_심볼만_쓴다",
+                    Kind = RatchetKind.자동,
+                    Why = "2026-09-05 결재-1(리더) — Steam 계열 식별자를 쓰는 프로덕션 파일이 0개면 " +
+                          "Ignore한다(니들 예외가 아직 배선 전이거나 되돌려진 상태). <b>오늘은 정상 실행이다</b> " +
+                          "— SteamPackEntitlementSource.cs가 있어 이 조건은 거짓이고 실제 닫힌 세계 " +
+                          "검사(허용 심볼 5개·멤버 접근·using 횟수 등)가 매 실행 돈다. 역방향 장치는 " +
+                          "이 메서드 자신이다 — 예외가 완전히 롤백되면(파일 삭제) 같은 메서드가 " +
+                          "Ignore로 돌아가 러너에 '건너뜀'으로 계속 보인다(2026-08-30 SetWindowPos " +
+                          "처리와 같은 절차, 조용한 소멸이 아니다).",
+                },
+                new IgnoreEntry
+                {
                     File = "FacingFlipBodySplitTests.cs",
                     Method = "무릎앉아_착지는_실기_미재현이라_보류한다",
                     Kind = RatchetKind.동반,
@@ -703,13 +716,21 @@ namespace StickMate.Tests.EditMode
                     File = "EntitlementFailOpenAuditTests.cs",
                     Method = "C층_소유판정은_Unknown을_NotOwned로_붕괴시키지_않는다",
                     Kind = RatchetKind.동반,
-                    Companion = "스토어_SDK가_들어오면_이_경보가_먼저_울린다",
-                    Why = "2026-09-02 security 등록(ENTITLEMENT_CONTRACT §E-9 #3). 유료 권한(C층) 코드가 " +
-                          "<b>오늘 0줄</b>이라 검사할 대상이 자체가 없다. 역방향 장치를 <b>서로 독립인 두 축</b>으로 " +
-                          "걸었다 — ① <b>자동(축 A)</b>: Entitlement/Ownership/License가 들어간 타입 선언이 " +
-                          "프로덕션에 생기면 보류가 스스로 풀려 실검사로 돈다(아무도 켤 필요가 없다). " +
+                    Companion = "스토어_SDK는_승인된_어댑터_한_파일에서_승인된_심볼만_쓴다",
+                    Why = "2026-09-02 security 등록(ENTITLEMENT_CONTRACT §E-9 #3). " +
+                          "★★ 2026-09-05 정정 — 이 항목의 원래 사유(<b>'유료 권한(C층) 코드가 오늘 0줄'</b>)는 " +
+                          "이미 2026-09-03에 거짓이 됐다: coder-systems의 팩 통로 라운드가 " +
+                          "PackEntitlementState/IPackEntitlementSource/PackEntitlements를 " +
+                          "Core/PackEntitlement.cs에 넣었고, 축 A는 그때부터 보류가 아니라 실검사로 돈다 " +
+                          "(EntitlementFailOpenAuditTests.cs 클래스 문서의 '2026-09-03 정정' 절 참고). " +
+                          "이 명부 대조는 actual ⊆ expected 한 방향뿐이라 그 낡음이 조용히 남아 있었다 — " +
+                          "지금 이 자리에서 바로잡는다. 역방향 장치는 여전히 <b>서로 독립인 두 축</b>이다 — " +
+                          "① <b>자동(축 A)</b>: Entitlement/Ownership/License가 들어간 타입 선언이 " +
+                          "프로덕션에 생기면 실검사로 돈다(이미 돌고 있다). " +
                           "② <b>동반(축 B)</b>: 같은 파일의 이 동반 테스트가 항상 실행되며 " +
-                          "Steamworks/BIsDlcInstalled 같은 <b>스토어 SDK 식별자</b>가 프로덕션에 나타나면 빨개진다. " +
+                          "Steamworks/BIsDlcInstalled 같은 <b>스토어 SDK 식별자</b>가 " +
+                          "<b>승인된 어댑터 파일(SteamPackEntitlementSource.cs) 밖</b>에 나타나면 빨개진다 " +
+                          "(2026-09-05 결재-1로 그 파일 1개만 예외). " +
                           "두 축을 일부러 다른 신호로 고른 이유는 TEAM.md가 기록한 열 번째 거짓 통과 형태 " +
                           "(생성기와 검사기가 같은 잘못된 흉내를 공유해 서로를 확인해 주지 못했다) 때문이다 — " +
                           "축 A가 이름을 못 알아봐도 축 B가 대신 알린다. " +
@@ -782,6 +803,41 @@ namespace StickMate.Tests.EditMode
                           "★ 실기 미확인(Windows 좌/우 도킹 4항목)은 승격된 테스트 쪽에 남아 있다. 그중 " +
                           "<b>자동 숨김 작업표시줄을 우리가 강제로 보이게 한 상태(승인된 예외 1건)에서 rcWork가 " +
                           "실제로 좁아지는가</b>가 가장 무겁다 — 안 좁아지면 이 회피 전체가 헛돈다.",
+                },
+                new IgnoreEntry
+                {
+                    File = "LineRendererUvBandProbeTests.cs",
+                    Method = "T3_실제_GPU에서_막이_캡에서만_사라진다",
+                    Kind = RatchetKind.자동,
+                    Why = "2026-09-03 perf-doc R9. 건너뛰는 조건은 <b>그래픽스 디바이스가 Null</b>(-nographics 러너) " +
+                          "하나뿐이고, 조건이 거짓이면 <b>같은 메서드가 그대로 실단언 11개로 간다</b> — " +
+                          "분류기 교정(중간색 0), 코너 잉크노출 &lt; 1%, 캡의 '막이 남는 호 = 1-R'(±0.06), " +
+                          "직선 단면 막/잉크/막 픽셀 수(±3px). 스위치를 켤 사람이 없다: 그래픽스 있는 러너에서 " +
+                          "돌리면 자동으로 실검사다(실제로 2026-09-03 05:12 Metal 러너에서 전부 실행됐다). " +
+                          "★ 그리고 이 단언들은 '지금 참인 것'이 아니라 <b>대안 A(프래그먼트 밴드) 기각 근거</b>를 " +
+                          "못박는다 — Unity가 캡 uv 매핑을 고치면 1-R 단언이 빨개져서 'A를 다시 판정하라'고 말한다.",
+                },
+                new IgnoreEntry
+                {
+                    File = "LineRendererUvBandProbeTests.cs",
+                    Method = "T5_실제_리그에서_막이_관절과_종단에서_뚫린다",
+                    Kind = RatchetKind.자동,
+                    Why = "2026-09-03 perf-doc R9. 위와 같은 단일 조건(-nographics)이고 거짓이면 실단언 8개로 간다. " +
+                          "★ 이 메서드는 <b>양성·음성 대조를 자기 안에 들고 있다</b>: 렌더러 2개로 만든 팔꿈치는 " +
+                          "잉크 노출 &gt; 0을 요구하고(결함이 실재), 같은 꺾임을 <b>단일 폴리라인</b>으로 만든 " +
+                          "대조군은 &lt; 2%를 요구한다(코너 팬은 멀쩡하다). 결함이 사라지면 첫 단언이 " +
+                          "'축하할 실패'로 빨개진다.",
+                },
+                new IgnoreEntry
+                {
+                    File = "LineRendererUvBandProbeTests.cs",
+                    Method = "T7_대안Aprime은_캡을_없애서_막을_닫지만_관절에_쐐기를_연다",
+                    Kind = RatchetKind.자동,
+                    Why = "2026-09-03 perf-doc R9(리더 지시로 추가 측정). 같은 단일 조건(-nographics), 거짓이면 " +
+                          "실단언 4개로 간다. numCapVertices=0 + uv.x 끝면 밴드가 종단 노출을 없애는지(&lt; 2%), " +
+                          "그 대가로 관절에 쐐기가 열리는지를 <b>단색 잉크 대조군</b>(막 셰이딩을 끄고 조형만)으로 " +
+                          "잰다. 현행 둥근 캡(cap=8)이 조인트 원을 완전히 덮는다는 것을 <b>먼저</b> 단언하므로 " +
+                          "쐐기가 캡 제거 탓임이 대조로 고정된다. 어느 쪽이 뒤집혀도 그 자리에서 빨개진다.",
                 },
             };
         }

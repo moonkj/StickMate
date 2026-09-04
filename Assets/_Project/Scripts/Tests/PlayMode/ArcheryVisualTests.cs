@@ -25,8 +25,16 @@ namespace StickMate.Tests.PlayMode
     /// 절대 조건 + 네거티브 컨트롤 (이 프로젝트 표준)
     /// ============================================================================
     /// · 콜라이더 수는 "적다"가 아니라 <b>정확히 0</b>(관전 전용, 클릭관통 유지 — 비침해 원칙 2).
-    /// · 발사 횟수는 "여러 발"이 아니라 <b>정확히 3</b>이고, 결과 시나리오는 "다양하다"가 아니라
-    ///   <b>마지막은 Bullseye, 앞 두 발 중 정확히 하나가 Miss</b>다.
+    /// · 발사 횟수는 "여러 발"이 아니라 <b>정확히 3</b>이다.
+    /// · ★★ 2026-09-03 — 예전 이 자리에는 "결과 시나리오는 <b>마지막은 Bullseye, 앞 두 발 중 정확히
+    ///   하나가 Miss</b>"라고 적혀 있었다. 그 결정론적 시나리오가 사용자 신고(<i>"무조건 2대만 과녁에
+    ///   명중하고 1대는 무조건 실패"</i>)의 원인이었고 사용자 지시로 폐지됐다. 이제 결과는
+    ///   <c>StickConfig.archeryHitChance</c>로 <b>발마다 독립 추첨</b>되고(명중한 발은 다시
+    ///   <c>StickConfig.archeryBullseyeChance</c>로 정중앙/외곽을 가른다 — 리더 판정 ②안)
+    ///   <b>한 번의 실행으로는
+    ///   확률 모델을 단언할 수 없다</b> — 이 PlayMode 테스트는 "뽑힌 결과와 실제 도달점/꽂힌 모양이
+    ///   서로 맞는가"만 잠근다. 확률 모델 자체(극값 결정론 · 개수/순서의 독립성)는 EditMode의
+    ///   <c>ArcheryShotProbabilityTests</c>가 씬 없이 난수를 주입해 잠근다.
     /// · 배율 검증은 "0.5는 1.0의 절반"이 아니라 <b>바깥에서 온 절대식</b>과 맞댄다
     ///   (과녁 꼭대기 == 캐릭터 정수리). 자기 자신을 기준으로 한 비율 비교는 둘 다 틀린 경우를
     ///   통과시킨다(RendererScaleRatioTests의 판단 기준과 동일).
@@ -355,14 +363,19 @@ namespace StickMate.Tests.PlayMode
             Assert.AreEqual(3, maxStuck,
                 $"과녁/땅에 꽂힌 화살이 {maxStuck}개입니다 — 3발 전부가 도달점까지 날아가 꽂혀야 합니다.");
 
-            // 시나리오: 마지막은 항상 정중앙, 앞 두 발 중 정확히 하나가 빗나감(3발이 똑같으면 지루하다).
-            Assert.AreEqual(ArcheryShotResult.Bullseye, _releases[2].Result,
-                "마지막 발이 정중앙이 아닙니다 — 연출의 클라이맥스가 고정돼 있어야 합니다.");
-            int missCount = 0;
-            for (int i = 0; i < 2; i++) if (_releases[i].Result == ArcheryShotResult.Miss) missCount++;
-            Assert.AreEqual(1, missCount,
-                $"앞 두 발 중 빗나간 발이 {missCount}개입니다 — 정확히 1개여야 합니다(전부 명중하면 " +
-                "3발이 똑같아 지루하고, 전부 빗나가면 김이 샙니다).");
+            // ★★ 2026-09-03 — 옛 단언(마지막은 Bullseye 고정 / 앞 두 발 중 정확히 하나가 Miss)은
+            //   사용자 지시로 폐지된 결정론적 시나리오를 잠그고 있었다. 지금은 발마다 독립 추첨이라
+            //   "3발 다 명중"도 "3발 다 빗나감"도 정상이며, 그중 어떤 조합이 나와도 이 실행 하나로는
+            //   확률 모델을 증명하지 못한다. 그래서 여기서는 **결과가 legal한 값인가**와
+            //   **그 결과에 맞는 도달점/모양으로 그려졌는가**만 잠근다(아래 도달점 검증이 그 본체다).
+            //   확률 모델은 EditMode ArcheryShotProbabilityTests 소관이다.
+            for (int i = 0; i < ArcheryState.ShotCount; i++)
+            {
+                ArcheryShotResult r = _releases[i].Result;
+                Assert.IsTrue(r == ArcheryShotResult.Miss || r == ArcheryShotResult.Hit
+                        || r == ArcheryShotResult.Bullseye,
+                    $"{i + 1}발째 결과가 정의되지 않은 값입니다({r}).");
+            }
 
             // 도달점 검증: 명중은 과녁 반경 안, 빗나감은 지면 높이.
             Vector2 targetWorld = _director.LastTargetWorld;

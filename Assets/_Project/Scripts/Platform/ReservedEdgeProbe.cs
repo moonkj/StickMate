@@ -36,6 +36,21 @@ namespace StickMate.Platform
     ///        <c>ReservedTopBarProbe.ResetForTests()</c>만 부르면 <b>이쪽은 안 걷힌다</b> —
     ///        네 방향을 쓰는 테스트는 반드시 이 클래스의 <see cref="ResetForTests"/>를 불러라.</item>
     /// </list>
+    ///
+    /// ============================================================================
+    /// ★ 이 프로브만이 「측정된 0」과 「아직 못 잼」을 구분해서 말할 수 있다
+    /// ============================================================================
+    /// <see cref="Insets"/>가 돌려주는 <see cref="ReservedEdgeInsets.MeasuredEdges"/>가 그 답이다.
+    /// 상단 전용 프로브는 <c>float</c> 하나라 <b>구조적으로 구분이 불가능</b>하다.
+    ///
+    /// <para><b>이게 왜 중요한가</b>: 양 플랫폼 모두 <b>기동 직후 몇 초 동안 구조적으로 못 잰다</b>
+    /// (macOS는 <c>LibUniWinC</c>의 창 부착 전, Windows는 <c>_overlayHwnd</c> 확보 전).
+    /// <c>Start()</c>에서 한 번 읽고 굳히는 소비 측은 그때 <b>반드시 0을 얻는다</b> —
+    /// 2026-09-03에 그 형태로 오진이 났다. 자세한 것은 <see cref="ReservedTopBarProbe"/>의
+    /// "일회성으로 읽지 마라" 절.</para>
+    ///
+    /// <para>뺄셈 자체는 여기에도, 플랫폼 구현에도 없다 — <see cref="ReservedEdgeGeometry"/>
+    /// 한 곳에만 있다(그래야 값으로 검증하는 테스트를 쓸 수 있다).</para>
     /// </summary>
     public static class ReservedEdgeProbe
     {

@@ -26,8 +26,12 @@ namespace StickMate.Tests.EditMode
     ///  2. <b>파일 단위 화이트리스트</b>: 미래에 정말 필요한 네트워크 기능이 생기면 이 파일 상단 목록에
     ///     (파일 · 이유 · 허용 니들 · 동의 게이트 유무)를 <b>명시적으로 추가해야만</b> 통과한다. 그 diff가 곧
     ///     리뷰 게이트다 — "왜 이 파일이 화이트리스트에 들어갔지?"라는 질문이 코드 리뷰에서 자동으로 발생하는 것,
-    ///     그게 이 감사의 진짜 목적이다. <b>전송(Transmission) 계열 화이트리스트는 현재 0건이며 그 사실 자체를
-    ///     테스트로 고정한다</b>(<see cref="전송계열_화이트리스트는_현재_비어_있다"/>).
+    ///     그게 이 감사의 진짜 목적이다. <b>전송(Transmission) 계열 화이트리스트는 승인된 예외를 정확히
+    ///     명부와 대조해 고정한다</b>(<see cref="전송계열_화이트리스트는_승인된_예외_1건과_정확히_같다"/>).
+    ///     ★ 2026-09-05까지는 0건이었다(이 감사의 원래 형태). 그날 결재-1(리더)로 스팀 DLC 엔타이틀먼트
+    ///     예외 1건이 승인되면서 "0건"에서 "승인된 목록과 정확히 같다"로 판정을 개작했다 —
+    ///     <c>NeedleKind</c>를 바꿔 조용히 초록을 유지하는 길은 기각했다(지표를 원하는 답으로 고치는
+    ///     형태이고, 이 저장소가 반복해서 당한 패턴이다).
     ///  3. <b>네거티브 컨트롤</b>: 스캔 로직이 무력화된 채 "위반 0건"으로 허위 통과하는 것을 막기 위해,
     ///     일부러 금지 API를 쓰는 가짜 소스 문자열을 <b>실제 프로덕션 스캔과 완전히 동일한 함수</b>
     ///     (<see cref="ScanSource"/>)에 흘려서 정말 잡아내는지 확인한다.
@@ -269,9 +273,10 @@ namespace StickMate.Tests.EditMode
             public Func<string, bool> LineVerifier;
         }
 
-        // ★ 전송(Transmission) 계열 화이트리스트는 의도적으로 비어 있다(2026-08-31 기준).
-        //    아래 목록의 유일한 항목은 바이트를 하나도 보내지 않는 ReadOnlyStatus 계열이다.
-        //    전송 계열 항목이 0건임은 별도 테스트로 고정되어 있다 → 전송계열_화이트리스트는_현재_비어_있다()
+        // ★ 전송(Transmission) 계열 화이트리스트는 2026-08-31~2026-09-05까지 비어 있었다.
+        //    2026-09-05 결재-1로 스팀 DLC 엔타이틀먼트 예외 1건이 승인됐다(아래 목록 마지막 항목).
+        //    승인된 목록과 정확히 같은지는 별도 테스트로 고정되어 있다 →
+        //    전송계열_화이트리스트는_승인된_예외_1건과_정확히_같다()
         private static readonly List<NetworkWhitelistEntry> Whitelist = new List<NetworkWhitelistEntry>
         {
             new NetworkWhitelistEntry
@@ -290,6 +295,27 @@ namespace StickMate.Tests.EditMode
                     && !line.Contains("UnityWebRequest")
                     && !line.Contains("HttpClient")
                     && !line.Contains("System.Net"),
+            },
+            // ★ 2026-09-05 결재-1(리더) — 유료 6팩 DLC 엔타이틀먼트 조회(BIsDlcInstalled).
+            //   R-5-min(스팀 출시 지배항). 허용 심볼 5개(Steamworks/SteamAPI.Init·Shutdown/
+            //   SteamApps.BIsDlcInstalled/AppId_t)는 docs/security/STEAMWORKS_ENTITLEMENT_EXCEPTION.md
+            //   §4가 닫힌 세계로 규정하고, 라인 단위 재검증은 SteamEntitlementAdapterAuditTests가 맡는다
+            //   (이 화이트리스트는 "그 파일에 Steamworks가 있어도 된다"만 보장한다 — 안의 형태는
+            //   그 전용 감사가 본다). 이 항목은 전송(Transmission) 계열이라 아래
+            //   전송계열_화이트리스트는_승인된_예외_1건과_정확히_같다 가 이 존재를 전제로 통과한다.
+            new NetworkWhitelistEntry
+            {
+                FileName = "SteamPackEntitlementSource.cs",
+                Reason = "유료 6팩 DLC 엔타이틀먼트 조회(BIsDlcInstalled) — R-5-min 스팀 출시 지배항. " +
+                    "네트워크 소켓을 직접 열지 않는다(steam_api64.dll 내부는 우리 스캐너가 볼 수 없다는 " +
+                    "한계는 정직하게 기록됨, STEAMWORKS_ENTITLEMENT_EXCEPTION.md §7-6). " +
+                    "리더 결재-1 승인(2026-09-05).",
+                AllowedNeedles = new[] { "Steamworks" },
+                RequiresConsentGate = false,
+                ConsentGateNeedle = null,
+                // 허용 형태는 오직 "using Steamworks;" 그 한 줄뿐 — 완전 일치(정규화 우회 차단은
+                // SteamEntitlementAdapterAuditTests가 낱말 카운트로 더 엄밀히 잠근다).
+                LineVerifier = line => line.Trim() == "using Steamworks;",
             },
         };
 
@@ -490,19 +516,30 @@ namespace StickMate.Tests.EditMode
                 string.Join("\n\n", violations.Select(v => v.ToString())));
         }
 
+        /// <summary>
+        /// ★ 2026-09-05 개작(결재-2, 리더) — 예전 이름은 <c>전송계열_화이트리스트는_현재_비어_있다</c>였고
+        /// "0건이어야 초록"이었다. 스팀 DLC 엔타이틀먼트 예외(결재-1)가 승인되면서 그 형태로는 항상
+        /// 빨간 채로 남게 됐다. <b>기각한 대안</b>: <c>Steamworks</c> 니들을 <c>NeedleKind.Transmission</c>에서
+        /// 새 종류로 옮겨 이 테스트를 안 건드리고 초록으로 유지하는 것 — 그건 지표를 원하는 답으로
+        /// 고치는 것이고 이 저장소가 반복해서 당한 형태다. 정직한 판정: 이 앱의 매니지드 코드는
+        /// 여전히 네트워크 API 0건이지만, <b>링크하는 네이티브 모듈이 하나 늘고 그 내부는 우리
+        /// 스캐너가 못 본다</b>(steam_api64.dll). 그래서 "0건"이 아니라 "승인된 목록과 정확히 같다"로
+        /// 판정을 좁힌다 — 두 번째 전송 예외가 들어오는 날 이 테스트가 여전히 한 줄로 빨개진다.
+        /// </summary>
         [Test]
-        public void 전송계열_화이트리스트는_현재_비어_있다()
+        public void 전송계열_화이트리스트는_승인된_예외_1건과_정확히_같다()
         {
-            // 이 앱의 상태를 한 줄로 요약하는 테스트다. 여기가 빨개졌다면 그건 버그가 아니라
-            // "우리 앱이 더 이상 완전 오프라인이 아니게 되는 결정"이 내려졌다는 뜻이고,
-            // 그 결정은 리더 승인 + 이 테스트의 명시적 갱신을 함께 거쳐야 한다.
-            var transmissionEntries = Whitelist.Where(TransmissionWhitelistPredicate).ToList();
+            var transmissionEntries = Whitelist.Where(TransmissionWhitelistPredicate)
+                .Select(e => e.FileName).ToList();
+            var approved = new[] { "SteamPackEntitlementSource.cs" };
 
-            Assert.IsTrue(transmissionEntries.Count == 0,
-                $"{LogPrefix} 전송(Transmission) 계열 네트워크 API의 화이트리스트 예외가 생겼습니다. " +
-                "자동 업데이트(5-1-2) / 옵트인 크래시 리포트(5-1-9) / Steam Cloud(5-1-10)는 전부 " +
-                "'1차 출시 이후 · 조건부'로 미뤄진 항목입니다. 리더 승인 없이 추가할 수 없습니다.\n" +
-                string.Join("\n", transmissionEntries.Select(e => $"  - {e.FileName}: {e.Reason}")));
+            Assert.That(transmissionEntries, Is.EquivalentTo(approved),
+                $"{LogPrefix} 전송(Transmission) 계열 네트워크 API의 화이트리스트가 승인된 목록과 " +
+                $"다릅니다(기대: {string.Join(", ", approved)}). 자동 업데이트(5-1-2) / 옵트인 크래시 " +
+                "리포트(5-1-9) / Steam Cloud(5-1-10)는 여전히 '1차 출시 이후 · 조건부'로 미뤄진 " +
+                "항목입니다 — 새 전송 예외는 리더 승인 + 이 명부의 명시적 갱신을 함께 거쳐야 합니다.\n" +
+                string.Join("\n", Whitelist.Where(TransmissionWhitelistPredicate)
+                    .Select(e => $"  - {e.FileName}: {e.Reason}")));
         }
 
         private static bool TransmissionWhitelistPredicate(NetworkWhitelistEntry entry)
@@ -620,32 +657,97 @@ namespace StickMate.Tests.EditMode
                 $"{LogPrefix} 핵심 니들 'System.Net'이 표에서 사라졌습니다.");
         }
 
+        private const string RuntimeAsmdefFileName = "StickMate.Runtime.asmdef";
+
+        /// <summary>★ 2026-09-05 수정(§2-1, 스팀 예외 승인과 무관하게 오늘 이미 거짓이던 결함) —
+        /// 예전엔 <c>text.Contains("Steamworks")</c>가 <b>대소문자 구분</b>이었다. 그런데 실제
+        /// Steamworks.NET 패키지의 asmdef 이름은 1차 출처(패키지 저장소 원본 asmdef) 확인 결과
+        /// <c>"com.rlabrecque.steamworks.net"</c> — <b>전부 소문자</b>다. 대소문자 구분 검사는
+        /// 이 이름을 영원히 못 본다(있어도 "없다"로 읽는다). 아래 두 테스트가 그 구멍을 막는다:
+        /// (1) "Unity.Networking"류는 기존처럼 감시하되 대소문자 무시로 바꾸고,
+        /// (2) "steam"은 <see cref="RuntimeAsmdefFileName"/> 자신은 면제(승인된 유일한 참조처)하고
+        /// 그 밖 모든 asmdef에서 금지한다 — 새 패키지가 엉뚱한 곳에 asmdef를 흩뿌리는 경로를 막는다.</summary>
         [Test]
         public void 어셈블리_정의가_네트워크_어셈블리를_참조하지_않는다()
         {
             // .cs 텍스트 스캔이 놓치는 선행 신호: 코드보다 asmdef 참조가 먼저 들어오는 경우가 있다.
-            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
-            string assetsRoot = Path.Combine(projectRoot, "Assets");
-            var asmdefs = Directory.GetFiles(assetsRoot, "*.asmdef", SearchOption.AllDirectories);
-
+            var asmdefs = FindAllAsmdefs();
             Assert.Greater(asmdefs.Length, 0, $"{LogPrefix} asmdef를 하나도 찾지 못했습니다 — 경로 계산 오류 의심.");
 
-            string[] banned = { "Unity.Networking", "UnityEngine.Networking", "Unity.Netcode", "Mirror", "Steamworks" };
+            string[] bannedEverywhere = { "Unity.Networking", "UnityEngine.Networking", "Unity.Netcode", "Mirror" };
             var problems = new List<string>();
 
             foreach (string path in asmdefs)
             {
                 string text = File.ReadAllText(path);
-                foreach (string b in banned)
+                string fileName = Path.GetFileName(path);
+
+                foreach (string b in bannedEverywhere)
                 {
-                    if (text.Contains(b))
-                        problems.Add($"{Path.GetFileName(path)}: 네트워크 어셈블리 '{b}' 참조");
+                    if (text.IndexOf(b, StringComparison.OrdinalIgnoreCase) >= 0)
+                        problems.Add($"{fileName}: 네트워크 어셈블리 '{b}' 참조");
+                }
+
+                // ★ "steam"은 승인된 어댑터의 유일한 참조처(StickMate.Runtime.asmdef)만 면제한다 —
+                //   그 파일도 참조를 통째로 면제하는 게 아니라 "steam" 낱말 하나만 면제한다.
+                if (fileName != RuntimeAsmdefFileName
+                    && text.IndexOf("steam", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    problems.Add($"{fileName}: 승인되지 않은 위치에서 스팀 관련 어셈블리 참조 " +
+                        $"— 허용된 참조처는 {RuntimeAsmdefFileName} 하나뿐입니다.");
                 }
             }
 
             Assert.IsTrue(problems.Count == 0,
                 $"{LogPrefix} 어셈블리 정의에 네트워크 어셈블리 참조가 생겼습니다 " +
                 "(코드보다 먼저 들어오는 선행 신호입니다):\n" + string.Join("\n", problems));
+        }
+
+        [Test]
+        public void NegativeControl_asmdef_스캐너는_소문자_이름을_실제로_찾아낸다()
+        {
+            // ★ 양성 대조 — 이게 없어서 오늘까지 대소문자 구멍을 못 봤다(2026-09-05 실측).
+            string fakeText = "{\n  \"name\": \"Fake.Assembly\",\n  \"references\": " +
+                "[\"com.rlabrecque.steamworks.net\"]\n}\n";
+            bool caught = fakeText.IndexOf("steam", StringComparison.OrdinalIgnoreCase) >= 0;
+            Assert.IsTrue(caught,
+                $"{LogPrefix} 양성 대조 실패 — 소문자 'com.rlabrecque.steamworks.net'을 스캐너가 " +
+                "못 찾습니다. 이러면 위 감사의 '위반 없음'은 '없다'가 아니라 '못 본다'입니다.");
+
+            bool oldCaseSensitiveWouldCatch = fakeText.Contains("Steamworks");
+            Assert.IsFalse(oldCaseSensitiveWouldCatch,
+                $"{LogPrefix} 이 대조는 '옛 대소문자 구분 검사가 실제로 놓쳤다'는 것을 증명하기 위한 " +
+                "것입니다 — 만약 이게 실패한다면 실제 패키지 이름 표기가 바뀐 것이니 위 문서 주석도 갱신하세요.");
+        }
+
+        [Test]
+        public void 런타임_어셈블리의_참조는_알려진_목록과_정확히_같다()
+        {
+            var asmdefs = FindAllAsmdefs();
+            string path = asmdefs.FirstOrDefault(p => Path.GetFileName(p) == RuntimeAsmdefFileName);
+            Assert.IsNotNull(path, $"{LogPrefix} {RuntimeAsmdefFileName}을 찾지 못했습니다.");
+
+            string text = File.ReadAllText(path);
+            // "GUID:"로 저장된 참조는 이름 스캔으로 못 본다 — 그 형태 자체를 금지한다(§7-7).
+            Assert.IsFalse(text.Contains("\"GUID:"),
+                $"{LogPrefix} {RuntimeAsmdefFileName}의 참조가 GUID 형태로 저장되어 있습니다 — " +
+                "이름 형태로 저장하세요(GUID면 이 감사가 참조 목록을 못 읽습니다).");
+
+            // Steamworks.NET 패키지가 아직 이 저장소에 설치되지 않았다(2026-09-05 기준) —
+            // 설치되면 이 목록에 "com.rlabrecque.steamworks.net"을 추가하세요.
+            var known = new[] { "Kirurobo.UniWindowController" };
+            foreach (string k in known)
+            {
+                Assert.IsTrue(text.Contains(k),
+                    $"{LogPrefix} {RuntimeAsmdefFileName}에서 알려진 참조 '{k}'가 사라졌습니다.");
+            }
+        }
+
+        private static string[] FindAllAsmdefs()
+        {
+            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            string assetsRoot = Path.Combine(projectRoot, "Assets");
+            return Directory.GetFiles(assetsRoot, "*.asmdef", SearchOption.AllDirectories);
         }
 
         // =====================================================================

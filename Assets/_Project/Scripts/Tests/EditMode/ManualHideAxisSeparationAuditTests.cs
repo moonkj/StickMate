@@ -110,8 +110,9 @@ namespace StickMate.Tests.EditMode
         /// <summary>
         /// ★ 2026-09-02 — <b>등급 1은 캐릭터를 절대 숨기지 않는다</b>는 계약을 소스에서 잠근다.
         ///
-        /// <para><c>ArePanelsSuppressed</c>가 <c>_isSuspended</c>를 <b>포함</b>해야 하고
-        /// (그래야 "캐릭터는 숨었는데 차단막은 남은" 최악의 프레임이 구조적으로 불가능하다),
+        /// <para><c>ArePanelsSuppressed</c>가 <c>_isSuspended</c>를 (<c>HidesScreenSurfaces</c>를 거쳐)
+        /// <b>포함</b>해야 하고 — 유일한 예외는 사용자 명시 숨김 <b>단독</b>이며 그때는 표면이
+        /// <b>보이는 채로</b> 남으므로 "안 보이는데 클릭만 먹는" 형태가 아니다 —
         /// 반대로 <c>IsSuspended</c>에는 <c>_fullscreenPanelRetreat</c>가 <b>들어가면 안 된다</b>
         /// (들어가는 순간 2026-08-31 신고 "엑셀 전체화면에서 캐릭터가 사라진다"의 완전한 회귀다).</para>
         ///
@@ -137,12 +138,85 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(1, pHits.Count,
                 $"StickmanAgent.ArePanelsSuppressed 정의를 {pHits.Count}개 찾았습니다 — 0개면 등급 1 소비자 " +
                 "창구가 통째로 없는 것입니다.");
-            StringAssert.Contains("_isSuspended", pHits[0].Value,
-                "★ ArePanelsSuppressed가 _isSuspended를 포함하지 않습니다:\n  " + pHits[0].Value.Trim() +
+            // ★★★ 2026-09-03 — 옛 단언은 "ArePanelsSuppressed가 _isSuspended를 <b>직접</b> 포함하는가"였다.
+            //   이제 한 단계를 거친다: HidesScreenSurfaces(= _isSuspended && !IsUserHiddenOnly).
+            //   포함관계 자체는 그대로 살아 있고, <b>예외가 정확히 하나</b>라는 사실을 여기서 못박는다 —
+            //   사용자 명시 숨김 <b>단독</b>(사용자 확정 "캐릭만 가리고"). 그래서 체인을 끝까지 따라간다:
+            //   빠뜨리면 "표면 채널이 캐릭터와 완전히 무관해진" 변경도 조용히 통과한다.
+            StringAssert.Contains(nameof(StickmanAgent.HidesScreenSurfaces), pHits[0].Value,
+                "★ ArePanelsSuppressed가 표면 채널을 읽지 않습니다:\n  " + pHits[0].Value.Trim() +
+                "\n캐릭터 축과 표면 축을 잇는 유일한 다리가 사라졌습니다.");
+
+            var surfaces = new Regex(@"public bool " + nameof(StickmanAgent.HidesScreenSurfaces) + @"\s*=>[^;]*;",
+                RegexOptions.Singleline);
+            MatchCollection hHits = surfaces.Matches(src);
+            Assert.AreEqual(1, hHits.Count,
+                $"StickmanAgent.{nameof(StickmanAgent.HidesScreenSurfaces)} 정의를 {hHits.Count}개 " +
+                "찾았습니다 — 0개면 표면 채널이 사라진 것이고, 2개 이상이면 계산이 갈라진 것입니다.");
+            StringAssert.Contains("_isSuspended", hHits[0].Value,
+                "★ 표면 채널이 캐릭터 숨김(_isSuspended)에서 출발하지 않습니다:\n  " + hHits[0].Value.Trim() +
                 "\n포함관계(등급 2 ⊇ 등급 1)가 깨지면 캐릭터는 숨었는데 창과 차단막이 남는 상태가 " +
-                "구조적으로 가능해집니다 — 안 보이는데 클릭만 먹는, 이 앱에서 가장 나쁜 형태입니다.");
+                "구조적으로 가능해집니다 — 안 보이는데 클릭만 먹는, 이 앱에서 가장 나쁜 형태입니다. " +
+                "★ 유일하게 허용된 예외는 사용자 명시 숨김 단독이고, 그때는 표면이 <b>보이는 채로</b> " +
+                "남으므로 '안 보이는데 클릭만 먹는' 형태가 아닙니다.");
+            StringAssert.Contains(nameof(StickmanAgent.IsUserHiddenOnly), hHits[0].Value,
+                "★ 표면 채널이 사용자 명시 숨김 단독을 빼지 않습니다:\n  " + hHits[0].Value.Trim() +
+                "\n그러면 [숨기기]가 다시 톱니까지 지웁니다 — 2026-09-03 사용자 신고 " +
+                "\"전부 다 없어져버려서 다시 나오게 할 방법이 없어\"의 완전한 회귀입니다.");
+
+            var onlyDef = new Regex(@"public bool " + nameof(StickmanAgent.IsUserHiddenOnly) + @"\s*=>[^;]*;",
+                RegexOptions.Singleline);
+            MatchCollection oHits = onlyDef.Matches(src);
+            Assert.AreEqual(1, oHits.Count,
+                $"StickmanAgent.{nameof(StickmanAgent.IsUserHiddenOnly)} 정의를 {oHits.Count}개 찾았습니다.");
+            StringAssert.Contains("_userHidden", oHits[0].Value,
+                "★ '사용자 숨김 단독'이 사용자 숨김 축을 읽지 않습니다:\n  " + oHits[0].Value.Trim());
+            StringAssert.Contains("_fullscreenAutoHide", oHits[0].Value,
+                "★ '사용자 숨김 단독'이 축 1을 빼지 않습니다:\n  " + oHits[0].Value.Trim() +
+                "\n그러면 전체화면 게임 중에 사용자가 직접 숨긴 순간 톱니가 <b>게임 위에</b> 남습니다 — " +
+                "절대 불변 원칙 2 위반이고, 이 라운드가 절대 건드리지 않기로 한 축입니다.");
             StringAssert.Contains("_fullscreenPanelRetreat", pHits[0].Value,
                 "ArePanelsSuppressed가 축 3을 읽지 않습니다 — 등급 1이 어떤 소비자에게도 도달하지 않습니다.");
+        }
+
+        /// <summary>
+        /// ★★★ <b>2026-09-03 사용자 확정 — 톱니는 사용자 명시 숨김에서 살아남는다.</b>
+        ///
+        /// <para>신고: <i>"설정에서 숨기기버튼 누르니까 전부 다 없어져버려서 다시 나오게 할 방법이 없어"</i>
+        /// → 확정: <i>"메뉴버튼은 보여야지"</i> → <i>"캐릭만 가리고"</i>.</para>
+        ///
+        /// <para><b>왜 소스인가</b>: 런타임 대응 테스트는 같은 파일의 PlayMode 쪽
+        /// (<c>ManualHideUserAxisTests</c>)에 있다. 여기서 잠그는 것은 <b>어느 채널을 읽는가</b>라는
+        /// 배선의 방향이다 — 누군가 "정리"하며 <c>IsSuspended</c>로 되돌리면 그 순간 잡힌다.</para>
+        ///
+        /// <para><b>부재 단언에 존재 대조를 붙인다</b>(CLAUDE.md): 아래 두 니들은 전부
+        /// <c>nameof</c>로 프로덕션 프로퍼티를 <b>참조</b>한다. 이름이 바뀌면 이 테스트는 조용히
+        /// 초록이 되는 대신 <b>컴파일되지 않는다</b>.</para>
+        /// </summary>
+        [Test]
+        public void 톱니는_사용자_명시_숨김에서_살아남는다()
+        {
+            string gear = StripComments(ReadSource("Interaction", "InfoGearIconWidget.cs"));
+
+            string surfaceChannel = "." + nameof(StickmanAgent.HidesScreenSurfaces);
+            StringAssert.Contains(surfaceChannel, gear,
+                $"톱니가 표면 채널({surfaceChannel})을 읽지 않습니다 — 어느 축에서 내려가야 하는지를 " +
+                "판단할 근거가 없습니다.");
+
+            string characterChannel = "." + nameof(StickmanAgent.IsSuspended);
+            Assert.AreEqual(-1, gear.IndexOf(characterChannel, System.StringComparison.Ordinal),
+                $"★ 톱니가 캐릭터 축({characterChannel})을 다시 읽고 있습니다. 그 값은 사용자 명시 " +
+                "숨김에서도 참이라, [숨기기]를 누르면 톱니까지 사라집니다 — 2026-09-03 사용자 신고 " +
+                "\"전부 다 없어져버려서 다시 나오게 할 방법이 없어\"의 완전한 회귀입니다. " +
+                "★ 이 단언이 '없음'을 말하므로 바로 위에서 '표면 채널은 있음'을 함께 요구합니다 — " +
+                "둘 다 없으면(=배선이 통째로 사라지면) 위 단언이 먼저 빨개집니다.");
+
+            // 축 1은 한 비트도 안 바뀌었다: 표면 채널이 전체화면 게임에서 참이라는 사실을
+            // StickmanAgent 쪽 체인(등급1은_캐릭터_숨김에_섞이지_않는다)이 이미 못박는다.
+            string panelChannel = "." + nameof(StickmanAgent.ArePanelsSuppressed);
+            Assert.AreEqual(-1, gear.IndexOf(panelChannel, System.StringComparison.Ordinal),
+                $"★ 톱니가 등급 1 채널({panelChannel})을 읽고 있습니다 — 리더 판정(톱니는 등급 1에서 " +
+                "남는다: '복구는 톱니 1클릭'이 등급 1의 안전판이다)을 되돌리는 변경입니다.");
         }
 
         /// <summary>
@@ -247,11 +321,28 @@ namespace StickMate.Tests.EditMode
                 StickmanAgent.UserHideHotkeyLetter,
                 "사용자 명시 숨김의 동작키가 Windows 예약 조합입니다.");
 
-            // ★ 빈 목록이 기대값이라는 사실을 <b>명시</b>한다(TEAM.md 거짓 통과 #5) —
-            //   Windows 예약이 실제로 0건인 것이 조사 결과이고, 그 전제가 바뀌면 여기서 먼저 걸린다.
+            // ★ 빈 목록이 기대값이라는 사실을 <b>명시</b>한다(TEAM.md 거짓 통과 #5).
+            //   ★★ 2026-09-05 (M-6) 정정 — 옛 주석은 "Windows 예약이 실제로 0건인 것이 조사
+            //   결과"라고 적었다. 그 <b>0건</b>은 여전히 맞지만 뜻이 좁다: 1차 출처(Microsoft
+            //   지원 문서)에 Win+Ctrl+Alt+<글자> 조합이 0건이라는 뜻이지, <b>안전이 증명됐다는
+            //   뜻이 아니다</b>. 같은 조사에서 RegisterHotKey 문서가 정반대 경고를 하고 있었다 —
+            //   "Keyboard shortcuts that involve the WINDOWS key are reserved for use by the
+            //   operating system"(MOD_WIN 행). 근거와 결론은 ShortcutLabel의 두 배열 문서에 있다.
             Assert.AreEqual(0, ShortcutLabel.WindowsReservedActionKeys.Length,
                 "Windows 예약 목록이 더 이상 비어 있지 않습니다 — 위 DoesNotContain이 " +
                 "'목록이 비어서 통과'가 아니라 실제 검사가 되도록 전제를 여기서 고정합니다.");
+
+            // ★ 2026-09-05 (M-6) — 이 글자(K)는 <b>의심 후보</b>다: Win+Alt+K가 마이크 음소거로
+            //   문서화돼 있어, "여분 수식자가 매칭을 막는다"는 <b>문서화되지 않은</b> 가정이 틀리면
+            //   사용자가 캐릭터를 숨길 때마다 마이크가 함께 토글된다(불변 원칙 2 위반).
+            //   그런데 이 키는 <b>탈출구</b>라 대체 비용이 가장 크다. 실기(낮 세션 A-7)에서 가장
+            //   먼저 눌러야 하는 글자라는 사실을 러너에 계속 보이게 못박는다.
+            CollectionAssert.Contains(ShortcutLabel.WindowsSuspectActionKeys,
+                StickmanAgent.UserHideHotkeyLetter,
+                "탈출구 동작키가 Windows 의심 후보 목록에서 빠졌습니다. 실기로 안전이 확인돼 뺀 " +
+                "것이라면 ShortcutLabel.WindowsSuspectActionKeys 문서에 그 관측(날짜·기계·Game Bar " +
+                "설정 상태)을 먼저 적고 이 단언도 함께 지우세요 — 근거 없이 빠지면 이 글자는 " +
+                "실기 우선순위에서 조용히 사라집니다.");
             Assert.Greater(ShortcutLabel.MacReservedActionKeys.Length, 0,
                 "macOS 예약 목록이 비었습니다 — 그러면 위 DoesNotContain은 <b>어떤 글자를 넣어도</b> " +
                 "통과하는 공허한 단언이 됩니다(이 저장소가 실제로 겪은 '빈 목록이라 foreach가 아무것도 " +
@@ -264,9 +355,11 @@ namespace StickMate.Tests.EditMode
 
         /// <summary>
         /// ★ K가 <c>StickMateDevTools</c> 게이트 뒤로 들어가면 릴리스 빌드에서 죽는다. 숨는 동안에는
-        /// 톱니가 <c>IsSuspended</c>를, 부채꼴·창·팝오버가 <c>ArePanelsSuppressed</c>를 보고 전부 스스로
-        /// 내려가므로(사용자 명시 숨김은 축 2라 두 창구 모두에서 참이다) <b>마우스 경로가 0</b>이고,
-        /// 이 키가 죽으면 사용자에게 남는 수단은 강제 종료뿐이다. Q(종료)와 같은 급의 계약이다.
+        /// ★ <b>2026-09-03 정정</b> — 옛 근거는 <i>"숨는 동안 톱니·부채꼴·창이 전부 스스로 내려가
+        /// 마우스 경로가 0"</i>이었다. 사용자 확정 <i>"캐릭만 가리고"</i> 이후 <b>거짓</b>이다:
+        /// 톱니도 열린 창도 남는다(<c>StickmanAgent.HidesScreenSurfaces</c>).
+        /// 그래도 이 키는 게이트 밖이어야 한다 — 설정창 [일반]에서 <b>톱니 아이콘을 꺼 둔</b> 사용자에게는
+        /// 여전히 이것이 가장 짧은 길이고, Q(종료)와 같은 급의 상시 계약이다.
         /// </summary>
         [Test]
         public void 숨기기_단축키는_개발_게이트_뒤에_있지_않다()

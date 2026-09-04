@@ -79,7 +79,7 @@ namespace StickMate.Interaction
         /// 임의의 라운드 수가 아니다 — 검산:
         /// <code>
         /// 콘텐츠 높이 = Height - (Space3 + 22 + Space2) - Space4 = 508 - 42 - 16 = 450
-        /// 푸터 바닥   = FooterY - QuitButtonHeight = -422 - 28 = -450
+        /// 푸터 바닥   = FooterY - QuitButtonHeight = -422 - 28 = -450   (2026-09-03 종료 칩 삭제 후에도 동일)
         /// </code>
         /// 둘이 같다. 종전 560도 같은 방식의 <b>정확히 맞는 값</b>이었고(502 = 502), 타일을 하나 빼면서
         /// 그대로 두면 푸터 아래에 <b>정확히 한 행(52pt)의 빈 띠</b>가 생긴다. 그 띠는 아무것도 말하지
@@ -110,7 +110,9 @@ namespace StickMate.Interaction
 
         private const float RecallChipWidth = 88f;
         private const float RecallChipHeight = 26f;
-        private const float QuitButtonWidth = 92f;
+        /// <summary>푸터 한 줄의 높이. ★ 2026-09-03에 <b>[✕ 앱 종료] 칩이 사라졌지만 이 값은 남는다</b> —
+        /// 창 높이 508의 세로 검산(<see cref="Height"/> 문서)이 이 값을 쓰고, 푸터 힌트 상자가 그 자리를
+        /// 그대로 물려받았다. 이름을 바꾸지 않은 것은 그 검산 주석과의 대조를 끊지 않기 위해서다.</summary>
         private const float QuitButtonHeight = 28f;
 
         // ---- 세로 배치(콘텐츠 상단 기준, 아래로 음수) ----
@@ -127,6 +129,12 @@ namespace StickMate.Interaction
         /// <summary>
         /// 2단 확인이 열려 있는 시간. <see cref="TodoBoardPopover"/>의 삭제 확인과 <b>같은 3초, 같은
         /// 패턴</b>을 쓴다 — 앱 안에서 "되돌릴 수 없는 행동"의 확인 방식이 두 벌이 되지 않게.
+        ///
+        /// <para>★★ 2026-09-03 — <b>이 창의 [✕ 앱 종료] 칩은 삭제됐는데 이 상수는 남았다.</b>
+        /// 오탈자가 아니다: <see cref="GearRadialMenuWidget"/>의 위성 [앱 종료]가 <b>이 값을 참조</b>한다
+        /// (UX_FLOW 53-4가 "상수를 다시 타이핑하지 말고 기존 것을 참조하라"고 못박았다).
+        /// 여기가 「되돌릴 수 없는 행동의 확인 시간」의 <b>단일 출처</b>다 —
+        /// 옮기고 싶다면 <c>UiChrome</c> 급의 공용 토큰으로 올리되, <b>두 벌로 만들지는 마라.</b></para>
         /// </summary>
         public const float QuitConfirmSeconds = 3f;
 
@@ -240,12 +248,10 @@ namespace StickMate.Interaction
         private Image _recallChip;
         private Text _recallLabel;
         private Text _group2Caption;
-        private Image _quitSurface;
-        private Text _quitLabel;
+
         private Text _footerHint;
 
-        private bool _quitArmed;
-        private float _quitArmTimer;
+
 
         /// <summary>닫기 예약(-1 = 없음). <b>[돌아와!] 칩만</b> 세운다 — 명령 타일은 2026-09-02부터
         /// 창을 닫지 않는다.</summary>
@@ -279,11 +285,7 @@ namespace StickMate.Interaction
         /// <summary>타일의 화면 사각형(Unity 스크린 픽셀) — 테스트가 실제 클릭 경로로 누른다.</summary>
         public Rect CommandScreenRect(Command command) => ScreenRectOf(_tiles[(int)command].Rect);
 
-        public Rect QuitButtonScreenRect => ScreenRectOf(_quitSurface != null ? _quitSurface.rectTransform : null);
-        public Rect RecallChipScreenRect => ScreenRectOf(_recallChip != null ? _recallChip.rectTransform : null);
 
-        /// <summary>[✕ 앱 종료]가 1차 클릭을 받아 "정말 종료?" 상태인가.</summary>
-        public bool IsQuitArmed => _quitArmed;
 
         /// <summary>[돌아와!] 칩이 지금 보이는가 — 가출 중에만 true여야 한다.</summary>
         public bool IsRecallChipVisible => _recallChip != null && _recallChip.gameObject.activeSelf;
@@ -433,36 +435,25 @@ namespace StickMate.Interaction
         {
             _footerHint = UiChrome.AddText(content, "FooterHint", UiChrome.FontCaption,
                 TextAnchor.MiddleLeft, UiChrome.InkMeta);
+            // ★★ 2026-09-03 — 여기 있던 <b>[✕ 앱 종료] 칩을 걷어냈다</b>(UX_FLOW 53-6, 사용자 지시로
+            //   신설된 <b>톱니 부채꼴 위성 [앱 종료]</b>가 그 자리를 대신한다).
+            //
+            //   <b>왜 지우는가</b>: 36-1의 전수 분류표는 종료를 <b>(라) 앱 수준 제어</b>로 분류해 놓고
+            //   실제 배치는 <b>(가) 행동 명령창</b> 안이었다. 이 창은 스스로 *"캐릭터에게 지금 시킬 수
+            //   있어요"*라고 선언하는데 <b>앱 종료는 캐릭터에게 시키는 일이 아니다</b>. 최상위 진입점이
+            //   생기면 그 오분류를 유지할 이유가 0이 된다. 그리고 되돌릴 수 없는 행동의 확인 구현이
+            //   <b>세 벌</b>(여기 · 설정창 · 부채꼴)로 늘어나는 것도 그 자체가 비용이다.
+            //
+            //   <b>이 삭제의 선결 조건은 이미 초록이었다</b>: SettingsEscapeHatchTests가
+            //   *"[지금 종료]가 5개 탭 전부에서 스크롤 없이 보인다"*를 잠그고 있다. 그 게이트가
+            //   빨간 동안에는 이 칩을 <b>빼면 안 됐다</b> — 이 앱에는 Dock 아이콘도 메뉴바 아이콘도
+            //   트레이도 없어서 순서를 뒤집으면 마우스만 쓰는 사용자의 종료 수단이 0이 되는 순간이 생긴다.
+            //
+            //   <b>세로 예산 영향 0</b>: 푸터는 원래 한 줄이었고(힌트 + 칩이 같은 y·같은 높이),
+            //   칩이 빠진 만큼 힌트 상자가 340 -> ContentWidth(448)로 넓어질 뿐이다. 푸터 바닥은
+            //   FooterY(-422) - QuitButtonHeight(28) = -450 = 콘텐츠 높이 450 그대로다.
             UiChrome.PlaceTopLeft(_footerHint.rectTransform, 0f, FooterY,
-                ContentWidth - QuitButtonWidth - UiChrome.Space4, QuitButtonHeight);
-            // ★ 2026-09-02 (41-2 / C19) — 뒷문장을 붙인다. 민지가 [✕]를 누르기 전에 망설인 이유가
-            //   "닫으면 시킨 일도 취소되나?"였고, <b>실제로는 취소되지 않는다</b>(명령은 창과 무관하게
-            //   디렉터가 돌린다). 실제로 참인 사실만 적는다.
-            //   상자 폭 340pt / 이 문장 실측 약 251pt(FontCaption 10, 한글 10·공백 3) — 넘치지 않는다.
-            _footerHint.text = "내가 누를 때만 실행돼요. 창을 닫아도 하던 건 계속해요.";
-
-            // ★ 36-10 — 우클릭 메뉴가 폐지되면서 <b>마우스만으로 도달하는 유일한 종료 경로</b>가 됐다.
-            //   이 앱에는 Dock 아이콘도 메뉴바 아이콘도 트레이도 없다. 이 버튼이 없으면 전역 단축키가
-            //   동작하지 않는 환경(_keyService == null)에서 강제 종료 외에 끄는 방법이 사라진다 —
-            //   원칙 2·4의 명백한 위반이며 신뢰를 한 번에 잃는 종류의 실패다.
-            //   그리드에서 <b>42pt</b> 아래인 푸터 오른쪽 끝에 둔다(오조준 방지). 검산 —
-            //     마지막 타일 상단 = Group2Y(-244) - (CardPadding 10 + GroupTitleHeight 18 + 4 + RowHeight 52) = -328
-            //     마지막 타일 바닥 = -328 - RowHeight(52)                                                     = -380
-            //     FooterY(종료 칩 상단)                                                                       = -422
-            //     가장 가까운 <b>클릭 가능한</b> 것과의 이격 = 422 - 380                                      =   42pt
-            //   ★ 2026-09-02 정정: 이 줄은 "44pt 이상 떨어진"이라고 적고 있었지만 실측은 42pt다
-            //     (docs/UX_WIDGETS.md §4-2 부수 발견). 결론(오조준이 실제로 잘 나지 않는다)은 바뀌지
-            //     않지만 다음 사람은 이 문장으로 판단하므로 숫자를 사실로 고친다. 44는 HIG 최소
-            //     <b>타깃 크기</b>이지 이격 규격이 아니었다 — 두 숫자가 섞였던 것으로 보인다.
-            _quitSurface = UiChrome.AddSurface(content, "Quit", UiChrome.SubtleSurface, UiChrome.RadiusChip);
-            UiChrome.PlaceTopLeft(_quitSurface.rectTransform, ContentWidth - QuitButtonWidth, FooterY,
-                QuitButtonWidth, QuitButtonHeight);
-            UiChrome.AddOutline(_quitSurface.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
-            _quitLabel = UiChrome.AddText(_quitSurface.rectTransform, "Label", UiChrome.FontCaption,
-                TextAnchor.MiddleCenter, UiChrome.TextSecondary);
-            UiChrome.Stretch(_quitLabel.rectTransform);
-            _quitLabel.text = "✕ 앱 종료";
-            Wire(_quitSurface, "quit", OnQuitClicked);
+                ContentWidth, QuitButtonHeight);
         }
 
         // ==================== 가용성 — 판정은 Director 하나에서만 나온다 ====================
@@ -602,52 +593,8 @@ namespace StickMate.Interaction
             _closeDelayTimer = 0f;
         }
 
-        /// <summary>
-        /// 2단 확인. 1차 클릭은 라벨만 바꾸고 <see cref="QuitConfirmSeconds"/>초 유지한다.
-        ///
-        /// 모달 대화상자를 쓰지 않는 이유: 데이터 손실이 없음을 확인했다
-        /// (<c>CharacterProgressionDirector.OnApplicationQuit()</c>이 저장한다). 창을 하나 더 띄우는
-        /// 비용이 정당화되지 않는다.
-        /// </summary>
-        private void OnQuitClicked()
-        {
-            if (!_quitArmed)
-            {
-                _quitArmed = true;
-                _quitArmTimer = 0f;
-                ApplyQuitStyle();
-                Debug.Log($"[행동창] [앱 종료] 1차 클릭 — {QuitConfirmSeconds:F0}초 안에 다시 누르면 종료합니다 " +
-                    "(TodoBoardPopover의 삭제 확인과 같은 패턴).");
-                return;
-            }
-
-            Debug.Log("[행동창] [앱 종료] 확정 — Application.Quit()을 호출합니다. " +
-                "저장은 CharacterProgressionDirector.OnApplicationQuit()이 담당하므로 데이터 손실이 없습니다. 안녕히 계세요!");
-            Close("[앱 종료] 확정");
-            Application.Quit();
-#if UNITY_EDITOR
-            UnityEditor.EditorApplication.isPlaying = false;
-#endif
-        }
-
-        private void DisarmQuit()
-        {
-            if (!_quitArmed) return;
-            _quitArmed = false;
-            ApplyQuitStyle();
-        }
-
-        private void ApplyQuitStyle()
-        {
-            if (_quitLabel == null || _quitSurface == null) return;
-            _quitLabel.text = _quitArmed ? "정말 종료?" : "✕ 앱 종료";
-            _quitLabel.color = _quitArmed ? UiChrome.WarmAccent : UiChrome.TextSecondary;
-            _quitSurface.color = _quitArmed ? UiChrome.AccentSurface : UiChrome.SubtleSurface;
-        }
-
         protected override void OnOpened()
         {
-            DisarmQuit();
             _closeDelayTimer = -1f;
             for (int i = 0; i < CommandCount; i++)
             {
@@ -659,8 +606,6 @@ namespace StickMate.Interaction
             }
         }
 
-        protected override void OnClosing() => DisarmQuit();
-
         // ==================== 루프 ====================
 
         protected override void Update()
@@ -670,12 +615,6 @@ namespace StickMate.Interaction
             if (!IsOpen) return;
 
             float dt = Time.unscaledDeltaTime;
-
-            if (_quitArmed)
-            {
-                _quitArmTimer += dt;
-                if (_quitArmTimer >= QuitConfirmSeconds) DisarmQuit();
-            }
 
             TickTileFeedback(dt);
 
@@ -779,7 +718,18 @@ namespace StickMate.Interaction
         /// </summary>
         private void SetStatusCaption(bool runaway, int readyCount)
         {
+            // ★★★ 2026-09-03 — <b>«다른 일 하는 중»이 거짓이 되는 경우가 새로 생겼다.</b>
+            //   사용자가 캐릭터만 숨겨 두면 5칸이 전부 불가가 되어 readyCount == 0이 되는데,
+            //   그때 캐릭터는 «다른 일»을 하는 게 아니라 <b>숨어 있다</b>. 헤더가 실제 값에서만
+            //   파생한다는 이 함수의 계약(36-7)이 그 순간 깨진다.
+            //   ★ 문구를 여기서 새로 짓지 않는다 — 타일 5칸이 이미 쓰고 있는
+            //     HiddenCharacterCommandGate.HiddenReason을 <b>그대로</b> 쓴다. 같은 사실을 두 곳에서
+            //     다른 말로 적으면 design-narrative가 글자를 고칠 때 한쪽만 남는다.
+            //   ★ 가출을 앞에 두는 순서는 <b>일부러</b>다: 가출 중에 숨긴 경우 사용자에게 필요한 것은
+            //     [돌아와!] 칩이고(그 칩은 숨김 중에도 살아 있다), 헤더가 그 칩을 설명해야 한다.
+            bool hidden = Agent != null && Agent.IsSuspended;
             string text = runaway ? "지금 가출 중이에요"
+                : hidden ? HiddenCharacterCommandGate.HiddenReason
                 : readyCount > 0 ? "지금 시킬 수 있어요"
                 : "지금은 다른 일 하는 중이에요";
             if (_statusCaption.text != text) _statusCaption.text = text;
@@ -818,11 +768,6 @@ namespace StickMate.Interaction
             if (_recallChip.gameObject.activeSelf && ContainsScreenPoint(_recallChip.rectTransform, cursor))
             {
                 if (TryClaimAction("recall")) OnRecallClicked();
-                return;
-            }
-            if (ContainsScreenPoint(_quitSurface.rectTransform, cursor))
-            {
-                if (TryClaimAction("quit")) OnQuitClicked();
                 return;
             }
             for (int i = 0; i < CommandCount; i++)

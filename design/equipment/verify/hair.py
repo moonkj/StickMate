@@ -69,7 +69,10 @@ def bowl():
     pts += [(-SIDE+2*SIDE*i/4, FR) for i in range(5)]
     pts += [(SIDE, CUT)]
     return [Shape("HairMass", pts, filled=True),
-            Shape("HairFringe", [(-SIDE+2*SIDE*i/4, FR) for i in range(5)], loop=False, tone=1)]
+            # ★ 2026-09-03(스펙 14-1) 열린 낱선 -> 두께 0.46R 채운 띠.
+            Shape("HairFringe", [(-SIDE+2*SIDE*i/4, FR) for i in range(5)]
+                              + [( SIDE-2*SIDE*i/4, FR+0.46) for i in range(5)],
+                  filled=True, tone=1)]
 
 # ── 5 포니테일 — 짧은 덩어리 + 뒤통수에서 묶여 떨어지는 긴 묶음 ──
 def ponytail():

@@ -81,6 +81,12 @@ namespace StickMate.Interaction
             if (_player == null || _config == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
                 return CommandAvailability.Missing;
 
+            // ★★★ 2026-09-03 — <b>캐릭터가 안 보이면 캐릭터가 하는 일도 못 시킨다</b>(원칙 1).
+            //   근거·대상·비대상은 Core/HiddenCharacterCommandGate.cs 한 곳에 있다.
+            //   가드 값은 <c>IsSuspended</c>다 — <c>HidesScreenSurfaces</c>로 바꾸면 사용자 명시
+            //   숨김에서 안 막히고, 그게 정확히 이 줄이 고치는 결함이다.
+            if (HiddenCharacterCommandGate.BlocksNow(_player)) return HiddenCharacterCommandGate.WhileHidden;
+
             if (_overlayActive)
                 return CommandAvailability.Blocked(OverlayBusyReason);
 
@@ -155,7 +161,10 @@ namespace StickMate.Interaction
             //    남의 창 위에 그려지는 <b>화면 고정 표면</b>이라, 게임이 아닌 전체화면 앱(발표·화상회의)
             //    위에 금 간 유리를 그리는 것은 그 자체가 침해다. 캐릭터 스윙 쪽은 등급 2 그대로다
             //    (StickmanAgent.Suspend()의 강제 전이 목록) — 등급 1에서는 캐릭터가 계속 논다.
-            if (_player.ArePanelsSuppressed) { CancelOverlay(); return; }
+            // ★★★ 2026-09-03 — <c>|| IsSuspended</c>가 붙었다. 두 값은 더 이상 포함관계가 아니다
+            //    (사용자 명시 숨김 단독은 표면을 걷지 않는다). 이 오버레이는 <b>캐릭터가 창을 깬</b>
+            //    결과물이라 캐릭터가 사라지면 근거를 잃는다 — 원인 없는 금이 화면에 3초 남는다.
+            if (_player.ArePanelsSuppressed || _player.IsSuspended) { CancelOverlay(); return; }
 
             var footholds = _player.Blackboard.FootholdPoller != null ? _player.Blackboard.FootholdPoller.CachedFootholds : null;
             bool stillOpen = false;

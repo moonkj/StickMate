@@ -1,0 +1,55 @@
+# `.asset` 로컬라이즈 부채 원장 (localization, 2026-09-03)
+# 형식: <경로>\t<유저 노출 필드의 원문 한글 건수 상한>
+#
+# ★ 규칙 1 — **여기 없는 파일의 상한은 0이다.** 새 팩이 원문 한글을 담고 들어오면
+#            그 순간 빨개진다. 그것이 이 원장의 유일한 목적이다.
+# ★ 규칙 2 — 숫자는 **내려갈 때만** 손으로 고친다(이관이 진행된 만큼). 올리려면 리더 승인.
+# ★ 규칙 3 — 아래 84건은 기본 42종의 **유예분**이다(ARCHITECTURE.md:557 자기 정정).
+#            새로 생긴 부채가 아니라 이미 있던 것이고, PLAN §10-4 순서로 갚는다.
+# 생성기: docs/localization/verify/packguard.py --write-ledger
+#         (감사/대조: packguard.py / packguard.py --selftest)
+#
+Assets/_Project/Resources/Items/equip_eyes_browline.asset	2
+Assets/_Project/Resources/Items/equip_eyes_goggles.asset	2
+Assets/_Project/Resources/Items/equip_eyes_monocle.asset	2
+Assets/_Project/Resources/Items/equip_eyes_patch.asset	2
+Assets/_Project/Resources/Items/equip_eyes_round.asset	2
+Assets/_Project/Resources/Items/equip_eyes_sunglasses.asset	2
+Assets/_Project/Resources/Items/equip_head_beret.asset	2
+Assets/_Project/Resources/Items/equip_head_cap.asset	2
+Assets/_Project/Resources/Items/equip_head_crown.asset	2
+Assets/_Project/Resources/Items/equip_head_fedora.asset	2
+Assets/_Project/Resources/Items/equip_head_fur.asset	2
+Assets/_Project/Resources/Items/equip_head_straw.asset	2
+Assets/_Project/Resources/Items/equip_neck_bandana.asset	2
+Assets/_Project/Resources/Items/equip_neck_bell.asset	2
+Assets/_Project/Resources/Items/equip_neck_bowtie.asset	2
+Assets/_Project/Resources/Items/equip_neck_pendant.asset	2
+Assets/_Project/Resources/Items/equip_neck_scarf.asset	2
+Assets/_Project/Resources/Items/equip_neck_striped.asset	2
+Assets/_Project/Resources/Items/equip_shoulders_backpack.asset	2
+Assets/_Project/Resources/Items/equip_shoulders_cape.asset	2
+Assets/_Project/Resources/Items/equip_shoulders_fairy_wings.asset	2
+Assets/_Project/Resources/Items/equip_shoulders_long_cape.asset	2
+Assets/_Project/Resources/Items/equip_shoulders_poncho.asset	2
+Assets/_Project/Resources/Items/equip_shoulders_wings.asset	2
+Assets/_Project/Resources/Items/look_fx_bubble.asset	2
+Assets/_Project/Resources/Items/look_fx_dust.asset	2
+Assets/_Project/Resources/Items/look_fx_footprint.asset	2
+Assets/_Project/Resources/Items/look_fx_leaf.asset	2
+Assets/_Project/Resources/Items/look_fx_none.asset	2
+Assets/_Project/Resources/Items/look_fx_sparkle.asset	2
+Assets/_Project/Resources/Items/look_hair_bald.asset	2
+Assets/_Project/Resources/Items/look_hair_bowl.asset	2
+Assets/_Project/Resources/Items/look_hair_cowlick.asset	2
+Assets/_Project/Resources/Items/look_hair_curly.asset	2
+Assets/_Project/Resources/Items/look_hair_neat.asset	2
+Assets/_Project/Resources/Items/look_hair_ponytail.asset	2
+Assets/_Project/Resources/Items/look_pet_ball.asset	2
+Assets/_Project/Resources/Items/look_pet_balloon.asset	2
+Assets/_Project/Resources/Items/look_pet_cursor.asset	2
+Assets/_Project/Resources/Items/look_pet_mini.asset	2
+Assets/_Project/Resources/Items/look_pet_plane.asset	2
+Assets/_Project/Resources/Items/look_pet_snail.asset	2
+#
+# TOTAL	84

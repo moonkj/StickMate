@@ -550,6 +550,9 @@ namespace StickMate.Platform.Windows
         // 오버레이 원점 보고용 부기(아래 CaptureOverlayOrigin 참고).
         private bool _overlayOriginLogged;
         private float _lastLoggedDpiScale = -1f;
+        // ★ 2026-09-05 (M-9) — 자기 창 최소화 상태의 직전 값. 상태가 **바뀔 때만** 로그를 남기려는
+        //   부기다(24시간 상주 앱 — 폴링마다 찍으면 로그 예산이 무너진다).
+        private bool _overlayIconicLogged;
 
         public Win32WindowService()
         {
@@ -612,6 +615,14 @@ namespace StickMate.Platform.Windows
             if (IsIconic(hWnd)) return WindowsFootholdRejection.Minimized;   // 최소화 = 화면에 없음
 
             int exStyle = GetWindowLong(hWnd, GWL_EXSTYLE);
+            // ★ 2026-09-03 진단 해석 주의 — 이 검사가 자기 프로세스 검사보다 **앞**에 있고,
+            //   같은 날 우리 오버레이 창 자신이 WS_EX_TOOLWINDOW를 영구히 갖게 됐다
+            //   (Platform/Windows/WindowsToolWindowStyleControl.cs, 앱 전환기 제외).
+            //   그래서 [발판진단] 사유 분포에서 **우리 창 1개가 '우리 자신의 창'이 아니라
+            //   'WS_EX_TOOLWINDOW' 칸으로 옮겨 앉는다.** 발판 채택 결과는 한 개도 바뀌지 않지만
+            //   (어느 쪽이든 탈락), 예전 로그와 숫자를 대조할 때 이 이동을 모르면
+            //   "자기 창 필터가 죽었다"로 오독하게 된다. 순서는 바꾸지 말 것 — 그 이유는
+            //   바로 아래 문단(WndProc 재진입 방지)에 있고 이 사정과 무관하다.
             if ((exStyle & WS_EX_TOOLWINDOW) != 0) return WindowsFootholdRejection.ToolWindow;
 
             GetWindowThreadProcessId(hWnd, out uint pid);
@@ -1157,6 +1168,40 @@ namespace StickMate.Platform.Windows
         private void CaptureOverlayOrigin()
         {
             if (_overlayHwnd == IntPtr.Zero) return;
+
+            // ================================================================================
+            // ★★ 2026-09-05 (M-9) — Win+D(데스크톱 표시) 좌표 오염 차단
+            // ================================================================================
+            // 같은 파일이 **남의 창**에 대해서는 이미 이 판정을 한다(:612
+            // `if (IsIconic(hWnd)) return WindowsFootholdRejection.Minimized;`). 자기 창에만
+            // 없었다. Win+D / 최소화가 우리 창을 아이콘화하면 GetWindowRect는 (-32000,-32000)과
+            // **복원 시 크기가 아닌 값**을 돌려주는데, 그 값은 폴링마다 **안정적으로 같다**.
+            //
+            // 왜 위생 검사만으로는 부족한가:
+            //   · ScreenCoordinateConverter의 원점 위생 검사는 "명백히 화면 밖" 보고를 거부하되,
+            //     같은 보고가 연속으로 오면(OffDesktopConfirmReports) **영구 고착을 피하려고**
+            //     결국 받아들이도록 설계돼 있다. 최소화 좌표는 정확히 "연속으로 같은 값"이라
+            //     그 통로를 그대로 통과한다.
+            //   · 그리고 macOS와 달리 **폭까지 오염된다**. AutoDpiScale은 창 폭/Screen.width라
+            //     최소화 폭이 들어오면 커서↔월드 변환 배율 자체가 깨진다(macOS의 .stationary는
+            //     창을 아예 숨기지 않으므로 이 축이 없다).
+            //
+            // 처방: 최소화 상태면 **아무것도 보고하지 않고 즉시 반환**한다 = 직전 유효 원점/배율을
+            // 그대로 유지한다. 복원되면 다음 폴링이 정상 좌표를 실어 자동 복구한다.
+            // 부수적으로 CaptureUiDensity()도 건너뛴다 — 보이지도 않는 창의 DPI로 캔버스 배율을
+            // 바꿀 이유가 없고, 복원 직후 폴링이 곧바로 다시 읽는다.
+            bool iconic = IsIconic(_overlayHwnd);
+            if (iconic != _overlayIconicLogged)
+            {
+                _overlayIconicLogged = iconic;
+                Debug.Log(iconic
+                    ? "[Win32WindowService] 오버레이 창이 최소화됨(Win+D/최소화 추정) — 원점/배율 " +
+                      $"보고를 건너뜁니다. 유지 중인 원점={ScreenCoordinateConverter.OverlayOriginOsScreen}, " +
+                      $"배율={ScreenCoordinateConverter.AutoDpiScale:F3}."
+                    : "[Win32WindowService] 오버레이 창 최소화 해제 — 원점/배율 보고를 재개합니다.");
+            }
+            if (iconic) return;
+
             // ★ 2026-08-31 — 여기도 시각적 경계를 쓴다. 출하 형상(UniWindowController의 보더리스 +
             // 투명)에서는 DWM 확장 프레임과 GetWindowRect가 같은 값이라 동작이 바뀌지 않지만,
             // 보더리스가 아직 적용되지 않은 기동 직후 몇 프레임에는 GetWindowRect가 보이지 않는

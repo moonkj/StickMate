@@ -151,6 +151,12 @@ namespace StickMate.Interaction
             if (_player == null || _config == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
                 return CommandAvailability.Missing;
 
+            // ★★★ 2026-09-03 — <b>캐릭터가 안 보이면 캐릭터가 하는 일도 못 시킨다</b>(원칙 1).
+            //   근거·대상·비대상은 Core/HiddenCharacterCommandGate.cs 한 곳에 있다.
+            //   가드 값은 <c>IsSuspended</c>다 — <c>HidesScreenSurfaces</c>로 바꾸면 사용자 명시
+            //   숨김에서 안 막히고, 그게 정확히 이 줄이 고치는 결함이다.
+            if (HiddenCharacterCommandGate.BlocksNow(_player)) return HiddenCharacterCommandGate.WhileHidden;
+
             if (SpectacleEventLock.IsActive)
                 return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(SpectacleEventLock.ActiveKind));
 

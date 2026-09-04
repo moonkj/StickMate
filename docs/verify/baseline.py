@@ -18,6 +18,17 @@
 import os, sys, glob, re, subprocess, datetime
 import xml.etree.ElementTree as ET
 
+# ★ 개명 흡수(2026-09-03). 이름이 바뀐 테스트를 «없던 테스트»로 취급하면
+#   「마지막으로 초록이던 실행」이 **한 번도 없다**로 뒤집힌다 — 귀속이 통째로 거짓말이 된다.
+#   규칙은 소스 트리로 재검증된 것만 쓴다(docs/verify/renames.py 참고).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    import renames as _rn
+    _CANON_FULL, _CANON_SHORT, _RN_OK, _RN_REJ = _rn.load()
+except Exception as _e:                      # 대장이 깨져도 대장 생성은 돌아야 한다
+    _CANON_FULL = _CANON_SHORT = (lambda n: n)
+    _RN_OK, _RN_REJ = [], [(0, f"renames.py 로드 실패: {_e}")]
+
 REPO   = "/Users/kjmoon/App/StickMate"
 OUTDIR = os.path.join(REPO, "docs/verify/runs")
 OUTMD  = os.path.join(REPO, "docs/verify/BASELINE.md")
@@ -100,11 +111,11 @@ def collect():
         except Exception:
             continue
         mt = os.stat(xml).st_mtime
-        fails = sorted(tc.get("fullname").split(".")[-1]
+        fails = sorted(_CANON_SHORT(tc.get("fullname").split(".")[-1])
                        for tc in r.iter("test-case") if tc.get("result") == "Failed")
         # ★ "그때는 초록이었다"와 "그때는 존재하지 않았다"는 완전히 다른 말이다.
         #   이름 집합을 함께 들고 다니지 않으면 대장이 없던 테스트를 '초록이었다'로 둔갑시킨다.
-        present = {tc.get("fullname").split(".")[-1] for tc in r.iter("test-case")}
+        present = {_CANON_SHORT(tc.get("fullname").split(".")[-1]) for tc in r.iter("test-case")}
         meta = read_meta(base)
         rows.append(dict(
             base=base, mode=base.rsplit("_", 1)[-1], mt=mt,
@@ -162,13 +173,40 @@ def render(rows, dmap):
     L.append("| `↑` | **직전 실행에서 물려받음** — 그 실행은 재컴파일을 안 해 자기 타깃을 남기지 않았다 |")
     L.append("| `?` | **미상.** 빈 칸으로 두지 않는다 — 빈 칸은 읽는 사람이 마음대로 채운다 |")
     L.append("")
+    L.append("**더러움** = 그 실행 시각의 미커밋 파일 수(`.meta`의 `dirty`). "
+             "0이 아니면 그 줄은 **HEAD가 아니라 «그때 움직이던 트리»의 결과다.** "
+             "병렬 라운드가 도는 밤에는 실패가 「회귀」가 아니라 「편집 중 스냅샷」일 수 있다 — "
+             "귀속하기 전에 그 파일의 mtime을 실행 시각과 대조해라.")
+    L.append("")
     L.append(f"dag→타깃 매핑 {len(dmap)}건: " +
              (", ".join(f"`{k}`={short(v)}" for k, v in sorted(dmap.items())) or "**0건 — 타깃 추론이 전부 죽었다**"))
     L.append("")
+
+    # ★ 개명 대장 — 「삭제 1 + 신설 1」로 보이는 것 중 무엇이 개명인지 여기 적힌다.
+    L.append("## 개명 대장 — 회귀가 아니라 개명인 것")
+    L.append("")
+    L.append("정본 데이터: `docs/verify/renames.tsv` · 검증기: `docs/verify/renames.py --check`")
+    L.append("각 줄은 **소스 트리(.cs)** 로 매번 재검증된다 — 새 이름이 실재하고(R1), "
+             "옛 이름이 사라졌고(R2), 짧은 이름이 유일할 때(R3)만 적용된다.")
+    L.append("")
+    if _RN_OK:
+        L.append("| 옛 이름 | 새 이름 | 등록일 | 근거 |")
+        L.append("|---|---|---|---|")
+        for o, n, d, w, ln in _RN_OK:
+            L.append(f"| `{o.rsplit('.', 1)[-1]}` | `{n.rsplit('.', 1)[-1]}` | {d} | {w} |")
+    else:
+        L.append("**0건.** 지금 흡수 중인 개명이 없다 — 이 표가 비어 있는 것 자체가 정상 상태다.")
+    if _RN_REJ:
+        L.append("")
+        L.append("> ⚠ **거부된 규칙 %d건** — 적용되지 않았다(그 이름들은 대조에서 삭제/신설로 보인다):"
+                 % len(_RN_REJ))
+        for ln, why in _RN_REJ:
+            L.append(f"> - {ln}행: {why}")
+    L.append("")
     L.append("## 실행 대장")
     L.append("")
-    L.append("| 시각 | 라벨 | 모드 | HEAD | 활성 타깃 | total | 통과 | 실패 | 건너뜀 | 실패 목록 |")
-    L.append("|---|---|---|---|---|---:|---:|---:|---:|---|")
+    L.append("| 시각 | 라벨 | 모드 | HEAD | 더러움 | 활성 타깃 | total | 통과 | 실패 | 건너뜀 | 실패 목록 |")
+    L.append("|---|---|---|---|---:|---|---:|---:|---:|---:|---|")
     for r in rows:
         ts = datetime.datetime.fromtimestamp(r["mt"]).strftime("%m-%d %H:%M")
         fl = "—" if not r["fails"] else "<br>".join(r["fails"])
@@ -176,7 +214,16 @@ def render(rows, dmap):
         # ★ 실행 도중 재컴파일로 타깃이 바뀌면 '실행 전' 값으로 재해석하면 안 된다.
         if r["meta"].get("target_shifted") == "1":
             r["tsrc"] += "⇄"
+        # ★ 「작업 트리가 몇 개 더러웠는가」 — 병렬 라운드가 도는 밤에는 이 값이 곧
+        #   «이 측정이 HEAD가 아니라 움직이는 트리의 스냅샷이다»라는 뜻이다.
+        #   실측 2026-09-03: dirty=40 상태에서 잰 EditMode의 실패 5건 중 3건이
+        #   **측정 중에 편집되고 있던 파일**이었다. 이 칸이 없으면 그 사실이 표에서 사라진다.
+        d = r["meta"].get("dirty", "")
+        dcell = f"{d}" if d else "?"
+        if d and d.isdigit() and int(d) > 0:
+            dcell = f"**{d}**"
         L.append(f"| {ts} | `{r['base'].rsplit('_',1)[0]}` | {r['mode']} | {r['hsrc']}{r['head']} "
+                 f"| {dcell} "
                  f"| **{r['tsrc']}{short(r['target'])}** | {r['total']}{tcc} | {r['passed']} "
                  f"| {r['failed']} | {r['skipped']} | {fl} |")
     L.append("")
@@ -299,6 +346,34 @@ def check():
     finally:
         for f in (probe, probexml):
             if os.path.exists(f): os.remove(f)
+
+    print("── 양성 대조 9: ★ 개명 대장이 실제로 로드·검증되는가")
+    try:
+        import renames as rn2
+        _cf, _cs, ok2, rej2 = rn2.load()
+        print(f"  · 적용 {len(ok2)}건 / 거부 {len(rej2)}건")
+        if rej2:
+            for ln, why in rej2:
+                print(f"    ✗ {ln}행 — {why}")
+            print("  ⚠ 거부된 줄이 있다. 그 개명은 흡수되지 않는다(=삭제+신설로 보인다).")
+        # ★ 음성 대조: 정규화 함수가 실제로 무엇인가를 «바꾸는가».
+        #   항등 함수여도 위의 '적용 N건'은 똑같이 찍힌다 — 그게 이 저장소의 병이다.
+        if ok2:
+            probe_old = ok2[0][0].rsplit(".", 1)[-1]
+            probe_new = ok2[0][1].rsplit(".", 1)[-1]
+            if _cs(probe_old) == probe_new:
+                print(f"  ✓ 정규화가 실제로 이름을 바꾼다: {probe_old} → {_cs(probe_old)}")
+            else:
+                print(f"  ✗ 정규화가 이름을 안 바꾼다({probe_old} → {_cs(probe_old)}) — "
+                      "'적용 N건'은 표시일 뿐 실제로는 항등이다."); rc = 1
+            if _cs("ZZZ_등록되지_않은_이름_XYZ") != "ZZZ_등록되지_않은_이름_XYZ":
+                print("  ✗ 등록되지 않은 이름까지 바꾼다 — 흡수가 과잉이다."); rc = 1
+            else:
+                print("  ✓ 등록되지 않은 이름은 건드리지 않는다(음성 대조)")
+        else:
+            print("  · 대장이 비어 정규화 대조는 판정 불가(미확인).")
+    except Exception as e:
+        print(f"  ✗ 개명 대장을 못 읽었다: {e}"); rc = 1
 
     print("자기검사 통과" if rc == 0 else "자기검사 실패")
     return rc

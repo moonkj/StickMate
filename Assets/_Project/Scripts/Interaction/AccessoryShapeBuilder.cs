@@ -54,11 +54,28 @@ namespace StickMate.Interaction
         internal const float HatBrimLineRatio = 0.06f;
 
         /// <summary>관 꼭대기 = 커버선 + 이 값. 렌더러의 <c>HatTopLocalY</c>가 그대로 노출하고,
-        /// <c>CharacterAccessoryScaleTests</c>가 "정수리(1.0R)보다 높다"를 잠근다.</summary>
-        internal const float HatCrownHeightRatio = 1.18f;
+        /// <c>CharacterAccessoryScaleTests</c>가 "정수리(1.0R)보다 높다"를 잠근다.
+        /// <para>★ 2026-09-03 R12 이식 1단계 — 1.18 -&gt; <b>1.16</b>. 꼭대기 0.06 + 1.16 = <b>+1.22 R</b>로
+        /// 인계본 관(σ = 1.461, 밑변 −0.2200 R)의 꼭대기 +1.2248 R을 우리 격자(소수 두 자리)로 받는다
+        /// (<c>docs/EQUIPMENT_HANDOFF_PORT_SPEC.md</c> §5-5-1 처방 #1).</para></summary>
+        internal const float HatCrownHeightRatio = 1.16f;
 
-        /// <summary>관 <b>옆벽</b>의 x. 감쌈(|x| ≥ 0.85R)을 만드는 자리라 0.85 아래로 내려가면 안 된다.</summary>
-        internal const float HatCrownHalfWidthRatio = 0.94f;
+        /// <summary>관 <b>옆벽</b>의 x. 감쌈(|x| ≥ 0.85R)을 만드는 자리라 0.85 아래로 내려가면 안 된다.
+        /// <para>★ 2026-09-03 R12 이식 1단계 — 0.94 -&gt; <b>1.02</b>. 인계본 관을 σ = 1.461로 키운 결과의
+        /// 반폭 1.0201 R이다(§5-5-1 #1). 우리 관은 <b>좌우 대칭</b>이라 인계본 관 중심 −0.01 R을
+        /// 버렸다 — 0.01 R = 0.029획(배율 0.75)이라 저작 격자(0.01 R) 한 칸이다.</para></summary>
+        internal const float HatCrownHalfWidthRatio = 1.02f;
+
+        /// <summary>★ 2026-09-03 R12 이식 1단계 신설 — 관을 두르는 <b>곧은 띠</b>의 아랫변
+        /// (§5-5-1 처방 #3, 띠 규약은 §5-4-1). 인계본 좌표를 버리고 두께
+        /// <see cref="AccentBandThicknessRatio"/>(0.46 R)짜리 곧은 띠로 다시 세운 것이고,
+        /// 아랫변 y = 관 밑변(−0.22 R) + 0.20 R = <b>−0.02 R</b>이다.
+        /// <para>반폭은 <b>좌표를 새로 적지 않고</b> <see cref="HatCrownHalfWidthRatio"/>를 그대로 받는다
+        /// (규칙 4-a) — 관이 움직이면 띠가 따라간다.</para>
+        /// <para>톤은 <b>그늘</b>이다. 이 모자의 보조색은 <b>챙</b>이고(형제와 나를 가르는 부분),
+        /// 규칙 3-2는 아이템당 보조색을 <b>정확히 하나</b>로 못박는다 — 띠까지 보조색으로 만들면
+        /// 그 규칙이 깨지고 폴백 아이콘(<c>AccessoryFallbackBodyParityTests</c>)이 함께 갈라진다.</para></summary>
+        internal const float HatBandBaseRatio = -0.02f;
 
         /// <summary>챙 끝이 진행 방향으로 뻗는 거리.</summary>
         internal const float HatBrimReachRatio = 1.92f;
@@ -328,48 +345,67 @@ namespace StickMate.Interaction
         /// </summary>
         internal const float AccentBandThicknessRatio = 0.46f;
 
-        // ---- 털모자(33-2-1 #2). ★ 2026-09-02 — 접힌 단이 <b>채움에서 낱선으로</b> 바뀌었다.
+        // ---- 털모자(33-2-1 #2). ★ 2026-09-03 — R12 이식 1단계로 <b>덩어리의 배치가 뒤집혔다</b>.
         //
-        //      사용자 신고: "털모자착용시 거의 머리전체를가림". 실측이 그대로였다 — 배율 0.60에서
-        //      남는 머리 0.34획 / 면적 3.2%. 단 채움 하나가 머리 원반의 <b>94%</b>를 덮고 있었다.
+        //      옛 형태: 넓은 관이 머리를 덮고 그 <b>아래</b>로 접힌 단이 −0.26R까지 내려왔다.
+        //      새 형태(인계본 `furhat`을 세로 아핀 y' = 0.85·y − 0.155로 받은 것, 스펙 §5-5-1 처방 #4):
+        //        · <b>넓은 털 단</b>(반폭 1.05R, y = −0.06 ~ +0.52R. 옆면은 곧은 수직선이다)
+        //        · 그 <b>위</b>에 얹힌 <b>좁은 관</b>(반폭 0.57R, y = +0.56 ~ +1.44R)
+        //      즉 부피가 머리 <b>아래</b>가 아니라 <b>옆</b>으로 갔다.
         //
-        //      ★ 왜 "단을 얇게"가 아니라 "선으로"인가 — 두 요구가 <b>배타적</b>이기 때문이다:
-        //        · 남는 머리 1.20획(목표)을 얻으려면 단 밑단이 −0.26R 위여야 한다.
-        //        · 그러면 단의 두께는 커버선(−0.06R)과의 차 0.20R뿐이라 ρ_max ≈ 0.10R —
-        //          규칙 1-C(색면 조건, ρ_max ≥ 0.21818R)를 <b>채움으로는 절대 통과할 수 없다</b>.
-        //        · 통과시키려면 밑단을 −0.50R까지 내려야 하고, 그러면 남는 머리가 0.66획으로 무너진다.
-        //      풀이: 관과 단을 <b>한 채움</b>으로 합치고 접힌 자리는 <b>그늘색 낱선 하나</b>로 긋는다
-        //      (EQUIPMENT_SHAPE_SPEC 3절 원칙 7 — "실루엣 = 채운 덩어리 / 디테일 = 선 1개").
-        //      이 배율에서 접힌 단은 덩어리가 아니라 선이고, 낱선은 규칙 1-C의 대상이 아니다.
-        //      합집합이 같아 <b>실루엣은 한 점도 안 변하고</b>, 겹치는 채움이 사라져 ApplyAlpha
-        //      페이드 중 이음매가 드러날 위험도 0이 된다.
+        //      ★ 2026-09-02가 세운 두 사실은 그대로 지킨다(그것이 사용자 신고의 처방이었다):
+        //        · 관과 단은 여전히 <b>한 채움</b>이고 접힌 자리는 <b>그늘색 낱선 하나</b>다.
+        //          (AccessoryFilledBandRuler의 「채움 vs 낱선」 대조가 BeanieCuff를 낱선 쪽 표본으로 쓴다 —
+        //           채움으로 바꾸면 그 대조가 통째로 죽는다.)
+        //        · 잉크 밑단이 더 <b>올라갔다</b>: 남는 머리 1.22획 -> <b>1.69획</b>(배율 0.60),
+        //          면적 22.5% -> <b>32.7%</b>. 이식이 이 신고를 더 세게 닫는다.
         //
-        //      ★ 관 밑변 두 점(±<see cref="BeanieBandHalfWidthRatio"/>, <see cref="BeanieBandTopRatio"/>)은
-        //      <b>커버선</b>이라 여전히 손대지 않았다 — 움직이면 머리카락 자르기가 따라 움직인다(9-1절).
+        //      ★ 커버선(<see cref="BeanieBandTopRatio"/>)의 값 −0.06R은 <b>한 자리도 안 움직였다</b> —
+        //      움직이면 머리카락 자르기가 따라 움직인다(9-1절). 다만 <b>가리키는 변이 바뀌었다</b>:
+        //      옛날에는 「단의 <b>위</b> 끝」이었고 지금은 「단의 <b>아래</b> 끝」이다. 이름은 이력이다.
+        //      (이름을 안 바꾼 이유: 이 이름을 읽는 곳이 프로덕션 밖에 넷 있다 —
+        //       AccessoryShapeCatalogTests · AccessoryBeaniePomTests · design/equipment/verify/r10_*.py.)
 
-        /// <summary>접힌 단의 <b>아래</b> 끝. 카테고리에서 가장 깊이 내려온다.
-        /// <para>★ 2026-09-02 −0.64R -&gt; −0.26R. 잉크 밑단 −0.475R이 되어 남는 머리가
-        /// 0.34획 -&gt; <b>1.22획</b>(배율 0.60, 목표 1.20 통과). −0.52R로 되돌리는 것은 답이 아니다 —
-        /// <b>−0.52R 시절에도 사용자는 같은 신고를 했고</b> 그 값의 실측이 0.62획이었다.</para></summary>
-        internal const float BeanieBandBottomRatio = -0.26f;
-
-        /// <summary>단 밑변의 반폭. <para>★ 2026-09-02 0.64R -&gt; 0.56R. 밑단이 올라가 짧아진 옆변을
-        /// 수평 성분으로 벌충한다 — 0.4472R = <b>1.30획 @0.75 / 1.04획 @0.60</b>(획보다 짧은 변은
-        /// 둥근 캡에 먹혀 모서리가 뭉갠다).</para>
-        /// <para>옛 <c>BeanieCuffFlare*</c> 두 점은 삭제했다: 플레어가 만들던 허리 파임 0.08R은
-        /// 배율 0.75에서 0.23획 = 화면상 0.46pt로 <b>어느 배율에서도 보이지 않았다</b>.</para></summary>
-        internal const float BeanieCuffBottomHalfWidthRatio = 0.56f;
-
-        /// <summary>접힌 단의 <b>위</b> 끝 = 관의 밑변 = <b>이 모자의 <see cref="HatCoverLocalY"/></b>.
-        /// 세 사실이 한 값이라 어긋날 자리가 없다(규칙 4-a).</summary>
+        /// <summary>이 모자의 <b>커버선</b> = 접힌 단의 <b>아래</b> 끝 = 모자 잉크의 최저선.
+        /// <see cref="HatCoverLocalY"/>가 그대로 돌려준다.
+        /// <para>★ 이름의 "Top"은 <b>이력</b>이다 — 2026-09-02까지는 이 선이 「단의 위 끝 = 관의 밑변」
+        /// 이었고, 2026-09-03 R12 이식으로 단이 이 선 <b>위</b>에 서게 되면서 같은 값이 「단의 아래 끝」이
+        /// 됐다. <b>값이 안 바뀐 것이 중요하다</b>: 머리카락 자르기와 카탈로그 대조가 이 값에 걸려 있다.</para>
+        /// <para>단의 밑변은 <b>곧은 선</b>이어야 한다 — 커버선은 x에 무관한 한 값인데 밑변이 휘면
+        /// 「머리카락은 잘렸는데 모자가 안 덮은」 맨머리 띠가 옆에 생긴다(인계본 밑변은 양끝이
+        /// +0.035R까지 올라가는 호였고, 그것을 곧게 편 것이 이 이식의 유일한 봉투 변경이다).</para></summary>
         internal const float BeanieBandTopRatio = -0.06f;
 
-        internal const float BeanieBandHalfWidthRatio = 0.96f;
+        /// <summary>접힌 단의 반폭. ★ 2026-09-03 0.96 -&gt; <b>1.05</b> — 인계본 단이 옆으로 가장 부푼
+        /// 자리의 반폭 1.0507 R이다. 이 값이 털모자의 <b>실루엣 최대폭</b>이고, 감쌈
+        /// (|x| ≥ 0.85R · y ≤ 0.05R)을 만드는 자리이기도 하다.
+        /// <para>★ 인계본은 단의 옆면이 <b>둥근 끝</b>이라 밑변 0.9889 R에서 1.0507 R로 부풀었다가
+        /// 다시 들어온다. 우리는 그 둥근 끝을 <b>못 받는다</b>: 세로 여유가 0.58 R뿐이라 중간
+        /// 꼭짓점을 하나 넣으면 양쪽 변이 각각 0.29 R = <b>0.72획</b>이 되어 「획보다 짧은 변」이
+        /// 된다(1획 = 0.3439 R). 실제로 그렇게 넣었다가
+        /// <c>AppearanceShapeBudgetTests.최단_실제_변_검사를_액세서리_30종으로_확장한다</c>의
+        /// 래칫이 14 -&gt; 15로 잡았다. 그래서 <b>최대폭을 남기고 둥근 끝을 버렸다</b> — 옆면은
+        /// 곧은 수직선이고, 실루엣이 정하는 값(최대폭)은 인계본 그대로다.</para></summary>
+        internal const float BeanieBandHalfWidthRatio = 1.05f;
 
-        /// <summary>관 꼭대기 = <see cref="BeanieBandTopRatio"/> + 이 값. 폼폼 꼭대기 계산이 이 합을 쓴다.</summary>
-        internal const float BeanieCrownHeightRatio = 1.38f;
+        /// <summary>★ 2026-09-03 신설 — 단 <b>윗변</b>이 옆(±<see cref="BeanieBandHalfWidthRatio"/>)에서
+        /// 닿는 y(인계본 +0.5179 R).</summary>
+        internal const float BeanieCuffTopRatio = 0.52f;
 
-        internal const float BeanieCrownHalfWidthRatio = 1.06f;
+        /// <summary>★ 2026-09-03 신설 — 관의 <b>밑변</b> = 접힌 자리(낱선)의 y. 인계본 관 밑변
+        /// +0.5389 R을 우리 격자로 받은 값이고, 단 윗변(<see cref="BeanieCuffTopRatio"/>)보다
+        /// 위라서 관과 단이 <b>겹친다</b>(규칙 4가 금지하는 것은 0 &lt; 간격 &lt; 1획이지 겹침이 아니다).</summary>
+        internal const float BeanieDomeFootRatio = 0.56f;
+
+        /// <summary>관 꼭대기 = <see cref="BeanieBandTopRatio"/> + 이 값. 폼폼 꼭대기 계산이 이 합을 쓴다.
+        /// <para>★ 2026-09-03 1.38 -&gt; <b>1.50</b>. 꼭대기 −0.06 + 1.50 = <b>+1.44 R</b>이고, 이것이
+        /// 인계본 관을 아핀으로 받은 값(+1.4426 R)이다. <b>폼폼 꼭대기(+1.72 R)는 안 움직인다</b> —
+        /// <see cref="BeaniePomCrestRiseRatio"/>가 같은 양만큼 줄어 합을 보존한다.</para></summary>
+        internal const float BeanieCrownHeightRatio = 1.50f;
+
+        /// <summary>관(윗덩어리)의 반폭. ★ 2026-09-03 1.06 -&gt; <b>0.57</b> — 인계본 관 반폭 0.5686 R.
+        /// 이제 관은 단보다 <b>좁다</b>(그것이 털모자의 새 실루엣이다).</summary>
+        internal const float BeanieCrownHalfWidthRatio = 0.57f;
         // ★ 폼폼 — 2026-09-01 규칙 1(획 예산) 위반 수정.
         //
         // 옛 폼폼은 <b>반지름 0.22R, 8각형</b>이었고 두 가지가 동시에 성립했다.
@@ -398,8 +434,15 @@ namespace StickMate.Interaction
         // 지금은 0.36획 겹친다.
 
         /// <summary>폼폼 <b>꼭대기</b>가 관 꼭짓점 위로 올라가는 높이. 액자에 닿는 것은 중심이 아니라
-        /// 꼭대기이므로, 반지름을 바꿔도 이 값이 고정되면 실루엣 상한이 따라 움직이지 않는다.</summary>
-        internal const float BeaniePomCrestRiseRatio = 0.40f;
+        /// 꼭대기이므로, 반지름을 바꿔도 이 값이 고정되면 실루엣 상한이 따라 움직이지 않는다.
+        /// <para>★ 2026-09-03 R12 이식 1단계 — 0.40 -&gt; <b>0.28</b>. <b>고정 대상은 이 값이 아니라
+        /// 합(= 실루엣 꼭대기)이다</b>: <see cref="BeanieBandTopRatio"/> + <see cref="BeanieCrownHeightRatio"/>
+        /// + 이 값 = −0.06 + 1.50 + 0.28 = <b>+1.72 R</b>로, 옛 −0.06 + 1.38 + 0.40과 <b>같다</b>.
+        /// 관이 0.12R 자라고 이 값이 0.12R 줄어 액자(1.80R)와의 여유 0.08R이 그대로다.</para>
+        /// <para>덤: 반지름과 같아져 <see cref="BeaniePomOffsetRatio"/> = 0 —
+        /// 폼폼 <b>중심</b>이 관 꼭짓점 <b>그 자체</b>가 된다(인계본도 폼폼 중심이 관 꼭대기다).
+        /// 관과의 겹침은 0.28R = <b>0.81획</b>(옛 0.36획)이라 규칙 4의 최악 구간에서 더 멀어졌다.</para></summary>
+        internal const float BeaniePomCrestRiseRatio = 0.28f;
 
         internal const float BeaniePomRadiusRatio = 0.28f;
 
@@ -427,14 +470,28 @@ namespace StickMate.Interaction
         /// 커버선은 한 값이어야 하는데 챙은 앞뒤로 기울어 있기 때문이다.</summary>
         internal const float FedoraBrimLineRatio = 0.08f;
 
-        internal const float FedoraBrimFrontRatio = 2.06f;
-        internal const float FedoraBrimBackRatio = 1.68f;
+        /// <summary>★ 2026-09-03 R12 이식 1단계 — 2.06 -&gt; <b>1.48</b> / 1.68 -&gt; <b>1.10</b>
+        /// (§5-5-1 처방 #6: 인계본 중절모 전체 −0.35 R). 인계본 챙은 <b>중심 +0.19 R · 반폭 1.29 R</b>인
+        /// 볼록렌즈고, 그 중심 +0.19 R은 우리 현행 <c>FedoraBrim</c>의 중심 그 자체다(§5-5-3 조각 c 표).
+        /// 즉 앞뒤 도달은 <b>1.29 ± 0.19</b>에서 나오고 새 숫자를 발명하지 않았다.</summary>
+        internal const float FedoraBrimFrontRatio = 1.48f;
+        internal const float FedoraBrimBackRatio = 1.10f;
 
-        /// <summary>관 꼭대기 = <see cref="FedoraBrimLineRatio"/> + 이 값.</summary>
-        internal const float FedoraCrownHeightRatio = 1.08f;
+        /// <summary>관 꼭대기 = <see cref="FedoraBrimLineRatio"/> + 이 값.
+        /// <para>★ 2026-09-03 1.08 -&gt; <b>1.30</b>. 꼭대기 0.08 + 1.30 = <b>+1.38 R</b>(인계본 +1.3812 R).</para></summary>
+        internal const float FedoraCrownHeightRatio = 1.30f;
 
-        /// <summary>관 밑변의 반폭. 챙·관·띠 <b>셋이 이 한 값</b>에서 발을 만든다.</summary>
-        internal const float FedoraCrownHalfWidthRatio = 0.98f;
+        /// <summary>관 밑변의 반폭. 챙·관·띠 <b>셋이 이 한 값</b>에서 발을 만든다.
+        /// <para>★ 2026-09-03 0.98 -&gt; <b>0.61</b>(인계본 0.6055 R). 관이 좁아지고 높아진 것이
+        /// 이 이식의 중절모 실루엣이다.</para></summary>
+        internal const float FedoraCrownHalfWidthRatio = 0.61f;
+
+        /// <summary>★ 2026-09-03 신설 — 관 밑변(= 띠 아랫변)이 <b>커버선 위로</b> 올라간 높이.
+        /// 인계본 띠 아랫변 +0.3351 R을 우리 커버선(+0.08 R) 기준으로 다시 쓴 값이다.
+        /// <para>관 밑변은 챙 <b>윗변 위의 두 꼭짓점</b>이라 관이 챙에 파묻힌다(간격 0) — 규칙 4가
+        /// 금지하는 것은 0 &lt; 간격 &lt; 1획이지 겹침이 아니고, 관 높이로 1.5획을 띄우는 것은
+        /// 산술적으로 불가능하다(<c>AccessoryHatBandAndBellTests</c> 문단과 같은 판단).</para></summary>
+        internal const float FedoraCrownFootRiseRatio = 0.24f;
 
         // ★ 2026-09-01 — FedoraBandRiseRatio(0.14f)를 여기서 지웠다. 띠는 이제 좌표를 스스로 적지 않고
         //   관(crown) 밑변의 두 끝점을 <b>그대로 받아 쓴다</b>(AppendHead의 HeadFedora 문단 참고).
@@ -444,8 +501,25 @@ namespace StickMate.Interaction
         //      폴리라인이라 봉우리 <b>끝이 둥근 캡으로 뭉갰다</b>(획은 둥근 캡이므로 선으로는
         //      뾰족해질 수 없다 — 37-6 규칙 6). 채운 도형의 <b>꼭짓점</b>만 점으로 수렴할 수 있다.
         //      밑이 뚫린 성질은 채움이 아니라 커버선 +∞가 계속 보장한다(if 분기가 아니다).
-        internal const float CrownBaseRatio = 0.02f;
-        internal const float CrownHalfWidthRatio = 0.98f;
+        /// <summary>왕관 <b>몸</b>의 밑변. ★ 2026-09-03 R12 이식 1단계 — 0.02 -&gt; <b>0.27</b>
+        /// (§5-5-1 처방 #8: 세로 아핀 y' = 0.9164·y − 0.2025. 인계본 밑변 +0.2738 R).
+        /// 아핀의 두 계수는 <b>우리 현행 왕관 봉투 [−0.10, +1.52]</b>가 정한 값이라 새 숫자가 아니다.</summary>
+        internal const float CrownBaseRatio = 0.27f;
+
+        /// <summary>왕관 <b>몸</b>의 반폭. ★ 2026-09-03 0.98 -&gt; <b>0.94</b>(인계본 0.9395 R).</summary>
+        internal const float CrownHalfWidthRatio = 0.94f;
+
+        /// <summary>★ 2026-09-03 신설 — 테(<c>CrownRim</c>)의 반폭. §5-5-1 처방 #9:
+        /// 인계본 림 <b>19점을 폐기</b>하고 곧은 띠(§5-4-1)로 다시 세운 것이고, 반폭 1.0136 R은
+        /// 그 처방이 직접 적은 값이다.
+        /// <para>이 한 처방이 결함 <b>둘</b>을 동시에 닫는다: 림 바깥 끝면이 0.946획이던
+        /// <b>몽당변 2건</b>(양끝 꺾임 81.3°·87.1°)과, 같은 림의 <b>규칙 1-C 0.98획 미달</b>.
+        /// 두 결함의 원인이 하나(림이 얇다)라서 별도 처방을 쓰지 않았다.</para></summary>
+        internal const float CrownRimHalfWidthRatio = 1.01f;
+
+        /// <summary>★ 2026-09-03 신설 — 테의 <b>아랫변</b>. 인계본 −0.1000 R이고, 이것은 우리 현행
+        /// 왕관의 밑변(−0.10 R)과 <b>같은 값</b>이다 — 아핀이 그 봉투에 맞춰졌기 때문이다.</summary>
+        internal const float CrownRimBaseRatio = -0.10f;
 
         // ---- 동그란 안경. 코다리는 <b>렌즈 꼭대기</b>를 잇는 아치다 — 렌즈 한가운데를 가로지르면
         //      그 순간 아령(덤벨)이 된다(Tasklist V2). 간격은 규칙 1의 1.5획을 지킨다:
@@ -825,11 +899,11 @@ namespace StickMate.Interaction
             return new[]
             {
                 rig.F(-side, hc - r * 0.22f),
-                rig.F(-r * 1.02f, hc + r * 0.36f),
-                rig.F(-r * 0.72f, hc + r * 1.02f),
+                rig.F(-side, hc + r * 0.36f),
+                rig.F(-r * 0.72f, hc + r * 1.04f),
                 rig.F(0f, HatTopLocalY(rig)),
-                rig.F(r * 0.72f, hc + r * 1.00f),
-                rig.F(r * 1.00f, hc + r * 0.34f),
+                rig.F(r * 0.72f, hc + r * 1.02f),
+                rig.F(side, hc + r * 0.34f),
                 rig.F(side, hc - r * 0.06f),
                 HatCrownFrontFoot(rig),
                 HatCrownBackFoot(rig),
@@ -979,8 +1053,27 @@ namespace StickMate.Interaction
             /// <para>이 값이 참이면 그리는 쪽이 <b>같은 점으로 삼각형 면을 하나 더</b> 만들어 윤곽선
             /// 바로 아래(<c>SortingOrder − 1</c>)에 깐다. 몸통/팔다리 같은 <b>캐릭터 본체는 여전히 순수
             /// 선화</b>다 — 채우는 것은 "안에 있는 것을 가려야 하는" 물건(모자)뿐이다.</para>
-            /// <para>왕관은 <b>일부러</b> 채우지 않는다. 밑이 뚫린 테라서 머리가 보이는 것이 옳고,
-            /// 그 사실은 이미 <see cref="HatCoverLocalY"/>가 +∞로 선언하고 있다.</para>
+            /// <para>★ <b>채움의 이유는 하나가 아니다</b>(2026-09-03 정정). 이 프로젝트에서 채우는
+            /// 이유는 셋이고, 서로 독립이다:
+            /// <br/>(가) <b>안에 있는 것을 가린다</b> — 모자 관. 이 값이 처음 생긴 이유.
+            /// <br/>(나) <b>꼭짓점을 점으로 수렴시킨다</b> — 왕관 봉우리. 획은 둥근 캡이라
+            ///     <b>선으로는 뾰족해질 수 없다</b>(2026-09-01 2차, 규칙 6).
+            /// <br/>(다) <b>덩어리를 만든다</b> — 머리카락, 그리고 A군 5종의 띠.
+            ///     이 배율에서 획 하나보다 얇은 띠는 색면을 못 가진다(규칙 1-C).</para>
+            ///
+            /// <para>★ <b>왕관으로 이 값을 설명하지 마라 — 왕관은 채운다.</b>
+            /// <c>CrownBody</c>는 2026-09-01(2차)에 (나)의 이유로, <c>CrownRim</c>은 2026-09-03에
+            /// (다)의 이유로 채움이 됐다. 옛 주석은 "왕관은 일부러 채우지 않는다"였고 <b>지금은 거짓</b>이다.
+            /// (실측: 프로덕션 덤프 <c>Tools/ShapeDump/build.sh</c>가 두 도형 모두 <c>filled=1</c>로 찍는다.)</para>
+            ///
+            /// <para>★ 그리고 <b>「채움」과 「커버선」은 다른 일을 한다</b> — 옛 주석은 둘을 한 문장에
+            /// 섞어 두어 하나가 바뀌자 다른 하나까지 틀린 것처럼 읽혔다.
+            /// <br/>· <c>Filled</c> = <b>화면에서 덮는다</b>. 액세서리는 <c>SortHead</c>(10)가
+            ///   <c>SortHair</c>(6)보다 위라, 겹치는 자리는 채움이 가린다.
+            /// <br/>· <see cref="HatCoverLocalY"/> = <b>머리카락 도형을 자른다</b>
+            ///   (<see cref="AppendClippedBelowCover"/>). 왕관만 <see cref="NothingCovered"/>다.
+            /// <br/>왕관은 <b>덮되 자르지 않는다</b>. 그래서 봉우리 사이와 위로 머리카락이 그대로
+            /// 올라오고, 그 사실을 지키는 것은 채움 여부가 아니라 <b>커버선 하나</b>다.</para>
             /// </summary>
             public readonly bool Filled;
 
@@ -1196,42 +1289,56 @@ namespace StickMate.Interaction
             switch (item)
             {
                 case HeadCap:
+                {
                     sink.Add(new Shape("HatCrown", HatCrown(rig), true, SortHead, filled: true));
                     sink.Add(new Shape("HatBrim", HatBrim(rig), true, SortHead, tone: Accent, filled: true));
+
+                    // 띠 — 아랫변(<see cref="HatBandBaseRatio"/>)에서 위로
+                    // AccentBandThicknessRatio만큼 세운 <b>닫힌 채움</b>이고, 반폭은 관에서 그대로
+                    // 받는다(규칙 4-a). 「아랫변 + 역순 윗변」 규약(스펙 14-1)을 그대로 따른다.
+                    float capBandY = hc + r * HatBandBaseRatio;
+                    float capBandHalf = r * HatCrownHalfWidthRatio;
+                    sink.Add(new Shape("HatBand", new[]
+                    {
+                        rig.F(-capBandHalf, capBandY),
+                        rig.F(capBandHalf, capBandY),
+                        rig.F(capBandHalf, capBandY + r * AccentBandThicknessRatio),
+                        rig.F(-capBandHalf, capBandY + r * AccentBandThicknessRatio),
+                    }, true, SortHead, tone: Shade, filled: true));
                     break;
+                }
 
                 case HeadBeanie:
                 {
-                    // 관 밑변 = 접힌 단의 윗변 = 커버선. 세 사실이 <b>같은 두 점</b>이다.
-                    float cuffTop = hc + r * BeanieBandTopRatio;
+                    // 커버선 = 접힌 단의 <b>밑변</b>. 곧은 선이라 x에 무관하다(상수 문단 참고).
+                    float cuffLine = hc + r * BeanieBandTopRatio;
                     float cuffHalf = r * BeanieBandHalfWidthRatio;
-                    Vector3 cuffBack = rig.F(-cuffHalf, cuffTop);
-                    Vector3 cuffFront = rig.F(cuffHalf, cuffTop);
-                    float crownTop = cuffTop + r * BeanieCrownHeightRatio;
+                    float crownTop = cuffLine + r * BeanieCrownHeightRatio;
                     float crownHalf = r * BeanieCrownHalfWidthRatio;
 
-                    float hemY = hc + r * BeanieBandBottomRatio;
-                    float hemHalf = r * BeanieCuffBottomHalfWidthRatio;
+                    // 관의 두 발 = 접힌 자리(낱선)의 두 끝. <b>한 번만</b> 만들어 채움과 낱선이 나눠
+                    // 쓴다 — 좌표를 두 번 적으면 한쪽만 고쳐지는 순간 선이 실루엣에서 뜬다(규칙 4-a).
+                    Vector3 domeBack = rig.F(-crownHalf, hc + r * BeanieDomeFootRatio);
+                    Vector3 domeFront = rig.F(crownHalf, hc + r * BeanieDomeFootRatio);
 
-                    // 관 + 접힌 단이 <b>한 채움</b>이다. 감쌈(|x| ≥ 0.85R · y ≤ 0.05R)은 커버선의
-                    // 두 점(±0.96R, −0.06R)이 그대로 만든다 — 단을 선으로 바꿔도 안 사라진다.
+                    // 관 + 접힌 단이 <b>한 채움</b>이다(2026-09-02 처방 유지). 감쌈(|x| ≥ 0.85R ·
+                    // y ≤ 0.05R)은 단 밑변의 두 끝(±1.05R, −0.06R)이 그대로 만든다.
                     sink.Add(new Shape("BeanieCrown", new[]
                     {
-                        rig.F(-hemHalf, hemY),
-                        cuffBack,
-                        rig.F(-crownHalf, hc + r * 0.52f),
-                        rig.F(-r * 0.62f, hc + r * 1.16f),
+                        rig.F(-cuffHalf, cuffLine),
+                        rig.F(cuffHalf, cuffLine),
+                        rig.F(cuffHalf, hc + r * BeanieCuffTopRatio),
+                        domeFront,
+                        rig.F(r * 0.50f, hc + r * 1.06f),
                         rig.F(0f, crownTop),
-                        rig.F(r * 0.62f, hc + r * 1.14f),
-                        rig.F(crownHalf, hc + r * 0.50f),
-                        cuffFront,
-                        rig.F(hemHalf, hemY),
+                        rig.F(-r * 0.50f, hc + r * 1.06f),
+                        domeBack,
+                        rig.F(-cuffHalf, hc + r * BeanieCuffTopRatio),
                     }, true, SortHead, filled: true));
 
-                    // 접힌 자리 = <b>낱선 하나</b>. 관의 허리 두 점을 그대로 받는다(좌표를 새로 적지
-                    // 않는다 — 규칙 4-a). tone은 <b>반드시</b> Shade다: 0이면 관 채움색과 같아져
-                    // 화면에서 통째로 사라진다.
-                    sink.Add(new Shape("BeanieCuff", new[] { cuffBack, cuffFront },
+                    // 접힌 자리 = <b>낱선 하나</b>. 관의 두 발을 그대로 받는다(규칙 4-a).
+                    // tone은 <b>반드시</b> Shade다: 0이면 관 채움색과 같아져 화면에서 통째로 사라진다.
+                    sink.Add(new Shape("BeanieCuff", new[] { domeBack, domeFront },
                         false, SortHead, tone: Shade));
 
                     sink.Add(new Shape("BeaniePom",
@@ -1247,36 +1354,42 @@ namespace StickMate.Interaction
                     float crownHalf = r * FedoraCrownHalfWidthRatio;
 
                     // 관 밑변의 두 끝점을 <b>한 번만</b> 만들어 챙·관·띠 셋이 나눠 쓴다.
-                    // 챙이 앞뒤로 기울어 있으므로 두 발의 y가 커버선을 사이에 두고 갈린다.
-                    Vector3 crownBackFoot = rig.F(-crownHalf, brimY + r * 0.02f);
-                    Vector3 crownFrontFoot = rig.F(crownHalf, brimY - r * 0.02f);
+                    // 챙이 볼록렌즈라 중심(+0.19R)에 가까운 앞발이 뒷발보다 조금 높다.
+                    float crownFootY = brimY + r * FedoraCrownFootRiseRatio;
+                    Vector3 crownBackFoot = rig.F(-crownHalf, crownFootY - r * 0.02f);
+                    Vector3 crownFrontFoot = rig.F(crownHalf, crownFootY + r * 0.02f);
 
-                    // 챙은 양쪽 다 뻗지만 앞이 더 길어 방향이 읽힌다.
-                    // ★ 2026-09-02 7점 -> 8점. 부피를 머리 원 <b>밖</b>(x = +1.44R, 두께 0.614R)으로
-                    //    옮기고 얼굴 앞 구간은 0.330R짜리 얇은 판으로 눕혔다 — 챙은 원반이라 옆에서
-                    //    보면 그 순서가 맞다. 머리 원반에 얹는 색 0.902 R²(68%) -> 0.655 R²(52%),
-                    //    남는 머리 0.88획 -> 1.25획(배율 0.60). ρ_max 0.2673R = 1.22획(규칙 1-C).
-                    //    감쌈(|x| ≥ 0.85R · y ≤ 0.05R)은 x = ±0.94R의 두 점이 머리 <b>안</b>에서 만든다.
+                    // ★ 2026-09-03 R12 이식 1단계 — 챙이 <b>볼록렌즈</b>가 됐다(인계본 `fedora` B2).
+                    //    중심 +0.19R · 반폭 1.29R · 두께 0.46R(중심)이고 앞뒤 끝은 점으로 수렴한다.
+                    //    관 밑변의 두 발은 <b>이 윗변 위의 꼭짓점</b>이라 관이 챙에 파묻힌다(간격 0).
+                    //    옛 챙(반폭 1.87R, 뒤 −0.26R까지 처짐)보다 <b>덜 덮는다</b>:
+                    //    남는 머리 1.25획 -> <b>1.64획</b> · 면적 21.5% -> <b>34.2%</b>(배율 0.60).
+                    //    감쌈(|x| ≥ 0.85R · y ≤ 0.05R)은 밑변의 (+0.99R, −0.01R)이 만든다.
                     sink.Add(new Shape("FedoraBrim", new[]
                     {
-                        rig.F(-r * FedoraBrimBackRatio, hc + r * 0.16f),
+                        rig.F(-r * FedoraBrimBackRatio, hc + r * 0.15f),   // 뒤 끝 — 점으로 수렴
                         crownBackFoot,
+                        rig.F(r * 0.19f, hc + r * 0.36f),                  // 렌즈 중심(가장 두껍다)
                         crownFrontFoot,
-                        rig.F(r * FedoraBrimFrontRatio, hc + r * 0.28f),
-                        rig.F(r * 1.44f, hc - r * 0.46f),    // ★ 부피는 여기(머리 밖)
-                        rig.F(r * 0.94f, hc - r * 0.24f),    // ★ 얼굴 앞 구간은 얇은 판
-                        rig.F(-r * 0.94f, hc - r * 0.26f),   // 감쌈을 만드는 자리
-                        rig.F(-r * 1.40f, hc - r * 0.22f),   // 뒤 챙 밑면
+                        rig.F(r * FedoraBrimFrontRatio, hc + r * 0.15f),   // 앞 끝 — 점으로 수렴
+                        rig.F(r * 0.99f, hc - r * 0.01f),                  // 감쌈을 만드는 자리
+                        rig.F(r * 0.19f, hc - r * 0.10f),                  // 잉크 밑단
+                        rig.F(-r * 0.61f, hc - r * 0.01f),
                     }, true, SortHead, filled: true));
 
+                    // ★ 크리스(관 꼭대기의 눌린 자국)가 <b>돌아왔다</b> — 2026-09-01에 없앤 이유는
+                    //    "관이 낮아 V가 관을 두 쪽으로 가르는 <b>선</b>이 된다"였는데, 이식으로 관 높이가
+                    //    0.72R -> 1.04R이 되면서 크리스를 <b>채움의 윤곽선 노치</b>로 낼 수 있게 됐다.
+                    //    노치의 두 변은 각각 0.476R = <b>1.38획</b>(규칙 1 하한 1.0획)이라 예산 안이다.
                     float crownTop = brimY + r * FedoraCrownHeightRatio;
                     sink.Add(new Shape("FedoraCrown", new[]
                     {
                         crownBackFoot,
-                        rig.F(-r * 0.92f, hc + r * 0.86f),
-                        rig.F(-r * 0.42f, crownTop),
-                        rig.F(r * 0.42f, crownTop - r * 0.02f),
-                        rig.F(r * 0.92f, hc + r * 0.82f),
+                        rig.F(-crownHalf, hc + r * 0.86f),
+                        rig.F(-r * 0.30f, crownTop),
+                        rig.F(0f, hc + r * 1.01f),          // 크리스 바닥
+                        rig.F(r * 0.30f, crownTop),
+                        rig.F(crownHalf, hc + r * 0.86f),
                         crownFrontFoot,
                     }, true, SortHead, filled: true));
 
@@ -1290,8 +1403,8 @@ namespace StickMate.Interaction
                     {
                         crownBackFoot,
                         crownFrontFoot,
-                        rig.F(crownHalf, brimY - r * 0.02f + r * AccentBandThicknessRatio),
-                        rig.F(-crownHalf, brimY + r * 0.02f + r * AccentBandThicknessRatio),
+                        rig.F(crownHalf, crownFootY + r * 0.02f + r * AccentBandThicknessRatio),
+                        rig.F(-crownHalf, crownFootY - r * 0.02f + r * AccentBandThicknessRatio),
                     }, true, SortHead, tone: Accent, filled: true));
                     break;
                 }
@@ -1303,32 +1416,31 @@ namespace StickMate.Interaction
                     // 좌우 대칭이라 facing에 무관하게 같은 그림이 나온다(33-2-1 #4, 정상).
                     // <b>채운 닫힌 도형</b>이라 봉우리 세 개가 꼭짓점으로 수렴한다 — 선으로 그리면
                     // 둥근 캡이 끝을 뭉갠다(옛 왕관이 그 상태였다).
+                    // ★ 2026-09-03 R12 이식 1단계 — 몸이 <b>테 위로 올라앉았다</b>(밑변 0.02 -> 0.27R).
+                    //    밑이 뚫린 성질은 여전히 채움이 아니라 커버선 +∞가 보장한다.
                     sink.Add(new Shape("CrownBody", new[]
                     {
                         rig.F(-half, baseY),
-                        rig.F(-r * 0.88f, hc + r * 1.28f),
-                        rig.F(-r * 0.46f, hc + r * 0.62f),
+                        rig.F(-r * 0.84f, hc + r * 1.36f),
+                        rig.F(-r * 0.42f, hc + r * 0.82f),
                         rig.F(0f, hc + r * 1.52f),
-                        rig.F(r * 0.46f, hc + r * 0.62f),
-                        rig.F(r * 0.88f, hc + r * 1.28f),
+                        rig.F(r * 0.42f, hc + r * 0.82f),
+                        rig.F(r * 0.84f, hc + r * 1.36f),
                         rig.F(half, baseY),
-                        rig.F(r * 0.60f, hc - r * 0.10f),
-                        rig.F(-r * 0.60f, hc - r * 0.10f),
                     }, true, SortHead, filled: true));
 
-                    // 테는 몸의 밑변 네 점을 그대로 받고(좌표를 새로 적지 않는다), 그 위로
-                    // AccentBandThicknessRatio만큼 세운 윗변을 <b>역순</b>으로 이어 고리를 닫는다
-                    // (스펙 14-1, 2026-09-03). 역순이라야 띠가 자기 자신을 가로지르지 않는다.
+                    // 테 — ★ 2026-09-03 R12 이식 1단계로 <b>곧은 띠</b>가 됐다(§5-5-1 처방 #9).
+                    // 옛 테는 몸의 밑변 네 점을 받아 사다리꼴이었고, 그 바깥 끝면이 몽당변(0.946획)이자
+                    // 규칙 1-C 미달(0.98획)이었다. 지금은 아랫변 2점 + 그것을 AccentBandThicknessRatio
+                    // 만큼 올린 역순 윗변 2점이다(스펙 14-1 「올린 띠」 규약 그대로).
+                    float rimHalf = r * CrownRimHalfWidthRatio;
+                    float rimY = hc + r * CrownRimBaseRatio;
                     sink.Add(new Shape("CrownRim", new[]
                     {
-                        rig.F(-half, baseY),
-                        rig.F(-r * 0.60f, hc - r * 0.10f),
-                        rig.F(r * 0.60f, hc - r * 0.10f),
-                        rig.F(half, baseY),
-                        rig.F(half, baseY + r * AccentBandThicknessRatio),
-                        rig.F(r * 0.60f, hc - r * 0.10f + r * AccentBandThicknessRatio),
-                        rig.F(-r * 0.60f, hc - r * 0.10f + r * AccentBandThicknessRatio),
-                        rig.F(-half, baseY + r * AccentBandThicknessRatio),
+                        rig.F(-rimHalf, rimY),
+                        rig.F(rimHalf, rimY),
+                        rig.F(rimHalf, rimY + r * AccentBandThicknessRatio),
+                        rig.F(-rimHalf, rimY + r * AccentBandThicknessRatio),
                     }, true, SortHead, tone: Accent, filled: true));
                     break;
                 }

@@ -105,6 +105,9 @@ namespace UnityEngine
         public static float LerpUnclamped(float a, float b, float t) => a + (b - a) * t;
         public static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
         public static float Clamp(float v, float lo, float hi) => v < lo ? lo : (v > hi ? hi : v);
+        // UnityEngine.Mathf.InverseLerp 원문 이식: a==b면 0, 그 밖에는 Clamp01((v-a)/(b-a)).
+        public static float InverseLerp(float a, float b, float v)
+            => a != b ? Clamp01((v - a) / (b - a)) : 0f;
     }
 
     public enum HideFlags { None = 0, DontSave = 52 }

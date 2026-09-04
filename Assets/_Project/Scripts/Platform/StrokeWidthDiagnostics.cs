@@ -59,14 +59,28 @@ namespace StickMate.Platform
             /// <summary>비교 대상 하한(OS 포인트) — <b>채움 경계선</b> 쪽
             /// (<see cref="StickConfig.MinFillOutlineScreenPoints"/>).</summary>
             public readonly float FillOutlineFloorPoints;
-            /// <summary>낱선만 본 최소 두께(OS 포인트). 낱선이 하나도 없으면 0.</summary>
-            public readonly float MinLinePoints;
-            /// <summary>채움 경계선만 본 최소 두께(OS 포인트). 그런 선이 없으면 0.</summary>
-            public readonly float MinFillOutlinePoints;
+
+            /// <summary>낱선만 본 최소 <b>잉크 코어</b> 두께(OS 포인트) = 그려진 두께 − 겹수 × 막.
+            /// 낱선이 하나도 없으면 0. <b>하한 판정은 이 값으로 한다</b>(아래 ★ 참고).</summary>
+            public readonly float MinLineInkCorePoints;
+            /// <summary>채움 경계선만 본 최소 <b>잉크 코어</b> 두께(OS 포인트). 그런 선이 없으면 0.</summary>
+            public readonly float MinFillOutlineInkCorePoints;
+            /// <summary>낱선만 본 최소 <b>그려진</b> 두께(OS 포인트) — 화면에 실제로 찍히는 폭.</summary>
+            public readonly float MinLineDrawnPoints;
+            /// <summary>채움 경계선만 본 최소 <b>그려진</b> 두께(OS 포인트).</summary>
+            public readonly float MinFillOutlineDrawnPoints;
+
+            /// <summary>막 한 겹의 두께(물리픽셀) — <see cref="InkMembraneStroke.MembranePhysicalPixels"/>를
+            /// 그대로 나른다(상수를 베끼지 않는다). 0이면 이 보고의 잉크 코어 = 그려진 두께다.</summary>
+            public readonly float MembranePixels;
+            /// <summary>막 표식을 실제로 달고 있는 선의 개수. 막이 0이면 언제나 0이다.</summary>
+            public readonly int MembraneLineCount;
 
             public Report(int lineCount, int fillOutlineCount, float pixelsPerWorldUnit,
                 float minPixels, float maxPixels, float minPoints, float maxPoints,
-                float minLinePoints, float minFillOutlinePoints,
+                float minLineInkCorePoints, float minFillOutlineInkCorePoints,
+                float minLineDrawnPoints, float minFillOutlineDrawnPoints,
+                float membranePixels, int membraneLineCount,
                 float floorPoints, float fillOutlineFloorPoints)
             {
                 LineCount = lineCount;
@@ -76,23 +90,33 @@ namespace StickMate.Platform
                 MaxPixels = maxPixels;
                 MinPoints = minPoints;
                 MaxPoints = maxPoints;
-                MinLinePoints = minLinePoints;
-                MinFillOutlinePoints = minFillOutlinePoints;
+                MinLineInkCorePoints = minLineInkCorePoints;
+                MinFillOutlineInkCorePoints = minFillOutlineInkCorePoints;
+                MinLineDrawnPoints = minLineDrawnPoints;
+                MinFillOutlineDrawnPoints = minFillOutlineDrawnPoints;
+                MembranePixels = membranePixels;
+                MembraneLineCount = membraneLineCount;
                 FloorPoints = floorPoints;
                 FillOutlineFloorPoints = fillOutlineFloorPoints;
             }
 
             /// <summary>하한이 지켜지고 있는가 — <b>두 통을 각자의 하한과</b> 비교한다.
             /// 부동소수 여유 0.01pt(= 표시 자릿수)만 준다.
-            /// <para>없는 통은 판정에 넣지 않는다(개수 0이면 최소값도 0이라 무조건 미달이 된다).</para></summary>
+            /// <para>없는 통은 판정에 넣지 않는다(개수 0이면 최소값도 0이라 무조건 미달이 된다).</para>
+            ///
+            /// <para>★★ <b>2026-09-03 — 비교 대상이 「그려진 두께」에서 「잉크 코어」로 바뀌었다.</b>
+            /// 예전에는 <c>lr.startWidth</c>(= 잉크 + 막)를 그대로 하한과 비교했다. 막을 켜는 순간
+            /// <b>잉크가 0px인데 이 속성이 참을 돌려주고 <c>[렌더품질]</c>도 「하한 지킴」을 찍는다</b>
+            /// (Windows 100% · 배율 0.35). 이 저장소의 서명 사고 — 실패한 측정과 성공한 측정이
+            /// 똑같이 생겼다. 이제 <see cref="InkMembraneStroke.InkCore"/>로 되빼서 비교한다.</para></summary>
             public bool FloorHonored
             {
                 get
                 {
                     if (LineCount == 0) return false;
                     int standalone = LineCount - FillOutlineCount;
-                    if (standalone > 0 && MinLinePoints < FloorPoints - 0.01f) return false;
-                    if (FillOutlineCount > 0 && MinFillOutlinePoints < FillOutlineFloorPoints - 0.01f) return false;
+                    if (standalone > 0 && MinLineInkCorePoints < FloorPoints - 0.01f) return false;
+                    if (FillOutlineCount > 0 && MinFillOutlineInkCorePoints < FillOutlineFloorPoints - 0.01f) return false;
                     return true;
                 }
             }
@@ -112,8 +136,14 @@ namespace StickMate.Platform
                 : 0f;
 
             float minWidthPx = float.MaxValue, maxWidthPx = 0f;
-            float minLinePx = float.MaxValue, minFillOutlinePx = float.MaxValue;
-            int lineCount = 0, fillOutlineCount = 0;
+            float minLineCorePx = float.MaxValue, minFillOutlineCorePx = float.MaxValue;
+            float minLineDrawnPx = float.MaxValue, minFillOutlineDrawnPx = float.MaxValue;
+            int lineCount = 0, fillOutlineCount = 0, membraneLineCount = 0;
+
+            // ★ 막은 <b>물리픽셀</b>이 단위라 여기서는 환산이 필요 없다 — 이 계측기가 이미 물리픽셀로
+            //   재고 있기 때문이다. StickmanAgent 쪽은 pt/유닛을 거쳐 월드 유닛으로 환산한다.
+            //   <b>두 경로가 서로 다른 길로 같은 답에 도달하므로 서로의 검산이 된다.</b>
+            const float membranePx = InkMembraneStroke.MembranePhysicalPixels;
             LineRenderer[] lines = Object.FindObjectsByType<LineRenderer>(
                 FindObjectsInactive.Exclude, FindObjectsSortMode.None);
             for (int i = 0; i < lines.Length; i++)
@@ -131,16 +161,30 @@ namespace StickMate.Platform
 
                 // ★ 2026-09-02 M6 — 이 선이 어느 하한 소속인지는 <b>선 자신에게 묻는다</b>.
                 //   이름/목록으로 가르면 DLC 도형이 조용히 빠져나간다(FillOutlineStroke 문서).
+                // ★★ 막을 되뺀 <b>잉크 코어</b>가 하한 판정의 대상이다. 막이 걸렸는지도
+                //    이름/역할이 아니라 <b>선 자신에게</b> 묻는다(FillOutlineStroke와 같은 방식) —
+                //    막에서 제외된 선까지 되빼면 그 선의 잉크를 과소평가해 거짓 빨강이 난다.
+                int membraneSides = InkMembraneStroke.AppliedSides(lr);
+                if (membraneSides > 0) membraneLineCount++;
+                float corePx = InkMembraneStroke.InkCore(widthPx, membranePx, membraneSides);
+
                 if (FillOutlineStroke.Is(lr))
                 {
                     fillOutlineCount++;
-                    if (widthPx < minFillOutlinePx) minFillOutlinePx = widthPx;
+                    if (corePx < minFillOutlineCorePx) minFillOutlineCorePx = corePx;
+                    if (widthPx < minFillOutlineDrawnPx) minFillOutlineDrawnPx = widthPx;
                 }
-                else if (widthPx < minLinePx) minLinePx = widthPx;
+                else
+                {
+                    if (corePx < minLineCorePx) minLineCorePx = corePx;
+                    if (widthPx < minLineDrawnPx) minLineDrawnPx = widthPx;
+                }
             }
             if (lineCount == 0) minWidthPx = 0f;
-            if (minLinePx == float.MaxValue) minLinePx = 0f;
-            if (minFillOutlinePx == float.MaxValue) minFillOutlinePx = 0f;
+            if (minLineCorePx == float.MaxValue) minLineCorePx = 0f;
+            if (minFillOutlineCorePx == float.MaxValue) minFillOutlineCorePx = 0f;
+            if (minLineDrawnPx == float.MaxValue) minLineDrawnPx = 0f;
+            if (minFillOutlineDrawnPx == float.MaxValue) minFillOutlineDrawnPx = 0f;
 
             // OS 포인트 = Unity 픽셀 x DpiScale(Retina 2x -> 0.5, Windows 표시배율 125% -> 0.8).
             // 곱셈 한 번이라 카메라가 없어 pixelsPerUnit이 0이어도 0이 나올 뿐 NaN이 생기지 않는다.
@@ -148,7 +192,9 @@ namespace StickMate.Platform
             return new Report(lineCount, fillOutlineCount, pixelsPerUnit,
                 minWidthPx, maxWidthPx,
                 minWidthPx * dpiScale, maxWidthPx * dpiScale,
-                minLinePx * dpiScale, minFillOutlinePx * dpiScale,
+                minLineCorePx * dpiScale, minFillOutlineCorePx * dpiScale,
+                minLineDrawnPx * dpiScale, minFillOutlineDrawnPx * dpiScale,
+                membranePx, membraneLineCount,
                 StickConfig.MinStrokeScreenPoints, StickConfig.MinFillOutlineScreenPoints);
         }
 
@@ -166,10 +212,17 @@ namespace StickMate.Platform
             // ★ 하한이 둘이므로 <b>어느 통이 무엇과 비교됐는지</b>까지 적는다. 예전처럼 최소값 하나와
             //   하한 하나만 찍으면, 정상적으로 1.18pt인 채움 경계선이 "2pt 미달"로 읽힌다.
             int standalone = r.LineCount - r.FillOutlineCount;
+            // ★ 막이 걸려 있으면 <b>무엇을 되뺐는지</b>를 같은 줄에 적는다. 안 적으면 읽는 사람이
+            //   "그려진 두께"와 "잉크 코어"를 구분할 방법이 없고, 그 혼동이 이 게이트가 고친 사고다.
+            string membrane = r.MembraneLineCount > 0
+                ? $" · 막 {r.MembranePixels:F2}물리픽셀 × {r.MembraneLineCount}개(그려진 최소 낱선 " +
+                  $"{r.MinLineDrawnPoints:F2}pt · 채움경계선 {r.MinFillOutlineDrawnPoints:F2}pt)"
+                : string.Empty;
             return $"LineRenderer {r.LineCount}개 획 두께 실측 {r.MinPixels:F2}~{r.MaxPixels:F2} 물리픽셀 " +
-                   $"(= {r.MinPoints:F2}~{r.MaxPoints:F2} OS pt / 낱선 {standalone}개 최소 " +
-                   $"{r.MinLinePoints:F2}pt vs 하한 {r.FloorPoints:F1}pt · 채움경계선 {r.FillOutlineCount}개 최소 " +
-                   $"{r.MinFillOutlinePoints:F2}pt vs 하한 {r.FillOutlineFloorPoints:F1}pt -> {verdict})";
+                   $"(= {r.MinPoints:F2}~{r.MaxPoints:F2} OS pt / 낱선 {standalone}개 <b>잉크</b> 최소 " +
+                   $"{r.MinLineInkCorePoints:F2}pt vs 하한 {r.FloorPoints:F1}pt · 채움경계선 {r.FillOutlineCount}개 " +
+                   $"<b>잉크</b> 최소 {r.MinFillOutlineInkCorePoints:F2}pt vs 하한 " +
+                   $"{r.FillOutlineFloorPoints:F1}pt{membrane} -> {verdict})";
         }
     }
 }

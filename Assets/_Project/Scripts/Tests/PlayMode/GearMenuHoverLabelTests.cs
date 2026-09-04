@@ -264,6 +264,13 @@ namespace StickMate.Tests.PlayMode
         ///
         /// <para>원 대 사각형의 <b>실제 거리</b>로 잰다 — 버튼의 정사각 판정 상자로 재면 원 밖의 모서리
         /// 때문에 그리지도 않은 겹침을 잡아낸다.</para>
+        ///
+        /// <para>★★ <b>2026-09-03 — 이 테스트가 실제로 잡았다</b>:
+        /// <c>[오늘 할일] 이름표가 [앱 종료]를 5.9px 덮습니다(16.07 &lt; 22.0)</c>. 위성 [앱 종료]가
+        /// 궤도 168로 들어오면서 36-4의 「폭 무관 보장」 전제(궤도 111)가 깨진 것이었다.
+        /// <b>이 판은 한 화면 한 위치만 본다</b> — 같은 성질의 전수 증명은
+        /// <c>Tests/EditMode/GearMenuHoverLabelGeometryTests</c>에 있다(≈17만 배치 + 역대조).
+        /// 여기가 빨개지면 그쪽부터 보라.</para>
         /// </summary>
         [UnityTest]
         public IEnumerator TheHoverLabelNeverCoversAnotherButton()

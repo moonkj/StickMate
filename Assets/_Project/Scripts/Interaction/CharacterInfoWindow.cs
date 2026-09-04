@@ -261,6 +261,7 @@ namespace StickMate.Interaction
         private const float IconStroke = 1.7f * (IconSize / 40f);
         private const float LockBadgeWidth = 18f;
         private const float LockBadgeHeight = 17f;
+
         private const float CardNameY = -64f;
         private const float CardTextHeight = 14f;
 
@@ -322,9 +323,14 @@ namespace StickMate.Interaction
         private const float StatusSlotWidth = 96f;   // 훗날 가격표가 들어올 자리(디자이너 확정 최소 폭).
         private const float InventoryListWidth = RightContentWidth - InventoryRailWidth - UiChrome.Space2;
 
-        /// <summary>10pt 한글 한 글자가 실제로 먹는 폭(실측 11pt). 내장 폰트에 폭 조회 API가 마땅치
-        /// 않아 <see cref="TabLabelWidth"/>와 같은 근사를 쓴다.</summary>
-        private const float CaptionKoreanAdvance = 11f;
+        // ★★ 2026-09-03 — 여기 있던 <c>CaptionKoreanAdvance = 11f</c>("10pt 한글 한 글자가 먹는 폭")를
+        //    <b>지웠다</b>. 이름이 이미 자백하고 있다 — <b>한글</b> 한 글자다. 이 앱의 설명 문구에는
+        //    한글·라틴·숫자가 섞여 있고 라틴 자폭은 절반 이하다. 그런데 아래 상한은 그 11f로
+        //    <b>나눗셈</b>을 했다: 곱셈형(상자가 부푼다)과 반대로 <b>글자 수 상한이 과소</b>로 나와
+        //    라틴 문구는 들어갈 자리가 남았는데도 잘렸다.
+        //
+        //    지금은 <see cref="InventoryDescriptionWidth"/>(pt)를 그대로 예산으로 쓰고
+        //    <c>UiChrome.Ellipsize</c>가 실제 폭으로 자른다. 글자 수라는 중간 단위가 사라졌다.
 
         /// <summary>설명 칸의 x와 폭 — <see cref="BuildInventoryPage"/>와 글자 수 예산이 <b>같은 값</b>을
         /// 봐야 한다. 예전에는 build가 지역변수로 계산하고 글자 수는 24를 따로 적어 뒀는데, 창이
@@ -333,10 +339,11 @@ namespace StickMate.Interaction
         private const float InventoryDescriptionWidth =
             InventoryListWidth - InventoryDescriptionX - StatusSlotWidth - UiChrome.Space2;
 
-        /// <summary>목록 한 줄의 설명 칸에 들어가는 글자 수 상한. 칸 폭에서 <b>파생</b>한다
-        /// (폭 880에서 24자 — 종전과 같다 / 폭 1042에서 39자).</summary>
-        private static int InventoryDescriptionChars =>
-            Mathf.Max(8, Mathf.FloorToInt(InventoryDescriptionWidth / CaptionKoreanAdvance));
+        /// <summary>설명 칸이 실제로 차지하는 폭 — <b>상자를 놓는 쪽과 글을 자르는 쪽이 이 하나를 본다.</b>
+        /// 하한 40pt는 창이 극단적으로 좁아졌을 때 상자가 음수 폭이 되는 것을 막는다.
+        /// ★ 2026-09-03 — 예전에는 상자만 이 하한을 통과하고 자르기는 <b>글자 수</b>로 따로 정해져,
+        /// 둘이 서로 다른 단위였다(창을 넓히면 상자만 커졌다).</summary>
+        private static float InventoryDescriptionBoxWidth => Mathf.Max(40f, InventoryDescriptionWidth);
 
         private const float SlowRefreshInterval = 0.25f;
         private const float ClickPollInterval = 0.05f;
@@ -471,6 +478,8 @@ namespace StickMate.Interaction
             public Image Surface;
             public Image Outline;
             public Image Thumb;
+
+
             public RectTransform LockBadge;
             public Text Name;
             public Text Meta;
@@ -526,6 +535,13 @@ namespace StickMate.Interaction
             public Text Title;
             public Text Subtitle;
             public Text Description;
+
+            /// <summary><see cref="Description"/>에 넣으려던 <b>자르기 전</b> 문자열.
+            /// 이것이 그대로면 <see cref="UiChrome.Ellipsize"/>를 다시 부르지 않는다 —
+            /// 그 함수는 폭을 재려고 <c>Text.text</c>를 여러 번 바꾸므로 호출부가 원본을 캐시해
+            /// <b>내용이 실제로 바뀐 순간에만</b> 불러야 한다(그 함수의 호출부 규약).
+            /// <see cref="ItemCard.NameSource"/>와 같은 장치다.</summary>
+            public string DescriptionSource;
             public Text StatusSlot;
             public Text HeaderText;
             public int BoundCatalogIndex; // -1이면 헤더 행(클릭 대상 아님).

@@ -31,6 +31,31 @@ namespace StickMate.Platform
     /// "상단 띠 없음"을 보고한다. 네 변이 필요하면 <see cref="ReservedEdgeProbe"/>를 써라.
     /// 두 프로브가 보는 상단 값은 <b>같은 뺄셈 한 줄</b>에서 나온다(플랫폼 구현이 네 방향 조회의
     /// <c>Top</c>을 꺼내 이 계약에 답한다).</para>
+    ///
+    /// ============================================================================
+    /// ★★ 일회성으로 읽지 마라 — 기동 직후의 0은 "띠 없음"이 아니다 (2026-09-03 실제 사고)
+    /// ============================================================================
+    /// <b>양 플랫폼 모두 기동 직후 몇 초 동안 이 프로브는 구조적으로 0을 돌려준다.</b>
+    /// <list type="bullet">
+    ///  <item><b>macOS</b>: <c>LibUniWinC</c>가 Unity 창을 붙잡아야 모니터 캐시가 채워진다.
+    ///        그전까지 <c>GetMonitorRect(0)</c>은 <c>Rect.zero</c>다(이 머신 실측: 부착까지 2.19초).
+    ///        근거와 재현 절차는 <c>Platform/MacOS/MacReservedScreenEdgeService.cs</c> 클래스 문서.</item>
+    ///  <item><b>Windows</b>: <c>Win32WindowService.TryGetReservedEdgeInsetsPoints</c>가
+    ///        <c>_overlayHwnd == IntPtr.Zero</c>면 곧바로 false를 낸다. 그 핸들은
+    ///        <c>CreateOverlayWindow()</c>에서 확보되므로 <b>같은 형태의 창</b>이 있다.</item>
+    /// </list>
+    ///
+    /// <para><b>그래서 <c>Start()</c>/<c>Awake()</c>에서 한 번 읽고 굳히면 반드시 0이 박힌다.</b>
+    /// 2026-09-03 새벽에 이 형태로 사고가 났다 — 기동 배너가 <i>"OS 예약 띠 0.0pt"</i>를 찍었고,
+    /// 그 한 줄을 <b>정상 상태의 값</b>으로 읽어 <i>"메뉴 막대 수정이 아무것도 안 고쳤다"</i>는
+    /// 오진이 나왔다. 실제로는 부착 후 첫 갱신에서 33pt로 올라오고 있었다.</para>
+    ///
+    /// <para><b>구분하는 법</b>: 이 계약(<c>float</c> 하나)은 「측정된 0」과 「아직 못 잼」을
+    /// <b>표현할 수 없다</b>. 구분이 필요하면 네 방향 프로브의 마스크를 봐라 —
+    /// <c>ReservedEdgeProbe.Insets(service).IsMeasured(ReservedEdge.Top)</c>가 <b>그 답 자체</b>다
+    /// (<see cref="ReservedEdgeInsets.MeasuredEdges"/>가 바로 이 구분을 위해 존재한다).
+    /// 매 프레임 배치를 다시 계산하는 소비 측은 그냥 이 프로브를 계속 쓰면 된다 — 값이
+    /// 알아서 따라온다. <b>문제는 한 번만 읽는 쪽뿐이다.</b></para>
     /// </summary>
     public static class ReservedTopBarProbe
     {

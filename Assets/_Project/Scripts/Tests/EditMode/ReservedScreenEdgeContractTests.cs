@@ -622,6 +622,82 @@ namespace StickMate.Tests.EditMode
         }
 
         // ==================================================================
+        // ⑤-b 부채꼴 <b>하단</b> — Windows 작업표시줄의 기본 도킹 위치다
+        // ==================================================================
+
+        /// <summary>
+        /// ★★ 2026-09-03 — 좌·우·상은 이미 예약 띠를 보는데 <b>하단만 8pt 고정</b>이었다.
+        /// 그런데 <b>Windows 작업표시줄의 기본 도킹 위치가 하단</b>이다(UX_FLOW 53-9 / UX_WIDGETS R4-6 #5).
+        ///
+        /// <para><b>실측 계산</b>: 하단 막대 48pt에서 부채꼴 상자의 <c>yMin</c>이 8까지 내려갈 수 있으므로
+        /// 최대 <b>40pt가 막대 뒤</b>로 들어간다. 막대는 최상위 창이라 그 위의 클릭은 우리에게 오지 않는다 —
+        /// <b>보이는데 안 눌리는 버튼</b>이 되고, 그 안에 이제 [앱 종료]가 있다.</para>
+        ///
+        /// <para>★ 이 검사는 <b>값</b>만 본다. 그 값이 실제로 배선됐는지는 아래
+        /// <see cref="부채꼴이_네_변_중_세_변을_예약띠로_읽는다"/>가 소스에서 따로 확인한다 —
+        /// 둘을 한 테스트에 섞으면 "정책은 고쳤는데 호출부가 없다"를 못 가른다.</para>
+        /// </summary>
+        [Test]
+        public void 부채꼴_하단_여백도_설계값과_예약띠_중_큰_쪽이다()
+        {
+            float 설계 = GearRadialMenuWidget.ScreenMarginPoints;
+            const float 하단막대 = 48f;
+
+            AssertBitIdentical(설계, GearRadialMenuWidget.EffectiveMarginPoints(설계, 0f),
+                "띠 0에서 부채꼴 하단 여백");
+            Assert.AreEqual(하단막대, GearRadialMenuWidget.EffectiveMarginPoints(설계, 하단막대), 0.0001f,
+                $"{LogPrefix} 하단 도킹 {하단막대:F0}pt인데 부채꼴이 설계 여백 {설계:F0}pt만 남겼습니다 — " +
+                $"그 차이 {하단막대 - 설계:F0}pt만큼 버튼이 작업표시줄 뒤로 들어갑니다.");
+
+            // ★ 「Dock은 캐릭터의 발판이다」와 충돌하지 않는다 — 그 규칙이 사는 자리를 <b>안 건드렸음</b>을
+            //   같은 테스트에서 대조한다. 대상이 다르기 때문이다: 캐릭터는 Dock 위를 <b>걷고</b>(그림),
+            //   부채꼴 버튼은 <b>눌러야 하는 것</b>이다(막대 뒤로 가면 클릭 자체가 도착하지 않는다).
+            const float 화면높이 = 982f, 패널높이 = 560f, 여백 = 12f, 상단띠 = 33f;
+            float 아래쪽한계 = SurfaceSafeAreaPolicy.ClampCenterY(-99999f, 패널높이, 화면높이, 상단띠, 여백);
+            Assert.AreEqual(여백 + 패널높이 * 0.5f, 아래쪽한계, 0.001f,
+                $"{LogPrefix} 부채꼴 하단을 고치면서 <b>표면 클램프</b>의 하단 규칙까지 함께 건드렸습니다 — " +
+                "Dock은 캐릭터의 발판이고, 그 규칙은 이 라운드의 대상이 아닙니다.");
+        }
+
+        /// <summary>
+        /// ★ <b>배선</b>: 부채꼴이 네 변 중 <b>세 변</b>(좌·우·하)을 <c>ReservedEdge</c>로 읽는다.
+        /// 상단만 <c>ReservedTopBarProbe</c>에서 오는데, 그건 「메뉴바/상단 도킹」 전용 경로라 원래 다르다.
+        ///
+        /// <para><b>니들을 손으로 적지 않는다</b> — 변 이름을 <b>프로덕션 열거형에서 뽑아</b> 만든다.
+        /// 열거형 이름이 바뀌면 컴파일이 깨지지 조용히 -1이 되지 않는다.</para>
+        ///
+        /// <para><b>부재 단언의 자격 검증</b>: 「하단이 없다」가 「스캐너가 죽었다」와 같은 모양이 되지
+        /// 않도록, 같은 스캐너로 <b>실재하는</b> 좌·우를 먼저 센다.</para>
+        /// </summary>
+        [Test]
+        public void 부채꼴이_네_변_중_세_변을_예약띠로_읽는다()
+        {
+            string src = ReadSource(Path.Combine(InteractionRoot, nameof(GearRadialMenuWidget) + ".cs"));
+            Assert.Greater(src.Length, 1000,
+                $"{LogPrefix} 부채꼴 소스를 못 읽었습니다 — 아래 셈은 전부 무효입니다.");
+
+            string Needle(ReservedEdge edge) => nameof(ReservedEdge) + "." + edge;
+
+            // (가) 존재 대조 — 이미 고쳐져 있는 두 변이 실제로 잡히는가.
+            foreach (ReservedEdge edge in new[] { ReservedEdge.Left, ReservedEdge.Right })
+            {
+                Assert.GreaterOrEqual(src.IndexOf(Needle(edge), StringComparison.Ordinal), 0,
+                    $"{LogPrefix} 스캐너가 이미 배선된 {edge}조차 못 찾았습니다 — 스캐너가 죽었습니다.");
+            }
+
+            // (나) 실단언 — 하단.
+            Assert.GreaterOrEqual(src.IndexOf(Needle(ReservedEdge.Bottom), StringComparison.Ordinal), 0,
+                $"{LogPrefix} 부채꼴이 {Needle(ReservedEdge.Bottom)}을 읽지 않습니다 — " +
+                "Windows 작업표시줄의 <b>기본</b> 도킹 위치가 하단이라, 이 배선이 없으면 최대 40pt가 " +
+                "막대 뒤로 들어가고 그 안에 [앱 종료]가 있습니다.");
+
+            // (다) 상단은 여기가 아니다 — 잘못된 자리에 배선되지 않았는지 함께 못박는다.
+            Assert.AreEqual(-1, src.IndexOf(Needle(ReservedEdge.Top), StringComparison.Ordinal),
+                $"{LogPrefix} 상단을 {Needle(ReservedEdge.Top)}으로도 읽고 있습니다 — " +
+                $"상단의 출처는 {nameof(ReservedTopBarProbe)} 하나여야 합니다(두 벌이 되면 갈라집니다).");
+        }
+
+        // ==================================================================
         // ⑥ 톱니 — 우측 도킹 작업표시줄 뒤로 들어가지 않는가
         // ==================================================================
 

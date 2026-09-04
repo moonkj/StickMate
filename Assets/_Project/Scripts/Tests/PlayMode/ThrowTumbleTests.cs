@@ -55,6 +55,11 @@ namespace StickMate.Tests.PlayMode
         /// 정렬이 작동하지 않는 경우(수십~수백 도)와는 확실히 구분된다.</summary>
         private const float UprightToleranceDegrees = 8f;
 
+        /// <summary>인체 무릎 굴곡의 대략적 한계(도). 프로덕션 상수의 사본이 아니라 **바깥의 자**다
+        /// (design/motion R8 §1-7 축 B가 인용한 인체 가동범위). 웅크림 배율을 올리는 사람에게
+        /// "여기서부터는 사람 무릎이 아니다"를 알려주는 것이 이 값의 유일한 목적이다.</summary>
+        private const float HumanKneeFlexionLimitDegrees = 140f;
+
         private sealed class TestFootholdService : IPlatformWindowService
         {
             public readonly List<PlatformFoothold> Footholds = new List<PlatformFoothold>();
@@ -87,6 +92,17 @@ namespace StickMate.Tests.PlayMode
             public float LastTumbleTiltDegrees = float.NaN; // 회전 상태 마지막 프레임의 직립 대비 기울기
             public float TumbleSeconds;
             public StickmanStateId FinalState;
+
+            // ★ 회전율의 **모양**을 재기 위한 시계열(축 A). 프레임 수가 아니라 벽시계 초로 쌓는다 —
+            // 이 저장소의 배치모드 PlayMode는 2,000fps 이상으로 돌아 프레임 수 기준 예산이 무의미하다.
+            public readonly List<float> TumbleSampleSeconds = new List<float>();
+            public readonly List<float> TumbleSampleCumulativeAbsDegrees = new List<float>();
+
+            // 상태가 살아 있는 동안 상태 객체에서 직접 읽는 값(계획이 _spinSpeed를 덮은 **뒤**에도
+            // 세기가 남아 있는지 = Enter 래치가 실제로 성립했는지의 증거).
+            public float ThrowStrength01 = float.NaN;
+            public float SpinShapeAmplitude = float.NaN;
+            public int PlannedTurns;
         }
 
         private StickmanAgent _agent;
@@ -267,6 +283,15 @@ namespace StickMate.Tests.PlayMode
                     result.AbsRotationDegrees += Mathf.Abs(delta);
                     result.SignedRotationDegrees += delta;
                     result.LastTumbleTiltDegrees = Mathf.Abs(Mathf.DeltaAngle(z, 0f));
+
+                    result.TumbleSampleSeconds.Add(result.TumbleSeconds);
+                    result.TumbleSampleCumulativeAbsDegrees.Add(result.AbsRotationDegrees);
+                    if (bb.Machine.GetState(StickmanStateId.ThrowTumble) is ThrowTumbleState tumble)
+                    {
+                        result.ThrowStrength01 = tumble.ThrowStrength01;
+                        result.SpinShapeAmplitude = tumble.SpinShapeAmplitude;
+                        result.PlannedTurns = tumble.PlannedTurns;
+                    }
                 }
                 else if (result.SawLandingCrouch && state != StickmanStateId.LandingCrouch)
                 {
@@ -284,7 +309,8 @@ namespace StickMate.Tests.PlayMode
             result.FinalState = bb.Machine.CurrentStateId;
             Debug.Log($"{LogPrefix} 비행 관찰 — 회전상태={result.SawTumble}({result.TumbleSeconds:F2}초), " +
                 $"누적 회전={result.AbsRotationDegrees:F0}도(부호합 {result.SignedRotationDegrees:F0}), " +
-                $"마지막 회전 프레임 기울기={result.LastTumbleTiltDegrees:F2}도, 무릎앉아={result.SawLandingCrouch}, " +
+                $"마지막 회전 프레임 기울기={result.LastTumbleTiltDegrees:F2}도, 세기={result.ThrowStrength01:F3}" +
+                $"(프로파일 A={result.SpinShapeAmplitude:F3}, 계획 {result.PlannedTurns}바퀴), 무릎앉아={result.SawLandingCrouch}, " +
                 $"랙돌={result.SawRagdoll}, 기상={result.SawGetup}, 복귀={result.Settled}({result.FinalState}), " +
                 $"최종 Y={bb.Body.position.y:F3}(지면 {_groundWorldY:F3}), 총 {elapsed:F2}초.");
         }
@@ -466,6 +492,426 @@ namespace StickMate.Tests.PlayMode
             float fast = ThrowTumbleState.ResolveSpinSpeedDegreesPerSecond(6f * baseline, baseline, _clonedConfig);
             Assert.Greater(fast, slow,
                 $"{LogPrefix} 세게 던졌는데 회전이 빨라지지 않았습니다({fast:F1} vs {slow:F1}도/초).");
+        }
+
+        // ============================================================================
+        // (6) ★★ 축 A — 회전율 정형이 "총 회전각을 보존한다"는 계약을 산술로 못박는다
+        // ============================================================================
+        //
+        // 왜 최종 각도만 보고 끝내면 안 되는가 (이 파일에서 가장 중요한 주석):
+        //   AdvanceRotation의 비례 제어는 `step = Min(speed*dt, remaining)`으로 잘리고 남은 각도가
+        //   0에 수렴하므로, **K가 무엇이든 최종 각도는 목표에 도달한다.** 즉 "총 회전각이 delta다"를
+        //   최종 각도로 재면 그건 자명한 참이고 아무것도 증명하지 못한다(이 저장소가 아홉 번 당한
+        //   "실패한 측정과 성공한 측정이 똑같이 생겼다"의 전형이다).
+        //   진짜 계약은 **"보정 없이도 딱 맞는다"**이고, 그것은 K가 만들어내는 회전율 r(u)의
+        //   적분이 1이라는 뜻이다. 그래서 아래는
+        //     (a) 설계식 r/ρ를 **이 테스트가 독립적으로** 적고,
+        //     (b) 프로덕션 K가 그 둘과 항등식 K·ρ/(1−u) = r 을 만족하는지 대조하고,
+        //     (c) 그 독립 r의 적분이 1인지 잰다.
+        //   프로덕션 함수로 기대값을 만들지 않으므로(docs/TEAM.md §"기대값을 프로덕션 함수로 만들지
+        //   마라") K가 틀어지면 (b)가 빨개진다.
+
+        /// <summary>설계식(design/motion R8 §1-7)을 **테스트가 직접** 적은 것. 프로덕션을 부르지 않는다.</summary>
+        private static float ExpectedRate(float u, float amplitude) => 1f + amplitude * Mathf.Cos(Mathf.PI * u);
+
+        /// <summary>설계식의 "남은 회전 비율" ρ(u) = ∫ᵤ¹ r. 역시 테스트가 직접 적은 것이다.</summary>
+        private static float ExpectedRemainingFraction(float u, float amplitude)
+            => (1f - u) - amplitude * Mathf.Sin(Mathf.PI * u) / Mathf.PI;
+
+        [UnityTest]
+        public IEnumerator SpinShapeIsAreaPreservingAndIdenticalAtTheEnd()
+        {
+            yield return SetUpFlatGround();
+
+            float amplitudeAtMaxStrength = _clonedConfig.throwTumbleSpinShapeAmplitude;
+            Assert.Greater(amplitudeAtMaxStrength, 0f,
+                $"{LogPrefix} 배포 설정에서 회전율 정형이 꺼져 있습니다(throwTumbleSpinShapeAmplitude=" +
+                $"{amplitudeAtMaxStrength:F3}). 그러면 아래 단언이 전부 '등속과 같다'로 공허하게 통과합니다 — " +
+                "에셋을 확인하십시오(DefaultStickConfig.asset).");
+
+            float[] amplitudes = { amplitudeAtMaxStrength, amplitudeAtMaxStrength * 0.5f, amplitudeAtMaxStrength * 0.1f };
+            const int Samples = 4000;
+
+            foreach (float a in amplitudes)
+            {
+                // (b) 항등식 K(u)·ρ(u)/(1−u) = r(u). 프로덕션 K vs 테스트가 적은 r/ρ.
+                float worst = 0f;
+                float worstU = 0f;
+                int compared = 0;
+                for (int i = 0; i <= Samples; i++)
+                {
+                    float u = (float)i / Samples;
+                    float rho = ExpectedRemainingFraction(u, a);
+                    float remainingFraction = 1f - u;
+                    // 프로덕션이 극한값으로 못박는 꼬리 구간은 제외하고 따로 (아래) 단언한다.
+                    if (rho <= 1e-3f || remainingFraction <= 0f) continue;
+
+                    float k = ThrowTumbleState.ResolveSpinShapeMultiplier(u, a);
+                    float realized = k * rho / remainingFraction;
+                    float error = Mathf.Abs(realized - ExpectedRate(u, a));
+                    compared++;
+                    if (error > worst) { worst = error; worstU = u; }
+                }
+
+                Assert.Greater(compared, Samples / 2,
+                    $"{LogPrefix} 항등식 표본이 {compared}개뿐입니다 — 스윕이 죽었다는 뜻이라 이 단언이 공허합니다.");
+                Assert.LessOrEqual(worst, 1e-4f,
+                    $"{LogPrefix} 회전율 정형 계수가 설계식과 갈라졌습니다(진폭 {a:F3}에서 최대 오차 " +
+                    $"{worst:E3}, u={worstU:F4}). K(u)·ρ(u)/(1−u) = r(u) 가 깨지면 총 회전각 보존이 " +
+                    "무너지고, 그 손실을 착지 직전의 비례 제어가 몰아서 메우게 됩니다(= 팽이처럼 튀는 프레임).");
+
+                // (c) ∫₀¹ r(u) du = 1 — 이것이 "총 회전각이 delta 그대로"의 산술적 실체다(심프슨).
+                double integral = 0.0;
+                const int N = 2000;
+                for (int i = 0; i <= N; i++)
+                {
+                    double w = (i == 0 || i == N) ? 1.0 : (i % 2 == 1 ? 4.0 : 2.0);
+                    integral += w * ExpectedRate((float)i / N, a);
+                }
+                integral *= (1.0 / N) / 3.0;
+                Assert.AreEqual(1.0, integral, 1e-5,
+                    $"{LogPrefix} 정형된 회전율의 적분이 1이 아닙니다(진폭 {a:F3}에서 {integral:F9}) — " +
+                    "총 회전각이 delta에서 벗어난다는 뜻입니다.");
+
+                // K(1) = 1 — 마지막 구간은 오늘의 컨트롤러와 한 글자도 다르지 않아야 한다.
+                float kEnd = ThrowTumbleState.ResolveSpinShapeMultiplier(1f, a);
+                AssertBitwiseEqual(1f, kEnd,
+                    $"{LogPrefix} K(1)이 정확히 1이 아닙니다(진폭 {a:F3}에서 {kEnd:R}) — 착지 직전 구간이 " +
+                    "오늘과 달라지면 이 상태의 핵심 계약(정수 바퀴 · 직립 착지)이 회귀 위험에 놓입니다.");
+
+                // 안전 상한을 건드리지 않는다 — max K < throwTumbleAlignMaxSpeedFactor.
+                float maxK = 0f;
+                float maxKu = 0f;
+                for (int i = 0; i <= Samples; i++)
+                {
+                    float u = (float)i / Samples;
+                    float k = ThrowTumbleState.ResolveSpinShapeMultiplier(u, a);
+                    if (k > maxK) { maxK = k; maxKu = u; }
+                }
+                float factor = _clonedConfig.throwTumbleAlignMaxSpeedFactor;
+                Debug.Log($"{LogPrefix} 정형 진폭 {a:F3} — 항등식 최대 오차 {worst:E3}, ∫r={integral:F9}, " +
+                    $"max K={maxK:F4}(u={maxKu:F3}) vs 정렬 상한 {factor:F2}(여유 {(factor - maxK) / factor * 100f:F1}%).");
+                Assert.Less(maxK, factor,
+                    $"{LogPrefix} 정형 계수의 최댓값({maxK:F4})이 정렬 안전 상한({factor:F2})을 넘습니다 — " +
+                    "그러면 정형이 상한에 잘려 설계대로 돌지 않습니다. 상한을 올려 진폭을 키우는 것은 " +
+                    "'팽이처럼 튀는 프레임'을 막는 장치를 깎는 것이라 명시적으로 기각된 선택지입니다. " +
+                    "throwTumbleSpinShapeAmplitude를 내리십시오.");
+            }
+        }
+
+        // ============================================================================
+        // (7) ★★ 탈출구 — 진폭 0이면 오늘과 **비트 단위로** 같다 (되돌릴 문)
+        // ============================================================================
+
+        [UnityTest]
+        public IEnumerator ZeroAmplitudeRestoresTodaysConstantRateBitForBit()
+        {
+            yield return SetUpFlatGround();
+
+            // (i) 계수 자체가 **정확히** 1f여야 한다. 1f에 아주 가까운 값이면 곱셈이 항등이 아니다.
+            float[] progresses = { 0f, 0.001f, 0.11f, 0.25f, 0.4999f, 0.5f, 0.75f, 0.9999f, 1f, 1.5f, -0.3f, float.NaN };
+            foreach (float u in progresses)
+            {
+                AssertBitwiseEqual(1f, ThrowTumbleState.ResolveSpinShapeMultiplier(u, 0f),
+                    $"{LogPrefix} 진폭 0인데 정형 계수가 정확히 1이 아닙니다(u={u}).");
+                AssertBitwiseEqual(1f, ThrowTumbleState.ResolveSpinShapeMultiplier(u, float.NaN),
+                    $"{LogPrefix} 진폭이 NaN인데 정형 계수가 1로 폴백하지 않았습니다(u={u}) — " +
+                    "연출을 끄는 쪽이 안전한 폴백입니다.");
+                AssertBitwiseEqual(1f, ThrowTumbleState.ResolveSpinShapeMultiplier(u, -0.3f),
+                    $"{LogPrefix} 진폭이 음수인데 정형 계수가 1로 폴백하지 않았습니다(u={u}).");
+            }
+
+            // ★ 진행도가 NaN이어도 계수는 반드시 유한해야 한다. NaN이 새면 매 프레임 경로라
+            //   회전각 전체가 NaN이 되고 캐릭터가 화면에서 사라진다.
+            float nanProgress = ThrowTumbleState.ResolveSpinShapeMultiplier(
+                float.NaN, _clonedConfig.throwTumbleSpinShapeAmplitude);
+            Assert.IsFalse(float.IsNaN(nanProgress),
+                $"{LogPrefix} 진행도가 NaN일 때 정형 계수가 NaN이 되었습니다 — 각속도가 통째로 오염됩니다.");
+            AssertBitwiseEqual(1f, nanProgress,
+                $"{LogPrefix} 진행도가 NaN일 때 계수가 1로 폴백하지 않았습니다({nanProgress:R}).");
+
+            // (ii) 그 1f를 곱해도 각속도의 비트가 변하지 않는다(= 프로덕션 한 줄이 항등이다).
+            float[] speeds = { 0f, 1e-7f, 0.1f, 218.4f, 359.99997f, 545.7f, 720f, 1152.3f, 1e9f };
+            foreach (float speed in speeds)
+            {
+                float k = ThrowTumbleState.ResolveSpinShapeMultiplier(0.37f, 0f);
+                AssertBitwiseEqual(speed, speed * k,
+                    $"{LogPrefix} 진폭 0에서 각속도({speed:R})에 계수를 곱했더니 비트가 달라졌습니다 — " +
+                    "'되돌릴 문'이 실제로는 닫혀 있다는 뜻입니다.");
+            }
+
+            // (iii) 축 B도 같은 탈출구를 갖는다 — 배율 1/1이면 각도 묶음이 비트 단위로 같다.
+            _clonedConfig.throwTumbleTuckScaleAtWeakThrow = 1f;
+            _clonedConfig.throwTumbleTuckScaleAtStrongThrow = 1f;
+            _clonedConfig.throwTumbleSpreadScaleAtWeakThrow = 1f;
+            _clonedConfig.throwTumbleSpreadScaleAtStrongThrow = 1f;
+
+            StickmanPoseAnimator.ThrowTumblePoseSettings baseline = _agent.Blackboard.BuildThrowTumblePoseSettings();
+            foreach (float strength in new[] { 0f, 0.31f, 0.5f, 0.87f, 1f })
+            {
+                StickmanPoseAnimator.ThrowTumblePoseSettings scaled = baseline.ScaledBy(
+                    ThrowTumbleState.ResolveTuckJointScale(strength, _clonedConfig),
+                    ThrowTumbleState.ResolveTuckSpreadScale(strength, _clonedConfig));
+
+                AssertBitwiseEqual(baseline.HipDegrees, scaled.HipDegrees, $"{LogPrefix} 엉덩이(세기 {strength:F2})");
+                AssertBitwiseEqual(baseline.KneeBendDegrees, scaled.KneeBendDegrees, $"{LogPrefix} 무릎(세기 {strength:F2})");
+                AssertBitwiseEqual(baseline.ArmDegrees, scaled.ArmDegrees, $"{LogPrefix} 어깨(세기 {strength:F2})");
+                AssertBitwiseEqual(baseline.ElbowBendDegrees, scaled.ElbowBendDegrees, $"{LogPrefix} 팔꿈치(세기 {strength:F2})");
+                AssertBitwiseEqual(baseline.LimbSpreadDegrees, scaled.LimbSpreadDegrees, $"{LogPrefix} 벌림(세기 {strength:F2})");
+            }
+
+            // ★ 양성 대조 — 위 다섯 단언이 "무엇이든 통과"가 아니라는 증거. 배포 배율을 되돌리면
+            //   같은 비교가 **반드시 실패**해야 한다(부재 단언이 조용히 초록이 되는 것을 막는다).
+            _clonedConfig.throwTumbleTuckScaleAtWeakThrow = _originalConfig.throwTumbleTuckScaleAtWeakThrow;
+            StickmanPoseAnimator.ThrowTumblePoseSettings probe = baseline.ScaledBy(
+                ThrowTumbleState.ResolveTuckJointScale(0f, _clonedConfig),
+                ThrowTumbleState.ResolveTuckSpreadScale(0f, _clonedConfig));
+            Assert.AreNotEqual(Bits(baseline.KneeBendDegrees), Bits(probe.KneeBendDegrees),
+                $"{LogPrefix} 양성 대조 실패 — 배율을 되돌렸는데도 각도가 비트 단위로 같습니다. " +
+                "위의 '비트 동일' 단언들이 실제로는 아무것도 재고 있지 않다는 뜻입니다.");
+
+            Debug.Log($"{LogPrefix} 탈출구 확인 — 진폭 0에서 계수 비트 동일, 배율 1/1에서 각도 비트 동일, " +
+                "양성 대조(배율 복원 시 각도가 실제로 달라짐) 통과.");
+        }
+
+        private static int Bits(float value) => System.BitConverter.ToInt32(System.BitConverter.GetBytes(value), 0);
+
+        private static void AssertBitwiseEqual(float expected, float actual, string message)
+        {
+            Assert.AreEqual(Bits(expected), Bits(actual),
+                $"{message} — 기대 {expected:R}(0x{Bits(expected):X8}) / 실제 {actual:R}(0x{Bits(actual):X8}).");
+        }
+
+        // ============================================================================
+        // (8) 축 B — 웅크림 깊이가 던진 세기를 따라간다 (벌림만 반대 방향)
+        // ============================================================================
+
+        [UnityTest]
+        public IEnumerator TuckDepthFollowsThrowStrengthAndSpreadGoesTheOtherWay()
+        {
+            yield return SetUpFlatGround();
+
+            StickmanPoseAnimator.ThrowTumblePoseSettings b = _agent.Blackboard.BuildThrowTumblePoseSettings();
+
+            float weakScale = _clonedConfig.throwTumbleTuckScaleAtWeakThrow;
+            float strongScale = _clonedConfig.throwTumbleTuckScaleAtStrongThrow;
+            float weakSpread = _clonedConfig.throwTumbleSpreadScaleAtWeakThrow;
+            float strongSpread = _clonedConfig.throwTumbleSpreadScaleAtStrongThrow;
+
+            Assert.Less(weakScale, strongScale,
+                $"{LogPrefix} 웅크림 배율이 세기와 함께 커지지 않습니다({weakScale:F2} -> {strongScale:F2}).");
+            Assert.Greater(weakSpread, strongSpread,
+                $"{LogPrefix} 벌림 배율의 방향이 뒤집혀 있습니다({weakSpread:F2} -> {strongSpread:F2}) — " +
+                "느슨하게 도는 몸은 팔다리가 벌어져야 두 개로 보입니다.");
+
+            StickmanPoseAnimator.ThrowTumblePoseSettings loose = b.ScaledBy(
+                ThrowTumbleState.ResolveTuckJointScale(0f, _clonedConfig),
+                ThrowTumbleState.ResolveTuckSpreadScale(0f, _clonedConfig));
+            StickmanPoseAnimator.ThrowTumblePoseSettings tight = b.ScaledBy(
+                ThrowTumbleState.ResolveTuckJointScale(1f, _clonedConfig),
+                ThrowTumbleState.ResolveTuckSpreadScale(1f, _clonedConfig));
+
+            // 기대값은 프로덕션이 아니라 **설정 상수 x 기준 각도**에서 독립적으로 만든다.
+            Assert.AreEqual(b.HipDegrees * weakScale, loose.HipDegrees, 1e-3f, $"{LogPrefix} 느슨 엉덩이");
+            Assert.AreEqual(b.KneeBendDegrees * weakScale, loose.KneeBendDegrees, 1e-3f, $"{LogPrefix} 느슨 무릎");
+            Assert.AreEqual(b.ArmDegrees * weakScale, loose.ArmDegrees, 1e-3f, $"{LogPrefix} 느슨 어깨");
+            Assert.AreEqual(b.ElbowBendDegrees * weakScale, loose.ElbowBendDegrees, 1e-3f, $"{LogPrefix} 느슨 팔꿈치");
+            Assert.AreEqual(b.LimbSpreadDegrees * weakSpread, loose.LimbSpreadDegrees, 1e-3f, $"{LogPrefix} 느슨 벌림");
+
+            Assert.AreEqual(b.HipDegrees * strongScale, tight.HipDegrees, 1e-3f, $"{LogPrefix} 꽉 엉덩이");
+            Assert.AreEqual(b.KneeBendDegrees * strongScale, tight.KneeBendDegrees, 1e-3f, $"{LogPrefix} 꽉 무릎");
+            Assert.AreEqual(b.ArmDegrees * strongScale, tight.ArmDegrees, 1e-3f, $"{LogPrefix} 꽉 어깨");
+            Assert.AreEqual(b.ElbowBendDegrees * strongScale, tight.ElbowBendDegrees, 1e-3f, $"{LogPrefix} 꽉 팔꿈치");
+            Assert.AreEqual(b.LimbSpreadDegrees * strongSpread, tight.LimbSpreadDegrees, 1e-3f, $"{LogPrefix} 꽉 벌림");
+
+            // 사람 무릎은 뒤로 꺾이지 않는다 — 저장소 최심(무릎앉아 앞무릎)의 바로 위까지만 허용한다.
+            Assert.Greater(tight.KneeBendDegrees, _clonedConfig.landingCrouchFrontKneeDegrees,
+                $"{LogPrefix} 꽉 만 텀블링 무릎({tight.KneeBendDegrees:F1}도)이 무릎앉아 최심" +
+                $"({_clonedConfig.landingCrouchFrontKneeDegrees:F1}도)보다 얕습니다 — 그러면 '꽉 말았다'가 읽히지 않습니다.");
+            Assert.Less(tight.KneeBendDegrees, HumanKneeFlexionLimitDegrees,
+                $"{LogPrefix} 꽉 만 텀블링 무릎({tight.KneeBendDegrees:F1}도)이 인체 무릎 굴곡 한계" +
+                $"(~{HumanKneeFlexionLimitDegrees:F0}도)를 넘습니다.");
+
+            // 중간 세기가 단조롭게 놓인다(양 끝만 맞추고 가운데가 뒤집히는 구현을 배제한다).
+            float previousKnee = float.NegativeInfinity;
+            float previousSpread = float.PositiveInfinity;
+            for (int i = 0; i <= 10; i++)
+            {
+                float strength = i / 10f;
+                StickmanPoseAnimator.ThrowTumblePoseSettings mid = b.ScaledBy(
+                    ThrowTumbleState.ResolveTuckJointScale(strength, _clonedConfig),
+                    ThrowTumbleState.ResolveTuckSpreadScale(strength, _clonedConfig));
+                Assert.Greater(mid.KneeBendDegrees, previousKnee,
+                    $"{LogPrefix} 세기 {strength:F1}에서 무릎 굽힘이 단조 증가하지 않았습니다.");
+                Assert.Less(mid.LimbSpreadDegrees, previousSpread,
+                    $"{LogPrefix} 세기 {strength:F1}에서 벌림이 단조 감소하지 않았습니다.");
+                previousKnee = mid.KneeBendDegrees;
+                previousSpread = mid.LimbSpreadDegrees;
+            }
+
+            Debug.Log($"{LogPrefix} 축 B 확인 — 느슨(엉덩이 {loose.HipDegrees:F0} 무릎 {loose.KneeBendDegrees:F0} " +
+                $"어깨 {loose.ArmDegrees:F0} 팔꿈치 {loose.ElbowBendDegrees:F0} 벌림 {loose.LimbSpreadDegrees:F0}) -> " +
+                $"꽉(엉덩이 {tight.HipDegrees:F0} 무릎 {tight.KneeBendDegrees:F0} 어깨 {tight.ArmDegrees:F0} " +
+                $"팔꿈치 {tight.ElbowBendDegrees:F0} 벌림 {tight.LimbSpreadDegrees:F0}).");
+        }
+
+        // ============================================================================
+        // (9) 세기(s01)는 도달 가능한 던지기 대역을 0~1로 채운다
+        // ============================================================================
+
+        [UnityTest]
+        public IEnumerator ThrowStrengthSpansTheReachableThrowBand()
+        {
+            yield return SetUpFlatGround();
+
+            float baseline = StickConfig.BaselineCharacterTotalHeight;
+            float minHeightsPerSecond = _clonedConfig.throwTumbleMinSpeedHeightsPerSecond;
+            float maxSpeed = _clonedConfig.dragThrowMaxSpeed;
+
+            foreach (float scale in new[] { 1f, 0.75f, 0.5f })
+            {
+                float height = baseline * scale;
+
+                float atFloor = ThrowTumbleState.ResolveThrowStrength01(minHeightsPerSecond * height, height, _clonedConfig);
+                float atCeiling = ThrowTumbleState.ResolveThrowStrength01(maxSpeed, height, _clonedConfig);
+                float belowFloor = ThrowTumbleState.ResolveThrowStrength01(0f, height, _clonedConfig);
+                float aboveCeiling = ThrowTumbleState.ResolveThrowStrength01(maxSpeed * 3f, height, _clonedConfig);
+
+                Assert.AreEqual(0f, atFloor, 1e-4f,
+                    $"{LogPrefix} 배율 {scale:F2}: 회전 하한 세기에서 s01이 0이 아닙니다({atFloor:F4}).");
+                Assert.AreEqual(1f, atCeiling, 1e-4f,
+                    $"{LogPrefix} 배율 {scale:F2}: 던지기 속도 상한에서 s01이 1이 아닙니다({atCeiling:F4}) — " +
+                    "가장 세게 던져도 연출의 최대치에 닿지 못한다는 뜻입니다(maxSpin 720이 구조적으로 " +
+                    "도달 불가였던 것과 같은 형태의 결함).");
+                Assert.AreEqual(0f, belowFloor, 1e-6f, $"{LogPrefix} 배율 {scale:F2}: 하한 아래가 0으로 잘리지 않았습니다.");
+                Assert.AreEqual(1f, aboveCeiling, 1e-6f, $"{LogPrefix} 배율 {scale:F2}: 상한 위가 1로 잘리지 않았습니다.");
+
+                float previous = float.NegativeInfinity;
+                for (int i = 0; i <= 12; i++)
+                {
+                    float speed = maxSpeed * i / 12f;
+                    float value = ThrowTumbleState.ResolveThrowStrength01(speed, height, _clonedConfig);
+                    Assert.GreaterOrEqual(value, previous,
+                        $"{LogPrefix} 배율 {scale:F2}: 속도 {speed:F2}에서 세기가 단조 증가하지 않았습니다.");
+                    previous = value;
+                }
+            }
+
+            // 설정이 없어도(테스트/폴백 경로) 죽지 않는다.
+            Assert.AreEqual(0f, ThrowTumbleState.ResolveThrowStrength01(0f, 0f, null), 1e-6f,
+                $"{LogPrefix} 신장 0 · 설정 null에서 s01이 안전한 0으로 떨어지지 않았습니다.");
+
+            Debug.Log($"{LogPrefix} 세기 대역 확인 — 하한 {minHeightsPerSecond:F2}신장/초에서 0, " +
+                $"상한 {maxSpeed:F1}유닛/초에서 1(배율 1.0/0.75/0.5 공통).");
+        }
+
+        // ============================================================================
+        // (10) ★★ 실제 던지기 A/B — 같은 던지기의 **총 회전각은 같고 모양만 다르다**
+        // ============================================================================
+        //
+        // 이 라운드의 결함("던지면 회전이 늘 똑같아 보인다")을 화면 쪽에서 재는 유일한 테스트다.
+        // 자로 쓰는 값은 **"전체 회전 시간 중 앞 절반을 도는 데 쓴 비율"**이다:
+        //   · 등속이면 정확히 0.50 (앞 절반과 뒤 절반이 같은 시간)
+        //   · 앞에서 세게 차고 나가면 0.50보다 작아진다
+        // 프레임 수나 누적 각도가 아니라 **시간 비율**이라, 착지 정렬 여유(lead) 동안 회전이 0인
+        // 구간이 뒤에 붙어도 흔들리지 않는다.
+
+        [UnityTest]
+        public IEnumerator SameThrowKeepsTotalRotationButChangesTheRateProfile()
+        {
+            yield return SetUpFlatGround();
+
+            Assert.Greater(_clonedConfig.throwTumbleSpinShapeAmplitude, 0f,
+                $"{LogPrefix} 배포 설정에서 정형이 꺼져 있어 A/B 대조가 성립하지 않습니다.");
+
+            // A: 배포 설정 그대로(정형 ON). 세게 던져야 진폭이 실제로 커진다.
+            var shaped = new ThrowObservation();
+            yield return DragAndRelease(startHeight: 7f, cursorVelocity: new Vector2(10f, 4f), dragSeconds: 0.35f);
+            yield return ObserveFlight(shaped);
+            Assert.IsTrue(shaped.SawTumble, $"{LogPrefix} 정형 ON 던지기가 회전 상태로 가지 않았습니다.");
+
+            // ★ Enter 래치의 증거 — 계획이 _spinSpeed를 덮어쓴 **뒤**의 프레임에서 읽은 값이다.
+            Assert.Greater(shaped.ThrowStrength01, 0.7f,
+                $"{LogPrefix} 세게 던졌는데 상태가 들고 있는 세기가 {shaped.ThrowStrength01:F3}뿐입니다. " +
+                "s01을 Enter에서 LastThrowVelocity로 래치하지 않고 _spinSpeed에서 역산하면 정확히 이렇게 " +
+                "됩니다(계획이 _spinSpeed를 delta/usable로 덮어쓰므로 세기 정보가 이미 사라진 뒤입니다).");
+            Assert.AreEqual(_clonedConfig.throwTumbleSpinShapeAmplitude * shaped.ThrowStrength01,
+                shaped.SpinShapeAmplitude, 1e-3f,
+                $"{LogPrefix} 진폭이 '설정 x 세기'와 다릅니다({shaped.SpinShapeAmplitude:F4}).");
+
+            yield return new WaitForSeconds(0.4f);
+
+            // B: 정형만 끈다(탈출구). 나머지는 한 글자도 같다.
+            _clonedConfig.throwTumbleSpinShapeAmplitude = 0f;
+            var flat = new ThrowObservation();
+            yield return DragAndRelease(startHeight: 7f, cursorVelocity: new Vector2(10f, 4f), dragSeconds: 0.35f);
+            yield return ObserveFlight(flat);
+            Assert.IsTrue(flat.SawTumble, $"{LogPrefix} 정형 OFF 던지기가 회전 상태로 가지 않았습니다.");
+            Assert.AreEqual(0f, flat.SpinShapeAmplitude, 1e-6f,
+                $"{LogPrefix} 정형을 껐는데 상태의 진폭이 {flat.SpinShapeAmplitude:F4}입니다.");
+
+            float shapedFraction = MeasureFirstHalfTimeFraction(shaped);
+            float flatFraction = MeasureFirstHalfTimeFraction(flat);
+
+            Debug.Log($"{LogPrefix} A/B — 정형 ON: 총 {shaped.AbsRotationDegrees:F1}도({shaped.PlannedTurns}바퀴), " +
+                $"앞 절반 시간 비율 {shapedFraction:F3} / 정형 OFF: 총 {flat.AbsRotationDegrees:F1}도" +
+                $"({flat.PlannedTurns}바퀴), 앞 절반 시간 비율 {flatFraction:F3}. " +
+                $"세기={shaped.ThrowStrength01:F3}(A={shaped.SpinShapeAmplitude:F3}).");
+
+            // ★ 총 회전각 보존 — 계산이 아니라 **실제 씬에서** 잰 값끼리 비교한다.
+            Assert.AreEqual(flat.PlannedTurns, shaped.PlannedTurns,
+                $"{LogPrefix} 두 비행의 계획 바퀴 수가 다릅니다(ON {shaped.PlannedTurns} vs OFF {flat.PlannedTurns}). " +
+                "정형은 계획(정수 바퀴)에 관여하지 않으므로 같아야 합니다 — 다르면 비행 시간 편차로 " +
+                "계획이 갈린 것이니 다시 돌려보고, 재현되면 정형이 TryPlanRotation을 침범한 것입니다.");
+            Assert.AreEqual(flat.AbsRotationDegrees, shaped.AbsRotationDegrees, UprightToleranceDegrees,
+                $"{LogPrefix} 정형이 총 회전각을 바꿨습니다(ON {shaped.AbsRotationDegrees:F1}도 vs " +
+                $"OFF {flat.AbsRotationDegrees:F1}도). 정형은 면적 보존이라 총 회전각이 같아야 합니다. " +
+                "차이가 360도 근처면 두 비행의 **계획 바퀴 수가 달라진 것**이므로(비행 시간 편차) 다시 " +
+                "돌려보고, 그래도 갈라지면 정형이 계획을 침범하고 있는 것입니다.");
+            Assert.LessOrEqual(shaped.LastTumbleTiltDegrees, UprightToleranceDegrees,
+                $"{LogPrefix} 정형 ON에서 착지 직전 몸이 {shaped.LastTumbleTiltDegrees:F1}도 기울어 있었습니다 — " +
+                "정형이 직립 착지 계약을 깼습니다.");
+
+            // ★ 대조군이 실제로 등속인가 — 이 줄이 없으면 아래 단언이 무엇과 비교하는지 알 수 없다.
+            Assert.AreEqual(0.5f, flatFraction, 0.06f,
+                $"{LogPrefix} 정형 OFF인데 앞 절반 시간 비율이 {flatFraction:F3}입니다(등속이면 0.50). " +
+                "대조군이 등속이 아니면 아래 비교가 아무것도 증명하지 못합니다.");
+
+            // ★ 본 단언 — 정형이 실제로 앞을 빠르게 만든다.
+            Assert.Less(shapedFraction, flatFraction - 0.04f,
+                $"{LogPrefix} 정형을 켰는데 회전율의 모양이 등속과 구분되지 않습니다" +
+                $"(ON {shapedFraction:F3} vs OFF {flatFraction:F3}). 이것이 사용자가 신고한 " +
+                "'던지면 회전이 늘 똑같아 보인다'가 그대로 남아 있다는 뜻입니다.");
+        }
+
+        /// <summary>
+        /// "전체 회전을 마치는 데 걸린 시간 중, 앞 절반을 도는 데 쓴 비율". 등속이면 0.50이고
+        /// 앞에서 세게 차고 나갈수록 작아진다. ★ 회전이 끝난 뒤 착지까지 남는 무회전 구간
+        /// (throwTumbleAlignLeadSeconds)이 뒤에 붙어도 값이 흔들리지 않도록, 분모를 상태 전체가 아니라
+        /// **회전이 사실상 끝난 시점**으로 잡는다.
+        /// </summary>
+        private static float MeasureFirstHalfTimeFraction(ThrowObservation obs)
+        {
+            List<float> seconds = obs.TumbleSampleSeconds;
+            List<float> cumulative = obs.TumbleSampleCumulativeAbsDegrees;
+            Assert.Greater(seconds.Count, 8,
+                $"{LogPrefix} 회전 표본이 {seconds.Count}개뿐이라 회전율의 모양을 잴 수 없습니다.");
+
+            float total = cumulative[cumulative.Count - 1];
+            Assert.Greater(total, 300f, $"{LogPrefix} 누적 회전이 {total:F1}도뿐입니다.");
+
+            float halfSeconds = float.NaN;
+            float fullSeconds = float.NaN;
+            for (int i = 0; i < cumulative.Count; i++)
+            {
+                if (float.IsNaN(halfSeconds) && cumulative[i] >= total * 0.5f) halfSeconds = seconds[i];
+                if (float.IsNaN(fullSeconds) && cumulative[i] >= total - 0.5f) { fullSeconds = seconds[i]; break; }
+            }
+
+            Assert.IsFalse(float.IsNaN(halfSeconds), $"{LogPrefix} 절반 지점을 찾지 못했습니다.");
+            Assert.IsFalse(float.IsNaN(fullSeconds), $"{LogPrefix} 회전 완료 지점을 찾지 못했습니다.");
+            Assert.Greater(fullSeconds, 0f, $"{LogPrefix} 회전 완료 시각이 0입니다.");
+            return halfSeconds / fullSeconds;
         }
     }
 }

@@ -68,9 +68,59 @@ namespace StickMate.States
     /// 다이얼 하단(0.35~0.45)이 규칙을 어기고 있는 것을 아무도 못 봤다.
     ///
     /// ============================================================================
+    /// ★ 마디 병합 — 팔다리 하나 = <b>선 하나</b> (2026-09-03, 리더 판정 CH-8 채택)
+    /// ============================================================================
+    /// 위/아래 마디를 각자의 <see cref="LineRenderer"/>로 그리던 것을 <b>위 마디에 붙은 폴리라인
+    /// 하나</b>로 합쳤다. 몸의 선이 <b>11개 → 7개</b>가 된다.
+    ///
+    /// <b>조형은 바뀌지 않는다</b>(design-character R9 §14, 실측):
+    ///   · 오늘도 두 둥근 캡은 <b>같은 중심·같은 반지름</b>이라 합집합이 정확히 원판 하나다
+    ///     (관절 구멍 0.294% / 깊이 98.39% ↔ 이론 cos(π/16) = 98.08%). "관절이 두껍다"는 전제는 거짓이었다.
+    ///   · 병합은 <b>새 코너를 만들지 않는다</b> — <see cref="FillArcs"/>가 반호를 균등 표본하므로
+    ///     관절 꼭짓점의 회전각이 다른 다섯 꼭짓점과 같다(프리팹 실측: 0.833 / 1.667 / 1.667 /
+    ///     <b>[관절] 1.666</b> / 1.667 / 1.667 / 0.833).
+    ///   · 최악 굽힘(무릎 126°, Δφ = 21°)에서 관절 결손 ≈ 0.04px(Win100/0.75). 오늘 cap8이 0.03px다.
+    ///
+    /// <b>대신 없어지는 것</b>: 관절에서 잉크가 갈라져 보이던 <b>팔꿈치 노출</b>이 구조적으로 0이 된다
+    /// (막을 씌우기로 하면 그때 값을 한다). 그리고 이 형태는 이미 두 곳에서 출하 중이다 —
+    /// 정보창 초상화(<c>CharacterPortraitStage</c>)와 리틀스틱메이트
+    /// (<see cref="BuildLimbPolylineBetween"/>). 병합은 <b>본체를 그 둘에 맞추는 것</b>이지 새 형태가 아니다.
+    ///
+    /// <b>수식은 한 줄도 안 바뀐다.</b> <see cref="SolveFilletLength"/>/<see cref="FillArcs"/>를 그대로
+    /// 부르고, 아래 절반에 <b>Transform 계층이 지금까지 해 오던 것과 같은 변환</b>
+    /// (아래 마디의 <c>localPosition</c> + <c>localRotation</c>)을 손으로 적용할 뿐이다.
+    /// 그래서 <b>좌표가 병합 전후로 같다</b>(Tools/LimbDump가 이것을 대조한다).
+    ///
+    /// <para>★ <b>단 하나 달라지는 것</b>: 아래 마디가 이제 Transform으로 딸려오지 않으므로
+    /// 관절이 벌어지면(RAGDOLL의 조인트 신장) 그 벌어짐을 <b>이 클래스가 직접 읽어야</b> 한다.
+    /// 그래서 <c>Rebuild</c>의 더러움 판정에 <c>localPosition</c>이 들어간다 — 빠뜨리면 몸이 늘어난
+    /// 프레임에서 그림만 제자리에 남는다.</para>
+    ///
+    /// <para>★ <b>옛 프리팹/테스트 리그 호환</b>: 아래 마디에 선이 남아 있으면 같은 그림을 한 번 더
+    /// 그리게 되므로 <b>꺼 버린다</b>(파괴하지 않는다 — 에디터가 그 파괴를 저장할 수 있다).</para>
+    ///
+    /// <para>★★ <b>병합이 만든 진짜 부작용은 「지연」이다</b>(2026-09-03 디버거 실측). 병합 전에는
+    /// 아래 마디의 점이 <b>아래 마디 Transform의 로컬 공간</b>에 있어서, 다시 굽지 않아도 Transform
+    /// 계층이 매 프레임 월드 좌표를 공짜로 맞춰 줬다 — <b>지연 0</b>. 병합 후에는 아래 절반이 위 마디
+    /// 로컬 공간에 <b>구운 각도 θ와 관절 오프셋으로 박제</b>되므로, 다시 굽기 전까지 그 절반은
+    /// <b>지난 프레임의 자세</b>다. 이 클래스의 재굽기는 <see cref="LateUpdate"/>라, <c>Update</c>
+    /// 구간에서 이 선의 점을 읽는 소비자는 전부 한 프레임 낡은 그림을 본다.</para>
+    ///
+    /// <para>실측: RAGDOLL→GETUP 전이 직후 프레임에서 낡은 폴리라인이 갱신본보다 <b>8.9pt 아래</b>를
+    /// 가리켰다(spin=−240 사이클). <b>화면은 멀쩡했다</b> — LateUpdate는 렌더보다 먼저 도니까. 그러나
+    /// Update 구간 소비자(<c>StickmanAgent.TickVisualHalfWidth</c>의 화면 클램프 반폭,
+    /// <c>Tests/PlayMode/GetupFloorClearanceTests</c>)는 그 유령을 그대로 읽어
+    /// <b>「기상 중 잉크가 바닥을 뚫었다」는 거짓 빨강</b>을 냈다.</para>
+    ///
+    /// <para>그래서 <c>States/StickmanBlackboard.TickPose()</c>가 <b>포즈를 확정한 자리에서 곧바로</b>
+    /// <see cref="RefreshNow"/>를 부른다. <see cref="LateUpdate"/>는 그대로 둔다 — 그 뒤에 무언가
+    /// 각도를 바꿔도 잡히고, 이미 맞춰졌으면 더러움 판정에서 통째로 건너뛰므로 LineRenderer 쓰기는
+    /// 늘지 않는다. <b>이 두 호출 중 하나만 남기지 마라.</b></para>
+    ///
+    /// ============================================================================
     /// 비용 — 24시간 상주 앱이다
     /// ============================================================================
-    ///   · 마디당 점 2개 → <see cref="PointsPerSegment"/>개. 8마디 총 16 → 40점.
+    ///   · 팔다리 하나에 <see cref="PolylinePointCount"/>점. 4팔다리 총 36점(병합 전 40점).
     ///   · <b>각도가 안 바뀐 마디는 통째로 건너뛴다</b>(<see cref="RebuildEpsilonDegrees"/>).
     ///     완전 정지 상태에서는 LineRenderer 쓰기가 0회다.
     ///   · 매 프레임 할당 0 — 점 버퍼는 마디마다 한 번 잡아두고 재사용하고,
@@ -130,6 +180,9 @@ namespace StickMate.States
 
         /// <summary>2분절 마디 하나를 <b>납작한 폴리라인 한 줄</b>로 폈을 때의 점 개수.
         /// 초상화(Interaction/CharacterPortraitStage)가 버퍼를 이 크기로 잡는다.
+        ///
+        /// <para>★ 2026-09-03 — <b>본체 팔다리도 이 버퍼를 쓴다</b>(마디 병합, 클래스 문서 참고).
+        /// 초상화·펫·본체가 <b>같은 상수 하나</b>를 보므로 세 그림의 점 개수가 갈라질 수 없다.</para>
         ///
         /// <para>★ 2026-09-01 <b>2×PointsPerSegment → 그것보다 1 적게</b>(docs/CHARACTER_FORM_SPEC.md 4-5).
         /// 예전에는 관절점을 <b>두 번</b> 담아 인덱스 4와 5가 같은 좌표였고, 그래서 폴리라인 안에
@@ -199,15 +252,16 @@ namespace StickMate.States
         /// <summary>팔다리 하나에 필요한 캐시 전부. 매 프레임 재탐색/재할당 금지.</summary>
         private sealed class Limb
         {
+            public Transform UpperTransform;   // 병합 폴리라인의 좌표계(= 이 Transform의 로컬 공간).
             public Transform LowerTransform;   // 굽힘각의 유일한 출처(= 이 Transform의 localRotation.z).
-            public LineRenderer UpperLine;
-            public LineRenderer LowerLine;
+            public LineRenderer Line;          // ★ 팔다리 하나 = 선 하나(위 마디에 붙는다). 아래 §병합 참고.
+            public LineRenderer LegacyLowerLine; // 옛 프리팹/테스트 리그에만 존재. 찾으면 <b>꺼서</b> 이중 그리기를 막는다.
             public float UpperLength;          // 관절에서 관절까지(로컬 유닛, 프리팹 굽기 시점 값).
             public float LowerLength;          // 관절에서 끝점까지.
-            public Vector3[] UpperPoints;      // 재사용 버퍼(길이 PointsPerSegment).
-            public Vector3[] LowerPoints;
+            public Vector3[] Points;           // 재사용 버퍼(길이 PolylinePointCount).
             public float LastAngleDegrees;
             public float LastWidth;
+            public Vector3 LastJointOffset;    // 아래 마디 localPosition(RAGDOLL에서 관절이 벌어질 수 있다).
             public bool Primed;                // 첫 프레임에는 무조건 한 번 굽는다.
         }
 
@@ -288,24 +342,27 @@ namespace StickMate.States
             if (lower == null) return null;
 
             var upperLine = upper.GetComponent<LineRenderer>();
+            if (upperLine == null) return null;
+            // ★ 아래 마디의 선은 <b>있어도 되고 없어도 된다</b>(병합 이후 프리팹에는 없다).
+            //   있으면 길이의 1차 출처로 쓰고, 그리기에서는 꺼 버린다 — 아래 Apply 참고.
             var lowerLine = lower.GetComponent<LineRenderer>();
-            if (upperLine == null || lowerLine == null) return null;
 
             float upperLength = ReadSegmentLength(upperLine);
-            float lowerLength = ReadSegmentLength(lowerLine);
+            float lowerLength = ReadLowerSegmentLength(upperLine, lowerLine, lower);
             if (upperLength <= 0.0001f || lowerLength <= 0.0001f) return null;
 
             return new Limb
             {
+                UpperTransform = upper,
                 LowerTransform = lower,
-                UpperLine = upperLine,
-                LowerLine = lowerLine,
+                Line = upperLine,
+                LegacyLowerLine = lowerLine,
                 UpperLength = upperLength,
                 LowerLength = lowerLength,
-                UpperPoints = new Vector3[PointsPerSegment],
-                LowerPoints = new Vector3[PointsPerSegment],
+                Points = new Vector3[PolylinePointCount],
                 LastAngleDegrees = float.NaN,
                 LastWidth = float.NaN,
+                LastJointOffset = new Vector3(float.NaN, float.NaN, 0f),
                 Primed = false,
             };
         }
@@ -318,12 +375,49 @@ namespace StickMate.States
         /// 아직 남아 있을 수 있다. 자르지 않으면 그 발끝을 마디 끝으로 잘못 읽어 <b>다리가 최대
         /// 획의 절반만큼 길어진다</b>. 이 한 줄이 있으면 옛/새 프리팹 어느 쪽으로도 안전하다.</para>
         /// </summary>
-        private static float ReadSegmentLength(LineRenderer lr)
+        /// <remarks>★ <b>공개 API</b>다(2026-09-03). 마디 병합 이후 "팔다리 마디 길이를 계층에서 읽는"
+        /// 소비자가 자기 방식으로 읽으면 <b>아래 마디에서 0</b>을 받고 조용히 폴백으로 떨어진다
+        /// (실제 대상: <c>Interaction/CharacterPetRenderer.OwnerUpperFraction</c>).
+        /// 창구를 하나로 두어 그 조용한 실패를 구조적으로 막는다.</remarks>
+        public static float ReadSegmentLength(LineRenderer lr)
         {
             int n = lr.positionCount;
             if (n < 2) return 0f;
             int endIndex = Mathf.Min(n - 1, PointsPerSegment - 1);
             return Mathf.Abs(lr.GetPosition(endIndex).y);
+        }
+
+        /// <summary>
+        /// 아래 마디 길이 — <b>출처가 셋</b>이고 전부 같은 값을 낸다. 순서가 곧 정확도 순이다.
+        ///
+        /// <list type="number">
+        ///   <item><b>아래 마디의 선</b>(병합 이전 프리팹 · 테스트 리그). 마지막 점이 정확히 (0, −Ll)이다.</item>
+        ///   <item><b>병합된 폴리라인의 마지막 점</b>. 그 점은 관절(<paramref name="lower"/>의
+        ///     <c>localPosition</c>)을 원점으로 한 <b>강체 회전</b>의 상(像)이므로 관절까지의 거리가
+        ///     굽힘각과 무관하게 정확히 Ll이다 — 첫 프레임에 이미 포즈가 바뀌어 있어도 안전하다.</item>
+        ///   <item><b>BoxCollider2D.size.y</b>. Editor/SceneBootstrapper가 선과 <b>같은 length</b>로
+        ///     굽는 값이라 구조적으로 같지만, 물리 형상이라 시각과 어긋날 여지가 남아 마지막에 둔다.</item>
+        /// </list>
+        ///
+        /// <para>세 출처를 두는 이유는 <see cref="ReadSegmentLength"/>의 인덱스 자르기와 같다 —
+        /// 프리팹은 저장소 안에 <b>여러 세대가 동시에</b> 존재하고, 길이를 잘못 읽으면 다리가
+        /// 조용히 길어지거나 짧아진다.</para>
+        /// </summary>
+        public static float ReadLowerSegmentLength(LineRenderer upperLine, LineRenderer lowerLine, Transform lower)
+        {
+            if (lowerLine != null && lowerLine.positionCount >= 2) return ReadSegmentLength(lowerLine);
+
+            if (upperLine != null && upperLine.positionCount >= PolylinePointCount && lower != null)
+            {
+                Vector3 tip = upperLine.GetPosition(PolylinePointCount - 1);
+                Vector3 joint = lower.localPosition;
+                float dx = tip.x - joint.x, dy = tip.y - joint.y;
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+                if (d > 0.0001f) return d;
+            }
+
+            if (lower != null && lower.TryGetComponent(out BoxCollider2D box)) return Mathf.Abs(box.size.y);
+            return 0f;
         }
 
         private void Rebuild(bool force)
@@ -334,21 +428,28 @@ namespace StickMate.States
             for (int i = 0; i < _limbs.Length; i++)
             {
                 Limb limb = _limbs[i];
-                if (limb.LowerTransform == null || limb.UpperLine == null || limb.LowerLine == null) continue;
+                if (limb.LowerTransform == null || limb.Line == null) continue;
 
                 float angle = SignedZDegrees(limb.LowerTransform.localRotation);
                 float width = LocalStrokeWidth(limb);
+                // ★ 병합 이후 아래 마디는 <b>Transform 계층이 아니라 이 수식이</b> 옮긴다. 그래서
+                //   관절 위치도 입력이다 — RAGDOLL에서 조인트가 벌어지면 예전에는 그림이 따라갔지만
+                //   각도만 보면 안 따라간다(그 차이가 곧 그림과 콜라이더의 어긋남이다).
+                Vector3 jointOffset = limb.LowerTransform.localPosition;
 
                 if (!force && limb.Primed
                     && Mathf.Abs(Mathf.DeltaAngle(limb.LastAngleDegrees, angle)) < RebuildEpsilonDegrees
-                    && Mathf.Approximately(limb.LastWidth, width))
+                    && Mathf.Approximately(limb.LastWidth, width)
+                    && Mathf.Approximately(limb.LastJointOffset.x, jointOffset.x)
+                    && Mathf.Approximately(limb.LastJointOffset.y, jointOffset.y))
                 {
                     continue;
                 }
 
-                BuildCurve(limb, angle, width);
+                BuildCurve(limb, angle, width, jointOffset);
                 limb.LastAngleDegrees = angle;
                 limb.LastWidth = width;
+                limb.LastJointOffset = jointOffset;
                 limb.Primed = true;
                 LastRebuiltSegmentCount += 2;
             }
@@ -378,8 +479,11 @@ namespace StickMate.States
         /// </summary>
         private static float LocalStrokeWidth(Limb limb)
         {
-            float world = limb.LowerLine.startWidth;
-            float scale = Mathf.Abs(limb.LowerTransform.lossyScale.y);
+            float world = limb.Line.startWidth;
+            // ★ 병합 이후 좌표계가 <b>위 마디</b>다. 아래 마디의 localScale은 Editor/SceneBootstrapper가
+            //   Vector3.one으로 못박으므로(조인트 anchor가 스케일을 타지 않게) 두 lossyScale은 같은 값이고,
+            //   그래도 <b>실제로 점을 담는 쪽</b>에서 읽는 것이 단위 계약에 맞다.
+            float scale = Mathf.Abs(limb.UpperTransform.lossyScale.y);
             if (scale <= 0.0001f || float.IsNaN(scale)) return world;
             return world / scale;
         }
@@ -398,12 +502,26 @@ namespace StickMate.States
         /// 클래스 문서의 두 수식을 그대로 채운다. <b>양 끝점(관절과 마디 끝)은 절대 움직이지 않는다</b> —
         /// 위 마디의 첫 점은 (0,0), 아래 마디의 마지막 점은 (0, −Ll)로 고정이다.
         /// </summary>
-        private static void BuildCurve(Limb limb, float angleDegrees, float width)
+        private static void BuildCurve(Limb limb, float angleDegrees, float width, Vector3 jointOffset)
         {
             float t = SolveFilletLength(limb.UpperLength, limb.LowerLength, angleDegrees, width);
+            // 두 반호를 <b>한 배열</b>에 담는다 — 관절 칸(PolylineJointIndex)을 겹쳐 쓰므로
+            // 길이 0인 선분이 생기지 않는다(초상화/펫이 쓰는 BuildLimbPolyline과 같은 배치).
             FillArcs(limb.UpperLength, limb.LowerLength, angleDegrees, t,
-                limb.UpperPoints, 0, limb.LowerPoints, 0);
-            Apply(limb, limb.UpperPoints, limb.LowerPoints);
+                limb.Points, 0, limb.Points, PolylineJointIndex);
+
+            // 아래 절반을 위 마디 좌표계로 옮긴다: p' = jointOffset + Rz(θ)·p.
+            // ★ 이것은 <b>Transform 계층이 지금까지 해 오던 바로 그 변환</b>이다(아래 마디의
+            //   localPosition + localRotation). 그래서 병합 전후로 화면 좌표가 같다.
+            float rad = angleDegrees * Mathf.Deg2Rad;
+            float cos = Mathf.Cos(rad), sin = Mathf.Sin(rad);
+            for (int i = PolylineJointIndex; i < PolylinePointCount; i++)
+            {
+                Vector3 p = limb.Points[i];
+                limb.Points[i] = new Vector3(jointOffset.x + p.x * cos - p.y * sin,
+                                             jointOffset.y + p.x * sin + p.y * cos, 0f);
+            }
+            Apply(limb);
         }
 
         // ========================================================================
@@ -656,14 +774,18 @@ namespace StickMate.States
             return lo;
         }
 
-        private static void Apply(Limb limb, Vector3[] up, Vector3[] lo)
+        private static void Apply(Limb limb)
         {
             // positionCount는 항상 같은 값이라 두 번째 호출부터는 재할당이 일어나지 않는다.
-            // ★ 발이 붙어 있던 프리팹(2026-09-01 21:20 구움)을 만나면 여기서 5개로 다시 줄어든다.
-            if (limb.UpperLine.positionCount != PointsPerSegment) limb.UpperLine.positionCount = PointsPerSegment;
-            if (limb.LowerLine.positionCount != PointsPerSegment) limb.LowerLine.positionCount = PointsPerSegment;
-            limb.UpperLine.SetPositions(up);
-            limb.LowerLine.SetPositions(lo);
+            // ★ 병합 이전 프리팹(선 5점)이나 발이 붙어 있던 프리팹을 만나면 여기서 한 번만 늘어난다.
+            if (limb.Line.positionCount != PolylinePointCount) limb.Line.positionCount = PolylinePointCount;
+            limb.Line.SetPositions(limb.Points);
+
+            // ★ 옛 프리팹/테스트 리그에 남아 있는 아래 마디의 선은 <b>같은 그림을 한 번 더</b> 그린다.
+            //   지우지 않고 끄는 이유: 프리팹 에셋을 런타임에 파괴하면 다음 실행에서 되살아나는 것이
+            //   아니라 <b>에디터가 그 파괴를 저장할 수 있다</b>. 끄기는 멱등이고 되돌릴 수 있다.
+            if (limb.LegacyLowerLine != null && limb.LegacyLowerLine.enabled)
+                limb.LegacyLowerLine.enabled = false;
         }
     }
 }

@@ -278,6 +278,51 @@ namespace StickMate.Interaction
         private const float ActiveAlpha = 0.95f;    // 커서가 위에 있거나 창이 열려 있을 때.
         private const float AlphaFadeSpeed = 6f;
 
+        /// <summary>
+        /// ★★★ <b>사용자가 캐릭터를 숨겨 둔 동안</b>의 평상 불투명도 — 2026-09-03(리더 승인).
+        ///
+        /// ============================================================================
+        /// 왜 필요한가
+        /// ============================================================================
+        /// 같은 날 사용자 명시 숨김이 <b>캐릭터만</b> 가리도록 바뀌면서 톱니가 남았다. 그러면
+        /// 화면에 남는 상태 신호가 <b>«캐릭터가 없다»</b> 하나뿐이라 "숨긴 상태"와 "고장"이
+        /// 똑같이 생긴다 — 이 저장소가 반복해 당한 형태다.
+        ///
+        /// ============================================================================
+        /// ★ 값의 근거 — <b>임의값이 아니다. 대비 하한에서 역산했다</b>
+        /// ============================================================================
+        /// 알파는 잉크와 헤일로 <b>두 겹 모두</b>에 걸리므로 낮출수록 둘 다 배경으로 끌려간다
+        /// (<see cref="IdleAlpha"/> 문서). 프로덕션 합성식으로 회색 0~255 전 구간을 훑어
+        /// <b>잉크 프리셋 2종 각각</b>의 «보장 대비 3.00:1을 만족하는 최소 α»를 이분법으로 구했다:
+        /// <code>
+        ///   검정 잉크 → α 0.7683   ← 구속 조건(더 빡빡한 쪽)
+        ///   흰   잉크 → α 0.7509
+        /// </code>
+        /// 즉 <b>내릴 수 있는 바닥이 0.7683</b>이고, 평상값 0.80에서 남은 여유는 <b>0.0317뿐</b>이다.
+        /// 0.78은 그 구간 안에서 0.01 격자에 놓이면서 두 프리셋 모두 여유 ≥ 0.05를 남기는 값이다
+        /// (검정 3.078:1 / 흰 3.143:1, 하한 3.00).
+        ///
+        /// <para>★★ <b>정직하게 적는다 — 이 값만으로는 목적을 다 이루지 못한다.</b>
+        /// 0.80 → 0.78은 <b>4% 변화</b>이고, 바로 아래 <see cref="HoverScale"/> 문서가 이미 실측으로
+        /// 적어 둔 사실이 여기에도 그대로 적용된다: <i>"α 0.70 → 0.95(36% 변화)는 저대비 배경에서
+        /// 사실상 아무 일도 안 일어난 것과 같다"</i>. 알파 채널에는 <b>지각 가능한 신호를 만들 여유가
+        /// 남아 있지 않다</b>(0.0317). 더 내리려면 대비 하한을 깨야 하고, 그건 톱니가
+        /// <b>임의의 바탕화면 위에 맨몸으로</b> 놓이는 이 앱에서 허용되지 않는다.</para>
+        ///
+        /// <para><b>⇒ 「숨김 중」을 눈에 띄게 만드는 <i>시각 언어</i>는 `design-art` 판정 대기다</b>
+        /// (리더 지시 2026-09-03: <i>"하한 미달이면 design-art 판정으로 넘겨라. 임의값 금지"</i>).
+        /// 후보 채널은 알파가 아닌 쪽이다 — 이 파일은 이미 <b>크기</b>를 상태 신호로 쓰고 있고
+        /// (<see cref="HoverScale"/> / <see cref="DragScale"/>), 그 선택의 근거가
+        /// <i>"알파가 아니라 크기가 주 단서다"</i>였다. 채널과 값이 정해지면 여기 상수 하나와
+        /// <see cref="TickHoverAlpha"/> 한 줄이 그 자리다.</para>
+        ///
+        /// <para><b>왜 <see cref="DragAlpha"/>(0.55)처럼 하한을 면제받지 못하는가</b>: 드래그는
+        /// <b>커서가 위치를 말해 주는 직접 조작</b>이라 몇 초짜리이고 사용자가 그 자리를 보고 있다.
+        /// 숨김은 <b>몇 시간</b> 지속될 수 있고 그동안 톱니는 손대지 않은 채 <b>유일한 진입점</b>으로
+        /// 남는다 — 면제 근거가 정반대다.</para>
+        /// </summary>
+        private const float UserHiddenAlpha = 0.78f;
+
         /// <summary>호버할 때 살짝 커진다 — <b>알파가 아니라 크기</b>가 주 단서다.
         /// α 0.70 → 0.95(36% 변화)는 저대비 배경에서 사실상 아무 일도 안 일어난 것과 같다(§5.1).
         /// 스펙은 "헤일로를 3.0배로"라고 했지만 그러면 이 골(4.71pt)이 헤일로(5.1pt)에 메워져
@@ -453,6 +498,17 @@ namespace StickMate.Interaction
         /// <summary>평상시 불투명도 — <b>대비 보장은 이 값에서 계산해야 한다</b>(IdleAlpha 문서 참고).
         /// 드래그 중(더 옅다)은 커서가 위치를 말해 주는 직접 조작 상태라 이 보장의 대상이 아니다.</summary>
         public static float IdleOpacity => IdleAlpha;
+
+        /// <summary>사용자가 캐릭터를 숨겨 둔 동안의 평상 불투명도 — <b>이 값도 대비 하한의 대상이다</b>
+        /// (<see cref="UserHiddenAlpha"/> 문서의 «면제받지 못하는 이유» 절).
+        /// <c>InfoGearHaloContrastTests</c>가 이 상수를 <b>읽어</b> 같은 합성으로 검사한다.</summary>
+        public static float UserHiddenOpacity => UserHiddenAlpha;
+
+        /// <summary>지금 톱니가 「숨김 중」 표시로 그려지고 있는가(진단/테스트 창구).
+        /// 알파 목표값이 아니라 <b>상태</b>를 노출한다 — 값은 design-art 판정으로 바뀔 수 있고,
+        /// 그때 테스트가 값을 좇아 함께 썩지 않게 한다.</summary>
+        public bool IsDimmedForUserHide =>
+            _agent != null && _agent.IsUserHiddenOnly && !_highlighted && !_dragging;
 
         /// <summary>지금 길게 눌러 옮기는 중인가(테스트/진단 전용).</summary>
         public bool IsDraggingIcon => _dragging;
@@ -751,12 +807,21 @@ public void StartSpinForTests() => _spinTimer = 0f;
             //     (2) 등급 1은 캐릭터를 남기므로 <b>캐릭터 히트박스가 이미 남아</b> "클릭 방해 0"은
             //         어차피 성립하지 않는다. 톱니 하나를 더 남기는 것이 여기서 새로 만드는 문제가 아니다.
             //   이 줄을 ArePanelsSuppressed로 "정리"하지 마라 — 그건 결정을 되돌리는 것이다.
+            //
+            // ★★★ 2026-09-03 사용자 확정 — 읽는 값이 <c>IsSuspended</c>에서
+            //   <c>HidesScreenSurfaces</c>로 <b>좁아졌다</b>. 신고: <i>"설정에서 숨기기버튼 누르니까
+            //   전부 다 없어져버려서 다시 나오게 할 방법이 없어"</i> → <i>"메뉴버튼은 보여야지"</i> →
+            //   <i>"캐릭만 가리고"</i>. 사용자 명시 숨김(축 2)은 캐릭터만 가리므로 <b>여기서 톱니를
+            //   내리지 않는다</b>. 전체화면 게임 감지(축 1)에서는 그 값이 참이라 <b>예전과 한 비트도
+            //   다르지 않게</b> 톱니가 사라진다 — 게임 위에 톱니가 남으면 원칙 2 위반이다.
+            //   ★ 두 축을 다시 <c>IsSuspended</c> 하나로 합치지 마라: 그 값은 이제 <b>캐릭터 축</b>이고,
+            //     톱니는 캐릭터가 아니다.
             // ★ 2026-09-01 설정창 [일반] "톱니 아이콘" 토글 — 끄면 전체화면 감지와 <b>같은 경로</b>로
             //   거둔다(그림/차단막/부채꼴/창까지 한 번에). 새 숨김 경로를 만들지 않는 이유: 숨기는
             //   방법이 둘이 되면 "무엇을 되살려야 하는가"의 목록도 둘이 되고, 그 목록은 반드시 갈라진다.
-            if (_agent.IsSuspended || !AppSettingsModel.GearIconVisible)
+            if (_agent.HidesScreenSurfaces || !AppSettingsModel.GearIconVisible)
             {
-                ApplySuspendHide(_agent.IsSuspended ? "전체화면 감지" : "설정창에서 톱니 아이콘을 껐습니다");
+                ApplySuspendHide(_agent.HidesScreenSurfaces ? "전체화면 감지" : "설정창에서 톱니 아이콘을 껐습니다");
                 return;
             }
             if (_hiddenBySuspend) ReleaseSuspendHide();
@@ -1242,8 +1307,18 @@ public void StartSpinForTests() => _spinTimer = 0f;
         {
             bool highlight = IsSpinning || IsMenuExpanded || (_window != null && _window.IsOpen) || IsCursorOverIcon();
             _highlighted = highlight;   // TickDragVisual이 같은 프레임에 크기로도 표현한다(§5.1).
+
+            // ★★★ 2026-09-03 — 「숨김 중」 평상값(UserHiddenAlpha). <b>호버는 그대로 이긴다</b>:
+            //   highlight 분기가 이 항보다 <b>앞</b>에 있으므로 커서를 올리면 ActiveAlpha(0.95)로
+            //   돌아온다. 그래야 "눌러도 되는가"가 흐려지지 않는다(리더 지시 2026-09-03).
+            //   ★ 부수 효과가 오히려 이 라운드의 쓸모다: 평상 0.78 → 호버 0.95는 <b>0.17 스윙</b>이라
+            //     평소(0.80 → 0.95, 0.15)보다 <b>크다</b> — 숨김 중에 호버 반응이 더 또렷해진다.
+            //   ★ 읽는 값은 <c>IsUserHiddenOnly</c>다. <c>IsSuspended</c>로 쓰면 뜻이 넓어지고,
+            //     <c>HidesScreenSurfaces</c>면 애초에 이 함수까지 오지 못한다(LateUpdate 조기 반환).
+            bool userHidden = _agent != null && _agent.IsUserHiddenOnly;
             // 드래그 중에는 옅게 — "지금 들려서 떠 있다"는 표시다(호버 강조보다 우선한다).
-            float target = _dragging ? DragAlpha : (highlight ? ActiveAlpha : IdleAlpha);
+            float target = _dragging ? DragAlpha
+                : (highlight ? ActiveAlpha : (userHidden ? UserHiddenAlpha : IdleAlpha));
             float next = Mathf.MoveTowards(_alpha, target, AlphaFadeSpeed * Time.unscaledDeltaTime);
             if (Mathf.Approximately(next, _alpha)) return;
             _alpha = next;

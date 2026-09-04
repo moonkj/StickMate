@@ -72,23 +72,40 @@ before/after 비교가 성립하지 않는다). 실행할 때마다 아래 5건�
 ## 1-1. 식은 코드에 있다 — 숫자를 베끼지 않는다
 
 ```
-TabLabelWidth(label) = label.Length * UiChrome.FontTitle + 4      // CharacterInfoWindow.cs:2880
-x_0 = RightPadX                                                    // 22
-x_{i+1} = x_i + TabLabelWidth(name_i) + TabGap                     // TabGap = 22
-밑줄(TabBottomLine) 오른쪽 끝 = RightPadX + RightContentWidth      // 22 + 592 = 614
+TabLabelWidth(label, name) = SettingsControls.MeasuredWidth(label, name) + TabLabelPadX * 2f
+                                            // Interaction/CharacterInfoWindow.Tabs.cs:294
+x_0 = RightPadX
+x_{i+1} = x_i + TabLabelWidth(...) + TabGap
+밑줄(TabBottomLine) 오른쪽 끝 = RightPadX + RightContentWidth
 ```
+
+★★ **2026-09-03 정정 (ux-designer) — 여기 있던 옛 식은 폐기됐다.**
+```
+폐기:  TabLabelWidth(label) = label.Length * UiChrome.FontTitle + 4
+```
+`coder-ui`가 폭 모형 7곳을 **`Text.preferredWidth` 실측**으로 교체했다.
+글자 수 모형은 **한글에서만 맞고 라틴에서 반쯤 빈 상자를 남긴다**(`UiChrome.Ellipsize` 문서).
+여백 `4f`는 `TabLabelPadX = 2f`로 **반씩 나뉘어** 살아 있다(변경 효과를 '측정으로 바꾼 것' 하나로
+유지하려고 여백은 일부러 안 건드렸다).
+**이 문서는 폭 숫자를 더 이상 적지 않는다** — 실측값은 폰트·아틀라스·캔버스 배율에 따라 달라지고,
+베껴 적는 순간 그것이 다음 번 폐기 대상이 된다.
 
 ## 1-2. 결과
 
-| 구성 | `[장비]` | `[외형]` | `[보관함]` | `[상점]` | 마지막 끝 | **남는 폭** |
-|---|---|---|---|---|---|---|
-| 현재 3탭 | 22..54 | 76..108 | 130..176 | — | 176 | **438pt** |
-| **4탭(신설 후)** | 22..54 | 76..108 | 130..176 | **198..230** | **230** | **384pt** |
-| 참고 5탭 | 〃 | 〃 | 〃 | 〃 + `[도감]` 252..284 | 284 | 330pt |
+★ **2026-09-03 — 이 자리에 있던 x좌표 표(`22..54` / `76..108` / `130..176` / `198..230`)는
+폐기된 글자수 식에서 나온 값이라 삭제했다.** 새 식은 실측이라 이 환경에서 잴 수 없다.
 
-**판정: 탭 바는 빡빡하지 않다.** 4번째 탭은 밑줄 길이의 **35%** 지점에서 끝난다.
-"창이 이미 빡빡하다"는 리더의 경계는 옳지만, **그 빡빡함은 세로에 있다**(§7). 가로 탭 스트립은
-지금 **65%가 비어 있다.**
+**판정은 좌표가 아니라 부등식으로 남긴다:**
+
+```
+마지막 탭 오른쪽 끝  <  밑줄 오른쪽 끝 ( = RightPadX + RightContentWidth )
+```
+
+- **탭 바는 빡빡하지 않다.** 3탭 → 4탭에서 늘어나는 것은 `TabLabelWidth("상점") + TabGap` 하나뿐이고,
+  탭 4개의 라벨은 전부 2~3자라 밑줄 길이에 견주면 작다.
+- 넘침은 **`BuildTabs` 끝의 검사**가 잡는다 — 문서가 예측할 일이 아니라 **코드가 단언하는 일**이다.
+- "창이 이미 빡빡하다"는 리더의 경계는 옳지만, **그 빡빡함은 세로에 있다**(§7). 가로 탭 스트립은 여유가 있다.
+- ★ **확정은 실기 캡처로만** — 5탭까지 넣을 수 있는지는 `preferredWidth` 실측 없이 말하지 않는다.
 
 ## 1-3. ★ `TodoBoardPopover` 함정을 피하는 법 — 여기에는 **다른 모양**으로 있다
 

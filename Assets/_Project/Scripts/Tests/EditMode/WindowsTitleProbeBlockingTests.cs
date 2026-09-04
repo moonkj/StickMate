@@ -169,27 +169,186 @@ namespace StickMate.Tests.EditMode
             "AttachThreadInput", "WaitForInputIdle",
         };
 
-        [Test]
-        public void T7_플랫폼_계층_어디에도_크로스프로세스_메시지_전송이_없다()
+        // ============================================================================
+        // ★★ 승인된 예외 1건 — 트레이 호스트 창의 PostMessage (2026-09-03 리더 승인)
+        // ============================================================================
+        // ★ 새 판단이 아니다. 같은 날 UserAssetImmutabilityAuditTests에 이미 승인된 예외
+        //   («파일 1개 · 형태 3개» — SetForegroundWindow / PostMessage / DestroyWindow)가
+        //   **같은 사유·같은 파일**로 이 감사에도 걸린 것뿐이다. 그 결정을 여기 그대로 적용한다.
+        //
+        // 경위: 사용자 확정 지시 "실행시 시스템 트레이에 표시되어야함". KB135788 표준 관용구가
+        //   트레이 메뉴를 닫으려면 자기 호스트 창에 WM_NULL을 넣어야 한다.
+        //
+        // ★ 승인의 핵심 조건 — 이 테스트의 금지 사유와 정확히 어긋나지 않는가:
+        //   T7이 막는 것은 «임의의 앱의 메시지 루프를 기다리는 것»이고, 그 이유는 [발판열거]가
+        //   남의 프로세스 응답성에 묶이는 것이었다. 이 두 줄의 대상은 <우리가 CreateWindowEx로
+        //   직접 만든, 한 번도 보이지 않는 트레이 호스트 창> 하나뿐이라
+        //   **기다릴 남의 메시지 루프가 존재하지 않는다.** 게다가 PostMessage는 애초에
+        //   비동기라 블로킹이 아니고, 열거 경로(Win32WindowService)와는 파일도 호출 경로도 다르다.
+        //
+        // ★ 완전 일치로만 본다(부분 일치 금지). 작업표시줄 예외가 접두/접미만 보다가
+        //   "…; Kill();"을 통과시킨 전력이 있다 — 같은 함정에 두 번 빠지지 않는다.
+        //   인자가 _hostWindow로 고정된 형태만 통과하므로 임의 핸들은 여기서 막힌다.
+
+        private const string TraySelfWindowExceptionFileName = "WindowsSystemTrayIcon.cs";
+
+        /// <summary>
+        /// 허용되는 <b>정확한 2줄</b> — <c>extern</c> 선언 1줄 + 호출 1줄.
+        /// <para>선언을 함께 허용하는 이유는 승인된 다른 예외들과 같다: Win32 이름을 다른 이름으로
+        /// 감추면 <b>이 감사가 물 대상 자체가 사라진다</b>. 이름을 숨기는 것은 예외를 없애는 것이
+        /// 아니라 감시를 없애는 것이다.</para>
+        /// <para>여기에 <c>SetForegroundWindow</c>/<c>DestroyWindow</c>는 <b>일부러 없다</b> —
+        /// 그 둘은 <see cref="BlockingMessageApis"/>에 들어 있지 않아 이 감사가 아예 묻지 않는다.
+        /// 안 걸리는 것을 화이트리스트에 적으면 «실재하는 예외»와 «죽은 항목»이 섞인다.</para>
+        /// </summary>
+        private static readonly string[] ApprovedTraySelfPostMessageLines =
+        {
+            "private static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);",
+            "PostMessage(_hostWindow, WM_NULL, IntPtr.Zero, IntPtr.Zero);",
+        };
+
+        /// <summary>승인된 2줄과 <b>문자 하나까지 같은가</b>. 부분 일치를 허용하지 않는다.</summary>
+        private static bool IsApprovedTraySelfPostMessage(string line)
+        {
+            string t = line.Trim();
+            foreach (string form in ApprovedTraySelfPostMessageLines)
+            {
+                if (string.Equals(t, form, StringComparison.Ordinal)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 플랫폼 계층 전수 스캔. <paramref name="applyApprovedException"/>를 <c>false</c>로 주면
+        /// 화이트리스트를 <b>무력화</b>한 상태로 같은 스캔을 돌린다 — 그 결과가
+        /// <see cref="T7b_승인된_트레이_예외는_정확히_그_한_파일_두_줄로만_존재한다"/>의 본체다.
+        /// </summary>
+        private static List<string> ScanBlockingMessageApis(bool applyApprovedException)
         {
             var violations = new List<string>();
             foreach (string path in PlatformSources())
             {
+                string fileName = Path.GetFileName(path);
                 string[] code = StripComments(File.ReadAllLines(path));
                 for (int i = 0; i < code.Length; i++)
                 {
                     foreach (string api in BlockingMessageApis)
                     {
                         if (!code[i].Contains(api)) continue;
-                        violations.Add($"{Path.GetFileName(path)}:{i + 1}: '{api}' — {code[i].Trim()}");
+
+                        // 화이트리스트는 **파일명 + 완전 일치 형태** 둘 다 맞아야 열린다.
+                        // 같은 줄을 다른 파일에 복사하면 그대로 위반으로 잡힌다.
+                        if (applyApprovedException
+                            && string.Equals(fileName, TraySelfWindowExceptionFileName, StringComparison.Ordinal)
+                            && IsApprovedTraySelfPostMessage(code[i]))
+                        {
+                            continue;
+                        }
+
+                        violations.Add($"{fileName}:{i + 1}: '{api}' — {code[i].Trim()}");
                     }
                 }
             }
+            return violations;
+        }
+
+        [Test]
+        public void T7_플랫폼_계층_어디에도_크로스프로세스_메시지_전송이_없다()
+        {
+            List<string> violations = ScanBlockingMessageApis(applyApprovedException: true);
 
             Assert.IsEmpty(violations,
                 $"{LogPrefix} 남의 창의 메시지 루프를 기다리는 호출이 발견됐습니다. 하나를 고치고 " +
                 "다른 하나가 남으면 [발판열거]의 '최대' 값은 그대로입니다. 이 앱이 남의 창에 보낼 " +
-                "메시지는 하나도 없습니다 — 전부 조회입니다(원칙 3):\n" + string.Join("\n", violations));
+                "메시지는 하나도 없습니다 — 전부 조회입니다(원칙 3):\n" + string.Join("\n", violations) +
+                "\n\n★ 승인된 예외는 " + TraySelfWindowExceptionFileName + " 한 파일의 " +
+                "<우리가 직접 만든 트레이 호스트 창> 대상 2줄뿐입니다(2026-09-03 리더 승인, " +
+                "UserAssetImmutabilityAuditTests의 같은 예외와 동일 사유). 그 형태와 문자 하나라도 " +
+                "다르면 여기서 막힙니다 — 예외를 넓히려면 혼자 고치지 말고 리더 판정을 받으세요.");
+        }
+
+        /// <summary>
+        /// ★★ <b>돌연변이 검증</b> — 화이트리스트를 무력화하면 <b>정확히 그 두 줄에서만</b> 다시
+        /// 터지는가.
+        ///
+        /// <para>화이트리스트가 있는 감사의 진짜 위험은 «예외가 파일 전체를 열어 주는 것»과
+        /// «예외가 가리키는 자리가 비어서 감사가 눈이 먼 것» 둘이다. 그래서 세 갈래로 묻는다:
+        /// (1) 예외를 끄면 <b>정확히 2건</b>이 나오는가(0건이면 화이트리스트가 죽은 항목이다),
+        /// (2) 그 2건이 전부 그 파일의 승인된 형태인가,
+        /// (3) 판정 함수가 <b>안 되는 것을 실제로 거절</b>하는가.</para>
+        /// </summary>
+        [Test]
+        public void T7b_승인된_트레이_예외는_정확히_그_한_파일_두_줄로만_존재한다()
+        {
+            // (0) 화이트리스트가 가리키는 파일이 실재하는가.
+            string target = null;
+            var otherFiles = new List<string>();
+            foreach (string path in PlatformSources())
+            {
+                if (Path.GetFileName(path) == TraySelfWindowExceptionFileName) target = path;
+                else otherFiles.Add(path);
+            }
+
+            Assert.IsNotNull(target,
+                $"{LogPrefix} 화이트리스트가 가리키는 파일({TraySelfWindowExceptionFileName})이 " +
+                "없습니다. 예외가 정말 사라졌다면 TraySelfWindowExceptionFileName / " +
+                "ApprovedTraySelfPostMessageLines / IsApprovedTraySelfPostMessage를 함께 지우세요 — " +
+                "그러면 이 이름은 예외 없이 금지되고 T7의 보장이 다시 강해집니다.");
+            Assert.Greater(otherFiles.Count, 10,
+                $"{LogPrefix} 플랫폼 소스를 {otherFiles.Count}개밖에 못 읽었습니다 — 스캔이 깨졌고 " +
+                "아래 '정확히 2건'은 아무것도 확인하지 않은 결과입니다.");
+
+            // (1)(2) ★ 돌연변이: 예외를 끄면 정확히 그 두 줄에서만 재발화해야 한다.
+            List<string> withoutException = ScanBlockingMessageApis(applyApprovedException: false);
+
+            Assert.AreEqual(2, withoutException.Count,
+                $"{LogPrefix} 화이트리스트를 끈 스캔이 2건이 아닙니다. 0건이면 승인된 예외가 이미 " +
+                "사라진 것이고(화이트리스트가 죽은 항목이 됩니다), 3건 이상이면 예외가 번지고 " +
+                "있거나 새 위반이 섞인 것입니다:\n" + string.Join("\n", withoutException));
+
+            foreach (string hit in withoutException)
+            {
+                StringAssert.StartsWith(TraySelfWindowExceptionFileName + ":", hit,
+                    $"{LogPrefix} 승인은 {TraySelfWindowExceptionFileName} <한 파일>에만 내려졌는데 " +
+                    "다른 파일에서 나왔습니다: " + hit);
+
+                string code = hit.Substring(hit.IndexOf('—') + 1);
+                Assert.IsTrue(IsApprovedTraySelfPostMessage(code),
+                    $"{LogPrefix} 승인된 형태가 아닌 사용입니다 — {hit}");
+            }
+
+            // ★ 예외가 켜지면 0건. (1)과 짝이 되어 «화이트리스트가 실제로 그 두 줄만 걷어낸다»가 된다.
+            Assert.IsEmpty(ScanBlockingMessageApis(applyApprovedException: true),
+                $"{LogPrefix} 화이트리스트를 켰는데도 남는 위반이 있습니다.");
+
+            // (3) 판정 함수의 네거티브 컨트롤 — 무조건 true면 위 단언들이 전부 공허하다.
+            Assert.IsFalse(IsApprovedTraySelfPostMessage("PostMessage(foreignHwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);"),
+                "임의 핸들에 메시지를 보내는 형태를 통과시킵니다 — 이 감사가 존재하는 이유 그 자체입니다.");
+            Assert.IsFalse(IsApprovedTraySelfPostMessage("PostMessage(_hostWindow, WM_NULL, IntPtr.Zero, IntPtr.Zero); Evil();"),
+                "승인된 줄 뒤에 문장을 붙이면 통과합니다 — 화이트리스트가 그 파일에 자유 통행권을 줍니다.");
+            Assert.IsFalse(IsApprovedTraySelfPostMessage("bool ok = PostMessage(_hostWindow, WM_NULL, IntPtr.Zero, IntPtr.Zero);"),
+                "승인된 형태를 감싼 다른 문장까지 통과시킵니다.");
+            Assert.IsFalse(IsApprovedTraySelfPostMessage("SendMessage(_hostWindow, WM_NULL, IntPtr.Zero, IntPtr.Zero);"),
+                "★ 블로킹인 SendMessage를 통과시킵니다 — PostMessage가 허용된 근거(비동기)가 " +
+                "SendMessage에는 적용되지 않습니다.");
+
+            foreach (string form in ApprovedTraySelfPostMessageLines)
+            {
+                Assert.IsTrue(IsApprovedTraySelfPostMessage("                " + form),
+                    "실제 승인된 형태를 통과시키지 못합니다(오탐) — 감사가 자기 예외를 위반으로 잡습니다: " + form);
+            }
+
+            // (4) 승인된 리터럴이 <다른 파일>로 복사되지 않았는가. 화이트리스트는 파일명으로
+            //     걸려 있으므로 복사본은 T7에서 잡히지만, "이미 번졌다"를 여기서 먼저 보여 준다.
+            foreach (string path in otherFiles)
+            {
+                foreach (string line in StripComments(File.ReadAllLines(path)))
+                {
+                    Assert.IsFalse(IsApprovedTraySelfPostMessage(line),
+                        $"{LogPrefix} 승인된 형태가 {Path.GetFileName(path)}에도 나타났습니다 — " +
+                        "승인은 한 파일에만 내려졌습니다.");
+                }
+            }
         }
 
         [Test]

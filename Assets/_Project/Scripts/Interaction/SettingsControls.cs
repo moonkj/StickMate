@@ -84,6 +84,45 @@ namespace StickMate.Interaction
         public const float ButtonHeight = 24f;
         public const float SegmentHeight = 22f;
 
+        // ==================== 칩 안쪽 여백 — ★ 글자 수 모형을 대체한 자리 ====================
+        //
+        // ★★ 2026-09-03 — 세그먼트/버튼 폭이 <b>«24f + 글자수 × 9f»</b>였다. 그 9f는 한글 자폭
+        //    근사였고 <b>한글에서만</b> 맞았다. 라틴은 자폭이 절반 이하인데 같은 9f를 청구해서
+        //    상자가 글리프의 두 배 가까이 부풀었고, 오른쪽에서 왼쪽으로 쌓는 이 행에서는 그 부풀음이
+        //    그대로 <b>라벨 쪽으로 침범</b>한다. 즉 «영어가 길어서» 넘친 것이 아니라
+        //    <b>모형이 넘침을 만들어 냈다</b>.
+        //
+        //    이제 글자 폭은 <see cref="UnityEngine.UI.Text.preferredWidth"/>(폰트가 실제로 잰 값)로
+        //    묻고, 여기 두 상수는 <b>여백만</b> 맡는다. 근거와 같은 문장이 <c>UiChrome.Ellipsize</c>
+        //    문서에 이미 적혀 있다 — 이 저장소는 답을 이미 알고 있었고 여섯 곳이 안 쓰고 있었을 뿐이다.
+        //
+        //    ※ 값은 옛 식의 여백을 <b>그대로</b> 옮겼다(24 = 12×2, 26 = 13×2). 여백을 바꾸면
+        //      이번 변경의 '측정 효과'와 '여백 변경 효과'가 섞여 회귀 판정이 불가능해진다.
+
+        /// <summary>세그먼트 칩의 좌우 여백(한쪽). 옛 식 <c>24f + …</c>의 24를 반으로 나눈 값.</summary>
+        public const float SegmentPadX = 12f;
+
+        /// <summary>버튼 칩의 좌우 여백(한쪽). 옛 식 <c>26f + …</c>의 26을 반으로 나눈 값.</summary>
+        public const float ButtonPadX = 13f;
+
+        /// <summary>
+        /// 글자 상자 폭을 <b>폰트에게 물어</b> 정한다 — 글자 수 × 상수를 쓰지 않는다.
+        ///
+        /// <para><b>왜 <see cref="Mathf.Ceil"/>인가</b>: 이 창의 모든 배치는 정수 pt 격자 위에 있고
+        /// (여백·간격·행 높이가 전부 정수), 내림/반올림은 <b>글리프 오른쪽 끝을 1pt 미만으로 깎을 수</b>
+        /// 있다. 올림은 어떤 입력에서도 글리프를 자르지 않는다 — 안전한 방향이 하나뿐이라 고르는 것이지
+        /// 취향이 아니다.</para>
+        ///
+        /// <para><b>호출 시점</b>: 부품을 <b>굽는 순간 1회</b>다. <c>preferredWidth</c>는 텍스트 제너레이터를
+        /// 돌리므로 매 프레임 부르면 안 된다(<c>UiChrome.Ellipsize</c> 호출부 규약과 같은 이유).</para>
+        /// </summary>
+        public static float MeasuredWidth(Text text, string content)
+        {
+            if (text == null) return 0f;
+            text.text = content ?? string.Empty;
+            return Mathf.Ceil(text.preferredWidth);
+        }
+
         // ==================== 색 (전부 UiChrome 토큰 or 그 합성) ====================
         //
         // 카드 위에 얹히는 것은 CardSurface에, 창 바탕에 직접 얹히는 것은 PanelSurface에 합성한다.
@@ -1023,21 +1062,18 @@ namespace StickMate.Interaction
             float x = 0f;
             for (int i = options.Length - 1; i >= 0; i--)   // 오른쪽 끝에서 왼쪽으로 쌓는다.
             {
-                // ★ 9f는 <b>글자 한 칸의 폭 근사</b>이고 라벨 폰트(UiChrome.FontLabel)와 묶여 있다.
-                //   2026-09-01에 FontLabel이 11 -> 12로 올라갔지만(Windows 홀수 pt 번짐 수정) 여기는
-                //   그대로 뒀다: 한글은 폭이 pt에 가까워 12pt에서 "24 + 9n >= 12n" 즉 <b>8자까지</b>
-                //   안전하고, 지금 쓰는 캡션은 최장 3자("숨기기")다. 8자를 넘는 순한글 캡션을 새로
-                //   넣는 날에는 9f를 UiChrome.FontLabel에서 파생시켜야 한다
-                //   (CharacterInfoWindow.TabLabelWidth가 이미 그 형태다).
-                float width = 24f + options[i].Length * 9f;
+                // ★ 2026-09-03 — 글자 폭을 <b>폰트에게 묻는다</b>(옛 식: 24f + 글자수 × 9f).
+                //   상자를 먼저 놓고 글자를 넣던 순서를 뒤집었다: 글자를 먼저 만들어 재고, 그 값으로
+                //   상자를 놓는다. 형제 순서(면 → 테두리 → 글자)는 그대로라 겹 순서는 안 바뀐다.
                 Image surface = UiChrome.AddSurface(row, "Seg" + i, UiChrome.CardSurface, UiChrome.RadiusChip);
-                SettingsControls.PlaceTopRight(surface.rectTransform, x, centerY, width, SettingsControls.SegmentHeight);
                 Image outline = UiChrome.AddOutline(surface.rectTransform, "Outline",
                     SettingsControls.OutlineOnCard, UiChrome.RadiusChip);
                 Text text = UiChrome.AddText(surface.rectTransform, "Label", UiChrome.FontLabel,
                     TextAnchor.MiddleCenter, UiChrome.TextSecondary);
+                float width = SettingsControls.SegmentPadX * 2f
+                    + SettingsControls.MeasuredWidth(text, options[i]);
+                SettingsControls.PlaceTopRight(surface.rectTransform, x, centerY, width, SettingsControls.SegmentHeight);
                 UiChrome.Stretch(text.rectTransform);
-                text.text = options[i];
 
                 segment.Rects[i] = surface.rectTransform;
                 segment.Surfaces[i] = surface;
@@ -1084,16 +1120,18 @@ namespace StickMate.Interaction
             float x = 0f;
             for (int i = captions.Length - 1; i >= 0; i--)
             {
-                // 9f의 의미와 상한(순한글 8자)은 위 AddSegmented의 주석 참고.
-                float width = 26f + captions[i].Length * 9f;
+                // 실측으로 잡는 이유는 위 AddSegment의 주석 참고(옛 식: 26f + 글자수 × 9f).
                 Image surface = UiChrome.AddSurface(row, "Btn" + i, SettingsControls.ButtonSurfaceOnCard,
                     UiChrome.RadiusChip);
-                SettingsControls.PlaceTopRight(surface.rectTransform, x, centerY, width, SettingsControls.ButtonHeight);
                 UiChrome.AddOutline(surface.rectTransform, "Outline", SettingsControls.OutlineOnCard, UiChrome.RadiusChip);
                 Text text = UiChrome.AddText(surface.rectTransform, "Label", UiChrome.FontLabel,
                     TextAnchor.MiddleCenter, UiChrome.InkTitle(enabled), bold: true);
+                // ★ 볼드다. 볼드는 같은 글자라도 폭이 넓으므로 <b>도색한 뒤에</b> 잰다 —
+                //   순서를 바꾸면 재는 것과 그리는 것이 달라진다(그게 이 라운드가 고치는 병이다).
+                float width = SettingsControls.ButtonPadX * 2f
+                    + SettingsControls.MeasuredWidth(text, captions[i]);
+                SettingsControls.PlaceTopRight(surface.rectTransform, x, centerY, width, SettingsControls.ButtonHeight);
                 UiChrome.Stretch(text.rectTransform);
-                text.text = captions[i];
                 results[i] = surface;
                 buttonLabels[i] = text;
 

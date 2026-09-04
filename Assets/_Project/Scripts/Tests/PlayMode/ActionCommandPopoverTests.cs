@@ -191,50 +191,21 @@ namespace StickMate.Tests.PlayMode
             }
         }
 
-        // ==================== ④ 종료 경로 ====================
-
-        /// <summary>
-        /// ★ 36-10 — 우클릭 메뉴가 사라진 뒤 <b>마우스만으로 도달하는 유일한 종료 경로</b>다.
-        /// 1차 클릭은 종료하지 않고 라벨만 바꾼다(<see cref="TodoBoardPopover"/>의 삭제 확인과 같은 패턴).
-        /// </summary>
-        [UnityTest]
-        public IEnumerator QuitButtonExistsAndRequiresTwoSteps()
-        {
-            yield return LoadSceneAndResolve();
-            _popover.Open(new Rect(400f, 400f, 44f, 44f), "PlayMode 테스트");
-            yield return new WaitForSecondsRealtime(0.25f);
-
-            Rect quit = _popover.QuitButtonScreenRect;
-            Assert.Greater(quit.width, 1f,
-                "[✕ 앱 종료] 버튼이 없습니다 — 우클릭 메뉴가 폐지된 지금, 전역 단축키가 동작하지 않는 " +
-                "환경에서는 앱을 끌 방법이 사라집니다(원칙 2·4 위반).");
-            Assert.IsFalse(_popover.IsQuitArmed, "열자마자 종료 확인이 켜져 있습니다.");
-
-            // 명령 타일에서 충분히 떨어져 있어야 한다(오조준으로 앱이 꺼지면 안 된다).
-            foreach (ActionCommandPopover.Command command in
-                (ActionCommandPopover.Command[])Enum.GetValues(typeof(ActionCommandPopover.Command)))
-            {
-                Assert.IsFalse(_popover.CommandScreenRect(command).Overlaps(quit),
-                    $"[✕ 앱 종료]가 [{command}] 타일과 겹칩니다 — 오조준으로 앱이 꺼질 수 있습니다.");
-            }
-
-            // 1차 클릭: 실제 클릭 경로 그대로 먹인다. 여기서 앱이 꺼지면 테스트 러너가 죽으므로,
-            // "꺼지지 않았다"는 것 자체가 이 단언의 통과 조건이기도 하다.
-            _popover.FeedClickForTests(quit.center);
-            yield return null;
-            Assert.IsTrue(_popover.IsQuitArmed,
-                "1차 클릭에도 확인 상태가 되지 않았습니다 — 2단 확인이 동작하지 않습니다.");
-            Assert.IsTrue(_popover.IsOpen, "1차 클릭에 창이 닫혔습니다.");
-
-            // 3초가 지나면 조용히 취소된다(열어두고 잊어버려도 다음 클릭이 종료가 되지 않게).
-            yield return new WaitForSecondsRealtime(ActionCommandPopover.QuitConfirmSeconds + 0.3f);
-            Assert.IsFalse(_popover.IsQuitArmed,
-                $"{ActionCommandPopover.QuitConfirmSeconds:F0}초가 지났는데 종료 확인이 그대로입니다 — " +
-                "나중에 무심코 누른 클릭이 앱을 꺼버립니다.");
-
-            _popover.Close("테스트 종료");
-            yield return null;
-        }
+        // ==================== ④ 종료 경로 — <b>이 창에서 떠났다</b> ====================
+        //
+        // ★★ 2026-09-03 — 여기 있던 <c>QuitButtonExistsAndRequiresTwoSteps</c>를 <b>지웠다</b>.
+        //   테스트가 약해진 것이 아니라 <b>대상이 이 창에서 없어졌다</b>: 사용자 지시로 톱니 부채꼴에
+        //   위성 [앱 종료]가 신설되면서(UX_FLOW 53), 36-1이 (라) 앱 수준 제어로 분류해 놓고 (가) 행동
+        //   명령창에 얹어 두었던 <b>오분류가 정리됐다</b>. 이 창의 푸터 칩은 같은 라운드에 삭제됐다.
+        //
+        //   <b>같은 성질을 잠그는 자리는 옮겨 갔다</b>:
+        //     · 2단 확인 · 3초 자동 해제  ->  <c>InfoGearRadialMenuTests.QuitSatelliteArmsThenDisarms…</c>
+        //     · 오조준 이격             ->  <c>GearRadialFanGeometryTests</c>(위성 ↔ 최근접 호 67.23pt)
+        //     · 확인 시간 단일 출처     ->  바로 아래 테스트(<b>이 창에 그대로 남아 있다</b> — 상수의
+        //                                  집이 여기이고 부채꼴이 그것을 참조한다)
+        //
+        //   ★ <b>되살리지 마라.</b> 이 창에 종료 칩을 다시 넣으면 되돌릴 수 없는 행동의 확인 구현이
+        //     세 벌(행동창 · 설정창 · 부채꼴)이 된다 — 53-6이 그 비용을 명시적으로 근거로 들었다.
 
         /// <summary>확인 유지 시간은 <see cref="TodoBoardPopover"/>와 <b>같은 3초</b>여야 한다 —
         /// 앱 안에서 "되돌릴 수 없는 행동"의 확인 방식이 두 벌이 되지 않게(36-10).</summary>
@@ -287,10 +258,22 @@ namespace StickMate.Tests.PlayMode
                 if (_popover.GetAvailability(command).IsReady) readyCount++;
             }
 
+            var agent = UnityEngine.Object.FindFirstObjectByType<StickmanAgent>();
             if (readyCount > 0)
             {
                 Assert.AreEqual("지금 시킬 수 있어요", caption,
                     $"실행 가능한 명령이 {readyCount}개인데 헤더가 다르게 말합니다(원칙 1).");
+            }
+            else if (agent != null && agent.IsSuspended)
+            {
+                // ★★★ 2026-09-03 — <b>«전부 불가»의 갈래가 둘이 됐다.</b> 사용자가 캐릭터만 숨겨 두면
+                //   5칸이 전부 막히는데(HiddenCharacterCommandGate) 그때 캐릭터는 «다른 일»을 하는 게
+                //   아니라 <b>숨어 있다</b>. 그 구분이 없으면 이 테스트가 <b>거짓말을 요구</b>하게 된다.
+                //   ★ 문구를 베끼지 않고 프로덕션 상수를 <b>참조</b>한다 — design-narrative가 글자를
+                //     바꾸는 날 이 단언이 조용히 초록으로 남지 않게(CLAUDE.md).
+                Assert.AreEqual(HiddenCharacterCommandGate.HiddenReason, caption,
+                    "캐릭터가 숨은 상태인데 헤더가 «다른 일 하는 중»이라고 말합니다 — 원칙 1 위반이고, " +
+                    "사용자에게는 «왜 안 되지»의 답이 되지 않습니다.");
             }
             else
             {

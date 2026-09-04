@@ -126,10 +126,21 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 폼폼_꼭대기가_액자_상한에_그대로_머문다()
         {
-            // 옛 값 0.18 + 0.22 = 0.40. 이 합이 유지되는 한 실루엣의 상한은 움직이지 않는다.
-            Assert.AreEqual(0.40f, AccessoryShapeBuilder.BeaniePomCrestRiseRatio, 1e-6f,
-                "폼폼 꼭대기의 상승분이 옛 값(0.18 + 0.22 = 0.40R)에서 벗어났습니다 — " +
-                "이 합이 곧 털모자 실루엣의 꼭대기입니다.");
+            // ★ 2026-09-03(R12 이식 1단계) — 잠그는 것을 <b>성분에서 합으로</b> 옮겼다.
+            //   옛 단언은 <c>BeaniePomCrestRiseRatio == 0.40f</c>였는데, 그것은 규약이 아니라
+            //   <b>그날의 배분</b>이었다: 이 클래스 문서가 스스로 "고정 대상은 반지름도 오프셋도
+            //   아닌 <b>꼭대기</b>"라고 적어 두고 있다. 이식이 관을 0.12R 키우고 상승분을 같은 만큼
+            //   줄이자(1.38+0.40 -> 1.50+0.28) <b>꼭대기는 한 자리도 안 움직였는데</b> 옛 단언만
+            //   빨개졌다 — 베레모·중절모 띠에서 이미 두 번 겪은 「형태를 규약으로 착각한」 사고다.
+            //   그래서 실제 불변식인 <b>합</b>을 잠근다.
+            const float crestInR = 1.72f;   // 털모자 실루엣의 꼭대기(머리 중심 위, R 배수)
+            float declared = AccessoryShapeBuilder.BeanieBandTopRatio
+                + AccessoryShapeBuilder.BeanieCrownHeightRatio
+                + AccessoryShapeBuilder.BeaniePomCrestRiseRatio;
+            Assert.AreEqual(crestInR, declared, 1e-5f,
+                $"털모자 실루엣의 꼭대기가 {declared:F4}R입니다(기대 {crestInR:F2}R = 커버선 + 관 높이 + " +
+                "폼폼 상승분). 세 상수를 어떻게 나누든 이 <b>합</b>은 움직이면 안 됩니다 — 이것이 " +
+                "초상화 액자(1.80R)와의 여유 0.08R을 지키는 유일한 값입니다.");
             Assert.AreEqual(AccessoryShapeBuilder.BeaniePomCrestRiseRatio,
                 AccessoryShapeBuilder.BeaniePomOffsetRatio + AccessoryShapeBuilder.BeaniePomRadiusRatio, 1e-6f,
                 "오프셋이 꼭대기 상수에서 유도되지 않습니다(규칙 4-a) — 반지름을 고칠 때 꼭대기가 " +
@@ -200,6 +211,12 @@ namespace StickMate.Tests.EditMode
 
             // 하한은 직전 실측(1.50획)에서 0.05획만 내려 잡는다 — 1.84 -> 1.80 때와 같은 폭이다.
             // 넉넉히 잡으면 이 검사는 다음 회귀를 못 잡는다.
+            //
+            // ★ 2026-09-03 R12 HEAD 이식 1단계 후 실측 = <b>1.61획</b>(털모자↔왕관, 같은 쌍).
+            //   측정처: design/equipment/verify(설계 거울). 좌표는 mirrordrift.py가 1e-4 R로 프로덕션과
+            //   같음을 증명했고, 프로파일 알고리즘도 이 파일과 <b>같은 상수</b>(72칸 · 5도 · 변당 64표본)다.
+            //   <b>하한은 일부러 안 올렸다</b>: 이 파일의 규칙대로면 1.56이 되는데, 래칫을 올리는 것은
+            //   다음 라운드를 구속하는 결정이라 리더 판단 사항이다. 올릴 때는 이 줄을 근거로 써라.
             Assert.GreaterOrEqual(worst, 1.45f,
                 $"모자 6종의 최소 실루엣 차이가 {worst:F2}획({worstPair})으로 내려갔습니다 — " +
                 "모자 처방(2026-09-02) 직후 실측은 1.50획(털모자↔왕관)입니다. 규칙 5의 하한은 " +

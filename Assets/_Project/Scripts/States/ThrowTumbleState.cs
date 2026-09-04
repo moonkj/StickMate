@@ -67,7 +67,10 @@ namespace StickMate.States
     /// 착지 직전 정렬 — 정수 바퀴로 끝낸다 (리더 지시 2항)
     /// ============================================================================
     /// 거꾸로 선 채 착지하면 무릎앉아가 읽히지 않는다. 그래서 두 국면으로 나눈다.
-    ///   [1] 회전(SPIN)  : 던진 세기에서 파생된 일정 각속도로 계속 돈다.
+    ///   [1] 회전(SPIN)  : 계획된 정수 바퀴를 쓸 수 있는 시간에 나눈 **평균** 각속도로 돈다.
+    ///       ★ 2026-09-03 — 그 안에서 각속도가 더 이상 등속이 아니다. 세게 던질수록 앞에서 세게
+    ///       차고 나가 뒤로 갈수록 겨누듯 느려진다(<see cref="ResolveSpinShapeMultiplier"/>).
+    ///       **총 회전각은 한 톨도 변하지 않는다** — 정형이 면적 보존이라 아래 [2]의 계약이 그대로다.
     ///   [2] 정렬(ALIGN) : "지금 각도에서 **다음 정수 바퀴**까지 남은 각도"를 지금 각속도로 돌리는 데
     ///       걸리는 시간이 착지까지 남은 시간에 다다르면(+ throwTumbleAlignLeadSeconds 여유) 전환.
     ///       이후에는 각속도를 상수로 두지 않고 **남은 각도 ÷ 남은 시간**으로 매 프레임 다시 계산한다 —
@@ -111,14 +114,48 @@ namespace StickMate.States
         /// 기준이다(펴지는 정도의 크기는 StickConfig.throwTumbleLandingTuck01이 정한다).</summary>
         private const float LandingPrepRemainingDegrees = 90f;
 
+        /// <summary>회전율 정형에서 "남은 회전 비율 ρ"의 하한. 이보다 작아지면 계수를 극한값 1로
+        /// 못박는다 — 분자·분모가 함께 0으로 가는 구간이라 나눗셈이 잡음을 증폭한다. 튜닝 값이
+        /// 아니라 수치 안전장치다(A=0.45에서 ρ=1e-4는 u=0.99982에 해당하고 그 지점의 참값은
+        /// 1 + 8.9e-8이라, 못박아도 끊김이 생기지 않는다).</summary>
+        private const float SpinShapeMinRemainingFraction = 1e-4f;
+
         /// <summary>누적 회전각(도). 0이 직립이며 부호는 Unity 규약(+ = 반시계).</summary>
         private float _angle;
 
         /// <summary>회전 방향(+1 반시계 / −1 시계). 던진 방향에서 파생된다.</summary>
         private float _spinDirection = -1f;
 
-        /// <summary>회전 국면의 각속도(도/초, 양수). 던진 세기에서 파생된다.</summary>
+        /// <summary>회전 국면의 각속도(도/초, 양수). 던진 세기에서 파생된다.
+        /// ★ 주의 — 이 값은 <see cref="TryPlanRotation"/>이 계획을 세우는 순간 <b>통째로 덮어써진다</b>
+        /// (delta / usable). 즉 계획 이후에는 여기에 던진 세기가 **남아 있지 않다**. 세기가 필요하면
+        /// 반드시 <see cref="_strength01"/>(Enter에서 래치)을 써라 — 여기서 역산하면 안 된다.</summary>
         private float _spinSpeed;
+
+        /// <summary>
+        /// ★★ 던진 세기(0~1). <b><see cref="Enter"/>에서 <c>LastThrowVelocity</c>로 래치한다.</b>
+        ///
+        /// <para>왜 래치가 계약인가: 계획이 서는 순간 <see cref="_spinSpeed"/>가
+        /// <c>delta / usable</c>로 덮어써지고, 그 뒤 매 프레임의 각속도는 오직
+        /// <c>360 x turns / usable</c>이다. 즉 <b>던진 세기가 화면에 남기는 흔적이 정수
+        /// <see cref="_plannedTurns"/> 하나로 압축되고</b>, 전수 실측(960,000점)상 회전한 던지기의
+        /// <b>86.8%가 1바퀴</b>다. 사용자가 신고한 "던지면 회전이 늘 똑같아 보인다"의 전부가 그것이다.
+        /// 여기서 <c>_spinSpeed</c>를 역산해 세기를 되찾으려 하면 <b>바로 그 병이 재발한다</b> —
+        /// 이미 사라진 정보다.</para>
+        /// </summary>
+        private float _strength01;
+
+        /// <summary>이번 던지기의 각속도 프로파일 진폭 A(= 세기 x <c>throwTumbleSpinShapeAmplitude</c>).
+        /// 0이면 오늘까지의 등속과 <b>비트 단위로 같다</b>(<see cref="ResolveSpinShapeMultiplier"/>).</summary>
+        private float _spinShapeAmplitude;
+
+        /// <summary>계획이 선 뒤 흐른 시간(초)과 그 계획이 쓰기로 한 시간(초). 프로파일의 진행도
+        /// u = _planElapsed / _planUsableSeconds 를 만든다. ★ 예측값(secondsToGround)이 아니라
+        /// **경과 시간**으로 u를 만드는 이유: 예측은 매 프레임 흔들리고, 그 흔들림이 u에 들어오면
+        /// 회전율 자체가 떨린다. 경과 시간은 단조롭고 잡음이 없다(예측 오차는 이 아래
+        /// <c>remaining / timeLeft</c> 비례 제어가 이미 흡수한다).</summary>
+        private float _planElapsed;
+        private float _planUsableSeconds;
 
         /// <summary>지금 착지 준비 국면인가(= 마지막 1/4바퀴 안쪽 — 몸을 펴기 시작한다).</summary>
         private bool _landingPrep;
@@ -166,6 +203,12 @@ namespace StickMate.States
         /// <summary>이번 회전에서 실제로 돌아간 각도의 절대 최댓값(도) — "정말 회전했는가"의 증거.</summary>
         public float MaxAbsAngleDegrees { get; private set; }
 
+        /// <summary>Enter에서 래치한 던진 세기(0~1). 회전율 프로파일과 웅크림 깊이의 유일한 입력이다.</summary>
+        public float ThrowStrength01 => _strength01;
+
+        /// <summary>이번 던지기의 각속도 프로파일 진폭 A(0이면 등속 = 오늘까지의 거동).</summary>
+        public float SpinShapeAmplitude => _spinShapeAmplitude;
+
         /// <summary>착지 순간 실제로 넘긴 환산 낙하 높이(월드 유닛). 0이면 아직 착지 전.</summary>
         public float LastLandingEffectiveHeight { get; private set; }
 
@@ -182,6 +225,8 @@ namespace StickMate.States
             _landingPrep = false;
             _targetAngle = float.NaN;
             _plannedTurns = 0;
+            _planElapsed = 0f;
+            _planUsableSeconds = 0f;
             _tuck01 = 0f;
             _pivotOffset = Vector2.zero;
             MaxAbsAngleDegrees = 0f;
@@ -207,14 +252,37 @@ namespace StickMate.States
             _spinDirection = ResolveSpinDirection(throwVelocity, _blackboard.FacingSign);
             _spinSpeed = ResolveSpinSpeedDegreesPerSecond(speed, characterHeight, cfg);
 
+            // ★ 세기는 **여기서만** 잡을 수 있다(위 _strength01 문서 참고 — 계획이 _spinSpeed를 덮는다).
+            _strength01 = ResolveThrowStrength01(speed, characterHeight, cfg);
+            _spinShapeAmplitude = ResolveSpinShapeAmplitude(_strength01, cfg);
+
             Debug.Log($"[던지기회전] 진입 — 던진 속도={throwVelocity.ToString("F2")}(속력 {speed:F2}유닛/초 = " +
                 $"{heightsPerSecond:F2}신장/초), 회전={( _spinDirection > 0f ? "반시계" : "시계")} {_spinSpeed:F0}도/초, " +
+                $"세기={_strength01:F3}(프로파일 진폭 A={_spinShapeAmplitude:F3}, 웅크림 배율 " +
+                $"x{ResolveTuckJointScale(_strength01, cfg):F2}/벌림 x{ResolveTuckSpreadScale(_strength01, cfg):F2}), " +
                 $"시작 Y={_startWorldY:F2}, 신장={_blackboard.CharacterHeightWorld:F2}, " +
                 $"회전중심 높이={ResolvePivotLocalY():F3}유닛.");
 
-            // 대사는 만들지 않는다 — LandingCrouchState.Enter()와 같은 판단(요청은 "자세"에 대한 것이고,
-            // 이 프로젝트 사용자는 요청하지 않은 자율 대사에 반복적으로 민감했다). 나중에 붙인다면
-            // 전이가 확정된 여기에서 이 상태의 파라미터(_spinSpeed 등)로부터만 파생시켜야 한다.
+            // ★★ 대사는 만들지 않는다 — **영구 침묵**이다. 취향이 아니라 물리적 벽 세 개가 동시에 막는다
+            // (design-motion R8 §2, design-narrative 재확인. 원래 근거였던 "사용자가 자율 대사에
+            //  민감하다"는 판단은 그대로 유효하고, 아래가 그 위에 얹힌 측정이다):
+            //   ① 이 상태에 진입한 던지기의 **21.8%가 한 프레임 만에 Fall로 빠진다**(회전할 시간이
+            //      부족해 TryPlanRotation이 실패). 말풍선의 최소 노출은 팝인 0.06 + MinSeconds 0.62
+            //      = 0.68초라, 상태가 16.7ms 만에 사라진 뒤에도 0.68초 동안 남는다. 그동안 캐릭터는
+            //      회전하지 않는 평범한 낙하 중이다 — 절대 불변 원칙 1(행동-텍스트 싱크) 위반이다.
+            //   ② 말풍선 앵커가 머리에 붙어 있는데(DialogueBubbleRenderer가 Head를 잡는다) 이 상태는
+            //      루트를 회전시킨다. 계획 각속도 상한 720도/초에서 앵커는 초당 432 OS-pt로 궤도를
+            //      돌고, 정렬 과도 구간(x1.6)에서는 1152도/초까지 간다. 한 번 읽는 사이에 글자가
+            //      머리를 따라 한 바퀴 넘게 돈다.
+            //   ③ 체류 시간을 벌 수단이 없다. 상태 길이는 포물선이 정하고, 그 포물선은 유저의 커서가
+            //      정한다(하한 0.600초, 그것도 계획이 성립했을 때만).
+            // ★ 되살리려면 위 세 가지가 **전부** 참이어야 한다 — 재시도 금지가 아니라 재시도 조건이다:
+            //   (1) 진입 후 1프레임 이탈 비율이 0%가 된다.
+            //   (2) 말풍선 앵커가 루트 회전에 끌려가지 않는다.
+            //   (3) 상태 지속시간의 하한이 0.68초 이상으로 보장된다.
+            // 그때까지 이 상태의 연출은 "회전 그 자체"가 전부다 — 말이 없는 상태일수록 몸이 더 말해야
+            // 하고, 그래서 이 라운드가 회전율 프로파일(축 A)과 웅크림 깊이(축 B)를 키웠다.
+            // 붙이게 되더라도 전이가 확정된 여기에서 이 상태의 파라미터(_strength01 등)로부터만 파생시킨다.
         }
 
         // ============================================================================
@@ -269,6 +337,105 @@ namespace StickMate.States
         {
             if (Mathf.Abs(throwVelocity.x) > ThrowDirectionEpsilon) return throwVelocity.x > 0f ? -1f : 1f;
             return facingSign >= 0f ? -1f : 1f;
+        }
+
+        /// <summary>
+        /// ★★ 던진 세기 -> 0~1. **도달 가능한 던지기 대역 안에서의 위치**다.
+        ///   0 = 회전이 발동하는 최저 세기(<c>throwTumbleMinSpeedHeightsPerSecond</c>)
+        ///   1 = 유저가 물리적으로 낼 수 있는 최고 세기(<c>dragThrowMaxSpeed</c>)
+        ///
+        /// <para>두 끝을 모두 "초당 몇 신장"으로 환산한 뒤 비교하므로 위 두 상수의 의미와 정확히
+        /// 같은 자를 쓴다. 양 끝이 정의상 0과 1이라, 어떤 배율에서도 "가장 살살"과 "가장 세게"가
+        /// 같은 연출 극단에 대응한다.</para>
+        ///
+        /// <para>★ 이 값은 <b><see cref="Enter"/>에서 한 번 래치</b>되어야 한다. 계획이
+        /// <see cref="_spinSpeed"/>를 덮어쓴 뒤에는 세기를 복원할 방법이 없다(<see cref="_strength01"/> 문서).</para>
+        /// </summary>
+        public static float ResolveThrowStrength01(float throwSpeed, float characterHeightWorld, StickConfig config)
+        {
+            float height = Mathf.Max(0.0001f, characterHeightWorld);
+            float minHeightsPerSecond = config != null ? config.throwTumbleMinSpeedHeightsPerSecond : 1.2f;
+            float maxHeightsPerSecond = (config != null ? config.dragThrowMaxSpeed : 12f) / height;
+            float span = maxHeightsPerSecond - minHeightsPerSecond;
+            if (span <= 0.0001f) return 0f; // 대역이 없다 — 세기를 구분할 수 없으므로 오늘의 거동으로.
+            return Mathf.Clamp01((throwSpeed / height - minHeightsPerSecond) / span);
+        }
+
+        /// <summary>던진 세기 -> 각속도 프로파일의 진폭 A. 살살 던지면 0(= 등속 = 오늘까지의 거동),
+        /// 최대 세기에서만 <c>throwTumbleSpinShapeAmplitude</c>를 다 쓴다.</summary>
+        public static float ResolveSpinShapeAmplitude(float strength01, StickConfig config)
+        {
+            float amplitudeAtMaxStrength = config != null ? config.throwTumbleSpinShapeAmplitude : 0.45f;
+            if (amplitudeAtMaxStrength <= 0f) return 0f;
+            return amplitudeAtMaxStrength * Mathf.Clamp01(strength01);
+        }
+
+        /// <summary>
+        /// ★★ 축 A — 등속을 깬다. 비례 제어(<c>남은 각도 / 남은 시간</c>)에 곱할 **면적 보존 정형 계수** K(u).
+        ///
+        /// ============================================================================
+        /// 무엇을 고치는가
+        /// ============================================================================
+        /// 지금까지 공중 회전은 던지는 순간부터 착지까지 **정확한 등속**이었다. 사람의 텀블링에
+        /// 등속 구간은 없다 — 세게 차고 나가서 서서히 겨누며 착지한다. 그런데 회전 수는 정수 2종
+        /// (1바퀴 87% / 2바퀴 13%)으로 포화돼 있어 거기서 다양성을 더 뽑을 수 없다(비행 시간
+        /// 중앙값이 1.0초뿐이고, 회전 수를 늘리려 상한을 올리면 "잔상처럼 뭉개져 자세를 알아볼 수
+        /// 없다"는 대가를 산다). 그래서 **회전율의 모양**이라는 아무도 안 쓴 축을 쓴다.
+        ///
+        /// ============================================================================
+        /// 왜 이 형태라야 하는가 — 계약이 산술적으로 보존된다
+        /// ============================================================================
+        ///   목표 회전율      r(u) = 1 + A·cos(πu)
+        ///   남은 회전 비율   ρ(u) = ∫ᵤ¹ r = (1−u) − (A/π)·sin(πu)
+        ///   곱할 계수        K(u) = r(u)·(1−u) / ρ(u)
+        ///
+        /// 호출부의 <c>남은 각도 / 남은 시간</c>은 프로파일 위에서 (delta/usable)·ρ(u)/(1−u) 이므로,
+        /// K를 곱하면 정확히 (delta/usable)·r(u)가 된다.
+        ///   · <b>총 회전각이 delta와 정확히 같다</b> — ∫₀¹cos(πu)du = 0. 여전히 정수 바퀴로 끝나고
+        ///     착지 순간 직립이다(이 상태의 핵심 계약이 한 톨도 안 바뀐다).
+        ///   · <b>K(1) = 1</b> — 마지막 구간은 오늘의 컨트롤러와 한 글자도 다르지 않다.
+        ///     ρ(u) → (1−u)(1−A) 이므로 K → (1−A)/(1−A) = 1.
+        ///   · <b>A = 0이면 오늘과 비트 단위로 동일</b> — 아래 조기 반환이 정확히 1f를 돌려주고
+        ///     IEEE-754에서 <c>x * 1f == x</c>다(탈출구).
+        ///   · 기존 안전 상한을 건드리지 않는다 — max K(A=0.45) = 1.525 &lt;
+        ///     <c>throwTumbleAlignMaxSpeedFactor</c> 1.6.
+        /// </summary>
+        /// <param name="progress01">계획 이후 경과 / 계획이 쓰기로 한 시간(0~1).</param>
+        /// <param name="amplitude">진폭 A(<see cref="ResolveSpinShapeAmplitude"/>).</param>
+        public static float ResolveSpinShapeMultiplier(float progress01, float amplitude)
+        {
+            // ★ 탈출구이자 성능 경로. 정확히 1f라 곱셈이 항등이 된다.
+            if (!(amplitude > 0f)) return 1f; // NaN도 여기로 — 프로파일을 끄는 쪽이 안전하다.
+
+            float u = Mathf.Clamp01(progress01);
+            float remainingFraction = 1f - u;
+            float rho = remainingFraction - amplitude * Mathf.Sin(Mathf.PI * u) / Mathf.PI;
+
+            // 끝 구간에서는 분자·분모가 함께 0으로 가고 극한이 1이다. 부동소수 잔차로 ρ가 0이나
+            // 음수가 되면 계수가 폭발하므로 극한값으로 못박는다(K(1)=1은 위 문서의 계약이다).
+            // ★ 부정형(!(x > y))으로 쓴다 — 진행도가 NaN이면 ρ도 NaN이 되는데, 그때 `<=` 비교는
+            //   false라 NaN 계수가 각속도에 그대로 실린다. 매 프레임 도는 경로라 한 번 오염되면
+            //   회전각이 통째로 NaN이 되고 캐릭터가 사라진다.
+            if (!(rho > SpinShapeMinRemainingFraction)) return 1f;
+
+            float rate = 1f + amplitude * Mathf.Cos(Mathf.PI * u);
+            return rate * remainingFraction / rho;
+        }
+
+        /// <summary>축 B — 던진 세기 -> 엉덩이/무릎/어깨/팔꿈치 각도에 곱할 배율.</summary>
+        public static float ResolveTuckJointScale(float strength01, StickConfig config)
+        {
+            float weak = config != null ? config.throwTumbleTuckScaleAtWeakThrow : 0.65f;
+            float strong = config != null ? config.throwTumbleTuckScaleAtStrongThrow : 1.25f;
+            return Mathf.Lerp(weak, strong, strength01);
+        }
+
+        /// <summary>축 B — 던진 세기 -> 좌우 벌림 각도에 곱할 배율. ★ 방향이 **반대**다(느슨할수록 벌어진다).</summary>
+        public static float ResolveTuckSpreadScale(float strength01, StickConfig config)
+        {
+            float weak = config != null ? config.throwTumbleSpreadScaleAtWeakThrow : 1.33f;
+            float strong = config != null ? config.throwTumbleSpreadScaleAtStrongThrow : 0.78f;
+            return Mathf.Lerp(weak, strong, strength01);
         }
 
         public void Tick(float deltaTime)
@@ -348,7 +515,8 @@ namespace StickMate.States
         ///
         /// 그래서 순서를 뒤집었다. 착지까지 남은 시간을 먼저 예측하고, 그 시간에 **정확히 몇 바퀴를
         /// 돌 수 있는지**를 정수로 정한 뒤, 그 바퀴 수를 그 시간에 나눠 각속도를 역산한다.
-        ///   · 비행 내내 각속도가 일정하다(중간에 빨라지거나 느려지지 않아 눈에 거슬리지 않는다).
+        ///   · 비행 시간 전체의 **평균** 각속도가 정해진다(그 안의 모양은 정형이 만든다 —
+        ///     ResolveSpinShapeMultiplier. 정형은 면적 보존이라 이 계획을 깨지 않는다).
         ///   · 도착 지점이 정의상 360의 정수배라 **착지 순간 몸이 정확히 직립**이다.
         ///   · 던진 세기는 "몇 바퀴를 돌지"로 반영된다(오래 날수록/세게 던질수록 바퀴 수가 늘어난다).
         /// 예측이 조금씩 틀리는 것은 아래 비례 제어가 흡수한다: 각속도를 상수로 굳히지 않고 매 프레임
@@ -382,8 +550,15 @@ namespace StickMate.States
                 // 착지 lead초 전에 회전을 끝내도록 매 프레임 다시 계산하는 비례 제어. 상한은 계획
                 // 각속도의 factor배 — 예측이 순간적으로 흔들려도 팽이처럼 튀는 프레임이 생기지 않는다.
                 float timeLeft = Mathf.Max(MinAlignSeconds, secondsToGround - lead);
-                float speed = Mathf.Min(remaining / timeLeft, _spinSpeed * factor);
+
+                // ★ 축 A — 등속을 깨는 면적 보존 정형(ResolveSpinShapeMultiplier 문서 참고).
+                // 총 회전각은 그대로이고, 진폭 0이면 계수가 정확히 1f라 아래 식이 오늘과 비트 단위로
+                // 같아진다. 상한(_spinSpeed * factor)은 그대로 남는다 — 정형은 그 안에서 논다
+                // (max K = 1.525 < factor 1.6, 실측상 도달 가능한 전 격자에서 상한에 닿지 않는다).
+                float shape = ResolveSpinShapeMultiplier(ResolvePlanProgress01(), _spinShapeAmplitude);
+                float speed = Mathf.Min(remaining / timeLeft * shape, _spinSpeed * factor);
                 step = Mathf.Min(speed * deltaTime, remaining);
+                _planElapsed += deltaTime;
 
                 bool prep = remaining <= LandingPrepRemainingDegrees || secondsToGround <= lead;
                 if (prep && !_landingPrep)
@@ -441,8 +616,14 @@ namespace StickMate.States
                     _plannedTurns = turns;
                     _targetAngle = _angle + _spinDirection * delta;
                     _spinSpeed = delta / usable;
+                    // 정형의 진행도 u를 만드는 기준. ★ 여기가 세기 정보가 사라지는 지점이다
+                    // (_spinSpeed 덮어쓰기) — 그래서 세기는 Enter에서 이미 래치해 두었다.
+                    _planUsableSeconds = usable;
+                    _planElapsed = 0f;
                     Debug.Log($"[던지기회전] 회전 계획 — 착지까지 {secondsToGround:F2}초(여유 {leadSeconds:F2} 제외 " +
-                        $"{usable:F2}초), {turns}바퀴({delta:F0}도)를 {_spinSpeed:F0}도/초로. " +
+                        $"{usable:F2}초), {turns}바퀴({delta:F0}도)를 평균 {_spinSpeed:F0}도/초로" +
+                        $"(프로파일 A={_spinShapeAmplitude:F3} -> 시작 {_spinSpeed * (1f + _spinShapeAmplitude):F0} ~ " +
+                        $"끝 {_spinSpeed * (1f - _spinShapeAmplitude):F0}도/초, 총 회전각은 불변). " +
                         $"목표 각도={_targetAngle:F0}도.");
                     return true;
                 }
@@ -453,6 +634,14 @@ namespace StickMate.States
                 $"상한 {maxSpin:F0}) — 평범한 낙하로 넘깁니다.");
             _blackboard.Machine.ChangeState(StickmanStateId.Fall);
             return false;
+        }
+
+        /// <summary>정형 진행도 u = 계획 이후 경과 / 계획이 쓰기로 한 시간(0~1). 계획이 아직 없으면
+        /// 1(= 계수 1 = 오늘과 동일)을 돌려준다.</summary>
+        private float ResolvePlanProgress01()
+        {
+            if (_planUsableSeconds <= 0.0001f) return 1f;
+            return Mathf.Clamp01(_planElapsed / _planUsableSeconds);
         }
 
         /// <summary>
@@ -603,8 +792,17 @@ namespace StickMate.States
                 : target;
 
             StickmanPoseAnimator pose = _blackboard.GetPoseAnimator();
-            pose?.ApplyThrowTumblePose(deltaTime, _blackboard.BuildPoseSettings(),
-                _blackboard.BuildThrowTumblePoseSettings(), _blackboard.PoseSmoothingRate, _tuck01);
+            if (pose == null) return;
+
+            // ★ 축 B — 웅크림 깊이를 던진 세기의 함수로. 지금까지 이 다섯 각도는 세기와 무관한
+            // 고정값이라, 살살 던진 텀블링과 최대 세기 텀블링의 실루엣이 완전히 같았다. 실제
+            // 텀블링에서 각속도와 웅크림 깊이는 관성모멘트라는 같은 것의 두 얼굴이다.
+            // 구조체 사본이라 힙 할당이 없고, 배율이 1/1이면 비트 단위로 같은 값이 나온다.
+            StickmanPoseAnimator.ThrowTumblePoseSettings tumble = _blackboard.BuildThrowTumblePoseSettings()
+                .ScaledBy(ResolveTuckJointScale(_strength01, cfg), ResolveTuckSpreadScale(_strength01, cfg));
+
+            pose.ApplyThrowTumblePose(deltaTime, _blackboard.BuildPoseSettings(),
+                tumble, _blackboard.PoseSmoothingRate, _tuck01);
         }
 
         // ============================================================================

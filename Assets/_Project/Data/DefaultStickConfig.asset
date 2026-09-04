@@ -74,6 +74,9 @@ MonoBehaviour:
   ledgeHangHoldDurationMax: 1.5
   ledgeHangMaxDuration: 3
   ledgeHangEdgeOffset: 0.14
+  ledgeHangCornerClearancePoints: 12
+  ledgeHangHandClearanceHeights: 0.15
+  ledgeHangMaxInsetWidthFraction: 0.25
   ledgeHangArmSpreadDegrees: 11
   ledgeHangElbowBendDegrees: 8
   ledgeHangLegSpreadDegrees: 6
@@ -285,6 +288,7 @@ MonoBehaviour:
   throwTumbleMaxSpinDegreesPerSecond: 720
   throwTumbleAlignLeadSeconds: 0.1
   throwTumbleAlignMaxSpeedFactor: 1.6
+  throwTumbleSpinShapeAmplitude: 0.45
   throwTumbleMaxSeconds: 6
   throwTumbleLandingTuck01: 0.15
   throwTumbleTuckFadeRate: 10
@@ -295,6 +299,10 @@ MonoBehaviour:
   throwTumbleArmDegrees: 46
   throwTumbleElbowBendDegrees: 96
   throwTumbleLimbSpreadDegrees: 9
+  throwTumbleTuckScaleAtWeakThrow: 0.65
+  throwTumbleTuckScaleAtStrongThrow: 1.25
+  throwTumbleSpreadScaleAtWeakThrow: 1.33
+  throwTumbleSpreadScaleAtStrongThrow: 0.78
   dragStruggleEnabled: 1
   dragStruggleFrequencyHz: 3.4
   dragStruggleHipDegrees: 34
@@ -318,6 +326,8 @@ MonoBehaviour:
   archeryMinDistanceSpanFraction: 0.55
   archeryTargetRadiusRatio: 0.4
   archeryMissShortfallRadii: 1.5
+  archeryHitChance: 0.667
+  archeryBullseyeChance: 0.5
   archeryArrowFlightSeconds: 0.62
   archeryArrowFlightMaxSeconds: 1.25
   archeryArrowArcApexRatio: 0.38

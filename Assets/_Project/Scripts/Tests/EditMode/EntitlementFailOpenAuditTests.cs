@@ -24,9 +24,29 @@ namespace StickMate.Tests.EditMode
     /// 이 앱은 동료지 금고가 아니다.</para>
     ///
     /// ============================================================================
-    /// ★ 오늘 이 테스트는 <c>Assert</c>.<c>Ignore</c>로 <b>보류</b>다 — 그리고 그건 의도다
+    /// ★★ 2026-09-03 정정 — <b>축 A가 발동했다. 이 테스트는 더 이상 보류가 아니다</b>
     /// ============================================================================
-    /// 2026-09-02 현재 C층(유료 권한) 코드는 <b>0줄</b>이다. 검사할 대상이 없다.
+    /// <c>coder-systems</c> 의 팩 통로 라운드가 <c>Core/PackEntitlement.cs</c> 에
+    /// <c>PackEntitlementState { Owned, NotOwned, Unknown }</c> 를 넣었다.
+    /// <b>아무도 스위치를 켜지 않았다</b> — 아래 보류 분기의 조건이 거짓이 되어 실검사로 넘어갔다.
+    /// 설계대로 동작한 것이고, 그 사실을 여기 기록한다.
+    ///
+    /// <para>★ 같은 라운드에 <b>V2·V3의 사거리를 C층 파일로 좁혔다</b>(본문 주석에 실측과 근거).
+    /// 축 B(<c>스토어_SDK는_승인된_어댑터_한_파일에서_승인된_심볼만_쓴다</c>)는 <b>그대로 초록</b>이었다 —
+    /// 스팀 SDK는 그때 여전히 0줄이고, <c>NullPackEntitlementSource</c> 는 모든 팩에 <c>Unknown</c> 을 답했다.
+    ///
+    /// <para>★★ 2026-09-05 — 결재-1(리더)로 <c>SteamPackEntitlementSource.cs</c> 1개 파일이
+    /// 승인됐고 축 B의 이름과 판정이 그 예외를 반영하도록 개작됐다(위 절 참고).
+    /// <c>OfflineFirstNetworkAuditTests</c> 에도 같은 diff에서 화이트리스트 1건이 등록됐다.</para>
+    ///
+    /// <para><b>남은 Ignore 분기는 지우지 않는다.</b> C층 타입이 사라지면(리팩터링·롤백) 이 파일은
+    /// 다시 「검사할 대상이 없음」이 되고, 그때 조용히 초록이 되는 대신 <b>건너뜀으로 러너에 보여야</b> 한다.
+    /// <c>TestClaimExpiryAuditTests</c> 의 명부 항목도 같은 이유로 유효하다.</para>
+    ///
+    /// ============================================================================
+    /// (아래는 2026-09-02 원문 — 왜 이 장치가 이렇게 생겼는지가 필요하다)
+    /// ============================================================================
+    /// 2026-09-02 당시 C층(유료 권한) 코드는 <b>0줄</b>이었다. 검사할 대상이 없었다.
     /// CLAUDE.md 관례: <i>"아직 못 고친 갭은 <c>Assert.Fail</c>이 아니라 <c>Assert.Ignore</c>(사유 포함)로
     /// 남겨 러너에 '건너뜀'으로 계속 보이게 한다 — 잊히지 않게."</i>
     ///
@@ -36,9 +56,14 @@ namespace StickMate.Tests.EditMode
     ///  <item><b>축 A — 타입 이름.</b> 프로덕션에 <c>Entitlement</c>/<c>Ownership</c>/<c>License</c>가
     ///    들어간 타입 선언이 생기면 아래 보류가 <b>스스로 풀려</b> 실검사로 돈다.</item>
     ///  <item><b>축 B — 스토어 SDK 표면.</b>
-    ///    <see cref="스토어_SDK가_들어오면_이_경보가_먼저_울린다"/>가 <b>항상 실행</b>되며
-    ///    <c>Steamworks</c>/<c>BIsDlcInstalled</c> 같은 식별자가 프로덕션에 나타나는 순간 <b>빨개진다.</b>
-    ///    축 A가 눈이 멀어도(예: 타입 이름을 <c>PackAccess</c>로 지어 버리면) 축 B가 대신 알린다.</item>
+    ///    <see cref="스토어_SDK는_승인된_어댑터_한_파일에서_승인된_심볼만_쓴다"/>가 <b>항상 실행</b>되며
+    ///    <c>Steamworks</c>/<c>BIsDlcInstalled</c> 같은 식별자가 <b>승인된 어댑터 파일 밖</b>에
+    ///    나타나는 순간 <b>빨개진다.</b> 축 A가 눈이 멀어도(예: 타입 이름을 <c>PackAccess</c>로
+    ///    지어 버리면) 축 B가 대신 알린다.
+    ///    ★ 2026-09-05 결재-1(리더)로 <c>SteamPackEntitlementSource.cs</c> 1개 파일의 승인된
+    ///    심볼만 예외가 됐다 — 그 파일 안에서도 승인 안 된 멤버(RestartAppIfNecessary 등)나
+    ///    그 파일 밖의 사용은 여전히 이 경보를 울린다(더 엄밀한 재검증은
+    ///    <c>SteamEntitlementAdapterAuditTests</c>).</item>
     /// </list>
     ///
     /// <para>★ 오늘 <b>보류 분기가 실제로 도는 코드인지</b>는 아래 네거티브 컨트롤들이 증명한다 —
@@ -169,8 +194,46 @@ namespace StickMate.Tests.EditMode
                 }
             }
 
-            // ---- V2: bool 반환 소유 판정 금지 (§E-1-a) ----
+            // ================================================================
+            // ★★ 2026-09-03 coder-systems — V2·V3의 <b>사거리</b>를 C층 파일로 좁혔다
+            // ================================================================
+            // 이 파일의 원 작성자(security)가 실패 메시지에 적어 둔 절차 그대로다:
+            //   "여전히 '건너뜀'이면 PolicyTypeFragments에 실제 타입 이름 조각을 추가하세요."
+            // C층 배선 라운드가 실제로 그 자리에 도착했고, 도착해 보니 <b>사거리</b> 쪽이 문제였다.
+            //
+            // ★ 실측(2026-09-03, 프로덕션 전량): V2를 트리 전체에 걸면 <b>A·B층</b> 선언 8건이 걸린다 —
+            //   EquipmentModel.IsItemOwned / ItemCatalogEntry.IsOwned /
+            //   LocalClickCaptureGate.IsOwnedBy / IsLocalClickCaptureOwnedBy ×4 /
+            //   FocusWatchDirector.ReleaseOwnedLock.
+            //   이들은 <b>레벨 해금</b>과 <b>클릭 캡처 소유권</b>이지 <b>유료 권한</b>이 아니다.
+            //   §E-1-a가 금지하는 것은 «엔타이틀먼트 조회 결과를 bool로 반환하는 API»이고,
+            //   그 조회는 스팀이 안 뜨면 실패한다는 성질 때문에 3상태가 필요한 것이다.
+            //   레벨 해금에는 그 성질이 없다(로컬 값이라 실패하지 않는다).
+            //
+            // ★ 좁히지 않으면 무슨 일이 일어나는가: C층이 들어오는 <b>바로 그 라운드</b>에
+            //   무관한 빨강 8건이 함께 뜨고, 그때 사람이 하는 일은 «귀찮은 오탐이니 니들을 지우자»다.
+            //   이 파일이 스스로 경고한 그 형태다(클래스 문서의 OfflineFirstNetworkAuditTests 문단).
+            //   방치되거나 꺼진 경보는 없는 경보다.
+            //
+            // ★ 무엇을 잃는가 — 정직하게: C층 <b>상태 타입을 한 번도 언급하지 않는</b> 파일에 숨은
+            //   bool 소유 판정은 이제 안 보인다. 그러나 그런 함수는 C층 상태를 볼 수 없으므로
+            //   §E-1이 막으려는 «Unknown의 붕괴»를 저지를 수단 자체가 없다.
+            //   그리고 <b>V1은 여전히 트리 전체</b>를 본다 — 3상태 열거형이 어디서 생기든 잡힌다.
+            //   아래 NegativeControl_사거리는_같은_파일에_갇히지_않는다 가 «선언 파일과 위반 파일이
+            //   달라도 잡힌다»를 매 실행 증명한다.
+            var cLayer = new List<(string File, string Stripped)>();
             foreach ((string file, string stripped) in files)
+            {
+                for (int i = 0; i < stateEnums.Count; i++)
+                {
+                    if (!EntitlementAuditSource.ContainsIdentifier(stripped, stateEnums[i])) continue;
+                    cLayer.Add((file, stripped));
+                    break;
+                }
+            }
+
+            // ---- V2: bool 반환 소유 판정 금지 (§E-1-a) ----
+            foreach ((string file, string stripped) in cLayer)
             {
                 int lineNo = 0;
                 foreach (string raw in stripped.Replace("\r\n", "\n").Split('\n'))
@@ -203,7 +266,7 @@ namespace StickMate.Tests.EditMode
             }
 
             // ---- V3: 세 갈래를 전부 명시한다 — switch의 default: 금지 (§E-1-b) ----
-            foreach ((string file, string stripped) in files)
+            foreach ((string file, string stripped) in cLayer)
             {
                 int from = 0;
                 while (true)
@@ -292,9 +355,9 @@ namespace StickMate.Tests.EditMode
                     "  ① 축 A(자동): 프로덕션에 Entitlement/Ownership/License가 들어간 타입 선언이 " +
                     "생기는 순간, 이 테스트는 보류를 지나 실검사(§E-1 3상태 · §E-1-a bool 금지 · " +
                     "§E-1-b default 금지)로 돕니다. 아무도 켤 필요가 없습니다.\n" +
-                    "  ② 축 B(동반): 같은 파일의 [스토어_SDK가_들어오면_이_경보가_먼저_울린다]가 " +
-                    "항상 실행되며, Steamworks/BIsDlcInstalled 같은 식별자가 프로덕션에 나타나면 " +
-                    "빨개집니다. 축 A가 이름을 못 알아봐도 축 B가 대신 알립니다.\n" +
+                    "  ② 축 B(동반): 같은 파일의 [스토어_SDK는_승인된_어댑터_한_파일에서_승인된_심볼만_쓴다]가 " +
+                    "항상 실행되며, Steamworks/BIsDlcInstalled 같은 식별자가 승인된 어댑터 파일 밖에 " +
+                    "나타나면 빨개집니다. 축 A가 이름을 못 알아봐도 축 B가 대신 알립니다.\n" +
                     "C층 배선 라운드는 이 두 축 중 하나를 반드시 건드리게 됩니다.");
             }
 
@@ -312,18 +375,32 @@ namespace StickMate.Tests.EditMode
                 "Unknown에서는 이미 착용 중인 것을 <b>회수하지 않습니다</b>(§E-2).");
         }
 
+        /// <summary>승인된 예외(결재-1, 2026-09-05) — 파일+식별자 단위. 이보다 엄밀한 재검증
+        /// (멤버 접근·using 횟수·팩 이름 하드코딩 등)은 <c>SteamEntitlementAdapterAuditTests</c>가
+        /// 별도 축으로 다시 잠근다 — 두 검사가 같은 실수를 공유하지 않게 일부러 중복한다.</summary>
+        private static readonly (string File, string Identifier)[] ApprovedStoreSdkExceptions =
+        {
+            ("SteamPackEntitlementSource.cs", "Steamworks"),
+            ("SteamPackEntitlementSource.cs", "SteamAPI"),
+            ("SteamPackEntitlementSource.cs", "SteamApps"),
+            ("SteamPackEntitlementSource.cs", "BIsDlcInstalled"),
+        };
+
         /// <summary>
         /// ★ 위 보류의 <b>역방향 장치(축 B)</b>. 항상 실행되며 보류하지 않는다.
         ///
-        /// <para>C층 배관(스토어 SDK)이 프로덕션에 들어오는 순간 <b>빨개진다.</b> 그 빨강의 뜻은
-        /// "버그"가 아니라 <b>"위 보류를 이제 해제하라"</b>이다. 실패 메시지가 그 절차를 그대로 적어 둔다.</para>
+        /// <para>C층 배관(스토어 SDK)이 <b>승인된 어댑터 파일 밖</b>에 나타나거나, 그 파일 안에서도
+        /// 승인 안 된 식별자(<c>BIsSubscribedApp</c>·<c>StoreContext</c> 등)가 나타나면 <b>빨개진다.</b>
+        /// ★ 2026-09-05 결재-1 전에는 "어디서든 하나라도 나오면 빨강"이었다 — 이제 "승인된 자리 밖에서
+        /// 나오면 빨강"으로 좁혔다. 좁힌 것이지 껐다 <b>것은 아니다</b>: 예외 목록을 벗어난 모든 확장은
+        /// 여전히 이 경보를 울린다.</para>
         ///
         /// <para>이 테스트가 사라지면 <c>TestClaimExpiryAuditTests</c>의 Ignore 명부가 먼저 실패한다
         /// (명부가 동반 테스트의 <b>메서드 선언</b> 실재를 매 실행 확인한다). 즉 이 장치를 조용히
         /// 치울 수 있는 경로가 없다.</para>
         /// </summary>
         [Test]
-        public void 스토어_SDK가_들어오면_이_경보가_먼저_울린다()
+        public void 스토어_SDK는_승인된_어댑터_한_파일에서_승인된_심볼만_쓴다()
         {
             List<(string File, string Stripped)> sources = ProductionSources();
             Assert.GreaterOrEqual(sources.Count, EntitlementAuditSource.MinProductionFileCount,
@@ -333,20 +410,29 @@ namespace StickMate.Tests.EditMode
                 $"{LogPrefix} 감시 식별자 목록이 비었습니다(거짓 통과 #5: 빈 목록은 아무것도 재지 않습니다).");
 
             List<Surface> hits = DetectStoreSdk(sources);
+            var violations = new List<Surface>();
+            foreach (Surface s in hits)
+            {
+                bool approved = false;
+                foreach ((string file, string identifier) in ApprovedStoreSdkExceptions)
+                {
+                    if (file == s.File && identifier == s.Detail) { approved = true; break; }
+                }
+                if (!approved) violations.Add(s);
+            }
+
             var lines = new List<string>();
-            foreach (Surface s in hits) lines.Add($"  · {s.File} → {s.Detail}");
+            foreach (Surface s in violations) lines.Add($"  · {s.File} → {s.Detail}");
 
             Assert.IsEmpty(lines,
-                $"{LogPrefix} <b>스토어 SDK가 프로덕션에 들어왔습니다</b>({lines.Count}건):\n" +
+                $"{LogPrefix} <b>승인 범위 밖에서 스토어 SDK가 발견됐습니다</b>({lines.Count}건):\n" +
                 string.Join("\n", lines) + "\n\n" +
-                "이건 축하할 실패입니다 — C층 배선이 시작됐다는 뜻입니다. 지금 할 일:\n" +
-                "  ① 같은 파일의 [C층_소유판정은_Unknown을_NotOwned로_붕괴시키지_않는다]가 " +
-                "보류를 지나 실검사로 도는지 확인하세요(축 A가 타입 이름을 알아봤는가). " +
-                "여전히 '건너뜀'이면 PolicyTypeFragments에 실제 타입 이름 조각을 추가하세요.\n" +
-                "  ② 그 확인이 끝나면 이 경보 메서드를 지우고, TestClaimExpiryAuditTests의 " +
-                "Ignore 명부에서도 해당 항목을 함께 지우세요(명부가 자동 만료로 강제합니다).\n" +
-                "  ③ OfflineFirstNetworkAuditTests도 같은 라운드에 빨개집니다 — 그건 설계된 " +
-                "관문입니다. 니들을 지우지 말고 화이트리스트에 근거와 함께 등록하세요.");
+                "docs/security/STEAMWORKS_ENTITLEMENT_EXCEPTION.md §4의 허용 파일·심볼 목록을 " +
+                "벗어났습니다. 정말 확장이 필요하면:\n" +
+                "  ① 그 문서를 갱신하고 리더 재결재를 받으세요(니들 예외를 조용히 넓히지 마세요).\n" +
+                "  ② ApprovedStoreSdkExceptions에 근거와 함께 항목을 추가하세요.\n" +
+                "  ③ SteamEntitlementAdapterAuditTests의 화이트리스트도 같은 diff에서 갱신하세요 " +
+                "— 두 축이 따로 놀면 한쪽만 넓어진 채 다른 쪽이 계속 빨개집니다.");
         }
 
         // ====================================================================
@@ -355,6 +441,18 @@ namespace StickMate.Tests.EditMode
 
         private static List<(string File, string Stripped)> Fake(string source)
             => new List<(string, string)> { ("Fake.cs", EntitlementAuditSource.StripComments(source)) };
+
+        /// <summary>파일 <b>여럿</b>을 흘린다. 사거리 좁히기(V2·V3의 C층 한정)가
+        /// <b>같은 파일 안에만</b> 갇히지 않는다는 것을 재기 위해 필요하다.</summary>
+        private static List<(string File, string Stripped)> Fake(params (string Name, string Source)[] parts)
+        {
+            var list = new List<(string, string)>();
+            foreach ((string name, string source) in parts)
+            {
+                list.Add((name, EntitlementAuditSource.StripComments(source)));
+            }
+            return list;
+        }
 
         [Test]
         public void NegativeControl_계약을_지키는_C층_샘플은_위반이_0건이다()
@@ -472,6 +570,61 @@ namespace StickMate.Tests.EditMode
                 $"{LogPrefix} 축 A 스캐너가 C층 타입 선언을 놓쳤습니다 — " +
                 "그러면 위 보류는 C층이 들어와도 영원히 '건너뜀'으로 남습니다. " +
                 "이 저장소의 Ignore 관례가 정확히 그것을 막으려고 만들어졌습니다.");
+        }
+
+        // ====================================================================
+        // 3. ★ 사거리 대조 (2026-09-03 coder-systems) — 좁힌 만큼 눈이 멀지 않았는가
+        // ====================================================================
+
+        /// <summary>
+        /// ★ <b>존재 방향</b>: 상태 열거형을 <b>다른 파일</b>이 선언해도, 그 타입을 쓰는 파일의
+        /// 위반은 잡힌다. 사거리를 「선언한 파일」이 아니라 「그 타입을 아는 파일」로 잡은 이유가 이것이다.
+        /// </summary>
+        [Test]
+        public void NegativeControl_사거리는_같은_파일에_갇히지_않는다()
+        {
+            List<string> problems = Violations(Fake(
+                ("State.cs", "public enum PackEntitlementState { Owned, NotOwned, Unknown }\n"),
+                ("Gate.cs",
+                    "public static class Gate\n" +
+                    "{\n" +
+                    "    public static bool IsDlcOwned(string id) => Query(id) == PackEntitlementState.Owned;\n" +
+                    "    private static PackEntitlementState Query(string id) => PackEntitlementState.Unknown;\n" +
+                    "}\n")));
+
+            Assert.IsNotEmpty(problems,
+                $"{LogPrefix} 선언 파일과 위반 파일이 다르다는 이유로 위반을 놓쳤습니다. " +
+                "그러면 C층을 두 파일로 쪼개는 것만으로 이 감사가 무력해집니다.");
+        }
+
+        /// <summary>
+        /// ★ <b>부재 방향</b>: C층 상태 타입을 <b>한 글자도 모르는</b> 파일의 <c>bool ...Owned...</c>는
+        /// 사거리 밖이다. <b>이건 결함이 아니라 정의다</b> — §E-1-a가 막는 것은
+        /// 「엔타이틀먼트 조회 결과」를 <c>bool</c>로 돌려주는 것이고,
+        /// 그 타입을 볼 수 없는 함수는 그 결과를 돌려줄 수단 자체가 없다.
+        ///
+        /// <para>실제로 이 저장소에는 그런 함수가 <b>8건</b> 있다(레벨 해금 2건 · 클릭 캡처 소유권 5건 ·
+        /// 포커스 락 1건). 좁히지 않으면 C층이 들어오는 라운드에 그 8건이 함께 빨개지고,
+        /// 그때 사람이 하는 일은 니들을 지우는 것이다 — <b>방치되거나 꺼진 경보는 없는 경보다.</b></para>
+        ///
+        /// <para>★ 이 테스트가 <b>초록이라는 사실 자체</b>가 위험할 수 있으므로
+        /// 바로 위 [사거리는_같은_파일에_갇히지_않는다]와 <b>짝</b>이다:
+        /// 둘 중 하나만 보면 「좁혔다」와 「꺼 버렸다」를 구분할 수 없다.</para>
+        /// </summary>
+        [Test]
+        public void NegativeControl_C층을_모르는_파일의_bool은_사거리_밖이다()
+        {
+            List<string> problems = Violations(Fake(
+                ("State.cs", "public enum PackEntitlementState { Owned, NotOwned, Unknown }\n"),
+                ("LevelUnlock.cs",
+                    "public static class LevelUnlock\n" +
+                    "{\n" +
+                    "    public static bool IsItemOwned(int slot, int index) => index >= 0;\n" +
+                    "}\n")));
+
+            Assert.IsEmpty(problems,
+                $"{LogPrefix} A·B층(레벨 해금)의 bool 판정이 C층 위반으로 잡혔습니다({problems.Count}건). " +
+                "무관한 빨강은 감사를 꺼지게 만듭니다:\n  · " + string.Join("\n  · ", problems));
         }
     }
 }

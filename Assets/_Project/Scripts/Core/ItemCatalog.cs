@@ -250,8 +250,28 @@ namespace StickMate.Core
                 shortcut ?? AutoOnlyStatus, shortcut != null, null, null, ItemCatalog.BaseCohortId,
                 DeclaredRarity.Derived);
 
+        /// <summary>
+        /// 단축키는 없지만 <b>사용자가 직접 부르는</b> 행동. 상태 슬롯에 그 자리를 적는다.
+        ///
+        /// <para>★ 2026-09-05 신설. 종전에는 행동의 상태 슬롯이 「단축키가 있다」와
+        /// 「가끔 알아서 뜬다」 <b>둘뿐</b>이라, 톱니 메뉴로만 부르는 것을 적을 칸이 없었다.
+        /// 그 빈칸이 집중 모드 카드에 <b>개발 게이트 뒤의 조합</b>을 싣게 만든 자리다.
+        /// 표기만 지우고 <see cref="AutoOnlyStatus"/>로 내리면 이번엔 「스스로 뜬다」는
+        /// 반대 방향의 거짓이 된다 — 집중 세션은 스스로 시작하지 않는다
+        /// (<c>FocusSessionPopover</c>의 [시작]만이 <c>StartFocusSession</c>을 부른다).</para>
+        /// </summary>
+        internal static ItemCatalogEntry ForMenuAction(string id, string displayName, string description)
+            => new ItemCatalogEntry(id, ItemCategory.Action, null, -1, displayName, description,
+                MenuOnlyStatus, true, null, null, ItemCatalog.BaseCohortId,
+                DeclaredRarity.Derived);
+
         /// <summary>단축키가 없는 행동(자율 발동 전용)의 상태 슬롯 문구.</summary>
         public const string AutoOnlyStatus = "가끔 알아서";
+
+        /// <summary>톱니 메뉴에서만 부르는 행동의 상태 슬롯 문구.
+        /// 슬롯 폭 96pt · 캡션 10pt에서 6글자 ≈ 63pt라, 기존 최장 문구
+        /// (<c>Ctrl+Alt+Win+A</c> ≈ 77pt)보다 짧아 새 폭 위험을 만들지 않는다.</summary>
+        public const string MenuOnlyStatus = "톱니 메뉴에서";
 
         public string DisplayName => _displayName;
 
@@ -280,11 +300,24 @@ namespace StickMate.Core
         /// 구성상 자동으로 꺼진다)이 켜져 있으면 레벨을
         /// 보지 않는다(사용자 QA 요청). 규칙을 지운 것이 아니라 <b>앞에 스위치 하나를 둔 것</b>이고,
         /// 이 자리에 둔 이유는 여기가 카드 색·상태 문구·착용 가능 여부의 공통 뿌리이기 때문이다 —
-        /// 더 아래(착용 시점)에서 우회하면 "Lv.20에 열림"이라 적힌 카드가 눌리는 거짓말이 된다.</para></summary>
+        /// 더 아래(착용 시점)에서 우회하면 "Lv.20에 열림"이라 적힌 카드가 눌리는 거짓말이 된다.</para>
+        ///
+        /// <para>★★ <b>합집합이다. 대체가 아니다</b>(2026-09-03 v10, <c>docs/DESIGN_SYSTEMS_STATS.md</c> §20-2-a).
+        /// 상점 구매분(<see cref="CurrencyModel.PurchasedItemIds"/>)은 레벨 파생 보유를 <b>대체하지 않고
+        /// 더한다</b>. 이 한 글자(∪ 대 =)에 v10의 하위 호환이 통째로 매달려 있다:</para>
+        /// <code>
+        /// IsOwned = 레벨 파생 ∪ purchasedItemIds ∪ (훗날) 엔타이틀먼트
+        ///                      ↑ null이든 []이든 이 항의 기여가 0이다
+        /// ⇒ v9 파일에 purchasedItemIds가 없어도 레벨 파생 항이 그대로 살아 있어 아무것도 안 잃는다.
+        /// </code>
+        /// <para>누가 이걸 「대체」로 바꾸면 <b>업데이트만 했는데 갖고 있던 장비를 빼앗기고</b>,
+        /// 그 사고는 저장 파일을 열어봐도 눈에 안 띈다(파일에는 아무 일도 안 일어난다).
+        /// 그래서 <c>Tests/EditMode/ItemOwnershipUnionTests</c>가 이 문장을 매 실행 잠근다.</para></summary>
         public bool IsOwned(StickConfig config)
             => !RequiredLevel.HasValue
                || EquipmentDebugUnlock.UnlockAll
-               || CharacterProgressionModel.Level >= RequiredLevel.Value;
+               || CharacterProgressionModel.Level >= RequiredLevel.Value
+               || CurrencyModel.IsPurchasedItem(Id);
 
         /// <summary>장비면서 <b>지금 이 아이템이</b> 착용 중인가(같은 카테고리의 다른 아이템이 착용
         /// 중이면 false — 카테고리당 하나만 걸칠 수 있다).</summary>
@@ -365,7 +398,11 @@ namespace StickMate.Core
         // 좌표 한 칸, 색 한 채널만 흔들려도 빨개진다.
         //
         // Addressables/팩 매니페스트는 <b>여기 없다</b> — C단계 전까지는 평범한 Resources다(같은 문서).
-        private const string ItemResourceFolder = "Items";
+        // ★ 2026-09-03 internal 로 열었다(coder-systems, 팩 통로 라운드). 이유는 하나다 —
+        // PackRegistry 가 <b>같은 폴더</b>를 훑는데, 그 문자열을 저쪽에도 적으면 폴더가 두 곳에서
+        // 정해진다. 한쪽만 바뀌는 날 증상은 "보관함은 멀쩡한데 팩만 안 보인다"이고, 그건
+        // "팩이 없다"와 화면상 구분되지 않는다. 창구를 하나로 둔다.
+        internal const string ItemResourceFolder = "Items";
 
         // 성공/실패를 가리지 않고 <b>한 번만</b> 읽고 캐시한다. 실패했다고 매 접근마다 다시 읽으면
         // 고장난 빌드에서 LoadAll이 프레임마다 도는 최악이 된다(하루 종일 켜 두는 앱이다).
@@ -641,7 +678,7 @@ namespace StickMate.Core
 
         private static readonly ItemCatalogEntry[] _actions =
         {
-            // 직접 부를 수 있는 것 먼저(단축키 순), 그다음 자율 발동 전용.
+            // 직접 부를 수 있는 것 먼저(단축키 순 → 톱니 메뉴), 그다음 자율 발동 전용.
             ItemCatalogEntry.ForAction("action.archery", "활쏘기", ShortcutLabel.Chord("A"),
                 "과녁을 세우고 세 발을 쏜다. 마지막 한 발은 언제나 한가운데다."),
             // ★ 2026-08-30 신규 등재 — 새 기능이 아니라 **이미 있던 기능의 누락 등재**다.
@@ -660,11 +697,33 @@ namespace StickMate.Core
                 "창에 금이 쫙 간 것처럼 보이게 한다. 금은 그림이고 클릭은 그대로 통과한다."),
             ItemCatalogEntry.ForAction("action.runaway", "가출", ShortcutLabel.Chord("N"),
                 "삐지면 화면 밖으로 나가 버린다. 한 번 더 부르면 못 이기는 척 돌아온다."),
-            ItemCatalogEntry.ForAction("action.focus_watch", "집중 모드", ShortcutLabel.Chord("F"),
+            // ★★ 2026-09-05 — 유령 단축키 3건 제거(F/J/H).
+            //   카드가 이 셋을 <b>사용자 단축키</b>로 광고했지만 실제 바인딩은 개발 게이트 뒤였다
+            //   (Interaction/AppControlDirector.cs의 `dev && chord && ...` 다섯 줄 = D/H/S/J/F).
+            //   신규 사용자가 그 조합을 눌러도 아무 일도 일어나지 않는데 카드는 계속 그것을 가르쳤다.
+            //
+            //   ★ 반대 처방(게이트를 열어 릴리스 바인딩으로 승격)을 고르지 않은 이유 둘:
+            //     (1) 그러면 Ctrl+Alt+Win+F/J/H가 <b>새로</b> 예약되는데, Windows 셸이 그 조합을 이미
+            //         가져갔는지는 아무도 재 본 적이 없다 — Core/ShortcutLabel.WindowsReservedActionKeys가
+            //         빈 배열인 것은 <b>조사 결과가 아니라 미조사</b>다(그 문서 주석이 그렇게 적고 있다).
+            //     (2) Interaction/ActionCommandPopover 클래스 문서가 이 셋을 "(다) 개발 전용 —
+            //         표시된 것과 실제가 달라지는 경로라 사용자 UI에 상설 설치될 수 없다"고 이미 못박았다.
+            //         표기를 빼는 쪽이 그 규칙과 같은 편이고, 기능 손실은 아래대로 0이다.
+            //
+            //   ★ 셋의 처지가 서로 다르다 — 같은 문구로 덮으면 다른 거짓이 생긴다:
+            //     · 집중 모드   — 톱니 → 부채꼴 ①에서 사용자가 직접 연다(FocusSessionPopover [시작]
+            //                     -> FocusWatchDirector.StartFocusSession). 스스로 뜨지 <b>않는다</b>.
+            //     · 할일 알림   — 자율 트리거만 있다(TodoReminderDirector). 사용자 진입점이 없다.
+            //     · 하드웨어 반응 — 자율 트리거만 있다(HardwareReactionDirector). 사용자 진입점이 없다.
+            //   ※ 뒤 둘의 자율 확률/게이트는 출하 기본값에서 꺼져 있다(todoReminderChance 0 /
+            //     enableAutonomousHardwareReactions false). 그 사실은 이 카드 문구의 문제가 아니라
+            //     <b>바탕화면 정리·블랙홀과 공유하는 별건</b>이라 리더에게 따로 올렸다 — 여기서
+            //     조용히 확률을 올리면 사용자가 끄라고 한 연출이 되살아난다(2026-08-29 사용자 신고).
+            ItemCatalogEntry.ForMenuAction("action.focus_watch", "집중 모드",
                 "타이머가 도는 동안 곁을 지킨다. 창을 자주 바꾸면 조용히 쳐다본다."),
-            ItemCatalogEntry.ForAction("action.todo_reminder", "할일 알림", ShortcutLabel.Chord("J"),
+            ItemCatalogEntry.ForAction("action.todo_reminder", "할일 알림", null,
                 "적어둔 할일을 때가 되면 들고 온다. 재촉은 한 번뿐이다."),
-            ItemCatalogEntry.ForAction("action.hardware_reaction", "하드웨어 반응", ShortcutLabel.Chord("H"),
+            ItemCatalogEntry.ForAction("action.hardware_reaction", "하드웨어 반응", null,
                 // ★ 문구 교체(2026-08-30, ux-designer 지적 + 리더 승인): 원문은 "표정만 바뀌고"였는데
                 //   Interaction/HardwareReactionRenderer.cs가 실제로 그리는 것은 얼굴이 아니라
                 //   <b>머리 주변에 뜨는 이모트 아이콘</b>(배터리/와이파이/땀방울)이다. 이 앱에는 상태별

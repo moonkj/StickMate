@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using NUnit.Framework;
 using UnityEditor;
@@ -76,6 +77,9 @@ namespace StickMate.Tests.EditMode
             // 정적 상태가 앞선 테스트에서 새어 들어오면 "파일이 말한 것"과 "직전 상태"를 구분할 수 없다.
             CharacterAppearanceModel.ResetForTesting();
             AppSettingsModel.ResetForTesting();
+            // v10 게임화 묶음(동전·구매 이력·등급 해금·장착한 춤). 정적 상태가 새어 들어오면
+            // "파일이 말한 것"과 "직전 테스트가 남긴 것"을 구분할 수 없다.
+            CurrencyModel.ResetForTesting();
         }
 
         // ============================================================================
@@ -651,6 +655,209 @@ namespace StickMate.Tests.EditMode
                 "모르는 아이디가 엉뚱한 아이템으로 대체됐습니다.");
             Assert.AreEqual(2, EquipmentModel.WornIndex(EquipmentSlot.Eyes),
                 "같은 파일의 정상 아이디까지 함께 버려졌습니다.");
+        }
+
+        // ====================================================================
+        // ★★ v10 게임화 묶음 — CLAUDE.md가 요구하는 vN-1 하위 호환 테스트 (I-16′)
+        // ====================================================================
+
+        /// <summary>v9 픽스처. <b>v9가 실제로 담고 있던 필드만</b> 적는다 — 없던 필드를 적으면
+        /// "없을 때 어떻게 되는가"를 검증하지 못한다(이 파일의 다른 픽스처와 같은 규칙).
+        /// 레벨을 높게 두는 이유는 <b>레벨 파생 보유가 실제로 존재하는 상태</b>를 만들기 위해서다 —
+        /// 그게 없으면 아래 "아무것도 안 잃는다" 단언이 0 vs 0으로 공허하게 통과한다.</summary>
+        private const string V9Json =
+            "{\n" +
+            "    \"version\": 9,\n" +
+            "    \"level\": 30,\n" +
+            "    \"currentXp\": 12.0,\n" +
+            "    \"totalXpEarned\": 90000.0,\n" +
+            "    \"characterName\": \"아홉동료\",\n" +
+            "    \"battleWins\": 3,\n" +
+            "    \"archeryShots\": 11,\n" +
+            "    \"archeryBullseyes\": 4,\n" +
+            "    \"companionSeconds\": 3600.0,\n" +
+            "    \"ragdollFalls\": 2,\n" +
+            "    \"firstRunUnixSeconds\": 1788038056,\n" +
+            "    \"autoHideOnFullscreen\": true,\n" +
+            "    \"gearIconVisible\": true,\n" +
+            "    \"dialogueFontSizeSaved\": true,\n" +
+            "    \"dialogueFontSize\": 20,\n" +
+            "    \"todos\": [ { \"id\": 7, \"text\": \"세금 신고\", \"completed\": false } ],\n" +
+            "    \"wornEyes\": \"equip.eyes.goggles\",\n" +
+            "    \"wornHead\": \"\",\n" +
+            "    \"wornNeck\": \"\",\n" +
+            "    \"wornShoulders\": \"\",\n" +
+            "    \"wornHair\": \"\",\n" +
+            "    \"wornFx\": \"\",\n" +
+            "    \"wornPet\": \"\"\n" +
+            "}";
+
+        /// <summary>
+        /// ★★ <b>v10 신설 14필드의 하위 호환</b> — 2026-09-03 게임화 라운드.
+        /// CLAUDE.md: <i>"저장 스키마 <c>CurrentVersion</c>을 올리는 라운드는 <c>vN-1</c> 구버전 파일을
+        /// 읽었을 때 신규 필드가 안전한 기본값으로 채워지는지 검증하는 하위 호환 테스트 1건을
+        /// 반드시 동반한다."</i>
+        ///
+        /// <para><b>이 테스트가 잠그는 것은 셋이다</b>(하나라도 빠지면 나머지가 공허해진다):</para>
+        /// <list type="number">
+        ///  <item><b>신규 14필드가 안전한 기본값이 되는가.</b> 스칼라는 0/false, 집합은 "비어 있음"이
+        ///    아니라 <b>「기존 권리 복원」</b>이어야 한다 — 특히 <c>equippedDanceIds</c>는 빈 배열이
+        ///    아니라 <b>무료 2종</b>이어야 한다(§26-4-1: 빈 집합은 합법 상태가 아니고,
+        ///    비면 음악이 나와도 아무 일이 안 일어나 "고장"으로 읽힌다).</item>
+        ///  <item><b>★ 가진 것을 빼앗지 않는가</b>(I-16′의 본체). <c>purchasedItemIds</c>가 없는데
+        ///    레벨 파생 보유가 <b>한 개도 줄지 않아야</b> 한다. 이건 <c>IsOwned</c>가 「합집합」일
+        ///    때만 참이고, 누가 「대체」로 바꾸면 여기서 빨개진다(§20-2-a).</item>
+        ///  <item><b>같은 파일의 다른 v9 값이 살아남는가</b>(음성 대조). 없으면 위 두 단언이
+        ///    "파일을 아예 안 읽어서" 통과한다 — 이 저장소가 반복해 당한 형태다.</item>
+        /// </list>
+        /// </summary>
+        [Test]
+        public void v9_파일을_읽어도_게임화_14필드가_안전한_기본값이_되고_가진_것을_빼앗지_않는다()
+        {
+            StickConfig config = LoadDefaultConfig();
+
+            // (0) 먼저 <b>기준선</b>을 잡는다 — 레벨 30에서 레벨 파생으로 보유한 항목 수.
+            //     구매 이력이 텅 빈 상태에서 센 값이라, 아래에서 같은 수가 나오면
+            //     "구매 이력이 없어도 잃지 않는다"가 성립한다.
+            CharacterProgressionModel.RestoreFromSave(30, 0f, 0f, "기준선");
+            int ownedAtLevel30 = CountOwned(config);
+            Assert.Greater(ownedAtLevel30, 0,
+                "레벨 30에서 레벨 파생 보유가 0개입니다 — 그러면 아래 '아무것도 안 잃는다' 단언이 " +
+                "0 vs 0으로 공허하게 통과합니다. 픽스처 레벨을 올리거나 요구 레벨 표를 확인하세요.");
+
+            ResetModels();
+            File.WriteAllText(CharacterSaveStore.FilePath, V9Json);
+            CharacterSaveStore.Load();
+
+            Assert.IsTrue(CharacterSaveStore.LoadedFromFile, "v9 파일을 통째로 버렸습니다.");
+            Assert.IsFalse(CharacterSaveStore.SaveSuspended,
+                "v9 파일을 읽었을 뿐인데 저장이 보류됐습니다 — 그러면 이 사용자는 다시는 저장되지 않습니다.");
+
+            // ---- (1) A군 지갑·소유 ----
+            Assert.AreEqual(0, CurrencyModel.CoinBalance,
+                "v9 파일에 없던 동전이 생겼습니다. 0 = '한 푼도 없다'가 v9 사용자에게 참입니다.");
+            Assert.IsFalse(CurrencyModel.SeedGranted,
+                "시드를 받은 적 없는 사용자가 '이미 받음'으로 표시됐습니다 — 그러면 시드 금액이 " +
+                "정해지는 날(U-42) 이 사용자는 영영 못 받습니다.");
+            Assert.IsEmpty(CurrencyModel.PurchasedItemIds, "산 적 없는 물건이 구매 이력에 생겼습니다.");
+            for (int i = 0; i < CurrencyRules.StatTierSlotCount; i++)
+            {
+                Assert.AreEqual(0, CurrencyModel.StatTierReached(i),
+                    $"{i}번 스탯의 등급 해금이 0이 아닙니다 — v9 파일에는 그 기록이 존재한 적이 없습니다.");
+            }
+
+            // ---- (2) B군 일일 래칫 — 전부 "오늘 아무것도 안 받았다" ----
+            Assert.AreEqual(0, CurrencyModel.DayIndex, "래칫된 최대 일자가 0이 아닙니다.");
+            Assert.AreEqual(0, CurrencyModel.TodayGrantedCoins, "오늘 받은 적 없는 동전이 기록됐습니다.");
+            Assert.AreEqual(0, CurrencyModel.PotionsUsedToday,
+                "쓴 적 없는 회복제가 기록됐습니다 — 그러면 그날 무료 1개를 못 씁니다(사용자 손해).");
+            Assert.AreEqual(0.0, CurrencyModel.IdleWindowUsedSeconds, 1e-6,
+                "갉아 먹은 적 없는 8시간 창이 소진된 상태로 읽혔습니다 — 그날 유휴 수급이 통째로 막힙니다.");
+
+            // ---- (3) C군 날짜 경계 — ★ 이 스키마에서 「없음 ≠ 0」인 유일한 값 ----
+            Assert.IsFalse(CurrencyModel.HasDayBoundaryOffset,
+                "고정한 적 없는 날짜 경계 오프셋이 '고정됨'으로 읽혔습니다. 0은 UTC+0(영국)이라는 " +
+                "<b>실재 시간대</b>라, 동반 불리언이 없으면 영국 사용자와 신규 사용자가 구분되지 않습니다.");
+
+            // ---- (4) D군 채널 카운터 ----
+            Assert.IsFalse(CurrencyModel.TodoCoinPaidToday, "받은 적 없는 [오늘 할일] 보상이 '받음'이 됐습니다.");
+            Assert.AreEqual(0, CurrencyModel.ArcheryCoinsToday, "쏜 적 없는 활쏘기 상금이 기록됐습니다.");
+
+            // ---- (5) E군 댄스 — ★ 빈 배열이 아니라 「무료 2종」이어야 한다 ----
+            CollectionAssert.AreEqual(DanceIds.CreateFreeDefaults(), CurrencyModel.EquippedDanceIds,
+                "v9 파일에 장착 목록이 없는데 무료 2종이 기본 장착되지 않았습니다 — " +
+                "|장착| = 0이면 음악이 나와도 아무 일이 안 일어나고, 그건 사용자에게 '고장'으로 읽힙니다.");
+
+            // ---- (6) U-2 자리 ----
+            Assert.IsEmpty(CurrencyModel.ItemGraceBaselines,
+                "기록된 적 없는 유예 기산점이 생겼습니다.");
+
+            // ---- (7) ★ I-16′ 본체 — 가진 것을 빼앗지 않았는가 ----
+            Assert.AreEqual(30, CharacterProgressionModel.Level, "v9 파일의 레벨이 사라졌습니다(전제 붕괴).");
+            Assert.AreEqual(ownedAtLevel30, CountOwned(config),
+                "구매 이력이 비어 있다는 이유로 <b>레벨로 열린 보유가 줄었습니다</b>. " +
+                "IsOwned가 「합집합」이 아니라 「대체」로 바뀐 것입니다 — 업데이트만 했는데 " +
+                "사용자가 장비를 빼앗기고, 그 사고는 저장 파일을 열어봐도 눈에 띄지 않습니다(§20-2-a).");
+
+            // ---- (8) 음성 대조 — 위 단언들이 "파일을 안 읽어서" 통과한 것이 아니다 ----
+            Assert.AreEqual("아홉동료", CharacterProgressionModel.CharacterName, "v9 파일의 이름이 사라졌습니다.");
+            Assert.AreEqual(2, EquipmentModel.WornIndex(EquipmentSlot.Eyes), "v9 파일의 착용이 사라졌습니다.");
+            Assert.IsTrue(AppSettingsModel.HasDialogueFontSize, "v9 파일의 설정이 함께 지워졌습니다.");
+            Assert.AreEqual(20, AppSettingsModel.DialogueFontSize);
+            Assert.AreEqual(1, TodoListModel.ActiveItems.Count, "v9 파일의 할일이 사라졌습니다.");
+        }
+
+        private static int CountOwned(StickConfig config)
+        {
+            int owned = 0;
+            IReadOnlyList<ItemCatalogEntry> entries = ItemCatalog.Entries;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                if (entries[i].IsOwned(config)) owned++;
+            }
+            return owned;
+        }
+
+        /// <summary>
+        /// ★ v10 <b>왕복</b> — 위 테스트가 "없을 때"를 잠그므로 이것이 "있을 때"를 잠근다.
+        /// 둘 중 하나만 있으면 반대쪽이 조용히 죽는다(하위 호환만 있으면 "아무것도 저장 안 하는
+        /// 구현"이 통과하고, 왕복만 있으면 "구버전 파일을 통째로 버리는 구현"이 통과한다).
+        /// </summary>
+        [Test]
+        public void v10_왕복은_동전과_구매이력과_등급해금과_장착한_춤을_보존한다()
+        {
+            CurrencyModel.ResetForTesting();
+            Assert.IsTrue(CurrencyModel.TryPayTodoDailyCoins() > 0, "전제 — 할일 보상이 지급돼야 한다.");
+            Assert.IsTrue(CurrencyModel.TryPurchaseItem("equip.head.crown", CurrencyRules.TodoDailyCoins / 2),
+                "전제 — 구매가 성공해야 한다.");
+            Assert.IsTrue(CurrencyModel.RaiseStatTier(1, CurrencyRules.MaxStatTier), "전제 — 등급이 올라야 한다.");
+            CurrencyModel.SetEquippedDanceIds(new[] { DanceIds.StarJump }, null);
+
+            int expectedBalance = CurrencyModel.CoinBalance;
+            Assert.Greater(expectedBalance, 0, "전제 — 잔액이 0이면 왕복 검증이 공허해진다.");
+
+            Assert.IsTrue(CharacterSaveStore.Save(), "저장에 실패했습니다.");
+
+            CurrencyModel.ResetForTesting();
+            Assert.AreEqual(0, CurrencyModel.CoinBalance, "리셋 전제가 바뀌었습니다.");
+
+            CharacterSaveStore.Load();
+
+            Assert.AreEqual(expectedBalance, CurrencyModel.CoinBalance,
+                "재시작하면 동전이 사라집니다 — 이 앱에서 되돌릴 수 없는 유일한 손실입니다.");
+            Assert.IsTrue(CurrencyModel.IsPurchasedItem("equip.head.crown"),
+                "돈 내고 산 물건이 재시작에서 사라졌습니다.");
+            Assert.AreEqual(CurrencyRules.MaxStatTier, CurrencyModel.StatTierReached(1),
+                "영구 해금이어야 할 등급 high-water mark가 사라졌습니다.");
+            Assert.IsTrue(CurrencyModel.TodoCoinPaidToday,
+                "[오늘 할일] 보상 수령 여부가 사라졌습니다 — 껐다 켜면 하루에 여러 번 받을 수 있습니다.");
+            CollectionAssert.AreEqual(new[] { DanceIds.StarJump }, CurrencyModel.EquippedDanceIds,
+                "사용자가 고른 장착 목록이 재시작을 못 넘겼습니다.");
+        }
+
+        /// <summary>저장 파일이 <b>정확히 v10</b>으로 기록된다. 숫자를 베끼지 않고 상수를 참조한다
+        /// (CLAUDE.md 2026-09-01 확정 — 스키마 버전을 숫자로 적어 4건이 깨진 사고).
+        /// <para>★ 이 단언이 지키는 것은 "숫자가 맞는가"가 아니라 <b>다운그레이드 방어</b>다:
+        /// v10 필드를 v9 번호로 앉히면 구버전 빌드가 <c>data.version &gt; CurrentVersion</c> 검사를
+        /// 못 타고 <c>SaveSuspended</c>가 안 걸려, 60초 뒤 자동 저장이 동전 잔액을 덮어 지운다(§20-5).</para></summary>
+        [Test]
+        public void 게임화_필드는_v10_번호로_기록된다()
+        {
+            CurrencyModel.ResetForTesting();
+            Assert.IsTrue(CharacterSaveStore.Save(), "저장에 실패했습니다.");
+
+            string json = File.ReadAllText(CharacterSaveStore.FilePath);
+            StringAssert.Contains($"\"version\": {CharacterSaveStore.CurrentVersion}", json,
+                "저장 파일의 버전 번호가 CurrentVersion과 다릅니다.");
+            // ★ 숫자를 베끼지 않는다 — 프로덕션이 선언한 "재화가 처음 들어간 버전"을 참조한다.
+            //   (CLAUDE.md 2026-09-01: 스키마 버전을 숫자로 적어 4건이 깨진 사고 이후 확정.)
+            Assert.GreaterOrEqual(CharacterSaveStore.CurrentVersion,
+                CharacterSaveStore.FirstVersionWithGameplayCurrency,
+                "재화 필드가 들어 있는데 스키마 버전이 그보다 낮습니다. 그러면 구버전 빌드가 이 파일을 " +
+                "'자기 버전'으로 읽어 다운그레이드 방어가 통째로 침묵하고, 60초 뒤 자동 저장이 " +
+                "동전 잔액을 덮어 지웁니다(§20-5 · 이 클래스의 '다운그레이드 방어' 문단).");
+            StringAssert.Contains("\"coinBalance\"", json,
+                "v10을 선언했는데 동전 필드가 파일에 없습니다 — 버전만 올라가고 스키마가 안 따라왔습니다.");
         }
     }
 }

@@ -14,6 +14,99 @@ namespace StickMate.Interaction
     /// </summary>
     public sealed partial class CharacterInfoWindow
     {
+        // ====================================================================================
+        // ★ 등급 리본 — 2026-09-03 (사용자 확정 「안 C1」: 카드에 등급을 넣는다)
+        // ====================================================================================
+        //
+        // <b>주 채널은 색이 아니라 「칸 수」다.</b> 이 결정은 취향이 아니라 두 실측에서 나왔다:
+        //   · design-art(<c>design/art/PALETTE_SPEC.md</c> §12-0): 브라스 램프는 인접 쌍 ΔE 15.16~18.48로
+        //     <b>변별</b>은 되지만 <b>식별</b> 하한 48.6을 넘는 쌍이 「일반↔전설」 하나뿐이다.
+        //     <b>카드 한 장만 보고 색으로 등급을 맞히는 것은 정상 시각에서도 안 된다.</b>
+        //   · persona-newcomer: *"등급을 알아보게 만든 건 색이 아니라 칸 수였다. 세면 되니까 확실했다.
+        //     밝기는 아무리 봐도 일반과 희귀가 구분이 안 갔다."*
+        //
+        // 그래서 이 창은 등급을 <b>세 채널</b>로 말한다(PALETTE_SPEC §12-4):
+        //   주 = 칸 수(1/2/3/4)  ·  보조 = 브라스 램프 색(리본 채움 + 카드 테두리)  ·  확정 = 낱말
+        //   ★ <b>낱말은 아직 상세 패널에만 있다.</b> 2026-09-03 라운드에서 낱말을 카드로 내리는
+        //     안(UI_SURFACE_SPEC §15.14-d 「안 G」)이 나왔고 — 근거는 사용자가 물은 것이
+        //     "나란히 놓고 다른가"(변별)가 아니라 <b>"하나만 보고 무엇인지 맞히는가"(식별)</b>이고,
+        //     식별 하한 ΔE 48.6을 넘는 등급 쌍이 여섯 중 하나뿐이라 <b>문자가 유일한 식별 채널</b>이라는
+        //     것이다 — <b>착수했다가 리더 판정으로 되돌렸다</b>. 낱말 자리(썸네일 좌하단 24×12)가
+        //     카드 폭에 매여 있는데 <b>창 1042 안의 3열 골격이 아직 안 정해졌기 때문</b>이다.
+        //     <b>골격이 확정되면 §15.14-d를 다시 적용할 것</b>(그때 배경 넷을 다 재라 — 착용 중
+        //     썸네일 wash <c>#33312D</c> 위에서 「일반」이 4.44:1로 텍스트 하한 미달이고,
+        //     설계 대비표는 그 배경을 빠뜨렸다).
+        //
+        // ★★ <b>2026-09-03 정정 — 여기 「카드 테두리에 등급을 얹지 마라」가 1번으로 적혀 있었다.</b>
+        //   그 문장은 <b>사용자 지시로 폐기됐다</b>: *"리본을 저렇게 표시하면 전설인지 일반인지 잘
+        //   구분이 안갈거 같음 <b>카드 외곽선을 각 레벨별로 분류하는게 어때</b>"*.
+        //   폐기 근거는 취향이 아니라 <b>옛 문장의 전제가 틀렸다는 것</b>이다(UI_SURFACE_SPEC §15.2):
+        //   네 상태 중 <b>「기본」은 의미가 아니라 「아무 상태도 아님」</b>이고, 한 섹션 6장 중 통상
+        //   4~5장이 항상 그 상태다. 등급은 다섯 번째가 아니라 <b>비어 있던 자리를 채운 것</b>이며
+        //   <b>우선순위는 한 글자도 안 바뀌었다</b>(<see cref="ApplyCardStyle"/> 참조).
+        //   그리고 "지금 뭘 쓰고 있는지"는 죽지 않는다 — 착용 파랑을 α0.75로 올려 등급 최대(4.45)보다
+        //   밝게(4.09→ΔE 42.57) 떼어 놓았다. <b>이 문단을 옛 문장으로 되돌리지 마라.</b>
+        //
+        // ★★ <b>그래도 여기서 하지 말아야 할 것 둘</b>(실측으로 기각됐고 아직 유효하다):
+        //   1. <b>카드 바탕면을 등급색으로 물들이지 마라.</b> 글자 대비가 버티는 틴트 상한이 α=0.0754인데
+        //      그 α에서 인접 등급 ΔE가 1.44~1.71이다(변별 하한 7.8의 1/5) — <b>대비를 내주고 신호는
+        //      하나도 못 산다</b>.
+        //   2. <b>아이콘 글로우를 넣지 마라.</b> 슬롯 대비 1.15~1.22:1로 애초에 안 보인다.
+        //
+        // ★ <b>미보유(잠김) 카드에서도 리본을 흐리지 않는다.</b> 인계본은 <c>opacity .25</c>였는데
+        //   실측 대비가 1.45~1.69로 <b>"거기 리본이 있다"조차 안 보였다</b>(UX_HANDOFF_REVIEW_BRASS_ARCHIVE §5-5).
+        //   그리고 잠김은 이미 이름(<c>???</c>) · 바탕 · 썸네일 · 실루엣 · 자물쇠 배지 · 버튼 문구
+        //   <b>여섯 곳</b>이 말한다. 리본은 오직 <b>등급 하나</b>만 말한다 — 한 부품이 두 가지를 말하기
+        //   시작하면 그때부터 둘 다 안 읽힌다. <c>docs/UX_FLOW.md</c> 50-4-2의 9상태 표도 전 상태에서
+        //   리본 칸을 「등급」으로 고정한다.
+
+        /// <summary>등급 리본 한 벌 — <b>트랙 1 + 칸 4 = <c>Image</c> 5개</b>(PALETTE_SPEC §12-3의 원가).
+        /// <para>빈 칸을 <b>지우지 않고</b> 트랙 색으로 남기는 이유: 채워진 칸만 그리면 총 폭이 등급마다
+        /// 달라져 <b>세는 일</b>이 되고, 트랙을 남기면 <b>채움 비율</b>이 되어 한눈에 읽힌다(배터리 눈금).
+        /// 미보유 흐림에서도 형태가 남는 것이 같은 이유다.</para></summary>
+        private sealed class RarityRibbon
+        {
+            /// <summary>트랙 = 리본 전체 폭. 칸 사이 틈으로 이 색이 비친다.</summary>
+            public RectTransform Root;
+
+            /// <summary>칸. 길이는 <see cref="UiChrome.RarityCellCount"/>다 — 4를 적지 않는다.</summary>
+            public Image[] Cells;
+
+            /// <summary>마지막으로 칠한 <b>채움 칸 수</b>. −1 = 아직 안 칠함.
+            /// <para>채움 칸 수는 등급과 <b>일대일</b>이므로(<see cref="UiChrome.RarityFilledCells"/>)
+            /// 이 한 정수로 "다시 칠할 필요가 있는가"를 정확히 가른다. 4Hz 갱신 루프가 카드 24장의
+            /// 칸 5개를 매번 훑지 않게 하는 장치다(상주 앱 규약).</para></summary>
+            public int PaintedFill = -1;
+        }
+
+        /// <summary>카드 <b>상단 여백</b> 안에서 리본 위에 남기는 틈(pt).
+        /// <para>세로 예산 검산 — 카드 상단 여백은 <c>ThumbY</c>가 만드는 <b>8pt</b>이고 그 안에
+        /// 전부 들어간다: 위 <b>2</b> + 리본 <see cref="UiChrome.RarityRibbonHeight"/> <b>4</b> +
+        /// 아래 <b>2</b> = 8. <b>카드는 1pt도 커지지 않았다.</b> 아래쪽 두 빈틈(이름↔버튼 2pt ·
+        /// 하단 4pt)은 못 쓴다 — 그쪽은 이미 다른 것이 쓰는 여백이다(PALETTE_SPEC §12-4).</para>
+        /// <para>★ 이 값이 ×1.25/×1.75에서 반 픽셀에 걸리는 것은 <b>Windows 실기 미확인</b> 항목이다 —
+        /// <see cref="UiChrome.RarityRibbonHeight"/> 문서의 (가)와 같은 건이다.</para>
+        /// <para>★★ <b>2026-09-03 — 여기를 4로 내리는 변경을 착수했다가 되돌렸다.</b> 카드 테두리를 2pt로
+        /// 올리면 테두리(y 0~−2)와 리본(y −2~−6)이 맞닿아 상단에 ΔE 16.40짜리 홈이 생기고, 4로 내리면
+        /// 그 홈이 사라지면서 ×1.25/×1.75 반 픽셀 잔차까지 <b>0</b>이 된다(UI_SURFACE_SPEC §15.6-c).
+        /// 되돌린 이유는 그 계산이 틀려서가 아니라 <b>카드 폭·썸네일 자리가 아직 안 정해졌기 때문</b>이다 —
+        /// 창 1042 안의 3열 골격이 확정되면 이 8pt 예산 자체가 다시 계산된다(리더 판정 2026-09-03).
+        /// <b>골격이 나온 뒤에 §15.6-c를 다시 적용할 것.</b></para></summary>
+        private const float CardRibbonTopMargin = 2f;
+
+        /// <summary>카드마다 한 벌. <see cref="_cards"/>와 <b>같은 인덱스</b>다.
+        /// <para><see cref="ItemCard"/> 안에 넣지 않은 이유는 소유권이다 — 그 타입은
+        /// <c>CharacterInfoWindow.cs</c>가 갖고 있고 이 라운드는 그 파일을 열지 않는다.
+        /// 배열 두 개가 갈라지지 않는다는 것은 <b>같은 루프에서 같은 횟수로 채운다</b>는 사실이
+        /// 보장하고, <see cref="RibbonAt"/>가 길이 불일치를 조용히 넘기지 않는다.</para></summary>
+        private RarityRibbon[] _cardRibbons = System.Array.Empty<RarityRibbon>();
+
+        /// <summary>인덱스가 두 배열에서 같은 자리를 가리키는지까지 확인하고 내준다.
+        /// 어긋나면 <c>null</c>이고, 리본이 안 그려지는 것으로 <b>보인다</b> — 조용히 <b>남의 카드</b>
+        /// 등급을 칠하는 것보다 낫다.</summary>
+        private RarityRibbon RibbonAt(int index)
+            => index >= 0 && index < _cardRibbons.Length && index < _cards.Length ? _cardRibbons[index] : null;
+
         // ==================== 카테고리 섹션 + 카드 ====================
 
         /// <summary>탭이 보여주는 <paramref name="section"/>번째 카테고리. "외형 계열"의 정의는
@@ -122,6 +215,13 @@ namespace StickMate.Interaction
                     if (card.Rect.gameObject.activeSelf != used) card.Rect.gameObject.SetActive(used);
                     if (!used) continue;
                     ApplyCardStyle(card, slot, c, set);
+
+                    // ★ 리본은 <see cref="ApplyCardStyle"/> <b>안</b>이 아니라 여기에 있다.
+                    //   그 함수는 카드의 <b>상태</b>(보유/착용/선택/호버) 표이고, 등급은 상태가 아니라
+                    //   카드가 지금 가리키는 <b>아이템</b>에서만 나온다. 그리고 상태 표는 호버 재도색
+                    //   경로(Input 조각)에서도 불리는데, 그 경로에는 카드 인덱스가 없어 리본을 찾을 수
+                    //   없다 — 슬롯이 탭에서 파생되는 자리는 이 루프 하나뿐이다.
+                    ApplyRarityRibbon(RibbonAt(view.FirstCard + c), ItemCatalog.Rarity(slot, c));
                 }
 
                 // 활성 카드 수가 바뀌면 가로 폭이 달라진다 — 다음 캔버스 갱신까지 기다리면
@@ -154,6 +254,11 @@ namespace StickMate.Interaction
             bool selected = slot == _selectedSlot && itemIndex == _selectedItem;
             bool hovered = _hoveredCard >= 0 && _cards[_hoveredCard] == card;
             Color tint = UiChrome.CategoryTint(slot);
+            // ★ 2026-09-03 — 등급이 이 함수에 들어왔다. 예전 주석("등급은 상태가 아니므로 여기 없다")은
+            //   리본에 대해서는 여전히 맞지만, <b>테두리의 마지막 칸</b>은 상태 3항식 안에 있어서
+            //   상태와 <b>같은 자리에서</b> 결정돼야 한다. 호버 재도색 경로(RestyleCard)도 슬롯과
+            //   아이템 인덱스를 넘겨 주므로 두 경로가 같은 값을 본다 — 갈라질 여지가 없다.
+            ItemRarity rarity = ItemCatalog.Rarity(slot, itemIndex);
 
             // 이름은 상자(70pt)를 넘으면 말줄임한다 — Overflow로 흘리면 오른쪽 메타("착용 중")와
             // 물리적으로 겹친다(P0-5). 내용이 바뀐 순간에만 다시 계산한다(ItemCard.NameSource 문서).
@@ -199,11 +304,19 @@ namespace StickMate.Interaction
                 RestoreIconColors(card, iconSet);
             }
 
-            // 테두리 우선순위: 선택 > hover > 착용 중 > 기본. (스펙 1.4 표의 "선택됨이 최우선")
+            // 테두리 우선순위: 선택 > hover > 착용 중 > (기본을 승계한) 등급.
+            //
+            // ★★ 2026-09-03 사용자 지시 — *"카드 외곽선을 각 레벨별로 분류하는게 어때"*.
+            //   <b>분기 개수도 순서도 그대로다.</b> 바뀐 것은 마지막 한 칸뿐이고, 그 칸은 「기본」이라는
+            //   <b>상태</b>가 아니라 <b>「아무 상태도 아님」</b>이었다(클래스 문서 상단 정정 참조).
+            //   그래서 상태 셋은 지금까지처럼 등급을 덮고, 덮이는 그 순간은 정확히 <b>유저가 그 카드를
+            //   들여다보고 있는 순간</b>이라(호버=포인터가 그 위 / 선택=아래 상세 패널이 설명 중 /
+            //   착용=자기가 입힌 것) 리본과 낱말이 등급을 계속 말한다 — <b>화면이 등급을 잃는 순간은 0</b>.
             card.Outline.color = selected ? UiChrome.TextPrimary
                 : hovered ? UiChrome.CardBorderHover
                 : worn && owned ? UiChrome.CardBorderWorn
-                : UiChrome.CardBorder;
+                : UiChrome.RarityBorder(rarity);
+
 
             if (card.LockBadge != null) card.LockBadge.gameObject.SetActive(!owned);
 
@@ -240,7 +353,7 @@ namespace StickMate.Interaction
         /// 상태는 밝기가 아니라 <b>색상</b>으로 갈린다(<see cref="UiChrome.CardActionSurface"/> /
         /// <see cref="UiChrome.CardActionSurfaceWorn"/>, 각각 4.49 / 4.48 : 1).</para>
         ///
-        /// <para><b>P0-4 가드는 그대로 통과한다</b>(이게 핵심이다): 새 두 면의 휘도는 0.2355 / 0.2349로,
+        /// <para><b>P0-4 가드는 그대로 통과한다</b>(이게 핵심이다): 새 두 면의 휘도는 0.2355 / 0.2351로,
         /// 흰 채움과 카드 바탕의 중간값 0.4584의 <b>절반</b>이다. 접근성 하한을 넘기면서도 카드에서
         /// 가장 밝은 것은 여전히 아이템 쪽이다.</para>
         ///
@@ -282,6 +395,81 @@ namespace StickMate.Interaction
                     !owned ? UiChrome.CardBorder : worn ? UiChrome.AccentBorder : UiChrome.CardBorder,
                     face);
             }
+        }
+
+        /// <summary>
+        /// 리본을 <paramref name="rarity"/>로 칠한다 — 앞에서부터
+        /// <see cref="UiChrome.RarityFilledCells"/>칸은 등급색, 나머지는 <see cref="UiChrome.RarityTrack"/>.
+        ///
+        /// <para><b>이 함수는 색 리터럴을 하나도 모른다.</b> 등급색의 유일한 출처는 <c>UiChrome</c>이고
+        /// (<c>Tests/EditMode/RarityColorSingleSourceTests</c>가 프로덕션 소스를 통째로 훑어 hex 표기와
+        /// 실수 3튜플 <b>양쪽</b>으로 막는다), 칸 수의 유일한 출처도 그쪽이다.</para>
+        ///
+        /// <para>채움 칸 수는 등급과 일대일이라 <see cref="RarityRibbon.PaintedFill"/> 정수 하나로
+        /// 재도색 필요 여부가 정확히 갈린다 — 등급이 그대로면 <see cref="Image"/> 5개를 건드리지 않는다.</para>
+        /// </summary>
+        private static void ApplyRarityRibbon(RarityRibbon ribbon, ItemRarity rarity)
+        {
+            if (ribbon == null || ribbon.Cells == null) return;
+            if (ribbon.Root != null && !ribbon.Root.gameObject.activeSelf)
+            {
+                ribbon.Root.gameObject.SetActive(true);
+            }
+
+            int fill = UiChrome.RarityFilledCells(rarity);
+            if (ribbon.PaintedFill == fill) return;
+            ribbon.PaintedFill = fill;
+
+            Color on = UiChrome.RarityColor(rarity);
+            for (int i = 0; i < ribbon.Cells.Length; i++)
+            {
+                if (ribbon.Cells[i] == null) continue;
+                ribbon.Cells[i].color = i < fill ? on : UiChrome.RarityTrack;
+            }
+        }
+
+        /// <summary>등급이 <b>없는</b> 자리(보관함의 헤더 줄과 「할 줄 아는 것」)에서 리본을 통째로 숨긴다.
+        /// <para>빈 트랙만 남기지 <b>않는다</b> — 그러면 "등급이 없다"가 아니라 <b>"0칸짜리 등급"</b>으로
+        /// 읽힌다. 없는 것은 없게 보여야 한다.</para></summary>
+        private static void HideRarityRibbon(RarityRibbon ribbon)
+        {
+            if (ribbon?.Root == null) return;
+            if (ribbon.Root.gameObject.activeSelf) ribbon.Root.gameObject.SetActive(false);
+            ribbon.PaintedFill = -1;   // 다시 보일 때 반드시 한 번은 칠하게 한다.
+        }
+
+        /// <summary>
+        /// 리본 한 벌을 굽는다 — 트랙 <see cref="Image"/> 1개 + 칸 <see cref="UiChrome.RarityCellCount"/>개.
+        ///
+        /// <para>칸 폭은 <see cref="UiChrome.RarityCellWidth"/>가 <paramref name="width"/>에서 <b>나눠 준다</b>.
+        /// 카드(139pt)와 보관함(46pt)이 각자 나누면, 등급 단이 하나 늘어난 날 한쪽만 어긋난다.</para>
+        ///
+        /// <para>둥근 모서리에 <see cref="UiChrome.RadiusDot"/>을 쓰는 것은 이 창의 <b>게이지 트랙</b>과
+        /// 같은 선택이다(그쪽도 4pt 높이의 얇은 막대다).</para>
+        ///
+        /// <para><b>클릭을 먹지 않는다.</b> 리본은 카드 본체 위에 얹히므로 레이캐스트를 켜 두면
+        /// 카드 상단 8pt가 "눌러도 아무 일 없는 띠"가 된다.</para>
+        /// </summary>
+        private static RarityRibbon BuildRarityRibbon(Transform parent, float x, float y, float width)
+        {
+            Image track = UiChrome.AddSurface(parent, "RarityRibbon", UiChrome.RarityTrack, UiChrome.RadiusDot);
+            UiChrome.PlaceTopLeft(track.rectTransform, x, y, width, UiChrome.RarityRibbonHeight);
+            track.raycastTarget = false;
+
+            int count = UiChrome.RarityCellCount;
+            float cell = UiChrome.RarityCellWidth(width);
+            var cells = new Image[count];
+            for (int i = 0; i < count; i++)
+            {
+                Image piece = UiChrome.AddSurface(track.rectTransform, "Cell" + i,
+                    UiChrome.RarityTrack, UiChrome.RadiusDot);
+                UiChrome.PlaceTopLeft(piece.rectTransform, i * (cell + UiChrome.RarityCellGap), 0f,
+                    cell, UiChrome.RarityRibbonHeight);
+                piece.raycastTarget = false;
+                cells[i] = piece;
+            }
+
+            return new RarityRibbon { Root = track.rectTransform, Cells = cells };
         }
 
         /// <summary>조각별 원래 소재색으로 되돌린다.</summary>
@@ -334,9 +522,23 @@ namespace StickMate.Interaction
             }
             if (_detailMeta != null)
             {
+                // ★ 2026-09-03 — 맨 앞에 <b>등급 낱말</b>이 붙었다(사용자 확정 「안 C1」).
+                //
+                //   <b>낱말이 없으면 등급 표시는 미완이다.</b> 리본의 칸 수는 "몇 번째 단인가"까지만
+                //   말하고 그 단의 <b>이름</b>은 말하지 못한다. 그리고 색은 그 일을 못 한다 —
+                //   식별 하한 ΔE 48.6을 넘는 쌍이 여섯 쌍 중 하나뿐이다(PALETTE_SPEC §12-0).
+                //   persona-newcomer: *"색만은 나한테 안 통한다. 리본을 넣을 거면 낱말을 반드시 같이."*
+                //
+                // ★ <b>카드에는 안 적는다. 여기 한 번뿐이다</b>(PALETTE_SPEC §12-4 / UX_FLOW 50-4-1):
+                //   카드 메타 칸은 41pt이고 <c>LV.20</c> / <c>착용 중</c>이 이미 꽉 쓴다. 반면 이 줄은
+                //   405pt라 네 토막이 여유롭게 들어간다.
+                //
+                // ★ 낱말의 출처는 <see cref="ItemCatalog.RarityName"/> <b>하나</b>다. 여기에
+                //   <c>"전설"</c>을 직접 적으면 로컬라이제이션이 왔을 때 번역이 두 갈래로 갈라진다.
+                string rarity = ItemCatalog.RarityName(ItemCatalog.Rarity(_selectedSlot, _selectedItem));
                 _detailMeta.text = !owned
-                    ? $"{entry.CategoryLabel}  ·  Lv.{entry.RequiredLevel}에 열림"
-                    : $"{entry.CategoryLabel}  ·  {(worn ? "착용 중" : "보유 중")}";
+                    ? $"{rarity}  ·  {entry.CategoryLabel}  ·  Lv.{entry.RequiredLevel}에 열림"
+                    : $"{rarity}  ·  {entry.CategoryLabel}  ·  {(worn ? "착용 중" : "보유 중")}";
             }
             if (_detailBody != null)
             {
@@ -445,6 +647,7 @@ namespace StickMate.Interaction
 
             // 카드 총량은 카탈로그가 정한다 — 빌드 때 한 번만 세고, 그 뒤로는 배열이 고정된다.
             var cards = new System.Collections.Generic.List<ItemCard>(SectionCount * 6);
+            var ribbons = new System.Collections.Generic.List<RarityRibbon>(SectionCount * 6);
 
             for (int s = 0; s < SectionCount; s++)
             {
@@ -486,10 +689,14 @@ namespace StickMate.Interaction
                 view.CardCount = CardsInSection(s);
                 for (int c = 0; c < view.CardCount; c++)
                 {
-                    cards.Add(BuildCard(content, s, c, cards.Count));
+                    // 두 배열은 <b>같은 루프에서 같은 횟수로</b> 채운다 — 인덱스가 갈라질 여지를
+                    // 구조적으로 없앤다(RibbonAt이 그래도 길이를 한 번 더 본다).
+                    cards.Add(BuildCard(content, s, c, cards.Count, out RarityRibbon ribbon));
+                    ribbons.Add(ribbon);
                 }
             }
 
+            _cardRibbons = ribbons.ToArray();
             _cards = cards.ToArray();
             BuildDetailPanel(page);
         }
@@ -565,7 +772,8 @@ namespace StickMate.Interaction
             return content;
         }
 
-        private ItemCard BuildCard(RectTransform content, int sectionIndex, int columnIndex, int cardIndex)
+        private ItemCard BuildCard(RectTransform content, int sectionIndex, int columnIndex, int cardIndex,
+            out RarityRibbon ribbon)
         {
             Image surface = UiChrome.AddSurface(content, "Card" + cardIndex, UiChrome.CardSurface, UiChrome.RadiusCard);
             var rt = surface.rectTransform;
@@ -576,6 +784,14 @@ namespace StickMate.Interaction
             Image thumb = UiChrome.AddSurface(rt, "Thumb", UiChrome.CardSurfaceMuted, UiChrome.RadiusThumb);
             UiChrome.PlaceTopLeft(thumb.rectTransform, ThumbX, ThumbY, ThumbWidth, ThumbHeight);
             thumb.raycastTarget = false;
+
+
+            // ---- 등급 리본 ---- 카드 <b>상단 여백</b>에 앉는다. 인셋과 폭을 숫자로 적지 않고
+            //   썸네일에서 <b>파생</b>시키는 것이 핵심이다: 카드 폭이 바뀌면 리본도 같이 움직여야 한다
+            //   (이 저장소는 폭 1042 확대 때 헤더만 옛 자리에 남아 카드줄과 끝선이 갈라진 사고를 겪었다).
+            //   PALETTE_SPEC §12-4의 권고 조합이 정확히 이것이다 — 인셋 11(= ThumbX) · 틈 2 · 칸 33.25.
+            ribbon = BuildRarityRibbon(rt, ThumbX, -CardRibbonTopMargin, ThumbWidth);
+
 
             var card = new ItemCard
             {
@@ -611,8 +827,10 @@ namespace StickMate.Interaction
             actionButton.targetGraphic = card.ActionSurface;
             // ★ Unity 기본 ColorTint는 pressed에 ×0.7843137을 곱한다. 새 면은 <b>밝아서</b> 그 곱이
             //   어두운 잉크(#0B1016)와의 대비를 무너뜨린다 — 실측:
-            //     착용 #838589 5.19:1 → pressed #67696C <b>3.45:1</b>
-            //     해제 #5087CC 5.18:1 → pressed #3F6AA0 <b>3.44:1</b>
+            //     착용 #838589 5.17:1 → pressed #67686B <b>3.44:1</b>
+            //     해제 #9E814D 5.18:1 → pressed #7C653C <b>3.45:1</b>
+            //   (★ 2026-09-03 강조색이 브라스가 되면서 [해제] 면이 #5087CC -> #9E814D로 따라 움직였다.
+            //    숫자는 그때 다시 쟀고 <b>결론은 그대로</b>다 — 눌린 동안 AA 미달이 된다.)
             //   즉 <b>누르고 있는 동안 글자가 AA 미달</b>이 된다. 상태 색은 StyleActionButton이 값으로
             //   정하므로 uGUI의 자동 틴트는 꺼 둔다([✕]와 같은 처방).
             actionButton.transition = Selectable.Transition.None;

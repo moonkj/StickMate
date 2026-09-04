@@ -308,5 +308,107 @@ namespace StickMate.Interaction
                 return (row.yMin - detail.yMax) / CanvasScale();   // 화면 y는 위가 양수.
             }
         }
+
+        // ==================== 진단/테스트 전용 — 등급 리본 ====================
+        //
+        // ★ 여기서 <b>칸 수를 다시 계산해 주지 않는다</b>. 내주는 것은 «지금 화면의 Image 몇 개가
+        //   트랙 색이 아닌가»라는 <b>관측값</b>이다. 프로덕션 함수로 기대값을 만들면 그 함수가 틀어질 때
+        //   기대값도 함께 틀어져 아무것도 못 잰다(TEAM.md 「생성기와 검사기가 같이 틀린다」).
+
+        /// <summary>카드 등급 리본의 화면 사각형(잘리기 전). 리본이 없으면 넓이 0.</summary>
+        public Rect CardRarityRibbonRawScreenRect(int index) => RawScreenRectOf(RibbonAt(index)?.Root);
+
+        /// <summary>카드 썸네일의 화면 사각형(잘리기 전). 리본이 <b>썸네일을 침범하지 않는가</b>를
+        /// 테스트가 좌표를 손으로 적지 않고 재는 통로다.</summary>
+        public Rect CardThumbRawScreenRect(int index) => RawScreenRectOf(CardAt(index)?.Thumb?.rectTransform);
+
+        /// <summary>지금 그 카드의 리본이 <b>보이는가</b>(카드 자체가 꺼져 있으면 false).</summary>
+        public bool IsCardRarityRibbonVisibleForTests(int index)
+        {
+            RectTransform root = RibbonAt(index)?.Root;
+            return root != null && root.gameObject.activeInHierarchy;
+        }
+
+        /// <summary>그 카드 리본에서 <b>트랙 색이 아닌</b> 칸의 수 = 화면이 실제로 말하고 있는 칸 수.
+        /// 리본이 없으면 −1(관측 전제가 깨진 것과 "0칸"을 구별한다).</summary>
+        public int CardRarityFilledCellsForTests(int index) => CountFilled(RibbonAt(index));
+
+        /// <summary>그 카드 리본의 <b>첫 칸 색</b>. 등급색이 <c>UiChrome</c> 밖에서 새로 만들어졌는지
+        /// 값으로 확인하는 통로다.</summary>
+        public Color CardRarityFillColorForTests(int index)
+        {
+            RarityRibbon ribbon = RibbonAt(index);
+            return ribbon?.Cells != null && ribbon.Cells.Length > 0 && ribbon.Cells[0] != null
+                ? ribbon.Cells[0].color : Color.clear;
+        }
+
+        // ==================== 진단/테스트 전용 — 등급 테두리 ====================
+        //
+        // ★ 여기도 <b>기대값을 만들어 주지 않는다</b>. 내주는 것은 «지금 화면의 그 요소가 실제로 무엇을
+        //   적었고 무슨 색인가»라는 관측값뿐이다.
+
+        /// <summary>카드 <b>바깥</b> 테두리의 현재 색. 「선택 &gt; 호버 &gt; 착용 중 &gt; 등급」 우선순위가
+        /// 화면에 실제로 도달하는지를 재는 통로다.</summary>
+        public Color CardOutlineColorForTests(int index) => CardAt(index)?.Outline?.color ?? Color.clear;
+
+        /// <summary>보관함 그 줄의 테두리 색 — 카드와 <b>같은 규칙</b>으로 칠해지는지 대조하는 통로다.</summary>
+        public Color InventoryRowOutlineColorForTests(int row)
+            => row >= 0 && row < _inventoryViews.Length && _inventoryViews[row]?.Outline != null
+                ? _inventoryViews[row].Outline.color : Color.clear;
+
+        /// <summary>리본 한 벌이 가진 칸의 총수(트랙 제외). 없으면 −1.</summary>
+        public int RarityRibbonCellCountForTests(int index) => RibbonAt(index)?.Cells?.Length ?? -1;
+
+        /// <summary>보관함 <paramref name="row"/>번째 <b>화면 줄</b>의 리본이 보이는가.
+        /// 「할 줄 아는 것」과 헤더 줄에서는 false여야 한다 — 등급이 없는 것에 0칸짜리 등급을 주지 않는다.</summary>
+        public bool IsInventoryRibbonVisibleForTests(int row)
+        {
+            RectTransform root = row >= 0 && row < _inventoryRibbons.Length
+                ? _inventoryRibbons[row]?.Root : null;
+            return root != null && root.gameObject.activeInHierarchy;
+        }
+
+        /// <summary>보관함 그 줄의 리본에서 트랙 색이 아닌 칸의 수. 리본이 없으면 −1.</summary>
+        public int InventoryRibbonFilledCellsForTests(int row)
+            => CountFilled(row >= 0 && row < _inventoryRibbons.Length ? _inventoryRibbons[row] : null);
+
+        /// <summary>보관함 그 줄의 리본 / 설명 상자 / 상태 슬롯의 화면 사각형 — <b>겹치지 않는가</b>를
+        /// 재는 통로다(리본이 설명 칸에서 자리를 떼어 왔으므로 그 거래가 지켜졌는지 봐야 한다).</summary>
+        public Rect InventoryRibbonRawScreenRect(int row)
+            => RawScreenRectOf(row >= 0 && row < _inventoryRibbons.Length ? _inventoryRibbons[row]?.Root : null);
+
+        public Rect InventoryDescriptionRawScreenRect(int row)
+            => RawScreenRectOf(row >= 0 && row < _inventoryViews.Length
+                ? _inventoryViews[row]?.Description?.rectTransform : null);
+
+        public Rect InventoryStatusSlotRawScreenRect(int row)
+            => RawScreenRectOf(row >= 0 && row < _inventoryViews.Length
+                ? _inventoryViews[row]?.StatusSlot?.rectTransform : null);
+
+        /// <summary>보관함 그 줄이 지금 물고 있는 카탈로그 인덱스(헤더면 −1, 줄이 꺼져 있으면 −2).
+        /// 테스트가 「행동 줄」을 좌표가 아니라 <b>데이터</b>로 찾는 통로다.</summary>
+        public int InventoryRowCatalogIndexForTests(int row)
+        {
+            InventoryRowView view = row >= 0 && row < _inventoryViews.Length ? _inventoryViews[row] : null;
+            if (view?.Rect == null || !view.Rect.gameObject.activeInHierarchy) return -2;
+            return view.BoundCatalogIndex;
+        }
+
+        /// <summary>보관함 상세 카드의 제목 줄(<c>이름 · 등급 · 카테고리 · 상태</c>).</summary>
+        public string InventoryDetailNameTextForTests
+            => _inventoryDetailName != null ? _inventoryDetailName.text : null;
+
+        /// <summary>트랙 색이 아닌 칸을 센다. 이 한 곳만 색을 비교한다 — 두 곳에서 세면 갈라진다.</summary>
+        private static int CountFilled(RarityRibbon ribbon)
+        {
+            if (ribbon?.Cells == null) return -1;
+            int n = 0;
+            for (int i = 0; i < ribbon.Cells.Length; i++)
+            {
+                Image cell = ribbon.Cells[i];
+                if (cell != null && cell.color != UiChrome.RarityTrack) n++;
+            }
+            return n;
+        }
     }
 }

@@ -147,7 +147,9 @@ namespace StickMate.Tests.EditMode
                 "머리카락이 삐져나오거나 챙 위가 통째로 잘립니다.");
             Assert.AreEqual(hc + r * AccessoryShapeBuilder.BeanieBandTopRatio,
                 AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadBeanie, rig), 1e-5f,
-                "털모자의 커버선은 접힌 단의 윗변(= 관 밑변)이어야 합니다.");
+                "털모자의 커버선은 접힌 단의 <b>밑변</b>이어야 합니다(= 이 모자 잉크의 최저선). " +
+                "★ 2026-09-03 R12 이식으로 단이 커버선 <b>위</b>에 서면서 이 선이 가리키는 변이 " +
+                "「단의 윗변」에서 「단의 밑변」으로 바뀌었습니다 — 값(−0.06R)과 상수 이름은 그대로입니다.");
             Assert.AreEqual(hc + r * AccessoryShapeBuilder.FedoraBrimLineRatio,
                 AccessoryShapeBuilder.HatCoverLocalY(AccessoryShapeBuilder.HeadFedora, rig), 1e-5f);
 

@@ -463,6 +463,212 @@ namespace StickMate.Tests.EditMode
                 "★ 실기 확인 필요(Windows): docs/TASKBAR_REVEAL.md 6절의 목록.");
         }
 
+        // ============ 앱 전환 표면 제외 (2026-09-03 신설 — 사용자 위임 판정 ③) ============
+
+        /// <summary>
+        /// ★ <b>이 감사에서 두 플랫폼이 처음으로 대칭이 된 항목</b>이다.
+        ///
+        /// <para>이 앱은 원래 앱 전환기에 나타나지 않는 오버레이다 — macOS는 창 부착 시점에
+        /// <c>NSApplicationActivationPolicyAccessory</c>로 내려가 Dock·메뉴바·⌘Tab에서 전부 빠진다.
+        /// <b>Windows만 예외였다.</b> 그 비대칭이 실제로 깨뜨린 것은 미관이 아니라 불변식
+        /// <b>R1-II(정직성)</b>였다: <c>⌃⌥⌘K</c>로 숨겨도 작업표시줄 버튼이 남고, 그 버튼을
+        /// <b>눌러도 아무 일도 일어나지 않았다</b>(포커스를 듣고 <c>_userHidden</c>을 푸는 코드가
+        /// 저장소에 0건이다). 2026-09-03 사용자 위임 판정 ③ "(가) 완전히 뺀다".</para>
+        ///
+        /// <para>여기서 묻는 것은 <b>구조</b>다 — 규칙이 중립 위치에 있고, 두 플랫폼이 <b>같은
+        /// 자리</b>(창 부착 감지)에서 각자의 API를 부르는가. 규칙 자체의 산술과 실행부의 경계는
+        /// <c>AppSwitcherPresenceTests</c>가 따로 잠근다(그쪽이 순수 함수를 실제로 <b>실행</b>한다 —
+        /// <c>Platform/Windows/</c>는 이 머신의 활성 타깃에서 컴파일되지 않으므로 여기서는 못 한다).</para>
+        /// </summary>
+        [Test]
+        public void 앱전환기_제외가_양_플랫폼에_대칭으로_배선되어_있다()
+        {
+            // ---- (1) 규칙은 중립 위치에 ----
+            string policy = Path.Combine(PlatformRoot, "AppSwitcherPresencePolicy.cs");
+            Assert.IsTrue(File.Exists(policy),
+                "AppSwitcherPresencePolicy가 Platform/ 중립 위치에 없습니다 — 규칙이 플랫폼 폴더로 " +
+                "들어가면 반대편이 물리적으로 호출할 수 없고, Windows가 없는 이 머신에서는 규칙을 " +
+                "실행해 검증할 방법 자체가 사라집니다(FullscreenSuspendPolicy 사고).");
+
+            string policySrc = StripLineComments(ReadSource(policy));
+            StringAssert.DoesNotContain("UNITY_STANDALONE_", policySrc,
+                "규칙에 플랫폼 분기가 들어왔습니다.");
+            StringAssert.DoesNotContain("DllImport", policySrc, "규칙이 OS를 직접 부릅니다.");
+
+            // ---- (2) 양 플랫폼 실행부가 존재하는가 ----
+            string winControl = Path.Combine(PlatformRoot, "Windows", "WindowsToolWindowStyleControl.cs");
+            Assert.IsTrue(File.Exists(winControl),
+                "Windows 실행부가 없습니다 — 작업표시줄/Alt+Tab에 우리 창이 그대로 남습니다.");
+            string macNative = Path.Combine(PlatformRoot, "MacOS", "MacSpaceBehaviorNative.cs");
+            Assert.IsTrue(File.Exists(macNative), "macOS 실행부가 없습니다.");
+
+            // ---- (3) 기전 이름은 **중립 정책의 상수**에서 뽑는다(문자열을 베끼지 않는다) ----
+            StringAssert.Contains(AppSwitcherPresencePolicy.MacOsMechanismName,
+                StripLineComments(ReadSource(macNative)),
+                "macOS 기전이 사라졌습니다 — 중립 정책이 적어 둔 대응물이 실재하지 않습니다.");
+            StringAssert.Contains("AppSwitcherPresencePolicy.", StripLineComments(ReadSource(winControl)),
+                "Windows 실행부가 중립 규칙을 부르지 않습니다 — 판정이 플랫폼 코드로 새어 들어갔습니다.");
+
+            // ---- (4) 두 Enforcer가 **같은 자리**(부착 감지)에서 부르는가 ----
+            //     "구현은 있는데 아무도 안 부른다"가 이 저장소가 반복해 겪은 조용한 실패다.
+            string mac = StripLineComments(ReadSource(MacEnforcerPath));
+            string win = StripLineComments(ReadSource(WinEnforcerPath));
+
+            const string attach = "ApplyTransparentSafeCameraBackground();";
+            foreach ((string label, string src, string call) in new[]
+            {
+                ("macOS", mac, "ApplyAccessoryActivationPolicyOnce();"),
+                ("Windows", win, "_toolWindowStyle.ApplyOnce();"),
+            })
+            {
+                int at = src.IndexOf(attach, StringComparison.Ordinal);
+                int callAt = src.IndexOf(call, StringComparison.Ordinal);
+                Assert.Greater(at, -1, $"{label} Enforcer의 창 부착 감지 블록을 찾지 못했습니다.");
+                Assert.Greater(callAt, at,
+                    $"{label} Enforcer가 창 부착 감지 시점에 앱 전환기 제외를 부르지 않습니다 " +
+                    $"(찾는 호출: {call}). 한쪽만 빠지면 그 플랫폼에서만 우리 창이 전환기에 남고, " +
+                    "그 비대칭은 컴파일로도 실측으로도 드러나지 않습니다.");
+            }
+        }
+
+        /// <summary>
+        /// ★ <b>상시 표시 영역(트레이 / 메뉴바 상태 아이템) — macOS가 뒤처져 있다</b>(2026-09-03 신설).
+        ///
+        /// <para>사용자 확정 지시 <i>"실행시 시스템 트레이에 표시되어야함"</i>. 같은 날 Windows는
+        /// <c>Shell_NotifyIcon</c>으로 착지했다(<c>Platform/Windows/WindowsSystemTrayIcon.cs</c>).
+        /// <b>macOS는 이 라운드에서 구현하지 않았다</b> — 사유는
+        /// <see cref="SystemTrayPresencePolicy.MacOsGapReason"/>에 실행 가능한 형태로 있다
+        /// (요약: <c>NSStatusItem</c>은 AppKit Objective-C API라 자체 네이티브 플러그인이 필요한데,
+        /// 이 프로젝트는 자체 Obj-C 플러그인이 반복 실패해 전부 제거한 이력이 있고,
+        /// <b>2026-09-03 실측으로</b> 검증된 대안인 UniWindowController 패키지에
+        /// <c>NSStatusItem</c>/<c>NSMenu</c> 관련 코드가 <b>0건</b>임을 확인해 기각 사유가
+        /// 아직 살아 있음을 확인했다).</para>
+        ///
+        /// <para><b>왜 이 갭이 특히 아픈가</b>: 같은 날 <c>WS_EX_TOOLWINDOW</c>와
+        /// <c>ITaskbarList::DeleteTab</c>이 Windows에서 앱 전환 표면을 닫았고, macOS는 그보다 먼저
+        /// <c>NSApplicationActivationPolicyAccessory</c>로 Dock·메뉴바·⌘Tab에서 빠져 있었다.
+        /// 즉 <b>두 플랫폼 모두 OS 레벨 존재 증거가 0</b>인데, 그 빚을 갚는 물건이 지금
+        /// <b>Windows에만</b> 생겼다. macOS 사용자에게는 여전히 종료 경로가 3중(전역 단축키 ·
+        /// 톱니 부채꼴 · 설정창)뿐이고, 그 셋 다 창을 한 번도 열어 본 적 없는 사용자에게는
+        /// 발견 불가능하다 — 사용자가 오늘 두 번 <i>"종료버튼 어딨어"</i>라고 물은 그 문제다.</para>
+        ///
+        /// <para><b>고칠 코드가 있으므로 <c>미해결_</c>이다</b>(<c>결정_</c>이 아니다). 이 항목은
+        /// 러너에 <b>건너뜀</b>으로 계속 떠서, 검증된 상태 아이템 수단이 생기는 날 누군가 다시
+        /// 보게 만든다.</para>
+        /// </summary>
+        [Test]
+        public void 미해결_상시표시영역_아이콘이_macOS에는_없다()
+        {
+            // ---- 먼저 Windows 쪽이 실제로 있는지 확인한다. 없으면 이 항목의 전제가 무너진다. ----
+            string winTray = Path.Combine(PlatformRoot, "Windows", "WindowsSystemTrayIcon.cs");
+            Assert.IsTrue(File.Exists(winTray),
+                "Windows 트레이 구현이 사라졌습니다 — 그렇다면 이 항목은 '한쪽만 있다'가 아니라 " +
+                "'양쪽 다 없다'이고, 이 앱에는 OS 레벨 존재 증거가 하나도 남지 않습니다.");
+
+            string policy = Path.Combine(PlatformRoot, "SystemTrayPresencePolicy.cs");
+            Assert.IsTrue(File.Exists(policy),
+                "규칙이 Platform/ 중립 위치에 없습니다 — 정책이 플랫폼 폴더로 들어가면 반대편이 " +
+                "물리적으로 호출할 수 없습니다(FullscreenSuspendPolicy 사고).");
+
+            // ---- macOS 실행부가 정말 없는가(있는데 이 항목만 낡은 상태를 막는다) ----
+            string macRoot = Path.Combine(PlatformRoot, "MacOS");
+            bool macHasStatusItem = false;
+            if (Directory.Exists(macRoot))
+            {
+                foreach (string f in Directory.GetFiles(macRoot, "*.cs", SearchOption.AllDirectories))
+                {
+                    if (!StripLineComments(ReadSource(f))
+                            .Contains(SystemTrayPresencePolicy.MacOsMechanismName)) continue;
+                    macHasStatusItem = true;
+                    break;
+                }
+            }
+
+            Assert.IsFalse(macHasStatusItem,
+                $"macOS 쪽에 {SystemTrayPresencePolicy.MacOsMechanismName} 구현이 생긴 것 같습니다 — " +
+                "그렇다면 이 갭은 닫혔습니다. 이름에서 '미해결_' 접두사와 아래 건너뜀을 걷고 " +
+                "정식 대칭 검사로 승격하세요(대장 검사가 이 둘의 불일치를 잡습니다).");
+
+            Assert.Ignore(
+                "2026-09-03 — macOS 상태 아이템 미구현(별도 배정 필요). " +
+                SystemTrayPresencePolicy.MacOsGapReason +
+                " Windows 쪽(" + SystemTrayPresencePolicy.WindowsMechanismName + ")은 같은 날 착지했고 " +
+                "SystemTrayPresenceTests가 별도로 잠근다. 이 항목은 검증된 상태 아이템 수단이 " +
+                "생기는 날 승격한다.");
+        }
+
+        /// <summary>
+        /// ★ <b>2026-09-03 — 이 항목은 닫혔다. <c>미해결_</c> 접두사와 <c>Ignore</c>를 걷고 정식
+        /// 검사로 승격한다.</b>
+        ///
+        /// <para>같은 날 오전까지 이 자리는 갭이었다: <c>WS_EX_TOOLWINDOW</c>는 <b>Alt+Tab</b>만
+        /// 닫고, 셸이 <b>창을 보일 때</b> 만들어 둔 <b>작업표시줄 버튼</b>은 그대로 남았다
+        /// (Microsoft 문서의 처방은 <c>SW_HIDE</c> → 스타일 → 다시 보이기). 리더가 세 선택지 중
+        /// <b>(b) <c>ITaskbarList::DeleteTab</c></b>을 택했고 구현이 착지했다
+        /// (<c>Platform/Windows/WindowsTaskbarButtonRemover.cs</c>).</para>
+        ///
+        /// <para><b>(a) <c>ShowWindow</c> 왕복이 기각된 이유가 이 항목의 내용이다</b> — 그것은 우리
+        /// 창의 <b>표시 상태</b>를 바꾸고, 그 순간 <c>WindowsOverlayStateEnforcer</c>와
+        /// <c>WindowsTopmostWatchdog</c>이 topmost·layered·클릭 관통을 재적용하려 다툰다. 이
+        /// 저장소에는 <b>같은 종류의 충돌로 영구 비활성된 해소기가 이미 있다.</b> 그래서 이 검사는
+        /// "COM이 있는가"가 아니라 <b>"창 상태를 건드리는 것이 도로 들어오지 않았는가"</b>를 함께 본다.</para>
+        ///
+        /// <para><b>실기 미확인</b>: 이 머신에 Windows가 없다. 구조가 옳다는 것만 잠근다 —
+        /// 실제로 버튼이 사라지는지는 사용자 Windows 머신에서 <c>[작업표시줄버튼]</c> 로그와
+        /// 함께 확인해야 한다.</para>
+        /// </summary>
+        [Test]
+        public void 작업표시줄_버튼_제거는_창_상태를_건드리지_않는_경로로만_한다()
+        {
+            string remover = Path.Combine(PlatformRoot, "Windows", "WindowsTaskbarButtonRemover.cs");
+            Assert.IsTrue(File.Exists(remover),
+                "작업표시줄 버튼 제거 구현이 사라졌습니다 — WS_EX_TOOLWINDOW만으로는 이미 만들어진 " +
+                "버튼이 지워지지 않으므로, 이 파일이 없으면 ⌃⌥⌘K로 숨겨도 버튼이 화면공유에 " +
+                "그대로 찍힙니다(불변식 R1-II).");
+
+            string code = StripLineComments(ReadSource(remover));
+
+            // (1) 택한 경로가 맞는가.
+            StringAssert.Contains("ITaskbarList", code,
+                "COM 경로가 사라졌습니다.");
+            StringAssert.Contains("DeleteTab(", code, "DeleteTab 호출이 없습니다.");
+
+            // (2) ★ 기각된 경로가 도로 들어오지 않았는가 — 이 항목의 본체.
+            foreach (string forbidden in new[] { "ShowWindow(", "SW_HIDE", "SetWindowPos(" })
+            {
+                StringAssert.DoesNotContain(forbidden, code,
+                    $"기각된 (a) 경로의 흔적('{forbidden}')이 들어왔습니다. 우리 창의 표시 상태를 " +
+                    "바꾸는 순간 WindowsOverlayStateEnforcer / WindowsTopmostWatchdog의 재적용과 " +
+                    "다투게 되고, 이 저장소는 같은 종류의 충돌로 해소기 하나를 이미 영구 " +
+                    "비활성시켰습니다. (b)를 택한 유일한 이유가 '창 상태를 한 비트도 안 건드린다'입니다.");
+            }
+
+            // (3) 실패는 조용히 / 되돌릴 문(리더 지시 1·2).
+            StringAssert.Contains("catch (Exception", code,
+                "예외를 삼키지 않습니다 — COM이 없는 런타임에서 부팅이 깨집니다. 버튼이 남는 것은 " +
+                "불편이지 고장이 아닙니다.");
+            StringAssert.Contains("Application.quitting", code,
+                "종료 시 COM 해제 훅이 없습니다.");
+
+            // (4) 상한 판정은 중립 위치에 — 24시간 상주 앱에서 COM 호출이 영원히 반복되면 안 된다.
+            StringAssert.Contains(nameof(AppSwitcherPresencePolicy.ShouldAttemptTaskbarButtonRemoval), code,
+                "재시도 상한 판정이 플랫폼 코드 안에 있습니다 — 이 머신은 그 폴더를 컴파일조차 " +
+                "하지 않으므로 상한 규칙을 실행해 검증할 수 없게 됩니다.");
+
+            // (5) 실행부가 실제로 배선돼 있는가.
+            StringAssert.Contains("WindowsTaskbarButtonRemover.Tick(",
+                StripLineComments(ReadSource(WinEnforcerPath)),
+                "실행부가 호출되지 않습니다 — 파일만 있고 한 번도 실행되지 않는 상태입니다.");
+
+            // (6) ★ Alt+Tab 쪽 사실은 바뀌지 않았다. 두 기전을 뭉치면 "스타일만 얹으면 버튼이
+            //     사라진다"는 틀린 지식이 코드에 굳는다.
+            Assert.IsFalse(
+                AppSwitcherPresencePolicy.TakesEffectOnAlreadyShownWindow(AppSwitcherSurface.TaskbarButton),
+                "스타일 변경이 작업표시줄에 즉시 듣는다고 바뀌었습니다 — 버튼을 지운 것은 스타일이 " +
+                "아니라 COM 호출입니다. 이 둘을 뭉치면 다음 사람이 COM 경로를 '중복'이라며 지웁니다.");
+        }
+
+
         // ====================================================================
         // 모바일(iPad/iPhone) — 이 감사에 항목이 **0건**이었다 (2026-09-02 신설)
         // ====================================================================
@@ -574,11 +780,19 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// ★ 2026-09-02 (dev-platform) — <b>오디오 온디맨드</b>의 판정/계약이 중립 위치에 있고,
-        /// 계약에 <b>캡처(입력) 동사가 하나도 없는가</b>.
+        /// ★ 2026-09-03 (dev-platform) — <b>개작</b>. 원래 이 자리에는 「오디오 <b>출력</b> 온디맨드」
+        /// (<c>AudioActivationPolicy</c> / <c>IAudioOutputDevice</c>) 검사가 있었다. 사용자 확정
+        /// <i>"소리시스템을 전체빼줘"</i>로 그 세 파일이 삭제되면서 <b>검사 대상만</b> 바뀌었다.
         ///
-        /// <para>왜 이 두 가지를 한 테스트에서 묻는가: 오디오는 <b>양 플랫폼이 다른 API로 같은 규칙</b>을
-        /// 수행하는 전형적인 자리다(macOS AudioToolbox / Windows <c>winmm</c>). 규칙이 한쪽
+        /// <para>★★ <b>이 감사를 통째로 지우지 않은 것이 이 개작의 핵심이다.</b> 캡처 금지 니들 7종과
+        /// 양성 대조 2종·빈 루프 잠금은 <b>한 글자도 바뀌지 않았다</b>. 오디오를 «내지» 않게 된 대신
+        /// 오디오를 «듣는» 기능이 들어왔고, 그래서 이 감사는 <b>지금 더 필요해졌다</b>:
+        /// 이번 라운드가 권고받은 구현 경로(WASAPI 루프백 캡처)가 정확히 이 니들에 걸리는 것이었고,
+        /// 채택안은 그것을 피해 <b>상태/미터 조회</b>로 갔다. 감사를 지우면 «이번에 캡처를 안 썼다»는
+        /// 사실이 다음 라운드에 아무 힘이 없다.</para>
+        ///
+        /// <para>이 테스트가 한 번에 세 가지를 묻는 이유: 오디오는 <b>양 플랫폼이 다른 API로 같은 규칙</b>을
+        /// 수행하는 전형적인 자리다(macOS CoreAudio 불리언 / Windows WASAPI 피크 미터). 규칙이 한쪽
         /// 플랫폼 폴더로 들어가면 반대쪽은 그것을 물리적으로 못 부르고 규칙을 다시 쓴다 —
         /// <c>FullscreenSuspendPolicy</c> 사고 그대로다. 그리고 오디오에는 그 사고에 없던 축이
         /// 하나 더 있다: <b>입력 API를 하나라도 들이면 앱의 백신 프로필이 「도청」으로 바뀌고</b>,
@@ -586,15 +800,15 @@ namespace StickMate.Tests.EditMode
         /// 단계에서 잠근다(<c>docs/security/ENTITLEMENT_CONTRACT.md</c> S-3).</para>
         /// </summary>
         [Test]
-        public void 오디오_온디맨드는_판정이_중립이고_계약에_캡처가_없다()
+        public void 시스템_오디오_감지는_판정이_중립이고_계약에_캡처가_없다()
         {
             // ---- (1) 판정과 계약이 중립 위치에 ----
-            string policy = Path.Combine(PlatformRoot, "AudioActivationPolicy.cs");
-            string contract = Path.Combine(PlatformRoot, "IAudioOutputDevice.cs");
+            string policy = Path.Combine(PlatformRoot, "AudioReactiveDancePolicy.cs");
+            string contract = Path.Combine(PlatformRoot, "ISystemAudioActivityProbe.cs");
             foreach (string required in new[] { policy, contract })
             {
                 Assert.IsTrue(File.Exists(required),
-                    $"{Path.GetFileName(required)}가 Platform/ 중립 위치에 없습니다 — 개폐 규칙이 " +
+                    $"{Path.GetFileName(required)}가 Platform/ 중립 위치에 없습니다 — 히스테리시스 규칙이 " +
                     "플랫폼 폴더로 들어가면 반대쪽 플랫폼은 그것을 재사용할 수 없고, Windows가 없는 " +
                     "이 개발 머신의 EditMode는 그 규칙을 한 번도 검증하지 못합니다.");
             }
@@ -603,28 +817,65 @@ namespace StickMate.Tests.EditMode
 
             // ★ 스캐너 생존 확인(양성 대조). 이걸 먼저 통과하지 못하면 아래 "없다" 판정은 전부 무의미하다 —
             //   이 저장소는 "0건 = 깨끗"을 잘못 읽은 사고를 이미 겪었다.
-            StringAssert.Contains(nameof(AudioActivationPolicy.Evaluate), policySrc,
+            StringAssert.Contains(nameof(AudioReactiveDancePolicy.Evaluate), policySrc,
                 "양성 대조 실패 — 주석 제거 뒤 소스에서 알려진 코드 토큰조차 못 찾았습니다. " +
                 "이 스캐너는 지금 눈이 멀어 있고, 아래의 모든 '없음' 판정은 무효입니다.");
 
             StringAssert.DoesNotContain("UNITY_STANDALONE_", policySrc,
-                "개폐 규칙에 플랫폼 분기가 들어왔습니다 — 이 파일은 순수 함수여야 합니다.");
+                "히스테리시스 규칙에 플랫폼 분기가 들어왔습니다 — 이 파일은 순수 함수여야 합니다.");
             StringAssert.DoesNotContain("DllImport", policySrc,
-                "개폐 규칙이 OS를 직접 부릅니다 — 사실 조회는 IAudioOutputDevice 구현체의 몫입니다.");
+                "히스테리시스 규칙이 OS를 직접 부릅니다 — 사실 조회는 ISystemAudioActivityProbe 구현체의 몫입니다.");
             StringAssert.DoesNotContain("UnityEngine", policySrc,
-                "개폐 규칙이 Unity API에 붙었습니다 — 24시간 시나리오를 초 단위로 접어 검증할 수 없게 됩니다.");
+                "히스테리시스 규칙이 Unity API에 붙었습니다 — T₄(20분) 시나리오를 밀리초로 접어 검증할 수 없게 됩니다.");
 
-            // ---- (2) 상한은 플랫폼이 소유한다 ----
-            //     숫자를 베끼지 않는다(CLAUDE.md). 상수를 직접 참조해 관계만 검증한다.
-            Assert.Greater(AudioActivationPolicy.MaxLingerSeconds, 0f,
-                "잔류 상한이 0 이하입니다 — 그러면 열자마자 닫혀 온디맨드가 성립하지 않습니다.");
-            Assert.LessOrEqual(AudioActivationPolicy.DefaultLingerSeconds, AudioActivationPolicy.MaxLingerSeconds,
-                "기본 잔류가 상한을 넘습니다 — design-sound가 고를 수 있는 구간이 비어 있습니다.");
-            Assert.AreEqual(AudioActivationPolicy.MaxLingerSeconds,
-                AudioActivationPolicy.ClampLinger(AudioActivationPolicy.MaxLingerSeconds * 1000f),
-                "상한을 넘는 요청이 잘리지 않습니다 — design-sound가 상한을 넘겨 설정할 수 있게 됩니다.");
+            // ---- (2) ★ 중립 계약은 「불리언」이다 (되돌릴 수 없는 결정 I-13) ----
+            //     니들이 아니라 **리플렉션**으로 묻는다. 이름이 바뀌면 조용히 초록이 되는 대신
+            //     이 테스트가 **컴파일되지 않는다** — 부재 단언이 썩는 것을 구조적으로 막는 형태다.
+            MethodInfo read = typeof(ISystemAudioActivityProbe)
+                .GetMethod(nameof(ISystemAudioActivityProbe.TryReadIsAudioPlaying));
+            Assert.IsNotNull(read, "계약에서 사실 조회 메서드를 찾지 못했습니다.");
+            Assert.AreEqual(typeof(bool), read.ReturnType,
+                "조회 성공 여부가 bool이 아닙니다 — '모른다'와 '안 난다'를 구분할 수 없게 됩니다.");
 
-            // ---- (3) ★ 캡처(입력) 동사가 Platform/ 어디에도 없는가 ----
+            ParameterInfo[] readParams = read.GetParameters();
+            Assert.AreEqual(1, readParams.Length, "사실 조회 메서드의 인자 수가 바뀌었습니다.");
+            Assert.IsTrue(readParams[0].IsOut && readParams[0].ParameterType == typeof(bool).MakeByRefType(),
+                "★ 재생 여부가 out bool이 아닙니다(지금: " + readParams[0].ParameterType + "). " +
+                "레벨(float)을 중립 계약에 넣으면 macOS 구현체가 값을 **지어내야** 합니다 — " +
+                "macOS는 kAudioDevicePropertyDeviceIsRunningSomewhere로 불리언만 주고 레벨을 " +
+                "공개 API로 주지 않기 때문입니다. 그 순간 T₁~T₄ 게이트가 무엇을 재는지 말할 수 " +
+                "없게 됩니다(되돌릴 수 없는 결정 I-13, docs/GAME_ARCHITECTURE_REVIEW.md §11-3).");
+
+            foreach (MethodInfo m in typeof(ISystemAudioActivityProbe).GetMethods())
+            {
+                Assert.AreNotEqual(typeof(float), m.ReturnType,
+                    $"계약의 {m.Name}가 레벨(float)을 돌려줍니다 — 위 I-13 문단 그대로입니다.");
+                foreach (ParameterInfo p in m.GetParameters())
+                {
+                    Assert.IsFalse(p.ParameterType == typeof(float) || p.ParameterType == typeof(float).MakeByRefType(),
+                        $"계약의 {m.Name}가 레벨(float)을 주고받습니다 — 위 I-13 문단 그대로입니다.");
+                }
+            }
+
+            // ---- (3) 임계값은 플랫폼 중립 정책이 소유하고, 실측 앵커에서 유도된다 ----
+            //     숫자를 베끼지 않는다(CLAUDE.md). 상수를 직접 참조해 **관계만** 검증한다.
+            //     앵커도 상수다 — design-systems가 §19-2에서 이 관계로 값을 유도했다.
+            Assert.Greater(AudioReactiveDancePolicy.StartDelaySeconds,
+                AudioReactiveDancePolicy.MeasuredNotificationOnSeconds,
+                "T₁(개시 지연)이 실측 알림음 1회의 ON 지속보다 짧습니다 — 알림음마다 캐릭터가 씰룩거립니다.");
+            Assert.Greater(AudioReactiveDancePolicy.ReleaseDelaySeconds,
+                AudioReactiveDancePolicy.MeasuredTrackGapSeconds,
+                "T₂(해제 지연)가 실측 곡 사이 공백보다 짧습니다 — 곡이 바뀔 때마다 춤이 끊깁니다.");
+            Assert.AreEqual(AudioReactiveDancePolicy.MotionEpisodeMinSeconds,
+                AudioReactiveDancePolicy.MinimumHoldSeconds,
+                "T₃(최소 유지)가 design-motion의 최소 에피소드 길이에서 떨어져 나갔습니다 — " +
+                "둘 중 하나만 바꾸면 게이트가 에피소드를 중간에 자르거나 억지로 늘립니다.");
+            Assert.Greater(AudioReactiveDancePolicy.StuckSignalCeilingSeconds,
+                AudioReactiveDancePolicy.MinimumHoldSeconds,
+                "T₄(상한 이탈)가 T₃(최소 유지)보다 작습니다 — 시작하자마자 고착으로 잠깁니다.");
+
+            // ---- (4) ★ 캡처(입력) 동사가 Platform/ 어디에도 없는가 ----
+            //     ★★ 이 배열은 2026-09-02 원본 그대로다. 한 항목도 지우지 않았다.
             string[] captureNeedles =
             {
                 "waveIn", "AudioQueueNewInput", "IAudioCaptureClient",
@@ -662,6 +913,19 @@ namespace StickMate.Tests.EditMode
                 $"Platform/ 아래에서 .cs를 {scanned}개밖에 못 읽었습니다 — 경로가 틀렸을 수 있고, " +
                 "그렇다면 '캡처 API 0건'은 아무것도 확인하지 않은 결과입니다.");
 
+            // ★ 이번 라운드가 새로 넣은 두 네이티브 파일이 **실제로 이 스캔에 들어왔는지** 확인한다.
+            //   "0건 = 깨끗"이 "그 파일을 아예 안 봤다"로도 성립하지 않게 못박는다.
+            foreach (string mustScan in new[]
+                     {
+                         Path.Combine(PlatformRoot, "MacOS", "MacSystemAudioActivityProbe.cs"),
+                         Path.Combine(PlatformRoot, "Windows", "WindowsSystemAudioActivityProbe.cs"),
+                     })
+            {
+                Assert.IsTrue(File.Exists(mustScan),
+                    $"{Path.GetFileName(mustScan)}가 없습니다 — 위 캡처 스캔이 이 라운드가 실제로 추가한 " +
+                    "네이티브 조회 코드를 한 줄도 보지 않았다는 뜻입니다.");
+            }
+
             CollectionAssert.IsEmpty(offenders,
                 "★ 오디오 **입력(캡처)** API가 Platform/에 들어왔습니다:\n  " +
                 string.Join("\n  ", offenders) + "\n\n" +
@@ -669,68 +933,67 @@ namespace StickMate.Tests.EditMode
                 "폴링 조합이라 백신 휴리스틱상 애드웨어/키로거 모양이고(ENTITLEMENT_CONTRACT S-3), " +
                 "사용자 실기 환경은 AhnLab V3입니다. 여기에 캡처가 더해지면 프로필이 '도청'이 됩니다. " +
                 "(b) macOS에서는 입력 장치를 여는 순간 첫 실행에 마이크 동의 창이 뜹니다 — " +
-                "바탕화면 캐릭터가 마이크를 요구하는 것은 되돌릴 수 없는 신뢰 사고입니다.");
+                "바탕화면 캐릭터가 마이크를 요구하는 것은 되돌릴 수 없는 신뢰 사고입니다.\n" +
+                "★ 그리고 이 기능은 캡처 없이 성립한다는 것이 이미 실측으로 확인됐습니다 " +
+                "(macOS: kAudioDevicePropertyDeviceIsRunningSomewhere / " +
+                "Windows: IMMDevice::Activate(IAudioMeterInformation)::GetPeakValue). " +
+                "포기할 것이 없으므로 이건 트레이드오프조차 아닙니다.");
         }
 
         /// <summary>
-        /// ★ 네이티브 개폐 구현이 <b>아직 양 플랫폼 모두 없다</b>. 잊히지 않게 러너에 띄운다.
+        /// ★ 시스템 오디오 감지 네이티브가 <b>양 플랫폼에 대칭으로</b> 있는가 — 그리고 <b>아직 확인
+        /// 못 한 것</b>을 러너에 계속 띄운다.
         ///
         /// <para>한쪽만 생기면 이 테스트는 <b>건너뜀이 아니라 실패</b>한다 — 그것이 이 저장소가
         /// 반복해 겪은 비대칭이다(macOS만 고치고 Windows를 놓친 사고 3건).</para>
         /// </summary>
         [Test]
-        public void 미해결_오디오_네이티브_개폐가_양_플랫폼_모두_미구현이다()
+        public void 미해결_시스템_오디오_감지는_Windows_실기와_푸시_배선이_미확인이다()
         {
-            bool mac = AnyFileImplements(Path.Combine(PlatformRoot, "MacOS"), nameof(IAudioOutputDevice));
-            bool win = AnyFileImplements(Path.Combine(PlatformRoot, "Windows"), nameof(IAudioOutputDevice));
-
-            if (mac && win)
-            {
-                Assert.Pass("양 플랫폼 구현이 생겼습니다 — 이 항목을 정식 검사로 승격하고, " +
-                    "① 종료/일시정지 훅에서 반드시 닫는지 ② 열기 성공을 되읽어 확인하는지 " +
-                    "③ 셸 정숙 구간 진입 시 즉시 닫는지를 각각 검사로 옮기세요.");
-            }
+            bool mac = AnyFileImplements(Path.Combine(PlatformRoot, "MacOS"), nameof(ISystemAudioActivityProbe));
+            bool win = AnyFileImplements(Path.Combine(PlatformRoot, "Windows"), nameof(ISystemAudioActivityProbe));
 
             Assert.IsFalse(mac ^ win,
-                "★ 오디오 네이티브 개폐가 **한쪽 플랫폼에만** 구현됐습니다 " +
+                "★ 시스템 오디오 감지가 **한쪽 플랫폼에만** 구현됐습니다 " +
                 $"(macOS={mac}, Windows={win}). 이것이 이 저장소가 세 번 반복한 실패 모드입니다. " +
                 "반대쪽은 이 개발 머신에서 컴파일조차 되지 않으므로 갭이 조용히 살아남습니다.");
 
-            Assert.Ignore("【미해결 · 계약과 판정은 착지, 네이티브 구현 미착수】 신설 2026-09-02 (dev-platform)\n" +
+            Assert.IsTrue(mac && win,
+                "양 플랫폼 구현이 2026-09-03에 함께 착지했는데 지금은 둘 다 없습니다 " +
+                $"(macOS={mac}, Windows={win}) — 되돌려졌다면 이 감사도 함께 고치십시오.");
+
+            Assert.Ignore("【부분 착지 · 실기 미확인 3건】 개작 2026-09-03 (dev-platform)\n" +
                 "\n" +
-                "착지한 것: AudioActivationPolicy.cs(순수 판정) + IAudioOutputDevice.cs(계약).\n" +
-                "남은 것: 양 플랫폼 IAudioOutputDevice 구현 + 이를 구동하는 중립 실행부(Director).\n" +
+                "착지한 것: ISystemAudioActivityProbe(중립 계약, 불리언) + AudioReactiveDancePolicy" +
+                "(순수 T₁~T₄ 게이트) + Mac/Windows 구현 2개 + Core/AudioReactiveDanceGate(억제 술어).\n" +
+                "남은 것: 이 프로브를 **주기적으로 부르는 실행부(Director)** 와 DanceState/ApplyDancePose.\n" +
+                "  ※ 그래서 지금 이 코드는 **프로덕션 호출부가 0건**이다 — 실기에서 도는 경로가 아니다.\n" +
                 "\n" +
-                "★ 지금 착수하지 않은 이유(코드가 아니라 선행 결과가 막고 있다):\n" +
-                "  (a) design-sound가 잔류 초·48ms 허용 여부·pop 처리를 아직 확정하지 않았다. " +
-                "그 값 없이 구현하면 실기에서 잰 것이 무엇인지 말할 수 없다.\n" +
-                "  (b) 재생할 자산이 0개다 — 이 저장소에 WAV가 없고, 온디맨드 경로는 Unity AudioClip이 " +
-                "아니라 디스크 PCM을 쓴다(StreamingAssets). 자산 형식이 정해지기 전의 디코더는 버린다.\n" +
+                "★ 이 머신에서 **확인한 것**(추측 아님):\n" +
+                "  · macOS 실측 재현(2026-09-03): 무음 0 → afplay 재생 1 → 종료 후 0. 양성·음성 대조 통과.\n" +
+                "  · 크로스 컴파일: xcheck.sh win / osx 양쪽 errors=0.\n" +
                 "\n" +
-                "★ 구현 시 쓸 API는 이미 실측으로 확정돼 있다(양쪽 다 공개 문서 API, 비문서 누적 0 증가):\n" +
-                "  macOS — AudioToolbox: AudioQueueNewOutput / AudioQueueAllocateBuffer / " +
-                "AudioQueueEnqueueBuffer / AudioQueueStart / AudioQueueStop(immediate:true) / " +
-                "AudioQueueDispose. 개폐 지연 실측 콜드 48ms, 이후 ~38ms, 닫은 뒤 0.3초 내 " +
-                "kAudioDevicePropertyDeviceIsRunning=0 (docs/perf/audio_open_latency_probe.c).\n" +
-                "  Windows — winmm: waveOutOpen(CALLBACK_NULL) / waveOutPrepareHeader / waveOutWrite / " +
-                "waveOutReset / waveOutClose. ★ CALLBACK_NULL이라 **역방향 P/Invoke가 없다** — " +
-                "실시간 오디오 스레드가 관리 코드를 부르지 않는다는 뜻이고, GC 정지가 오디오 " +
-                "스레드를 건드릴 자리가 원천적으로 없다.\n" +
+                "★ **확인하지 못한 것**(추측으로 메우지 않았다):\n" +
+                "  U-1. **Windows GetPeakValue의 실제 거동**. 이 머신에 Windows가 없다. 특히 " +
+                "무음 스트림에서 정말 0.0인가(macOS M-B의 Windows판)와, PeakThreshold=0.0005 / " +
+                "PeakHoldSeconds=1.0 이 실기 음악에서 T₁(3.0초 연속 ON)을 실제로 채우는가.\n" +
+                "  U-2. **Windows 푸시 알림 유무**. IMMNotificationClient는 **장치 변경** 알림이지 " +
+                "재생 상태가 아니다 — 폴링 전제로 설계했고, 되면 그때 최적화한다.\n" +
+                "  U-5. **macOS 푸시 콜백의 스레드**. AudioObjectAddPropertyListener는 실측으로 " +
+                "동작하지만(M-D, 폴링 0회로 전이 4건), 콜백이 Unity 메인 스레드로 온다는 보장이 없고 " +
+                "kAudioHardwarePropertyRunLoop 기본값에 따라 **아예 안 불릴 수도** 있다. " +
+                "그 실패는 '영원히 무음'이라 **조용한 초록**으로 보인다. 그래서 이번 라운드는 " +
+                "**양 플랫폼 모두 폴링(풀)만** 한다 — M-C가 2Hz에서 CPU 0.006%를 실측했으므로 " +
+                "지금 푸시로 사는 것이 없다.\n" +
                 "\n" +
-                "★ 구현 라운드가 반드시 실측해야 하는 항목 3건(전부 이 머신에서 불가능하다):\n" +
-                "  M1. **Windows 콜드 개방 지연**. design-sound의 '48ms 허용' 판정은 그 지연이 " +
-                "트랜지언트 융합창(AudioActivationPolicy.FusionWindowSeconds=50ms) 안쪽이라 " +
-                "개방 클릭이 어택에 흡수된다는 **단 하나의 전제** 위에 있다. 48ms는 macOS AUHAL " +
-                "실측이고 Windows는 audiodg.exe + WASAPI 공유 모드라 **그대로 옮겨 쓰면 안 된다**. " +
-                "창 밖이면 Q3 판정을 다시 연다.\n" +
-                "  M2. **블루투스 / USB DAC 재개방**(양 플랫폼 공통). 자릿수가 다르고 " +
-                "**스트림 머리를 삼킬 수 있다**. 실측 창구는 IAudioOutputDevice.LastOpenLatencySeconds.\n" +
-                "  M3. **어서션이 실제로 풀리는가**. macOS: `pmset -g assertions`에 3.0초 동안 뜨고 " +
-                "**4.1초 안에 사라지는가**. Windows(관리자 권한): `powercfg /requests`의 AUDIO 항목이 " +
-                "**4.1초 안에 비는가**.\n" +
+                "★ **모바일(U-6): 별도 배정 필요.** 이 두 API는 양쪽 다 데스크톱 전용이고, " +
+                "iOS 샌드박스에서는 **다른 앱의 오디오 관측 자체가 밖**일 가능성이 높다. " +
+                "Platform/Mobile/ 에는 이 계약의 구현이 없고, 그래서 '스크린샷 백드롭 모드'에서 " +
+                "춤 반응은 **없는 기능**이다(위 mac/win 대칭 검사는 Mobile/ 을 보지 않는다).\n" +
                 "\n" +
-                "★ 이 머신에서 실기가 불가능한 이유: macOS는 사용자 화면 잠금으로 앱을 띄울 수 없고, " +
-                "Windows는 기계 자체가 없다.");
+                "★ 리더 판정 대기(L-5): 춤 반응의 **사용자 토글 기본값**(켬/끔). 기본 「켬」이면 " +
+                "CharacterSaveStore.CurrentVersion 승격 + v9 하위 호환 테스트가 의무로 붙는다. " +
+                "확정 전이라 이번 라운드는 세이브를 **한 비트도** 건드리지 않았다.");
         }
 
         /// <summary>지정한 폴더의 어떤 .cs가 그 인터페이스를 <b>기반 목록에</b> 달았는가.
@@ -1743,47 +2006,60 @@ namespace StickMate.Tests.EditMode
         /// (<c>ScreenCoordinateConverter.OffDesktopConfirmReports</c>)이 2회 만에 받아들인다.
         /// macOS와 달리 <b>폭까지 오염되어 <c>AutoDpiScale</c>도 함께 깨진다.</b></para>
         ///
-        /// <para><b>★ 2026-09-02 사유 갱신 — 보류 사유가 사라졌다.</b> 예전 사유는 기술적 판단이 아니라
-        /// 사용자 지시("윈도우는 일단 미루고 맥만 중점적으로 고쳐줘", 2026-09-01)였는데, 그 지시가
-        /// 같은 밤 "맥에 적용한 사항 윈도우에도 모두 적용"으로 <b>뒤집혔다</b>. 낡은 사유를 그대로
-        /// 두면 그 문장 자체가 거짓말이 되므로 갱신한다 — 지금 이것은 <b>보류가 아니라 배정 대기</b>다.</para>
+        /// <para><b>★ 2026-09-05 승격 — 갭이 닫혔다(M-9).</b> 2026-09-02까지 이 항목은
+        /// <c>Assert.Ignore</c>였다. 예전 보류 사유는 기술적 판단이 아니라 사용자 지시
+        /// ("윈도우는 일단 미루고 맥만 중점적으로 고쳐줘", 2026-09-01)였고 그 지시가 같은 밤
+        /// "맥에 적용한 사항 윈도우에도 모두 적용"으로 뒤집혀 <b>배정 대기</b>가 됐다.
+        /// 이제 <c>CaptureOverlayOrigin()</c> 진입부에 <c>IsIconic(_overlayHwnd)</c> 조기 반환이
+        /// 들어갔으므로 <b>정식 검사로 승격</b>한다.</para>
+        ///
+        /// <para><b>실기 미확인</b>: 이 검사가 잠그는 것은 <b>소스 구조</b>다. 실제 Win+D 두 번에서
+        /// 원점/배율이 유지되는지는 사용자 Windows 머신에서만 볼 수 있다(낮 세션 항목).</para>
         /// </summary>
         [Test]
-        public void 미해결_Windows에는_데스크톱표시_최소화_면제가_없다()
+        public void 데스크톱표시_최소화면제가_Windows_원점캡처에도_걸려_있다()
         {
             string win = StripLineComments(ReadSource(WinWindowServicePath));
 
-            // ★ 앵커 잠금: 이름이 바뀌면 아래 승격 조건이 **영원히 성립하지 않아**, 갭이 고쳐져도
-            //   러너는 계속 "건너뜀"만 보여 준다. 그건 이 감사가 막으려는 상태 그 자체다.
+            // ★ 앵커 잠금: 이름이 바뀌면 아래 검사가 **엉뚱한 구간**을 보게 된다.
             int start = win.IndexOf("private void CaptureOverlayOrigin()", System.StringComparison.Ordinal);
             Assert.Greater(start, 0,
                 "감사 앵커가 낡았습니다 — Win32WindowService에서 CaptureOverlayOrigin() 선언을 찾지 " +
-                "못했습니다. 이름이 바뀌었다면 여기도 함께 갱신하세요. 그대로 두면 이 항목은 " +
-                "'고쳐져도 영원히 건너뜀'이 됩니다.");
+                "못했습니다. 이름이 바뀌었다면 여기도 함께 갱신하세요.");
 
             int end = win.IndexOf("private ", start + 1, System.StringComparison.Ordinal);
-            string body = end > start ? win.Substring(start, end - start) : win.Substring(start);
-            if (body.Contains("IsIconic("))
-            {
-                Assert.Pass("CaptureOverlayOrigin()에 자기 창 최소화 검사가 들어왔습니다 — " +
-                    "이 테스트를 정식 검사로 승격하세요.");
-            }
+            Assert.Greater(end, start, "CaptureOverlayOrigin() 본문 끝을 찾지 못했습니다 — 앵커 갱신 필요.");
+            string body = win.Substring(start, end - start);
 
-            Assert.Ignore("【미해결 갭 · 보류 사유 소멸 → 배정 대기】 사유 갱신 2026-09-02 04:36 (재확인 완료)\n" +
-                "항목: 데스크톱 표시(Show Desktop) / Exposé 면제.\n" +
-                "macOS: 해결됨 — MacSpaceBehaviorNative의 collectionBehavior에 .stationary(0x10)를 " +
-                "추가하고 상호 배타 비트(.managed/.transient)를 껐다. 목표 0x111. 위 " +
-                "데스크톱표시_면제가_macOS_창플래그에_실제로_걸려_있다()가 그 사실을 잠근다.\n" +
-                "Windows: 미해결 — CaptureOverlayOrigin() 본문에 IsIconic(_overlayHwnd) 검사가 " +
-                "여전히 없다(오늘 본문 스캔으로 재확인). 같은 파일이 '최소화 창은 (-32000,-32000)을 " +
-                "돌려준다'고 적어 두고 그 필터를 남의 창에만 적용한다. macOS와 달리 폭까지 오염되어 " +
-                "AutoDpiScale도 함께 깨진다.\n" +
-                "★ 보류 사유가 사라졌다: 근거였던 사용자 지시 '윈도우는 일단 미루고 맥만'(2026-09-01)이 " +
-                "2026-09-02 '맥에 적용한 사항 윈도우에도 모두 적용'으로 뒤집혔다. 지금은 배정 대기다.\n" +
-                "처방 후보(작다): CaptureOverlayOrigin() 진입부에서 IsIconic(_overlayHwnd)이면 즉시 " +
-                "return(= 직전 유효 원점/배율 유지). P/Invoke 선언은 같은 파일에 이미 있어 새 선언이 " +
-                "0줄이다.\n" +
-                "실기 검증 필요 — 사용자 Windows 머신에서 Win+D 후 다시 Win+D.");
+            // (1) 자기 창 핸들에 대해 실제로 최소화를 묻는가.
+            //     ★ StripLineComments가 // 주석 줄을 이미 걷어냈으므로, 주석에 적힌 설명이
+            //       코드 대신 통과시키는 일은 없다(이 저장소가 여러 번 당한 형태).
+            StringAssert.Contains("IsIconic(_overlayHwnd)", body,
+                "CaptureOverlayOrigin()이 자기 창의 최소화 여부를 묻지 않습니다. Win+D(데스크톱 표시)가 " +
+                "우리 창을 아이콘화하면 GetWindowRect가 (-32000,-32000)과 복원 전 크기를 **안정적으로** " +
+                "돌려주고, 원점 위생 검사의 연속 확인 통로가 그것을 받아들입니다. macOS와 달리 폭까지 " +
+                "오염되어 AutoDpiScale(창 폭/Screen.width)도 함께 깨집니다.");
+
+            // (2) 물어보기만 하고 **반환하지 않으면** 아무 효과가 없다. 조기 반환이 실제로 있는가.
+            int ask = body.IndexOf("IsIconic(_overlayHwnd)", System.StringComparison.Ordinal);
+            string afterAsk = body.Substring(ask);
+            StringAssert.Contains("return;", afterAsk,
+                "IsIconic을 묻기만 하고 조기 반환이 없습니다 — 판정 결과가 좌표 보고를 막지 못합니다.");
+
+            // (3) 조기 반환이 **좌표 보고보다 먼저** 와야 뜻이 있다. 보고 호출이 뒤에 오는지 순서로 잠근다.
+            int report = body.IndexOf("ReportOverlayWindowOsRect", System.StringComparison.Ordinal);
+            Assert.Greater(report, 0,
+                "감사 앵커가 낡았습니다 — CaptureOverlayOrigin()에서 좌표 보고 호출을 찾지 못했습니다.");
+            Assert.Less(ask, report,
+                "최소화 검사가 좌표 보고(ReportOverlayWindowOsRect)보다 **뒤에** 있습니다 — 오염된 " +
+                "원점이 이미 보고된 뒤라 검사가 아무것도 막지 못합니다.");
+
+            // (4) 양성 대조 — 같은 파일이 **남의 창**에는 원래부터 이 필터를 걸고 있었다는 사실을
+            //     같은 테스트 안에서 확인한다. 이게 없으면 "IsIconic이 파일 어딘가에 있다"만으로
+            //     통과하는지, 정말 자기 창 경로에 들어왔는지 구분할 수 없다.
+            StringAssert.Contains("IsIconic(hWnd)", win,
+                "양성 대조 실패 — 남의 창 후보 필터의 IsIconic(hWnd)조차 찾지 못했습니다. 이 프로브가 " +
+                "죽은 것이므로 위 (1)의 통과도 신뢰할 수 없습니다.");
         }
 
         // ============================================================================
@@ -2864,94 +3140,156 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// <b>[갭 G] 탭 배지·캡션 폭이 Windows 한글 폰트 폴백에서 검증되지 않았다.</b>
+        /// <b>[갭 G — 닫혔다 2026-09-03] 탭 라벨 폭이 macOS 폰트 메트릭으로 <i>근사</i>돼 있었다.</b>
         ///
-        /// <para>설정창 탭바는 라벨 폭을 <b>글자 수 x 고정 pt</b>로 <b>근사</b>한다
-        /// (<c>SettingsWindow.TabLabelCharWidth</c>). 이 근사는 macOS 내장 폰트의 한글 자간에서
-        /// 실측한 값이다. Windows의 한글 폴백(맑은 고딕/굴림 계열)은 전각 자간이 달라 같은 글자 수라도
-        /// 렌더 폭이 달라진다. 라벨 상자는 <c>MiddleCenter</c>라 넘친 폭이 <b>양쪽으로</b> 삐져나오고,
-        /// 오른쪽으로 삐져나온 글자는 그 탭의 "준비 중" 배지를 <b>침범</b>한다.</para>
+        /// <para><b>예전 상태</b>: 설정창 탭바가 라벨 폭을 <c>글자 수 × 11pt</c>로 근사했다. 그 11pt는
+        /// macOS 내장 폰트의 한글 자간에서 나온 수였고, Windows의 한글 폴백(맑은 고딕/굴림 계열)은
+        /// 전각 자간이 달라 <b>같은 글자 수라도 렌더 폭이 다르다</b>. 라벨 상자는 <c>MiddleCenter</c>라
+        /// 넘친 폭이 양쪽으로 삐져나오고, 오른쪽으로 삐져나온 글자는 그 탭의 배지를 침범한다.
+        /// 이 개발 머신에 Windows 폰트 스택이 없어 <b>한 번도 검증할 수 없는</b> 갭이었다.</para>
         ///
-        /// <para><b>여기서 실제로 계산하는 것</b>: 침범이 시작되는 <b>자간 팽창 배수</b>다.
-        /// 가장 긴 라벨을 기준으로 <c>1 + 2 x 라벨-배지 간격 / (글자 수 x 근사 폭)</c>. 이 숫자가
-        /// 있어야 사용자가 Windows에서 "얼마나 넓어졌는가"를 재서 <b>판정</b>할 수 있다 —
-        /// "달라 보인다"가 아니라 "1.18배를 넘었다/아니다"로.</para>
+        /// <para><b>지금</b>: 이 감사가 스스로 적어 둔 처방(<i>"근사 대신 <c>UiChrome.Ellipsize</c>와 같은
+        /// 실측(<c>Text.preferredWidth</c>) 경로로 탭 폭을 잡는다"</i>)이 실제로 들어갔다.
+        /// <b>그래서 이 항목은 더 이상 「실기 미확인」이 아니다</b> — 확인할 macOS 전용 상수 자체가
+        /// 남아 있지 않다. Windows에서 자간이 얼마나 넓든 상자가 <b>그 폰트가 잰 값</b>으로 만들어진다.</para>
         ///
-        /// <para><b>왜 실단언이 아니라 Ignore인가</b>: 이 개발 머신에는 Windows 폰트 스택이 없다.
-        /// 근사 자체는 <c>UiChrome.Ellipsize</c>(실제 <c>preferredWidth</c> 측정)라는 적응형 대안이
-        /// 이미 있으므로 <b>코드 갭이라기보다 배선 선택</b>이고, 어느 쪽이 맞는지는 실기가 정한다.</para>
+        /// ============================================================================
+        /// ★ 이 검사가 공허해지지 않게 하는 세 장치
+        /// ============================================================================
+        /// <list type="number">
+        ///   <item><b>부재 단언에 존재 대조를 붙인다.</b> "근사 상수가 사라졌다"만 재면 필드 이름이
+        ///     바뀌기만 해도 조용히 초록이 된다. 그래서 <b>같은 리플렉션 호출</b>로 살아 있는 이웃
+        ///     상수(<c>TabPadX</c>/<c>TabBadgeGap</c>)를 먼저 찾아 낸다 — 못 찾으면 스캐너가 죽은 것이다.</item>
+        ///   <item><b>실제로 잰다.</b> 프로덕션과 같은 폰트/크기의 <c>Text</c>를 만들어 한국어 현행
+        ///     문안과 라틴 예시를 둘 다 재고, 두 경우 모두 창 폭 안에 들어가는지 본다.</item>
+        ///   <item><b>음성 대조.</b> 같은 라틴 문안을 <b>옛 근사식</b>으로 계산하면 창을 넘는다는 것을
+        ///     같은 테스트에서 보인다. 넘지 않는다면 이 라운드의 전제가 틀린 것이므로 실패해야 한다.</item>
+        /// </list>
         /// </summary>
         [Test]
-        public void 실기미확인_탭배지_캡션폭이_Windows_한글폴백에서_검증되지_않았다()
+        public void 탭바_폭은_글자수_근사가_아니라_폰트_실측으로_잡힌다()
         {
             const BindingFlags Any = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static;
             Type tab = typeof(SettingsWindow);
 
-            // ★ 이 항목의 앵커는 **다른 라운드가 소유한 파일**의 private 필드다. 이름이 바뀌면
-            //   실패가 아니라 '앵커 낡음'으로 띄운다 — 남의 라운드를 내 빨간불로 막지 않는다.
-            // ★ 논리곱은 반드시 비단축(&=)이다. ||로 묶으면 앞이 실패한 순간 뒤의 out 인자가
-            //   호출되지 않아 "할당되지 않은 지역 변수" 컴파일 에러가 난다.
-            bool anchorsOk = TryReadFloat(tab, "TabLabelCharWidth", Any, out float charWidth);
-            anchorsOk &= TryReadFloat(tab, "TabBadgeGap", Any, out float badgeGap);
-            anchorsOk &= TryReadFloat(tab, "TabBadgeWidth", Any, out float badgeWidth);
-            anchorsOk &= TryReadFloat(tab, "TabPadX", Any, out float padX);
+            // ---- ① 존재 대조 먼저 — 스캐너가 살아 있는가 -------------------------------
+            Assert.IsTrue(TryReadFloat(tab, "TabPadX", Any, out float padX),
+                "존재 대조 실패 — SettingsWindow.TabPadX를 리플렉션으로 찾지 못했습니다. " +
+                "그러면 아래 '근사 상수가 사라졌다'는 부재 단언은 아무것도 증명하지 못합니다" +
+                "(이름이 바뀌었을 뿐인데 조용히 초록이 됩니다).");
+            Assert.IsTrue(TryReadFloat(tab, "TabBadgeGap", Any, out float badgeGap),
+                "존재 대조 실패 — SettingsWindow.TabBadgeGap을 찾지 못했습니다(위와 같은 이유).");
             string[] names = tab.GetField("TabNames", Any)?.GetValue(null) as string[];
+            Assert.IsNotNull(names, "존재 대조 실패 — SettingsWindow.TabNames를 찾지 못했습니다.");
+            Assert.Greater(names.Length, 0, "탭 이름 배열이 비었습니다 — 아래 계산이 공허합니다.");
 
-            if (!anchorsOk || names == null || names.Length == 0)
+            // 배지가 붙는 탭이 어느 것인가 — 프로덕션의 판정 <b>하나</b>를 그대로 부른다
+            // (SettingsWindow.IsTabImplemented는 IsTabReady로 곧장 위임하는 공개 창구다).
+            // 리플렉션이 아니라 직접 호출이라, 이 창구가 사라지면 컴파일에서 시끄럽게 걸린다.
+            var ready = new bool[names.Length];
+            int badgedTabs = 0;
+            for (int i = 0; i < names.Length; i++)
             {
-                Assert.Ignore("【실기 미확인 · 감사 앵커 낡음】 신설 2026-09-02\n" +
-                    "SettingsWindow의 탭바 치수 필드(TabLabelCharWidth / TabBadgeGap / TabBadgeWidth / " +
-                    "TabPadX / TabNames) 중 일부를 리플렉션으로 찾지 못했습니다. 이름이 바뀌었으면 " +
-                    "이 감사도 함께 갱신하세요 — 그때까지 아래 계산은 하지 않습니다(틀린 숫자를 " +
-                    "내는 것보다 못 냈다고 말하는 편이 낫습니다).");
+                ready[i] = SettingsWindow.IsTabImplemented((SettingsWindow.Tab)i);
+                if (!ready[i]) badgedTabs++;
             }
+            Assert.Greater(badgedTabs, 0,
+                "배지가 붙는 탭이 하나도 없습니다 — 배지 폭 계산이 공허해집니다. 모든 탭이 채워진 " +
+                "날이라면 이 감사의 배지 부분을 지우고 사유를 적으세요.");
 
-            Assert.Greater(names.Length, 0, "탭 이름 배열이 비었습니다 — 계산이 공허합니다.");
-            Assert.Greater(charWidth, 0f, "탭 라벨 글자 폭 근사가 0 이하입니다.");
+            // ---- ② 부재 단언 — macOS 메트릭으로 교정된 상수가 남아 있지 않다 -----------
+            Assert.IsFalse(TryReadFloat(tab, "TabLabelCharWidth", Any, out _),
+                "탭 라벨 '한 글자 폭' 상수가 되살아났습니다. 그 수는 macOS 한글 자간에서 나온 것이라 " +
+                "Windows 폴백에서 틀리고, 이 머신에서는 검증할 방법이 없습니다 — 갭 G가 다시 열립니다.");
+            Assert.IsFalse(TryReadFloat(tab, "TabBadgeWidth", Any, out _),
+                "배지 폭 상수(글자 수 × 캡션 폰트)가 되살아났습니다 — 위와 같은 이유입니다.");
 
-            // 가장 긴 라벨이 배지를 침범하기 시작하는 자간 팽창 배수.
-            //   라벨 상자 폭 = 글자수 x charWidth, MiddleCenter -> 한쪽 초과분 = (k-1) x 폭 / 2
-            //   그 초과분이 라벨-배지 간격을 넘으면 침범 -> k > 1 + 2 x gap / 폭
-            float worstTolerance = float.MaxValue;
-            string worstName = string.Empty;
-            foreach (string name in names)
-            {
-                float boxWidth = name.Length * charWidth;
-                if (boxWidth <= 0f) continue;
-                float tolerance = 1f + (2f * badgeGap / boxWidth);
-                if (tolerance >= worstTolerance) continue;
-                worstTolerance = tolerance;
-                worstName = name;
-            }
-            Assert.Less(worstTolerance, float.MaxValue, "여유 배수를 한 번도 계산하지 못했습니다(공허).");
-            Assert.Greater(worstTolerance, 1f,
-                "자간이 조금도 넓어지지 않아도 배지를 침범합니다 — macOS 기준선 자체가 이미 " +
-                "빠듯하다는 뜻이라 Windows 이전에 여기서 먼저 고쳐야 합니다.");
-
-            // 배지 자신이 다음 탭으로 넘어가기 시작하는 배수(오른쪽 여백 = TabPadX).
-            float badgeTolerance = badgeWidth > 0f ? 1f + (padX / badgeWidth) : float.NaN;
-
-            // 적응형 대안이 실재하는가 — "고칠 방법이 없다"와 "안 쓰고 있다"를 구분한다.
+            // ---- ③ 실측 경로가 실재하는가 ---------------------------------------------
+            MethodInfo measured = typeof(SettingsControls).GetMethod(
+                nameof(SettingsControls.MeasuredWidth), BindingFlags.Public | BindingFlags.Static);
+            Assert.IsNotNull(measured,
+                "SettingsControls.MeasuredWidth(실측 경로)가 사라졌습니다 — 근사를 걷어낸 자리에 " +
+                "무엇이 들어갔는지 이 감사가 말할 수 없게 됩니다.");
             Assert.IsNotNull(typeof(UiChrome).GetMethod(nameof(UiChrome.Ellipsize)),
-                "UiChrome.Ellipsize(실제 preferredWidth 측정)가 사라졌습니다 — 그러면 이 갭의 " +
-                "처방 후보('근사 대신 실측을 쓴다')가 함께 사라진 것이므로 서술을 다시 쓰세요.");
+                "UiChrome.Ellipsize(같은 원리의 선례)가 사라졌습니다 — 이 항목의 근거 문단을 다시 쓰세요.");
 
-            Assert.Ignore("【실기 미확인 · macOS 폰트 메트릭 기준 근사】 신설 2026-09-02\n" +
-                $"모델: 탭 라벨 폭 = 글자 수 x {charWidth:F1}pt(고정 근사), 배지 폭 {badgeWidth:F0}pt, " +
-                $"라벨-배지 간격 {badgeGap:F0}pt, 탭 좌우 여백 {padX:F0}pt.\n" +
-                $"★ 침범 시작 배수: 가장 긴 라벨 '{worstName}'({worstName.Length}글자) 기준 " +
-                $"**{worstTolerance:F3}배**. 즉 Windows 한글 폴백의 평균 자간이 macOS 대비 " +
-                $"{(worstTolerance - 1f) * 100f:F1}% 이상 넓으면 그 라벨이 자기 탭의 '준비 중' 배지를 " +
-                "침범한다.\n" +
-                $"참고 — 배지가 다음 탭으로 넘어가기 시작하는 배수는 {badgeTolerance:F3}배(더 여유롭다). " +
-                "즉 먼저 깨지는 곳은 배지가 아니라 **라벨↔배지 간격**이다.\n" +
-                "macOS: 검증됨(내장 폰트 실측에서 나온 근사).\n" +
-                "Windows: 미검증 — 이 개발 머신에 Windows 폰트 스택이 없다.\n" +
-                "처방 후보: 근사 대신 UiChrome.Ellipsize와 같은 실측(Text.preferredWidth) 경로로 " +
-                "탭 폭을 잡는다. 이미 있는 함수라 신규 알고리즘이 0줄이고, 대신 탭바 생성 시 " +
-                "폰트 측정이 탭 수만큼 늘어난다(생성 1회이므로 상주 비용 0).\n" +
-                "실기 검증 필요 — 사용자 Windows 머신: 설정창(Ctrl+Alt+Win+P)을 열고 '접근성 · 성능' " +
-                "탭의 라벨 끝과 '준비 중' 배지가 붙었는지, 또는 배지가 옆 탭 글자와 겹쳤는지 본다.");
+            // ---- ④ 실제로 잰다 ---------------------------------------------------------
+            var host = new GameObject("갭G측정", typeof(Canvas));
+            try
+            {
+                var canvas = host.GetComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+
+                UnityEngine.UI.Text label = UiChrome.AddText(host.transform, "Label", UiChrome.FontBody,
+                    TextAnchor.MiddleCenter, UiChrome.TextPrimary);
+                UnityEngine.UI.Text badge = UiChrome.AddText(host.transform, "Badge", UiChrome.FontCaption,
+                    TextAnchor.MiddleLeft, UiChrome.InkMeta);
+
+                // 폰트가 실제로 재는가(0을 재고 '들어간다'고 말하면 그게 거짓 초록이다).
+                label.text = names[0];
+                Assert.Greater(label.preferredWidth, 0f,
+                    "폰트가 폭을 0으로 냈습니다 — 폰트가 안 올라온 상태입니다. 아래 숫자는 전부 무효입니다.");
+
+                badge.text = SettingsWindow.TabBadgeText;
+                float badgeWidth = Mathf.Ceil(badge.preferredWidth);
+
+                float koEnd = TabStripEnd(label, names, ready, badgeWidth, padX, badgeGap);
+                Assert.LessOrEqual(koEnd, SettingsWindow.PanelWidth,
+                    $"한국어 현행 문안이 실측 폭으로 {koEnd:F0}pt에서 끝나 창 폭 " +
+                    $"{SettingsWindow.PanelWidth:F0}pt를 넘었습니다 — 지금 화면이 정답이라는 전제가 깨졌습니다.");
+
+                // 라틴 예시. 문안 확정은 ux-designer 소관이고, 여기서는 **가장 긴 후보**로 상한만 본다.
+                string[] latin = { "General", "Character", "Events", "Accessibility & Performance", "Data" };
+                badge.text = "Coming soon";
+                float latinBadge = Mathf.Ceil(badge.preferredWidth);
+                float latinEnd = TabStripEnd(label, latin, ready, latinBadge, padX, badgeGap);
+
+                // ---- ⑤ 음성 대조 — 옛 근사식이었다면 넘쳤다 ---------------------------
+                //  11f/10f는 **폐기된** 수다(지금 프로덕션에 없다). 여기 적는 것은 프로덕션 상수의
+                //  복사가 아니라 '되돌리면 어떻게 되는가'를 보이기 위한 역사 기록이다.
+                const float RetiredLabelCharWidth = 11f;
+                float retiredEnd = SettingsWindow.ContentPadX;
+                for (int i = 0; i < latin.Length; i++)
+                {
+                    float retiredBadge = SettingsWindow.TabBadgeText.Length * UiChrome.FontCaption;
+                    retiredEnd += padX * 2f + latin[i].Length * RetiredLabelCharWidth
+                        + (ready[i] ? 0f : badgeGap + retiredBadge)
+                        + UiChrome.Space1;
+                }
+                retiredEnd -= UiChrome.Space1;
+
+                Debug.Log($"[갭G] 탭바 끝(pt) — 한국어 실측 {koEnd:F0} / 라틴 실측 {latinEnd:F0} / " +
+                          $"라틴 옛근사 {retiredEnd:F0} / 창 폭 {SettingsWindow.PanelWidth:F0}. " +
+                          $"배지 폭: 한국어 {badgeWidth:F0} · 라틴 {latinBadge:F0}.");
+
+                Assert.Greater(retiredEnd, SettingsWindow.PanelWidth,
+                    "음성 대조 실패 — 옛 글자 수 근사로도 라틴 문안이 창에 들어갑니다. 그렇다면 이 " +
+                    "라운드의 전제('모형이 넘침을 만들었다')가 틀린 것이므로 근거 문단을 다시 쓰세요.");
+                Assert.LessOrEqual(latinEnd, SettingsWindow.PanelWidth,
+                    $"실측으로도 라틴 문안이 {latinEnd:F0}pt에서 끝나 창 폭을 넘었습니다 — 그러면 넘침의 " +
+                    "원인이 모형이 아니라 문안 길이입니다. 문안을 줄여야 하고, 그것은 ux-designer 소관입니다.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        /// <summary>설정창 탭바의 마지막 탭 오른쪽 끝(pt)을 <b>프로덕션과 같은 조립 규칙</b>으로 다시 만든다.
+        /// 폭은 전부 <c>Text.preferredWidth</c>에서 오고, 여백만 리플렉션으로 읽은 상수를 쓴다.</summary>
+        private static float TabStripEnd(UnityEngine.UI.Text probe, string[] names, bool[] ready,
+            float badgeWidth, float padX, float badgeGap)
+        {
+            float x = SettingsWindow.ContentPadX;
+            for (int i = 0; i < names.Length; i++)
+            {
+                probe.text = names[i];
+                float labelWidth = Mathf.Ceil(probe.preferredWidth);
+                x += padX * 2f + labelWidth
+                    + (ready[i] ? 0f : badgeGap + badgeWidth)
+                    + UiChrome.Space1;
+            }
+            return x - UiChrome.Space1;
         }
 
         /// <summary>정적 <c>float</c> 필드(const/readonly 무관)를 이름으로 읽는다. 없으면 false.</summary>
@@ -3311,6 +3649,185 @@ namespace StickMate.Tests.EditMode
                 "문자열 내용을 지우지 못합니다.");
             StringAssert.Contains("var s =", BlankStringLiterals("var s = \"secret\";"),
                 "문자열 밖의 코드까지 지웁니다 — 그러면 모든 검사가 눈이 멉니다.");
+        }
+
+        // ============================================================================
+        // 하이브리드 GPU 선택 (2026-09-03 신설, dev-platform)
+        // ============================================================================
+        // Unity의 Windows 플레이어 템플릿은 PE export 두 개를 "외장 GPU를 써라"(값 1)로 하드코딩해
+        // 출하한다. 24시간 상주하는 이 앱에서 그것은 배터리·팬 문제로 직결된다. 그래서 빌드 후처리가
+        // 그 값을 "힌트 무시"(값 0)로 바꾼다. 근거 전량: docs/verify/WINDOWS_DGPU_REPORT.md.
+        //
+        // ★ 여기서 지키는 것은 **구조**다: 판정은 중립 위치에, 적용은 Windows 전용 후처리에.
+        //   macOS에는 정확히 대응하는 현상이 있고(아래 미해결 항목), 그날 같은 판정을 다시 쓴다.
+
+        private static string HybridGpuPolicyPath =>
+            Path.Combine(PlatformRoot, "HybridGpuPreferencePolicy.cs");
+
+        private static string PeExportReaderPath =>
+            Path.Combine(PlatformRoot, "PortableExecutableExportReader.cs");
+
+        private static string HybridGpuHookPath =>
+            Path.Combine(Application.dataPath, "Editor", "WindowsHybridGpuExportPostprocessor.cs");
+
+        /// <summary>
+        /// 하이브리드 GPU 선택 — <b>판정은 플랫폼 중립 위치에, 쓰기는 Windows 전용 후처리에.</b>
+        ///
+        /// <para><c>FullscreenSuspendPolicy</c>가 <c>Platform/MacOS/</c> 안에 있어 Windows가 물리적으로
+        /// 호출할 수 없었던 사고를 반복하지 않기 위한 잠금이다. macOS에도 대응 지렛대가 있으므로
+        /// (<c>NSSupportsAutomaticGraphicsSwitching</c>) 이 판정은 언젠가 양쪽이 함께 읽는다.</para>
+        /// </summary>
+        [Test]
+        public void 하이브리드GPU_판정은_중립이고_쓰기는_빌드_후처리에만_있다()
+        {
+            Assert.IsTrue(File.Exists(HybridGpuPolicyPath),
+                "HybridGpuPreferencePolicy.cs가 Platform/ 바로 아래에 없습니다. 이 판정은 두 플랫폼이 " +
+                "함께 읽을 값이므로 플랫폼 폴더로 내리면 반대쪽이 참조할 수 없습니다.");
+            Assert.IsFalse(File.Exists(Path.Combine(PlatformRoot, "Windows", "HybridGpuPreferencePolicy.cs")),
+                "판정이 Platform/Windows/ 로 내려갔습니다 — macOS가 같은 판정을 부를 수 없게 됩니다.");
+            Assert.IsFalse(File.Exists(Path.Combine(PlatformRoot, "MacOS", "HybridGpuPreferencePolicy.cs")),
+                "판정이 Platform/MacOS/ 로 내려갔습니다 — 2026-08-31의 FullscreenSuspendPolicy 사고와 " +
+                "같은 모양입니다.");
+
+            StringAssert.Contains("namespace StickMate.Platform\n", ReadSource(HybridGpuPolicyPath).Replace("\r\n", "\n"),
+                "판정의 네임스페이스가 StickMate.Platform이 아닙니다 — 하위 네임스페이스로 내리면 " +
+                "반대쪽 플랫폼에서 using 없이 참조되지 않습니다.");
+
+            // ---- 읽는 쪽은 한 바이트도 쓰지 않는다 ----
+            string reader = ReadSource(PeExportReaderPath);
+            StringAssert.Contains(nameof(PortableExecutableExportReader.TryReadExports), reader,
+                "PE 파서에서 파싱 진입점을 찾지 못했습니다 — 이 검사가 엉뚱한 파일을 읽고 있습니다(양성 대조).");
+            StringAssert.DoesNotContain("File.", reader,
+                "PE 파서가 파일 API를 갖고 있습니다. 읽기(파싱)와 쓰기(패치)를 갈라 둔 이유는 " +
+                "테스트가 쓰기 없이 파싱만 전량 검증할 수 있게 하기 위해서입니다.");
+
+            // ---- 쓰는 쪽은 Windows 전용 빌드 후처리 하나뿐이다 ----
+            Assert.IsTrue(File.Exists(HybridGpuHookPath),
+                $"빌드 후처리 훅을 찾지 못했습니다({HybridGpuHookPath}). 훅이 사라지면 Windows 산출물은 " +
+                "다시 템플릿 기본값(외장 GPU 요청)으로 출하됩니다.");
+            string hook = File.ReadAllText(HybridGpuHookPath);
+            StringAssert.Contains(nameof(HybridGpuPreferencePolicy), hook,
+                "후처리가 중립 판정을 부르지 않습니다 — 기대값이 두 곳으로 갈라집니다.");
+            StringAssert.Contains(nameof(PortableExecutableExportReader), hook,
+                "후처리가 PE 파서를 쓰지 않습니다 — 오프셋을 스스로 알고 있다는 뜻이고, 템플릿이 밀리면 " +
+                "엉뚱한 바이트를 덮어씁니다.");
+            StringAssert.Contains(nameof(UnityEditor.BuildTarget.StandaloneWindows64), hook,
+                "후처리에 플랫폼 게이트가 없습니다 — macOS 산출물에 손댈 수 있게 됩니다.");
+            StringAssert.Contains(nameof(UnityEditor.Build.BuildFailedException), hook,
+                "후처리가 실패해도 빌드를 세우지 않습니다. 패치가 안 먹었는데 exe는 나오는 상태가 " +
+                "이 저장소가 반복해 당한 '거짓 통과'의 최악형입니다.");
+
+            // 쓰기가 Platform/ 안으로 새어 들어오지 않았는지.
+            foreach (string file in Directory.GetFiles(PlatformRoot, "*.cs", SearchOption.AllDirectories))
+            {
+                StringAssert.DoesNotContain("File.WriteAllBytes(", StripLineComments(File.ReadAllText(file)),
+                    $"{Path.GetFileName(file)}에서 바이너리 쓰기가 발견됐습니다. 산출물 바이트를 쓰는 것은 " +
+                    "에디터 빌드 후처리의 일이며, 런타임 플랫폼 코드가 할 일이 아닙니다.");
+            }
+        }
+
+        /// <summary>
+        /// ★ macOS에도 <b>정확히 대응하는 현상</b>이 있는데 아직 배선되지 않았다. 잊히지 않게 띄운다.
+        /// </summary>
+        [Test]
+        public void 미해결_하이브리드GPU_선택이_macOS에는_배선되지_않았다()
+        {
+            // 에디터 후처리가 macOS 키를 다루기 시작하면 갭이 닫힌 것이므로 자동 승격시킨다.
+            string editorRoot = Path.Combine(Application.dataPath, "Editor");
+            if (Directory.Exists(editorRoot))
+            {
+                foreach (string file in Directory.GetFiles(editorRoot, "*.cs", SearchOption.AllDirectories))
+                {
+                    if (File.ReadAllText(file).Contains(HybridGpuPreferencePolicy.MacAutomaticGraphicsSwitchingKey))
+                    {
+                        Assert.Pass($"macOS 쪽 처리가 생겼습니다({Path.GetFileName(file)}) — 이 항목을 정식 " +
+                            "검사로 승격하고, GPU 전환 시점에 투명 오버레이 합성이 버티는지 함께 확인하세요.");
+                    }
+                }
+            }
+
+            Assert.Ignore("【미해결 · 갭 실측 완료 / 착수 미배정】 신설 2026-09-03 (dev-platform)\n" +
+                "항목: 하이브리드 GPU 선택 — Windows는 닫혔고 macOS는 열려 있다.\n" +
+                "\n" +
+                "· Windows: 빌드 후처리가 PE export 값 두 개를 1(외장 요청) -> 0(힌트 무시)으로 바꾼다. " +
+                "구조는 닫혔으나 **실기 미확인**이다 — 이 머신에 Windows가 없다. 값 0이 실제로 내장 GPU로 " +
+                "귀결되는지는 사용자 실기에서 로그의 GPU 이름과 작업 관리자를 함께 봐야 확정된다.\n" +
+                "· macOS: 출하 중인 Info.plist에 NSSupportsAutomaticGraphicsSwitching 키가 **없다**(실측). " +
+                "이 키가 없는 앱이 Metal 컨텍스트를 만들면 듀얼 GPU Intel Mac에서 macOS가 자동으로 " +
+                "디스크리트 GPU로 전환한다 — 증상(발열·팬·배터리)이 Windows 건과 같은 계열이다.\n" +
+                "\n" +
+                "★ 왜 이번 라운드에서 안 고쳤는가(사유를 남긴다 — 낡은 사유는 거짓말이다):\n" +
+                "  1. 개발/사용 머신이 Apple Silicon이라 GPU가 하나뿐이다. 고쳐도 **초록을 만들 수 없다**.\n" +
+                "  2. 이 키를 켜는 것은 'GPU 전환을 앱이 감당한다'는 선언이다. 전환 시점에 드로어블/디바이스가 " +
+                "갈아끼워져도 이 앱의 투명 오버레이 합성이 버티는지 검증 없이 켜면 위험하다.\n" +
+                "  3. PlayerSettings에 이 키를 넣는 API가 확인되지 않았다 — plist 후처리 형태가 되는데, " +
+                "그건 Windows PE 패치와 같은 등급의 결정이라 별도 판정이 필요하다.\n" +
+                "\n" +
+                "닫는 조건: 듀얼 GPU Intel Mac 실기 확보 + 투명/클릭관통 무회귀 확인. " +
+                "근거와 게이트 전량: docs/verify/WINDOWS_DGPU_REPORT.md 7-2절.");
+        }
+
+        /// <summary>
+        /// ★ 2026-09-05 (M-5) — <b>스토어 제출물 결손 3건.</b> 코드가 아니라 <c>ProjectSettings.asset</c>이고,
+        /// 그래서 지금까지 어떤 감사에도 안 걸렸다. 전략 문서 안에만 있으면 그 문서를 읽는 사람만 안다 —
+        /// <b>러너에 「건너뜀」으로 띄워 잊히지 않게 한다</b>(CLAUDE.md).
+        ///
+        /// <para><b>Windows 단독 출시라 성격이 바뀌었다</b>: exe 아이콘은 스팀 페이지가 아니라
+        /// <b>작업표시줄 · Alt+Tab · exe 자체</b>에 뜬다. 그리고 이 앱은 <b>24시간 상주</b>라
+        /// 사용자가 그 아이콘을 가장 오래 본다.</para>
+        ///
+        /// <para><b>이번 라운드에 못 고친 사유(하나씩 다르다 — 뭉뚱그리지 않는다)</b>:
+        /// <list type="number">
+        ///   <item><b>아이콘 — 재료가 없다.</b> <c>Assets/</c> 전체에 이미지 애셋이 <b>0개</b>다
+        ///     (이 앱은 전부 절차적 도형이다). 없는 것을 지어내면 그게 더 나쁘다 ⇒
+        ///     <c>design-art</c>/<c>design-character</c> 배정이 선행이다.</item>
+        ///   <item><b>스플래시 — 라이선스 축이라 이 자리에서 판정 불가.</b> Unity Manual의 Splash Image
+        ///     페이지는 <b>구독 등급별 제한을 서술하지 않는다</b>(1차 출처 확인). 즉 "Personal은 못 끈다"는
+        ///     문서로 확정할 수 없고, 이 머신의 라이선스로 Player Settings를 열어야 갈린다 ⇒ <b>미확인</b>.</item>
+        ///   <item><b>버전 — 리더/`product-strategy` 판단 사안.</b> 코드 담당이 임의로 올릴 값이 아니다.</item>
+        /// </list></para>
+        /// </summary>
+        [Test]
+        public void 미해결_스토어_제출물_결손_3건이_남아_있다()
+        {
+            string settingsPath = Path.Combine(Application.dataPath, "..", "ProjectSettings",
+                "ProjectSettings.asset");
+            Assert.IsTrue(File.Exists(settingsPath),
+                $"ProjectSettings.asset을 찾지 못했습니다({settingsPath}) — 경로가 바뀌었다면 여기도 " +
+                "갱신하세요. 그대로 두면 이 항목은 '고쳐져도 영원히 건너뜀'이 됩니다.");
+            string settings = File.ReadAllText(settingsPath);
+
+            // ★ 양성 대조 — 읽은 파일이 정말 그 파일인가. 아래 세 판정은 전부 "문자열이 있다/없다"라
+            //   엉뚱한 파일을 읽어도 조용히 통과할 수 있다(이 저장소가 반복해 당한 형태).
+            StringAssert.Contains("m_BuildTargetIcons", settings,
+                "양성 대조 실패 — 읽은 파일에 아이콘 필드 자체가 없습니다. 이 파일은 " +
+                "ProjectSettings.asset이 아니므로 아래 판정 전부가 무효입니다.");
+
+            bool iconsEmpty = settings.Contains("m_BuildTargetIcons: []");
+            bool splashOn = settings.Contains("m_ShowUnitySplashScreen: 1");
+
+            if (!iconsEmpty && !splashOn)
+            {
+                Assert.Pass("Windows exe 아이콘이 들어왔고 Unity 스플래시가 꺼졌습니다 — 이 항목을 " +
+                    "정식 검사로 승격하고, 실제 빌드 산출물에서 작업표시줄/Alt+Tab 아이콘을 확인하세요.");
+            }
+
+            Assert.Ignore("【미해결 · 조사 완료 / 재료·판정 대기】 신설 2026-09-05 (dev-platform, M-5)\n" +
+                "항목: 스토어 제출물 결손 — Windows 단독 출시 국면.\n" +
+                $"· m_BuildTargetIcons: {(iconsEmpty ? "비어 있음(실측)" : "채워짐")} — " +
+                "Windows exe 아이콘이 없다. 작업표시줄·Alt+Tab·exe 자체에 뜨는 자리이고, " +
+                "24시간 상주 앱이라 사용자가 가장 오래 보는 표면이다.\n" +
+                "  ★ 막힌 이유: Assets/ 전체에 이미지 애셋이 0개다(이 앱은 전부 절차적 도형). " +
+                "재료가 없으므로 design-art/design-character 배정이 선행이다. 가짜 아이콘을 만들지 않는다.\n" +
+                $"· m_ShowUnitySplashScreen: {(splashOn ? "1(켜짐, 실측)" : "0")} — 끌 수 있는지는 " +
+                "**미확인**이다. Unity Manual의 Splash Image 페이지는 구독 등급별 제한을 서술하지 " +
+                "않는다(1차 출처 확인 2026-09-05). '끌 수 있다'를 가정하고 일정을 짜지 마라.\n" +
+                "· bundleVersion: 리더/product-strategy 판단 사안이라 이 라운드에서 건드리지 않았다.\n" +
+                "★ 부수 효과(이미 예견됨): 아이콘/버전이 들어가는 순간 exe가 Unity 플레이어 템플릿과 " +
+                "해시가 달라져 dGPU 패치의 '알려진 해시 이점 상실' 논점이 소멸한다 " +
+                "(docs/verify/WINDOWS_DGPU_REPORT.md 2-4절이 예고한 그대로 — 문제가 아니라 예정된 전이다).\n" +
+                "닫는 조건: 아이콘 애셋 도착 + 라이선스 판정 + 버전 확정. 근거: " +
+                "docs/strategy/WINDOWS_STEAM_LAUNCH_CRITICAL_PATH.md 3절 M-5.");
         }
 
         // ============================================================================

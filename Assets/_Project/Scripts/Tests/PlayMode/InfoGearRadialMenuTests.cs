@@ -515,6 +515,87 @@ namespace StickMate.Tests.PlayMode
             }
         }
 
+        // ==================== ⑩ 위성 [앱 종료] — 2단 확인 ====================
+
+        /// <summary>
+        /// ★ 2026-09-03 사용자 지시로 신설된 <b>위성 [앱 종료]</b>(UX_FLOW 53-4).
+        ///
+        /// <para><b>이 테스트는 절대로 2차 클릭을 하지 않는다.</b> 2차 클릭은 <c>Application.Quit()</c>이고
+        /// 에디터에서는 재생 모드를 끈다 — 러너가 그 자리에서 죽는다. 대신 잠그는 것은
+        /// <b>"1차 클릭이 아무것도 끝내지 않는다"</b>와 <b>"잊어버려도 저절로 풀린다"</b> 둘이다.
+        /// 되돌릴 수 없는 버튼에서 이 둘이 곧 안전의 전부다.</para>
+        ///
+        /// <para>여기서 이 창구를 확인하는 것 자체가 <b>「앱이 꺼지지 않았다」의 증거</b>이기도 하다 —
+        /// 1차 클릭에 종료가 걸렸다면 이 줄에 도달하지 못한다.</para>
+        /// </summary>
+        [UnityTest]
+        public IEnumerator QuitSatelliteArmsOnFirstClickAndDisarmsByItself()
+        {
+            yield return LoadSceneAndResolve();
+            yield return OpenMenuByShortClick();
+
+            GearRadialMenuWidget fan = FanWidget();
+            Assert.IsFalse(fan.IsQuitArmed, "열자마자 종료 확인이 켜져 있습니다 — 무장이 열림에서 샜습니다.");
+
+            int quit = (int)GearMenuButton.Quit;
+            Assume.That(fan.ButtonProgress(quit), Is.GreaterThan(GearRadialMenuWidget.MinClickableProgress),
+                "위성이 아직 눌릴 수 있는 상태가 아닙니다 — 관측 전제가 성립하지 않습니다.");
+
+            // 1차 클릭 — 실제 입력 경로 그대로.
+            ClickAt(fan.ButtonScreenCenter(quit));
+            yield return null;
+            Assert.IsTrue(fan.IsQuitArmed,
+                "1차 클릭에도 확인 상태가 되지 않았습니다 — 2단 확인이 동작하지 않거나, " +
+                "더 나쁘게는 클릭이 위성에 도착하지 않았습니다.");
+            Assert.IsTrue(_gear.IsMenuExpanded, "1차 클릭에 부채꼴이 접혔습니다 — 확인할 자리가 사라집니다.");
+
+            // 남은 시간은 <b>줄어들어야</b> 한다(카운트다운이 실제로 도는가).
+            float first = fan.QuitArmRemainingSeconds;
+            Assert.Greater(first, 0f, "무장했는데 남은 시간이 0입니다.");
+            yield return new WaitForSecondsRealtime(0.2f);
+            Assert.Less(fan.QuitArmRemainingSeconds, first,
+                "남은 시간이 줄지 않았습니다 — 카운트다운 링이 멈춘 값을 그리게 됩니다(표시-실제 불일치).");
+
+            // 잊어버려도 저절로 풀린다. 벽시계 기준으로 기다린다(프레임 수 기반 대기 금지).
+            yield return new WaitForSecondsRealtime(ActionCommandPopover.QuitConfirmSeconds + 0.3f);
+            Assert.IsFalse(fan.IsQuitArmed,
+                $"{ActionCommandPopover.QuitConfirmSeconds:F0}초가 지났는데 확인이 그대로입니다 — " +
+                "나중에 무심코 누른 클릭이 앱을 꺼버립니다.");
+            Assert.AreEqual(0f, fan.QuitArmRemainingSeconds, 0.001f, "무장이 풀렸는데 남은 시간이 0이 아닙니다.");
+
+            ClickAt(_gear.IconScreenCenter);
+            yield return null;
+        }
+
+        /// <summary>★ 부채꼴이 접히면 무장이 <b>화면 밖으로 살아 나가지 않는다</b>(53-4 해제 조건 ③).
+        /// <para>이게 없으면 다음에 메뉴를 열었을 때 <b>이미 장전된 채</b> 뜨고, 그때의 첫 클릭이
+        /// 곧 종료가 된다 — 사용자가 한 번도 확인하지 않은 종료다.</para></summary>
+        [UnityTest]
+        public IEnumerator QuitArmDoesNotSurviveCollapse()
+        {
+            yield return LoadSceneAndResolve();
+            yield return OpenMenuByShortClick();
+
+            GearRadialMenuWidget fan = FanWidget();
+            int quit = (int)GearMenuButton.Quit;
+            ClickAt(fan.ButtonScreenCenter(quit));
+            yield return null;
+            Assume.That(fan.IsQuitArmed, Is.True, "무장이 안 걸려 이 판정은 무효입니다.");
+
+            // 톱니 재클릭 = 접기.
+            ClickAt(_gear.IconScreenCenter);
+            yield return null;
+            Assert.IsFalse(fan.IsQuitArmed, "부채꼴을 접었는데 무장이 남았습니다.");
+
+            yield return new WaitForSecondsRealtime(GearRadialMenuWidget.CollapseUserSeconds + 0.2f);
+            yield return OpenMenuByShortClick();
+            Assert.IsFalse(fan.IsQuitArmed,
+                "다시 연 부채꼴이 <b>이미 장전된 채</b> 떴습니다 — 다음 클릭 한 번이 곧 종료입니다.");
+
+            ClickAt(_gear.IconScreenCenter);
+            yield return null;
+        }
+
         private GearRadialMenuWidget FanWidget() => _gear.GetComponent<GearRadialMenuWidget>();
 
         // ==================== ⑦ 클릭관통 차단 영역이 버튼까지 덮는다 ====================

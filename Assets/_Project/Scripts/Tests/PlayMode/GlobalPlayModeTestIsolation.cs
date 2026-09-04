@@ -33,6 +33,21 @@ public sealed class GlobalPlayModeTestIsolation
     [OneTimeSetUp]
     public void RedirectSaveFile()
     {
+        // ★★ 2026-09-03 (dev-platform 신고 → test-engineer 개선 R2) — <b>가장 먼저</b> 프로브를 걷는다.
+        // 이 파일은 저장 파일만 격리하고 <b>정적 프로브 오버라이드는 하나도 걷지 않았다</b>. 그런데
+        // 톱니(예약 띠 위 배치)·부채꼴이 이제 ReservedEdgeProbe를 읽으므로, 네 방향 오버라이드가
+        // 새면 그 둘의 위치가 흔들린다. 지금은 유일한 사용처(TodoPostItReservedTopBarTests)가
+        // 스스로 되돌려 안전하지만, "관례로 지키는 안전"은 이 저장소에서 이미 여러 번 깨졌다.
+        //
+        // ★ 순서 — 반드시 <b>ReservedEdgeProbe</b>의 것을 부른다(계약: ReservedEdgeProbe.cs 클래스 문서).
+        //   ReservedEdgeProbe.ResetForTests()는 <b>상단 프로브도 함께</b> 걷지만, 반대로
+        //   ReservedTopBarProbe.ResetForTests()만 부르면 <b>네 방향 오버라이드는 안 걷힌다</b>.
+        //
+        // ★ 그리고 <b>세우기 전에도</b> 부르는 이유는 저장 폴더를 비우는 이유와 똑같다 —
+        //   에디터 도메인은 실행 사이에 살아남으므로 앞선 실행의 정적 오버라이드가 그대로 남아 있을
+        //   수 있다. "옮기기만 하면 격리가 아니다"가 정적 상태에도 그대로 적용된다.
+        ReservedEdgeProbe.ResetForTests();
+
         // ★ 2026-09-02 — 작업표시줄 자동 숨김 원복 흔적도 함께 옮긴다. PlayMode는 실제로 씬을
         // 띄우므로 ReservedBarRevealDirector의 BeforeSceneLoad 훅이 돈다. 그 훅은 기본 경로
         // (Application.persistentDataPath)의 흔적 파일을 읽고, 상황에 따라 쓴다 — 테스트가
@@ -54,9 +69,14 @@ public sealed class GlobalPlayModeTestIsolation
     [OneTimeTearDown]
     public void RestoreSaveFilePath()
     {
+        // ★ 먼저 걷는다(위 RedirectSaveFile의 순서 주석과 같은 계약) — 다음 어셈블리/다음 실행에
+        //   네 방향 오버라이드를 물려주지 않는다.
+        ReservedEdgeProbe.ResetForTests();
+
         CharacterSaveStore.ResetForTesting();
         ReservedBarRestoreLedger.ResetForTesting();
-        Debug.Log($"[테스트격리] PlayMode 저장 경로를 원래대로 되돌렸습니다 — 리디렉션={CharacterSaveStore.IsRedirectedForTesting}.");
+        Debug.Log($"[테스트격리] PlayMode 저장 경로를 원래대로 되돌렸습니다 — 리디렉션={CharacterSaveStore.IsRedirectedForTesting}. " +
+                  $"예약 띠 프로브 오버라이드도 걷었습니다(지금 관측치={ReservedEdgeProbe.LastInsets}).");
     }
 
     // ============================================================================

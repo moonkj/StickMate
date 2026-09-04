@@ -77,6 +77,15 @@ namespace StickMate.Tests.PlayMode
         private static readonly FieldInfo PanelRetreatField =
             typeof(StickmanAgent).GetField("_fullscreenPanelRetreat", BindingFlags.Instance | BindingFlags.NonPublic);
 
+        /// <summary>축 1 — 등급 2(전체화면 <b>게임</b>)의 원시 사실. ★ 2026-09-03 신설:
+        /// 포함관계 테스트가 "캐릭터가 숨는 경로"의 대역으로 <b>사용자 명시 숨김</b>을 쓰고 있었는데,
+        /// 그 축은 이제 표면을 걷지 않는다(사용자 확정 "캐릭만 가리고"). 대역을 <b>진짜 축</b>으로 바꾼다.</summary>
+        private static readonly FieldInfo FullscreenAxisField =
+            typeof(StickmanAgent).GetField("_fullscreenAutoHide", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        private static readonly MethodInfo ApplyDecisionMethod =
+            typeof(StickmanAgent).GetMethod("ApplySuspendDecision", BindingFlags.Instance | BindingFlags.NonPublic);
+
         /// <summary>
         /// ★★ 2026-09-02 — 여기 있던 <b>백업/복원</b>은 <b>오염 보존기</b>였다. 걷어냈다. 되살리지 마라.
         ///
@@ -131,6 +140,11 @@ namespace StickMate.Tests.PlayMode
             // 그 다음 폴링 주기를 되돌린다. config는 <b>배포 에셋</b>이라 반드시 원복해야 한다.
             SetPanelRetreat(false);
             if (_agent != null && _agent.IsUserHidden) _agent.SetUserHidden(false, "테스트 정리");
+            if (_agent != null && FullscreenAxisField != null)
+            {
+                FullscreenAxisField.SetValue(_agent, false);
+                ApplyDecisionMethod?.Invoke(_agent, null);
+            }
             if (_config != null) _config.fullscreenPollInterval = _savedPollInterval;
             _config = null;
             _gear = null;
@@ -171,6 +185,12 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} StickmanAgent._fullscreenPanelRetreat 필드를 찾지 못했습니다 — 축 3의 이름이 " +
                 "바뀌었다면 이 테스트의 주입 경로를 함께 고쳐야 합니다(이 단언이 없으면 주입이 아무 " +
                 "일도 하지 않은 채 모든 단언이 통과합니다).");
+            Assert.IsNotNull(FullscreenAxisField,
+                $"{LogPrefix} StickmanAgent._fullscreenAutoHide 필드를 찾지 못했습니다 — 축 1의 주입 경로가 " +
+                "죽으면 포함관계 테스트가 아무것도 재지 않은 채 통과합니다.");
+            Assert.IsNotNull(ApplyDecisionMethod,
+                $"{LogPrefix} StickmanAgent.ApplySuspendDecision()을 찾지 못했습니다 — 합성 지점이 " +
+                "사라졌거나 이름이 바뀌었습니다.");
 
             _config = _agent.Config;
             Assert.IsNotNull(_config, $"{LogPrefix} StickConfig가 없습니다.");
@@ -456,6 +476,13 @@ namespace StickMate.Tests.PlayMode
         ///
         /// <para>이 단언이 깨지는 형태가 이 앱에서 가장 나쁜 상태다 — 캐릭터는 숨었는데 차단막이 남으면
         /// <b>안 보이는데 클릭만 먹는다</b>.</para>
+        ///
+        /// <para>★★★ <b>2026-09-03 — "캐릭터가 숨는다"의 범위가 좁아졌다</b>. 사용자 명시 숨김(축 2)은
+        /// 이제 캐릭터만 가리고 표면을 남긴다(사용자 확정 <i>"캐릭만 가리고"</i>). 그건 위 최악의 형태가
+        /// <b>아니다</b> — 표면이 <b>보이는 채로</b> 남으므로 "안 보이는데 클릭만 먹는" 상태가 성립하지
+        /// 않고, 오히려 그 표면이 되돌리는 버튼을 들고 있다. 그래서 이 테스트가 재는 축은
+        /// <b>축 1(전체화면 게임 = 등급 2)</b>로 바뀌었고, 축 2 쪽 계약은
+        /// <c>ManualHideUserAxisTests</c>가 <b>정반대 방향</b>으로 잠근다(톱니와 창이 남는가).</para>
         /// </summary>
         [UnityTest]
         public IEnumerator 캐릭터가_숨으면_표면도_반드시_함께_걷힌다()
@@ -463,19 +490,31 @@ namespace StickMate.Tests.PlayMode
             yield return LoadSceneAndResolve();
             yield return OpenSurfaces();
 
-            // 축 3은 건드리지 않고 축 2(사용자 명시 숨김)만 켠다 = 캐릭터가 숨는 진짜 경로.
-            _agent.SetUserHidden(true, "포함관계 실측");
+            // ★★★ 2026-09-03 — 여기 있던 대역이 <c>SetUserHidden(true)</c>였다. <b>더 이상 유효하지
+            //    않다</b>: 사용자 명시 숨김은 이제 캐릭터만 가리고 표면을 남긴다(사용자 확정
+            //    "캐릭만 가리고"). 그 축으로 계속 재면 이 테스트는 <b>고쳐진 동작을 결함으로</b> 신고한다.
+            //    포함관계가 실제로 걸린 축은 <b>축 1(전체화면 게임 감지 = 등급 2)</b>이므로 그쪽을 켠다.
+            //    ※ 이 파일의 다른 케이스들이 쓰는 SetPanelRetreat(축 3)와 달리, 이 주입은 캐릭터까지
+            //      숨기는 축이라 반드시 ApplySuspendDecision()을 함께 돌려야 Suspend()가 실행된다.
+            FullscreenAxisField.SetValue(_agent, true);
+            ApplyDecisionMethod.Invoke(_agent, null);
             yield return WaitFrames(SettleFrames);
 
-            Assert.IsTrue(_agent.IsSuspended, $"{LogPrefix} 사용자 숨김이 Suspend로 이어지지 않았습니다.");
+            Assert.IsTrue(_agent.IsSuspended, $"{LogPrefix} 축 1 주입이 Suspend로 이어지지 않았습니다 — " +
+                "주입 경로가 죽었다면 아래 단언들은 아무것도 재지 않습니다.");
+            Assert.IsTrue(_agent.HidesScreenSurfaces,
+                $"{LogPrefix} 축 1인데 표면 채널이 거짓입니다 — 전체화면 게임 위에 우리 UI가 남습니다(원칙 2).");
             Assert.IsTrue(_agent.ArePanelsSuppressed,
-                $"{LogPrefix} IsSuspended=true인데 ArePanelsSuppressed=false입니다 — 포함관계가 깨졌습니다. " +
+                $"{LogPrefix} 표면 채널이 참인데 ArePanelsSuppressed=false입니다 — 포함관계가 깨졌습니다. " +
                 "캐릭터는 사라졌는데 창과 차단막이 남아 '안 보이는데 클릭만 먹는' 상태입니다.");
-            Assert.IsFalse(_window.IsOpen, $"{LogPrefix} 캐릭터가 숨었는데 창이 남아 있습니다.");
-            Assert.IsFalse(_todo.IsOpen, $"{LogPrefix} 캐릭터가 숨었는데 팝오버가 남아 있습니다.");
-            Assert.IsFalse(_menu.IsVisible, $"{LogPrefix} 캐릭터가 숨었는데 부채꼴이 남아 있습니다.");
+            Assert.IsFalse(_window.IsOpen, $"{LogPrefix} 전체화면 게임인데 창이 남아 있습니다.");
+            Assert.IsFalse(_todo.IsOpen, $"{LogPrefix} 전체화면 게임인데 팝오버가 남아 있습니다.");
+            Assert.IsFalse(_menu.IsVisible, $"{LogPrefix} 전체화면 게임인데 부채꼴이 남아 있습니다.");
+            Assert.IsFalse(_gear.IsIconVisible,
+                $"{LogPrefix} 전체화면 게임 위에 톱니가 남았습니다 — 등급 2는 톱니까지 걷습니다(원칙 2). " +
+                "이 줄은 2026-09-03 축 분리가 축 1로 새지 않았는지를 이 파일에서 한 번 더 잡습니다.");
 
-            Debug.Log($"{LogPrefix} 포함관계 실측 통과 — 캐릭터가 숨은 경로에서도 표면이 전부 함께 걷혔습니다.");
+            Debug.Log($"{LogPrefix} 포함관계 실측 통과 — 축 1(등급 2)에서는 표면이 톱니까지 전부 걷혔습니다.");
         }
 
         // ==================== ⑤ ★★★ R1-I 도달성 — 이 라운드의 핵심 산출물 ====================

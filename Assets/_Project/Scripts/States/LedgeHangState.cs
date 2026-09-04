@@ -25,12 +25,49 @@ namespace StickMate.States
     ///  · 발판 소실 시 즉시 낙하  : 매 Tick 첫머리에서 붙잡은 핸들을 재확인한다(ParkourClimbState와 동일 계약).
     ///  · 무한 매달림 금지        : 페이즈 타이머와 **독립적인** 절대 상한 타이머를 따로 돌린다.
     ///  · 화면 밖 금지            : (a) 진입 자체가 "화면 자체의 끝이 아닌 경계"로 제한되고
-    ///                              (AutoWanderController), (b) 매달린 X는 모서리에서 ledgeHangEdgeOffset
-    ///                              만큼만 벗어나며, (c) 최종적으로 매 프레임 마지막에 도는
-    ///                              StickmanBlackboard.EnforceScreenBoundsAndRescue()의 하드 클램프가
-    ///                              상태와 무관하게 화면 안으로 되돌린다.
+    ///                              (AutoWanderController), (b) ★ 2026-09-03 이후 매달린 X는 모서리
+    ///                              **바깥**이 아니라 **안쪽**이다(아래 「적당히 끝쪽」 절) — 즉 이
+    ///                              축에서는 예전보다 구조적으로 더 안전해졌다, (c) 최종적으로 매 프레임
+    ///                              마지막에 도는 StickmanBlackboard.EnforceScreenBoundsAndRescue()의
+    ///                              하드 클램프가 상태와 무관하게 화면 안으로 되돌린다.
     ///  · 발이 목적지를 지나치지 않음 : 진입 판정(TryFindDescendTarget)이 "매달린 발보다 아래에 있는
     ///                              발판"만 목적지로 인정한다 — 그래서 손을 놓는 순간 반드시 그 아래로 떨어진다.
+    ///
+    /// ── ★ 「완전 끝」이 아니라 「적당히 끝쪽」 (사용자 요청 2026-09-02 / 2026-09-03) ─────────────
+    /// <para>2026-09-02: <i>"창에서 매달려 떨어질때 창끝보다는 좀 떨어져서 매달림 좀 안쪽에 매달려야하는데
+    /// 그리고 맥같은 경우도 창모서리가 타원이라 끝은 비어있는 공간에 매달려있음"</i><br/>
+    /// 2026-09-03: <i>"굳이 창끝에서만 매달리다가 떨어질 필요없잖아 완전 끝말고 적당히 끝쪽만 되도 될거 같은데"</i></para>
+    ///
+    /// <para><b>무엇이 「끝」이었나(실측)</b>: 예전 <c>Tick()</c>은 매달린 루트를
+    /// <c>모서리 X + 방향 × ledgeHangEdgeOffset(0.14)</c>로 <b>강제 스냅</b>했다. 그런데 배회 AI는
+    /// 이미 모서리에서 <c>StickmanBlackboard.EdgeStopDistanceWorld</c>(배포 배율 0.75에서 <b>0.400유닛</b>)
+    /// 안쪽에 캐릭터를 세워 둔 뒤 추첨한다. 즉 <b>코드가 캐릭터를 바깥으로 0.54유닛(≈22pt) 끌어내
+    /// 정확히 모서리 점에 매달았다.</b> macOS 창은 모서리가 둥글어(반경 ≈10pt) 그 점에는 그려진 픽셀이
+    /// 없다 — 사용자가 본 "빈 공간에 매달림"은 연출이 아니라 이 강제 스냅 하나였다.</para>
+    ///
+    /// <para><b>지금</b>: 인셋(모서리에서 안쪽으로 들어간 거리)을 <see cref="ResolveEdgeInsetWorld"/>가
+    /// <b>Enter에서 한 번</b> 확정하고, 그 뒤로는 창이 움직여도 그 인셋을 유지한다(매 프레임 다시 풀면
+    /// 창 크기 변화가 몸을 좌우로 떨게 만든다).</para>
+    /// <code>
+    /// 하한 = 곡률 여유(ledgeHangCornerClearancePoints, OS pt → 월드) + 손 여유(ledgeHangHandClearanceHeights × 신장)
+    /// 상한 = max(하한, EdgeProbeReachWorld)  그리고  발판 폭 × ledgeHangMaxInsetWidthFraction 로 절단
+    /// 인셋 = clamp(지금 서 있는 자리의 인셋, 하한, 상한)      ← 「적당히」의 실체. 바깥으로는 절대 안 끌어낸다.
+    /// </code>
+    /// <para><b>상한이 왜 저것인가</b>: <c>EdgeProbeReachWorld</c>는 배회 AI가 경계 행동을 평가하는
+    /// 최대 거리다. 그보다 안쪽에서 매달리는 그림은 <b>AI가 애초에 만들 수 없는 자세</b>이므로 상한으로
+    /// 삼기에 정확하다. 발판 폭 비율 절단은 그 위에 얹는 안전판이다 — 좁은 창 + 큰 배율에서도
+    /// "창 한가운데에 매달린" 우스운 그림이 <b>산술적으로 불가능</b>해진다.</para>
+    ///
+    /// <para><b>★ 알려진 이음매 갈라짐(정직하게 남긴다)</b>: 진입 프로브
+    /// (<c>StickmanBlackboard.TryFindDescendTarget</c> → <c>GroundSensor.TryFindDescendTarget</c>)는
+    /// 여전히 <c>모서리 + ledgeHangEdgeOffset</c>이라는 <b>바깥</b> 점에서 "내려앉을 발판이 있는가"를
+    /// 묻는다. 실제 낙하 X는 이제 <b>안쪽</b>이므로 두 점이 배포 형상(배율 0.75, 40.92pt/유닛)에서
+    /// 0.140 + 0.549 = 약 <b>0.69유닛(≈28pt)</b> 벌어진다.
+    /// 결과는 (i) 예측한 착지 발판과 실제 착지 발판이 드물게 달라질 수 있음(대사 선택만 영향),
+    /// (ii) 반대로 프로브가 더 보수적이라 놓치는 매달림이 생길 수 있음 — <b>안전 불변식(무한 매달림 금지 /
+    /// 발판 소실 즉시 낙하 / 화면 밖 금지)에는 영향이 없다.</b> 하나로 합치려면
+    /// <c>States/StickmanBlackboard.cs</c>(인자)와 <c>States/GroundSensor.cs</c>(<c>Mathf.Max(0f, …)</c> 클램프)를
+    /// 함께 고쳐야 하는데 <b>그 두 파일은 이 라운드의 배정 밖</b>이었다. 리더 배정 대상이다.</para>
     /// </summary>
     public sealed class LedgeHangState : IStickmanState, IHasDialogueParams
     {
@@ -54,6 +91,7 @@ namespace StickMate.States
         private float _phaseTimer;
         private float _totalTimer;         // 페이즈와 무관한 절대 상한 타이머(무한 매달림 금지)
         private float _holdDuration;
+        private float _edgeInset;          // 모서리에서 **안쪽으로** 들어간 거리(월드). Enter에서 한 번만 확정한다.
 
         // 진단/대사 파생용 — 진입 시점에 예상한 착지 지점(실제 착지는 언제나 FallState가 확정한다).
         private bool _hasDescendTarget;
@@ -112,6 +150,21 @@ namespace StickMate.States
             _hasDescendTarget = _blackboard.TryFindDescendTarget(info, _direction,
                 out _descendTargetHandle, out _descendTargetTopWorldY);
 
+            // ★ 「적당히 끝쪽」 — 매달릴 X를 여기서 한 번 확정한다(클래스 문서의 그 절).
+            //   지금 서 있는 자리의 인셋을 기준으로 하되, 곡률+손 여유 아래로는 못 내려가고
+            //   AI가 만들 수 있는 최대 거리(그리고 발판 폭 비율) 위로는 못 올라간다.
+            //   ★ _startWorldPos는 바로 위에서 잡은 "서 있던 자리"다 — Body가 없으면 하한이 그대로 쓰인다.
+            float standingInset = _blackboard.Body != null
+                ? _direction * (_ledgeEdgeWorldX - _startWorldPos.x)
+                : float.NaN;
+            _edgeInset = ResolveEdgeInsetWorld(
+                ResolveCornerClearanceWorld(),
+                ResolveHandClearanceWorld(),
+                standingInset,
+                _blackboard.EdgeProbeReachWorld,
+                ResolveLedgeWidthWorld(),
+                _blackboard.Config != null ? _blackboard.Config.ledgeHangMaxInsetWidthFraction : 0.25f);
+
             float holdMin = _blackboard.Config != null ? _blackboard.Config.ledgeHangHoldDurationMin : 0.84f;
             float holdMax = _blackboard.Config != null ? _blackboard.Config.ledgeHangHoldDurationMax : 1.5f;
             _holdDuration = holdMax > holdMin ? holdMin + (float)Rng.NextDouble() * (holdMax - holdMin) : holdMin;
@@ -161,7 +214,79 @@ namespace StickMate.States
             Debug.Log($"[매달리기] 진입 — 방향={(_direction > 0 ? "오른쪽" : "왼쪽")}, " +
                 $"모서리핸들={_ledgeHandle}, 모서리(X={_ledgeEdgeWorldX:F3}, Y={_ledgeTopWorldY:F3}), " +
                 $"손끝~발끝={_dropDepth:F3}유닛, 매달릴시간={_holdDuration:F2}초, " +
+                $"인셋={_edgeInset:F3}유닛(서 있던 자리 {(_blackboard.Body != null ? (_direction * (_ledgeEdgeWorldX - _startWorldPos.x)) : 0f):F3}, " +
+                $"하한 {(ResolveCornerClearanceWorld() + ResolveHandClearanceWorld()):F3} = 곡률 {ResolveCornerClearanceWorld():F3} + 손 {ResolveHandClearanceWorld():F3}), " +
                 $"내려갈발판={(_hasDescendTarget ? $"핸들 {_descendTargetHandle}(Y={_descendTargetTopWorldY:F3})" : "없음")}.");
+        }
+
+        // ============================================================================
+        // ★ 「적당히 끝쪽」 인셋 유도 — 순수 함수 하나 + 입력 조립 셋
+        // ============================================================================
+
+        /// <summary>
+        /// 매달릴 X의 인셋(모서리에서 안쪽으로 들어간 거리, 월드 유닛)을 정한다. <b>순수 함수</b>다 —
+        /// 씬도 설정도 카메라도 보지 않으므로 테스트가 상한/하한 계약을 직접 잰다(같은 판정을 테스트가
+        /// 다시 적으면 어긋난다는 이 저장소의 관례).
+        ///
+        /// <para>하한은 "손끝이 실제로 그려진 창 픽셀 위에 있는가"이고(곡률 여유 + 손 여유),
+        /// 상한은 "그래도 창 한가운데는 아니다"다. 그 사이에서는 <b>지금 서 있는 자리를 그대로 쓴다</b> —
+        /// 사용자가 요구한 "완전 끝말고 적당히 끝쪽"이 이 한 줄이다. 바깥으로 끌어내는 경로는 없다.</para>
+        /// </summary>
+        /// <param name="cornerClearanceWorld">창 모서리 곡률 몫(월드 유닛). 음수/NaN은 0으로 본다.</param>
+        /// <param name="handClearanceWorld">바깥 손끝의 좌우 진폭 몫(월드 유닛). 음수/NaN은 0으로 본다.</param>
+        /// <param name="standingInsetWorld">지금 서 있는 자리의 인셋. NaN이면 하한을 쓴다.</param>
+        /// <param name="probeReachWorld">배회 AI가 경계 행동을 평가하는 최대 거리(= 상한 후보).</param>
+        /// <param name="footholdWidthWorld">붙잡은 발판의 폭. 0 이하/NaN이면 폭 절단을 건너뛴다.</param>
+        /// <param name="maxInsetWidthFraction">폭 절단 비율. 내부에서 [0, 0.5]로 자른다.</param>
+        public static float ResolveEdgeInsetWorld(float cornerClearanceWorld, float handClearanceWorld,
+            float standingInsetWorld, float probeReachWorld, float footholdWidthWorld, float maxInsetWidthFraction)
+        {
+            float min = Sane(cornerClearanceWorld) + Sane(handClearanceWorld);
+            float max = Mathf.Max(min, Sane(probeReachWorld));
+
+            // 폭 절단 — "창 한가운데에 매달린" 그림을 산술적으로 불가능하게 만드는 안전판.
+            // 0.5를 넘겨 받으면 0.5로 자른다(0.5 = 정확히 한가운데. 그 너머는 정의상 반대쪽 끝이다).
+            if (!float.IsNaN(footholdWidthWorld) && footholdWidthWorld > 0f && maxInsetWidthFraction > 0f)
+            {
+                float cap = footholdWidthWorld * Mathf.Min(maxInsetWidthFraction, 0.5f);
+                max = Mathf.Min(max, cap);
+                min = Mathf.Min(min, cap); // 좁은 창에서 min > max로 뒤집히지 않게(Clamp가 조용히 뒤집힌다).
+            }
+
+            float standing = float.IsNaN(standingInsetWorld) ? min : standingInsetWorld;
+            return Mathf.Clamp(standing, min, max);
+        }
+
+        private static float Sane(float v) => float.IsNaN(v) || v < 0f ? 0f : v;
+
+        /// <summary>창 모서리 곡률 몫 — <b>OS 포인트 고정량</b>이라 런타임 환산을 거친다.
+        /// 상수 환산(예: DockGeometry.ReferenceWorldUnitsPerPoint)을 쓰면 디스플레이가 바뀔 때 조용히 틀린다.</summary>
+        private float ResolveCornerClearanceWorld()
+        {
+            float points = _blackboard.Config != null ? _blackboard.Config.ledgeHangCornerClearancePoints : 12f;
+            if (points <= 0f) return 0f;
+            float pointsPerUnit = GroundSensor.ComputeOsPointsPerWorldUnit(_blackboard.MainCamera, _blackboard.Config);
+            if (float.IsNaN(pointsPerUnit) || pointsPerUnit <= 0f)
+                pointsPerUnit = StickConfig.ReferencePointsPerWorldUnitApprox;
+            return points / pointsPerUnit;
+        }
+
+        /// <summary>바깥 손끝의 좌우 진폭 몫 — <b>신장 배수</b>라 캐릭터가 커지면 함께 커진다.</summary>
+        private float ResolveHandClearanceWorld()
+        {
+            float heights = _blackboard.Config != null ? _blackboard.Config.ledgeHangHandClearanceHeights : 0.15f;
+            if (heights <= 0f) return 0f;
+            return heights * _blackboard.CharacterHeightWorld;
+        }
+
+        /// <summary>붙잡은 발판의 폭(월드 유닛). 양쪽 모서리를 같은 창구로 물어 만든다.
+        /// 조회에 실패하면 0을 돌려 폭 절단을 건너뛰게 한다(폭을 모르면 자르지 않는 쪽이 안전하다).</summary>
+        private float ResolveLedgeWidthWorld()
+        {
+            if (!_hasLedge) return 0f;
+            if (!_blackboard.TryGetFootholdEdgeWorld(_ledgeHandle, 1, out _, out float rightX)) return 0f;
+            if (!_blackboard.TryGetFootholdEdgeWorld(_ledgeHandle, -1, out _, out float leftX)) return 0f;
+            return Mathf.Abs(rightX - leftX);
         }
 
         public void Tick(float deltaTime)
@@ -195,10 +320,11 @@ namespace StickMate.States
                 return;
             }
 
-            // 매달린 목표 좌표 — 손끝이 모서리에 정확히 닿는 높이(모서리 Y − 손끝~발끝 거리)에
-            // 몸을 두고, X는 모서리 바깥으로 ledgeHangEdgeOffset만큼 나간다(손을 놓으면 그 X로 떨어진다).
-            float edgeOffset = _blackboard.Config != null ? _blackboard.Config.ledgeHangEdgeOffset : 0.14f;
-            var hangPos = new Vector2(_ledgeEdgeWorldX + _direction * edgeOffset, _ledgeTopWorldY - _dropDepth);
+            // 매달린 목표 좌표 — 손끝이 모서리에 정확히 닿는 높이(모서리 Y − 손끝~발끝 거리)에 몸을 두고,
+            // X는 모서리에서 **안쪽으로** _edgeInset만큼 들어간다(손을 놓으면 그 X로 떨어진다).
+            // ★ 인셋은 Enter에서 한 번 확정된 값이다 — 매 프레임 다시 풀면 창 크기 변화가 몸을 좌우로 떨게 한다.
+            //   그래도 _ledgeEdgeWorldX는 매 프레임 갱신되므로 창이 옆으로 움직이면 몸이 그대로 따라간다.
+            var hangPos = new Vector2(_ledgeEdgeWorldX - _direction * _edgeInset, _ledgeTopWorldY - _dropDepth);
 
             if (_phase == Phase.Grabbing)
             {

@@ -104,7 +104,14 @@ namespace StickMate.Tests.EditMode
             new ForbiddenPattern
             {
                 Needle = "DestroyWindow(",
-                Reason = "타 윈도우를 강제 종료시키는 Win32 API — 원칙 3/비침해 위반, 화이트리스트 없음.",
+                Reason = "타 윈도우를 강제 종료시키는 Win32 API — 원칙 3/비침해 위반. " +
+                    "★ 2026-09-03 리더 승인 예외: " + TraySelfWindowExceptionFileName + " 한 파일에서 " +
+                    "<우리가 직접 만든 트레이 호스트 창>을 Application.quitting에서만 정리한다. " +
+                    "남의 창 핸들이 그 경로로 흘러들 방법이 없다(인자가 _hostWindow 하나로 고정).",
+                ExceptionsByFileName = new Dictionary<string, Func<string, bool>>(StringComparer.Ordinal)
+                {
+                    { TraySelfWindowExceptionFileName, IsApprovedTraySelfWindowUsage },
+                },
             },
             new ForbiddenPattern
             {
@@ -167,7 +174,14 @@ namespace StickMate.Tests.EditMode
             {
                 Needle = "SetForegroundWindow(",
                 Reason = "타 윈도우를 강제로 앞으로 끌어와 포커스를 빼앗는 API — 비침해 원칙 2 위반. " +
-                    "EVENT_SYSTEM_FOREGROUND를 '구독'하는 것과 포커스를 '바꾸는' 것은 정반대 행위다.",
+                    "EVENT_SYSTEM_FOREGROUND를 '구독'하는 것과 포커스를 '바꾸는' 것은 정반대 행위다. " +
+                    "★ 2026-09-03 리더 승인 예외: " + TraySelfWindowExceptionFileName + " 한 파일에서 " +
+                    "<우리가 직접 만든 트레이 호스트 창>에만 허용된다(KB135788 관용구). 근거는 그 " +
+                    "파일의 클래스 문서 '승인된 예외' 절.",
+                ExceptionsByFileName = new Dictionary<string, Func<string, bool>>(StringComparer.Ordinal)
+                {
+                    { TraySelfWindowExceptionFileName, IsApprovedTraySelfWindowUsage },
+                },
             },
             new ForbiddenPattern
             {
@@ -189,7 +203,14 @@ namespace StickMate.Tests.EditMode
                 Needle = "PostMessage(",
                 Reason = "WM_CLOSE / WM_SYSCOMMAND(SC_MOVE, SC_MINIMIZE) 한 줄이면 남의 창을 닫거나 " +
                     "옮길 수 있다 — SetWindowPos를 금지하고 이걸 열어 두면 금지가 무의미해진다. " +
-                    "우리가 남의 창에 보낼 메시지는 하나도 없다(전부 조회/통보 수신이다).",
+                    "우리가 남의 창에 보낼 메시지는 하나도 없다(전부 조회/통보 수신이다). " +
+                    "★ 2026-09-03 리더 승인 예외: " + TraySelfWindowExceptionFileName + " 한 파일에서 " +
+                    "<우리 자신의 트레이 호스트 창>에 WM_NULL(아무 일도 하지 않는 메시지) 하나만 " +
+                    "보낸다 — KB135788의 나머지 절반이다.",
+                ExceptionsByFileName = new Dictionary<string, Func<string, bool>>(StringComparer.Ordinal)
+                {
+                    { TraySelfWindowExceptionFileName, IsApprovedTraySelfWindowUsage },
+                },
             },
             new ForbiddenPattern
             {
@@ -259,6 +280,52 @@ namespace StickMate.Tests.EditMode
         // 물 대상 자체가 사라진다 — 이름을 숨기는 것은 예외를 없애는 것이 아니라 감시를 없애는 것이다.
 
         private const string TaskbarStateExceptionFileName = "WindowsReservedBarAutoHideControl.cs";
+
+        // ============================================================================
+        // ★★ 승인된 예외 2건째 — 트레이 호스트 창 3종 (2026-09-03 리더 승인)
+        // ============================================================================
+        // 경위: 사용자 확정 지시 "실행시 시스템 트레이에 표시되어야함". 구현 중 dev-platform이
+        // SetForegroundWindow / PostMessage / DestroyWindow 셋이 전역 금지라 KB135788 표준 관용구를
+        // 쓸 수 없다고 보고했고(혼자 화이트리스트를 늘리지 않았다), 리더가 작업표시줄 예외와 같은
+        // 형식으로 승인했다 — 이번은 «파일 1개 · 형태 3개»다.
+        //
+        // ★ 승인의 핵심 조건: 세 금지 사유의 주어가 전부 «타 윈도우»인데, 이 세 호출은 전부
+        //   <우리가 CreateWindowEx로 직접 만든, 한 번도 보이지 않는 트레이 호스트 창> 하나에만
+        //   적용된다. 그래서 인자가 _hostWindow 하나로 고정된 형태만 통과시킨다 —
+        //   임의 핸들을 받는 형태는 여기서 막힌다.
+        //
+        // ★ 완전 일치로만 본다. 작업표시줄 예외는 접두/접미만 보다가 2026-09-02에
+        //   "SHAppBarMessage(ABM_SETSTATE, ref evil); Kill();"을 통과시킨 전력이 있다.
+        //   같은 함정에 두 번 빠지지 않는다.
+
+        private const string TraySelfWindowExceptionFileName = "WindowsSystemTrayIcon.cs";
+
+        /// <summary>
+        /// 허용되는 <b>정확한 6줄</b>. API마다 <c>extern</c> 선언 1줄 + 호출 1줄이다.
+        /// <para>선언을 허용하는 이유는 작업표시줄 예외의 상수 선언과 같다 — Win32 이름을 다른
+        /// 이름으로 감추면 <b>이 감사가 물 대상 자체가 사라진다</b>. 이름을 숨기는 것은 예외를
+        /// 없애는 것이 아니라 감시를 없애는 것이다.</para>
+        /// </summary>
+        private static readonly string[] ApprovedTraySelfWindowLines =
+        {
+            "private static extern bool SetForegroundWindow(IntPtr hWnd);",
+            "SetForegroundWindow(_hostWindow);",
+            "private static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);",
+            "PostMessage(_hostWindow, WM_NULL, IntPtr.Zero, IntPtr.Zero);",
+            "private static extern bool DestroyWindow(IntPtr hWnd);",
+            "DestroyWindow(_hostWindow);",
+        };
+
+        /// <summary>승인된 6줄과 <b>문자 하나까지 같은가</b>. 부분 일치를 허용하지 않는다.</summary>
+        private static bool IsApprovedTraySelfWindowUsage(string line)
+        {
+            string t = line.Trim();
+            foreach (string form in ApprovedTraySelfWindowLines)
+            {
+                if (string.Equals(t, form, StringComparison.Ordinal)) return true;
+            }
+            return false;
+        }
 
         private static bool IsApprovedTaskbarAutoHideStateUsage(string line)
         {
@@ -419,6 +486,120 @@ namespace StickMate.Tests.EditMode
                 "실제 호출 형태를 통과시키지 못합니다(오탐).");
             Assert.IsTrue(IsApprovedTaskbarAutoHideStateUsage("        private const uint ABM_SETSTATE = 0x0000000A;"),
                 "실제 선언 형태를 통과시키지 못합니다 — 감사가 자기 예외를 위반으로 잡습니다(미탐이 아니라 오탐).");
+        }
+
+        // ============================================================================
+        // 1-a-2. ★ 승인된 예외 2건째(트레이 호스트 창) — 같은 수준으로 잠근다 (2026-09-03)
+        // ============================================================================
+
+        /// <summary>
+        /// 승인된 트레이 예외가 <b>정확히 그 한 파일 · 그 6줄</b>로만 존재하는가, 그리고
+        /// <b>다른 어떤 파일로도 새지 않았는가</b>.
+        ///
+        /// <para>세 갈래로 묻는다. (1) 대상 파일 안의 등장 횟수가 니들당 정확히 2줄인가,
+        /// (2) 그 줄들이 전부 승인된 형태인가, (3) <b>나머지 모든 소스에서 0건인가</b>.
+        /// (3)이 이 테스트의 본체다 — 화이트리스트는 파일명으로 걸려 있으므로, 누군가 같은 이름의
+        /// API를 <b>다른 파일</b>에 쓰면 감사 본체가 잡아야 하고, 그 보장이 실제로 살아 있는지는
+        /// 여기서 독립적으로 확인한다.</para>
+        /// </summary>
+        [Test]
+        public void 승인된_트레이_예외는_정확히_그_한_파일_여섯_줄로만_존재한다()
+        {
+            string[] needles = { "SetForegroundWindow(", "PostMessage(", "DestroyWindow(" };
+
+            string target = null;
+            var otherFiles = new List<string>();
+            foreach (string path in CollectScannedSourceFiles())
+            {
+                if (Path.GetFileName(path) == TraySelfWindowExceptionFileName) target = path;
+                else otherFiles.Add(path);
+            }
+
+            Assert.IsNotNull(target,
+                $"화이트리스트가 가리키는 파일({TraySelfWindowExceptionFileName})이 없습니다. " +
+                "예외가 정말 사라졌다면 위 ForbiddenPatterns의 ExceptionsByFileName 항목 3개와 " +
+                "IsApprovedTraySelfWindowUsage / ApprovedTraySelfWindowLines를 함께 지우세요 — " +
+                "그러면 세 이름은 다시 예외 없이 금지됩니다(2026-08-30 SetWindowPos와 같은 처리).");
+
+            // ---- (1)(2) 대상 파일: 니들당 정확히 2줄, 전부 승인된 형태 ----
+            string[] lines = BlankOutCommentLines(File.ReadAllLines(target));
+            int totalHits = 0;
+            foreach (string needle in needles)
+            {
+                var hits = new List<string>();
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    if (lines[i].Contains(needle)) hits.Add($"{i + 1}: {lines[i].Trim()}");
+                }
+
+                Assert.AreEqual(2, hits.Count,
+                    $"'{needle}'의 등장 횟수가 2(extern 선언 1 + 호출 1)가 아닙니다. 늘었다면 예외가 " +
+                    "번지고 있고, 줄었다면 이름이 숨겨져 감사가 물 대상을 잃었습니다.\n" +
+                    string.Join("\n", hits));
+
+                foreach (string hit in hits)
+                {
+                    Assert.IsTrue(IsApprovedTraySelfWindowUsage(hit.Substring(hit.IndexOf(':') + 1)),
+                        $"승인된 형태가 아닌 사용입니다 — {hit}\n" +
+                        "승인 조건은 <인자가 _hostWindow 하나로 고정된 형태>입니다. 임의 핸들을 " +
+                        "받을 수 있게 바꾸면 '우리 자신의 창에만 적용된다'는 승인의 전제가 깨집니다.");
+                }
+                totalHits += hits.Count;
+            }
+
+            Assert.AreEqual(ApprovedTraySelfWindowLines.Length, totalHits,
+                "승인된 줄 수(6)와 실제 등장 줄 수가 다릅니다.");
+
+            // 승인 목록에 <죽은 항목>이 없는가 — 화이트리스트만 남고 코드가 사라진 상태를 막는다.
+            string targetBody = string.Join("\n", lines);
+            foreach (string form in ApprovedTraySelfWindowLines)
+            {
+                StringAssert.Contains(form, targetBody,
+                    $"승인 목록의 '{form}'이 실제 코드에 없습니다 — 죽은 화이트리스트 항목입니다. " +
+                    "예외는 실제로 쓰이는 만큼만 열려 있어야 합니다.");
+            }
+
+            // ---- (3) ★ 본체: 다른 어떤 파일에서도 0건인가 ----
+            var leaks = new List<string>();
+            foreach (string path in otherFiles)
+            {
+                string[] otherLines = BlankOutCommentLines(File.ReadAllLines(path));
+                for (int i = 0; i < otherLines.Length; i++)
+                {
+                    foreach (string needle in needles)
+                    {
+                        if (otherLines[i].Contains(needle))
+                        {
+                            leaks.Add($"{Path.GetFileName(path)}:{i + 1}: {otherLines[i].Trim()}");
+                        }
+                    }
+                }
+            }
+
+            Assert.IsEmpty(leaks,
+                "승인은 " + TraySelfWindowExceptionFileName + " <한 파일>에만 내려졌는데 다른 파일에서 " +
+                $"같은 API가 발견됐습니다({leaks.Count}건). '이왕 창을 만지는 김에'가 예외가 번지는 " +
+                "가장 자연스러운 경로입니다:\n" + string.Join("\n", leaks));
+
+            // ---- 네거티브 컨트롤: 검증 함수가 실제로 판정을 가르는가 ----
+            Assert.IsFalse(IsApprovedTraySelfWindowUsage("SetForegroundWindow(foreignHwnd);"),
+                "★ 남의 창 핸들을 넘기는 형태를 통과시킵니다 — 승인의 전제(자기 창 한정)가 무너집니다.");
+            Assert.IsFalse(IsApprovedTraySelfWindowUsage("DestroyWindow(victim);"),
+                "★ 임의 핸들 파괴를 통과시킵니다 — 원칙 3 정면 위반입니다.");
+            Assert.IsFalse(IsApprovedTraySelfWindowUsage("PostMessage(target, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);"),
+                "★ 남의 창을 닫는 형태를 통과시킵니다 — 이 니들이 금지된 바로 그 이유입니다.");
+            Assert.IsFalse(IsApprovedTraySelfWindowUsage("SetForegroundWindow(_hostWindow); Evil();"),
+                "승인된 줄 뒤에 문장을 붙이면 통과합니다 — 완전 일치가 아니라 접두 일치를 하고 " +
+                "있다는 뜻이고, 그건 그 파일에 자유 통행권을 준 것과 같습니다(2026-09-02 실제 사고).");
+            Assert.IsFalse(IsApprovedTraySelfWindowUsage("int x = DestroyWindow(_hostWindow);"),
+                "호출문이 아닌 사용까지 통과시킵니다.");
+
+            foreach (string form in ApprovedTraySelfWindowLines)
+            {
+                Assert.IsTrue(IsApprovedTraySelfWindowUsage("            " + form),
+                    $"들여쓰기된 실제 형태('{form}')를 통과시키지 못합니다 — 감사가 자기 예외를 " +
+                    "위반으로 잡습니다(미탐이 아니라 오탐).");
+            }
         }
 
         // ================= 1-b. 레지스트리 쓰기 금지 (2026-09-01 이관) =================

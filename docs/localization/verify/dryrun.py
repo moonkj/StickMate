@@ -107,21 +107,56 @@ RE_SAY = re.compile(r'DialogueLine\.(?:Say|React)\(\s*"([^"]*)"')
 RE_SELF = re.compile(r'TriggerSelfReturn\(\s*"([^"]*)"')
 RE_LAMBDA = re.compile(r'cfg\s*=>\s*"([^"]*)"')
 
+# ★★ 사각지대 3 (2026-09-03에 이 예행이 놓치고 있던 것) ─────────────────────────────
+#   `Dialogue/GrabReactionLines.cs`의 9줄은 `DialogueLine.Say(...)`가 아니라
+#   **배열 초기화자**(`static readonly string[] HeadLines = { "머리 놔", ... }`)에 있다.
+#   golden_gen.py 는 2026-09-03 00:12에 이 형태를 흡수했는데 이 파일은 안 따라가서,
+#   같은 날 예행이 **«골든에는 있는데 소스에 없다» 9줄**을 «삭제»로 보고했다.
+#   실제로는 아무것도 삭제되지 않았고 **검사기가 눈이 먼 것**이었다.
+#
+#   ⇒ 고치는 방식이 중요하다. golden_gen 의 함수를 **import 하지 않는다** —
+#     그러면 생성기와 검사기가 코드를 공유해 **같은 방향으로 함께 틀어진다**
+#     (TEAM.md «생성기와 검사기가 같이 틀린다»). 대신
+#     (a) 형태가 다른 독립 구현으로 짜고(이름 목록이 아니라 **디렉터리 전수 스캔**),
+#     (b) **제3의 측정**(census.py 의 C# 어휘 분석기)으로 두 결과를 심판한다.
+#
+#   ★ 그리고 이 형태는 곧 **주류가 된다** — PLAN §3-4가 영어 대사 풀을 정확히 이
+#     모양(`string[] IdleLines`)으로 만들라고 정해 뒀다. 지금 안 고치면 대사가
+#     테이블로 옮겨가는 순간 골든이 **조용히 텅 빈다**.
+RE_POOL = re.compile(r'static\s+readonly\s+string\[\]\s+(\w+)\s*=\s*\{(.*?)\n\s*\};', re.S)
+
+
+def pool_literals(src):
+    """한 소스 안의 **모든** `static readonly string[] X = { ... };` 에서 리터럴을 긁는다.
+    주석 줄은 버린다(`// ★ 사용자 요청 원문…` 안의 인용부호가 대사로 둔갑하지 않게)."""
+    out = []
+    for _name, body in RE_POOL.findall(src):
+        body = '\n'.join(l for l in body.split('\n') if not l.strip().startswith('//'))
+        out += re.findall(r'"([^"]*)"', body)
+    return out
+
 
 def scan_all():
-    src = rd('Dialogue/AmbientChatter.cs')
-
-    def arr(name):
-        m = re.search(r'private static readonly string\[\]\s+' + name + r'\s*=\s*\{(.*?)\n        \};', src, re.S)
-        body = '\n'.join(l for l in m.group(1).split('\n') if not l.strip().startswith('//'))
-        return re.findall(r'"([^"]*)"', body)
-
-    out = arr('IdleLines') + arr('WalkLines')
+    out = []
+    # (1) 대사 풀 배열 — 파일 이름을 열거하지 않고 Dialogue/ 전수. 새 풀 파일이 생겨도 따라간다.
+    for f in sorted(glob.glob(os.path.join(S, 'Dialogue', '**', '*.cs'), recursive=True)):
+        out += pool_literals(io.open(f, encoding='utf-8').read())
+    # (2) 상태에서 직접 말하는 형태
     for f in sorted(glob.glob(os.path.join(S, 'States', '**', '*.cs'), recursive=True)):
         out += RE_SAY.findall(io.open(f, encoding='utf-8').read())
     out += RE_SELF.findall(rd('States/RunawayState.cs'))
     out += RE_LAMBDA.findall(rd('Core/StickmanAgent.cs'))
     return [t for t in out if t]
+
+
+def lexer_arbiter(rel):
+    """★ 제3의 측정 — census.py 의 C# 어휘 분석기로 그 파일의 한글 리터럴을 센다.
+    정규식 수집기 두 개(golden_gen / 이 파일)가 다투면 이쪽이 심판한다.
+    census.py 는 자기 양성/음성 대조 10/10을 따로 갖고 있다."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from census import lex_csharp, HANGUL
+    lits, _masked = lex_csharp(rd(rel))
+    return [l['value'] for l in lits if HANGUL.search(l['value'])]
 
 
 def read_golden():
@@ -174,6 +209,13 @@ def main():
              "어... 알았어, 갈게", "심심해서 왔어..."]
     chk('★ 사각지대 7줄이 전부 들어와 있다', all(b in sset for b in blind),
         repr([b for b in blind if b not in sset]))
+    # ★★ 사각지대 3 — 배열 초기화자 대사(붙잡힘 9줄). 2026-09-03에 이 예행이 «삭제»로
+    #    잘못 보고했던 자리다. 제3의 측정(census.py 어휘 분석기)이 심판한다.
+    grab_lex = set(lexer_arbiter('Dialogue/GrabReactionLines.cs'))
+    chk('★★ 사각지대 3 — 배열형 대사 %d줄을 수집기가 전부 본다' % len(grab_lex),
+        grab_lex and grab_lex <= sset, repr(sorted(grab_lex - sset)))
+    chk('  그 짝(심판) — 어휘 분석기도 같은 파일에서 0건이 아니다',
+        len(grab_lex) > 0, '%d건' % len(grab_lex))
 
     print()
     print('== 0-b. 수집기 양성/음성 대조 (합성 소스) ==')
@@ -184,8 +226,18 @@ def main():
     chk('Say/React 형태를 찾는다', RE_SAY.findall(with_all) == ['세이형태'])
     chk('TriggerSelfReturn 형태를 찾는다(사각지대 1)', RE_SELF.findall(with_all) == ['자진복귀형태'])
     chk('cfg => 형태를 찾는다(사각지대 2)', RE_LAMBDA.findall(with_all) == ['람다형태'])
+    pool_src = ('        private static readonly string[] 풀A =\n        {\n'
+                '            "배열형1",\n'
+                '            // "주석속가짜",\n'
+                '            "배열형2",\n        };\n'
+                '        private static readonly string[] 합본 = Combine(풀A, 풀A);\n')
+    chk('★ 배열 초기화자 형태를 찾는다(사각지대 3)', pool_literals(pool_src) == ['배열형1', '배열형2'])
+    chk('★ 그 안의 **주석 줄**은 대사로 세지 않는다', '주석속가짜' not in pool_literals(pool_src))
+    chk('★ Combine(...) 합본 배열은 리터럴이 없으므로 중복을 안 만든다',
+        pool_literals(pool_src).count('배열형1') == 1)
     chk('음성 대조 — 형태가 없으면 정말 0이다',
-        not RE_SAY.findall(with_none) and not RE_SELF.findall(with_none) and not RE_LAMBDA.findall(with_none))
+        not RE_SAY.findall(with_none) and not RE_SELF.findall(with_none)
+        and not RE_LAMBDA.findall(with_none) and not pool_literals(with_none))
 
     print()
     print('== 1. ★★ 한국어 비트 단위 불변 ==')

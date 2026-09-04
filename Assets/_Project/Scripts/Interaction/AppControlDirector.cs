@@ -50,7 +50,7 @@ namespace StickMate.Interaction
     /// <see cref="StickMateDevTools"/> 게이트 뒤 단축키만 / <b>(라) 종료</b> → 아래.
     ///
     /// ============================================================================
-    /// 종료 경로는 <b>2중</b>이다 (36-10) — 단축키 하나로는 부족하다
+    /// 종료 경로는 <b>3중</b>이다 (36-10 / 53-6) — 단축키 하나로는 부족하다
     /// ============================================================================
     /// 이 앱에는 Dock 아이콘도, 메뉴바 아이콘도, 트레이도 없다. 단축키 표기가 <b>화면에</b> 나오는
     /// 자리는 설정창 안 네 곳뿐이고(종료 버튼 라벨 Q · [일반] 숨기기 행의 칩과 캡션 K ·
@@ -60,7 +60,11 @@ namespace StickMate.Interaction
     /// 그 환경에 남는 종료 수단이 0이 되면 그건 강제 종료(활성 상태
     /// 보기/작업 관리자) 외에는 끌 수 없는 상주 오버레이이며, 원칙 2·4의 명백한 위반이다.
     ///   ① <b>⌃⌥⌘Q</b> — 여기. <b>개발 게이트 대상이 아니다</b>(릴리스에서 반드시 산다).
-    ///   ② <b>행동 명령창 푸터 [✕ 앱 종료]</b>(2단 확인 3초) — 마우스 경로 1.
+    ///   ② <b>톱니 부채꼴 위성 [앱 종료]</b>(2단 확인 3초) — 마우스 경로 1. <b>최상위 1클릭 도달</b>.
+    ///      ★ 2026-09-03 사용자 지시로 신설됐고(*"나사 메뉴 지금 4개중에 버튼 하나 추가해서 종료버튼으로
+    ///      만들어줘"*), <b>같은 라운드에 행동창 푸터의 종료 칩은 삭제됐다</b> — 36-1이 (라)로 분류한
+    ///      것을 (가) 행동 명령창에 얹어 두었던 오분류였다(앱 종료는 캐릭터에게 시키는 일이 아니다).
+    ///      경로 수는 3중 그대로다: <b>하나가 늘고 하나가 빠진 것이 아니라, 있던 하나가 제자리로 갔다.</b>
     ///   ③ <b>설정창 [지금 종료]</b>(2단 확인 3초) — 마우스 경로 2. ★ 2026-09-02 정정: 여기 원래
     ///      "②가 마우스만으로 도달하는 유일한 경로"라고 적혀 있었으나 <b>거짓</b>이었다(ux-designer 발견).
     /// 저장은 <c>CharacterProgressionDirector.OnApplicationQuit()</c>이 담당하므로 어느 쪽으로 끄든
@@ -165,7 +169,7 @@ namespace StickMate.Interaction
             //   Tests/EditMode/PlatformParityAuditTests의 글리프 스캐너도 잡지 못했다.
             string quitLine = "[앱제어] 준비 완료 — 종료 방법 3가지: " +
                 "(1) 전역 단축키 **" + ShortcutLabel.Chord("Q") + "**, " +
-                "(2) **기어 아이콘 → 부채꼴 ④[행동] → 창 푸터 [✕ 앱 종료]**(2단 확인 3초), " +
+                "(2) **기어 아이콘 → 부채꼴 [앱 종료]**(2단 확인 3초), " +
                 "(3) **설정창 [지금 종료]**(2단 확인 3초). " +
                 "★ 캐릭터 우클릭 메뉴는 2026-08-31에 폐지됐습니다 — 우클릭은 이제 밑에 있는 앱으로 " +
                 "그대로 관통합니다(비침해 개선, UX_FLOW 36-9). ";
@@ -200,12 +204,12 @@ namespace StickMate.Interaction
                 : $"개발 전용 단축키는 잠겨 있습니다({StickMateDevTools.SourceLabel}) — " +
                   $"환경변수 {StickMateDevTools.EnvironmentVariableName}=1 로 실행하면 열립니다. ";
 
-            // ★ 전역 키 조회가 미지원인 환경은 종료 경로가 ②(행동 명령창 푸터) 하나뿐이 된다 —
+            // ★ 전역 키 조회가 미지원인 환경은 종료 경로가 마우스 둘(부채꼴 위성 · 설정창)뿐이 된다 —
             //   그 사실을 로그가 분명히 말해야 팀이 그 환경을 재현했을 때 원인을 즉시 안다(36-10).
             string keyLine = _keyService != null
                 ? "전역 키 조회=사용 가능."
                 : "전역 키 조회=미지원 — 단축키 전체가 동작하지 않습니다. 이 환경에서 앱을 끄는 유일한 " +
-                  "경로는 부채꼴 ④[행동] 창의 [✕ 앱 종료]입니다.";
+                  "경로는 **톱니 → 부채꼴 [앱 종료]**입니다(2단 확인 3초).";
 
             Debug.Log(quitLine + userKeys + devKeys + keyLine);
         }
@@ -250,7 +254,11 @@ namespace StickMate.Interaction
 
             // ★ 2026-09-02 — 사용자 명시 숨김(K). <b>개발 게이트 대상이 아니다</b>: Q(종료)와 같은 이유로
             //   릴리스에서 반드시 살아야 한다. 이 키가 죽으면 숨긴 사용자에게 남는 탈출구가 0이 된다
-            //   (숨는 동안 톱니·부채꼴·창이 전부 IsSuspended를 보고 스스로 내려간다 = 마우스 경로 없음).
+            //   ★ 2026-09-03 정정 — 옛 근거는 «숨는 동안 톱니·부채꼴·창이 전부 스스로 내려가 마우스
+            //   경로가 없다»였다. <b>더 이상 참이 아니다</b>: 사용자 명시 숨김은 캐릭터만 가리고 톱니와
+            //   열린 창을 남긴다(StickmanAgent.HidesScreenSurfaces). 그래도 이 키는 게이트 밖에 둔다 —
+            //   톱니를 껐거나(설정창 [일반] "톱니 아이콘") 창을 다 닫아 둔 사용자에게는 이것이
+            //   여전히 가장 짧은 길이고, Q(종료)와 같은 급의 상시 계약이다.
             bool kKey = chord && IsKeyDown(GlobalKey.K);
 
             // N은 반쪽만 사용자용이다: 가출 중이면 [돌아와!](상시 탈출구, 원칙 4)이고 그 밖에는 강제
@@ -335,19 +343,39 @@ namespace StickMate.Interaction
 
         // ==================== 동작 ====================
 
+        /// <summary>
+        /// ★ 앱을 실제로 끄는 <b>단 하나의 자리</b>(2026-09-03 신설).
+        ///
+        /// <para><b>왜 함수로 뺐나</b>: 이 다섯 줄(로그 + <c>Application.Quit()</c> + 에디터 분기)이
+        /// 원래 <b>세 곳</b>에 복사돼 있었다 — 여기, 행동창 푸터 칩, 설정창. 같은 라운드에 부채꼴
+        /// 위성이 네 번째가 될 뻔했고, 행동창 칩이 삭제되면서 그 사본 하나가 사라졌다.
+        /// <b>되돌릴 수 없는 행동의 실행부가 여러 벌인 것 자체가 비용이다</b> — 에디터 분기를 한 곳에서
+        /// 빠뜨리면 그 경로만 배치모드 테스트를 얼려 버린다.</para>
+        ///
+        /// <para><c>Interaction/SettingsWindow.cs</c>의 사본은 <b>이번에 안 건드렸다</b>(다른 담당의
+        /// 작업 중 파일이다). 그쪽도 이 창구로 모으는 것이 남은 정리다 — 리더에게 보고했다.</para>
+        ///
+        /// <para>저장은 <c>CharacterProgressionDirector.OnApplicationQuit()</c>이 담당하므로 어느
+        /// 경로로 끄든 데이터 손실이 없다.</para>
+        /// </summary>
+        public static void QuitApplication(string source)
+        {
+            Debug.Log($"[앱제어] 종료 요청({source}) — Application.Quit()을 호출합니다. " +
+                "저장은 CharacterProgressionDirector.OnApplicationQuit()이 담당하므로 데이터 손실이 없습니다. " +
+                "안녕히 계세요!");
+            Application.Quit();
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#endif
+        }
+
         private void Invoke(ControlAction action, string source)
         {
             switch (action)
             {
                 case ControlAction.Quit:
                     // ★ 개발 게이트 대상이 아니다(36-10) — 릴리스에서 반드시 살아야 한다.
-                    Debug.Log($"[앱제어] 종료 요청({source}) — Application.Quit()을 호출합니다. " +
-                        "저장은 CharacterProgressionDirector.OnApplicationQuit()이 담당하므로 데이터 손실이 없습니다. " +
-                        "안녕히 계세요!");
-                    Application.Quit();
-#if UNITY_EDITOR
-                    UnityEditor.EditorApplication.isPlaying = false;
-#endif
+                    QuitApplication(source);
                     break;
 
                 case ControlAction.InkColor:
@@ -496,10 +524,16 @@ namespace StickMate.Interaction
         /// <c>SetCharacterVisibleNow</c>로 <b>렌더러만</b> 껐다. 그러면 열려 있던 설정창/정보창/부채꼴과
         /// 그 <b>클릭 차단막</b>이 그대로 남아, 발표 화면에는 캐릭터 대신 UI가 찍혔다 — 캐릭터만 사라지고
         /// 창이 남는 쪽이 더 이상하다. 그래서 이 경로는 <see cref="StickmanAgent.SetUserHidden"/>을 통해
-        /// 전체화면 감지와 <b>같은 Suspend 경로</b>를 탄다(표면들이 IsSuspended를 폴링해 스스로 걷는다).</para>
+        /// 전체화면 감지와 <b>같은 Suspend 경로</b>를 탄다(렌더러·물리·상태가 한 곳에서 멈춘다).</para>
         ///
-        /// <para><b>왜 개발 게이트 뒤가 아닌가</b>: Q(종료)와 같다. 이 키가 죽으면 숨긴 사용자에게 남는
-        /// 탈출구가 0이 된다.</para>
+        /// <para>★★★ <b>2026-09-03 — 범위가 「캐릭터만」으로 좁아졌다</b>(사용자 확정 <i>"캐릭만 가리고"</i>).
+        /// 위 문단의 <i>"열려 있던 창과 차단막도 함께 걷는다"</i>는 <b>더 이상 참이 아니다</b>:
+        /// 같은 Suspend 경로를 타되 <see cref="StickmanAgent.HidesScreenSurfaces"/>가 false라
+        /// 톱니·열린 창·부채꼴은 남는다. 사용자가 겪은 실제 사고는 «발표 화면에 UI가 찍힘»이 아니라
+        /// <b>«갇힘»</b>이었다 — <i>"전부 다 없어져버려서 다시 나오게 할 방법이 없어"</i>.</para>
+        ///
+        /// <para><b>왜 개발 게이트 뒤가 아닌가</b>: Q(종료)와 같다. 톱니를 꺼 둔 사용자에게는 이것이
+        /// 여전히 가장 짧은 복귀 경로다.</para>
         /// </summary>
         private void ToggleUserHide(string source)
         {
@@ -512,8 +546,9 @@ namespace StickMate.Interaction
             bool hidden = _agent.ToggleUserHidden(source);
             Debug.Log($"[앱제어] 캐릭터 {(hidden ? "숨김" : "다시 보이기")}({source}) — " +
                 (hidden
-                    ? "캐릭터·열린 창·클릭 차단막을 함께 걷었습니다. 전체화면 앱을 오갔다 와도 " +
-                      "되살아나지 않습니다. 같은 키를 다시 누르면 돌아옵니다."
+                    ? "캐릭터와 거기 붙은 것(말풍선·이펙트·장비·펫)만 가렸습니다 — 톱니·열린 창·부채꼴은 " +
+                      "그대로 남습니다. 전체화면 앱을 오갔다 와도 되살아나지 않습니다. 같은 키를 다시 " +
+                      "누르거나 설정창 [일반] > [보이기]로 돌아옵니다."
                     : "캐릭터를 다시 보이게 했습니다."));
         }
 
@@ -530,6 +565,9 @@ namespace StickMate.Interaction
         {
             StickmanBlackboard blackboard = _agent != null ? _agent.Blackboard : null;
             if (blackboard == null || blackboard.Machine == null) return CommandAvailability.Missing;
+
+            // ★★★ 2026-09-03 — 캐릭터가 안 보이면 말풍선의 주인이 없다(원칙 1). 다른 6개와 같은 게이트.
+            if (HiddenCharacterCommandGate.BlocksNow(_agent)) return HiddenCharacterCommandGate.WhileHidden;
 
             StickmanStateId current = blackboard.Machine.CurrentStateId;
             if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)

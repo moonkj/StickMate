@@ -234,16 +234,17 @@ namespace StickMate.Interaction
             for (int i = 0; i < TabCount; i++)
             {
                 string name = TabTable[i].Name;
-                float width = TabLabelWidth(name);
 
                 Image hit = UiChrome.AddSurface(right, "Tab" + name, Color.clear, UiChrome.RadiusChip);
                 var rt = hit.rectTransform;
-                UiChrome.PlaceTopLeft(rt, x, TabStripY, width, TabStripHeight);
 
                 Text label = UiChrome.AddText(rt, "Label", UiChrome.FontTitle, TextAnchor.UpperCenter,
                     UiChrome.InkTab(selected: false));
                 UiChrome.Stretch(label.rectTransform);
-                label.text = name;
+                // ★ 2026-09-03 — 탭 폭을 <b>폰트에게 묻는다</b>. 글자를 먼저 넣어 재고, 그 값으로
+                //   상자를 놓는다(라벨은 Stretch라 부모가 나중에 커져도 그대로 따라온다).
+                float width = TabLabelWidth(label, name);
+                UiChrome.PlaceTopLeft(rt, x, TabStripY, width, TabStripHeight);
 
                 Image underline = UiChrome.AddSurface(rt, "Underline", Color.clear, 2);
                 UiChrome.PlaceTopLeft(underline.rectTransform, 0f, -(TabStripHeight - TabUnderlineHeight),
@@ -276,9 +277,24 @@ namespace StickMate.Interaction
             }
         }
 
-        /// <summary>내장 폰트에는 폭 조회 API가 마땅치 않아 <b>글자 수 × 글자 크기</b>로 잡는다 —
-        /// 한글은 정사각에 가까워 이 근사가 잘 맞는다. 넘침은 <see cref="BuildTabs"/> 끝의 검사가 잡는다
-        /// (탭 4개 = 22..230pt, 밑줄 끝 614pt / 폭 1042에서는 776pt).</summary>
-        private static float TabLabelWidth(string label) => label.Length * UiChrome.FontTitle + 4f;
+        /// <summary>
+        /// 탭 상자 폭 = <b>실측 글자 폭</b> + 좌우 여백.
+        ///
+        /// <para>★ 2026-09-03 — 옛 식은 <c>label.Length × UiChrome.FontTitle + 4f</c>였고 주석은
+        /// <i>"내장 폰트에는 폭 조회 API가 마땅치 않아"</i>라고 적고 있었다. <b>그 전제가 틀렸다</b> —
+        /// <see cref="UnityEngine.UI.Text.preferredWidth"/>가 바로 그 API이고, 같은 저장소의
+        /// <c>UiChrome.Ellipsize</c>가 이미 그것을 쓰고 있었다. 글자 수 모형은 한글에서만 맞고
+        /// 라틴에서는 <b>반쯤 빈 상자</b>를 남긴다(그 문장도 이미 <c>UiChrome.Ellipsize</c> 문서에 있다).</para>
+        ///
+        /// <para>여백 <c>4f</c>는 <b>옛 식에서 그대로</b> 가져왔다. 이번 변경의 효과를 '측정으로 바꾼 것'
+        /// 하나로 유지하기 위해서다 — 여백까지 같이 손대면 회귀 판정이 불가능해진다.</para>
+        ///
+        /// <para>넘침은 <see cref="BuildTabs"/> 끝의 검사가 잡는다(밑줄 끝 = RightPadX + RightContentWidth).</para>
+        /// </summary>
+        private static float TabLabelWidth(Text label, string name)
+            => SettingsControls.MeasuredWidth(label, name) + TabLabelPadX * 2f;
+
+        /// <summary>탭 라벨 좌우 여백(한쪽). 옛 식의 <c>+ 4f</c>를 반으로 나눈 값이다.</summary>
+        private const float TabLabelPadX = 2f;
     }
 }

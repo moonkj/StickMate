@@ -74,10 +74,18 @@ namespace StickMate.Tests.PlayMode
 
         /// <summary>렌더러가 만드는 펫 컨테이너 개체의 이름.
         /// <para>★ 프로덕션 문자열의 사본이다(<c>CharacterPetRenderer.EnsureBuilt</c>가
-        /// <c>new GameObject("CharacterPet")</c>로 만든다). PlayMode 어셈블리는 그 상수를 볼 수 없으므로
+        /// <c>_container = new GameObject(…)</c>로 만든다). PlayMode 어셈블리는 그 상수를 볼 수 없으므로
         /// 사본을 피할 수 없는데, 이 니들은 <b>존재 단언</b>에만 쓴다 — 이름이 바뀌면 아래
         /// <c>Assert.AreEqual(1, ...)</c>가 <b>0개</b>로 시끄럽게 빨개진다(조용히 초록이 되는
-        /// 부재 단언용이 아니다, CLAUDE.md).</para></summary>
+        /// 부재 단언용이 아니다, CLAUDE.md).</para>
+        ///
+        /// <para>★★ 2026-09-03 (개선 R2 항목 6) — <b>이제 거울 잠금이 걸려 있다.</b>
+        /// <c>Tests/EditMode/AppearanceItemIndexMirrorTests.PlayMode가_베낀_식별자_문자열이_프로덕션과_같다</c>가
+        /// 이 줄을 <b>소스 텍스트로 읽어</b> 프로덕션 <c>CharacterPetRenderer.cs</c>의 리터럴과 대조한다.
+        /// <b>값을 고치면 그 EditMode 검사가 먼저, 정확한 문장으로 빨개진다</b> — 여기서 "펫이 안 생겼다"와
+        /// "이름이 갈라졌다"가 구분되지 않던 문제가 그쪽에서 갈린다.
+        /// (그래서 이 줄의 <b>형태</b>도 계약이다: <c>const string 이름 = "값";</c> 한 줄을 유지하라.
+        /// 여러 줄로 쪼개면 그쪽 정규식이 못 찾고 <b>실패</b>한다 — 조용히 통과하지는 않는다.)</para></summary>
         private const string PetContainerName = "CharacterPet";
 
         /// <summary>펫이 <b>완전히 사라지거나 완전히 나타날</b> 때까지의 예산(벽시계 초).

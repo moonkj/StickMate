@@ -412,19 +412,19 @@ actions=12
   item id=action.focus_watch cat=Action slot=- idx=-1 lv=- invocable=1
     name=집중 모드
     desc=타이머가 도는 동안 곁을 지킨다. 창을 자주 바꾸면 조용히 쳐다본다.
-    status=<chord>F
+    status=톱니 메뉴에서
     primary=(0.83922,0.85882,0.89020,1.00000) secondary=(0.83922,0.85882,0.89020,1.00000)
     icon=none
-  item id=action.todo_reminder cat=Action slot=- idx=-1 lv=- invocable=1
+  item id=action.todo_reminder cat=Action slot=- idx=-1 lv=- invocable=0
     name=할일 알림
     desc=적어둔 할일을 때가 되면 들고 온다. 재촉은 한 번뿐이다.
-    status=<chord>J
+    status=가끔 알아서
     primary=(0.83922,0.85882,0.89020,1.00000) secondary=(0.83922,0.85882,0.89020,1.00000)
     icon=none
-  item id=action.hardware_reaction cat=Action slot=- idx=-1 lv=- invocable=1
+  item id=action.hardware_reaction cat=Action slot=- idx=-1 lv=- invocable=0
     name=하드웨어 반응
     desc=이 컴퓨터가 더워지면 같이 더워한다. 머리 옆에 아이콘만 띄우고 아무것도 만지지 않는다.
-    status=<chord>H
+    status=가끔 알아서
     primary=(0.83922,0.85882,0.89020,1.00000) secondary=(0.83922,0.85882,0.89020,1.00000)
     icon=none
   item id=action.desktop_tidy cat=Action slot=- idx=-1 lv=- invocable=0

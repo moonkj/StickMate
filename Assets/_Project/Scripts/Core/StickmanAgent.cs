@@ -63,6 +63,9 @@ namespace StickMate.Core
         //                              (AppSettingsModel.AutoHideOnFullscreen).
         //   축 2 _userHidden         : 사용자가 <b>직접</b> 숨겼다(⌃⌥⌘K / 설정창 [일반]). 오탐이 0이다 —
         //                              누가 눌렀는지가 확정적이라 "잘못 숨었다"가 성립하지 않는다.
+        //                              ★ 2026-09-03 — 이 축은 <b>캐릭터만</b> 가린다(사용자 확정
+        //                              "캐릭만 가리고"). 톱니·열린 창·부채꼴은 남는다. 그 갈림길은
+        //                              HidesScreenSurfaces 한 곳에만 있다 — 축 1은 한 비트도 안 바뀐다.
         //   축 3 _fullscreenPanelRetreat : 전체화면 앱이 떴지만 <b>게임이 아니다</b>(등급 1).
         //                              창·패널·팝오버·부채꼴·화면 오버레이와 그 <b>클릭 차단막</b>만 걷고
         //                              <b>캐릭터는 남긴다</b>. 이 축은 축 1을 <b>포함</b>한다
@@ -146,7 +149,11 @@ namespace StickMate.Core
         /// <para>★★ <b>화면 표면을 걷을지</b>를 묻는 소비자는 이 값이 아니라
         /// <see cref="ArePanelsSuppressed"/>를 읽어야 한다. 이 값은 등급 1(게임이 아닌 전체화면 앱)에서
         /// <b>false</b>이며, 그것이 2026-08-31 신고를 회귀시키지 않는 유일한 선이다.
-        /// 이 프로퍼티에 등급 1을 얹지 마라 — 얹는 순간 그 신고가 그대로 돌아온다.</para></summary>
+        /// 이 프로퍼티에 등급 1을 얹지 마라 — 얹는 순간 그 신고가 그대로 돌아온다.</para>
+        /// <para>★★★ <b>2026-09-03</b> — 이 값이 참이어도 <b>톱니와 열린 창은 남을 수 있다</b>
+        /// (사용자 명시 숨김 단독). "우리 흔적을 화면에서 지우는가"를 묻는 소비자는 이 값이 아니라
+        /// <see cref="HidesScreenSurfaces"/>를 읽어야 한다. 이 값은 <b>캐릭터 축</b> 전용이다 —
+        /// 캐릭터에 붙은 연출(말풍선·랙돌·스펙터클·가출)만 이 값을 본다.</para></summary>
         public bool IsSuspended => _isSuspended;
 
         /// <summary>
@@ -194,7 +201,57 @@ namespace StickMate.Core
         /// 캐시하지 않는 이유는 위 불변식 문단 그대로다.</para>
         /// </summary>
         public bool ArePanelsSuppressed => Platform.UserSurfaceSummonPolicy.SuppressesPanels(
-            _isSuspended, _fullscreenPanelRetreat, IsUserSummonGrantActive);
+            HidesScreenSurfaces, _fullscreenPanelRetreat, IsUserSummonGrantActive);
+
+        /// <summary>
+        /// ★★★ 2026-09-03 — <b>축 2만으로 숨어 있는가</b>(사용자 명시 숨김 <b>단독</b>).
+        ///
+        /// <para>축 1(전체화면 게임 감지)이 함께 켜져 있으면 <b>false</b>다. 그 경우는 원칙 2가 지배하고,
+        /// 원칙 2는 표면까지 전부 걷어야 하기 때문이다 — 이 프로퍼티를 <c>_userHidden</c> 하나로
+        /// 정의하면 "게임 중에 사용자가 직접 숨겼다"에서 톱니가 게임 위에 남는다.</para>
+        /// </summary>
+        public bool IsUserHiddenOnly => _userHidden && !_fullscreenAutoHide;
+
+        /// <summary>
+        /// ★★★ 2026-09-03 — <b>이 숨김이 화면 표면(톱니 포함)까지 걷는 종류인가.</b>
+        ///
+        /// ============================================================================
+        /// 왜 <see cref="IsSuspended"/>에서 갈라져 나왔는가 (사용자 신고)
+        /// ============================================================================
+        /// <i>"설정에서 숨기기버튼 누르니까 전부 다 없어져버려서 다시 나오게 할 방법이 없어"</i> →
+        /// <i>"메뉴버튼은 보여야지"</i> → <i>"캐릭만 가리고"</i>(사용자 확정 2026-09-03).
+        ///
+        /// <para>예전에는 <c>IsSuspended</c> 하나가 <b>두 가지</b>를 동시에 뜻했다 — "캐릭터가 멈췄다"와
+        /// "화면에서 우리 흔적을 전부 지운다". 축 1(전체화면 게임)에서는 그 둘이 같은 결론이지만
+        /// 축 2(사용자 명시 숨김)에서는 <b>다르다</b>: 사용자가 원한 것은 캐릭터를 치우는 것이지
+        /// 되돌릴 수단까지 치우는 것이 아니었다. 한 값이 두 뜻을 나르는 동안, 톱니·설정창·부채꼴이
+        /// 전부 그 값을 읽어 함께 사라졌고 <b>되돌릴 마우스 경로가 0</b>이 됐다.</para>
+        ///
+        /// ============================================================================
+        /// 축별 결론 (여기서만 갈라진다)
+        /// ============================================================================
+        /// <list type="bullet">
+        ///   <item><b>축 1 — 전체화면 게임 감지(등급 2)</b>: <b>true</b>. 원칙 2 그대로 — 톱니도 창도
+        ///     남기지 않는다. <b>이 동작은 한 비트도 바뀌지 않았다.</b></item>
+        ///   <item><b>축 2 — 사용자 명시 숨김 단독</b>: <b>false</b>. 캐릭터(와 그 말풍선·이펙트·장비·펫)만
+        ///     사라지고 톱니·열린 창·부채꼴은 그대로 남는다. 그래서 설정창 [일반]의 <b>[보이기]</b>가
+        ///     누른 그 자리에 그대로 있다 = 탈출구 문제가 구조적으로 사라진다.</item>
+        ///   <item><b>둘 다</b>: <b>true</b>(원칙 2가 이긴다).</item>
+        /// </list>
+        ///
+        /// ============================================================================
+        /// 왜 <c>_fullscreenAutoHide</c>가 아니라 <c>_isSuspended &amp;&amp; !IsUserHiddenOnly</c>인가
+        /// ============================================================================
+        /// 값이 같은 두 식 중 이쪽을 고른 이유는 <b>사유를 모르는 숨김의 기본값</b> 때문이다.
+        /// 이 저장소의 PlayMode 테스트는 <c>_isSuspended</c>를 리플렉션으로 <b>직접</b> 세워 전체화면을
+        /// 흉내 낸다(<c>FullscreenSuspendUiHidingTests</c> — 주입 지점이 없어서). <c>_fullscreenAutoHide</c>만
+        /// 읽으면 그 주입이 이 값에 도달하지 못해, <b>원칙 2 잠금 스위트 전체가 조용히 거짓 통과</b>한다.
+        /// 이 형태는 "축 2라고 <b>확인되지 않은</b> 숨김은 전부 표면까지 걷는다"로 읽히고,
+        /// 그 기본값은 안전한 쪽(더 숨기는 쪽)이다.
+        ///
+        /// <para><b>비용</b>: bool 3개의 AND/NOT뿐이다 — 할당도 네이티브 조회도 없다(24시간 상주 앱).</para>
+        /// </summary>
+        public bool HidesScreenSurfaces => _isSuspended && !IsUserHiddenOnly;
 
         // ==================== 등급 1 — 사용자가 직접 부른 표면의 허가(임대) ====================
 
@@ -225,7 +282,12 @@ namespace StickMate.Core
         /// </summary>
         public bool TryGrantUserSummon(string source)
         {
-            if (!Platform.UserSurfaceSummonPolicy.CanGrant(_isSuspended, _fullscreenPanelRetreat))
+            // ★ 2026-09-03 — 첫 인자가 <c>_isSuspended</c>에서 <see cref="HidesScreenSurfaces"/>로 바뀌었다.
+            //   이 허가가 여닫는 것은 <b>표면</b>이고, 사용자 명시 숨김 단독은 표면을 걷지 않는다 —
+            //   그 상태에서까지 허가를 막으면 「등급 1 + 사용자가 캐릭터만 숨김」에서 톱니는 보이는데
+            //   눌러도 아무 표면이 열리지 않는 상태가 된다(등급 1을 끄는 스위치에 다시 도달 불가).
+            //   전체화면 게임(축 1)에서는 이 값이 참이라 예전 그대로 허가가 나지 않는다.
+            if (!Platform.UserSurfaceSummonPolicy.CanGrant(HidesScreenSurfaces, _fullscreenPanelRetreat))
                 return false;
 
             bool renewal = IsUserSummonGrantActive;
@@ -290,9 +352,12 @@ namespace StickMate.Core
         /// 아니라 "사용자가 숨기라고 했다"를 읽어야 한다 — 둘을 같은 값으로 읽으면 전체화면 게임을
         /// 켠 동안 토글이 저절로 켜진 것처럼 보인다.</para>
         ///
-        /// <para><b>저장하지 않는다</b>(리더 판정 2026-09-02): 숨긴 채 앱을 껐다 켜면 톱니
-        /// 아이콘조차 숨어 마우스 진입점이 0이 되고, 남는 탈출구가 전역 단축키 하나뿐이 된다.
-        /// 재시작은 언제나 "보이는 상태"로 출발한다 = 저장 스키마 무변경.</para>
+        /// <para><b>저장하지 않는다</b>(리더 판정 2026-09-02). ★ <b>2026-09-03 — 원래 근거는
+        /// 사라졌다</b>: 그 근거는 <i>"숨긴 채 껐다 켜면 톱니조차 숨어 마우스 진입점이 0이 된다"</i>였는데,
+        /// 이제 사용자 명시 숨김은 톱니를 남긴다(<see cref="HidesScreenSurfaces"/>). 그럼에도 <b>동작은
+        /// 그대로 둔다</b> — 남은 이유는 "다음 실행이 언제나 <i>보이는 상태</i>로 출발한다"는 예측
+        /// 가능성 하나이고, 저장 스키마를 건드리지 않는다는 뜻이기도 하다. 저장으로 바꿀지는
+        /// <b>리더 판단 사항</b>이며 이 라운드의 범위가 아니다.</para>
         /// </summary>
         public bool IsUserHidden => _userHidden;
 
@@ -312,10 +377,15 @@ namespace StickMate.Core
             }
 
             _userHidden = hidden;
+            // ★ 2026-09-03 — 여기 있던 «되돌리는 방법은 ... 한 가지입니다»를 지웠다. 그 문장은 이제
+            //   <b>거짓</b>이다: 사용자 명시 숨김은 캐릭터만 가리고 톱니·열린 창·부채꼴을 남기므로
+            //   (HidesScreenSurfaces 문서) 마우스 경로가 살아 있다. 유일성 주장을 다시 쓰지 마라 —
+            //   그것이 이번 신고에서 실제로 무너진 형태다.
             Debug.Log($"[사용자숨김] {(hidden ? "숨김" : "해제")}({source}) — 사용자가 직접 지시한 축입니다. " +
                 "전체화면 자동 숨김(설정창 [일반])과 <b>독립</b>이라, 이 상태에서 전체화면 앱을 오갔다 " +
-                "와도 되살아나지 않습니다. 되돌리는 방법은 같은 단축키 " +
-                ShortcutLabel.Chord(UserHideHotkeyLetter) + " 한 가지입니다.");
+                "와도 되살아나지 않습니다. 가리는 것은 <b>캐릭터와 거기 붙은 것</b>(말풍선·이펙트·장비·펫)뿐이고 " +
+                "톱니·열려 있던 창·부채꼴은 그대로 남습니다. 되돌리는 길: 설정창 [일반] > [보이기], " +
+                "톱니 > [캐릭터] > [설정], 또는 " + ShortcutLabel.Chord(UserHideHotkeyLetter) + ".");
             ApplySuspendDecision();
             return _userHidden;
         }
@@ -1162,6 +1232,17 @@ namespace StickMate.Core
         /// 되올리므로, 둘 중 <b>한 곳만</b> 역할을 알면 렌더러가 1.00pt로 그린 직후 여기서 2.00pt로
         /// 되돌아간다 — <b>화면은 하나도 안 바뀌는데 테스트는 초록</b>인 상태가 된다.
         /// 그래서 두 경로 모두 <see cref="FillOutlineStroke"/> 표식을 본다.</para>
+        ///
+        /// <para>★★★ <b>2026-09-03 — 하한의 대상이 「그려진 두께」에서 「잉크 코어」로 바뀌었다</b>
+        /// (<see cref="InkMembraneStroke"/> 클래스 문서). 순서는 <b>하한 먼저, 막은 나중</b>이다:
+        /// <code>
+        ///   inkCore = Max(baked × ratio, 역할별 하한);   drawn = inkCore + sides × 막
+        /// </code>
+        /// 반대로 적으면(<c>Max(baked × ratio + sides × 막, 하한)</c>) 막이 하한을 대신 채워 주고,
+        /// <b>Windows 100% · 배율 0.35에서 잉크 코어가 0.000px</b>이 된다. 그런데 그 상태에서
+        /// <c>startWidth</c>는 정확히 하한값이라 <b>게이트가 「하한 지킴」을 찍는다</b> —
+        /// 이 저장소가 아홉 번 당한 형태 그대로다. <b>오늘은 막이 0이라 두 형태가 같은 그림을 내지만,
+        /// 그래서 더 위험하다: 막을 켜는 라운드는 이 순서를 검사하지 않는다.</b></para>
         /// </summary>
         private void ApplyStrokeWidthsForScale(float scale)
         {
@@ -1174,6 +1255,7 @@ namespace StickMate.Core
             RefreshStrokeFloors();
             float floorWorld = _minStrokeWorldWidth;
             float fillOutlineFloorWorld = _minFillOutlineWorldWidth;
+            float membraneWorld = _inkMembraneWorldWidth;
 
             // (1) 프리팹에 구워진 몸의 선. ★ 머리 링이 여기 들어 있고, 그것만 채움 경계선이다.
             for (int i = 0; i < _lineRenderers.Length && i < _bakedStrokeWidths.Length; i++)
@@ -1182,10 +1264,17 @@ namespace StickMate.Core
                 if (lr == null || _bakedStrokeWidths[i] <= 0f) continue;
                 bool isFillOutline = _bakedStrokeIsFillOutline != null
                     && i < _bakedStrokeIsFillOutline.Length && _bakedStrokeIsFillOutline[i];
-                float width = Mathf.Max(_bakedStrokeWidths[i] * ratio,
+
+                // ★ 하한 먼저 — 이 값이 "화면에 실제로 남는 잉크"다.
+                float inkCore = Mathf.Max(_bakedStrokeWidths[i] * ratio,
                     isFillOutline ? fillOutlineFloorWorld : floorWorld);
+                // ★ 막은 그 위에 더한다. 막이 0이면 Drawn은 입력을 그대로 돌려준다(비트 동일).
+                int sides = InkMembraneStroke.SidesFor(isFillOutline);
+                float width = InkMembraneStroke.Drawn(inkCore, membraneWorld, sides);
                 lr.startWidth = width;
                 lr.endWidth = width;
+                // 게이트가 이 선에서 막을 되빼려면 <b>선 자신이</b> 답해야 한다(막이 0이면 안 붙는다).
+                InkMembraneStroke.Mark(lr, sides, membraneWorld);
             }
 
             // ★ 2026-08-31 — 몸 바깥의 잉크에도 <b>같은 규칙</b>을 건다(단일 창구).
@@ -1201,8 +1290,13 @@ namespace StickMate.Core
                 if (lr == null) continue;
                 // ★ 여기서 역할을 안 물으면 액세서리 채움 경계선이 이 한 줄에 도로 2.00pt가 된다.
                 float lineFloor = FillOutlineStroke.Is(lr) ? fillOutlineFloorWorld : floorWorld;
-                if (lr.startWidth < lineFloor) lr.startWidth = lineFloor;
-                if (lr.endWidth < lineFloor) lr.endWidth = lineFloor;
+                // ★ 이 선에 <b>이미 막이 걸려 있으면</b> 하한도 그만큼 올려야 잉크 코어가 하한을 지킨다.
+                //   역할이 아니라 <b>실제로 걸린 겹 수</b>를 묻는다 — 막에서 제외된 선을 올려 버리면
+                //   그 선의 잉크가 하한보다 두꺼워진다(그림이 조용히 굵어진다).
+                float drawnFloor = InkMembraneStroke.Drawn(
+                    lineFloor, membraneWorld, InkMembraneStroke.AppliedSides(lr));
+                if (lr.startWidth < drawnFloor) lr.startWidth = drawnFloor;
+                if (lr.endWidth < drawnFloor) lr.endWidth = drawnFloor;
             }
         }
 
@@ -1236,8 +1330,24 @@ namespace StickMate.Core
             ? _minFillOutlineWorldWidth
             : StickConfig.MinFillOutlineScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
 
+        /// <summary>
+        /// ★ 역잉크 분리막 한 겹의 <b>월드 유닛</b> 두께 — <see cref="InkMembraneStroke"/>의
+        /// 물리픽셀 상수를 이 화면에 맞춰 환산한 값. <b>오늘은 0</b>(막 미도입)이다.
+        ///
+        /// <para><b>왜 물리픽셀에서 환산하는가</b>: 막은 "배경이 잉크색이어도 경계가 보인다"가 목적이라
+        /// 화면에 실제로 찍히는 픽셀에서 두께가 정해져야 한다. 두 하한(<see cref="MinStrokeWorldWidth"/> /
+        /// <see cref="MinFillOutlineWorldWidth"/>)이 OS 포인트에서 오는 것과 <b>단위가 다르다</b> —
+        /// 같은 함수에서 함께 구하는 이유는 pt/유닛과 DPI 배율을 <b>한 번만</b> 읽기 위해서다.</para>
+        ///
+        /// <para>소비자: <see cref="ApplyStrokeWidthsForScale"/>(두 경로)와
+        /// <c>Platform/StrokeWidthDiagnostics</c>(이쪽은 물리픽셀에서 직접 되뺀다 — 같은 답에
+        /// <b>다른 길</b>로 도달하므로 서로의 검산이 된다).</para>
+        /// </summary>
+        public float InkMembraneWorldWidth => _inkMembraneWorldWidth;
+
         private float _minStrokeWorldWidth;
         private float _minFillOutlineWorldWidth;
+        private float _inkMembraneWorldWidth;
 
         /// <summary>화면상 최소 획 두께 <b>두 종류</b>를 월드 유닛으로 환산해 캐시한다. 카메라의 직교
         /// 크기와 화면 높이(포인트)를 실측해서 쓰므로, 프리팹을 구울 때의 근사(창 높이 846pt 고정)보다
@@ -1250,6 +1360,14 @@ namespace StickMate.Core
             float pointsPerWorldUnit = ResolvePointsPerWorldUnit();
             _minStrokeWorldWidth = StickConfig.MinStrokeScreenPoints / pointsPerWorldUnit;
             _minFillOutlineWorldWidth = StickConfig.MinFillOutlineScreenPoints / pointsPerWorldUnit;
+
+            // 막은 <b>물리픽셀</b>이 단위다: 유닛 = 물리픽셀 ÷ (물리픽셀/유닛),
+            // 그리고 물리픽셀/유닛 = (pt/유닛) ÷ (pt/픽셀) 이므로 아래 한 줄이 된다.
+            // ★ 막이 0이면 곱셈 자체를 건너뛴다 — DPI를 못 읽는 경로에서도 0이 정확히 0이다.
+            _inkMembraneWorldWidth = InkMembraneStroke.MembranePhysicalPixels > 0f
+                ? InkMembraneStroke.MembranePhysicalPixels
+                    * ScreenCoordinateConverter.ResolveDpiScale(_config) / pointsPerWorldUnit
+                : 0f;
         }
 
         /// <summary>월드 1유닛이 몇 OS 포인트인가(실측). 못 재면 프리팹 굽기와 같은 근사로 되메운다.</summary>
@@ -1427,7 +1545,10 @@ namespace StickMate.Core
             //   ArePanelsSuppressed는 _isSuspended를 항상 포함하므로 이 줄이 없어도 판정은 옳지만,
             //   Resume() 직후 <b>남아 있는 임대</b>가 등급 1 회수를 한 박자 건너뛰게 만들 수 있다.
             //   허가는 언제나 사용자의 <b>새</b> 행위에서만 나야 한다.
-            ExpireUserSummonGrant("등급 2 진입(" + reason + ")");
+            // ★ 2026-09-03 — <b>표면을 걷는 숨김일 때만</b> 만료시킨다. 사용자 명시 숨김 단독은
+            //   표면을 그대로 두므로(HidesScreenSurfaces=false), 여기서 임대를 끊으면 등급 1 체류 중에
+            //   [숨기기]를 누른 사용자의 설정창이 <b>등급 1 회수로</b> 함께 닫힌다 — 이번 신고의 재현이다.
+            if (HidesScreenSurfaces) ExpireUserSummonGrant("등급 2 진입(" + reason + ")");
 
             // Phase 3 예외(UX_FLOW.md 12/13절): 드래그&던지기/로데오 커서는 "능동 개입"
             // 스펙터클이라 전체화면 감지 시 일반 Suspend(상태 보존 후 재개)가 아니라 즉시 취소되어야
@@ -1484,8 +1605,12 @@ namespace StickMate.Core
             Debug.Log($"[숨김] 캐릭터를 숨기고 물리를 멈춥니다 — 사유: {reason}. " +
                 $"숨기기 직전 상태={current}, 몸 렌더러 {( _renderers != null ? _renderers.Length : 0)}개 + " +
                 $"액세서리/펫/FX {_dynamicVisuals.Count}개 비활성화. " +
-                "열린 창과 그 클릭 차단막은 각 표면이 ArePanelsSuppressed를 폴링해 같은 프레임에 스스로 걷습니다 " +
-                "(그 값은 IsSuspended를 항상 포함하므로 이 경로에서도 참이다). " +
+                (HidesScreenSurfaces
+                    ? "열린 창과 그 클릭 차단막은 각 표면이 ArePanelsSuppressed를 폴링해 같은 프레임에 스스로 걷고, " +
+                      "톱니도 HidesScreenSurfaces를 보고 함께 내려갑니다(원칙 2). "
+                    : "★ 사용자 명시 숨김 단독이라 <b>표면은 걷지 않습니다</b> — 톱니·열려 있던 창·부채꼴은 " +
+                      "그대로 남습니다(사용자 확정 2026-09-03 \"캐릭만 가리고\"). 되돌리는 버튼이 " +
+                      "누른 그 자리에 남아 있는 것이 이 설계의 요점입니다. ") +
                 "전체화면 사유라면 직전 [전체화면판정] 줄에 어느 창 때문인지가 적혀 있습니다.");
             // TODO(Phase 2 렌더링 레이어): 즉시 on/off 대신 ≤200ms 페이드 아웃/인 연출 추가.
         }

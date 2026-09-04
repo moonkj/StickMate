@@ -341,6 +341,62 @@ namespace StickMate.Tests.EditMode
                 "자율 발동 전용 행동의 상태 슬롯 문구가 다릅니다.");
         }
 
+        /// <summary>
+        /// ★ 2026-09-05 — <b>유령 단축키</b> 재발 방지. 카드가 집중 모드 F / 할일 알림 J /
+        /// 하드웨어 반응 H를 사용자 단축키로 광고했는데, 그 셋의 바인딩은
+        /// <c>Interaction/AppControlDirector</c>의 개발 게이트(<c>dev &amp;&amp; chord</c>) 뒤였다.
+        /// 릴리스에서 눌러도 아무 일도 일어나지 않는 조합을 화면이 계속 가르쳤다.
+        ///
+        /// <para>★ <b>부재 단언만 두면 썩어도 조용히 초록</b>이 된다 — 접두사를 못 찾는 것과
+        /// 접두사가 없는 것이 출력상 똑같다. 그래서 <b>같은 테스트 안에</b> 존재 대조를 붙인다:
+        /// 릴리스 바인딩이 살아 있는 활쏘기(A)는 여전히 조합 접두사를 <b>달고</b> 있어야 한다.
+        /// 그 줄이 깨지면 아래 3건의 "없음"은 측정으로서 무효다.</para>
+        ///
+        /// <para>접두사는 <see cref="ShortcutLabel"/>의 상수에서 온다 — 문자열을 여기 다시 적으면
+        /// 표기가 바뀌는 날 이 테스트가 조용히 아무것도 재지 않게 된다.</para>
+        /// </summary>
+        [Test]
+        public void 개발_게이트_뒤의_행동은_카드에_조합키를_광고하지_않는다()
+        {
+            StickConfig config = LoadDefaultConfig();
+
+            // ---- 존재 대조: 탐침이 실제로 조합 접두사를 볼 수 있는가 ----
+            string archery = FindById("action.archery").ResolveStatusSlot(config);
+            Assert.IsTrue(HasChordPrefix(archery),
+                $"존재 대조 실패 — 활쏘기의 상태 슬롯('{archery}')에서 조합 접두사를 찾지 못했습니다. " +
+                "탐침이 죽었으므로 아래 '조합키 없음' 3건은 아무것도 증명하지 않습니다.");
+
+            // ---- 부재 단언: 개발 게이트 뒤 3건 ----
+            var gatedIds = new[] { "action.focus_watch", "action.todo_reminder", "action.hardware_reaction" };
+            foreach (string id in gatedIds)
+            {
+                string status = FindById(id).ResolveStatusSlot(config);
+                Assert.IsFalse(HasChordPrefix(status),
+                    $"{id}의 상태 슬롯이 조합키('{status}')를 광고합니다 — 그 바인딩은 " +
+                    "AppControlDirector의 개발 게이트 뒤에 있어 릴리스에서는 눌러도 반응이 없습니다. " +
+                    "표기를 지우든 게이트를 열든 <b>둘 중 하나</b>를 해야 합니다(둘 다 안 하면 거짓 안내).");
+            }
+
+            // 셋의 처지가 서로 다르다 — 같은 문구로 덮으면 반대 방향의 거짓이 생긴다.
+            Assert.AreEqual(ItemCatalogEntry.MenuOnlyStatus,
+                FindById("action.focus_watch").ResolveStatusSlot(config),
+                "집중 모드는 스스로 뜨지 않습니다 — 톱니 → 부채꼴에서 사용자가 시작합니다. " +
+                "자율 발동 문구로 내리면 '가끔 알아서 뜬다'는 새 거짓이 됩니다.");
+            Assert.AreEqual(ItemCatalogEntry.AutoOnlyStatus,
+                FindById("action.todo_reminder").ResolveStatusSlot(config),
+                "할일 알림에는 사용자 진입점이 없습니다 — 자율 발동 전용 문구여야 합니다.");
+            Assert.AreEqual(ItemCatalogEntry.AutoOnlyStatus,
+                FindById("action.hardware_reaction").ResolveStatusSlot(config),
+                "하드웨어 반응에는 사용자 진입점이 없습니다 — 자율 발동 전용 문구여야 합니다.");
+        }
+
+        /// <summary>상태 슬롯이 <b>조합키 표기</b>인가. 두 플랫폼 접두사를 모두 본다 —
+        /// 호스트 표기만 보면 반대편 타깃에서 이 검사가 눈이 먼다.</summary>
+        private static bool HasChordPrefix(string status)
+            => !string.IsNullOrEmpty(status)
+               && (status.StartsWith(ShortcutLabel.MacModifiers, System.StringComparison.Ordinal)
+                   || status.StartsWith(ShortcutLabel.WindowsModifiers, System.StringComparison.Ordinal));
+
         [Test]
         public void 해제된_아이템을_착용하면_상태_슬롯이_착용_중으로_바뀐다()
         {

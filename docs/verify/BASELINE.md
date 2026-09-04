@@ -1,6 +1,6 @@
 # 회귀 베이스라인 대장 — 실행당 한 줄
 
-자동 생성: `python3 docs/verify/baseline.py` · 최종 2026-09-03 00:04:49
+자동 생성: `python3 docs/verify/baseline.py` · 최종 2026-09-05 06:02:34
 **손으로 고치지 마라.** 다음 실행이 통째로 덮는다.
 
 ## 읽는 법 — 표시가 붙은 값은 잰 값이 아니다
@@ -12,56 +12,116 @@
 | `↑` | **직전 실행에서 물려받음** — 그 실행은 재컴파일을 안 해 자기 타깃을 남기지 않았다 |
 | `?` | **미상.** 빈 칸으로 두지 않는다 — 빈 칸은 읽는 사람이 마음대로 채운다 |
 
+**더러움** = 그 실행 시각의 미커밋 파일 수(`.meta`의 `dirty`). 0이 아니면 그 줄은 **HEAD가 아니라 «그때 움직이던 트리»의 결과다.** 병렬 라운드가 도는 밤에는 실패가 「회귀」가 아니라 「편집 중 스냅샷」일 수 있다 — 귀속하기 전에 그 파일의 mtime을 실행 시각과 대조해라.
+
 dag→타깃 매핑 4건: `1900b0aE.dag`=WIN, `1900b0aP.dag`=WIN, `200b0aE.dag`=OSX, `200b0aP.dag`=OSX
+
+## 개명 대장 — 회귀가 아니라 개명인 것
+
+정본 데이터: `docs/verify/renames.tsv` · 검증기: `docs/verify/renames.py --check`
+각 줄은 **소스 트리(.cs)** 로 매번 재검증된다 — 새 이름이 실재하고(R1), 옛 이름이 사라졌고(R2), 짧은 이름이 유일할 때(R3)만 적용된다.
+
+| 옛 이름 | 새 이름 | 등록일 | 근거 |
+|---|---|---|---|
+| `실제_베레모_폴백_테는_이제_몸과_같은_점수다` | `실제_베레모_폴백_테는_몸_띠의_아랫변_그대로다` | 2026-09-03 | 커밋 1eb0e2b 밤샘 라운드. 같은 클래스(AccessoryFallbackBodyParityTests) 안에서 메서드 이름만 바뀜. 옛 이름은 소스에서 사라졌고 새 이름이 :559에 있다. 베이스라인 xml 21건이 옛 이름, 6건이 새 이름. |
+| `T2_실제_프리팹의_11개_선이_같은_규칙을_따른다` | `T2_실제_리그의_몸선과_장비선이_같은_uv_규칙을_따른다` | 2026-09-03 | 마디 병합(리더 판정 CH-8)으로 본체 LineRenderer가 11 -> 7이 되어 이름의 «11개»가 거짓이 됐다. 같은 클래스 안 메서드 이름만 바뀜. 검사 내용은 넓어졌다(없어진 선 4개에 대한 부재 단언 + 개수 단언 추가). ★ 2026-09-05 qa-r9 정정: 원래 이 줄의 새 이름은 «T2_실제_프리팹의_본체_선이_같은_규칙을_따른다»였는데 그 이름은 **어느 소스에도 없다** — 그 뒤 한 번 더 개명됐고(:487) 대장이 중간 이름에서 멈춰 있었다. R1이 그 줄을 거부해 왔다(죽은 규칙). 종착 이름으로 갱신했고, 중간 이름은 아래 줄이 따로 흡수한다. |
+| `T2_실제_프리팹의_본체_선이_같은_규칙을_따른다` | `T2_실제_리그의_몸선과_장비선이_같은_uv_규칙을_따른다` | 2026-09-05 | 2번째 개명(중간 -> 현재). `final_play.xml`(09-03 11:27)에는 중간 이름이, `dbg-getupfix-FULL_play.xml`(12:22) 이후에는 현재 이름이 들어 있다 — 이 줄이 없으면 그 두 xml 대조에서 «삭제 1 + 신설 1»로 뜬다. R1: 선언 `LineRendererUvBandProbeTests.cs:487`. R2: 중간 이름은 소스에 0건(grep 실측). |
 
 ## 실행 대장
 
-| 시각 | 라벨 | 모드 | HEAD | 활성 타깃 | total | 통과 | 실패 | 건너뜀 | 실패 목록 |
-|---|---|---|---|---|---:|---:|---:|---:|---|
-| 09-02 11:40 | `BASELINE-20260902-1140` | edit | ~890fb1f | **?미상** | 1405 | 1393 | 1 | 11 | 네거티브_컨트롤_면만_푸는_풀이는_어떤_바탕에서_글자를_지운다 |
-| 09-02 12:01 | `BASELINE-20260902-1201` | play | ~43c69c9 | **?미상** | 563 | 556 | 4 | 3 | FeetVisuallyTouchScreenBottomAndAreNeverClipped<br>TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>달팽이를_걸치면_발과_껍데기가_실제로_그려진다<br>풍선을_걸치면_끈과_주머니가_실제로_그려진다 |
-| 09-02 13:21 | `qa-baseline` | edit | ~aaac7b2 | **?미상** | 1442 | 1429 | 1 | 12 | 네거티브_컨트롤_면만_푸는_풀이는_어떤_바탕에서_글자를_지운다 |
-| 09-02 13:43 | `qa-baseline` | play | ~eca8c58 | **?미상** | 563 | 553 | 6 | 4 | FeetVisuallyTouchScreenBottomAndAreNeverClipped<br>StanceFootStaysPlantedWhileBodyMovesForward<br>TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>달팽이를_걸치면_발과_껍데기가_실제로_그려진다<br>안_걸치면_신규_4종_미리보기가_하나도_없다<br>풍선을_걸치면_끈과_주머니가_실제로_그려진다 |
-| 09-02 13:53 | `qa-after-fix` | edit | ~eca8c58 | **~WIN** | 1460 | 1446 | 3 | 11 | 상호작용_표면_명부가_빠짐없이_배선돼_있다<br>정보창_홀드는_열려있음이_아니라_조작중일때만_걸린다<br>최단_실제_변_검사를_액세서리_30종으로_확장한다 |
-| 09-02 15:22 | `dbg-fix` | edit | ~eca8c58 | **~WIN** | 1517 | 1505 | 0 | 12 | — |
-| 09-02 15:44 | `dbg-fix` | play | ~eca8c58 | **↑WIN** | 570 | 561 | 5 | 4 | G1_앱이_도는_동안_살아있는_오브젝트_바닥선이_올라가지_않는다<br>TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>달팽이를_걸치면_발과_껍데기가_실제로_그려진다<br>사용자숨김은_열린_창과_클릭차단막까지_함께_걷는다<br>풍선을_걸치면_끈과_주머니가_실제로_그려진다 |
-| 09-02 16:04 | `loc-gate` | edit | ~eca8c58 | **~WIN** | 1602 | 1586 | 4 | 12 | 목_형상은_데이터화_전후로_비트까지_같다<br>양성대조_분기를_지우면_한국어는_그대로이고_영어만_달라진다<br>한국어_가독예산이_골든과_비트_단위로_같다<br>한국어_소비자_경로가_골든에서_파생된_값과_같다 |
-| 09-02 16:08 | `loc-gate-2` | edit | ~eca8c58 | **~WIN** | 1602 | 1589 | 1 | 12 | 목_형상은_데이터화_전후로_비트까지_같다 |
-| 09-02 16:08 | `b2-neck` | edit | ~eca8c58 | **~WIN** | 1602 | 1589 | 1 | 12 | 목_형상은_데이터화_전후로_비트까지_같다 |
-| 09-02 16:11 | `b2-probe` | edit | ~eca8c58 | **~WIN** | 1603 | 1590 | 1 | 12 | 목_형상은_데이터화_전후로_비트까지_같다 |
-| 09-02 16:13 | `ui-postit` | edit | ~eca8c58 | **↑WIN** | 1603 | 1590 | 1 | 12 | 목_형상은_데이터화_전후로_비트까지_같다 |
-| 09-02 16:24 | `b2-bake` | edit | ~eca8c58 | **~WIN** | 1609 | 1595 | 2 | 12 | 목_형상은_데이터화_전후로_비트까지_같다<br>전체화면_판정_한_줄에_사용자숨김을_얹지_않는다 |
-| 09-02 16:46 | `ui-postit` | play | ~eca8c58 | **~WIN** | 574 | 563 | 7 | 4 | CardEquipButtonWearsAndCategoryStaysMutuallyExclusive<br>OutsideClickDoesNotCloseWindowButTheCloseButtonStillDoes<br>SavedPositionInsideTheReservedTopBarIsPulledOutOnStartup<br>SavedPositionOutsideTheScreenIsPulledBackOnStartup<br>ShortClickStillSpinsAndDoesNotMoveIcon<br>TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>사용자숨김은_열린_창과_클릭차단막까지_함께_걷는다 |
-| 09-02 16:46 | `b2-final` | edit | ~eca8c58 | **~WIN** | 1626 | 1611 | 1 | 14 | 부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다 |
-| 09-02 16:47 | `qa-round2` | edit | ~eca8c58 | **↑WIN** | 1626 | 1611 | 1 | 14 | 부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다 |
-| 09-02 18:15 | `qa-r3` | edit | ~eca8c58 | **↑WIN** | 1626 | 1611 | 1 | 14 | 부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다 |
-| 09-02 18:37 | `qa-r3` | play | ~eca8c58 | **↑WIN** | 578 | 566 | 7 | 5 | CardEquipButtonWearsAndCategoryStaysMutuallyExclusive<br>OutsideClickDoesNotCloseWindowButTheCloseButtonStillDoes<br>SavedPositionInsideTheReservedTopBarIsPulledOutOnStartup<br>SavedPositionOutsideTheScreenIsPulledBackOnStartup<br>ShortClickStillSpinsAndDoesNotMoveIcon<br>TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>사용자숨김은_열린_창과_클릭차단막까지_함께_걷는다 |
-| 09-02 18:44 | `qa-r4b` | edit | ~eca8c58 | **~WIN** | 1637 | 1623 | 1 | 13 | 부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다 |
-| 09-02 19:06 | `qa-r4b` | play | ~eca8c58 | **↑WIN** | 582 | 576 | 2 | 4 | TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>사용자숨김은_열린_창과_클릭차단막까지_함께_걷는다 |
-| 09-02 19:28 | `c1-edit` | edit | ~7ed996d | **~OSX** | 1674 | 1657 | 2 | 15 | Ignore를_쓰는_테스트는_전부_명부에_있고_장치없음이_늘지_않는다<br>부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다 |
-| 09-02 19:51 | `c1-play` | play | ~7ed996d | **↑OSX** | 589 | 579 | 6 | 4 | TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>사용자숨김은_열린_창과_클릭차단막까지_함께_걷는다<br>설정창_톱니_위치_행은_옮긴_뒤에만_눌리고_누르면_되돌아간다<br>온보딩이_지나가도_사용자가_옮겨_둔_자리는_그대로다<br>온보딩이_톱니를_옮겨도_사용자가_옮긴_것으로_저장되지_않는다<br>처음_자리로가_저장까지_되돌리고_다음_프레임에_되살아나지_않는다 |
-| 09-02 19:52 | `c2-edit` | edit | ~7ed996d | **↑OSX** | 1674 | 1657 | 2 | 15 | Ignore를_쓰는_테스트는_전부_명부에_있고_장치없음이_늘지_않는다<br>부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다 |
-| 09-02 20:16 | `c2-play` | play | ~7ed996d | **↑OSX** | 589 | 580 | 5 | 4 | G1_앱이_도는_동안_살아있는_오브젝트_바닥선이_올라가지_않는다<br>TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>달팽이를_걸치면_발과_껍데기가_실제로_그려진다<br>사용자숨김은_열린_창과_클릭차단막까지_함께_걷는다<br>풍선을_걸치면_끈과_주머니가_실제로_그려진다 |
-| 09-02 20:25 | `te-purge` | edit | ~7ed996d | **~OSX** | 1679 | 1660 | 4 | 15 | Ignore를_쓰는_테스트는_전부_명부에_있고_장치없음이_늘지_않는다<br>부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다<br>양성대조_심어_놓은_오염_파일을_정리기가_실제로_지운다<br>재발방지_다섯_픽스처는_저장파일을_다시_쓰지_않는다 |
-| 09-02 20:28 | `te-purge2` | edit | ~7ed996d | **~OSX** | 1680 | 1664 | 1 | 15 | 부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다 |
-| 09-02 21:00 | `te-play` | play | ~7ed996d | **↑OSX** | 589 | 584 | 1 | 4 | TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate |
-| 09-02 21:38 | `qa-r5` | edit | ~7ed996d | **~OSX** | 1706 | 1687 | 3 | 16 | 부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다<br>전환_전_골든_스냅샷과_지금_카탈로그가_한_글자도_다르지_않다<br>줄번호_참조를_새로_만들지_않는다 |
-| 09-02 22:35 | `qa-r5` | play | ~7ed996d | **~OSX** | 589 | 584 | 1 | 4 | TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate |
-| 09-02 23:39 | `te-r2` | edit | 7ed996d | **OSX** | 1707 | 1688 | 3 | 16 | 부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다<br>전환_전_골든_스냅샷과_지금_카탈로그가_한_글자도_다르지_않다<br>줄번호_참조를_새로_만들지_않는다 |
-| 09-03 00:02 | `te-r2` | play | 7ed996d | **OSX** | 591 | 587 | 0 | 4 | — |
-| 09-03 00:03 | `qa-r6` | edit | 7ed996d | **OSX** | 1754 | 1735 | 1 | 18 | 줄번호_참조를_새로_만들지_않는다 |
+| 시각 | 라벨 | 모드 | HEAD | 더러움 | 활성 타깃 | total | 통과 | 실패 | 건너뜀 | 실패 목록 |
+|---|---|---|---|---:|---|---:|---:|---:|---:|---|
+| 09-02 11:40 | `BASELINE-20260902-1140` | edit | ~890fb1f | ? | **?미상** | 1405 | 1393 | 1 | 11 | 네거티브_컨트롤_면만_푸는_풀이는_어떤_바탕에서_글자를_지운다 |
+| 09-02 12:01 | `BASELINE-20260902-1201` | play | ~43c69c9 | ? | **?미상** | 563 | 556 | 4 | 3 | FeetVisuallyTouchScreenBottomAndAreNeverClipped<br>TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>달팽이를_걸치면_발과_껍데기가_실제로_그려진다<br>풍선을_걸치면_끈과_주머니가_실제로_그려진다 |
+| 09-02 13:21 | `qa-baseline` | edit | ~aaac7b2 | ? | **?미상** | 1442 | 1429 | 1 | 12 | 네거티브_컨트롤_면만_푸는_풀이는_어떤_바탕에서_글자를_지운다 |
+| 09-02 13:43 | `qa-baseline` | play | ~eca8c58 | ? | **?미상** | 563 | 553 | 6 | 4 | FeetVisuallyTouchScreenBottomAndAreNeverClipped<br>StanceFootStaysPlantedWhileBodyMovesForward<br>TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>달팽이를_걸치면_발과_껍데기가_실제로_그려진다<br>안_걸치면_신규_4종_미리보기가_하나도_없다<br>풍선을_걸치면_끈과_주머니가_실제로_그려진다 |
+| 09-02 13:53 | `qa-after-fix` | edit | ~eca8c58 | ? | **~WIN** | 1460 | 1446 | 3 | 11 | 상호작용_표면_명부가_빠짐없이_배선돼_있다<br>정보창_홀드는_열려있음이_아니라_조작중일때만_걸린다<br>최단_실제_변_검사를_액세서리_30종으로_확장한다 |
+| 09-02 15:22 | `dbg-fix` | edit | ~eca8c58 | ? | **~WIN** | 1517 | 1505 | 0 | 12 | — |
+| 09-02 15:44 | `dbg-fix` | play | ~eca8c58 | ? | **↑WIN** | 570 | 561 | 5 | 4 | G1_앱이_도는_동안_살아있는_오브젝트_바닥선이_올라가지_않는다<br>TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>달팽이를_걸치면_발과_껍데기가_실제로_그려진다<br>사용자숨김은_열린_창과_클릭차단막까지_함께_걷는다<br>풍선을_걸치면_끈과_주머니가_실제로_그려진다 |
+| 09-02 16:04 | `loc-gate` | edit | ~eca8c58 | ? | **~WIN** | 1602 | 1586 | 4 | 12 | 목_형상은_데이터화_전후로_비트까지_같다<br>양성대조_분기를_지우면_한국어는_그대로이고_영어만_달라진다<br>한국어_가독예산이_골든과_비트_단위로_같다<br>한국어_소비자_경로가_골든에서_파생된_값과_같다 |
+| 09-02 16:08 | `loc-gate-2` | edit | ~eca8c58 | ? | **~WIN** | 1602 | 1589 | 1 | 12 | 목_형상은_데이터화_전후로_비트까지_같다 |
+| 09-02 16:08 | `b2-neck` | edit | ~eca8c58 | ? | **~WIN** | 1602 | 1589 | 1 | 12 | 목_형상은_데이터화_전후로_비트까지_같다 |
+| 09-02 16:11 | `b2-probe` | edit | ~eca8c58 | ? | **~WIN** | 1603 | 1590 | 1 | 12 | 목_형상은_데이터화_전후로_비트까지_같다 |
+| 09-02 16:13 | `ui-postit` | edit | ~eca8c58 | ? | **↑WIN** | 1603 | 1590 | 1 | 12 | 목_형상은_데이터화_전후로_비트까지_같다 |
+| 09-02 16:24 | `b2-bake` | edit | ~eca8c58 | ? | **~WIN** | 1609 | 1595 | 2 | 12 | 목_형상은_데이터화_전후로_비트까지_같다<br>전체화면_판정_한_줄에_사용자숨김을_얹지_않는다 |
+| 09-02 16:46 | `ui-postit` | play | ~eca8c58 | ? | **~WIN** | 574 | 563 | 7 | 4 | CardEquipButtonWearsAndCategoryStaysMutuallyExclusive<br>OutsideClickDoesNotCloseWindowButTheCloseButtonStillDoes<br>SavedPositionInsideTheReservedTopBarIsPulledOutOnStartup<br>SavedPositionOutsideTheScreenIsPulledBackOnStartup<br>ShortClickStillSpinsAndDoesNotMoveIcon<br>TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>사용자숨김은_열린_창과_클릭차단막까지_함께_걷는다 |
+| 09-02 16:46 | `b2-final` | edit | ~eca8c58 | ? | **~WIN** | 1626 | 1611 | 1 | 14 | 부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다 |
+| 09-02 16:47 | `qa-round2` | edit | ~eca8c58 | ? | **↑WIN** | 1626 | 1611 | 1 | 14 | 부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다 |
+| 09-02 18:15 | `qa-r3` | edit | ~eca8c58 | ? | **↑WIN** | 1626 | 1611 | 1 | 14 | 부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다 |
+| 09-02 18:37 | `qa-r3` | play | ~eca8c58 | ? | **↑WIN** | 578 | 566 | 7 | 5 | CardEquipButtonWearsAndCategoryStaysMutuallyExclusive<br>OutsideClickDoesNotCloseWindowButTheCloseButtonStillDoes<br>SavedPositionInsideTheReservedTopBarIsPulledOutOnStartup<br>SavedPositionOutsideTheScreenIsPulledBackOnStartup<br>ShortClickStillSpinsAndDoesNotMoveIcon<br>TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>사용자숨김은_열린_창과_클릭차단막까지_함께_걷는다 |
+| 09-02 18:44 | `qa-r4b` | edit | ~eca8c58 | ? | **~WIN** | 1637 | 1623 | 1 | 13 | 부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다 |
+| 09-02 19:06 | `qa-r4b` | play | ~eca8c58 | ? | **↑WIN** | 582 | 576 | 2 | 4 | TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>사용자숨김은_열린_창과_클릭차단막까지_함께_걷는다 |
+| 09-02 19:28 | `c1-edit` | edit | ~7ed996d | ? | **~OSX** | 1674 | 1657 | 2 | 15 | Ignore를_쓰는_테스트는_전부_명부에_있고_장치없음이_늘지_않는다<br>부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다 |
+| 09-02 19:51 | `c1-play` | play | ~7ed996d | ? | **↑OSX** | 589 | 579 | 6 | 4 | TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>사용자숨김은_열린_창과_클릭차단막까지_함께_걷는다<br>설정창_톱니_위치_행은_옮긴_뒤에만_눌리고_누르면_되돌아간다<br>온보딩이_지나가도_사용자가_옮겨_둔_자리는_그대로다<br>온보딩이_톱니를_옮겨도_사용자가_옮긴_것으로_저장되지_않는다<br>처음_자리로가_저장까지_되돌리고_다음_프레임에_되살아나지_않는다 |
+| 09-02 19:52 | `c2-edit` | edit | ~7ed996d | ? | **↑OSX** | 1674 | 1657 | 2 | 15 | Ignore를_쓰는_테스트는_전부_명부에_있고_장치없음이_늘지_않는다<br>부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다 |
+| 09-02 20:16 | `c2-play` | play | ~7ed996d | ? | **↑OSX** | 589 | 580 | 5 | 4 | G1_앱이_도는_동안_살아있는_오브젝트_바닥선이_올라가지_않는다<br>TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate<br>달팽이를_걸치면_발과_껍데기가_실제로_그려진다<br>사용자숨김은_열린_창과_클릭차단막까지_함께_걷는다<br>풍선을_걸치면_끈과_주머니가_실제로_그려진다 |
+| 09-02 20:25 | `te-purge` | edit | ~7ed996d | ? | **~OSX** | 1679 | 1660 | 4 | 15 | Ignore를_쓰는_테스트는_전부_명부에_있고_장치없음이_늘지_않는다<br>부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다<br>양성대조_심어_놓은_오염_파일을_정리기가_실제로_지운다<br>재발방지_다섯_픽스처는_저장파일을_다시_쓰지_않는다 |
+| 09-02 20:28 | `te-purge2` | edit | ~7ed996d | ? | **~OSX** | 1680 | 1664 | 1 | 15 | 부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다 |
+| 09-02 21:00 | `te-play` | play | ~7ed996d | ? | **↑OSX** | 589 | 584 | 1 | 4 | TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate |
+| 09-02 21:38 | `qa-r5` | edit | ~7ed996d | ? | **~OSX** | 1706 | 1687 | 3 | 16 | 부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다<br>전환_전_골든_스냅샷과_지금_카탈로그가_한_글자도_다르지_않다<br>줄번호_참조를_새로_만들지_않는다 |
+| 09-02 22:35 | `qa-r5` | play | ~7ed996d | ? | **~OSX** | 589 | 584 | 1 | 4 | TiltFollowsTheConfig_AndTurnsItselfOffForGlyphsTooSmallToRotate |
+| 09-02 23:39 | `te-r2` | edit | 7ed996d | **140** | **OSX** | 1707 | 1688 | 3 | 16 | 부채꼴메뉴는_펼쳐져있는_동안_매프레임_홀드를_갱신한다<br>전환_전_골든_스냅샷과_지금_카탈로그가_한_글자도_다르지_않다<br>줄번호_참조를_새로_만들지_않는다 |
+| 09-03 00:02 | `te-r2` | play | 7ed996d | **143** | **OSX** | 591 | 587 | 0 | 4 | — |
+| 09-03 00:03 | `qa-r6` | edit | 7ed996d | **167** | **OSX** | 1754 | 1735 | 1 | 18 | 줄번호_참조를_새로_만들지_않는다 |
+| 09-03 01:59 | `lead-final` | edit | ~7ed996d | ? | **~OSX** | 1798 | 1775 | 4 | 19 | 빌드타깃과_무관하게_소스에서도_통과_누락을_감사한다<br>전환_전_골든_스냅샷과_지금_카탈로그가_한_글자도_다르지_않다<br>줄번호_참조를_새로_만들지_않는다<br>톱니가_우측_도킹_작업표시줄_뒤로_들어가지_않는다 |
+| 09-03 02:07 | `coder-golden` | edit | ~7ed996d | ? | **~OSX** | 1798 | 1777 | 2 | 19 | 빌드타깃과_무관하게_소스에서도_통과_누락을_감사한다<br>톱니가_우측_도킹_작업표시줄_뒤로_들어가지_않는다 |
+| 09-03 02:14 | `devplat-edge` | edit | ~7ed996d | ? | **~OSX** | 1800 | 1781 | 0 | 19 | — |
+| 09-03 02:18 | `devplat-edge2` | edit | ~7ed996d | ? | **~OSX** | 1801 | 1780 | 1 | 20 | Ignore를_쓰는_테스트는_전부_명부에_있고_장치없음이_늘지_않는다 |
+| 09-03 02:20 | `devplat-edge3` | edit | ~7ed996d | ? | **~OSX** | 1800 | 1781 | 0 | 19 | — |
+| 09-03 05:00 | `coder-grabline` | edit | ~1eb0e2b | ? | **~OSX** | 1800 | 1781 | 0 | 19 | — |
+| 09-03 05:01 | `coder-grabline-poscontrol-EXPECTED-RED` | edit | ~1eb0e2b | ? | **~OSX** | 33 | 32 | 1 | 0 | 골든과_소스_말뭉치가_양방향으로_일치한다 |
+| 09-03 05:11 | `qa-r7` | edit | 1eb0e2b | **40** | **OSX** | 1813 | 1789 | 5 | 19 | B1_Windows_실행부는_자기창_확장스타일_한_종류만_쓴다<br>Ignore를_쓰는_테스트는_전부_명부에_있고_장치없음이_늘지_않는다<br>PlayMode가_베낀_식별자_문자열이_프로덕션과_같다<br>양성_대조_문자열_파서가_값을_읽고_틀린_값을_잡아낸다<br>자기창_스타일_쓰기_API는_해소기_한_파일에만_있다 |
+| 09-03 05:35 | `qa-r7` | play | 1eb0e2b | **45** | **OSX** | 610 | 603 | 0 | 7 | — |
+| 09-03 05:36 | `coder-r8` | edit | 1eb0e2b | **71** | **OSX** | 1825 | 1805 | 2 | 18 | Ignore를_쓰는_테스트는_전부_명부에_있고_장치없음이_늘지_않는다<br>자기창_스타일_쓰기_API는_해소기_한_파일에만_있다 |
+| 09-03 05:59 | `coder-r8` | play | 1eb0e2b | **72** | **OSX** | 629 | 622 | 0 | 7 | — |
+| 09-03 06:00 | `te-r2b` | edit | 1eb0e2b | **81** | **OSX** | 1828 | 1810 | 0 | 18 | — |
+| 09-03 06:02 | `te-r2c` | edit | 1eb0e2b | **79** | **OSX** | 1828 | 1810 | 0 | 18 | — |
+| 09-03 06:03 | `devplat-toolwindow` | edit | ~1eb0e2b | ? | **↑OSX** | 1828 | 1810 | 0 | 18 | — |
+| 09-03 06:10 | `ui-textwidth` | edit | 1eb0e2b | **88** | **OSX** | 1828 | 1810 | 0 | 18 | — |
+| 09-03 06:33 | `ui-textwidth` | play | 1eb0e2b | **89** | **OSX** | 630 | 622 | 0 | 8 | — |
+| 09-03 06:58 | `debugger-r9` | edit | ~1eb0e2b | ? | **↑OSX** | 1853 | 1831 | 5 | 17 | C층_소유판정은_Unknown을_NotOwned로_붕괴시키지_않는다<br>같은_아이디를_쓰는_두_팩은_뒤쪽이_거부된다<br>세이브_스키마의_필드_이름에_유료권한_토큰이_하나도_없다<br>주석이_지목한_소스_파일이_새로_사라지지_않는다<br>주인_없는_코호트를_가진_아이템은_신고된다 |
+| 09-03 07:10 | `ledgehang-GREEN` | edit | ~1eb0e2b | ? | **~OSX** | 1869 | 1835 | 17 | 17 | NegativeControl_같은_버전_파일이면_평소대로_덮어쓴다<br>NegativeControl_직전_세대가_없으면_같은_사고가_전손이_된다<br>같은_아이디를_쓰는_두_팩은_뒤쪽이_거부된다<br>교체가_몇_번_거절돼도_재시도가_원자성을_지킨다<br>교체가_아예_안_되는_환경에서는_대피시킨_뒤_덮어쓴다<br>다른_인스턴스의_임시파일을_밟지_않는다<br>덮어쓰기_도중_프로세스가_사라져도_직전_저장으로_되돌아간다<br>두_번째_저장부터_직전_세대가_남고_그것은_바로_앞_내용이다<br>본체가_아예_없으면_세대를_뒤지지_않고_새_캐릭터로_시작한다<br>상주_인스턴스는_발밑에서_신버전으로_바뀐_파일을_덮어쓰지_않는다<br>세이브_스키마의_필드_이름에_유료권한_토큰이_하나도_없다<br>손상되거나_빈_파일은_저장을_막지_않는다<br>양성대조_심어_놓은_오염_파일을_정리기가_실제로_지운다<br>이미_깨진_본체로_온전한_직전_세대를_덮지_않는다<br>임시_파일_경로는_인스턴스마다_다르다<br>첫_저장은_남길_직전_세대가_없다<br>한번_확인된_보유는_조회가_실패해도_회수되지_않는다 |
+| 09-03 07:41 | `packcorridor` | play | ~1eb0e2b | ? | **↑OSX** | 630 | 622 | 0 | 8 | — |
+| 09-03 07:43 | `packcorridor` | edit | ~1eb0e2b | ? | **~OSX** | 1872 | 1855 | 0 | 17 | — |
+| 09-03 08:31 | `rarity-ribbon` | play | 1eb0e2b | **172** | **OSX** | 635 | 625 | 2 | 8 | DetailWordAndRibbonCellsAgreeOnTheSameRarity<br>T2_실제_리그의_몸선과_장비선이_같은_uv_규칙을_따른다 |
+| 09-03 08:42 | `ribbonfix` | play | ~1eb0e2b | ? | **~WIN** | 5 | 5 | 0 | 0 | — |
+| 09-03 08:52 | `ribbonfix` | edit | ~1eb0e2b | ? | **↑WIN** | 13 | 13 | 0 | 0 | — |
+| 09-03 09:03 | `brasscheck` | edit | ~1eb0e2b | ? | **↑WIN** | 31 | 30 | 0 | 1 | — |
+| 09-03 09:22 | `full_win` | edit | ~1eb0e2b | ? | **↑WIN** | 1881 | 1862 | 2 | 17 | 관절_끝점이_획_두께_이상으로_안쪽으로_물러나지_않는다<br>위마디와_아래마디의_곡선이_관절에서_정확히_이어진다 |
+| 09-03 10:28 | `debugger-limbcurve-fix` | edit | 1eb0e2b | **229** | **WIN** | 1908 | 1889 | 1 | 18 | 상태_테두리가_등급_최대보다_밝다 |
+| 09-03 10:54 | `gate` | edit | ~1eb0e2b | ? | **~WIN** | 1914 | 1894 | 2 | 18 | 대조_분모를_ButtonCount로_되돌리면_이_테스트가_빨개진다<br>상태_테두리가_등급_최대보다_밝다 |
+| 09-03 11:01 | `borderfix` | edit | ~1eb0e2b | ? | **~WIN** | 6 | 6 | 0 | 0 | — |
+| 09-03 11:02 | `final` | edit | ~1eb0e2b | ? | **↑WIN** | 1914 | 1896 | 0 | 18 | — |
+| 09-03 11:27 | `final` | play | ~1eb0e2b | ? | **~WIN** | 638 | 627 | 3 | 8 | T2_실제_리그의_몸선과_장비선이_같은_uv_규칙을_따른다<br>TheHoverLabelNeverCoversAnotherButton<br>기상_중_어떤_정착각에서도_잉크가_화면_아래로_잘리지_않는다 |
+| 09-03 11:36 | `archery_prob` | edit | ~1eb0e2b | ? | **~WIN** | 14 | 14 | 0 | 0 | — |
+| 09-03 11:37 | `archery_visual` | play | ~1eb0e2b | ? | **~WIN** | 24 | 24 | 0 | 0 | — |
+| 09-03 11:39 | `dbg-lagprobe` | play | ~1eb0e2b | ? | **~WIN** | 1 | 1 | 0 | 0 | — |
+| 09-03 11:45 | `dbg-getupfix-GREEN` | play | ~1eb0e2b | ? | **~WIN** | 2 | 2 | 0 | 0 | — |
+| 09-03 11:48 | `dbg-getupfix-MUT` | play | ~1eb0e2b | ? | **~WIN** | 2 | 2 | 0 | 0 | — |
+| 09-03 12:22 | `dbg-getupfix-FULL` | play | ~1eb0e2b | ? | **↑WIN** | 638 | 628 | 2 | 8 | T2_실제_리그의_몸선과_장비선이_같은_uv_규칙을_따른다<br>좌우반전을_20회_반복해도_모자_채움이_항상_유효하다 |
+| 09-03 12:24 | `dbg-flipfill-CONTROL` | play | ~1eb0e2b | ? | **~WIN** | 5 | 4 | 1 | 0 | 좌우반전을_20회_반복해도_모자_채움이_항상_유효하다 |
+| 09-03 12:35 | `dbg-accstale-RED` | play | ~1eb0e2b | ? | **~WIN** | 1 | 0 | 1 | 0 | T2_실제_리그의_몸선과_장비선이_같은_uv_규칙을_따른다 |
+| 09-03 12:36 | `dbg-accstale-RED2` | play | ~1eb0e2b | ? | **~WIN** | 1 | 0 | 1 | 0 | T2_실제_리그의_몸선과_장비선이_같은_uv_규칙을_따른다 |
+| 09-03 12:37 | `dbg-accstale-GREEN` | play | ~1eb0e2b | ? | **~WIN** | 1 | 1 | 0 | 0 | — |
+| 09-03 12:44 | `dbg-accstale-BLAST` | play | ~1eb0e2b | ? | **~WIN** | 202 | 197 | 1 | 4 | 좌우반전을_20회_반복해도_모자_채움이_항상_유효하다 |
+| 09-03 12:44 | `tray` | edit | ~1eb0e2b | ? | **~WIN** | 16 | 16 | 0 | 0 | — |
+| 09-03 12:45 | `dbg-accstale-AUDIT` | edit | ~1eb0e2b | ? | **↑WIN** | 485 | 471 | 0 | 14 | — |
+| 09-05 05:37 | `qa-r9` | edit | 1eb0e2b | **318** | **WIN** | 1982 | 1962 | 1 | 19 | 부채꼴에서_이름표가_어떤_형제_버튼도_덮지_않는다 |
+| 09-05 06:00 | `qa-r9` | play | 1eb0e2b | **319** | **WIN** | 638 | 629 | 1 | 8 | 좌우반전을_20회_반복해도_모자_채움이_항상_유효하다 |
 
 ## 지금 빨간 것 — 그리고 **언제부터**인가
 
-### edit — 최신 `qa-r6` (09-03 00:03, 타깃 OSX)
+### edit — 최신 `qa-r9` (09-05 05:37, 타깃 WIN)
 
 | 실패 | 마지막으로 **실제로 초록**이던 실행 | 처음 빨개진 실행 | 연속 빨강 |
 |---|---|---|---:|
-| 줄번호_참조를_새로_만들지_않는다 | `te-purge2` 09-02 20:28 | `qa-r5` 09-02 21:38 | 3 |
+| 부채꼴에서_이름표가_어떤_형제_버튼도_덮지_않는다 | **한 번도 없다** | `qa-r9` 09-05 05:37 | 1 |
 
-### play — 최신 `te-r2` (09-03 00:02, 타깃 OSX)
+### play — 최신 `qa-r9` (09-05 06:00, 타깃 WIN)
 
-빨강 없음.
+| 실패 | 마지막으로 **실제로 초록**이던 실행 | 처음 빨개진 실행 | 연속 빨강 |
+|---|---|---|---:|
+| 좌우반전을_20회_반복해도_모자_채움이_항상_유효하다 | `final` 09-03 11:27 | `dbg-getupfix-FULL` 09-03 12:22 | 4 |
 
 
-<!-- rows=32 -->
+<!-- rows=77 -->

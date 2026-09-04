@@ -423,6 +423,7 @@ namespace StickMate.Interaction
             {
                 SetLinesEnabled(false);
                 if (_container != null && _container.activeSelf) _container.SetActive(false);
+                ReleaseWhenNothingWorn();
                 return;
             }
 
@@ -772,6 +773,56 @@ namespace StickMate.Interaction
             Vector3 current = _container.transform.localScale;
             if (Mathf.Approximately(current.x, inv) && Mathf.Approximately(current.y, inv)) return;
             _container.transform.localScale = new Vector3(inv, inv, 1f);
+        }
+
+        /// <summary>
+        /// ★ 2026-09-03 (debugger) — <b>다 벗었는데 직전 차림의 도형이 계층에 남는 결함</b>의 수리.
+        ///
+        /// <para><b>무슨 일이 있었나.</b> 바로 위의 알파 조기 반환은 <see cref="EnsureBuilt"/>를
+        /// 건너뛴다. 그런데 <see cref="ResolveWantVisible"/>의 <b>첫 줄</b>이
+        /// <c>!EquipmentModel.AnyEquipped()</c>이므로, 「마지막 한 개를 벗은」 그 순간부터는
+        /// 알파가 영원히 0이고 <b>재구성이 한 번도 실행되지 않는다</b>. 착용 모델은 "아무것도 없다"고
+        /// 말하는데 계층에는 직전 차림의 LineRenderer·MeshRenderer·손으로 만든 Mesh가 그대로 살아 있다.</para>
+        ///
+        /// <para><b>실측(2026-09-03, PlayMode 임시 탐침).</b> 다 벗긴 뒤 8프레임 동안
+        /// <c>_builtSignature == -1</c>(재구성 요청됨)인 채로 조기 반환이 8번 반복됐고, 그동안
+        /// 컨테이너에는 선 6개 + 채움면 5개가 남아 있었다.</para>
+        ///
+        /// <para><b>화면에는 안 보인다 — 그 점은 같은 탐침이 반증했다.</b> 그 8프레임 내내
+        /// <c>실제로 그려지는 선 0개 / 채움면 0개, 컨테이너 activeSelf=False</c>였다. 즉 이것은
+        /// 「벗었는데 모자가 화면에 남는」 버그가 <b>아니다</b>. 그럼에도 고치는 이유 둘:</para>
+        /// <list type="number">
+        ///   <item>24시간 상주 앱이다. <see cref="_fillMeshes"/>는 <b>손으로 지워야만</b> 사라지는
+        ///     자원이고(그 필드 문서 참고), 「다 벗은 채로 며칠」이 그것을 그대로 붙잡아 둔다.</item>
+        ///   <item>계층을 훑는 소비자에게 <b>모델과 다른 사실</b>을 말한다. 실제로
+        ///     Tests/PlayMode/LineRendererUvBandProbeTests의 「맨몸」 측정이 이 잔재를 장비 선으로
+        ///     세어 빨개졌다 — 계측기가 거짓말을 들은 것이지 계측기가 틀린 것이 아니었다.</item>
+        /// </list>
+        ///
+        /// <para><b>왜 「숨김 전체」가 아니라 「착용 0개」에만 거는가.</b> 랙돌/전체화면 자동 숨김/가출
+        /// 은신은 <b>모자를 여전히 쓰고 있는</b> 상태다. 거기서 컨테이너를 부수면 랙돌마다(자주 일어난다)
+        /// 도형을 굽고 부수게 되고, 그건 이 렌더러가 서명 기반 게으른 재구성을 택한 이유
+        /// (<see cref="EnsureBuilt"/> 문서)를 정면으로 거스른다. 그릴 것이 <b>정의상 하나도 없는</b>
+        /// 「착용 0개」에서만 버린다.</para>
+        ///
+        /// <para>멱등하다 — 한 번 버리면 <c>_container</c>가 null이라 다음 프레임부터는 널 검사 하나로
+        /// 끝난다. 다시 걸치면 서명이 달라져 <see cref="EnsureBuilt"/>가 처음부터 굽는다.</para>
+        /// </summary>
+        private void ReleaseWhenNothingWorn()
+        {
+            if (_container == null) return;
+            if (EquipmentModel.AnyEquipped()) return;
+
+            Destroy(_container);
+            _container = null;
+            _headGroup = null;
+            DestroyFillMeshes();
+            _lines.Clear();
+            _fills.Clear();
+            _swayLines.Clear();
+            _swayApplied = false;
+            _built = false;
+            _builtSignature = -1;
         }
 
         private void Rebuild()

@@ -672,7 +672,12 @@ namespace StickMate.Tests.PlayMode
         /// (SceneBootstrapper.BakeEyes). 신설된 "HeadFill"은 <b>일부러 넣지 않는다</b>: 이 목록의 용도는
         /// 가로 실루엣 폭 측정인데, 폭이 지름만 한 LineRenderer의 <c>bounds</c>는 Unity가 매우 보수적으로
         /// 잡아 실제보다 훨씬 넓게 나온다. HeadFill의 바깥 반경은 정의상 HeadOutline의 링 반경과 같으므로
-        /// (Editor/SceneBootstrapper.CreateFilledDisc) 넣어도 새로 측정되는 것이 없고, 측정만 흐려진다.</para></summary>
+        /// (Editor/SceneBootstrapper.CreateFilledDisc) 넣어도 새로 측정되는 것이 없고, 측정만 흐려진다.</para>
+        ///
+        /// <para>★ 2026-09-03 마디 병합 — <c>*Lower</c> 네 개는 <b>더 이상 구워지지 않는다</b>
+        /// (팔다리 하나 = 선 하나). 그래도 목록에 남겨 둔다: 아직 다시 굽지 않은 프리팹이 씬에 있으면
+        /// 그 선이 실재하고, 그때 빠뜨리면 <b>실루엣 폭을 절반만 재고도 초록</b>이 된다.
+        /// 병합된 프리팹에서는 위 마디 선이 팔다리 전체를 담으므로 측정 범위가 같다.</para></summary>
         private static bool IsBodyRenderer(string name)
         {
             switch (name)

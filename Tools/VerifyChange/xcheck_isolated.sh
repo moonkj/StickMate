@@ -12,7 +12,9 @@
 # 사용법:
 #   xcheck_isolated.sh <win|osx> <출력루트>            0에러면 rc=0
 #   xcheck_isolated.sh <win|osx> <출력루트> --selftest  ★ 양성 대조: 일부러 깨진 소스를 넣어
-#                                                       탐지 경로가 살아 있는지 증명한다(에러 검출=성공)
+#                                                       탐지 경로가 살아 있는지 증명한다.
+#     rc=0 통과 / rc=4 탐지경로 죽음 / rc=5 판정불가(다른 에러가 섞였다)
+#     ★ «에러가 났다»만 보면 안 된다 — 주입한 그 오류가 **유일한 에러**여야 한다(TEAM.md 격리 미러 규약).
 set -Eeuo pipefail
 
 REPO=/Users/kjmoon/App/StickMate
@@ -128,15 +130,54 @@ if [ "$WELL" -ne "$EXPECT_UNITS" ]; then
 fi
 
 if [ "$MODE" = "--selftest" ]; then
-  # 양성 대조: 고의 오류가 runtime 2개에서 검출되어야 한다. 검출되면 rc=0(대조 성공).
-  P1=$(grep -c 'runtime(editor)] errors=0 ' "$SUMMARY" || true)
-  P2=$(grep -c 'runtime(player)] errors=0 ' "$SUMMARY" || true)
-  if [ "$P1" -ne 0 ] || [ "$P2" -ne 0 ]; then
-    echo "[$TARGET] ★ 양성 대조 실패 — 고의 CS0103 을 못 잡았다. 이 도구의 모든 0건을 무효로 하라." >&2
-    exit 4
+  # ==========================================================================
+  # ★★ 2026-09-03 qa-regression — 여기가 거짓 통과였다. 고쳤다.
+  #
+  # 옛 판정은 이것뿐이었다:
+  #     runtime(editor)/runtime(player) 의 errors 가 **0이 아니면** 양성 대조 통과.
+  # 그건 TEAM.md 「격리 미러 규약」이 이미 사고로 기록한 형태다 —
+  #     미러에 Library/ 가 없어 참조 DLL 전부가 CS0006 이었는데도
+  #     「errors ≠ 0」이라는 이유로 **양성 대조 통과**가 찍혔고,
+  #     주입한 코드는 **컴파일러에 닿지도 못했다.**
+  # 즉 옛 판정은 "탐지 경로가 살아 있다"와 "전부 무너졌다"를 구분하지 못한다.
+  # 규약이 요구하는 것: **「고의로 심은 그 오류가 유일한 에러인가」까지 봐라.**
+  #
+  # 그래서 이제 세 갈래로 나눈다(전부 다르게 생기게):
+  #   rc=0  통과      — 주입 심볼 오류가 검출됐고 **그것 말고 다른 에러가 없다**
+  #   rc=4  실패      — 주입 심볼 오류가 **아예 없다**(탐지 경로가 죽었다)
+  #   rc=5  판정불가  — 주입 오류는 있는데 **다른 에러가 섞였다**(트리가 이미 깨져 있다)
+  #                    → 이때 "양성 대조 통과"라고 말할 자격이 없다. 미확인이다.
+  # ==========================================================================
+  POISON_SYM=XCHECK_THIS_SYMBOL_DOES_NOT_EXIST
+  st_rc=0
+  for u in "runtime(editor)|$OUT/runtime.log" "runtime(player)|$OUT/rp.log"; do
+    lbl="${u%%|*}"; lg="${u#*|}"
+    if [ ! -f "$lg" ]; then
+      echo "[$TARGET] ★ 양성 대조 실패 — $lbl 로그가 없다($lg). 컴파일이 시작조차 못 했다." >&2
+      st_rc=4; continue
+    fi
+    E=$(grep -c "error CS" "$lg" || true)
+    K=$(grep "error CS" "$lg" | grep -c "$POISON_SYM" || true)
+    C6=$(grep -c "error CS0006" "$lg" || true)
+    echo "  [$TARGET/$lbl] 전체에러=$E  주입심볼에러=$K  CS0006(참조없음)=$C6"
+    if [ "$K" -eq 0 ]; then
+      echo "[$TARGET] ★ 양성 대조 실패 — $lbl 에서 주입한 $POISON_SYM 오류가 **한 건도 없다**." >&2
+      echo "     탐지 경로가 죽었다는 뜻이다. 이 도구가 낸 모든 0건을 무효로 하라." >&2
+      [ "$C6" -gt 0 ] && echo "     (CS0006 ${C6}건 — 참조 DLL이 없다. 미러에 Library/ 심링크를 걸어라.)" >&2
+      grep "error CS" "$lg" | sed 's/^/       /' | head -5 >&2 || true
+      st_rc=4
+    elif [ "$E" -ne "$K" ]; then
+      echo "[$TARGET] ★ 양성 대조 **판정 불가** — $lbl 에서 주입 오류 ${K}건 외에 다른 에러 $((E - K))건이 섞였다." >&2
+      echo "     주입 오류를 잡은 것은 맞지만, 그 초록/빨강이 **주입 때문인지 원래 깨진 트리 때문인지 가를 수 없다.**" >&2
+      echo "     이건 '통과'가 아니라 '미확인'이다. 깨끗한 미러(git archive HEAD + 자기 파일)에서 다시 돌려라." >&2
+      grep "error CS" "$lg" | grep -v "$POISON_SYM" | sed 's/^/       /' | head -5 >&2 || true
+      [ "$st_rc" -eq 0 ] && st_rc=5
+    fi
+  done
+  if [ "$st_rc" -eq 0 ]; then
+    echo "[$TARGET] 양성 대조 통과 — 주입한 $POISON_SYM 오류가 runtime 2개에서 검출됐고 **그것이 유일한 에러다**. OUT=$OUT"
   fi
-  echo "[$TARGET] 양성 대조 통과 — 고의 오류를 runtime 2개에서 검출. OUT=$OUT"
-  exit 0
+  exit $st_rc
 fi
 
 echo "[$TARGET] RC=$RC  units=$WELL/$EXPECT_UNITS  OUT=$OUT"

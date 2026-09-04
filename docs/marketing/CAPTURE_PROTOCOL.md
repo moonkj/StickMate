@@ -83,6 +83,17 @@
 ### 2-3. 앱 상태
 - [ ] **저장 파일 초기화** 여부를 정한다. `~/Library/Application Support/Vibelab/StickMate/stickmate_character.json`
       - 첫 실행 연출을 찍으려면 초기화 필요. **다만 사용자의 진행도를 지우지 않도록 백업 필수**
+- [ ] ★★ **R5 — 「첫 실행」은 저장 파일만 지워서는 안 된다.** 온보딩 안내 「봤음」 기록은
+      **`PlayerPrefs`**에 있다(`GearRadialMenuWidget`의 `OnboardingSeenKey` =
+      `StickMate.GearMenu.OnboardingSeen.v1`). 이 머신 실측: **이미 `= 1`로 기록돼 있다.**
+      - 함께 옮긴다(**지우지 말고 `.bak`**): `~/Library/Preferences/unity.Vibelab.StickMate.plist`
+      - ★ **구경로도 확인**: `unity.DefaultCompany.StickMate.plist`가 **따로 실재한다.**
+        빌드의 `companyName`에 따라 **읽는 파일이 갈린다** — 어느 회사명으로 빌드했는지 먼저 확인
+        (현행 macOS 빌드는 `codesign` 실측상 아직 `com.DefaultCompany.StickMate`다)
+      - 촬영 후 **둘 다 되돌린다**
+      - ★ **이 절차 없이 찍은 「첫 실행」은 거짓 소재다** — 신규 사용자는 온보딩 알약을 보는데
+        우리 화면에는 안 뜬다. **다른 제품을 찍는 것이다**
+      - ★ **Windows판(레지스트리 `HKCU\Software\<회사>\<제품>`)은 미확인** — 회차 담당이 확인한다
 - [ ] 캐릭터 배율: 배포 기본값 사용. 개인 저장값(과거 0.35 사례)이 섞이면 실측이 어긋난다
 - [ ] `verboseDiagnosticsLogging` **OFF**(진단 문자열이 화면/로그에 남는다)
 - [ ] 디버그 잠금 해제(`EquipmentDebugUnlock`) **OFF** — 릴리즈 게이트 확인
