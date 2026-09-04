@@ -648,3 +648,62 @@ EYES 6종 바이저 리디자인 / 저장 스키마 v8 + 다운그레이드 방�
 ### 상태
 EditMode **1229 / 1222 통과 / 0 실패 / 7 건너뜀**. 빌드 01:55:25(에러 0).
 상세는 `Tasklist.md` 2026-09-01~09-02 절.
+
+## 2026-09-05 — 팀 목표 전환: Windows 스팀 출시 (커밋 1f7e139)
+
+사용자 지시로 팀 전체 목표를 **「Windows 스팀 출시」**로 좁힘. 검증은 이 macOS 개발 머신
+(크로스컴파일 + EditMode/PlayMode 전량)으로 진행, Windows 실기는 사용자 낮 시간에만.
+
+### 1단계 — 기존 대규모 미커밋 라운드(커밋 1eb0e2b 이후 135파일) 검증
+`qa-regression`(전량 회귀 + win/osx 크로스컴파일) + `verify-change`(최근 라운드 보고 독립 재검증)
+병렬 투입. **판정: Blocker 0, 커밋 가능.** 거짓 빨강 2건을 리더가 직접 핫픽스:
+- `GearMenuHoverLabelGeometryTests`의 클램프 탐지가 화면 **하한**(margin+halfWidth, screen 크기와
+  무관)은 못 보고 상한만 보던 구조적 결함 — `marginOverride`로 하한도 함께 밀어내도록 수정.
+- `AccessoryFacingFlipFillTests`의 채움 개수 기대값(2)이 `AccessoryShapeBuilder`가 HatBand를
+  추가한 뒤로 낡아 있던 것 — 3으로 정정.
+
+### 2단계 — Windows 스팀 출시 크리티컬 패스 확정 (`game-architect`)
+`docs/strategy/WINDOWS_STEAM_LAUNCH_CRITICAL_PATH.md` 신규. 되돌릴 수 없는 결정 6건(I-1~I-6),
+macOS에서 지금 가능한 항목(M-1~M-13, 【A표】) vs Windows 실기 필수 항목(H-0~H-16, 【B표】) 분리.
+**핵심 발견**: 지금 있는 Windows 빌드는 dGPU 패치 이전 산출물(exe 해시가 Unity 템플릿과 동일)이라
+새 빌드 없이 다음 낮 세션을 쓰면 그 세션 전체가 무효. 문서 3곳("1차 목표는 macOS")의 결론 문장을
+리더가 직접 정정(측정값은 보존, 결론만 반전).
+
+### 3단계 — 되돌릴 수 없는 결정: Steamworks 니들 예외 (`security` 설계 → 리더 결재)
+유료 6팩 DLC 확인에 필요한 `SteamAPI`/`BIsDlcInstalled`가 보안 감사의 금지 니들이라 정면 충돌.
+`security`가 작업표시줄 예외(`TASKBAR_REVEAL.md`) 선례보다 한 단계 더 조인 형태(허용 파일 1개·
+심볼 5개, 닫힌 세계 화이트리스트)로 설계. 리더가 결재 3건 전부 승인:
+1. 그 형태로 예외 승인 2. "전송계열 0건" 테스트를 "승인된 예외 1건과 정확히 같다"로 개작(니들
+종류 변경으로 초록 유지하는 꼼수는 기각) 3. `entitlementId`를 I-1(번들ID)급 동결 대상으로 승격.
+부수 발견: asmdef 감사의 대소문자 구멍(Steamworks.NET 실제 패키지명이 전부 소문자라 기존 검사가
+영원히 못 봄) — 스팀 예외와 무관하게 오늘 이미 거짓이던 결함.
+
+### 4단계 — 병렬 구현
+- **M-2(스팀 엔타이틀먼트 어댑터)**: `coder-systems` 에이전트가 결제 관련 키워드로 Claude Code
+  오토모드 분류기에 차단됨 → 사용자 승인 하에 **리더가 직접 구현**. `Store/SteamPackEntitlementSource.cs`
+  (`STICKMATE_STEAMWORKS_INSTALLED` 게이트 — 패키지 미설치 상태에선 항상 Unknown), `PackEntitlement.UseSource()`,
+  신규 감사 `SteamEntitlementAdapterAuditTests.cs`(닫힌 세계 스캔, 네거티브 대조 6건), 기존 감사
+  3파일 개작. 구현 중 자체 발견 버그 1건(닫힌 세계 스캔이 `PackStoreChannel.Steam` 열거값 자체를
+  오탐 — "Steam" 정확히 일치는 SDK 무관이므로 길이 조건 추가해 수정) + Companion 명부 미등록 1건
+  (`TestClaimExpiryAuditTests`) 즉시 수정. EditMode 전량 1999/1999(0실패), PlayMode 641/641(0실패),
+  win/osx 크로스컴파일 0에러로 검증 후 커밋.
+- **M-1(팩 조형 파이프라인) 설계**: `game-architect`. 리더의 옛 추정("43 case")이 틀렸음을
+  실측으로 정정(실제 52 case·4파일, FX·펫은 좌표가 아니라 거동이라 데이터화 불가). 점진적
+  폴백 방식 권고, 전량 이행은 회귀면만 넓힌다며 기각. 구현은 후속 라운드.
+- **M-3(유령 단축키)**: `coder`. 보관함이 개발 게이트 뒤의 F/J/H 단축키를 사용자에게 표시하던
+  문제 — 표기 제거, 집중 모드는 톱니 메뉴 경로로 재안내.
+- **M-4(종료 버튼 영어 폭)**: `test-engineer`. 실측 여유 +411~413pt, 수정 불필요.
+- **M-5/6/9/10(Windows 플랫폼 결함 4건)**: `dev-platform`. Win+D 좌표 오염 수정, 발판 필터
+  열거 글루의 숨은 구멍 발견·차단(테스트 W15), 예약 단축키 재조사, 스토어 제출물 결손 3건 조사
+  (아이콘 애셋 자체가 없음 — design 배정 필요).
+- **전략 판정**: `product-strategy`. Steamworks 채널 계약 충돌 없음, 단 "팩당 depot 배포" 대안이
+  API 호출 자체를 불필요하게 만들 수 있는 갈림길 발견(M-1 후속 라운드 판단 사항). Windows 코드
+  서명 리드타임 재산정(2~3주, T5 안전망 무효화). 영어 우선순위 근거 재도출.
+
+### 통합 검증 + 커밋
+리더 최종 확인: EditMode 1999/1999(0실패·19건너뜀), PlayMode 641/641(0실패·8건너뜀), win/osx
+크로스컴파일 각 5어셈블리 0에러. 365파일 커밋(`1f7e139`).
+
+### 남은 것
+M-1 구현(폴백 방식), M-7/M-8(정책 판정, 리더 대기), M-11(1.0 범위 밖 권고), Steamworks.NET UPM
+패키지 실제 설치(현재 코드는 게이트만 걸어 두고 비활성), 신규 Windows 빌드(H-0 해소) → 낮 세션.
