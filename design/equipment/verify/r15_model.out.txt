@@ -1,0 +1,224 @@
+== 획 등급 실폭 @0.75 (R) ==
+   0 낱선    ×1.00 하한 2.0pt → 0.3439 R
+   1 채움윤곽  ×1.00 하한 1.0pt → 0.2182 R
+   2 디테일   ×0.75 하한 1.0pt → 0.1719 R
+   3 굵은획   ×1.50 하한 1.0pt → 0.3273 R
+
+== 표면별 조각 수 · 몸 생존 ==
+   kind          우리       카드 | 몸설계 몸생존 카드전용 | 공유기하
+   clothhat      야구모자        4 |      4      4        0 | 1
+   furhat        털모자         5 |      5      4        1 | 1
+   fedora        중절모         4 |      4      4        0 | 1
+   crown         왕관          9 |      2      2        0 | 0
+   sunglasses    선글라스        6 |      3      3        0 | 0
+   roundglasses  동그란안경       7 |      3      3        0 | 0
+   goggles       고글          7 |      4      4        0 | 0
+   monocle       외알안경        4 |      3      3        0 | 0
+   bowtie        나비넥타이       4 |      3      3        0 | 0
+   stripedtie    줄무늬타이       5 |      4      4        0 | 0
+   scarf         목도리         6 |      4      4        0 | 1
+   bellnecklace  방울목걸이       8 |      3      3        0 | 0
+   shortcape     짧은망토        4 |      5      5        0 | 1
+   longcape      긴망토         6 |      6      6        0 | 1
+   wings         날개          6 |      6      6        0 | 3
+   backpack      배낭          6 |      6      6        0 | 2
+   합계 카드 91 · 몸 생존 64
+
+== 몸 소멸 조각(설계했으나 규칙에 걸린 것) ==
+   furhat        BeanieCuffWave     털 결 — 규칙은 통과(1-A 1.58R)하지만 첫 시트에서 눈으로 기각: 진폭 0.17R = 디테일획 폭이라 「결」이 아니라 「굵은 물결선」으로 읽힌다(2× Retina 에서 2px). 카드 전용.
+
+== 몸 조각별 판정 ==
+   clothhat      HatCrown           t0 g1(0.218R) 잉크 2.04×1.44R 생존 
+   clothhat      HatBrim            t0 g1(0.218R) 잉크 2.32×0.60R 생존 챙 보조색→주색(인계본 B)
+   clothhat      HatBand            t1 g1(0.218R) 잉크 2.04×0.46R 생존 띠 그늘→보조색(인계본 F)
+   clothhat      HatHighlight       t3 g2(0.172R) 잉크 0.54×0.29R 생존 
+   furhat        BeanieCrown        t0 g1(0.218R) 잉크 1.14×0.94R 생존 단을 분리(0.50 위만)
+   furhat        BeanieCuff         t1 g1(0.218R) 잉크 2.10×0.58R 생존 접힌 단 = 채운 띠 0.58R(보조색)
+   furhat        BeaniePom          t0 g1(0.218R) 잉크 0.53×0.56R 생존 폼폼 보조색→주색(인계본 CB)
+   furhat        BeanieCuffWave     t2 g2(0.172R) 잉크 1.58×0.06R 생존 털 결 — 규칙은 통과(1-A 1.58R)하지만 첫 시트에서 눈으로 기각: 진폭 0.17R = 디테일획 폭이라 「결」이 아니라 「굵은 물결선」으로 읽힌다(2× Retina 에서 2px). 카드 전용.
+   furhat        BeanieHighlight    t3 g2(0.172R) 잉크 0.27×0.26R 생존 
+   fedora        FedoraBrim         t0 g1(0.218R) 잉크 2.58×0.46R 생존 
+   fedora        FedoraCrown        t0 g1(0.218R) 잉크 1.22×1.08R 생존 
+   fedora        FedoraBand         t1 g1(0.218R) 잉크 1.22×0.50R 생존 
+   fedora        FedoraHighlight    t3 g2(0.172R) 잉크 0.20×0.29R 생존 
+   crown         CrownBody          t0 g1(0.218R) 잉크 1.88×1.25R 생존 
+   crown         CrownRim           t1 g1(0.218R) 잉크 2.02×0.46R 생존 
+   sunglasses    SunglassLensBack   t0 g1(0.218R) 잉크 0.74×0.78R 생존 
+   sunglasses    SunglassLensFront  t0 g1(0.218R) 잉크 0.78×0.78R 생존 
+   sunglasses    SunglassBridge     t1 g0(0.344R) 잉크 0.56×0.12R 생존 
+   roundglasses  RoundLensBack      t0 g1(0.218R) 잉크 0.80×0.80R 생존 렌즈 불투명(사용자 제약)
+   roundglasses  RoundLensFront     t0 g1(0.218R) 잉크 0.80×0.80R 생존 
+   roundglasses  RoundBridge        t1 g0(0.344R) 잉크 0.84×0.13R 생존 
+   goggles       GoggleStrap        t0 g1(0.218R) 잉크 3.04×0.86R 생존 끈 보조색→주색
+   goggles       GoggleLens         t0 g1(0.218R) 잉크 2.08×0.78R 생존 
+   goggles       GoggleLensBack     t1 g1(0.218R) 잉크 0.52×0.52R 생존 렌즈 원반 r=0.26R(§4-2-5 PROMOTE ×1.087 → 0.52R)
+   goggles       GoggleLensFront    t1 g1(0.218R) 잉크 0.52×0.52R 생존 
+   monocle       MonoclePod         t0 g3(0.327R) 잉크 0.92×0.92R 생존 알 r 0.36→0.46R(인계본 비 1.19×동그란안경) · 테 굵은획 ×1.5
+   monocle       MonocleChain       t0 g2(0.172R) 잉크 0.18×0.77R 생존 줄 디테일획(파선→실선)
+   monocle       MonocleEye         t1 g1(0.218R) 잉크 0.66×0.66R 생존 드러난 눈 — 몸 전용(인계본 카드에 없다)
+   bowtie        BowTieLeftWing     t0 g1(0.218R) 잉크 0.70×0.68R 생존 
+   bowtie        BowTieRightWing    t0 g1(0.218R) 잉크 0.70×0.68R 생존 
+   bowtie        BowTieKnot         t1 g1(0.218R) 잉크 0.56×0.60R 생존 
+   stripedtie    TieKnot            t0 g1(0.218R) 잉크 0.72×0.58R 생존 
+   stripedtie    TieBlade           t0 g1(0.218R) 잉크 0.80×2.08R 생존 
+   stripedtie    TieStripe          t1 g1(0.218R) 잉크 0.75×0.68R 생존 줄무늬 2개(인계본 F×2), 각 0.48R(0.44R 은 1-C 를 2% 미달) · 간격 0.29R
+   stripedtie    TieStripe2         t1 g1(0.218R) 잉크 0.77×0.68R 생존 줄무늬 2개(인계본 F×2), 각 0.48R(0.44R 은 1-C 를 2% 미달) · 간격 0.29R
+   scarf         ScarfTailBack      t0 g1(0.218R) 잉크 0.98×2.02R 생존 
+   scarf         ScarfTailFront     t0 g1(0.218R) 잉크 1.06×1.43R 생존 
+   scarf         ScarfWrap          t1 g1(0.218R) 잉크 1.92×0.92R 생존 
+   scarf         ScarfHighlight     t3 g2(0.172R) 잉크 0.44×0.28R 생존 
+   bellnecklace  Collar             t0 g0(0.344R) 잉크 1.56×0.32R 생존 
+   bellnecklace  Bell               t1 g1(0.218R) 잉크 0.84×0.80R 생존 방울 실루엣(몸+테 합침, 인계본 비례 0.84×0.80R)
+   bellnecklace  BellClapper        t0 g1(0.218R) 잉크 0.52×0.52R 생존 추 r 0.26R(인계본 0.10R 확대)
+   shortcape     CapeOutline        t0 g1(0.218R) 잉크 3.30×5.21R 생존 
+   shortcape     CapeFold           t2 g0(0.344R) 잉크 0.81×3.97R 생존 
+   shortcape     CapeFold2          t2 g0(0.344R) 잉크 1.13×3.97R 생존 
+   shortcape     CapeYoke           t1 g1(0.218R) 잉크 2.27×2.44R 생존 
+   shortcape     CapeHighlight      t3 g2(0.172R) 잉크 0.49×3.09R 생존 뒤쪽 가장자리 광택
+   longcape      CapeOutline        t0 g1(0.218R) 잉크 4.15×7.11R 생존 
+   longcape      CapeFold           t2 g0(0.344R) 잉크 2.26×5.48R 생존 
+   longcape      CapeFold2          t2 g0(0.344R) 잉크 2.53×5.48R 생존 
+   longcape      CapeYoke           t1 g1(0.218R) 잉크 2.27×2.44R 생존 
+   longcape      CapeClasp          t0 g1(0.218R) 잉크 0.49×0.52R 생존 걸쇠 r=0.26R(인계본 0.16R 은 소멸 → 확대)
+   longcape      CapeHighlight      t3 g2(0.172R) 잉크 0.80×4.10R 생존 
+   wings         WingSpine          t1 g0(0.344R) 잉크 0.00×2.08R 생존 
+   wings         WingFeatherA       t0 g1(0.218R) 잉크 2.30×1.70R 생존 
+   wings         WingFeatherB       t0 g1(0.218R) 잉크 2.30×1.70R 생존 
+   wings         WingVeinA          t2 g2(0.172R) 잉크 1.00×0.35R 생존 정맥 그늘색(주색 위 주색선은 안 보인다)
+   wings         WingVeinB          t2 g2(0.172R) 잉크 1.00×0.35R 생존 
+   wings         WingHighlight      t3 g2(0.172R) 잉크 1.00×0.35R 생존 
+   backpack      PackBody           t0 g1(0.218R) 잉크 1.56×2.53R 생존 
+   backpack      PackLid            t0 g1(0.218R) 잉크 1.50×1.17R 생존 
+   backpack      PackBuckle         t1 g1(0.218R) 잉크 0.60×0.54R 생존 
+   backpack      PackStrap          t0 g0(0.344R) 잉크 0.32×0.92R 생존 
+   backpack      PackHandle         t0 g0(0.344R) 잉크 0.78×0.28R 생존 손잡이(낱선) — 몸통 위 0.5R 까지만
+   backpack      PackHighlight      t3 g2(0.172R) 잉크 0.00×0.43R 생존 
+
+== 카드 사전합성 색(브라스 #C8A15A · 잉크 #E8E2D6 · 바탕 #15181E) ==
+   clothhat      B0    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   clothhat      F1    t1 g1 fill=#826B42 line=- 
+   clothhat      B2    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   clothhat      H3    t3 g2 fill=- line=#8D8A84 
+   furhat        CB0   t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   furhat        B1    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   furhat        H2    t3 g2 fill=- line=#8D8A84 
+   furhat        B3    t1 g1 fill=#3C362B line=#E8E2D6 
+   furhat        S4    t0 g2 fill=- line=#9B9589 
+   fedora        B0    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   fedora        F1    t1 g1 fill=#897045 line=- 
+   fedora        B2    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   fedora        H3    t3 g2 fill=- line=#77797C 
+   crown         B0    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   crown         B1    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   crown         CF2   t1 g1 fill=#C8A15A line=- 
+   crown         CF3   t1 g1 fill=#C8A15A line=- 
+   crown         CF4   t1 g1 fill=#C8A15A line=- 
+   crown         CB5   t1 g1 fill=#C8A15A line=#E8E2D6 
+   crown         CB6   t1 g1 fill=#C8A15A line=#E8E2D6 
+   crown         CB7   t1 g1 fill=#C8A15A line=#E8E2D6 
+   crown         H8    t3 g2 fill=- line=#8D8A84 
+   sunglasses    B0    t1 g1 fill=#806A42 line=#E8E2D6 
+   sunglasses    B1    t1 g1 fill=#806A42 line=#E8E2D6 
+   sunglasses    S2    t0 g0 fill=- line=#E8E2D6 
+   sunglasses    S3    t0 g0 fill=- line=#E8E2D6 
+   sunglasses    S4    t0 g0 fill=- line=#E8E2D6 
+   sunglasses    H5    t3 g2 fill=- line=#B5A991 
+   roundglasses  CB0   t1 g1 fill=#322E28 line=#E8E2D6 
+   roundglasses  CB1   t1 g1 fill=#322E28 line=#E8E2D6 
+   roundglasses  S2    t0 g0 fill=- line=#E8E2D6 
+   roundglasses  S3    t0 g0 fill=- line=#E8E2D6 
+   roundglasses  S4    t0 g0 fill=- line=#E8E2D6 
+   roundglasses  H5    t3 g2 fill=- line=#888682 
+   roundglasses  H6    t3 g2 fill=- line=#888682 
+   goggles       B0    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   goggles       CB1   t1 g1 fill=#907647 line=#E8E2D6 
+   goggles       CB2   t1 g1 fill=#907647 line=#E8E2D6 
+   goggles       S3    t0 g3 fill=- line=#E8E2D6 
+   goggles       S4    t0 g0 fill=- line=#E8E2D6 
+   goggles       S5    t0 g0 fill=- line=#E8E2D6 
+   goggles       H6    t3 g2 fill=- line=#BFB094 
+   monocle       CB0   t1 g3 fill=#39332A line=#E8E2D6 
+   monocle       H1    t3 g2 fill=- line=#8C8983 
+   monocle       S2    t0 g2 fill=- line=#E8E2D6 파선→실선
+   monocle       CB3   t1 g1 fill=#C8A15A line=#E8E2D6 
+   bowtie        B0    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   bowtie        B1    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   bowtie        RB2   t1 g1 fill=#897145 line=#E8E2D6 
+   bowtie        H3    t3 g2 fill=- line=#8D8A84 
+   stripedtie    B0    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   stripedtie    B1    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   stripedtie    F2    t1 g1 fill=#77633F line=- 
+   stripedtie    F3    t1 g1 fill=#897045 line=- 
+   stripedtie    H4    t3 g2 fill=- line=#8D8A84 
+   scarf         B0    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   scarf         B1    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   scarf         S2    t0 g0 fill=- line=#E8E2D6 
+   scarf         S3    t0 g0 fill=- line=#E8E2D6 
+   scarf         S4    t0 g0 fill=- line=#E8E2D6 
+   scarf         H5    t3 g2 fill=- line=#8D8A84 
+   bellnecklace  S0    t0 g2 fill=- line=#E8E2D6 
+   bellnecklace  CF1   t1 g1 fill=#A4864E line=- 
+   bellnecklace  CF2   t1 g1 fill=#A4864E line=- 
+   bellnecklace  CF3   t1 g1 fill=#A4864E line=- 
+   bellnecklace  B4    t1 g1 fill=#5D4F36 line=#E8E2D6 
+   bellnecklace  RB5   t1 g1 fill=#77633F line=#E8E2D6 
+   bellnecklace  CB6   t1 g1 fill=#C8A15A line=#E8E2D6 
+   bellnecklace  H7    t3 g2 fill=- line=#A1998A 
+   shortcape     B0    t0 g1 fill=#AE382C line=#E8E2D6 그라디언트→평면
+   shortcape     B1    t1 g1 fill=#6A2A26 line=#E8E2D6 
+   shortcape     S2    t0 g2 fill=- line=#C57C70 
+   shortcape     H3    t3 g2 fill=- line=#D08C85 
+   longcape      B0    t0 g1 fill=#AE382C line=#E8E2D6 그라디언트→평면
+   longcape      B1    t1 g1 fill=#6A2A26 line=#E8E2D6 
+   longcape      CB2   t1 g1 fill=#D2402F line=#E8E2D6 
+   longcape      S3    t0 g2 fill=- line=#C27468 
+   longcape      S4    t0 g2 fill=- line=#C27468 
+   longcape      H5    t3 g2 fill=- line=#D08C85 
+   wings         B0    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   wings         B1    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   wings         S2    t0 g2 fill=- line=#807A6F 
+   wings         S3    t0 g2 fill=- line=#807A6F 
+   wings         RB4   t1 g1 fill=#5D4F36 line=#E8E2D6 
+   wings         H5    t3 g2 fill=- line=#8D8A84 
+   backpack      S0    t0 g0 fill=- line=#E8E2D6 
+   backpack      B1    t0 g1 fill=#3B352B line=#E8E2D6 그라디언트→평면
+   backpack      B2    t1 g1 fill=#625338 line=#E8E2D6 
+   backpack      RB3   t1 g1 fill=#9E814C line=#E8E2D6 
+   backpack      RB4   t1 g1 fill=#4F4432 line=#E8E2D6 
+   backpack      H5    t3 g2 fill=- line=#A49B8C 
+
+== 몸 하이라이트 사전합성(흰 42% over 재질색) ==
+   clothhat      HatHighlight     over #96814F → #C2B699
+   furhat        BeanieHighlight  over #BA7636 → #D7B08A
+   fedora        FedoraHighlight  over #5577AE → #9CB0D0
+   scarf         ScarfHighlight   over #CC5512 → #D79F82
+   shortcape     CapeHighlight    over #CC3C3C → #E18E8E
+   longcape      CapeHighlight    over #CC3C3C → #E18E8E
+   wings         WingHighlight    over #6787B9 → #A7B9D6
+   backpack      PackHighlight    over #AB7942 → #CEB191
+
+== 쌍별 실루엣 차 (몸 생존 조각, verify.py 와 같은 자: 72구간 max Δr / W) ==
+   HEAD  clothhat      vs furhat        maxΔ 4.70획  |Δ|≥0.5W 구간 41.7%
+   HEAD  clothhat      vs fedora        maxΔ 4.44획  |Δ|≥0.5W 구간 40.3%
+   HEAD  clothhat      vs crown         maxΔ 4.08획  |Δ|≥0.5W 구간 25.0%
+   HEAD  furhat        vs fedora        maxΔ 1.71획  |Δ|≥0.5W 구간 25.0%
+   HEAD  furhat        vs crown         maxΔ 1.64획  |Δ|≥0.5W 구간 33.3%
+   HEAD  fedora        vs crown         maxΔ 1.83획  |Δ|≥0.5W 구간 43.1%
+   EYES  sunglasses    vs roundglasses  maxΔ 1.75획  |Δ|≥0.5W 구간 8.3%
+   EYES  sunglasses    vs goggles       maxΔ 2.05획  |Δ|≥0.5W 구간 91.7%
+   EYES  sunglasses    vs monocle       maxΔ 4.19획  |Δ|≥0.5W 구간 43.1%
+   EYES  roundglasses  vs goggles       maxΔ 2.43획  |Δ|≥0.5W 구간 80.6%
+   EYES  roundglasses  vs monocle       maxΔ 4.19획  |Δ|≥0.5W 구간 34.7%
+   EYES  goggles       vs monocle       maxΔ 2.79획  |Δ|≥0.5W 구간 81.9%
+   NECK  bowtie        vs stripedtie    maxΔ 5.97획  |Δ|≥0.5W 구간 47.2%
+   NECK  bowtie        vs scarf         maxΔ 6.05획  |Δ|≥0.5W 구간 66.7%
+   NECK  bowtie        vs bellnecklace  maxΔ 3.08획  |Δ|≥0.5W 구간 86.1%
+   NECK  stripedtie    vs scarf         maxΔ 5.05획  |Δ|≥0.5W 구간 94.4%
+   NECK  stripedtie    vs bellnecklace  maxΔ 2.89획  |Δ|≥0.5W 구간 69.4%
+   NECK  scarf         vs bellnecklace  maxΔ 3.91획  |Δ|≥0.5W 구간 75.0%
+   BACK  shortcape     vs longcape      maxΔ 6.04획  |Δ|≥0.5W 구간 22.2%
+   BACK  shortcape     vs wings         maxΔ 15.39획  |Δ|≥0.5W 구간 93.1%
+   BACK  shortcape     vs backpack      maxΔ 13.91획  |Δ|≥0.5W 구간 68.1%
+   BACK  longcape      vs wings         maxΔ 21.02획  |Δ|≥0.5W 구간 93.1%
+   BACK  longcape      vs backpack      maxΔ 18.11획  |Δ|≥0.5W 구간 73.6%
+   BACK  wings         vs backpack      maxΔ 9.03획  |Δ|≥0.5W 구간 90.3%

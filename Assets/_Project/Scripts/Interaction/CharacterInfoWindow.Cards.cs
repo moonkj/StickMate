@@ -196,13 +196,13 @@ namespace StickMate.Interaction
                 view.Code.text = EquipmentModel.SlotCode(slot);
                 view.Count.text = $"{EquipmentModel.OwnedItemCount(slot)} / {EquipmentModel.ItemCount(slot)}";
 
-                // 카테고리가 바뀌었으면 캐러셀을 처음으로 되돌린다 — 아이템이 적은 카테고리로
+                // 카테고리가 바뀌었으면 격자를 처음으로 되돌린다 — 아이템이 적은 카테고리로
                 // 넘어갔을 때 스크롤이 남아 있으면 <b>빈 자리</b>가 보인다.
                 if (!view.HasBoundSlot || view.BoundSlot != slot)
                 {
                     view.HasBoundSlot = true;
                     view.BoundSlot = slot;
-                    ResetCarousel(view);
+                    ResetGridScroll();
                 }
 
                 int items = ItemCatalog.ItemCountIn(slot);
@@ -223,20 +223,117 @@ namespace StickMate.Interaction
                     //   없다 — 슬롯이 탭에서 파생되는 자리는 이 루프 하나뿐이다.
                     ApplyRarityRibbon(RibbonAt(view.FirstCard + c), ItemCatalog.Rarity(slot, c));
                 }
+            }
 
-                // 활성 카드 수가 바뀌면 가로 폭이 달라진다 — 다음 캔버스 갱신까지 기다리면
-                // 그 한 프레임 동안 스크롤 한계가 옛 값이라 끝까지 밀리지 않는다.
-                if (view.Content != null) LayoutRebuilder.ForceRebuildLayoutImmediate(view.Content);
+            // 활성 카드 수가 바뀌면 블록 높이와 스크롤 한계가 달라진다 — 좌표는 <b>여기 한 곳</b>에서
+            // 다시 잡는다(다음 캔버스 갱신까지 기다리면 그 한 프레임 동안 옛 값으로 잘린다).
+            LayoutCardGrid(visible);
+            SyncSlotRows();
+        }
+
+        /// <summary>카테고리 제목줄의 <b>가로</b> 배치 — 구분선과 "n / 6" 카운터는 컬럼 폭에서 파생된다.
+        /// <para>숫자를 박아 두면 창 폭이 바뀌었을 때 헤더만 옛 자리에 남아 카드 격자와 끝선이 갈라진다
+        /// (이 저장소가 2026-09-02에 실제로 겪은 사고이고, InfoWindowCardRowEdgeTests가 그것을 잠근다).</para></summary>
+        private void LayoutCategoryHeader(SectionView view, float usedWidth)
+        {
+            float countX = usedWidth - CategoryCountWidth;
+            if (view.Count != null)
+            {
+                UiChrome.PlaceTopLeft(view.Count.rectTransform, countX, 0f,
+                    CategoryCountWidth, CategoryHeaderHeight);
+            }
+            if (view.Divider != null)
+            {
+                float width = Mathf.Max(0f, countX - CategoryDividerX - CategoryDividerGap);
+                UiChrome.PlaceTopLeft(view.Divider.rectTransform, CategoryDividerX,
+                    -(CategoryHeaderHeight * 0.5f), width, DividerThickness);
+                if (view.Divider.gameObject.activeSelf != width > 1f)
+                {
+                    view.Divider.gameObject.SetActive(width > 1f);
+                }
             }
         }
 
-        private static void ResetCarousel(SectionView view)
+        private void ResetGridScroll()
         {
-            if (view == null || view.Content == null) return;
-            Vector2 p = view.Content.anchoredPosition;
-            if (Mathf.Approximately(p.x, 0f)) return;
-            p.x = 0f;
-            view.Content.anchoredPosition = p;
+            if (_gridContent == null) return;
+            Vector2 p = _gridContent.anchoredPosition;
+            if (Mathf.Approximately(p.y, 0f)) return;
+            p.y = 0f;
+            _gridContent.anchoredPosition = p;
+        }
+
+        /// <summary>
+        /// 컬럼 1의 착용 슬롯 4행 — <b>지금 무엇을 걸치고 있는가</b>를 카테고리 순서대로 적는다.
+        ///
+        /// <para>인계본은 이 자리에 스탯 기여값("집중력 +6")을 적지만 그 4스탯은 런타임이 0줄이다
+        /// (문서 §1-3). 없는 수치를 화면이 주장하지 않도록 지금은 <b>등급 낱말</b>을 적는다 —
+        /// 실재하는 사실이고, 스탯이 들어오는 라운드(§8 4단계)에 같은 칸을 교체하면 된다.</para>
+        ///
+        /// <para>슬롯 행은 <b>[장비] 계열 카테고리</b>를 보여준다. [외형] 탭에서도 같은 값을 보여주는
+        /// 이유는 이 컬럼의 주제가 "탭"이 아니라 <b>이 캐릭터</b>이기 때문이다 — 무대 위 인형이
+        /// 탭과 무관하게 같은 것을 걸치고 있는 것과 같다.</para>
+        /// </summary>
+        private void SyncSlotRows()
+        {
+            for (int i = 0; i < _slotRows.Length; i++)
+            {
+                SlotRowView row = _slotRows[i];
+                if (row == null) continue;
+
+                bool used = i < SectionCountForTab(Tab.Equipment);
+                if (row.Rect.gameObject.activeSelf != used) row.Rect.gameObject.SetActive(used);
+                if (!used) continue;
+
+                EquipmentSlot slot = SectionSlot(Tab.Equipment, i);
+                row.Label.text = $"{EquipmentModel.SlotName(slot)}  ·  {EquipmentModel.SlotCode(slot)}";
+
+                int worn = EquipmentModel.WornIndex(slot);
+                ItemCatalogEntry entry = worn != EquipmentModel.NotWorn
+                    ? ItemCatalog.Item(slot, worn) : null;
+
+                if (entry == null)
+                {
+                    row.Name.text = "비어 있음";
+                    row.Name.color = UiChrome.InkTitle(false);
+                    row.Value.text = "—";
+                    row.Value.color = UiChrome.TextTertiary;
+                    row.Outline.color = UiChrome.CardBorder;
+                    if (row.HasIcon) ClearSlotIcon(row);
+                    continue;
+                }
+
+                row.Name.text = entry.DisplayName;
+                row.Name.color = UiChrome.InkTitle(true);
+                ItemRarity rarity = ItemCatalog.Rarity(slot, worn);
+                row.Value.text = ItemCatalog.RarityName(rarity);
+                row.Value.color = UiChrome.RarityColor(rarity);
+                row.Outline.color = UiChrome.RarityBorder(rarity);
+                BuildSlotIcon(row, slot, worn, entry);
+            }
+        }
+
+        /// <summary>슬롯 행의 작은 도형. 착용이 바뀔 때만 다시 굽는다(4Hz 루프가 아니다 —
+        /// <see cref="RefreshCards"/>는 사건이 있을 때만 불린다).</summary>
+        private static void BuildSlotIcon(SlotRowView row, EquipmentSlot slot, int itemIndex,
+            ItemCatalogEntry entry)
+        {
+            ClearSlotIcon(row);
+            if (!AccessoryCardIcon.TryBuild(row.IconRoot, slot, itemIndex, SlotIconSize,
+                    IconStroke * (SlotIconSize / IconSize), entry.PrimaryColor, entry.SecondaryColor))
+            {
+                BuildIcon(row.IconRoot, entry.Icon, SlotIconSize);
+            }
+            row.HasIcon = true;
+        }
+
+        private static void ClearSlotIcon(SlotRowView row)
+        {
+            for (int i = row.IconRoot.childCount - 1; i >= 0; i--)
+            {
+                Object.Destroy(row.IconRoot.GetChild(i).gameObject);
+            }
+            row.HasIcon = false;
         }
 
         /// <summary>33-7-3 카드 상태 5종 스타일 표를 그대로 옮긴 유일한 자리.</summary>
@@ -260,8 +357,8 @@ namespace StickMate.Interaction
             //   아이템 인덱스를 넘겨 주므로 두 경로가 같은 값을 본다 — 갈라질 여지가 없다.
             ItemRarity rarity = ItemCatalog.Rarity(slot, itemIndex);
 
-            // 이름은 상자(70pt)를 넘으면 말줄임한다 — Overflow로 흘리면 오른쪽 메타("착용 중")와
-            // 물리적으로 겹친다(P0-5). 내용이 바뀐 순간에만 다시 계산한다(ItemCard.NameSource 문서).
+            // 이름은 상자를 넘으면 말줄임한다 — Overflow로 흘리면 오른쪽 등급 낱말과 물리적으로
+            // 겹친다(P0-5). 내용이 바뀐 순간에만 다시 계산한다(ItemCard.NameSource 문서).
             string wantedName = owned ? entry.DisplayName : "???";
             if (!string.Equals(card.NameSource, wantedName, System.StringComparison.Ordinal))
             {
@@ -270,9 +367,18 @@ namespace StickMate.Interaction
             }
             card.Name.color = UiChrome.InkTitle(owned);
 
+            // ★ 등급 <b>낱말</b>이 카드에 내려왔다(UI_SURFACE_SPEC §15.14-d). 그 안이 보류된 이유가
+            //   "창 1042 안의 골격이 아직 안 정해졌다"였고, 3컬럼 이식으로 그 전제가 풀렸다.
+            //   낱말의 출처는 ItemCatalog.RarityName 하나다 — 여기에 "전설"을 직접 적지 않는다.
+            card.Rarity.text = ItemCatalog.RarityName(rarity);
+            card.Rarity.color = UiChrome.RarityColor(rarity);
+
+            // 카테고리 라벨은 상태와 무관하다 — 잠긴 카드에서도 "무엇의 자리인가"는 말해도 된다.
+            card.Category.text = entry.CategoryLabel;
+
             if (!owned)
             {
-                // "LV.20" — 잠긴 카드의 메타는 <b>언제 열리는지</b> 하나만 말한다.
+                // "LV.20" — 잠긴 카드의 상태 줄은 <b>언제 열리는지</b> 하나만 말한다.
                 card.Meta.text = $"LV.{entry.RequiredLevel}";
                 card.Meta.color = UiChrome.InkMeta;
                 card.Surface.color = UiChrome.CardSurfaceMuted;
@@ -514,6 +620,14 @@ namespace StickMate.Interaction
 
             bool owned = entry.IsOwned(_config);
             bool worn = entry.IsEquipped();
+            ItemRarity detailRarity = ItemCatalog.Rarity(_selectedSlot, _selectedItem);
+
+            if (_detailThumbOutline != null) _detailThumbOutline.color = UiChrome.RarityBorder(detailRarity);
+            if (_detailThumb != null)
+            {
+                _detailThumb.color = owned ? UiChrome.CardSurface : UiChrome.ThumbSurfaceLocked;
+            }
+            RefreshDetailThumbArt(entry, owned);
 
             if (_detailName != null)
             {
@@ -535,7 +649,7 @@ namespace StickMate.Interaction
                 //
                 // ★ 낱말의 출처는 <see cref="ItemCatalog.RarityName"/> <b>하나</b>다. 여기에
                 //   <c>"전설"</c>을 직접 적으면 로컬라이제이션이 왔을 때 번역이 두 갈래로 갈라진다.
-                string rarity = ItemCatalog.RarityName(ItemCatalog.Rarity(_selectedSlot, _selectedItem));
+                string rarity = ItemCatalog.RarityName(detailRarity);
                 _detailMeta.text = !owned
                     ? $"{rarity}  ·  {entry.CategoryLabel}  ·  Lv.{entry.RequiredLevel}에 열림"
                     : $"{rarity}  ·  {entry.CategoryLabel}  ·  {(worn ? "착용 중" : "보유 중")}";
@@ -548,6 +662,54 @@ namespace StickMate.Interaction
                 _detailBody.color = UiChrome.InkBody(owned);
             }
         }
+
+        /// <summary>상세 카드 썸네일의 도형 — 선택이 바뀔 때만 다시 굽는다.
+        /// <para>도형은 카드와 <b>같은 경로</b>(<see cref="AccessoryCardIcon"/>)를 쓴다. 두 벌을
+        /// 만들지 않는 것이 이 저장소의 규칙이다 — 모자 챙을 한 곳에서 고치면 전부 따라 바뀐다.</para></summary>
+        private void RefreshDetailThumbArt(ItemCatalogEntry entry, bool owned)
+        {
+            if (_detailThumb == null) return;
+            RectTransform host = _detailThumb.rectTransform;
+            if (_detailThumbArt == null)
+            {
+                var go = new GameObject("Art", typeof(RectTransform));
+                go.transform.SetParent(host, false);
+                _detailThumbArt = go.GetComponent<RectTransform>();
+                _detailThumbArt.anchorMin = _detailThumbArt.anchorMax = _detailThumbArt.pivot = new Vector2(0.5f, 0.5f);
+                _detailThumbArt.sizeDelta = new Vector2(DetailThumbArtSize, DetailThumbArtSize);
+                _detailThumbArt.anchoredPosition = Vector2.zero;
+            }
+
+            string key = entry.Id + (owned ? "+" : "-");
+            if (string.Equals(_detailThumbArtKey, key, System.StringComparison.Ordinal)) return;
+            _detailThumbArtKey = key;
+
+            for (int i = _detailThumbArt.childCount - 1; i >= 0; i--)
+            {
+                Object.Destroy(_detailThumbArt.GetChild(i).gameObject);
+            }
+
+            if (!AccessoryCardIcon.TryBuild(_detailThumbArt, _selectedSlot, _selectedItem, DetailThumbArtSize,
+                    IconStroke * (DetailThumbArtSize / IconSize), entry.PrimaryColor, entry.SecondaryColor))
+            {
+                BuildIcon(_detailThumbArt, entry.Icon, DetailThumbArtSize);
+            }
+
+            if (owned) return;
+            // 잠김 = <b>무채색 실루엣</b>. 카드와 같은 처방이다.
+            Image[] graphics = _detailThumbArt.GetComponentsInChildren<Image>(true);
+            var muted = new Color(UiChrome.TextTertiary.r, UiChrome.TextTertiary.g, UiChrome.TextTertiary.b, 0.34f);
+            for (int i = 0; i < graphics.Length; i++)
+            {
+                if (graphics[i] != null) graphics[i].color = muted;
+            }
+        }
+
+        /// <summary>상세 카드 썸네일(52) 안에서 도형이 차지하는 정사각 크기.</summary>
+        private const float DetailThumbArtSize = 38f;
+
+        private RectTransform _detailThumbArt;
+        private string _detailThumbArtKey;
 
         /// <summary>카드 <b>본체</b> 클릭 = <b>선택</b>(아래 상세 패널이 그 아이템을 설명한다).
         /// 착용/해제는 <b>그 카드 하단의 버튼</b>만 한다 — "고른다"와 "입는다"를 같은 클릭에 겹치면,
@@ -635,15 +797,46 @@ namespace StickMate.Interaction
             RefreshInventoryList();
         }
 
-        // -------------------- 카테고리 섹션 페이지([장비]/[외형] 공용) --------------------
+        // -------------------- 컬럼 3 — 카테고리 블록의 세로 스크롤([장비]/[외형] 공용) --------------------
 
-        private void BuildSectionPage(RectTransform right)
+        private void BuildSectionPage(RectTransform body)
         {
-            var pageGo = new GameObject("SectionPage", typeof(RectTransform));
-            pageGo.transform.SetParent(right, false);
+            var pageGo = new GameObject("Col3", typeof(RectTransform), typeof(Image), typeof(ScrollRect));
+            pageGo.transform.SetParent(body, false);
             var page = pageGo.GetComponent<RectTransform>();
-            UiChrome.PlaceTopLeft(page, 0f, 0f, RightWidth, BodyHeight);
+            UiChrome.PlaceTopLeft(page, Col3X, 0f, Col3Width, BodyHeight);
             _sectionPage = pageGo;
+
+            // 카드 사이 빈틈을 잡아도 끌리게 하는 투명 판. 그래픽이 없으면 uGUI 레이캐스트가 통과해
+            // 창 바탕이 잡히고, 사용자에게는 "여기는 안 밀리네"로 보인다.
+            var handle = pageGo.GetComponent<Image>();
+            handle.color = Color.clear;
+            handle.raycastTarget = true;
+
+            var viewportGo = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
+            viewportGo.transform.SetParent(page, false);
+            _gridViewport = viewportGo.GetComponent<RectTransform>();
+            UiChrome.Stretch(_gridViewport);
+
+            var contentGo = new GameObject("Content", typeof(RectTransform));
+            contentGo.transform.SetParent(_gridViewport, false);
+            _gridContent = contentGo.GetComponent<RectTransform>();
+            _gridContent.anchorMin = _gridContent.anchorMax = _gridContent.pivot = new Vector2(0f, 1f);
+            _gridContent.sizeDelta = new Vector2(_gridWidth, BodyHeight);
+            _gridContent.anchoredPosition = Vector2.zero;
+
+            _gridScroll = pageGo.GetComponent<ScrollRect>();
+            _gridScroll.viewport = _gridViewport;
+            _gridScroll.content = _gridContent;
+            _gridScroll.horizontal = false;
+            _gridScroll.vertical = true;
+            // ★ 관성을 끄고 Clamped로 두는 이유는 취향이 아니다 — 전역 폴링 드래그와 계산이
+            //   <b>같아야</b> 두 경로가 동시에 돌아도 결과가 어긋나지 않는다(DragGridTo 문단).
+            _gridScroll.movementType = ScrollRect.MovementType.Clamped;
+            _gridScroll.inertia = false;
+            _gridScroll.scrollSensitivity = CardStepY * 0.5f;
+            _gridScroll.horizontalScrollbar = null;
+            _gridScroll.verticalScrollbar = null;
 
             // 카드 총량은 카탈로그가 정한다 — 빌드 때 한 번만 세고, 그 뒤로는 배열이 고정된다.
             var cards = new System.Collections.Generic.List<ItemCard>(SectionCount * 6);
@@ -651,39 +844,39 @@ namespace StickMate.Interaction
 
             for (int s = 0; s < SectionCount; s++)
             {
-                var sectionGo = new GameObject("Section" + s, typeof(RectTransform));
-                sectionGo.transform.SetParent(page, false);
+                var sectionGo = new GameObject("CatBlock" + s, typeof(RectTransform));
+                sectionGo.transform.SetParent(_gridContent, false);
                 var section = sectionGo.GetComponent<RectTransform>();
-                UiChrome.PlaceTopLeft(section, RightPadX, SectionsTopY - s * SectionStep,
-                    RightContentWidth, SectionHeight);
+                UiChrome.PlaceTopLeft(section, Col3PadX, -Col3PadTop, Col3ContentWidth, CategoryHeaderHeight);
 
-                Image dot = UiChrome.AddSurface(section, "Dot", UiChrome.Accent, UiChrome.RadiusDot);
-                UiChrome.PlaceTopLeft(dot.rectTransform, 0f, -6f, 7f, 7f);
+                Image dot = UiChrome.AddSurface(section, "Bar", UiChrome.Accent, UiChrome.RadiusDot);
+                UiChrome.PlaceTopLeft(dot.rectTransform, 0f, -2f, 3f, 15f);
                 dot.raycastTarget = false;
 
-                Text title = Label(section, "Name", UiChrome.FontBody, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
-                    15f, -2f, 70f, 14f, "—", bold: true);
-                Text code = Label(section, "Code", UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.InkMeta,
-                    90f, -3f, 46f, 12f, "—");
+                Text title = Label(section, "Name", UiChrome.FontTitle, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
+                    3f + UiChrome.Space2, 0f, 84f, CategoryHeaderHeight, "—", bold: true);
+                Text code = Label(section, "Code", UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.TextTertiary,
+                    3f + UiChrome.Space2 + 84f, 0f, 62f, CategoryHeaderHeight, "—");
 
-                Image divider = UiChrome.AddSurface(section, "Divider", UiChrome.Divider, 2);
-                // 폭은 <b>열에서 파생</b>된다 — 예전의 142/402/548/44는 폭 880 시절의 592 열에 박힌
-                // 숫자였고, 창이 1042로 넓어졌을 때 헤더만 그 자리에 남아 카드줄과 끝선이 갈라졌다.
-                UiChrome.PlaceTopLeft(divider.rectTransform, SectionDividerX, -9f, SectionDividerWidth, 1f);
+                Image divider = UiChrome.AddSurface(section, "Divider",
+                    UiChrome.Flatten(UiChrome.Divider, UiChrome.PanelSurface), 2);
+                // 폭은 <b>열에서 파생</b>된다 — 숫자를 박아 두면 창 폭이 바뀌었을 때 헤더만 옛 자리에
+                // 남아 카드 격자와 끝선이 갈라진다(2026-09-02에 실제로 겪은 사고).
+                UiChrome.PlaceTopLeft(divider.rectTransform, CategoryDividerX, -(CategoryHeaderHeight * 0.5f),
+                    CategoryDividerWidth, DividerThickness);
                 divider.raycastTarget = false;
 
-                // ★ 이 카운터의 오른쪽 끝이 이 창 오른쪽 열의 <b>끝선</b>이다(카드줄이 여기에 맞춘다 —
+                // ★ 이 카운터의 오른쪽 끝이 컬럼 3 콘텐츠의 <b>끝선</b>이다(카드 격자가 여기에 맞춘다 —
                 //   InfoWindowCardRowEdgeTests가 두 사각형의 xMax를 직접 비교해 잠근다).
-                Text count = Label(section, "Count", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.InkMeta,
-                    SectionCountX, -3f, SectionCountWidth, 12f, "0 / 4");
+                Text count = Label(section, "Count", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.TextTertiary,
+                    CategoryCountX, 0f, CategoryCountWidth, CategoryHeaderHeight, "0 / 6");
 
                 var view = new SectionView
                 {
-                    Root = sectionGo, Dot = dot, Title = title, Code = code, Count = count,
+                    Root = sectionGo, Rect = section, Dot = dot, Title = title, Code = code, Count = count,
+                    Divider = divider,
                 };
                 _sections[s] = view;
-
-                RectTransform content = BuildCardRow(view, section);
 
                 view.FirstCard = cards.Count;
                 view.CardCount = CardsInSection(s);
@@ -691,85 +884,81 @@ namespace StickMate.Interaction
                 {
                     // 두 배열은 <b>같은 루프에서 같은 횟수로</b> 채운다 — 인덱스가 갈라질 여지를
                     // 구조적으로 없앤다(RibbonAt이 그래도 길이를 한 번 더 본다).
-                    cards.Add(BuildCard(content, s, c, cards.Count, out RarityRibbon ribbon));
+                    cards.Add(BuildCard(section, s, c, cards.Count, out RarityRibbon ribbon));
                     ribbons.Add(ribbon);
                 }
             }
 
             _cardRibbons = ribbons.ToArray();
             _cards = cards.ToArray();
-            BuildDetailPanel(page);
         }
 
         /// <summary>
-        /// ★ 가로 카드 캐러셀 한 줄 — 2026-09-01 사용자 요청("마우스로 잡고 밀면 카드들이 넘어가는 형태").
+        /// ★ 카드 격자의 <b>유일한</b> 좌표 계산기. 블록 y·높이 / 카드 x·y / 스크롤 콘텐츠 높이가
+        /// 전부 여기서 나온다.
         ///
-        /// <para>포인터 이벤트를 손으로 짜지 않는다. <see cref="ScrollRect"/>가 드래그·클램프·휠을 이미
-        /// 갖고 있고, 배치는 <see cref="HorizontalLayoutGroup"/>이, 폭은 <see cref="ContentSizeFitter"/>가,
-        /// 잘라내기는 <see cref="RectMask2D"/>가 한다. 이 파일이 새로 만드는 것은 <b>하나도 없다</b>.</para>
-        ///
-        /// <para><b>관성(inertia)을 끄고 Clamped로 두는 이유</b>는 취향이 아니다 — 전역 폴링 드래그와
-        /// 계산이 <b>같아야</b> 두 경로가 동시에 돌아도 결과가 어긋나지 않는다(<see cref="DragCarouselTo"/> 문단).</para>
-        ///
-        /// <para>뷰포트에 <b>투명한 Image</b>를 깔아 두는 이유: 카드 사이 9pt 틈을 잡아도 끌리게 하기
-        /// 위해서다. 그 자리에 그래픽이 없으면 uGUI 레이캐스트가 통과해 창 바탕이 잡히고, 사용자에게는
-        /// "여기는 안 밀리네"로 보인다.</para>
+        /// <para>레이아웃 그룹에 맡기지 않는 이유: 카테고리마다 아이템 수가 달라 블록 높이가 서로
+        /// 다르고, 그 높이가 <b>스크롤 한계</b>를 정한다. 두 곳에서 계산하면 밀 수 있는 양과 실제
+        /// 콘텐츠가 갈라진다(이 창이 캐러셀 시절에 겪은 그 사고와 같은 종류다).</para>
         /// </summary>
-        private static RectTransform BuildCardRow(SectionView view, RectTransform section)
+        private void LayoutCardGrid(int visibleSections)
         {
-            var rowGo = new GameObject("CardRow", typeof(RectTransform), typeof(Image), typeof(ScrollRect));
-            rowGo.transform.SetParent(section, false);
-            var row = rowGo.GetComponent<RectTransform>();
-            // 폭은 섹션과 <b>같다</b>(CarouselViewportWidth = RightContentWidth). 마지막 카드는 그 끝선에
-            // 걸려 반쯤 잘리고, 그 걸침이 이 창의 유일한 "더 있다" 단서다 — 그 상수 문서 참고.
-            UiChrome.PlaceTopLeft(row, 0f, CardTopInSection, CarouselViewportWidth, CardHeight);
+            // ★ 이 창 오른쪽 열의 <b>끝선은 하나</b>다 — 제목줄(구분선·"n / 6")과 카드 격자가 같은 x에서
+            //   끝나야 한다. 그 끝선은 컬럼 폭이 아니라 <b>카드가 실제로 쓰는 폭</b>이다: 설계 폭
+            //   1042에서는 둘이 같지만(384 = 186×2 + 12), 창이 좁아져 컬럼을 접으면 컬럼 폭이 더
+            //   넓어져 헤더만 오른쪽으로 늘어난다(2026-09-05 배치모드 실측 164pt 어긋남).
+            int columns = Mathf.Max(1, _gridColumns);
+            float gridUsedWidth = columns * CardWidth + (columns - 1) * CardGap;
 
-            var handle = rowGo.GetComponent<Image>();
-            handle.color = Color.clear;
-            handle.raycastTarget = true;
+            float y = -Col3PadTop;
+            for (int s = 0; s < SectionCount; s++)
+            {
+                SectionView view = _sections[s];
+                if (view == null || view.Rect == null) continue;
+                if (s >= visibleSections) continue;
 
-            var viewportGo = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
-            viewportGo.transform.SetParent(row, false);
-            var viewport = viewportGo.GetComponent<RectTransform>();
-            UiChrome.Stretch(viewport);
+                int items = 0;
+                for (int c = 0; c < view.CardCount; c++)
+                {
+                    ItemCard card = _cards[view.FirstCard + c];
+                    if (card != null && card.Rect != null && card.Rect.gameObject.activeSelf) items++;
+                }
 
-            var contentGo = new GameObject("Content", typeof(RectTransform),
-                typeof(HorizontalLayoutGroup), typeof(ContentSizeFitter));
-            contentGo.transform.SetParent(viewport, false);
-            var content = contentGo.GetComponent<RectTransform>();
-            content.anchorMin = content.anchorMax = content.pivot = new Vector2(0f, 1f);
-            content.sizeDelta = new Vector2(0f, CardHeight);
-            content.anchoredPosition = Vector2.zero;
+                int rows = Mathf.CeilToInt(items / (float)columns);
+                float blockHeight = rows <= 0
+                    ? CategoryHeaderHeight
+                    : -CategoryGridTopY + rows * CardHeight + (rows - 1) * CardGap;
 
-            var layout = contentGo.GetComponent<HorizontalLayoutGroup>();
-            layout.spacing = CardGap;
-            layout.childAlignment = TextAnchor.UpperLeft;
-            layout.childForceExpandWidth = false;
-            layout.childForceExpandHeight = false;
-            layout.childControlWidth = false;    // 카드는 자기 폭(141)을 지킨다 — 개수로 늘어나는 것은 줄이다.
-            layout.childControlHeight = false;
-            layout.childScaleWidth = false;
-            layout.childScaleHeight = false;
+                UiChrome.PlaceTopLeft(view.Rect, Col3PadX, y, gridUsedWidth, blockHeight);
+                LayoutCategoryHeader(view, gridUsedWidth);
 
-            var fitter = contentGo.GetComponent<ContentSizeFitter>();
-            fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-            fitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
+                for (int c = 0; c < view.CardCount; c++)
+                {
+                    ItemCard card = _cards[view.FirstCard + c];
+                    if (card == null || card.Rect == null) continue;
+                    int col = c % columns;
+                    int row = c / columns;
+                    UiChrome.PlaceTopLeft(card.Rect, col * CardStepX,
+                        CategoryGridTopY - row * CardStepY, CardWidth, CardHeight);
+                }
 
-            var scroll = rowGo.GetComponent<ScrollRect>();
-            scroll.viewport = viewport;
-            scroll.content = content;
-            scroll.horizontal = true;
-            scroll.vertical = false;
-            scroll.movementType = ScrollRect.MovementType.Clamped;
-            scroll.inertia = false;
-            scroll.scrollSensitivity = CardStep * 0.5f;
-            scroll.horizontalScrollbar = null;
-            scroll.verticalScrollbar = null;
+                y -= blockHeight + CategoryBlockGap;
+            }
 
-            view.Row = scroll;
-            view.RowRect = row;
-            view.Content = content;
-            return content;
+            float used = -y - CategoryBlockGap + Col3PadBottom;   // 마지막 블록 뒤 간격은 빼고 아래 여백을 더한다.
+            if (_gridContent != null)
+            {
+                _gridContent.sizeDelta = new Vector2(_gridWidth, Mathf.Max(BodyHeight, used));
+                // 콘텐츠가 짧아지면(탭 전환) 밀려 있던 자리가 범위 밖이 된다 — 그대로 두면 빈 화면이다.
+                float max = MaxGridScroll();
+                Vector2 p = _gridContent.anchoredPosition;
+                float clamped = Mathf.Clamp(p.y, 0f, max);
+                if (!Mathf.Approximately(p.y, clamped))
+                {
+                    p.y = clamped;
+                    _gridContent.anchoredPosition = p;
+                }
+            }
         }
 
         private ItemCard BuildCard(RectTransform content, int sectionIndex, int columnIndex, int cardIndex,
@@ -777,7 +966,7 @@ namespace StickMate.Interaction
         {
             Image surface = UiChrome.AddSurface(content, "Card" + cardIndex, UiChrome.CardSurface, UiChrome.RadiusCard);
             var rt = surface.rectTransform;
-            // x는 HorizontalLayoutGroup이 정한다 — 여기서는 <b>크기와 피벗</b>만 맞춰 준다.
+            // 실제 x·y는 LayoutCardGrid가 정한다 — 여기서는 <b>크기와 피벗</b>만 맞춰 준다.
             UiChrome.PlaceTopLeft(rt, 0f, 0f, CardWidth, CardHeight);
             Image outline = UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
 
@@ -789,8 +978,8 @@ namespace StickMate.Interaction
             // ---- 등급 리본 ---- 카드 <b>상단 여백</b>에 앉는다. 인셋과 폭을 숫자로 적지 않고
             //   썸네일에서 <b>파생</b>시키는 것이 핵심이다: 카드 폭이 바뀌면 리본도 같이 움직여야 한다
             //   (이 저장소는 폭 1042 확대 때 헤더만 옛 자리에 남아 카드줄과 끝선이 갈라진 사고를 겪었다).
-            //   PALETTE_SPEC §12-4의 권고 조합이 정확히 이것이다 — 인셋 11(= ThumbX) · 틈 2 · 칸 33.25.
-            ribbon = BuildRarityRibbon(rt, ThumbX, -CardRibbonTopMargin, ThumbWidth);
+            //   인계본 §4-3-3의 조합이 정확히 이것이다 — 인셋 14 · 폭 158 · 높이 4 · 틈 2.
+            ribbon = BuildRarityRibbon(rt, CardRibbonInset, -CardRibbonTopMargin, CardRibbonWidth);
 
 
             var card = new ItemCard
@@ -802,9 +991,13 @@ namespace StickMate.Interaction
                 Outline = outline,
                 Thumb = thumb,
                 Name = Label(rt, "Name", UiChrome.FontBody, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
-                    ThumbX, CardNameY, CardNameWidth, CardTextHeight, "—"),
-                Meta = Label(rt, "Meta", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.InkMeta,
-                    CardMetaX, CardNameY, CardMetaWidth, CardTextHeight, "—"),
+                    CardPadX, CardNameY, CardNameWidth, CardTextHeight, "—", bold: true),
+                Rarity = Label(rt, "Rarity", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.TextTertiary,
+                    CardRarityX, CardNameY, CardRarityWidth, CardTextHeight, "—"),
+                Meta = Label(rt, "Meta", UiChrome.FontLabel, TextAnchor.MiddleLeft, UiChrome.InkMeta,
+                    CardMetaX, CardMetaY, CardMetaWidth, CardMetaHeight, "—"),
+                Category = Label(rt, "Category", UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.TextTertiary,
+                    CardPadX, CardCategoryY, CardContentWidth, CardCategoryHeight, "—"),
             };
 
             // ---- 카드 하단 [착용]/[해제] ---- 이 창의 <b>유일한</b> 착용 손잡이다(상세 패널의
@@ -813,7 +1006,7 @@ namespace StickMate.Interaction
             card.ActionSurface = UiChrome.AddSurface(rt, "Action",
                 UiChrome.CardActionSurface, UiChrome.RadiusChip);
             card.ActionRect = card.ActionSurface.rectTransform;
-            UiChrome.PlaceTopLeft(card.ActionRect, ThumbX, CardActionY, CardActionWidth, CardActionHeight);
+            UiChrome.PlaceTopLeft(card.ActionRect, CardPadX, CardActionY, CardActionWidth, CardActionHeight);
             card.ActionOutline = UiChrome.AddOutline(card.ActionRect, "Outline",
                 UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardActionSurface), UiChrome.RadiusChip);
             card.ActionLabel = UiChrome.AddText(card.ActionRect, "Label", UiChrome.FontCaption,
@@ -837,7 +1030,7 @@ namespace StickMate.Interaction
             card.ActionButton = actionButton;
             actionButton.onClick.AddListener(() =>
             {
-                if (SuppressedByCarousel()) return;   // 방금 민 손짓의 끝을 클릭으로 오인하지 않는다.
+                if (SuppressedByGridDrag()) return;   // 방금 민 손짓의 끝을 클릭으로 오인하지 않는다.
                 if (TryClaimAction("equip" + cardIndex)) OnCardEquipClicked(cardIndex);
             });
 
@@ -885,7 +1078,7 @@ namespace StickMate.Interaction
             button.targetGraphic = surface;
             button.onClick.AddListener(() =>
             {
-                if (SuppressedByCarousel()) return;
+                if (SuppressedByGridDrag()) return;
                 if (TryClaimAction("card" + cardIndex)) OnCardClicked(cardIndex);
             });
             return card;
@@ -923,12 +1116,14 @@ namespace StickMate.Interaction
             {
                 return;
             }
-            BuildIcon(root, entry.Icon);
+            BuildIcon(root, entry.Icon, IconSize);
         }
 
-        private static void BuildIcon(RectTransform root, ItemIconPart[] parts)
+        private static void BuildIcon(RectTransform root, ItemIconPart[] parts, float renderSize)
         {
             if (parts == null) return;
+            float scale = renderSize / 40f;
+            float stroke = IconStroke * (renderSize / IconSize);
             for (int p = 0; p < parts.Length; p++)
             {
                 ItemIconPart part = parts[p];
@@ -942,9 +1137,9 @@ namespace StickMate.Interaction
                         int count = Mathf.Min(part.PointCount, _iconPoints.Length);
                         for (int i = 0; i < count; i++)
                         {
-                            _iconPoints[i] = FromViewBox(v[i * 2], v[i * 2 + 1], 40f, 40f, IconSize, IconSize);
+                            _iconPoints[i] = FromViewBox(v[i * 2], v[i * 2 + 1], 40f, 40f, renderSize, renderSize);
                         }
-                        UiChrome.AddPolyline(root, "Seg", _iconPoints, count, IconStroke, part.Color);
+                        UiChrome.AddPolyline(root, "Seg", _iconPoints, count, stroke, part.Color);
                         break;
                     }
                     case ItemIconPartKind.Polygon:
@@ -954,7 +1149,7 @@ namespace StickMate.Interaction
                         int count = Mathf.Min(part.PointCount, _iconPoints.Length);
                         for (int i = 0; i < count; i++)
                         {
-                            _iconPoints[i] = FromViewBox(v[i * 2], v[i * 2 + 1], 40f, 40f, IconSize, IconSize);
+                            _iconPoints[i] = FromViewBox(v[i * 2], v[i * 2 + 1], 40f, 40f, renderSize, renderSize);
                         }
 
                         // 규약상 마지막 점이 첫 점과 같다. 삼각분할에 중복점을 넣으면 퇴화 삼각형이 생긴다.
@@ -962,20 +1157,20 @@ namespace StickMate.Interaction
                         if (fillCount > 1 && _iconPoints[fillCount - 1] == _iconPoints[0]) fillCount--;
 
                         AccessoryCardIcon.AddFill(root, "Fill", _iconPoints, fillCount, part.Color);
-                        UiChrome.AddPolyline(root, "Seg", _iconPoints, count, IconStroke,
+                        UiChrome.AddPolyline(root, "Seg", _iconPoints, count, stroke,
                             AccessoryShapeBuilder.FillOutlineColor(part.Color));
                         break;
                     }
                     case ItemIconPartKind.Ring:
-                        UiChrome.AddCircle(root, "Ring", v[2] * 2f * IconScale, part.Color, IconStroke,
-                            FromViewBox(v[0], v[1], 40f, 40f, IconSize, IconSize));
+                        UiChrome.AddCircle(root, "Ring", v[2] * 2f * scale, part.Color, stroke,
+                            FromViewBox(v[0], v[1], 40f, 40f, renderSize, renderSize));
                         break;
                     case ItemIconPartKind.DashedRing:
-                        BuildDashedRing(root, v[0], v[1], v[2], part.Color);
+                        BuildDashedRing(root, v[0], v[1], v[2], part.Color, renderSize);
                         break;
                     case ItemIconPartKind.Dot:
-                        UiChrome.AddCircle(root, "Dot", v[2] * 2f * IconScale, part.Color, 0f,
-                            FromViewBox(v[0], v[1], 40f, 40f, IconSize, IconSize));
+                        UiChrome.AddCircle(root, "Dot", v[2] * 2f * scale, part.Color, 0f,
+                            FromViewBox(v[0], v[1], 40f, 40f, renderSize, renderSize));
                         break;
 
                     // ★ 2026-09-02 — 종류가 늘면(Polygon이 2026-09-02에 실제로 늘었다) 그 조각만
@@ -988,18 +1183,17 @@ namespace StickMate.Interaction
             }
         }
 
-        /// <summary>viewBox(40) -> 실제 아이콘 크기 배율. 반지름처럼 <b>길이</b>인 값은 전부 이걸 곱해야 한다
-        /// (좌표는 <see cref="FromViewBox"/>가 이미 환산한다 — 반지름은 그 경로를 타지 않아 예전에는
-        /// IconSize == 40이라 우연히 맞고 있었다).</summary>
-        private const float IconScale = IconSize / 40f;
-
-        /// <summary>점선 원(FX "없음" 전용). 링 스프라이트에는 점선이 없어 짧은 호 8개로 그린다.</summary>
-        private static void BuildDashedRing(RectTransform root, float cx, float cy, float r, Color color)
+        /// <summary>점선 원(FX "없음" 전용). 링 스프라이트에는 점선이 없어 짧은 호 8개로 그린다.
+        /// <para>★ 반지름처럼 <b>길이</b>인 값은 viewBox(40) 대비 배율을 곱해야 한다 — 좌표는
+        /// <see cref="FromViewBox"/>가 이미 환산하지만 반지름은 그 경로를 타지 않는다.</para></summary>
+        private static void BuildDashedRing(RectTransform root, float cx, float cy, float r, Color color,
+            float renderSize)
         {
             const int dashes = 8;
             const int pointsPerDash = 3;
-            Vector2 center = FromViewBox(cx, cy, 40f, 40f, IconSize, IconSize);
-            float radius = r * (IconSize / 40f);
+            Vector2 center = FromViewBox(cx, cy, 40f, 40f, renderSize, renderSize);
+            float radius = r * (renderSize / 40f);
+            float stroke = IconStroke * (renderSize / IconSize);
 
             for (int d = 0; d < dashes; d++)
             {
@@ -1009,7 +1203,7 @@ namespace StickMate.Interaction
                     float a = start + (Mathf.PI / dashes) * (i / (float)(pointsPerDash - 1));
                     _iconPoints[i] = center + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * radius;
                 }
-                UiChrome.AddPolyline(root, "Dash", _iconPoints, pointsPerDash, IconStroke, color);
+                UiChrome.AddPolyline(root, "Dash", _iconPoints, pointsPerDash, stroke, color);
             }
         }
 
@@ -1034,32 +1228,45 @@ namespace StickMate.Interaction
                 IconStroke * (renderW / viewW), UiChrome.NonTextMuted);
         }
 
-        private void BuildDetailPanel(RectTransform page)
+        /// <summary>선택 상세 카드 — <b>컬럼 1 바닥</b>(§4-3-1). 썸네일 52 + 이름 + 메타 + 설명.
+        /// <para>★ 주 버튼은 없다(L-9). 인계본 상세 카드에는 [착용하기]가 있지만 그것을 넣으면
+        /// 2026-09-01에 사용자가 지워 달라고 한 것을 되살리는 것이고, 넣지 않는 결정이 세로 예산을
+        /// 52pt 돌려준다(최소 창 높이 780 → 728).</para></summary>
+        private void BuildDetailPanel(RectTransform col)
         {
-            Image detail = UiChrome.AddSurface(page, "Detail", UiChrome.SubtleSurface, UiChrome.RadiusCard);
+            Image detail = UiChrome.AddSurface(col, "DetailCard", UiChrome.CardSurfaceMuted, UiChrome.RadiusCard);
             var drt = detail.rectTransform;
             _sectionDetailRect = drt;
-            UiChrome.PlaceTopLeft(drt, RightPadX, DetailYForTab(_tab), RightContentWidth, DetailHeight);
+            UiChrome.PlaceTopLeft(drt, Col1PadX, DetailCardY, Col1ContentWidth, DetailCardHeight);
             detail.raycastTarget = false;
             UiChrome.AddOutline(drt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
 
+            const float DetailPadX = 14f;
+            const float DetailThumbSize = 52f;
+            float textX = DetailPadX + DetailThumbSize + UiChrome.Space3;
+            float textWidth = Col1ContentWidth - textX - DetailPadX;
+
+            _detailThumb = UiChrome.AddSurface(drt, "DetailThumb", UiChrome.ThumbSurfaceLocked, UiChrome.RadiusThumb);
+            UiChrome.PlaceTopLeft(_detailThumb.rectTransform, DetailPadX, -DetailPadX,
+                DetailThumbSize, DetailThumbSize);
+            _detailThumb.raycastTarget = false;
+            // 등급은 이 자리에서 <b>테두리</b>로만 말한다 — 면을 물들이면 글자 대비를 내주고
+            // 신호는 하나도 못 산다(카드 바탕에서 이미 실측으로 기각된 것과 같은 이유).
+            _detailThumbOutline = UiChrome.AddOutline(_detailThumb.rectTransform, "Outline",
+                UiChrome.CardBorder, UiChrome.RadiusThumb);
+
             _detailName = Label(drt, "DetailName", UiChrome.FontTitle, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
-                15f, -14f, 150f, 17f, "—", bold: true);
-            // ★ 2026-09-01 오후 — 폭 330(= 172..502)은 <b>오른쪽 끝의 [착용] 버튼(525..577)을 피하려고</b>
-            //   정한 값이었다. 그 버튼을 걷어낸 뒤 502..577의 75pt가 아무도 쓰지 않는 칸으로 남았다.
-            //   이제 설명문과 <b>같은 오른쪽 끝</b>에서 끝나게 파생시킨다 — "Lv.9에 열림"처럼 긴 잠김
-            //   문구가 그만큼 덜 밀린다. 숫자 330은 사라졌다.
-            const float DetailPadX = 15f;
-            const float DetailMetaX = 172f;
+                textX, -18f, textWidth, 20f, "—", bold: true);
             _detailMeta = Label(drt, "DetailMeta", UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.TextTertiary,
-                DetailMetaX, -14f, RightContentWidth - DetailPadX - DetailMetaX, 17f, "—");   // 405
+                textX, -44f, textWidth, 14f, "—");
 
             _detailBody = UiChrome.AddText(drt, "DetailBody", UiChrome.FontBody, TextAnchor.UpperLeft,
                 UiChrome.TextSecondary, wrap: true);
-            UiChrome.PlaceTopLeft(_detailBody.rectTransform, 15f, -42f, RightContentWidth - 30f, 48f);
+            UiChrome.PlaceTopLeft(_detailBody.rectTransform, DetailPadX, -(DetailPadX + DetailThumbSize + UiChrome.Space2),
+                Col1ContentWidth - DetailPadX * 2f, DetailCardHeight - DetailPadX * 2f - DetailThumbSize - UiChrome.Space2);
             _detailBody.lineSpacing = 1.6f;   // 스펙 line-height 1.6.
 
-            // ★ 여기에 [착용]/[해제] 버튼을 다시 만들지 마라(2026-09-01 사용자 신고로 걷어냈다).
+            // ★ 여기에 [착용]/[해제] 버튼을 다시 만들지 마라(2026-09-01 사용자 신고로 걷어냈다 — L-9).
             //   착용 손잡이는 카드 하단 하나뿐이고, 이 패널은 "고른 것이 무엇이고 왜 잠겼는가"만 말한다.
             //   되살아나면 InfoWindowSurfaceRegressionTests의 DetailPanelHasNoEquipButton이 잡는다.
         }

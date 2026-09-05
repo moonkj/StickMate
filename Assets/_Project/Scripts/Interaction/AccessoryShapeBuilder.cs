@@ -26,8 +26,20 @@ namespace StickMate.Interaction
     /// · 월드유닛 절대 상수는 하나도 없다 — 전부 머리 반경 R 또는 몸통 길이의 배수다.
     ///   그래서 characterScale이 바뀌어도 액세서리만 뒤에 남지 않는다
     ///   (회귀 테스트: Tests/PlayMode/CharacterAccessoryScaleTests.cs).
+    ///
+    /// ============================================================================
+    /// ★ partial 인 이유 — 인계본 조각 (2026-09-05, 계약 v2 · EQUIPMENT_HANDOFF_PORT_SPEC §14-0 #1)
+    /// ============================================================================
+    /// 카드와 몸은 <b>좌표 한 벌</b>(인계본 정면 기하)이다 — §13-4-1 의 「카드 정면 / 몸 3/4 두 벌」 안은 R16 §14-0 #1 로 폐기됐다.
+    /// 한 벌 아이템(눈 3 · 목 4 · 털모자 · 날개)은 카드 좌표에 아이템 변환(HAT_FIT · dy)만 걸어 몸에 그리고, 카드에 없는 조각이
+    /// 몸에 필요한 아이템(망토 무대 도형 · R19 모자 2층 분할/뒷벽 · 외알안경 거울/반대쪽 눈 · 배낭 착용면)만 몸 조각을 bodyFixed
+    /// 좌표로 따로 갖는다(표면 비트로 명시). 정의처는 그래도 <b>한 함수 · 한 목록</b>이다: <see cref="Append"/> 하나가 같은 목록에
+    /// 내고 그리는 쪽이 자기 표면만 거른다. 좌표는 인계본 HTML 에서 기계로 옮긴 것이라 <c>AccessoryShapeBuilder.Handoff.cs</c>
+    /// (Tools/CardShapeGen 생성물)에 있다 — <b>같은 클래스, 다른 파일</b>이지 두 주인이 아니다.
+    /// 드리프트 방어: <c>Tests/EditMode/CardShapeContractTests</c>가 골든(모델에서 독립 생성)과, <c>CardShapeGeneratorStampTests</c>가
+    /// 정본 sha 스탬프와 대조한다.
     /// </summary>
-    internal static class AccessoryShapeBuilder
+    internal static partial class AccessoryShapeBuilder
     {
         // ==================== 비율 상수 (여기가 유일한 정의처) ====================
 
@@ -124,14 +136,20 @@ namespace StickMate.Interaction
         //      규칙 1이 결정하므로 별도 상수가 필요하다 — 두 값을 하나로 합치면 가림 판정이 눈을 따라
         //      움직여 "가리개가 뒤 눈을 덮었다"는 엉뚱한 실패가 난다.
 
-        /// <summary>드러난 눈의 중심 x. 유도: 2d ≥ 1.5W + ρ_visor(0.36R) + a(0.34R) = 1.216R -> d ≥ 0.608R.</summary>
+        /// <summary>드러난 눈의 중심 x. 유도: 2d ≥ 1.5W + ρ_visor(0.36R) + a(0.33R) = 1.206R -> d ≥ 0.603R.</summary>
         internal const float DrawnEyeOffsetRatio = 0.62f;
 
-        /// <summary>반폭 -> 폭 0.68R = 1.98획.</summary>
-        internal const float DrawnEyeHalfWidthRatio = 0.34f;
-
-        /// <summary>반높이 -> 높이 0.48R = 1.40획.</summary>
-        internal const float DrawnEyeHalfHeightRatio = 0.24f;
+        /// <summary>드러난 눈의 반지름(<see cref="RoundLensSegments"/>각 원반). ★ 2026-09-05 R13-P1 —
+        /// 옛 아몬드(반폭 0.34 / 반높이 0.24)를 원반으로 바꿨다. 아몬드는 이 배율에서 <b>원리상</b>
+        /// 규칙 1-C를 통과할 수 없다: 반축 (a,b) 마름모의 최대 내접원은 ρ = ab/√(a²+b²) &lt; min(a,b)라
+        /// 반높이 0.24R에서는 <b>폭을 아무리 늘려도</b> ρ &lt; 0.24R이고, 게이트 0.21818R을 1.20획으로
+        /// 넘기려면 반높이가 0.410R(눈높이 0.82R)이 되어야 했다.
+        /// <para>원반은 ρ = r·cos15° = 0.966r 이라 <b>같은 ρ를 더 작은 발자국</b>으로 얻는다 —
+        /// ρ 0.1855R(0.85획) → <b>0.3188R(1.46획)</b>, 발자국은 0.68×0.48R → 0.66×0.66R로 <b>폭이 3% 준다</b>.
+        /// 덤으로 꼭짓점 회전이 30°(&lt; 45°)라 배율 0.60의 「양끝 꺾임」 2건이 함께 사라진다.</para>
+        /// <para>그리고 이것이 <b>어휘를 하나로</b> 만든다 — 캐릭터 본체의 눈이 이미 원반이고
+        /// 액세서리의 눈만 아몬드였다.</para></summary>
+        internal const float DrawnEyeRadiusRatio = 0.33f;
 
         // ---- 선글라스 — 어두운 렌즈 2장 + 코다리. 이름이 "가린다"고 말하므로 눈은 보이지 않는다.
         internal const float SunglassInnerRatio = 0.28f;      // 코다리가 걸리는 안쪽 변
@@ -181,18 +199,34 @@ namespace StickMate.Interaction
         internal const float CapeCollarFrontRatio = 0.40f;
         internal const float CapeCollarBackRatio = 0.62f;
 
-        // ★ 옷깃 띠 — 2026-09-01(3차). 망토 3종에는 보조색 도형이 <b>0개</b>였다(주름 2개는 Shade 톤이라
-        //   보조색이 아니다). 규칙 3-2("아이템당 정확히 1개") 위반이면서, 참고 이미지가 가진
-        //   "서명 디테일 하나"가 없었다. 그래서 <b>목을 감는 띠</b>를 넣는다 — 감쌈 원칙과 서명
-        //   디테일을 한 번에 만족한다.
-        //   <para>처음에는 작은 <b>잠금쇠</b>(0.62 × 0.36R)로 설계했는데, 긴 망토 카드에서 전체 span이
-        //   7.13R이라 정규화 뒤 <b>1.02획</b>까지 쪼그라들었다(하한 1.00). 규칙 5의 "예산 못 지키는
-        //   [선택] 디테일은 넣지 않는다"에 걸리므로 목을 감는 띠로 키웠다(카드 1.24획).
-        //   이것이 이 스펙에서 가장 빠듯한 자리다.</para>
-        internal const float CapeCollarBandFrontRatio = 0.40f;
-        internal const float CapeCollarBandBackRatio = 0.66f;
-        internal const float CapeCollarBandTopRatio = 0.10f;     // 옷깃선 기준. 높이 0.44R = 1.28획
-        internal const float CapeCollarBandBottomRatio = -0.34f;
+        /// <summary>
+        /// ★ 2026-09-05 — <b>옷깃 띠(CapeCollarBand)를 어깨 요크로 대체했다.</b> 망토 3종의 보조색은
+        /// 여전히 정확히 하나지만, 그 하나가 <b>목 자리</b>에서 <b>어깨 자리</b>로 내려왔다.
+        ///
+        /// <para><b>왜</b>: 옛 띠는 x[−0.66, +0.40] × y[−1.598, −1.118]로 NECK 6종의 봉투 안에 통째로
+        /// 들어가 있었다. NECK은 정렬 7/6, BACK은 −1/−2라 <b>넥타이가 항상 위</b>이므로,
+        /// 덮이는 것은 넥타이가 아니라 <b>띠 자신</b>이다. `design-equipment` 실측(R13):
+        /// 목도리·반다나에서 남는 색면 <b>0.0%</b>, 나비넥타이 0.1%, 나머지 셋도 잔여 ρ 0.28~0.30획으로
+        /// 전부 규칙 1-C(1.00획) 미달 — 즉 <b>망토를 사고 목에 뭘 걸치면 망토의 유일한 보조색이 사라진다.</b>
+        /// 카드(44 px)에서도 짧은망토 3.16 px · 긴망토 2.32 px로 자기 윤곽획 둘(3.74 px)에 못 미쳐
+        /// <b>몸에서도 카드에서도</b> 안 보이는, 카탈로그에서 유일한 조각이었다.</para>
+        ///
+        /// <para><b>기각된 대안</b>: 띠 밑변을 −0.34에서 −1.80 R까지 내려 봐도 최악 잔여 ρ가
+        /// 0.48획을 못 넘는다 — 목도리 자락·타이 blade가 <b>세로로</b> 앞을 가로질러 남는 색면을 계속
+        /// 쪼개기 때문이다. 보조색이 NECK 영역을 <b>떠나야</b> 한다는 것이 그 스윕의 결론이다.</para>
+        ///
+        /// <para><b>왜 하필 2.40 R인가</b>: 몸(머리·몸통·팔, 정렬 0~4)까지 덮개로 넣은 재측정에서
+        /// 최악(목도리 동시착용) 잔여 ρ가 깊이 2.0에서 0.68획, <b>2.4에서 1.12~1.60획</b>으로
+        /// 게이트 1.00획을 처음 넘는다. 더 내리면 여유는 늘지만 망토의 보조색 면적이 커진다 —
+        /// 그 지점부터는 조형 취향이라 여기서 멈춘다.</para>
+        ///
+        /// <para>★ 요크는 <b>좌표를 새로 적지 않는다</b>(규칙 4-a). 윗변 두 점은 <see cref="CapeOutline"/>의
+        /// 옷깃 두 점 <b>그 자체</b>이고, 아랫변 두 점은 <b>같은 윤곽선의 앞/뒤 변</b>을 이 깊이에서 자른
+        /// 점이다. 그래서 망토 길이·폭을 고치면 요크가 저절로 따라오고, 요크가 윤곽 <b>안</b>에 있으므로
+        /// 실루엣은 한 점도 움직이지 않는다(BACK 쌍별 최소 차 6.04획 무변화).</para>
+        /// </summary>
+        internal const float CapeYokeDepthRatio = 2.40f;
+
         internal const float CapeLengthRatio = 1.35f;
 
         /// <summary>밑단이 <b>진행 반대쪽</b>으로 뻗는 거리(머리 반경 배수). 옛 값 1.35 -> 2.45.</summary>
@@ -531,12 +565,20 @@ namespace StickMate.Interaction
         /// <summary>렌즈 중심이 <b>눈높이보다 살짝 위</b>인 양. 안경은 눈 위에 걸치는 물건이다.</summary>
         internal const float RoundLensCenterRiseRatio = 0.02f;
 
-        /// <summary>코다리 아치의 꼭대기 높이. 두 끝은 렌즈 12각형의 <b>30도/150도 꼭짓점 그 자체</b>라
-        /// 좌표를 새로 적지 않는다(규칙 4-a — 렌즈 크기를 고치면 아치가 따라온다).</summary>
+        /// <summary>코다리 아치의 꼭대기 높이. 두 끝은 렌즈 12각형의 <b>60도/120도 꼭짓점 그 자체</b>라
+        /// 좌표를 새로 적지 않는다(규칙 4-a — 렌즈 크기를 고치면 아치가 따라온다).
+        /// <para>★ 2026-09-05 — 붙는 자리를 <b>30도/150도에서 60도/120도로 한 칸 올렸다</b>.
+        /// 옛 자리에서 코다리의 잉크 사각형이 <b>0.5472 R = 1.591 W</b>(규칙 1 문턱 1.5 W, 여유 5.7%)로
+        /// 카탈로그 <b>최약체</b>였고, "규칙 1 위반 0이 되는 최소 배율 0.7070"을 이 조각 혼자 정하고
+        /// 있었다(출하 0.75까지 여유 0.043). 한 칸 올리면 span이 <b>0.84 R = 2.44 W(+53%)</b>가 되고
+        /// 최소 배율이 <b>0.6908</b>로 내려간다(여유 +38%).</para>
+        /// <para>아치 꼭대기에서의 꺾임은 35.3°로 규칙 1-B의 45° 아래이고, 붙는 점이 렌즈 꼭짓점
+        /// 그 자체라 규칙 4의 간격은 여전히 <b>0(겹침)</b>이다. 그리고 이 방향이 이 아이템의 원래
+        /// 의도와 같다 — 코다리가 렌즈 한가운데를 가로지르면 아령이 되고, <b>높이가 정체</b>다.</para></summary>
         internal const float RoundBridgeRiseRatio = 0.50f;
 
-        /// <summary>둥근 렌즈/외알 알을 근사하는 변의 수. <b>12</b>여야 30도·150도·270도 꼭짓점이
-        /// 인덱스 1·5·9로 정확히 집힌다 — 코다리와 체인이 그 꼭짓점을 <b>그대로 받아 쓰므로</b>
+        /// <summary>둥근 렌즈/외알 알을 근사하는 변의 수. <b>12</b>여야 60도·120도·270도 꼭짓점이
+        /// 인덱스 2·4·9로 정확히 집힌다 — 코다리(2·4)와 체인(9)이 그 꼭짓점을 <b>그대로 받아 쓰므로</b>
         /// 이 값을 바꾸면 부착점이 조용히 어긋난다(규칙 4-a).</summary>
         internal const int RoundLensSegments = 12;
 
@@ -556,7 +598,7 @@ namespace StickMate.Interaction
         internal const float MonocleOffsetRatio = DrawnEyeOffsetRatio;
 
         /// <summary>알 반경. 드러난 눈과의 간격이 1.5획을 넘는 상한이기도 하다
-        /// (2·0.62 − 0.36 − 0.34 = 0.56R = 1.63획).</summary>
+        /// (2·0.62 − 0.36 − <see cref="DrawnEyeRadiusRatio"/> 0.33 = 0.55R = 1.60획).</summary>
         internal const float MonocleRadiusRatio = 0.36f;
 
 
@@ -657,8 +699,10 @@ namespace StickMate.Interaction
         // ---- 안대(안경 5번) — 외알안경과 같은 "앞쪽 눈에만" 규약. 채운 천 + 뒤로 넘어가는 끈 +
         //      <b>드러난 뒤쪽 눈</b>. ★ 2026-09-01(3차): 끈이 <b>주색</b>으로 바뀌었다 —
         //      보조색 정원 1개를 눈이 가져가기 때문이고, 의미상으로도 옳다(천과 끈은 같은 가죽이다).
-        //      끈 끝점을 polar(146°, 0.99) -> <b>polar(122°/238°, 1.02)</b>로 올렸다:
-        //      옛 자리는 드러난 눈과 <b>0.77획</b> 떨어져 규칙 4가 "최악"이라 못박은 구간이었다.
+        //      끈 끝점은 <b>polar(111°/249°, 1.02)</b>다. ★ 2026-09-05(R13-P2): R13-P1이 드러난 눈을
+        //      아몬드에서 원반(r 0.33R)으로 바꾸면서 눈이 위아래로 <b>0.09R씩 자랐고</b>, 그만큼
+        //      끈-눈 간격이 <b>0.26획</b> 줄어 규칙 4(1.5획)를 1.31획으로 밑돌았다. 자란 것은
+        //      이웃이므로 P1을 되감지 않고 끈 각도만 122° -> 111°로 내렸다(docs/EQUIPMENT_SHAPE_SPEC.md §16).
         internal const float PatchOffsetRatio = EyeOffsetXInHeadRadii;
         /// <summary>천의 반폭/반높이. ★ 알(외알안경)보다 <b>커야</b> 두 아이템이 갈린다 —
         /// 스펙 초안은 둘 다 0.72 × 0.72R이라 원이 사각형에 <b>내접</b>했고, 채움 격자 구분도가
@@ -674,8 +718,12 @@ namespace StickMate.Interaction
         /// <summary>끈 끝점의 반경(머리 원 밖 0.02R). 두 끝의 각도는 대칭이라 하나로 둔다.</summary>
         internal const float PatchStrapReachRatio = 1.02f;
 
-        /// <summary>끈 끝점의 각도(도). 위쪽 끝이 이 각도, 아래쪽 끝이 360 − 이 각도다.</summary>
-        internal const float PatchStrapDegrees = 122f;
+        /// <summary>끈 끝점의 각도(도). 위쪽 끝이 이 각도, 아래쪽 끝이 360 − 이 각도다.
+        /// <para>★ 111°는 <b>파레토 최적</b>이다 — 끈-눈 간격에는 천장 1.6032획(끈의 가운데 변이
+        /// 천의 뒤변이라 각도와 무관하게 남는 구속)이 있고, 그 천장에 닿는 최대 각도가 111.06°다.
+        /// 더 내리면 <b>이득 없이</b> 실루엣만 잃고, 104°에서는 카드 지배축이 세로로 넘어가
+        /// 아이템이 카드에서 1.5% 작아진다. 올리면 규칙 4(1.5획)를 다시 깬다.</para></summary>
+        internal const float PatchStrapDegrees = 111f;
 
 
 
@@ -992,29 +1040,19 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// <b>드러난 눈</b> — 채운 아몬드 4점(양 끝이 점으로 수렴한다).
+        /// <b>드러난 눈</b> — 채운 <see cref="RoundLensSegments"/>각 원반.
         /// <para>한쪽만 가리는 물건(외알안경·안대)에서만 쓴다. 두 눈을 다 가리는 물건은 아무것도
         /// 보여 주지 않는다 — 렌즈 <b>안</b>으로 눈이 비치는 그림은 이 배율에서 기하학적으로
         /// 불가능하기 때문이다(위 EYES 문단의 산술).</para>
         /// <para><b>동공은 넣지 않는다.</b> 내부를 보이려면 3.0W = 1.03R, 즉 머리 반지름만 한 눈이
-        /// 필요하다(규칙 1). 아몬드 하나가 이 배율에서 그릴 수 있는 눈의 전부다.</para>
+        /// 필요하다(규칙 1). 원반 하나가 이 배율에서 그릴 수 있는 눈의 전부다.</para>
+        /// <para>★ 2026-09-05 R13-P1 — 옛 아몬드 4점을 원반으로 바꾼 이유는
+        /// <see cref="DrawnEyeRadiusRatio"/>에 있다(아몬드는 원리상 규칙 1-C를 못 넘었다).</para>
         /// </summary>
         /// <param name="sign">−1 = 진행 반대쪽(= 가려지지 않은 눈). 지금 두 소비자 모두 −1이다.</param>
         internal static Vector3[] DrawnEye(in Rig rig, float sign)
-        {
-            float r = rig.HeadRadius;
-            float cy = GlassesLocalY(rig);
-            float dx = DrawnEyeOffsetRatio;
-            float hw = DrawnEyeHalfWidthRatio;
-            float hh = DrawnEyeHalfHeightRatio;
-            return new[]
-            {
-                rig.F(sign * (dx - hw) * r, cy),
-                rig.F(sign * (dx - 0.06f) * r, cy + hh * r),
-                rig.F(sign * (dx + hw) * r, cy + 0.02f * r),
-                rig.F(sign * (dx + 0.02f) * r, cy - hh * r),
-            };
-        }
+            => Polygon(rig, sign * DrawnEyeOffsetRatio * rig.HeadRadius, GlassesLocalY(rig),
+                DrawnEyeRadiusRatio * rig.HeadRadius, RoundLensSegments);
 
         // ★ 2026-08-30 — 옛 짧은 망토 전용 CapeOutline/CapeFold(단일 인자)를 여기서 지웠다.
         //   같은 도형을 짧은/긴 망토가 매개변수로 공유하게 되면서 정의가 두 벌이 됐고,
@@ -1077,9 +1115,47 @@ namespace StickMate.Interaction
             /// </summary>
             public readonly bool Filled;
 
+            // ---- 계약 v2 (2026-09-05 · R16/R17 정정). 전부 0/false 가 v1과 같은 뜻이라 옛 호출부는 그대로 옳다.
+            //      정의처는 Core/AccessoryShapeContract.cs — 에셋(AccessoryWornShapeData)과 같은 표다.
+
+            /// <summary>표면 비트(<see cref="AccessorySurface"/>). <b>0 = Body|Card</b>.</summary>
+            public readonly byte Surfaces;
+
+            /// <summary>획 배수(연속, 0 = ×1). 카드 획 = 인계본 아이콘 획 × 이 값.</summary>
+            public readonly float StrokeMult;
+
+            /// <summary>몸 표면의 명목 획 폭(R 배수, 배수가 곱해진 값). <b>0 = v1 조각</b>(비례 획 + 2pt/1pt 하한).
+            /// 0 보다 크면 인계본 조각이고 색·알파·하한 규칙이 전부 계약 v2 로 바뀐다(<see cref="IsHandoff"/>).</summary>
+            public readonly float StrokeInR;
+
+            /// <summary>윤곽/선 없음(인계본 F/CF).</summary>
+            public readonly bool NoStroke;
+
+            /// <summary>채움 알파(카드 사전 합성 입력 · 몸 런타임 알파). 0 = 미설정(<see cref="AccessoryCardWash.GradientMeanAlpha"/>).</summary>
+            public readonly float Alpha;
+
+            /// <summary>선 알파. 0 = 1.</summary>
+            public readonly float LineAlpha;
+
+            /// <summary>얹히는 조각 = 같은 아이템 목록에서 이만큼 앞(0 = 없음). 카드 사전 합성의 밑색.</summary>
+            public readonly int UnderBack;
+
+            /// <summary>조각의 몸 층(<see cref="AccessoryPieceLayer"/>). 정렬 번호는 <see cref="LayerOrder"/>가 정한다 — 망토 칼라·걸쇠는
+            /// 몸통 앞(<see cref="SortCapeFront"/>), R19 모자 뒤층/배낭 뒷판은 몸 뒤(<see cref="SortBack"/>). 카드는 목록 순서로 겹친다.</summary>
+            public readonly byte Layer;
+
+            public bool IsFrontLayer => Layer == (byte)AccessoryPieceLayer.BodyFront;
+
+            /// <summary>좌표가 이미 몸 좌표계라 아이템 몸 변형을 걸지 않는다(반대쪽 눈 등).</summary>
+            public readonly bool BodyFixed;
+
             public Shape(string name, Vector3[] points, bool loop, int sortingOrder,
-                int swayStart = -1, int swayCount = 0, byte tone = 0, bool filled = false)
+                int swayStart = -1, int swayCount = 0, byte tone = 0, bool filled = false,
+                byte surfaces = AccessorySurfaces.Unset, float strokeMult = 0f, float strokeInR = 0f,
+                bool noStroke = false, float alpha = 0f, float lineAlpha = 0f,
+                int underBack = 0, byte layer = 0, bool bodyFixed = false)
             {
+                BodyFixed = bodyFixed;
                 Name = name;
                 Points = points;
                 Loop = loop;
@@ -1088,22 +1164,166 @@ namespace StickMate.Interaction
                 SwayCount = swayCount;
                 Tone = tone;
                 Filled = filled;
+                Surfaces = surfaces;
+                StrokeMult = strokeMult;
+                StrokeInR = strokeInR;
+                NoStroke = noStroke;
+                Alpha = alpha;
+                LineAlpha = lineAlpha;
+                UnderBack = underBack;
+                Layer = layer;
             }
 
             public bool HasSway => SwayStart >= 0 && SwayCount > 0 && Points != null;
+
+            /// <summary>이 조각이 그 표면에 나오는가(0 = Body|Card 규칙 포함).</summary>
+            public bool IsOn(AccessorySurface surface) => AccessorySurfaces.IsOn(Surfaces, surface);
+
+            /// <summary>인계본 조각(계약 v2)인가. 그리는 쪽이 이 하나로 규칙을 가른다.</summary>
+            public bool IsHandoff => AccessoryStroke.IsHandoff(StrokeInR);
+
+            /// <summary>점열만 바꾼 사본(머리카락 자르기가 쓴다). 흔들 구간은 잘린 도형에서 인덱스가 어긋나므로 넘기지 않는다.</summary>
+            public Shape WithPoints(Vector3[] points, bool loop)
+                => new Shape(Name, points, loop, SortingOrder, -1, 0, Tone, Filled, Surfaces, StrokeMult, StrokeInR,
+                    NoStroke, Alpha, LineAlpha, UnderBack, Layer, BodyFixed);
 
             /// <summary>채움 면의 레이어 — 자기 윤곽선 <b>바로 아래</b>. 상수를 새로 만들지 않는 이유는,
             /// 도형이 스스로 선언한 레이어와 채움이 어긋날 수 있는 자리를 아예 없애기 위해서다.</summary>
             public int FillSortingOrder => SortingOrder - 1;
         }
 
-        /// <summary>보조색 역할 표식. 호출부에서 <c>tone: Accent</c>로 읽히도록 상수로 둔다.</summary>
-        internal const byte Accent = 1;
+        /// <summary>보조색 역할 표식. 호출부에서 <c>tone: Accent</c>로 읽히도록 상수로 둔다.
+        /// 값의 정의처는 <see cref="AccessoryTone"/>(에셋·폴백 아이콘과 같은 표)다.</summary>
+        internal const byte Accent = AccessoryTone.Accent;
 
         /// <summary>주색을 어둡게 한 그림자 톤. <b>채운 면 위에 그리는 선</b> 전용이다 —
         /// 같은 주색으로 그리면 면에 묻혀 사라지고, 보조색으로 그리면(망토 주름을 아이보리로 그렸던
         /// 2026-08-30 첫 시안) 천에 붙은 <b>끈</b>처럼 읽힌다. 접힌 자국은 같은 천의 그늘이어야 한다.</summary>
-        internal const byte Shade = 2;
+        internal const byte Shade = AccessoryTone.Shade;
+
+        /// <summary>흰 하이라이트(인계본 H). 카드는 밑색 위 사전 합성, 몸은 런타임 알파.</summary>
+        internal const byte Highlight = AccessoryTone.Highlight;
+
+        /// <summary>
+        /// v1 조각 — 목록 안 <paramref name="index"/>번 조각의 실제 색(아이템 팔레트). 하이라이트는 <see cref="Shape.UnderBack"/>으로
+        /// 밑 조각을 찾아 그 역할 위에 합성한다 — 렌더러·초상화·카드 폴백 경로가 <b>이 한 함수</b>를 쓴다.
+        /// </summary>
+        /// <param name="start">이 아이템의 첫 조각 인덱스. 밑 조각은 같은 아이템 안에서만 찾는다.</param>
+        internal static Color ResolveToneColor(List<Shape> shapes, int index, int start, Color primary, Color secondary)
+        {
+            Shape shape = shapes[index];
+            byte underTone = AccessoryTone.Primary;
+            if (shape.Tone == Highlight && shape.UnderBack > 0 && index - shape.UnderBack >= start)
+            {
+                underTone = shapes[index - shape.UnderBack].Tone;
+            }
+            return AccessoryTone.Resolve(shape.Tone, underTone, primary, secondary);
+        }
+
+        // ==================== 인계본 조각(계약 v2)의 색 — 카드·몸·초상화가 같은 표를 본다 ====================
+
+        /// <summary>
+        /// 인계본 조각의 색 원천(재질 팔레트 §2, 2026-09-05): 잉크 · 재질색 M/M2 · 머리 채움 · 대비색 · 그룹 알파.
+        /// 카드는 <c>AccessoryHandoffPalette.Card</c>, 몸은 <c>AccessoryHandoffPalette.Body</c>로 만든다 — 틴트(<c>WornColor</c>)를 타지 않는다.
+        /// <para>★ <b>등급색 칸이 없다</b>(리더 판정 L-1): 등급은 카드 프레임·리본·낱말(<c>UiChrome.RarityColor</c>)의 것이고
+        /// 조각 채움에는 0개다. 칸을 두지 않는 것이 「참조하지 않는다」의 구조적 형태다(<c>HandoffRarityAbsenceTests</c>).</para>
+        /// </summary>
+        internal readonly struct HandoffPalette
+        {
+            /// <summary>잉크 — 채움 있는 조각의 윤곽 · 채움 위 낱선. 카드 <c>CardIconInk</c>, 몸 = 유저 잉크.</summary>
+            public readonly Color Ink;
+            public readonly float GroupAlpha;
+            /// <summary>머리 채움색(= 캐릭터 잉크 / 카드 바탕). 역할 <see cref="AccessoryTone.HeadInk"/>의 <b>채움</b>.</summary>
+            public readonly Color HeadFill;
+            /// <summary>잉크의 대비색(<see cref="AccessoryTone.InkContrast"/>) — 반대쪽 눈.</summary>
+            public readonly Color InkContrast;
+            /// <summary>재질색 M(역할 <see cref="AccessoryTone.Primary"/>) = <c>entry.PrimaryColor</c>. 카드·몸 같은 hex.</summary>
+            public readonly Color Material;
+            /// <summary>보조 재질색 M2(역할 <see cref="AccessoryTone.Accent"/>) = <c>entry.SecondaryColor</c>.</summary>
+            public readonly Color Material2;
+
+            public HandoffPalette(Color ink, float groupAlpha, Color headFill, Color inkContrast, Color material, Color material2)
+            {
+                Ink = ink;
+                GroupAlpha = groupAlpha > 0f ? groupAlpha : 1f;
+                HeadFill = headFill;
+                InkContrast = inkContrast;
+                Material = material;
+                Material2 = material2;
+            }
+        }
+
+        // 팔레트를 만드는 곳(UiChrome 토큰 · 카탈로그 색)은 Interaction/AccessoryHandoffPalette.cs 다 — 이 파일은
+        // Tools/ShapeDump 가 UI 없이 컴파일하므로 여기서 UiChrome 을 부르면 그 오프라인 게이트가 죽는다.
+
+        /// <summary>채움의 바탕색(알파 없음) — 재질 팔레트 §2-3. 0 = M · 1 = M2 · 2 = 그늘(M×0.28) ·
+        /// HeadInk = 머리 채움색 · InkContrast = 대비색. 등급색·고정색은 여기 없다(L-1 · I-23).</summary>
+        internal static Color HandoffFillBase(in Shape s, in HandoffPalette p)
+        {
+            switch (s.Tone)
+            {
+                case AccessoryTone.Accent: return p.Material2;
+                case AccessoryTone.Shade: return AccessoryTone.Shaded(p.Material);
+                case AccessoryTone.HeadInk: return p.HeadFill;
+                case AccessoryTone.InkContrast: return p.InkContrast;
+                case AccessoryTone.Glass:   // R20 — 바탕(카드 바탕 / 몸 잉크) 위 M2 α 사전 합성. 결과는 불투명(HandoffFillAlpha 가 1 을 낸다).
+                    return Color.Lerp(p.HeadFill, p.Material2, s.Alpha > 0f ? s.Alpha : AccessoryCardWash.GradientMeanAlpha);
+                default: return p.Material;
+            }
+        }
+
+        /// <summary>선의 바탕색(알파 없음) — 재질 팔레트 §2-3. 하이라이트 = 흰 · <b>채움 없는 조각</b>은 역할로 재질선
+        /// (0 = M · 1 = M2 · 그 밖(잉크 역할) = 잉크) · 채움 있는 조각의 윤곽 = 잉크.</summary>
+        internal static Color HandoffLineBase(in Shape s, in HandoffPalette p)
+        {
+            if (s.Tone == AccessoryTone.Highlight) return Color.white;
+            if (!s.Filled)
+            {
+                if (s.Tone == AccessoryTone.Primary) return p.Material;
+                if (s.Tone == AccessoryTone.Accent) return p.Material2;
+            }
+            return p.Ink;
+        }
+
+        /// <summary>채움 알파 — 재질 팔레트 뒤로 몸은 전부 1.0 이고(생성기가 alpha 1 을 굽는다), 카드 전용 워시 조각만 0.16/0.20 이다.
+        /// <paramref name="body"/>는 호출부의 뜻을 남기려고 둔다(표면별 덮어쓰기 필드 bodyAlpha 는 2026-09-05 제거).</summary>
+        internal static float HandoffFillAlpha(in Shape s, bool body)
+            => s.Tone == AccessoryTone.Glass ? 1f : (s.Alpha > 0f ? s.Alpha : AccessoryCardWash.GradientMeanAlpha);
+
+        internal static float HandoffLineAlpha(in Shape s) => s.LineAlpha > 0f ? s.LineAlpha : 1f;
+
+        /// <summary>몸 표면 최종색(알파 포함). 그룹 알파를 곱한다. 카드는 사전 합성이라 이 함수를 쓰지 않는다.</summary>
+        internal static void ResolveHandoffBody(in Shape s, in HandoffPalette p,
+            out Color fill, out bool hasFill, out Color line, out bool hasLine)
+        {
+            hasFill = s.Filled;
+            Color fb = HandoffFillBase(s, p);
+            fill = new Color(fb.r, fb.g, fb.b, Mathf.Clamp01(HandoffFillAlpha(s, true) * p.GroupAlpha));
+            hasLine = !s.NoStroke;
+            Color lb = HandoffLineBase(s, p);
+            line = new Color(lb.r, lb.g, lb.b, Mathf.Clamp01(HandoffLineAlpha(s) * p.GroupAlpha));
+        }
+
+        /// <summary>아이템 단위 몸 표면 파라미터. 코드가 좌표를 갖는 자리는 생성 표(<c>WornTransformCode</c>),
+        /// 에셋 자리는 <see cref="ItemCatalog.WornTransform"/>. 카드는 이 값을 모른다.</summary>
+        internal static AccessoryWornTransform WornTransformOf(EquipmentSlot slot, int item)
+            => IsHandoffCode(slot, item) ? WornTransformCode(slot, item) : ItemCatalog.WornTransform(slot, item);
+
+        /// <summary>몸 표면 변형(머리 중심 기준 배율·세로 오프셋·좌우 반전)을 로컬 점열에 <b>제자리에서</b> 건다.
+        /// 카드는 파일 그대로라 부르지 않는다. 좌표 정의처(코드/에셋)가 달라도 변형은 여기 하나다.</summary>
+        internal static void ApplyBodyTransform(Vector3[] pts, in Rig rig, in AccessoryWornTransform xf)
+        {
+            if (pts == null || !xf.IsSet) return;
+            float s = xf.Scale > 0f ? xf.Scale : 1f;
+            float sy = s * (xf.ScaleY > 0f ? xf.ScaleY : 1f);
+            float mirror = xf.MirrorX ? -1f : 1f;
+            float hc = rig.HeadCenterY;
+            float dy = xf.OffsetYInR * rig.HeadRadius;
+            for (int i = 0; i < pts.Length; i++)
+            {
+                pts[i] = new Vector3(pts[i].x * s * mirror, hc + (pts[i].y - hc) * sy + dy, pts[i].z);
+            }
+        }
 
         /// <summary>
         /// 이 자리의 도형이 <b>머리에 붙어 있는가</b>. 2026-08-30 사용자 신고
@@ -1133,34 +1353,107 @@ namespace StickMate.Interaction
         /// <param name="strokeHalfWidth">HAIR 전용. 잘라 낸 조각이 <b>획 하나보다 작으면</b> 버린다
         /// (커버선 위에 점 하나만 남는 것을 막는다 — <see cref="AppendClippedBelowCover"/> 문단).</param>
         /// <param name="mondayLoosened">NECK 전용. 33-2-5 (D) 줄무늬 타이의 요일 상태.</param>
+        /// <param name="surface">돌려받을 표면. 기본은 몸이다 — 렌더러·초상화·기존 검사가 전부 몸을 본다.
+        /// 카드(<c>AccessoryCardIcon</c>)만 <see cref="AccessorySurface.Card"/>를 묻는다.</param>
         internal static void Append(List<Shape> sink, EquipmentSlot slot, int itemIndex, in Rig rig,
-            float hatCoverLocalY = float.PositiveInfinity, float strokeHalfWidth = 0f, bool mondayLoosened = false)
+            float hatCoverLocalY = float.PositiveInfinity, float strokeHalfWidth = 0f, bool mondayLoosened = false,
+            AccessorySurface surface = AccessorySurface.Body)
         {
             if (sink == null || itemIndex < 0) return;
-            switch (slot)
+            int start = sink.Count;
+
+            // ★ 계약 v2 — 인계본 16종(HEAD 4 · EYES 4 · BACK 4)은 코드 표(생성 파일)가 좌표를 갖고, 3/4 재저작 도형
+            //   (아래 switch)은 <b>이 표면에서 폐기</b>됐다(§14-0 #1). 인계본에 없는 8종 + 머리는 그대로 switch 다.
+            if (!AppendHandoff(sink, slot, itemIndex, rig, surface))
             {
-                case EquipmentSlot.Head: AppendHead(sink, itemIndex, rig); break;
-                case EquipmentSlot.Eyes: AppendEyes(sink, itemIndex, rig); break;
-                // ★ NECK은 <b>에셋이 형상을 갖는다</b>(B-2 파일럿). 여기서 좌표를 만들지 않는다.
-                case EquipmentSlot.Neck:
-                    AppendWorn(sink, slot, itemIndex, rig, SortNeck, mondayLoosened);
-                    break;
-                case EquipmentSlot.Shoulders: AppendBack(sink, itemIndex, rig); break;
-                case EquipmentSlot.Hair: AppendHair(sink, itemIndex, rig, hatCoverLocalY, strokeHalfWidth); break;
+                switch (slot)
+                {
+                    case EquipmentSlot.Head: AppendHead(sink, itemIndex, rig); break;
+                    case EquipmentSlot.Eyes: AppendEyes(sink, itemIndex, rig); break;
+                    // ★ NECK은 <b>에셋이 형상을 갖는다</b>(B-2 파일럿). 여기서 좌표를 만들지 않는다.
+                    //   인계본 4종도 같은 에셋이다(카드 = 몸 = 한 벌, surfaces 0).
+                    case EquipmentSlot.Neck:
+                        AppendWorn(sink, slot, itemIndex, rig, SortNeck, mondayLoosened, surface);
+                        break;
+                    case EquipmentSlot.Shoulders: AppendBack(sink, itemIndex, rig); break;
+                    case EquipmentSlot.Hair: AppendHair(sink, itemIndex, rig, hatCoverLocalY, strokeHalfWidth); break;
 
-                // ★ FX/PET은 몸에 붙는 도형이 <b>원래</b> 없다(Interaction/AppearanceShapeBuilder.cs 소관).
-                //   default로 흘려보내면 정상 경로가 매 재구성마다 결함으로 신고된다 — 렌더러는 7개 자리를
-                //   전부 순회하며 이 함수를 부르고, 카드(AccessoryCardIcon)도 FX/PET으로 부른다.
-                //   그래서 "여기서는 아무것도 그리지 않는다"를 <b>명시한다</b>.
-                case EquipmentSlot.Fx:
-                case EquipmentSlot.Pet:
-                    break;
+                    // ★ FX/PET은 몸에 붙는 도형이 <b>원래</b> 없다(Interaction/AppearanceShapeBuilder.cs 소관).
+                    //   default로 흘려보내면 정상 경로가 매 재구성마다 결함으로 신고된다 — 렌더러는 7개 자리를
+                    //   전부 순회하며 이 함수를 부르고, 카드(AccessoryCardIcon)도 FX/PET으로 부른다.
+                    //   그래서 "여기서는 아무것도 그리지 않는다"를 <b>명시한다</b>.
+                    case EquipmentSlot.Fx:
+                    case EquipmentSlot.Pet:
+                        break;
 
-                default:
-                    ShapeCoverageGuard.ReportUnknownSlot(slot);
-                    break;
+                    default:
+                        ShapeCoverageGuard.ReportUnknownSlot(slot);
+                        break;
+                }
+            }
+
+            FilterSurface(sink, start, surface);
+        }
+
+        /// <summary><paramref name="start"/>부터 끝까지에서 <paramref name="surface"/>에 없는 조각을 제자리에서
+        /// 걷어낸다. 할당 없음 — 재구성 경로라 프레임마다 도는 자리는 아니지만 쓰레기를 남길 이유도 없다.</summary>
+        private static void FilterSurface(List<Shape> sink, int start, AccessorySurface surface)
+        {
+            int write = start;
+            for (int i = start; i < sink.Count; i++)
+            {
+                if (!sink[i].IsOn(surface)) continue;
+                if (write != i) sink[write] = sink[i];
+                write++;
+            }
+            if (write < sink.Count) sink.RemoveRange(write, sink.Count - write);
+        }
+
+        /// <summary>
+        /// 인계본 조각 하나(계약 v2) — 좌표는 <b>머리 중심 원점 · R 배수 · y 위 · +x 진행 방향</b>의 (x,y) 쌍
+        /// (인계본 <c>icon_to_R</c>/<c>stage_to_R</c> 변환 그대로, EQUIPMENT_HANDOFF_PORT_SPEC §1-1 · §14-0). 로컬 좌표로
+        /// 옮기는 자리는 여기 하나다. 생성 파일(<c>AccessoryShapeBuilder.Handoff.cs</c>)만 부른다.
+        /// </summary>
+        /// <param name="xf">몸 표면 변형(카드 요청이면 <see cref="AccessoryWornTransform.None"/>).</param>
+        private static void HandoffPiece(List<Shape> sink, in Rig rig, in AccessoryWornTransform xf, int sortingOrder,
+            string name, float[] xyInR, bool loop, bool filled, byte tone, byte surfaces, float strokeMult, float strokeInR,
+            bool noStroke, float alpha, float lineAlpha, int underBack, byte layer,
+            int swayStart, int swayCount, bool bodyFixed = false)
+        {
+            int n = xyInR.Length / 2;
+            var pts = new Vector3[n];
+            float r = rig.HeadRadius;
+            float hc = rig.HeadCenterY;
+            for (int i = 0; i < n; i++)
+            {
+                pts[i] = rig.F(xyInR[i * 2] * r, hc + xyInR[i * 2 + 1] * r);
+            }
+            if (!bodyFixed) ApplyBodyTransform(pts, rig, xf);
+            sink.Add(new Shape(name, pts, loop, LayerOrder(layer, sortingOrder), swayStart, swayCount, tone, filled, surfaces,
+                strokeMult, strokeInR, noStroke, alpha, lineAlpha, underBack, layer, bodyFixed));
+        }
+
+        /// <summary>조각 층(<see cref="AccessoryPieceLayer"/>) → 정렬 번호. 슬롯 기본 층은 부르는 쪽이 준다. <b>여기 한 곳</b>이
+        /// 데이터의 층 번호를 렌더 순서로 옮긴다 — 팩이 정렬 번호를 직접 적을 수 없는 이유(<c>AppendWorn</c> 문서).</summary>
+        internal static int LayerOrder(byte layer, int slotOrder)
+        {
+            switch ((AccessoryPieceLayer)layer)
+            {
+                case AccessoryPieceLayer.Back: return SortBack;
+                case AccessoryPieceLayer.BodyFront: return SortCapeFront;
+                default: return slotOrder;
             }
         }
+
+        /// <summary>생성 파일의 고정색 리터럴(<c>0xRRGGBB</c>) → 불투명 <see cref="Color"/>.</summary>
+        private static Color Hex(int rgb)
+            => new Color(((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f, 1f);
+
+        /// <summary>
+        /// 망토 칼라·걸쇠의 레이어 — <b>몸통 앞</b>(README 「망토 칼라+클래스프 z 4」, §14-6 #8). 앞쪽 팔다리(2)보다
+        /// 앞이고 머리 링(4)보다 뒤라 목에 걸친 것(<see cref="SortNeck"/> 7)이 그 위에 온다. 뒤판은 <see cref="SortBack"/>.
+        /// </summary>
+        internal const int SortCapeFront = 3;
 
         // ==================== 에셋이 가진 형상 (2026-09-02 B-2 파일럿) ====================
 
@@ -1180,8 +1473,9 @@ namespace StickMate.Interaction
         /// (렌더 루프에서 프레임마다 같은 에러를 찍으면 로그가 원인을 덮는다).</para>
         /// </summary>
         /// <param name="stateOn">그 자리의 상태 하나. 지금은 줄무늬 타이의 "월요일" 뿐이다.</param>
+        /// <param name="surface">몸 요청이면 에셋의 몸 표면 변형(<see cref="ItemCatalog.WornTransform"/>)을 이 아이템의 조각 전부(v1 포함, bodyFixed 제외)에 건다.</param>
         internal static void AppendWorn(List<Shape> sink, EquipmentSlot slot, int item, in Rig rig,
-            int sortingOrder, bool stateOn)
+            int sortingOrder, bool stateOn, AccessorySurface surface = AccessorySurface.Body)
         {
             AccessoryWornShapeData[] data = ItemCatalog.WornShapes(slot, item);
             if (data == null || data.Length == 0)
@@ -1191,6 +1485,8 @@ namespace StickMate.Interaction
             }
 
             AccessoryWornFrame frame = Frame(rig);
+            AccessoryWornTransform xf = surface == AccessorySurface.Body
+                ? ItemCatalog.WornTransform(slot, item) : AccessoryWornTransform.None;
             for (int i = 0; i < data.Length; i++)
             {
                 if (!AccessoryWornShapeReader.TryBuild(data[i], frame, stateOn, out Vector3[] points, out _))
@@ -1201,8 +1497,15 @@ namespace StickMate.Interaction
                     return;
                 }
 
-                sink.Add(new Shape(data[i].name, points, data[i].loop, sortingOrder,
-                    data[i].swayStart, data[i].swayCount, (byte)data[i].tone, data[i].filled));
+                AccessoryWornShapeData d = data[i];
+                // ★ 2026-09-05 R20 N-1 — 아이템 단위 몸 파라미터(wornOffsetYInR 등)는 <b>그 아이템의 모든 조각</b>에 건다. 처음엔 인계본 조각에만
+                //   걸었지만 v1 조각(펜던트·반다나)도 착용선 dy 를 받게 됐다. 스트림 데이터는 손대지 않고(비트 골든 유지) 배치만 옮긴다.
+                //   몸 좌표 그대로인 조각(bodyFixed)과 카드 요청(xf = None)은 그대로다.
+                if (!d.bodyFixed) ApplyBodyTransform(points, rig, xf);
+                byte layer = (byte)d.layer;
+                sink.Add(new Shape(d.name, points, d.loop, LayerOrder(layer, sortingOrder), d.swayStart, d.swayCount, (byte)d.tone,
+                    d.filled, (byte)d.surfaces, d.strokeMult, d.strokeInR, d.noStroke, d.alpha, d.lineAlpha,
+                    d.underBack, layer, d.bodyFixed));
             }
         }
 
@@ -1615,10 +1918,12 @@ namespace StickMate.Interaction
                     Vector3[] front = Polygon(rig, dx, lensY, rad, RoundLensSegments);
                     sink.Add(new Shape("RoundLensBack", back, true, SortEyes, filled: true));
                     sink.Add(new Shape("RoundLensFront", front, true, SortEyes, filled: true));
-                    // 30도(뒤 렌즈 index 1) / 150도(앞 렌즈 index 5) = 두 렌즈의 <b>안쪽 위</b> 꼭짓점.
+                    // 60도(뒤 렌즈 index 2) / 120도(앞 렌즈 index 4) = 두 렌즈의 <b>안쪽 위</b> 꼭짓점.
+                    // ★ 2026-09-05 — 30도/150도(index 1·5)에서 한 칸 위로 올렸다. 이유는
+                    //   <see cref="RoundBridgeRiseRatio"/> 문서.
                     sink.Add(new Shape("RoundBridge", new[]
                     {
-                        back[1], rig.F(0f, cy + r * RoundBridgeRiseRatio), front[5],
+                        back[2], rig.F(0f, cy + r * RoundBridgeRiseRatio), front[4],
                     }, false, SortEyes, tone: Accent));
                     break;
                 }
@@ -1842,9 +2147,11 @@ namespace StickMate.Interaction
             switch (item)
             {
                 case BackCape:
+                {
                     // 밑단 5점(인덱스 2~6)이 흔들린다 — "늘 가는 방향의 반대쪽으로 날린다".
                     // 재설계로 밑단이 앞쪽까지 벌어지면서 흔들 구간도 뒤 3점 -> 밑단 전체가 됐다.
-                    sink.Add(new Shape("CapeOutline", CapeOutline(rig), true, SortBack,
+                    Vector3[] outline = CapeOutline(rig);
+                    sink.Add(new Shape("CapeOutline", outline, true, SortBack,
                         swayStart: 2, swayCount: 5, filled: true));
                     // ★ 2026-08-31 — 주름 <b>끝점</b>(인덱스 1)도 흔들 구간에 넣는다. 이 두 선은 천에 진
                     //   그늘이라, 천이 젖혀지는데 그늘만 제자리에 남으면 "천 위에 붙은 끈"으로 돌아간다
@@ -1855,14 +2162,16 @@ namespace StickMate.Interaction
                     sink.Add(new Shape("CapeFold2",
                         CapeFold(rig, CapeLengthRatio, CapeSpreadRatio, 0.72f), false, SortBack,
                         swayStart: 1, swayCount: 1, tone: Shade));
-                    sink.Add(new Shape("CapeCollar", CapeCollarBand(rig), true, SortBack,
+                    sink.Add(new Shape("CapeYoke", CapeShoulderYoke(rig, outline), true, SortBack,
                         tone: Accent, filled: true));
                     break;
+                }
 
                 case BackLongCape:
-                    sink.Add(new Shape("CapeOutline",
-                        CapeOutline(rig, LongCapeLengthRatio, LongCapeSpreadRatio, LongCapeHemWaveRatio,
-                            LongCapeFrontSpreadRatio, LongCapeHemNotchRatio),
+                {
+                    Vector3[] outline = CapeOutline(rig, LongCapeLengthRatio, LongCapeSpreadRatio,
+                        LongCapeHemWaveRatio, LongCapeFrontSpreadRatio, LongCapeHemNotchRatio);
+                    sink.Add(new Shape("CapeOutline", outline,
                         true, SortBack, swayStart: 2, swayCount: 5, filled: true));
                     // ★ 주름의 끝 x를 <b>명시</b>한다. 기본 유도값(0.42 / 0.64)은 제비꼬리 골이 파인
                     //   자리를 그대로 지나가 주름 끝이 천 <b>바깥</b>(갈라진 틈)에 떨어진다.
@@ -1872,9 +2181,10 @@ namespace StickMate.Interaction
                     sink.Add(new Shape("CapeFold2",
                         CapeFold(rig, LongCapeLengthRatio, LongCapeSpreadRatio, 0.72f, 0.96f), false, SortBack,
                         swayStart: 1, swayCount: 1, tone: Shade));
-                    sink.Add(new Shape("CapeCollar", CapeCollarBand(rig), true, SortBack,
+                    sink.Add(new Shape("CapeYoke", CapeShoulderYoke(rig, outline), true, SortBack,
                         tone: Accent, filled: true));
                     break;
+                }
 
                 case BackWings:
                 {
@@ -1955,10 +2265,11 @@ namespace StickMate.Interaction
                 }
 
                 case BackPoncho:
+                {
                     // 짧은 망토와 <b>같은 도형·다른 비율</b>. 짧고 앞쪽까지 덮는 것이 정체다.
-                    sink.Add(new Shape("CapeOutline",
-                        CapeOutline(rig, PonchoLengthRatio, PonchoSpreadRatio, PonchoHemWaveRatio,
-                            PonchoFrontSpreadRatio),
+                    Vector3[] outline = CapeOutline(rig, PonchoLengthRatio, PonchoSpreadRatio,
+                        PonchoHemWaveRatio, PonchoFrontSpreadRatio);
+                    sink.Add(new Shape("CapeOutline", outline,
                         true, SortBack, swayStart: 2, swayCount: 5, filled: true));
                     sink.Add(new Shape("CapeFold",
                         CapeFold(rig, PonchoLengthRatio, PonchoSpreadRatio, 0.35f), false, SortBack,
@@ -1966,9 +2277,10 @@ namespace StickMate.Interaction
                     sink.Add(new Shape("CapeFold2",
                         CapeFold(rig, PonchoLengthRatio, PonchoSpreadRatio, 0.72f), false, SortBack,
                         swayStart: 1, swayCount: 1, tone: Shade));
-                    sink.Add(new Shape("CapeCollar", CapeCollarBand(rig), true, SortBack,
+                    sink.Add(new Shape("CapeYoke", CapeShoulderYoke(rig, outline), true, SortBack,
                         tone: Accent, filled: true));
                     break;
+                }
 
                 case BackFairyWings:
                 {
@@ -2028,10 +2340,17 @@ namespace StickMate.Interaction
         {
             new Vector2(0.80f, 0.10f), new Vector2(1.06f, -0.62f), new Vector2(1.28f, -1.30f),
         };
+        /// <summary>가르마 가닥. ★ 2026-09-05 R13-P3 — <b>폭축만 ×1.40</b>했다(길이축 불변).
+        /// 채움 폭 ρ는 수직폭에 비례하므로 폭 0.40 → 0.56 R이 규칙 1-C를 닫는다:
+        /// ρ 0.1938R(0.89획) → <b>0.2631R(1.21획)</b>, 그리고 배율 0.60의 「양끝 꺾임 0.93획」도 사라진다.
+        /// <para>넓히는 방향은 네 점이 만드는 <b>짧은 축</b>(≈(0.9972, −0.0748), 중심 (0.15, 1.085))이고,
+        /// 위/아래 두 변의 기울기가 보존되도록 그 축 성분만 1.40배 했다. 아래 값은 그 결과를
+        /// 소수 둘째 자리로 정리한 것이다(정확값과 최대 0.0023R 차, ρ는 오히려 0.0004R 넉넉하다).
+        /// 꼭대기 1.57R은 초상화 액자 1.75R 안이다.</para></summary>
         private static readonly Vector2[] NeatPart =
         {
-            new Vector2(-0.14f, 1.56f), new Vector2(0.26f, 1.54f),
-            new Vector2(0.44f, 0.60f), new Vector2(0.04f, 0.64f),
+            new Vector2(-0.27f, 1.57f), new Vector2(0.29f, 1.54f),
+            new Vector2(0.57f, 0.59f), new Vector2(0.01f, 0.64f),
         };
 
         // ---- 2 곱슬머리. 커튼 x가 굽이마다 <see cref="CurlAmplitudeRatio"/> 이상 벌어진다.
@@ -2421,8 +2740,7 @@ namespace StickMate.Interaction
 
             var kept = new Vector3[count];
             for (int i = 0; i < count; i++) kept[i] = buffer[start + i];
-            sink.Add(new Shape(shape.Name, kept, loop, shape.SortingOrder,
-                tone: shape.Tone, filled: shape.Filled));
+            sink.Add(shape.WithPoints(kept, loop));
         }
 
         // ==================== 망토 매개변수화(짧은/긴 망토가 같은 코드를 쓴다) ====================
@@ -2479,21 +2797,40 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// 망토 3종이 공유하는 <b>서명 디테일</b> — 목을 감는 옷깃 띠(보조색·채움).
-        /// <para>세 망토가 <b>같은 하나</b>를 쓴다. 밑단 길이·폭만 다른 형제들이라, 옷깃이 각자
-        /// 다른 좌표를 갖는 순간 "같은 옷의 변주"라는 사실이 그림에서 사라진다(규칙 4-a).</para>
+        /// 망토 3종이 공유하는 <b>서명 디테일</b> — 어깨 요크(보조색·채움). 자세한 근거는
+        /// <see cref="CapeYokeDepthRatio"/> 문서.
+        /// <para>세 망토가 <b>같은 규칙 하나</b>를 쓴다: "자기 윤곽의 위 <see cref="CapeYokeDepthRatio"/>
+        /// 구간". 좌표를 각자 적지 않으므로 "같은 옷의 변주"가 그림에서 유지되고(규칙 4-a),
+        /// 밑단 길이·폭이 달라도 요크가 그 망토의 실제 폭을 그대로 따라간다.</para>
         /// </summary>
-        internal static Vector3[] CapeCollarBand(in Rig rig)
+        /// <param name="outline"><see cref="CapeOutline"/>가 만든 그 배열. 인덱스 0 = 옷깃 앞,
+        /// 1 = 옷깃 뒤, 2 = 밑단 뒤끝, 마지막 = 밑단 앞끝이라는 규약에 의존한다(제비꼬리 밑단도 같다 —
+        /// 점 개수를 일부러 맞춰 둔 이유가 이것이다).</param>
+        internal static Vector3[] CapeShoulderYoke(in Rig rig, Vector3[] outline)
         {
-            float r = rig.HeadRadius;
-            float cy = CapeCollarLocalY(rig);
+            float yokeY = CapeCollarLocalY(rig) - rig.HeadRadius * CapeYokeDepthRatio;
+            Vector3 collarFront = outline[0];
+            Vector3 collarBack = outline[1];
+            Vector3 hemBack = outline[2];
+            Vector3 hemFront = outline[outline.Length - 1];
             return new[]
             {
-                rig.F(r * CapeCollarBandFrontRatio, cy + r * CapeCollarBandTopRatio),
-                rig.F(r * CapeCollarBandFrontRatio, cy + r * CapeCollarBandBottomRatio),
-                rig.F(-r * CapeCollarBandBackRatio, cy + r * (CapeCollarBandBottomRatio - 0.04f)),
-                rig.F(-r * CapeCollarBandBackRatio, cy + r * (CapeCollarBandTopRatio - 0.04f)),
+                collarFront,
+                collarBack,
+                CutEdgeAtY(collarBack, hemBack, yokeY),
+                CutEdgeAtY(collarFront, hemFront, yokeY),
             };
+        }
+
+        /// <summary>변 <paramref name="top"/>→<paramref name="bottom"/>이 높이 <paramref name="y"/>를
+        /// 지나는 점. 변이 그 높이에 못 미치면 끝점으로 잘린다(t를 [0,1]로 문다).
+        /// <para>두 끝점은 이미 <see cref="Rig.F"/>를 거친 값이라 진행 방향 부호가 들어 있다 —
+        /// 성분 보간이라 그 부호가 그대로 보존된다.</para></summary>
+        private static Vector3 CutEdgeAtY(Vector3 top, Vector3 bottom, float y)
+        {
+            float span = top.y - bottom.y;
+            float t = span <= 1e-6f ? 0f : Mathf.Clamp01((top.y - y) / span);
+            return new Vector3(Mathf.Lerp(top.x, bottom.x, t), Mathf.Lerp(top.y, bottom.y, t), top.z);
         }
 
         /// <summary>짧은 망토 기본값(옛 호출부 호환).</summary>
@@ -2608,6 +2945,74 @@ namespace StickMate.Interaction
             float ripple = Mathf.Sin(phase) * headRadius * HemAirRippleRatio * a;
 
             return w * (headRadius * HemAirPushRatio * a) + perp * ripple;
+        }
+
+        /// <summary>
+        /// ★ R17d(2026-09-05, 리더 채택) — 밑단을 <b>발목선 아래로 내려보내지 않는다.</b>
+        ///
+        /// <para>긴망토 밑단은 발목 잉크 원 윗변(−9.055 R)이라 서 있을 때는 발목선(다리 끝점 = 루트 로컬 y 0) 위 0.285 R 에
+        /// 있다. 그런데 무릎앉아 착지(<c>LandingCrouch</c>)는 발을 바닥에 두고 <b>몸만</b> 내려앉는다
+        /// (<c>StickmanPoseAnimator.ComputeFootGroundingOffset</c>, 최대 −2.46 R) — 망토는 몸에 붙어 있으므로 밑단이
+        /// 발목선 아래로 2.18 R 뚫린다. 루트를 띄우는 대안은 기각됐다(몸이 2.46 R 뜬다). 처방은 이 한 줄: 밑단 정점의 y 를
+        /// 발목선(컨테이너 좌표로 옮긴 값)으로 받친다.</para>
+        ///
+        /// <para>순수 함수다 — <paramref name="floorY"/>는 부르는 쪽(<c>CharacterAccessoryRenderer.TickHemMotion</c>)이
+        /// 「발목선 − 몸 오프셋」으로 만든다. 발목선은 리그 규약(로컬 원점 = 발바닥)에서 오고 숫자를 따로 적지 않는다.
+        /// 몸 오프셋이 0 이면 어떤 점도 안 움직인다(밑단이 발목선 위에 있으므로) — <c>CapeHemFloorClampTests</c>가
+        /// 양쪽을 잠근다.</para>
+        /// </summary>
+        /// <returns>받친 점의 수(0 = 아무것도 안 바꿨다).</returns>
+        internal static int ClampAboveFloor(Vector3[] pts, float floorY) => PressHemToFloor(pts, floorY, 0f, 0f);
+
+        /// <summary>
+        /// ★★ 2026-09-05 design-motion 정정(docs/UX_MOTION_FAN_AND_CAPE.md §2-5) — <b>바닥은 컨테이너 안에서 기운 선이다.</b>
+        /// 웅크릴 때 상체가 피치 θ 로 함께 도는데, 망토 컨테이너는 상체 회전을 그대로 받으므로 화면의 수평 발바닥선은 컨테이너 좌표에서
+        /// <c>floorY(x) = intercept + slope·x</c> 다. 스칼라 하나로 받치면 22° 에서 앞자락 3.00 pt 가 남은 채 뚫린다(원래 신고와 같은 결함).
+        /// <para>유도: 컨테이너 점 p 의 루트 로컬 y = HipY/s + [R·(p/s − hip)]_y + b, R 의 기저 벡터 y 성분을 <paramref name="sinPitch"/> =
+        /// (R·right).y, <paramref name="cosPitch"/> = (R·up).y 라 두면 y_root = HipY/s + sin·p.x/s + cos·(p.y/s − HipY/s) + b ≥ 0 ⇔
+        /// p.y ≥ HipY + (−HipY − s·b − sin·p.x)/cos. θ = 0 이면 −s·b — 옛 스칼라식과 정확히 같다(그 식은 θ=0 의 특수해였다).</para>
+        /// </summary>
+        /// <param name="hipY">엉덩이 높이(월드 단위, 컨테이너 회전 축).</param>
+        /// <param name="rootScale">루트 배율 s.</param>
+        /// <param name="bodyOffsetRootLocal">몸 오프셋 b(루트 로컬, 음수 = 내려앉음).</param>
+        internal static void HemFloorLine(float hipY, float rootScale, float bodyOffsetRootLocal, float sinPitch, float cosPitch,
+            out float intercept, out float slope)
+        {
+            float c = Mathf.Max(0.05f, cosPitch);
+            intercept = hipY + (-hipY - rootScale * bodyOffsetRootLocal) / c;
+            slope = -sinPitch / c;
+        }
+
+        /// <summary>천이 바닥에 닿아 쌓일 때 눌린 깊이 δ 만큼 가로로 퍼지는 비율(§2-6 (가), 리더 확인 항목 L-5). 0 = 칼로 잘린 판자,
+        /// 1 = 길이 보존(과장). 최대 웅크림에서 밑단 폭 +73.8%.</summary>
+        internal const float HemPressSpread = 0.55f;
+
+        /// <summary>눌린 점의 흔들 진폭 감쇠 — <c>1 − clamp01(δ / δ_ref)</c>(§2-6 (나)). δ_ref = 그 선의 보행 진폭 p-p(2 × A_walk) —
+        /// 새 상수가 아니라 <c>SwayAmplitudeRatio</c>에서 나온다. 바닥에 누운 점이 좌우로 미끄러지지(스케이트) 않게 한다.</summary>
+        internal static float HemPressDamping(float depth, float depthRef)
+            => depthRef <= 0f ? (depth > 0f ? 0f : 1f) : 1f - Mathf.Clamp01(depth / depthRef);
+
+        /// <summary>점이 바닥선 아래로 내려간 깊이(0 이상). 바닥선은 <see cref="HemFloorLine"/>.</summary>
+        internal static float HemPressDepth(in Vector3 p, float intercept, float slope)
+            => Mathf.Max(0f, intercept + slope * p.x - p.y);
+
+        /// <summary>밑단을 기운 바닥선에 눕히고(δ 만큼 y 를 올린다) 눌린 깊이만큼 가로로 퍼뜨린다(<paramref name="spread"/>, §2-6 (가)).
+        /// spread 0 · slope 0 이면 옛 <see cref="ClampAboveFloor"/>와 같다. 순수 함수 — <c>CapeHemFloorClampTests</c>가 잠근다.</summary>
+        /// <returns>받친 점의 수.</returns>
+        internal static int PressHemToFloor(Vector3[] pts, float intercept, float slope, float spread)
+        {
+            if (pts == null) return 0;
+            int moved = 0;
+            for (int i = 0; i < pts.Length; i++)
+            {
+                float floor = intercept + slope * pts[i].x;
+                float depth = floor - pts[i].y;
+                if (depth <= 0f) continue;
+                pts[i].y = floor;
+                pts[i].x += Mathf.Sign(pts[i].x) * depth * spread;
+                moved++;
+            }
+            return moved;
         }
 
         // ==================== 채움 면(2026-08-30) ====================
@@ -2758,15 +3163,17 @@ namespace StickMate.Interaction
         /// 그중 <b>3개뿐</b>이었다. 나머지는 <see cref="DrawnEyeOffsetRatio"/>·
         /// <see cref="CapeCollarBackRatio"/>·<see cref="RoundLensOffsetRatio"/>와 도형 좌표 17곳이라,
         /// 일괄 치환하면 눈 위치·망토 옷깃·렌즈 간격이 조용히 함께 움직인다.</para>
+        ///
+        /// <para>★ 2026-09-05 — 값의 정의처가 <see cref="AccessoryTone.ShadeFactor"/>(Core)로 내려갔다.
+        /// 폴백 아이콘(<c>ItemIconPart.WithPalette</c>)이 같은 그늘을 칠해야 하는데 Core는 이 파일을
+        /// 볼 수 없다. 위 문단의 실측과 근거는 그대로 여기 남긴다.</para>
         /// </summary>
-        internal const float FillOutlineShadeFactor = 0.28f;
+        internal const float FillOutlineShadeFactor = AccessoryTone.ShadeFactor;
 
         /// <summary>채움 위에 얹는 윤곽선 색 — 같은 색을 그대로 쓰면 면과 선이 붙어 <b>실루엣만 남은
         /// 덩어리</b>가 된다(털모자의 띠와 관이 한 덩어리로 뭉치는 자리). 같은 색을 어둡게 한 값이라
         /// 팔레트를 늘리지 않으면서 경계를 만든다. 계수는 <see cref="FillOutlineShadeFactor"/>.</summary>
-        internal static Color FillOutlineColor(Color fill)
-            => new Color(fill.r * FillOutlineShadeFactor, fill.g * FillOutlineShadeFactor,
-                fill.b * FillOutlineShadeFactor, fill.a);
+        internal static Color FillOutlineColor(Color fill) => AccessoryTone.Shaded(fill);
 
         // ==================== 공용 도형 유틸 ====================
 

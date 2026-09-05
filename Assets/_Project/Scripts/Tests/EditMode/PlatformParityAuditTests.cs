@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using StickMate.Core;
 using StickMate.Dialogue;
@@ -257,41 +258,175 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// ★ 상단은 양쪽 다 닫혔지만 <b>하단</b>은 아직 판단이 안 났다 — 잊히지 않게 러너에 띄워 둔다.
+        /// ★★ <b>2026-09-05 리더 판정으로 이 항목은 닫혔다.</b> 예전 이름은
+        /// <c>미해결_하단_예약띠를_Windows에서도_강제할지_판단되지_않았다</c>였고, 그 <c>Ignore</c> 본문의
+        /// 예고("정책이 하단까지 강제하기 시작하면 정식 검사로 승격하고 macOS Dock 발판과 충돌하지
+        /// 않는지 반드시 함께 확인하라")를 그대로 이행한 것이 이 테스트다.
+        ///
+        /// ============================================================================
+        /// 판정 — <b>같게 만드는 것이 정답이 아닌 항목</b>이다
+        /// ============================================================================
+        /// <list type="bullet">
+        ///  <item><b>Windows: 강제한다.</b> 작업표시줄은 가로 <b>전체</b>를 점유하고 실제 신고가 있다
+        ///        (2026-08-31 <i>"작업표시줄에 걸쳐서 돌아다닌다"</i>). 게다가 이 앱은 이미
+        ///        <c>ReservedBarRevealPolicy</c>로 <b>그 막대를 강제로 드러내는</b> 승인 예외를 갖고 있다 —
+        ///        드러내 놓고 우리 표면으로 덮으면 그 예외의 목적이 무효가 된다.</item>
+        ///  <item><b>macOS: 강제하지 않는다.</b> Dock은 자동 숨김이 흔하고 이 앱은 그 위를 <b>의도적으로</b>
+        ///        캐릭터 발판으로 쓴다(<c>Core/DockGeometry</c>). 여기를 막으면 발판 설계와 정면충돌한다.</item>
+        /// </list>
+        /// <b>이 비대칭을 «패리티 위반»으로 읽고 되돌리지 마라</b> — 그래서 이름이 <c>결정_</c>이다.
+        ///
+        /// ============================================================================
+        /// ★ 이 검사가 문자열 대조가 <b>아닌</b> 이유
+        /// ============================================================================
+        /// 이 파일의 이웃 항목들은 소스 텍스트를 읽는다(반대 타깃 타입이 존재하지 않기 때문이다).
+        /// 그런데 이 판정은 <b>순수 함수에 플랫폼을 인자로 넣는 형태</b>로 구현됐으므로,
+        /// macOS 머신에서 <b>Windows 쪽 답을 실제로 실행해</b> 잴 수 있다. 문자열이 아니라 <b>값</b>으로
+        /// 못박는 편이 언제나 강하다 — <c>"bottomInset"</c>이라는 낱말이 파일에 있다는 사실은
+        /// 그 값이 <b>쓰이는지</b>를 한 글자도 말해 주지 않는다(예전 승격 조건이 정확히 그 형태였다).
         /// </summary>
         [Test]
-        public void 미해결_하단_예약띠를_Windows에서도_강제할지_판단되지_않았다()
+        public void 결정_하단_예약띠는_Windows에서만_강제한다()
         {
-            string neutral = StripLineComments(
-                ReadSource(Path.Combine(PlatformRoot, "SurfaceSafeAreaPolicy.cs")));
+            // ---- (1) 판정은 중립 위치에, 그리고 순수해야 한다 ----
+            string policyPath = Path.Combine(PlatformRoot, "SurfaceSafeAreaPolicy.cs");
+            Assert.IsTrue(File.Exists(policyPath),
+                "SurfaceSafeAreaPolicy가 Platform/ 중립 위치에 없습니다 — 하단 강제 판정이 플랫폼 " +
+                "폴더로 들어가면 반대편이 물리적으로 호출할 수 없습니다(FullscreenSuspendPolicy 사고).");
 
-            // 정책이 하단까지 강제하기 시작하면(= 아래쪽 한계에 인셋이 들어가면) 자동 승격시킨다.
-            if (neutral.Contains("bottomInset"))
+            string policy = StripLineComments(ReadSource(policyPath));
+            StringAssert.DoesNotContain("UNITY_STANDALONE_", policy,
+                "하단 축을 #if로 갈랐습니다 — 그러면 이 머신에서 Windows 쪽 답이 한 줄도 실행되지 " +
+                "않고, 아래 값 검사 전체가 macOS 절반만 보게 됩니다(활성 빌드 타깃 사각지대).");
+            StringAssert.DoesNotContain("DllImport", policy, "판정 규칙이 OS를 직접 부릅니다.");
+
+            // ---- (2) ★ 값으로 못박는다 — Windows만 true ----
+            Assert.IsTrue(SurfaceSafeAreaPolicy.EnforcesBottomReservedBand(RuntimePlatform.WindowsPlayer),
+                "Windows에서 하단 예약 띠가 강제되지 않습니다 — 2026-08-31 신고 " +
+                "\"작업표시줄에 걸쳐서 돌아다닌다\"가 표면 쪽에서 그대로 남습니다.");
+            Assert.IsTrue(SurfaceSafeAreaPolicy.EnforcesBottomReservedBand(RuntimePlatform.WindowsEditor),
+                "Windows 에디터에서 규칙이 꺼집니다 — Windows 개발자가 자기 배치를 실기와 같은 " +
+                "조건으로 볼 수 없게 됩니다(이 판정은 남의 설정을 바꾸지 않고 우리 창만 옮깁니다).");
+            Assert.IsFalse(SurfaceSafeAreaPolicy.EnforcesBottomReservedBand(RuntimePlatform.OSXPlayer),
+                "★ macOS에서 하단이 강제됐습니다 — Dock은 이 앱이 <b>의도적으로</b> 쓰는 캐릭터 " +
+                "발판입니다(Core/DockGeometry). 이 한 줄이 발판 설계와 정면충돌합니다.");
+            Assert.IsFalse(SurfaceSafeAreaPolicy.EnforcesBottomReservedBand(RuntimePlatform.OSXEditor),
+                "macOS 에디터에서 하단이 강제됐습니다 — 이 머신의 PlayMode 배치가 실기와 갈라집니다.");
+            Assert.IsFalse(SurfaceSafeAreaPolicy.EnforcesBottomReservedBand(RuntimePlatform.IPhonePlayer),
+                "모르는 플랫폼에서 화면을 깎았습니다 — 짐작으로 인셋을 만들지 않는다는 규약 위반입니다.");
+
+            // ---- (3) macOS 무회귀를 <b>산술로</b> 증명한다 (Dock 발판 충돌 확인) ----
+            //   실측 좌표: macOS 15.6 / 982pt / 메뉴바 33 / Dock 75 (SurfaceSafeAreaPolicyTests와 같은 표).
+            const float screenH = 982f, menuBar = 33f, dock = 75f, margin = 12f, panel = 560f;
+            float macInset = SurfaceSafeAreaPolicy.EffectiveBottomInsetPoints(RuntimePlatform.OSXPlayer, dock);
+            Assert.AreEqual(0f, macInset, 0f,
+                "macOS의 실효 하단 인셋이 0이 아닙니다 — 이 값이 0이어야 아래 '비트 동일'이 성립합니다.");
+
+            float desiredLow = panel * 0.5f - 500f;                       // 화면 아래로 밀어붙이는 요청
+            float legacy = SurfaceSafeAreaPolicy.ClampCenterY(desiredLow, panel, screenH, menuBar, margin);
+            float macNow = SurfaceSafeAreaPolicy.ClampCenterY(desiredLow, panel, screenH, menuBar, macInset, margin);
+            Assert.AreEqual(legacy, macNow, 0f,
+                "★ macOS 배치가 하단 축 도입으로 움직였습니다 — 이 축의 전제(macOS는 한 픽셀도 " +
+                "바뀌지 않는다)가 깨졌습니다. Dock 위 팝오버/정보창 자리가 그만큼 어긋납니다.");
+            Assert.Less(SurfaceSafeAreaPolicy.BottomEdgeFromScreenBottom(macNow, panel), dock,
+                "이 대조의 전제(macOS에서는 표면이 Dock 띠에 여전히 닿을 수 있다)가 성립하지 않습니다.");
+
+            // ---- (4) Windows에서는 <b>실제로 막힌다</b> (같은 입력, 다른 답) ----
+            const float taskbar = 48f;   // 100% 배율의 통상값. 실측이 아니라 «0이 아닌 값»이 논점이다.
+            float winInset = SurfaceSafeAreaPolicy.EffectiveBottomInsetPoints(RuntimePlatform.WindowsPlayer, taskbar);
+            Assert.AreEqual(taskbar, winInset, 0f, "Windows에서 실측 두께가 그대로 전달되지 않습니다.");
+
+            float winNow = SurfaceSafeAreaPolicy.ClampCenterY(desiredLow, panel, screenH, 0f, winInset, margin);
+            float winBottomGap = SurfaceSafeAreaPolicy.BottomEdgeFromScreenBottom(winNow, panel);
+            Assert.GreaterOrEqual(winBottomGap, taskbar,
+                $"Windows 표면의 아래 모서리가 화면 하단에서 {winBottomGap:F2}pt에 있습니다 — " +
+                $"작업표시줄 {taskbar}pt를 {taskbar - winBottomGap:F2}pt 덮습니다.");
+            Assert.AreEqual(taskbar + margin, winBottomGap, 0.01f,
+                "아래쪽 한계가 '하단 띠 + 여백 + 반높이'가 아닙니다.");
+
+            // ★ 네거티브 컨트롤 — 두 플랫폼의 답이 실제로 <b>다른가</b>. 같으면 위 넷 중 어느 것도
+            //   아무것도 증명하지 못한다(둘 다 같은 상수를 돌려주는 구현으로도 통과하기 때문이다).
+            float macSameInput = SurfaceSafeAreaPolicy.ClampCenterY(desiredLow, panel, screenH, 0f,
+                SurfaceSafeAreaPolicy.EffectiveBottomInsetPoints(RuntimePlatform.OSXPlayer, taskbar), margin);
+            Assert.AreNotEqual(macSameInput, winNow,
+                "같은 입력에 두 플랫폼이 같은 답을 냅니다 — 이 항목의 판정(플랫폼별로 다르게 둔다)이 " +
+                "코드에 존재하지 않습니다.");
+
+            // ---- (5) 소비 배선 — 판정이 실제로 표면에 도달하는가 ----
+            //   "규칙은 있는데 아무도 안 부른다"가 이 저장소가 반복해 겪은 조용한 실패다.
+            string probe = StripLineComments(ReadSource(Path.Combine(PlatformRoot, "ReservedEdgeProbe.cs")));
+            StringAssert.Contains(nameof(SurfaceSafeAreaPolicy.EffectiveBottomInsetPoints), probe,
+                "사실 조회 층이 판정을 거치지 않고 하단 두께를 그대로 흘립니다 — 그러면 macOS에서도 " +
+                "Dock이 벽이 됩니다.");
+
+            string interactionRoot = Path.Combine(Application.dataPath, "_Project", "Scripts", "Interaction");
+            string[] mustConsume = { "PopoverPanel.cs", "CharacterInfoWindow.Layout.cs", "InfoGearIconWidget.cs" };
+            foreach (string file in mustConsume)
             {
-                Assert.Pass("하단 인셋이 정책에 들어왔습니다 — 이 테스트를 정식 검사로 승격하고 " +
-                    "macOS Dock 발판(Core/DockGeometry)과 충돌하지 않는지 반드시 함께 확인하세요.");
+                string src = StripLineComments(ReadSource(Path.Combine(interactionRoot, file)));
+                StringAssert.Contains(nameof(ReservedEdgeProbe.EnforcedBottomInsetPoints) + "(", src,
+                    $"{file}이 하단 인셋을 배치에 넣지 않습니다 — 이 셋은 모두 화면 하단까지 내려갈 수 " +
+                    "있는 표면입니다(팝오버는 캐릭터 아래로 열리고, 정보창과 톱니는 드래그로 내려갑니다).");
             }
 
-            Assert.Ignore("【미해결 · 판정 대기(코드가 아니라 결정이 막혀 있다)】 사유 갱신 2026-09-02 04:5x\n" +
-                "항목: 화면 **하단** 예약 띠를 표면 배치에서 강제할 것인가.\n" +
-                "macOS: 일부러 강제하지 않는다 — Dock은 자동 숨김이 흔하고, 이 앱은 그 위를 " +
-                "의도적으로 캐릭터 발판으로 쓴다(Core/DockGeometry). 창이 Dock을 덮는 것은 " +
-                "macOS의 모든 앱이 하는 표준 동작이기도 하다.\n" +
-                "Windows: 사정이 다르다 — 작업표시줄은 가로 전체를 점유하고, " +
-                "'작업표시줄에 걸쳐서 돌아다닌다'는 실제 사용자 신고 이력이 있다(2026-08-31). " +
-                "하단도 강제해야 할 수 있다.\n" +
-                "★ 지금 막혀 있는 것은 코드가 아니라 **판정**이다. 조회는 이미 양쪽 다 있다 " +
-                "(IReservedBottomBarService). 실기 확인이 필요하다.\n" +
-                "★ 2026-09-02 갱신 — 우선순위가 올라갔다: 사용자 지시가 '맥에 적용한 사항 윈도우에도 " +
-                "모두 적용'으로 바뀌었다. 다만 이 항목은 '맥에 적용한 것을 윈도우에 옮기는' 종류가 " +
-                "아니다 — macOS는 하단을 **일부러** 강제하지 않으므로, 그대로 옮기면 Windows에서 " +
-                "신고된 '작업표시줄에 걸쳐서 돌아다닌다'가 그대로 남는다. 즉 이 항목만은 " +
-                "**같게 만드는 것이 정답이 아닐 수 있다**(위 결정_/역방향_ 항목들과 같은 성격).\n" +
-                "★ 상단과의 대조: 상단은 2026-09-02 04:32에 양쪽 다 닫혔다(위 " +
-                "상단_예약띠_조회가_양_플랫폼에_모두_배선되어_있다). 조회 경로가 같은 " +
-                "GetMonitorInfo 한 번이므로 하단도 코드는 이미 있다.\n" +
-                "실기 검증 필요 — 사용자 Windows 머신: 작업표시줄 위에 캐릭터를 올리고 " +
-                "팝오버/정보창을 열어 하단 막대를 덮는지 본다.");
+            // ---- (5-b) ★ 의도적 제외 — TodoPostItWidget은 하단 인셋을 받지 않는다 (2026-09-05) ----
+            //   perf-doc 질의: "포스트잇도 톱니와 같은 24시간 상주 HUD인데 왜 위 목록에 없는가."
+            //   답: <b>하단 한계에 도달하는 경로가 없다.</b> 근거 셋이고 셋 다 지금 성립한다:
+            //     ① 세로 요청이 언제나 «화면 맨 위»(0f)다(TodoPostItWidget.ResolveTopInsetPoints).
+            //        하단 인셋은 ClampCenterY의 <b>아래쪽 한계</b>로만 들어가므로, 위쪽을 요청하는 한
+            //        결과에 한 비트도 참여하지 않는다 — 아래에서 <b>산술로</b> 못박는다.
+            //     ② 드래그 경로가 없다. 카드는 우상단 앵커에 붙고 세로 위치는 상단 예약 띠의
+            //        <b>순수 함수</b>다. 위 셋(팝오버·정보창·톱니)과 갈리는 지점이 정확히 이것이다.
+            //     ③ 최대 높이가 8행(ExpandedMaxRows) x RowHeight 28 + 헤더 + 여백 ≒ 260pt다.
+            //        상단 띠 40 + 여백 16 = 56에서 시작해도 아래 모서리가 316pt이므로, 실사용
+            //        화면 높이(720pt+)에서 하단 띠(48~62pt)에 닿지 않는다.
+            //   ★ 셋 중 하나라도 깨지면 이 파일 위쪽 mustConsume에 "TodoPostItWidget.cs"를 넣어라.
+            //     ①이 깨지는 순간을 잡는 것이 바로 아래 두 단언이다(①은 산술, 그 전제는 소스 형태).
+
+            const float postItHeight = 260f;      // ③의 상한. 정확한 값이 아니라 «하단에 못 닿는다»가 논점이다.
+            float postItFive = SurfaceSafeAreaPolicy.ClampTopDownCenterY(
+                0f, postItHeight, screenH, 40f, TodoPostItWidget.PanelInsetPoints);
+            float postItSix = SurfaceSafeAreaPolicy.ClampTopDownCenterY(
+                0f, postItHeight, screenH, 40f, winInset, TodoPostItWidget.PanelInsetPoints);
+            Assert.AreEqual(postItFive, postItSix, 0f,
+                "★ 포스트잇의 호출 형태(«맨 위로 가고 싶다»)에서 5인자와 6인자의 답이 갈렸습니다 — " +
+                "이 제외의 근거 ①이 무너졌으므로 TodoPostItWidget.cs를 위 mustConsume에 넣어야 합니다.");
+
+            // ★ 양성 대조 — 6인자 판이 하단 인셋을 <b>실제로 쓰기는 하는가</b>. 이게 없으면 위의
+            //   "같다"는 «인자를 무시하는 구현»으로도 통과한다(이 저장소의 12번째 거짓 통과 형태).
+            float downFive = SurfaceSafeAreaPolicy.ClampTopDownCenterY(
+                screenH, postItHeight, screenH, 40f, TodoPostItWidget.PanelInsetPoints);
+            float downSix = SurfaceSafeAreaPolicy.ClampTopDownCenterY(
+                screenH, postItHeight, screenH, 40f, winInset, TodoPostItWidget.PanelInsetPoints);
+            Assert.AreNotEqual(downFive, downSix,
+                "대조 실패 — «맨 아래로 가고 싶다»는 요청에서도 두 판의 답이 같습니다. " +
+                "6인자 판이 하단 인셋을 아예 쓰지 않는다는 뜻이고, 그러면 바로 위의 '같다'가 " +
+                "아무것도 증명하지 못합니다.");
+
+            // ★ ①의 <b>전제</b>를 소스 형태로 잠근다: 세로 요청 인자가 여전히 리터럴 0f인가.
+            //   존재 단언이므로 형태가 바뀌면 <b>시끄럽게</b> 빨개진다(부재 단언이면 조용히 초록이 된다).
+            string postItSrc = StripLineComments(
+                ReadSource(Path.Combine(interactionRoot, "TodoPostItWidget.cs")));
+            Assert.IsTrue(
+                Regex.IsMatch(postItSrc,
+                    Regex.Escape(nameof(SurfaceSafeAreaPolicy.ClampTopDownCenterY)) + @"\(\s*0f\s*,"),
+                "★ 포스트잇의 세로 클램프가 더 이상 «맨 위»(0f)를 요청하지 않습니다 — 아래쪽으로 " +
+                "갈 수 있게 됐다는 뜻이고, 그 순간 하단 예약 띠를 덮을 수 있습니다. " +
+                "TodoPostItWidget.cs를 위 mustConsume에 넣고 6인자 판으로 바꾸세요.");
+
+            // ---- (6) 발판 경로는 <b>건드리지 않았는가</b> ----
+            //   Windows 작업표시줄 «윗면»에 캐릭터가 서는 것은 2026-08-31에 고친 별개 경로이고,
+            //   이번 판정과 방향이 반대다(덮지 마라 vs 여기 서라). 섞이면 그 신고가 되돌아온다.
+            string dockGeometry = StripLineComments(
+                ReadSource(Path.Combine(Application.dataPath, "_Project", "Scripts", "Core", "DockGeometry.cs")));
+            StringAssert.DoesNotContain(nameof(SurfaceSafeAreaPolicy.EnforcesBottomReservedBand), dockGeometry,
+                "★ 발판 기하(Core/DockGeometry)가 UI 표면 회피 판정을 읽습니다 — 두 경로는 방향이 " +
+                "반대입니다(발판은 '여기 서라', 표면은 '덮지 마라'). 섞으면 macOS Dock 발판이 사라집니다.");
+            //   ★ 부재 단언에 존재 대조를 붙인다(CLAUDE.md): 바로 위 (5)에서 <b>같은 니들</b>이
+            //     Interaction 3개 파일에 실재함을 이미 요구했다. 니들이 죽으면 여기가 조용히 초록이
+            //     되는 대신 (5)가 먼저 빨개진다.
+            StringAssert.DoesNotContain(nameof(ReservedEdgeProbe.EnforcedBottomInsetPoints), dockGeometry,
+                "발판 기하가 표면용 하단 인셋을 씁니다 — 위와 같은 이유로 금지입니다.");
         }
 
         // ==================== 작업표시줄/Dock 자동 숨김 강제 해제 (2026-09-02 신설) ====================
@@ -1896,52 +2031,128 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// <b>미해결 갭</b>: macOS는 <c>MacSpaceBehaviorNative</c>로 "모든 Space에 따라붙기"를 걸어
-        /// 타 앱 전체화면 위에서도 캐릭터가 남게 했다. Windows의 대응 개념은 <b>가상 데스크톱</b>인데
-        /// 대응물이 없어, Windows 사용자가 데스크톱 2로 전환하면 캐릭터가 데스크톱 1에 남는다.
+        /// ★★ <b>2026-09-05 리더 판정으로 이 항목은 닫혔다.</b> 예전 이름은
+        /// <c>미해결_Windows에는_가상데스크톱_동행_배선이_없다</c>였고, 그 <c>Ignore</c> 본문이 남겨 둔
+        /// 두 갈래 중 <b>(a) 소속만 확인한다</b>가 채택됐다.
         ///
-        /// <para><b>★ 2026-09-02 사유 갱신.</b> 이 항목의 예전 사유는 "리더 배정 대기"였고 그것은
-        /// 지금도 맞다. 바뀐 것은 <b>우선순위와 성격</b>이다 — 사용자 지시가
-        /// "맥에 적용한 사항 윈도우에도 모두 적용"으로 바뀌었으므로 더 이상 "나중에" 항목이 아니고,
-        /// 동시에 이것은 <b>한 줄 추가로 닫히는 항목이 아니다</b>(아래 Ignore 본문의 정책 갈래 참고).</para>
+        /// ============================================================================
+        /// 판정 — 두 플랫폼의 <b>결과</b>가 다르다. 그것이 이 항목의 답이다
+        /// ============================================================================
+        /// <list type="bullet">
+        ///  <item><b>macOS: 따라붙는다.</b> <c>MacSpaceBehaviorNative</c>의 <c>.canJoinAllSpaces</c> —
+        ///        모든 Space에 있으므로 「남의 Space에 남겨진다」는 상태 자체가 없다.</item>
+        ///  <item><b>Windows: 사라진다.</b> 공개 COM <c>IVirtualDesktopManager</c>로 <b>소속만</b> 확인하고,
+        ///        다른 데스크톱에 있는 동안 스스로 숨는다. 따라붙게 만드는 (b)는 <b>비공개 API</b>가
+        ///        필요해 OS 업데이트마다 깨지고, 비문서 API가 쌓이면 백신 휴리스틱 위험이 커진다
+        ///        (M-10과 같은 저울 — 사용자 실기는 V3다). <b>기각.</b></item>
+        /// </list>
+        /// <b>이 비대칭을 «패리티 위반»으로 읽고 (b)로 되돌리지 마라</b> — 그래서 이름이 <c>결정_</c>이다.
+        ///
+        /// <para><b>이 검사가 보는 것</b>: (1) 계약·판정이 중립 위치에 있고 순수한가, (2) Windows가
+        /// <b>기반 목록에</b> 계약을 달았는가(예전 <c>Ignore</c> 본문의 지시 그대로 —
+        /// <see cref="AssertDeclaresInterface"/>다. 이름만 찾으면 주석에 걸린다), (3) <b>공개 API만</b>
+        /// 쓰는가 · <b>창을 옮기지 않는가</b>, (4) 판정이 값으로 옳은가(특히 «조회 실패»가 캐릭터를
+        /// 숨기지 않는가), (5) 그 판정이 실제로 캐릭터 가시성에 도달하는가.</para>
         /// </summary>
         [Test]
-        public void 미해결_Windows에는_가상데스크톱_동행_배선이_없다()
+        public void 결정_가상데스크톱은_Windows에서_따라붙지_않고_스스로_숨는다()
         {
-            string winDir = Path.Combine(PlatformRoot, "Windows");
-            string[] winFiles = Directory.GetFiles(winDir, "*.cs");
-
-            // ★ 비공허성 잠금: 폴더가 비거나 이름이 바뀌면 아래 루프가 **아무 파일도 안 보고** 지나가고,
-            //   그 상태의 Ignore는 "확인했다"가 아니라 "아무것도 안 봤다"다.
-            Assert.Greater(winFiles.Length, 0,
-                $"Platform/Windows/에서 .cs를 한 개도 읽지 못했습니다({winDir}) — 스캔이 공허합니다(거짓 초록).");
-
-            foreach (string f in winFiles)
+            // ---- (1) 계약과 판정은 중립 위치에, 그리고 판정은 순수해야 한다 ----
+            string contract = Path.Combine(PlatformRoot, "IVirtualDesktopMembershipSource.cs");
+            string policyPath = Path.Combine(PlatformRoot, "VirtualDesktopSuspendPolicy.cs");
+            foreach (string required in new[] { contract, policyPath })
             {
-                if (StripLineComments(File.ReadAllText(f)).Contains("IVirtualDesktopManager"))
-                {
-                    Assert.Pass($"{Path.GetFileName(f)}에 가상 데스크톱 배선이 들어왔습니다 — " +
-                        "이 테스트를 정식 검사로 승격하세요(기반 목록/실호출까지 보는 " +
-                        "AssertDeclaresInterface 형태를 쓸 것 — 이름만 보면 주석에 걸립니다).");
-                }
+                Assert.IsTrue(File.Exists(required),
+                    $"{Path.GetFileName(required)}가 Platform/ 중립 위치에 없습니다 — 이 판정이 " +
+                    "Platform/Windows/ 안에 있으면 이 개발 머신에서 <b>한 줄도 실행되지 않습니다</b>. " +
+                    "즉 검증이 구조적으로 불가능한 자리입니다(FullscreenSuspendPolicy 사고).");
             }
 
-            Assert.Ignore("【미해결 갭 · 배정 대기】 사유 갱신 2026-09-02 04:36 (재확인 완료)\n" +
-                "macOS: 해결됨 — MacSpaceBehaviorNative(.canJoinAllSpaces + .stationary + accessory 등급).\n" +
-                $"Windows: 미해결 — Platform/Windows/ {winFiles.Length}개 파일 어디에도 " +
-                "IVirtualDesktopManager 참조가 없다(주석 제외 후 0건).\n" +
-                "★ 보류 사유가 바뀌었다: 예전에 이 파일의 다른 항목들이 근거로 삼던 사용자 지시 " +
-                "'윈도우는 일단 미루고 맥만'(2026-09-01)은 2026-09-02 '맥에 적용한 사항 윈도우에도 " +
-                "모두 적용'으로 뒤집혔다. 이 항목의 사유는 원래부터 '리더 배정 대기'였으므로 사유 자체는 " +
-                "유효하지만 우선순위가 올라갔다.\n" +
-                "★ 이것은 '한 줄 추가' 항목이 아니다 — 먼저 필요한 것은 코드가 아니라 정책 판단이다:\n" +
-                "  (a) 소속만 확인한다: IVirtualDesktopManager::IsWindowOnCurrentVirtualDesktop은 공개 COM이다. " +
-                "남의 데스크톱에 있는 동안 스스로 숨으면 비침해 원칙 2와 같은 방향이고 공개 API만으로 된다. " +
-                "다만 macOS의 .canJoinAllSpaces와 '결과'가 다르다(따라붙지 않고 사라진다).\n" +
-                "  (b) 모든 데스크톱에 고정한다: 이쪽이 macOS와 같은 결과지만 비공개 API가 필요하고 " +
-                "OS 업데이트마다 깨진다. 원칙 2(비침해)와도 긴장 관계다.\n" +
-                "리더 판단 대상. 실기 검증 필요 — 사용자 Windows 머신에서 Win+Ctrl+←/→로 데스크톱을 " +
-                "전환하며 캐릭터가 따라오는지 본다.");
+            string policy = StripLineComments(ReadSource(policyPath));
+            StringAssert.DoesNotContain("DllImport", policy, "판정 규칙이 OS를 직접 부릅니다.");
+            StringAssert.DoesNotContain("UNITY_STANDALONE_", policy,
+                "판정 규칙에 플랫폼 분기가 들어왔습니다 — 순수 함수여야 이 머신의 EditMode가 " +
+                "Windows 쪽 답까지 실행해 볼 수 있습니다.");
+
+            // ---- (2) Windows가 **기반 목록에** 계약을 달았는가 (메서드 이름은 계약에서 뽑는다) ----
+            MethodInfo[] contractMethods = typeof(IVirtualDesktopMembershipSource).GetMethods();
+            Assert.AreEqual(1, contractMethods.Length,
+                "IVirtualDesktopMembershipSource의 메서드 수가 1이 아닙니다 — 이 검사는 '그 하나'를 " +
+                "기준으로 대조합니다. 계약이 늘었다면 아래 대조도 함께 늘리세요.");
+            AssertDeclaresInterface(WinWindowServicePath, "Win32WindowService",
+                nameof(IVirtualDesktopMembershipSource), contractMethods[0].Name);
+
+            // ---- (3) 공개 API만 쓰는가 · 창을 옮기지 않는가 ----
+            string probePath = Path.Combine(PlatformRoot, "Windows", "WindowsVirtualDesktopProbe.cs");
+            Assert.IsTrue(File.Exists(probePath),
+                $"{Path.GetFileName(probePath)}가 없습니다 — 사실 조회 계층이 사라졌습니다.");
+            string probe = StripLineComments(ReadSource(probePath));
+
+            // ★ 존재 대조를 먼저 세운다. 아래 두 개는 **부재 단언**이고, 부재 단언은 니들이 썩으면
+            //   조용히 초록이 된다(CLAUDE.md). 같은 파일에서 «있어야 하는 것»을 먼저 못박아야
+            //   "파일을 못 읽어서 아무것도 없다"와 "정말 없다"가 갈린다.
+            StringAssert.Contains("IsWindowOnCurrentVirtualDesktop(", probe,
+                "조회 호출이 없습니다 — 공개 COM의 그 한 슬롯이 이 라운드의 전부입니다.");
+            StringAssert.Contains("IVirtualDesktopManager", probe,
+                "COM 인터페이스 선언이 없습니다.");
+
+            StringAssert.DoesNotContain("MoveWindowToDesktop", probe,
+                "★ 창을 다른 데스크톱으로 <b>옮기는</b> 쓰기 API가 선언됐습니다 — 이 계약은 읽기 " +
+                "전용입니다. 어느 데스크톱에서 앱을 켰는지는 사용자의 결정이고, 그 슬롯은 " +
+                "이름 없는 자리표시자로만 채웁니다.");
+            StringAssert.DoesNotContain("IVirtualDesktopManagerInternal", probe,
+                "★ 비공개 API가 들어왔습니다 — 리더가 기각한 옵션 (b)의 정확한 형태입니다. " +
+                "빌드마다 IID가 바뀌어 OS 업데이트에서 깨지고, 비문서 API 누적은 백신 휴리스틱 " +
+                "위험을 키웁니다(사용자 실기는 AhnLab V3).");
+
+            // ---- (4) ★ 판정을 **값으로** 못박는다 — 특히 «모름»이 숨기지 않는가 ----
+            Assert.IsTrue(VirtualDesktopSuspendPolicy.SuspendsCharacter(VirtualDesktopMembership.OtherDesktop),
+                "다른 데스크톱에 있는데 숨지 않습니다 — 이 라운드가 한 일이 없습니다.");
+            Assert.IsFalse(VirtualDesktopSuspendPolicy.SuspendsCharacter(VirtualDesktopMembership.CurrentDesktop),
+                "현재 데스크톱에 있는데 숨습니다.");
+            Assert.IsFalse(VirtualDesktopSuspendPolicy.SuspendsCharacter(VirtualDesktopMembership.Unknown),
+                "★ <b>조회 실패가 캐릭터를 숨깁니다.</b> 이 한 줄이 이 파일 전체에서 가장 위험한 " +
+                "자리입니다 — Windows 8.1·COM 미지원 런타임·탐색기 재시작에서 캐릭터가 영영 " +
+                "안 나오고, 되돌릴 UI도 함께 사라집니다(2026-09-03 신고 \"전부 다 없어져버려서 " +
+                "다시 나오게 할 방법이 없어\"와 같은 형태).");
+            Assert.AreEqual(default(VirtualDesktopMembership), VirtualDesktopMembership.Unknown,
+                "열거형의 기본값이 Unknown이 아닙니다 — 초기화되지 않은 필드가 «다른 데스크톱»이 되면 " +
+                "그 순간 캐릭터가 숨습니다.");
+
+            // ---- (5) 판정이 실제로 캐릭터 가시성에 도달하는가 ----
+            //   "구현은 있는데 아무도 안 부른다"가 이 저장소가 반복해 겪은 조용한 실패다.
+            string agent = StripLineComments(ReadSource(Path.Combine(
+                Application.dataPath, "_Project", "Scripts", "Core", "StickmanAgent.cs")));
+            StringAssert.Contains(nameof(VirtualDesktopSuspendPolicy) + "." +
+                nameof(VirtualDesktopSuspendPolicy.SuspendsCharacter) + "(", agent,
+                "StickmanAgent가 판정을 부르지 않습니다 — 조회만 하고 아무 일도 일어나지 않습니다.");
+            StringAssert.Contains(nameof(IVirtualDesktopMembershipSource), agent,
+                "StickmanAgent가 능력 인터페이스로 물어보지 않습니다 — 그러면 macOS/모바일/테스트 " +
+                "스텁에서 캐스팅이 조용히 null이 되는 안전판도 함께 없습니다.");
+
+            string decorator = StripLineComments(
+                ReadSource(Path.Combine(PlatformRoot, "FallbackPlatformWindowService.cs")));
+            StringAssert.Contains(nameof(IVirtualDesktopMembershipSource),
+                GetBaseListOrEmpty(Path.Combine(PlatformRoot, "FallbackPlatformWindowService.cs"),
+                    "FallbackPlatformWindowService"),
+                "★ 데코레이터가 이 능력을 통과시키지 않습니다 — 실제 배선은 " +
+                "`new FallbackPlatformWindowService(new Win32WindowService())`이므로, 통과가 없으면 " +
+                "소비 측 캐스팅이 <b>항상 null</b>이 되어 이 기능이 조용히 죽습니다(이 저장소가 " +
+                "같은 형태로 네 번 당했습니다).");
+            StringAssert.Contains(contractMethods[0].Name + "()", decorator,
+                "데코레이터에 통과 메서드 본문이 없습니다.");
+
+            // ---- (6) macOS 쪽 전제가 살아 있는가 — 그쪽은 «따라붙어서» 이 축이 필요 없다 ----
+            string macSpaces = StripLineComments(ReadSource(MacSpaceBehaviorPath));
+            StringAssert.Contains("NSWindowCollectionBehaviorCanJoinAllSpaces", macSpaces,
+                "★ macOS의 .canJoinAllSpaces가 사라졌습니다 — 그 순간 macOS에도 '남의 Space에 " +
+                "남겨진다'가 생기는데, 이 라운드의 Windows 해법(스스로 숨기)은 macOS에 배선되어 " +
+                "있지 않습니다. 즉 이 항목이 «결정»이 아니라 «갭»으로 되돌아갑니다.");
+            StringAssert.DoesNotContain(nameof(IVirtualDesktopMembershipSource),
+                GetBaseListOrEmpty(MacWindowServicePath, "MacWindowService"),
+                "macOS가 가상 데스크톱 소속 계약을 달았습니다 — macOS에는 그 개념 대신 Spaces가 있고 " +
+                "이미 .canJoinAllSpaces로 해결돼 있습니다. 여기에 계약을 달면 «따라붙는데 동시에 " +
+                "숨는다»는 모순된 배선이 됩니다.");
         }
 
         // ============================================================================
@@ -2609,14 +2820,19 @@ namespace StickMate.Tests.EditMode
             }
 
             // ================= 양성 대조 — 시야가 <b>실제로</b> 넓어졌는가 =================
-            // ArmCarouselDrag는 CharacterInfoWindow.Input.cs에만 있다. 베이스 파일만 읽으면 안 보이고,
+            // ArmGridDrag는 CharacterInfoWindow.Input.cs에만 있다. 베이스 파일만 읽으면 안 보이고,
             // 표면 전체를 읽으면 보여야 한다. 이 두 줄이 없으면 위 루프는 "예전과 똑같이 좁은 시야로
             // 우연히 통과하는" 상태와 구별되지 않는다.
+            //
+            // ★ 2026-09-05 — 옛 탐침은 <c>ArmCarouselDrag</c>였다. 3컬럼 이식으로 가로 캐러셀이
+            //   세로 격자가 되면서 그 이름이 사라졌고 <b>탐침만 썩어</b> "판독기가 조각을 못 본다"는
+            //   거짓 빨강이 났다. 니들을 쓰면 그것이 실재하는지를 같은 테스트 안에서 못박아야 한다 —
+            //   아래 두 줄이 정확히 그 대조다(베이스에는 없다 + 표면에는 있다).
             string infoWindow = Path.Combine(root, "Interaction", "CharacterInfoWindow.cs");
-            Assert.IsFalse(ReadSource(infoWindow).Contains("private void ArmCarouselDrag("),
-                "양성 대조 전제가 깨졌습니다 — ArmCarouselDrag가 베이스 파일로 돌아왔습니다. " +
+            Assert.IsFalse(ReadSource(infoWindow).Contains("private void ArmGridDrag("),
+                "양성 대조 전제가 깨졌습니다 — ArmGridDrag가 베이스 파일로 돌아왔습니다. " +
                 "조각에만 있는 다른 이름으로 탐침을 바꾸십시오.");
-            StringAssert.Contains("private void ArmCarouselDrag(",
+            StringAssert.Contains("private void ArmGridDrag(",
                 SourceConstantReader.ReadSurfaceText(infoWindow),
                 "양성 대조 실패 — 표면 판독기가 partial 조각을 보지 못합니다. 이 감사는 다음 분할에서 " +
                 "또 눈이 멉니다.");
@@ -4028,12 +4244,21 @@ namespace StickMate.Tests.EditMode
                 "false가 되어 대장은 초록인 채로 아무것도 못 봅니다.");
 
             // 접두사 판정이 접두사와 부분일치를 구분하는가.
-            Assert.IsTrue("미해결_Windows에는_가상데스크톱_동행_배선이_없다"
+            // ★ 2026-09-05 — 표본을 갈아 끼웠다. 예전 표본
+            //   "미해결_Windows에는_가상데스크톱_동행_배선이_없다"는 그날 M-8 판정으로 승격되어
+            //   **이제 이 파일에 존재하지 않는 이름**이었다. 죽은 이름을 표본으로 두면 이 네거티브
+            //   컨트롤이 «실재하는 형태»를 검사한다는 성질이 조용히 사라진다.
+            Assert.IsTrue("미해결_스토어_제출물_결손_3건이_남아_있다"
                     .StartsWith("미해결_", StringComparison.Ordinal),
                 "갭 접두사를 못 읽습니다.");
             Assert.IsFalse("전체화면_판정_디바운스가_양_플랫폼에_모두_배선되어_있다"
                     .StartsWith("미해결_", StringComparison.Ordinal),
                 "일반 검사를 갭으로 셉니다(오탐).");
+            Assert.IsFalse("결정_가상데스크톱은_Windows에서_따라붙지_않고_스스로_숨는다"
+                    .StartsWith("미해결_", StringComparison.Ordinal),
+                "★ 「결정」 항목을 갭으로 셉니다 — 그러면 의도된 차이가 러너 목록에서 갭과 같은 " +
+                "회색으로 보이고, 언젠가 누군가 '패리티 맞추기'로 되돌립니다(2026-09-05 M-7·M-8이 " +
+                "정확히 그 위험을 안고 승격된 항목들이다).");
 
             // 개수 세기 도구가 실제로 세는가.
             Assert.AreEqual(2, CountOccurrences("a\n        [Test]\nb\n        [Test]\n", "\n        [Test]"),

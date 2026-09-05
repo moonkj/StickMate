@@ -410,9 +410,11 @@ namespace StickMate.Tests.PlayMode
         public IEnumerator 착용상태를_기본차림으로_되돌린다()
         {
             StickMate.Core.EquipmentModel.ResetForTesting();
-            // ★ ResetForTesting은 <b>조용하다</b>(이벤트를 안 흘린다). 그것만 부르면 모델은 기본
-            //   차림인데 계층에는 직전 차림의 선이 그대로 남는다 — 다음 사람이 «벗겼는데 선이 있다»를
-            //   보게 되는 자리다. 씬을 다시 로드하는 테스트는 우연히 무사하지만 그 우연에 기대지 않는다.
+            // ★ 2026-09-05 정정 — ResetForTesting은 <b>더 이상 조용하지 않다</b>. 이 파일이 신고한
+            //   결함(«모델은 기본 차림인데 계층에는 직전 차림의 선이 남는다»)이 모델 쪽에서 고쳐져
+            //   이제 스스로 착용 변경을 흘린다(Core/EquipmentModel.ResetForTesting 문서).
+            //   아래 한 줄은 그래서 <b>이중 안전장치</b>다 — 통지가 다시 사라져도 이 프로브만은
+            //   다음 사람에게 낡은 계층을 물려주지 않는다. 구독자는 서명만 무효화하므로 두 번 와도 같다.
             StickMate.Core.StickmanEventBus.RaiseCharacterEquipmentChanged();
             yield return null;
         }
@@ -501,16 +503,21 @@ namespace StickMate.Tests.PlayMode
             //      모델에게 묻는다(<c>FirstOwnedItemIndex</c> — 카테고리 토글이 쓰는 바로 그 경로다).
             //      ★ <b>레벨을 올리지 않는다</b>: 진행도는 더티 플래그를 세우는 <b>디스크 저장 대상</b>이라
             //        계측기가 사용자의 저장 파일을 건드리게 된다. 착용은 그 목록에 없다.
-            //      ★ <b>ResetForTesting으로 번호를 알아내지 않는다</b>: 그것은 이벤트를 안 흘리므로
-            //        모델만 바뀌고 계층은 저장 파일 차림 그대로 남는다. 그 상태에서 «기본 차림을
-            //        걸친다»고 하면 TryWear가 «이미 그 번호»라며 false를 돌려주고 재구성이 안 일어난다 —
+            //      ★ <b>ResetForTesting으로 번호를 알아내지 않는다</b>: 그것이 되돌리는 것은 맨몸이 아니라
+            //        <b>기본 차림</b>(모자/안경 착용)이다. 그 값을 «걸칠 수 있는 첫 아이템»으로 읽으면
+            //        요구 레벨 표와 무관한 번호를 쓰게 되고, 그 상태에서 «기본 차림을 걸친다»고 하면
+            //        TryWear가 «이미 그 번호»라며 false를 돌려줘 재구성이 안 일어난다 —
             //        맨몸을 잰다고 믿으면서 남의 차림을 재게 된다.
+            //        (2026-09-05 이전에는 «이벤트를 안 흘려서»가 이 문단의 이유였다. 그쪽은 고쳐졌고,
+            //         위 결론은 여전히 유효하다 — 이유만 바뀌었다.)
             var headSlot = StickMate.Core.EquipmentSlot.Head;
             var eyesSlot = StickMate.Core.EquipmentSlot.Eyes;
 
             // ---- 3단계 실측: 맨몸 -> +모자 -> +안경. 개수를 적는 대신 <b>차분</b>으로 얻는다.
             StripAll(config);
-            // 모델과 계층이 어긋난 채로 들어왔을 수 있으므로(위 문단) 재구성을 <b>한 번 강제</b>한다.
+            // 모델과 계층이 어긋난 채로 들어왔을 수 있으므로 재구성을 <b>한 번 강제</b>한다 —
+            // StripAll은 TryWear를 쓰므로 「이미 벗은 칸」에서는 아무것도 흘리지 않고,
+            // 저장 복원(RestoreFromSave)은 지금도 조용하다. 즉 이 줄은 아직 값을 한다.
             StickMate.Core.StickmanEventBus.RaiseCharacterEquipmentChanged();
             yield return SettleAccessories();
             var bare = NamedLines(agent, "맨몸");

@@ -163,8 +163,13 @@ namespace StickMate.Platform
         /// 토글 항목에 고정 문구를 쓰면 사용자가 지금 어느 쪽인지 알 수 없다(원칙 1의 정신:
         /// 표시된 것과 실제가 갈라지면 안 된다).
         /// </summary>
-        /// <param name="characterHidden">지금 캐릭터가 <b>사용자 직접 숨김</b> 상태인가
-        /// (<c>StickmanAgent.IsUserHiddenOnly</c> 축). 전체화면 자동 숨김은 이 축이 아니다.</param>
+        /// <param name="characterHidden">지금 <b>사용자 직접 숨김 축(축 2)</b>이 켜져 있는가
+        /// (<c>StickmanAgent.IsUserHidden</c>). 전체화면 자동 숨김(축 1)도, 다른 가상 데스크톱(축 4)도
+        /// 이 축이 아니다.
+        /// <para>★ 2026-09-05 정정 — 예전에는 <c>IsUserHiddenOnly</c>라고 적혀 있었다. 그 값은
+        /// 「축 2<b>만</b>으로 숨었는가」라 축 1·축 4가 함께 켜지면 <b>false</b>이고, 그러면 사용자가
+        /// 이미 숨겨 둔 상태에서 글자가 「캐릭터 숨기기」로 나온다. <b>토글 글자는 그 토글이 소유한
+        /// 축에서만 나와야 한다</b> — 이 항목이 부르는 것은 <c>SetUserHidden(!_userHidden)</c>이다.</para></param>
         public static string LabelFor(TrayMenuCommand command, bool characterHidden)
         {
             switch (command)

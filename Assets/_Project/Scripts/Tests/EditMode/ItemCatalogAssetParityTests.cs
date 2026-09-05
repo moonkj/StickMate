@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using NUnit.Framework;
 using StickMate.Core;
@@ -31,6 +33,9 @@ namespace StickMate.Tests.EditMode
     ///      그 라운드가 "전환"이 아니라 "동작 변경"이 된다.
     ///  (5) <b>에셋 오염 금지</b>: 런타임이 들고 다니는 좌표 배열이 임포트된 에셋의 배열과 같은
     ///      인스턴스면, 누가 한 칸만 써도 에디터에서 .asset 파일이 조용히 더러워진다.
+    ///  (6) <b>팩 소속·등급 선언</b>(2026-09-05 security S-13): <c>cohortId</c>/<c>declaredRarity</c>가
+    ///      에셋 → 카탈로그 → 골든까지 같은 값으로 도착하는가. 이 셋 중 어디가 끊겨도
+    ///      <b>기본 42종은 전부 기본값</b>이라 아무 초록도 갈라지지 않는다 — 팩이 와야 증상이 난다.
     ///
     /// ============================================================================
     /// 네거티브 컨트롤
@@ -155,6 +160,14 @@ namespace StickMate.Tests.EditMode
                 Assert.AreEqual(def.itemIndex, entry.ItemIndex, $"{where} 자리 번호");
                 Assert.AreEqual(ItemCategory.Equipment, entry.Category, $"{where} 항목 종류");
 
+                // ★ 2026-09-05 security S-13 — 이 두 줄이 없던 동안 팩 소속·등급 선언은
+                //   에셋에서 카탈로그로 넘어가지 않아도 어떤 초록도 갈라지지 않았다.
+                Assert.AreEqual(def.cohortId, entry.CohortId,
+                    $"{where} 코호트 — 에셋이 적은 모집단과 카탈로그가 실은 모집단이 다릅니다. " +
+                    "이게 어긋나면 팩을 산 사람이 아니라 안 산 사람의 등급이 미끄러집니다.");
+                Assert.AreEqual(def.declaredRarity, entry.Declared,
+                    $"{where} 등급 선언 — 에셋의 선언과 카탈로그가 실은 선언이 다릅니다.");
+
                 Assert.IsNotNull(entry.Icon, $"{where} 아이콘이 비었습니다.");
                 Assert.AreEqual(def.icon.Length, entry.Icon.Length, $"{where} 아이콘 조각 수");
 
@@ -261,7 +274,124 @@ namespace StickMate.Tests.EditMode
             }
         }
 
+        // ==================== (6) S-13 — 골든이 코호트·등급을 본다 ====================
+
+        /// <summary>
+        /// ★ security 발견 S-13(2026-09-05): 골든과 파리티 감사가 <c>cohortId</c>·<c>declaredRarity</c>를
+        /// <b>한 번도 보지 않았다</b>. 그래서 "팩 아이템을 기본 코호트로 실어 버렸다" 같은 오기입이
+        /// 골든을 <b>한 글자도</b> 흔들지 않았다.
+        ///
+        /// <para><b>기대값의 출처가 다르다</b>는 것이 이 테스트의 전부다 —
+        /// 기대값은 <c>.asset</c> 필드에서, 실측값은 <b>디스크의 골든 비트</b>에서 온다.
+        /// <see cref="ItemCatalogDigest.Build"/>를 양쪽에 쓰면 그 함수가 틀어질 때 둘이 함께 틀어져
+        /// <b>아무것도 못 잰다</b>(TEAM.md "생성기와 검사기가 같이 틀린다").</para>
+        /// </summary>
+        [Test]
+        public void 골든이_적은_코호트와_등급이_에셋이_말하는_값과_같다()
+        {
+            Dictionary<string, string> byId = ReadGoldenItemLines();
+
+            foreach (AccessoryDefSO def in LoadDefs())
+            {
+                Assert.IsTrue(byId.TryGetValue(def.itemId, out string line),
+                    $"골든에 '{def.itemId}' 줄이 없습니다 — 골든이 낡았습니다(재생성 필요).");
+
+                Assert.AreEqual(def.cohortId.ToString(CultureInfo.InvariantCulture),
+                    ReadToken(line, ItemCatalogDigest.CohortToken),
+                    $"[{def.itemId}] 골든의 코호트가 에셋과 다릅니다.\n  골든 줄: {line}");
+                Assert.AreEqual(def.declaredRarity.ToString(),
+                    ReadToken(line, ItemCatalogDigest.RarityToken),
+                    $"[{def.itemId}] 골든의 등급 선언이 에셋과 다릅니다.\n  골든 줄: {line}");
+            }
+        }
+
+        /// <summary>양성/음성 대조 — 위 테스트의 <b>계측기</b>가 살아 있는가.
+        /// 토큰 판독기가 늘 같은 값을 뱉거나 늘 null을 뱉으면 위 테스트는 영원히 초록이다.</summary>
+        [Test]
+        public void 토큰_판독기가_값이_다르면_다르게_읽는다()
+        {
+            const string head = "  item id=x cat=Equipment slot=Head idx=0 lv=1 invocable=1";
+            string basic = head + ItemCatalogDigest.CohortToken + "0" + ItemCatalogDigest.RarityToken + "Derived";
+            string pack = head + ItemCatalogDigest.CohortToken + "3" + ItemCatalogDigest.RarityToken + "Rare";
+
+            // 양성 — 서로 다른 두 줄을 실제로 다르게 읽는다.
+            Assert.AreEqual("0", ReadToken(basic, ItemCatalogDigest.CohortToken));
+            Assert.AreEqual("Derived", ReadToken(basic, ItemCatalogDigest.RarityToken));
+            Assert.AreEqual("3", ReadToken(pack, ItemCatalogDigest.CohortToken));
+            Assert.AreEqual("Rare", ReadToken(pack, ItemCatalogDigest.RarityToken));
+
+            // 음성 — 토큰이 없는 줄에서는 null이다(있는데 못 읽는 것과 구분된다).
+            Assert.IsNull(ReadToken(head, ItemCatalogDigest.CohortToken));
+            Assert.IsNull(ReadToken(head, ItemCatalogDigest.RarityToken));
+
+            // 골든 비교기도 이 토큰의 차이에 실제로 반응하는가 — 이게 아니면 골든에 토큰만 있고
+            // 아무도 안 보는 상태가 된다.
+            Assert.IsNotNull(ItemCatalogDigest.FirstDifference(basic, pack),
+                "골든 비교기가 코호트/등급 차이를 못 봅니다 — 토큰을 적어도 소용이 없습니다.");
+        }
+
+        /// <summary>다이제스트가 <b>모든 항목</b>에 두 토큰을 적는가. 하나라도 빠지면 그 항목은
+        /// 골든 대조에서 통째로 사각지대다.</summary>
+        [Test]
+        public void 다이제스트가_두_토큰을_모든_항목에_적는다()
+        {
+            string digest = ItemCatalogDigest.Build();
+            int expected = ItemCatalog.EquipmentCount + ItemCatalog.ActionCount;
+
+            Assert.AreEqual(expected, CountOccurrences(digest, ItemCatalogDigest.CohortToken),
+                "코호트 토큰 개수가 항목 수와 다릅니다 — 일부 항목의 팩 소속이 골든에서 빠집니다.");
+            Assert.AreEqual(expected, CountOccurrences(digest, ItemCatalogDigest.RarityToken),
+                "등급 토큰 개수가 항목 수와 다릅니다.");
+
+            // 계측기 교정 — 이 세는 함수가 "무엇이든 항목 수만큼 센다"면 위 두 줄은 의미가 없다.
+            Assert.AreEqual(0, CountOccurrences(digest, " 이토큰은_다이제스트에_없다="),
+                "존재하지 않는 토큰이 0건이 아닙니다 — 개수 세는 함수를 신뢰할 수 없습니다.");
+            Assert.Greater(expected, 0, "항목이 0개면 위 단언은 0==0으로 아무것도 지키지 않습니다.");
+        }
+
         // ==================== 도구 ====================
+
+        /// <summary>골든에서 <c>item id=</c> 줄만 <c>id -&gt; 줄</c>로. <b>디스크의 비트</b>가 출처다.</summary>
+        private static Dictionary<string, string> ReadGoldenItemLines()
+        {
+            string goldenPath = Path.Combine(
+                Directory.GetParent(Application.dataPath).FullName, ItemCatalogDigest.GoldenAssetPath);
+            Assert.IsTrue(File.Exists(goldenPath), $"골든 스냅샷이 없습니다: {ItemCatalogDigest.GoldenAssetPath}");
+
+            var byId = new Dictionary<string, string>();
+            foreach (string raw in File.ReadAllText(goldenPath).Replace("\r\n", "\n").Split('\n'))
+            {
+                string line = raw.TrimEnd();
+                string id = ReadToken(line, IdToken);
+                if (id != null) byId[id] = line;
+            }
+
+            Assert.Greater(byId.Count, 0, "골든에서 항목 줄을 한 줄도 못 찾았습니다 — 판독기가 죽었습니다.");
+            return byId;
+        }
+
+        /// <summary>다이제스트 항목 줄의 첫 토큰. <see cref="ItemCatalogDigest.CohortToken"/>들과 달리
+        /// 프로덕션 상수가 없어 여기서만 쓰는 값이고, 위 <c>Assert.Greater</c>가 이 니들이 죽으면
+        /// <b>시끄럽게</b> 빨개지게 한다.</summary>
+        private const string IdToken = "item id=";
+
+        private static string ReadToken(string line, string token)
+        {
+            if (line == null) return null;
+            int at = line.IndexOf(token, StringComparison.Ordinal);
+            if (at < 0) return null;
+            int from = at + token.Length;
+            int to = line.IndexOf(' ', from);
+            return to < 0 ? line.Substring(from) : line.Substring(from, to - from);
+        }
+
+        private static int CountOccurrences(string haystack, string needle)
+        {
+            int n = 0, at = 0;
+            while ((at = haystack.IndexOf(needle, at, StringComparison.Ordinal)) >= 0) { n++; at += needle.Length; }
+            return n;
+        }
+
 
         /// <summary>AccessoryShapeCatalogTests와 같은 표준 리그(실제 캐릭터 비율에서 뽑은 값).
         /// hidesHair 판정은 리그 크기와 무관하지만(무한대인지 아닌지만 본다), 같은 리그를 써서

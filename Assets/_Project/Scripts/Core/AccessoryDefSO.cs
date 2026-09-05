@@ -19,8 +19,11 @@ namespace StickMate.Core
         /// <summary>해금 상태에서 이 조각을 칠할 색(이미 <c>Tinted()</c>가 역할에 맞는 색을 채운 결과값).</summary>
         public Color color;
 
-        /// <summary>0 = 주색, 1 = 보조색. 런타임 구조체는 byte지만 에셋에는 int로 눕힌다 —
-        /// YAML에서 byte/int는 같은 정수로 적히고, int 쪽이 인스펙터/JSON 도구와 마찰이 없다.</summary>
+        /// <summary>색 역할(<see cref="AccessoryTone"/>: 0 주색(재질색 M) / 1 보조색(M2) / 2 그늘 / 3 하이라이트 / 4 잉크 / 5 잉크 대비색).
+        /// 런타임 구조체는 byte지만 에셋에는 int로 눕힌다 — YAML에서 byte/int는 같은 정수로 적히고,
+        /// int 쪽이 인스펙터/JSON 도구와 마찰이 없다.
+        /// <para>★ 도메인은 <c>AccessoryShapeBuilder.Shape.Tone</c>과 <b>같은 표</b>다(2026-09-05 계약 v2).
+        /// 그 전에는 여기가 0/1, 몸이 0/1/2로 갈라져 있어 한쪽만 늘리면 폴백이 조용히 색을 틀렸다.</para></summary>
         public int tone;
     }
 
@@ -131,7 +134,8 @@ namespace StickMate.Core
         /// <summary>윤곽선 아래에 <b>채움 면</b>을 한 장 깔 것인가(안에 있는 것을 가려야 하는 물건).</summary>
         public bool filled;
 
-        /// <summary>0 = 주색, 1 = 보조색, 2 = 그림자 톤. <b>색이 아니라 역할</b>을 나른다.</summary>
+        /// <summary>색 역할 — <see cref="AccessoryTone"/>(0 주색 / 1 보조색 / 2 그늘 / 3 하이라이트).
+        /// <b>색이 아니라 역할</b>을 나른다.</summary>
         public int tone;
 
         /// <summary>걸을 때 흔들리는 점 구간의 시작(-1이면 흔들지 않는다).</summary>
@@ -143,8 +147,83 @@ namespace StickMate.Core
         /// 0이면 기울기 자체가 없고, 그때는 로컬 벡터 목록도 스트림에 없다.</summary>
         public float swingDegrees;
 
+        // ---- 계약 v2 (2026-09-05, 인계본 이식 · R16 정정 · R17 선반영). 전부 <b>0/false 가 곧 v1과 같은 뜻</b>이라
+        //      구 에셋은 키가 없어도 그대로 옳다(Unity는 키가 없으면 C# 기본값을 둔다). 팩이 이 필드를 쓰면
+        //      StickPackManifestSO.SchemaVersion 2를 요구해야 한다 — v1 앱은 surfaces/strokeInR 을 몰라
+        //      반쯤 읽는다(카드 전용 조각을 몸에 그리거나 알파 없이 불투명으로 그린다).
+
+        /// <summary>표면 비트(<see cref="AccessorySurface"/>). <b>0 = Body|Card</b>(<see cref="AccessorySurfaces.Effective"/>).</summary>
+        public int surfaces;
+
+        /// <summary>획 배수(인계본 ×0.7~×1.5, 연속). 0 = ×1.0. 카드 획 = 아이콘 획 × 이 값.</summary>
+        public float strokeMult;
+
+        /// <summary>몸 표면의 <b>명목</b> 획 폭(머리 반경 R 배수, 배수가 이미 곱해진 값). 0 = v1 규칙(비례 획).
+        /// 실폭은 액세서리 하한(<see cref="StickConfig.MinAccessoryStrokeScreenPoints"/>)에 걸린다.</summary>
+        public float strokeInR;
+
+        /// <summary>윤곽/선을 그리지 않는다(인계본 F/CF: 채움만).</summary>
+        public bool noStroke;
+
+        /// <summary>채움 알파(인계본 fillOpacity, 그라디언트는 평균 0.21 / 망토 0.81). 0 = 미설정
+        /// (<see cref="AccessoryCardWash.GradientMeanAlpha"/>). 카드는 바탕 위에 사전 합성하고, 몸은 런타임 알파로 그린다.</summary>
+        public float alpha;
+
+        /// <summary>선 알파(인계본 strokeOpacity · 하이라이트 0.42). 0 = 1.</summary>
+        public float lineAlpha;
+
+        /// <summary>이 조각이 <b>얹히는</b> 조각 = 같은 아이템 목록에서 이만큼 <b>앞</b>의 조각(0 = 없음/바탕).
+        /// 카드 사전 합성의 밑색이 여기서 온다(몸은 런타임 알파라 필요 없다 — §14-6 #4).</summary>
+        public int underBack;
+
+        /// <summary>조각의 몸 층(<see cref="AccessoryPieceLayer"/>: 0 슬롯 기본 · 1 몸 뒤 · 2 몸통 앞). 망토 칼라·걸쇠 = 2(§14-6 #8),
+        /// R19 모자 뒤층/배낭 뒷판 = 1. 카드는 층을 모른다(목록 순서로 겹친다). 에셋에는 int 로 눕힌다(인스펙터/JSON 마찰 없음).</summary>
+        public int layer;
+
+        /// <summary>이 조각의 좌표는 <b>이미 몸 좌표계</b>라 아이템 몸 변형(배율·오프셋·반전)을 걸지 않는다 —
+        /// 외알안경 반대쪽 눈(R17 E-1)처럼 몸에서만 존재하는 조각.</summary>
+        public bool bodyFixed;
+
+        // ★ 2026-09-05 제거 — bodyAlpha · fixedFill · fixedLine (계약 v2 초안). 139조각 실사용 0(game-architect I-22/I-23)이었고,
+        //   fixedFill 은 팩이 WornColor 안전장치(채도·명도 상자)를 우회해 임의색을 몸에 올릴 수 있는 유일한 통로라 출하 전에 닫았다.
+        //   이관: 「몸만 불투명」은 alpha = 1(채움은 이제 전부 불투명), 고정색은 역할 0/1(재질색 M/M2 — 카탈로그 색이 곧 재질색)로 적는다.
+        //   에셋에 세 키가 남아 있어도 Unity 는 모르는 키를 무시하므로 읽기에는 해가 없다 — 기본 16종 에셋은 이 라운드가 재생성해 키가 없다.
+
         /// <summary>위 문법의 스트림.</summary>
         public float[] terms;
+    }
+
+    /// <summary>
+    /// 아이템 단위 <b>몸 표면 파라미터</b>(계약 v2 · R16 그룹 알파 · R17 모자 맞춤/외알안경 반전). 카드는 모른다.
+    /// 값의 출처는 둘 — 코드 자리(HEAD/EYES/BACK)는 <c>AccessoryShapeBuilder.WornTransformCode</c>(생성 표),
+    /// 에셋 자리(NECK)는 <see cref="AccessoryDefSO"/>의 <c>worn*</c> 필드. 소비자는 <c>AccessoryShapeBuilder.WornTransformOf</c> 하나다.
+    /// </summary>
+    public readonly struct AccessoryWornTransform
+    {
+        /// <summary>그룹 알파(0 = 1). 등 아이콘 40%(날개·배낭).</summary>
+        public readonly float GroupAlpha;
+        /// <summary>머리 중심 기준 배율 u(0 = 1). 모자 맞춤(R17 H-2: 카드 배율 ×1.15~1.60).</summary>
+        public readonly float Scale;
+        /// <summary>세로 추가 압축 ky(0 = 1). y 배율 = Scale × ScaleY. 털모자 0.80(초상화 액자 2.551 R 제약, §14-10-1).</summary>
+        public readonly float ScaleY;
+        /// <summary>세로 오프셋(R 배수, 배율을 건 뒤 더한다).</summary>
+        public readonly float OffsetYInR;
+        /// <summary>좌우 거울 반전(몸 표면만). 외알안경 오른쪽 착용(R17 E-1).</summary>
+        public readonly bool MirrorX;
+
+        public AccessoryWornTransform(float groupAlpha, float scale, float scaleY, float offsetYInR, bool mirrorX)
+        {
+            GroupAlpha = groupAlpha;
+            Scale = scale;
+            ScaleY = scaleY;
+            OffsetYInR = offsetYInR;
+            MirrorX = mirrorX;
+        }
+
+        public static AccessoryWornTransform None => default;
+
+        /// <summary>점열을 건드릴 변형이 하나라도 있는가(그룹 알파는 색이라 여기 안 든다).</summary>
+        public bool IsSet => (Scale > 0f && Scale != 1f) || (ScaleY > 0f && ScaleY != 1f) || OffsetYInR != 0f || MirrorX;
     }
 
     /// <summary>기저 번호 -> 실제 치수. 리그를 아는 쪽(<c>Interaction</c>)이 채워서 넘긴다 —
@@ -456,6 +535,29 @@ namespace StickMate.Core
         /// </summary>
         [Header("몸에 붙는 형상 (항 스트림 — AccessoryWornShapeData 참고)")]
         public AccessoryWornShapeData[] wornShapes;
+
+        // ---- 아이템 단위 몸 표면 파라미터(계약 v2 · R16/R17). 0/false = 변형 없음. 카드는 이 넷을 모른다.
+        //      코드가 좌표를 갖는 자리(HEAD/EYES/BACK)는 AccessoryShapeBuilder.WornTransform 표가 같은 값을 갖는다.
+
+        [Header("몸 표면 파라미터 (0 = 없음)")]
+        [Tooltip("등 아이콘 40% 같은 그룹 알파. 조각 알파에 곱해진다. 0 = 1.")]
+        public float wornGroupAlpha;
+
+        [Tooltip("몸 표면에서 머리 중심을 축으로 조각을 키우는 배율(모자 크기 맞춤, R17). 0 = 1.")]
+        public float wornScale;
+
+        [Tooltip("몸 표면 세로 추가 압축(y 배율 = wornScale × 이 값, R17 털모자 0.80). 0 = 1.")]
+        public float wornScaleY;
+
+        [Tooltip("몸 표면 세로 오프셋(머리 반경 R 배수, R17).")]
+        public float wornOffsetYInR;
+
+        [Tooltip("몸 표면에서 좌우 거울 반전(외알안경 오른쪽 착용, R17). 카드는 파일 그대로.")]
+        public bool wornMirrorX;
+
+        // ---- 재질색(사용자 지시 2026-09-05 "각각 아이템들의 색상을 채워 넣어야함")은 <b>별도 칸이 아니다</b> — docs/EQUIPMENT_PALETTE.md §2:
+        //      M = icon[].color(tone 0) = entry.PrimaryColor, M2 = tone 1 = entry.SecondaryColor. 카드·몸이 그 한 원천을 읽는다.
+        //      칸을 하나 더 두면 같은 아이템의 색 원천이 둘이 된다(2026-08-30 「카드엔 색이 있는데 착용하면 없다」의 뿌리).
 
         /// <summary>에셋에 누운 값 -> 런타임 구조체 배열. <b>배열을 복사</b>하는 이유는, 복사하지 않으면
         /// 런타임이 들고 있는 <c>float[]</c>가 곧 임포트된 에셋의 배열이라 누가 한 칸이라도 쓰면

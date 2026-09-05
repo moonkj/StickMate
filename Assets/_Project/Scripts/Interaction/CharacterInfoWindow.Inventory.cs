@@ -295,12 +295,13 @@ namespace StickMate.Interaction
 
         // -------------------- 보관함 페이지 --------------------
 
-        private void BuildInventoryPage(RectTransform right)
+        private void BuildInventoryPage(RectTransform body)
         {
             var pageGo = new GameObject("InventoryPage", typeof(RectTransform));
-            pageGo.transform.SetParent(right, false);
+            pageGo.transform.SetParent(body, false);
             var page = pageGo.GetComponent<RectTransform>();
-            UiChrome.PlaceTopLeft(page, 0f, 0f, RightWidth, BodyHeight);
+            // ★ 3컬럼은 카드 탭의 것이다 — [보관함]은 본문 <b>전체 폭</b>을 쓴다.
+            UiChrome.PlaceTopLeft(page, 0f, 0f, PanelWidth, BodyHeight);
             _inventoryPage = pageGo;
 
             float rowStep = InventoryRowHeight + InventoryRowGap;
@@ -309,7 +310,7 @@ namespace StickMate.Interaction
             {
                 Image surface = UiChrome.AddSurface(page, "InvRow" + i, UiChrome.CardSurface, UiChrome.RadiusChip);
                 var rt = surface.rectTransform;
-                UiChrome.PlaceTopLeft(rt, RightPadX, SectionsTopY - i * rowStep, InventoryListWidth, InventoryRowHeight);
+                UiChrome.PlaceTopLeft(rt, PagePadX, PageTopY - i * rowStep, InventoryListWidth, InventoryRowHeight);
                 Image outline = UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
 
                 // 장비/행동을 완전히 같은 행 모양으로 그린다(디자이너 확정) —
@@ -365,35 +366,35 @@ namespace StickMate.Interaction
 
             // 페이지 버튼 — 휠에 기대지 않는다(클래스 문서 참고: 우리 창은 앱이 활성일 때만 휠을 받는다).
             float listHeight = InventoryVisibleRows * rowStep - InventoryRowGap;
-            float railX = RightPadX + InventoryListWidth + UiChrome.Space2;
+            float railX = PagePadX + InventoryListWidth + UiChrome.Space2;
 
-            _pageUpRect = BuildPagerButton(page, "PageUp", "▲", railX, SectionsTopY, -1, "pageUp",
+            _pageUpRect = BuildPagerButton(page, "PageUp", "▲", railX, PageTopY, -1, "pageUp",
                 out _pageUpOutline, out _pageUpLabel);
             _pageDownRect = BuildPagerButton(page, "PageDown", "▼", railX,
-                SectionsTopY - (listHeight - InventoryRailWidth), +1, "pageDown",
+                PageTopY - (listHeight - InventoryRailWidth), +1, "pageDown",
                 out _pageDownOutline, out _pageDownLabel);
 
             _pageIndicator = Label(page, "PageIndicator", UiChrome.FontCaption, TextAnchor.MiddleCenter,
-                UiChrome.InkMeta, railX, SectionsTopY - (InventoryRailWidth + UiChrome.Space2),
+                UiChrome.InkMeta, railX, PageTopY - (InventoryRailWidth + UiChrome.Space2),
                 InventoryRailWidth, InventoryPageIndicatorHeight, "1 / 1");
 
             Image detail = UiChrome.AddSurface(page, "InventoryDetail", UiChrome.SubtleSurface, UiChrome.RadiusCard);
             var drt = detail.rectTransform;
-            UiChrome.PlaceTopLeft(drt, RightPadX, DetailYForTab(Tab.Inventory), RightContentWidth, DetailHeight);
+            UiChrome.PlaceTopLeft(drt, PagePadX, InventoryDetailY, PageContentWidth, InventoryDetailHeight);
             detail.raycastTarget = false;
             UiChrome.AddOutline(drt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
 
             _inventoryDetailName = Label(drt, "DetailName", UiChrome.FontTitle, TextAnchor.MiddleLeft,
-                UiChrome.TextPrimary, 15f, -14f, RightContentWidth - 30f, 17f, "—", bold: true);
+                UiChrome.TextPrimary, 15f, -14f, PageContentWidth - 30f, 17f, "—", bold: true);
 
             _inventoryDetailBody = UiChrome.AddText(drt, "DetailBody", UiChrome.FontBody, TextAnchor.UpperLeft,
                 UiChrome.TextSecondary, wrap: true);
-            UiChrome.PlaceTopLeft(_inventoryDetailBody.rectTransform, 15f, -42f, RightContentWidth - 30f, 34f);
+            UiChrome.PlaceTopLeft(_inventoryDetailBody.rectTransform, 15f, -42f, PageContentWidth - 30f, 34f);
             _inventoryDetailBody.lineSpacing = 1.6f;
 
             // 지금 파는 것은 하나도 없다 — 그 사실을 화면에서도 숨기지 않는다.
             Label(drt, "Note", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.InkMeta,
-                RightContentWidth - 215f, -DetailHeight + 26f, 200f, 14f, "지금은 파는 것이 없습니다");
+                PageContentWidth - 215f, -InventoryDetailHeight + 26f, 200f, 14f, "지금은 파는 것이 없습니다");
         }
 
         /// <summary>페이지 칩 하나. ★ 2026-09-02 — 테두리와 글리프를 <b>밖으로 내보낸다</b>.

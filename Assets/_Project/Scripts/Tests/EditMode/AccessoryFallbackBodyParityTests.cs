@@ -136,9 +136,10 @@ namespace StickMate.Tests.EditMode
             //
             // ★ 이 다섯 줄의 <b>사유가 참인지</b>를 아래 대장_5건은_전부_몸이_아랫변을_올린_결과다가
             //   매 실행 다시 잰다(핀 숫자만 믿지 않는다).
-            new Debt(EquipmentSlot.Head, AccessoryShapeBuilder.HeadFedora, Axis.AccentVertexCount, 4, 2,
-                "2026-09-03 스펙 14-1 — FedoraBand가 닫힌 채움 띠(아랫변 2 + 올린 윗변 2)가 됐다. " +
-                "폴백은 아직 아랫변 2점. 에셋 재굽기는 design-equipment 소관(리더 경유)."),
+            // ★ 2026-09-05 계약 v2 — <b>중절모 줄을 지웠다.</b> 갚아서가 아니라 <b>이 대조의 대상이 아니게 됐기 때문</b>이다:
+            //   중절모는 인계본 조각(카드 = 몸 한 벌, §14-0 #1)으로 바뀌어 v1 몸 도형(FedoraBand)이 더는 존재하지 않고,
+            //   IsHandoffItem 이 위 대조에서 건너뛴다. 잃는 것: 중절모 폴백↔몸 대조(그 폴백은 카드에서 안 뜬다).
+            //   (옛 줄: Head/HeadFedora/AccentVertexCount 몸 4 / 폴백 2 — 「FedoraBand 가 닫힌 채움 띠」)
             // ★★ 2026-09-03(R12 HEAD 이식 1단계) — <b>왕관 줄을 지웠다.</b> 갚아서가 아니라
             //    <b>이 축이 더는 그것을 못 보기 때문</b>이다. 지우지 않으면
             //    「대장_항목은_지금도_실제로_어긋난다」가 낡은 줄로 빨개진다.
@@ -307,6 +308,16 @@ namespace StickMate.Tests.EditMode
             return sink;
         }
 
+        /// <summary>★ 2026-09-05 계약 v2 — 인계본 조각(strokeInR &gt; 0)으로 그려지는 아이템. 폴백 아이콘은 <b>v1 몸 도형의
+        /// 단순화</b>이므로 인계본 아이템에서는 이 대조가 뜻을 잃는다(보조색 = 등급색 한 색, 조각 수는 인계본이 정한다).
+        /// 잃는 것: 인계본 16종의 폴백↔몸 대조. 그 16종은 폴백으로 새지 않는다(AccessoryCardIconTests).</summary>
+        private static bool IsHandoffItem(EquipmentSlot slot, int item)
+        {
+            List<AccessoryShapeBuilder.Shape> body = BodyShapes(slot, item);
+            for (int i = 0; i < body.Count; i++) if (body[i].IsHandoff) return true;
+            return false;
+        }
+
         private static ItemIconPart[] Fallback(EquipmentSlot slot, int item)
         {
             ItemIconPart[] icon = ItemCatalog.Item(slot, item).Icon;
@@ -347,6 +358,7 @@ namespace StickMate.Tests.EditMode
             {
                 for (int item = 0; item < ItemsPerSlot; item++)
                 {
+                    if (IsHandoffItem(slot, item)) continue;
                     checkedItems++;
                     List<Gap> gaps = Compare(BodyShapes(slot, item), Fallback(slot, item));
                     checkedAxes += gaps.Count;
@@ -437,6 +449,7 @@ namespace StickMate.Tests.EditMode
             {
                 for (int item = 0; item < ItemsPerSlot; item++)
                 {
+                    if (IsHandoffItem(slot, item)) continue;
                     List<AccessoryShapeBuilder.Shape> body = BodyShapes(slot, item);
                     Assert.Greater(body.Count, 0, $"{LogPrefix} {Label(slot, item)}: 몸 도형이 하나도 없습니다.");
 
@@ -446,8 +459,10 @@ namespace StickMate.Tests.EditMode
                         if (body[i].Tone == 1) accents++;
                     }
 
+                    // ★ 2026-09-05 계약 v2(R16 (h)) — 「보조색 정확히 1」은 폐지됐다. 이 전제는 v1 아이템(폴백 대조 대상)에만
+                    //   남긴다: 인계본 아이템은 위에서 건너뛰었다(IsHandoffItem). 잃는 것: 인계본 16종의 폴백↔몸 보조색 대조.
                     Assert.AreEqual(1, accents,
-                        $"{LogPrefix} {Label(slot, item)}의 몸 보조색 조각이 {accents}개입니다(규칙 3-2: 정확히 1개). " +
+                        $"{LogPrefix} {Label(slot, item)}의 몸 보조색 조각이 {accents}개입니다(v1 규칙 3-2: 정확히 1개). " +
                         "이 전제가 깨지면 폴백 대조가 무엇을 재는지 알 수 없게 됩니다.");
                 }
             }

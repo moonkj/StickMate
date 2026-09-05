@@ -48,6 +48,31 @@ public sealed class GlobalPlayModeTestIsolation
         //   수 있다. "옮기기만 하면 격리가 아니다"가 정적 상태에도 그대로 적용된다.
         ReservedEdgeProbe.ResetForTests();
 
+        // ============================================================================
+        // ★★ 2026-09-05 — 「대기 톱니」 게이트 우회 (coder-ui 라운드)
+        // ============================================================================
+        // 이날 톱니는 <b>평상시에 뜨지 않게</b> 됐다. 평소 진입점은 캐릭터 우클릭이고, 톱니는
+        // 「캐릭터가 화면에서 사라진 동안」(사용자 명시 숨김 / 가출)에만 되돌아올 문으로 나타난다.
+        //
+        // 그런데 이 어셈블리의 톱니 픽스처들(드래그 · 부채꼴 진입 · 호버 이름표 · 포스트잇 회피 ·
+        // 위치 소유권 · 배타 모달)은 전부 <b>「톱니가 보인다」를 전제로</b> 쓰였고, 그 전제는
+        // <b>그 테스트들의 주제가 아니다</b>. 여기서 게이트를 우회하지 않으면 60여 건이
+        // 「톱니를 못 찾음」이라는 <b>같은 한 가지 이유</b>로 빨개지고, 그 빨강은 각 테스트가
+        // 원래 지키던 계약에 대해 <b>아무것도 말해 주지 않는다</b>.
+        //
+        // ★★ <b>그 대신 게이트 자체는 다른 자리에서 잠긴다</b> —
+        //   Tests/EditMode/RightClickFanGateTests.대기_톱니는_사용자숨김과_가출_두_상태를_본다 가
+        //   조건식(사용자 숨김 OR 가출, 그리고 설정 토글 <b>부재</b>)을 소스에서 못박는다.
+        //   ⇒ 여기서 우회되는 것은 <b>「보이는가」의 런타임 관측 하나뿐</b>이다.
+        //
+        // ★ 게이트의 <b>런타임 거동</b>을 재는 테스트를 새로 쓴다면 그 픽스처의 SetUp에서
+        //   <c>SetStandbyGateBypassedForTests(false)</c>로 <b>스스로 되돌리고</b>, TearDown에서
+        //   다시 true로 놓아라. 그러지 않으면 그 테스트는 우회된 세상을 재게 된다.
+        StickMate.Interaction.InfoGearIconWidget.SetStandbyGateBypassedForTests(true);
+        Debug.Log("[테스트격리] 「대기 톱니」 게이트를 우회합니다 — 이 어셈블리의 톱니 픽스처들은 " +
+            "톱니가 상시로 보이던 시절에 쓰였고 그 전제는 그 테스트들의 주제가 아닙니다. " +
+            "게이트 조건식 자체는 EditMode(RightClickFanGateTests)가 소스로 잠급니다.");
+
         // ★ 2026-09-02 — 작업표시줄 자동 숨김 원복 흔적도 함께 옮긴다. PlayMode는 실제로 씬을
         // 띄우므로 ReservedBarRevealDirector의 BeforeSceneLoad 훅이 돈다. 그 훅은 기본 경로
         // (Application.persistentDataPath)의 흔적 파일을 읽고, 상황에 따라 쓴다 — 테스트가
@@ -72,6 +97,9 @@ public sealed class GlobalPlayModeTestIsolation
         // ★ 먼저 걷는다(위 RedirectSaveFile의 순서 주석과 같은 계약) — 다음 어셈블리/다음 실행에
         //   네 방향 오버라이드를 물려주지 않는다.
         ReservedEdgeProbe.ResetForTests();
+
+        // ★ 정적 우회는 도메인을 넘어 살아남는다 — 다음 어셈블리/다음 실행에 물려주지 않는다.
+        StickMate.Interaction.InfoGearIconWidget.SetStandbyGateBypassedForTests(false);
 
         CharacterSaveStore.ResetForTesting();
         ReservedBarRestoreLedger.ResetForTesting();

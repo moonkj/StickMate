@@ -90,7 +90,8 @@ namespace StickMate.Platform.Windows
     /// 멈춰 있다. 그래서 프로시저는 두 가지만 한다: <b>캐시된 bool로 메뉴를 그리고, 고른 명령을
     /// 적어 둔다.</b> 실제 배달(<see cref="StickMate.Platform.SystemTrayCommandRouter.Dispatch"/> →
     /// 씬 조회 → 기존 진입점 호출)은 다음 <see cref="Tick"/>에서, 즉 정상적인 <c>Update</c> 흐름
-    /// 위에서 일어난다. 표시 상태(<c>IsUserHiddenOnly</c>)도 <see cref="Tick"/>이 미리 캐시해 둔다.
+    /// 위에서 일어난다. 표시 상태(축 2 <c>StickmanAgent.IsUserHidden</c> — 2026-09-05에
+    /// <c>IsUserHiddenOnly</c>에서 바로잡혔다)도 <see cref="Tick"/>이 미리 캐시해 둔다.
     ///
     /// <para><b>남는 대가</b>: 메뉴가 열려 있는 동안 캐릭터가 멈춘다(중첩 루프가 프레임을 막는다).
     /// 메뉴는 순간적인 표면이라 감수한다 — 대신 그 사실을 여기 적어 둔다.</para>

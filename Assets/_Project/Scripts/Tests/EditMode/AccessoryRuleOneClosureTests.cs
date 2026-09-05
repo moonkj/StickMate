@@ -70,6 +70,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 천모자_챙의_닫힘변이_획_하나보다_길다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, AccessoryShapeBuilder.HeadCap, "천모자 챙(HatBrim) 닫힘변 ≥ 1획 — 인계본 천모자는 챙이 원문 곡선");
             AccessoryShapeBuilder.Rig rig = Rig();
             AccessoryShapeBuilder.Shape brim = AccessorySilhouetteMetrics.Find(
                 Build(rig, EquipmentSlot.Head, AccessoryShapeBuilder.HeadCap), "HatBrim");
@@ -125,6 +126,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 날개_두_깃이_좌우_한_쌍이다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackWings, "v1 날개 깃(WingFeatherA/B·WingSpine) 규칙 — 좌우 쌍·한 점 합류·규칙 1. 인계본 날개는 원문 기하(B0/B1…)");
             AccessoryShapeBuilder.Rig rig = Rig();
             foreach (int item in new[]
             {
@@ -152,6 +154,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 날개_두_깃과_등뼈가_한_점에서_만난다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackWings, "v1 날개 깃(WingFeatherA/B·WingSpine) 규칙 — 좌우 쌍·한 점 합류·규칙 1. 인계본 날개는 원문 기하(B0/B1…)");
             AccessoryShapeBuilder.Rig rig = Rig();
             foreach (int item in new[]
             {
@@ -177,6 +180,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 날개_두_깃이_규칙_1을_지킨다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackWings, "v1 날개 깃(WingFeatherA/B·WingSpine) 규칙 — 좌우 쌍·한 점 합류·규칙 1. 인계본 날개는 원문 기하(B0/B1…)");
             AccessoryShapeBuilder.Rig rig = Rig();
             foreach (int item in new[]
             {
@@ -203,6 +207,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 배낭_어깨끈이_획_예산을_지킨다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackBackpack, "v1 배낭 끈(PackStrap/PackBody) 규칙 — 끈 획 예산·끝점 = 몸 꼭짓점. 인계본 배낭은 원문 기하");
             AccessoryShapeBuilder.Rig rig = Rig();
             AccessoryShapeBuilder.Shape strap = AccessorySilhouetteMetrics.Find(
                 Build(rig, EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackBackpack), "PackStrap");
@@ -223,6 +228,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 배낭_어깨끈의_끝점은_배낭_몸의_꼭짓점_그_자체다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackBackpack, "v1 배낭 끈(PackStrap/PackBody) 규칙 — 끈 획 예산·끝점 = 몸 꼭짓점. 인계본 배낭은 원문 기하");
             AccessoryShapeBuilder.Rig rig = Rig();
             List<AccessoryShapeBuilder.Shape> pack =
                 Build(rig, EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackBackpack);

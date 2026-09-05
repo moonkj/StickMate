@@ -11,10 +11,10 @@ namespace StickMate.Platform
     /// ============================================================================
     /// <list type="number">
     ///  <item><b>상단</b>: 어떤 표면도 <c>상단 예약 인셋 + 화면 여백</c>보다 위로 못 간다. <b>강제.</b></item>
-    ///  <item><b>하단</b>: <b>강제하지 않는다.</b> Dock은 자동 숨김이 흔하고, 이 앱은 Dock 위를
-    ///        <b>의도적으로</b> 캐릭터 발판으로 쓴다(<c>Core/DockGeometry</c>). 두 띠를 같은 규칙으로
-    ///        묶으면 발판 설계와 정면충돌한다. 창이 Dock을 덮는 것은 macOS의 모든 앱이 하는 표준
-    ///        동작이기도 하다. (Windows 작업표시줄은 사정이 달라 <b>재검토 대상</b>이다 — 41-13.)</item>
+    ///  <item><b>하단</b>: <b>플랫폼마다 다르다.</b> macOS는 <b>강제하지 않고</b>, Windows는
+    ///        <b>강제한다</b>. ★ 이것은 패리티 결함이 아니라 <b>2026-09-05 리더 판정</b>이다 —
+    ///        아래 «하단 축은 왜 갈라지는가» 절과 <see cref="EnforcesBottomReservedBand"/>를
+    ///        읽지 않고 "양쪽을 같게 맞추자"로 되돌리지 마라.</item>
     ///  <item><b>좌·우</b>: <b>둘 다 강제.</b> 세로축의 비대칭(하단 면제)이 가로축에 없는 이유는
     ///        <b>가로에는 발판이 없기 때문</b>이다 — 캐릭터가 좌/우 도킹 작업표시줄이나 좌/우 Dock
     ///        위를 걷는 설계가 존재하지 않는다. 그래서 좌·우 예약 띠는 순수한 침해 금지 구역이다.</item>
@@ -42,6 +42,30 @@ namespace StickMate.Platform
     ///      "메뉴바를 21pt 덮는다"를 이 머신에서 재현할 방법이 없었다. 실기에서만 드러나는 회귀는
     ///      다음에도 실기에서만 드러난다.
     ///
+    /// ============================================================================
+    /// ★★ 하단 축은 왜 갈라지는가 — 리더 판정 2026-09-05 (M-7)
+    /// ============================================================================
+    /// <b>"같게 만드는 것"이 정답이 아닌 항목이다.</b> 두 OS의 하단 띠는 이름만 비슷하고 성질이 다르다:
+    /// <list type="bullet">
+    ///  <item><b>macOS Dock — 강제하지 않는다.</b> 자동 숨김이 흔하고, 이 앱은 Dock 위를
+    ///        <b>의도적으로</b> 캐릭터 발판으로 쓴다(<c>Core/DockGeometry</c>). 창이 Dock을 덮는 것은
+    ///        macOS의 모든 앱이 하는 표준 동작이기도 하다. 여기를 강제하면 발판 설계와 정면충돌한다.</item>
+    ///  <item><b>Windows 작업표시줄 — 강제한다.</b> 가로 <b>전체</b>를 점유하고, 실제 사용자 신고가
+    ///        있다(2026-08-31 <i>"작업표시줄에 걸쳐서 돌아다닌다"</i>). 게다가 이 앱은 이미
+    ///        <c>ReservedBarRevealPolicy</c>로 <b>작업표시줄을 강제로 드러내는</b> 승인 예외를 갖고 있다 —
+    ///        드러내 놓고 그 위를 우리 표면으로 덮으면 그 예외의 목적 자체가 무효가 된다.</item>
+    /// </list>
+    ///
+    /// <para><b>갈림은 이 파일 안의 순수 함수 하나</b>(<see cref="EnforcesBottomReservedBand"/>)에만
+    /// 있고, <c>#if</c>는 <b>한 줄도 쓰지 않는다</b>. 플랫폼을 <b>인자</b>로 받기 때문에 Windows가 없는
+    /// 이 개발 머신의 EditMode가 <b>Windows 쪽 답까지 실행해서</b> 검증할 수 있다 — <c>#if</c>로
+    /// 갈랐다면 그 절반은 이 머신에서 한 번도 실행되지 않는다(CLAUDE.md 활성 빌드 타깃 사각지대).</para>
+    ///
+    /// <para><b>발판은 이 판정과 무관하다.</b> 여기서 정하는 것은 <b>UI 표면</b>(팝오버·정보창·톱니)의
+    /// 배치뿐이다. 캐릭터가 Windows 작업표시줄 <b>윗면</b>에 서는 것은
+    /// <c>IReservedBottomBarService</c>가 2026-08-31에 고친 별개의 경로이고, 그쪽은 한 비트도
+    /// 바뀌지 않았다(그 사각형은 「덮지 마라」가 아니라 「여기 서라」는 뜻이다).</para>
+    ///
     /// <para><b>단위 규약</b>: 이 클래스는 단위를 모른다 — <b>한 호출에 들어가는 인자가 전부 같은
     /// 단위</b>이기만 하면 된다(픽셀이든 포인트든). 섞어 넣는 것이 유일한 오용이고, 그래서 호출부는
     /// 변환을 한 줄 안에서 끝낸다.</para>
@@ -49,10 +73,51 @@ namespace StickMate.Platform
     public static class SurfaceSafeAreaPolicy
     {
         /// <summary>
+        /// ★ <b>M-7 판정의 전부가 이 한 줄이다</b>(리더 판정 2026-09-05):
+        /// 화면 <b>하단</b> 예약 띠를 UI 표면 배치에서 <b>벽처럼</b> 다룰 플랫폼인가.
+        ///
+        /// <para><b>Windows만 true.</b> 근거는 클래스 문서의 «하단 축은 왜 갈라지는가» 절이다.
+        /// 되돌리기 전에 그 절과 <c>PlatformParityAuditTests.결정_하단_예약띠는_Windows에서만_강제한다</c>를
+        /// 읽어라 — <b>패리티 위반이 아니라 의도된 차이</b>다.</para>
+        ///
+        /// <para><b>에디터도 플레이어와 같게 판정한다.</b> Windows 개발자의 에디터에서 이 규칙이 꺼져
+        /// 있으면 그 사람은 자기가 만든 배치가 실기에서 어떻게 되는지 볼 수 없다. 이 판정은 남의
+        /// 설정을 바꾸는 것이 아니라 <b>우리 창을 어디에 놓을지</b>일 뿐이라, 자동 숨김 해제
+        /// (<c>ReservedBarRevealDirector</c>)가 에디터 가드를 두는 것과 상황이 다르다.</para>
+        ///
+        /// <para>알 수 없는 플랫폼(모바일·리눅스·에디터 그 외)은 <b>false</b> — 짐작으로 화면을
+        /// 깎지 않는다는 이 파일 전체의 방향과 같다.</para>
+        /// </summary>
+        public static bool EnforcesBottomReservedBand(RuntimePlatform platform)
+            => platform == RuntimePlatform.WindowsPlayer
+            || platform == RuntimePlatform.WindowsEditor;
+
+        /// <summary>
+        /// 실측한 하단 띠 두께를 <b>실제로 적용할 인셋</b>으로 바꾼다 —
+        /// <see cref="EnforcesBottomReservedBand"/>가 false인 플랫폼에서는 <b>언제나 0</b>이다.
+        ///
+        /// <para>0이면 아래 클램프들이 <b>이 축이 생기기 전과 비트 단위로 같은 값</b>을 낸다.
+        /// 그것이 macOS 무회귀 보증이다 — "macOS는 안 건드렸다"가 주석이 아니라 <b>산술</b>로 성립한다.</para>
+        ///
+        /// <para>NaN·무한대·음수는 0으로 접는다. 두께는 정의상 0 이상이고, 조회가 어긋난 값으로
+        /// 화면을 깎으면 표면이 이유 없이 위로 밀린다(<see cref="ReservedEdgeInsets"/>와 같은 규약).</para>
+        /// </summary>
+        public static float EffectiveBottomInsetPoints(RuntimePlatform platform, float measuredBottomInset)
+        {
+            if (!EnforcesBottomReservedBand(platform)) return 0f;
+            if (!IsFinite(measuredBottomInset)) return 0f;
+            return Mathf.Max(0f, measuredBottomInset);
+        }
+
+        /// <summary>
         /// <b>y가 위로 자라는</b> 좌표계(Unity 스크린 픽셀, 원점 좌하단)에서 표면 중심의 세로 위치를 자른다.
         ///
         /// <para>상한(위쪽)에만 <paramref name="topInset"/>이 들어간다. 하한(아래쪽)은 예전 그대로
-        /// <c>여백 + 반높이</c>다 — 규칙 2.</para>
+        /// <c>여백 + 반높이</c>다 — <b>이 5인자 판이 곧 macOS의 답</b>이고, 하단 인셋 0과 완전히 같다.</para>
+        ///
+        /// <para>Windows처럼 하단까지 강제하는 플랫폼은 <see cref="ClampCenterY(float,float,float,float,float,float)"/>
+        /// 6인자 판을 쓴다. 호출부가 직접 <c>0f</c>를 적지 않는 이유: 이 5인자 판이 남아 있어야
+        /// <b>"하단을 강제하지 않는다"가 코드로 읽히고</b>, macOS 무회귀가 눈으로 확인된다.</para>
         ///
         /// <para><b>표면이 안전 영역보다 클 때</b>는 <b>상단을 고정하고 아래로 넘치게</b> 둔다.
         /// "가운데로 맞춘다"를 고르면 위아래로 반씩 잘려 <b>메뉴바를 다시 덮는다</b> — 이 규칙이
@@ -60,17 +125,32 @@ namespace StickMate.Platform
         /// </summary>
         public static float ClampCenterY(float desiredCenterY, float sizeY, float screenHeight,
             float topInset, float margin)
+            => ClampCenterY(desiredCenterY, sizeY, screenHeight, topInset, 0f, margin);
+
+        /// <summary>
+        /// ★ 2026-09-05 (M-7) — 위 규칙의 <b>하단 인셋 포함</b> 판.
+        /// <paramref name="bottomInset"/>은 <see cref="EffectiveBottomInsetPoints"/>가 이미 플랫폼
+        /// 판정을 거쳐 낸 값이어야 한다(여기서 다시 플랫폼을 묻지 않는다 — 순수 산술이다).
+        ///
+        /// <para><b>넘칠 때는 여전히 상단 우선</b>이다. 하단 띠를 벽으로 다루는 플랫폼에서도 그렇다:
+        /// 화면이 표면보다 낮으면 어느 쪽이든 덮게 되는데, 상단(메뉴바/상단 도킹 작업표시줄)은
+        /// <b>메뉴와 시스템 표시</b>가 있고 하단은 그렇지 않다. 즉 <b>둘 다 못 지킬 때 더 나쁜 쪽을
+        /// 피한다</b>는 선택이고, 규칙 ④(상단 고정)와 같은 방향이다.</para>
+        /// </summary>
+        public static float ClampCenterY(float desiredCenterY, float sizeY, float screenHeight,
+            float topInset, float bottomInset, float margin)
         {
             if (!IsFinite(desiredCenterY) || !IsFinite(sizeY) || !IsFinite(screenHeight)
-                || !IsFinite(topInset) || !IsFinite(margin)) return desiredCenterY;
+                || !IsFinite(topInset) || !IsFinite(bottomInset) || !IsFinite(margin)) return desiredCenterY;
             if (screenHeight <= 0f) return desiredCenterY;
 
             float half = Mathf.Max(0f, sizeY) * 0.5f;
             float m = Mathf.Max(0f, margin);
             float inset = Mathf.Max(0f, topInset);
+            float lower = Mathf.Max(0f, bottomInset);
 
-            float maxCenterY = screenHeight - inset - m - half;   // 위쪽 한계(예약 띠 아래).
-            float minCenterY = m + half;                          // 아래쪽 한계(예약 띠 미적용).
+            float maxCenterY = screenHeight - inset - m - half;   // 위쪽 한계(상단 예약 띠 아래).
+            float minCenterY = lower + m + half;                  // 아래쪽 한계(하단 예약 띠 위).
 
             if (maxCenterY <= minCenterY) return maxCenterY;      // 상단 우선.
             return Mathf.Clamp(desiredCenterY, minCenterY, maxCenterY);
@@ -78,13 +158,24 @@ namespace StickMate.Platform
 
         /// <summary>
         /// <b>y가 아래로 자라는</b> 좌표계(창 좌상단 원점 — 톱니 아이콘이 자기 자리를 저장하는 계)용 어댑터.
-        /// 같은 규칙을 <see cref="ClampCenterY"/> <b>하나</b>에서 가져온다(두 벌이 되면 반드시 한쪽만 고쳐진다).
+        /// 같은 규칙을 <see cref="ClampCenterY(float,float,float,float,float)"/> <b>하나</b>에서 가져온다
+        /// (두 벌이 되면 반드시 한쪽만 고쳐진다).
         /// </summary>
         public static float ClampTopDownCenterY(float desiredCenterY, float sizeY, float screenHeight,
             float topInset, float margin)
+            => ClampTopDownCenterY(desiredCenterY, sizeY, screenHeight, topInset, 0f, margin);
+
+        /// <summary>
+        /// ★ 2026-09-05 (M-7) — 위 어댑터의 <b>하단 인셋 포함</b> 판.
+        /// <para>좌표만 뒤집고 <b>인셋의 물리적 의미는 뒤집지 않는다</b>: 뒤집힌 계에 넘긴 뒤에도
+        /// <paramref name="topInset"/>은 화면 위쪽 띠, <paramref name="bottomInset"/>은 아래쪽 띠다.</para>
+        /// </summary>
+        public static float ClampTopDownCenterY(float desiredCenterY, float sizeY, float screenHeight,
+            float topInset, float bottomInset, float margin)
         {
             if (!IsFinite(desiredCenterY) || !IsFinite(screenHeight) || screenHeight <= 0f) return desiredCenterY;
-            float flipped = ClampCenterY(screenHeight - desiredCenterY, sizeY, screenHeight, topInset, margin);
+            float flipped = ClampCenterY(screenHeight - desiredCenterY, sizeY, screenHeight,
+                topInset, bottomInset, margin);
             return screenHeight - flipped;
         }
 
@@ -94,10 +185,19 @@ namespace StickMate.Platform
         /// </summary>
         public static float ClampCenterOriginOffsetY(float desiredOffsetY, float sizeY, float screenHeight,
             float topInset, float margin)
+            => ClampCenterOriginOffsetY(desiredOffsetY, sizeY, screenHeight, topInset, 0f, margin);
+
+        /// <summary>
+        /// ★ 2026-09-05 (M-7) — 위 어댑터의 <b>하단 인셋 포함</b> 판. 아래쪽 이동 한계가
+        /// 하단 예약 띠만큼 좁아진다(Windows에서만 0이 아니다).
+        /// </summary>
+        public static float ClampCenterOriginOffsetY(float desiredOffsetY, float sizeY, float screenHeight,
+            float topInset, float bottomInset, float margin)
         {
             if (!IsFinite(desiredOffsetY) || !IsFinite(screenHeight) || screenHeight <= 0f) return desiredOffsetY;
             float centerY = screenHeight * 0.5f + desiredOffsetY;
-            return ClampCenterY(centerY, sizeY, screenHeight, topInset, margin) - screenHeight * 0.5f;
+            return ClampCenterY(centerY, sizeY, screenHeight, topInset, bottomInset, margin)
+                - screenHeight * 0.5f;
         }
 
         /// <summary>
@@ -173,6 +273,14 @@ namespace StickMate.Platform
         /// 틀릴 수 있다).</summary>
         public static float TopEdgeFromScreenTop(float centerY, float sizeY, float screenHeight)
             => FarEdgeGap(centerY, sizeY, screenHeight);
+
+        /// <summary>★ 2026-09-05 (M-7) — 표면의 <b>아래쪽 모서리</b>가 화면 아래 끝에서 얼마나 떨어져
+        /// 있는가. 진단/테스트가 "작업표시줄을 몇 pt 덮는가"를 <b>덧셈 없이</b> 읽게 하는 창구다
+        /// (<see cref="TopEdgeFromScreenTop"/>과 짝이고, 좌표가 <b>작아지는</b> 쪽이라 산술이 다르다).
+        /// <para>화면 높이를 받지 않는 것은 원점이 곧 화면 아래 끝이기 때문이다 — 인자를 하나 더 받으면
+        /// 호출부가 그 값을 어디서 가져올지 고민하게 되고, 그 고민이 곧 산수를 다시 하는 자리가 된다.</para></summary>
+        public static float BottomEdgeFromScreenBottom(float centerY, float sizeY)
+            => centerY - Mathf.Max(0f, sizeY) * 0.5f;
 
         /// <summary>표면의 <b>오른쪽 모서리</b>가 화면 오른쪽 끝에서 얼마나 떨어져 있는가 —
         /// <see cref="TopEdgeFromScreenTop"/>의 가로판이고 <b>같은 산술 한 벌</b>을 쓴다.</summary>

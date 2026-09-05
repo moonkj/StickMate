@@ -295,12 +295,15 @@ namespace StickMate.Tests.PlayMode
             report.Append(LogPrefix).Append(" 정보창 탭바 — 옛 모형(글자수 × ")
                   .Append(UiChrome.FontTitle).Append("pt + ").Append(RetiredInfoTabPad).Append("pt) 대 실측\n");
 
-            // 밑줄이 끝나는 선 — 프로덕션이 넘침 판정에 쓰는 바로 그 선(TabBottomLine)에서 읽는다.
-            List<Transform> lines = Descendants(canvas, "TabBottomLine");
-            Assert.AreEqual(1, lines.Count, $"{LogPrefix} TabBottomLine을 {lines.Count}개 찾았습니다.");
-            var lineRect = (RectTransform)lines[0];
-            float limit = lineRect.anchoredPosition.x + lineRect.rect.width;
-            Assert.Greater(limit, 0f, $"{LogPrefix} 밑줄 한계가 {limit:F1}pt입니다(측정 실패).");
+            // ★ 2026-09-05 — 옛 한계선은 <c>TabBottomLine</c>(우측 컬럼 밑줄)이었다. 3컬럼 이식으로
+            //   탭이 헤더 안의 <b>칩 스트립</b>이 되면서 그 물건이 사라졌다. 지금 탭이 넘치면 안 되는
+            //   상대는 <b>스트립 상자 자신</b>이다 — 탭은 그 안에 들어 있어야 하고, 넘치면 헤더 오른쪽
+            //   칩 무리와 겹쳐 "탭을 눌렀는데 [설정]이 열린다"가 된다.
+            List<Transform> strips = Descendants(canvas, "TabStrip");
+            Assert.AreEqual(1, strips.Count, $"{LogPrefix} TabStrip을 {strips.Count}개 찾았습니다.");
+            var lineRect = (RectTransform)strips[0];
+            float limit = lineRect.rect.width;
+            Assert.Greater(limit, 0f, $"{LogPrefix} 탭 스트립 폭이 {limit:F1}pt입니다(측정 실패).");
 
             int probed = 0;
             float end = 0f;
@@ -308,7 +311,7 @@ namespace StickMate.Tests.PlayMode
             foreach (Transform t in canvas.GetComponentsInChildren<Transform>(true))
             {
                 if (!t.name.StartsWith("Tab", System.StringComparison.Ordinal)) continue;
-                if (t.name == "TabBottomLine") continue;
+                if (t.name == "TabStrip") continue;
                 Transform labelT = t.Find("Label");
                 if (labelT == null) continue;
                 var label = labelT.GetComponent<Text>();
@@ -336,13 +339,13 @@ namespace StickMate.Tests.PlayMode
             }
 
             Assert.Greater(probed, 1, $"{LogPrefix} 정보창 탭을 {probed}개만 찾았습니다(검사가 공허합니다).");
-            report.Append("    마지막 탭 끝 ").Append($"{end:F1}").Append("pt / 밑줄 한계 ")
+            report.Append("    마지막 탭 끝 ").Append($"{end:F1}").Append("pt / 스트립 폭 ")
                   .Append($"{limit:F1}").Append("pt / 여유 ").Append($"{limit - end:F1}").Append("pt");
             Debug.Log(report.ToString());
 
             Assert.LessOrEqual(end, limit,
-                $"{LogPrefix} 탭이 {end:F1}pt에서 끝나 밑줄({limit:F1}pt)을 넘겼습니다 — " +
-                "마지막 탭이 마스크에 잘려 눌리지 않습니다.");
+                $"{LogPrefix} 탭이 {end:F1}pt에서 끝나 스트립 상자({limit:F1}pt)를 넘겼습니다 — " +
+                "마지막 탭이 상자 밖으로 나가 헤더 오른쪽 칩과 겹칩니다.");
         }
 
         // ====================================================================

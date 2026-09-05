@@ -185,7 +185,7 @@ def load_runs(paths=None):
 def ledger():
     """[(표면, 예산pt, 예산 출처, 실측 키, 비고)] — 예산은 전부 소스에서 방금 읽은 값."""
     sw_panel = read_const('Interaction/SettingsWindow.cs', 'PanelWidth')
-    ci_pad = read_const('Interaction/CharacterInfoWindow.cs', 'RightPadX')
+    ci_pad = read_const('Interaction/CharacterInfoWindow.cs', 'Col1PadX')
     rows = []
     rows.append(('설정창 탭바 — 한국어', sw_panel,
                  'SettingsWindow.PanelWidth', 'sw_tab_ko',
@@ -306,7 +306,10 @@ RETIRED = [
 ALIVE = [
     ('Interaction/SettingsWindow.cs', 'TabPadX'),
     ('Interaction/SettingsWindow.cs', 'PanelWidth'),
-    ('Interaction/CharacterInfoWindow.cs', 'RightPadX'),
+    # ★ 2026-09-05 R5 재지정 — 3컬럼 이식이 `RightPadX`(22f)를 `Col1PadX`로 갈아치웠다.
+    #   존재 대조 앵커가 죽어 §11-5에서 이 도구 전체가 FAIL 했다. **그것이 설계대로 동작한 것이다**
+    #   (앵커가 없었다면 「폐기 상수가 사라졌다」가 조용히 초록이 됐다). 후속 이름으로 다시 건다.
+    ('Interaction/CharacterInfoWindow.cs', 'Col1PadX'),
 ]
 
 

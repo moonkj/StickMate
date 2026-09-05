@@ -305,7 +305,9 @@ namespace StickMate.Platform.Windows
             //   판정 규칙/근거 전문은 Platform/LayeredHybridPolicy.cs, 실행은 WindowsLayeredHybridResolver.
             //   TickTopmostWatchdog와 마찬가지로 재적용 상한과 무관하게 앱 수명 내내 돈다 —
             //   라이브러리가 커서 이동마다 레이어드를 다시 켜기 때문이다.
-            _layeredHybridResolver.Tick(Time.unscaledDeltaTime, (int)_controller.transparentType);
+            // ★ 2026-09-05 진단 — isClickThrough 캐시(순수 C# 필드)를 함께 넘긴다. 해소기가 그 엣지로
+            //   "LAYERED가 붙은 프레임"을 타임라인에 남긴다(WindowsLayeredHybridResolver.Tick 문서). 비용은 필드 읽기 1회.
+            _layeredHybridResolver.Tick(Time.unscaledDeltaTime, (int)_controller.transparentType, _controller.isClickThrough);
             // ★ 2026-09-03 — 앱 전환 표면 제외 비트가 <아직 서 있는지> 2초마다 되묻는다.
             //   라이브러리의 SetClickThrough는 같은 GWL_EXSTYLE을 읽고-고쳐-쓰기 하므로 우리 비트를
             //   보존할 것으로 판단하지만, 이 개발 머신에 Windows가 없어 실행으로 확인할 수 없다.

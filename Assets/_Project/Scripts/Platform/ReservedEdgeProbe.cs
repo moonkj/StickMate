@@ -63,6 +63,11 @@ namespace StickMate.Platform
         private static bool _hasOverride;
         private static ReservedEdgeInsets _overrideInsets;
 
+        // ★ 2026-09-05 (M-7) — 하단 강제는 «플랫폼»이 입력이다. 실기가 없는 이 머신에서 그 분기를
+        //   실제로 실행해 보려면 주입 창구가 있어야 한다(SetPlatformForTests / ResetForTests).
+        private static bool _hasPlatformOverride;
+        private static RuntimePlatform _platformOverride;
+
         private static ReservedEdgeInsets _cached;
         private static float _cachedAt = float.NegativeInfinity;
 
@@ -91,6 +96,40 @@ namespace StickMate.Platform
         /// <summary>한 변의 두께(OS 포인트). 못 물었거나 그 변을 못 쟀으면 <b>0</b>.</summary>
         public static float EdgeInsetPoints(IPlatformWindowService service, ReservedEdge edge)
             => Insets(service).PointsFor(edge);
+
+        /// <summary>
+        /// ★ 2026-09-05 (M-7) — <b>UI 표면 배치에 실제로 적용할</b> 하단 인셋(OS 포인트).
+        ///
+        /// <para><b>macOS에서는 언제나 0</b>이다(Dock은 발판이다). Windows에서만 실측 두께가 그대로
+        /// 나온다. 판정 규칙 자체는 <see cref="SurfaceSafeAreaPolicy.EnforcesBottomReservedBand"/>가
+        /// 갖고 있고 이 함수는 <b>사실(실측 두께) + 지금 플랫폼</b>을 그 규칙에 넣어 주기만 한다 —
+        /// 그래서 판정은 <c>#if</c> 없이 EditMode에서 양쪽 답을 다 실행해 볼 수 있다.</para>
+        ///
+        /// <para><b>왜 여기(프로브)에 있는가</b>: <see cref="SurfaceSafeAreaPolicy"/>는 OS도 엔진도
+        /// 부르지 않는 순수 산술로 남겨야 한다. <c>Application.platform</c>은 엔진 조회이므로
+        /// <b>사실 조회 층</b>인 이 파일이 맡는다. 같은 이유로 <see cref="Insets"/>의 캐시도 여기 있다.</para>
+        ///
+        /// <para><b>호출 비용</b>: <see cref="Insets"/> 캐시 조회 1회 + 비교 몇 개. 새 P/Invoke는 0줄이다 —
+        /// 하단 두께는 이미 같은 <c>GetMonitorInfo</c>/<c>visibleFrame</c> 한 번에 딸려 오던 값이다.</para>
+        /// </summary>
+        public static float EnforcedBottomInsetPoints(IPlatformWindowService service)
+            => SurfaceSafeAreaPolicy.EffectiveBottomInsetPoints(
+                CurrentPlatform, Insets(service).PointsFor(ReservedEdge.Bottom));
+
+        /// <summary>지금 판정에 쓰는 플랫폼. 테스트가 <see cref="SetPlatformForTests"/>로 갈아끼운 값이
+        /// 있으면 그것이 이긴다(실기 없이 Windows 분기를 실제로 <b>실행</b>해 보기 위한 유일한 창구).</summary>
+        public static RuntimePlatform CurrentPlatform
+            => _hasPlatformOverride ? _platformOverride : Application.platform;
+
+        /// <summary>
+        /// 테스트 전용 — "지금 플랫폼"을 고정한다. <b>이 창구가 없으면 Windows 하단 강제는 이 머신에서
+        /// 한 줄도 실행되지 않고</b>, 소스 문자열 감사만 남아 «있다고 적혀 있다»까지밖에 못 잰다.
+        /// </summary>
+        public static void SetPlatformForTests(RuntimePlatform platform)
+        {
+            _hasPlatformOverride = true;
+            _platformOverride = platform;
+        }
 
         private static IReservedScreenEdgeService Resolve(IPlatformWindowService service)
         {
@@ -145,11 +184,15 @@ namespace StickMate.Platform
             ReservedTopBarProbe.SetInsetPointsForTests(insets.PointsFor(ReservedEdge.Top));
         }
 
-        /// <summary>주입한 값을 걷고 실제 조회로 되돌린다. 캐시와 <b>상단 프로브</b>도 함께 버린다.</summary>
+        /// <summary>주입한 값을 걷고 실제 조회로 되돌린다. 캐시와 <b>상단 프로브</b>도, 그리고
+        /// <b>플랫폼 주입</b>(<see cref="SetPlatformForTests"/>)도 함께 버린다 — 하나라도 남으면
+        /// 다음 테스트가 «물리적으로 존재할 수 없는 세계»에서 검증하게 된다.</summary>
         public static void ResetForTests()
         {
             _hasOverride = false;
             _overrideInsets = ReservedEdgeInsets.Unknown;
+            _hasPlatformOverride = false;
+            _platformOverride = default;
             _service = null;
             _resolved = false;
             _cached = ReservedEdgeInsets.Unknown;

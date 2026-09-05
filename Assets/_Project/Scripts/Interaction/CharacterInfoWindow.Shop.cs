@@ -24,20 +24,21 @@ namespace StickMate.Interaction
         private GameObject _placeholderPage;
         private Text _placeholderNotice;
 
-        /// <summary>준비 중 문구가 앉는 상자의 높이 — 카드 페이지가 섹션에 쓰는 세로 예산과 같다.
+        /// <summary>준비 중 문구가 앉는 상자의 높이 — 본문에서 위아래 여백을 뺀 값이다.
         /// 문구는 그 안에서 가운데 정렬이라, 탭을 오갈 때 문구가 위아래로 튀지 않는다.</summary>
-        private static float PlaceholderNoticeHeight => SectionCount * SectionStep;
+        private static float PlaceholderNoticeHeight => ColContentHeight;
 
-        private void BuildPlaceholderPage(RectTransform right)
+        private void BuildPlaceholderPage(RectTransform body)
         {
             var pageGo = new GameObject("PlaceholderPage", typeof(RectTransform));
-            pageGo.transform.SetParent(right, false);
+            pageGo.transform.SetParent(body, false);
             var page = pageGo.GetComponent<RectTransform>();
-            UiChrome.PlaceTopLeft(page, 0f, 0f, RightWidth, BodyHeight);
+            // ★ 3컬럼은 카드 탭의 것이다 — 준비 중 페이지는 본문 <b>전체 폭</b>을 쓴다.
+            UiChrome.PlaceTopLeft(page, 0f, 0f, PanelWidth, BodyHeight);
             _placeholderPage = pageGo;
 
             _placeholderNotice = Label(page, "Notice", UiChrome.FontTitle, TextAnchor.MiddleCenter,
-                UiChrome.InkMeta, RightPadX, SectionsTopY, RightContentWidth, PlaceholderNoticeHeight,
+                UiChrome.InkMeta, PagePadX, PageTopY, PageContentWidth, PlaceholderNoticeHeight,
                 string.Empty);
             _placeholderNotice.raycastTarget = false;
         }

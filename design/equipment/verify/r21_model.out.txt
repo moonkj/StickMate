@@ -1,0 +1,400 @@
+== 0. 자 == 머리 원반 1.1719 R(출하) · 덮임 1.1842 R(0.35 상한) · 1pt 0.1719 R · 옛 W 0.3439 R · 어깨선 -1.3182 · 액자 2.551 · 머리카락 액자 1.75
+
+== 1. (나) 모자 2종 — H-2 맞춤 (u 0.001 · dy 0.02 격자, 목표 착용선 ≤ +0.30 · 꼭대기 < 2.551 · 밑 > −1.0) ==
+   straw  u 0.0750(카드 ×1.52) dy +3.620 · 착용선 +0.283 · 꼭대기 +1.820 · 밑 +0.170 · 폭 4.50 R   [앞층만의 합집합으로 맞춤 — 먼 쪽 챙 제외]
+          대조(M17 규칙: 불투명 조각 전부): 착용선 +0.283 · 규칙 통과
+   beret  u 0.0700(카드 ×1.42) dy +2.880 · 착용선 +0.290 · 꼭대기 +2.180 · 밑 -0.060 · 폭 3.05 R   [앞층만의 합집합으로 맞춤 — 먼 쪽 챙 제외]
+          대조(M17 규칙: 불투명 조각 전부): 착용선 +0.290 · 규칙 통과
+   대조: 중절모(R17) u 0.0780 폭 4.06 R — 밀짚모자 챙은 그보다 넓어야 「카테고리 최대 챙」이다 → 4.50 R (+0.44)
+      straw.B0               front ('M', 'INK')     ×1.00 잉크 2.40×1.27R  y[+0.55,+1.82] x[-1.20,+1.20]
+      straw.F1               front ('M2', None)     ×1.00 잉크 2.40×0.58R  y[+0.58,+1.16] x[-1.20,+1.20]
+      straw.B2.far           back  ('M', None)      ×1.00 잉크 4.50×0.38R  y[+0.55,+0.92] x[-2.25,+2.25]
+      straw.B2.farArc        back  (None, 'INK')    ×1.00 잉크 4.50×0.38R  y[+0.55,+0.92] x[-2.25,+2.25]
+      straw.B2.near          front ('M', None)      ×1.00 잉크 4.50×0.38R  y[+0.17,+0.55] x[-2.25,+2.25]
+      straw.B2.nearArc       front (None, 'INK')    ×1.00 잉크 4.50×0.38R  y[+0.17,+0.55] x[-2.25,+2.25]
+      straw.H3               front (None, 'W')      ×0.75 잉크 0.52×0.41R  y[+1.22,+1.63] x[-0.67,-0.15]
+      beret.B0               front ('M', 'INK')     ×1.00 잉크 3.05×1.86R  y[-0.06,+1.80] x[-1.43,+1.62]
+      beret.F1               front ('M2', None)     ×1.00 잉크 2.49×0.70R  y[-0.06,+0.64] x[-1.33,+1.16]
+      beret.S2               front (None, 'M')      ×1.20 잉크 0.04×0.31R  y[+1.86,+2.18] x[+0.00,+0.04]
+      beret.H3               front (None, 'W')      ×0.75 잉크 0.63×0.49R  y[+1.13,+1.62] x[-1.05,-0.42]
+
+== 2. (나) 뿔테안경 — E-2 복제(격자 W/2 · ±1.3 R): 칸 수 · 쌍별 |A△B|/|A∪B|(문턱 0.20) · 눈 자리 ==
+   칸: sunglasses 24 · roundglasses 27 · goggles 27 · monocle 23 · browline 37 · patch 24
+   sunglasses    vs browline      0.35
+   roundglasses  vs browline      0.27
+   goggles       vs browline      0.40
+   monocle       vs browline      0.60
+   browline      vs patch         0.58
+   6종 쌍별 최소 0.24 (뿔테 관련 최소 0.27) · 앞눈 덮음 True · 뒤눈 덮음 True (양안: 둘 다 True)
+   슬롯 변환 EYES: 1u = 0.0339 R · 눈 y +0.091 R = 아이콘 y 29.8u · 눈 x ±0.341 R = 아이콘 x 21.9/42.1u
+      browline.B0            ('M', 'INK')     ×1.00 실폭 0.1719 잉크 1.90×0.37R  x[-0.95,+0.95] y[+0.12,+0.49]
+      browline.B1            (('CARDWASH', 0.16), 'M') ×1.00 실폭 0.1719 잉크 0.65×0.37R  x[-0.78,-0.13] y[-0.26,+0.12]
+      browline.B2            (('CARDWASH', 0.16), 'M') ×1.00 실폭 0.1719 잉크 0.65×0.37R  x[+0.13,+0.78] y[-0.26,+0.12]
+      browline.S3            (None, 'M')      ×1.00 실폭 0.1719 잉크 0.14×0.27R  x[-1.07,-0.93] y[+0.08,+0.35]
+      browline.S4            (None, 'M')      ×1.00 실폭 0.1719 잉크 0.14×0.27R  x[+0.93,+1.07] y[+0.08,+0.35]
+      browline.H5            (None, 'W')      ×0.75 실폭 0.1719 잉크 0.27×0.17R  x[-0.71,-0.44] y[-0.10,+0.07]
+      browline.H6            (None, 'W')      ×0.75 실폭 0.1719 잉크 0.27×0.17R  x[+0.20,+0.47] y[-0.10,+0.07]
+
+== 3. (나) 판초 — B-1/B-2/B-4 ==
+   뒤판 밑단 -4.330 R · 폭 3.200 R · 플레어 0.5484 R/R  |  새 짧은망토: 밑단 -5.089 · 폭 2.143 (플레어 0.2896)  → 판초는 0.76 R 짧고 1.06 R 넓다(곧은 단 + 술 4)
+   앞자락(앞층) x[-0.93,+0.93] y[-2.40,-0.93] — V 끝 −2.40 R · 팔 중심선이 앞자락을 벗어나는 깊이 y -1.781 R(어깨선 아래 0.46 R) · 인계본 망토 칼라(STC)는 -1.490 R(아래 0.17 R) — 팔 뿌리를 덮는 정도가 같다
+   웅크리기 최대(몸 −2.461 R)에서 밑단 -6.791 R — 발목 -9.340 위(B-3 클램프 불필요)
+      poncho.StageBack       back  ('M', 'INK')   ×1.00 잉크 3.20×3.23R
+      poncho.Fringe0         back  (None, 'M2')   ×1.00 잉크 0.00×0.36R
+      poncho.Fringe1         back  (None, 'M2')   ×1.00 잉크 0.00×0.36R
+      poncho.Fringe2         back  (None, 'M2')   ×1.00 잉크 0.00×0.36R
+      poncho.Fringe3         back  (None, 'M2')   ×1.00 잉크 0.00×0.36R
+      poncho.StageBib        front ('M2', 'INK')  ×1.00 잉크 1.86×1.47R
+      poncho.H               back  (None, 'W')    ×0.75 잉크 0.43×0.27R
+
+== 4. (다) 머리카락 6 — 정면 기하: 액자 ≤ 1.75 · 눈동자 침범 0 · 이마선 부착 · 커버선(+0.06) 아래 남는 조각 ==
+   cowlick   조각 4(뒤층 0) 꼭대기 +1.655(안) 밑 -0.150 · 눈 침범 없음 · 부착 ✓ · 커버선 아래 남는 조각 1/4: cowlick.Mass
+   neat      조각 5(뒤층 1) 꼭대기 +1.540(안) 밑 -2.050 · 눈 침범 없음 · 부착 ✓ · 커버선 아래 남는 조각 2/5: neat.Fall, neat.Mass
+   curly     조각 4(뒤층 0) 꼭대기 +1.650(안) 밑 -1.029 · 눈 침범 없음 · 부착 ✓ · 커버선 아래 남는 조각 2/4: curly.Mass, curly.Coil
+   bald      조각 4(뒤층 0) 꼭대기 +1.640(안) 밑 -0.360 · 눈 침범 없음 · 부착 ✓ · 커버선 아래 남는 조각 3/4: bald.TuftL, bald.TuftR, bald.H3
+   bowl      조각 4(뒤층 0) 꼭대기 +1.580(안) 밑 -0.550 · 눈 침범 없음 · 부착 ✓ · 커버선 아래 남는 조각 1/4: bowl.Mass
+   ponytail  조각 5(뒤층 1) 꼭대기 +1.730(안) 밑 -0.880 · 눈 침범 없음 · 부착 ✓ · 커버선 아래 남는 조각 2/5: ponytail.Tail, ponytail.Mass
+   cowlick   vs neat      Δr 2.385 R = 13.87 획(1pt) / 6.94 획(옛 W)
+   cowlick   vs curly     Δr 1.942 R = 11.29 획(1pt) / 5.65 획(옛 W)
+   cowlick   vs bald      Δr 1.740 R = 10.12 획(1pt) / 5.06 획(옛 W)
+   cowlick   vs bowl      Δr 1.580 R = 9.19 획(1pt) / 4.59 획(옛 W)
+   cowlick   vs ponytail  Δr 1.690 R = 9.83 획(1pt) / 4.91 획(옛 W)
+   neat      vs curly     Δr 2.385 R = 13.87 획(1pt) / 6.94 획(옛 W)
+   neat      vs bald      Δr 2.385 R = 13.87 획(1pt) / 6.94 획(옛 W)
+   neat      vs bowl      Δr 2.385 R = 13.87 획(1pt) / 6.94 획(옛 W)
+   neat      vs ponytail  Δr 2.385 R = 13.87 획(1pt) / 6.94 획(옛 W)
+   curly     vs bald      Δr 1.942 R = 11.29 획(1pt) / 5.65 획(옛 W)
+   curly     vs bowl      Δr 1.913 R = 11.12 획(1pt) / 5.56 획(옛 W)
+   curly     vs ponytail  Δr 1.792 R = 10.42 획(1pt) / 5.21 획(옛 W)
+   bald      vs bowl      Δr 1.580 R = 9.19 획(1pt) / 4.59 획(옛 W)
+   bald      vs ponytail  Δr 2.036 R = 11.84 획(1pt) / 5.92 획(옛 W)
+   bowl      vs ponytail  Δr 1.584 R = 9.21 획(1pt) / 4.61 획(옛 W)
+   쌍별 최소 1.580 R = 9.19 획(1pt) / 4.59 획(옛 W, 하한 1.0)
+
+== 5. 몸 조각 생존 (1-A · 1-C · 자기교차) — @0.75 / 1.00 / 0.35 ==
+   browline  browline.B0            front .75 생존  1.0 생존  .35 소멸  
+   browline  browline.B1            front .75 생존  1.0 생존  .35 소멸  
+   browline  browline.B2            front .75 생존  1.0 생존  .35 소멸  
+   browline  browline.S3            front .75 생존  1.0 생존  .35 소멸  
+   browline  browline.S4            front .75 생존  1.0 생존  .35 소멸  
+   browline  browline.H5            front .75 생존  1.0 생존  .35 소멸  
+   browline  browline.H6            front .75 생존  1.0 생존  .35 소멸  
+   straw     straw.B0               front .75 생존  1.0 생존  .35 생존  
+   straw     straw.F1               front .75 생존  1.0 생존  .35 소멸  
+   straw     straw.B2.far           back  .75 생존  1.0 생존  .35 소멸  
+   straw     straw.B2.farArc        back  .75 생존  1.0 생존  .35 생존  
+   straw     straw.B2.near          front .75 생존  1.0 생존  .35 소멸  
+   straw     straw.B2.nearArc       front .75 생존  1.0 생존  .35 생존  
+   straw     straw.H3               front .75 생존  1.0 생존  .35 소멸  
+   beret     beret.B0               front .75 생존  1.0 생존  .35 생존  
+   beret     beret.F1               front .75 생존  1.0 생존  .35 소멸  
+   beret     beret.S2               front .75 생존  1.0 생존  .35 소멸  
+   beret     beret.H3               front .75 생존  1.0 생존  .35 생존  
+   poncho    poncho.StageBack       back  .75 생존  1.0 생존  .35 생존  
+   poncho    poncho.Fringe0         back  .75 생존  1.0 생존  .35 소멸  
+   poncho    poncho.Fringe1         back  .75 생존  1.0 생존  .35 소멸  
+   poncho    poncho.Fringe2         back  .75 생존  1.0 생존  .35 소멸  
+   poncho    poncho.Fringe3         back  .75 생존  1.0 생존  .35 소멸  
+   poncho    poncho.StageBib        front .75 생존  1.0 생존  .35 생존  
+   poncho    poncho.H               back  .75 생존  1.0 생존  .35 소멸  
+   cowlick   cowlick.Mass           front .75 생존  1.0 생존  .35 소멸  
+   cowlick   cowlick.Crest          front .75 생존  1.0 생존  .35 소멸  
+   cowlick   cowlick.S2             front .75 생존  1.0 생존  .35 소멸  
+   cowlick   cowlick.H3             front .75 생존  1.0 생존  .35 생존  
+   neat      neat.Fall              back  .75 생존  1.0 생존  .35 소멸  
+   neat      neat.Mass              front .75 생존  1.0 생존  .35 소멸  
+   neat      neat.Part              front .75 생존  1.0 생존  .35 소멸  
+   neat      neat.S3                front .75 생존  1.0 생존  .35 생존  
+   neat      neat.H4                front .75 생존  1.0 생존  .35 생존  
+   curly     curly.Mass             front .75 생존  1.0 생존  .35 소멸  
+   curly     curly.Coil             front .75 생존  1.0 생존  .35 소멸  
+   curly     curly.S2               front .75 생존  1.0 생존  .35 소멸  
+   curly     curly.H3               front .75 생존  1.0 생존  .35 생존  
+   bald      bald.TuftL             front .75 생존  1.0 생존  .35 소멸  
+   bald      bald.TuftR             front .75 생존  1.0 생존  .35 소멸  
+   bald      bald.S2                front .75 생존  1.0 생존  .35 소멸  
+   bald      bald.H3                front .75 생존  1.0 생존  .35 소멸  
+   bowl      bowl.Mass              front .75 생존  1.0 생존  .35 생존  
+   bowl      bowl.Fringe            front .75 생존  1.0 생존  .35 소멸  
+   bowl      bowl.S2                front .75 생존  1.0 생존  .35 생존  
+   bowl      bowl.H3                front .75 생존  1.0 생존  .35 생존  
+   ponytail  ponytail.Tail          back  .75 생존  1.0 생존  .35 소멸  
+   ponytail  ponytail.Mass          front .75 생존  1.0 생존  .35 소멸  
+   ponytail  ponytail.Tie           front .75 생존  1.0 생존  .35 소멸  
+   ponytail  ponytail.S3            front .75 생존  1.0 생존  .35 소멸  
+   ponytail  ponytail.H4            front .75 생존  1.0 생존  .35 생존  
+   @0.75 생존 51 / 51
+
+== 6. 카드 조각 규칙 (64u · w = 2.2u: 1-A 잉크 ≥ 3.3u · 꺾임 변 ≥ 2.2u · 1-C ρ ≥ 2.2u · 자기교차) ==
+   browline      browline.B0            ('M', 'INK')       ×1.00 잉크  56.2× 11.0u  통과 
+   browline      browline.B1            (('CARDWASH', 0.16), 'M') ×1.00 잉크  19.1× 11.0u  통과 
+   browline      browline.B2            (('CARDWASH', 0.16), 'M') ×1.00 잉크  19.1× 11.0u  통과 
+   browline      browline.S3            (None, 'M')        ×1.00 잉크   4.0×  8.0u  통과 
+   browline      browline.S4            (None, 'M')        ×1.00 잉크   4.0×  8.0u  통과 
+   browline      browline.H5            (None, 'W')        ×0.75 잉크   8.0×  5.0u  통과 
+   browline      browline.H6            (None, 'W')        ×0.75 잉크   8.0×  5.0u  통과 
+   straw         straw.B0               ('M', 'INK')       ×1.00 잉크  32.0× 17.0u  통과 
+   straw         straw.F1               ('M2', None)       ×1.00 잉크  32.0×  7.8u  통과 
+   straw         straw.B2               ('M', 'INK')       ×1.00 잉크  60.0× 10.0u  통과 
+   straw         straw.H3               (None, 'W')        ×0.75 잉크   7.0×  5.5u  통과 
+   beret         beret.B0               ('M', 'INK')       ×1.00 잉크  43.5× 26.6u  통과 
+   beret         beret.F1               ('M2', None)       ×1.00 잉크  35.5× 10.0u  통과 
+   beret         beret.S2               (None, 'M')        ×1.20 잉크   0.5×  4.5u  통과 
+   beret         beret.H3               (None, 'W')        ×0.75 잉크   9.0×  7.0u  통과 
+   poncho        poncho.B0              ('M', 'INK')       ×1.00 잉크  48.0× 40.0u  통과 
+   poncho        poncho.B1              ('M2', 'INK')      ×1.00 잉크  26.0× 20.0u  통과 
+   poncho        poncho.S2              (None, 'M2')       ×1.00 잉크   0.0×  6.0u  통과 
+   poncho        poncho.S3              (None, 'M2')       ×1.00 잉크   0.0×  6.0u  통과 
+   poncho        poncho.S4              (None, 'M2')       ×1.00 잉크   0.0×  6.0u  통과 
+   poncho        poncho.S5              (None, 'M2')       ×1.00 잉크   0.0×  6.0u  통과 
+   poncho        poncho.H6              (None, 'W')        ×0.75 잉크   4.0× 18.0u  통과 
+   cowlick       cowlick.Mass           ('M', 'INK')       ×1.00 잉크  50.7× 27.0u  통과 
+   cowlick       cowlick.Crest          ('M2', 'INK')      ×1.00 잉크  12.8×  9.3u  통과 
+   cowlick       cowlick.S2             (None, 'INK')      ×0.80 잉크   4.0×  8.0u  통과 
+   cowlick       cowlick.H3             (None, 'W')        ×0.75 잉크   9.6×  8.3u  통과 
+   neat          neat.Fall              ('M', 'INK')       ×1.00 잉크  49.9× 52.0u  통과 
+   neat          neat.Mass              ('M', 'INK')       ×1.00 잉크  48.8× 26.2u  통과 
+   neat          neat.Part              ('M2', None)       ×1.00 잉크   5.8× 14.6u  통과 
+   neat          neat.S3                (None, 'INK')      ×0.80 잉크   4.0×  9.3u  통과 
+   neat          neat.H4                (None, 'W')        ×0.75 잉크   9.9×  8.6u  통과 
+   curly         curly.Mass             ('M', 'INK')       ×1.00 잉크  52.3× 35.2u  통과 
+   curly         curly.Coil             ('M2', 'INK')      ×1.00 잉크   8.0×  8.0u  통과 
+   curly         curly.S2               (None, 'INK')      ×0.80 잉크   6.7×  5.4u  통과 
+   curly         curly.H3               (None, 'W')        ×0.75 잉크  10.4×  8.4u  통과 
+   bald          bald.TuftL             ('M', 'INK')       ×1.00 잉크   6.7× 11.5u  통과 
+   bald          bald.TuftR             ('M', 'INK')       ×1.00 잉크   6.7× 11.5u  통과 
+   bald          bald.S2                (None, 'M2')       ×1.00 잉크   6.4×  7.0u  통과 
+   bald          bald.H3                (None, 'W')        ×0.75 잉크   5.2×  2.9u  통과 
+   bowl          bowl.Mass              ('M', 'INK')       ×1.00 잉크  50.4× 34.1u  통과 
+   bowl          bowl.Fringe            ('M2', 'INK')      ×1.00 잉크  32.6×  7.0u  통과 
+   bowl          bowl.S2                (None, 'INK')      ×0.80 잉크   9.6×  5.6u  통과 
+   bowl          bowl.H3                (None, 'W')        ×0.75 잉크  10.2×  8.9u  통과 
+   ponytail      ponytail.Tail          ('M', 'INK')       ×1.00 잉크  17.4× 41.8u  통과 
+   ponytail      ponytail.Mass          ('M', 'INK')       ×1.00 잉크  48.0× 25.9u  통과 
+   ponytail      ponytail.Tie           ('M2', None)       ×1.00 잉크   6.1×  5.8u  통과 
+   ponytail      ponytail.S3            (None, 'INK')      ×0.80 잉크   4.2×  7.0u  통과 
+   ponytail      ponytail.H4            (None, 'W')        ×0.75 잉크   9.6×  8.3u  통과 
+   fx_none       fxnone.CB0             (None, 'INK')      ×1.00 잉크  32.0× 32.0u  통과 
+   fx_none       fxnone.S1              (None, 'INK')      ×1.00 잉크  21.0× 21.0u  통과 
+   fx_footprint  footprint.B0           ('M', 'INK')       ×1.00 잉크  25.4× 45.5u  통과 
+   fx_footprint  footprint.CB1          ('M', 'INK')       ×1.00 잉크   7.0×  7.0u  통과 
+   fx_footprint  footprint.S2           (None, 'INK')      ×1.00 잉크  17.0×  1.5u  통과 
+   fx_footprint  footprint.H3           (None, 'W')        ×0.75 잉크   5.0×  7.0u  통과 
+   fx_sparkle    sparkle.B0             ('M', 'INK')       ×1.00 잉크  52.0× 52.0u  통과 
+   fx_sparkle    sparkle.CF1            ('M2', None)       ×1.00 잉크  18.0× 18.0u  통과 
+   fx_sparkle    sparkle.S2             (None, 'M2')       ×1.20 잉크   5.0×  0.0u  통과 
+   fx_sparkle    sparkle.H3             (None, 'W')        ×0.75 잉크   6.0×  7.0u  통과 
+   fx_dust       dust.B0                ('M', 'INK')       ×1.00 잉크  50.9× 26.7u  통과 
+   fx_dust       dust.CB1               ('M2', 'INK')      ×1.00 잉크   9.0×  9.0u  통과 
+   fx_dust       dust.CB2               ('M2', 'INK')      ×1.00 잉크   7.0×  7.0u  통과 
+   fx_dust       dust.H3                (None, 'W')        ×0.75 잉크   8.0×  9.0u  통과 
+   fx_bubble     bubble.CB0             ('M', 'INK')       ×1.00 잉크  42.0× 42.0u  통과 
+   fx_bubble     bubble.CB1             ('M2', 'INK')      ×1.00 잉크  12.0× 12.0u  통과 
+   fx_bubble     bubble.CB2             ('M2', 'INK')      ×1.00 잉크   8.0×  8.0u  통과 
+   fx_bubble     bubble.H3              (None, 'W')        ×1.00 잉크  11.0× 15.0u  통과 
+   fx_leaf       leaf.B0                ('M', 'INK')       ×1.00 잉크  52.0× 49.6u  통과 
+   fx_leaf       leaf.S1                (None, 'INK')      ×1.00 잉크  44.0× 39.0u  통과 
+   fx_leaf       leaf.S2                (None, 'M2')       ×1.20 잉크   5.0×  7.0u  통과 
+   fx_leaf       leaf.H3                (None, 'W')        ×0.75 잉크  11.0× 16.0u  통과 
+   pet_ball      ball.CB0               ('M', 'INK')       ×1.00 잉크  46.0× 46.0u  통과 
+   pet_ball      ball.S1                (None, 'M2')       ×1.10 잉크   7.5× 46.0u  통과 
+   pet_ball      ball.S2                (None, 'M2')       ×1.10 잉크   7.5× 46.0u  통과 
+   pet_ball      ball.H3                (None, 'W')        ×0.75 잉크   9.0× 11.0u  통과 
+   pet_balloon   balloon.B0             ('M', 'INK')       ×1.00 잉크  32.0× 42.0u  통과 
+   pet_balloon   balloon.B1             ('M2', 'INK')      ×1.00 잉크   9.0×  6.0u  통과 
+   pet_balloon   balloon.S2             (None, 'M2')       ×1.00 잉크   6.0× 13.0u  통과 
+   pet_balloon   balloon.H3             (None, 'W')        ×0.75 잉크   7.0× 10.0u  통과 
+   pet_cursor    cursor.B0              ('M', 'INK')       ×1.00 잉크  28.0× 46.0u  통과 
+   pet_cursor    cursor.S1              (None, 'M2')       ×1.20 잉크   6.0×  4.0u  통과 
+   pet_cursor    cursor.S2              (None, 'M2')       ×1.20 잉크   7.0×  0.0u  통과 
+   pet_cursor    cursor.H3              (None, 'W')        ×0.75 잉크   2.0× 12.0u  통과 
+   pet_mini      mini.CB0               ('INKF', 'INK')    ×1.00 잉크  18.0× 18.0u  통과 
+   pet_mini      mini.S1                (None, 'INK')      ×1.40 잉크   0.0× 18.0u  통과 
+   pet_mini      mini.S2                (None, 'INK')      ×1.40 잉크  30.0×  9.0u  통과 
+   pet_mini      mini.S3                (None, 'INK')      ×1.40 잉크  11.0× 19.0u  통과 
+   pet_mini      mini.S4                (None, 'INK')      ×1.40 잉크  11.0× 19.0u  통과 
+   pet_plane     plane.B0               ('M', 'INK')       ×1.00 잉크  56.0× 24.0u  통과 
+   pet_plane     plane.B1               ('M2', 'INK')      ×1.00 잉크  36.0× 46.0u  통과 
+   pet_plane     plane.S2               (None, 'INK')      ×1.00 잉크  36.0× 24.0u  통과 
+   pet_plane     plane.H3               (None, 'W')        ×0.75 잉크  16.0×  6.0u  통과 
+   pet_snail     snail.B0               ('M2', 'INK')      ×1.00 잉크  54.0× 18.0u  통과 
+   pet_snail     snail.CB1              ('M', 'INK')       ×1.00 잉크  34.0× 34.0u  통과 
+   pet_snail     snail.CB2              ('M2', None)       ×1.00 잉크  13.0× 13.0u  통과 
+   pet_snail     snail.S3               (None, 'M2')       ×1.10 잉크   4.0× 10.0u  통과 
+   pet_snail     snail.S4               (None, 'M2')       ×1.10 잉크   1.0×  9.0u  통과 
+   pet_snail     snail.H5               (None, 'W')        ×0.75 잉크   7.0× 11.0u  통과 
+   통과 97 / 97
+
+== 7. 조각 수 · 역할 (P 4~9 · H 1 · M2 조각 · 뒤층) ==
+   browline  몸 7 (뒤층 0 · H 2 · M2 0 · 독립선 2) / 카드 7
+   straw     몸 7 (뒤층 2 · H 1 · M2 1 · 독립선 0) / 카드 4
+   beret     몸 4 (뒤층 0 · H 1 · M2 1 · 독립선 1) / 카드 4
+   poncho    몸 7 (뒤층 6 · H 1 · M2 5 · 독립선 4) / 카드 7
+   cowlick   몸 4 (뒤층 0 · H 1 · M2 1 · 독립선 0) / 카드 4
+   neat      몸 5 (뒤층 1 · H 1 · M2 1 · 독립선 0) / 카드 5
+   curly     몸 4 (뒤층 0 · H 1 · M2 1 · 독립선 0) / 카드 4
+   bald      몸 4 (뒤층 0 · H 1 · M2 1 · 독립선 1) / 카드 4
+   bowl      몸 4 (뒤층 0 · H 1 · M2 1 · 독립선 0) / 카드 4
+   ponytail  몸 5 (뒤층 1 · H 1 · M2 1 · 독립선 0) / 카드 5
+   fx_none       카드 2 (H 0 · M2 0)  ← P<4: 「없음」/잉크 표식은 예외(사유 §14-12)
+   fx_footprint  카드 4 (H 1 · M2 0)
+   fx_sparkle    카드 4 (H 1 · M2 2)
+   fx_dust       카드 4 (H 1 · M2 2)
+   fx_bubble     카드 4 (H 1 · M2 2)
+   fx_leaf       카드 4 (H 1 · M2 1)
+   pet_ball      카드 4 (H 1 · M2 2)
+   pet_balloon   카드 4 (H 1 · M2 2)
+   pet_cursor    카드 4 (H 1 · M2 2)
+   pet_mini      카드 5 (H 0 · M2 0)  ← P<4: 「없음」/잉크 표식은 예외(사유 §14-12)
+   pet_plane     카드 4 (H 1 · M2 1)
+   pet_snail     카드 6 (H 1 · M2 4)
+
+== 8. 색 해석 — 검은 잉크 몸 / 흰 잉크 몸 / 카드 ==
+   browline  browline.B0            front ('M', 'INK')       검: #5075B5/#111111 | 흰: #5075B5/#FFFFFF
+   browline  browline.B1            front (('CARDWASH', 0.16), 'M') 검: #132425/#5075B5 | 흰: #DBECED/#5075B5
+   browline  browline.B2            front (('CARDWASH', 0.16), 'M') 검: #132425/#5075B5 | 흰: #DBECED/#5075B5
+   browline  browline.S3            front (None, 'M')        검: None/#5075B5 | 흰: None/#5075B5
+   browline  browline.S4            front (None, 'M')        검: None/#5075B5 | 흰: None/#5075B5
+   browline  browline.H5            front (None, 'W')        검: None/#FFFFFF | 흰: None/#FFFFFF
+   browline  browline.H6            front (None, 'W')        검: None/#FFFFFF | 흰: None/#FFFFFF
+   straw     straw.B0               front ('M', 'INK')       검: #AB7942/#111111 | 흰: #AB7942/#FFFFFF
+   straw     straw.F1               front ('M2', None)       검: #CC5512/None | 흰: #CC5512/None
+   straw     straw.B2.far           back  ('M', None)        검: #AB7942/None | 흰: #AB7942/None
+   straw     straw.B2.farArc        back  (None, 'INK')      검: None/#111111 | 흰: None/#FFFFFF
+   straw     straw.B2.near          front ('M', None)        검: #AB7942/None | 흰: #AB7942/None
+   straw     straw.B2.nearArc       front (None, 'INK')      검: None/#111111 | 흰: None/#FFFFFF
+   straw     straw.H3               front (None, 'W')        검: None/#FFFFFF | 흰: None/#FFFFFF
+   beret     beret.B0               front ('M', 'INK')       검: #5577AE/#111111 | 흰: #5577AE/#FFFFFF
+   beret     beret.F1               front ('M2', None)       검: #CC5512/None | 흰: #CC5512/None
+   beret     beret.S2               front (None, 'M')        검: None/#5577AE | 흰: None/#5577AE
+   beret     beret.H3               front (None, 'W')        검: None/#FFFFFF | 흰: None/#FFFFFF
+   poncho    poncho.StageBack       back  ('M', 'INK')       검: #BA7636/#111111 | 흰: #BA7636/#FFFFFF
+   poncho    poncho.Fringe0         back  (None, 'M2')       검: None/#BA5928 | 흰: None/#BA5928
+   poncho    poncho.Fringe1         back  (None, 'M2')       검: None/#BA5928 | 흰: None/#BA5928
+   poncho    poncho.Fringe2         back  (None, 'M2')       검: None/#BA5928 | 흰: None/#BA5928
+   poncho    poncho.Fringe3         back  (None, 'M2')       검: None/#BA5928 | 흰: None/#BA5928
+   poncho    poncho.StageBib        front ('M2', 'INK')      검: #BA5928/#111111 | 흰: #BA5928/#FFFFFF
+   poncho    poncho.H               back  (None, 'W')        검: None/#FFFFFF | 흰: None/#FFFFFF
+   cowlick   cowlick.Mass           front ('M', 'INK')       검: #A16A28/#111111 | 흰: #A16A28/#FFFFFF
+   cowlick   cowlick.Crest          front ('M2', 'INK')      검: #A07830/#111111 | 흰: #A07830/#FFFFFF
+   cowlick   cowlick.S2             front (None, 'INK')      검: None/#111111 | 흰: None/#FFFFFF
+   cowlick   cowlick.H3             front (None, 'W')        검: None/#FFFFFF | 흰: None/#FFFFFF
+   neat      neat.Fall              back  ('M', 'INK')       검: #A0622A/#111111 | 흰: #A0622A/#FFFFFF
+   neat      neat.Mass              front ('M', 'INK')       검: #A0622A/#111111 | 흰: #A0622A/#FFFFFF
+   neat      neat.Part              front ('M2', None)       검: #A07830/None | 흰: #A07830/None
+   neat      neat.S3                front (None, 'INK')      검: None/#111111 | 흰: None/#FFFFFF
+   neat      neat.H4                front (None, 'W')        검: None/#FFFFFF | 흰: None/#FFFFFF
+   curly     curly.Mass             front ('M', 'INK')       검: #BD501F/#111111 | 흰: #BD501F/#FFFFFF
+   curly     curly.Coil             front ('M2', 'INK')      검: #AF651C/#111111 | 흰: #AF651C/#FFFFFF
+   curly     curly.S2               front (None, 'INK')      검: None/#111111 | 흰: None/#FFFFFF
+   curly     curly.H3               front (None, 'W')        검: None/#FFFFFF | 흰: None/#FFFFFF
+   bald      bald.TuftL             front ('M', 'INK')       검: #936C3F/#111111 | 흰: #936C3F/#FFFFFF
+   bald      bald.TuftR             front ('M', 'INK')       검: #936C3F/#111111 | 흰: #936C3F/#FFFFFF
+   bald      bald.S2                front (None, 'M2')       검: None/#CC5512 | 흰: None/#CC5512
+   bald      bald.H3                front (None, 'W')        검: None/#FFFFFF | 흰: None/#FFFFFF
+   bowl      bowl.Mass              front ('M', 'INK')       검: #A0622A/#111111 | 흰: #A0622A/#FFFFFF
+   bowl      bowl.Fringe            front ('M2', 'INK')      검: #A07830/#111111 | 흰: #A07830/#FFFFFF
+   bowl      bowl.S2                front (None, 'INK')      검: None/#111111 | 흰: None/#FFFFFF
+   bowl      bowl.H3                front (None, 'W')        검: None/#FFFFFF | 흰: None/#FFFFFF
+   ponytail  ponytail.Tail          back  ('M', 'INK')       검: #BD501F/#111111 | 흰: #BD501F/#FFFFFF
+   ponytail  ponytail.Mass          front ('M', 'INK')       검: #BD501F/#111111 | 흰: #BD501F/#FFFFFF
+   ponytail  ponytail.Tie           front ('M2', None)       검: #AF651C/None | 흰: #AF651C/None
+   ponytail  ponytail.S3            front (None, 'INK')      검: None/#111111 | 흰: None/#FFFFFF
+   ponytail  ponytail.H4            front (None, 'W')        검: None/#FFFFFF | 흰: None/#FFFFFF
+   browline      browline.B0            card  ('M', 'INK')       #5075B5 α1.00 / #E8E2D6
+   browline      browline.B1            card  (('CARDWASH', 0.16), 'M') #20878C α0.16 / #5075B5
+   browline      browline.B2            card  (('CARDWASH', 0.16), 'M') #20878C α0.16 / #5075B5
+   browline      browline.S3            card  (None, 'M')        None α1.00 / #5075B5
+   browline      browline.S4            card  (None, 'M')        None α1.00 / #5075B5
+   browline      browline.H5            card  (None, 'W')        None α1.00 / #FFFFFF
+   browline      browline.H6            card  (None, 'W')        None α1.00 / #FFFFFF
+   straw         straw.B0               card  ('M', 'INK')       #AB7942 α1.00 / #E8E2D6
+   straw         straw.F1               card  ('M2', None)       #CC5512 α1.00 / None
+   straw         straw.B2               card  ('M', 'INK')       #AB7942 α1.00 / #E8E2D6
+   straw         straw.H3               card  (None, 'W')        None α1.00 / #FFFFFF
+   beret         beret.B0               card  ('M', 'INK')       #5577AE α1.00 / #E8E2D6
+   beret         beret.F1               card  ('M2', None)       #CC5512 α1.00 / None
+   beret         beret.S2               card  (None, 'M')        None α1.00 / #5577AE
+   beret         beret.H3               card  (None, 'W')        None α1.00 / #FFFFFF
+   poncho        poncho.B0              card  ('M', 'INK')       #BA7636 α1.00 / #E8E2D6
+   poncho        poncho.B1              card  ('M2', 'INK')      #BA5928 α1.00 / #E8E2D6
+   poncho        poncho.S2              card  (None, 'M2')       None α1.00 / #BA5928
+   poncho        poncho.S3              card  (None, 'M2')       None α1.00 / #BA5928
+   poncho        poncho.S4              card  (None, 'M2')       None α1.00 / #BA5928
+   poncho        poncho.S5              card  (None, 'M2')       None α1.00 / #BA5928
+   poncho        poncho.H6              card  (None, 'W')        None α1.00 / #FFFFFF
+   cowlick       cowlick.Mass           card  ('M', 'INK')       #A16A28 α1.00 / #E8E2D6
+   cowlick       cowlick.Crest          card  ('M2', 'INK')      #A07830 α1.00 / #E8E2D6
+   cowlick       cowlick.S2             card  (None, 'INK')      None α1.00 / #E8E2D6
+   cowlick       cowlick.H3             card  (None, 'W')        None α1.00 / #FFFFFF
+   neat          neat.Fall              card  ('M', 'INK')       #A0622A α1.00 / #E8E2D6
+   neat          neat.Mass              card  ('M', 'INK')       #A0622A α1.00 / #E8E2D6
+   neat          neat.Part              card  ('M2', None)       #A07830 α1.00 / None
+   neat          neat.S3                card  (None, 'INK')      None α1.00 / #E8E2D6
+   neat          neat.H4                card  (None, 'W')        None α1.00 / #FFFFFF
+   curly         curly.Mass             card  ('M', 'INK')       #BD501F α1.00 / #E8E2D6
+   curly         curly.Coil             card  ('M2', 'INK')      #AF651C α1.00 / #E8E2D6
+   curly         curly.S2               card  (None, 'INK')      None α1.00 / #E8E2D6
+   curly         curly.H3               card  (None, 'W')        None α1.00 / #FFFFFF
+   bald          bald.TuftL             card  ('M', 'INK')       #936C3F α1.00 / #E8E2D6
+   bald          bald.TuftR             card  ('M', 'INK')       #936C3F α1.00 / #E8E2D6
+   bald          bald.S2                card  (None, 'M2')       None α1.00 / #CC5512
+   bald          bald.H3                card  (None, 'W')        None α1.00 / #FFFFFF
+   bowl          bowl.Mass              card  ('M', 'INK')       #A0622A α1.00 / #E8E2D6
+   bowl          bowl.Fringe            card  ('M2', 'INK')      #A07830 α1.00 / #E8E2D6
+   bowl          bowl.S2                card  (None, 'INK')      None α1.00 / #E8E2D6
+   bowl          bowl.H3                card  (None, 'W')        None α1.00 / #FFFFFF
+   ponytail      ponytail.Tail          card  ('M', 'INK')       #BD501F α1.00 / #E8E2D6
+   ponytail      ponytail.Mass          card  ('M', 'INK')       #BD501F α1.00 / #E8E2D6
+   ponytail      ponytail.Tie           card  ('M2', None)       #AF651C α1.00 / None
+   ponytail      ponytail.S3            card  (None, 'INK')      None α1.00 / #E8E2D6
+   ponytail      ponytail.H4            card  (None, 'W')        None α1.00 / #FFFFFF
+   fx_none       fxnone.CB0             card  (None, 'INK')      None α1.00 / #E8E2D6
+   fx_none       fxnone.S1              card  (None, 'INK')      None α1.00 / #E8E2D6
+   fx_footprint  footprint.B0           card  ('M', 'INK')       #D6DBE3 α1.00 / #E8E2D6
+   fx_footprint  footprint.CB1          card  ('M', 'INK')       #D6DBE3 α1.00 / #E8E2D6
+   fx_footprint  footprint.S2           card  (None, 'INK')      None α1.00 / #E8E2D6
+   fx_footprint  footprint.H3           card  (None, 'W')        None α1.00 / #FFFFFF
+   fx_sparkle    sparkle.B0             card  ('M', 'INK')       #9B7922 α1.00 / #E8E2D6
+   fx_sparkle    sparkle.CF1            card  ('M2', None)       #988540 α1.00 / None
+   fx_sparkle    sparkle.S2             card  (None, 'M2')       None α1.00 / #988540
+   fx_sparkle    sparkle.H3             card  (None, 'W')        None α1.00 / #FFFFFF
+   fx_dust       dust.B0                card  ('M', 'INK')       #8B939F α1.00 / #E8E2D6
+   fx_dust       dust.CB1               card  ('M2', 'INK')      #D6DBE3 α1.00 / #E8E2D6
+   fx_dust       dust.CB2               card  ('M2', 'INK')      #D6DBE3 α1.00 / #E8E2D6
+   fx_dust       dust.H3                card  (None, 'W')        None α1.00 / #FFFFFF
+   fx_bubble     bubble.CB0             card  ('M', 'INK')       #3378CC α1.00 / #E8E2D6
+   fx_bubble     bubble.CB1             card  ('M2', 'INK')      #5075B5 α1.00 / #E8E2D6
+   fx_bubble     bubble.CB2             card  ('M2', 'INK')      #5075B5 α1.00 / #E8E2D6
+   fx_bubble     bubble.H3              card  (None, 'W')        None α1.00 / #FFFFFF
+   fx_leaf       leaf.B0                card  ('M', 'INK')       #5A8C3C α1.00 / #E8E2D6
+   fx_leaf       leaf.S1                card  (None, 'INK')      None α1.00 / #E8E2D6
+   fx_leaf       leaf.S2                card  (None, 'M2')       None α1.00 / #9B7922
+   fx_leaf       leaf.H3                card  (None, 'W')        None α1.00 / #FFFFFF
+   pet_ball      ball.CB0               card  ('M', 'INK')       #C6443C α1.00 / #E8E2D6
+   pet_ball      ball.S1                card  (None, 'M2')       None α1.00 / #6787B9
+   pet_ball      ball.S2                card  (None, 'M2')       None α1.00 / #6787B9
+   pet_ball      ball.H3                card  (None, 'W')        None α1.00 / #FFFFFF
+   pet_balloon   balloon.B0             card  ('M', 'INK')       #C6443C α1.00 / #E8E2D6
+   pet_balloon   balloon.B1             card  ('M2', 'INK')      #6787B9 α1.00 / #E8E2D6
+   pet_balloon   balloon.S2             card  (None, 'M2')       None α1.00 / #6787B9
+   pet_balloon   balloon.H3             card  (None, 'W')        None α1.00 / #FFFFFF
+   pet_cursor    cursor.B0              card  ('M', 'INK')       #3378CC α1.00 / #E8E2D6
+   pet_cursor    cursor.S1              card  (None, 'M2')       None α1.00 / #6787B9
+   pet_cursor    cursor.S2              card  (None, 'M2')       None α1.00 / #6787B9
+   pet_cursor    cursor.H3              card  (None, 'W')        None α1.00 / #FFFFFF
+   pet_mini      mini.CB0               card  ('INKF', 'INK')    #E8E2D6 α1.00 / #E8E2D6
+   pet_mini      mini.S1                card  (None, 'INK')      None α1.00 / #E8E2D6
+   pet_mini      mini.S2                card  (None, 'INK')      None α1.00 / #E8E2D6
+   pet_mini      mini.S3                card  (None, 'INK')      None α1.00 / #E8E2D6
+   pet_mini      mini.S4                card  (None, 'INK')      None α1.00 / #E8E2D6
+   pet_plane     plane.B0               card  ('M', 'INK')       #6787B9 α1.00 / #E8E2D6
+   pet_plane     plane.B1               card  ('M2', 'INK')      #587398 α1.00 / #E8E2D6
+   pet_plane     plane.S2               card  (None, 'INK')      None α1.00 / #E8E2D6
+   pet_plane     plane.H3               card  (None, 'W')        None α1.00 / #FFFFFF
+   pet_snail     snail.B0               card  ('M2', 'INK')      #96814F α1.00 / #E8E2D6
+   pet_snail     snail.CB1              card  ('M', 'INK')       #BA7636 α1.00 / #E8E2D6
+   pet_snail     snail.CB2              card  ('M2', None)       #96814F α1.00 / None
+   pet_snail     snail.S3               card  (None, 'M2')       None α1.00 / #96814F
+   pet_snail     snail.S4               card  (None, 'M2')       None α1.00 / #96814F
+   pet_snail     snail.H5               card  (None, 'W')        None α1.00 / #FFFFFF

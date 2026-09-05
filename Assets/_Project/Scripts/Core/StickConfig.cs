@@ -1971,6 +1971,16 @@ namespace StickMate.Core
         /// </summary>
         public const float MinFillOutlineScreenPoints = 1f;
 
+        /// <summary>
+        /// ★ <b>인계본 착용 조각</b>(계약 v2, <c>strokeInR &gt; 0</c>) 전용 화면상 획 하한 — 2026-09-05 R16 리더 결정
+        /// (EQUIPMENT_HANDOFF_PORT_SPEC §14-1). 본체 팔다리의 <see cref="MinStrokeScreenPoints"/>(2pt)와 <b>분리</b>한다.
+        /// <para>인계본 착용 획은 출하 배율 0.75에서 0.67~0.81pt 로 전부 1pt 아래라 2pt 하한이면 ×2.48~2.98 로 굵어져
+        /// 「착용 모습이 아예 다르다」가 됐다. 1pt 는 Windows 100% 에서 디바이스 픽셀 1개 — 그 아래는 없다.
+        /// 배율 1.00 에서는 HEAD/NECK 명목 획(1.07/1.01pt)이 하한 위에 살아 조각별 배수가 그대로 보인다.</para>
+        /// <para>★ Windows 1× 에서 1pt LineRenderer 의 AA·끊김은 실기 미확인(§14-7 #1).</para>
+        /// </summary>
+        public const float MinAccessoryStrokeScreenPoints = 1f;
+
         /// <summary>월드 1유닛이 몇 OS 포인트인가의 <b>근사</b>(실측 창 높이 846pt / (2 × 직교 12) = 35.25).
         /// 위 하한을 월드 유닛으로 환산할 때, 카메라/화면을 읽을 수 없는 경로(에디터 프리팹 굽기,
         /// 헤드리스 테스트)에서만 쓴다. 런타임은 카메라 직교 크기와 실제 화면 높이를 직접 잰다.</summary>

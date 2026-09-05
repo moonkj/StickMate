@@ -130,18 +130,95 @@ namespace StickMate.Core
         public const int MaxStatTier = 3;
 
         // ====================================================================
-        // 첫 실행 시드 — U-42 미확정
+        // 상점 가격 — 등급에서 파생한다 (§21-10-a (4) · U-17 확정 §21-5)
+        // ====================================================================
+        //
+        // ★ <b>왜 여기(재화 규칙)이고 ItemCatalog가 아닌가</b> — 리더 판정 2026-09-05.
+        //   <c>ItemCatalog</c>의 <c>SubStat</c>·<c>Theme</c>은 아이템마다 <b>선언</b>되는 원시 데이터인데
+        //   가격은 <b>등급에서 파생</b>되는 재화 도메인 값이다. 그리고 그 값을 실제로 쓰는
+        //   <c>CurrencyModel.TryPurchaseItem</c>이 이미 재화 도메인에 있다 —
+        //   모델(<c>CurrencyModel</c>) + 규칙(여기)으로 짝을 맞추는 이 파일의 기존 패턴 그대로다.
+        //
+        // ★★ <b>의존 방향은 한 쪽뿐이다</b>: 카탈로그가 가격이 필요하면 <b>여기를 참조</b>한다.
+        //   <b>반대는 금지</b> — 재화 규칙은 <c>ItemCatalog</c>를 참조하지 않는다. 이 파일이 카탈로그를
+        //   알게 되는 순간 "순수 규칙"이 아니게 되고(위 클래스 문서), 테스트가 <c>Resources.LoadAll</c>
+        //   없이는 못 돌게 된다. 여기서 쓰는 <see cref="ItemRarity"/>는 <b>그 자체로 독립된 열거형</b>이다.
+        //
+        // ★ 배선은 아직 없다 — <c>TryPurchaseItem</c>을 부르는 구매 플로우는 다음 라운드다.
+        //   그래도 값을 지금 한 곳에 못박는 이유는, 안 그러면 그 라운드가 9,600을
+        //   <c>Interaction/</c>에 손으로 적고 <b>같은 사실이 두 곳에서</b> 살게 되기 때문이다.
+
+        /// <summary>일반 등급 아이템 가격.</summary>
+        public const int CommonPriceCoins = 600;
+
+        /// <summary>희귀 등급 아이템 가격.</summary>
+        public const int RarePriceCoins = 1400;
+
+        /// <summary>영웅 등급 아이템 가격.</summary>
+        public const int EpicPriceCoins = 3200;
+
+        /// <summary>
+        /// 전설 등급 아이템 가격. ★ <b>U-17 확정값</b>(리더 승인 2026-09-05, §21-5).
+        /// <para>고른 근거 셋: ① 완주 판정 기준(≤ 97.5일) 대비 <b>여유 7.5일</b> — 상한 10,971은 여유 0이라
+        /// 하류 수치가 1%만 흔들려도 깨진다. ② 하류 계산 4개(가격 스윕 · 코인 완주 · 성장 곡선 ·
+        /// 외형 가격)가 전부 이 값 위에 서 있다. ③ <b>집중 25분 세션 정확히 16.0회</b> —
+        /// 10,971은 18.285회라 화면에서 설명할 수 없는 숫자다.</para>
+        /// </summary>
+        public const int LegendaryPriceCoins = 9600;
+
+        /// <summary>
+        /// 등급 → 가격. <b>가격의 유일한 출처</b>다 — 화면도 상점도 여기만 부른다
+        /// (<c>ItemCatalog.RarityName</c>이 낱말에 대해 하는 일과 같은 역할).
+        /// <para>모르는 값은 <see cref="CommonPriceCoins"/>다. 여기서 예외를 던지거나 0을 돌려주면
+        /// <b>공짜로 사지는 아이템</b>이 생긴다 — 가장 싼 단으로 떨어지는 쪽이 안전한 방향이다.</para>
+        /// </summary>
+        public static int PriceCoins(ItemRarity rarity)
+        {
+            switch (rarity)
+            {
+                case ItemRarity.Common: return CommonPriceCoins;
+                case ItemRarity.Rare: return RarePriceCoins;
+                case ItemRarity.Epic: return EpicPriceCoins;
+                case ItemRarity.Legendary: return LegendaryPriceCoins;
+                default: return CommonPriceCoins;
+            }
+        }
+
+        // ====================================================================
+        // 첫 실행 시드 — U-42 확정 (리더 승인 2026-09-05)
         // ====================================================================
 
-        /// <summary>★ <b>U-42 미확정.</b> 첫 실행 시드 동전. <c>ECONOMY_SPEC</c>:117의 60은
-        /// <b>구단위</b>이고 §13-3 확정표에 시드가 없다 — <b>추측하지 않는다</b>.
-        /// <para>그래서 0이고, <see cref="CanGrantSeed"/>가 0일 때 <b>지급도 안 하고 플래그도 안 세운다</b>.
-        /// 방향이 중요하다: 플래그를 먼저 세워 버리면 U-42가 확정되는 날 기존 사용자가 시드를
-        /// 영영 못 받는다(되돌릴 수 없는 손실). 지금은 아무 일도 일어나지 않고, 값이 정해지면
-        /// 그때 처음으로 지급된다.</para></summary>
-        public const int SeedCoins = 0;
+        /// <summary>
+        /// ★ 첫 실행 시드 동전 — <b>U-42 확정값</b>(리더 승인 2026-09-05).
+        /// <b>기존 사용자를 포함한 전원에게 평생 1회</b> 지급한다.
+        ///
+        /// <para><b>왜 1,200인가</b>(<c>ECONOMY_SPEC</c> §0-6-4(a)): 0이면 <b>첫 50분간 상점 버튼이
+        /// 전부 회색</b>이라 1일차에 누를 것이 없다. 1,200은 §0-2-3이 구단위 60으로 만들려던 구조를
+        /// 그대로 옮긴 값이고(×20), 그 구조는 <i>"시드가 2개를 사고, 그날 수입이 3번째를 사고,
+        /// 잔액이 남아 「다음은 모아야 한다」가 즉시 성립한다"</i>이다.
+        /// ★ <b>1,800을 안 고른 이유</b>: 셋 다 살 수 있으면 첫 화면이 "고르는 화면"이 아니라
+        /// "전부 누르는 화면"이 된다.</para>
+        ///
+        /// <para>★★ <b>기존 사용자가 받을 수 있는 이유 — 이 값이 0이었던 덕분이다.</b>
+        /// <see cref="CanGrantSeed"/>가 <c>SeedCoins &gt; 0</c>을 요구했으므로 미확정 기간에
+        /// <b>지급도 안 했고 <c>seedGranted</c> 플래그도 안 세웠다</b>. 그래서 지금까지의 모든 세이브에서
+        /// 그 필드는 <c>false</c>이고, 이 상수가 켜지는 순간 전원이 첫 지급 대상이 된다.
+        /// <b>순서를 반대로 했으면(플래그 먼저) 되돌릴 수 없는 손실이었다</b> — 그 방어가
+        /// 실제로 값을 한 셈이므로 기록으로 남긴다.</para>
+        ///
+        /// <para>★ <b>design-systems 확인 요청 1건(값을 막지는 않는다)</b>: §0-6-4(a)의 유도표는
+        /// <i>"Lv.1에 살 수 있는 것은 외형 3슬롯 rank0 3종(각 600)뿐"</i>을 전제로 「2/3을 산다」를
+        /// 셌는데, <b>출하 카탈로그에서 그 3종은 <c>requiredLevel = 1</c>이라 이미 무상 보유</b>다
+        /// (<c>look.hair.cowlick</c>·<c>look.fx.none</c>·<c>look.pet.ball</c>, 골든 실측).
+        /// <see cref="ItemCatalogEntry.IsOwned"/>가 레벨 파생 ∪ 구매이므로 <b>Lv.1 7종 전부가 공짜</b>이고,
+        /// 시드로 처음 살 수 있는 것은 레벨 위쪽 아이템이다. <b>금액 자체는 리더가 별도 근거
+        /// (「최저가 600도 이틀 걸리는 첫 30분」)로 승인했으므로 그대로 간다</b> — 다만 유도표의
+        /// 분모가 출하 데이터와 다르다.</para>
+        /// </summary>
+        public const int SeedCoins = 1200;
 
-        /// <summary>시드를 지급할 수 있는 상태인가. 금액이 정해지지 않았으면(U-42) false다.</summary>
+        /// <summary>시드를 지급할 수 있는 상태인가. <b>평생 1회</b>이고,
+        /// 금액이 0이면(과거 U-42 미확정 상태) 지급도 플래그 설정도 하지 않는다.</summary>
         public static bool CanGrantSeed(bool seedAlreadyGranted)
             => !seedAlreadyGranted && SeedCoins > 0;
 

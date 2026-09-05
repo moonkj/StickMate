@@ -55,6 +55,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 폼폼이_획_예산을_지킨다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeanie, "v1 폼폼(BeaniePom) 규칙 — 획 예산·꺾임 문턱·유일 보조색·액자 상한·관 위 얹힘. 인계본 털모자는 방울이 없다");
             AccessoryShapeBuilder.Rig rig = Rig();
             float w = AccessoryStrokeBudgetTests.BudgetWorld(rig);
 
@@ -76,6 +77,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 폼폼_꺾임이_검사_문턱에서_확실히_떨어져_있다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeanie, "v1 폼폼(BeaniePom) 규칙 — 획 예산·꺾임 문턱·유일 보조색·액자 상한·관 위 얹힘. 인계본 털모자는 방울이 없다");
             AccessoryShapeBuilder.Rig rig = Rig();
             Vector3[] p = Pom(rig).Points;
             int n = p.Length;
@@ -98,11 +100,11 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 폼폼은_유일한_보조색_채움으로_남는다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeanie, "v1 폼폼(BeaniePom) 규칙 — 획 예산·꺾임 문턱·유일 보조색·액자 상한·관 위 얹힘. 인계본 털모자는 방울이 없다");
             AccessoryShapeBuilder.Rig rig = Rig();
             List<AccessoryShapeBuilder.Shape> beanie = Beanie(rig);
 
-            Assert.That(beanie.Count, Is.InRange(2, 4),
-                $"털모자의 도형이 {beanie.Count}개입니다 — 정원은 2~4개입니다(37-6 규칙 5).");
+            // ★ 2026-09-05 계약 v2(R16 (h)) — 정원 검사는 폐지됐다(잃는 것: 조각 수 상한).
 
             int accents = 0;
             for (int i = 0; i < beanie.Count; i++)
@@ -126,6 +128,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 폼폼_꼭대기가_액자_상한에_그대로_머문다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeanie, "v1 폼폼(BeaniePom) 규칙 — 획 예산·꺾임 문턱·유일 보조색·액자 상한·관 위 얹힘. 인계본 털모자는 방울이 없다");
             // ★ 2026-09-03(R12 이식 1단계) — 잠그는 것을 <b>성분에서 합으로</b> 옮겼다.
             //   옛 단언은 <c>BeaniePomCrestRiseRatio == 0.40f</c>였는데, 그것은 규약이 아니라
             //   <b>그날의 배분</b>이었다: 이 클래스 문서가 스스로 "고정 대상은 반지름도 오프셋도
@@ -232,6 +235,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 폼폼이_관에_얹혀_있다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeanie, "v1 폼폼(BeaniePom) 규칙 — 획 예산·꺾임 문턱·유일 보조색·액자 상한·관 위 얹힘. 인계본 털모자는 방울이 없다");
             AccessoryShapeBuilder.Rig rig = Rig();
             AccessoryShapeBuilder.Shape pom = Pom(rig);
             AccessoryShapeBuilder.Shape crown = AccessorySilhouetteMetrics.Find(Beanie(rig), "BeanieCrown");

@@ -267,6 +267,18 @@ RegOpenKeyExW · RegEnumKeyExW · RegQueryValueExW · OpenProcess · QueryFullPr
   **키로거 혐의에 대한 검증 가능한 반박**이고, 감사로 잠글 가치가 있다.
 - 개발 게이트가 닫히면 (다) 계열 6키는 **조회조차 하지 않는다**(같은 단락 성질).
 
+★ **2026-09-05 보강 — 위 목록은 `DllImport`만 세므로 COM 표면을 구조적으로 못 본다.**
+프로덕션 `ComImport` 전수(실측, 테스트 제외)는 **3파일 5인터페이스**이고 **전부 문서화된 공개 COM**이다:
+```
+WindowsSystemAudioActivityProbe.cs  IMMDeviceEnumerator · IMMDevice · IAudioMeterInformation
+WindowsTaskbarButtonRemover.cs      ITaskbarList
+WindowsVirtualDesktopProbe.cs       IVirtualDesktopManager      ← 2026-09-05 M-8 신규
+```
+**비문서 COM 0건**(`IVirtualDesktopManagerInternal` · `IVirtualDesktopNotificationService` ·
+`IApplicationViewCollection` 전부 부재). 감사·근거는 `SECURITY_MODEL.md` **V절**.
+⇒ **M-8은 S-3의 위험 서술을 악화시키지 않는다** — `DllImport` 목록이 한 줄도 늘지 않았고,
+셸 COM 조회는 백신 시그니처가 아니라 셸 통합 앱의 평범한 형태다.
+
 → **서명은 이 앱에서 백신 오탐을 「늘리는」 조치가 아니라 「줄이는」 유일한 조치다.**
 선 3(백신 오탐 금지)과 **충돌하지 않고 오히려 같은 편**이다.
 

@@ -189,6 +189,137 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(1f, rig.Facing, 1e-5f, "카드는 언제나 정면(facing +1)이어야 합니다.");
         }
 
+        // ============================================================================
+        // ★ 2026-09-05 계약 v2 — 카드 변형이 있는 아이템은 인계본 프레이밍·획·색 문법으로 그려진다
+        // ============================================================================
+
+        private static List<AccessoryShapeBuilder.Shape> CardShapes(EquipmentSlot slot, int item)
+        {
+            var sink = new List<AccessoryShapeBuilder.Shape>();
+            AccessoryShapeBuilder.Append(sink, slot, item, AccessoryCardIcon.CardRig(),
+                float.PositiveInfinity, 0f, false, AccessorySurface.Card);
+            return sink;
+        }
+
+        private static bool Same(Color a, Color b)
+            => Mathf.Abs(a.r - b.r) < 1e-3f && Mathf.Abs(a.g - b.g) < 1e-3f && Mathf.Abs(a.b - b.b) < 1e-3f;
+
+        /// <summary>인계본 카드의 정체는 「밝은 잉크 윤곽 + 어두운 워시 채움」이다(§13-3-1). 옛 카드는 채움×0.28 의
+        /// 어두운 윤곽이라 값 관계가 거꾸로였다 — 설계된 카드에서는 그 옛 윤곽색이 <b>한 조각도</b> 없어야 한다.</summary>
+        [Test]
+        public void 카드_변형이_있는_아이템은_잉크_윤곽과_워시_채움으로_그려진다()
+        {
+            ItemCatalogEntry entry = ItemCatalog.Item(EquipmentSlot.Head, AccessoryShapeBuilder.HeadCap);
+            RectTransform root = NewRoot();
+            Assert.IsTrue(AccessoryCardIcon.TryBuild(root, EquipmentSlot.Head, AccessoryShapeBuilder.HeadCap,
+                IconSize, IconStroke, entry.PrimaryColor, entry.SecondaryColor));
+
+            List<AccessoryShapeBuilder.Shape> shapes = CardShapes(EquipmentSlot.Head, AccessoryShapeBuilder.HeadCap);
+            Assert.IsTrue(AccessoryCardIcon.HasDesignedCard(shapes), "야구모자에 카드 변형이 없습니다 — 아래 대조가 공허합니다.");
+
+            int filledPieces = 0;
+            int highlightIndex = -1;
+            for (int i = 0; i < shapes.Count; i++)
+            {
+                if (shapes[i].Filled) filledPieces++;
+                if (shapes[i].Tone == AccessoryTone.Highlight) highlightIndex = i;
+            }
+            Assert.AreEqual(filledPieces, root.GetComponentsInChildren<AccessoryFillGraphic>(true).Length,
+                "채움 면 수가 카드 변형의 채움 조각 수와 다릅니다.");
+            Assert.GreaterOrEqual(highlightIndex, 0, "야구모자 카드에 하이라이트 조각이 없습니다(인계본 H3).");
+
+            // 하이라이트의 기대색을 계약 문장 그대로 다시 적는다: 밑 조각의 <b>재질색 M 불투명</b>(팔레트 R-1) 위 흰 42%.
+            // M 은 카탈로그 주색(entry.PrimaryColor) — 카드·몸이 같은 hex 원천이고 등급색은 조각에 0개다(리더 판정 L-1).
+            AccessoryShapeBuilder.Shape hl = shapes[highlightIndex];
+            Assert.Greater(hl.UnderBack, 0, "야구모자 하이라이트는 관(B0) 위에 얹힌다 — underBack 이 0 입니다.");
+            AccessoryShapeBuilder.Shape under = shapes[highlightIndex - hl.UnderBack];
+            Assert.IsTrue(under.Filled);
+            Assert.AreEqual(AccessoryTone.Primary, under.Tone, "야구모자 관(B0)은 재질색 M 채움이어야 이 대조가 뜻을 갖습니다(팔레트 §5).");
+            Assert.AreEqual(1f, under.Alpha, 1e-6f, "재질색 채움은 불투명(α 1.0)입니다 — 워시가 남아 있습니다(팔레트 R-1).");
+            Color rarity = UiChrome.RarityColor(ItemCatalog.Rarity(EquipmentSlot.Head, AccessoryShapeBuilder.HeadCap));
+            Assert.IsFalse(Same(rarity, entry.PrimaryColor), "등급색이 아이템 주색과 같으면 아래 대조가 두 원천을 못 가릅니다.");
+            Color underFlat = Color.Lerp(UiChrome.CardSurfaceMuted, entry.PrimaryColor, under.Alpha);
+            Color expectedHighlight = AccessoryTone.Highlighted(underFlat);
+
+            Color oldOutline = AccessoryShapeBuilder.FillOutlineColor(entry.PrimaryColor);
+            int inkStrokes = 0, oldStrokes = 0, highlightStrokes = 0;
+            foreach (Image g in root.GetComponentsInChildren<Image>(true))
+            {
+                if (g is AccessoryFillGraphic) continue;
+                if (Same(g.color, UiChrome.CardIconInk)) inkStrokes++;
+                else if (Same(g.color, oldOutline)) oldStrokes++;
+                else if (Same(g.color, expectedHighlight)) highlightStrokes++;
+            }
+            Assert.Greater(inkStrokes, 0, "설계된 카드에 잉크색 윤곽이 하나도 없습니다 — 카드가 옛 색 문법으로 그려집니다.");
+            Assert.AreEqual(0, oldStrokes, "설계된 카드에 옛 윤곽색(채움×0.28)이 남아 있습니다 — 값 관계가 다시 거꾸로입니다.");
+            Assert.Greater(highlightStrokes, 0, "하이라이트 획이 「밑 조각 워시 위 흰 42% 사전 합성」색으로 그려지지 않았습니다.");
+        }
+
+        /// <summary>대조군 — 카드 변형이 <b>없는</b> 베레모는 예전 그대로(봉투 맞춤 · 몸의 색 표)다.</summary>
+        [Test]
+        public void 카드_변형이_없는_아이템은_옛_경로_그대로다()
+        {
+            ItemCatalogEntry entry = ItemCatalog.Item(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret);
+            RectTransform root = NewRoot();
+            Assert.IsTrue(AccessoryCardIcon.TryBuild(root, EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret,
+                IconSize, IconStroke, entry.PrimaryColor, entry.SecondaryColor));
+            Assert.IsFalse(AccessoryCardIcon.HasDesignedCard(CardShapes(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret)));
+
+            int inkStrokes = 0, oldStrokes = 0;
+            foreach (Image g in root.GetComponentsInChildren<Image>(true))
+            {
+                if (g is AccessoryFillGraphic) continue;
+                if (Same(g.color, UiChrome.CardIconInk)) inkStrokes++;
+                if (Same(g.color, AccessoryShapeBuilder.FillOutlineColor(entry.PrimaryColor))
+                    || Same(g.color, AccessoryShapeBuilder.FillOutlineColor(entry.SecondaryColor))) oldStrokes++;
+            }
+            Assert.AreEqual(0, inkStrokes, "폴백 카드가 잉크색을 씁니다 — 두 경로가 섞였습니다.");
+            Assert.Greater(oldStrokes, 0, "폴백 카드의 윤곽이 옛 색 표(채움×0.28)가 아닙니다.");
+        }
+
+        /// <summary>설계된 카드는 봉투 맞춤(0.86)이 아니라 <b>슬롯 고정 배율</b>이다 — 외알안경(폭 34.7u)이 나비넥타이(48u)만큼
+        /// 부풀면 인계본의 크기 관계가 깨진다(§13-4-2 #7). 획 중심의 최고점이 프레임에서 유도한 값과 같은가로 잰다.</summary>
+        [Test]
+        public void 카드_변형은_슬롯_고정_배율로_놓인다()
+        {
+            ItemCatalogEntry entry = ItemCatalog.Item(EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesMonocle);
+            RectTransform root = NewRoot();
+            Assert.IsTrue(AccessoryCardIcon.TryBuild(root, EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesMonocle,
+                IconSize, IconStroke, entry.PrimaryColor, entry.SecondaryColor));
+
+            Assert.IsTrue(AccessoryCardIcon.Frame.TryGet(EquipmentSlot.Eyes, out float unitsPerR, out float centerYInR));
+            AccessoryShapeBuilder.Rig rig = AccessoryCardIcon.CardRig();
+            float pxPerR = unitsPerR * (IconSize / AccessoryCardIcon.Frame.IconViewBox);
+
+            // 프레임 기대: 조각 점들의 x 범위를 슬롯 배율로 옮긴 값. 봉투 맞춤이었다면 폭이 IconSize×0.86 에 맞춰졌을 것이다.
+            float minX = float.MaxValue, maxX = float.MinValue;
+            foreach (AccessoryShapeBuilder.Shape s in CardShapes(EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesMonocle))
+            {
+                foreach (Vector3 p in s.Points)
+                {
+                    float x = p.x / rig.HeadRadius * pxPerR;
+                    minX = Mathf.Min(minX, x);
+                    maxX = Mathf.Max(maxX, x);
+                }
+            }
+            float expectedWidth = maxX - minX;
+            Assert.Less(expectedWidth, IconSize * 0.86f - 2f, "외알안경이 상자 폭을 거의 채웁니다 — 이 검사가 봉투 맞춤과 슬롯 배율을 가를 수 없습니다.");
+
+            // 실제 획(Image)들의 anchoredPosition x 범위 ≈ 기대 범위(선분 중점이라 한 획 반폭 안).
+            float gotMin = float.MaxValue, gotMax = float.MinValue;
+            foreach (Image g in root.GetComponentsInChildren<Image>(true))
+            {
+                if (g is AccessoryFillGraphic) continue;
+                float x = g.rectTransform.anchoredPosition.x;
+                gotMin = Mathf.Min(gotMin, x);
+                gotMax = Mathf.Max(gotMax, x);
+            }
+            float tolerance = IconSize * AccessoryCardIcon.Frame.StrokeFraction * 2f + 1f;
+            Assert.AreEqual(expectedWidth, gotMax - gotMin, tolerance,
+                $"외알안경 카드의 폭이 슬롯 고정 배율({expectedWidth:F1})이 아니라 {gotMax - gotMin:F1}입니다 — " +
+                "봉투 맞춤(0.86)으로 부풀었거나 프레임이 틀렸습니다.");
+        }
+
         /// <summary>카드는 <b>단품</b>이다 — 지금 쓴 모자에 따라 머리카락이 잘리면 카드가 상태에 끌려간다.</summary>
         [Test]
         public void 카드_머리카락은_모자_상태에_영향받지_않는다()

@@ -341,9 +341,12 @@ namespace StickMate.Tests.PlayMode
             ClampMethod.Invoke(_window, new object[] { ScaleFactorForSmallPanel() });
 
             Rect bar = _window.TitleBarScreenRect;
-            Assert.Greater(bar.width * bar.height, 0f, $"{LogPrefix} 타이틀바 사각형이 비어 있습니다.");
+            Assert.Greater(bar.width * bar.height, 0f, $"{LogPrefix} 헤더 사각형이 비어 있습니다.");
 
-            Vector2 grab = bar.center;
+            // ★ 2026-09-05 — 옛 코드는 <c>bar.center</c>를 잡았다. 타이틀바가 헤더에 흡수되면서(L-2)
+            //   그 한가운데에 <b>탭 스트립이 앉았고</b>, 탭 위에서는 드래그가 시작되지 않는 것이 옳다.
+            //   그래서 좌표를 손으로 고르지 않고 창에게 "여기는 손잡이가 아니다" 목록을 받아 피한다.
+            Vector2 grab = FindHeaderGrabPoint(bar);
             _window.FeedPointerForTests(false, grab);   // 첫 표본(Open이 버리는 것) 소모.
             _window.FeedPointerForTests(true, grab);
             Assert.IsTrue(_window.IsDraggingPanel, $"{LogPrefix} 타이틀바를 눌렀는데 드래그가 시작되지 않았습니다.");
@@ -379,6 +382,30 @@ namespace StickMate.Tests.PlayMode
         /// <summary>창을 클램프 하한(320×320)까지 줄여 "옮길 여백이 있는 화면"을 만드는 배율.</summary>
         private static float ScaleFactorForSmallPanel()
             => Mathf.Max(0.01f, Mathf.Max(Screen.width, Screen.height) / 300f);
+
+        /// <summary>헤더에서 <b>실제로 끌 수 있는</b> 지점 — 알려진 자식 사각형을 전부 피한 자리.
+        /// <para>좌표를 손으로 적으면 헤더에 컨트롤이 하나 늘어날 때마다 이 테스트가 조용히 엉뚱한
+        /// 곳을 누르게 된다(그 형태로 실제 한 번 깨졌다).</para></summary>
+        private Vector2 FindHeaderGrabPoint(Rect header)
+        {
+            Rect[] blocked = _window.HeaderNonDragRectsForTests();
+            float y = header.center.y;
+            // 왼쪽 끝(이름 자리)부터 오른쪽으로 훑는다 — 이름 라벨은 raycastTarget이 아니라 손잡이다.
+            for (float t = 0.02f; t < 1f; t += 0.01f)
+            {
+                float x = Mathf.Lerp(header.xMin, header.xMax, t);
+                var p = new Vector2(x, y);
+                bool hit = false;
+                for (int i = 0; i < blocked.Length; i++)
+                {
+                    if (blocked[i].width > 0f && blocked[i].Contains(p)) { hit = true; break; }
+                }
+                if (!hit) return p;
+            }
+            Assert.Fail($"{LogPrefix} 헤더에 드래그로 잡을 수 있는 빈 자리가 한 점도 없습니다 — " +
+                        "컨트롤이 헤더를 가득 채우면 창을 옮길 방법이 사라집니다.");
+            return header.center;
+        }
 
         private void AssertPanelInsideScreen(string phase)
         {

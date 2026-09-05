@@ -1638,3 +1638,113 @@ int SimulateDay(double windowCapSeconds)   // T-15-1-b의 순수 함수를 그�
     (E-12-6이 기록한 함정: 재구현과 본 구현이 같은 머릿속에서 나온다). **(B)를 반드시 러너로 돌려라.**
 15. **`MinRefillGapSeconds = 20h`는 여전히 설계값**(T-14-10의 11). 창은 그 값에 의존하지 않는다 —
     ②가 완전히 없어도 창은 5,760에서 자른다.
+
+---
+
+# V절 — M-8 가상 데스크톱 COM 표면 등재 (2026-09-05, `dev-platform` 미커밋본 감사)
+
+`docs/strategy/WINDOWS_STEAM_LAUNCH_CRITICAL_PATH.md` §M-8이 *"비문서 API 누적 개수가 백신
+휴리스틱의 계수"*라는 §M-10 논점과 같은 저울에 걸어 두었던 항목이 **코드로 착지했다.**
+리더 판정은 **(a) 공개 API로 소속만 확인**이었고, 이 절은 그 판정이 **실제 코드에서 지켜졌는가**를
+잰 결과다. **감사 대상은 미커밋 3파일**(`Platform/IVirtualDesktopMembershipSource.cs` ·
+`Platform/VirtualDesktopSuspendPolicy.cs` · `Platform/Windows/WindowsVirtualDesktopProbe.cs`)이다.
+
+## V-1. 판정 — **공개 API만 쓴다. 리더 판정과 일치한다.**
+
+| 항목 | 실측 | 1차 출처 |
+|---|---|---|
+| 인터페이스 | `IVirtualDesktopManager` **1개** | MS Learn `shobjidl_core.h` — *"Minimum supported client: Windows 10 [desktop apps only]"*. **문서화된 공개 COM이다** |
+| IID | `A5CD92FF-29BE-454C-8D04-D82879FB3F1B` | 1차 출처 값과 일치 |
+| CLSID | `AA509086-5CA9-4C25-8F95-589D3C07B48A` | `CLSID_VirtualDesktopManager`와 일치 |
+| 실제로 부르는 메서드 | `IsWindowOnCurrentVirtualDesktop` **1개** | 슬롯 1·2는 `ReservedSlot1`/`ReservedSlot2` 자리표시자 |
+| 비공개 COM | **0건** — `IVirtualDesktopManagerInternal` · `IVirtualDesktopNotificationService` · `IApplicationViewCollection` 어느 것도 등장하지 않는다 | 그쪽은 IID가 빌드마다 갈린다(커뮤니티 수집본이 `EF9F1A6C-…`와 `AF8DA486-…`로 이미 갈려 있다 = **기각 사유가 실증된다**) |
+| 새 `DllImport` | **0건**(양성 대조: `Win32WindowService.cs` 22건) | COM은 `Type.GetTypeFromCLSID` + `Activator.CreateInstance` 경유 |
+
+⇒ **`ENTITLEMENT_CONTRACT.md` S-3의 「우리 Win32 표면」에 비문서 항목이 추가되지 않았다.**
+`DllImport` 목록은 **한 줄도 늘지 않았고**, 늘어난 것은 **문서화된 셸 COM 조회 1개**다.
+S-3의 위험 서술(*"애드웨어/키로거 휴리스틱 모양"*)을 **악화시키지 않는다** — 이 조합은
+백신 시그니처가 아니라 셸 통합 앱의 평범한 형태다.
+
+## V-2. ★ 이 절이 잡아낸 함정 하나 — **MS Learn의 메서드 표는 vtable 순서가 아니다**
+
+Learn의 `IVirtualDesktopManager` 페이지는 메서드를 **알파벳순**으로 싣는다:
+`GetWindowDesktopId` → `IsWindowOnCurrentVirtualDesktop` → `MoveWindowToDesktop`.
+**실제 vtable 순서는 다르다**: `IsWindowOnCurrentVirtualDesktop`(슬롯 0) →
+`GetWindowDesktopId`(슬롯 1) → `MoveWindowToDesktop`(슬롯 2).
+
+코드와 `VirtualDesktopProbeAuditTests`는 **vtable 순서가 맞다.** 그러나 다음 사람이
+*"1차 출처와 대조했다"*며 **Learn 페이지의 표 순서로 재정렬하면 슬롯 0이 `GetWindowDesktopId`가
+되고, 슬롯 2가 불리는 순간 「조회」가 아니라 「창 이동」이 실행된다**(원칙 3 위반이 컴파일 에러 없이
+발생한다. 이 머신에는 Windows가 없어 실행으로도 못 잡는다).
+⇒ **이 저장소의 「죽은 프로브가 성공한 프로브와 똑같이 생겼다」 계열의 새 변종이다.**
+`VirtualDesktopProbeAuditTests.vtable_슬롯_순서가_1차_출처와_같다`의 주석에 **"Learn 표는
+알파벳순이다"**를 명시해 둘 것을 권고한다(구현은 `coder`/`test-engineer` 배정).
+
+## V-3. 조용한 실패 — **영구 포기는 항상 로그를 남긴다. 확인됐다.**
+
+`MaxConsecutiveFailures = 5`(1.5초 폴링 × 5 = 7.5초)는 실재한다.
+`_unavailable = true`가 서는 자리는 **정확히 3곳**이고 **세 곳 모두 같은 줄에서
+`LogFailureOnce`를 부른다**(CLSID 타입 실패 / `QueryInterface` 실패 / 5회 연속 실패).
+그리고 `_failureLogged == true` ⇒ `_unavailable == true` ⇒ `Query`가 앞에서 되돌아가므로
+**세션당 경고는 정확히 1회**다. **조용한 영구 실패 경로 0건.**
+
+- **1~4회차 실패는 로그가 없다.** 다만 소비 측(`Win32WindowService.GetVirtualDesktopMembership`)이
+  **소속 전이마다** `[가상데스크톱]` 한 줄을 찍으므로 `CurrentDesktop → Unknown` 전이는 그 자리에서
+  보인다. ⇒ **실패가 삼켜지지 않는다.**
+- ★ **남은 구멍 1건(경미, 신뢰성)**: 「4회 실패 → 1회 성공」이 반복되면 `_consecutiveFailures`가
+  매번 0으로 리셋되어 **상한에 영원히 닿지 않는다.** 그러면 (가) 1.5초마다 `CoCreateInstance`가
+  영구히 돌고, (나) 소속이 `Unknown ↔ CurrentDesktop`으로 왕복해 **전이 로그가 최악 하루
+  ~57,600줄**까지 불어난다. 24시간 상주 앱에서 로그 폭주는 실측된 형태의 비용이다.
+  **처방(저비용)**: 세션 누적 실패 카운터를 하나 더 두고 그쪽에도 상한을 건다. **보안 등급 아님 —
+  `dev-platform`에 신뢰성 항목으로 넘긴다.**
+
+## V-4. 개인정보 — **디스크 0 · 원격 0. 그리고 데스크톱 식별자는 프로세스에 들어오지도 않는다.**
+
+- **부재 단언 + 양성 대조**: 3파일 전부에 대해 `File.` · `Directory.` · `PlayerPrefs` ·
+  `StreamWriter` · `UnityWebRequest` · `HttpClient` · `WebClient` · `Socket` · `Analytics` ·
+  `persistentDataPath` · `SaveData` · `CharacterSaveStore` **히트 0건**.
+  같은 패턴이 `Core/CharacterSaveStore.cs`에서 **41건**을 낸다(스캐너 생존 증명), 그리고
+  같은 파일에서 `IsWindowOnCurrentVirtualDesktop`이 **6건**을 낸다(대상 파일이 실제로 읽혔음 증명).
+- **세이브 스키마 무변.** `Core/`에 `virtualDesktop` 계열 필드 0건 ⇒ `CurrentVersion` 상승 불요.
+- ★ **가장 강한 보증은 「안 부른 슬롯」에서 나온다**: 슬롯 1 `GetWindowDesktopId`를 부르지 않으므로
+  **데스크톱 GUID가 우리 프로세스 메모리에 애초에 들어오지 않는다.** 데스크톱 개수·순서·식별자를
+  물리적으로 모른다. 묻는 인자는 **언제나 우리 `_overlayHwnd` 하나**이고 **남의 `HWND`는 넣지 않는다.**
+- **로그에 남는 것**(§1-3의 출구 두 개 중 (a)): `[가상데스크톱] 우리 창 소속 — 현재/다른 데스크톱`.
+  **남의 창 제목·프로세스명·데스크톱 ID는 한 글자도 없다.** 남는 정보는 *"이 사용자는 가상
+  데스크톱을 쓰고 T 시점에 전환했다"*뿐이다. §4-4와 같은 등급 — **조치 불요, 기록만.**
+  (§6 3순위가 *"전체화면 판정 로그에서 남의 앱 신원을 뺀다"*를 요구했는데, **이 신규 로그는
+  처음부터 그 조건을 만족한 상태로 들어왔다.**)
+
+## V-5. ★ 감사의 사각지대 1건 — **`VirtualDesktopProbeAuditTests`는 파일 1개만 본다**
+
+이 감사는 `WindowsVirtualDesktopProbe.cs` **한 파일**을 읽는다(`ProbePath` 고정).
+⇒ **다른 파일이 `IVirtualDesktopManagerInternal`이나 `MoveWindowToDesktop`을 들여오면 초록인 채
+통과한다.** 반면 `UserAssetImmutabilityAuditTests`는
+`Directory.GetFiles(scriptsRoot, "*.cs", SearchOption.AllDirectories)`로 **저장소 전역**을 훑는
+니들 블랙리스트다 — 앱바 쓰기 5종이 이미 거기 있다.
+
+**권고(리더 승인 시 `security`가 작성 가능 — 정의서 예외 조항)**:
+`UserAssetImmutabilityAuditTests`의 전역 블랙리스트에 니들 4개를 추가한다.
+`MoveWindowToDesktop` · `SetWindowDesktopId` · `IVirtualDesktopManagerInternal` ·
+`IApplicationViewCollection`. **현재 코드베이스 히트 0건이 정상값**이며(§보강 항목 관례와 동일),
+파일 단위 감사는 그대로 두고 전역 감사가 **번지는 것**을 막는 이중 방어가 된다.
+
+## V-6. 플랫폼 영향 · 보장하지 않는 것
+
+- **Windows 영향: 함께 검토함(본체).** 신규 공개 COM 1개 · 신규 `DllImport` 0개 · 새 OS 권한 0개.
+  S-2(코드서명) 판정 **무변**, S-3(휴리스틱 표면) **악화 없음**. 선 1(네트워크 0) 무접촉.
+- **macOS 영향: 함께 검토함 — 없음.** `WindowsVirtualDesktopProbe.cs`는 전체가
+  `#if UNITY_STANDALONE_WIN` 안이라 macOS 타깃에서는 **타입이 존재하지 않는다.**
+  `IVirtualDesktopMembershipSource`를 구현하지 않는 서비스는 `Unknown` ⇒ 축 4가 영구 false ⇒
+  **macOS 동작은 비트 동일**이다. 하드닝 런타임 엔타이틀먼트 목록 무변(S-1).
+  macOS는 `.canJoinAllSpaces`로 **따라붙고** Windows는 **사라지는** 비대칭이 남지만,
+  그건 리더가 근거를 적고 택한 것이지 갭이 아니다.
+- **보장하지 않는 것**:
+  1. **실기 미검증.** 이 머신에 Windows가 없다. 확인한 것은 소스 대조와 1차 출처 대조까지이고,
+     `CoCreateInstance`가 실제로 성공하는지 · `hr` 값이 무엇인지는 **미확인**이다.
+  2. **테스트를 돌리지 않았다.** `VirtualDesktopProbeAuditTests` 4건은 **소스를 읽어 판정**했을
+     뿐 러너 결과가 아니다(이번 라운드는 Unity 사용 금지).
+  3. **`Marshal.ReleaseComObject` 이후의 RCW 수명은 안 쟀다.** 보안 논점이 아니라서 넘겼다.
+  4. **`Application.quitting += ReleaseManager`는 구독 해제가 없다.** 프로브가 재생성되면
+     델리게이트가 누적된다 — `_quitHookInstalled`가 인스턴스 필드라서다. 현재 생성 지점은
+     `Win32WindowService` 1곳뿐이라 실害 없음. **신뢰성 항목이지 보안 항목이 아니다.**

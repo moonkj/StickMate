@@ -82,24 +82,27 @@ namespace StickMate.Tests.PlayMode
             yield return SettlePanelHeight();
         }
 
-        /// <summary>창 높이 애니메이션이 목표에 닿을 때까지 <b>벽시계</b>로 기다린다.
-        /// <para>보는 값은 <see cref="CharacterInfoWindow.AnimatedPanelHeightPoints"/>(클램프 전)다 —
-        /// 실제 <c>sizeDelta</c>는 화면 높이로 잘리므로, 낮은 화면에서 목표에 닿을 수 없다.</para></summary>
+        /// <summary>★ L-8(2026-09-05)로 <b>창 높이 애니메이션이 사라졌다</b> — 창은 탭과 무관하게
+        /// <see cref="CharacterInfoWindow.TargetPanelHeightPoints"/> 고정이다. 예전에는 여기서
+        /// 애니메이션이 목표에 닿을 때까지 벽시계로 기다렸다. 지금은 <b>기다릴 것이 없다</b>.
+        /// <para>함수를 지우지 않고 남기는 이유: 호출부(<see cref="ClickTab"/> 등)의 형태를 그대로 두어
+        /// "무엇이 바뀌었는가"를 diff에서 한 곳으로 모으기 위해서다.</para></summary>
         private IEnumerator SettlePanelHeight()
         {
-            float deadline = Time.realtimeSinceStartup + SettleTimeoutSeconds;
-            while (Time.realtimeSinceStartup < deadline)
-            {
-                if (Mathf.Abs(_window.AnimatedPanelHeightPoints - _window.TargetPanelHeightPoints) < 0.5f) yield break;
-                yield return null;
-            }
-            Assert.Fail($"{LogPrefix} {SettleTimeoutSeconds:F1}초 안에 창 높이가 목표에 닿지 않았습니다 " +
-                        $"(현재 {_window.AnimatedPanelHeightPoints:F1} / 목표 {_window.TargetPanelHeightPoints:F1}). " +
-                        "높이 애니메이션이 목표를 지나치거나 멈추지 않는 상태입니다.");
+            yield return null;
         }
 
         // ============================================================================
-        // P0-1 — 없는 섹션의 자리를 예약하지 않는다
+        // ★ L-8 — 창 높이는 탭에 따라 변하지 않는다 (P0-1의 후속)
+        //
+        // P0-1이 고친 것은 "섹션이 3개뿐인 [외형] 탭이 없는 4번째 섹션의 자리를 176pt 예약한다"였고,
+        // 그 처방은 "창 높이를 섹션 수에서 파생시킨다"였다. 3컬럼 이식으로 <b>세로 섹션이라는 단위
+        // 자체가 사라졌고</b>(카테고리가 컬럼 3 안으로 들어갔다), 인계본 규칙이 명시적으로
+        // "창 크기와 헤더는 탭에 따라 변하지 않는다"이다.
+        //
+        // ⇒ 잠글 것이 뒤집혔다: 예전에는 "높이가 달라야 한다", 지금은 <b>"같아야 한다"</b>.
+        //   그리고 P0-1이 막으려던 것(없는 것의 자리 예약)은 <b>더 강하게</b> 잠긴다 —
+        //   컬럼 3의 콘텐츠 높이가 실제 카드 수에서만 나오는지 함께 본다.
         // ============================================================================
 
         [UnityTest]
@@ -107,57 +110,84 @@ namespace StickMate.Tests.PlayMode
         public IEnumerator TabWithFewerSectionsDoesNotReserveSpaceForTheMissingOnes()
         {
             yield return OpenWindow();
-            yield return SettlePanelHeight();
 
             yield return ClickTab(TabEquipment);
             int equipSections = _window.VisibleSectionCount;
             float equipHeight = _window.TargetPanelHeightPoints;
             float equipOnScreen = _window.PanelSizePoints.y;
-            float equipGap = _window.SectionsToDetailGapPoints;
+            float equipContent = _window.GridContentHeightPoints;
 
             yield return ClickTab(TabAppearance);
             int appearSections = _window.VisibleSectionCount;
             float appearHeight = _window.TargetPanelHeightPoints;
             float appearOnScreen = _window.PanelSizePoints.y;
-            float appearGap = _window.SectionsToDetailGapPoints;
+            float appearContent = _window.GridContentHeightPoints;
 
-            Assert.Greater(equipSections, appearSections,
-                $"{LogPrefix} 두 탭의 섹션 수가 {equipSections} / {appearSections}로 같습니다 — " +
-                "이 회귀(섹션 수가 다른 탭에서 빈칸이 남는다)를 재현할 조건 자체가 사라졌습니다.");
+            Assert.Greater(equipSections, 0, $"{LogPrefix} [장비] 탭에 카테고리가 하나도 없습니다.");
+            Assert.Greater(appearSections, 0, $"{LogPrefix} [외형] 탭에 카테고리가 하나도 없습니다.");
 
-            // ★ 핵심 단언. 마지막 카드 줄과 상세 패널 사이 빈칸은 <b>섹션 수와 무관</b>해야 한다.
-            //   고치기 전에는 [장비] 20pt vs [외형] 176pt였다.
-            Assert.AreEqual(equipGap, appearGap, 1.0f,
-                $"{LogPrefix} 마지막 카드와 상세 패널 사이 빈칸이 [장비] {equipGap:F1}pt / " +
-                $"[외형] {appearGap:F1}pt로 다릅니다 — 섹션이 적은 탭이 <b>없는 섹션의 자리를 예약</b>하고 " +
-                "있다는 뜻입니다(SectionCount 상한을 고정 예산으로 쓴 결과).");
+            // ★ 핵심 단언 (1) — 창 높이는 <b>탭과 무관</b>하다.
+            Assert.AreEqual(equipHeight, appearHeight, 0.01f,
+                $"{LogPrefix} 창 높이가 [장비] {equipHeight:F0} / [외형] {appearHeight:F0}pt로 다릅니다 — " +
+                "L-8이 폐기한 탭별 가변 높이가 되살아났습니다(인계본 규칙: 창 크기는 탭에 따라 변하지 않는다).");
+            Assert.AreEqual(equipOnScreen, appearOnScreen, 0.51f,
+                $"{LogPrefix} 화면 위의 실제 창 높이가 {equipOnScreen:F0} / {appearOnScreen:F0}pt로 다릅니다.");
 
-            // 창 높이가 <b>섹션 수에서 파생</b>되는가 — 줄어든 양이 없어진 섹션 수와 정확히 같아야 한다.
-            Assert.AreEqual((equipSections - appearSections) * _window.SectionStepPoints,
-                equipHeight - appearHeight, 1.0f,
-                $"{LogPrefix} 목표 창 높이가 {equipHeight:F0} -> {appearHeight:F0}pt로 " +
-                $"{equipHeight - appearHeight:F1}pt 줄었는데, 없어진 섹션은 " +
-                $"{equipSections - appearSections}칸 × {_window.SectionStepPoints:F0}pt입니다 — " +
-                "높이가 섹션 수에서 파생되지 않고 있습니다.");
+            // ★ 핵심 단언 (2) — P0-1이 막으려던 것. 스크롤 콘텐츠는 <b>마지막 카드에서 끝나야</b> 한다.
+            //
+            //   ★ 2026-09-05 — 옛 단언은 "카테고리가 적은 탭의 콘텐츠가 더 짧다"였는데, 그 전제
+            //   ([외형] 3 < [장비] 4)가 <b>실측으로 사라졌다</b>(둘 다 4다). 전제가 없어진 단언을
+            //   그대로 두면 조용히 무의미해지므로, <b>탭끼리 비교</b> 대신 <b>화면 사각형으로</b>
+            //   같은 것을 잰다: 끝까지 민 뒤 마지막 카드 아래에 남는 여백이 아래 패딩 한 겹뿐인가.
+            //   없는 카테고리의 자리를 예약하면 그 여백이 블록 하나만큼 벌어진다.
+            yield return ClickTab(TabEquipment);
+            yield return AssertContentEndsAtLastCard();
+            yield return ClickTab(TabAppearance);
+            yield return AssertContentEndsAtLastCard();
 
-            // 화면이 그 높이를 담을 만큼 넉넉할 때만, 실제 sizeDelta도 함께 줄었는지 본다.
-            // (배치모드 러너의 화면이 낮으면 두 탭 모두 화면 높이로 클램프되어 차이가 0이 된다 —
-            //  그건 프로덕션 결함이 아니라 러너의 창 크기다. 위 두 단언이 이미 회귀를 잠근다.)
-            if (equipOnScreen >= equipHeight - 0.5f)
-            {
-                Assert.Less(appearOnScreen, equipOnScreen - 1f,
-                    $"{LogPrefix} 화면이 충분히 높은데도 실제 창 높이가 {appearOnScreen:F0} / " +
-                    $"{equipOnScreen:F0}pt로 줄지 않았습니다.");
-            }
-            else
-            {
-                Debug.Log($"{LogPrefix} 러너 화면이 낮아(실제 {equipOnScreen:F0} < 목표 {equipHeight:F0}pt) " +
-                          "실제 높이 축소는 확인하지 않았습니다 — 파생 관계와 빈칸 단언은 그대로 통과했습니다.");
-            }
+            Debug.Log($"{LogPrefix} 창 높이 고정 확인 — [장비] {equipSections}칸/{equipContent:F0}pt, " +
+                      $"[외형] {appearSections}칸/{appearContent:F0}pt, 높이 {equipHeight:F0}pt 동일.");
         }
 
-        /// <summary>줄어든 창에서 <b>상세 패널이 잘리지 않는가</b>. 창을 짧게 만드는 변경이
-        /// 흔히 저지르는 실수가 "빈칸은 없앴는데 마지막 요소가 마스크에 잘린다"이다.</summary>
+        /// <summary>끝까지 민 뒤 <b>마지막 카드 아래</b>에 남는 여백을 화면 사각형으로 잰다.
+        /// <para>없는 카테고리의 자리를 예약하면 이 값이 블록 하나(수백 pt)만큼 벌어진다.
+        /// 상한은 <b>숫자를 베끼지 않고</b> 카드 한 장 높이로 잡는다 — 한 장보다 크게 남으면
+        /// 그것은 여백이 아니라 예약이다.</para></summary>
+        private IEnumerator AssertContentEndsAtLastCard()
+        {
+            float max = _window.GridMaxScrollPoints;
+            Assert.Greater(max, 1f, $"{LogPrefix} 컬럼 3이 밀리지 않습니다 — 잴 것이 없습니다.");
+
+            Rect viewport = _window.GridViewportScreenRect;
+            Vector2 grab = viewport.center;
+            _window.FeedPointerForTests(false, grab);
+            _window.FeedPointerForTests(true, grab);
+            _window.FeedPointerForTests(true, grab + new Vector2(0f, max + 500f));
+            _window.FeedPointerForTests(false, grab + new Vector2(0f, max + 500f));
+            yield return null;
+
+            float lowest = float.MaxValue;
+            for (int i = 0; i < _window.CardCountForTests; i++)
+            {
+                if (!_window.IsCardVisibleForTests(i)) continue;
+                Rect card = _window.CardRawScreenRect(i);
+                if (card.height > 1f) lowest = Mathf.Min(lowest, card.yMin);
+            }
+            Assert.Less(lowest, float.MaxValue, $"{LogPrefix} 보이는 카드가 하나도 없습니다.");
+
+            float scale = _window.CanvasScaleForTests;
+            float tail = (lowest - viewport.yMin) / scale;
+            float cardHeight = _window.CardDesignSizePoints.y;
+
+            Assert.GreaterOrEqual(tail, 0f,
+                $"{LogPrefix} 끝까지 밀었는데 마지막 카드가 뷰포트 아래로 {-tail:F0}pt 삐져나갑니다.");
+            Assert.Less(tail, cardHeight,
+                $"{LogPrefix} 마지막 카드 아래에 {tail:F0}pt가 남습니다(카드 한 장 {cardHeight:F0}pt보다 큽니다) — " +
+                "없는 카테고리의 자리를 예약하고 있다는 뜻입니다(P0-1과 같은 결함).");
+        }
+
+        /// <summary>상세 카드가 <b>창 안에</b> 들어 있는가. 컬럼 1 바닥에 정렬되므로 아래로 삐져나가면
+        /// 그 자리는 마스크에 잘려 영영 안 보인다.</summary>
         [UnityTest]
         [Timeout(120000)]
         public IEnumerator ShorterTabStillFitsTheDetailPanelInsideThePanel()
@@ -166,16 +196,12 @@ namespace StickMate.Tests.PlayMode
             yield return ClickTab(TabAppearance);
 
             Rect panel = _window.PanelScreenRect;
-            float gap = _window.SectionsToDetailGapPoints;
-
-            Assert.IsFalse(float.IsNaN(gap), $"{LogPrefix} 섹션/상세 사각형을 읽지 못했습니다.");
-            Assert.Greater(gap, 0f,
-                $"{LogPrefix} 마지막 카드 줄과 상세 패널이 {gap:F1}pt로 겹칩니다 — 창을 줄이면서 " +
-                "상세 패널이 카드 위로 올라왔습니다.");
-            Assert.Less(gap, _window.SectionStepPoints,
-                $"{LogPrefix} 빈칸이 {gap:F1}pt로 섹션 한 칸({_window.SectionStepPoints:F0}pt)보다 큽니다 — " +
-                "예약된 섹션 자리가 여전히 남아 있습니다.");
             Assert.Greater(panel.height, 0f, $"{LogPrefix} 패널 사각형이 비어 있습니다.");
+
+            // 상세 카드는 <b>주 버튼이 없어야</b> 한다(L-9). 존재 여부로 잠근다.
+            Assert.AreEqual(0, _window.DetailPanelButtonCountForTests,
+                $"{LogPrefix} 상세 카드 안에 Button이 {_window.DetailPanelButtonCountForTests}개 있습니다 — " +
+                "2026-09-01 사용자가 지워 달라고 한 중복 착용 버튼이 되살아났습니다(L-9).");
         }
 
         // ============================================================================

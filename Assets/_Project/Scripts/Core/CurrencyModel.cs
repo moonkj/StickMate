@@ -310,8 +310,13 @@ namespace StickMate.Core
         /// 사용자는 그것을 "고장"으로 읽는다 — 문구가 필요한 자리를 화면 쪽에 알려 주는 값이다(§20-8).</summary>
         public static bool ArcheryDailyLimitReached => ArcheryCoinsToday >= CurrencyRules.ArcheryDailyCoinLimit;
 
-        /// <summary>첫 실행 시드. ★ 금액이 U-42로 미확정이라 <b>지금은 아무 일도 하지 않고
-        /// 플래그도 세우지 않는다</b> — 세워 버리면 값이 정해지는 날 기존 사용자가 영영 못 받는다.</summary>
+        /// <summary>첫 실행 시드 — <b>평생 1회</b>. 지급액은 <see cref="CurrencyRules.SeedCoins"/>다.
+        /// <para>★ <b>U-42가 닫혔다</b>(리더 승인 2026-09-05, 1,200). 그 전까지 금액이 0이라
+        /// 이 함수는 <b>아무 일도 하지 않고 플래그도 안 세웠고</b>, 그 덕분에 <b>기존 사용자 전원의
+        /// <c>seedGranted</c>가 <c>false</c>로 남아 지금 첫 지급 대상이 된다</b>. 순서를 반대로
+        /// (플래그 먼저) 했으면 되돌릴 수 없는 손실이었다 — <c>CurrencyRules.SeedCoins</c> 문서 참고.</para>
+        /// <para>★ <b>부르는 쪽은 아직 없다</b>(첫 실행 지급 배선은 다음 라운드). 이 함수가 도는 순간
+        /// 잔액이 늘고 <see cref="IsDirty"/>가 서므로, 배선하는 라운드는 <b>저장 시점</b>까지 같이 봐야 한다.</para></summary>
         public static int TryGrantSeedCoins()
         {
             if (!CurrencyRules.CanGrantSeed(SeedGranted)) return 0;

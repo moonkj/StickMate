@@ -49,8 +49,12 @@ namespace StickMate.Core
         /// 주색/보조색 두 개만 정하고 조각은 둘 중 하나를 고른다(색을 조각 수만큼 발명하지 않는다).</summary>
         public readonly Color Color;
 
-        /// <summary>0 = 주색, 1 = 보조색. 색 자체가 아니라 <b>역할</b>을 적어 두는 이유는, 아이콘 표를
-        /// 쓸 때 아직 색이 정해지지 않기 때문이다(<c>Tinted()</c>가 나중에 한 번에 채운다).</summary>
+        /// <summary>색 역할 — <see cref="AccessoryTone"/>(0 주색 / 1 보조색 / 2 그늘 / 3 하이라이트).
+        /// 색 자체가 아니라 <b>역할</b>을 적어 두는 이유는, 아이콘 표를 쓸 때 아직 색이 정해지지 않기
+        /// 때문이다(<c>Tinted()</c>가 나중에 한 번에 채운다).
+        /// <para>★ 2026-09-05 계약 v2 — 도메인이 몸 도형(<c>AccessoryShapeBuilder.Shape.Tone</c>)과
+        /// <b>같은 표</b>가 됐다. 그 전에는 여기가 0/1뿐이라 몸에서 그늘(2)을 옮겨 오면 폴백이
+        /// 조용히 보조색으로 칠했다(§15-2 #3).</para></summary>
         public readonly byte Tone;
 
         public ItemIconPart(ItemIconPartKind kind, float[] values)
@@ -72,11 +76,12 @@ namespace StickMate.Core
         }
 
         /// <summary>보조색 역할로 표시한 사본.</summary>
-        public ItemIconPart AsSecondary() => new ItemIconPart(Kind, Values, Color, 1);
+        public ItemIconPart AsSecondary() => new ItemIconPart(Kind, Values, Color, AccessoryTone.Accent);
 
-        /// <summary>역할에 맞는 실제 색을 채운 사본.</summary>
+        /// <summary>역할에 맞는 실제 색을 채운 사본. 표는 <see cref="AccessoryTone.Resolve"/> 하나다 —
+        /// 여기서 <c>Tone == 0 ? primary : secondary</c>로 가르면 그늘(2)·하이라이트(3)가 보조색이 된다.</summary>
         public ItemIconPart WithPalette(Color primary, Color secondary)
-            => new ItemIconPart(Kind, Values, Tone == 0 ? primary : secondary, Tone);
+            => new ItemIconPart(Kind, Values, AccessoryTone.Resolve(Tone, AccessoryTone.Primary, primary, secondary), Tone);
 
         /// <summary>꺾은선의 점 개수.</summary>
         public int PointCount => HasPoints && Values != null ? Values.Length / 2 : 0;
@@ -151,6 +156,42 @@ namespace StickMate.Core
         public readonly Color SecondaryColor;
 
         /// <summary>
+        /// ★ 이 아이템의 <b>부스탯 방향</b>(<see cref="EquipmentStatRules.NoStat"/>이면 없음).
+        /// 값은 <see cref="ItemCatalog.SubStatOfItem"/>이 아이디로 찾는다.
+        ///
+        /// <para><b>주스탯은 여기 없다</b> — 주스탯은 <b>슬롯</b>이 정하고(§1-1) 상승폭은 <b>등급</b>이
+        /// 정한다(§1-3). 둘 다 이미 파생이라 아이템에 적을 것이 없다. 아이템이 정하는 것은
+        /// 부스탯이 <b>어느 스탯을 가리키는가</b> 하나뿐이다(§1-4: "부스탯은 슬롯이 아니라 아이템이 지정한다").</para>
+        ///
+        /// <para><b>외형 3슬롯(머리/이펙트/펫) 18종은 <see cref="EquipmentStatRules.NoStat"/>이고
+        /// 그건 플레이스홀더가 아니라 구조적 사실이다</b>(§14-1: "외형 18종은 스탯 기여 0").
+        /// 팩 아이템도 지금은 <c>NoStat</c>이다 — 팩이 부스탯을 선언하는 통로는 아직 없다.</para>
+        /// </summary>
+        public readonly int SubStat;
+
+        /// <summary>
+        /// ★ 세트 판정 키. <b>2026-09-05 R21 「안 B」로 배정 완료</b>(리더 채택) —
+        /// 스탯 4슬롯 24종은 실재 테마 6개, <b>외형 18종은 무소속</b>
+        /// (<see cref="ItemCatalog.ThemeUnassigned"/>)이고 그건 누락이 아니라 선언된 사실이다.
+        /// 값의 출처는 <see cref="ItemCatalog.ThemeOfItem"/> 하나다.
+        ///
+        /// <para>세트 판정은 이 값의 <b>문자열 동등성</b>만 본다(DS-G3) — 색·재질·조형을 입력으로
+        /// 쓰면 팔레트를 한 칸 옮기는 날 세트가 소리 없이 깨진다. 무소속은 「같다」로 세지 않으므로
+        /// (<see cref="EquipmentStatRules.IsSetComplete"/>) 외형만 맞춰서는 세트가 완성되지 않는다.</para>
+        ///
+        /// <para>배정 제약은 <b>DS-G7′ = E1~E3</b>(§21-4-c)다. <b>원래의 DS-G7</b>(「그 슬롯 최고 등급
+        /// 대비 1단 내림」이 최대 1슬롯)은 <b>폐기됐다</b> — 전설 재고가 슬롯당 1개뿐이라
+        /// 산술적으로 6테마 중 최대 1개만 만족한다(F5). 안 B에서 그 하나는
+        /// <see cref="ItemCatalog.ThemeInk"/>이고 그것이 F5가 증명한 상한이다.</para>
+        ///
+        /// <para>★ 값이 아직 코드 표에 있고 <see cref="AccessoryDefSO"/>로 안 내려간 이유는
+        /// <see cref="SubStat"/>과 같다(그 판정은 <c>game-architect</c> 소관, §21-10-a).
+        /// 옮기는 날 바뀌는 곳은 <see cref="ItemCatalog.EntryFrom"/> 하나다 —
+        /// <c>cohortId</c>·<c>declaredRarity</c>가 이미 간 길이다.</para>
+        /// </summary>
+        public readonly string Theme;
+
+        /// <summary>
         /// ★ <b>등급 순위를 매기는 모집단</b>의 식별자. 기본 42종은 전부
         /// <see cref="ItemCatalog.BaseCohortId"/>이고, DLC 팩이 오면 팩마다 다른 값을 받는다.
         ///
@@ -214,13 +255,15 @@ namespace StickMate.Core
             {
                 for (int i = 0; i < icon.Length; i++)
                 {
-                    if (icon[i].Tone == 0)
+                    // 주색 = 첫 주색 조각, 보조색 = 첫 <b>보조색</b> 조각. 그늘/하이라이트 조각은 파생색이라
+                    // 팔레트를 정하지 않는다 — 「0이 아니면 보조색」으로 읽으면 그 둘이 보조색을 가로챈다.
+                    if (icon[i].Tone == AccessoryTone.Primary)
                     {
                         if (gotPrimary) continue;
                         primary = icon[i].Color;
                         gotPrimary = true;
                     }
-                    else if (!gotSecondary)
+                    else if (icon[i].Tone == AccessoryTone.Accent && !gotSecondary)
                     {
                         secondary = icon[i].Color;
                         gotSecondary = true;
@@ -229,6 +272,15 @@ namespace StickMate.Core
             }
             PrimaryColor = primary;
             SecondaryColor = gotSecondary ? secondary : primary;
+
+            // ★ 부스탯/테마는 <b>생성자 안</b>에서 찾는다 — ForEquipment 시그니처를 늘리지 않기 위해서다.
+            //   인자를 늘리면 이미 이 함수를 부르는 테스트/팩 경로가 전부 함께 바뀌어야 하고,
+            //   그 변경은 「값이 아직 미확정」이라는 지금 상태와 비용이 안 맞는다. 값이 애셋으로
+            //   내려가는 날 바뀌는 곳은 EntryFrom 하나다(cohortId·declaredRarity가 이미 간 길).
+            //   ★ 행동(Action)은 슬롯도 등급도 없어 스탯 축이 애초에 없다 — 표를 보지 않는다.
+            bool equipment = category == ItemCategory.Equipment;
+            SubStat = equipment ? ItemCatalog.SubStatOfItem(id, cohortId) : EquipmentStatRules.NoStat;
+            Theme = equipment ? ItemCatalog.ThemeOfItem(id, cohortId) : string.Empty;
         }
 
         /// <summary>장비 한 종. <paramref name="cohortId"/>는 <b>등급 순위의 모집단</b>이고
@@ -415,6 +467,7 @@ namespace StickMate.Core
         /// 렌더러가 쓰는 <b>기하</b>가 수명도 소비자도 다르기 때문이다(엔트리는 골든 덤프에도 실린다).
         /// 값은 여전히 같은 에셋 하나에서 온다 — 이음매가 늘어난 것이 아니라 창구가 둘일 뿐이다.</summary>
         private static AccessoryWornShapeData[][][] _wornBySlot;
+        private static AccessoryWornTransform[][] _wornTransformBySlot;
 
         private static ItemCatalogEntry[][] BySlot
         {
@@ -453,10 +506,12 @@ namespace StickMate.Core
 
             var bySlot = new ItemCatalogEntry[slots][];
             var wornBySlot = new AccessoryWornShapeData[slots][][];
+            var wornTransformBySlot = new AccessoryWornTransform[slots][];
             for (int s = 0; s < slots; s++)
             {
                 bySlot[s] = new ItemCatalogEntry[counts[s]];
                 wornBySlot[s] = new AccessoryWornShapeData[counts[s]][];
+                wornTransformBySlot[s] = new AccessoryWornTransform[counts[s]];
             }
 
             for (int i = 0; i < defs.Length; i++)
@@ -475,6 +530,8 @@ namespace StickMate.Core
 
                 row[def.itemIndex] = EntryFrom(def);
                 wornBySlot[(int)def.slot][def.itemIndex] = AcceptWornShapes(def);
+                wornTransformBySlot[(int)def.slot][def.itemIndex] = new AccessoryWornTransform(
+                    def.wornGroupAlpha, def.wornScale, def.wornScaleY, def.wornOffsetYInR, def.wornMirrorX);
             }
 
             if (defs.Length == 0)
@@ -484,6 +541,7 @@ namespace StickMate.Core
                     "찾지 못했습니다. 보관함이 통째로 비고 착용 복원이 전부 실패합니다.");
                 _bySlot = bySlot;
                 _wornBySlot = wornBySlot;
+                _wornTransformBySlot = wornTransformBySlot;
                 _entries = BuildFlat(bySlot);
                 return;
             }
@@ -520,6 +578,9 @@ namespace StickMate.Core
 
             _bySlot = bySlot;
             _wornBySlot = wornBySlot;
+            // ★ 2026-09-05 — 이 줄이 빠져 있었다. 위 빈 카탈로그 분기에는 있었고 정상 경로에만 없어서 에셋의
+            //   몸 파라미터(줄무늬타이 dy −0.287 R)가 런타임에 전부 0이 됐다. CardShapeContractTests 가 잡았다.
+            _wornTransformBySlot = wornTransformBySlot;
             _entries = BuildFlat(bySlot);
         }
 
@@ -539,6 +600,17 @@ namespace StickMate.Core
 
             AccessoryWornShapeData[][] row = _wornBySlot[s];
             if (row == null || itemIndex < 0 || itemIndex >= row.Length) return null;
+            return row[itemIndex];
+        }
+
+        /// <summary>에셋이 적은 아이템 단위 몸 표면 파라미터(계약 v2). 에셋이 없거나 안 적었으면 전부 0(= 변형 없음).</summary>
+        public static AccessoryWornTransform WornTransform(EquipmentSlot slot, int itemIndex)
+        {
+            EnsureLoaded();
+            int s = (int)slot;
+            if (_wornTransformBySlot == null || s < 0 || s >= _wornTransformBySlot.Length) return AccessoryWornTransform.None;
+            AccessoryWornTransform[] row = _wornTransformBySlot[s];
+            if (row == null || itemIndex < 0 || itemIndex >= row.Length) return AccessoryWornTransform.None;
             return row[itemIndex];
         }
 
@@ -1040,6 +1112,315 @@ namespace StickMate.Core
                 case ItemRarity.Legendary: return "전설";
                 default: return "일반";
             }
+        }
+
+        // ============================================================================
+        // ★ 스탯 기여 (2026-09-05) — docs/DESIGN_SYSTEMS_STATS.md §1-4 · ★§21-2-d(정본)
+        // ============================================================================
+        //
+        // <b>저장 필드가 0개다.</b> 등급이 그랬듯 스탯도 전부 파생이다:
+        //   주스탯 = 슬롯(§1-1)   ·   상승폭 = 등급(§1-3)   ·   부스탯 방향 = 아래 표(§21-2-d)
+        // 아이템 하나가 스탯에 대해 정하는 것은 <b>부스탯이 어느 스탯을 가리키는가</b> 하나뿐이다.
+        //
+        // ★★ 표의 출처가 §14-3(R8)에서 <b>§21-2-d(R15)</b>로 바뀌었다 — 11/24칸 교체.
+        //   R8 표는 제약 C3(등급대 균등)을 위반하고 있었다: <b>영웅 4종을 다 사면 관찰력만 +12 오르고
+        //   집중력·매력은 0</b>, 전설도 관찰력이 한 개도 못 받는다. 그건 리더가 §13-4에서
+        //   *"방울목걸이 3,200 하나가 관찰력에 +4를 준다"*로 지목한 병의 확대판이다.
+        //   R15가 90^4 = 65,610,000 공간에서 C1 ∧ C3 ∧ 1일차초급 ∧ I-2 ∧ I-3 을 만족하는 812해를
+        //   전수로 좁혀 확정했다. <b>되돌리지 마라 — R8 표는 폐기됐다.</b>
+        //
+        // ★ 이 표는 더 이상 「잠정」이 아니다.
+        //   R9 §15-7이 *"천장(U-24)이 정해지기 전에는 재계산하지 않는다"*며 배분표를 잠정 강등했는데,
+        //   §21-2-e가 <b>그 종속성이 실재하지 않음을 실측으로 보였다</b>(같은 24칸이 M4에서도 통과 —
+        //   M4를 고르면 전설 4칸의 sub2가 <b>추가</b>될 뿐 앞의 24칸은 한 칸도 안 바뀐다).
+        //   그리고 리더가 U-24를 <b>M3(3단계 · CAP 40)</b>으로 확정했다. ⇒ U-7 닫힘.
+        //
+        // ★ 왜 표가 아직 코드에 있는가 (에셋이 아니라)
+        //   이 파일은 2026-08-31에 이름/설명/요구레벨 표를 <b>에셋으로 내려보냈고</b> 그것이 원칙 4의
+        //   실체다. 부스탯도 AccessoryDefSO 로 내려가야 한다 — §21-10-a가
+        //   *"팩 아이템도 subStat 을 가져야 하므로 .asset 필드가 자연스럽다(팩은 코드 표에 못 들어간다)"*
+        //   로 그 방향을 적었고, <b>필드를 어디 둘지는 game-architect 판단</b>이라고 명시했다.
+        //   이 라운드는 그 판정을 기다리며 값만 먼저 옳게 들고 있다. 옮기는 날 바뀌는 코드는
+        //   SubStatOfItem 안쪽과 EntryFrom 뿐이고, 산식(EquipmentStatRules)은 한 줄도 안 바뀐다.
+        //
+        // ★ 이 표는 지어낸 것이 아니다 — 세 지점에서 교정했다(§21-2-e 검산 표와 대조):
+        //     1일차(각 슬롯 0번 4종)  집중력 11 · 관찰력 10 · 매력 10 · 민첩 11   (R8과 동일)
+        //     스탯별 최대치           35 / 33 / 32 / 34                          (R8은 33/33/34/34)
+        //     부스탯 편중             각 스탯 정확히 6개 (편차 0)
+        //     ★ 등급대별 편중         각 스탯이 일반2 · 희귀2 · 영웅1 · 전설1     (C3 — R8이 실패한 축)
+        //   Tests/EditMode/EquipmentStatInvariantTests 가 이 넷을 매 실행 다시 잰다.
+        //   ★ 교정이 깨지면 표가 낡은 것이다 — 그 뒤 숫자를 믿지 마라(CLAUDE.md 규약).
+
+        /// <summary>
+        /// ★ 부스탯 방향 표 — <b>기본 코호트 24종만</b>. 외형 18종은 여기 없고
+        /// 그건 누락이 아니라 <b>스탯 기여가 0</b>이라는 사실이다(§14-1).
+        ///
+        /// <para>배열이 아니라 아이디 사전인 이유: 배열은 <c>itemIndex</c> 순서에 의존하는데,
+        /// 그 순서는 <b>에셋이 정하는 값</b>이라 표 하나가 밀리면 24종의 부스탯이 통째로 어긋난다.
+        /// 아이디는 저장 파일에도 적히는 안정 식별자다(<c>ItemCatalogEntry.Id</c> 문서와 같은 논거).</para>
+        ///
+        /// <para>인계본 §1-9의 16종 부스탯과 <b>일부러 다르다</b>. 인계본은 「집중력」을 가리키는
+        /// 부스탯이 6개로 몰려 1일차 편차가 4였고, 각 스탯 6개씩으로 고르게 다시 푼 것이 이 표다.
+        /// 그리고 인계본 16종만으로는 <b>I-2(4스탯 각각 고급 도달)가 네 스탯 전부에서 실패한다</b>
+        /// (최대 28/27/23/27 &lt; 32) — 즉 옛 표를 그대로 쓰면 고급 임계가 죽은 콘텐츠가 된다.</para>
+        /// </summary>
+        /// <remarks>
+        /// ★ <b>중첩 홀더인 이유는 정적 초기화 순서다.</b> 이 표를 <see cref="ItemCatalog"/>의 정적
+        /// 필드로 두면, 같은 클래스의 <c>_actions</c> 초기화자가 <b>텍스트상 먼저</b> 돌면서
+        /// <see cref="ItemCatalogEntry"/>를 12개 만들고, 그 생성자가 아직 <c>null</c>인 표를 읽어
+        /// <b>NullReferenceException</b>으로 카탈로그 전체가 죽는다. 중첩 타입의 정적 초기화는
+        /// <b>처음 접근할 때</b> 따로 돌아 그 순서 의존이 문법적으로 사라진다.
+        /// (표를 파일 위쪽으로 옮겨 순서를 맞추는 방법도 있지만, 그건 「지금 줄 순서가 맞다」에
+        ///  의존하는 해법이라 누가 절을 옮기는 날 조용히 되살아난다.)
+        /// </remarks>
+        private static class SubStatTable
+        {
+            internal static readonly Dictionary<string, CharacterStat> Map =
+                new Dictionary<string, CharacterStat>(24)
+            {
+                // 표기: 「★」 = R15가 R8 §14-3에서 바꾼 칸(11/24). 등급은 파생값이라 여기 적힌 것은 참고다.
+                // ---- HEAD (주 = 집중력) ----
+                { "equip.head.cap",             CharacterStat.Charm },        // 천모자      Lv1  일반 ★
+                { "equip.head.fur",             CharacterStat.Observation },  // 털모자      Lv5  일반
+                { "equip.head.fedora",          CharacterStat.Charm },        // 중절모      Lv9  희귀
+                { "equip.head.crown",           CharacterStat.Agility },      // 왕관        Lv20 희귀
+                { "equip.head.beret",           CharacterStat.Observation },  // 베레모      Lv23 영웅
+                { "equip.head.straw",           CharacterStat.Agility },      // 밀짚모자    Lv26 전설 ★
+
+                // ---- EYES (주 = 관찰력) ----
+                { "equip.eyes.sunglasses",      CharacterStat.Agility },      // 선글라스    Lv1  일반 ★
+                { "equip.eyes.round",           CharacterStat.Focus },        // 동그란안경  Lv6  일반 ★
+                { "equip.eyes.goggles",         CharacterStat.Focus },        // 고글        Lv11 희귀
+                { "equip.eyes.monocle",         CharacterStat.Charm },        // 외알안경    Lv15 희귀
+                { "equip.eyes.browline",        CharacterStat.Agility },      // 뿔테안경    Lv19 영웅
+                { "equip.eyes.patch",           CharacterStat.Charm },        // 안대        Lv23 전설 ★
+
+                // ---- NECK (주 = 매력) ----
+                { "equip.neck.bowtie",          CharacterStat.Observation },  // 나비넥타이  Lv1  일반
+                { "equip.neck.striped",         CharacterStat.Agility },      // 줄무늬타이  Lv8  일반
+                { "equip.neck.scarf",           CharacterStat.Focus },        // 목도리      Lv12 희귀
+                { "equip.neck.bell",            CharacterStat.Agility },      // 방울목걸이  Lv18 희귀 ★
+                { "equip.neck.pendant",         CharacterStat.Focus },        // 펜던트목걸이 Lv21 영웅 ★
+                { "equip.neck.bandana",         CharacterStat.Observation },  // 반다나      Lv25 전설 ★
+
+                // ---- BACK (주 = 민첩, enum 이름은 Shoulders) ----
+                { "equip.shoulders.cape",       CharacterStat.Charm },        // 짧은망토    Lv1  일반
+                { "equip.shoulders.long_cape",  CharacterStat.Focus },        // 긴망토      Lv13 일반
+                { "equip.shoulders.wings",      CharacterStat.Observation },  // 날개        Lv17 희귀
+                { "equip.shoulders.backpack",   CharacterStat.Observation },  // 배낭        Lv22 희귀 ★
+                { "equip.shoulders.poncho",     CharacterStat.Charm },        // 판초        Lv25 영웅 ★
+                { "equip.shoulders.fairy_wings", CharacterStat.Focus },       // 요정날개    Lv28 전설 ★
+            };
+        }
+
+        /// <summary>부스탯 방향이 적힌 아이템 수(= 스탯 4슬롯 × 6종). 표가 줄거나 늘면 여기서 보인다.</summary>
+        internal static int SubStatTableCount => SubStatTable.Map.Count;
+
+        /// <summary>
+        /// 아이디로 부스탯 방향. 모르는 아이디·외형 아이템·팩 아이템은
+        /// <see cref="EquipmentStatRules.NoStat"/>다.
+        ///
+        /// <para><paramref name="cohortId"/>가 기본 코호트가 아니면 <b>표를 아예 보지 않는다</b>.
+        /// 등급이 코호트로 모집단을 가르는 것과 같은 이유다: 팩이 기본 42종과 같은 아이디를 쓰면
+        /// 남의 부스탯을 상속받게 되고, 그 증상은 화면만 봐서는 원인을 못 찾는다.</para>
+        /// </summary>
+        internal static int SubStatOfItem(string itemId, int cohortId)
+        {
+            if (cohortId != BaseCohortId || string.IsNullOrEmpty(itemId)) return EquipmentStatRules.NoStat;
+            return SubStatTable.Map.TryGetValue(itemId, out CharacterStat stat)
+                ? (int)stat
+                : EquipmentStatRules.NoStat;
+        }
+
+        /// <summary>
+        /// ★ <b>「무소속」</b> — 어떤 세트에도 속하지 않는다는 값(DS-4′-b의 <c>Unassigned = 0</c> 자리).
+        /// 빈 문자열이고, 세트 판정은 이 값을 「같다」로 세지 않는다
+        /// (<see cref="EquipmentStatRules.IsSetComplete"/>).
+        ///
+        /// <para><b>2026-09-06 뜻이 하나 줄었다.</b> 그 전에는 「아직 배정 안 됨」이었고 42종 전부가
+        /// 이 값이었다. R21 안 B 배정(리더 채택)이 들어오면서 스탯 4슬롯 24종은 전부 실재 테마를
+        /// 갖고, <b>외형 18종만</b> 이 값이다 — 그리고 그건 누락이 아니라 <b>선언된 사실</b>이다
+        /// (§21-4-c E1의 24칸은 스탯 4슬롯뿐이다).</para>
+        ///
+        /// <para>★ 그래서 <b>스탯 슬롯 아이템이 이 값이면 결함</b>이다(DS-4′-e 침묵 실패:
+        /// 그 아이템을 낀 로드아웃은 세트가 영원히 성립하지 않는데 화면은 아무 말도 하지 않는다).
+        /// <c>Tests/EditMode/EquipmentStatInvariantTests</c>가 슬롯으로 갈라서 두 방향을 함께 잠근다.</para>
+        /// </summary>
+        public const string ThemeUnassigned = "";
+
+        // ============================================================================
+        // ★ 테마 배정표 — R21 안 B (리더 채택, 2026-09-05)
+        // ============================================================================
+        // 출처: design/equipment/verify/r21_theme.out.txt §6(42행) ·
+        //       docs/EQUIPMENT_HANDOFF_PORT_SPEC.md §14-12-6 · design/equipment/verify/r20_coords.txt `theme=`
+        //
+        // ★ 값이 아니라 <b>제약</b>을 먼저 적는다 — 이 표를 고치는 사람이 무엇을 깨는지 알도록:
+        //   E1  각 테마는 스탯 4슬롯에 정확히 1종씩(6테마 × 4슬롯 = 24). 한 슬롯에 2종이면
+        //       <b>그 테마는 4/4 완성이 영원히 불가능</b>하다.
+        //   E2  1일차 무료 4종(각 스탯 슬롯 idx0)은 같은 테마 → 여기서는 <c>mil</c>.
+        //       "세트 완성의 첫 경험은 돈이 0원이다"(R14 §3-5)가 이것 없이는 성립하지 않는다.
+        //   E3  전설 4종(밀짚모자·안대·반다나·요정날개)은 같은 테마 → 여기서는 <c>ink</c>.
+        //       혼합 최고 84를 이기는 세트(84+8 = 92)가 최소 하나는 있어야 6테마 전부가 지배당하지 않는다.
+        //   ★ DS-G7(「그 슬롯 최고 대비 1단 내림」 최대 1슬롯)은 <b>폐기됐다</b>(§21-4-c F5) —
+        //     전설 재고가 슬롯당 1개뿐이라 <b>산술적으로 6테마 중 최대 1개만</b> 만족한다.
+        //     안 B에서 그 하나는 <c>ink</c>(내림 0단 × 4슬롯)이고, 그게 F5가 증명한 상한이다.
+        //     DS-G7을 "6테마 전부에" 다시 걸려는 시도는 해가 없다 — 되살리지 마라.
+        //
+        // ★ 인계본 원문과 4종이 다르다(리더 채택 「안 B」, 안 A는 3종 변경):
+        //     천모자 ink→mil · 고글 cyber→sport · 외알안경 ink→cyber · 나비넥타이 office→mil
+        //   인계본 16종을 <b>한 종도 안 바꾸면 E1·E2·E3를 동시에 만족하는 배정이 존재하지 않는다</b>
+        //   (인계본 자체가 office/NECK 2종 겹침 · 1일차 4종이 ink/mil/office/mil).
+        //   ⇒ 이 4건을 "인계본과 어긋난다"고 되돌리면 세트가 구조적으로 완성 불가가 된다.
+        //
+        // ★ 왜 rank/idx에서 파생하지 않는가 (DS-4′-a)
+        //   idx0가 전부 mil이고 idx5가 전부 ink라 <b>「idx 파생인가?」로 보이지만 아니다</b> —
+        //   idx1은 sport/office/office/cyber로 갈리고 idx2~4도 전부 갈린다. 그 둘이 균일한 것은
+        //   파생이라서가 아니라 <b>E2·E3가 그렇게 요구</b>했기 때문이다.
+        //   rank 파생으로 구현하면 <b>컴파일도 되고 테스트도 통과하는데 틀린 로직</b>이 된다
+        //   (같은 등급 4개를 걸친 사람에게 테마 세트가 뜬다 — §21-4-b가 지목한 「증상 없는 결함」).
+
+        /// <summary>테마 키 — <b>컬러 잉크</b>. 전설 4종(§21-4-c E3).</summary>
+        public const string ThemeInk = "ink";
+
+        /// <summary>테마 키 — <b>스포츠 이펙트</b>.</summary>
+        public const string ThemeSport = "sport";
+
+        /// <summary>테마 키 — <b>오피스 워커</b>(인계본 4종 그대로).</summary>
+        public const string ThemeOffice = "office";
+
+        /// <summary>테마 키 — <b>사이버 아포칼립스</b>.</summary>
+        public const string ThemeCyber = "cyber";
+
+        /// <summary>테마 키 — <b>밀리터리</b>. 1일차 무료 4종(§21-4-c E2).</summary>
+        public const string ThemeMil = "mil";
+
+        /// <summary>테마 키 — <b>네온 낙서</b>.</summary>
+        public const string ThemeNeon = "neon";
+
+        /// <summary>실재 테마 6개. 테스트/감사가 <b>문자열을 다시 적지 않고</b> 훑을 수 있게 둔다
+        /// (베끼면 키를 하나 바꾸는 날 검사만 옛 값을 지킨다 — CLAUDE.md 확정 규칙).
+        /// <para><b>복사해서 내준다</b> — 훑는 쪽이 실수로 갈아 끼워도 표가 안 흔들린다.
+        /// 호출부가 로드/감사 시점뿐이라 이 복사는 프레임 예산에 닿지 않는다.</para></summary>
+        public static string[] AllThemes()
+            => new[] { ThemeInk, ThemeSport, ThemeOffice, ThemeCyber, ThemeMil, ThemeNeon };
+
+        /// <summary>
+        /// 테마 키 -> 사람이 읽을 이름(§14-12-6 표의 「뜻」 칸). 모르는 키·무소속은 <c>null</c>이다.
+        ///
+        /// <para><b>왜 Core에 있는가</b>: 키(<c>"mil"</c>)는 세트 판정용 안정 식별자이고 화면에 그대로
+        /// 뜨면 한글 UI에 영문 소문자가 박힌다. 그렇다고 화면이 자기 표를 들면 <b>같은 사실이 두 곳</b>이
+        /// 되고, 팩이 테마를 실어 오는 날 한쪽만 늘어난다. <c>EquipmentModel.SlotName</c> ·
+        /// <c>EquipmentStatRules.TierName</c>과 같은 자리다.</para>
+        ///
+        /// <para>★ 표시 규칙 자체(이 이름을 쓸 것인가, D-7처럼 「세트 완성」 고정으로 갈 것인가)는
+        /// <c>ux-designer</c>·<c>coder-ui</c> 소관이다 — 여기는 <b>값</b>만 들고 있다.</para>
+        /// </summary>
+        public static string ThemeDisplayName(string themeKey)
+        {
+            switch (themeKey)
+            {
+                case ThemeInk: return "컬러 잉크";
+                case ThemeSport: return "스포츠 이펙트";
+                case ThemeOffice: return "오피스 워커";
+                case ThemeCyber: return "사이버 아포칼립스";
+                case ThemeMil: return "밀리터리";
+                case ThemeNeon: return "네온 낙서";
+                default: return null;
+            }
+        }
+
+        /// <summary>
+        /// ★ 세트 테마 표 — <b>기본 코호트 24종만</b>. 외형 18종은 여기 없고 그건 누락이 아니라
+        /// <b>무소속</b>이라는 선언이다(§21-4-c E1: 세트 계산의 24칸은 스탯 4슬롯뿐).
+        ///
+        /// <para>배열이 아니라 아이디 사전인 이유는 <see cref="SubStatTable"/>과 같다 —
+        /// <c>itemIndex</c>는 에셋이 정하는 값이라 표 하나가 밀리면 24종의 테마가 통째로 어긋나고,
+        /// 어긋난 결과가 <b>「세트가 조용히 안 맞는다」</b>라서 화면만 봐서는 원인을 못 찾는다.</para>
+        /// </summary>
+        /// <remarks>중첩 홀더인 이유는 <see cref="SubStatTable"/>의 <c>remarks</c>와 같다(정적 초기화 순서).
+        /// 이 표를 <see cref="ItemCatalog"/>의 정적 필드로 두면 <c>_actions</c> 초기화자가 텍스트상
+        /// 먼저 돌면서 아직 <c>null</c>인 표를 읽어 카탈로그 전체가 <c>NullReferenceException</c>으로 죽는다.</remarks>
+        private static class ThemeTable
+        {
+            internal static readonly Dictionary<string, string> Map =
+                new Dictionary<string, string>(24)
+            {
+                // ---- HEAD ----                                              등급은 파생값이라 참고다
+                { "equip.head.cap",              ThemeMil },     // 천모자(필드캡)   Lv1  일반 ★E2 · 인계본 ink
+                { "equip.head.fur",              ThemeSport },   // 털모자(비니)     Lv5  일반
+                { "equip.head.fedora",           ThemeOffice },  // 중절모           Lv9  희귀
+                { "equip.head.crown",            ThemeCyber },   // 왕관             Lv20 희귀
+                { "equip.head.beret",            ThemeNeon },    // 베레모(화가)     Lv23 영웅
+                { "equip.head.straw",            ThemeInk },     // 밀짚모자         Lv26 전설 ★E3
+
+                // ---- EYES ----
+                { "equip.eyes.sunglasses",       ThemeMil },     // 선글라스(항공)   Lv1  일반 ★E2
+                { "equip.eyes.round",            ThemeOffice },  // 동그란안경       Lv6  일반
+                { "equip.eyes.goggles",          ThemeSport },   // 고글(스키)       Lv11 희귀 · 인계본 cyber
+                { "equip.eyes.monocle",          ThemeCyber },   // 외알안경(HUD)    Lv15 희귀 · 인계본 ink
+                { "equip.eyes.browline",         ThemeNeon },    // 뿔테안경(스트리트) Lv19 영웅
+                { "equip.eyes.patch",            ThemeInk },     // 안대             Lv23 전설 ★E3
+
+                // ---- NECK ----
+                { "equip.neck.bowtie",           ThemeMil },     // 나비넥타이(정복) Lv1  일반 ★E2 · 인계본 office
+                { "equip.neck.striped",          ThemeOffice },  // 줄무늬타이       Lv8  일반
+                { "equip.neck.scarf",            ThemeSport },   // 목도리           Lv12 희귀
+                { "equip.neck.bell",             ThemeNeon },    // 방울목걸이       Lv18 희귀
+                { "equip.neck.pendant",          ThemeCyber },   // 펜던트(데이터)   Lv21 영웅
+                { "equip.neck.bandana",          ThemeInk },     // 반다나           Lv25 전설 ★E3
+
+                // ---- BACK (enum 이름은 Shoulders) ----
+                { "equip.shoulders.cape",        ThemeMil },     // 짧은망토         Lv1  일반 ★E2
+                { "equip.shoulders.long_cape",   ThemeCyber },   // 긴망토           Lv13 일반
+                { "equip.shoulders.wings",       ThemeNeon },    // 날개             Lv17 희귀
+                { "equip.shoulders.backpack",    ThemeOffice },  // 배낭             Lv22 희귀
+                { "equip.shoulders.poncho",      ThemeSport },   // 판초(야외 우비)  Lv25 영웅
+                { "equip.shoulders.fairy_wings", ThemeInk },     // 요정날개         Lv28 전설 ★E3
+            };
+        }
+
+        /// <summary>테마가 배정된 아이템 수(= 스탯 4슬롯 × 6종 = 24). 표가 줄거나 늘면 여기서 보인다.
+        /// <see cref="SubStatTableCount"/>와 <b>같은 모집단</b>이어야 한다 — 갈라지면 스탯은 오르는데
+        /// 세트에는 못 들어가는(또는 반대) 아이템이 생긴다.</summary>
+        internal static int ThemeTableCount => ThemeTable.Map.Count;
+
+        /// <summary>
+        /// 아이디로 세트 테마 키. 모르는 아이디·외형 아이템·팩 아이템은 <see cref="ThemeUnassigned"/>
+        /// (= 무소속)다.
+        ///
+        /// ============================================================================
+        /// ★ 축은 테마다 — <c>rank</c> 파생을 되살리지 마라
+        /// ============================================================================
+        /// <c>docs/SYSTEMS_EQUIPMENT_SCHEMA_IMPACT.md</c> §4-3이 <c>setId = "base.rank{N}"</c>
+        /// (등급 순위에서 파생)을 제안했는데, 리더 확정(커밋 <c>eca8c58</c> "세트는 테마") ·
+        /// design-systems R14 <b>DS-G3</b>(문자열 동등성으로만 판정) · R15 <b>DS-4′-a</b>
+        /// (<c>rank</c>·<c>requiredLevel</c>·<c>cohortId</c> 어디서도 파생 금지)가 그것을 뒤집었다.
+        /// rank 파생으로 구현하면 <b>컴파일도 되고 테스트도 통과하는데 틀린 로직</b>이 된다 —
+        /// 같은 등급 4개를 걸친 사람에게 세트가 뜨고, 그건 테마 세트가 약속하는 것과 다른 사건이다.
+        ///
+        /// <para>★ 위 표에서 <c>idx0</c>이 전부 <see cref="ThemeMil"/>이고 <c>idx5</c>가 전부
+        /// <see cref="ThemeInk"/>인 것을 보고 <b>「결국 idx 파생 아닌가」로 읽지 마라</b> —
+        /// <c>idx1</c>은 sport/office/office/cyber로 갈린다. 그 두 줄이 균일한 것은 파생이라서가 아니라
+        /// <b>E2·E3가 그렇게 요구</b>했기 때문이다(그 사실을 테스트가 대조로 못박는다).</para>
+        ///
+        /// <para><paramref name="cohortId"/>가 기본 코호트가 아니면 <b>표를 아예 보지 않는다</b> —
+        /// <see cref="SubStatOfItem"/>과 같은 이유(팩이 기본 42종과 같은 아이디를 쓰면 남의 테마를
+        /// 상속받는다). <b>팩이 테마를 선언하는 통로는 아직 없다</b>(DS-4′-d가 요구하는
+        /// <c>.asset theme</c> 필드가 아직 없다) — 그래서 오늘 팩 아이템은 전부 무소속이고,
+        /// 그 필드가 생기는 날 바뀌는 곳은 <see cref="EntryFrom"/> 하나다.</para>
+        /// </summary>
+        internal static string ThemeOfItem(string itemId, int cohortId)
+        {
+            if (cohortId != BaseCohortId || string.IsNullOrEmpty(itemId)) return ThemeUnassigned;
+            return ThemeTable.Map.TryGetValue(itemId, out string theme) ? theme : ThemeUnassigned;
+        }
+
+        /// <summary>이 자리 아이템의 부스탯 방향. 못 찾는 자리는 <see cref="EquipmentStatRules.NoStat"/>다
+        /// (<see cref="Rarity"/>가 못 찾는 자리를 <c>Common</c>으로 돌려주는 것과 같은 방침).</summary>
+        public static int SubStat(EquipmentSlot slot, int itemIndex)
+        {
+            ItemCatalogEntry entry = Item(slot, itemIndex);
+            return entry != null ? entry.SubStat : EquipmentStatRules.NoStat;
         }
 
         /// <summary>아이디로 카테고리 안의 자리를 찾는다. 없으면 -1 —

@@ -374,7 +374,10 @@ namespace StickMate.Tests.EditMode
                     AccessoryShapeBuilder.Append(sink, expected[e].Slot, i, Rig());
                     for (int k = 0; k < sink.Count; k++)
                     {
-                        Assert.AreEqual(expected[e].Order, sink[k].SortingOrder,
+                        // ★ 2026-09-05 계약 v2 — 조각은 자기 층(AccessoryPieceLayer)을 선언하고 LayerOrder 가 번호를 정한다(망토 칼라·걸쇠 = 몸통 앞, §14-6 #8).
+                        int want = AccessoryShapeBuilder.LayerOrder(sink[k].Layer, expected[e].Order);
+                        if (sink[k].IsFrontLayer) Assert.AreEqual(AccessoryShapeBuilder.SortCapeFront, want, "몸통 앞 층이 SortCapeFront 가 아닙니다.");
+                        Assert.AreEqual(want, sink[k].SortingOrder,
                             $"{expected[e].Slot} {i}번의 '{sink[k].Name}'이 레이어 {sink[k].SortingOrder}로 나왔습니다.");
                     }
                 }
@@ -523,28 +526,34 @@ namespace StickMate.Tests.EditMode
         /// 외알안경·안대가 있고, <c>EyesVisorOpacityTests.좌우를_반전해도_같은_판이_거울로_선다</c>가
         /// 6종 전부의 x 부호 반전을 점별로 검사한다.</para>
         /// </summary>
+        /// <summary>★ 2026-09-05 인계본 고글은 'GoggleStrap' 한 선이 아니라 원문 조각(판·렌즈·끈)이다 — 잠그는 성질은 그대로
+        /// (<b>좌우로 똑같이 뻗는다</b>)이고 자를 <b>아이템 전체의 잉크 범위</b>로 바꿨다. 옛 단언 <c>GoggleStrapReachRatio</c>
+        /// 상수 대조는 잃는다(인계본에는 그 상수가 없다).</summary>
         [Test]
         public void 고글_스트랩이_좌우로_똑같이_뻗는다()
         {
             var right = new System.Collections.Generic.List<AccessoryShapeBuilder.Shape>();
             AccessoryShapeBuilder.Append(right, EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesGoggles, Rig(+1f));
-            Vector3[] r = Find(right, "GoggleStrap");
+            Assert.Greater(right.Count, 0, "고글 도형이 없습니다.");
 
             float back = 0f, front = 0f;
-            for (int i = 0; i < r.Length; i++)
+            for (int s = 0; s < right.Count; s++)
             {
-                back = Mathf.Max(back, -r[i].x);
-                front = Mathf.Max(front, r[i].x);
+                Vector3[] r = right[s].Points;
+                for (int i = 0; i < r.Length; i++)
+                {
+                    back = Mathf.Max(back, -r[i].x);
+                    front = Mathf.Max(front, r[i].x);
+                }
             }
-            Assert.AreEqual(back, front, 1e-5f,
-                $"스트랩이 뒤로 {back:F4} / 앞으로 {front:F4}만큼 뻗어 한쪽으로 쏠렸습니다 — " +
+            Assert.Greater(front, 0f, "고글이 앞으로 전혀 뻗지 않습니다 — 잉크 범위가 비었습니다.");
+            Assert.AreEqual(back, front, 1e-4f,
+                $"고글이 뒤로 {back:F4} / 앞으로 {front:F4}만큼 뻗어 한쪽으로 쏠렸습니다 — " +
                 "카드에는 머리가 없으므로 비대칭인 끈은 '기형 도형'으로 읽힙니다(리더 육안 검증 V3).");
-
-            float reach = AccessorySilhouetteMetrics.Rig().HeadRadius * AccessoryShapeBuilder.GoggleStrapReachRatio;
-            Assert.AreEqual(reach, front, 1e-5f, "스트랩 끝이 선언한 뻗음 상수와 어긋났습니다.");
         }
 
-        /// <summary>왕관은 좌우 대칭이라 방향이 바뀌어도 같은 그림이어야 한다(33-2-1 #4가 명시한 정상 동작).</summary>
+        /// <summary>왕관은 좌우 대칭이라 방향이 바뀌어도 같은 그림이어야 한다(33-2-1 #4가 명시한 정상 동작).
+        /// ★ 2026-09-05 — 'CrownBody' 한 조각이 아니라 <b>모든 조각</b>을 대조한다(인계본 왕관은 원문 조각 9개).</summary>
         [Test]
         public void 왕관은_좌우_대칭이라_반전해도_같은_그림이다()
         {
@@ -553,13 +562,19 @@ namespace StickMate.Tests.EditMode
             AccessoryShapeBuilder.Append(right, EquipmentSlot.Head, AccessoryShapeBuilder.HeadCrown, Rig(+1f));
             AccessoryShapeBuilder.Append(left, EquipmentSlot.Head, AccessoryShapeBuilder.HeadCrown, Rig(-1f));
 
-            Vector3[] a = Find(right, "CrownBody");
-            Vector3[] b = Find(left, "CrownBody");
-            for (int i = 0; i < a.Length; i++)
+            Assert.Greater(right.Count, 0, "왕관 도형이 없습니다.");
+            Assert.AreEqual(right.Count, left.Count, "방향에 따라 왕관 조각 수가 다릅니다.");
+            for (int s = 0; s < right.Count; s++)
             {
-                // 대칭 도형이므로 반전하면 점 순서만 뒤집힌 같은 집합이 된다.
-                Assert.AreEqual(a[i].x, -b[i].x, 1e-5f);
-                Assert.AreEqual(a[i].y, b[i].y, 1e-5f);
+                Vector3[] a = right[s].Points;
+                Vector3[] b = left[s].Points;
+                Assert.AreEqual(a.Length, b.Length, $"'{right[s].Name}' 점 수가 방향에 따라 다릅니다.");
+                for (int i = 0; i < a.Length; i++)
+                {
+                    // 대칭 도형이므로 반전하면 점 순서만 뒤집힌 같은 집합이 된다.
+                    Assert.AreEqual(a[i].x, -b[i].x, 1e-5f, $"'{right[s].Name}' {i}번 점 x");
+                    Assert.AreEqual(a[i].y, b[i].y, 1e-5f, $"'{right[s].Name}' {i}번 점 y");
+                }
             }
         }
 

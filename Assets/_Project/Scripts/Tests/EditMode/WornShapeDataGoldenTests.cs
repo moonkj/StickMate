@@ -61,6 +61,10 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 목_형상은_데이터화_전후로_비트까지_같다()
         {
+            int v1Items = 0;
+            for (int item = 0; item < ItemsPerSlot; item++) if (!IsHandoffItem(item)) v1Items++;
+            Assert.Greater(v1Items, 0, "v1 파일럿 아이템이 하나도 안 남았습니다 — 이 골든 대조는 공허합니다(전부 CardShapeGolden 으로 옮겨졌다면 이 파일을 정리하세요).");
+
             string expected = ReadGolden();
             string actual = Dump();
 
@@ -175,114 +179,11 @@ namespace StickMate.Tests.EditMode
         }
 
         // ============================================================================
-        // 2-b. ★ <b>엔진 안에서</b> 옛 산술과 직접 맞댄다 — 골든만으로는 못 잡는 자리
+        // 2-b. ★ 2026-09-05 계약 v2(R16/R17) — 「월요일_회전은_옛_산술과_비트까지_같다」·「방울_10각형은_옛_산술과_비트까지_같다」를 지웠다.
+        //   두 검사는 2026-09-02 이전 AppendNeck 의 산술(TieBlade 회전 · 방울 10각형)을 박제한 것인데, 그 도형은 인계본 착용 기하
+        //   (EQUIPMENT_HANDOFF_PORT_SPEC §14-0 #1)로 대체돼 더는 존재하지 않는다. 잃는 것: 삼각함수 좌표의 엔진 내 비트 대조 —
+        //   인계본 조각은 스트림에 삼각 항이 없어(계수만) 그 축 자체가 사라졌다. 좌표 잠금은 CardShapeContractTests 가 골든으로 한다.
         // ============================================================================
-        //
-        // 왜 이게 따로 필요한가 (2026-09-02 실측으로 배운 것)
-        // ---------------------------------------------------------------------------
-        // 이 이사의 비트 동일성은 처음에 <b>오프라인 하니스</b>(Unity 없이 프로덕션 파일을 컴파일해
-        // 옛 코드와 새 코드를 나란히 돌리는 도구)로 확인했고 1,620줄 0 diff였다. 그런데 그 하니스는
-        // .NET 6에서 돌고 <b>에디터는 Mono에서 돈다</b>. 삼각함수가 끼면 두 런타임의 마지막 비트가
-        // 갈릴 수 있고, 실제로 갈렸다 — 방울 10각형에서 각이 2π를 넘는 <b>단 한 점</b>이
-        // cos 6 ULP · sin 4 ULP 어긋나 있었다. 오프라인 대조는 양쪽 모두 .NET 6이라 <b>초록이었다</b>.
-        //
-        // 그래서 삼각함수가 끼는 두 자리(월요일 blade 회전 · 방울 10각형)만큼은 <b>엔진 안에서</b>
-        // 옛 산술을 그대로 재현해 맞댄다. 아래 좌표는 2026-09-02 이전 AppendNeck의 <b>박제</b>다 —
-        // 살아 있는 거울이 아니라 그때 그 값이고, 그래서 에셋이 움직이면 여기가 빨개지는 것이 맞다
-        // (같은 방식의 선례: AccessoryHatBandAndBellTests의 '옛 방울' 네거티브 컨트롤).
-
-        [Test]
-        public void 월요일_회전은_옛_산술과_비트까지_같다()
-        {
-            AccessoryShapeBuilder.Rig rig = Rig(1f, +1f);
-            float r = rig.HeadRadius;
-            float ty = AccessoryShapeBuilder.NeckLocalY(rig);
-
-            // ---- 옛 AppendNeck(NeckStriped, mondayLoosened: true)의 산술 그대로 ----
-            float knotY = ty - r * 0.12f;                  // TieMondayLoosenDropRatio
-            float pivotY = knotY - r * 0.28f;              // TieKnotBottomDropRatio
-            float len = rig.TorsoLength * 0.55f;           // TieBladeLengthInTorso
-            float bw = r * 0.34f;                          // TieBladeHalfWidthRatio
-            float tilt = 3f * Mathf.Deg2Rad;               // TieMondayLoosenTiltDegrees
-
-            AccessoryShapeBuilder.Rig bladeRig = rig;
-            Vector3 Blade(float fx, float dy)
-            {
-                float rx = fx * Mathf.Cos(tilt) - dy * Mathf.Sin(tilt);
-                float ry = fx * Mathf.Sin(tilt) + dy * Mathf.Cos(tilt);
-                return bladeRig.F(rx, pivotY + ry);
-            }
-
-            var expected = new Dictionary<string, Vector3[]>
-            {
-                ["TieBlade"] = new[]
-                {
-                    Blade(-bw, 0f), Blade(bw, 0f), Blade(bw * 1.176f, -len * 0.72f),
-                    Blade(0f, -len), Blade(-bw * 1.176f, -len * 0.72f),
-                },
-                ["TieStripe"] = new[]
-                {
-                    Blade(-bw * 1.06f, -len * 0.30f),
-                    Blade(bw * 1.06f, -len * 0.30f - r * 0.20f),
-                    Blade(bw * 1.12f, -len * 0.52f - r * 0.20f),
-                    Blade(-bw * 1.12f, -len * 0.52f),
-                },
-            };
-
-            AssertMatches(expected, AccessoryShapeBuilder.NeckStriped, rig, stateOn: true);
-        }
-
-        [Test]
-        public void 방울_10각형은_옛_산술과_비트까지_같다()
-        {
-            AccessoryShapeBuilder.Rig rig = Rig(1f, +1f);
-            float r = rig.HeadRadius;
-            float ty = AccessoryShapeBuilder.NeckLocalY(rig);
-
-            // ---- 옛 Polygon(rig, 0f, bellY, bellR, BellSegments, 90f) 그대로 ----
-            const int segments = 10;                       // BellSegments
-            float bellR = r * 0.30f;                       // BellRadiusRatio
-            float bellY = ty + r * (0.16f - 0.32f) - bellR; // CollarLowLocalY - bellR
-            float step = Mathf.PI * 2f / segments;
-            float phase = 90f * Mathf.Deg2Rad;
-
-            var bell = new Vector3[segments];
-            for (int i = 0; i < segments; i++)
-            {
-                float a = phase + step * i;
-                bell[i] = rig.F(0f + Mathf.Cos(a) * bellR, bellY + Mathf.Sin(a) * bellR);
-            }
-
-            AssertMatches(new Dictionary<string, Vector3[]> { ["Bell"] = bell },
-                AccessoryShapeBuilder.NeckBell, rig, stateOn: false);
-        }
-
-        private static void AssertMatches(Dictionary<string, Vector3[]> expected, int item,
-            in AccessoryShapeBuilder.Rig rig, bool stateOn)
-        {
-            var sink = new List<AccessoryShapeBuilder.Shape>();
-            AccessoryShapeBuilder.Append(sink, PilotSlot, item, rig,
-                float.PositiveInfinity, 0f, stateOn);
-
-            int checkedShapes = 0;
-            foreach (AccessoryShapeBuilder.Shape s in sink)
-            {
-                if (!expected.TryGetValue(s.Name, out Vector3[] want)) continue;
-                checkedShapes++;
-                Assert.AreEqual(want.Length, s.Points.Length, $"'{s.Name}'의 점 수가 다릅니다.");
-                for (int i = 0; i < want.Length; i++)
-                {
-                    Assert.AreEqual(Bits(want[i].x), Bits(s.Points[i].x),
-                        $"'{s.Name}' {i}번 점의 x가 옛 산술과 다릅니다 " +
-                        $"(옛 {want[i].x:R} / 지금 {s.Points[i].x:R}).");
-                    Assert.AreEqual(Bits(want[i].y), Bits(s.Points[i].y),
-                        $"'{s.Name}' {i}번 점의 y가 옛 산술과 다릅니다 " +
-                        $"(옛 {want[i].y:R} / 지금 {s.Points[i].y:R}).");
-                }
-            }
-            Assert.AreEqual(expected.Count, checkedShapes,
-                "맞대야 할 도형을 다 못 찾았습니다 — 이름이 바뀌었다면 이 검사는 아무것도 재지 않습니다.");
-        }
 
         // ============================================================================
         // 3. 스트림 문법 — 망가진 팩이 <b>조용히</b> 통과하지 않는가
@@ -401,11 +302,15 @@ namespace StickMate.Tests.EditMode
 
                     for (int item = 0; item < ItemsPerSlot; item++)
                     {
+                        // ★ 계약 v2 — 인계본 조각(strokeInR > 0)이 있는 아이템은 CardShapeGolden 이 잠근다. 여기 골든은 v1 파일럿만.
+                        if (IsHandoffItem(item)) continue;
                         foreach (bool stateOn in new[] { false, true })
                         {
+                            // ★ 2026-09-05 R20 N-1 — 이 골든은 「스트림 데이터의 비트 동일」을 잠근다. 아이템 단위 몸 파라미터(펜던트·반다나 착용선 dy)는
+                            //   이제 v1 조각에도 걸리므로 Append 로 굽으면 그 오프셋이 섞인다. 그래서 스트림을 <b>읽기 그 자체</b>로 굽는다 —
+                            //   오프셋이 실제로 걸리는지는 v1_조각에도_아이템_세로_오프셋이_걸린다 가 따로 잠근다.
                             sink.Clear();
-                            AccessoryShapeBuilder.Append(sink, PilotSlot, item, rig,
-                                float.PositiveInfinity, 0f, stateOn);
+                            AppendFromStreams(sink, item, rig, stateOn);
 
                             foreach (AccessoryShapeBuilder.Shape s in sink)
                             {
@@ -426,6 +331,86 @@ namespace StickMate.Tests.EditMode
                 }
             }
             return sb.ToString();
+        }
+
+        /// <summary>에셋 스트림을 리그로 읽어 도형 목록에 넣는다 — <c>AppendWorn</c>과 같은 순서·같은 필드, <b>아이템 몸 변형만 없이</b>.</summary>
+        private static void AppendFromStreams(List<AccessoryShapeBuilder.Shape> sink, int item, in AccessoryShapeBuilder.Rig rig, bool stateOn)
+        {
+            AccessoryWornShapeData[] data = ItemCatalog.WornShapes(PilotSlot, item);
+            Assert.IsNotNull(data, $"{PilotSlot} {item}번의 에셋 형상이 없습니다.");
+            AccessoryWornFrame frame = AccessoryShapeBuilder.Frame(rig);
+            for (int i = 0; i < data.Length; i++)
+            {
+                Assert.IsTrue(AccessoryWornShapeReader.TryBuild(data[i], frame, stateOn, out Vector3[] points, out _), $"{item}번 {data[i].name} 스트림을 못 읽었습니다.");
+                sink.Add(new AccessoryShapeBuilder.Shape(data[i].name, points, data[i].loop,
+                    AccessoryShapeBuilder.LayerOrder((byte)data[i].layer, AccessoryShapeBuilder.SortNeck),
+                    data[i].swayStart, data[i].swayCount, (byte)data[i].tone, data[i].filled));
+            }
+        }
+
+        /// <summary>
+        /// ★ R20 N-1(2026-09-05) — 아이템 단위 세로 오프셋(<c>wornOffsetYInR</c>)은 v1 조각에도 걸린다: 펜던트·반다나의 착용선 dy.
+        /// <para>Append(몸) 결과 = 스트림 읽기 결과 + dy·R (x 는 그대로, 상태 켜짐/꺼짐 둘 다). 오프셋이 0 인 v1 아이템은 두 결과가 비트까지 같다
+        /// (음성 대조). 존재 대조: 오프셋이 0 이 아닌 v1 아이템이 실제로 있고(펜던트·반다나) 그 값은 아래(음수)다 — 값 자체는 에셋이 정본이고
+        /// 모델과의 일치는 Tools/CardShapeGen/verify_card_shapes.py 가 잰다.</para>
+        /// </summary>
+        [Test]
+        public void v1_조각에도_아이템_세로_오프셋이_걸린다()
+        {
+            int shifted = 0, unshifted = 0;
+            var viaAppend = new List<AccessoryShapeBuilder.Shape>();
+            var viaStream = new List<AccessoryShapeBuilder.Shape>();
+            foreach (float scale in Scales)
+            {
+                AccessoryShapeBuilder.Rig rig = Rig(scale, 1f);
+                for (int item = 0; item < ItemsPerSlot; item++)
+                {
+                    if (IsHandoffItem(item)) continue;
+                    AccessoryWornTransform xf = ItemCatalog.WornTransform(PilotSlot, item);
+                    Assert.AreEqual(0f, xf.Scale); Assert.AreEqual(0f, xf.ScaleY); Assert.IsFalse(xf.MirrorX);
+                    float dy = xf.OffsetYInR * rig.HeadRadius;
+                    foreach (bool stateOn in new[] { false, true })
+                    {
+                        viaAppend.Clear(); viaStream.Clear();
+                        AccessoryShapeBuilder.Append(viaAppend, PilotSlot, item, rig, float.PositiveInfinity, 0f, stateOn);
+                        AppendFromStreams(viaStream, item, rig, stateOn);
+                        Assert.AreEqual(viaStream.Count, viaAppend.Count, $"{item}번: 조각 수가 다릅니다.");
+                        for (int k = 0; k < viaStream.Count; k++)
+                        {
+                            Vector3[] a = viaAppend[k].Points, b = viaStream[k].Points;
+                            Assert.AreEqual(b.Length, a.Length);
+                            for (int i = 0; i < a.Length; i++)
+                            {
+                                if (xf.OffsetYInR == 0f)
+                                {
+                                    Assert.AreEqual(b[i], a[i], $"{item}번 {viaStream[k].Name} {i}번 점: 오프셋 0 인데 Append 가 점을 옮겼습니다.");
+                                }
+                                else
+                                {
+                                    Assert.AreEqual(b[i].x, a[i].x, 1e-6f, $"{item}번 {viaStream[k].Name} {i}번 점 x 가 움직였습니다(세로 오프셋뿐이어야 한다).");
+                                    Assert.AreEqual(b[i].y + dy, a[i].y, 1e-5f, $"{item}번 {viaStream[k].Name} {i}번 점 y: 오프셋 {xf.OffsetYInR:F4} R 이 안 걸렸습니다.");
+                                }
+                            }
+                        }
+                    }
+                    if (xf.OffsetYInR != 0f) { shifted++; Assert.Less(xf.OffsetYInR, 0f, $"{item}번: N-1 착용선 오프셋은 아래(음수)여야 합니다."); }
+                    else unshifted++;
+                }
+            }
+            Assert.Greater(shifted, 0, "세로 오프셋을 가진 v1 아이템이 없습니다 — R20 N-1(펜던트·반다나) 전사가 사라졌습니다.");
+            Assert.Greater(unshifted + shifted, 0);
+        }
+
+        /// <summary>인계본 조각(계약 v2)으로 바뀐 자리인가 — 에셋 데이터에 명목 획이 적혀 있으면 그렇다.</summary>
+        private static bool IsHandoffItem(int item)
+        {
+            AccessoryWornShapeData[] data = ItemCatalog.WornShapes(PilotSlot, item);
+            if (data == null) return false;
+            for (int i = 0; i < data.Length; i++)
+            {
+                if (AccessoryStroke.IsHandoff(data[i].strokeInR)) return true;
+            }
+            return false;
         }
 
         /// <summary>골든을 구운 릭. <b>프로덕션 기준 상수에 배율을 곱한다</b> — 여기에 숫자를 직접

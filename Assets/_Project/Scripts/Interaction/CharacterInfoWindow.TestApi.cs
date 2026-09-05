@@ -39,8 +39,23 @@ namespace StickMate.Interaction
         /// <summary>진단/테스트 전용 — 지금 타이틀바를 잡고 끌고 있는가.</summary>
         public bool IsDraggingPanel => _draggingPanel;
 
-        /// <summary>진단/테스트 전용 — 드래그 손잡이(타이틀바)의 화면 사각형.</summary>
+        /// <summary>진단/테스트 전용 — 드래그 손잡이(<b>헤더</b>)의 화면 사각형.
+        /// <para>★ L-2로 타이틀바가 헤더에 흡수됐다. 실제로 끌리는 자리는 여기서 탭·칩·[✕]를 뺀
+        /// 나머지이고, 그 판정은 <see cref="TryBeginPanelDrag"/> 한 곳에 있다.</para></summary>
         public Rect TitleBarScreenRect => RawScreenRectOf(_titleBarRect);
+
+        /// <summary>진단/테스트 전용 — 헤더 안에서 <b>드래그가 시작되지 않는</b> 자식들의 사각형.
+        /// 테스트가 "빈 자리"를 찾을 때 이 목록을 피해서 고른다(좌표를 손으로 적지 않는다).</summary>
+        public Rect[] HeaderNonDragRectsForTests()
+        {
+            var rects = new System.Collections.Generic.List<Rect>(_tabRects.Length + 4);
+            for (int i = 0; i < _tabRects.Length; i++) rects.Add(RawScreenRectOf(_tabRects[i]));
+            rects.Add(RawScreenRectOf(_closeRect));
+            rects.Add(RawScreenRectOf(_settingsRect));
+            rects.Add(RawScreenRectOf(_ownedChipRect));
+            rects.Add(RawScreenRectOf(_coinChipRect));
+            return rects.ToArray();
+        }
 
         /// <summary>진단/테스트 전용 — 창 전체의 화면 사각형("화면 안에 들어왔는가"를 재는 창구).</summary>
         public Rect PanelScreenRect => RawScreenRectOf(_panel);
@@ -85,13 +100,11 @@ namespace StickMate.Interaction
             return card != null && cards;
         }
 
-        /// <summary>카드의 <b>잘리기 전</b> 화면 사각형. 캐러셀 밖으로 밀려난 카드도 값이 나온다 —
+        /// <summary>카드의 <b>잘리기 전</b> 화면 사각형. 스크롤 밖으로 밀려난 카드도 값이 나온다 —
         /// "보이지 않는데 눌리는가"를 재려면 그 자리를 알아야 한다.</summary>
         public Rect CardRawScreenRect(int index) => RawScreenRectOf(CardAt(index)?.Rect);
 
-        /// <summary>카드가 캐러셀 마스크에 <b>잘리고 남은</b> 화면 사각형(전부 잘리면 넓이 0).
-        /// "반쯤 걸친 카드가 있는가" — 즉 이 창의 유일한 발견 단서(<see cref="CarouselViewportWidth"/>)가
-        /// 실제로 화면에 있는가를 회귀 테스트가 숫자로 확인하는 창구다.</summary>
+        /// <summary>카드가 스크롤 마스크에 <b>잘리고 남은</b> 화면 사각형(전부 잘리면 넓이 0).</summary>
         public Rect CardVisibleScreenRect(int index) => VisibleScreenRectOf(CardAt(index)?.Rect);
 
         /// <summary>카드 하단 [착용]/[해제] 버튼의 잘리기 전 화면 사각형.</summary>
@@ -145,13 +158,35 @@ namespace StickMate.Interaction
         /// <summary>화면 픽셀 ÷ 이 값 = 캔버스 포인트. 테스트가 화면 사각형을 pt로 되돌릴 때 쓴다.</summary>
         public float CanvasScaleForTests => CanvasScale();
 
-        /// <summary>세로 한 칸(카테고리 섹션)의 높이. 창 높이가 섹션 수에서 파생되는지 확인할 때 쓴다.</summary>
-        public float SectionStepPoints => SectionStep;
+        /// <summary>카드 한 장의 설계 크기(pt). 인계본 설계값 186.00 × 208을 테스트가 <b>베끼지 않고</b>
+        /// 묻는 통로다(비율·정렬은 여기서 나온 값끼리 비교한다).</summary>
+        public Vector2 CardDesignSizePoints => new Vector2(CardWidth, CardHeight);
 
-        /// <summary>카드 이름 상자 / 메타 상자의 화면 사각형(잘리기 전).</summary>
+        /// <summary>카드 격자의 열 수(설계값 2). 컬럼 폭이 바뀌면 이 값이 따라와야 한다.</summary>
+        public int CardGridColumns => CardColumns;
+
+        /// <summary>3컬럼의 설계 폭(pt) — 306 / 292 / 444.</summary>
+        public Vector3 ColumnWidthsPoints => new Vector3(Col1Width, Col2Width, Col3Width);
+
+        /// <summary>컬럼 3 격자가 <b>세로로</b> 밀 수 있는 최대치(양수). 0이면 다 들어온다는 뜻이다.</summary>
+        public float GridMaxScrollPoints => MaxGridScroll();
+
+        /// <summary>지금 밀려 있는 양(캔버스 포인트, 아래로 밀면 양수).</summary>
+        public float GridScrollPoints => _gridContent != null ? _gridContent.anchoredPosition.y : 0f;
+
+        /// <summary>컬럼 3 스크롤 뷰포트의 화면 사각형 — 테스트가 드래그를 걸 자리를 여기서 고른다.</summary>
+        public Rect GridViewportScreenRect => RawScreenRectOf(_gridViewport);
+
+        /// <summary>컬럼 3 스크롤 콘텐츠의 총 높이(pt). 카테고리 블록 합이다.</summary>
+        public float GridContentHeightPoints => _gridContent != null ? _gridContent.rect.height : 0f;
+
+        /// <summary>카드 이름 상자 / 등급 낱말 상자의 화면 사각형(잘리기 전).</summary>
         public Rect CardNameRawScreenRect(int index) => RawScreenRectOf(CardAt(index)?.Name?.rectTransform);
 
-        public Rect CardMetaRawScreenRect(int index) => RawScreenRectOf(CardAt(index)?.Meta?.rectTransform);
+        public Rect CardMetaRawScreenRect(int index) => RawScreenRectOf(CardAt(index)?.Rarity?.rectTransform);
+
+        /// <summary>카드 등급 낱말 — 「낱말이 없으면 등급 표시는 미완이다」가 카드에 도달했는지 재는 통로.</summary>
+        public string CardRarityWordForTests(int index) => CardAt(index)?.Rarity?.text ?? string.Empty;
 
         /// <summary>카드 이름이 <b>실제로 그려질 때</b> 차지하는 폭(캔버스 포인트). 상자 폭이 아니라
         /// 폰트가 잰 값이라, 말줄임이 안 걸리면 상자를 넘는 것이 이 값에서 바로 보인다.</summary>
@@ -167,41 +202,87 @@ namespace StickMate.Interaction
         /// <summary>말줄임 전 원본 이름.</summary>
         public string CardNameSourceForTests(int index) => CardAt(index)?.NameSource ?? string.Empty;
 
-        /// <summary>캐러셀 한 줄(잡고 미는 자리)의 화면 사각형.</summary>
-        public Rect CarouselRowScreenRect(int section)
-            => RawScreenRectOf(section >= 0 && section < _sections.Length ? _sections[section]?.RowRect : null);
+        /// <summary>카테고리 블록(제목줄 + 카드 격자)의 화면 사각형.</summary>
+        public Rect CategoryBlockScreenRect(int section)
+            => RawScreenRectOf(section >= 0 && section < _sections.Length ? _sections[section]?.Rect : null);
 
-        /// <summary>캐러셀 한 줄이 <b>마스크에 잘리고 남은</b> 화면 사각형(전부 잘리면 넓이 0).
+        /// <summary>카테고리 블록이 <b>마스크에 잘리고 남은</b> 화면 사각형(전부 잘리면 넓이 0).
         ///
-        /// <para>★ 왜 <see cref="CarouselRowScreenRect"/>와 따로 필요한가(2026-09-02 실측): 배치모드
-        /// PlayMode의 화면은 640×480이라 <see cref="ClampPanelToScreen"/>이 이 창을 608pt로 줄이는데,
-        /// <b>내용은 함께 접히지 않는다</b> — 줄 자체는 1042 폭 기준 자리(패널 좌단 266..1020)에
-        /// 그대로 있고 <c>Body</c> 마스크가 608에서 자른다. 그래서 <b>줄의 한가운데가 잘린 쪽</b>에
-        /// 들어가고, 그 자리는 이 창의 규칙("보이지 않는 것은 눌리지 않는다",
-        /// <see cref="ContainsScreenPoint"/>)에 따라 <b>정당하게</b> 잡히지 않는다.</para>
+        /// <para>★ 왜 날 사각형과 따로 필요한가(2026-09-02 실측): 배치모드 PlayMode의 화면은
+        /// 640×480이라 <see cref="ClampPanelToScreen"/>이 이 창을 608pt로 줄이는데, <b>내용은 함께
+        /// 접히지 않는다</b> — 블록은 1042 폭 기준 자리에 그대로 있고 <c>Body</c> 마스크가 자른다.
+        /// 그 자리는 이 창의 규칙("보이지 않는 것은 눌리지 않는다")에 따라 <b>정당하게</b> 잡히지 않는다.</para>
         ///
         /// <para>테스트가 드래그를 걸 지점은 여기서 고른다. 날 사각형의 중심을 잡으면 제품이 멀쩡한데도
-        /// 화면 크기 때문에 빨개지는 <b>거짓 빨강</b>이 난다(<c>ScrollInventoryForTests</c>가 같은
-        /// 사정으로 생긴 창구다).</para></summary>
-        public Rect CarouselRowVisibleScreenRect(int section)
-            => VisibleScreenRectOf(section >= 0 && section < _sections.Length ? _sections[section]?.RowRect : null);
+        /// 화면 크기 때문에 빨개지는 <b>거짓 빨강</b>이 난다.</para></summary>
+        public Rect CategoryBlockVisibleScreenRect(int section)
+            => VisibleScreenRectOf(section >= 0 && section < _sections.Length ? _sections[section]?.Rect : null);
 
-        /// <summary>섹션 헤더의 "n / 6" 카운터 사각형. 이 창 오른쪽 열의 <b>오른쪽 끝선</b>을 정의하는
-        /// 요소이고, 카드줄 바로 위에 있다 — 회귀 테스트가 그 끝선을 숫자로 베끼지 않고 물어보는 통로.</summary>
+        /// <summary>카테고리 헤더의 "n / 6" 카운터 사각형. 이 창 오른쪽 열의 <b>오른쪽 끝선</b>을 정의하는
+        /// 요소이고, 카드 격자 바로 위에 있다 — 회귀 테스트가 그 끝선을 숫자로 베끼지 않고 물어보는 통로.</summary>
         public Rect SectionCountScreenRect(int section)
             => RawScreenRectOf(section >= 0 && section < _sections.Length
                 ? _sections[section]?.Count?.rectTransform : null);
 
-        /// <summary>지금 밀려 있는 양(캔버스 포인트, 왼쪽으로 밀면 음수).</summary>
-        public float CarouselOffsetPoints(int section)
-        {
-            SectionView view = section >= 0 && section < _sections.Length ? _sections[section] : null;
-            return view != null && view.Content != null ? view.Content.anchoredPosition.x : 0f;
-        }
+        // ==================== 진단/테스트 전용 — 컬럼 1 착용 슬롯 ====================
 
-        /// <summary>이 카테고리에서 밀 수 있는 최대치(양수). 0이면 카드가 화면에 다 들어온다는 뜻이다.</summary>
-        public float CarouselMaxScrollPoints(int section)
-            => MaxCarouselScroll(section >= 0 && section < _sections.Length ? _sections[section] : null);
+        /// <summary>착용 슬롯 행의 화면 사각형(잘리기 전). 꺼져 있으면 넓이 0.</summary>
+        public Rect SlotRowRawScreenRect(int index)
+            => RawScreenRectOf(index >= 0 && index < _slotRows.Length ? _slotRows[index]?.Rect : null);
+
+        /// <summary>그 슬롯 행이 지금 적고 있는 아이템 이름(비어 있으면 "비어 있음").</summary>
+        public string SlotRowNameForTests(int index)
+            => index >= 0 && index < _slotRows.Length && _slotRows[index]?.Name != null
+                ? _slotRows[index].Name.text : null;
+
+        /// <summary>프리뷰 무대(액자)의 화면 사각형 — 액자가 눌리지 않았는지 재는 통로다.</summary>
+        public Rect PortraitStageScreenRect
+            => RawScreenRectOf(_portraitFrame != null ? _portraitFrame.rectTransform : null);
+
+        // ==================== 진단/테스트 전용 — 컬럼 2 능력치 / 테마 세트 (2026-09-05) ====================
+
+        /// <summary>스탯 카드가 <b>지금 화면에 쓰고 있는</b> 총합 문자열(<c>16</c>). 없으면 null.</summary>
+        public string StatCardTotalForTests(int index)
+            => index >= 0 && index < _statCards.Length && _statCards[index]?.Total != null
+                ? _statCards[index].Total.text : null;
+
+        /// <summary>같은 카드의 장비 기여(<c>(+8)</c>). 0 이하면 빈 문자열이다.</summary>
+        public string StatCardBonusForTests(int index)
+            => index >= 0 && index < _statCards.Length && _statCards[index]?.Bonus != null
+                ? _statCards[index].Bonus.text : null;
+
+        /// <summary>같은 카드의 단계 낱말(<c>초급</c> / <c>임계 미달</c>).</summary>
+        public string StatCardTierForTests(int index)
+            => index >= 0 && index < _statCards.Length && _statCards[index]?.ChipLabel != null
+                ? _statCards[index].ChipLabel.text : null;
+
+        /// <summary>같은 카드의 「중급까지 N」 / 「최고 단계」.</summary>
+        public string StatCardRemainForTests(int index)
+            => index >= 0 && index < _statCards.Length && _statCards[index]?.Remain != null
+                ? _statCards[index].Remain.text : null;
+
+        /// <summary>섹션 제목 오른쪽 「장비 합 +24」.</summary>
+        public string EquipmentSumTextForTests => _statSumValue != null ? _statSumValue.text : null;
+
+        /// <summary>세트 패널이 <b>지금 어느 얼굴인가</b> — 진행도 두 줄이면 true, 준비 중 문구면 false.</summary>
+        public bool SetPanelShowsProgressForTests
+            => _setReadyRoot != null && _setReadyRoot.activeSelf;
+
+        /// <summary>세트 패널 1행(<c>오피스 워커 3/4</c>). 준비 중이면 null.</summary>
+        public string SetProgressTextForTests
+            => SetPanelShowsProgressForTests && _setProgress != null ? _setProgress.text : null;
+
+        /// <summary>컬럼 2 스크롤 콘텐츠의 실제 높이(pt) — 세로 예산이 <b>실기에서</b> 얼마인지 재는 창구.
+        /// 설계 폭에서 이 값이 <see cref="Column2ViewportHeightForTests"/> 이하면 스크롤이 없다.</summary>
+        public float Column2ContentHeightForTests
+            => _col2Content != null ? _col2Content.rect.height : 0f;
+
+        /// <summary>컬럼 2 뷰포트 높이(pt).</summary>
+        public float Column2ViewportHeightForTests
+            => _col2Viewport != null ? _col2Viewport.rect.height : 0f;
+
+        /// <summary>컬럼 2가 밀려날 수 있는 최대치(pt). 설계 폭에서는 0이어야 한다.</summary>
+        public float Column2MaxScrollForTests => MaxCol2Scroll();
 
         // ==================== P0-1 회귀용 관측 창구 ====================
 
@@ -277,37 +358,13 @@ namespace StickMate.Interaction
         /// <summary>지금 탭이 실제로 보여주는 카테고리 섹션 수(카드 페이지가 아니면 0).</summary>
         public int VisibleSectionCount => SectionCountForTab(_tab);
 
-        /// <summary>지금 탭에서 창이 목표로 하는 높이(캔버스 포인트). 애니메이션 중인 실제 높이는
-        /// <see cref="PanelSizePoints"/>가 준다 — 둘을 나눠 두어야 "다 줄었는가"를 기다릴 수 있다.</summary>
-        public float TargetPanelHeightPoints => PanelHeightForTab(_tab);
+        /// <summary>이 창의 설계 높이(캔버스 포인트). ★ L-8로 <b>탭과 무관하게 고정</b>이다 —
+        /// 실제 화면 높이(<see cref="PanelSizePoints"/>)는 <see cref="ClampPanelToScreen"/>이 화면에
+        /// 맞춰 자른 뒤의 값이라, 화면이 낮은 실행 환경(배치모드 등)에서는 이 값에 닿지 않는다.</summary>
+        public float TargetPanelHeightPoints => PanelHeight;
 
-        /// <summary>높이 애니메이션이 지금 도달한 값(<b>화면 클램프 전</b>).
-        /// <para><see cref="PanelSizePoints"/>는 <see cref="ClampPanelToScreen"/>이 화면 높이로 자른
-        /// <b>뒤</b>의 값이라, 화면이 낮은 실행 환경(배치모드 등)에서는 목표에 영원히 닿지 않는다 —
-        /// "애니메이션이 끝났는가"를 그걸로 판정하면 테스트가 환경에 따라 거짓 실패한다.</para></summary>
-        public float AnimatedPanelHeightPoints => _panelHeightPoints;
-
-        /// <summary>
-        /// ★ <b>마지막 카드 줄 아래 끝</b>과 <b>상세 패널 위 끝</b> 사이의 빈 높이(캔버스 포인트).
-        ///
-        /// <para>P0-1이 고친 결함이 정확히 이 값이었다: [장비](섹션 4개)에서는 20pt인데
-        /// [외형](섹션 3개)에서는 <b>176pt</b>였다 — 없는 4번째 섹션의 자리를 예약했기 때문이다.
-        /// 회귀 테스트는 "두 탭에서 이 값이 같다"를 본다. 숫자를 베끼지 않고 <b>탭끼리 비교</b>하므로
-        /// 상수를 바꿔도 테스트가 따라온다.</para>
-        /// </summary>
-        public float SectionsToDetailGapPoints
-        {
-            get
-            {
-                if (Def(_tab).Page != TabPage.Cards) return float.NaN;
-                int last = SectionCountForTab(_tab) - 1;
-                if (last < 0 || last >= _sections.Length) return float.NaN;
-                Rect row = RawScreenRectOf(_sections[last]?.RowRect);
-                Rect detail = RawScreenRectOf(_sectionDetailRect);
-                if (row.height <= 0f || detail.height <= 0f) return float.NaN;
-                return (row.yMin - detail.yMax) / CanvasScale();   // 화면 y는 위가 양수.
-            }
-        }
+        /// <summary>설계 폭. 테스트가 1042를 베끼지 않게 하는 통로다.</summary>
+        public float TargetPanelWidthPoints => PanelWidth;
 
         // ==================== 진단/테스트 전용 — 등급 리본 ====================
         //

@@ -48,7 +48,14 @@ for n,sh in items.EYES.items():
     if max(abs(q[0]) for q in p)>=1.6: bad("EYES %s |x|>=1.6"%n)
     if max(q[1] for q in p)>=1.15: bad("EYES %s 정수리 침범"%n)
     if min(q[1] for q in p)<=-2.2: bad("EYES %s 목 아래"%n)
-    f=[s for s in sh if s.filled]
+    # ★ 2026-09-05 — 대상을 「모든 채움」에서 **가리개 채움**(이름이 *Eye 가 아닌 것)으로 좁혔다.
+    #   프로덕션은 2026-09-01(3차)에 이미 좁혀 놓았고(EyesVisorOpacityTests.IsDrawnEye) 그 주석이
+    #   *"좁히지 않아도 지금 좌표에서는 우연히 통과하지만 그건 계약이 아니라 우연이다"* 라고
+    #   예고까지 해 두었는데, 이 거울만 옛 규약으로 남아 있었다.
+    #   R13 P1(드러난 눈 아몬드 -> 원반 r=0.33)이 그 우연을 깼다 — 원반은 옛 눈 자리
+    #   (-EYE_X, EYE_Y)를 실제로 덮는다(중심에서 0.2935R < 내접반경 0.3188R).
+    #   ⇒ 그건 「가리개가 뒤 눈을 덮었다」가 아니라 「드러난 눈이 거기 있다」다. 정반대 뜻이다.
+    f=[s for s in sh if s.filled and not s.name.endswith("Eye")]
     if not any(rig.contains(s.pts,(rig.EYE_X,rig.EYE_Y)) for s in f): bad("EYES %s 앞눈 미커버"%n)
     back=any(rig.contains(s.pts,(-rig.EYE_X,rig.EYE_Y)) for s in f)
     if (n in items.EYE_FRONT_ONLY)==back: bad("EYES %s 뒤눈 커버=%s"%(n,back))

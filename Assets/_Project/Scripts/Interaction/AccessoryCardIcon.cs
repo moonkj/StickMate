@@ -6,33 +6,37 @@ using StickMate.Core;
 namespace StickMate.Interaction
 {
     /// <summary>
-    /// ★ 카드 썸네일을 <b>몸에 붙는 것과 같은 도형</b>으로 그린다 — 2026-09-01, 로드맵 P0-a
-    /// (docs/UX_FLOW.md 37-8 (3) 옵션 2, 리더 승인).
+    /// ★ 카드 썸네일 — <b>같은 정의처</b>(<see cref="AccessoryShapeBuilder.Append"/>)의 <b>카드 표면</b> 조각을 그린다.
     ///
     /// ============================================================================
-    /// 왜 만들었나 — 한 아이템이 <b>두 벌의 그림</b>을 갖고 있었다
+    /// 이력 — 한 아이템이 <b>두 벌의 그림</b>을 갖고 있었다 (2026-09-01, 로드맵 P0-a)
     /// ============================================================================
     /// 카드 썸네일은 손으로 배치한 40×40 SVG(<see cref="AccessoryDefSO.icon"/>)였고, 몸에 붙는 그림은
     /// 절차적 계산(<see cref="AccessoryShapeBuilder"/>)이었다. 그래서 같은 아이템이
     /// <b>(a) 다른 좌표 (b) 다른 채움 유무 (c) 다른 색 (d) 다른 획 규칙</b>으로 그려졌고,
-    /// 사용자의 "카드 그림과 실제 착용 모습의 퀄리티가 너무 다름"이 그 넷의 합이었다.
-    ///
-    /// 이 파일이 고치는 것은 <b>(a)와 (b)</b>다. 도형 좌표와 채움을 몸과 <b>같은 한 곳</b>에서 가져온다.
-    /// (c) 색 정책(<c>WornColor</c>)과 (d) 획 위계는 각각 P5·P6이라 <b>일부러 손대지 않았다</b> —
-    /// 카드는 지금까지처럼 카탈로그 색과 카드 획 두께를 그대로 쓴다. 한 라운드에서 넷을 동시에 바꾸면
-    /// 무엇 때문에 그림이 달라졌는지 판정할 수 없다.
+    /// 사용자의 "카드 그림과 실제 착용 모습의 퀄리티가 너무 다름"이 그 넷의 합이었다. 그 라운드가
+    /// (a)(b)를 닫았다 — 카드가 몸 도형 목록을 그대로 받았다.
     ///
     /// ============================================================================
-    /// 선례 — <see cref="CharacterPortraitStage"/>가 이미 같은 방법으로 성공했다
+    /// ★ 2026-09-05 계약 v2 — 카드 = 몸 = 인계본 정면 기하 한 벌 (R16 §14-0 #1)
     /// ============================================================================
-    /// 초상화도 "같은 모자를 한 벌 더" 그리는 자리였고, 도형을 공유하고 <b>개체만 분리</b>해서 풀었다.
-    /// 카드는 그 통합에서 빠져 있던 마지막 한 곳이다.
+    /// 사용자 판정 *"장비디자인 자체가 내가 전달한 디자인 컨셉과 다르다"*. 원인은 픽셀이 아니라 배관이었다
+    /// (GAME_ARCHITECTURE_REVIEW §15-3-2 반증 ②: 카드 44px 에서 하이라이트 17/17 생존) — 카드가 몸의 3/4
+    /// 도형만 받으므로 인계본 정면 조각이 도달할 경로가 없었다. R16 이 착용 표면까지 인계본 정면 기하로 바꿔
+    /// 이제 두 표면은 <b>좌표 한 벌</b>이다(망토만 몸 = 무대 도형 · 카드 = 아이콘). 그래서 지금은:
+    ///  · <see cref="AccessoryShapeBuilder.Append"/>에 <see cref="AccessorySurface.Card"/>를 묻는다.
+    ///  · 인계본 조각(<see cref="AccessoryShapeBuilder.Shape.IsHandoff"/>)이면 <b>인계본 프레이밍</b>(슬롯 고정 배율,
+    ///    <see cref="Frame"/>) · <b>인계본 획</b>(2.2/64 × 연속 배수) · <b>재질 팔레트 색 문법</b>(잉크 윤곽 + 재질색 M/M2 불투명
+    ///    + 재질선 + 흰 광택 α0.42, docs/EQUIPMENT_PALETTE.md §2)으로 그린다. 투명 렌즈 워시(α0.16/0.20)만 카드 바탕 위에
+    ///    <b>사전 합성</b>한다 — 보이는 색은 런타임 알파와 같고 창 알파만 지킨다(UiChrome 「알파 채널의 법칙」:
+    ///    반투명 UI 픽셀은 투명 오버레이 창을 그 자리에서 뚫는다).
+    ///  · 인계본 조각이 <b>없는</b> 아이템(인계본에 없는 8종 + 머리 6종)은 예전 그대로 — 몸 조각을 봉투에 맞춰
+    ///    키우고(<see cref="FitFraction"/>) 몸의 색 표로 칠한다.
     ///
     /// ============================================================================
     /// 폴백을 남긴다 (전환 리스크 관리)
     /// ============================================================================
     /// <see cref="TryBuild"/>가 false를 돌려주면 부르는 쪽은 <b>옛 아이콘</b>을 그린다.
-    /// false가 되는 경우는 둘이다:
     ///  · 몸 도형이 없는 카테고리(FX/PET) — 이펙트·펫은 애초에 <see cref="AccessoryShapeBuilder"/>가
     ///    모른다(Interaction/AppearanceShapeBuilder.cs 소관). <b>정상 경로</b>다.
     ///  · 도형이 만들어졌는데 잉크 사각형이 0인 이상 상태 — 이때 옛 그림이 대신 나온다.
@@ -40,23 +44,79 @@ namespace StickMate.Interaction
     /// </summary>
     internal static class AccessoryCardIcon
     {
-        /// <summary>도형이 아이콘 상자를 채우는 비율. 1.0이면 획 두께가 상자 밖으로 삐져나간다.</summary>
+        /// <summary>v1 조각(몸 도형 폴백) 전용 — 도형이 아이콘 상자를 채우는 비율. 1.0이면 획 두께가 상자
+        /// 밖으로 삐져나간다. 인계본 조각은 이 봉투 맞춤을 <b>쓰지 않는다</b>: 외알안경(폭 34.7u)이
+        /// 나비넥타이(48u)만큼 부풀어 인계본의 크기 관계가 깨진다(§13-4-2 #7).</summary>
         private const float FitFraction = 0.86f;
 
-        /// <summary>모든 카드가 <b>같은 배율</b>을 쓰지 않는 이유: 40×40 안에서 나비넥타이와 긴 망토는
-        /// 실제 크기 차이가 6배라, 공통 배율로는 한쪽이 점이 되고 다른 쪽이 상자를 넘는다.
-        /// 카드는 "이게 어떻게 생겼나"를 보여주는 자리이므로 <b>각자 꽉 차게</b> 맞춘다.</summary>
+        /// <summary>
+        /// 인계본이 <b>스스로 선언한</b> 카드 프레임 — README 「졸라맨 캐릭터」(스테이지 200×240, 머리 원 (100,46) r 28,
+        /// 렌더 폭 158px, 스테이지 상단 26px)와 「장비 오버레이 위치」(슬롯 박스 한 변·상단 px). 조각 좌표는
+        /// 머리 반경 R 단위이므로, 슬롯마다 <b>고정된</b> 「R당 아이콘 단위」와 「아이콘 중심의 y(R)」로 되돌린다
+        /// (design/equipment/verify/handoff.py <c>icon_to_R</c>의 역함수 — 같은 선언값에서만 유도한다).
+        /// <para>값이 갈라지면 <c>CardShapeContractTests</c>가 골든의 FRAME 줄과 대조해 잡는다.</para>
+        /// </summary>
+        internal static class Frame
+        {
+            public const float IconViewBox = 64f;
+            /// <summary>인계본 기본 아이콘 획 <c>2.2/64</c>. 현행 <c>IconStroke = 1.7 × 58/40</c>은 상자의 4.25%로 +24% 굵었다(§13-2-1).</summary>
+            public const float IconStroke = 2.2f;
+            public const float StrokeFraction = IconStroke / IconViewBox;
+
+            private const float StageViewBoxWidth = 200f;
+            private const float StageHeadRadius = 28f;
+            private const float StageHeadCenterY = 46f;
+            private const float StageRenderWidth = 158f;
+            private const float StageTopPx = 26f;
+
+            private const float PxPerStageUnit = StageRenderWidth / StageViewBoxWidth;              // 0.79
+            internal const float HeadRadiusPx = StageHeadRadius * PxPerStageUnit;                  // 22.12
+            internal const float HeadCenterPx = StageTopPx + StageHeadCenterY * PxPerStageUnit;    // 62.34
+
+            /// <param name="unitsPerR">머리 반경 1 R 이 아이콘 단위(64 viewBox) 몇 칸인가.</param>
+            /// <param name="centerYInR">아이콘 상자 중심의 y(머리 중심 기준 R).</param>
+            public static bool TryGet(EquipmentSlot slot, out float unitsPerR, out float centerYInR)
+            {
+                float box, top;
+                switch (slot)
+                {
+                    case EquipmentSlot.Head: box = 70f; top = 6f; // head
+                        break;
+                    case EquipmentSlot.Eyes: box = 48f; top = 38f; // eyes
+                        break;
+                    case EquipmentSlot.Neck: box = 54f; top = 78f; // neck
+                        break;
+                    case EquipmentSlot.Shoulders: box = 88f; top = 72f; // back
+                        break;
+                    default:
+                        unitsPerR = 0f;
+                        centerYInR = 0f;
+                        return false;
+                }
+                float u = box / IconViewBox;                       // 아이콘 단위당 px
+                unitsPerR = HeadRadiusPx / u;
+                centerYInR = (HeadCenterPx - top - IconViewBox * 0.5f * u) / HeadRadiusPx;
+                return true;
+            }
+        }
+
         private static readonly List<AccessoryShapeBuilder.Shape> _shapes =
-            new List<AccessoryShapeBuilder.Shape>(8);
+            new List<AccessoryShapeBuilder.Shape>(16);
 
         private static readonly Vector2[] _points = new Vector2[128];
 
+        /// <summary>사전 합성의 밑색 — 앞 조각의 평면화된 채움색.</summary>
+        private static readonly Color[] _flat = new Color[32];
+        private static readonly bool[] _hasFlat = new bool[32];
+
         /// <summary>
-        /// <paramref name="root"/> 아래에 이 아이템의 몸 도형을 축소해 그린다.
+        /// <paramref name="root"/> 아래에 이 아이템의 카드 그림을 그린다.
         /// </summary>
         /// <param name="slot">장비 자리. FX/PET처럼 몸 도형이 없는 자리면 false를 돌려준다.</param>
         /// <param name="size">아이콘 정사각 크기(캔버스 유닛).</param>
-        /// <param name="stroke">윤곽선 두께(캔버스 유닛). 카드의 기존 획 규약을 그대로 받는다.</param>
+        /// <param name="stroke">v1 폴백 윤곽선 두께. 인계본 조각은 인계본 획(<see cref="Frame.StrokeFraction"/>)을 쓴다.</param>
+        /// <param name="primary">아이템 재질색 M(카탈로그 <c>PrimaryColor</c>). v1 폴백의 주색이자 인계본 조각의 재질 채움/재질선이다
+        /// (재질 팔레트 §2 — 카드와 몸이 같은 hex 원천, 등급색은 조각에 0개).</param>
         /// <returns>그렸으면 true. false면 부르는 쪽이 옛 아이콘으로 폴백해야 한다.</returns>
         internal static bool TryBuild(RectTransform root, EquipmentSlot slot, int itemIndex,
             float size, float stroke, Color primary, Color secondary)
@@ -68,9 +128,101 @@ namespace StickMate.Interaction
             AccessoryShapeBuilder.Rig rig = CardRig();
             _shapes.Clear();
             AccessoryShapeBuilder.Append(_shapes, slot, itemIndex, rig,
-                float.PositiveInfinity, 0f, mondayLoosened: false);
+                float.PositiveInfinity, 0f, mondayLoosened: false, surface: AccessorySurface.Card);
             if (_shapes.Count == 0) return false;
 
+            if (HasDesignedCard(_shapes) && Frame.TryGet(slot, out float unitsPerR, out float centerYInR))
+            {
+                return BuildDesigned(root, rig, size, unitsPerR, centerYInR,
+                    AccessoryHandoffPalette.Card(slot, itemIndex, primary, secondary));
+            }
+            return BuildFitted(root, size, stroke, primary, secondary);
+        }
+
+        /// <summary>인계본 조각(계약 v2)이 하나라도 있는가. 없으면 몸 도형 폴백(v1)이다.</summary>
+        internal static bool HasDesignedCard(List<AccessoryShapeBuilder.Shape> shapes)
+        {
+            for (int i = 0; i < shapes.Count; i++)
+            {
+                if (shapes[i].IsHandoff) return true;
+            }
+            return false;
+        }
+
+        // ============================================================================
+        // 인계본 조각 — 인계본 프레이밍 · 인계본 획 · 인계본 색 문법 (§13-2-1 · §13-3-1 · §14-5)
+        // ============================================================================
+
+        private static bool BuildDesigned(RectTransform root, in AccessoryShapeBuilder.Rig rig, float size,
+            float unitsPerR, float centerYInR, in AccessoryShapeBuilder.HandoffPalette palette)
+        {
+            float pxPerR = unitsPerR * (size / Frame.IconViewBox);
+            float baseStroke = size * Frame.StrokeFraction;
+            Color bg = UiChrome.CardSurfaceMuted;
+            int count = Mathf.Min(_shapes.Count, _flat.Length);
+            for (int i = 0; i < count; i++) _hasFlat[i] = false;
+
+            bool drewAny = false;
+            for (int i = 0; i < count; i++)
+            {
+                AccessoryShapeBuilder.Shape shape = _shapes[i];
+                Vector3[] pts = shape.Points;
+                if (pts == null || pts.Length < 2) continue;
+
+                int n = Mathf.Min(pts.Length, _points.Length);
+                for (int k = 0; k < n; k++)
+                {
+                    float xR = pts[k].x / rig.HeadRadius;
+                    float yR = (pts[k].y - rig.HeadCenterY) / rig.HeadRadius;
+                    _points[k] = new Vector2(xR * pxPerR, (yR - centerYInR) * pxPerR);
+                }
+
+                // 밑색 = 이 조각이 얹히는 앞 조각의 평면화된 채움(없으면 바탕). 인계본의 알파는 전부 이 위에서
+                // 정해졌으므로 여기서 미리 합성하면 화면에는 불투명색만 남는다.
+                int underIndex = i - shape.UnderBack;
+                Color under = shape.UnderBack > 0 && underIndex >= 0 && _hasFlat[underIndex] ? _flat[underIndex] : bg;
+
+                float strokeWidth = baseStroke * AccessoryStroke.Multiplier(shape.StrokeMult);
+                if (shape.Filled)
+                {
+                    Color fill = Color.Lerp(under, AccessoryShapeBuilder.HandoffFillBase(shape, palette),
+                        AccessoryShapeBuilder.HandoffFillAlpha(shape, body: false));
+                    fill.a = 1f;
+                    AddFill(root, shape.Name + "Fill", _points, n, fill);
+                    _flat[i] = fill;
+                    _hasFlat[i] = true;
+                    drewAny = true;
+                }
+                if (shape.NoStroke) continue;
+
+                // 윤곽/낱선 = 잉크 C(채움×0.28 이 아니다 — §13-3-1) · 하이라이트 = 흰, 알파는 밑색 위 사전 합성.
+                Color line = Color.Lerp(under, AccessoryShapeBuilder.HandoffLineBase(shape, palette),
+                    AccessoryShapeBuilder.HandoffLineAlpha(shape));
+                line.a = 1f;
+                AddStrokes(root, shape, n, strokeWidth, line);
+                drewAny = true;
+            }
+            return drewAny;
+        }
+
+        /// <summary><see cref="_points"/>의 앞 <paramref name="count"/>점을 잇는다. 고리면 마지막 선분을 닫는다.</summary>
+        private static void AddStrokes(RectTransform root, in AccessoryShapeBuilder.Shape shape, int count,
+            float strokeWidth, Color color)
+        {
+            if (shape.Loop && count < _points.Length)
+            {
+                _points[count] = _points[0];
+                count++;
+            }
+            UiChrome.AddPolyline(root, shape.Name, _points, count, strokeWidth, color);
+        }
+
+        // ============================================================================
+        // 폴백 — v1 몸 도형을 봉투에 맞춰 그린다 (2026-09-01 경로 그대로)
+        // ============================================================================
+
+        private static bool BuildFitted(RectTransform root, float size, float stroke, Color primary, Color secondary)
+        {
             if (!TryMeasure(out Vector2 min, out Vector2 max)) return false;
 
             float span = Mathf.Max(max.x - min.x, max.y - min.y);
@@ -85,7 +237,7 @@ namespace StickMate.Interaction
                 Vector3[] pts = shape.Points;
                 if (pts == null || pts.Length < 2) continue;
 
-                Color color = ToneColor(shape.Tone, primary, secondary);
+                Color color = AccessoryShapeBuilder.ResolveToneColor(_shapes, i, 0, primary, secondary);
 
                 int count = Mathf.Min(pts.Length, _points.Length);
                 for (int k = 0; k < count; k++)
@@ -101,13 +253,9 @@ namespace StickMate.Interaction
                     AddFill(root, shape.Name + "Fill", _points, count, color);
                     outline = AccessoryShapeBuilder.FillOutlineColor(color);
                 }
+                if (shape.NoStroke) continue;
 
-                if (shape.Loop && count < _points.Length)
-                {
-                    _points[count] = _points[0];   // 고리를 닫는 마지막 선분
-                    count++;
-                }
-                UiChrome.AddPolyline(root, shape.Name, _points, count, stroke, outline);
+                AddStrokes(root, shape, count, stroke * AccessoryStroke.Multiplier(shape.StrokeMult), outline);
             }
             return true;
         }
@@ -140,13 +288,6 @@ namespace StickMate.Interaction
                 }
             }
             return any;
-        }
-
-        private static Color ToneColor(byte tone, Color primary, Color secondary)
-        {
-            if (tone == AccessoryShapeBuilder.Accent) return secondary;
-            if (tone == AccessoryShapeBuilder.Shade) return AccessoryShapeBuilder.FillOutlineColor(primary);
-            return primary;
         }
 
         /// <summary>채운 면 하나. <c>CharacterInfoWindow.BuildIcon</c>의

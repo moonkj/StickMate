@@ -340,11 +340,26 @@ namespace StickMate.Core
         }
 
         /// <summary>테스트/디버그 전용. <b>기본 차림</b>(모자/안경만 착용)으로 되돌린다 —
-        /// "새 캐릭터를 방금 만든 상태"와 같아야 저장 없는 경로의 검증이 의미를 갖는다.</summary>
+        /// "새 캐릭터를 방금 만든 상태"와 같아야 저장 없는 경로의 검증이 의미를 갖는다.
+        ///
+        /// <para>★ 2026-09-05 — <b>착용 변경 통지를 흘린다</b>(perf-doc 신고, qa-regression 등재).
+        /// 이 메서드는 <c>_worn</c>을 통째로 갈아치우면서 <see cref="TryWear"/>가 하던 통지를 빼먹고 있었다.
+        /// 그래서 <b>모델은 기본 차림인데 계층에는 직전 차림의 장비 선이 그대로 남는</b> 창이 열렸고,
+        /// 씬을 다시 로드하는 테스트만 우연히 무사했다(그 우연이 유일한 방어였다).
+        /// 통지를 여기서 흘리면 구독자 셋이 각자 알아서 따라온다 — 액세서리 렌더러/초상화는 서명을
+        /// 무효화하고, 정보창은 열려 있을 때만 갱신한다.</para>
+        ///
+        /// <para>★ <b>변화가 있을 때만</b>이 아니라 <b>항상</b> 흘리는 이유:
+        /// <see cref="RestoreFromSave(EquipmentSlot,string)"/>가 <b>조용히</b> <c>_worn</c>을 바꾼다
+        /// (복원 중간 상태를 UI가 그리지 않도록 저장소가 끝에서 한 번만 통지하는 설계).
+        /// 그 경로가 중간에 끊기면 "모델은 이미 기본값인데 계층만 낡은" 상태가 <b>실제로</b> 존재하고,
+        /// 변화 감지로 막으면 정확히 그 상태를 못 고친다. 여기는 Update 경로가 아니라
+        /// 여분의 통지 한 번이 비용이 아니다.</para></summary>
         public static void ResetForTesting()
         {
             int[] fresh = CreateDefaultWorn();
             for (int i = 0; i < SlotCount; i++) _worn[i] = fresh[i];
+            StickmanEventBus.RaiseCharacterEquipmentChanged();
         }
     }
 }

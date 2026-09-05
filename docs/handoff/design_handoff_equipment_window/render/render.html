@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+  html,body { margin:0; background:#0A0A0B; }
+  * { box-sizing:content-box; }
+  ::-webkit-scrollbar { width:8px; }
+  ::-webkit-scrollbar-thumb { background:#2A2622; border-radius:8px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  body { font-family:"Apple SD Gothic Neo","Pretendard",sans-serif; }
+  .serif { font-family:"AppleMyungjo","Noto Serif KR",serif; }
+</style>
+</head><body>
+<div id="root"></div>
+<pre id="cal" style="color:#9A9184;font-size:12px;padding:12px;white-space:pre-wrap"></pre>
+<script src="./icons.js"></script>
+<script src="./data.js"></script>
+<script>
+const Q = new URLSearchParams(location.search);
+const W  = +(Q.get('w')  || 1242);          // 창 바깥 폭(보더 포함)
+const H  = +(Q.get('h')  || 802);
+const C1 = +(Q.get('c1') || 306);
+const C2 = +(Q.get('c2') || 292);
+const COLS = +(Q.get('cols') || 3);         // 아이템 그리드 열 수
+const SHOWCAL = Q.get('cal') === '1';
+const a = build();
+const ic = (kind,color,accent,stroke)=> kind ? ItemIcon(kind,color,accent,stroke) : '';
+
+function card(it){ return `
+<div style="position:relative;border:1px solid ${it.bc};border-radius:12px;background:${it.bg};padding:13px;display:flex;flex-direction:column;gap:9px;box-shadow:${it.shadow}" class="itemcard">
+  <span style="position:absolute;top:0;left:14px;right:14px;height:2px;border-radius:0 0 2px 2px;background:${it.rc};opacity:${it.ribbon}"></span>
+  <div style="height:78px;border-radius:9px;background:${it.iconBg};display:flex;align-items:center;justify-content:center;padding:11px;box-sizing:border-box;opacity:${it.op}">
+    <div style="width:58px;height:58px">${ic(it.kind,it.ic,it.rc,2.2)}</div></div>
+  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px">
+    <span style="font-size:13px;font-weight:600;color:${it.nc}">${it.name}</span>
+    <span style="font-size:10px;font-weight:600;letter-spacing:0.06em;color:${it.rc}">${it.rarLabel}</span></div>
+  <div style="display:flex;flex-direction:column;gap:3px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between">
+      <span style="font-size:11px;color:#C8A15A">${it.mainText}</span>
+      <span style="font-size:10.5px;color:#8A8578">${it.subText}</span></div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px">
+      <span style="font-size:10px;color:#6E665C;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.themeKo}</span>
+      <span style="font-size:10px;color:#5C574E;white-space:nowrap">${it.priceText}</span></div></div>
+  <button style="height:29px;border:1px solid ${it.btnBorder};border-radius:7px;background:${it.btnBg};color:${it.btnColor};font-family:inherit;font-size:11.5px;font-weight:600">${it.btnLabel}</button>
+</div>`; }
+
+const charSvg = (top,width)=>`
+<svg viewBox="0 0 200 240" style="position:absolute;left:50%;top:${top}px;transform:translateX(-50%);width:${width}px;height:auto;overflow:visible;z-index:1">
+  <ellipse cx="100" cy="218" rx="44" ry="6" fill="#000" opacity="0.55"></ellipse>
+  <g fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="100" cy="46" r="28" fill="#111111"></circle>
+    <path d="M100 74 V140"></path><path d="M52 138 L100 88 L148 138"></path>
+    <path d="M100 140 L66 212"></path><path d="M100 140 L134 212"></path></g>
+  <circle cx="90" cy="43" r="3.4" fill="#FFFFFF"></circle>
+  <circle cx="110" cy="43" r="3.4" fill="#FFFFFF"></circle></svg>`;
+
+const stage = `
+<div id="stage" style="position:relative;height:238px;border-radius:14px;border:1px solid #1E1B18;background:radial-gradient(120% 90% at 50% 12%, #1C1815 0%, #0F0D0C 62%, #0B0A09 100%);overflow:hidden">
+  <div style="position:absolute;left:0;right:0;bottom:0;height:74px;background:radial-gradient(60% 100% at 50% 100%, rgba(200,161,90,0.16), transparent 70%)"></div>
+  ${charSvg(26,158)}
+  <svg viewBox="0 0 200 240" style="position:absolute;left:50%;top:26px;transform:translateX(-50%);width:158px;height:auto;overflow:visible;z-index:0">
+    ${a.eq.capeLong?'<path d="M86 78 Q68 138 70 184 Q100 193 130 184 Q132 138 114 78 Z" fill="#A8332A" stroke="#7E1F17" stroke-width="2"></path>':''}
+    ${a.eq.capeShort?'<path d="M87 78 Q74 106 74 132 Q100 140 126 132 Q126 106 113 78 Z" fill="#A8332A" stroke="#7E1F17" stroke-width="2"></path>':''}
+  </svg>
+  <div style="position:absolute;left:50%;top:72px;transform:translateX(-50%);width:88px;height:88px;opacity:0.4;z-index:0">${ic(a.eq.back,a.eq.backPc,a.eq.backAc,2)}</div>
+  <svg viewBox="0 0 200 240" style="position:absolute;left:50%;top:26px;transform:translateX(-50%);width:158px;height:auto;overflow:visible;z-index:4">
+    ${(a.eq.capeLong||a.eq.capeShort)?'<g><path d="M74 72 Q100 88 126 72 L128 80 Q100 96 72 80 Z" fill="#8E241C" stroke="#7E1F17" stroke-width="2"></path><circle cx="100" cy="85" r="4.6" fill="#C8A15A" stroke="#7E1F17" stroke-width="1.8"></circle></g>':''}
+  </svg>
+  <div style="position:absolute;left:50%;top:6px;transform:translateX(-50%);width:70px;height:70px;z-index:5">${ic(a.eq.head,a.eq.headPc,a.eq.headAc,2.8)}</div>
+  <div style="position:absolute;left:50%;top:38px;transform:translateX(-50%);width:48px;height:48px;z-index:6">${ic(a.eq.eyes,a.eq.eyesPc,a.eq.eyesAc,3.4)}</div>
+  <div style="position:absolute;left:50%;top:78px;transform:translateX(-50%);width:54px;height:54px;z-index:6">${ic(a.eq.neck,a.eq.neckPc,a.eq.neckAc,3.4)}</div>
+  <div style="position:absolute;left:14px;top:14px;font-size:10px;letter-spacing:0.2em;color:#5C574E">PREVIEW</div>
+  ${Q.get('port')==='1'?'<div style="position:absolute;left:14px;bottom:12px;font-size:11px;color:#A79E90">지금 &nbsp;·&nbsp; 가만히 있는 중</div>':''}
+</div>`;
+
+const slotRows = a.slots.map(s=>`
+<div style="display:flex;align-items:center;gap:10px;height:46px;padding:0 12px;border:1px solid ${s.bc};border-radius:9px;background:${s.bg}">
+  <div style="width:24px;height:24px;flex:0 0 24px;opacity:${s.op}">${ic(s.kind,s.ic,'#C8A15A',3)}</div>
+  <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+    <span style="font-size:9.5px;letter-spacing:0.14em;color:#6E665C">${s.ko} · ${s.main}</span>
+    <span style="font-size:12.5px;font-weight:500;color:${s.nc};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.name}</span></div>
+  <span style="font-size:11px;color:#C8A15A;white-space:nowrap">${s.mainText}</span></div>`).join('');
+
+const d = a.detail;
+const detailCard = `
+<div id="detail" style="margin-top:auto;border:1px solid #2A2622;border-radius:12px;background:linear-gradient(180deg,#151311,#100E0D);padding:14px;display:flex;flex-direction:column;gap:10px">
+  <div style="display:flex;align-items:center;gap:12px">
+    <div style="width:52px;height:52px;flex:0 0 52px;border:1px solid ${d.rc};border-radius:10px;background:#0E0C0B;padding:8px;box-sizing:border-box">${ic(d.kind,'#EDE7DB',d.rc,2.2)}</div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <span class="serif" style="font-size:16px;font-weight:600">${d.name}</span>
+      <span style="font-size:11px;letter-spacing:0.1em;color:${d.rc}">${d.rarLabel} · ${d.slotKo} · ${d.themeKo}</span></div></div>
+  <p style="margin:0;font-size:12.5px;line-height:1.6;color:#9A9184">${d.desc}</p>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    ${d.stats.map(st=>`<span style="font-size:11px;padding:4px 9px;border-radius:6px;background:#1B1713;color:#C8A15A">${st}</span>`).join('')}
+    <span style="font-size:11px;padding:4px 9px;border-radius:6px;background:#161311;color:#8A8578">${d.priceText}</span></div>
+  ${Q.get('nodetailbtn')==='1'?'':`<button style="height:38px;border:1px solid ${d.mainBorder};border-radius:9px;background:${d.mainBg};color:${d.mainColor};font-family:inherit;font-size:13px;font-weight:600;letter-spacing:0.02em">${d.mainLabel}</button>`}
+</div>`;
+
+const statCards = a.statRows.map(s=>`
+<div style="border:1px solid #221E1A;border-radius:11px;background:linear-gradient(180deg,#141210,#100E0D);padding:11px 12px;display:flex;flex-direction:column;gap:8px" class="statcard">
+  <div style="display:flex;align-items:baseline;gap:7px">
+    <span style="font-size:12.5px;font-weight:600;color:#EDE7DB">${s.name}</span>
+    <span style="font-size:9.5px;color:#6E665C">${s.slotKo} 주스탯</span>
+    <span class="serif" style="margin-left:auto;font-size:17px;font-weight:600;line-height:1">${s.total}</span>
+    <span style="font-size:10.5px;font-weight:600;color:${s.bonusColor};width:26px;text-align:right">${s.bonusText}</span></div>
+  <div style="position:relative;height:5px;border-radius:3px;background:#221E1A;overflow:hidden">
+    <span style="position:absolute;left:0;top:0;bottom:0;width:${s.pct};background:linear-gradient(90deg,#8A6C33,#C8A15A)"></span>
+    <span style="position:absolute;left:${s.t1};top:0;bottom:0;width:1px;background:#0D0C0B"></span>
+    <span style="position:absolute;left:${s.t2};top:0;bottom:0;width:1px;background:#0D0C0B"></span>
+    <span style="position:absolute;left:${s.t3};top:0;bottom:0;width:1px;background:#0D0C0B"></span></div>
+  <div style="display:flex;align-items:center;gap:7px">
+    <span style="font-size:10px;font-weight:600;padding:2.5px 7px;border-radius:5px;background:#1B1713;color:${s.stageColor}">${s.stageLabel}</span>
+    <span style="font-size:10.5px;color:#8A8578;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.effect}</span>
+    <span style="font-size:10px;color:#5C574E;white-space:nowrap">${s.nextText}</span></div></div>`).join('');
+
+const sp = a.setPanel;
+const setPanel = `
+<div id="setpanel" style="margin-top:auto;border:1px solid #2A2622;border-radius:12px;background:linear-gradient(180deg,#151311,#100E0D);padding:13px;display:flex;flex-direction:column;gap:10px">
+  <div style="display:flex;align-items:center;gap:9px">
+    <span class="serif" style="font-size:13px;font-weight:600">테마 세트</span>
+    <span style="font-size:9.5px;letter-spacing:0.18em;color:#6E665C">SET</span>
+    <span style="margin-left:auto;display:flex;gap:3px">${sp.dots.map(x=>`<span style="width:14px;height:4px;border-radius:2px;background:${x.bg}"></span>`).join('')}</span></div>
+  <div style="display:flex;align-items:baseline;gap:8px">
+    <span style="font-size:13.5px;font-weight:600;color:#EDE7DB">${sp.themeKo}</span>
+    <span style="font-size:11.5px;color:#C8A15A">${sp.countText}</span>
+    <span style="margin-left:auto;font-size:10.5px;color:${sp.statusColor}">${sp.statusText}</span></div>
+  <div style="display:flex;flex-direction:column;gap:6px">
+    ${sp.rows.map(r=>`<div style="display:flex;align-items:baseline;gap:8px">
+      <span style="font-size:9px;color:${r.markColor}">${r.mark}</span>
+      <span style="font-size:11.5px;color:${r.color};white-space:nowrap">${r.label}</span>
+      <span style="font-size:10.5px;color:#5C574E;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.desc}</span></div>`).join('')}</div>
+  <p style="margin:0;font-size:10.5px;line-height:1.5;color:#5C574E">세트 효과는 4부위를 모두 착용한 동안에만 활성됩니다. 일반 임계 해금은 한 번 달성하면 영구 유지.</p></div>`;
+
+const grid = a.cats.map(c=>`
+<div style="display:flex;flex-direction:column;gap:12px" class="catblock">
+  <div style="display:flex;align-items:center;gap:11px">
+    <span style="width:3px;height:15px;background:#C8A15A;border-radius:2px"></span>
+    <span class="serif" style="font-size:15px;font-weight:600">${c.ko}</span>
+    <span style="font-size:10px;letter-spacing:0.2em;color:#6E665C">${c.en}</span>
+    <span style="font-size:10.5px;color:#C8A15A">주스탯 ${c.main}</span>
+    <span style="flex:1;height:1px;background:#1E1B18"></span>
+    <span style="font-size:11px;color:#6E665C">${c.count}</span></div>
+  <div class="cardgrid" style="display:grid;grid-template-columns:repeat(${COLS},1fr);gap:12px">${c.items.map(card).join('')}</div>
+</div>`).join('');
+
+const tabs = ['장비','외형','보관함','상점'].map(t=>{const on=t==='장비';return `
+<span style="height:28px;padding:0 14px;display:flex;align-items:center;gap:6px;border-radius:7px;background:${on?'#C8A15A':'transparent'};color:${on?'#160F06':'#8A8578'};font-size:12.5px;font-weight:${on?600:400}">${t}<span style="width:5px;height:5px;border-radius:3px;background:#C8A15A;opacity:${t==='상점'?1:0}"></span></span>`;}).join('');
+
+document.getElementById('root').innerHTML = `
+<div id="win" style="width:${W-2}px;height:${H-2}px;background:#0D0C0B;border:1px solid #2A2622;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;color:#EDE7DB;box-shadow:0 40px 80px -30px rgba(0,0,0,0.9)">
+  <div id="hdr" style="height:66px;flex:0 0 66px;border-bottom:1px solid #1E1B18;display:flex;align-items:center;justify-content:space-between;padding:0 24px 0 28px">
+    <div style="display:flex;align-items:center;gap:20px">
+      <div style="display:flex;align-items:baseline;gap:9px">
+        <span class="serif" style="font-size:17px;font-weight:600">스틱메이트</span>
+        <span style="font-size:11px;color:#6E665C">Lv.7</span></div>
+      <div style="display:flex;align-items:center;gap:2px;padding:3px;border-radius:9px;background:#141210;border:1px solid #221E1A">${tabs}</div></div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 14px;border:1px solid #2A2622;border-radius:16px;font-size:12px;color:#A79E90">보유 <span style="color:#EDE7DB;font-weight:600">${a.ownedTotal}</span> / ${a.allTotal}</div>
+      <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 14px;border:1px solid #3A3026;border-radius:16px;background:#17130E;font-size:12px;color:#C8A15A">◎ 동전 <span style="font-weight:600">1,240</span></div>
+      ${Q.get('port')==='1'?'<div style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:16px;background:#838689;color:#0B1016;font-size:14px;font-weight:600">✕</div>':''}</div></div>
+  <div id="body" style="flex:1;min-height:0;display:grid;grid-template-columns:${C1}px ${C2}px 1fr">
+    <div id="col1" style="border-right:1px solid #1E1B18;padding:20px;display:flex;flex-direction:column;gap:13px;min-height:0">
+      ${stage}<div id="slotwrap" style="display:flex;flex-direction:column;gap:6px">${slotRows}</div>${detailCard}</div>
+    <div id="col2" style="border-right:1px solid #1E1B18;padding:20px 18px;display:flex;flex-direction:column;gap:14px;min-height:0;overflow-y:auto">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="width:3px;height:14px;background:#C8A15A;border-radius:2px"></span>
+        <span class="serif" style="font-size:14px;font-weight:600">능력치</span>
+        <span style="font-size:9.5px;letter-spacing:0.18em;color:#6E665C">STATUS</span>
+        <span style="margin-left:auto;font-size:11px;color:#C8A15A">장비 합 +${a.power}</span></div>
+      <div style="display:flex;flex-direction:column;gap:10px">${statCards}</div>${setPanel}</div>
+    <div id="col3" style="min-height:0;overflow-y:auto;padding:22px 26px 30px;display:flex;flex-direction:column;gap:24px">${grid}</div>
+  </div></div>`;
+
+// ---------------- 측정 · 교정 ----------------
+const R = e => e.getBoundingClientRect();
+const kinds=['clothhat','furhat','fedora','crown','sunglasses','roundglasses','goggles','monocle','bowtie','stripedtie','scarf','bellnecklace','shortcape','longcape','wings','backpack'];
+const expectPieces={clothhat:4,furhat:5,fedora:4,crown:9,sunglasses:6,roundglasses:7,goggles:7,monocle:4,bowtie:4,stripedtie:5,scarf:6,bellnecklace:8,shortcape:4,longcape:6,wings:6,backpack:6};
+let calLines=[], fails=0, tot=0;
+for(const k of kinds){
+  const s=ItemIcon(k,'#E8E2D6','#C8A15A',2.2);
+  const n=(s.match(/<path |<circle |<rect /g)||[]).length; tot+=n;
+  const ok=n===expectPieces[k]; if(!ok){fails++;calLines.push(`[NG] ${k} pieces=${n} expect=${expectPieces[k]}`);}
+}
+calLines.unshift(`[교정1] 아이콘 조각 총합 ${tot} / 기대 91 · 불일치 ${fails}종  => ${tot===91&&fails===0?'PASS':'FAIL'}`);
+const strs = [
+  ['집중력 표시', a.statRows[0].total+' ('+a.statRows[0].bonusText+')', '16 (+8)'],
+  ['관찰력 표시', a.statRows[1].total+' ('+a.statRows[1].bonusText+')', '11 (+5)'],
+  ['매력 표시',   a.statRows[2].total+' ('+a.statRows[2].bonusText+')', '10 (+5)'],
+  ['민첩 표시',   a.statRows[3].total+' ('+a.statRows[3].bonusText+')', '13 (+6)'],
+  ['잔여1', a.statRows[0].nextText, '중급까지 4'],
+  ['잔여4', a.statRows[3].nextText, '중급까지 7'],
+  ['장비 합', '+'+a.power, '+24'],
+  ['세트', a.setPanel.themeKo+' '+a.setPanel.countText, '오피스 워커 3/4'],
+  ['보유', '보유 '+a.ownedTotal+' / '+a.allTotal, '보유 13 / 16']
+];
+let f2=0; strs.forEach(([n,got,exp])=>{ if(got!==exp){f2++;calLines.push(`[NG] ${n} got="${got}" expect="${exp}"`);} });
+calLines.push(`[교정2] design-systems 표시 문자열 ${strs.length-f2}/${strs.length} 일치 => ${f2===0?'PASS':'FAIL'}`);
+
+const win=R(document.getElementById('win')), c1=R(document.getElementById('col1')), c2=R(document.getElementById('col2')), c3=R(document.getElementById('col3'));
+const cards=document.querySelectorAll('.itemcard'), grids=document.querySelectorAll('.cardgrid');
+const det=R(document.getElementById('detail')), st=R(document.getElementById('stage')), sw=R(document.getElementById('slotwrap')), sp2=R(document.getElementById('setpanel'));
+const col1el=document.getElementById('col1');
+const cs1=getComputedStyle(col1el);
+const col1inner = c1.height - parseFloat(cs1.paddingTop) - parseFloat(cs1.paddingBottom);
+const col1used = st.height + 13 + sw.height + 13 + det.height;
+const blocks=[...document.querySelectorAll('.catblock')].map(b=>R(b).height);
+const col3content = blocks.reduce((s,h)=>s+h,0) + 24*(blocks.length-1) + 22 + 30;
+calLines.push('');
+calLines.push(`창                 ${win.width.toFixed(1)} x ${win.height.toFixed(1)}`);
+calLines.push(`컬럼 폭            c1=${c1.width.toFixed(1)}  c2=${c2.width.toFixed(1)}  c3=${c3.width.toFixed(1)}   합=${(c1.width+c2.width+c3.width).toFixed(1)}`);
+calLines.push(`카드               ${R(cards[0]).width.toFixed(2)} x ${R(cards[0]).height.toFixed(2)}   (열 ${COLS} · 그리드폭 ${R(grids[0]).width.toFixed(1)})`);
+calLines.push(`컬럼1 세로 예산     내부높이 ${col1inner.toFixed(1)}  사용 ${col1used.toFixed(1)}  여유 ${(col1inner-col1used).toFixed(1)}`);
+calLines.push(`  · 스테이지 ${st.height.toFixed(1)} / 슬롯4행 ${sw.height.toFixed(1)} / 상세카드 ${det.height.toFixed(1)}`);
+calLines.push(`컬럼2 세트패널     ${sp2.height.toFixed(1)}   컬럼2 스크롤 ${document.getElementById('col2').scrollHeight} vs ${Math.round(c2.height)}`);
+calLines.push(`컬럼3 콘텐츠 총높이 ${col3content.toFixed(1)}   뷰포트 ${c3.height.toFixed(1)}   스크롤 배수 ${(col3content/c3.height).toFixed(2)}`);
+calLines.push(`  · 카테고리 블록 높이 ${blocks.map(h=>h.toFixed(1)).join(' / ')}`);
+document.getElementById('cal').textContent = calLines.join('\n');
+if(!SHOWCAL) document.getElementById('cal').style.display='none';
+</script>
+</body></html>

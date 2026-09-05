@@ -352,22 +352,52 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(0, CurrencyModel.TryPayTodoDailyCoins(), "하루 1회 보상이 두 번 나왔습니다.");
         }
 
+        /// <summary>★ <b>U-42 확정</b>(2026-09-05) — 시드는 <b>정확히 한 번, 상수만큼</b> 지급된다.
+        /// <para>금액을 숫자로 베끼지 않는다. 잰 것은 ① 지급액 = 상수 ② 잔액 증가 = 상수
+        /// ③ 두 번째 호출은 0이고 잔액이 <b>안 움직인다</b>(평생 1회) 셋이다.</para></summary>
         [Test]
-        public void 시드는_금액이_정해지기_전까지_플래그를_세우지_않는다()
+        public void 시드는_평생_한_번_상수만큼_지급된다()
         {
-            // ★ U-42 미확정. 방향이 중요하다 — 플래그를 먼저 세우면 값이 정해지는 날
-            //   기존 사용자가 시드를 영영 못 받는다(되돌릴 수 없는 손실).
-            if (CurrencyRules.SeedCoins > 0)
-            {
-                Assert.Greater(CurrencyModel.TryGrantSeedCoins(), 0, "금액이 정해졌는데 지급되지 않았습니다.");
-                Assert.IsTrue(CurrencyModel.SeedGranted);
-                return;
-            }
+            Assert.Greater(CurrencyRules.SeedCoins, 0,
+                "시드가 0입니다 — 첫 실행에 상점 버튼이 전부 회색이 됩니다(§0-6-4(a)).");
+            Assert.IsFalse(CurrencyModel.SeedGranted, "초기 상태가 '이미 받음'입니다.");
 
-            Assert.AreEqual(0, CurrencyModel.TryGrantSeedCoins());
+            int before = CurrencyModel.CoinBalance;
+            Assert.AreEqual(CurrencyRules.SeedCoins, CurrencyModel.TryGrantSeedCoins(),
+                "지급액이 상수와 다릅니다.");
+            Assert.AreEqual(before + CurrencyRules.SeedCoins, CurrencyModel.CoinBalance,
+                "지급했다고 했는데 잔액이 그만큼 안 늘었습니다.");
+            Assert.IsTrue(CurrencyModel.SeedGranted);
+
+            int afterFirst = CurrencyModel.CoinBalance;
+            Assert.AreEqual(0, CurrencyModel.TryGrantSeedCoins(), "시드가 두 번 나왔습니다.");
+            Assert.AreEqual(afterFirst, CurrencyModel.CoinBalance,
+                "두 번째 호출이 0을 돌려주고도 잔액을 올렸습니다 — 무한 시드입니다.");
+        }
+
+        /// <summary>
+        /// ★★ <b>기존 사용자도 시드를 받는다</b>(리더 승인 문구: "기존 사용자 포함 전원에게 평생 1회").
+        ///
+        /// <para>이게 성립하는 <b>구조적 이유</b>를 잰다: v9 이하 세이브에는 <c>seedGranted</c> 키가
+        /// 아예 없어 <c>false</c>로 채워지고, 미확정 기간에 <see cref="CurrencyRules.CanGrantSeed"/>가
+        /// <c>SeedCoins &gt; 0</c>을 요구했으므로 <b>플래그가 켜진 적이 없다</b>.
+        /// 순서를 반대로(플래그 먼저) 했으면 되돌릴 수 없는 손실이었다.</para>
+        ///
+        /// <para>구버전 파일을 흉내 내려고 <c>RestoreFromSave</c>에 <b>기본값 상태</b>를 밀어 넣는다 —
+        /// 그것이 곧 "그 키가 없던 파일"이 로드된 뒤의 모습이다.</para>
+        /// </summary>
+        [Test]
+        public void 시드_플래그가_꺼진_구버전_세이브도_시드를_받는다()
+        {
+            CurrencyModel.RestoreFromSave(default);   // v9 파일 = 모든 신규 키가 기본값
             Assert.IsFalse(CurrencyModel.SeedGranted,
-                "시드 금액이 미확정(U-42)인데 '이미 받음'으로 표시됐습니다 — 값이 정해지는 날 " +
-                "지금까지의 모든 사용자가 시드를 못 받게 됩니다.");
+                "구버전 세이브가 '이미 받음'으로 읽혔습니다 — 기존 사용자가 시드를 영영 못 받습니다.");
+            Assert.IsTrue(CurrencyRules.CanGrantSeed(CurrencyModel.SeedGranted));
+            Assert.AreEqual(CurrencyRules.SeedCoins, CurrencyModel.TryGrantSeedCoins());
+
+            // 양성 대조 — 같은 판정기가 「이미 받음」은 실제로 막는다(위 통과가 공허하지 않다).
+            Assert.IsFalse(CurrencyRules.CanGrantSeed(true),
+                "이미 받은 사용자에게도 지급 가능으로 나옵니다.");
         }
 
         // ====================================================================
@@ -457,6 +487,60 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(CurrencyRules.FocusCoinsPerMinute, CurrencyRules.IdleCoinsPerMinute * 2,
                 "유휴가 집중의 절반이 아닙니다 — §18-2가 정한 관계이고, 이게 깨지면 " +
                 "'켜 두기만 해도 집중과 같다'가 되어 집중 모드의 존재 이유가 사라집니다.");
+        }
+
+        // ====================================================================
+        // 8. 상점 가격 — 등급 파생 (U-17 확정 §21-5 · §21-10-a (4))
+        // ====================================================================
+
+        /// <summary>사다리가 <b>단조 증가</b>하고 어느 단도 공짜가 아니다.
+        /// <para>기대값을 숫자로 베끼지 않는다 — 등급 사다리의 <b>모양</b>만 잰다.
+        /// 값 자체는 아래 U-17 테스트가 상수 하나로 못박는다.</para></summary>
+        [Test]
+        public void 가격은_등급이_오를수록_반드시_비싸진다()
+        {
+            var ladder = (ItemRarity[])System.Enum.GetValues(typeof(ItemRarity));
+            System.Array.Sort(ladder);
+            Assert.Greater(ladder.Length, 1, "등급이 하나뿐입니다 — 아래 단조성 단언이 공허합니다.");
+
+            int previous = 0;
+            foreach (ItemRarity r in ladder)
+            {
+                int price = CurrencyRules.PriceCoins(r);
+                Assert.Greater(price, previous,
+                    $"{ItemCatalog.RarityName(r)} 가격({price})이 아래 단({previous}) 이하입니다 " +
+                    "— 등급이 올라가는데 더 싸지면 사다리가 뒤집힙니다.");
+                previous = price;
+            }
+        }
+
+        /// <summary>★ <b>U-17</b> — 전설 가격이 사다리의 최상단이고, 그 값이 상수 하나에서만 온다.
+        /// <para>9,600을 <b>여기에 숫자로 적지 않는다</b>. 값이 바뀌면 상수 한 줄만 바뀌어야 하고,
+        /// 그때 이 테스트가 <b>함께 빨개지면 안 된다</b>(CLAUDE.md — 무관한 테스트가 함께 빨개지면
+        /// 고치는 사람이 "숫자만 맞추면 되는 잡음"으로 학습한다).</para></summary>
+        [Test]
+        public void 전설_가격은_사다리_최상단이고_출처가_하나다()
+        {
+            Assert.AreEqual(CurrencyRules.LegendaryPriceCoins,
+                CurrencyRules.PriceCoins(ItemRarity.Legendary),
+                "PriceCoins가 전설 상수와 다른 값을 냅니다 — 가격의 출처가 둘이 됐습니다.");
+
+            foreach (ItemRarity r in (ItemRarity[])System.Enum.GetValues(typeof(ItemRarity)))
+            {
+                if (r == ItemRarity.Legendary) continue;
+                Assert.Less(CurrencyRules.PriceCoins(r), CurrencyRules.LegendaryPriceCoins,
+                    $"{ItemCatalog.RarityName(r)}이 전설보다 비쌉니다.");
+            }
+        }
+
+        /// <summary>모르는 등급 값이 들어와도 <b>공짜가 되지 않는다</b>.
+        /// 0을 돌려주면 손상된 데이터가 곧 무료 아이템이 된다.</summary>
+        [Test]
+        public void 알_수_없는_등급도_공짜가_되지_않는다()
+        {
+            Assert.AreEqual(CurrencyRules.CommonPriceCoins, CurrencyRules.PriceCoins((ItemRarity)999),
+                "범위 밖 등급이 가장 싼 단으로 안 떨어집니다.");
+            Assert.Greater(CurrencyRules.PriceCoins((ItemRarity)(-1)), 0, "음수 등급이 공짜가 됐습니다.");
         }
     }
 }

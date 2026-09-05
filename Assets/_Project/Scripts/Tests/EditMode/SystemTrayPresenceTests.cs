@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using StickMate.Platform;
 using UnityEngine;
@@ -469,9 +470,32 @@ namespace StickMate.Tests.EditMode
             StringAssert.Contains(nameof(StickMate.Interaction.SettingsWindow.Open), code,
                 $"{LogPrefix} 설정 열기가 기존 진입점을 부르지 않습니다 — 배타 모달 정리는 그 함수 " +
                 "한 곳이 책임집니다(진입점마다 정리 코드를 흩뿌리다 실제로 샌 적이 있습니다).");
-            StringAssert.Contains(nameof(StickMate.Core.StickmanAgent.IsUserHiddenOnly), code,
-                $"{LogPrefix} 메뉴 글자가 사용자 직접 숨김 축을 읽지 않습니다 — 전체화면 자동 숨김과 " +
-                "뒤섞이면 글자가 실제와 갈라집니다(원칙 1).");
+            // ★ 2026-09-05 — 니들이 IsUserHiddenOnly에서 IsUserHidden으로 <b>좁아졌다</b>.
+            //   글자는 이 항목이 실제로 바꾸는 축(_userHidden)에서만 나와야 한다. IsUserHiddenOnly는
+            //   「축 2<b>만</b>으로 숨었는가」라 축 1(전체화면 게임)·축 4(다른 가상 데스크톱)가 함께
+            //   켜지면 false이고, 그러면 이미 숨겨 둔 상태에서 글자가 「숨기기」로 나온다(원칙 1 위반).
+            //   ★ 두 이름은 접두사 관계라 StringAssert.Contains로는 <b>구분되지 않는다</b> —
+            //     "IsUserHiddenOnly"가 남아 있어도 "IsUserHidden" 검사는 통과한다. 그래서 낱말 경계로 잰다.
+            var userHiddenAxis = new Regex(
+                nameof(StickMate.Core.StickmanAgent.IsUserHidden) + @"\b", RegexOptions.CultureInvariant);
+
+            // 대조 — 이 정규식이 정말로 둘을 가르는가. 가르지 못하면 아래 두 판정은 무의미하다.
+            Assert.IsFalse(userHiddenAxis.IsMatch(nameof(StickMate.Core.StickmanAgent.IsUserHiddenOnly)),
+                $"{LogPrefix} 검사기 교정 실패 — 낱말 경계 정규식이 " +
+                $"{nameof(StickMate.Core.StickmanAgent.IsUserHiddenOnly)}까지 매칭합니다. " +
+                "이 자가 눈금이 어긋났으므로 아래 판정을 신뢰할 수 없습니다.");
+
+            Assert.IsTrue(userHiddenAxis.IsMatch(code),
+                $"{LogPrefix} 메뉴 글자가 <이 항목이 바꾸는 축>(" +
+                $"{nameof(StickMate.Core.StickmanAgent.IsUserHidden)})을 읽지 않습니다 — " +
+                "글자와 동작이 갈라집니다(원칙 1).");
+            Assert.AreEqual(0,
+                CountOccurrences(code, nameof(StickMate.Core.StickmanAgent.IsUserHiddenOnly)),
+                $"{LogPrefix} ★ 메뉴 글자가 표면 회수용 값" +
+                $"({nameof(StickMate.Core.StickmanAgent.IsUserHiddenOnly)})으로 되돌아갔습니다. " +
+                "그 값은 축 1·축 4가 켜지면 false라, 사용자가 이미 숨겨 둔 상태에서 글자가 " +
+                "「숨기기」로 나오고 눌러도 화면이 그대로여서 메뉴가 고장 난 것처럼 보입니다 " +
+                "(다른 가상 데스크톱에서는 트레이가 그대로 보이므로 실제로 도달 가능합니다).");
 
             Assert.AreEqual(0, CountOccurrences(code, "Application.Quit()"),
                 $"{LogPrefix} ★ 종료 로직이 복제됐습니다. 같은 날 종료가 '단 하나의 자리'로 " +

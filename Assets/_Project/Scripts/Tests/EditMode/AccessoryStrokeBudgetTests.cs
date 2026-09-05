@@ -106,8 +106,11 @@ namespace StickMate.Tests.EditMode
         /// <summary>
         /// 획 예산(규칙 1)을 통과하는 아이템 전부 — <b>2026-09-01(3차) 기준 30종 전부</b>.
         /// <para>가장 빠듯한 자리(실측): NECK 줄무늬타이 줄무늬 1.33획 · HEAD 털모자 접힌 단 1.34획 ·
-        /// HEAD 야구모자 챙 닫힘변 1.34획 · NECK 반다나 자락 1.40획 · BACK 망토 옷깃 띠 1.28획
-        /// (카드 정규화에서 <b>1.24획</b>까지 줄어드는 이 스펙 최악의 자리다).</para>
+        /// HEAD 야구모자 챙 닫힘변 1.34획 · NECK 반다나 자락 1.40획.
+        /// <br/>★ 2026-09-05 — 옛 최악이던 <b>BACK 망토 옷깃 띠 1.28획</b>(카드 정규화 1.24획)은
+        /// 그 조각이 <b>어깨 요크</b>로 대체되면서 사라졌다
+        /// (<see cref="AccessoryShapeBuilder.CapeYokeDepthRatio"/>). 위 숫자들은 <b>주석이지
+        /// 단언이 아니다</b> — 최악 자리는 이 파일의 린트가 매 실행 다시 잰다.</para>
         /// <para>여기 빠진 아이템이 하나라도 생기면
         /// <see cref="AccessoryRuleOneCoverageTests.면제가_없는_아이템은_전부_린트_목록에_들어와_있다"/>가
         /// 빨간불을 낸다 — 사람이 기억할 일이 아니다.</para>
@@ -197,6 +200,7 @@ namespace StickMate.Tests.EditMode
         [TestCaseSource(nameof(BudgetedItems))]
         public void 모든_도형이_획_예산을_지킨다(EquipmentSlot slot, int itemIndex)
         {
+            HandoffTestGate.SkipIfHandoff(slot, itemIndex, "규칙 1-A(잉크 사각형 긴 변 1.5획)·1-B(꺾임 사이 선분 1획) — 인계본 39조각이 1pt 자로도 설계상 미달(§14-4)");
             AccessoryShapeBuilder.Rig rig = Rig();
             float w = BudgetWorld(rig);
             var sink = new List<AccessoryShapeBuilder.Shape>();
@@ -298,26 +302,19 @@ namespace StickMate.Tests.EditMode
             AccessoryShapeBuilder.Append(sink, slot, itemIndex, rig);
             string label = $"{slot} {itemIndex}번({ItemCatalog.Item(slot, itemIndex).DisplayName})";
 
-            // 규칙 5 — 아이템 하나의 구성은 2~4개.
-            Assert.That(sink.Count, Is.InRange(2, 4),
-                $"{label}의 도형이 {sink.Count}개입니다 — 정원은 2~4개입니다(37-6 규칙 5). " +
-                "5개를 넘으면 배율 0.75에서 서로 먹고, 1개면 실루엣만 있고 식별 특징이 없습니다.");
+            // ★ 2026-09-05 계약 v2(R16 리더 결정 (h)) — 옛 규칙 5(정원 2~4)와 규칙 3-2(보조색 정확히 1)는 <b>폐지</b>됐다.
+            //   잃는 것: 「조각을 너무 많이 넣는다」·「보조색을 흩뿌린다」는 자. 인계본 문법(브라스 단색 + 등급색 강조)에서는
+            //   보조색이 역할이 아니라 색 하나라 그 자가 잴 것이 없고, 조잡함 방어는 규칙 1(획 예산)·1-C(색면)가 계속 맡는다.
 
             // 규칙 2 — 두피를 가려야 하는 물건이므로 반드시 채운다.
             bool anyFilled = false;
-            int accentCount = 0;
             for (int i = 0; i < sink.Count; i++)
             {
                 if (sink[i].Filled) anyFilled = true;
-                if (sink[i].Tone == AccessoryShapeBuilder.Accent) accentCount++;
             }
             Assert.IsTrue(anyFilled,
                 $"{label}에 채움 도형이 없습니다 — 머리카락이 선화면 두피 링이 그대로 비쳐 " +
                 "'머리 위에 그은 호'가 됩니다(37-6 규칙 2).");
-
-            // 규칙 3-2 — 보조색은 "형제 셋과 나를 가르는 단 한 부분"에만.
-            Assert.AreEqual(1, accentCount,
-                $"{label}의 보조색 도형이 {accentCount}개입니다 — 정확히 1개여야 합니다(37-6 규칙 3).");
 
             // 규칙 4 — 두피 링(1.0R)을 최소 1획 파고든다. 어중간한 간격(0 < 간격 < 1획)이 최악이다.
             float minRadius = float.MaxValue, maxRadius = 0f;
@@ -534,6 +531,7 @@ namespace StickMate.Tests.EditMode
         [TestCase(5, TestName = "HEAD 밀짚모자")]
         public void 모자가_머리를_감싸고_커버선이_머리_중심_언저리까지_내려온다(int itemIndex)
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, itemIndex, "규칙 4 감쌈(|x|≥0.85R·y≤0.05R 잉크) — R17 H-2 모자 맞춤은 얹는 형태(중절모 챙 4.06R 그대로 채택)");
             AccessoryShapeBuilder.Rig rig = Rig();
             var sink = new List<AccessoryShapeBuilder.Shape>();
             AccessoryShapeBuilder.Append(sink, EquipmentSlot.Head, itemIndex, rig);

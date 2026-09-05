@@ -207,6 +207,9 @@ namespace StickMate.Tests.EditMode
         private static bool IsDrawnEye(in AccessoryShapeBuilder.Shape shape)
             => shape.Name != null && shape.Name.EndsWith("Eye");
 
+        // ★ R20(2026-09-05) — 유리 렌즈(동그란안경·외알안경)는 몸에서도 채움이다(AccessoryTone.Glass: 잉크 위 M2 α 사전 합성 불투명 판).
+        //   L-4 의 「몸 채움 없음」 건너뜀은 이 라운드에서 지웠다 — 가림 판정·채움 실루엣 검사가 두 렌즈에도 그대로 돈다.
+
         /// <summary>
         /// <b>가리개</b>의 채움이 눈 중립 좌표를 덮는가. 이 검사가 없으면 이마에 붙은 띠도 "채움 있음"으로 통과한다.
         ///
@@ -292,9 +295,12 @@ namespace StickMate.Tests.EditMode
             Assert.IsTrue(eye.Filled && eye.Loop,
                 $"{Label(item)}의 드러난 눈이 채운 닫힌 도형이 아닙니다 — 윤곽선으로 그리면 " +
                 "내부를 보이는 데 3.0W(1.03R), 즉 머리 반지름만 한 눈이 필요합니다(규칙 1).");
-            Assert.AreEqual(AccessoryShapeBuilder.Accent, eye.Tone,
-                $"{Label(item)}의 드러난 눈이 보조색이 아닙니다 — 이 아이템의 결정적 특징은 " +
-                "'가려지지 않은 눈이 보인다'이고, 보조색은 그 한 부분에 씁니다(규칙 3-2).");
+            // ★ 2026-09-05 인계본 외알안경(R17 E-1, 리더 판정 #3) — 드러난 눈은 <b>잉크 대비색</b>(어두운 잉크면 흰)이고 틴트를 우회한다.
+            //   v1 안대는 보조색 그대로다(규칙 3-2).
+            byte wantTone = eye.IsHandoff ? AccessoryTone.InkContrast : AccessoryShapeBuilder.Accent;
+            Assert.AreEqual(wantTone, eye.Tone,
+                $"{Label(item)}의 드러난 눈 역할이 {eye.Tone}입니다 — 이 아이템의 결정적 특징은 " +
+                "'가려지지 않은 눈이 보인다'이고, v1 은 보조색(규칙 3-2), 인계본은 잉크 대비색(R17 E-1)으로 그 한 부분을 칠합니다.");
 
             for (int i = 0; i < eye.Points.Length; i++)
             {
@@ -404,23 +410,9 @@ namespace StickMate.Tests.EditMode
             }
         }
 
-        [TestCaseSource(nameof(AllEyes))]
-        public void 구성_정원과_보조색_개수를_지킨다(int item)
-        {
-            List<AccessoryShapeBuilder.Shape> shapes = Build(item);
-            Assert.That(shapes.Count, Is.InRange(2, 4),
-                $"{Label(item)}의 도형이 {shapes.Count}개입니다 — 정원은 2~4개입니다(37-6 규칙 5). " +
-                "1개면 실루엣만 있고 식별 특징이 없고, 5개를 넘으면 배율 0.75에서 서로 먹습니다.");
-
-            int accents = 0;
-            for (int i = 0; i < shapes.Count; i++)
-            {
-                if (shapes[i].Tone == AccessoryShapeBuilder.Accent) accents++;
-            }
-            Assert.AreEqual(1, accents,
-                $"{Label(item)}의 보조색 도형이 {accents}개입니다 — 정확히 1개여야 합니다(37-6 규칙 3-2: " +
-                "보조색은 '형제들과 나를 가르는 단 한 부분'에만).");
-        }
+        // ★ 2026-09-05 계약 v2(R16 리더 결정 (h)) — 「구성_정원과_보조색_개수를_지킨다」(정원 2~4 · 보조색 정확히 1)를 지웠다.
+        //   잃는 것: 조각 수·보조색 수 상한. 인계본 문법에서 보조색은 역할이 아니라 등급색 하나라 잴 것이 없고,
+        //   조각 수는 인계본 기하가 정한다(선글라스 6 · 동그란안경 7 · 고글 7 · 외알안경 4).
 
         /// <summary>
         /// 6종이 <b>화면에서</b> 서로 다른가. 색으로 나누면 잉크 프리셋에 따라 흔들리므로

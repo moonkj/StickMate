@@ -141,6 +141,16 @@ namespace StickMate.Interaction
         /// <summary>비활성/잠긴 카드 표면 + 썸네일 기본 배경(#15181e).</summary>
         public static readonly Color CardSurfaceMuted = new Color(0.082f, 0.094f, 0.118f, 1f);
 
+        /// <summary>카드 아이콘의 <b>잉크</b>(윤곽·낱선) — 인계본 C <c>#E8E2D6</c>. 인계본 카드의 정체는
+        /// 「밝은 잉크 윤곽 + 어두운 워시 채움 + 흰 광택 한 획」이고, 옛 카드(채움×0.28 어두운 윤곽)는
+        /// 그 값 관계가 거꾸로였다(EQUIPMENT_HANDOFF_PORT_SPEC §13-3-1). 워시 바탕은
+        /// <see cref="CardSurfaceMuted"/>다.</summary>
+        public static readonly Color CardIconInk = new Color(0.910f, 0.886f, 0.839f, 1f);
+
+        /// <summary>밝은 잉크 위의 <b>대비 잉크</b>(목탄 #252829) — 흰 잉크 사용자의 흰 머리 원반 위 반대쪽 눈(R17 E-1). 초상화가 흰 잉크에
+        /// 쓰는 목탄 바탕(<c>CharacterPortraitStage.ResolveBackdropColor</c>)과 같은 값이다.</summary>
+        public static readonly Color InkContrastCharcoal = new Color(0.145f, 0.157f, 0.180f, 1f);
+
         /// <summary>잠긴 카드의 썸네일 배경(#101318). 다크에서는 <b>어두운 쪽으로</b> 한 단 더 내려앉는다(34-7 #5).</summary>
         public static readonly Color ThumbSurfaceLocked = new Color(0.063f, 0.075f, 0.094f, 1f);
 

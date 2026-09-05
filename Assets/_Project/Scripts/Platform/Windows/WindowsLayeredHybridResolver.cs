@@ -36,7 +36,7 @@ namespace StickMate.Platform.Windows
     /// </summary>
     internal sealed class WindowsLayeredHybridResolver
     {
-        internal const string LogPrefix = "[레이어드해소]";
+        internal const string LogPrefix = LayeredHybridTimeline.LogPrefix;
 
         /// <summary>스타일 관측 주기. 라이브러리는 커서가 캐릭터를 벗어날 때마다 레이어드를 다시 켜므로
         /// "한 번 지우고 끝"이 아니다. 0.25초면 사람이 눈치채기 전에 다시 지워지고, 비용은
@@ -68,6 +68,16 @@ namespace StickMate.Platform.Windows
         internal static int SharedStripCount;
         internal static string SharedNote = "미가동";
 
+        /// <summary>★ 2026-09-05 진단 — LAYERED가 붙고 벗겨지는 시각의 타임라인(규칙·문자열은 플랫폼 중립
+        /// <see cref="LayeredHybridTimeline"/>에 있고 여기는 관측값을 넣기만 한다). 사용자 신고
+        /// "던진 뒤 일어선 캐릭터가 멈추고 잡아도 반응 없음"의 1순위 후보(A4)를 실기 로그로 가르기 위한 것이다.</summary>
+        private readonly LayeredHybridTimeline _timeline = new LayeredHybridTimeline();
+
+        private static void LogTimeline(string line)
+        {
+            if (line != null) Debug.Log(line);
+        }
+
         /// <summary>
         /// 매 프레임 호출. 내부에서 주기를 지킨다.
         ///
@@ -77,8 +87,15 @@ namespace StickMate.Platform.Windows
         /// 창이 사라지면(IsWindow=false) 다음 틱에 다시 해석한다.</para>
         /// </summary>
         /// <param name="transparentType">UniWindowController.transparentType(1=Alpha).</param>
-        internal void Tick(float unscaledDeltaTime, int transparentType)
+        /// <param name="libraryClickThrough">UniWindowController.isClickThrough <b>캐시</b>(순수 C# 필드, 네이티브 호출 0).
+        /// ★ 2026-09-05 진단 — 이 값이 false→true로 바뀌는 프레임이 곧 네이티브 SetClickThrough(TRUE)가
+        /// WS_EX_LAYERED를 도로 켠 프레임이다(LayeredHybridPolicy 문서의 C++ 인용). 0.25초 표본으로는
+        /// "언제 붙었는가"를 못 보므로 매 프레임 엣지만 본다(비교 1회, 할당 0).</param>
+        internal void Tick(float unscaledDeltaTime, int transparentType, bool libraryClickThrough)
         {
+            // ★ 2026-09-05 진단 타임라인 — 표본 주기 게이트보다 앞에 둔다(엣지는 프레임 정확도가 목적이다).
+            LogTimeline(_timeline.ObserveLibraryClickThrough(libraryClickThrough, Time.frameCount, Time.realtimeSinceStartup));
+
             _timer += unscaledDeltaTime;
             if (_timer < SampleIntervalSeconds) return;
             _timer = 0f;
@@ -103,6 +120,7 @@ namespace StickMate.Platform.Windows
 
             bool hasLayered = (exStyle & WsExLayered) != 0;
             bool hasClickThrough = (exStyle & WsExTransparent) != 0;
+            LogTimeline(_timeline.ObserveOsLayered(hasLayered, Time.frameCount, Time.realtimeSinceStartup));
 
             // ---- (A) 이미 제거된 상태: 관통이 계속 유지되는지 상시 재검증 ----
             //   "한 번 통과했으니 영원히 안전하다"고 믿지 않는다. 원칙 2는 이 앱에서 가장 비싼 회귀라
@@ -185,6 +203,7 @@ namespace StickMate.Platform.Windows
 
             _stripCount++;
             _reverifyTimer = 0f;
+            LogTimeline(_timeline.NoteStripped(_stripCount, Time.frameCount, Time.realtimeSinceStartup));
             if (!_verifiedOnce)
             {
                 _verifiedOnce = true;
@@ -258,6 +277,7 @@ namespace StickMate.Platform.Windows
         private void RestoreLayered(IntPtr hwnd, string why)
         {
             SetLayered(hwnd, true);
+            LogTimeline(_timeline.NoteRestored(why, Time.frameCount, Time.realtimeSinceStartup));
             _disabled = true;
             Publish(LayeredHybridResolverState.RolledBack, "검증 실패로 되돌림");
             Debug.LogWarning($"{LogPrefix} ★ 되돌림 — {why}. WS_EX_LAYERED를 즉시 복구하고 이 해소기를 " +

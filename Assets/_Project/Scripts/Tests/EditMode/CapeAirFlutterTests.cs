@@ -222,6 +222,7 @@ namespace StickMate.Tests.EditMode
         [TestCase(AccessoryShapeBuilder.BackLongCape)]
         public void 망토_주름의_끝점도_흔들_구간에_들어_있다(int item)
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Shoulders, item, "망토 주름 2줄(CapeFold)의 끝점 흔들림 — R17 무대 도형(뒤판·칼라·걸쇠)에는 주름 선이 없다");
             var sink = new List<AccessoryShapeBuilder.Shape>();
             AccessoryShapeBuilder.Append(sink, EquipmentSlot.Shoulders, item, Rig());
 
@@ -239,23 +240,42 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(2, folds, "망토 주름이 2줄이 아닙니다 — 도형이 바뀌었다면 이 테스트도 함께 갱신해야 합니다.");
         }
 
-        /// <summary>망토 윤곽선의 흔들 구간은 밑단 5점 그대로여야 한다(재설계 이전 값으로 되돌아가는 것을 막는다).</summary>
-        [Test]
-        public void 망토_윤곽선은_밑단_5점을_흔든다()
+        /// <summary>망토 뒤판의 흔들 구간은 <b>밑단</b>이어야 한다 — 구간 안의 점이 전부 구간 밖의 어떤 점보다 낮고, 최저점이 구간 안에 있다.
+        /// <para>★ 2026-09-05 — 옛 단언(CapeOutline 2번부터 5점)은 v1 도형의 그날 형태였다. R17 무대 뒤판(49점, 밑단 16..32)은
+        /// <c>CardShapeContractTests</c> 골든이 점 번호까지 잠그므로, 여기서는 「그 구간이 실제로 밑단인가」라는 <b>성질</b>만 잠근다
+        /// (점 번호를 다시 적으면 골든과 두 벌이 된다).</para></summary>
+        [TestCase(AccessoryShapeBuilder.BackCape)]
+        [TestCase(AccessoryShapeBuilder.BackLongCape)]
+        public void 망토_뒤판의_흔들_구간은_밑단이다(int item)
         {
             var sink = new List<AccessoryShapeBuilder.Shape>();
-            AccessoryShapeBuilder.Append(sink, EquipmentSlot.Shoulders, AccessoryShapeBuilder.BackCape, Rig());
+            AccessoryShapeBuilder.Append(sink, EquipmentSlot.Shoulders, item, Rig());
 
-            bool found = false;
+            int found = 0;
             for (int i = 0; i < sink.Count; i++)
             {
-                if (sink[i].Name != "CapeOutline") continue;
-                found = true;
-                Assert.AreEqual(2, sink[i].SwayStart, "밑단 시작 인덱스가 2가 아닙니다.");
-                Assert.AreEqual(5, sink[i].SwayCount, "흔들리는 밑단 점이 5개가 아닙니다.");
-                Assert.IsTrue(sink[i].Filled, "망토 윤곽선이 채움을 선언하지 않습니다.");
+                AccessoryShapeBuilder.Shape s = sink[i];
+                if (!s.HasSway) continue;
+                found++;
+                Assert.IsTrue(s.Filled, $"'{s.Name}' 뒤판이 채움을 선언하지 않습니다.");
+                Assert.Greater(s.SwayCount, 1, $"'{s.Name}'의 흔들 점이 1개뿐입니다 — 밑단 곡선이 아닙니다.");
+                int end = s.SwayStart + s.SwayCount;
+                Assert.LessOrEqual(end, s.Points.Length, $"'{s.Name}'의 흔들 구간이 점 배열 밖입니다.");
+
+                float bandTop = float.MinValue, outsideBottom = float.MaxValue, lowest = float.MaxValue;
+                int lowestIndex = -1;
+                for (int k = 0; k < s.Points.Length; k++)
+                {
+                    float y = s.Points[k].y;
+                    if (y < lowest) { lowest = y; lowestIndex = k; }
+                    if (k >= s.SwayStart && k < end) bandTop = Mathf.Max(bandTop, y);
+                    else outsideBottom = Mathf.Min(outsideBottom, y);
+                }
+                Assert.IsTrue(lowestIndex >= s.SwayStart && lowestIndex < end, $"'{s.Name}'의 최저점({lowestIndex}번)이 흔들 구간 밖입니다.");
+                Assert.LessOrEqual(bandTop, outsideBottom + 1e-5f,
+                    $"'{s.Name}'의 흔들 구간에 밑단이 아닌 점이 있습니다(구간 최고 {bandTop:F4} > 구간 밖 최저 {outsideBottom:F4}) — 옆선이 함께 펄럭입니다.");
             }
-            Assert.IsTrue(found, "CapeOutline 도형을 찾지 못했습니다.");
+            Assert.AreEqual(1, found, "흔들 구간을 가진 뒤판이 정확히 하나여야 합니다(칼라·걸쇠는 안 흔들린다).");
         }
 
         // ============================================================================

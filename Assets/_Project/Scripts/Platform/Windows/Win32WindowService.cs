@@ -95,6 +95,7 @@ namespace StickMate.Platform.Windows
         IReservedScreenEdgeService,
         IRawWindowRectSource,
         IForeignFullscreenTierSource,
+        IVirtualDesktopMembershipSource,
         IWindowEnumerationCostSource
     {
         #region Win32 선언 (이 리전 밖으로 유출 금지 — 전부 조회 전용)
@@ -1973,6 +1974,48 @@ namespace StickMate.Platform.Windows
             }
 
             return tier;
+        }
+
+        // ==================== IVirtualDesktopMembershipSource — 가상 데스크톱 소속 (2026-09-05, M-8) ====================
+
+        /// <summary>공개 COM(<c>IVirtualDesktopManager</c>) 조회 계층. 판정 규칙은 이 안에 없다 —
+        /// 플랫폼 중립 <see cref="VirtualDesktopSuspendPolicy"/>가 갖고 있다.
+        /// <para>지연 생성이다: 기동 직후에는 <see cref="_overlayHwnd"/>가 아직 0이라 물어볼 것이 없고,
+        /// COM 개체를 그때 만들면 실패해서 실패 카운터만 소모한다.</para></summary>
+        private WindowsVirtualDesktopProbe _virtualDesktopProbe;
+
+        /// <summary>"소속이 바뀔 때만 로그"용 상태(24시간 상주 앱 — 매 폴링 로그 금지).</summary>
+        private VirtualDesktopMembership _lastVirtualDesktopMembership = VirtualDesktopMembership.Unknown;
+
+        /// <summary>
+        /// ★ 2026-09-05 (M-8, 리더 판정 옵션 (a)) — 우리 오버레이가 <b>지금 활성인 가상 데스크톱</b>에
+        /// 있는가. <b>사실 조회만</b> 한다: 숨을지 말지는 <see cref="VirtualDesktopSuspendPolicy"/>가 정하고,
+        /// 그 정책은 플랫폼 중립 위치에 있어 이 개발 머신에서도 실행·검증된다.
+        ///
+        /// <para><b>macOS와 결과가 다른 것은 의도다.</b> macOS는 <c>MacSpaceBehaviorNative</c>의
+        /// <c>.canJoinAllSpaces</c>로 <b>따라붙고</b>, Windows는 <b>사라진다</b>. 따라붙게 만들려면
+        /// 비공개 API가 필요해 OS 업데이트마다 깨지고 백신 휴리스틱 위험이 커진다 — 기각된 옵션 (b)다.</para>
+        ///
+        /// <para><b>비용</b>: 폴링당 COM 호출 1회(<c>StickConfig.fullscreenPollInterval</c> 기본 1.5초).
+        /// 같은 틱에서 이미 <c>EnumWindows</c>가 도는 것에 비하면 무시할 수 있다. 조회에 실패하면
+        /// <see cref="VirtualDesktopMembership.Unknown"/>이고 소비 측은 <b>숨지 않는다</b>.</para>
+        /// </summary>
+        public VirtualDesktopMembership GetVirtualDesktopMembership()
+        {
+            if (_overlayHwnd == IntPtr.Zero) return VirtualDesktopMembership.Unknown;
+
+            if (_virtualDesktopProbe == null) _virtualDesktopProbe = new WindowsVirtualDesktopProbe();
+            VirtualDesktopMembership membership = _virtualDesktopProbe.Query(_overlayHwnd);
+
+            if (membership != _lastVirtualDesktopMembership)
+            {
+                _lastVirtualDesktopMembership = membership;
+                Debug.Log($"[가상데스크톱] 우리 창 소속 — {VirtualDesktopSuspendPolicy.Describe(membership)}. " +
+                    "다른 데스크톱에 있는 동안에는 스스로 숨습니다(공개 API로 소속만 확인하고, " +
+                    "창을 옮기거나 모든 데스크톱에 고정하지는 않습니다 — 리더 판정 2026-09-05).");
+            }
+
+            return membership;
         }
 
         /// <summary>기하 축 전용 디바운서(등급 1). 등급 2용 <see cref="_fullscreenDebouncer"/>와 <b>별도</b>다 —

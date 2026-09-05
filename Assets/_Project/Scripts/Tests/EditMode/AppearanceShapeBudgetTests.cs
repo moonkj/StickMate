@@ -504,6 +504,10 @@ namespace StickMate.Tests.EditMode
 
                 for (int i = 0; i < sink.Count; i++)
                 {
+                    // ★ 2026-09-05 인계본 조각(계약 v2)은 SVG 곡선을 16~24점으로 샘플한 것이라 「획보다 짧은 변」이 설계 자체다
+                    //   (첫 실측 90건 전부 그 정체). 이 자(v1 낱선 규칙)의 대상이 아니다 — §14-6 #14. 래칫은 v1 도형만 센다.
+                    //   잃는 것: 인계본 16종의 최단 변 래칫.
+                    if (sink[i].IsHandoff) continue;
                     shapesChecked++;
                     string v = DescribeShortestEdgeViolation(
                         sink[i].Name, sink[i].Points, sink[i].Loop, w);

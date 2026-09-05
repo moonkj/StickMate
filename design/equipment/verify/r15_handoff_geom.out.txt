@@ -1,0 +1,83 @@
+== 교정 1: 획 예산 (프로덕션 식 재현) ==
+   W@0.75      = 0.343864 R   (문서 0.343864)
+   W_out@0.75  = 0.218182 R   (문서 0.21818)
+   W@0.60      = 0.429830 R   (문서 0.429830)
+
+== 교정 2: §4-2-7 잉크값 7건 ==
+   crown        [3] CF   실측 0.1879 R  문서 0.1879 R  OK
+   crown        [6] CB   실측 0.2077 R  문서 0.2077 R  OK
+   sunglasses   [3] S    실측 0.1390 R  문서 0.1390 R  OK
+   roundglasses [2] S    실측 0.1763 R  문서 0.1763 R  OK
+   goggles      [3] S    실측 0.1356 R  문서 0.1356 R  OK
+   bellnecklace [1] CF   실측 0.1297 R  문서 0.1297 R  OK
+   goggles      [1] CB   실측 0.4747 R  문서 0.4747 R  OK
+   -> 교정 통과.
+
+== A. 물리적 픽셀 축 — 조각 91개 잉크 사각형이 1획(W)에 미치는가 ==
+   @0.75 출하          1.5W미만 44/91 (48%)   1.0W미만 33/91 (36%)
+   @0.60 사용자저장       1.5W미만 50/91 (55%)   1.0W미만 40/91 (44%)
+   @1.00 최대          1.5W미만 38/91 (42%)   1.0W미만 29/91 (32%)
+
+== B. ★ 반증 시험 — 하이라이트 17개는 「바탕화면 위」인가 「자기 아이템 위」인가 ==
+   (문서 §3-2-1 은 흰 하이라이트를 '몸(흰 바탕화면) 위 CR 1.00:1'로 판정해 17개 전부 몸에서 배제했다)
+   clothhat      H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   furhat        H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   fedora        H  자기 아이템 채움 위 점 비율  80.0%  -> 부분
+   crown         H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   sunglasses    H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   roundglasses  H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   roundglasses  H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   goggles       H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   monocle       H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   bowtie        H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   stripedtie    H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   scarf         H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   bellnecklace  H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   shortcape     H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   longcape      H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   wings         H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   backpack      H  자기 아이템 채움 위 점 비율 100.0%  -> 덮임
+   ---------------------------------------------------------------
+   ★ 하이라이트 17개 중 16개(94%)가 '자기 아이템의 불투명 채움' 위에 그려진다.
+   ⇒ 바탕화면과 접하는 하이라이트는 1개다. 'CR 1.00:1(흰 바탕화면 위)'은 이 조각들의 실제 배경이 아니다.
+
+== C. 부분 투명 조각 47개의 배경 — 평탄화(pre-flatten)로 불투명하게 바꿀 수 있는가 ==
+   배경이 '자기 아이템의 다른 조각'이라 평탄화 가능 : 30
+   배경이 바탕화면이라 평탄화 불가(= 알파를 버려야) : 37
+       clothhat     [0] B   덮임 0%
+       clothhat     [2] B   덮임 26%
+       furhat       [0] CB  덮임 0%
+       furhat       [1] B   덮임 18%
+       furhat       [3] B   덮임 13%
+       fedora       [0] B   덮임 0%
+       fedora       [2] B   덮임 22%
+       fedora       [3] H   덮임 80%
+       crown        [0] B   덮임 0%
+       crown        [1] B   덮임 0%
+       sunglasses   [0] B   덮임 0%
+       sunglasses   [1] B   덮임 0%
+       roundglasses [0] CB  덮임 0%
+       roundglasses [1] CB  덮임 0%
+       goggles      [0] B   덮임 0%
+       monocle      [0] CB  덮임 0%
+       bowtie       [0] B   덮임 0%
+       bowtie       [1] B   덮임 0%
+       bowtie       [2] RB  덮임 0%
+       stripedtie   [0] B   덮임 0%
+       stripedtie   [1] B   덮임 0%
+       stripedtie   [2] F   덮임 60%
+       scarf        [0] B   덮임 0%
+       scarf        [1] B   덮임 2%
+       bellnecklace [1] CF  덮임 0%
+       bellnecklace [2] CF  덮임 0%
+       bellnecklace [3] CF  덮임 0%
+       bellnecklace [4] B   덮임 10%
+       bellnecklace [5] RB  덮임 11%
+       shortcape    [0] B   덮임 0%
+       shortcape    [1] B   덮임 47%
+       longcape     [0] B   덮임 0%
+       longcape     [1] B   덮임 51%
+       wings        [0] B   덮임 0%
+       wings        [1] B   덮임 0%
+       wings        [4] RB  덮임 28%
+       backpack     [1] B   덮임 0%

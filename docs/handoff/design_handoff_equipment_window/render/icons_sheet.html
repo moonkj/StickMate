@@ -1,0 +1,17 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:#0D0C0B;font-family:"Apple SD Gothic Neo",sans-serif;color:#EDE7DB}
+.g{display:grid;grid-template-columns:repeat(8,1fr);gap:10px;padding:16px}
+.c{border:1px solid #231F1B;border-radius:12px;background:linear-gradient(180deg,#161311,#111010);padding:10px}
+.n{font-size:10px;color:#8A8578;text-align:center;margin-top:6px}
+.h{font-size:12px;color:#C8A15A;padding:14px 16px 0;letter-spacing:.1em}
+</style></head><body>
+<div class="h">ItemIcon.dc.html · 16종 — 위: 카드 채움(등급 accent, 58px) / 아래: 몸 오버레이 인자(색=WEAR, 획 2.8, 70px)</div>
+<div class="g" id="a"></div>
+<div class="h">아래 줄: color=#E8E2D6 · accent=#C8A15A (팩 카드 · 보관함이 쓰는 브라스 균질 인자)</div>
+<div class="g" id="b"></div>
+<script src="./icons.js"></script><script>
+const kinds=['clothhat','furhat','fedora','crown','sunglasses','roundglasses','goggles','monocle','bowtie','stripedtie','scarf','bellnecklace','shortcape','longcape','wings','backpack'];
+const rar=['#8A8F98','#6E9BE8','#B07BE0','#E0B24A'];
+document.getElementById('a').innerHTML=kinds.map((k,i)=>`<div class="c"><div style="height:78px;border-radius:9px;background:radial-gradient(70% 70% at 50% 42%, ${rar[i%4]}1F, transparent 72%), #0F0D0C;display:flex;align-items:center;justify-content:center"><div style="width:58px;height:58px">${ItemIcon(k,'#E8E2D6',rar[i%4],2.2)}</div></div><div class="n">${k}<br>${['일반','희귀','영웅','전설'][i%4]}</div></div>`).join('');
+document.getElementById('b').innerHTML=kinds.map(k=>`<div class="c"><div style="height:78px;display:flex;align-items:center;justify-content:center"><div style="width:58px;height:58px">${ItemIcon(k,'#E8E2D6','#C8A15A',2.2)}</div></div><div class="n">${k}</div></div>`).join('');
+</script></body></html>

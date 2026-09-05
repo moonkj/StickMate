@@ -406,6 +406,11 @@ namespace StickMate.Interaction
         /// <summary>전체화면 감지로 <b>우리가</b> 숨긴 상태인가 — 복귀 판정과 로그 1회 출력에 쓴다.</summary>
         private bool _hiddenBySuspend;
 
+        // ---- 대기 톱니(2026-09-05) ----
+        private bool _standbyVisible;
+        private RunawayDirector _runawayDirector;   // 지연 탐색 후 캐시(AppControlDirector와 같은 관례).
+        private static bool _standbyGateBypassedForTests;
+
         /// <summary>지금 회전 연출 중인가(테스트/진단 전용).</summary>
         public bool IsSpinning => _spinTimer >= 0f;
 
@@ -816,12 +821,16 @@ public void StartSpinForTests() => _spinTimer = 0f;
             //   다르지 않게</b> 톱니가 사라진다 — 게임 위에 톱니가 남으면 원칙 2 위반이다.
             //   ★ 두 축을 다시 <c>IsSuspended</c> 하나로 합치지 마라: 그 값은 이제 <b>캐릭터 축</b>이고,
             //     톱니는 캐릭터가 아니다.
-            // ★ 2026-09-01 설정창 [일반] "톱니 아이콘" 토글 — 끄면 전체화면 감지와 <b>같은 경로</b>로
-            //   거둔다(그림/차단막/부채꼴/창까지 한 번에). 새 숨김 경로를 만들지 않는 이유: 숨기는
-            //   방법이 둘이 되면 "무엇을 되살려야 하는가"의 목록도 둘이 되고, 그 목록은 반드시 갈라진다.
-            if (_agent.HidesScreenSurfaces || !AppSettingsModel.GearIconVisible)
+            // ★★ 2026-09-05 — 이 게이트에서 <b>「톱니 아이콘」 토글이 빠졌다</b>(ux-designer §1-7-4 나-1,
+            //   리더 판정 L-10). 아래 「대기 톱니」 규칙에서 <b>평상시 톱니 자체가 없어지므로</b> 그
+            //   토글은 끌 대상을 잃었고, 반대로 남겨 두면 <b>사용자가 스스로를 잠그는 스위치</b>가 된다:
+            //   그 값은 세이브에 내려가고(재시작해도 유지), 되돌리는 문(설정창)에 닿는 마우스 경로는
+            //   대기 톱니뿐인데 그 톱니를 방금 그 토글이 껐기 때문이다. 2026-09-03 사용자 신고
+            //   <i>"다시 나오게 할 방법이 없어"</i>의 정확한 재발이다.
+            //   ※ 설정 값·세이브 필드는 <b>건드리지 않았다</b>(스키마 무변경). 소비만 끊었다.
+            if (_agent.HidesScreenSurfaces)
             {
-                ApplySuspendHide(_agent.HidesScreenSurfaces ? "전체화면 감지" : "설정창에서 톱니 아이콘을 껐습니다");
+                ApplySuspendHide("전체화면 감지");
                 return;
             }
             if (_hiddenBySuspend) ReleaseSuspendHide();
@@ -837,12 +846,19 @@ public void StartSpinForTests() => _spinTimer = 0f;
             //     새 표면이 생겨도 여기 목록을 고칠 필요가 없다.
             //   ★ 여기 <b>포스트잇/리마인더/크래시 오버레이를 넣지 마라</b> — 사용자가 부른 적이 없다.
             //     넣는 순간 이 장치가 원칙 2의 구멍이 된다.
+            //   ★★ 2026-09-05 (game-architect I-28) — 이 줄이 <b>대기 톱니 게이트보다 앞</b>으로 올라왔다.
+            //     예전에는 톱니의 가시성 게이트 <b>뒤</b>에 있어서, 톱니가 안 보이는 상태에서는
+            //     갱신이 영원히 돌지 않았다. 2026-09-05에 톱니가 「평상시 숨김」이 되면서 그 상태가
+            //     <b>평상시</b>가 됐다 — 그대로 두면 등급 1에서 사용자가 정보창을 쓰는 도중에 창이 걷힌다.
+            //     부채꼴은 같은 라운드에 <b>자기 갱신</b>을 갖게 됐고(GearRadialMenuWidget.LateUpdate),
+            //     정보창은 아직 없으므로 이 줄이 그 다리를 놓는다.
             if (IsMenuExpanded || (_window != null && _window.IsOpen)) _agent.RenewUserSummonGrant();
 
             if (_camera == null) _camera = _agent.Blackboard != null ? _agent.Blackboard.MainCamera : Camera.main;
             if (_camera == null) return;
 
             RestoreSavedPositionOnce();
+            _standbyVisible = ResolveStandbyVisible();
 
             // 순서에 의미가 있다: 먼저 현재 위치로 히트 사각형을 갱신해야(PlaceOnScreen) 그 사각형으로
             // "커서가 기어 위인가"를 판정할 수 있고, 드래그가 중심을 옮겼으면 <b>같은 프레임 안에</b>
@@ -856,6 +872,133 @@ public void StartSpinForTests() => _spinTimer = 0f;
             TickDragVisual();
             TickMenuHover();
         }
+
+        // ==================== 대기 톱니 (2026-09-05) ====================
+
+        /// <summary>
+        /// ★★ <b>「평소에는 없고, 캐릭터가 화면에서 사라진 동안에만 나타난다」</b> — 2026-09-05 사용자 지시
+        /// <i>"지금은 메뉴 스크류모양이 따로 있는데 그냥 캐릭터에서 마우스 오른 쪽 버튼 누르면 촤르륵
+        /// 펼쳐지게 변경"</i>과 2026-09-03 확정 <i>"메뉴버튼은 보여야지 / 캐릭만 가리고"</i>를
+        /// <b>둘 다 글자 그대로</b> 지키는 유일한 형태다(coder-ui 변경 지도 ⑥ (B′) + ux-designer §1-7-3 가-1).
+        ///
+        /// <para><b>조건을 「사용자가 숨겼다」가 아니라 「우클릭할 몸이 없다」로 읽는다.</b> 그래서 두 상태다:
+        /// <list type="number">
+        /// <item><b>사용자 명시 숨김</b>(<c>IsUserHiddenOnly</c>) — ⌃⌥⌘K / 설정창 / 트레이. <b>무기한</b>.</item>
+        /// <item>★ <b>가출(Runaway)</b> — <c>RunawayDirector.IsRunawayActive</c>. 최대
+        ///   <c>runawayAutoReturnSeconds</c> = 5400초(90분). 이건 <b>사용자가 만든 상태가 아니다</b>:
+        ///   캐릭터가 스스로 숨었고, 되돌리는 UI(행동창 [돌아와!])로 가는 마우스 문이 캐릭터 우클릭뿐이면
+        ///   <b>논리적으로 도달 불가능</b>하다. 그리고 이 구멍은 <b>macOS 전용</b>이다 — Windows는 트레이가
+        ///   같은 일을 하지만 macOS에는 <c>NSStatusItem</c>이 없다(<c>SystemTrayPresencePolicy.MacOsGapReason</c>).</item>
+        /// </list></para>
+        ///
+        /// <para>★ <b>「톱니 아이콘」 설정 토글은 이 조건에 들어가지 않는다</b>(리더 판정 L-10) —
+        /// 들어가면 그 토글이 <b>되돌릴 수 없는 자기 잠금</b>이 된다. 위 게이트의 주석 참고.</para>
+        ///
+        /// <para><b>부채꼴·정보창은 이 값과 무관하게 산다.</b> 여기서 내리는 것은 <b>톱니 자신의 그림과
+        /// 히트 사각형</b>뿐이다 — 우클릭으로 연 부채꼴이 매 프레임 접히면 그건 기능 파괴다.</para>
+        /// </summary>
+        private bool ResolveStandbyVisible()
+        {
+            if (_standbyGateBypassedForTests) return true;
+            return StandbyGearPolicy.ShouldShow(ResolveUserHiddenOnly(), ResolveRunawayActive());
+        }
+
+        private bool ResolveUserHiddenOnly() => _agent != null && _agent.IsUserHiddenOnly;
+
+        private bool ResolveRunawayActive()
+        {
+            if (_runawayDirector == null) _runawayDirector = GetComponent<RunawayDirector>();
+            return _runawayDirector != null && _runawayDirector.IsRunawayActive;
+        }
+
+        /// <summary>
+        /// ★ 「지금 대기 톱니를 세워야 하는가」 — <b>상태를 하나도 읽지 않는 순수 판정</b>
+        /// (형제: <see cref="AppControlDirector.RightClickFanGatePolicy"/>).
+        ///
+        /// <para><b>왜 함수로 빼는가</b>(test-engineer 개선 ①·②): 위젯 안에 조건식으로만 두면
+        /// EditMode가 그것을 <b>재구현해서</b> 재게 되고, 그 사본은 조용히 갈라진다 — 이 저장소가
+        /// 반복해 당한 형태다. 여기 있으면 진리표 4행을 전수로 돌 수 있고, <b>조건을 늘리는 자리도
+        /// 한 곳</b>이 된다: 세 번째 「캐릭터가 없는 상태」가 생기면 인자가 하나 늘 뿐이다.</para>
+        /// </summary>
+        public static class StandbyGearPolicy
+        {
+            /// <summary>
+            /// 조건은 「사용자가 숨겼다」가 아니라 <b>「우클릭할 몸이 없다」</b>로 읽는다.
+            /// 그래서 두 상태가 <b>한 줄</b>로 합쳐진다 — 사용자 명시 숨김(무기한)과 가출(≤90분)은
+            /// 이름만 다르고 그 정의에 똑같이 들어맞는다.
+            ///
+            /// <para>★ 「톱니 아이콘」 설정 토글은 <b>여기 들어오지 않는다</b>(리더 판정 L-10) —
+            /// 들어오면 사용자가 스스로를 잠그는 스위치가 된다.</para>
+            /// </summary>
+            public static bool ShouldShow(bool userHiddenOnly, bool runawayActive)
+                => userHiddenOnly || runawayActive;
+
+            /// <summary>「왜 지금 서 있는가 / 왜 없는가」를 사람이 읽는 한 줄로. 로그와 진단 창구가
+            /// <b>같은 문장</b>을 쓰게 해 «화면과 로그가 다른 말을 하는» 경로를 만들지 않는다.</summary>
+            public static string Describe(bool userHiddenOnly, bool runawayActive)
+            {
+                if (userHiddenOnly && runawayActive) return "사용자 명시 숨김 + 가출";
+                if (userHiddenOnly) return "사용자 명시 숨김";
+                if (runawayActive) return "가출(캐릭터가 스스로 숨었다)";
+                return "해당 없음 — 캐릭터가 화면에 있으므로 우클릭이 평소 진입점이다";
+            }
+        }
+
+        /// <summary>판정을 그림에 반영한다. <b>부채꼴·정보창·차단막은 여기서 건드리지 않는다</b> —
+        /// 이 함수가 하는 일은 「톱니 도형을 켜고 끄는 것」 하나이고, 그래야 대기 상태 전환이
+        /// 사용자가 열어 둔 표면을 밟지 않는다(<see cref="ApplySuspendHide"/>와의 결정적 차이).</summary>
+        private void SyncStandbyVisibility()
+        {
+            if (_container == null) return;
+            if (_container.activeSelf == _standbyVisible) return;
+
+            _container.SetActive(_standbyVisible);
+            if (!_standbyVisible)
+            {
+                // 사라지는 순간의 «누르고 있음»이 남으면 복귀 직후 놓는 동작이 클릭이나 이동으로 오인된다.
+                _pressActive = false;
+                _dragging = false;
+                _spinTimer = -1f;
+                _leftInitialized = false;
+            }
+            // 전이는 드물다(사용자 숨김 토글 / 가출 시작·복귀)이므로 매 전이 1줄이 로그를 더럽히지 않는다.
+            Debug.Log((_standbyVisible
+                ? "[톱니] 캐릭터가 화면에 없어 대기 톱니를 띄웁니다 — 캐릭터를 우클릭할 몸이 없는 동안의 " +
+                  "마우스 진입점입니다. 캐릭터가 돌아오면 다시 사라집니다."
+                : "[톱니] 상시 톱니를 걷습니다 — 평소 진입점은 <b>캐릭터 우클릭</b>입니다(2026-09-05 사용자 지시). " +
+                  "캐릭터가 화면에서 사라지면 이 자리에 다시 나타납니다.")
+                // 사유는 진단 창구(StandbyGearReason)와 <b>같은 문장</b>을 쓴다 — 로그와 화면이 다른
+                // 말을 하면 사용자 신고를 로그에서 찾을 수 없다.
+                + $" 사유={StandbyGearReason}.");
+        }
+
+        /// <summary>지금 「대기 톱니」 조건이 참인가(진단/테스트 창구). <see cref="IsIconVisible"/>는
+        /// GameObject의 실제 상태를 보고, 이 값은 <b>판정</b>을 본다 — 둘이 갈라지면 배치 경로가 깨진 것이다.</summary>
+        public bool IsStandbyGearVisible => _standbyVisible;
+
+        /// <summary>
+        /// ★ 「왜 지금 서 있는가(또는 없는가)」 — 테스트가 게이트를 <b>재구현하지 않고</b> 물어보는 창구
+        /// (test-engineer 개선 ②: 그쪽이 게이트 절반을 테스트에서 다시 쓰고 있었다).
+        /// <para>우회 중일 때는 그 사실을 <b>숨기지 않는다</b> — 우회를 켜 둔 채 «가출이라서 떴다»고
+        /// 읽으면 그게 곧 거짓 통과다.</para>
+        /// </summary>
+        public string StandbyGearReason => _standbyGateBypassedForTests
+            ? "테스트 우회(" + nameof(SetStandbyGateBypassedForTests) + ") — 실제 조건과 무관하게 세워 두었다"
+            : StandbyGearPolicy.Describe(ResolveUserHiddenOnly(), ResolveRunawayActive());
+
+        /// <summary>
+        /// 테스트 전용 — 「대기 톱니」 게이트만 우회한다(그림·히트 사각형·차단막이 예전처럼 상시 뜬다).
+        ///
+        /// <para><b>이 훅이 필요한 이유</b>: 톱니의 드래그·부채꼴 진입·포스트잇 회피를 재는 기존 PlayMode
+        /// 픽스처들은 <b>톱니가 보이는 상태</b>를 전제로 쓰였고, 그 전제는 이 라운드의 <b>주제가 아니다</b>.
+        /// 게이트 자체를 재는 테스트는 이 훅을 쓰지 않고 <b>진짜 상태</b>(사용자 숨김 / 가출)를 만든다.</para>
+        ///
+        /// <para>★ 반드시 <c>TearDown</c>에서 <c>false</c>로 되돌려라 — <c>static</c>이라 픽스처를 넘어간다.</para>
+        /// </summary>
+        public static void SetStandbyGateBypassedForTests(bool bypassed) => _standbyGateBypassedForTests = bypassed;
+
+        /// <summary>대기 톱니 게이트가 지금 우회되어 있는가(테스트 정리 누락 진단용).</summary>
+        public static bool IsStandbyGateBypassedForTests => _standbyGateBypassedForTests;
 
         /// <summary>전체화면 감지 동안 톱니 그림과 클릭 차단막을 내린다. 눌림/드래그 상태도 함께
         /// 취소한다 — 안 그러면 숨는 순간의 "누르고 있음"이 그대로 남아, 복귀하자마자 놓는 동작이
@@ -969,7 +1112,20 @@ public void StartSpinForTests() => _spinTimer = 0f;
             // 기어를 덮는 최소 정사각형(+여유). 그 이상은 넓히지 않는다(비침해).
             // 단일 기어는 방사 대칭이라 <b>광학 중심과 히트 중심이 일치</b>한다(옛 묶음은 어긋나 있었다).
             float r = (VisualRadiusPoints + HitPaddingPoints) * pxPerPoint;
-            IconScreenRect = new Rect(IconScreenCenter.x - r, IconScreenCenter.y - r, r * 2f, r * 2f);
+
+            // ★★ 대기 톱니가 아닌 동안에는 히트 사각형이 <b>넓이 0</b>이다.
+            //   그림만 끄고 사각형을 남기면 «보이지 않는데 클릭만 먹는» 최악의 형태가 되고(원칙 2),
+            //   그 자리는 화면 우상단이라 사용자는 원인을 절대 못 찾는다.
+            //   넓이 0을 <b>스스로 검사하는</b> 소비자에게는 정확히 읽힌다 — TodoPostItWidget
+            //   .ResolveRightInsetPoints가 <c>hit.width &lt;= 0</c>에서 기준선으로 안전 복귀하므로
+            //   포스트잇이 오른쪽 여백을 되찾는다.
+            //   ★★ <b>그러나 「넓이 0 = 없는 것」이 자동으로 성립하지는 않는다.</b> 경계상자 연산
+            //   (<see cref="Union"/>)은 넓이가 0이어도 <b>위치</b>를 삼킨다 — 아래 차단막 계산이
+            //   실제로 그 함정에 빠졌었다(P0, 같은 날 test-engineer 실측). 이 사각형을 쓰는 새 소비자를
+            //   만들 때는 <b>넓이 0 분기를 먼저 쓰고</b> 시작해라.
+            IconScreenRect = _standbyVisible
+                ? new Rect(IconScreenCenter.x - r, IconScreenCenter.y - r, r * 2f, r * 2f)
+                : new Rect(IconScreenCenter.x, IconScreenCenter.y, 0f, 0f);
 
             Vector3 centerWorld = _camera.ScreenToWorldPoint(new Vector3(IconScreenCenter.x, IconScreenCenter.y, depth));
             Vector3 unitEdgeWorld = _camera.ScreenToWorldPoint(new Vector3(IconScreenCenter.x + pxPerPoint, IconScreenCenter.y, depth));
@@ -979,15 +1135,35 @@ public void StartSpinForTests() => _spinTimer = 0f;
             if (_container == null) return;
 
             _container.transform.position = new Vector3(centerWorld.x, centerWorld.y, 0f);
+            SyncStandbyVisibility();
 
             // 차단막은 톱니 사각형이 아니라 <b>톱니 + 펼쳐진 버튼</b>의 합집합을 덮어야 한다 —
             // 안 그러면 버튼을 눌러도 그 클릭이 밑의 앱으로 새어 나간다. 접히면 즉시 원래 크기다(비침해).
-            InteractiveScreenRect = _menu != null && _menu.IsVisible
-                ? Union(IconScreenRect, _menu.UnionScreenRect)
-                : IconScreenRect;
+            //
+            // ★★★ 2026-09-05 <b>정정 (test-engineer 실측, P0)</b> — 바로 위에 «넓이 0이면 합집합은
+            //   버튼 사각형 그대로가 된다»고 적었던 문장은 <b>거짓이었다</b>. <see cref="Union"/>은
+            //   <b>경계상자</b> 합집합이라 넓이가 0이어도 그 점의 <b>위치</b>를 함께 삼킨다.
+            //   톱니 자리는 화면 <b>우상단 고정</b>이고 부채꼴은 <b>캐릭터를 따라 어디든</b> 열리므로,
+            //   결과 사각형이 그 둘을 잇는 <b>보이지 않는 띠</b>가 되어 그대로 차단막 크기가 됐다
+            //   (실측 640×480: 정당 면적의 <b>2.31배</b> · 화면의 13.3% 초과 흡수. 양 플랫폼 공통이고
+            //   Windows가 더 나쁘다 — 트레이 근처까지 먹을 수 있다). <b>원칙 2 정면 위반이다.</b>
+            //
+            //   ⇒ 넓이 0인 사각형은 합집합에서 <b>빼야 한다</b>. "위치가 없는 것"과 "0,0에 있는 것"은
+            //     다르고, 경계상자 연산은 그 둘을 구분하지 못한다. 그래서 판정을 여기서 명시한다.
+            //   ★ 이 자리를 «정리»하며 다시 한 줄 <see cref="Union"/>으로 합치지 마라 — 그 순간
+            //     같은 띠가 되돌아오고, 그것은 화면에 아무것도 안 보이므로 아무도 못 찾는다.
+            //   ★ 그리고 접힘 시 0 복귀를 빠뜨리면 화면 <b>한복판</b>에 영구 클릭 흡수 구역이 생긴다.
+            //     그래서 아래 <c>enabled</c>가 «톱니가 보이거나 부채꼴이 보일 때»로 잠겨 있다.
+            bool fanVisible = _menu != null && _menu.IsVisible;
+            bool gearHits = IconScreenRect.width > 0f && IconScreenRect.height > 0f;
+            InteractiveScreenRect =
+                  fanVisible && gearHits ? Union(IconScreenRect, _menu.UnionScreenRect)
+                : fanVisible              ? _menu.UnionScreenRect
+                :                           IconScreenRect;
 
             if (_clickTarget != null)
             {
+                _clickTarget.enabled = _standbyVisible || fanVisible;
                 Vector3 rectCenterWorld = _camera.ScreenToWorldPoint(
                     new Vector3(InteractiveScreenRect.center.x, InteractiveScreenRect.center.y, depth));
                 Vector3 rectMaxWorld = _camera.ScreenToWorldPoint(
@@ -1044,8 +1220,11 @@ public void StartSpinForTests() => _spinTimer = 0f;
             float topInset = ReservedTopBarProbe.TopInsetPoints(_agent != null ? _agent.PlatformService : null);
 
             // "화면 맨 위(y=0)로 가고 싶다"고 요청하면 정책이 갈 수 있는 가장 위를 돌려준다.
+            // ★ 2026-09-05 (M-7) — 하단 인셋도 함께 넘긴다. 이 요청은 상단 고정이라 <b>결과가 바뀌지
+            //   않지만</b>(어느 분기로 가도 상단 한계가 답이다), 클램프와 기본 위치가 <b>같은 서명</b>을
+            //   지나야 위 문단의 "한쪽만 고쳐지는 일이 구조적으로 불가능하다"가 계속 참이다.
             float y = SurfaceSafeAreaPolicy.ClampTopDownCenterY(
-                0f, r * 2f, screen.y, topInset, PopoverPanel.ScreenMarginPoints);
+                0f, r * 2f, screen.y, topInset, BottomInsetPoints(), PopoverPanel.ScreenMarginPoints);
 
             // 화면 높이를 아직 못 읽는 병적인 순간(screen.y <= 0)에는 정책이 요청값을 그대로 돌려준다
             // — 그때 0을 쓰면 톱니가 화면 위 끝에 붙으므로 최소한 히트 반지름만큼은 내려 둔다.
@@ -1081,6 +1260,22 @@ public void StartSpinForTests() => _spinTimer = 0f;
             leftPoints = insets.PointsFor(ReservedEdge.Left);
             rightPoints = insets.PointsFor(ReservedEdge.Right);
         }
+
+        /// <summary>
+        /// ★ 2026-09-05 (M-7, 리더 판정) — 배치에 <b>실제로 적용할</b> 하단 예약 띠 두께(OS 포인트).
+        ///
+        /// <para><b>macOS는 언제나 0</b>이다(Dock은 발판이다). <b>Windows만</b> 작업표시줄 두께가 들어와,
+        /// 사용자가 톱니를 작업표시줄 위로 끌어다 놓을 수 없게 된다. 갈림 규칙은
+        /// <see cref="SurfaceSafeAreaPolicy.EnforcesBottomReservedBand"/> 한 곳에만 있다 — 여기에
+        /// <c>#if</c>를 쓰면 이 머신에서 Windows 절반이 한 줄도 컴파일되지 않는다.</para>
+        ///
+        /// <para>★ 이게 왜 <see cref="SideInsetPoints"/>와 <b>같은 캐시</b>를 보는가: 둘 다
+        /// <see cref="ReservedEdgeProbe.Insets"/> 한 벌에서 나온다. 축마다 따로 조회하면 캐시 갱신
+        /// 경계에서 <b>서로 다른 순간의 화면</b>을 섞어 쓰게 되고, 그런 좌표는 어느 프레임에도
+        /// 실재하지 않는다(그 위 문단이 가로축에서 이미 못박은 규칙이다).</para>
+        /// </summary>
+        private float BottomInsetPoints()
+            => ReservedEdgeProbe.EnforcedBottomInsetPoints(_agent != null ? _agent.PlatformService : null);
 
         private Vector2 ScreenSizePoints() => new Vector2(
             ScreenCoordinateConverter.UnityScreenToCanvas(Screen.width, _config),
@@ -1132,8 +1327,16 @@ public void StartSpinForTests() => _spinTimer = 0f;
             //   저장되어 재부팅해도 유지된다(41-8과 같은 뿌리). 위쪽만 OS 예약 띠만큼 밀어낸다.
             //   여백은 0이다 — 여기서 12pt를 더하면 "화면 끝까지 붙일 수 있다"는 이 위젯의 성질이
             //   이유 없이 바뀐다. 지금 고치는 것은 <b>남의 띠를 덮는 것</b>뿐이다.
+            //
+            // ★★ 2026-09-05 (M-7, 리더 판정) — <b>아래쪽도 Windows에서만</b> 같은 이유로 막는다.
+            //   신고 "작업표시줄에 걸쳐서 돌아다닌다"(2026-08-31)와 같은 자리이고, 톱니는 특히
+            //   중대하다: 작업표시줄은 최상위 창이라 그 위에 놓인 톱니는 <b>눌리지 않는다</b>
+            //   — 가로축 문단이 우측 도킹 작업표시줄에서 이미 실측한 그 형태다.
+            //   macOS는 0이 들어가 예전과 비트 단위로 같다(Dock은 발판이다).
+            //   ★ 마지막 인자는 여백 0이다 — 인셋과 여백을 헷갈리지 마라(인자 순서: 상단, 하단, 여백).
             float topInset = ReservedTopBarProbe.TopInsetPoints(_agent != null ? _agent.PlatformService : null);
-            float y = SurfaceSafeAreaPolicy.ClampTopDownCenterY(centerPoints.y, r * 2f, screen.y, topInset, 0f);
+            float y = SurfaceSafeAreaPolicy.ClampTopDownCenterY(
+                centerPoints.y, r * 2f, screen.y, topInset, BottomInsetPoints(), 0f);
             return new Vector2(x, y);
         }
 
@@ -1293,7 +1496,9 @@ public void StartSpinForTests() => _spinTimer = 0f;
                 Debug.LogWarning("[톱니] 부채꼴 메뉴 위젯(GearRadialMenuWidget)이 없어 펼치지 못했습니다.");
                 return;
             }
-            _menu.Expand(IconScreenCenter);
+            // ★ 톱니 경로의 위쪽 바이어스는 <b>0</b>이다 — 여기에 FanUpBiasPoints를 주면 출하 기본
+            //   화면의 θ₀가 225° → 180°로 바뀐다(UX §1-3-4). 바이어스는 캐릭터 경로 전용이다.
+            _menu.Expand(IconScreenCenter, GearMenuAnchorSource.Gear, 0f);
         }
 
         private void CollapseMenu(GearMenuCollapseMode mode, string reason)
@@ -1557,8 +1762,20 @@ public void StartSpinForTests() => _spinTimer = 0f;
                 return;
             }
 
+            // ★★ 2026-09-05 — 문이 둘이 됐으므로 «다시 누름»의 뜻이 <b>어느 문이 열었는가</b>에 달렸다
+            //   (docs/UX_RIGHTCLICK_FAN_MENU.md §5-7).
+            //     같은 문(톱니가 연 부채꼴 + 톱니 클릭)   → 토글 닫기(예전과 한 비트도 다르지 않다)
+            //     다른 문(캐릭터가 연 부채꼴 + 톱니 클릭) → 접고 <b>톱니 자리에서 다시 편다</b>
+            //   후자를 «무시»로 두면 사용자는 "안 눌린다"로 읽고, «순간이동»으로 두면 부채가 화면을 튄다.
             if (IsMenuExpanded)
             {
+                if (_menu != null && _menu.AnchorSource != GearMenuAnchorSource.Gear)
+                {
+                    _menuPressIndex = -1;
+                    _menu.ExpandOrReanchor(IconScreenCenter, GearMenuAnchorSource.Gear, 0f, "톱니 클릭(재앵커)");
+                    return;
+                }
+
                 // 닫을 때는 회전하지 않는다 — 회전은 "기계를 여는" 신호다(32-3).
                 CollapseMenu(GearMenuCollapseMode.User, "톱니 재클릭(토글 닫기)");
                 return;

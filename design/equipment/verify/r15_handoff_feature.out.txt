@@ -1,0 +1,63 @@
+== 교정 (docs/EQUIPMENT_HANDOFF_PORT_SPEC.md §4-1 원본 조각 수 표) ==
+  아이템 수      : 16 (기대 16)
+  조각 총수      : 91 (기대 91)
+  하이라이트(H)  : 17 (기대 17)
+  -> 교정 통과. 아래 숫자를 신뢰한다.
+
+== 조각 91개가 요구하는 렌더 기능 중, 우리 데이터 모델/렌더러에 자리가 없는 것 ==
+  A. 부분 투명도(alpha) — fill/stroke opacity     47조각 / 16종
+  B. 세로 그라디언트 채움(url(#G))                    20조각 / 12종
+  C. 조각별 획 두께 배수(w*k, k!=1)                  28조각 / 16종
+  D. 흰색 하이라이트 획(제3색)                         17조각 / 16종
+  E. 파선(strokeDasharray)                      1조각 /  1종
+
+  ★ 지금 구조로 '보이는 그대로' 재현 가능한 조각: 20 / 91 (22%)
+  ★ 표현 기능이 없어서 재현 불가한 조각          : 71 / 91 (78%)
+
+== 아이템별 (재현가능/총) ==
+  clothhat       0/4
+  furhat         0/5
+  fedora         0/4
+  crown          6/9
+  sunglasses     3/6
+  roundglasses   3/7
+  goggles        2/7
+  monocle        1/4
+  bowtie         0/4
+  stripedtie     0/5
+  scarf          3/6
+  bellnecklace   1/8
+  shortcape      0/4
+  longcape       1/6
+  wings          0/6
+  backpack       0/6
+
+== 인계본이 쓰는 획 두께 배수 스펙트럼(우리는 2단계뿐: 낱선 / 채움윤곽) ==
+   w x0.7   :  5조각
+   w x0.75  : 17조각
+   w x0.8   :  2조각
+   w x0.9   :  1조각
+   w x1.0   : 53조각
+   w x1.1   :  1조각
+   w x1.4   :  1조각
+   w x1.5   :  1조각
+
+== 인계본이 쓰는 투명도 값 스펙트럼 ==
+   alpha:fill=0.14              :  1조각
+   alpha:fill=0.16              :  2조각
+   alpha:fill=0.2               :  1조각
+   alpha:fill=0.22              :  1조각
+   alpha:fill=0.28              :  1조각
+   alpha:fill=0.4               :  2조각
+   alpha:fill=0.45              :  2조각
+   alpha:fill=0.5               :  1조각
+   alpha:fill=0.55              :  4조각
+   alpha:fill=0.6               :  4조각
+   alpha:fill=0.65              :  1조각
+   alpha:fill=0.7               :  1조각
+   alpha:fill=0.8               :  3조각
+   alpha:fill=grad0.34->0.08    : 20조각
+   alpha:stroke=0.35            :  2조각
+   alpha:stroke=0.4             :  3조각
+   alpha:stroke=0.42            : 17조각
+   alpha:stroke=0.55            :  1조각

@@ -40,13 +40,36 @@ namespace StickMate.Interaction
         Quit = 4,
     }
 
+    /// <summary>
+    /// ★ 이 부채꼴을 <b>어느 문이 열었는가</b>(2026-09-05, 진입점이 둘이 됐다 —
+    /// docs/UX_RIGHTCLICK_FAN_MENU.md §5-7).
+    ///
+    /// <para>필요한 이유는 하나다: <b>같은 문을 다시 누르면 토글로 닫고, 다른 문을 누르면 접었다가
+    /// 그 자리에서 다시 편다.</b> 앵커 좌표를 부동소수로 비교해 «같은 문인가»를 판정하면
+    /// 캐릭터가 1pt만 걸어도 «다른 문»이 되어 토글이 사라진다 — 그래서 좌표가 아니라 <b>출처</b>로 가른다.</para>
+    /// </summary>
+    public enum GearMenuAnchorSource
+    {
+        /// <summary>화면 위 톱니 아이콘(<c>InfoGearIconWidget</c>). 위쪽 바이어스 0.</summary>
+        Gear = 0,
+
+        /// <summary>캐릭터 몸 중심 우클릭(<c>AppControlDirector</c>). 위쪽 바이어스
+        /// <see cref="GearRadialMenuWidget.FanUpBiasPoints"/>.</summary>
+        Character = 1,
+    }
+
     /// <summary>접힘의 종류 — <b>움직임이 서로 달라야</b> "내가 접었다"와 "시간이 지나 닫혔다"가 구분된다.</summary>
     public enum GearMenuCollapseMode
     {
         /// <summary>사용자 동작(기어 재클릭 / 바깥 클릭 / 버튼 선택). 0.13초, 반지름까지 빨려 들어감.</summary>
         User,
 
-        /// <summary>기어를 옮기기 시작함. 0.08초, 가장 빠르게 치운다.</summary>
+        /// <summary>★ <b>앵커가 움직였다</b>. 0.08초, 가장 빠르게 치운다.
+        /// <para>2026-09-05에 뜻이 <b>넓어졌다</b>: 원래는 「톱니를 옮기기 시작함」 전용이었고, 이제는
+        /// <b>재앵커</b>(다른 문이 눌려 부채꼴이 자리를 옮긴다 — §5-7)가 같은 모드를 쓴다.
+        /// 두 경우 모두 «앵커가 더 이상 여기 없다»라서 "가장 빠르게 치운다"가 정답이라 값이 그대로 맞는다.
+        /// <b>이 멤버를 지우지 마라</b> — <c>switch</c> 두 곳(<c>ModeLabel</c>·<c>CollapseSecondsFor</c>)의
+        /// 폴백이 정상값을 삼킨다.</para></summary>
         Drag,
 
         /// <summary>6초 무반응. 0.26초, 제자리에서 스르르(반지름 고정, 알파만).</summary>
@@ -366,6 +389,27 @@ namespace StickMate.Interaction
         /// </summary>
         public const float MaxGroupShiftPoints = 48f;
 
+        /// <summary>
+        /// ★ <b>캐릭터 앵커 전용 「위쪽 바이어스」</b>(pt) — docs/UX_RIGHTCLICK_FAN_MENU.md §1-3-3.
+        ///
+        /// <para>임의값이 아니라 <b>부채꼴의 도달 반경</b>이다:
+        /// <see cref="SatelliteOrbitRadiusPoints"/>(168) + 클램프 상자 반폭 28 = <b>196pt</b>.
+        /// 앵커가 어느 변에서도 이만큼 떨어져 있으면 «어느 방향으로 열어도 화면에 들어간다» —
+        /// 그 영역 안에서는 방향을 자유롭게 고를 수 있으므로 <b>고정된 하나</b>(위)를 고르는 편이 낫다.</para>
+        ///
+        /// <para><b>왜 필요한가</b>: 톱니는 화면 구석에 살아서 «화면중심 − 앵커»가 늘 길었다. 캐릭터는
+        /// 화면 한가운데를 하루 종일 지나다니고, 그 순간 그 벡터는 0에 수렴해 <b>1pt 이동에 방향이
+        /// 180° 뒤집힌다</b>(y = 화면 세로 중앙선. 캐릭터가 가장 자주 지나는 높이다).
+        /// 바이어스를 태우면 그 반전 지점이 중앙 위 196pt로 밀려나고, 중앙선 가로 스캔은
+        /// «0° → [225°] → 180°»에서 «45° → 90° → 135°»의 45° 계단이 된다.</para>
+        ///
+        /// <para>★★ <b><see cref="Snap45"/>에 이 값을 직접 넣지 마라.</b> 그 함수는 톱니 경로도 같이
+        /// 쓴다 — 출하 기본 톱니 중심(1482, 924)의 θ₀가 <b>225° → 180°로 바뀌어 기본 화면이 통째로
+        /// 달라진다</b>(UX_FLOW 36-3-4가 못박은 값). 그래서 바이어스는 <see cref="SnapFanBaseAngle"/>의
+        /// <c>upBiasPoints</c> 인자로만 들어가고, 톱니는 0을 준다.</para>
+        /// </summary>
+        public const float FanUpBiasPoints = 196f;
+
         /// <summary>버튼이 전부 안착하기까지(0.19 + 0.0275×4 = <b>0.300초</b> — 32-2의 0.30초 예산).</summary>
         public static float ExpandTotalSeconds => ExpandSecondsPerButton + ExpandStaggerSeconds * (ButtonCount - 1);
 
@@ -447,6 +491,14 @@ namespace StickMate.Interaction
         private float _baseAngleDegrees = 225f;
         private Vector2 _gearCenterPoints;
 
+        // ★ 2026-09-05 — 진입점이 둘이 되면서 생긴 상태 넷. 전부 「어느 문이 열었는가」와 「재앵커 예약」이다.
+        private GearMenuAnchorSource _anchorSource = GearMenuAnchorSource.Gear;
+        private float _fanUpBiasPoints;              // 기준각에만 들어간다. 톱니 0 / 캐릭터 FanUpBiasPoints.
+        private bool _pendingReanchor;
+        private Vector2 _pendingAnchorScreen;
+        private GearMenuAnchorSource _pendingAnchorSource;
+        private float _pendingUpBiasPoints;
+
         // ---- 배치 결과에서 파생되는 것들(이름표 기하가 이 셋만 본다) ----
         //
         // ★★ 2026-09-03 — <b>여기가 없어서 이름표가 [앱 종료]를 5.93pt 덮고 있었다.</b>
@@ -513,6 +565,16 @@ namespace StickMate.Interaction
         /// <para>이름표 방향은 반드시 이 점에서 파생해야 한다 — 기어 중심에서 재면 평행이동이 걸린
         /// 배치에서 방향이 틀어지고, 그게 2026-09-03 이름표 겹침의 원인이었다.</para></summary>
         public Vector2 FanOriginPoints => _gearCenterPoints + _layoutShiftPoints;
+
+        /// <summary>지금 떠 있는 부채꼴을 <b>어느 문이 열었는가</b>(§5-7). 접혀 있으면 마지막으로 연 문.</summary>
+        public GearMenuAnchorSource AnchorSource => _anchorSource;
+
+        /// <summary>기준각에 들어간 위쪽 바이어스(pt) — 톱니 0 / 캐릭터 <see cref="FanUpBiasPoints"/>.
+        /// 테스트가 «어느 식이 실제로 돌았는가»를 값으로 확인한다.</summary>
+        public float ActiveUpBiasPoints => _fanUpBiasPoints;
+
+        /// <summary>접힘이 끝나는 프레임에 다른 앵커로 다시 펼 예정인가(재앵커 진행 중).</summary>
+        public bool IsReanchorPending => _pendingReanchor;
 
         /// <summary>세로 일렬 폴백으로 떨어졌는가(진단/테스트 창구).</summary>
         public bool IsColumnFallback => _columnLayout;
@@ -667,11 +729,28 @@ namespace StickMate.Interaction
         /// 톱니 클릭 프레임(t=0)에 불린다 — 회전이 끝나기를 기다리지 않는다(32-9 (B)). 클릭 후
         /// 100ms 안에 아무 변화가 없으면 사용자는 "안 먹었다"고 판단해 한 번 더 누르고, 그 두 번째
         /// 클릭은 토글 접힘이 되어 메뉴가 깜빡인다 — 실패 모드가 구조적으로 존재하게 된다.
+        ///
+        /// <para>★ 2026-09-05 — 인자가 둘 늘었지만 <b>기존 한 인자 호출부는 그대로 컴파일된다</b>
+        /// (기본값 = 톱니 경로). 테스트 설계 C-2(«<c>Expand(Vector2)</c> 형태 유지»)가 요구한 형태다.</para>
+        ///
+        /// <para>★ <b>첫 줄이 <see cref="FramePacing.HoldActiveForInteraction"/>인 이유</b>(리더 판정 L-10):
+        /// 정지 등급(Still)에서는 렌더가 15fps라 0.300초 펼침이 <b>5프레임</b>으로 뭉개진다.
+        /// <see cref="LateUpdate"/>의 홀드는 <b>다음</b> 프레임에야 걸리므로 최악 66.7ms(예산의 22.2%)를
+        /// 잃는다. 여는 그 자리에서 한 번 더 부르면 그 한 프레임이 사라진다 — 홀드는 만료 시각 방식이라
+        /// 중복 호출이 누수를 만들지 않는다.</para>
         /// </summary>
-        public void Expand(Vector2 gearCenterUnityScreen)
+        /// <param name="upBiasPoints">기준각 계산에만 쓰이는 위쪽 바이어스. 톱니는 0,
+        /// 캐릭터 경로는 <see cref="FanUpBiasPoints"/>(§1-3-4의 «유일한 함정»).</param>
+        public void Expand(Vector2 gearCenterUnityScreen,
+            GearMenuAnchorSource source = GearMenuAnchorSource.Gear, float upBiasPoints = 0f)
         {
             if (IsExpanded) return;
 
+            FramePacing.HoldActiveForInteraction();
+
+            _pendingReanchor = false;
+            _anchorSource = source;
+            _fanUpBiasPoints = upBiasPoints;
             _gearCenterPoints = ScreenToPoints(gearCenterUnityScreen);
             ComputeLayout();
 
@@ -690,6 +769,48 @@ namespace StickMate.Interaction
             TryStartOnboardingHint();
             RefreshDynamicContent(force: true);
             ApplyVisuals();
+        }
+
+        /// <summary>
+        /// ★ <b>진입점이 둘이라서 필요한 단 하나의 새 동작</b> — docs/UX_RIGHTCLICK_FAN_MENU.md §5-7 /
+        /// UX_MOTION_FAN_AND_CAPE.md §1-7 (D).
+        ///
+        /// <list type="bullet">
+        /// <item>접혀 있으면 → 그냥 편다.</item>
+        /// <item><b>다른 문</b>이 눌렸으면 → <see cref="GearMenuCollapseMode.Drag"/>(0.08초)로 접고,
+        ///   접힘이 끝나는 <b>그 프레임에</b> 새 앵커로 다시 편다. 총 0.080 + 0.300 = <b>0.380초</b>.</item>
+        /// <item><b>같은 문</b>이면 → 아무것도 하지 않고 <c>false</c>를 돌려준다. 토글로 닫을지는
+        ///   호출자가 정한다(톱니는 «떠 있는 표면을 닫는다», 우클릭도 같다 — §3-1).</item>
+        /// </list>
+        ///
+        /// <para>★ <b>왜 순간이동시키지 않는가</b>: 부채가 화면을 튄다. 그리고 0.13/0.08초의 접힘은
+        /// 감춰야 할 비용이 아니라 «옮겨 갔다»를 눈으로 알려 주는 신호다(§5-7).</para>
+        ///
+        /// <para>★ <b>깜빡임 금지</b>: 접힘 완료와 재펼침이 <b>같은 프레임</b>에 일어나므로
+        /// (<see cref="LateUpdate"/>의 <c>Phase.Collapsing</c> 분기) 프레임 경계에서 관측하는 쪽은
+        /// <see cref="IsVisible"/>가 거짓이 되는 순간을 <b>한 번도 보지 못한다</b>.</para>
+        /// </summary>
+        /// <returns>이번 호출이 «열기 또는 재앵커»를 실제로 시작했는가. <c>false</c>면 같은 문의 재입력이다.</returns>
+        public bool ExpandOrReanchor(Vector2 anchorUnityScreen, GearMenuAnchorSource source,
+            float upBiasPoints, string reason)
+        {
+            if (!IsVisible)
+            {
+                Expand(anchorUnityScreen, source, upBiasPoints);
+                return true;
+            }
+
+            if (_anchorSource == source && !_pendingReanchor) return false;
+
+            FramePacing.HoldActiveForInteraction();
+            _pendingReanchor = true;
+            _pendingAnchorScreen = anchorUnityScreen;
+            _pendingAnchorSource = source;
+            _pendingUpBiasPoints = upBiasPoints;
+
+            // 이미 접히는 중이면 다시 접지 않는다 — 타이머를 되감으면 0.380초 예산이 늘어난다.
+            if (_phase != Phase.Collapsing) Collapse(GearMenuCollapseMode.Drag, reason);
+            return true;
         }
 
         /// <summary>
@@ -725,10 +846,25 @@ namespace StickMate.Interaction
 
         private static string ModeLabel(GearMenuCollapseMode mode) => mode switch
         {
-            GearMenuCollapseMode.Drag => "이동 시작",
+            GearMenuCollapseMode.Drag => "앵커 이동",
             GearMenuCollapseMode.Auto => "무반응 자동",
             _ => "사용자 동작",
         };
+
+        /// <summary>진입점 이름(로그 전용). <b>정상값을 <c>default:</c>로 흘리지 않는다</b> —
+        /// 모든 멤버를 명시하고, 여기 오는 것은 «배선이 빠진 새 멤버»뿐이라 그때만 시끄럽게 드러난다.</summary>
+        public static string AnchorSourceLabel(GearMenuAnchorSource source)
+        {
+            switch (source)
+            {
+                case GearMenuAnchorSource.Gear: return "톱니";
+                case GearMenuAnchorSource.Character: return "캐릭터 우클릭";
+                default:
+                    Debug.LogWarning($"[부채꼴] 이름 없는 진입점({(int)source})이 부채꼴을 열었습니다 — " +
+                        $"{nameof(GearMenuAnchorSource)}에 멤버를 늘렸다면 {nameof(AnchorSourceLabel)}도 함께 고치세요.");
+                    return $"미상({(int)source})";
+            }
+        }
 
         private static float CollapseSecondsFor(GearMenuCollapseMode mode) => mode switch
         {
@@ -1044,6 +1180,17 @@ namespace StickMate.Interaction
             // 남으므로, 그 팝오버들의 상호작용도 이 한 줄이 함께 덮는다.
             FramePacing.HoldActiveForInteraction();
 
+            // ★★★ 2026-09-05 (game-architect I-28) — <b>임대 갱신은 각 표면이 자기 생존을 보고한다.</b>
+            //   여기 오기 전까지 이 보고를 <b>톱니가 대신</b>했고(InfoGearIconWidget), 그 코드는 톱니의
+            //   가시성 게이트 <b>뒤</b>에 있었다. 「톱니가 안 보이는 상태 + 등급 1」이 겹치면 아무도
+            //   갱신하지 않아 <b>사용자가 쓰고 있는 도중에 부채꼴이 스스로 걷혔다</b>.
+            //   ★ 2026-09-05에 톱니가 「평상시 숨김」이 되면서 그 조합이 <b>평상시</b>가 됐다 —
+            //     즉 이 한 줄이 없으면 등급 1에서 우클릭 부채꼴이 임대 만료로 사라진다.
+            //   갱신은 <b>만료된 임대를 되살리지 않는다</b>(UserSurfaceSummonPolicy) — 위 게이트를
+            //   통과했다는 것이 곧 «지금 이 표면이 정당하게 떠 있다»는 뜻이라 안전하다.
+            //   ※ 정보창(CharacterInfoWindow)은 아직 자기 갱신이 없다 — 그쪽은 별도 배정이다.
+            if (_agent != null) _agent.RenewUserSummonGrant();
+
             float dt = Time.unscaledDeltaTime;
             _timer += dt;
 
@@ -1053,7 +1200,24 @@ namespace StickMate.Interaction
                     if (_timer >= ExpandTotalSeconds) _phase = Phase.Open;
                     break;
                 case Phase.Collapsing:
-                    if (_timer >= CollapseSecondsFor(_collapseMode)) { Hide(); return; }
+                    if (_timer >= CollapseSecondsFor(_collapseMode))
+                    {
+                        // ★ 재앵커(§5-7)는 <b>같은 프레임 안에서</b> 접힘을 끝내고 다시 편다.
+                        //   Hide()와 Expand() 사이에 프레임 경계가 없으므로 밖에서 보는 IsVisible은
+                        //   한 번도 거짓이 되지 않는다 — 「깜빡임 금지」가 구조로 지켜진다.
+                        if (_pendingReanchor)
+                        {
+                            Vector2 anchor = _pendingAnchorScreen;
+                            GearMenuAnchorSource source = _pendingAnchorSource;
+                            float bias = _pendingUpBiasPoints;
+                            Hide();
+                            Expand(anchor, source, bias);
+                            Debug.Log($"[부채꼴] 재앵커 — {AnchorSourceLabel(source)} 자리에서 다시 펼칩니다.");
+                            return;
+                        }
+                        Hide();
+                        return;
+                    }
                     break;
             }
 
@@ -1129,6 +1293,10 @@ namespace StickMate.Interaction
             // 해제 조건 ④ — 전체화면 감지로 즉시 거둘 때도 무장이 남지 않는다. Collapse를 거치지 않는
             // 유일한 경로가 여기라, 이 한 줄이 없으면 다음에 열었을 때 <b>이미 장전된 채</b> 뜬다.
             DisarmQuit("부채꼴 숨김");
+            // ★ 재앵커 예약은 숨는 순간 버린다. 재앵커 경로는 이 함수를 부르기 <b>전에</b> 값을
+            //   지역변수로 떠 두므로 영향이 없고, 반대로 전체화면 감지 같은 다른 Hide 경로에서
+            //   예약이 살아남으면 «다음에 여는 순간 엉뚱한 자리로 튄다».
+            _pendingReanchor = false;
             _phase = Phase.Hidden;
             _activeIndex = -1;
             _hoverIndex = -1;
@@ -1214,7 +1382,9 @@ namespace StickMate.Interaction
                 b.Hover = Mathf.MoveTowards(b.Hover, hoverTarget, Time.unscaledDeltaTime / HoverSeconds);
                 scale *= Mathf.Lerp(1f, HoverScale, EaseOutQuad(b.Hover));
 
-                Vector2 center = _gearCenterPoints + (b.CenterPoints - _gearCenterPoints) * radiusFactor;
+                // ★ 2026-09-05 design-motion §1-12(나) — 펼침/수축 원점은 톱니 중심이 아니라 부채 원점(평행이동 포함)이다.
+                //   이름표·호버 이등분선은 이미 FanOriginPoints 를 보는데 이 애니메이션만 옛 원점을 써서 가장자리 배치에서 최대 31.2pt 어긋났다.
+                Vector2 center = FanOriginPoints + (b.CenterPoints - FanOriginPoints) * radiusFactor;
                 b.Group.anchoredPosition = center;
                 b.Root.localScale = new Vector3(scale, scale, 1f);
 
@@ -1632,6 +1802,28 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
+        /// ★ 부채꼴 기준각 θ₀ — <b><see cref="Snap45"/>를 감싸는 유일한 자리</b>
+        /// (docs/UX_RIGHTCLICK_FAN_MENU.md §1-3-3, 신규 2026-09-05).
+        ///
+        /// <para><c>upBiasPoints = 0</c>이면 <b>옛 식과 한 비트도 다르지 않다</b> — 아래 분기가
+        /// 그것을 문법으로 보장한다(<c>y</c>에 0을 더하는 연산조차 하지 않는다). 그래서 톱니의
+        /// 출하 기본 θ₀ 225°는 이 변경으로 <b>움직일 수 없다</b>.</para>
+        ///
+        /// <para><b>이 함수가 따로 있는 이유가 그 보장 하나다.</b> 바이어스를 <see cref="Snap45"/>
+        /// 안에 넣으면 톱니 기본 화면이 225° → 180°로 바뀐다(§1-3-4 «유일한 함정»).
+        /// <b>합치지 마라.</b></para>
+        /// </summary>
+        /// <param name="anchorPoints">앵커(캔버스 포인트).</param>
+        /// <param name="screenPoints">화면 크기(캔버스 포인트).</param>
+        /// <param name="upBiasPoints">위쪽 바이어스. 톱니 0 / 캐릭터 <see cref="FanUpBiasPoints"/>.</param>
+        public static float SnapFanBaseAngle(Vector2 anchorPoints, Vector2 screenPoints, float upBiasPoints)
+        {
+            Vector2 toCenter = screenPoints * 0.5f - anchorPoints;
+            if (upBiasPoints != 0f) toCenter.y += upBiasPoints;
+            return Snap45(toCenter);
+        }
+
+        /// <summary>
         /// 화면 밖 방지 사다리(32-1 + 실측 보강):
         ///  ① θ₀ 그대로 → ② θ₀ ±15°씩 최대 ±90° 회전 → ③ <b>부채꼴 전체 평행이동</b>(형태 보존,
         ///  <see cref="MaxGroupShiftPoints"/>까지) → ④ 지름 축소(44→36) 후 ①~③ 반복 →
@@ -1641,7 +1833,7 @@ namespace StickMate.Interaction
         private void ComputeLayout()
         {
             _screenPointsAtLayout = ScreenSizePoints();
-            _baseAngleDegrees = Snap45(_screenPointsAtLayout * 0.5f - _gearCenterPoints);
+            _baseAngleDegrees = SnapFanBaseAngle(_gearCenterPoints, _screenPointsAtLayout, _fanUpBiasPoints);
 
             if (TrySearchRotation(ButtonDiameterPoints, allowShift: false)) { FinalizeLayout(false); return; }
             if (TrySearchRotation(ButtonDiameterPoints, allowShift: true)) { FinalizeLayout(false); return; }

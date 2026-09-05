@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using StickMate.Core;
 using StickMate.Platform;
+using StickMate.States;
 
 namespace StickMate.Interaction
 {
@@ -63,6 +64,9 @@ namespace StickMate.Interaction
         private Collider2D[] _colliders;
         private IGlobalPointerButtonService _buttonService;
 
+        /// <summary>부채꼴(같은 GameObject) — <b>읽기만</b> 한다. <see cref="IsCursorOverFanButton"/> 참고.</summary>
+        private GearRadialMenuWidget _fan;
+
         /// <summary>
         /// 캐릭터 계층 <b>바깥</b>에 런타임 생성된 임시 클릭 대상(현재 사용처: 가출 연출의
         /// [간식 주기] 과자 — Interaction/RunawayRenderer.cs. 2026-09-02까지는 격파 미니게임의
@@ -106,6 +110,7 @@ namespace StickMate.Interaction
         private void Awake()
         {
             _agent = GetComponent<StickmanAgent>();
+            _fan = GetComponent<GearRadialMenuWidget>();
             // 루트/머리/팔다리 전부 — UniWindowController의 Raycast 히트테스트가 판정에 쓰는 집합과
             // 정확히 같게 맞춘다(두 절반의 판정 영역 일치, 클래스 문서 참고).
             _colliders = GetComponentsInChildren<Collider2D>(true);
@@ -133,7 +138,23 @@ namespace StickMate.Interaction
             using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Directors);   // [스톨구간] 계측
             if (_buttonService == null) return;
             if (!_buttonService.TryGetPrimaryButtonPressed(out bool down)) return;
+            ProcessGlobalButtonSample(down);
+        }
 
+        /// <summary>
+        /// 전역 폴링 경로의 본체 — <see cref="Update"/>가 매 프레임 버튼 상태를 읽어 넘긴다.
+        ///
+        /// <para><b>public인 이유</b>: 에디터/PlayMode에는 <see cref="IGlobalPointerButtonService"/>가 없어
+        /// <see cref="Update"/>가 첫 줄에서 돌아가므로, 테스트가 <b>같은 경로</b>(엣지 판정 → 히트/미스 분기 → 진단 로그)를
+        /// 태우려면 이 진입점이 필요하다(<see cref="SimulateMouseDownForTests"/>와 같은 관례). 프로덕션에서는
+        /// <see cref="Update"/>만 부른다.</para>
+        ///
+        /// <para>★ 2026-09-05 — 동작은 예전 <c>Update()</c> 본문과 같다(히트면 BeginPress, 놓기는 현재 상태로 판정).
+        /// 달라진 것은 <b>상승 엣지인데 콜라이더가 안 잡힌 분기</b>가 더 이상 침묵하지 않는다는 것뿐이다
+        /// (<see cref="NoteMissedPress"/> — 상태를 바꾸지 않는 진단 로그).</para>
+        /// </summary>
+        public void ProcessGlobalButtonSample(bool down)
+        {
             if (!_globalPressedInitialized)
             {
                 _globalPressedInitialized = true;
@@ -144,11 +165,85 @@ namespace StickMate.Interaction
             bool rising = down && !_globalPressedPrev;
             _globalPressedPrev = down;
 
-            if (rising && !_pressed && IsCursorOverHitbox()) BeginPress("전역폴링");
+            if (rising && !_pressed)
+            {
+                if (IsCursorOverHitbox()) BeginPress("전역폴링");
+                else NoteMissedPress("전역폴링");   // ★ 진단 전용 — 아무 상태도 바꾸지 않는다.
+                return;
+            }
             // 놓기 판정은 **엣지가 아니라 현재 상태**로 한다: Unity의 OnMouseUp이 먼저 튀어 press를
             // 끝내버린 경우 falling 엣지를 이미 놓쳤을 수 있고, 반대로 press가 유지되는 한 "버튼이
             // 실제로 떼졌는가"만 보면 되기 때문이다.
-            else if (!down && _pressed) EndPress("전역폴링");
+            if (!down && _pressed) EndPress("전역폴링");
+        }
+
+        // ============================================================================
+        // ★ 2026-09-05 진단 — 근접 미스 클릭 로그 (docs/DEBUG_WINDOWS_THROW_LANDING_STALL.md §6 (a))
+        // ============================================================================
+        // 규칙(근접 반경/레이트리밋/문자열)은 전부 Interaction/ClickHitboxNearMissPolicy.cs(순수)에 있고,
+        // 여기는 관측값을 모아 넘기고 카운터를 올릴 뿐이다. 카운터가 있는 이유: PlayMode 테스트가
+        // "먼 클릭은 로그를 안 남긴다"를 LogAssert의 부정형 없이 값으로 단언하기 위해서다.
+
+        /// <summary>근접 미스 클릭 로그를 실제로 남긴 횟수(진단/테스트 창구).</summary>
+        public int NearMissLogCount { get; private set; }
+
+        /// <summary>근접 미스였지만 레이트리밋에 걸려 남기지 않은 횟수.</summary>
+        public int NearMissSuppressedCount { get; private set; }
+
+        /// <summary>캐릭터에서 먼 클릭(로그 대상 아님) 횟수.</summary>
+        public int FarMissCount { get; private set; }
+
+        /// <summary>클릭은 왔는데 커서 좌표를 읽지 못한 횟수.</summary>
+        public int CursorUnavailablePressCount { get; private set; }
+
+        private float _lastNearMissLogUnscaledTime = float.NegativeInfinity;
+
+        private void NoteMissedPress(string source)
+        {
+            if (_agent == null) return;
+            StickmanBlackboard blackboard = _agent.Blackboard;
+            if (blackboard == null) return;
+            StickmanStateId state = blackboard.Machine != null ? blackboard.Machine.CurrentStateId : default;
+            float now = Time.unscaledTime;
+
+            if (!blackboard.TryGetCursorWorldPosition(out Vector2 cursorWorld))
+            {
+                CursorUnavailablePressCount++;
+                if (!ClickHitboxNearMissPolicy.ShouldLog(now, _lastNearMissLogUnscaledTime)) { NearMissSuppressedCount++; return; }
+                _lastNearMissLogUnscaledTime = now;
+                NearMissLogCount++;
+                Debug.Log(ClickHitboxNearMissPolicy.FormatCursorUnavailable(source, state, Time.frameCount));
+                return;
+            }
+
+            Rigidbody2D body = blackboard.Body;
+            if (body == null) return;
+            float height = blackboard.CharacterHeightWorld;
+            Vector2 foot = body.position;
+            Vector2 center = foot + new Vector2(0f, height * 0.5f);
+            float distance = Vector2.Distance(cursorWorld, center);
+            if (!ClickHitboxNearMissPolicy.IsNear(distance, height)) { FarMissCount++; return; }
+
+            if (!ClickHitboxNearMissPolicy.ShouldLog(now, _lastNearMissLogUnscaledTime)) { NearMissSuppressedCount++; return; }
+            _lastNearMissLogUnscaledTime = now;
+            NearMissLogCount++;
+
+            // 활성 콜라이더의 외접 사각형 — "콜라이더가 어디 있었는가"를 커서와 같은 좌표계로 남긴다(할당 0).
+            bool hasEnvelope = false;
+            Bounds envelope = default;
+            int active = 0;
+            int total = _colliders != null ? _colliders.Length : 0;
+            for (int i = 0; i < total; i++)
+            {
+                Collider2D c = _colliders[i];
+                if (c == null || !c.enabled) continue;
+                active++;
+                if (!hasEnvelope) { envelope = c.bounds; hasEnvelope = true; }
+                else envelope.Encapsulate(c.bounds);
+            }
+
+            Debug.Log(ClickHitboxNearMissPolicy.FormatNearMiss(source, cursorWorld, center, foot, height, distance,
+                hasEnvelope, envelope, active, total, state, Time.frameCount));
         }
 
         /// <summary>커서(OS 전역 좌표)가 지금 이 캐릭터의 콜라이더 중 하나 안에 있는지. Unity 표준
@@ -211,8 +306,44 @@ namespace StickMate.Interaction
             EndPress("Unity OnMouseUp");
         }
 
+        /// <summary>
+        /// ★ 2026-09-05 — <b>부채꼴 버튼이 캐릭터 잡기영역 위로 겹쳤을 때의 가드 한 줄</b>
+        /// (docs/UX_RIGHTCLICK_FAN_MENU.md §5-4 / 테스트 설계 F25′).
+        ///
+        /// <para>평상시에는 겹치지 않는다 — 앵커가 <b>몸 중심</b>이라 버튼 히트원과 GrabArea의 최소
+        /// 간격이 배율 1.00에서도 +29.93pt다. 그러나 배치 사다리의 <b>세로 일렬 폴백</b>(0.06~0.25%)과
+        /// <b>평행이동</b>(최대 48pt)에서는 버튼이 앵커 쪽으로 다가올 수 있고, 그때 같은 클릭이
+        /// «버튼 누름»과 «캐릭터 잡기»로 <b>둘 다</b> 해석된다.</para>
+        ///
+        /// <para>★ <b>판정식을 두 벌 쓰지 않는다</b> — <c>GearRadialMenuWidget.HitTest</c> 하나를 부른다.
+        /// 여기서 원·반지름·여백을 다시 계산하면 그 사본이 배치 사다리와 조용히 갈라지고,
+        /// 갈라짐은 «가끔 캐릭터가 안 잡힌다»로만 나타나 재현이 불가능해진다.</para>
+        ///
+        /// <para><b>여기가 단일 깔때기다</b>: Unity 표준 경로(<c>OnMouseDown</c>)와 전역 폴링 경로가
+        /// 모두 <see cref="BeginPress"/>를 지나므로 가드가 한 곳이면 충분하다.</para>
+        /// </summary>
+        private bool IsCursorOverFanButton()
+        {
+            if (_fan == null || !_fan.IsExpanded) return false;
+            if (_agent == null) return false;
+
+            StickmanBlackboard blackboard = _agent.Blackboard;
+            if (blackboard == null || blackboard.MainCamera == null) return false;
+            if (!blackboard.TryGetCursorWorldPosition(out Vector2 cursorWorld)) return false;
+
+            Vector3 cursorScreen = blackboard.MainCamera.WorldToScreenPoint(cursorWorld);
+            return _fan.HitTest(new Vector2(cursorScreen.x, cursorScreen.y)) >= 0;
+        }
+
         private void BeginPress(string source)
         {
+            if (IsCursorOverFanButton())
+            {
+                Debug.Log($"[StickmanClickHitbox] 캐릭터 잡기를 시작하지 않습니다({source}) — 커서가 " +
+                    "펼쳐진 부채꼴 버튼 위입니다. 이 클릭은 그 버튼의 것입니다(UX_RIGHTCLICK_FAN_MENU §5-4).");
+                return;
+            }
+
             _pressed = true;
             _pressStartTime = Time.time;
 

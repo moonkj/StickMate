@@ -7,30 +7,39 @@ using StickMate.Platform;
 namespace StickMate.Interaction
 {
     /// <summary>
-    /// ★ 캐릭터 창(장비 / 외형 / 보관함) — 2026-08-30 <b>외부 디자인 핸드오프 이식 라운드</b>.
-    /// 설계 확정본은 docs/UX_FLOW.md <b>33-7절</b>이고, 이 파일은 그 좌표표를 그대로 옮긴 것이다.
-    /// 좌표/색/글자 크기를 여기서 새로 고르지 않는다 — 고치고 싶으면 33-7을 먼저 고친다.
+    /// ★ 캐릭터 창(장비 / 외형 / 보관함 / 상점) — 2026-09-05 <b>인계본 3컬럼 이식 라운드</b>.
+    /// 정본 좌표표는 <c>docs/UX_EQUIPMENT_WINDOW_3COL_PORT.md</c>이고, 이 파일은 그 표를 그대로 옮긴
+    /// 것이다. 좌표/색/글자 크기를 여기서 새로 고르지 않는다 — 고치고 싶으면 그 문서를 먼저 고친다.
+    /// 비교 기준 그림은 <c>docs/handoff/design_handoff_equipment_window/render/</c>의
+    /// <c>spec_1042x802.png</c>다.
     ///
     /// ============================================================================
-    /// 골격 (1042 × 861, 화면 중앙 모달)
+    /// 골격 (1042 × 802, 화면 중앙 모달) — L-1 / L-2 / L-8
     /// ============================================================================
-    /// 타이틀바 40 + 본문 821. 본문은 좌측 244(상시 노출) + 우측 798(탭 4개).
-    ///  · 좌측: 이름(+잉크색 스와치·인라인 편집) / 초상화 / 프레즌스 / 게이지 2종 / 스탯 5행.
-    ///  · 우측: 탭바 → 카테고리 섹션 4개(각각 <b>가로 카드 캐러셀</b>) → 선택 상세.
-    /// 옛 [정보] 탭은 좌측 컬럼으로 <b>흡수</b>됐다(탭이 아니라 항상 보인다).
+    /// 헤더 66 + 본문 736. <b>옛 타이틀바 40은 헤더가 흡수했다</b>(L-2) — 제목이 두 벌이 되지 않고
+    /// 세로 여유가 34 -> 74로 2.2배가 된다. 헤더는 왼쪽에 이름·<c>Lv.N</c>·EXP 진행선(L-5), 가운데
+    /// 탭 4개, 오른쪽에 보유 칩·동전 칩·[설정]·[✕]를 놓고 <b>그 자식 사각형을 뺀 나머지가 드래그 표면</b>이다.
+    ///
+    /// 본문은 <b>3컬럼</b>이다(인계본 구조 그대로, 폭만 카드 열 하나를 뺀 값):
+    ///  · 컬럼 1 (306) — 프리뷰 무대 265×238 / 착용 슬롯 4행 / 선택 상세 카드(주 버튼 없음, L-9)
+    ///  · 컬럼 2 (292) — 기록(스트레스 게이지 + 4행) / 표시(이름·잉크) / 테마 세트 자리
+    ///  · 컬럼 3 (444) — 카테고리 블록들의 <b>세로 스크롤</b>. 블록마다 카드 <b>2열 격자</b>(186×208)
+    ///
+    /// <b>가로 캐러셀은 폐기됐다</b>(L-1). 카드가 세로로 자유로워져 44 -> 58pt 아이콘이 들어간다.
+    /// <b>탭별 가변 높이도 폐기됐다</b>(L-8) — 인계본 규칙 "창 크기와 헤더는 탭에 따라 변하지 않는다".
     ///
     /// ============================================================================
     /// 왜 우상단 앵커가 아니라 화면 중앙인가 / 왜 배경 딤을 깔지 않는가 (33-7-7)
     /// ============================================================================
-    /// 861pt 높이는 톱니 아래(top 84)에서 시작하면 84+861=945pt라 어떤 노트북에도 들어가지 않는다.
+    /// 802pt 높이는 톱니 아래(top 84)에서 시작하면 886pt라 어떤 노트북에도 들어가지 않는다.
     /// 그래서 중앙 정렬로 바꿨다. <b>2026-08-30 보강</b>: "중앙 <b>고정</b>"이던 부분만 리더가 뒤집었다 —
-    /// 열릴 때는 여전히 화면 중앙이지만 <b>타이틀바를 잡으면 옮길 수 있다</b>(화면 밖으로는 못 나간다).
+    /// 열릴 때는 여전히 화면 중앙이지만 <b>헤더를 잡으면 옮길 수 있다</b>(화면 밖으로는 못 나간다).
     /// 옮긴 자리는 기억하지 않는다. 반대로 스펙의 배경색 <c>#dcdbd7</c>(<see cref="UiChrome.ScreenScrim"/>)은
     /// <b>깔지 않는다</b> — 그건 브라우저 프로토타입의 "지면"이지 모달 딤이 아니고, 우리가 화면 전체를
     /// 덮으면 유저의 작업 화면을 통째로 가려 <b>비침해 원칙 2 정면 위반</b>이 된다.
     ///
     /// ============================================================================
-    /// 왜 타이틀바에 "ESC"라고 적지 않고 [✕]를 두는가
+    /// 왜 헤더에 "ESC"라고 적지 않고 [✕]를 두는가
     /// ============================================================================
     /// 스펙은 우측 상단에 <c>ESC</c> 힌트를 두고 그 키로 닫는다. 그런데 이 프로젝트에서
     /// <see cref="KeyCode.Escape"/>는 이미 <b>클릭관통 긴급 해제</b>(Core/StickmanAgent)에 묶여 있다.
@@ -39,17 +48,17 @@ namespace StickMate.Interaction
     /// 있지도 않은 동작을 힌트로 <b>주장하지 않는</b> 쪽이 이 프로젝트의 문구 원칙이기도 하다.
     ///
     /// ============================================================================
-    /// 카드는 <b>가로로 미는 캐러셀</b>이다 (2026-09-01)
+    /// 카드는 <b>세로 스크롤 격자</b>다 (2026-09-05, 인계본 이식)
     /// ============================================================================
-    /// 카테고리당 카드가 4장으로 고정이던 시절에는 격자 배치였다. 아이템이 늘면서 그 전제가 깨졌고,
-    /// 지금은 카테고리마다 <b>개수가 다르다</b>. 그래서 한 카테고리 = <see cref="ScrollRect"/> 한 줄이고,
-    /// 배치는 <see cref="HorizontalLayoutGroup"/>, 폭은 <see cref="ContentSizeFitter"/>, 잘라내기는
-    /// <see cref="RectMask2D"/>가 한다 — 포인터 처리를 새로 짜지 않는다.
+    /// 컬럼 3 전체가 <see cref="ScrollRect"/> 하나이고, 그 안에 카테고리 블록(제목줄 + 2열 격자)이
+    /// 차례로 쌓인다. 카드 좌표는 <see cref="LayoutCardGrid"/>가 <b>한 곳에서</b> 계산한다 —
+    /// 카테고리마다 아이템 수가 다르므로 레이아웃 그룹에 맡기면 블록 높이가 갈라진다.
     /// <b>다만</b> 이 창의 실제 클릭 경로는 uGUI가 아니라 전역 폴링이므로(아래 문단) 드래그도 폴링판이
     /// 한 벌 더 있다. 두 경로가 <b>절대값 공식</b>을 쓰므로 동시에 돌아도 더해지지 않는다.
     ///
-    /// 그리고 착용/해제는 이제 <b>카드 하단 버튼</b>이 한다(사용자 요청). 카드 본체 클릭은 여전히
-    /// "고르기"뿐이다 — 캐러셀을 밀다가 옷이 갈아입혀지는 사고를 구조적으로 없앤다.
+    /// 그리고 착용/해제는 <b>카드 하단 버튼</b>이 한다(사용자 요청). 카드 본체 클릭은 여전히
+    /// "고르기"뿐이다 — 격자를 밀다가 옷이 갈아입혀지는 사고를 구조적으로 없앤다.
+    /// <b>상세 카드에는 주 버튼을 넣지 마라</b>(L-9 = 2026-09-01 사용자 신고).
     ///
     /// ============================================================================
     /// 아이콘은 데이터, 그리기는 여기
@@ -63,8 +72,9 @@ namespace StickMate.Interaction
     /// 초상화 = 전용 미니 피규어의 실시간 촬영 (신규 SVG 금지 — 33-7-6)
     /// ============================================================================
     /// Interaction/CharacterPortraitStage.cs가 찍은 RenderTexture를 <see cref="RawImage"/>로 붙이기만
-    /// 한다. 액자만 스펙 값(204×196 / 여백 8 / 반지름 8)으로 바꿨고, 그 결과 <see cref="PortraitContentSize"/>
-    /// 에서 파생되는 카메라 종횡비가 <b>0.710 → 1.044</b>로 함께 바뀐다(교차 레이어 영향 — 보고 완료).
+    /// 한다. 액자는 <b>인계본 무대 값</b>(265×238 / 여백 8 / 반지름 <see cref="UiChrome.RadiusPanel"/>)이고,
+    /// 그 결과 <see cref="PortraitContentSize"/>에서 파생되는 카메라 종횡비가 <b>1.044 → 1.122</b>로
+    /// 함께 바뀐다(L-3 교차 레이어 영향 — 리더 승인 완료).
     ///
     /// ============================================================================
     /// 클릭 판정 / 매 프레임 할당 금지 (기존 관례 그대로)
@@ -84,177 +94,184 @@ namespace StickMate.Interaction
         // 같아 Unity가 그리기 순서를 보장하지 않았다(동률 오버레이 캔버스는 생성 순서에 의존).
         private const int SortingOrderTopMost = 31900; // 팝오버(31700) 위, 앱 제어 메뉴(32760) 아래.
 
-        // ==================== 33-7-2 확정 치수 (캔버스 유닛 == OS 포인트) ====================
+        // ==================== 인계본 3컬럼 확정 치수 (캔버스 유닛 == OS 포인트) ====================
+        //
+        // 정본: docs/UX_EQUIPMENT_WINDOW_3COL_PORT.md §4. 아래 값은 그 표의 <b>사본이 아니라 출처</b>다 —
+        // 테스트는 이 상수를 참조하고, 숫자를 다시 적지 않는다(CLAUDE.md 하드코딩 금지).
 
-        /// <summary>창 가로. ★ 2026-09-02 <b>880 → 1042</b>(사용자 확정).
-        /// <para>핸드오프의 1242는 Windows 2560×1600@200%(논리 1280)에서 화면 폭의 97.3%,
-        /// 1920×1080@150%(논리 1280)에서는 <b>108.1%</b> = 화면보다 크다. 이 창은 바깥 클릭으로
-        /// 닫히지 않으므로(사용자 확정) 화면을 다 덮으면 탈출구가 [✕] 하나뿐인 상태로 갇힌다.
-        /// 1042는 같은 환경에서 폭 점유 81.4%이고, 카드가 한 줄에 3.5장 → <b>4.5장</b> 보인다
-        /// (발견 단서인 "반쯤 걸친 카드"는 그대로 유지된다 — <see cref="CarouselFullCards"/>).</para>
-        /// <para>★ <b>세로는 아직 861이다.</b> 확정된 802는 <b>이 레이아웃에서 성립하지 않는다</b> —
-        /// 본문이 세로로 861pt를 실제로 쓰고 있어(40 + 72 + 4×156 + 103 + 22) 창만 802로 줄이면
-        /// 상세 패널이 <b>모든 화면에서</b> 37pt 잘린다. 근거와 대안은 리더 보고에 적었다.</para></summary>
+        /// <summary>창 가로. ★ 2026-09-02 <b>880 → 1042</b>(사용자 확정), 2026-09-05 <b>유지</b>.
+        /// <para>1042는 되돌리지 않는다. 그리고 그 숫자는 원래 <b>3컬럼 계산에서 나온 값</b>이다 —
+        /// 인계본 1240 = 306 + 292 + 642에서 카드 열 하나(186 + 12)를 뺀 것이 정확히 1042다.
+        /// 그래서 컬럼 1·2를 설계값 그대로 두면 카드가 <b>설계값 186.00pt</b>로 재현된다(§2-2).</para>
+        /// <para>인계본의 1242는 Windows 1920×1080@150%(논리 1280)에서 <b>108.1%</b> = 화면보다 크다.
+        /// 이 창은 바깥 클릭으로 닫히지 않으므로(사용자 확정) 화면을 다 덮으면 갇힌다.</para></summary>
         private const float PanelWidth = 1042f;
-        private const float TitleHeight = 40f;
 
-        /// <summary>본문 마지막 요소(상세 패널) 아래에 남기는 여백. 예전에 861/696/103에서 <b>역산되던</b>
-        /// 값을 상수로 꺼냈다 — 이제 창 높이가 탭마다 달라지므로(<see cref="PanelHeightForTab"/>)
-        /// 이 값이 파생의 출발점이 되어야 한다. 861 = 40 + 696 + 103 + <b>22</b>.</summary>
-        private const float BodyBottomMargin = 22f;
+        /// <summary>창 세로 — <b>탭과 무관하게 고정</b>(L-8). 인계본 규칙이 명시적이다:
+        /// "창 크기와 헤더는 탭에 따라 변하지 않는다".
+        /// <para>옛 861은 <b>사라진 레이아웃</b>(섹션 4칸 × 156)의 예산이었다. 3컬럼에서는 세로 섹션이라는
+        /// 단위 자체가 없어지므로 그대로 두면 59pt를 <b>예약만</b> 하게 된다 — P0-1이 고친 결함의 재범이다.
+        /// 구조적 최소는 728pt이고 802에서 여유가 <b>74</b>다(§3-2/§3-6).</para></summary>
+        internal const float PanelHeight = 802f;
 
-        /// <summary>가장 높은 탭(섹션 4개)의 창 높이 = 종전 고정값 861. 화면 클램프의 상한이자
-        /// 캔버스/차단막 계산의 기준으로만 쓴다.</summary>
-        private const float PanelMaxHeight = TitleHeight + SectionCount * SectionStep - SectionsTopY
-                                             + DetailHeight + BodyBottomMargin;   // 861
+        /// <summary>헤더 — <b>옛 타이틀바 40을 흡수했다</b>(L-2). 드래그 표면이 "타이틀바"에서
+        /// "헤더 − 알려진 자식 사각형들"로 바뀐다(<see cref="TryBeginPanelDrag"/>).</summary>
+        private const float HeaderHeight = 66f;
 
-        private const float BodyHeight = PanelMaxHeight - TitleHeight;   // 821 — 페이지 컨테이너 크기(마스크가 자른다)
+        internal const float BodyHeight = PanelHeight - HeaderHeight;   // 736
         private const float ScreenMargin = 16f;
 
-        // ---- 좌측 컬럼 ----
-        private const float LeftWidth = 244f;
-        private const float LeftPadX = 20f;
-        private const float LeftContentWidth = LeftWidth - LeftPadX * 2f;   // 204
-        private const float NameY = -22f;
-        private const float SubY = -50f;
-        private const float PortraitY = -83f;
-        private const float PortraitHeight = 196f;
-        private const float PortraitPadding = 8f;
-        private const float PresenceY = -297f;
-        private const float StressLabelY = -330f;
-        private const float StressTrackY = -348f;
-        private const float XpLabelY = -364f;
-        private const float XpTrackY = -382f;
-        private const float TrackHeight = 4f;
-        private const float StatsTopY = -404f;
-        private const float StatsFirstRowY = -408f;
-        private const float StatRowStep = 32f;
-        private const float StatRowHeight = 31f;
+        // ---- 헤더 내부 (§4-2) ----
+        private const float HeaderPadLeft = 28f;
+        private const float HeaderPadRight = 24f;
+        private const float HeaderLevelWidth = 44f;
+        private const float HeaderXpTrackHeight = 2f;
+        private const float HeaderChipHeight = 32f;
+        private const int HeaderChipRadius = 16;
+        private const float HeaderChipY = 17f;
+        private const float HeaderChipPadX = 12f;
+        private const float HeaderCoinChipWidth = 112f;
+        private const float HeaderOwnedChipWidth = 100f;
+        private const float HeaderSettingsChipWidth = 48f;
+
+        // ★ 오른쪽 칩의 <b>순서가 곧 우선순위</b>다. 창이 좁아지면 왼쪽부터 접히므로
+        //   (<see cref="SyncHeaderChips"/>), 왼쪽일수록 덜 중요한 것을 둔다:
+        //     [✕](절대 안 접는다) < [설정](설정창의 유일한 GUI 경로) < 동전 < 보유(순수 정보).
+        //   인계본 그림은 「보유 · 동전 · ✕」 순이고, [설정]은 우리 것이라 인계본에 자리가 없다 —
+        //   [✕] 옆에 붙이는 것은 옛 타이틀바에서 두 크롬 칩이 나란히 있던 배치 그대로다.
+        private const float HeaderCloseChipInset = HeaderPadRight;
+        private const float HeaderSettingsChipInset = HeaderCloseChipInset + HeaderChipHeight + UiChrome.Space3;
+        private const float HeaderCoinChipInset = HeaderSettingsChipInset + HeaderSettingsChipWidth + UiChrome.Space3;
+        private const float HeaderOwnedChipInset = HeaderCoinChipInset + HeaderCoinChipWidth + UiChrome.Space3;
+        private const float HeaderChipBlockWidth = HeaderOwnedChipInset + HeaderOwnedChipWidth;
+        private const float HeaderTabStripHeight = 34f;
+        private const float HeaderTabHeight = 28f;
+        private const float HeaderTabPadX = 14f;
+        private const float HeaderTabGap = 2f;
+        private const float HeaderTabStripPad = 3f;
+
+        /// <summary>구분선/테두리 한 겹. UGUI는 테두리를 <b>안쪽</b>에 그리므로 치수를 늘리지 않는다.</summary>
+        private const float DividerThickness = 1f;
+
+        // ---- 3컬럼 골격 (§4-3) ----
+        private const float Col1Width = 306f;
+        private const float Col2X = Col1Width;                     // 306
+        internal const float Col2Width = 292f;
+        private const float Col3X = Col2X + Col2Width;             // 598
+        private const float Col3Width = PanelWidth - Col3X;        // 444
+        internal const float ColPadY = 20f;
+
+        /// <summary>컬럼 하나가 세로로 쓸 수 있는 높이(위아래 패딩 뺀 값).</summary>
+        private const float ColContentHeight = BodyHeight - ColPadY * 2f;   // 696
+
+        // ---- 컬럼 1 — 프리뷰 / 착용 슬롯 / 상세 카드 ----
+        private const float Col1PadX = 20f;
+
+        /// <summary>컬럼 1 콘텐츠 폭 265 = 306 − 20(좌) − 20(우) − 1(구분선). 인계본 무대 폭과 같다.</summary>
+        private const float Col1ContentWidth = Col1Width - Col1PadX * 2f - DividerThickness;   // 265
+
+        private const float StageY = -ColPadY;                     // -20
+        private const float StageHeight = 238f;
+        private const float StagePadding = 8f;
+        private const float StageFloorGlowHeight = 74f;            // 인계본 바닥 광원 31.1%
+
+        /// <summary>착용 슬롯 4행의 첫 줄 위 끝 = 무대 바닥 − <see cref="UiChrome.Space3"/>.</summary>
+        private const float SlotRowsTopY = StageY - StageHeight - UiChrome.Space3;   // -270
+        private const float SlotRowHeight = 46f;                   // ≥ MinTargetSizePoints 24 × 1.9
+        private const float SlotRowStep = 52f;
+        private const float SlotIconSize = 24f;
+
+        /// <summary>상세 카드 높이(§4-3-1 검산: 실측 143 ≤ 상한 231).</summary>
+        private const float DetailCardHeight = 143f;
+
+        /// <summary>상세 카드는 컬럼 1 <b>바닥에 정렬</b>한다 — 남는 세로는 슬롯 행과 상세 카드
+        /// 사이가 먹는다(§4-3-1의 Spacer).</summary>
+        private const float DetailCardY = -(BodyHeight - ColPadY) + DetailCardHeight;   // -573
+
+        // ---- 컬럼 2 — 능력치 / 기록 / 표시 / 테마 세트 ----
+        // ★ 「능력치」 블록의 치수와 컬럼 2 스크롤은 CharacterInfoWindow.Stats.cs에 있다.
+        private const float Col2PadX = 18f;
+        internal const float Col2ContentWidth = Col2Width - Col2PadX * 2f;   // 256
+        internal const float SectionLabelHeight = 18f;
+        internal const float TrackHeight = 4f;
+        internal const float RecordRowHeight = 26f;
         private const float SwatchSize = 12f;
         private const float SwatchGap = 8f;
 
-        // ---- 우측 컬럼 ----
-        private const float RightX = LeftWidth;                        // 244
-        private const float RightWidth = PanelWidth - LeftWidth;       // 798 (폭 1042 기준)
-        private const float RightPadX = 22f;
-        private const float RightContentWidth = RightWidth - RightPadX * 2f; // 754 (= 이 창 오른쪽 열의 끝선)
-        private const float TabStripY = -22f;
-        private const float TabStripHeight = 32f;
-        private const float TabGap = 22f;
-        private const float TabUnderlineHeight = 2f;
-        private const float SectionsTopY = -72f;
-        private const float SectionStep = 156f;
-        private const float SectionHeight = 136f;
-        private const float DetailHeight = 103f;
+        /// <summary>게이지 라벨 줄 높이(STRESS의 「이름 · 값」 줄). ★ 예전에는 <c>13f</c>가
+        /// <b>세 곳</b>에 흩어져 있었다(라벨 · 값 · 트랙 y). 컬럼 2가 블록 단위로 높이를 계산하게 된
+        /// 지금은 네 번째가 생기므로 하나로 모은다.</summary>
+        internal const float GaugeLabelHeight = 13f;
 
-        // ---- 카테고리 섹션 헤더 한 줄:  ● 제목  코드  ────────────  n / 6 ----
-        //
-        // ★ 2026-09-02 회귀 — 이 세 자리가 <b>숫자로 박혀</b> 있었다(구분선 142..544, 카운터 548..592).
-        //   창 폭이 880 -> 1042가 되면서 섹션 상자·카드줄·상세 패널은 RightContentWidth(592 -> 754)를
-        //   따라갔는데 <b>헤더만 592에 남았다</b>. 그래서 카드줄이 자기 헤더보다 162pt <b>바깥에서</b>
-        //   끝났다 — 2026-09-01 사용자 신고("어설픈데서 절반 짤려있어서 더 이상함")의 좌우가 뒤집힌
-        //   형태이고, 그때 세운 규칙("이 창 오른쪽 열의 끝선은 하나다", CarouselViewportWidth 문서)이
-        //   깨진 것이다. 그 규칙을 지키는 유일한 방법은 숫자를 지우고 열 폭에서 파생시키는 것이다.
-        private const float SectionCountWidth = 44f;
-        private const float SectionCountX = RightContentWidth - SectionCountWidth;         // 710
-        private const float SectionDividerX = 142f;                                        // 코드 라벨 다음
-        private const float SectionDividerGap = 4f;                                        // 선과 카운터 사이 틈
-        private const float SectionDividerWidth =
-            RightContentWidth - SectionDividerX - SectionDividerGap - SectionCountWidth;   // 564
+        /// <summary>게이지 라벨 줄과 트랙 사이 간격.</summary>
+        internal const float GaugeLabelGap = 4f;
 
-        // ★ 2026-09-01 P0-1 — <b>DetailY 상수(-696)를 지웠다.</b>
-        //
-        //   -696은 "섹션 4개분(4 × 156 = 624)을 다 쓴 뒤"라는 뜻이었고, 그래서 섹션이 3개뿐인 [외형]
-        //   탭에서도 <b>없는 4번째 섹션의 자리를 예약</b>했다. 마지막 카드 아래에 176pt(창 높이 861의
-        //   20.4%)가 비었다 — 취향 문제가 아니라 상한(SectionCount)을 고정 예산으로 쓴 레이아웃 버그다
-        //   (docs/UI_SURFACE_SPEC.md §3.1: 예측 176 vs 캡처 실측 175).
-        //
-        //   이제 상세 패널의 y와 창 높이는 <b>그 탭이 실제로 보여줄 섹션 수</b>에서 파생된다.
-        //   [보관함]은 섹션이 아니라 20줄 목록이라 종전 최대 높이를 그대로 쓴다(빈칸이 없다).
+        /// <summary>게이지 한 벌(라벨 줄 + 간격 + 트랙)이 세로로 먹는 높이 = 21.</summary>
+        internal const float GaugeBlockHeight = GaugeLabelHeight + GaugeLabelGap + TrackHeight;
 
-        /// <summary>이 탭의 본문이 세로로 몇 칸(SectionStep)을 차지하는가.
-        /// 카드 탭은 실제 카테고리 수, 그 밖(<see cref="TabPage.Inventory"/>/<see cref="TabPage.Placeholder"/>)은
-        /// 목록이 쓰는 최대치. <b>본문 종류로 가른다</b> — <c>tab == Tab.Inventory</c>로 적어 두면
-        /// 네 번째 탭이 섹션 0개짜리 창(높이 237pt)으로 쪼그라든다.</summary>
-        private static int LayoutStepsForTab(Tab tab)
-            => Def(tab).Page == TabPage.Cards ? SectionCountForTab(tab) : SectionCount;
+        /// <summary>「표시」 블록의 이름 줄 높이. ★ 예전에는 <c>25f</c>가 <b>네 곳</b>에 흩어져 있었고
+        /// (히트 상자 · 라벨 · 입력 상자 · 다음 y 계산), 블록 높이를 계산해야 하는 지금은 그 다섯 번째가
+        /// 생긴다. 폭 1042 사고(헤더는 따라갔는데 카드줄은 안 따라감)와 같은 형태를 미리 막는다.</summary>
+        internal const float NameRowHeight = 25f;
 
-        /// <summary>상세 패널의 위 끝(본문 좌표, 아래가 음수).</summary>
-        private static float DetailYForTab(Tab tab) => SectionsTopY - LayoutStepsForTab(tab) * SectionStep;
+        // ---- 컬럼 3 — 카테고리 블록의 세로 스크롤 + 카드 2열 격자 (§4-3-3) ----
+        private const float Col3PadX = 26f;
+        private const float Col3PadTop = 22f;
+        private const float Col3PadBottom = 30f;
 
-        /// <summary>이 탭에서의 창 높이. [장비]/[보관함]/[상점] 861, [외형] <b>705</b>(= 861 − 156).</summary>
-        private static float PanelHeightForTab(Tab tab)
-            => TitleHeight - DetailYForTab(tab) + DetailHeight + BodyBottomMargin;
+        /// <summary>세로 스크롤바가 쓰는 폭. 인계본이 콘텐츠 폭 계산에서 빼는 값이고, 이 8pt를 빼야
+        /// 카드가 설계값 186.00으로 떨어진다.</summary>
+        private const float Col3ScrollbarInset = 8f;
 
-        /// <summary>탭 전환 시 창 높이가 바뀌는 데 걸리는 시간. 순간이동하면 화면 중앙 고정 창이
-        /// "깜빡 튄" 것처럼 보인다 — 부채꼴 호버(0.09초)보다 조금 길고 눈이 따라갈 수 있는 값.</summary>
-        private const float PanelHeightAnimateSeconds = 0.12f;
+        private const float Col3ContentWidth =
+            Col3Width - Col3PadX * 2f - Col3ScrollbarInset;   // 384
 
-        // ---- 카드 ----
-        // ★ 2026-09-01 사용자 신고("장비카드가 어설픈데서 절반 짤려있어서 더 이상함. 좀더 오른쪽까지
-        //   채워져야함"): 걸침(peek) 자체는 옳았지만 <b>자르는 선의 위치</b>가 틀렸다. 뷰포트가 520.5라
-        //   섹션 오른쪽 끝(592)에서 71.5pt 못 미친 <b>허공</b>에서 카드가 잘렸다 — 바로 위 "n / 6"
-        //   카운터가 592에서 끝나는데 카드줄만 520.5에서 끝나니 "더 있다"가 아니라 "깨졌다"로 읽힌다.
-        //   이제 자르는 선을 592(= 카운터 오른쪽 끝)에 맞추고, 그 폭에 3.5장이 떨어지도록 카드를 키운다.
-        private const float CardGap = 9f;
-        private const float CardWidth = 161f;
-        private const float CardStep = CardWidth + CardGap;   // 170
+        private const int CardColumns = 2;
+        private const float CardGap = 12f;
 
-        /// <summary>캐러셀 뷰포트에 <b>온전히</b> 들어오는 카드 수. 나머지 한 장은 일부러 걸치게 둔다.
-        /// <para>★ 2026-09-02 — 3을 적어 두었더니 창 폭이 바뀌는 순간 <see cref="CarouselPeekFraction"/>이
-        /// 1.5(= 카드 한 장보다 넓은 "걸침")라는 <b>거짓말</b>이 됐다. 이제 뷰포트에서 <b>센다</b>:
-        /// 폭 880에서 3, 폭 1042에서 4.</para></summary>
-        private const int CarouselFullCards = (int)((CarouselViewportWidth + CardGap) / CardStep);
+        /// <summary>카드 격자가 <b>설계대로 2열</b>로 성립하는 최소 컬럼 폭 = <see cref="Col3Width"/> 444.
+        /// <para>좁은 창에서 무엇을 먼저 접을지 정하는 기준이다 — 컬럼 1·2보다 <b>카드의 2열 리듬</b>을
+        /// 먼저 지킨다. 이 창의 목적이 "다른 것으로 갈아입는다"이고 착용 경로가 카드 버튼 하나뿐이라,
+        /// 마지막까지 남아야 하는 것은 카드다.</para></summary>
+        private const float MinGridColumnWidth = Col3PadX * 2f + Col3ScrollbarInset + CardWidth * 2f + CardGap;
 
-        /// <summary>걸치는 카드가 보이는 비율. 이제 <b>입력이 아니라 결과</b>다 — 자르는 선을
-        /// 열 오른쪽 끝에 못 박았으므로 비율은 거기서 떨어진다(폭 880에서 50.9% / 1042에서 46.0%).
-        /// 0.8을 넘으면 온전한 카드로 보여 다시 "이게 전부"가 되고, 너무 작으면 가장자리 그림자로
-        /// 보인다 — 그 창은 <c>CardWidth</c>로 맞춘다.</summary>
-        private const float CarouselPeekFraction =
-            (CarouselViewportWidth - CardStep * CarouselFullCards) / CardWidth;   // 0.509
+        /// <summary>1열로 내려앉는 하한. 이 아래로는 접을 것이 더 없다.</summary>
+        private const float MinSingleColumnGridWidth = Col3PadX * 2f + Col3ScrollbarInset + CardWidth;   // 246
 
-        /// <summary>
-        /// ★ 캐러셀 뷰포트 폭 = <b>섹션 폭 그대로</b>. 이 창의 오른쪽 열에 있는 모든 것(구분선+"n / 6"
-        /// 카운터, 상세 패널)이 <see cref="RightContentWidth"/>에서 끝나므로 카드줄도 같은 선에서
-        /// 끝나야 한다 — <b>숫자가 아니라 그 관계</b>가 규칙이다.
-        ///
-        /// <para>★ 2026-09-02 — 이 문장이 "…592에서 끝나므로"라고 <b>숫자로</b> 적혀 있었고, 헤더 쪽
-        /// 좌표도 같은 숫자로 박혀 있었다. 창이 1042로 넓어지자 카드줄만 754로 따라가고 헤더는 592에
-        /// 남아 규칙이 깨졌다(InfoWindowCardRowEdgeTests가 162pt 차이로 잡았다). 지금은 헤더도
-        /// <see cref="SectionCountX"/>/<see cref="SectionDividerWidth"/>로 파생된다.</para>
-        ///
-        /// <para><b>왜 이 상수가 한 번 520.5였는가</b>(2026-09-01 오전): 592는 <see cref="CardStep"/> 150
-        /// 짜리 카드가 <b>정확히 4장</b> 들어가고 1pt만 남는 폭이라 "모자는 4개구나"로 확정됐다
-        /// (페르소나 M1 — 6종 중 2종이 발견되지 않음). 그래서 카드는 그대로 두고 <b>창문만</b> 520.5로
-        /// 좁혀 마지막 카드를 반쯤 걸치게 했다.</para>
-        ///
-        /// <para><b>왜 되돌리는가</b>(같은 날 사용자 신고 "어설픈데서 절반 짤려있어서 더 이상함"):
-        /// 걸침은 <b>모서리에 걸려야</b> "계속된다"로 읽힌다. 520.5는 아무 모서리도 아닌 허공이라
-        /// 오른쪽에 71.5pt를 비워 둔 채 카드만 동강난 그림이 됐다. 이제 자르는 선을 열 끝에 두고
-        /// 카드 폭(141→161)으로 3.5장을 맞춘다 — 발견 단서는 유지하고 어중간함만 없앤다.
-        /// 덤으로 이름 칸이 70→90pt가 되어 P0-5의 한글 7자(≈84pt) 이름이 말줄임 없이 들어간다.</para>
-        /// </summary>
-        private const float CarouselViewportWidth = RightContentWidth;   // 592 -> 754(폭 1042)
+        /// <summary>카드 폭 <b>186.00</b> — 인계본 3열(폭 1242)에서 나온 값과 소수점까지 같다(§2-2).</summary>
+        private const float CardWidth = (Col3ContentWidth - CardGap * (CardColumns - 1)) / CardColumns;
 
-        private const float CardHeight = 108f;
-        private const float CardTopInSection = -28f;
-        private const float ThumbX = 11f;
+        /// <summary>카드 높이. 세로 검산(§4-3-3): 13 + 78 + 9 + 16 + 9 + 15 + 3 + 13 + 9 + 29 + 13 = 207
+        /// → 짝수 규칙으로 208.</summary>
+        private const float CardHeight = 208f;
 
-        // ★ 2026-09-01 — 카드 하단에 [착용]/[해제] 버튼이 들어오면서 <b>같은 108pt 안에서</b> 내부를
-        //   다시 나눴다. 카드를 키울 수 없는 이유는 세로 예산이 이미 정확히 꽉 차 있어서다:
-        //   섹션 4개 × SectionStep 156 = 624 = SectionsTopY(-72) ~ DetailYForTab([장비])(-696) 사이 전부.
-        //   그래서 썸네일 62 -> 54, 이름줄 16 -> 14로 줄이고 남은 22pt를 버튼에 준다.
-        private const float ThumbY = -8f;
-        /// <summary>카드 좌우 여백(<see cref="ThumbX"/>)을 뺀 나머지 — <b>숫자를 따로 적지 않는다</b>.
-        /// 카드 폭이 바뀌면 썸네일·하단 버튼·이름 칸이 전부 따라온다.</summary>
-        private const float ThumbWidth = CardWidth - ThumbX * 2f;   // 139
-        private const float ThumbHeight = 54f;
+        private const float CardStepX = CardWidth + CardGap;    // 198
+        private const float CardStepY = CardHeight + CardGap;   // 220
 
-        /// <summary>썸네일(119×54pt) 안에서 아이콘이 차지하는 정사각 크기.
-        /// <para>40 -> 50(2026-08-30 "아이콘이 조잡") -> <b>44</b>(2026-09-01 카드 하단 버튼).
-        /// 썸네일 높이의 81%라는 <b>비율</b>은 50/62와 같게 유지했다 — 줄어든 것은 썸네일이지
-        /// 아이콘이 차지하는 몫이 아니다.</para></summary>
-        private const float IconSize = 44f;
+        /// <summary>카테고리 블록 제목줄: ● 이름 코드 ──── n/6.</summary>
+        private const float CategoryHeaderHeight = 18f;
+        private const float CategoryGridTopY = -(CategoryHeaderHeight + UiChrome.Space3);   // -30
+        private const float CategoryBlockGap = UiChrome.Space6;                             // 24
+        private const float CategoryCountWidth = 44f;
+        private const float CategoryCountX = Col3ContentWidth - CategoryCountWidth;
+        private const float CategoryDividerX = 168f;
+        private const float CategoryDividerGap = 6f;
+        private const float CategoryDividerWidth =
+            CategoryCountX - CategoryDividerX - CategoryDividerGap;
+
+        // ---- 카드 내부 (§4-3-3) ----
+        private const float CardPadX = 13f;
+        private const float CardContentWidth = CardWidth - CardPadX * 2f;   // 160
+        private const float ThumbX = CardPadX;
+        private const float ThumbY = -13f;
+        private const float ThumbWidth = CardContentWidth;
+        private const float ThumbHeight = 78f;
+
+        /// <summary>카드 아이콘 정사각 크기. <b>44 → 58</b>(인계본 값 그대로, 면적 1.74배) —
+        /// 인계본 Overview가 문제 ①로 꼽은 "아이템 아트 퀄리티"에 대한 가장 큰 단일 개선이다.
+        /// 3컬럼에서 카테고리가 세로 섹션이 아니라 스크롤 안의 블록이 되면서 카드가 세로로
+        /// 자유로워진 덕분에 가능해졌다.</summary>
+        private const float IconSize = 58f;
 
         /// <summary>아이콘 획 두께. 핸드오프 스펙은 <b>40 viewBox 기준 1.7</b>이므로 <see cref="IconSize"/>가
         /// 커지면 <b>같은 비율로</b> 따라와야 형태가 원본과 같다(두께만 그대로 두면 선이 가늘어진다).</summary>
@@ -262,34 +279,46 @@ namespace StickMate.Interaction
         private const float LockBadgeWidth = 18f;
         private const float LockBadgeHeight = 17f;
 
-        private const float CardNameY = -64f;
-        private const float CardTextHeight = 14f;
+        /// <summary>등급 리본 좌우 인셋 — <b>썸네일과 같은 자리</b>(<see cref="CardPadX"/> 13 → 폭 160).
+        /// <para>★ 인계본 §4-3-3은 인셋 <b>14</b>(폭 158)라고 적는다. 1pt 차이는 화면에서 구별되지
+        /// 않는 반면, 인셋을 두 곳에서 정하면 카드 폭이 바뀌는 날 한쪽만 따라간다 — 이 저장소가
+        /// 헤더/카드줄 끝선에서 실제로 당한 형태다. 그래서 <b>썸네일에서 파생</b>시키고, 그 불변식을
+        /// <c>RarityRibbonSurfaceTests</c>가 잠근다. 카드 모서리 반지름
+        /// <see cref="UiChrome.RadiusCard"/> 12보다 커서 둥근 모서리 밖으로 삐져나오지도 않는다.</para></summary>
+        private const float CardRibbonInset = CardPadX;
+        private const float CardRibbonWidth = CardContentWidth;   // 160
 
-        // ★ 2026-09-01 P0-5 — 이름 상자와 메타 상자가 <b>맞닿아 있었다</b>.
-        //   이름 x 11..89(폭 78, Overflow) / 메타 x 89..130 → 두 상자 사이 간격 <b>0pt</b>.
-        //   "리틀스틱메이트"(한글 7자 ≈ 84pt)는 78을 6pt 넘겨 "착용 중"과 부딪혔다
-        //   (캡처 실측 간격 1.2pt. 다른 카드는 40pt 이상이라 그 카드만 깨져 보였다).
-        //   이제 간격을 Space2로 <b>못 박고</b> 이름 폭을 거기서 뺀다 — 숫자를 두 곳에 적지 않는다.
-        //   ★ 2026-09-01 오후: 메타 칸 폭("착용 중" 41pt)을 <b>원본</b>으로 두고 x를 오른쪽 여백에서
-        //   역산한다. 예전에는 x가 원본이라 카드 폭이 커져도 메타가 왼쪽에 붙은 채 남았다.
-        private const float CardMetaWidth = 41f;
-        private const float CardMetaX = CardWidth - ThumbX - CardMetaWidth;          // 109
-        private const float CardNameGap = UiChrome.Space2;                           // 8
-        private const float CardNameWidth = CardMetaX - ThumbX - CardNameGap;        // 90
+        // 이름 줄: 왼쪽 이름 / 오른쪽 등급 낱말.
+        private const float CardNameY = -100f;
+        private const float CardTextHeight = 16f;
+        private const float CardRarityWidth = 44f;
+        private const float CardRarityX = CardPadX + CardContentWidth - CardRarityWidth;
+        private const float CardNameGap = UiChrome.Space2;
+        private const float CardNameWidth = CardRarityX - CardPadX - CardNameGap;
+
+        // 상태 줄(보유/착용 중/LV.n) + 메타 줄(카테고리).
+        private const float CardMetaY = -125f;
+        private const float CardMetaHeight = 15f;
+        private const float CardMetaWidth = CardContentWidth;
+        private const float CardMetaX = CardPadX;
+        private const float CardCategoryY = -143f;
+        private const float CardCategoryHeight = 13f;
 
         /// <summary>카드 하단 [착용]/[해제] 버튼 — 이 창에서 옷을 갈아입히는 <b>유일한</b> 손잡이다.
         /// <para>★ 2026-09-01: 상세 패널에도 같은 버튼이 있었는데(사용자 신고 "각 장비별 착용버튼으로
-        /// 했는데 왜 옛날처럼 하단에 착용상자가 따로 있음?") 그쪽을 걷어냈다. 상태→라벨/색 매핑은
-        /// 여전히 <see cref="StyleActionButton"/> 한 곳뿐이다.</para></summary>
-        private const float CardActionY = -80f;
+        /// 했는데 왜 옛날처럼 하단에 착용상자가 따로 있음?") 그쪽을 걷어냈다. <b>되살리지 마라</b>(L-9).
+        /// 상태→라벨/색 매핑은 여전히 <see cref="StyleActionButton"/> 한 곳뿐이다.</para></summary>
+        private const float CardActionY = -165f;
 
-        /// <summary>★ 2026-09-02: 22 → <b>24</b>. 리터럴이 아니라 <see cref="UiChrome.MinTargetSizePoints"/>
-        /// (WCAG 2.2 2.5.8 Target Size (Minimum))에서 가져온다 — 하한이 움직이면 여기가 따라와야지,
-        /// 숫자를 베껴 두면 하한과 조용히 갈라진다.
-        /// <para>세로 예산 검산: <see cref="CardActionY"/> 80 + 24 = 104 ≤ <see cref="CardHeight"/> 108.
-        /// 카드 아래 여백이 6 → <b>4pt</b>로 줄지만 넘치지 않는다.</para></summary>
-        private const float CardActionHeight = UiChrome.MinTargetSizePoints;
-        private const float CardActionWidth = ThumbWidth;   // 썸네일과 같은 폭 = 카드 좌우 여백 11pt와 정렬
+        /// <summary>카드 [착용] 버튼 높이 — 인계본 값 <b>29</b>.
+        /// <para>숫자를 그대로 적지 않는다. <see cref="UiChrome.MinTargetSizePoints"/>(WCAG 2.2 2.5.8
+        /// Target Size (Minimum)) <b>위로 얼마</b>인지를 적는다 — 하한이 움직이면 이 값이 따라와야지,
+        /// 리터럴을 베껴 두면 하한과 조용히 갈라진다(옛 값 22f가 정확히 그렇게 하한 아래에 있었다).</para>
+        /// <para>여유 5는 인계본 29에서 우리 하한 24를 뺀 값이고, 그 결과가 하한을 실제로 넘는지는
+        /// 정적 생성자가 <b>한 번 더</b> 비교한다.</para></summary>
+        private const float CardActionHeadroom = 5f;
+        private const float CardActionHeight = UiChrome.MinTargetSizePoints + CardActionHeadroom;   // 29
+        private const float CardActionWidth = CardContentWidth;
 
         /// <summary>한 탭에 들어갈 수 있는 카테고리 수의 <b>상한</b>. 실제로 보여줄 수는 탭마다 다르고
         /// <see cref="SectionCountForTab"/>가 카탈로그에서 센다([장비] 4 / [외형] 3, 2026-08-30 기준).</summary>
@@ -298,17 +327,23 @@ namespace StickMate.Interaction
         // ★ 2026-09-01 — <b>CardsPerSection(=4) / CardCount(=16) 상수를 지웠다.</b>
         //   카테고리당 아이템 수는 이제 콘텐츠(에셋)가 정하는 <b>가변값</b>이고, 코드가 4라고 적어 두면
         //   에셋을 늘리는 순간 다섯 번째부터가 <b>예외도 경고도 없이 화면에서 사라진다</b>. 카드 수는
-        //   <see cref="CardsInSection"/>가 카탈로그에서 세고, 배치는 HorizontalLayoutGroup이 한다.
+        //   <see cref="CardsInSection"/>가 카탈로그에서 세고, 배치는 <see cref="LayoutCardGrid"/>가 한다.
 
         private const int IconSetCount = 2;   // [장비]용 / [외형]용 — 카드 하나가 두 벌을 미리 갖는다.
 
-        /// <summary>가로 캐러셀을 "끌었다"고 인정하는 최소 이동(캔버스 포인트). 이보다 작으면 손떨림이라
+        /// <summary>격자를 "끌었다"고 인정하는 최소 이동(캔버스 포인트). 이보다 작으면 손떨림이라
         /// 보고 클릭으로 처리한다 — 카드를 <b>누르려다</b> 1px 밀렸다고 착용이 취소되면 그게 더 나쁘다.</summary>
-        private const float CarouselDragThresholdPoints = 4f;
+        private const float GridDragThresholdPoints = 4f;
 
-        /// <summary>캐러셀을 실제로 민 뒤 이만큼은 uGUI 클릭을 먹지 않는다. 스크롤을 멈춘 손가락 아래에
+        /// <summary>격자를 실제로 민 뒤 이만큼은 uGUI 클릭을 먹지 않는다. 스크롤을 멈춘 손가락 아래에
         /// 있던 카드가 <b>뗄 때</b> 눌리는 것을 막는다(웹 목업의 <c>moved</c> 플래그와 같은 목적).</summary>
-        private const float CarouselClickSuppressSeconds = 0.20f;
+        private const float GridClickSuppressSeconds = 0.20f;
+
+        // ---- 보관함 / 준비 중 페이지 — 본문 전체 폭을 쓴다(3컬럼은 카드 탭 전용이다) ----
+        private const float PagePadX = 26f;
+        private const float PageContentWidth = PanelWidth - PagePadX * 2f;   // 990
+        private const float PageTopY = -ColPadY;                             // -20
+        private const float InventoryDetailHeight = 103f;
 
         // ---- 보관함 ----
         private const float InventoryRowHeight = 24f;
@@ -321,7 +356,14 @@ namespace StickMate.Interaction
         /// [▲] 바로 밑에 붙인다 — "[▲]를 누르면 이 숫자가 준다"는 인과가 그제서야 붙는다.</summary>
         private const float InventoryPageIndicatorHeight = 16f;
         private const float StatusSlotWidth = 96f;   // 훗날 가격표가 들어올 자리(디자이너 확정 최소 폭).
-        private const float InventoryListWidth = RightContentWidth - InventoryRailWidth - UiChrome.Space2;
+        private const float InventoryListWidth = PageContentWidth - InventoryRailWidth - UiChrome.Space2;
+
+        /// <summary>보관함 목록이 세로로 쓰는 높이(마지막 줄 아래 틈은 빼고 센다).</summary>
+        private const float InventoryListHeight =
+            InventoryVisibleRows * (InventoryRowHeight + InventoryRowGap) - InventoryRowGap;   // 537
+
+        /// <summary>보관함 상세 카드의 위 끝. 목록 아래 <see cref="UiChrome.Space3"/>.</summary>
+        private const float InventoryDetailY = PageTopY - InventoryListHeight - UiChrome.Space3;   // -569
 
         // ★★ 2026-09-03 — 여기 있던 <c>CaptionKoreanAdvance = 11f</c>("10pt 한글 한 글자가 먹는 폭")를
         //    <b>지웠다</b>. 이름이 이미 자백하고 있다 — <b>한글</b> 한 글자다. 이 앱의 설명 문구에는
@@ -352,23 +394,31 @@ namespace StickMate.Interaction
         /// <summary>액자 <b>안쪽</b>(RawImage가 실제로 차지하는) 크기(pt) — 액자 테두리 여백을 뺀 값.
         /// 촬영장 카메라의 기본 종횡비가 이 값에서 파생되므로(<see cref="CharacterPortraitStage.DesignAspect"/>)
         /// 액자 크기를 바꾸면 그림 구도도 함께 따라온다. 숫자를 두 곳에 적지 않기 위한 단일 출처다.
-        /// 33-7-6에서 (176−24)/(238−24)=0.710 → (204−16)/(196−16)=<b>1.044</b>로 바뀌었다.</summary>
+        /// <para>33-7-6에서 (176−24)/(238−24)=0.710 → (204−16)/(196−16)=1.044로 바뀌었고,
+        /// 2026-09-05 인계본 무대 이식(L-3)으로 (265−16)/(238−16)=<b>1.122</b>가 됐다.</para></summary>
         public static Vector2 PortraitContentSize => new Vector2(
-            LeftContentWidth - PortraitPadding * 2f,
-            PortraitHeight - PortraitPadding * 2f);
+            Col1ContentWidth - StagePadding * 2f,
+            StageHeight - StagePadding * 2f);
 
-        /// <summary>좌측 스탯 행 수. 6 -> 5(2026-09-01 "넘어진 횟수 삭제") -> <b>4</b>
+        /// <summary>컬럼 2 「기록」 섹션의 행 수. 6 -> 5(2026-09-01 "넘어진 횟수 삭제") -> <b>4</b>
         /// (2026-09-02 격파 놀이 기능 삭제).
         /// <b>두 번 다 지운 것은 표시뿐이다</b> — <see cref="CharacterStatsModel.RagdollFalls"/>도
         /// <see cref="CharacterStatsModel.BattleWins"/>도 값은 그대로 살아 저장 파일을 왕복한다.
         /// 데이터를 함께 지우면 훗날 다른 화면에서 다시 쓸 때 계수 로직을 <b>처음부터 다시</b>
         /// 만들어야 하고, BattleWins 쪽은 그에 더해 저장 스키마 버전을 올려야 한다.
         ///
-        /// <para>행을 빼도 <b>창 높이는 바뀌지 않는다</b>: 이 창의 높이는 우측 컬럼이 정하고
-        /// (<see cref="PanelHeightForTab"/> ← PanelMaxHeight), 좌측 스탯은 그보다 훨씬 위에서 끝난다.
-        /// 즉 여기서 한 행이 빠져도 "푸터 아래 빈 띠" 같은 것은 생기지 않는다 — 같은 이유로
-        /// 2026-09-01의 6→5도 창 치수를 건드리지 않았다.</para></summary>
-        private const int StatCount = 4;
+        /// <para>행을 빼도 <b>창 높이는 바뀌지 않는다</b> — 창 높이는 <see cref="PanelHeight"/> 고정이다(L-8).</para></summary>
+        internal const int StatCount = 4;
+
+        /// <summary>테마 세트 패널 문구 — <b>진행도를 말할 수 없을 때만</b> 쓴다
+        /// (<see cref="CharacterStatReadout.TryGetThemeProgress"/>가 false = 착용 4부위에 테마가
+        /// 하나도 없다). 진행도가 생기면 그 자리에 두 줄(<c>오피스 워커 3/4</c> · 완성/미완성)이
+        /// 대신 뜬다 — <see cref="RefreshSetPanel"/>.
+        /// <para>★ 2026-09-06 정정 — 옛 문구("테마 세트는 다음 업데이트에 들어옵니다")는 R21에서
+        /// 42종 전량에 테마가 배정되며 거짓이 됐다(<see cref="ItemCatalog.ThemeOfItem"/>). 기능은
+        /// 이미 출시돼 있고, 이 문구가 뜨는 유일한 이유는 「스탯 4슬롯에 테마 있는 장비를 하나도
+        /// 안 걸쳤다」이다 — 그렇게 고쳤다.</para></summary>
+        private const string SetPanelNotice = "테마가 있는 장비를 아직 하나도 걸치지 않았습니다.";
 
         private static readonly string[] StatLabels =
         {
@@ -396,37 +446,62 @@ namespace StickMate.Interaction
         private RectTransform _panel;
         private BoxCollider2D _clickBlocker;
 
-        /// <summary>[장비]/[외형] 탭의 상세 패널. 탭마다 y가 달라지므로 붙잡아 둔다(P0-1).</summary>
+        /// <summary>컬럼 1 바닥의 선택 상세 카드. <b>주 버튼은 없다</b>(L-9).</summary>
         private RectTransform _sectionDetailRect;
-
-        /// <summary>지금 화면에 있는 창 높이. 탭 전환 시 목표값(<see cref="PanelHeightForTab"/>)으로
-        /// <see cref="PanelHeightAnimateSeconds"/> 동안 이동한다. 0이면 아직 한 번도 안 정해진 상태.</summary>
-        private float _panelHeightPoints;
 
         private RectTransform _closeRect;
         private RectTransform _settingsRect;   // 헤더의 작은 [설정] 칩 — 설정창의 주 진입점(36-11).
+        private RectTransform _ownedChipRect;
+        private RectTransform _coinChipRect;
+        private Text _ownedChipValue;
+        private Text _coinChipValue;
 
-        private RectTransform _titleBarRect;   // 드래그 손잡이(2026-08-30).
+        /// <summary>드래그 손잡이 — <b>헤더 전체</b>(L-2로 타이틀바를 흡수했다). 실제 손잡이는
+        /// 여기서 탭·칩·[✕]·[설정] 사각형을 뺀 나머지다(<see cref="TryBeginPanelDrag"/>).</summary>
+        private RectTransform _titleBarRect;
         private readonly Image[] _tabUnderlines = new Image[TabCount];
         private readonly Text[] _tabLabels = new Text[TabCount];
+        private readonly Image[] _tabSurfaces = new Image[TabCount];
         private readonly RectTransform[] _tabRects = new RectTransform[TabCount];
 
-        // ---- 좌측 컬럼 ----
+        // ---- 헤더 ----
         private Text _nameTitle;
-        private RectTransform _nameRect;
-        private InputField _nameInput;
-        private RectTransform _nameInputRect;
         private Text _rankTitle;
+        private RectTransform _xpFill;
+
+        // ---- 컬럼 1 ----
         private Image _portraitFrame;
         private Image _portraitBorder;
         private RawImage _portraitImage;
         private Text _portraitFallback;
+        private Text _previewLabel;
         private CharacterPortraitStage _stage;
         private Text _presenceText;
+
+        /// <summary>착용 슬롯 4행. 인덱스는 <b>카드 탭의 카테고리 순서</b>와 같다.</summary>
+        private sealed class SlotRowView
+        {
+            public RectTransform Rect;
+            public Image Surface;
+            public Image Outline;
+            public RectTransform IconRoot;
+            public Text Label;
+            public Text Name;
+            public Text Value;
+            public bool HasIcon;
+        }
+        private readonly SlotRowView[] _slotRows = new SlotRowView[SectionCount];
+
+        // ---- 컬럼 2 ----
+        /// <summary>컬럼 2 「표시」 블록의 편집 가능한 이름. 헤더의 <see cref="_nameTitle"/>은 읽기 전용
+        /// 사본이고, <b>고칠 수 있는 자리는 이것 하나뿐</b>이다.</summary>
+        private Text _nameLabel;
+
+        private RectTransform _nameRect;
+        private InputField _nameInput;
+        private RectTransform _nameInputRect;
         private RectTransform _stressFill;
         private Text _stressValue;
-        private RectTransform _xpFill;
-        private Text _xpValue;
         private readonly Text[] _statValues = new Text[StatCount];
         private readonly Image[] _inkRings = new Image[2];
         private readonly RectTransform[] _inkRects = new RectTransform[2];
@@ -434,32 +509,27 @@ namespace StickMate.Interaction
         // ---- 우측: 카테고리 섹션 + 카드 ----
         private sealed class SectionView
         {
-            /// <summary>섹션 한 덩어리(제목줄 + 가로 카드 캐러셀). 탭마다 카테고리 수가 다르므로
-            /// <b>남는 섹션은 통째로 끈다</b> — 2026-08-30 표정(FACE) 삭제로 [외형] 탭이 3칸이 됐다.</summary>
+            /// <summary>카테고리 블록 한 덩어리(제목줄 + 카드 2열 격자). 탭마다 카테고리 수가 다르므로
+            /// <b>남는 블록은 통째로 끈다</b> — 2026-08-30 표정(FACE) 삭제로 [외형] 탭이 3칸이 됐다.</summary>
             public GameObject Root;
+
+            /// <summary>블록의 사각형. <see cref="LayoutCardGrid"/>가 y와 높이를 정한다.</summary>
+            public RectTransform Rect;
 
             public Image Dot;
             public Text Title;
             public Text Code;
             public Text Count;
 
-            /// <summary>가로 캐러셀. 드래그/관성/클램프는 uGUI의 <see cref="ScrollRect"/>에 맡기고
-            /// 이 파일은 <b>content 좌표만</b> 다룬다(전역 폴링 드래그도 같은 좌표를 쓴다).</summary>
-            public ScrollRect Row;
+            /// <summary>제목줄의 가로 구분선. 폭이 컬럼에서 파생되므로 붙잡아 둔다.</summary>
+            public Image Divider;
 
-            /// <summary>캐러셀 줄의 사각형. <see cref="ScrollRect"/>의 <c>rectTransform</c>은 protected라
-            /// 밖에서 못 읽는다 — 전역 폴링 히트테스트가 쓸 손잡이를 따로 들고 있는다.</summary>
-            public RectTransform RowRect;
-
-            public RectTransform Content;
-
-            /// <summary>지금 이 섹션이 보여주고 있는 카테고리. 카테고리가 바뀌면(탭 전환) 스크롤을
-            /// 처음으로 되돌린다 — 그러지 않으면 아이템이 적은 카테고리로 넘어갔을 때 <b>빈 칸만</b> 보인다.</summary>
+            /// <summary>지금 이 블록이 보여주고 있는 카테고리.</summary>
             public EquipmentSlot BoundSlot;
 
             public bool HasBoundSlot;
 
-            /// <summary>이 섹션이 쓰는 카드가 <see cref="_cards"/>의 어디부터 몇 장인가.</summary>
+            /// <summary>이 블록이 쓰는 카드가 <see cref="_cards"/>의 어디부터 몇 장인가.</summary>
             public int FirstCard;
 
             public int CardCount;
@@ -482,7 +552,16 @@ namespace StickMate.Interaction
 
             public RectTransform LockBadge;
             public Text Name;
+
+            /// <summary>등급 낱말(이름 줄 오른쪽). 2026-09-03의 「낱말이 없으면 등급 표시는 미완이다」를
+            /// 카드에서 지키는 자리 — 3컬럼 골격이 확정되며 칸이 생겼다(UI_SURFACE_SPEC §15.14-d).</summary>
+            public Text Rarity;
+
+            /// <summary>상태 줄 — <c>보유</c> / <c>착용 중</c> / <c>LV.n</c>.</summary>
             public Text Meta;
+
+            /// <summary>메타 줄 — 아이템 카테고리 라벨.</summary>
+            public Text Category;
 
             /// <summary><see cref="Name"/>에 넣으려던 <b>자르기 전</b> 문자열. 이것이 그대로면
             /// <see cref="UiChrome.Ellipsize"/>를 다시 부르지 않는다 — 그 함수는 폭을 재려고
@@ -518,12 +597,48 @@ namespace StickMate.Interaction
         /// <summary>카드 실물. 개수는 <b>카탈로그가 정한다</b>(빌드 때 한 번만 센다) — 상수로 적으면
         /// 아이템 에셋을 늘렸을 때 다섯 번째부터가 조용히 사라진다.</summary>
         private ItemCard[] _cards = System.Array.Empty<ItemCard>();
+
+        /// <summary>컬럼 1·2 — 카드 탭에서만 보인다([보관함]/[상점]은 본문 전체 폭을 쓴다).</summary>
+        private GameObject _col1Root;
+        private GameObject _col2Root;
+
         private GameObject _sectionPage;
         private GameObject _inventoryPage;
+
+        /// <summary>
+        /// ★ 좁은 창에서의 <b>강등 사다리</b>(문서 §3-6의 가로축). 3컬럼은 설계 폭 1042의 것이고,
+        /// <see cref="ClampPanelToScreen"/>이 창을 줄여도 <b>내용은 함께 접히지 않는다</b> —
+        /// 그대로 두면 컬럼 3(x 598~)이 통째로 마스크 밖으로 나가 <b>아이템을 하나도 볼 수 없다</b>.
+        ///
+        /// <para>그래서 폭이 모자라면 <b>컬럼 2 → 컬럼 1 순서로 접는다</b>. 마지막까지 남는 것은
+        /// 카드다 — 이 창의 목적이 "다른 것으로 갈아입는다"이고, 착용 경로가 카드 버튼 하나뿐이기
+        /// 때문이다(컬럼 1·2에는 액션이 없다).</para>
+        ///
+        /// <para><b>카드 폭은 줄이지 않는다.</b> 카드 내부(썸네일·이름·버튼)가 설계 폭 186에 절대
+        /// 좌표로 놓여 있어 폭을 바꾸면 내부가 따라오지 않는다. 대신 <b>열 수</b>를 2 → 1로 내린다.</para>
+        /// </summary>
+        private float _gridX = Col3X;
+
+        private float _gridWidth = Col3Width;
+        private float _gridContentWidth = Col3ContentWidth;
+        private int _gridColumns = CardColumns;
+        private bool _showCol1 = true;
+        private bool _showCol2 = true;
+
+        /// <summary>탭 스트립의 오른쪽 끝(헤더 좌표). 헤더 오른쪽 칩들이 여기와 겹치는지 판정한다.</summary>
+        private float _tabStripRightEdge;
+
+        /// <summary>컬럼 3의 세로 스크롤. 드래그/휠/클램프는 uGUI가 하고, 이 파일은
+        /// <b>content 좌표만</b> 다룬다(전역 폴링 드래그도 같은 좌표를 쓴다).</summary>
+        private ScrollRect _gridScroll;
+        private RectTransform _gridViewport;
+        private RectTransform _gridContent;
 
         private Text _detailName;
         private Text _detailMeta;
         private Text _detailBody;
+        private Image _detailThumb;
+        private Image _detailThumbOutline;
 
         // ---- 보관함(가상 목록) ----
         private sealed class InventoryRowView
@@ -578,13 +693,13 @@ namespace StickMate.Interaction
         private Vector2 _dragGrabOffsetPoints;
         private Vector2 _dragStartOffsetPoints;
 
-        /// <summary>지금 잡고 있는 캐러셀의 섹션 번호(-1이면 안 잡았다).</summary>
-        private int _carouselSection = -1;
+        /// <summary>지금 컬럼 3 격자를 잡고 있는가.</summary>
+        private bool _gridGrabbed;
 
-        private float _carouselGrabScreenX;
-        private float _carouselStartContentX;
-        private bool _carouselMoved;
-        private float _lastCarouselMoveTime = -999f;
+        private float _gridGrabScreenY;
+        private float _gridStartContentY;
+        private bool _gridMoved;
+        private float _lastGridMoveTime = -999f;
 
         /// <summary>누른 자리가 카드 하단 버튼이면 <b>뗄 때까지 보류</b>한다(-1이면 없음).
         /// 착용을 누름이 아니라 뗌에 붙이는 이유는 하나다 — 그 사이에 카드를 밀었다면 그건
@@ -657,7 +772,7 @@ namespace StickMate.Interaction
             //   폐지됐고, AppControlDirector.LogStartupBanner()가 <b>같은 부팅 로그에서</b> "우클릭 메뉴는
             //   폐지됐습니다"라고 말한다 — 두 문장이 서로를 반박했다(페르소나 M11). "(1) 톱니 클릭"도
             //   부정확했다(톱니는 부채꼴을 열 뿐, 정보창까지는 2클릭). 로그도 원칙 1의 적용 대상이다.
-            Debug.Log($"[정보창] 준비 완료({PanelWidth:F0}×{PanelHeightForTab(Tab.Equipment):F0}(외형 탭은 {PanelHeightForTab(Tab.Appearance):F0}) 화면 중앙, {TabCount}탭: {TabNamesForLog()}, " +
+            Debug.Log($"[정보창] 준비 완료({PanelWidth:F0}×{PanelHeight:F0} 고정, 3컬럼 {Col1Width:F0}/{Col2Width:F0}/{Col3Width:F0}, 화면 중앙, {TabCount}탭: {TabNamesForLog()}, " +
                 $"카드 {_cards.Length}장 + 장비 {ItemCatalog.EquipmentCount}종) — 여는 방법 2가지: " +
                 "(1) **화면 우상단 톱니 아이콘 -> 부채꼴 [캐릭터]**(주 진입점, 2클릭), " +
                 $"(2) 전역 단축키 **{ShortcutLabel.Chord("I")}**. " +
@@ -710,7 +825,7 @@ namespace StickMate.Interaction
             _lastSurfaceTouchTime = Time.unscaledTime;
             _hoveredCard = -1;
             _pendingEquipCard = -1;
-            EndCarouselDrag();
+            EndGridDrag();
             if (_canvas != null) _canvas.gameObject.SetActive(true);
             if (_clickBlocker != null) _clickBlocker.enabled = true;
             EndNameEdit(commit: false);
@@ -728,7 +843,7 @@ namespace StickMate.Interaction
             _open = false;
             _draggingPanel = false;
             _pendingEquipCard = -1;
-            EndCarouselDrag();
+            EndGridDrag();
             EndNameEdit(commit: true);
             if (_canvas != null) _canvas.gameObject.SetActive(false);
             if (_clickBlocker != null) _clickBlocker.enabled = false;
@@ -892,6 +1007,7 @@ namespace StickMate.Interaction
             //   (LayoutRebuilder.ForceRebuildLayoutImmediate), 꺼져 있는 페이지에서는 그 계산이 돌지 않아
             //   스크롤 한계가 옛 값으로 남는다.
             ApplyTabVisibility();
+            ApplyPortraitTheme();   // 무대 바탕과 그 위 잉크는 잉크 프리셋에서 파생된다(L-6).
             TickPresenceLine();
             RefreshNumbers();
             RefreshCards();
@@ -904,11 +1020,14 @@ namespace StickMate.Interaction
         /// 갱신한다(카드 수십 장의 문자열을 초당 4번 다시 만들 이유가 없다).</summary>
         private void RefreshNumbers()
         {
-            if (_nameTitle != null && !_editingName) _nameTitle.text = CharacterProgressionModel.CharacterName;
-            if (_rankTitle != null)
-            {
-                _rankTitle.text = $"Lv.{CharacterProgressionModel.Level}  ·  {RankTitleFor(CharacterProgressionModel.Level)}";
-            }
+            string characterName = CharacterProgressionModel.CharacterName;
+            if (_nameTitle != null) _nameTitle.text = characterName;
+            if (_nameLabel != null && !_editingName) _nameLabel.text = characterName;
+            if (_rankTitle != null) _rankTitle.text = $"Lv.{CharacterProgressionModel.Level}";
+
+            int ownedItems = ItemCatalog.UnlockedEquipmentCount(_config);
+            if (_ownedChipValue != null) _ownedChipValue.text = $"{ownedItems} / {ItemCatalog.EquipmentCount}";
+            if (_coinChipValue != null) _coinChipValue.text = CurrencyModel.CoinBalance.ToString("N0");
 
             float stress = StressGauge.CurrentLevel;
             SetBarFill(_stressFill, stress);
@@ -918,18 +1037,20 @@ namespace StickMate.Interaction
             float need = CharacterProgressionModel.XpToNextLevel(_config);
             float have = CharacterProgressionModel.CurrentXp;
             SetBarFill(_xpFill, need > 0f ? Mathf.Clamp01(have / need) : 0f);
-            if (_xpValue != null) _xpValue.text = $"{have:F0} / {need:F0}";
 
-            // 스탯 4행. 0인 항목은 숫자 대신 회색 "아직 없음"으로 — 0이 성취처럼 보이지 않게 한다.
+            // 기록 4행. 0인 항목은 숫자 대신 회색 "아직 없음"으로 — 0이 성취처럼 보이지 않게 한다.
             SetStat(0, $"{CharacterStatsModel.DaysTogether}일차", true);
             SetStat(1, CharacterStatsModel.FormatCompanionTime(), true);
-            int ownedItems = ItemCatalog.UnlockedEquipmentCount(_config);
             SetStat(2, $"{ownedItems} / {ItemCatalog.EquipmentCount}종", ownedItems > 0);
             SetStat(3, CharacterStatsModel.TryGetArcheryAccuracy01(out float acc)
                 ? $"{CharacterStatsModel.ArcheryBullseyes} / {CharacterStatsModel.ArcheryShots} ({acc * 100f:F0}%)"
                 : "기록 없음", CharacterStatsModel.ArcheryShots > 0);
             // ※ 표시에서 빠진 칸: 넘어진 횟수(2026-09-01) / 격파 성공(2026-09-02).
             //    CharacterStatsModel.RagdollFalls·BattleWins 둘 다 값은 계속 살아 있다.
+
+            // 컬럼 2 「능력치 / STATUS」와 「테마 세트 / SET」 — 입력이 그대로면 문자열을 만들지
+            // 않는다(CharacterInfoWindow.Stats.cs의 갱신 절 참고).
+            RefreshStatColumn();
         }
 
         /// <summary>스탯 한 칸. <paramref name="value"/>가 null이면 회색 "아직 없음"으로 대신한다.</summary>
@@ -1005,15 +1126,33 @@ namespace StickMate.Interaction
             {
                 _portraitBorder.color = whiteInk ? new Color(1f, 1f, 1f, 0.18f) : UiChrome.CardBorder;
             }
+
+            // ★ L-6 — <b>임시값이다. design-art 후속 판정 대기.</b> 어두운 무대(흰 잉크)에서는 기존
+            //   토큰이 그대로 맞지만, 밝은 무대(검은 잉크 = 출하 기본, 종이 바탕)에서는 TextTertiary가
+            //   읽히지 않는다. 그래서 밝은 무대에서만 무대 바탕 위 잉크를 InkOnSurface로 뒤집는다 —
+            //   그 함수는 면에서 잉크를 파생시키므로 호출부가 색을 고르지 않는다.
+            Color backdrop = CharacterPortraitStage.ResolveBackdropColor(_config);
+            if (_previewLabel != null)
+            {
+                _previewLabel.color = UiChrome.InkOnSurface(backdrop, UiChrome.InkRole.Meta, enabled: true);
+            }
+            if (_presenceText != null)
+            {
+                _presenceText.color = UiChrome.InkOnSurface(backdrop, UiChrome.InkRole.Body, enabled: true);
+            }
+            if (_portraitFallback != null)
+            {
+                _portraitFallback.color = UiChrome.InkOnSurface(backdrop, UiChrome.InkRole.Meta, enabled: true);
+            }
         }
 
         // ==================== 이름 인라인 편집 (33-7-8, 리더 승인) ====================
 
         private void BeginNameEdit()
         {
-            if (_editingName || _nameInput == null) return;
+            if (_editingName || _nameInput == null || _nameLabel == null) return;
             _editingName = true;
-            _nameTitle.gameObject.SetActive(false);
+            _nameLabel.gameObject.SetActive(false);
             _nameInputRect.gameObject.SetActive(true);
             _nameInput.text = CharacterProgressionModel.CharacterName;
             if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(_nameInput.gameObject);
@@ -1032,11 +1171,12 @@ namespace StickMate.Interaction
             }
             _editingName = false;
             if (_nameInputRect != null) _nameInputRect.gameObject.SetActive(false);
-            if (_nameTitle != null)
+            if (_nameLabel != null)
             {
-                _nameTitle.gameObject.SetActive(true);
-                _nameTitle.text = CharacterProgressionModel.CharacterName;
+                _nameLabel.gameObject.SetActive(true);
+                _nameLabel.text = CharacterProgressionModel.CharacterName;
             }
+            if (_nameTitle != null) _nameTitle.text = CharacterProgressionModel.CharacterName;
         }
         // ==================== 초상화 ====================
 
@@ -1118,12 +1258,11 @@ namespace StickMate.Interaction
             // 33-7-7: 화면 중앙 모달. 배경 딤은 깔지 않는다(클래스 문서 참고).
             _panel.anchorMin = _panel.anchorMax = _panel.pivot = new Vector2(0.5f, 0.5f);
             _panel.anchoredPosition = Vector2.zero;
-            _panelHeightPoints = PanelHeightForTab(_tab);
-            _panel.sizeDelta = new Vector2(PanelWidth, _panelHeightPoints);
+            _panel.sizeDelta = new Vector2(PanelWidth, PanelHeight);
             // 창 바탕을 눌러도 뒤(데스크톱)로 새지 않아야 한다 — 예전 InfoPanel Image가 하던 역할.
             panelImage.raycastTarget = true;
 
-            BuildTitleBar(_panel);
+            BuildHeader(_panel);
 
             var bodyGo = new GameObject("Body", typeof(RectTransform), typeof(RectMask2D));
             bodyGo.transform.SetParent(_panel, false);
@@ -1132,15 +1271,14 @@ namespace StickMate.Interaction
             body.anchorMax = new Vector2(1f, 1f);
             body.pivot = new Vector2(0.5f, 1f);
             body.offsetMin = Vector2.zero;
-            body.offsetMax = new Vector2(0f, -TitleHeight);
+            body.offsetMax = new Vector2(0f, -HeaderHeight);
             // 작은 화면에서 패널이 짧아져도 내용이 패널 밖으로 새어 나가지 않게 한다(ClampPanelToScreen).
 
-            BuildLeftColumn(body);
-            RectTransform right = BuildRightColumn(body);
-            BuildTabs(right);
-            BuildSectionPage(right);
-            BuildInventoryPage(right);
-            BuildPlaceholderPage(right);
+            BuildColumn1(body);
+            BuildColumn2(body);
+            BuildSectionPage(body);
+            BuildInventoryPage(body);
+            BuildPlaceholderPage(body);
             ApplyTabVisibility();
 
             // 클릭관통 차단막 — 씬 루트에 둔다(캐릭터의 자식으로 두면 캐릭터가 걷거나 랙돌로 회전할 때
@@ -1156,52 +1294,85 @@ namespace StickMate.Interaction
             canvasGo.SetActive(false);
         }
 
-        private void BuildTitleBar(Transform parent)
+        /// <summary>
+        /// 헤더 66pt — <b>옛 타이틀바 40을 흡수했다</b>(L-2, §4-2).
+        ///
+        /// <para>왼쪽부터 이름 · <c>Lv.N</c> · EXP 진행선(L-5) · 탭 4개, 오른쪽 끝에서 안쪽으로
+        /// [✕] · 동전 칩 · 보유 칩 · [설정]. <b>남는 자리가 드래그 표면</b>이다 —
+        /// <see cref="TryBeginPanelDrag"/>가 "헤더 안 + 알려진 자식 밖"으로 기계적으로 판정한다.</para>
+        ///
+        /// <para>★ 이름은 <b>읽기 전용</b>이다. 편집은 컬럼 2의 「표시」 블록 한 곳뿐 — 같은 값을 두
+        /// 곳에서 편집하면 한쪽이 조용히 낡는다(이 저장소가 반복해서 당한 형태).</para>
+        /// </summary>
+        private void BuildHeader(Transform parent)
         {
-            var barGo = new GameObject("TitleBar", typeof(RectTransform));
+            var barGo = new GameObject("Header", typeof(RectTransform));
             barGo.transform.SetParent(parent, false);
             var rt = barGo.GetComponent<RectTransform>();
             rt.anchorMin = new Vector2(0f, 1f);
             rt.anchorMax = new Vector2(1f, 1f);
             rt.pivot = new Vector2(0.5f, 1f);
-            rt.offsetMin = new Vector2(0f, -TitleHeight);
+            rt.offsetMin = new Vector2(0f, -HeaderHeight);
             rt.offsetMax = Vector2.zero;
             _titleBarRect = rt;   // 드래그 손잡이 — 여기를 잡은 동안만 창이 움직인다.
 
-            // ★ 2026-09-02 — 상자 폭 200 → 180. [닫기]가 24 → 44로 넓어지면서 [설정]이 −68로 밀렸고,
-            //   패널이 최소 폭(MinPanelWidth 320)까지 줄면 [설정]의 왼쪽 끝이 208pt가 된다 — 옛 200폭
-            //   상자(16~216)와 8pt 겹친다. 글자는 MiddleLeft + Overflow라 상자 폭을 줄여도 <b>그림이
-            //   한 픽셀도 바뀌지 않고</b>("내 책상 동료"는 x≈106에서 끝난다), 좁은 화면에서의 상자 겹침만
-            //   사라진다(16~196 대 208 = 12pt 여유 = 옛 값과 같다).
-            Text title = Label(barGo.transform, "Title", UiChrome.FontTitle, TextAnchor.MiddleLeft,
-                UiChrome.TextPrimary, 16f, -13f, 180f, 14f, "내 책상 동료", bold: true);
-            title.raycastTarget = false;
-
-            Image divider = UiChrome.AddSurface(parent, "TitleDivider", UiChrome.CardBorder, 2);
+            Image divider = UiChrome.AddSurface(parent, "HeaderRule",
+                UiChrome.Flatten(UiChrome.Divider, UiChrome.PanelSurface), 2);
             // 폭을 못 박으면 좁은 화면에서 패널이 줄었을 때(ClampPanelToScreen) 구분선만 밖으로 삐져나온다.
             RectTransform dividerRect = divider.rectTransform;
             dividerRect.anchorMin = new Vector2(0f, 1f);
             dividerRect.anchorMax = new Vector2(1f, 1f);
             dividerRect.pivot = new Vector2(0.5f, 1f);
-            dividerRect.offsetMin = new Vector2(0f, -TitleHeight);
-            dividerRect.offsetMax = new Vector2(0f, -(TitleHeight - 1f));
+            dividerRect.offsetMin = new Vector2(0f, -HeaderHeight);
+            dividerRect.offsetMax = new Vector2(0f, -(HeaderHeight - DividerThickness));
             divider.raycastTarget = false;
 
+            // ---- 왼쪽: 이름 · Lv.N · EXP 진행선 ----
+            _nameTitle = Label(barGo.transform, "CharacterName", UiChrome.FontTitle, TextAnchor.MiddleLeft,
+                UiChrome.TextPrimary, HeaderPadLeft, -22f, 200f, 22f,
+                CharacterProgressionModel.CharacterName, bold: true);
+            _nameTitle.raycastTarget = false;
+
+            float nameWidth = SettingsControls.MeasuredWidth(_nameTitle, CharacterProgressionModel.CharacterName);
+            float levelX = HeaderPadLeft + nameWidth + UiChrome.Space2;
+
+            _rankTitle = Label(barGo.transform, "LevelLabel", UiChrome.FontCaption, TextAnchor.MiddleLeft,
+                UiChrome.TextTertiary, levelX, -20f, HeaderLevelWidth, 16f, "Lv.1");
+            _rankTitle.raycastTarget = false;
+
+            // ★ L-5 — EXP 게이지는 헤더의 Lv.N <b>아래</b> 2pt 진행선이다. 컬럼 1에는 자리가 없고
+            //   (무대 238 + 슬롯 4행 + 상세 카드가 예산을 다 쓴다), 여기가 레벨 바로 옆이라
+            //   "이 숫자가 어디까지 찼는가"라는 인과가 붙는다.
+            Image xpTrack = UiChrome.AddSurface(barGo.transform, "XpTrack",
+                UiChrome.Flatten(UiChrome.TrackBackground, UiChrome.PanelSurface), UiChrome.RadiusDot);
+            UiChrome.PlaceTopLeft(xpTrack.rectTransform, levelX, -38f, HeaderLevelWidth, HeaderXpTrackHeight);
+            xpTrack.raycastTarget = false;
+
+            Image xpFill = UiChrome.AddSurface(xpTrack.rectTransform, "Fill", UiChrome.Accent, UiChrome.RadiusDot);
+            _xpFill = xpFill.rectTransform;
+            _xpFill.anchorMin = Vector2.zero;
+            _xpFill.anchorMax = new Vector2(0f, 1f);
+            _xpFill.pivot = new Vector2(0f, 0.5f);
+            _xpFill.offsetMin = Vector2.zero;
+            _xpFill.offsetMax = Vector2.zero;
+            xpFill.raycastTarget = false;
+
+            BuildTabs(barGo.transform, levelX + HeaderLevelWidth + UiChrome.Space6);
+
+            // ---- 오른쪽: [✕] · 동전 칩 · 보유 칩 · [설정] ----
             // 스펙의 "ESC" 힌트 자리에 [✕]를 둔다 — 이유는 클래스 문서 참고(ESC는 이미 클릭관통
             // 긴급 해제에 묶여 있어서, 창 닫기를 겹치면 보이지 않는 부수효과가 생긴다).
             //
             // ★ 2026-09-02 — 면을 밝혔다. 근거·수치·왜 테두리가 아니라 면인지는 전부
             //   UiChrome "창을 닫는 법" 절 한 곳에 있다(세 표면 + 아래 [설정]이 같은 세 줄을 쓴다).
             Image closeSurface = UiChrome.AddSurface(barGo.transform, "CloseButton",
-                UiChrome.ChromeButtonSurface, UiChrome.RadiusChip);
+                UiChrome.ChromeButtonSurface, HeaderChipRadius);
             _closeRect = closeSurface.rectTransform;
             // 오른쪽 끝에 건다(고정 x였다면 좁은 화면에서 패널이 줄 때 [✕]만 창 밖에 남는다).
-            // 880 폭에서의 결과 좌표는 예전과 같다(오른쪽에서 16, 위에서 8).
             _closeRect.anchorMin = _closeRect.anchorMax = _closeRect.pivot = new Vector2(1f, 1f);
-            // ★ 44×24 — WCAG 2.2 SC 2.5.8 Target Size(Minimum, AA) 24×24를 넘고, [설정]과 같은
-            //   사각형이 된다. 낱말([닫기])로 바꾸는 안은 보류됐지만 칩은 미리 그 크기로 맞춰 둔다.
-            _closeRect.sizeDelta = new Vector2(44f, 24f);
-            _closeRect.anchoredPosition = new Vector2(-16f, -8f);
+            // ★ 32×32 — WCAG 2.2 SC 2.5.8 Target Size(Minimum, AA) 24×24를 넘는다(인계본 값 그대로).
+            _closeRect.sizeDelta = new Vector2(HeaderChipHeight, HeaderChipHeight);
+            _closeRect.anchoredPosition = new Vector2(-HeaderCloseChipInset, -HeaderChipY);
             Text closeLabel = UiChrome.AddText(_closeRect, "Label", UiChrome.FontBody, TextAnchor.MiddleCenter,
                 UiChrome.InkOnSurface(UiChrome.ChromeButtonSurface, UiChrome.InkRole.Title, enabled: true));
             UiChrome.Stretch(closeLabel.rectTransform);
@@ -1216,25 +1387,32 @@ namespace StickMate.Interaction
             closeButton.transition = Selectable.Transition.None;
             closeButton.onClick.AddListener(() => { if (TryClaimAction("close")) Close("[✕] 클릭"); });
 
+            // 동전 칩 — 인계본 재화 칩. 값은 CurrencyModel이 실제로 들고 있는 잔액이다
+            // (없는 경제를 화면이 주장하지 않는다 — [상점] 본문이 아직 준비 중인 것과 같은 규칙).
+            _coinChipRect = BuildHeaderChip(barGo.transform, "CoinChip", HeaderCoinChipWidth,
+                HeaderCoinChipInset,
+                UiChrome.Flatten(UiChrome.AccentSurface, UiChrome.PanelSurface),
+                UiChrome.Flatten(UiChrome.AccentBorder, UiChrome.PanelSurface),
+                UiChrome.Accent, "◎ 동전", out _coinChipValue);
+
+            // 보유 칩 — 잠금 해제한 장비 수 / 전체.
+            _ownedChipRect = BuildHeaderChip(barGo.transform, "OwnedChip", HeaderOwnedChipWidth,
+                HeaderOwnedChipInset,
+                UiChrome.PanelSurface, UiChrome.Flatten(UiChrome.CardBorder, UiChrome.PanelSurface),
+                UiChrome.TextPrimary, "보유", out _ownedChipValue);
+
             // ★ 2026-09-01 — 설정창(35-1)의 <b>주 진입점</b>. docs/UX_FLOW.md 36-11이 우클릭 메뉴 폐지에
             //   맞춰 "정보창 헤더의 작은 톱니"를 주 경로로 승격시켰다. 여기가 그 자리다.
             //   글자를 쓰는 이유: 이 프로젝트의 UI 폰트는 LegacyRuntime.ttf라 톱니 글리프(U+2699)가
-            //   있다는 보장이 없고, 없으면 두부(□)가 뜬다. 아이콘을 선으로 그리는 방법도 있지만
-            //   24pt 칩 안의 톱니는 결국 읽히지 않는다 — 32-1이 "심볼만 있는 원은 반드시 오독된다"고
-            //   적어 둔 그 문제다.
-            //   ★ 2026-09-02 — [설정]도 [닫기]와 <b>같은 면</b>을 쓴다. 리더가 실행 중인 빌드의 픽셀에서
-            //     직접 재니 이 칩의 바탕도 창 바탕과 <b>1.01:1</b>이었다 — 닫기와 <b>같은 결함</b>이다.
-            //     나란히 붙은 두 칩 중 하나만 고치면 그 자리가 새로 어긋난다.
+            //   있다는 보장이 없고, 없으면 두부(□)가 뜬다.
+            //   ★ 2026-09-02 — [설정]도 [닫기]와 <b>같은 면</b>을 쓴다(나란히 붙은 두 칩 중 하나만
+            //     고치면 그 자리가 새로 어긋난다).
             Image settingsSurface = UiChrome.AddSurface(barGo.transform, "SettingsButton",
-                UiChrome.ChromeButtonSurface, UiChrome.RadiusChip);
+                UiChrome.ChromeButtonSurface, HeaderChipRadius);
             _settingsRect = settingsSurface.rectTransform;
             _settingsRect.anchorMin = _settingsRect.anchorMax = _settingsRect.pivot = new Vector2(1f, 1f);
-            _settingsRect.sizeDelta = new Vector2(44f, 24f);
-            // [닫기]가 24 → 44로 자라 왼쪽 끝이 −60이 됐다. 두 칩 사이 8pt를 유지하려면 −68이다.
-            _settingsRect.anchoredPosition = new Vector2(-68f, -8f);
-            // 글자 크기는 [✕]와 <b>같은 등급</b>(FontBody 12)이다 — 앱 전체 설정의 주 진입점이 닫기 버튼보다
-            // 작게 그려져 있었다(페르소나 M2). 10pt(FontCaption)는 이 디자인 시스템에서 캡션/카운트 전용
-            // 최소 등급이라, 그 자리에 있는 것만으로 "부수적인 것"이라고 말한다.
+            _settingsRect.sizeDelta = new Vector2(HeaderSettingsChipWidth, HeaderChipHeight);
+            _settingsRect.anchoredPosition = new Vector2(-HeaderSettingsChipInset, -HeaderChipY);
             Text settingsLabel = UiChrome.AddText(_settingsRect, "Label", UiChrome.FontBody,
                 TextAnchor.MiddleCenter,
                 UiChrome.InkOnSurface(UiChrome.ChromeButtonSurface, UiChrome.InkRole.Title, enabled: true));
@@ -1252,9 +1430,31 @@ namespace StickMate.Interaction
             // ★ 2026-09-02 — 여기 있던 닫기 힌트("창 밖을 클릭해도 닫혀요")를 <b>같은 날 걷어냈다</b>.
             //   같은 라운드에서 바깥 클릭이 더 이상 닫지 않게 됐으므로 그 문장은 거짓이 됐고, 화면이
             //   거짓말을 하느니 아무 말도 안 하는 쪽이 낫다. 닫는 자리는 바로 오른쪽 [✕]다.
-            //   ★ 2026-09-02 후속 — "칩이 버튼으로 안 읽힌다"(면 1.01:1)는 대체 <b>문구</b>가 아니라
-            //     <b>면</b>으로 고쳤다. 지금 두 칩 모두 UiChrome.ChromeButtonSurface(5.26:1)다.
-            //     근거는 UiChrome "창을 닫는 법" 절.
+        }
+
+        /// <summary>헤더 오른쪽 재화/보유 칩 한 벌 — 라벨 + 값. <paramref name="rightInset"/>은
+        /// 창 오른쪽 끝에서 칩 <b>오른쪽 모서리</b>까지의 거리다.</summary>
+        private static RectTransform BuildHeaderChip(Transform parent, string name, float width,
+            float rightInset, Color face, Color border, Color valueInk, string label, out Text value)
+        {
+            Image surface = UiChrome.AddSurface(parent, name, face, HeaderChipRadius);
+            RectTransform rt = surface.rectTransform;
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(1f, 1f);
+            rt.sizeDelta = new Vector2(width, HeaderChipHeight);
+            rt.anchoredPosition = new Vector2(-rightInset, -HeaderChipY);
+            surface.raycastTarget = false;
+            UiChrome.AddOutline(rt, "Outline", border, HeaderChipRadius);
+
+            Text caption = Label(rt, "Label", UiChrome.FontCaption, TextAnchor.MiddleLeft,
+                UiChrome.TextTertiary, HeaderChipPadX, -(HeaderChipHeight - 14f) * 0.5f - 7f,
+                width - HeaderChipPadX * 2f, 14f, label);
+            caption.raycastTarget = false;
+
+            value = Label(rt, "Value", UiChrome.FontLabel, TextAnchor.MiddleRight, valueInk,
+                HeaderChipPadX, -(HeaderChipHeight - 16f) * 0.5f - 8f,
+                width - HeaderChipPadX * 2f, 16f, "—", bold: true);
+            value.raycastTarget = false;
+            return rt;
         }
 
         /// <summary>
@@ -1275,47 +1475,230 @@ namespace StickMate.Interaction
             settings.Open(source);
         }
 
-        // -------------------- 좌측 고정 컬럼 --------------------
+        // -------------------- 컬럼 1 — 프리뷰 무대 / 착용 슬롯 / 상세 카드 --------------------
 
-        private void BuildLeftColumn(RectTransform body)
+        private void BuildColumn1(RectTransform body)
         {
-            var go = new GameObject("LeftColumn", typeof(RectTransform));
+            var go = new GameObject("Col1", typeof(RectTransform));
             go.transform.SetParent(body, false);
-            var left = go.GetComponent<RectTransform>();
-            UiChrome.PlaceTopLeft(left, 0f, 0f, LeftWidth, BodyHeight);
+            var col = go.GetComponent<RectTransform>();
+            UiChrome.PlaceTopLeft(col, 0f, 0f, Col1Width, BodyHeight);
+            _col1Root = go;
 
-            Image columnDivider = UiChrome.AddSurface(body, "ColumnDivider", UiChrome.CardBorder, 2);
-            UiChrome.PlaceTopLeft(columnDivider.rectTransform, LeftWidth - 1f, 0f, 1f, BodyHeight);
+            Image columnDivider = UiChrome.AddSurface(col, "Col1Rule",
+                UiChrome.Flatten(UiChrome.Divider, UiChrome.PanelSurface), 2);
+            UiChrome.PlaceTopLeft(columnDivider.rectTransform, Col1Width - DividerThickness, 0f,
+                DividerThickness, BodyHeight);
             columnDivider.raycastTarget = false;
 
-            // ---- 이름 블록: 이름(인라인 편집) + 잉크색 스와치 2개 ----
-            float swatchRight = LeftPadX + LeftContentWidth;
-            float nameWidth = LeftContentWidth - (SwatchSize * 2f + SwatchGap) - UiChrome.Space3;
+            // ---- 프리뷰 무대 265 × 238 (L-3) ----
+            // 바탕은 <b>잉크에서 파생</b>한다(§6-4) — 인계본의 "항상 어두운 무대"는 우리 규칙이 아니다.
+            // 출하 기본은 검은 잉크 + 종이 바탕이고, 흰 잉크로 바꾸면 목탄으로 뒤집힌다.
+            _portraitFrame = UiChrome.AddSurface(col, "Stage",
+                CharacterPortraitStage.ResolveBackdropColor(_config), UiChrome.RadiusPanel);
+            UiChrome.PlaceTopLeft(_portraitFrame.rectTransform, Col1PadX, StageY, Col1ContentWidth, StageHeight);
+            _portraitFrame.raycastTarget = false;
+            _portraitBorder = UiChrome.AddOutline(_portraitFrame.rectTransform, "Border",
+                UiChrome.CardBorder, UiChrome.RadiusPanel);
 
-            _nameTitle = Label(left, "Name", UiChrome.FontDisplay, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
-                LeftPadX, NameY, nameWidth, 25f, CharacterProgressionModel.CharacterName, bold: true);
+            // 위에서 비추는 빛 — 인계본의 라디얼 그라디언트 3색은 새 hex가 필요해 미채택이고,
+            // 같은 "위쪽이 더 밝음"을 이미 있는 프리미티브로 준다(§6-4).
+            var sheenGo = new GameObject("StageSheen", typeof(RectTransform), typeof(Image));
+            sheenGo.transform.SetParent(_portraitFrame.transform, false);
+            UiChrome.Stretch(sheenGo.GetComponent<RectTransform>());
+            var sheen = sheenGo.GetComponent<Image>();
+            sheen.sprite = UiChrome.VerticalGradientFill(UiChrome.RadiusPanel);
+            sheen.type = Image.Type.Simple;
+            sheen.color = UiChrome.PanelSheen;
+            sheen.raycastTarget = false;
 
-            // 이름 글자 자체는 raycastTarget이 아니므로(UiChrome 관례) 클릭을 받을 투명 판을 겹친다.
-            Image nameHit = UiChrome.AddSurface(left, "NameHit", Color.clear, UiChrome.RadiusChip);
+            // 바닥 광원 — 인계본 rgba(200,161,90,0.16) ≈ 우리 AccentSurface(브라스 α0.14).
+            var glowGo = new GameObject("StageFloorGlow", typeof(RectTransform), typeof(Image));
+            glowGo.transform.SetParent(_portraitFrame.transform, false);
+            UiChrome.PlaceTopLeft(glowGo.GetComponent<RectTransform>(), 0f,
+                -(StageHeight - StageFloorGlowHeight), Col1ContentWidth, StageFloorGlowHeight);
+            var glow = glowGo.GetComponent<Image>();
+            glow.sprite = UiChrome.RadialGlow();
+            glow.type = Image.Type.Simple;
+            glow.color = UiChrome.AccentSurface;
+            glow.raycastTarget = false;
+
+            var imageGo = new GameObject("PortraitImage", typeof(RectTransform), typeof(RawImage));
+            imageGo.transform.SetParent(_portraitFrame.transform, false);
+            UiChrome.Stretch(imageGo.GetComponent<RectTransform>(), StagePadding);
+            _portraitImage = imageGo.GetComponent<RawImage>();
+            _portraitImage.raycastTarget = false;
+            _portraitImage.enabled = false;   // RT가 준비되면 켠다.
+
+            // ★ L-6 — 밝은 무대(검은 잉크)에서의 잉크색은 design-art 후속 판정 대기다. 임시로
+            //   ApplyPortraitTheme()가 잉크에 따라 뒤집는다(밝은 바탕에서 TextTertiary는 안 읽힌다).
+            _previewLabel = Label(_portraitFrame.rectTransform, "LabelPreview", UiChrome.FontCaption,
+                TextAnchor.MiddleLeft, UiChrome.TextTertiary, 14f, -14f, 120f, 12f, "PREVIEW");
+            _previewLabel.raycastTarget = false;
+
+            _presenceText = Label(_portraitFrame.rectTransform, "PresenceText", UiChrome.FontLabel,
+                TextAnchor.MiddleLeft, UiChrome.TextSecondary, 14f, -(StageHeight - 27f),
+                Col1ContentWidth - 28f, 15f, "지금  ·  —");
+            _presenceText.raycastTarget = false;
+
+            _portraitFallback = UiChrome.AddText(_portraitFrame.rectTransform, "PortraitFallback",
+                UiChrome.FontBody, TextAnchor.MiddleCenter, UiChrome.TextTertiary, wrap: true);
+            UiChrome.Stretch(_portraitFallback.rectTransform, UiChrome.Space4);
+            _portraitFallback.text = "미리보기를 그릴 수 없어요";
+            _portraitFallback.gameObject.SetActive(false);
+
+            // ---- 착용 슬롯 4행 ----
+            for (int i = 0; i < _slotRows.Length; i++) _slotRows[i] = BuildSlotRow(col, i);
+
+            // ---- 상세 카드 (주 버튼 없음 — L-9) ----
+            BuildDetailPanel(col);
+        }
+
+        /// <summary>착용 슬롯 한 줄 — 아이콘 / "카테고리 · 코드" / 착용 아이템 이름 / 등급 낱말.
+        /// <para>인계본은 이 자리에 "집중력 +6" 같은 <b>스탯 기여값</b>을 적는데, 그 4스탯은
+        /// 아직 런타임이 0줄이다(§1-3). 없는 값을 화면이 주장하지 않도록 지금은 <b>등급 낱말</b>을
+        /// 적는다 — 실재하는 사실이고 같은 칸을 쓴다. 스탯이 들어오는 라운드(§8 4단계)에 교체한다.</para></summary>
+        private SlotRowView BuildSlotRow(RectTransform col, int index)
+        {
+            Image surface = UiChrome.AddSurface(col, "SlotRow" + index, UiChrome.CardSurface, UiChrome.RadiusChip);
+            var rt = surface.rectTransform;
+            UiChrome.PlaceTopLeft(rt, Col1PadX, SlotRowsTopY - index * SlotRowStep,
+                Col1ContentWidth, SlotRowHeight);
+            surface.raycastTarget = false;
+            Image outline = UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+
+            var iconGo = new GameObject("SlotIcon", typeof(RectTransform));
+            iconGo.transform.SetParent(rt, false);
+            var irt = iconGo.GetComponent<RectTransform>();
+            irt.anchorMin = irt.anchorMax = irt.pivot = new Vector2(0f, 0.5f);
+            irt.sizeDelta = new Vector2(SlotIconSize, SlotIconSize);
+            irt.anchoredPosition = new Vector2(12f + SlotIconSize * 0.5f, 0f);
+
+            float textX = 12f + SlotIconSize + 10f;
+            float valueWidth = 74f;
+            float textWidth = Col1ContentWidth - textX - valueWidth - 12f;
+
+            Text label = Label(rt, "SlotLabel", UiChrome.FontCaption, TextAnchor.MiddleLeft,
+                UiChrome.TextTertiary, textX, -7f, textWidth, 12f, "—");
+            Text name = Label(rt, "SlotName", UiChrome.FontBody, TextAnchor.MiddleLeft,
+                UiChrome.TextPrimary, textX, -24f, textWidth, 16f, "—");
+            Text value = Label(rt, "SlotValue", UiChrome.FontLabel, TextAnchor.MiddleRight,
+                UiChrome.Accent, Col1ContentWidth - 12f - valueWidth, -16f, valueWidth, 14f, "—");
+
+            return new SlotRowView
+            {
+                Rect = rt, Surface = surface, Outline = outline, IconRoot = irt,
+                Label = label, Name = name, Value = value,
+            };
+        }
+
+        // -------------------- 컬럼 2 — 능력치 / 기록 / 표시 / 테마 세트 --------------------
+
+        /// <summary>
+        /// ★ 2026-09-05 (2차) — 여기 있던 *"이 라운드는 자리를 만들지 않는다"*가 <b>닫혔다</b>.
+        /// 사용자 확정 *"1.0에 전부 넣어야함"*으로 「능력치 / STATUS」 블록이 들어오고, 세트 패널이
+        /// 고정 문구에서 <b>테마 진행도</b>로 바뀐다. 실물과 좌표는 <c>CharacterInfoWindow.Stats.cs</c>에 있다.
+        ///
+        /// <para>그 대가로 <b>컬럼 2가 세로로 넘친다</b>(§4-3-2 검산 그대로). 그래서 이 컬럼은 이제
+        /// <see cref="ScrollRect"/> 하나이고, 네 블록의 y는 <see cref="LayoutColumn2"/> <b>한 곳</b>에서
+        /// 정한다 — 「능력치」 높이가 계산기 유무로 바뀌면 아래 세 블록이 함께 움직여야 한다.</para>
+        ///
+        /// <para><b>블록 안의 좌표는 한 글자도 안 바뀌었다</b> — 각 블록은 자기 상단이 원점이고,
+        /// 예전 코드가 쓰던 <c>x = Col2PadX</c>도 그대로다.</para>
+        /// </summary>
+        private void BuildColumn2(RectTransform body)
+        {
+            var go = new GameObject("Col2", typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(body, false);
+            var col = go.GetComponent<RectTransform>();
+            UiChrome.PlaceTopLeft(col, Col2X, 0f, Col2Width, BodyHeight);
+            _col2Root = go;
+
+            // 블록 사이 빈틈을 잡아도 끌리게 하는 투명 판 — 컬럼 3(<see cref="BuildSectionPage"/>)이
+            // 쓰는 것과 <b>같은 장치</b>다. 그래픽이 없으면 uGUI 레이캐스트가 통과해 창 바탕이 잡히고,
+            // 사용자에게는 "여기는 안 밀리네"로 보인다(휠도 같은 경로를 탄다).
+            var col2Handle = go.GetComponent<Image>();
+            col2Handle.color = Color.clear;
+            col2Handle.raycastTarget = true;
+
+            // 세로 구분선은 스크롤 <b>밖</b>이다 — 안에 넣으면 콘텐츠와 함께 밀려 경계가 중간에서 끊긴다.
+            Image columnDivider = UiChrome.AddSurface(col, "Col2Rule",
+                UiChrome.Flatten(UiChrome.Divider, UiChrome.PanelSurface), 2);
+            UiChrome.PlaceTopLeft(columnDivider.rectTransform, Col2Width - DividerThickness, 0f,
+                DividerThickness, BodyHeight);
+            columnDivider.raycastTarget = false;
+
+            RectTransform content = BuildColumn2Scroll(col);
+
+            float x = Col2PadX;
+
+            // ---- 능력치 / STATUS (§4-3-2 첫 블록) ----
+            BuildStatusBlock(content);
+
+            // ---- 기록 / RECORD ----
+            RectTransform record = BuildCol2Block(content, Col2BlockRecord, "Col2Record",
+                SectionLabelHeight + Col2LabelGap + GaugeBlockHeight + Col2LabelGap
+                + StatCount * RecordRowHeight);
+            float y = 0f;
+
+            BuildSectionLabel(record, "기록", "RECORD", x, y);
+            y -= SectionLabelHeight + Col2LabelGap;
+
+            _stressFill = BuildGauge(record, "STRESS", x, y, UiChrome.TextPrimary, out _stressValue);
+            y -= GaugeBlockHeight + Col2LabelGap;
+
+            for (int i = 0; i < StatCount; i++)
+            {
+                Label(record, "RecordKey" + i, UiChrome.FontBody, TextAnchor.MiddleLeft, UiChrome.TextTertiary,
+                    x, y, 110f, RecordRowHeight, StatLabels[i]);
+                _statValues[i] = Label(record, "RecordValue" + i, UiChrome.FontBody, TextAnchor.MiddleRight,
+                    UiChrome.TextPrimary, x + 110f, y, Col2ContentWidth - 110f, RecordRowHeight, "—");
+
+                Image line = UiChrome.AddSurface(record, "RecordLine" + i,
+                    UiChrome.Flatten(UiChrome.Divider, UiChrome.PanelSurface), 2);
+                UiChrome.PlaceTopLeft(line.rectTransform, x, y - RecordRowHeight, Col2ContentWidth, DividerThickness);
+                line.raycastTarget = false;
+                y -= RecordRowHeight;
+            }
+
+            // ---- 표시 / DISPLAY — 이름 인라인 편집 + 잉크 스와치 ----
+            // ★ 인계본은 이 둘을 [외형] 탭에 놓는다(§5). 그런데 잉크색 전환은 이 앱에서
+            //   <b>유일한 GUI 경로</b>라 탭 하나에만 두면 발견 가능성이 떨어진다. 그래서 카드 탭
+            //   양쪽에서 늘 보이는 컬럼 2에 둔다. 편집 자리는 <b>여기 하나뿐</b>이고 헤더 이름은
+            //   읽기 전용이다 — 같은 값을 두 곳에서 고치면 한쪽이 조용히 낡는다.
+            RectTransform display = BuildCol2Block(content, Col2BlockDisplay, "Col2Display",
+                SectionLabelHeight + Col2LabelGap + NameRowHeight);
+            y = 0f;
+
+            BuildSectionLabel(display, "표시", "DISPLAY", x, y);
+            y -= SectionLabelHeight + Col2LabelGap;
+
+            float swatchRight = x + Col2ContentWidth;
+            float nameWidth = Col2ContentWidth - (SwatchSize * 2f + SwatchGap) - UiChrome.Space3;
+
+            Image nameHit = UiChrome.AddSurface(display, "NameHit", Color.clear, UiChrome.RadiusChip);
             _nameRect = nameHit.rectTransform;
-            UiChrome.PlaceTopLeft(_nameRect, LeftPadX, NameY, nameWidth, 25f);
+            UiChrome.PlaceTopLeft(_nameRect, x, y, nameWidth, NameRowHeight);
             var nameButton = nameHit.gameObject.AddComponent<Button>();
             nameButton.targetGraphic = nameHit;
             nameButton.onClick.AddListener(() => { if (TryClaimAction("nameEdit")) BeginNameEdit(); });
 
-            _nameInput = CreateInputField(left);
+            _nameLabel = Label(display, "NameEditable", UiChrome.FontBody, TextAnchor.MiddleLeft,
+                UiChrome.TextPrimary, x, y, nameWidth, NameRowHeight, CharacterProgressionModel.CharacterName);
+
+            _nameInput = CreateInputField(display);
             _nameInputRect = _nameInput.GetComponent<RectTransform>();
-            UiChrome.PlaceTopLeft(_nameInputRect, LeftPadX, NameY, nameWidth, 25f);
+            UiChrome.PlaceTopLeft(_nameInputRect, x, y, nameWidth, NameRowHeight);
             _nameInputRect.gameObject.SetActive(false);
 
             for (int i = 0; i < 2; i++)
             {
                 bool white = i == 1;
-                float x = swatchRight - (2 - i) * SwatchSize - (1 - i) * SwatchGap;
+                float sx = swatchRight - (2 - i) * SwatchSize - (1 - i) * SwatchGap;
                 var swatchGo = new GameObject(white ? "InkWhite" : "InkBlack", typeof(RectTransform), typeof(Image));
-                swatchGo.transform.SetParent(left, false);
+                swatchGo.transform.SetParent(display, false);
                 var srt = swatchGo.GetComponent<RectTransform>();
-                UiChrome.PlaceTopLeft(srt, x, NameY - 6f, SwatchSize, SwatchSize);
+                UiChrome.PlaceTopLeft(srt, sx, y - 6f, SwatchSize, SwatchSize);
 
                 var fill = swatchGo.GetComponent<Image>();
                 fill.sprite = UiChrome.Circle();
@@ -1334,71 +1717,46 @@ namespace StickMate.Interaction
                 _inkRects[i] = srt;
             }
 
-            _rankTitle = Label(left, "RankTitle", UiChrome.FontLabel, TextAnchor.MiddleLeft, UiChrome.TextTertiary,
-                LeftPadX, SubY, LeftContentWidth, 15f, "Lv.1");
+            // ---- 테마 세트 / SET ----
+            BuildSetBlock(content);
 
-            // ---- 초상화 액자 (33-7-6: 204×196 / 여백 8 / 반지름 8) ----
-            _portraitFrame = UiChrome.AddSurface(left, "PortraitFrame",
-                CharacterPortraitStage.ResolveBackdropColor(_config), 8);
-            UiChrome.PlaceTopLeft(_portraitFrame.rectTransform, LeftPadX, PortraitY, LeftContentWidth, PortraitHeight);
-            _portraitFrame.raycastTarget = false;
-            _portraitBorder = UiChrome.AddOutline(_portraitFrame.rectTransform, "Border", UiChrome.CardBorder, 8);
+            LayoutColumn2();
+        }
 
-            var imageGo = new GameObject("PortraitImage", typeof(RectTransform), typeof(RawImage));
-            imageGo.transform.SetParent(_portraitFrame.transform, false);
-            UiChrome.Stretch(imageGo.GetComponent<RectTransform>(), PortraitPadding);
-            _portraitImage = imageGo.GetComponent<RawImage>();
-            _portraitImage.raycastTarget = false;
-            _portraitImage.enabled = false;   // RT가 준비되면 켠다.
+        /// <summary>컬럼 2 섹션 제목 한 줄 — 브라스 바 3×14 + 한글 이름 + 영문 라벨.</summary>
+        private static void BuildSectionLabel(RectTransform col, string title, string code, float x, float y)
+        {
+            Image bar = UiChrome.AddSurface(col, "SecBar_" + code, UiChrome.Accent, UiChrome.RadiusDot);
+            UiChrome.PlaceTopLeft(bar.rectTransform, x, y - 2f, 3f, 14f);
+            bar.raycastTarget = false;
 
-            _portraitFallback = UiChrome.AddText(_portraitFrame.rectTransform, "PortraitFallback",
-                UiChrome.FontBody, TextAnchor.MiddleCenter, UiChrome.TextTertiary, wrap: true);
-            UiChrome.Stretch(_portraitFallback.rectTransform, UiChrome.Space4);
-            _portraitFallback.text = "미리보기를 그릴 수 없어요";
-            _portraitFallback.gameObject.SetActive(false);
+            Text name = Label(col, "SecTitle_" + code, UiChrome.FontTitle, TextAnchor.MiddleLeft,
+                UiChrome.TextPrimary, x + 3f + UiChrome.Space2, y, 120f, SectionLabelHeight, title, bold: true);
+            name.raycastTarget = false;
 
-            // ---- 프레즌스 + 게이지 2종 ----
-            _presenceText = Label(left, "Presence", UiChrome.FontLabel, TextAnchor.MiddleLeft, UiChrome.TextTertiary,
-                LeftPadX, PresenceY, LeftContentWidth, 15f, "지금  ·  —");
-
-            _stressFill = BuildGauge(left, "STRESS", StressLabelY, StressTrackY, UiChrome.TextPrimary, out _stressValue);
-            _xpFill = BuildGauge(left, "EXP", XpLabelY, XpTrackY, UiChrome.Accent, out _xpValue);
-
-            // ---- 스탯 4행 ----
-            Image statsTop = UiChrome.AddSurface(left, "StatsTopLine", UiChrome.Divider, 2);
-            UiChrome.PlaceTopLeft(statsTop.rectTransform, LeftPadX, StatsTopY, LeftContentWidth, 1f);
-            statsTop.raycastTarget = false;
-
-            for (int i = 0; i < StatCount; i++)
-            {
-                float y = StatsFirstRowY - i * StatRowStep;
-                Label(left, "StatKey" + i, UiChrome.FontBody, TextAnchor.MiddleLeft, UiChrome.TextTertiary,
-                    LeftPadX, y, 100f, StatRowHeight, StatLabels[i]);
-                _statValues[i] = Label(left, "StatValue" + i, UiChrome.FontBody, TextAnchor.MiddleRight,
-                    UiChrome.TextPrimary, LeftPadX + 100f, y, LeftContentWidth - 100f, StatRowHeight, "—");
-
-                Image line = UiChrome.AddSurface(left, "StatLine" + i, UiChrome.Divider, 2);
-                UiChrome.PlaceTopLeft(line.rectTransform, LeftPadX, y - StatRowHeight, LeftContentWidth, 1f);
-                line.raycastTarget = false;
-            }
+            float codeX = x + 3f + UiChrome.Space2 + SettingsControls.MeasuredWidth(name, title) + UiChrome.Space2;
+            Text label = Label(col, "SecCode_" + code, UiChrome.FontCaption, TextAnchor.MiddleLeft,
+                UiChrome.TextTertiary, codeX, y, 90f, SectionLabelHeight, code);
+            label.raycastTarget = false;
         }
 
         /// <summary>라벨행(좌: 이름 / 우: 값) + 그 아래 4pt 트랙. 반환값은 채움 RectTransform.</summary>
-        private RectTransform BuildGauge(RectTransform parent, string label, float labelY, float trackY,
+        private RectTransform BuildGauge(RectTransform parent, string label, float x, float y,
             Color fillColor, out Text valueText)
         {
             Label(parent, "GaugeLabel_" + label, UiChrome.FontCaption, TextAnchor.MiddleLeft, UiChrome.TextTertiary,
-                LeftPadX, labelY, 100f, 13f, label);
+                x, y, 100f, GaugeLabelHeight, label);
 
             valueText = Label(parent, "GaugeValue_" + label, UiChrome.FontCaption, TextAnchor.MiddleRight,
-                UiChrome.TextTertiary, LeftPadX + 60f, labelY, LeftContentWidth - 60f, 13f, "—");
+                UiChrome.TextTertiary, x + 60f, y, Col2ContentWidth - 60f, GaugeLabelHeight, "—");
 
             // 트랙도 <b>미리 합성한 불투명색</b>이다(2026-08-31). TrackBackground(흰색 α0.09)를 그대로
             // 칠하면 게이지 막대 자리에서만 창 알파가 0.92로 내려간다 — 아래는 항상 창 바탕이라
             // 합성 결과 색은 같고 알파만 지켜진다(UiChrome.Flatten 문서 참고).
             Image track = UiChrome.AddSurface(parent, "GaugeTrack_" + label,
                 UiChrome.Flatten(UiChrome.TrackBackground, UiChrome.PanelSurface), UiChrome.RadiusDot);
-            UiChrome.PlaceTopLeft(track.rectTransform, LeftPadX, trackY, LeftContentWidth, TrackHeight);
+            UiChrome.PlaceTopLeft(track.rectTransform, x, y - GaugeLabelHeight - GaugeLabelGap,
+                Col2ContentWidth, TrackHeight);
             track.raycastTarget = false;
 
             Image fill = UiChrome.AddSurface(track.rectTransform, "Fill", fillColor, UiChrome.RadiusDot);
@@ -1500,7 +1858,7 @@ namespace StickMate.Interaction
                 case StickmanStateId.LandingCrouch: return "착지하는 중";
                 case StickmanStateId.ParkourClimb: return "벽 타는 중";
                 case StickmanStateId.LedgeHang: return "매달려 내려가는 중";
-                case StickmanStateId.Attack: return "공격 모션 중";
+                case StickmanStateId.Attack: return "공격하는 중";
                 case StickmanStateId.Ragdoll: return "넘어져 있는 중";
                 case StickmanStateId.ThrowTumble: return "날아가는 중";
                 case StickmanStateId.Getup: return "일어나는 중";
@@ -1512,14 +1870,24 @@ namespace StickMate.Interaction
                 case StickmanStateId.BlackholeSummon: return "블랙홀 소환 중";
                 case StickmanStateId.WindowCrash: return "창 부수는 중";
                 case StickmanStateId.TodoReminder: return "할일 알려주는 중";
-                case StickmanStateId.FocusStart: return "집중 모드 시작";
-                case StickmanStateId.FocusComplete: return "집중 모드 완료";
-                case StickmanStateId.FocusCancelled: return "집중 모드 취소";
+                case StickmanStateId.FocusStart: return "집중 모드 들어가는 중";
+                case StickmanStateId.FocusComplete: return "집중 모드 마무리 중";
+                case StickmanStateId.FocusCancelled: return "집중 모드 접는 중";
                 case StickmanStateId.FocusNudge: return "딴짓 감시 중";
-                case StickmanStateId.Sulky: return "부루퉁한 중";
+                case StickmanStateId.Sulky: return "부루퉁해 있는 중";
                 case StickmanStateId.Runaway: return "가출 중";
                 case StickmanStateId.Archery: return "활 쏘는 중";
-                default: return id.ToString();
+
+                // ★ 2026-09-05 design-narrative N-4 — 예전에는 <c>id.ToString()</c>이었다. 상태를
+                //   하나 늘리면 <b>영문 enum 이름이 사용자 화면에 뜬다</b>("지금 · WallSlide").
+                //   지금 27=27이라 도달하지 않는 것은 <b>막는 장치가 아니라 우연</b>이다.
+                //   낱말은 자매 표 <c>Core/StickMateDisplayNames</c>의 폴백("딴 일")과 같은 것을 쓴다.
+                //   ★ 조용히 흘려보내지는 않는다 — 이 자리에 오는 것은 <b>정상값이 아니라 누락</b>이고,
+                //     StateLabel은 상태가 바뀔 때만 불리므로 경고가 도배되지 않는다.
+                default:
+                    Debug.LogWarning($"[정보창] 프레즌스 라벨에 없는 상태 {id}입니다 — StateLabel에 " +
+                        "한 줄을 더하세요(Core/StickMateDisplayNames에도 함께).");
+                    return "딴 일 하는 중";
             }
         }
     }

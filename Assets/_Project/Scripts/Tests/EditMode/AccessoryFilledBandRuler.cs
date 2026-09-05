@@ -301,6 +301,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 자_선택은_오직_Filled_하나로_갈린다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, AccessoryShapeBuilder.HeadFedora, "FedoraBand/BeanieCuff 로 채움 자·낱선 자 분기 대조 — 인계본 조각은 명목 획(strokeInR)+1pt 하한 한 자를 쓴다(§14-6 #2·#13)");
             AccessoryShapeBuilder.Rig rig = Rig();
 
             AccessoryShapeBuilder.Shape filledBand = AccessorySilhouetteMetrics.Find(

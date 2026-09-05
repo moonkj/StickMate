@@ -36,9 +36,38 @@ from census import lex_csharp, HANGUL, classify, census_assets  # noqa
 #   (3) 명령 불가 사유              CommandAvailability.Blocked(reason)
 #       — Reason 필드 문서: "불가/부재일 때 <b>사용자에게 그대로 보여줄</b> 한 줄"
 #         (Core/CommandAvailability.cs), ActionCommandPopover가 타일 밑에 그린다.
+#
+# ★★ 2026-09-05 — (4) **간접 싱크** 2종을 더한다. 이걸 안 세면 조용히 과소 계수한다.
+#   실제 사고: `Interaction/CharacterInfoWindow.Tabs.cs`가 2026-09-03 라운드에서
+#   `label.text = name;` **한 줄을 지우고** `SettingsControls.MeasuredWidth(label, name)`으로
+#   바꿨다(글자 수 모형 → 폰트 실측 폭). 화면에 뜨는 글자는 하나도 안 바뀌었는데
+#   **파일에 `.text =`가 0건이 되어 파일 전체가 LOGF(미출하)로 떨어졌고**,
+#   탭 이름 4개(`장비`/`외형`/`보관함`/`상점`)와 `상점은 다음 업데이트에 들어옵니다.`가
+#   **원장에서 5 → 0으로 «갚은 것처럼»** 보였다. 아무것도 번역되지 않았는데.
+#
+#   두 함수는 **내부에서 `text.text = …`를 실제로 대입한다**:
+#     Interaction/SettingsControls.cs:119  MeasuredWidth(Text, string) { text.text = content ?? ""; … }
+#     Interaction/UiChrome.cs              Ellipsize(Text, string, float)
+#   ⇒ 호출부는 화면에 글자를 내보내는 것이 맞다. 파일 단위 판정이 이걸 못 보면
+#     **「측정으로 바꾸는 리팩터링이 번진 만큼 부채가 눈앞에서 사라진다」**.
+#     그 리팩터링은 지금 확산 중이다(`layout.py` §10-1 판정이 그것을 권고했다).
 SINK_RE = re.compile(r'\.text\s*=(?!=)|new\s+DialogueIntent|DialogueIntent\s*\(|'
                      r'DialogueLine\s*\.\s*(?:Say|React)|new\s+DialogueLine|'
-                     r'new\s+TimedSpectacleState|CommandAvailability\s*\.\s*Blocked')
+                     r'new\s+TimedSpectacleState|CommandAvailability\s*\.\s*Blocked|'
+                     r'MeasuredWidth\s*\(|Ellipsize\s*\(')
+
+# ★★ 2026-09-05 신설 — **OS 셸 싱크**. SINK_RE(uGUI)와 **일부러 분리**한다.
+#   왜 SINK_RE 에 합치지 않는가: 합치면 Platform/Windows/WindowsSystemTrayIcon.cs 가
+#   「싱크 있는 파일」이 되어 그 안의 **로그 문자열 8건까지 SHIP 으로 딸려 온다**
+#   (`[트레이]` `Shell_NotifyIcon 호출 중 예외…` 등 — 전부 개발자용이다).
+#   ⇒ 이 정규식은 **화이트리스트 근거 확인에만** 쓴다. 파일을 승격시키지 않는다.
+#
+#   실측 근거(2026-09-05, 전수):
+#     Platform/Windows/WindowsSystemTrayIcon.cs:502  AppendMenu(..., LabelFor(command, hidden))
+#     Platform/Windows/WindowsSystemTrayIcon.cs:399  szTip = tip            (NOTIFYICONDATA)
+#   이 둘이 이 저장소에서 **유일한 OS 셸 텍스트 싱크**다. 나머지 DllImport 의 string 인자는
+#   전부 API 식별자(클래스명/셀렉터/레지스트리 키)이지 사용자 글자가 아니다(음성 대조 확인).
+OS_SHELL_SINK_RE = re.compile(r'AppendMenu\s*\(|szTip\s*=(?!=)')
 
 # 문자열 생산자 화이트리스트 — 값: 이 타입의 문자열을 화면에 쓰는 호출부(근거)
 PRODUCER_WHITELIST = {
@@ -50,6 +79,13 @@ PRODUCER_WHITELIST = {
     'Core/CharacterStatsModel.cs': 'CharacterStatsModel',
     'Core/ShortcutLabel.cs': 'ShortcutLabel',
     'Interaction/StressGaugeRenderer.cs': 'StressGaugeRenderer',
+    # ★★ 2026-09-05 신설 — **트레이 메뉴는 uGUI 를 통과하지 않는다.**
+    #   이 파일의 5건(툴팁 1 + 메뉴 라벨 4)은 Win32 AppendMenuW/szTip 으로 **OS 셸이 직접 그린다**.
+    #   SINK_RE 는 uGUI 전용이라 이 파일을 LOGF(미출하)로 떨어뜨리고 있었다 — 즉
+    #   **Windows 에서 가장 먼저 보이는 글자 5건이 「번역 대상 아님」으로 세어지고 있었다.**
+    #   ★ 선언된 과대: 이 파일에는 개발자 산문 `MacOsGapReason` 이 리터럴 4조각으로 들어 있고
+    #     그것까지 SHIP 으로 남는다(안전측 — §1-4 관례). 아래 selftest 가 그 4를 **못박는다**.
+    'Platform/SystemTrayPresencePolicy.cs': 'SystemTrayPresencePolicy',
     # ★ Core/KoreanParticle.cs 는 화이트리스트에 **넣지 않는다**.
     #   프로덕션 호출부 4곳이 전부 Debug.Log다(WindowsTopmostWatchdog.cs:291,
     #   CharacterInfoWindow.Cards.cs:410/427, GraffitiRenderer.cs:181 — 전수 확인).
@@ -224,7 +260,8 @@ def run():
         pat = re.compile(r'\b' + re.escape(tname) + r'\s*\.')
         found = []
         for g, m in masked.items():
-            if g == f or not file_has_sink.get(g):
+            # uGUI 싱크가 있거나(대다수), OS 셸 싱크가 있으면(트레이) 근거로 인정한다.
+            if g == f or not (file_has_sink.get(g) or OS_SHELL_SINK_RE.search(m)):
                 continue
             for mo in pat.finditer(m):
                 ln = m.count('\n', 0, mo.start()) + 1
@@ -320,6 +357,24 @@ using UnityEngine;
 class N { string Describe() { return "싱크 없는 파일의 조각"; } }
 '''
 
+# ★ 2026-09-05 — 간접 싱크 대조용. `.text =`가 **한 글자도 없는데** 화면에 글자가 나가는 파일.
+#   `CharacterInfoWindow.Tabs.cs`가 정확히 이 모양이 되어 5건이 조용히 사라졌다.
+SELF_INDIRECT = u'''
+using UnityEngine;
+class I {
+  UnityEngine.UI.Text label;
+  void BuildTabs() { float w = SettingsControls.MeasuredWidth(label, "장비"); }
+}
+'''
+
+# 음성 대조 짝 — 위와 **한 글자만 다르다**(호출이 없다). 이쪽은 싱크가 없어야 한다.
+SELF_INDIRECT_NEG = u'''
+using UnityEngine;
+class I2 {
+  string Name() { return "장비"; }
+}
+'''
+
 
 def selftest():
     ok = True
@@ -370,6 +425,56 @@ def selftest():
     bad = SINK_RE.pattern
     chk('음성 대조 — 싱크 정규식이 .text= 를 실제로 잡는다', bool(re.search(bad, 'a.text = b')))
     chk('음성 대조 — == 비교는 싱크가 아니다', not bool(re.search(bad, 'if (a.text == b)')))
+
+    # ---- 간접 싱크 (2026-09-05 신설) — 짝으로만 의미가 있다 ----
+    _, mi = lex_csharp(SELF_INDIRECT)
+    _, mn = lex_csharp(SELF_INDIRECT_NEG)
+    chk('★ 간접 싱크 — MeasuredWidth 호출만 있어도 싱크로 센다(.text= 0건)',
+        bool(SINK_RE.search(mi)) and '.text =' not in mi)
+    chk('★ 그 짝(음성) — 호출이 없으면 여전히 싱크가 아니다', not bool(SINK_RE.search(mn)))
+    chk('★ 간접 싱크 — Ellipsize 도 같이 잡는다',
+        bool(SINK_RE.search('UiChrome.Ellipsize(label, name, 120f);')))
+
+    # ---- 바깥 앵커: 합성 조각이 아니라 **실제 파일**로 잰다 ----
+    #   합성 대조만 두면 프로덕션이 또 다른 형태로 갈아탔을 때 조용히 초록이 된다.
+    #   이 두 줄이 이번 사고(5건 실종)의 재발 탐지기다.
+    tabs = os.path.join(ROOT, 'Assets/_Project/Scripts/Interaction/CharacterInfoWindow.Tabs.cs')
+    if os.path.exists(tabs):
+        with io.open(tabs, encoding='utf-8') as fh:
+            src = fh.read()
+        _, mt = lex_csharp(src)
+        chk('★ 실파일 양성 — Tabs.cs 에 직접 `.text =`는 정말로 0건이다(함정 실재)',
+            not re.search(r'\.text\s*=(?!=)', mt))
+        chk('★ 실파일 짝 — 그런데도 싱크로 잡힌다(간접 싱크가 살아 있다)',
+            bool(SINK_RE.search(mt)))
+    else:
+        chk('★ 실파일 앵커 — CharacterInfoWindow.Tabs.cs 가 있어야 한다', False,
+            '파일이 사라졌다면 이 대조는 아무것도 증명하지 못한다')
+
+    # ---- OS 셸 싱크 (2026-09-05 R5 신설) — 전부 **실파일 앵커**다 ----
+    #   합성 조각으로만 두면 프로덕션이 다른 형태로 갈아탔을 때 조용히 초록이 된다.
+    rows, evidence = run()
+    tray_f = 'Platform/SystemTrayPresencePolicy.cs'
+    icon_f = 'Platform/Windows/WindowsSystemTrayIcon.cs'
+    tray_ship = [r for r in rows if r['file'] == tray_f and r['verdict'] == 'SHIP']
+    tray_txt = {r['text'] for r in tray_ship}
+    want = {'캐릭터 숨기기', '캐릭터 다시 보이기', '설정 열기', 'StickMate 종료',
+            'StickMate — 우클릭: 메뉴 (종료 · 숨기기 · 설정)'}
+    chk('★ 실파일 양성 — 트레이 메뉴 4라벨 + 툴팁이 SHIP 이다(OS 셸 싱크)',
+        want <= tray_txt, '빠진 것: %s' % (sorted(want - tray_txt) or '(없음)'))
+    chk('★ 실파일 짝(음성) — WindowsSystemTrayIcon.cs 로그 문자열은 여전히 SHIP 이 아니다',
+        not any(r['file'] == icon_f and r['verdict'] == 'SHIP' for r in rows),
+        '로그 8건까지 쓸어담으면 이 대조가 빨개진다')
+    chk('★ 죽은 니들 방지 — 새 화이트리스트의 근거가 비어 있지 않다',
+        bool(evidence.get(tray_f)), '근거 없이 승격하면 그건 판정이 아니라 선언이다')
+    chk('★ 근거가 실제로 Win32 트레이 파일을 가리킨다',
+        any(e.startswith(icon_f + ':') for e in evidence.get(tray_f, [])),
+        '근거: %s' % (evidence.get(tray_f) or '(없음)'))
+    gap = [r for r in tray_ship if 'NSStatusItem' in r['text'] or 'UniWindowController' in r['text']
+           or '자체 Objective-C' in r['text'] or '기각 사유가 아직' in r['text']]
+    chk('★ 선언된 과대 고정 — 이 파일 SHIP 9건 중 개발자 산문(MacOsGapReason)은 정확히 4건',
+        len(tray_ship) == 9 and len(gap) == 4,
+        'SHIP=%d, 산문=%d — 숫자가 움직였으면 원장과 이 주석을 함께 고쳐라' % (len(tray_ship), len(gap)))
     return ok
 
 

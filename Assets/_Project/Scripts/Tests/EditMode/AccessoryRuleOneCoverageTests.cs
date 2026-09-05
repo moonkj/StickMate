@@ -126,8 +126,13 @@ namespace StickMate.Tests.EditMode
             var failures = new List<string>();
             int checkedShapes = 0;
 
+            int handoffShapes = 0;
             ForEachShape(rig, (slot, item, shape) =>
             {
+                // ★ 2026-09-05 인계본 조각(계약 v2)은 이 자(낱선 1.5획/1획)의 대상이 아니다 — 착용 표면은 1pt 실폭으로
+                //   오프라인에서 잰다(§14-6 #14). 면제 대장에 이름을 적지 않는 이유: 아이템 단위 사실이고, 되돌아오면 스스로 열린다.
+                //   잃는 것: 인계본 16종의 규칙 1 커버리지(대체 자: r16_model.survival · CardShapeContractTests).
+                if (shape.IsHandoff) { handoffShapes++; return; }
                 if (IsWaived(slot, item, shape.Name)) return;
                 checkedShapes++;
 
@@ -138,8 +143,11 @@ namespace StickMate.Tests.EditMode
                 }
             });
 
+            // 인계본 제외가 「전부」를 삼키지 않았는가 — v1 14종(장비 8 + 머리 6)의 도형이 실제로 남아 있어야 한다.
+            Assert.Greater(handoffShapes, 0, "인계본 조각이 하나도 안 잡혔습니다 — IsHandoff 판정이 죽었거나 인계본이 사라졌습니다.");
             // 검사한 도형 수가 무너지면(예: 열거가 조용히 0개를 돌려주면) 이 검사는 아무것도 잡지 않는다.
-            Assert.Greater(checkedShapes, 50,
+            // 2026-09-05 실측: 인계본 16종을 빼면 v1 14종(장비 8 + 머리 6) 도형 34개가 남는다 — 문턱은 그 아래(20)로.
+            Assert.Greater(checkedShapes, 20,
                 $"검사한 도형이 {checkedShapes}개뿐입니다 — 열거가 깨졌거나 카탈로그가 비었습니다. " +
                 "이 검사가 초록인 것이 '위반이 없다'는 뜻이 되려면 도형을 실제로 훑어야 합니다.");
 

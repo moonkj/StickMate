@@ -45,7 +45,7 @@ namespace StickMate.Platform
     /// 한다(UX_FLOW.md 3절/9절-7). 여기서 항상 발판이 있는 것처럼 위장하면 그 온보딩 게이트가 조용히
     /// 무력화된다 — 배선은 StickmanAgent.CreatePlatformService() 참고.
     /// </summary>
-    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService, IGlobalKeyStateService, IReservedBottomBarService, IReservedTopBarService, IReservedScreenEdgeService, IRawWindowRectSource, IWindowEnumerationCostSource, IForeignFullscreenTierSource
+    public sealed class FallbackPlatformWindowService : IPlatformWindowService, ICursorPositionService, ILocalClickCaptureService, IDesktopIconLayoutService, IGlobalPointerButtonService, IGlobalKeyStateService, IReservedBottomBarService, IReservedTopBarService, IReservedScreenEdgeService, IRawWindowRectSource, IWindowEnumerationCostSource, IForeignFullscreenTierSource, IVirtualDesktopMembershipSource
     {
         private readonly IPlatformWindowService _inner;
         private readonly ICursorPositionService _innerCursor; // null이면 내부 서비스가 커서 조회를 지원하지 않음
@@ -113,6 +113,10 @@ namespace StickMate.Platform
         // 실제로는 한 번도 활성화된 적이 없었다. ICursorPositionService와 동일한 위임 패턴으로 통과시킨다.
         private readonly IGlobalPointerButtonService _innerButton; // null이면 내부 서비스가 전역 버튼 조회를 지원하지 않음
         private readonly IForeignFullscreenTierSource _innerTier;  // null이면 등급 조회 미지원 -> bool로 강등
+
+        // ★ 2026-09-05 (M-8) — 가상 데스크톱 소속 조회. macOS/모바일/테스트 스텁에서는 null이고,
+        //   그때 아래 통과 메서드가 Unknown(=숨지 않는다)을 돌려준다 = 이 기능이 없던 동작 그대로.
+        private readonly IVirtualDesktopMembershipSource _innerVirtualDesktop;
         private readonly IGlobalKeyStateService _innerKeyState;     // null이면 내부 서비스가 전역 키 조회를 지원하지 않음
         // null이면 내부 서비스가 "가려짐 필터 이전 원본 창 목록"을 지원하지 않음 -> RawWindows가 빈 목록.
         private readonly IRawWindowRectSource _innerRawWindows;
@@ -176,6 +180,7 @@ namespace StickMate.Platform
             // 지원하지 않는 내부 서비스(Null/모바일)에서는 null로 남고, 아래 조회가
             // 기존 bool 하나로 강등한다 = 등급 1이 없던 예전 동작 그대로.
             _innerTier = inner as IForeignFullscreenTierSource;
+            _innerVirtualDesktop = inner as IVirtualDesktopMembershipSource;
             _innerKeyState = inner as IGlobalKeyStateService;
             _innerRawWindows = inner as IRawWindowRectSource;
             _innerCost = inner as IWindowEnumerationCostSource;
@@ -666,6 +671,21 @@ namespace StickMate.Platform
             StallAttribution.RecordFullscreenProbe(System.Diagnostics.Stopwatch.GetTimestamp() - start);
             return tier;
         }
+
+        /// <summary>
+        /// ★ 2026-09-05 (M-8) — 가상 데스크톱 소속. <b>순수 통과</b>이고, 지원하지 않는 내부 서비스에서는
+        /// <see cref="VirtualDesktopMembership.Unknown"/>이다 — 소비 측은 그때 <b>숨지 않는다</b>
+        /// (<see cref="VirtualDesktopSuspendPolicy"/>의 보수 규칙) = 이 기능이 없던 동작 그대로.
+        ///
+        /// <para><b>여기서 계측하지 않는다</b>(위 전체화면 두 메서드와 다른 점): 그쪽은 창 열거·카테고리
+        /// 조회라 스톨 원장의 실제 항목이지만, 이쪽은 COM 호출 한 번이라 원장에 새 칸을 만들 만한
+        /// 비중이 아니다. 필요해지면 그때 <c>StallAttribution</c>에 칸을 신설한다 —
+        /// 있지도 않은 칸에 억지로 얹으면 그 칸의 뜻이 오염된다.</para>
+        /// </summary>
+        public VirtualDesktopMembership GetVirtualDesktopMembership()
+            => _innerVirtualDesktop != null
+                ? _innerVirtualDesktop.GetVirtualDesktopMembership()
+                : VirtualDesktopMembership.Unknown;
 
         // IGlobalPointerButtonService — 위 _innerButton 선언부의 사고 기록 참고. 순수 통과.
         public bool TryGetPrimaryButtonPressed(out bool pressed)

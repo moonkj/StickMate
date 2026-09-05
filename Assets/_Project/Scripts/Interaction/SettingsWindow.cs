@@ -318,7 +318,8 @@ namespace StickMate.Interaction
         // 값이 바뀌면 화면을 다시 칠해야 하는 부품들(다른 UI가 같은 값을 바꿀 수 있다).
         private SettingsSlider _scaleSlider;
         private SettingsSwatchRow _inkSwatches;
-        private SettingsToggle _gearIconToggle;
+        // ★ 2026-09-05 — _gearIconToggle / _gearWarnCaption 을 지웠다(BuildGeneralPage의 「화면 위 UI」
+        //   카드 주석에 사유 전문이 있다). 필드만 남기면 다음 사람이 «어디서 세우던 값인가»를 다시 찾는다.
         private SettingsToggle _autoHideToggle;
         private SettingsToggle _bubbleToggle;
         private SettingsSlider _fontSizeSlider;
@@ -327,7 +328,6 @@ namespace StickMate.Interaction
 
         /// <summary>말풍선을 끄면 함께 무효가 되는 세 행(42-11 판정 G).</summary>
         private SettingsRowGate _speechGate;
-        private Text _gearWarnCaption;
 
         /// <summary>[톱니 위치] 행의 게이트 — 아직 한 번도 옮긴 적이 없으면 되돌릴 것이 없다.
         /// <b>사유 한 줄</b>(docs/UX_FLOW.md C16)이 그 자리에 뜬다(35-1-7 "회색 + 사유").</summary>
@@ -892,7 +892,6 @@ namespace StickMate.Interaction
         {
             if (_scaleSlider != null) _scaleSlider.SetValueSilently(CharacterScaleController.Value);
             if (_inkSwatches != null) _inkSwatches.SetIndexSilently(_config != null && _config.IsWhiteInk() ? 1 : 0);
-            if (_gearIconToggle != null) _gearIconToggle.SetOn(AppSettingsModel.GearIconVisible);
             if (_autoHideToggle != null) _autoHideToggle.SetOn(AppSettingsModel.AutoHideOnFullscreen);
             if (_bubbleToggle != null) _bubbleToggle.SetOn(AppSettingsModel.ResolveDialogueBubbleEnabled(_config));
             if (_fontSizeSlider != null) _fontSizeSlider.SetValueSilently(AppSettingsModel.ResolveDialogueFontSize(_config));
@@ -900,7 +899,6 @@ namespace StickMate.Interaction
                 _visibleLengthSegment.SetIndexSilently((int)AppSettingsModel.DialogueVisibleLength);
             if (_chatterSlider != null) _chatterSlider.SetValueSilently(AppSettingsModel.ChatterPercent);
             SyncSpeechGate();
-            SyncGearWarning();
             SyncGearHomeGate();
             ApplyTabVisibility();
         }
@@ -919,12 +917,10 @@ namespace StickMate.Interaction
             _speechGate.SetEnabled(AppSettingsModel.ResolveDialogueBubbleEnabled(_config));
         }
 
-        private void SyncGearWarning()
-        {
-            if (_gearWarnCaption == null) return;
-            bool warn = !AppSettingsModel.GearIconVisible;
-            if (_gearWarnCaption.gameObject.activeSelf != warn) _gearWarnCaption.gameObject.SetActive(warn);
-        }
+        // ★ 2026-09-05 — 여기 있던 SyncGearWarning()을 지웠다. 하는 일이 «톱니 아이콘 토글이 꺼져
+        //   있으면 경고 캡션을 켠다» 하나뿐이었는데 그 토글과 캡션이 함께 사라졌다(사유는 BuildGeneralPage).
+        //   빈 함수를 남기지 않는 이유는 위 SyncManualHide 삭제 때와 같다 — 다음 사람이 «무엇을
+        //   동기화하던 자리인가»를 다시 조사하게 된다.
 
         /// <summary>슬라이더 드래그처럼 <b>연속으로 값이 바뀌는</b> 조작은 매 스텝 디스크를 두드리지 않는다
         /// (24시간 상주 앱). 토글/스와치는 즉시 저장하고, 슬라이더는 손을 뗄 때/창을 닫을 때 흘려보낸다.</summary>
@@ -1246,26 +1242,30 @@ namespace StickMate.Interaction
             //   (CornerHoverPanel/SizeDialWidget)은 이 라운드에 통째로 제거됐다. 크기 조정은
             //   아래 [캐릭터] 탭의 "캐릭터 크기" 슬라이더 하나로 일원화된다.
 
-            _gearIconToggle = screenUi.AddToggle("general.gearIcon", "톱니 아이콘",
-                AppSettingsModel.GearIconVisible,
-                on =>
-                {
-                    AppSettingsModel.SetGearIconVisible(on);
-                    CharacterSaveStore.Save();
-                    SyncGearWarning();
-                    Debug.Log($"[설정창] 톱니 아이콘 {(on ? "켬" : "끔")} — " +
-                        "끄면 정보창/설정창의 마우스 진입점이 사라지고 단축키만 남습니다.");
-                });
-
-            // 경고 캡션은 "끈 경우에만" 보인다(35-1-5의 조건부 줄). 자리는 <b>항상</b> 잡아 둔다 —
-            // 나타났다 사라질 때 카드 높이가 바뀌면 아래 카드가 통째로 움직여, 끄는 순간 누르려던
-            // 다음 버튼이 발밑에서 미끄러진다.
-            _gearWarnCaption = screenUi.AddCaptionLine("GearWarn",
-                // 시안의 "⚠" 기호는 뺐다 — 이 프로젝트의 UI 폰트(LegacyRuntime.ttf)에 U+26A0이 있다는
-                // 보장이 없어 두부(□)가 될 수 있다. ▲/▼/✕는 정보창·팝오버에서 이미 렌더가 확인된
-                // 글리프라 그대로 쓴다. 경고라는 사실은 색(WarmAccent)이 이미 말하고 있다.
-                $"끄면 캐릭터 정보창은 {ShortcutLabel.Chord("I")} 로만 열 수 있어요.", UiChrome.WarmAccent);
-            _gearWarnCaption.gameObject.SetActive(false);
+            // ★★★ 2026-09-05 — 여기 있던 <b>「톱니 아이콘」 토글과 그 경고 캡션을 지웠다</b>
+            //   (ux-designer W-4 재발행 / 리더 판정 L-10). 지운 이유는 «정리»가 아니라 <b>위험</b>이다:
+            //
+            //   같은 날 톱니가 「평상시 숨김 · 캐릭터가 화면에서 사라진 동안에만 표시」로 바뀌면서
+            //   (Interaction/InfoGearIconWidget.StandbyGearPolicy) 이 토글은 <b>끌 대상을 잃었다</b>.
+            //   그런데 남겨 두면 더 나빠진다 — 그 값은 세이브에 내려가 재시작해도 유지되고, 다시
+            //   켜는 문(이 설정창)에 닿는 마우스 경로가 바로 그 톱니이기 때문이다.
+            //   ⇒ <b>사용자가 스스로를 영구히 잠글 수 있는 스위치</b>가 된다.
+            //   2026-09-03 사용자 신고 <i>"설정에서 숨기기버튼 누르니까 전부 다 없어져버려서 다시
+            //   나오게 할 방법이 없어"</i>의 정확한 재발이라, 되돌리는 문이 없는 저장 항목을 금지한
+            //   41-8과 정면으로 충돌한다.
+            //
+            //   ★ 그리고 지우기 전 이 자리는 <b>거짓말을 하고 있었다</b>: 토글을 꺼도 아무 일도
+            //     일어나지 않는데(게이트가 이 값을 더 이상 읽지 않는다) 로그와 캡션은
+            //     "끄면 마우스 진입점이 사라진다"고 말했다.
+            //
+            //   ★ <b>설정 값과 세이브 필드(<c>gearIconVisible</c>)는 지우지 않았다</b> — 소비만 끊었다.
+            //     스키마를 한 비트도 건드리지 않으므로 기존 세이브가 그대로 읽히고
+            //     <c>AppSettingsModelContractTests</c>/<c>EquipmentMigrationTests</c>도 그대로 초록이다.
+            //     (필드를 지우려면 v10 → v11 + 마이그레이션 + 하위 호환 테스트가 필요하고, 그건
+            //      「톱니 완전 제거」 라운드의 몫이다.)
+            //
+            //   ★ 아래 [톱니 위치] 행은 <b>남긴다</b>(ux-designer W-5 철회). 톱니는 여전히 드래그로
+            //     옮길 수 있고 그 자리는 세이브에 영구히 앉으므로, 되돌리는 문도 남아야 한다(41-8).
 
             // ★★ 2026-09-02 P0 (docs/UX_FLOW.md 41-8 2겹) — <b>영구히 저장되는 것에는 되돌리는 문이 있다.</b>
             //   톱니를 끌어다 놓은 자리는 세이브에 앉아 재시작해도 유지되는데, 그것을 되돌리는 UI가

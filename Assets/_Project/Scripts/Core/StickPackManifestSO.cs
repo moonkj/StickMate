@@ -124,8 +124,16 @@ namespace StickMate.Core
         /// <para><b>세이브 스키마와 아무 관계가 없다.</b> 팩 보유는 저장하지 않는다
         /// (ENTITLEMENT_CONTRACT §E-4-a · §E-8-b) — 그래서 이 값이 올라도
         /// <c>CharacterSaveStore.CurrentVersion</c> 은 움직이지 않는다.</para>
+        /// <para>★ <b>v2 (2026-09-05)</b> — 팩이 싣는 아이템 에셋의 형상에 계약 v2 필드가 생겼다. 조각(<see cref="AccessoryWornShapeData"/>) 9개:
+        /// <c>surfaces / strokeMult / strokeInR / noStroke / alpha / lineAlpha / underBack / layer / bodyFixed</c>,
+        /// 아이템(<see cref="AccessoryDefSO"/>) 5개: <c>wornGroupAlpha / wornScale / wornScaleY / wornOffsetYInR / wornMirrorX</c>.
+        /// (초안의 <c>bodyAlpha / fixedFill / fixedLine</c> 은 실사용 0 이라 같은 날 제거됐다 — 이름 <c>strokeGrade</c> 는 존재한 적이 없다.)
+        /// 매니페스트 자체의 필드는 안 늘었지만 이 판이 지키는 것은 「옛 앱이 새 팩을 반쯤 읽는 것」이고, v1 앱은 <c>surfaces</c>를 몰라
+        /// <b>카드 전용 조각을 몸에 그린다</b>. 그래서 그 필드를 쓰는 팩은 2를 요구해야 한다.
+        /// v1 팩(키 없음)은 열네 필드가 전부 0/false = v1과 같은 뜻이라 v2 앱에서 그대로 옳다
+        /// (<c>WornShapeContractCompatTests</c>가 잠근다).</para>
         /// </summary>
-        public const int SchemaVersion = 1;
+        public const int SchemaVersion = 2;
 
         [Header("정체")]
         [Tooltip("역DNS 형식(pack.office). 엔타이틀먼트 키이자 세트 아이디다. 절대 바꾸지 말 것 — " +

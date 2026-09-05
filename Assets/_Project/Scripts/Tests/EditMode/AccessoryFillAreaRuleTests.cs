@@ -99,20 +99,27 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// 2026-09-02 M6 적용 후의 위반 전부 = <b>4개</b>. 필요 ρ_max는 0.21818 R(1.00획),
-        /// 권장은 0.26182 R(1.20획)이다.
+        /// ★ 2026-09-05 — <b>대장이 비었다.</b> 필요 ρ_max는 0.21818 R(1.00획), 권장은 0.26182 R(1.20획).
+        ///
+        /// <para>2026-09-02 M6 적용 후 남았던 <b>4개</b>를 R13이 전부 닫았다
+        /// (<c>docs/EQUIPMENT_HANDOFF_PORT_SPEC.md</c> §12-3):</para>
+        /// <list type="table">
+        ///   <item><term>PatchEye · MonocleEye</term><description>아몬드 → 12각 원반 r = 0.33R.
+        ///     반축 (a,b) 마름모의 ρ는 min(a,b)를 못 넘어 반높이 0.24R에서는 <b>폭을 아무리 늘려도</b>
+        ///     통과가 불가능했다. 0.1855R(0.85획) → <b>0.3188R(1.46획)</b>.</description></item>
+        ///   <item><term>HairPart</term><description>가르마 폭축 ×1.40. 0.1938R(0.89획) → <b>0.2631R(1.21획)</b>.</description></item>
+        ///   <item><term>BandanaTail</term><description>밑변 0.48 → 0.76R(<b>에셋</b> 수정 —
+        ///     NECK은 형상의 정의처가 <c>equip_neck_bandana.asset</c>이다).
+        ///     0.1942R(0.89획) → <b>0.2728R(1.25획)</b>.</description></item>
+        /// </list>
+        ///
+        /// <para><b>이 배열이 비어 있는 것은 기대값이다.</b> 아래
+        /// <see cref="면제_대장은_실제_위반_집합과_정확히_일치한다"/>가 그것을 <b>명시로</b> 단언하고,
+        /// 같은 검사가 «채운 도형을 실제로 세었는가» + «자가 지금도 위반을 잡는가»(양성 대조)까지
+        /// 함께 본다 — 이 저장소의 거짓 통과 5번 형태(<i>빈 목록을 도는 foreach가 조용히 초록</i>)를
+        /// 그대로 밟지 않기 위해서다.</para>
         /// </summary>
-        private static readonly Exemption[] Ledger =
-        {
-            new Exemption(EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesPatch, "PatchEye", 0.1855f,
-                "안대의 가려진 눈. 필요 +18% / 권장 +41%. 좌표 작업은 장비 담당 소관(리더 경유)."),
-            new Exemption(EquipmentSlot.Eyes, AccessoryShapeBuilder.EyesMonocle, "MonocleEye", 0.1855f,
-                "외알안경 렌즈 안쪽 눈. PatchEye와 같은 좌표 계열이라 함께 움직인다."),
-            new Exemption(EquipmentSlot.Hair, AccessoryShapeBuilder.HairNeat, "HairPart", 0.1940f,
-                "단정한머리 가르마. 필요 +13% / 권장 +36%."),
-            new Exemption(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBandana, "BandanaTail", 0.1941f,
-                "반다나 자락 삼각형. 필요 +13% / 권장 +35%."),
-        };
+        private static readonly Exemption[] Ledger = new Exemption[0];
 
         private static bool IsExempt(EquipmentSlot slot, int item, string shapeName)
         {
@@ -139,6 +146,8 @@ namespace StickMate.Tests.EditMode
         [TestCaseSource(nameof(FilledItems))]
         public void 채운_도형은_윤곽선_침식_후에도_색면_폭이_획_하나_이상이다(EquipmentSlot slot, int itemIndex)
         {
+            HandoffTestGate.SkipIfHandoff(slot, itemIndex,
+                "규칙 1-C(ρ_max ≥ 1획 @배율 0.60) — 인계본 채움은 원문 크기(구슬·원형 장식)이고 착용 표면 자는 1pt 실폭이다(§14-4 · #14)");
             AccessoryShapeBuilder.Rig rig = AccessoryStrokeBudgetTests.Rig();
             var sink = new List<AccessoryShapeBuilder.Shape>();
             AccessoryShapeBuilder.Append(sink, slot, itemIndex, rig);
@@ -218,6 +227,9 @@ namespace StickMate.Tests.EditMode
                 for (int i = 0; i < sink.Count; i++)
                 {
                     if (!sink[i].Filled) continue;
+                    // ★ 2026-09-05 인계본 조각은 이 자(0.60 배율 윤곽선 펜)의 대상이 아니다 — 위 게이트와 같은 이유(§14-6 #14).
+                    //   잃는 것: 인계본 채움 조각의 두께 대장. 대장은 v1 14종만 센다.
+                    if (sink[i].IsHandoff) continue;
                     filledTotal++;
                     float rhoInR = MaxInscribedRadius(sink[i].Points) / rig.HeadRadius;
                     float strokes = rhoInR / wOut;
@@ -226,6 +238,27 @@ namespace StickMate.Tests.EditMode
                     table.Append($"{rhoInR:F4}R {strokes:F2}획 {slot}/{item}/{sink[i].Name}\n");
                 }
             }
+
+            // ★ 대장이 빈 뒤로는 위 두 수가 「0 == 0」이라 <b>아무것도 안 재고도</b> 통과할 수 있다
+            //   (이 저장소 거짓 통과 5번 형태). 그래서 재기 전에 두 가지를 못박는다.
+            //
+            //   ① 공허함 — 채운 도형을 실제로 하나라도 세었는가.
+            Assert.Greater(filledTotal, 0,
+                $"{LogPrefix} 채운 도형을 하나도 세지 못했습니다 — 아래 「위반 0개」는 " +
+                "«위반이 없다»가 아니라 «아무것도 안 쟀다»입니다.");
+
+            //   ② 양성 대조 — 이 자가 <b>지금도</b> 위반을 잡는가. 고의로 얇은 도형을 넣어 본다.
+            //      두께 0.5획짜리 띠(ρ = 0.25획)다. 이것이 안 걸리면 위 「0개」는 무의미하다.
+            float thinHalf = wOut * rig.HeadRadius * 0.25f;
+            var thin = new[]
+            {
+                new Vector3(-rig.HeadRadius, -thinHalf, 0f), new Vector3(rig.HeadRadius, -thinHalf, 0f),
+                new Vector3(rig.HeadRadius, thinHalf, 0f), new Vector3(-rig.HeadRadius, thinHalf, 0f),
+            };
+            float thinStrokes = MaxInscribedRadius(thin) / rig.HeadRadius / wOut;
+            Assert.Less(thinStrokes, GateStrokes - 1e-4f,
+                $"{LogPrefix} 양성 대조 실패 — 두께 0.5획짜리 띠를 {thinStrokes:F2}획으로 쟀습니다. " +
+                "자가 눈이 멀었으므로 아래 「위반 0개」를 믿을 수 없습니다.");
 
             Assert.AreEqual(Ledger.Length, violating.Count,
                 $"{LogPrefix} 면제 대장은 {Ledger.Length}줄인데 실제 위반은 {violating.Count}개입니다 " +
@@ -295,6 +328,7 @@ namespace StickMate.Tests.EditMode
                 for (int i = 0; i < sink.Count; i++)
                 {
                     if (!sink[i].Filled) continue;
+                    if (sink[i].IsHandoff) continue;   // 인계본 조각 제외 — 위 대장 검사와 같은 이유(§14-6 #14).
                     filledTotal++;
                     float rhoInR = MaxInscribedRadius(sink[i].Points) / rig.HeadRadius;
                     if (rhoInR <= wOut * 0.5f) zeroArea.Add($"{slot}/{item}/{sink[i].Name}");

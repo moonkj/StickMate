@@ -476,15 +476,11 @@ namespace StickMate.Tests.PlayMode
             yield return SettlePanelHeight();
         }
 
+        /// <summary>★ L-8(2026-09-05) — 창 높이가 탭과 무관하게 고정이 되면서 <b>기다릴 애니메이션이
+        /// 사라졌다</b>. 호출부 형태를 그대로 두려고 함수만 남긴다(한 프레임 넘긴다).</summary>
         private IEnumerator SettlePanelHeight()
         {
-            float deadline = Time.realtimeSinceStartup + SettleTimeoutSeconds;
-            while (Time.realtimeSinceStartup < deadline)
-            {
-                if (Mathf.Abs(_window.AnimatedPanelHeightPoints - _window.TargetPanelHeightPoints) < 0.5f) yield break;
-                yield return null;
-            }
-            Assert.Fail($"{LogPrefix} {SettleTimeoutSeconds:F1}초 안에 창 높이가 목표에 닿지 않았습니다.");
+            yield return null;
         }
     }
 }

@@ -1,0 +1,220 @@
+== 0. 팔레트 — design-art palette_model.ROLE 적용 + R19 정정 0건 ==
+   구슬 최소 반경: 윤곽 없는 채움 원반이 1× 에서 살아남는 r ≥ w(1pt) = 0.1719 R(지름 2px) · 규칙 1-A 만 보면 r ≥ 0.75w = 0.1289 R. 채택 r = 0.1719 R (인계본 3.2u = 0.1085 R 의 ×1.58)
+   구슬 중심 (+1.204, -0.761) · 머리 중심에서 1.424 R · 안쪽 가장자리 1.252 vs 출하 원반 1.172 → 깨끗이 밖
+   선글라스 렌즈 SH = #162133 (M #5075B5 ×0.28) · 테 M2 #587398: 렌즈↔테 대비 3.32 · 렌즈↔검은 머리 1.17 · 테↔검은 머리 3.89 · 테↔흰 머리 4.86
+   (ROLE 원안 M 렌즈 #5075B5 ↔ M2 테 #587398 대비 1.05 — 그래서 테가 안 읽혔다)
+   고글 렌즈 M2 #CC5512 ↔ 판 M #587398 대비 1.13 (윤곽 없이 경계가 선다)
+
+== 1. [①] 모자 2층 ==
+   clothhat  뒤층 2: clothhat.B2.far, clothhat.B2.farArc
+             앞층 5: clothhat.B0, clothhat.F1, clothhat.B2.near, clothhat.B2.nearArc, clothhat.H3
+   furhat    뒤층 0: (없음 — 먼 쪽이 보이는 부위가 없다)
+             앞층 5: furhat.CB0, furhat.B1, furhat.H2, furhat.B3, furhat.S4
+   fedora    뒤층 2: fedora.B2.far, fedora.B2.farArc
+             앞층 5: fedora.B0, fedora.F1, fedora.B2.near, fedora.B2.nearArc, fedora.H3
+   crown     뒤층 1: crown.BackWall
+             앞층 9: crown.B0, crown.B1, crown.CF2, crown.CF3, crown.CF4, crown.CB5, crown.CB6, crown.CB7, crown.H8
+   왕관 재맞춤: u 0.0630(카드 ×1.27) dy +2.600 · 착용선(테 밑) +0.442 · 골 +0.773 (머리 꼭대기 1.184 − 0.40) · 꼭대기 +1.819 · 밑 -0.503 · 폭 2.58 R  (R17: u 0.0570 dy 3.120 골 +1.467 — 머리가 안 보였다)
+   clothhat  챙 장축 y +0.487 R · 그 높이 머리 현 반폭 1.066 · 챙 반폭 1.825 → 먼 쪽 챙이 머리 옆으로 각 0.759 R 보인다
+   fedora    챙 장축 y +0.523 R · 그 높이 머리 현 반폭 1.049 · 챙 반폭 2.028 → 먼 쪽 챙이 머리 옆으로 각 0.979 R 보인다
+
+== 2. [⑤] NECK 착용선 (N-1 예외 폐지) ==
+   bowtie        RB2  윗변 -1.412 R · 어깨선과 -0.093 · 머리 원반 밑과 -0.240 → 통과
+   stripedtie    B0   윗변 -1.300 R · 어깨선과 +0.018 · 머리 원반 밑과 -0.128 → 통과
+   scarf         B0   윗변 -1.471 R · 어깨선과 -0.153 · 머리 원반 밑과 -0.299 → 통과
+   bellnecklace  S0   윗변 -1.395 R · 어깨선과 -0.076 · 머리 원반 밑과 -0.223 → 통과
+   나비넥타이 날개 윗변 -1.202 R (머리 원반 밑 -1.172 아래 0.030 R) — dy +0.27
+
+== 3. [⑥] 배낭 착용면 ==
+   backpack.S0            back  낱선           fill None line M    잉크 1.24×0.75R x[-0.62,+0.62] y[-1.80,-1.06]
+   backpack.B1            back  본체           fill M    line INK  잉크 2.49×2.18R x[-1.24,+1.24] y[-3.79,-1.62]
+   backpack.STRAP_L       front 어깨끈(앞층)      fill None line M2   잉크 0.53×2.05R x[-0.95,-0.42] y[-3.27,-1.22]
+   backpack.STRAP_R       front 어깨끈(앞층)      fill None line M2   잉크 0.53×2.05R x[+0.42,+0.95] y[-3.27,-1.22]
+   카드에만: B2, H5, RB3, RB4 · 어깨끈 명목 0.3108 R = 1.81 pt @0.75 (M2 독립선, 윤곽 없음) · 몸통 반폭 0.261 R 뒤에 뒷판(x ±1.24)이 각 0.98 R 보인다
+   날개: 깃 B0/B1·정맥·척추 RB4 — 얇은 깃은 앞뒤 면이 같고 척추(폭 0.20 R)는 몸통(반폭 0.261 R) 뒤에 숨는다 → 그대로 맞다
+
+== 4. 표면별 색 해석 (검은 잉크 몸 / 흰 잉크 몸 / 카드) — 조각별 ==
+   monocle       monocle.ExposedEye       front ('EYE', None)  검: fill #FFFFFF line None | 흰: fill #252829 line None
+   monocle       monocle.CB0              front (('CARDWASH', 0.2), 'M') 검: fill #1F252C line #9B7922 | 흰: fill #DEE3EA line #9B7922
+   monocle       monocle.H1               front (None, 'W')    검: fill None line #FFFFFF | 흰: fill None line #FFFFFF
+   monocle       monocle.S2               front (None, 'M')    검: fill None line #9B7922 | 흰: fill None line #9B7922
+   monocle       monocle.CB3              front ('M2', None)   검: fill #587398 line None | 흰: fill #587398 line None
+   monocle       monocle.CB0              card  (('CARDWASH', 0.2), 'M') fill #587398 α0.20 line #9B7922
+   monocle       monocle.H1               card  (None, 'W')    fill None α1.00 line #FFFFFF
+   monocle       monocle.S2               card  (None, 'M')    fill None α1.00 line #9B7922
+   monocle       monocle.CB3              card  ('M2', None)   fill #587398 α1.00 line None
+   clothhat      clothhat.B0              front ('M', 'INK')   검: fill #96814F line #111111 | 흰: fill #96814F line #FFFFFF
+   clothhat      clothhat.F1              front ('SH', None)   검: fill #2A2416 line None | 흰: fill #2A2416 line None
+   clothhat      clothhat.B2.far          back  ('M2', None)   검: fill #CC5512 line None | 흰: fill #CC5512 line None
+   clothhat      clothhat.B2.farArc       back  (None, 'INK')  검: fill None line #111111 | 흰: fill None line #FFFFFF
+   clothhat      clothhat.B2.near         front ('M2', None)   검: fill #CC5512 line None | 흰: fill #CC5512 line None
+   clothhat      clothhat.B2.nearArc      front (None, 'INK')  검: fill None line #111111 | 흰: fill None line #FFFFFF
+   clothhat      clothhat.H3              front (None, 'W')    검: fill None line #FFFFFF | 흰: fill None line #FFFFFF
+   clothhat      clothhat.B0              card  ('M', 'INK')   fill #96814F α1.00 line #E8E2D6
+   clothhat      clothhat.F1              card  ('SH', None)   fill #2A2416 α1.00 line None
+   clothhat      clothhat.B2              card  ('M2', 'INK')  fill #CC5512 α1.00 line #E8E2D6
+   clothhat      clothhat.H3              card  (None, 'W')    fill None α1.00 line #FFFFFF
+   furhat        furhat.CB0               front ('M2', 'INK')  검: fill #96814F line #111111 | 흰: fill #96814F line #FFFFFF
+   furhat        furhat.B1                front ('M', 'INK')   검: fill #BA7636 line #111111 | 흰: fill #BA7636 line #FFFFFF
+   furhat        furhat.H2                front (None, 'W')    검: fill None line #FFFFFF | 흰: fill None line #FFFFFF
+   furhat        furhat.B3                front ('M2', 'INK')  검: fill #96814F line #111111 | 흰: fill #96814F line #FFFFFF
+   furhat        furhat.S4                front (None, 'INK')  검: fill None line #111111 | 흰: fill None line #FFFFFF
+   furhat        furhat.CB0               card  ('M2', 'INK')  fill #96814F α1.00 line #E8E2D6
+   furhat        furhat.B1                card  ('M', 'INK')   fill #BA7636 α1.00 line #E8E2D6
+   furhat        furhat.H2                card  (None, 'W')    fill None α1.00 line #FFFFFF
+   furhat        furhat.B3                card  ('M2', 'INK')  fill #96814F α1.00 line #E8E2D6
+   furhat        furhat.S4                card  (None, 'INK')  fill None α1.00 line #E8E2D6
+   fedora        fedora.B0                front ('M', 'INK')   검: fill #5577AE line #111111 | 흰: fill #5577AE line #FFFFFF
+   fedora        fedora.F1                front ('M2', None)   검: fill #CC5512 line None | 흰: fill #CC5512 line None
+   fedora        fedora.B2.far            back  ('M', None)    검: fill #5577AE line None | 흰: fill #5577AE line None
+   fedora        fedora.B2.farArc         back  (None, 'INK')  검: fill None line #111111 | 흰: fill None line #FFFFFF
+   fedora        fedora.B2.near           front ('M', None)    검: fill #5577AE line None | 흰: fill #5577AE line None
+   fedora        fedora.B2.nearArc        front (None, 'INK')  검: fill None line #111111 | 흰: fill None line #FFFFFF
+   fedora        fedora.H3                front (None, 'W')    검: fill None line #FFFFFF | 흰: fill None line #FFFFFF
+   fedora        fedora.B0                card  ('M', 'INK')   fill #5577AE α1.00 line #E8E2D6
+   fedora        fedora.F1                card  ('M2', None)   fill #CC5512 α1.00 line None
+   fedora        fedora.B2                card  ('M', 'INK')   fill #5577AE α1.00 line #E8E2D6
+   fedora        fedora.H3                card  (None, 'W')    fill None α1.00 line #FFFFFF
+   crown         crown.BackWall           back  ('SH', None)   검: fill #2B220A line None | 흰: fill #2B220A line None
+   crown         crown.B0                 front ('M', 'INK')   검: fill #9B7922 line #111111 | 흰: fill #9B7922 line #FFFFFF
+   crown         crown.B1                 front ('M', 'INK')   검: fill #9B7922 line #111111 | 흰: fill #9B7922 line #FFFFFF
+   crown         crown.CF2                front ('M2', None)   검: fill #C6443C line None | 흰: fill #C6443C line None
+   crown         crown.CF3                front ('M2', None)   검: fill #C6443C line None | 흰: fill #C6443C line None
+   crown         crown.CF4                front ('M2', None)   검: fill #C6443C line None | 흰: fill #C6443C line None
+   crown         crown.CB5                front ('M', 'INK')   검: fill #9B7922 line #111111 | 흰: fill #9B7922 line #FFFFFF
+   crown         crown.CB6                front ('M', 'INK')   검: fill #9B7922 line #111111 | 흰: fill #9B7922 line #FFFFFF
+   crown         crown.CB7                front ('M', 'INK')   검: fill #9B7922 line #111111 | 흰: fill #9B7922 line #FFFFFF
+   crown         crown.H8                 front (None, 'W')    검: fill None line #FFFFFF | 흰: fill None line #FFFFFF
+   crown         crown.B0                 card  ('M', 'INK')   fill #9B7922 α1.00 line #E8E2D6
+   crown         crown.B1                 card  ('M', 'INK')   fill #9B7922 α1.00 line #E8E2D6
+   crown         crown.CF2                card  ('M2', None)   fill #C6443C α1.00 line None
+   crown         crown.CF3                card  ('M2', None)   fill #C6443C α1.00 line None
+   crown         crown.CF4                card  ('M2', None)   fill #C6443C α1.00 line None
+   crown         crown.CB5                card  ('M', 'INK')   fill #9B7922 α1.00 line #E8E2D6
+   crown         crown.CB6                card  ('M', 'INK')   fill #9B7922 α1.00 line #E8E2D6
+   crown         crown.CB7                card  ('M', 'INK')   fill #9B7922 α1.00 line #E8E2D6
+   crown         crown.H8                 card  (None, 'W')    fill None α1.00 line #FFFFFF
+   stripedtie    stripedtie.B0            front ('M', 'INK')   검: fill #428C24 line #111111 | 흰: fill #428C24 line #FFFFFF
+   stripedtie    stripedtie.B1            front ('M', 'INK')   검: fill #428C24 line #111111 | 흰: fill #428C24 line #FFFFFF
+   stripedtie    stripedtie.F2            front ('M2', None)   검: fill #96814F line None | 흰: fill #96814F line None
+   stripedtie    stripedtie.F3            front ('M2', None)   검: fill #96814F line None | 흰: fill #96814F line None
+   stripedtie    stripedtie.H4            front (None, 'W')    검: fill None line #FFFFFF | 흰: fill None line #FFFFFF
+   stripedtie    stripedtie.B0            card  ('M', 'INK')   fill #428C24 α1.00 line #E8E2D6
+   stripedtie    stripedtie.B1            card  ('M', 'INK')   fill #428C24 α1.00 line #E8E2D6
+   stripedtie    stripedtie.F2            card  ('M2', None)   fill #96814F α1.00 line None
+   stripedtie    stripedtie.F3            card  ('M2', None)   fill #96814F α1.00 line None
+   stripedtie    stripedtie.H4            card  (None, 'W')    fill None α1.00 line #FFFFFF
+   sunglasses    sunglasses.B0            front ('SH', 'M2')   검: fill #162133 line #587398 | 흰: fill #162133 line #587398
+   sunglasses    sunglasses.B1            front ('SH', 'M2')   검: fill #162133 line #587398 | 흰: fill #162133 line #587398
+   sunglasses    sunglasses.S2            front (None, 'M2')   검: fill None line #587398 | 흰: fill None line #587398
+   sunglasses    sunglasses.S3            front (None, 'M2')   검: fill None line #587398 | 흰: fill None line #587398
+   sunglasses    sunglasses.S4            front (None, 'M2')   검: fill None line #587398 | 흰: fill None line #587398
+   sunglasses    sunglasses.H5            front (None, 'W')    검: fill None line #FFFFFF | 흰: fill None line #FFFFFF
+   sunglasses    sunglasses.B0            card  ('SH', 'M2')   fill #162133 α1.00 line #587398
+   sunglasses    sunglasses.B1            card  ('SH', 'M2')   fill #162133 α1.00 line #587398
+   sunglasses    sunglasses.S2            card  (None, 'M2')   fill None α1.00 line #587398
+   sunglasses    sunglasses.S3            card  (None, 'M2')   fill None α1.00 line #587398
+   sunglasses    sunglasses.S4            card  (None, 'M2')   fill None α1.00 line #587398
+   sunglasses    sunglasses.H5            card  (None, 'W')    fill None α1.00 line #FFFFFF
+   roundglasses  roundglasses.CB0         front (('CARDWASH', 0.16), 'M') 검: fill #132425 line #587398 | 흰: fill #DBECED line #587398
+   roundglasses  roundglasses.CB1         front (('CARDWASH', 0.16), 'M') 검: fill #132425 line #587398 | 흰: fill #DBECED line #587398
+   roundglasses  roundglasses.S2          front (None, 'M')    검: fill None line #587398 | 흰: fill None line #587398
+   roundglasses  roundglasses.S3          front (None, 'M')    검: fill None line #587398 | 흰: fill None line #587398
+   roundglasses  roundglasses.S4          front (None, 'M')    검: fill None line #587398 | 흰: fill None line #587398
+   roundglasses  roundglasses.H5          front (None, 'W')    검: fill None line #FFFFFF | 흰: fill None line #FFFFFF
+   roundglasses  roundglasses.H6          front (None, 'W')    검: fill None line #FFFFFF | 흰: fill None line #FFFFFF
+   roundglasses  roundglasses.CB0         card  (('CARDWASH', 0.16), 'M') fill #20878C α0.16 line #587398
+   roundglasses  roundglasses.CB1         card  (('CARDWASH', 0.16), 'M') fill #20878C α0.16 line #587398
+   roundglasses  roundglasses.S2          card  (None, 'M')    fill None α1.00 line #587398
+   roundglasses  roundglasses.S3          card  (None, 'M')    fill None α1.00 line #587398
+   roundglasses  roundglasses.S4          card  (None, 'M')    fill None α1.00 line #587398
+   roundglasses  roundglasses.H5          card  (None, 'W')    fill None α1.00 line #FFFFFF
+   roundglasses  roundglasses.H6          card  (None, 'W')    fill None α1.00 line #FFFFFF
+   goggles       goggles.B0               front ('M', 'INK')   검: fill #587398 line #111111 | 흰: fill #587398 line #FFFFFF
+   goggles       goggles.CB1              front ('M2', None)   검: fill #CC5512 line None | 흰: fill #CC5512 line None
+   goggles       goggles.CB2              front ('M2', None)   검: fill #CC5512 line None | 흰: fill #CC5512 line None
+   goggles       goggles.S3               front (None, 'INK')  검: fill None line #111111 | 흰: fill None line #FFFFFF
+   goggles       goggles.S4               front (None, 'M')    검: fill None line #587398 | 흰: fill None line #587398
+   goggles       goggles.S5               front (None, 'M')    검: fill None line #587398 | 흰: fill None line #587398
+   goggles       goggles.H6               front (None, 'W')    검: fill None line #FFFFFF | 흰: fill None line #FFFFFF
+   goggles       goggles.B0               card  ('M', 'INK')   fill #587398 α1.00 line #E8E2D6
+   goggles       goggles.CB1              card  ('M2', None)   fill #CC5512 α1.00 line None
+   goggles       goggles.CB2              card  ('M2', None)   fill #CC5512 α1.00 line None
+   goggles       goggles.S3               card  (None, 'INK')  fill None α1.00 line #E8E2D6
+   goggles       goggles.S4               card  (None, 'M')    fill None α1.00 line #587398
+   goggles       goggles.S5               card  (None, 'M')    fill None α1.00 line #587398
+   goggles       goggles.H6               card  (None, 'W')    fill None α1.00 line #FFFFFF
+   bowtie        bowtie.B0                front ('M', 'INK')   검: fill #5A8C3C line #111111 | 흰: fill #5A8C3C line #FFFFFF
+   bowtie        bowtie.B1                front ('M', 'INK')   검: fill #5A8C3C line #111111 | 흰: fill #5A8C3C line #FFFFFF
+   bowtie        bowtie.RB2               front ('M2', 'INK')  검: fill #96814F line #111111 | 흰: fill #96814F line #FFFFFF
+   bowtie        bowtie.H3                front (None, 'W')    검: fill None line #FFFFFF | 흰: fill None line #FFFFFF
+   bowtie        bowtie.B0                card  ('M', 'INK')   fill #5A8C3C α1.00 line #E8E2D6
+   bowtie        bowtie.B1                card  ('M', 'INK')   fill #5A8C3C α1.00 line #E8E2D6
+   bowtie        bowtie.RB2               card  ('M2', 'INK')  fill #96814F α1.00 line #E8E2D6
+   bowtie        bowtie.H3                card  (None, 'W')    fill None α1.00 line #FFFFFF
+   scarf         scarf.B0                 front ('M', 'INK')   검: fill #CC5512 line #111111 | 흰: fill #CC5512 line #FFFFFF
+   scarf         scarf.B1                 front ('M', 'INK')   검: fill #CC5512 line #111111 | 흰: fill #CC5512 line #FFFFFF
+   scarf         scarf.S2                 front (None, 'M2')   검: fill None line #BA5928 | 흰: fill None line #BA5928
+   scarf         scarf.S3                 front (None, 'M2')   검: fill None line #BA5928 | 흰: fill None line #BA5928
+   scarf         scarf.S4                 front (None, 'M2')   검: fill None line #BA5928 | 흰: fill None line #BA5928
+   scarf         scarf.H5                 front (None, 'W')    검: fill None line #FFFFFF | 흰: fill None line #FFFFFF
+   scarf         scarf.B0                 card  ('M', 'INK')   fill #CC5512 α1.00 line #E8E2D6
+   scarf         scarf.B1                 card  ('M', 'INK')   fill #CC5512 α1.00 line #E8E2D6
+   scarf         scarf.S2                 card  (None, 'M2')   fill None α1.00 line #BA5928
+   scarf         scarf.S3                 card  (None, 'M2')   fill None α1.00 line #BA5928
+   scarf         scarf.S4                 card  (None, 'M2')   fill None α1.00 line #BA5928
+   scarf         scarf.H5                 card  (None, 'W')    fill None α1.00 line #FFFFFF
+   bellnecklace  bellnecklace.S0          front (None, 'M')    검: fill None line #BA5928 | 흰: fill None line #BA5928
+   bellnecklace  bellnecklace.CF1         front ('M2', None)   검: fill #9B7922 line None | 흰: fill #9B7922 line None
+   bellnecklace  bellnecklace.CF2         front ('M2', None)   검: fill #9B7922 line None | 흰: fill #9B7922 line None
+   bellnecklace  bellnecklace.CF3         front ('M2', None)   검: fill #9B7922 line None | 흰: fill #9B7922 line None
+   bellnecklace  bellnecklace.B4          front ('M2', 'INK')  검: fill #9B7922 line #111111 | 흰: fill #9B7922 line #FFFFFF
+   bellnecklace  bellnecklace.RB5         front ('M2', 'INK')  검: fill #9B7922 line #111111 | 흰: fill #9B7922 line #FFFFFF
+   bellnecklace  bellnecklace.CB6         front ('M2', 'INK')  검: fill #9B7922 line #111111 | 흰: fill #9B7922 line #FFFFFF
+   bellnecklace  bellnecklace.H7          front (None, 'W')    검: fill None line #FFFFFF | 흰: fill None line #FFFFFF
+   bellnecklace  bellnecklace.S0          card  (None, 'M')    fill None α1.00 line #BA5928
+   bellnecklace  bellnecklace.CF1         card  ('M2', None)   fill #9B7922 α1.00 line None
+   bellnecklace  bellnecklace.CF2         card  ('M2', None)   fill #9B7922 α1.00 line None
+   bellnecklace  bellnecklace.CF3         card  ('M2', None)   fill #9B7922 α1.00 line None
+   bellnecklace  bellnecklace.B4          card  ('M2', 'INK')  fill #9B7922 α1.00 line #E8E2D6
+   bellnecklace  bellnecklace.RB5         card  ('M2', 'INK')  fill #9B7922 α1.00 line #E8E2D6
+   bellnecklace  bellnecklace.CB6         card  ('M2', 'INK')  fill #9B7922 α1.00 line #E8E2D6
+   bellnecklace  bellnecklace.H7          card  (None, 'W')    fill None α1.00 line #FFFFFF
+   shortcape     shortcape.StageBack      back  ('M', 'INK')   검: fill #CC3C3C line #111111 | 흰: fill #CC3C3C line #FFFFFF
+   shortcape     shortcape.StageCollar    front ('M2', 'INK')  검: fill #96814F line #111111 | 흰: fill #96814F line #FFFFFF
+   shortcape     shortcape.StageClasp     front ('M', 'INK')   검: fill #CC3C3C line #111111 | 흰: fill #CC3C3C line #FFFFFF
+   shortcape     shortcape.B0             card  ('M', 'INK')   fill #CC3C3C α1.00 line #E8E2D6
+   shortcape     shortcape.B1             card  ('M2', 'INK')  fill #96814F α1.00 line #E8E2D6
+   shortcape     shortcape.S2             card  (None, 'INK')  fill None α1.00 line #E8E2D6
+   shortcape     shortcape.H3             card  (None, 'W')    fill None α1.00 line #FFFFFF
+   longcape      longcape.StageBack       back  ('M', 'INK')   검: fill #CC3C3C line #111111 | 흰: fill #CC3C3C line #FFFFFF
+   longcape      longcape.StageCollar     front ('M2', 'INK')  검: fill #96814F line #111111 | 흰: fill #96814F line #FFFFFF
+   longcape      longcape.StageClasp      front ('M', 'INK')   검: fill #CC3C3C line #111111 | 흰: fill #CC3C3C line #FFFFFF
+   longcape      longcape.B0              card  ('M', 'INK')   fill #CC3C3C α1.00 line #E8E2D6
+   longcape      longcape.B1              card  ('M2', 'INK')  fill #96814F α1.00 line #E8E2D6
+   longcape      longcape.CB2             card  ('M', 'INK')   fill #CC3C3C α1.00 line #E8E2D6
+   longcape      longcape.S3              card  (None, 'INK')  fill None α1.00 line #E8E2D6
+   longcape      longcape.S4              card  (None, 'INK')  fill None α1.00 line #E8E2D6
+   longcape      longcape.H5              card  (None, 'W')    fill None α1.00 line #FFFFFF
+   wings         wings.B0                 back  ('M', 'INK')   검: fill #6787B9 line #111111 | 흰: fill #6787B9 line #FFFFFF
+   wings         wings.B1                 back  ('M', 'INK')   검: fill #6787B9 line #111111 | 흰: fill #6787B9 line #FFFFFF
+   wings         wings.S2                 back  (None, 'INK')  검: fill None line #111111 | 흰: fill None line #FFFFFF
+   wings         wings.S3                 back  (None, 'INK')  검: fill None line #111111 | 흰: fill None line #FFFFFF
+   wings         wings.RB4                back  ('M2', 'INK')  검: fill #955CCC line #111111 | 흰: fill #955CCC line #FFFFFF
+   wings         wings.H5                 back  (None, 'W')    검: fill None line #FFFFFF | 흰: fill None line #FFFFFF
+   wings         wings.B0                 card  ('M', 'INK')   fill #6787B9 α1.00 line #E8E2D6
+   wings         wings.B1                 card  ('M', 'INK')   fill #6787B9 α1.00 line #E8E2D6
+   wings         wings.S2                 card  (None, 'INK')  fill None α1.00 line #E8E2D6
+   wings         wings.S3                 card  (None, 'INK')  fill None α1.00 line #E8E2D6
+   wings         wings.RB4                card  ('M2', 'INK')  fill #955CCC α1.00 line #E8E2D6
+   wings         wings.H5                 card  (None, 'W')    fill None α1.00 line #FFFFFF
+   backpack      backpack.S0              back  (None, 'M')    검: fill None line #AB7942 | 흰: fill None line #AB7942
+   backpack      backpack.B1              back  ('M', 'INK')   검: fill #AB7942 line #111111 | 흰: fill #AB7942 line #FFFFFF
+   backpack      backpack.STRAP_L         front (None, 'M2')   검: fill None line #5A8C3C | 흰: fill None line #5A8C3C
+   backpack      backpack.STRAP_R         front (None, 'M2')   검: fill None line #5A8C3C | 흰: fill None line #5A8C3C
+   backpack      backpack.S0              card  (None, 'M')    fill None α1.00 line #AB7942
+   backpack      backpack.B1              card  ('M', 'INK')   fill #AB7942 α1.00 line #E8E2D6
+   backpack      backpack.B2              card  ('M2', 'INK')  fill #5A8C3C α1.00 line #E8E2D6
+   backpack      backpack.RB3             card  ('M2', 'INK')  fill #5A8C3C α1.00 line #E8E2D6
+   backpack      backpack.RB4             card  ('M', 'INK')   fill #AB7942 α1.00 line #E8E2D6
+   backpack      backpack.H5              card  (None, 'W')    fill None α1.00 line #FFFFFF

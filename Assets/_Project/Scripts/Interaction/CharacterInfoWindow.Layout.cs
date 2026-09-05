@@ -23,7 +23,7 @@ namespace StickMate.Interaction
             EnsurePortraitTexture(force: false);
         }
 
-        /// <summary>이보다 더 줄이면 좌측 컬럼(244)조차 담지 못한다 — 세로 하한과 같은 값으로 맞췄다.</summary>
+        /// <summary>이보다 더 줄이면 컬럼 1(306)조차 담지 못한다 — 세로 하한과 같은 값으로 맞췄다.</summary>
         private const float MinPanelWidth = 320f;
         private const float MinPanelHeight = 320f;
 
@@ -37,12 +37,12 @@ namespace StickMate.Interaction
         private void ClampPanelToScreen(float scaleFactor)
         {
             if (_panel == null || scaleFactor <= 0f) return;
-            TickPanelHeight();
-            float height = Mathf.Min(_panelHeightPoints, Mathf.Max(MinPanelHeight, Screen.height / scaleFactor - ScreenMargin * 2f));
+            float height = Mathf.Min(PanelHeight, Mathf.Max(MinPanelHeight, Screen.height / scaleFactor - ScreenMargin * 2f));
             float width = Mathf.Min(PanelWidth, Mathf.Max(MinPanelWidth, Screen.width / scaleFactor - ScreenMargin * 2f));
             if (!Mathf.Approximately(_panel.sizeDelta.x, width) || !Mathf.Approximately(_panel.sizeDelta.y, height))
             {
                 _panel.sizeDelta = new Vector2(width, height);
+                SyncColumnLayout(width);
                 SyncActionReachability();
             }
 
@@ -50,37 +50,15 @@ namespace StickMate.Interaction
             if (clamped != _panel.anchoredPosition) _panel.anchoredPosition = clamped;
         }
 
-        /// <summary>
-        /// ★ P0-1 — 탭이 요구하는 높이로 창을 <b>부드럽게</b> 옮긴다. 창은 화면 중앙 고정(피벗 0.5)이라
-        /// 위아래로 균등하게 줄어든다.
-        /// <para>새 문자열/객체를 만들지 않는다 — 상주 앱의 Update 경로다.</para>
-        /// </summary>
-        private void TickPanelHeight()
-        {
-            float target = PanelHeightForTab(_tab);
-            if (_panelHeightPoints <= 0f) { _panelHeightPoints = target; return; }   // 첫 프레임은 즉시.
-            if (Mathf.Approximately(_panelHeightPoints, target)) { _panelHeightPoints = target; return; }
-
-            // 0.12초에 <b>가장 큰 단(SectionStep)</b>을 지나가는 속도. 단이 작으면 그만큼 빨리 끝난다.
-            float speed = SectionStep / PanelHeightAnimateSeconds;
-            _panelHeightPoints = Mathf.MoveTowards(_panelHeightPoints, target,
-                speed * Mathf.Max(0f, Time.unscaledDeltaTime));
-        }
-
-        /// <summary>탭이 요구하는 자리로 상세 패널을 옮긴다. 창 높이는 <see cref="TickPanelHeight"/>가
-        /// 뒤따라 줄어들지만 상세 패널은 <b>즉시</b> 올라가야 한다 — 늦으면 그 프레임에 본문 마스크
-        /// 밖으로 나가 패널이 잠깐 사라진다.</summary>
-        private void ApplyTabDetailPlacement()
-        {
-            if (_sectionDetailRect == null) return;
-            Vector2 p = _sectionDetailRect.anchoredPosition;
-            // 카드가 없는 탭에서는 상세 패널이 꺼져 있지만 자리는 잡아 둔다 — 되돌아왔을 때
-            // 한 프레임 동안 옛 자리에 떠 있는 것을 막는다.
-            float y = DetailYForTab(Def(_tab).Page == TabPage.Cards ? _tab : Tab.Equipment);
-            if (Mathf.Approximately(p.y, y)) return;
-            p.y = y;
-            _sectionDetailRect.anchoredPosition = p;
-        }
+        // ★ L-8 — 여기 있던 TickPanelHeight()/ApplyTabDetailPlacement()를 <b>지웠다</b>.
+        //   창 높이가 탭마다 달라지던 시절의 장치였고(861 ↔ 705), 3컬럼에서는 인계본 규칙대로
+        //   "창 크기와 헤더는 탭에 따라 변하지 않는다"가 된다. 세로 애니메이션도 함께 사라졌다 —
+        //   움직이지 않는 값을 부드럽게 옮길 이유가 없다.
+        //
+        //   ★ 세로가 728pt 미만인 화면의 강등 사다리(컬럼 1 세로 스크롤)는 <b>아직 없다</b>.
+        //     지금은 Body의 RectMask2D가 아래를 자르고, 상세 카드가 컬럼 1 바닥에 붙어 있어
+        //     그 화면에서는 상세 카드가 먼저 잘린다. 착용 경로는 컬럼 3(항상 스크롤 가능)의 카드
+        //     버튼이 전담하므로 도달성은 유지된다(문서 §3-6).
 
         /// <summary>창 중심이 화면 밖으로 나가지 않는 범위로 자른다 — 드래그와 화면 크기 변화가
         /// <b>같은 규칙</b>을 쓴다. 좌표계는 화면 중앙 원점이고, 창이 화면만큼 커지면 이동량은 0이 된다.</summary>
@@ -93,12 +71,78 @@ namespace StickMate.Interaction
 
             // ★ 2026-09-02 (41-1) — 세로는 <b>대칭이 아니다</b>. 옛 코드의 대칭 클램프는 이 창을 위로
             //   44.5pt 끌어올리게 허용했고, 그러면 창 위쪽이 OS y=16pt에 앉아 macOS 메뉴바(0~33)를
-            //   17pt 덮는다(팝오버와 같은 결함, 같은 원인). 아래쪽 한계는 건드리지 않는다 —
-            //   Dock을 덮는 것은 macOS의 모든 앱이 하는 표준 동작이고, 이 앱은 그 위를 발판으로도 쓴다.
+            //   17pt 덮는다(팝오버와 같은 결함, 같은 원인).
+            //
+            // ★★ 2026-09-05 (M-7, 리더 판정) — 아래쪽 한계는 <b>플랫폼마다 다르다</b>.
+            //   macOS: 0 — Dock을 덮는 것은 macOS의 모든 앱이 하는 표준 동작이고, 이 앱은 그 위를
+            //          발판으로도 쓴다(예전과 비트 단위로 동일하다).
+            //   Windows: 작업표시줄 두께만큼 좁아진다 — 드래그로 창을 작업표시줄 위에 겹쳐 둘 수 없다.
             float topInset = ReservedTopBarProbe.TopInsetPoints(_agent != null ? _agent.PlatformService : null);
+            float bottomInset =
+                ReservedEdgeProbe.EnforcedBottomInsetPoints(_agent != null ? _agent.PlatformService : null);
             float y = SurfaceSafeAreaPolicy.ClampCenterOriginOffsetY(
-                desired.y, size.y, Screen.height / sf, topInset, ScreenMargin);
+                desired.y, size.y, Screen.height / sf, topInset, bottomInset, ScreenMargin);
             return new Vector2(Mathf.Clamp(desired.x, -maxX, maxX), y);
+        }
+
+        /// <summary>
+        /// ★ 가로 강등 사다리 — 창이 설계 폭 1042보다 좁아지면 <b>컬럼 2 → 컬럼 1 순서로 접고</b>
+        /// 컬럼 3(카드)에 남은 폭을 전부 준다. 근거는 <see cref="_gridX"/> 문서에 있다.
+        ///
+        /// <para>헤더 오른쪽 칩들도 같은 이유로 함께 접힌다 — 오른쪽 앵커라 창이 좁아지면 왼쪽 앵커인
+        /// 탭 스트립 위로 <b>올라탄다</b>. 그러면 탭을 눌렀는데 [설정]이 열리는 오배선이 생긴다.
+        /// <b>[✕]는 절대 접지 않는다</b> — 이 창의 유일한 탈출구다.</para>
+        ///
+        /// <para>창 크기가 <b>바뀔 때만</b> 불린다(<see cref="ClampPanelToScreen"/>).</para>
+        /// </summary>
+        private void SyncColumnLayout(float panelWidth)
+        {
+            // 접는 순서: 컬럼 2 → 컬럼 1 → (그래도 모자라면) 카드 2열 → 1열.
+            _showCol1 = panelWidth >= Col1Width + MinGridColumnWidth;                 // 750
+            _showCol2 = _showCol1 && panelWidth >= Col3X + MinGridColumnWidth;        // 1042
+
+            _gridX = _showCol2 ? Col3X : _showCol1 ? Col1Width : 0f;
+            _gridWidth = Mathf.Max(MinSingleColumnGridWidth, panelWidth - _gridX);
+            _gridContentWidth = _gridWidth - Col3PadX * 2f - Col3ScrollbarInset;
+            _gridColumns = _gridContentWidth >= CardWidth * 2f + CardGap ? 2 : 1;
+
+            if (_sectionPage != null)
+            {
+                UiChrome.PlaceTopLeft(_sectionPage.GetComponent<RectTransform>(), _gridX, 0f,
+                    _gridWidth, BodyHeight);
+            }
+
+            ApplyColumnVisibility();
+            SyncHeaderChips(panelWidth);
+            RefreshCards();   // 열 수·헤더 폭이 바뀌면 좌표를 다시 잡아야 한다.
+        }
+
+        /// <summary>컬럼 1·2가 지금 보이는가 — 탭 종류(카드 탭인가)와 폭(<see cref="SyncColumnLayout"/>)
+        /// 두 조건의 <b>곱</b>이다. 두 곳에서 각각 <c>SetActive</c>를 부르면 나중 호출이 앞을 덮는다.</summary>
+        private void ApplyColumnVisibility()
+        {
+            bool cards = Def(_tab).Page == TabPage.Cards;
+            if (_col1Root != null) _col1Root.SetActive(cards && _showCol1);
+            if (_col2Root != null) _col2Root.SetActive(cards && _showCol2);
+        }
+
+        /// <summary>헤더 오른쪽 칩이 <b>탭 스트립을 침범하면 그 칩을 끈다</b>.
+        /// <para>칩은 오른쪽 앵커, 탭은 왼쪽 앵커라 창이 좁아지면 서로 올라탄다. 그러면 탭을 눌렀는데
+        /// [설정]이 열리는 오배선이 생긴다(폴링 히트테스트는 겹친 사각형 중 <b>먼저 검사한 것</b>을
+        /// 집는다). <b>[✕]는 목록에 없다 — 이 창의 유일한 탈출구라 접지 않는다.</b></para>
+        /// <para>인셋은 <see cref="BuildHeader"/>가 칩을 놓을 때 쓴 값과 <b>같은 식</b>이어야 한다 —
+        /// 칩을 꺼도 나머지가 자리를 옮기지는 않으므로, 각 칩의 고정 자리로 판정한다.</para></summary>
+        private void SyncHeaderChips(float panelWidth)
+        {
+            float limit = _tabStripRightEdge + UiChrome.Space4;
+            SetChipVisible(_settingsRect, panelWidth - HeaderSettingsChipInset - HeaderSettingsChipWidth >= limit);
+            SetChipVisible(_coinChipRect, panelWidth - HeaderCoinChipInset - HeaderCoinChipWidth >= limit);
+            SetChipVisible(_ownedChipRect, panelWidth - HeaderOwnedChipInset - HeaderOwnedChipWidth >= limit);
+        }
+
+        private static void SetChipVisible(RectTransform chip, bool visible)
+        {
+            if (chip != null && chip.gameObject.activeSelf != visible) chip.gameObject.SetActive(visible);
         }
 
         /// <summary>

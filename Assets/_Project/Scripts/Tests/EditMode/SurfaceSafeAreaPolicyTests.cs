@@ -86,7 +86,12 @@ namespace StickMate.Tests.EditMode
                 "옛 겹침 21pt가 재현되지 않았습니다.");
         }
 
-        // ==================== ② 하단 — 강제하지 않는다 (Dock은 발판이다) ====================
+        // ==================== ② 하단 — macOS는 강제하지 않는다 (Dock은 발판이다) ====================
+        //
+        // ★ 2026-09-05 갱신: 이 절의 제목이 예전에는 그냥 "하단 — 강제하지 않는다"였다.
+        //   같은 날 리더 판정(M-7)으로 **Windows는 강제**하게 됐으므로, 이 절이 말하는 것은
+        //   이제 **macOS의 답**이다. 아래 검사가 부르는 5인자 ClampCenterY는 하단 인셋 0과
+        //   완전히 같은 식이라 그대로 유효하다. 반대편(Windows)은 아래 ⑧ 절에 있다.
 
         [Test]
         public void 하단은_강제하지_않는다_Dock_위로_예전과_똑같이_내려간다()
@@ -344,6 +349,153 @@ namespace StickMate.Tests.EditMode
                     "주입값이 남았습니다 — 정적 상태가 다음 테스트로 샙니다.");
             }
             finally { ReservedTopBarProbe.ResetForTests(); }
+        }
+
+        // ============================================================================
+        // ⑧ 하단 축 — ★ 2026-09-05 리더 판정 M-7: <b>Windows에서만</b> 강제한다
+        // ============================================================================
+        // 위 ②(`하단은_강제하지_않는다_...`)는 <b>여전히 유효하고, 그것이 macOS의 답</b>이다.
+        // 그 테스트가 부르는 5인자 <c>ClampCenterY</c>는 하단 인셋 0과 완전히 같은 식이기 때문이다.
+        // 여기서 더하는 것은 «Windows에서는 다르다»는 반대편이고, 두 검사는 짝이다 —
+        // 한쪽만 있으면 "규칙이 존재한다"만 알 뿐 "규칙이 실제로 갈라진다"를 아무도 못 잰다.
+        //
+        // ★ 이 절이 <b>실행</b> 검사인 것이 핵심이다. 이 개발 머신에는 Windows가 없지만, 판정이
+        //   플랫폼을 <c>#if</c>가 아니라 <b>인자</b>로 받으므로 Windows 쪽 답을 여기서 직접 돌려본다.
+
+        /// <summary>Windows 100% 배율의 통상 작업표시줄 두께. <b>실측이 아니라 «0이 아닌 값»이 논점</b>이라
+        /// 이 파일의 다른 상수들과 달리 프로덕션에서 유도하지 않는다 — 프로덕션에는 이 값이 없다
+        /// (두께는 언제나 <c>GetMonitorInfo</c>가 실측해서 준다).</summary>
+        private const float TaskbarThicknessPoints = 48f;
+
+        [Test]
+        public void 하단_강제는_Windows에서만_켜진다()
+        {
+            Assert.IsTrue(SurfaceSafeAreaPolicy.EnforcesBottomReservedBand(RuntimePlatform.WindowsPlayer),
+                "Windows에서 꺼져 있습니다 — 2026-08-31 신고 \"작업표시줄에 걸쳐서 돌아다닌다\"가 " +
+                "표면 쪽에서 그대로 남습니다.");
+            Assert.IsFalse(SurfaceSafeAreaPolicy.EnforcesBottomReservedBand(RuntimePlatform.OSXPlayer),
+                "macOS에서 켜졌습니다 — Dock은 이 앱이 의도적으로 쓰는 캐릭터 발판입니다(Core/DockGeometry).");
+
+            // 실효 인셋: macOS는 두께가 얼마든 0, Windows는 그대로.
+            Assert.AreEqual(0f,
+                SurfaceSafeAreaPolicy.EffectiveBottomInsetPoints(RuntimePlatform.OSXPlayer, DockThicknessPoints), 0f);
+            Assert.AreEqual(TaskbarThicknessPoints,
+                SurfaceSafeAreaPolicy.EffectiveBottomInsetPoints(RuntimePlatform.WindowsPlayer, TaskbarThicknessPoints), 0f);
+
+            // 잘못된 관측(NaN·음수·무한대)은 0으로 접는다 — Windows에서도 화면을 깎지 않는다.
+            foreach (float bad in new[] { float.NaN, float.NegativeInfinity, float.PositiveInfinity, -12f })
+            {
+                Assert.AreEqual(0f,
+                    SurfaceSafeAreaPolicy.EffectiveBottomInsetPoints(RuntimePlatform.WindowsPlayer, bad), 0f,
+                    $"잘못된 관측({bad})이 인셋으로 흘러들었습니다 — 표면이 이유 없이 위로 밀립니다.");
+            }
+        }
+
+        [Test]
+        public void Windows에서는_팝오버가_작업표시줄_위에_서지_못한다()
+        {
+            float desiredBottom = ActionPopoverHeight * 0.5f - 500f;   // 화면 아래로 밀어붙이는 값
+            float winInset = SurfaceSafeAreaPolicy.EffectiveBottomInsetPoints(
+                RuntimePlatform.WindowsPlayer, TaskbarThicknessPoints);
+
+            // 상단 인셋 0 = 작업표시줄이 하단에 있는 통상 Windows 배치.
+            float centerY = SurfaceSafeAreaPolicy.ClampCenterY(desiredBottom,
+                ActionPopoverHeight, ScreenHeightPoints, 0f, winInset, Margin);
+            float bottomGap = SurfaceSafeAreaPolicy.BottomEdgeFromScreenBottom(centerY, ActionPopoverHeight);
+
+            Assert.AreEqual(TaskbarThicknessPoints + Margin, bottomGap, 0.01f,
+                $"팝오버 아래 모서리가 화면 하단에서 {bottomGap:F2}pt입니다 — 아래쪽 한계가 " +
+                "'하단 띠 + 여백 + 반높이'가 아닙니다.");
+            Assert.GreaterOrEqual(bottomGap, TaskbarThicknessPoints,
+                $"작업표시줄 {TaskbarThicknessPoints}pt를 {TaskbarThicknessPoints - bottomGap:F2}pt 덮습니다.");
+        }
+
+        /// <summary>
+        /// ★ 네거티브 컨트롤 — <b>같은 입력에 macOS는 옛 증상을 그대로 재현한다.</b>
+        /// 이 짝이 없으면 위 검사는 "입력이 애초에 무해했다"와 구분되지 않는다(이 파일의 규약).
+        /// </summary>
+        [Test]
+        public void 네거티브_컨트롤_macOS는_같은_입력에서_예전처럼_Dock_위로_내려간다()
+        {
+            float desiredBottom = ActionPopoverHeight * 0.5f - 500f;
+            float macInset = SurfaceSafeAreaPolicy.EffectiveBottomInsetPoints(
+                RuntimePlatform.OSXPlayer, DockThicknessPoints);
+
+            float withAxis = SurfaceSafeAreaPolicy.ClampCenterY(desiredBottom,
+                ActionPopoverHeight, ScreenHeightPoints, MenuBarHeightPoints, macInset, Margin);
+            float legacy = SurfaceSafeAreaPolicy.ClampCenterY(desiredBottom,
+                ActionPopoverHeight, ScreenHeightPoints, MenuBarHeightPoints, Margin);
+
+            Assert.AreEqual(legacy, withAxis, 0f,
+                "★ macOS 배치가 하단 축 도입으로 움직였습니다 — 이 축의 전제(macOS는 한 픽셀도 " +
+                "바뀌지 않는다)가 깨졌습니다.");
+            Assert.Less(SurfaceSafeAreaPolicy.BottomEdgeFromScreenBottom(withAxis, ActionPopoverHeight),
+                DockThicknessPoints,
+                "macOS에서 팝오버가 Dock 띠에 더 이상 닿지 않습니다 — 발판 위 연출의 전제가 깨졌습니다.");
+        }
+
+        [Test]
+        public void 넘치는_표면은_Windows에서도_상단을_고정한다()
+        {
+            float tall = ScreenHeightPoints;   // 안전 영역보다 확실히 큰 표면
+            float winInset = SurfaceSafeAreaPolicy.EffectiveBottomInsetPoints(
+                RuntimePlatform.WindowsPlayer, TaskbarThicknessPoints);
+
+            float centerY = SurfaceSafeAreaPolicy.ClampCenterY(ScreenHeightPoints * 0.5f,
+                tall, ScreenHeightPoints, MenuBarHeightPoints, winInset, Margin);
+            float topEdge = SurfaceSafeAreaPolicy.TopEdgeFromScreenTop(centerY, tall, ScreenHeightPoints);
+
+            Assert.AreEqual(MenuBarHeightPoints + Margin, topEdge, 0.01f,
+                $"넘치는 표면의 상단이 {topEdge:F2}pt입니다 — 둘 다 못 지킬 때는 상단을 지킵니다" +
+                "(위쪽에는 메뉴/시스템 표시가 있고 아래쪽에는 없습니다). 규칙 ④와 같은 방향입니다.");
+        }
+
+        /// <summary>
+        /// ★ 사실 조회 층 — <c>ReservedEdgeProbe</c>가 <b>플랫폼 판정을 거쳐서</b> 값을 내는가.
+        /// 여기가 판정을 건너뛰면 macOS에서도 Dock이 벽이 된다(정책 파일만 봐서는 못 잡는다).
+        /// </summary>
+        [Test]
+        public void 프로브가_플랫폼_판정을_거쳐_하단_인셋을_낸다()
+        {
+            ReservedEdgeProbe.ResetForTests();
+            try
+            {
+                ReservedEdgeProbe.SetInsetsForTests(ReservedEdgeInsets.Observed(
+                    MenuBarHeightPoints, TaskbarThicknessPoints, 0f, 0f));
+
+                ReservedEdgeProbe.SetPlatformForTests(RuntimePlatform.OSXPlayer);
+                Assert.AreEqual(0f, ReservedEdgeProbe.EnforcedBottomInsetPoints(null), 0f,
+                    "macOS인데 하단 인셋이 0이 아닙니다 — 프로브가 판정을 건너뛰고 실측 두께를 " +
+                    "그대로 흘리고 있습니다. Dock이 벽이 됩니다.");
+
+                ReservedEdgeProbe.SetPlatformForTests(RuntimePlatform.WindowsPlayer);
+                Assert.AreEqual(TaskbarThicknessPoints, ReservedEdgeProbe.EnforcedBottomInsetPoints(null), 0.001f,
+                    "Windows인데 실측 작업표시줄 두께가 전달되지 않습니다.");
+
+                // 못 쟀으면 0 — 짐작으로 메우지 않는다(Windows에서도 그렇다).
+                ReservedEdgeProbe.SetInsetsForTests(ReservedEdgeInsets.Unknown);
+                Assert.AreEqual(0f, ReservedEdgeProbe.EnforcedBottomInsetPoints(null), 0f,
+                    "못 쟀는데 0이 아닌 값을 냈습니다 — 추정값이 실제보다 크면 멀쩡한 화면을 " +
+                    "낭비하고, 작으면 그대로 덮습니다.");
+            }
+            finally { ReservedEdgeProbe.ResetForTests(); }
+        }
+
+        [Test]
+        public void 주입한_플랫폼은_되돌릴_수_있다()
+        {
+            ReservedEdgeProbe.ResetForTests();
+            try
+            {
+                ReservedEdgeProbe.SetPlatformForTests(RuntimePlatform.WindowsPlayer);
+                Assert.AreEqual(RuntimePlatform.WindowsPlayer, ReservedEdgeProbe.CurrentPlatform,
+                    "플랫폼 주입이 반영되지 않으면 Windows 분기를 이 머신에서 한 번도 실행할 수 없습니다.");
+
+                ReservedEdgeProbe.ResetForTests();
+                Assert.AreEqual(Application.platform, ReservedEdgeProbe.CurrentPlatform,
+                    "주입값이 남았습니다 — 정적 상태가 다음 테스트로 샙니다(이 저장소가 반복해 겪은 형태).");
+            }
+            finally { ReservedEdgeProbe.ResetForTests(); }
         }
     }
 }

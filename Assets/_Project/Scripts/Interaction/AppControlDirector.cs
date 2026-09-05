@@ -30,19 +30,27 @@ namespace StickMate.Interaction
     ///    (Platform/IGlobalKeyStateService.cs의 "권한에 대하여" 절에 실측 절차 기록). 창 포커스와
     ///    무관하므로 클릭 관통 상태에서도 항상 살아 있다.
     ///
-    /// 3안(**캐릭터 우클릭 메뉴**) — <b>2026-08-31 폐지</b>. 아래 참조.
+    /// 3안(**캐릭터 우클릭**) — 2026-08-31 폐지 → ★ <b>2026-09-05 사용자 지시로 재개방</b>. 아래 참조.
     ///
     /// ============================================================================
-    /// ★★ 2026-08-31 — 캐릭터 우클릭 메뉴를 <b>UI와 폴링까지</b> 제거했다 (docs/UX_FLOW.md 36-9)
+    /// ★★ 2026-08-31 폐지 → 2026-09-05 재개방 (docs/UX_FLOW.md 36-9 / UX_RIGHTCLICK_FAN_MENU §5-0)
     /// ============================================================================
-    /// 사용자 지시: "캐릭터 마우스 우클릭으로 행동이나 설정 변경하는 메뉴 없애고".
+    /// 2026-08-31 사용자 지시: "캐릭터 마우스 우클릭으로 행동이나 설정 변경하는 메뉴 없애고".
+    /// 그때의 판단은 지시에 충실했고 옳았다 — 18행 텍스트 메뉴는 36-1의 분류표대로 흩어졌고,
+    /// <b>그 18행은 한 칸도 되돌아오지 않는다</b>. 지금 우클릭이 여는 것은 <b>부채꼴 5칸</b>이다.
     ///
-    /// 지시 이행 외에 <b>비침해가 실제로 개선된다</b>: 우클릭을 잡으려면 그 순간 클릭관통을 부분
-    /// 해제해야 하고, 캐릭터는 남의 창 위에 서 있다 — 지금까지 우리는 <b>사용자가 그 앱에 내리려던
-    /// 우클릭(문맥 메뉴)을 가로채고 있었다</b>. 제공할 메뉴가 사라지면 그 비용만 남는다. 원칙 2에
-    /// 비추어 제거가 정답이다. 그래서 메뉴 UI뿐 아니라 <c>IGlobalPointerButtonService</c>의 우버튼
-    /// 조회 <b>폴링 자체</b>를 지웠다 — 조용한 no-op으로 남겨두면 그 비용은 그대로 남는다.
-    /// 좌클릭 드래그&던지기(12절)는 그대로 살아 있다.
+    /// ★★ <b>그때 함께 적었던 근거 하나는 사실이 아니었다 — 지우지 않고 정정으로 남긴다.</b>
+    /// 원문: <i>"우클릭을 잡으려면 그 순간 클릭관통을 부분 해제해야 하고 … 지금까지 우리는 사용자가
+    /// 그 앱에 내리려던 우클릭을 가로채고 있었다"</i>. 그 문장은 <b>클릭관통이 버튼별로 걸린다</b>는
+    /// 전제 위에 서 있는데, 2026-09-05 <c>dev-platform</c> 소스 실측이 그 전제를 반증했다:
+    /// <c>UniWindowController</c>의 히트테스트는 <b>커서 아래에 콜라이더가 있는가</b> 하나만 보고
+    /// <b>버튼 종류를 어디에도 넣지 않는다</b>(<c>EnableClickThrough</c>는 창 전체 속성이다).
+    /// ⇒ 커서가 캐릭터 잡기영역 안인 동안 우클릭은 <b>폐지 이후에도 계속 우리 창이 삼키고 있었고</b>,
+    /// 폐지가 없앤 것은 그 가로채기가 아니라 <b>그 가로채기로 하던 일</b>뿐이었다.
+    /// ⇒ 그래서 재개방의 <b>비침해 순증가는 0</b>이다 — 이미 치르던 비용에 값을 붙이는 것이다.
+    /// 좌클릭 드래그&던지기(12절)는 그때도 지금도 그대로 살아 있다.
+    ///
+    /// 우클릭 배선의 실체는 이 파일 맨 아래 「캐릭터 우클릭 → 부채꼴」 절에 있다.
     ///
     /// 18행 메뉴의 각 항목이 어디로 갔는지는 36-1의 전수 분류표에 있다:
     /// <b>(가) 사용자 행동 명령 7개</b> → <see cref="ActionCommandPopover"/>(부채꼴 ④) /
@@ -60,7 +68,9 @@ namespace StickMate.Interaction
     /// 그 환경에 남는 종료 수단이 0이 되면 그건 강제 종료(활성 상태
     /// 보기/작업 관리자) 외에는 끌 수 없는 상주 오버레이이며, 원칙 2·4의 명백한 위반이다.
     ///   ① <b>⌃⌥⌘Q</b> — 여기. <b>개발 게이트 대상이 아니다</b>(릴리스에서 반드시 산다).
-    ///   ② <b>톱니 부채꼴 위성 [앱 종료]</b>(2단 확인 3초) — 마우스 경로 1. <b>최상위 1클릭 도달</b>.
+    ///   ② <b>부채꼴 위성 [앱 종료]</b>(2단 확인 3초) — 마우스 경로 1. <b>최상위 1클릭 도달</b>.
+    ///      ★ 2026-09-05 — 그 부채꼴을 여는 문이 <b>캐릭터 우클릭</b>으로 바뀌었다(톱니는 캐릭터가
+    ///      화면에서 사라진 동안에만 나타나는 대기 진입점이 됐다). 경로 수는 3중 그대로다.
     ///      ★ 2026-09-03 사용자 지시로 신설됐고(*"나사 메뉴 지금 4개중에 버튼 하나 추가해서 종료버튼으로
     ///      만들어줘"*), <b>같은 라운드에 행동창 푸터의 종료 칩은 삭제됐다</b> — 36-1이 (라)로 분류한
     ///      것을 (가) 행동 명령창에 얹어 두었던 오분류였다(앱 종료는 캐릭터에게 시키는 일이 아니다).
@@ -152,6 +162,17 @@ namespace StickMate.Interaction
         {
             _config = _agent != null ? _agent.Config : null;
             _keyService = _agent != null ? _agent.PlatformService as IGlobalKeyStateService : null;
+
+            // ★ 우클릭 채널은 <b>선택적 캐퍼빌리티</b>다 — 없으면 null이 되고 우클릭 경로 전체가 조용히
+            //   꺼진다(다른 기능은 한 톨도 영향받지 않는다). NullPlatformWindowService가 그 경우다.
+            _buttonService = _agent != null ? _agent.PlatformService as IGlobalPointerButtonService : null;
+            _menu = _agent != null ? _agent.GetComponent<GearRadialMenuWidget>() : null;
+            // 캐릭터 콜라이더는 Awake에서 <b>한 번만</b> 캐시한다 — 구(舊) 우클릭 구현은 폴링마다
+            // GetComponentsInChildren을 새로 불러 24시간 상주 앱에 매초 20회의 할당을 냈다.
+            _characterColliders = _agent != null
+                ? _agent.GetComponentsInChildren<Collider2D>(true)
+                : System.Array.Empty<Collider2D>();
+
             LogStartupBanner();
         }
 
@@ -169,10 +190,16 @@ namespace StickMate.Interaction
             //   Tests/EditMode/PlatformParityAuditTests의 글리프 스캐너도 잡지 못했다.
             string quitLine = "[앱제어] 준비 완료 — 종료 방법 3가지: " +
                 "(1) 전역 단축키 **" + ShortcutLabel.Chord("Q") + "**, " +
-                "(2) **기어 아이콘 → 부채꼴 [앱 종료]**(2단 확인 3초), " +
+                "(2) **캐릭터 우클릭 → 부채꼴 [앱 종료]**(2단 확인 3초), " +
                 "(3) **설정창 [지금 종료]**(2단 확인 3초). " +
-                "★ 캐릭터 우클릭 메뉴는 2026-08-31에 폐지됐습니다 — 우클릭은 이제 밑에 있는 앱으로 " +
-                "그대로 관통합니다(비침해 개선, UX_FLOW 36-9). ";
+                // ★ 2026-09-05 — 이 문장은 두 번 고쳐졌다. 원문은 「우클릭이 밑의 앱으로 그대로
+                //   관통한다」였고 그것은 <b>거짓</b>이었다(dev-platform §2-2 실측: 히트테스트는 버튼을
+                //   구분하지 않으므로 캐릭터 위 우클릭은 그때도 이미 우리 창이 삼켰다 — 반응만 없었다).
+                //   같은 날 사용자 지시로 그 삼킴에 값이 붙었다: 우클릭 = 부채꼴.
+                "★ 캐릭터 위에서 **마우스 오른쪽 버튼**을 누르면 부채꼴 메뉴가 촤르륵 펼쳐집니다" +
+                "(2026-09-05 사용자 지시). 캐릭터 밖의 영역은 예전 그대로 밑에 있는 앱으로 관통합니다(비침해). " +
+                "톱니 아이콘은 **평소에는 뜨지 않고**, 캐릭터가 화면에서 사라진 동안(숨기기 / 가출)에만 " +
+                "되돌아올 문으로 나타납니다. ";
 
             string userKeys = "사용자 단축키: " + ShortcutLabel.Chord("C") + "(잉크색 전환) / R(로데오 커서 on-off) / " +
                 "**B(말 걸기)** / **G(그라피티)** / **T(창 도둑)** / " +
@@ -180,10 +207,11 @@ namespace StickMate.Interaction
                 "**I(캐릭터 정보/장비 창)** / **P(설정창)** / " +
                 // ★ 2026-09-02 — K를 다시 목록에 올린다. 격파 놀이 삭제 라운드에 바인딩만 지워지면서
                 //   이 자리가 약 9시간 비어 있었고, 이제 사용자 명시 숨김이 쓴다.
-                //   ★ 이 줄은 <b>탈출구 고지</b>를 겸한다: 숨는 동안에는 톱니도 창도 전부 사라지므로
-                //   같은 키를 다시 누르는 것 외에 되돌릴 방법이 없다. 그 사실을 여기 적어 둔다.
+                //   ★ 이 줄은 <b>탈출구 고지</b>를 겸한다.
+                //   ★★ 2026-09-05 — 이 문장이 <b>정확히 반대</b>가 됐다. 예전에는 «숨는 동안에는 톱니도
+                //     함께 사라집니다»였는데, 이제 톱니는 <b>숨는 동안에만</b> 나타난다(대기 톱니).
                 "**" + StickmanAgent.UserHideHotkeyLetter + "(지금 숨기기 / 다시 보이기 — <b>같은 키를 다시 누르면 돌아옵니다</b>. " +
-                "숨는 동안에는 톱니도 함께 사라집니다)**. " +
+                "숨는 동안에는 화면 우상단에 <b>대기 톱니</b>가 나타나 마우스로도 되돌릴 수 있습니다)**. " +
                 "이 명령들의 주 경로는 부채꼴 ④ [행동] 창이고, \n" +
                 "설정창의 주 경로는 캐릭터 정보창 헤더의 [설정]입니다. ";
 
@@ -209,7 +237,7 @@ namespace StickMate.Interaction
             string keyLine = _keyService != null
                 ? "전역 키 조회=사용 가능."
                 : "전역 키 조회=미지원 — 단축키 전체가 동작하지 않습니다. 이 환경에서 앱을 끄는 유일한 " +
-                  "경로는 **톱니 → 부채꼴 [앱 종료]**입니다(2단 확인 3초).";
+                  "경로는 **캐릭터 우클릭 → 부채꼴 [앱 종료]**입니다(2단 확인 3초).";
 
             Debug.Log(quitLine + userKeys + devKeys + keyLine);
         }
@@ -217,11 +245,16 @@ namespace StickMate.Interaction
         private void Update()
         {
             using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Directors);   // [스톨구간] 계측
+            // ★ 붙잡기(호명 반응 비트)는 벽시계로 만료된다 — 폴링 간격(20Hz)에 얹으면 최악 50ms
+            //   늦게 풀려 «대사가 끝났는데 아직 서 있다»가 된다. 그래서 폴링 게이트 <b>앞</b>이다.
+            TickReactionHold();
+
             _pollTimer += Time.unscaledDeltaTime;
             if (_pollTimer < PollInterval) return;
             _pollTimer = 0f;
 
             TickHotkeys();
+            TickRightClickFan();
         }
 
         // ==================== 전역 단축키 ====================
@@ -742,6 +775,331 @@ namespace StickMate.Interaction
                 return;
             }
             _focusDirector.ForceTriggerNow($"앱제어 {source}");
+        }
+
+        // ============================================================================
+        // ★★ 캐릭터 우클릭 → 부채꼴 (2026-09-05 사용자 지시)
+        // ============================================================================
+        //
+        // 사용자 원문: "지금은 메뉴 스크류모양이 따로 있는데 그냥 캐릭터에서 마우스 오른 쪽 버튼 누르면
+        // 촤르륵 펼쳐지게 변경". 설계 정본은 docs/UX_RIGHTCLICK_FAN_MENU.md(기하·순서) ·
+        // docs/PLATFORM_RIGHTCLICK_FAN.md(플랫폼 실체) · docs/UX_MOTION_FAN_AND_CAPE.md §1(박자)다.
+        //
+        // ★ 이 파일이 그 자리인 이유: 2026-08-31에 <b>여기서</b> 우클릭 폴링이 지워졌고
+        //   (git 767c985^), Platform/IGlobalPointerButtonService.cs의 계약 문서가 지금도
+        //   "Interaction/AppControlDirector.cs"를 가리킨다 — 그 문서를 다시 참으로 만든다.
+        //   신규 컴포넌트를 만들지 않으므로 씬/프리팹 배선이 0줄이다(누락이 반복 재발한 함정이다).
+        //
+        // ★ <b>왜 비침해 비용이 0인가</b>(dev-platform §2-2 실측): 히트테스트는 <b>버튼을 구분하지
+        //   않는다</b>. 커서가 캐릭터 잡기영역 안이면 클릭관통은 <b>이미</b> 꺼져 있고, 우클릭은
+        //   <b>지금도</b> 우리 창이 삼키고 있다 — 그러고 아무 일도 안 했다.
+        //   즉 이 변경은 새로 가로채는 것이 아니라 <b>낭비되던 가로채기에 값을 붙이는 것</b>이다.
+        //   여기서 SetClickThrough를 <b>한 번도 부르지 않는다</b>(관통 해제는 히트테스트가 상시로 한다).
+
+        /// <summary>
+        /// ★ 「지금 부채꼴을 열어도 되는가」 — <b>OS 호출 0줄 순수 판정</b>(테스트 설계 C-1).
+        /// EditMode가 전 분기를 씬 없이 실행할 수 있어야 하므로 상태를 하나도 읽지 않는다.
+        /// </summary>
+        public static class RightClickFanGatePolicy
+        {
+            /// <summary>
+            /// ★★ <b>리더 판정 L-2 — fail-open.</b> 삼킴 상태를 <b>못 읽으면 통과시킨다</b>.
+            ///
+            /// <para>비대칭이 명백하다: 못 읽을 때 닫아걸면 «우클릭이 아예 안 먹는다»가 되고 그것은
+            /// <b>사용자가 신고한 바로 그 증상</b>이며 <b>조용하다</b>(로그 없이는 우리도 못 본다).
+            /// 열어 두면 최악이 «아주 가끔 아래 앱 메뉴가 같이 뜬다»이고 그것은 <b>눈에 보이고 즉시
+            /// 회복된다</b>. 그리고 macOS에서는 우클릭이 평상시 유일한 마우스 진입점이다.</para>
+            ///
+            /// <para>이 함수를 fail-closed(<c>queried &amp;&amp; swallowed</c>)로 되돌리면 그 판정을
+            /// 뒤집는 것이다.</para>
+            /// </summary>
+            /// <param name="queried">삼킴 상태를 <b>읽는 데 성공했는가</b>(미지원이면 false).</param>
+            /// <param name="swallowed">읽었다면 그 값 — 지금 이 클릭이 우리 창에 삼켜졌는가.</param>
+            public static bool SwallowAllowsOpen(bool queried, bool swallowed) => !queried || swallowed;
+
+            /// <summary>
+            /// 다섯 항의 곱. 항이 다섯이라 <b>2⁵ = 32행 전수</b>를 EditMode가 루프로 돌 수 있다.
+            /// <para>순서는 docs/UX_RIGHTCLICK_FAN_MENU.md §10-1 #3 그대로다.</para>
+            /// </summary>
+            public static bool ShouldOpenFan(bool cursorOverCharacter, bool secondaryRisingEdge,
+                bool swallowAllowsOpen, bool panelsSuppressed, bool primaryButtonHeld)
+                => cursorOverCharacter
+                && secondaryRisingEdge
+                && swallowAllowsOpen
+                && !panelsSuppressed
+                && !primaryButtonHeld;
+        }
+
+        /// <summary>삼킴 상태 조회 델리게이트 — <c>out</c> 매개변수라 <c>System.Func</c>로 표현할 수 없다.</summary>
+        public delegate bool PointerSwallowQuery(out bool swallowed);
+
+        /// <summary>
+        /// ★ 삼킴 상태 조회 창구. <b>지금은 비어 있다</b>(= 미지원 = fail-open으로 통과).
+        ///
+        /// <para><c>dev-platform</c>이 <c>IPointerSwallowStateSource</c>(<c>Platform/</c>, 중립)를 내고
+        /// 양 플랫폼이 <c>UniWindowController.isClickThrough</c> 되읽기 <b>한 줄</b>씩을 구현하면,
+        /// 여기에 그 구현을 꽂는 것으로 히트테스트 1렌더프레임 경합(최악 ~67ms, 정지 등급)이 닫힌다.
+        /// <b>그때까지는 fail-open이 그 자리를 대신한다 — 그것이 L-2의 뜻이다.</b></para>
+        ///
+        /// <para>테스트는 이 자리에 가짜 구현을 꽂아 세 갈래(미지원 / 삼켜짐 / 명시적 미삼킴)를 각각
+        /// 재현한다(테스트 설계 C-5).</para>
+        /// </summary>
+        public static PointerSwallowQuery SwallowStateProvider { get; set; }
+
+        private IGlobalPointerButtonService _buttonService;
+        private GearRadialMenuWidget _menu;
+        private Collider2D[] _characterColliders = System.Array.Empty<Collider2D>();
+
+        // 우클릭은 <b>상승 엣지 1회</b>만 의미를 갖는다. 하강 엣지에는 아무 일도 하지 않는다 —
+        // 우클릭 드래그에 의미를 주면 「데스크톱 러버밴드 선택」 관습과 충돌한다(dev-platform §3-2).
+        // 첫 폴링은 기록만 하고 넘어가 앱 시작 순간 눌려 있던 버튼을 명령으로 오인하지 않는다.
+        private bool _rightPrev;
+        private bool _rightInitialized;
+
+        private void TickRightClickFan()
+        {
+            if (_buttonService == null || _agent == null || _menu == null) return;
+            if (!_buttonService.TryGetSecondaryButtonPressed(out bool right))
+            {
+                _rightInitialized = false;   // 상태를 잃었으면 다음 폴링이 엣지를 새로 잡게 한다.
+                return;
+            }
+            if (!_rightInitialized) { _rightInitialized = true; _rightPrev = right; return; }
+
+            bool rising = right && !_rightPrev;
+            _rightPrev = right;
+            if (!rising) return;
+
+            bool primaryHeld = _buttonService.TryGetPrimaryButtonPressed(out bool left) && left;
+            bool queried = TryReadPointerSwallowed(out bool swallowed);
+
+            // ── 게이트 0~2 (§10-4) ──────────────────────────────────────────────
+            if (!RightClickFanGatePolicy.ShouldOpenFan(
+                    IsCursorOverCharacter(), true,
+                    RightClickFanGatePolicy.SwallowAllowsOpen(queried, swallowed),
+                    _agent.ArePanelsSuppressed, primaryHeld))
+            {
+                return;
+            }
+
+            // ── 게이트 3 — 배타 표면이 떠 있으면 «지금 떠 있는 표면을 닫는다»가 이 앱의 재입력 관례다.
+            //    톱니의 ActivateClick 첫 분기와 같은 판단이고, 닫으려던 사용자에게 곧바로 다른 UI를
+            //    들이밀지 않는다. 다음 우클릭이 평소처럼 부채꼴을 편다.
+            if (_infoWindow == null) _infoWindow = Object.FindFirstObjectByType<CharacterInfoWindow>();
+            if (_infoWindow != null && _infoWindow.IsOpen)
+            {
+                _infoWindow.Close("캐릭터 우클릭(창 닫기)");
+                return;
+            }
+
+            // ── 게이트 4 — 같은 문이면 토글 닫기, 다른 문이면 재앵커(§5-7).
+            if (_menu.IsExpanded && _menu.AnchorSource == GearMenuAnchorSource.Character)
+            {
+                _menu.Collapse(GearMenuCollapseMode.User, "캐릭터 재우클릭(토글 닫기)");
+                return;
+            }
+
+            if (!TryResolveCharacterAnchor(out Vector2 anchorUnityScreen)) return;
+
+            // ── 5. 프레임 페이싱 홀드는 Expand() 첫 줄이 부른다(L-10) — 여기서 또 부르지 않는다.
+            // ── 6. ★★ 등급 1 탈출구의 허가. <b>반드시 펼침 앞</b>이다: 부채꼴은 자기 LateUpdate에서
+            //       ArePanelsSuppressed를 폴링해 스스로 접으므로, 허가가 펼침보다 늦으면 <b>펼쳐지는
+            //       그 프레임에 회수되어</b> 사용자 눈에는 "우클릭이 안 먹는다"로 보인다.
+            //       그것이 2026-09-03에 톱니에서 실제로 났던 증상이다(InfoGearIconWidget.ActivateClick).
+            _agent.TryGrantUserSummon("캐릭터 우클릭");
+
+            // ── 7. 호명 반응 비트 — <b>펼침보다 먼저</b>다(원칙 1, MOTION §1-8-7의 ②·④ < ⑤).
+            BeginReactionHold();
+
+            // ── 8. 펼침. 앵커는 이 프레임의 몸 중심으로 <b>동결</b>된다(캐릭터를 따라가지 않는다).
+            _menu.ExpandOrReanchor(anchorUnityScreen, GearMenuAnchorSource.Character,
+                GearRadialMenuWidget.FanUpBiasPoints, "캐릭터 우클릭(재앵커)");
+        }
+
+        /// <summary>삼킴 상태를 읽는 유일한 창구. 꽂힌 구현이 없으면 «미지원»이고, 그 경우
+        /// <see cref="RightClickFanGatePolicy.SwallowAllowsOpen"/>이 통과시킨다(L-2 fail-open).</summary>
+        private bool TryReadPointerSwallowed(out bool swallowed)
+        {
+            swallowed = false;
+            PointerSwallowQuery provider = SwallowStateProvider;
+            return provider != null && provider(out swallowed);
+        }
+
+        /// <summary>
+        /// ★ <b>앵커 = 캐릭터 몸 중심</b>(머리 중심이 아니다 — docs/UX_RIGHTCLICK_FAN_MENU.md §1-2).
+        ///
+        /// <para>머리 중심에 걸면 배율 1.00의 아래 세 방향에서 버튼 히트원이 잡기영역을
+        /// <b>−5.21pt 관통</b>한다(캐릭터는 앵커 기준으로 <b>아래로만</b> 길기 때문이다).
+        /// 몸 중심은 그 비대칭이 사라져 <b>전 배율·전 방향에서 최소 여유 +29.93pt</b>다.</para>
+        ///
+        /// <para><b>새 측정 코드가 필요 없다</b>: 이 좌표는 이미 있다 —
+        /// <c>SceneBootstrapper</c>가 만드는 GrabArea 캡슐의 <c>offset = (0, 전신 × 0.5)</c>가
+        /// 정확히 몸 중심이고, 여기서는 같은 값을 <c>Body.position + 신장/2</c>로 얻는다.</para>
+        /// </summary>
+        private bool TryResolveCharacterAnchor(out Vector2 anchorUnityScreen)
+        {
+            anchorUnityScreen = default;
+            StickmanBlackboard blackboard = _agent != null ? _agent.Blackboard : null;
+            if (blackboard == null || blackboard.Body == null || blackboard.MainCamera == null) return false;
+
+            Vector2 foot = blackboard.Body.position;
+            Vector2 bodyCenter = foot + new Vector2(0f, blackboard.CharacterHeightWorld * 0.5f);
+            Vector3 screen = blackboard.MainCamera.WorldToScreenPoint(bodyCenter);
+            anchorUnityScreen = new Vector2(screen.x, screen.y);
+            return true;
+        }
+
+        /// <summary>
+        /// 커서가 캐릭터의 콜라이더 집합 안인가 — <see cref="StickmanClickHitbox"/>가 쓰는 것과
+        /// <b>같은 집합</b>을 <b>읽기만</b> 한다.
+        ///
+        /// <para>★ 그 파일에 두 번째 버튼을 얹지 않는 이유(dev-platform §3-3): 그쪽은 <c>_pressed</c>
+        /// 플래그 <b>하나</b>로 이중 입력 경로를 엣지 트리거하는 구조라, 우클릭을 같은 플래그에 태우면
+        /// <b>좌클릭 드래그가 조용히 죽는다</b>.</para>
+        ///
+        /// <para>★ 가출 연출의 과자 같은 <b>임시 콜라이더</b>(<c>RegisterExtraCollider</c>)는
+        /// <b>일부러 보지 않는다</b> — 과자를 우클릭했다고 부채꼴이 뜰 이유가 없다.</para>
+        /// </summary>
+        private bool IsCursorOverCharacter()
+        {
+            StickmanBlackboard blackboard = _agent != null ? _agent.Blackboard : null;
+            if (blackboard == null) return false;
+            if (!blackboard.TryGetCursorWorldPosition(out Vector2 cursorWorld)) return false;
+
+            for (int i = 0; i < _characterColliders.Length; i++)
+            {
+                Collider2D c = _characterColliders[i];
+                if (c == null || !c.enabled) continue;
+                if (c.OverlapPoint(cursorWorld)) return true;
+            }
+            return false;
+        }
+
+        // ============================================================================
+        // ★ 호명 반응 비트 (design-motion §1-8)
+        // ============================================================================
+        //
+        // 문제: 부채꼴은 <b>연 자리에 고정</b>되는데 말풍선은 <b>머리를 따라간다</b>. 그대로 두면
+        // 캐릭터가 자기 메뉴를 두고 걸어가면서 그 메뉴에 대한 대사를 한다 — 원칙 1의 문자는 지키고
+        // 정신이 깨지는 형태다(실측 분리 126.2pt > 호 궤도 111pt).
+        //
+        // 판정: <b>우클릭 확정 → MoveInputX = 0 고정 → 상태 기계가 <i>스스로</i> Walk → Idle 전이를
+        // 낸다(moveInputDeadzone 0.15) → 대사는 <i>그 전이</i>에서 파생된다.</b>
+        // ⇒ 새 상태 0개 · 새 인터페이스 0개 · 와이어 포맷(StickmanStateId) 무변경.
+        // ⇒ 그리고 감속을 설계할 필요도 없다 — IdleState.Enter()가 이미 v.x = 0을 한다.
+        //
+        // ★ <b>메뉴가 캐릭터를 멈추는 것이 아니다.</b> 붙잡는 주체는 <b>캐릭터 자신의 발화</b>이고,
+        //   붙잡는 길이는 그 대사의 노출 상한이다. 대사가 없으면 펼침 예산(0.300초)이고, 그 뒤
+        //   캐릭터는 즉시 다시 걷는다(부채꼴은 접지 않는다).
+        //
+        // ★★ <b>design-narrative 문구 대기, 임시값</b> — 반응 대사 문자열은 아직 확정되지 않았다.
+        //   <see cref="ReactionLineProvider"/>가 그 자리이고, <b>비어 있는 동안에는 아무 말도 하지
+        //   않는다</b>(붙잡기 0.300초). <see cref="PlaceholderReactionLine"/>은 예산 계산이 실제로
+        //   도는지를 재기 위한 <b>임시값</b>이며 프로덕션에서 발화되지 않는다.
+        //   ⇒ 문구가 오면 프로바이더 한 줄을 꽂는 것으로 끝난다. 문구를 여기서 지어내지 않는다.
+
+        /// <summary>design-narrative 문구 대기, 임시값. 7자 = 붙잡기 1.910초(MOTION §1-8-5의 권장 상한 근처).</summary>
+        public const string PlaceholderReactionLine = "어, 불렀어?";
+
+        /// <summary>반응 대사 공급자. <b>비어 있으면 대사 없음</b>(붙잡기 = 펼침 예산).</summary>
+        public static System.Func<string> ReactionLineProvider { get; set; }
+
+        /// <summary>
+        /// 붙잡는 시간(초) = <c>대사의 노출 상한</c>, 대사가 없으면 <c>ExpandTotalSeconds</c>.
+        /// <b>순수 함수</b>라 EditMode가 문구 길이별 예산을 씬 없이 잰다.
+        /// <para>★ 상한 노출을 고르는 이유(MOTION §1-8-4): 그보다 짧은 값은 전부 «대사가 화면에 남아
+        /// 있는 동안 캐릭터가 걸어가는» 잔여 거리를 남긴다(최소 노출로 잡아도 73.0pt).
+        /// 상한이 <b>분리를 가능하지 않게 만드는 가장 짧은 값</b>이다.</para>
+        /// </summary>
+        public static float ReactionHoldSecondsFor(string line)
+            => string.IsNullOrEmpty(line)
+                ? GearRadialMenuWidget.ExpandTotalSeconds
+                : Dialogue.DialogueBudget.MaxVisibleSecondsFor(line,
+                    Dialogue.DialogueTiming.PopInSeconds, Dialogue.DialogueTiming.FadeOutSeconds);
+
+        /// <summary>붙잡기가 끝나는 벽시계 시각(음수 = 붙잡는 중이 아님).</summary>
+        private float _reactionHoldUntil = -1f;
+        private ReactionHoldIntent _reactionHold;
+
+        /// <summary>지금 호명 반응으로 캐릭터를 붙잡고 있는가(진단/테스트 창구).</summary>
+        public bool IsReactionHoldActive => _reactionHold != null;
+
+        /// <summary>이번 붙잡기의 총 길이(초). 붙잡는 중이 아니면 0.</summary>
+        public float ReactionHoldSeconds { get; private set; }
+
+        /// <summary>
+        /// ★ 이동 의도를 <b>감싸는</b> 어댑터 — 원본을 그대로 전달하고 <see cref="MoveInputX"/>만 0으로 덮는다.
+        ///
+        /// <para><b>왜 배회 컨트롤러를 고치지 않는가</b>: 이 붙잡기는 <b>UI가 만든 일시적 사건</b>이고,
+        /// 배회 AI의 규칙이 아니다. 감싸면 <b>되돌리기가 참조 하나</b>이고 원본의 타이머·계획
+        /// (<c>IPlannedDwellSource</c>)이 한 톨도 훼손되지 않는다.</para>
+        ///
+        /// <para>★ 펄스 채널 넷(점프·매달리기·뛰어내리기·기어오르기)도 <b>0으로 막는다</b> — 이동만
+        /// 막고 점프를 남기면 «말하는 도중에 뛰는» 화면이 나온다.</para>
+        /// </summary>
+        private sealed class ReactionHoldIntent : IMovementIntentSource, IPlannedDwellSource
+        {
+            public readonly IMovementIntentSource Inner;
+
+            public ReactionHoldIntent(IMovementIntentSource inner) { Inner = inner; }
+
+            public float MoveInputX => 0f;
+            public bool JumpRequested => false;
+            public bool LedgeHangRequested => false;
+            public bool HopDownRequested => false;
+            public bool StepUpRequested => false;
+
+            public float PlannedDwellRemainingSeconds =>
+                Inner is IPlannedDwellSource planned ? planned.PlannedDwellRemainingSeconds : float.NaN;
+        }
+
+        private void BeginReactionHold()
+        {
+            StickmanBlackboard blackboard = _agent != null ? _agent.Blackboard : null;
+            if (blackboard == null || blackboard.IntentSource == null) return;
+            if (_reactionHold != null) return;   // 이미 붙잡는 중이면 늘리지 않는다.
+
+            string line = ReactionLineProvider != null ? ReactionLineProvider() : null;
+            ReactionHoldSeconds = ReactionHoldSecondsFor(line);
+
+            _reactionHold = new ReactionHoldIntent(blackboard.IntentSource);
+            blackboard.IntentSource = _reactionHold;
+            _reactionHoldUntil = Time.unscaledTime + ReactionHoldSeconds;
+
+            Debug.Log($"[앱제어] 호명 반응 — 이동 입력을 {ReactionHoldSeconds:F3}초 동안 0으로 붙잡습니다. " +
+                "상태 기계가 스스로 Walk → Idle 전이를 내고, 대사는 <b>그 전이</b>에서 파생됩니다(원칙 1). " +
+                (string.IsNullOrEmpty(line)
+                    ? "반응 대사는 아직 없습니다(design-narrative 대기) — 붙잡기는 펼침 예산과 같습니다."
+                    : $"대사 \"{line}\"의 노출 상한이 곧 붙잡는 시간입니다."));
+        }
+
+        /// <summary>붙잡기 만료 — 소유권을 배회 AI에 <b>돌려준다</b>. 부채꼴은 그대로 열려 있다(접지 않는다).
+        /// <para>★ 내가 꽂아 둔 그 참조일 때만 되돌린다. 그 사이 다른 주인이 의도 소스를 갈아 끼웠다면
+        /// 남의 것을 덮어쓰지 않고 조용히 손을 뗀다.</para></summary>
+        private void TickReactionHold()
+        {
+            if (_reactionHold == null) return;
+            if (Time.unscaledTime < _reactionHoldUntil) return;
+
+            StickmanBlackboard blackboard = _agent != null ? _agent.Blackboard : null;
+            if (blackboard != null && ReferenceEquals(blackboard.IntentSource, _reactionHold))
+                blackboard.IntentSource = _reactionHold.Inner;
+
+            _reactionHold = null;
+            _reactionHoldUntil = -1f;
+            ReactionHoldSeconds = 0f;
+        }
+
+        /// <summary>씬이 내려갈 때 소유권을 반드시 돌려준다 — 붙잡은 채로 죽으면 캐릭터가 영원히 선다.</summary>
+        private void OnDisable()
+        {
+            if (_reactionHold == null) return;
+            StickmanBlackboard blackboard = _agent != null ? _agent.Blackboard : null;
+            if (blackboard != null && ReferenceEquals(blackboard.IntentSource, _reactionHold))
+                blackboard.IntentSource = _reactionHold.Inner;
+            _reactionHold = null;
+            _reactionHoldUntil = -1f;
+            ReactionHoldSeconds = 0f;
         }
     }
 }

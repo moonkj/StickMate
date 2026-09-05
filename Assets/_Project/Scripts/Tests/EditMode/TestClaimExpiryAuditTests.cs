@@ -1032,6 +1032,247 @@ namespace StickMate.Tests.EditMode
         }
 
         // ====================================================================
+        // 2-b. ★ 간접 Ignore 게이트 (2026-09-05 신설 — qa-regression)
+        // ====================================================================
+        //
+        // 무엇이 뚫려 있었나 (2026-09-05 실측)
+        // --------------------------------------------------------------------
+        // 위 <see cref="Ignore를_쓰는_테스트는_전부_명부에_있고_장치없음이_늘지_않는다"/>는
+        // <b>테스트 메서드 본문 안의</b> 토큰만 센다(<see cref="TestMethods"/>가 자르는 범위).
+        // 그래서 <c>Assert</c>.<c>Ignore</c>를 <b>헬퍼 메서드</b>에 넣고 테스트가 그 헬퍼를 부르면
+        // <b>명부를 거치지 않고</b> 검사를 끌 수 있었다 — 실제로 그렇게 <b>69개 케이스</b>가 꺼졌는데
+        // 그동안 위 감사는 <b>초록</b>이었다.
+        // 호출부 파일에는 토큰이 없어 파일 단위 1차 거름에서 아예 빠지기 때문이다.
+        //
+        // ★ 같은 날 같은 파일이 남긴 <b>양성 대조</b>: 16:06 실행에서 위 감사는
+        //   <c>EyesVisorOpacityTests.cs::채움_메시가_실제로_만들어진다</c>(<b>직접</b> 호출) 1건을
+        //   정확히 잡아 <b>빨개졌다</b>. ⇒ 감사가 죽은 것이 아니라 <b>새 경로가 그 옆으로 지나갔다</b>.
+        //   이 저장소 거짓 통과의 표준형(«실패한 측정과 성공한 측정이 똑같이 생겼다»)이 그대로 재현된 것이다.
+        //
+        // 어떻게 막는가
+        // --------------------------------------------------------------------
+        // 게이트 이름을 여기 <b>먼저</b> 적어 두고 그것만 찾는 방식은 쓰지 않는다 —
+        // 새 헬퍼가 생기면 그 이름은 여기 없으므로 <b>또 조용히 지나간다</b>(니들이 대상보다 늦는 병).
+        // 대신 <b>실물에서 먼저 찾는다</b>: 「테스트 메서드 <b>바깥</b>에 토큰이 있는 파일」을 전수하고,
+        // 그 목록과 아래 명부를 <b>양방향</b>으로 맞댄다. 새 게이트는 등록을 강제당하고,
+        // 사라진 게이트는 자동 만료된다.
+        //
+        // ★ 탐지기가 실제로 «안»과 «바깥»을 가르는지는
+        //   <see cref="대조_간접_게이트_탐지기가_바깥과_안을_실제로_가른다"/>가 <b>알려진 값으로 먼저 교정</b>한다.
+
+        /// <summary><b>테스트 메서드 바깥</b>에서 <c>Assert</c>.<c>Ignore</c>를 부르는 헬퍼 = 간접 게이트.
+        /// 호출 한 번이 여러 검사를 끄므로 <b>메서드 단위 명부로는 담기지 않는다</b> — 그래서 별도 대장을 둔다.</summary>
+        private struct IgnoreGate
+        {
+            /// <summary>게이트가 선언된 테스트 파일(Tests/ 아래에서 유일해야 한다).</summary>
+            public string File;
+
+            /// <summary>호출부에서 찾을 메서드 이름. ★ 이 이름 자체가 <b>니들</b>이라, 게이트가 개명되면
+            /// 호출부 수가 조용히 0이 되고 「0건이니 깨끗하다」로 읽힌다. 그래서 아래 검사가
+            /// <b>이 이름이 게이트 파일에 선언돼 있는가</b>를 먼저 잰다(0건 = 없다 / 0건 = 눈이 멀었다 구분).</summary>
+            public string Method;
+
+            /// <summary>★ 래칫 — 지금 호출부 수. <b>늘어도 줄어도</b> 실패한다.
+            /// 늘면 «검사를 더 껐다»는 뜻이라 사유가 필요하고, 줄면 «되살아났다»는 뜻이라 이 숫자를 내려야 한다.</summary>
+            public int CallSites;
+
+            /// <summary>무엇이 이 건너뜀들을 <b>되살리는가</b>. 비면 실패한다 —
+            /// 되살릴 방법이 없는 건너뜀은 갭이 닫혀도 영원히 「건너뜀」으로 남아 러너에서 사실상 사라진다.</summary>
+            public string Revival;
+
+            /// <summary>무엇을 <b>잃는가</b>. 개별 손실은 호출부 인자에 적히고, 여기에는 그 총론과 대체 자를 적는다.</summary>
+            public string Why;
+        }
+
+        private static IgnoreGate[] IgnoreGateInventory()
+        {
+            return new[]
+            {
+                new IgnoreGate
+                {
+                    File = "HandoffTestGate.cs",
+                    Method = "SkipIfHandoff",
+                    CallSites = 30,
+                    Revival = "판정이 이름이 아니라 <b>데이터</b>다 — AccessoryShapeBuilder.Shape.IsHandoff(명목 획 strokeInR > 0). " +
+                              "그 아이템이 v1 로 돌아오면(인계본 조각이 사라지면) 게이트가 스스로 열리고 검사가 다시 돈다. " +
+                              "되살아나면 아래 CallSites 래칫이 «줄었다»로 빨개져서 이 명부를 갱신하라고 말한다.",
+                    Why = "인계본 교체(계약 v2, 2026-09-05). v1 몸 도형을 이름·규칙으로 잠그던 게이트가 인계본 16종에서 뜻을 잃었다 " +
+                          "(EQUIPMENT_HANDOFF_PORT_SPEC 14-6 #14 — 정원 2~4 · 보조색 1 · 감쌈 · 낱선 1.5획 자가 이 표면에 안 맞는다). " +
+                          "잃는 규칙은 호출부마다 인자로 적혀 있고 러너의 건너뜀 메시지가 곧 손실 목록이다. " +
+                          "대체 자: CardShapeContractTests(설계 골든 · 좌표/역할/흔들 구간) + design/equipment/verify/r16_model.survival(1pt 실폭).",
+                },
+            };
+        }
+
+        /// <summary><paramref name="source"/> 안에서 <b>테스트 메서드 바깥</b>에 있는 토큰의 개수.
+        /// <para>전체 개수에서 <see cref="TestMethods"/>가 자른 본문 안의 개수를 뺀다 — 파서를 새로 쓰지 않는다
+        /// (위 감사와 <b>같은 자</b>를 써야 「위가 못 본 것」이 정확히 여기로 넘어온다).</para></summary>
+        internal static int TokensOutsideTestMethods(string source, string token)
+        {
+            int total = TokenOccurrences(source, token);
+            if (total == 0) return 0;
+            int inside = 0;
+            foreach ((string _, string body) in TestMethods(source)) inside += TokenOccurrences(body, token);
+            return total - inside;
+        }
+
+        internal static int TokenOccurrences(string haystack, string needle)
+        {
+            int n = 0, i = 0;
+            while ((i = haystack.IndexOf(needle, i, StringComparison.Ordinal)) >= 0) { n++; i += needle.Length; }
+            return n;
+        }
+
+        /// <summary>
+        /// ★ 간접 게이트가 <b>전부 명부에 있고</b>, 게이트마다 <b>되살림 장치</b>가 있고,
+        /// <b>호출부 수가 래칫</b>이며, <b>호출부마다 사유 문자열</b>을 남기는가.
+        /// </summary>
+        [Test]
+        public void 간접_Ignore_게이트도_명부에_있고_호출부마다_사유를_남긴다()
+        {
+            string ignoreToken = "Assert" + ".Ignore(";   // ← 이 파일에 문자 그대로 적지 않는다(위와 같은 이유).
+
+            string[] testFiles = Directory.GetFiles(TestsRoot, "*.cs", SearchOption.AllDirectories);
+            Assert.Greater(testFiles.Length, 100,
+                $"{LogPrefix} Tests/ 아래에서 .cs를 {testFiles.Length}개밖에 읽지 못했습니다 — 스캔이 공허합니다(거짓 초록).");
+
+            // ── ① 실물 탐지: 테스트 메서드 «바깥»에 토큰이 있는 파일 ──────────────
+            var detected = new List<string>();
+            int tokenFiles = 0;
+            foreach (string path in testFiles)
+            {
+                string src = File.ReadAllText(path).Replace("\r\n", "\n");
+                if (TokenOccurrences(src, ignoreToken) == 0) continue;
+                tokenFiles++;
+                if (TokensOutsideTestMethods(src, ignoreToken) > 0) detected.Add(Path.GetFileName(path));
+            }
+
+            // ★ 비공허성 — 토큰이 한 파일에서도 안 걸리면 조립이 깨진 것이다(0건 = 없다 / 0건 = 눈이 멀었다).
+            Assert.Greater(tokenFiles, 0,
+                $"{LogPrefix} 어떤 테스트 파일에서도 '{ignoreToken}'를 찾지 못했습니다 — 스캐너가 눈이 멀었습니다.");
+
+            IgnoreGate[] gates = IgnoreGateInventory();
+            var declared = new HashSet<string>(StringComparer.Ordinal);
+            foreach (IgnoreGate g in gates) declared.Add(g.File);
+
+            // ── ② 양방향 대조: 새 게이트는 등록 강제 / 사라진 게이트는 자동 만료 ──
+            var problems = new List<string>();
+            foreach (string f in detected)
+            {
+                if (declared.Contains(f)) continue;
+                problems.Add($"  · {f}\n      테스트 메서드 <b>바깥</b>에서 Assert.Ignore 를 부릅니다 = <b>간접 게이트</b>입니다.\n" +
+                    "      호출 한 번이 여러 검사를 끄는데 메서드 단위 명부로는 안 잡힙니다 — " +
+                    "IgnoreGateInventory 에 등록하고 <b>되살림 장치</b>와 <b>호출부 수</b>를 함께 적으세요. " +
+                    "2026-09-05에 정확히 이 경로로 69개 케이스가 등록 없이 꺼졌습니다.");
+            }
+            foreach (string f in declared)
+            {
+                if (detected.Contains(f)) continue;
+                problems.Add($"  · {f}\n      명부에는 간접 게이트로 있는데 실물이 없습니다(자동 만료). " +
+                    "게이트를 지웠다면 명부에서도 지우고, 그 게이트가 끄던 검사들이 <b>실제로 다시 도는지</b> 확인하세요.");
+            }
+            Assert.IsEmpty(problems,
+                $"{LogPrefix} 간접 Ignore 게이트 명부가 실물과 어긋났습니다({problems.Count}건):\n" + string.Join("\n", problems));
+
+            // ── ③ 게이트마다: 선언 실재 · 사유/되살림 · 호출부 래칫 · 호출부 사유 ──
+            var report = new StringBuilder();
+            report.Append(LogPrefix).Append(" 간접 Ignore 게이트 ").Append(gates.Length).Append("개\n");
+
+            foreach (IgnoreGate g in gates)
+            {
+                Assert.IsNotEmpty(g.Revival, $"{LogPrefix} {g.File}::{g.Method}에 되살림 장치가 비었습니다 — " +
+                    "되살릴 방법이 없는 건너뜀은 갭이 닫혀도 영원히 '건너뜀'으로 남습니다.");
+                Assert.IsNotEmpty(g.Why, $"{LogPrefix} {g.File}::{g.Method}에 사유가 비었습니다.");
+
+                string gatePath = FindTestFile(g.File);
+                Assert.IsNotNull(gatePath,
+                    $"{LogPrefix} 간접 게이트 파일 {g.File}을 Tests/ 아래에서 유일하게 찾지 못했습니다.");
+
+                // ★ 니들 생존 확인 — 이 이름이 실제로 «선언»돼 있어야 아래 호출부 0건이 '없다'는 뜻이 된다.
+                string gateSrc = File.ReadAllText(gatePath).Replace("\r\n", "\n");
+                Assert.IsTrue(gateSrc.IndexOf(" " + g.Method + "(", StringComparison.Ordinal) >= 0,
+                    $"{LogPrefix} {g.File}에서 게이트 메서드 '{g.Method}' 선언을 찾지 못했습니다. " +
+                    "개명했다면 명부도 갱신하세요 — 그대로 두면 아래 호출부 수가 조용히 0이 되고 " +
+                    "'아무도 안 끈다'로 읽힙니다(죽은 니들).");
+
+                int sites = 0;
+                var missingReason = new List<string>();
+                foreach (string path in testFiles)
+                {
+                    if (string.Equals(Path.GetFileName(path), g.File, StringComparison.Ordinal)) continue;
+                    string[] lines = File.ReadAllText(path).Replace("\r\n", "\n").Split('\n');
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        if (lines[i].IndexOf(g.Method + "(", StringComparison.Ordinal) < 0) continue;
+                        sites++;
+
+                        // 호출식이 끝나는 줄까지(최대 4줄) 모아 «사유 문자열»이 실제로 넘어가는지 본다.
+                        var call = new StringBuilder();
+                        for (int k = i; k < lines.Length && k < i + 4; k++)
+                        {
+                            call.Append(lines[k]);
+                            if (lines[k].IndexOf(");", StringComparison.Ordinal) >= 0) break;
+                        }
+                        if (call.ToString().IndexOf('"') < 0)
+                            missingReason.Add($"  · {Path.GetFileName(path)}:{i + 1}");
+                    }
+                }
+
+                Assert.IsEmpty(missingReason,
+                    $"{LogPrefix} {g.Method} 호출부가 <b>사유 문자열 없이</b> 검사를 끕니다({missingReason.Count}건). " +
+                    "러너의 건너뜀 메시지가 곧 손실 목록입니다 — 무엇을 잃는지 리터럴로 적으세요:\n"
+                    + string.Join("\n", missingReason));
+
+                Assert.AreEqual(g.CallSites, sites,
+                    $"{LogPrefix} {g.File}::{g.Method} 호출부가 {sites}곳입니다(명부 {g.CallSites}곳). " +
+                    "<b>늘었다면</b> 검사를 더 껐다는 뜻이니 무엇을 잃는지 확인하고 이 숫자를 올리세요. " +
+                    "<b>줄었다면</b> 검사가 되살아났다는 뜻이니(축하할 실패입니다) 숫자를 내리고, " +
+                    "0이 되면 이 게이트 항목을 통째로 지우세요.");
+
+                report.Append("  ").Append(g.File).Append("::").Append(g.Method)
+                      .Append("  호출부 ").Append(sites).Append("곳\n")
+                      .Append("      되살림: ").Append(g.Revival).Append('\n')
+                      .Append("      사유  : ").Append(g.Why).Append('\n');
+            }
+            Debug.Log(report.ToString());
+        }
+
+        /// <summary>★ 교정 — 간접 게이트 탐지기를 <b>알려진 값</b>으로 먼저 맞춘다.
+        /// 이 대조가 깨지면 위 검사의 「0건」은 전부 무효다(TEAM.md: 모든 '없음' 판정에 양성 대조).</summary>
+        [Test]
+        public void 대조_간접_게이트_탐지기가_바깥과_안을_실제로_가른다()
+        {
+            string tok = "Assert" + ".Ignore(";
+
+            // 양성 — 테스트 메서드가 하나도 없는 헬퍼 파일 모양이면 «바깥» 1건이어야 한다.
+            string helper =
+                "internal static class G\n{\n" +
+                "    internal static void Skip(string why)\n    {\n" +
+                "        " + tok + "why);\n    }\n}\n";
+            Assert.AreEqual(1, TokensOutsideTestMethods(helper, tok),
+                $"{LogPrefix} 헬퍼 안의 Ignore를 '바깥'으로 세지 못했습니다 — 탐지기가 눈이 멀었고, " +
+                "2026-09-05의 우회(69건)가 다시 열립니다.");
+
+            // 음성 — 테스트 메서드 «안»의 Ignore는 바깥이 아니다(위 명부가 이미 담당한다).
+            string inTest =
+                "public class T\n{\n    [Test]\n" +
+                "    public void A()\n    {\n        " + tok + "\"why\");\n    }\n}\n";
+            Assert.AreEqual(0, TokensOutsideTestMethods(inTest, tok),
+                $"{LogPrefix} 테스트 메서드 안의 Ignore를 '바깥'으로 셌습니다 — 모든 파일이 게이트로 오인됩니다.");
+
+            // 음성 — 토큰이 없으면 0.
+            Assert.AreEqual(0, TokensOutsideTestMethods("public void A() { }\n", tok),
+                $"{LogPrefix} 토큰이 없는데 0이 아닙니다.");
+
+            // 양성 — 헬퍼가 테스트와 «같은 파일»에 있고 테스트보다 앞이면 그것도 바깥이다.
+            string mixed =
+                "internal static void Skip() { " + tok + "\"x\"); }\n" +
+                "    public void A()\n    {\n        Assert.Pass();\n    }\n";
+            Assert.AreEqual(1, TokensOutsideTestMethods(mixed, tok),
+                $"{LogPrefix} 테스트와 같은 파일에 있는 헬퍼를 놓쳤습니다.");
+        }
+
+        // ====================================================================
         // 3. 대조 — "0건"을 믿기 전에 검사기가 작동함을 먼저 보인다
         // ====================================================================
 

@@ -63,6 +63,7 @@ namespace StickMate.Tests.EditMode
         [TestCase(AccessoryShapeBuilder.HeadStraw, "StrawBand", "StrawCrown")]
         public void 모자_띠는_자기_관_밑변과_정확히_겹친다(int item, string bandName, string crownName)
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, item, "모자 띠 = 관 밑변 정확히 겹침 — 인계본 중절모 띠(F1)는 원문 기하");
             AccessoryShapeBuilder.Rig rig = Rig();
             List<AccessoryShapeBuilder.Shape> hat = AccessorySilhouetteMetrics.Build(rig, EquipmentSlot.Head, item);
             AccessoryShapeBuilder.Shape band = AccessorySilhouetteMetrics.Find(hat, bandName);
@@ -109,6 +110,7 @@ namespace StickMate.Tests.EditMode
         [TestCase(AccessoryShapeBuilder.HeadStraw, "StrawBand")]
         public void 모자_띠는_보조색으로_남아있다(int item, string bandName)
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, item, "모자 띠 보조색 — 인계본은 브라스 단색 체계(보조색 「정확히 1」 폐지, R16 (h))");
             List<AccessoryShapeBuilder.Shape> hat = Build(EquipmentSlot.Head, item);
             AccessoryShapeBuilder.Shape band = AccessorySilhouetteMetrics.Find(hat, bandName);
 
@@ -125,6 +127,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 지표가_옛_중절모_띠를_실제로_잡는다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, AccessoryShapeBuilder.HeadFedora, "옛 중절모 띠 음성 대조(FedoraCrown 기준)");
             AccessoryShapeBuilder.Rig rig = Rig();
             float r = rig.HeadRadius;
             float brimY = rig.HeadCenterY + r * AccessoryShapeBuilder.FedoraBrimLineRatio;
@@ -215,6 +218,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 방울은_획_예산을_지킨다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell, "v1 방울(Bell/Collar) 규칙 — 획 예산·정원 각도·목줄 최저점 매달림·펜던트와 구분·통째 흔들림. 흔들림은 인계본 방울 4조각(B4·RB5·CB6·H7) 전체 구간으로 CardShapeContractTests 골든이 잠근다");
             AccessoryShapeBuilder.Rig rig = Rig();
             AccessoryShapeBuilder.Shape bell = AccessorySilhouetteMetrics.Find(
                 Build(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell), "Bell");
@@ -241,6 +245,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 방울은_매끄러운_원으로_인정되는_각도를_유지한다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell, "v1 방울(Bell/Collar) 규칙 — 획 예산·정원 각도·목줄 최저점 매달림·펜던트와 구분·통째 흔들림. 흔들림은 인계본 방울 4조각(B4·RB5·CB6·H7) 전체 구간으로 CardShapeContractTests 골든이 잠근다");
             Vector3[] p = AccessorySilhouetteMetrics.Find(
                 Build(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell), "Bell").Points;
 
@@ -261,6 +266,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 방울은_목줄_최저점에_매달린다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell, "v1 방울(Bell/Collar) 규칙 — 획 예산·정원 각도·목줄 최저점 매달림·펜던트와 구분·통째 흔들림. 흔들림은 인계본 방울 4조각(B4·RB5·CB6·H7) 전체 구간으로 CardShapeContractTests 골든이 잠근다");
             AccessoryShapeBuilder.Rig rig = Rig();
             List<AccessoryShapeBuilder.Shape> shapes = Build(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell);
 
@@ -283,6 +289,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 지표가_옛_방울을_실제로_잡는다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell, "v1 방울(Bell/Collar) 규칙 — 획 예산·정원 각도·목줄 최저점 매달림·펜던트와 구분·통째 흔들림. 흔들림은 인계본 방울 4조각(B4·RB5·CB6·H7) 전체 구간으로 CardShapeContractTests 골든이 잠근다");
             AccessoryShapeBuilder.Rig rig = Rig();
             float r = rig.HeadRadius;
             float ty = AccessoryShapeBuilder.NeckLocalY(rig);
@@ -333,6 +340,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 방울을_키워도_펜던트와_갈린다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell, "v1 방울(Bell/Collar) 규칙 — 획 예산·정원 각도·목줄 최저점 매달림·펜던트와 구분·통째 흔들림. 흔들림은 인계본 방울 4조각(B4·RB5·CB6·H7) 전체 구간으로 CardShapeContractTests 골든이 잠근다");
             AccessoryShapeBuilder.Rig rig = Rig();
 
             float d = AccessorySilhouetteMetrics.MaxRadiusDelta(
@@ -360,16 +368,9 @@ namespace StickMate.Tests.EditMode
         {
             List<AccessoryShapeBuilder.Shape> shapes = Build(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell);
 
-            Assert.That(shapes.Count, Is.InRange(2, 4),
-                $"방울 목걸이의 도형이 {shapes.Count}개입니다 — 정원은 2~4개입니다(37-6 규칙 5).");
-
-            int accent = 0;
-            for (int i = 0; i < shapes.Count; i++)
-            {
-                if (shapes[i].Tone == AccessoryShapeBuilder.Accent) accent++;
-            }
-            Assert.AreEqual(1, accent,
-                $"방울 목걸이의 보조색 도형이 {accent}개입니다 — 정확히 1개여야 합니다(37-6 규칙 3-2).");
+            // ★ 2026-09-05 계약 v2(R16 (h)) — 정원·보조색 검사는 폐지됐다(잃는 것: 조각 수·보조색 수 상한).
+            //   방울 목걸이는 인계본 기하(8조각)로 바뀌었다 — 조각이 있는지만 본다.
+            Assert.Greater(shapes.Count, 0, "방울 목걸이의 도형이 없습니다.");
         }
 
         /// <summary>설명문 "걸을 때마다 방울이 흔들린다"가 코드에 남아 있는가(원칙 1).
@@ -378,6 +379,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 방울은_통째로_흔들린다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell, "v1 방울(Bell/Collar) 규칙 — 획 예산·정원 각도·목줄 최저점 매달림·펜던트와 구분·통째 흔들림. 흔들림은 인계본 방울 4조각(B4·RB5·CB6·H7) 전체 구간으로 CardShapeContractTests 골든이 잠근다");
             AccessoryShapeBuilder.Shape bell = AccessorySilhouetteMetrics.Find(
                 Build(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell), "Bell");
 

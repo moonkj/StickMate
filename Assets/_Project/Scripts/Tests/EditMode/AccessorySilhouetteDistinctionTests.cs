@@ -302,10 +302,8 @@ namespace StickMate.Tests.EditMode
                 AccessorySilhouetteMetrics.Find(
                     AccessorySilhouetteMetrics.Build(rig, EquipmentSlot.Neck,
                         AccessoryShapeBuilder.NeckPendant), "Pendant").Points);
-            Vector2 bell = AccessorySilhouetteMetrics.ExtentInR(rig,
-                AccessorySilhouetteMetrics.Find(
-                    AccessorySilhouetteMetrics.Build(rig, EquipmentSlot.Neck,
-                        AccessoryShapeBuilder.NeckBell), "Bell").Points);
+            // ★ 2026-09-05 인계본 방울은 'Bell' 한 조각이 아니라 몸통·테·추(B4·RB5·CB6)다 — 방울 부분(목줄 아래 채움)의 합친 범위로 잰다.
+            Vector2 bell = AccessorySilhouetteMetrics.ExtentInR(rig, BellPoints(rig));
 
             float pendantAspect = pendant.y / pendant.x;
             float bellAspect = bell.y / bell.x;
@@ -325,6 +323,32 @@ namespace StickMate.Tests.EditMode
                     $"펜던트의 {i}번 빗변이 {edge / W:F2}획입니다 — 1.5획 미만이면 양끝 꼭짓점의 " +
                     "획이 서로 만나 마름모가 타원으로 뭉개집니다(37-6 규칙 1).");
             }
+        }
+
+        /// <summary>방울의 「방울 부분」 점들. v1 이면 'Bell' 한 조각, 인계본이면 목줄(가장 위 낱선) 아래의 채운 조각 전부.</summary>
+        private static Vector3[] BellPoints(in AccessoryShapeBuilder.Rig rig)
+        {
+            List<AccessoryShapeBuilder.Shape> body = AccessorySilhouetteMetrics.Build(rig, EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell);
+            bool handoff = false;
+            for (int i = 0; i < body.Count; i++) handoff |= body[i].IsHandoff;
+            if (!handoff) return AccessorySilhouetteMetrics.Find(body, "Bell").Points;
+
+            float collarBottom = float.MaxValue;
+            for (int i = 0; i < body.Count; i++)
+            {
+                if (body[i].Filled) continue;
+                foreach (Vector3 p in body[i].Points) collarBottom = Mathf.Min(collarBottom, p.y);
+            }
+            var pts = new List<Vector3>();
+            for (int i = 0; i < body.Count; i++)
+            {
+                if (!body[i].Filled) continue;
+                bool below = true;
+                foreach (Vector3 p in body[i].Points) below &= p.y <= collarBottom + 1e-4f;
+                if (below) pts.AddRange(body[i].Points);
+            }
+            Assert.Greater(pts.Count, 0, "인계본 방울에서 목줄 아래 채움 조각을 찾지 못했습니다.");
+            return pts.ToArray();
         }
 
         /// <summary>매달린 지점이 보여야 물건이 공중에 뜨지 않는다(규칙 4). 위 꼭짓점은

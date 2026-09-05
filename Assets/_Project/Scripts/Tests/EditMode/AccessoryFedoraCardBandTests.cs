@@ -76,6 +76,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 몸의_중절모_띠는_관_밑변의_두_끝점_그_자체다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, AccessoryShapeBuilder.HeadFedora, "v1 중절모 띠(FedoraBand)가 관 밑변 두 끝점 그 자체 · 폴백 띠 직선 — 인계본 중절모는 띠가 별도 조각(F1)이고 폴백 대조는 인계본에서 뜻을 잃는다");
             AccessoryShapeBuilder.Rig rig = AccessorySilhouetteMetrics.Rig();
             List<AccessoryShapeBuilder.Shape> shapes =
                 AccessorySilhouetteMetrics.Build(rig, EquipmentSlot.Head, AccessoryShapeBuilder.HeadFedora);
@@ -140,6 +141,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 폴백_아이콘의_띠도_관_밑변_직선이다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, AccessoryShapeBuilder.HeadFedora, "v1 중절모 띠(FedoraBand)가 관 밑변 두 끝점 그 자체 · 폴백 띠 직선 — 인계본 중절모는 띠가 별도 조각(F1)이고 폴백 대조는 인계본에서 뜻을 잃는다");
             ItemCatalogEntry entry = ItemCatalog.Item(EquipmentSlot.Head, AccessoryShapeBuilder.HeadFedora);
             Assert.IsNotNull(entry.Icon, "중절모의 폴백 아이콘이 사라졌습니다.");
 

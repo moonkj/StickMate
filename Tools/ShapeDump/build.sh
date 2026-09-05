@@ -33,17 +33,34 @@ mkdir -p "$OUT"
 ARGS=()
 for f in "$FW"/*.dll; do ARGS+=("-r:$f"); done
 
-# 흉내(3) + 프로덕션 그대로(6). 이 목록이 늘어나는 것은 좋은 방향이다 — 흉내가 줄어든다는 뜻이다.
+# 흉내(3) + 프로덕션 그대로(9). 이 목록이 늘어나는 것은 좋은 방향이다 — 흉내가 줄어든다는 뜻이다.
+#
+# ★ 2026-09-05 — 목록이 <b>의존성 폐포가 아니라 손으로 적은 집합</b>이라 조용히 깨진다.
+#   실제 사고: ItemCatalog.IsOwned 가 CurrencyModel.IsPurchasedItem 을 부르기 시작하자
+#   (커밋 1f7e139) 이 목록에 CurrencyModel.cs 가 없어 CS0103 하나로 빌드가 죽었고,
+#   그 위에 얹힌 상시 게이트 둘(mirrordrift.py · prodverify.py)이 함께 멈췄다.
+#   CurrencyModel 은 CurrencyRules 와 DanceIds 를 끌고 오므로 셋을 한 덩어리로 넣는다.
+#
+#   ⇒ 이 목록에 파일을 더할 때는 <b>그 파일이 부르는 것까지</b> 따라가라. 컴파일러가
+#     CS0103/CS0246 으로 알려 주긴 하는데, 그 실패는 «게이트가 안 도는 상태»로 나타나지
+#     «게이트가 빨간 상태»로 나타나지 않는다(이 저장소가 반복해서 당한 형태다).
 "$UNITY/NetCoreRuntime/dotnet" "$UNITY/DotNetSdkRoslyn/csc.dll" -nologo -nostdlib -target:exe -langversion:9 \
   -out:"$OUT/dump.dll" "${ARGS[@]}" \
   "$SP/Shim.cs" "$SP/CoreShim.cs" "$SP/AssetShim.cs" "$SP/Dump.cs" \
   "$SRC/Core/ItemRarity.cs" \
   "$SRC/Core/ShortcutLabel.cs" \
+  "$SRC/Core/AccessoryShapeContract.cs" \
   "$SRC/Core/AccessoryDefSO.cs" \
   "$SRC/Core/ItemCatalog.cs" \
+  "$SRC/Core/CurrencyModel.cs" \
+  "$SRC/Core/CurrencyRules.cs" \
+  "$SRC/Core/DanceIds.cs" \
   "$SRC/Core/StickMateDevTools.cs" \
   "$SRC/Interaction/ShapeCoverageGuard.cs" \
+  "$SRC/Interaction/AccessoryShapeBuilder.Handoff.cs" \
   "$BUILDER"
+# ★ 2026-09-05 — AccessoryShapeBuilder 가 partial 이 됐다(카드 표면 조각은 생성 파일에 있다). $BUILDER 를
+#   바꿔 끼우는 A/B(Tools/ShapeDumpPC)도 생성 파일은 그대로 같이 컴파일해야 링크된다.
 
 cat > "$OUT/dump.runtimeconfig.json" <<'JSON'
 {"runtimeOptions":{"tfm":"net6.0","framework":{"name":"Microsoft.NETCore.App","version":"6.0.0"}}}

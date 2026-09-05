@@ -444,10 +444,19 @@ namespace StickMate.Interaction
 
             // ★ 2026-09-02 — 세로는 <b>대칭이 아니다</b>. 옛 코드는 네 변에 똑같이 12pt를 줘서 팝오버를
             //   상단 y=12pt에 앉혔고, macOS 메뉴바(y 0~33pt)를 <b>21pt 덮었다</b>(원칙 2 위반).
-            //   위쪽만 OS 예약 띠만큼 더 밀어낸다 — 아래쪽은 그대로다(Dock은 캐릭터의 발판이다).
+            //   위쪽은 OS 예약 띠만큼 더 밀어낸다.
+            //
+            // ★★ 2026-09-05 (M-7, 리더 판정) — 아래쪽은 <b>플랫폼마다 다르다</b>.
+            //   macOS: 0이다. Dock은 이 앱이 의도적으로 쓰는 캐릭터 발판이라 예전과 한 픽셀도 안 바뀐다.
+            //   Windows: 작업표시줄 두께가 그대로 들어온다 — 신고 "작업표시줄에 걸쳐서 돌아다닌다"(2026-08-31).
+            //   갈림 규칙은 SurfaceSafeAreaPolicy.EnforcesBottomReservedBand 한 곳에만 있고 여기엔 #if가 없다.
             float topInsetPx = ReservedTopBarProbe.TopInsetPoints(Agent != null ? Agent.PlatformService : null)
                 * pxPerPoint;
-            center.y = SurfaceSafeAreaPolicy.ClampCenterY(center.y, size.y, Screen.height, topInsetPx, margin);
+            float bottomInsetPx =
+                ReservedEdgeProbe.EnforcedBottomInsetPoints(Agent != null ? Agent.PlatformService : null)
+                * pxPerPoint;
+            center.y = SurfaceSafeAreaPolicy.ClampCenterY(center.y, size.y, Screen.height,
+                topInsetPx, bottomInsetPx, margin);
 
             PanelScreenRect = new Rect(center.x - size.x * 0.5f, center.y - size.y * 0.5f, size.x, size.y);
             _panel.anchoredPosition = new Vector2(

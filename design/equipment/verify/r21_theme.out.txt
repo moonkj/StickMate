@@ -1,0 +1,134 @@
+== 0. 인계본 16종 theme — 원문 파싱(../../docs/handoff/design_handoff_equipment_window/reference/equipment-screen.dc.html) ==
+   equip.head.cap                 h1  천모자      clothhat     ink
+   equip.head.fur                 h2  털모자      furhat       sport
+   equip.head.fedora              h3  중절모      fedora       office
+   equip.head.crown               h4  왕관       crown        cyber  (DLC)
+   equip.eyes.sunglasses          e1  선글라스     sunglasses   mil
+   equip.eyes.round               e2  동그란안경    roundglasses office
+   equip.eyes.goggles             e3  고글       goggles      cyber
+   equip.eyes.monocle             e4  외알안경     monocle      ink
+   equip.neck.bowtie              n1  나비넥타이    bowtie       office
+   equip.neck.striped             n2  줄무늬타이    stripedtie   office
+   equip.neck.scarf               n3  목도리      scarf        sport
+   equip.neck.bell                n4  방울목걸이    bellnecklace neon
+   equip.shoulders.cape           b1  짧은망토     shortcape    mil
+   equip.shoulders.long_cape      b2  긴망토      longcape     cyber
+   equip.shoulders.wings          b3  날개       wings        neon  (DLC)
+   equip.shoulders.backpack       b4  배낭       backpack     office
+
+== 1. 인계본 16만으로 본 6×4 표 — 채워진 칸과 빈칸 ==
+   ink    HEAD 천모자          | EYES 외알안경         | NECK 빈칸           | BACK 빈칸          
+   sport  HEAD 털모자          | EYES 빈칸           | NECK 목도리          | BACK 빈칸          
+   office HEAD 중절모          | EYES 동그란안경        | NECK 나비넥타이,줄무늬타이  | BACK 배낭          
+   cyber  HEAD 왕관           | EYES 고글           | NECK 빈칸           | BACK 긴망토         
+   mil    HEAD 빈칸           | EYES 선글라스         | NECK 빈칸           | BACK 짧은망토        
+   neon   HEAD 빈칸           | EYES 빈칸           | NECK 방울목걸이        | BACK 날개          
+   빈칸 9 · 2종 겹침 칸 1 (office/NECK: 나비넥타이·줄무늬타이) · 내가 배정할 스탯 슬롯 아이템 8 — 빈칸보다 1개 적다
+   1일차 무료 idx0 4종의 인계본 테마: 천모자=ink, 선글라스=mil, 나비넥타이=office, 짧은망토=mil → E2(같은 테마) 를 인계본 자신이 만족하지 않는다
+   전설 idx5 4종(밀짚모자·안대·반다나·요정날개)은 전부 내 몫 — E3 는 「4슬롯이 전부 빈 테마」가 있어야 성립하는데, 16종이 6테마 전부에 ≥2칸을 점유해 그런 테마가 없다
+   ⇒ ★ 인계본 16종을 한 종도 안 바꾸면 E1·E2·E3 를 동시에 만족하는 배정은 존재하지 않는다(아래 안 0 이 그 실체).
+
+== 안 0 (인계본 16 그대로 + 8종 최선 채움 — 참고) ==
+   ink    컬러 잉크      HEAD 천모자          | EYES 외알안경         | NECK 반다나          | BACK 요정날개        
+   sport  스포츠 이펙트    HEAD 털모자          | EYES 안대           | NECK 목도리          | BACK 판초          
+   office 오피스 워커     HEAD 중절모          | EYES 동그란안경        | NECK 나비넥타이,줄무늬타이  | BACK 배낭          
+   cyber  사이버 아포칼립스  HEAD 왕관           | EYES 고글           | NECK 펜던트          | BACK 긴망토         
+   mil    밀리터리       HEAD 밀짚모자         | EYES 선글라스         | NECK 빈칸           | BACK 짧은망토        
+   neon   네온 낙서      HEAD 베레모          | EYES 뿔테안경         | NECK 방울목걸이        | BACK 날개          
+   인계본 대비 변경 0건: 없음
+   1일차 무료 테마 ['ink', 'mil', 'office'] · 전설 테마 ['ink', 'mil', 'sport']
+   위반 4건: E1 office/NECK = 2종 (나비넥타이, 줄무늬타이) / E1 mil/NECK = 0종 (빈칸) / E2 1일차 무료 4종 테마 ['ink', 'mil', 'office'] (같아야 한다) / E3 전설 4종 테마 ['ink', 'mil', 'sport'] (같아야 한다)
+
+== 안 A (최소 변경 3건) ==
+   ink    컬러 잉크      HEAD 밀짚모자         | EYES 안대           | NECK 반다나          | BACK 요정날개        
+   sport  스포츠 이펙트    HEAD 털모자          | EYES 뿔테안경         | NECK 목도리          | BACK 판초          
+   office 오피스 워커     HEAD 중절모          | EYES 동그란안경        | NECK 줄무늬타이        | BACK 배낭          
+   cyber  사이버 아포칼립스  HEAD 왕관           | EYES 고글           | NECK 펜던트          | BACK 긴망토         
+   mil    밀리터리       HEAD 천모자          | EYES 선글라스         | NECK 나비넥타이        | BACK 짧은망토        
+   neon   네온 낙서      HEAD 베레모          | EYES 외알안경         | NECK 방울목걸이        | BACK 날개          
+   인계본 대비 변경 3건: 천모자 ink→mil; 외알안경 ink→neon; 나비넥타이 office→mil
+   1일차 무료 테마 ['mil'] · 전설 테마 ['ink']
+   위반 0건 — E1(24/24 정확히 1종) · E2 · E3 전부 통과
+
+== 안 B (권고 · 변경 4건) ==
+   ink    컬러 잉크      HEAD 밀짚모자         | EYES 안대           | NECK 반다나          | BACK 요정날개        
+   sport  스포츠 이펙트    HEAD 털모자          | EYES 고글           | NECK 목도리          | BACK 판초          
+   office 오피스 워커     HEAD 중절모          | EYES 동그란안경        | NECK 줄무늬타이        | BACK 배낭          
+   cyber  사이버 아포칼립스  HEAD 왕관           | EYES 외알안경         | NECK 펜던트          | BACK 긴망토         
+   mil    밀리터리       HEAD 천모자          | EYES 선글라스         | NECK 나비넥타이        | BACK 짧은망토        
+   neon   네온 낙서      HEAD 베레모          | EYES 뿔테안경         | NECK 방울목걸이        | BACK 날개          
+   인계본 대비 변경 4건: 천모자 ink→mil; 고글 cyber→sport; 외알안경 ink→cyber; 나비넥타이 office→mil
+   1일차 무료 테마 ['mil'] · 전설 테마 ['ink']
+   위반 0건 — E1(24/24 정확히 1종) · E2 · E3 전부 통과
+
+== 4. 채택 후보 = 안 B. 근거(조형·미감) ==
+   ink(컬러 잉크) = 전설 세트(E3): 밀짚모자·안대·반다나·요정날개 — 「색」이 주제라 어떤 조형도 품는 테마. 재질색: Canvas/Felt/TintNeck/Paper(따뜻 2 + 파랑 2)
+   mil(밀리터리) = 1일차 무료 세트(E2): 천모자(필드캡)·선글라스(항공)·나비넥타이(정복 나비타이 — ★ 가장 어색한 1종, E2 의 대가)·짧은망토(망토)
+   sport = 털모자(비니)·고글(스키)·목도리·판초(야외 우비)   |   office = 중절모·동그란안경·줄무늬타이·배낭 (인계본 그대로)
+   cyber = 왕관(DLC)·외알안경(HUD 단안 렌즈)·펜던트(데이터 펜던트)·긴망토   |   neon(네온 낙서) = 베레모(화가)·뿔테안경(스트리트)·방울목걸이·날개(DLC)
+   안 A 는 변경 1건 적지만 외알안경이 neon, 뿔테가 sport, 고글이 cyber 에 남아 3종의 미감이 어긋난다 — 리더 판단.
+
+== 5. 외형 18종(HAIR/FX/PET) — theme = none(무소속, 세트 계산 밖) ==
+   근거: E1 의 24칸은 스탯 4슬롯뿐이고(§21-2-g 외형 18종 스탯 기여 0), DS-4′-b 가 「무소속」을 실재 테마와 다른 값으로 요구한다. 팩 색 연동(파티클) 용 flavour 는 design-art/product-strategy 와 함께 — 여기서 정하지 않는다.
+   look.hair.bald           none
+   look.hair.bowl           none
+   look.hair.cowlick        none
+   look.hair.curly          none
+   look.hair.neat           none
+   look.hair.ponytail       none
+   look.fx.bubble           none
+   look.fx.dust             none
+   look.fx.footprint        none
+   look.fx.leaf             none
+   look.fx.none             none
+   look.fx.sparkle          none
+   look.pet.ball            none
+   look.pet.balloon         none
+   look.pet.cursor          none
+   look.pet.mini            none
+   look.pet.plane           none
+   look.pet.snail           none
+
+== 6. 42종 theme 값(안 B) — coder-systems 전사용 ==
+   equip.head.cap                 HEAD   idx0 일반  천모자      mil
+   equip.head.fur                 HEAD   idx1 일반  털모자      sport
+   equip.head.fedora              HEAD   idx2 희귀  중절모      office
+   equip.head.crown               HEAD   idx3 희귀  왕관       cyber
+   equip.head.beret               HEAD   idx4 영웅  베레모      neon
+   equip.head.straw               HEAD   idx5 전설  밀짚모자     ink
+   equip.eyes.sunglasses          EYES   idx0 일반  선글라스     mil
+   equip.eyes.round               EYES   idx1 일반  동그란안경    office
+   equip.eyes.goggles             EYES   idx2 희귀  고글       sport
+   equip.eyes.monocle             EYES   idx3 희귀  외알안경     cyber
+   equip.eyes.browline            EYES   idx4 영웅  뿔테안경     neon
+   equip.eyes.patch               EYES   idx5 전설  안대       ink
+   equip.neck.bowtie              NECK   idx0 일반  나비넥타이    mil
+   equip.neck.striped             NECK   idx1 일반  줄무늬타이    office
+   equip.neck.scarf               NECK   idx2 희귀  목도리      sport
+   equip.neck.bell                NECK   idx3 희귀  방울목걸이    neon
+   equip.neck.pendant             NECK   idx4 영웅  펜던트      cyber
+   equip.neck.bandana             NECK   idx5 전설  반다나      ink
+   equip.shoulders.cape           BACK   idx0 일반  짧은망토     mil
+   equip.shoulders.long_cape      BACK   idx1 일반  긴망토      cyber
+   equip.shoulders.wings          BACK   idx2 희귀  날개       neon
+   equip.shoulders.backpack       BACK   idx3 희귀  배낭       office
+   equip.shoulders.poncho         BACK   idx4 영웅  판초       sport
+   equip.shoulders.fairy_wings    BACK   idx5 전설  요정날개     ink
+   look.hair.bald                 HAIR        -   민머리      none
+   look.hair.bowl                 HAIR        -   바가지머리    none
+   look.hair.cowlick              HAIR        -   삐친머리     none
+   look.hair.curly                HAIR        -   곱슬       none
+   look.hair.neat                 HAIR        -   단정한머리    none
+   look.hair.ponytail             HAIR        -   포니테일     none
+   look.fx.bubble                 FX          -   물방울      none
+   look.fx.dust                   FX          -   먼지구름     none
+   look.fx.footprint              FX          -   발자국      none
+   look.fx.leaf                   FX          -   나뭇잎      none
+   look.fx.none                   FX          -   없음       none
+   look.fx.sparkle                FX          -   반짝임      none
+   look.pet.ball                  PET         -   작은공      none
+   look.pet.balloon               PET         -   풍선       none
+   look.pet.cursor                PET         -   커서친구     none
+   look.pet.mini                  PET         -   리틀스틱메이트  none
+   look.pet.plane                 PET         -   종이비행기    none
+   look.pet.snail                 PET         -   달팽이      none

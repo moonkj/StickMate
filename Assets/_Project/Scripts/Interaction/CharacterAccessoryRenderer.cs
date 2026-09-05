@@ -184,6 +184,12 @@ namespace StickMate.Interaction
         /// 남아서 24시간 상주 앱에서 재구성마다 조금씩 샌다.</summary>
         private readonly List<Mesh> _fillMeshes = new List<Mesh>(4);
 
+        /// <summary>★ 2026-09-05 perf-doc P0 — <see cref="_fillMeshes"/>와 1:1 인 정점 색 캐시. <c>Mesh.colors</c> <b>게터</b>는 부를 때마다
+        /// 새 배열을 따는 Unity API 라(10,224 B/프레임 = 53 GB/일, docs/PERF_EQUIPMENT_AND_FAN.md D) <see cref="ApplyAlpha"/>가
+        /// 게터를 부르지 않고 이 캐시와 <see cref="_fillAlphaApplied"/>(마지막으로 쓴 알파)만 본다. 거동 변화 0, 프레임당 할당 0.</summary>
+        private readonly List<Color[]> _fillColors = new List<Color[]>(4);
+        private readonly List<float> _fillAlphaApplied = new List<float>(4);
+
         /// <summary>재구성 때만 쓰는 도형 조립 버퍼. 매번 새 List를 만들지 않는다(24시간 상주 앱).</summary>
         private readonly List<AccessoryShapeBuilder.Shape> _shapes = new List<AccessoryShapeBuilder.Shape>(16);
 
@@ -388,6 +394,8 @@ namespace StickMate.Interaction
                 if (_fillMeshes[i] != null) Destroy(_fillMeshes[i]);
             }
             _fillMeshes.Clear();
+            _fillColors.Clear();
+            _fillAlphaApplied.Clear();
         }
 
         private void OnEquipmentChanged()
@@ -868,28 +876,67 @@ namespace StickMate.Interaction
                 AccessoryShapeBuilder.Append(_shapes, slot, item, rig, cover, StrokeWidth * 0.5f, IsMonday);
 
                 Transform parent = AccessoryShapeBuilder.IsHeadAttached(slot) ? _headGroup : _container.transform;
+                // ★ 계약 v2 + 재질 팔레트(§2-3 · L-1) — 인계본 조각은 재질색 M/M2(카탈로그 주색/보조색, 카드와 같은 hex) 불투명 채움 ·
+                //   유저 잉크 윤곽 · 재질선 · 흰 하이라이트를 쓴다. 등급색은 조각에 0개. 팔레트는 아이템당 한 번 만든다.
+                AccessoryShapeBuilder.HandoffPalette handoff = AccessoryHandoffPalette.Body(slot, item, ink);
                 for (int k = start; k < _shapes.Count; k++)
                 {
                     // k − start = <b>이 아이템 안에서 몇 번째</b>. 채움끼리 겹칠 때의 순서를 정한다
                     // (AccessoryShapeBuilder.FillDepthStep — sortingOrder는 건드리지 않는다).
-                    AddShape(_shapes[k], ToneColor(_shapes[k].Tone, primary, secondary), parent, k - start);
+                    if (_shapes[k].IsHandoff)
+                    {
+                        AddHandoffShape(_shapes[k], handoff, parent, k - start);
+                        continue;
+                    }
+                    // 색 역할 → 색은 AccessoryShapeBuilder.ResolveToneColor 한 곳이다(하이라이트의 밑색이
+                    // 같은 아이템의 앞 조각에서 오므로 목록 문맥이 필요하다).
+                    AddShape(_shapes[k], AccessoryShapeBuilder.ResolveToneColor(_shapes, k, start, primary, secondary),
+                        parent, k - start);
                 }
             }
         }
+
+        /// <summary>
+        /// 인계본 조각(계약 v2) 하나 — 채움은 알파 있는 정점색, 선은 명목 폭 <c>strokeInR × R</c>에 액세서리 하한
+        /// (<see cref="StickConfig.MinAccessoryStrokeScreenPoints"/>)만 건다. 색은
+        /// <see cref="AccessoryShapeBuilder.ResolveHandoffBody"/> 한 곳이다.
+        /// </summary>
+        private void AddHandoffShape(in AccessoryShapeBuilder.Shape shape, in AccessoryShapeBuilder.HandoffPalette palette,
+            Transform parent, int orderWithinItem)
+        {
+            AccessoryShapeBuilder.ResolveHandoffBody(shape, palette, out Color fill, out bool hasFill,
+                out Color line, out bool hasLine);
+
+            Mesh fillMesh = null;
+            if (hasFill) fillMesh = AddFill(shape, fill, parent, orderWithinItem);
+            if (!hasLine) return;
+
+            LineRenderer lr = AddLine(shape.Name, shape.Points, line, shape.Loop, shape.SortingOrder, parent,
+                handoffWidth: Mathf.Max(0.000001f, shape.StrokeInR * R));
+            if (lr == null || !shape.HasSway) return;
+
+            var buffer = new Vector3[shape.Points.Length];
+            System.Array.Copy(shape.Points, buffer, shape.Points.Length);
+            _swayLines.Add(new SwayLine
+            {
+                Line = lr,
+                Fill = fillMesh,
+                Base = shape.Points,
+                Buffer = buffer,
+                Start = shape.SwayStart,
+                Count = Mathf.Min(shape.SwayCount, shape.Points.Length - shape.SwayStart),
+            });
+        }
+
+        /// <summary>인계본 착용 조각의 화면상 하한(월드). 단일 소스는 <see cref="StickmanAgent.MinAccessoryStrokeWorldWidth"/>.</summary>
+        private float MinAccessoryStrokeWorld => _agent != null
+            ? _agent.MinAccessoryStrokeWorldWidth
+            : StickConfig.MinAccessoryStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
 
         private static bool ShouldDraw(EquipmentSlot slot)
             => EquipmentModel.IsEquipped(slot) && EquipmentModel.IsUnlocked(slot);
 
         // ==================== 유틸 ====================
-
-        /// <summary>도형이 선언한 <b>역할</b>을 실제 색으로 바꾼다. 세 번째 톤(그림자)은 팔레트를
-        /// 늘리지 않고 주색에서 유도한다 — AccessoryShapeBuilder.Shade 문서 참고.</summary>
-        private static Color ToneColor(byte tone, Color primary, Color secondary)
-        {
-            if (tone == AccessoryShapeBuilder.Accent) return secondary;
-            if (tone == AccessoryShapeBuilder.Shade) return AccessoryShapeBuilder.FillOutlineColor(primary);
-            return primary;
-        }
 
         private void AddShape(in AccessoryShapeBuilder.Shape shape, Color color, Transform parent,
             int orderWithinItem)
@@ -904,11 +951,14 @@ namespace StickMate.Interaction
                 outline = AccessoryShapeBuilder.FillOutlineColor(color);
             }
 
+            // ★ 계약 v2 — 윤곽 없는 채움은 선을 만들지 않는다. 흔들 구간은 선에 걸려 있으므로 이런 조각은 흔들리지 않는다.
+            if (shape.NoStroke) return;
+
             // ★ 2026-09-02 M6 — 이 선이 <b>채움의 경계선인가 낱선인가</b>가 두께를 가른다.
             //   판정 근거는 shape.Filled 하나뿐이고, 그 사실을 선 자신에게 표식으로 붙여
             //   에이전트/진단이 같은 답을 얻게 한다(FillOutlineStroke 문서).
             LineRenderer lr = AddLine(shape.Name, shape.Points, outline, shape.Loop, shape.SortingOrder,
-                parent, shape.Filled);
+                parent, shape.Filled, AccessoryStroke.Multiplier(shape.StrokeMult));
             if (lr == null || !shape.HasSway) return;
 
             // 흔들 점이 있는 선만 별도 목록에 둔다 — 매 프레임 전체 선을 훑지 않기 위해서다.
@@ -953,6 +1003,9 @@ namespace StickMate.Interaction
             mr.receiveShadows = false;
 
             _fillMeshes.Add(mesh);
+            // 재구성 때 한 번만 딴다(게터 할당은 여기뿐). 이후 ApplyAlpha 는 이 배열을 고쳐 세터로만 밀어 넣는다.
+            _fillColors.Add(mesh.colors);
+            _fillAlphaApplied.Add(color.a);
             _fills.Add(mr);
             return mesh;
         }
@@ -960,9 +1013,13 @@ namespace StickMate.Interaction
         /// <param name="isFillOutline">이 선이 <b>채운 도형의 경계선</b>인가. true면 두께 하한이
         /// 1.00pt로 내려가고(<see cref="RenderFillOutlineStrokeWidth"/>) 선에 표식이 붙는다.
         /// 기본값 false는 낱선(그 선이 그 자리의 유일한 잉크)이다.</param>
+        /// <param name="widthMultiplier">획 배수(<see cref="AccessoryStroke.Multiplier"/>). 비례 두께에
+        /// 곱한 뒤 하한을 건다 — 하한이 비례 두께보다 크면(출하 배율의 낱선) 배수는 화면에 안 나타난다.</param>
+        /// <param name="handoffWidth">인계본 조각(계약 v2)의 명목 폭(월드). 0 보다 크면 v1 규칙 대신 이 값에
+        /// 액세서리 하한(<see cref="MinAccessoryStrokeWorld"/>)만 걸고 <see cref="AccessoryStrokeMark"/>를 붙인다.</param>
         private LineRenderer AddLine(string name, Vector3[] points, Color color, bool loop,
             int sortingOrder = AccessoryShapeBuilder.SortDefault, Transform parent = null,
-            bool isFillOutline = false)
+            bool isFillOutline = false, float widthMultiplier = 1f, float handoffWidth = 0f)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent != null ? parent : _container.transform, false);
@@ -972,7 +1029,11 @@ namespace StickMate.Interaction
             lr.material = _lineMaterial;
             lr.startColor = color;
             lr.endColor = color;
-            float width = isFillOutline ? RenderFillOutlineStrokeWidth : RenderStrokeWidth;
+            float width = handoffWidth > 0f
+                ? Mathf.Max(handoffWidth, MinAccessoryStrokeWorld)
+                : isFillOutline
+                    ? Mathf.Max(StrokeWidth * widthMultiplier, MinFillOutlineWorld)
+                    : RenderStrokeWidth;
             lr.startWidth = width;
             lr.endWidth = width;
             lr.numCapVertices = 4;
@@ -981,7 +1042,8 @@ namespace StickMate.Interaction
             lr.loop = loop;
             lr.positionCount = points.Length;
             lr.SetPositions(points);
-            if (isFillOutline) FillOutlineStroke.Mark(lr);
+            if (handoffWidth > 0f) AccessoryStrokeMark.Mark(lr);
+            else if (isFillOutline) FillOutlineStroke.Mark(lr);
             _lines.Add(lr);
             return lr;
         }
@@ -1032,7 +1094,17 @@ namespace StickMate.Interaction
             //   된다"(원래 배타로 만든 이유)는 여전히 성립하지 않는다.
             float walk01 = ResolveWalkSpeed01() * (1f - air01);
 
-            if (air01 <= 0f && walk01 <= 0.0001f)
+            // ★ R17d + design-motion §2-5 — 발목선(루트 로컬 y 0 = 발바닥)을 컨테이너 좌표로. 컨테이너는 몸 오프셋 b 만큼 내려앉고
+            //   상체 피치만큼 <b>기울어</b> 있으므로 바닥은 컨테이너 안에서 기운 선 floorY(x) = intercept + slope·x 다
+            //   (AccessoryShapeBuilder.HemFloorLine 유도). 서 있으면(b = 0 · 피치 0) 밑단(−9.055 R)은 발목선 위(+0.285 R)라 아무것도 안 바뀐다.
+            float bodyOffset = ResolveBodyOffsetY();
+            Quaternion bodyRot = ResolveBodyRotation();
+            float sinPitch = (bodyRot * Vector3.right).y;
+            float cosPitch = (bodyRot * Vector3.up).y;
+            bool needsFloor = cosPitch > 0.05f && (bodyOffset < -0.0001f || Mathf.Abs(sinPitch) > 0.0001f);
+            AccessoryShapeBuilder.HemFloorLine(HipY, RootScale, bodyOffset, sinPitch, cosPitch, out float floorIntercept, out float floorSlope);
+
+            if (air01 <= 0f && walk01 <= 0.0001f && !needsFloor)
             {
                 if (!_swayApplied) return;
                 RestoreHemBase();
@@ -1043,6 +1115,8 @@ namespace StickMate.Interaction
             float now = Time.time;
             float walkPhase = now * Mathf.PI * 2f / SwayPeriodSeconds;
             float walkAmplitude = R * SwayAmplitudeRatio * walk01;
+            // §2-6 (나) — 눌린 점의 진폭 감쇠 기준 δ_ref = 보행 진폭 p-p(2 × A_walk). 새 상수가 아니다.
+            float pressDepthRef = 2f * R * SwayAmplitudeRatio;
             float r = R;
 
             for (int i = 0; i < _swayLines.Count; i++)
@@ -1055,20 +1129,27 @@ namespace StickMate.Interaction
                 {
                     int idx = s.Start + k;
                     Vector3 p = s.Buffer[idx];
-                    if (air01 > 0f)
+                    // 눌린 점은 떨지 않는다 — 원본 점의 눌린 깊이로 스웨이 진폭을 감쇠한다(바닥에 누운 천이 스케이트를 타지 않게).
+                    float damp = needsFloor
+                        ? AccessoryShapeBuilder.HemPressDamping(AccessoryShapeBuilder.HemPressDepth(s.Base[idx], floorIntercept, floorSlope), pressDepthRef)
+                        : 1f;
+                    if (air01 > 0f && damp > 0f)
                     {
                         Vector2 o = AccessoryShapeBuilder.HemAirOffset(r, windLocal, air01, now, idx);
-                        p.x += o.x;
-                        p.y += o.y;
+                        p.x += o.x * damp;
+                        p.y += o.y * damp;
                     }
-                    if (walkAmplitude > 0f)
+                    if (walkAmplitude > 0f && damp > 0f)
                     {
-                        float sway = Mathf.Sin(walkPhase + idx * SwayPointPhaseStep) * walkAmplitude;
+                        float sway = Mathf.Sin(walkPhase + idx * SwayPointPhaseStep) * walkAmplitude * damp;
                         p.x += -_facingSign * sway * SwayBackRatio;  // 뒤로 밀린다
                         p.y += sway * SwayLiftRatio;                 // 살짝 들린다
                     }
                     s.Buffer[idx] = p;
                 }
+                // 흔들 구간 밖의 옆선도 웅크리기에서는 발목선 아래로 내려가므로 버퍼 전체를 받친다(점 49개, 선 1개).
+                // 기운 바닥선에 눕히고 눌린 깊이만큼 퍼뜨린다(§2-6 (가) — 잘린 판자가 아니라 쌓인 천).
+                if (needsFloor) AccessoryShapeBuilder.PressHemToFloor(s.Buffer, floorIntercept, floorSlope, AccessoryShapeBuilder.HemPressSpread);
 
                 s.Line.SetPositions(s.Buffer);
                 ApplyFillVertices(s.Fill, s.Buffer);
@@ -1327,15 +1408,17 @@ namespace StickMate.Interaction
 
             // 채움 면의 알파는 <b>정점 색</b>에 들어 있다(머티리얼은 캐릭터 것을 공유하므로 절대 만지지
             // 않는다 — 건드리면 캐릭터 획까지 함께 반투명해진다).
+            // ★ perf-doc P0 — Mesh.colors 게터(매 호출 새 배열)를 부르지 않는다. 캐시 + 마지막 알파로 조기 반환이 할당 <b>앞</b>에 온다.
             for (int i = 0; i < _fillMeshes.Count; i++)
             {
                 Mesh mesh = _fillMeshes[i];
                 if (mesh == null) continue;
-                Color[] colors = mesh.colors;
+                if (Mathf.Approximately(_fillAlphaApplied[i], _alpha)) continue;
+                Color[] colors = _fillColors[i];
                 if (colors == null || colors.Length == 0) continue;
-                if (Mathf.Approximately(colors[0].a, _alpha)) continue;
                 for (int k = 0; k < colors.Length; k++) colors[k].a = _alpha;
                 mesh.colors = colors;
+                _fillAlphaApplied[i] = _alpha;
             }
         }
 

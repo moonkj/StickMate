@@ -26,7 +26,7 @@ namespace StickMate.Interaction
 
             // 드래그 중에만 폴링 간격을 없앤다 — 20Hz로 창을 끌면 커서에서 창이 뚝뚝 끊겨 떨어진다.
             // 평소에는 예전 그대로 ClickPollInterval(0.05초)로 눌러 둔다(하루 종일 켜져 있는 앱이다).
-            if (!_draggingPanel && _carouselSection < 0)
+            if (!_draggingPanel && !_gridGrabbed && !_col2Grabbed)
             {
                 _clickPollTimer += Time.unscaledDeltaTime;
                 if (_clickPollTimer < ClickPollInterval) return;
@@ -41,7 +41,7 @@ namespace StickMate.Interaction
             TickFramePacingHold(hasCursor, cursor);
 
             // 끄는 중에는 카드를 다시 칠하지 않는다(패널 이동도, 캐러셀 밀기도 마찬가지다).
-            if (hasCursor && !_draggingPanel && !_carouselMoved) UpdateHover(cursor);
+            if (hasCursor && !_draggingPanel && !_gridMoved) UpdateHover(cursor);
 
             if (!_buttonService.TryGetPrimaryButtonPressed(out bool left)) return;
             ProcessPointer(left, cursor, hasCursor);
@@ -65,7 +65,7 @@ namespace StickMate.Interaction
         private void TickFramePacingHold(bool hasCursor, Vector2 cursor)
         {
             // 커서가 창 밖으로 나가도 계속되는 조작들 — 이것들은 사각형 판정으로 잡을 수 없다.
-            bool manipulating = _draggingPanel || _carouselSection >= 0 || _editingName;
+            bool manipulating = _draggingPanel || _gridGrabbed || _col2Grabbed || _editingName;
             bool cursorOver = hasCursor && RectContainsScreenPoint(_panel, cursor);
             if (manipulating || cursorOver) _lastSurfaceTouchTime = Time.unscaledTime;
 
@@ -97,9 +97,12 @@ namespace StickMate.Interaction
                 if (!hasCursor) return;
                 if (TryBeginPanelDrag(cursor)) return;   // 타이틀바를 잡았으면 클릭 처리로 넘기지 않는다.
 
-                // 캐러셀은 <b>잡아만 둔다</b> — 누름을 삼키지 않는다. 삼키면 카드를 한 번 눌러
+                // 격자는 <b>잡아만 둔다</b> — 누름을 삼키지 않는다. 삼키면 카드를 한 번 눌러
                 // 고르는 것 자체가 불가능해진다(대부분의 누름은 드래그가 아니라 클릭이다).
-                ArmCarouselDrag(cursor);
+                // ★ 컬럼 2도 같은 규칙이다(2026-09-05 스탯 블록으로 넘치게 됐다). 두 사각형은
+                //   서로 겹치지 않으므로 둘 중 하나만 잡힌다 — 잡기 판정이 각자 자기 뷰포트를 본다.
+                ArmGridDrag(cursor);
+                ArmCol2Drag(cursor);
                 FeedClick(cursor);
                 return;
             }
@@ -107,75 +110,77 @@ namespace StickMate.Interaction
             {
                 if (!hasCursor) return;
                 if (_draggingPanel) DragPanelTo(cursor);
-                else DragCarouselTo(cursor);
+                else { DragGridTo(cursor); DragCol2To(cursor); }
                 return;
             }
             if (!buttonDown && prev)
             {
                 ResolvePendingEquip(cursor, hasCursor);
-                EndCarouselDrag();
+                EndGridDrag();
+                EndCol2Drag();
                 EndPanelDrag();
             }
         }
 
-        // ==================== 가로 카드 캐러셀 (2026-09-01) ====================
+        // ==================== 컬럼 3 세로 격자 스크롤 (2026-09-05) ====================
         //
         // 배치·클램프·휠은 uGUI <see cref="ScrollRect"/>가 한다. 그런데 이 창의 <b>실제</b> 클릭 경로는
-        // 전역 폴링이다(uGUI 이벤트는 앱이 활성화된 뒤에만 도착한다 — 타이틀바 드래그를 폴링으로 짠
+        // 전역 폴링이다(uGUI 이벤트는 앱이 활성화된 뒤에만 도착한다 — 헤더 드래그를 폴링으로 짠
         // 것과 같은 사정). 그래서 드래그도 한 벌 더 있다.
         //
-        // 두 경로가 <b>싸우지 않는</b> 이유: 아래는 "잡은 순간의 content.x + 커서 이동량"이라는
+        // 두 경로가 <b>싸우지 않는</b> 이유: 아래는 "잡은 순간의 content.y + 커서 이동량"이라는
         // <b>절대값</b> 공식이다. ScrollRect의 드래그도 같은 형태(시작 위치 + 이동량)이고 클램프도
         // 같으므로, 둘이 동시에 돌아도 계산 결과가 같다(더해지지 않는다). 그래서 관성(inertia)을
         // 끄고 MovementType을 Clamped로 둔다 — 탄성/감속이 붙는 순간 그 등식이 깨진다.
+        //
+        // ★ 세로 스크롤에서 content.y는 <b>양수일수록 아래쪽 카드가 드러난다</b>(pivot (0,1)).
+        //   부호 유도는 DragGridTo 안에 적어 두었다 — 그 문단을 읽지 않고 고치지 마라.
 
-        private void ArmCarouselDrag(Vector2 cursor)
+        private void ArmGridDrag(Vector2 cursor)
         {
-            _carouselSection = -1;
-            _carouselMoved = false;
-            if (Def(_tab).Page != TabPage.Cards) return;   // 캐러셀은 카드 페이지에만 있다.
+            _gridGrabbed = false;
+            _gridMoved = false;
+            if (Def(_tab).Page != TabPage.Cards) return;   // 격자는 카드 페이지에만 있다.
+            if (_gridContent == null || _gridViewport == null) return;
+            if (!ContainsScreenPoint(_gridViewport, cursor)) return;
 
-            int visible = SectionCountForTab(_tab);
-            for (int s = 0; s < visible; s++)
-            {
-                SectionView view = _sections[s];
-                if (view == null || view.Row == null || view.Content == null) continue;
-                if (!ContainsScreenPoint(view.RowRect, cursor)) continue;
-
-                _carouselSection = s;
-                _carouselGrabScreenX = cursor.x;
-                _carouselStartContentX = view.Content.anchoredPosition.x;
-                return;
-            }
+            _gridGrabbed = true;
+            _gridGrabScreenY = cursor.y;
+            _gridStartContentY = _gridContent.anchoredPosition.y;
         }
 
-        private void DragCarouselTo(Vector2 cursor)
+        private void DragGridTo(Vector2 cursor)
         {
-            if (_carouselSection < 0) return;
-            SectionView view = _sections[_carouselSection];
-            if (view == null || view.Content == null || view.Row == null) return;
+            if (!_gridGrabbed || _gridContent == null) return;
 
-            float delta = (cursor.x - _carouselGrabScreenX) / CanvasScale();
-            if (!_carouselMoved && Mathf.Abs(delta) < CarouselDragThresholdPoints) return;
-            _carouselMoved = true;
-            _lastCarouselMoveTime = Time.unscaledTime;
+            // ★ 부호 유도(2026-09-05 실기에서 <b>반대로 짰다가 잡았다</b> — 드래그가 항상 0에 붙어
+            //   아무 일도 일어나지 않았다):
+            //     · content 피벗이 (0,1)이므로 anchoredPosition.y가 <b>커질수록</b> 콘텐츠가 위로
+            //       올라가고 아래쪽 카드가 드러난다(MaxGridScroll이 양수인 이유).
+            //     · Unity 스크린 y는 <b>위가 양수</b>다.
+            //     · 직접 조작(카드가 손을 따라온다)이므로 커서를 위로 끌면 콘텐츠도 위로 가야 한다.
+            //   ⇒ delta = 커서 y − 잡은 y. 가로 캐러셀의 <c>cursor.x − grabX</c>와 같은 형태다.
+            float delta = (cursor.y - _gridGrabScreenY) / CanvasScale();
+            if (!_gridMoved && Mathf.Abs(delta) < GridDragThresholdPoints) return;
+            _gridMoved = true;
+            _lastGridMoveTime = Time.unscaledTime;
 
-            Vector2 p = view.Content.anchoredPosition;
-            p.x = Mathf.Clamp(_carouselStartContentX + delta, -MaxCarouselScroll(view), 0f);
-            view.Content.anchoredPosition = p;
+            Vector2 p = _gridContent.anchoredPosition;
+            p.y = Mathf.Clamp(_gridStartContentY + delta, 0f, MaxGridScroll());
+            _gridContent.anchoredPosition = p;
         }
 
-        private void EndCarouselDrag()
+        private void EndGridDrag()
         {
-            _carouselSection = -1;
-            _carouselMoved = false;
+            _gridGrabbed = false;
+            _gridMoved = false;
         }
 
-        /// <summary>content가 왼쪽으로 밀려날 수 있는 최대치(양수). 카드가 뷰포트를 넘지 않으면 0이다.</summary>
-        private static float MaxCarouselScroll(SectionView view)
+        /// <summary>content가 아래로 밀려날 수 있는 최대치(양수). 카드가 뷰포트를 넘지 않으면 0이다.</summary>
+        private float MaxGridScroll()
         {
-            if (view == null || view.Content == null || view.Row == null || view.Row.viewport == null) return 0f;
-            return Mathf.Max(0f, view.Content.rect.width - view.Row.viewport.rect.width);
+            if (_gridContent == null || _gridViewport == null) return 0f;
+            return Mathf.Max(0f, _gridContent.rect.height - _gridViewport.rect.height);
         }
 
         /// <summary>누름 때 보류해 둔 카드 착용을 <b>뗄 때</b> 확정한다. 미는 동안 손가락 아래로 지나간
@@ -184,7 +189,7 @@ namespace StickMate.Interaction
         {
             int pending = _pendingEquipCard;
             _pendingEquipCard = -1;
-            if (pending < 0 || _carouselMoved || !hasCursor) return;
+            if (pending < 0 || _gridMoved || !hasCursor) return;
 
             ItemCard card = CardAt(pending);
             if (card == null || !card.Rect.gameObject.activeInHierarchy) return;
@@ -192,26 +197,38 @@ namespace StickMate.Interaction
             if (TryClaimAction("equip" + pending)) OnCardEquipClicked(pending);
         }
 
-        /// <summary>방금 캐러셀을 민 직후인가 — uGUI <see cref="Button.onClick"/>(뗄 때 발동)이
+        /// <summary>방금 격자를 민 직후인가 — uGUI <see cref="Button.onClick"/>(뗄 때 발동)이
         /// 스크롤의 마지막 손짓을 클릭으로 오인하지 않게 하는 유일한 관문.</summary>
-        private bool SuppressedByCarousel()
-            => Time.unscaledTime - _lastCarouselMoveTime < CarouselClickSuppressSeconds;
+        private bool SuppressedByGridDrag()
+            => Time.unscaledTime - _lastGridMoveTime < GridClickSuppressSeconds;
 
-        // ==================== 타이틀바 드래그 (2026-08-30 — 33-7-7 결정의 일부 번복) ====================
+        // ==================== 헤더 드래그 (2026-08-30 — 33-7-7 결정의 일부 번복) ====================
         //
         // 33-7-7/34-7은 "화면 중앙 고정 모달"로 확정했고 드래그 코드는 처음부터 <b>없었다</b>(버그가
         // 아니라 미구현이었다). 사용자가 "끌면 옮겨져야 하는데 고정돼 있다"고 해서 리더가 뒤집었다 —
-        // <b>열릴 때는 여전히 화면 중앙</b>에서 시작하고, 타이틀바를 잡은 동안만 옮길 수 있다.
+        // <b>열릴 때는 여전히 화면 중앙</b>에서 시작하고, 헤더를 잡은 동안만 옮길 수 있다.
         // 옮긴 자리는 기억하지 않는다(다음에 열면 다시 중앙 — "열면 중앙" 규칙을 그대로 지킨다).
         // 클릭 경로가 전역 폴링인 것과 같은 이유로 드래그도 전역 폴링을 쓴다(uGUI 이벤트는 앱이
         // 활성화된 뒤에만 도착한다 — 이 앱은 그 전제를 둘 수 없다).
 
+        /// <summary>
+        /// ★ L-2 — 드래그 표면이 「타이틀바 40」에서 <b>「헤더 66 − 알려진 자식 사각형들」</b>이 됐다.
+        /// 목록을 손으로 적지 않는다: 이 창은 클릭 경로가 전역 폴링이라 탭·칩·[✕]의 사각형을
+        /// <b>이미 들고 있고</b>, 그 배열을 그대로 뺀다. 새 컨트롤을 헤더에 넣으면서 여기를 잊으면
+        /// 그 컨트롤을 누를 때마다 창이 끌려간다 — 그래서 <b>배열을 도는</b> 형태로 둔다.
+        /// </summary>
         private bool TryBeginPanelDrag(Vector2 cursor)
         {
             if (_titleBarRect == null || _panel == null) return false;
             if (!RectContainsScreenPoint(_titleBarRect, cursor)) return false;
             if (RectContainsScreenPoint(_closeRect, cursor)) return false;   // [✕]는 버튼이지 손잡이가 아니다.
             if (RectContainsScreenPoint(_settingsRect, cursor)) return false; // [설정]도 마찬가지.
+            if (RectContainsScreenPoint(_ownedChipRect, cursor)) return false;
+            if (RectContainsScreenPoint(_coinChipRect, cursor)) return false;
+            for (int i = 0; i < _tabRects.Length; i++)
+            {
+                if (RectContainsScreenPoint(_tabRects[i], cursor)) return false;
+            }
 
             // 잡은 지점과 창 중심의 차이를 기억한다 — 드래그가 시작될 때 창이 커서로 순간이동하지 않게.
             _dragGrabOffsetPoints = _panel.anchoredPosition - ScreenToPanelPoints(cursor, CanvasScale());

@@ -284,6 +284,7 @@ namespace StickMate.Platform
         {
             "에이전트", "연출감독", "연출렌더", "UI창", "초상화",
             "액세서리", "대사", "세이브", "플랫폼유지", "독물리",
+            "가상데스크톱",
         };
 
         /// <summary>구간 이름을 밖(테스트/진단)에서 읽는다.</summary>
@@ -1321,6 +1322,21 @@ namespace StickMate.Platform
         PlatformEnforcer,
         /// <summary>독(Dock) 물리 스텝.</summary>
         DockPhysics,
+        /// <summary>
+        /// ★ 2026-09-05 — <b>가상 데스크톱 소속 조회</b>(Windows 전용 COM 왕복).
+        ///
+        /// <para><b>왜 <see cref="PlatformEnforcer"/>에 섞지 않았나</b>: 이 구간은
+        /// <c>IVirtualDesktopManager::IsWindowOnCurrentVirtualDesktop</c> 하나이고, 그 호출은
+        /// <b>셸(explorer.exe)에 동기로 건너간다</b>. 셸이 느려지거나 멈추면 그 프레임이 통째로
+        /// 멈추는데, 오버레이 유지·합성 프로브와 같은 칸에 넣으면 원장이 <b>"플랫폼유지 200ms"</b>라고만
+        /// 말하고 <b>남의 프로세스가 원인인지 우리 코드가 원인인지 가르지 못한다</b>. 사용자 히칭
+        /// 신고가 오면 이 칸 하나로 배제/지목이 끝나야 한다(perf-doc 요청 2026-09-05).</para>
+        ///
+        /// <para><b>macOS에서는 항상 0ms</b>다 — 그 플랫폼에는 이 축 자체가 없다
+        /// (<c>MacSpaceBehaviorNative.canJoinAllSpaces</c>로 모든 Space에 따라붙는다). 0인 칸은
+        /// 상위 3개 요약에 뜨지 않으므로 로그가 늘지 않는다.</para>
+        /// </summary>
+        VirtualDesktop,
         /// <summary>열거값 개수. 배열 크기로만 쓴다.</summary>
         Count,
     }

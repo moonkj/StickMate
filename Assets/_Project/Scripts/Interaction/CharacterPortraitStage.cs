@@ -188,8 +188,11 @@ namespace StickMate.Interaction
         private const float HeadRadiusInHeight =
             AccessoryShapeBuilder.BaselineHeadVisualRadius / StickConfig.BaselineCharacterTotalHeight;
 
-        /// <summary>가장 높이 솟는 액세서리의 머리 중심 기준 높이(R 배수) — 털모자 방울 / 왕관 지그재그.</summary>
-        private const float TallestAccessoryAboveHeadCenterInR = 1.80f;
+        /// <summary>가장 높이 솟는 액세서리의 머리 중심 기준 높이(R 배수).
+        /// ★ 2026-09-05 R17 — 인계본 착용 모자 맞춤(H-2)으로 털모자 꼭대기가 2.544 R 이 됐다(§14-10-1 은 이 액자를 2.551 R 로 두고
+        /// 세로 압축 ky 0.80 을 골랐다). 옛 값 1.80(v1 털모자 방울/왕관)은 그 모자를 잘랐다. 액자 슬랙 한 획 이내는
+        /// <c>AccessoryStrokeBudgetTests.액자_기준_최고점이_실제_최고_아이템과_한_획_이내다</c>가 잠근다.</summary>
+        private const float TallestAccessoryAboveHeadCenterInR = 2.551f;
 
         private const float FrameInkTopRatio =
             (1f - HeadRadiusInHeight) + TallestAccessoryAboveHeadCenterInR * HeadRadiusInHeight;
@@ -1146,10 +1149,27 @@ namespace StickMate.Interaction
 
                 int start = _shapes.Count;
                 AccessoryShapeBuilder.Append(_shapes, slot, item, rig, cover, Stroke * 0.5f, IsMondayForTie);
+                AccessoryShapeBuilder.HandoffPalette handoff = AccessoryHandoffPalette.Body(slot, item, ink);
                 for (int k = start; k < _shapes.Count; k++)
                 {
                     AccessoryShapeBuilder.Shape shape = _shapes[k];
-                    Color color = ToneColor(shape.Tone, primary, secondary);
+
+                    if (shape.IsHandoff)
+                    {
+                        // ★ 계약 v2 — 실제 캐릭터(CharacterAccessoryRenderer.AddHandoffShape)와 같은 색 표·알파.
+                        //   획은 명목 폭(strokeInR × R)에 액세서리 하한의 <b>비례 근사</b>(1pt/2pt × 이 액자의 획)를 건다 —
+                        //   미니 피규어는 화면 pt 를 모르므로 정확한 pt 하한은 실제 캐릭터에만 있다.
+                        AccessoryShapeBuilder.ResolveHandoffBody(shape, handoff, out Color hFill, out bool hasFill,
+                            out Color hLine, out bool hasLine);
+                        if (hasFill) AddFill(shape, hFill);
+                        if (!hasLine) continue;
+                        float floor = Stroke * (StickConfig.MinAccessoryStrokeScreenPoints / StickConfig.MinStrokeScreenPoints);
+                        AddLine(shape.Name, shape.Points, hLine, shape.Loop, shape.SortingOrder,
+                            width: Mathf.Max(shape.StrokeInR * HeadRadius, floor));
+                        continue;
+                    }
+
+                    Color color = AccessoryShapeBuilder.ResolveToneColor(_shapes, k, start, primary, secondary);
 
                     // 채움 면(모자류)은 실제 캐릭터와 같은 규칙 — 윤곽선 바로 아래에 깔고 윤곽은 어둡게.
                     Color outline = color;
@@ -1158,6 +1178,7 @@ namespace StickMate.Interaction
                         AddFill(shape, color);
                         outline = AccessoryShapeBuilder.FillOutlineColor(color);
                     }
+                    if (shape.NoStroke) continue;
                     AddLine(shape.Name, shape.Points, outline, shape.Loop, shape.SortingOrder);
                 }
             }
@@ -1461,13 +1482,8 @@ namespace StickMate.Interaction
 
         private static Vector3 V(float x, float y) => new Vector3(x, y, 0f);
 
-        /// <summary>도형의 <b>역할</b>을 색으로. 실제 캐릭터(CharacterAccessoryRenderer)와 같은 표다.</summary>
-        private static Color ToneColor(byte tone, Color primary, Color secondary)
-        {
-            if (tone == AccessoryShapeBuilder.Accent) return secondary;
-            if (tone == AccessoryShapeBuilder.Shade) return AccessoryShapeBuilder.FillOutlineColor(primary);
-            return primary;
-        }
+        // ★ 2026-09-05 — 역할→색 표(옛 ToneColor)는 AccessoryShapeBuilder.ResolveToneColor 한 곳으로 모았다.
+        //   렌더러·초상화·카드가 각자 표를 갖고 있다가 하이라이트(톤 3)를 한쪽만 알게 되는 것을 막는다.
 
         /// <summary>채움 면 하나(모자류). 미니 피규어를 통째로 다시 만들 때 함께 지워지도록
         /// 메시를 <see cref="_fillMeshes"/>가 들고 있는다 — GameObject를 지워도 메시는 남는다.</summary>

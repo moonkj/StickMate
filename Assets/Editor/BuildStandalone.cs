@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
@@ -45,6 +46,8 @@ namespace StickMate.EditorTools
         [MenuItem("StickMate/Build Standalone macOS Player")]
         public static void PerformBuild()
         {
+            if (!VerifySteamEntitlementWiring()) return;
+
             ConfigureRunInBackground();
             ConfigureAntiAliasing();
             ConfigureResidencyFootprint();
@@ -434,6 +437,8 @@ namespace StickMate.EditorTools
         [MenuItem("StickMate/Build Standalone Windows Player")]
         public static void PerformBuildWindows()
         {
+            if (!VerifySteamEntitlementWiring()) return;
+
             ConfigureRunInBackground();
             ConfigureAntiAliasing();
             ConfigureResidencyFootprint();
@@ -530,6 +535,154 @@ namespace StickMate.EditorTools
                 if (s.enabled) list.Add(s.path);
             }
             return list.ToArray();
+        }
+
+        // ============================================================================
+        // ★ 스팀 엔타이틀먼트 배선 게이트 (security S-14, 2026-09-05)
+        // ============================================================================
+
+        /// <summary>스팀 DLC 엔타이틀먼트 어댑터의 <b>소스 경로</b>. 이 파일이 있으면 "팩을 팔 준비를
+        /// 하는 중"이라는 뜻이고, 그때부터 아래 게이트가 의미를 갖는다.</summary>
+        public const string SteamEntitlementAdapterAssetPath =
+            "Assets/_Project/Scripts/Store/SteamPackEntitlementSource.cs";
+
+        /// <summary>어댑터의 실제 구현을 켜는 스크립팅 정의 심볼. 이 이름은
+        /// <see cref="SteamEntitlementAdapterAssetPath"/> 안의 <c>#if</c>와 같은 값이어야 한다.</summary>
+        public const string SteamworksInstalledDefineSymbol = "STICKMATE_STEAMWORKS_INSTALLED";
+
+        /// <summary>Steamworks.NET 패키지가 실제로 설치돼 있는지 <b>타입 하나로</b> 묻는 프로브.
+        /// <c>Packages/manifest.json</c> 문자열 매칭을 쓰지 않는 이유는, 이 패키지가 UPM·git URL·
+        /// <c>.unitypackage</c>(맨 <c>Assets/</c> 배치) 중 어느 형태로도 들어올 수 있어
+        /// <b>매니페스트에 흔적이 없는 설치가 실재</b>하기 때문이다. 타입은 어느 경로로 들어와도 있다.</summary>
+        public const string SteamworksProbeTypeFullName = "Steamworks.SteamAPI";
+
+#if STICKMATE_STEAMWORKS_INSTALLED
+        private const bool SteamworksSymbolDefined = true;
+#else
+        private const bool SteamworksSymbolDefined = false;
+#endif
+
+        /// <summary>
+        /// ★ <b>사실 셋을 대조해 빌드를 멈출지 정한다</b> — security 발견 S-14의 본체.
+        ///
+        /// <para><b>무엇이 잘못돼 있었나</b>: 이 스크립트는 스크립팅 정의 심볼을 <b>한 번도 보지 않았다</b>.
+        /// 그래서 <c>STICKMATE_STEAMWORKS_INSTALLED</c>가 빠진 채로 구운 빌드가 <b>조용히 성공</b>하고,
+        /// 그 빌드에서는 <c>SteamPackEntitlementSource.Query</c>가 언제나 <c>Unknown</c>을
+        /// 돌려준다 — 즉 <b>산 사람도 안 산 사람도 똑같아 보인다</b>. 실패한 빌드와 성공한 빌드가
+        /// 산출물에서 구분되지 않는다(이 저장소의 거짓 통과 공통 형태 그대로다).</para>
+        ///
+        /// <para><b>왜 「어댑터가 있는데 심볼이 없으면 실패」로 단순화하지 않았는가</b>(정직하게):
+        /// 그 규칙은 <b>오늘 이 저장소의 모든 빌드를 즉시 실패시킨다</b>. 어댑터는 실재하고
+        /// (2026-09-05 착지), Steamworks.NET 패키지는 <b>일부러</b> 아직 설치하지 않았으며, 심볼을
+        /// 켜면 <c>using Steamworks;</c>가 풀리지 않아 <b>컴파일 자체가 깨진다</b>. 즉 2사실 규칙에는
+        /// 오늘 취할 수 있는 안전한 출구가 없다. 그래서 <b>패키지 유무를 세 번째 사실로</b> 넣어,
+        /// 정말 위험한 조합(패키지를 깔아 놓고 심볼을 안 켠 상태)만 멈춘다.</para>
+        ///
+        /// <para><b>심볼을 자동으로 켜는 안은 채택하지 않았다.</b> 그건 컴파일 결과를 바꾸는 전역
+        /// 프로젝트 설정 변경이라, "스팀을 언제 켜는가"라는 <b>상품 결정</b>을 빌드 스크립트가 대신
+        /// 내리게 된다. 여기서는 <b>멈추고 사람에게 묻는다.</b></para>
+        ///
+        /// <para>순수 함수다 — 디스크도 <see cref="PlayerSettings"/>도 읽지 않는다. 사실 수집은
+        /// <see cref="VerifySteamEntitlementWiring"/>가 하고, 판정은 여기서만 한다. 그래야 8가지 조합을
+        /// 테스트가 전부 먹여 볼 수 있다(<c>SteamBuildSymbolGateAuditTests</c>).</para>
+        /// </summary>
+        /// <returns>빌드를 중단해야 하면 true.</returns>
+        public static bool ShouldStopBuild(bool adapterPresent, bool packagePresent, bool symbolDefined,
+            out string reason)
+        {
+            if (symbolDefined && !packagePresent)
+            {
+                reason = $"{SteamworksInstalledDefineSymbol} 심볼은 켜져 있는데 Steamworks 패키지" +
+                    $"({SteamworksProbeTypeFullName})가 없습니다. 이 상태의 빌드는 어댑터에서 " +
+                    "컴파일이 깨지거나, 깨지지 않더라도 무엇이 켜졌는지 아무도 설명할 수 없습니다.";
+                return true;
+            }
+
+            if (symbolDefined && !adapterPresent)
+            {
+                reason = $"{SteamworksInstalledDefineSymbol} 심볼이 켜져 있는데 어댑터 파일이 없습니다: " +
+                    $"{SteamEntitlementAdapterAssetPath}. 심볼이 켤 대상이 사라졌다는 뜻입니다.";
+                return true;
+            }
+
+            if (adapterPresent && packagePresent && !symbolDefined)
+            {
+                reason = $"Steamworks 패키지가 설치돼 있고 어댑터({SteamEntitlementAdapterAssetPath})도 " +
+                    $"있는데 {SteamworksInstalledDefineSymbol} 심볼이 없습니다. 이대로 구우면 " +
+                    "엔타이틀먼트 조회가 전부 Unknown이 되어 산 사람과 안 산 사람이 똑같아 보이고, " +
+                    "산출물만 봐서는 그 사실을 알 수 없습니다(security S-14). " +
+                    "Player Settings > Scripting Define Symbols에 심볼을 추가한 뒤 다시 구우십시오.";
+                return true;
+            }
+
+            if (adapterPresent && packagePresent)
+            {
+                reason = "스팀 엔타이틀먼트 배선 완료 — 어댑터 · 패키지 · 심볼 셋 다 있습니다.";
+            }
+            else if (adapterPresent)
+            {
+                reason = "스팀 엔타이틀먼트 어댑터는 있으나 Steamworks 패키지가 없어 휴면 상태입니다 " +
+                    "— 이 빌드에서 팩 소유 판정은 전부 Unknown입니다(설계상 의도된 상태). " +
+                    "팩을 실제로 팔기 시작하면 패키지 설치 + 심볼 추가가 필요하고, " +
+                    "패키지만 깔고 심볼을 빠뜨리면 이 게이트가 빌드를 멈춥니다.";
+            }
+            else
+            {
+                reason = "스팀 엔타이틀먼트 어댑터가 없습니다 — 이 빌드는 스팀 배선과 무관합니다.";
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 사실 셋을 <b>산출물에서</b> 모아 <see cref="ShouldStopBuild"/>에 먹인다.
+        /// <list type="bullet">
+        ///   <item><b>어댑터</b> — 소스 파일이 디스크에 있는가.</item>
+        ///   <item><b>패키지</b> — <see cref="SteamworksProbeTypeFullName"/> 타입이 이 도메인에 로드됐는가.</item>
+        ///   <item><b>심볼</b> — 이 에디터 어셈블리가 그 심볼로 컴파일됐는가(<c>#if</c>).
+        ///     ★ <see cref="PlayerSettings"/> API 대신 <c>#if</c>를 쓴 이유: 정의 심볼은
+        ///     <c>NamedBuildTarget.Standalone</c> 하나에 걸리고 그 값이 <b>에디터 어셈블리 컴파일에도
+        ///     똑같이 적용</b>된다. 즉 이 <c>#if</c>는 곧 플레이어가 받을 값이며, 문서화가 흔들리는
+        ///     API 시그니처를 추측하지 않아도 된다(이 파일의 <c>macOSXArchitecture</c> 선례).</item>
+        /// </list>
+        /// </summary>
+        /// <returns>빌드를 계속해도 되면 true.</returns>
+        public static bool VerifySteamEntitlementWiring()
+        {
+            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            bool adapterPresent = File.Exists(Path.Combine(projectRoot, SteamEntitlementAdapterAssetPath));
+            bool packagePresent = IsTypeLoaded(SteamworksProbeTypeFullName);
+
+            if (ShouldStopBuild(adapterPresent, packagePresent, SteamworksSymbolDefined, out string reason))
+            {
+                Debug.LogError("[BuildStandalone] 스팀 엔타이틀먼트 배선 검사 실패 — 빌드를 만들지 않습니다.\n  " +
+                    reason + $"\n  (어댑터={adapterPresent} 패키지={packagePresent} 심볼={SteamworksSymbolDefined})");
+                return false;
+            }
+
+            Debug.Log("[BuildStandalone] 스팀 엔타이틀먼트 배선 검사 — " + reason +
+                $"\n  (어댑터={adapterPresent} 패키지={packagePresent} 심볼={SteamworksSymbolDefined})");
+            return true;
+        }
+
+        /// <summary>이 도메인에 그 이름의 타입이 로드돼 있는가. <b>있음/없음 판정에 쓰는 계측기</b>라
+        /// 테스트가 알려진 값으로 교정할 수 있게 public이다(있는 이름 → true, 없는 이름 → false).</summary>
+        public static bool IsTypeLoaded(string typeFullName)
+        {
+            if (string.IsNullOrEmpty(typeFullName)) return false;
+
+            Assembly[] loaded = AppDomain.CurrentDomain.GetAssemblies();
+            for (int i = 0; i < loaded.Length; i++)
+            {
+                try
+                {
+                    if (loaded[i].GetType(typeFullName, false) != null) return true;
+                }
+                catch (Exception)
+                {
+                    // 동적 어셈블리·로드 실패 어셈블리는 조회 자체가 던진다. 그건 "없음"과 같게 취급한다.
+                }
+            }
+            return false;
         }
 
         // BUG-P1-R5-B3 조사 기록(Architect 실측 진단 대응, 2026-08-28) — Architect가 "실제 Retina 화면

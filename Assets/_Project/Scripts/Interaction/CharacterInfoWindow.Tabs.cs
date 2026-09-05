@@ -120,6 +120,19 @@ namespace StickMate.Interaction
                 Debug.LogError($"[정보창] 탭 [{def.Name}]이 없는 아이콘셋 {def.IconSet}을 가리킵니다 " +
                                $"(구워 둔 벌 {IconSetCount}). 카드 아이콘이 빈 채로 뜹니다.");
             }
+
+            // ★ 인계본 값(29 / 46)이 우리 접근성 하한을 <b>실제로</b> 넘는지 여기서 비교한다.
+            //   숫자를 주석에 적어 두면 하한이 움직였을 때 조용히 갈라진다(CLAUDE.md 하드코딩 금지의 취지).
+            if (CardActionHeight < UiChrome.MinTargetSizePoints)
+            {
+                Debug.LogError($"[정보창] 카드 [착용] 버튼 높이 {CardActionHeight}가 " +
+                               $"WCAG 2.2 2.5.8 하한 {UiChrome.MinTargetSizePoints}보다 작습니다.");
+            }
+            if (SlotRowHeight < UiChrome.MinTargetSizePoints)
+            {
+                Debug.LogError($"[정보창] 착용 슬롯 행 높이 {SlotRowHeight}가 " +
+                               $"WCAG 2.2 2.5.8 하한 {UiChrome.MinTargetSizePoints}보다 작습니다.");
+            }
         }
 
         /// <summary>이 탭의 정의. 표 밖이면 <b>조용히 넘어가지 않는다</b>.</summary>
@@ -186,10 +199,14 @@ namespace StickMate.Interaction
 
         private void ApplyTabVisibility()
         {
-            ApplyTabDetailPlacement();   // 창 높이보다 먼저 — ApplyTabDetailPlacement 문서 참고.
-
+            // ★ L-8 — 여기 있던 ApplyTabDetailPlacement() 호출을 지웠다. 창 높이가 탭마다 달라지던
+            //   시절의 장치이고, 3컬럼에서는 상세 카드가 컬럼 1 <b>바닥에 고정</b>이라 옮길 것이 없다.
             TabPage page = Def(_tab).Page;
-            if (_sectionPage != null) _sectionPage.SetActive(page == TabPage.Cards);
+            bool cards = page == TabPage.Cards;
+            // 컬럼 1·2는 <b>카드 탭의 것</b>이고, 좁은 창에서는 폭이 또 한 번 접는다 —
+            // 두 조건의 곱은 ApplyColumnVisibility 한 곳에서만 계산한다.
+            ApplyColumnVisibility();
+            if (_sectionPage != null) _sectionPage.SetActive(cards);
             if (_inventoryPage != null) _inventoryPage.SetActive(page == TabPage.Inventory);
             ApplyPlaceholderPage(page == TabPage.Placeholder);
 
@@ -202,78 +219,90 @@ namespace StickMate.Interaction
                 // (SettingsWindow.ApplyTabVisibility의 같은 문단). 사실은 밑줄과 본문이 말한다.
                 bool ready = TabTable[i].Page != TabPage.Placeholder;
 
+                if (_tabSurfaces[i] != null)
+                {
+                    // 활성 탭은 브라스 면(7.37:1). 비활성은 스트립 바탕 그대로.
+                    _tabSurfaces[i].color = active ? UiChrome.Accent : Color.clear;
+                }
                 if (_tabLabels[i] != null)
                 {
                     _tabLabels[i].fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
-                    _tabLabels[i].color = UiChrome.InkTab(active, ready);
+                    // 면에서 잉크를 파생시킨다 — 브라스 위에서는 InkOnSurface가 어두운 잉크로 뒤집는다.
+                    _tabLabels[i].color = active
+                        ? UiChrome.InkOnSurface(UiChrome.Accent, UiChrome.InkRole.Title, ready)
+                        : UiChrome.InkTab(false, ready);
                 }
                 if (_tabUnderlines[i] != null)
                 {
-                    _tabUnderlines[i].color = active
-                        ? (ready ? UiChrome.TextPrimary : UiChrome.NonTextMuted)
-                        : Color.clear;
+                    // 준비 중 탭만 밑줄이 다르다 — "고르고 나서 그렇게 보인다"는 규칙 그대로.
+                    _tabUnderlines[i].color = active && !ready ? UiChrome.NonTextMuted : Color.clear;
                 }
             }
         }
 
-        // -------------------- 우측 탭 컬럼 --------------------
+        // -------------------- 헤더 안의 탭 스트립 (§4-2) --------------------
 
-        private RectTransform BuildRightColumn(RectTransform body)
+        /// <summary>
+        /// 인계본 탭 스트립 — <b>칩 4개가 든 상자</b>다(옛 밑줄 탭에서 바뀌었다).
+        /// 상자는 <see cref="UiChrome.CardSurfaceMuted"/>에 <see cref="UiChrome.CardBorder"/> 테두리이고,
+        /// 활성 탭만 <see cref="UiChrome.Accent"/> 면 + <see cref="UiChrome.OnAccentSolid"/> 글자다
+        /// (대비 7.37 / 7.91 — §4-4 실측).
+        ///
+        /// <para><paramref name="x"/>는 상자 왼쪽 끝(헤더 좌표). 탭 폭은 <b>폰트에게 묻는다</b> —
+        /// 글자 수 모형은 한글에서만 맞고 라틴에서는 반쯤 빈 상자를 남긴다.</para>
+        /// </summary>
+        private void BuildTabs(Transform header, float x)
         {
-            var go = new GameObject("RightColumn", typeof(RectTransform));
-            go.transform.SetParent(body, false);
-            var right = go.GetComponent<RectTransform>();
-            UiChrome.PlaceTopLeft(right, RightX, 0f, RightWidth, BodyHeight);
-            return right;
-        }
+            Image strip = UiChrome.AddSurface(header, "TabStrip", UiChrome.CardSurfaceMuted, UiChrome.RadiusCard);
+            RectTransform stripRect = strip.rectTransform;
+            strip.raycastTarget = false;
+            UiChrome.AddOutline(stripRect, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
 
-        /// <summary>밑줄 탭(스펙 1.3) — 칩/배경 없이 라벨 + 활성 탭 2px 밑줄 하나.</summary>
-        private void BuildTabs(RectTransform right)
-        {
-            float x = RightPadX;
+            float cursor = HeaderTabStripPad;
             for (int i = 0; i < TabCount; i++)
             {
                 string name = TabTable[i].Name;
 
-                Image hit = UiChrome.AddSurface(right, "Tab" + name, Color.clear, UiChrome.RadiusChip);
-                var rt = hit.rectTransform;
+                Image face = UiChrome.AddSurface(stripRect, "Tab" + name, Color.clear, UiChrome.RadiusChip);
+                var rt = face.rectTransform;
 
-                Text label = UiChrome.AddText(rt, "Label", UiChrome.FontTitle, TextAnchor.UpperCenter,
+                Text label = UiChrome.AddText(rt, "Label", UiChrome.FontTitle, TextAnchor.MiddleCenter,
                     UiChrome.InkTab(selected: false));
                 UiChrome.Stretch(label.rectTransform);
-                // ★ 2026-09-03 — 탭 폭을 <b>폰트에게 묻는다</b>. 글자를 먼저 넣어 재고, 그 값으로
-                //   상자를 놓는다(라벨은 Stretch라 부모가 나중에 커져도 그대로 따라온다).
                 float width = TabLabelWidth(label, name);
-                UiChrome.PlaceTopLeft(rt, x, TabStripY, width, TabStripHeight);
+                UiChrome.PlaceTopLeft(rt, cursor, -HeaderTabStripPad, width, HeaderTabHeight);
 
+                // 밑줄은 이제 활성 표시의 <b>보조</b>다(주 채널은 면). 준비 중 탭에서만 색이 갈린다.
                 Image underline = UiChrome.AddSurface(rt, "Underline", Color.clear, 2);
-                UiChrome.PlaceTopLeft(underline.rectTransform, 0f, -(TabStripHeight - TabUnderlineHeight),
-                    width, TabUnderlineHeight);
+                UiChrome.PlaceTopLeft(underline.rectTransform, 6f, -(HeaderTabHeight - 2f), width - 12f, 2f);
                 underline.raycastTarget = false;
 
-                var button = hit.gameObject.AddComponent<Button>();
-                button.targetGraphic = hit;
+                var button = face.gameObject.AddComponent<Button>();
+                button.targetGraphic = face;
+                button.transition = Selectable.Transition.None;
                 int captured = i;
                 button.onClick.AddListener(() => { if (TryClaimAction("tab" + captured)) OnTabClicked((Tab)captured); });
 
                 _tabRects[i] = rt;
                 _tabLabels[i] = label;
+                _tabSurfaces[i] = face;
                 _tabUnderlines[i] = underline;
-                x += width + TabGap;
+                cursor += width + HeaderTabGap;
             }
 
-            Image line = UiChrome.AddSurface(right, "TabBottomLine", UiChrome.CardBorder, 2);
-            UiChrome.PlaceTopLeft(line.rectTransform, RightPadX, TabStripY - TabStripHeight + 1f, RightContentWidth, 1f);
-            line.raycastTarget = false;
+            float stripWidth = cursor - HeaderTabGap + HeaderTabStripPad;
+            UiChrome.PlaceTopLeft(stripRect, x, -(HeaderHeight - HeaderTabStripHeight) * 0.5f,
+                stripWidth, HeaderTabStripHeight);
+            _tabStripRightEdge = x + stripWidth;
 
-            // 탭이 밑줄 밖으로 흘러나가면 <b>마지막 탭이 마스크에 잘려 눌리지 않는다</b>. 증상이
-            // "안 눌린다"라서 원인 추적이 가장 비싼 종류다 — 늘리는 그 라운드에 알려 준다.
-            float end = x - TabGap;                       // 마지막 탭의 오른쪽 끝
-            float limit = RightPadX + RightContentWidth;  // 밑줄이 끝나는 선
+            // 탭이 오른쪽 칩 무리와 겹치면 <b>마지막 탭이 눌리지 않는다</b>. 증상이 "안 눌린다"라서
+            // 원인 추적이 가장 비싼 종류다 — 늘리는 그 라운드에 알려 준다.
+            float end = x + stripWidth;
+            float limit = PanelWidth - HeaderChipBlockWidth - UiChrome.Space4;
             if (end > limit)
             {
-                Debug.LogError($"[정보창] 탭 {TabCount}개가 {end:F0}pt에서 끝나 밑줄({limit:F0}pt)을 " +
-                               $"{end - limit:F0}pt 넘겼습니다 — 마지막 탭이 잘립니다.");
+                Debug.LogError($"[정보창] 탭 {TabCount}개가 {end:F0}pt에서 끝나 헤더 오른쪽 칩 무리" +
+                               $"({limit:F0}pt)를 {end - limit:F0}pt 넘겼습니다 — 마지막 탭이 겹칩니다.");
             }
         }
 
@@ -289,12 +318,9 @@ namespace StickMate.Interaction
         /// <para>여백 <c>4f</c>는 <b>옛 식에서 그대로</b> 가져왔다. 이번 변경의 효과를 '측정으로 바꾼 것'
         /// 하나로 유지하기 위해서다 — 여백까지 같이 손대면 회귀 판정이 불가능해진다.</para>
         ///
-        /// <para>넘침은 <see cref="BuildTabs"/> 끝의 검사가 잡는다(밑줄 끝 = RightPadX + RightContentWidth).</para>
+        /// <para>넘침은 <see cref="BuildTabs"/> 끝의 검사가 잡는다(헤더 오른쪽 칩 무리와의 겹침).</para>
         /// </summary>
         private static float TabLabelWidth(Text label, string name)
-            => SettingsControls.MeasuredWidth(label, name) + TabLabelPadX * 2f;
-
-        /// <summary>탭 라벨 좌우 여백(한쪽). 옛 식의 <c>+ 4f</c>를 반으로 나눈 값이다.</summary>
-        private const float TabLabelPadX = 2f;
+            => SettingsControls.MeasuredWidth(label, name) + HeaderTabPadX * 2f;
     }
 }

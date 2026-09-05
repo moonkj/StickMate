@@ -19,7 +19,8 @@ namespace StickMate.Interaction
     ///     즉시 무의미해진다(에디터 분기를 한 곳에서 빠뜨리면 그 경로만 배치모드 테스트를 얼린다).</description></item>
     ///   <item><term><see cref="TrayMenuCommand.ToggleCharacterHidden"/></term>
     ///     <description><see cref="StickmanAgent.ToggleUserHidden"/> — <c>⌃⌥⌘K</c>와
-    ///     <b>완전히 같은 축</b>(<c>IsUserHiddenOnly</c>). 렌더러만 끄는 옛 경로를 되살리지 않는다.</description></item>
+    ///     <b>완전히 같은 축</b>(축 2 <see cref="StickmanAgent.IsUserHidden"/>). 렌더러만 끄는 옛
+    ///     경로를 되살리지 않는다.</description></item>
     ///   <item><term><see cref="TrayMenuCommand.OpenSettings"/></term>
     ///     <description><see cref="SettingsWindow.Open(string)"/> — 배타 모달 정리는 그 함수
     ///     <b>한 곳</b>이 책임진다. 진입점마다 정리 코드를 흩뿌리다 실제로 샌 적이 있다.
@@ -60,11 +61,35 @@ namespace StickMate.Interaction
             SystemTrayCommandRouter.Register(Handle, ProbeCharacterHidden);
         }
 
-        /// <summary>메뉴 글자를 뒤집기 위한 <b>조회 전용</b> 경로. 상태를 바꾸지 않는다.</summary>
+        /// <summary>
+        /// 메뉴 글자를 뒤집기 위한 <b>조회 전용</b> 경로. 상태를 바꾸지 않는다.
+        ///
+        /// ============================================================================
+        /// ★ 2026-09-05 — 읽는 값이 <c>IsUserHiddenOnly</c>에서
+        /// <see cref="StickmanAgent.IsUserHidden"/>로 <b>좁아졌다</b>(verify-change 신고, M-8 후속)
+        /// ============================================================================
+        /// <b>글자는 이 항목이 실제로 바꾸는 축을 말해야 한다.</b> 이 메뉴가 부르는 것은
+        /// <see cref="StickmanAgent.ToggleUserHidden"/> = <c>SetUserHidden(!_userHidden)</c>이므로
+        /// 글자의 근거도 <c>_userHidden</c> 하나여야 한다(원칙 1).
+        ///
+        /// <para><b>무엇이 어긋나 있었나.</b> <c>IsUserHiddenOnly</c>는 「<b>축 2만으로</b> 숨어 있는가」라서
+        /// 축 1(전체화면 게임)·축 4(다른 가상 데스크톱)가 함께 켜지면 <b>false</b>다. 그 뜻은 옳고
+        /// <c>HidesScreenSurfaces</c>가 그 값을 필요로 하지만, <b>이 메뉴가 물어야 하는 질문이 아니다</b>:
+        /// 사용자가 이미 숨겨 둔 상태인데 글자가 「캐릭터 숨기기」로 나오고, 누르면 축 2가 <b>꺼지는데</b>
+        /// 화면은 그대로라(다른 축이 여전히 숨기고 있으므로) <b>메뉴가 고장 난 것처럼 보인다</b>.</para>
+        ///
+        /// <para>★ 축 4에서 특히 나쁘다. 축 1(전체화면 게임) 중에는 작업표시줄이 덮여 트레이에
+        /// 사실상 닿을 수 없어 이 어긋남이 드러나지 않았지만, <b>다른 가상 데스크톱에 있는 동안에는
+        /// 트레이가 그대로 보인다</b> — 즉 축 4가 이 결함을 처음으로 <b>도달 가능하게</b> 만들었다.</para>
+        ///
+        /// <para><b>「어떤 이유로든 숨었는가」를 쓰면 안 되는 이유</b>도 같다. 그러면 전체화면 감지로
+        /// 숨은 동안 글자가 「다시 보이기」가 되고, 눌러도 축 2가 <b>켜질</b> 뿐이라 상황이 나빠진다.
+        /// 토글 항목의 글자는 <b>그 토글이 소유한 축</b>에서만 나와야 한다.</para>
+        /// </summary>
         private static bool ProbeCharacterHidden()
         {
             StickmanAgent agent = ResolveAgent();
-            return agent != null && agent.IsUserHiddenOnly;
+            return agent != null && agent.IsUserHidden;
         }
 
         private static void Handle(TrayMenuCommand command, string source)

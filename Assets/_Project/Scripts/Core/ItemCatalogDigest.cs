@@ -35,6 +35,13 @@ namespace StickMate.Core
         public const string GoldenAssetPath =
             "Assets/_Project/Scripts/Tests/EditMode/Golden/ItemCatalogGolden.txt";
 
+        /// <summary>★ S-13 토큰 — <b>팩 소속</b>. 감사가 이 상수를 참조한다(문자열을 베끼면
+        /// 프로덕션 표기가 바뀌는 순간 그 감사는 <b>조용히</b> 죽는다).</summary>
+        public const string CohortToken = " cohort=";
+
+        /// <summary>★ S-13 토큰 — <b>등급 선언</b>. <see cref="CohortToken"/>과 같은 이유로 상수다.</summary>
+        public const string RarityToken = " rarity=";
+
         private static string F(float v) => v.ToString("F5", CultureInfo.InvariantCulture);
 
         private static string C(Color c) => $"({F(c.r)},{F(c.g)},{F(c.b)},{F(c.a)})";
@@ -84,6 +91,12 @@ namespace StickMate.Core
               .Append(" idx=").Append(e.ItemIndex)
               .Append(" lv=").Append(e.RequiredLevel.HasValue ? e.RequiredLevel.Value.ToString(CultureInfo.InvariantCulture) : "-")
               .Append(" invocable=").Append(e.IsDirectlyInvocable ? 1 : 0)
+              // ★ 2026-09-05 security S-13 — 팩 소속(코호트)과 등급 선언을 골든이 보게 한다.
+              //   이 둘이 없으면 "팩 아이템이 기본 코호트에 실림" 같은 오기입이 골든을 한 글자도
+              //   못 흔든다. 증상은 팩을 산 사람이 아니라 <b>안 산 사람</b>의 등급이 미끄러지는 것이라
+              //   눈으로도 안 잡힌다(AccessoryDefSO.cohortId 문단의 실측: 슬롯 6→12에서 전설이 희귀가 된다).
+              .Append(CohortToken).Append(e.CohortId)
+              .Append(RarityToken).Append(e.Declared)
               .Append('\n');
             sb.Append("    name=").Append(e.DisplayName).Append('\n');
             sb.Append("    desc=").Append(e.Description).Append('\n');

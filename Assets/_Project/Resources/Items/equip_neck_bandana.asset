@@ -192,7 +192,7 @@ MonoBehaviour:
     - 0
     - 0
     - 1
-    - 0.04
+    - -0.24
     - 3
     - 2
     - 0
@@ -267,3 +267,8 @@ MonoBehaviour:
     - 0
     - 1
     - -0.3
+  wornGroupAlpha: 0
+  wornScale: 0
+  wornScaleY: 0
+  wornOffsetYInR: -0.20375
+  wornMirrorX: 0

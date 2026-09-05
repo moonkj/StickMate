@@ -309,6 +309,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 방울_폴백에는_추가_없다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell, "방울 폴백↔몸 대조(조각 수 일치 · 줄 최저점 채운 원) — 인계본 방울은 폴백으로 새지 않는다(AccessoryCardIconTests)");
             ItemIconPart[] icon = Icon(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell);
 
             List<AccessoryShapeBuilder.Shape> body = AccessorySilhouetteMetrics.Build(
@@ -331,6 +332,7 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 방울_폴백은_줄_최저점에_매달린_채운_원이다()
         {
+            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell, "방울 폴백↔몸 대조(조각 수 일치 · 줄 최저점 채운 원) — 인계본 방울은 폴백으로 새지 않는다(AccessoryCardIconTests)");
             ItemIconPart[] icon = Icon(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell);
             ItemIconPart chain = Piece(EquipmentSlot.Neck, AccessoryShapeBuilder.NeckBell, "Collar");
             ItemIconPart bell = Accent(icon);

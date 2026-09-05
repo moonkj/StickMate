@@ -97,12 +97,15 @@ COVER = {"야구모자":0.06, "털모자":-0.06, "중절모":0.08,
 # ============================================================================
 # EYES — 가리개는 불투명하다. 눈은 '렌즈 안'이 아니라 '가리개 옆'에만 그린다.
 # ============================================================================
-EYE_DX, EYE_HW, EYE_HH = 0.62, 0.34, 0.24   # 그려지는 눈(아래 검산에서 유도)
+EYE_DX, EYE_R = 0.62, 0.33   # 그려지는 눈(아래 검산에서 유도)
 
 def drawn_eye(sx):
-    """드러난 눈 — 채운 아몬드. 끝 두 개가 점으로 수렴한다."""
-    return [(sx*(EYE_DX-EYE_HW), 0.0), (sx*(EYE_DX-0.06),  EYE_HH),
-            (sx*(EYE_DX+EYE_HW), 0.02), (sx*(EYE_DX+0.02), -EYE_HH)]
+    """드러난 눈 — 채운 12각 원반.
+    ★ 2026-09-05 — 옛 아몬드(반폭 0.34 / 반높이 0.24)를 원반으로 바꿨다(R13 P1이 프로덕션에 착지).
+      아몬드의 ρ_max 는 짧은 반축을 못 넘어 반높이 0.24R에서는 **폭을 아무리 늘려도** 규칙 1-C
+      (0.21818R)를 통과할 수 없었다. ρ 0.1855R(0.85획) -> 0.3188R(1.46획), 발자국은 0.68x0.48R ->
+      0.66x0.66R(폭 -3%). 꼭짓점 회전 30도라 배율 0.60 몽당변 2건도 함께 사라진다."""
+    return rig.poly(sx*EYE_DX, 0.0, EYE_R, 12)
 
 def sunglasses():
     """0 선글라스 — 어두운 렌즈 2장 + 코다리. 눈은 보이지 않는다(이름이 그렇게 말한다)."""
@@ -115,9 +118,11 @@ def sunglasses():
             Shape("SunglassBridge",    bridge, loop=False, tone=1)]
 
 def round_glasses():
-    """1 동그란안경 — 두꺼운 테. 렌즈는 불투명하다(투명 렌즈는 이 배율에서 그릴 수 없다)."""
+    """1 동그란안경 — 두꺼운 테. 렌즈는 불투명하다(투명 렌즈는 이 배율에서 그릴 수 없다).
+    ★ 2026-09-05 — 코다리가 붙는 렌즈 꼭짓점을 30/150도(index 1·5)에서 **60/120도(index 2·4)**로
+    올렸다(R13 P4가 프로덕션에 착지). 잉크 사각형 0.5472 R(1.591 W, 카탈로그 최약체) -> 0.84 R(2.44 W)."""
     b = rig.poly(-0.62, 0.02, 0.40, 12); f = rig.poly(0.62, 0.02, 0.40, 12)
-    bridge = [b[1], (0.0, 0.50), f[5]]
+    bridge = [b[2], (0.0, 0.50), f[4]]
     return [Shape("RoundLensBack",  b, filled=True),
             Shape("RoundLensFront", f, filled=True),
             Shape("RoundBridge",    bridge, loop=False, tone=1)]
@@ -153,7 +158,7 @@ def browline():
 def patch():
     """5 안대 — 앞쪽 눈을 천으로 덮고, **가려지지 않은 뒤쪽 눈이 드러난다**(보조색)."""
     cover = [(0.24, 0.44), (1.00, 0.3608), (0.94,-0.44), (0.28,-0.3608)]
-    strap = [(-0.54052, 0.86501), (0.24, 0.44), (0.28,-0.3608), (-0.54052,-0.86501)]
+    strap = [(-0.36554, 0.95225), (0.24, 0.44), (0.28,-0.3608), (-0.36554,-0.95225)]
     return [Shape("PatchCover", cover, filled=True),
             Shape("PatchStrap", strap, loop=False),
             Shape("PatchEye",   drawn_eye(-1), filled=True, tone=1)]
@@ -225,7 +230,10 @@ def bandana():
     ty=NECKY+0.06
     wrap=[(-0.84, ty+0.22), (0.0, ty+0.10), (0.84, ty+0.22),
           ( 0.84, ty-0.22), (0.0, ty-0.42), (-0.84, ty-0.22)]
-    tail=[(0.04, ty-0.30), (0.52, ty-0.30), (0.22, ty-0.30-TL*0.30)]
+    # ★ 2026-09-05 — 밑변 좌끝 +0.04 -> -0.24 R(밑변 0.48 -> 0.76 R). R13 P2가 에셋에 착지.
+    #   앞끝 0.52·꼭짓점 0.22는 불변이라 「자락이 한쪽에만 있다」는 비대칭이 보존된다.
+    #   rho 0.1942R(0.89획) -> 0.2728R(1.25획).
+    tail=[(-0.24, ty-0.30), (0.52, ty-0.30), (0.22, ty-0.30-TL*0.30)]
     return [Shape("BandanaWrap", wrap, filled=True),
             Shape("BandanaTail", tail, filled=True, tone=1)]
 
@@ -255,23 +263,43 @@ def cape_fold(length, spread, start_back, end_ratio=0.0):
     er = end_ratio if end_ratio > 0 else min(0.92, 0.42 + (start_back-0.35)*0.60)
     return [(-0.62*start_back, cy-0.10), (-spread*er, hy+(cy-hy)*0.20)]
 
+YOKE_DEPTH = 2.40      # AccessoryShapeBuilder.CapeYokeDepthRatio
+
+def yoke(outline, depth=YOKE_DEPTH):
+    """★ 2026-09-05 — 서명 디테일 하나. 옛 **옷깃 띠**(clasp)를 대체한 **어깨 요크**다.
+
+    옛 띠는 NECK 6종 봉투 안에 통째로 들어가 잔여 색면이 0.00~0.30획(게이트 1.00획)이었고
+    카드에서도 2.32~3.16 px(요구 3.74 px)라 **몸에서도 카드에서도 안 보였다**.
+    요크는 좌표를 새로 적지 않는다 — 윗변 둘은 윤곽의 옷깃 두 점 그대로, 아랫변 둘은
+    **같은 윤곽의 앞/뒤 변**을 y = COLLARY − depth 에서 자른 점이다
+    (AccessoryShapeBuilder.CapeShoulderYoke 와 같은 식)."""
+    yb = COLLARY - depth
+    def cut(top, bot):
+        span = top[1] - bot[1]
+        t = 0.0 if span <= 1e-6 else max(0.0, min(1.0, (top[1] - yb) / span))
+        return (top[0] + (bot[0] - top[0]) * t, top[1] + (bot[1] - top[1]) * t)
+    return [outline[0], outline[1], cut(outline[1], outline[2]), cut(outline[0], outline[-1])]
+
 def clasp():
-    """서명 디테일 하나 — 목을 감아 잠그는 옷깃 띠. (잠금쇠 한 점으로 하면 긴 망토 카드에서
-    1.02획까지 쪼그라든다 — 규칙 5의 '예산 못 지키는 디테일은 넣지 않는다'에 걸린다.)"""
+    """옛 옷깃 띠 — **2026-09-05에 프로덕션에서 내려갔다**(위 yoke 로 대체). 카탈로그가 더는
+    이 도형을 쓰지 않지만, R13 하니스(r13_capecollar.py 등)가 「옛 상태」를 재는 기준으로
+    참조할 수 있게 남겨 둔다. **BACK 6종 어디에도 들어가지 않는다.**"""
     cy=COLLARY
     return [(0.40, cy+0.10), (0.40, cy-0.34), (-0.66, cy-0.38), (-0.66, cy+0.06)]
 
 def cape():      # 0 짧은망토
-    return [Shape("CapeOutline", cape_outline(1.35,2.45,0.85,0.22), filled=True),
+    o = cape_outline(1.35,2.45,0.85,0.22)
+    return [Shape("CapeOutline", o, filled=True),
             Shape("CapeFold",  cape_fold(1.35,2.45,0.35), loop=False, tone=2),
             Shape("CapeFold2", cape_fold(1.35,2.45,0.72), loop=False, tone=2),
-            Shape("CapeCollar", clasp(), filled=True, tone=1)]
+            Shape("CapeYoke", yoke(o), filled=True, tone=1)]
 
 def longcape():  # 1 긴망토(제비꼬리 밑단)
-    return [Shape("CapeOutline", cape_outline(1.85,3.10,1.05,0.30,0.42), filled=True),
+    o = cape_outline(1.85,3.10,1.05,0.30,0.42)
+    return [Shape("CapeOutline", o, filled=True),
             Shape("CapeFold",  cape_fold(1.85,3.10,0.35,0.80), loop=False, tone=2),
             Shape("CapeFold2", cape_fold(1.85,3.10,0.72,0.96), loop=False, tone=2),
-            Shape("CapeCollar", clasp(), filled=True, tone=1)]
+            Shape("CapeYoke", yoke(o), filled=True, tone=1)]
 
 def wing_blade(sign, outer, mid, inner, rise):
     p=[(0.0, SH+0.12), (1.05, SH+0.62), (outer, SH+rise), (outer*0.68, SH+0.30),
@@ -298,10 +326,11 @@ def backpack():  # 3 배낭 — '대괄호'였던 옛 그림을 상자+뚜껑+�
             Shape("PackStrap", strap, loop=False)]
 
 def poncho():    # 4 판초
-    return [Shape("CapeOutline", cape_outline(1.05,1.95,1.55,0.12), filled=True),
+    o = cape_outline(1.05,1.95,1.55,0.12)
+    return [Shape("CapeOutline", o, filled=True),
             Shape("CapeFold",  cape_fold(1.05,1.95,0.35), loop=False, tone=2),
             Shape("CapeFold2", cape_fold(1.05,1.95,0.72), loop=False, tone=2),
-            Shape("CapeCollar", clasp(), filled=True, tone=1)]
+            Shape("CapeYoke", yoke(o), filled=True, tone=1)]
 
 def fairywings():# 5 요정날개
     def blade(sign):

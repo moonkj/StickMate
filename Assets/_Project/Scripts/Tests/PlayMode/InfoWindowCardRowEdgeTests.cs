@@ -62,10 +62,13 @@ namespace StickMate.Tests.PlayMode
             _window.Toggle("테스트");
             Assert.IsTrue(_window.IsOpen, $"{LogPrefix} 창이 열리지 않았습니다.");
             yield return null;
-            yield return null;   // HorizontalLayoutGroup/ContentSizeFitter가 한 번 돌 기회를 준다.
+            yield return null;   // LayoutCardGrid가 한 번 돌고 캔버스가 갱신될 기회를 준다.
         }
 
-        /// <summary>★ 카드줄은 <b>자기 헤더와 같은 선</b>에서 끝나야 한다 — 이 신고의 본체.</summary>
+        /// <summary>★ 카드 격자는 <b>자기 헤더와 같은 선</b>에서 끝나야 한다 — 이 신고의 본체.
+        /// <para>★ 2026-09-05 — 가로 캐러셀이 세로 격자로 바뀌었지만(L-1) <b>계약은 같다</b>:
+        /// 이 창 오른쪽 열의 끝선은 하나이고, 헤더와 카드가 그 하나에서 끝나야 한다. 재는 대상만
+        /// "카드줄"에서 "블록(제목줄 + 격자)"으로 바뀐다.</para></summary>
         [UnityTest]
         [Timeout(120000)]
         public IEnumerator CardRowEndsOnTheSameRightEdgeAsItsHeader()
@@ -74,9 +77,9 @@ namespace StickMate.Tests.PlayMode
 
             for (int s = 0; s < 2; s++)   // [장비] 탭에서 눈에 먼저 들어오는 두 줄이면 충분하다.
             {
-                Rect row = _window.CarouselRowScreenRect(s);
+                Rect row = _window.CategoryBlockScreenRect(s);
                 Rect header = _window.SectionCountScreenRect(s);
-                Assert.Greater(row.width, 1f, $"{LogPrefix} {s}번 카드줄의 사각형이 비었습니다.");
+                Assert.Greater(row.width, 1f, $"{LogPrefix} {s}번 카테고리 블록의 사각형이 비었습니다.");
                 Assert.Greater(header.width, 1f, $"{LogPrefix} {s}번 헤더 카운터의 사각형이 비었습니다.");
 
                 // ★ 2026-09-02 — 이 메시지가 <b>읽는 사람을 반대로 몰았다.</b> 예전 문장은 부호와 무관하게
@@ -86,46 +89,57 @@ namespace StickMate.Tests.PlayMode
                 //   부호를 거꾸로 읽을 여지를 남기지 않는다.
                 float dead = header.xMax - row.xMax;
                 string which = dead < 0f
-                    ? "헤더('n / 6')가 카드줄보다 왼쪽에서 먼저 끝납니다(헤더가 짧다)"
-                    : "카드줄이 헤더('n / 6')보다 왼쪽에서 먼저 끝납니다(카드줄이 짧다)";
+                    ? "헤더('n / 6')가 격자보다 왼쪽에서 먼저 끝납니다(헤더가 짧다)"
+                    : "격자가 헤더('n / 6')보다 왼쪽에서 먼저 끝납니다(격자가 짧다)";
                 Assert.LessOrEqual(Mathf.Abs(dead), EdgeTolerancePoints,
                     $"{LogPrefix} {s}번 줄의 오른쪽 끝선이 {Mathf.Abs(dead):F1}pt 어긋납니다 — {which}. " +
                     $"[카드줄 xMax={row.xMax:F1} / 헤더 xMax={header.xMax:F1}] " +
                     "잘린 카드가 아무 모서리에도 걸리지 않으면 \"오른쪽에 더 있다\"가 아니라 " +
                     "\"카드가 깨졌다\"로 읽힙니다(2026-09-01 사용자 신고: \"어설픈데서 절반 짤려있어서 더 이상함\"). " +
                     "둘 다 RightContentWidth에서 파생돼야 합니다 — 한쪽만 숫자로 박혀 있으면 창 폭이 바뀔 때 " +
-                    "정확히 이 증상이 납니다(SectionCountX / CarouselViewportWidth 문서 참고).");
+                    "정확히 이 증상이 납니다(CategoryCountX / Col3ContentWidth 문서 참고).");
             }
         }
 
-        /// <summary>★ 그 끝선에는 <b>반쯤 걸친 카드가 하나</b> 있어야 한다 — 온전히 딱 맞아떨어지면
-        /// 다시 "이게 전부"가 된다(페르소나 M1). 위 테스트와 <b>짝</b>이다: 이 둘을 같이 통과해야만
-        /// "모서리에 걸린 걸침"이 성립한다.</summary>
+        /// <summary>★ 카드 <b>두 열</b>이 그 끝선 안에 정확히 들어차야 한다 — 인계본 설계값이
+        /// 「폭 384 = 186 × 2 + 간격 12」이고, 이 등식이 깨지면 오른쪽에 죽은 띠가 생기거나
+        /// 두 번째 열이 잘린다(문서 §2-2).
+        ///
+        /// <para>★ 이 테스트는 <b>숫자를 베끼지 않는다</b>. 카드 설계 폭은 창이 스스로 알려 주고
+        /// (<see cref="CharacterInfoWindow.CardDesignSizePoints"/>), 끝선은 헤더 카운터가 말한다.</para></summary>
         [UnityTest]
         [Timeout(120000)]
-        public IEnumerator ThatEdgeCutsExactlyOneCardInHalf()
+        public IEnumerator TwoCardColumnsFillTheGridWidthExactly()
         {
             yield return OpenWindow();
 
-            Rect row = _window.CarouselRowScreenRect(0);
-            int full = 0, part = 0, hidden = 0;
+            Assert.AreEqual(2, _window.CardGridColumns,
+                $"{LogPrefix} 카드 열이 {_window.CardGridColumns}열입니다 — 폭 1042의 설계는 2열입니다.");
+
+            int left = -1, right = -1;
             for (int i = 0; i < _window.CardCountForTests; i++)
             {
                 if (_window.CardSectionForTests(i) != 0 || !_window.IsCardVisibleForTests(i)) continue;
-                Rect card = _window.CardRawScreenRect(i);
-                float overlap = Mathf.Min(card.xMax, row.xMax) - Mathf.Max(card.xMin, row.xMin);
-                float ratio = card.width > 0f ? Mathf.Clamp01(overlap / card.width) : 0f;
-                if (ratio >= 0.98f) full++;
-                else if (ratio > 0.02f) part++;
-                else hidden++;
+                if (_window.CardItemForTests(i) == 0) left = i;
+                if (_window.CardItemForTests(i) == 1) right = i;
             }
+            Assert.GreaterOrEqual(left, 0, $"{LogPrefix} 첫 카테고리의 0번 카드를 찾지 못했습니다.");
+            Assert.GreaterOrEqual(right, 0, $"{LogPrefix} 첫 카테고리의 1번 카드를 찾지 못했습니다.");
 
-            Assert.AreEqual(1, part,
-                $"{LogPrefix} 끝선에 걸친 카드가 {part}장입니다(온전 {full} / 걸침 {part} / 밖 {hidden}) — " +
-                "0장이면 \"이게 전부\"로 읽히고, 2장 이상이면 뷰포트와 카드 리듬이 어긋난 것입니다.");
-            Assert.Greater(full, 0, $"{LogPrefix} 온전히 보이는 카드가 하나도 없습니다.");
-            Assert.Greater(hidden, 0,
-                $"{LogPrefix} 줄 밖으로 나간 카드가 0장입니다 — 밀 것이 없으면 걸침이 지킬 것도 없습니다.");
+            Rect a = _window.CardRawScreenRect(left);
+            Rect b = _window.CardRawScreenRect(right);
+            Rect header = _window.SectionCountScreenRect(0);
+            float scale = _window.CanvasScaleForTests;
+
+            Assert.AreEqual(_window.CardDesignSizePoints.x, a.width / scale, EdgeTolerancePoints,
+                $"{LogPrefix} 카드 폭이 설계값과 다릅니다(실측 {a.width / scale:F2}pt).");
+            Assert.AreEqual(a.width, b.width, EdgeTolerancePoints * scale,
+                $"{LogPrefix} 두 열의 카드 폭이 다릅니다.");
+            Assert.AreEqual(a.yMin, b.yMin, EdgeTolerancePoints * scale,
+                $"{LogPrefix} 같은 행의 두 카드가 세로로 어긋났습니다.");
+            Assert.LessOrEqual(Mathf.Abs(header.xMax - b.xMax), EdgeTolerancePoints * scale,
+                $"{LogPrefix} 오른쪽 열의 끝선({b.xMax:F1})이 헤더 카운터의 끝선({header.xMax:F1})과 " +
+                $"{Mathf.Abs(header.xMax - b.xMax):F1}px 어긋납니다 — 이 창 오른쪽 열의 끝선은 하나여야 합니다.");
         }
     }
 }

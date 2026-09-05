@@ -86,9 +86,24 @@ namespace StickMate.Core
         //   축 3을 끄는 유일한 스위치가 축 3 때문에 닫히는 창 안에 있어서, 등급 1이 켜진 동안
         //   그것을 끄는 경로가 앱 안에 하나도 없었다. 허가는 <b>축 3에만</b> 작용하고 축 1·2는
         //   건드리지 않는다 — 등급 2는 허가로 뚫리지 않는다.
+        //
+        //   축 4 _offCurrentVirtualDesktop : 우리 창이 <b>다른 가상 데스크톱</b>에 있다(Windows 전용 사실).
+        //                              ★ 2026-09-05 리더 판정(M-8, 옵션 (a)) — 공개 COM
+        //                              IVirtualDesktopManager로 «소속»만 확인하고, 남의 데스크톱에
+        //                              있는 동안 스스로 숨는다. 따라붙게 만드는 옵션 (b)는 비공개 API가
+        //                              필요해 기각됐다(백신 휴리스틱 위험, M-10과 같은 저울).
+        //                              ★ macOS는 이 축이 <b>항상 false</b>다 — MacSpaceBehaviorNative의
+        //                              .canJoinAllSpaces로 모든 Space에 따라붙으므로 「남의 Space에
+        //                              남겨진다」는 상태 자체가 없다. 그 비대칭은 SessionVisibilityPolicy의
+        //                              DisplayAsleep/SessionLocked 표와 같은 종류이고, <b>정상</b>이다.
+        //                              ★ 이 축에는 설정창 게이트가 <b>없다</b>. AutoHideOnFullscreen은
+        //                              「전체화면 <b>게임</b> 감지」라는 오탐 있는 판정을 사용자가 끄는
+        //                              스위치이고, 이쪽은 OS가 «지금 이 창은 안 보인다»고 직접 답한 것이라
+        //                              오탐이 성립하지 않는다(조회 실패는 Unknown -> 숨지 않음).
         private bool _fullscreenAutoHide;
         private bool _userHidden;
         private bool _fullscreenPanelRetreat;
+        private bool _offCurrentVirtualDesktop;
 
         // ============================================================================
         // 클릭 관통 긴급 종료 안전장치("바로 바탕화면에서 구동" 라운드, 사용자 명시 요청, 2026-08-28).
@@ -104,6 +119,9 @@ namespace StickMate.Core
         // 방법이 없다(실제 배포판이라면 메뉴바 아이콘/전역 단축키 같은 별도 UX가 필요 — 이번 라운드
         // 범위 밖). 그 경우의 최종 안전망은 터미널에서 프로세스를 직접 종료하는 것뿐이다.
         // ============================================================================
+        // ★★ 2026-09-05 — (2)는 이제 <b>개발 게이트(StickMateDevTools.Enabled) 뒤</b>에만 있다. 릴리스 빌드에서 톱니 좌클릭 → ESC 로
+        //   창 전체가 클릭을 삼키는 상태로 굳는 원칙 2 위반이 실기로 확인됐고(persona-stress), 되돌리는 코드 경로가 없었다.
+        //   탈출구는 톱니·부채꼴·트레이·전역 종료 단축키가 대신한다 — 이 키의 전제(그것들이 없던 2026-08-28)는 사라졌다.
         private const float ClickThroughSafetyDelaySeconds = 5f;
         private const KeyCode EmergencyDisableKey = KeyCode.Escape;
         private bool _clickThroughDefaultEnabled;
@@ -209,8 +227,30 @@ namespace StickMate.Core
         /// <para>축 1(전체화면 게임 감지)이 함께 켜져 있으면 <b>false</b>다. 그 경우는 원칙 2가 지배하고,
         /// 원칙 2는 표면까지 전부 걷어야 하기 때문이다 — 이 프로퍼티를 <c>_userHidden</c> 하나로
         /// 정의하면 "게임 중에 사용자가 직접 숨겼다"에서 톱니가 게임 위에 남는다.</para>
+        ///
+        /// <para>★ 2026-09-05 (M-8) — 축 4(다른 가상 데스크톱)도 함께 뺀다. 이름 그대로 <b>"축 2만으로"</b>가
+        /// 이 프로퍼티의 뜻이고, 축 4가 켜져 있으면 그 문장은 사실이 아니다. 실질적으로도 그렇다:
+        /// 남의 데스크톱에 있는 동안 톱니만 남겨 둘 이유가 없고, 우리 창이 그 데스크톱으로 새는 환경이
+        /// 있다면(이 축이 존재하는 바로 그 이유다) 톱니가 그대로 남의 화면에 찍힌다.
+        /// 돌아오면 축 4가 false가 되어 톱니·포스트잇은 스스로 복귀하므로 탈출구는 잃지 않는다.</para>
+        ///
+        /// ============================================================================
+        /// ★★ 2026-09-05 — <b>이 값으로 토글 글자를 만들지 마라</b>(verify-change 신고 후 확정)
+        /// ============================================================================
+        /// 이 값은 <b>표면을 걷을지</b>를 정하는 데 쓰라고 있는 것이다(<see cref="HidesScreenSurfaces"/>).
+        /// 「사용자 숨김 토글이 지금 켜져 있는가」를 묻는 소비자는 <see cref="IsUserHidden"/>를 읽어라.
+        ///
+        /// <para><b>실제 사고</b>: 트레이 메뉴가 이 값으로 글자를 뒤집고 있었다. 축 4가 켜지면 사용자가
+        /// 이미 숨겨 뒀는데도 이 값이 <b>false</b>라 글자가 「캐릭터 숨기기」로 나오고, 누르면 축 2가
+        /// <b>꺼지는데</b> 화면은 그대로여서 메뉴가 고장 난 것처럼 보였다. 축 1(전체화면 게임) 중에는
+        /// 작업표시줄이 덮여 트레이에 닿을 수 없어 드러나지 않던 결함을, <b>축 4가 처음으로 도달
+        /// 가능하게 만들었다</b>(다른 데스크톱에서도 트레이는 그대로 보인다).</para>
+        ///
+        /// <para>★ 그래서 <b>이 프로퍼티를 되돌리지 마라</b> — 축 4 항은 의도된 것이고, 빼면
+        /// <see cref="HidesScreenSurfaces"/>가 다른 데스크톱에서 톱니·포스트잇을 남긴다. 고칠 곳은
+        /// 언제나 <b>소비자</b>다: 토글 글자는 그 토글이 소유한 축에서만 나온다(원칙 1).</para>
         /// </summary>
-        public bool IsUserHiddenOnly => _userHidden && !_fullscreenAutoHide;
+        public bool IsUserHiddenOnly => _userHidden && !_fullscreenAutoHide && !_offCurrentVirtualDesktop;
 
         /// <summary>
         /// ★★★ 2026-09-03 — <b>이 숨김이 화면 표면(톱니 포함)까지 걷는 종류인가.</b>
@@ -834,9 +874,15 @@ namespace StickMate.Core
             // Unity Input 시스템은 우리 창이 키보드 포커스를 가진 동안만 이 입력을 받을 수 있다는 한계가
             // 있다(전역 핫키가 아님 — 클릭관통으로 포커스를 완전히 잃으면 이 경로도 함께 무력화된다,
             // 클래스 상단 문서의 "한계" 절 참고).
-            if (Input.GetKeyDown(EmergencyDisableKey))
+            // ★★ 2026-09-05 원칙 2 위반 봉인(persona-stress 실기, 릴리스 빌드 08:54) — 톱니 좌클릭으로 포커스를 얻은 뒤 ESC 를 한 번
+            //   누르면 이 핸들러가 ApplyClickThrough(false)를 불러 <b>창 전체가 클릭을 삼키는 상태로 굳고 되돌리는 코드 경로가 없었다</b>
+            //   (유일한 복구 = 프로세스 강제 종료). 2026-08-28 「바로 바탕화면에서 구동」 라운드의 개발용 탈출구였고 그때는 톱니·트레이·
+            //   전역 단축키가 없었다. 지금은 셋 다 있으므로 전제가 사라졌다. 리더 결정: 다른 dev 전용 키(D/H/S/J/F)와 같은
+            //   StickMateDevTools 게이트 뒤로 — 게이트가 닫힌 릴리스에서는 <b>조회조차 하지 않는다</b>. 플랫폼 중립이라 Windows 도 같이 닫힌다.
+            //   Tests/EditMode/EmergencyClickThroughKeyGateTests 가 게이트 조건이 판정 <b>앞</b>에 있는지를 소스에서 잠근다.
+            if (StickMateDevTools.Enabled && Input.GetKeyDown(EmergencyDisableKey))
             {
-                Debug.Log($"[StickmanAgent] {EmergencyDisableKey} 눌림 — 클릭 관통 긴급 강제 OFF.");
+                Debug.Log($"[StickmanAgent] {EmergencyDisableKey} 눌림 — 클릭 관통 긴급 강제 OFF(개발 게이트 열림).");
                 ApplyClickThrough(false);
             }
 
@@ -1255,6 +1301,7 @@ namespace StickMate.Core
             RefreshStrokeFloors();
             float floorWorld = _minStrokeWorldWidth;
             float fillOutlineFloorWorld = _minFillOutlineWorldWidth;
+            float accessoryFloorWorld = _minAccessoryStrokeWorldWidth;
             float membraneWorld = _inkMembraneWorldWidth;
 
             // (1) 프리팹에 구워진 몸의 선. ★ 머리 링이 여기 들어 있고, 그것만 채움 경계선이다.
@@ -1289,7 +1336,10 @@ namespace StickMate.Core
                 LineRenderer lr = _dynamicVisuals[i].Line;
                 if (lr == null) continue;
                 // ★ 여기서 역할을 안 물으면 액세서리 채움 경계선이 이 한 줄에 도로 2.00pt가 된다.
-                float lineFloor = FillOutlineStroke.Is(lr) ? fillOutlineFloorWorld : floorWorld;
+                //   인계본 착용 조각(계약 v2)도 같다 — 표식(AccessoryStrokeMark)이 1pt 하한을 지킨다.
+                float lineFloor = FillOutlineStroke.Is(lr) ? fillOutlineFloorWorld
+                    : AccessoryStrokeMark.Is(lr) ? accessoryFloorWorld
+                    : floorWorld;
                 // ★ 이 선에 <b>이미 막이 걸려 있으면</b> 하한도 그만큼 올려야 잉크 코어가 하한을 지킨다.
                 //   역할이 아니라 <b>실제로 걸린 겹 수</b>를 묻는다 — 막에서 제외된 선을 올려 버리면
                 //   그 선의 잉크가 하한보다 두꺼워진다(그림이 조용히 굵어진다).
@@ -1330,6 +1380,12 @@ namespace StickMate.Core
             ? _minFillOutlineWorldWidth
             : StickConfig.MinFillOutlineScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
 
+        /// <summary>★ 인계본 착용 조각(계약 v2) 전용 하한(월드 유닛) — <see cref="StickConfig.MinAccessoryStrokeScreenPoints"/>의
+        /// 환산값. 위 둘과 <b>같은 pt/유닛</b>으로 환산한다. 소비자: <c>CharacterAccessoryRenderer</c>와 되올리기 안전망.</summary>
+        public float MinAccessoryStrokeWorldWidth => _minAccessoryStrokeWorldWidth > 0f
+            ? _minAccessoryStrokeWorldWidth
+            : StickConfig.MinAccessoryStrokeScreenPoints / StickConfig.ReferencePointsPerWorldUnitApprox;
+
         /// <summary>
         /// ★ 역잉크 분리막 한 겹의 <b>월드 유닛</b> 두께 — <see cref="InkMembraneStroke"/>의
         /// 물리픽셀 상수를 이 화면에 맞춰 환산한 값. <b>오늘은 0</b>(막 미도입)이다.
@@ -1347,6 +1403,7 @@ namespace StickMate.Core
 
         private float _minStrokeWorldWidth;
         private float _minFillOutlineWorldWidth;
+        private float _minAccessoryStrokeWorldWidth;
         private float _inkMembraneWorldWidth;
 
         /// <summary>화면상 최소 획 두께 <b>두 종류</b>를 월드 유닛으로 환산해 캐시한다. 카메라의 직교
@@ -1360,6 +1417,7 @@ namespace StickMate.Core
             float pointsPerWorldUnit = ResolvePointsPerWorldUnit();
             _minStrokeWorldWidth = StickConfig.MinStrokeScreenPoints / pointsPerWorldUnit;
             _minFillOutlineWorldWidth = StickConfig.MinFillOutlineScreenPoints / pointsPerWorldUnit;
+            _minAccessoryStrokeWorldWidth = StickConfig.MinAccessoryStrokeScreenPoints / pointsPerWorldUnit;
 
             // 막은 <b>물리픽셀</b>이 단위다: 유닛 = 물리픽셀 ÷ (물리픽셀/유닛),
             // 그리고 물리픽셀/유닛 = (pt/유닛) ÷ (pt/픽셀) 이므로 아래 한 줄이 된다.
@@ -1430,6 +1488,13 @@ namespace StickMate.Core
             _fullscreenPanelRetreat = AppSettingsModel.AutoHideOnFullscreen
                 && ForeignFullscreenTierPolicy.RetreatsPanels(tier);
 
+            // ★ 축 4(2026-09-05, M-8) — <b>같은 폴링 틱</b>에 얹는다. 새 타이머를 만들지 않는 이유:
+            //   이 조회의 의미 있는 해상도는 「사용자가 데스크톱을 전환했다」이고 그건 초 단위 사건이다.
+            //   타이머가 둘이 되면 24시간 상주 앱의 깨어나는 지점이 두 배가 된다.
+            //   ★ 설정창 게이트를 달지 않는다 — 위 축 4 주석의 사유(오탐이 성립하지 않는다).
+            _offCurrentVirtualDesktop =
+                VirtualDesktopSuspendPolicy.SuspendsCharacter(PollVirtualDesktopMembership());
+
             // ★ 2026-09-03 — 「등급 1 진입 시 전부 회수」. 반드시 ApplySuspendDecision() <b>앞</b>이다:
             //   같은 폴링에서 표면들이 새 등급을 보기 전에 백지가 되어 있어야 한다.
             TickPanelRetreatEntry();
@@ -1461,6 +1526,22 @@ namespace StickMate.Core
         }
 
         /// <summary>
+        /// 이번 폴링의 가상 데스크톱 소속(축 4). 이 능력을 모르는 서비스(macOS·모바일·테스트 스텁)는
+        /// <see cref="VirtualDesktopMembership.Unknown"/>이고, 그때 축 4는 <b>영원히 false</b>다 —
+        /// 즉 <b>이 축이 없던 동작과 정확히 같다</b>. 그것이 이 배선의 안전판이다.
+        ///
+        /// <para>★ <b>캐스팅을 Awake에 캐시하지 않는다</b> — <see cref="PollForeignFullscreenTier"/>와
+        /// 같은 이유다. 이 저장소의 PlayMode 테스트는 <c>_platformService</c>를 리플렉션으로 통째로
+        /// 갈아끼워 플랫폼을 흉내 내는데, 캐스팅을 굳혀 두면 그 교체가 <b>조용히 무시되어</b>
+        /// 스푸핑이 아무 일도 하지 않는데 테스트는 초록일 수 있다. 폴링 주기(기본 1.5초)당
+        /// <c>isinst</c> 한 번이라 캐시로 얻을 것도 없다.</para>
+        /// </summary>
+        private VirtualDesktopMembership PollVirtualDesktopMembership()
+            => _platformService is IVirtualDesktopMembershipSource source
+                ? source.GetVirtualDesktopMembership()
+                : VirtualDesktopMembership.Unknown;
+
+        /// <summary>
         /// 두 축(<see cref="_fullscreenAutoHide"/> / <see cref="_userHidden"/>)을 합쳐 Suspend/Resume을
         /// <b>정확히 한 번씩</b> 부른다. 위 폴링 주석의 "대칭"이 여기로 그대로 옮겨왔다 — 어느 축이
         /// 바뀌든 이 한 함수를 부르면 되고, 그래서 축이 셋이 되어도 대칭이 깨질 자리가 없다.
@@ -1478,7 +1559,10 @@ namespace StickMate.Core
         /// </summary>
         private void ApplySuspendDecision()
         {
-            bool shouldSuspend = _fullscreenAutoHide || _userHidden;
+            // ★ 2026-09-05 (M-8) — 축 4가 OR에 붙었다. 앞의 두 항은 <b>한 글자도</b> 바뀌지 않았다
+            //   (ManualHideAxisSeparationAuditTests가 이 부분 문자열을 그대로 요구한다 — 합성 지점이
+            //    실재하는지 보는 장치다). 축 4는 macOS에서 항상 false라 그쪽 동작은 비트 동일하다.
+            bool shouldSuspend = _fullscreenAutoHide || _userHidden || _offCurrentVirtualDesktop;
             if (shouldSuspend != _isSuspended)
             {
                 if (shouldSuspend)
@@ -1530,6 +1614,12 @@ namespace StickMate.Core
         /// "왜 아직 안 나오지"가 다음 신고가 되지 않게 한다.</summary>
         private string DescribeSuspendReason()
         {
+            // ★ 2026-09-05 (M-8) — 축 4를 <b>가장 먼저</b> 본다. 이 축은 "우리가 안 보이는 화면에 있다"는
+            //   OS의 직접 답이라 다른 사유보다 상위이고, 무엇보다 사용자가 「왜 안 나오지」를 신고할 때
+            //   Player.log에서 가장 먼저 찾아야 하는 줄이다(이 개발 머신에 Windows가 없어서
+            //   실기 로그가 사실상 유일한 확인 수단이다).
+            if (_offCurrentVirtualDesktop)
+                return "다른 가상 데스크톱(공개 API로 소속만 확인 — 돌아오면 스스로 복귀합니다)";
             if (_fullscreenAutoHide && _userHidden)
                 return "전체화면 감지 + 사용자 직접 숨김(둘 다 켜져 있어 한쪽만 풀려도 계속 숨습니다)";
             if (_userHidden) return "사용자 직접 숨김(" + ShortcutLabel.Chord(UserHideHotkeyLetter) + " / 설정창 [일반])";

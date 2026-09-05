@@ -278,7 +278,34 @@ def run():
     ss = [r for r in ship['cs'] if r['verdict'] == 'SHIP']
     man = [r for r in ss if (r['file'], r['line']) in MANUAL_NONTRANSLATABLE
            and (r['file'], r['line']) not in auto]
+
+    # ★★ 2026-09-05 R5 — **줄번호 니들은 썩는다.** 이 목록은 (파일, 줄) 로 못이 박혀 있어서
+    #   위쪽에 코드 한 줄만 들어가도 조용히 빗나간다. 그리고 빗나간 결과는
+    #   「그 문자열이 사라졌다」와 **출력상 완전히 같다** — 이 저장소가 반복해 당한 형태다.
+    #   ⇒ 표류를 **개별로** 보고하고, 자동 검출기가 이미 잡은 것과 진짜 실종을 가른다.
+    ship_by_file = {}
+    for r in ss:
+        ship_by_file.setdefault(r['file'], []).append(r)
+    drifted, dead = [], []
+    hit_keys = {(r['file'], r['line']) for r in man}
+    for (f, l), why in sorted(MANUAL_NONTRANSLATABLE.items()):
+        if (f, l) in hit_keys or (f, l) in auto:
+            continue
+        # 같은 파일 안에서 그 자리를 잃었다 — 자동 검출기가 흡수했는가, 아예 사라졌는가?
+        same_file_auto = [ln for (af, ln) in auto if af == f]
+        if same_file_auto:
+            drifted.append((f, l, why))
+        else:
+            dead.append((f, l, why))
     print("\n  수동 비번역 목록 적중 = %d건 (목록 %d줄)" % (len(man), len(MANUAL_NONTRANSLATABLE)))
+    if drifted:
+        print("  ~~ 줄 표류/자동흡수 의심 %d건 (같은 파일을 자동 검출기가 이미 보고 있다):" % len(drifted))
+        for f, l, why in drifted[:8]:
+            print("     %s:%d  %s" % (f, l, why))
+    if dead:
+        print("  !! ★ 죽은 니들 %d건 — 그 파일을 자동 검출기도 안 보고 있다. **줄번호가 밀렸거나 문자열이 사라졌고, 둘은 출력이 같다.**" % len(dead))
+        for f, l, why in dead[:8]:
+            print("     %s:%d  %s" % (f, l, why))
     if not man:
         print("  !! 수동 목록이 하나도 안 맞았다 — 줄 번호가 밀렸다는 뜻이다. 목록을 갱신하라.")
     print("  ★ SHIP %d − 진단사유 %d − 수동 %d = **번역 대상 .cs %d건**"
