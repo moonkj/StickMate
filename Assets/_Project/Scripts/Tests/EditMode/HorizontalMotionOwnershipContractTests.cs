@@ -80,6 +80,12 @@ namespace StickMate.Tests.EditMode
             StickmanStateId.Archery,
             StickmanStateId.GroundLossHang,
             StickmanStateId.LandingCrouch,
+            // ★ 2026-09-06 춤 — 활쏘기와 같은 형태(자기 속도를 싣는 구간이 있다). 7종 중 둘만
+            //   싣는다: 스타점프의 도움닫기(walkSpeed x 1.45)와 문워크의 후진 활강(보행의 37.9%).
+            //   나머지 5종과 모든 진입/퇴장 박자에서는 DanceState가 danceHorizontalDamping으로
+            //   매 프레임 죽인다(States/DanceState.DampHorizontal). 여기서 빼면 안전망이 도움닫기
+            //   속도를 매 프레임 지워 스타점프가 영원히 도약하지 못한다.
+            StickmanStateId.Dance,
         };
 
         [Test]
@@ -168,6 +174,10 @@ namespace StickMate.Tests.EditMode
         {
             StickmanStateId.Archery,
             StickmanStateId.ParkourClimb,
+            // ★ 2026-09-06 춤 — 안 넣으면 두 동작이 통째로 소멸한다. 피루엣의 «회전»은 이 리그에
+            //   세로 회전축이 없어서 SetFacingSign 부호 반전으로 만들고(States/DanceState의
+            //   DrivePirouetteFacing), 문워크는 정의상 앞을 보면서 뒤로 간다.
+            StickmanStateId.Dance,
         };
 
         [Test]

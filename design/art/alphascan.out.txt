@@ -1,0 +1,169 @@
+α<1 토큰 9종: Divider(0.07), TrackBackground(0.09), PanelSheen(0.10), CardBorder(0.10), AccentSurface(0.14), PanelBorder(0.16), PanelHighlight(0.30), AccentBorder(0.55), CardBorderHover(0.62)
+
+==========================================================================================
+CardBorderHover  α0.62   빈 프레임 위 비침 61.56% / 불투명 위 비침 23.56%  — raw 사용 1줄
+==========================================================================================
+  Interaction/CharacterInfoWindow.Cards.cs:430
+      : hovered ? UiChrome.CardBorderHover
+
+==========================================================================================
+AccentBorder  α0.55   빈 프레임 위 비침 69.75% / 불투명 위 비침 24.75%  — raw 사용 9줄
+==========================================================================================
+  Interaction/GearRadialMenuWidget.cs:1552
+      _onboardingHintBorder.color = Fade(UiChrome.AccentBorder, _onboardingHintAlpha);
+  Interaction/GearRadialMenuWidget.cs:1688
+      border = armedQuit ? UiChrome.AccentBorder : UiChrome.CardBorder;
+  Interaction/GearRadialMenuWidget.cs:1695
+      border = Color.Lerp(UiChrome.CardBorder, UiChrome.AccentBorder, active ? 1f : hover);
+  Interaction/GearRadialMenuWidget.cs:2238
+      _onboardingHintBorder = UiChrome.AddOutline(_onboardingHint, "Border", UiChrome.AccentBorder, 9);
+  Interaction/GearRadialMenuWidget.cs:2250
+      _onboardingHintBorder.color = Fade(UiChrome.AccentBorder, 0f);
+  Interaction/FocusSessionPopover.cs:438
+      UiChrome.AddOutline(valueSurface.rectTransform, "Outline", UiChrome.AccentBorder, UiChrome.RadiusChip);
+  Interaction/FocusSessionPopover.cs:739
+      _durationOutlines[i].color = on ? UiChrome.AccentBorder : UiChrome.CardBorder;
+  Interaction/FocusSessionPopover.cs:751
+      _sensitivityOutlines[i].color = on ? UiChrome.AccentBorder : UiChrome.CardBorder;
+  Interaction/CharacterInfoWindow.Cards.cs:509
+      !owned ? UiChrome.CardBorder : worn ? UiChrome.AccentBorder : UiChrome.CardBorder,
+
+==========================================================================================
+PanelBorder  α0.16   빈 프레임 위 비침 97.44% / 불투명 위 비침 13.44%  — raw 사용 5줄
+==========================================================================================
+  Interaction/CharacterInfoWindow.cs:1122
+      _inkRings[i].color = active ? UiChrome.TextPrimary : UiChrome.PanelBorder;
+  Interaction/CharacterInfoWindow.cs:1776
+      Image ring = UiChrome.AddCircle(srt, "Ring", SwatchSize, UiChrome.PanelBorder, 1.5f);
+  Interaction/CharacterInfoWindow.cs:1888
+      UiChrome.AddOutline(surface.rectTransform, "Outline", UiChrome.PanelBorder, UiChrome.RadiusChip);
+  Interaction/GearRadialMenuWidget.cs:1661
+      _hoverLabelBorder.color = Fade(UiChrome.PanelBorder, alpha);
+  Interaction/GearRadialMenuWidget.cs:2204
+      _hoverLabelBorder = UiChrome.AddOutline(_hoverLabel, "Border", UiChrome.PanelBorder, 9);
+
+==========================================================================================
+AccentSurface  α0.14   빈 프레임 위 비침 98.04% / 불투명 위 비침 12.04%  — raw 사용 8줄
+==========================================================================================
+  Interaction/GearRadialMenuWidget.cs:1686
+      surface = armedQuit ? UiChrome.AccentSurface
+  Interaction/GearRadialMenuWidget.cs:1694
+      surface = Color.Lerp(UiChrome.CardSurface, UiChrome.AccentSurface, active ? 1f : hover);
+  Interaction/ActionCommandPopover.cs:236
+      private static readonly Color AcceptFlashPeak = UiChrome.AccentSurface;
+  Interaction/ActionCommandPopover.cs:238
+      UiChrome.AccentSurface.r, UiChrome.AccentSurface.g, UiChrome.AccentSurface.b, 0f);
+  Interaction/FocusSessionPopover.cs:442
+      valueSurface.color = UiChrome.AccentSurface;
+  Interaction/FocusSessionPopover.cs:738
+      _durationChips[i].color = on ? UiChrome.AccentSurface : UiChrome.CardSurface;
+  Interaction/FocusSessionPopover.cs:750
+      _sensitivityChips[i].color = on ? UiChrome.AccentSurface : UiChrome.CardSurface;
+  Interaction/TodoBoardPopover.cs:393
+      _tabChips[i].color = on ? UiChrome.AccentSurface : UiChrome.CardSurface;
+
+==========================================================================================
+CardBorder  α0.10   빈 프레임 위 비침 99.00% / 불투명 위 비침 9.00%  — raw 사용 31줄
+==========================================================================================
+  Interaction/CharacterInfoWindow.cs:1167
+      _portraitBorder.color = whiteInk ? new Color(1f, 1f, 1f, 0.18f) : UiChrome.CardBorder;
+  Interaction/CharacterInfoWindow.cs:1545
+      UiChrome.CardBorder, UiChrome.RadiusPanel);
+  Interaction/CharacterInfoWindow.cs:1613
+      Image outline = UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+  Interaction/GearRadialMenuWidget.cs:1688
+      border = armedQuit ? UiChrome.AccentBorder : UiChrome.CardBorder;
+  Interaction/GearRadialMenuWidget.cs:1695
+      border = Color.Lerp(UiChrome.CardBorder, UiChrome.AccentBorder, active ? 1f : hover);
+  Interaction/GearRadialMenuWidget.cs:2277
+      view.Border = UiChrome.AddCircle(view.Root, "Border", d, UiChrome.CardBorder, 1.2f);
+  Interaction/CharacterInfoWindow.Stats.cs:324
+      UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+  Interaction/CharacterInfoWindow.Stats.cs:417
+      UiChrome.AddOutline(setPanel.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+  Interaction/CharacterInfoWindow.Inventory.cs:222
+      : UiChrome.CardBorder;
+  Interaction/CharacterInfoWindow.Inventory.cs:364
+      Image outline = UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+  Interaction/CharacterInfoWindow.Inventory.cs:435
+      UiChrome.AddOutline(drt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+  Interaction/ActionCommandPopover.cs:384
+      UiChrome.AddOutline(card.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+  Interaction/FocusSessionPopover.cs:360
+      _sensitivityOutlines[i] = UiChrome.AddOutline(chip.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+  Interaction/FocusSessionPopover.cs:401
+      _durationOutlines[i] = UiChrome.AddOutline(chip.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+  Interaction/FocusSessionPopover.cs:469
+      UiChrome.AddOutline(surface.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+  Interaction/FocusSessionPopover.cs:529
+      UiChrome.AddOutline(_stopSurface.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+  Interaction/FocusSessionPopover.cs:739
+      _durationOutlines[i].color = on ? UiChrome.AccentBorder : UiChrome.CardBorder;
+  Interaction/FocusSessionPopover.cs:751
+      _sensitivityOutlines[i].color = on ? UiChrome.AccentBorder : UiChrome.CardBorder;
+  Interaction/TodoBoardPopover.cs:172
+      UiChrome.AddOutline(chip.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+  Interaction/TodoBoardPopover.cs:189
+      UiChrome.AddOutline(view.Rect, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+  Interaction/TodoBoardPopover.cs:193
+      UiChrome.AddOutline(view.Box.rectTransform, "Outline", UiChrome.CardBorder, 4);
+  Interaction/TodoBoardPopover.cs:229
+      UiChrome.AddOutline(view.ConfirmNo.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+  Interaction/TodoBoardPopover.cs:249
+      UiChrome.AddOutline(surface.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+  Interaction/TodoBoardPopover.cs:261
+      UiChrome.AddOutline(surface.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+  Interaction/TodoPostItWidget.cs:1148
+      UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+  Interaction/CharacterInfoWindow.Cards.cs:309
+      row.Outline.color = UiChrome.CardBorder;
+  Interaction/CharacterInfoWindow.Cards.cs:509
+      !owned ? UiChrome.CardBorder : worn ? UiChrome.AccentBorder : UiChrome.CardBorder,
+  Interaction/CharacterInfoWindow.Cards.cs:979
+      Image outline = UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+  Interaction/CharacterInfoWindow.Cards.cs:1250
+      UiChrome.AddOutline(drt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+  Interaction/CharacterInfoWindow.Cards.cs:1264
+      UiChrome.CardBorder, UiChrome.RadiusThumb);
+  Interaction/CharacterInfoWindow.Tabs.cs:259
+      UiChrome.AddOutline(stripRect, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+
+==========================================================================================
+TrackBackground  α0.09   빈 프레임 위 비침 99.19% / 불투명 위 비침 8.19%  — raw 사용 4줄
+==========================================================================================
+  Interaction/GearRadialMenuWidget.cs:1739
+      if (b.RingTrack != null) b.RingTrack.color = Fade(UiChrome.TrackBackground, alpha);
+  Interaction/CharacterInfoWindow.Inventory.cs:226
+      : owned ? UiChrome.NonTextMuted : UiChrome.TrackBackground)
+  Interaction/FocusSessionPopover.cs:490
+      UiChrome.AddCircle(dialRect, "Track", RingDiameter, UiChrome.TrackBackground, RingThickness);
+  Interaction/FocusSessionPopover.cs:756
+      _switchTrack.color = watching ? UiChrome.Accent : UiChrome.TrackBackground;
+
+==========================================================================================
+Divider  α0.07   빈 프레임 위 비침 99.51% / 불투명 위 비침 6.51%  — raw 사용 2줄
+==========================================================================================
+  Interaction/ActionCommandPopover.cs:402
+      Image divider = UiChrome.AddSurface(card, "Divider" + rowInCard, UiChrome.Divider, 2);
+  Interaction/FocusSessionPopover.cs:333
+      Image divider = UiChrome.AddSurface(_idlePage, "Divider", UiChrome.Divider, 2);
+
+==========================================================================================
+리터럴 new Color(r,g,b,α<1)
+==========================================================================================
+  Interaction/CharacterInfoWindow.cs:1167  (α0.18, 불투명 위 비침 14.76%)
+      _portraitBorder.color = whiteInk ? new Color(1f, 1f, 1f, 0.18f) : UiChrome.CardBorder;
+  Interaction/WindowTheftRenderer.cs:95  (α0.95, 불투명 위 비침 4.75%)
+      private static readonly Color GhostFrameColor = new Color(0.24f, 0.52f, 0.92f, 0.95f);
+  Interaction/WindowTheftRenderer.cs:96  (α0.60, 불투명 위 비침 24.00%)
+      private static readonly Color GhostTitleColor = new Color(0.24f, 0.52f, 0.92f, 0.60f);
+  Interaction/WindowTheftRenderer.cs:109  (α0.85, 불투명 위 비침 12.75%)
+      private static readonly Color DustColor = new Color(0.62f, 0.60f, 0.56f, 0.85f);
+  Interaction/TodoPostItWidget.cs:1096  (α0.00, 불투명 위 비침 0.10%)
+      buttonGo.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.001f); // 거의 투명 — 히트테스트 대상용 배경
+  Interaction/TodoPostItWidget.cs:1153  (α0.00, 불투명 위 비침 0.10%)
+      surface.color = new Color(0f, 0f, 0f, 0.001f);   // 거의 투명 — 히트테스트 대상용 배경
+  Interaction/FocusWatchRenderer.cs:97  (α0.55, 불투명 위 비침 24.75%)
+      private static readonly Color TrackColor = new Color(0.42f, 0.46f, 0.52f, 0.55f);
+
+합계: 토큰 raw 60줄 + 리터럴 7줄

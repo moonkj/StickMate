@@ -76,6 +76,7 @@ namespace StickMate.Core
             Set(names, SpectacleEventKind.Sulky, "부루퉁");
             Set(names, SpectacleEventKind.Runaway, "가출");
             Set(names, SpectacleEventKind.Archery, "활쏘기");
+            Set(names, SpectacleEventKind.Dance, "춤");
             return names;
         }
 
@@ -136,6 +137,7 @@ namespace StickMate.Core
             Set(names, StickmanStateId.ThrowTumble, "공중 회전");
             Set(names, StickmanStateId.Archery, "활쏘기");
             Set(names, StickmanStateId.GroundLossHang, "허둥대는");
+            Set(names, StickmanStateId.Dance, "춤추는");
             return names;
         }
 

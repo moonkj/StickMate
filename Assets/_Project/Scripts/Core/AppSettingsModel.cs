@@ -293,6 +293,15 @@ namespace StickMate.Core
         public static float ResolveWalkChatterChance(StickConfig config)
             => ScaleChance(config != null ? config.walkChatterChance : 0.14f);
 
+        /// <summary>벽타기 진입 대사 확률(2026-09-06, design-narrative R9).
+        ///
+        /// <para>★ 반드시 <see cref="ScaleChance"/>를 통과한다 — 그래야 설정창의 「잡담 빈도」 슬라이더가
+        /// 등반 대사에도 걸린다. 이 한 줄을 빼면 사용자가 잡담을 0%로 내려도 등반만 계속 말하는데,
+        /// 그건 쿨다운·확률이 아예 없던 시절과 <b>정확히 같은 병의 재발</b>이다(자율 티어의 예산은
+        /// 소스별 확률 × 공유 쿨다운 하나이고, 슬라이더는 그 확률 축에 곱해진다).</para></summary>
+        public static float ResolveParkourClimbChatterChance(StickConfig config)
+            => ScaleChance(config != null ? config.parkourClimbChatterChance : 0.35f);
+
         private static float ScaleChance(float baseChance)
         {
             if (!HasChatterPercent) return baseChance;

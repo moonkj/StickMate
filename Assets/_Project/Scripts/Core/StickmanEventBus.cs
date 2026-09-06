@@ -192,6 +192,29 @@ namespace StickMate.Core
         /// Tests/PlayMode/GroundLossHangStateTests.cs가 모든 경로를 잠근다.</para>
         /// </summary>
         GroundLossHang = 26,
+        // ==== 음악 반응 춤 (사용자 명시 요청 2026-09-03: "소리시스템을 전체빼줘, 다만 시스템에서
+        // 노래가 나오면 상호 반응해서 춤추는 동작을 넣어줘") ====
+
+        /// <summary>
+        /// 시스템에서 소리가 나는 동안 <b>한 번의 에피소드(8.16~15.96초)만큼</b> 춤추는 능동 상태
+        /// (States/DanceState.cs). 자세·박자 정본은 <c>docs/UX_MOTION_DANCE.md</c>이고,
+        /// 어떤 춤을 언제 출지는 Interaction/DanceEpisodeDirector.cs가 정한다.
+        ///
+        /// <para><b>★ 이 상태는 「음악이 나오는 동안」 잡혀 있지 않다.</b> 감지 신호(창)와 상태
+        /// (에피소드)는 <b>다른 층</b>이다 — 정책의 Start/Stop을 ChangeState에 직결하면 음악이 나오는
+        /// 몇 시간 내내 이 상태가 단일 상태 슬롯을 점유해 활쏘기·그라피티·투두·집중 포즈가 전부
+        /// 발동 불가가 된다(집중모드 결함과 같은 형태). 1층 창은
+        /// <c>Platform/AudioReactiveDanceDirector.IsDanceGateOpen</c>이고, 2층 에피소드만 이 상태다.
+        /// 휴지 중에는 상태도 <see cref="SpectacleEventKind.Dance"/> 락도 잡지 않는다.</para>
+        ///
+        /// <para>진입은 Idle/Walk에서만이고 큐잉하지 않는다 — 막혔던 이유가 사라진 뒤에 «아까 음악이
+        /// 나왔으니 지금 춘다»는 그 시점의 사실과 무관한 행동이라 원칙 1 위반이다. 음악이 계속
+        /// 나오고 있으면 다음 폴링에서 자연스럽게 다시 감지된다.</para>
+        ///
+        /// <para>정상 종료는 Idle이며, 억제(집중 세션/숨김/전체화면)는 0.18초 크로스페이드로 끊고,
+        /// 외력/발판 상실은 다른 능동 상태와 완전히 같은 경로(Ragdoll/GroundLossHang)를 탄다.</para>
+        /// </summary>
+        Dance = 27,
     }
 
     /// <summary>
@@ -437,6 +460,31 @@ namespace StickMate.Core
 
         /// <summary>"Idle 연장"이 연속 3회 이상 선택된 경우에만 15% 확률로 발동, 1.5~2.5초 지속(26-3).</summary>
         SitAndYawn,
+
+        // ==== 집중 세션 어휘 4종 (2026-09-06, docs/UX_MOTION_FOCUS_SESSION.md 4-3) ====
+        //
+        // ★ 새 발행자가 아니다. 발행 창구는 위 두 종과 **완전히 같은 한 곳**
+        // (AutoWanderController.TickResting의 기존 1회 추첨)이고, 집중 세션 중에는 그 추첨이 뽑는
+        // **어휘만** 이 넷으로 바뀐다. 새 타이머도 새 확률 게이트도 하나 늘지 않는다 —
+        // 지속 시간과 가중치의 정본은 States/FocusAmbientGestures.cs 한 곳이다.
+        //
+        // ★ 세션 밖에서 이 값이 오면 StickmanBlackboard.BeginIdleAmbientMotion이 조용히 버린다
+        //   (그 반대도 마찬가지다 — 세션 중에는 위 평소 어휘 2종을 버린다. 관망 자세 위에 손차양이
+        //   얹히면 "지켜보는 그림"이 통째로 깨진다).
+
+        /// <summary>G1 자세 고쳐 잡기 — 관망 자세를 한 번 풀었다 다시 잡고 A/B 팔 역할을 교대한다(1.30초).</summary>
+        FocusRecross,
+
+        /// <summary>G2 발밑 링 확인 — 자세를 유지한 채 상체만 앞으로 숙였다 돌아온다(1.00초).</summary>
+        FocusRingCheck,
+
+        /// <summary>G3 화면 쪽 돌아보기 — 커서 쪽으로 몸을 튼다(필요하면 방향 전환, 0.90초).
+        /// <b>커서를 못 읽는 환경에서는 추첨에서 제외된다</b> — 없는 대상을 향해 돌아보는 그림은
+        /// 절대 불변 원칙 1(행동-텍스트/사실 싱크) 위반이다.</summary>
+        FocusScreenGlance,
+
+        /// <summary>G4 관망 자세 바꾸기 — 팔짱 ↔ 뒷짐을 중립을 거쳐 토글한다(1.60초, 평균 3.5분마다).</summary>
+        FocusStanceSwap,
     }
 
     /// <summary>

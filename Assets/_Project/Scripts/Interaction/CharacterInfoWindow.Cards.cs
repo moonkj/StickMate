@@ -127,6 +127,10 @@ namespace StickMate.Interaction
             for (int i = 0; i < EquipmentModel.SlotCount; i++)
             {
                 var slot = (EquipmentSlot)i;
+                // ★ 은퇴한 카테고리는 어느 탭에도 자리가 없다(2026-09-06 [머리] 삭제).
+                //   여기와 SectionCountForTab이 <b>같은 술어</b>를 봐야 한다 — 한쪽만 거르면
+                //   보이는 칸 수와 그 칸이 가리키는 카테고리가 한 칸씩 어긋난다.
+                if (EquipmentModel.IsRetiredSlot(slot)) continue;
                 if (EquipmentModel.IsAppearanceSlot(slot) != def.AppearanceSlots) continue;
                 if (found == section) return slot;
                 found++;
@@ -138,7 +142,9 @@ namespace StickMate.Interaction
         /// 카테고리를 지우거나 더할 때 여기와 표가 어긋나면 빈 제목줄이 남거나 한 칸이 사라진다
         /// (2026-08-30 표정 삭제가 정확히 그 경우였다).
         /// <para>카드 페이지가 아닌 탭은 <b>0</b>이다 — 예전에는 [보관함]에 물으면 4가 나왔고,
-        /// 부르는 쪽이 각자 <c>_tab == Tab.Inventory</c>로 걸러야 했다.</para></summary>
+        /// 부르는 쪽이 각자 <c>_tab == Tab.Inventory</c>로 걸러야 했다.</para>
+        /// <para>★ 2026-09-06 [머리] 삭제로 [외형]이 3 → <b>2</b>가 됐다. 숫자가 아니라 술어
+        /// (<see cref="EquipmentModel.IsRetiredSlot"/>)를 보므로 이 함수는 고칠 것이 없었다.</para></summary>
         private static int SectionCountForTab(Tab tab)
         {
             TabDef def = Def(tab);
@@ -147,7 +153,9 @@ namespace StickMate.Interaction
             int n = 0;
             for (int i = 0; i < EquipmentModel.SlotCount; i++)
             {
-                if (EquipmentModel.IsAppearanceSlot((EquipmentSlot)i) == def.AppearanceSlots) n++;
+                var slot = (EquipmentSlot)i;
+                if (EquipmentModel.IsRetiredSlot(slot)) continue;   // SectionSlot과 같은 술어 — 위 문단.
+                if (EquipmentModel.IsAppearanceSlot(slot) == def.AppearanceSlots) n++;
             }
             return Mathf.Min(n, SectionCount);
         }
@@ -273,6 +281,24 @@ namespace StickMate.Interaction
         /// <para>슬롯 행은 <b>[장비] 계열 카테고리</b>를 보여준다. [외형] 탭에서도 같은 값을 보여주는
         /// 이유는 이 컬럼의 주제가 "탭"이 아니라 <b>이 캐릭터</b>이기 때문이다 — 무대 위 인형이
         /// 탭과 무관하게 같은 것을 걸치고 있는 것과 같다.</para>
+        ///
+        /// <para>★★ <b>2026-09-06 — 「걸쳤다」와 「그려진다」는 다른 사실이다</b>(persona-newcomer 실기 신고).
+        /// 이 줄은 <c>WornIndex >= 0</c>만 보고 아이템을 적었는데,
+        /// <see cref="EquipmentModel.RestoreFromSave(EquipmentSlot,string)"/>는
+        /// <b>일부러</b> 잠금을 검사하지 않는다(검사하면 레벨이 낮게 복원되는 순간 착용물이 조용히 사라진다).
+        /// 그 문서가 «대신 렌더러/UI가 그릴 때 <see cref="EquipmentModel.IsUnlocked"/>로 함께 본다»고
+        /// 약속하는데 <b>이 줄만 그 약속을 안 지키고 있었다</b>.</para>
+        ///
+        /// <para>실측 재현: 세이브에 <c>wornEyes=고글</c>(Lv11)·<c>wornShoulders=요정 날개</c>(Lv28)가
+        /// 있는 Lv3 캐릭터 — 슬롯 줄은 이름·등급·아이콘까지 다 적는데 <b>바로 옆 액자에는 아무것도 안
+        /// 그려진다</b>. 액자(<c>CharacterPortraitStage.EquippedAndUnlocked</c>)와 몸
+        /// (<c>CharacterAccessoryRenderer</c>)은 처음부터 잠금까지 보고 있었으므로, <b>같은 창이 자기
+        /// 자신을 반증</b>하고 있었다.</para>
+        ///
+        /// <para>고침은 <b>새 상태를 만들지 않는다</b> — 잠긴 착용물은 아래 <c>entry == null</c> 가지,
+        /// 즉 이미 있는 <b>「비어 있음」</b>으로 떨어진다. 그것이 액자가 실제로 그리는 것과 같기 때문이고,
+        /// 「잠김」이라는 여섯 번째 표시를 여기 새로 만들면 그때부터 이 칸이 두 가지를 말하게 된다.
+        /// <b>세이브 파일은 한 글자도 안 건드린다</b> — 레벨이 올라오면 그 줄은 저절로 되살아난다.</para>
         /// </summary>
         private void SyncSlotRows()
         {
@@ -289,8 +315,14 @@ namespace StickMate.Interaction
                 row.Label.text = $"{EquipmentModel.SlotName(slot)}  ·  {EquipmentModel.SlotCode(slot)}";
 
                 int worn = EquipmentModel.WornIndex(slot);
-                ItemCatalogEntry entry = worn != EquipmentModel.NotWorn
-                    ? ItemCatalog.Item(slot, worn) : null;
+
+                // ★ 액자·몸과 <b>같은 술어</b>다(CharacterPortraitStage.EquippedAndUnlocked /
+                //   CharacterAccessoryRenderer.EquippedAndUnlocked). 술어를 여기서 새로 짜지 않고
+                //   EquipmentModel의 공개 사실 둘을 그대로 곱한다 — 잠금 규칙이 바뀌면 세 표면이
+                //   동시에 따라온다. 앞 항이 없으면 미착용일 때 IsUnlocked가 "고를 것이 하나라도
+                //   있는가"로 뜻이 바뀌어 빈 슬롯이 착용으로 읽힌다.
+                bool drawnOnStage = EquipmentModel.IsEquipped(slot) && EquipmentModel.IsUnlocked(slot);
+                ItemCatalogEntry entry = drawnOnStage ? ItemCatalog.Item(slot, worn) : null;
 
                 if (entry == null)
                 {
@@ -298,7 +330,7 @@ namespace StickMate.Interaction
                     row.Name.color = UiChrome.InkTitle(false);
                     row.Value.text = "—";
                     row.Value.color = UiChrome.TextTertiary;
-                    row.Outline.color = UiChrome.CardBorder;
+                    row.Outline.color = UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface);
                     if (row.HasIcon) ClearSlotIcon(row);
                     continue;
                 }
@@ -308,7 +340,8 @@ namespace StickMate.Interaction
                 ItemRarity rarity = ItemCatalog.Rarity(slot, worn);
                 row.Value.text = ItemCatalog.RarityName(rarity);
                 row.Value.color = UiChrome.RarityColor(rarity);
-                row.Outline.color = UiChrome.RarityBorder(rarity);
+                // ★ 2026-09-06 — 등급 테두리 α0.55를 이 줄의 면(CardSurface) 위에 미리 합성한다.
+                row.Outline.color = UiChrome.Flatten(UiChrome.RarityBorder(rarity), UiChrome.CardSurface);
                 BuildSlotIcon(row, slot, worn, entry);
             }
         }
@@ -418,10 +451,17 @@ namespace StickMate.Interaction
             //   그래서 상태 셋은 지금까지처럼 등급을 덮고, 덮이는 그 순간은 정확히 <b>유저가 그 카드를
             //   들여다보고 있는 순간</b>이라(호버=포인터가 그 위 / 선택=아래 상세 패널이 설명 중 /
             //   착용=자기가 입힌 것) 리본과 낱말이 등급을 계속 말한다 — <b>화면이 등급을 잃는 순간은 0</b>.
+            //
+            // ★ 2026-09-06 (docs/UI_ALPHA_BLEED_POLICY.md §1-E/§4-2) — α<1인 두 끝점을 <b>자기 바탕에
+            //   미리 합성</b>한다. 호버 α0.62와 등급 α0.55는 이 창에서 <b>가장 넓은 비침 면적</b>이었다
+            //   (카드 24장 × 탭 4개). 보이는 색은 한 톤도 안 바뀐다 — 이 저장소가 적어 둔 검산값
+            //   (인접 ΔE 9.06 / 전설 4.45 / 호버 #A8AAAD 7.09)이 애초에 <b>합성 후</b> 기준이었다.
+            //   바탕은 바로 위에서 정한 이 카드의 면이다(잠김이면 CardSurfaceMuted).
+            Color cardFace = card.Surface.color;
             card.Outline.color = selected ? UiChrome.TextPrimary
-                : hovered ? UiChrome.CardBorderHover
+                : hovered ? UiChrome.Flatten(UiChrome.CardBorderHover, cardFace)
                 : worn && owned ? UiChrome.CardBorderWorn
-                : UiChrome.RarityBorder(rarity);
+                : UiChrome.Flatten(UiChrome.RarityBorder(rarity), cardFace);
 
 
             if (card.LockBadge != null) card.LockBadge.gameObject.SetActive(!owned);
@@ -622,10 +662,14 @@ namespace StickMate.Interaction
             bool worn = entry.IsEquipped();
             ItemRarity detailRarity = ItemCatalog.Rarity(_selectedSlot, _selectedItem);
 
-            if (_detailThumbOutline != null) _detailThumbOutline.color = UiChrome.RarityBorder(detailRarity);
-            if (_detailThumb != null)
+            // ★ 2026-09-06 — 썸네일 면을 <b>먼저</b> 정하고 그 위에 등급 테두리를 합성한다.
+            //   예전에는 테두리를 칠한 다음 줄에서 면을 칠했다 — α0.55가 그대로 나가면 이 자리에서만
+            //   창 알파가 내려가 뒤 창이 비친다(정책 §4-2).
+            Color thumbFace = owned ? UiChrome.CardSurface : UiChrome.ThumbSurfaceLocked;
+            if (_detailThumb != null) _detailThumb.color = thumbFace;
+            if (_detailThumbOutline != null)
             {
-                _detailThumb.color = owned ? UiChrome.CardSurface : UiChrome.ThumbSurfaceLocked;
+                _detailThumbOutline.color = UiChrome.Flatten(UiChrome.RarityBorder(detailRarity), thumbFace);
             }
             RefreshDetailThumbArt(entry, owned);
 
@@ -968,7 +1012,8 @@ namespace StickMate.Interaction
             var rt = surface.rectTransform;
             // 실제 x·y는 LayoutCardGrid가 정한다 — 여기서는 <b>크기와 피벗</b>만 맞춰 준다.
             UiChrome.PlaceTopLeft(rt, 0f, 0f, CardWidth, CardHeight);
-            Image outline = UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+            Image outline = UiChrome.AddOutline(rt, "Outline",
+                UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface), UiChrome.RadiusCard);
 
             Image thumb = UiChrome.AddSurface(rt, "Thumb", UiChrome.CardSurfaceMuted, UiChrome.RadiusThumb);
             UiChrome.PlaceTopLeft(thumb.rectTransform, ThumbX, ThumbY, ThumbWidth, ThumbHeight);
@@ -1239,7 +1284,8 @@ namespace StickMate.Interaction
             _sectionDetailRect = drt;
             UiChrome.PlaceTopLeft(drt, Col1PadX, DetailCardY, Col1ContentWidth, DetailCardHeight);
             detail.raycastTarget = false;
-            UiChrome.AddOutline(drt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+            UiChrome.AddOutline(drt, "Outline",
+                UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurfaceMuted), UiChrome.RadiusCard);
 
             const float DetailPadX = 14f;
             const float DetailThumbSize = 52f;
@@ -1252,8 +1298,9 @@ namespace StickMate.Interaction
             _detailThumb.raycastTarget = false;
             // 등급은 이 자리에서 <b>테두리</b>로만 말한다 — 면을 물들이면 글자 대비를 내주고
             // 신호는 하나도 못 산다(카드 바탕에서 이미 실측으로 기각된 것과 같은 이유).
+            // ★ 생성값도 <b>RefreshDetail이 칠할 것과 같은 규칙</b>으로 만든다 — 두 벌이면 한쪽만 고쳐진다.
             _detailThumbOutline = UiChrome.AddOutline(_detailThumb.rectTransform, "Outline",
-                UiChrome.CardBorder, UiChrome.RadiusThumb);
+                UiChrome.Flatten(UiChrome.CardBorder, UiChrome.ThumbSurfaceLocked), UiChrome.RadiusThumb);
 
             _detailName = Label(drt, "DetailName", UiChrome.FontTitle, TextAnchor.MiddleLeft, UiChrome.TextPrimary,
                 textX, -18f, textWidth, 20f, "—", bold: true);

@@ -404,6 +404,9 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 베레모_보조색_테는_자기_밑변과_정확히_겹친다()
         {
+            HandoffTestGate.SkipIfR25Hat(AccessoryShapeBuilder.HeadBeret,
+                "베레모 테 = 몸통 밑변 정확히 겹침 + 「올린 띠」 규약(두께 = AccentBandThicknessRatio · 기운 꼭짓점 1) — " +
+                "R21 테는 두께 5u 의 독립 아이콘 조각이고 R25 에서 <b>수평화</b>되어 두 꼭짓점이 함께 기운다");
             AccessoryShapeBuilder.Rig rig = Rig();
             List<AccessoryShapeBuilder.Shape> beret =
                 AccessorySilhouetteMetrics.Build(rig, EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret);
@@ -437,6 +440,11 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 지표가_옛_베레모_테를_실제로_잡는다()
         {
+            // ★ 2026-09-06 R25 — 옛 테를 재구성하던 기준선(BeretBrimLineRatio)이 이제 <b>커버선</b>이고
+            //   그 값이 0.02 → 0.3602 로 올라갔다. 그러면 이 «옛 테»는 새 몸통의 밑변 바로 위에 놓여
+            //   간격이 0에 가깝게 나오고, 대조는 <b>우연히 통과</b>한다 — 통제력을 잃은 초록이다.
+            HandoffTestGate.SkipIfR25Hat(AccessoryShapeBuilder.HeadBeret,
+                "옛 베레모 테 음성 대조 — 기준선이 커버선으로 바뀌어 재구성 좌표가 새 몸통 밑변에 겹친다");
             AccessoryShapeBuilder.Rig rig = Rig();
             float r = rig.HeadRadius;
             float brimY = rig.HeadCenterY + r * AccessoryShapeBuilder.BeretBrimLineRatio;

@@ -56,20 +56,43 @@ namespace StickMate.Interaction
         // 왕관만 면제다 — 스스로 "얹는 물건"이라 선언하기 때문이고, 그 선언은 if 분기가 아니라
         // <see cref="HatCoverLocalY"/>가 돌려주는 +∞다.
         //
+        // ★★ 2026-09-06 R25b — <b>바로 윗 문단의 «+0.08 ~ −0.06 R»은 더 이상 사실이 아니다.</b>
+        //   HEAD 6종의 몸 도형은 전부 v1을 떠났고(0~3 인계본 조각 · 4~5 R21 재저작 배열), R25가
+        //   사용자 신고("안경 착용시 모자들이 가리는 현상이 많았음")로 6종을 통째로 올렸다.
+        //   커버선은 이제 그 모자의 <b>H-2 착용선</b>이고 값은 +0.3282 ~ +0.4482 R이다.
+        //   ⇒ 아래 세 상수(HatBrimLineRatio · BeanieBandTopRatio · FedoraBrimLineRatio)는 <b>커버선만</b>
+        //     정한다. 같은 상수를 읽는 <c>AppendHead</c>의 <c>case HeadCap/HeadBeanie/HeadFedora</c>는
+        //     <c>AppendHandoff</c>가 먼저 true를 돌려주므로 <b>도달하지 않는 코드</b>이고, 그 아래 문단들의
+        //     «커버선 + 관 높이 = 꼭대기» 산술은 전부 <b>그 죽은 v1 도형</b>의 이야기다 — 화면과 무관하다.
+        //     (베레모·밀짚모자가 R25에서 v1 조형 상수를 지운 것과 같은 처리를 여기도 해야 한다 —
+        //      리더 배정 대기. 그때까지 이 문단이 오독을 막는다.)
+        //
         // 챙은 <b>닫힌 띠</b>다(규칙 8). 뿌리가 1.34~1.51획 두껍고 끝이 점으로 수렴한다 —
         // 옛 챙은 뿌리가 1.10획이라 화면에서 그냥 선 하나였다.
 
-        /// <summary>야구모자의 커버선(= 관과 챙이 만나는 선). <b>이 값이 곧 이 모자의
-        /// <see cref="HatCoverLocalY"/></b>이고, 렌더러의 <c>HatBrimLocalY</c>가 그대로 노출한다.
-        /// <para>옛 값 0.62R은 머리 위쪽 1/3 자리였다. 0.06R로 내리면서 관 옆벽이 −0.22R까지
-        /// 내려와 머리를 감싼다.</para></summary>
-        internal const float HatBrimLineRatio = 0.06f;
+        /// <summary>야구모자의 <b>커버선</b> = 이 모자의 <b>H-2 착용선</b>(앞층 채움이 머리 현을
+        /// 마지막으로 덮는 y). <b>이 값이 곧 이 모자의 <see cref="HatCoverLocalY"/></b>이고,
+        /// 렌더러의 <c>HatBrimLocalY</c>가 그대로 노출한다.
+        /// <para>★ 이름의 "Brim"은 <b>이력</b>이다 — 0.62(v1 옛 관·챙 경계) → 0.06(2026-09-01 감쌈 재설계)
+        /// → <b>0.4482</b>(2026-09-06 R25b). R25가 인계본 조각으로 모자를 올렸을 때 이 값만 안 따라와서
+        /// 커버선과 착용선 사이에 <b>머리카락도 모자도 없는 민머리 띠</b> 0.2410 R이 생겼다
+        /// (실측: 머리 원반 노출 면적 0.667 R² · 최대 세로 0.372 R at x = −1.10).
+        /// 베레모·밀짚모자가 같은 라운드에 <see cref="BeretBrimLineRatio"/>/<see cref="StrawBrimLineRatio"/>로
+        /// 받은 처방과 <b>같은 처방</b>이다.</para>
+        /// <para><b>낮추는 방향으로는 건드리지 마라</b>(<c>docs/EQUIPMENT_HANDOFF_PORT_SPEC.md</c> §14-16-5-a):
+        /// 커버선이 착용선보다 <i>높으면</i> 머리카락이 덜 잘려 모자 채움 뒤에 숨지만, <i>낮으면</i>
+        /// 그 사이가 그대로 맨머리가 된다. 값은 격자 0.004 스캔의 보고값(0.448213)이라 참 착용선
+        /// (0.445180)보다 0.0030 R <b>위</b>다 — 안전한 쪽이다.</para></summary>
+        internal const float HatBrimLineRatio = 0.4482f;
 
         /// <summary>관 꼭대기 = 커버선 + 이 값. 렌더러의 <c>HatTopLocalY</c>가 그대로 노출하고,
         /// <c>CharacterAccessoryScaleTests</c>가 "정수리(1.0R)보다 높다"를 잠근다.
         /// <para>★ 2026-09-03 R12 이식 1단계 — 1.18 -&gt; <b>1.16</b>. 꼭대기 0.06 + 1.16 = <b>+1.22 R</b>로
         /// 인계본 관(σ = 1.461, 밑변 −0.2200 R)의 꼭대기 +1.2248 R을 우리 격자(소수 두 자리)로 받는다
-        /// (<c>docs/EQUIPMENT_HANDOFF_PORT_SPEC.md</c> §5-5-1 처방 #1).</para></summary>
+        /// (<c>docs/EQUIPMENT_HANDOFF_PORT_SPEC.md</c> §5-5-1 처방 #1).</para>
+        /// <para>★ 2026-09-06 R25b — 커버선이 0.06 → 0.4482로 올라가면서 이 합(<c>HatTopLocalY</c>)도
+        /// +1.22 → <b>+1.6082 R</b>이 됐다. 그 꼭대기는 <b>죽은 v1 관</b>의 것이다(화면의 야구모자는
+        /// 인계본 조각이다). 이 값 자체는 안 움직였다.</para></summary>
         internal const float HatCrownHeightRatio = 1.16f;
 
         /// <summary>관 <b>옆벽</b>의 x. 감쌈(|x| ≥ 0.85R)을 만드는 자리라 0.85 아래로 내려가면 안 된다.
@@ -394,21 +417,29 @@ namespace StickMate.Interaction
         //        · 잉크 밑단이 더 <b>올라갔다</b>: 남는 머리 1.22획 -> <b>1.69획</b>(배율 0.60),
         //          면적 22.5% -> <b>32.7%</b>. 이식이 이 신고를 더 세게 닫는다.
         //
-        //      ★ 커버선(<see cref="BeanieBandTopRatio"/>)의 값 −0.06R은 <b>한 자리도 안 움직였다</b> —
-        //      움직이면 머리카락 자르기가 따라 움직인다(9-1절). 다만 <b>가리키는 변이 바뀌었다</b>:
-        //      옛날에는 「단의 <b>위</b> 끝」이었고 지금은 「단의 <b>아래</b> 끝」이다. 이름은 이력이다.
+        //      ★ (R12 당시) 커버선 −0.06R은 한 자리도 안 움직였고 <b>가리키는 변만</b> 바뀌었다 —
+        //      「단의 위 끝」 -> 「단의 아래 끝」. 이름은 이력이다.
         //      (이름을 안 바꾼 이유: 이 이름을 읽는 곳이 프로덕션 밖에 넷 있다 —
         //       AccessoryShapeCatalogTests · AccessoryBeaniePomTests · design/equipment/verify/r10_*.py.)
+        //
+        //      ★★ 2026-09-06 R25b — <b>그 −0.06R은 이제 없다.</b> R25가 인계본 털모자를 올린 뒤에도
+        //      커버선만 −0.06에 남아 <b>0.3196 R짜리 민머리 띠</b>가 생겼고, 그래서 커버선을 이 모자의
+        //      H-2 착용선 <b>+0.3282</b>로 올렸다. 아래 문단들의 «−0.06 + …» 산술은 전부 <b>죽은 v1
+        //      털모자</b>의 것이다(화면의 털모자는 인계본 조각이고, 이 case는 도달하지 않는다).
 
-        /// <summary>이 모자의 <b>커버선</b> = 접힌 단의 <b>아래</b> 끝 = 모자 잉크의 최저선.
+        /// <summary>털모자의 <b>커버선</b> = 이 모자의 <b>H-2 착용선</b>.
         /// <see cref="HatCoverLocalY"/>가 그대로 돌려준다.
-        /// <para>★ 이름의 "Top"은 <b>이력</b>이다 — 2026-09-02까지는 이 선이 「단의 위 끝 = 관의 밑변」
-        /// 이었고, 2026-09-03 R12 이식으로 단이 이 선 <b>위</b>에 서게 되면서 같은 값이 「단의 아래 끝」이
-        /// 됐다. <b>값이 안 바뀐 것이 중요하다</b>: 머리카락 자르기와 카탈로그 대조가 이 값에 걸려 있다.</para>
-        /// <para>단의 밑변은 <b>곧은 선</b>이어야 한다 — 커버선은 x에 무관한 한 값인데 밑변이 휘면
-        /// 「머리카락은 잘렸는데 모자가 안 덮은」 맨머리 띠가 옆에 생긴다(인계본 밑변은 양끝이
-        /// +0.035R까지 올라가는 호였고, 그것을 곧게 편 것이 이 이식의 유일한 봉투 변경이다).</para></summary>
-        internal const float BeanieBandTopRatio = -0.06f;
+        /// <para>★ 이름의 "BandTop"은 <b>이력</b>이다 — 「단의 위 끝」(~2026-09-02) → 「단의 아래 끝」
+        /// (R12 이식) → <b>착용선</b>(2026-09-06 R25b). 값은 −0.06 → <b>+0.3282</b>.</para>
+        /// <para>★ 왜 움직였나: R25가 인계본 <c>furhat</c>을 <c>AccessoryWornTransform</c>(u 1.5977 ·
+        /// ky 0.676 · dy 0.13521)으로 올렸는데 이 상수만 안 따라왔다. 그 결과 커버선과 착용선 사이
+        /// <b>0.3196 R</b>이 통째로 맨머리가 됐다(노출 면적 0.798 R² · 최대 세로 0.380 R) — 6종 중 가장
+        /// 컸다. <b>낮추지 마라</b>(§14-16-5-a): 커버선이 착용선보다 높으면 머리카락이 모자 뒤에 숨을
+        /// 뿐이지만, 낮으면 그 띠가 그대로 드러난다. 격자 보고값 0.328213 vs 참 착용선 0.325228 —
+        /// 0.0030 R 위(안전한 쪽)다.</para>
+        /// <para>이 값은 여전히 <b>6종 중 가장 낮다</b>(다음이 베레모 +0.3602) — 「가장 깊이 눌러쓰는
+        /// 모자가 털모자」라는 정체를 <c>AccessoryShapeCatalogTests</c>가 이 부등호로 잠근다.</para></summary>
+        internal const float BeanieBandTopRatio = 0.3282f;
 
         /// <summary>접힌 단의 반폭. ★ 2026-09-03 0.96 -&gt; <b>1.05</b> — 인계본 단이 옆으로 가장 부푼
         /// 자리의 반폭 1.0507 R이다. 이 값이 털모자의 <b>실루엣 최대폭</b>이고, 감쌈
@@ -473,6 +504,11 @@ namespace StickMate.Interaction
         /// 합(= 실루엣 꼭대기)이다</b>: <see cref="BeanieBandTopRatio"/> + <see cref="BeanieCrownHeightRatio"/>
         /// + 이 값 = −0.06 + 1.50 + 0.28 = <b>+1.72 R</b>로, 옛 −0.06 + 1.38 + 0.40과 <b>같다</b>.
         /// 관이 0.12R 자라고 이 값이 0.12R 줄어 액자(1.80R)와의 여유 0.08R이 그대로다.</para>
+        /// <para>★ 2026-09-06 R25b — <see cref="BeanieBandTopRatio"/>가 커버선 전용으로 +0.3282가 되면서
+        /// 이 <b>합은 +2.1082 R</b>이 됐고, 그것을 1.72로 잠그던
+        /// <c>AccessoryBeaniePomTests.폼폼_꼭대기가_액자_상한에_그대로_머문다</c>는 지금
+        /// <c>SkipIfHandoff</c>로 건너뛴다(인계본 털모자에는 폼폼이 없다). <b>죽은 v1 폼폼의 산술이다</b> —
+        /// v1 털모자를 되살릴 일이 생기면 이 세 상수를 커버선에서 <b>떼어내는</b> 것이 먼저다.</para>
         /// <para>덤: 반지름과 같아져 <see cref="BeaniePomOffsetRatio"/> = 0 —
         /// 폼폼 <b>중심</b>이 관 꼭짓점 <b>그 자체</b>가 된다(인계본도 폼폼 중심이 관 꼭대기다).
         /// 관과의 겹침은 0.28R = <b>0.81획</b>(옛 0.36획)이라 규칙 4의 최악 구간에서 더 멀어졌다.</para></summary>
@@ -500,9 +536,12 @@ namespace StickMate.Interaction
         //      가르는 선</b>이 된다. 37-6 규칙 5 — "예산을 못 지키는 [선택] 디테일은 넣지 않는다".
         //      덕분에 구성이 4개 -> 3개(챙·관·띠)가 되어 정원에도 여유가 생겼다.
 
-        /// <summary>중절모의 커버선. 관 밑변의 두 발(뒤 +0.10R / 앞 +0.06R)의 한가운데다 —
-        /// 커버선은 한 값이어야 하는데 챙은 앞뒤로 기울어 있기 때문이다.</summary>
-        internal const float FedoraBrimLineRatio = 0.08f;
+        /// <summary>중절모의 <b>커버선</b> = 이 모자의 <b>H-2 착용선</b>.
+        /// <para>★ 옛 값 0.08은 v1 관 밑변 두 발의 한가운데였다. 2026-09-06 R25b — R25가 인계본
+        /// <c>fedora</c>를 올린 뒤 이 상수만 남아 커버선과 착용선 사이 <b>0.2044 R</b>이 맨머리로
+        /// 드러났다(노출 면적 0.573 R² · 최대 세로 0.320 R). <b>낮추지 마라</b>(§14-16-5-a).
+        /// 격자 보고값 0.412213 vs 참 착용선 0.411119 — 0.0011 R 위(안전한 쪽)다.</para></summary>
+        internal const float FedoraBrimLineRatio = 0.4122f;
 
         /// <summary>★ 2026-09-03 R12 이식 1단계 — 2.06 -&gt; <b>1.48</b> / 1.68 -&gt; <b>1.10</b>
         /// (§5-5-1 처방 #6: 인계본 중절모 전체 −0.35 R). 인계본 챙은 <b>중심 +0.19 R · 반폭 1.29 R</b>인
@@ -512,7 +551,9 @@ namespace StickMate.Interaction
         internal const float FedoraBrimBackRatio = 1.10f;
 
         /// <summary>관 꼭대기 = <see cref="FedoraBrimLineRatio"/> + 이 값.
-        /// <para>★ 2026-09-03 1.08 -&gt; <b>1.30</b>. 꼭대기 0.08 + 1.30 = <b>+1.38 R</b>(인계본 +1.3812 R).</para></summary>
+        /// <para>★ 2026-09-03 1.08 -&gt; <b>1.30</b>. 꼭대기 0.08 + 1.30 = <b>+1.38 R</b>(인계본 +1.3812 R).</para>
+        /// <para>★ 2026-09-06 R25b — 그 «0.08»은 이제 커버선이 아니다(+0.4122). 이 합은 <b>죽은 v1 관</b>의
+        /// 꼭대기이고, 화면의 중절모는 인계본 조각이다.</para></summary>
         internal const float FedoraCrownHeightRatio = 1.30f;
 
         /// <summary>관 밑변의 반폭. 챙·관·띠 <b>셋이 이 한 값</b>에서 발을 만든다.
@@ -657,33 +698,28 @@ namespace StickMate.Interaction
         // 양끝이 모두 꺾임인 선분이 획보다 짧으면 그 선분은 화면에서 통째로 먹힌다. 아래 비율은
         // 그 조건을 손으로 검산해 잡았다(가장 빠듯한 자리마다 주석으로 값을 남겼다).
 
-        // ---- 베레모(모자 4번) — 털모자 관(crown)의 <b>비대칭 변주</b>. 뒤로 처지고 꼭지가 없다.
-        //      감쌈은 <b>뒤로 처진 끝</b>(−1.46R, y −0.10R)이 만든다 — 이 카테고리에서 유일하게
-        //      "옆이 아니라 뒤로" 감싸는 모자다.
-        internal const float BeretBrimLineRatio = 0.02f;    // = 이 모자의 HatCoverLocalY
-        internal const float BeretCrownHeightRatio = 1.04f;
-        internal const float BeretBackDroopRatio = 1.46f;   // 뒤로 늘어진 끝
-        internal const float BeretFrontRatio = 0.92f;
+        // ============================================================================
+        // ★ 2026-09-06 R25 — 베레모·밀짚모자는 <b>좌표 상수를 갖지 않는다</b>
+        // ============================================================================
+        // 두 종은 R21 재저작본(64u 아이콘 + HAT_FIT 변환)으로 갈아탔고, 그 도형은 상수 몇 개로
+        // 표현되지 않는다(2차 곡선 · 2층 챙). 좌표는 <see cref="V1Hat_StrawCrown"/> 이하의
+        // <b>배열</b>에 있다 — 인계본 조각과 같은 방식이되 계약은 v1 그대로다.
+        //
+        // 그래서 옛 상수 9개(BeretCrownHeight/BackDroop/Front/FrontShoulder/FrontShoulderTop/
+        // BackDroopDrop · StrawBrimFront/StrawBrimBack/StrawCrownHeight/StrawCrownHalfWidth)를
+        // <b>지웠다</b>. 남겨 두면 아무도 안 읽는 옛 도형의 치수가 정본인 척 남는다.
+        // 아래 두 개만 남는다 — 그것은 조형이 아니라 <b>커버선</b>(머리카락을 자르는 선)이다.
 
-        /// <summary>앞 어깨 꼭짓점의 반폭. 밑변 앞발(<see cref="BeretFrontRatio"/>)보다 살짝 밖으로
-        /// 나가 앞이 부푼 덩어리로 읽힌다.</summary>
-        internal const float BeretFrontShoulderRatio = 0.98f;
+        /// <summary>베레모의 커버선 = 이 모자의 <b>H-2 착용선</b>(앞층 채움이 머리 현을 마지막으로
+        /// 덮는 y). 새 몸이 그 위를 불투명으로 덮으므로 머리카락은 여기서 잘려야 한다
+        /// (EQUIPMENT_HANDOFF_PORT_SPEC §14-12-5 #24).
+        /// <para>★ 옛 값 0.02는 폐기된 3/4 덩어리의 밑변이었다. 지금 값은 실측
+        /// (<c>design/equipment/verify/r24_hats.py</c> ② 채움만)이다.</para></summary>
+        internal const float BeretBrimLineRatio = 0.3602f;   // = 이 모자의 HatCoverLocalY
 
-        /// <summary>그 어깨점의 y. 밑변(<see cref="BeretBrimLineRatio"/>)과의 거리가 곧 앞 옆변 길이라
-        /// 배율이 낮을 때 가장 먼저 뭉개는 자리다.</summary>
-        internal const float BeretFrontShoulderTopRatio = 0.54f;
-
-        /// <summary>뒤로 늘어진 끝이 밑변보다 더 내려가는 깊이. 밑변(= 보조색 테)의 기울기를 만든다.</summary>
-        internal const float BeretBackDroopDropRatio = 0.12f;
-
-        // ---- 밀짚모자(모자 5번) — 중절모의 <b>납작·광폭 변주</b>. 챙이 카테고리 최대(폭 4.24R)다.
-        internal const float StrawBrimLineRatio = 0.08f;    // = 이 모자의 HatCoverLocalY
-        internal const float StrawBrimFrontRatio = 2.18f;
-        internal const float StrawBrimBackRatio = 2.06f;
-        internal const float StrawCrownHeightRatio = 1.06f;
-        internal const float StrawCrownHalfWidthRatio = 0.86f;
-
-        // ★ 2026-09-01 — StrawBandRiseRatio(0.16f)도 같은 이유로 지웠다(중절모와 같은 결함·같은 해법).
+        /// <summary>밀짚모자의 커버선 = 이 모자의 H-2 착용선. 옛 값 0.08의 이력은
+        /// <see cref="BeretBrimLineRatio"/>와 같다.</summary>
+        internal const float StrawBrimLineRatio = 0.4162f;   // = 이 모자의 HatCoverLocalY
 
         // ---- 뿔테 안경(안경 4번) — 2026-09-01(2차). 옛 그림(위아래로 겹친 판 2장)은 카드에서
         //      <b>뚜껑 달린 상자</b>로 읽혔다. 뿔테의 정체는 "굵은 눈썹테 <b>아래에 렌즈가 매달린다</b>"이므로
@@ -1582,6 +1618,215 @@ namespace StickMate.Interaction
             }
         }
 
+        // ============================================================================
+        // ★ R25 베레모·밀짚모자 좌표 (2026-09-06 · design-equipment 확정 → 코디네이터 통보)
+        // ============================================================================
+        // <b>단위·원점은 인계본 조각과 같다</b>: 머리 중심 원점 · R 배수 · y 위 · +x 진행 방향.
+        // 값은 R21 64u 아이콘에 확정 변환(밀짚 u 0.0750 · dy 3.7600 / 베레 u 0.0700 · dy 2.9480)을
+        // 건 결과이고, 생성 자는 <c>design/equipment/verify</c>의 <c>handoff.flatten_path(seg 16)</c>다.
+        //
+        // ★ <b>왜 상수가 아니라 배열인가.</b> 옛 두 종은 «상수 5~7개 → rig.F 로 손으로 조립»이었다.
+        //   그 형태로는 2차 곡선과 <b>2층 챙</b>(뒤층/앞층으로 갈라지는 렌즈꼴)을 적을 수 없다 —
+        //   R21 재저작본이 요구하는 것이 정확히 그 둘이다.
+        //
+        // ★ <b>왜 인계본 생성 파일이 아닌가.</b> <c>AccessoryShapeBuilder.Handoff.cs</c>는
+        //   <c>Tools/CardShapeGen</c> 생성물이고 역대조가 조각 수를 못박는다(HandoffPiece 113 · 조각 136).
+        //   두 종을 거기 넣으면 그 수가 움직인다. 그래서 <b>v1 계약 그대로</b>(strokeInR 0) 이 파일에 둔다 —
+        //   빌린 것은 «좌표를 배열로 적는다»는 형식 하나다.
+        //
+        // ★ <b>카드 좌표는 한 점도 안 바뀐다</b> — 이 배열은 몸 표면 전용이다(v1 두 종은 카드도 같은
+        //   조각을 쓰므로, 카드에서는 이 좌표가 그대로 아이콘 프레임에 얹힌다).
+
+        /// <summary>관 — ★ 2026-09-06 R25d로 <b>꼭대기가 +1.96 → +1.60 R</b>이 됐다(밑변 +0.685 고정,
+        /// y 만 ×0.717647). x 는 한 점도 안 바뀐다.
+        /// <para><b>왜</b>: 모자 6종 실루엣 최소 차이가 <b>천모자↔밀짚모자 1.19획</b>으로 내려앉아
+        /// 래칫(1.45획)을 깼다. 두 모자가 갈라지는 각도대는 정수리(85~110°)와 챙 끝(17.5°) 둘인데,
+        /// 챙을 넓히면 착용선이 함께 내려가 오늘 밤 확정한 H-2 값이 움직인다. <b>관 높이는
+        /// 착용선을 한 자리도 안 건드린다</b> — 착용선을 정하는 것은 챙(가까운 쪽 호)이고,
+        /// 관은 머리 꼭대기 쪽에서 이미 필요폭을 크게 넘겨 덮고 있기 때문이다.
+        /// 실측: 착용선 +0.4162 · 커버선 여유 +0.0038 <b>불변</b>, 천모자↔밀짚모자 1.19 → <b>1.52획</b>.</para>
+        /// <para>조형으로도 이쪽이 옳다 — 넓은 챙 + 낮은 관이 밀짚(보터/썬햇)의 정체이고,
+        /// 천모자(정수리 2.12 R)와 높이로 갈린다.</para></summary>
+        private static readonly float[] V1Hat_StrawCrown =
+        {
+            -1.20000f, 0.68500f, -1.19531f, 0.78950f, -1.18125f, 0.88768f, -1.15781f, 0.97956f, -1.12500f, 1.06513f, -1.08281f, 1.14439f,
+            -1.03125f, 1.21735f, -0.97031f, 1.28400f, -0.90000f, 1.34434f, -0.82031f, 1.39837f, -0.73125f, 1.44610f, -0.63281f, 1.48752f,
+            -0.52500f, 1.52263f, -0.40781f, 1.55143f, -0.28125f, 1.57393f, -0.14531f, 1.59012f, 0.00000f, 1.60000f, 0.14531f, 1.59012f,
+            0.28125f, 1.57393f, 0.40781f, 1.55143f, 0.52500f, 1.52263f, 0.63281f, 1.48752f, 0.73125f, 1.44610f, 0.82031f, 1.39837f,
+            0.90000f, 1.34434f, 0.97031f, 1.28400f, 1.03125f, 1.21735f, 1.08281f, 1.14439f, 1.12500f, 1.06513f, 1.15781f, 0.97956f,
+            1.18125f, 0.88768f, 1.19531f, 0.78950f, 1.20000f, 0.68500f
+        };
+
+        /// <summary>띠 — ★ 2026-09-06 R25d로 <b>「올린 띠」 규약</b>(스펙 14-1)으로 되돌렸다.
+        /// R21 원문은 관 곡률을 따라 휜 34점 띠였는데, 그것은 두 계약을 동시에 깼다:
+        /// (가) 점 <c>i</c>와 <c>n−1−i</c>의 y 차이가 <see cref="AccentBandThicknessRatio"/>여야 하는데
+        /// 순서가 <b>윗변 먼저</b>라 −0.4875 R로 읽혔고, (나) 아랫변이 관 밑변에서 유도되지 않아
+        /// <c>AccessoryFallbackIconParityTests.몸의_밀짚모자_띠도_관_밑변의_두_끝점이다</c>가 잡았다.
+        /// <para>지금은 <b>아랫변 = <see cref="V1Hat_StrawCrown"/>의 첫 점과 끝 점 그대로</b>,
+        /// 윗변 = 그것을 0.46 R 수직으로 올린 것이다. 좌표를 손으로 적지 않는다 — 관이 움직이면
+        /// 이 네 수도 같이 움직여야 하고, 그 사실을 위 테스트가 매 실행 다시 잰다.</para></summary>
+        private static readonly float[] V1Hat_StrawBand =
+        {
+            -1.20000f, 0.68500f, 1.20000f, 0.68500f, 1.20000f, 1.14500f, -1.20000f, 1.14500f
+        };
+
+        /// <summary>챙 렌즈꼴의 <b>먼 쪽</b>(장축 위 호) — 머리 <b>뒤</b>다. 뒤층이라 머리를 못 덮고,
+        /// 그래서 H-2 판정(앞층만)의 합집합에 들어가지 않는다.</summary>
+        private static readonly float[] V1Hat_StrawBrimFar =
+        {
+            -2.25000f, 0.68500f, -1.96875f, 0.77289f, -1.68750f, 0.84906f, -1.40625f, 0.91352f, -1.12500f, 0.96625f, -0.84375f, 1.00727f,
+            -0.56250f, 1.03656f, -0.28125f, 1.05414f, 0.00000f, 1.06000f, 0.28125f, 1.05414f, 0.56250f, 1.03656f, 0.84375f, 1.00727f,
+            1.12500f, 0.96625f, 1.40625f, 0.91352f, 1.68750f, 0.84906f, 1.96875f, 0.77289f, 2.25000f, 0.68500f
+        };
+
+        /// <summary>챙 렌즈꼴의 <b>가까운 쪽</b>(장축 아래 호) — 얼굴 앞이라 앞층이다.</summary>
+        private static readonly float[] V1Hat_StrawBrimNear =
+        {
+            2.25000f, 0.68500f, 1.96875f, 0.59711f, 1.68750f, 0.52094f, 1.40625f, 0.45648f, 1.12500f, 0.40375f, 0.84375f, 0.36273f,
+            0.56250f, 0.33344f, 0.28125f, 0.31586f, 0.00000f, 0.31000f, -0.28125f, 0.31586f, -0.56250f, 0.33344f, -0.84375f, 0.36273f,
+            -1.12500f, 0.40375f, -1.40625f, 0.45648f, -1.68750f, 0.52094f, -1.96875f, 0.59711f, -2.25000f, 0.68500f
+        };
+
+        /// <summary>
+        /// ★ 2026-09-06 R25d — 챙 <b>렌즈 전체</b>(먼 쪽 호 + 가까운 쪽 호, 양끝 중복 제거).
+        /// <b>채움 두 조각이 이 하나를 쓴다.</b> 낱선(호)은 여전히 반쪽씩이다.
+        ///
+        /// <para><b>왜 반쪽 채움을 버렸나.</b> 반쪽 렌즈는 두께가 0.375 R이라 최대 내접원 반경이
+        /// <b>0.1875 R = 0.86획</b>이고, 규칙 1-C(ρ_max ≥ 1획 @배율 0.60)를 두 조각 다 어긴다
+        /// (<c>AccessoryFillAreaRuleTests</c> Head 5번). 그런데 <b>두껍게 만들 수가 없다</b>:
+        /// 아래로 깊게 파면 H-2b 밑단(+0.3140 → 하한 +0.28)이 바로 깨지고, 위로 올리면
+        /// 챙이 관을 뚫는다. <b>반쪽이라는 것 자체가 원인</b>이었다.</para>
+        ///
+        /// <para><b>왜 화면이 안 바뀌나.</b> 두 조각은 색이 같고(둘 다 주색 채움 · <c>noStroke</c>),
+        /// 앞 조각이 뒤 조각을 덮는다. 겹치는 자리는 <b>같은 색 위에 같은 색</b>이다.
+        /// 그리고 앞층이 새로 덮는 구간(장축 위, y 0.685~1.06)은 전부 <b>관 채움 아래</b>이거나
+        /// (관이 그 높이에서 머리보다 넓다) <b>머리 바깥</b>이다 — 실측으로 확인했다.</para>
+        ///
+        /// <para><b>H-2 무영향</b>: 앞층 채움 합집합의 <b>아래쪽</b> 경계는 여전히 가까운 쪽 호다.
+        /// 착용선 +0.4162 · 밑단 +0.3140 · 커버선 여유 +0.0038 이 한 자리도 안 움직인다.
+        /// 새 ρ_max = <b>0.3749 R(1.72획)</b> — 권장선 1.20획도 넘긴다.</para>
+        /// </summary>
+        private static readonly float[] V1Hat_StrawBrimLens =
+        {
+            -2.25000f, 0.68500f, -1.96875f, 0.77289f, -1.68750f, 0.84906f, -1.40625f, 0.91352f, -1.12500f, 0.96625f, -0.84375f, 1.00727f,
+            -0.56250f, 1.03656f, -0.28125f, 1.05414f, 0.00000f, 1.06000f, 0.28125f, 1.05414f, 0.56250f, 1.03656f, 0.84375f, 1.00727f,
+            1.12500f, 0.96625f, 1.40625f, 0.91352f, 1.68750f, 0.84906f, 1.96875f, 0.77289f, 2.25000f, 0.68500f, 1.96875f, 0.59711f,
+            1.68750f, 0.52094f, 1.40625f, 0.45648f, 1.12500f, 0.40375f, 0.84375f, 0.36273f, 0.56250f, 0.33344f, 0.28125f, 0.31586f,
+            0.00000f, 0.31000f, -0.28125f, 0.31586f, -0.56250f, 0.33344f, -0.84375f, 0.36273f, -1.12500f, 0.40375f, -1.40625f, 0.45648f,
+            -1.68750f, 0.52094f, -1.96875f, 0.59711f
+        };
+
+        /// <summary>관 위 하이라이트. ★ R25d — <see cref="V1Hat_StrawCrown"/>과 <b>같은 y 배율</b>
+        /// (×0.717647, 밑변 +0.685 고정)을 먹였다. 안 먹이면 관이 낮아진 만큼 하이라이트만 공중에 뜬다.
+        /// x 는 안 바뀌므로 규칙 1-A의 긴 변(0.5250 R = 1.53획)도 그대로다.</summary>
+        private static readonly float[] V1Hat_StrawHighlight =
+        {
+            -0.67500f, 1.16941f, -0.65098f, 1.19895f, -0.62578f, 1.22702f, -0.59941f, 1.25361f, -0.57188f, 1.27874f, -0.54316f, 1.30239f,
+            -0.51328f, 1.32457f, -0.48223f, 1.34529f, -0.45000f, 1.36452f, -0.41660f, 1.38229f, -0.38203f, 1.39859f, -0.34629f, 1.41340f,
+            -0.30938f, 1.42675f, -0.27129f, 1.43864f, -0.23203f, 1.44904f, -0.19160f, 1.45798f, -0.15000f, 1.46544f
+        };
+
+        /// <summary>베레모 몸 — 오른쪽으로 처진 원반. ★ R25 조형 수정 2건 중 하나가 여기 있다:
+        /// 마지막 곡선이 <c>Q54 40 48 42</c>에서 <c>Q58 45 48 37</c>로 바뀌어 <b>처짐이 머리 원반
+        /// 밖으로</b> 나갔다(최저점 x = +1.534 R &gt; 원반 1.1842 R). 밑변은 이제 수평이다.</summary>
+        private static readonly float[] V1Hat_BeretBody =
+        {
+            -1.33000f, 0.35800f, -1.36910f, 0.44495f, -1.39891f, 0.53081f, -1.41941f, 0.61558f, -1.43063f, 0.69925f, -1.43254f, 0.78183f,
+            -1.42516f, 0.86331f, -1.40848f, 0.94370f, -1.38250f, 1.02300f, -1.34723f, 1.10120f, -1.30266f, 1.17831f, -1.24879f, 1.25433f,
+            -1.18563f, 1.32925f, -1.11316f, 1.40308f, -1.03141f, 1.47581f, -0.94035f, 1.54745f, -0.84000f, 1.61800f, -0.73500f, 1.66777f,
+            -0.63000f, 1.71206f, -0.52500f, 1.75089f, -0.42000f, 1.78425f, -0.31500f, 1.81214f, -0.21000f, 1.83456f, -0.10500f, 1.85152f,
+            0.00000f, 1.86300f, 0.10500f, 1.86902f, 0.21000f, 1.86956f, 0.31500f, 1.86464f, 0.42000f, 1.85425f, 0.52500f, 1.83839f,
+            0.63000f, 1.81706f, 0.73500f, 1.79027f, 0.84000f, 1.75800f, 0.94145f, 1.71261f, 1.03578f, 1.66394f, 1.12301f, 1.61198f,
+            1.20313f, 1.55675f, 1.27613f, 1.49823f, 1.34203f, 1.43644f, 1.40082f, 1.37136f, 1.45250f, 1.30300f, 1.49707f, 1.23136f,
+            1.53453f, 1.15644f, 1.56488f, 1.07823f, 1.58813f, 0.99675f, 1.60426f, 0.91198f, 1.61328f, 0.82394f, 1.61520f, 0.73261f,
+            1.61000f, 0.63800f, 1.63270f, 0.53847f, 1.64828f, 0.44987f, 1.65676f, 0.37222f, 1.65813f, 0.30550f, 1.65238f, 0.24972f,
+            1.63953f, 0.20487f, 1.61957f, 0.17097f, 1.59250f, 0.14800f, 1.55832f, 0.13597f, 1.51703f, 0.13487f, 1.46863f, 0.14472f,
+            1.41313f, 0.16550f, 1.35051f, 0.19722f, 1.28078f, 0.23987f, 1.20395f, 0.29347f, 1.12000f, 0.35800f
+        };
+
+        /// <summary>베레모 띠 — ★ R25 조형 수정 2건 중 둘째. <c>M13 37 L48 42 L48.5 37 L13.5 32 Z</c>
+        /// (기울어진 띠)에서 <c>M13 37 L48 37 L48.5 32 L13.5 32 Z</c>로 <b>수평화</b>했다.
+        /// 기울어진 띠는 앞쪽 끝이 눈 높이까지 내려와 안경을 덮는 주범이었다.
+        ///
+        /// <para>★ 2026-09-06 R25d — <b>「올린 띠」 규약</b>(스펙 14-1)으로 다시 맞췄다.
+        /// R21 원문의 5 SVG유닛(= 0.3500 R) 두께는 우리 두 규칙을 동시에 어긴다:</para>
+        /// <list type="number">
+        ///   <item><b>규칙 1-C(색면)</b> — 두께 0.3500 R 은 ρ_max 0.1749 R = <b>0.80획</b>이라
+        ///     하한 1.00획 미달이고, 다이얼 최소 배율에서는 <b>색면이 통째로 0</b>이 된다
+        ///     (윤곽선 펜 0.36843 R 의 절반 0.18422 R &gt; 0.1749 R). 그 배율에서 이 띠는
+        ///     보조색이 아니라 윤곽색 한 덩어리가 된다.</item>
+        ///   <item><b>「아랫변 + 올린 윗변」 규약</b> — 윗변이 아랫변에서
+        ///     <see cref="AccentBandThicknessRatio"/>만큼 <b>정확히</b> 올라가야 한다
+        ///     (<c>AccessoryFilledBandRuler.AssertRaisedBandForm</c>).</item>
+        /// </list>
+        /// <para>새 좌표는 <b>몸에서 유도</b>한다 — 아랫변 두 점은
+        /// <see cref="V1Hat_BeretBody"/>의 <b>첫 점과 끝 점</b>(그 폴리곤의 닫힘변 = 수평 밑변)
+        /// 그대로이고, 윗변은 그것을 0.46 R 올린 것이다. 새 ρ_max = <b>0.2300 R(1.05획)</b>.</para>
+        /// <para><b>왼쪽 윗 꼭짓점만 기울어 있다</b>(−1.42926) — 몸통 왼쪽 변이 밖으로 벌어져서
+        /// 그 꼭짓점을 변 위에 물린 값이고, y = 0.81800 에서의 몸 왼쪽 변 x 그 자체다.
+        /// 오른쪽은 수직 압출(1.12000 그대로)이라 «기울인 꼭짓점 1개» 계약을 지킨다 —
+        /// 오른쪽까지 변에 물리면 2개가 되어 위 자가 «왜 기울였는가»를 물어본다.</para>
+        /// <para><b>H-2 무영향</b>: 이 띠는 몸 채움 <b>안</b>에 완전히 들어간다(y 0.358~0.818 구간에서
+        /// 몸은 x [−1.429, +1.613]을 덮는다). 앞층 채움 합집합이 안 변하므로 착용선 +0.3602 ·
+        /// 밑단 +0.3116 · 커버선 여유 +0.0022 가 <b>한 자리도 안 움직인다</b>.</para></summary>
+        private static readonly float[] V1Hat_BeretBand =
+        {
+            -1.33000f, 0.35800f, 1.12000f, 0.35800f, 1.12000f, 0.81800f, -1.42926f, 0.81800f
+        };
+
+        /// <summary>꼭지 — 이 아이템의 최고점(+2.248 R). 액자 상한 2.551 안이고 최고 아이템도 아니다
+        /// (R25 이후 최고는 중절모 2.5424).
+        ///
+        /// <para>★ 2026-09-06 R25c — <b>뿌리만</b> (0.00000, 1.93300) → (−0.02463, 1.71130)으로 내렸다.
+        /// <b>꼭지 끝점과 기울기(연직에서 6.340°)는 한 자리도 안 움직인다</b> — 실루엣은 그대로다.
+        /// 고친 것은 두 가지 결함이고 둘 다 <b>보이는 부분 밖</b>에 있었다:</para>
+        /// <list type="number">
+        ///   <item>규칙 1-A — 잉크 사각형 긴 변이 0.3150 R = <b>0.92획</b>이라 하한 1.5획에 미달했다
+        ///     (<c>AccessoryStrokeBudgetTests.모든_도형이_획_예산을_지킨다</c> HEAD 4번이 이것으로 빨간불).
+        ///     새 값은 0.5367 R = <b>1.56획</b>이다.</item>
+        ///   <item>규칙 4 — 옛 뿌리 1.93300은 몸(<see cref="V1Hat_BeretBody"/>) 윗변 1.86031보다
+        ///     <b>0.07000 R(0.20획) 위</b>에 떠 있었다. 규칙 4가 허용하는 간격은 «0 또는 ≥1.5획»이고
+        ///     0.20획은 그 사이다. 새 뿌리는 몸 안쪽으로 0.14901 R(0.43획) 들어가 <b>간격 0</b>이다.</item>
+        /// </list>
+        /// <para><b>왜 안 보이는가</b>: 늘린 구간은 전부 <see cref="V1Hat_BeretBody"/> 채움 <b>안</b>이고,
+        /// 꼭지는 채움 없는 낱선이라 색이 <c>tone 0 = primary</c>다. 몸의 채움도 같은 primary이므로
+        /// (윤곽만 <see cref="FillOutlineColor"/> = Shaded) 같은 색 위에 같은 색을 긋는다.
+        /// 아이템 봉투도 안 바뀐다 — 새 뿌리는 몸의 잉크 사각형 안에 있다.</para>
+        /// <para><b>이름은 건드리지 마라</b>: <c>HandoffTestGate.SkipIfR25Hat</c>이 "BeretStem"을
+        /// R25 표식 조각으로 쓴다(이름이 사라지면 그 게이트가 조용히 초록이 된다).</para></summary>
+        private static readonly float[] V1Hat_BeretStem =
+        {
+            -0.02463f, 1.71130f, 0.03500f, 2.24800f
+        };
+
+        private static readonly float[] V1Hat_BeretHighlight =
+        {
+            -1.05000f, 1.19800f, -1.02293f, 1.24093f, -0.99422f, 1.28222f, -0.96387f, 1.32187f, -0.93188f, 1.35987f, -0.89824f, 1.39624f,
+            -0.86297f, 1.43097f, -0.82605f, 1.46405f, -0.78750f, 1.49550f, -0.74730f, 1.52530f, -0.70547f, 1.55347f, -0.66199f, 1.57999f,
+            -0.61688f, 1.60487f, -0.57012f, 1.62812f, -0.52172f, 1.64972f, -0.47168f, 1.66968f, -0.42000f, 1.68800f
+        };
+
+        /// <summary>
+        /// R 배수 (x,y) 쌍 배열 → 이 리그의 로컬 좌표. <see cref="HandoffPiece"/>와 <b>같은 좌표 규약</b>이지만
+        /// 계약은 v1 그대로다(<c>strokeInR 0</c>) — 색·알파·획 하한 규칙이 인계본으로 넘어가면 안 되기 때문이다.
+        /// <para><paramref name="layer"/>가 뒤층이면 정렬 번호는 <see cref="LayerOrder"/>가 정한다 —
+        /// 모자 2층(먼 쪽 챙)이 머리 뒤로 가는 자리다.</para>
+        /// </summary>
+        private static void HeadV1Piece(List<Shape> sink, in Rig rig, string name, float[] xyInR,
+            bool loop, bool filled, byte tone = 0, bool noStroke = false, byte layer = 0, int underBack = 0)
+        {
+            int n = xyInR.Length / 2;
+            var pts = new Vector3[n];
+            float r = rig.HeadRadius;
+            float hc = rig.HeadCenterY;
+            for (int i = 0; i < n; i++)
+            {
+                pts[i] = rig.F(xyInR[i * 2] * r, hc + xyInR[i * 2 + 1] * r);
+            }
+            sink.Add(new Shape(name, pts, loop, LayerOrder(layer, SortHead), tone: tone, filled: filled,
+                noStroke: noStroke, layer: layer, underBack: underBack));
+        }
+
         // ==================== HEAD (모자) ====================
 
         private static void AppendHead(List<Shape> sink, int item, in Rig rig)
@@ -1750,98 +1995,46 @@ namespace StickMate.Interaction
 
                 case HeadBeret:
                 {
-                    // 뒤로 처진 비대칭 덩어리. 밴드도 꼭지도 없다 — 그 둘이 없는 것이 정체다.
-                    float brimY = hc + r * BeretBrimLineRatio;
-                    Vector3 backTip = rig.F(-r * BeretBackDroopRatio, brimY - r * BeretBackDroopDropRatio);
-                    Vector3 frontFoot = rig.F(r * BeretFrontRatio, brimY);
-                    Vector3 innerFoot = rig.F(-r * 0.30f, brimY - r * 0.04f);
-
-                    // ★ 몸통 왼쪽 변의 위 끝. 테의 윗변 왼끝을 <b>이 변 위에서</b> 유도하므로
-                    //   좌표를 두 벌로 적지 않는다(적으면 몸을 고칠 때 테만 옛 자리에 남는다).
-                    Vector3 backUpper = rig.F(-r * 1.02f, hc + r * 0.62f);
-
-                    sink.Add(new Shape("BeretBody", new[]
-                    {
-                        backTip,
-                        backUpper,
-                        rig.F(-r * 0.20f, brimY + r * BeretCrownHeightRatio),
-                        rig.F(r * 0.62f, hc + r * 0.90f),
-                        // ★ 2026-09-02 배율 0.60 실루엣 수정(스펙 12-3-b). y를 0.44 → 0.54로만 올린다.
-                        //    아래 변(→ frontFoot)이 0.4243R이라 배율 0.60에서 0.99획 = 획보다 짧아
-                        //    앞 어깨 모서리가 뭉갰다. 0.5235R = 1.22획. x·뒤쪽 처짐은 그대로 —
-                        //    <b>테(BeretRim)의 아랫변은 [5][6][0]이므로 이 점이 안 들어가 그림이 안 바뀐다.</b>
-                        //    (2026-09-03 정정: 테는 윗변 왼끝을 [1] backUpper에서 <b>유도</b>하지만
-                        //     이 점 [4]는 여전히 안 쓴다 — 위 문장은 이 점에 대해 계속 참이다.)
-                        rig.F(r * BeretFrontShoulderRatio, hc + r * BeretFrontShoulderTopRatio),
-                        frontFoot,
-                        innerFoot,
-                    }, true, SortHead, filled: true));
-
-                    // 테 = 밑변 그 자체(간격 0)에서 위로 세운 닫힌 채움 띠(스펙 14-1, 2026-09-03).
-                    // 관 높이로 1.5획을 띄우면 테가 관을 가로질러 <b>띠 두른 정모</b>가 된다 —
-                    // 페르소나가 실물에서 본 그 그림이다.
-                    //
-                    // ★ 윗변 왼끝만 <b>수직 압출이 아니다.</b> 몸통 왼쪽 변(backTip → backUpper)이
-                    //   기울어 있어 그대로 올리면 띠가 몸통 밖으로 면적 6.29% 나가고, 최대 이탈이
-                    //   0.2397R로 획 반폭 0.1719R(배율 0.75)보다 커서 <b>자기 윤곽선에 안 가려지고
-                    //   눈에 보인다</b>. 그래서 그 꼭짓점 하나만 몸통 변 위로 물린다 — 값은 손으로
-                    //   적지 않고 backTip·backUpper에서 유도한다(현재 좌표에서 x = −1.1789R).
-                    float rimTopY = backTip.y + r * AccentBandThicknessRatio;
-                    float rimTopT = Mathf.InverseLerp(backTip.y, backUpper.y, rimTopY);
-                    sink.Add(new Shape("BeretRim", new[]
-                    {
-                        frontFoot,
-                        innerFoot,
-                        backTip,
-                        new Vector3(Mathf.Lerp(backTip.x, backUpper.x, rimTopT), rimTopY, 0f),
-                        new Vector3(innerFoot.x, innerFoot.y + r * AccentBandThicknessRatio, 0f),
-                        new Vector3(frontFoot.x, frontFoot.y + r * AccentBandThicknessRatio, 0f),
-                    }, true, SortHead, tone: Accent, filled: true));
+                    // ★ 2026-09-06 R25 — 옛 「뒤로 처진 3/4 덩어리 2조각」을 폐기하고 R21 재저작본으로
+                    //   갈아탔다. 정체가 바뀐 것이 아니라 <b>정체가 제대로 그려진 것</b>이다: 정면에서
+                    //   본 납작한 원반이 오른쪽으로 처지고, 띠 위에 몸이 앉고, 꼭지가 선다.
+                    //   (옛 주석 "밴드도 꼭지도 없다 — 그 둘이 없는 것이 정체다"는 <b>지금 거짓</b>이다.
+                    //    그 문장은 상수 7개로 조립하던 시절의 것이고, 그 도형은 H-2 를 통과한 적이 없다 —
+                    //    앞층 채움이 머리 꼭대기를 한 줄도 못 덮었다.)
+                    HeadV1Piece(sink, rig, "BeretBody", V1Hat_BeretBody, loop: true, filled: true);
+                    HeadV1Piece(sink, rig, "BeretRim", V1Hat_BeretBand, loop: true, filled: true,
+                        tone: Accent, noStroke: true);
+                    HeadV1Piece(sink, rig, "BeretStem", V1Hat_BeretStem, loop: false, filled: false);
+                    HeadV1Piece(sink, rig, "BeretHighlight", V1Hat_BeretHighlight, loop: false, filled: false,
+                        tone: Highlight, underBack: 3);
                     break;
                 }
 
                 case HeadStraw:
                 {
-                    float brimY = hc + r * StrawBrimLineRatio;
-                    float crownHalf = r * StrawCrownHalfWidthRatio;
-
-                    // 중절모와 같은 규약 — 관 밑변 두 끝점을 챙·관·띠가 공유한다.
-                    Vector3 crownBackFoot = rig.F(-crownHalf, brimY + r * 0.02f);
-                    Vector3 crownFrontFoot = rig.F(crownHalf, brimY);
-
-                    // ★ 2026-09-02 7점 -> 8점. 중절모와 같은 처방(부피를 머리 밖으로).
-                    //    머리 원반에 얹는 색 0.790 R²(60%) -> 0.677 R²(48%), 남는 머리 1.03획 -> 1.25획.
-                    //    ρ_max 0.2726R = 1.25획. 도달 거리(StrawBrim*Ratio)는 아이템 정체를 만드는
-                    //    값이라 무변경 — 중절모와의 실루엣 차가 거기서 나온다.
-                    sink.Add(new Shape("StrawBrim", new[]
-                    {
-                        rig.F(-r * StrawBrimBackRatio, hc + r * 0.16f),
-                        crownBackFoot,
-                        crownFrontFoot,
-                        rig.F(r * StrawBrimFrontRatio, hc + r * 0.30f),
-                        rig.F(r * 1.56f, hc - r * 0.40f),    // ★ 부피는 여기(머리 밖)
-                        rig.F(r * 0.92f, hc - r * 0.24f),    // ★ 얼굴 앞 구간은 얇은 판
-                        rig.F(-r * 0.92f, hc - r * 0.26f),   // 감쌈을 만드는 자리
-                        rig.F(-r * 1.52f, hc - r * 0.20f),   // 뒤 챙 밑면
-                    }, true, SortHead, filled: true));
-
-                    sink.Add(new Shape("StrawCrown", new[]
-                    {
-                        crownBackFoot,
-                        rig.F(-r * 0.74f, hc + r * 0.92f),
-                        rig.F(0f, brimY + r * StrawCrownHeightRatio),
-                        rig.F(r * 0.74f, hc + r * 0.90f),
-                        crownFrontFoot,
-                    }, true, SortHead, filled: true));
-
-                    // 중절모와 같은 처방 — 관 밑변에서 위로 세운 닫힌 채움 띠(스펙 14-1).
-                    sink.Add(new Shape("StrawBand", new[]
-                    {
-                        crownBackFoot,
-                        crownFrontFoot,
-                        rig.F(crownHalf, brimY + r * AccentBandThicknessRatio),
-                        rig.F(-crownHalf, brimY + r * 0.02f + r * AccentBandThicknessRatio),
-                    }, true, SortHead, tone: Accent, filled: true));
+                    // ★ 2026-09-06 R25 — 중절모와 같은 <b>2층 챙</b>(렌즈꼴을 장축에서 갈라 먼 쪽은
+                    //   머리 뒤, 가까운 쪽은 얼굴 앞)으로 재저작했다. 옛 1층 챙은 머리 <b>위</b>에
+                    //   얹혀 안경을 78%까지 지웠다.
+                    //   자른 선(장축)은 <b>그리지 않는다</b> — 채움은 noStroke 로 두고 바깥 호만
+                    //   따로 낱선으로 낸다. 그리면 챙 한가운데를 가로지르는 금이 생긴다.
+                    //   ★ R25d — <b>채움 두 조각은 렌즈 전체</b>(V1Hat_StrawBrimLens)를 쓴다. 반쪽 채움은
+                    //   두께 0.375 R이라 규칙 1-C(색면 ≥ 1획)를 구조적으로 못 넘겼고, 두껍게 하려면
+                    //   H-2b 밑단이나 관을 깨야 했다. 낱선(호)만 반쪽으로 남는다 — 그려야 하는 것은
+                    //   «호 두 개»이지 «렌즈 윤곽»이 아니다(가까운 쪽 호는 앞, 먼 쪽 호는 뒤).
+                    HeadV1Piece(sink, rig, "StrawBrimFar", V1Hat_StrawBrimLens, loop: true, filled: true,
+                        noStroke: true, layer: (byte)AccessoryPieceLayer.Back);
+                    HeadV1Piece(sink, rig, "StrawBrimFarArc", V1Hat_StrawBrimFar, loop: false, filled: false,
+                        layer: (byte)AccessoryPieceLayer.Back);
+                    HeadV1Piece(sink, rig, "StrawBrimNear", V1Hat_StrawBrimLens, loop: true, filled: true,
+                        noStroke: true);
+                    HeadV1Piece(sink, rig, "StrawBrimNearArc", V1Hat_StrawBrimNear, loop: false, filled: false);
+                    HeadV1Piece(sink, rig, "StrawCrown", V1Hat_StrawCrown, loop: true, filled: true);
+                    HeadV1Piece(sink, rig, "StrawBand", V1Hat_StrawBand, loop: true, filled: true,
+                        tone: Accent, noStroke: true);
+                    // underBack 2 = 이 목록에서 두 칸 앞 = StrawCrown. 하이라이트가 실제로 얹히는 면이고,
+                    // 그 조각의 역할(주색)이 흰 선의 밑색이 된다(ResolveToneColor).
+                    HeadV1Piece(sink, rig, "StrawHighlight", V1Hat_StrawHighlight, loop: false, filled: false,
+                        tone: Highlight, underBack: 2);
                     break;
                 }
 
@@ -2023,12 +2216,17 @@ namespace StickMate.Interaction
 
                     // 끈은 천의 <b>뒤쪽 두 꼭짓점에서 출발</b>해 머리를 돌아 넘어간다. 끝점은 머리
                     // 원 밖(1.02R)이라 허공에서 끊기지 않고, 드러난 눈과는 1.5획 넘게 떨어진다.
+                    //
+                    // ★ 배수 ×1.15 — 이것은 <b>머리를 도는 띠</b>라 인계본 「띠·기둥」군(1.10~1.40)이다
+                    //   (배낭 손잡이 1.10 · 고글 머리끈 1.40 사이, 슬림한 끈). §14-14-5.
+                    //   <b>천장은 ×1.2064</b>다 — 끈-드러난 눈 1.5획 규칙이 배수를 먹는다
+                    //   (여백 = (1.1032 − 0.5m)W ≥ 0.5W). 올릴 때 이 산술을 먼저 다시 풀어라.
                     sink.Add(new Shape("PatchStrap", new[]
                     {
                         HeadPolar(rig, PatchStrapDegrees, PatchStrapReachRatio),
                         coverTopBack, coverBottomBack,
                         HeadPolar(rig, 360f - PatchStrapDegrees, PatchStrapReachRatio),
-                    }, false, SortEyes));
+                    }, false, SortEyes, strokeMult: 1.15f));
 
                     sink.Add(new Shape("PatchEye", DrawnEye(rig, -1f), true, SortEyes,
                         tone: Accent, filled: true));
@@ -2271,12 +2469,15 @@ namespace StickMate.Interaction
                         PonchoHemWaveRatio, PonchoFrontSpreadRatio);
                     sink.Add(new Shape("CapeOutline", outline,
                         true, SortBack, swayStart: 2, swayCount: 5, filled: true));
+                    // ★ 배수 ×0.70 — 천의 <b>접힘선</b>(표면 위 정보선)이라 짧은망토 `S2` · 긴망토 `S3/S4`와
+                    //   같은 값이다. 판초는 그 둘과 「같은 도형·다른 비율」이므로 굵기까지 같아야 한 가족으로
+                    //   읽힌다. 두 접힘선의 위계를 가르지 않는다(긴망토도 S3 = S4). §14-14-5.
                     sink.Add(new Shape("CapeFold",
                         CapeFold(rig, PonchoLengthRatio, PonchoSpreadRatio, 0.35f), false, SortBack,
-                        swayStart: 1, swayCount: 1, tone: Shade));
+                        swayStart: 1, swayCount: 1, tone: Shade, strokeMult: 0.70f));
                     sink.Add(new Shape("CapeFold2",
                         CapeFold(rig, PonchoLengthRatio, PonchoSpreadRatio, 0.72f), false, SortBack,
-                        swayStart: 1, swayCount: 1, tone: Shade));
+                        swayStart: 1, swayCount: 1, tone: Shade, strokeMult: 0.70f));
                     sink.Add(new Shape("CapeYoke", CapeShoulderYoke(rig, outline), true, SortBack,
                         tone: Accent, filled: true));
                     break;
@@ -2286,11 +2487,15 @@ namespace StickMate.Interaction
                 {
                     // 날개와 같은 구성의 작고 둥근 변주. 천이 아니므로 <b>흔들 점을 선언하지 않는다</b>.
                     float sy = rig.ShoulderY;
+                    // ★ 배수 ×1.30 — 인계본 날개의 등뼈 `RB4`는 <b>채움 조각</b>(폭 0.20 R)인데 요정날개는
+                    //   그것을 <b>선 하나</b>로 대신한다 → 「띠·기둥」군의 위쪽. 0.12432 × 1.30 = 0.1616 R 로
+                    //   인계본 등뼈 폭의 81%다. 같게(1.61배) 두지 않는 이유는 이 아이템이 「작고 둥근 변주」라서고,
+                    //   1.61은 ×1.5 천장 밖이기도 하다. §14-14-5.
                     sink.Add(new Shape("WingSpine", new[]
                     {
                         rig.F(0f, sy + r * WingRootRiseRatio),
                         rig.F(0f, sy - rig.TorsoLength * FairyWingSpineDropScale),
-                    }, false, SortBack, tone: Accent));
+                    }, false, SortBack, tone: Accent, strokeMult: 1.30f));
 
                     sink.Add(new Shape("WingFeatherA", FairyWingBlade(rig, -1f), true, SortBack, filled: true));
                     sink.Add(new Shape("WingFeatherB", FairyWingBlade(rig, +1f), true, SortBack, filled: true));

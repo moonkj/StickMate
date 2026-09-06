@@ -233,9 +233,15 @@ namespace StickMate.Interaction
         /// <summary>접수 플래시의 처음과 끝. <b>알파만 움직인다</b> — 투명한 검정으로 보간하면 사라지는
         /// 동안 색이 탁해져 "밝아졌다 꺼진다"가 "어두워졌다 꺼진다"로 읽힌다. 색상값은
         /// <see cref="UiChrome.AccentSurface"/> 하나에서만 온다(팔레트 사본 금지).</summary>
-        private static readonly Color AcceptFlashPeak = UiChrome.AccentSurface;
-        private static readonly Color AcceptFlashEnd = new Color(
-            UiChrome.AccentSurface.r, UiChrome.AccentSurface.g, UiChrome.AccentSurface.b, 0f);
+        /// <remarks>★ 2026-09-06 (docs/UI_ALPHA_BLEED_POLICY.md §5-2) — 두 끝점을 <b>타일이 올라앉은
+        /// 그룹 카드에 미리 합성</b>한다. 보이는 곡선은 완전히 같다(이 타일 아래에 있는 것은 언제나
+        /// 불투명한 <see cref="UiChrome.CardSurface"/>다). 달라지는 것은 하나뿐이다 — 플래시가 도는
+        /// 0.2초 동안 그 화소의 <b>창 알파가 12% 내려가지 않는다</b>. 끝나면
+        /// <see cref="IdleTileSurface"/>(α0)로 되돌아가는데, α0은 프레임버퍼 알파를 건드리지 않으므로
+        /// 그대로 둔다.</remarks>
+        private static readonly Color AcceptFlashPeak =
+            UiChrome.Flatten(UiChrome.AccentSurface, UiChrome.CardSurface);
+        private static readonly Color AcceptFlashEnd = UiChrome.CardSurface;
 
         private AppControlDirector _appControl;
         private ArcheryDirector _archery;
@@ -381,7 +387,8 @@ namespace StickMate.Interaction
         {
             Image card = UiChrome.AddSurface(content, name, UiChrome.CardSurface, UiChrome.RadiusCard);
             UiChrome.PlaceTopLeft(card.rectTransform, 0f, y, ContentWidth, height);
-            UiChrome.AddOutline(card.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+            UiChrome.AddOutline(card.rectTransform, "Outline",
+                UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface), UiChrome.RadiusCard);
 
             Text label = UiChrome.AddText(card.rectTransform, "Title", UiChrome.FontLabel,
                 TextAnchor.MiddleLeft, UiChrome.TextSecondary);
@@ -399,7 +406,8 @@ namespace StickMate.Interaction
             // 행 사이 1pt 구분선 — 첫 행 위에는 그리지 않는다(그룹 제목과 붙어 보인다).
             if (rowInCard > 0)
             {
-                Image divider = UiChrome.AddSurface(card, "Divider" + rowInCard, UiChrome.Divider, 2);
+                Image divider = UiChrome.AddSurface(card, "Divider" + rowInCard,
+                    UiChrome.Flatten(UiChrome.Divider, UiChrome.CardSurface), 2);
                 UiChrome.PlaceTopLeft(divider.rectTransform, CardPadding, y, RowWidth, 1f);
             }
 

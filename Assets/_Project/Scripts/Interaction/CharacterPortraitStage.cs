@@ -306,6 +306,7 @@ namespace StickMate.Interaction
         {
             if (_camera != null) _camera.targetTexture = null;
             ReleaseTexture();
+            DestroyBackdropGlow();
         }
 
         private void OnEquipmentChanged() => _builtSignature = -1;
@@ -746,10 +747,17 @@ namespace StickMate.Interaction
             }
             _fillMeshes.Clear();
 
+            DestroyBackdropGlow();
+
             // ★ 액자를 <b>그림보다 먼저</b> 지금 키로 다시 잡는다. 순서가 중요하다 —
             //   FrameFallenFigure()가 FrameHalfExtents(= 카메라 직교크기)를 읽어 넘어짐 배치를
             //   역산하므로, 그림을 먼저 그리면 옛 액자 기준으로 눕히게 된다.
             ApplyFraming();
+
+            // 배경 광원은 <b>그림이 아니라 무대</b>다 — 포즈(넘어짐/가출)와 무관하게 깔리고,
+            // 그래서 아래의 Hidden 조기 반환보다 앞에 있다. 실패해도 그림은 계속 그린다.
+            try { BuildBackdropGlow(); }
+            catch (System.Exception e) { LogDrawFailure("무대 배경 광원", e); }
 
             if (_figureRoot == null) return;
             _figureRoot.localRotation = Quaternion.identity;
@@ -782,6 +790,201 @@ namespace StickMate.Interaction
             if (_pose != PortraitPose.Fallen) return;
             try { FrameFallenFigure(); }
             catch (System.Exception e) { LogDrawFailure("넘어짐 액자 맞춤", e); }
+        }
+
+        // ============================================================================
+        // ★★ 2026-09-06 — 무대 조명을 촬영장 안으로. <b>알파 겹이 아니라 바탕 RGB에 구운 램프</b>
+        // ============================================================================
+        // <b>무엇이 결함이었나</b>(design-art R13 「N-1」 / docs/UX_CHARACTER_WINDOW_REFINE.md 4-3):
+        // 정보창 캔버스의 두 겹 — "StageFloorGlow"(<c>UiChrome.AccentSurface</c>, α0.14)와
+        // "StageSheen"(<c>UiChrome.PanelSheen</c>, α0.10) — 이 알파를 <b>raw로</b> 얹고 있었다.
+        // 이 앱의 창은 전체화면 투명 오버레이라 프레임버퍼의 알파가 곧 OS 합성기의 마스크이고,
+        // uGUI의 <c>Blend SrcAlpha OneMinusSrcAlpha</c>는 알파 채널에도 똑같이 적용된다:
+        //
+        //     dstA' = srcA² + dstA(1−srcA)        불투명 위(dstA=1)에서는  1 − α(1−α)
+        //       α 0.14 → 0.8796 → 바탕화면 12.04 % 비침      ← 이 앱 단일 최악
+        //       α 0.10 → 0.9100 → 바탕화면  9.00 % 비침
+        //       α 1.00 → 1.0000 → 비침 0.00 %               ← 안전한 값은 0과 1 <b>뿐</b>이다
+        //
+        // 게다가 그 두 겹은 <b>84 %가 가려져 있었다</b> — 불투명한 RawImage(RT)가 안쪽 249×222를
+        // <b>나중에</b> 덮으므로 실제로 보이던 것은 액자 테두리 8pt 띠뿐이었다. 즉 "무대 조명"은
+        // 조명이 아니라 「윗변의 밝은 선 + 바탕화면 구멍」이었다.
+        //
+        // <b>여기서 하는 일</b>(ux-designer 확정 §4-4 / 인계표 D3): 같은 조명을 <b>촬영장 안</b>에
+        // 미니 피규어 뒤 사각형 <b>한 장</b>으로 놓되, 알파 램프가 아니라 <b>정점 색(RGB)에 구운
+        // 램프</b>로 놓는다. 알파는 어디에서도 1 미만이 되지 않으므로 이 사실은 머티리얼의 블렌드
+        // 식과 <b>무관하게</b> 참이다 — §4-4-0이 "RT 안이니까 알파는 자유롭다"던 초판을 스스로
+        // 뒤집은 이유가 정확히 그것이다(<c>Blend One OneMinusSrcAlpha</c>면 살고
+        // <c>Blend SrcAlpha OneMinusSrcAlpha</c>면 RT가 α0.84로 반투명해진다).
+        // <c>design-art</c>가 등급 글로우에 못박은 기법과 <b>같은 것</b>이다
+        // (docs/DESIGN_RARITY_GLOW.md §5-1 «썸네일 바탕 스프라이트의 RGB에 구운 불투명 램프»).
+        //
+        // ⚠ <b>캔버스 쪽 두 겹을 지우는 일은 여기서 못 한다</b> — 그것은
+        //   <c>CharacterInfoWindow.BuildColumn1</c>이고(인계표 D1/D2) 그 파일은 동시 편집 중이다.
+        //   지워지기 전까지 <b>8pt 띠의 비침은 남는다</b>. 지워지고 나면
+        //   <c>UiChrome.VerticalGradientFill</c>의 «호출부 0건» 주석도 사실로 되돌아간다(D4).
+        //
+        // ⚠ 새 셰이더 0개 · 새 머티리얼 0개 · 새 텍스처 0개. 램프는 정점 색이 나르고, 머티리얼은
+        //   액세서리 채움 면이 이미 쓰는 <see cref="_lineMaterial"/> 그대로다
+        //   (= <c>Sprites-Default.mat</c>: Transparent 큐라 sortingOrder가 듣고, <c>Cull Off</c>라
+        //    감기 방향이 무관하고, <c>Blend One OneMinusSrcAlpha</c> + 정점 α1 ⇒ dstA' = 1).
+        //
+        // ⚠ <b>이 프로젝트는 Gamma 색공간이다</b>(ProjectSettings <c>m_ActiveColorSpace: 0</c>).
+        //   그래서 정점 색과 카메라 클리어 색이 <b>같은 공간</b>에 있고 램프 가장자리 이음매가
+        //   정확히 0이다. Linear로 바꾸면 정점 색만 변환에서 빠져 <b>여기 원반 경계가 드러난다</b> —
+        //   그때는 굽는 색을 <c>GammaToLinearSpace</c>로 맞춰야 한다.
+
+        /// <summary>배경 광원 램프의 지름(전신 높이 배수). 표시 179.55pt 기준 <b>170.6pt</b>.
+        /// 액자 안에 완전히 들어간다(아래 5.75pt / 위 45.7pt / 좌우 39.2pt 여백).</summary>
+        public const float BackdropGlowDiameterInHeight = 0.95f;
+
+        /// <summary>램프 중심의 높이(전신 높이 배수, 발끝이 0). 가슴~허리.</summary>
+        public const float BackdropGlowCenterHeightInHeight = 0.45f;
+
+        /// <summary>중심에서 브라스(<see cref="UiChrome.Accent"/>)를 얼마나 섞는가.
+        /// <para>★ <b>이것은 알파가 아니라 합성비다.</b> 이 값이 어딘가에서 <c>Color.a</c>로 새어 나가면
+        /// 이 문단이 고친 결함(12.04% 비침)이 그대로 재발한다 — 그래서
+        /// <see cref="BackdropGlowColorAt"/>이 반환 알파를 <b>무조건 1로 못박는다</b>.</para></summary>
+        public const float BackdropGlowPeak = 0.20f;
+
+        /// <summary>램프를 근사하는 격자의 한 변 분할 수.
+        /// <para><b>짝수여야 한다</b> — (1−t)²는 중심에서 미분이 불연속(원뿔 꼭짓점)이라 그 자리에
+        /// 정점이 없으면 꼭대기가 깎인다. 24면 중심 정점이 정확히 생긴다(12,12).</para>
+        /// <para>오프라인 실측(401×401 격자로 참 램프와 이중선형 보간을 전수 비교): 최대 오차
+        /// <b>0.585코드</b>(종이) / <b>0.681코드</b>(목탄). 둘 다 <b>1코드 미만</b>이라 격자면은
+        /// 원리상 보이지 않는다 — 8bit 프레임버퍼에서 1코드 아래의 차이는 표현될 자리가 없다.</para>
+        /// <para>★ 남는 잔여물 하나는 정직하게 적는다: <b>램프 자체</b>의 최대 기울기가
+        /// 0.66(종이)~0.76(목탄) 코드/pt다. <c>design-art</c> §5-2의 무밴딩 충분조건(화소당 1코드
+        /// 이상)에 못 미치므로 밝은 무대에서 아주 옅은 동심 띠가 보일 가능성이 있다. <b>격자를
+        /// 늘려도 안 없어진다</b>(원인은 근사가 아니라 세기 0.20 × 반경 85pt라는 배분이다).
+        /// 지금 알파 겹이 만드는 그라디언트와 <b>같은 크기</b>이므로 회귀는 아니다 —
+        /// 실기 캡처로만 판정할 수 있다.</para></summary>
+        private const int BackdropGlowGridSegments = 24;
+
+        /// <summary>미니 피규어보다 뒤. <see cref="PreviewSortingOrder"/>(−3)보다도 뒤다.</summary>
+        private const int BackdropGlowSortingOrder = -5;
+
+        private GameObject _backdropGlow;
+        private Mesh _backdropGlowMesh;
+
+        /// <summary>램프 중심의 색 = <c>Flatten(브라스 α<see cref="BackdropGlowPeak"/>, 바탕)</c>.
+        /// 종이 바탕에서 <c>#E2DBCA</c>, 목탄 바탕에서 <c>#464037</c>(ux-designer §4-4 표와 같은 값).</summary>
+        public static Color BackdropGlowCoreColor(Color backdrop)
+        {
+            Color tint = UiChrome.Accent;
+            tint.a = BackdropGlowPeak;
+            return UiChrome.Flatten(tint, backdrop);   // Flatten의 반환 알파는 언제나 1이다.
+        }
+
+        /// <summary>
+        /// 램프 중심에서 <paramref name="distance01"/>(= r / R)만큼 떨어진 점의 색.
+        /// 감쇠는 <b>(1−t)²</b> — <see cref="UiChrome.RadialGlow"/>가 <b>알파</b>에 굽는 것과 같은
+        /// 곡선을 여기서는 <b>RGB</b>에 굽는다(선형 감쇠는 가장자리에서 끊겨 "원반"으로 보인다).
+        ///
+        /// <para><b>반환 알파는 어떤 입력에서도 1이다.</b> 이 한 가지가 이 결함 수정의 전부이므로
+        /// 조건문 밖에서 못박는다 — 바탕색이 어쩌다 α&lt;1로 들어와도 창에 구멍이 나지 않는다.</para>
+        ///
+        /// <para>t ≥ 1에서는 바탕색 그대로다(잔차 ΔE = 0). 그래서 램프 사각형 바깥과 카메라 클리어
+        /// 색(<see cref="ResolveBackdropColor"/>) 사이에 <b>이음매가 원리상 없다</b> — 사각형을
+        /// 액자 전체로 키울 필요가 없는 이유이기도 하다.</para>
+        /// </summary>
+        public static Color BackdropGlowColorAt(float distance01, Color backdrop)
+        {
+            // NaN은 이 부정형 비교에서 바깥(바탕색)으로 떨어진다 — "NaN이면 안 그린다"가 맞다.
+            if (!(distance01 < 1f)) return new Color(backdrop.r, backdrop.g, backdrop.b, 1f);
+
+            float t = Mathf.Max(0f, distance01);
+            float k = (1f - t) * (1f - t);
+            Color c = Color.Lerp(backdrop, BackdropGlowCoreColor(backdrop), k);
+            c.a = 1f;
+            return c;
+        }
+
+        /// <summary>
+        /// 미니 피규어 뒤의 배경 광원 한 장(정점 색 격자).
+        ///
+        /// <para>★ <b>미니 피규어가 아니라 촬영장 루트에 붙인다.</b> 넘어짐 프레이밍이
+        /// <see cref="_figureRoot"/>를 통째로 −78° 눕히고 축소하는데(<see cref="FrameFallenFigure"/>),
+        /// 배경까지 함께 누우면 "무대"가 아니라 "그림"이 된다. 같은 이유로
+        /// <see cref="TryMeasureRotatedInk"/>가 세는 <see cref="_lines"/>에도 들어가지 않는다 —
+        /// 배경이 잉크 범위에 섞이면 넘어짐 배율이 배경 크기에 끌려간다.</para>
+        /// </summary>
+        private void BuildBackdropGlow()
+        {
+            // 머티리얼이 없으면 <b>그리지 않는다</b>. 액세서리 채움 면과 달리 이 면은 액자를 크게
+            // 덮으므로, 머티리얼 없는 MeshRenderer의 기본 분홍이 초상화를 통째로 지운다.
+            // (EditMode 테스트는 실제로 lineMaterial=null로 촬영장을 만든다 — PortraitFrameInvariantTests.)
+            if (_lineMaterial == null) return;
+
+            float h = TotalHeight;
+            float radius = h * BackdropGlowDiameterInHeight * 0.5f;
+            if (!(radius > 0f)) return;
+
+            float centerY = h * BackdropGlowCenterHeightInHeight;
+            Color backdrop = ResolveBackdropColor(_config);
+
+            const int n = BackdropGlowGridSegments;
+            const int side = n + 1;
+
+            var vertices = new Vector3[side * side];
+            var colors = new Color[side * side];
+            for (int gy = 0; gy < side; gy++)
+            {
+                float py = (gy * 2f / n - 1f) * radius;
+                for (int gx = 0; gx < side; gx++)
+                {
+                    float px = (gx * 2f / n - 1f) * radius;
+                    int i = gy * side + gx;
+                    vertices[i] = new Vector3(px, centerY + py, 0f);
+                    colors[i] = BackdropGlowColorAt(Mathf.Sqrt(px * px + py * py) / radius, backdrop);
+                }
+            }
+
+            var triangles = new int[n * n * 6];
+            int t = 0;
+            for (int gy = 0; gy < n; gy++)
+            {
+                for (int gx = 0; gx < n; gx++)
+                {
+                    int a = gy * side + gx;                       // 좌하
+                    triangles[t++] = a;
+                    triangles[t++] = a + side;                    // 좌상
+                    triangles[t++] = a + side + 1;                // 우상
+                    triangles[t++] = a;
+                    triangles[t++] = a + side + 1;
+                    triangles[t++] = a + 1;                       // 우하
+                }
+            }
+
+            _backdropGlowMesh = new Mesh
+            {
+                name = "PortraitBackdropGlow",
+                hideFlags = HideFlags.DontSave,
+                vertices = vertices,
+                colors = colors,
+                triangles = triangles,
+            };
+            _backdropGlowMesh.RecalculateBounds();
+
+            _backdropGlow = new GameObject("StageBackdropGlow", typeof(MeshFilter), typeof(MeshRenderer));
+            _backdropGlow.transform.SetParent(transform, false);
+            _backdropGlow.GetComponent<MeshFilter>().sharedMesh = _backdropGlowMesh;
+
+            MeshRenderer mr = _backdropGlow.GetComponent<MeshRenderer>();
+            mr.sharedMaterial = _lineMaterial;
+            mr.sortingOrder = BackdropGlowSortingOrder;
+            mr.shadowCastingMode = ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+        }
+
+        /// <summary>메시는 GameObject를 지워도 남는다 — 24시간 상주 앱이라 여기서 함께 놓는다
+        /// (<see cref="_fillMeshes"/>가 같은 이유로 있는 것과 같다).</summary>
+        private void DestroyBackdropGlow()
+        {
+            if (_backdropGlow != null) Destroy(_backdropGlow);
+            _backdropGlow = null;
+            if (_backdropGlowMesh != null) Destroy(_backdropGlowMesh);
+            _backdropGlowMesh = null;
         }
 
         /// <summary>그림 묶음 하나가 통째로 실패했다는 사실을 <b>눈에 보이게</b> 남긴다.

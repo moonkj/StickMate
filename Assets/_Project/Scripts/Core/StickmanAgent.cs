@@ -105,6 +105,15 @@ namespace StickMate.Core
         private bool _fullscreenPanelRetreat;
         private bool _offCurrentVirtualDesktop;
 
+        //   축 5 _foreignFullscreenSuppressesDance : 전체화면 앱이 떠 있는 동안 <b>자동으로 발동하는
+        //                              춤만</b> 막는다(2026-09-06 리더 판정). 캐릭터도, 표면도 건드리지
+        //                              않는다 — <see cref="IsForeignFullscreenAppPresent"/> 하나로만
+        //                              새 나가고 읽는 곳은 Core/AudioReactiveDanceGate뿐이다.
+        //                              ★ 축 3과 값이 같지만 <b>필드를 공유하지 않는다</b>: 축 3의 창구에는
+        //                              사용자 임대 항이 붙어 있어서, 그것을 재사용하면 «설정창을 여는
+        //                              동안만 춤이 되살아난다»가 된다(그 프로퍼티 문서 참고).
+        private bool _foreignFullscreenSuppressesDance;
+
         // ============================================================================
         // 클릭 관통 긴급 종료 안전장치("바로 바탕화면에서 구동" 라운드, 사용자 명시 요청, 2026-08-28).
         // 클릭관통이 켜지면 마우스 클릭이 우리 창을 그대로 통과해버려, 그 순간부터는 클릭으로 우리
@@ -220,6 +229,33 @@ namespace StickMate.Core
         /// </summary>
         public bool ArePanelsSuppressed => Platform.UserSurfaceSummonPolicy.SuppressesPanels(
             HidesScreenSurfaces, _fullscreenPanelRetreat, IsUserSummonGrantActive);
+
+        /// <summary>
+        /// ★★ 2026-09-06 — <b>지금 남의 전체화면 앱이 떠 있는가</b>(등급 1 이상). 리더 판정으로 신설된
+        /// <b>자동 발동 억제 전용</b> 창구다. 읽는 곳은 지금 <c>Core/AudioReactiveDanceGate</c> 하나뿐이다.
+        ///
+        /// ============================================================================
+        /// ★ <see cref="ArePanelsSuppressed"/>를 재사용하지 <b>않는</b> 이유 — 두 값은 다른 질문이다
+        /// ============================================================================
+        /// 그쪽은 <b>「이 표면을 지금 걷어야 하는가」</b>이고, 그래서 <b>사용자 허가(임대)</b> 항이
+        /// 들어 있다(<see cref="TryGrantUserSummon"/>). 사용자가 설정창을 부르려고 임대를 켠 순간
+        /// 그 값은 <b>거짓</b>이 되는데, 그 사실이 <b>「지금 회의 중인가」</b>에 대한 답을 바꿀 이유는
+        /// 하나도 없다. 그 값을 그대로 쓰면 <i>«설정창을 여는 동안만 춤이 다시 발동한다»</i>는
+        /// 재현 조건이 까다로운 결함이 생긴다.
+        ///
+        /// <para>즉 여기서 읽는 것은 <b>축 3의 날 것</b>이다. <c>AutoHideOnFullscreen</c> 게이트는
+        /// 그대로 통과한다 — 사용자가 전체화면 감지를 통째로 껐다면 이 축도 함께 꺼지는 것이 맞다.</para>
+        ///
+        /// ============================================================================
+        /// ★★ <b>캐릭터를 숨기는 값이 아니다</b> — 2026-08-31 신고와 무관하다
+        /// ============================================================================
+        /// 이 값이 참인 동안에도 <see cref="IsSuspended"/>는 <b>거짓</b>이고, 캐릭터는 계속 보이고
+        /// 계속 걸어다닌다. 달라지는 것은 <b>«음악이 감지됐다는 이유로 스스로 춤을 시작하는 것»</b>
+        /// 하나뿐이다. 판정 규칙은 플랫폼 중립 위치에 있다 —
+        /// <see cref="Platform.ForeignFullscreenTierPolicy.SuppressesAutoDance"/>.
+        /// <b>이 프로퍼티를 표면 회수나 캐릭터 숨김에 쓰지 마라.</b>
+        /// </summary>
+        public bool IsForeignFullscreenAppPresent => _foreignFullscreenSuppressesDance;
 
         /// <summary>
         /// ★★★ 2026-09-03 — <b>축 2만으로 숨어 있는가</b>(사용자 명시 숨김 <b>단독</b>).
@@ -715,6 +751,13 @@ namespace StickMate.Core
                 // BUG-M2 방어 코드(에러 로그 + 현재 상태 유지)를 밟아 연출이 통째로 사라지고,
                 // 유예 붙잡음은 그대로라 **정지 화면**(= 이번 라운드가 고치려는 그 그림)으로 되돌아간다.
                 { StickmanStateId.GroundLossHang, new GroundLossHangState(_blackboard) },
+                // ★ 음악 반응 춤(2026-09-06, 사용자 요청 2026-09-03 "노래가 나오면 상호 반응해서
+                // 춤추는 동작을 넣어줘") — Interaction/DanceEpisodeDirector가 «에피소드 1회분»만
+                // 이 상태로 보낸다(음악이 나오는 내내가 아니다 — 그러면 상태 슬롯과 스펙터클 락을
+                // 몇 시간 붙들어 다른 연출이 전부 죽는다). 등록을 빠뜨리면 ChangeState가 BUG-M2
+                // 방어 코드(에러 로그 + 현재 상태 유지)를 밟아 연출이 통째로 사라지고, 감독은
+                // 락만 잡은 채 «춤추는 중»이라고 믿는다.
+                { StickmanStateId.Dance, new DanceState(_blackboard) },
             };
 
             // BUG-P1-M2 대응(Major, docs/BUG_REPORT_PHASE1.md): 생성과 "최초 상태 활성화"를 분리했다.
@@ -1487,6 +1530,15 @@ namespace StickMate.Core
             //   (설정창 [일반] 문구도 "설정창/팝오버/부채꼴이 모두"라고 이미 전체를 약속하고 있다).
             _fullscreenPanelRetreat = AppSettingsModel.AutoHideOnFullscreen
                 && ForeignFullscreenTierPolicy.RetreatsPanels(tier);
+
+            // ★ 2026-09-06 — 축 5(자동 발동 억제). 위 두 줄과 <b>같은 형태</b>로 적는다(지역 변수로
+            //   빼지 않는 이유도 같다 — 감사가 소스로 읽는다). 지금 이 값은 축 3과 언제나 같지만
+            //   <b>같은 필드를 재사용하지 않는다</b>: 축 3의 소비자 창구(ArePanelsSuppressed)에는
+            //   사용자 임대 항이 붙어 있어서, 설정창을 여는 동안만 춤이 되살아나는 결함이 생긴다.
+            //   여기서 규칙을 정책 함수로 한 번 더 통과시키는 것은 «두 벌의 판정»이 아니라
+            //   <b>세 축이 갈라지는 날 이 줄만 고치면 되게</b> 하는 배선이다.
+            _foreignFullscreenSuppressesDance = AppSettingsModel.AutoHideOnFullscreen
+                && ForeignFullscreenTierPolicy.SuppressesAutoDance(tier);
 
             // ★ 축 4(2026-09-05, M-8) — <b>같은 폴링 틱</b>에 얹는다. 새 타이머를 만들지 않는 이유:
             //   이 조회의 의미 있는 해상도는 「사용자가 데스크톱을 전환했다」이고 그건 초 단위 사건이다.

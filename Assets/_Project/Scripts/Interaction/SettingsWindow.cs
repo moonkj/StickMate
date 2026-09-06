@@ -316,11 +316,21 @@ namespace StickMate.Interaction
         private readonly SettingsControlHost _host = new SettingsControlHost();
 
         // 값이 바뀌면 화면을 다시 칠해야 하는 부품들(다른 UI가 같은 값을 바꿀 수 있다).
+        /// <summary>[캐릭터] 탭의 이름 칸(2026-09-06). 값은 <b>들고 있지 않다</b> —
+        /// <see cref="CharacterProgressionModel.CharacterName"/>이 유일한 소스이고
+        /// <see cref="SyncNameField"/>가 그것을 이 칸에 옮겨 적는다.</summary>
+        private SettingsTextField _nameField;
         private SettingsSlider _scaleSlider;
         private SettingsSwatchRow _inkSwatches;
         // ★ 2026-09-05 — _gearIconToggle / _gearWarnCaption 을 지웠다(BuildGeneralPage의 「화면 위 UI」
         //   카드 주석에 사유 전문이 있다). 필드만 남기면 다음 사람이 «어디서 세우던 값인가»를 다시 찾는다.
         private SettingsToggle _autoHideToggle;
+
+        /// <summary>「음악이 나오면 춤추기」(2026-09-06). ★ <b>세이브에 내려가지 않는</b> 유일한 토글이라,
+        /// <see cref="RefreshAll"/>도 저장 값이 아니라
+        /// <see cref="AudioReactiveDanceGate.MutedForThisSession"/>를 <b>부정</b>해서 읽는다.</summary>
+        private SettingsToggle _danceToggle;
+
         private SettingsToggle _bubbleToggle;
         private SettingsSlider _fontSizeSlider;
         private SettingsSegment _visibleLengthSegment;
@@ -539,11 +549,15 @@ namespace StickMate.Interaction
         private void OnEnable()
         {
             StickmanEventBus.CharacterScaleChanged += OnCharacterScaleChanged;
+            // 이름은 이 창 밖(정보창 인라인 편집)에서도 바뀐다 — 그때 이 칸이 낡은 값을 들고 있으면
+            // 두 창이 같은 캐릭터를 다른 이름으로 부른다.
+            StickmanEventBus.CharacterProgressionChanged += OnProgressionChanged;
         }
 
         private void OnDisable()
         {
             StickmanEventBus.CharacterScaleChanged -= OnCharacterScaleChanged;
+            StickmanEventBus.CharacterProgressionChanged -= OnProgressionChanged;
             // 창이 꺼진 채 차단막만 남으면 그 화면 영역이 이유 없이 클릭관통 해제로 남는다(비침해).
             if (_clickBlocker != null) _clickBlocker.enabled = false;
         }
@@ -888,11 +902,35 @@ namespace StickMate.Interaction
             _scaleSlider.SetValueSilently(e.Value);
         }
 
+        /// <summary>
+        /// ★ 이름 칸을 <b>모델에서</b> 다시 읽는다 — 이 창이 이름을 따로 기억하지 않는 이유다.
+        ///
+        /// <para>부르는 자리는 셋이고 전부 같은 사실을 말한다: 창을 열 때(<see cref="RefreshAll"/>),
+        /// 이 창에서 고쳤을 때(정규화 결과 반영), <b>다른 창에서 고쳤을 때</b>
+        /// (<see cref="OnProgressionChanged"/> — 정보창의 인라인 편집·레벨업 복원 경로).</para>
+        ///
+        /// <para><b>타이핑 중에는 손대지 않는다.</b> 통지가 날아왔다고 칸을 갈아치우면 지금 치고 있는
+        /// 글자가 사라진다 — 그리고 그 통지의 출처가 <b>이 칸 자신</b>일 수도 있다.</para>
+        /// </summary>
+        private void SyncNameField()
+        {
+            if (_nameField == null || _nameField.IsFocused) return;
+            _nameField.SetTextSilently(CharacterProgressionModel.CharacterName);
+        }
+
+        /// <summary>이름이 <b>다른 곳</b>에서 바뀌었다(정보창 인라인 편집, 저장 복원). 이 창이 열려
+        /// 있으면 즉시 따라간다 — 두 창이 서로 다른 이름을 보여주는 순간을 만들지 않는다.</summary>
+        private void OnProgressionChanged() => SyncNameField();
+
         private void RefreshAll()
         {
+            SyncNameField();
             if (_scaleSlider != null) _scaleSlider.SetValueSilently(CharacterScaleController.Value);
             if (_inkSwatches != null) _inkSwatches.SetIndexSilently(_config != null && _config.IsWhiteInk() ? 1 : 0);
             if (_autoHideToggle != null) _autoHideToggle.SetOn(AppSettingsModel.AutoHideOnFullscreen);
+            // ★ 저장 값이 아니라 «지금 이 세션의 정적 상태»를 부정해서 읽는다(그 필드 문서 참고).
+            //   창을 닫았다 다시 열어도 방금 끈 상태가 그대로 보여야 한다.
+            if (_danceToggle != null) _danceToggle.SetOn(!AudioReactiveDanceGate.MutedForThisSession);
             if (_bubbleToggle != null) _bubbleToggle.SetOn(AppSettingsModel.ResolveDialogueBubbleEnabled(_config));
             if (_fontSizeSlider != null) _fontSizeSlider.SetValueSilently(AppSettingsModel.ResolveDialogueFontSize(_config));
             if (_visibleLengthSegment != null)
@@ -1193,6 +1231,25 @@ namespace StickMate.Interaction
                 //   캐릭터가 남는 데 동의한 것이지 "클릭이 안 먹는 구멍"에 동의한 적이 없다.
                 caption: "켜면 캐릭터도 열린 창도 함께 사라집니다. 끄면 창이 막는 클릭까지 그대로 남아요.");
 
+            // ★★★ 2026-09-06 리더 판정(L-5 확정) — <b>「이번 세션만 끄기」</b>.
+            //
+            //   왜 여기인가: 이 카드(「표시」)는 이미 <b>«지금 이 순간 화면에서 무엇을 물릴 것인가»</b>를
+            //   모아 둔 자리다(전체화면 자동 숨김 / 지금 즉시 숨기기·보이기). 「회의 중이라 자동 연출을
+            //   끈다」는 정확히 같은 종류의 요구이고, 실제로 그 상황의 사용자는 <b>바로 위 두 행을
+            //   찾으러</b> 이 카드를 연다. 새 카드도, 새 탭도, 새 창도 만들지 않는다.
+            //
+            //   ★ <b>저장하지 않는다.</b> 그래서 <c>CharacterSaveStore.Save()</c>를 부르지 않는다 —
+            //     바로 위 자동 숨김 토글과 다른 유일한 점이고, 그 사실을 캡션이 사용자에게 말한다.
+            //     영속시키면 «반년 전에 끈 것을 잊고 고장났다고 신고하는» 경로가 생긴다(41-8과 같은 형태).
+            //
+            //   ★ 값의 방향에 주의: 이 토글은 <b>«켜기»</b>이고 게이트는 <b>«끄기»</b>다. 그래서 양쪽에
+            //     <c>!</c>가 붙는다. 표시 이름을 부정형("춤 끄기")으로 두면 «켜면 꺼진다»가 되어
+            //     사용자가 반드시 한 번 헷갈린다.
+            _danceToggle = display.AddToggle("general.musicDance", "음악이 나오면 춤추기",
+                !AudioReactiveDanceGate.MutedForThisSession,
+                on => AudioReactiveDanceGate.SetMutedForThisSession(!on, "설정창 [일반] 표시"),
+                caption: "회의나 발표 중에는 꺼 두세요. 저장하지 않으니 앱을 다시 켜면 저절로 켜집니다.");
+
             // ★★ 2026-09-02 — 이 행은 <b>하나의 상태</b>(StickmanAgent.IsUserHidden)를 본다.
             //   예전에는 [숨기기]가 렌더러만 끄는 1회성이라 캡션이 "전체화면 앱을 오갔다 오면 다시
             //   나타나요"라고 <b>자기 한계를 자백</b>하고 있었다. 화면공유 중에 되살아나는 숨김은
@@ -1413,11 +1470,18 @@ namespace StickMate.Interaction
         {
             if (_quitLabel == null || _quitSurface == null) return;
             _quitLabel.text = _quitArmed ? QuitConfirmText : QuitLabelText;
-            _quitLabel.color = _quitArmed ? UiChrome.WarmAccent : UiChrome.InkTitle(true);
             // 푸터는 창 바탕(PanelSurface) 위다 — 카드용 합성값을 쓰면 한 단 어둡게 앉는다.
-            _quitSurface.color = _quitArmed
+            // ★ F1(2026-09-06) — 평상시 면이 ControlFaceOnPanel(4.88:1)로 올라갔다. <b>이 갱신 경로를
+            //   같이 안 고치면 첫 DisarmQuit()에서 생성값이 도로 어두워진다</b>(정보창 카드가 이미
+            //   당한 형태: 옳게 만든 색을 매 갱신이 덮어썼다).
+            Color face = _quitArmed
                 ? UiChrome.Flatten(UiChrome.AccentSurface, UiChrome.PanelSurface)
-                : SettingsControls.ButtonSurfaceOnPanel;
+                : SettingsControls.ControlFaceOnPanel;
+            _quitSurface.color = face;
+            // 무장 라벨은 <b>경고색</b>이 지고(어두운 면 위), 평상시 라벨은 그 밝은 면에서 파생된다.
+            _quitLabel.color = _quitArmed
+                ? UiChrome.WarmAccent
+                : UiChrome.InkOnSurface(face, UiChrome.InkRole.Title, true);
         }
 
         // -------------------- [캐릭터] --------------------
@@ -1425,6 +1489,28 @@ namespace StickMate.Interaction
         private float BuildCharacterTab(RectTransform page, float y)
         {
             var look = new SettingsCardBuilder(page, "모양", y, _host);
+
+            // ★ 2026-09-06 사용자 신고 — <i>"캐릭터설정창에서 캐릭터 이름도 설정할수 있어야 하는데 안됨"</i>.
+            //   이름은 이 카드의 <b>첫 줄</b>이다: 이 캐릭터가 무엇인지가 크기·색보다 먼저다.
+            //
+            //   ★ 로직을 복제하지 않는다. 정규화(빈 값·줄바꿈·길이·이모지 반쪽)는 전부
+            //     CharacterProgressionModel.SetCharacterName 하나가 하고, 여기서는 <b>친 글자를 넘기고</b>
+            //     <b>모델이 정한 결과를 되돌려 적을</b> 뿐이다. 정보창의 인라인 편집도 같은 함수를 부른다 —
+            //     두 창이 같은 사실을 각자 계산하면 언젠가 갈라진다.
+            _nameField = look.AddTextField("character.name", "이름",
+                CharacterProgressionModel.CharacterName, CharacterProgressionModel.DefaultCharacterName,
+                CharacterProgressionModel.MaxNameLength,
+                typed =>
+                {
+                    CharacterProgressionModel.SetCharacterName(typed);
+                    CharacterSaveStore.Save();
+                    // 친 것과 저장된 것이 다를 수 있다(공백만 → 기본값, 상한 초과 → 잘림).
+                    // 그 차이는 <b>지금</b> 보여야 한다 — 다음에 창을 열었을 때 알게 되면
+                    // "내가 쓴 이름이 아닌데?"가 된다.
+                    SyncNameField();
+                    Debug.Log($"[설정창] 이름 변경 -> \"{CharacterProgressionModel.CharacterName}\" (즉시 저장). " +
+                        "정보창 헤더/「표시」 블록도 같은 값을 따라옵니다(단일 소스: CharacterProgressionModel).");
+                });
 
             // ★ 크기는 반드시 단일 소스를 지난다(35-1-3 ①). 여기서 UiLayoutModel/Agent를 직접 부르면
             //   적용 게이트(랙돌 중 유예)가 이 경로에만 없는 상태가 되어 규칙이 두 벌이 된다.
@@ -1612,13 +1698,17 @@ namespace StickMate.Interaction
             closeHint.text = "[✕]를 누르면 닫혀요.";
 
             // 2단 확인은 <b>그대로</b>다 — 창 크롬으로 올라갔다고 위험도가 내려가지 않는다.
-            _quitSurface = UiChrome.AddSurface(foot, "Quit", SettingsControls.ButtonSurfaceOnPanel,
+            // ★ F1(2026-09-06) — 면이 곧 어포던스다. 창 바탕 대비 1.32 → <b>4.88 : 1</b>.
+            //   생성값과 갱신값이 갈라지지 않게 <b>ApplyQuitStyle()과 같은 토큰</b>을 쓴다.
+            _quitSurface = UiChrome.AddSurface(foot, "Quit", SettingsControls.ControlFaceOnPanel,
                 UiChrome.RadiusChip);
             _quitRect = _quitSurface.rectTransform;
             UiChrome.AddOutline(_quitRect, "Outline", SettingsControls.OutlineOnPanel, UiChrome.RadiusChip);
             // 색은 사다리를 경유한다(직접 고르지 않는다) — 탈출구는 이 창에서 가장 높은 단이다.
-            _quitLabel = UiChrome.AddText(_quitRect, "Label", UiChrome.FontBody,
-                TextAnchor.MiddleCenter, UiChrome.InkTitle(true), bold: true);
+            // ★ 밝은 면 위라 사다리가 통하지 않는다: 잉크는 <b>면에서</b> 뽑는다(면만 바꾸면 글자가 지워진다).
+            _quitLabel = UiChrome.AddText(_quitRect, "Label", UiChrome.FontBody, TextAnchor.MiddleCenter,
+                UiChrome.InkOnSurface(SettingsControls.ControlFaceOnPanel, UiChrome.InkRole.Title, true),
+                bold: true);
             UiChrome.Stretch(_quitLabel.rectTransform);
 
             // ★★ 2026-09-03 — 이 칸이 <b>이 창에서 가장 위험한 칸</b>이다. 라벨은 플랫폼마다
@@ -1717,6 +1807,7 @@ namespace StickMate.Interaction
 
         private RectTransform _trackRect;
         private RectTransform _thumbRect;
+        private Image _pageUpSurface, _pageDownSurface;
         private Image _pageUpOutline, _pageDownOutline;
         private Text _pageUpLabel, _pageDownLabel;
 
@@ -1725,9 +1816,10 @@ namespace StickMate.Interaction
 
         private void BuildPageButtons()
         {
-            _pageUpRect = AddPageButton("PageUp", "▲", RailTop, out _pageUpOutline, out _pageUpLabel);
+            _pageUpRect = AddPageButton("PageUp", "▲", RailTop,
+                out _pageUpSurface, out _pageUpOutline, out _pageUpLabel);
             _pageDownRect = AddPageButton("PageDown", "▼", RailTop + ContentHeight - PageButtonSize,
-                out _pageDownOutline, out _pageDownLabel);
+                out _pageDownSurface, out _pageDownOutline, out _pageDownLabel);
 
             Image track = UiChrome.AddSurface(_panel, "ScrollTrack", SettingsControls.TrackOnPanel,
                 Mathf.RoundToInt(RailBarWidth * 0.5f));
@@ -1746,14 +1838,21 @@ namespace StickMate.Interaction
             SyncPageButtons();
         }
 
-        private RectTransform AddPageButton(string name, string glyph, float y, out Image outlineOut, out Text labelOut)
+        /// <summary>
+        /// 레일 끝 칩 한 개. <b>겉모습은 여기서 만들지 않고</b> <see cref="ApplyPageChipEnabled"/>가
+        /// 정한다 — 태어난 모습과 갱신된 모습이 두 벌이면 반드시 한쪽만 고쳐진다(그게 이 라운드가
+        /// 정보창 카드에서 본 형태다). 여기서는 <b>같은 함수로 초기 상태를 한 번 칠할</b> 뿐이다.
+        /// </summary>
+        private RectTransform AddPageButton(string name, string glyph, float y,
+            out Image surfaceOut, out Image outlineOut, out Text labelOut)
         {
-            Image surface = UiChrome.AddSurface(_panel, name, UiChrome.CardSurfaceMuted, UiChrome.RadiusChip);
+            Image surface = UiChrome.AddSurface(_panel, name, PageChipFace(true), UiChrome.RadiusChip);
             UiChrome.PlaceTopLeft(surface.rectTransform, RailX, -y, PageButtonSize, PageButtonSize);
             Image outline = UiChrome.AddOutline(surface.rectTransform, "Outline",
-                UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurfaceMuted), UiChrome.RadiusChip);
+                UiChrome.Flatten(UiChrome.CardBorder, PageChipFace(true)), UiChrome.RadiusChip);
             Text label = UiChrome.AddText(surface.rectTransform, "Label", UiChrome.FontCaption,
-                TextAnchor.MiddleCenter, UiChrome.InkIcon(true));
+                TextAnchor.MiddleCenter,
+                UiChrome.InkOnSurface(PageChipFace(true), UiChrome.InkRole.Title, true));
             UiChrome.Stretch(label.rectTransform);
             label.text = glyph;
 
@@ -1766,6 +1865,7 @@ namespace StickMate.Interaction
                 if (!CanScroll(direction)) return;   // 끝에 닿은 칩은 <b>아무 일도 하지 않는다</b>.
                 if (TryClaimAction(key)) ScrollPage(direction);
             });
+            surfaceOut = surface;
             outlineOut = outline;
             labelOut = label;
             return surface.rectTransform;
@@ -1837,30 +1937,52 @@ namespace StickMate.Interaction
             //   보관함이 앓던 같은 병이 이 새 레일에 그대로 복제된 것이다. 칩을 숨기지는 않는다 —
             //   레일의 양 끝 캡이라 하나가 사라지면 막대가 <b>고장 난 것처럼</b> 보인다. 대신 죽인다.
             //   ★ 여기서도 규칙은 같다: <b>면을 죽이고 글자는 그 면에서 파생시킨다</b>(A와 같은 뿌리).
-            ApplyPageChipEnabled(_pageUpOutline, _pageUpLabel, CanScroll(-1));
-            ApplyPageChipEnabled(_pageDownOutline, _pageDownLabel, CanScroll(+1));
+            ApplyPageChipEnabled(_pageUpSurface, _pageUpOutline, _pageUpLabel, CanScroll(-1));
+            ApplyPageChipEnabled(_pageDownSurface, _pageDownOutline, _pageDownLabel, CanScroll(+1));
         }
 
         /// <summary>
-        /// 끝에 닿은 칩을 죽인다. <b>숨기지 않는다</b> — 레일 양 끝 캡이라 하나가 사라지면 막대 자체가
-        /// 고장 난 것처럼 보인다.
+        /// 레일 끝 칩의 <b>겉모습을 정하는 단 하나의 자리</b>. 끝에 닿은 칩을 죽이되 <b>숨기지 않는다</b> —
+        /// 레일 양 끝 캡이라 하나가 사라지면 막대 자체가 고장 난 것처럼 보인다.
         ///
-        /// <para>여기서 바꾸는 것은 <b>화살표(그래픽)</b>와 <b>테두리</b>다. 산문이 아니라 기호이므로
-        /// <see cref="UiChrome.InkIcon"/>(아이콘 사다리)를 쓴다 — A에서 고친 "산문을 지워서 못 쓴다를
-        /// 말하는" 패턴과 다른 종류다. 그리고 이 칩에는 <b>애초에 거짓말할 밝은 면이 없다</b>
-        /// (강조색을 쓰지 않는다).</para>
+        /// <para>★★ 2026-09-06 (F1, <c>docs/UI_ALPHA_BLEED_POLICY.md</c> §7-3) — <b>어포던스가
+        /// 글리프에서 「면」으로 옮겨 왔다.</b> 예전에는 칩의 면이 <see cref="UiChrome.CardSurfaceMuted"/>
+        /// 하나로 고정이었고(창 바탕 대비 <b>1.01 : 1</b> — 창 바탕보다 <b>어두워서</b> 칩이 사실상
+        /// 없었다) 살아 있음/죽음을 화살표 밝기만으로 말했다. 이제 살아 있는 칩은
+        /// <see cref="SettingsControls.ControlFaceOnPanel"/>(창 바탕 대비 <b>4.88 : 1</b>)로 서고,
+        /// 죽은 칩은 예전 면 그대로 물러난다.</para>
+        ///
+        /// <para>★ <b>글리프 잉크의 문이 바뀐 이유</b>: 밝은 면 위에서는 아이콘 사다리
+        /// (<see cref="UiChrome.InkIcon"/>)가 <b>통하지 않는다</b>. 면만 밝히고 사다리를 그대로 두면
+        /// 화살표가 지워진다(정책 §2-E "면과 잉크는 한 쌍이다"). 그래서 살아 있는 칩과 죽은 칩 모두
+        /// <b>자기 면에서</b> 잉크를 받는다(<see cref="UiChrome.InkOnSurface"/>) — 문을 둘로 나누면
+        /// 언젠가 한쪽만 고쳐진다. 두 상태의 잉크 밝기 서열이 뒤집히는 것은 결함이 아니라
+        /// <b>어포던스 축이 면으로 옮겨간 결과</b>다: 죽은 칩은 어두운 면 위의 밝은 화살표,
+        /// 살아 있는 칩은 밝은 면 위의 어두운 화살표이고, "누를 수 있음"을 말하는 것은 <b>면</b>이다.</para>
+        ///
+        /// <para>비활성 칩이 비텍스트 3 : 1을 안 지키는 것은 의도다 — WCAG 2.2 §1.4.11이 비활성
+        /// 컴포넌트를 명시적으로 면제한다(꺼진 스위치 손잡이 1.70 : 1과 같은 근거).</para>
         /// </summary>
-        private static void ApplyPageChipEnabled(Image outline, Text glyph, bool enabled)
+        private static void ApplyPageChipEnabled(Image surface, Image outline, Text glyph, bool enabled)
         {
             if (outline == null || glyph == null) return;
 
-            Color edge = UiChrome.Flatten(enabled ? UiChrome.CardBorder : UiChrome.Divider,
-                UiChrome.CardSurfaceMuted);
+            Color face = PageChipFace(enabled);
+            if (surface != null && surface.color != face) surface.color = face;
+
+            // 테두리는 <b>자기 면 위에</b> 합성한다 — 면이 바뀌었는데 옛 바탕에 합성하면 α가 그대로 남아
+            // 뒤 창이 비친다(이 라운드가 닫는 결함 그 자체다).
+            Color edge = UiChrome.Flatten(enabled ? UiChrome.CardBorder : UiChrome.Divider, face);
             if (outline.color != edge) outline.color = edge;
 
-            Color ink = UiChrome.InkIcon(enabled);
+            Color ink = UiChrome.InkOnSurface(face, UiChrome.InkRole.Title, enabled);
             if (glyph.color != ink) glyph.color = ink;
         }
+
+        /// <summary>레일 끝 칩의 면 — 살아 있으면 F1 슬래브, 죽었으면 물러난 면.
+        /// <para>생성부와 갱신부가 <b>같은 함수</b>를 부른다. 두 벌로 두면 한쪽만 고쳐진다.</para></summary>
+        private static Color PageChipFace(bool enabled)
+            => enabled ? SettingsControls.ControlFaceOnPanel : UiChrome.CardSurfaceMuted;
 
         private static void SetRailPartActive(RectTransform rt, bool active)
         {

@@ -163,9 +163,43 @@ def fit_with_fallback(kind):
         if best: return best, tried
     return None, tried
 
+# ============================================================================
+# ★ R25 확정 맞춤 락 (2026-09-06, design-equipment 확정 → 코디네이터 통보 → coder 이식)
+# ============================================================================
+# 왜 락인가: 아래 값은 **이 파일의 격자 탐색이 낸 값이 아니다.** design-equipment 가 H-2 규칙의
+# 근본 결함(착용선에 **하한이 없었다** — 목표는 «≤ w_max» 하나뿐이라 모자가 얼마든지 내려앉을 수
+# 있었고, 그것이 「안경을 너무 가린다」는 사용자 신고의 정체다)을 고치고 6종을 다시 맞춘 결과다.
+# 그 새 규칙(하한을 포함한 목표 대역)의 **수치 정본은 design-equipment 문서**이고, 이 파일은
+# 그 결론을 좌표로 못박기만 한다 — 여기서 목표를 다시 추정하면 정본이 두 개가 된다.
+#
+# ★ 그래서 아래 HAT_TARGET(구 목표 0.30/0.00/0.45)은 **손대지 않았다.** 그 표는 이제 이 락에
+#   대해 「상한」의 뜻을 잃었고(락은 대부분 그 위에 있다), 남은 쓰임은 fit() 을 직접 부르는
+#   옛 탐색뿐이다. 락된 종류는 fit() 을 아예 돌리지 않는다.
+#
+# 블라인드 수용을 막는 장치: 락을 그대로 믿지 않고 evaluate() 로 **이견 없는 불변식 3개**만
+# 다시 잰다 — (가) 머리 꼭대기부터 연속으로 덮는가 (나) 꼭대기 < 액자 2.551 (다) 밑 > 턱 −1.0.
+# 하나라도 깨지면 import 가 멈춘다. 착용선 자체는 목표 정본이 여기 없으므로 **기록만** 한다.
+HAT_FIT_LOCK = {
+    "clothhat": dict(u=0.0730, ky=1.0000, dy=3.6560),   # dy 3.4800 → 3.6560 (u·ky 무변경)
+    "fedora":   dict(u=0.0780, ky=0.9650, dy=3.7844),   # ky 1.0000 → 0.9650 · dy 3.7600 → 3.7844
+    "furhat":   dict(u=0.0790, ky=0.6760, dy=2.8861),   # 안 B — 몸 변환이 (scale 1.5977, ky 0.6760, offsetY +0.13521)이 되는 dy
+    "crown":    dict(u=0.0570, ky=1.0000, dy=3.1200),   # 무변경(R17 탐색값 그대로 — 락에 적어 두어야 「안 바뀌었다」가 눈에 보인다)
+}
+
 HAT_FIT = {}
 HAT_TRIED = {}
 for _k in HEAD_KINDS:
+    if _k in HAT_FIT_LOCK:
+        _l = HAT_FIT_LOCK[_k]
+        _e = evaluate(_k, _l["u"], _l["dy"], _l["ky"])
+        if _e["wear"] is None:
+            raise SystemExit("R25 락 %s: 앞층이 머리 현을 한 줄도 못 덮는다" % _k)
+        if _e["top"] >= TOP_LIMIT:
+            raise SystemExit("R25 락 %s: 꼭대기 %.4f ≥ 액자 %.3f" % (_k, _e["top"], TOP_LIMIT))
+        if _e["bottom"] <= CHIN:
+            raise SystemExit("R25 락 %s: 밑 %.4f ≤ 턱 %.1f" % (_k, _e["bottom"], CHIN))
+        HAT_FIT[_k], HAT_TRIED[_k] = _e, [("locked", _e, None)]
+        continue
     HAT_FIT[_k], HAT_TRIED[_k] = fit_with_fallback(_k)
     if HAT_FIT[_k] is None:
         raise SystemExit("모자 맞춤 실패 %s: %s" % (_k, HAT_TRIED[_k]))

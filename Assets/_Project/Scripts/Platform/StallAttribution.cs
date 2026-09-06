@@ -284,7 +284,7 @@ namespace StickMate.Platform
         {
             "에이전트", "연출감독", "연출렌더", "UI창", "초상화",
             "액세서리", "대사", "세이브", "플랫폼유지", "독물리",
-            "가상데스크톱",
+            "가상데스크톱", "오디오감지",
         };
 
         /// <summary>구간 이름을 밖(테스트/진단)에서 읽는다.</summary>
@@ -1337,6 +1337,24 @@ namespace StickMate.Platform
         /// 상위 3개 요약에 뜨지 않으므로 로그가 늘지 않는다.</para>
         /// </summary>
         VirtualDesktop,
+        /// <summary>
+        /// ★ 2026-09-06 — <b>시스템 오디오 재생 여부 조회</b>(2Hz 폴링,
+        /// <c>AudioReactiveDanceDirector</c>).
+        ///
+        /// <para><b>왜 <see cref="PlatformEnforcer"/>에 섞지 않았나</b>: 이 구간의 실체가
+        /// <b>플랫폼마다 다르고 한쪽은 이 머신에서 잴 수 없다</b>. macOS는 CoreAudio 프로퍼티
+        /// 2회(M-C 실측 30.4µs — 무시 가능)지만, Windows는 폴링마다
+        /// <c>GetDefaultAudioEndpoint</c> + <c>IMMDevice::Activate</c> + <c>GetPeakValue</c>의
+        /// <b>COM 왕복 3회</b>이고 <b>그 비용은 미측정이다</b>(이 개발 머신에 Windows가 없다).
+        /// 오버레이 유지와 같은 칸에 넣으면 원장이 <b>"플랫폼유지 200ms"</b>라고만 말하고
+        /// 오디오 조회가 범인인지 아닌지를 <b>가르지 못한다</b> — <see cref="VirtualDesktop"/>을
+        /// 따로 뗀 것과 정확히 같은 이유다. 사용자 히칭 신고가 오면 이 칸 하나로 배제/지목이
+        /// 끝나야 한다.</para>
+        ///
+        /// <para>0인 칸은 상위 3개 요약에 뜨지 않으므로, 배선이 없는 빌드(에디터·모바일)에서
+        /// 로그가 늘지 않는다.</para>
+        /// </summary>
+        SystemAudio,
         /// <summary>열거값 개수. 배열 크기로만 쓴다.</summary>
         Count,
     }

@@ -646,6 +646,59 @@ namespace StickMate.Tests.EditMode
                 },
                 new IgnoreEntry
                 {
+                    File = "CommentReferenceAuditTests.cs",
+                    Method = "이미_알려진_깨진_확장자없는_참조가_고쳐졌으면_명부에서_지운다",
+                    Kind = RatchetKind.자동,
+                    Why = "2026-09-06 code-inspection 등록(1-b 「확장자 없는 낱말형 참조」 확장). " +
+                          "바로 위 항목(1-a 경로형)과 <b>같은 형태의 명부 래칫</b>이다 — " +
+                          "KnownBrokenTypeRefs 의 어떤 항목이 고쳐지면 Assert.IsEmpty(fixedAlready)가 " +
+                          "Ignore <b>앞에서</b> 터져 «명부에서 지워라»라고 말하고, 전부 고쳐져 Count == 0 이 " +
+                          "되면 Ignore 블록 자체를 지나 <b>초록</b>이 된다. 켤 스위치가 없다. " +
+                          "★ 이 Ignore 가 끄는 것은 <b>이미 알려진 잔여분의 재확인</b>뿐이다 — 짝인 " +
+                          "주석이_확장자_없이_지목한_테스트가_새로_사라지지_않는다()는 조건 없이 항상 돌고, " +
+                          "비공허성(경로형 &gt; 70건 · 낱말형 &gt; 100건)을 먼저 못박은 뒤 명부 밖의 새 위반을 " +
+                          "빨갛게 잡는다. 잔여 2건의 성격도 갈라져 있다: 하나는 프로덕션 .cs 주석의 경로 한 " +
+                          "토큰(«Tests/EditMode/» → «Tests/PlayMode/», 2곳)이고 하나는 PlayMode 리그가 " +
+                          "필요한 별도 배정 건이다(같은 라운드에 8건 중 6건이 실제 테스트 신설로 내려갔다).",
+                },
+                new IgnoreEntry
+                {
+                    File = "PortraitBackdropGlowAlphaTests.cs",
+                    Method = "정보창_캔버스의_raw_알파_두_겹이_사라졌는가",
+                    Kind = RatchetKind.자동,
+                    Why = "2026-09-06 design-art R13 「N-1」 등록. 갭: 정보창 캔버스의 StageSheen" +
+                          "(= UiChrome.PanelSheen) · StageFloorGlow(= UiChrome.AccentSurface) 두 겹이 " +
+                          "<b>알파를 얹어</b> 바탕화면 비침 9.00% / 12.04%를 낸다(인계표 D1/D2 — " +
+                          "docs/UX_CHARACTER_WINDOW_REFINE.md §12-4). 안 고친 이유는 하나뿐이다: " +
+                          "CharacterInfoWindow.cs 가 <b>같은 밤 동시 편집 중</b>이라 리더의 파일 분배를 기다린다. " +
+                          "★ 역방향 장치는 <b>같은 메서드 안</b>에 있다 — 두 니들이 소스에서 사라지면 " +
+                          "Ignore 앞에서 return 하여 <b>초록</b>이 된다(D1/D2 착지가 곧 해제다). " +
+                          "니들은 nameof(UiChrome.PanelSheen)/nameof(UiChrome.AccentSurface)로 조립하므로 " +
+                          "토큰이 개명되면 문자열이 조용히 썩는 대신 <b>컴파일이 깨진다</b>. 그리고 " +
+                          "비공허성 가드(표면 텍스트 &gt; 10000자)가 «못 읽어서 0건»과 «고쳐져서 0건»을 가른다. " +
+                          "촬영장 안쪽(CharacterPortraitStage.BackdropGlowColorAt)은 이미 알파 1.0으로 " +
+                          "옮겨졌고 같은 파일의 램프_전_구간에서_알파가_정확히_1이다()가 조건 없이 그것을 잰다.",
+                },
+                new IgnoreEntry
+                {
+                    File = "CurrencyWiringRuntimeTests.cs",
+                    Method = "장비를_갈아입으면_등급_눈금이_실제로_새겨진다",
+                    Kind = RatchetKind.자동,
+                    Why = "2026-09-06 등록(H-8 「등급 눈금」 배선, PlayMode). ★ <b>조건부</b> Ignore다 — " +
+                          "지금 카탈로그에서 고를 수 있는 최고 조합으로도 최고 단이 0일 때만 걸린다" +
+                          "(EquipmentStatRules.CurrentBuild()의 전 스탯 TierReached 최대값 &lt;= 0). " +
+                          "그 조건은 <b>임계값이나 아이템 수치가 바뀌면 저절로 거짓</b>이 되고, 그 순간 아래 " +
+                          "실단언(스탯별 build.TierReached == CurrencyModel.StatTierReached)이 전부 돈다 — " +
+                          "켤 스위치가 없다. 원 작성자가 Ignore 메시지에 그 해제 조건을 직접 적어 두었다. " +
+                          "★ ItemRarityDerivationTests 항목과 <b>같은 종</b>이라 같은 경고가 붙는다: " +
+                          "조건이 참인 실행에서는 <b>조용한 건너뜀</b>이 통과와 구분되지 않는다. " +
+                          "그 위험은 원 작성자가 이미 줄여 두었다 — 목표 레벨을 리터럴로 적지 않고 " +
+                          "HighestRequiredLevelInStatSlots()에서 읽고, 갈아입기를 <b>프로덕션 경로</b>" +
+                          "(EquipmentModel.TryWear)로 수행하며, 전제(모든 눈금이 0)를 Ignore <b>앞에서</b> " +
+                          "단언하므로 «리그가 죽어서 0»과 «수치가 낮아서 0»이 갈린다.",
+                },
+                new IgnoreEntry
+                {
                     File = "SuspendClickBlockerAuditTests.cs",
                     Method = "차단막_소유자는_등급1_창구를_읽는다",
                     Kind = RatchetKind.동반,
@@ -881,11 +934,21 @@ namespace StickMate.Tests.EditMode
             }
 
             // 실물 수집.
+            // ★ 2026-09-06 (test-engineer) — <b>주석을 먼저 지운다.</b>
+            //   그 전에는 원문 텍스트를 그대로 셌고, 그래서 XML 문서에서 그 토큰을 가리키는 <see cref>
+            //   같은 <b>언급</b>이 «건너뜀»으로 집계됐다. 실측 사고: PortraitBackdropGlowAlphaTests.cs 의
+            //   그 cref 는 <b>다음</b> 테스트의 문서 주석에 있는데, 메서드 절단기가 <b>바로 위</b> 테스트
+            //   (격자_분할수가_짝수여야_중심_꼭짓점이_생긴다 — 실제로는 Ignore 를 한 번도 안 부른다)에
+            //   귀속시켜 «명부에 없는 Ignore»로 빨개졌다.
+            //   그대로 등재했다면 명부가 <b>있지도 않은 건너뜀</b>을 지키게 되고, 나중에 그 메서드에
+            //   진짜 Ignore 가 들어와도 «이미 등록됨»이라 아무 신호가 안 난다 — 조용한 초록의 씨앗이다.
+            //   이 파일은 프로덕션 대장에서 이미 같은 처방을 쓰고 있었다(주석 속 언급은 배선이 아니다).
+            //   여기에도 같은 자를 댄다. 가르는 능력은 네거티브 컨트롤이 매 실행 교정한다.
             var found = new List<(string File, string Method)>();
             int tokenHitFiles = 0;
             foreach (string path in testFiles)
             {
-                string src = File.ReadAllText(path).Replace("\r\n", "\n");
+                string src = StripComments(File.ReadAllText(path).Replace("\r\n", "\n"));
                 if (src.IndexOf(ignoreToken, StringComparison.Ordinal) < 0) continue;
                 tokenHitFiles++;
 
@@ -1076,6 +1139,12 @@ namespace StickMate.Tests.EditMode
             /// 늘면 «검사를 더 껐다»는 뜻이라 사유가 필요하고, 줄면 «되살아났다»는 뜻이라 이 숫자를 내려야 한다.</summary>
             public int CallSites;
 
+            /// <summary>이 게이트 <b>메서드 안</b>에 있는 <c>Assert</c>.<c>Ignore</c> 호출 수(보통 1).
+            /// <para>★ 2026-09-06 신설. 파일별로 이 값의 합이 «테스트 메서드 바깥 토큰 수»와 정확히
+            /// 같아야 한다 — 그래야 <b>이미 등록된 파일 안에 새 게이트 메서드가 생기는 경로</b>가 막힌다
+            /// (아래 «파일별 토큰 정산». 그 구멍으로 <c>SkipIfR25Hat</c>이 실제로 지나갔다).</para></summary>
+            public int Tokens;
+
             /// <summary>무엇이 이 건너뜀들을 <b>되살리는가</b>. 비면 실패한다 —
             /// 되살릴 방법이 없는 건너뜀은 갭이 닫혀도 영원히 「건너뜀」으로 남아 러너에서 사실상 사라진다.</summary>
             public string Revival;
@@ -1093,6 +1162,7 @@ namespace StickMate.Tests.EditMode
                     File = "HandoffTestGate.cs",
                     Method = "SkipIfHandoff",
                     CallSites = 30,
+                    Tokens = 1,
                     Revival = "판정이 이름이 아니라 <b>데이터</b>다 — AccessoryShapeBuilder.Shape.IsHandoff(명목 획 strokeInR > 0). " +
                               "그 아이템이 v1 로 돌아오면(인계본 조각이 사라지면) 게이트가 스스로 열리고 검사가 다시 돈다. " +
                               "되살아나면 아래 CallSites 래칫이 «줄었다»로 빨개져서 이 명부를 갱신하라고 말한다.",
@@ -1100,6 +1170,35 @@ namespace StickMate.Tests.EditMode
                           "(EQUIPMENT_HANDOFF_PORT_SPEC 14-6 #14 — 정원 2~4 · 보조색 1 · 감쌈 · 낱선 1.5획 자가 이 표면에 안 맞는다). " +
                           "잃는 규칙은 호출부마다 인자로 적혀 있고 러너의 건너뜀 메시지가 곧 손실 목록이다. " +
                           "대체 자: CardShapeContractTests(설계 골든 · 좌표/역할/흔들 구간) + design/equipment/verify/r16_model.survival(1pt 실폭).",
+                },
+                new IgnoreGate
+                {
+                    File = "HandoffTestGate.cs",
+                    Method = "SkipIfR25Hat",
+                    CallSites = 5,
+                    Tokens = 1,
+                    Revival = "판정이 «이 두 번호는 건너뛴다»가 아니라 <b>R25 도형에만 있는 표식 조각</b>이다 — " +
+                              "베레모 BeretStem · 밀짚모자 StrawBrimFar. 건너뛰기 <b>전에</b> " +
+                              "Assert.IsTrue(found, ...)가 그 조각의 실재를 단언하므로, 누군가 옛 v1 도형으로 " +
+                              "되돌리면 이 게이트는 «건너뜀»이 아니라 <b>빨강</b>으로 멈춘다 — " +
+                              "건너뛰기가 되돌림보다 오래 사는 경로(CLAUDE.md의 «부재 단언이 조용히 초록»)를 " +
+                              "원 작성자가 그 자리에서 막아 두었다. 되살아나면 아래 CallSites 래칫이 " +
+                              "«줄었다»로 빨개져 이 명부를 갱신하라고 말한다.",
+                    Why = "R25 재저작(2026-09-06) — 베레모·밀짚모자가 R21 재저작본으로 바뀌면서 " +
+                          "SkipIfHandoff와 <b>같은 일</b>이 두 아이템에서 일어났다. 다만 그 둘은 여전히 " +
+                          "v1 계약(strokeInR 0)이라 IsHandoff 판정으로는 안 걸린다 — 그래서 게이트가 하나 더 " +
+                          "필요했다. 뜻을 잃은 v1 모자 교리 둘: (가) 「얹지 말고 감싼다」" +
+                          "(커버선 &lt;= 0.10R · |x| &gt;= 0.85R 이면서 y &lt;= 0.05R 인 잉크) — R25는 사용자 신고" +
+                          "(「안경을 너무 가린다」)로 모자를 올렸고 커버선은 그 모자의 H-2 착용선 대역이 됐다. " +
+                          "(나) 「올린 띠」 규약(아랫변 + AccentBandThicknessRatio만큼 올린 역순 윗변) — " +
+                          "R21 띠는 자기 두께를 가진 독립 아이콘 조각이라 관 밑변에서 유도되지 않는다. " +
+                          "대체 자: design/equipment/verify/r24_hats.py(프로덕션 소스 직접 파싱 — H-2 착용선 " +
+                          "대역 · 안경 가려짐). 남은 배정: 「H-2 착용선 대역」을 프로덕션 테스트로 세우는 일" +
+                          "(AccessoryStrokeBudgetTests.cs 호출부 주석이 test-engineer 배정이라고 적어 두었다). " +
+                          "★★ 이 항목이 <b>2026-09-06까지 명부에 없었다</b> — 이미 등록된 파일 안에 생긴 " +
+                          "<b>두 번째</b> 게이트 메서드라 파일 단위 대조를 그대로 통과했고, 검사 5곳이 " +
+                          "등록 없이 꺼진 채 감사는 초록이었다. 2026-09-05의 «69건»과 같은 병이 한 겹 " +
+                          "안쪽에서 재발한 것이다. 그 구멍은 아래 «파일별 토큰 정산»으로 닫았다.",
                 },
             };
         }
@@ -1137,14 +1236,22 @@ namespace StickMate.Tests.EditMode
                 $"{LogPrefix} Tests/ 아래에서 .cs를 {testFiles.Length}개밖에 읽지 못했습니다 — 스캔이 공허합니다(거짓 초록).");
 
             // ── ① 실물 탐지: 테스트 메서드 «바깥»에 토큰이 있는 파일 ──────────────
+            // ★ 2026-09-06 — 위 감사와 <b>같은 자</b>를 쓴다: 주석을 먼저 지운다.
+            //   HandoffTestGate.cs 는 문서 주석에서만 2번 더 언급하므로, 안 지우면 아래 «파일별 토큰
+            //   정산»이 4를 기대하게 되어 명부가 실물보다 두 배로 부푼다.
             var detected = new List<string>();
+            var outsideByFile = new Dictionary<string, int>(StringComparer.Ordinal);
             int tokenFiles = 0;
             foreach (string path in testFiles)
             {
-                string src = File.ReadAllText(path).Replace("\r\n", "\n");
+                string src = StripComments(File.ReadAllText(path).Replace("\r\n", "\n"));
                 if (TokenOccurrences(src, ignoreToken) == 0) continue;
                 tokenFiles++;
-                if (TokensOutsideTestMethods(src, ignoreToken) > 0) detected.Add(Path.GetFileName(path));
+                int outside = TokensOutsideTestMethods(src, ignoreToken);
+                if (outside <= 0) continue;
+                string name = Path.GetFileName(path);
+                detected.Add(name);
+                outsideByFile[name] = outside;
             }
 
             // ★ 비공허성 — 토큰이 한 파일에서도 안 걸리면 조립이 깨진 것이다(0건 = 없다 / 0건 = 눈이 멀었다).
@@ -1173,6 +1280,39 @@ namespace StickMate.Tests.EditMode
             }
             Assert.IsEmpty(problems,
                 $"{LogPrefix} 간접 Ignore 게이트 명부가 실물과 어긋났습니다({problems.Count}건):\n" + string.Join("\n", problems));
+
+            // ── ②-b ★ 파일별 토큰 정산 (2026-09-06 신설 — test-engineer) ─────────
+            //
+            // 무엇이 뚫려 있었나: 위 ②는 <b>파일</b> 단위다. 그래서 <b>이미 등록된 게이트 파일 안에</b>
+            // 새 게이트 «메서드»가 생기면 detected 도 declared 도 그대로라 아무 신호가 없다.
+            // 실측(2026-09-06): HandoffTestGate.cs 에 SkipIfR25Hat 이 추가되어 검사 5곳을 껐는데
+            // 이 감사는 <b>초록</b>이었다 — 2026-09-05의 «69건»과 <b>같은 병이 한 겹 안쪽에서</b> 재발했다.
+            //
+            // 처방: 게이트 파일의 «바깥 토큰 수»와 «그 파일에 등록된 게이트들의 Tokens 합»을 맞댄다.
+            // 새 게이트 메서드는 합을 넘기고, 지워진 게이트는 합을 모자라게 해서 <b>양방향</b>으로 걸린다.
+            // ★ 게이트 이름 목록을 여기 먼저 적는 방식이 아니므로 «니들이 대상보다 늦는 병»에 안 걸린다.
+            foreach (KeyValuePair<string, int> kv in outsideByFile)
+            {
+                int budget = 0, entries = 0;
+                foreach (IgnoreGate g in gates)
+                {
+                    if (!string.Equals(g.File, kv.Key, StringComparison.Ordinal)) continue;
+                    Assert.GreaterOrEqual(g.Tokens, 1,
+                        $"{LogPrefix} {g.File}::{g.Method}의 Tokens 가 {g.Tokens}입니다 — " +
+                        "게이트는 Assert.Ignore 를 적어도 한 번 부릅니다. 안 부른다면 게이트가 아닙니다.");
+                    budget += g.Tokens;
+                    entries++;
+                }
+                Assert.AreEqual(kv.Value, budget,
+                    $"{LogPrefix} {kv.Key}의 테스트 메서드 <b>바깥</b> Assert.Ignore 가 {kv.Value}개인데, " +
+                    $"명부에 등록된 게이트 {entries}개의 Tokens 합은 {budget}개입니다.\n" +
+                    "      <b>많다면</b> 이미 등록된 파일 안에 <b>새 게이트 메서드</b>가 생긴 것입니다 — " +
+                    "파일 단위 대조는 그걸 못 봅니다(2026-09-06 SkipIfR25Hat 이 정확히 이 경로로 " +
+                    "검사 5곳을 등록 없이 껐습니다). IgnoreGateInventory 에 <b>메서드 단위로</b> 등록하고 " +
+                    "되살림 장치와 호출부 수를 함께 적으세요.\n" +
+                    "      <b>적다면</b> 게이트가 사라졌거나 한 게이트가 Ignore 를 여러 번 부르게 바뀐 것입니다 — " +
+                    "어느 쪽인지 확인하고 Tokens 를 맞추세요.");
+            }
 
             // ── ③ 게이트마다: 선언 실재 · 사유/되살림 · 호출부 래칫 · 호출부 사유 ──
             var report = new StringBuilder();
@@ -1230,7 +1370,7 @@ namespace StickMate.Tests.EditMode
                     "0이 되면 이 게이트 항목을 통째로 지우세요.");
 
                 report.Append("  ").Append(g.File).Append("::").Append(g.Method)
-                      .Append("  호출부 ").Append(sites).Append("곳\n")
+                      .Append("  호출부 ").Append(sites).Append("곳 / 게이트 안 Ignore ").Append(g.Tokens).Append("개\n")
                       .Append("      되살림: ").Append(g.Revival).Append('\n')
                       .Append("      사유  : ").Append(g.Why).Append('\n');
             }
@@ -1382,6 +1522,35 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(2, cut.Count, "메서드 두 개를 못 가릅니다.");
             Assert.IsTrue(cut[0].Body.Contains("X()") && !cut[0].Body.Contains("Y()"),
                 "본문이 다음 메서드까지 넘칩니다 — Ignore가 엉뚱한 메서드에 귀속됩니다.");
+
+            // ⑥ ★ 2026-09-06 — <b>문서 주석의 언급</b>은 건너뜀이 아니다.
+            //    실제 사고: PortraitBackdropGlowAlphaTests.cs 에서 그 토큰을 가리키는 <see cref> 는
+            //    <b>다음</b> 테스트의 문서에 있는데, 절단기가 <b>바로 위</b> 테스트에 귀속시켜
+            //    «Ignore 를 한 번도 안 부르는 메서드»가 명부 미등록으로 빨개졌다. 그 항목을 그대로
+            //    등재했다면 명부가 <b>있지도 않은 건너뜀</b>을 지키게 되고, 나중에 그 메서드에 진짜
+            //    Ignore 가 들어와도 «이미 등록됨»이라 아무 신호가 안 난다(조용한 초록).
+            string tok = "Assert" + ".Ignore(";
+            string docThenReal =
+                "        public void 앞_메서드는_안_건너뛴다()\n        {\n            Assert.AreEqual(1, 1);\n        }\n" +
+                "\n" +
+                "        /// <summary>CLAUDE.md 관례대로 <see cref=\"" + tok + "string)\"/>로 남긴다.</summary>\n" +
+                "        public void 뒤_메서드가_진짜_건너뛴다()\n        {\n            " + tok + "\"사유\");\n        }\n";
+
+            List<(string Method, string Body)> stripped = TestMethods(StripComments(docThenReal));
+            Assert.AreEqual(2, stripped.Count, "주석을 지우고 나니 메서드 두 개를 못 가릅니다 — " +
+                "StripComments가 선언 줄을 삼켰습니다(블록 주석 처리 확인).");
+            Assert.IsFalse(stripped[0].Body.Contains(tok),
+                "문서 주석의 <see cref> 언급을 <b>건너뜀</b>으로 셉니다 — 명부가 있지도 않은 " +
+                "Ignore를 등재하게 되고, 그 자리에 진짜 Ignore가 들어와도 신호가 안 납니다.");
+            Assert.IsTrue(stripped[1].Body.Contains(tok),
+                "주석을 지우면서 <b>진짜 호출</b>까지 지웠습니다 — 이러면 명부 대조가 통째로 " +
+                "공허해지고 모든 건너뜀이 조용히 사라집니다(문자열 리터럴 보존 규칙 확인).");
+
+            // 그 위험이 <b>실재한다</b>는 것을 같은 자로 못박는다 — 주석을 안 지우면 실제로 오귀속된다.
+            List<(string Method, string Body)> unstripped = TestMethods(docThenReal);
+            Assert.IsTrue(unstripped[0].Body.Contains(tok),
+                "절단기가 더는 «다음 메서드의 문서 주석»을 앞 메서드에 귀속시키지 않습니다. " +
+                "축하할 실패입니다 — 절단기가 개선됐다면 위 StripComments 방어의 근거 문단을 갱신하세요.");
         }
     }
 }

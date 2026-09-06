@@ -33,7 +33,11 @@ namespace StickMate.Tests.EditMode
         [TearDown]
         public void TearDown()
         {
-            EquipmentDebugUnlock.SetTestOverride(null);
+            // ★ 2026-09-06 — null이 아니라 <b>false</b>다. null은 "실제 판정으로 되돌린다"이고 에디터의
+            //   실제 판정은 <b>켜짐</b>이라, 여기서 null을 넣으면 알파벳 순으로 뒤에 오는 픽스처가
+            //   QA 해금이 켜진 채로 돈다(잠금 단언이 조용히 공허해진다).
+            //   EditMode 스위트의 규약은 GlobalEditModeTestIsolation이 세운 <b>꺼짐</b>이다.
+            EquipmentDebugUnlock.SetTestOverride(false);
             CharacterProgressionModel.ResetForTesting();
             CurrencyModel.ResetForTesting();
             if (_config != null) Object.DestroyImmediate(_config);

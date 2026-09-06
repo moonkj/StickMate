@@ -299,15 +299,21 @@ namespace StickMate.Tests.EditMode
         /// 채움만 세면 이 자는 그 카드들을 <b>아예 보지 못했다</b>(첫 실행에서 "채움이 비었습니다"로
         /// 걸렸다). 2026-09-01(3차) 재설계로 셋 다 채움이 생겼지만, "선까지 본다"는 이 규약은
         /// 그대로 둔다 — 다음 아이템이 다시 선화일 수 있고, 획은 실제로 카드 그림의 일부다.
-        /// <para>값의 유도(Interaction/CharacterInfoWindow의 아이콘 규약):
-        /// 획 = <c>1.7 × (IconSize / 40)</c>, 도형이 차지하는 폭 = <c>IconSize × FitFraction(0.86)</c>.
-        /// IconSize가 약분되어 <c>(1.7 / 40) / 0.86 = 0.0494</c>가 남는다 — 아이콘 크기와 무관한 비율이다.</para>
+        /// <para>★ <b>이 값은 자(尺)의 눈금이지 프로덕션 상수가 아니다</b>(2026-09-06 정정). 원래는
+        /// 「카드 규약에서 유도했다」고 적혀 있었다 — 획 <c>1.7 × (IconSize/40)</c>, 도형 폭
+        /// <c>IconSize × 봉투맞춤 0.86</c>, 약분해서 <c>(1.7/40)/0.86 = 0.0494</c>. 그 두 규약은 2026-09-06
+        /// 배관 통일로 <b>둘 다 폐기됐다</b>(획은 인계본 <c>2.2/64</c>, 프레이밍은 슬롯 고정 배율).
+        /// <br/>그렇다고 이 값을 따라 옮기면 <b>안 된다</b>: 이 자는 두 도형이 「정규화 뒤에 얼마나 다른가」를
+        /// 재는 도구이고, 눈금이 움직이면 과거 실측(V9 12% 등)과 비교가 끊긴다. 프로덕션을 따라가지 않는 것이
+        /// 이 자의 요건이다. 그래서 값을 고정하고 <b>출처 설명만</b> 고친다.</para>
         /// </summary>
         private const float StrokeToSpanRatio = (1.7f / 40f) / 0.86f;
 
-        /// <summary>도형을 <b>카드와 같은 방식</b>으로 상자에 맞춘 뒤(경계 상자의 긴 변을 1로)
-        /// 균일 격자에서 <b>잉크에 덮인</b> 칸을 모은다 — 채움 안쪽이거나, 어떤 선에서 획 반폭 이내거나.
-        /// <see cref="AccessoryCardIcon"/>의 <c>scale = size · FitFraction / span</c>과 같은 정규화다.</summary>
+        /// <summary>도형을 경계 상자의 긴 변이 1이 되게 정규화한 뒤 균일 격자에서 <b>잉크에 덮인</b> 칸을
+        /// 모은다 — 채움 안쪽이거나, 어떤 선에서 획 반폭 이내거나.
+        /// <para>★ 이것은 <b>이 파일 전용 정규화</b>다(2026-09-06 정정). 예전 주석은
+        /// <see cref="AccessoryCardIcon"/>의 봉투 맞춤과 「같은 정규화」라고 적었는데 그 방식은 폐기됐다.
+        /// 여기서 필요한 것은 카드와 같아지는 것이 아니라 <b>두 도형을 같은 자로 재는 것</b>이다.</para></summary>
         private static HashSet<long> NormalizedCells(IList<AccessoryShapeBuilder.Shape> shapes)
         {
             Bounds(shapes, out Vector2 min, out Vector2 max);

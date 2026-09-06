@@ -12,7 +12,8 @@ using StickMate.Interaction;
 namespace StickMate.Tests.PlayMode
 {
     /// <summary>
-    /// ★ [외형] 탭이 <b>실제로 3칸</b>인가 — 2026-08-30 표정(FACE) 카테고리 삭제 회귀.
+    /// ★ [외형] 탭이 <b>실제로 남은 칸 수만큼</b>인가 — 2026-08-30 표정(FACE) 삭제 +
+    /// 2026-09-06 머리(HAIR) 은퇴 회귀. (원래 3칸이었고 지금은 이펙트/펫 2칸이다.)
     ///
     /// ============================================================================
     /// 왜 이 테스트가 필요한가
@@ -102,17 +103,37 @@ namespace StickMate.Tests.PlayMode
             yield return null;
 
             // ---- 기대값은 세지, 적지 않는다 ----
+            // ★ 은퇴한 카테고리(EquipmentModel.IsRetiredSlot)는 기대에서도 빠진다 — 화면이 보는 것과
+            //   <b>같은 술어</b>를 봐야 이 테스트가 UI와 함께 움직인다.
             int expected = 0;
+            int retired = 0;
             var expectedNames = new System.Collections.Generic.List<string>(4);
+            var retiredNames = new System.Collections.Generic.List<string>(2);
             for (int i = 0; i < EquipmentModel.SlotCount; i++)
             {
                 var slot = (EquipmentSlot)i;
                 if (!EquipmentModel.IsAppearanceSlot(slot)) continue;
+                if (EquipmentModel.IsRetiredSlot(slot))
+                {
+                    retired++;
+                    retiredNames.Add(EquipmentModel.SlotName(slot));
+                    continue;
+                }
                 expected++;
                 expectedNames.Add(EquipmentModel.SlotName(slot));
             }
-            Assert.AreEqual(3, expected,
-                $"{LogPrefix} 외형 계열 카테고리가 3개가 아닙니다 — 표정 삭제 후 머리/이펙트/펫만 남아야 합니다.");
+
+            // ★ 콘텐츠 결정 잠금(옛 값 3 → 2). 2026-09-06 사용자 지시 "외형에서 머리 스타일은 전체 삭제"로
+            //   [외형]에는 이펙트/펫만 남는다. 이 숫자가 움직였다면 그건 콘텐츠가 바뀐 것이고,
+            //   그때 이 파일을 함께 고치는 것이 맞다(조용히 늘거나 줄면 안 된다).
+            Assert.AreEqual(2, expected,
+                $"{LogPrefix} 고를 수 있는 외형 카테고리가 2개가 아닙니다 — 이펙트/펫만 남아야 합니다. " +
+                $"실제=[{string.Join(", ", expectedNames)}]");
+            // ★ 양성 대조 — "은퇴 목록이 통째로 비어서 초록"인 상태를 배제한다. 은퇴 술어가 아무도
+            //   가리키지 않게 되면 아래 부재 단언(머리가 없다)은 <b>조용히</b> 무의미해진다.
+            Assert.AreEqual(1, retired,
+                $"{LogPrefix} 은퇴한 외형 카테고리가 1개가 아닙니다 — 실제=[{string.Join(", ", retiredNames)}]. " +
+                "0이면 아래 '[머리]가 화면에 없다'는 단언이 아무것도 안 재고 있습니다.");
 
             object[] sections = Field<object[]>("_sections");
             Assert.IsNotNull(sections, $"{LogPrefix} _sections를 찾지 못했습니다 — 이름이 바뀌었습니다.");
@@ -137,6 +158,14 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} [외형] 탭 섹션 제목이 카탈로그 순서와 다릅니다: [{string.Join(", ", seen)}]");
             CollectionAssert.DoesNotContain(seen, "표정",
                 $"{LogPrefix} 삭제한 [표정] 카테고리가 화면에 남아 있습니다.");
+            // ★ 2026-09-06 — 은퇴한 카테고리 이름이 화면에 한 칸도 없어야 한다. 이름을 문자열로
+            //   베끼지 않고 <b>프로덕션이 부르는 그 이름</b>(SlotName)을 쓴다 — 표시 이름이 바뀌면
+            //   이 단언이 조용히 다른 것을 찾게 되는 사고를 막는다.
+            for (int i = 0; i < retiredNames.Count; i++)
+            {
+                CollectionAssert.DoesNotContain(seen, retiredNames[i],
+                    $"{LogPrefix} 은퇴한 [{retiredNames[i]}] 카테고리가 [외형] 탭에 남아 있습니다.");
+            }
         }
 
         private T Field<T>(string name) where T : class

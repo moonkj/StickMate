@@ -40,11 +40,21 @@ namespace StickMate.Tests.EditMode
         private static string SourcePath => Path.Combine(
             Application.dataPath, "_Project", "Scripts", "Core", "EquipmentDebugUnlock.cs");
 
+        /// <summary>
+        /// ★ 2026-09-06 — <c>CurrencyModel.ResetForTesting()</c>을 함께 건다.
+        /// <c>릴리스_판정값을_그대로_넣으면_요구_레벨_아이템이_잠긴다</c>가
+        /// <c>IsOwned</c>로 «Lv.1에서 잠긴 장비 수»를 <b>세는데</b>, 그 판정은
+        /// «레벨 파생 ∪ 상점 구매분»이라(DESIGN_SYSTEMS_STATS §20-2-a) 알파벳 순으로 앞에 도는
+        /// 픽스처의 구매 이력이 그 개수를 조용히 깎는다. 지금 단언이 <c>Greater(0)</c>/
+        /// <c>Less(전량)</c>이라 왕관 한 개로는 안 뒤집히지만, <b>그게 이 테스트가 안전하다는 뜻은
+        /// 아니다</b> — 세는 값이 이미 틀려 있고, 상점이 넓어지면 그대로 거짓 빨강/거짓 초록이 된다.
+        /// </summary>
         [SetUp]
         public void Reset()
         {
             CharacterProgressionModel.ResetForTesting();
             EquipmentModel.ResetForTesting();
+            CurrencyModel.ResetForTesting();
         }
 
         [TearDown]
@@ -53,6 +63,7 @@ namespace StickMate.Tests.EditMode
             // 스위트 규약으로 되돌린다 — 여기서 새면 뒤 테스트가 조용히 물러진다.
             EquipmentDebugUnlock.SetTestOverride(false);
             EquipmentModel.ResetForTesting();
+            CurrencyModel.ResetForTesting();
         }
 
         /// <summary>★ 이 라운드의 핵심 안전망. 사용자에게 나가는 빌드(개발 구성 아님 + 환경변수

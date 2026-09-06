@@ -192,8 +192,13 @@ namespace StickMate.Tests.EditMode
         public void 설정창이_실제로_쓰는_면들이_전부_어느_목록엔가_선언돼_있다()
         {
             AssertDeclared(SettingsControls.AccentSolid, "선택된 세그먼트 칩 / 켜진 스위치 트랙");
-            AssertDeclared(SettingsControls.ButtonSurfaceOnCard, "카드 위 버튼 · 비활성 세그먼트 칩");
-            AssertDeclared(SettingsControls.ButtonSurfaceOnPanel, "푸터 [지금 종료] 버튼");
+
+            // ★ 2026-09-06 (F1, docs/UI_ALPHA_BLEED_POLICY.md §7-3) — 「누를 수 있는 것」의 면이
+            //   ButtonSurface*(1.35 / 1.32 : 1)에서 슬래브(4.49 / 4.88 : 1)로 올라갔다.
+            //   옛 면은 <b>입력칸</b>에만 남는다 — 거기서는 면을 올리면 플레이스홀더가 1.18:1로 지워진다.
+            AssertDeclared(SettingsControls.ButtonSurfaceOnCard, "이름 입력칸 면(F2 — 면은 올리지 않는다)");
+            AssertDeclared(SettingsControls.ControlFaceOnCard, "카드 위 F1 슬래브([+][−] · 행 버튼)");
+            AssertDeclared(SettingsControls.ControlFaceOnPanel, "창 바탕 위 F1 슬래브([지금 종료] · 레일 칩)");
             AssertDeclared(UiChrome.CardSurface, "카드 바탕");
             AssertDeclared(UiChrome.CardSurfaceMuted, "레일 칩 / 잠긴 카드");
             AssertDeclared(UiChrome.PanelSurface, "창 바탕");
@@ -229,9 +234,11 @@ namespace StickMate.Tests.EditMode
             {
                 foreach (bool active in new[] { true, false })
                 {
+                    // ★ 2026-09-06 — 비활성 <b>활성</b>칩의 면이 F1 슬래브로 올라갔다(§7-5).
+                    //   프로덕션 SettingsSegment.Apply()와 <b>같은 식</b>을 유지한다.
                     Color face = interactable
                         ? (active ? SettingsControls.AccentSolid : UiChrome.CardSurface)
-                        : (active ? SettingsControls.ButtonSurfaceOnCard : UiChrome.CardSurface);
+                        : (active ? SettingsControls.ControlFaceOnCard : UiChrome.CardSurface);
                     Color ink = UiChrome.InkOnSurface(face, UiChrome.InkRole.Body, enabled: true);
                     float ratio = UiChrome.ContrastRatio(ink, face);
 

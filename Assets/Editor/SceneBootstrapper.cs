@@ -527,6 +527,28 @@ namespace StickMate.EditorTools
         /// 덮어쓴다. 컴포넌트 하나를 얹으려고 치르기에는 너무 큰 값이다. 이 메서드는 프리팹을 열어
         /// 없는 컴포넌트만 <c>AddComponent</c>하고 저장하므로 diff가 그 몇 줄로 끝난다.
         ///
+        /// ============================================================================
+        /// ★★★ 2026-09-06 — <b>이 목록이 «누가 손으로 눌러 주기를 기다리는» 목록이면 안 된다</b>
+        /// ============================================================================
+        /// 실기 신고: 음악 반응 춤이 <b>빌드에서 통째로 작동하지 않았다</b>. 원인은 로직이 아니라
+        /// <b>배선</b>이었다 — <see cref="DanceEpisodeDirector"/>가
+        /// <see cref="BuildStickmanPrefab(StickConfig,bool)"/>에는 적혀 있었지만 그 함수는
+        /// <c>force==false</c>면 <b>기존 프리팹을 통째로 건너뛴다</b>(BUG-SW-M3). 그래서 이미 구워져
+        /// 있던 <c>Stickman.prefab</c>에는 그 컴포넌트가 영원히 안 붙었고,
+        /// <c>BuildStandalone.PerformBuild</c>는 이 함수를 <b>부르지도 않았다</b>.
+        ///
+        /// <para><b>근본 수정 두 개가 함께 들어갔다</b>:
+        /// (1) <c>BuildStandalone.PerformBuild</c>/<c>PerformBuildWindows</c>가 <b>빌드 직전에</b>
+        ///     이 함수를 부른다 — 빌드는 언제나 최신 배선을 반영한다.
+        /// (2) 아래 <see cref="WireSerializedReferences"/>가 <c>_player</c>/<c>_config</c>를 채운다.
+        ///     예전 <c>EnsureComponent</c>는 <c>AddComponent</c>만 했는데, 그 목록의 컴포넌트들이
+        ///     마침 전부 <c>Awake()</c> 자력 탐색형이라 <b>우연히</b> 문제가 없었을 뿐이다.
+        ///     <see cref="DanceEpisodeDirector"/>는 <c>_player</c>가 <c>null</c>이면
+        ///     <c>Update()</c> 첫 줄에서 <b>조용히 반환</b>한다 — 붙이기만 하고 배선을 빼면
+        ///     "컴포넌트는 있는데 아무 일도 안 한다"는 <b>더 찾기 어려운</b> 형태가 된다.</para>
+        ///
+        /// <para>어긋남 자체는 <c>Tests/EditMode/BootstrapPrefabParityAuditTests</c>가 매 러너마다
+        /// 대조한다 — 이 목록에 한 줄 더 적는 것을 잊어도 러너가 먼저 빨개진다.</para>
         /// </summary>
         [MenuItem("StickMate/Ensure Prefab Components")]
         public static void EnsurePrefabComponents()
@@ -562,13 +584,22 @@ namespace StickMate.EditorTools
             // 이 한 줄이 없으면 정보창 헤더의 [설정]과 단축키 ⌃⌥⌘,가 경고만 남기고 아무 일도 하지 않는다
             // (33-9 #10 / 34-9 #10 / 36-13 #11이 세 번 연속으로 경고한 그 함정).
             added += EnsureComponent<SettingsWindow>(root);
+            // ★★★ 2026-09-06 음악 반응 춤 2층. 이 한 줄이 없어서 «기능 전체가 빌드에서 죽어 있었다»
+            //   (클래스 문서 참고). 위 SettingsWindow 항목과 <b>같은 함정</b>이고 벌써 네 번째다.
+            added += EnsureComponent<DanceEpisodeDirector>(root);
 
-            if (added > 0) PrefabUtility.SaveAsPrefabAsset(root, PrefabAssetPath);
+            // ★ 붙이는 것과 <b>배선하는 것</b>은 다른 일이다. 붙기만 하고 _player가 null이면 그 감독은
+            //   Update() 첫 줄에서 조용히 반환한다 — «컴포넌트는 있는데 아무 일도 안 한다»는 «컴포넌트가
+            //   없다»보다 찾기 어렵다. 그래서 <b>새로 붙인 것만이 아니라 전부</b>를 훑는다(멱등).
+            int wired = WireSerializedReferences(root);
+
+            if (added > 0 || wired > 0) PrefabUtility.SaveAsPrefabAsset(root, PrefabAssetPath);
             PrefabUtility.UnloadPrefabContents(root);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log($"[SceneBootstrapper] EnsurePrefabComponents 완료 — 신규 {added}개 추가" +
-                (added == 0 ? "(이미 전부 붙어 있습니다)" : string.Empty) + ".");
+            Debug.Log($"[SceneBootstrapper] EnsurePrefabComponents 완료 — 신규 {added}개 추가, " +
+                $"참조 {wired}개 배선" +
+                (added == 0 && wired == 0 ? "(이미 전부 붙어 있고 전부 배선돼 있습니다)" : string.Empty) + ".");
         }
 
         private static int EnsureComponent<T>(GameObject root) where T : Component
@@ -576,6 +607,92 @@ namespace StickMate.EditorTools
             if (root.GetComponent<T>() != null) return 0;
             root.AddComponent<T>();
             Debug.Log("[SceneBootstrapper] " + typeof(T).Name + "을(를) Stickman 프리팹 루트에 추가했습니다.");
+            return 1;
+        }
+
+        /// <summary>
+        /// ★ 프리팹 루트의 모든 <see cref="MonoBehaviour"/>에서 <b>비어 있는</b> <c>_player</c>/<c>_config</c>
+        /// 직렬화 필드를 채운다. 이미 값이 있으면 <b>건드리지 않는다</b>(멱등 · 사람이 손으로 바꾼 값 보존).
+        ///
+        /// <para><b>왜 이 두 이름만인가</b>: 이 저장소의 감독 클래스들이 <b>실제로</b> 쓰는 배선 관례가
+        /// 그 둘뿐이기 때문이다(<see cref="BuildStickmanPrefab(StickConfig,bool)"/>의 배선 블록 전수 확인).
+        /// 이름 규칙을 넓히면 «채우면 안 되는 것»까지 채우게 된다 — 예: <c>_hitbox</c>는
+        /// <c>ArcheryDirector</c>/<c>RunawayDirector</c>에만 있고 다른 곳에서는 뜻이 다를 수 있다.
+        /// 필요해지면 <b>그때</b> 한 줄씩 늘린다.</para>
+        ///
+        /// <para><b>타입을 리플렉션으로 먼저 확인</b>하고 쓰기는 <see cref="SerializedObject"/>로 한다.
+        /// 타입 확인 없이 대입하면 Unity가 <b>조용히 무시</b>해서 "배선했다"는 로그만 남고 값은 여전히
+        /// <c>null</c>인, 이 저장소가 가장 싫어하는 형태(성공한 측정과 똑같이 생긴 실패한 측정)가 된다.</para>
+        /// </summary>
+        private static int WireSerializedReferences(GameObject root)
+        {
+            var agent = root.GetComponent<StickmanAgent>();
+            StickConfig config = AssetDatabase.LoadAssetAtPath<StickConfig>(ConfigAssetPath);
+            if (agent == null)
+            {
+                Debug.LogWarning("[SceneBootstrapper] 프리팹 루트에 StickmanAgent가 없습니다 — " +
+                    "_player 배선을 건너뜁니다(프리팹이 통째로 깨진 상태일 수 있습니다).");
+            }
+            if (config == null)
+            {
+                Debug.LogWarning("[SceneBootstrapper] " + ConfigAssetPath + "을(를) 찾지 못했습니다 — " +
+                    "_config 배선을 건너뜁니다.");
+            }
+
+            int wired = 0;
+            foreach (MonoBehaviour behaviour in root.GetComponents<MonoBehaviour>())
+            {
+                if (behaviour == null) continue;   // 스크립트를 잃은 컴포넌트(MissingMonoScriptAudit 소관)
+                wired += TryWireField(behaviour, "_player", agent);
+                wired += TryWireField(behaviour, "_config", config);
+            }
+            return wired;
+        }
+
+        /// <summary>필드가 <b>있고</b>, 타입이 <b>맞고</b>, 지금 <b>비어 있을 때만</b> 채운다.
+        /// 쓴 뒤 실제로 들어갔는지 다시 읽어 확인한다 — 안 그러면 거짓 성공 로그가 남는다.
+        ///
+        /// <para>★★ <b>2026-09-06 — 이 함수가 «조용히 건너뛰는» 갈래가 하나 더 있고, 그건 결함이 아니다.</b>
+        /// 같은 이름의 필드라도 <c>[SerializeField]</c>가 <b>없으면</b> 유니티가 직렬화하지 않으므로
+        /// <see cref="SerializedObject.FindProperty"/>가 <c>null</c>을 돌려주고 여기서 <c>0</c>이 반환된다.
+        /// 프리팹 <b>애셋</b>은 직렬화되는 필드만 담기 때문에 그 필드는 <b>애초에 채울 수 없고 채울 필요도
+        /// 없다</b> — 그런 필드는 <c>Awake()</c>/<c>Start()</c>가 <c>_agent.Config</c>로 채운다.</para>
+        ///
+        /// <para>실제 사례 3건: <c>InfoGearIconWidget._config</c> / <c>GearRadialMenuWidget._config</c> /
+        /// <c>AppControlDirector._config</c>. 첫 실전 러너에서
+        /// <c>BootstrapPrefabParityAuditTests</c>가 이 셋을 «배선 누락»으로 신고했는데,
+        /// <b>틀린 것은 검사기였고 이 도구는 옳게 건너뛰고 있었다</b>. 그 실패 메시지가 처방으로
+        /// «메뉴를 실행하라»고 적었지만 <b>몇 번을 실행해도 안 고쳐진다</b> — 감사 쪽을 고쳤다.
+        /// ⇒ 앞으로 그 이름이 다시 «배선 누락»으로 뜨면 <b>프리팹이 아니라 애트리뷰트를 먼저 봐라.</b></para></summary>
+        private static int TryWireField(MonoBehaviour behaviour, string fieldName, UnityEngine.Object value)
+        {
+            if (value == null) return 0;
+
+            System.Reflection.FieldInfo field = behaviour.GetType().GetField(fieldName,
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Public);
+            if (field == null) return 0;
+            if (!field.FieldType.IsInstanceOfType(value)) return 0;
+            if (field.GetValue(behaviour) as UnityEngine.Object != null) return 0;
+
+            var so = new SerializedObject(behaviour);
+            SerializedProperty property = so.FindProperty(fieldName);
+            // ★ null = 직렬화되지 않는 필드(위 문서 참고). 결함이 아니라 정상 경로다.
+            if (property == null || property.propertyType != SerializedPropertyType.ObjectReference) return 0;
+
+            property.objectReferenceValue = value;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            // ★ 검산 — 대입이 실제로 반영됐는가. 이 확인이 없으면 "배선 N개"는 아무것도 증명하지 않는다.
+            so.Update();
+            if (so.FindProperty(fieldName).objectReferenceValue == null)
+            {
+                Debug.LogWarning($"[SceneBootstrapper] {behaviour.GetType().Name}.{fieldName} 배선이 " +
+                    "반영되지 않았습니다 — 대입은 했지만 다시 읽으니 여전히 비어 있습니다.");
+                return 0;
+            }
+
+            Debug.Log($"[SceneBootstrapper] {behaviour.GetType().Name}.{fieldName} <- {value.name} 배선 완료.");
             return 1;
         }
 
@@ -1043,6 +1160,26 @@ namespace StickMate.EditorTools
             // 발밑 타이머 링 + 1/3단계 경고 연출(18절). 같은 GameObject의 FocusWatchDirector에서 남은
             // 시간을 읽으므로 배선이 필요 없다.
             root.AddComponent<FocusWatchRenderer>();
+
+            // ================================================================================
+            // 음악 반응 춤 배선 (2026-09-03 사용자 요청: "시스템에서 노래가 나오면 상호 반응해서
+            // 춤추는 동작을 넣어줘")
+            // ================================================================================
+            // ★ 여기 배선되는 것은 **2층(에피소드)**뿐이다. 1층(감지 → 게이트)은
+            // Platform/AudioReactiveDanceDirector가 [RuntimeInitializeOnLoadMethod]로 스스로 서고,
+            // 프로브가 없는 빌드(에디터·모바일)에서는 호스트를 아예 만들지 않는다 — 그때 이 감독은
+            // 창이 영원히 닫힌 채이므로 **조용히 아무 것도 하지 않는다**(설계된 동작).
+            //
+            // SpectacleEventLock 참여 — 기준은 다른 항목과 같다("ChangeState()로 단일 상태 슬롯을
+            // 다투는가"). 춤은 Idle/Walk에서 StickmanStateId.Dance로 전이하므로 참여한다.
+            // 다만 락을 잡는 단위가 «음악이 나오는 동안»이 아니라 **에피소드(8~16초)**라는 점이
+            // 이 기능의 핵심이다 — 휴지 중에는 락을 놓아 다른 연출이 정상적으로 발동한다.
+            // 자율 발동 확률 같은 노브는 없다. 발동 조건은 오직 "시스템에서 소리가 나고 있다"이다.
+            var danceEpisodes = root.AddComponent<DanceEpisodeDirector>();
+            var danceSo = new SerializedObject(danceEpisodes);
+            danceSo.FindProperty("_player").objectReferenceValue = agent;
+            danceSo.FindProperty("_config").objectReferenceValue = config;
+            danceSo.ApplyModifiedPropertiesWithoutUndo();
 
             // ================================================================================
             // 활쏘기 배선 (2026-08-29 사용자 요청: "과녁이 생성되고 3번정도 포물선을 그리는 활을 쏘는 행동")

@@ -52,6 +52,18 @@ namespace StickMate.States
             public float ClimbHeightUnits;
             /// <summary>이 전이 프레임의 캐릭터 실측 신장(월드 유닛).</summary>
             public float CharacterHeightWorld;
+
+            /// <summary>
+            /// ★ 2026-09-06 — 이 진입에서 뽑은 <b>변주 좌표 0..1</b>(design-narrative R9).
+            /// 티어마다 줄 수가 달라도(4 / 4 / 2) <c>(int)(값 × 티어줄수)</c>로 균등하게 갈리도록
+            /// 정수 인덱스가 아니라 실수로 싣는다 — 정수를 싣고 <c>% 줄수</c>를 하면 나중에 티어를
+            /// 3줄로 만드는 순간 조용히 비균등해진다.
+            ///
+            /// <para>난수는 <b><c>Enter()</c>에서 한 번만</b> 소진되고 그 결과가 스냅샷으로 남는다
+            /// (<c>AmbientChatter.ChatterParams.LineIndex</c>와 같은 계약). 매핑 람다 안에서 뽑으면
+            /// "이 텍스트가 어느 <c>Enter()</c>의 어느 스냅샷에서 나왔는가"를 역추적할 수 없다.</para>
+            /// </summary>
+            public float LineVariant01;
         }
 
         private readonly ParkourClimbDialogueParams _dialogueParams = new ParkourClimbDialogueParams();
@@ -96,10 +108,14 @@ namespace StickMate.States
             }
 
             // BUG-M7 대응 시연(UX_FLOW.md 31-2 #4) — 벽이 실제로 감지된 경우에만 유의미한 값이므로,
-            // 감지 실패(_hasWall==false) 시에는 0으로 두어 "가뿐하네" 쪽으로 안전하게 수렴시킨다(어차피
-            // 다음 Tick에서 곧바로 Fall로 전이되어 이 대사는 즉시 만료된다).
+            // 감지 실패(_hasWall==false) 시에는 0으로 두어 **가장 가벼운 티어**로 안전하게 수렴시킨다
+            // (어차피 다음 Tick에서 곧바로 Fall로 전이되어 이 대사는 즉시 만료된다).
+            // ★ 2026-09-06 — 여기 원래 "가뿐하네 쪽으로"라고 적혀 있었다. 그 티어가 이제 4줄이라
+            //   특정 문장으로 수렴한다는 서술이 더는 참이 아니다(수렴하는 것은 티어이지 문장이 아니다).
             _dialogueParams.ClimbHeightUnits = _hasWall ? Mathf.Max(0f, _wallTopWorldY - _startWorldY) : 0f;
             _dialogueParams.CharacterHeightWorld = _blackboard.CharacterHeightWorld;
+            // 난수는 여기서 소진되고 결과만 스냅샷에 남는다(위 LineVariant01 문서 참고).
+            _dialogueParams.LineVariant01 = Random.value;
 
             // ★ 2026-09-01 개정(UX_FLOW.md 31-2 #4 / MOTION_SPEC 1절 표 #2) — 임계값을 **절대 월드
             //   유닛에서 신장 배수(H)로** 옮기고 분기를 3종으로 늘렸다.
@@ -120,23 +136,35 @@ namespace StickMate.States
             //   (1.05 -> 1.20은 이 라운드가 도는 **도중에** 또 일어났다 — 사본이 얼마나 빨리 낡는지의 실물 증거다.
             //    그래서 이 자리는 리터럴로 남겨 드리프트 스캐너의 감시 아래 둔다.)
             //   여기는 특히 위험한 자리다: 이 값이 곧 규칙 8 게이트에 넘기는 **계획 잔여 체류**이고
-            //   (Enter의 _climbProgress가 0이라 곱셈이 항등), 0.5초는 이 상태의 대사 **세 갈래 전부**의
-            //   필요체류보다 짧다 — 실측: 가뿐하네 0.680 / 영차... 0.715 / 헉... 높다 0.865초
+            //   (Enter의 _climbProgress가 0이라 곱셈이 항등), 0.5초는 이 상태의 대사 **전 갈래**의
+            //   필요체류보다 짧다 — 당시 실측(3줄): 가뿐하네 0.680 / 영차... 0.715 / 헉... 높다 0.865초
+            //   (2026-09-06에 풀이 10줄로 늘었지만 최댓값은 그대로 0.865초다 — 신규 최장 "이건 좀 높네"가
+            //    "헉... 높다"와 같은 7자다. 즉 아래 결론은 그대로 성립한다.)
             //   (= DialogueTiming.FadeInSeconds 0.06 + DialogueBudget.ReadingSeconds). 즉 낡은 폴백
             //   하나 때문에 이 상태는 **한 마디도 하지 못한다**. 규칙 8은 침묵을 정상 결과로 취급하므로
             //   로그 말고는 아무 증상이 없다 — 그래서 조용히 살아남았다.
             float climbDurationForGate = _blackboard.Config != null ? _blackboard.Config.parkourClimbDuration : 1.20f;
-            _ = DialogueIntent.TryCreate(context, (id, dialogueParams) =>
+
+            // ★★ 2026-09-06 — 자율 예산 게이트(design-narrative R9, 소은 3시간 실기 신고).
+            //   증상: "가뿐하네"가 전체 발화의 25.8%. 등반 141회 중 137회(97.2%)가 같은 한 줄이었다.
+            //   원인 중 이 자리의 몫: 이 진입은 확률도 쿨다운도 없이 **무조건** 말하고 있었다
+            //   (Idle/Walk 앰비언트에는 둘 다 있다 — AmbientChatter.TryRollChatter).
+            //   그런데 등반은 사용자가 유발한 사건이 아니다 — 배회 AI의 경계 행동 추첨
+            //   (hopDownChance -> stepUpChance)이 만드는 Dock 왕복 루프의 부산물이고, 이 경로에는
+            //   사용자 입력이 한 곳도 없다. 76.6초마다 반복되는 사건은 보상이 아니라 배경이다.
+            //   ★ 그리고 "완료 대사라 무음이 이상하다"는 반론은 성립하지 않는다 — 이건 진입 대사이고
+            //     종류가 Narrative라 등반이 끝나는 순간 오히려 즉시 컷된다(완료 시점엔 원래 대사가 없다).
+            if (TryRollClimbChatter())
             {
-                var p = dialogueParams as ParkourClimbDialogueParams;
-                float height = p != null ? p.ClimbHeightUnits : 0f;
-                float h = p != null && p.CharacterHeightWorld > 0.0001f
-                    ? p.CharacterHeightWorld
-                    : StickConfig.BaselineCharacterTotalHeight;
-                if (height < LightClimbHeights * h) return DialogueLine.Say("가뿐하네");
-                if (height < HardClimbHeights * h) return DialogueLine.Say("영차...");
-                return DialogueLine.Say("헉... 높다");
-            }, climbDurationForGate * (1f - _climbProgress));
+                DialogueIntent intent = DialogueIntent.TryCreate(context,
+                    (id, dialogueParams) => ResolveClimbLine(dialogueParams),
+                    climbDurationForGate * (1f - _climbProgress));
+
+                // ★ 순서가 계약이다(AmbientChatter.cs의 같은 순서와 같은 이유):
+                //   **규칙 8에 막힌 발화는 쿨다운을 소비하지 않는다.** 먼저 태우면 "말할 시간이 없어서
+                //   침묵한" 대가로 다음 발화까지 쿨다운만큼 통째로 벙어리가 된다.
+                if (intent != null) ReloadSharedChatterCooldown();
+            }
 
             Debug.Log($"[벽타기] 진입 — 방향={(_direction > 0 ? "오른쪽" : "왼쪽")}, " +
                 $"벽핸들={_wallHandle}, 시작 월드=({_startWorldX:F3},{_startWorldY:F3}), " +
@@ -152,6 +180,116 @@ namespace StickMate.States
             // TODO(Phase 2 렌더링): 손끝 마찰 먼지 파티클, 매달리기 Perlin 흔들림(UX_FLOW.md 4절).
             //   양손 그립 포즈는 2026-09-01에 들어왔다 -> StickmanPoseAnimator.ApplyParkourClimbPose.
         }
+
+        // ============================================================================
+        // 자율 예산 — 공유 쿨다운 + 소스별 확률 (2026-09-06)
+        // ============================================================================
+
+        /// <summary>
+        /// 이번 진입에서 대사를 <b>시도할</b> 것인가. 텍스트를 만들기 <b>전에</b> 전부 끝난다
+        /// (<c>AmbientChatter.TryRollChatter</c>와 같은 어법 — "말할지 말지"를 나중에 번복하지 않는다).
+        ///
+        /// <para>★ 쿨다운은 <b>새로 만들지 않고</b> Idle/Walk 앰비언트와 같은
+        /// <see cref="StickmanBlackboard.NextChatterAllowedUnscaledTime"/> 하나를 읽고 쓴다.
+        /// 사용자가 느끼는 "수다스럽다"는 캐릭터 단위이지 서브시스템 단위가 아니다 — 타이머를
+        /// 둘로 쪼개면 두 타이머의 최소값이 다시 0이 되어 <b>앰비언트 직후 0.7초에 등반 대사</b>가
+        /// 그대로 재현된다(실측된 최소 발화 간격이 정확히 그 형태였다).</para>
+        ///
+        /// <para>★ <c>ResolveDialogueBubbleEnabled</c>는 <b>여기서 묻지 않는다.</b> 렌더 단계
+        /// (<c>DialogueBubbleRenderer</c>)가 이미 막고 있고, 파이프라인은 그 설정과 무관하게 도는 것이
+        /// 계약이다(<c>AppSettingsModel</c>의 그 프로퍼티 문서). 두 번째 게이트를 만들면 갈라진다.</para>
+        ///
+        /// <para>★ 강제 발화 펄스(<c>ForcedChatterSignaled</c>)도 건드리지 않는다 — 그건
+        /// <c>AmbientChatter</c> 소관이고 등반 진입은 그 펄스를 소비하지 않는다.</para>
+        ///
+        /// <para><c>internal</c>인 이유는 테스트가 <b>추첨만</b> 수천 번 돌려 실효 확률을 재기 위해서다
+        /// (<c>Enter()</c>로 재면 진입 로그가 함께 수천 줄 쏟아진다). 이 seam이 있어도
+        /// <c>Enter()</c>가 실제로 이것을 부르는지는 별도의 진입 경로 검사가 잠근다 — 그게 없으면
+        /// "게이트는 있는데 아무도 안 부른다"가 초록이 된다.</para>
+        /// </summary>
+        internal bool TryRollClimbChatter()
+        {
+            if (_blackboard == null) return false;
+            if (Time.unscaledTime < _blackboard.NextChatterAllowedUnscaledTime) return false;
+
+            // 설정창 「잡담 빈도」 슬라이더가 여기에도 걸려야 한다 -> 반드시 Resolve를 거친다.
+            float chance = AppSettingsModel.ResolveParkourClimbChatterChance(_blackboard.Config);
+            if (chance <= 0f) return false;
+            return Random.value < chance;
+        }
+
+        /// <summary>발화가 <b>실제로 만들어진 뒤에만</b> 공유 쿨다운을 재장전한다.</summary>
+        private void ReloadSharedChatterCooldown()
+        {
+            float cooldown = _blackboard.Config != null ? _blackboard.Config.ambientChatterCooldownSeconds : 11f;
+            _blackboard.NextChatterAllowedUnscaledTime = Time.unscaledTime + Mathf.Max(0f, cooldown);
+        }
+
+        /// <summary>
+        /// 스냅샷 -> 대사. 티어 판정은 <b>여기 한 곳</b>에만 있다(이 파일이 이미 경고한
+        /// "같은 값의 두 번째 계산원" 함정 — <c>Enter()</c>에서 다시 계산하지 않는다).
+        ///
+        /// <para>★★ 문안을 <c>const</c>나 <c>static readonly string[]</c>로 빼지 마라.
+        /// <c>Tests/EditMode/DialogueCorpus.ExtractSayReact</c>와 <c>golden_gen.py</c>의 정규식은
+        /// <c>DialogueLine.Say(</c> <b>괄호 안의 인라인 리터럴만</b> 본다. 배열로 빼면 양쪽 다
+        /// 구조적으로 못 보고, 골든을 다시 굽는 날 이 줄들이 조용히 빠져 <b>화면에는 뜨는데 어떤
+        /// 회귀 검사에도 닿지 않는 대사</b>가 된다(<c>DanceState</c>가 2026-09-06에 실제로 이 형태로
+        /// 한 번 들어갔다가 되돌린 기록이 있다).</para>
+        ///
+        /// <para>문안 선정 기준(design-narrative R9): 이 상태가 아는 것은 <b>오를 높이 ÷ 신장</b>과
+        /// 4박자 맨틀 1.20초뿐이다. 오르는 대상이 창인지 Dock인지, 성공할지, 몇 번째인지는 모른다.
+        /// 그래서 신규 문안은 <b>아무것도 주장하지 않는 감탄 발성</b>과 <b>티어 사실 하나</b>로만 늘렸다
+        /// (이 저장소가 대사에서 다친 곳은 전부 "문장이 사실을 주장했는데 그 사실이 상태에서 파생되지
+        /// 않은" 경우였다 — 「발판 참 좁네」 「창 위는 미끄러워」 「심심하다」).</para>
+        /// </summary>
+        internal static DialogueLine ResolveClimbLine(object dialogueParams)
+        {
+            var p = dialogueParams as ParkourClimbDialogueParams;
+            float height = p != null ? p.ClimbHeightUnits : 0f;
+            float h = p != null && p.CharacterHeightWorld > 0.0001f
+                ? p.CharacterHeightWorld
+                : StickConfig.BaselineCharacterTotalHeight;
+
+            // Random.value는 **1.0을 포함**한다. 클램프가 없으면 그 한 표본이 인덱스 밖으로 넘쳐
+            // default(=기존 문안)에 조용히 얹힌다 — 균등이 아주 살짝 깨진다.
+            float variant01 = p != null ? Mathf.Clamp(p.LineVariant01, 0f, VariantCeiling) : 0f;
+
+            // ★★ T1(가벼운 등반)은 **한 줄만 둔다 — 늘리지 마라.**
+            //   배포 기본값에서 이 티어가 거의 전부다(Dock 낙차 0.945 H vs 임계 0.95 H, 차이 0.5% —
+            //   소은 실측 137/141 = 97.2%). 즉 도달 불가능한 게 아니라 **가장 자주 도달한다.**
+            //   그런데 자기 키의 94.5%를 양손 4박자로 기어오르며 "가볍다"고 말하는 건 이미 모션과
+            //   어긋나 있다. 여기에 문안을 더 넣으면 **어긋난 말이 1종에서 4종으로 늘 뿐**이고,
+            //   개별 발화 빈도는 어차피 공유 쿨다운 + 확률이 이미 낮춰 놓았으므로 실익이 없다
+            //   (design-narrative `2026-09-06_파쿠르대사_편중해소.md` §4-5. 2026-09-06에 3줄을
+            //   실제로 넣었다가 같은 날 되돌린 기록이 있다 — 문서를 반대로 읽은 것이었다).
+            //   보류된 3줄은 design-motion의 임계 재조정(`MOTION_SPEC §21-3`, 0.95 → 0.4109 H)이
+            //   착지해 배포 기본 등반이 T2로 옮겨 간 **뒤에** 함께 넣는다.
+            if (height < LightClimbHeights * h) return DialogueLine.Say("가뿐하네");
+
+            // ★ T2(중간 난이도). 임계 재조정 후 배포 기본 등반이 여기로 온다 — 자기 키의 90%를
+            //   양손 4박자로 기어오르는 동작과 발성이 맞물리는 자리다.
+            if (height < HardClimbHeights * h)
+            {
+                switch ((int)(variant01 * 4f))
+                {
+                    case 1: return DialogueLine.Say("끄응...");
+                    case 2: return DialogueLine.Say("으쌰!");
+                    case 3: return DialogueLine.Say("이건 좀 높네");
+                    default: return DialogueLine.Say("영차...");
+                }
+            }
+
+            // ★ T3(높은 등반). 임계 재조정 후 처음으로 도달 가능해지는 구간이라 +1줄만 늘렸다
+            //   (그 구간에 실제 창 상단이 얼마나 분포하는지는 실기 관측 전까지 미확인이다).
+            switch ((int)(variant01 * 2f))
+            {
+                case 1: return DialogueLine.Say("우와 높네");
+                default: return DialogueLine.Say("헉... 높다");
+            }
+        }
+
+        /// <summary>변주 좌표의 상한(1.0 배타). <see cref="Random.value"/>가 1.0을 포함하기 때문에 필요하다.</summary>
+        private const float VariantCeiling = 0.999999f;
 
         /// <summary>
         /// 등반이 끝났을 때 서 있어야 할 x — 붙잡은 턱의 **가까운 쪽 모서리에서 안쪽으로

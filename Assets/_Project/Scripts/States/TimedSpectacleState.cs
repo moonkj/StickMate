@@ -37,6 +37,20 @@ namespace StickMate.States
 
         private float _timer;
 
+        /// <summary>마지막 Tick이 실제로 쓴 지속 시간(초). <see cref="Progress01"/>이 <b>이 값</b>을 쓰고
+        /// 선택자를 다시 부르지 않는 이유: 선택자는 순수 함수가 아닐 수 있다(그라피티 등록은
+        /// <c>cfg =&gt; Random.Range(min, max)</c>라 부를 때마다 다른 값이 나온다). 진행도를 물을 때마다
+        /// 분모가 바뀌면 그 위에 얹은 포즈가 매 프레임 앞뒤로 튄다.</summary>
+        private float _lastDurationSeconds;
+
+        /// <summary>이번 연출의 진행도 0~1. 포즈를 얹는 상태(집중 모드 4종)를 위해 노출한다 —
+        /// 값의 생산자는 여전히 이 클래스 하나이고, 소비자(StickmanBlackboard.TickPoseRouting)는
+        /// 자기 타이머를 따로 세지 않는다(두 벌이 되면 반드시 갈라진다).
+        /// <para>첫 Tick 이전에는 0이다(Enter 직후 프레임에서 분모가 아직 없다).</para></summary>
+        public float Progress01 => _lastDurationSeconds > 0f
+            ? UnityEngine.Mathf.Clamp01(_timer / _lastDurationSeconds)
+            : 0f;
+
         public TimedSpectacleState(StickmanBlackboard blackboard, StickmanStateId stateId,
             Func<StickConfig, float> durationSecondsSelector, Func<StickConfig, string> dialogueTextSelector = null)
         {
@@ -80,6 +94,7 @@ namespace StickMate.States
             float duration = _durationSecondsSelector != null && _blackboard.Config != null
                 ? _durationSecondsSelector(_blackboard.Config)
                 : 1f;
+            _lastDurationSeconds = duration;
 
             if (_timer >= duration)
             {

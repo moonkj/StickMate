@@ -196,6 +196,12 @@ MonoBehaviour:
   pomodoroCompletePoseHoldSeconds: 2.5
   pomodoroCancelPoseHoldSeconds: 1.5
   pomodoroNudgeDialogueHoldSeconds: 2
+  focusSessionAmbientEnabled: 1
+  focusAmbientGestureCooldownSeconds: 28
+  focusSessionWalkChance: 0.4
+  focusSessionIdleDurationMin: 4
+  focusSessionIdleDurationMax: 11
+  focusWatchStanceSettleSeconds: 0.45
   stressOveruseWindowSeconds: 300
   stressOveruseTriggerCount: 8
   stressOveruseIncrement: 0.12
@@ -234,6 +240,7 @@ MonoBehaviour:
   idleChatterChance: 0.28
   walkChatterChance: 0.14
   ambientChatterCooldownSeconds: 11
+  parkourClimbChatterChance: 0.35
   inkColor: 0
   primaryOutlineColor: {r: 0, g: 0, b: 0, a: 1}
   whiteInkColor: {r: 1, g: 1, b: 1, a: 1}
@@ -410,3 +417,86 @@ MonoBehaviour:
   suppressInfoLogStackTraces: 1
   horizontalDriftSafetyNetEnabled: 1
   horizontalDriftBrakeSeconds: 0.14
+  dancePoseSmoothingRate: 78
+  danceRobotPoseSmoothingRate: 0
+  danceEntryBrakeSeconds: 0.28
+  danceHorizontalDamping: 14
+  danceForcedExitSeconds: 0.18
+  danceEpisodeHardCapSeconds: 18
+  danceGracefulExitBudgetSeconds: 1.9
+  danceEpisodeStartRetrySeconds: 8
+  danceLoopJitterFraction: 0.06
+  danceAmplitudeJitterFraction: 0.05
+  danceRestFatigueStep: 0.25
+  danceRestFatigueCap: 3
+  danceRestMinSeconds: 20
+  danceRestMaxSeconds: 45
+  danceMoonwalkIntroSeconds: 0.36
+  danceRunningManIntroSeconds: 0.56
+  danceRobotIntroSeconds: 0.2
+  danceSquatKickIntroSeconds: 0.84
+  danceHorseIntroSeconds: 0.48
+  dancePirouetteArmDegrees: 82
+  dancePirouetteElbowDegrees: 26
+  dancePirouetteArmSweepDegrees: 9
+  dancePirouetteArmSweepSeconds: 0.7
+  dancePirouetteArmFirstDegrees: 34
+  dancePirouetteElbowFirstDegrees: 62
+  dancePirouetteSupportKneeDegrees: 6
+  dancePirouettePlieKneeDegrees: 42
+  dancePirouetteRetireHipDegrees: 62
+  dancePirouetteRetireKneeDegrees: 116
+  dancePirouetteReleveHeights: 0.045
+  dancePirouetteBobHeights: 0.01
+  dancePirouetteRevolutionSeconds: 0.7
+  dancePirouetteRevolutions: 2
+  danceStarJumpArmSpreadDegrees: 60
+  danceStarJumpElbowDegrees: 4
+  danceStarJumpHipDegrees: 43
+  danceStarJumpKneeDegrees: 6
+  danceStarJumpCrouchKneeDegrees: 62
+  danceStarJumpCrouchArmDegrees: -54
+  danceStarJumpRunHeights: 1.6
+  danceStarJumpRunSpeedScale: 1.45
+  danceStarJumpRiseHeights: 0.42
+  danceStarJumpAirSecondsAtBaseScale: 0.7644
+  danceStarJumpLandKneeDegrees: 74
+  danceStarJumpHorizontalBrakeScale: 0.25
+  danceStarJumpTurnSeconds: 0.34
+  danceMoonwalkFrontHipDegrees: 30
+  danceMoonwalkRearHipDegrees: -16
+  danceMoonwalkStraightKneeDegrees: 3
+  danceMoonwalkBentKneeDegrees: 52
+  danceMoonwalkArmSwingDegrees: 26
+  danceMoonwalkElbowDegrees: 22
+  danceMoonwalkLeanDegrees: 6
+  danceMoonwalkGlideHeights: 0.3
+  danceMoonwalkLoopSeconds: 0.72
+  danceMoonwalkTurnSeconds: 0.34
+  danceRunningManHipAmplitudeScale: 1.85
+  danceRunningManKneeAmplitudeScale: 1.3
+  danceRunningManArmDegrees: 62
+  danceRunningManElbowDegrees: 78
+  danceRunningManLeanDegrees: 9
+  danceRunningManLoopSeconds: 0.56
+  danceRunningManBounceHeights: 0.03
+  danceRobotStepSeconds: 0.2
+  danceRobotLegKneeDegrees: 12
+  danceRobotHipDegrees: 8
+  danceRobotLeanDegrees: 8
+  danceSquatKickSupportHipDegrees: 74
+  danceSquatKickSupportKneeDegrees: 132
+  danceSquatKickKickHipDegrees: 78
+  danceSquatKickKickKneeDegrees: 8
+  danceSquatKickArmDegrees: 68
+  danceSquatKickElbowDegrees: 104
+  danceSquatKickBounceHeights: 0.1
+  danceSquatKickLoopSeconds: 0.84
+  danceHorseArmDegrees: 58
+  danceHorseElbowDegrees: 92
+  danceHorseArmPumpDegrees: 14
+  danceHorseLiftHipDegrees: 42
+  danceHorseLiftKneeDegrees: 88
+  danceHorseBounceHeights: 0.045
+  danceHorseLeanDegrees: 5
+  danceHorseLoopSeconds: 0.48

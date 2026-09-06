@@ -66,8 +66,15 @@ namespace StickMate.Tests.PlayMode
         /// <para>★ 2026-09-03 R12 이식 1단계(HEAD) — <c>HatCrownHeightRatio</c> 1.18 -&gt; <b>1.16</b>.
         /// 인계본 `clothhat` 관을 σ = 1.461로 받은 꼭대기 +1.2248 R을 우리 격자로 옮긴 값이다
         /// (<c>docs/EQUIPMENT_HANDOFF_PORT_SPEC.md</c> §5-5-1 처방 #1). <b>이 사본이 먼저 빨개져서</b>
-        /// 이 줄을 고치게 만든 것이 설계 의도 그대로다.</para></summary>
-        private const float HatBrimLineRatio = 0.06f;
+        /// 이 줄을 고치게 만든 것이 설계 의도 그대로다.</para>
+        /// <para>★ 2026-09-06 R25b — <c>HatBrimLineRatio</c> 0.06 -&gt; <b>0.4482</b>. 야구모자의 몸 도형이
+        /// 인계본 조각으로 바뀐 뒤 이 상수는 <b>커버선(= 머리카락을 자르는 선)만</b> 정하고, R25가
+        /// 모자를 올렸을 때 따라오지 않아 커버선과 H-2 착용선(+0.4482) 사이 0.2410 R이 맨머리로
+        /// 드러났다. 아래 (A)(B)가 보는 <c>HatBrimLocalY</c>/<c>HatTopLocalY</c>는 그 커버선과
+        /// <b>죽은 v1 관</b>의 꼭대기(+1.6082 R)다 — 화면의 야구모자 형태와는 무관하다.
+        /// (B)의 세 부등식은 새 값에서도 성립한다: 0 &lt; 0.4482 &lt; 1.0 · 1.6082 &gt; 1.0 ·
+        /// 0.22×1.6082 = 0.3538 &lt; 0.5612.</para></summary>
+        private const float HatBrimLineRatio = 0.4482f;
         private const float HatCrownHeightRatio = 1.16f;
         private const float HatBrimReachRatio = 1.92f;
         private const float GlassesCenterRatio = 0.00f;

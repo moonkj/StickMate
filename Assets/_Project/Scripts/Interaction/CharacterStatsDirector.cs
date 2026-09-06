@@ -23,10 +23,20 @@ namespace StickMate.Interaction
     /// 섞으면 나중에 한쪽 조건을 고칠 때 다른 쪽이 조용히 함께 바뀐다.
     ///
     /// ============================================================================
+    /// ★ 2026-09-06 — <b>H-8 등급 눈금</b>도 여기서 기록한다
+    /// ============================================================================
+    /// <see cref="EquipmentStatRules.RecordTierHighWaterMarks"/>의 프로덕션 호출부가 <b>0건</b>이라
+    /// 정보창의 눈금이 영구히 0단계였다(<c>CharacterInfoWindow.Stats.cs</c>가 그 값을 그린다).
+    /// 배선 자리가 여기인 이유는 이 컴포넌트의 정의 그대로다 — <b>이미 확정된 사실을 기록</b>하는 것이고,
+    /// 성장 곡선(XP)도 수급(동전)도 아니다. 값은 <c>CurrencyModel</c>에 들어가지만 그 모델의 저장은
+    /// 아래 문단대로 여전히 <c>CharacterProgressionDirector</c> 한 경로가 맡는다.
+    ///
+    /// ============================================================================
     /// 매 프레임 할당 금지 (24시간 상주 앱)
     /// ============================================================================
     /// Update()는 float 하나를 더하고 <see cref="FlushIntervalSeconds"/>마다 한 번 모델에 반영한다.
-    /// 문자열도 GC 할당도 없다. 저장은 하지 않는다 — 디스크 쓰기는 CharacterProgressionDirector의
+    /// 문자열도 GC 할당도 없다(등급 눈금 문자열은 <b>평생 최대 12회</b> 도는 경로다). 저장은 하지
+    /// 않는다 — 디스크 쓰기는 CharacterProgressionDirector의
     /// 주기 저장/종료 저장 <b>한 경로</b>가 전담한다(두 컴포넌트가 번갈아 같은 파일을 쓰지 않게).
     ///
     /// ============================================================================
@@ -73,12 +83,16 @@ namespace StickMate.Interaction
         {
             StickmanEventBus.ArcheryShotChanged += OnArcheryShotChanged;
             StickmanEventBus.ArcheryOverlayChanged += OnArcheryOverlayChanged;
+            // ★ 2026-09-06 — H-8 등급 눈금(아래 RecordStatTierMarks 문서). 착용/해제/세트 완성은
+            //   전부 이 이벤트 하나로 도착한다 — 세 사건을 따로 구독하면 «지금 차림»이 세 벌이 된다.
+            StickmanEventBus.CharacterEquipmentChanged += OnCharacterEquipmentChanged;
         }
 
         private void OnDisable()
         {
             StickmanEventBus.ArcheryShotChanged -= OnArcheryShotChanged;
             StickmanEventBus.ArcheryOverlayChanged -= OnArcheryOverlayChanged;
+            StickmanEventBus.CharacterEquipmentChanged -= OnCharacterEquipmentChanged;
             Flush(); // 씬 종료/컴포넌트 비활성에서 마지막 조각을 잃지 않게.
         }
 
@@ -110,6 +124,59 @@ namespace StickMate.Interaction
                 $"함께한 시간 {CharacterStatsModel.FormatCompanionTime()}, " +
                 $"활쏘기 {CharacterStatsModel.ArcheryBullseyes}/{CharacterStatsModel.ArcheryShots}발, " +
                 $"넘어짐 {CharacterStatsModel.RagdollFalls}회.");
+
+            // ★★ 등급 눈금도 <b>여기서</b> 처음 기록한다 — 위 문단과 정확히 같은 이유(순서)다.
+            //    이 값의 출처는 저장 파일(statTierReached)이고 로드는 남의 Start()가 한다.
+            //    Start에서 부르면 로드 전일 수 있고, 그때 기록한 «지금 차림»이 곧이어 로드에 덮인다.
+            //    ★ 착용 변경 이벤트만 구독하면 <b>이미 그 장비를 입고 있던 기존 사용자</b>가
+            //      영원히 0단계로 남는다 — 아무것도 갈아입지 않으면 이벤트가 한 번도 안 온다.
+            RecordStatTierMarks("실행 직후");
+        }
+
+        // ====================================================================
+        // ★★ H-8 등급 눈금 (2026-09-06 배선)
+        // ====================================================================
+
+        private void OnCharacterEquipmentChanged() => RecordStatTierMarks("착용 변경");
+
+        /// <summary>
+        /// 지금 차림의 <b>도달 등급</b>을 영구 눈금에 새긴다(내려가지 않는다).
+        ///
+        /// <para><b>이 배선이 없으면 무엇이 보이나</b>: <c>CharacterInfoWindow.Stats.cs</c>가
+        /// <c>CurrencyModel.StatTierReached</c>를 그리는데 <b>채우는 코드가 0건</b>이라 눈금이
+        /// 영구히 0단계였다. 사용자는 고급 장비를 껴도 눈금이 안 차는 화면을 본다 —
+        /// «아직 못 찍었다»와 «기록이 안 된다»가 화면에서 똑같이 생겼다.</para>
+        ///
+        /// <para>★ <b>계산은 한 줄도 여기 없다.</b> 1-기준/0-기준 매핑을 호출부가 각자 적으면
+        /// «고급을 찍었는데 눈금이 중급까지만 남는» 증상이 나온다 —
+        /// 그래서 <see cref="EquipmentStatRules.RecordTierHighWaterMarks"/> 하나만 부른다
+        /// (그 함수의 클래스 문서가 이 계약을 명시한다).</para>
+        ///
+        /// <para>★ <b>저장을 강제하지 않는다.</b> 눈금이 오르면 <c>CurrencyModel.IsDirty</c>가 서고
+        /// <c>CharacterProgressionDirector</c>의 주기/종료 저장이 싣는다 — 이 컴포넌트가 디스크를
+        /// 쓰지 않는다는 클래스 문서의 규약을 그대로 지킨다.</para>
+        ///
+        /// <para>비용: 눈금이 <b>실제로 오르는 것은 평생 최대 12회</b>
+        /// (<c>StatTierSlotCount × MaxStatTier</c>)라 로그는 상시 비용이 아니다. 오르지 않은 호출은
+        /// 슬롯 4개를 읽고 <c>false</c>로 끝난다.</para>
+        /// </summary>
+        private void RecordStatTierMarks(string why)
+        {
+            if (!EquipmentStatRules.RecordTierHighWaterMarks(EquipmentStatRules.CurrentBuild())) return;
+
+            // ★ 스탯 이름도 개수도 <b>여기서 손으로 적지 않는다</b> — enum에 값이 하나 늘거나 이름이
+            //   바뀌면 이 줄이 저절로 따라간다(EquipmentStatRules.StatName이 낱말의 단일 출처다).
+            var summary = new System.Text.StringBuilder();
+            for (int i = 0; i < EquipmentStatRules.StatCount; i++)
+            {
+                if (i > 0) summary.Append(" · ");
+                summary.Append(EquipmentStatRules.StatName((CharacterStat)i))
+                       .Append(' ').Append(CurrencyModel.StatTierReached(i)).Append("단계");
+            }
+
+            Debug.Log($"[기록] ★ 등급 눈금 갱신({why}) — {summary}. " +
+                $"최대 {EquipmentStatRules.StatCount * CurrencyRules.MaxStatTier}회만 오를 수 있는 값이고, " +
+                "영구 해금이라 장비를 벗어도 내려가지 않습니다. 저장은 다음 주기/종료 저장에 실립니다.");
         }
 
         private void Flush()

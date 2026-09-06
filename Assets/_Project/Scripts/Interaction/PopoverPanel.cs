@@ -63,7 +63,14 @@ namespace StickMate.Interaction
         public const float ScreenMarginPoints = 12f;
 
         protected const float ClickPollInterval = 0.05f;
-        protected const float ActionDedupSeconds = 0.35f;
+
+        /// <summary>같은 손잡이를 연달아 누를 때 두 입력 경로가 한 클릭을 두 번 처리하지 않게 하는 창(초).
+        /// <para>★ <b>public인 이유</b>: 같은 버튼을 연타하는 PlayMode 테스트는 이만큼을 <b>벽시계로</b>
+        /// 기다린 뒤에 다시 눌러야 한다. 0.35를 테스트에 베끼면 이 값이 한 번 바뀔 때 그 테스트가
+        /// 조용히 "클릭이 씹힌 채 통과"한다(CLAUDE.md — 프로덕션 상수 하드코딩 금지).
+        /// <see cref="SettingsWindow.ActionDedupSeconds"/>가 같은 사정으로 이미 public이다.
+        /// 위 <see cref="ShrinkSeconds"/> / <see cref="ScreenMarginPoints"/> 문단이 말하던 것도 이 값이다.</para></summary>
+        public const float ActionDedupSeconds = 0.35f;
 
         // ==================== 무입력 자동 닫힘 (2026-09-01 페르소나 J5) ====================
         //

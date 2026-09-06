@@ -86,6 +86,16 @@ namespace UnityEngine
                 default: return new Color(v, p, q, 1f);
             }
         }
+
+        /// <summary>UnityEngine.Color.Lerp 원문 이식 — 성분별 선형보간, t 는 Clamp01.
+        /// (2026-09-06: R20 유리 재질이 카드 바탕 위에 M2 를 사전 합성하면서 프로덕션이 쓰기 시작했다.
+        ///  <c>AccessoryShapeBuilder.cs</c> AccessoryTone.Glass.)</summary>
+        public static Color Lerp(Color a, Color b, float t)
+        {
+            t = Mathf.Clamp01(t);
+            return new Color(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t,
+                             a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t);
+        }
     }
 
     public static class Mathf
@@ -105,6 +115,16 @@ namespace UnityEngine
         public static float LerpUnclamped(float a, float b, float t) => a + (b - a) * t;
         public static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
         public static float Clamp(float v, float lo, float hi) => v < lo ? lo : (v > hi ? hi : v);
+        // ↓ 아래 둘은 <b>오늘의 컴파일 목록에서는 안 불린다</b>(2026-09-06 실측). 그래도 둔 이유:
+        //   · Clamp(int,int,int) 가 없으면 int 인자가 <b>조용히 float 판</b>에 붙는다. 결과를 int 로
+        //     받으면 CS0266 으로 시끄럽지만, float 로 받는 자리였다면 아무 말 없이 통과한다.
+        //   · FloorToInt 를 (int) 캐스트로 때우면 음수에서 조용히 1 차이가 난다(-0.5 -> 0 vs -1).
+        //   둘 다 UnityEngine 원문 그대로라 「흉내가 늘었다」에 해당하지 않는다.
+        public static int Clamp(int v, int lo, int hi) => v < lo ? lo : (v > hi ? hi : v);
+        public static int FloorToInt(float f) => (int)Math.Floor(f);
+        // UnityEngine.Mathf.Sign: 0 은 <b>+1</b> 이다(수학의 sgn 과 다르다). 여기를 0으로 두면
+        // AccessoryShapeBuilder 의 좌우 밀기가 중앙선 위 점에서만 조용히 달라진다.
+        public static float Sign(float f) => f >= 0f ? 1f : -1f;
         // UnityEngine.Mathf.InverseLerp 원문 이식: a==b면 0, 그 밖에는 Clamp01((v-a)/(b-a)).
         public static float InverseLerp(float a, float b, float v)
             => a != b ? Clamp01((v - a) / (b - a)) : 0f;

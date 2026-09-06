@@ -940,6 +940,13 @@ namespace StickMate.States
                 case StickmanStateId.GroundLossHang:// 들고 온 수평 속도를 유지해야 코요테 개그가 산다.
                 case StickmanStateId.Archery:       // 접근 보행 -> 제자리(위 계약: 제자리 페이즈를 스스로 죽인다).
                 case StickmanStateId.LandingCrouch: // 착지 감쇠를 스스로 소유한다(위 계약과 같은 형태).
+                // ★ 춤(2026-09-06) — 활쏘기와 **완전히 같은 형태**의 계약이다. 7종 중 둘만 자기
+                //   속도를 싣는다: 스타점프의 도움닫기(walkSpeed x 1.45)와 문워크의 후진 활강
+                //   (보행의 37.9%). 나머지 5종과 **모든 진입/퇴장 박자**에서는 DanceState가
+                //   danceHorizontalDamping(14/초)으로 **매 프레임** 수평 속도를 죽인다(한 번 대입하고
+                //   끝내면 안 된다 — 위 계약 문서의 Idle 반례). 여기서 빼면 안전망이 도움닫기 속도를
+                //   매 프레임 지워 **스타점프가 영원히 도약하지 못한다**.
+                case StickmanStateId.Dance:
                     return true;
                 default:
                     return false;
@@ -993,6 +1000,12 @@ namespace StickMate.States
                 // 오르는 벽을 바라본다(ParkourClimbState.Enter의 SetFacingSign). 등지고 오르면
                 // 등반 포즈의 손이 뒤로 뻗는다 — 그 상태의 주석이 이유를 적어 두었다.
                 case StickmanStateId.ParkourClimb:
+                // ★ 춤(2026-09-06) — 안 넣으면 **두 동작이 통째로 소멸한다**(docs/UX_MOTION_DANCE.md 5-4):
+                //   피루엣의 «회전»은 이 리그에 세로축이 없어서 SetFacingSign **부호 반전**으로 만들고,
+                //   문워크는 정의상 «앞을 보면서 뒤로 간다». 둘 다 배회 AI의 MoveInputX와 무관한 근거에서
+                //   방향이 나오므로, 여기 없으면 그 호출이 같은 프레임 뒤쪽 TickPose에 덮여 죽은 코드가
+                //   되고 피루엣은 제자리 정지, 문워크는 그냥 뒷걸음질이 된다.
+                case StickmanStateId.Dance:
                     return true;
                 default:
                     return false;
@@ -1990,6 +2003,15 @@ namespace StickMate.States
         /// </summary>
         public void TickPose(float deltaTime)
         {
+            // ★★ 2026-09-06 — 관망 자세의 «적용 여부와 이징»은 라우팅 **밖**에서 확정한다.
+            //
+            // 왜 여기인가(위 상체 기울임과 똑같은 이유, 그리고 실제로 그 함정에 빠질 뻔했다):
+            // TickPoseRouting에는 조기 return이 열 개가 넘고 Walk/Fall/등반/착지는 전부 그 앞에서
+            // 빠져나간다. 이징 타이머를 라우팅 «안»에서만 갱신하면 걷는 동안 되감기가 <b>한 번도
+            // 실행되지 않아</b>, 걷다 서는 순간 이징이 이미 가득 찬 채로 남는다 —
+            // poseSmoothingRate(35/초)의 0.086초 만에 팔이 «딱» 하고 붙는 그 그림이다.
+            _focusStanceActiveThisFrame = TickFocusWatchStance(deltaTime);
+
             TickPoseRouting(deltaTime);
 
             // ★ 2026-09-01 상체 기울임 — 위 라우팅에는 조기 return이 열 개 넘게 있고(상태마다 포즈
@@ -2132,6 +2154,14 @@ namespace StickMate.States
             // 막대기가 위로 평행이동하기만 했다(= 사용자가 말한 "어설픈 점프").
             if (Machine.CurrentStateId == StickmanStateId.ParkourClimb) return;
 
+            // ★★ 음악 반응 춤(2026-09-06, 사용자 요청 2026-09-03 "노래가 나오면 상호 반응해서 춤추는
+            // 동작을 넣어줘") — Walk/LandingCrouch/Archery/ParkourClimb와 **완전히 같은 이유**로 여기서
+            // 아무것도 하지 않는다: 포즈를 이미 DanceState.Tick()이 자기 박자 곡선으로 세팅했다.
+            // 이 분기를 빠뜨리면 아래 ApplyIdlePose가 매 프레임 중립 포즈를 덧씌워 **춤이 통째로
+            // 사라진다** — 등반이 "차렷 자세로 평행이동"했던 것, 집중 모드가 "대사만 뜨고 아무 동작도
+            // 없었던" 것과 정확히 같은 계열의 결함이다(2026-09-06에 그 둘을 다 고쳤다).
+            if (Machine.CurrentStateId == StickmanStateId.Dance) return;
+
             // ★ 낙하 중 공중 자세(2026-08-29, 사용자 요청 "떨어질때 관절이 이상하게 꺾이면서 넘어지는데").
             // 여기에 분기가 없어서 지금까지 낙하 중에도 아래 Idle 중립 포즈가 적용됐다 — 막대기가 그대로
             // 내려오는 그림이었다. Jump도 같은 포즈를 쓰되 상승 중에는 세기가 0이라 사실상 중립이고,
@@ -2155,6 +2185,48 @@ namespace StickMate.States
                 return;
             }
 
+            // ★★ 집중 모드 자세(2026-09-06, 사용자 신고 "집중모드 행동을 해야하는데 안함") —
+            // LedgeHang과 **같은 이유로 여기서 적용한다**: 이 포즈는 Idle 중립 포즈의 자리를 대체하는
+            // 것이라 "상태 ID 하나로 포즈가 결정된다"는 이 메서드의 계약과 정확히 일치한다.
+            //
+            // 이 분기가 없던 동안 무슨 일이 있었나: FocusStart/FocusComplete/FocusNudge는 정상적으로
+            // 전이했고 대사도 떴지만, 바로 아래 ApplyIdlePose가 매 프레임 중립 포즈를 덧씌워
+            // **화면에서는 아무 동작도 일어나지 않았다**(StickConfig.pomodoroStartPoseHoldSeconds의
+            // 툴팁이 말하는 "안경+팔짱"을 그리는 코드가 저장소에 없었다 — 등반이 "차렷 자세로
+            // 평행이동"했던 것과 같은 계열의 결함).
+            //
+            // FocusCancelled("그래 쉬자")는 일부러 여기 없다 — 그 그림은 **팔짱을 푸는 것**이고
+            // 아래 중립 포즈로 되돌아가는 감쇠가 이미 정확히 그린다(ApplyFocusPose 문서).
+            StickmanStateId focusId = Machine.CurrentStateId;
+            if (focusId == StickmanStateId.FocusStart || focusId == StickmanStateId.FocusNudge ||
+                focusId == StickmanStateId.FocusComplete)
+            {
+                // 진행도의 생산자는 상태 자신이다(자기 타이머를 여기서 다시 세지 않는다 —
+                // 두 벌이 되면 반드시 갈라진다). 다른 구현이 끼어들면 진행도 0으로 안전하게 떨어진다.
+                float focusProgress = Machine.GetState(focusId) is TimedSpectacleState timed ? timed.Progress01 : 0f;
+                pose.ApplyFocusPose(deltaTime, BuildPoseSettings(), PoseSmoothingRate,
+                    celebrate: focusId == StickmanStateId.FocusComplete, focusProgress);
+                return;
+            }
+
+            // ★★ 집중 세션 «관망 자세»(2026-09-06, 페르소나 소은 지적 "25분 세션의 99.87%가 평소와
+            // 똑같다") — 세션 중 Idle의 **중립 그 자체**를 팔짱/뒷짐으로 바꾼다. 위 FocusStart 분기가
+            // 다루는 것은 시작 2초뿐이고, 이 분기가 나머지 1,498초를 덮는다.
+            //
+            // ★ 순서가 중요하다: 아래 유휴 앰비언트 분기 **앞**에 와야 한다. 세션 중에는 제스처
+            //   4종도 이 자세 위에서 그려져야 하기 때문이다(제스처가 관망 자세를 «풀었다 다시 잡는»
+            //   것이 곧 G1/G4의 정의다). 뒤에 두면 제스처 동안만 평소 손차양이 그려진다.
+            //
+            // ★ 스위치(StickConfig.focusSessionAmbientEnabled)를 끄거나 세션이 없으면 이 분기가
+            //   통째로 건너뛰어져 예전 경로가 그대로 실행된다 — 거동이 100% 예전과 같다.
+            if (_focusStanceActiveThisFrame)
+            {
+                bool gesturing = TickIdleAmbientMotion(deltaTime);
+                pose.ApplyFocusWatchStancePose(deltaTime, BuildPoseSettings(), PoseSmoothingRate,
+                    BuildFocusWatchStanceInput(gesturing));
+                return;
+            }
+
             // ★ 유휴 앰비언트 동작(26-3, 2026-08-30 배선) — Idle 중립 포즈 **위에 얹는** 짧은 변주.
             // 진행 중이 아니면 아래 한 줄(예전 경로)이 그대로 실행되므로, 스위치를 끄거나 신호가
             // 오지 않으면 거동이 100% 예전과 같다.
@@ -2166,6 +2238,228 @@ namespace StickMate.States
             }
 
             pose.ApplyIdlePose(deltaTime, BuildPoseSettings(), PoseSmoothingRate);
+        }
+
+        // ==================== 집중 세션 «관망 자세» (2026-09-06) ====================
+        //
+        // 이 절이 소유하는 것은 **자세 선택과 시간**뿐이다. 각도/박자는 포즈 층
+        // (States/StickmanPoseAnimator.ApplyFocusWatchStancePose)이 갖고, 발행 빈도는 배회 AI
+        // (States/AutoWanderController.TickResting의 기존 추첨)가 갖는다. 셋 중 어느 하나도
+        // 다른 둘의 값을 복사하지 않는다 — 사본이 생기는 순간 반드시 갈라진다.
+
+        // 지금 P2(뒷짐)인가. G4가 «중립 통과» 구간에서 딱 한 번 뒤집는다.
+        private bool _focusStanceBackHands;
+
+        // G1 안착에서 A/B 팔 역할이 교대된 상태인가(뒷짐이면 손 스태거 부호 반전).
+        private bool _focusStanceArmRolesSwapped;
+
+        // 이번 제스처에서 자세 토글/역할 교대를 이미 적용했는가(1회 계약 — 매 프레임 뒤집히면
+        // 팔이 떨린다).
+        private bool _focusStanceSwapApplied;
+
+        // G3 시작 시점에 확정한 "커서가 지금 보는 쪽의 반대편인가"와, 그 반전을 이미 수행했는가.
+        // 시작 시점에 확정하는 이유: 진행 중 매 프레임 커서를 다시 보면 사용자가 커서를 움직이는
+        // 동안 캐릭터가 제자리에서 좌우로 떨린다.
+        private bool _focusGlanceTurnsAround;
+        private bool _focusGlanceFlipApplied;
+
+        // Idle 복귀 이징의 경과(초). 관망 자세가 적용되지 않는 프레임마다 0으로 되감긴다.
+        private float _focusStanceSettleElapsed;
+
+        /// <summary>진단/테스트 창구 — 지금 관망 자세가 P2(뒷짐)인가.</summary>
+        public bool IsFocusWatchStanceBackHands => _focusStanceBackHands;
+
+        /// <summary>진단/테스트 창구 — 지금 관망 자세 이징이 얼마나 찼는가(0~1).</summary>
+        public float FocusWatchStanceSettle01
+        {
+            get
+            {
+                float seconds = FocusWatchStanceSettleSeconds;
+                if (seconds <= 0f) return 1f;
+                return Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_focusStanceSettleElapsed / seconds));
+            }
+        }
+
+        /// <summary>걷기/점프/착지에서 Idle로 돌아왔을 때 관망 자세가 다시 세워지는 시간(초).</summary>
+        public float FocusWatchStanceSettleSeconds =>
+            Config != null ? Config.focusWatchStanceSettleSeconds : 0.45f;
+
+        /// <summary>
+        /// 집중 세션이 <b>지금</b> 진행 중인가 — <c>Interaction.FocusWatchDirector.IsSessionActive</c>의
+        /// <b>읽기 전용 조회</b>다. 타이머/링/에스컬레이션 판정은 전부 그쪽 소유이며 여기서는 한 줄도
+        /// 건드리지 않는다.
+        ///
+        /// <para>감독은 <b>캐릭터 루트에 함께 붙는다</b>(Editor/SceneBootstrapper가 같은 GameObject에
+        /// AddComponent한다). 그래서 씬 전역 탐색이 아니라 같은 오브젝트 조회 1회이고, 그 결과를
+        /// 캐싱한다(GetLimbCurveRenderer와 같은 지연 수집/캐싱 패턴). 못 찾으면 다시 찾지 않는다 —
+        /// 감독이 없는 리그(EditMode 테스트 더미)에서 매 프레임 탐색이 도는 것을 막는다.</para>
+        /// </summary>
+        public bool IsFocusSessionActive
+        {
+            get
+            {
+                if (!_focusDirectorSearched && Body != null)
+                {
+                    _focusDirectorSearched = true;
+                    _focusDirector = Body.GetComponent<Interaction.FocusWatchDirector>();
+                }
+                return _focusDirector != null && _focusDirector.IsSessionActive;
+            }
+        }
+
+        private Interaction.FocusWatchDirector _focusDirector;
+        private bool _focusDirectorSearched;
+
+        /// <summary>
+        /// 집중 세션 앰비언트 3층이 <b>지금 켜져 있는가</b> — 마스터 스위치 ×  세션 진행 여부.
+        /// 자세(이 파일) · 어휘(States/AutoWanderController) · 수용(BeginIdleAmbientMotion)이 전부
+        /// 이 한 판정을 본다. 세 곳이 각자 스위치를 해석하면 "반만 꺼진" 상태가 생긴다.
+        /// </summary>
+        public bool IsFocusSessionAmbientActive =>
+            (Config == null || Config.focusSessionAmbientEnabled) && IsFocusSessionActive;
+
+        /// <summary>
+        /// 관망 자세를 이번 프레임에 적용해야 하는가. 적용하는 프레임에는 이징을 진행시키고,
+        /// 아니면 <b>되감아</b> 다음 복귀가 다시 0.45초에 걸쳐 세워지게 한다.
+        ///
+        /// <para>★ <b>시작 포즈에서 넘어올 때는 이징을 건너뛴다</b>(전이 규약). <c>FocusStart</c>는
+        /// 팔짱을 <b>완성한 채</b> 끝나므로(ApplyFocusPose의 진행 곡선은 끝에서 1로 유지된다), 여기서
+        /// 이징을 0부터 걸면 목표가 한 번 중립으로 내려갔다가 다시 올라온다 — 화면에서는
+        /// <b>팔짱을 풀었다 다시 끼는</b> 그림이고, 그게 설계가 금지한 바로 그 동작이다.</para>
+        /// </summary>
+        private bool TickFocusWatchStance(float deltaTime)
+        {
+            StickmanStateId id = Machine != null ? Machine.CurrentStateId : StickmanStateId.Idle;
+
+            // 관망 자세는 **Idle의 포즈만** 바꾼다. 걷기/점프/낙하/등반/착지 중에는 평소 그대로다
+            // (그 상태들은 이 라우팅의 앞쪽에서 이미 return했지만, 아래 꼬리 경로를 공유하는
+            //  Attack/Sulky/Graffiti 같은 «순수 타이머» 상태까지 덮지 않도록 여기서 못박는다).
+            if (Machine == null || id != StickmanStateId.Idle || !IsFocusSessionAmbientActive)
+            {
+                _focusStanceSettleElapsed = 0f;
+                // 팔짱을 이미 완성한 채 끝나는 두 상태에서만 이징을 건너뛴다. FocusComplete(만세)와
+                // FocusCancelled(팔짱 푸는 그림)는 팔이 다른 곳에 있으므로 정상적으로 이징한다.
+                _focusStanceResumesFromCrossedArms =
+                    id == StickmanStateId.FocusStart || id == StickmanStateId.FocusNudge;
+
+                // 세션이 끝났으면 다음 세션은 반드시 P1(팔짱)에서 시작한다 — 지난 세션이 P2(뒷짐)로
+                // 끝났으면 시작 포즈(팔짱)에서 관망 자세(뒷짐)로 넘어가는 순간 팔이 튄다.
+                if (!IsFocusSessionAmbientActive)
+                {
+                    _focusStanceBackHands = false;
+                    _focusStanceArmRolesSwapped = false;
+                }
+                return false;
+            }
+
+            if (_focusStanceResumesFromCrossedArms)
+            {
+                _focusStanceResumesFromCrossedArms = false;
+                _focusStanceSettleElapsed = FocusWatchStanceSettleSeconds;
+                // ★ 화면에 실제로 그려져 있는 것은 **팔짱(P1, 역할 교대 없음)**이다
+                // (ApplyFocusPose가 그 각도로 끝난다). 이징을 건너뛰면서 목표만 P2로 남겨두면
+                // 그 프레임에 팔이 등 뒤로 튄다 — 상태를 화면의 사실에 맞춘다.
+                _focusStanceBackHands = false;
+                _focusStanceArmRolesSwapped = false;
+            }
+
+            _focusStanceSettleElapsed += deltaTime;
+            return true;
+        }
+
+        // 직전 프레임의 상태가 «팔짱을 완성한 채 끝나는» 집중 포즈였는가(위 문서 참고).
+        private bool _focusStanceResumesFromCrossedArms;
+
+        // 이번 프레임에 관망 자세를 적용하는가. TickPose가 라우팅 **앞에서** 확정하고 라우팅이 읽는다
+        // (조기 return 열 개를 우회하기 위한 배치 — TickPose의 문단 참고).
+        private bool _focusStanceActiveThisFrame;
+
+        /// <summary>진단/테스트 창구 — 이번 프레임에 관망 자세가 적용됐는가.</summary>
+        public bool IsFocusWatchStanceActive => _focusStanceActiveThisFrame;
+
+        /// <summary>이번 프레임의 관망 자세 입력. <b>자세 토글(G4)과 방향 전환(G3)이 여기서 확정된다</b> —
+        /// 포즈 층은 상태를 갖지 않으므로 "언제 뒤집히는가"의 소유자는 이쪽이다.</summary>
+        private StickmanPoseAnimator.FocusWatchStanceInput BuildFocusWatchStanceInput(bool gesturing)
+        {
+            WanderAmbientMotion gesture = _idleAmbientMotion;
+            float progress = gesturing ? IdleAmbientProgress01 : 0f;
+            bool focusGesture = gesturing && FocusAmbientGestures.IsFocusGesture(gesture);
+
+            if (!focusGesture)
+            {
+                // 제스처가 끝났으면 1회 계약 플래그를 되돌려 다음 제스처가 다시 뒤집을 수 있게 한다.
+                _focusStanceSwapApplied = false;
+                _focusGlanceFlipApplied = false;
+            }
+            else
+            {
+                switch (gesture)
+                {
+                    case WanderAmbientMotion.FocusStanceSwap:
+                        // 팔이 중립을 지나는 그 순간에만 목표 자세를 바꾼다 — 팔짱↔뒷짐을 직접
+                        // 보간하면 전완이 몸통을 관통한다.
+                        if (!_focusStanceSwapApplied && progress >= StanceSwapNeutralProgress01)
+                        {
+                            _focusStanceSwapApplied = true;
+                            _focusStanceBackHands = !_focusStanceBackHands;
+                        }
+                        break;
+
+                    case WanderAmbientMotion.FocusRecross:
+                        // 고쳐 잡은 뒤에는 위아래 팔이 바뀐다(실제 사람도 그렇다).
+                        if (!_focusStanceSwapApplied && progress >= RecrossRoleSwapProgress01)
+                        {
+                            _focusStanceSwapApplied = true;
+                            _focusStanceArmRolesSwapped = !_focusStanceArmRolesSwapped;
+                        }
+                        break;
+
+                    case WanderAmbientMotion.FocusScreenGlance:
+                        // 방향 전환은 박자표가 정한 지점에서 1프레임에 끝난다. "언제"의 정본은
+                        // 포즈 층(FocusGlanceFacingFlipReached)이다 — 여기 숫자를 또 적으면 갈라진다.
+                        if (!_focusGlanceFlipApplied && _focusGlanceTurnsAround
+                            && StickmanPoseAnimator.FocusGlanceFacingFlipReached(progress))
+                        {
+                            _focusGlanceFlipApplied = true;
+                            SetFacingSign(-_facingSign);
+                        }
+                        break;
+                }
+            }
+
+            return new StickmanPoseAnimator.FocusWatchStanceInput(
+                _focusStanceBackHands, _focusStanceArmRolesSwapped, FocusWatchStanceSettle01,
+                gesture, focusGesture, progress, _focusGlanceTurnsAround,
+                // 상체 기울임 마스터 스위치의 해석은 이 프로퍼티 한 곳뿐이다(그 필드의 규약).
+                BodyLeanEnabled ? 1f : 0f);
+        }
+
+        /// <summary>G4에서 <b>목표 자세를 바꾸는</b> 진행도. 포즈 층의 «중립 통과» 구간(0.40~0.52)
+        /// 한가운데다 — 그 순간 혼합비가 정확히 0이라 팔이 튀지 않는다.</summary>
+        private const float StanceSwapNeutralProgress01 = 0.46f;
+
+        /// <summary>G1에서 A/B 팔 역할을 교대하는 진행도. 포즈 층의 «안착» 구간(0.78~1.00) 시작점이다.</summary>
+        private const float RecrossRoleSwapProgress01 = 0.78f;
+
+        /// <summary>
+        /// G3 시작 시점에 "커서가 지금 보는 쪽의 <b>반대편</b>인가"를 확정한다.
+        /// <b>커서를 못 읽으면 언제나 false</b> — 없는 대상을 향해 돌아보는 그림은 절대 불변 원칙 1
+        /// 위반이다(발행자도 같은 이유로 커서가 없으면 G3를 추첨에서 제외한다. 그래도 추첨과 시작
+        /// 사이에 조회가 실패할 수 있어 여기서 한 번 더 막는다).
+        /// </summary>
+        private void ResolveFocusGlanceTurn()
+        {
+            _focusGlanceFlipApplied = false;
+            _focusGlanceTurnsAround = false;
+            if (Body == null) return;
+            if (!TryGetCursorWorldPosition(out Vector2 cursorWorld)) return;
+
+            float dx = cursorWorld.x - Body.position.x;
+            // 커서가 몸통 바로 위(부호가 떨리는 자리)면 돌지 않는다 — 제자리 회전이 깜빡인다.
+            float deadzone = CharacterVisualHalfWidthWorld > 0f ? CharacterVisualHalfWidthWorld : 0.05f;
+            if (Mathf.Abs(dx) <= deadzone) return;
+
+            _focusGlanceTurnsAround = (dx >= 0f ? 1f : -1f) != _facingSign;
         }
 
         // ==================== 유휴 앰비언트 동작 (26-3) ====================
@@ -2203,14 +2497,34 @@ namespace StickMate.States
             // Idle이 아닌 순간에 들어온 신호는 버린다 — 걷는 중에 팔이 이마로 올라가면 그것이 곧 버그다.
             if (Machine == null || Machine.CurrentStateId != StickmanStateId.Idle) return false;
 
-            float duration = motion == WanderAmbientMotion.SitAndYawn
-                ? (Config != null ? Config.idleAmbientStretchSeconds : 2f)
-                : (Config != null ? Config.idleAmbientLookAroundSeconds : 0.9f);
+            // ★★ 2026-09-06 — 어휘를 **양방향으로** 가른다(집중 세션 앰비언트 3층).
+            //   세션 중  : 집중 어휘 4종만 받는다. 평소 어휘(손차양/기지개)가 관망 자세 위에 얹히면
+            //              "지켜보는 그림"이 통째로 깨진다 — 팔짱을 낀 채 만세를 하는 그림이 된다.
+            //   세션 밖  : 집중 어휘를 버린다. 스위치를 끄면 이쪽으로 떨어지므로, 마스터 스위치 하나로
+            //              거동이 100% 예전과 같아진다(네거티브 컨트롤이 코드로 보장된다).
+            bool focusGesture = FocusAmbientGestures.IsFocusGesture(motion);
+            if (focusGesture != IsFocusSessionAmbientActive) return false;
+
+            float duration;
+            if (focusGesture)
+            {
+                // 지속 시간의 정본은 어휘 표 한 곳이다(States/FocusAmbientGestures) — 박자표와 짝이라
+                // StickConfig로 흩으면 «평평한 구간»의 실제 길이가 조용히 어긋난다.
+                duration = FocusAmbientGestures.DurationSeconds(motion);
+                if (motion == WanderAmbientMotion.FocusScreenGlance) ResolveFocusGlanceTurn();
+            }
+            else
+            {
+                duration = motion == WanderAmbientMotion.SitAndYawn
+                    ? (Config != null ? Config.idleAmbientStretchSeconds : 2f)
+                    : (Config != null ? Config.idleAmbientLookAroundSeconds : 0.9f);
+            }
             if (duration <= 0f) return false;
 
             _idleAmbientMotion = motion;
             _idleAmbientElapsed = 0f;
             _idleAmbientDuration = duration;
+            _focusStanceSwapApplied = false;
             return true;
         }
 
@@ -2225,6 +2539,18 @@ namespace StickMate.States
             // Idle을 벗어났으면 즉시 취소 — 상태 전이가 곧 취소 신호다(별도 취소 배관을 두지 않는 이유).
             if (Machine == null || Machine.CurrentStateId != StickmanStateId.Idle
                 || (Config != null && !Config.idleAmbientMotionEnabled))
+            {
+                _idleAmbientDuration = 0f;
+                return false;
+            }
+
+            // ★★ 2026-09-06 — 어휘와 자세 층이 <b>도중에</b> 갈라지는 것을 막는다.
+            //   재생 중에 세션이 끝나거나(완주/취소) 마스터 스위치가 꺼지면 위 관망 자세 분기가 그
+            //   프레임부터 꺼지는데, 이 재생만 남으면 집중 어휘가 <b>평소 포즈 경로</b>로 흘러가
+            //   ApplyIdleAmbientPose의 «else = 손차양» 갈래에 걸린다 — 세션이 끝나는 순간 팔이
+            //   이마로 올라가는 그림이다. 반대 방향(세션이 시작되는 순간 재생 중이던 손차양)도 같다.
+            //   BeginIdleAmbientMotion의 수용 관문과 <b>같은 판정</b>을 재생 중에도 유지한다.
+            if (FocusAmbientGestures.IsFocusGesture(_idleAmbientMotion) != IsFocusSessionAmbientActive)
             {
                 _idleAmbientDuration = 0f;
                 return false;
@@ -2479,6 +2805,112 @@ namespace StickMate.States
 
         /// <summary>활쏘기 포즈의 지수 감쇠 계수(1/초) — LandingCrouchPoseSmoothingRate와 같은 관례.</summary>
         public float ArcheryPoseSmoothingRate => Config != null ? Config.archeryPoseSmoothingRate : 46f;
+
+        // ==================== 음악 반응 춤 (2026-09-06) ====================
+
+        /// <summary>
+        /// ★ 지금(또는 다음) 춤 에피소드에서 출 동작의 <b>문자열 아이디</b>(<see cref="DanceIds"/>).
+        /// Interaction/DanceEpisodeDirector가 <c>ChangeState(Dance)</c> <b>직전에</b> 써 넣고
+        /// States/DanceState.Enter가 읽어 <b>1회만</b> 인덱스로 해석한다
+        /// (ArcheryDirector가 과녁 좌표를 미리 써 넣는 것과 완전히 같은 관례).
+        ///
+        /// <para>★ <b>인덱스가 아니라 문자열인 이유</b>는 <see cref="DanceIds"/>가 적어 둔 그대로다 —
+        /// 표 중간에 한 종을 끼워 넣는 날 전원의 장착이 한 칸씩 밀린다. 신원 체계를 두 벌 만들면
+        /// 장착 집합과 재생이 갈라진다.</para>
+        /// </summary>
+        public string DanceId = DanceIds.Pirouette;
+
+        /// <summary>
+        /// ★ 지금 <b>창(window) 안에서 몇 번째 에피소드</b>인가(1부터). 음악이 T₂만큼 끊겨 창이 닫히면
+        /// 1로 되돌아간다. Interaction/DanceEpisodeDirector가 소유하고 여기에 실어 보낸다.
+        ///
+        /// <para>두 곳이 이 값을 읽는다: <b>피로 램프</b>(휴지가 길어진다 — 3시간 플레이리스트의 듀티가
+        /// 27%→11%로 수렴한다)와 <b>진입 대사</b>(<c>n == 1</c>일 때만 발화한다. 에피소드마다 말하면
+        /// 3시간에 같은 문장이 102번 뜬다 — 리더 결정 2026-09-06).</para>
+        /// </summary>
+        public int DanceEpisodeIndex = 1;
+
+        /// <summary>춤 자세의 지수 감쇠 계수(1/초). 기본 35가 아니라 78인 이유는 그 설정의 툴팁에 있다
+        /// (팔 체인 ×0.55 때문에 말춤 팔 펌프가 19% 깎인다).</summary>
+        public float DancePoseSmoothingRate => Config != null ? Config.dancePoseSmoothingRate : 78f;
+
+        /// <summary>로봇춤 루프 구간에서만 쓰는 계수(1/초). <b>0 = 즉시 대입</b>이고 그것이 dime stop이다.</summary>
+        public float DanceRobotPoseSmoothingRate => Config != null ? Config.danceRobotPoseSmoothingRate : 0f;
+
+        /// <summary>
+        /// 춤 7종의 자세 묶음(StickConfig -> StickmanPoseAnimator). BuildArcheryPoseSettings와 완전히
+        /// 같은 패턴이며, <b>...Heights(신장 H 배수) -> 월드 거리 환산만 여기서 한다</b>
+        /// (각도는 크기 무관, 거리는 신장 비례 — 리더 지시).
+        ///
+        /// <para>★ 폴백 리터럴은 <b>StickConfig의 실효값과 같아야 한다</b>. 정상 실행에서는 절대
+        /// 쓰이지 않으므로 어긋나도 화면이 안 바뀌고 그래서 조용히 낡는다 — 이 저장소가 한 파일에서만
+        /// 여섯 개를 그렇게 잃은 적이 있다. <c>Tests/EditMode/ConfigFallbackLiteralDriftTests</c>가
+        /// 정규식으로, <c>DancePoseFallbackParityTests</c>가 <b>실제 두 설정을 나란히 세워</b>
+        /// (서로 다른 방법으로) 대조한다.</para>
+        /// </summary>
+        public StickmanPoseAnimator.DancePoseSettings BuildDancePoseSettings()
+        {
+            float h = CharacterHeightWorld;
+            return new StickmanPoseAnimator.DancePoseSettings(
+                new StickmanPoseAnimator.DancePoseSettings.PirouetteSettings(
+                    Config != null ? Config.dancePirouetteArmDegrees : 82f,
+                    Config != null ? Config.dancePirouetteElbowDegrees : 26f,
+                    Config != null ? Config.dancePirouetteArmSweepDegrees : 9f,
+                    Config != null ? Config.dancePirouetteArmSweepSeconds : 0.7f,
+                    Config != null ? Config.dancePirouetteArmFirstDegrees : 34f,
+                    Config != null ? Config.dancePirouetteElbowFirstDegrees : 62f,
+                    Config != null ? Config.dancePirouetteSupportKneeDegrees : 6f,
+                    Config != null ? Config.dancePirouettePlieKneeDegrees : 42f,
+                    Config != null ? Config.dancePirouetteRetireHipDegrees : 62f,
+                    Config != null ? Config.dancePirouetteRetireKneeDegrees : 116f,
+                    h * (Config != null ? Config.dancePirouetteReleveHeights : 0.045f),
+                    h * (Config != null ? Config.dancePirouetteBobHeights : 0.01f),
+                    Config != null ? Config.dancePirouetteRevolutionSeconds : 0.7f),
+                new StickmanPoseAnimator.DancePoseSettings.StarJumpSettings(
+                    Config != null ? Config.danceStarJumpArmSpreadDegrees : 60f,
+                    Config != null ? Config.danceStarJumpElbowDegrees : 4f,
+                    Config != null ? Config.danceStarJumpHipDegrees : 43f,
+                    Config != null ? Config.danceStarJumpKneeDegrees : 6f,
+                    Config != null ? Config.danceStarJumpCrouchKneeDegrees : 62f,
+                    Config != null ? Config.danceStarJumpCrouchArmDegrees : -54f,
+                    Config != null ? Config.danceStarJumpLandKneeDegrees : 74f,
+                    h * (Config != null ? Config.danceStarJumpRiseHeights : 0.42f)),
+                new StickmanPoseAnimator.DancePoseSettings.MoonwalkSettings(
+                    Config != null ? Config.danceMoonwalkFrontHipDegrees : 30f,
+                    Config != null ? Config.danceMoonwalkRearHipDegrees : -16f,
+                    Config != null ? Config.danceMoonwalkStraightKneeDegrees : 3f,
+                    Config != null ? Config.danceMoonwalkBentKneeDegrees : 52f,
+                    Config != null ? Config.danceMoonwalkArmSwingDegrees : 26f,
+                    Config != null ? Config.danceMoonwalkElbowDegrees : 22f,
+                    Config != null ? Config.danceMoonwalkLeanDegrees : 6f),
+                new StickmanPoseAnimator.DancePoseSettings.RunningManSettings(
+                    Config != null ? Config.danceRunningManHipAmplitudeScale : 1.85f,
+                    Config != null ? Config.danceRunningManKneeAmplitudeScale : 1.3f,
+                    Config != null ? Config.danceRunningManArmDegrees : 62f,
+                    Config != null ? Config.danceRunningManElbowDegrees : 78f,
+                    Config != null ? Config.danceRunningManLeanDegrees : 9f,
+                    h * (Config != null ? Config.danceRunningManBounceHeights : 0.03f)),
+                new StickmanPoseAnimator.DancePoseSettings.RobotSettings(
+                    Config != null ? Config.danceRobotLegKneeDegrees : 12f,
+                    Config != null ? Config.danceRobotHipDegrees : 8f,
+                    Config != null ? Config.danceRobotLeanDegrees : 8f),
+                new StickmanPoseAnimator.DancePoseSettings.SquatKickSettings(
+                    Config != null ? Config.danceSquatKickSupportHipDegrees : 74f,
+                    Config != null ? Config.danceSquatKickSupportKneeDegrees : 132f,
+                    Config != null ? Config.danceSquatKickKickHipDegrees : 78f,
+                    Config != null ? Config.danceSquatKickKickKneeDegrees : 8f,
+                    Config != null ? Config.danceSquatKickArmDegrees : 68f,
+                    Config != null ? Config.danceSquatKickElbowDegrees : 104f,
+                    h * (Config != null ? Config.danceSquatKickBounceHeights : 0.1f)),
+                new StickmanPoseAnimator.DancePoseSettings.HorseDanceSettings(
+                    Config != null ? Config.danceHorseArmDegrees : 58f,
+                    Config != null ? Config.danceHorseElbowDegrees : 92f,
+                    Config != null ? Config.danceHorseArmPumpDegrees : 14f,
+                    Config != null ? Config.danceHorseLiftHipDegrees : 42f,
+                    Config != null ? Config.danceHorseLiftKneeDegrees : 88f,
+                    Config != null ? Config.danceHorseLeanDegrees : 5f,
+                    h * (Config != null ? Config.danceHorseBounceHeights : 0.045f)));
+        }
 
         // ==================== 상체 기울임 (2026-09-01) ====================
         // 마스터 스위치가 꺼지면 세 용도가 **전부** 0이 된다 — 스위치의 의미를 호출부마다 해석하지

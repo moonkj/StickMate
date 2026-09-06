@@ -224,7 +224,10 @@ namespace StickMate.Core
                  "풀업과 맨틀은 비슷한 길이다). 1.20초는 그 비를 1.43:1로 만들고 총 길이는 14%만 늘린다. " +
                  "등반 속도도 1.20초면 보행(61pt/s)과 같은 급이지만 1.357초는 49pt/s로 눈에 띄게 느려진다.\n" +
                  "부수 효과(의도한 것): ParkourClimb 대사가 상태보다 길어져 최소 노출로 잘리지 않는다 " +
-                 "(재검산: 가뿐하네 0.68 / 영차 0.72 / 헉 높다 0.865 필요체류 — 전부 1.20초 미만).")]
+                 "(재검산: 가뿐하네 0.68 / 영차 0.72 / 헉 높다 0.865 필요체류 — 전부 1.20초 미만).\n" +
+                 "★ 2026-09-06 — 등반 대사 풀이 3줄에서 10줄로 늘었지만(design-narrative R9) 최대 " +
+                 "필요체류는 여전히 0.865초다(신규 최장 \"이건 좀 높네\"가 \"헉... 높다\"와 같은 7자). " +
+                 "즉 위 결론은 그대로 성립한다 — 새 문안 중 이 길이 때문에 침묵하는 줄은 없다.")]
         public float parkourClimbDuration = 1.20f;
 
         // ── 등반 자세 4박자 (2026-09-01) — States/StickmanPoseAnimator.ApplyParkourClimbPose가 소비.
@@ -1220,6 +1223,44 @@ namespace StickMate.Core
         [Tooltip("2단계 '어? 딴 데 보고 있네?' 대사 노출 유지 시간(초).")]
         public float pomodoroNudgeDialogueHoldSeconds = 2f;
 
+        // ============================================================================
+        // ★★ 집중 세션 앰비언트 (2026-09-06, docs/UX_MOTION_FOCUS_SESSION.md 4절)
+        // ============================================================================
+        // 페르소나(소은) 지적: "집중모드 25분 세션의 99.87%가 평소와 똑같다". 위 pomodoro* 값들이
+        // 다루는 것은 **시작/완주/취소/눈치주기 4개의 순간**이고, 그 사이 1,498초는 링만 떠 있고
+        // 캐릭터는 평소 배회 그대로였다. 아래 6개 값이 그 구간을 «지켜보는 그림»으로 바꾼다.
+        //
+        // ★ 자세 각도는 여기 없다 — 팔짱/뒷짐은 서로 정합성을 갖는 **하나의 실루엣**이라 개별로
+        //   만지면 그림이 깨진다(States/StickmanPoseAnimator의 보행 키표/등반 상수와 같은 판단).
+        //   여기 있는 것은 «언제/얼마나 자주»뿐이다.
+
+        [Tooltip("집중 세션 동안 관망 자세(팔짱/뒷짐) + 미세 생명감 + 집중 어휘 제스처 4종을 켠다. " +
+                 "★ 마스터 스위치 — 끄면 세션 중 거동이 100% 예전과 같아진다(관망 자세도, 어휘 교체도, " +
+                 "아래 배회 확률 조정도 전부 사라지고 평소 값으로 되돌아간다). 이 저장소의 네거티브 컨트롤 규약.")]
+        public bool focusSessionAmbientEnabled = true;
+
+        [Tooltip("집중 세션 중 앰비언트 제스처의 최소 간격(초). 평소값(wanderLookAroundCooldownSeconds=30)에서 " +
+                 "살짝만 당긴다 — 세션 중에는 화면이 상태를 계속 말해야 하지만, 30초는 2026-08-31 사용자 신고 " +
+                 "'너무 자주함' 대응으로 정해진 값이라 그 체감 하한(분당 1.8회 ≈ 33초) 안쪽으로는 들어가지 않는다. " +
+                 "실효 간격 34초 / 25분에 44회 / 최장 침묵 34.5초.")]
+        public float focusAmbientGestureCooldownSeconds = 28f;
+
+        [Tooltip("집중 세션 중 Idle이 끝났을 때 걷기로 갈 확률(평소 wanderPostIdleWalkChance=0.75). " +
+                 "0으로 내리지 않는 이유: 걷기를 죽이면 파쿠르/뛰어내리기/매달리기로 이어지는 경로가 통째로 " +
+                 "막힌다. 이건 '묶어두기'가 아니라 분포 변경이다 — 25분 중 3.2분은 여전히 돌아다닌다.")]
+        public float focusSessionWalkChance = 0.4f;
+
+        [Tooltip("집중 세션 중 Idle 한 구간의 최소 길이(초, 평소 wanderIdleDurationMin=2). 한 번 서면 더 오래 선다.")]
+        public float focusSessionIdleDurationMin = 4f;
+
+        [Tooltip("집중 세션 중 Idle 한 구간의 최대 길이(초, 평소 wanderIdleDurationMax=6). Idle 점유율 66% -> 87%.")]
+        public float focusSessionIdleDurationMax = 11f;
+
+        [Tooltip("걷기/점프/착지에서 Idle로 돌아왔을 때 관망 자세가 다시 세워지는 시간(초). " +
+                 "★ poseSmoothingRate(35/초)는 95%까지 0.086초라 그대로 두면 팔이 «딱» 하고 붙는다 — " +
+                 "이 값이 그 위에 얹히는 별도 포락선(SmoothStep)의 길이다.")]
+        public float focusWatchStanceSettleSeconds = 0.45f;
+
         [Header("스트레스 게이지 (docs/UX_FLOW.md 19절, Phase 5)")]
         [Tooltip("과다 상호작용 판정 관찰 창 길이(초). UX 명시값 5분.")]
         public float stressOveruseWindowSeconds = 300f;
@@ -1474,8 +1515,22 @@ namespace StickMate.Core
         public float walkChatterChance = 0.14f;
 
         [Tooltip("혼잣말 사이의 최소 간격(초). Idle<->Walk 전이가 2~6초마다 일어나므로 이 쿨다운이 " +
-                 "없으면 확률이 낮아도 체감상 수다스러워진다. Idle과 Walk가 하나의 타이머를 공유한다.")]
+                 "없으면 확률이 낮아도 체감상 수다스러워진다. Idle과 Walk가 하나의 타이머를 공유한다.\n\n" +
+                 "★ 2026-09-06 — ParkourClimb 진입 대사도 이 하나의 타이머를 함께 쓴다. 사용자가 느끼는 " +
+                 "'수다스럽다'는 캐릭터 단위이지 서브시스템 단위가 아니라서, 타이머를 쪼개면 두 타이머의 " +
+                 "최소값이 다시 0이 되어 '앰비언트 직후 0.7초에 등반 대사'가 그대로 재현된다.")]
         public float ambientChatterCooldownSeconds = 11f;
+
+        [Tooltip("벽타기(ParkourClimb) 진입 시 대사를 할 확률(0~1). 0이면 등반 대사가 완전히 꺼진다.\n\n" +
+                 "★ 왜 필요한가(design-narrative 2026-09-06 R9): 등반은 사용자가 유발하는 사건이 아니라 " +
+                 "배회 AI의 경계 행동 추첨이 만드는 Dock 왕복 루프의 부산물이다(3시간 실측 141회, 평균 " +
+                 "76.6초마다 1회). 진입할 때마다 무조건 말하면 그 한 줄이 전체 발화의 25.8%를 먹고, " +
+                 "말이 보상이 아니라 배경 소음이 된다. 위 쿨다운과 함께 걸면 등반 최빈 문장 점유율이 " +
+                 "26.5% -> 2.5%로, 최소 발화 간격이 0.7초 -> 11.3초로 내려간다(4,000회 몬테카를로).\n\n" +
+                 "0.35의 근거: 0.30~0.35 구간이 전부 판정선 안이고, 등반 빈도가 1.8배 흔들려도(창 배치 " +
+                 "의존) 공유 쿨다운이 먼저 먹기 때문에 이 조합은 그 변동에 둔감하다.")]
+        [Range(0f, 1f)]
+        public float parkourClimbChatterChance = 0.35f;
 
         [Header("색상 (임시 플레이스홀더 — 디자이너 확정 전까지)")]
 
@@ -3489,5 +3544,458 @@ namespace StickMate.Core
                  "속도에서 약 0.18유닛(배포 환산 약 8.5pt, 실측 표류 192pt의 1/22).\n\n" +
                  "0 이하로 두면 즉시 0 대입(박자 없음)이 된다.")]
         public float horizontalDriftBrakeSeconds = 0.14f;
+
+        // ============================================================================
+        // ★★ 음악 반응 춤 7종 (2026-09-03 사용자 요청 "소리시스템을 전체빼줘, 다만 시스템에서
+        //    노래가 나오면 상호 반응해서 춤추는 동작을 넣어줘")
+        // ============================================================================
+        // 정본: docs/UX_MOTION_DANCE.md (design-motion, 2026-09-06)와 그것이 계승·정정한
+        //       docs/MOTION_SPEC.md 26절. **두 문서가 다르면 UX_MOTION_DANCE.md가 이긴다**
+        //       (그 문서가 26절의 산술 오류 4건을 고쳤다).
+        //
+        // 여기 있는 것 / 없는 것:
+        //   · 있다 — 각도(도), 거리(신장 H 배수), 박자 길이(초), 확률·비율 스칼라.
+        //   · 없다 — 로봇 8키 포즈 표와 D1/D2의 세트 내부 박자 분해. 그건 보행 키표와 같은 판단
+        //     기준으로 States/StickmanPoseAnimator.cs·States/DanceState.cs의 상수 표에 있다
+        //     ("튜닝 스칼라가 아니라 애니메이션 에셋에 가깝고, 개별 값을 따로 만지면 의미가 깨진다").
+        //   · 없다 — 에피소드 길이 8/16초. Platform/AudioReactiveDancePolicy.MotionEpisodeMin/MaxSeconds를
+        //     **참조**한다. 두 벌이 되는 순간 정책의 T₃(최소 유지 8.0초)와 갈라져 Stop이 에피소드
+        //     한가운데를 자른다(UX_MOTION_DANCE.md 3-3절의 구조적 짝).
+        //
+        // ★ 단위 규약: 아래 «...Heights»는 전부 **전신 신장 H(BaselineCharacterTotalHeight x 배율)
+        //   배수**다(landingCrouchDeepFallHeights와 같은 어법). 이 저장소에는 **어깨 높이 배수**로
+        //   쓰는 ...Heights도 있으므로(parkourClimbMaxBodySagHeights) 섞으면 1.89배가 조용히 틀린다.
+
+        [Header("음악 반응 춤 — 공통 (2026-09-03 사용자 요청 \"노래가 나오면 춤추는 동작\")")]
+
+        [Tooltip("★ 춤 자세 각도의 지수 감쇠 계수(1/초). 기본 poseSmoothingRate(35)가 아니라 78이다.\n\n" +
+                 "왜 이 값인가(임의값이 아니다): StickmanPoseAnimator.ApplyLimb는 팔 위마디에 x0.55, " +
+                 "아래마디에 x0.75를 곱한다. 1차 지수 감쇠가 **주기 신호**를 통과시킬 때의 진폭 이득은 " +
+                 "k/sqrt(k^2+w^2)이므로, 기본 35로 돌리면 말춤 어깨 펌프(2.216Hz, 흔들림 상한 포함)가 " +
+                 "진폭의 19%를, 피루엣의 죽은-프레임 방지 스윕(+-9도)이 10.4%를 잃는다. 모든 지속 진동 " +
+                 "신호에서 이득 >= 0.95를 요구하면 구속값이 77.03(말춤 어깨)이라 바로 위 정수 78이 된다.\n\n" +
+                 "★ 이 값과 danceLoopJitterFraction은 **함께 결정된다** — 흔들림이 주파수를 1/(1-j)배까지 " +
+                 "올리므로 j를 키우면 필요 계수도 올라간다(j=0.06에서 77.0, j=0.12에서 82.3).\n\n" +
+                 "★ 낮추려면 D7 팔 펌프 진폭(danceHorseArmPumpDegrees)을 함께 키워야 같은 그림이 나온다. " +
+                 "그 짝을 깨뜨리지 마라. 유지(hold) 자세에는 오차가 0이므로(지수 감쇠는 정지 목표에 " +
+                 "정확히 수렴한다) 이 값은 **진동에만** 영향을 준다.")]
+        public float dancePoseSmoothingRate = 78f;
+
+        [Tooltip("로봇춤(D5)만 쓰는 자세 보간 계수(1/초). **0 = 즉시 대입**이며 그것이 dime stop의 실체다 " +
+                 "(StickmanPoseAnimator.SmoothTo의 'rate <= 0이면 즉시 대입' 폴백을 그대로 탄다 — 신규 배관 0줄).\n\n" +
+                 "0보다 크게 올리면 포즈 사이가 부드럽게 이어져 **로봇춤이 아니게 된다**. 그게 이 동작의 " +
+                 "정체성이므로 튜닝 대상이 아니라 사실상 스위치다.")]
+        public float danceRobotPoseSmoothingRate = 0f;
+
+        [Tooltip("Walk에서 춤으로 들어올 때 수평 속도를 죽이는 진입 브레이크 시간(초). " +
+                 "danceHorizontalDamping(14/초)로 감쇠하므로 exp(-14x0.28)=0.0199 = 잔여 2.0%이고, " +
+                 "그동안 이동 거리는 배율 0.60에서 0.128H(7.2pt)라 발판 여유 안에서 멈춘다.\n\n" +
+                 "Idle에서 들어오면 이미 0이라 아무 일도 일어나지 않는다.")]
+        public float danceEntryBrakeSeconds = 0.28f;
+
+        [Tooltip("춤 도중 남은 수평 속도를 죽이는 지수 감쇠 계수(1/초). archeryHorizontalDamping(14)과 " +
+                 "같은 대역이고 이유도 같다 — 0으로 즉시 대입하면 뚝 끊겨 오히려 부자연스럽다.\n\n" +
+                 "★ 제자리 5종(D1/D4/D5/D6/D7)과 **모든 진입·퇴장 박자**에서 매 프레임 적용한다. " +
+                 "한 번만 대입하고 끝내면 그 뒤에 들어온 외력이 그대로 남아 미끄러진다.")]
+        public float danceHorizontalDamping = 14f;
+
+        [Tooltip("억제(집중 세션 시작 / 사용자 숨김 / 전체화면 게임 감지)로 춤을 **강제 종료**할 때 " +
+                 "자세를 중립으로 되돌리는 크로스페이드 시간(초).\n\n" +
+                 "왜 즉시가 아닌가: 0이면 팔다리가 임의 각도에서 한 프레임에 얼어붙는다. 왜 이만큼만인가: " +
+                 "사용자가 집중 모드를 켠 의도는 '지금 당장'이라 박자를 기다리게 하면 그 의도를 배신한다. " +
+                 "0.18초는 튀지 않을 만큼 짧고 사용자 의도를 늦추지 않을 만큼 짧은 구간이다.\n\n" +
+                 "★ 음악 종료와 T4 고착 해제는 **여기 해당하지 않는다** — 그 둘은 박자를 끝내고 나가는 " +
+                 "정상 퇴장이다(danceGracefulExitBudgetSeconds).")]
+        public float danceForcedExitSeconds = 0.18f;
+
+        [Tooltip("★ 감시견 — 한 번의 춤 에피소드가 이 시간을 넘기면 경고 로그를 남기고 강제로 Idle로 " +
+                 "빠진다(연출값이 아니다).\n\n" +
+                 "유도: 정상 최악은 D6 프리샤트카 17루프 15.96 + 진입 브레이크 0.28 = 16.24초이고 여유 " +
+                 "1.76초를 더했다. **여기 걸렸다는 것은 버그가 있다는 뜻**이므로 걸리면 상태와 " +
+                 "SpectacleEventLock을 **반드시 함께** 푼다 — 락을 든 채 상태만 빠지는 것이 이 저장소가 " +
+                 "가장 자주 낸 사고 형태다.")]
+        public float danceEpisodeHardCapSeconds = 18f;
+
+        [Tooltip("★ 감시견 — 정상 퇴장(음악 종료 / 에피소드 만료 / T4 고착 상한) 요청이 들어온 뒤 실제로 " +
+                 "상태에서 빠지기까지 허용하는 시간(초).\n\n" +
+                 "유도: 최악은 D1 피루엣 1.82초(회전 1.40 시작 직후에 요청이 오면 회전을 끝내고 마무리 " +
+                 "0.42까지 가야 한다 — 회전 중간에 끊으면 반쯤 돌아간 몸이 남는다)이고 여유 0.08을 더했다. " +
+                 "가장 빠른 것은 D5 로봇 0.40초로, 8키가 각각 완결 포즈라 어느 경계에서든 나갈 수 있다.\n\n" +
+                 "이 예산을 넘기면 경고 + 강제 Idle이다. 사용자가 체감하는 '음악 끊겼는데 왜 계속 추지'의 " +
+                 "총 지연은 폴링 0.5 + 정책 T2 3.0 + 이 값이며, 줄이고 싶으면 손댈 곳은 T2다(design-systems).")]
+        public float danceGracefulExitBudgetSeconds = 1.90f;
+
+        [Tooltip("예약된 에피소드 시작 순간에 게이트가 막혀 있으면 1.0초 간격으로 이만큼(초) 재시도하고, " +
+                 "그래도 안 되면 이번 에피소드를 건너뛰고 휴지로 간다.\n\n" +
+                 "★ 이 재시도는 원칙 1을 위반하지 않는다 — 파생 근거('음악이 나오고 있다')가 재시도 내내 " +
+                 "매 폴링 다시 참으로 확인되기 때문이다. FocusWatchDirector의 시작 포즈 재시도와 다른 점이 " +
+                 "여기다: 그쪽은 '시작'이라는 일회성 사실이라 늦으면 거짓이 되고, 이쪽은 지속되는 사실이다.")]
+        public float danceEpisodeStartRetrySeconds = 8f;
+
+        [Tooltip("★ 봇처럼 반복되지 않게 하는 박자 흔들림 — 다음 루프 길이에 U(1-j, 1+j)를 곱한다. " +
+                 "재추첨은 **루프 경계에서만** 한다(루프 중간에 바꾸면 위상이 튄다).\n\n" +
+                 "상한 근거: 흔들림은 주파수를 1/(1-j)배까지 올리고 그 최대 주파수에서도 이득 0.95를 " +
+                 "지켜야 하므로 dancePoseSmoothingRate와 함께 결정된다(0.06에서 필요 계수 77.0). " +
+                 "하한 근거: 가장 짧은 루프(D7 0.48초)에서 0.48x0.06 = 0.0288초 = 60fps에서 1.73프레임이라 " +
+                 "한 프레임보다 크다(그보다 작으면 흔들림이 존재하지 않는다).\n\n" +
+                 "★ 예외 2건은 지어낸 것이 아니라 그 동작의 정체성이다 — **D5 로봇은 흔들림 0**" +
+                 "(메트로놈처럼 정확한 것이 그 농담 자체다), D1/D2는 회전·도약 박자에 걸지 않고 " +
+                 "끝의 호흡/복귀 박자에만 건다(흔들리면 회전이 아니라 떨림이 된다).")]
+        public float danceLoopJitterFraction = 0.06f;
+
+        [Tooltip("루프마다 봉우리 진폭에 곱하는 U(1-j, 1+j)의 j. 위 박자 흔들림과 같은 목적이고 재추첨 " +
+                 "시점도 같다(루프 경계). 각도 자체를 흔드는 것이라 값을 키우면 자세가 무너져 보인다.")]
+        public float danceAmplitudeJitterFraction = 0.05f;
+
+        [Tooltip("★ 피로 램프 — 같은 «창»(음악이 연속으로 감지되는 구간) 안에서 에피소드 번호 n이 " +
+                 "올라갈 때마다 휴지 길이에 곱하는 계수의 증가폭. F(n) = min(1 + step x (n-1), cap).\n\n" +
+                 "왜 필요한가(원칙 2 비침해): 평탄한 듀티 27%를 그대로 두면 **3시간 플레이리스트에서 " +
+                 "3시간 내내 27%로 춘다**. 사람도 안 그러고, 상주 앱에서는 그게 곧 시선 강탈이다. " +
+                 "step 0.25 / cap 3.0이면 1~2곡 감상은 사실상 그대로이고(누적 듀티 27.0% -> 24.7%), " +
+                 "긴 감상만 11.0%로 수렴한다. 부수 효과로 SpectacleEventLock 점유가 함께 줄어 다른 " +
+                 "연출의 발동 기회가 늘어난다.\n\n" +
+                 "★ 창이 닫히면(음악이 T2만큼 끊기면) n을 1로 되돌린다 — 새 감상 세션은 늘 활기차게 시작한다.\n" +
+                 "0으로 두면 피로 램프가 없는 예전 설계(평탄한 27%)로 정확히 되돌아간다.")]
+        public float danceRestFatigueStep = 0.25f;
+
+        [Tooltip("위 피로 램프의 상한(F(n)의 최댓값). 3.0이면 정상상태 듀티가 12/(12+32.5x3.0) = 11.0%다. " +
+                 "1.0으로 두면 램프가 사실상 꺼진다.")]
+        public float danceRestFatigueCap = 3f;
+
+        [Tooltip("에피소드 사이 휴지 길이의 하한(초, 피로 계수를 곱하기 전의 기저값). " +
+                 "★ 휴지가 필요한 결정적 근거는 취향이 아니라 **락**이다 — 휴지 중에는 상태도 " +
+                 "SpectacleEventLock도 잡지 않으므로 그 사이 다른 연출이 정상적으로 발동한다.")]
+        public float danceRestMinSeconds = 20f;
+
+        [Tooltip("에피소드 사이 휴지 길이의 상한(초, 피로 계수를 곱하기 전의 기저값).")]
+        public float danceRestMaxSeconds = 45f;
+
+        // ---- 진입/퇴장 박자 (design-motion이 26절의 빈자리를 채운 값) ----
+        // 유도: 각속도 앵커 2개의 기하평균 w = sqrt(130.6 x 259.5) = 184.1도/초
+        //   (집중 팔짱 = 팔꿈치 10->104도를 0.72초에 = 130.6, 활쏘기 당기기 = 전완 10->119도를
+        //    archeryDrawSeconds 0.42초에 = 259.5). 무릎앉아 압축(1129도/초)은 **충격 흡수**라
+        //   운동량이 만든 속도이므로 자발적 자세 변화의 앵커로 쓰지 않았다.
+        // 규칙: t = ceil((dMax / 184.1) / (루프/2)) x (루프/2), 하한 danceRobotStepSeconds(0.20).
+        //   반(half) 루프 격자로 올림 붙이므로 **첫 루프가 박에 맞게 시작한다**.
+        // 퇴장 박자는 진입과 같은 길이(대칭)이고 목표만 반대(루프 경계 자세 -> Idle 중립)다.
+        // D1/D2는 세트 안에 이미 진입·퇴장 박자가 있어 **밖에 또 더하지 않는다**(준비 자세를 두 번 한다).
+
+        [Tooltip("문워크 진입/퇴장 박자(초). 유도: 뒤 무릎 4->52도(dMax 48) / 184.1 = 0.261초를 " +
+                 "반루프 0.36 격자로 올림.")]
+        public float danceMoonwalkIntroSeconds = 0.36f;
+
+        [Tooltip("러닝맨 진입/퇴장 박자(초). 유도: 팔꿈치 10->78도(dMax 68) / 184.1 = 0.369초를 " +
+                 "반루프 0.28 격자로 올림 = 0.56.")]
+        public float danceRunningManIntroSeconds = 0.56f;
+
+        [Tooltip("로봇 진입/퇴장 박자(초). ★ 이 하나만 위 규칙에서 뺐다 — 규칙대로면 0.80초인데 " +
+                 "**로봇춤의 진입은 스냅이어야 한다**(그게 그 동작이다). 다만 Idle에서 곧바로 rate=0으로 " +
+                 "튀면 '글리치'로 읽히므로, 진입 1스텝만 dancePoseSmoothingRate로 부드럽게 키 1에 " +
+                 "도착시키고 그 다음 루프부터 rate=0으로 넘긴다(퇴장도 대칭).")]
+        public float danceRobotIntroSeconds = 0.20f;
+
+        [Tooltip("프리샤트카 진입/퇴장 박자(초). 가장 긴 진입이고 그래야 한다 — dMax 128도" +
+                 "(지지 무릎 4->132)를 0.22초에 하면 '쪼그렸다'가 아니라 '주저앉았다'가 된다.")]
+        public float danceSquatKickIntroSeconds = 0.84f;
+
+        [Tooltip("말춤 진입/퇴장 박자(초). 유도: 팔꿈치 10->92도(dMax 82) / 184.1 = 0.445초를 " +
+                 "반루프 0.24 격자로 올림 = 0.48.")]
+        public float danceHorseIntroSeconds = 0.48f;
+
+        [Header("음악 반응 춤 — D1 발레 피루엣(기본 무료)")]
+
+        // ★ 회전축 문제와 그 처방: 피루엣의 회전축은 Y축(수직)인데 이 리그는 Z축(화면 법선) 회전만
+        //   갖는다. 정직하게 투영하면 정면을 보는 순간(phi=90도) 두 팔이 정확히 아래로 떨어져 Idle과
+        //   구분되지 않는 **죽은 프레임**이 생긴다. 그래서 투영하지 않는다 — 자세를 고정한 채
+        //   SetFacingSign 부호 반전으로 회전을 표현하고(retire의 든 무릎이 앞<->뒤로 미러링된다),
+        //   그 사이가 정지 화면이 되지 않도록 팔을 +-9도 스윕시킨다.
+        //   부수 이점: 루트가 0.00H 움직이므로 발판 이탈 위험이 원리적으로 0이다.
+
+        [Tooltip("2번 포지션 어깨 각도(도). 앞팔 +82 / 뒷팔 -82 = 수평에서 8도 아래" +
+                 "(출처: 'elbows slightly lower than the shoulders'). Idle(40)·스타점프(120)·" +
+                 "매달리기(180)와 전부 명확히 갈린다.")]
+        public float dancePirouetteArmDegrees = 82f;
+
+        [Tooltip("2번 포지션의 둥근 팔꿈치 굽힘(도).")]
+        public float dancePirouetteElbowDegrees = 26f;
+
+        [Tooltip("회전 중 팔을 앞뒤로 훑는 진폭(도). **죽은 프레임 방지 장치**이며 " +
+                 "dancePoseSmoothingRate가 78이어야 이 값이 화면에 그대로 나온다(35에서는 7.3도로 깎인다).")]
+        public float dancePirouetteArmSweepDegrees = 9f;
+
+        [Tooltip("★ 팔 스윕의 **주기**(초). 26절의 0.35초(반 바퀴에 1주기)에서 0.70초(1바퀴에 1주기)로 " +
+                 "늘렸다. 0.35초는 2.857Hz라 팔 체인(x0.55)에서 진폭의 10.4%를 잃고, 0.70초면 이득 0.976이다. " +
+                 "그리고 연출이 더 낫다 — 반전과 반전 사이(0.35초)가 '팔이 한쪽 끝에서 반대 끝으로 " +
+                 "이동하는 연속 구간'이 되어 정지 화면이 될 여지가 원리적으로 사라진다.")]
+        public float dancePirouetteArmSweepSeconds = 0.70f;
+
+        [Tooltip("마무리 박자에서 1번 포지션(앞으로 모음)의 어깨 각도(도). **양팔 같은 부호**다. " +
+                 "정통 기법은 회전 중에도 1번으로 닫지만, 사용자가 '양손벌리고 회전'을 명시했고 " +
+                 "스틱 실루엣에서 팔을 모으면 몸통 선과 겹쳐 회전이 안 보인다 — 그래서 마무리에만 쓴다.")]
+        public float dancePirouetteArmFirstDegrees = 34f;
+
+        [Tooltip("1번 포지션의 팔꿈치 굽힘(도).")]
+        public float dancePirouetteElbowFirstDegrees = 62f;
+
+        [Tooltip("지지 다리 무릎 굽힘(도) — releve라 거의 곧게 편다.")]
+        public float dancePirouetteSupportKneeDegrees = 6f;
+
+        [Tooltip("준비 plie의 무릎 굽힘(도).")]
+        public float dancePirouettePlieKneeDegrees = 42f;
+
+        [Tooltip("retire(자유 다리) 허벅지 각도(도). ★ 116도 무릎과 **짝**으로 검산된 값이다 — " +
+                 "정강이 절대각 62-116 = -54도이고 발끝 하강 = 0.21981cos62 + 0.19783cos54 = 0.21949H로 " +
+                 "지지 다리 무릎 높이 0.21981H와 오차 0.00032H(배율 0.60에서 0.018pt)다. " +
+                 "즉 **발끝이 정확히 무릎에 닿는다**(사용자 요구 '발바닥을 붙이고'). 한쪽만 만지면 그 " +
+                 "접촉이 깨진다. devant(앞)를 고른 이유는 뒤로 풀면 발끝이 지지 다리 뒤에 숨어 " +
+                 "실루엣에서 사라지기 때문이다.")]
+        public float dancePirouetteRetireHipDegrees = 62f;
+
+        [Tooltip("retire 무릎 굽힘(도). 위 허벅지 각도와 짝으로 검산됐다 — 그 툴팁 참고.")]
+        public float dancePirouetteRetireKneeDegrees = 116f;
+
+        [Tooltip("발끝으로 서서(releve) 몸이 뜨는 양(신장 H 배수, **시각 전용 오프셋**). " +
+                 "이 리그에는 발목 관절이 없어 SetBodyOffset으로 대신한다.")]
+        public float dancePirouetteReleveHeights = 0.045f;
+
+        [Tooltip("반 바퀴마다의 미세 상하 바운스(신장 H 배수) — 박자 표시.")]
+        public float dancePirouetteBobHeights = 0.010f;
+
+        [Tooltip("한 바퀴에 걸리는 시간(초). 반전 주기는 이것의 절반(0.35초 = 2.86Hz)이고, 실제 " +
+                 "더블 피루엣(2바퀴 약 1.2~1.5초)과 같은 대역이다.\n\n" +
+                 "★ **최대 미확인 항목** — 2.86Hz 미러링이 '회전'으로 읽히는지 '깜빡임'으로 읽히는지는 " +
+                 "연속 프레임 캡처로만 판정된다(design-motion도 아직 못 봤다). 깜빡임으로 읽히면 후퇴 " +
+                 "사다리는 (1) 이 값을 0.90으로(반전 2.22Hz) (2) dancePirouetteRevolutions를 1로 " +
+                 "(3) 회전 포기 순이며, (3)은 사용자가 요청한 '회전'을 못 지키므로 리더 판단이 필요하다.")]
+        public float dancePirouetteRevolutionSeconds = 0.70f;
+
+        [Tooltip("한 세트에서 도는 바퀴 수. 2 = 더블 피루엣.")]
+        public int dancePirouetteRevolutions = 2;
+
+        [Header("음악 반응 춤 — D2 스타점프(기본 무료)")]
+
+        // ★ 기하 문제와 처방: 출처의 spread eagle은 다리를 **좌우로** 벌리는데 측면도 스틱에는
+        //   좌/우 다리가 아니라 앞/뒤 다리만 있다. 그래서 앞뒤 스플릿으로 옮겼다(2D 스틱의 표준 대체).
+        //   X자가 되려면 손끝 반폭 = 발끝 반폭이어야 하는데 팔(0.32972H)이 다리(0.41764H)보다 21% 짧아
+        //   팔을 다리에 맞추는 것은 sin a = 1.038 > 1로 **기하학적으로 불가능**하다 — 그래서 다리를
+        //   줄이는 쪽으로 역산했다(팔 60도 -> 반폭 0.28554H -> 다리 43.1도).
+
+        [Tooltip("High V의 팔 벌림(도). 앞팔은 180-60 = 120도, 뒷팔은 180+60도(매달리기와 같은 " +
+                 "180-+spread 규약을 재사용한다). 60도 = 수평에서 30도 위이고, 치어리딩 High V(약 45도 위)보다 " +
+                 "낮은 이유는 위 X자 역산이다 — 더 벌리면 V가 아니라 T가 된다.")]
+        public float danceStarJumpArmSpreadDegrees = 60f;
+
+        [Tooltip("공중 자세의 팔꿈치 굽힘(도). '별'은 직선이라야 읽힌다.")]
+        public float danceStarJumpElbowDegrees = 4f;
+
+        [Tooltip("공중 자세의 다리 벌림(도). 팔 60도와 손·발 반폭이 같아지도록 역산한 43.1도의 반올림이다 " +
+                 "— 한쪽만 만지면 X가 '거꾸로 된 Y'가 된다.")]
+        public float danceStarJumpHipDegrees = 43f;
+
+        [Tooltip("공중 자세의 무릎 굽힘(도). 출처 'toes should be pointed' — 거의 곧게.")]
+        public float danceStarJumpKneeDegrees = 6f;
+
+        [Tooltip("도약 직전 낮은 자세의 무릎 굽힘(도).")]
+        public float danceStarJumpCrouchKneeDegrees = 62f;
+
+        [Tooltip("도약 직전 팔을 뒤로 당겨 스윙을 준비하는 어깨 각도(도, 음수 = 뒤).")]
+        public float danceStarJumpCrouchArmDegrees = -54f;
+
+        [Tooltip("도움닫기 거리(신장 H 배수, 사용자 원문 '달려가다가'). ★ 도움닫기 **시간**은 필드가 " +
+                 "아니라 거리/속도에서 파생한다 — 두 값 모두 배율에 비례하므로 배율이 약분되어 " +
+                 "1.004초로 일정하다(26절의 0.602초는 거리에만 배율을 곱한 실수였다).")]
+        public float danceStarJumpRunHeights = 1.60f;
+
+        [Tooltip("도움닫기 속도 = ResolveWalkSpeed() x 이 배수.")]
+        public float danceStarJumpRunSpeedScale = 1.45f;
+
+        [Tooltip("도약 높이(신장 H 배수). ★ **시각 전용 오프셋**(SetBodyOffset)이지 물리 도약이 아니다 — " +
+                 "Rigidbody2D를 띄우면 Dance가 접지 자기관리 목록에 들어가야 하고, 그러면 Dock 위에서 " +
+                 "자유낙하해 낙차 1.64유닛만으로 v=9.8 > ragdollForceThreshold(8)이라 **랙돌로 강제 " +
+                 "전이**된다(Attack/Getup에서 이미 난 사고와 같은 형태). 대가는 발이 실제로 발판을 " +
+                 "떠나지 않는 것뿐이고 시각적으로는 구분되지 않는다.")]
+        public float danceStarJumpRiseHeights = 0.42f;
+
+        [Tooltip("★ 배율 0.75(배포 기본)에서의 체공 시간(초). 실제 체공은 이 값 x sqrt(배율/0.75)로 " +
+                 "**배율에 따라 변한다** — 중력과 맞는 체공은 2sqrt(2gh)/g이고 h가 배율에 비례하므로 " +
+                 "sqrt(배율)에 비례하기 때문이다. 26절처럼 0.66초로 고정하면 배율 0.35에서 +26.4%, " +
+                 "1.00에서 -25.2% 틀려 **무게감이 배율에 따라 무너진다**(큰 캐릭터가 가벼워 보인다). " +
+                 "내역 비율은 상승 0.313 / 정점 0.139 / 하강 0.313(배포 배율 기준)이다.")]
+        public float danceStarJumpAirSecondsAtBaseScale = 0.7644f;
+
+        [Tooltip("착지 흡수의 무릎 굽힘(도). landingCrouchFrontKneeDegrees(126)의 59% = 얕은 흡수다.")]
+        public float danceStarJumpLandKneeDegrees = 74f;
+
+        [Tooltip("도약 직전 브레이크 구간에서 수평 속도를 이 비율까지 죽인다(0.25 = 25%만 남긴다).")]
+        public float danceStarJumpHorizontalBrakeScale = 0.25f;
+
+        [Tooltip("착지 후 **진행 방향을 뒤집는** 데 쓰는 시간(초). 26절이 '매 회마다 진행 방향을 " +
+                 "뒤집는다'고 요구했지만 박자 표에 자리가 없었다 — 안 뒤집으면 4~6회에 8~12H를 이동해 " +
+                 "어떤 발판에서도 못 한다. 값은 문워크의 방향 전환(danceMoonwalkTurnSeconds)과 같은 " +
+                 "동작·같은 값이다.")]
+        public float danceStarJumpTurnSeconds = 0.34f;
+
+        [Header("음악 반응 춤 — D3 문워크")]
+
+        [Tooltip("끄는(곧은) 다리의 시작 허벅지 각도(도).")]
+        public float danceMoonwalkFrontHipDegrees = 30f;
+
+        [Tooltip("뒤꿈치를 든 다리의 허벅지 각도(도, 음수 = 뒤).")]
+        public float danceMoonwalkRearHipDegrees = -16f;
+
+        [Tooltip("끄는 다리의 무릎 굽힘(도). 출처 'keep that leg perfectly straight' — **이 3도가 동작의 " +
+                 "정체성**이다. 키우면 그냥 뒷걸음질이 된다.")]
+        public float danceMoonwalkStraightKneeDegrees = 3f;
+
+        [Tooltip("뒤꿈치를 든 다리의 무릎 굽힘(도). 이 리그에 발목이 없어 뒤꿈치 들림을 무릎 굽힘이 " +
+                 "만드는 발끝 높이 차로 표현한다 — 실측 0.08126H(배율 0.60에서 4.54pt)로 다리 획 " +
+                 "두께(3.08pt)의 1.47배라 확실히 보인다.")]
+        public float danceMoonwalkBentKneeDegrees = 52f;
+
+        [Tooltip("다리와 반대 위상으로 흔드는 팔의 어깨 진폭(도).")]
+        public float danceMoonwalkArmSwingDegrees = 26f;
+
+        [Tooltip("문워크 중 팔꿈치 굽힘(도).")]
+        public float danceMoonwalkElbowDegrees = 22f;
+
+        [Tooltip("상체 기울임(도). 출처 'standing very tall and straight' — 아주 조금만.")]
+        public float danceMoonwalkLeanDegrees = 6f;
+
+        [Tooltip("루프당 뒤로 미끄러지는 거리(신장 H 배수). 활강 속도는 보행의 **37.9%**로 2.64배 느려 " +
+                 "보행과 혼동되지 않는다(26절의 22.7%는 배율을 한쪽에만 곱한 값이었다).\n\n" +
+                 "★ **발 미끄러짐은 의도된 것이다** — 이 동작의 정체성이 미끄러짐이므로 접지/미끄러짐 " +
+                 "검사(WalkFootSlipTests류)를 Dance로 확대하지 마라.")]
+        public float danceMoonwalkGlideHeights = 0.30f;
+
+        [Tooltip("문워크 한 루프(양다리 각 1회)의 길이(초).")]
+        public float danceMoonwalkLoopSeconds = 0.72f;
+
+        [Tooltip("4루프(1.20H 후진)마다 방향을 뒤집는 데 쓰는 시간(초). 왕복이라 발판 요구가 " +
+                 "한쪽 1.60H로 닫힌다.")]
+        public float danceMoonwalkTurnSeconds = 0.34f;
+
+        [Header("음악 반응 춤 — D4 러닝맨")]
+
+        [Tooltip("보행 키표(LegHipKeys)의 봉우리 25도에 곱하는 배수. 1.85 x 25 = 46도" +
+                 "(출처 'lifting the knees high').\n\n" +
+                 "★ **walkPoseAmplitudeScale(전역 보행값)을 덮어쓰지 마라** — 덮으면 춤이 끝난 뒤 " +
+                 "걷기가 영구히 과장된 채 남는다. 이 값은 별도 인자로 넘어간다.")]
+        public float danceRunningManHipAmplitudeScale = 1.85f;
+
+        [Tooltip("보행 키표(LegKneeKeys)의 봉우리 50도에 곱하는 배수. 1.30 x 50 = 65도.")]
+        public float danceRunningManKneeAmplitudeScale = 1.30f;
+
+        [Tooltip("팔을 앞뒤로 펌프하는 어깨 진폭(도). 1.900Hz라 이 사양에서 **두 번째로 센 진동 " +
+                 "신호**이고, dancePoseSmoothingRate가 78이 아니면 15% 깎인다.")]
+        public float danceRunningManArmDegrees = 62f;
+
+        [Tooltip("접은 팔의 팔꿈치 굽힘(도, 고정).")]
+        public float danceRunningManElbowDegrees = 78f;
+
+        [Tooltip("상체 전방 기울임(도). 출처 'leaning slightly forward'.")]
+        public float danceRunningManLeanDegrees = 9f;
+
+        [Tooltip("러닝맨 한 루프의 길이(초). 보행보다 빠른 박자다.")]
+        public float danceRunningManLoopSeconds = 0.56f;
+
+        [Tooltip("슬라이드 박자마다의 상하 바운스(신장 H 배수, 시각 전용).")]
+        public float danceRunningManBounceHeights = 0.030f;
+
+        [Header("음악 반응 춤 — D5 로봇")]
+
+        // ★ 8키 포즈 표(30도 격자: 0/10/30/90)는 여기가 아니라 StickmanPoseAnimator의 상수 표에 있다.
+        //   판단 기준은 보행 키표와 같다 — 튜닝 스칼라가 아니라 애니메이션 에셋에 가깝고, 서로
+        //   정합성을 가져야 의미가 있다(그 격자가 '로봇으로 읽히는 이유' 그 자체다).
+
+        [Tooltip("한 포즈를 유지하는 시간(초) = dime stop 한 박. 8키라 루프는 이 값의 8배(1.60초)다.\n\n" +
+                 "★ 이 값은 이 저장소가 확정한 **최소 박**이기도 하다 — 진입/퇴장 박자 규칙의 하한이 " +
+                 "여기서 나온다(한 dime stop보다 짧은 구간은 별개의 박으로 지각될 수 없다).")]
+        public float danceRobotStepSeconds = 0.20f;
+
+        [Tooltip("로봇춤 내내 고정하는 무릎 굽힘(도).")]
+        public float danceRobotLegKneeDegrees = 12f;
+
+        [Tooltip("2키마다 부호가 스냅되는 허벅지 각도(도) = 체중 이동.")]
+        public float danceRobotHipDegrees = 8f;
+
+        [Tooltip("키에 따라 스냅되는 상체 기울임(도).")]
+        public float danceRobotLeanDegrees = 8f;
+
+        [Header("음악 반응 춤 — D6 프리샤트카")]
+
+        [Tooltip("지지 다리 허벅지 각도(도). 지지 다리 하강 0.16543H = 서 있을 때 엉덩이 높이의 40.3%라 " +
+                 "몸 전체가 0.24548H(캐릭터 키의 24.5%) 내려앉아 한눈에 '쪼그렸다'로 읽힌다.")]
+        public float danceSquatKickSupportHipDegrees = 74f;
+
+        [Tooltip("지지 다리 무릎 굽힘(도). landingCrouchFrontKneeDegrees(126)보다 6도 깊은 완전 스쾃이다.")]
+        public float danceSquatKickSupportKneeDegrees = 132f;
+
+        [Tooltip("차는 다리의 허벅지 각도(도). ★ 처음 잡았던 66도는 발끝 y가 -0.02880H로 **지면을 뚫어서** " +
+                 "폐기했다. 78도면 발끝 y = +0.05207H(배율 0.60에서 지면 위 2.91pt)이고 앞으로 0.40088H " +
+                 "뻗는데, **그 0.40088H가 제자리 5종의 발판 요구 0.45H를 결정한 값**이다.")]
+        public float danceSquatKickKickHipDegrees = 78f;
+
+        [Tooltip("차는 다리의 무릎 굽힘(도) — 차는 순간 곧게.")]
+        public float danceSquatKickKickKneeDegrees = 8f;
+
+        [Tooltip("가슴 앞에 모으는 팔의 어깨 각도(도). **양팔 같은 부호**다" +
+                 "(출처 'hands held together at chest level').")]
+        public float danceSquatKickArmDegrees = 68f;
+
+        [Tooltip("팔짱 낀 팔꿈치 굽힘(도).")]
+        public float danceSquatKickElbowDegrees = 104f;
+
+        [Tooltip("찰 때 살짝 솟는 양(신장 H 배수, 시각 전용).")]
+        public float danceSquatKickBounceHeights = 0.10f;
+
+        [Tooltip("프리샤트카 한 루프(좌·우 각 1회)의 길이(초).")]
+        public float danceSquatKickLoopSeconds = 0.84f;
+
+        [Header("음악 반응 춤 — D7 말춤")]
+
+        [Tooltip("고삐를 쥔 듯 앞에 모으는 팔의 어깨 각도(도). **양팔 같은 부호**다. 원곡의 " +
+                 "'오른 손목을 왼 손목 위로 겹치는' 동작은 손가락이 없는 스틱에서 표현 불가·무의미하다.")]
+        public float danceHorseArmDegrees = 58f;
+
+        [Tooltip("말춤 팔꿈치 굽힘(도).")]
+        public float danceHorseElbowDegrees = 92f;
+
+        [Tooltip("★ 팔을 위아래로 튕기는 진폭(도, 출처 'bounce your arms up and down'). " +
+                 "루프당 1회 = 2.083Hz(흔들림 상한 2.216Hz)로 **이 사양 전체에서 가장 빠른 진동 신호**이고, " +
+                 "dancePoseSmoothingRate = 78을 혼자서 결정한 신호다. 기본 35에서는 진폭의 19%를 잃는다.")]
+        public float danceHorseArmPumpDegrees = 14f;
+
+        [Tooltip("무릎을 드는 허벅지 각도(도).")]
+        public float danceHorseLiftHipDegrees = 42f;
+
+        [Tooltip("무릎을 드는 무릎 굽힘(도).")]
+        public float danceHorseLiftKneeDegrees = 88f;
+
+        [Tooltip("상체가 함께 튀는 양(신장 H 배수, 시각 전용).")]
+        public float danceHorseBounceHeights = 0.045f;
+
+        [Tooltip("앞뒤로 왕복하는 상체 기울임(도).")]
+        public float danceHorseLeanDegrees = 5f;
+
+        [Tooltip("말춤 한 루프의 길이(초). ★ **어느 곡의 BPM에서도 유도하지 않았다** — 우리 앱은 재생 " +
+                 "중인 곡을 모른다(소리만 감지한다). '한 박에 한 발'이 자연스럽게 보이는 대역" +
+                 "(0.45~0.55)의 중앙이며, 고정 템포다.")]
+        public float danceHorseLoopSeconds = 0.48f;
+
+        /// <summary>
+        /// 이번 배율에서의 스타점프 체공 시간(초). ★ <b>상수가 아니라 식이다</b> —
+        /// <c>danceStarJumpAirSecondsAtBaseScale x sqrt(배율 / 0.75)</c>.
+        ///
+        /// <para>중력과 맞는 체공은 <c>2sqrt(2gh)/g</c>이고 도약 높이 h가 배율에 비례하므로 체공은
+        /// <b>sqrt(배율)에 비례</b>한다. 고정값으로 두면 큰 캐릭터는 가벼워 보이고 작은 캐릭터는 붕 뜬
+        /// 것처럼 보인다 — 무게감이 배율에 따라 무너진다. 계산 지점을 여기 하나로 모아 두는 이유는
+        /// 이 저장소의 다른 파생값(<see cref="ResolveWalkSpeed"/>)과 같다.</para>
+        /// </summary>
+        public float ResolveDanceStarJumpAirSeconds()
+        {
+            const float BaseScale = 0.75f;                       // 배포 기본 배율(characterScale).
+            float s = Mathf.Max(0.0001f, ResolveCharacterScale());
+            return Mathf.Max(0.05f, danceStarJumpAirSecondsAtBaseScale) * Mathf.Sqrt(s / BaseScale);
+        }
     }
 }

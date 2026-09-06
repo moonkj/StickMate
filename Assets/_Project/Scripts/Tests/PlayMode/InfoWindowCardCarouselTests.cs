@@ -346,7 +346,7 @@ namespace StickMate.Tests.PlayMode
             yield return null;
             Assert.Greater(_window.GridScrollPoints, 1f, $"{LogPrefix} 전제: 먼저 밀려 있어야 합니다.");
 
-            // [외형] 탭으로 넘어가면 0번 블록이 다른 카테고리(머리)를 맡는다.
+            // [외형] 탭으로 넘어가면 0번 블록이 다른 카테고리(이펙트 — 2026-09-06 [머리] 은퇴 전에는 머리)를 맡는다.
             _window.FeedClickForTests(TabCenter(1));
             yield return null;
             Assert.AreEqual(0f, _window.GridScrollPoints, 1e-3f,

@@ -265,6 +265,22 @@ namespace StickMate.Tests.EditMode
         /// <b>어떤 상태 조합으로도 도달할 수 없는 자세</b>다. 배율 0.75 하나만 재던 시절에는 여유가 커서
         /// 티가 안 났지만, 배율 0.35까지 훑는 순간 그 <b>불가능한 조합</b>이 유일한 실패로 떠서 진짜
         /// 위반을 가린다. 검사 대상은 "이 캐릭터가 실제로 취하는 자세"여야 한다.</para>
+        ///
+        /// <para>★★ <b>2026-09-06 — 감사 구멍 2건을 메웠다</b>(docs/UX_MOTION_FOCUS_SESSION.md 6절).
+        /// 이 함수는 <c>StickConfig</c>의 필드만 훑었는데, 집중 모드가 <b>실제로 만드는</b> 팔꿈치는
+        /// 둘 다 그 밖에 있었다 — 팔짱은 <see cref="StickmanPoseAnimator"/>의 상수(당시 115°)이고
+        /// 안경 밀어올리기는 <b>IK 유도값</b>(당시 121.4°, 상수가 아예 없다)이다. 즉 이 테스트가
+        /// "팔꿈치 최대 100°"라고 믿는 동안 프로덕션은 121.4°를 그리고 있었고, 그 각도의 규칙 B 여유
+        /// 1.0588은 <b>저장소 전체 최악</b>이었다. 그래서 두 출처를 더 훑는다:
+        /// <list type="number">
+        ///   <item><b>포즈 층의 public const</b> — 이름 규약(<c>*Knee*/*Elbow*…Degrees</c>)만 지키면
+        ///     새 포즈 상수가 <b>자동으로</b> 검사에 들어온다(StickConfig 스캔과 같은 어법).</item>
+        ///   <item><b>IK 유도 각도</b> — 프리팹 실측 치수를 프로덕션 솔버
+        ///     (<see cref="StickmanPoseAnimator.SolveFocusGlassesAngles"/>)에 그대로 넣어 <b>풀어 본다</b>.
+        ///     각도를 여기 베껴 적으면 그 사본이 반드시 낡는다(CLAUDE.md 규약).</item>
+        /// </list>
+        /// 남은 사각지대(춤 7종 등 «상수도 없고 IK도 아닌» 경로)는 «포즈 API를 실제로 돌려 적용된
+        /// 관절 각도를 읽는» 방식으로만 완전히 닫힌다 — <c>test-engineer</c> 인계 항목이다.</para>
         /// </summary>
         private static List<float> CollectBendAngles(string jointKeyword)
         {
@@ -277,11 +293,7 @@ namespace StickMate.Tests.EditMode
                 {
                     if (f.FieldType != typeof(float)) continue;
                     if (!f.Name.EndsWith("Degrees")) continue;
-                    bool knee = f.Name.IndexOf("Knee", System.StringComparison.OrdinalIgnoreCase) >= 0;
-                    bool elbow = f.Name.IndexOf("Elbow", System.StringComparison.OrdinalIgnoreCase) >= 0;
-                    if (!knee && !elbow) continue;
-                    if (jointKeyword != null &&
-                        f.Name.IndexOf(jointKeyword, System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    if (!MatchesJoint(f.Name, jointKeyword)) continue;
                     float v = Mathf.Abs((float)f.GetValue(config));
                     if (v > 0.001f) angles.Add(v);
                 }
@@ -291,12 +303,81 @@ namespace StickMate.Tests.EditMode
                 Object.DestroyImmediate(config);
             }
 
+            // (1) 포즈 층의 public const — 팔짱/뒷짐처럼 StickConfig에 두지 <b>않기로 결정한</b> 각도들.
+            //     묶음으로만 의미가 있는 실루엣 상수라 인스펙터에 흩지 않았고(문서 3절), 대신 여기서 읽는다.
+            foreach (FieldInfo f in typeof(StickmanPoseAnimator)
+                         .GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy))
+            {
+                if (!f.IsLiteral || f.FieldType != typeof(float)) continue;
+                if (!f.Name.EndsWith("Degrees")) continue;
+                if (!MatchesJoint(f.Name, jointKeyword)) continue;
+                float v = Mathf.Abs((float)f.GetRawConstantValue());
+                if (v > 0.001f) angles.Add(v);
+            }
+
+            // (2) IK 유도 각도 — 「안경 밀어올리기」. 상수가 없으므로 <b>실제로 풀어서</b> 넣는다.
+            if (jointKeyword == null ||
+                jointKeyword.IndexOf("Elbow", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                angles.Add(SolvedGlassesElbowDegrees());
+            }
+
             angles.Add(ReadBootstrapperConst("MaxJointBendDegrees"));
             angles.Sort();
             Assert.Greater(angles.Count, 5,
                 $"{LogPrefix} 관절 각도({jointKeyword ?? "전체"})를 {angles.Count}개밖에 못 모았습니다 — " +
                 "전수 조사가 아무것도 못 보고 초록이 되는 상태(거짓 통과)입니다.");
             return angles;
+        }
+
+        /// <summary>이름이 지금 보고 있는 관절의 것인가(무릎/팔꿈치 판정 + 필터).</summary>
+        private static bool MatchesJoint(string name, string jointKeyword)
+        {
+            bool knee = name.IndexOf("Knee", System.StringComparison.OrdinalIgnoreCase) >= 0;
+            bool elbow = name.IndexOf("Elbow", System.StringComparison.OrdinalIgnoreCase) >= 0;
+            if (!knee && !elbow) return false;
+            return jointKeyword == null
+                || name.IndexOf(jointKeyword, System.StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        /// <summary>
+        /// ★ 「안경 밀어올리기」가 <b>실제로 만드는</b> 팔꿈치 각도(도). 프리팹 실측 치수(어깨 부착점 ·
+        /// 두 마디 길이 · 머리 앵커 Y)를 프로덕션 솔버에 그대로 넣어 푼다 — 각도를 이 파일에 적지
+        /// 않는 것이 요점이다. 이 박자는 <b>상수가 하나도 없어서</b> 지금까지 어떤 감사에도 안 잡혔다.
+        /// </summary>
+        private static float SolvedGlassesElbowDegrees()
+        {
+            GameObject prefab = LoadPrefab();
+            Transform arm = prefab.transform.Find("LeftArm");
+            Assert.IsNotNull(arm, $"{LogPrefix} 프리팹에 'LeftArm'이 없습니다.");
+            Transform lower = arm.Find("LeftArmLower");
+            Assert.IsNotNull(lower, $"{LogPrefix} 프리팹에 'LeftArmLower'가 없습니다.");
+            Transform head = prefab.transform.Find("Head");
+            Assert.IsNotNull(head, $"{LogPrefix} 프리팹에 'Head'가 없습니다.");
+
+            // 프로덕션(StickmanPoseAnimator.BuildSegment)이 읽는 것과 <b>같은 출처</b>다:
+            // 부착점 = HingeJoint2D.connectedAnchor, 길이 = BoxCollider2D.size.y.
+            var shoulderJoint = arm.GetComponent<HingeJoint2D>();
+            var upperBox = arm.GetComponent<BoxCollider2D>();
+            var lowerBox = lower.GetComponent<BoxCollider2D>();
+            Assert.IsNotNull(upperBox, $"{LogPrefix} LeftArm에 BoxCollider2D가 없습니다.");
+            Assert.IsNotNull(lowerBox, $"{LogPrefix} LeftArmLower에 BoxCollider2D가 없습니다.");
+
+            Vector2 shoulder = shoulderJoint != null
+                ? shoulderJoint.connectedAnchor
+                : (Vector2)arm.localPosition;
+
+            StickmanPoseAnimator.SolveFocusGlassesAngles(shoulder, upperBox.size.y, lowerBox.size.y,
+                head.localPosition.y, out float upperAngle, out float lowerAngle);
+
+            float elbow = Mathf.Abs(lowerAngle);
+            Assert.Greater(elbow, 1f,
+                $"{LogPrefix} 안경 박자의 IK가 팔꿈치 {elbow:F1}도를 냈습니다 — 0에 가까우면 솔버가 " +
+                "아무 것도 풀지 못했다는 뜻이고, 그러면 이 항목은 검사에 아무것도 더하지 못합니다(거짓 통과).");
+            Debug.Log($"{LogPrefix} 안경 밀어올리기 IK 실측 — 어깨 {upperAngle:F1}도 / 팔꿈치 {elbow:F1}도 " +
+                $"(어깨 부착점 {shoulder}, 마디 {upperBox.size.y:F3}/{lowerBox.size.y:F3}, 머리 y {head.localPosition.y:F3}). " +
+                "이 값은 상수가 아니라 IK 결과라 2026-09-06 이전에는 어떤 감사에도 잡히지 않았습니다.");
+            return elbow;
         }
 
         // ====================================================================
@@ -558,39 +639,17 @@ namespace StickMate.Tests.EditMode
             foreach (float scale in scales)
             {
                 float worldWidth = WorldStrokeWidth(limb.Spec.width, baked, scale);
-                float k = scale / baked;
 
                 foreach (float bend in limb.Angles)
                 {
-                    Rig rig = BuildRig(limb.Spec.upper, limb.Spec.lower, worldWidth, bend, k);
-                    try
+                    float margin = CreaseMargin(limb.Spec, bend, baked, scale, out float radius);
+                    if (margin < worstMargin)
                     {
-                        Vector3[] up = Read(rig.Upper);
-
-                        // 관절을 가로지르는 연속 세 점의 외접원 = 그 구간의 곡률 반경(원호이므로 정확).
-                        // ★ <b>관절을 가로질러야</b> 한다 — 병합 이후 마지막 세 칸은 아래 마디의 직선
-                        //   구간이라 외접원이 사실상 무한대가 되고, 이 검사는 조용히 초록이 된다
-                        //   (2026-09-03 실측: 진짜 여유 1.168을 5.524로 잘못 읽고 있었다).
-                        int j = LimbCurveRenderer.PolylineJointIndex;
-                        Vector2 a = up[j - 1];
-                        Vector2 b = up[j];
-                        Vector2 c = up[j + 1];
-                        float radius = Circumradius(a, b, c) * k;   // 로컬 → 월드(획과 같은 단위로)
-
-                        // 획 폭 W인 선의 **안쪽** 가장자리 반경 = r − W/2. 이것이 0 이하가 되는 순간
-                        // 안쪽 윤곽이 자기 자신과 교차해 각진 크리즈(= 잉크 뭉침)가 남는다.
-                        // 임계값은 1.0이 아니라 규칙 B의 1/cos(Δφ/2)다(CreaseThreshold 문서).
-                        float ratio = radius / (worldWidth * 0.5f);
-                        float margin = ratio / CreaseThreshold(bend);
-                        if (margin < worstMargin)
-                        {
-                            worstMargin = margin;
-                            worstScale = scale;
-                            worstWhere = $"{limb.Name} {bend:F0}도 배율 {scale:F2} " +
-                                $"(r={radius:F4}, W/2={worldWidth * 0.5f:F4}, r/ρ={ratio:F3})";
-                        }
+                        worstMargin = margin;
+                        worstScale = scale;
+                        worstWhere = $"{limb.Name} {bend:F0}도 배율 {scale:F2} " +
+                            $"(r={radius:F4}, W/2={worldWidth * 0.5f:F4}, r/ρ={radius / (worldWidth * 0.5f):F3})";
                     }
-                    finally { Object.DestroyImmediate(rig.Root); }
                 }
             }
 
@@ -607,6 +666,106 @@ namespace StickMate.Tests.EditMode
                 "그 자세의 굽힘 각도(StickConfig)를 낮추는 것입니다. " +
                 "획 두께(SceneBootstrapper.LineWidthScale)를 낮추는 것은 낮은 배율에서는 효과가 없습니다 — " +
                 "이미 하한에 눌려 있기 때문입니다.");
+        }
+
+        /// <summary>
+        /// 규칙 B 여유 <b>한 표본</b>(마디 규격 × 굽힘 × 배율). 위 (4)와 아래 (4-C)가 <b>같은 이 함수</b>를
+        /// 쓴다 — 같은 부등식을 두 벌 적으면 한쪽만 고쳐지는 날 두 검사가 조용히 갈라진다.
+        /// </summary>
+        private static float CreaseMargin((float upper, float lower, float width) spec, float bend,
+            float baked, float scale, out float radius)
+        {
+            float worldWidth = WorldStrokeWidth(spec.width, baked, scale);
+            float k = scale / baked;
+            Rig rig = BuildRig(spec.upper, spec.lower, worldWidth, bend, k);
+            try
+            {
+                Vector3[] up = Read(rig.Upper);
+
+                // 관절을 가로지르는 연속 세 점의 외접원 = 그 구간의 곡률 반경(원호이므로 정확).
+                // ★ <b>관절을 가로질러야</b> 한다 — 병합 이후 마지막 세 칸은 아래 마디의 직선
+                //   구간이라 외접원이 사실상 무한대가 되고, 이 검사는 조용히 초록이 된다
+                //   (2026-09-03 실측: 진짜 여유 1.168을 5.524로 잘못 읽고 있었다).
+                int j = LimbCurveRenderer.PolylineJointIndex;
+                radius = Circumradius(up[j - 1], up[j], up[j + 1]) * k;   // 로컬 → 월드(획과 같은 단위로)
+
+                // 획 폭 W인 선의 **안쪽** 가장자리 반경 = r − W/2. 이것이 0 이하가 되는 순간
+                // 안쪽 윤곽이 자기 자신과 교차해 각진 크리즈(= 잉크 뭉침)가 남는다.
+                // 임계값은 1.0이 아니라 규칙 B의 1/cos(Δφ/2)다(CreaseThreshold 문서).
+                return (radius / (worldWidth * 0.5f)) / CreaseThreshold(bend);
+            }
+            finally { Object.DestroyImmediate(rig.Root); }
+        }
+
+        /// <summary>전 배율 최악의 규칙 B 여유.</summary>
+        private static float WorstCreaseMargin((float upper, float lower, float width) spec,
+            IEnumerable<float> bends, float baked, List<float> scales, out string where)
+        {
+            float worst = float.PositiveInfinity;
+            where = "";
+            foreach (float bend in bends)
+            foreach (float scale in scales)
+            {
+                float margin = CreaseMargin(spec, bend, baked, scale, out _);
+                if (margin >= worst) continue;
+                worst = margin;
+                where = $"{bend:F1}도 배율 {scale:F2}";
+            }
+            return worst;
+        }
+
+        // ====================================================================
+        // (4-C) ★★ 집중 모드 자세가 <b>전체 최악</b>을 새로 만들지 않는다 (2026-09-06)
+        // ====================================================================
+        //
+        // 위 (4)는 "1.0 아래로 내려갔는가"만 본다. 그런데 2026-09-06 이전의 실제 상태는 그 검사를
+        // 통과하면서도 나빴다 — 안경 박자의 IK 팔꿈치 121.4°가 여유 1.0588을 만들어 <b>다리 병목
+        // (1.1682)보다 낮은 전체 최악</b>이 돼 있었고, 그 각도는 어떤 감사에도 안 잡혔다.
+        // 여유 1.0 근처는 MOTION_SPEC 13-7이 기록한 <b>취약성 구간</b>이라(FilletLengthRatio ·
+        // MinStrokeScreenPoints · MinCharacterScale 중 하나만 움직여도 즉시 위반) 거기까지 가면 안 된다.
+
+        [Test]
+        public void 집중_모드_자세가_전체_최악_크리즈를_새로_만들지_않는다()
+        {
+            GameObject prefab = LoadPrefab();
+            float baked = BakedScale(prefab);
+            List<float> scales = ScaleSamples(prefab);
+
+            var legSpec = ReadLimbSpec(prefab, "LeftLeg");
+            var armSpec = ReadLimbSpec(prefab, "LeftArm");
+
+            float legWorst = WorstCreaseMargin(legSpec, CollectBendAngles("Knee"), baked, scales,
+                out string legWhere);
+
+            // 집중 모드가 <b>실제로</b> 만드는 팔꿈치 전부 — 팔짱 A/B · 뒷짐 앞/뒤 · 안경(IK 유도).
+            var focusAngles = new List<float>
+            {
+                StickmanPoseAnimator.FocusCrossFrontElbowDegrees,
+                StickmanPoseAnimator.FocusCrossBackElbowDegrees,
+                StickmanPoseAnimator.FocusWatchBackFrontElbowDegrees,
+                StickmanPoseAnimator.FocusWatchBackRearElbowDegrees,
+                SolvedGlassesElbowDegrees(),
+            };
+            float focusWorst = WorstCreaseMargin(armSpec, focusAngles, baked, scales, out string focusWhere);
+
+            Debug.Log($"{LogPrefix} 집중 모드 자세의 규칙 B 최악 여유 = {focusWorst:F4} ({focusWhere}), " +
+                $"다리 병목 = {legWorst:F4} ({legWhere}). 검사 각도 " +
+                $"{string.Join(" / ", focusAngles.ConvertAll(a => a.ToString("F1")))}도.");
+
+            // 0.98 여유를 두는 이유: 팔짱 A(116.5°)의 설계값은 다리 병목과 <b>0.1% 차</b>로 설계됐다
+            // (무손상 상한 116.55°를 예산으로 썼다). 엄밀한 ≥로 잠그면 리그 실측의 마지막 자리
+            // 흔들림에 빨개진다. 반면 되돌리려는 회귀(안경 121.4° = 1.0588)는 병목보다 9% 낮아
+            // 이 허용치로도 확실히 걸린다.
+            Assert.Greater(focusWorst, legWorst * 0.98f,
+                $"{LogPrefix} 집중 모드 자세가 전체 최악 크리즈를 만듭니다 — 여유 {focusWorst:F4}" +
+                $"({focusWhere})가 다리 병목 {legWorst:F4}({legWhere}) 아래입니다.\n" +
+                "여유 1.0 근처는 MOTION_SPEC 13-7의 «취약성 구간»입니다(FilletLengthRatio · " +
+                "MinStrokeScreenPoints · MinCharacterScale 중 하나만 움직여도 즉시 크리즈가 생깁니다). " +
+                "팔꿈치를 무손상 상한(116.55°) 안으로 되돌리십시오.");
+
+            Assert.Greater(focusWorst, 1.0f,
+                $"{LogPrefix} 집중 모드 자세의 규칙 B 여유가 {focusWorst:F4}입니다({focusWhere}) — " +
+                "관절 안쪽에 각진 크리즈가 남습니다.");
         }
 
         // ====================================================================

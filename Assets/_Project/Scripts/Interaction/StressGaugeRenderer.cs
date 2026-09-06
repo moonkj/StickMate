@@ -224,6 +224,11 @@ namespace StickMate.Interaction
         private float SighRadius => Height * SighRadiusRatio;
 
         private GameObject _container;
+
+        /// <summary>지금 <see cref="SuspendedOverlayGate"/>가 감춰 둔 상태인가(로그를 상태 전환에 한 번만
+        /// 남기기 위한 플래그. 판정 자체는 그 게이트가 소유한다 — 여기에 조건을 한 벌 더 두지 않는다).</summary>
+        private bool _suspendHidden;
+
         private readonly List<LineRenderer> _lines = new List<LineRenderer>(4);
         private readonly List<Puff> _puffs = new List<Puff>(SighMaxAlive);
 
@@ -427,6 +432,12 @@ namespace StickMate.Interaction
         private void LateUpdate()
         {
             using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Renderers);   // [스톨구간] 계측
+            // ★ 캐릭터가 숨겨져 있으면 어깨 표시도 함께 감춘다(원칙 2, Core/SuspendedOverlayGate).
+            //   이 표시는 상태가 아니라 **게이지 값**에서 파생돼 스스로 끝나는 시점이 없다 — 그래서
+            //   숨김 중에 남으면 전체화면 게임 위에 무기한 떠 있게 되는 유일한 종류였다.
+            //   ★ 아래 "시작 프레임 경합 보정"보다 **앞**에 둔다: 숨어 있는 동안 그 보정이 컨테이너를
+            //   새로 만들어 버리면 감출 대상이 매 프레임 되살아난다.
+            if (SuspendedOverlayGate.FreezeAndHide(_agent, _container, ref _suspendHidden, "[스트레스]", "기분 표시")) return;
             // ★ 2026-08-29 실측 버그 수정(배율 0.75 육안 검증 중 발견).
             // OnEnable()은 "켜지는 시점에 이미 게이지가 쌓여 있을 수 있다"를 처리하려고 곧바로
             // OnStressLevelChanged를 부른다. 그런데 그 시점에는 StickmanAgent가 아직 Blackboard/Body를

@@ -532,6 +532,12 @@ namespace StickMate.Tests.EditMode
         public void 모자가_머리를_감싸고_커버선이_머리_중심_언저리까지_내려온다(int itemIndex)
         {
             HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, itemIndex, "규칙 4 감쌈(|x|≥0.85R·y≤0.05R 잉크) — R17 H-2 모자 맞춤은 얹는 형태(중절모 챙 4.06R 그대로 채택)");
+            // ★ 2026-09-06 R25 — 남아 있던 v1 두 종도 H-2 맞춤으로 갈아탔다. 그래서 이 검사는 이제
+            //   HEAD 6종 <b>전부</b>를 건너뛴다. 즉 이 자리는 「덜 잠긴 규칙」이 아니라 <b>빈 게이트</b>다 —
+            //   러너에 6/6 건너뜀으로 보이는 것이 그 사실의 정직한 표현이고, 대체 자(H-2 착용선 대역)를
+            //   프로덕션 테스트로 세우는 것은 test-engineer 배정 항목이다(리더 보고).
+            HandoffTestGate.SkipIfR25Hat(itemIndex, "규칙 4 감쌈(|x|≥0.85R·y≤0.05R 잉크) + 커버선 ≤ 0.10R — " +
+                "R25 는 사용자 신고(「안경을 너무 가린다」)로 모자를 올렸고, 커버선은 그 모자의 H-2 착용선이 됐다");
             AccessoryShapeBuilder.Rig rig = Rig();
             var sink = new List<AccessoryShapeBuilder.Shape>();
             AccessoryShapeBuilder.Append(sink, EquipmentSlot.Head, itemIndex, rig);

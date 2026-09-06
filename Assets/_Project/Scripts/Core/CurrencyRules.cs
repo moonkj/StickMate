@@ -42,6 +42,28 @@ namespace StickMate.Core
         /// <summary>집중 모드 완주 시의 분당 동전. 사용자 최초 지시값.</summary>
         public const int FocusCoinsPerMinute = 24;
 
+        /// <summary>
+        /// 집중 모드 <b>중도 취소</b>의 분당 동전. 정본 §13-3 표(「불변」) — 완주의 <b>83.3%</b>.
+        ///
+        /// <para>★★ <b>선언 「형태」는 design-systems 확인 대기 중이다(값 20은 확정, 2026-09-06).</b>
+        /// 리터럴로 둘 것인지 <c>FocusCoinsPerMinute * 5 / 6</c>(= 정확히 20)으로 유도할 것인지만
+        /// 열려 있다. <b>어느 쪽이든 이 줄 하나만 바꾸면 되고 값도 동작도 바뀌지 않는다</b> —
+        /// <c>Tests/EditMode/FocusSessionPayoutTests</c>가 <c>FocusCancelCoinsPerMinute × 6 ==
+        /// FocusCoinsPerMinute × 5</c>(83.3%)를 매 실행 확인하므로, 두 형태 모두 같은 관문을 지난다.
+        /// <b>지금 리터럴을 고른 이유는 판단이 아니라 컴파일이다</b> — 선언이 없으면 트리 전체가
+        /// 빌드되지 않아 병렬 라운드가 전부 막힌다.</para>
+        ///
+        /// <para>참고로 <see cref="IdleCoinsPerMinute"/>가 유도식인 것은 §18-2가 <b>"집중의 정확히 1/2"</b>이라는
+        /// <b>관계</b>를 정본으로 정했기 때문이고, 여기는 §13-3이 <b>20이라는 숫자</b>를 정본으로 적었다 —
+        /// 그 차이가 형태를 가르는 축이다.</para>
+        ///
+        /// <para>스팸 이득이 없다는 것은 §22-12가 전수로 확인했다 — 어떤 취소 주기(0.5·0.99·1.0·1.5·5·60분)로도
+        /// 완주 시급(1,440)을 넘지 못하고, 1분 미만 취소는 <b>0동전</b>이라 바닥이 자동으로 막힌다.
+        /// 그래서 최소 보상 하한·세션 쿨다운·세션당 고정비는 <b>전부 기각됐다</b>(DS-8).
+        /// <b>되살리지 마라</b> — 격자별 최대 수입이 동일해서 방어할 이득이 없다.</para>
+        /// </summary>
+        public const int FocusCancelCoinsPerMinute = 20;
+
         /// <summary>온라인 유휴의 분당 동전. ★ 숫자를 따로 적지 않고 <b>집중의 정확히 1/2</b>로
         /// 유도한다 — §18-2가 정한 관계가 그것이고, 둘을 각각 적으면 한쪽만 바뀌는 날 관계가
         /// 조용히 깨진다. 오프라인 요율은 <b>0</b>이고, 그건 상수가 아니라
@@ -402,6 +424,61 @@ namespace StickMate.Core
             if (pay >= room) { pay = room; carry = 0.0; }
 
             return new IdleTickResult(pay, paidSeconds, carry);
+        }
+
+        // ====================================================================
+        // ★★ 집중 모드 지급 — floor의 「위치」가 완주와 취소에서 다르다 (DS-5′ · §22-12)
+        // ====================================================================
+        //
+        //   완주 = floor( FocusCoinsPerMinute × 경과초 / 60 )        ← 초를 그대로 읽고 <b>마지막에</b> floor
+        //   취소 = floor( 경과초 / 60 ) × FocusCancelCoinsPerMinute  ← <b>분을 먼저</b> floor한 뒤 요율
+        //
+        // ★ <b>이 비대칭은 의도다. 「통일」하지 마라.</b> 90.5초에서 취소가 20이냐 30이냐로 갈리고
+        //   (1.5배), 149.9초에서 40이냐 49냐로 갈린다(§22-12 표). 취소를 「동전에 floor」로 읽으면
+        //   지급이 <b>초 단위로 연속</b>이 되어 사용자가 취소 타이밍을 초 단위로 재는 동기가 생긴다.
+        //   분 격자에 계단으로 묶으면 그 동기가 0이다. 완주 쪽이 반대로 초를 그대로 읽는 이유는
+        //   데모 90초·최소 60초 같은 <b>격자 밖 진입로를 같은 식 하나로</b> 처리하기 위해서다.
+        //   <c>Tests/EditMode/FocusSessionPayoutTests</c>가 기각된 해석 (나)를 대조로 함께 못박는다.
+        //
+        // ★ <b>여기가 집중 지급 산식의 유일한 출처다.</b> 화면(「[그만두기]가 지금 얼마인지 말한다」,
+        //   UX_WIDGETS R2-5)도 이 함수를 부른다 — 미리보기가 자기 식을 따로 쓰면 그 순간
+        //   "표시된 금액과 실제 지급액이 다르다"가 되고, 그건 우리가 반복해 당한 형태다
+        //   (같은 사실이 두 곳에서 계산되면 그게 다음 버그다 — CLAUDE.md).
+
+        /// <summary>
+        /// 집중 세션 <b>완주</b> 지급액. <paramref name="sessionDurationSeconds"/>는
+        /// <b>명목 세션 길이</b>(<c>분 × 60</c>)를 넣는다 — 누적 계측한 경과 시간이 아니다.
+        /// <para>그래야 25분 완주가 <b>정확히 600</b>이 된다. 계측값을 넣으면 부동소수 누적 오차로
+        /// 1499.9997초가 들어와 <c>floor</c>가 599를 내고, 사용자는 그것을 「1동전 떼먹혔다」로 읽는다.
+        /// 명목값은 <c>minutes × 60f</c>를 <c>/60</c>이 <b>정확히</b> 복원한다(float 가수 24비트,
+        /// m ≤ 60이라 오차 0 — §22-11).</para>
+        /// </summary>
+        public static int FocusCompletionCoins(double sessionDurationSeconds)
+        {
+            if (double.IsNaN(sessionDurationSeconds) || !(sessionDurationSeconds > 0.0)) return 0;
+            return ToCoinInt(Math.Floor(FocusCoinsPerMinute * sessionDurationSeconds / 60.0));
+        }
+
+        /// <summary>
+        /// 집중 세션 <b>중도 취소</b> 지급액. <paramref name="elapsedSeconds"/>는
+        /// <c>명목 세션 길이 − 잔여 초</c>다.
+        /// <para><b>1분 미만은 0동전</b>이고, 그것은 별도 규칙이 아니라 <c>floor(경과/60) = 0</c>에서
+        /// <b>저절로</b> 나온다. 하한 규칙을 따로 넣지 마라 — 넣는 순간 두 곳이 같은 사실을 말하게 된다.</para>
+        /// </summary>
+        public static int FocusCancelCoins(double elapsedSeconds)
+        {
+            if (double.IsNaN(elapsedSeconds) || !(elapsedSeconds > 0.0)) return 0;
+            return ToCoinInt(Math.Floor(elapsedSeconds / 60.0) * FocusCancelCoinsPerMinute);
+        }
+
+        /// <summary>이미 <c>floor</c>된 동전 실수값을 <c>int</c>로 안전하게 내린다.
+        /// 상한 클램프는 <b>정책이 아니라 위생</b>이다 — 호출부가 말도 안 되는 경과 시간을 넘겨도
+        /// <c>int</c> 캐스트가 <b>음수로 감기는</b> 일이 없어야 한다(캐스트 오버플로는 정의되지 않은
+        /// 값을 내고, 그 값이 잔액에 더해지면 우리 버그가 사용자 잔액을 망친다).</summary>
+        private static int ToCoinInt(double flooredCoins)
+        {
+            if (!(flooredCoins > 0.0)) return 0;
+            return flooredCoins >= int.MaxValue ? int.MaxValue : (int)flooredCoins;
         }
 
         // ====================================================================

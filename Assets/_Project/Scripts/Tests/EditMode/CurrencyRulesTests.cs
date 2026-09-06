@@ -21,6 +21,27 @@ namespace StickMate.Tests.EditMode
         [SetUp]
         public void Reset() => CurrencyModel.ResetForTesting();
 
+        /// <summary>
+        /// ★ 2026-09-06 — <b>나가는 문에도 같은 리셋을 건다</b>.
+        ///
+        /// <para><see cref="Reset"/>(SetUp)은 <b>들어오는 것</b>만 막는다. 픽스처의 <b>마지막</b>
+        /// 테스트가 남긴 정적 상태는 그 뒤에 도는 픽스처가 그대로 물려받는데, 이 파일에는
+        /// <c>같은_것을_두_번_살_수_없다</c>가 <c>equip.head.crown</c>을 실제로 구매한다
+        /// (<see cref="CurrencyModel.TryPurchaseItem"/>). 구매 이력은 <b>스위트 전역 사실</b>이다 —
+        /// <c>ItemCatalogEntry.IsOwned</c>가 «레벨 파생 ∪ 구매분»이라(DESIGN_SYSTEMS_STATS §20-2-a)
+        /// 그 한 줄이 살아남으면 <b>Lv.1에서도 왕관이 「보유」</b>가 된다.</para>
+        ///
+        /// <para>★ <b>지금은 아직 새지 않는다</b> — NUnit이 픽스처 안의 테스트를 이름순으로 돌고,
+        /// 이 파일의 마지막 이름은 <c>회복제_개수를_위조해도…</c>(순수 함수만 부른다)라서 구매 이력이
+        /// 남지 않는다. 즉 이 TearDown은 <b>버그 수정이 아니라 잠금</b>이다: 테스트 이름 하나만
+        /// 바뀌거나 구매하는 테스트가 하나 더 붙으면 그날 바로 샌다. 그리고 그때 빨개지는 것은
+        /// 여기가 아니라 <c>EquipmentDebugUnlockTests.스위치를_끄면_요구_레벨_규칙이_그대로_살아_있다</c>
+        /// (알파벳 순으로 뒤, 같은 왕관을 <c>IsFalse(IsOwned)</c>로 잰다)여서, <b>QA 해금 스위치가
+        /// 고장났다는 엉뚱한 진단</b>이 먼저 올라온다. 오늘 밤 이미 같은 형태로 한 번 속았다.</para>
+        /// </summary>
+        [TearDown]
+        public void RestoreSuiteDefault() => CurrencyModel.ResetForTesting();
+
         // ====================================================================
         // 1. 상한은 함수다 (T-D-9) + 회복제 clamp (I-12′)
         // ====================================================================

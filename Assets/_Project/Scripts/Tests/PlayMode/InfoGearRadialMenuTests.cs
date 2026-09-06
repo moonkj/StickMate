@@ -398,6 +398,11 @@ namespace StickMate.Tests.PlayMode
                 "팝오버가 열렸는데 그 버튼이 활성 상태로 남지 않았습니다(32-3).");
             yield return new WaitForSecondsRealtime(0.25f);
 
+            // ★ 팝오버는 <b>프리셋 모드</b>로 열려야 이 클릭이 25분 칩에 닿는다(§R5-6 함정 ②) —
+            //   자유 입력 행이 열려 있으면 같은 좌표에 스테퍼가 앉아 이 회귀 검사가 조용히 다른 것을 누른다.
+            Assert.IsFalse(focus.ShowingCustomDurationRow,
+                "팝오버가 자유 입력(직접) 행으로 열렸습니다 — 프리셋 index 1 = 25분 계약이 깨집니다.");
+
             // "25분"(인덱스 1)을 실제 클릭 경로로 고르고 [시작].
             focus.FeedClickForTests(focus.DurationChipScreenRect(1).center);
             Assert.AreEqual(25f, focus.SelectedMinutes, 0.01f, "25분을 골랐는데 다른 값이 선택됐습니다.");
@@ -414,14 +419,28 @@ namespace StickMate.Tests.PlayMode
             float fill = focus.RingFillAmount;
             string label = focus.TimeLabel;
             float labelSeconds = ParseMmSs(label);
-            Assert.AreEqual(director.RemainingSeconds / director.SessionDurationSeconds, fill, 0.05f,
-                $"링 채움({fill:F3})이 실제 남은 비율과 다릅니다.");
-            Assert.AreEqual(fill * director.SessionDurationSeconds, labelSeconds, 20f,
+            // ★ 2026-09-06 (§R5-1-2) — 링이 <b>상대 → 절대</b>로 바뀌었다. 한 바퀴는 세션 길이가
+            //   아니라 60분 고정이고, 그래서 25분 세션은 시작하자마자 꽉 찬 원이 아니라 150°(0.4167)다.
+            //   ★ 분모를 3600으로 <b>베끼지 않는다</b> — 상수를 참조해야 그 값이 바뀔 때 이 단언이
+            //     기준과 함께 움직인다(CLAUDE.md 협업 프로토콜).
+            Assert.IsTrue(focus.DialFaceVisible,
+                "눈금판이 꺼져 있습니다 — 눈금판 없는 링은 상대 링이라 아래 절대 다이얼 단언이 무의미해집니다(§R5-1-3).");
+            Assert.AreEqual(director.RemainingSeconds / FocusSessionPopover.DialSpanSeconds, fill, 0.01f,
+                $"링 채움({fill:F3})이 절대 다이얼(한 바퀴 = {FocusSessionPopover.DialSpanSeconds:F0}초)의 " +
+                "남은 비율과 다릅니다 — 옛 상대 링(남은초/세션초)으로 되돌아가면 여기서 걸립니다.");
+            Assert.AreEqual(fill * FocusSessionPopover.DialSpanSeconds, labelSeconds, 20f,
                 $"링({fill:F3})과 라벨({label})이 서로 다른 값을 가리킵니다.");
+
+            // 네거티브 컨트롤 — 위 두 단언이 "어떤 fill이든 통과"하는 빈 조건이 아님을 못박는다.
+            // 옛 상대 링이었다면 fill은 1.0에 붙어 있었을 것이고, 절대 다이얼에서는 25/60 = 0.4167이다.
+            Assert.Less(fill, 0.9f,
+                $"25분 세션인데 링이 {fill:F3}(거의 꽉 참)입니다 — 상대 링으로 되돌아갔습니다. " +
+                "눈금판 위의 상대 링은 호 끝이 「0」을 가리키면서 가운데는 25:00을 찍습니다(원칙 1 위반).");
 
             director.StopFocusSession();
             focus.Close("테스트 정리");
-            Debug.Log($"[부채꼴테스트] 집중 팝오버 25분 확인 — 세션 {director.SessionDurationSeconds:F0}초, 링 {fill:F2}, 라벨 {label}.");
+            Debug.Log($"[부채꼴테스트] 집중 팝오버 25분 확인 — 세션 {director.SessionDurationSeconds:F0}초, " +
+                $"절대 다이얼 링 {fill:F3}(한 바퀴 {FocusSessionPopover.DialSpanSeconds:F0}초), 라벨 {label}.");
         }
 
         private static float ParseMmSs(string text)

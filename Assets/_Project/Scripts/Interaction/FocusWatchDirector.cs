@@ -45,6 +45,62 @@ namespace StickMate.Interaction
         public bool IsSessionActive { get; private set; }
         public float RemainingSeconds { get; private set; }
 
+        // ============================================================================
+        // ★★★ 2026-09-06 — 사용자 신고 «집중모드 시작시 캐릭터다리쪽에 원이 생김.
+        //      집중모드 행동을 해야하는데 안함»
+        // ============================================================================
+        // 원인은 **두 조건이 갈라져 있었던 것**이다. 발밑 타이머 링은
+        // <c>Interaction/FocusWatchRenderer.LateUpdate</c>가 <c>IsSessionActive</c> <b>하나만</b> 보고
+        // 그렸는데, 정작 캐릭터의 행동(안경+팔짱 포즈)은 <see cref="TryTriggerPoseState"/>의 훨씬 까다로운
+        // 관문(Idle/Walk일 것 + SpectacleEventLock이 비어 있을 것)을 통과해야 한다. 관문이 막히면
+        // 포즈는 <b>조용히</b> 생략되는데 링은 이미 떠 있다 — 화면에는 "원만 있고 아무 일도 없는" 그림이
+        // 남는다. 그게 신고 문장 그대로다.
+        //
+        // 절대 불변 원칙 1의 정신("대사는 상태 전이가 확정된 뒤 그 상태로부터만 파생")을 링에도 그대로
+        // 적용한다: <b>링은 세션 활성화가 아니라 「시작 포즈 전이가 실제로 확정됐다」는 사실에서 파생된다.</b>
+        //
+        // 그러면서 docs/UX_WIDGETS.md 369행의 계약("위상 전이를 놓쳐도 타이머는 영향받지 않아야 한다")은
+        // <b>그대로 지킨다</b> — 아래 어느 필드도 <see cref="RemainingSeconds"/>의 진행에 관여하지 않는다.
+        // 관문이 막히면 잠깐 <b>순수 타이머</b>가 될 뿐이고, 관문이 열리는 순간(캐릭터가 Idle/Walk로
+        // 돌아오거나 다른 스펙터클이 끝나는 순간) 포즈와 링이 <b>함께</b> 나타난다.
+
+        /// <summary>이번 세션의 시작 포즈(FocusStart)가 <b>실제로 확정</b>됐는가(= 상태머신이 그 상태를
+        /// 실제로 들고 있는 것을 확인했는가). 조용한 스킵과 성공을 구분하는 유일한 값이다.</summary>
+        public bool IsStartPoseConfirmed { get; private set; }
+
+        /// <summary>
+        /// ★ 발밑 타이머 링을 그려도 되는가 — <b>링 가시성 판정의 단일 창구</b>.
+        /// 렌더러가 자기 조건을 따로 갖지 않는다(두 벌이 되면 갈라진다. 그게 이번 신고였다).
+        ///
+        /// <para>세 가지가 동시에 참이어야 한다:</para>
+        /// <list type="number">
+        ///   <item>세션이 진행 중이다.</item>
+        ///   <item>시작 포즈가 확정됐다(= 캐릭터가 실제로 "감시 시작" 행동을 했다).</item>
+        ///   <item>그 캐릭터가 화면에 있다. 숨어 있으면(전체화면 자동 숨김/사용자 명시 숨김) 링은 주인
+        ///     없는 유령이 된다 — <see cref="HiddenCharacterCommandGate"/>가 "지켜보는 캐릭터가 화면에
+        ///     없으면 이 기능은 순수 타이머가 됩니다"라고 이미 못박은 그 판정을, 시작 시점뿐 아니라
+        ///     <b>세션 도중에도</b> 같은 축(<see cref="StickmanAgent.IsSuspended"/>)으로 유지한다.
+        ///     ★ 이건 원칙 2(비침해)이기도 하다: 예전에는 전체화면 게임이 감지돼 캐릭터가 사라진 뒤에도
+        ///     링만 화면에 남아 있었다(몸 렌더러는 꺼지지만 링은 캐릭터의 자식이 아니다).</item>
+        /// </list>
+        /// </summary>
+        public bool IsTimerRingWarranted =>
+            IsSessionActive && IsStartPoseConfirmed && !(_player != null && _player.IsSuspended);
+
+        /// <summary>시작 포즈가 관문에 막혔을 때 <b>다시 시도할</b> 남은 시간(초). 0이면 더 시도하지 않는다.</summary>
+        private float _startPoseRetryRemaining;
+
+        /// <summary>
+        /// 시작 포즈 재시도 창(초). 관문을 막는 사유(낙하/등반/다른 스펙터클 진행 중)는 전부
+        /// <b>몇 초 안에 스스로 풀리는</b> 일시적 상태라, 그동안 기다렸다가 열리는 순간 포즈를 낸다.
+        ///
+        /// <para>무한히 기다리지 않는 이유: 25분 세션의 10분째에 "좋아, 감시 시작"이 튀어나오면 그것이야말로
+        /// 원칙 1 위반이다(시작이 아닌 시점에 시작 대사가 나온다). 창이 지나면 이 세션은 링 없는
+        /// <b>순수 타이머</b>로 조용히 계속된다 — 팝오버가 남은 시간을 계속 보여주므로 사용자가 정보를
+        /// 잃지는 않는다.</para>
+        /// </summary>
+        private const float StartPoseRetryWindowSeconds = 10f;
+
         /// <summary>18절 "감시 자체를 끄고 순수 타이머로만 쓰는 옵션".</summary>
         public bool DistractionDetectionEnabled { get; set; } = true;
 
@@ -139,7 +195,11 @@ namespace StickMate.Interaction
             Debug.Log($"[포모도로] 집중 모드 시작({reason}) — 데모 길이 {DemoSessionSeconds:F0}초, " +
                 $"유예 {_graceRemaining:F0}초(그동안은 관찰만 하고 경고하지 않는다 — 18절), " +
                 $"민감도 {Sensitivity}, 딴짓 감지 {(DistractionDetectionEnabled ? "켬" : "끔")}. " +
-                "캐릭터 발밑에 타이머 링이 나타나고, 안경+팔짱 포즈(FocusStart)로 전이하며 대사를 파생합니다.");
+                (IsStartPoseConfirmed
+                    ? "안경+팔짱 포즈(FocusStart)로 **전이 확정** — 대사가 그 상태에서 파생되고 발밑 타이머 " +
+                      "링도 같은 사실에서 파생돼 함께 나타납니다."
+                    : "★ 시작 포즈는 아직 확정되지 않았습니다 — 링도 아직 그리지 않습니다(원칙 1). " +
+                      "관문이 열리면 둘이 함께 나타납니다."));
         }
 
         /// <summary>데모 토글이 쓰는 세션 길이(초) — 링이 눈에 띄게 줄어드는 것을 한 자리에서 확인할 수
@@ -169,21 +229,95 @@ namespace StickMate.Interaction
             _consecutiveFlaggedWindows = 0;
             SetTier(FocusWatchTier.None);
 
-            TryTriggerPoseState(StickmanStateId.FocusStart);
+            // ★ 링은 이 전이가 **확정된 뒤에만** 뜬다(IsTimerRingWarranted). 못 잡으면 아래 재시도 창이
+            //   열리고, 그동안 타이머는 그대로 흐른다(UX_WIDGETS 369행 계약).
+            IsStartPoseConfirmed = false;
+            _startPoseRetryRemaining = StartPoseRetryWindowSeconds;
+            if (TryTriggerPoseState(StickmanStateId.FocusStart))
+            {
+                IsStartPoseConfirmed = true;
+                _startPoseRetryRemaining = 0f;
+            }
+            else
+            {
+                Debug.Log($"[포모도로] 시작 포즈를 지금 잡지 못했습니다 — {DescribePoseGate()}. " +
+                    $"{StartPoseRetryWindowSeconds:F0}초 동안 다시 시도합니다. 그동안 타이머는 정상적으로 " +
+                    "흐르고(위상 전이를 놓쳐도 타이머는 영향받지 않는다 — UX_WIDGETS 18절), " +
+                    "발밑 링은 포즈가 확정되는 순간 함께 나타납니다(원칙 1).");
+            }
         }
 
         /// <summary>타이머 링 클릭 또는 트레이 "집중 모드 끄기"(18절 중도 취소, 패널티 없는 톤).</summary>
         public void StopFocusSession()
         {
             if (!IsSessionActive) return;
+            PayCancelCoins("중도 취소");
             IsSessionActive = false;
             TryTriggerPoseState(StickmanStateId.FocusCancelled);
         }
 
         private void CompleteSession()
         {
+            PayCompletionCoins();
             IsSessionActive = false;
             TryTriggerPoseState(StickmanStateId.FocusComplete);
+        }
+
+        // ====================================================================
+        // ★★ 재화 지급 — 이 파일에서 동전이 생기는 자리는 아래 둘뿐이다
+        // ====================================================================
+        //
+        // ★ <b>세션이 끝나는 길은 셋인데 지급은 둘이다.</b> 완주(<see cref="CompleteSession"/>) ·
+        //   중도 취소(<see cref="StopFocusSession"/>) · 긴급정지(<see cref="OnEmergencyStop"/>)가 있고,
+        //   <b>긴급정지도 사용자 입장에서는 중도 취소</b>다(18절이 그것을 "탈출구"로 정의한다).
+        //   그래서 셋 다 아래 두 함수 중 하나를 지난다. ⚠ <b>네 번째 종료 경로를 만들지 마라</b> —
+        //   만들면 그 길로 끝낸 사용자만 그날 번 동전을 통째로 잃고, 그 실패는 화면에 아무 흔적도
+        //   남기지 않는다(GAME_ARCHITECTURE_REVIEW §3421이 적은 «중도 취소 경로에서만 어긋난다»가
+        //   정확히 이 형태다). <c>IsSessionActive = false</c>를 쓰는 자리를 늘리기 전에 여기를 봐라.
+        //
+        // ★ <b>반드시 <c>IsSessionActive = false</c> 「앞」에서 부른다</b>(DS-5′ 인계 조건). 두 함수 모두
+        //   <c>IsSessionActive</c>를 재진입 방지 관문으로 쓰기 때문에, 뒤에서 부르면 <b>조용히 0원</b>이 된다.
+        //
+        // ★ 산식은 여기 없다 — <c>Core/CurrencyRules.FocusCompletionCoins/FocusCancelCoins</c> 한 곳뿐이고
+        //   이 파일은 <b>어느 초를 넘길지</b>만 정한다. 요율(24/20)을 이 파일에 적지 마라.
+
+        /// <summary>
+        /// 완주 지급. ★ <b>명목 세션 길이</b>(<see cref="SessionDurationSeconds"/>)를 넘긴다 —
+        /// 계측 누적값이 아니다. <see cref="RemainingSeconds"/>는 완주 시점에 <b>0 이하로 넘어간</b>
+        /// 값(마지막 프레임의 <c>dt</c>만큼 음수)이라, 그걸로 경과를 재면 세션 길이보다 <b>길게</b>
+        /// 나와 프레임률에 따라 지급액이 흔들린다. 명목값은 프레임률과 무관하게 항상 같다.
+        /// </summary>
+        private void PayCompletionCoins()
+        {
+            if (!IsSessionActive) return;
+
+            double durationSeconds = SessionDurationSeconds;
+            int coins = CurrencyModel.PayFocusCompletionCoins(durationSeconds);
+            Debug.Log($"[포모도로][재화] 지급 {coins}동전, 사유=완주, 경과={durationSeconds:F1}초" +
+                $"(명목 세션 길이). 잔액 {CurrencyModel.CoinBalance}동전. " +
+                "집중 지급은 일일 상한 밖이라(§22-13) 오늘 유휴 상한에 걸려 있어도 전액 지급됩니다.");
+        }
+
+        /// <summary>
+        /// 중도 취소 지급. 경과는 <c>명목 − 잔여</c>다.
+        /// <para>★ <b>0동전일 때도 로그를 남긴다.</b> 1분 미만 취소가 0인 것은
+        /// <c>floor(경과/60) = 0</c>에서 저절로 나오는 <b>의도된 결과</b>인데(§22-12 — 그래서 최소 보상
+        /// 하한을 넣지 않았다), 아무 기록도 없으면 "지급이 고장났다"는 오진이 올라온다.
+        /// 실제로 이 저장소는 같은 형태의 오진을 반복해서 받았다.</para>
+        /// </summary>
+        private void PayCancelCoins(string reason)
+        {
+            if (!IsSessionActive) return;
+
+            double elapsedSeconds = SessionDurationSeconds - RemainingSeconds;
+            int coins = CurrencyModel.PayFocusCancelCoins(elapsedSeconds);
+            Debug.Log($"[포모도로][재화] 지급 {coins}동전, 사유={reason}, 경과={elapsedSeconds:F1}초" +
+                $"(완주 {SessionDurationSeconds:F0}초 중 {RemainingSeconds:F0}초 남김). " +
+                $"잔액 {CurrencyModel.CoinBalance}동전. " +
+                (coins > 0
+                    ? "취소는 「분을 먼저 내림」이라 채운 분까지만 지급됩니다(§22-12)."
+                    : "★ 1분을 채우지 못해 0동전입니다 — 고장이 아니라 의도된 계단입니다(§22-12). " +
+                      "패널티가 아니라 「아직 안 쌓였다」이고, 다음 1분을 채우면 그때부터 붙습니다."));
         }
 
         private void Update()
@@ -201,6 +335,10 @@ namespace StickMate.Interaction
                 CompleteSession();
                 return;
             }
+
+            // ★ 시작 포즈 재시도 — **타이머 진행 뒤, 유예 분기 앞**에 둔다. 유예 분기는 return하므로
+            //   그 아래에 두면 처음 2분(pomodoroGraceSeconds) 동안 한 번도 돌지 않는다.
+            TickStartPoseRetry(dt);
 
             if (_graceRemaining > 0f)
             {
@@ -341,16 +479,80 @@ namespace StickMate.Interaction
             StickmanEventBus.RaiseFocusWatchTierChanged(tier);
         }
 
-        private void TryTriggerPoseState(StickmanStateId stateId)
+        /// <summary>
+        /// 시작 포즈가 관문에 막혔을 때, 관문이 열리는 순간 포즈를 낸다(그리고 그때 링이 함께 뜬다).
+        ///
+        /// <para><b>타이머에는 손대지 않는다</b> — 이 메서드는 <see cref="RemainingSeconds"/>를 읽지도
+        /// 쓰지도 않는다. 성공하든 실패하든 세션 시간은 똑같이 흐른다(UX_WIDGETS 18절 계약).</para>
+        /// </summary>
+        private void TickStartPoseRetry(float dt)
         {
-            if (_player == null || _player.Blackboard == null || _player.Blackboard.Machine == null) return;
+            if (IsStartPoseConfirmed || _startPoseRetryRemaining <= 0f) return;
+
+            _startPoseRetryRemaining -= dt;
+            if (TryTriggerPoseState(StickmanStateId.FocusStart))
+            {
+                IsStartPoseConfirmed = true;
+                _startPoseRetryRemaining = 0f;
+                Debug.Log($"[포모도로] 시작 포즈를 이제 잡았습니다(남은 시간 {RemainingSeconds:F0}초). " +
+                    "안경+팔짱 자세로 전이했고 같은 프레임부터 발밑 타이머 링이 보입니다 — " +
+                    "행동과 링이 같은 사실에서 파생됩니다(원칙 1).");
+                return;
+            }
+
+            if (_startPoseRetryRemaining <= 0f)
+            {
+                _startPoseRetryRemaining = 0f;
+                Debug.Log($"[포모도로] {StartPoseRetryWindowSeconds:F0}초 동안 시작 포즈를 잡지 못했습니다 — " +
+                    $"{DescribePoseGate()}. 이번 세션은 **순수 타이머**로 계속합니다(남은 시간은 집중 모드 " +
+                    "팝오버가 그대로 보여줍니다). 시작하지도 않은 행동의 링을 발밑에 남기지 않는 것이 " +
+                    "원칙 1입니다 — 지금 화면에 원이 없는 것은 정상입니다.");
+            }
+        }
+
+        /// <summary>지금 포즈 관문을 막고 있는 사유(로그 전용). 조용한 스킵을 **말하게** 만드는 장치다 —
+        /// 이 문장이 없어서 "원은 있는데 행동이 없다"의 원인을 로그에서 찾을 수 없었다.</summary>
+        private string DescribePoseGate()
+        {
+            if (_player == null || _player.Blackboard == null || _player.Blackboard.Machine == null)
+                return "캐릭터 배선이 없습니다";
+            StickmanStateId current = _player.Blackboard.Machine.CurrentStateId;
+            if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
+                return $"캐릭터가 Idle/Walk가 아닙니다(지금 {current})";
+            if (SpectacleEventLock.IsActive && SpectacleEventLock.CurrentOwner != (object)this)
+                return $"다른 연출이 상태 슬롯을 쥐고 있습니다({SpectacleEventLock.ActiveKind})";
+            return "관문은 지금 열려 있습니다(직전 프레임에 막혔던 것으로 보입니다)";
+        }
+
+        /// <summary>
+        /// 포즈 상태로 전이를 시도한다. <b>반환값이 곧 "행동이 실제로 일어났는가"</b>이고, 링/로그는
+        /// 이 값에서만 파생된다(2026-09-06). 예전에는 void라 조용한 스킵과 성공이 호출부에서
+        /// 구분되지 않았고, 그 구분이 없다는 사실이 이번 신고의 절반이었다.
+        ///
+        /// <para>성공 판정을 <c>ChangeState</c>를 불렀다는 사실이 아니라 <b>상태머신이 실제로 그 상태를
+        /// 들고 있는지</b>로 확인한다 — <c>ChangeState</c>는 미등록 ID면 에러 로그만 남기고 현재 상태를
+        /// 유지하고(BUG-M2 방어), <c>Enter()</c>/전이 이벤트 구독자가 같은 프레임에 상태를 다시 바꿀 수도
+        /// 있다. "불렀다"가 아니라 "됐다"를 재는 것이 원칙 1의 '확정'이다.</para>
+        /// </summary>
+        private bool TryTriggerPoseState(StickmanStateId stateId)
+        {
+            if (_player == null || _player.Blackboard == null || _player.Blackboard.Machine == null) return false;
 
             var current = _player.Blackboard.Machine.CurrentStateId;
-            if (current != StickmanStateId.Idle && current != StickmanStateId.Walk) return; // 조용히 스킵(포즈만 생략, 타이머 로직에는 영향 없음)
-            if (SpectacleEventLock.IsActive) return;
-            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.FocusPose, this)) return;
+            if (current != StickmanStateId.Idle && current != StickmanStateId.Walk) return false; // 조용히 스킵(포즈만 생략, 타이머 로직에는 영향 없음)
+            if (SpectacleEventLock.IsActive) return false;
+            if (!SpectacleEventLock.TryAcquire(SpectacleEventKind.FocusPose, this)) return false;
 
             _player.Blackboard.Machine.ChangeState(stateId);
+            if (_player.Blackboard.Machine.CurrentStateId == stateId) return true;
+
+            // 전이가 착지하지 못했다 — 방금 잡은 락을 **그 자리에서** 돌려준다. 여기서 안 놓으면
+            // 주인 없는 락이 세션 내내 남아 다른 모든 스펙터클이 조용히 막힌다(재시도 경로가 생기면서
+            // 매 프레임 도달 가능해진 자리라 방어가 장식이 아니다).
+            SpectacleEventLock.Release(this);
+            Debug.LogWarning($"[포모도로] {stateId} 전이가 확정되지 않았습니다(지금 " +
+                $"{_player.Blackboard.Machine.CurrentStateId}) — 락을 즉시 반납합니다.");
+            return false;
         }
 
         // 개선 R2(docs/CODE_REVIEW_FINAL.md) 판단: SpectacleEventLock.ReleaseIfOwned 헬퍼로 흡수하지
@@ -400,6 +602,12 @@ namespace StickMate.Interaction
         {
             if (SpectacleEventLock.IsActive && SpectacleEventLock.CurrentOwner != (object)this) return;
 
+            // ★ 긴급정지도 사용자 입장에서는 「중도 취소」다 — 18절이 이것을 포모도로의 탈출구로
+            //   명시한다. 여기서 지급을 빼면 «탈출구로 나간 사용자만 그때까지 번 동전을 통째로 잃는»
+            //   경로가 되고, 그건 패널티를 안 주기로 한 18절 톤과도 정면으로 어긋난다.
+            //   ⚠ 포즈/락 처리는 아래 그대로 둔다(FocusCancelled 포즈를 띄우지 않고 즉시 유휴로
+            //   보내는 것이 긴급정지의 정의다) — 이 줄은 <b>재화만</b> 얹는다.
+            PayCancelCoins("긴급정지");
             IsSessionActive = false;
             ReleaseOwnedLock(forceIdle: true);
         }

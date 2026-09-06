@@ -321,7 +321,8 @@ namespace StickMate.Interaction
             UiChrome.PlaceTopLeft(rt, Col2PadX, -index * (StatCardHeight + StatCardGap),
                 Col2ContentWidth, StatCardHeight);
             surface.raycastTarget = false;
-            UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+            UiChrome.AddOutline(rt, "Outline",
+                UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurfaceMuted), UiChrome.RadiusCard);
 
             // ---- 1행 ----
             float headY = -StatCardPadY;
@@ -414,7 +415,8 @@ namespace StickMate.Interaction
             Image setPanel = UiChrome.AddSurface(block, "SetPanel", UiChrome.CardSurfaceMuted, UiChrome.RadiusCard);
             UiChrome.PlaceTopLeft(setPanel.rectTransform, Col2PadX, panelY, Col2ContentWidth, SetPanelHeight);
             setPanel.raycastTarget = false;
-            UiChrome.AddOutline(setPanel.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+            UiChrome.AddOutline(setPanel.rectTransform, "Outline",
+                UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurfaceMuted), UiChrome.RadiusCard);
 
             var noticeGo = new GameObject("SetNotice", typeof(RectTransform));
             noticeGo.transform.SetParent(setPanel.rectTransform, false);

@@ -34,9 +34,37 @@ python3 Tools/ShapeDump/shimdrift.py  # shim 이 프로덕션과 어긋났는지
 | `CoreShim.cs` | `StickMate.Core` **흉내 5종**. 여기 있는 것이 적을수록 하니스가 프로덕션에 가깝다 |
 | `AssetShim.cs` | ★ Unity 직렬화기 대역 — `.asset`(YAML) → `ScriptableObject` **리플렉션 바인딩** |
 | `Dump.cs` | `AccessoryShapeBuilder.Append` 30종 + `ItemCatalog.Rarity` 42종을 부르고 찍는다 |
-| `build.sh` | Roslyn 컴파일 + 실행. **프로덕션 파일 6개를 그대로** 넣는다 |
+| `build.sh` | Roslyn 컴파일 + 실행. **프로덕션 파일을 그대로** 넣는다(목록은 `SOURCES`) |
+| `deps.py` | ★ **자동 보강** — 컴파일러가 «못 찾았다»고 한 이름의 선언 파일을 찾아 준다. `--selftest` 내장 |
 | `prodverify.py` | `verify.py` 가 import 하는 `items`/`hair` 를 **덤프한 프로덕션 좌표**로 바꿔치기하고 그대로 실행 |
-| `shimdrift.py` | shim ↔ 프로덕션 대조 — **상수 · enum 값 · 베낀 표 · 미등록 흉내 · 복제본** |
+| `shimdrift.py` | shim ↔ 프로덕션 대조 — **상수 · enum 값 · 베낀 표 · 유령 멤버 · 미등록 흉내 · 복제본** |
+
+## ★ 컴파일 목록은 이제 «손으로 적은 집합»이 아니다 (2026-09-06)
+
+`SOURCES` 가 실제 의존성을 못 따라가 **같은 사고가 두 번** 났다 —
+`CurrencyModel`(커밋 1f7e139, CS0103) · `CharacterStat`(커밋 0229f52, CS0246). 두 번 다
+`prodverify.py` / `mirrordrift.py` **두 상시 게이트가 통째로 멎었고**, 그 실패는
+«게이트가 빨간 상태»가 아니라 **«게이트가 안 도는 상태»**로 나타나 아무도 못 봤다.
+(2026-09-05 시점의 `build.sh` 주석이 이 재발을 **글로 예고까지 했는데** 다음 라운드가 그대로 밟았다.
+ 주석은 사람에게 말하고, 사람은 그 파일을 안 읽는다.)
+
+이제 `build.sh` 는 컴파일이 깨지면 `deps.py` 로 **빠진 파일을 스스로 찾아 넣고 다시 컴파일한다.**
+의존성을 추측하지 않는다 — **컴파일러가 실제로 못 찾은 이름만** 따라간다.
+보강이 일어나면 stderr 에 `★★★` 배너가 뜬다. **그 배너를 «경고»로 넘기지 마라** —
+배너가 떴다는 것은 `SOURCES` 가 뒤처졌다는 뜻이고, 그 줄을 목록에 넣는 것이 정식 마무리다.
+
+```bash
+SHAPEDUMP_NO_AUTODEPS=1 Tools/ShapeDump/build.sh   # 음성 대조: 목록만으로 도는가(뒤처졌으면 rc=1)
+python3 Tools/ShapeDump/deps.py --selftest         # 보강 장치 자체의 양성/음성 대조 7종
+```
+
+`CoreShim.cs` 가 **일부러 흉내내는** 타입의 프로덕션 파일은 자동 보강이 절대 넣지 않는다
+(넣으면 흉내와 실물이 같은 이름으로 둘 다 서서 `CS0101` 로 자폭한다). 그 금지 목록은
+`CoreShim.cs` 를 읽어 **유도**한다 — 어디에도 손으로 다시 적지 않는다.
+
+`SHAPEDUMP_BUILDER` 는 **빌더 partial 가족 전체**를 갈아 끼운다(공백 구분 여러 파일 가능).
+`AccessoryShapeBuilder.cs` 와 `AccessoryShapeBuilder.Handoff.cs` 는 같은 partial 클래스라
+한쪽만 바꾸면 `CS0260` 으로 죽는다 — 그 상태로 `Tools/ShapeDumpPC` 의 **양성 대조 둘이 멎어 있었다**.
 
 ## ★ 왜 프로덕션 파일을 6개나 컴파일하는가 (2026-09-02)
 

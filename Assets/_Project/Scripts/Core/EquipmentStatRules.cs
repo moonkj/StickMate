@@ -543,12 +543,46 @@ namespace StickMate.Core
         /// 지금 이 슬롯에 걸친 것을 <see cref="StatSlotLoadout"/>으로. 착용 여부는
         /// <see cref="EquipmentModel"/>, 등급·부스탯·테마는 <see cref="ItemCatalog"/>가 유일한 출처다 —
         /// <b>화면이 이 셋을 각자 뒤지지 않게</b> 하는 것이 이 함수의 목적이다.
+        ///
+        /// <para>★★ <b>2026-09-06 — 「걸쳤다」와 「그려진다」는 다른 사실이다</b>(같은 창의 슬롯 줄에서
+        /// 먼저 고쳐진 결함이 여기 한 칸 남아 있었다). 이 함수는 <c>WornIndex &gt;= 0</c>만 보고
+        /// 등급·부스탯·테마를 그대로 실어 보냈고, 그 값이 <see cref="CurrentBuild"/>를 거쳐
+        /// <b>컬럼 2의 스탯 카드 · 「장비 합」 · H-8 등급 눈금</b>에 들어갔다.</para>
+        ///
+        /// <para>실측 재현(프로덕션 코드 직접 실행): 세이브에 <c>고글</c>(Lv11)·<c>요정 날개</c>(Lv28)가
+        /// 들어 있는 <b>Lv3</b> 캐릭터 — <see cref="EquipmentModel.IsItemOwned"/>가 둘 다 <c>false</c>이고
+        /// 슬롯 줄도 액자도 「비어 있음」인데 <b>스탯 합계만</b> 집중력 8→16 · 관찰력 6→12 · 민첩 7→22로
+        /// 그 둘을 계속 세고 있었다. 더 나쁜 것은 그 숫자가 <b>Lv28로 올린 뒤와 완전히 같았다</b>는 점이다
+        /// — 즉 이 칸에서는 요구 레벨이 <b>아무 일도 하지 않았다</b>.</para>
+        ///
+        /// <para><b>새 술어를 짓지 않았다.</b> 아래 한 줄은 이미 세 표면이 쓰고 있는 것을 그대로 옮긴
+        /// 것이다 — <c>CharacterPortraitStage.EquippedAndUnlocked</c>(액자) ·
+        /// <c>CharacterAccessoryRenderer.EquippedAndUnlocked</c>(몸) ·
+        /// <c>CharacterInfoWindow.Cards.SyncSlotRows</c>(슬롯 줄). 잠금 규칙이 바뀌는 날 네 표면이
+        /// 동시에 따라온다. 앞 항(<see cref="EquipmentModel.IsEquipped(EquipmentSlot)"/>)을 빼면
+        /// 미착용일 때 <see cref="EquipmentModel.IsUnlocked"/>가 "고를 것이 하나라도 있는가"로 뜻이
+        /// 바뀌어 <b>빈 슬롯이 착용으로 읽힌다</b>.</para>
+        ///
+        /// <para>★ <b>세트 판정도 이 한 줄로 같이 닫힌다.</b> <see cref="Evaluate"/>는 세트 완성을
+        /// 각 칸의 <see cref="StatSlotLoadout.Worn"/>·<see cref="StatSlotLoadout.Theme"/>로만 판정하므로
+        /// (<see cref="IsSetComplete"/>), 잠긴 칸이 여기서 <see cref="StatSlotLoadout.Empty"/>로
+        /// 떨어지는 순간 <c>Theme</c>이 <c>null</c>이 되어 세트 보너스 +2도 함께 사라진다.
+        /// 「입을 수도 없는 4종으로 세트 완성이 뜬다」가 이 고침에 포함된다 —
+        /// <b>잠금 검사를 여기 말고 세트 쪽에 또 적으면 그때부터 이음매가 둘이 된다.</b></para>
+        ///
+        /// <para><b>세이브 파일은 한 글자도 안 건드린다.</b> <see cref="EquipmentModel.RestoreFromSave(EquipmentSlot,string)"/>가
+        /// 잠금을 검사하지 않는 것은 의도된 설계이고(검사하면 레벨이 낮게 복원되는 순간 착용물이 조용히
+        /// 사라진다), 그 문서가 «대신 렌더러/UI가 그릴 때 <see cref="EquipmentModel.IsUnlocked"/>로 함께
+        /// 본다»고 약속한 그 자리가 여기다. 레벨이 요구치에 닿으면 스탯도 저절로 되살아난다.</para>
         /// </summary>
         public static StatSlotLoadout SlotLoadout(EquipmentSlot slot)
         {
-            int worn = EquipmentModel.WornIndex(slot);
-            if (worn < 0) return StatSlotLoadout.Empty(slot);
+            // ★ 액자·몸·슬롯 줄과 <b>같은 술어</b>다. 여기서 새로 짜지 않고 EquipmentModel의 공개 사실
+            //   둘을 그대로 곱한다(위 문단 참조).
+            bool drawnOnStage = EquipmentModel.IsEquipped(slot) && EquipmentModel.IsUnlocked(slot);
+            if (!drawnOnStage) return StatSlotLoadout.Empty(slot);
 
+            int worn = EquipmentModel.WornIndex(slot);
             ItemCatalogEntry entry = ItemCatalog.Item(slot, worn);
             if (entry == null) return StatSlotLoadout.Empty(slot);
 

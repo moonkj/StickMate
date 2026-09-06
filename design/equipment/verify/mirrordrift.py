@@ -48,6 +48,12 @@ def production():
     if raw.returncode != 0:
         print(raw.stdout); print(raw.stderr)
         raise SystemExit("!! Tools/ShapeDump/build.sh 실패 — 프로덕션 좌표를 뽑을 수 없다.")
+    # ★ 2026-09-06 — 성공했을 때의 stderr 를 <b>버리지 않는다</b>. build.sh 는 컴파일 목록이
+    #   의존성에 뒤처지면 자동 보강 후 «★★★» 배너를 stderr 로 낸다. 그것을 여기서 삼키면
+    #   "덤프가 성공했다"와 "덤프가 겨우 살아났다"가 화면에서 똑같아진다 — 이 저장소의 표준 병이다.
+    #   (prodverify.py 는 이미 같은 이유로 stderr 를 찍는다.)
+    if raw.stderr.strip():
+        print("── 덤프 경고 (stderr) ──"); print(raw.stderr.rstrip())
     cats, cat, name = {}, None, None
     for line in raw.stdout.splitlines():
         f = line.split("\t")

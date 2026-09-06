@@ -328,5 +328,112 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(CharacterProgressionModel.MaxNameLength, CharacterProgressionModel.CharacterName.Length,
                 "이름 길이 상한이 적용되지 않아 창 밖으로 넘칠 수 있습니다.");
         }
+
+        /// <summary>
+        /// ★ 2026-09-06 — 이름 입력 방어 3종. 사용자 신고(<i>"캐릭터 이름도 설정할수 있어야 하는데 안됨"</i>)로
+        /// 이름을 <b>두 창</b>에서 고칠 수 있게 되면서, 들어올 수 있는 글자의 종류가 늘었다(붙여넣기 포함).
+        /// </summary>
+        [Test]
+        public void 이름에_줄바꿈과_이모지가_들어와도_한_줄_라벨이_무너지지_않는다()
+        {
+            // ① 줄바꿈/탭은 <b>공백</b>이 된다 — 지우면 낱말이 붙어 사용자가 치지 않은 이름이 된다.
+            CharacterProgressionModel.SetCharacterName("홍\n길동");
+            Assert.AreEqual("홍 길동", CharacterProgressionModel.CharacterName,
+                "줄바꿈이 그대로 남았습니다 — 한 줄짜리 라벨에서 뒷글자가 잘립니다.");
+            Assert.IsFalse(CharacterProgressionModel.CharacterName.Contains("\n"),
+                "이름에 줄바꿈이 남아 있습니다.");
+
+            // ② 제어문자만 있는 이름은 "이름이 사라진" 상태다 — 기본값으로 되돌린다.
+            CharacterProgressionModel.SetCharacterName("\n\t\r");
+            Assert.AreEqual(CharacterProgressionModel.DefaultCharacterName,
+                CharacterProgressionModel.CharacterName,
+                "제어문자만 남은 이름이 빈 라벨이 됐습니다.");
+
+            // ③ 이모지는 <b>막지 않는다</b>. 다만 상한에서 자를 때 서로게이트 쌍 한가운데를 자르면
+            //    저장 파일에 반쪽 문자가 남는다 — 그건 어떤 폰트로도 되살릴 수 없다.
+            //    상한을 넘도록 이모지만 채워 넣고, 남은 문자열이 <b>온전한지</b>를 본다.
+            //    (숫자를 베끼지 않는다: 개수는 MaxNameLength에서 파생시킨다.)
+            const string emoji = "😀";   // U+1F600, char 2개짜리 서로게이트 쌍
+
+            // ★ 두 경우를 <b>모두</b> 친다. 앞에 붙는 글자가 없으면 자를 자리가 항상 쌍의 <b>경계</b>에
+            //   떨어져 «한가운데를 피한다» 분기가 한 번도 실행되지 않는다 — 접두사 한 글자가 그 분기를
+            //   깨우는 유일한 방법이다(없으면 그 코드는 «테스트된 것처럼 보이는» 죽은 가지가 된다).
+            foreach (string prefix in new[] { string.Empty, "가" })
+            {
+                var typed = new System.Text.StringBuilder(prefix);
+                while (typed.Length <= CharacterProgressionModel.MaxNameLength * 2) typed.Append(emoji);
+                CharacterProgressionModel.SetCharacterName(typed.ToString());
+
+                string name = CharacterProgressionModel.CharacterName;
+                Assert.LessOrEqual(name.Length, CharacterProgressionModel.MaxNameLength,
+                    $"접두사 \"{prefix}\": 상한을 넘겨 잘리지 않았습니다.");
+                Assert.Greater(name.Length, 0, $"접두사 \"{prefix}\": 이름이 통째로 사라졌습니다.");
+
+                for (int i = 0; i < name.Length; i++)
+                {
+                    if (char.IsHighSurrogate(name[i]))
+                    {
+                        Assert.IsTrue(i + 1 < name.Length && char.IsLowSurrogate(name[i + 1]),
+                            $"접두사 \"{prefix}\": {i}번이 짝 없는 상위 서로게이트입니다 — 이모지가 한가운데서 잘렸습니다.");
+                        i++;
+                        continue;
+                    }
+                    Assert.IsFalse(char.IsLowSurrogate(name[i]),
+                        $"접두사 \"{prefix}\": {i}번이 짝 없는 하위 서로게이트입니다 — 앞쪽이 잘려 나갔습니다.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// ★ <b>복원도 같은 규칙을 지난다</b>. 2026-09-06 전에는 저장 파일에서 오는 이름만 정규화를
+        /// 건너뛰어(빈 값 검사만) 길이 상한·줄바꿈 규칙을 우회했다 — 화면에서는 만들 수 없는 이름이
+        /// 화면에 떠 있는 상태가 되고, 그건 아무도 재현할 수 없다.
+        ///
+        /// <para>파일은 <b>읽기만</b> 한다 — 이 테스트가 확인하는 것은 "메모리에 올라온 값"이지
+        /// 파일을 고쳐 쓰는 동작이 아니다.</para>
+        /// </summary>
+        [Test]
+        public void 저장_파일에서_온_이름도_길이와_줄바꿈_규칙을_지난다()
+        {
+            string tooLong = new string('나', CharacterProgressionModel.MaxNameLength + 7);
+            string json =
+                "{\n" +
+                $"    \"version\": {CharacterSaveStore.CurrentVersion},\n" +
+                "    \"level\": 4,\n" +
+                $"    \"characterName\": \"{tooLong}\\n\",\n" +
+                "    \"wornHead\": \"\"\n" +
+                "}";
+            File.WriteAllText(CharacterSaveStore.FilePath, json);
+            CharacterProgressionModel.ResetForTesting();
+            CharacterSaveStore.Load();
+
+            Assert.IsTrue(CharacterSaveStore.LoadedFromFile, "파일을 통째로 버렸습니다.");
+            Assert.AreEqual(4, CharacterProgressionModel.Level, "이름 하나 때문에 레벨이 날아갔습니다.");
+            Assert.AreEqual(CharacterProgressionModel.MaxNameLength,
+                CharacterProgressionModel.CharacterName.Length,
+                "복원 경로가 길이 상한을 우회했습니다.");
+            Assert.IsFalse(CharacterProgressionModel.CharacterName.Contains("\n"),
+                "복원 경로가 줄바꿈 규칙을 우회했습니다.");
+        }
+
+        /// <summary>이름 왕복 — 저장 → 초기화 → 로드에서 <b>정규화된 그 값</b>이 그대로 돌아온다.
+        /// (모델이 한 번 정규화한 값은 다시 정규화해도 변하지 않아야 한다 — 그러지 않으면 앱을 켤
+        /// 때마다 이름이 조금씩 달라진다.)</summary>
+        [Test]
+        public void 이름은_저장_왕복에서_한_번_더_정규화돼도_변하지_않는다()
+        {
+            CharacterProgressionModel.SetCharacterName("  책상 동료\t ");
+            string normalized = CharacterProgressionModel.CharacterName;
+            Assert.AreEqual("책상 동료", normalized, "앞뒤 공백/탭 정리가 기대와 다릅니다.");
+
+            Assert.IsTrue(CharacterSaveStore.Save(), "저장에 실패했습니다.");
+            CharacterProgressionModel.ResetForTesting();
+            Assert.AreEqual(CharacterProgressionModel.DefaultCharacterName,
+                CharacterProgressionModel.CharacterName, "준비 조건 — 초기화가 이름을 되돌리지 않았습니다.");
+
+            CharacterSaveStore.Load();
+            Assert.AreEqual(normalized, CharacterProgressionModel.CharacterName,
+                "왕복에서 이름이 달라졌습니다 — 정규화가 멱등이 아닙니다.");
+        }
     }
 }

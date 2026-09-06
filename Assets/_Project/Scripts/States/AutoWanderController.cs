@@ -232,11 +232,45 @@ namespace StickMate.States
         {
             _phase = Phase.Resting;
             _restTimer = 0f;
-            _restDuration = Jitter(RandomRange(Cfg(c => c.wanderIdleDurationMin, 2f), Cfg(c => c.wanderIdleDurationMax, 6f)));
+            // ★ 2026-09-06 집중 세션 — "한 번 서면 더 오래 선다"(2~6초 -> 4~11초). 추첨 구조는 그대로고
+            //   **읽는 값만** 바뀐다(아래 IsFocusAmbientActive 문서 참고).
+            bool focus = IsFocusAmbientActive;
+            float idleMin = focus
+                ? Cfg(c => c.focusSessionIdleDurationMin, 4f)
+                : Cfg(c => c.wanderIdleDurationMin, 2f);
+            float idleMax = focus
+                ? Cfg(c => c.focusSessionIdleDurationMax, 11f)
+                : Cfg(c => c.wanderIdleDurationMax, 6f);
+            _restDuration = Jitter(RandomRange(idleMin, idleMax));
             _lookAroundFiredThisRest = false;
             _lookAroundDelay = RandomRange(Cfg(c => c.wanderLookAroundDelayMin, 1f), Cfg(c => c.wanderLookAroundDelayMax, 2.5f));
             _moveInputX = 0f;
         }
+
+        // ============================================================================
+        // ★★ 집중 세션 앰비언트 (2026-09-06, docs/UX_MOTION_FOCUS_SESSION.md 4-3 / 4-4)
+        // ============================================================================
+        // 페르소나(소은) 지적 "집중모드 25분 세션의 99.87%가 평소와 똑같다"의 발행자 쪽 절반이다.
+        //
+        // ★ 이 파일에 **새 타이머도 새 추첨도 하나 늘지 않았다.** 발행 창구는 아래 TickResting의
+        //   기존 1회 추첨 그대로이고, 세션 중에는 그 추첨이 읽는 **값 두 개**(쿨다운·어휘)와 Idle
+        //   길이/걷기 확률이 바뀔 뿐이다. 빈도를 평소보다 **높이지 않는 것**이 설계 제약이었다 —
+        //   2026-08-31 사용자 신고 "너무 자주함"의 체감 하한(분당 1.8회 ≈ 33초)이 그 근거다.
+        //
+        // ★ 걷기를 죽이지 않는다(0.75 -> 0.40). 파쿠르/뛰어내리기/매달리기로 이어지는 경로가 전부
+        //   걷기에서 갈라져 나오므로, 0으로 내리면 25분 동안 그 연출들이 **구조적으로 도달 불가**가
+        //   된다. 25분 중 3.2분은 여전히 돌아다닌다.
+
+        /// <summary>집중 세션 앰비언트가 지금 켜져 있는가(마스터 스위치 × 세션 진행 여부).
+        /// 판정의 정본은 <see cref="StickmanBlackboard.IsFocusSessionAmbientActive"/> 한 곳이며
+        /// 여기서 다시 해석하지 않는다 — 자세/어휘/수용이 각자 판단하면 "반만 꺼진" 상태가 생긴다.</summary>
+        private bool IsFocusAmbientActive => _blackboard != null && _blackboard.IsFocusSessionAmbientActive;
+
+        /// <summary>커서 좌표를 <b>실제로</b> 읽을 수 있는가 — G3(화면 쪽 돌아보기)의 추첨 자격이다.
+        /// 읽기 전용 조회이며(<see cref="CursorProvider"/>는 StickmanAgent.TryGetCursorPosition),
+        /// 실패하면 G3를 추첨에서 빼고 그 가중치를 G1에 합친다. 없는 대상을 향해 돌아보는 그림은
+        /// 절대 불변 원칙 1 위반이다.</summary>
+        private bool CanSeeCursor => CursorProvider != null && CursorProvider(out _);
 
         private void TickResting(float deltaTime)
         {
@@ -252,9 +286,17 @@ namespace StickMate.States
                 _lookAroundFiredThisRest = true;
                 if (_lookAroundCooldownTimer <= 0f)
                 {
-                    _lookAroundCooldownTimer = Mathf.Max(0f, Cfg(c => c.wanderLookAroundCooldownSeconds, 30f));
+                    // ★ 2026-09-06 — 여기가 **유일한 발행 창구**다. 집중 세션 중에는 쿨다운 값과
+                    //   어휘만 바뀌고, 추첨권/지연/1회 계약은 한 줄도 바뀌지 않는다.
+                    bool focus = IsFocusAmbientActive;
+                    _lookAroundCooldownTimer = Mathf.Max(0f, focus
+                        ? Cfg(c => c.focusAmbientGestureCooldownSeconds, 28f)
+                        : Cfg(c => c.wanderLookAroundCooldownSeconds, 30f));
                     LookAroundRaisedCount++;
-                    StickmanEventBus.RaiseWanderAmbientMotionRequested(WanderAmbientMotion.LookAround);
+                    WanderAmbientMotion motion = focus
+                        ? FocusAmbientGestures.Draw(_rng.NextDouble(), CanSeeCursor)
+                        : WanderAmbientMotion.LookAround;
+                    StickmanEventBus.RaiseWanderAmbientMotionRequested(motion);
                 }
             }
 
@@ -273,7 +315,13 @@ namespace StickMate.States
         /// </summary>
         private void ResolvePostIdleBranch()
         {
-            float walkChance = Cfg(c => c.wanderPostIdleWalkChance, 0.75f);
+            // ★ 2026-09-06 집중 세션 — 걷기 확률만 낮춘다(0.75 -> 0.40). **분포 변경이지 묶어두기가
+            //   아니다**: 파쿠르·뛰어내리기·매달리기는 전부 걷기에서 갈라지므로 0으로 내리면 그
+            //   연출들이 구조적으로 도달 불가가 된다(25분 중 3.2분은 여전히 걷는다).
+            //   남은 확률은 여기서도 평소와 똑같이 "Idle 연장"이 흡수한다 — 갈래 구조 무변경.
+            float walkChance = IsFocusAmbientActive
+                ? Cfg(c => c.focusSessionWalkChance, 0.4f)
+                : Cfg(c => c.wanderPostIdleWalkChance, 0.75f);
             float jumpChance = Cfg(c => c.wanderPostIdleJumpChance, 0f);
 
             double roll = _rng.NextDouble();
@@ -294,8 +342,13 @@ namespace StickMate.States
             else
             {
                 // Idle 연장 — 26-3: 연속 3회 이상이면 15% 확률로 앉기/하품 트리거.
+                // ★ 2026-09-06 — 집중 세션 중에는 이 갈래가 신호를 내지 않는다. 기지개(만세)는
+                //   관망 자세와 정면으로 충돌하는 그림이고(팔짱을 낀 채 만세를 할 수는 없다),
+                //   세션 중 어휘의 소유자는 위 «단 하나의 추첨»이다. 수신 측
+                //   (StickmanBlackboard.BeginIdleAmbientMotion)도 같은 이유로 거르지만, 구조적으로
+                //   언제나 거부될 신호를 발행하는 것 자체가 죽은 배관이라 여기서 멈춘다.
                 _consecutiveIdleExtensions++;
-                if (_consecutiveIdleExtensions >= 3)
+                if (_consecutiveIdleExtensions >= 3 && !IsFocusAmbientActive)
                 {
                     float sitChance = Cfg(c => c.wanderRestExtendSitChance, 0.15f);
                     if (_rng.NextDouble() < sitChance)

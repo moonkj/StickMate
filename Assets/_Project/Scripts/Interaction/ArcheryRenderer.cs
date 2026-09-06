@@ -144,6 +144,11 @@ namespace StickMate.Interaction
         private float _elapsed;
 
         private GameObject _container;
+
+        /// <summary>지금 <see cref="SuspendedOverlayGate"/>가 감춰 둔 상태인가(로그를 상태 전환에 한 번만
+        /// 남기기 위한 플래그. 판정 자체는 그 게이트가 소유한다 — 여기에 조건을 한 벌 더 두지 않는다).</summary>
+        private bool _suspendHidden;
+
         private Transform _targetRoot;
         private Transform _bowRoot;
         /// <summary>직전 프레임에 활을 실제로 배치했는지 + 그때 쓴 활 든 손의 월드 좌표
@@ -536,6 +541,12 @@ namespace StickMate.Interaction
         private void LateUpdate()
         {
             using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Renderers);   // [스톨구간] 계측
+            // ★ 캐릭터가 숨겨져 있으면 과녁/활/화살도 함께 감춘다(원칙 2, Core/SuspendedOverlayGate).
+            //   Archery는 StickmanAgent.Suspend()의 강제 인터럽트 목록에 <b>없어서</b> 상태가 그대로
+            //   얼어붙고, 이 렌더러는 상태 이벤트(Outro)로만 걷히므로 그 이벤트가 영영 오지 않는다.
+            //   ★ 걷지 않고 얼리는 것이 특히 중요한 자리다 — 날아가던 화살을 여기서 파괴하면
+            //   돌아왔을 때 상태는 비행 중인데 화살만 사라진다(투사체 소실 = 원칙 1 desync).
+            if (SuspendedOverlayGate.FreezeAndHide(_agent, _container, ref _suspendHidden, "[활쏘기]", "과녁/활/화살")) return;
             if (_mode == Mode.None) return;
 
             float dt = Time.deltaTime;

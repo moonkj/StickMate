@@ -235,6 +235,22 @@ namespace StickMate.Interaction
             => index >= 0 && index < _slotRows.Length && _slotRows[index]?.Name != null
                 ? _slotRows[index].Name.text : null;
 
+        /// <summary>지금 화면에 켜져 있는 착용 슬롯 행의 수. 테스트가 4를 베끼지 않는 통로다.</summary>
+        public int SlotRowCountForTests => SectionCountForTab(Tab.Equipment);
+
+        /// <summary>그 슬롯 행이 가리키는 카테고리. <b>행 번호 → 슬롯 규칙</b>
+        /// (<see cref="SectionSlot"/>)을 테스트가 베껴 적지 않게 하는 창구다 —
+        /// <see cref="TryGetCardSlotForTests"/>와 같은 계약이고, 켜져 있지 않은 행이면 false.
+        /// <para>이 창구가 필요해진 이유는 <b>이 줄과 액자가 같은 말을 하는지</b>를 재는 회귀가
+        /// 생겼기 때문이다(2026-09-06 잠긴 착용물). 재려면 «몇 번째 줄이 어느 카테고리인가»를
+        /// 알아야 하는데, 그걸 테스트가 손으로 적으면 카테고리가 하나 은퇴하는 날 엉뚱한 줄을 잰다.</para></summary>
+        public bool TryGetSlotRowSlotForTests(int index, out EquipmentSlot slot)
+        {
+            bool used = index >= 0 && index < _slotRows.Length && index < SectionCountForTab(Tab.Equipment);
+            slot = used ? SectionSlot(Tab.Equipment, index) : default;
+            return used;
+        }
+
         /// <summary>프리뷰 무대(액자)의 화면 사각형 — 액자가 눌리지 않았는지 재는 통로다.</summary>
         public Rect PortraitStageScreenRect
             => RawScreenRectOf(_portraitFrame != null ? _portraitFrame.rectTransform : null);
@@ -327,6 +343,14 @@ namespace StickMate.Interaction
 
         /// <summary>레일 폭(캔버스 포인트). 테스트가 24를 베껴 적지 않게 하는 창구다.</summary>
         public float InventoryRailWidthPoints => InventoryRailWidth;
+
+        /// <summary>보관함 목록의 논리 줄 수(헤더 2줄 포함). <b>정적</b> 사실이라 창을 열지 않아도 잰다 —
+        /// 은퇴한 카테고리가 목록에서 빠졌는지를 EditMode에서 확인하는 창구다(2026-09-06 [머리]).</summary>
+        public static int InventoryLineCountForTests => InventoryLineCount;
+
+        /// <summary>논리 줄 번호 -> 카탈로그 인덱스. 헤더 줄은 음수다
+        /// (<see cref="InventoryHeaderLine"/> — 그 값을 테스트가 베끼지 않도록 "음수"로만 계약한다).</summary>
+        public static int InventoryCatalogIndexForLineForTests(int line) => CatalogIndexForLine(line);
 
         /// <summary>지금 보관함 스크롤(줄 단위)과 그 상한 — 칩의 겉모습이 <b>이 값에서</b> 나오는지 확인한다.</summary>
         public int InventoryScrollForTests => _inventoryScroll;

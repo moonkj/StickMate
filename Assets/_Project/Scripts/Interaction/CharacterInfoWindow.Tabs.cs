@@ -42,8 +42,12 @@ namespace StickMate.Interaction
             /// <summary>20줄 가상 목록([보관함]).</summary>
             Inventory,
 
-            /// <summary>본문이 아직 없는 탭 — 문구 한 줄만 놓는다([상점], 2026-09-02).</summary>
-            Placeholder,
+            /// <summary>상품 격자 + 상세 줄([상점]).
+            /// <para>★ 2026-09-06 — 여기 있던 <c>Placeholder</c>("본문이 아직 없는 탭 — 문구 한 줄만
+            /// 놓는다")를 <b>지웠다</b>. 쓰는 탭이 [상점] 하나였고 그 본문이 이 라운드에 생겼다.
+            /// 죽은 자리를 남겨 두면 <c>ShopNotice</c>("상점은 다음 업데이트에 들어옵니다")가 코드에
+            /// 남아 언젠가 다시 화면에 나간다 — 그 문장은 이제 <b>거짓</b>이다.</para></summary>
+            Shop,
         }
 
         /// <summary>탭 순서. <b>값을 박아 둔다</b> — 이 창의 로그·테스트가 정수 인덱스로 탭을 부르고
@@ -68,26 +72,19 @@ namespace StickMate.Interaction
             /// 카드 페이지가 아니면 <see cref="NoIconSet"/>.</summary>
             public readonly int IconSet;
 
-            /// <summary><see cref="TabPage.Placeholder"/>가 본문 한가운데 적는 문구.</summary>
-            public readonly string Notice;
-
             public TabDef(string name, TabPage page, bool appearanceSlots = false,
-                int iconSet = NoIconSet, string notice = null)
+                int iconSet = NoIconSet)
             {
                 Name = name;
                 Page = page;
                 AppearanceSlots = appearanceSlots;
                 IconSet = iconSet;
-                Notice = notice;
             }
         }
 
-        /// <summary>[상점] 본문 문구. 실제 상점(재화·가격·세트)은 다음 라운드다 —
-        /// 지금 여기에 값을 그리면 아직 확정되지 않은 경제 수치를 화면이 <b>주장</b>하게 된다
-        /// (임계·가격이 설계 두 벌 사이에서 7건 어긋난 채 미해결이다).
-        /// <para>문구는 설정창의 미완성 탭과 <b>같은 말투</b>다("… 다음 업데이트에 들어옵니다") —
-        /// 같은 사실을 두 창이 다른 말로 하면 그게 두 뜻이 된다.</para></summary>
-        private const string ShopNotice = "상점은 다음 업데이트에 들어옵니다.";
+        // ★ 2026-09-06 — 여기 있던 <c>ShopNotice</c>("상점은 다음 업데이트에 들어옵니다.")를 지웠다.
+        //   [상점] 본문이 생겼으므로 그 문장은 <b>거짓</b>이 됐다. 문구만 지우고 상수를 남기면
+        //   다음 사람이 그것을 다시 어딘가에 그린다(테마 세트 문구가 R21에서 겪은 그 형태).
 
         /// <summary>★ 탭의 단일 출처. 인덱스가 곧 <see cref="Tab"/> 값이다.</summary>
         private static readonly TabDef[] TabTable =
@@ -95,7 +92,7 @@ namespace StickMate.Interaction
             new TabDef("장비",   TabPage.Cards, appearanceSlots: false, iconSet: 0),
             new TabDef("외형",   TabPage.Cards, appearanceSlots: true,  iconSet: 1),
             new TabDef("보관함", TabPage.Inventory),
-            new TabDef("상점",   TabPage.Placeholder, notice: ShopNotice),
+            new TabDef("상점",   TabPage.Shop),
         };
 
         /// <summary>탭 수. 상수로 적지 않고 <b>표에서 센다</b>.</summary>
@@ -132,6 +129,14 @@ namespace StickMate.Interaction
             {
                 Debug.LogError($"[정보창] 착용 슬롯 행 높이 {SlotRowHeight}가 " +
                                $"WCAG 2.2 2.5.8 하한 {UiChrome.MinTargetSizePoints}보다 작습니다.");
+            }
+
+            // ★ [상점] 격자의 열 수는 폭에서 <b>파생</b>된다(숫자를 적지 않는다). 창이나 카드 폭이
+            //   움직여 이 값이 0이 되면 격자가 나눗셈에서 죽는다 — 그 전에 여기서 말한다.
+            if (ShopColumns < 1)
+            {
+                Debug.LogError($"[상점] 상품 격자의 열 수가 {ShopColumns}입니다 — 본문 폭 " +
+                               $"{PageContentWidth}pt에 카드 한 장({CardWidth}pt)도 들어가지 않습니다.");
             }
         }
 
@@ -194,6 +199,10 @@ namespace StickMate.Interaction
                 RefreshDetail();
             }
 
+            // [상점]으로 들어오는 동안 잔액이 올랐을 수 있다 — 들어오는 그 프레임에 다시 칠한다
+            // (탭이 꺼져 있는 동안에는 0.25초 주기 갱신도 이 페이지를 보지 않는다).
+            if (def.Page == TabPage.Shop) RefreshShop();
+
             Debug.Log($"[정보창] 탭 전환 -> [{def.Name}].");
         }
 
@@ -208,16 +217,16 @@ namespace StickMate.Interaction
             ApplyColumnVisibility();
             if (_sectionPage != null) _sectionPage.SetActive(cards);
             if (_inventoryPage != null) _inventoryPage.SetActive(page == TabPage.Inventory);
-            ApplyPlaceholderPage(page == TabPage.Placeholder);
+            ApplyShopPage(page == TabPage.Shop);
 
+            // ★ 2026-09-06 — 여기 있던 <c>ready</c>(= 준비 중 탭인가) 분기와 <b>탭 밑줄</b>을 지웠다.
+            //   네 탭이 전부 본문을 갖게 되면서 <c>ready</c>가 언제나 참이 됐고, 밑줄은 오직
+            //   <c>active && !ready</c>에서만 색이 있었으므로 <b>영원히 투명한 겹</b>이 된다.
+            //   죽은 겹을 남기면 다음 사람이 "왜 안 보이지"를 조사하게 된다(무대 조명 두 겹을 지운 것과
+            //   같은 관례). 활성 표시의 주 채널은 원래부터 <b>면</b>이었다.
             for (int i = 0; i < TabCount; i++)
             {
                 bool active = i == (int)_tab;
-
-                // 준비 중인 탭은 <b>고르고 나서</b> 그렇게 보인다. 고르지 않은 탭을 더 흐리게 하지는
-                // 않는다 — 설정창이 그걸 했다가 "죽은 탭에는 글자가 한 자도 없다"는 신고를 받았다
-                // (SettingsWindow.ApplyTabVisibility의 같은 문단). 사실은 밑줄과 본문이 말한다.
-                bool ready = TabTable[i].Page != TabPage.Placeholder;
 
                 if (_tabSurfaces[i] != null)
                 {
@@ -229,13 +238,8 @@ namespace StickMate.Interaction
                     _tabLabels[i].fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
                     // 면에서 잉크를 파생시킨다 — 브라스 위에서는 InkOnSurface가 어두운 잉크로 뒤집는다.
                     _tabLabels[i].color = active
-                        ? UiChrome.InkOnSurface(UiChrome.Accent, UiChrome.InkRole.Title, ready)
-                        : UiChrome.InkTab(false, ready);
-                }
-                if (_tabUnderlines[i] != null)
-                {
-                    // 준비 중 탭만 밑줄이 다르다 — "고르고 나서 그렇게 보인다"는 규칙 그대로.
-                    _tabUnderlines[i].color = active && !ready ? UiChrome.NonTextMuted : Color.clear;
+                        ? UiChrome.InkOnSurface(UiChrome.Accent, UiChrome.InkRole.Title, enabled: true)
+                        : UiChrome.InkTab(selected: false);
                 }
             }
         }
@@ -256,7 +260,8 @@ namespace StickMate.Interaction
             Image strip = UiChrome.AddSurface(header, "TabStrip", UiChrome.CardSurfaceMuted, UiChrome.RadiusCard);
             RectTransform stripRect = strip.rectTransform;
             strip.raycastTarget = false;
-            UiChrome.AddOutline(stripRect, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+            UiChrome.AddOutline(stripRect, "Outline",
+                UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurfaceMuted), UiChrome.RadiusCard);
 
             float cursor = HeaderTabStripPad;
             for (int i = 0; i < TabCount; i++)
@@ -272,10 +277,9 @@ namespace StickMate.Interaction
                 float width = TabLabelWidth(label, name);
                 UiChrome.PlaceTopLeft(rt, cursor, -HeaderTabStripPad, width, HeaderTabHeight);
 
-                // 밑줄은 이제 활성 표시의 <b>보조</b>다(주 채널은 면). 준비 중 탭에서만 색이 갈린다.
-                Image underline = UiChrome.AddSurface(rt, "Underline", Color.clear, 2);
-                UiChrome.PlaceTopLeft(underline.rectTransform, 6f, -(HeaderTabHeight - 2f), width - 12f, 2f);
-                underline.raycastTarget = false;
+                // ★ 2026-09-06 — 여기 있던 밑줄 겹을 지웠다. 그것은 <b>준비 중 탭 전용</b> 표식이었고
+                //   (활성 + 준비 중일 때만 색이 있었다), 네 탭이 전부 본문을 갖게 되면서 영원히
+                //   투명해졌다. 활성 표시는 면이 한다(ApplyTabVisibility의 같은 문단).
 
                 var button = face.gameObject.AddComponent<Button>();
                 button.targetGraphic = face;
@@ -286,7 +290,6 @@ namespace StickMate.Interaction
                 _tabRects[i] = rt;
                 _tabLabels[i] = label;
                 _tabSurfaces[i] = face;
-                _tabUnderlines[i] = underline;
                 cursor += width + HeaderTabGap;
             }
 

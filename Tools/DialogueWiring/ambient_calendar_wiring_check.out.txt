@@ -1,0 +1,82 @@
+=== 0. 교정 — 파서가 살아 있는가 (알려진 값으로 먼저 맞춘다) ===
+  OK   IdleLines[0] == "음..."  — '음...'
+  OK   WalkLines[0] == "산책 중"  — '산책 중'
+  OK   기존 상시 줄이 살아 있다
+  OK   삭제된 "심심하다"가 되살아나지 않았다
+
+=== 1. 병렬 배열 정합 — 길이 + 주석 라벨이 실제 그 줄인가 ===
+  OK   Idle 표 15줄 == motion 축 15칸
+  OK   Idle/motion 축의 주석 라벨이 전부 그 인덱스의 대사와 일치
+  OK   Idle 표 15줄 == day 축 15칸
+  OK   Idle/day 축의 주석 라벨이 전부 그 인덱스의 대사와 일치
+  OK   Idle 표 15줄 == time 축 15칸
+  OK   Idle/time 축의 주석 라벨이 전부 그 인덱스의 대사와 일치
+  OK   Walk 표 13줄 == day 축 13칸
+  OK   Walk/day 축의 주석 라벨이 전부 그 인덱스의 대사와 일치
+  OK   Walk 표 13줄 == time 축 13칸
+  OK   Walk/time 축의 주석 라벨이 전부 그 인덱스의 대사와 일치
+
+=== 2. 자격 축이 design 문서 표와 일치하는가 ===
+  OK   R2 §3-4에서 조건부 12줄을 파싱했다  — 파싱 12줄
+  OK   2026-09-06 §1에서 신규 4줄을 파싱했다  — 파싱 4줄
+  OK   대조 대상 조건부 16줄  — 16줄
+  OK   「금요일이다!」 -> ('day', 'Friday', 'Idle')  — 실제 ('day', 'Friday', 'Idle')
+  OK   「밤에도 걷네」 -> ('time', 'Night', 'Walk')  — 실제 ('time', 'Night', 'Walk')
+  OK   「밤이 깊었네」 -> ('time', 'Night', 'Idle')  — 실제 ('time', 'Night', 'Idle')
+  OK   「쉬는 날이네」 -> ('day', 'Weekend', 'Idle')  — 실제 ('day', 'Weekend', 'Idle')
+  OK   「아직 오후네」 -> ('time', 'Afternoon', 'Idle')  — 실제 ('time', 'Afternoon', 'Idle')
+  OK   「아침 산책이네」 -> ('time', 'Morning', 'Walk')  — 실제 ('time', 'Morning', 'Walk')
+  OK   「아침이네」 -> ('time', 'Morning', 'Idle')  — 실제 ('time', 'Morning', 'Idle')
+  OK   「오후가 지나가네」 -> ('time', 'Afternoon', 'Walk')  — 실제 ('time', 'Afternoon', 'Walk')
+  OK   「월요일이 왔네」 -> ('day', 'Monday', 'Walk')  — 실제 ('day', 'Monday', 'Walk')
+  OK   「월요일이네...」 -> ('day', 'Monday', 'Idle')  — 실제 ('day', 'Monday', 'Idle')
+  OK   「저녁은 느긋하네」 -> ('time', 'Evening', 'Idle')  — 실제 ('time', 'Evening', 'Idle')
+  OK   「점심때 걷네」 -> ('time', 'Lunch', 'Walk')  — 실제 ('time', 'Lunch', 'Walk')
+  OK   「점심시간이네」 -> ('time', 'Lunch', 'Idle')  — 실제 ('time', 'Lunch', 'Idle')
+  OK   「주말 산책이네」 -> ('day', 'Weekend', 'Walk')  — 실제 ('day', 'Weekend', 'Walk')
+  OK   「주말이 코앞이네」 -> ('day', 'Friday', 'Walk')  — 실제 ('day', 'Friday', 'Walk')
+  OK   「하루를 마무리하네」 -> ('time', 'Evening', 'Walk')  — 실제 ('time', 'Evening', 'Walk')
+  OK   문서에 없는 조건부 줄이 배선되지 않았다  — []
+
+=== 3. 기각된 문구 «발이 빨라지네» (부재 단언 + 대조) ===
+  OK   [대조] 정본 대체 문구 «주말이 코앞이네»가 실재한다
+  OK   기각된 «발이 빨라지네»가 배선되지 않았다
+
+=== 4. 시간대 5구간 경계 — R23 확정값과 대조 ===
+  OK   경계 상수 5개가 R23 확정값(05/11/14/18/22)과 같다  — {'MorningStartHour': 5, 'LunchStartHour': 11, 'AfternoonStartHour': 14, 'EveningStartHour': 18, 'NightStartHour': 22}
+  OK   R23 출력이 아침 05-11 를 그대로 적고 있다
+  OK   R23 출력이 점심 11-14 를 그대로 적고 있다
+  OK   R23 출력이 오후 14-18 를 그대로 적고 있다
+  OK   R23 출력이 저녁 18-22 를 그대로 적고 있다
+  OK   R23 출력이 밤 22-05 를 그대로 적고 있다
+  OK   5구간이 24시간을 빈틈 0 · 겹침 0으로 덮는다  — Night 7h / Morning 6h / Lunch 3h / Afternoon 4h / Evening 4h
+
+=== 5. 후보 수 N 전수 (7요일 x 24시) — R23 계약 숫자와 대조 ===
+     후보 수 분포: N=12 72시간 / N=14 96시간
+  OK   R23 «최악 조합 N=12» 재현  — worst=12
+  OK   요일 자격이 있는 날은 N=14(상시10 + 요일2 + 시간대2)  — best=14
+  OK   R23 «N=16 (mon·morn·look,yawn)» 재현  — n=16
+  OK   [대조] R23 출력에 실제로 N=12 / N=16 이 적혀 있다
+  OK   어떤 (요일 x 시각)에서도 Idle/Walk 후보가 0이 되지 않는다  — []
+
+=== 6. 발화 자격 게이트 — 새 16줄이 구조적으로 도달 가능한가 ===
+     상수 참조: base=0.280 per=0.075 min=0.62 max=2.20 fadeIn=0.06 jitter=0.175
+  OK   [교정] 9자 필요체류 = 1.015초 (설계 문서 발표값)  — 1.0150
+  OK   Idle 「금요일이다!」(6자) 필요체류 0.790 < 최단계획 1.6500
+  OK   Idle 「밤이 깊었네」(6자) 필요체류 0.790 < 최단계획 1.6500
+  OK   Idle 「쉬는 날이네」(6자) 필요체류 0.790 < 최단계획 1.6500
+  OK   Idle 「아직 오후네」(6자) 필요체류 0.790 < 최단계획 1.6500
+  OK   Idle 「아침이네」(4자) 필요체류 0.680 < 최단계획 1.6500
+  OK   Idle 「월요일이네...」(8자) 필요체류 0.940 < 최단계획 1.6500
+  OK   Idle 「저녁은 느긋하네」(8자) 필요체류 0.940 < 최단계획 1.6500
+  OK   Idle 「점심시간이네」(6자) 필요체류 0.790 < 최단계획 1.6500
+  OK   Walk 「밤에도 걷네」(6자) 필요체류 0.790 < 최단계획 1.2375
+  OK   Walk 「아침 산책이네」(7자) 필요체류 0.865 < 최단계획 1.2375
+  OK   Walk 「오후가 지나가네」(8자) 필요체류 0.940 < 최단계획 1.2375
+  OK   Walk 「월요일이 왔네」(7자) 필요체류 0.865 < 최단계획 1.2375
+  OK   Walk 「점심때 걷네」(6자) 필요체류 0.790 < 최단계획 1.2375
+  OK   Walk 「주말 산책이네」(7자) 필요체류 0.865 < 최단계획 1.2375
+  OK   Walk 「주말이 코앞이네」(8자) 필요체류 0.940 < 최단계획 1.2375
+  OK   Walk 「하루를 마무리하네」(9자) 필요체류 1.015 < 최단계획 1.2375
+
+전 항목 통과.

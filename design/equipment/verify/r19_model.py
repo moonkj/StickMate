@@ -89,26 +89,89 @@ def line_alpha(p):
 # ============================================================================
 # 2. 기하 — ① 모자 2층
 # ============================================================================
-def _split_lens(p, tip_a=0, tip_b=16):
+def _split_lens(p, y_cut=None, tip_a=0, tip_b=16):
     """인계본 챙(렌즈꼴 M tip Q top tip Q bottom Z, 16분할)을 위 호(먼 쪽)와 아래 호(가까운 쪽)로 가른다.
-    반환 (far_fill, far_arc, near_fill, near_arc) — 자른 선(장축)은 그리지 않는다(실제 챙에 그 선은 없다)."""
-    pts = p.pts
-    far = pts[tip_a:tip_b + 1]                     # 왼 끝 → 위 호 → 오른 끝
-    near = pts[tip_b:] + [pts[tip_a]]              # 오른 끝 → 아래 호 → 왼 끝
-    return list(far), list(far), list(near), list(near)
+    반환 (far_fill, far_arc, near_fill, near_arc) — 자른 선(장축)은 그리지 않는다(실제 챙에 그 선은 없다).
+
+    ★ 2026-09-06 R24 — 자르는 높이를 **관 밑변(관·챙 이음선)** 으로 옮겼다(y_cut, R 좌표).
+      옛 판은 언제나 렌즈 끝(장축)에서 잘랐는데, 중절모는 관 밑변(+0.562)이 챙 장축(+0.523)보다
+      **0.039 R 위**라 그 사이에 **앞층 채움이 하나도 없는 띠**가 생겼다(실측: y=+0.55 에서 앞층 반폭 0.000).
+      물리적으로도 그 띠에 보이는 것은 관의 아랫부분(머리 앞)이지 챙의 먼 쪽(머리 뒤)이 아니다.
+      천모자는 두 높이가 같아(둘 다 아이콘 41.0) **한 점도 안 바뀐다** — 아래 검산이 그것을 확인한다."""
+    raw = list(p.pts)
+    eps = 1e-9
+    # 자르는 선이 렌즈 끝(장축)과 같으면 **옛 식 그대로** — 천모자가 한 점도 안 바뀌는 것이 여기서 보장된다.
+    if y_cut is None or abs(raw[tip_a][1] - y_cut) <= 1e-6:
+        far = raw[tip_a:tip_b + 1]
+        near = raw[tip_b:] + [raw[tip_a]]
+        return list(far), list(far), list(near), list(near)
+    pts = raw[:-1] if (abs(raw[0][0] - raw[-1][0]) < eps and abs(raw[0][1] - raw[-1][1]) < eps) else raw
+    up = [i for i in range(tip_a, tip_b + 1) if pts[i][1] >= y_cut - eps]      # R 좌표: 위 = y 큰 쪽
+    if not up:
+        raise SystemExit("챙 분할 실패: 자르는 선 %.4f 가 렌즈 위 호 밖이다" % y_cut)
+    a, b = up[0], up[-1]
+
+    def _cross(i, j):
+        (x1, y1), (x2, y2) = pts[i], pts[j]
+        if abs(y2 - y1) < 1e-12:
+            return (x1, y_cut)
+        t = (y_cut - y1) / (y2 - y1)
+        return (x1 + (x2 - x1) * t, y_cut)
+
+    c1 = pts[a] if a == tip_a else _cross(a - 1, a)
+    c2 = pts[b] if b == tip_b else _cross(b, b + 1)
+
+    def _dedup(q):
+        o = []
+        for pt in q:
+            if not o or abs(pt[0] - o[-1][0]) > 1e-9 or abs(pt[1] - o[-1][1]) > 1e-9:
+                o.append(pt)
+        return o
+
+    far = _dedup([c1] + pts[a:b + 1] + [c2])
+    near = _dedup([c2] + pts[b + 1:] + [pts[tip_a]] + [c1]) if b < tip_b else _dedup(pts[tip_b:] + [pts[tip_a]])
+    return far, list(far), near, list(near)
+
+# ============================================================================
+# ★★ 2026-09-06 R24 — 천모자·중절모 「앞층만」 H-2 실패 수습 (§14-13-5 별건 배정)
+# ============================================================================
+# 실측(프로덕션 좌표 직접 파싱, r24_hats.py): 앞층 채움이 머리 현을 덮는 구간이 **끊겨 있었다**.
+#   천모자  +1.18→+0.68 · [빈 띠 0.20 R] · +0.48→+0.28      → 착용선 +0.680 (목표 +0.30)
+#   중절모  +1.18→+0.78 · [빈 띠 0.27 R] · +0.51→+0.27      → 착용선 +0.776 (목표 +0.30)
+# 빈 띠의 정체는 두 가지이고, 둘 다 R19 ①(모자 2층)이 **드러낸** 선행 결함이다:
+#   (가) **관이 머리보다 좁다.** 관 반폭 천모자 1.031 R · 중절모 0.955 R < 그 높이의 머리 현
+#        (+0.505 에서 1.131 · +0.581 에서 1.092). R17 맞춤은 먼 쪽 챙(= 지금은 뒤층)까지 합집합에
+#        넣어 통과했었다 — 뒤층은 머리를 못 덮는다. 즉 이 실패는 R19 분할이 드러낸 **선행 결함**이다.
+#   (나) **중절모만**: 관 밑변(+0.562)이 챙 장축(+0.523)보다 위라 그 사이 0.039 R 에 앞층 채움이 0.
+#        → `_split_lens(y_cut=관 밑변)` 이 닫는다(위 문단).
+# 처방 = §14-13-5 가 적은 그대로 **「관 반폭을 넓혀」**. 다만 인계본 **카드 좌표는 한 점도 못 바꾼다**
+#   (R15 이후 불변 · 골든·AccessoryCardIconTests 가 그 위에 서 있다) → **몸 표면에서만 x 배수**를 건다.
+#   u·dy·ky 는 **안 건드린다** → 챙 폭·꼭대기·앞층 밑단(= 안경 가려짐)이 한 값도 안 움직인다.
+# 배수의 하한은 계산값이다: 필요한 최소 x배수 = max_y(머리 현 + 여유) / (관 반폭) —
+#   천모자 1.1057 · 중절모 1.1649 (아이콘 y 40.75 에서 최대). 여유를 얹어 아래 값을 쓴다.
+CROWN_WIDEN = {"clothhat": 1.12, "fedora": 1.18}      # 관(B0)·그늘/띠(F1)·하이라이트(H3) 의 x 배수(몸 전용)
+CROWN_WIDEN_SRC = ("B0", "F1", "H3")                  # 챙(B2)은 제외 — 챙을 넓히면 실루엣·팔 폭이 움직인다
+
 
 def _head_pieces19(kind):
     src17 = [p for p in M17.WORN[kind] if not p.base]      # 불투명 바탕 조각 폐지(채움이 M/M2 불투명)
-    if kind == "crown":
-        src17 = _refit_crown(src17)
+    # ★ 2026-09-06 — 왕관 R19 재맞춤(_refit_crown)을 폐기했다. 아래 CROWN_SHOW 문단이 근거다.
+    #   여기서 다시 부르면 왕관이 눈 대역으로 되돌아간다(EYES 6종 가려짐 43~100%).
+    kx = CROWN_WIDEN.get(kind)
+    if kx:
+        src17 = [_cp(p, pts=[(x * kx, y) for x, y in p.pts],
+                     transform=(p.transform + " · " if p.transform else "") + "R24 관 x×%.2f(몸 전용)" % kx)
+                 if p.src in CROWN_WIDEN_SRC else p for p in src17]
+    crown_bottom = (min(q[1] for p in src17 if p.src == "B0" for q in p.pts)
+                    if kind in ("clothhat", "fedora") else None)
     out = []
     for p in src17:
         cr = crole_of(kind, p.src)
         if kind in ("clothhat", "fedora") and p.src == "B2":
-            far_f, far_a, near_f, near_a = _split_lens(p)
+            far_f, far_a, near_f, near_a = _split_lens(p, y_cut=crown_bottom)
             out.append(_cp(p, pts=far_f, name=p.name + ".far", src=p.src + "far", layer="back", loop=True, filled=True,
                            line=None, crole=(cr[0], None), role="챙 먼 쪽(뒤층)",
-                           note="[①] 챙 위 호 절반 — 머리 뒤. 자른 선(장축)은 안 그린다"))
+                           note="[①] 관 밑변 위의 챙(먼 쪽) — 머리 뒤. 자른 선은 안 그린다(R24: 자르는 높이 = 관 밑변)"))
             out.append(_cp(p, pts=far_a, name=p.name + ".farArc", src=p.src + "fa", layer="back", loop=False, filled=False,
                            fill=None, crole=(None, cr[1]), role="챙 먼 쪽 윤곽(뒤층)"))
             out.append(_cp(p, pts=near_f, name=p.name + ".near", src=p.src + "near", layer="front", loop=True, filled=True,
@@ -130,34 +193,54 @@ def _head_pieces19(kind):
                           crole=PM.ROLE["crown"]["BW"], role="왕관 안쪽 뒷벽(뒤층)", note="[①] 봉우리 사이로 보이는 안쪽 — 머리 뒤. 색 = ROLE BW (design-art: SH #2B220A 윤곽 없음)"))
     return out
 
-CROWN_SHOW = 0.40     # 골(y=29) 높이 ≤ 머리 꼭대기 − 0.40 — 재맞춤 파라미터(현행 유지). ★ 이 값으로도 머리는 봉우리 사이로 **보이지 않는다**(리더 판정 「기하적으로 불가」, 자홍 0px).
-                      # 첫 판 0.20 은 앞층 윤곽(1pt = 0.172 R, 골 양쪽 두 변)이 그 틈을 다 먹어 0 px 였다(자홍 대조 (b) 8 px 중 0).
-def _refit_crown(pieces):
-    """왕관 재맞춤(H-2 + 골 높이 ≤ HEAD_R_COVER − CROWN_SHOW). 가장 작은 u. ★ 골을 낮춰도 머리 노출은 실질 0(리더 판정) — 파라미터는 현행 유지."""
-    import numpy as np
-    ys = np.arange(0.0, 64.0, 0.25); chw = M17.central_hw_profile("crown", ys)
-    best = None
-    for u in np.arange(0.045, 0.150, 0.001):
-        cands = []
-        for dy in np.arange(0.0, 4.5, 0.02):
-            e = M17.evaluate("crown", u, dy, 1.0, ys, chw)
-            dip = dy - M17.CROWN_DIP_ICON_Y * u
-            if e["ok"] and dip <= HEAD_R_COVER - CROWN_SHOW: e["dip"] = dip; cands.append(e)
-        if cands:
-            best = min(cands, key=lambda e: abs(e["dip"] - (HEAD_R_COVER - CROWN_SHOW))); break
-    if best is None: raise SystemExit("왕관 재맞춤 실패")
-    global CROWN_FIT
-    CROWN_FIT = best
-    M17.HAT_FIT["crown"] = best          # hat_to_R 이 이 값을 읽는다
-    fx, fy = M17.hat_to_R("crown")
-    icon = M17._icon_polys("crown"); srcs = ["%s%d" % (pc.call, i) for i, pc in enumerate(icon)]
-    bymap = {s: pc for s, pc in zip(srcs, icon)}
-    out = []
-    for p in pieces:
-        pc = bymap[p.src]
-        out.append(_cp(p, pts=[(fx(x), fy(y)) for x, y in pc.pts], transform="HAT_FIT u=%.4f ky=1.00 dy=%.4f (R19 재맞춤: 골 %.3f R)" % (best["u"], best["dy"], best["dip"])))
-    return out
-CROWN_FIT = None
+# ============================================================================
+# ★★ 2026-09-06 — 왕관 R19 재맞춤(CROWN_SHOW / _refit_crown) **폐기**. 사용자 신고 대응.
+# ============================================================================
+# 신고 원문: "왕관착용시 머리 중간넘어서까지 착용이 되서 안경같은게 하나도 안보임 착용위치가 잘못됨".
+#
+# 무엇이 있었나 — R19 재맞춤은 "왕관 봉우리 사이 골(icon y=29)을 머리 꼭대기 아래 CROWN_SHOW(0.40 R)
+# 까지 내려서 봉우리 사이로 머리가 보이게" 하려던 제약이었다. 그 제약 때문에 격자 탐색이
+# R17 H-2 기본 맞춤(u=0.0570 · dy=+3.1200)을 버리고 **u=0.0630 · dy=+2.6000** 을 골랐고,
+# 왕관 전체가 **0.8155 R 아래로** 내려갔다(밑단 +0.3127 R → **−0.5028 R**).
+#
+# 그 결과(design-equipment 실측, 프로덕션 좌표 래스터 · 안경 잉크 면적 대비 모자 채움 덮임률):
+#   왕관 × 선글라스 99.8% · 동그란안경 99.9% · 고글 98.7% · 뿔테 91.0% · 안대 84.1% · 외알안경 80.1%
+#   대조 — 같은 자로 잰 나머지 모자 5종의 최악값: 밀짚모자 78.4% · 털모자 71.3% · 베레모 56.3%
+#          · 천모자 43.4% · 중절모 39.5%. 왕관만 유일하게 앞층 밑단이 음수(−0.5028 R)였다
+#          (천모자 +0.1220 · 중절모 +0.1330 · 베레모 −0.1000 · 털모자 −0.1326 · 밀짚모자 −0.4000).
+#   즉 "모자가 안경 위에 온다"(HEAD 정렬 10 > EYES 8)는 6종 공통 규칙이고 원인이 아니다 —
+#   **좌표가 원인이다.** 층이 원인이라면 천모자도 안경을 지웠어야 하는데 그러지 않는다.
+#
+# 그리고 그 제약이 사려던 이득은 **같은 라운드에 이미 반증됐다**: 리더 판정 R19 —
+# "봉우리 사이로 머리가 보이는 일은 기하적으로 없다(틈 36px 를 1pt 윤곽이 전부 먹는다,
+# verify-change 픽셀 실측 자홍 0px)". 그때 결론이 「파라미터는 현행 유지」로 남으면서
+# **이득 0 · 비용 = 안경 6종 전멸**인 상태가 그대로 출하됐다. 그 자리를 여기서 닫는다.
+#
+# 지금 — 왕관도 나머지 인계본 모자 3종과 **같은 H-2 기본 맞춤**(r17_model.HAT_FIT)을 쓴다.
+#   u=0.0570 · ky=1.00 · dy=+3.1200 → 밑단 **+0.3127 R** · 꼭대기 **+2.4132 R** · 폭 2.337 R.
+#   · 안경 가려짐 12.1 / 16.0 / 12.8 / 20.3 / 30.2 / 22.4 % — **모자 6종 중 가장 적게 가린다**
+#     (얹는 물건이라는 왕관의 정체와 맞다).
+#   · 머리 덮임: cover_top = HEAD_R_COVER 1.1842 R 이라 머리 꼭대기까지 그대로 덮인다
+#     (골 +1.4670 R 이 머리 꼭대기 위에 있어 봉우리 사이로 머리가 새지 않는다 — 위 반증과 일치).
+#   · H-2 **「앞층만의 합집합」**(§14-12-8 이 미확인으로 남겨 둔 자) 로 다시 재도 **통과**한다 —
+#     착용선 +0.440 ≤ 목표 +0.45. 같은 자로 재면 천모자 +0.680 · 중절모 +0.776 은 **실패**이고
+#     (§14-12-8 이 중절모에 대해 예측한 그대로. 천모자도 함께 실패한다는 것은 이번이 첫 실측),
+#     털모자 −0.040 ≤ 0.00 통과 · 밀짚모자 −0.228 통과(단 그 통과의 정체는 v1 챙이 얼굴 앞
+#     −0.400 R 까지 내려온 것이고, 그래서 밀짚모자가 안경을 78.4% 가린다) · 베레모는 덮임 실패.
+#     → 천모자·중절모·베레모·밀짚모자의 좌표는 이번 라운드에서 **건드리지 않았다**(별건).
+#   · 초상화 액자: 꼭대기 2.4132 R < TallestAccessoryAboveHeadCenterInR 2.551 R,
+#     그리고 최고 아이템은 여전히 털모자(2.5437 R)라 액자 상수는 안 건드린다.
+#   · 모자 6종 쌍별 실루엣 차: 왕관 쌍 4.26~6.40획(옛 2.55~3.90획), 전체 최소는 그대로
+#     천모자↔중절모 1.69획 — 문턱 1.00획 통과.
+#   · 규칙 1: 배율이 0.9048 배로 줄어 보석(CF3/CF4) 잉크 사각형이 0.2394 → 0.2166 R.
+#     하한 1.5획(0.13845×1.5 = 0.2077 R) 위, 여유 +4.3%. **여기가 가장 빠듯한 자리다** —
+#     왕관을 더 줄이는 변경은 이 값을 먼저 다시 재라.
+#
+# ★ 되살리지 마라. 되살리려면 (가) 봉우리 사이 머리 노출이 실제 빌드 캡처에서 0px 이 아님을
+#   먼저 증명하고, (나) 안경 6종 가려짐을 나머지 모자 5종의 최악값(78.4%) 아래로 유지하는
+#   u·dy 가 존재함을 함께 보여라. 지금 격자에는 그런 (u, dy) 가 없다 —
+#   u=0.0630 을 유지한 채 밑단을 +0.3127 R 로 올리면 꼭대기가 2.6343 R 로 액자(2.551)를 넘는다.
+# ============================================================================
 
 # ============================================================================
 # 3. 기하 — ④ 구슬 · ⑤ 나비넥타이 · ⑥ 배낭 · 렌즈 · 그룹 α
@@ -252,13 +335,26 @@ def report(out=sys.stdout):
         back = [p.name for p in ps if p.layer == "back"]; front = [p.name for p in ps if p.layer == "front"]
         w("   %-9s 뒤층 %d: %s" % (k, len(back), ", ".join(back) if back else "(없음 — 먼 쪽이 보이는 부위가 없다)"))
         w("             앞층 %d: %s" % (len(front), ", ".join(front)))
-    f = CROWN_FIT
-    w("   왕관 재맞춤: u %.4f(카드 ×%.2f) dy %+.3f · 착용선(테 밑) %+.3f · 골 %+.3f (머리 꼭대기 %.3f − %.2f) · 꼭대기 %+.3f · 밑 %+.3f · 폭 %.2f R  (R17: u 0.0570 dy 3.120 골 +1.467 — 머리가 안 보였다)" % (
-        f["u"], f["u"] / M17.ICON_U_HEAD, f["dy"], f["wear"], f["dip"], HEAD_R_COVER, CROWN_SHOW, f["top"], f["bottom"], f["width"]))
+    f = M17.HAT_FIT["crown"]
+    w("   왕관: R17 기본 맞춤 그대로(R19 재맞춤 폐기) u %.4f(카드 ×%.2f) dy %+.3f · 꼭대기 %+.3f · 밑 %+.3f · 폭 %.2f R" % (
+        f["u"], f["u"] / M17.ICON_U_HEAD, f["dy"], f["top"], f["bottom"], f["width"]))
+    w("== 1-b. [R24] 관 x 배수 — 앞층만 H-2 (u·dy·ky 무변경 = 챙 폭·꼭대기·밑단 불변) ==")
     for k in ("clothhat", "fedora"):
-        fh = M17.HAT_FIT[k]; fx, fy = M17.hat_to_R(k); ymid = fy(41.0 if k == "clothhat" else 41.5)
-        chord = math.sqrt(max(0, HEAD_R_SHIP ** 2 - ymid ** 2))
-        w("   %-9s 챙 장축 y %+.3f R · 그 높이 머리 현 반폭 %.3f · 챙 반폭 %.3f → 먼 쪽 챙이 머리 옆으로 각 %.3f R 보인다" % (k, ymid, chord, fh["width"] / 2, fh["width"] / 2 - chord))
+        fh = M17.HAT_FIT[k]; fx, fy = M17.hat_to_R(k)
+        kx = CROWN_WIDEN[k]
+        b0 = [p for p in WORN[k] if p.src == "B0"][0]
+        x0, y0, x1, y1 = rig.bounds(b0.pts)
+        cb = y0                                  # 관 밑변(R 좌표는 y 위 → 최소 y) = 챙 분할선
+        near = [p for p in WORN[k] if p.src == "B2near"][0]
+        nx0, ny0, nx1, ny1 = rig.bounds(near.pts)
+        chord = math.sqrt(max(0.0, HEAD_R_COVER ** 2 - cb ** 2))
+        w("   %-9s 관 x×%.2f → 관 반폭 %.3f R (카드 %.3f) · 관 밑변 %+.3f R · 그 높이 머리 현 %.3f + 여유 %.2f = %.3f → %s"
+          % (k, kx, x1, x1 / kx, cb, chord, M17.COVER_MARGIN, chord + M17.COVER_MARGIN,
+             "덮는다" if x1 >= chord + M17.COVER_MARGIN else "★ 모자란다"))
+        w("             챙 분할선 %+.3f R(= 관 밑변) · 가까운 쪽 챙 y[%+.3f,%+.3f] 반폭 %.3f — 관 밑변에서 이어받는다"
+          % (cb, ny0, ny1, nx1))
+        w("             챙 폭 %.3f R · 꼭대기 %+.3f · 앞층 밑단 %+.3f (셋 다 R19 값과 같다 — u·dy 를 안 건드렸다)"
+          % (fh["width"], fh["top"], fh["bottom"]))
     w()
     w("== 2. [⑤] NECK 착용선 (N-1 예외 폐지) ==")
     for k, src, top, dsh, dhead, ok in neck_table():

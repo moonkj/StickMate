@@ -154,8 +154,23 @@ namespace StickMate.Interaction
         private bool _narrationWasEnabled = true;
 
         /// <summary>로그 문구는 <b>확정된 신호 값에서만</b> 파생한다(불변 원칙 1의 텍스트-액션 싱크 규약을
-        /// 진단 로그에도 그대로 적용 — 문구를 먼저 정하고 동작을 끼워 맞추지 않는다).</summary>
+        /// 진단 로그에도 그대로 적용 — 문구를 먼저 정하고 동작을 끼워 맞추지 않는다).
+        /// <para>★ 2026-09-06 — 집중 세션 어휘 4종이 <b>같은 이벤트</b>로 들어온다. 여기를 안 늘리면
+        /// 네 종이 전부 "주위 살피기"로 찍혀, 로그만 보고 판단하는 다음 사람이 <b>실제로 일어난 동작과
+        /// 다른 이름</b>을 믿게 된다(이 클래스가 2026-08-31에 이미 한 번 겪은 종류의 낡음이다).
+        /// 접기(RepeatedLogFolder)의 <b>키</b>이기도 하므로, 이름이 같으면 서로 다른 동작이 한 줄로
+        /// 접혀 "44회 반복"처럼 보인다.</para></summary>
         private static string Describe(WanderAmbientMotion motion)
-            => motion == WanderAmbientMotion.SitAndYawn ? "기지개" : "주위 살피기";
+        {
+            switch (motion)
+            {
+                case WanderAmbientMotion.SitAndYawn: return "기지개";
+                case WanderAmbientMotion.FocusRecross: return "집중-자세 고쳐잡기";
+                case WanderAmbientMotion.FocusRingCheck: return "집중-발밑 링 확인";
+                case WanderAmbientMotion.FocusScreenGlance: return "집중-화면 쪽 돌아보기";
+                case WanderAmbientMotion.FocusStanceSwap: return "집중-관망 자세 바꾸기";
+                default: return "주위 살피기";
+            }
+        }
     }
 }

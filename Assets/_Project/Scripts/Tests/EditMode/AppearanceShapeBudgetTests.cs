@@ -544,18 +544,31 @@ namespace StickMate.Tests.EditMode
             //     · 남아 있는 동안은 <b>건너뜀</b>으로 러너에 계속 보인다(잊히지 않게)
             //     · <b>0이 되면 초록</b>이 되고, 그때 아래 상수를 0으로 내리면 규칙이 영구히 잠긴다
             //   숫자를 "그냥 통과시키는 상한"으로 쓰지 않는 이유가 이 세 줄이다.
-            const int KnownDebtOn20260902 = 14;
+            //
+            //   ★ 2026-09-06 리더 판단 — 14 -&gt; <b>17</b>로 올렸다(R25 베레모·밀짚모자 재저작 이후).
+            //   design-equipment가 직접 조사했다: 새로 들어온 것은 원래 10건, 그중 1건(베레모
+            //   BeretStem)은 진짜 결함이라 좌표 수정으로 닫혔고(뿌리점 이동, 봉투·조각 수 불변),
+            //   남은 9건은 "그리려다 만 점"이 아니라 <b>곡선 표본</b>이었다(끝 꺾임 1.1°~6.5°, 규칙
+            //   1-B가 요구하는 양끝 ≥45° 꺾임은 0건) — 이미 인계본 16종이 같은 이유로 면제받고
+            //   있는 것과 <b>같은 정체</b>다. 이후 클러스터 수정 라운드가 그중 1건을 추가로 닫아
+            //   최종 기여가 9 -&gt; 8건으로 줄었다(19 -&gt; 18 -&gt; 17). 실측 근거는 design/equipment/
+            //   verify/r25c_shortedge.py(A/B/C 세 상태 + 감축 시뮬레이션)에 남아 있다.
+            //   <b>더 정확한 해법</b>(건너뛰기 판정을 <c>IsHandoff</c> 계약 플래그가 아니라 "곡선
+            //   표본 여부"로 재정의하면 이 17건이 전부 빠져 래칫이 0으로 영구히 잠긴다)이 있다고
+            //   조사자가 제안했다 — 다음 라운드에 test-engineer가 시도해도 된다. <b>이 숫자를 더
+            //   올리기 전에는 반드시 실측 근거(위 스크립트류)를 먼저 남겨라.</b>
+            const int KnownDebtOn20260906 = 17;
 
-            Assert.LessOrEqual(violations.Count, KnownDebtOn20260902,
-                $"최단 실제 변 위반이 {violations.Count}건으로 늘었습니다(2026-09-02 실측 " +
-                $"{KnownDebtOn20260902}건). 이 라운드가 <b>새 위반을 넣었습니다</b> — " +
+            Assert.LessOrEqual(violations.Count, KnownDebtOn20260906,
+                $"최단 실제 변 위반이 {violations.Count}건으로 늘었습니다(2026-09-06 실측 " +
+                $"{KnownDebtOn20260906}건). 이 라운드가 <b>새 위반을 넣었습니다</b> — " +
                 $"래칫은 줄어드는 방향으로만 열립니다.\n  " + string.Join("\n  ", violations));
 
             if (violations.Count > 0)
             {
                 Assert.Ignore(
                     $"★ 미완(건너뜀) — 액세서리 {items}종 / 도형 {shapesChecked}개에 규칙 1(최단 실제 변)을 " +
-                    $"켰고 위반 {violations.Count}건이 <b>실재</b>합니다(래칫 상한 {KnownDebtOn20260902}건 이하라 " +
+                    $"켰고 위반 {violations.Count}건이 <b>실재</b>합니다(래칫 상한 {KnownDebtOn20260906}건 이하라 " +
                     "악화는 아닙니다). 전부 '작은 둥근 것의 각수가 반지름에 비해 많다'는 한 가지 정체입니다 — " +
                     "각수를 줄이거나 반지름을 키우면 닫힙니다. 프로덕션 도형 좌표 변경이라 배정이 필요합니다.\n  " +
                     string.Join("\n  ", violations));

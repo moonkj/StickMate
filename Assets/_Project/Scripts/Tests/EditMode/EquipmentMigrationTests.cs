@@ -82,6 +82,23 @@ namespace StickMate.Tests.EditMode
             CurrencyModel.ResetForTesting();
         }
 
+        /// <summary>
+        /// ★ 2026-09-06 — <b>나가는 문에도 같은 리셋을 건다</b>.
+        ///
+        /// <para><c>v10_왕복은…</c>이 <c>equip.head.crown</c>을 실제로 구매하고
+        /// (<see cref="CurrencyModel.TryPurchaseItem"/>), 구매 이력은 <b>스위트 전역 사실</b>이다 —
+        /// <c>ItemCatalogEntry.IsOwned</c>가 «레벨 파생 ∪ 구매분»이라(DESIGN_SYSTEMS_STATS §20-2-a)
+        /// 그 한 줄이 살아남으면 뒤에 도는 픽스처에서 <b>Lv.1의 왕관이 「보유」</b>가 된다.</para>
+        ///
+        /// <para>★ 지금까지 이 픽스처가 실제로 새지 <b>않았던</b> 이유는 아래 <c>RestoreRealSaveFile</c>
+        /// (<c>[OneTimeTearDown]</c>)이 끝에서 <see cref="ResetModels"/>를 한 번 부르기 때문이다.
+        /// 그건 <b>저장 파일을 되돌리는 김에</b> 딸려 있는 한 줄이라, 파일 복원 방식을 손보는 라운드에
+        /// 조용히 사라질 수 있다. 불변식(«구매 이력은 이 픽스처 밖으로 나가지 않는다»)을 그 한 줄에
+        /// 얹어 두지 않고 테스트마다 성립시킨다.</para>
+        /// </summary>
+        [TearDown]
+        public void ResetModelsAfter() => ResetModels();
+
         // ============================================================================
         // 옛 파일들 — 각 버전이 실제로 담고 있던 필드만 적는다(없던 필드를 적으면 검증이 무의미해진다)
         // ============================================================================
@@ -274,9 +291,12 @@ namespace StickMate.Tests.EditMode
             // ★ 네거티브 컨트롤의 본체. 로드 전에 신규 카테고리를 일부러 채워 둔다 —
             //   마이그레이션이 "옛 파일에 없는 것은 건드리지 않는다"로 구현돼 있으면 이 값이 그대로 남고,
             //   파일이 말한 적 없는 차림을 화면이 보여주게 된다.
+            // ★ 2026-09-06 — 여기 있던 [머리] 준비 한 줄을 [이펙트]로 바꿨다. 머리는 은퇴해
+            //   (EquipmentModel.IsRetiredSlot) TryWear이 구조적으로 false를 돌려주므로, 그대로 두면
+            //   이 테스트가 <b>준비 조건에서</b> 빨개진다 — 잴 것을 재기도 전에.
             StickConfig config = LoadDefaultConfig();
             CharacterProgressionModel.AddXp(100000f, config);   // 전부 보유할 만큼 올린다.
-            Assert.IsTrue(EquipmentModel.TryWear(EquipmentSlot.Hair, 2, config), "준비 조건 실패 — 머리를 걸치지 못했습니다.");
+            Assert.IsTrue(EquipmentModel.TryWear(EquipmentSlot.Fx, 2, config), "준비 조건 실패 — 이펙트를 걸치지 못했습니다.");
             Assert.IsTrue(EquipmentModel.TryWear(EquipmentSlot.Pet, 3, config), "준비 조건 실패 — 펫을 걸치지 못했습니다.");
 
             File.WriteAllText(CharacterSaveStore.FilePath, V4Json);
@@ -292,7 +312,10 @@ namespace StickMate.Tests.EditMode
             CharacterProgressionModel.AddXp(100000f, config);
 
             Assert.IsTrue(EquipmentModel.TryWear(EquipmentSlot.Head, 2, config));      // 중절모
-            Assert.IsTrue(EquipmentModel.TryWear(EquipmentSlot.Hair, 3, config));      // 민머리
+            // ★ 2026-09-06 — 옛 줄은 [머리] 3번(민머리)이었다. 머리 은퇴로 걸칠 수 없어 [망토]로 바꿨다.
+            //   이 테스트가 재는 것은 "카테고리마다 고른 아이템이 아이디로 왕복하는가"라 어느
+            //   카테고리인지는 본질이 아니다 — 다만 <b>여러 카테고리</b>여야 한다.
+            Assert.IsTrue(EquipmentModel.TryWear(EquipmentSlot.Shoulders, 3, config));
             Assert.IsTrue(EquipmentModel.TryWear(EquipmentSlot.Fx, 1, config));        // 발자국
             Assert.IsTrue(EquipmentModel.TryWear(EquipmentSlot.Eyes, EquipmentModel.NotWorn, config));
             Assert.IsTrue(CharacterSaveStore.Save(), "저장에 실패했습니다.");
@@ -315,11 +338,64 @@ namespace StickMate.Tests.EditMode
             CharacterSaveStore.Load();
 
             Assert.AreEqual(2, EquipmentModel.WornIndex(EquipmentSlot.Head));
-            Assert.AreEqual(3, EquipmentModel.WornIndex(EquipmentSlot.Hair));
+            Assert.AreEqual(3, EquipmentModel.WornIndex(EquipmentSlot.Shoulders));
             Assert.AreEqual(1, EquipmentModel.WornIndex(EquipmentSlot.Fx));
             Assert.AreEqual(EquipmentModel.NotWorn, EquipmentModel.WornIndex(EquipmentSlot.Eyes),
                 "벗어 둔 카테고리가 착용으로 되살아났습니다.");
             Assert.AreEqual(EquipmentModel.NotWorn, EquipmentModel.WornIndex(EquipmentSlot.Pet));
+        }
+
+        /// <summary>
+        /// ★ <b>은퇴한 카테고리의 하위 호환</b> — 2026-09-06 사용자 지시
+        /// *"외형에서 머리 스타일은 전체 삭제"*.
+        ///
+        /// <para>머리를 걸친 채 저장한 사용자는 <b>실재한다</b>(<c>wornHair</c>는 v5부터 배포된 필드다).
+        /// 카테고리를 화면에서 지울 때 이 저장소가 실제로 겪은 사고 두 가지를 여기서 막는다:
+        /// ① 그 키를 읽던 코드까지 지워서 <b>파일이 통째로 안 열림</b>(라이벌 삭제 때의 그 형태),
+        /// ② 착용만 남아 정보창 어디에서도 <b>벗을 수 없는</b> 머리가 몸에 붙어 있음(탈출구 없음).</para>
+        ///
+        /// <para>기대: 파일은 그대로 열리고, 머리 <b>외의</b> 값은 한 칸도 다치지 않고, 머리만 미착용이다.
+        /// 저장 스키마 버전은 움직이지 않는다 — 파일 형식이 아니라 <b>읽는 쪽의 규칙</b>이 바뀐 것이다.</para>
+        /// </summary>
+        [Test]
+        public void 은퇴한_머리를_걸친_채_저장된_파일도_그대로_열리고_머리만_미착용이_된다()
+        {
+            // ★ 양성 대조 — 이 테스트가 겨누는 자리가 실재하는가. 은퇴가 풀리면 아래 부재 단언이
+            //   조용히 초록이 되므로(부재 단언이 썩는 방식), 먼저 존재를 못박는다.
+            Assert.IsTrue(EquipmentModel.IsRetiredSlot(EquipmentSlot.Hair),
+                "[머리]가 은퇴 상태가 아닙니다 — 아래 단언들이 아무것도 재지 않습니다.");
+
+            string hairId = EquipmentModel.ItemId(EquipmentSlot.Hair, 2);
+            string hatId = EquipmentModel.ItemId(EquipmentSlot.Head, 2);
+            string petId = EquipmentModel.ItemId(EquipmentSlot.Pet, 0);
+            Assert.IsFalse(string.IsNullOrEmpty(hairId),
+                "카탈로그에 머리 2번이 없습니다 — 옛 저장 파일이 가리키던 아이디를 만들 수 없습니다. " +
+                "(에셋을 지우면 이 테스트의 전제가 사라진다 — 은퇴는 데이터 삭제가 아니다.)");
+
+            string json =
+                "{\n" +
+                $"    \"version\": {CharacterSaveStore.CurrentVersion},\n" +
+                "    \"level\": 24,\n" +
+                "    \"characterName\": \"곱슬동료\",\n" +
+                $"    \"wornHead\": \"{hatId}\",\n" +
+                $"    \"wornHair\": \"{hairId}\",\n" +
+                $"    \"wornPet\": \"{petId}\"\n" +
+                "}";
+            File.WriteAllText(CharacterSaveStore.FilePath, json);
+            CharacterSaveStore.Load();
+
+            Assert.IsTrue(CharacterSaveStore.LoadedFromFile,
+                "머리를 걸친 파일이 통째로 버려졌습니다 — 레벨·이름·나머지 차림이 전부 날아갑니다.");
+            Assert.AreEqual(24, CharacterProgressionModel.Level, "레벨이 함께 날아갔습니다.");
+            Assert.AreEqual("곱슬동료", CharacterProgressionModel.CharacterName, "이름이 날아갔습니다.");
+            Assert.AreEqual(2, EquipmentModel.WornIndex(EquipmentSlot.Head), "모자가 함께 벗겨졌습니다.");
+            Assert.AreEqual(0, EquipmentModel.WornIndex(EquipmentSlot.Pet), "펫이 함께 벗겨졌습니다.");
+            Assert.AreEqual(EquipmentModel.NotWorn, EquipmentModel.WornIndex(EquipmentSlot.Hair),
+                "은퇴한 [머리]가 몸에 남았습니다 — 정보창에는 벗을 자리가 없어 탈출구가 없습니다.");
+
+            // 화면을 우회하는 착용 경로가 남아 있으면 위 단언은 반쪽이다.
+            Assert.IsFalse(EquipmentModel.TryWear(EquipmentSlot.Hair, 2, LoadDefaultConfig()),
+                "은퇴한 [머리]를 여전히 걸칠 수 있습니다 — 다음 저장이 그 상태를 파일에 굳힙니다.");
         }
 
         /// <summary>

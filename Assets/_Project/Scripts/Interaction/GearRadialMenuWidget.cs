@@ -1549,7 +1549,8 @@ namespace StickMate.Interaction
             _onboardingHint.anchoredPosition =
                 ResolveHoverLabelCenter(origin + middle * reach, _onboardingHintWidth);
             _onboardingHintSurface.color = Fade(UiChrome.PanelSurface, _onboardingHintAlpha);
-            _onboardingHintBorder.color = Fade(UiChrome.AccentBorder, _onboardingHintAlpha);
+            _onboardingHintBorder.color =
+                Fade(UiChrome.Flatten(UiChrome.AccentBorder, UiChrome.PanelSurface), _onboardingHintAlpha);
             _onboardingHintText.color = Fade(UiChrome.TextPrimary, _onboardingHintAlpha);
         }
 
@@ -1658,7 +1659,7 @@ namespace StickMate.Interaction
         private void SetHoverLabelAlpha(float alpha)
         {
             _hoverLabelSurface.color = Fade(UiChrome.PanelSurface, alpha);
-            _hoverLabelBorder.color = Fade(UiChrome.PanelBorder, alpha);
+            _hoverLabelBorder.color = Fade(UiChrome.Flatten(UiChrome.PanelBorder, UiChrome.PanelSurface), alpha);
             _hoverLabelText.color = Fade(UiChrome.TextPrimary, alpha);
         }
 
@@ -1679,20 +1680,35 @@ namespace StickMate.Interaction
             float hover = EaseOutQuad(b.Hover);
             bool armedQuit = _quitArmed && index == (int)GearMenuButton.Quit;
 
+            // ★★ 2026-09-06 (docs/UI_ALPHA_BLEED_POLICY.md §5-3) — <b>여기는 창 안이 아니라
+            //   바탕화면 직접</b>이라 비침 식이 1−α²다: AccentSurface(α0.14)는 <b>98%</b>,
+            //   AccentBorder(α0.55)는 <b>69.75%</b>가 비쳤다. 즉 "밝아졌다"를 말해야 할 강조 면이
+            //   실제로는 <b>구멍</b>이었다. 두 끝점을 미리 합성해 α=1로 만든다 — 보이는 색은 같다.
+            //   <b>토큰은 하나도 바꾸지 않았다</b>: 무장 링을 Accent로 올리는 §5-4는 연출 강도
+            //   판정이라 P2로 남는다(리더 배분 사항).
+            Color quitArmedFace = UiChrome.Flatten(UiChrome.AccentSurface, UiChrome.CardSurface);
+            Color accentFace = quitArmedFace;   // 같은 합성 — 강조 면의 끝점은 한 값이다.
+
             Color surface, border, symbol;
             if (index == (int)GearMenuButton.Quit)
             {
                 // 평상 SubtleSurface -> 호버 CardSurface -> 무장 AccentSurface. 호버는 강조까지 안 간다.
-                surface = armedQuit ? UiChrome.AccentSurface
+                surface = armedQuit ? quitArmedFace
                     : Color.Lerp(UiChrome.SubtleSurface, UiChrome.CardSurface, hover);
-                border = armedQuit ? UiChrome.AccentBorder : UiChrome.CardBorder;
+                // 테두리의 바탕은 팬이 아니라 <b>방금 정한 이 버튼의 면</b>이다(호버 중에도 따라간다).
+                border = UiChrome.Flatten(armedQuit ? UiChrome.AccentBorder : UiChrome.CardBorder, surface);
                 symbol = armedQuit ? UiChrome.WarmAccent
                     : Color.Lerp(UiChrome.TextSecondary, UiChrome.TextPrimary, hover);
             }
             else
             {
-                surface = Color.Lerp(UiChrome.CardSurface, UiChrome.AccentSurface, active ? 1f : hover);
-                border = Color.Lerp(UiChrome.CardBorder, UiChrome.AccentBorder, active ? 1f : hover);
+                // 끝점을 미리 합성한 뒤 Lerp한다 — raw Lerp는 색과 <b>α를 함께</b> 보간하므로
+                // 중간 프레임마다 창 알파가 흔들린다. 끝점이 같으면 0.09초짜리 호버 보간의
+                // 중간값은 사람이 판정할 수 없다(§5-3 주).
+                surface = Color.Lerp(UiChrome.CardSurface, accentFace, active ? 1f : hover);
+                border = Color.Lerp(UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface),
+                                    UiChrome.Flatten(UiChrome.AccentBorder, accentFace),
+                                    active ? 1f : hover);
                 symbol = Color.Lerp(UiChrome.TextPrimary, UiChrome.Accent, active ? 1f : hover);
             }
 
@@ -1736,7 +1752,12 @@ namespace StickMate.Interaction
                 b.RingFill.color = Fade(UiChrome.WarmAccent, alpha);
                 // ★ 위성의 카운트다운 링에는 트랙이 없다(전원 기호의 원호가 그 자리에 이미 있다).
                 //   가드 없이 쓰면 [앱 종료] 무장 첫 프레임에 NullReference로 죽는다.
-                if (b.RingTrack != null) b.RingTrack.color = Fade(UiChrome.TrackBackground, alpha);
+                if (b.RingTrack != null)
+                {
+                    // 트랙의 바탕은 이 버튼의 <b>면</b>이다(알파를 먹이기 <b>전</b> 값으로 합성한다 —
+                    // Fade 뒤의 색을 바탕으로 쓰면 반투명 위에 합성하는 셈이라 계산이 거짓말을 한다).
+                    b.RingTrack.color = Fade(UiChrome.Flatten(UiChrome.TrackBackground, surface), alpha);
+                }
             }
         }
 
@@ -2201,7 +2222,8 @@ namespace StickMate.Interaction
             _hoverLabelSurface = UiChrome.AddSurface(_hoverLabel, "Surface", UiChrome.PanelSurface, 9);
             UiChrome.Stretch(_hoverLabelSurface.rectTransform);
             _hoverLabelSurface.raycastTarget = false;   // 툴팁은 클릭을 먹지 않는다.
-            _hoverLabelBorder = UiChrome.AddOutline(_hoverLabel, "Border", UiChrome.PanelBorder, 9);
+            _hoverLabelBorder = UiChrome.AddOutline(_hoverLabel, "Border",
+                UiChrome.Flatten(UiChrome.PanelBorder, UiChrome.PanelSurface), 9);
             _hoverLabelBorder.raycastTarget = false;
 
             _hoverLabelText = UiChrome.AddText(_hoverLabel, "Text", UiChrome.FontCaption,
@@ -2235,7 +2257,8 @@ namespace StickMate.Interaction
             _onboardingHintSurface = UiChrome.AddSurface(_onboardingHint, "Surface", UiChrome.PanelSurface, 9);
             UiChrome.Stretch(_onboardingHintSurface.rectTransform);
             _onboardingHintSurface.raycastTarget = false;   // 안내는 클릭을 먹지 않는다(원칙 2).
-            _onboardingHintBorder = UiChrome.AddOutline(_onboardingHint, "Border", UiChrome.AccentBorder, 9);
+            _onboardingHintBorder = UiChrome.AddOutline(_onboardingHint, "Border",
+                UiChrome.Flatten(UiChrome.AccentBorder, UiChrome.PanelSurface), 9);
             _onboardingHintBorder.raycastTarget = false;
 
             _onboardingHintText = UiChrome.AddText(_onboardingHint, "Text", UiChrome.FontCaption,
@@ -2247,7 +2270,7 @@ namespace StickMate.Interaction
             _onboardingHint.sizeDelta = new Vector2(_onboardingHintWidth, HoverLabelHeightPoints);
 
             _onboardingHintSurface.color = Fade(UiChrome.PanelSurface, 0f);
-            _onboardingHintBorder.color = Fade(UiChrome.AccentBorder, 0f);
+            _onboardingHintBorder.color = Fade(UiChrome.Flatten(UiChrome.AccentBorder, UiChrome.PanelSurface), 0f);
             _onboardingHintText.color = Fade(UiChrome.TextPrimary, 0f);
             go.SetActive(false);
         }
@@ -2274,7 +2297,8 @@ namespace StickMate.Interaction
             view.Root.sizeDelta = new Vector2(d, d);
 
             view.Surface = UiChrome.AddCircle(view.Root, "Surface", d, UiChrome.CardSurface);
-            view.Border = UiChrome.AddCircle(view.Root, "Border", d, UiChrome.CardBorder, 1.2f);
+            view.Border = UiChrome.AddCircle(view.Root, "Border", d,
+                UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface), 1.2f);
             view.Flash = UiChrome.AddCircle(view.Root, "Flash", d, new Color(0f, 0f, 0f, 0f));
 
             var symbolGo = new GameObject("Symbol", typeof(RectTransform));

@@ -144,8 +144,36 @@ namespace StickMate.Core
         }
 
         /// <summary>외형 계열(머리/이펙트/펫)인가 — UI가 "장비 계열 / 외형 계열"로 묶어 보여줄 때만
-        /// 쓴다. 데이터로서의 취급은 두 계열이 완전히 같다(Core/ItemCatalog.cs 문서 참고).</summary>
+        /// 쓴다. 데이터로서의 취급은 두 계열이 완전히 같다(Core/ItemCatalog.cs 문서 참고).
+        /// <para>★ 이 술어는 <b>계열</b>만 말한다. 그 계열 중 화면에 실제로 뜨는 자리인지는
+        /// <see cref="IsRetiredSlot"/>가 따로 답한다 — 머리는 계열로는 여전히 외형이지만
+        /// 고를 수 있는 자리가 아니다.</para></summary>
         public static bool IsAppearanceSlot(EquipmentSlot slot) => (int)slot >= FirstAppearanceSlot;
+
+        /// <summary>
+        /// ★ <b>은퇴한 카테고리</b> — 사용자 지시 2026-09-06 *"외형에서 머리 스타일은 전체 삭제"*.
+        /// 지금 해당하는 자리는 <see cref="EquipmentSlot.Hair"/> 하나다.
+        ///
+        /// <para><b>왜 enum 값과 에셋을 지우지 않았는가</b> — 2026-08-30 표정(FACE) 삭제와 조건이
+        /// 달라졌다. 그때 카테고리는 스탯·등급 체계가 들어오기 <b>전</b>이었다. 지금 머리 6종은
+        /// 카탈로그 <b>42종(7 × 6)</b>의 일부이고, 그 42가 등급 파생(슬롯당 2/2/1/1)·골든 덤프·
+        /// 팩 자리 번호가 딛고 선 분모다. 에셋을 빼면 <b>아무도 안 건드린 등급이 통째로 미끄러진다</b>
+        /// (<c>ItemCatalog.CohortId</c> 문단이 경고하는 바로 그 사고). 그래서 데이터는 그대로 두고
+        /// <b>고를 수 있는 자리에서만</b> 뺀다.</para>
+        ///
+        /// <para>★ <b>이 술어 하나로 화면과 몸이 함께 닫힌다.</b> 걸치는 유일한 경로
+        /// (<see cref="TryWear"/>)와 저장 복원(<see cref="RestoreFromSave(EquipmentSlot,string)"/>)이
+        /// 둘 다 여기서 막히므로 <see cref="WornIndex"/>는 이 자리에서 <b>영원히</b>
+        /// <see cref="NotWorn"/>이고, 몸/초상화 렌더러의 "걸친 것만 그린다"(<c>ShouldDraw</c>)가
+        /// 그대로 렌더 스킵이 된다. 렌더러에 분기를 하나도 더하지 않는 이유가 이것이다 —
+        /// 더하면 "무엇이 은퇴했는가"가 두 곳에 생기고, 한쪽만 고치는 날 화면과 모델이 갈라진다.</para>
+        ///
+        /// <para>★ <b>이미 머리를 걸치고 있던 저장 파일</b>은 그대로 열린다. 복원이 그 칸만 미착용으로
+        /// 떨어뜨리고 나머지 값은 한 줄도 건드리지 않는다 — 파일을 고쳐 쓰지도, 버리지도, 마이그레이션
+        /// 하지도 않는다. 다음 저장에서 <c>wornHair</c>가 비는 것은 "지금 아무것도 안 걸쳤다"는
+        /// <b>사실 그대로</b>이고, 저장 스키마 버전은 움직이지 않는다.</para>
+        /// </summary>
+        public static bool IsRetiredSlot(EquipmentSlot slot) => slot == EquipmentSlot.Hair;
 
         // ==================== 아이템 단위 사실 — 전부 ItemCatalog에 위임 ====================
 
@@ -281,6 +309,10 @@ namespace StickMate.Core
         {
             if (!InRange(slot)) return false;
 
+            // 은퇴한 카테고리(<see cref="IsRetiredSlot"/>)는 걸치는 것도 벗는 것도 없다 — 항상 미착용이라
+            // 벗기 요청도 "이미 그렇다"이고, 이 한 줄이 "화면에 없는 것은 몸에도 없다"의 유일한 잠금이다.
+            if (IsRetiredSlot(slot)) return false;
+
             if (itemIndex == NotWorn)
             {
                 if (_worn[(int)slot] == NotWorn) return false;
@@ -327,7 +359,12 @@ namespace StickMate.Core
         internal static void RestoreFromSave(EquipmentSlot slot, string itemId)
         {
             if (!InRange(slot)) return;
-            _worn[(int)slot] = ItemCatalog.IndexOfItemId(slot, itemId);
+
+            // ★ 은퇴한 카테고리는 파일에 무엇이 적혀 있든 <b>미착용</b>으로 연다(<see cref="IsRetiredSlot"/>).
+            //   파일은 읽기만 한다 — 값을 지우지도, 다른 아이템으로 바꿔치기하지도 않는다.
+            //   이 자리가 없으면 머리를 걸친 채 저장했던 사용자만 "화면에서는 지웠는데 몸에는 남은"
+            //   상태로 앱을 켜게 되고, 그건 정보창 어디에서도 벗을 수 없는 상태다(탈출구가 없다).
+            _worn[(int)slot] = IsRetiredSlot(slot) ? NotWorn : ItemCatalog.IndexOfItemId(slot, itemId);
         }
 
         /// <summary>v1~v4 저장 파일 복원 전용. 그 시절에는 카테고리당 아이템이 하나뿐이었으므로
@@ -336,7 +373,7 @@ namespace StickMate.Core
         internal static void RestoreFromSave(EquipmentSlot slot, bool equipped)
         {
             if (!InRange(slot)) return;
-            _worn[(int)slot] = equipped ? 0 : NotWorn;
+            _worn[(int)slot] = equipped && !IsRetiredSlot(slot) ? 0 : NotWorn;
         }
 
         /// <summary>테스트/디버그 전용. <b>기본 차림</b>(모자/안경만 착용)으로 되돌린다 —

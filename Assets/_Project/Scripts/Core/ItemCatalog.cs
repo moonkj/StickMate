@@ -1441,7 +1441,11 @@ namespace StickMate.Core
             return -1;
         }
 
-        /// <summary>장비 항목 수(보관함 헤더 "걸치는 것 (9/32)"의 분모).</summary>
+        /// <summary>장비 항목 수 — <b>카탈로그 전량</b>이다(42종). 감사·골든·등급 파생의 분모가 이 값이다.
+        /// <para>★ 2026-09-06 — <b>화면에 적는 분모는 이 값이 아니다</b>. 은퇴한 카테고리를 뺀
+        /// <see cref="ListedEquipmentCount"/>가 그쪽이다. 둘을 하나로 합치면 둘 중 하나가 반드시
+        /// 틀린다 — 감사가 은퇴를 따라가면 "은퇴시킨 자리는 검사도 안 한다"가 되고, 화면이 전량을
+        /// 적으면 "고를 수 없는 6종이 분모에 있다"가 된다.</para></summary>
         public static int EquipmentCount
         {
             get
@@ -1455,13 +1459,64 @@ namespace StickMate.Core
         /// <summary>행동 항목 수(보관함 헤더 "할 줄 아는 것 (13)").</summary>
         public static int ActionCount => _actions.Length;
 
-        /// <summary>지금 보유한 장비 수(보관함 헤더의 분자).</summary>
+        /// <summary>지금 보유한 장비 수 — <b>카탈로그 전량</b> 기준. 화면용 분자는
+        /// <see cref="ListedUnlockedEquipmentCount"/>다(위 <see cref="EquipmentCount"/> 문단과 같은 이유).</summary>
         public static int UnlockedEquipmentCount(StickConfig config)
         {
             int n = 0;
             for (int i = 0; i < AllEntries.Length; i++)
             {
                 if (AllEntries[i].Category == ItemCategory.Equipment && AllEntries[i].IsOwned(config)) n++;
+            }
+            return n;
+        }
+
+        // ============================================================================
+        // ★ 표시 모집단 — "사람에게 보여줄 목록" (2026-09-06 [머리] 은퇴)
+        // ============================================================================
+        // 사용자 지시 "외형에서 머리 스타일은 전체 삭제". 데이터는 <b>한 줄도 지우지 않는다</b> —
+        // 42종이라는 모집단이 등급 파생(슬롯당 2/2/1/1)·코호트 순위·골든 덤프·팩 자리 번호가 딛고
+        // 선 분모여서, 에셋을 빼면 <b>아무도 안 건드린 등급이 통째로 미끄러진다</b>(CohortId 문단).
+        // 그래서 바뀌는 것은 <b>보여줄 때</b>뿐이고, "무엇이 은퇴했는가"의 판단은 여전히
+        // EquipmentModel.IsRetiredSlot 한 곳이다(여기에 목록을 다시 적지 않는다).
+
+        /// <summary>이 항목이 <b>사람에게 보여주는 목록</b>에 오르는가. 은퇴한 카테고리
+        /// (<see cref="EquipmentModel.IsRetiredSlot"/>)의 장비만 <c>false</c>이고, 슬롯이 없는 행동은
+        /// 언제나 <c>true</c>다.
+        /// <para>보관함 목록·헤더 분자/분모가 전부 이 하나를 본다. 훗날 상점(재화 구매 목록)이
+        /// 배선될 때도 <b>이 술어</b>를 써야 "살 수는 있는데 못 입는" 물건이 생기지 않는다 —
+        /// 오늘 그 목록은 존재하지 않는다(<c>CurrencyRules</c> "배선은 아직 없다").</para></summary>
+        public static bool IsListed(ItemCatalogEntry entry)
+            => entry != null && !(entry.Slot.HasValue && EquipmentModel.IsRetiredSlot(entry.Slot.Value));
+
+        /// <summary>화면에 적는 장비 <b>분모</b>. 숫자를 적지 않고 <b>파생</b>시킨다 —
+        /// 전량에서 은퇴한 슬롯의 종수를 뺀 값이라, 슬롯을 하나 더 은퇴시켜도 이 값이 혼자 따라온다.</summary>
+        public static int ListedEquipmentCount
+        {
+            get
+            {
+                int n = 0;
+                for (int s = 0; s < BySlot.Length; s++)
+                {
+                    if (EquipmentModel.IsRetiredSlot((EquipmentSlot)s)) continue;
+                    n += BySlot[s].Length;
+                }
+                return n;
+            }
+        }
+
+        /// <summary>화면에 적는 장비 <b>분자</b>. 분모(<see cref="ListedEquipmentCount"/>)와
+        /// <b>같은 모집단</b>을 센다 — 한쪽만 은퇴를 반영하면 「7 / 36」인데 실제로 고를 수 있는 것은
+        /// 6개인 상태가 되고, 그 어긋남은 화면만 봐서는 못 찾는다.</summary>
+        public static int ListedUnlockedEquipmentCount(StickConfig config)
+        {
+            int n = 0;
+            for (int i = 0; i < AllEntries.Length; i++)
+            {
+                ItemCatalogEntry e = AllEntries[i];
+                if (e == null || e.Category != ItemCategory.Equipment) continue;
+                if (!IsListed(e)) continue;
+                if (e.IsOwned(config)) n++;
             }
             return n;
         }

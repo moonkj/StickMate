@@ -77,6 +77,10 @@ namespace StickMate.Tests.EditMode
                 "축 1(등급 2 — 전체화면 게임이면 캐릭터까지 숨긴다)");
             AssertAxisStatementIsGatedAndPure(src, "_fullscreenPanelRetreat",
                 "축 3(등급 1 — 게임이 아닌 전체화면 앱이면 표면만 걷는다)");
+            // ★ 2026-09-06 신설 — 축 5(자동 발동 억제). 축이 늘 때마다 <b>여기 한 줄</b>을 함께 늘린다.
+            //   안 늘리면 새 축만 설정창 게이트 없이 자라고, 그건 "사용자가 끈 적 없는 동작"이 된다.
+            AssertAxisStatementIsGatedAndPure(src, "_foreignFullscreenSuppressesDance",
+                "축 5(자동 발동 억제 — 전체화면 앱이 떠 있는 동안 «스스로 시작하는 춤»만 막는다)");
 
             // 합성 지점이 실제로 존재하고, 실제로 OR인가 — 위 단언의 공허함 방지.
             StringAssert.Contains("_fullscreenAutoHide || _userHidden", src,
@@ -132,6 +136,11 @@ namespace StickMate.Tests.EditMode
                 "★ IsSuspended에 등급 1(축 3)이 섞였습니다:\n  " + sHits[0].Value.Trim() +
                 "\n이 한 줄이 2026-08-31 사용자 신고(\"엑셀같은 프로그램 전체화면에서 엑셀 클릭하면 " +
                 "캐릭터가 없어져버림\")의 완전한 회귀입니다. 등급 1은 ArePanelsSuppressed로만 나갑니다.");
+            // ★ 2026-09-06 — 축 5도 같은 이유로 캐릭터 축에 섞이면 안 된다. 그 축은 «자동으로 시작하는
+            //   춤»만 막는 것이고, 캐릭터를 숨기는 순간 위와 <b>똑같은</b> 신고가 돌아온다.
+            Assert.IsFalse(sHits[0].Value.Contains("_foreignFullscreenSuppressesDance"),
+                "★ IsSuspended에 축 5(자동 발동 억제)가 섞였습니다:\n  " + sHits[0].Value.Trim() +
+                "\n그 축은 춤만 막으라고 만든 것입니다. 캐릭터를 숨기면 2026-08-31 신고의 회귀입니다.");
 
             var panels = new Regex(@"public bool ArePanelsSuppressed\s*=>[^;]*;", RegexOptions.Singleline);
             MatchCollection pHits = panels.Matches(src);

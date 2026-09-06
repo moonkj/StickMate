@@ -23,7 +23,9 @@ namespace StickMate.Tests.PlayMode
     {
         private const string LogPrefix = "[FILL]";
         private const int Cap = 0;      // 천 모자
-        private const int Curly = 2;    // 곱슬(머리 링 위로 얹히는 것)
+        // 곱슬. ★ 2026-09-06 [머리] 은퇴 후로는 <b>착용</b>이 아니라 아래 v5 하위 호환 검사의
+        // 양성 대조에만 쓴다 — 옛 저장 파일이 가리키던 아이디가 카탈로그에 실재하는지 확인하는 자리.
+        private const int Curly = 2;
 
         /// <summary>털모자. ★ PlayMode 어셈블리에는 <c>InternalsVisibleTo</c>가 없어
         /// <c>AccessoryShapeBuilder.HeadBeanie</c>를 참조할 수 없다(위 두 상수와 같은 사정).
@@ -61,7 +63,11 @@ namespace StickMate.Tests.PlayMode
 
             ClearAll(config);
             Wear(EquipmentSlot.Head, Cap, config);
-            Wear(EquipmentSlot.Hair, Curly, config);
+            // ★ 2026-09-06 — 여기 있던 `Wear(EquipmentSlot.Hair, Curly, ...)` 한 줄을 지웠다.
+            //   [머리]가 은퇴해(EquipmentModel.IsRetiredSlot) 걸칠 수 없고, 그대로 두면 Wear의
+            //   착용 단언에서 <b>준비 조건</b>이 빨개진다. 이 검사가 재는 것은 <b>모자 채움이 머리
+            //   링 윗호를 덮는가</b>이고, 그 링은 캐릭터 본체라 머리카락과 무관하다 — 곱슬은 원래
+            //   "머리 위에 뭔가 더 있어도 덮는가"의 곁들이였다.
             for (int i = 0; i < 8; i++) yield return null;
 
             var renderer = Object.FindFirstObjectByType<CharacterAccessoryRenderer>();
@@ -460,8 +466,17 @@ namespace StickMate.Tests.PlayMode
                 Assert.AreEqual("표정삭제전", CharacterProgressionModel.CharacterName, "이름이 날아갔습니다.");
                 Assert.AreEqual(2, EquipmentModel.WornIndex(EquipmentSlot.Head), "중절모가 벗겨졌습니다.");
                 Assert.AreEqual(0, EquipmentModel.WornIndex(EquipmentSlot.Neck), "나비넥타이가 벗겨졌습니다.");
-                Assert.AreEqual(2, EquipmentModel.WornIndex(EquipmentSlot.Hair), "곱슬이 벗겨졌습니다.");
-                Debug.Log($"{LogPrefix} v5(wornFace 포함) 저장 파일 로드 OK — 다른 값 전부 보존.");
+
+                // ★ 2026-09-06 [머리] 은퇴 — 옛 단언은 "곱슬이 그대로 걸쳐진다"였다. 이제 그 자리는
+                //   <b>미착용</b>이 옳고, 중요한 것은 그 옆 두 줄이다: 머리 하나 때문에 모자·넥타이가
+                //   함께 날아가지 않았다(= 파일을 통째로 버리거나 밀어내지 않았다).
+                //   양성 대조 — 위 json이 적은 아이디가 <b>실재하는 그 아이템</b>인지 먼저 못박는다.
+                //   (없는 아이디라면 아래 부재 단언은 은퇴가 아니라 오타 때문에 초록이 된다.)
+                Assert.AreEqual("look.hair.curly", EquipmentModel.ItemId(EquipmentSlot.Hair, Curly),
+                    "픽스처가 가리키는 머리 아이디가 카탈로그와 달라졌습니다 — 아래 단언이 무의미해집니다.");
+                Assert.AreEqual(EquipmentModel.NotWorn, EquipmentModel.WornIndex(EquipmentSlot.Hair),
+                    "은퇴한 [머리]가 옛 저장 파일에서 되살아났습니다.");
+                Debug.Log($"{LogPrefix} v5(wornFace + wornHair 포함) 저장 파일 로드 OK — 나머지 값 전부 보존.");
             }
             finally
             {

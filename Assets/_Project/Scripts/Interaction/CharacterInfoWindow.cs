@@ -173,7 +173,11 @@ namespace StickMate.Interaction
         private const float StageY = -ColPadY;                     // -20
         private const float StageHeight = 238f;
         private const float StagePadding = 8f;
-        private const float StageFloorGlowHeight = 74f;            // 인계본 바닥 광원 31.1%
+
+        // ★ 2026-09-06 — 여기 있던 StageFloorGlowHeight(74f)를 지웠다. 유일한 소비자가
+        //   BuildColumn1의 "StageFloorGlow" 겹이었고 그 겹이 사라졌다(아래 D1/D2 문단).
+        //   상수만 남기면 다음 사람이 "무엇을 재던 값인가"를 다시 조사하게 된다(이 파일의
+        //   CardsPerSection·SyncManualHide 삭제 때와 같은 관례).
 
         /// <summary>착용 슬롯 4행의 첫 줄 위 끝 = 무대 바닥 − <see cref="UiChrome.Space3"/>.</summary>
         private const float SlotRowsTopY = StageY - StageHeight - UiChrome.Space3;   // -270
@@ -213,6 +217,32 @@ namespace StickMate.Interaction
         /// (히트 상자 · 라벨 · 입력 상자 · 다음 y 계산), 블록 높이를 계산해야 하는 지금은 그 다섯 번째가
         /// 생긴다. 폭 1042 사고(헤더는 따라갔는데 카드줄은 안 따라감)와 같은 형태를 미리 막는다.</summary>
         internal const float NameRowHeight = 25f;
+
+        /// <summary>
+        /// ★ 이름 줄 오른쪽 끝의 <b>연필 표식</b> 한 변(2026-09-06 사용자 신고 대응).
+        ///
+        /// <para><b>왜 이것이 필요했나</b>: 이름은 처음부터 고칠 수 있었는데, 그 사실을 알리는 것이
+        /// <c>Color.clear</c> 히트 상자 하나뿐이었다. 사용자에게는 <b>그냥 글자</b>로 보였고
+        /// (신고: <i>"캐릭터 이름도 설정할수 있어야 하는데 안됨"</i>), 눌러 볼 이유가 화면에 0개였다.
+        /// 투명 히트 상자는 손가락 넓히기 관례이지 <b>어포던스가 아니다</b>.</para>
+        ///
+        /// <para><b>왜 hover가 아닌가</b>: <see cref="UiChrome.ControlFaceLiftHover"/> 문단이 이미
+        /// 실측으로 닫은 문제다 — <b>처음 창을 열었을 때</b>가 정확히 hover를 못 받는 상황이라
+        /// "기본 상태만으로 발견 가능해야 한다". 그래서 쉬는 상태에 그린다.</para>
+        ///
+        /// <para><b>왜 테두리가 아니라 글리프인가</b>: 같은 문단 (3)이 "테두리만 있는 것은 입력칸으로
+        /// 읽힌다"고 말하지만, 이 자리의 바탕은 <see cref="UiChrome.PanelSurface"/>이고 기존 테두리
+        /// 토큰(<see cref="UiChrome.PanelBorder"/> α0.16)을 얹으면 대비가 <b>1.65 : 1</b>로
+        /// <see cref="UiChrome.MinNonTextContrast"/>(3.0)에 한참 못 미친다 — 보이지 않는 테두리를
+        /// 그리는 것은 지금 상태와 같다. 3.0을 넘기려면 흰색 α≈0.33 이상의 <b>새 색</b>이 필요하고
+        /// 그건 design-art 판정 사항이다. 반면 글리프는 이미 있는 <see cref="UiChrome.NonTextMuted"/>로
+        /// <b>3.87 : 1</b>이 나온다(#6c7480 위 #141721) — 새 색 없이 하한을 넘는 유일한 길이다.
+        /// 자물쇠 배지(<c>BuildLockGlyph</c>)가 같은 토큰으로 같은 일을 한다.</para>
+        ///
+        /// <para>14는 <see cref="UiChrome.MinTargetSizePoints"/>(24)보다 작지만 <b>클릭 대상이 아니다</b> —
+        /// 누르는 것은 이름 줄 전체(<c>NameHit</c>, 212 × 25)이고 이 표식은 그 안에 얹힌 그림이다.</para>
+        /// </summary>
+        private const float NameEditGlyphSize = 14f;
 
         // ---- 컬럼 3 — 카테고리 블록의 세로 스크롤 + 카드 2열 격자 (§4-3-3) ----
         private const float Col3PadX = 26f;
@@ -321,7 +351,8 @@ namespace StickMate.Interaction
         private const float CardActionWidth = CardContentWidth;
 
         /// <summary>한 탭에 들어갈 수 있는 카테고리 수의 <b>상한</b>. 실제로 보여줄 수는 탭마다 다르고
-        /// <see cref="SectionCountForTab"/>가 카탈로그에서 센다([장비] 4 / [외형] 3, 2026-08-30 기준).</summary>
+        /// <see cref="SectionCountForTab"/>가 카탈로그에서 센다([장비] 4 / [외형] 2,
+        /// 2026-09-06 [머리] 삭제 기준 — 그 전에는 [외형] 3이었다).</summary>
         private const int SectionCount = 4;
 
         // ★ 2026-09-01 — <b>CardsPerSection(=4) / CardCount(=16) 상수를 지웠다.</b>
@@ -459,7 +490,10 @@ namespace StickMate.Interaction
         /// <summary>드래그 손잡이 — <b>헤더 전체</b>(L-2로 타이틀바를 흡수했다). 실제 손잡이는
         /// 여기서 탭·칩·[✕]·[설정] 사각형을 뺀 나머지다(<see cref="TryBeginPanelDrag"/>).</summary>
         private RectTransform _titleBarRect;
-        private readonly Image[] _tabUnderlines = new Image[TabCount];
+
+        // ★ 2026-09-06 — 여기 있던 <c>_tabUnderlines</c>를 지웠다. 밑줄은 <b>준비 중 탭 전용</b>
+        //   표식이었고, [상점] 본문이 생겨 준비 중 탭이 0개가 되면서 영원히 투명한 겹이 됐다
+        //   (CharacterInfoWindow.Tabs.cs의 같은 문단).
         private readonly Text[] _tabLabels = new Text[TabCount];
         private readonly Image[] _tabSurfaces = new Image[TabCount];
         private readonly RectTransform[] _tabRects = new RectTransform[TabCount];
@@ -500,6 +534,10 @@ namespace StickMate.Interaction
         private RectTransform _nameRect;
         private InputField _nameInput;
         private RectTransform _nameInputRect;
+
+        /// <summary>이름이 고칠 수 있는 것임을 <b>쉬는 상태에서</b> 알리는 연필 표식
+        /// (<see cref="NameEditGlyphSize"/> 문단이 근거 전문). 편집 중에는 라벨과 함께 내린다.</summary>
+        private RectTransform _nameEditGlyph;
         private RectTransform _stressFill;
         private Text _stressValue;
         private readonly Text[] _statValues = new Text[StatCount];
@@ -773,7 +811,8 @@ namespace StickMate.Interaction
             //   폐지됐습니다"라고 말한다 — 두 문장이 서로를 반박했다(페르소나 M11). "(1) 톱니 클릭"도
             //   부정확했다(톱니는 부채꼴을 열 뿐, 정보창까지는 2클릭). 로그도 원칙 1의 적용 대상이다.
             Debug.Log($"[정보창] 준비 완료({PanelWidth:F0}×{PanelHeight:F0} 고정, 3컬럼 {Col1Width:F0}/{Col2Width:F0}/{Col3Width:F0}, 화면 중앙, {TabCount}탭: {TabNamesForLog()}, " +
-                $"카드 {_cards.Length}장 + 장비 {ItemCatalog.EquipmentCount}종) — 여는 방법 2가지: " +
+                $"카드 {_cards.Length}장 + 장비 {ItemCatalog.ListedEquipmentCount}종" +
+                $"(카탈로그 {ItemCatalog.EquipmentCount}종, 은퇴분 제외)) — 여는 방법 2가지: " +
                 "(1) **화면 우상단 톱니 아이콘 -> 부채꼴 [캐릭터]**(주 진입점, 2클릭), " +
                 $"(2) 전역 단축키 **{ShortcutLabel.Chord("I")}**. " +
                 $"입력 모듈={(module != null ? module.GetType().Name : "★없음(uGUI 클릭 불가)")}, " +
@@ -825,7 +864,10 @@ namespace StickMate.Interaction
             _lastSurfaceTouchTime = Time.unscaledTime;
             _hoveredCard = -1;
             _pendingEquipCard = -1;
+            _pendingShopCard = -1;
+            ClearShopConfirm();        // 지난 세션의 「정말 살까요?」를 새로 연 창이 물려받지 않는다.
             EndGridDrag();
+            EndShopDrag();
             if (_canvas != null) _canvas.gameObject.SetActive(true);
             if (_clickBlocker != null) _clickBlocker.enabled = true;
             EndNameEdit(commit: false);
@@ -843,7 +885,10 @@ namespace StickMate.Interaction
             _open = false;
             _draggingPanel = false;
             _pendingEquipCard = -1;
+            _pendingShopCard = -1;
+            ClearShopConfirm();        // 창을 닫는 것도 「가만히 두기」다 — 확정되지 않은 구매는 사라진다.
             EndGridDrag();
+            EndShopDrag();
             EndNameEdit(commit: true);
             if (_canvas != null) _canvas.gameObject.SetActive(false);
             if (_clickBlocker != null) _clickBlocker.enabled = false;
@@ -909,6 +954,8 @@ namespace StickMate.Interaction
             if (_slowTimer < SlowRefreshInterval) return;
             _slowTimer = 0f;
             RefreshNumbers();
+            // [상점]만 보는 두 가지(확인 단계 만료 · 잔액 변화). 그 탭이 아니면 첫 줄에서 돌아간다.
+            if (Def(_tab).Page == TabPage.Shop) TickShopTab();
         }
 
         /// <summary>
@@ -989,6 +1036,7 @@ namespace StickMate.Interaction
             RefreshCards();     // 레벨이 오르면 잠긴 카드가 열린다.
             RefreshDetail();
             RefreshInventoryList();
+            RefreshShop();      // 레벨로 열린 상품은 [상점]에서 「보유 중」이 된다(같은 사실, 같은 프레임).
         }
 
         private void OnEquipmentChanged()
@@ -1013,6 +1061,7 @@ namespace StickMate.Interaction
             RefreshCards();
             RefreshDetail();
             RefreshInventoryList();
+            RefreshShop();
             RefreshInkSwatches();
         }
 
@@ -1025,8 +1074,12 @@ namespace StickMate.Interaction
             if (_nameLabel != null && !_editingName) _nameLabel.text = characterName;
             if (_rankTitle != null) _rankTitle.text = $"Lv.{CharacterProgressionModel.Level}";
 
-            int ownedItems = ItemCatalog.UnlockedEquipmentCount(_config);
-            if (_ownedChipValue != null) _ownedChipValue.text = $"{ownedItems} / {ItemCatalog.EquipmentCount}";
+            // ★ 2026-09-06 [머리] 은퇴 — 화면에 적는 「보유 n / m」은 <b>보여주는 모집단</b>이다.
+            //   전량(ItemCatalog.EquipmentCount)을 분모로 적으면 고를 수 없는 것이 분모에 남고,
+            //   분자만 바꾸면 분자·분모가 서로 다른 것을 세게 된다(그 어긋남은 화면만 봐서는 못 찾는다).
+            //   둘 다 Listed* 로 간다 — 같은 술어, 같은 모집단. 숫자는 여기 적지 않는다.
+            int ownedItems = ItemCatalog.ListedUnlockedEquipmentCount(_config);
+            if (_ownedChipValue != null) _ownedChipValue.text = $"{ownedItems} / {ItemCatalog.ListedEquipmentCount}";
             if (_coinChipValue != null) _coinChipValue.text = CurrencyModel.CoinBalance.ToString("N0");
 
             float stress = StressGauge.CurrentLevel;
@@ -1041,7 +1094,7 @@ namespace StickMate.Interaction
             // 기록 4행. 0인 항목은 숫자 대신 회색 "아직 없음"으로 — 0이 성취처럼 보이지 않게 한다.
             SetStat(0, $"{CharacterStatsModel.DaysTogether}일차", true);
             SetStat(1, CharacterStatsModel.FormatCompanionTime(), true);
-            SetStat(2, $"{ownedItems} / {ItemCatalog.EquipmentCount}종", ownedItems > 0);
+            SetStat(2, $"{ownedItems} / {ItemCatalog.ListedEquipmentCount}종", ownedItems > 0);
             SetStat(3, CharacterStatsModel.TryGetArcheryAccuracy01(out float acc)
                 ? $"{CharacterStatsModel.ArcheryBullseyes} / {CharacterStatsModel.ArcheryShots} ({acc * 100f:F0}%)"
                 : "기록 없음", CharacterStatsModel.ArcheryShots > 0);
@@ -1071,17 +1124,53 @@ namespace StickMate.Interaction
             if (level <= 14) return "이 화면의 터줏대감";
             return "사실상 이 화면 주인";
         }
+        /// <summary>
+        /// ★★ 2026-09-06 (docs/UI_ALPHA_BLEED_POLICY.md §2-(4)/§4-3) — <b>이 링의 바탕은 견본 채움이고,
+        /// 그 채움은 유저가 런타임에 고르는 색이다</b>(검정 또는 흰색). 고정 토큰을 쓰면 <b>둘 중
+        /// 하나에서는 반드시 틀린다</b>. 실측한 옛 값:
+        /// <code>
+        ///                       검정 견본   흰 견본
+        ///   비선택 PanelBorder    1.44 ✘     1.00 ✘   ← 흰 견본에서는 링이 아예 없다
+        ///   선택   TextPrimary   19.06 ✔     1.10 ✘   ← 흰 잉크를 고르면 「지금 고른 것」이 사라진다
+        /// </code>
+        /// 이제 <b>방향까지 값이 정한다</b>: 비선택은 테두리의 문(<see cref="UiChrome.EdgeOnSurface"/>)이
+        /// 흰쪽/검은쪽을 골라 <b>자기 목표 대비</b>를 만들고(숫자는 그 함수가 들고 있다),
+        /// 선택은 밝은 견본에서 목탄으로 뒤집는다(1.10 → 14.77).
+        /// <b>새 색 0개</b> — <see cref="UiChrome.InkContrastCharcoal"/>은 이미 "밝은 면 위의 대비 잉크"로
+        /// 존재하는 토큰이다.
+        /// </summary>
         private void RefreshInkSwatches()
         {
             bool white = _config != null && _config.IsWhiteInk();
             for (int i = 0; i < _inkRings.Length; i++)
             {
                 bool active = (i == 1) == white;
-                if (_inkRings[i] != null)
-                {
-                    _inkRings[i].color = active ? UiChrome.TextPrimary : UiChrome.PanelBorder;
-                }
+                if (_inkRings[i] == null) continue;
+
+                Color fill = InkSwatchFill(i);
+                _inkRings[i].color = active ? SelectedRingOn(fill) : UiChrome.EdgeOnSurface(fill);
             }
+        }
+
+        /// <summary>「지금 고른 것」 링. 이름이 아니라 <b>값</b>으로 방향을 고른다 — 흰 잉크 견본처럼
+        /// 밝은 채움 위에서는 흰 링이 1.10:1로 사라지므로 목탄으로 뒤집는다.
+        /// <para>★ 기준을 <see cref="UiChrome.EdgeContrastTarget"/>으로 잡는다(하한 3.0이 아니라).
+        /// 같은 자리의 <b>비선택</b> 링이 <see cref="UiChrome.EdgeOnSurface"/>로 그 목표를 맞추므로,
+        /// 하한으로 재면 「고른 것」이 「안 고른 것」보다 <b>흐린</b> 구간이 생긴다.</para></summary>
+        private static Color SelectedRingOn(Color fill)
+            => UiChrome.ContrastRatio(UiChrome.TextPrimary, fill) >= UiChrome.EdgeContrastTarget
+                ? UiChrome.TextPrimary
+                : UiChrome.InkContrastCharcoal;
+
+        /// <summary>링이 <b>실제로</b> 올라앉은 색 — 채움 <see cref="Image"/>에서 읽는다.
+        /// 채움색 식을 여기서 다시 쓰면 두 곳이 갈라지고, 갈라지는 순간 링은 <b>없는 바탕</b>을
+        /// 기준으로 계산된다.</summary>
+        private Color InkSwatchFill(int index)
+        {
+            RectTransform rt = index >= 0 && index < _inkRects.Length ? _inkRects[index] : null;
+            Image fill = rt != null ? rt.GetComponent<Image>() : null;
+            if (fill != null) return fill.color;
+            return index == 1 ? Color.white : Color.black;   // 아직 안 구워졌을 때의 안전값
         }
 
         private static void SetBarFill(RectTransform fill, float progress01)
@@ -1117,21 +1206,22 @@ namespace StickMate.Interaction
         private void ApplyPortraitTheme()
         {
             if (_stage != null) _stage.RefreshTheme();
-            bool whiteInk = _config != null && _config.IsWhiteInk();
             // 액자 바탕은 촬영장의 배경색과 <b>같은 값</b>이어야 한다 — 다르면 8pt 테두리 여백에서
             // 색이 갈라진 이음매가 보인다. 그래서 33-1의 PortraitSurface를 직접 쓰지 않고 촬영장의
             // 판단을 그대로 따른다(색 결정이 두 곳으로 흩어지지 않게).
-            if (_portraitFrame != null) _portraitFrame.color = CharacterPortraitStage.ResolveBackdropColor(_config);
+            Color backdrop = CharacterPortraitStage.ResolveBackdropColor(_config);
+            if (_portraitFrame != null) _portraitFrame.color = backdrop;
             if (_portraitBorder != null)
             {
-                _portraitBorder.color = whiteInk ? new Color(1f, 1f, 1f, 0.18f) : UiChrome.CardBorder;
+                // 옛 삼항식(흰 α0.18 / CardBorder)은 목탄 1.79 · 종이 1.02였다 — 흰 α는 밝은 무대에서
+                // 원리상 실패한다. 이제 방향까지 규칙이 고른다(UI_ALPHA_BLEED_POLICY §4-3).
+                _portraitBorder.color = UiChrome.EdgeOnSurface(backdrop);
             }
 
             // ★ L-6 — <b>임시값이다. design-art 후속 판정 대기.</b> 어두운 무대(흰 잉크)에서는 기존
             //   토큰이 그대로 맞지만, 밝은 무대(검은 잉크 = 출하 기본, 종이 바탕)에서는 TextTertiary가
             //   읽히지 않는다. 그래서 밝은 무대에서만 무대 바탕 위 잉크를 InkOnSurface로 뒤집는다 —
             //   그 함수는 면에서 잉크를 파생시키므로 호출부가 색을 고르지 않는다.
-            Color backdrop = CharacterPortraitStage.ResolveBackdropColor(_config);
             if (_previewLabel != null)
             {
                 _previewLabel.color = UiChrome.InkOnSurface(backdrop, UiChrome.InkRole.Meta, enabled: true);
@@ -1153,6 +1243,8 @@ namespace StickMate.Interaction
             if (_editingName || _nameInput == null || _nameLabel == null) return;
             _editingName = true;
             _nameLabel.gameObject.SetActive(false);
+            // 표식은 라벨과 <b>같은 손잡이</b>로 움직인다 — 편집 중에는 입력칸이 그 자리를 쓴다.
+            if (_nameEditGlyph != null) _nameEditGlyph.gameObject.SetActive(false);
             _nameInputRect.gameObject.SetActive(true);
             _nameInput.text = CharacterProgressionModel.CharacterName;
             if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(_nameInput.gameObject);
@@ -1171,6 +1263,7 @@ namespace StickMate.Interaction
             }
             _editingName = false;
             if (_nameInputRect != null) _nameInputRect.gameObject.SetActive(false);
+            if (_nameEditGlyph != null) _nameEditGlyph.gameObject.SetActive(true);
             if (_nameLabel != null)
             {
                 _nameLabel.gameObject.SetActive(true);
@@ -1278,7 +1371,7 @@ namespace StickMate.Interaction
             BuildColumn2(body);
             BuildSectionPage(body);
             BuildInventoryPage(body);
-            BuildPlaceholderPage(body);
+            BuildShopPage(body);
             ApplyTabVisibility();
 
             // 클릭관통 차단막 — 씬 루트에 둔다(캐릭터의 자식으로 두면 캐릭터가 걷거나 랙돌로 회전할 때
@@ -1387,13 +1480,14 @@ namespace StickMate.Interaction
             closeButton.transition = Selectable.Transition.None;
             closeButton.onClick.AddListener(() => { if (TryClaimAction("close")) Close("[✕] 클릭"); });
 
-            // 동전 칩 — 인계본 재화 칩. 값은 CurrencyModel이 실제로 들고 있는 잔액이다
-            // (없는 경제를 화면이 주장하지 않는다 — [상점] 본문이 아직 준비 중인 것과 같은 규칙).
+            // 동전 칩 — 인계본 재화 칩. 값은 CurrencyModel이 실제로 들고 있는 잔액이다.
+            // ★ 2026-09-06부터 이 숫자에 <b>쓸 곳</b>이 생겼다([상점] 탭) — 라벨의 글리프는
+            //   상점 가격표와 같은 한 자리(CharacterInfoWindow.Shop.cs의 CoinGlyph)에서 온다.
             _coinChipRect = BuildHeaderChip(barGo.transform, "CoinChip", HeaderCoinChipWidth,
                 HeaderCoinChipInset,
                 UiChrome.Flatten(UiChrome.AccentSurface, UiChrome.PanelSurface),
                 UiChrome.Flatten(UiChrome.AccentBorder, UiChrome.PanelSurface),
-                UiChrome.Accent, "◎ 동전", out _coinChipValue);
+                UiChrome.Accent, CoinChipLabel, out _coinChipValue);
 
             // 보유 칩 — 잠금 해제한 장비 수 / 전체.
             _ownedChipRect = BuildHeaderChip(barGo.transform, "OwnedChip", HeaderOwnedChipWidth,
@@ -1498,30 +1592,35 @@ namespace StickMate.Interaction
                 CharacterPortraitStage.ResolveBackdropColor(_config), UiChrome.RadiusPanel);
             UiChrome.PlaceTopLeft(_portraitFrame.rectTransform, Col1PadX, StageY, Col1ContentWidth, StageHeight);
             _portraitFrame.raycastTarget = false;
+            // ★ 생성값도 ApplyPortraitTheme와 <b>같은 문</b>을 쓴다 — 두 벌이면 한쪽만 고쳐진다
+            //   (그 함수가 이 색을 매 테마 전환마다 덮어쓴다).
             _portraitBorder = UiChrome.AddOutline(_portraitFrame.rectTransform, "Border",
-                UiChrome.CardBorder, UiChrome.RadiusPanel);
+                UiChrome.EdgeOnSurface(CharacterPortraitStage.ResolveBackdropColor(_config)),
+                UiChrome.RadiusPanel);
 
-            // 위에서 비추는 빛 — 인계본의 라디얼 그라디언트 3색은 새 hex가 필요해 미채택이고,
-            // 같은 "위쪽이 더 밝음"을 이미 있는 프리미티브로 준다(§6-4).
-            var sheenGo = new GameObject("StageSheen", typeof(RectTransform), typeof(Image));
-            sheenGo.transform.SetParent(_portraitFrame.transform, false);
-            UiChrome.Stretch(sheenGo.GetComponent<RectTransform>());
-            var sheen = sheenGo.GetComponent<Image>();
-            sheen.sprite = UiChrome.VerticalGradientFill(UiChrome.RadiusPanel);
-            sheen.type = Image.Type.Simple;
-            sheen.color = UiChrome.PanelSheen;
-            sheen.raycastTarget = false;
-
-            // 바닥 광원 — 인계본 rgba(200,161,90,0.16) ≈ 우리 AccentSurface(브라스 α0.14).
-            var glowGo = new GameObject("StageFloorGlow", typeof(RectTransform), typeof(Image));
-            glowGo.transform.SetParent(_portraitFrame.transform, false);
-            UiChrome.PlaceTopLeft(glowGo.GetComponent<RectTransform>(), 0f,
-                -(StageHeight - StageFloorGlowHeight), Col1ContentWidth, StageFloorGlowHeight);
-            var glow = glowGo.GetComponent<Image>();
-            glow.sprite = UiChrome.RadialGlow();
-            glow.type = Image.Type.Simple;
-            glow.color = UiChrome.AccentSurface;
-            glow.raycastTarget = false;
+            // ============================================================================
+            // ★★ 2026-09-06 (인계표 D1 / D2) — 무대 조명 두 겹을 <b>지웠다</b>. 되살리지 마라.
+            // ============================================================================
+            // 여기 "StageSheen"(<see cref="UiChrome.VerticalGradientFill"/> + PanelSheen α0.10)과
+            // "StageFloorGlow"(<see cref="UiChrome.RadialGlow"/> + AccentSurface α0.14) 두 겹이 있었다.
+            //
+            // <b>왜 결함이었나</b>: 이 앱의 창은 전체화면 투명 오버레이라 프레임버퍼 알파가 곧 OS
+            // 합성기의 마스크이고, uGUI의 Blend SrcAlpha OneMinusSrcAlpha는 알파 채널에도 같이 적용된다
+            // (dstA' = srcA² + dstA(1−srcA) ⇒ 불투명 위에서 1 − α(1−α)).
+            //     α0.10 → 0.9100 → 바탕화면 <b>9.00 %</b> 비침
+            //     α0.14 → 0.8796 → 바탕화면 <b>12.04 %</b> 비침
+            // 게다가 두 겹은 <b>84 %가 가려져 있었다</b> — 불투명 RawImage(RT)가 안쪽 249×222를
+            // 나중에 덮으므로 실제로 보이던 것은 액자 테두리 8pt 띠뿐이었다. 즉 "조명"이 아니라
+            // 「윗변의 밝은 선 + 바탕화면 구멍」이었다.
+            //
+            // <b>그림은 잃지 않았다</b>: 같은 조명이 촬영장(RenderTexture) <b>안</b>으로 옮겨갔고,
+            // 알파 겹이 아니라 <b>정점 색(RGB)에 구운 램프</b>다 — 알파가 어디에서도 1 미만이 되지
+            // 않으므로 블렌드 식과 무관하게 비침이 0이다(ux-designer 확정 §4-4 / 인계표 D3,
+            // <see cref="CharacterPortraitStage.BackdropGlowColorAt"/>과 그 위 문단이 유도 전문).
+            //
+            // 이 삭제로 <see cref="UiChrome.VerticalGradientFill"/>의 «호출부 0건» 주석도 다시
+            // 사실이 된다(D4). 회귀 잠금: Tests/EditMode/PortraitBackdropGlowAlphaTests.cs —
+            // 그 파일의 <c>정보창_캔버스의_raw_알파_두_겹이_사라졌는가</c>가 이 자리의 소스를 읽는다.
 
             var imageGo = new GameObject("PortraitImage", typeof(RectTransform), typeof(RawImage));
             imageGo.transform.SetParent(_portraitFrame.transform, false);
@@ -1565,7 +1664,8 @@ namespace StickMate.Interaction
             UiChrome.PlaceTopLeft(rt, Col1PadX, SlotRowsTopY - index * SlotRowStep,
                 Col1ContentWidth, SlotRowHeight);
             surface.raycastTarget = false;
-            Image outline = UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+            Image outline = UiChrome.AddOutline(rt, "Outline",
+                UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface), UiChrome.RadiusChip);
 
             var iconGo = new GameObject("SlotIcon", typeof(RectTransform));
             iconGo.transform.SetParent(rt, false);
@@ -1676,6 +1776,8 @@ namespace StickMate.Interaction
             float swatchRight = x + Col2ContentWidth;
             float nameWidth = Col2ContentWidth - (SwatchSize * 2f + SwatchGap) - UiChrome.Space3;
 
+            // 히트 상자는 여전히 투명하다 — 손가락 넓히기용으로는 옳다. 달라진 것은 그것이
+            // <b>유일한 어포던스가 아니게</b> 된 것이다(아래 연필 표식, NameEditGlyphSize 문단).
             Image nameHit = UiChrome.AddSurface(display, "NameHit", Color.clear, UiChrome.RadiusChip);
             _nameRect = nameHit.rectTransform;
             UiChrome.PlaceTopLeft(_nameRect, x, y, nameWidth, NameRowHeight);
@@ -1683,8 +1785,18 @@ namespace StickMate.Interaction
             nameButton.targetGraphic = nameHit;
             nameButton.onClick.AddListener(() => { if (TryClaimAction("nameEdit")) BeginNameEdit(); });
 
+            // 글자 상자는 표식 자리를 <b>비워 두고</b> 끝난다 — 긴 이름이 연필 위로 겹쳐 흐르면
+            // 표식이 글자에 묻혀 없는 것과 같아진다(폭을 파생시키는 이유가 이것이다).
+            float nameLabelWidth = nameWidth - NameEditGlyphSize - UiChrome.Space2;
             _nameLabel = Label(display, "NameEditable", UiChrome.FontBody, TextAnchor.MiddleLeft,
-                UiChrome.TextPrimary, x, y, nameWidth, NameRowHeight, CharacterProgressionModel.CharacterName);
+                UiChrome.TextPrimary, x, y, nameLabelWidth, NameRowHeight, CharacterProgressionModel.CharacterName);
+
+            var glyphGo = new GameObject("NameEditGlyph", typeof(RectTransform));
+            glyphGo.transform.SetParent(display, false);
+            _nameEditGlyph = glyphGo.GetComponent<RectTransform>();
+            UiChrome.PlaceTopLeft(_nameEditGlyph, x + nameWidth - NameEditGlyphSize,
+                y - (NameRowHeight - NameEditGlyphSize) * 0.5f, NameEditGlyphSize, NameEditGlyphSize);
+            BuildNameEditGlyph(_nameEditGlyph);
 
             _nameInput = CreateInputField(display);
             _nameInputRect = _nameInput.GetComponent<RectTransform>();
@@ -1703,10 +1815,24 @@ namespace StickMate.Interaction
                 var fill = swatchGo.GetComponent<Image>();
                 fill.sprite = UiChrome.Circle();
                 fill.type = Image.Type.Simple;
-                fill.color = white ? UiChrome.CardSurface : UiChrome.TextPrimary;
+                // ★ 2026-09-06 버그 수정: 예전엔 여기서 UiChrome.CardSurface/TextPrimary(다크 테마
+                // UI 토큰)를 썼다 — CardSurface는 실제로 거의 검정(0.106,0.122,0.149), TextPrimary는
+                // 거의 흰색(0.949,0.957,0.969)이라 "흰 잉크" 스와치가 어둡게, "검은 잉크" 스와치가
+                // 밝게 그려졌다. 클릭 로직/색 적용 경로는 처음부터 옳았고(SetRuntimeInkColor →
+                // ResolveInkColor → LineRenderer 전부 검증됨), 오직 이 미리보기 견본의 채움색만
+                // 실제 잉크색이 아닌 UI 테마색을 잘못 참조해 "흰색을 누르면 검게, 검은색을 누르면
+                // 희게 보인다"는 사용자 신고와 정확히 일치하는 시각적 반전을 냈다. 실제 잉크색
+                // 필드로 교체(SettingsWindow.cs의 동일 스와치가 이미 쓰는 방식과 통일).
+                fill.color = white
+                    ? (_config != null ? _config.whiteInkColor : Color.white)
+                    : (_config != null ? _config.primaryOutlineColor : Color.black);
 
                 // 1.5px 링으로 "지금 이 색"을 표시한다(지름 12 기준 비율 = 1.5/12).
-                Image ring = UiChrome.AddCircle(srt, "Ring", SwatchSize, UiChrome.PanelBorder, 1.5f);
+                // ★ 생성값도 <b>RefreshInkSwatches와 같은 규칙</b>으로 만든다(정책 §5-1 "생성값도 맞춰라").
+                //   raw PanelBorder(α0.16)를 남기면 흰 견본에서 1.00:1인 링이 첫 갱신 전까지 살아 있고,
+                //   그 화소의 창 알파가 내려가 바탕화면이 비친다.
+                Image ring = UiChrome.AddCircle(srt, "Ring", SwatchSize,
+                    UiChrome.EdgeOnSurface(fill.color), 1.5f);
                 ring.raycastTarget = false;
 
                 var button = swatchGo.AddComponent<Button>();
@@ -1781,10 +1907,45 @@ namespace StickMate.Interaction
             return t;
         }
 
+        /// <summary>
+        /// ★ 연필 표식 — 둥근 사각형 <b>두 조각</b>(몸통 + 촉)으로 만든다. 이 저장소에는 이미
+        /// 같은 방식의 선례가 있다(<c>BuildLockGlyph</c>: 자물쇠를 몸통 + 고리로 만든다).
+        ///
+        /// <para>좌표 유도(부모 14 × 14, 중심 원점, 반쪽 = 7):
+        /// 몸통 3.6 × 10을 Z −45°로 눕히면 축 방향 단위가 (0.707, 0.707)이다.
+        /// 중심을 (1.0, 1.0)에 두면 <b>아래 끝</b>이 (1.0 − 3.54, 1.0 − 3.54) = (−2.54, −2.54),
+        /// <b>위 끝</b>이 (4.54, 4.54)이고 폭 반쪽 1.8을 더해도 5.8 &lt; 7이라 상자 안이다.
+        /// 촉은 3.6 × 3.6을 Z 45°로 돌린 마름모(대각 2.55)이고 (−4.1, −4.1)에 놓으면
+        /// 끝이 (−6.65, −6.65)로 역시 7 안에 든다. <b>어느 조각도 상자를 넘지 않는다</b> —
+        /// 넘으면 잘려서 연필이 아니라 막대 두 개로 보인다.</para>
+        ///
+        /// <para>두 조각 모두 <c>raycastTarget = false</c>다. 누름은 아래 깔린 <c>NameHit</c>이
+        /// 받아야 하고, 여기서 클릭을 먹으면 <b>표식을 정확히 누른 사람만</b> 편집이 안 된다.</para>
+        /// </summary>
+        private static void BuildNameEditGlyph(RectTransform box)
+        {
+            Image body = UiChrome.AddSurface(box, "PencilBody", UiChrome.NonTextMuted, 1);
+            RectTransform brt = body.rectTransform;
+            brt.anchorMin = brt.anchorMax = brt.pivot = new Vector2(0.5f, 0.5f);
+            brt.sizeDelta = new Vector2(3.6f, 10f);
+            brt.anchoredPosition = new Vector2(1.0f, 1.0f);
+            brt.localRotation = Quaternion.Euler(0f, 0f, -45f);
+            body.raycastTarget = false;
+
+            Image tip = UiChrome.AddSurface(box, "PencilTip", UiChrome.NonTextMuted, 1);
+            RectTransform trt = tip.rectTransform;
+            trt.anchorMin = trt.anchorMax = trt.pivot = new Vector2(0.5f, 0.5f);
+            trt.sizeDelta = new Vector2(3.6f, 3.6f);
+            trt.anchoredPosition = new Vector2(-4.1f, -4.1f);
+            trt.localRotation = Quaternion.Euler(0f, 0f, 45f);
+            tip.raycastTarget = false;
+        }
+
         private InputField CreateInputField(Transform parent)
         {
             Image surface = UiChrome.AddSurface(parent, "NameInput", UiChrome.CardSurface, UiChrome.RadiusChip);
-            UiChrome.AddOutline(surface.rectTransform, "Outline", UiChrome.PanelBorder, UiChrome.RadiusChip);
+            UiChrome.AddOutline(surface.rectTransform, "Outline",
+                UiChrome.Flatten(UiChrome.PanelBorder, UiChrome.CardSurface), UiChrome.RadiusChip);
 
             Text text = UiChrome.AddText(surface.rectTransform, "Text", UiChrome.FontBody, TextAnchor.MiddleLeft, UiChrome.TextPrimary);
             UiChrome.Stretch(text.rectTransform);

@@ -205,6 +205,11 @@ namespace StickMate.Interaction
         private Material _lineMaterial;
 
         private GameObject _container;
+
+        /// <summary>지금 <see cref="SuspendedOverlayGate"/>가 감춰 둔 상태인가(로그를 상태 전환에 한 번만
+        /// 남기기 위한 플래그. 판정 자체는 그 게이트가 소유한다 — 여기에 조건을 한 벌 더 두지 않는다).</summary>
+        private bool _suspendHidden;
+
         private readonly List<Transient> _transients = new List<Transient>(TransientMaxAlive);
 
         private RunawayLifecyclePhase _phase;
@@ -377,6 +382,9 @@ namespace StickMate.Interaction
         private void LateUpdate()
         {
             using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Renderers);   // [스톨구간] 계측
+            // ★ 은신 중(Hidden)에는 캐릭터가 원래 안 보이지만 그건 IsSuspended가 아니다 — 그래서 이
+            //   게이트는 과자/파문을 걷지 않는다. 걷으면 "찾아서 달래는" 탈출구 자체가 사라진다(20절).
+            if (SuspendedOverlayGate.FreezeAndHide(_agent, _container, ref _suspendHidden, "[가출]", "과자/파문")) return;
             if (_container == null) return;
 
             float dt = Time.deltaTime;

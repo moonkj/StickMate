@@ -132,12 +132,67 @@ namespace StickMate.Core
             return gained;
         }
 
-        /// <summary>이름 변경(정보창의 이름 입력칸). 공백만 넣으면 기본값으로 되돌린다 —
-        /// "이름이 사라진" 상태를 만들지 않는다.</summary>
+        /// <summary>
+        /// ★ 이름 정규화 — <b>화면 입력·저장 복원이 같은 규칙을 지나는 단 하나의 자리</b>.
+        ///
+        /// <para>규칙은 넷이고 전부 "이름이 <b>사라지거나</b> 화면을 <b>망가뜨리는</b> 상태를 만들지
+        /// 않는다"는 한 가지 목적이다:
+        /// ① 비었거나 공백뿐이면 <see cref="DefaultCharacterName"/>(이름 없는 캐릭터를 만들지 않는다).
+        /// ② 제어문자(줄바꿈·탭)는 <b>공백으로 바꾼다</b> — 지우면 붙여넣은 "홍 길동\n"이 낱말째
+        ///    붙어 사용자가 치지 않은 이름이 된다. 한 줄짜리 라벨에서 줄바꿈은 글자를 잘라먹는다.
+        /// ③ 앞뒤 공백은 턴다.
+        /// ④ <see cref="MaxNameLength"/>에서 자르되 <b>서로게이트 쌍(이모지) 한가운데를 자르지 않는다</b> —
+        ///    반쪽 문자는 저장 파일에 그대로 들어가고 그 뒤로는 무엇을 해도 깨진 글리프가 남는다.</para>
+        ///
+        /// <para><b>이모지 자체는 막지 않는다.</b> 폰트에 글리프가 없으면 빈칸으로 보이지만, 그것은
+        /// 사용자가 고른 이름이고 우리가 대신 판단할 일이 아니다(막으면 "왜 안 써지지"가 된다).</para>
+        ///
+        /// <para>고칠 것이 없는 흔한 경우에는 <b>아무것도 할당하지 않는다</b> — 먼저 훑어보고
+        /// 제어문자가 있을 때만 새 문자열을 만든다.</para>
+        /// </summary>
+        private static string NormalizeName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return DefaultCharacterName;
+
+            bool hasControl = false;
+            for (int i = 0; i < name.Length; i++)
+            {
+                if (!char.IsControl(name[i])) continue;
+                hasControl = true;
+                break;
+            }
+
+            string cleaned = name;
+            if (hasControl)
+            {
+                var sb = new System.Text.StringBuilder(name.Length);
+                for (int i = 0; i < name.Length; i++)
+                {
+                    char c = name[i];
+                    sb.Append(char.IsControl(c) ? ' ' : c);
+                }
+                cleaned = sb.ToString();
+            }
+
+            cleaned = cleaned.Trim();
+            if (cleaned.Length == 0) return DefaultCharacterName;   // 제어문자만 있던 경우.
+
+            if (cleaned.Length > MaxNameLength)
+            {
+                int cut = MaxNameLength;
+                // 자를 자리 바로 앞이 상위 서로게이트면 그 쌍의 한가운데다 — 한 칸 더 물러난다.
+                if (char.IsHighSurrogate(cleaned[cut - 1])) cut--;
+                cleaned = cut > 0 ? cleaned.Substring(0, cut) : DefaultCharacterName;
+            }
+            return cleaned;
+        }
+
+        /// <summary>이름 변경 — 정보창의 인라인 입력칸과 설정창 [캐릭터] 탭의 이름 행이
+        /// <b>둘 다 이 하나</b>를 부른다(두 창이 같은 사실을 각자 계산하지 않게).
+        /// 정규화 규칙은 <see cref="NormalizeName"/> 한 곳이다.</summary>
         public static void SetCharacterName(string name)
         {
-            string next = string.IsNullOrWhiteSpace(name) ? DefaultCharacterName : name.Trim();
-            if (next.Length > MaxNameLength) next = next.Substring(0, MaxNameLength);
+            string next = NormalizeName(name);
             if (next == CharacterName) return;
             CharacterName = next;
             IsDirty = true;
@@ -152,7 +207,11 @@ namespace StickMate.Core
             Level = Mathf.Clamp(level, 1, 9999);
             CurrentXp = Mathf.Max(0f, currentXp);
             TotalXpEarned = Mathf.Max(0f, totalXpEarned);
-            CharacterName = string.IsNullOrWhiteSpace(name) ? DefaultCharacterName : name;
+            // ★ 2026-09-06 — 예전에는 여기만 <b>정규화를 건너뛰었다</b>(빈 값 검사만 했다). 그래서
+            //   손으로 고친 저장 파일이나 옛 버전이 남긴 값이 길이 상한·줄바꿈 규칙을 우회해 그대로
+            //   라벨에 들어갔다. 입력과 복원이 서로 다른 규칙을 지나면 "화면에서 만들 수 없는 이름이
+            //   화면에 떠 있는" 상태가 되고, 그건 아무도 재현할 수 없다.
+            CharacterName = NormalizeName(name);
             IsDirty = false;
         }
 

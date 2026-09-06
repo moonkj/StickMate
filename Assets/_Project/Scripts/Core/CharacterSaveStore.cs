@@ -799,6 +799,11 @@ namespace StickMate.Core
         /// 두 경로 모두 <b>카테고리를 빠짐없이</b> 지정한다. "옛 파일에 없는 카테고리는 건드리지 않는다"로
         /// 두면 그 자리에 <b>직전 상태</b>(새 캐릭터 기본 차림 또는 앞선 로드의 잔재)가 남아, 파일이
         /// 말하지 않은 것을 화면이 보여주게 된다.
+        ///
+        /// <para>★ 2026-09-06 [머리] 은퇴 후에도 <c>wornHair</c> 줄은 <b>남는다</b>. 빼면 그 칸이
+        /// "건드리지 않는 자리"가 되어 위 문단이 경고한 잔재가 정확히 그 자리에 생긴다. 값이 무엇이든
+        /// 미착용으로 떨어뜨리는 판단은 <see cref="EquipmentModel.IsRetiredSlot"/> 한 곳에 있다 —
+        /// 여기서 <c>if</c>로 걸러 내면 은퇴 목록이 두 파일에 생긴다.</para>
         /// </summary>
         private static void RestoreEquipment(SaveData data)
         {
@@ -1356,6 +1361,11 @@ namespace StickMate.Core
                     wornEyes = WornId(EquipmentSlot.Eyes),
                     wornNeck = WornId(EquipmentSlot.Neck),
                     wornShoulders = WornId(EquipmentSlot.Shoulders),
+                    // ★ 2026-09-06 [머리] 카테고리 은퇴(EquipmentModel.IsRetiredSlot) 이후 이 칸은
+                    //   <b>항상 빈 문자열</b>이다 — 그 자리가 영원히 미착용이기 때문이고, 특별 취급이
+                    //   아니라 다른 칸과 <b>같은 규칙</b>의 결과다. 필드 자체는 지우지 않는다:
+                    //   지우면 v10 파일을 쓰는 스키마가 조용히 달라지고, 훗날 머리가 돌아올 때
+                    //   되살릴 이름도 사라진다.
                     wornHair = WornId(EquipmentSlot.Hair),
                     wornFx = WornId(EquipmentSlot.Fx),
                     wornPet = WornId(EquipmentSlot.Pet),

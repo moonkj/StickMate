@@ -244,6 +244,50 @@ namespace StickMate.Core
             return tick.CoinsGranted;
         }
 
+        // ====================================================================
+        // ★★ 집중 모드 지급 — 유휴와 <b>완전히 분리된</b> 진입점 (I-7′)
+        // ====================================================================
+        //
+        // ★ <b>왜 <see cref="TickIdleIncome"/>에 얹지 않는가.</b> 그 함수의 <c>isIdleEarning</c> 분기가
+        //   "같은 1초가 두 번 지급되지 않는다"(I-7′)를 <b>검증이 아니라 구조로</b> 참으로 만들고 있다.
+        //   집중을 그 분기 안으로 밀어 넣으면 그 구조가 무너진다. 그래서 별도 진입점이고,
+        //   <c>isIdleEarning</c>은 <b>지금까지처럼</b> 집중 세션 중 false여야 한다(호출부 계약, 불변).
+        //
+        // ★★ <b>집중 지급은 「일일 상한 밖」이다</b> — DESIGN_SYSTEMS_STATS §22-13(§18-5 인용):
+        //   <i>"집중 지급은 일일 상한 밖이다(캡 도달 후에도 집중 25분은 전액 600)."</i>
+        //   그래서 아래 두 함수는 <see cref="TodayGrantedCoins"/>를 <b>건드리지 않고</b>,
+        //   <c>ClampGrantedCoins</c>를 <b>통과시키지 않으며</b>, <see cref="IdleWindowUsedSeconds"/>도
+        //   <b>갉지 않는다</b>. 잔액에 더할 때 <c>ClampCoinBalance</c>(하한 0)만 지난다.
+        //   ⚠ 이 파일의 다른 지급들과 모양이 달라 보인다고 「관례에 맞춰」 <c>ClampGrantedCoins</c>를
+        //   끼우지 마라 — 그 순간 집중 수입이 1,500에서 <b>조용히</b> 막히고, 그 실패는 초록 테스트와
+        //   똑같이 생겼다(<c>TodayGrantedCoins</c>는 정의상 "오늘 <b>유휴로</b> 지급된 동전"이다).
+        //
+        // 산식은 여기 없다 — <see cref="CurrencyRules.FocusCompletionCoins"/> ·
+        // <see cref="CurrencyRules.FocusCancelCoins"/> 한 곳에만 있고, 이 모델은 결과를 담기만 한다.
+
+        /// <summary>집중 세션 <b>완주</b> 지급. 인자는 <b>명목 세션 길이(초)</b>다(계측 누적값이 아니다 —
+        /// 이유는 <see cref="CurrencyRules.FocusCompletionCoins"/>).</summary>
+        /// <returns>실제로 지급된 동전(0이면 지급 없음).</returns>
+        public static int PayFocusCompletionCoins(double sessionDurationSeconds)
+            => GrantFocusCoins(CurrencyRules.FocusCompletionCoins(sessionDurationSeconds));
+
+        /// <summary>집중 세션 <b>중도 취소</b> 지급. 인자는 <c>명목 세션 길이 − 잔여 초</c>다.
+        /// 1분 미만이면 0을 돌려주고 아무 일도 하지 않는다.</summary>
+        /// <returns>실제로 지급된 동전(0이면 지급 없음).</returns>
+        public static int PayFocusCancelCoins(double elapsedSeconds)
+            => GrantFocusCoins(CurrencyRules.FocusCancelCoins(elapsedSeconds));
+
+        /// <summary>두 집중 경로가 공유하는 <b>유일한</b> 잔액 반영 지점.
+        /// 0동전이면 <see cref="IsDirty"/>를 세우지 않는다 — 1분 미만 취소를 반복해도 디스크를
+        /// 두드리지 않는다(하루 종일 켜져 있는 앱이다).</summary>
+        private static int GrantFocusCoins(int coins)
+        {
+            if (coins <= 0) return 0;
+            CoinBalance = CurrencyRules.ClampCoinBalance(CoinBalance + coins);
+            IsDirty = true;
+            return coins;
+        }
+
         /// <summary>오늘의 상한(= <c>1500 + 500 × clamp(회복제, 0, 2)</c>). ★ 필드가 아니라 함수다.</summary>
         public static int DailyCapCoins() => CurrencyRules.DailyCapCoins(PotionsUsedToday);
 

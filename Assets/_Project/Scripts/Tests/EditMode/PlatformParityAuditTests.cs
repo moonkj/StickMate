@@ -1097,16 +1097,26 @@ namespace StickMate.Tests.EditMode
                 "양 플랫폼 구현이 2026-09-03에 함께 착지했는데 지금은 둘 다 없습니다 " +
                 $"(macOS={mac}, Windows={win}) — 되돌려졌다면 이 감사도 함께 고치십시오.");
 
-            Assert.Ignore("【부분 착지 · 실기 미확인 3건】 개작 2026-09-03 (dev-platform)\n" +
+            Assert.Ignore("【부분 착지 · 실기 미확인 4건】 개작 2026-09-06 (dev-platform)\n" +
                 "\n" +
                 "착지한 것: ISystemAudioActivityProbe(중립 계약, 불리언) + AudioReactiveDancePolicy" +
                 "(순수 T₁~T₄ 게이트) + Mac/Windows 구현 2개 + Core/AudioReactiveDanceGate(억제 술어).\n" +
-                "남은 것: 이 프로브를 **주기적으로 부르는 실행부(Director)** 와 DanceState/ApplyDancePose.\n" +
-                "  ※ 그래서 지금 이 코드는 **프로덕션 호출부가 0건**이다 — 실기에서 도는 경로가 아니다.\n" +
+                "★ 2026-09-06 추가 착지 — **호출부 0건이 해소됐다**: SystemAudioActivityProbeFactory" +
+                "(유일한 플랫폼 분기) + AudioReactiveDanceRunner(정책 3절의 «조회 실패» 규칙) + " +
+                "AudioReactiveDanceDirector(2Hz 폴링 · 매 틱 억제 재계산 · 훅 노출).\n" +
+                "  ※ 사운드 감사(2026-09-06)가 실측한 «프로덕션 new 0건 / 호출부 0건»은 이제 아니다.\n" +
+                "남은 것: **DanceState / ApplyDancePose** — 게이트가 열렸을 때 실제로 어떤 상태로 " +
+                "전이할지. design-motion의 7종 춤 사양 대기이고 그 뒤 coder 라운드다.\n" +
+                "  ※ 이어받는 지점은 AudioReactiveDanceDirector.IsDanceGateOpen(프로퍼티) 과 " +
+                ".DanceGateChanged(이벤트) 둘이다 — 그 파일을 고치지 말고 **구독만** 해라.\n" +
                 "\n" +
                 "★ 이 머신에서 **확인한 것**(추측 아님):\n" +
                 "  · macOS 실측 재현(2026-09-03): 무음 0 → afplay 재생 1 → 종료 후 0. 양성·음성 대조 통과.\n" +
-                "  · 크로스 컴파일: xcheck.sh win / osx 양쪽 errors=0.\n" +
+                "  · 크로스 컴파일: xcheck_isolated.sh win / osx 양쪽 errors=0 (2026-09-06 재확인).\n" +
+                "  · ★ **Windows 분기가 실제로 컴파일된다는 것**(2026-09-06, 고의 오류 주입으로 대조): " +
+                "SystemAudioActivityProbeFactory의 UNITY_STANDALONE_WIN 가지에 CS0103을 심으면 " +
+                "win/runtime(player) 만 errors=1 이 되고 osx 는 5유닛 전부 0이다 — " +
+                "즉 win 초록은 «그 줄을 봤고 통과했다»이지 «건너뛰었다»가 아니다.\n" +
                 "\n" +
                 "★ **확인하지 못한 것**(추측으로 메우지 않았다):\n" +
                 "  U-1. **Windows GetPeakValue의 실제 거동**. 이 머신에 Windows가 없다. 특히 " +
@@ -1120,15 +1130,142 @@ namespace StickMate.Tests.EditMode
                 "그 실패는 '영원히 무음'이라 **조용한 초록**으로 보인다. 그래서 이번 라운드는 " +
                 "**양 플랫폼 모두 폴링(풀)만** 한다 — M-C가 2Hz에서 CPU 0.006%를 실측했으므로 " +
                 "지금 푸시로 사는 것이 없다.\n" +
+                "  ★ U-7. **Windows에서 T₁의 여유가 산술적으로 음수다**(2026-09-06 배선 중 발견, 미수정). " +
+                "WindowsSystemAudioActivityProbe.PeakHoldSeconds=1.0 은 임계를 넘은 뒤 1.0초 동안 " +
+                "«재생 중»을 **연장 보고**한다. 그래서 ~2.4초짜리 알림음 1회가 원 신호로는 " +
+                "2.38+1.0 = **3.38초 연속 ON** 으로 보이고, 이는 T₁(StartDelaySeconds=3.0)을 **넘는다**. " +
+                "macOS 여유 +0.62초 vs Windows **−0.38초** — 즉 T₁이 막기로 한 바로 그것" +
+                "(«알림음 1회로는 여기 못 온다»)이 Windows에서만 뚫릴 수 있다.\n" +
+                "    ※ **폴링 주기를 바꿔도 안 사라진다**(홀드 1.0초가 주기와 무관한 상수다). " +
+                "고치려면 PeakHoldSeconds를 줄이거나(그러면 그것이 막으려던 Windows 전용 거짓 음성 — " +
+                "조용한 악절에서 onRun 이 리셋되어 T₁이 영원히 안 차는 것 — 이 되살아난다), " +
+                "T₁을 Windows에서만 올려야 하는데 후자는 «규칙은 양 플랫폼에서 글자 그대로 같다»는 " +
+                "이 설계의 전제를 깬다. **둘 다 실기 측정 없이는 고를 수 없다.** " +
+                "전제인 2.38초는 macOS 알림음의 M-D 실측이고, Windows 알림음 길이도 그 구간 내내 " +
+                "피크가 임계를 넘는지도 **재 본 적이 없다** — 그래서 «확인된 결함»이 아니라 " +
+                "**«산술적 위험»**으로 남긴다. 실기가 생기면 «알림 1회로 춤이 시작되는가»를 가장 먼저 봐라.\n" +
                 "\n" +
                 "★ **모바일(U-6): 별도 배정 필요.** 이 두 API는 양쪽 다 데스크톱 전용이고, " +
                 "iOS 샌드박스에서는 **다른 앱의 오디오 관측 자체가 밖**일 가능성이 높다. " +
                 "Platform/Mobile/ 에는 이 계약의 구현이 없고, 그래서 '스크린샷 백드롭 모드'에서 " +
                 "춤 반응은 **없는 기능**이다(위 mac/win 대칭 검사는 Mobile/ 을 보지 않는다).\n" +
                 "\n" +
-                "★ 리더 판정 대기(L-5): 춤 반응의 **사용자 토글 기본값**(켬/끔). 기본 「켬」이면 " +
-                "CharacterSaveStore.CurrentVersion 승격 + v9 하위 호환 테스트가 의무로 붙는다. " +
-                "확정 전이라 이번 라운드는 세이브를 **한 비트도** 건드리지 않았다.");
+                "★ L-5 **판정 완료**(리더, 2026-09-06): 사용자 토글은 **세션 한정 「이번 세션만 끄기」**로 " +
+                "간다 — AudioReactiveDanceGate.MutedForThisSession + 설정창 [일반]>표시. " +
+                "세이브는 **한 비트도** 바뀌지 않았으므로 스키마 승격도 하위 호환 테스트도 붙지 않는다.\n" +
+                "\n" +
+                "★ U-8. **소비자 배선 결함 — 해소(2026-09-06)**. 게이트가 열려도 그것을 읽는 " +
+                "DanceEpisodeDirector가 **출하 프리팹에 없어서** 기능 전체가 실기에서 죽어 있었다" +
+                "(페르소나 «재현» 실기 신고). 부트스트래퍼에는 적혀 있었지만 프리팹을 굽는 함수가 " +
+                "기존 파일을 건너뛰고(BUG-SW-M3, 의도된 동작) 빌드가 그 보정 경로를 부르지 않았다. " +
+                "이제 BuildStandalone.PerformBuild/PerformBuildWindows가 **양쪽 다** " +
+                "SceneBootstrapper.EnsurePrefabComponents를 거치고, 어긋남 자체는 " +
+                "BootstrapPrefabParityAuditTests가 매 러너마다 다시 잰다.\n" +
+                "\n" +
+                "★ U-9. **프로브는 «소리»가 아니라 «출력 스트림 개방»을 본다 — 근본 미해결.** " +
+                "그래서 무음 회의·발표(줌·팀즈·키노트)에서도 게이트가 열린다. 이번 라운드의 조치는 " +
+                "**완화 두 겹**뿐이다: (가) 등급 1 이상에서 자동 발동만 억제" +
+                "(ForeignFullscreenTierPolicy.SuppressesAutoDance — 캐릭터는 그대로 남는다), " +
+                "(나) 세션 한정 끄기 토글. **전체화면이 아닌 회의 창은 여전히 못 거른다** — " +
+                "그건 프로브가 «어느 프로세스가 재생 중인가»를 알아야 풀리고, 그 조회는 양 플랫폼 " +
+                "모두 새 API가 필요하다(macOS는 프로세스별 오디오 관측 자체가 별도 권한 영역). " +
+                "**다음 라운드 필요.**");
+        }
+
+        /// <summary>
+        /// ★★★ <b>프로브가 실제로 «생성»되는가</b> — 2026-09-06 신설 (dev-platform).
+        ///
+        /// <para>사운드 감사(2026-09-06)가 실측한 결함이 이것이다: 계약·정책·게이트·양 플랫폼 구현이
+        /// <b>전부</b> 착지했는데 <c>new MacSystemAudioActivityProbe</c> /
+        /// <c>new WindowsSystemAudioActivityProbe</c>가 <b>프로덕션에 0건</b>이라 기능 전체가
+        /// 한 번도 실행된 적이 없었다. <b>«구현이 있다»와 «구현이 돈다»는 다른 명제인데
+        /// 위 대칭 검사(<c>AnyFileImplements</c>)는 앞의 것만 본다</b> — 그래서 이 검사를 따로 둔다.</para>
+        ///
+        /// <para>★ 소스 스캔인 이유는 언제나 같다: 반대편 타깃의 타입은 <b>존재하지 않으므로</b>
+        /// 리플렉션으로는 영원히 절반을 못 본다(CLAUDE.md 「활성 빌드 타깃 규칙」).</para>
+        /// </summary>
+        [Test]
+        public void 시스템_오디오_프로브가_양_플랫폼_모두_실제로_생성된다()
+        {
+            string factoryPath = Path.Combine(PlatformRoot, "SystemAudioActivityProbeFactory.cs");
+            Assert.IsTrue(File.Exists(factoryPath),
+                "SystemAudioActivityProbeFactory가 Platform/ 중립 위치에 없습니다 — 플랫폼 분기가 " +
+                "한쪽 플랫폼 폴더로 들어가면 반대쪽은 같은 자리를 물리적으로 만들 수 없고, " +
+                "그쪽 라운드가 다른 모양의 분기를 새로 만듭니다(FullscreenSuspendPolicy 사고).");
+
+            string factory = StripLineComments(ReadSource(factoryPath));
+
+            // ★ 양성 대조 — 스캐너가 살아 있는가. 이걸 못 넘기면 아래 판정은 전부 무의미하다.
+            StringAssert.Contains("Create", factory,
+                "양성 대조 실패 — 주석 제거 뒤 소스에서 알려진 토큰조차 못 찾았습니다. " +
+                "이 스캐너는 눈이 멀어 있고 아래 판정은 전부 무효입니다.");
+
+            // ---- ① 두 구현이 **둘 다** 생성되는가. 한쪽만 생기는 것이 이 저장소의 반복 실패 모드다 ----
+            //      타입 이름을 니들로 쓰지만 이것은 **존재 단언**이라, 이름이 바뀌면 조용한 초록이
+            //      아니라 시끄러운 빨강이 된다(CLAUDE.md의 부재 단언 함정 반대편).
+            foreach (string ctor in new[]
+                     {
+                         "new StickMate.Platform.MacOS.MacSystemAudioActivityProbe(",
+                         "new StickMate.Platform.Windows.WindowsSystemAudioActivityProbe(",
+                     })
+            {
+                StringAssert.Contains(ctor, factory,
+                    $"★ 팩토리가 «{ctor}…»를 생성하지 않습니다. 2026-09-03~09-06 사이에 실제로 있었던 " +
+                    "상태가 바로 이것입니다 — 구현 파일은 멀쩡히 있는데 **아무도 만들지 않아** " +
+                    "기능이 한 번도 실행되지 않았습니다. 그 실패는 «음악이 안 나온다»와 겉보기가 같아 " +
+                    "사용자 신고로도 잘 안 올라옵니다.");
+            }
+
+            // ---- ② 각 생성이 자기 플랫폼 가드 안에 있는가 ----
+            StringAssert.Contains("#if UNITY_STANDALONE_WIN", factory,
+                "Windows 생성이 플랫폼 가드 안에 없습니다 — macOS 타깃에서 그 타입은 **존재하지 않으므로** " +
+                "크로스 컴파일이 통째로 깨집니다.");
+            StringAssert.Contains("UNITY_STANDALONE_OSX", factory,
+                "macOS 생성이 플랫폼 가드 안에 없습니다 — Windows 타깃에서 같은 이유로 깨집니다.");
+
+            // ---- ③ ★ 분기는 **이 파일 하나뿐**인가 ----
+            //      위쪽에 #if 가 번지면 «양 플랫폼이 같은 규칙을 돈다»가 더 이상 참이 아니게 되고,
+            //      Windows 없는 이 머신의 EditMode 는 그 사실을 확인할 수 없다.
+            foreach (string neutral in new[]
+                     {
+                         "AudioReactiveDanceRunner.cs",
+                         "AudioReactiveDanceDirector.cs",
+                         "AudioReactiveDancePolicy.cs",
+                     })
+            {
+                string src = StripLineComments(ReadSource(Path.Combine(PlatformRoot, neutral)));
+                Assert.Greater(src.Length, 200,
+                    $"{neutral}를 {src.Length}자밖에 못 읽었습니다 — 빈 문자열 위의 '없음'은 공허합니다.");
+                Assert.AreEqual(-1, src.IndexOf("UNITY_STANDALONE_", StringComparison.Ordinal),
+                    $"★ {neutral}에 플랫폼 분기가 들어왔습니다. 이 기능의 #if 는 " +
+                    "SystemAudioActivityProbeFactory 하나여야 합니다 — 규칙이 갈라지는 순간 " +
+                    "«양 플랫폼이 글자 그대로 같은 판정을 돈다»는 전제가 깨지고, 이 개발 머신은 " +
+                    "그 절반을 영원히 검증하지 못합니다.");
+            }
+
+            // ---- ④ 러너는 Unity에서 떨어져 있는가(T₄ 20분 시나리오를 밀리초로 접기 위해) ----
+            string runner = StripLineComments(
+                ReadSource(Path.Combine(PlatformRoot, "AudioReactiveDanceRunner.cs")));
+            StringAssert.Contains(nameof(AudioReactiveDancePolicy.Evaluate), runner,
+                "양성 대조 실패 — 러너가 정책을 부르지 않습니다.");
+            Assert.AreEqual(-1, runner.IndexOf("UnityEngine", StringComparison.Ordinal),
+                "★ 러너가 Unity API에 붙었습니다 — 그러면 20분짜리 T₄ 시나리오를 씬 없이 " +
+                "밀리초로 접어서 검증할 수 없게 됩니다.");
+
+            // ---- ⑤ 폴링 주기를 **베끼지 않았는가**(CLAUDE.md: 상수를 숫자로 복사 금지) ----
+            StringAssert.Contains(nameof(AudioReactiveDancePolicy.ReferencePollIntervalSeconds), runner,
+                "★ 러너가 폴링 주기를 정책 상수에서 가져오지 않습니다. design-systems가 §19-2에서 " +
+                "T₁~T₄를 유도할 때 **전제로 깔았던 주기**라, 여기에 숫자를 따로 적으면 두 벌이 되고 " +
+                "한쪽만 바뀌는 날 임계값의 유도 근거가 조용히 무너집니다.");
+
+            // ---- ⑥ 억제 판정을 **다시 쓰지 않고 재사용**하는가 ----
+            string director = StripLineComments(
+                ReadSource(Path.Combine(PlatformRoot, "AudioReactiveDanceDirector.cs")));
+            StringAssert.Contains(nameof(StickMate.Core.AudioReactiveDanceGate) + "." +
+                                  nameof(StickMate.Core.AudioReactiveDanceGate.BlocksNow), director,
+                "★ 감독이 억제 술어를 부르지 않습니다 — 판정을 두 벌로 만들면 반드시 갈라집니다. " +
+                "특히 «집중 모드 중 춤 금지»는 상태 ID로 다시 구현하면 25분 세션의 0.13%만 막고 " +
+                "그 결함은 세션 시작 직후를 재는 테스트에서 **통과합니다**.");
         }
 
         /// <summary>지정한 폴더의 어떤 .cs가 그 인터페이스를 <b>기반 목록에</b> 달았는가.
@@ -1307,6 +1444,23 @@ namespace StickMate.Tests.EditMode
                 "ForeignFullscreenTierPolicy.Resolve(",
                 "플랫폼 파일이 등급을 스스로 조립하고 있습니다 — 그러면 두 플랫폼의 등급 뜻이 " +
                 "조용히 갈라집니다.");
+
+            // ★ 2026-09-06 — 등급에서 파생되는 축이 <b>셋</b>이 됐다(리더 판정). 셋 다 이 중립 파일에
+            //   있어야 한다. 하나라도 플랫폼 폴더로 내려가면 «반대쪽이 물리적으로 못 부른다»는
+            //   FullscreenSuspendPolicy 사고가 그대로 재현된다.
+            //   ※ 이 축은 새 네이티브 조회를 하나도 늘리지 않는다 — 이미 폴링 중인 등급 하나에서
+            //     파생될 뿐이라 Windows/macOS 어느 쪽에도 새 플랫폼 코드가 없다.
+            foreach (string axis in new[]
+                     {
+                         "static bool " + nameof(ForeignFullscreenTierPolicy.SuspendsCharacter) + "(",
+                         "static bool " + nameof(ForeignFullscreenTierPolicy.RetreatsPanels) + "(",
+                         "static bool " + nameof(ForeignFullscreenTierPolicy.SuppressesAutoDance) + "(",
+                     })
+            {
+                StringAssert.Contains(axis, policy,
+                    $"등급에서 파생되는 축({axis})이 중립 정책 파일에 없습니다 — 플랫폼 폴더에 두면 " +
+                    "반대쪽 플랫폼이 같은 규칙을 부를 수 없습니다.");
+            }
         }
 
         // ====================================================================

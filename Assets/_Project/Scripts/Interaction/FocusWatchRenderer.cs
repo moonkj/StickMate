@@ -192,7 +192,10 @@ namespace StickMate.Interaction
 
         // ==================== 테스트/진단용 관찰 창구 ====================
 
-        /// <summary>지금 타이머 링이 떠 있는지(= 집중 세션이 진행 중인지).</summary>
+        /// <summary>지금 타이머 링이 떠 있는지. ★ 2026-09-06 정정 — 이 값은 <b>"집중 세션이 진행
+        /// 중인지"가 아니다</b>(예전 주석이 그렇게 적혀 있었고, 그 등식이 곧 이번 버그였다).
+        /// 판정은 <see cref="FocusWatchDirector.IsTimerRingWarranted"/>이고, 세션이 켜져 있어도
+        /// 시작 포즈가 확정되지 않았거나 캐릭터가 숨겨져 있으면 false다.</summary>
         public bool IsRingVisible => _container != null;
 
         /// <summary>지금 표현 중인 경고 단계.</summary>
@@ -271,12 +274,32 @@ namespace StickMate.Interaction
         private void LateUpdate()
         {
             using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Renderers);   // [스톨구간] 계측
-            bool wantRing = _director != null && _director.IsSessionActive && _agent != null;
+
+            // ★★★ 2026-09-06 — 사용자 신고 «집중모드 시작시 캐릭터다리쪽에 원이 생김. 집중모드 행동을
+            // 해야하는데 안함». 예전 이 줄은 <c>_director.IsSessionActive</c> <b>하나만</b> 봤다.
+            // 그런데 캐릭터의 행동(안경+팔짱)은 훨씬 까다로운 관문을 통과해야 해서(Idle/Walk + 스펙터클
+            // 락이 비어 있을 것) 조용히 생략되는 일이 있었고, 그때 화면에는 <b>원만 남았다</b>.
+            //
+            // 이제 판정을 <see cref="FocusWatchDirector.IsTimerRingWarranted"/> <b>한 곳</b>에서만 받는다 —
+            // 링은 "세션이 켜졌다"가 아니라 <b>"시작 포즈 전이가 확정됐다 + 그 캐릭터가 화면에 있다"</b>는
+            // 사실에서 파생된다(절대 불변 원칙 1을 대사가 아니라 링에 적용한 것). 렌더러가 자기 조건을
+            // 따로 들고 있으면 그 순간 판정이 두 벌이 되고, 두 벌은 반드시 갈라진다 — 그게 이 신고였다.
+            //
+            // ★ 타이머 자체는 이 값과 무관하다(docs/UX_WIDGETS.md 369행 계약): 포즈를 놓쳐 링이 없는
+            //   동안에도 <c>RemainingSeconds</c>는 정상적으로 흐르고, 집중 모드 팝오버가 그 숫자를 계속
+            //   보여준다. 이 줄이 정하는 것은 <b>발밑 연출을 그릴 자격</b>뿐이다.
+            bool wantRing = _director != null && _agent != null && _director.IsTimerRingWarranted;
 
             if (wantRing && _container == null) BuildRing();
             if (!wantRing && _container != null)
             {
-                Debug.Log("[포모도로] 세션이 끝나 타이머 링을 걷습니다(정상 만료 / 중도 취소 / 긴급정지).");
+                Debug.Log("[포모도로] 타이머 링을 걷습니다 — " +
+                    (_director == null || !_director.IsSessionActive
+                        ? "세션 종료(정상 만료 / 중도 취소 / 긴급정지)."
+                        : _agent != null && _agent.IsSuspended
+                            ? "캐릭터가 숨겨져(전체화면 감지 또는 사용자 명시 숨김) 링만 남는 것을 막습니다 — " +
+                              "타이머는 계속 살아 있고, 캐릭터가 돌아오면 링도 함께 돌아옵니다."
+                            : "시작 포즈가 확정되지 않아 링을 그릴 근거가 사라졌습니다(원칙 1)."));
                 Teardown();
                 return;
             }

@@ -188,24 +188,39 @@ namespace StickMate.Tests.PlayMode
 
         // ==================== E — 레일 끝 칩 ====================
 
+        /// <summary>
+        /// ★★ 2026-09-06 — <b>판정 축이 「글리프 색」에서 「면」으로 옮겨 왔다</b>
+        /// (<c>docs/UI_ALPHA_BLEED_POLICY.md</c> §7-3 F1).
+        ///
+        /// <para>옛 판정은 <c>glyph.color == UiChrome.InkIcon(살아있음)</c>이라는 <b>등호</b>였다.
+        /// 그건 "프로덕션이 그 함수를 불렀는가"를 물을 뿐이고, 그 사이 <b>칩의 면은 창 바탕보다
+        /// 어두운 채</b>(1.01 : 1) 6일을 지났다 — 등호는 그걸 볼 수 없었다. 그래서 지금은
+        /// <b>실제로 칠해진 두 색을 읽어 대비를 잰다</b>: 살아 있는 칩은 <b>면으로</b> 서고,
+        /// 죽은 칩은 물러나며, 어느 상태에서도 화살표는 자기 면 위에서 읽힌다.</para>
+        /// </summary>
         [UnityTest]
         [Timeout(120000)]
         public IEnumerator RailChipsGoDeadAtTheEndsInsteadOfLookingClickable()
         {
             yield return LoadAndOpen();   // 처음 열면 [일반] 탭, 스크롤 0 = 맨 위
 
-            Text up = RailGlyph("PageUp");
-            Text down = RailGlyph("PageDown");
+            (Image upFace, Text up) = RailChip("PageUp");
+            (Image downFace, Text down) = RailChip("PageDown");
             Assert.IsNotNull(up, $"{LogPrefix} [▲] 칩 글리프를 찾지 못했습니다.");
             Assert.IsNotNull(down, $"{LogPrefix} [▼] 칩 글리프를 찾지 못했습니다.");
+            Assert.IsNotNull(upFace, $"{LogPrefix} [▲] 칩의 면(Image)을 찾지 못했습니다.");
+            Assert.IsNotNull(downFace, $"{LogPrefix} [▼] 칩의 면(Image)을 찾지 못했습니다.");
             Assume.That(up.gameObject.activeInHierarchy, Is.True,
                 $"{LogPrefix} 전제: [일반] 탭은 내용이 넘쳐 레일이 보입니다.");
 
-            Assert.AreEqual(UiChrome.InkIcon(false), up.color,
-                $"{LogPrefix} 맨 위인데 [▲]가 살아 있는 색입니다 — 완전히 활성으로 보이면서 " +
-                "아무 일도 하지 않는 버튼은 이 저장소가 '최악'이라고 부르는 패턴입니다.");
-            Assert.AreEqual(UiChrome.InkIcon(true), down.color,
-                $"{LogPrefix} 맨 위인데 [▼]까지 죽어 있습니다 — 내려갈 곳이 있습니다.");
+            AssertRailChip("[▲]", upFace, up, alive: false, where: "맨 위");
+            AssertRailChip("[▼]", downFace, down, alive: true, where: "맨 위");
+
+            // 두 상태가 <b>실제로 다르게</b> 그려졌는가 — 같은 모습이면 위 두 줄은 빈 조건이다.
+            Assert.Greater(UiChrome.ContrastRatio(upFace.color, downFace.color), 1.5f,
+                $"{LogPrefix} 맨 위인데 [▲]와 [▼]의 면이 사실상 같은 색입니다 " +
+                $"(#{ColorUtility.ToHtmlStringRGB(upFace.color)} vs " +
+                $"#{ColorUtility.ToHtmlStringRGB(downFace.color)}) — 살아 있음/죽음이 안 갈립니다.");
 
             // 바닥까지 내려간다(넘침이 한 번에 안 끝날 수 있으니 여러 번 누른다).
             for (int i = 0; i < 8; i++)
@@ -214,33 +229,73 @@ namespace StickMate.Tests.PlayMode
                 yield return null;
             }
 
-            Assert.AreEqual(UiChrome.InkIcon(false), down.color,
-                $"{LogPrefix} 맨 아래인데 [▼]가 아직 살아 있는 색입니다.");
-            Assert.AreEqual(UiChrome.InkIcon(true), up.color,
-                $"{LogPrefix} 맨 아래인데 [▲]가 죽어 있습니다 — 올라갈 곳이 있습니다.");
+            AssertRailChip("[▼]", downFace, down, alive: false, where: "맨 아래");
+            AssertRailChip("[▲]", upFace, up, alive: true, where: "맨 아래");
         }
 
-        private static Text RailGlyph(string chipName)
+        /// <summary>레일 칩 한 개의 (면, 글리프)를 <b>실제 칠해진 값으로</b> 판정한다.
+        /// <para>hex도 토큰 이름도 베끼지 않는다 — 재는 것은 <b>관계</b>다:
+        /// ① 살아 있으면 면이 창 바탕 위에 <b>선다</b>(비텍스트 하한) / 죽었으면 <b>물러난다</b>,
+        /// ② 어느 상태에서도 화살표는 자기 면 위에서 읽힌다.</para></summary>
+        private static void AssertRailChip(string name, Image face, Text glyph, bool alive, string where)
+        {
+            float onPanel = UiChrome.ContrastRatio(face.color, UiChrome.PanelSurface);
+            float inkOnFace = UiChrome.ContrastRatio(glyph.color, face.color);
+            string hex = $"면 #{ColorUtility.ToHtmlStringRGB(face.color)} / " +
+                         $"글리프 #{ColorUtility.ToHtmlStringRGB(glyph.color)}";
+
+            if (alive)
+            {
+                Assert.GreaterOrEqual(onPanel, UiChrome.MinNonTextContrast,
+                    $"{LogPrefix} {where}에서 살아 있어야 할 {name} 칩의 면이 창 바탕 대비 " +
+                    $"{onPanel:F2}:1입니다({hex}). 누를 수 있는 칸이 <b>면으로 보이지 않으면</b> " +
+                    "그 칩은 화면에 없는 것과 같습니다(하한 " +
+                    $"{UiChrome.MinNonTextContrast:F1}:1).");
+            }
+            else
+            {
+                Assert.Less(onPanel, UiChrome.MinNonTextContrast,
+                    $"{LogPrefix} {where}에서 죽어야 할 {name} 칩이 아직 면으로 서 있습니다 " +
+                    $"({onPanel:F2}:1, {hex}) — 완전히 활성으로 보이면서 아무 일도 하지 않는 버튼은 " +
+                    "이 저장소가 '최악'이라고 부르는 패턴입니다.");
+            }
+
+            Assert.GreaterOrEqual(inkOnFace, UiChrome.MinTextContrast,
+                $"{LogPrefix} {where}의 {name} 화살표가 자기 면 위에서 {inkOnFace:F2}:1입니다({hex}) — " +
+                "면을 바꾸면서 잉크를 안 따라 바꾸면 글리프가 지워집니다(정책 §2-E).");
+        }
+
+        private static (Image, Text) RailChip(string chipName)
         {
             foreach (Transform t in Canvas().GetComponentsInChildren<Transform>(true))
             {
                 if (t.name != chipName) continue;
                 Transform label = t.Find("Label");
-                if (label != null) return label.GetComponent<Text>();
+                return (t.GetComponent<Image>(), label != null ? label.GetComponent<Text>() : null);
             }
-            return null;
+            return (null, null);
         }
 
-        /// <summary>★ 네거티브 컨트롤 — 두 색이 애초에 다르지 않으면 위 검사는 무의미하다.</summary>
+        /// <summary>★ 네거티브 컨트롤 — <b>옛 배선</b>이 이 판정에서 실제로 빨개지는가.
+        /// 옛 칩은 살아 있든 죽었든 면이 <see cref="UiChrome.CardSurfaceMuted"/> 하나였고, 그 면은
+        /// 창 바탕보다 <b>어둡다</b>. 그게 하한을 못 넘는다는 사실이 재현되지 않으면 위 초록은
+        /// 아무 조건도 아니다.</summary>
         [Test]
-        public void NegativeControl_RailChipAliveAndDeadInksActuallyDiffer()
+        public void NegativeControl_OldRailChipFaceCouldNotStandOnThePanel()
         {
-            Assert.AreNotEqual(UiChrome.InkIcon(true), UiChrome.InkIcon(false),
-                $"{LogPrefix} 아이콘 사다리의 활성/비활성이 같은 색입니다 — 그러면 위 [▲][▼] 검사는 " +
-                "어떤 배선에서도 통과하는 빈 조건입니다.");
-            Assert.Greater(UiChrome.RelativeLuminance(UiChrome.InkIcon(true)),
-                UiChrome.RelativeLuminance(UiChrome.InkIcon(false)),
-                $"{LogPrefix} 비활성 아이콘이 활성보다 밝습니다 — 위계가 뒤집혔습니다.");
+            float old = UiChrome.ContrastRatio(UiChrome.CardSurfaceMuted, UiChrome.PanelSurface);
+            Assert.Less(old, UiChrome.MinNonTextContrast,
+                $"{LogPrefix} 옛 칩 면이 창 바탕 대비 {old:F2}:1로 하한을 넘었습니다 — 그렇다면 " +
+                "이 라운드가 고친 대상이 실재하지 않는다는 뜻이고, 위 판정은 빈 조건입니다.");
+            Assert.Less(old, 1.1f,
+                $"{LogPrefix} 옛 칩 면이 {old:F2}:1입니다 — 실측 1.01:1(창 바탕보다 어둡다)이 " +
+                "재현되지 않았습니다.");
+
+            // 그리고 새 면은 같은 자로 재서 <b>넘어야</b> 한다 — 두 방향을 같은 함수로 잰다.
+            float now = UiChrome.ContrastRatio(SettingsControls.ControlFaceOnPanel, UiChrome.PanelSurface);
+            Assert.GreaterOrEqual(now, UiChrome.MinNonTextContrast,
+                $"{LogPrefix} 새 칩 면이 창 바탕 대비 {now:F2}:1입니다 — 규칙이 만든 값이 하한을 " +
+                "못 넘으면 F1 자체가 성립하지 않습니다.");
         }
     }
 }

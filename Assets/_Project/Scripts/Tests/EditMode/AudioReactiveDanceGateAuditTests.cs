@@ -4,6 +4,7 @@ using NUnit.Framework;
 using UnityEngine;
 using StickMate.Core;
 using StickMate.Interaction;
+using StickMate.Platform;
 using StickMate.States;
 
 namespace StickMate.Tests.EditMode
@@ -84,14 +85,44 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// ★ <b>표면 축을 얹으면 2026-08-31 신고가 되살아난다.</b> 등급 1(게임이 아닌 전체화면 앱)에서
-        /// 캐릭터는 <b>계속 보이고 계속 걸어다닌다</b> — 춤은 캐릭터에 붙은 연출이므로 캐릭터 축을 따른다.
+        /// ★★★ <b>2026-09-06 리더 판정으로 이 검사의 내용이 바뀌었다.</b> 예전 판은
+        /// <i>"전체화면 축을 아예 읽지 마라"</i>였고, 지금은 <b>"어느 창구로 읽는가"</b>를 잠근다.
+        ///
+        /// ============================================================================
+        /// 무엇이 바뀌었고, 무엇이 <b>안</b> 바뀌었나
+        /// ============================================================================
+        /// <b>바뀐 것</b>: 등급 1(게임이 아닌 전체화면 앱 — 줌·팀즈·키노트)에서 <b>자동 발동 춤만</b>
+        /// 막는다. macOS 프로브가 «소리»가 아니라 «출력 스트림 개방»을 보기 때문에 <b>무음 회의에서도</b>
+        /// 게이트가 열리는 것이 실측으로 확인됐고, 그 앱들이 거의 항상 전체화면이라는 사실이 값싼
+        /// 상관 신호를 준다.
+        ///
+        /// <para><b>안 바뀐 것</b>: 캐릭터는 등급 1에서 <b>계속 보이고 계속 걸어다닌다.</b>
+        /// 2026-08-31 신고(<i>"엑셀 전체화면에서 캐릭터가 없어져버림"</i>)의 회귀를 막는 함수는
+        /// <c>ForeignFullscreenTierPolicy.SuspendsCharacter</c> 하나이고, 그 함수는 한 글자도 안 바뀌었다.
+        /// 그 계약을 <see cref="등급1은_춤만_막고_캐릭터는_그대로_둔다"/>가 <b>실행해서</b> 다시 잰다.</para>
+        ///
+        /// ============================================================================
+        /// ★ 그래도 <b>표면 축 두 개는 여전히 금지</b>다 — 이유가 달라졌을 뿐이다
+        /// ============================================================================
+        /// <see cref="StickmanAgent.ArePanelsSuppressed"/>에는 <b>사용자 임대</b> 항이 들어 있다
+        /// (<c>UserSurfaceSummonPolicy</c>). 사용자가 설정창을 부르려고 임대를 켜는 순간 그 값이
+        /// 거짓이 되므로, 그것으로 춤을 막으면 <i>«설정창을 여는 동안만 춤이 되살아난다»</i>는
+        /// 재현 조건이 까다로운 결함이 된다. 올바른 창구는
+        /// <see cref="StickmanAgent.IsForeignFullscreenAppPresent"/> 하나다.
         /// </summary>
         [Test]
-        public void 춤_게이트는_표면_축을_읽지_않는다()
+        public void 춤_게이트는_전체화면을_전용_창구로만_읽는다()
         {
             string body = GateBody();
 
+            // (가) 올바른 창구를 실제로 읽는가 — 존재 단언. 이것이 없으면 아래 부재 단언은
+            //      "전체화면을 아예 안 본다"로도 조용히 통과한다(CLAUDE.md의 «부재 단언» 함정).
+            string danceChannel = "." + nameof(StickmanAgent.IsForeignFullscreenAppPresent);
+            StringAssert.Contains(danceChannel, body,
+                $"★ 춤 게이트가 전체화면 전용 창구({danceChannel})를 읽지 않습니다:\n  " + body.Trim() +
+                "\n무음 회의·발표에서 자동 춤이 발동합니다(2026-09-06 리더 판정).");
+
+            // (나) 임대 항이 섞인 표면 축은 여전히 금지 — 부재 단언.
             foreach (string surfaceChannel in new[]
                      {
                          nameof(StickmanAgent.ArePanelsSuppressed),
@@ -100,9 +131,104 @@ namespace StickMate.Tests.EditMode
             {
                 Assert.AreEqual(-1, body.IndexOf(surfaceChannel, StringComparison.Ordinal),
                     $"★ 춤 게이트가 표면 축({surfaceChannel})을 읽습니다:\n  " + body.Trim() +
-                    "\n그 값은 등급 1(엑셀·줌·키노트 전체화면)에서 참이 되는데, 그 구간에서 캐릭터는 " +
-                    "일부러 남깁니다(2026-08-31 신고 «엑셀 전체화면에서 캐릭터가 없어져버림»의 회귀 방지). " +
-                    "춤만 이 값으로 막으면 그 신고가 이 기능을 통해 부분적으로 되살아납니다.");
+                    "\n그 값에는 «사용자 임대» 항이 들어 있어, 사용자가 설정창을 부르는 동안에만 춤이 " +
+                    "되살아납니다. 전체화면을 보려면 " + danceChannel + "를 읽으십시오.");
+            }
+        }
+
+        /// <summary>
+        /// ★★ <b>2026-08-31 신고의 회귀 잠금.</b> 위 검사는 소스를 읽고, 이 검사는 정책 함수를
+        /// <b>실행해서</b> 잰다 — 같은 방법으로 두 번 재는 것은 검증이 아니다.
+        ///
+        /// <para>등급 1에서 <b>춤은 막히고</b>(<c>SuppressesAutoDance</c>=참)
+        /// <b>캐릭터는 안 숨는다</b>(<c>SuspendsCharacter</c>=거짓)는 두 값을 <b>같은 테스트에서
+        /// 나란히</b> 잰다. 한쪽만 재면 «둘이 갈라져 있다»는 계약 자체가 검증되지 않는다.</para>
+        /// </summary>
+        [Test]
+        public void 등급1은_춤만_막고_캐릭터는_그대로_둔다()
+        {
+            Assert.IsTrue(ForeignFullscreenTierPolicy.SuppressesAutoDance(ForeignFullscreenTier.PanelsOnly),
+                "★ 등급 1에서 자동 춤이 막히지 않습니다 — 무음 회의·발표에서 캐릭터가 춤춥니다.");
+            Assert.IsFalse(ForeignFullscreenTierPolicy.SuspendsCharacter(ForeignFullscreenTier.PanelsOnly),
+                "★★ 등급 1에서 캐릭터가 숨습니다 — 2026-08-31 사용자 신고(«엑셀같은 프로그램 전체화면에서 " +
+                "엑셀 클릭하면 캐릭터가 없어져버림»)의 완전한 회귀입니다. 춤 억제 축을 캐릭터 축에 " +
+                "섞지 마십시오.");
+
+            Assert.IsFalse(ForeignFullscreenTierPolicy.SuppressesAutoDance(ForeignFullscreenTier.None),
+                "★ 남의 전체화면 앱이 없는데 춤이 막힙니다 — 평상시에 이 기능이 통째로 죽습니다.");
+            Assert.IsTrue(ForeignFullscreenTierPolicy.SuppressesAutoDance(ForeignFullscreenTier.Full),
+                "등급 2는 등급 1을 포함해야 합니다(«등급이 올라갈수록 더 걷는다» 불변식).");
+        }
+
+        // ====================================================================
+        // ③ 「이번 세션만 끄기」 — 리더 판정 2026-09-06
+        // ====================================================================
+
+        /// <summary>
+        /// ★ 세션 토글이 <b>실제로 막는가</b>, 그리고 <b>되돌아오는가</b>.
+        ///
+        /// <para>이 토글의 안전성은 «저장되지 않는다»에 걸려 있다. 저장되면 사용자가 반년 전에 끈 것을
+        /// 잊고 «춤이 고장났다»고 신고하는 경로가 생긴다(41-8: 되돌리는 문이 없는 저장 항목 금지).
+        /// 그래서 <b>세이브 스키마를 건드리지 않았다</b>는 사실을
+        /// <see cref="세션_토글은_세이브에_내려가지_않는다"/>가 따로 잠근다.</para>
+        /// </summary>
+        [Test]
+        public void 세션_토글을_켜면_춤이_막히고_끄면_원래대로_돌아온다()
+        {
+            var go = new GameObject(nameof(세션_토글을_켜면_춤이_막히고_끄면_원래대로_돌아온다));
+            try
+            {
+                AudioReactiveDanceGate.ResetForTesting();
+                var focus = go.AddComponent<FocusWatchDirector>();
+                var agent = go.AddComponent<StickmanAgent>();
+
+                // 양성 대조 — 토글을 켜기 «전»의 값을 먼저 잰다. 이것이 없으면 아래 true가
+                // «토글 때문»인지 «원래부터 막혀 있어서»인지 구분할 수 없다.
+                bool before = AudioReactiveDanceGate.BlocksNow(agent, focus);
+                Assert.IsFalse(before,
+                    "전제가 깨졌습니다 — 갓 만든 캐릭터/감시자에서 이미 막혀 있습니다. " +
+                    "이 상태에서는 아래 판정이 토글의 효과를 증명하지 못합니다.");
+
+                AudioReactiveDanceGate.SetMutedForThisSession(true, "테스트");
+                Assert.IsTrue(AudioReactiveDanceGate.MutedForThisSession, "토글 값이 서지 않았습니다.");
+                Assert.IsTrue(AudioReactiveDanceGate.BlocksNow(agent, focus),
+                    "★ «이번 세션만 끄기»를 켰는데 춤이 막히지 않습니다 — 사용자가 회의 중에 끌 수단이 없습니다.");
+
+                AudioReactiveDanceGate.SetMutedForThisSession(false, "테스트");
+                Assert.IsFalse(AudioReactiveDanceGate.BlocksNow(agent, focus),
+                    "★ 다시 켰는데 계속 막힙니다 — 되돌리는 문이 닫혀 있습니다.");
+            }
+            finally
+            {
+                AudioReactiveDanceGate.ResetForTesting();
+                UnityEngine.Object.DestroyImmediate(go);
+            }
+        }
+
+        /// <summary>
+        /// ★★ <b>세이브 스키마를 한 비트도 건드리지 않았다.</b> 이 토글이 세이브로 내려가면
+        /// 하위 호환 테스트가 의무로 붙고(CLAUDE.md), 무엇보다 «되돌리는 문 없는 저장 항목»이 된다.
+        ///
+        /// <para>측정은 <b>세이브 모델의 소스</b>에서 한다 — 런타임 값으로는 «지금 저장 안 됐다»만
+        /// 알 수 있고 «저장 경로가 없다»는 알 수 없다.</para>
+        /// </summary>
+        [Test]
+        public void 세션_토글은_세이브에_내려가지_않는다()
+        {
+            string saveDir = Path.Combine(Application.dataPath, "_Project", "Scripts", "Core");
+            string[] saveFiles = Directory.GetFiles(saveDir, "*Save*.cs", SearchOption.AllDirectories);
+            Assert.Greater(saveFiles.Length, 0,
+                "세이브 관련 소스를 하나도 못 찾았습니다 — 이 감사의 전제가 깨졌습니다(빈 집합 위의 " +
+                "«없다»는 공허합니다).");
+
+            string needle = nameof(AudioReactiveDanceGate.MutedForThisSession);
+            foreach (string file in saveFiles)
+            {
+                string text = File.ReadAllText(file);
+                Assert.AreEqual(-1, text.IndexOf(needle, StringComparison.Ordinal),
+                    $"★ 세이브 소스 {Path.GetFileName(file)}가 «{needle}»을 참조합니다 — 이 토글은 " +
+                    "비영속이어야 합니다(리더 판정 2026-09-06). 영속시키려면 스키마 버전 상승과 " +
+                    "하위 호환 테스트가 함께 와야 합니다.");
             }
         }
 

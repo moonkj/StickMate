@@ -5783,3 +5783,456 @@ InfoGearIconWidget.cs:840 if (_agent.HidesScreenSurfaces || !AppSettingsModel.Ge
 같이 적게 하고, 리더가 취합할 때 그 시각을 먼저 볼 것.** mtime 없는 사실 주장은 이 속도에서 위험하다.
 
 ---
+
+# 17. 【2026-09-06 08:22】 전수 배선 감사 — 「설계는 끝났는데 프로덕션에 안 걸린 것」 (game-architect)
+
+사용자 지적: *"총괄 장비만 쳐다봐도 내가 지시한 일부만 되어있고 공통적인 부분인데도 같이 적용이
+안되어 있네. 전수 재확인하고 진행."*
+
+장비에서 실측된 패턴(**설계 백로그가 아니라 포팅 백로그**)이 다른 시스템에도 있는지 전수로 찾았다.
+**읽기 전용 감사다 — 프로덕션 파일 0개 수정.**
+
+## 17-0. 이 절의 측정 시각과 하니스 교정 — 먼저 읽을 것
+
+★ **이 저장소는 지금 시간 단위로 바뀐다.** 감사 중 9개 에이전트가 병렬로 코드를 만지고 있었고,
+아래 파일들은 **내가 읽는 동안(최근 120분 내) 실제로 수정됐다**:
+`Interaction/CharacterProgressionDirector.cs`(07:49) · `Interaction/FocusWatchDirector.cs` ·
+`Interaction/AccessoryShapeBuilder.Handoff.cs`(08:15) · `Core/ItemCatalog.cs` · `Core/CharacterSaveStore.cs`.
+
+⇒ **핵심 주장(§17-1)은 08:22:34에 재측정해서 확정했다.** 그 외 항목은 08:00~08:22 사이 측정이다.
+
+★★ **하니스 교정 — 이 감사는 한 번 거짓 0을 냈다. 기록으로 남긴다.**
+첫 시도에서 `grep -rn --include=*.cs`를 따옴표 없이 써 zsh가 글롭을 잡아먹었고,
+**14개 API 전부가 `PROD=0`으로 나왔다.** 그 0은 "호출부가 없다"가 아니라 "grep이 안 돌았다"였다.
+두 번째 시도에서는 `grep -v "/Tests/"`로 걸렀는데 grep이 `./` 접두사를 안 붙여
+**테스트 파일이 프로덕션으로 집계**됐다. 즉 **거짓 0과 거짓 양성을 연달아 만들었다.**
+
+그래서 이후 모든 측정에 **양·음 대조를 붙였다**:
+- 양성 대조: `StickmanAgent` → 프로덕션 323건 (0이면 하니스 고장)
+- 음성 대조: `ZzzNotARealSymbol` → 프로덕션 0건 (유일한 히트는
+  `Tests/EditMode/RightClickFanGateTests.cs:419`의 **자체 음성 대조 문자열**이라 정직하다)
+
+**이 두 줄이 통과하지 않은 측정은 이 절에 싣지 않았다.** 아래 숫자를 재검증할 때도 같은 대조를 먼저 돌 것.
+
+---
+
+## 17-1. ★★★ 재화(코인) — **지급 경로 0개. 오늘 만든 상점 가격표는 전부 도달 불가**
+
+### 판정: **배선 백로그** (설계는 완결, 프로덕션 착지 0줄)
+
+| 항목 | 실측 |
+|---|---|
+| 설계 완료 | `Core/CurrencyModel.cs`(574줄, mtime 2026-09-05 22:49) · `Core/CurrencyRules.cs`(422줄, 22:48) |
+| 프로덕션 **지급/소비 호출** | **0건** (재측정 2026-09-06 08:22:34) |
+| 프로덕션 `CurrencyModel.*` 참조 | 15건 — **전부 읽기·영속화·주석**. 쓰기 1건도 도달 불가(아래) |
+
+**지급/소비 API 8개 전수 — 프로덕션 호출부:**
+
+| API | 프로덕션 호출 | 설계된 수급원 |
+|---|---|---|
+| `TickIdleIncome` | **0** | 유휴 12동전/분, 8시간 창 |
+| `TryAwardArcheryCoins` | **0** | 활쏘기 1회 20동전 |
+| `TryPayTodoDailyCoins` | **0** | [오늘 할일] 하루 300 |
+| `TryGrantSeedCoins` | **0** | 첫 실행 시드 1,200 (U-42 확정) |
+| `TryPurchaseItem` | **0** (`CurrencyRules.cs:139`은 주석) | 상점 구매 |
+| `TryUsePotion` | **0** | 상한 +500 |
+| `TickDayRollover` | **0** | 일일 리셋 |
+| `SetEquippedDanceIds` | **0** | 춤 장착 |
+
+`CurrencyRules.FocusCoinsPerMinute = 24`(집중 완주 요율) — **프로덕션 사용처 0건.**
+
+### 그래서 지금 화면에서 무슨 일이 일어나는가
+
+`Interaction/CharacterInfoWindow.cs:1066`
+```csharp
+if (_coinChipValue != null) _coinChipValue.text = CurrencyModel.CoinBalance.ToString("N0");
+```
+이 줄은 **0.25초마다(4Hz) 돈다**(`RefreshNumbers`). 그리고 `CoinBalance`를 올리는 코드가
+프로덕션에 없으므로 **이 칩은 영구히 "0"을 그린다.** 사용자는 하루 종일 켜 놔도 0을 본다.
+
+⇒ **오늘 확정한 가격표(일반 600 / 희귀 1,400 / 영웅 3,200 / 전설 9,600)와 시드 1,200,
+일일 상한 2,500, 8시간 창은 전부 도달 불가능한 숫자다.** U-17(9,600)·U-42(1,200) 확정 라운드의
+**실효성은 현재 0**이다. 값이 틀린 게 아니라 **값에 닿을 방법이 없다.**
+
+### ★ 이 격차의 형태가 특히 나쁘다 — 배관은 다 깔렸고 수도꼭지만 없다
+
+같은 파일 `Interaction/CharacterProgressionDirector.cs`가 **XP는 이미 두 곳에서 지급한다**:
+- `:116-123` 유휴 패시브 — `progressionPassiveXpPerMinute: 1.5`(출하 config 실측, 10초 틱)
+- `:148-155` 활쏘기 정중앙 — `progressionBullseyeXp: 15`, `ArcheryShotChanged` 구독 + Release 필터
+  + 같은 발 재발행 방어(`_lastRewardedShotIndex`)까지 **이미 다 있다**
+
+그리고 **동전 저장 배선도 이미 끝나 있다**:
+- `:144` `|| CurrencyModel.IsDirty` — 60초 주기·종료 저장에 합류 완료
+- `Core/CharacterSaveStore.cs:660 / :1320 / :1403` — 로드·캡처·MarkSaved 전부 착지
+- 저장 스키마 **v10**(`CharacterSaveStore.cs:144`)이 동전 필드를 **이미 갖고 있다**
+
+⇒ **v11이 필요 없다. 되돌릴 수 없는 비용은 이미 지불됐다.** 남은 것은 수도꼭지 몇 줄이고,
+그 자리는 전부 특정됐다(§17-11). 이것이 "설계 백로그"가 아니라 **"포팅/배선 백로그"**인 이유다.
+
+### ★★ 선결 조건 — `TickDayRollover`를 먼저 배선하지 않으면 사용자 파일이 영구 오염된다
+
+`TickDayRollover`는 **일일 상한 리셋 + 무료 회복제 부활 + 8시간 창 리셋을 되돌리는 유일한 코드**다
+(`CurrencyModel.cs:427`, 단일성이 곧 불변식 I-15′). 호출부가 **0건**이다.
+
+수급만 먼저 켜면:
+`TodayGrantedCoins`가 1,500에 도달 → 리셋이 영원히 안 옴 → **그 상태가 v10 파일에 저장된다**
+(`IsDirty`가 이미 합류해 있으므로 확실히 저장된다) → 그 사용자는 **다시는 유휴 수급을 못 받는다.**
+
+이건 코드 되돌리기로 못 고친다 — **이미 디스크에 적힌 사용자 파일을 고쳐야 한다.**
+⇒ **롤오버 틱은 어떤 수급 배선보다 먼저(또는 최소한 같은 라운드에) 착지해야 한다.**
+
+---
+
+## 17-2. 세트 완성 — **도달 가능하다. 상점과 무관하다** (지시받은 가설을 실측으로 정정)
+
+임무 지시는 *"재화가 배선 안 됐다면 상점에서 살 수도 없고, 그럼 세트 완성은 레벨업 드롭에만
+의존하는데 그 확률/보장이 설계돼 있는가"*였다. **실측 결과 이 우려는 성립하지 않는다.**
+
+**드롭 확률이라는 개념 자체가 없다 — 해금은 전부 결정론적 레벨 게이트다.**
+`ItemCatalog.ThemeTable`(`Core/ItemCatalog.cs:1343-1379`) 24종을 테마별로 최대 필요 레벨로 접으면:
+
+| 테마 | HEAD | EYES | NECK | BACK | **완성 필요 레벨** |
+|---|---|---|---|---|---|
+| **Mil(군용)** | cap Lv1 | sunglasses Lv1 | bowtie Lv1 | cape Lv1 | **Lv.1 — 즉시** |
+| Cyber | crown 20 | monocle 15 | pendant 21 | long_cape 13 | Lv.21 |
+| Office | fedora 9 | round 6 | striped 8 | backpack 22 | Lv.22 |
+| Neon | beret 23 | browline 19 | bell 18 | wings 17 | Lv.23 |
+| Sport | fur 5 | goggles 11 | scarf 12 | poncho 25 | Lv.25 |
+| Ink | straw 26 | patch 23 | bandana 25 | fairy_wings 28 | Lv.28 |
+
+**Mil 4종이 전부 Lv1**이므로 세트 완성(+2/스탯)은 **첫 실행에 이미 도달 가능**하고,
+레벨은 실제로 오른다(§17-1의 XP 수도꼭지 2개는 살아 있다). **세트는 재화 배선을 기다리지 않는다.**
+
+### 다만 여기에 딸린 죽은 표시가 하나 있다 — H-8 영구 해금 눈금
+
+`Interaction/CharacterInfoWindow.Stats.cs:561`이 `CurrencyModel.StatTierReached(index)`를 **화면에 그린다.**
+그 값을 올리는 유일한 쓰기는 `EquipmentStatRules.cs:579`(`RecordTierHighWaterMarks`)인데 —
+
+```
+RecordTierHighWaterMarks 호출부:  프로덕션 0건 / 테스트 2건
+```
+
+`EquipmentStatRules.cs:571`이 스스로 적어 뒀다: *"★ 부르는 쪽은 이 라운드에서 배선하지 않았다.
+착용 변경 이벤트를 구독하는 자리는 `Interaction/`이고 그쪽은 이 라운드의 소유가 아니다."*
+
+⇒ **눈금은 영구히 0단계로 그려진다.** 사용자가 고급 장비를 실제로 찍어도 눈금이 안 남는다.
+그 증상은 `EquipmentStatRules.cs:566`이 예언한 것과 정확히 같다 —
+*"「고급을 찍었는데 눈금이 중급까지만 남는다」... 화면은 멀쩡하고 저장 파일을 열어봐도 안 보인다."*
+**판정: 배선 백로그. 한 줄짜리(`StickmanEventBus.CharacterEquipmentChanged` 구독부에서 호출).**
+
+---
+
+## 17-3. 대사 — 세트/테마 어조 전환 **훅 자체가 0건**
+
+| 측정 | 결과 |
+|---|---|
+| `Dialogue/` 규모 | 6파일 3,635줄 (`DialogueBubbleRenderer` 2,449 / `DialogueKind` 477 / `GrabReactionLines` 242 / `AmbientChatter` 201 / `DialogueIntent` 235 / `IHasDialogueParams` 31) |
+| `SetTheme`·`SetComplete`가 `Dialogue/`에 닿는가 | **0건** |
+| `AmbientChatter`가 장비/테마를 읽는가 | **0건** (`Theme`/`Equipment` 참조 없음) |
+| 요일·시간대 반응 훅 | **0건** (`DayOfWeek`/시간대 참조가 대사 경로에 없음) |
+
+**판정: 설계 백로그.** 어조 전환은 "대사 텍스트가 부족한" 문제가 아니라 —
+**세트 상태가 대사 계층에 전달되는 경로가 아예 없다.** 대사를 100줄 써도 꽂을 자리가 없다.
+
+★ **이전 라운드 기록 1건을 정정한다.** *"design-narrative의 실제 대사가 현재 placeholder
+(`기본 중립 대사`)"*는 **오독이다.** `기본 중립 대사`는 대사 풀이 아니라
+`Core/CharacterStatReadout.cs:50`의 **세트 미완성 상태 라벨**이다:
+```csharp
+public const string SetIncomplete = "미완성 · 기본 중립 대사";
+```
+즉 세트 패널 2행에 「미완성 · 기본 중립 대사」로 **표시되는 문구**이고, placeholder 대사가 아니다.
+**대사 풀에 placeholder는 없다 — 훅이 없을 뿐이다.** 이 오독을 남겨 두면 다음 라운드가
+"대사를 더 쓰면 된다"로 잘못 착수한다.
+
+---
+
+## 17-4. 사운드 — **구현 0. 묵음 정책조차 코드에 없다**
+
+| 측정 대상 | 프로덕션 |
+|---|---|
+| `AudioSource` | **0** |
+| `AudioClip` | **0** (유일한 1건은 `Core/StickPackManifestSO.cs:183` 주석 *"소리 — 키만. AudioClip 참조는 여기 두지 않는다"*) |
+| `PlayOneShot` / `AudioMixer` / `AudioListener` / `UnityEngine.Audio` | **0 / 0 / 0 / 0** |
+| 오디오 에셋 파일(`.wav/.mp3/.ogg/.aiff`) | **0개** |
+
+**판정: 설계 백로그, 완전 미착수.**
+`design-sound`의 원칙은 *"상주 앱이라 묵음 정책이 먼저"*인데, **그 정책 코드도 0줄이다.**
+팩 매니페스트는 사운드 "키"를 담을 자리를 이미 만들어 뒀으므로(위 :183) 계약은 준비돼 있다.
+
+★ **오해 방지**: `Core/AudioReactiveDanceGate.cs`는 **오디오를 읽지 않는다.**
+`Microphone`/`GetSpectrumData`/`GetOutputData`/`AudioListener` 참조가 **0건**이고,
+공개 표면은 `BlocksNow(StickmanAgent, FocusWatchDirector)` 하나뿐인 **억제 게이트**다.
+이름 때문에 "오디오는 이미 있다"로 읽지 마라.
+
+---
+
+## 17-5. 로컬라이제이션 — **문서만 있고 코드 0**
+
+| 측정 | 결과 |
+|---|---|
+| 문서 | `docs/localization/PLAN_1.0.md` **121KB**(mtime 2026-09-05 20:39) · `ASSET_DEBT.tsv` · `DEBT_BASELINE.tsv` · `verify/` 23항목 |
+| 프로덕션 코드 참조 (`Localization`/`LocalizedString`/`I18n`/`SystemLanguage`) | **1건** — 그리고 그 1건은 `Core/StickPackManifestSO.cs:105`의 **테스트를 가리키는 주석** |
+
+**판정: 설계 백로그.** 실제 코드 착지 0줄.
+모든 UI 문자열이 한국어 하드코딩이다(`EquipmentStatRules.StatName` 등).
+
+★ **다만 이 항목은 "미루면 싸지는" 종류가 아니다.** 문자열이 하드코딩된 채 늘어날수록
+추출 비용이 선형으로 는다. `design-systems`/`ux-designer`가 이번 주에 만든 낱말
+(스탯명·등급명·세트명·상점 문구)이 전부 새 하드코딩이다. **리더 판단 필요**:
+지금 추출 계약만이라도 박을 것인가, 1.0 이후로 확정 이월할 것인가.
+
+---
+
+## 17-6. ★★ DLC/팩 매니페스트 — **불변 원칙 4가 모션·이펙트에서는 「계약만 있고 런타임이 없다」**
+
+이것이 이번 감사에서 **구조적으로 가장 위험한 발견**이다.
+
+### 에셋 인스턴스 전수 (Assets 전체 `.asset` 43개)
+
+| ScriptableObject 타입 | 인스턴스 수 |
+|---|---|
+| `AccessoryDefSO` | 42 |
+| `StickConfig` | 1 |
+| **`StickPackManifestSO`** | **0** |
+| **`MotionPluginSO`** | **0** |
+| **`EffectPluginSO`** | **0** |
+
+### 소비자 실측
+
+| 타입 | 정의 규모 | 프로덕션 소비자 |
+|---|---|---|
+| `Plugins/MotionPluginSO.cs` | 23줄 | **1건 — `Core/StickmanEventBus.cs:18`의 주석 한 줄** |
+| `Plugins/EffectPluginSO.cs` | 26줄 | **1건 — 위와 같은 주석 줄** |
+| `Core/StickPackManifestSO.cs` | 251줄 | 15건(전부 `PackRegistry` 내부 + 주석 1) |
+| `Core/PackRegistry.cs` | 485줄 | **1건 — `Store/SteamPackEntitlementSource.cs:59`** |
+
+⇒ **`MotionPluginSO`/`EffectPluginSO`는 로더도, 소비자도, 인스턴스도 없다.**
+타입 선언과 주석 한 줄이 전부다. **CLAUDE.md 불변 원칙 4** —
+*"신규 모션/이펙트(DLC)는 기본 로직 무수정으로 ScriptableObject 매니페스트를 통해 추가"* —
+이 문장의 **모션·이펙트 절반은 한 번도 실행된 적이 없다.**
+
+⇒ `PackRegistry`는 진짜 기계(검증·중복 판정·스키마 버전 게이트)를 갖췄지만
+`PackRegistry.cs:180`의 `Resources.LoadAll<StickPackManifestSO>(...)`가 **항상 빈 배열을 받는다.**
+즉 `PackRegistry.Count`는 **언제나 0**이고, 그 아래 485줄은 **한 번도 참을 반환한 적이 없다.**
+
+**판정: 배선/실증 백로그.** 코드 품질 문제가 아니라 **원칙 4가 실증된 적 없다**는 문제다.
+
+★ **되돌릴 수 없는 결정으로 승격 제안**: 팩 하나(가장 작은 것)를 **실제 `.asset`으로 만들어
+끝에서 끝까지 통과시키기 전까지, 원칙 4는 「지켜지고 있다」고 보고하면 안 된다.**
+DLC 6팩을 상품 전략에 올려 둔 상태에서 이 경로가 미실증이면, 첫 팩을 만드는 날
+**기본 로직을 고쳐야 한다는 사실을 그때 발견**하게 된다 — 그것이 원칙 4가 막으려던 바로 그 사고다.
+
+---
+
+## 17-7. 장비 조형 — 42종이 **경로 3개로 갈라져 있다** (사용자가 지적한 「일부만」의 구조적 형태)
+
+| 계층 | 경로 | 종수 | 어느 것 |
+|---|---|---|---|
+| **A. 데이터 주도** | `Resources/Items/*.asset`의 `wornShapes` | **6** | **NECK 6종 전부** (bowtie/striped/scarf/bell/pendant/bandana) |
+| **B. 인계본 생성 코드표** | `Interaction/AccessoryShapeBuilder.Handoff.cs` (1,457줄, `<auto-generated>`) | **12** | HEAD 4(cap/beanie/fedora/crown) · EYES 4(sunglasses/round/goggles/monocle) · BACK 4(cape/long_cape/wings/backpack) |
+| **C. 레거시 하드코딩** | `Interaction/AccessoryShapeBuilder.cs` (**3,211줄**) | **6** | HEAD beret·straw / EYES browline·patch / BACK poncho·fairy_wings |
+
+(외형 18종 hair·fx·pet은 `AppearanceShapeBuilder.cs` 별도 경로.)
+
+분기 술어는 `AccessoryShapeBuilder.Handoff.cs:21` `IsHandoffCode(slot, item)` —
+**NECK은 항상 false**(에셋이 갖는다), 나머지 3슬롯은 **index 0~3만 true**.
+`internal const int HeadBeret = 4, HeadStraw = 5;`(`AccessoryShapeBuilder.cs:282-285`)가
+**계층 C에 남은 6종의 정확한 명단**이다.
+
+### ★ 구조적으로 나쁜 점 — 남은 6종이 하필 최상위 등급이다
+
+계층 C의 6종은 Lv19·23·23·25·26·28, 즉 **영웅·전설 등급 전부**다.
+⇒ **가장 늦게 열리고 가장 비싼 것이 가장 낡은 경로로 그려진다.**
+사용자가 오래 플레이해 도달한 보상이 품질이 가장 낮은 쪽이라, 격차가 **정확히 가장 나쁜 시점에**
+드러난다. 포팅 순서를 정할 때 이 사실이 우선순위 근거다.
+
+### 미확인 1건 — 숫자 대조가 필요하다
+
+`design-equipment` 감사는 **"16종 포팅 / 26종 미포팅"**으로 보고했다. 내 실측은 신경로가
+**18종(A 6 + B 12)**이다. **2종 차이의 출처를 확인하지 못했다.**
+후보: (가) 카드 표면과 몸 표면을 따로 세었는가 (나) A(에셋)를 "포팅"에 안 넣었는가
+(다) `AccessoryShapeBuilder.Handoff.cs`가 08:15에 수정되어 그 사이 2종이 늘었는가.
+**둘 중 어느 쪽도 단정하지 않는다 — 리더가 한 기준으로 통일해 재집계시킬 것.**
+(다)라면 내 18이 맞고 그쪽이 낡은 것이다.
+
+---
+
+## 17-8. 플랫폼 패리티 — `Assert.Ignore` **11건** 누적
+
+`Tests/EditMode/PlatformParityAuditTests.cs`(4,311줄) 실제 **호출 지점** 11건
+(문서 언급 줄 제외): L521 · 727 · 873 · 1100 · 2546 · 2603 · 2727 · 3204 · 3271 · 3965 · 4031.
+
+| 분류 | 건수 | 줄 |
+|---|---|---|
+| **미해결 · 착수 미배정** | **5** | 521(macOS Dock 자동숨김 해제 판정) · 873(4플랫폼 모바일 배선 갭) · 2603(리더 판정 보류) · 3965(하이브리드 GPU **macOS 지렛대**) · 4031(**Windows 스토어 제출물 결손**, 2026-09-05 신설) |
+| 실기 미확인(코드는 닫힘) | 4 | 2546 · 2727 · 3204 · 3271 |
+| 부분 착지 | 1 | 1100 |
+| 별도 배정 필요 | 1 | 727(**macOS 상태 아이템 미구현**) |
+
+가장 오래된 것 2026-09-02(4건), 가장 최근 2026-09-05.
+**분류 접두사 규칙이 실제로 작동하고 있다** — 이 파일은 "일부만 적용" 패턴을 **숨기지 않고
+드러내는** 모범 사례다. 다만 **미해결 5건이 착수 미배정으로 3~4일째 정체**돼 있다.
+
+★ **비대칭 확인**: 727·3965는 **macOS 쪽 결손**, 4031은 **Windows 쪽 결손**이다.
+한쪽으로 쏠린 방치가 아니라 **양쪽이 서로 다른 곳에서 비어 있다.**
+
+★★ **자기 정정 1건 — 거짓 경보를 낼 뻔했다.**
+`Platform/HybridGpuPreferencePolicy.cs`를 `Assets/_Project/Scripts` 범위로만 재면
+**프로덕션 참조 0건**이라 "완전 사장된 정책"으로 보인다. **틀렸다.**
+실제로는 `Assets/Editor/WindowsHybridGpuExportPostprocessor.cs`가 빌드 후처리에서
+`Classify`/`DesiredValue`/`WindowsExportSymbols`를 **정상 사용**한다(빌드 시점 PE 패치라 그 자리가 옳다).
+**검색 범위를 `Assets/_Project/Scripts`로 좁힌 것이 원인이었다.**
+⇒ 이 항목은 **갭이 아니다.** 실제 갭은 `:79`가 적은 **macOS 대응 지렛대 미배선**뿐이고,
+그건 이미 L3965가 추적 중이다. **이 정정 없이 보고했으면 살아 있는 코드를 죽었다고 보고할 뻔했다.**
+
+---
+
+## 17-9. 자기 신고 스윕 — 프로덕션이 스스로 "안 걸었다"고 적어 둔 자리
+
+프로덕션 `.cs`에서 「배선은 아직 / 부르는 쪽은 없다 / 미배선 / 착수 미배정」을 훑어 **43건**을
+찾고, 그중 실제 미배선을 caller 수로 확인한 것:
+
+| 자리 | 상태 | 실측 |
+|---|---|---|
+| `Platform/FootholdScanPolicy.cs:124` | *"설계·검증 완료, 아직 배선하지 않음(2026-09-01)"* | 프로덕션 참조 **1건, 그것도 `FootholdPoller.cs:32`의 "배선하지 않은 채 남겨 두었다" 주석**. 실호출 **0** |
+| `Platform/TopmostBandOcclusion.cs:131` | **부분 배선** | `Overlaps`/`Classify`는 **살아 있다**(`WindowsTopmostWatchdog.cs:478,481`). `ShouldRaiseWithinBand`만 **dry-run**(`:571` `wouldRaise` 계산 후 로그만, `:582` `올림규칙(미배선)`) |
+| `Core/EquipmentStatRules.cs:573` | `RecordTierHighWaterMarks` | 프로덕션 **0** (§17-2) |
+| `Interaction/UiChrome.cs:1414,1418` | hover/pressed 면 색 정의 | 미배선 — **의도된 것**(사유가 `CharacterInfoWindow.cs:225`에 기록) |
+| `Core/StickmanAgent.cs:805` | 잉크색 일괄 변경 | 설정 UI/단축키 **미부착** |
+| `Interaction/CharacterPortraitStage.cs:792` | `KoreanParticle` 적용 | 유틸은 **2곳에서 쓰인다**(`CharacterInfoWindow.Cards.cs:782,799` · `WindowsTopmostWatchdog.cs:291`). 초상화만 미적용 — **부분 적용** |
+| `Core/PackEntitlement.cs:37` | 스팀 SDK 배선 0줄 | **의도된 것** — `OfflineFirstNetworkAuditTests`가 그 부재를 잠그고 있다 |
+
+**진짜 미배선은 `FootholdScanPolicy` 1건**(설계·검증 완료 → 착지 0)이고,
+나머지는 부분 배선이거나 문서화된 의도적 보류다.
+
+---
+
+## 17-10. 되돌릴 수 없는 결정 — 이번 감사에서 확인/신규
+
+| # | 항목 | 판정 |
+|---|---|---|
+| I-27 | **저장 스키마 v10이 재화 필드를 이미 갖고 있다**(`CharacterSaveStore.cs:144`) | ★ **좋은 소식** — 수급 배선에 **v11이 필요 없다.** 비싼 부분은 이미 지불됐고 하위 호환 테스트도 이미 있다 |
+| I-28 | **`TickDayRollover` 미배선 상태에서 수급을 켜면 사용자 파일이 영구 오염** | ★★ **신규 · 최우선.** 코드 롤백으로 못 고친다 — 디스크의 사용자 파일을 고쳐야 한다. §17-1 참조 |
+| I-29 | **원칙 4(플러그인)가 모션·이펙트에서 미실증** | ★★ **신규.** 팩 `.asset` 1개를 끝에서 끝까지 통과시키기 전까지 "원칙 4 준수"를 보고하지 말 것 |
+| I-30 | `CharacterStat` enum 순서 = 세이브 배열 인덱스 | 기존 · `EquipmentStatRules.cs:6-9`에 이미 못박힘. **값 끼워넣기 금지** 유지 |
+| — | `battleWins` 잔존 | **갭 아님.** `CharacterSaveStore.cs:196-201`이 의도적 왕복 보존을 근거와 함께 기록. 건드리지 말 것 |
+| — | 펫의 스탯 기여 | **갭 아님.** 세트/스탯은 4슬롯 전용이 **선언된 설계**(§21-4-c E1). 펫·머리·FX 18종은 무소속이 정답 — **없는 갭을 만들지 말 것** |
+
+---
+
+## 17-11. 착수 순서 — 「A를 안 하면 B가 어떻게 막히는가」
+
+**체감 대비 비용 기준. 1~3이 이번 라운드의 핵심이다.**
+
+| 순 | 항목 | 자리 | 안 하면 무엇이 막히나 |
+|---|---|---|---|
+| **1** | **`TickDayRollover` 배선** | `CharacterProgressionDirector.Update`(이미 타이머 있음) | **선결.** 이것 없이 2~6을 켜면 상한이 영원히 안 풀리고 **그 상태가 저장된다**(I-28). 되돌리기 불가 |
+| **2** | **첫 실행 시드 1,200** (`TryGrantSeedCoins`) | 최초 로드 직후 1회 | 사용자가 **켜자마자 0이 아닌 숫자를 본다.** 코인 칩(이미 4Hz로 도는 중)이 즉시 살아난다. **단독 체감 최대** |
+| **3** | **활쏘기 상금** (`TryAwardArcheryCoins`) | `CharacterProgressionDirector.cs:148-155` | **구독·Release 필터·중복 방지가 이미 다 있다.** 실질 한 줄. 비용 대비 체감 최대 |
+| **4** | **유휴 수급 틱** (`TickIdleIncome`) | 같은 파일 `Update()` `:116-123` 옆 | 하루 종일 켜 두는 앱의 주 수급원. **단조 시계 델타 규약 필수**(벽시계 넣으면 T-3-a 즉시 파손) |
+| **5** | **[오늘 할일] 일일 300** | `Core/TodoListModel.ToggleComplete:100` | 이미 있는 기능에 보상만 얹는다 |
+| **6** | **집중 완주 24/분** | `FocusWatchDirector.CompleteSession():258` | ※ **이 파일은 감사 시점에 다른 에이전트가 편집 중이었다 — 리더가 파일 소유권 정리 후 배정할 것** |
+| **7** | `RecordTierHighWaterMarks` 배선 | 착용 변경 이벤트 구독부 | 등급 눈금이 **이미 화면에 있는데 영구히 0**(§17-2) |
+| **8** | **상점 실장** | `CharacterInfoWindow.Shop.cs`(현재 **67줄 「준비 중」 페이지**) | **1~6이 없으면 가격표가 무의미하다.** 재화가 흐른 뒤에 착수 — 순서를 뒤집으면 살 수 없는 상점을 만들게 된다 |
+
+**별도 트랙**(위와 의존 없음, 병렬 가능): §17-6 팩 `.asset` 1개 실증(원칙 4) ·
+§17-7 계층 C 6종 포팅(최상위 등급이라 체감 큼) · §17-3 대사 훅 신설 · §17-4 묵음 정책 ·
+§17-5 로컬라이제이션 추출 계약.
+
+---
+
+## 17-12. 미확인 — 추측으로 메우지 않은 것
+
+1. **장비 포팅 종수 18 vs 16** (§17-7). 기준 통일 후 재집계 필요. 내 수를 정답이라 주장하지 않는다.
+2. **`Assert.Ignore` 11건 중 실기 미확인 4건**은 하드웨어가 있어야 닫힌다 — 코드 감사로는 판정 불가.
+3. **`FocusWatchDirector`/`CharacterProgressionDirector`/`AccessoryShapeBuilder.Handoff.cs`의
+   08:00 이후 변경분**은 이 감사에 반영되지 않았을 수 있다(§17-0). §17-1만 08:22:34 재측정으로 확정.
+4. **규모 산정 안 함** — 각 배선의 공수를 세지 않았다. 셀 것: 각 수도꼭지의 호출부 줄 수가 아니라
+   **그 라운드가 동반해야 하는 테스트**(수급 경로는 단조 시계 규약 감사가 이미 있어 그것을 통과해야 한다).
+
+## 17-13. 플랫폼 영향 (§17 라운드)
+
+- **Windows 영향: 없음(이 감사는 코드 변경 0).** 다만 발견된 갭 중 Windows 쪽은
+  `PlatformParityAuditTests` L4031(스토어 제출물 결손, 2026-09-05 신설)이다.
+  재화·대사·사운드·로컬라이제이션·팩 매니페스트는 **전부 플랫폼 중립**(`Core/`·`Interaction/`)이라
+  배선에 플랫폼 분기가 생기지 않는다.
+- **macOS 영향: 없음(코드 변경 0).** macOS 쪽 갭은 L521(Dock 자동숨김 · 원칙 3 예외 미포함 확인됨) ·
+  L727(상태 아이템 미구현) · L3965(하이브리드 GPU 지렛대)다.
+- ★ 위 8단계 배선은 **어느 것도 `Platform/`을 건드리지 않는다** — 4플랫폼 동시 진행을 막지 않는다.
+
+---
+
+## 17-14. ★★ 자기 정정 — **§17-1이 6분 만에 부분적으로 낡았다** (재측정 08:28:09)
+
+§17-0이 경고한 일이 **이 절을 쓰는 도중에 실제로 일어났다.** 기록으로 남긴다.
+
+§17-1을 08:22:34에 확정한 뒤, 08:27에 다른 에이전트가
+`Tests/EditMode/FocusSessionPayoutTests.cs`(신규, 15KB)를 만들면서
+**집중 모드 수급을 프로덕션에 착지시켰다.** 즉 §17-1의 *"지급 경로 0개"*는
+**08:22 시점에는 참이었고 08:28 시점에는 거짓**이다.
+
+### 08:28:09 재측정 — 하니스 대조 통과(양성 323 / 음성 0)
+
+| API | 프로덕션 호출 | 상태 |
+|---|---|---|
+| **`PayFocusCompletionCoins`** | **1** — `Interaction/FocusWatchDirector.cs:295` | ★ **신규 착지(08:27)** |
+| **`PayFocusCancelCoins`** | **1** — `Interaction/FocusWatchDirector.cs:313` | ★ **신규 착지(08:27)** |
+| `TickIdleIncome` | 0 | 미배선 |
+| `TryAwardArcheryCoins` | 0 | 미배선 |
+| `TryPayTodoDailyCoins` | 0 | 미배선 |
+| `TryGrantSeedCoins` | 0 | 미배선 |
+| `TryPurchaseItem` | 0 | 미배선 |
+| `TickDayRollover` | 0 | 미배선 |
+| `TryUsePotion` | 0 | 미배선 |
+| `RaiseStatTier` | 1(`EquipmentStatRules.cs:579`) | **여전히 도달 불가** — 그 함수(`RecordTierHighWaterMarks`)의 프로덕션 호출부가 0 |
+
+**신규 상수**: `CurrencyRules.FocusCancelCoinsPerMinute = 20`(`:60`), `FocusCompletionCoins`/`FocusCancelCoins` 산식 추가.
+
+### 정정된 결론 — 격차는 **줄었지만 없어지지 않았다**
+
+- **동전 수급원 8개 중 1개(집중 모드)가 살아났다.** 사용자는 이제 집중 세션 완주/중도취소로
+  동전을 **실제로 얻을 수 있다.** 코인 칩(`CharacterInfoWindow.cs:1066`)이 드디어 0이 아닌 값을 그린다.
+- **나머지 7개는 여전히 0이다.** 특히 **상점 구매(`TryPurchaseItem`)가 0**이므로
+  **번 동전을 쓸 곳이 아직 없다** — §17-11의 8번(상점 실장)이 더 급해졌다.
+  지금은 **수입만 있고 지출이 없는** 경제다.
+
+### ★ I-28(§17-10) 위험 범위를 **좁힌다** — 집중 지급은 안전했다
+
+§17-10에서 *"롤오버 없이 수급을 켜면 사용자 파일이 영구 오염"*이라고 적었다.
+**집중 지급에는 이 위험이 적용되지 않는다.** `CurrencyModel.cs:255-289` 실측:
+
+`PayFocusCompletionCoins`/`PayFocusCancelCoins`는 `GrantFocusCoins` 한 곳으로 모이고,
+그 함수는 **`TodayGrantedCoins`를 건드리지 않고 · `ClampGrantedCoins`를 통과하지 않으며 ·
+`IdleWindowUsedSeconds`도 갉지 않는다.** 잔액에 `ClampCoinBalance`(하한 0)만 지난다.
+근거는 `DESIGN_SYSTEMS_STATS §22-13` — *"집중 지급은 일일 상한 밖이다."*
+
+⇒ **집중 수급은 일일 래칫을 아예 안 건드리므로 롤오버 없이 착지해도 파일이 오염되지 않는다.
+그 착지는 옳았다.**
+
+⇒ **I-28은 `TickIdleIncome`에만 적용된다**(그것만이 `TodayGrantedCoins`와
+`IdleWindowUsedSeconds`를 전진시킨다). **§17-11의 순서 1(롤오버 선결)은
+「모든 수급 앞」이 아니라 「유휴 수급 앞」으로 정정한다.**
+활쏘기·할일·시드는 `ArcheryCoinsToday`/`TodoCoinPaidToday`라는 **일일 카운터를 전진시키므로
+롤오버 없이 켜면 「하루 지나도 안 풀림」이 된다** — 파일 영구 오염까지는 아니지만
+(잔액은 안 잠긴다) **기능이 하루 만에 죽는다.** ⇒ **롤오버는 여전히 2~5번보다 앞이다.**
+
+### ★★ 리더에게 — 이 사건 자체가 이번 감사의 결론을 강화한다
+
+`FocusSessionPayoutTests.cs`는 **모델 API를 검증**하고, 그 라운드가 **디렉터 배선까지 같이
+착지시켰다**(`:295`/`:313`). **이것이 옳은 형태다.**
+반면 어제 재화 라운드는 **모델 + 테스트만 만들고 배선을 「다음 라운드」로 넘겼고**
+(그 사실을 `CurrencyModel.cs:318` · `CurrencyRules.cs:147`이 스스로 적어 뒀다),
+그 결과가 §17-1이다.
+
+⇒ **제안(리더 판정 필요): 재화·스탯처럼 「모델 + 규칙 + 테스트」를 만드는 라운드는
+그 라운드 안에 호출부 1개 이상을 반드시 포함시킨다.** 호출부 없이 끝나는 라운드는
+**완료가 아니라 「반쯤 착지」로 보고**하게 한다. 이 규칙 하나가 §17-1~17-6의 격차 6건 중
+최소 4건(재화·등급눈금·모션플러그인·이펙트플러그인)을 애초에 못 생기게 한다.
+
+### 이 절의 신뢰 구간
+
+**08:28:09 기준이다.** 지금도 9개 에이전트가 병렬로 쓰고 있으므로
+**리더가 취합할 때 §17-1과 §17-14의 시각을 먼저 볼 것.** 충돌하면 **§17-14가 최신이다.**
+그리고 재검증은 반드시 §17-0의 양·음 대조를 먼저 통과시킨 뒤에 할 것.
+
+---

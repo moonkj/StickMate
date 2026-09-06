@@ -64,6 +64,8 @@ namespace StickMate.Tests.EditMode
         public void 모자_띠는_자기_관_밑변과_정확히_겹친다(int item, string bandName, string crownName)
         {
             HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, item, "모자 띠 = 관 밑변 정확히 겹침 — 인계본 중절모 띠(F1)는 원문 기하");
+            HandoffTestGate.SkipIfR25Hat(item, "모자 띠 = 관 밑변 정확히 겹침 + 「올린 띠」 규약 — " +
+                "R21 밀짚모자 띠는 관을 두르는 <b>독립 아이콘 조각</b>(두께 6.5u)이라 관 밑변에서 유도되지 않는다");
             AccessoryShapeBuilder.Rig rig = Rig();
             List<AccessoryShapeBuilder.Shape> hat = AccessorySilhouetteMetrics.Build(rig, EquipmentSlot.Head, item);
             AccessoryShapeBuilder.Shape band = AccessorySilhouetteMetrics.Find(hat, bandName);
@@ -158,10 +160,16 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 지표가_옛_밀짚모자_띠를_실제로_잡는다()
         {
+            // ★ 2026-09-06 R25 — 이 음성 대조는 <b>살아 있는 상수</b>(StrawCrownHalfWidthRatio)로 옛 띠를
+            //   재구성해 왔는데, R25 재저작이 그 상수를 지웠다. 옛 관도 옛 띠도 없어졌으므로 이 대조는
+            //   더 이상 아무것도 통제하지 못한다 — 숫자를 리터럴로 박아 「되살리는」 것은 사라진 도형에
+            //   대한 자기 대화일 뿐이다. 위 검사와 <b>같은 이유로</b> 함께 건너뛴다.
+            HandoffTestGate.SkipIfR25Hat(AccessoryShapeBuilder.HeadStraw,
+                "옛 밀짚모자 띠 음성 대조 — 재구성에 쓰던 StrawCrownHalfWidthRatio 가 R25 로 폐기됐다");
             AccessoryShapeBuilder.Rig rig = Rig();
             float r = rig.HeadRadius;
             float brimY = rig.HeadCenterY + r * AccessoryShapeBuilder.StrawBrimLineRatio;
-            float crownHalf = r * AccessoryShapeBuilder.StrawCrownHalfWidthRatio;
+            float crownHalf = r * 0.86f;   // 폐기된 상수 StrawCrownHalfWidthRatio 의 마지막 값
 
             AccessoryShapeBuilder.Shape crown = AccessorySilhouetteMetrics.Find(
                 Build(EquipmentSlot.Head, AccessoryShapeBuilder.HeadStraw), "StrawCrown");

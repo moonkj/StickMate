@@ -136,6 +136,10 @@ namespace StickMate.Tests.PlayMode
             _agent = null;
             EquipmentModel.ResetForTesting();
             CharacterProgressionModel.ResetForTesting();
+            // ★ 2026-09-06 추가 — 기분 표시 시나리오가 올려 둔 정적 게이지를 되돌린다. 정적 클래스라
+            //   씬 생명주기와 무관하게 살아남아, 안 되돌리면 뒤이어 도는 테스트가 "왜 어깨가 처져 있지"로
+            //   빨개진다(Phase5VisualLayerTests가 같은 이유로 같은 정리를 한다).
+            StressGauge.ResetForTesting();
         }
 
         /// <summary>FX 슬롯의 <b>0번은 "없음"</b>이다(AppearanceShapeBuilder.FxNone). 0번을 입히면
@@ -393,6 +397,115 @@ namespace StickMate.Tests.PlayMode
             Assert.Greater(back.Accessory, 0,
                 $"{LogPrefix} [가출] 발견됐는데 액세서리가 돌아오지 않았습니다 — 숨기기만 고치고 " +
                 "되살아나는 경로를 끊어버린 것입니다.");
+        }
+
+        // ====================================================================
+        // (3) ★ 2026-09-06 debugger — <b>독립 루트 오버레이 연출</b>도 함께 사라지는가
+        // ====================================================================
+
+        /// <summary>어깨 기분 표시는 출하 설정에서 <b>도달 불가능한 임계값</b>이라 기본 OFF다
+        /// (<c>stressTierCautionLevel</c> 출하값 2.0 vs 게이지 0~1). 렌더러의 능력을 보려면 잠깐
+        /// 원래 경계값으로 되돌려야 하고, 그 조작은 <b>복제 설정</b>에만 한다(배포 에셋 불변, 원칙 3).</summary>
+        private const float CautionLevelForTest = 0.4f;
+
+        private const string StressContainerName = "StressMoodOverlay";
+
+        /// <summary>
+        /// ★ 위 (1)이 잠근 것은 <b>캐릭터에 붙은</b> 잉크(몸/액세서리/펫/FX)뿐이다. 그런데 이 앱에는
+        /// <c>SetParent(null)</c>로 만들어진 <b>독립 루트 오버레이</b>가 한 무리 더 있고
+        /// (기분 표시/투두 종이/가출 과자/집중 링/낙서/이모트), 그것들은 <c>SetRenderersEnabled(false)</c>가
+        /// <b>구조적으로 닿지 못한다</b> — 캐시 배열에도, <c>ICharacterVisualSource</c> 신고분에도 없다.
+        ///
+        /// <para>그중 <b>기분 표시</b>를 대표로 잠근다. 이유는 이것만 <b>스스로 끝나는 시점이 없기</b>
+        /// 때문이다: 상태가 아니라 <b>게이지 값</b>에서 파생되므로, 숨은 동안 남으면 전체화면 게임 위에
+        /// <b>무기한</b> 떠 있는다(다른 것들은 최소한 자기 연출 길이로 한정된다).</para>
+        ///
+        /// <para><b>무엇을 단언하는가 — "사라졌다"만으로는 부족하다.</b> 계약은 <b>얼리기</b>지
+        /// 걷어내기가 아니다(Core/SuspendedOverlayGate): Suspend는 상태/타이머를 <b>보존</b>하고 Tick만
+        /// 건너뛰므로, 여기서 파괴해 버리면 돌아왔을 때 상태는 그 연출 중인데 그림만 없는
+        /// 행동-텍스트 desync가 된다(원칙 1). 그래서 세 가지를 함께 잰다:
+        /// ① 숨는 순간 <b>보이지 않는다</b>, ② 그런데 컨테이너는 <b>살아 있다</b>(파괴가 아니다),
+        /// ③ 돌아오면 <b>다시 보인다</b>(되살아나는 경로를 끊지 않았다).</para>
+        ///
+        /// <para><b>false 판정의 함정 하나</b>: <c>GameObject.Find</c>는 <b>비활성 오브젝트를 찾지
+        /// 못한다</b>. 그래서 숨긴 뒤에 이름으로 다시 찾으면 "파괴됐다"와 "감춰졌다"가 <b>구분되지
+        /// 않는다</b> — 이 테스트가 ①을 재기 전에 <b>참조를 먼저 붙잡아 두는</b> 이유다.</para>
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 전체화면_감지_프레임에_독립루트_기분표시도_함께_사라졌다_돌아온다()
+        {
+            yield return SetUp();
+
+            // ── 전제 만들기: 기분 표시가 실제로 그려지는 상태로 올린다(복제 설정에만 손댄다).
+            _clonedConfig.stressTierCautionLevel = CautionLevelForTest;
+            StressGauge.ResetForTesting();
+            StressGauge.SetLevel(Mathf.Clamp01(CautionLevelForTest) + 0.05f);
+
+            Assert.IsNotNull(Object.FindFirstObjectByType<StressGaugeRenderer>(),
+                $"{LogPrefix} 씬에 StressGaugeRenderer가 없습니다 — 배치 누락.");
+
+            Transform stressRoot = null;
+            float drawDeadline = Time.time + 5f;
+            while (Time.time < drawDeadline)
+            {
+                yield return null;
+                stressRoot = FindDetachedRoot(StressContainerName);
+                if (CountVisibleInk(stressRoot) > 0) break;
+            }
+
+            int before = CountVisibleInk(stressRoot);
+            Assert.Greater(before, 0,
+                $"{LogPrefix} 5초 안에 기분 표시가 그려지지 않았습니다 — 이 테스트의 전제가 성립하지 " +
+                $"않습니다(임계값 {_clonedConfig.stressTierCautionLevel:F2}, 게이지 {StressGauge.CurrentLevel:F2}).");
+            Assert.IsNotNull(stressRoot, $"{LogPrefix} 기분 표시 컨테이너 참조를 못 잡았습니다.");
+            Debug.Log($"{LogPrefix} [기분] BEFORE 잉크 {before}개 (게이지 {StressGauge.CurrentLevel:F2}).");
+
+            // ── 진짜 감지 경로로 Suspend를 부른다(플래그 주입이 아니다).
+            _originalService = (IPlatformWindowService)PlatformServiceField.GetValue(_agent);
+            _spoof = new FullscreenSpoofService(_originalService) { Fullscreen = true };
+            PlatformServiceField.SetValue(_agent, _spoof);
+
+            float suspendDeadline = Time.time + SuspendWaitSeconds;
+            while (!_agent.IsSuspended && Time.time < suspendDeadline) yield return null;
+            Assert.IsTrue(_agent.IsSuspended,
+                $"{LogPrefix} {SuspendWaitSeconds:F1}초(게임 시간) 안에 Suspend()가 걸리지 않았습니다.");
+
+            // 오버레이는 렌더러의 LateUpdate가 감춘다 — 그 한 프레임을 준다.
+            yield return null;
+
+            // ① 안 보인다.
+            Assert.AreEqual(0, CountVisibleInk(stressRoot),
+                $"{LogPrefix} 전체화면 감지 뒤에도 기분 표시가 {CountVisibleInk(stressRoot)}개 그려집니다 — " +
+                "캐릭터는 사라졌는데 어깨 표시만 게임 위에 떠 있습니다(절대 불변 원칙 2 위반). " +
+                "이 오버레이는 독립 루트라 SetRenderersEnabled(false)가 구조적으로 닿지 못합니다.");
+
+            // ② 그런데 파괴되지는 않았다(계약은 '얼리기'다).
+            Assert.IsTrue(stressRoot != null,
+                $"{LogPrefix} 컨테이너가 파괴됐습니다 — 계약은 감추기(SetActive)이지 걷어내기가 아닙니다. " +
+                "파괴하면 돌아왔을 때 게이지는 그대로인데 그림만 사라진 desync가 됩니다(원칙 1).");
+
+            // ③ 몇 프레임 뒤에도 되살아나지 않는다(소유자의 LateUpdate가 다시 켜지 않는가).
+            for (int i = 1; i <= 3; i++)
+            {
+                yield return null;
+                Assert.AreEqual(0, CountVisibleInk(stressRoot),
+                    $"{LogPrefix} 감지 {i}프레임 뒤에 기분 표시가 되살아났습니다 — " +
+                    "렌더러가 감춘 컨테이너를 자기 갱신 경로에서 다시 켜고 있습니다.");
+            }
+
+            // ── 되돌아오면 다시 보인다(숨기기만 고치고 복귀를 끊지 않았는가).
+            _spoof.Fullscreen = false;
+            float resumeDeadline = Time.time + SuspendWaitSeconds;
+            while (_agent.IsSuspended && Time.time < resumeDeadline) yield return null;
+            Assert.IsFalse(_agent.IsSuspended,
+                $"{LogPrefix} {SuspendWaitSeconds:F1}초 안에 Resume()이 돌지 않았습니다.");
+            yield return null;
+
+            int after = CountVisibleInk(stressRoot);
+            Debug.Log($"{LogPrefix} [기분] AFTER 잉크 {after}개.");
+            Assert.Greater(after, 0,
+                $"{LogPrefix} 전체화면이 끝났는데 기분 표시가 돌아오지 않았습니다(잉크 {after}개) — " +
+                "감추기만 하고 되살리는 쪽을 끊었습니다. 게이지는 그대로인데 그림이 없으면 그것도 desync입니다.");
         }
     }
 }

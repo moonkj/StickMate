@@ -26,7 +26,7 @@ namespace StickMate.Interaction
 
             // 드래그 중에만 폴링 간격을 없앤다 — 20Hz로 창을 끌면 커서에서 창이 뚝뚝 끊겨 떨어진다.
             // 평소에는 예전 그대로 ClickPollInterval(0.05초)로 눌러 둔다(하루 종일 켜져 있는 앱이다).
-            if (!_draggingPanel && !_gridGrabbed && !_col2Grabbed)
+            if (!_draggingPanel && !_gridGrabbed && !_col2Grabbed && !_shopGrabbed)
             {
                 _clickPollTimer += Time.unscaledDeltaTime;
                 if (_clickPollTimer < ClickPollInterval) return;
@@ -65,7 +65,7 @@ namespace StickMate.Interaction
         private void TickFramePacingHold(bool hasCursor, Vector2 cursor)
         {
             // 커서가 창 밖으로 나가도 계속되는 조작들 — 이것들은 사각형 판정으로 잡을 수 없다.
-            bool manipulating = _draggingPanel || _gridGrabbed || _col2Grabbed || _editingName;
+            bool manipulating = _draggingPanel || _gridGrabbed || _col2Grabbed || _shopGrabbed || _editingName;
             bool cursorOver = hasCursor && RectContainsScreenPoint(_panel, cursor);
             if (manipulating || cursorOver) _lastSurfaceTouchTime = Time.unscaledTime;
 
@@ -103,6 +103,7 @@ namespace StickMate.Interaction
                 //   서로 겹치지 않으므로 둘 중 하나만 잡힌다 — 잡기 판정이 각자 자기 뷰포트를 본다.
                 ArmGridDrag(cursor);
                 ArmCol2Drag(cursor);
+                ArmShopDrag(cursor);   // [상점] 격자도 밀린다 — 세 뷰포트는 서로 겹치지 않는다.
                 FeedClick(cursor);
                 return;
             }
@@ -110,14 +111,16 @@ namespace StickMate.Interaction
             {
                 if (!hasCursor) return;
                 if (_draggingPanel) DragPanelTo(cursor);
-                else { DragGridTo(cursor); DragCol2To(cursor); }
+                else { DragGridTo(cursor); DragCol2To(cursor); DragShopTo(cursor); }
                 return;
             }
             if (!buttonDown && prev)
             {
                 ResolvePendingEquip(cursor, hasCursor);
+                ResolvePendingShopBuy(cursor, hasCursor);
                 EndGridDrag();
                 EndCol2Drag();
+                EndShopDrag();
                 EndPanelDrag();
             }
         }
@@ -338,9 +341,17 @@ namespace StickMate.Interaction
                 return;
             }
 
-            // 카드가 없는 탭([상점] 같은 준비 중 페이지)은 여기서 끝이다. 아래 카드 루프는
-            // 숨겨진 카드를 activeInHierarchy로 걸러 내지만, 그건 <b>우연한 방어</b>다 —
-            // 어떤 탭이 카드를 갖는지는 표가 정한다.
+            if (page == TabPage.Shop)
+            {
+                // ★ 두 경로가 <b>같은 핸들러</b>를 부른다(Button.onClick + 이 폴링). 한쪽만 가드하면
+                //   다른 쪽이 그대로 뚫린다 — 그래서 살 수 있는가의 판정은 칩의 interactable이 아니라
+                //   OnShopBuyClicked 안에 있다(45-9-b ④와 같은 규칙).
+                FeedShopClick(cursor);
+                return;
+            }
+
+            // 카드가 없는 탭은 여기서 끝이다. 아래 카드 루프는 숨겨진 카드를 activeInHierarchy로
+            // 걸러 내지만, 그건 <b>우연한 방어</b>다 — 어떤 탭이 카드를 갖는지는 표가 정한다.
             if (page != TabPage.Cards) return;
 
             for (int i = 0; i < _cards.Length; i++)

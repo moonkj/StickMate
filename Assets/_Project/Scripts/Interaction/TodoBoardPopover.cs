@@ -169,7 +169,7 @@ namespace StickMate.Interaction
                 UiChrome.PlaceTopLeft(chip.rectTransform,
                     CloseChipLeft - UiChrome.Space1 - (2 - i) * 46f - (1 - i) * 2f,
                     -UiChrome.Space3, 46f, 22f);
-                UiChrome.AddOutline(chip.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+                UiChrome.AddOutline(chip.rectTransform, "Outline", UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface), UiChrome.RadiusChip);
                 Text label = UiChrome.AddText(chip.rectTransform, "Label", UiChrome.FontCaption,
                     TextAnchor.MiddleCenter, UiChrome.TextSecondary);
                 UiChrome.Stretch(label.rectTransform);
@@ -186,11 +186,11 @@ namespace StickMate.Interaction
             view.Surface = UiChrome.AddSurface(content, "Row" + index, UiChrome.CardSurface, UiChrome.RadiusCard);
             view.Rect = view.Surface.rectTransform;
             UiChrome.PlaceTopLeft(view.Rect, 0f, ListTop - index * (RowHeight + RowGap), RowWidth, RowHeight);
-            UiChrome.AddOutline(view.Rect, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+            UiChrome.AddOutline(view.Rect, "Outline", UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface), UiChrome.RadiusCard);
 
             view.Box = UiChrome.AddSurface(view.Rect, "Box", UiChrome.SubtleSurface, 4);
             UiChrome.PlaceTopLeft(view.Box.rectTransform, 10f, -(RowHeight - 20f) * 0.5f, 20f, 20f);
-            UiChrome.AddOutline(view.Box.rectTransform, "Outline", UiChrome.CardBorder, 4);
+            UiChrome.AddOutline(view.Box.rectTransform, "Outline", UiChrome.Flatten(UiChrome.CardBorder, UiChrome.SubtleSurface), 4);
             view.BoxCheck = UiChrome.AddCircle(view.Box.rectTransform, "Dot", 10f, UiChrome.Accent);
             view.BoxCheck.gameObject.SetActive(false);
 
@@ -226,7 +226,7 @@ namespace StickMate.Interaction
 
             view.ConfirmNo = UiChrome.AddSurface(view.Confirm, "No", UiChrome.CardSurface, UiChrome.RadiusChip);
             UiChrome.PlaceTopLeft(view.ConfirmNo.rectTransform, RowWidth - 60f, -(RowHeight - 22f) * 0.5f, 52f, 22f);
-            UiChrome.AddOutline(view.ConfirmNo.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+            UiChrome.AddOutline(view.ConfirmNo.rectTransform, "Outline", UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface), UiChrome.RadiusChip);
             Text no = UiChrome.AddText(view.ConfirmNo.rectTransform, "Label", UiChrome.FontCaption,
                 TextAnchor.MiddleCenter, UiChrome.TextSecondary);
             UiChrome.Stretch(no.rectTransform);
@@ -246,7 +246,7 @@ namespace StickMate.Interaction
         {
             Image surface = UiChrome.AddSurface(content, name, UiChrome.CardSurface, UiChrome.RadiusChip);
             UiChrome.PlaceTopLeft(surface.rectTransform, ContentWidth - RailWidth, y, RailWidth, RowHeight);
-            UiChrome.AddOutline(surface.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+            UiChrome.AddOutline(surface.rectTransform, "Outline", UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface), UiChrome.RadiusChip);
             Text label = UiChrome.AddText(surface.rectTransform, "Glyph", UiChrome.FontCaption,
                 TextAnchor.MiddleCenter, UiChrome.TextSecondary);
             UiChrome.Stretch(label.rectTransform);
@@ -258,7 +258,7 @@ namespace StickMate.Interaction
         private InputField CreateInputField(Transform parent)
         {
             Image surface = UiChrome.AddSurface(parent, "TodoInput", UiChrome.CardSurface, UiChrome.RadiusChip);
-            UiChrome.AddOutline(surface.rectTransform, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+            UiChrome.AddOutline(surface.rectTransform, "Outline", UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface), UiChrome.RadiusChip);
 
             Text text = UiChrome.AddText(surface.rectTransform, "Text", UiChrome.FontBody,
                 TextAnchor.MiddleLeft, UiChrome.TextPrimary);
@@ -390,7 +390,7 @@ namespace StickMate.Interaction
             for (int i = 0; i < 2; i++)
             {
                 bool on = (int)_tab == i;
-                _tabChips[i].color = on ? UiChrome.AccentSurface : UiChrome.CardSurface;
+                _tabChips[i].color = on ? UiChrome.Flatten(UiChrome.AccentSurface, UiChrome.PanelSurface) : UiChrome.CardSurface;
                 _tabLabels[i].color = on ? UiChrome.TextOnAccent : UiChrome.TextSecondary;
                 _tabLabels[i].fontStyle = on ? FontStyle.Bold : FontStyle.Normal;
             }

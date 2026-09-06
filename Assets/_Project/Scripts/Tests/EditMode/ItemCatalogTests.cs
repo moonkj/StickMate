@@ -33,10 +33,38 @@ namespace StickMate.Tests.EditMode
             return config;
         }
 
+        /// <summary>
+        /// ★ 2026-09-06 — <b>전제를 여기서 직접 세운다</b>. 이 픽스처의 상태 슬롯 단언
+        /// («Lv.5에 열림» / «Lv.20에 열림»)은 <c>ItemCatalogEntry.IsOwned</c>의 <b>세 항이 전부 거짓</b>일
+        /// 때만 성립하는데, 그 중 둘이 스위트의 <b>이월 상태</b>였다:
+        /// <list type="number">
+        ///  <item>QA 해금 스위치 — 앞선 픽스처(<c>EquipmentStatLockedWornTests</c>)가 TearDown에서
+        ///        <c>SetTestOverride(null)</c>로 되돌리는 바람에 <b>켜진 채로</b> 넘어왔다. null은 강제
+        ///        해제가 아니라 «실제 판정 복귀»이고 에디터의 실제 판정은 켜짐이다. 그쪽도 고쳤지만,
+        ///        <b>측정하는 쪽이 자기 전제를 남에게 맡기지 않는다</b>.</item>
+        ///  <item>상점 구매 이력 — <c>IsOwned</c>는 «레벨 파생 ∪ 구매분»이라(DESIGN_SYSTEMS_STATS §20-2-a)
+        ///        앞선 픽스처가 산 <c>equip.head.crown</c>이 남아 있으면 Lv.1에서도 «보유»가 된다.
+        ///        <c>CurrencyRulesTests</c>·<c>EquipmentMigrationTests</c>에는 TearDown이 없다.</item>
+        /// </list>
+        /// 셋째 항(레벨)은 원래부터 여기서 리셋하고 있었다.
+        /// </summary>
         [SetUp]
         public void ResetModels()
         {
+            EquipmentDebugUnlock.SetTestOverride(false);   // 스위트 규약 = 꺼짐(GlobalEditModeTestIsolation).
             CharacterProgressionModel.ResetForTesting();
+            CurrencyModel.ResetForTesting();
+            EquipmentModel.ResetForTesting();
+        }
+
+        /// <summary>이 픽스처는 레벨을 올리는 테스트를 갖고 있다(요구 레벨에 닿는 순간을 본다).
+        /// 그 값을 다음 픽스처에 흘리지 않는다 — 위 SetUp 문단이 말하는 사고를 이쪽 방향으로도 막는다.</summary>
+        [TearDown]
+        public void RestoreSuiteDefault()
+        {
+            EquipmentDebugUnlock.SetTestOverride(false);
+            CharacterProgressionModel.ResetForTesting();
+            CurrencyModel.ResetForTesting();
             EquipmentModel.ResetForTesting();
         }
 

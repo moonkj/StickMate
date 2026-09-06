@@ -1145,7 +1145,8 @@ namespace StickMate.Interaction
                 surface.sprite = UiChrome.RoundedFill(UiChrome.RadiusChip);
                 surface.type = Image.Type.Sliced;
                 surface.color = UiChrome.CardSurface;
-                UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+                UiChrome.AddOutline(rt, "Outline",
+                    UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface), UiChrome.RadiusChip);
             }
             else
             {

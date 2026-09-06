@@ -1526,6 +1526,119 @@ namespace StickMate.Interaction
                 "동시에 만족하는 면이 없습니다. 버튼을 그 바탕에 직접 놓지 말고 한 겹 띄우십시오.");
         }
 
+        // ================================================================================
+        // ★★ 2026-09-06 — <b>테두리</b>의 문. docs/UI_ALPHA_BLEED_POLICY.md §4-3
+        // ================================================================================
+        //
+        // 이 파일에는 이미 문이 둘 있다 — <see cref="ControlFaceOnSurface"/>(면)와
+        // <see cref="InkOnSurface"/>(글자). <b>테두리는 어느 쪽도 아니다</b>: 면처럼 3.0 계열이지만
+        // 위에 글자가 얹히지 않으므로 잉크 제약을 함께 풀 이유가 없고, 잉크처럼 사다리를 타지도 않는다.
+        // 그래서 지금까지 테두리는 <b>「흰색에 α를 얹는다」</b>로 처리돼 왔고, 그 방식은 밝은 바탕에서
+        // <b>원리상</b> 실패한다(design-art 실측):
+        //
+        //     Flatten(CardBorder,  PortraitSurface) = #EBECE9  vs 종이 무대  →  <b>1.02 : 1</b>
+        //     Flatten(PanelBorder, 흰 견본)         = #FFFFFF  vs 흰 견본    →  <b>1.00 : 1</b>
+        //
+        // 흰색 위에 흰색을 더 얹을 수는 없다. α를 아무리 올려도 이 두 줄은 고쳐지지 않는다 —
+        // <b>방향</b>이 틀렸기 때문이다. 그래서 방향까지 값이 정하게 만든다.
+
+        /// <summary>
+        /// 테두리(비텍스트)의 <b>목표</b> 대비 = <see cref="MinNonTextContrast"/> × 1.05 = <b>3.15</b>.
+        ///
+        /// <para>★ <b>왜 <see cref="ControlFaceContrastTarget"/>(×1.20)를 그대로 쓰지 않는가</b>
+        /// (§4-3-a). 값이 다른 게 아니라 <b>덮어야 할 축의 수가 다르다</b>: 면은 잉크와 한 쌍이라
+        /// 양자화 + 감마 + 모니터 프로파일 세 축을 덮어야 하지만, <b>테두리에는 잉크가 안 얹힌다</b> —
+        /// 덮을 축이 양자화 하나다. 실측 최악 손실이 <b>0.699 %</b>이고 ×1.05의 여유가 <b>+4.37 %</b>로
+        /// 그 <b>6.2배</b>다. 마진을 베끼지 않고 <b>잰 값에 맞춰 깎았다.</b></para>
+        ///
+        /// <para>★ <b>왜 3.0(하한 그대로)이 아닌가</b>: 부동소수 해는 3.0005~3.0096인데 8비트로
+        /// 반올림하면 <b>회색 램프 256단 중 104단(40.6 %) · 유채색 4096색 중 1545개(37.7 %)</b>가
+        /// 미달로 내려앉는다(최악 <c>#121212</c> 2.9790). 선언 바탕 17종만 보면 7종이라 「예외」로
+        /// 보이지만, 전 색공간에서는 <b>가능한 바탕의 약 40 %에서 정책이 성립하지 않는다</b>는 뜻이다.
+        /// <see cref="MinNonTextContrast"/>는 WCAG에서 인용해 온 <b>하한</b>이고, 하한은 부동소수
+        /// 중간값이 아니라 <b>화면에 나가는 픽셀</b>에서 서야 한다.</para>
+        ///
+        /// <para>★ <b>왜 최소해(×1.008)가 아닌가</b>: 최소해를 상수로 박으면 여유가 0이다 —
+        /// <see cref="ControlFaceLift"/>가 이미 같은 말을 적어 놓았다.</para>
+        /// </summary>
+        public const float EdgeContrastTarget = MinNonTextContrast * 1.05f;   // = 3.15
+
+        /// <summary>
+        /// ★ <b>테두리·윤곽선의 색을 고르는 단 하나의 문</b>. <see cref="ControlFaceOnSurface(Color)"/>·
+        /// <see cref="InkOnSurface"/>의 <b>세 번째 형제</b>다(docs/UI_ALPHA_BLEED_POLICY.md §4-3).
+        ///
+        /// <para>규칙: <b>대비 여유가 큰 쪽</b>으로, <see cref="EdgeContrastTarget"/>을 넘기는 <b>최소</b>
+        /// 혼합을 <see cref="Flatten"/>해 돌려준다. 반환값은 언제나 <c>alpha = 1</c>이라 창 알파를
+        /// 건드리지 않는다(파일 머리의 「알파 채널의 법칙」).</para>
+        ///
+        /// <para><b>이 함수는 예외를 만드는 게 아니라 예외를 없앤다.</b>
+        /// <c>CharacterInfoWindow.ApplyPortraitTheme</c>의 <c>whiteInk ? new Color(1,1,1,0.18f) : CardBorder</c>는
+        /// <b>손으로 굴린 EdgeOnSurface</b>였다 — 누군가 바탕이 뒤집힌다는 걸 눈치채고 분기를 하드코딩한
+        /// 것이고, 그 손계산은 목탄 무대에서 1.79 : 1, 종이 무대에서 1.02 : 1이었다. 규칙이 생기면
+        /// 그 삼항식은 <b>패치되는 게 아니라 사라진다</b>(둘 다 3.15).</para>
+        ///
+        /// <para>★★ <b>방향을 「흰쪽 우선」으로 정하지 마라 — 그게 초판의 결함이었다</b>(§4-3-b).
+        /// 흰쪽 해의 존재 조건은 <c>target ≤ 1.05/(L+0.05)</c>라서 <b>절벽이 target에 딸려 움직인다</b>.
+        /// 실측: <see cref="ChromeButtonSurface"/>(L 0.2575)의 절벽 배수는 1.1381, 카드 위 컨트롤 면
+        /// (L 0.2355)은 1.2261 — 즉 <b>마진 상수를 1.20으로 고르는 것만으로 ΔL* 2 이내인 두 면이
+        /// 정반대 색 테두리를 받는다</b>. 「여유 큰 쪽」으로 바꾸면 절벽이
+        /// <c>L* = √0.0525 − 0.05 ≈ 0.1791</c> <b>한 점에 고정되고 target과 완전히 무관해진다</b>.
+        /// 그리고 그 결과가 옳다: 갈라지는 두 면은 이미 <see cref="BrightTextBackdrops"/>에 있어
+        /// <see cref="InkOnSurface"/>가 어두운 잉크를 고르므로, 테두리만 흰쪽으로 가면
+        /// <b>같은 칩에서 잉크와 테두리가 반대 방향</b>이 된다.</para>
+        ///
+        /// <para><b>해가 없을 수 있다.</b> 흰쪽 최대는 <c>1.05/(L+0.05)</c>, 검은쪽 최대는
+        /// <c>(L+0.05)/0.05</c>이고 둘의 곱이 항상 21이므로, <b>큰 쪽</b>은 언제나 <c>√21 ≈ 4.583</c>
+        /// 이상이다. 즉 <b>target ≤ 4.58이면 어떤 바탕에도 답이 있다</b>(기본값 3.15는 그 안이라
+        /// 프로덕션 경로에서는 실패가 발생하지 않는다). 그보다 높은 목표를 넘기면 중간 밝기 한 점
+        /// 근처에서 답이 사라지고, 그때는 조용히 넘기지 않고 <see cref="WarnUnsolvableEdge"/>가 짖는다.</para>
+        ///
+        /// <para><b>Update()에서 부르지 마라</b> — 형제와 같은 격자 탐색이라 최대 <c>1025</c>회 반복한다.
+        /// 표면을 만들 때 한 번 부르고 결과를 필드에 담아 쓸 것.</para>
+        /// </summary>
+        public static Color EdgeOnSurface(Color backdrop) => EdgeOnSurface(backdrop, EdgeContrastTarget);
+
+        /// <inheritdoc cref="EdgeOnSurface(Color)"/>
+        /// <param name="backdrop">테두리가 <b>실제로 올라앉는</b> 불투명색. 반투명 겹 위라면
+        /// <see cref="Flatten"/>으로 먼저 합성해서 넘겨라 — 합성 전 색으로 재면 계산이 거짓말을 한다.</param>
+        /// <param name="target">목표 대비. 기본값은 <see cref="EdgeContrastTarget"/>.</param>
+        public static Color EdgeOnSurface(Color backdrop, float target)
+        {
+            // ★ 방향은 <b>여유가 큰 쪽</b>이다. target이 안 들어가는 것이 이 식의 요점 —
+            //   목표를 조정해도 테두리 색이 흰↔검으로 뒤집히지 않는다(§4-3-b).
+            //   두 최대의 곱은 항상 21이므로 큰 쪽은 언제나 √21(≈4.583) 이상이다.
+            float bd = RelativeLuminance(backdrop) + 0.05f;
+            bool up = 1.05f / bd >= bd / 0.05f;
+            Color mix = up ? new Color(1f, 1f, 1f, 1f) : new Color(0f, 0f, 0f, 1f);
+
+            // ★ 대비는 α에 대해 <b>단조</b>라 이분 탐색으로도 풀린다(형제 쪽은 잉크 제약 때문에
+            //   골짜기가 생겨 격자여야 했다). 그래도 격자를 쓰는 이유는 <b>같은 사다리</b>를 타야
+            //   두 문이 같은 α 계단에 내려앉기 때문이다 — §4-3-c 확정표의 α(0.3438 / 0.3457 / 0.3535 /
+            //   0.4404 …)가 전부 이 1/1024 계단 위의 값이고, 이분 탐색으로 바꾸면 그 표가 재현되지 않는다.
+            const int Steps = 1024;
+            for (int i = 0; i <= Steps; i++)
+            {
+                Color edge = Flatten(new Color(mix.r, mix.g, mix.b, i / (float)Steps), backdrop);
+                if (ContrastRatio(edge, backdrop) >= target) return edge;
+            }
+
+            // ※ §4-3의 「고른 쪽에 해가 없으면 반대쪽으로 반전」 절은 <b>여기서 도달할 수 없다</b>:
+            //   위에서 고른 쪽의 최대가 반대쪽보다 크므로, 이쪽이 못 넘으면 저쪽도 못 넘는다.
+            //   빠뜨린 게 아니라 <b>선택 규칙이 이미 그 절을 흡수했다</b>.
+            WarnUnsolvableEdge(backdrop, target);
+            return Flatten(new Color(mix.r, mix.g, mix.b, 1f), backdrop);
+        }
+
+        [System.Diagnostics.Conditional("UNITY_EDITOR")]
+        [System.Diagnostics.Conditional("DEVELOPMENT_BUILD")]
+        private static void WarnUnsolvableEdge(Color backdrop, float target)
+        {
+            Debug.LogError($"[테두리] 바탕 #{ColorUtility.ToHtmlStringRGB(backdrop)} 위에서는 어느 " +
+                $"방향으로도 {target:F2}:1인 테두리가 없습니다(여유가 큰 쪽의 최대가 √21 ≈ 4.58이라 " +
+                "목표가 그보다 높으면 중간 밝기에서 해가 사라집니다). 목표를 낮추거나 테두리 대신 " +
+                "면으로 층을 내십시오.");
+        }
+
         /// <summary>
         /// ★ <b>글자가 실제로 얹히는 바탕 전부</b>. 잉크 하한은 이 목록의 <b>어느 하나에서도</b>
         /// 무너지면 안 된다.
@@ -1600,6 +1713,13 @@ namespace StickMate.Interaction
             ChromeButtonSurface,
             ChromeButtonSurfaceHover,
             ChromeButtonSurfacePressed,
+
+            // ★ 2026-09-06 — <b>누를 수 있는 슬래브</b> 두 벌(카드 위 / 창 바탕 위).
+            //   정보창 카드 [착용] 칩과 설정창 F1 버튼이 <b>같은 값</b>을 쓴다(§7-2: 「누를 수 있는 것」의
+            //   시각 언어를 두 벌로 만들지 않는다). 여기 없으면 이 면들은 대비 검사에서 <b>보이지 않고</b>,
+            //   보이지 않는 바탕이 1.28:1을 만들었다.
+            CardActionSurface,                        // = ControlFaceOnSurface(CardSurface)  #838589
+            ControlFaceOnSurface(PanelSurface),       // 설정창 푸터/레일 슬래브            #848588
         };
 
         /// <summary>

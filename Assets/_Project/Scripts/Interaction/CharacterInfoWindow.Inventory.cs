@@ -52,31 +52,81 @@ namespace StickMate.Interaction
         /// (<see cref="InventoryRowView"/>는 <c>CharacterInfoWindow.cs</c> 소유라 이 라운드가 열지 않는다).</summary>
         private readonly RarityRibbon[] _inventoryRibbons = new RarityRibbon[InventoryVisibleRows];
 
-        /// <summary>목록의 논리적 줄 수 = 헤더 2줄 + 카탈로그 전체(장비 42 + 행동 12 = 54).
-        /// <para>2026-09-02 격파 놀이 삭제로 행동이 13 → 12가 됐다.</para>
-        /// <para>★ 2026-09-02 — 여기 "장비 32"라고 적혀 있었다. 실제는 <b>42종</b>이고
-        /// (<c>Resources/Items/*.asset</c> 42개), 페이지 수가 32든 42든 3이라 <b>화면에는 티가 나지
-        /// 않았다</b>. 숫자를 손으로 적지 않는 것이 원칙이지만 주석은 예외가 없어 이렇게 샌다 —
-        /// 다음 사람이 이 숫자로 계산하면 10종을 잃는다.</para></summary>
-        private static int InventoryLineCount => ItemCatalog.Count + 2;
+        /// <summary>헤더 줄임을 뜻하는 카탈로그 인덱스. <see cref="ItemCatalog.At"/>가 음수에 <c>null</c>을
+        /// 돌려주므로 실수로 아이템처럼 다뤄도 조용히 엉뚱한 줄이 그려지지는 않는다.</summary>
+        private const int InventoryHeaderLine = -1;
 
-        /// <summary>논리적 줄 번호 -> 카탈로그 인덱스. 헤더면 -1.
-        /// 순서: [걸치는 것] 헤더 → 장비 전부 → [할 줄 아는 것] 헤더 → 행동 전부.
-        /// 카탈로그가 이미 그 순서로 정의되어 있어 재정렬하지 않는다(정렬 규칙이 두 곳에 생기지 않게).</summary>
+        /// <summary>
+        /// ★ 논리적 줄 번호 → 카탈로그 인덱스(헤더는 <see cref="InventoryHeaderLine"/>).
+        ///
+        /// <para>예전에는 산술로 접었다(<c>line - 1</c> / <c>line - 2</c>). 그 형태는 목록이
+        /// <b>카탈로그 전량과 1:1</b>일 때만 성립하는데, 2026-09-06 [머리] 은퇴로 <b>보여주는 것이
+        /// 데이터보다 적어졌다</b> — 산술로는 그 구멍을 표현할 수 없다. 그래서 줄 하나하나가 무엇을
+        /// 가리키는지 <b>표로 만든다</b>.</para>
+        ///
+        /// <para><b>정렬 규칙은 여전히 한 곳이다</b>: 카탈로그가 내놓는 순서(<c>Entries</c>)를 그대로
+        /// 따라가며 거르기만 한다. 다시 정렬하면 "장비 다음에 행동"이라는 규칙이 두 벌이 된다.</para>
+        ///
+        /// <para>카탈로그는 실행 중에 바뀌지 않으므로 <b>한 번만</b> 만든다 — 이 표는 갱신 경로
+        /// (<see cref="RefreshInventoryList"/>)에서 줄마다 읽힌다.</para>
+        /// </summary>
+        private static int[] _inventoryLines;
+
+        private static int[] InventoryLines
+        {
+            get
+            {
+                if (_inventoryLines != null) return _inventoryLines;
+
+                var lines = new System.Collections.Generic.List<int>(ItemCatalog.Count + 2);
+                lines.Add(InventoryHeaderLine);                 // "걸치는 것"
+                bool actionsStarted = false;
+                for (int i = 0; i < ItemCatalog.Count; i++)
+                {
+                    ItemCatalogEntry entry = ItemCatalog.At(i);
+                    if (entry == null) continue;
+                    if (!actionsStarted && entry.Category != ItemCategory.Equipment)
+                    {
+                        actionsStarted = true;
+                        lines.Add(InventoryHeaderLine);         // "할 줄 아는 것"
+                    }
+                    // ★ 은퇴한 카테고리는 줄을 얻지 못한다. 판단은 카탈로그 술어 하나
+                    //   (ItemCatalog.IsListed → EquipmentModel.IsRetiredSlot)에게만 묻는다.
+                    if (!ItemCatalog.IsListed(entry)) continue;
+                    lines.Add(i);
+                }
+                // 행동이 0종이어도 헤더 줄은 <b>둘</b>이다 — HeaderTextForLine이 "0번 줄이 아니면
+                // 둘째 헤더"로 갈리므로, 하나만 있으면 그 분기가 도달할 수 없는 코드가 된다.
+                if (!actionsStarted) lines.Add(InventoryHeaderLine);
+
+                _inventoryLines = lines.ToArray();
+                return _inventoryLines;
+            }
+        }
+
+        /// <summary>목록의 논리적 줄 수 = 헤더 2줄 + <b>보여주는</b> 항목 수.
+        /// <para>★ 여기에 <b>숫자를 적지 않는다</b>. 예전 주석은 "장비 42 + 행동 12 = 54"라고
+        /// 적었다가 실제와 갈라졌고("장비 32"로 10종을 잃은 채 남아 있었다), 페이지 수가 어느 쪽이든
+        /// 3이라 <b>화면에는 티가 나지 않았다</b>. 지금은 표의 길이를 그대로 쓰므로 2026-09-06
+        /// [머리] 은퇴에도 이 줄은 고칠 것이 없었다 — 세는 자리는
+        /// <see cref="ItemCatalog.ListedEquipmentCount"/>/<see cref="ItemCatalog.ActionCount"/> 뿐이다.</para></summary>
+        private static int InventoryLineCount => InventoryLines.Length;
+
+        /// <summary>논리적 줄 번호 -> 카탈로그 인덱스. 헤더면 <see cref="InventoryHeaderLine"/>.</summary>
         private static int CatalogIndexForLine(int line)
         {
-            int equipmentCount = ItemCatalog.EquipmentCount;
-            if (line <= 0) return -1;                              // "걸치는 것" 헤더
-            if (line <= equipmentCount) return line - 1;           // 장비
-            if (line == equipmentCount + 1) return -1;             // "할 줄 아는 것" 헤더
-            return line - 2;                                       // 행동
+            int[] lines = InventoryLines;
+            return (uint)line < (uint)lines.Length ? lines[line] : InventoryHeaderLine;
         }
 
         private string HeaderTextForLine(int line)
         {
             if (line == 0)
             {
-                return $"걸치는 것  ({ItemCatalog.UnlockedEquipmentCount(_config)} / {ItemCatalog.EquipmentCount})";
+                // ★ 분자와 분모가 <b>같은 모집단</b>이어야 한다(ItemCatalog.ListedUnlockedEquipmentCount
+                //   문단). 한쪽만 은퇴를 반영하면 「7 / 36」인데 고를 수 있는 것은 6개가 된다.
+                return $"걸치는 것  ({ItemCatalog.ListedUnlockedEquipmentCount(_config)} / " +
+                       $"{ItemCatalog.ListedEquipmentCount})";
             }
             return $"할 줄 아는 것  ({ItemCatalog.ActionCount})";
         }
@@ -165,15 +215,19 @@ namespace StickMate.Interaction
                 //     같은 아이템을 서로 다른 테두리로 그리게 된다.
                 //   ★ 등급이 <b>없는</b> 줄(「할 줄 아는 것」)은 현행 CardBorder를 유지한다 — 없는 것을
                 //     「일반」으로 칠하면 0단짜리 등급이 생긴다(HideRarityRibbon과 같은 규칙).
+                //   ★ 2026-09-06 — α<1 끝점은 <b>바로 위에서 정한 이 줄의 면</b>에 미리 합성한다
+                //     (정책 §4-2). 보이는 색은 같고 창 알파만 지킨다.
+                Color rowFace = view.Surface.color;
                 view.Outline.color = selected ? UiChrome.TextPrimary
                     : worn ? UiChrome.CardBorderWorn
-                    : hasRarity ? UiChrome.RarityBorder(
-                        ItemCatalog.Rarity(entry.Slot.Value, entry.ItemIndex))
-                    : UiChrome.CardBorder;
+                    : hasRarity ? UiChrome.Flatten(UiChrome.RarityBorder(
+                        ItemCatalog.Rarity(entry.Slot.Value, entry.ItemIndex)), rowFace)
+                    : UiChrome.Flatten(UiChrome.CardBorder, rowFace);
                 // 도트만 글자가 아니다 — 나머지 셋은 전부 같은 사다리에서 나온다.
                 view.Dot.color = entry.Slot.HasValue
                     ? (worn ? UiChrome.CategoryTint(entry.Slot.Value)
-                            : owned ? UiChrome.NonTextMuted : UiChrome.TrackBackground)
+                            : owned ? UiChrome.NonTextMuted
+                                    : UiChrome.Flatten(UiChrome.TrackBackground, rowFace))
                     : UiChrome.NonTextMuted;
                 view.Title.color = UiChrome.InkTitle(owned);
                 view.Subtitle.color = UiChrome.InkMeta;
@@ -311,7 +365,8 @@ namespace StickMate.Interaction
                 Image surface = UiChrome.AddSurface(page, "InvRow" + i, UiChrome.CardSurface, UiChrome.RadiusChip);
                 var rt = surface.rectTransform;
                 UiChrome.PlaceTopLeft(rt, PagePadX, PageTopY - i * rowStep, InventoryListWidth, InventoryRowHeight);
-                Image outline = UiChrome.AddOutline(rt, "Outline", UiChrome.CardBorder, UiChrome.RadiusChip);
+                Image outline = UiChrome.AddOutline(rt, "Outline",
+                    UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface), UiChrome.RadiusChip);
 
                 // 장비/행동을 완전히 같은 행 모양으로 그린다(디자이너 확정) —
                 // ● 표식 / 이름 / 부제 / 설명 한 줄 / 상태 슬롯(96pt 고정, 훗날 가격표 자리).
@@ -382,7 +437,8 @@ namespace StickMate.Interaction
             var drt = detail.rectTransform;
             UiChrome.PlaceTopLeft(drt, PagePadX, InventoryDetailY, PageContentWidth, InventoryDetailHeight);
             detail.raycastTarget = false;
-            UiChrome.AddOutline(drt, "Outline", UiChrome.CardBorder, UiChrome.RadiusCard);
+            UiChrome.AddOutline(drt, "Outline",
+                UiChrome.Flatten(UiChrome.CardBorder, UiChrome.SubtleSurface), UiChrome.RadiusCard);
 
             _inventoryDetailName = Label(drt, "DetailName", UiChrome.FontTitle, TextAnchor.MiddleLeft,
                 UiChrome.TextPrimary, 15f, -14f, PageContentWidth - 30f, 17f, "—", bold: true);
@@ -392,9 +448,12 @@ namespace StickMate.Interaction
             UiChrome.PlaceTopLeft(_inventoryDetailBody.rectTransform, 15f, -42f, PageContentWidth - 30f, 34f);
             _inventoryDetailBody.lineSpacing = 1.6f;
 
-            // 지금 파는 것은 하나도 없다 — 그 사실을 화면에서도 숨기지 않는다.
-            Label(drt, "Note", UiChrome.FontCaption, TextAnchor.MiddleRight, UiChrome.InkMeta,
-                PageContentWidth - 215f, -InventoryDetailHeight + 26f, 200f, 14f, "지금은 파는 것이 없습니다");
+            // ★★ 2026-09-06 — 여기 있던 각주 <c>"지금은 파는 것이 없습니다"</c>를 <b>지웠다</b>.
+            //   그 문장은 「지금 파는 것은 하나도 없다」는 사실을 숨기지 않으려고 둔 것이었고,
+            //   같은 날 [상점] 탭이 배선되면서 <b>거짓이 됐다</b>(원칙 1은 화면이 없는 사실을
+            //   주장하는 것만이 아니라 <b>있는 사실을 부정하는 것</b>도 금지한다).
+            //   ★ 새 문장을 지어 넣지 않았다 — 이 자리에 [상점]으로 가는 안내를 둘 것인지는
+            //     ux-designer/design-narrative 판정 사항이고, 그때까지는 <b>빈 자리</b>가 정직하다.
         }
 
         /// <summary>페이지 칩 하나. ★ 2026-09-02 — 테두리와 글리프를 <b>밖으로 내보낸다</b>.

@@ -58,6 +58,8 @@ CONST = re.compile(r"public\s+const\s+(?:float|int)\s+(\w+)\s*=\s*([^;]+);")
 DECL = re.compile(r"\b(?:public|internal|private|sealed|static|abstract|partial|\s)*"
                   r"\b(enum|class|struct|interface)\s+(\w+)")
 CASE = re.compile(r"case\s+EquipmentSlot\.(\w+)\s*:\s*return\s+\"([^\"]*)\"\s*;")
+# 메서드/프로퍼티 선언. `Name(` · `Name =>` · `Name {` 셋만 본다(필드/상수는 consts 검사가 따로 본다).
+MEMBER = re.compile(r"\bpublic\s+(?:static\s+)?(?:readonly\s+)?[\w<>\[\]\.,\s]*?\b(\w+)\s*(?:\(|=>|\{)")
 
 
 def strip_code(text: str) -> str:
@@ -141,7 +143,7 @@ def consts(body: str):
 
 def main() -> int:
     bad = []
-    checked = {"타입": 0, "enum 값": 0, "상수": 0, "표 항목": 0, "복제본": 0}
+    checked = {"타입": 0, "enum 값": 0, "상수": 0, "표 항목": 0, "멤버": 0, "복제본": 0}
 
     shim_src = ""
     for f in SHIM_FILES:
@@ -178,6 +180,25 @@ def main() -> int:
             bad.append(name)
             continue
         checked["타입"] += 1
+
+        # ── (1b) ★ 멤버 유령 — shim 이 들고 있는 메서드/프로퍼티가 프로덕션에 실재하는가 ──
+        #   타입 단위 유령 검사(위)는 «타입이 통째로 사라진 것»만 본다. 실제로 더 자주 나는 형태는
+        #   «메서드 하나가 이름을 바꾸거나 사라졌는데 shim 이 옛 이름을 계속 들고 서 있는 것»이다.
+        #   그러면 하니스는 컴파일도 되고 실행도 되면서 **실재하지 않는 것**을 재게 된다.
+        #   (2026-09-06: IsRetiredSlot 이 프로덕션에 생겨 shim 에 한 줄을 더했다 — 그 줄이 언젠가
+        #    프로덕션에서 사라질 때 조용해지지 않게 이 검사를 같이 붙였다.)
+        if mode != "enum":
+            kind = "class" if "class" in kinds else sorted(kinds)[0]
+            s_body = body_of(shim_clean, "class", name) or ""
+            p_body = body_of(prod_clean, kind, name) or ""
+            s_mem = {m for m in MEMBER.findall(s_body) if m not in ("get", "set", "return", "if", "switch")}
+            p_mem = {m for m in MEMBER.findall(p_body) if m not in ("get", "set", "return", "if", "switch")}
+            ghosts = sorted(s_mem - p_mem)
+            for g in ghosts:
+                print("  !! %-28s .%s 가 프로덕션에 없다(유령 멤버) — 하니스가 없는 것을 재고 있다" % (name, g))
+                bad.append("%s.%s" % (name, g))
+            if not ghosts and s_mem:
+                checked["멤버"] += len(s_mem)
 
         if mode == "enum":
             s = enum_members(body_of(shim_clean, "enum", name) or "")

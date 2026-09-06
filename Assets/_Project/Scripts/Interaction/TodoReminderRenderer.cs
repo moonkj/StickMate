@@ -131,6 +131,11 @@ namespace StickMate.Interaction
         public float StrokeWidth => Height * StrokeWidthRatio;
 
         private GameObject _container;
+
+        /// <summary>지금 <see cref="SuspendedOverlayGate"/>가 감춰 둔 상태인가(로그를 상태 전환에 한 번만
+        /// 남기기 위한 플래그. 판정 자체는 그 게이트가 소유한다 — 여기에 조건을 한 벌 더 두지 않는다).</summary>
+        private bool _suspendHidden;
+
         private readonly List<LineRenderer> _lines = new List<LineRenderer>(6);
         private Mode _mode = Mode.None;
         private float _modeTimer;
@@ -259,6 +264,7 @@ namespace StickMate.Interaction
         private void LateUpdate()
         {
             using var __stall = global::StickMate.Platform.StallAttribution.Section(global::StickMate.Platform.StallSection.Renderers);   // [스톨구간] 계측
+            if (SuspendedOverlayGate.FreezeAndHide(_agent, _container, ref _suspendHidden, "[투두]", "종이")) return;
             if (_mode == Mode.None || _container == null) return;
 
             _modeTimer += Time.deltaTime;

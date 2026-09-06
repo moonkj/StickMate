@@ -150,10 +150,15 @@ namespace StickMate.Tests.EditMode
             //      "초록"을 "일치"로 읽지 마라. 좌표까지 닫으려면 30종 폴백을 카드 본경로와 같은
             //      투영식으로 <b>다시 구워야</b> 하고, 그것은 아래 이력이 적은 대로
             //      design-equipment 소관(리더 경유)이며 ItemCatalogGolden.txt 재생성을 동반한다.
-            new Debt(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret, Axis.AccentVertexCount, 6, 3,
-                "2026-09-03 스펙 14-1 — BeretRim이 닫힌 채움 띠(아랫변 3 + 올린 윗변 3)가 됐다. " +
-                "폴백은 2026-09-02에 몸에 맞춰 3점으로 갚았던 그 값 그대로다 — 즉 <b>같은 빚이 아니라 " +
-                "새 빚</b>이고, innerFoot은 여전히 살아 있다."),
+            // ★ 2026-09-06 R25d — 핀을 6/3 → <b>4/2</b>로 갱신했다. 빚의 <b>정체는 그대로</b>
+            //   (폴백은 몸 띠의 아랫변만 그린다)인데 <b>몸이 바뀌어 아랫변의 점 수가 3 → 2</b>가 됐다.
+            //   R25 재저작본의 베레모 밑변은 <b>수평 한 선분</b>이라 innerFoot(밑변 안쪽 꺾임)이
+            //   조형에서 사라졌다 — 2026-09-01이 "베레모의 정체"라고 부른 그 점은 이제 없다.
+            //   폴백 에셋도 같은 라운드에 몸에서 다시 구웠다(equip_head_beret.asset).
+            new Debt(EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret, Axis.AccentVertexCount, 4, 2,
+                "2026-09-06 R25d — BeretRim이 닫힌 채움 띠(아랫변 2 + 올린 윗변 2)다. " +
+                "폴백은 그 아랫변 2점만 그린다. 갚으려면 폴백을 4점(윗변 포함)으로 구워야 하는데, " +
+                "그것은 40×40 격자에서 <b>같은 자리에 두 줄</b>이 되어 단순화의 목적과 어긋난다."),
             new Debt(EquipmentSlot.Head, AccessoryShapeBuilder.HeadStraw, Axis.AccentVertexCount, 4, 2,
                 "2026-09-03 스펙 14-1 — StrawBand가 닫힌 채움 띠(아랫변 2 + 올린 윗변 2)가 됐다. " +
                 "폴백은 아직 아랫변 2점."),
@@ -572,6 +577,10 @@ namespace StickMate.Tests.EditMode
         ///   <item>★ 2026-09-03(스펙 14-1) — 몸이 <b>닫힌 채움 띠</b>가 되어 6점이 됐다.
         ///     폴백 3점은 그 띠의 <b>아랫변</b>과 정확히 같다. 즉 <b>새 빚</b>이고,
         ///     2번에서 갚은 것(<c>innerFoot</c>이 살아 있다)은 <b>여전히 참</b>이다.</item>
+        ///   <item>★★ 2026-09-06(R25d) — 몸이 <b>4점</b>(아랫변 2 + 올린 윗변 2)이 됐고 폴백은
+        ///     <b>2점</b>이다. R25 재저작본의 밑변은 <b>수평 한 선분</b>이라 <c>innerFoot</c>이
+        ///     <b>조형에서 사라졌다</b> — 위 3번의 "여전히 참"은 <b>지금 거짓</b>이다(이 줄이
+        ///     그 정정이다). 잠그는 명제는 안 바뀐다: <b>폴백 = 몸 띠의 아랫변</b>.</item>
         /// </list>
         /// <para>그래서 이 검사는 "같은 점 수"가 아니라 <b>"폴백 = 몸 띠의 아랫변"</b>을 잠근다.
         /// 기대값은 여전히 <b>몸에서 읽는다</b>. 장비 담당이 폴백을 다시 구워 6점이 되면
@@ -618,7 +627,8 @@ namespace StickMate.Tests.EditMode
             Debug.Log($"{LogPrefix} 베레모 — 몸 BeretRim {rim.Points.Length}점" +
                       $"(아랫변 {bottomPoints} + 올린 윗변 {bottomPoints}) / 폴백 " +
                       $"{DistinctPointCount(fallbackRim)}점 = 아랫변 그대로. " +
-                      "innerFoot(밑변 안쪽 꺾임 = 베레모의 정체)은 양쪽에 살아 있다.");
+                      "★ R25d 이후 밑변은 수평 한 선분이라 innerFoot은 양쪽 다 없다 — " +
+                      "그래도 «폴백 = 아랫변»은 몸에서 읽으므로 이 검사는 계속 산다.");
         }
 
         /// <summary>

@@ -53,6 +53,7 @@ namespace StickMate.EditorTools
             ConfigureResidencyFootprint();
             ConfigureRenderDiagnostics();
             ConfigureLogStackTraces();
+            EnsureShippedPrefabWiring();
 
             string[] scenes = GetEnabledScenePaths();
             if (scenes.Length == 0)
@@ -95,6 +96,51 @@ namespace StickMate.EditorTools
             if (summary.result != BuildResult.Succeeded)
             {
                 Debug.LogError("[BuildStandalone] 빌드 실패(result=" + summary.result + ") — 위 로그의 에러 메시지를 확인하세요.");
+            }
+        }
+
+        /// <summary>
+        /// ★★★ <b>빌드는 언제나 최신 배선을 반영한다</b> — 2026-09-06 신설(실기 신고 대응, 근본 수정).
+        ///
+        /// ============================================================================
+        /// 무엇이 있었나 (관측 — 예측이 아니다)
+        /// ============================================================================
+        /// 음악 반응 춤이 <b>실제 빌드에서 통째로 작동하지 않았다</b>. 3분 넘게 오디오를 틀어도
+        /// Player 로그에 관련 줄이 <b>한 줄도</b> 없었다. 원인은 로직이 아니라 <b>이 파일</b>이었다:
+        /// <list type="number">
+        ///   <item><c>SceneBootstrapper.BuildStickmanPrefab</c>에는 그 컴포넌트를 붙이는 코드가
+        ///     <b>있었지만</b>, 그 함수는 프리팹이 이미 있으면 <b>통째로 건너뛴다</b>(BUG-SW-M3 —
+        ///     fileID 재할당으로 씬 오버라이드를 고아로 만들지 않기 위한 <b>의도된</b> 동작이다).</item>
+        ///   <item>빠진 컴포넌트만 얹는 경로(<c>SceneBootstrapper.EnsurePrefabComponents</c>)는
+        ///     따로 있었지만 <b>메뉴에서 사람이 눌러 주기를 기다리는</b> 함수였고,
+        ///     <see cref="PerformBuild"/>는 그것을 <b>부르지 않았다</b>.</item>
+        /// </list>
+        /// ⇒ 신규 컴포넌트는 <b>「누군가 기억해서 메뉴를 누르면」</b> 출하되는 구조였다.
+        /// 이 저장소는 같은 함정을 이미 네 번 겪었다(33-9 #10 / 34-9 #10 / 36-13 #11 / 설정창).
+        ///
+        /// ============================================================================
+        /// 처방 — <b>기억이 아니라 파이프라인</b>
+        /// ============================================================================
+        /// 빌드 직전에 무조건 부른다. 이 함수는 <b>멱등</b>이고(이미 붙어 있으면 0개 추가 · 저장 안 함),
+        /// 프리팹을 통째로 다시 굽지 않으므로 <b>fileID를 재할당하지 않는다</b> — BUG-SW-M3의
+        /// 위험을 지지 않는다. 그래서 macOS·Windows <b>양쪽</b> 빌드 경로에 같은 한 줄로 들어간다.
+        ///
+        /// <para>★ <b>실패해도 빌드를 막지 않는다.</b> 이 단계는 «더 나은 상태로 고쳐 주는» 보조
+        /// 장치이지 빌드의 전제가 아니다. 예외를 삼키되 <b>반드시 소리 내어</b> 남긴다 —
+        /// 조용한 실패가 이번 사고의 본체였다.</para>
+        /// </summary>
+        public static void EnsureShippedPrefabWiring()
+        {
+            try
+            {
+                SceneBootstrapper.EnsurePrefabComponents();
+                Debug.Log("[BuildStandalone] 출하 프리팹 배선 점검 완료 — 빌드에 최신 컴포넌트 목록이 반영됩니다. " +
+                    "(어긋남 자체는 EditMode의 부트스트래퍼↔프리팹 대조 감사가 매 러너마다 다시 잰다.)");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[BuildStandalone] 출하 프리팹 배선 점검이 실패했습니다 — 빌드는 계속하지만 " +
+                    "이 빌드에는 최근에 추가된 컴포넌트가 빠져 있을 수 있습니다: " + e);
             }
         }
 
@@ -445,6 +491,7 @@ namespace StickMate.EditorTools
             ConfigureRenderDiagnostics();
             ConfigureLogStackTraces();
             ConfigureWindowsTransparencySettings();
+            EnsureShippedPrefabWiring();
 
             string[] scenes = GetEnabledScenePaths();
             if (scenes.Length == 0)

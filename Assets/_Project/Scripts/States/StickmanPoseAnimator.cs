@@ -223,6 +223,111 @@ namespace StickMate.States
         /// 보인다. 손 어긋내기(<see cref="ClimbHandStaggerRatio"/>)와 같은 목적의 값이다.</summary>
         private const float ClimbHangFrontKneeRatio = 1.7f;
 
+        // ─────────────────────────────────────────────────────────────────────────────────────
+        // ★★ 음악 반응 춤 — 「애니메이션 에셋」에 해당하는 표들 (2026-09-06)
+        //     정본: docs/UX_MOTION_DANCE.md 6절 / docs/MOTION_SPEC.md 26-3
+        // ─────────────────────────────────────────────────────────────────────────────────────
+        // 이 표들을 StickConfig가 아니라 여기 두는 이유는 위 보행 키표와 **완전히 같은 판단 기준**이다:
+        // 튜닝 스칼라가 아니라 서로 정합성을 가져야 의미가 있는 한 덩어리이고, 개별 값을 따로 만지면
+        // 그 동작이 통째로 깨진다. 각도·거리·박자 길이 같은 «스칼라»는 전부 StickConfig에 있다.
+
+        /// <summary>
+        /// D5 로봇춤의 8키 포즈 표(30° 격자: 0/10/30/90 — 출처 "sharp geometric angles").
+        /// 열 = {앞팔 어깨, 앞 팔꿈치, 뒷팔 어깨, 뒷 팔꿈치, 상체 기울임 부호}.
+        ///
+        /// <para><b>격자 그 자체가 「로봇으로 읽히는 이유」</b>다. 값을 격자에서 빼면 dime stop이
+        /// 아니라 그냥 각진 춤이 된다. 마지막 열은 각도가 아니라 <b>부호</b>(−1/0/+1)이며
+        /// <c>StickConfig.danceRobotLeanDegrees</c>가 크기를 정한다 — 그래야 기울임 크기를
+        /// 설정에서 만질 수 있으면서도 «어느 키에서 어느 쪽으로 기우는가»라는 안무는 여기 남는다.</para>
+        ///
+        /// <para>★ 8키가 <b>각각 완결된 포즈</b>라는 점이 이 동작의 퇴장이 가장 빠른(0.40초) 이유다 —
+        /// 어느 키 경계에서든 나갈 수 있다.</para>
+        /// </summary>
+        private static readonly float[,] RobotKeys =
+        {
+            //  앞어깨  앞팔꿈치  뒷어깨  뒷팔꿈치  기울임부호
+            {   90f,     90f,      0f,     10f,      0f },
+            {   90f,      0f,      0f,     10f,      0f },
+            {   90f,      0f,     90f,     90f,      0f },
+            {   30f,     90f,     90f,     90f,     +1f },
+            {    0f,     10f,     90f,      0f,     +1f },
+            {    0f,     10f,     90f,     90f,      0f },
+            {   90f,     90f,     30f,     90f,     -1f },
+            {   90f,     90f,      0f,     10f,      0f },
+        };
+
+        /// <summary>로봇 루프의 키 개수. 루프 길이 = 이 값 × <c>danceRobotStepSeconds</c>(0.20) = 1.60초.</summary>
+        public const int RobotKeyCount = 8;
+
+        /// <summary>
+        /// D1 피루엣 <b>1세트의 5박자</b> 캐논 길이(초). 합 = 2.86.
+        /// ① 준비 plié / ② 상승 + retiré 형성 / ③ 회전 2바퀴 / ④ 1번으로 닫고 착지 / ⑤ 세트 간 호흡.
+        /// <para>③은 <c>dancePirouetteRevolutionSeconds × dancePirouetteRevolutions</c>와 같은 값이고,
+        /// 설정을 바꾸면 <see cref="DanceCanonicalBeatSeconds"/>가 아니라 States/DanceState가 실제
+        /// 길이를 다시 잡는다(캐논 표는 <b>박자 비율</b>의 기준이다).</para>
+        /// </summary>
+        private static readonly float[] PirouetteBeatSeconds = { 0.34f, 0.22f, 1.40f, 0.42f, 0.48f };
+
+        /// <summary>
+        /// D2 스타점프 <b>1회 사이클의 7박자</b> 캐논 길이(초, 배포 배율 0.75 기준). 합 = 2.505.
+        /// ① 도움닫기 / ② 브레이크+낮은 자세 / ③ 상승 / ④ 정점 / ⑤ 하강 / ⑥ 착지 흡수 / ⑦ 복귀+방향 전환.
+        /// <para>★ ③④⑤는 <b>배율에 따라 길이가 변한다</b>(<see cref="DanceBeatScalesWithAirTime"/>) —
+        /// 중력과 맞는 체공은 √배율에 비례하기 때문이다. ①도 거리/속도에서 파생하므로 실제 길이는
+        /// States/DanceState가 계산한다.</para>
+        /// </summary>
+        private static readonly float[] StarJumpBeatSeconds = { 1.000f, 0.180f, 0.313f, 0.139f, 0.313f, 0.220f, 0.340f };
+
+        /// <summary>스타점프 하강 구간에서 다리를 모으기 시작하는 목표 허벅지 각도(도).
+        /// 43° 별 자세에서 여기까지 좁혀지며 착지 준비가 된다 — "다리 모으기 시작"의 실체다.</summary>
+        private const float StarJumpFallHipDegrees = 18f;
+
+        /// <summary>착지 흡수 박자에서 팔이 앞으로 나오는 각도(도). 균형을 잡는 그림이다.</summary>
+        private const float StarJumpLandArmDegrees = 30f;
+
+        /// <summary><c>DanceIds.CreateAll()</c>의 인덱스. ★ <b>직렬화하지 마라</b> — 신원의 정본은
+        /// 문자열 아이디(<c>Core/DanceIds</c>)이고 이 인덱스는 에피소드 시작 때 1회 해석한 결과다.
+        /// 표 중간에 한 종이 끼면 인덱스는 밀리지만 문자열은 안 밀린다.</summary>
+        public const int DanceMovePirouette = 0;
+        /// <inheritdoc cref="DanceMovePirouette"/>
+        public const int DanceMoveStarJump = 1;
+        /// <inheritdoc cref="DanceMovePirouette"/>
+        public const int DanceMoveMoonwalk = 2;
+        /// <inheritdoc cref="DanceMovePirouette"/>
+        public const int DanceMoveRunningMan = 3;
+        /// <inheritdoc cref="DanceMovePirouette"/>
+        public const int DanceMoveRobot = 4;
+        /// <inheritdoc cref="DanceMovePirouette"/>
+        public const int DanceMovePrisyadka = 5;
+        /// <inheritdoc cref="DanceMovePirouette"/>
+        public const int DanceMoveHorseDance = 6;
+
+        /// <summary>이 동작이 <b>박자 표로 쪼개진 루프</b>를 갖는가(D1 세트 / D2 사이클). 나머지 5종은
+        /// 단일 박자 루프라 위상 하나로 충분하다.</summary>
+        public static int DanceBeatCount(int moveIndex)
+        {
+            if (moveIndex == DanceMovePirouette) return PirouetteBeatSeconds.Length;
+            if (moveIndex == DanceMoveStarJump) return StarJumpBeatSeconds.Length;
+            return 0;
+        }
+
+        /// <summary>
+        /// 박자 <paramref name="beatIndex"/>의 <b>캐논</b> 길이(초). 표 전체를 통째로 공개하지 않는
+        /// 이유는 <see cref="WalkPeakHipDegrees"/>와 같다 — 밖에서 개별 값을 갈아 끼우기 시작하면
+        /// 표를 손볼 수 없게 된다.
+        /// </summary>
+        public static float DanceCanonicalBeatSeconds(int moveIndex, int beatIndex)
+        {
+            float[] table = moveIndex == DanceMovePirouette ? PirouetteBeatSeconds
+                          : moveIndex == DanceMoveStarJump ? StarJumpBeatSeconds
+                          : null;
+            if (table == null || beatIndex < 0 || beatIndex >= table.Length) return 0f;
+            return table[beatIndex];
+        }
+
+        /// <summary>이 박자의 길이가 <b>체공 시간</b>(= √배율에 비례)을 따라가는가. D2의 ③상승·④정점·
+        /// ⑤하강만 참이며, 고정값으로 두면 배율에 따라 무게감이 ±26% 틀어진다.</summary>
+        public static bool DanceBeatScalesWithAirTime(int moveIndex, int beatIndex)
+            => moveIndex == DanceMoveStarJump && beatIndex >= 2 && beatIndex <= 4;
 
         /// <summary>한 마디(대퇴/정강이/상완/전완)의 절차적 제어에 필요한 것 전부. 매 프레임 재탐색 금지.</summary>
         private sealed class Segment
@@ -792,6 +897,983 @@ namespace StickMate.States
 
                 ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
             }
+        }
+
+        // ============================================================================
+        // ★★ 집중 모드 자세 (2026-09-06, 사용자 신고 «집중모드 시작시 캐릭터다리쪽에 원이 생김.
+        //    집중모드 행동을 해야하는데 안함»)
+        // ============================================================================
+        // 신고의 절반은 "원이 뜨는 조건"이고(Interaction/FocusWatchRenderer.cs), 나머지 절반이 여기다:
+        // StickConfig.pomodoroStartPoseHoldSeconds의 툴팁은 <b>"집중 모드 시작 포즈(안경+팔짱)"</b>라고
+        // 적혀 있었는데 <b>그 포즈를 그리는 코드가 저장소 전체에 한 줄도 없었다</b>. FocusStart/
+        // FocusComplete/FocusCancelled/FocusNudge 4개 상태는 States/TimedSpectacleState("물리/입력 변경
+        // 없음 — 실제 모션은 Director가 발행하는 이벤트를 구독하는 렌더링 레이어가 담당")를 재사용하는데,
+        // Focus 4종을 위한 그 렌더링 레이어는 존재한 적이 없다. 그래서 상태는 정상 전이하고 대사도
+        // 떴지만 TickPoseRouting의 마지막 줄(ApplyIdlePose)이 매 프레임 중립 포즈를 덧씌워 화면에서는
+        // 아무 일도 일어나지 않았다 — 등반이 "차렷 자세로 평행이동"했던 것과 완전히 같은 계열의 결함이다.
+        //
+        // 각도를 StickConfig가 아니라 여기 상수로 두는 이유는 보행 키표/등반 상수와 같다: 이건 튜닝
+        // 스칼라가 아니라 <b>하나의 실루엣을 이루는 값의 묶음</b>이고, 개별 값을 따로 만지면 "팔짱"이라는
+        // 그림 자체가 깨진다. 안경을 밀어올리는 손 위치만은 상수가 아니라 <b>리그 실측 + IK</b>로 잡는다 —
+        // 그래야 다른 기능(유휴 "손차양")의 설정값을 베껴 오는 세 번째 사본이 생기지 않는다.
+
+        // ────────────────────────────────────────────────────────────────────────────
+        // ★★ 2026-09-06 팔짱 기하 재설계 (docs/UX_MOTION_FOCUS_SESSION.md 3절)
+        // ────────────────────────────────────────────────────────────────────────────
+        // 페르소나가 본 것은 튜닝 오차가 아니라 <b>부호 오류</b>였다. 옛 값(어깨 −14 ∓ 5.5 / 팔꿈치
+        // 104 ± 11)은 «가장 앞에 나온 손 = 가장 낮은 손»(몸통비 0.504 = 허리)이라, 각도를 어떻게
+        // 흔들어도 기하학적으로 <b>반드시</b> "허리 앞에 두 손을 모은" 그림이 된다.
+        //
+        // 신규는 스태거의 부호를 뒤집어 <b>최전방 손이 가슴 높이(몸통비 0.685)</b>가 되게 한다.
+        // 손 물림(위손x − 아래손x)이 −0.071 → <b>+0.165</b>(팔 획의 1.58배)로 **부호가 바뀐다** —
+        // 이 한 줄이 재설계의 전부다.
+        //
+        // ★ 왜 "X자 교차"가 아닌가(불가능 증명, 3-1절): 팔꿈치는 어깨 반지름 0.380 원 위에만 있고
+        //   어깨각 전 구간에서 팔꿈치 y의 폭이 0.1067 = 획 합반폭(0.1097)보다 작다. 즉 두 전완의
+        //   교차점은 <b>언제나 몸통 획 안쪽</b>(확정 해에서 x = −0.005)이라 화면에서 X가 안 보인다.
+        //   어깨를 좌우로 분리하면 되지만 그건 2026-08-28 사용자 스크린샷으로 되돌린 결정이다.
+        //
+        // ★ 왜 팔꿈치를 더 깊게 못 접는가(진짜 벽, 2절): <b>규칙 B(크리즈) 무손상 상한 116.55°</b>.
+        //   더 접으면 LimbCurveRenderer의 필렛 원호가 획 반두께보다 작아져 관절 안쪽에 각진 크리즈가
+        //   남는다. 절대 상한은 124.14°지만 그 구간은 MOTION_SPEC 13-7의 «취약성 표»(값 하나만
+        //   움직여도 즉시 위반)라 손차양에서 팀이 일부러 물러난 자리다.
+
+        /// <summary>팔짱 A/B <b>어깨각의 중앙</b>(도, 0 = 곧게 아래, − = 뒤). 실제로 적용되는 두 값은
+        /// 아래 <see cref="FocusCrossFrontArmUpperDegrees"/> / <see cref="FocusCrossBackArmUpperDegrees"/>다.</summary>
+        private const float FocusCrossArmUpperDegrees = -22.75f;
+
+        /// <summary>팔짱 A/B <b>팔꿈치 굽힘의 중앙</b>(도).</summary>
+        private const float FocusCrossElbowDegrees = 114.75f;
+
+        /// <summary>두 팔의 <b>어깨</b>를 어긋내는 각도(도). 2D 측면도라 좌우로 벌릴 축이 없어서, 두 팔을
+        /// 같은 각도로 두면 <b>팔 하나만 그린 것처럼</b> 보인다(등반의 ClimbHandStaggerRatio와 같은 이유의
+        /// 같은 장치). 전폭 28.5°라 두 전완의 절대각 차가 32°가 되고, 그게 "팔 두 개"로 읽히는 신호다.
+        /// <para>★ 팔꿈치 스태거와 <b>반드시 분리</b>해야 한다(옛 코드는 상수 하나로 어깨×0.5 / 팔꿈치×1.0을
+        /// 묶어서 만들었다). 신규는 어깨 전폭 28.5° / 팔꿈치 전폭 3.5°라 하나의 상수로 표현할 수 없다.</para></summary>
+        private const float FocusCrossShoulderStaggerDegrees = 14.25f;
+
+        /// <summary>두 팔의 <b>팔꿈치</b>를 어긋내는 각도(도). 위 어깨 스태거와 <b>같은 부호 방향</b>으로
+        /// 쓴다 — 앞으로 나온 팔(A)이 더 깊게 접혀야 그 손이 가슴 높이에 온다.</summary>
+        private const float FocusCrossElbowStaggerDegrees = 1.75f;
+
+        // ★ 아래 4개가 <b>실제로 적용되는 각도</b>다. 중앙±스태거에서 유도하므로 사본이 아니고,
+        //   public인 이유는 크리즈 감사(Tests/EditMode/LimbCurveGeometryTests)가 이 값을 읽어야 하기
+        //   때문이다 — 지금까지 이 테스트는 StickConfig의 *Elbow*Degrees 필드만 훑어서 <b>팔짱의
+        //   실제 팔꿈치를 한 번도 검사한 적이 없었다</b>(감사 구멍, 문서 6절).
+
+        /// <summary>A — 위 팔(최전방). 어깨 −8.5°. limb.NeutralSign &gt; 0(Idle 중립 앞쪽 팔)에 배정된다.</summary>
+        public const float FocusCrossFrontArmUpperDegrees =
+            FocusCrossArmUpperDegrees + FocusCrossShoulderStaggerDegrees;
+
+        /// <summary>A — 위 팔(최전방)의 팔꿈치 116.5°. 규칙 B 무손상 상한(116.55°) 바로 아래이며
+        /// 전 배율 여유 1.1694 &gt; 다리 병목 1.1682라 <b>저장소 전체 최악은 여전히 다리</b>다.</summary>
+        public const float FocusCrossFrontElbowDegrees =
+            FocusCrossElbowDegrees + FocusCrossElbowStaggerDegrees;
+
+        /// <summary>B — 아래 팔(안쪽). 어깨 −37.0°. limb.NeutralSign &lt; 0(뒤쪽 팔)에 배정된다.
+        /// ShoulderSwingBackLimitDegrees(60°) 안이다.</summary>
+        public const float FocusCrossBackArmUpperDegrees =
+            FocusCrossArmUpperDegrees - FocusCrossShoulderStaggerDegrees;
+
+        /// <summary>B — 아래 팔(안쪽)의 팔꿈치 113.0°(규칙 B 여유 1.2519).</summary>
+        public const float FocusCrossBackElbowDegrees =
+            FocusCrossElbowDegrees - FocusCrossElbowStaggerDegrees;
+
+        /// <summary>진행도 이 지점까지가 "안경 밀어올리기" 박자이고 그 뒤가 "팔짱" 박자다.</summary>
+        private const float FocusGlassesBeat01 = 0.42f;
+
+        /// <summary>팔짱이 차오르기 시작하는 진행도(안경 박자와 살짝 겹쳐야 동작이 끊기지 않는다).</summary>
+        private const float FocusCrossBeatStart01 = 0.26f;
+
+        /// <summary>팔짱이 <b>완성되는</b> 진행도. 여기서 1이 되고 끝까지 유지된다 — 진행도 1에서야
+        /// 목표에 닿게 만들면, 지수 감쇠가 따라잡기 전에 상태가 끝나 <b>팔짱이 한 번도 완성되지 않는다</b>
+        /// (연출이 2초라 특히 그렇다). 뒤쪽의 평평한 구간이 "한 장의 그림"을 만든다(무릎앉아 착지의
+        /// hold 구간과 같은 관행).</summary>
+        private const float FocusCrossFull01 = 0.62f;
+
+        // ────────────────────────────────────────────────────────────────────────────
+        // ★★ 2026-09-06 「안경 밀어올리기」 개정 (docs/UX_MOTION_FOCUS_SESSION.md 5절)
+        // ────────────────────────────────────────────────────────────────────────────
+        // 진단: <b>안경 유무가 문제가 아니었다 — 손이 화면에 안 나온다.</b> 옛 목표점
+        // (앞 0.30·팔길이, 머리 중심 높이)은 머리 중심에서 0.2250인데 머리 시각 반경이 0.220이라
+        // 손끝이 머리 실루엣 밖으로 나온 양이 배율 0.75에서 <b>0.13pt</b>였다. 머리는 불투명이고
+        // 팔(sortingOrder 2)보다 위(HeadFill 3 / HeadOutline 4)에 그려지므로, 화면에서는
+        // <b>전완이 머리에 처박힌 그림</b>이 된다. MOTION_SPEC 13절이 손차양 122°에서 잡아낸 것과
+        // 완전히 같은 병의 재발이다.
+        //
+        // 부수 피해가 더 컸다: 이 IK가 유도하던 팔꿈치는 <b>121.4°</b>로 규칙 B 여유 1.0588 —
+        // 다리 병목(1.1682)보다 낮아 <b>저장소 전체 최악의 크리즈</b>를 이 박자가 만들고 있었다.
+        // 개정 후 어깨 91.3° / 팔꿈치 105.5° → 여유 1.4413(전체 최악이 다시 다리로 돌아온다).
+        //
+        // ★ y를 «머리 앵커 높이 고정»에서 <b>비율</b>로 바꾸는 것이 개정의 핵심이다. 고정이면 손이
+        //   구조적으로 머리 중심 높이를 못 벗어나 관자놀이에 닿을 수 없다.
+
+        /// <summary>안경을 밀어올린 손끝의 <b>앞쪽</b> 위치(팔 전체 길이 대비). 높이는 아래
+        /// <see cref="FocusGlassesHandRiseRatio"/>와 짝이며, 둘 다 비율이라 배율/기하가 바뀌어도
+        /// 손이 관자놀이를 찾아간다. <c>public</c>인 이유는 크리즈 감사가 이 박자의 <b>IK 유도</b>
+        /// 팔꿈치 각도를 실제로 풀어 봐야 하기 때문이다(상수가 아예 없어서 검사 대상 밖이었다).</summary>
+        public const float FocusGlassesHandForwardRatio = 0.3637f;
+
+        /// <summary>안경을 밀어올린 손끝이 <b>머리 중심보다 위</b>로 올라가는 양(팔 전체 길이 대비).
+        /// 목표 방향은 머리 중심 기준 +y에서 앞으로 75° = <b>관자놀이</b>이며, 손끝이 머리 실루엣
+        /// 밖으로 나오는 양이 배율 1.0에서 2.2pt(= MOTION_SPEC 13-5가 손차양 98°에서 얻은 값)다.</summary>
+        public const float FocusGlassesHandRiseRatio = 0.0975f;
+
+        /// <summary>머리 앵커를 못 찾은 리그(테스트 더미)에서 쓰는 얼굴 높이 폴백(어깨 위로 팔 길이 배수).</summary>
+        private const float FocusFaceAboveShoulderFallbackRatio = 0.5f;
+
+        /// <summary>팔짱을 낀 채 상체가 뒤로 살짝 젖혀지는 각도(도, − = 뒤). "지켜보는" 자세의 무게중심.</summary>
+        private const float FocusWatchLeanDegrees = -5f;
+
+        /// <summary>완주 축하("수고했어!") — 두 팔을 위로 뻗는 벌림(도). 매달리기와 같은 180∓spread 규약.
+        /// <b>무릎은 건드리지 않는다</b>: 무릎을 펴면 발이 지면 아래로 내려가고, 그걸 상쇄하는 상승
+        /// 오프셋은 배율 의존 거리라 이 포즈에 새 인자를 하나 더 들이게 된다(유휴 기지개가 그 경로다).</summary>
+        private const float FocusCelebrateArmSpreadDegrees = 16f;
+
+        /// <summary>완주 축하에서 팔꿈치 굽힘(도). 완전히 곧으면 "막대기"가 된다(이 클래스의 기본 규칙).</summary>
+        private const float FocusCelebrateElbowDegrees = 14f;
+
+        /// <summary>
+        /// ★ 집중 모드 4개 상태의 자세. <b>지켜보기</b>(안경 밀어올리기 → 팔짱)와 <b>완주 축하</b>(만세)
+        /// 두 갈래뿐이고, 어느 갈래인지는 호출부(States/StickmanBlackboard.TickPoseRouting)가 상태 ID로
+        /// 정한다 — "상태 ID 하나로 포즈가 결정된다"는 그 메서드의 계약 그대로다.
+        ///
+        /// <para><b>FocusCancelled에는 이 포즈를 적용하지 않는다.</b> "그래 쉬자"의 그림은 <b>팔짱을
+        /// 푸는 것</b>이고, 그건 중립 포즈(ApplyIdlePose)로 되돌아가는 지수 감쇠가 이미 정확히 그리는
+        /// 동작이다. 별도 포즈를 만들면 오히려 팔짱을 한 번 더 끼는 그림이 된다.</para>
+        ///
+        /// <para>진행 곡선은 양 끝이 0인 포락선이 아니라 <b>끝에서 1로 유지</b>된다(무릎앉아 착지의
+        /// hold와 같은 의도) — 상태가 끝나면 다음 프레임부터 Idle 중립 포즈가 이어받아 팔이 스르르
+        /// 내려오므로, 여기서 억지로 0으로 되돌리면 "팔짱 → 차렷 → 팔짱 푸는 중"이 겹쳐 보인다.</para>
+        /// </summary>
+        /// <param name="celebrate">true면 완주 축하(만세), false면 지켜보기(안경+팔짱).</param>
+        /// <param name="progress01">이 상태의 진행도 0~1(States/TimedSpectacleState.Progress01).</param>
+        public void ApplyFocusPose(float deltaTime, in PoseSettings settings, float smoothingRate,
+            bool celebrate, float progress01)
+        {
+            _idleTime += deltaTime;
+            float breath = Mathf.Sin(_idleTime * settings.BreathFrequencyHz * Mathf.PI * 2f);
+            SetBodyOffset(breath * settings.BreathAmplitude);
+
+            float p = Mathf.Clamp01(progress01);
+
+            if (celebrate)
+            {
+                // 양 끝이 정확히 0인 포락선 — 시작/끝이 중립이라 도중에 끊겨도 튀지 않는다.
+                float raw = Mathf.Sin(p * Mathf.PI);
+                float env = raw * raw * (3f - 2f * raw);
+
+                for (int i = 0; i < _limbs.Length; i++)
+                {
+                    Limb limb = _limbs[i];
+                    float upper = NeutralUpperAngle(limb, settings);
+                    float lower = NeutralLowerAngle(limb, settings);
+                    if (!limb.IsLeg)
+                    {
+                        upper += limb.NeutralSign * breath * settings.BreathArmDegrees;
+                        upper = Mathf.LerpAngle(upper,
+                            HangArmUpperAngle(limb.NeutralSign, FocusCelebrateArmSpreadDegrees), env);
+                        lower = Mathf.LerpAngle(lower, ElbowBendSign * FocusCelebrateElbowDegrees, env);
+                    }
+                    ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+                }
+                return;
+            }
+
+            // ── 지켜보기: 안경 밀어올리기(전반) → 팔짱(후반, 끝까지 유지) ──────────────────
+            // 안경 박자는 산 모양(양 끝 0)이라 손이 얼굴로 올라갔다 내려온다. 팔짱은 그 하강과
+            // 겹치며 1로 차오르고 상태가 끝날 때까지 유지된다.
+            float glassesT = Ratio01(p, 0f, FocusGlassesBeat01);
+            float glassesRaw = Mathf.Sin(glassesT * Mathf.PI);
+            float glances = glassesRaw * glassesRaw * (3f - 2f * glassesRaw);
+            float crossRaw = Ratio01(p, FocusCrossBeatStart01, FocusCrossFull01);
+            float cross = crossRaw * crossRaw * (3f - 2f * crossRaw);
+
+            RequestBodyLean(FocusWatchLeanDegrees * cross);
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float upper = NeutralUpperAngle(limb, settings);
+                float lower = NeutralLowerAngle(limb, settings);
+
+                if (!limb.IsLeg)
+                {
+                    upper += limb.NeutralSign * breath * settings.BreathArmDegrees;
+
+                    // 안경은 <b>한쪽 손</b>으로만 민다(두 손을 다 올리면 기지개/만세와 구분되지 않는다).
+                    if (limb.NeutralSign > 0f && glances > 0.0001f &&
+                        TrySolveFocusGlassesAngles(limb, out float glassesUpper, out float glassesLower))
+                    {
+                        upper = Mathf.LerpAngle(upper, glassesUpper, glances);
+                        lower = Mathf.LerpAngle(lower, glassesLower, glances);
+                    }
+
+                    // ★ 2026-09-06 부호 반전 — NeutralSign > 0(Idle 중립 앞쪽 팔)이 <b>앞으로</b> 온다.
+                    // 옛 코드는 `- stagger * 0.5`라 앞쪽 팔이 더 뒤로 갔고, 그래서 «최전방 손 = 최저 손»
+                    // 이 됐다. 이 배정은 전이 비용도 최소다: 앞팔 48.5° + 뒷팔 3.0° = 51.5°,
+                    // 반대로 배정하면 108.5°(2.1배)라 팔이 두 배로 요란하게 움직인다.
+                    ResolveCrossArmAngles(limb.NeutralSign, out float crossUpper, out float crossLower);
+                    upper = Mathf.LerpAngle(upper, crossUpper, cross);
+                    lower = Mathf.LerpAngle(lower, crossLower, cross);
+                }
+
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+        }
+
+        /// <summary>안경을 밀어올린 손끝(≈ 눈높이, 얼굴 앞)에 닿는 어깨/팔꿈치 각도. 각도를 표로 적지 않고
+        /// <b>리그 실측 + 이 클래스의 IK</b>로 푸는 이유: 유휴 "손차양"이 쓰는 설정값
+        /// (StickConfig.idleAmbientLook*)을 베껴 오면 그 순간 <b>세 번째 사본</b>이 생기고, 그쪽을 튜닝하면
+        /// 여기가 조용히 어긋난다(이 저장소가 반복해서 당한 실패 유형).
+        /// <para><b>못 풀면 false</b>다(2마디가 아닌 리그) — 그때 호출부는 안경 박자를 통째로 건너뛴다.
+        /// 0을 돌려주면 "팔을 곧게 펴는" 전혀 다른 자세가 조용히 섞인다.</para></summary>
+        private bool TrySolveFocusGlassesAngles(Limb limb, out float upperAngle, out float lowerAngle)
+        {
+            upperAngle = 0f;
+            lowerAngle = 0f;
+            if (limb == null || limb.Upper == null || limb.Lower == null) return false;
+            if (limb.Upper.Length <= 0f || limb.Lower.Length <= 0f) return false;
+
+            Vector2 shoulder = limb.Upper.PivotLocal;
+            // 눈높이 = 머리 앵커의 로컬 Y(프리팹 실측). 머리를 못 찾은 리그에서는 팔 길이로 근사한다.
+            float faceY = _head != null
+                ? _headNeutral.y
+                : shoulder.y + (limb.Upper.Length + limb.Lower.Length) * FocusFaceAboveShoulderFallbackRatio;
+            SolveFocusGlassesAngles(shoulder, limb.Upper.Length, limb.Lower.Length, faceY,
+                out upperAngle, out lowerAngle);
+            return true;
+        }
+
+        /// <summary>
+        /// 위 박자의 <b>순수 함수판</b> — 리그 치수(어깨 부착점 · 두 마디 길이 · 얼굴 높이)만 주면
+        /// 같은 목표점과 같은 IK로 어깨/팔꿈치 각도를 푼다.
+        ///
+        /// <para><b>왜 떼어냈나</b>: 이 박자의 팔꿈치는 <b>상수가 아니라 IK 결과</b>(개정 전 121.4° /
+        /// 개정 후 105.5°)라, <c>StickConfig</c>의 필드만 훑는 크리즈 감사
+        /// (Tests/EditMode/LimbCurveGeometryTests)가 <b>한 번도 본 적이 없었다</b> — 그 사이 이 박자가
+        /// 저장소 전체 최악의 크리즈 여유(1.0588)를 만들고 있었다. 감사가 «실제로 풀어 보고» 검사할 수
+        /// 있으려면 씬/프리팹 인스턴스 없이 호출 가능한 창구가 필요하다. 각도를 테스트에 베껴 적는
+        /// 방식은 쓰지 않는다(그 사본은 반드시 낡는다 — 이 저장소가 반복해서 당한 실패 유형).</para>
+        /// </summary>
+        /// <param name="shoulderLocal">어깨 부착점(방향 중립 루트 로컬).</param>
+        /// <param name="faceY">머리 중심의 로컬 Y(프리팹 실측).</param>
+        public static void SolveFocusGlassesAngles(Vector2 shoulderLocal, float upperLength, float lowerLength,
+            float faceY, out float upperAngle, out float lowerAngle)
+        {
+            float reach = upperLength + lowerLength;
+            // ★ y가 faceY 고정이 아니라 «faceY + 비율»이다 — 고정이면 손이 구조적으로 머리 중심
+            //   높이를 못 벗어나 관자놀이에 닿을 수 없고, 손끝이 머리에 묻힌다(위 5절 진단).
+            var target = new Vector2(shoulderLocal.x + reach * FocusGlassesHandForwardRatio,
+                faceY + reach * FocusGlassesHandRiseRatio);
+            SolveTwoLinkIk(shoulderLocal, target, upperLength, lowerLength, ElbowBendSign,
+                out upperAngle, out lowerAngle);
+        }
+
+        /// <summary>팔짱에서 이 팔이 실제로 취하는 어깨/팔꿈치 각도. <paramref name="neutralSign"/>가
+        /// 양수면 A(위 팔, 최전방), 음수면 B(아래 팔, 안쪽)다. 팔꿈치는 <see cref="ElbowBendSign"/>이
+        /// 곱해진 <b>적용 각도</b>로 나온다.
+        /// <para><paramref name="rolesSwapped"/>는 G1「자세 고쳐 잡기」의 안착 구간에서 A/B 역할이
+        /// 교대된 상태를 뜻한다 — 실제 사람도 팔짱을 고쳐 잡으면 위아래 팔이 바뀐다.</para></summary>
+        public static void ResolveCrossArmAngles(float neutralSign, out float upperAngle, out float lowerAngle,
+            bool rolesSwapped = false)
+        {
+            float sign = (neutralSign >= 0f ? 1f : -1f) * (rolesSwapped ? -1f : 1f);
+            upperAngle = FocusCrossArmUpperDegrees + sign * FocusCrossShoulderStaggerDegrees;
+            lowerAngle = ElbowBendSign * (FocusCrossElbowDegrees + sign * FocusCrossElbowStaggerDegrees);
+        }
+
+        // ============================================================================
+        // ★★ 집중 세션 «관망 자세» 3층 (2026-09-06, docs/UX_MOTION_FOCUS_SESSION.md 4절)
+        // ============================================================================
+        // 페르소나(소은) 지적: "집중모드 25분 세션의 99.87%가 평소와 똑같다". 위 ApplyFocusPose가
+        // 그리는 것은 <b>시작 2초</b>뿐이고, 나머지 1,498초는 링만 뜬 채 평소 배회였다.
+        //
+        //   L0 관망 자세(지속, 87%)  세션 중 Idle의 «중립»이 차렷이 아니라 팔짱(P1)/뒷짐(P2)이다.
+        //   L1 미세 생명감(상시)     상체 −4.0°±2.0°, 주기 11초. 정지 조각상 방지.
+        //   L2 제스처 4종(3.4%)      «화면이 상태를 계속 말하게» 하는 층.
+        //
+        // ★ 이 메서드는 <b>포즈만</b> 만든다. 수평 이동 소유권은 배회 AI에 그대로 있고
+        //   (MoveInputX를 한 번도 건드리지 않는다), SpectacleEventLock도 잡지 않는다 — L0~L2는
+        //   상태 전이가 아니라 Idle 위에 얹는 포즈 층이다(FocusWatchTier.Glance와 같은 판단).
+        //   락을 잡으면 세션 25분 내내 파쿠르·춤·활쏘기가 <b>조용히</b> 막힌다.
+        //
+        // ★ P2(뒷짐)를 넣는 진짜 이유는 변주가 아니라 <b>가독성 보험</b>이다. 팔짱은 이 리그에서
+        //   원리상 근사밖에 안 되지만(3-2절: 교차가 몸통 획에 먹힌다) 뒷짐은 시상면 자세라
+        //   2D 옆모습에서 <b>손실이 0</b>이다. 팔짱이 "손 모으기"로 읽히는 사용자에게도 뒷짐
+        //   구간에서는 "지켜보고 있다"가 전달된다.
+
+        /// <summary>P2 뒷짐 — 양팔 어깨각(도). 팔꿈치가 몸통선 뒤로 나가 손이 등 뒤에서 만난다.</summary>
+        private const float FocusWatchBackArmUpperDegrees = -51.5f;
+
+        /// <summary>P2 뒷짐 — 양팔 팔꿈치 굽힘의 중앙(도). 규칙 B 여유 2.60으로 아주 넉넉하다.</summary>
+        private const float FocusWatchBackElbowDegrees = 72.5f;
+
+        /// <summary>P2 뒷짐의 어깨 스태거(도). 팔짱보다 작다 — 뒷짐은 두 팔이 거의 같은 자세인 것이
+        /// 정상이고, 스태거는 "선이 하나로 보이는" 것만 막으면 된다.</summary>
+        private const float FocusWatchBackShoulderStaggerDegrees = 4f;
+
+        /// <summary>P2 뒷짐의 팔꿈치 스태거(도). 어깨와 <b>반대 부호</b>로 걸어 손끝이 겹치지 않게 한다.</summary>
+        private const float FocusWatchBackElbowStaggerDegrees = 6f;
+
+        /// <summary>P2 뒷짐에서 앞쪽 팔이 실제로 취하는 팔꿈치 각도(도). 크리즈 감사가 읽는다.</summary>
+        public const float FocusWatchBackFrontElbowDegrees =
+            FocusWatchBackElbowDegrees - FocusWatchBackElbowStaggerDegrees;
+
+        /// <summary>P2 뒷짐에서 뒤쪽 팔이 실제로 취하는 팔꿈치 각도(도). 크리즈 감사가 읽는다.</summary>
+        public const float FocusWatchBackRearElbowDegrees =
+            FocusWatchBackElbowDegrees + FocusWatchBackElbowStaggerDegrees;
+
+        /// <summary>L0 — 팔짱 자세의 기준 상체 기울임(도, − = 뒤). "지켜보는" 자세의 무게중심.</summary>
+        private const float FocusStanceCrossLeanDegrees = -4f;
+
+        /// <summary>L0 — 뒷짐 자세의 기준 상체 기울임(도). 팔이 뒤로 가므로 팔짱보다 덜 젖힌다.</summary>
+        private const float FocusStanceBackLeanDegrees = -2.5f;
+
+        /// <summary>L1 — 기준 기울임에 얹히는 왕복 폭(도). 범위 [−6.0, −2.0]°는 <b>기울임 상한 7.60°</b>
+        /// (= asin(획 합반폭 ÷ 몸통 길이))의 79%다. 그 상한을 넘으면 어깨선이 팔 부착점에서 밀려
+        /// <b>팔이 몸에서 떨어져 보인다</b> — RequestBodyLean은 Torso/Head만 돌리고 팔 부착점은
+        /// 루트 고정이기 때문이다(2026-08-31 "머리가 목에서 벗어남" 신고의 기하학적 일반화).</summary>
+        private const float FocusStanceLeanSwayDegrees = 2f;
+
+        /// <summary>L1 — 그 왕복의 주기(초). 25분에 136회. 머리 왕복폭은 배율 0.75에서 약 2.06pt다.</summary>
+        private const float FocusStanceLeanPeriodSeconds = 11f;
+
+        /// <summary>L1 — 어깨의 미세 회전 폭(도). 기울임과 <b>역위상</b>이라 "체중을 옮긴다"로 읽힌다.
+        /// 다리를 흔들지 않는 이유: 무릎/고관절을 흔들면 발끝이 지면에서 떨어진다(접지 계약).</summary>
+        private const float FocusStanceShoulderSwayDegrees = 1.5f;
+
+        /// <summary>G1 — 자세를 "푼" 정점의 혼합비. 0이 아니라 0.25인 것이 핵심이다: 완전히 풀면
+        /// 그건 <b>자세 바꾸기(G4)</b>가 되고 "고쳐 잡는다"로 안 읽힌다.</summary>
+        private const float FocusRecrossReleaseBlend01 = 0.25f;
+
+        // G1 박자 경계(진행도) — 0.28~0.36의 <b>평평한 구간</b>이 "고쳐 잡는다"를 만든다.
+        private const float FocusRecrossRelease01 = 0.28f;
+        private const float FocusRecrossHoldEnd01 = 0.36f;
+        private const float FocusRecrossRefold01 = 0.78f;
+
+        // G4 박자 경계 — 0.40~0.52의 <b>중립 통과</b>가 필수다. 팔짱↔뒷짐을 직접 보간하면
+        // 전완이 몸통을 관통한다(두 자세의 어깨각 차가 크고 회전 방향이 반대다).
+        private const float FocusStanceSwapRelease01 = 0.4f;
+        private const float FocusStanceSwapNeutralEnd01 = 0.52f;
+
+        // G2 박자 경계 — 0.34~0.62의 유지(0.28초)가 "봤다"의 최소 체류다.
+        private const float FocusRingCheckBow01 = 0.34f;
+        private const float FocusRingCheckHoldEnd01 = 0.62f;
+
+        /// <summary>G2 — 발밑 링을 내려다보는 상체 기울임(도, + = 앞). 상한 7.60°의 86%라
+        /// <b>이 구간에서는 L1 흔들림을 0으로 눌러야 한다</b>(안 누르면 순간 8.5°로 상한을 넘는다).</summary>
+        private const float FocusRingCheckLeanDegrees = 6.5f;
+
+        // G3 박자 경계 — 두 변주(같은 쪽 / 반대쪽)의 경계가 다르다.
+        private const float FocusGlanceLead01 = 0.3f;
+        private const float FocusGlanceHoldEnd01 = 0.55f;
+        private const float FocusGlanceTurnWindUp01 = 0.22f;
+        private const float FocusGlanceTurnSettle01 = 0.6f;
+
+        /// <summary>G3(같은 쪽) — 커서 쪽으로 살짝 내미는 기울임(도).</summary>
+        private const float FocusGlanceLeanDegrees = 3f;
+
+        /// <summary>G3(반대쪽) — 돌기 전 반대로 젖히는 예비동작(도). 상한 7.60° 안이다.</summary>
+        private const float FocusGlanceWindUpLeanDegrees = -6f;
+
+        /// <summary>G3(반대쪽) — 돌아본 뒤 따라가는 기울임(도).</summary>
+        private const float FocusGlanceFollowLeanDegrees = 2f;
+
+        /// <summary>
+        /// ★ 이 자세 층이 <b>기울임을 소유하는</b> 어휘인가. G2/G3는 상체 기울임 자체가 동작이라
+        /// L1 흔들림을 눌러야 하고(합치면 상한 7.60°를 넘는다), G1/G4는 팔만 움직이므로 L1을 그대로 둔다.
+        /// </summary>
+        private static bool FocusGestureOwnsLean(StickMate.Core.WanderAmbientMotion gesture)
+            => gesture == StickMate.Core.WanderAmbientMotion.FocusRingCheck
+            || gesture == StickMate.Core.WanderAmbientMotion.FocusScreenGlance;
+
+        /// <summary>G1/G4가 만드는 «자세 혼합비»(0~1). 나머지 어휘는 1 — 자세를 유지한 채 다른 축만 움직인다.</summary>
+        private static float FocusGestureStanceBlend01(StickMate.Core.WanderAmbientMotion gesture, float p)
+        {
+            switch (gesture)
+            {
+                case StickMate.Core.WanderAmbientMotion.FocusRecross:
+                    if (p < FocusRecrossRelease01)
+                        return Mathf.SmoothStep(1f, FocusRecrossReleaseBlend01, Ratio01(p, 0f, FocusRecrossRelease01));
+                    if (p < FocusRecrossHoldEnd01) return FocusRecrossReleaseBlend01;
+                    if (p < FocusRecrossRefold01)
+                        return Mathf.SmoothStep(FocusRecrossReleaseBlend01, 1f,
+                            Ratio01(p, FocusRecrossHoldEnd01, FocusRecrossRefold01));
+                    return 1f;
+
+                case StickMate.Core.WanderAmbientMotion.FocusStanceSwap:
+                    if (p < FocusStanceSwapRelease01)
+                        return Mathf.SmoothStep(1f, 0f, Ratio01(p, 0f, FocusStanceSwapRelease01));
+                    if (p < FocusStanceSwapNeutralEnd01) return 0f;
+                    return Mathf.SmoothStep(0f, 1f, Ratio01(p, FocusStanceSwapNeutralEnd01, 1f));
+
+                default:
+                    return 1f;
+            }
+        }
+
+        /// <summary>G2/G3가 만드는 상체 기울임(도). 양 끝이 <paramref name="baseLean"/>이라 시작/끝이
+        /// 관망 자세와 정확히 이어진다(도중에 끊겨도 튀지 않는다).</summary>
+        private static float FocusGestureLeanDegrees(StickMate.Core.WanderAmbientMotion gesture, float p,
+            float baseLean, bool glanceTurnsAround)
+        {
+            if (gesture == StickMate.Core.WanderAmbientMotion.FocusRingCheck)
+            {
+                if (p < FocusRingCheckBow01)
+                    return Mathf.SmoothStep(baseLean, FocusRingCheckLeanDegrees, Ratio01(p, 0f, FocusRingCheckBow01));
+                if (p < FocusRingCheckHoldEnd01) return FocusRingCheckLeanDegrees;
+                return Mathf.SmoothStep(FocusRingCheckLeanDegrees, baseLean,
+                    Ratio01(p, FocusRingCheckHoldEnd01, 1f));
+            }
+
+            if (gesture != StickMate.Core.WanderAmbientMotion.FocusScreenGlance) return baseLean;
+
+            if (!glanceTurnsAround)
+            {
+                // 커서가 이미 보는 쪽에 있다 — 방향 전환 없이 살짝 내민다.
+                if (p < FocusGlanceLead01)
+                    return Mathf.SmoothStep(baseLean, FocusGlanceLeanDegrees, Ratio01(p, 0f, FocusGlanceLead01));
+                if (p < FocusGlanceHoldEnd01) return FocusGlanceLeanDegrees;
+                return Mathf.SmoothStep(FocusGlanceLeanDegrees, baseLean, Ratio01(p, FocusGlanceHoldEnd01, 1f));
+            }
+
+            // 제자리 돌기 — 예비동작(반대로 젖힘) → 호출부가 facing을 뒤집는다 → 따라돌기 → 안착.
+            if (p < FocusGlanceTurnWindUp01)
+                return Mathf.SmoothStep(baseLean, FocusGlanceWindUpLeanDegrees,
+                    Ratio01(p, 0f, FocusGlanceTurnWindUp01));
+            if (p < FocusGlanceTurnSettle01)
+                return Mathf.SmoothStep(FocusGlanceWindUpLeanDegrees, FocusGlanceFollowLeanDegrees,
+                    Ratio01(p, FocusGlanceTurnWindUp01, FocusGlanceTurnSettle01));
+            return Mathf.SmoothStep(FocusGlanceFollowLeanDegrees, baseLean,
+                Ratio01(p, FocusGlanceTurnSettle01, 1f));
+        }
+
+        /// <summary>진행도 <see cref="FocusGlanceTurnWindUp01"/>에서 방향을 뒤집는다는 사실의 <b>단일
+        /// 창구</b>. 호출부(States/StickmanBlackboard)가 facing을 소유하므로 실제 반전은 그쪽이 하고,
+        /// "언제"만 여기서 답한다 — 박자표가 두 벌이 되면 반드시 갈라진다.</summary>
+        public static bool FocusGlanceFacingFlipReached(float progress01)
+            => progress01 >= FocusGlanceTurnWindUp01;
+
+        /// <summary>관망 자세에서 이 팔이 취하는 어깨/팔꿈치 각도(팔꿈치는 <see cref="ElbowBendSign"/>이
+        /// 곱해진 적용 각도). P1이면 팔짱, P2면 뒷짐이다.</summary>
+        public static void ResolveWatchStanceArmAngles(bool backHands, float neutralSign, bool rolesSwapped,
+            out float upperAngle, out float lowerAngle)
+        {
+            if (!backHands)
+            {
+                ResolveCrossArmAngles(neutralSign, out upperAngle, out lowerAngle, rolesSwapped);
+                return;
+            }
+
+            float sign = (neutralSign >= 0f ? 1f : -1f) * (rolesSwapped ? -1f : 1f);
+            upperAngle = FocusWatchBackArmUpperDegrees + sign * FocusWatchBackShoulderStaggerDegrees;
+            lowerAngle = ElbowBendSign * (FocusWatchBackElbowDegrees - sign * FocusWatchBackElbowStaggerDegrees);
+        }
+
+        /// <summary>
+        /// ★ 집중 세션 중 Idle의 자세 — L0(관망 자세) + L1(미세 생명감) + L2(제스처 4종)를 한 번에 만든다.
+        /// <see cref="ApplyIdlePose"/>의 자리를 대체하며, 호출부(States/StickmanBlackboard.TickPoseRouting)가
+        /// "세션 중 + Idle"일 때만 부른다.
+        ///
+        /// <para><b>시간을 세는 것은 호출부다</b>(진행도/이징/자세 선택 전부 <paramref name="stance"/>로
+        /// 들어온다). 여기서 자기 타이머를 또 돌리면 진행도가 두 벌이 되어 반드시 갈라진다 —
+        /// 집중 모드 포즈/춤과 같은 관례다.</para>
+        ///
+        /// <para><b>다리는 건드리지 않는다.</b> 무릎/고관절을 흔들면 발끝이 지면에서 떨어지고
+        /// (ComputeFootGroundingOffset은 보행 경로용이다) 접지 계약이 깨진다.</para>
+        /// </summary>
+        public void ApplyFocusWatchStancePose(float deltaTime, in PoseSettings settings, float smoothingRate,
+            in FocusWatchStanceInput stance)
+        {
+            _idleTime += deltaTime;
+            float breath = Mathf.Sin(_idleTime * settings.BreathFrequencyHz * Mathf.PI * 2f);
+            SetBodyOffset(breath * settings.BreathAmplitude);
+
+            float progress = Mathf.Clamp01(stance.GestureProgress01);
+            bool gesturing = stance.GestureActive;
+
+            // L0 × L2 — 자세 혼합비. Settle01은 걷기/점프에서 Idle로 돌아왔을 때의 별도 포락선이다
+            // (poseSmoothingRate 35/초는 95%까지 0.086초라 그대로 두면 팔이 "딱" 하고 붙는다).
+            float blend = Mathf.Clamp01(stance.Settle01)
+                * (gesturing ? FocusGestureStanceBlend01(stance.Gesture, progress) : 1f);
+
+            // L1 — 미세 생명감. 기울임을 소유하는 어휘(G2/G3) 구간에서는 0으로 눌린다(위 문서 참고).
+            bool gestureOwnsLean = gesturing && FocusGestureOwnsLean(stance.Gesture);
+            float sway = gestureOwnsLean
+                ? 0f
+                : Mathf.Sin(_idleTime * Mathf.PI * 2f / FocusStanceLeanPeriodSeconds);
+
+            float baseLean = stance.BackHands ? FocusStanceBackLeanDegrees : FocusStanceCrossLeanDegrees;
+            float lean = gestureOwnsLean
+                ? FocusGestureLeanDegrees(stance.Gesture, progress, baseLean, stance.GlanceTurnsAround)
+                : baseLean + sway * FocusStanceLeanSwayDegrees;
+
+            // 혼합비를 곱해 "자세가 풀리면 기울임도 함께 풀린다" — G4의 중립 통과에서 상체까지
+            // 정확히 직립이 되어야 팔짱↔뒷짐 전환이 한 동작으로 읽힌다.
+            RequestBodyLean(lean * blend * stance.LeanScale);
+
+            float shoulderSway = -sway * FocusStanceShoulderSwayDegrees;
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float upper = NeutralUpperAngle(limb, settings);
+                float lower = NeutralLowerAngle(limb, settings);
+
+                if (!limb.IsLeg)
+                {
+                    upper += limb.NeutralSign * breath * settings.BreathArmDegrees;
+                    if (blend > 0.0001f)
+                    {
+                        ResolveWatchStanceArmAngles(stance.BackHands, limb.NeutralSign, stance.ArmRolesSwapped,
+                            out float stanceUpper, out float stanceLower);
+                        upper = Mathf.LerpAngle(upper, stanceUpper + shoulderSway, blend);
+                        lower = Mathf.LerpAngle(lower, stanceLower, blend);
+                    }
+                }
+
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+        }
+
+        // ============================================================================
+        // ★★ 음악 반응 춤 7종 (2026-09-06 — 사용자 요청 2026-09-03
+        //    "소리시스템을 전체빼줘, 다만 시스템에서 노래가 나오면 상호 반응해서 춤추는 동작을 넣어줘")
+        // ============================================================================
+        // 이 메서드가 아는 것은 **팔다리 각도와 시각 오프셋**뿐이다. 「언제 어떤 춤을 얼마나 출지」는
+        // Interaction/DanceEpisodeDirector(창/에피소드/휴지)와 States/DanceState(박자/전이)가 정한다.
+        //
+        // ★ 세 층의 경계를 흐리지 마라(이 기능의 최대 함정):
+        //     1층 창    Platform/AudioReactiveDanceDirector.IsDanceGateOpen  — "춤춰도 된다"
+        //     2층 에피소드 Interaction/DanceEpisodeDirector                  — ChangeState의 유일한 소유자
+        //     3층 자세   여기 + States/DanceState                            — 각도와 박자
+        //
+        // ★ moveIndex는 DanceIds.CreateAll()의 인덱스다. **직렬화하지 마라** — 신원의 정본은 문자열
+        //   아이디이고, 이 인덱스는 에피소드 시작 때 딱 한 번 해석한 결과다.
+
+        /// <summary>
+        /// ★ 춤 7종의 자세. <paramref name="moveIndex"/>는 <c>Core/DanceIds.CreateAll()</c>의 인덱스
+        /// (<see cref="DanceMovePirouette"/> … <see cref="DanceMoveHorseDance"/>)다.
+        ///
+        /// <para><paramref name="phase01"/>은 <b>지금 루프(또는 D1의 세트 / D2의 사이클) 안의 위상</b>
+        /// 0~1이며, 시간을 세는 것은 호출부(States/DanceState)다 — 여기서 자기 타이머를 또 돌리면
+        /// 진행도가 두 벌이 되어 반드시 갈라진다(집중 모드 포즈와 같은 관례).</para>
+        ///
+        /// <para><paramref name="envelope01"/>은 <b>중립 ↔ 춤 자세의 혼합 비율</b>이고, 진입 박자에서
+        /// 0→1, 퇴장 박자에서 1→0, 루프 동안 1이다. ★ 여기에 <b>진폭 흔들림</b>
+        /// (<c>danceAmplitudeJitterFraction</c>)이 곱해져 들어오므로 <b>1을 살짝 넘을 수 있다</b> —
+        /// 그래서 <c>Clamp01</c>이 아니라 상한 <see cref="MaxDanceEnvelope"/>로 자른다. 0~1로 자르면
+        /// 진폭 흔들림이 «위쪽으로는 아무 일도 없는» 반쪽짜리가 된다.</para>
+        ///
+        /// <para><paramref name="smoothingRate"/>는 보통 <c>dancePoseSmoothingRate</c>(78)이고,
+        /// <b>로봇춤의 루프 구간에서만</b> 호출부가 <c>danceRobotPoseSmoothingRate</c>(0)를 넘긴다 —
+        /// <see cref="SmoothTo"/>의 «rate ≤ 0이면 즉시 대입» 폴백이 그대로 dime stop이 된다
+        /// (신규 배관 0줄).</para>
+        /// </summary>
+        public void ApplyDancePose(float deltaTime, in PoseSettings settings, float smoothingRate,
+            in DancePoseSettings dance, int moveIndex, float phase01, float envelope01)
+        {
+            float p = Mathf.Repeat(phase01, 1f);
+            float env = Mathf.Clamp(envelope01, 0f, MaxDanceEnvelope);
+
+            switch (moveIndex)
+            {
+                case DanceMoveStarJump:   ApplyStarJumpPose(deltaTime, settings, smoothingRate, dance, p, env); break;
+                case DanceMoveMoonwalk:   ApplyMoonwalkPose(deltaTime, settings, smoothingRate, dance, p, env); break;
+                case DanceMoveRunningMan: ApplyRunningManPose(deltaTime, settings, smoothingRate, dance, p, env); break;
+                case DanceMoveRobot:      ApplyRobotPose(deltaTime, settings, smoothingRate, dance, p, env); break;
+                case DanceMovePrisyadka:  ApplySquatKickPose(deltaTime, settings, smoothingRate, dance, p, env); break;
+                case DanceMoveHorseDance: ApplyHorseDancePose(deltaTime, settings, smoothingRate, dance, p, env); break;
+                // 모르는 인덱스는 D1로 떨어진다 — 기본 무료 2종 중 제자리 동작이라 어떤 발판에서도
+                // 안전하다(«아무 것도 안 하고 중립으로 굳는» 실패보다 낫다).
+                default:                  ApplyPirouettePose(deltaTime, settings, smoothingRate, dance, p, env); break;
+            }
+        }
+
+        /// <summary>포락선 상한 — 진폭 흔들림(±5%)이 위쪽으로도 실제 효과를 내되, 설정이 망가져도
+        /// 관절이 뒤집히지 않을 만큼만 남긴다.</summary>
+        private const float MaxDanceEnvelope = 1.15f;
+
+        /// <summary>양 끝이 정확히 0이고 가운데가 평평한 종 모양 포락선. 이 클래스가 여러 연출에서
+        /// 쓰는 <c>smoothstep(sin(pi*u))</c>과 같은 곡선이며, 춤에서는 «찼다가 되돌아온다»류의
+        /// 반루프 동작(D6 킥 · D7 무릎 들기 · D2 정점)에 쓴다.</summary>
+        private static float Bell01(float u)
+        {
+            float raw = Mathf.Sin(Mathf.Clamp01(u) * Mathf.PI);
+            return raw * raw * (3f - 2f * raw);
+        }
+
+        /// <summary>
+        /// 박자 표의 <b>누적 경계</b>(0~1) — <paramref name="beatIndex"/>번째 박자가 <b>시작</b>하는 위상.
+        /// 캐논 표를 그대로 정규화한 값이라 사본이 생기지 않는다.
+        ///
+        /// <para><c>internal</c>인 이유: <see cref="States.DanceState"/>가 <b>퇴장 허용 경계</b>를
+        /// 같은 표에서 유도한다. 그쪽이 «④가 끝나는 지점»을 따로 적으면 박자를 손보는 날 조용히
+        /// 갈라진다 — 그러면 정상 퇴장이 회전 한복판에서 끊긴다.</para>
+        /// </summary>
+        internal static float BeatEdge(int moveIndex, int beatIndex)
+        {
+            int count = DanceBeatCount(moveIndex);
+            if (count <= 0) return beatIndex <= 0 ? 0f : 1f;
+            float total = 0f;
+            for (int i = 0; i < count; i++) total += DanceCanonicalBeatSeconds(moveIndex, i);
+            if (total <= 0.0001f) return beatIndex <= 0 ? 0f : 1f;
+            float acc = 0f;
+            for (int i = 0; i < count && i < beatIndex; i++) acc += DanceCanonicalBeatSeconds(moveIndex, i);
+            return Mathf.Clamp01(acc / total);
+        }
+
+        // ---- D1 발레 피루엣 ---------------------------------------------------------------
+        // 회전축이 세로(Y)인데 이 리그는 Z 회전만 갖는다. 정직하게 투영하면 정면을 보는 순간
+        // 두 팔이 아래로 떨어져 Idle과 구분되지 않는 **죽은 프레임**이 생기므로, 자세를 고정한 채
+        // 회전을 SetFacingSign 부호 반전(= States/DanceState 소관)으로 만들고 여기서는 그 사이가
+        // 정지 화면이 되지 않도록 팔을 ±9도 스윕시킨다. 루트는 0.00 H 움직인다.
+        private void ApplyPirouettePose(float deltaTime, in PoseSettings settings, float smoothingRate,
+            in DancePoseSettings dance, float p, float env)
+        {
+            _idleTime += deltaTime;
+
+            float e0 = BeatEdge(DanceMovePirouette, 1);   // ① 준비 plié 끝
+            float e1 = BeatEdge(DanceMovePirouette, 2);   // ② 상승 + retiré 형성 끝
+            float e2 = BeatEdge(DanceMovePirouette, 3);   // ③ 회전 끝
+            float e3 = BeatEdge(DanceMovePirouette, 4);   // ④ 닫고 착지 끝
+
+            // plié는 ①에서 차오르고 ②에서 빠진다(그 빠짐이 곧 relevé 상승의 반작용이다).
+            float plie = p < e0 ? Ratio01(p, 0f, e0) : 1f - Ratio01(p, e0, e1);
+            // 회전 자세는 ②에서 완성되어 ③ 내내 유지되고 ④에서 풀린다.
+            float spin = Ratio01(p, e0, e1) * (1f - Ratio01(p, e2, e3));
+            // 1번 포지션(양팔 앞으로 모음)은 ④에서 완성되고 ⑤ 호흡에서 스르르 풀린다.
+            float first = Ratio01(p, e2, e3) * (1f - Ratio01(p, e3, 1f));
+
+            plie = Mathf.Clamp01(plie) * env;
+            spin = Mathf.Clamp01(spin) * env;
+            first = Mathf.Clamp01(first) * env;
+
+            // 팔 스윕 — 주기는 «반 바퀴»가 아니라 «한 바퀴»다(2.857Hz에서는 팔 체인 x0.55가 진폭의
+            // 10.4%를 먹는다. 0.70초면 이득 0.976이고, 반전 사이가 «이동하는 연속 구간»이 되어
+            // 정지 화면이 될 여지가 원리적으로 사라진다).
+            float sweepPeriod = Mathf.Max(0.05f, dance.Pirouette.ArmSweepSeconds);
+            float sweep = Mathf.Sin(_idleTime * Mathf.PI * 2f / sweepPeriod)
+                          * dance.Pirouette.ArmSweepDegrees * spin;
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float upper = NeutralUpperAngle(limb, settings);
+                float lower = NeutralLowerAngle(limb, settings);
+
+                if (limb.IsLeg)
+                {
+                    lower = Mathf.LerpAngle(lower, KneeBendSign * dance.Pirouette.PlieKneeDegrees, plie);
+                    if (limb.NeutralSign >= 0f)
+                    {
+                        // 자유 다리 — retiré devant. 이 두 각도는 «발끝이 지지 다리 무릎에 닿는다»로
+                        // 함께 검산된 짝이다(StickConfig의 dancePirouetteRetireHipDegrees 툴팁).
+                        upper = Mathf.LerpAngle(upper, dance.Pirouette.RetireHipDegrees, spin);
+                        lower = Mathf.LerpAngle(lower, KneeBendSign * dance.Pirouette.RetireKneeDegrees, spin);
+                    }
+                    else
+                    {
+                        upper = Mathf.LerpAngle(upper, 0f, spin);       // 지지 다리는 곧게 아래.
+                        lower = Mathf.LerpAngle(lower, KneeBendSign * dance.Pirouette.SupportKneeDegrees, spin);
+                    }
+                }
+                else
+                {
+                    // 2번 포지션 — 앞팔 +82 / 뒷팔 −82. 스윕은 **두 팔에 같은 부호**로 더한다
+                    // (그래야 팔 선 전체가 도는 것으로 읽힌다. 부호를 갈라 더하면 «벌렸다 오므렸다»가 된다).
+                    upper = Mathf.LerpAngle(upper,
+                        limb.NeutralSign * dance.Pirouette.ArmDegrees + sweep, spin);
+                    lower = Mathf.LerpAngle(lower, ElbowBendSign * dance.Pirouette.ElbowDegrees, spin);
+
+                    upper = Mathf.LerpAngle(upper, dance.Pirouette.ArmFirstDegrees, first);
+                    lower = Mathf.LerpAngle(lower, ElbowBendSign * dance.Pirouette.ElbowFirstDegrees, first);
+                }
+
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+
+            // relevé(발끝으로 섬)와 반 바퀴마다의 미세 바운스 — 둘 다 시각 전용이다(발목 관절이 없다).
+            float bobPeriod = Mathf.Max(0.05f, dance.Pirouette.RevolutionSeconds * 0.5f);
+            float bob = Mathf.Sin(_idleTime * Mathf.PI * 2f / bobPeriod) * dance.Pirouette.BobDistance;
+            SetBodyOffset((dance.Pirouette.ReleveDistance + bob) * spin);
+            ReapplyCurrentAngles();
+        }
+
+        // ---- D2 스타점프 -----------------------------------------------------------------
+        // ★ 도움닫기 박자(①)는 여기 오지 않는다 — States/DanceState가 TickWalkPose를 그대로 부른다
+        //   ("활쏘기 전용 걷기"라는 두 번째 보행 구현을 만들지 않는다는 이 저장소의 규칙).
+        //   공중 구간은 SetBodyOffset(시각 전용)이다. Rigidbody2D를 띄우면 Dock 위에서 랙돌이 된다.
+        private void ApplyStarJumpPose(float deltaTime, in PoseSettings settings, float smoothingRate,
+            in DancePoseSettings dance, float p, float env)
+        {
+            float e0 = BeatEdge(DanceMoveStarJump, 1);   // ① 도움닫기 끝
+            float e1 = BeatEdge(DanceMoveStarJump, 2);   // ② 브레이크 + 낮은 자세 끝
+            float e2 = BeatEdge(DanceMoveStarJump, 3);   // ③ 상승 끝
+            float e3 = BeatEdge(DanceMoveStarJump, 4);   // ④ 정점 끝
+            float e4 = BeatEdge(DanceMoveStarJump, 5);   // ⑤ 하강 끝
+            float e5 = BeatEdge(DanceMoveStarJump, 6);   // ⑥ 착지 흡수 끝
+
+            float crouch = Ratio01(p, e0, e1) * (1f - Ratio01(p, e1, e2));
+            float star = Ratio01(p, e1, e2) * (1f - Ratio01(p, e4, e5));
+            float land = Ratio01(p, e4, e5) * (1f - Ratio01(p, e5, 1f));
+            float close = Ratio01(p, e3, e4);            // 하강 중 다리 모으기.
+
+            crouch = Mathf.Clamp01(crouch) * env;
+            star = Mathf.Clamp01(star) * env;
+            land = Mathf.Clamp01(land) * env;
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float upper = NeutralUpperAngle(limb, settings);
+                float lower = NeutralLowerAngle(limb, settings);
+
+                if (limb.IsLeg)
+                {
+                    lower = Mathf.LerpAngle(lower, KneeBendSign * dance.StarJump.CrouchKneeDegrees, crouch);
+
+                    // X자 대칭은 «팔 60도 / 다리 43도»가 짝일 때만 성립한다 — 한쪽만 만지면
+                    // 별이 아니라 «거꾸로 된 Y»가 된다(StickConfig의 danceStarJumpHipDegrees 툴팁).
+                    float spreadHip = Mathf.LerpAngle(dance.StarJump.HipDegrees, StarJumpFallHipDegrees, close);
+                    upper = Mathf.LerpAngle(upper, limb.NeutralSign * spreadHip, star);
+                    lower = Mathf.LerpAngle(lower, KneeBendSign * dance.StarJump.KneeDegrees, star);
+
+                    lower = Mathf.LerpAngle(lower, KneeBendSign * dance.StarJump.LandKneeDegrees, land);
+                }
+                else
+                {
+                    upper = Mathf.LerpAngle(upper, dance.StarJump.CrouchArmDegrees, crouch);
+
+                    // High V — 매달리기와 같은 180∓spread 규약을 그대로 재사용한다.
+                    upper = Mathf.LerpAngle(upper,
+                        HangArmUpperAngle(limb.NeutralSign, dance.StarJump.ArmSpreadDegrees), star);
+                    lower = Mathf.LerpAngle(lower, ElbowBendSign * dance.StarJump.ElbowDegrees, star);
+
+                    upper = Mathf.LerpAngle(upper, StarJumpLandArmDegrees, land);
+                }
+
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+
+            // 도약 궤적: ③ 상승 → ④ 정점 유지(만화적 hang time — 별이 한 장의 그림으로 남는 구간) →
+            // ⑤ 하강. 착지 흡수 구간에서는 무릎이 접힌 만큼 몸이 실제로 내려앉아야 발이 뜨지 않는다.
+            float rise = Ratio01(p, e1, e2) * (1f - Ratio01(p, e3, e4));
+            float offset = dance.StarJump.RiseDistance * Mathf.Clamp01(rise) * env;
+            if (land > 0.0001f) offset = Mathf.Lerp(offset, ComputeFootGroundingOffset(), land);
+            SetBodyOffset(offset);
+            ReapplyCurrentAngles();
+        }
+
+        // ---- D3 문워크 -------------------------------------------------------------------
+        // 정의상 «앞을 보면서 뒤로 간다» — 방향은 States/DanceState가 SetFacingSign으로 붙잡고
+        // (IsFacingSelfManaged에 Dance가 없으면 이 동작은 그냥 뒷걸음질이 된다), 후진 속도도 그쪽이
+        // 소유한다. 여기는 «곧은 다리를 끌고 반대 무릎을 굽혀 뒤꿈치를 든다»는 그림만 만든다.
+        private void ApplyMoonwalkPose(float deltaTime, in PoseSettings settings, float smoothingRate,
+            in DancePoseSettings dance, float p, float env)
+        {
+            bool firstHalf = p < 0.5f;
+            float u = firstHalf ? p * 2f : (p - 0.5f) * 2f;
+            float swing = Mathf.Sin(p * Mathf.PI * 2f);
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float upper = NeutralUpperAngle(limb, settings);
+                float lower = NeutralLowerAngle(limb, settings);
+
+                if (limb.IsLeg)
+                {
+                    // 이번 반 사이클에 «끌리는 곧은 다리»인가. 반 사이클마다 역할이 바뀐다.
+                    bool straightNow = (limb.NeutralSign >= 0f) == firstHalf;
+                    float hip = straightNow
+                        ? Mathf.Lerp(dance.Moonwalk.FrontHipDegrees, dance.Moonwalk.RearHipDegrees, u)
+                        : Mathf.Lerp(dance.Moonwalk.RearHipDegrees, dance.Moonwalk.FrontHipDegrees, u);
+                    float knee = straightNow
+                        ? dance.Moonwalk.StraightKneeDegrees   // 출처: "keep that leg perfectly straight"
+                        : dance.Moonwalk.BentKneeDegrees;      // 뒤꿈치 들림 = 무릎 굽힘이 만드는 발끝 높이 차
+
+                    upper = Mathf.LerpAngle(upper, hip, env);
+                    lower = Mathf.LerpAngle(lower, KneeBendSign * knee, env);
+                }
+                else
+                {
+                    upper = Mathf.LerpAngle(upper, limb.NeutralSign * dance.Moonwalk.ArmSwingDegrees * swing, env);
+                    lower = Mathf.LerpAngle(lower, ElbowBendSign * dance.Moonwalk.ElbowDegrees, env);
+                }
+
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+
+            // 출처가 요구하는 것은 "standing very tall and straight"라 아주 조금만 기운다.
+            RequestBodyLean(dance.Moonwalk.LeanDegrees * env);
+            SetBodyOffset(0f);
+            ReapplyCurrentAngles();
+        }
+
+        // ---- D4 러닝맨 -------------------------------------------------------------------
+        // ★ 보행 키표를 **진폭 배율만 바꿔** 재사용한다. walkPoseAmplitudeScale(전역 보행값)을
+        //   덮어쓰면 춤이 끝난 뒤 걷기가 영구히 과장된 채 남으므로 별도 배율로만 곱한다.
+        private void ApplyRunningManPose(float deltaTime, in PoseSettings settings, float smoothingRate,
+            in DancePoseSettings dance, float p, float env)
+        {
+            float pump = Mathf.Sin((p + ArmPhaseOffset) * Mathf.PI * 2f);
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float upper = NeutralUpperAngle(limb, settings);
+                float lower = NeutralLowerAngle(limb, settings);
+
+                if (limb.IsLeg)
+                {
+                    float legPhase = p + limb.PhaseOffset;
+                    float hip = SampleCyclic(LegHipKeys, legPhase) * dance.RunningMan.HipAmplitudeScale;
+                    float knee = SampleCyclic(LegKneeKeys, legPhase) * dance.RunningMan.KneeAmplitudeScale;
+                    upper = Mathf.LerpAngle(upper, hip, env);
+                    lower = Mathf.LerpAngle(lower, KneeBendSign * Mathf.Max(0f, knee), env);
+                }
+                else
+                {
+                    // 어깨 ±62도가 1.900Hz — 이 사양에서 두 번째로 센 진동 신호다(계수 78의 근거 중 하나).
+                    upper = Mathf.LerpAngle(upper, limb.NeutralSign * dance.RunningMan.ArmDegrees * pump, env);
+                    lower = Mathf.LerpAngle(lower, ElbowBendSign * dance.RunningMan.ElbowDegrees, env);
+                }
+
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+
+            RequestBodyLean(dance.RunningMan.LeanDegrees * env);
+            SetBodyOffset(-dance.RunningMan.BounceDistance * Mathf.Abs(Mathf.Sin(p * Mathf.PI * 2f)) * env);
+            ReapplyCurrentAngles();
+        }
+
+        // ---- D5 로봇 --------------------------------------------------------------------
+        // 본체는 각도가 아니라 **보간을 끄는 것**이다. 호출부가 루프 구간에서 rate = 0을 넘기면
+        // SmoothTo의 «rate ≤ 0이면 즉시 대입» 폴백이 그대로 dime stop이 된다(신규 배관 0줄).
+        // 여기서는 8키 표를 «지금 몇 번째 키인가»로 고르기만 한다 — 키 사이를 보간하지 않는 것이
+        // 이 동작의 정체성이므로 계단 함수가 맞다.
+        private void ApplyRobotPose(float deltaTime, in PoseSettings settings, float smoothingRate,
+            in DancePoseSettings dance, float p, float env)
+        {
+            int key = Mathf.Clamp(Mathf.FloorToInt(p * RobotKeyCount), 0, RobotKeyCount - 1);
+            // 체중 이동 — 2키마다 부호가 스냅된다.
+            float hipSign = ((key / 2) % 2 == 0) ? 1f : -1f;
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float upper = NeutralUpperAngle(limb, settings);
+                float lower = NeutralLowerAngle(limb, settings);
+                bool front = limb.NeutralSign >= 0f;
+
+                if (limb.IsLeg)
+                {
+                    upper = Mathf.LerpAngle(upper,
+                        limb.NeutralSign * settings.LegSpreadDegrees + dance.Robot.HipDegrees * hipSign, env);
+                    lower = Mathf.LerpAngle(lower, KneeBendSign * dance.Robot.LegKneeDegrees, env);
+                }
+                else
+                {
+                    upper = Mathf.LerpAngle(upper, RobotKeys[key, front ? 0 : 2], env);
+                    lower = Mathf.LerpAngle(lower, ElbowBendSign * RobotKeys[key, front ? 1 : 3], env);
+                }
+
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+
+            RequestBodyLean(RobotKeys[key, 4] * dance.Robot.LeanDegrees * env);
+            SetBodyOffset(0f);
+            ReapplyCurrentAngles();
+        }
+
+        // ---- D6 프리샤트카 ---------------------------------------------------------------
+        // 완전 스쾃(지지 무릎 132도)에서 한 다리씩 앞으로 찬다. 몸이 얼마나 내려앉는지는 각도에서
+        // **역산**한다(ComputeFootGroundingOffset) — 고정 오프셋으로 두면 무릎 각도를 만질 때마다
+        // 발이 지면에서 뜨거나 파묻힌다.
+        private void ApplySquatKickPose(float deltaTime, in PoseSettings settings, float smoothingRate,
+            in DancePoseSettings dance, float p, float env)
+        {
+            bool kickFront = p < 0.5f;
+            float u = kickFront ? p * 2f : (p - 0.5f) * 2f;
+            float kick = Bell01(u) * env;
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float upper = NeutralUpperAngle(limb, settings);
+                float lower = NeutralLowerAngle(limb, settings);
+
+                if (limb.IsLeg)
+                {
+                    // 두 다리 모두 먼저 스쾃 자세로 들어가고, 이번 반 사이클의 차는 다리만 뻗는다.
+                    upper = Mathf.LerpAngle(upper, dance.SquatKick.SupportHipDegrees, env);
+                    lower = Mathf.LerpAngle(lower, KneeBendSign * dance.SquatKick.SupportKneeDegrees, env);
+
+                    bool kicking = (limb.NeutralSign >= 0f) == kickFront;
+                    if (kicking)
+                    {
+                        // 78도는 «발끝이 지면을 뚫지 않는» 최소값에서 역산한 값이다(66도는 −0.0288H로
+                        // 실제로 뚫었다). 앞으로 뻗는 0.40088H가 발판 요구 0.45H를 결정한다.
+                        upper = Mathf.LerpAngle(upper, dance.SquatKick.KickHipDegrees, kick);
+                        lower = Mathf.LerpAngle(lower, KneeBendSign * dance.SquatKick.KickKneeDegrees, kick);
+                    }
+                }
+                else
+                {
+                    // 출처: "hands held together at chest level" — **양팔 같은 부호**다.
+                    upper = Mathf.LerpAngle(upper, dance.SquatKick.ArmDegrees, env);
+                    lower = Mathf.LerpAngle(lower, ElbowBendSign * dance.SquatKick.ElbowDegrees, env);
+                }
+
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+
+            SetBodyOffset(ComputeFootGroundingOffset() + dance.SquatKick.BounceDistance * kick);
+            ReapplyCurrentAngles();
+        }
+
+        // ---- D7 말춤 --------------------------------------------------------------------
+        // 원곡의 «오른 손목을 왼 손목 위로 겹치는» 고삐 자세는 손가락이 없는 스틱에서 표현 불가·
+        // 무의미하므로 두 팔을 같은 각도로 앞에 모으는 것으로 대체한다(26-2 판정). 다리·바운스는
+        // 그대로 읽힌다. ★ 어깨 펌프가 이 사양 전체에서 가장 빠른 진동 신호(2.083Hz)다.
+        private void ApplyHorseDancePose(float deltaTime, in PoseSettings settings, float smoothingRate,
+            in DancePoseSettings dance, float p, float env)
+        {
+            bool liftFront = p < 0.5f;
+            float u = liftFront ? p * 2f : (p - 0.5f) * 2f;
+            float lift = Bell01(u) * env;
+            float pump = Mathf.Sin(p * Mathf.PI * 2f);
+
+            for (int i = 0; i < _limbs.Length; i++)
+            {
+                Limb limb = _limbs[i];
+                float upper = NeutralUpperAngle(limb, settings);
+                float lower = NeutralLowerAngle(limb, settings);
+
+                if (limb.IsLeg)
+                {
+                    bool lifting = (limb.NeutralSign >= 0f) == liftFront;
+                    if (lifting)
+                    {
+                        upper = Mathf.LerpAngle(upper, dance.HorseDance.LiftHipDegrees, lift);
+                        lower = Mathf.LerpAngle(lower, KneeBendSign * dance.HorseDance.LiftKneeDegrees, lift);
+                    }
+                }
+                else
+                {
+                    upper = Mathf.LerpAngle(upper,
+                        dance.HorseDance.ArmDegrees + dance.HorseDance.ArmPumpDegrees * pump, env);
+                    lower = Mathf.LerpAngle(lower, ElbowBendSign * dance.HorseDance.ElbowDegrees, env);
+                }
+
+                ApplyLimb(limb, upper, lower, deltaTime, smoothingRate);
+            }
+
+            RequestBodyLean(dance.HorseDance.LeanDegrees * pump * env);
+            SetBodyOffset(-dance.HorseDance.BounceDistance * lift);
+            ReapplyCurrentAngles();
         }
 
         /// <summary>
@@ -2527,6 +3609,237 @@ namespace StickMate.States
         }
 
         /// <summary>
+        /// ★ 춤 7종의 자세 묶음(<see cref="ApplyDancePose"/>). 위 구조체들과 같은 컨벤션
+        /// (readonly struct + <c>in</c> 파라미터 = 매 프레임 경로에서 힙 할당 0)이며,
+        /// StickmanBlackboard.BuildDancePoseSettings()가 StickConfig에서 구성해 넘긴다.
+        ///
+        /// <para><b>왜 동작별 중첩 구조체로 쪼갰는가</b>: 값이 7종 합쳐 60개가 넘는다. 평평한
+        /// 생성자로 두면 인자 60개가 되고, 그 형태에서는 <b>순서가 한 칸 밀려도 컴파일이 통과한다</b>
+        /// (전부 float다). 동작 단위로 묶으면 한 생성자가 최대 12개라 눈으로 대조할 수 있고, 무엇보다
+        /// <b>«같이 검산된 짝»이 같은 생성자 안에 모인다</b> — 예를 들어 retiré의 허벅지 62°와 무릎
+        /// 116°는 «발끝이 지지 다리 무릎에 닿는다»로 함께 풀린 값이라 떨어져 있으면 안 된다.</para>
+        ///
+        /// <para><b>거리(...Distance)는 월드 유닛</b>이다. 설정의 <c>...Heights</c>는 <b>전신 신장 H
+        /// 배수</b>이고 블랙보드가 <c>CharacterHeightWorld</c>를 곱해 넘긴다(각도는 크기와 무관하니
+        /// 절대값, 거리·속도는 StickmanMetrics에서 파생 — 리더 지시).</para>
+        /// </summary>
+        public readonly struct DancePoseSettings
+        {
+            public readonly PirouetteSettings Pirouette;
+            public readonly StarJumpSettings StarJump;
+            public readonly MoonwalkSettings Moonwalk;
+            public readonly RunningManSettings RunningMan;
+            public readonly RobotSettings Robot;
+            public readonly SquatKickSettings SquatKick;
+            public readonly HorseDanceSettings HorseDance;
+
+            public DancePoseSettings(in PirouetteSettings pirouette, in StarJumpSettings starJump,
+                in MoonwalkSettings moonwalk, in RunningManSettings runningMan, in RobotSettings robot,
+                in SquatKickSettings squatKick, in HorseDanceSettings horseDance)
+            {
+                Pirouette = pirouette;
+                StarJump = starJump;
+                Moonwalk = moonwalk;
+                RunningMan = runningMan;
+                Robot = robot;
+                SquatKick = squatKick;
+                HorseDance = horseDance;
+            }
+
+            /// <summary>D1 발레 피루엣(retiré). <see cref="RetireHipDegrees"/>/<see cref="RetireKneeDegrees"/>는
+            /// «발끝이 지지 다리 무릎에 닿는다»로 함께 검산된 짝이라 한쪽만 만지면 접촉이 깨진다.</summary>
+            public readonly struct PirouetteSettings
+            {
+                public readonly float ArmDegrees;
+                public readonly float ElbowDegrees;
+                public readonly float ArmSweepDegrees;
+                public readonly float ArmSweepSeconds;
+                public readonly float ArmFirstDegrees;
+                public readonly float ElbowFirstDegrees;
+                public readonly float SupportKneeDegrees;
+                public readonly float PlieKneeDegrees;
+                public readonly float RetireHipDegrees;
+                public readonly float RetireKneeDegrees;
+                /// <summary>relevé 상승량(월드 유닛, 시각 전용).</summary>
+                public readonly float ReleveDistance;
+                /// <summary>반 바퀴마다의 미세 바운스(월드 유닛, 시각 전용).</summary>
+                public readonly float BobDistance;
+                /// <summary>한 바퀴 시간(초). 바운스 주기는 이것의 절반이다.</summary>
+                public readonly float RevolutionSeconds;
+
+                public PirouetteSettings(float armDegrees, float elbowDegrees, float armSweepDegrees,
+                    float armSweepSeconds, float armFirstDegrees, float elbowFirstDegrees,
+                    float supportKneeDegrees, float plieKneeDegrees, float retireHipDegrees,
+                    float retireKneeDegrees, float releveDistance, float bobDistance, float revolutionSeconds)
+                {
+                    ArmDegrees = armDegrees;
+                    ElbowDegrees = Mathf.Max(0f, elbowDegrees);
+                    ArmSweepDegrees = armSweepDegrees;
+                    ArmSweepSeconds = Mathf.Max(0.05f, armSweepSeconds);
+                    ArmFirstDegrees = armFirstDegrees;
+                    ElbowFirstDegrees = Mathf.Max(0f, elbowFirstDegrees);
+                    SupportKneeDegrees = Mathf.Max(0f, supportKneeDegrees);
+                    PlieKneeDegrees = Mathf.Max(0f, plieKneeDegrees);
+                    RetireHipDegrees = retireHipDegrees;
+                    RetireKneeDegrees = Mathf.Max(0f, retireKneeDegrees);
+                    ReleveDistance = releveDistance;
+                    BobDistance = bobDistance;
+                    RevolutionSeconds = Mathf.Max(0.05f, revolutionSeconds);
+                }
+            }
+
+            /// <summary>D2 스타점프. <see cref="ArmSpreadDegrees"/>(60)와 <see cref="HipDegrees"/>(43)는
+            /// 손끝·발끝 반폭이 같아지도록 역산한 짝이다 — 한쪽만 키우면 X가 «거꾸로 된 Y»가 된다.</summary>
+            public readonly struct StarJumpSettings
+            {
+                public readonly float ArmSpreadDegrees;
+                public readonly float ElbowDegrees;
+                public readonly float HipDegrees;
+                public readonly float KneeDegrees;
+                public readonly float CrouchKneeDegrees;
+                public readonly float CrouchArmDegrees;
+                public readonly float LandKneeDegrees;
+                /// <summary>도약 높이(월드 유닛). ★ <b>시각 전용</b>이다 — 물리로 띄우면 Dock 위에서 랙돌이 된다.</summary>
+                public readonly float RiseDistance;
+
+                public StarJumpSettings(float armSpreadDegrees, float elbowDegrees, float hipDegrees,
+                    float kneeDegrees, float crouchKneeDegrees, float crouchArmDegrees,
+                    float landKneeDegrees, float riseDistance)
+                {
+                    ArmSpreadDegrees = armSpreadDegrees;
+                    ElbowDegrees = Mathf.Max(0f, elbowDegrees);
+                    HipDegrees = hipDegrees;
+                    KneeDegrees = Mathf.Max(0f, kneeDegrees);
+                    CrouchKneeDegrees = Mathf.Max(0f, crouchKneeDegrees);
+                    CrouchArmDegrees = crouchArmDegrees;
+                    LandKneeDegrees = Mathf.Max(0f, landKneeDegrees);
+                    RiseDistance = Mathf.Max(0f, riseDistance);
+                }
+            }
+
+            /// <summary>D3 문워크. <see cref="StraightKneeDegrees"/>(3)가 이 동작의 정체성이라
+            /// 키우면 그냥 뒷걸음질이 된다.</summary>
+            public readonly struct MoonwalkSettings
+            {
+                public readonly float FrontHipDegrees;
+                public readonly float RearHipDegrees;
+                public readonly float StraightKneeDegrees;
+                public readonly float BentKneeDegrees;
+                public readonly float ArmSwingDegrees;
+                public readonly float ElbowDegrees;
+                public readonly float LeanDegrees;
+
+                public MoonwalkSettings(float frontHipDegrees, float rearHipDegrees,
+                    float straightKneeDegrees, float bentKneeDegrees, float armSwingDegrees,
+                    float elbowDegrees, float leanDegrees)
+                {
+                    FrontHipDegrees = frontHipDegrees;
+                    RearHipDegrees = rearHipDegrees;
+                    StraightKneeDegrees = Mathf.Max(0f, straightKneeDegrees);
+                    // 굽힌 다리가 곧은 다리보다 덜 굽으면 뒤꿈치 들림의 부호가 뒤집힌다.
+                    BentKneeDegrees = Mathf.Max(StraightKneeDegrees, bentKneeDegrees);
+                    ArmSwingDegrees = armSwingDegrees;
+                    ElbowDegrees = Mathf.Max(0f, elbowDegrees);
+                    LeanDegrees = leanDegrees;
+                }
+            }
+
+            /// <summary>D4 러닝맨 — 보행 키표에 곱하는 배율과 팔 자세.
+            /// ★ 이 배율을 <c>walkPoseAmplitudeScale</c>에 쓰면 걷기가 영구히 과장된다.</summary>
+            public readonly struct RunningManSettings
+            {
+                public readonly float HipAmplitudeScale;
+                public readonly float KneeAmplitudeScale;
+                public readonly float ArmDegrees;
+                public readonly float ElbowDegrees;
+                public readonly float LeanDegrees;
+                /// <summary>슬라이드마다의 상하 바운스(월드 유닛, 시각 전용).</summary>
+                public readonly float BounceDistance;
+
+                public RunningManSettings(float hipAmplitudeScale, float kneeAmplitudeScale,
+                    float armDegrees, float elbowDegrees, float leanDegrees, float bounceDistance)
+                {
+                    HipAmplitudeScale = Mathf.Max(0f, hipAmplitudeScale);
+                    KneeAmplitudeScale = Mathf.Max(0f, kneeAmplitudeScale);
+                    ArmDegrees = armDegrees;
+                    ElbowDegrees = Mathf.Max(0f, elbowDegrees);
+                    LeanDegrees = leanDegrees;
+                    BounceDistance = Mathf.Max(0f, bounceDistance);
+                }
+            }
+
+            /// <summary>D5 로봇 — 8키 포즈 표는 여기가 아니라 <see cref="StickmanPoseAnimator"/>의
+            /// 상수 표에 있다(보행 키표와 같은 판단 기준). 여기 있는 것은 다리·기울임 스칼라뿐이다.</summary>
+            public readonly struct RobotSettings
+            {
+                public readonly float LegKneeDegrees;
+                public readonly float HipDegrees;
+                public readonly float LeanDegrees;
+
+                public RobotSettings(float legKneeDegrees, float hipDegrees, float leanDegrees)
+                {
+                    LegKneeDegrees = Mathf.Max(0f, legKneeDegrees);
+                    HipDegrees = hipDegrees;
+                    LeanDegrees = leanDegrees;
+                }
+            }
+
+            /// <summary>D6 프리샤트카. <see cref="KickHipDegrees"/>(78)는 «찬 발이 지면을 뚫지 않는»
+            /// 조건에서 역산한 값이라(66도는 실제로 뚫었다) 내리면 발끝이 지면 아래로 들어간다.</summary>
+            public readonly struct SquatKickSettings
+            {
+                public readonly float SupportHipDegrees;
+                public readonly float SupportKneeDegrees;
+                public readonly float KickHipDegrees;
+                public readonly float KickKneeDegrees;
+                public readonly float ArmDegrees;
+                public readonly float ElbowDegrees;
+                /// <summary>찰 때 살짝 솟는 양(월드 유닛, 시각 전용).</summary>
+                public readonly float BounceDistance;
+
+                public SquatKickSettings(float supportHipDegrees, float supportKneeDegrees,
+                    float kickHipDegrees, float kickKneeDegrees, float armDegrees, float elbowDegrees,
+                    float bounceDistance)
+                {
+                    SupportHipDegrees = supportHipDegrees;
+                    SupportKneeDegrees = Mathf.Max(0f, supportKneeDegrees);
+                    KickHipDegrees = kickHipDegrees;
+                    KickKneeDegrees = Mathf.Max(0f, kickKneeDegrees);
+                    ArmDegrees = armDegrees;
+                    ElbowDegrees = Mathf.Max(0f, elbowDegrees);
+                    BounceDistance = Mathf.Max(0f, bounceDistance);
+                }
+            }
+
+            /// <summary>D7 말춤. <see cref="ArmPumpDegrees"/>가 이 사양 전체에서 가장 빠른 진동
+            /// 신호(2.083Hz)이고 <c>dancePoseSmoothingRate = 78</c>을 혼자서 결정했다 —
+            /// 계수를 낮추려면 이 진폭을 함께 키워야 같은 그림이 나온다.</summary>
+            public readonly struct HorseDanceSettings
+            {
+                public readonly float ArmDegrees;
+                public readonly float ElbowDegrees;
+                public readonly float ArmPumpDegrees;
+                public readonly float LiftHipDegrees;
+                public readonly float LiftKneeDegrees;
+                public readonly float LeanDegrees;
+                /// <summary>상체가 함께 튀는 양(월드 유닛, 시각 전용).</summary>
+                public readonly float BounceDistance;
+
+                public HorseDanceSettings(float armDegrees, float elbowDegrees, float armPumpDegrees,
+                    float liftHipDegrees, float liftKneeDegrees, float leanDegrees, float bounceDistance)
+                {
+                    ArmDegrees = armDegrees;
+                    ElbowDegrees = Mathf.Max(0f, elbowDegrees);
+                    ArmPumpDegrees = armPumpDegrees;
+                    LiftHipDegrees = liftHipDegrees;
+                    LiftKneeDegrees = Mathf.Max(0f, liftKneeDegrees);
+                    LeanDegrees = leanDegrees;
+                    BounceDistance = Mathf.Max(0f, bounceDistance);
+                }
+            }
+        }
+
+        /// <summary>
         /// 낙하 중 공중 자세 각도 묶음(<see cref="ApplyFallPose"/>). 위 두 구조체와 같은 성격·같은
         /// 컨벤션(readonly struct + in 파라미터 — 매 프레임 경로라 힙 할당/복사 비용이 없다).
         /// StickmanBlackboard.BuildFallPoseSettings()가 StickConfig에서 구성해 넘긴다.
@@ -2759,6 +4072,58 @@ namespace StickMate.States
                 StretchElbowDegrees = stretchElbow;
                 StretchKneeStraighten01 = stretchKneeStraighten01;
                 StretchRiseDistance = stretchRiseDistance;
+            }
+        }
+
+        /// <summary>
+        /// 집중 세션 «관망 자세»의 <b>이번 프레임 입력</b>(<see cref="ApplyFocusWatchStancePose"/>).
+        /// 위 구조체들과 같은 컨벤션(readonly struct + <c>in</c> — 매 프레임 경로라 할당이 없다)이지만
+        /// 성격이 다르다: 저 구조체들이 <b>설정 각도</b>를 나른다면 이쪽은 <b>지금 어느 자세인가</b>를
+        /// 나른다. 각도는 포즈 층의 상수이고(StickConfig에 넣지 않는 이유는 위 3절 문서 참고),
+        /// <b>상태</b>는 전부 호출부(States/StickmanBlackboard)가 소유한다 —
+        /// 시간·확률·자세 선택이 두 벌이 되면 반드시 갈라진다.
+        /// </summary>
+        public readonly struct FocusWatchStanceInput
+        {
+            /// <summary>true = P2 뒷짐 / false = P1 팔짱. G4가 이 값을 토글한다.</summary>
+            public readonly bool BackHands;
+
+            /// <summary>G1 안착에서 A/B 팔 역할이 교대된 상태인가(뒷짐이면 손 스태거 부호 반전).</summary>
+            public readonly bool ArmRolesSwapped;
+
+            /// <summary>Idle 복귀 이징(0~1). <c>StickConfig.focusWatchStanceSettleSeconds</c>에 걸친
+            /// SmoothStep이며, 이게 없으면 걷기에서 돌아오는 순간 팔이 «딱» 하고 붙는다.</summary>
+            public readonly float Settle01;
+
+            /// <summary>진행 중인 집중 어휘(<see cref="GestureActive"/>가 false면 의미 없음).</summary>
+            public readonly StickMate.Core.WanderAmbientMotion Gesture;
+
+            public readonly bool GestureActive;
+
+            /// <summary>그 어휘의 진행도 0~1. <b>시간을 세는 것은 호출부</b>다.</summary>
+            public readonly float GestureProgress01;
+
+            /// <summary>G3에서 커서가 <b>지금 보는 쪽의 반대편</b>이라 제자리 돌기 변주를 쓰는가.
+            /// 커서를 못 읽었으면 false다(없는 대상을 향해 돌아보지 않는다 — 절대 불변 원칙 1).</summary>
+            public readonly bool GlanceTurnsAround;
+
+            /// <summary>상체 기울임 배율(보통 1, 마스터 스위치 <c>StickConfig.bodyLeanEnabled</c>가 꺼지면 0).
+            /// <b>스위치의 해석은 호출부 한 곳</b>(StickmanBlackboard.BodyLeanEnabled)에만 둔다 — 포즈 층이
+            /// 설정을 직접 읽기 시작하면 "반만 꺼진" 상태가 생긴다(그 필드의 문서가 정한 규약 그대로).</summary>
+            public readonly float LeanScale;
+
+            public FocusWatchStanceInput(bool backHands, bool armRolesSwapped, float settle01,
+                StickMate.Core.WanderAmbientMotion gesture, bool gestureActive, float gestureProgress01,
+                bool glanceTurnsAround, float leanScale)
+            {
+                BackHands = backHands;
+                ArmRolesSwapped = armRolesSwapped;
+                Settle01 = settle01;
+                Gesture = gesture;
+                GestureActive = gestureActive;
+                GestureProgress01 = gestureProgress01;
+                GlanceTurnsAround = glanceTurnsAround;
+                LeanScale = leanScale;
             }
         }
     }

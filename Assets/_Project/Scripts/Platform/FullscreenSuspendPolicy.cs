@@ -272,6 +272,36 @@ namespace StickMate.Platform
         public static bool RetreatsPanels(ForeignFullscreenTier tier)
             => tier != ForeignFullscreenTier.None;
 
+        /// <summary>
+        /// ★★ <b>세 번째 축 — 이 등급에서 「자동으로 발동하는 춤」을 억제하는가</b>(리더 판정 2026-09-06).
+        ///
+        /// <para><b>왜 필요한가.</b> macOS 오디오 프로브는 «소리»가 아니라 <b>«출력 스트림이 열려
+        /// 있는가»</b>를 본다(<c>Platform/MacOS</c> 프로브 문서). 줌·팀즈·키노트는 발표를 시작하는
+        /// 순간 스트림을 열어 두므로, <b>아무 소리가 나지 않는 회의에서도 게이트가 열린다</b>.
+        /// 프로브 자체의 한계라 이번 라운드에 근본 수정은 못 하지만, <b>그 회의 앱은 거의 항상
+        /// 전체화면</b>이라는 사실이 값싼 상관 신호를 준다.</para>
+        ///
+        /// ============================================================================
+        /// ★ <b>이 축은 «캐릭터를 숨긴다»와 완전히 분리돼 있다</b> — 2026-08-31 신고 회귀 아님
+        /// ============================================================================
+        /// 그 신고는 <i>"엑셀같은 프로그램 전체화면에서 엑셀 클릭하면 <b>캐릭터가 없어져버림</b>"</i>이고,
+        /// 그 회귀를 막는 함수는 <see cref="SuspendsCharacter"/> 하나다 —
+        /// <b>그 함수는 이 변경으로 한 글자도 바뀌지 않았다</b>(등급 1에서 여전히 <c>false</c>).
+        /// 등급 1에서 캐릭터는 <b>계속 보이고, 계속 걸어다니고, 말풍선도 그대로 뜬다.</b>
+        /// 달라지는 것은 <b>«음악이 감지됐다는 이유로 스스로 춤을 시작하는 것»</b> 하나뿐이다.
+        ///
+        /// <para><b>사용자가 시킨 춤은 이 축과 무관하다</b> — 이 값은 <b>자동 발동 경로</b>에서만
+        /// 읽힌다(<c>Core/AudioReactiveDanceGate</c>). 명령 경로의 기본값은 반대이며
+        /// 그 이유는 그 게이트의 클래스 문서에 있다.</para>
+        ///
+        /// <para>등급 2도 참이지만 그쪽은 이미 <see cref="SuspendsCharacter"/>에 완전히 흡수된다
+        /// (캐릭터가 숨겨지면 춤 게이트가 숨김 술어에서 먼저 막는다). 여기서 등급 2를 함께 참으로
+        /// 두는 것은 <b>«등급이 올라갈수록 더 걷는다»는 불변식</b>을 지키기 위해서다 —
+        /// <see cref="RetreatsPanels"/>와 같은 이유·같은 형태다.</para>
+        /// </summary>
+        public static bool SuppressesAutoDance(ForeignFullscreenTier tier)
+            => tier != ForeignFullscreenTier.None;
+
         /// <summary>로그용 한 줄 설명(전이 순간에만 조립 — 폴링 경로에서 문자열을 만들지 않는다).</summary>
         public static string Describe(ForeignFullscreenTier tier)
         {

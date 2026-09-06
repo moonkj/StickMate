@@ -57,6 +57,27 @@ namespace StickMate.Core
 
         public static bool IsAppearanceSlot(EquipmentSlot slot) => (int)slot >= (int)EquipmentSlot.Hair;
 
+        /// <summary>★ <b>답을 베끼지 않는다 — 터진다.</b> (2026-09-06 [머리] 은퇴로 프로덕션에 생긴 술어)
+        ///
+        /// <para>이 하니스는 «무엇이 은퇴했는가»를 쓰지 않는다. 부르는 자리는 <c>ItemCatalog.IsListed</c> ·
+        /// <c>ListedEquipmentCount</c> 뿐이고 <c>Dump.cs</c> 는 둘 다 안 부른다 — 좌표도 등급도
+        /// 표시 모집단과 무관하다. 그래서 <b>컴파일만</b> 되면 된다.</para>
+        ///
+        /// <para>여기에 <c>slot == EquipmentSlot.Hair</c> 를 베껴 두면 그 순간 «무엇이 은퇴했는가»가
+        /// 두 곳이 되고, 다음에 슬롯이 하나 더 은퇴하는 날 <b>이 하니스만 조용히 옛 답</b>을 준다.
+        /// 이 저장소가 이중 정의로 반복해 당한 형태 그대로다. 터지는 쪽을 택했다 —
+        /// 덤프가 이 술어를 쓰기 시작하면 <b>rc≠0 으로 시끄럽게</b> 알려야 하고, 그때 사람이
+        /// "그럼 EquipmentModel.cs 를 목록에 넣을 때가 됐다"를 판단하면 된다.</para>
+        ///
+        /// <para>★ <b>이 줄은 프로덕션의 <c>EquipmentModel.IsRetiredSlot</c> 과 한 몸이다.</b>
+        /// [머리] 은퇴가 되돌려져 프로덕션에서 그 술어가 사라지면 <c>shimdrift.py</c> 가
+        /// "유령 멤버"로 <b>빨간불</b>을 낸다 — 그때는 이 메서드를 지우면 된다(그 빨간불이
+        /// 목적이다. 조용히 남아 있으면 하니스가 없는 것을 재게 된다).</para></summary>
+        public static bool IsRetiredSlot(EquipmentSlot slot)
+            => throw new System.NotSupportedException(
+                "ShapeDump 하니스는 은퇴 여부를 흉내내지 않는다(CoreShim.cs). " +
+                "덤프가 이것을 부르기 시작했다면 Core/EquipmentModel.cs 를 build.sh 목록에 넣어라.");
+
         /// <summary>이 하니스에서는 <b>아무것도 걸치지 않았다</b>. 등급·좌표 어느 쪽에도 들어가지 않는다.</summary>
         public static int WornIndex(EquipmentSlot slot) => NotWorn;
     }

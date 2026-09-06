@@ -1,0 +1,100 @@
+     CardSurfaceMuted               #65676B   3.1370    3        0.3438  
+     SubtleSurface                  #686B6F   3.1558    3        0.3447  
+     ThumbSurfaceLocked             #626468   3.1391    4        0.3447  
+     InkContrastCharcoal 목탄무대       #727478   3.1547    3        0.3535  
+     PortraitSurface 종이무대           #828381   3.1521    4        0.4404  
+     검정 잉크 견본                       #5C5C5C   3.1405    3        0.3623  
+     흰 잉크 견본                        #919191   3.1517    4        0.4316  
+     Accent                         #64512D   3.1564    4        0.4980  
+     ChromeButtonSurface            #F6F6F6   3.1610    6        0.9199  
+     ChromeButtonSurfaceHover       #4C4D4E   3.1514    3        0.5137  
+     ChromeButtonSurfacePressed     #5A5B5C   3.1357    3        0.4854  
+     ControlFace on Card #838589    #EDEDEE   3.1593    5        0.8555  
+     ControlFace on Panel #848588   #EDEDEE   3.1536    6        0.8545  
+     ButtonSurfaceOnCard #32353C    #7F8286   3.1809    4        0.3779  
+     TextPrimary 흰채움                #888A8B   3.1476    4        0.4365  
+
+  ── 배수 1.100 (target 3.3000) ──
+     바탕                             테두리       양자화후      ΔE(3.0안) α       
+     PanelSurface                   #686A6D   3.3112    7        0.3574  
+     CardSurface                    #6D7074   3.3214    7        0.3594  
+     CardSurfaceMuted               #696B6E   3.3259    7        0.3574  
+     SubtleSurface                  #6B6E72   3.2985    6        0.3584  
+     ThumbSurfaceLocked             #66686B   3.3299    7        0.3584  
+     InkContrastCharcoal 목탄무대       #75777B   3.2928    6        0.3682  
+     PortraitSurface 종이무대           #7F807D   3.2871    7        0.4551  
+     검정 잉크 견본                       #5F5F5F   3.2887    6        0.3740  
+     흰 잉크 견본                        #8D8D8D   3.3190    8        0.4463  
+     Accent                         #614E2C   3.3030    7        0.5156  
+     ChromeButtonSurface            #FBFBFB   3.3012    11       0.9658  
+     ChromeButtonSurfaceHover       #494A4B   3.3040    6        0.5322  
+     ChromeButtonSurfacePressed     #575858   3.2888    7        0.5029  
+     ControlFace on Card #838589    #F2F3F3   3.3249    11       0.8975  
+     ControlFace on Panel #848588   #F2F3F3   3.3189    11       0.8975  
+     ButtonSurfaceOnCard #32353C    #838589   3.3222    7        0.3945  
+     TextPrimary 흰채움                #858688   3.3072    7        0.4502  
+
+  ── 배수 1.150 (target 3.4500) ──
+     바탕                             테두리       양자화후      ΔE(3.0안) α       
+     PanelSurface                   #6B6D70   3.4614    10       0.3701  
+     CardSurface                    #707377   3.4690    10       0.3730  
+     CardSurfaceMuted               #6C6D71   3.4399    10       0.3701  
+     SubtleSurface                  #6F7175   3.4564    10       0.3721  
+     ThumbSurfaceLocked             #686A6D   3.4307    9        0.3701  
+     InkContrastCharcoal 목탄무대       #787A7E   3.4353    9        0.3828  
+     PortraitSurface 종이무대           #7C7C7A   3.4607    11       0.4688  
+     검정 잉크 견본                       #626262   3.4428    9        0.3857  
+     흰 잉크 견본                        #8A8A8A   3.4522    11       0.4590  
+     Accent                         #5E4B2A   3.4587    10       0.5322  
+     ChromeButtonSurface            #373839   3.4396    185      0.5996  
+     ChromeButtonSurfaceHover       #464748   3.4638    9        0.5498  
+     ChromeButtonSurfacePressed     #545556   3.4424    9        0.5186  
+     ControlFace on Card #838589    #F8F8F8   3.4805    16       0.9395  
+     ControlFace on Panel #848588   #F7F8F8   3.4678    16       0.9385  
+     ButtonSurfaceOnCard #32353C    #86888C   3.4583    10       0.4111  
+     TextPrimary 흰채움                #828384   3.4471    11       0.4639  
+
+  ── 배수 1.200 (target 3.6000) ──
+     바탕                             테두리       양자화후      ΔE(3.0안) α       
+     PanelSurface                   #6E7073   3.6167    13       0.3828  
+     CardSurface                    #73767A   3.6215    13       0.3867  
+     CardSurfaceMuted               #6F7074   3.5942    13       0.3828  
+     SubtleSurface                  #717478   3.5986    12       0.3848  
+     ThumbSurfaceLocked             #6C6D70   3.5973    13       0.3828  
+     InkContrastCharcoal 목탄무대       #7C7D81   3.5927    13       0.3975  
+     PortraitSurface 종이무대           #797977   3.6093    14       0.4824  
+     검정 잉크 견본                       #656565   3.6027    12       0.3965  
+     흰 잉크 견본                        #878787   3.5924    14       0.4717  
+     Accent                         #5A4929   3.5960    14       0.5488  
+     ChromeButtonSurface            #343536   3.5980    188      0.6201  
+     ChromeButtonSurfaceHover       #444445   3.6190    12       0.5674  
+     ChromeButtonSurfacePressed     #525253   3.5962    12       0.5342  
+     ControlFace on Card #838589    #FCFDFD   3.6273    21       0.9795  
+     ControlFace on Panel #848588   #FCFCFC   3.5963    20       0.9785  
+     ButtonSurfaceOnCard #32353C    #898B8F   3.5982    13       0.4268  
+     TextPrimary 흰채움                #7F8081   3.5912    14       0.4766  
+
+================================================================================================
+J-4. 부수 발견 검산 — 밝기 애매 구간에서 흰쪽 우선이 만드는 것
+================================================================================================
+  바탕                             L        흰쪽해       대비       검은쪽해      대비       
+  PanelSurface                   0.0084   #616467   3.01     해없음       -        
+  CardSurface                    0.0136   #67696E   3.01     해없음       -        
+  CardSurfaceMuted               0.0090   #626468   3.01     해없음       -        
+  SubtleSurface                  0.0122   #65686C   3.01     해없음       -        
+  ThumbSurfaceLocked             0.0065   #5F6164   3.00     해없음       -        
+  InkContrastCharcoal 목탄무대       0.0211   #6F7175   3.01     해없음       -        
+  PortraitSurface 종이무대           0.8195   해없음       -        #868784   3.00     
+  검정 잉크 견본                       0.0000   #595959   3.00     해없음       -        
+  흰 잉크 견본                        1.0000   해없음       -        #959595   3.01     
+  Accent                         0.3846   해없음       -        #68542F   3.01     
+  ChromeButtonSurface            0.2575   #F0F0F1   3.00     #404142   3.01     
+  ChromeButtonSurfaceHover       0.3392   해없음       -        #4F5051   3.01     
+  ChromeButtonSurfacePressed     0.4342   해없음       -        #5D5E5F   3.01     
+  ControlFace on Card #838589    0.2355   #E8E8E9   3.00     #3B3C3E   3.01     
+  ControlFace on Panel #848588   0.2352   #E8E8E8   3.00     #3B3C3D   3.00     
+  ButtonSurfaceOnCard #32353C    0.0359   #7C7E82   3.01     해없음       -        
+  TextPrimary 흰채움                0.9032   해없음       -        #8C8D8F   3.01     
+
+  ※ 「해없음」이 한쪽에만 있으면 방향은 선택이 아니라 <b>강제</b>다.
+  ※ 양쪽 다 해가 있는 구간에서만 「흰쪽 우선」이 실제 선택으로 작동한다.

@@ -52,6 +52,17 @@ namespace StickMate.Core
         /// 비참여가 승인된 HardwareReaction/StressGauge와 다르다) 참여가 맞다. 한 사이클이 4초 안팎으로
         /// 짧아 락을 오래 붙들지 않는다.</summary>
         Archery,
+
+        // ==== 음악 반응 춤(2026-09-03 사용자 요청 "노래가 나오면 상호 반응해서 춤추는 동작") ====
+
+        /// <summary>음악 반응 춤 <b>에피소드 1회분</b>(States/DanceState.cs) — 참여 기준은 다른
+        /// 항목과 같다("ChangeState()로 단일 상태 슬롯을 다투는가"). Idle/Walk에서
+        /// StickmanStateId.Dance로 전이하므로 참여한다.
+        /// <para>★ <b>락을 잡는 단위가 「음악이 나오는 동안」이 아니라 「에피소드」인 것이 핵심</b>이다.
+        /// 3시간짜리 플레이리스트 내내 이 락을 잡으면 활쏘기·그라피티·창 도둑·청소부·블랙홀·
+        /// 창 크래시·투두·SULKY·가출·포모도로 포즈가 <b>전부 발동 불가</b>가 된다. 그래서 휴지
+        /// 구간에는 락도 상태도 잡지 않는다(docs/UX_MOTION_DANCE.md 4절).</para></summary>
+        Dance,
     }
 
     /// <summary>

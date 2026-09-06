@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace StickMate.Interaction
@@ -84,6 +85,16 @@ namespace StickMate.Interaction
         public const float ButtonHeight = 24f;
         public const float SegmentHeight = 22f;
 
+        /// <summary>글자를 직접 치는 칸의 크기(<see cref="SettingsCardBuilder.AddTextField"/>).
+        /// <para>폭 검산: 행 안쪽 폭은 <c>CardWidth − CardPadX × 2 = 628</c>이고 라벨 상자가 x=0에서
+        /// 420을 쓴다(<c>BeginRow</c>). 오른쪽 끝에 붙는 이 칸이 200이면 라벨과의 사이에 <b>8</b>이
+        /// 남는다 — <see cref="ControlGap"/>과 같은 값이라 다른 행과 같은 리듬이다.</para>
+        /// <para>높이 26은 <see cref="UiChrome.MinTargetSizePoints"/>(24) 위다. 행 자체가 44라
+        /// 실제 클릭 타깃은 더 크지만, 칸을 하한 아래로 두면 "보이는 것과 누를 수 있는 것"이
+        /// 갈라진다.</para></summary>
+        public const float TextFieldWidth = 200f;
+        public const float TextFieldHeight = 26f;
+
         // ==================== 칩 안쪽 여백 — ★ 글자 수 모형을 대체한 자리 ====================
         //
         // ★★ 2026-09-03 — 세그먼트/버튼 폭이 <b>«24f + 글자수 × 9f»</b>였다. 그 9f는 한글 자폭
@@ -137,17 +148,58 @@ namespace StickMate.Interaction
         public static Color TrackOnPanel => UiChrome.Flatten(UiChrome.TrackBackground, UiChrome.PanelSurface);
         public static Color OutlineOnCard => UiChrome.Flatten(UiChrome.PanelBorder, UiChrome.CardSurface);
 
-        /// <summary>카드보다 <b>밝은</b> 버튼 표면. 시안의 <c>rgba(255,255,255,0.06)</c> 자리인데,
-        /// 새 색을 만들지 않으려고 기존 토큰(CardBorder = 흰색 α0.10)을 카드 위에 합성해 만든다.</summary>
+        /// <summary>카드보다 <b>밝은</b> 표면. 시안의 <c>rgba(255,255,255,0.06)</c> 자리인데,
+        /// 새 색을 만들지 않으려고 기존 토큰(CardBorder = 흰색 α0.10)을 카드 위에 합성해 만든다.
+        /// <para>★ 2026-09-06 — 이제 <b>입력칸 전용</b>이다. 「누를 수 있는 슬래브」는
+        /// <see cref="ControlFaceOnCard"/>로 올라갔지만 <b>입력칸은 따라가지 않는다</b>:
+        /// 이 면을 밝히면 입력 글자가 11.10 → 3.34, 플레이스홀더가 3.94 → <b>1.18</b>로 지워진다
+        /// (정책 §7-3 F2). 입력칸에서 부족한 것은 글자가 아니라 「상자가 있다는 사실」이다.</para></summary>
         public static Color ButtonSurfaceOnCard => UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface);
 
-        /// <summary>같은 버튼 표면을 <b>창 바탕에 직접</b> 얹을 때(2026-09-02: 푸터로 올라간 [지금 종료]).
-        /// 밑에 깔린 색이 CardSurface가 아니라 PanelSurface이므로 합성 상대가 다르다 — 위 "두 벌이다"
-        /// 규칙 그대로다. 카드용 값을 그대로 쓰면 창 바탕 위에서 버튼이 <b>한 단 어둡게</b> 앉는다.</summary>
+        /// <summary>같은 표면을 <b>창 바탕에 직접</b> 얹을 때. 밑에 깔린 색이 CardSurface가 아니라
+        /// PanelSurface이므로 합성 상대가 다르다 — 위 "두 벌이다" 규칙 그대로다.
+        /// <para>★ 2026-09-06 — <b>지금 이 값을 칠하는 자리는 없다</b>(푸터 [지금 종료]가
+        /// <see cref="ControlFaceOnPanel"/>로 올라갔다). 지우지 않는 이유는 둘이다:
+        /// (가) <see cref="ButtonSurfaceOnCard"/>의 <b>짝</b>이라 창 바탕 위에 한 단 들뜬 면이
+        /// 다시 필요해지면 여기서 파생해야 하고(그때 손으로 합성하면 두 벌이 된다),
+        /// (나) <c>UiChrome.RaisedTextBackdrops</c>가 이 값을 <b>글자가 얹히는 바탕</b>으로
+        /// 선언하고 있어 잉크 사다리 검사가 이 면을 계속 지켜본다.</para></summary>
         public static Color ButtonSurfaceOnPanel => UiChrome.Flatten(UiChrome.CardBorder, UiChrome.PanelSurface);
 
         /// <summary>창 바탕에 직접 얹히는 버튼의 테두리.</summary>
         public static Color OutlineOnPanel => UiChrome.Flatten(UiChrome.PanelBorder, UiChrome.PanelSurface);
+
+        /// <summary>
+        /// ★★ <b>F1 — 「면이 곧 어포던스」인 슬래브의 면</b>(2026-09-06,
+        /// <c>docs/UI_ALPHA_BLEED_POLICY.md</c> §7-2/§7-3). 스텝 <c>[+][−]</c> · 행 버튼 ·
+        /// 푸터 <c>[지금 종료]</c> · 레일 <c>[▲][▼]</c>가 여기 앉는다.
+        ///
+        /// <para><b>왜 <see cref="ButtonSurfaceOnCard"/>로는 안 되나</b>: 그 면은 카드 대비
+        /// <b>1.35 : 1</b>(창 위 1.32)이라 "누를 수 있는 칸"이 면만으로는 <b>보이지 않는다</b>.
+        /// 그런데 <b>3.60으로 올릴 수는 없다</b> — design-art 실측: 면 3.30~3.93 구간은 그 위의
+        /// 잉크가 동시에 죽는 <b>골짜기</b>이고, 이 저장소가 선언한
+        /// <see cref="UiChrome.ControlFaceContrastTarget"/> 3.60이 정확히 그 안이다. 답은 값이 아니라
+        /// <b>규칙</b>이다: 두 제약(면 ≥ 목표, 그 면 위 잉크 ≥ 목표)을 동시에 푸는 최소 혼합.</para>
+        ///
+        /// <para><b>새 hex 0개</b>다. 이 앱은 같은 문제를 이미 두 번 풀었고 두 번 다 같은 문을 썼다 —
+        /// 창 크롬 칩(<see cref="UiChrome.ChromeButtonSurface"/>)과 카드 [착용] 칩
+        /// (<see cref="UiChrome.CardActionSurface"/>). 설정창만 다른 밝기로 가면 이 앱에
+        /// "누를 수 있는 것"의 시각 언어가 두 벌이 된다.</para>
+        ///
+        /// <para>★ <b>이 면 위의 글자는 반드시 <see cref="UiChrome.InkOnSurface"/>로 받아라.</b>
+        /// 사다리 잉크는 여기서 전부 무너진다(Title 3.34 / Body 1.77 / Meta 1.18).
+        /// <b>면만 바꾸면 화면이 지워진다</b> — 면과 잉크는 한 쌍이다.</para>
+        ///
+        /// <para>★ <b>속성(=&gt;)이 아니라 필드인 이유</b>: 위 토큰들은 <see cref="UiChrome.Flatten"/>
+        /// 한 번이라 매번 계산해도 공짜지만, <see cref="UiChrome.ControlFaceOnSurface"/>는 최대 1025회
+        /// 격자 탐색이다. 그 함수의 자기 주석이 <i>"표면을 만들 때 한 번 부르고 결과를 상수/필드에
+        /// 담아 쓸 것"</i>이라고 못 박고 있다.</para>
+        /// </summary>
+        public static readonly Color ControlFaceOnCard = UiChrome.ControlFaceOnSurface(UiChrome.CardSurface);
+
+        /// <summary>같은 슬래브를 <b>창 바탕에 직접</b> 얹을 때(푸터 [지금 종료] · 오른쪽 레일 칩).
+        /// 밑에 깔린 색이 다르면 결과도 달라야 한다는 이 절의 "두 벌이다" 규칙 그대로다.</summary>
+        public static readonly Color ControlFaceOnPanel = UiChrome.ControlFaceOnSurface(UiChrome.PanelSurface);
 
         /// <summary>선택된 세그먼트/스위치가 켜졌을 때의 강조 면. Accent는 α=1이라 합성이 필요 없다.</summary>
         public static Color AccentSolid => UiChrome.Accent;
@@ -571,8 +623,9 @@ namespace StickMate.Interaction
         /// 나오면 어긋나는 것이 <b>물리적으로 불가능</b>해진다.</para>
         ///
         /// <para>비활성일 때 <b>어느 것이 골라져 있었는지</b>는 사라지지 않는다: 면이 한 단 들뜨고
-        /// (<c>ButtonSurfaceOnCard</c>) 글자가 굵어진다. 스위치가 꺼진 채로도 손잡이 <b>위치</b>로
-        /// 값을 말하는 것과 같은 규칙이다.</para>
+        /// (2026-09-06부터 <see cref="SettingsControls.ControlFaceOnCard"/> — F1과 같은 슬래브다)
+        /// 글자가 굵어진다. 스위치가 꺼진 채로도 손잡이 <b>위치</b>로 값을 말하는 것과 같은 규칙이다.
+        /// 서열은 그대로 산다: 활성 = 강조색 6.83 &gt; 비활성 = 4.49 &gt; 안 고름 = 1.00.</para>
         /// </summary>
         public void Apply()
         {
@@ -582,17 +635,24 @@ namespace StickMate.Interaction
                 bool active = i == Index;
 
                 // ① 면을 먼저 정한다. 비활성이면 강조색은 <b>어디에도 남지 않는다</b>.
+                // ★ 2026-09-06 (정책 §7-5) — 비활성 <b>활성</b>칩의 면이 F1 슬래브(4.49:1)로 올라간다.
+                //   의도대로다: 활성 = 강조색 6.83 > 비활성 = 4.49 > 안 고름 = 1.00으로 서열이 산다.
+                //   잉크는 아래 ②가 이미 <b>면에서</b> 뽑으므로 자동으로 따라온다.
                 Color face = Interactable
                     ? (active ? SettingsControls.AccentSolid : UiChrome.CardSurface)
-                    : (active ? SettingsControls.ButtonSurfaceOnCard : UiChrome.CardSurface);
+                    : (active ? SettingsControls.ControlFaceOnCard : UiChrome.CardSurface);
 
                 if (Surfaces[i] != null) Surfaces[i].color = face;
 
                 if (Outlines[i] != null)
                 {
+                    // ★ F4 — 안 고른 칩은 <b>테두리가 유일한 분리막</b>이다(면이 카드와 1.00:1).
+                    //   기준 바탕은 <b>카드</b>다(생성부 AddSegment와 같은 값이어야 두 벌이 안 된다).
+                    //   비활성 활성칩(밝은 면) 위에서는 이 링이 흐려지지만, 거기서는 <b>면</b>이
+                    //   이미 상태를 말하고 있다.
                     Outlines[i].color = Interactable && active
                         ? SettingsControls.AccentSolid
-                        : SettingsControls.OutlineOnCard;
+                        : UiChrome.EdgeOnSurface(UiChrome.CardSurface);
                 }
 
                 // ② 글자는 <b>그 면에서</b> 나온다. 콜사이트가 색을 고르지 않는다.
@@ -602,6 +662,54 @@ namespace StickMate.Interaction
                     Labels[i].fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
                 }
             }
+        }
+    }
+
+    // ================================================================================
+    // 부품 5 — 글자를 직접 치는 칸 (2026-09-06)
+    // ================================================================================
+
+    /// <summary>
+    /// <see cref="SettingsCardBuilder.AddTextField"/>가 만든 입력칸 한 벌.
+    ///
+    /// <para><b>값을 들고 있지 않는다.</b> 이 창의 다른 부품(<see cref="SettingsToggle"/> 등)은
+    /// 모델과 화면 사이에서 자기 상태를 캐시하지만, 글자 칸은 <see cref="InputField"/> 자체가
+    /// 이미 그 역할을 한다. 한 겹 더 캐시하면 "두 곳이 같은 사실을 각자 계산하는" 상태가 되고,
+    /// 그건 이 라운드가 정확히 피하려던 것이다(정보창과 설정창이 같은 이름을 보여준다).</para>
+    /// </summary>
+    public sealed class SettingsTextField
+    {
+        public InputField Input;
+        public RectTransform Rect;
+
+        /// <summary>지금 사용자가 이 칸에 글자를 치고 있는가 — <b>덮어쓰기 방어</b>에 쓴다.
+        /// 다른 창이 이름을 바꿔 통지가 날아왔을 때 이 칸을 그대로 갈아치우면 타이핑 중인 글자가
+        /// 사라진다.</summary>
+        public bool IsFocused => Input != null && Input.isFocused;
+
+        /// <summary><c>onEndEdit</c>를 <b>흘리지 않고</b> 표시값만 맞춘다. <see cref="InputField.text"/>
+        /// 세터는 <c>onValueChanged</c>만 흘리므로 커밋 콜백이 되돌아 불리지 않는다 — 그래도
+        /// "조용히"를 이름에 박아 두는 이유는 다른 부품(<c>SetIndexSilently</c> 등)과 같은 규약을
+        /// 쓰기 위해서다.</summary>
+        public void SetTextSilently(string value)
+        {
+            if (Input == null) return;
+            string next = value ?? string.Empty;
+            if (string.Equals(Input.text, next, StringComparison.Ordinal)) return;
+            Input.text = next;
+        }
+
+        /// <summary>이 칸에 포커스를 준다(전역 폴링 클릭 경로). <see cref="EventSystem"/>이 없으면
+        /// 아무 일도 하지 않는다 — 창이 <c>EnsureEventSystem()</c>으로 이미 보강하지만, 없는 상태를
+        /// 예외로 만들지는 않는다.</summary>
+        public void Focus()
+        {
+            if (Input == null) return;
+            if (EventSystem.current != null)
+            {
+                EventSystem.current.SetSelectedGameObject(Input.gameObject);
+            }
+            Input.ActivateInputField();
         }
     }
 
@@ -660,18 +768,29 @@ namespace StickMate.Interaction
             if (Borders == null) return;
             for (int i = 0; i < Borders.Length; i++)
             {
-                if (Surfaces != null && i < Surfaces.Length && Surfaces[i] != null
-                    && BaseColors != null && i < BaseColors.Length)
-                {
-                    Surfaces[i].color = Interactable
-                        ? BaseColors[i]
-                        : SettingsControls.Dimmed(BaseColors[i]);
-                }
+                bool hasFill = Surfaces != null && i < Surfaces.Length && Surfaces[i] != null
+                    && BaseColors != null && i < BaseColors.Length;
+
+                // ★ 2026-09-06 (정책 §7-3 F4) — 링의 바탕은 <b>지금 칠해진 견본 채움</b>이다.
+                //   비활성이면 채움이 카드 쪽으로 접히므로(Dimmed) 링의 기준도 함께 움직여야 한다.
+                Color fill = hasFill
+                    ? (Interactable ? BaseColors[i] : SettingsControls.Dimmed(BaseColors[i]))
+                    : UiChrome.CardSurface;
+
+                if (hasFill) Surfaces[i].color = fill;
 
                 if (Borders[i] == null) continue;
-                Borders[i].color = i == Index
-                    ? (Interactable ? UiChrome.TextPrimary : SettingsControls.OutlineOnCard)
-                    : SettingsControls.OutlineOnCard;
+
+                // 고른 것: 흰 링은 <b>흰 견본에서 1.10:1로 사라진다</b> — 밝은 채움에서는 목탄으로
+                // 뒤집는다(새 색 0개). 안 고른 것: 테두리의 문이 방향과 세기를 함께 고른다
+                // (목표 대비는 그 함수가 들고 있다 — 여기에 숫자를 베끼면 목표가 바뀌는 날 갈라진다).
+                // ★ 기준은 하한(3.0)이 아니라 <b>테두리의 목표</b>다 — 바로 아래 비선택 링이 그 목표를
+                //   맞추므로, 하한으로 재면 「고른 것」이 「안 고른 것」보다 흐린 구간이 생긴다.
+                bool selected = i == Index && Interactable;
+                Borders[i].color = selected
+                    ? (UiChrome.ContrastRatio(UiChrome.TextPrimary, fill) >= UiChrome.EdgeContrastTarget
+                        ? UiChrome.TextPrimary : UiChrome.InkContrastCharcoal)
+                    : UiChrome.EdgeOnSurface(fill);
             }
         }
     }
@@ -701,10 +820,42 @@ namespace StickMate.Interaction
     /// </summary>
     public sealed class SettingsRowGate
     {
+        /// <summary>
+        /// ★★ <b>글자 하나와 그 글자가 올라앉은 면의 쌍</b>(2026-09-06,
+        /// <c>docs/UI_ALPHA_BLEED_POLICY.md</c> §7-3 ★).
+        ///
+        /// <para><b>왜 <see cref="Text"/>만으로는 안 되나</b>: 게이트는 등록된 글자에 잉크를
+        /// <b>일괄 대입</b>한다. 등록된 글자가 전부 카드 바탕 위에 있을 때는 그게 옳았지만,
+        /// F1 버튼 라벨이 <see cref="SettingsControls.ControlFaceOnCard"/>(<c>#838589</c>) 위로
+        /// 올라가면서 같은 대입이 게이트가 내려가는 순간 <b>1.77 : 1</b>을 만든다 —
+        /// 이 저장소가 2026-09-02에 이미 겪은 <b>1.28 : 1 사고와 같은 형태</b>다.</para>
+        ///
+        /// <para>고치는 방법은 게이트에 예외를 다는 것이 아니라 <b>게이트가 면을 알게 하는 것</b>이다.
+        /// 면을 알면 잉크는 <see cref="UiChrome.InkOnSurface"/> 한 문에서 나오고, 카드 위 글자는
+        /// <b>지금까지와 값이 완전히 같다</b>(어두운 면에서 그 문은 사다리를 그대로 돌려준다 —
+        /// <c>InkOnSurfaceTests.어두운_면에서는_사다리를_그대로_돌려준다_위계_보존</c>이 잠근다).</para>
+        /// </summary>
+        public readonly struct GatedInk
+        {
+            public readonly Text Label;
+
+            /// <summary>이 글자가 <b>실제로</b> 올라앉은 불투명 면. 잉크는 여기서 파생된다.</summary>
+            public readonly Color Face;
+
+            public GatedInk(Text label, Color face)
+            {
+                Label = label;
+                Face = face;
+            }
+
+            /// <summary>설정 행의 기본형 — 글자가 <b>카드 바탕</b> 위에 직접 있다(행 라벨·값·캡션).</summary>
+            public static GatedInk OnCard(Text label) => new GatedInk(label, UiChrome.CardSurface);
+        }
+
         private sealed class Row
         {
-            public Text[] TitleInk;
-            public Text[] BodyInk;
+            public GatedInk[] TitleInk;
+            public GatedInk[] BodyInk;
             public Text Caption;
             public string BaseCaption;
             public Action<bool> SetInteractable;
@@ -724,7 +875,7 @@ namespace StickMate.Interaction
             _disabledNote = disabledNote;
         }
 
-        internal void Register(Text[] titleInk, Text[] bodyInk, Text caption, string baseCaption,
+        internal void Register(GatedInk[] titleInk, GatedInk[] bodyInk, Text caption, string baseCaption,
             Action<bool> setInteractable)
         {
             _rows.Add(new Row
@@ -747,12 +898,13 @@ namespace StickMate.Interaction
             Apply();
         }
 
-        /// <summary>값이 실제로 바뀐 때만 불린다(하루 종일 켜져 있는 앱 — 매 프레임 색을 다시 쓰지 않는다).</summary>
+        /// <summary>값이 실제로 바뀐 때만 불린다(하루 종일 켜져 있는 앱 — 매 프레임 색을 다시 쓰지 않는다).
+        /// <para>★ 2026-09-06 — <b>잉크를 미리 한 색으로 계산해 두지 않는다.</b> 등록된 글자마다
+        /// 올라앉은 면이 다를 수 있고(F1 버튼 라벨은 <c>#838589</c> 위다), 면이 다르면 답도 달라야 한다.
+        /// 루프 밖에서 <c>InkTitle(Enabled)</c> 한 색을 뽑아 전부에 대입하던 것이 정확히
+        /// 「1.28 : 1 사고」의 형태였다.</para></summary>
         public void Apply()
         {
-            Color title = UiChrome.InkTitle(Enabled);
-            Color body = UiChrome.InkBody(Enabled);
-
             for (int r = 0; r < _rows.Count; r++)
             {
                 Row row = _rows[r];
@@ -760,12 +912,20 @@ namespace StickMate.Interaction
                 if (row.TitleInk != null)
                 {
                     for (int i = 0; i < row.TitleInk.Length; i++)
-                        if (row.TitleInk[i] != null) row.TitleInk[i].color = title;
+                    {
+                        GatedInk ink = row.TitleInk[i];
+                        if (ink.Label == null) continue;
+                        ink.Label.color = UiChrome.InkOnSurface(ink.Face, UiChrome.InkRole.Title, Enabled);
+                    }
                 }
                 if (row.BodyInk != null)
                 {
                     for (int i = 0; i < row.BodyInk.Length; i++)
-                        if (row.BodyInk[i] != null) row.BodyInk[i].color = body;
+                    {
+                        GatedInk ink = row.BodyInk[i];
+                        if (ink.Label == null) continue;
+                        ink.Label.color = UiChrome.InkOnSurface(ink.Face, UiChrome.InkRole.Body, Enabled);
+                    }
                 }
                 if (row.Caption != null)
                 {
@@ -937,7 +1097,7 @@ namespace StickMate.Interaction
                 changed?.Invoke(toggle.On);
             }, null, () => toggle.Interactable);
 
-            gate?.Register(new[] { labelText }, null, captionText, caption,
+            gate?.Register(new[] { SettingsRowGate.GatedInk.OnCard(labelText) }, null, captionText, caption,
                 onGate => { toggle.Interactable = onGate; toggle.Apply(); });
 
             return toggle;
@@ -1010,9 +1170,16 @@ namespace StickMate.Interaction
             _host?.Register(hit.rectTransform, hit, key + ".track", () => { },
                 cursor => slider.SetFromTrackPoint(cursor), clickable);
 
+            // ★ 스텝 글리프는 <b>카드가 아니라 F1 슬래브 위</b>에 있다 — 면을 함께 등록하지 않으면
+            //   게이트가 내려가는 순간 #838589 위에서 1.77:1이 된다(정책 §7-3 ★).
             gate?.Register(
-                new[] { labelText, StepGlyph(plus), StepGlyph(minus) },
-                new[] { valueLabel },
+                new[]
+                {
+                    SettingsRowGate.GatedInk.OnCard(labelText),
+                    new SettingsRowGate.GatedInk(StepGlyph(plus), SettingsControls.ControlFaceOnCard),
+                    new SettingsRowGate.GatedInk(StepGlyph(minus), SettingsControls.ControlFaceOnCard),
+                },
+                new[] { SettingsRowGate.GatedInk.OnCard(valueLabel) },
                 captionText, caption,
                 on => { slider.Interactable = on; slider.Apply(); });
 
@@ -1030,11 +1197,14 @@ namespace StickMate.Interaction
         private static Image AddStepButton(RectTransform row, string name, string glyph, float xFromRight,
             float y, bool enabled)
         {
-            Image surface = UiChrome.AddSurface(row, name, SettingsControls.ButtonSurfaceOnCard, 5);
+            // ★ F1(2026-09-06) — 면이 곧 어포던스인 슬래브. 면과 잉크를 <b>한 번에</b> 바꾼다:
+            //   면만 올리면 그 위의 사다리 잉크(3.34:1)가 지워진다(정책 §2-E).
+            Color face = SettingsControls.ControlFaceOnCard;
+            Image surface = UiChrome.AddSurface(row, name, face, 5);
             SettingsControls.PlaceTopRight(surface.rectTransform, xFromRight, y,
                 SettingsControls.StepButton, SettingsControls.StepButton);
             Text label = UiChrome.AddText(surface.rectTransform, "Label", UiChrome.FontBody,
-                TextAnchor.MiddleCenter, UiChrome.InkTitle(enabled));
+                TextAnchor.MiddleCenter, UiChrome.InkOnSurface(face, UiChrome.InkRole.Title, enabled));
             UiChrome.Stretch(label.rectTransform);
             label.text = glyph;
             return surface;
@@ -1065,9 +1235,12 @@ namespace StickMate.Interaction
                 // ★ 2026-09-03 — 글자 폭을 <b>폰트에게 묻는다</b>(옛 식: 24f + 글자수 × 9f).
                 //   상자를 먼저 놓고 글자를 넣던 순서를 뒤집었다: 글자를 먼저 만들어 재고, 그 값으로
                 //   상자를 놓는다. 형제 순서(면 → 테두리 → 글자)는 그대로라 겹 순서는 안 바뀐다.
+                // ★ F4(2026-09-06, 정책 §7-3) — 안 고른 칩의 <b>면</b>은 올리지 않는다(고른 칩과의 차이가
+                //   「면의 유무」로 읽혀야 한다). 대신 <b>테두리가 분리막을 진다</b> — 옛 OutlineOnCard는
+                //   카드 대비 1.66이었다. 새 값은 EdgeOnSurface가 정한다(숫자를 여기 베끼지 않는다).
                 Image surface = UiChrome.AddSurface(row, "Seg" + i, UiChrome.CardSurface, UiChrome.RadiusChip);
                 Image outline = UiChrome.AddOutline(surface.rectTransform, "Outline",
-                    SettingsControls.OutlineOnCard, UiChrome.RadiusChip);
+                    UiChrome.EdgeOnSurface(UiChrome.CardSurface), UiChrome.RadiusChip, 2);
                 Text text = UiChrome.AddText(surface.rectTransform, "Label", UiChrome.FontLabel,
                     TextAnchor.MiddleCenter, UiChrome.TextSecondary);
                 float width = SettingsControls.SegmentPadX * 2f
@@ -1089,7 +1262,7 @@ namespace StickMate.Interaction
 
             segment.SetIndexSilently(index);
 
-            gate?.Register(new[] { labelText }, null, captionText, caption,
+            gate?.Register(new[] { SettingsRowGate.GatedInk.OnCard(labelText) }, null, captionText, caption,
                 on => { segment.Interactable = on; segment.Apply(); });
 
             return segment;
@@ -1121,11 +1294,14 @@ namespace StickMate.Interaction
             for (int i = captions.Length - 1; i >= 0; i--)
             {
                 // 실측으로 잡는 이유는 위 AddSegment의 주석 참고(옛 식: 26f + 글자수 × 9f).
-                Image surface = UiChrome.AddSurface(row, "Btn" + i, SettingsControls.ButtonSurfaceOnCard,
+                // ★ F1(2026-09-06) — 면 4.49:1 + 그 면에서 파생한 잉크 5.19:1. 짝으로 바꾼다.
+                Image surface = UiChrome.AddSurface(row, "Btn" + i, SettingsControls.ControlFaceOnCard,
                     UiChrome.RadiusChip);
                 UiChrome.AddOutline(surface.rectTransform, "Outline", SettingsControls.OutlineOnCard, UiChrome.RadiusChip);
                 Text text = UiChrome.AddText(surface.rectTransform, "Label", UiChrome.FontLabel,
-                    TextAnchor.MiddleCenter, UiChrome.InkTitle(enabled), bold: true);
+                    TextAnchor.MiddleCenter,
+                    UiChrome.InkOnSurface(SettingsControls.ControlFaceOnCard, UiChrome.InkRole.Title, enabled),
+                    bold: true);
                 // ★ 볼드다. 볼드는 같은 글자라도 폭이 넓으므로 <b>도색한 뒤에</b> 잰다 —
                 //   순서를 바꾸면 재는 것과 그리는 것이 달라진다(그게 이 라운드가 고치는 병이다).
                 float width = SettingsControls.ButtonPadX * 2f
@@ -1143,11 +1319,23 @@ namespace StickMate.Interaction
             }
 
             // ★ 게이트가 내렸을 때의 모습은 <b>enabled:false로 태어난 행과 픽셀 단위로 같아야 한다</b>.
-            //   그 행은 면(ButtonSurfaceOnCard)을 그대로 두고 잉크만 InkTitle(false)로 죽인다 — 여기서
+            //   그 행은 면(ControlFaceOnCard)을 그대로 두고 <b>잉크를 그 면에서 다시 뽑는다</b> — 여기서
             //   면까지 따로 어둡게 하면 같은 상태가 두 가지 모습을 갖고, 대비 하한 검사도 두 벌이 된다.
-            var titleInk = new Text[buttonLabels.Length + 1];
-            titleInk[0] = labelText;
-            System.Array.Copy(buttonLabels, 0, titleInk, 1, buttonLabels.Length);
+            //
+            //   ★★ 2026-09-06 — 라벨을 <b>면과 함께</b> 등록한다(정책 §7-3 ★). 예전에는 Text만 넘겼고
+            //     게이트가 거기에 InkTitle(Enabled)를 일괄 대입했다. 라벨이 카드 위에 있을 때는 그게
+            //     옳았지만 F1로 면이 #838589가 되는 순간 그 대입은 <b>1.77 : 1</b>을 만든다 —
+            //     2026-09-02 「1.28 : 1 사고」의 재발 형태 그대로다.
+            //   ※ 이 면에서는 InkOnSurface가 활성/비활성 모두 같은 어두운 잉크(#0B1016 5.19:1)를
+            //     돌려준다. 그게 옳다 — 이 면 위에 4.5:1을 넘는 잉크는 그 하나뿐이고, "못 쓴다"는
+            //     행 라벨과 사유 한 줄이 말한다(이 창의 다른 컨트롤과 같은 규칙).
+            var titleInk = new SettingsRowGate.GatedInk[buttonLabels.Length + 1];
+            titleInk[0] = SettingsRowGate.GatedInk.OnCard(labelText);
+            for (int i = 0; i < buttonLabels.Length; i++)
+            {
+                titleInk[i + 1] = new SettingsRowGate.GatedInk(buttonLabels[i],
+                    SettingsControls.ControlFaceOnCard);
+            }
             gate?.Register(titleInk, null, captionText, caption, onGate => rowInteractable = onGate);
 
             return results;
@@ -1179,8 +1367,11 @@ namespace StickMate.Interaction
                 Image surface = UiChrome.AddSurface(row, "Swatch" + i, colors[i], UiChrome.RadiusChip);
                 SettingsControls.PlaceTopRight(surface.rectTransform, x, centerY,
                     SettingsControls.SwatchSize, SettingsControls.SwatchSize);
+                // ★ F4(2026-09-06, 정책 §7-3/§4-3) — 이 테두리는 <b>견본 위</b>에 있다. 바탕이
+                //   검정일 수도 흰색일 수도 있으므로 고정 토큰은 둘 중 하나에서 반드시 틀린다
+                //   (옛 값 OutlineOnCard: 검정 견본 1.44 · 흰 견본 <b>1.00</b>). 방향까지 규칙이 고른다.
                 Image border = UiChrome.AddOutline(surface.rectTransform, "Border",
-                    SettingsControls.OutlineOnCard, UiChrome.RadiusChip, 2);
+                    UiChrome.EdgeOnSurface(colors[i]), UiChrome.RadiusChip, 2);
 
                 swatches.Rects[i] = surface.rectTransform;
                 swatches.Borders[i] = border;
@@ -1195,6 +1386,74 @@ namespace StickMate.Interaction
 
             swatches.SetIndexSilently(index);
             return swatches;
+        }
+
+        /// <summary>
+        /// ★ <b>글자를 직접 치는 행</b> — 2026-09-06 사용자 신고(<i>"캐릭터설정창에서 캐릭터 이름도
+        /// 설정할수 있어야 하는데 안됨"</i>)로 신설. 지금 유일한 사용처는 [캐릭터] 탭의 이름이다.
+        ///
+        /// <para><b>왜 「값 → 누르면 입력칸」이 아니라 항상 입력칸인가</b>: 정보창의 인라인 편집이
+        /// 정확히 그 형태였고, 그것이 이번 신고의 원인이었다 — 쉬는 상태가 <b>그냥 글자</b>라
+        /// 눌러 볼 이유가 없었다. 입력칸을 늘 그려 두면 상태 기계도, 발견성 문제도 함께 사라진다.</para>
+        ///
+        /// <para><b>uGUI <see cref="Button"/>을 붙이지 않는다</b>(<c>target: null</c>). <see cref="InputField"/>는
+        /// 그 자체가 <c>Selectable</c>이라 uGUI 클릭은 스스로 처리한다. 같은 오브젝트에 Button을 얹으면
+        /// 두 Selectable이 같은 누름을 다투고, 캐럿을 찍으려는 클릭이 포커스 토글로 먹힌다.
+        /// 대신 이 창의 <b>전역 폴링</b> 경로에는 등록한다 — 앱이 아직 활성화되지 않은 첫 클릭은
+        /// uGUI에 도착하지 않기 때문이다(이 창의 다른 부품과 같은 사정).</para>
+        ///
+        /// <para><paramref name="committed"/>는 <b>Enter 또는 포커스 이탈</b>에서 한 번 불린다
+        /// (<c>onEndEdit</c>). 값 정규화는 여기서 하지 않는다 — 그것은 모델의 일이고, 호출부가
+        /// 정규화된 결과를 <see cref="SettingsTextField.SetTextSilently"/>로 되돌려 적는다.</para>
+        /// </summary>
+        public SettingsTextField AddTextField(string key, string label, string value, string placeholder,
+            int characterLimit, Action<string> committed, string caption = null)
+        {
+            RectTransform row = BeginRow(key, label, caption, null, true, out float rowHeight);
+
+            // ★★ F2(2026-09-06, 정책 §7-3) — <b>면은 올리지 않는다.</b> 실측이 반대로 말한다:
+            //   이 면을 F1 슬래브(#838589)로 올리면 입력 글자가 11.10 → 3.34, 플레이스홀더가
+            //   3.94 → <b>1.18</b>로 무너진다. 입력칸에서 부족한 것은 글자가 아니라
+            //   <b>"상자가 있다는 사실"</b>이고, 그건 테두리의 일이다.
+            Image surface = UiChrome.AddSurface(row, "Field", SettingsControls.ButtonSurfaceOnCard,
+                UiChrome.RadiusChip);
+            SettingsControls.PlaceTopRight(surface.rectTransform, 0f,
+                -(rowHeight - SettingsControls.TextFieldHeight) * 0.5f,
+                SettingsControls.TextFieldWidth, SettingsControls.TextFieldHeight);
+            // 테두리는 옛 1.66에서 <b>EdgeOnSurface가 정한 값</b>으로, 두께는 1 → <b>2</b>.
+            // 두께를 올리는 이유: 배율 1.0에서 1pt는
+            // 물리 1픽셀이고, Windows 125/150/175%에서는 반 픽셀에 걸린다(견본 테두리가 이미 2다).
+            UiChrome.AddOutline(surface.rectTransform, "Outline",
+                UiChrome.EdgeOnSurface(UiChrome.CardSurface), UiChrome.RadiusChip, 2);
+
+            Text text = UiChrome.AddText(surface.rectTransform, "Text", UiChrome.FontBody,
+                TextAnchor.MiddleLeft, UiChrome.TextPrimary);
+            UiChrome.Stretch(text.rectTransform);
+            text.rectTransform.offsetMin = new Vector2(UiChrome.Space2, 0f);
+            text.rectTransform.offsetMax = new Vector2(-UiChrome.Space2, 0f);
+            text.supportRichText = false;
+
+            Text hint = UiChrome.AddText(surface.rectTransform, "Placeholder", UiChrome.FontBody,
+                TextAnchor.MiddleLeft, UiChrome.InkMeta);
+            UiChrome.Stretch(hint.rectTransform);
+            hint.rectTransform.offsetMin = new Vector2(UiChrome.Space2, 0f);
+            hint.rectTransform.offsetMax = new Vector2(-UiChrome.Space2, 0f);
+            hint.text = placeholder ?? string.Empty;
+            hint.fontStyle = FontStyle.Italic;
+
+            var input = surface.gameObject.AddComponent<InputField>();
+            input.targetGraphic = surface;
+            input.textComponent = text;
+            input.placeholder = hint;
+            input.characterLimit = characterLimit;
+            input.lineType = InputField.LineType.SingleLine;
+
+            var field = new SettingsTextField { Input = input, Rect = surface.rectTransform };
+            field.SetTextSilently(value);
+            input.onEndEdit.AddListener(v => committed?.Invoke(v));
+
+            _host?.Register(surface.rectTransform, null, key, () => field.Focus());
+            return field;
         }
 
         /// <summary>

@@ -67,6 +67,7 @@ namespace StickMate.Tests.EditMode
             (StickmanStateId.ThrowTumble, 24),
             (StickmanStateId.Archery, 25),
             (StickmanStateId.GroundLossHang, 26),
+            (StickmanStateId.Dance, 27),
         };
 
         [Test]
