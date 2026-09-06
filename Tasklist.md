@@ -25469,3 +25469,11 @@ U-43(구 미결사항 "상점이 요구레벨 이전에도 파는가")이 코드
 **검증**: xcheck osx/win 5/5 0에러. EditMode전량 2539건 실패0(85스킵). PlayMode집중포즈10건 통과. **실기 macOS재빌드(22:34)+캡처로 상완분리·수평전완 육안확인, design-motion 렌더예측과 일치.**
 
 **리더확인**: 22:34 재빌드는 공유산출물(다른라운드가 그이전 빌드로 캡처중이었으면 재확인필요 — 이후 이펙트없음은퇴 수정이 22:37경 착지했으니 최종 통합재빌드 필요). **백로그**: docs/UX_MOTION_FOCUS_SESSION.md 3-4/6절 각도표가 아직 옛값 정본처럼 서술(design-motion 소관, 저우선순위).
+
+## [리더] Windows 빌드 생성 + 원격 푸시 완료
+
+`BuildStandalone.PerformBuildWindows` 배치모드 실행 — **성공, 에러 0건, 경고4건(전부 기존/사소, 빌드차단 아님)**, 산출물 `Builds/Windows/StickMate.exe`(88.8MB, D3D12/UnityPlayer.dll/StickMate_Data 전부 정상 생성 확인). `Builds/`는 gitignore 대상이라 실행파일 자체는 커밋 안 됨(관례).
+
+**중요 제약(코드 자체 문서화된 한계)**: 이 macOS 개발머신에서는 .exe 크로스컴파일까지만 가능하고, 투명창/항상위/클릭관통이 실제로 동작하는지는 검증 불가 — 최종 실동작 확인은 사용자가 실제 Windows 머신에서 수행 필요.
+
+**git push 완료**: 로컬 6커밋(0229f52~912fd8c, 오늘밤 전체 작업)을 origin/main으로 푸시(`1eb0e2b..912fd8c`). 로컬-원격 완전동기화 확인.
