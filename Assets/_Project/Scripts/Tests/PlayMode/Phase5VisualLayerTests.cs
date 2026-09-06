@@ -40,7 +40,9 @@ namespace StickMate.Tests.PlayMode
     {
         private const string StressContainerName = "StressMoodOverlay";
         private const string RunawayContainerName = "RunawayOverlay";
-        private const string FocusContainerName = "FocusWatchRing";
+        /// <summary>★ 2026-09-06에 <b>삭제된</b> 발밑 타이머 링의 루트 이름. 이 이름은 «지금 있는 것»이
+        /// 아니라 «다시 생기면 안 되는 것»이라, 아래 ⑤가 <b>부재 단언</b>의 니들로만 쓴다.</summary>
+        private const string RemovedFootRingName = "FocusWatchRing";
         private const string TodoPaperContainerName = "TodoReminderPaper";
 
         private StickmanAgent _agent;
@@ -70,7 +72,6 @@ namespace StickMate.Tests.PlayMode
         private TodoPostItWidget _postIt;
         private TodoReminderDirector _todoDirector;
         private FocusWatchDirector _focusDirector;
-        private FocusWatchRenderer _focusRenderer;
 
         private IEnumerator LoadSceneAndResolve()
         {
@@ -91,7 +92,6 @@ namespace StickMate.Tests.PlayMode
             _postIt = ExactlyOne<TodoPostItWidget>();
             _todoDirector = ExactlyOne<TodoReminderDirector>();
             _focusDirector = ExactlyOne<FocusWatchDirector>();
-            _focusRenderer = ExactlyOne<FocusWatchRenderer>();
         }
 
         private static T ExactlyOne<T>() where T : Object
@@ -518,83 +518,61 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ================================================================================
-        // ⑤ 포모도로 감시자(18절) — 타이머 링 + 경고 단계 연출
+        // ⑤ 집중 세션(18절) — <b>발밑에 아무것도 그리지 않는다</b>
         // ================================================================================
+        // ★ 2026-09-06 — 이 테스트는 두 번 깎였다.
+        //   (1) 「지켜보기(딴짓 감지)」 삭제로 경고 단계 연출(곁눈질/두드림/즉시 리셋) 구간이 사라졌고,
+        //   (2) 같은 날 <b>발밑 타이머 링 자체가 삭제</b>돼(사용자 지시) 링 생성·감소·정리 구간도 사라졌다.
+        //       그리는 컴포넌트(FocusWatchRenderer)는 파일째 없어졌다.
+        //
+        // 그래서 방향을 뒤집는다: 예전에는 «링이 뜨는가»를 재던 자리가 이제 «아무것도 안 뜨는가»다.
+        // ★ 부재 단언은 썩으면 <b>조용히 초록</b>이 되므로(CLAUDE.md), 같은 테스트 안에서
+        //   ① 세션이 실제로 돌고 있다(존재) ② 이름 탐색기가 실제로 무언가를 찾아낸다(존재)를
+        //   함께 못박아 «아무것도 못 보고 통과»를 구조적으로 막는다.
 
         [UnityTest]
-        public IEnumerator FocusSessionDrawsTimerRingAndTierVisualsThenCleansUp()
+        public IEnumerator FocusSessionDrawsNothingAtTheFeet()
         {
             yield return LoadSceneAndResolve();
 
-            Assert.IsFalse(_focusRenderer.IsRingVisible, "시작 시점에는 타이머 링이 떠 있으면 안 됩니다.");
-            Assert.IsNull(GameObject.Find(FocusContainerName),
-                $"시작 시점에 '{FocusContainerName}'이(가) 이미 씬에 있습니다.");
+            Assert.IsNull(GameObject.Find(RemovedFootRingName),
+                $"시작 시점에 '{RemovedFootRingName}'이(가) 씬에 있습니다 — 삭제된 발밑 링이 되살아났습니다.");
 
             yield return WaitUntilIdleOrWalk();
             _focusDirector.ForceTriggerNow("PlayMode 테스트");
             yield return null;
             yield return null;
 
+            // ── 존재 단언 ① : 세션이 진짜로 돌고 있다(아래 부재 단언이 «세션이 아예 안 켜져서» 통과하는 것을 막는다)
             Assert.IsTrue(_focusDirector.IsSessionActive, "집중 모드가 시작되지 않았습니다.");
-            Assert.Greater(_focusDirector.SessionDurationSeconds, 0f,
-                "세션 총 길이가 0입니다 — 링의 남은 시간 비율을 계산할 수 없습니다.");
-            Assert.IsTrue(_focusRenderer.IsRingVisible,
-                "집중 모드가 켜졌는데 타이머 링이 나타나지 않았습니다 — 18절이 명시한 유일한 상시 UI입니다.");
-            Assert.Greater(_focusRenderer.ActiveVisualCount, 0,
-                "링이 '보인다'고 보고하면서 실제 LineRenderer는 0개입니다(빈 껍데기).");
-            Assert.AreEqual(0, _focusRenderer.ActiveColliderCount,
-                "타이머 링이 콜라이더를 만들었습니다 — 관전 전용 연출이므로 클릭관통이 유지되어야 합니다.");
-            Assert.IsNotNull(GameObject.Find(FocusContainerName),
-                $"'{FocusContainerName}' GameObject가 씬에 실존하지 않습니다.");
+            Assert.Greater(_focusDirector.SessionDurationSeconds, 0f, "세션 총 길이가 0입니다.");
 
-            int ringOnlyVisuals = _focusRenderer.ActiveVisualCount;
-            Assert.AreEqual(FocusWatchTier.None, _focusRenderer.CurrentTier);
+            // ── 존재 단언 ② : 이름 탐색기가 살아 있다(GameObject.Find가 늘 null을 주는 상태가 아니다)
+            Assert.IsNotNull(GameObject.Find(_agent.gameObject.name),
+                $"이름 탐색기가 캐릭터('{_agent.gameObject.name}')조차 못 찾습니다 — " +
+                "이 상태면 아래 부재 단언은 <b>무엇이든 통과시키는 빈 조건</b>입니다.");
 
-            // 남은 시간 비율이 실제로 줄어드는가(링이 정지 화면이 아닌가).
-            float ratioBefore = _focusRenderer.RemainingRatio;
+            // ── 부재 단언 : 세션 중에도 발밑에 그 링이 없다
+            Assert.IsNull(GameObject.Find(RemovedFootRingName),
+                $"세션 중에 '{RemovedFootRingName}'이(가) 나타났습니다 — 발밑 타이머 링은 2026-09-06 " +
+                "사용자 지시로 삭제됐습니다. 되살리기 전에 Interaction/FocusWatchDirector 클래스 문서를 읽으세요.");
+
+            // 타이머는 그대로 흐른다(링이 없어진 것과 시간이 흐르는 것은 별개다 — UX_WIDGETS 369행).
+            float before = _focusDirector.RemainingSeconds;
             yield return new WaitForSeconds(0.6f);
-            Assert.Less(_focusRenderer.RemainingRatio, ratioBefore,
-                $"0.6초가 지났는데 남은 시간 비율이 {ratioBefore:F4} 그대로입니다 — 링이 줄어들지 않습니다.");
+            Assert.Less(_focusDirector.RemainingSeconds, before,
+                $"0.6초가 지났는데 남은 시간이 {before:F2}초 그대로입니다 — 타이머가 멈췄습니다.");
 
-            // 1단계(곁눈질) — 도형이 실제로 늘어난다.
-            StickmanEventBus.RaiseFocusWatchTierChanged(FocusWatchTier.Glance);
-            yield return null;
-            Assert.AreEqual(FocusWatchTier.Glance, _focusRenderer.CurrentTier);
-            Assert.Greater(_focusRenderer.ActiveVisualCount, ringOnlyVisuals,
-                "1단계(곁눈질)로 올렸는데 도형이 늘지 않았습니다 — 링만 있고 경고 연출이 없다는 뜻입니다.");
-            int glanceVisuals = _focusRenderer.ActiveVisualCount;
-
-            // 3단계(창 두드림) — 두드림 자국이 더 붙는다.
-            StickmanEventBus.RaiseFocusWatchTierChanged(FocusWatchTier.WindowTap);
-            yield return null;
-            Assert.AreEqual(FocusWatchTier.WindowTap, _focusRenderer.CurrentTier);
-            Assert.Greater(_focusRenderer.ActiveVisualCount, glanceVisuals,
-                "3단계(창 두드림)로 올렸는데 도형이 1단계보다 늘지 않았습니다 — " +
-                "18절의 '점진적 에스컬레이션'이 시각적으로 구분되지 않습니다.");
-            Assert.AreEqual(0, _focusRenderer.ActiveColliderCount,
-                "3단계 연출이 콜라이더를 만들었습니다 — 흔들리는 것은 링뿐이어야 하고 클릭관통은 유지되어야 합니다.");
-
-            // 즉시 리셋(18절) — 정상 복귀하면 경고 도형만 걷히고 링은 남는다.
-            StickmanEventBus.RaiseFocusWatchTierChanged(FocusWatchTier.None);
-            yield return null;
-            Assert.AreEqual(FocusWatchTier.None, _focusRenderer.CurrentTier);
-            Assert.AreEqual(ringOnlyVisuals, _focusRenderer.ActiveVisualCount,
-                "정상 범위로 돌아왔는데 경고 도형이 남아 있습니다(18절 '즉시 리셋' 위반).");
-            Assert.IsTrue(_focusRenderer.IsRingVisible, "경고만 걷혀야 하는데 링까지 사라졌습니다.");
-
-            // 세션 종료 -> 링 완전 소멸.
             _focusDirector.ForceTriggerNow("PlayMode 테스트(끄기)");
             yield return null;
             yield return null;
 
             Assert.IsFalse(_focusDirector.IsSessionActive, "집중 모드가 꺼지지 않았습니다.");
-            Assert.IsFalse(_focusRenderer.IsRingVisible, "세션이 끝났는데 타이머 링이 그대로입니다.");
-            Assert.AreEqual(0, _focusRenderer.ActiveVisualCount, "정리 후에도 링 도형이 남아 있습니다.");
-            Assert.IsNull(GameObject.Find(FocusContainerName),
-                $"'{FocusContainerName}' GameObject가 씬에 그대로 남아 있습니다.");
+            Assert.IsNull(GameObject.Find(RemovedFootRingName),
+                $"세션이 끝난 뒤에도 '{RemovedFootRingName}'이(가) 남아 있습니다.");
 
-            Debug.Log($"[Phase5테스트] 포모도로 검증 통과 — 링 {ringOnlyVisuals}개 -> 1단계 {glanceVisuals}개 -> " +
-                "3단계 더 많음 -> 즉시 리셋으로 링만 남음 -> 세션 종료 시 전부 소멸, 콜라이더 0개.");
+            Debug.Log("[Phase5테스트] 집중 세션 검증 통과 — 세션 진행 · 타이머 감소 확인, " +
+                "발밑 링 오브젝트는 시작 전/세션 중/종료 후 전부 없음(2026-09-06 삭제).");
         }
 
         // ================================================================================

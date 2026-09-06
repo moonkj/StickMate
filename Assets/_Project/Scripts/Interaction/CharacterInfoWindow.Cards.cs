@@ -202,7 +202,10 @@ namespace StickMate.Interaction
                 view.Dot.color = tint;
                 view.Title.text = EquipmentModel.SlotName(slot);
                 view.Code.text = EquipmentModel.SlotCode(slot);
-                view.Count.text = $"{EquipmentModel.OwnedItemCount(slot)} / {EquipmentModel.ItemCount(slot)}";
+                // ★ 분자·분모 <b>둘 다 보여주는 목록</b>이다(2026-09-06 이펙트 「없음」 은퇴).
+                //   한쪽만 은퇴를 반영하면 이펙트가 「6 / 5」로 뜬다.
+                view.Count.text =
+                    $"{EquipmentModel.ListedOwnedItemCount(slot)} / {EquipmentModel.ListedItemCount(slot)}";
 
                 // 카테고리가 바뀌었으면 격자를 처음으로 되돌린다 — 아이템이 적은 카테고리로
                 // 넘어갔을 때 스크롤이 남아 있으면 <b>빈 자리</b>가 보인다.
@@ -213,7 +216,12 @@ namespace StickMate.Interaction
                     ResetGridScroll();
                 }
 
-                int items = ItemCatalog.ItemCountIn(slot);
+                // ★ 카드 자리 c는 <b>보여주는 목록의 c번째</b>이지 카탈로그의 c번이 아니다
+                //   (2026-09-06 이펙트 「없음」 은퇴로 0번이 목록에서 빠졌다). 환산은
+                //   <see cref="ItemCatalog.ListedItemIndex"/> 한 곳에서만 하고, 그 결과를
+                //   <c>card.Item</c>에 <b>다시 심는다</b> — 클릭·호버·상세 패널은 전부 그 값을 읽으므로
+                //   여기서 한 번 맞추면 나머지 경로가 자동으로 같은 아이템을 가리킨다.
+                int items = ItemCatalog.ListedItemCountIn(slot);
                 for (int c = 0; c < view.CardCount; c++)
                 {
                     ItemCard card = _cards[view.FirstCard + c];
@@ -222,14 +230,18 @@ namespace StickMate.Interaction
                     bool used = c < items;
                     if (card.Rect.gameObject.activeSelf != used) card.Rect.gameObject.SetActive(used);
                     if (!used) continue;
-                    ApplyCardStyle(card, slot, c, set);
+
+                    int item = ItemCatalog.ListedItemIndex(slot, c);
+                    if (item < 0) continue;   // 환산이 실패하면 그리지 않는다(빈 카드가 더 낫다).
+                    card.Item = item;
+                    ApplyCardStyle(card, slot, item, set);
 
                     // ★ 리본은 <see cref="ApplyCardStyle"/> <b>안</b>이 아니라 여기에 있다.
                     //   그 함수는 카드의 <b>상태</b>(보유/착용/선택/호버) 표이고, 등급은 상태가 아니라
                     //   카드가 지금 가리키는 <b>아이템</b>에서만 나온다. 그리고 상태 표는 호버 재도색
                     //   경로(Input 조각)에서도 불리는데, 그 경로에는 카드 인덱스가 없어 리본을 찾을 수
                     //   없다 — 슬롯이 탭에서 파생되는 자리는 이 루프 하나뿐이다.
-                    ApplyRarityRibbon(RibbonAt(view.FirstCard + c), ItemCatalog.Rarity(slot, c));
+                    ApplyRarityRibbon(RibbonAt(view.FirstCard + c), ItemCatalog.Rarity(slot, item));
                 }
             }
 
@@ -1030,6 +1042,9 @@ namespace StickMate.Interaction
             var card = new ItemCard
             {
                 Section = sectionIndex,
+                // ★ <b>임시값</b>이다 — 카드는 탭을 바꿔도 다시 굽지 않는 재사용 자원이라, 이 자리가
+                //   실제로 어느 아이템인지는 <see cref="RefreshCards"/>가 슬롯을 바인딩하면서 다시
+                //   심는다(은퇴한 아이템이 목록 가운데 있으면 자리 번호 ≠ 아이템 번호다).
                 Item = columnIndex,
                 Rect = rt,
                 Surface = surface,

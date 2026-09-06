@@ -74,7 +74,8 @@ namespace StickMate.Tests.EditMode
         private static readonly string[] NotUguiRenderers =
         {
             "WindowTheftRenderer.cs",
-            "FocusWatchRenderer.cs",
+            // ★ 2026-09-06 — "FocusWatchRenderer.cs"를 뺐다. 그 파일이 삭제돼(발밑 타이머 링 제거,
+            //   사용자 지시) 존재하지 않는 이름을 계속 건너뛰는 <b>죽은 니들</b>이 되기 때문이다.
         };
 
         // ============================================================================

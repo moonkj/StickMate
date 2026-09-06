@@ -290,28 +290,13 @@ namespace StickMate.Tests.EditMode
         {
             return new[]
             {
-                new Claim
-                {
-                    Id = "R2-1",
-                    TestFile = "AppearanceShapeBudgetTests.cs",
-                    Anchor = "CharacterFxRenderer는 ItemCatalog.ResolveWornPalette를 부르지 않아",
-                    Note = "FX 월드 도형에 보조색이 구조적으로 없다(렌더러 4종 중 이것만). " +
-                           "카드에는 있는 색이 착용하면 사라진다.",
-                    ClosedBecause = () =>
-                    {
-                        List<string> parts = ProductionFilesWithStem("CharacterFxRenderer");
-                        if (parts.Count == 0)
-                            return "CharacterFxRenderer로 시작하는 프로덕션 파일이 하나도 없다 — " +
-                                   "이름이 바뀌었다면 이 항목도 함께 고쳐라(그대로 두면 아무것도 안 잰다)";
-
-                        foreach (string p in parts)
-                        {
-                            if (ContainsIdentifier(StripComments(File.ReadAllText(p)), "ResolveWornPalette"))
-                                return $"{Path.GetFileName(p)}가 이제 ResolveWornPalette를 부른다";
-                        }
-                        return null;
-                    },
-                },
+                // ★ 2026-09-06 — <b>R2-1을 지웠다(갭이 닫혔다)</b>.
+                //   옛 주장: "FX 월드 도형에는 보조색이 구조적으로 없다(CharacterFxRenderer가
+                //   ItemCatalog.ResolveWornPalette를 부르지 않는다)". 그날 라운드가 그 렌더러에
+                //   ResolveWornPalette를 배선하고 나뭇잎 잎자루를 보조색으로 칠하면서 주장이
+                //   거짓이 됐고, AppearanceShapeBudgetTests의 근거 문장도 함께 정정됐다
+                //   ("보조색을 안 쓴다" -> "입자 한 알을 보조색 때문에 쪼개지 않는다").
+                //   그대로 뒀다면 이 대장이 <b>이미 있는 기능을 '없다'고</b> 지키게 된다.
                 new Claim
                 {
                     Id = "R2-2",
@@ -615,14 +600,11 @@ namespace StickMate.Tests.EditMode
         {
             return new[]
             {
-                new IgnoreEntry
-                {
-                    File = "AppearanceShapeBudgetTests.cs",
-                    Method = "PET은_정원과_보조색_규칙을_그대로_지킨다",
-                    Kind = RatchetKind.동반,
-                    Companion = "아직_미완_커서친구는_머리와_꼬리로_안_쪼개졌다",
-                    Why = "커서친구를 머리/꼬리로 쪼개면 동반 테스트가 먼저 빨개진다.",
-                },
+                // ★ 2026-09-06 — AppearanceShapeBudgetTests::PET은_정원과_보조색_규칙을_그대로_지킨다의
+                //   건너뜀을 <b>지웠다</b>. 사유(커서친구가 정원 1개 / 보조색 0개)는 그날 라운드가
+                //   CharacterPetRenderer.BuildCursorFriend를 머리(주색)+꼬리(보조색) 두 줄로 쪼개면서
+                //   소멸했고, 동반 테스트(아직_미완_커서친구는_머리와_꼬리로_안_쪼개졌다)도 함께 사라졌다.
+                //   그 자리는 이제 커서친구는_머리와_꼬리가_분기점을_공유한다가 <b>조건 없이</b> 지킨다.
                 new IgnoreEntry
                 {
                     File = "AppearanceShapeBudgetTests.cs",

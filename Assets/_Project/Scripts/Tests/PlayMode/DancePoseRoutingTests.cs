@@ -46,7 +46,7 @@ namespace StickMate.Tests.PlayMode
 
         /// <summary>상태가 Idle/Walk가 된 뒤 <b>자세 자체</b>가 중립으로 수렴할 때까지 더 기다리는 시간(초).
         /// 착지 무릎앉아의 잔상이 남은 순간을 «중립»이라고 재면 기준선이 오염된다
-        /// (FocusRingPoseSyncTests가 실제로 그렇게 한 번 빨개졌다).</summary>
+        /// (FocusStartPoseSyncTests가 실제로 그렇게 한 번 빨개졌다).</summary>
         private const float PoseSettleSeconds = 1.5f;
 
         /// <summary>중립 기준선을 평균 내는 구간(초).</summary>

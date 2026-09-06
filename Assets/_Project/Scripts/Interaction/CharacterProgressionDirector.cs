@@ -623,10 +623,11 @@ namespace StickMate.Interaction
                 ItemCatalogEntry entry = ItemCatalog.At(i);
                 if (!entry.RequiredLevel.HasValue) continue;   // 행동은 잠기지 않는다.
 
-                // ★ 은퇴한 카테고리(2026-09-06 [머리])는 정보창에 고를 자리가 없다. 그래도 알리면
-                //   "정보창에서 착용할 수 있습니다"라는 이 문장의 뒷부분이 <b>거짓</b>이 된다 —
-                //   없는 화면으로 사용자를 보내는 형태다(원칙 1의 "없는 것을 주장하지 않는다").
-                if (entry.Slot.HasValue && EquipmentModel.IsRetiredSlot(entry.Slot.Value)) continue;
+                // ★ 은퇴한 것(2026-09-06 [머리] 카테고리 · 이펙트 「없음」)은 정보창에 고를 자리가
+                //   없다. 그래도 알리면 "정보창에서 착용할 수 있습니다"라는 이 문장의 뒷부분이
+                //   <b>거짓</b>이 된다 — 없는 화면으로 사용자를 보내는 형태다(원칙 1의 "없는 것을
+                //   주장하지 않는다"). 술어는 목록 판정 하나만 쓴다(ItemCatalog.IsListed).
+                if (!ItemCatalog.IsListed(entry)) continue;
 
                 int need = entry.RequiredLevel.Value;
                 if (need <= before || need > CharacterProgressionModel.Level) continue;

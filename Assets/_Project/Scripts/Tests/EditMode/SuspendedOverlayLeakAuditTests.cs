@@ -54,8 +54,9 @@ namespace StickMate.Tests.EditMode
             // ── 게이트 자신 / 이미 같은 판정을 하는 곳 ──────────────────────────────────
             ["SuspendedOverlayGate.cs"] =
                 "게이트 본체(문서 주석에 SetParent(null이 인용돼 있다).",
-            ["FocusWatchRenderer.cs"] =
-                "FocusWatchDirector.IsTimerRingWarranted가 같은 판정(IsSuspended 포함)을 이미 단일 창구로 한다(2026-09-06).",
+            // ★ 2026-09-06 — ["FocusWatchRenderer.cs"] 항목이 여기서 <b>사라졌다</b>. 그 파일이 삭제됐기
+            //   때문이다(사용자 지시: 발밑 타이머 링 제거). 이 대장은 «등재된 파일이 사라지면 빨간불»
+            //   이라 삭제와 동시에 이 줄이 터졌고, 그게 이 감사가 의도대로 만료된 형태다.
             ["DialogueBubbleRenderer.cs"] =
                 "LateUpdate 첫 줄에서 IsSuspended면 HideImmediateInternal로 스스로 즉시 감춘다.",
             ["HardwareReactionRenderer.cs"] =
@@ -86,7 +87,8 @@ namespace StickMate.Tests.EditMode
 
         /// <summary>
         /// ★ 네거티브 컨트롤 — 스캐너가 0건을 훑고도 "깨끗하다"고 말하지 못하게 한다.
-        /// 지금 실측 파일 수는 19이고, 그 절반 아래로 떨어지면 정규식/경로가 깨진 것이다.
+        /// 지금 실측 파일 수는 18이고(2026-09-06 FocusWatchRenderer.cs 삭제로 19 → 18),
+        /// 그 절반 아래로 떨어지면 정규식/경로가 깨진 것이다.
         /// </summary>
         private const int MinimumScannedFiles = 10;
 

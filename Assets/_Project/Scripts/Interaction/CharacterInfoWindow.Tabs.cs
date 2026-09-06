@@ -193,7 +193,10 @@ namespace StickMate.Interaction
                 if (EquipmentModel.IsAppearanceSlot(_selectedSlot) != def.AppearanceSlots)
                 {
                     _selectedSlot = SectionSlot(tab, 0);
-                    _selectedItem = 0;
+                    // ★ 0번이 아니라 <b>보여주는 목록의 첫째</b>다(2026-09-06 이펙트 「없음」 은퇴).
+                    //   [외형]의 첫 카테고리가 바로 이펙트라, 0번을 그대로 쓰면 상세 패널이
+                    //   <b>화면에 카드가 없는 아이템</b>을 설명하게 된다.
+                    _selectedItem = Mathf.Max(0, ItemCatalog.ListedItemIndex(_selectedSlot, 0));
                 }
                 RefreshCards();
                 RefreshDetail();

@@ -3370,6 +3370,23 @@ namespace StickMate.Interaction
         internal const float FillDepthStep = -0.0001f;
 
         /// <summary>
+        /// 같은 아이템 안 채움 조각의 <b>로컬 z 단차</b>(<see cref="FillDepthStep"/>의 유일한 소비자).
+        ///
+        /// <para>★ 2026-09-06 — 함수로 뺀 이유는 <b>두 렌더러가 각자 구현하다 갈라졌기 때문</b>이다.
+        /// 몸(<c>CharacterAccessoryRenderer.AddFill</c>)에는 이 단차가 있었고 초상화
+        /// (<c>CharacterPortraitStage.AddFill</c>)에는 <b>없었다</b> — 초상화의 채움은 전부 z=0 ·
+        /// 아이템 안에서 <c>sortingOrder</c>도 동률이라, 그리기 순서를 Unity가 렌더러 생성/파괴
+        /// 순서로 임의 해소했다. 그것이 사용자 신고 «정보창 미리보기에서 망토를 착탈하면 모자 무늬가
+        /// 나타났다 사라졌다»의 정체다(재구성이 순서를 뒤집는다).</para>
+        ///
+        /// <para>부르는 쪽이 자기 손으로 곱하지 않게 <b>Vector3</b>로 돌려준다 — 그래야 "z에만 준다"는
+        /// 사실까지 한 곳에 남는다(x·y에 새면 그림이 밀린다).</para>
+        /// </summary>
+        /// <param name="orderWithinItem">이 아이템 안에서 몇 번째로 넣은 채움인가(0부터).</param>
+        internal static Vector3 FillDepthOffset(int orderWithinItem)
+            => new Vector3(0f, 0f, orderWithinItem * FillDepthStep);
+
+        /// <summary>
         /// 채움 색을 <b>그 위에 얹는 윤곽선 색</b>으로 낮추는 계수 — 스펙 14-2(리더 판정 2026-09-03).
         ///
         /// <para>★ <b>0.62 → 0.28.</b> 이 하나의 계수가 서로 다른 세 축에 동시에 걸리고, 천장을

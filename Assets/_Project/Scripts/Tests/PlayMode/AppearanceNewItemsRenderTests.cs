@@ -161,8 +161,15 @@ namespace StickMate.Tests.PlayMode
         }
 
         /// <summary>
-        /// 네거티브 컨트롤 — FX "없음"(0번)에서는 조각이 <b>하나도</b> 생기지 않는다.
+        /// 네거티브 컨트롤 — 이펙트를 <b>안 걸치면</b> 조각이 하나도 생기지 않는다.
         /// 위 두 테스트가 "아이템과 무관하게 아무거나 세고 있는 것"이 아님을 증명한다.
+        ///
+        /// <para>★ 2026-09-06 — 예전에는 FX <b>0번("없음")을 걸쳐서</b> 이 상태를 만들었다.
+        /// 사용자 지시 *"이펙트 없음은 왜 있는거야 삭제해줘 장비창에서"*로 그 아이템이 은퇴해
+        /// (<see cref="EquipmentModel.IsRetiredItem"/>) <c>TryWear</c>가 구조적으로 거절한다.
+        /// <b>프로덕션이 옳고 이 전제가 낡은 것</b>이므로 같은 상태를 <see cref="EquipmentModel.NotWorn"/>로
+        /// 만든다 — 렌더러는 <c>item &lt;= FxNone</c>으로 판정하므로 −1과 0의 <b>관측 결과는 같다</b>.
+        /// 아래 <c>FxNone</c> 상수는 지우지 않는다(EditMode 번호 거울의 대장이 그 이름을 읽는다).</para>
         /// </summary>
         [UnityTest]
         [Timeout(180000)]
@@ -171,8 +178,8 @@ namespace StickMate.Tests.PlayMode
             yield return LoadSceneAndPinIdle();
             StickmanAgent agent = Ready();
 
-            Assert.IsTrue(Wear(EquipmentSlot.Fx, FxNone),
-                $"{LogPrefix} FX '없음'을 고르지 못했습니다.");
+            Assert.IsTrue(Wear(EquipmentSlot.Fx, EquipmentModel.NotWorn),
+                $"{LogPrefix} 이펙트를 미착용으로 만들지 못했습니다.");
 
             var fx = Object.FindFirstObjectByType<CharacterFxRenderer>();
             Assert.IsNotNull(fx, $"{LogPrefix} CharacterFxRenderer가 씬에 없습니다.");

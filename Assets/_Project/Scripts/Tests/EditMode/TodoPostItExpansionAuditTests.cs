@@ -103,8 +103,17 @@ namespace StickMate.Tests.EditMode
         {
             // docs/UX_WIDGETS.md §1-1의 기준: 상시 카드가 "사용자가 직접 연 창"보다 커서는 안 된다.
             // 집중 팝오버(244 × 252 = 61,488pt²)가 그 상한이다 — 숫자를 베끼지 않고 그쪽 소스에서 읽는다.
+            //
+            // ★ 2026-09-06 — 읽는 대상이 <b>IdleHeight 하나에서 두 페이지의 최댓값으로</b> 바뀌었다.
+            //   그날 「지켜보기」 토글·「민감도」 칩이 삭제되면서 대기 페이지가 252 → 188로 줄어 두 값이
+            //   갈라졌기 때문이다. 이 비교가 묻는 것은 «사용자가 연 창이 얼마나 큰가»이고, 그 창이
+            //   화면에서 실제로 차지하는 최대 면적은 <b>진행 중 페이지</b>(252)다. IdleHeight만 읽으면
+            //   기준이 실제보다 25% 작아져, 아무것도 안 바뀐 포스트잇이 그날 갑자기 빨개진다.
             string focus = ReadScript("Interaction", "FocusSessionPopover.cs");
-            float focusArea = ReadFloatConst(focus, "Width") * ReadFloatConst(focus, "IdleHeight");
+            float focusWidth = ReadFloatConst(focus, "Width");
+            float focusIdle = ReadFloatConst(focus, "IdleHeight");
+            float focusRunning = ReadFloatConst(focus, "RunningHeight");
+            float focusArea = focusWidth * Mathf.Max(focusIdle, focusRunning);
             Assert.Greater(focusArea, 0f, "집중 팝오버 치수를 읽지 못했다.");
 
             // 카드 기하는 프로덕션 상수에서 다시 계산한다(숫자 베끼기 금지).

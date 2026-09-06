@@ -193,39 +193,11 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
-        // (2) FocusWatchRenderer — 발밑 타이머 링 / 머리 옆 곁눈질
+        // (2) ★ 삭제됨 — FocusWatchRenderer(발밑 타이머 링)
         // ============================================================================
-
-        [TestCase(1.0f)]
-        [TestCase(ShippedScale)]
-        [TestCase(0.5f)]
-        public void FocusWatchPlacementIsCharacterRelative(float scale)
-        {
-            GameObject rig = Rig(scale);
-            var r = AddRenderer<FocusWatchRenderer>(rig);
-            StickmanMetrics m = MetricsOf(rig);
-            string label = $"배율 {scale:F2}";
-
-            // (A) 종전 절대 상수 x 배율.
-            AssertScaled(0.54f, scale, r.RingRadius, label, "링 반지름");
-            AssertScaled(0.08f, scale, r.RingCenterLocalY, label, "링 중심 높이");
-            AssertScaled(0.05f, scale, r.StrokeWidth, label, "획 두께");
-
-            {
-                // (B) 절대 조건 — 링은 18절이 지정한 "캐릭터 발밑"이다(고관절보다 아래).
-                Assert.IsTrue(r.RingCenterLocalY >= 0f && r.RingCenterLocalY < m.HipLocalY,
-                    $"{label}: 링 중심 {r.RingCenterLocalY:F4}가 발밑(0 ~ 고관절 {m.HipLocalY:F4})을 벗어났습니다.");
-// 18절이 지정한 것은 "캐릭터 발밑"의 작은 링이다. 링 윗변이 고관절을 넘어 올라오면
-                // 발밑 위젯이 아니라 몸을 가로지르는 원이 된다 — 배율 0.5에서 종전 절대 반지름 0.54를
-                // 그대로 두면 정확히 그 일이 벌어진다(윗변 0.62 vs 고관절 0.4673).
-                Assert.IsTrue(r.RingCenterLocalY + r.RingRadius < m.HipLocalY,
-                    $"{label}: 링 윗변 {(r.RingCenterLocalY + r.RingRadius):F4}이 고관절 {m.HipLocalY:F4}을 넘어 " +
-                    "몸을 가로지릅니다 — '발밑' 위젯이 아닙니다.");
-                // 곁눈질은 머리 안(중심 ~ 정수리)에 있어야 한다.
-                Assert.IsTrue(r.GlanceLocalY > m.HeadCenterLocalY && r.GlanceLocalY <= m.HeadTopLocalY,
-                    $"{label}: 곁눈질 높이 {r.GlanceLocalY:F4}가 머리(중심 {m.HeadCenterLocalY:F4} ~ 정수리 {m.HeadTopLocalY:F4}) 밖입니다.");
-            }
-        }
+        // 2026-09-06 사용자 지시로 발밑 타이머 링이 제거되면서 그 컴포넌트가 파일째 사라졌다.
+        // 여기 있던 배율 1.0 / 0.75 / 0.5 스윕 3케이스(링 반지름·중심 높이·획 두께 + 「링 윗변이
+        // 고관절을 넘지 않는가」)는 잴 대상이 없다. 되살리지 마라 — 링이 없다.
 
         // ============================================================================
         // (3) RunawayRenderer — 과자

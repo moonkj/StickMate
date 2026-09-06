@@ -46,6 +46,13 @@ namespace StickMate.Interaction
     /// 않는다. 규칙 1(획 예산)은 카드와 월드 양쪽에 그대로 적용한다.</b>
     /// PET은 입자가 아니므로(항상 한 마리) 정원/보조색을 <b>그대로 지킨다</b>.
     ///
+    /// ★ <b>2026-09-06 문장 정정</b> — 이 규칙은 "FX는 보조색을 <b>안 쓴다</b>"가 아니다.
+    /// 정확히는 <b>"FX는 입자 한 알을 보조색 때문에 쪼개지 않는다"</b>이고, <b>이미 두 조각이고
+    /// 그 간격이 0인 경우는 예외</b>다. 나뭇잎이 그 예외다 — 잎몸과 잎자루는 위 산술과 무관하게
+    /// 원래부터 두 조각이었고 접점을 공유한다(<see cref="LeafStem"/>). 거기에 색을 다르게 주는 것은
+    /// 알을 키우지 않으므로 39-P의 근거를 하나도 건드리지 않는다. 반대로 색을 안 주면
+    /// <b>카드에는 있는 갈색 잎자루가 착용하면 사라진다</b>(이 저장소가 반복해 고친 결함 형태).
+    ///
     /// 이 한 줄이 발자국·반짝임·먼지·물방울·나뭇잎 5종의 정원/보조색 문제를 동시에 닫는다.
     /// 검사는 Tests/EditMode/AppearanceShapeBudgetTests가 FX와 PET에 <b>다른 자</b>를 대는 형태로 든다.
     /// </summary>
@@ -75,16 +82,14 @@ namespace StickMate.Interaction
         /// <para>새 값은 획의 <b>2.47배</b>(4.95pt)라 갈래가 갈래로 읽힌다. 상한은 정수리다 —
         /// 발동 높이(<c>CharacterFxRenderer.SparkleHeightInR</c>)가 이 값에 맞춰 함께 올라간다.</para>
         ///
-        /// <para>★ 2026-09-01 <b>0.85 -> 1.00</b>(docs/EQUIPMENT_SHAPE_SPEC_FXPET.md 4-2). 이것은
-        /// <b>세로</b> 갈래 길이다 — 가로는 <see cref="SparkleHorizontalArmRatio"/>만큼 짧다.
-        /// 옛 값은 가로·세로가 <b>정확히 같아서</b> 화면에 뜨는 그림이 반짝임이 아니라
-        /// <b>더하기 기호</b>였다. 길이를 다르게 준 순간 십자가 별로 읽힌다.</para>
+        /// <para>★ 2026-09-01 <b>0.85 -> 1.00</b>(docs/EQUIPMENT_SHAPE_SPEC_FXPET.md 4-2).</para>
+        ///
+        /// <para>★ 2026-09-06 — 이제 이것은 <see cref="SparkleStar"/>의 <b>바깥 정점 반경</b>이다
+        /// (십자 2획 시절의 "세로 갈래 길이"가 아니다). 가로/세로를 다른 길이로 준 옛 처방
+        /// (<c>SparkleHorizontalArmRatio</c> = 0.68)은 '＋'를 면하려던 임시방편이었고, 윤곽 별이
+        /// 되면서 <b>오목 정점</b>(<see cref="SparkleConcaveRatio"/>)이 그 일을 대신하므로 삭제했다.</para>
         /// </summary>
         internal const float SparkleArmInR = 1.00f;
-
-        /// <summary>가로 갈래 ÷ 세로 갈래. 0.68이면 가로 갈래가 0.68R = <b>1.98획</b>이라 여전히
-        /// 획에 안 먹히면서(규칙 1) 세로와의 실루엣 차가 1.86획 벌어진다 — 그 차이가 '＋'를 없앤다.</summary>
-        internal const float SparkleHorizontalArmRatio = 0.68f;
 
         /// <summary>공의 반지름(신장 배수).</summary>
         internal const float BallRadiusInHeight = 0.055f;
@@ -180,8 +185,10 @@ namespace StickMate.Interaction
         /// (<c>CharacterFxRenderer.TickDust</c> / <c>CharacterPortraitStage.DrawFxPreview</c>)이 각자
         /// <c>r * 0.5f</c> 리터럴을 갖고 있어서, 이 파일에 사는 다른 FX 치수
         /// (<see cref="SparkleArmInR"/> · <see cref="LeafLengthInR"/> · <see cref="BubbleMinRadiusInR"/>)와
-        /// 달리 <b>검사가 참조할 단일 정의처가 없었다</b>. 그 두 파일을 손대는 라운드에서 리터럴을
-        /// 이 상수로 바꾼다(그때까지는 값이 같다는 것을 사람이 지켜야 한다).</para></summary>
+        /// 달리 <b>검사가 참조할 단일 정의처가 없었다</b>.</para>
+        ///
+        /// <para>★ 2026-09-06 — 그 두 리터럴을 이 상수로 바꿨다(값 0.5 그대로라 화면은 한 픽셀도
+        /// 안 바뀐다). 이제 이 숫자를 고치면 월드와 미리보기가 <b>함께</b> 따라온다.</para></summary>
         internal const float DustRadiusInR = 0.50f;
 
         /// <summary>나뭇잎 잎몸의 길이(머리 반경 배수). 가장 짧은 잎몸 선분이 0.342×길이이므로
@@ -274,34 +281,65 @@ namespace StickMate.Interaction
         // ==================== FX ====================
 
         /// <summary>
-        /// 채운 점 하나를 만드는 2점 선. <b>부르는 쪽이 선 두께를 <c>radius * 2</c>로 잡아야</b>
-        /// 둥근 캡이 원이 된다(이 프로젝트에는 채움 도형 경로가 없다 — 굵은 캡이 곧 점이다).
+        /// 발자국 한 짝 — <b>옆에서 본 밑창</b>(열린 3점). 원점은 발 한가운데,
+        /// <c>+x</c>가 <paramref name="facing"/>(진행 방향)이고 <paramref name="size"/>는 머리 반경이다.
         ///
-        /// <para>★ <b>2026-09-01 미완</b>: 발자국은 이 둥근 점을 버리고 <b>옆에서 본 밑창</b>
-        /// (열린 3점 (−0.40,+0.10) (−0.02,0) (+0.56,+0.04) R)이 돼야 한다. 지금 지름은 <b>1.19획</b>으로
-        /// 규칙 1의 1.5획 문턱에 미달이고, 무엇보다 <b>옆에서 보는 이 앱에서 둥근 점은 발자국이 아니다</b>.
-        /// 못 고친 이유는 좌표가 아니라 호출부다: <c>CharacterFxRenderer.BuildDot</c>이 넘겨주는
-        /// <c>radius</c>는 R이 아니라 <b>획에서 파생된 값</b>(<c>Stroke * 0.9</c>)이고 선 두께도
-        /// <c>radius * 2</c>(= 1.19획)로 못박는다. 밑창은 R 배수 좌표 + 보통 획 두께여야 하므로
-        /// 그 파일이 함께 바뀌어야 하는데 이번 라운드의 편집 금지 대상이다.
-        /// 면제 대장: Tests/EditMode/AppearanceShapeBudgetTests.</para>
+        /// <para>★ 2026-09-06 — 옛 도형은 <c>DotSegment</c>(굵은 캡 = 둥근 점)였다. 그건 위에서
+        /// 내려다본 어휘인데 <b>이 앱은 옆에서 본다</b>. 게다가 지름이 1.19획이라 규칙 1의 잉크 사각형
+        /// 하한(1.5획)에도 미달했다. 새 도형은 변 <b>1.14 / 1.69획</b>, 잉크 사각형 <b>2.79획</b>이다.</para>
+        ///
+        /// <para><b>부르는 쪽 계약</b>: 선 두께는 <b>보통 획</b>(<c>RenderStroke</c>)이다.
+        /// 옛 호출부처럼 <c>radius * 2</c>로 잡으면 밑창이 통째로 잉크에 먹혀 다시 뚱뚱한 점이 된다.</para>
+        ///
+        /// <para>카드(<c>Resources/Items/look_fx_footprint.asset</c>)의 자국 세 개가 같은 비율이다 —
+        /// 첫 점 기준으로 (0,0) (0.396, −0.105) (1.000, −0.063)이고 y가 아래로 가는 카드 좌표계라
+        /// 부호만 뒤집힌다.</para>
         /// </summary>
-        internal static Vector3[] DotSegment(float radius)
-            => new[] { new Vector3(-radius * 0.05f, 0f, 0f), new Vector3(radius * 0.05f, 0f, 0f) };
-
-        /// <summary>4갈래 반짝의 획 하나(<paramref name="index"/> 0 = 세로, 1 = 가로).
-        /// <para><paramref name="arm"/>은 <b>세로</b> 갈래 길이다. 가로는
-        /// <see cref="SparkleHorizontalArmRatio"/>배로 짧다 — 두 길이가 같으면 화면에 뜨는 그림이
-        /// 반짝임이 아니라 <b>더하기 기호</b>이기 때문이다(39절 원칙 6: 반짝임은 비대칭 4갈래 별).</para></summary>
-        internal static Vector3[] SparkleStroke(float arm, int index)
+        internal static Vector3[] FootSole(float size, float facing)
         {
-            if (index == 0)
+            float f = facing >= 0f ? 1f : -1f;
+            float s = size;
+            return new[]
             {
-                return new[] { new Vector3(0f, -arm, 0f), new Vector3(0f, arm, 0f) };
-            }
+                new Vector3(-0.40f * s * f, 0.10f * s, 0f),
+                new Vector3(-0.02f * s * f, 0f, 0f),
+                new Vector3(0.56f * s * f, 0.04f * s, 0f),
+            };
+        }
 
-            float across = arm * SparkleHorizontalArmRatio;
-            return new[] { new Vector3(-across, 0f, 0f), new Vector3(across, 0f, 0f) };
+        /// <summary>오목 정점의 반경 ÷ 바깥 정점의 반경. 0.34면 별의 변이 <b>2.32획</b>이고
+        /// 중심에 지름 1.75획짜리 구멍이 남는다.
+        ///
+        /// <para>★ 그 구멍은 <b>알려진 트레이드오프</b>다(리더 확인 2026-09-06). 더 오목하게 하면
+        /// (비율↓) 구멍이 커지고, 덜 오목하게 하면(비율↑) 별이 팔각형으로 뭉개진다. 0.34는
+        /// 카드 아이콘(<c>look_fx_sparkle.asset</c>)이 이미 쓰고 있는 값이라 카드와 착용 모습이
+        /// 같은 그림이 된다 — 그 asset의 실측 비율이 4.681 / 13.76 = 0.3402다.</para></summary>
+        internal const float SparkleConcaveRatio = 0.34f;
+
+        /// <summary>
+        /// 반짝임 — <b>윤곽 별 한 도형</b>(닫힌 8점). 바깥 4정점이 <paramref name="arm"/>,
+        /// 오목 4정점이 <c>arm × <see cref="SparkleConcaveRatio"/></c>다.
+        ///
+        /// <para>★ 2026-09-06 — 옛 도형은 <b>십자 2획</b>(세로 획 + 가로 획)이었다. 가로를 0.68배로
+        /// 줄여 '＋'는 면했지만 <b>별로 읽히지는 않았다</b>: 획 두 개가 겹친 그림에는 별의 정체인
+        /// <b>오목한 허리</b>가 없기 때문이다. 윤곽 하나로 그리면 그 허리가 생기고, 덤으로 도형 수가
+        /// 2 -> 1이 되어 규칙 39-P(입자 한 알은 2개 이하)에 여유가 생긴다.</para>
+        ///
+        /// <para>검산(<c>arm = 1.0R</c>, 배율 0.75): 여덟 변 전부 <b>2.32획</b>, 잉크 사각형 <b>5.82획</b>.
+        /// 부르는 쪽은 <c>loop: true</c>다.</para>
+        /// </summary>
+        internal static Vector3[] SparkleStar(float arm)
+        {
+            float inner = arm * SparkleConcaveRatio;
+            var pts = new Vector3[8];
+            for (int k = 0; k < 4; k++)
+            {
+                float outerAngle = (90f + 90f * k) * Mathf.Deg2Rad;
+                float innerAngle = (135f + 90f * k) * Mathf.Deg2Rad;
+                pts[k * 2] = new Vector3(Mathf.Cos(outerAngle) * arm, Mathf.Sin(outerAngle) * arm, 0f);
+                pts[k * 2 + 1] = new Vector3(Mathf.Cos(innerAngle) * inner, Mathf.Sin(innerAngle) * inner, 0f);
+            }
+            return pts;
         }
 
         /// <summary>먼지 초승달 하나(<paramref name="index"/> 0 = 큰 것, 1 = 위에 얹히는 작은 것).
@@ -422,10 +460,9 @@ namespace StickMate.Interaction
             return pts;
         }
 
-        /// <summary>★ 옛 이름의 별칭 — 호출부(<c>CharacterPetRenderer.BuildBall</c>)가 이번 라운드의
-        /// <b>편집 금지 파일</b>이라 이름만 남겨 두었다. 그쪽을 손대는 라운드에서 호출부를
-        /// <see cref="BallSeam"/>으로 바꾸고 이 줄을 지운다.</summary>
-        internal static Vector3[] BallSpoke(float radius) => BallSeam(radius);
+        // ★ 2026-09-06 — 옛 이름 별칭 <c>BallSpoke</c>를 지웠다(호출부 둘을 <see cref="BallSeam"/>으로
+        //   바꾸면서). 별칭이 남아 있던 이유는 그 두 파일이 편집 금지였기 때문이고, 그 사유는 끝났다.
+        //   "바큇살(spoke)"이라는 낱말이 남아 있으면 다음 사람이 도형을 다시 반지름 선으로 되돌린다.
 
         /// <summary>종이비행기 외곽(닫힌 4점) — icon-paths.json의 실루엣.</summary>
         internal static Vector3[] PlaneBody(float halfSpan)
@@ -603,36 +640,53 @@ namespace StickMate.Interaction
                 SnailShellCenterYRatio * size, SnailShellCoreRatio * size,
                 Mathf.Min(maxSegments, SnailCoreSegments));
 
-        /// <summary>
-        /// 커서 친구 — 화살표 실루엣(원점이 <b>화살표 끝점</b>, 아래로 뻗는다. 마지막 점이 첫 점과
-        /// 같아 열린 선으로도 닫혀 보인다 — 부르는 쪽이 <c>loop:false</c>다).
-        ///
-        /// <para>★ 2026-09-01 좌표 재설계. 옛 실루엣은 8변 중 <b>5개가 0.47~0.97획</b>이었다
-        /// (<see cref="CursorSizeInR"/> 문서의 진단). 크기만 키우면 비율은 그대로이므로 <b>비율 자체</b>를
-        /// 다시 잡았다 — 최단 변 비율이 0.26 s가 되도록 꼬리 폭을 넓히고 목을 짧게 했다.
-        /// s = 1.40R에서 모든 변이 <b>1.06획 이상</b>이고 자기교차가 없다(전체 1.09R × 1.48R).</para>
-        ///
-        /// <para>★ <b>여기가 이번 라운드의 미완이다</b>: 스펙(docs/EQUIPMENT_SHAPE_SPEC_FXPET.md 4-2)은
-        /// 이 한 획을 <b>머리(주색) + 꼬리(보조색) 두 조각</b>으로 쪼갠다. 그래야 규칙 5(정원 2~4)와
-        /// 규칙 3-2(보조색 정확히 1개)가 함께 닫히고, 기하가 뭉개지는 크기에서도 꼬리가 <b>색으로</b>
-        /// 읽힌다. 쪼개려면 <c>CharacterPetRenderer.BuildCursorFriend</c>가 <see cref="LineRenderer"/>를
-        /// <b>두 개</b> 만들어야 하는데 그 파일이 이번 라운드의 편집 금지 대상이라 미뤘다.
-        /// 쪼개는 자리는 이 배열의 <b>2번 점과 5번 점</b>이다(머리 = 0·1·2·5·6, 꼬리 = 2·3·4·5).
-        /// 그 미완은 Tests/EditMode/AppearanceShapeBudgetTests의 면제 대장에 한 줄로 적혀 있다.</para>
-        /// </summary>
-        internal static Vector3[] CursorArrow(float size)
+        // ────────────────────────────────────────────────────────────────────────
+        // ★ 커서 친구 — 원점이 <b>화살표 촉끝</b>이고 아래로 뻗는다. 두 조각 다 닫힌 고리다.
+        // ────────────────────────────────────────────────────────────────────────
+        //
+        // ★ 2026-09-01 좌표 재설계. 옛 실루엣은 8변 중 5개가 0.47~0.97획이었다(CursorSizeInR 문서의
+        //   진단). 크기만 키우면 비율은 그대로이므로 비율 자체를 다시 잡았다 — 최단 변 비율이
+        //   0.26 s가 되도록 꼬리 폭을 넓히고 목을 짧게 했다.
+        //
+        // ★ 2026-09-06 — 그 한 획(닫힌 8점)을 <b>머리 + 꼬리</b>로 쪼갰다. 스펙
+        //   (docs/EQUIPMENT_SHAPE_SPEC_FXPET.md 4-2)이 원래 요구하던 형태이고, 이것으로
+        //   37-6 규칙 5(정원 2~4개)와 규칙 3-2(보조색 정확히 1개)가 함께 닫힌다. 쪼갠 자리는
+        //   옛 배열의 2번·5번 점이다(머리 = 0·1·2·5·6, 꼬리 = 2·3·4·5) — 두 조각이 그 두 점을
+        //   <b>공유</b>하므로 간격이 0이고, 37-6 규칙 4의 "0 또는 ≥1.5획" 중 0 쪽이다.
+        //
+        //   왜 색이 필요한가: 기하가 뭉개지는 크기에서도 꼬리가 <b>색으로</b> 읽힌다. 카드
+        //   (Resources/Items/look_pet_cursor.asset)가 이미 그렇게 두 줄로 그려져 있었다 —
+        //   머리 tone 0(주색) / 꼬리 tone 1(보조색). 그 카드 좌표와 아래 좌표는 배율 23.18배
+        //   차이로 <b>소수 넷째 자리까지 일치</b>한다.
+        //
+        //   검산(s = 1.40R, 배율 0.75): 머리 최단 변 1.06획 · 꼬리 최단 변 1.06획 ·
+        //   두 조각 다 자기교차 0 · 꼬리 잉크 사각형 1.71획.
+
+        /// <summary>커서 친구의 <b>머리</b>(닫힌 5점, 주색). 부르는 쪽이 <c>loop:true</c>다.</summary>
+        internal static Vector3[] CursorHead(float size)
         {
             float s = size;
             return new[]
             {
-                new Vector3(0f, 0f, 0f),                            // 0 촉끝
-                new Vector3(0f, -s, 0f),                            // 1 왼쪽 어깨
-                new Vector3(s * 0.26f, -s * 0.74f, 0f),             // 2 ★ 머리/꼬리 분기점
-                new Vector3(s * 0.42f, -s * 1.06f, 0f),             // 3 꼬리 바깥
-                new Vector3(s * 0.66f, -s * 0.96f, 0f),             // 4 꼬리 끝
-                new Vector3(s * 0.50f, -s * 0.64f, 0f),             // 5 ★ 머리/꼬리 분기점
-                new Vector3(s * 0.78f, -s * 0.62f, 0f),             // 6 오른쪽 어깨
-                new Vector3(0f, 0f, 0f),
+                new Vector3(0f, 0f, 0f),                            // 촉끝
+                new Vector3(0f, -s, 0f),                            // 왼쪽 어깨
+                new Vector3(s * 0.26f, -s * 0.74f, 0f),             // ★ 꼬리와 공유하는 점
+                new Vector3(s * 0.50f, -s * 0.64f, 0f),             // ★ 꼬리와 공유하는 점
+                new Vector3(s * 0.78f, -s * 0.62f, 0f),             // 오른쪽 어깨
+            };
+        }
+
+        /// <summary>커서 친구의 <b>꼬리</b>(닫힌 4점, 보조색). 첫 점과 마지막 점이
+        /// <see cref="CursorHead"/>의 2·3번 점과 <b>정확히 같다</b> — 그 공유가 곧 부착이다.</summary>
+        internal static Vector3[] CursorTail(float size)
+        {
+            float s = size;
+            return new[]
+            {
+                new Vector3(s * 0.26f, -s * 0.74f, 0f),             // ★ 머리와 공유하는 점
+                new Vector3(s * 0.42f, -s * 1.06f, 0f),             // 꼬리 바깥
+                new Vector3(s * 0.66f, -s * 0.96f, 0f),             // 꼬리 끝
+                new Vector3(s * 0.50f, -s * 0.64f, 0f),             // ★ 머리와 공유하는 점
             };
         }
     }

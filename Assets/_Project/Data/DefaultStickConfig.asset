@@ -183,15 +183,6 @@ MonoBehaviour:
   todoCompletedLingerSeconds: 2.5
   todoUndoWindowSeconds: 3
   todoPostItMaxVisibleRows: 4
-  pomodoroObservationWindowSeconds: 120
-  pomodoroGraceSeconds: 120
-  pomodoroFocusSwitchThreshold: 6
-  pomodoroTier1ConsecutiveWindows: 3
-  pomodoroTier2AdditionalWindows: 2
-  pomodoroTier3AdditionalWindows: 2
-  pomodoroMouseIdleSeconds: 90
-  pomodoroMouseErraticSpeedThreshold: 4000
-  pomodoroMouseErraticSampleSeconds: 1
   pomodoroStartPoseHoldSeconds: 2
   pomodoroCompletePoseHoldSeconds: 2.5
   pomodoroCancelPoseHoldSeconds: 1.5

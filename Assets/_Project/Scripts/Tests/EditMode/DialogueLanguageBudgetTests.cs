@@ -134,7 +134,9 @@ namespace StickMate.Tests.EditMode
         /// <para>이 단언이 없으면 누군가 수집기를 옛 형태(<c>States/</c> + <c>DialogueLine.Say|React</c>)로
         /// 되돌려도 <b>골든만 다시 구우면 초록</b>이 된다. 실명으로 못 박는다.</para>
         /// </summary>
-        [TestCase("좋아, 감시 시작", "Core/StickmanAgent.cs 집중모드 람다")]
+        // ★ 2026-09-06 — "좋아, 감시 시작" → "좋아, 시작하자". 「지켜보기(딴짓 감지)」가 사용자 지시로
+        //   삭제되어 옛 문장이 <b>일어나지 않는 일</b>을 말하게 됐다(원칙 1). 니들은 프로덕션을 따라간다.
+        [TestCase("좋아, 시작하자", "Core/StickmanAgent.cs 집중모드 람다")]
         [TestCase("수고했어!", "Core/StickmanAgent.cs 집중모드 람다")]
         [TestCase("그래 쉬자", "Core/StickmanAgent.cs 집중모드 람다")]
         [TestCase("어? 딴 데 보고 있네?", "Core/StickmanAgent.cs 집중모드 람다")]

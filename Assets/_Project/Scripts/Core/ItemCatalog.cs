@@ -1472,35 +1472,80 @@ namespace StickMate.Core
         }
 
         // ============================================================================
-        // ★ 표시 모집단 — "사람에게 보여줄 목록" (2026-09-06 [머리] 은퇴)
+        // ★ 표시 모집단 — "사람에게 보여줄 목록" (2026-09-06 [머리] 은퇴 · 이펙트 「없음」 은퇴)
         // ============================================================================
-        // 사용자 지시 "외형에서 머리 스타일은 전체 삭제". 데이터는 <b>한 줄도 지우지 않는다</b> —
-        // 42종이라는 모집단이 등급 파생(슬롯당 2/2/1/1)·코호트 순위·골든 덤프·팩 자리 번호가 딛고
-        // 선 분모여서, 에셋을 빼면 <b>아무도 안 건드린 등급이 통째로 미끄러진다</b>(CohortId 문단).
+        // 사용자 지시 "외형에서 머리 스타일은 전체 삭제" / "이펙트 없음은 왜 있는거야 삭제해줘 장비창에서".
+        // 데이터는 <b>한 줄도 지우지 않는다</b> — 42종이라는 모집단이 등급 파생(슬롯당 2/2/1/1)·
+        // 코호트 순위·골든 덤프·팩 자리 번호가 딛고 선 분모여서, 에셋을 빼면 <b>아무도 안 건드린
+        // 등급이 통째로 미끄러진다</b>(CohortId 문단). 이펙트는 여기에 하나가 더 걸린다 —
+        // 자리 번호가 곧 렌더러의 약속이라(AppearanceShapeBuilder.FxNone = 0 …) 0번을 빼면
+        // 발자국이 0번이 되어 조용히 안 그려진다.
         // 그래서 바뀌는 것은 <b>보여줄 때</b>뿐이고, "무엇이 은퇴했는가"의 판단은 여전히
-        // EquipmentModel.IsRetiredSlot 한 곳이다(여기에 목록을 다시 적지 않는다).
+        // EquipmentModel.IsRetiredItem 한 곳이다(여기에 목록을 다시 적지 않는다).
 
-        /// <summary>이 항목이 <b>사람에게 보여주는 목록</b>에 오르는가. 은퇴한 카테고리
-        /// (<see cref="EquipmentModel.IsRetiredSlot"/>)의 장비만 <c>false</c>이고, 슬롯이 없는 행동은
+        /// <summary>이 항목이 <b>사람에게 보여주는 목록</b>에 오르는가. 은퇴한 것
+        /// (<see cref="EquipmentModel.IsRetiredItem"/>)만 <c>false</c>이고, 슬롯이 없는 행동은
         /// 언제나 <c>true</c>다.
-        /// <para>보관함 목록·헤더 분자/분모가 전부 이 하나를 본다. 훗날 상점(재화 구매 목록)이
-        /// 배선될 때도 <b>이 술어</b>를 써야 "살 수는 있는데 못 입는" 물건이 생기지 않는다 —
-        /// 오늘 그 목록은 존재하지 않는다(<c>CurrencyRules</c> "배선은 아직 없다").</para></summary>
+        /// <para>보관함 목록·상점 목록·헤더 분자/분모가 전부 이 하나를 본다 — "살 수는 있는데
+        /// 못 입는" 물건이 생기지 않는 이유가 술어가 하나이기 때문이다.</para>
+        /// <para>★ 2026-09-06 후속 — 술어가 <b>카테고리 단위에서 아이템 단위로</b> 넓어졌다
+        /// (사용자 지시 *"이펙트 없음은 왜 있는거야 삭제해줘 장비창에서"*). 은퇴한 카테고리의
+        /// 아이템도 <see cref="EquipmentModel.IsRetiredItem"/>가 함께 참을 주므로 <b>여기에 술어를
+        /// 둘 적지 않는다</b>.</para></summary>
         public static bool IsListed(ItemCatalogEntry entry)
-            => entry != null && !(entry.Slot.HasValue && EquipmentModel.IsRetiredSlot(entry.Slot.Value));
+            => entry != null
+               && !(entry.Slot.HasValue && EquipmentModel.IsRetiredItem(entry.Slot.Value, entry.ItemIndex));
+
+        /// <summary>이 카테고리에서 <b>보여주는</b> 아이템 수. 카드 격자의 카드 수가 이 값이다.</summary>
+        public static int ListedItemCountIn(EquipmentSlot slot)
+        {
+            int s = (int)slot;
+            if (s < 0 || s >= BySlot.Length) return 0;
+
+            ItemCatalogEntry[] items = BySlot[s];
+            int n = 0;
+            for (int i = 0; i < items.Length; i++)
+            {
+                if (items[i] != null && !EquipmentModel.IsRetiredItem(slot, i)) n++;
+            }
+            return n;
+        }
+
+        /// <summary>
+        /// 보여주는 목록의 <paramref name="listedIndex"/>번째가 <b>카탈로그의 몇 번째</b>인가.
+        /// 범위 밖이면 −1.
+        ///
+        /// <para>★ 이 함수가 있는 이유: 은퇴한 아이템이 <b>목록 가운데(이펙트는 0번)</b>에 있으면
+        /// "카드 c번 = 아이템 c번"이라는 등식이 깨진다. 그 환산을 화면 코드에 흩뿌리면 한 곳만
+        /// 빠뜨렸을 때 <b>카드에 적힌 이름과 눌렀을 때 입히는 물건이 한 칸씩 어긋난다</b> —
+        /// 이 저장소가 카테고리 은퇴에서 이미 같은 경고를 적어 뒀다(<c>SectionSlot</c> 문단).
+        /// 그래서 환산은 여기 한 곳에만 둔다.</para>
+        /// </summary>
+        public static int ListedItemIndex(EquipmentSlot slot, int listedIndex)
+        {
+            if (listedIndex < 0) return -1;
+            int s = (int)slot;
+            if (s < 0 || s >= BySlot.Length) return -1;
+
+            ItemCatalogEntry[] items = BySlot[s];
+            int seen = 0;
+            for (int i = 0; i < items.Length; i++)
+            {
+                if (items[i] == null || EquipmentModel.IsRetiredItem(slot, i)) continue;
+                if (seen == listedIndex) return i;
+                seen++;
+            }
+            return -1;
+        }
 
         /// <summary>화면에 적는 장비 <b>분모</b>. 숫자를 적지 않고 <b>파생</b>시킨다 —
-        /// 전량에서 은퇴한 슬롯의 종수를 뺀 값이라, 슬롯을 하나 더 은퇴시켜도 이 값이 혼자 따라온다.</summary>
+        /// 전량에서 은퇴분을 뺀 값이라, 하나 더 은퇴시켜도 이 값이 혼자 따라온다.</summary>
         public static int ListedEquipmentCount
         {
             get
             {
                 int n = 0;
-                for (int s = 0; s < BySlot.Length; s++)
-                {
-                    if (EquipmentModel.IsRetiredSlot((EquipmentSlot)s)) continue;
-                    n += BySlot[s].Length;
-                }
+                for (int s = 0; s < BySlot.Length; s++) n += ListedItemCountIn((EquipmentSlot)s);
                 return n;
             }
         }

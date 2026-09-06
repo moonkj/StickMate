@@ -36,13 +36,21 @@ namespace StickMate.Tests.EditMode
     /// 지금 켜면 <b>작업 중인 좌표</b>를 재게 되므로 다음 라운드다.
     ///
     /// ============================================================================
-    /// ★ 규칙 39-P — 입자형(FX)에는 정원/보조색을 안 건다 (2026-09-01 리더 승인)
+    /// ★ 규칙 39-P — 입자형(FX)에는 정원을 안 건다 (2026-09-01 리더 승인)
     /// ============================================================================
     /// 규칙 5(도형 2~4개)와 규칙 3-2(보조색 정확히 1개)는 <b>착용 액세서리</b>의 규칙이다.
     /// FX 5종은 한 알이 여럿 뜨는 <b>입자</b>라 한 알에 조각 둘을 넣으면 알이 머리 지름의 78%가 된다
     /// (근거 산술은 <see cref="AppearanceShapeBuilder"/> 머리말). 그래서 그 두 규칙은
     /// <b>FX 카드 그림</b>에 걸고 <b>월드의 한 알</b>에는 걸지 않는다. 규칙 1은 양쪽에 그대로 건다.
     /// PET은 입자가 아니므로(항상 한 마리) 정원/보조색을 그대로 지킨다.
+    ///
+    /// <para>★ <b>2026-09-06 문장 정정</b> — 이 규칙의 보조색 쪽은 "FX는 보조색을 <b>안 쓴다</b>"가
+    /// 아니다. 정확히는 <b>"입자 한 알을 보조색 때문에 쪼개지 않는다"</b>이고, <b>이미 두 조각이고
+    /// 간격이 0인 경우는 예외</b>다(나뭇잎의 잎몸+잎자루). 옛 문장은 "보조색 0개"를 단언하면서
+    /// 근거로 "CharacterFxRenderer가 ResolveWornPalette를 안 부른다"는 <b>구현 사실</b>을 들었는데,
+    /// 그건 규칙이 아니라 그 시점의 배선이었다 — 그 문장 때문에 <b>카드에 있는 갈색 잎자루가
+    /// 착용하면 사라지는 것</b>이 규칙으로 정당화되고 있었다. 지금 단언은 <b>보조색 ≤ 1개</b>다.</para>
+    ///
     /// 아래 두 검사(<see cref="FX는_입자라_월드_한_알에_정원과_보조색을_걸지_않는다"/> /
     /// <see cref="PET은_정원과_보조색_규칙을_그대로_지킨다"/>)가 그 비대칭을 코드로 못박는다.
     /// </summary>
@@ -64,9 +72,9 @@ namespace StickMate.Tests.EditMode
         // ============================================================================
         // ★ 좌표는 한 줄도 베끼지 않는다. 전부 AppearanceShapeBuilder를 불러서 만든다.
         //   여기 있는 것은 "어떤 도형이 몇 개, 어느 색으로 붙는가"라는 <b>조합</b>뿐이고, 그 조합의
-        //   원본은 CharacterFxRenderer.Build* / CharacterPetRenderer.Build*다. 두 파일이 이번 라운드의
-        //   편집 금지 대상이라 조합을 여기 옮겨 적었다 — 렌더러가 선을 하나 더 붙이면 이 표가
-        //   낡는다. 그 드리프트는 아래 "아직 미완" 검사들이 잡는다(도형 개수를 직접 단언한다).
+        //   원본은 CharacterFxRenderer.Build* / CharacterPetRenderer.Build*다. 렌더러가 선을 하나 더
+        //   붙이면 이 표가 낡는다 — 그 드리프트는 아래 4절의 계약 검사들이 잡는다(점 개수·공유점·
+        //   반경 순서를 직접 단언하므로, 도형이 바뀌면 이 표를 갱신하기 전에 그쪽이 먼저 빨개진다).
 
         private readonly struct WorldShape
         {
@@ -93,19 +101,20 @@ namespace StickMate.Tests.EditMode
                     return new WorldShape[0];
 
                 case AppearanceShapeBuilder.FxFootprint:
-                    // ★ 미완 — 아래 면제 대장 참고. 지금 그려지는 것은 굵은 캡 하나(둥근 점)이고
-                    //   그 지름은 좌표가 아니라 CharacterFxRenderer.BuildDot이 정한다.
-                    return new WorldShape[0];
-
-                case AppearanceShapeBuilder.FxSparkle:
-                {
-                    float arm = R * AppearanceShapeBuilder.SparkleArmInR;
+                    // ★ 2026-09-06 — 둥근 점(면제)에서 <b>옆에서 본 밑창</b>으로. 크기 인자는 실물
+                    //   (CharacterFxRenderer.BuildSole)과 같이 <b>머리 반경</b>이다.
                     return new[]
                     {
-                        new WorldShape("CrossV", AppearanceShapeBuilder.SparkleStroke(arm, 0), false),
-                        new WorldShape("CrossH", AppearanceShapeBuilder.SparkleStroke(arm, 1), false),
+                        new WorldShape("FootSole", AppearanceShapeBuilder.FootSole(R, 1f), false),
                     };
-                }
+
+                case AppearanceShapeBuilder.FxSparkle:
+                    // ★ 2026-09-06 — 십자 2획에서 <b>윤곽 별 1도형</b>으로.
+                    return new[]
+                    {
+                        new WorldShape("SparkleStar",
+                            AppearanceShapeBuilder.SparkleStar(R * AppearanceShapeBuilder.SparkleArmInR), true),
+                    };
 
                 case AppearanceShapeBuilder.FxDust:
                 {
@@ -132,7 +141,10 @@ namespace StickMate.Tests.EditMode
                     return new[]
                     {
                         new WorldShape("LeafBlade", AppearanceShapeBuilder.LeafBlade(length), true),
-                        new WorldShape("LeafStem", AppearanceShapeBuilder.LeafStem(length), false),
+                        // ★ 2026-09-06 — 잎자루만 보조색(CharacterFxRenderer.BuildLeaf). 39-P의 예외:
+                        //   "입자 한 알을 보조색 때문에 쪼개지 않는다"이지 "보조색을 안 쓴다"가 아니고,
+                        //   나뭇잎은 이미 두 조각이라 알이 조금도 커지지 않는다.
+                        new WorldShape("LeafStem", AppearanceShapeBuilder.LeafStem(length), false, accent: true),
                     };
                 }
             }
@@ -168,12 +180,15 @@ namespace StickMate.Tests.EditMode
                 }
 
                 case AppearanceShapeBuilder.PetCursor:
-                    // ★ 미완 — 스펙은 머리(주색)+꼬리(보조색) 2조각인데 지금은 한 획이다(면제 대장 참고).
+                {
+                    // ★ 2026-09-06 — 한 획에서 머리(주색)+꼬리(보조색) 2조각으로(스펙 4-2가 원래 요구한 형태).
+                    float s = R * AppearanceShapeBuilder.CursorSizeInR;
                     return new[]
                     {
-                        new WorldShape("CursorFriend",
-                            AppearanceShapeBuilder.CursorArrow(R * AppearanceShapeBuilder.CursorSizeInR), false),
+                        new WorldShape("CursorHead", AppearanceShapeBuilder.CursorHead(s), true),
+                        new WorldShape("CursorTail", AppearanceShapeBuilder.CursorTail(s), true, accent: true),
                     };
+                }
 
                 case AppearanceShapeBuilder.PetBalloon:
                     return new[]
@@ -380,11 +395,18 @@ namespace StickMate.Tests.EditMode
             int accent = 0;
             for (int i = 0; i < shapes.Length; i++) if (shapes[i].Accent) accent++;
 
-            Assert.AreEqual(0, accent,
-                $"FX {item}번의 월드 도형에 보조색이 {accent}개 붙었습니다. " +
-                "CharacterFxRenderer는 ItemCatalog.ResolveWornPalette를 부르지 않아 보조색 자체가 없습니다 — " +
-                "보조색을 쓰려면 렌더러가 먼저 바뀌어야 합니다(제안 B). 그 전에는 이 값이 0이어야 " +
-                "'카드에는 있는 색이 착용하면 사라진다'가 조용히 늘어나지 않습니다.");
+            // ★ 2026-09-06 규칙 문장 정정 — 옛 단언은 <b>0개</b>였고 근거는 "CharacterFxRenderer가
+            //   ResolveWornPalette를 안 부른다"였다. 그건 39-P가 실제로 말하는 것이 아니다:
+            //   규칙은 <b>"입자 한 알을 보조색 때문에 쪼개지 않는다"</b>이고(쪼개면 알이 머리 지름의
+            //   78%가 된다는 산술), <b>이미 두 조각이고 간격이 0인 경우는 예외</b>다.
+            //   나뭇잎의 잎몸/잎자루가 그 예외라 알이 조금도 커지지 않는다 — 그리고 색을 안 주면
+            //   카드에 있는 갈색 잎자루가 착용하는 순간 사라진다(이 저장소가 반복해 고친 결함).
+            //   상한이 1인 이유는 그대로다: 보조색은 "형제와 나를 가르는 단 한 부분"이다(규칙 3-2).
+            Assert.LessOrEqual(accent, 1,
+                $"FX {item}번의 월드 도형에 보조색이 {accent}개 붙었습니다 — 최대 1개입니다. " +
+                "39-P의 예외는 '이미 두 조각이고 간격이 0인 도형'뿐입니다(나뭇잎의 잎몸+잎자루). " +
+                "보조색을 쓰려고 입자를 <b>쪼개면</b> 조각당 1.5획 + 간격 1.5획이라 알이 " +
+                "머리 지름의 78%가 됩니다 — 그것이 이 규칙이 막는 것입니다.");
 
             Assert.LessOrEqual(shapes.Length, 2,
                 $"FX {item}번의 월드 도형이 {shapes.Length}개입니다 — 입자 한 알은 2개를 넘지 않습니다. " +
@@ -395,25 +417,10 @@ namespace StickMate.Tests.EditMode
         [TestCaseSource(nameof(PetItems))]
         public void PET은_정원과_보조색_규칙을_그대로_지킨다(int item)
         {
-            if (item == AppearanceShapeBuilder.PetCursor)
-            {
-                // ★ 미완(건너뜀) — 규칙 1은 이미 닫혔고 정원/보조색만 남았다. Fail이 아니라 Ignore인
-                //   이유는 CLAUDE.md 규약이다: 못 고친 갭은 러너에 <b>건너뜀</b>으로 계속 보여야 잊히지 않는다.
-                // ★ 2026-09-02 qa-regression — <b>사유를 갱신했다</b>. 옛 사유는
-                //   "그 파일은 이번 라운드의 편집 금지 대상"이었는데 <b>그 라운드는 끝났다</b>
-                //   (CharacterPetRenderer.cs 마지막 커밋 4a5a4de, 2026-09-02 12:42).
-                //   그런데도 Ignore를 유지하는 이유는 <b>갭이 실제로 남아 있기 때문</b>이다 —
-                //   같은 파일의 아직_미완_커서친구는_머리와_꼬리로_안_쪼개졌다가 지금도 초록이고,
-                //   그것이 "아직 한 획(닫힌 8점)"이라는 뜻이다(그 검사가 빨개지면 여기도 함께 켜라).
-                //   고칠 파일은 프로덕션 .cs이므로 qa-regression이 손대지 않는다 — <b>배정 필요</b>.
-                Assert.Ignore("커서친구는 정원 1개 / 보조색 0개입니다(2~4개, 정확히 1개여야). " +
-                    "스펙은 머리(주색)+꼬리(보조색) 2조각인데, 쪼개려면 " +
-                    "CharacterPetRenderer.BuildCursorFriend가 LineRenderer를 두 개 만들어야 합니다. " +
-                    "★ 막던 사유(편집 잠금)는 2026-09-02 12:42에 소멸했습니다 — 지금 남은 것은 " +
-                    "'아직 아무도 안 했다'뿐이고, 프로덕션 렌더러 변경이라 배정이 필요합니다. " +
-                    "쪼개는 자리는 AppearanceShapeBuilder.CursorArrow 배열의 2번/5번 점입니다.");
-            }
-
+            // ★ 2026-09-06 — 커서친구 예외 분기를 <b>지웠다</b>. 옛 분기는 "정원 1개 / 보조색 0개"라
+            //   Ignore였고, 2026-09-06 라운드가 CharacterPetRenderer.BuildCursorFriend를
+            //   머리(주색)+꼬리(보조색) 두 줄로 쪼개면서 그 사유가 소멸했다. 이제 5종 전부가
+            //   조건 없이 같은 자를 받는다.
             WorldShape[] shapes = PetShapes(item);
             int accent = 0;
             for (int i = 0; i < shapes.Length; i++) if (shapes[i].Accent) accent++;
@@ -428,42 +435,93 @@ namespace StickMate.Tests.EditMode
         }
 
         // ============================================================================
-        // 4. ★ 면제 대장 — 아직 못 고친 2건. <b>고쳐지면 빨간불</b>이 되게 만들어 둔다
+        // 4. ★ 2026-09-06 — 면제 대장이 <b>비었다</b>. 두 건 다 실제로 고쳐졌다
         // ============================================================================
-        // 이 라운드는 좌표만 고칠 수 있었다(AppearanceShapeBuilder.cs 한 파일). 아래 두 건은
-        // 좌표 문제가 아니라 <b>호출부 구조</b> 문제라 CharacterFxRenderer / CharacterPetRenderer가
-        // 함께 바뀌어야 하는데, 두 파일은 이번 라운드의 편집 금지 대상이었다(제안 B와 겹치면
-        // 무엇 때문에 그림이 달라졌는지 판정할 수 없다).
+        // 옛 대장에는 두 건이 있었다(발자국이 둥근 점 / 커서친구가 한 획). 둘 다 좌표가 아니라
+        // <b>호출부 구조</b> 문제라 CharacterFxRenderer · CharacterPetRenderer가 함께 바뀌어야 했고,
+        // 그 파일들이 그 라운드의 편집 금지 대상이었다. 2026-09-06 라운드가 세 파일을 함께 고쳤다.
         //
-        // 대장이 스스로 낡지 않게, 두 검사는 "아직 미완인가"를 <b>직접</b> 단언한다.
-        // 누가 고치면 이 두 검사가 빨개지고, 그때 이 문단과 함께 지우면 된다.
+        // 그 자리를 "닫혔다"고 적어 두기만 하면 대장이 늙는다. 그래서 <b>대장 대신 계약</b>을 둔다 —
+        // 아래 두 검사는 옛 결함으로 되돌아가는 순간 빨개진다.
 
+        /// <summary>발자국이 <b>다시 둥근 점</b>이 되지 않는다. 되돌리는 방법이 두 가지라 둘 다 막는다:
+        /// 좌표를 2점으로 줄이거나(도형), 두께를 지름으로 잡거나(호출부).</summary>
         [Test]
-        public void 아직_미완_발자국은_밑창이_아니라_둥근_점이다()
+        public void 발자국은_옆에서_본_밑창이고_보통_획으로_그린다()
         {
-            Vector3[] dot = AppearanceShapeBuilder.DotSegment(R * 0.2f);
-            Assert.AreEqual(2, dot.Length,
-                "발자국 도형이 2점이 아닙니다 — 스펙의 '옆에서 본 밑창'(열린 3점)으로 바뀌었다면 " +
-                "이 면제 대장 문단과 이 검사를 지우고, 위 FxShapes의 FxFootprint 자리에 실제 도형을 넣으세요. " +
-                "함께 확인할 것: CharacterFxRenderer.BuildDot이 선 두께를 radius*2(=1.19획)가 아니라 " +
-                "보통 획으로 잡아야 밑창의 최단 변 1.14획이 실제로 1획을 넘습니다.");
+            Vector3[] sole = AppearanceShapeBuilder.FootSole(R, 1f);
+            Assert.AreEqual(3, sole.Length,
+                "발자국이 열린 3점(옆에서 본 밑창)이 아닙니다 — 옆에서 보는 이 앱에서 둥근 점은 발자국이 아닙니다.");
 
-            // 지금 상태의 결함을 숫자로 남긴다: 지름 1.19획 < 1.5획(규칙 1 잉크 사각형) + 둥근 점.
-            // 옆에서 보는 이 앱에서 둥근 점은 발자국이 아니다.
+            // 진행 방향(+x)으로 앞이 길다 — 뒤꿈치보다 발가락 쪽이 멀다는 것이 '밑창'의 정체다.
+            Assert.Greater(sole[2].x, -sole[0].x,
+                "밑창이 좌우 대칭입니다 — 앞뒤가 같으면 방향이 없는 알약이 됩니다.");
+
+            // 좌우 반전은 x만 뒤집는다(달팽이와 같은 규약).
+            Vector3[] left = AppearanceShapeBuilder.FootSole(R, -1f);
+            for (int i = 0; i < sole.Length; i++)
+            {
+                Assert.AreEqual(-sole[i].x, left[i].x, 1e-5f, $"{i}번 점의 x가 대칭이 아닙니다.");
+                Assert.AreEqual(sole[i].y, left[i].y, 1e-5f, $"{i}번 점의 y가 좌우 반전에서 바뀌었습니다.");
+            }
+
+            // ★ 호출부 계약 — 두께가 <b>보통 획</b>이어야 한다. 옛 BuildDot은 radius*2(= 1.19획)로
+            //   못박았고, 그 두께를 남긴 채 좌표만 바꾸면 밑창이 통째로 잉크에 먹혀 그림이 그대로다.
+            //   문자열 니들이 아니라 <b>도형이 그 두께를 견디는가</b>로 잰다: 잉크 사각형 2.79획.
+            string ink = DescribeInkBoxViolation("FootSole", sole, W * R);
+            Assert.IsNull(ink, ink);
+            string shortest = DescribeShortestEdgeViolation("FootSole", sole, false, W * R);
+            Assert.IsNull(shortest, shortest);
         }
 
+        /// <summary>커서 친구가 <b>다시 한 획</b>으로 합쳐지지 않는다. 두 조각이 분기점 2개를
+        /// 공유하는 것이 "떠 있는 조각이 아니다"의 유일한 근거다(37-6 규칙 4의 간격 0 쪽).</summary>
         [Test]
-        public void 아직_미완_커서친구는_머리와_꼬리로_안_쪼개졌다()
+        public void 커서친구는_머리와_꼬리가_분기점을_공유한다()
         {
-            Vector3[] arrow = AppearanceShapeBuilder.CursorArrow(R * AppearanceShapeBuilder.CursorSizeInR);
-            Assert.AreEqual(8, arrow.Length,
-                "커서 화살표가 한 획(닫힌 8점)이 아닙니다 — 머리/꼬리 2조각으로 쪼개졌다면 " +
-                "이 검사와 PET 정원 검사의 예외 분기를 지우세요.");
-            Assert.AreEqual(arrow[0], arrow[arrow.Length - 1],
-                "마지막 점이 첫 점과 달라졌습니다 — 부르는 쪽이 loop:false라 이 중복점이 곧 '닫힘'입니다.");
+            float s = R * AppearanceShapeBuilder.CursorSizeInR;
+            Vector3[] head = AppearanceShapeBuilder.CursorHead(s);
+            Vector3[] tail = AppearanceShapeBuilder.CursorTail(s);
 
-            // 미완이어도 규칙 1은 이미 닫혔다(최단 변 0.47획 -> 1.06획). 남은 것은 정원/보조색뿐이다.
-            string shortest = DescribeShortestEdgeViolation("CursorFriend", arrow, false, W * R);
+            Assert.AreEqual(5, head.Length, "머리가 닫힌 5점이 아닙니다.");
+            Assert.AreEqual(4, tail.Length, "꼬리가 닫힌 4점이 아닙니다.");
+
+            // 꼬리의 첫/끝 점이 머리의 2·3번 점과 <b>정확히</b> 같다.
+            Assert.AreEqual(0f, Vector3.Distance(tail[0], head[2]), 1e-5f,
+                "꼬리 뿌리가 머리에서 떨어졌습니다 — 37-6 규칙 4가 금지한 '떠 있는 조각'입니다.");
+            Assert.AreEqual(0f, Vector3.Distance(tail[tail.Length - 1], head[3]), 1e-5f,
+                "꼬리 끝이 머리에서 떨어졌습니다.");
+
+            // 두 조각 다 규칙 1을 지킨다(최단 변 1.06획).
+            string headShort = DescribeShortestEdgeViolation("CursorHead", head, true, W * R);
+            Assert.IsNull(headShort, headShort);
+            string tailShort = DescribeShortestEdgeViolation("CursorTail", tail, true, W * R);
+            Assert.IsNull(tailShort, tailShort);
+        }
+
+        /// <summary>반짝임이 <b>다시 십자</b>가 되지 않는다 — 별의 정체는 <b>오목한 허리</b>다.</summary>
+        [Test]
+        public void 반짝임은_오목한_허리를_가진_윤곽_별이다()
+        {
+            float arm = R * AppearanceShapeBuilder.SparkleArmInR;
+            Vector3[] star = AppearanceShapeBuilder.SparkleStar(arm);
+            Assert.AreEqual(8, star.Length, "반짝임이 8점(바깥 4 + 오목 4)이 아닙니다.");
+
+            float inner = arm * AppearanceShapeBuilder.SparkleConcaveRatio;
+            for (int i = 0; i < star.Length; i++)
+            {
+                float expected = i % 2 == 0 ? arm : inner;
+                Assert.AreEqual(expected, star[i].magnitude, 1e-4f,
+                    $"{i}번 점의 반경이 {(i % 2 == 0 ? "바깥" : "오목")} 반경이 아닙니다 — " +
+                    "짝수 = 바깥, 홀수 = 오목이라는 순서가 계약입니다.");
+            }
+
+            // 허리가 실제로 파여 있는가 — 오목 반경이 바깥의 절반보다 작아야 '별'로 읽힌다.
+            Assert.Less(inner, arm * 0.5f,
+                $"오목 반경이 바깥의 {(inner / arm):F2}배입니다 — 0.5배를 넘으면 팔각형이지 별이 아닙니다.");
+
+            // 그리고 그 변이 획에 안 먹힌다(2.32획).
+            string shortest = DescribeShortestEdgeViolation("SparkleStar", star, true, W * R);
             Assert.IsNull(shortest, shortest);
         }
 
@@ -794,12 +852,20 @@ namespace StickMate.Tests.EditMode
                 * AccessoryShapeBuilder.ShippingCharacterScale;
             float margin = headRadius * AppearanceShapeBuilder.CursorSizeInR;
 
-            Vector3[] arrow = AppearanceShapeBuilder.CursorArrow(margin);
+            // ★ 두 조각 <b>합쳐서</b> 잰다 — 아래로 가장 멀리 뻗는 점은 꼬리에 있다(−1.06 s).
+            //   머리만 재면 여백 판정이 그만큼 헐거워진다.
             float right = 0f, down = 0f;
-            for (int i = 0; i < arrow.Length; i++)
+            foreach (Vector3[] piece in new[]
+                     {
+                         AppearanceShapeBuilder.CursorHead(margin),
+                         AppearanceShapeBuilder.CursorTail(margin),
+                     })
             {
-                right = Mathf.Max(right, arrow[i].x);
-                down = Mathf.Max(down, -arrow[i].y);
+                for (int i = 0; i < piece.Length; i++)
+                {
+                    right = Mathf.Max(right, piece[i].x);
+                    down = Mathf.Max(down, -piece[i].y);
+                }
             }
 
             // (1) 오른쪽 아래 구석으로 밀어붙여도 화살표가 화면 안에 남는가.

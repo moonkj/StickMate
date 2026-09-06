@@ -7,7 +7,7 @@
 
 == 1. [①] 모자 2층 ==
    clothhat  뒤층 2: clothhat.B2.far, clothhat.B2.farArc
-             앞층 5: clothhat.B0, clothhat.F1, clothhat.B2.near, clothhat.B2.nearArc, clothhat.H3
+             앞층 6: clothhat.B0, clothhat.B0.arc, clothhat.F1, clothhat.B2.near, clothhat.B2.nearArc, clothhat.H3
    furhat    뒤층 0: (없음 — 먼 쪽이 보이는 부위가 없다)
              앞층 5: furhat.CB0, furhat.B1, furhat.H2, furhat.B3, furhat.S4
    fedora    뒤층 2: fedora.B2.far, fedora.B2.farArc
@@ -16,12 +16,12 @@
              앞층 9: crown.B0, crown.B1, crown.CF2, crown.CF3, crown.CF4, crown.CB5, crown.CB6, crown.CB7, crown.H8
    왕관: R17 기본 맞춤 그대로(R19 재맞춤 폐기) u 0.0570(카드 ×1.15) dy +3.120 · 꼭대기 +2.413 · 밑 +0.313 · 폭 2.34 R
 == 1-b. [R24] 관 x 배수 — 앞층만 H-2 (u·dy·ky 무변경 = 챙 폭·꼭대기·밑단 불변) ==
-   clothhat  관 x×1.12 → 관 반폭 1.155 R (카드 1.031) · 관 밑변 +0.487 R · 그 높이 머리 현 1.079 + 여유 0.06 = 1.139 → 덮는다
-             챙 분할선 +0.487 R(= 관 밑변) · 가까운 쪽 챙 y[+0.122,+0.487] 반폭 1.825 — 관 밑변에서 이어받는다
-             챙 폭 3.650 R · 꼭대기 +1.947 · 앞층 밑단 +0.122 (셋 다 R19 값과 같다 — u·dy 를 안 건드렸다)
-   fedora    관 x×1.18 → 관 반폭 1.127 R (카드 0.955) · 관 밑변 +0.562 R · 그 높이 머리 현 1.042 + 여유 0.06 = 1.102 → 덮는다
-             챙 분할선 +0.562 R(= 관 밑변) · 가까운 쪽 챙 y[+0.133,+0.562] 반폭 2.028 — 관 밑변에서 이어받는다
-             챙 폭 4.056 R · 꼭대기 +2.473 · 앞층 밑단 +0.133 (셋 다 R19 값과 같다 — u·dy 를 안 건드렸다)
+   clothhat  관 x×1.12 → 관 반폭 1.155 R (카드 1.031) · 관 밑변 +0.663 R · 그 높이 머리 현 0.981 + 여유 0.06 = 1.041 → 덮는다
+             챙 분할선 +0.663 R(= 관 밑변) · 가까운 쪽 챙 y[+0.298,+0.663] 반폭 1.825 — 관 밑변에서 이어받는다
+             챙 폭 3.650 R · 꼭대기 +2.123 · 앞층 밑단 +0.298 (셋 다 R19 값과 같다 — u·dy 를 안 건드렸다)
+   fedora    관 x×1.18 → 관 반폭 1.127 R (카드 0.955) · 관 밑변 +0.698 R · 그 높이 머리 현 0.956 + 여유 0.06 = 1.016 → 덮는다
+             챙 분할선 +0.698 R(= 관 밑변) · 가까운 쪽 챙 y[+0.284,+0.698] 반폭 2.028 — 관 밑변에서 이어받는다
+             챙 폭 4.056 R · 꼭대기 +2.542 · 앞층 밑단 +0.284 (셋 다 R19 값과 같다 — u·dy 를 안 건드렸다)
 
 == 2. [⑤] NECK 착용선 (N-1 예외 폐지) ==
    bowtie        RB2  윗변 -1.412 R · 어깨선과 -0.093 · 머리 원반 밑과 -0.240 → 통과
@@ -48,7 +48,8 @@
    monocle       monocle.H1               card  (None, 'W')    fill None α1.00 line #FFFFFF
    monocle       monocle.S2               card  (None, 'M')    fill None α1.00 line #9B7922
    monocle       monocle.CB3              card  ('M2', None)   fill #587398 α1.00 line None
-   clothhat      clothhat.B0              front ('M', 'INK')   검: fill #96814F line #111111 | 흰: fill #96814F line #FFFFFF
+   clothhat      clothhat.B0              front ('M', None)    검: fill #96814F line None | 흰: fill #96814F line None
+   clothhat      clothhat.B0.arc          front (None, 'INK')  검: fill None line #111111 | 흰: fill None line #FFFFFF
    clothhat      clothhat.F1              front ('SH', None)   검: fill #2A2416 line None | 흰: fill #2A2416 line None
    clothhat      clothhat.B2.far          back  ('M2', None)   검: fill #CC5512 line None | 흰: fill #CC5512 line None
    clothhat      clothhat.B2.farArc       back  (None, 'INK')  검: fill None line #111111 | 흰: fill None line #FFFFFF

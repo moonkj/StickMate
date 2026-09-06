@@ -24,8 +24,23 @@ namespace StickMate.Tests.EditMode
     /// <see cref="AccessorySilhouetteDistinctionTests"/>의 네거티브 컨트롤로 증명돼 있다.
     /// 이 파일도 <b>고친 항목마다 네거티브 컨트롤</b>을 짝지어 둔다 — 옛 좌표를 그대로 박제해
     /// "자가 그것을 빨간불로 읽는가"를 같은 스위트 안에서 단언한다.</para>
+    ///
+    /// <para>★★ <b>2026-09-06 — 이 파일의 띠 검사는 「도형의 폭」만 잰다. 「보이는 색면」은 짝 파일이 잰다.</b>
+    /// (<c>AccessoryHatBandAndBellTests.NetInk.cs</c> · <see cref="AccessoryBandNetInkRuler"/>)
+    /// debugger 규명 [Major-2]가 이 파일의 구조적 결함 둘을 수치로 남겼다:
+    /// <list type="number">
+    ///   <item>아래 <see cref="모자_띠는_자기_관_밑변과_정확히_겹친다"/>의 <c>TestCase</c>는 <b>2건</b>인데
+    ///     그중 중절모는 인계본이라 건너뛴다 — <b>모자 6종 중 실제로 도는 것이 1종</b>이었고,
+    ///     천모자·털모자·왕관은 목록에 <b>아예 없었다</b>.</item>
+    ///   <item>여기서 재는 <c>thickness</c>는 <b>총두께</b>다. 천모자 챙 띠는 그 자로 2.12획이라
+    ///     통과했지만, 그때 위아래 두 획이 경계를 먹어 화면에 남던 색은 <b>1.123pt</b>였다
+    ///     — 즉 <b>통과 판정과 안 보이는 상태가 똑같이 생겼다</b>(같은 밤 처방 뒤 1.623pt).</item>
+    /// </list>
+    /// 짝 파일이 그 둘을 <b>순 색면 예산</b>(net = 총두께 − 경계에 좌표가 일치하는 획의 반폭)과
+    /// 모자 <b>6종 전수</b> 게이트로 막는다. 이 파일의 검사들은 「올린 띠」 규약(아랫변 = 관 밑변)을
+    /// 잠그는 <b>다른 일</b>을 계속 한다 — 두 검사는 겹치지 않는다.</para>
     /// </summary>
-    public sealed class AccessoryHatBandAndBellTests
+    public sealed partial class AccessoryHatBandAndBellTests
     {
         /// <summary>배율 0.75(출하 기본)에서 실제로 그려지는 획. 판정 문턱은 전부 이 값의 배수다.</summary>
         private static float W => AccessorySilhouetteMetrics.StrokeInR;

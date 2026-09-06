@@ -59,7 +59,12 @@ namespace StickMate.Interaction
         private const float BallTrailInHeight = 0.55f;
         private const float BallFollowRate = 4.0f;
         private const float BallRadiusInHeight = AppearanceShapeBuilder.BallRadiusInHeight;
-        private const int BallSegments = 12;
+
+        // ★ 2026-09-06 — <b>사문(死文) 상수 3개를 지웠다</b>(BallSegments = 12 / SnailShellSegments = 14 /
+        //   SnailCoreSegments = 8). 도형 빌더가 각수를 Mathf.Min(요청, 자기 상한)으로 자르므로
+        //   (AppearanceShapeBuilder의 "각수는 반지름이 산다" 문단) 이 값들은 <b>2026-09-01에 이미
+        //   9·12·4로 잘려 그려지고 있었다</b> — 즉 화면과 무관한 옛 숫자만 남아 "공은 12각"이라고
+        //   읽히게 했다. 이제 호출부가 빌더 상수를 그대로 넘긴다.
 
         private const float PlaneOrbitSeconds = 3.2f;
         private const float PlaneCenterAboveHeadInR = 1.9f;
@@ -149,8 +154,6 @@ namespace StickMate.Interaction
         private const float SnailCrawlGateFloor = 0.30f;      // 밀지 않는 구간에도 이만큼은 나아간다
         private const float SnailBreathScale = 0.045f;        // 기어갈 때의 몸 신축(균등 배율)
         private const float SnailSizeInR = AppearanceShapeBuilder.SnailSizeInR;
-        private const int SnailShellSegments = 14;
-        private const int SnailCoreSegments = 8;
 
         private const float CursorFollowRate = 9.0f;
         private const float CursorLeadSeconds = 0.08f;
@@ -1198,11 +1201,13 @@ namespace StickMate.Interaction
         private void BuildBall()
         {
             float radius = Height * BallRadiusInHeight;
-            // 반지름 선이 없으면 원이 아무리 굴러도 정지해 보인다 — 회전을 읽히게 하는 유일한 요소.
+            // 솔기가 없으면 원이 아무리 굴러도 정지해 보인다 — 회전을 읽히게 하는 유일한 요소.
             _lines = new[]
             {
-                MakeLine("BallRing", AppearanceShapeBuilder.BallRing(radius, BallSegments), true, SortDefault, _primary),
-                MakeLine("BallSpoke", AppearanceShapeBuilder.BallSpoke(radius), false, SortDefault, _secondary),
+                MakeLine("BallRing",
+                    AppearanceShapeBuilder.BallRing(radius, AppearanceShapeBuilder.BallSegments),
+                    true, SortDefault, _primary),
+                MakeLine("BallSeam", AppearanceShapeBuilder.BallSeam(radius), false, SortDefault, _secondary),
             };
         }
 
@@ -1409,13 +1414,18 @@ namespace StickMate.Interaction
             lr.transform.localRotation = Quaternion.Euler(0f, 0f, degrees);
         }
 
+        /// <summary>커서 친구 — 머리(주색) + 꼬리(보조색) 두 조각.
+        /// <para>★ 2026-09-06 — 옛 구현은 <b>한 획</b>(닫힌 8점, 전부 주색)이었다. 카드
+        /// (<c>Resources/Items/look_pet_cursor.asset</c>)는 처음부터 두 줄이었고 꼬리가 보조색이라
+        /// "카드와 착용 모습이 다르다"가 색으로 남아 있었다. 두 조각은 분기점 2개를 <b>공유</b>하므로
+        /// 간격이 0이다(37-6 규칙 4) — 크기가 뭉개져도 꼬리가 색으로 읽힌다.</para></summary>
         private void BuildCursorFriend()
         {
             float s = HeadRadius * CursorSizeInR;
-            // 화살표 커서 실루엣(닫힌 선 8점) — icon-paths.json의 그 모양.
             _lines = new[]
             {
-                MakeLine("CursorFriend", AppearanceShapeBuilder.CursorArrow(s), false, SortCursorFriend, _primary),
+                MakeLine("CursorHead", AppearanceShapeBuilder.CursorHead(s), true, SortCursorFriend, _primary),
+                MakeLine("CursorTail", AppearanceShapeBuilder.CursorTail(s), true, SortCursorFriend, _secondary),
             };
         }
 
@@ -1440,9 +1450,11 @@ namespace StickMate.Interaction
             _lines = new[]
             {
                 MakeLine("SnailFoot", AppearanceShapeBuilder.SnailFoot(size, facing), false, SortDefault, _primary),
-                MakeLine("SnailShell", AppearanceShapeBuilder.SnailShell(size, facing, SnailShellSegments),
+                MakeLine("SnailShell",
+                    AppearanceShapeBuilder.SnailShell(size, facing, AppearanceShapeBuilder.SnailShellSegments),
                     true, SortDefault, _primary),
-                MakeLine("SnailShellCore", AppearanceShapeBuilder.SnailShellCore(size, facing, SnailCoreSegments),
+                MakeLine("SnailShellCore",
+                    AppearanceShapeBuilder.SnailShellCore(size, facing, AppearanceShapeBuilder.SnailCoreSegments),
                     true, SortDefault, _secondary),
             };
         }

@@ -18,7 +18,12 @@ namespace StickMate.Tests.EditMode
     /// <list type="number">
     ///   <item><b>팔짱의 부호</b> — 재설계의 전부다. 옛 값은 «가장 앞에 나온 손 = 가장 낮은 손»이라
     ///     기하학적으로 <b>반드시</b> "허리 앞에 손 모으기"가 됐다. 손 물림의 <b>부호</b>가 뒤집혔는지를
-    ///     프리팹 실측 + 프로덕션 상수로 정방향 계산(FK)해서 본다.</item>
+    ///     프리팹 실측 + 프로덕션 상수로 정방향 계산(FK)해서 본다.
+    ///     <para>★ <b>2026-09-06 R3 추가</b> — 부호만으로는 부족했다. 사용자 실기 신고 <i>"가슴에 붙은
+    ///     막대를 들고 있는 것 같다"</i>의 실체는 <b>A의 상완이 몸통 획에 통째로 묻히는 것</b>이었고,
+    ///     그건 이 파일의 옛 합격선(손 몸통비 ≥ 0.65)이 팔꿈치 예산과 결합해 <b>강제</b>하고 있었다.
+    ///     그래서 그 선을 0.60으로 낮추는 대신 «상완 노출 · 쐐기 틈 · 전완 절대각» 세 지표를 넣었다
+    ///     (네거티브 컨트롤 포함).</para></item>
     ///   <item><b>안경 손끝의 돌출</b> — 옛 파라미터는 배율 0.75에서 0.13pt라 손이 머리에 묻혔다.
     ///     네 배율 전부에서 머리 실루엣 밖으로 나오는지 본다(네거티브 컨트롤 포함).</item>
     ///   <item><b>어휘 분리</b> — 세션 안/밖에서 어휘가 섞이지 않는가, 그리고 커서를 못 읽으면
@@ -53,6 +58,7 @@ namespace StickMate.Tests.EditMode
             public float HeadCenterY;     // 머리 중심 y
             public float HeadVisualRadius;// 머리 <b>시각</b> 반경(외곽선 폴리라인 실측)
             public float ArmStrokeWidth;  // 팔 획 두께
+            public float TorsoStrokeWidth;// 몸통 획 두께 — 상완이 몸통에 묻히는지는 이 폭이 정한다
             public float BakedScale;      // 프리팹이 구워진 배율
 
             public float Reach => ArmUpper + ArmLower;
@@ -68,10 +74,12 @@ namespace StickMate.Tests.EditMode
             Transform armLower = arm != null ? arm.Find("LeftArmLower") : null;
             Transform leg = prefab.transform.Find("LeftLeg");
             Transform head = prefab.transform.Find("Head");
+            Transform torso = prefab.transform.Find("Torso");
             Assert.IsNotNull(arm, $"{LogPrefix} 프리팹에 LeftArm이 없습니다.");
             Assert.IsNotNull(armLower, $"{LogPrefix} 프리팹에 LeftArmLower가 없습니다.");
             Assert.IsNotNull(leg, $"{LogPrefix} 프리팹에 LeftLeg이 없습니다.");
             Assert.IsNotNull(head, $"{LogPrefix} 프리팹에 Head가 없습니다.");
+            Assert.IsNotNull(torso, $"{LogPrefix} 프리팹에 Torso가 없습니다.");
 
             // 프로덕션(StickmanPoseAnimator.BuildSegment)이 읽는 것과 **같은 출처**를 쓴다.
             var shoulderJoint = arm.GetComponent<HingeJoint2D>();
@@ -89,13 +97,18 @@ namespace StickMate.Tests.EditMode
                 HipY = hipJoint != null ? hipJoint.connectedAnchor.y : leg.localPosition.y,
                 HeadCenterY = head.localPosition.y,
                 HeadVisualRadius = MeasureHeadVisualRadius(head),
-                ArmStrokeWidth = ReadArmStrokeWidth(arm),
+                ArmStrokeWidth = ReadStrokeWidth(arm),
+                TorsoStrokeWidth = ReadStrokeWidth(torso),
                 BakedScale = MeasureBakedScale(prefab),
             };
 
             Assert.Greater(rig.Reach, 0f, $"{LogPrefix} 팔 길이를 못 읽었습니다.");
             Assert.Greater(rig.TorsoLength, 0f, $"{LogPrefix} 몸통 길이(어깨 − 엉덩이)가 0 이하입니다.");
             Assert.Greater(rig.HeadVisualRadius, 0f, $"{LogPrefix} 머리 시각 반경을 못 읽었습니다.");
+            Assert.Greater(rig.ArmStrokeWidth, 0f, $"{LogPrefix} 팔 획 두께를 못 읽었습니다.");
+            Assert.Greater(rig.TorsoStrokeWidth, 0f,
+                $"{LogPrefix} 몸통 획 두께를 못 읽었습니다 — 0이면 «상완이 몸통에 묻혔는가» 검사가 " +
+                "무엇을 넣어도 통과합니다(몸통이 폭 0이면 팔이 언제나 밖으로 나옵니다).");
             return rig;
         }
 
@@ -115,9 +128,10 @@ namespace StickMate.Tests.EditMode
             return radius;
         }
 
-        private static float ReadArmStrokeWidth(Transform arm)
+        /// <summary>그 마디가 <b>실제로 그려지는</b> 획 두께 — 물리 콜라이더가 아니라 LineRenderer에서 읽는다.</summary>
+        private static float ReadStrokeWidth(Transform segment)
         {
-            var line = arm.GetComponent<LineRenderer>();
+            var line = segment.GetComponent<LineRenderer>();
             return line != null ? line.startWidth : 0f;
         }
 
@@ -150,15 +164,81 @@ namespace StickMate.Tests.EditMode
         private static float TorsoRatio(in Rig rig, Vector2 point) => (point.y - rig.HipY) / rig.TorsoLength;
 
         // ====================================================================
+        // ★★ R3 실루엣 기하 — «막대»와 «팔»을 가르는 세 양(2026-09-06)
+        // ====================================================================
+        // 아래 세 함수는 design/motion/2026-09-06_R3_팔짱실루엣_처방_검산.py의 T2·쐐기틈 계산을
+        // 그대로 옮긴 것이다. 각도는 프로덕션(ResolveCrossArmAngles)에서, 치수는 프리팹에서 오고
+        // 이 파일이 정하는 것은 합격선뿐이다.
+
+        /// <summary>전완의 <b>절대각</b>(도, 0 = 수평 앞, + = 손이 팔꿈치보다 위). 이 파일의 각도 규약
+        /// (0 = 곧게 아래)에서 마디 방향은 (sinθ, −cosθ)이므로 수평 기준각은 θ − 90°다.</summary>
+        private static float ForearmAbsoluteDegrees(float upperDegrees, float lowerDegrees)
+            => upperDegrees + lowerDegrees - 90f;
+
+        /// <summary>기울임 <paramref name="leanDegrees"/>(− = 뒤)에서 <b>화면 높이 y</b>의 몸통 중심선 x.
+        /// 회전 중심은 엉덩이다(<c>StickmanPoseAnimator.SetBodyLean</c>이 다리 부착점을 피벗으로 쓴다).</summary>
+        private static float TorsoCenterX(in Rig rig, float y, float leanDegrees)
+            => (y - rig.HipY) * Mathf.Tan(leanDegrees * Mathf.Deg2Rad);
+
+        /// <summary>
+        /// A(최전방 팔) 상완이 <b>몸통 획 밖으로 나온 양</b>(월드 유닛). 팔꿈치가 상완에서 가장 뒤에
+        /// 있으므로 여기가 최대 노출 지점이고, 둥근 캡(numCapVertices &gt; 0)이라 가장 뒤 픽셀은
+        /// 팔꿈치 중심 − 획 반두께다.
+        ///
+        /// <para><b>이 값이 0에 가까우면 상완이 화면에서 사라진다</b> — 그러면 남는 것은 전완 하나뿐이고,
+        /// 그게 2026-09-06 사용자 신고 «가슴에 붙은 막대를 들고 있는 것 같다»의 기하학적 실체다
+        /// (신고 시점 실측 0.18 획).</para>
+        /// </summary>
+        private static float UpperArmExposure(in Rig rig, Vector2 elbow, float leanDegrees)
+        {
+            float lean = leanDegrees * Mathf.Deg2Rad;
+            // 기운 몸통의 <b>수평</b> 반폭은 sec(lean)배로 넓어진다(팔에 불리한 쪽 = 보수적).
+            float torsoBackEdge = TorsoCenterX(rig, elbow.y, leanDegrees)
+                - 0.5f * rig.TorsoStrokeWidth / Mathf.Cos(lean);
+            return torsoBackEdge - (elbow.x - 0.5f * rig.ArmStrokeWidth);
+        }
+
+        /// <summary>
+        /// «쐐기 틈» — 두 전완의 중심선 간격이 <b>팔 획 하나</b>가 되는 지점이, 두 전완이 함께 보이는
+        /// 구간(앞쪽 끝 = 더 가까운 손) 안으로 들어온 양. <b>양수면 화면에서 쐐기가 실제로 갈라진다</b>.
+        /// 음수면 두 전완이 눈에 보이는 내내 한 덩어리로 붙어 있다(R3 이전 실측 −0.047).
+        /// </summary>
+        private static float WedgeGap(in Rig rig, Vector2 elbowA, Vector2 handA, float forearmA,
+            Vector2 elbowB, Vector2 handB, float forearmB)
+        {
+            // tan이 폭발하면(전완이 수직) 이 지표 자체가 무의미하다 — 조용히 통과시키지 않는다.
+            Assert.Less(Mathf.Abs(forearmA), 80f,
+                $"{LogPrefix} A 전완이 거의 수직({forearmA:F1}°)입니다 — 쐐기 틈 계산이 성립하지 않습니다.");
+            Assert.Less(Mathf.Abs(forearmB), 80f,
+                $"{LogPrefix} B 전완이 거의 수직({forearmB:F1}°)입니다 — 쐐기 틈 계산이 성립하지 않습니다.");
+
+            float tA = Mathf.Tan(forearmA * Mathf.Deg2Rad);
+            float tB = Mathf.Tan(forearmB * Mathf.Deg2Rad);
+            float denom = tA - tB;
+            Assert.Greater(Mathf.Abs(denom), 1e-3f,
+                $"{LogPrefix} 두 전완이 평행합니다(기울기 차 {denom:F5}) — 갈라지는 지점이 존재하지 않습니다.");
+
+            // 두 중심선의 세로 간격 = denom·x + c. 그 간격이 획 하나가 되는 x를 푼다.
+            float c = (elbowA.y - elbowA.x * tA) - (elbowB.y - elbowB.x * tB);
+            float xSplit = (rig.ArmStrokeWidth - c) / denom;
+            return Mathf.Min(handA.x, handB.x) - xSplit;
+        }
+
+        // ====================================================================
         // (1) ★★ 팔짱 — 이번 재설계의 전부인 «부호»
         // ====================================================================
 
         /// <summary>
-        /// V1 — 최전방 손이 <b>가슴 높이</b>이고 아래 팔이 그 <b>안쪽으로</b> 들어간다.
+        /// V1 — 최전방 손이 <b>가슴 쪽 높이</b>(허리 0.50과 가슴 0.75 사이의 가슴 쪽)이고 아래 팔이
+        /// 그 <b>안쪽으로</b> 들어간다.
         ///
         /// <para>옛 값(어깨 −14 ∓ 5.5 / 팔꿈치 104 ± 11)에서는 물림이 <b>음수</b>였다: 가장 앞에 나온
         /// 손이 가장 낮은 손이라 정의상 "허리 앞에 두 손 모으기"다. 페르소나가 본 것은 튜닝 오차가
         /// 아니라 그 부호였다.</para>
+        ///
+        /// <para>★ <b>메서드 이름의 "가슴 높이"는 2026-09-06 R3에서 «가슴 쪽»으로 뜻이 좁아졌다</b>
+        /// (합격선 0.65 → 0.60). 이름을 바꾸지 않은 이유는 회귀 베이스라인이 테스트 이름으로 대조되기
+        /// 때문이다. 왜 0.65를 못 지키는지는 아래 단언 위 주석에 유도와 함께 적혀 있다.</para>
         /// </summary>
         [Test]
         public void 팔짱은_최전방_손이_가슴_높이이고_아래_팔이_안쪽으로_물린다()
@@ -192,9 +272,19 @@ namespace StickMate.Tests.EditMode
                 $"{LogPrefix} 손 물림 {mesh:F4}가 팔 획 두께 {rig.ArmStrokeWidth:F4}보다 작습니다 — " +
                 "두 손이 화면에서 한 덩어리로 뭉칩니다.");
 
-            // 합격선 0.65 = "가슴(0.75)에 가깝다"의 설계 하한(문서 3-4 판정 지표). 허리는 0.50이다.
-            Assert.GreaterOrEqual(frontRatio, 0.65f,
-                $"{LogPrefix} 최전방 손의 몸통비가 {frontRatio:F3}입니다(합격선 0.65, 허리=0.50 / 가슴=0.75) — " +
+            // ★★ 2026-09-06 R3 — 합격선 0.65 → 0.60. <b>이 완화는 순감소가 아니다</b>: 아래
+            //    「A의 상완이 몸통 밖으로 나오고 두 전완이 갈라진다」 테스트가 같은 라운드에 추가됐고,
+            //    그쪽이 R3 이전 각도를 실제로 빨간불로 잡는다(네거티브 컨트롤로 못박음).
+            //
+            //    왜 0.65가 유지 불가능한 선이었나: 팔꿈치 예산 116.5°(규칙 B 무손상 상한)에서
+            //    «손 몸통비 0.65»는 A의 어깨각을 −14.4°로 <b>유일하게</b> 못박는데, 상완이 몸통 획을
+            //    벗어나려면 최소 16.78°(= asin(획 합반폭 ÷ 상완 길이))가 필요하다. 즉 두 요구는
+            //    <b>같은 팔꿈치 예산에서 동시 만족이 불가능</b>했고, 그래서 사양이 «상완이 묻힌 그림»을
+            //    강제하고 있었다 — 사용자 실기 신고 «막대를 들고 있는 것 같다»의 원인이 여기다.
+            //    0.60은 허리(0.50)와 가슴(0.75) 사이에서 «가슴 쪽»이 유지되는 하한이다.
+            //    유도: design/motion/2026-09-06_R3_팔짱실루엣_처방_검산.py (T1·T5)
+            Assert.GreaterOrEqual(frontRatio, 0.60f,
+                $"{LogPrefix} 최전방 손의 몸통비가 {frontRatio:F3}입니다(합격선 0.60, 허리=0.50 / 가슴=0.75) — " +
                 "이 높이면 «팔짱»이 아니라 «손 모으기»로 읽힙니다.");
 
             Assert.Greater(frontRatio, backRatio,
@@ -207,10 +297,189 @@ namespace StickMate.Tests.EditMode
                 "한 팔만 그린 것처럼 보입니다.");
         }
 
+        // --------------------------------------------------------------------
+        // ★★ R3 — «팔인가 막대인가». 위 V1의 합격선을 0.65 → 0.60으로 <b>완화한 대가</b>로
+        //     같은 라운드에 들어온 세 단언이다. 셋 다 R3 이전 각도에서는 실패한다(아래 대조).
+        // --------------------------------------------------------------------
+
+        private struct CrossSilhouette
+        {
+            public float FrontExposureBase;      // A 상완이 몸통 밖으로 나온 양(기준 기울임)
+            public float FrontExposureRearmost;  // 같은 값, 가장 뒤로 젖힌 순간
+            public float Wedge;                  // 두 전완이 «보이는 구간에서» 갈라지는가(> 0)
+            public float FrontForearmDegrees;    // A 전완의 절대각(0 = 수평)
+            public float BackForearmDegrees;
+            public Vector2 FrontElbow;
+            public Vector2 BackElbow;
+        }
+
+        /// <summary>어깨/팔꿈치 각도 네 개 + 기울임 두 개에서 실루엣 지표를 낸다. 현행 각도와 R3 이전
+        /// 각도를 <b>같은 계산기</b>에 넣기 위해 떼어냈다 — 대조군을 다른 식으로 재면 대조가 아니다.</summary>
+        private static CrossSilhouette MeasureCrossSilhouette(in Rig rig,
+            float frontUpper, float frontElbow, float backUpper, float backElbow,
+            float baseLean, float rearmostLean)
+        {
+            ForwardKinematics(rig, frontUpper, frontElbow, out Vector2 elbowA, out Vector2 handA);
+            ForwardKinematics(rig, backUpper, backElbow, out Vector2 elbowB, out Vector2 handB);
+
+            // 팔꿈치가 몸통 구간(엉덩이~어깨) 밖이면 «몸통 획에 묻힌다»는 개념 자체가 성립하지 않는다.
+            Assert.That(elbowA.y, Is.InRange(rig.HipY, rig.Shoulder.y),
+                $"{LogPrefix} A 팔꿈치의 높이 {elbowA.y:F4}가 몸통 구간({rig.HipY:F4}~{rig.Shoulder.y:F4}) " +
+                "밖입니다 — 상완 노출 계산의 전제가 깨졌습니다.");
+
+            float forearmA = ForearmAbsoluteDegrees(frontUpper, frontElbow);
+            float forearmB = ForearmAbsoluteDegrees(backUpper, backElbow);
+            return new CrossSilhouette
+            {
+                FrontExposureBase = UpperArmExposure(rig, elbowA, baseLean),
+                FrontExposureRearmost = UpperArmExposure(rig, elbowA, rearmostLean),
+                Wedge = WedgeGap(rig, elbowA, handA, forearmA, elbowB, handB, forearmB),
+                FrontForearmDegrees = forearmA,
+                BackForearmDegrees = forearmB,
+                FrontElbow = elbowA,
+                BackElbow = elbowB,
+            };
+        }
+
+        // ★★ 판정과 단언을 <b>분리</b>한다 — 아래 네 함수는 위반이면 사람이 읽을 설명을, 통과면 null을
+        //    돌려준다. 진짜 검사와 네거티브 컨트롤이 <b>같은 함수·같은 합격선</b>을 쓰게 하려는 것이다.
+        //    대조군을 "부등호를 뒤집은 다른 식"으로 쓰면 그건 대조가 아니다 — 둘이 조용히 갈라진다.
+        //    이 파일이 정하는 숫자는 여기 적힌 합격선 셋(획 1.0배 / 획 0.5배 / 12°)뿐이다.
+
+        private static string CheckUpperArmVisible(in Rig rig, in CrossSilhouette s, float baseLean)
+            => s.FrontExposureBase >= rig.ArmStrokeWidth ? null
+            : $"A(최전방 팔)의 상완이 몸통 획 밖으로 {s.FrontExposureBase:F4}" +
+              $"({s.FrontExposureBase / rig.ArmStrokeWidth:F2} 획, 기울임 {baseLean:F1}°)밖에 안 나옵니다 — " +
+              "획 하나가 합격선입니다.\n상완이 몸통에 묻히면 화면에 남는 것은 전완 하나뿐이고, 그건 " +
+              "«팔꿈치에서 나온 팔»이 아니라 «가슴에 붙은 막대»로 읽힙니다(2026-09-06 사용자 실기 신고 " +
+              "그 자체). 어깨각을 더 뒤로(|각| ≥ 16.78°) 열거나 기울임을 덜 젖히십시오.";
+
+        /// <summary>가장 뒤로 젖힌 순간(L1 왕복 끝)에도 최소 «반노출»은 남아야 한다 — 그 아래로
+        /// 내려가면 11초 주기로 상완이 몸통에 먹혔다 나왔다 한다.</summary>
+        private static string CheckUpperArmVisibleWhenLeaningBack(in Rig rig, in CrossSilhouette s,
+            float rearmostLean)
+            => s.FrontExposureRearmost > 0.5f * rig.ArmStrokeWidth ? null
+            : $"가장 뒤로 젖힌 순간({rearmostLean:F1}°)에 A의 상완 노출이 " +
+              $"{s.FrontExposureRearmost / rig.ArmStrokeWidth:F2} 획으로 반 획 아래입니다 — " +
+              "L1 왕복 주기마다 상완이 몸통에 먹혔다 나왔다 합니다.";
+
+        private static string CheckWedgeOpens(in CrossSilhouette s)
+            => s.Wedge > 0f ? null
+            : $"쐐기 틈이 {s.Wedge:F4}로 0 이하입니다 — 두 전완이 <b>눈에 보이는 구간 내내</b> 획 하나보다 " +
+              "가깝게 붙어 있어 «두 팔이 겹친 팔짱»이 아니라 «굵은 선 하나»로 읽힙니다. 두 전완의 절대각 " +
+              "차만으로는 이 결함을 못 잡습니다(각도는 벌어져 있는데 갈라지는 지점이 화면 밖이면 그림은 " +
+              "그대로입니다).";
+
+        /// <summary>합격선 12° — 이 이상 들리면 «내미는 손»의 실루엣이 된다(수평 0°가 «가슴에 낀 팔»).</summary>
+        private static string CheckFrontForearmNearHorizontal(in CrossSilhouette s)
+            => Mathf.Abs(s.FrontForearmDegrees) <= 12f ? null
+            : $"A 전완의 절대각이 {s.FrontForearmDegrees:F1}°입니다(합격선 ±12°, 0 = 수평) — 손이 팔꿈치보다 " +
+              "이만큼 올라가면 «팔짱»이 아니라 «앞으로 내미는 손»으로 읽힙니다.";
+
+        /// <summary>
+        /// ★★ R3 — 팔짱이 <b>«팔»로 읽히는</b> 세 조건. 2026-09-06 사용자 실기 신고
+        /// <i>"팔짱이 아니라 가슴에 붙은 막대를 들고 있는 것 같다"</i>의 직접 회귀 잠금이다.
+        ///
+        /// <list type="number">
+        ///   <item><b>A의 상완이 몸통 획 밖으로 획 하나 이상</b> — 상완이 안 보이면 남는 건 전완 하나뿐이고
+        ///     그게 «막대»다. 신고 시점 실측은 0.18 획이었다.</item>
+        ///   <item><b>쐐기 틈 &gt; 0</b> — 두 전완이 <b>보이는 구간에서</b> 실제로 갈라져야 «두 팔»이 된다.
+        ///     신고 시점에는 −0.047(= 눈에 보이는 내내 한 덩어리)이었다.</item>
+        ///   <item><b>A 전완이 거의 수평</b> — 위로 들리면 «가슴에 낀 팔»이 아니라 «앞으로 내미는 손»이 된다.</item>
+        /// </list>
+        ///
+        /// <para>기울임은 프로덕션의 <c>GetCrossStanceLeanRange</c>에서 읽는다(숫자를 베끼지 않는다).
+        /// 뒤로 젖힐수록 몸통 획이 팔꿈치를 덮으므로 <b>기준</b>과 <b>가장 뒤로 젖힌 순간</b> 둘 다 잰다 —
+        /// 그래서 실제 단언은 넷이다(①이 두 지점으로 갈라진다).</para>
+        /// </summary>
+        [Test]
+        public void 팔짱_A의_상완이_몸통_밖으로_나오고_두_전완이_보이는_구간에서_갈라진다()
+        {
+            Rig rig = LoadRig();
+            StickmanPoseAnimator.ResolveCrossArmAngles(1f, out float frontUpper, out float frontElbow);
+            StickmanPoseAnimator.ResolveCrossArmAngles(-1f, out float backUpper, out float backElbow);
+            StickmanPoseAnimator.GetCrossStanceLeanRange(out float baseLean, out float rearmostLean);
+
+            Assert.LessOrEqual(rearmostLean, baseLean,
+                $"{LogPrefix} 기울임 범위가 뒤집혔습니다(기준 {baseLean:F1}° / 가장 뒤 {rearmostLean:F1}°) — " +
+                "이 검사가 «최악»이라고 믿는 지점이 실제로는 최악이 아닙니다.");
+
+            CrossSilhouette s = MeasureCrossSilhouette(rig, frontUpper, frontElbow, backUpper, backElbow,
+                baseLean, rearmostLean);
+
+            Debug.Log($"{LogPrefix} 팔짱 실루엣(배율 {rig.BakedScale:F2}) — " +
+                $"A 상완 노출 {s.FrontExposureBase:F4}({s.FrontExposureBase / rig.ArmStrokeWidth:F2} 획, " +
+                $"기울임 {baseLean:F1}°) / 가장 뒤로 젖힌 {rearmostLean:F1}°에서 " +
+                $"{s.FrontExposureRearmost / rig.ArmStrokeWidth:F2} 획. " +
+                $"쐐기 틈 {s.Wedge:F4}. 전완 절대각 A {s.FrontForearmDegrees:F1}° / B {s.BackForearmDegrees:F1}°. " +
+                $"팔꿈치 A{s.FrontElbow} / B{s.BackElbow}, 몸통 획 {rig.TorsoStrokeWidth:F4}.");
+
+            string exposure = CheckUpperArmVisible(rig, s, baseLean);
+            string exposureBack = CheckUpperArmVisibleWhenLeaningBack(rig, s, rearmostLean);
+            string wedge = CheckWedgeOpens(s);
+            string forearm = CheckFrontForearmNearHorizontal(s);
+
+            Assert.IsNull(exposure, $"{LogPrefix} {exposure}");
+            Assert.IsNull(exposureBack, $"{LogPrefix} {exposureBack}");
+            Assert.IsNull(wedge, $"{LogPrefix} {wedge}");
+            Assert.IsNull(forearm, $"{LogPrefix} {forearm}");
+        }
+
+        /// <summary>
+        /// ★ 네거티브 컨트롤 — <b>R3 이전(2026-09-06 야간) 각도</b>를 <b>같은 판정 함수</b>에 넣으면
+        /// 네 판정이 전부 «위반»을 돌려준다. 이것이 없으면 위 검사는 "무엇을 넣어도 통과하는" 검사와
+        /// 구분되지 않는다(안경 박자가 이미 세운 선례와 같은 어법).
+        ///
+        /// <para>여기 적힌 각도는 <b>역사값</b>이지 프로덕션 상수의 사본이 아니다. 그래서 먼저
+        /// «현행이 이 값이 아님»을 못박는다 — 누군가 처방을 되돌리면 그 줄이 먼저 빨개진다.</para>
+        /// </summary>
+        [Test]
+        public void 네거티브_컨트롤_R3_이전_팔짱_각도는_실루엣_검사에_걸린다()
+        {
+            Rig rig = LoadRig();
+
+            // R3 이전 실측: A 어깨 −8.5° / 팔꿈치 116.5°, B 어깨 −37.0° / 팔꿈치 113.0°, 기울임 −4°(L1 −6°).
+            const float legacyFrontUpper = -8.5f, legacyFrontElbow = 116.5f;
+            const float legacyBackUpper = -37f, legacyBackElbow = 113f;
+            const float legacyBaseLean = -4f, legacyRearmostLean = -6f;
+
+            StickmanPoseAnimator.ResolveCrossArmAngles(1f, out float frontUpper, out _);
+            Assert.AreNotEqual(legacyFrontUpper, frontUpper,
+                $"{LogPrefix} 현행 A 어깨각이 R3 이전 값({legacyFrontUpper:F1}°)과 같습니다 — 처방이 " +
+                "되돌려졌거나, 이 대조군이 현행과 같은 것을 재고 있어 아무것도 증명하지 못합니다.");
+
+            CrossSilhouette legacy = MeasureCrossSilhouette(rig, legacyFrontUpper, legacyFrontElbow,
+                legacyBackUpper, legacyBackElbow, legacyBaseLean, legacyRearmostLean);
+
+            // ★ 위 검사가 쓰는 <b>바로 그 판정 함수</b>에 R3 이전 값을 넣는다(부등호를 뒤집어 다시
+            //   적지 않는다 — 그러면 합격선이 갈라져도 아무도 모른다).
+            string exposure = CheckUpperArmVisible(rig, legacy, legacyBaseLean);
+            string exposureBack = CheckUpperArmVisibleWhenLeaningBack(rig, legacy, legacyRearmostLean);
+            string wedge = CheckWedgeOpens(legacy);
+            string forearm = CheckFrontForearmNearHorizontal(legacy);
+
+            Debug.Log($"{LogPrefix} 네거티브 컨트롤(R3 이전) — A 상완 노출 " +
+                $"{legacy.FrontExposureBase / rig.ArmStrokeWidth:F2} 획(젖힘 최악 " +
+                $"{legacy.FrontExposureRearmost / rig.ArmStrokeWidth:F2} 획), 쐐기 틈 {legacy.Wedge:F4}, " +
+                $"A 전완 절대각 {legacy.FrontForearmDegrees:F1}°. 네 판정 모두 위반으로 나왔습니다.");
+
+            Assert.IsNotNull(exposure,
+                $"{LogPrefix} R3 이전 각도의 상완 노출이 {legacy.FrontExposureBase / rig.ArmStrokeWidth:F2} 획로 " +
+                "합격선을 통과했습니다 — 이 검사가 «막대로 보이던 그 그림»을 못 잡는다는 뜻입니다.");
+            Assert.IsNotNull(exposureBack,
+                $"{LogPrefix} R3 이전 각도가 «젖힘 최악»에서도 통과했습니다 — 반 획 합격선이 무력합니다.");
+            Assert.IsNotNull(wedge,
+                $"{LogPrefix} R3 이전 각도의 쐐기 틈이 {legacy.Wedge:F4}로 양수입니다 — 쐐기 검사가 " +
+                "아무것도 잡아내지 못합니다(리그 치수가 바뀌었거나 계산이 틀렸습니다).");
+            Assert.IsNotNull(forearm,
+                $"{LogPrefix} R3 이전 A 전완 절대각이 {legacy.FrontForearmDegrees:F1}°로 합격선 안입니다 — " +
+                "«내미는 손» 검사가 아무것도 잡아내지 못합니다.");
+        }
+
         /// <summary>
         /// V9 — 팔 배정. <c>NeutralSign &gt; 0</c>(Idle 중립에서 <b>앞쪽</b>에 있는 팔)이 A(최전방)여야
-        /// 한다. 반대로 배정하면 결과 그림은 같아 보여도 <b>전이 이동량이 2.1배</b>(51.5° → 108.5°)라
-        /// 팔이 두 배로 요란하게 휘둘린다.
+        /// 한다. 반대로 배정하면 결과 그림은 같아 보여도 <b>전이 이동량이 1.5배</b>(64° → 96°)라
+        /// 팔이 그만큼 더 요란하게 휘둘린다.
         /// </summary>
         [Test]
         public void 팔짱_배정은_앞쪽_팔이_A다()
@@ -243,7 +512,7 @@ namespace StickMate.Tests.EditMode
 
             float travel = Mathf.Abs(frontUpper - backUpper);
             Debug.Log($"{LogPrefix} 팔 배정 확인 — A(앞) 어깨 {frontUpper:F1}° / B(뒤) 어깨 {backUpper:F1}°, " +
-                $"두 팔의 어깨각 차 {travel:F1}°. 배정을 뒤집으면 전이 이동량이 2.1배가 됩니다.");
+                $"두 팔의 어깨각 차 {travel:F1}°. 배정을 뒤집으면 전이 이동량이 1.5배가 됩니다.");
         }
 
         /// <summary>
@@ -772,8 +1041,8 @@ namespace StickMate.Tests.EditMode
 
         /// <summary>
         /// 절대 불변 원칙 1은 <i>"대사는 <b>상태 전이가 확정된 뒤</b> 그 상태로부터만 파생한다"</i>이다.
-        /// L2 제스처 4종은 <b>상태 전이가 아니다</b>(Idle 위에 얹는 포즈 층 —
-        /// <c>FocusWatchTier.Glance</c>와 같은 성격). 전이가 없으면 파생할 상태가 없으므로 대사도 없다.
+        /// L2 제스처 4종은 <b>상태 전이가 아니다</b>(Idle 위에 얹는 포즈 층). 전이가 없으면 파생할
+        /// 상태가 없으므로 대사도 없다.
         ///
         /// <para>실무적 근거도 같은 방향이다: 앰비언트에 대사를 달면 25분에 44번(≈34초마다) 말하게 되고,
         /// 상주 앱에서 그건 <b>비침해 원칙 2</b>로도 진다.</para>

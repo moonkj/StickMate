@@ -166,9 +166,10 @@ namespace StickMate.Core
         //   알게 되는 순간 "순수 규칙"이 아니게 되고(위 클래스 문서), 테스트가 <c>Resources.LoadAll</c>
         //   없이는 못 돌게 된다. 여기서 쓰는 <see cref="ItemRarity"/>는 <b>그 자체로 독립된 열거형</b>이다.
         //
-        // ★ 배선은 아직 없다 — <c>TryPurchaseItem</c>을 부르는 구매 플로우는 다음 라운드다.
-        //   그래도 값을 지금 한 곳에 못박는 이유는, 안 그러면 그 라운드가 9,600을
-        //   <c>Interaction/</c>에 손으로 적고 <b>같은 사실이 두 곳에서</b> 살게 되기 때문이다.
+        // ★ 2026-09-06 — <b>배선이 붙었다</b>(이 자리에 «배선은 아직 없다»가 남아 있었다).
+        //   구매 플로우는 <c>CharacterInfoWindow.Shop</c>이고, 그것이 <c>TryPurchaseItem</c>을 부른다.
+        //   값을 미리 여기 한 곳에 못박아 둔 목적은 그대로 달성됐다 — 화면이 9,600을 손으로 적지
+        //   않고 <c>ShopPriceCoins</c>가 등급에서 파생시킨다(<c>ShopPurchaseFlowTests</c>가 그 항등을 잠근다).
 
         /// <summary>일반 등급 아이템 가격.</summary>
         public const int CommonPriceCoins = 600;

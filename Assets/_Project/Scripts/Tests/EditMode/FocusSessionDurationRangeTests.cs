@@ -106,45 +106,82 @@ namespace StickMate.Tests.EditMode
                 $"{FocusSessionPopover.DialSpanSeconds / 60f:F0}분 한 바퀴 안에 정확히 닫힌다(넘침 0).");
         }
 
-        // ==================== ③ 두 칩 무리가 서로의 길이를 세지 않는다 (함정 ①) ====================
+        // ==================== ③ 시간 칩 루프가 자기 배열 길이를 센다 (함정 ①) ====================
 
+        /// <summary>★ 2026-09-06 — 짝이던 「민감도 칩」 단언이 <b>삭제됐다</b>. 그 칩 무리가 사용자 지시로
+        /// 프로덕션에서 사라졌기 때문이다(«집중모드에서 지켜보기 기능 삭제해줘»). 단언이 <b>존재
+        /// 단언</b>이었던 덕분에 이 삭제는 조용히 초록이 되지 않고 <b>빨갛게</b> 드러났다 —
+        /// CLAUDE.md가 부재 단언보다 존재 단언을 선호하는 이유가 이 자리에서 그대로 작동했다.</summary>
         [Test]
-        public void 시간칩과_민감도칩은_각자_자기_배열_길이를_센다()
+        public void 시간칩_루프가_자기_배열_길이를_센다()
         {
             string source = ReadScript("Interaction", "FocusSessionPopover.cs");
 
             // ★ <b>존재 단언</b>만 쓴다. "for (int i = 0; i < 3; i++)가 없다"는 부재 단언은 썩으면
             //   조용히 초록이 되고(CLAUDE.md), 게다가 표현 방식만 바꾼 같은 버그를 못 본다.
             //   실제로 [직접] 칩이 눌리는가는 PlayMode의 FocusSessionDialTests가 <b>동작</b>으로 잰다 —
-            //   이 단언은 그 동작 검사의 대체물이 아니라, 다음 사람이 왜 루프가 둘인지 알게 하는 못이다.
+            //   이 단언은 그 동작 검사의 대체물이 아니라, 다음 사람이 왜 상수 3을 쓰면 안 되는지 알게 하는 못이다.
             Assert.Greater(source.IndexOf("i < _durationChips.Length", StringComparison.Ordinal), 0,
                 $"{LogPrefix} 시간 칩 루프가 자기 배열의 Length를 세지 않는다 — 칩 개수가 바뀌는 순간 " +
                 "마지막 칩이 <b>전역 폴링 경로에서만</b> 조용히 죽는다(uGUI 경로로는 눌린다).");
-            Assert.Greater(source.IndexOf("i < _sensitivityChips.Length", StringComparison.Ordinal), 0,
-                $"{LogPrefix} 민감도 칩 루프가 자기 배열의 Length를 세지 않는다.");
 
-            Debug.Log($"{LogPrefix} ③ 통과 — 두 칩 무리가 각자 자기 길이를 센다.");
+            Debug.Log($"{LogPrefix} ③ 통과 — 시간 칩 루프가 자기 길이를 센다.");
         }
 
-        // ==================== ④ 진행 페이지가 패널 밖으로 나가지 않는다 ====================
+        // ==================== ④ 두 페이지가 각자 자기 패널 안에 들어간다 ====================
 
+        /// <summary>
+        /// ★ 2026-09-06 개정 — 옛 단언은 «대기 높이 == 진행 높이»였다. 그날 「지켜보기」 토글과
+        /// 「민감도」 칩이 삭제되면서 대기 페이지가 252 → 188로 줄어 <b>두 값이 일부러 갈라졌다</b>.
+        ///
+        /// <para>그 등식은 원래 <b>목적이 아니라 수단</b>이었다. 진짜 요구는 «내용이 패널 밖으로
+        /// 나가지 않는다»이고, 옛 상황(대기 252 / 진행 224)에서는 <b>더 큰 쪽으로 잡힌 Content가
+        /// 더 작은 패널에서 삐져나가는</b> 형태였기 때문에 «같게 두기»가 그 요구를 대신할 수 있었다.
+        /// 지금은 방향이 반대다(대기가 더 작다) — Content는 <c>PopoverPanel.BuildChrome</c>가 Awake의
+        /// 대기 높이로 잡으므로 <b>더 작게</b> 잡히고, 그 안의 자식은 전부 <c>PlaceTopLeft</c>(좌상단
+        /// 기준) 배치라 부모 높이에 좌표가 걸리지 않고 마스크도 없어 잘리지도 않는다.</para>
+        ///
+        /// <para>그래서 <b>요구 자체를 직접</b> 잰다: 각 페이지의 마지막 요소 밑변이 자기 패널의
+        /// 아래 여백 안에 들어오는가. 이 형태는 두 높이가 같든 다르든 옳고, 옛 함정(내용이 패널
+        /// 밖으로 나감)도 그대로 잡는다.</para>
+        /// </summary>
         [Test]
-        public void 진행_페이지는_대기_페이지와_같은_높이다()
+        public void 두_페이지_모두_자기_패널_안에_들어간다()
         {
             string source = ReadScript("Interaction", "FocusSessionPopover.cs");
-            float idle = ReadFloatConst(source, "IdleHeight");
-            float running = ReadFloatConst(source, "RunningHeight");
 
-            // PopoverPanel.BuildChrome()은 Content 사각형을 <b>Awake 시점의 PanelSizePoints.y</b> 하나로
-            // 잡아 두고 다시 만들지 않는다. 대기(252)로 잡힌 Content가 진행(224) 패널 위에 얹히면
-            // Content가 패널 아래로 28pt 삐져나가고, 그 아래에 무언가를 그리는 순간 <b>패널 밖에</b>
-            // 그려진다. 두 높이를 같게 두면 그 함정이 산술적으로 닫힌다(§R5-4-1).
-            Assert.AreEqual(idle, running, 0.001f,
-                $"{LogPrefix} 대기 {idle:F0} / 진행 {running:F0} — 두 페이지 높이가 갈라졌다. " +
-                "Content 사각형은 Awake에 한 번만 만들어지므로, 더 큰 쪽으로 잡힌 Content가 더 작은 " +
-                $"페이지에서 {Mathf.Abs(idle - running):F0}pt 삐져나간다(R2-2-1이 잡아 둔 그 함정).");
+            // 크롬이 먹는 세로 — PopoverPanel.BuildChrome의 식을 <b>그 상수들로</b> 다시 만든다.
+            const float TitleRowHeight = 22f;   // BuildChrome의 제목 줄 높이(그 파일의 리터럴).
+            float contentTop = UiChrome.Space3 + TitleRowHeight + UiChrome.Space2;
+            float bottomPad = UiChrome.Space4;
 
-            Debug.Log($"{LogPrefix} ④ 통과 — 대기/진행 모두 {idle:F0}pt, Content 넘침 0.");
+            float idleHeight = ReadFloatConst(source, "IdleHeight");
+            float runningHeight = ReadFloatConst(source, "RunningHeight");
+
+            // 대기 페이지의 마지막 요소 = [시작] 버튼. 진행 페이지의 마지막 요소 = [그만두기].
+            float idleBottom = Mathf.Abs(ReadFloatConst(source, "StartButtonY"))
+                             + ReadFloatConst(source, "StartButtonHeight");
+            float runningBottom = Mathf.Abs(ReadFloatConst(source, "StopY"))
+                                + ReadFloatConst(source, "StopHeight");
+
+            Assert.LessOrEqual(contentTop + idleBottom + bottomPad, idleHeight + 0.001f,
+                $"{LogPrefix} 대기 페이지 내용({contentTop:F0}+{idleBottom:F0}+{bottomPad:F0}=" +
+                $"{contentTop + idleBottom + bottomPad:F0}pt)이 패널 {idleHeight:F0}pt를 넘는다 — " +
+                "마지막 요소가 패널 밖에 그려진다.");
+            Assert.LessOrEqual(contentTop + runningBottom + bottomPad, runningHeight + 0.001f,
+                $"{LogPrefix} 진행 페이지 내용({contentTop:F0}+{runningBottom:F0}+{bottomPad:F0}=" +
+                $"{contentTop + runningBottom + bottomPad:F0}pt)이 패널 {runningHeight:F0}pt를 넘는다.");
+
+            // 반대 방향의 못 — 잘라낸 만큼 실제로 줄었는가(빈 자리를 남기지 않았는가).
+            // 여유가 크게 벌어지면 «지웠는데 패널만 그대로»라는 그림이라 그 자리에서 알아야 한다.
+            const float MaxSlackPoints = 24f;
+            float idleSlack = idleHeight - (contentTop + idleBottom + bottomPad);
+            Assert.LessOrEqual(idleSlack, MaxSlackPoints,
+                $"{LogPrefix} 대기 페이지에 {idleSlack:F0}pt의 빈 자리가 남았다 — 요소를 지웠으면 " +
+                "패널 높이도 함께 줄여야 한다(2026-09-06 지켜보기 삭제).");
+
+            Debug.Log($"{LogPrefix} ④ 통과 — 대기 {idleHeight:F0}pt(내용 {contentTop + idleBottom + bottomPad:F0}) / " +
+                $"진행 {runningHeight:F0}pt(내용 {contentTop + runningBottom + bottomPad:F0}), 넘침 0.");
         }
     }
 }

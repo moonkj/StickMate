@@ -2,7 +2,7 @@
 //   Tools/CardShapeGen/gen_card_shapes.py 가 design/equipment/verify/r16_model.py(카드) · r19_model.py(몸, r17 위에 R18 팔레트 + R19) · palette_model.py(색 역할)에서 굽는다.
 //   모델은 인계본 docs/handoff/design_handoff_equipment_window/reference/ItemIcon.dc.html 을 직접 파싱해
 //   handoff.icon_to_R / stage_to_R 로 옮긴 것이다(EQUIPMENT_HANDOFF_PORT_SPEC §1-1 · §14-0 · §14-10).
-//   정본 스탬프: r16_model.py sha256[:16]=03dd009e3882f238 · r17_model.py sha256[:16]=e8752df570577d07 · r19_model.py sha256[:16]=6624396418dd18ae · r20_model.py sha256[:16]=06a1e739b3aa316b · palette_model.py sha256[:16]=aee0af365a481daf · ItemIcon.dc.html sha256[:16]=b4d0c32bcf4810c7
+//   정본 스탬프: r16_model.py sha256[:16]=03dd009e3882f238 · r17_model.py sha256[:16]=e8752df570577d07 · r19_model.py sha256[:16]=8f3a4618e17a63f6 · r20_model.py sha256[:16]=06a1e739b3aa316b · palette_model.py sha256[:16]=aee0af365a481daf · ItemIcon.dc.html sha256[:16]=b4d0c32bcf4810c7
 //   ★ 손으로 고치지 마라. 고칠 것은 모델이고, 생성 뒤 Tools/CardShapeGen/verify_card_shapes.py 가 역대조한다.
 //   ★ 좌표 단위: 머리 중심 원점 · R 배수 · y 위 · +x 진행 방향, 카드 프레임. 소수 5자리.
 //   ★ 한 벌 아이템(눈 3 · 목 4 · 털모자 · 날개): 몸 좌표 = 카드 좌표 × 아이템 변환 — 코드 자리는 WornTransformCode(털모자 HAT_FIT u·ky·dy),
@@ -88,18 +88,19 @@ namespace StickMate.Interaction
         {
             switch (item)
             {
-                case HeadCap:   // 야구모자 clothhat — 조각 11
+                case HeadCap:   // 야구모자 clothhat — 조각 12
                     HandoffPiece(sink, rig, xf, SortHead, "Piece_B0", Handoff_clothhat_B0, loop: true, filled: true, tone: 0, surfaces: 2, strokeMult: 1f, strokeInR: 0.13845f, noStroke: false, alpha: 1f, lineAlpha: 1f, underBack: 0, layer: 0, swayStart: -1, swayCount: 0, bodyFixed: false);
                     HandoffPiece(sink, rig, xf, SortHead, "Piece_F1", Handoff_clothhat_F1, loop: true, filled: true, tone: 2, surfaces: 2, strokeMult: 1f, strokeInR: 0.13845f, noStroke: true, alpha: 1f, lineAlpha: 0f, underBack: 1, layer: 0, swayStart: -1, swayCount: 0, bodyFixed: false);
                     HandoffPiece(sink, rig, xf, SortHead, "Piece_B2", Handoff_clothhat_B2, loop: true, filled: true, tone: 1, surfaces: 2, strokeMult: 1f, strokeInR: 0.13845f, noStroke: false, alpha: 1f, lineAlpha: 1f, underBack: 0, layer: 0, swayStart: -1, swayCount: 0, bodyFixed: false);
                     HandoffPiece(sink, rig, xf, SortHead, "Piece_H3", Handoff_clothhat_H3, loop: false, filled: false, tone: 3, surfaces: 2, strokeMult: 0.75f, strokeInR: 0.10384f, noStroke: false, alpha: 0f, lineAlpha: 0.42f, underBack: 3, layer: 0, swayStart: -1, swayCount: 0, bodyFixed: false);
-                    HandoffPiece(sink, rig, xf, SortHead, "Piece_B0", Handoff_clothhat_B0_worn, loop: true, filled: true, tone: 0, surfaces: 1, strokeMult: 1f, strokeInR: 0.13845f, noStroke: false, alpha: 1f, lineAlpha: 1f, underBack: 0, layer: 0, swayStart: -1, swayCount: 0, bodyFixed: true);
-                    HandoffPiece(sink, rig, xf, SortHead, "Piece_F1", Handoff_clothhat_F1_worn, loop: true, filled: true, tone: 2, surfaces: 1, strokeMult: 1f, strokeInR: 0.13845f, noStroke: true, alpha: 1f, lineAlpha: 0f, underBack: 1, layer: 0, swayStart: -1, swayCount: 0, bodyFixed: true);
+                    HandoffPiece(sink, rig, xf, SortHead, "Piece_B0", Handoff_clothhat_B0_worn, loop: true, filled: true, tone: 0, surfaces: 1, strokeMult: 1f, strokeInR: 0.13845f, noStroke: true, alpha: 1f, lineAlpha: 0f, underBack: 0, layer: 0, swayStart: -1, swayCount: 0, bodyFixed: true);
+                    HandoffPiece(sink, rig, xf, SortHead, "Piece_B0a", Handoff_clothhat_B0a, loop: false, filled: false, tone: 4, surfaces: 1, strokeMult: 1f, strokeInR: 0.13845f, noStroke: false, alpha: 0f, lineAlpha: 1f, underBack: 0, layer: 0, swayStart: -1, swayCount: 0, bodyFixed: true);
+                    HandoffPiece(sink, rig, xf, SortHead, "Piece_F1", Handoff_clothhat_F1_worn, loop: true, filled: true, tone: 2, surfaces: 1, strokeMult: 1f, strokeInR: 0.13845f, noStroke: true, alpha: 1f, lineAlpha: 0f, underBack: 2, layer: 0, swayStart: -1, swayCount: 0, bodyFixed: true);
                     HandoffPiece(sink, rig, xf, SortHead, "Piece_B2far", Handoff_clothhat_B2far, loop: true, filled: true, tone: 1, surfaces: 1, strokeMult: 1f, strokeInR: 0.13845f, noStroke: true, alpha: 1f, lineAlpha: 0f, underBack: 0, layer: 1, swayStart: -1, swayCount: 0, bodyFixed: true);
                     HandoffPiece(sink, rig, xf, SortHead, "Piece_B2fa", Handoff_clothhat_B2fa, loop: false, filled: false, tone: 4, surfaces: 1, strokeMult: 1f, strokeInR: 0.13845f, noStroke: false, alpha: 0f, lineAlpha: 1f, underBack: 0, layer: 1, swayStart: -1, swayCount: 0, bodyFixed: true);
                     HandoffPiece(sink, rig, xf, SortHead, "Piece_B2near", Handoff_clothhat_B2near, loop: true, filled: true, tone: 1, surfaces: 1, strokeMult: 1f, strokeInR: 0.13845f, noStroke: true, alpha: 1f, lineAlpha: 0f, underBack: 0, layer: 0, swayStart: -1, swayCount: 0, bodyFixed: true);
                     HandoffPiece(sink, rig, xf, SortHead, "Piece_B2na", Handoff_clothhat_B2na, loop: false, filled: false, tone: 4, surfaces: 1, strokeMult: 1f, strokeInR: 0.13845f, noStroke: false, alpha: 0f, lineAlpha: 1f, underBack: 0, layer: 0, swayStart: -1, swayCount: 0, bodyFixed: true);
-                    HandoffPiece(sink, rig, xf, SortHead, "Piece_H3", Handoff_clothhat_H3_worn, loop: false, filled: false, tone: 3, surfaces: 1, strokeMult: 0.75f, strokeInR: 0.10384f, noStroke: false, alpha: 0f, lineAlpha: 0.42f, underBack: 6, layer: 0, swayStart: -1, swayCount: 0, bodyFixed: true);
+                    HandoffPiece(sink, rig, xf, SortHead, "Piece_H3", Handoff_clothhat_H3_worn, loop: false, filled: false, tone: 3, surfaces: 1, strokeMult: 0.75f, strokeInR: 0.10384f, noStroke: false, alpha: 0f, lineAlpha: 0.42f, underBack: 7, layer: 0, swayStart: -1, swayCount: 0, bodyFixed: true);
                     return true;
                 case HeadBeanie:   // 털모자 furhat — 조각 5
                     HandoffPiece(sink, rig, xf, SortHead, "Piece_CB0", Handoff_furhat_CB0, loop: true, filled: true, tone: 1, surfaces: 0, strokeMult: 1f, strokeInR: 0.13845f, noStroke: false, alpha: 1f, lineAlpha: 1f, underBack: 0, layer: 0, swayStart: -1, swayCount: 0, bodyFixed: false);
@@ -600,6 +601,18 @@ namespace StickMate.Interaction
 
         /// <summary>야구모자(clothhat) B0 · 본체 · 33점</summary>
         private static readonly float[] Handoff_clothhat_B0_worn =
+        {
+            -1.14464f, 0.663f, -1.15454f, 0.8398f, -1.15358f, 1.00519f, -1.14177f, 1.15917f, -1.11909f, 1.30175f,
+            -1.08556f, 1.43292f, -1.04116f, 1.55269f, -0.98591f, 1.66105f, -0.9198f, 1.758f, -0.84283f, 1.84355f,
+            -0.755f, 1.91769f, -0.65632f, 1.98042f, -0.54677f, 2.03175f, -0.42637f, 2.07167f, -0.2951f, 2.10019f,
+            -0.15298f, 2.1173f, 0f, 2.123f, 0.15298f, 2.1173f, 0.2951f, 2.10019f, 0.42637f, 2.07167f,
+            0.54677f, 2.03175f, 0.65632f, 1.98042f, 0.755f, 1.91769f, 0.84283f, 1.84355f, 0.9198f, 1.758f,
+            0.98591f, 1.66105f, 1.04116f, 1.55269f, 1.08556f, 1.43292f, 1.11909f, 1.30175f, 1.14177f, 1.15917f,
+            1.15358f, 1.00519f, 1.15454f, 0.8398f, 1.14464f, 0.663f,
+        };
+
+        /// <summary>야구모자(clothhat) B0a · 관 윤곽(닫힘변 제외) · 33점</summary>
+        private static readonly float[] Handoff_clothhat_B0a =
         {
             -1.14464f, 0.663f, -1.15454f, 0.8398f, -1.15358f, 1.00519f, -1.14177f, 1.15917f, -1.11909f, 1.30175f,
             -1.08556f, 1.43292f, -1.04116f, 1.55269f, -0.98591f, 1.66105f, -0.9198f, 1.758f, -0.84283f, 1.84355f,

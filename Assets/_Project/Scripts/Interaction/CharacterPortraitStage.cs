@@ -1364,7 +1364,9 @@ namespace StickMate.Interaction
                         //   미니 피규어는 화면 pt 를 모르므로 정확한 pt 하한은 실제 캐릭터에만 있다.
                         AccessoryShapeBuilder.ResolveHandoffBody(shape, handoff, out Color hFill, out bool hasFill,
                             out Color hLine, out bool hasLine);
-                        if (hasFill) AddFill(shape, hFill);
+                        // k − start = 이 아이템 안에서 몇 번째. 몸 렌더러와 <b>같은 인자</b>여야
+                        // 두 표면의 조각 순서가 갈라지지 않는다(AddFill 문서).
+                        if (hasFill) AddFill(shape, hFill, k - start);
                         if (!hasLine) continue;
                         float floor = Stroke * (StickConfig.MinAccessoryStrokeScreenPoints / StickConfig.MinStrokeScreenPoints);
                         AddLine(shape.Name, shape.Points, hLine, shape.Loop, shape.SortingOrder,
@@ -1378,7 +1380,7 @@ namespace StickMate.Interaction
                     Color outline = color;
                     if (shape.Filled)
                     {
-                        AddFill(shape, color);
+                        AddFill(shape, color, k - start);
                         outline = AccessoryShapeBuilder.FillOutlineColor(color);
                     }
                     if (shape.NoStroke) continue;
@@ -1447,7 +1449,9 @@ namespace StickMate.Interaction
             int item = EquipmentModel.WornIndex(EquipmentSlot.Fx);
             // ★ FX 0번은 "없음"이다. IsEquipped는 WornIndex >= 0 이라 0번도 착용으로 보고하므로
             // 여기서 거르지 않으면 아래 switch의 default:가 정상 기본값 사용자에게 거짓 경보를 찍는다.
-            // 월드 경로(CharacterFxRenderer.cs:304)는 같은 줄을 이미 갖고 있었고 여기만 빠져 있었다.
+            // 월드 경로(CharacterFxRenderer.LateUpdate의 FX switch 직전)는 같은 줄을 이미 갖고
+            // 있었고 여기만 빠져 있었다. ★ 2026-09-06 — 옛 주석은 그 자리를 <b>줄 번호</b>로
+            // 가리켰는데, 그 파일에 줄이 끼어드는 순간 썩는다(실제로 썩었다). 절 이름으로 바꿨다.
             // PET은 PetBall=0에 실제 case가 있어 같은 함정에 빠지지 않는다.
             if (item <= AppearanceShapeBuilder.FxNone) return;
 
@@ -1465,9 +1469,11 @@ namespace StickMate.Interaction
             {
                 case AppearanceShapeBuilder.FxFootprint:
                 {
-                    float radius = Stroke * 0.9f;
-                    AddDotPreview("FxFootprintA", x, radius, fx);
-                    AddDotPreview("FxFootprintB", x - h * 0.11f, radius, fx);
+                    // ★ 2026-09-06 — 둥근 점 2개에서 <b>옆에서 본 밑창</b> 2개로. 크기 인자가
+                    //   획(Stroke*0.9)에서 <b>머리 반경</b>으로 바뀐 것이 핵심이다 — 실물
+                    //   (CharacterFxRenderer.BuildSole)과 같은 계약이라야 미리보기가 성립한다.
+                    AddSolePreview("FxFootprintA", x, r, fx);
+                    AddSolePreview("FxFootprintB", x - h * 0.11f, r, fx);
                     break;
                 }
 
@@ -1481,7 +1487,7 @@ namespace StickMate.Interaction
 
                 case AppearanceShapeBuilder.FxDust:
                 {
-                    float radius = r * 0.5f;
+                    float radius = r * AppearanceShapeBuilder.DustRadiusInR;
                     for (int i = 0; i < 2; i++)
                     {
                         Vector3[] pts = AppearanceShapeBuilder.DustCrescent(radius, i);
@@ -1498,10 +1504,12 @@ namespace StickMate.Interaction
                     // 갓 생긴 작은 것(반지름 하한)과 다 떠오른 큰 것(반지름 상한). 위에 있는 쪽이 더
                     // 왼쪽인 것도 실물과 같은 이유다(진행 반대쪽으로 벗어난다).
                     AddPreviewLine("FxBubbleA",
-                        AppearanceShapeBuilder.BubbleRing(r * AppearanceShapeBuilder.BubbleMaxRadiusInR, 12),
+                        AppearanceShapeBuilder.BubbleRing(r * AppearanceShapeBuilder.BubbleMaxRadiusInR,
+                            AppearanceShapeBuilder.BubbleSegments),
                         x - h * 0.09f, HipY + r * 2.6f, true, fx);
                     AddPreviewLine("FxBubbleB",
-                        AppearanceShapeBuilder.BubbleRing(r * AppearanceShapeBuilder.BubbleMinRadiusInR, 12),
+                        AppearanceShapeBuilder.BubbleRing(r * AppearanceShapeBuilder.BubbleMinRadiusInR,
+                            AppearanceShapeBuilder.BubbleSegments),
                         x - h * 0.04f, HipY, true, fx);
                     break;
                 }
@@ -1543,10 +1551,11 @@ namespace StickMate.Interaction
                 case AppearanceShapeBuilder.PetBall:
                 {
                     float radius = h * AppearanceShapeBuilder.BallRadiusInHeight;
-                    AddPreviewLine("PetBallRing", AppearanceShapeBuilder.BallRing(radius, 12), x, radius,
-                        true, primary);
-                    // 반지름 선은 실물과 같이 그린다(굴러가면 이 선이 회전을 읽히게 한다).
-                    AddPreviewLine("PetBallSpoke", AppearanceShapeBuilder.BallSpoke(radius), x, radius,
+                    AddPreviewLine("PetBallRing",
+                        AppearanceShapeBuilder.BallRing(radius, AppearanceShapeBuilder.BallSegments),
+                        x, radius, true, primary);
+                    // 솔기는 실물과 같이 그린다(굴러가면 이 선이 회전을 읽히게 한다).
+                    AddPreviewLine("PetBallSeam", AppearanceShapeBuilder.BallSeam(radius), x, radius,
                         false, secondary);
                     break;
                 }
@@ -1573,9 +1582,14 @@ namespace StickMate.Interaction
 
                 case AppearanceShapeBuilder.PetCursor:
                 {
+                    // ★ 2026-09-06 — 한 획에서 머리(주색)+꼬리(보조색) 두 조각으로. 실물
+                    //   (CharacterPetRenderer.BuildCursorFriend)과 같은 두 도형·같은 색 배분이다.
                     float size = r * AppearanceShapeBuilder.CursorSizeInR;
-                    AddPreviewLine("PetCursor", AppearanceShapeBuilder.CursorArrow(size),
-                        x, HeadCenterY + r * 0.95f, false, primary);
+                    float cursorY = HeadCenterY + r * 0.95f;
+                    AddPreviewLine("PetCursorHead", AppearanceShapeBuilder.CursorHead(size),
+                        x, cursorY, true, primary);
+                    AddPreviewLine("PetCursorTail", AppearanceShapeBuilder.CursorTail(size),
+                        x, cursorY, true, secondary);
                     break;
                 }
 
@@ -1601,10 +1615,12 @@ namespace StickMate.Interaction
                     float size = r * AppearanceShapeBuilder.SnailSizeInR;
                     AddPreviewLine("PetSnailFoot", AppearanceShapeBuilder.SnailFoot(size, 1f),
                         x, 0f, false, primary);
-                    AddPreviewLine("PetSnailShell", AppearanceShapeBuilder.SnailShell(size, 1f, 14),
+                    AddPreviewLine("PetSnailShell",
+                        AppearanceShapeBuilder.SnailShell(size, 1f, AppearanceShapeBuilder.SnailShellSegments),
                         x, 0f, true, primary);
                     // 보조색은 껍데기 속 점 하나뿐이다(37-6 규칙 3-2) — 실물과 같은 배분.
-                    AddPreviewLine("PetSnailCore", AppearanceShapeBuilder.SnailShellCore(size, 1f, 8),
+                    AddPreviewLine("PetSnailCore",
+                        AppearanceShapeBuilder.SnailShellCore(size, 1f, AppearanceShapeBuilder.SnailCoreSegments),
                         x, 0f, true, secondary);
                     break;
                 }
@@ -1615,21 +1631,26 @@ namespace StickMate.Interaction
             }
         }
 
-        private void AddDotPreview(string name, float x, float radius, Color ink)
+        /// <summary>발자국 한 짝(옆에서 본 밑창). 두께 인자를 넘기지 <b>않는</b> 것이 계약이다 —
+        /// 옛 <c>AddDotPreview</c>는 <c>radius * 2</c>를 넘겨 굵은 캡(둥근 점)을 만들었고,
+        /// 좌표만 바꾸고 그 두께를 남기면 밑창이 통째로 잉크에 먹혀 그림이 그대로다.</summary>
+        private void AddSolePreview(string name, float x, float size, Color ink)
         {
-            Vector3[] pts = AppearanceShapeBuilder.DotSegment(radius);
+            Vector3[] pts = AppearanceShapeBuilder.FootSole(size, 1f);
             Offset(pts, x, 0f);
-            AddLine(name, pts, ink, false, PreviewSortingOrder, radius * 2f);
+            AddLine(name, pts, ink, false, PreviewSortingOrder);
         }
 
+        /// <summary>반짝임 한 알(윤곽 별 1도형).
+        /// <para>★ 이름 끝의 <c>0</c>은 <b>십자 2획 시절의 인덱스</b>다. 도형이 하나가 된 지금은 의미가
+        /// 없지만, Tests/PlayMode/PortraitNewItemPreviewTests가 <c>"FxSparkleA0"</c>으로 획 두께를 재고
+        /// 있어 그대로 둔다(그 파일은 다른 라운드가 편집 중이라 이 라운드가 손대지 않는다).
+        /// 그 라운드가 착지하면 이 접미사와 그쪽 니들을 함께 지워라.</para></summary>
         private void AddSparklePreview(string name, float x, float y, float arm, Color ink)
         {
-            for (int i = 0; i < 2; i++)
-            {
-                Vector3[] pts = AppearanceShapeBuilder.SparkleStroke(arm, i);
-                Offset(pts, x, y);
-                AddLine(name + i, pts, ink, false, PreviewSortingOrder);
-            }
+            Vector3[] pts = AppearanceShapeBuilder.SparkleStar(arm);
+            Offset(pts, x, y);
+            AddLine(name + "0", pts, ink, true, PreviewSortingOrder);
         }
 
         /// <summary>잎 한 장 = 잎몸 + 잎자루. 두 조각을 <b>같은 각도로</b> 돌린 뒤 함께 옮긴다 —
@@ -1689,14 +1710,24 @@ namespace StickMate.Interaction
         //   렌더러·초상화·카드가 각자 표를 갖고 있다가 하이라이트(톤 3)를 한쪽만 알게 되는 것을 막는다.
 
         /// <summary>채움 면 하나(모자류). 미니 피규어를 통째로 다시 만들 때 함께 지워지도록
-        /// 메시를 <see cref="_fillMeshes"/>가 들고 있는다 — GameObject를 지워도 메시는 남는다.</summary>
-        private void AddFill(in AccessoryShapeBuilder.Shape shape, Color color)
+        /// 메시를 <see cref="_fillMeshes"/>가 들고 있는다 — GameObject를 지워도 메시는 남는다.
+        ///
+        /// <para>★ 2026-09-06 — <paramref name="orderWithinItem"/>을 받는다. 그 전까지 이 함수는
+        /// 채움을 전부 <b>z = 0</b>에 놓았고, 같은 아이템의 채움끼리는 <c>sortingOrder</c>도 동률이라
+        /// 그리기 순서가 <b>미정</b>이었다(Unity가 렌더러 생성/파괴 순서로 임의 해소). 몸 렌더러
+        /// (<c>CharacterAccessoryRenderer.AddFill</c>)에는 원래 이 단차가 있었다 — 두 렌더러가
+        /// 갈라져 있던 자리다. 사용자 신고 «정보창 미리보기에서 망토를 착탈하면 모자 무늬가 나타났다
+        /// 사라졌다»가 그 상태 누수다(착탈이 재구성을 부르고, 재구성마다 순서가 뒤집힌다).
+        /// 계산은 몸과 <b>같은 함수</b>(<c>AccessoryShapeBuilder.FillDepthOffset</c>)를 부른다.</para></summary>
+        /// <param name="orderWithinItem">이 아이템 안에서 몇 번째 조각인가(<c>k - start</c>).</param>
+        private void AddFill(in AccessoryShapeBuilder.Shape shape, Color color, int orderWithinItem)
         {
             Mesh mesh = AccessoryShapeBuilder.BuildFillMesh(shape.Points, color);
             if (mesh == null) return;
 
             var go = new GameObject(shape.Name + "Fill");
             go.transform.SetParent(_figureRoot, false);
+            go.transform.localPosition = AccessoryShapeBuilder.FillDepthOffset(orderWithinItem);
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
 
             var mr = go.AddComponent<MeshRenderer>();

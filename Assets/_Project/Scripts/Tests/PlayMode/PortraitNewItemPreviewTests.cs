@@ -55,7 +55,9 @@ namespace StickMate.Tests.PlayMode
 
         // 카테고리 안의 자리(Interaction/AppearanceShapeBuilder.cs의 같은 이름 상수와 같은 값).
         // 상수를 다시 적는 이 저장소의 관례를 따른다 — 어긋나면 착용 단언이 즉시 빨개진다.
-        private const int FxNone = 0;
+        // ★ 2026-09-06 — 여기 있던 <c>FxNone = 0</c>을 지웠다. 그 아이템이 은퇴해
+        //   (EquipmentModel.IsRetiredItem) 이 파일에서 걸칠 일이 없어졌고, 남겨 두면
+        //   "쓰이지 않는 사본"이 되어 프로덕션과 갈라져도 아무도 모른다.
         private const int FxSparkle = 2;
         private const int FxBubble = 4;
         private const int FxLeaf = 5;
@@ -149,7 +151,7 @@ namespace StickMate.Tests.PlayMode
         // ============================================================================
 
         /// <summary>위 네 테스트가 "아이템과 무관하게 아무거나 세고 있는 것"이 아님을 증명한다.
-        /// FX "없음"(0번)과 펫 미착용에서는 신규 4종의 도형 이름이 <b>하나도</b> 없어야 한다.</summary>
+        /// 이펙트·펫을 <b>둘 다 미착용</b>으로 두면 신규 4종의 도형 이름이 <b>하나도</b> 없어야 한다.</summary>
         [UnityTest]
         [Timeout(180000)]
         public IEnumerator 안_걸치면_신규_4종_미리보기가_하나도_없다()
@@ -157,7 +159,11 @@ namespace StickMate.Tests.PlayMode
             yield return SetUpOpenWindow();
             CharacterPortraitStage stage = PrimaryStage();
 
-            Wear(EquipmentSlot.Fx, FxNone);
+            // ★ 2026-09-06 — 예전에는 FX 0번("없음")을 걸쳐서 이 상태를 만들었다. 그 아이템이
+            //   은퇴해(EquipmentModel.IsRetiredItem — 사용자 지시 "이펙트 없음은 … 삭제해줘")
+            //   TryWear가 거절하므로 <b>미착용</b>으로 같은 상태를 만든다(관측 결과는 같다 —
+            //   렌더러는 item <= FxNone으로 판정한다). 위 상수 목록에서 FxNone도 함께 지웠다.
+            Wear(EquipmentSlot.Fx, EquipmentModel.NotWorn);
             Wear(EquipmentSlot.Pet, EquipmentModel.NotWorn);
             yield return null;
             yield return null;   // 장비 변경 -> 서명 변경 -> Rebuild가 도는 데 필요한 프레임.

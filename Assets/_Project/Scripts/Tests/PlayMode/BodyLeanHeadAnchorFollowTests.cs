@@ -16,11 +16,11 @@ namespace StickMate.Tests.PlayMode
     /// ============================================================================
     /// 이 파일이 잡는 결함
     /// ============================================================================
-    /// <see cref="StressGaugeRenderer"/> / <see cref="FocusWatchRenderer"/> /
-    /// <see cref="CharacterFxRenderer"/> / <see cref="CharacterPetRenderer"/>는 전부
+    /// <see cref="StressGaugeRenderer"/> / <see cref="CharacterFxRenderer"/> /
+    /// <see cref="CharacterPetRenderer"/>는 전부
     /// <see cref="StickmanMetrics"/>의 <b>중립(기울지 않은)</b> 머리·어깨 좌표로 위치를 잡았다.
     /// 그런데 States/StickmanPoseAnimator.SetBodyLean이 들어오면서 걷는 동안 상체는 <b>엉덩이를 축으로</b>
-    /// 돈다 — 머리는 앞으로 나가는데 한숨 퍼프/곁눈질/반짝임/펫만 제자리에 남았다.
+    /// 돈다 — 머리는 앞으로 나가는데 한숨 퍼프/반짝임/펫만 제자리에 남았다.
     /// (배율 0.75, 걷기 기울임 10도 기준 약 0.15유닛 = 화면 약 5pt.)
     ///
     /// ============================================================================
@@ -117,78 +117,15 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
-        // (2) 집중 모드 — 곁눈질 호는 따라가고, 발밑 링은 <b>따라가면 안 된다</b>
+        // (2) 집중 모드 — ★ 이 절은 <b>통째로 삭제됐다</b>(2026-09-06)
         // ============================================================================
-
-        [UnityTest]
-        [Timeout(180000)]
-        public IEnumerator 집중모드_곁눈질이_상체_기울임을_따라간다()
-        {
-            yield return LoadSceneAndPinIdle();
-            StickmanAgent agent = Agent();
-            yield return ShowFocusGlance();
-
-            Transform probe = FindLineByName("FocusWatchRing", "GlanceR");
-            Assert.IsNotNull(probe, $"{LogPrefix} 곁눈질 호를 찾지 못했습니다(1단계가 안 떴습니까?).");
-            Assert.AreEqual("GlanceGroup", probe.parent.name,
-                $"{LogPrefix} 곁눈질 호가 회전 그룹 밖에 있습니다 — 그러면 기울임을 절대 따라갈 수 없습니다.");
-
-            // 곁눈질 그룹의 부모(링 컨테이너) 원점은 <b>링 중심</b>이므로 그만큼 빼서 로컬 피벗을 만든다.
-            var focus = Object.FindFirstObjectByType<FocusWatchRenderer>();
-            var hip = new Vector2(0f,
-                agent.GetComponent<StickmanMetrics>().HipLocalY - focus.RingCenterLocalY);
-            yield return AssertFollowsTorso(agent, probe, "곁눈질 호", probe.parent, hip);
-        }
-
-        /// <summary>네거티브 컨트롤 — 곁눈질 그룹의 회전만 지우면 같은 지표가 실제로 깨진다.</summary>
-        [UnityTest]
-        [Timeout(180000)]
-        public IEnumerator 집중모드_곁눈질_그룹_회전을_지우면_같은_지표가_깨진다()
-        {
-            yield return LoadSceneAndPinIdle();
-            StickmanAgent agent = Agent();
-            yield return ShowFocusGlance();
-
-            Transform probe = FindLineByName("FocusWatchRing", "GlanceR");
-            Assert.IsNotNull(probe, $"{LogPrefix} 곁눈질 호를 찾지 못했습니다.");
-
-            yield return AssertBreaksWithoutRotation(agent, probe, "곁눈질 호", container: probe.parent);
-        }
-
-        /// <summary>
-        /// ★ 반대 방향의 잠금 — <b>발밑 타이머 링은 기울어지면 안 된다</b>(18절 "캐릭터 발밑, 앱 소유 UI").
-        /// 링까지 함께 돌리면 회전 중심(엉덩이)보다 아래에 있는 링이 비스듬히 눕는다. 이 테스트가 없으면
-        /// "따라가게 만들었다"는 수정이 조용히 <b>과하게</b> 적용돼도 아무도 모른다.
-        /// </summary>
-        [UnityTest]
-        [Timeout(180000)]
-        public IEnumerator 집중모드_발밑_링은_기울임을_따라가지_않는다()
-        {
-            yield return LoadSceneAndPinIdle();
-            StickmanAgent agent = Agent();
-            yield return ShowFocusGlance();
-
-            Transform ring = FindLineByName("FocusWatchRing", "RingTrack");
-            Assert.IsNotNull(ring, $"{LogPrefix} 타이머 링을 찾지 못했습니다.");
-            StickmanPoseAnimator pose = Pose(agent);
-
-            float maxRingTilt = 0f, maxTilt = 0f;
-            for (int i = 0; i < 16; i++)
-            {
-                pose.SetBodyLean(LeanDegrees);
-                yield return null;
-                pose.SetBodyLean(LeanDegrees);
-                maxTilt = Mathf.Max(maxTilt, TorsoTilt(agent));
-                maxRingTilt = Mathf.Max(maxRingTilt,
-                    Mathf.Abs(Mathf.DeltaAngle(0f, ring.eulerAngles.z)));
-            }
-
-            Debug.Log($"{LogPrefix} 상체 {maxTilt:F1}도 기울어도 발밑 링의 기울기는 {maxRingTilt:F3}도.");
-            Assert.Greater(maxTilt, 5f, $"{LogPrefix} 상체가 기울지 않아 이 검사가 아무것도 증명하지 못합니다.");
-            Assert.Less(maxRingTilt, 0.5f,
-                $"{LogPrefix} 발밑 타이머 링이 {maxRingTilt:F2}도 기울었습니다 — 18절이 지정한 " +
-                "'캐릭터 발밑 위젯'이 몸을 따라 눕습니다.");
-        }
+        // 여기에는 3건이 있었다: 「곁눈질 호가 기울임을 따라간다」(양성 + 네거티브 컨트롤) 2건과
+        // 「발밑 타이머 링은 기울임을 따라가지 <b>않는다</b>」 1건. 앞의 둘은 「지켜보기(딴짓 감지)」
+        // 삭제로, 남은 하나는 같은 날 <b>발밑 타이머 링 삭제</b>로 각각 대상이 사라졌다(둘 다 사용자
+        // 지시). 그리던 컴포넌트(Interaction/FocusWatchRenderer.cs)는 파일째 없다.
+        //
+        // ★ 「링이 눕지 않는가」는 <b>되살릴 대상이 아니다</b> — 링 자체가 없다. 집중 세션이 발밑에
+        //   아무것도 그리지 않는다는 사실은 Phase5VisualLayerTests의 ⑤가 부재 단언으로 지킨다.
 
         // ============================================================================
         // (3) FX — 반짝임/나뭇잎의 머리 앵커
@@ -557,24 +494,6 @@ namespace StickMate.Tests.PlayMode
             var renderer = Object.FindFirstObjectByType<StressGaugeRenderer>();
             Assert.IsNotNull(renderer, $"{LogPrefix} StressGaugeRenderer가 씬에 없습니다.");
             Assert.IsTrue(renderer.IsVisible, $"{LogPrefix} 경고 단계인데 기분 표시가 뜨지 않았습니다.");
-        }
-
-        private IEnumerator ShowFocusGlance()
-        {
-            var director = Object.FindFirstObjectByType<FocusWatchDirector>();
-            var renderer = Object.FindFirstObjectByType<FocusWatchRenderer>();
-            Assert.IsNotNull(director, $"{LogPrefix} FocusWatchDirector가 씬에 없습니다.");
-            Assert.IsNotNull(renderer, $"{LogPrefix} FocusWatchRenderer가 씬에 없습니다.");
-
-            director.ForceTriggerNow("PlayMode 테스트(기울임 추종)");
-            yield return null;
-            yield return null;
-            Assert.IsTrue(renderer.IsRingVisible, $"{LogPrefix} 타이머 링이 뜨지 않았습니다.");
-
-            StickmanEventBus.RaiseFocusWatchTierChanged(FocusWatchTier.Glance);
-            yield return null;
-            Assert.AreEqual(FocusWatchTier.Glance, renderer.CurrentTier,
-                $"{LogPrefix} 1단계(곁눈질)로 올라가지 않았습니다.");
         }
 
         // ============================================================================

@@ -1190,34 +1190,14 @@ namespace StickMate.Core
         [Tooltip("포스트잇 카드에 한 번에 노출하는 최대 줄 수. 초과분은 '[+N개 더보기]'로 접힘(17절).")]
         public int todoPostItMaxVisibleRows = 4;
 
-        [Header("포모도로 감시자 (docs/UX_FLOW.md 18절, Phase 5)")]
-        [Tooltip("딴짓 감지 관찰 창 길이(초). UX 명시값 2분.")]
-        public float pomodoroObservationWindowSeconds = 120f;
-
-        [Tooltip("타이머 시작 직후 무조건 관찰만 하고 경고를 발동하지 않는 유예 시간(초). UX 명시값 2분.")]
-        public float pomodoroGraceSeconds = 120f;
-
-        [Tooltip("한 관찰 창 안에서 이 횟수 이상 전경 창(포커스) 전환이 있으면 '산만함' 후보로 카운트. UX 명시값 6회.")]
-        public int pomodoroFocusSwitchThreshold = 6;
-
-        [Tooltip("산만함 후보 창이 이 횟수만큼 연속되어야 1단계(눈치주기)가 발동. UX 명시값 3회 연속.")]
-        public int pomodoroTier1ConsecutiveWindows = 3;
-
-        [Tooltip("1단계 발동 후 추가로 이만큼 더 연속되면 2단계(부드러운 리마인드)로 에스컬레이션. UX 명시값 +2주기.")]
-        public int pomodoroTier2AdditionalWindows = 2;
-
-        [Tooltip("2단계 발동 후 추가로 이만큼 더 연속되면 3단계(창 두드림)로 에스컬레이션.")]
-        public int pomodoroTier3AdditionalWindows = 2;
-
-        [Tooltip("이 시간(초) 이상 커서가 완전히 정지해 있으면 '자리비움' 극단값 신호(보조, 단독 판정 금지)로 반영.")]
-        public float pomodoroMouseIdleSeconds = 90f;
-
-        [Tooltip("아주 짧은 구간 동안 커서 이동 속도(OS px/초)가 이 값을 넘으면 '정처 없이 훑는' 극단값 신호로 반영.")]
-        public float pomodoroMouseErraticSpeedThreshold = 4000f;
-
-        [Tooltip("위 극단값 판정에 쓰는 순간 이동 속도 샘플 구간(초).")]
-        public float pomodoroMouseErraticSampleSeconds = 1.0f;
-
+        // ============================================================================
+        // 집중 세션 (docs/UX_FLOW.md 18절, Phase 5)
+        // ============================================================================
+        // ★ 2026-09-06 사용자 지시 «집중모드에서 지켜보기 기능 삭제해줘» — 「딴짓 감지」가 쓰던 값
+        //   9개(관찰 창 / 유예 / 전경 전환 임계 / 1·2·3단계 연속 창 / 마우스 무입력 / 마우스 극단
+        //   속도·샘플)가 여기서 삭제됐다. 소비자였던 Interaction/FocusWatchDirector의 판정 자체가
+        //   사라졌기 때문이다. 되살리기 전에 그 파일의 클래스 문서를 읽어라(사용자가 닫은 문이다).
+        [Header("집중 세션 (docs/UX_FLOW.md 18절, Phase 5)")]
         [Tooltip("집중 모드 시작 포즈(안경+팔짱) 유지 시간(초).")]
         public float pomodoroStartPoseHoldSeconds = 2f;
 
@@ -1227,7 +1207,8 @@ namespace StickMate.Core
         [Tooltip("유저가 중도에 집중 모드를 끌 때(패널티 없는 톤) 포즈 유지 시간(초).")]
         public float pomodoroCancelPoseHoldSeconds = 1.5f;
 
-        [Tooltip("2단계 '어? 딴 데 보고 있네?' 대사 노출 유지 시간(초).")]
+        [Tooltip("★ 예약 — 진입 경로가 삭제된 FocusNudge(19) 상태의 대사 노출 시간(초). " +
+                 "상태 번호가 wire format이라 상태와 함께 남겨 둔다(StickmanEventBus의 그 항목 참고).")]
         public float pomodoroNudgeDialogueHoldSeconds = 2f;
 
         // ============================================================================

@@ -99,22 +99,38 @@ namespace StickMate.Tests.EditMode
         // 1. 무엇을 파는가
         // ================================================================================
 
-        /// <summary>★ 리더 지시 ② — 재화로 <b>살 수 있는 목록</b>에 은퇴한 카테고리가 없어야 한다.
+        /// <summary>★ 리더 지시 ② — 재화로 <b>살 수 있는 목록</b>에 은퇴한 것이 없어야 한다.
         /// <para><c>RetiredSlotSurfaceTests</c>가 「목록이 생기면 실제 순회로 바꿀 것」이라고 예약해 둔
         /// 그 검사다. 판정은 <see cref="ItemCatalog.IsListed"/> 하나가 하므로 여기서 술어를 다시 만들지
-        /// 않고, <b>결과</b>만 훑는다.</para></summary>
+        /// 않고, <b>결과</b>만 훑는다.</para>
+        /// <para>★ 2026-09-06 후속 — 단위가 <b>카테고리에서 아이템으로</b> 내려왔다(사용자 지시
+        /// *"이펙트 없음은 왜 있는거야 삭제해줘 장비창에서"*). 카테고리 단위 술어만 남기면 «살아 있는
+        /// 카테고리 안의 은퇴한 한 장»이 매대에 실려도 이 순회가 통과시킨다.</para></summary>
         [Test]
-        public void 상품_목록에는_은퇴한_카테고리가_한_건도_없다()
+        public void 상품_목록에는_은퇴한_것이_한_건도_없다()
         {
-            // 양성 대조 — 은퇴한 슬롯에 실제로 아이템이 있어야 이 단언이 뜻을 갖는다.
+            // 양성 대조 ① — 은퇴한 것이 실제로 있어야 아래 부재 단언이 뜻을 갖는다.
+            // 은퇴 여부를 묻는 자리는 EquipmentModel.IsRetiredItem 하나다(여기에 목록을 다시 적지 않는다).
             int retiredItems = 0;
+            int retiredSlotItems = 0;
             for (int s = 0; s < EquipmentModel.SlotCount; s++)
             {
                 var slot = (EquipmentSlot)s;
-                if (EquipmentModel.IsRetiredSlot(slot)) retiredItems += ItemCatalog.ItemCountIn(slot);
+                int count = ItemCatalog.ItemCountIn(slot);
+                for (int i = 0; i < count; i++)
+                {
+                    if (EquipmentModel.IsRetiredItem(slot, i)) retiredItems++;
+                }
+                if (EquipmentModel.IsRetiredSlot(slot)) retiredSlotItems += count;
             }
             Assert.Greater(retiredItems, 0,
-                $"{LogPrefix} 은퇴한 카테고리에 아이템이 0종입니다 — 이 검사가 공허해집니다.");
+                $"{LogPrefix} 은퇴한 장비가 0종입니다 — 이 검사가 공허해집니다.");
+
+            // 양성 대조 ② — 그중 <b>아이템 단위</b> 은퇴가 실재하는가. 슬롯 단위만 남으면 이 순회는
+            // 「카테고리가 통째로 빠졌다」만 재고 「목록 가운데 한 장이 빠졌다」는 못 잰다 —
+            // 그 상태에서 이펙트 「없음」이 매대로 돌아와도 아무도 빨개지지 않는다.
+            Assert.Greater(retiredItems - retiredSlotItems, 0,
+                $"{LogPrefix} 아이템 단위 은퇴가 0건입니다 — 은퇴가 다시 카테고리 단위로만 남았습니다.");
 
             List<ItemCatalogEntry> shop = ShopMerchandise();
             Assert.Greater(shop.Count, 0, $"{LogPrefix} 상점이 아무것도 팔지 않습니다 — 선반이 통째로 비었습니다.");
@@ -123,8 +139,8 @@ namespace StickMate.Tests.EditMode
             {
                 Assert.IsTrue(entry.Slot.HasValue,
                     $"{LogPrefix} [{entry.Id}]에는 슬롯이 없습니다 — 가격이 정의되지 않는 것이 상품으로 실렸습니다.");
-                Assert.IsFalse(EquipmentModel.IsRetiredSlot(entry.Slot.Value),
-                    $"{LogPrefix} 은퇴한 카테고리의 [{entry.DisplayName}]가 상점에 실렸습니다 — " +
+                Assert.IsFalse(EquipmentModel.IsRetiredItem(entry.Slot.Value, entry.ItemIndex),
+                    $"{LogPrefix} 은퇴한 [{entry.DisplayName}]가 상점에 실렸습니다 — " +
                     "「살 수는 있는데 못 입는」 물건입니다.");
             }
         }
@@ -149,13 +165,19 @@ namespace StickMate.Tests.EditMode
                     "결제 백엔드가 없는 상태로 DLC가 동전에 노출됐습니다.");
             }
 
-            // 목록 길이를 <b>독립적으로</b> 다시 센다(프로덕션 필터를 부르지 않는다).
+            // 목록 길이를 <b>독립적으로</b> 다시 센다 — «프로덕션 필터»(CharacterInfoWindow의
+            // IsShopMerchandise / ItemCatalog.IsListed)를 부르지 않고 조건을 여기서 다시 조립한다.
+            // ★ 다만 «무엇이 은퇴했는가»는 EquipmentModel.IsRetiredItem에게 묻는다 — 그 사실을 여기서
+            //   다시 정의하면 술어가 두 곳에 생기고, 그게 정확히 2026-09-06에 난 사고다:
+            //   이 줄이 IsRetiredSlot(카테고리 단위)로 남아 있어 이펙트 「없음」 한 장을 세지 못했고,
+            //   «상점 목록 35 vs 독립 계수 36»이라는 빨강이 <b>프로덕션이 아니라 이 파일 탓으로</b> 떴다.
             int expected = 0;
             for (int i = 0; i < ItemCatalog.Count; i++)
             {
                 ItemCatalogEntry e = ItemCatalog.At(i);
                 if (e == null || e.Category != ItemCategory.Equipment) continue;
-                if (!e.Slot.HasValue || EquipmentModel.IsRetiredSlot(e.Slot.Value)) continue;
+                if (!e.Slot.HasValue) continue;
+                if (EquipmentModel.IsRetiredItem(e.Slot.Value, e.ItemIndex)) continue;
                 if (e.CohortId != ItemCatalog.BaseCohortId) continue;
                 expected++;
             }

@@ -78,8 +78,32 @@ namespace StickMate.Core
                 "ShapeDump 하니스는 은퇴 여부를 흉내내지 않는다(CoreShim.cs). " +
                 "덤프가 이것을 부르기 시작했다면 Core/EquipmentModel.cs 를 build.sh 목록에 넣어라.");
 
+        /// <summary>★ 위 <see cref="IsRetiredSlot"/>와 <b>같은 이유로 같은 모양</b> — 2026-09-06 «이펙트 없음»
+        /// 은퇴가 아이템 단위 술어를 하나 더 만들었고, <c>ItemCatalog</c>가 그것을 부르기 시작하면서
+        /// 이 하니스가 <b>CS0117 하나로 통째로 멎었다</b>(그날 두 번째 재발 — build.sh 머리말이 경고한 그 형태다).
+        /// <para>답(=«무엇이 은퇴했는가»)은 여전히 베끼지 않는다. 좌표도 등급도 표시 모집단과 무관하므로
+        /// <b>컴파일만</b> 되면 되고, 덤프가 실제로 이 술어를 타는 날에는 rc≠0으로 시끄럽게 멈춘다 —
+        /// 그때가 <c>Core/EquipmentModel.cs</c>를 <c>build.sh</c> 목록에 넣을 때다.</para></summary>
+        public static bool IsRetiredItem(EquipmentSlot slot, int itemIndex)
+            => throw new System.NotSupportedException(
+                "ShapeDump 하니스는 은퇴 여부를 흉내내지 않는다(CoreShim.cs). " +
+                "덤프가 이것을 부르기 시작했다면 Core/EquipmentModel.cs 를 build.sh 목록에 넣어라.");
+
         /// <summary>이 하니스에서는 <b>아무것도 걸치지 않았다</b>. 등급·좌표 어느 쪽에도 들어가지 않는다.</summary>
         public static int WornIndex(EquipmentSlot slot) => NotWorn;
+
+        /// <summary>★ 위 <see cref="WornIndex"/>에서 <b>유도</b>한다 — 답을 두 번 적지 않는다.
+        /// 프로덕션도 같은 유도(<c>WornIndex(slot) &gt;= 0</c>)라 두 곳이 갈라질 자리가 없다.
+        /// (<c>EquipmentStatRules.SlotLoadout</c>이 이것을 부르기 시작해 2026-09-06 세 번째로 하니스가 멎었다.)</summary>
+        public static bool IsEquipped(EquipmentSlot slot) => WornIndex(slot) >= 0;
+
+        /// <summary>★ <see cref="IsRetiredSlot"/>와 같은 이유로 <b>터진다</b> — 해금은 레벨·진행도 규칙이고
+        /// 그 규칙을 여기 베끼면 하니스만 조용히 옛 답을 준다. 위 <see cref="IsEquipped"/>가 이 하니스에서
+        /// 언제나 거짓이라 <c>&amp;&amp;</c> 단축 평가로 여기까지 오지 않는다.</summary>
+        public static bool IsUnlocked(EquipmentSlot slot)
+            => throw new System.NotSupportedException(
+                "ShapeDump 하니스는 해금 규칙을 흉내내지 않는다(CoreShim.cs). " +
+                "덤프가 이것을 부르기 시작했다면 Core/EquipmentModel.cs 를 build.sh 목록에 넣어라.");
     }
 
     /// <summary>QA 해금 스위치. 오프라인 덤프는 <b>릴리스와 같은 상태</b>(닫힘)로 둔다.</summary>

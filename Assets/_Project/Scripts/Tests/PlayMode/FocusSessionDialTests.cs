@@ -25,8 +25,8 @@ namespace StickMate.Tests.PlayMode
     ///     1066.7 / 1066.7 / <b>800.0</b>ms로 갈라진다)가 숨을 곳이 없어진다.
     ///     ★ 이 검사는 <b>프레임 수가 아니라 벽시계</b>로 예산을 잡는다(CLAUDE.md).
     ///  ③ <b>[직접] 칩이 전역 폴링 경로에서 산다</b>(§R5-6 함정 ①). 옛 코드는 하나의 <c>for(i&lt;3)</c>가
-    ///     시간 칩과 민감도 칩을 함께 돌아서, 시간 칩이 4개가 되면 마지막 칩이 <b>이 경로에서만</b>
-    ///     조용히 죽는다(uGUI Wire 경로로는 눌리므로 손으로 눌러 보면 멀쩡하다).
+    ///     두 종류의 칩을 함께 돌아서, 시간 칩이 4개가 되면 마지막 칩이 <b>이 경로에서만</b>
+    ///     조용히 죽었다(uGUI Wire 경로로는 눌리므로 손으로 눌러 보면 멀쩡하다).
     ///  ④ <b>되감기 없음 · 세로 증가 0pt</b> — 끝에서 한 번 더 눌러도 반대 끝으로 튀지 않고,
     ///     자유 입력 행이 프리셋 행과 <b>같은 y·같은 높이</b>를 차지한다.
     ///
@@ -266,7 +266,7 @@ namespace StickMate.Tests.PlayMode
             //    uGUI Wire 경로로는 눌리므로 손으로 눌러 보면 멀쩡해 보인다.
             Assert.IsTrue(_focus.ShowingCustomDurationRow,
                 $"{LogPrefix} [직접] 칩을 <b>전역 폴링 경로</b>로 눌렀는데 자유 입력 행이 열리지 않았습니다 — " +
-                "시간 칩과 민감도 칩을 함께 도는 루프가 3에서 멈추고 있습니다(§R5-6 함정 ①).");
+                "시간 칩 루프가 배열 길이가 아니라 상수 3에서 멈추고 있습니다(§R5-6 함정 ①).");
             Assert.AreEqual(50, _focus.CustomMinutesForTests,
                 $"{LogPrefix} 자유 입력이 고른 프리셋(50분)에서 출발하지 않았습니다.");
             Assert.AreEqual(50f, _focus.SelectedMinutes, 0.01f, $"{LogPrefix} SelectedMinutes가 모드 분기를 안 합니다.");

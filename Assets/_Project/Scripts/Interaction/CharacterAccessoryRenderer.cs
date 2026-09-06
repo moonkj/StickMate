@@ -177,6 +177,34 @@ namespace StickMate.Interaction
 
         private readonly List<LineRenderer> _lines = new List<LineRenderer>(8);
 
+        /// <summary>
+        /// ★ 2026-09-06 — <see cref="_lines"/>와 <b>1:1</b>인 «그 조각이 <b>선언한</b> 선 알파».
+        ///
+        /// <para>계약 v2 조각은 <c>lineAlpha</c>를 스스로 갖는다(하이라이트 0.42 · 낱선 0.55/0.4/0.35 등,
+        /// 인계본 23조각). 그런데 <see cref="ApplyAlpha"/>가 전역 페이드 값을 <b>대입</b>하고 있어서
+        /// (<c>c.a = _alpha</c>), <see cref="Rebuild"/>가 방금 구운 부분투명이 <b>같은 프레임 끝에</b>
+        /// 전부 1.0으로 밀렸다 — 선언된 알파가 한 프레임도 살아남지 못했다. 실기 증거: 천 모자 관의
+        /// 흰 하이라이트(<c>Piece_H3</c>, 0.42)가 선명한 흰 획으로 찍혔다.</para>
+        ///
+        /// <para>고침은 «대입 → 곱셈»이다: <c>c.a = declared × _alpha</c>. 그러면 전역 페이드(랙돌
+        /// 진입/복귀 · 전체화면 억제)는 그대로 동작하면서 조각 간 <b>비율</b>이 보존된다.</para>
+        /// </summary>
+        private readonly List<float> _lineDeclaredAlpha = new List<float>(8);
+
+        /// <summary>
+        /// ★ 이 선에 마지막으로 적용한 <b>전역</b> 알파. <see cref="_fillAlphaApplied"/>와 같은 역할이고,
+        /// 여기서는 <b>24시간 상주 앱의 매 프레임 쓰기</b>를 막는 것이 목적이다.
+        ///
+        /// <para><b>왜 <c>lr.startColor</c>를 되읽어 비교하면 안 되는가</b>(2026-09-06 실측):
+        /// <see cref="LineRenderer"/>의 시작/끝 색은 내부적으로 <c>Gradient</c>에 담기고, 그 키는
+        /// <b>채널당 8비트</b>다. 그래서 0.42를 넣고 되읽으면 <c>107/255 = 0.419608</c>이 나온다.
+        /// 조기 반환을 «되읽은 값 ≈ 원하는 값»으로 두면 그 둘이 <b>영원히 같아지지 않아</b>
+        /// 평상시(<c>_alpha == 1</c>)에도 부분투명 선 13개에 매 프레임 세터가 두 번씩 돈다.
+        /// 결함이 있던 시절에는 원하는 값이 항상 1.0(= 255/255, 양자화 오차 0)이라 이 함정이
+        /// 드러나지 않았다 — 곱셈으로 바꾸는 순간 생기는 <b>새 함정</b>이라 여기 적어 둔다.</para>
+        /// </summary>
+        private readonly List<float> _lineAlphaApplied = new List<float>(8);
+
         /// <summary>채움 면(모자류). 알파/표시 토글은 선과 같은 규칙을 따른다.</summary>
         private readonly List<MeshRenderer> _fills = new List<MeshRenderer>(4);
 
@@ -186,8 +214,18 @@ namespace StickMate.Interaction
 
         /// <summary>★ 2026-09-05 perf-doc P0 — <see cref="_fillMeshes"/>와 1:1 인 정점 색 캐시. <c>Mesh.colors</c> <b>게터</b>는 부를 때마다
         /// 새 배열을 따는 Unity API 라(10,224 B/프레임 = 53 GB/일, docs/PERF_EQUIPMENT_AND_FAN.md D) <see cref="ApplyAlpha"/>가
-        /// 게터를 부르지 않고 이 캐시와 <see cref="_fillAlphaApplied"/>(마지막으로 쓴 알파)만 본다. 거동 변화 0, 프레임당 할당 0.</summary>
+        /// 게터를 부르지 않고 이 캐시와 <see cref="_fillAlphaApplied"/>(마지막으로 쓴 <b>전역</b> 알파)만 본다. 거동 변화 0, 프레임당 할당 0.</summary>
         private readonly List<Color[]> _fillColors = new List<Color[]>(4);
+
+        /// <summary>★ 2026-09-06 — <see cref="_lineDeclaredAlpha"/>의 채움 짝. 조각이 선언한 채움 알파
+        /// (<c>AccessoryShapeBuilder.HandoffFillAlpha × 그룹 알파</c>)를 굽는 시점에 캡처한다.
+        /// <para>지금 배포 기본값에서는 몸 채움이 전부 1.0이라 <b>이 라운드의 화면 변화는 0</b>이지만,
+        /// 선 쪽과 <b>같은 형태</b>로 맞춰 두지 않으면 그룹 알파가 1 미만인 팩 아이템이 들어오는 순간
+        /// 같은 결함이 채움에서 조용히 재발한다(선 쪽 문서의 사고가 정확히 그 형태였다).</para></summary>
+        private readonly List<float> _fillDeclaredAlpha = new List<float>(4);
+
+        /// <summary>마지막으로 적용한 <b>전역</b> 알파(<see cref="_alpha"/>). 선언 알파가 아니다 —
+        /// 실제 정점 알파는 <c>_fillDeclaredAlpha[i] × 이 값</c>이다.</summary>
         private readonly List<float> _fillAlphaApplied = new List<float>(4);
 
         /// <summary>재구성 때만 쓰는 도형 조립 버퍼. 매번 새 List를 만들지 않는다(24시간 상주 앱).</summary>
@@ -402,6 +440,7 @@ namespace StickMate.Interaction
             }
             _fillMeshes.Clear();
             _fillColors.Clear();
+            _fillDeclaredAlpha.Clear();
             _fillAlphaApplied.Clear();
         }
 
@@ -833,6 +872,8 @@ namespace StickMate.Interaction
             _headGroup = null;
             DestroyFillMeshes();
             _lines.Clear();
+            _lineDeclaredAlpha.Clear();
+            _lineAlphaApplied.Clear();
             _fills.Clear();
             _swayLines.Clear();
             _swayApplied = false;
@@ -845,6 +886,8 @@ namespace StickMate.Interaction
             if (_container != null) Destroy(_container);
             DestroyFillMeshes();
             _lines.Clear();
+            _lineDeclaredAlpha.Clear();
+            _lineAlphaApplied.Clear();
             _fills.Clear();
             _swayLines.Clear();
             _swayApplied = false;
@@ -1012,9 +1055,9 @@ namespace StickMate.Interaction
             var go = new GameObject(shape.Name + "Fill");
             go.transform.SetParent(parent != null ? parent : _container.transform, false);
             // 같은 아이템의 채움끼리는 sortingOrder가 동률이라 순서가 미정이다. 로컬 z로 가른다 —
-            // 나중에 넣은 것이 위로 온다(AccessoryShapeBuilder.FillDepthStep).
-            go.transform.localPosition =
-                new Vector3(0f, 0f, orderWithinItem * AccessoryShapeBuilder.FillDepthStep);
+            // 나중에 넣은 것이 위로 온다. 계산은 초상화와 <b>같은 함수</b>다
+            // (AccessoryShapeBuilder.FillDepthOffset — 두 렌더러가 각자 구현하다 갈라진 자리).
+            go.transform.localPosition = AccessoryShapeBuilder.FillDepthOffset(orderWithinItem);
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
 
             var mr = go.AddComponent<MeshRenderer>();
@@ -1026,7 +1069,9 @@ namespace StickMate.Interaction
             _fillMeshes.Add(mesh);
             // 재구성 때 한 번만 딴다(게터 할당은 여기뿐). 이후 ApplyAlpha 는 이 배열을 고쳐 세터로만 밀어 넣는다.
             _fillColors.Add(mesh.colors);
-            _fillAlphaApplied.Add(color.a);
+            _fillDeclaredAlpha.Add(color.a);
+            // 방금 구운 정점 알파는 「선언값 × 1」이다 — 그래서 적용된 <b>전역</b> 알파는 1.
+            _fillAlphaApplied.Add(1f);
             _fills.Add(mr);
             return mesh;
         }
@@ -1066,6 +1111,10 @@ namespace StickMate.Interaction
             if (handoffWidth > 0f) AccessoryStrokeMark.Mark(lr);
             else if (isFillOutline) FillOutlineStroke.Mark(lr);
             _lines.Add(lr);
+            // ★ 선언 알파는 <b>여기서</b> 캡처한다 — 나중에 lr.startColor 에서 되읽으면 이미
+            //   전역 페이드가 곱해진 뒤이고 8비트로 양자화까지 된 값이라 원본을 복원할 수 없다.
+            _lineDeclaredAlpha.Add(color.a);
+            _lineAlphaApplied.Add(1f);   // 방금 넣은 색이 곧 「선언값 × 1」이다.
             return lr;
         }
 
@@ -1459,22 +1508,33 @@ namespace StickMate.Interaction
         public float HatCoverLocalYFor(int hatItemIndex)
             => AccessoryShapeBuilder.HatCoverLocalY(hatItemIndex, BuildRig());
 
+        /// <summary>
+        /// 전역 페이드(<see cref="_alpha"/>)를 지금 그려진 선·면에 <b>곱해</b> 넣는다.
+        ///
+        /// <para>★ 2026-09-06 «대입 → 곱셈». 예전에는 <c>c.a = _alpha</c>였고, 그래서 조각이 선언한
+        /// 부분투명(<see cref="_lineDeclaredAlpha"/> 문서)이 매 프레임 전역값으로 <b>대체</b>됐다.
+        /// 페이드가 걸리지 않은 평상시(<c>_alpha == 1</c>)에도 예외 없이 1.0으로 밀려서,
+        /// 하이라이트가 전부 불투명 흰 획이 됐다.</para>
+        /// </summary>
         private void ApplyAlpha()
         {
             for (int i = 0; i < _lines.Count; i++)
             {
                 LineRenderer lr = _lines[i];
                 if (lr == null) continue;
+                // ★ 조기 반환은 <b>되읽은 색</b>이 아니라 마지막으로 적용한 전역 알파로 한다
+                //   (_lineAlphaApplied 문서 — LineRenderer 색은 8비트로 양자화되어 되돌아온다).
+                if (Mathf.Approximately(_lineAlphaApplied[i], _alpha)) continue;
                 Color c = lr.startColor;
-                if (Mathf.Approximately(c.a, _alpha)) continue;
-                c.a = _alpha;
+                c.a = _lineDeclaredAlpha[i] * _alpha;
                 lr.startColor = c;
                 lr.endColor = c;
+                _lineAlphaApplied[i] = _alpha;
             }
 
             // 채움 면의 알파는 <b>정점 색</b>에 들어 있다(머티리얼은 캐릭터 것을 공유하므로 절대 만지지
             // 않는다 — 건드리면 캐릭터 획까지 함께 반투명해진다).
-            // ★ perf-doc P0 — Mesh.colors 게터(매 호출 새 배열)를 부르지 않는다. 캐시 + 마지막 알파로 조기 반환이 할당 <b>앞</b>에 온다.
+            // ★ perf-doc P0 — Mesh.colors 게터(매 호출 새 배열)를 부르지 않는다. 캐시 + 마지막 <b>전역</b> 알파로 조기 반환이 할당 <b>앞</b>에 온다.
             for (int i = 0; i < _fillMeshes.Count; i++)
             {
                 Mesh mesh = _fillMeshes[i];
@@ -1482,7 +1542,8 @@ namespace StickMate.Interaction
                 if (Mathf.Approximately(_fillAlphaApplied[i], _alpha)) continue;
                 Color[] colors = _fillColors[i];
                 if (colors == null || colors.Length == 0) continue;
-                for (int k = 0; k < colors.Length; k++) colors[k].a = _alpha;
+                float want = _fillDeclaredAlpha[i] * _alpha;
+                for (int k = 0; k < colors.Length; k++) colors[k].a = want;
                 mesh.colors = colors;
                 _fillAlphaApplied[i] = _alpha;
             }

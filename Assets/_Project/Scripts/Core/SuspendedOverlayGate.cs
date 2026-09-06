@@ -55,8 +55,8 @@ namespace StickMate.Core
     ///     인터럽트하고, 그 전이가 Director의 <c>Cancelled</c> 발행 → 렌더러의 0.18초 취소 페이드로
     ///     이어져 <b>스스로 사라진다</b>. 여기에 얼리기를 걸면 오히려 페이드가 멈췄다가 게임이 끝난 뒤
     ///     낙서가 한 번 번쩍이고 사라진다(지금이 더 낫다).</item>
-    ///   <item><c>FocusWatchRenderer</c> — 2026-09-06에 <c>FocusWatchDirector.IsTimerRingWarranted</c>
-    ///     한 곳에서 같은 판정을 이미 한다(같은 라운드의 앞선 수정).</item>
+    ///   <item>~~<c>FocusWatchRenderer</c>~~ — <b>2026-09-06 삭제됨</b>(사용자 지시로 발밑 타이머 링
+    ///     제거). 그 파일도 <c>IsTimerRingWarranted</c>도 더 이상 없다 — 이 목록에서 찾지 마라.</item>
     /// </list>
     /// </summary>
     public static class SuspendedOverlayGate

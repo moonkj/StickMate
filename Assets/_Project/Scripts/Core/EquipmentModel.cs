@@ -175,9 +175,58 @@ namespace StickMate.Core
         /// </summary>
         public static bool IsRetiredSlot(EquipmentSlot slot) => slot == EquipmentSlot.Hair;
 
+        /// <summary>이 아이템의 안정적 아이디. <b>여기 말고 어디에도 적지 않는다</b> —
+        /// 자리 번호(0)로 적으면 카탈로그가 재정렬되는 날 엉뚱한 이펙트가 사라진다.</summary>
+        internal const string RetiredFxNoneItemId = "look.fx.none";
+
+        /// <summary>
+        /// ★ <b>은퇴한 아이템</b> — 사용자 지시 2026-09-06 *"이펙트 없음은 왜 있는거야 삭제해줘 장비창에서"*.
+        /// 지금 해당하는 것은 이펙트의 <c>look.fx.none</c>(<see cref="RetiredFxNoneItemId"/>) 하나다.
+        ///
+        /// <para><b>왜 「없음」이 이상한가</b> — 42종 중 <b>기능이 겹치는 유일한 카드</b>였다.
+        /// 벗기는 일은 이미 모든 카드가 자기 하단 버튼으로 한다(걸치고 있으면 그 버튼이 [해제]다).
+        /// 그래서 이펙트만 「아무것도 아닌 것을 <b>걸치는</b>」 두 번째 경로를 갖고 있었고,
+        /// 모자·안경·목걸이·망토·펫 다섯 카테고리에는 그런 카드가 없다. 사용자의 "왜 있는거야"는
+        /// 정확히 그 <b>비대칭</b>을 가리킨다.</para>
+        ///
+        /// <para><b>왜 에셋을 지우지 않는가</b>(<see cref="IsRetiredSlot"/>와 같은 이유, 그리고 하나 더):
+        /// ① 42종(7 × 6)이 등급 파생·코호트 순위·골든 덤프의 분모다. ② 이펙트는 <b>자리 번호 자체가
+        /// 렌더러의 약속</b>이다 — <c>AppearanceShapeBuilder.FxNone = 0 / FxFootprint = 1 …</c>이고
+        /// <c>CharacterFxRenderer</c>는 <c>item &lt;= FxNone</c>으로 «그릴 것 없음»을 판정한다.
+        /// 0번을 빼면 발자국이 0번이 되어 <b>발자국이 통째로 안 그려진다</b>. 데이터는 그대로 두고
+        /// <b>보여주는 목록에서만</b> 뺀다.</para>
+        ///
+        /// <para>★ 은퇴한 <b>카테고리</b>의 아이템도 여기서 참이다 — 부르는 쪽이 술어를 둘 들고
+        /// 다니지 않게 한다(<see cref="ItemCatalog.IsListed"/>가 이 하나만 본다).
+        /// <see cref="NotWorn"/>(−1)은 은퇴가 아니라 <b>미착용</b>이므로 거짓이다.</para>
+        ///
+        /// <para>★ 걸치는 경로(<see cref="TryWear"/>)와 저장 복원(<see cref="RestoreFromSave(EquipmentSlot,string)"/>
+        /// · <see cref="RestoreFromSave(EquipmentSlot,bool)"/>)이 함께 막히므로, <b>「없음」을 걸친 채
+        /// 저장했던 파일도 미착용으로 열린다</b>. 그 상태의 겉모습은 원래 이펙트 없음과 <b>같으므로</b>
+        /// 사용자가 잃는 것은 없다. 파일은 읽기만 하고 스키마 버전도 움직이지 않는다.</para>
+        /// </summary>
+        public static bool IsRetiredItem(EquipmentSlot slot, int itemIndex)
+        {
+            if (itemIndex < 0) return false;              // 미착용은 «은퇴»가 아니다.
+            if (!InRange(slot)) return false;
+            if (IsRetiredSlot(slot)) return true;         // 은퇴한 카테고리는 통째로.
+            return slot == EquipmentSlot.Fx
+                   && itemIndex == ItemCatalog.IndexOfItemId(EquipmentSlot.Fx, RetiredFxNoneItemId);
+        }
+
         // ==================== 아이템 단위 사실 — 전부 ItemCatalog에 위임 ====================
 
         public static int ItemCount(EquipmentSlot slot) => ItemCatalog.ItemCountIn(slot);
+
+        /// <summary>이 카테고리에서 <b>화면에 보여주는</b> 아이템 수(정보창 카테고리 제목줄의 "n / 5").
+        /// 위 <see cref="ItemCount"/>는 카탈로그 전량이라 감사·등급 파생이 쓰고, 이쪽은 화면이 쓴다 —
+        /// 둘을 하나로 합치면 둘 중 하나가 반드시 틀린다(<see cref="ItemCatalog.EquipmentCount"/> 문단).</summary>
+        public static int ListedItemCount(EquipmentSlot slot) => ItemCatalog.ListedItemCountIn(slot);
+
+        /// <summary>보여주는 목록의 <paramref name="listedIndex"/>번째가 카탈로그의 몇 번째인가.
+        /// 범위 밖이면 <see cref="NotWorn"/>(−1).</summary>
+        public static int ListedItemIndex(EquipmentSlot slot, int listedIndex)
+            => ItemCatalog.ListedItemIndex(slot, listedIndex);
 
         public static string ItemName(EquipmentSlot slot, int itemIndex)
         {
@@ -220,12 +269,30 @@ namespace StickMate.Core
             return n;
         }
 
-        /// <summary>보유한 아이템 중 첫 자리(없으면 -1). <see cref="TryToggle"/>가 "일단 하나 걸쳐라"에 쓴다.</summary>
+        /// <summary>보여주는 목록 안에서 지금 보유한 아이템 수 — 카테고리 제목줄의 <b>분자</b>다.
+        /// 분모(<see cref="ListedItemCount"/>)와 <b>같은 모집단</b>을 센다(한쪽만 은퇴를 반영하면
+        /// 「6 / 5」가 나온다).</summary>
+        public static int ListedOwnedItemCount(EquipmentSlot slot)
+        {
+            int n = 0;
+            int listed = ListedItemCount(slot);
+            for (int i = 0; i < listed; i++)
+            {
+                int item = ListedItemIndex(slot, i);
+                if (item >= 0 && IsItemOwned(slot, item)) n++;
+            }
+            return n;
+        }
+
+        /// <summary>보유한 아이템 중 첫 자리(없으면 -1). <see cref="TryToggle"/>가 "일단 하나 걸쳐라"에 쓴다.
+        /// <para>★ 은퇴한 아이템은 건너뛴다 — 이 경로로 걸치면 <see cref="TryWear"/>가 거절해
+        /// <b>«벗기만 하고 아무것도 안 걸치는»</b> 토글이 된다(이펙트에서는 0번이 바로 그 자리다).</para></summary>
         public static int FirstOwnedItemIndex(EquipmentSlot slot)
         {
             int count = ItemCount(slot);
             for (int i = 0; i < count; i++)
             {
+                if (IsRetiredItem(slot, i)) continue;
                 if (IsItemOwned(slot, i)) return i;
             }
             return NotWorn;
@@ -322,6 +389,9 @@ namespace StickMate.Core
             }
 
             if (itemIndex < 0 || itemIndex >= ItemCount(slot)) return false;
+            // 은퇴한 아이템(<see cref="IsRetiredItem"/>)도 같은 잠금을 받는다 — 화면에 카드가 없는데
+            // 다른 경로(토글/복원/테스트 API)로만 걸쳐지면 벗을 손잡이가 없는 차림이 된다.
+            if (IsRetiredItem(slot, itemIndex)) return false;
             if (!IsItemOwned(slot, itemIndex)) return false;
             if (_worn[(int)slot] == itemIndex) return false;
 
@@ -364,7 +434,10 @@ namespace StickMate.Core
             //   파일은 읽기만 한다 — 값을 지우지도, 다른 아이템으로 바꿔치기하지도 않는다.
             //   이 자리가 없으면 머리를 걸친 채 저장했던 사용자만 "화면에서는 지웠는데 몸에는 남은"
             //   상태로 앱을 켜게 되고, 그건 정보창 어디에서도 벗을 수 없는 상태다(탈출구가 없다).
-            _worn[(int)slot] = IsRetiredSlot(slot) ? NotWorn : ItemCatalog.IndexOfItemId(slot, itemId);
+            //   ★ 2026-09-06 후속 — 판정을 <b>아이템 단위</b>(<see cref="IsRetiredItem"/>)로 넓혔다.
+            //   이펙트 「없음」을 걸친 채 저장했던 파일이 그대로 열리면 카드가 없는 차림이 된다.
+            int restored = IsRetiredSlot(slot) ? NotWorn : ItemCatalog.IndexOfItemId(slot, itemId);
+            _worn[(int)slot] = IsRetiredItem(slot, restored) ? NotWorn : restored;
         }
 
         /// <summary>v1~v4 저장 파일 복원 전용. 그 시절에는 카테고리당 아이템이 하나뿐이었으므로
@@ -373,7 +446,9 @@ namespace StickMate.Core
         internal static void RestoreFromSave(EquipmentSlot slot, bool equipped)
         {
             if (!InRange(slot)) return;
-            _worn[(int)slot] = equipped && !IsRetiredSlot(slot) ? 0 : NotWorn;
+            // ★ 여기서 0번은 이펙트에서는 <b>은퇴한 「없음」</b>이다 — 구버전 파일이 그 카드를
+            //   되살리지 못하게 <see cref="IsRetiredItem"/>로 함께 막는다(위 v5 경로와 같은 판정).
+            _worn[(int)slot] = equipped && !IsRetiredItem(slot, 0) ? 0 : NotWorn;
         }
 
         /// <summary>테스트/디버그 전용. <b>기본 차림</b>(모자/안경만 착용)으로 되돌린다 —

@@ -1527,7 +1527,20 @@ namespace StickMate.Interaction
         }
 
         /// <summary>헤더 오른쪽 재화/보유 칩 한 벌 — 라벨 + 값. <paramref name="rightInset"/>은
-        /// 창 오른쪽 끝에서 칩 <b>오른쪽 모서리</b>까지의 거리다.</summary>
+        /// 창 오른쪽 끝에서 칩 <b>오른쪽 모서리</b>까지의 거리다.
+        ///
+        /// <para>★ 2026-09-06 사용자 신고 — <i>"동전 보유 현황을 가운데 정렬, 지금 너무 밑으로 내려와 있음"</i>.
+        /// 원인은 <b>피벗 불일치</b>였다. <see cref="Label"/>은 <see cref="UiChrome.PlaceTopLeft"/>를 쓰므로
+        /// 넘기는 y는 상자의 <b>위 변</b> 좌표지, 상자의 <b>중심</b>이 아니다.
+        /// 옛 식은 중앙식 <c>-(칩높이 - 글자높이) * 0.5</c>에 <b>글자 높이의 절반</b>을 한 번 더 뺐다
+        /// (캡션 7 = 14/2, 값 8 = 16/2 — 두 상수가 정확히 반쪽이라는 것이 오타의 증거다).
+        /// 그래서 두 상자 <b>위 변</b>이 나란히 −16, 즉 32pt 칩의 <b>정중앙</b>에 앉았고
+        /// 글자는 칩의 <b>아래 절반</b>만 채웠다(값 상자는 아래 변이 −32로 칩 바닥선에 그대로 닿았다).
+        /// 미세조정이 아니다 — 도입 커밋에 사유 주석이 없고, 아이콘도 균형을 맞출 상대도 이 칩에는 없다.</para>
+        ///
+        /// <para>지금 식은 순정 중앙 정렬이다: 캡션 위 변 −(32−14)/2 = −9, 아래 변 −23 → 중심 −16 = 칩 중심.
+        /// 값 위 변 −(32−16)/2 = −8, 아래 변 −24 → 중심 −16. <b>두 칩(동전·보유)이 이 함수를 공유</b>하므로
+        /// 여기서 한 번 고치면 양쪽이 함께 움직인다 — 반대로 <b>한쪽만 눈으로 보고 판정하면 안 된다</b>.</para></summary>
         private static RectTransform BuildHeaderChip(Transform parent, string name, float width,
             float rightInset, Color face, Color border, Color valueInk, string label, out Text value)
         {
@@ -1540,12 +1553,12 @@ namespace StickMate.Interaction
             UiChrome.AddOutline(rt, "Outline", border, HeaderChipRadius);
 
             Text caption = Label(rt, "Label", UiChrome.FontCaption, TextAnchor.MiddleLeft,
-                UiChrome.TextTertiary, HeaderChipPadX, -(HeaderChipHeight - 14f) * 0.5f - 7f,
+                UiChrome.TextTertiary, HeaderChipPadX, -(HeaderChipHeight - 14f) * 0.5f,
                 width - HeaderChipPadX * 2f, 14f, label);
             caption.raycastTarget = false;
 
             value = Label(rt, "Value", UiChrome.FontLabel, TextAnchor.MiddleRight, valueInk,
-                HeaderChipPadX, -(HeaderChipHeight - 16f) * 0.5f - 8f,
+                HeaderChipPadX, -(HeaderChipHeight - 16f) * 0.5f,
                 width - HeaderChipPadX * 2f, 16f, "—", bold: true);
             value.raycastTarget = false;
             return rt;

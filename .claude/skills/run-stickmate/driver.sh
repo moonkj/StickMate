@@ -164,10 +164,18 @@ keycode_for() {
 our_pid() { [ -f "$PID_FILE" ] && cat "$PID_FILE" || true; }
 is_alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }
 
+# ★ pgrep -f는 전체 커맨드라인 문자열 검색이라, 이 경로 문자열을 인자로 담은 무관한 셸
+# (예: 다른 에이전트가 `ps ... | grep "StickMate.app/Contents/MacOS/StickMate"` 같은 명령을
+# 실행 중인 형제 zsh)까지 "다른 인스턴스"로 오탐한다(2026-09-06 실측 3회). comm(실행파일 경로)이
+# 정확히 이 바이너리인 프로세스만 골라 자기매칭을 피한다.
+stickmate_app_pids() {
+  ps -axo pid=,comm= 2>/dev/null | awk '$2 ~ /StickMate\.app\/Contents\/MacOS\/StickMate$/ {print $1}'
+}
+
 # 우리가 띄운 것 말고 다른 StickMate 인스턴스(대개 사용자 본인이 쓰는 것)의 PID.
 other_pids() {
   local mine; mine="$(our_pid)"
-  pgrep -f "StickMate.app/Contents/MacOS/StickMate" 2>/dev/null | grep -v -x "${mine:-__none__}" || true
+  stickmate_app_pids | grep -v -x "${mine:-__none__}" || true
 }
 
 # ---------------------------------------------------------------- doctor
@@ -424,7 +432,7 @@ cmd_orphans() {
       say "         ※ 어느 경우에도 여기서 죽이지 않는다. 사람이 확인하고 결정한다."
     fi
     say ""
-  done <<< "$(pgrep -f "StickMate.app/Contents/MacOS/StickMate" 2>/dev/null)"
+  done <<< "$(stickmate_app_pids)"
   [ "$any" = "1" ] || say "  실행 중인 인스턴스 없음."
   say "로그 파일 목록(실행마다 분리):"
   ls -1t "$LOG_DIR" 2>/dev/null | head -10 | sed 's/^/  /' || say "  (없음)"

@@ -152,6 +152,46 @@ def _split_lens(p, y_cut=None, tip_a=0, tip_b=16):
 CROWN_WIDEN = {"clothhat": 1.12, "fedora": 1.18}      # 관(B0)·그늘/띠(F1)·하이라이트(H3) 의 x 배수(몸 전용)
 CROWN_WIDEN_SRC = ("B0", "F1", "H3")                  # 챙(B2)은 제외 — 챙을 넓히면 실루엣·팔 폭이 움직인다
 
+# ============================================================================
+# ★★ 2026-09-06 R27 — 관(B0)의 «닫힘변 잉크»를 걷어낸다. 챙 띠 색면 부족의 직접 원인이다.
+# ============================================================================
+# 무엇이 있었나. B0 은 `loop=True` 채움이라 렌더러가 **첫 점 ↔ 끝 점**(= 관 밑변, 가로 직선)에도
+# 획을 그린다. 그리고 프로덕션 z 규약은 「한 아이템의 모든 **선**이 그 아이템의 모든 **채움** 위」다
+# (Shape.FillSortingOrder = SortingOrder − 1). 그래서 그 가로획이 바로 아래 챙 띠(앞층 채움)의
+# 윗변을 **W/2 만큼 먹는다**. 아래가 챙 윤곽(B2na)이라 띠는 위아래로 동시에 깎였다.
+#
+# 이 획은 **인계본에 없는 선이다.** 원문(ItemIcon.dc.html)의 clothhat 은
+#   [B(관) , F(띠) , B(챙) , H] 순서로 그리고, SVG 는 조각마다 «채움+선»을 함께 칠하므로
+#   **나중에 칠해지는 챙의 불투명 채움이 관 밑변 획을 덮는다** — 원문 그림에 그 가로선은 없다.
+# 우리 이식은 (가) 선을 채움 위 별도 z 대역으로 올렸고, (나) R19 ①이 챙의 먼 쪽 절반을 머리 뒤로
+# 보내면서 그 획을 덮던 채움이 사라졌다. 즉 **R19 분할이 드러낸 선행 결함**이다(R24 (가)(나)와 같은 계열).
+#
+# 처방: 관을 «채움(윤곽 없음)» + «열린 호(닫힘변 제외)» 두 조각으로 가른다.
+#   좌표는 **한 점도 안 바뀐다** — B0 배열 그대로이고, 바뀌는 것은 닫힘변 획의 유무뿐이다.
+#   ⇒ H-2 착용선 · H-2b 밑단 · 커버선 · 실루엣 프로파일은 채움 다각형에서만 나오므로 **불변**이다.
+#
+# ★ 조건은 손으로 적은 목록이 아니라 **계산**이다(_crown_closing_edge_hidden):
+#   (1) 관 밑변이 챙 다각형 안에 온전히 들어간다(= 실루엣에 한 점도 기여하지 않는다), 그리고
+#   (2) 관 채움 역할 ≠ 챙 채움 역할.
+#   (2)가 없으면 **중절모가 무너진다** — 중절모는 관도 챙도 M(같은 색)이라, 그 획을 지우면
+#   관 아랫부분과 챙이 경계 없는 한 덩어리가 된다(실측 r27_capband.py: 1.41 + 1.08 pt 두 덩어리 →
+#   3.48 pt 한 덩어리). 천모자는 관 M(#96814F) ↔ 챙 M2(#CC5512)라 **색 경계가 그 일을 대신한다.**
+#   그래서 이 라운드가 여는 것은 천모자 하나이고, 중절모는 조건이 스스로 막는다.
+CROWN_CLOSING_EDGE_SAMPLES = 64
+
+
+def _crown_closing_edge_hidden(kind, b0_pts, b2_pts):
+    """관(B0)의 닫힘변이 챙(B2) 채움 안에 온전히 잠기고, 두 채움의 색 역할이 다른가."""
+    a, b = b0_pts[0], b0_pts[-1]
+    if abs(a[1] - b[1]) > 1e-9:
+        return False                                   # 닫힘변이 가로 직선이 아니면 판단하지 않는다
+    x0, x1 = sorted((a[0], b[0]))
+    for i in range(CROWN_CLOSING_EDGE_SAMPLES + 1):
+        x = x0 + (x1 - x0) * i / CROWN_CLOSING_EDGE_SAMPLES
+        if not rig.contains(b2_pts, (x, a[1])):
+            return False
+    return crole_of(kind, "B0")[0] != crole_of(kind, "B2")[0]
+
 
 def _head_pieces19(kind):
     src17 = [p for p in M17.WORN[kind] if not p.base]      # 불투명 바탕 조각 폐지(채움이 M/M2 불투명)
@@ -164,9 +204,22 @@ def _head_pieces19(kind):
                  if p.src in CROWN_WIDEN_SRC else p for p in src17]
     crown_bottom = (min(q[1] for p in src17 if p.src == "B0" for q in p.pts)
                     if kind in ("clothhat", "fedora") else None)
+    # [R27] 관 닫힘변 획을 걷어낼 것인가 — 손으로 적은 목록이 아니라 좌표·색 역할에서 **계산**한다.
+    _b0 = [p for p in src17 if p.src == "B0"]
+    _b2 = [p for p in src17 if p.src == "B2"]
+    split_crown_ink = bool(_b0 and _b2) and _crown_closing_edge_hidden(kind, _b0[0].pts, _b2[0].pts)
     out = []
     for p in src17:
         cr = crole_of(kind, p.src)
+        if split_crown_ink and p.src == "B0":
+            # 채움(윤곽 없음) + 열린 호(닫힘변 제외). 좌표는 같은 배열 — 바뀌는 것은 «닫힘변 획의 유무» 하나다.
+            out.append(_cp(p, layer="front", loop=True, filled=True, line=None, crole=(cr[0], None),
+                           note="[R27] 관 채움 — 윤곽은 아래 열린 호가 그린다(닫힘변 = 관 밑변은 챙에 잠긴 내부 변)"))
+            out.append(_cp(p, name=p.name + ".arc", src="B0a", layer="front", loop=False, filled=False,
+                           fill=None, crole=(None, cr[1]), role="관 윤곽(닫힘변 제외)",
+                           note="[R27] 관 밑변만 뺀 열린 호 — 그 가로획은 인계본 원문에 없고(챙 채움이 덮는다) "
+                                "이식 z 규약(선 > 채움) 때문에 챙 띠 색면을 W/2 먹고 있었다"))
+            continue
         if kind in ("clothhat", "fedora") and p.src == "B2":
             far_f, far_a, near_f, near_a = _split_lens(p, y_cut=crown_bottom)
             out.append(_cp(p, pts=far_f, name=p.name + ".far", src=p.src + "far", layer="back", loop=True, filled=True,

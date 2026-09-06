@@ -730,12 +730,20 @@ namespace StickMate.Core
                 // 가출(Runaway)만 다중 페이즈/텔레포트/렌더러 토글이 필요해 전용 States/RunawayState.cs를 쓴다.
                 { StickmanStateId.TodoReminder, new TimedSpectacleState(_blackboard, StickmanStateId.TodoReminder,
                     cfg => cfg.todoReminderHoldSeconds, TodoListModel.ConsumePendingReminderText) },
+                // ★ 2026-09-06 — 대사가 "좋아, 감시 시작"에서 바뀌었다. 「지켜보기(딴짓 감지)」가 삭제되어
+                //   그 문장이 <b>일어나지 않는 일</b>을 말하게 됐기 때문이다(원칙 1: 대사는 확정된 상태에서
+                //   파생된다). 지금 이 상태가 뜻하는 것은 «타이머가 시작됐고 옆에 있겠다»뿐이다.
                 { StickmanStateId.FocusStart, new TimedSpectacleState(_blackboard, StickmanStateId.FocusStart,
-                    cfg => cfg.pomodoroStartPoseHoldSeconds, cfg => "좋아, 감시 시작") },
+                    cfg => cfg.pomodoroStartPoseHoldSeconds, cfg => "좋아, 시작하자") },
                 { StickmanStateId.FocusComplete, new TimedSpectacleState(_blackboard, StickmanStateId.FocusComplete,
                     cfg => cfg.pomodoroCompletePoseHoldSeconds, cfg => "수고했어!") },
                 { StickmanStateId.FocusCancelled, new TimedSpectacleState(_blackboard, StickmanStateId.FocusCancelled,
                     cfg => cfg.pomodoroCancelPoseHoldSeconds, cfg => "그래 쉬자") },
+                // ★ 예약 등록(2026-09-06) — 이 상태로 <b>들어가는 경로는 삭제됐다</b>(딴짓 감지 3단계
+                //   에스컬레이션 전체가 사라졌다). 그래도 등록은 남긴다: 상태 번호 19가 wire format이라
+                //   enum에 남아 있고, 등록이 빠진 ID로 ChangeState가 들어오면 BUG-M2 방어 로그만 남기고
+                //   조용히 아무 일도 안 일어나는 형태가 되기 때문이다. 되살리기 전에
+                //   Interaction/FocusWatchDirector 클래스 문서를 읽어라.
                 { StickmanStateId.FocusNudge, new TimedSpectacleState(_blackboard, StickmanStateId.FocusNudge,
                     cfg => cfg.pomodoroNudgeDialogueHoldSeconds, cfg => "어? 딴 데 보고 있네?") },
                 { StickmanStateId.Sulky, new TimedSpectacleState(_blackboard, StickmanStateId.Sulky,

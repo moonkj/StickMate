@@ -140,7 +140,7 @@ namespace StickMate.Interaction
             if (entry == null) return false;
             if (entry.Category != ItemCategory.Equipment) return false;   // 행동에는 슬롯도 등급도 없다 = 가격이 없다
             if (!entry.Slot.HasValue || entry.ItemIndex < 0) return false;
-            if (!ItemCatalog.IsListed(entry)) return false;               // 은퇴한 카테고리(2026-09-06 [머리])
+            if (!ItemCatalog.IsListed(entry)) return false;               // 은퇴분(2026-09-06 [머리] · 이펙트 「없음」)
             return entry.CohortId == ItemCatalog.BaseCohortId;            // DLC 팩은 동전 경제 밖이다
         }
 

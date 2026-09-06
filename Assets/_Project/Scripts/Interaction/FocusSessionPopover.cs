@@ -14,8 +14,7 @@ namespace StickMate.Interaction
     /// "즉시 토글"을 택하지 않은 이유
     /// ============================================================================
     /// 18절이 시작 흐름을 "시간 선택"으로 이미 못박았다. 토글 하나면 앱이 사용자 대신 길이를 몰래
-    /// 정하는 셈이라 언제 끝날지 알 수 없는 타이머가 되고, 18절이 요구한 두 안전장치
-    /// (감시 자체를 끄는 옵션 / 민감도 3단계)가 갈 자리도 사라진다.
+    /// 정하는 셈이라 언제 끝날지 알 수 없는 타이머가 된다.
     ///
     /// ============================================================================
     /// ★ 진행 링은 <b>절대 다이얼</b>이다 — 한 바퀴 = 60분 고정 (§R5-1-1 / §R5-1-2)
@@ -32,8 +31,9 @@ namespace StickMate.Interaction
     /// <b>눈금판을 통째로 끄고 상대 링으로</b> 물러난다: 못 나르는 뜻을 나르는 척하지 않는다(§R5-7).</para>
     ///
     /// <para><b>계약(§R5-1-3)</b> — <i>눈금판이 없는 링은 상대다. 눈금판이 있는 링만 절대다.</i>
-    /// 캐릭터 발밑 링(<see cref="FocusWatchRenderer"/>, Ø33)은 얼굴이 없으므로 상대로 남는다.
-    /// 60분 얼굴을 가진 링만 "분"을 주장할 자격이 있다.</para>
+    /// ★ 2026-09-06부터 이 계약의 <b>적용 대상이 이 다이얼 하나뿐</b>이다: 짝이던 캐릭터 발밑 링
+    /// (<c>FocusWatchRenderer</c>, Ø33, 얼굴 없는 상대 링)이 사용자 지시로 <b>삭제</b>됐다.
+    /// <b>이제 남은 시간을 말하는 표면은 이 창 하나다</b> — 여기 숫자가 틀리면 대조할 곳이 없다.</para>
     ///
     /// ============================================================================
     /// ★ 필수 계약: <see cref="FocusWatchDirector.ForceTriggerNow"/>를 부르지 않는다
@@ -43,10 +43,20 @@ namespace StickMate.Interaction
     /// <see cref="FocusWatchDirector.StartFocusSession"/> / <see cref="FocusWatchDirector.StopFocusSession"/>만
     /// 부른다. 단축키 ⌃⌥⌘F / 우클릭 메뉴는 예전 데모 경로를 그대로 둔다.
     ///
-    /// <b>상태 라인은 지어내지 않는다</b>: 기존 이벤트 <see cref="StickmanEventBus.FocusWatchTierChanged"/>와
-    /// 실제 값(<see cref="StickmanAgent.IsSuspended"/>, <see cref="FocusWatchDirector.DistractionDetectionEnabled"/>)
-    /// 에서만 파생한다. 특히 일시정지 행은 연출이 아니라 <b>사실 보고</b>다 — 전체화면 앱을 쓰는 동안
-    /// <c>RemainingSeconds</c>가 실제로 줄지 않기 때문에, 설명이 없으면 "타이머가 고장 났다"로 읽힌다.
+    /// <b>상태 라인은 지어내지 않는다</b>: 실제 값(<see cref="StickmanAgent.IsSuspended"/> /
+    /// <see cref="StickmanAgent.IsUserHidden"/>)에서만 파생한다. 특히 일시정지 행은 연출이 아니라
+    /// <b>사실 보고</b>다 — 전체화면 앱을 쓰는 동안 <c>RemainingSeconds</c>가 실제로 줄지 않기 때문에,
+    /// 설명이 없으면 "타이머가 고장 났다"로 읽힌다.
+    ///
+    /// ============================================================================
+    /// ★★★ 2026-09-06 사용자 지시 — «집중모드에서 지켜보기 기능 삭제해줘»
+    /// ============================================================================
+    /// 대기 페이지에서 <b>「지켜보기」 토글 스위치</b>(38×20)와 <b>「민감도」 칩 3개</b>(관대/보통/예민)가
+    /// 삭제됐다. 민감도가 함께 사라진 이유: 그 칩이 조절하던 값은 <b>오직</b> 딴짓 감지의 에스컬레이션
+    /// 임계 배율뿐이라, 감지가 사라진 뒤에는 <b>눌러도 아무 일도 안 일어나는 컨트롤</b>이 된다
+    /// (화면이 거짓말을 하느니 없애는 쪽 — 이 파일의 닫기 힌트 삭제와 같은 판단).
+    /// 진행 페이지의 상태줄에서도 «지켜보는 중 · …» 4문과 «순수 타이머로만 재고 있어요» 1문이 빠졌다.
+    /// 대기 페이지 세로가 <b>252 → 188pt</b>로 줄었다(아래 IdleHeight 검산 참고).
     /// </summary>
     public sealed class FocusSessionPopover : PopoverPanel
     {
@@ -54,13 +64,22 @@ namespace StickMate.Interaction
         //   Tests/EditMode/TodoPostItExpansionAuditTests 가 이 두 줄을 소스에서 문자열로 파싱해
         //   포스트잇 펼침 상한을 계산한다(파서 키가 "const float <이름> = "다).
         private const float Width = 244f;
-        private const float IdleHeight = 252f;
+        private const float IdleHeight = 188f;
 
-        /// <summary>진행 페이지 높이. ★ 224 → 252 (§R5-4-1). 올린 이유가 두 개다:
-        /// (1) 다이얼 Ø128이 들어갈 세로가 필요하다. (2) <see cref="PopoverPanel.BuildChrome"/>가
-        /// Content 사각형을 <b>Awake 시점의 대기 높이 하나로</b> 잡아 두므로, 224에서는 Content가
-        /// 패널 아래로 28pt 삐져나가 있었다(그 아래에 그리는 것이 없어 안 보였을 뿐). 두 페이지
-        /// 높이가 같아지면 <see cref="RefreshContent"/>의 sizeDelta 재설정도 무해해진다.</summary>
+        /// <summary>진행 페이지 높이. ★ 224 → 252 (§R5-4-1) — 다이얼 Ø128이 들어갈 세로가 필요하다.
+        ///
+        /// <para>★ <b>2026-09-06 — 두 페이지 높이가 다시 갈라졌다</b>(대기 188 / 진행 252). 「지켜보기」
+        /// 토글과 「민감도」 칩이 삭제되면서 대기 페이지가 64pt 짧아졌기 때문이다. 예전에 두 값을 맞춰
+        /// 두었던 이유(224 시절)는 <b>Content가 패널 밖으로 삐져나가는 것</b>이었는데 그 조건은 지금
+        /// 성립하지 않는다 — 진행 페이지가 쓰는 세로는 42(크롬) + 190(내용) + 16(아래 여백) =
+        /// <b>248 ≤ 252</b>라 패널 안에 그대로 들어간다.</para>
+        ///
+        /// <para><see cref="PopoverPanel.BuildChrome"/>는 Content 사각형을 <b>Awake 시점의 대기 높이로</b>
+        /// 잡으므로 지금 Content는 130pt다. 그래도 <b>그림이 달라지지 않는다</b>: 두 페이지는
+        /// <c>UiChrome.Stretch</c>로 Content를 채우고, 그 안의 모든 자식은 <c>PlaceTopLeft</c>로
+        /// <b>좌상단 기준</b> 배치라 부모의 <b>높이</b>에 좌표가 걸리지 않는다(마스크도 없어 잘리지도
+        /// 않는다). Content 높이에 걸리는 것은 <c>Stretch</c>된 자식뿐이고, 진행 페이지에는 그런 자식이
+        /// 페이지 자신 말고는 없다.</para></summary>
         private const float RunningHeight = 252f;
 
         private const float ContentWidth = Width - UiChrome.Space4 * 2f;   // 212.
@@ -75,8 +94,6 @@ namespace StickMate.Interaction
 
         /// <summary>마지막 칩 = 자유 입력 모드로 들어가는 문. 인덱스를 손으로 적지 않는다.</summary>
         private const int CustomChipIndex = 3;
-
-        private static readonly string[] SensitivityLabels = { "관대", "보통", "예민" };
 
         // ==================== 다이얼 기하 (§R5-2-2) ====================
 
@@ -149,6 +166,18 @@ namespace StickMate.Interaction
         private const float StepGap = 4f;
         private const float CustomValueWidth = 44f;
 
+        // ==================== 대기 페이지 아래쪽 (2026-09-06 재배치) ====================
+        //  「지켜보기」 토글과 「민감도」 칩이 삭제되면서 그 아래가 통째로 64pt 올라왔다.
+        //  검산: 크롬 42 + 내용 130 + 아래 여백 16 = 188 = IdleHeight.
+        //        (내용 130 = |StartButtonY| 96 + StartButtonHeight 34)
+
+        /// <summary>전체화면 감지로 [시작]이 막혀 있을 때만 뜨는 안내 한 줄. 평소에는 꺼져 있고,
+        /// 그 자리를 다른 요소가 쓰지 않는다 — 켜졌다 꺼질 때 아래가 들썩이지 않게.</summary>
+        private const float SuspendedNoticeY = -84f;
+
+        private const float StartButtonY = -96f;
+        private const float StartButtonHeight = 34f;
+
         /// <summary>
         /// 자유 입력의 하한(분).
         /// <para>★ <b>이 값은 여기서 고른 것이 아니다</b> — <see cref="FocusWatchDirector"/>의
@@ -178,9 +207,6 @@ namespace StickMate.Interaction
         private readonly Image[] _durationChips = new Image[DurationLabels.Length];
         private readonly Text[] _durationLabels = new Text[DurationLabels.Length];
         private readonly Image[] _durationOutlines = new Image[DurationLabels.Length];
-        private readonly Image[] _sensitivityChips = new Image[SensitivityLabels.Length];
-        private readonly Text[] _sensitivityLabels = new Text[SensitivityLabels.Length];
-        private readonly Image[] _sensitivityOutlines = new Image[SensitivityLabels.Length];
         private Image _listChip;
         private Text _listLabel;
         private Image _coarseDownChip;
@@ -192,10 +218,6 @@ namespace StickMate.Interaction
         private Image _coarseUpChip;
         private Text _coarseUpLabel;
         private Text _customValueLabel;
-        private Image _switchTrack;
-        private RectTransform _switchKnob;
-        private Image _switchKnobImage;
-        private RectTransform _switchRect;
         private Image _startSurface;
         private Text _startLabel;
         private Text _suspendedNotice;
@@ -215,7 +237,6 @@ namespace StickMate.Interaction
         private bool _customTouched;
         private int _shownCustomMinutes = -1;
         private bool _running;
-        private FocusWatchTier _tier = FocusWatchTier.None;
         private int _lastShownSeconds = -1;
         private float _shownMarkerSeconds = -1f;
         private bool _ringDesaturated;
@@ -288,20 +309,6 @@ namespace StickMate.Interaction
             _director = GetComponent<FocusWatchDirector>();
         }
 
-        private void OnEnable() => StickmanEventBus.FocusWatchTierChanged += OnTierChanged;
-
-        protected override void OnDisable()
-        {
-            base.OnDisable();
-            StickmanEventBus.FocusWatchTierChanged -= OnTierChanged;
-        }
-
-        private void OnTierChanged(FocusWatchTier tier)
-        {
-            _tier = tier;
-            if (IsOpen) RefreshContent();
-        }
-
         // ==================== 내용 만들기 ====================
 
         protected override void BuildContent(RectTransform content)
@@ -320,7 +327,7 @@ namespace StickMate.Interaction
             Text subtitle = UiChrome.AddText(_idlePage, "Subtitle", UiChrome.FontLabel,
                 TextAnchor.MiddleLeft, UiChrome.TextSecondary);
             UiChrome.PlaceTopLeft(subtitle.rectTransform, 0f, 0f, ContentWidth, 16f);
-            subtitle.text = "정한 시간 동안 옆에서 지켜볼게요.";
+            subtitle.text = "정한 시간 동안 옆에 있을게요.";
 
             Text durationLabel = UiChrome.AddText(_idlePage, "DurationLabel", UiChrome.FontCaption,
                 TextAnchor.MiddleLeft, UiChrome.TextTertiary);
@@ -330,51 +337,17 @@ namespace StickMate.Interaction
             BuildPresetRow();
             BuildCustomRow();
 
-            Image divider = UiChrome.AddSurface(_idlePage, "Divider", UiChrome.Flatten(UiChrome.Divider, UiChrome.PanelSurface), 2);
-            UiChrome.PlaceTopLeft(divider.rectTransform, 0f, -84f, ContentWidth, 1f);
-
-            Text watchLabel = UiChrome.AddText(_idlePage, "WatchLabel", UiChrome.FontBody,
-                TextAnchor.MiddleLeft, UiChrome.TextSecondary);
-            UiChrome.PlaceTopLeft(watchLabel.rectTransform, 0f, -94f, 120f, 20f);
-            watchLabel.text = "지켜보기";
-
-            _switchTrack = UiChrome.AddSurface(_idlePage, "WatchSwitch", UiChrome.Accent, 10);
-            _switchRect = _switchTrack.rectTransform;
-            UiChrome.PlaceTopLeft(_switchRect, ContentWidth - 38f, -94f, 38f, 20f);
-            _switchKnobImage = UiChrome.AddCircle(_switchRect, "Knob", 16f, UiChrome.OnAccentSolid);
-            _switchKnob = _switchKnobImage.rectTransform;
-            Wire(_switchTrack, "watchSwitch", ToggleWatch);
-
-            Text sensitivityLabel = UiChrome.AddText(_idlePage, "SensitivityLabel", UiChrome.FontBody,
-                TextAnchor.MiddleLeft, UiChrome.TextSecondary);
-            UiChrome.PlaceTopLeft(sensitivityLabel.rectTransform, 0f, -122f, 60f, 22f);
-            sensitivityLabel.text = "민감도";
-
-            for (int i = 0; i < _sensitivityChips.Length; i++)
-            {
-                int index = i;
-                int count = _sensitivityChips.Length;
-                Image chip = UiChrome.AddSurface(_idlePage, "Sensitivity" + i, UiChrome.CardSurface, UiChrome.RadiusChip);
-                UiChrome.PlaceTopLeft(chip.rectTransform,
-                    ContentWidth - (count - i) * 51f - (count - 1 - i) * 2f, -122f, 51f, 22f);
-                _sensitivityOutlines[i] = UiChrome.AddOutline(chip.rectTransform, "Outline", UiChrome.Flatten(UiChrome.CardBorder, UiChrome.CardSurface), UiChrome.RadiusChip);
-                Text label = UiChrome.AddText(chip.rectTransform, "Label", UiChrome.FontCaption,
-                    TextAnchor.MiddleCenter, UiChrome.TextSecondary);
-                UiChrome.Stretch(label.rectTransform);
-                label.text = SensitivityLabels[i];
-                _sensitivityChips[i] = chip;
-                _sensitivityLabels[i] = label;
-                Wire(chip, "sensitivity" + i, () => SelectSensitivity(index));
-            }
-
+            // ★ 2026-09-06 — 여기 있던 구분선 + 「지켜보기」 토글(−94…−114) + 「민감도」 칩 행(−122…−144)이
+            //   삭제됐다(사용자 지시). 아래 두 줄은 그 자리만큼 <b>통째로 64pt 올라왔다</b>: 안내문
+            //   −148 → −84, [시작] −160 → −96. 빈 자리를 남기지 않는다.
             _suspendedNotice = UiChrome.AddText(_idlePage, "SuspendedNotice", UiChrome.FontCaption,
                 TextAnchor.MiddleLeft, UiChrome.WarmAccent);
-            UiChrome.PlaceTopLeft(_suspendedNotice.rectTransform, 0f, -148f, ContentWidth, 12f);
+            UiChrome.PlaceTopLeft(_suspendedNotice.rectTransform, 0f, SuspendedNoticeY, ContentWidth, 12f);
             _suspendedNotice.text = "전체화면 앱을 닫으면 시작할 수 있어요.";
             _suspendedNotice.gameObject.SetActive(false);
 
             _startSurface = UiChrome.AddSurface(_idlePage, "Start", UiChrome.Accent, UiChrome.RadiusCard);
-            UiChrome.PlaceTopLeft(_startSurface.rectTransform, 0f, -160f, ContentWidth, 34f);
+            UiChrome.PlaceTopLeft(_startSurface.rectTransform, 0f, StartButtonY, ContentWidth, StartButtonHeight);
             // ★ 2026-09-01 글리프 잔차 제거(사용자 신고 "텍스트도 다 번져보임"): 13 -> 14.
             //   Windows 디스플레이 150%(캔버스 배율 1.5)에서 13pt는 19.5px를 요청하고 아틀라스에는
             //   20px로 구워져 0.975배로 리샘플된다 = 획 번짐. 짝수 pt만 잔차가 0이다
@@ -524,7 +497,7 @@ namespace StickMate.Interaction
             _statusText = UiChrome.AddText(_runningPage, "Status", UiChrome.FontLabel,
                 TextAnchor.MiddleCenter, UiChrome.TextSecondary);
             UiChrome.PlaceTopLeft(_statusText.rectTransform, 0f, StatusY, ContentWidth, StatusHeight);
-            _statusText.text = "지켜보는 중 · 조용해요";
+            _statusText.text = "집중 시간을 재는 중";
 
             // ★ 빨강/파괴적 스타일 금지 — 18절 "패널티 없는 톤".
             _stopSurface = UiChrome.AddSurface(_runningPage, "Stop", UiChrome.CardSurface, UiChrome.RadiusCard);
@@ -626,22 +599,6 @@ namespace StickMate.Interaction
         private static int ClampMinutes(int minutes)
             => Mathf.Clamp(minutes, MinimumSessionMinutes, MaximumSessionMinutes);
 
-        private void SelectSensitivity(int index)
-        {
-            if (_director == null) _director = GetComponent<FocusWatchDirector>();
-            if (_director != null)
-                _director.Sensitivity = (PomodoroSensitivity)Mathf.Clamp(index, 0, _sensitivityChips.Length - 1);
-            RefreshContent();
-        }
-
-        private void ToggleWatch()
-        {
-            if (_director == null) _director = GetComponent<FocusWatchDirector>();
-            if (_director == null) return;
-            _director.DistractionDetectionEnabled = !_director.DistractionDetectionEnabled;
-            RefreshContent();
-        }
-
         private void StartSession()
         {
             if (_director == null) _director = GetComponent<FocusWatchDirector>();
@@ -653,7 +610,7 @@ namespace StickMate.Interaction
             // ★ 2026-09-02 등급 배선 — 이 파일의 <c>IsSuspended</c> 참조들은 <b>일부러 그대로 둔다</b>.
             //   이 창(팝오버)을 걷는 일은 부모 <see cref="PopoverPanel.Update"/>가 <c>ArePanelsSuppressed</c>로
             //   이미 한다(등급 1). 여기 남은 참조들이 묻는 것은 표면이 아니라 <b>캐릭터가 멈췄는가</b>다 —
-            //   집중 세션은 캐릭터가 지켜보고 말을 거는 기능이라 등급 2가 정확한 축이다. 등급 1에서는
+            //   집중 세션은 캐릭터가 옆에서 함께 있는 연출이라 등급 2가 정확한 축이다. 등급 1에서는
             //   캐릭터가 그대로 노므로 세션도 그대로 유효하다(닫힌 팝오버 때문에 도달할 일이 없을 뿐).
             if (Agent != null && Agent.IsSuspended)
             {
@@ -665,8 +622,7 @@ namespace StickMate.Interaction
             // ★ ForceTriggerNow(90초 데모)가 아니라 사용자가 고른 길이 그대로.
             _director.StartFocusSession(SelectedMinutes);
             Debug.Log($"[집중팝오버] 시작 — {SelectedMinutes:F0}분({SelectedMinutes * 60f:F0}초) 세션" +
-                $"({(_mode == DurationMode.Custom ? "직접 입력" : "프리셋")}). " +
-                $"민감도 {_director.Sensitivity}, 딴짓 감지 {(_director.DistractionDetectionEnabled ? "켬" : "끔")}.");
+                $"({(_mode == DurationMode.Custom ? "직접 입력" : "프리셋")}).");
             RefreshContent();
         }
 
@@ -742,8 +698,9 @@ namespace StickMate.Interaction
             if (_presetRow.gameObject.activeSelf == custom) _presetRow.gameObject.SetActive(!custom);
             if (_customRow.gameObject.activeSelf != custom) _customRow.gameObject.SetActive(custom);
 
-            // ★ 함정 ① — 옛 코드는 <b>하나의</b> for(i<3)가 시간 칩과 민감도 칩을 함께 돌았다.
-            //   시간 칩이 4개가 되는 순간 그 루프는 [직접]을 못 본다. 각 배열이 자기 Length를 센다.
+            // ★ 함정(과거 실측) — 옛 코드는 <b>하나의</b> for(i<3)가 두 종류의 칩을 함께 돌았고,
+            //   시간 칩이 4개가 되는 순간 그 루프는 [직접]을 보지 못했다. 루프는 반드시 <b>자기 배열의
+            //   Length</b>를 센다(상수 3을 다시 적지 마라 — 그게 그때의 사고였다).
             for (int i = 0; i < _durationChips.Length; i++)
             {
                 bool on = i == CustomChipIndex ? custom : !custom && i == _selectedDuration;
@@ -756,23 +713,6 @@ namespace StickMate.Interaction
             }
 
             if (custom) RefreshCustomRow();
-
-            int sensitivity = _director != null ? (int)_director.Sensitivity : 1;
-            for (int i = 0; i < _sensitivityChips.Length; i++)
-            {
-                bool on = i == sensitivity;
-                Color face = ChipFace(on);
-                _sensitivityChips[i].color = face;
-                _sensitivityOutlines[i].color = ChipEdge(on, face);
-                _sensitivityLabels[i].color = on ? UiChrome.TextOnAccent : UiChrome.TextSecondary;
-            }
-
-            bool watching = _director == null || _director.DistractionDetectionEnabled;
-            _switchTrack.color = watching
-                ? UiChrome.Accent
-                : UiChrome.Flatten(UiChrome.TrackBackground, UiChrome.PanelSurface);
-            _switchKnob.anchoredPosition = new Vector2(watching ? 9f : -9f, 0f);
-            _switchKnobImage.color = UiChrome.OnAccentSolid;
 
             bool suspended = Agent != null && Agent.IsSuspended;
             if (_suspendedNotice.gameObject.activeSelf != suspended) _suspendedNotice.gameObject.SetActive(suspended);
@@ -891,14 +831,11 @@ namespace StickMate.Interaction
             // 화면이 거짓말을 한다 — 원칙 1은 "확정된 상태로부터만 파생"이므로 사유까지 파생시킨다.
             if (Agent != null && Agent.IsSuspended)
                 return Agent.IsUserHidden ? "일시정지 · 잠시 숨겨 뒀어요" : "일시정지 · 전체화면 앱 사용 중";
-            if (_director != null && !_director.DistractionDetectionEnabled) return "순수 타이머로만 재고 있어요";
-            return _tier switch
-            {
-                FocusWatchTier.Glance => "지켜보는 중 · 곁눈질했어요",
-                FocusWatchTier.Nudge => "지켜보는 중 · 한마디 했어요",
-                FocusWatchTier.WindowTap => "지켜보는 중 · 타이머를 두드리는 중",
-                _ => "지켜보는 중 · 조용해요",
-            };
+
+            // ★ 2026-09-06 — 「지켜보는 중 · …」 4문과 「순수 타이머로만 재고 있어요」가 삭제됐다
+            //   (지켜보기 기능 자체가 사라져 그 문장들이 가리킬 사실이 없다). 남은 한 문장은
+            //   <b>지금 실제로 일어나는 일</b>(시간이 흐르는 중)만 말한다 — 원칙 1.
+            return "집중 시간을 재는 중";
         }
 
         // ==================== 전역 폴링 경로 ====================
@@ -911,29 +848,18 @@ namespace StickMate.Interaction
                 return;
             }
 
-            // ★★ 함정 ① — 옛 코드는 <b>하나의</b> for(i<3)가 시간 칩과 민감도 칩을 <b>함께</b> 돌았다.
+            // ★★ 함정(과거 실측) — 옛 코드는 <b>하나의</b> for(i<3)가 두 종류의 칩을 <b>함께</b> 돌았다.
             //   시간 칩이 4개가 되는데 그 루프는 3에서 멈추므로 [직접]이 <b>이 경로에서만</b> 조용히
-            //   죽는다(uGUI Wire 경로로는 눌린다 = 입력 경로 하나만 사는 형태). 루프를 갈라 두고
-            //   각자 자기 배열의 Length를 센다 — 칩 개수가 또 바뀌어도 여기가 뒤처지지 않는다.
+            //   죽었다(uGUI Wire 경로로는 눌린다 = 입력 경로 하나만 사는 형태). 여기서는 반드시
+            //   자기 배열의 Length를 센다 — 칩 개수가 또 바뀌어도 이 경로가 뒤처지지 않게.
             for (int i = 0; i < _durationChips.Length; i++)
             {
                 if (!ContainsScreenPoint(_durationChips[i].rectTransform, cursor)) continue;
                 if (TryClaimAction("duration" + i)) SelectDurationChip(i);
                 return;
             }
-            for (int i = 0; i < _sensitivityChips.Length; i++)
-            {
-                if (!ContainsScreenPoint(_sensitivityChips[i].rectTransform, cursor)) continue;
-                if (TryClaimAction("sensitivity" + i)) SelectSensitivity(i);
-                return;
-            }
             if (TryCustomRowClick(cursor)) return;
 
-            if (ContainsScreenPoint(_switchRect, cursor))
-            {
-                if (TryClaimAction("watchSwitch")) ToggleWatch();
-                return;
-            }
             if (ContainsScreenPoint(_startSurface.rectTransform, cursor))
             {
                 if (TryClaimAction("start")) StartSession();

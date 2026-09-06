@@ -15,7 +15,7 @@ namespace StickMate.Tests.PlayMode
     /// ============================================================================
     /// 이 파일이 잠그는 것 — <b>시작 2초가 아니라 그 「뒤」</b>
     /// ============================================================================
-    /// <see cref="FocusRingPoseSyncTests"/>는 <b>시작 포즈 2초</b>가 실제로 그려지는지를 잰다.
+    /// <see cref="FocusStartPoseSyncTests"/>는 <b>시작 포즈 2초</b>가 실제로 그려지는지를 잰다.
     /// 그 2초는 세션(1,500초)의 <b>0.13%</b>다. 나머지 99.87% 동안 캐릭터는 평소 Idle 중립으로
     /// 돌아가 있었고, 그게 페르소나가 본 그림이다.
     ///
@@ -29,7 +29,7 @@ namespace StickMate.Tests.PlayMode
     ///     잡으면 세션 25분 내내 파쿠르·춤·활쏘기가 <b>조용히</b> 막힌다.</item>
     /// </list>
     ///
-    /// <para><b>포즈 상수를 베끼지 않는다</b>: 판정 지표는 <c>FocusRingPoseSyncTests</c>가 세운 것과
+    /// <para><b>포즈 상수를 베끼지 않는다</b>: 판정 지표는 <c>FocusStartPoseSyncTests</c>가 세운 것과
     /// 같은 <b>실측 기하</b>(전완 기울기 = (손끝 y − 팔꿈치 y) ÷ 전완 길이)이고, 기준선은 같은 씬에서
     /// <b>직접 측정한 중립</b>이다. <c>StickmanPoseAnimator.FocusCross*</c>를 참조하면 "애니메이터가
     /// 자기 상수를 자기가 확인하는" 항상 참인 단언이 된다.</para>
@@ -48,7 +48,7 @@ namespace StickMate.Tests.PlayMode
         private const float SettleTimeoutSeconds = 12f;
 
         /// <summary>상태가 Idle이 된 뒤 착지 브레이스 자세가 완전히 풀릴 때까지의 대기(초).
-        /// <see cref="FocusRingPoseSyncTests"/>가 실측으로 세운 값과 같은 이유다.</summary>
+        /// <see cref="FocusStartPoseSyncTests"/>가 실측으로 세운 값과 같은 이유다.</summary>
         private const float PoseSettleSeconds = 1.5f;
 
         /// <summary>중립 기준선을 평균 내는 구간(초).</summary>
@@ -65,7 +65,7 @@ namespace StickMate.Tests.PlayMode
 
         /// <summary>「관망 자세」로 인정하는 전완 기울기의 하한. 중립은 −0.6 근처, 팔짱은 +0.1 근처,
         /// 뒷짐은 그 사이다 — 중립 쪽으로 넉넉히 떨어진 곳에 선을 긋는다
-        /// (<see cref="FocusRingPoseSyncTests"/>가 실측으로 세운 −0.15와 같은 자리).</summary>
+        /// (<see cref="FocusStartPoseSyncTests"/>가 실측으로 세운 −0.15와 같은 자리).</summary>
         private const float StanceForearmRiseFloor = -0.15f;
 
         /// <summary>중립 기준선이 "팔을 내린 자세"라고 인정하는 상한(양성 대조).</summary>
@@ -376,7 +376,7 @@ namespace StickMate.Tests.PlayMode
 
         /// <summary><b>전완의 기울기</b>: (손끝 y − 팔꿈치 y) ÷ 전완 길이. −1이면 전완이 곧게 아래,
         /// 0이면 수평, +1이면 곧게 위. 「관망 자세」와 「팔을 내린 중립」을 가르는 지표다
-        /// (<see cref="FocusRingPoseSyncTests"/>가 실측으로 고른 것과 같은 지표 — 두 파일이 같은 자를
+        /// (<see cref="FocusStartPoseSyncTests"/>가 실측으로 고른 것과 같은 지표 — 두 파일이 같은 자를
         /// 쓰는 것이 중요하다. 서로 다른 자를 쓰면 한쪽 초록이 다른 쪽 빨강을 설명하지 못한다).</summary>
         private bool TryForearmRise(out float rise)
         {

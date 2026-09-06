@@ -11,27 +11,31 @@ namespace StickMate.Tests.PlayMode
 {
     /// <summary>
     /// ★★★ 사용자 신고(2026-09-06): <i>"집중모드 시작시 캐릭터다리쪽에 원이 생김. 집중모드 행동을
-    /// 해야하는데 안함"</i>.
+    /// 해야하는데 안함"</i>. — <b>앞의 「원」은 같은 날 지시로 기능째 삭제됐다</b>(발밑 타이머 링 제거).
+    /// 이 파일에 남은 것은 <b>뒤의 「행동을 안 함」</b> 하나다.
     ///
     /// ============================================================================
-    /// 이 파일이 잠그는 계약 — <b>원은 세션이 아니라 「확정된 행동」에서 파생된다</b>
+    /// 이 파일이 잠그는 계약 — <b>시작 포즈는 「조용히 생략」되지 않는다</b>
     /// ============================================================================
-    /// 예전 <c>FocusWatchRenderer.LateUpdate</c>는 <c>IsSessionActive</c> <b>하나만</b> 보고 링을 그렸다.
-    /// 그런데 캐릭터의 행동(안경+팔짱)은 훨씬 까다로운 관문을 통과해야 한다 — Idle/Walk일 것,
-    /// <see cref="SpectacleEventLock"/>이 비어 있을 것. 관문이 막히면 포즈는 <b>조용히</b> 생략되는데
-    /// 링은 이미 떠 있었다. 그 결과가 신고 문장 그대로 "원은 있는데 행동이 없다"이다.
+    /// ★ <b>2026-09-06 개정</b>. 원래 이름은 <c>FocusRingPoseSyncTests</c>였고 «발밑 링이 세션이 아니라
+    /// 확정된 행동에서 파생되는가»를 함께 잠갔다. 그날 사용자 지시로 <b>발밑 타이머 링이 삭제</b>돼
+    /// (<c>Interaction/FocusWatchRenderer.cs</c> 파일째 제거) 링 쪽 단언은 전부 걷어냈다.
+    /// <b>남은 절반이 이 파일의 전부이고, 그 절반이 원래 신고의 본체였다</b> — «집중모드 행동을
+    /// 해야하는데 안함».
     ///
-    /// <para>그래서 세 가지를 서로 다른 방법으로 잰다:</para>
+    /// <para>캐릭터의 시작 행동(안경+팔짱)은 관문을 통과해야 한다 — Idle/Walk일 것,
+    /// <see cref="SpectacleEventLock"/>이 비어 있을 것. 관문이 막히면 포즈가 <b>조용히</b> 생략된다.
+    /// 그래서 세 가지를 서로 다른 방법으로 잰다:</para>
     /// <list type="number">
-    ///   <item><b>관문이 열려 있으면</b> — 포즈 전이가 확정되고, 링이 뜨고, <b>손끝 Transform이 실제로
+    ///   <item><b>관문이 열려 있으면</b> — 포즈 전이가 확정되고 <b>손끝 Transform이 실제로
     ///     움직인다</b>(포즈 애니메이터의 내부 계산을 한 줄도 참조하지 않고 계층에서 직접 잰다 —
     ///     ParkourClimbPoseTests가 같은 이유로 같은 방식을 쓴다). "상태가 바뀌었다"만 재면 이번 버그의
     ///     <b>나머지 절반</b>(포즈를 그리는 코드가 저장소에 아예 없었다)을 그대로 놓친다.</item>
-    ///   <item><b>락에 막히면</b> — 링이 뜨지 않는다. 그리고 락이 풀리는 순간 <b>포즈와 링이 함께</b>
-    ///     나타난다(재시도 창).</item>
-    ///   <item><b>Idle/Walk가 아니면</b> — 링이 뜨지 않는다. 그동안에도 <b>타이머는 계속 흐른다</b>
-    ///     (docs/UX_WIDGETS.md 369행 "위상 전이를 놓쳐도 타이머는 영향받지 않아야 한다" — 이번 수정이
-    ///     건드린 것은 링의 자격이지 타이머가 아니다. 이 단언이 그 경계를 못박는다).</item>
+    ///   <item><b>락에 막히면</b> — 포즈가 확정되지 않는다. 그리고 락이 풀리는 순간 재시도 창이
+    ///     포즈를 낸다.</item>
+    ///   <item><b>Idle/Walk가 아니면</b> — 같은 형태로 막히고, 상태가 돌아오면 다시 시도한다.
+    ///     그동안에도 <b>타이머는 계속 흐른다</b>(docs/UX_WIDGETS.md 369행 "위상 전이를 놓쳐도
+    ///     타이머는 영향받지 않아야 한다" — 이 단언이 그 경계를 못박는다).</item>
     /// </list>
     ///
     /// <para><b>프로덕션 상수를 숫자로 베끼지 않는다</b>(CLAUDE.md): 자세 판정의 기준자는 전부 이 캐릭터의
@@ -44,10 +48,9 @@ namespace StickMate.Tests.PlayMode
     ///
     /// <para><b>플랫폼</b>: 플랫폼 중립. 창 열거/좌표계에 의존하지 않는다.</para>
     /// </summary>
-    public sealed class FocusRingPoseSyncTests
+    public sealed class FocusStartPoseSyncTests
     {
-        private const string LogPrefix = "[집중링싱크]";
-        private const string FocusContainerName = "FocusWatchRing";
+        private const string LogPrefix = "[집중시작포즈]";
 
         /// <summary>씬 부팅 직후 캐릭터는 낙하 중이다 — 접지/배회가 안정될 때까지의 상한(벽시계 초).</summary>
         private const float SettleTimeoutSeconds = 12f;
@@ -97,7 +100,6 @@ namespace StickMate.Tests.PlayMode
 
         private StickmanAgent _agent;
         private FocusWatchDirector _director;
-        private FocusWatchRenderer _renderer;
 
         [TearDown]
         public void TearDown()
@@ -113,7 +115,6 @@ namespace StickMate.Tests.PlayMode
             }
             _agent = null;
             _director = null;
-            _renderer = null;
         }
 
         private IEnumerator LoadSceneAndSettle()
@@ -125,10 +126,8 @@ namespace StickMate.Tests.PlayMode
 
             _agent = Object.FindFirstObjectByType<StickmanAgent>();
             _director = Object.FindFirstObjectByType<FocusWatchDirector>();
-            _renderer = Object.FindFirstObjectByType<FocusWatchRenderer>();
             Assert.IsNotNull(_agent, $"{LogPrefix} 씬에 StickmanAgent가 없습니다.");
             Assert.IsNotNull(_director, $"{LogPrefix} 씬에 FocusWatchDirector가 없습니다.");
-            Assert.IsNotNull(_renderer, $"{LogPrefix} 씬에 FocusWatchRenderer가 없습니다.");
 
             float elapsed = 0f;
             while (elapsed < SettleTimeoutSeconds)
@@ -146,15 +145,15 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ================================================================================
-        // ① 관문이 열려 있으면 — 포즈가 확정되고, 그 사실에서 링이 파생되고, 손이 실제로 움직인다.
+        // ① 관문이 열려 있으면 — 포즈가 확정되고 손이 실제로 움직인다.
         // ================================================================================
 
         [UnityTest]
-        public IEnumerator 관문이_열려있으면_시작포즈가_확정되고_손이_실제로_움직이며_링이_뜬다()
+        public IEnumerator 관문이_열려있으면_시작포즈가_확정되고_손이_실제로_움직인다()
         {
             yield return LoadSceneAndSettle();
 
-            Assert.IsFalse(_renderer.IsRingVisible, $"{LogPrefix} 시작 전인데 링이 이미 떠 있습니다.");
+            Assert.IsFalse(_director.IsSessionActive, $"{LogPrefix} 시작 전인데 세션이 이미 진행 중입니다.");
 
             // ── 중립 기준선(양성 대조): 직전 연출(무릎앉아 착지)의 자세가 완전히 풀린 뒤에 잰다.
             float settle = 0f;
@@ -202,14 +201,6 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 관문이 열려 있었는데 시작 포즈가 확정되지 않았습니다.");
             Assert.AreEqual(StickmanStateId.FocusStart, _agent.Blackboard.Machine.CurrentStateId,
                 $"{LogPrefix} 상태가 FocusStart가 아닙니다 — 대사만 뜨고 행동이 없는 그 상태입니다.");
-            Assert.IsTrue(_renderer.IsRingVisible,
-                $"{LogPrefix} 포즈는 확정됐는데 링이 뜨지 않았습니다(이번엔 반대 방향으로 갈라졌습니다).");
-            Assert.Greater(_renderer.ActiveVisualCount, 0,
-                $"{LogPrefix} 링이 '보인다'고 보고하면서 실제 LineRenderer는 0개입니다(빈 껍데기).");
-            Assert.AreEqual(0, _renderer.ActiveColliderCount,
-                $"{LogPrefix} 링이 콜라이더를 만들었습니다 — 관전 전용이라 클릭관통이 유지되어야 합니다.");
-            Assert.IsNotNull(GameObject.Find(FocusContainerName),
-                $"{LogPrefix} '{FocusContainerName}' GameObject가 씬에 실존하지 않습니다.");
 
             // ── 자세 표본: 상태가 유지되는 동안 매 프레임 팔을 훑는다.
             //    「안경 밀어올리기」 = 손끝이 어깨 위로 올라가 얼굴에 닿는다.
@@ -246,24 +237,19 @@ namespace StickMate.Tests.PlayMode
                 $"{finalForearmRise:F3}으로 중립({neutralRise:F3})에서 거의 움직이지 않았습니다. 상태 전이만 " +
                 "되고 포즈를 그리는 코드가 없으면 정확히 이 값이 중립 수준으로 남습니다(이번 신고의 나머지 절반).");
 
-            // 포즈가 끝난 뒤에도 링은 세션이 끝날 때까지 남는다(링은 「확정된 시작」에서 파생되고,
-            // 그 사실은 2초짜리 포즈가 끝나도 계속 참이다).
+            // 2초짜리 포즈가 끝나도 세션은 계속된다(포즈는 시작의 표현일 뿐 세션의 수명이 아니다).
             Assert.IsTrue(_director.IsSessionActive, $"{LogPrefix} 포즈가 끝나면서 세션까지 끝났습니다.");
-            Assert.IsTrue(_renderer.IsRingVisible,
-                $"{LogPrefix} 포즈 상태를 빠져나오자 링이 사라졌습니다 — 링은 「세션의 시작이 확정됐다」는 " +
-                "사실에서 파생되므로 세션이 끝날 때까지 남아야 합니다.");
 
             Debug.Log($"{LogPrefix} ① 통과 — 손끝 최고 {maxHandY:F3}(얼굴 {faceY:F3}, 어깨 {shoulderY:F3}), " +
-                $"전완 기울기 중립 {neutralRise:F3} -> 팔짱(연출 종료 시점) {finalForearmRise:F3}, 팔 길이 {armReach:F3}, " +
-                $"링 도형 {_renderer.ActiveVisualCount}개 · 콜라이더 0개.");
+                $"전완 기울기 중립 {neutralRise:F3} -> 팔짱(연출 종료 시점) {finalForearmRise:F3}, 팔 길이 {armReach:F3}.");
         }
 
         // ================================================================================
-        // ② 락에 막히면 링도 뜨지 않는다 — 그리고 락이 풀리면 포즈와 링이 **함께** 나타난다.
+        // ② 락에 막히면 포즈가 확정되지 않는다 — 그리고 락이 풀리면 재시도가 포즈를 낸다.
         // ================================================================================
 
         [UnityTest]
-        public IEnumerator 락에_막히면_링이_뜨지_않고_락이_풀리면_포즈와_링이_함께_나타난다()
+        public IEnumerator 락에_막히면_포즈가_확정되지_않고_락이_풀리면_재시도가_포즈를_낸다()
         {
             yield return LoadSceneAndSettle();
 
@@ -280,20 +266,15 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 락이 걸려 있는데 시작 포즈가 확정됐다고 보고합니다.");
             Assert.AreNotEqual(StickmanStateId.FocusStart, _agent.Blackboard.Machine.CurrentStateId,
                 $"{LogPrefix} 락을 무시하고 상태를 빼앗았습니다.");
-            Assert.IsFalse(_renderer.IsRingVisible,
-                $"{LogPrefix} ★ 신고된 그 그림입니다 — 캐릭터는 아무 행동도 못 했는데 발밑에 원만 떴습니다.");
-            Assert.IsNull(GameObject.Find(FocusContainerName),
-                $"{LogPrefix} '{FocusContainerName}' GameObject가 씬에 실존합니다(보고만 false인 유령).");
-            Assert.AreEqual(0, _renderer.ActiveVisualCount, $"{LogPrefix} 링 도형이 남아 있습니다.");
 
             // ★ 타이머 계약(docs/UX_WIDGETS.md 369): 포즈를 놓쳐도 시간은 그대로 흐른다.
             float before = _director.RemainingSeconds;
             yield return new WaitForSeconds(0.6f);
             Assert.Less(_director.RemainingSeconds, before,
-                $"{LogPrefix} 포즈가 스킵된 동안 타이머가 멈췄습니다({before:F2}초 그대로) — 이번 수정이 " +
-                "건드리는 것은 링의 자격이지 타이머가 아닙니다.");
-            Assert.IsFalse(_renderer.IsRingVisible,
-                $"{LogPrefix} 락이 그대로인데 링이 뒤늦게 떴습니다.");
+                $"{LogPrefix} 포즈가 스킵된 동안 타이머가 멈췄습니다({before:F2}초 그대로) — 포즈를 놓쳐도 " +
+                "시간은 그대로 흘러야 합니다.");
+            Assert.IsFalse(_director.IsStartPoseConfirmed,
+                $"{LogPrefix} 락이 그대로인데 포즈가 뒤늦게 확정됐습니다.");
 
             // 락 해제 -> 재시도 창이 관문이 열린 것을 보고 포즈를 낸다.
             SpectacleEventLock.Release(blocker);
@@ -303,25 +284,23 @@ namespace StickMate.Tests.PlayMode
                 waited += Time.deltaTime;
                 yield return null;
             }
-            yield return null; // 링은 LateUpdate에서 만들어진다.
+            yield return null;
 
             Assert.IsTrue(_director.IsStartPoseConfirmed,
                 $"{LogPrefix} 락이 풀렸는데도 시작 포즈를 다시 시도하지 않았습니다(재시도 창이 죽었습니다).");
             Assert.AreEqual(StickmanStateId.FocusStart, _agent.Blackboard.Machine.CurrentStateId,
                 $"{LogPrefix} 확정됐다고 보고하는데 상태는 FocusStart가 아닙니다.");
-            Assert.IsTrue(_renderer.IsRingVisible,
-                $"{LogPrefix} 포즈는 확정됐는데 링이 따라오지 않았습니다 — 두 신호가 반대 방향으로 갈라졌습니다.");
 
-            Debug.Log($"{LogPrefix} ② 통과 — 락 점유 중 링 0개 · 타이머 정상 진행, 락 해제 후 {waited:F2}초 만에 " +
-                "포즈 확정 + 링 등장.");
+            Debug.Log($"{LogPrefix} ② 통과 — 락 점유 중 포즈 미확정 · 타이머 정상 진행, " +
+                $"락 해제 후 {waited:F2}초 만에 포즈 확정.");
         }
 
         // ================================================================================
-        // ③ Idle/Walk가 아니면 링이 뜨지 않는다 — 상태가 돌아오면 함께 나타난다.
+        // ③ Idle/Walk가 아니면 포즈가 확정되지 않는다 — 상태가 돌아오면 재시도가 포즈를 낸다.
         // ================================================================================
 
         [UnityTest]
-        public IEnumerator IdleWalk가_아니면_링이_뜨지_않고_상태가_돌아오면_함께_나타난다()
+        public IEnumerator IdleWalk가_아니면_포즈가_확정되지_않고_상태가_돌아오면_재시도가_포즈를_낸다()
         {
             yield return LoadSceneAndSettle();
 
@@ -341,10 +320,8 @@ namespace StickMate.Tests.PlayMode
             Assert.IsTrue(_director.IsSessionActive, $"{LogPrefix} 세션이 시작되지 않았습니다.");
             Assert.IsFalse(_director.IsStartPoseConfirmed,
                 $"{LogPrefix} Idle/Walk가 아닌데 시작 포즈가 확정됐다고 보고합니다.");
-            Assert.IsFalse(_renderer.IsRingVisible,
-                $"{LogPrefix} ★ 신고된 그 그림입니다 — 캐릭터가 다른 상태인데 발밑에 원만 떴습니다.");
-            Assert.IsNull(GameObject.Find(FocusContainerName),
-                $"{LogPrefix} '{FocusContainerName}' GameObject가 씬에 실존합니다.");
+            Assert.AreNotEqual(StickmanStateId.FocusStart, _agent.Blackboard.Machine.CurrentStateId,
+                $"{LogPrefix} 관문을 무시하고 상태를 빼앗았습니다.");
 
             float before = _director.RemainingSeconds;
             yield return new WaitForSeconds(0.4f);
@@ -352,7 +329,13 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 포즈가 스킵된 동안 타이머가 멈췄습니다 — 타이머는 위상 전이와 무관해야 합니다.");
 
             // 상태를 되돌리면(= 관문이 열리면) 재시도가 그 프레임에 포즈를 낸다.
-            if (_agent.Blackboard.Machine.CurrentStateId != StickmanStateId.Idle)
+            //
+            // ★ <b>이미 확정됐으면 건드리지 않는다</b>(2026-09-06 실측으로 배운 것). Attack은 스스로
+            //   만료돼 Idle로 돌아오는 타이머 상태라, 바로 위 0.4초 대기 중에 관문이 저절로 열려
+            //   재시도가 <b>먼저</b> 성공해 있을 수 있다. 그때 무조건 Idle로 강제 전이하면 이 테스트가
+            //   방금 확인하려던 FocusStart를 <b>자기 손으로 걷어낸다</b>.
+            if (!_director.IsStartPoseConfirmed
+                && _agent.Blackboard.Machine.CurrentStateId != StickmanStateId.Idle)
             {
                 _agent.Blackboard.Machine.ChangeState(StickmanStateId.Idle, isForcedInterrupt: true);
             }
@@ -364,13 +347,16 @@ namespace StickMate.Tests.PlayMode
             }
             yield return null;
 
+            // ★ 판정은 <see cref="FocusWatchDirector.IsStartPoseConfirmed"/> <b>하나</b>로 한다.
+            //   그 값은 디렉터가 «ChangeState를 불렀다»가 아니라 «상태머신이 실제로 그 상태를 들고
+            //   있더라»를 확인한 뒤에만 참이 되므로(그 프로퍼티 문서), «포즈가 실제로 났다»의
+            //   <b>정본</b>이다. 여기서 CurrentStateId를 한 번 더 보는 것은 2초짜리 포즈가 이미
+            //   끝났을 수도 있는 <b>경합</b>을 하나 더 만드는 것뿐이라 일부러 재지 않는다.
             Assert.IsTrue(_director.IsStartPoseConfirmed,
                 $"{LogPrefix} Idle로 돌아왔는데도 시작 포즈를 다시 시도하지 않았습니다.");
-            Assert.IsTrue(_renderer.IsRingVisible,
-                $"{LogPrefix} 포즈는 확정됐는데 링이 따라오지 않았습니다.");
 
-            Debug.Log($"{LogPrefix} ③ 통과 — Attack 중 링 0개 · 타이머 정상 진행, Idle 복귀 후 {waited:F2}초 만에 " +
-                "포즈 확정 + 링 등장.");
+            Debug.Log($"{LogPrefix} ③ 통과 — Attack 중 포즈 미확정 · 타이머 정상 진행, " +
+                $"Idle 복귀 후 {waited:F2}초 만에 포즈 확정.");
         }
 
         // ================================================================================

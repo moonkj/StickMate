@@ -20,11 +20,16 @@ namespace StickMate.Tests.EditMode
     ///  (4) <b>두 뿌리가 같은 말을 한다</b>: <see cref="ItemCatalogEntry.IsOwned"/>(UI)와
     ///      <see cref="EquipmentModel.IsItemOwned"/>(착용)가 어긋나면 카드는 잠겼는데 눌리거나
     ///      그 반대가 된다.
-    ///  (5) ★ <b>스위치가 여는 것은 「요구 레벨」 하나뿐이다</b>(2026-09-06 추가). 은퇴한 카테고리
-    ///      (<see cref="EquipmentModel.IsRetiredSlot"/> — 사용자 지시 *"외형에서 머리 스타일은 전체 삭제"*)는
-    ///      <b>레벨로 잠긴 것이 아니라 고를 수 있는 자리에서 빠진 것</b>이라, 이 스위치보다 위에 있다.
-    ///      여기서 걸쳐지면 QA 빌드에서만 <b>화면 어디에도 없는 머리가 몸에 붙는</b> 상태가 되고,
-    ///      그건 정보창에서 벗을 수 없다(탈출구가 없다).
+    ///  (5) ★ <b>스위치가 여는 것은 「요구 레벨」 하나뿐이다</b>(2026-09-06 추가). 은퇴한 것
+    ///      (<see cref="EquipmentModel.IsRetiredItem"/>)은 <b>레벨로 잠긴 것이 아니라 고를 수 있는
+    ///      자리에서 빠진 것</b>이라, 이 스위치보다 위에 있다. 여기서 걸쳐지면 QA 빌드에서만
+    ///      <b>화면 어디에도 없는 것이 몸에 붙는</b> 상태가 되고, 그건 정보창에서 벗을 수 없다(탈출구가 없다).
+    ///      <para>★ 2026-09-06 후속 — 이 축이 <b>카테고리에서 아이템으로</b> 내려왔다. 원래 여기는
+    ///      <c>IsRetiredSlot</c>(사용자 지시 *"외형에서 머리 스타일은 전체 삭제"*)만 봤는데,
+    ///      *"이펙트 없음은 왜 있는거야 삭제해줘 장비창에서"*로 <b>살아 있는 카테고리 안의 한 장</b>
+    ///      (이펙트 0번 「없음」)이 은퇴하면서 그 술어가 실재보다 좁아졌다. 좁은 술어는 그 카드를
+    ///      «걸쳐져야 하는 쪽»으로 분류해 <c>[없음]를 걸치지 못했습니다</c>라는 <b>거짓 빨강</b>을
+    ///      냈다 — 프로덕션은 설계대로 거절하고 있었고 틀린 것은 이 파일이었다.</para>
     ///
     /// <para>스위트 전체는 <c>GlobalEditModeTestIsolation</c>이 스위치를 <b>꺼 둔</b> 상태로 돈다.
     /// 이 파일만 켠 상태를 직접 만들어 보고, 끝나면 반드시 되돌린다.</para>
@@ -77,6 +82,7 @@ namespace StickMate.Tests.EditMode
 
             int checkedItems = 0;
             int wornItems = 0;      // 실제로 걸쳐 본 것(양성 대조) — 0이면 아래 "은퇴" 분기가 전부를 삼킨 것이다.
+            int retiredItems = 0;   // 은퇴 분기를 실제로 지나간 것(양성 대조) — 0이면 그 부재 단언이 공허하다.
             for (int s = 0; s < EquipmentModel.SlotCount; s++)
             {
                 var slot = (EquipmentSlot)s;
@@ -85,8 +91,8 @@ namespace StickMate.Tests.EditMode
                     ItemCatalogEntry entry = ItemCatalog.Item(slot, i);
 
                     // ★ 보유 판정은 은퇴와 무관하다 — 은퇴는 "고를 수 있는 자리"에서 뺀 것이지
-                    //   데이터를 뺀 것이 아니다(EquipmentModel.IsRetiredSlot 문단). 그래서 이 두 줄은
-                    //   머리 6종에도 그대로 적용된다.
+                    //   데이터를 뺀 것이 아니다(EquipmentModel.IsRetiredItem 문단). 그래서 이 두 줄은
+                    //   머리 6종에도 이펙트 「없음」에도 그대로 적용된다.
                     Assert.IsTrue(entry.IsOwned(config),
                         $"[{entry.DisplayName}]가 Lv.1에서 잠겨 있습니다 — 스위치를 켠 목적이 " +
                         "장비 전종을 눌러 보는 것입니다.");
@@ -96,15 +102,27 @@ namespace StickMate.Tests.EditMode
                     // 실제로 걸쳐진다 — "보유"까지만 열고 착용에서 막히면 QA가 성립하지 않는다.
                     EquipmentModel.TryWear(slot, i, config);
 
-                    if (EquipmentModel.IsRetiredSlot(slot))
+                    if (EquipmentModel.IsRetiredItem(slot, i))
                     {
                         // ★ 2026-09-06 — 여기가 이 스위치의 <b>천장</b>이다. 해금 스위치가 우회하는 것은
                         //   요구 레벨(ItemCatalogEntry.RequiredLevel) 하나뿐이고, 은퇴는 그 축이 아니다.
-                        //   이 단언이 뒤집히면 QA 빌드에서만 화면에 없는 머리가 몸에 붙는다 —
-                        //   그 상태는 정보창 어디에서도 벗을 수 없다(EquipmentModel.IsRetiredSlot 문단).
-                        Assert.AreEqual(EquipmentModel.NotWorn, EquipmentModel.WornIndex(slot),
-                            $"[{entry.DisplayName}]가 걸쳐졌습니다 — 은퇴한 카테고리" +
-                            $"([{EquipmentModel.SlotName(slot)}])는 QA 해금 스위치로도 열리지 않아야 합니다.");
+                        //   이 단언이 뒤집히면 QA 빌드에서만 화면에 없는 것이 몸에 붙는다 —
+                        //   그 상태는 정보창 어디에서도 벗을 수 없다(EquipmentModel.IsRetiredItem 문단).
+                        Assert.IsFalse(EquipmentModel.IsEquipped(slot, i),
+                            $"[{entry.DisplayName}]가 걸쳐졌습니다 — 은퇴한 것" +
+                            $"([{EquipmentModel.SlotName(slot)}] {i}번)은 QA 해금 스위치로도 열리지 않아야 합니다.");
+                        retiredItems++;
+
+                        // ★ 카테고리째 은퇴한 자리는 <b>착용 칸 자체가</b> 영원히 미착용이다 — 더 센 단언이라
+                        //   따로 남긴다. 아이템 단위 은퇴에는 이 형태를 쓸 수 없다: 같은 카테고리의 <b>다른</b>
+                        //   카드가 이미 걸쳐져 있을 수 있어(이펙트는 0번 다음에 1~5번이 걸쳐진다) 착용 칸이
+                        //   NotWorn이 아닌 것이 정상이고, 그걸 실패로 세면 은퇴와 무관한 거짓 빨강이 된다.
+                        if (EquipmentModel.IsRetiredSlot(slot))
+                        {
+                            Assert.AreEqual(EquipmentModel.NotWorn, EquipmentModel.WornIndex(slot),
+                                $"[{EquipmentModel.SlotName(slot)}]는 은퇴한 카테고리인데 착용 칸이 " +
+                                $"{EquipmentModel.WornIndex(slot)}번입니다 — 그 자리는 항상 미착용이어야 합니다.");
+                        }
                     }
                     else
                     {
@@ -130,12 +148,19 @@ namespace StickMate.Tests.EditMode
                 "장비를 하나도 확인하지 못했습니다 — 카탈로그가 비었거나 슬롯 순회가 깨졌습니다. "
                 + "이 상태면 위 EquipmentCount 단언이 0 == 0으로 공허하게 통과합니다.");
 
-            // ★ 양성 대조 — 위 루프의 "은퇴" 분기는 <b>부재 단언</b>(걸쳐지지 않는다)이라, 어느 날
-            //   IsRetiredSlot이 전 슬롯에 참이 되면 <b>착용을 한 번도 안 재고</b> 조용히 초록이 된다.
+            // ★ 양성 대조 ① — 위 루프의 "은퇴" 분기는 <b>부재 단언</b>(걸쳐지지 않는다)이라, 어느 날
+            //   IsRetiredItem이 전부에 참이 되면 <b>착용을 한 번도 안 재고</b> 조용히 초록이 된다.
             //   숫자를 적지 않고 "적어도 하나는 실제로 걸쳐졌다"만 못 박는다(CLAUDE.md 부재 단언 규칙).
             Assert.Greater(wornItems, 0,
-                "은퇴하지 않은 카테고리에서 실제로 걸쳐 본 장비가 0개입니다 — 스위치가 착용까지 " +
-                "여는지를 이 테스트가 더 이상 재지 않습니다(EquipmentModel.IsRetiredSlot 범위를 확인하세요).");
+                "은퇴하지 않은 장비 중 실제로 걸쳐 본 것이 0개입니다 — 스위치가 착용까지 " +
+                "여는지를 이 테스트가 더 이상 재지 않습니다(EquipmentModel.IsRetiredItem 범위를 확인하세요).");
+
+            // ★ 양성 대조 ② — 반대 방향. IsRetiredItem이 전부에 거짓이 되면 위 «은퇴는 스위치보다
+            //   위에 있다» 단언을 <b>한 번도 지나가지 않고</b> 초록이 된다. 그 상태에서 은퇴 잠금을
+            //   되돌려도 이 파일은 아무 말을 하지 않는다(그때 러너에 남는 신호가 0이다).
+            Assert.Greater(retiredItems, 0,
+                "은퇴한 장비를 한 건도 지나가지 않았습니다 — 은퇴가 통째로 풀렸거나 이 순회가 " +
+                "그 자리를 못 봅니다(RetiredSlotSurfaceTests의 양성 대조와 같은 형태입니다).");
             Assert.AreEqual(ItemCatalog.EquipmentCount, ItemCatalog.UnlockedEquipmentCount(config),
                 "보관함 헤더의 보유 수(분자)가 전체 장비 수(분모)와 다릅니다 — 스위치가 켜져 있으면 " +
                 "둘이 같아야 합니다. 숫자를 적지 않고 세는 이유는 아이템이 늘 때마다 여기가 뒤처지기 때문입니다.");

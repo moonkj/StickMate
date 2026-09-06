@@ -711,32 +711,46 @@ namespace StickMate.Tests.EditMode
         // 4. FX 반짝임 — 갈래가 획보다 <b>확실히</b> 길다
         // ============================================================================
 
+        /// <summary>
+        /// ★ 2026-09-06 — 이 검사의 대상이 <b>십자 2획에서 윤곽 별 1도형</b>으로 바뀌었다.
+        /// 옛 판은 "가로 갈래와 세로 갈래의 길이가 달라야 '＋'가 아니다"를 쟀는데, 그 비대칭은
+        /// <b>임시방편</b>이었다(획 두 개가 겹친 그림에는 별의 정체인 오목한 허리가 없다).
+        /// 지금은 오목 정점이 그 일을 하므로 재는 것도 <b>허리의 깊이</b>다.
+        /// </summary>
         [Test]
-        public void 반짝임_십자는_획보다_확실히_크다()
+        public void 반짝임_별은_획보다_확실히_크고_허리가_파여_있다()
         {
             float wInR = AccessoryShapeBuilder.ShippingStrokeBudgetInHeadRadii;
             float arm = AppearanceShapeBuilder.SparkleArmInR;
 
             Assert.GreaterOrEqual(arm, wInR * 2f,
-                $"반짝임 한 갈래가 {arm / wInR:F2}획입니다 — 옛 값 0.34R은 정확히 1.00획이라 " +
+                $"반짝임 바깥 반경이 {arm / wInR:F2}획입니다 — 옛 값 0.34R은 정확히 1.00획이라 " +
                 "4갈래 반짝임이 아니라 '뚱뚱한 십자 점'이었습니다(37-3 (F)(1)).");
 
-            // 갈래가 커진 만큼 발동 높이도 함께 올라가야 한다 — 아래 갈래 끝이 머리 링을 뚫으면 안 된다.
-            Vector3[] vertical = AppearanceShapeBuilder.SparkleStroke(arm, 0);
-            Vector3[] horizontal = AppearanceShapeBuilder.SparkleStroke(arm, 1);
-            float across = arm * AppearanceShapeBuilder.SparkleHorizontalArmRatio;
-            Assert.AreEqual(arm * 2f, Vector3.Distance(vertical[0], vertical[1]), 1e-5f);
-            Assert.AreEqual(across * 2f, Vector3.Distance(horizontal[0], horizontal[1]), 1e-5f);
+            Vector3[] star = AppearanceShapeBuilder.SparkleStar(arm);
+            Assert.AreEqual(8, star.Length, "별이 8점(바깥 4 + 오목 4)이 아닙니다.");
 
-            // ★ 2026-09-01 — 가로와 세로가 <b>달라야</b> 한다. 옛 값은 정확히 같아서 화면에 뜨는 그림이
-            //   반짝임이 아니라 <b>더하기 기호</b>였다(docs/EQUIPMENT_SHAPE_SPEC_FXPET.md 4-2).
-            Assert.Greater((arm - across) * 2f, wInR,
-                $"가로 갈래와 세로 갈래의 길이 차가 {((arm - across) * 2f) / wInR:F2}획입니다 — " +
-                "1획 미만이면 두 획이 같은 길이로 보여 4갈래 별이 아니라 '＋'가 됩니다.");
+            float inner = arm * AppearanceShapeBuilder.SparkleConcaveRatio;
 
-            // 짧은 쪽도 여전히 규칙 1을 지켜야 한다(짧게 만드는 것이 목적이지 없애는 것이 아니다).
-            Assert.GreaterOrEqual(across, wInR * 1.5f,
-                $"가로 갈래가 {across / wInR:F2}획입니다 — 1.5획 미만이면 둥근 캡에 먹혀 갈래가 사라집니다.");
+            // 허리의 깊이 — 바깥과 오목의 차가 획보다 커야 "파인 것"이 눈에 남는다.
+            Assert.Greater(arm - inner, wInR,
+                $"바깥 정점과 오목 정점의 반경 차가 {((arm - inner) / wInR):F2}획입니다 — " +
+                "1획 미만이면 두 반경이 같은 자리로 보여 별이 아니라 <b>동그란 점</b>이 됩니다.");
+
+            // 변이 획에 안 먹힌다(2.32획) — 자는 FX/PET 쪽 린트와 <b>같은 함수</b>를 쓴다.
+            string shortest = AppearanceShapeBudgetTests.DescribeShortestEdgeViolation(
+                "SparkleStar", star, true, wInR);
+            Assert.IsNull(shortest, shortest);
+
+            // 잉크 사각형은 2·arm이다(가로·세로 대칭) — 옛 십자는 가로가 0.68배라 비대칭이었다.
+            float minX = float.MaxValue, maxX = float.MinValue, minY = float.MaxValue, maxY = float.MinValue;
+            for (int i = 0; i < star.Length; i++)
+            {
+                minX = Mathf.Min(minX, star[i].x); maxX = Mathf.Max(maxX, star[i].x);
+                minY = Mathf.Min(minY, star[i].y); maxY = Mathf.Max(maxY, star[i].y);
+            }
+            Assert.AreEqual(arm * 2f, maxX - minX, 1e-4f, "별의 가로 폭이 2·arm이 아닙니다.");
+            Assert.AreEqual(arm * 2f, maxY - minY, 1e-4f, "별의 세로 폭이 2·arm이 아닙니다.");
         }
 
         // ============================================================================

@@ -1098,7 +1098,7 @@ namespace StickMate.EditorTools
             // 5페이즈 가출 진행, 포모도로 에스컬레이션, 포스트잇 데이터 모델)은 전부 완성돼 있었지만
             //   · Director 5개가 씬 어디에도 배치되지 않아 Update()가 단 한 번도 돌지 않았고,
             //   · StressLevelChanged / RunawayLifecycleChanged / RunawayHintPulseRequested /
-            //     FocusWatchTierChanged 4개 이벤트의 구독자가 프로젝트 전체에 0건이었으며,
+            //     FocusWatchTierChanged(2026-09-06 삭제) 등 4개 이벤트의 구독자가 프로젝트 전체에 0건이었으며,
             //   · Core.TodoListModel.Add()를 호출하는 코드조차 0건이라 투두 기능 전체가 도달 불가능이었다
             //     (목록이 영원히 비어 있으니 포스트잇은 "빈 상태 예외"로 항상 숨겨졌다).
             // 이번 라운드에 신설한 렌더러 4종과 함께 여기서 배치한다.
@@ -1157,9 +1157,10 @@ namespace StickMate.EditorTools
             focusSo.FindProperty("_config").objectReferenceValue = config;
             focusSo.ApplyModifiedPropertiesWithoutUndo();
 
-            // 발밑 타이머 링 + 1/3단계 경고 연출(18절). 같은 GameObject의 FocusWatchDirector에서 남은
-            // 시간을 읽으므로 배선이 필요 없다.
-            root.AddComponent<FocusWatchRenderer>();
+            // ★ 2026-09-06 — 여기 있던 `root.AddComponent<FocusWatchRenderer>()`가 삭제됐다.
+            //   그 컴포넌트가 그리던 것은 (a) 1/3단계 경고 연출과 (b) 발밑 타이머 링뿐이었고,
+            //   (a)는 「지켜보기」 삭제로, (b)는 같은 날 「녹색링 제거」 지시로 각각 사라져
+            //   **파일 자체가 없다**. 남은 시간은 집중 모드 팝오버의 60분 다이얼이 보여준다.
 
             // ================================================================================
             // 음악 반응 춤 배선 (2026-09-03 사용자 요청: "시스템에서 노래가 나오면 상호 반응해서

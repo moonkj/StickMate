@@ -58,8 +58,29 @@ namespace StickMate.Tests.EditMode
             CurrencyModel.ResetForTesting();
         }
 
-        /// <summary>은퇴한 슬롯의 종수 합 — 기대값을 <b>세서</b> 만든다.</summary>
+        /// <summary>은퇴한 아이템의 종수 합 — 기대값을 <b>세서</b> 만든다.
+        /// <para>★ 2026-09-06 후속 — 세는 단위가 <b>슬롯에서 아이템으로</b> 내려왔다
+        /// (사용자 지시 *"이펙트 없음은 왜 있는거야 삭제해줘 장비창에서"*). 은퇴한 슬롯의 아이템도
+        /// <see cref="EquipmentModel.IsRetiredItem"/>가 함께 참을 주므로 이 합은 <b>둘을 모두</b>
+        /// 포함한다.</para></summary>
         private static int RetiredItemCount()
+        {
+            int n = 0;
+            for (int s = 0; s < EquipmentModel.SlotCount; s++)
+            {
+                var slot = (EquipmentSlot)s;
+                int count = ItemCatalog.ItemCountIn(slot);
+                for (int i = 0; i < count; i++)
+                {
+                    if (EquipmentModel.IsRetiredItem(slot, i)) n++;
+                }
+            }
+            return n;
+        }
+
+        /// <summary>은퇴한 <b>슬롯</b>의 종수 합 — 아래 «아이템 단위 은퇴가 실재한다» 대조가
+        /// 슬롯 은퇴분과 <b>구별</b>되게 하려고 따로 센다.</summary>
+        private static int RetiredSlotItemCount()
         {
             int n = 0;
             for (int s = 0; s < EquipmentModel.SlotCount; s++)
@@ -90,6 +111,112 @@ namespace StickMate.Tests.EditMode
                 "에셋이 사라졌다면 등급 파생/코호트 순위의 모집단이 함께 움직인 것이라 별건입니다.");
             Assert.Less(retiredSlots, EquipmentModel.SlotCount,
                 $"{LogPrefix} 모든 슬롯이 은퇴했습니다 — 화면에 남는 것이 없습니다.");
+        }
+
+        /// <summary>★ 양성 대조 — <b>아이템 단위</b> 은퇴가 실재하는가(2026-09-06 이펙트 「없음」).
+        /// <para>슬롯 단위 은퇴만 남고 아이템 단위가 사라지면 아래 «가운데가 빠진 목록» 단언들이
+        /// 전부 공허해진다 — 자리 번호와 아이템 번호가 다시 같아져서 환산이 <b>있으나 마나</b>가 되고,
+        /// 그때 환산을 되돌려도 아무 테스트도 빨개지지 않는다.</para></summary>
+        [Test]
+        public void 컨트롤_슬롯은_살아_있는데_아이템만_은퇴한_경우가_실재한다()
+        {
+            int itemOnly = RetiredItemCount() - RetiredSlotItemCount();
+            Assert.Greater(itemOnly, 0,
+                $"{LogPrefix} 아이템 단위 은퇴가 0건입니다 — 은퇴가 다시 슬롯 단위로만 남았습니다. " +
+                "이 파일의 «목록 가운데가 빠진다» 계열 단언이 전부 공허하게 통과합니다.");
+
+            // 그 아이템이 속한 카테고리는 <b>살아 있어야</b> 한다(죽은 카테고리면 슬롯 은퇴와 같다).
+            for (int s = 0; s < EquipmentModel.SlotCount; s++)
+            {
+                var slot = (EquipmentSlot)s;
+                if (EquipmentModel.IsRetiredSlot(slot)) continue;
+
+                int count = ItemCatalog.ItemCountIn(slot);
+                for (int i = 0; i < count; i++)
+                {
+                    if (!EquipmentModel.IsRetiredItem(slot, i)) continue;
+
+                    Assert.Greater(ItemCatalog.ListedItemCountIn(slot), 0,
+                        $"{LogPrefix} [{EquipmentModel.SlotName(slot)}]에서 은퇴한 아이템을 빼고 나니 " +
+                        "보여줄 것이 하나도 없습니다 — 그건 카테고리 은퇴로 다뤄야 합니다.");
+                    Assert.Less(ItemCatalog.ListedItemCountIn(slot), count,
+                        $"{LogPrefix} [{EquipmentModel.SlotName(slot)}]의 표시 종수가 전량과 같습니다 — " +
+                        "은퇴가 목록에 반영되지 않았습니다.");
+                }
+            }
+        }
+
+        /// <summary>★ 환산이 <b>실제로 자리를 옮기는가</b> — 「보여주는 목록의 c번째」가 카탈로그의
+        /// 몇 번인지. 은퇴한 아이템이 목록 <b>가운데(이펙트는 0번)</b>에 있으므로 뒤 카드들은
+        /// 전부 한 칸씩 밀린다. 이 환산이 죽으면 카드에 적힌 이름과 눌렀을 때 입는 물건이 갈라진다.</summary>
+        [Test]
+        public void 표시_목록_자리는_은퇴한_아이템을_건너뛴다()
+        {
+            bool sawShift = false;
+
+            for (int s = 0; s < EquipmentModel.SlotCount; s++)
+            {
+                var slot = (EquipmentSlot)s;
+                int listed = ItemCatalog.ListedItemCountIn(slot);
+
+                for (int c = 0; c < listed; c++)
+                {
+                    int item = ItemCatalog.ListedItemIndex(slot, c);
+                    Assert.GreaterOrEqual(item, 0,
+                        $"{LogPrefix} [{EquipmentModel.SlotName(slot)}]의 {c}번 자리가 카탈로그 밖을 가리킵니다.");
+                    Assert.IsFalse(EquipmentModel.IsRetiredItem(slot, item),
+                        $"{LogPrefix} [{EquipmentModel.SlotName(slot)}]의 {c}번 자리가 은퇴한 " +
+                        $"[{EquipmentModel.ItemName(slot, item)}]를 가리킵니다.");
+                    if (item != c) sawShift = true;
+                }
+
+                // 목록 밖은 −1이다(카드가 남는 자리를 그리지 않는 근거).
+                Assert.AreEqual(-1, ItemCatalog.ListedItemIndex(slot, listed),
+                    $"{LogPrefix} [{EquipmentModel.SlotName(slot)}]의 목록 밖 자리가 −1이 아닙니다.");
+            }
+
+            Assert.IsTrue(sawShift,
+                $"{LogPrefix} 어느 카테고리에서도 자리 번호와 아이템 번호가 갈라지지 않았습니다 — " +
+                "은퇴한 아이템이 전부 <b>목록 끝</b>에 있다는 뜻이고, 그러면 이 환산은 아무것도 " +
+                "증명하지 못합니다(지금은 이펙트 0번이 빠져서 뒤가 한 칸씩 밀려야 합니다).");
+        }
+
+        /// <summary>★ 은퇴한 아이템은 <b>몸에도 올라가지 않는다</b> — 화면에 카드가 없으므로
+        /// 걸쳐지면 벗을 손잡이가 없다(카테고리 은퇴가 <c>TryWear</c>에서 막히는 것과 같은 이유).</summary>
+        [Test]
+        public void 은퇴한_아이템은_걸칠_수도_저장에서_되살아날_수도_없다()
+        {
+            StickConfig config = LoadDefaultConfig();
+            CharacterProgressionModel.AddXp(1000000f, config);   // 잠금을 지운다(거절 사유를 은퇴로 좁힌다).
+
+            int probed = 0;
+            for (int s = 0; s < EquipmentModel.SlotCount; s++)
+            {
+                var slot = (EquipmentSlot)s;
+                if (EquipmentModel.IsRetiredSlot(slot)) continue;   // 슬롯 은퇴는 위 계열이 이미 잠근다.
+
+                int count = ItemCatalog.ItemCountIn(slot);
+                for (int i = 0; i < count; i++)
+                {
+                    if (!EquipmentModel.IsRetiredItem(slot, i)) continue;
+                    probed++;
+
+                    Assert.IsFalse(EquipmentModel.TryWear(slot, i, config),
+                        $"{LogPrefix} 은퇴한 [{EquipmentModel.ItemName(slot, i)}]가 걸쳐졌습니다.");
+                    Assert.AreEqual(EquipmentModel.NotWorn, EquipmentModel.WornIndex(slot),
+                        $"{LogPrefix} 거절했다면서 착용 칸이 바뀌었습니다.");
+
+                    // 그 아이디를 담은 <b>옛 저장 파일</b>도 미착용으로 열린다
+                    // (RestoreFromSave는 internal — EditMode에는 InternalsVisibleTo가 있다).
+                    EquipmentModel.RestoreFromSave(slot, EquipmentModel.ItemId(slot, i));
+                    Assert.AreEqual(EquipmentModel.NotWorn, EquipmentModel.WornIndex(slot),
+                        $"{LogPrefix} 은퇴한 [{EquipmentModel.ItemName(slot, i)}]를 걸친 저장 파일이 " +
+                        "그대로 복원됐습니다 — 정보창 어디에서도 벗을 수 없는 차림이 됩니다.");
+                }
+            }
+
+            Assert.Greater(probed, 0,
+                $"{LogPrefix} 검사한 은퇴 아이템이 0건입니다 — 위 양성 대조와 같은 이유로 공허합니다.");
         }
 
         /// <summary>표시 분모는 <b>파생값</b>이다: 전량 − 은퇴 슬롯의 종수.</summary>
@@ -142,7 +269,10 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>카탈로그의 모든 항목을 훑어 <see cref="ItemCatalog.IsListed"/>가 정확히
-        /// 은퇴 슬롯만 거르는지 본다(전수 — 표본이 아니다).</summary>
+        /// <b>은퇴분</b>만 거르는지 본다(전수 — 표본이 아니다).
+        /// <para>★ 단위는 <b>아이템</b>이다(<see cref="EquipmentModel.IsRetiredItem"/>) — 은퇴한
+        /// 카테고리 전체와 살아 있는 카테고리 안의 은퇴한 한 장을 같은 술어로 본다. 여기를
+        /// 카테고리 단위로 되돌리면 이펙트 「없음」이 목록에 돌아와도 이 전수가 통과한다.</para></summary>
         [Test]
         public void 목록_술어는_정확히_은퇴_슬롯만_거른다()
         {
@@ -153,7 +283,8 @@ namespace StickMate.Tests.EditMode
                 ItemCatalogEntry entry = ItemCatalog.At(i);
                 Assert.IsNotNull(entry, $"{LogPrefix} 카탈로그 {i}번이 비었습니다.");
 
-                bool retired = entry.Slot.HasValue && EquipmentModel.IsRetiredSlot(entry.Slot.Value);
+                bool retired = entry.Slot.HasValue
+                                   && EquipmentModel.IsRetiredItem(entry.Slot.Value, entry.ItemIndex);
                 Assert.AreEqual(!retired, ItemCatalog.IsListed(entry),
                     $"{LogPrefix} [{entry.Id}]의 목록 노출 판정이 은퇴 여부와 어긋납니다.");
 
@@ -187,8 +318,12 @@ namespace StickMate.Tests.EditMode
                     $"{LogPrefix} {line}번 줄이 카탈로그 밖({catalogIndex})을 가리킵니다 — " +
                     "줄 표가 카탈로그와 어긋났습니다.");
 
-                Assert.IsFalse(entry.Slot.HasValue && EquipmentModel.IsRetiredSlot(entry.Slot.Value),
-                    $"{LogPrefix} 보관함 {line}번 줄이 은퇴한 카테고리의 [{entry.DisplayName}]를 " +
+                // ★ 술어는 <b>아이템 단위</b>다 — 카테고리 단위로 두면 살아 있는 카테고리 안의 은퇴한
+                //   한 장(이펙트 「없음」)이 줄을 얻어도 이 순회가 통과시킨다. 아래 «장비 줄 수 ==
+                //   화면 분모» 단언이 그 경우 총합으로는 걸리지만, 어느 줄인지는 못 짚는다.
+                Assert.IsFalse(entry.Slot.HasValue
+                                   && EquipmentModel.IsRetiredItem(entry.Slot.Value, entry.ItemIndex),
+                    $"{LogPrefix} 보관함 {line}번 줄이 은퇴한 [{entry.DisplayName}]를 " +
                     "보여줍니다 — 고를 수 없는 물건이 목록에 남았습니다.");
 
                 items++;
@@ -206,35 +341,44 @@ namespace StickMate.Tests.EditMode
                 $"{LogPrefix} 줄 수 계산이 맞지 않습니다(항목 {items} + 헤더 {headers} ≠ {lines}).");
         }
 
-        /// <summary>재화로 <b>살 수 있는 목록</b>에도 은퇴분이 없어야 한다(리더 지시 ②).
-        /// <para>2026-09-06 현재 그 목록은 <b>존재하지 않는다</b> — [상점] 탭은 문구 한 줄짜리
-        /// 준비 중 페이지이고, <c>CurrencyModel.TryPurchaseItem</c>을 부르는 프로덕션 코드가
-        /// 0건이다(<c>CurrencyRules</c> "배선은 아직 없다"). 이 테스트는 그 사실이 <b>조용히
-        /// 바뀌는 것</b>을 막는다: 구매 경로가 배선되는 라운드에 이 단언이 먼저 빨개지고,
-        /// 그때 <see cref="ItemCatalog.IsListed"/>를 함께 물려야 한다.</para></summary>
+        /// <summary>재화로 <b>살 수 있는 목록</b>이 쓰는 창구에도 은퇴분이 없어야 한다(리더 지시 ②).
+        /// <para>★ 2026-09-06 갱신 — 이 자리에는 원래 <i>"그 목록은 존재하지 않는다 …
+        /// <c>TryPurchaseItem</c>을 부르는 프로덕션 코드가 0건이다"</i>라는 <b>예약석</b>이 적혀
+        /// 있었다. 그 문장은 이제 <b>거짓</b>이다: 구매 플로우는 <c>CharacterInfoWindow.Shop</c>에
+        /// 배선됐고(<c>TryPurchaseItem</c> 호출 1건), <b>실제 매대 순회</b>는
+        /// <c>ShopPurchaseFlowTests</c>가 맡는다.</para>
+        /// <para>여기 남기는 것은 그 매대가 딛고 서는 <b>창구</b>다 — 상점은 자기 술어를 만들지 않고
+        /// <see cref="ItemCatalog.IsListed"/> 하나만 본다(<c>IsShopMerchandise</c>). 그래서 이 술어가
+        /// 은퇴분을 놓치는 순간 「살 수는 있는데 못 입는」 물건이 매대에 생긴다.</para></summary>
         [Test]
-        public void 상점_구매_경로가_배선되면_이_단언이_먼저_빨개진다()
+        public void 상점이_쓰는_목록_술어는_은퇴분을_한_건도_통과시키지_않는다()
         {
             Assert.AreEqual(0, CurrencyModel.PurchasedItemIds.Count,
                 $"{LogPrefix} 준비 조건 — 구매 이력이 비어 있어야 합니다.");
 
-            // 살 수 있는 목록이 생기면 「무엇을 파는가」를 정하는 자리가 어딘가에 생긴다.
-            // 그 라운드에 이 테스트를 <b>실제 목록 순회</b>로 바꾸고, 은퇴분이 0건인지 확인할 것.
             Assert.IsTrue(ItemCatalog.IsListed(ItemCatalog.At(0)),
-                $"{LogPrefix} 목록 술어가 첫 장비조차 거릅니다 — 상점이 배선될 때 쓸 창구가 고장났습니다.");
+                $"{LogPrefix} 목록 술어가 첫 장비조차 거릅니다 — 상점이 쓰는 창구가 고장났습니다.");
 
+            // 술어는 <b>아이템 단위</b>다 — 은퇴한 카테고리 전체와, 살아 있는 카테고리 안의
+            // 은퇴한 한 장(이펙트 「없음」)을 <b>같은 순회로</b> 지나간다.
+            int probed = 0;
             for (int s = 0; s < EquipmentModel.SlotCount; s++)
             {
                 var slot = (EquipmentSlot)s;
-                if (!EquipmentModel.IsRetiredSlot(slot)) continue;
                 for (int i = 0; i < ItemCatalog.ItemCountIn(slot); i++)
                 {
+                    if (!EquipmentModel.IsRetiredItem(slot, i)) continue;
+                    probed++;
+
                     ItemCatalogEntry entry = ItemCatalog.Item(slot, i);
                     Assert.IsFalse(ItemCatalog.IsListed(entry),
                         $"{LogPrefix} 은퇴한 [{entry.DisplayName}]가 목록 술어를 통과합니다 — " +
-                        "상점이 배선되는 순간 「살 수는 있는데 못 입는」 물건이 됩니다.");
+                        "그 즉시 매대에 「살 수는 있는데 못 입는」 물건이 실립니다.");
                 }
             }
+
+            Assert.AreEqual(RetiredItemCount(), probed,
+                $"{LogPrefix} 지나간 은퇴 항목이 {probed}건인데 은퇴분은 {RetiredItemCount()}건입니다 — 순회가 샙니다.");
         }
     }
 }

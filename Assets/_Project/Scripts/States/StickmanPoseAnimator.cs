@@ -903,7 +903,8 @@ namespace StickMate.States
         // ★★ 집중 모드 자세 (2026-09-06, 사용자 신고 «집중모드 시작시 캐릭터다리쪽에 원이 생김.
         //    집중모드 행동을 해야하는데 안함»)
         // ============================================================================
-        // 신고의 절반은 "원이 뜨는 조건"이고(Interaction/FocusWatchRenderer.cs), 나머지 절반이 여기다:
+        // 신고의 절반은 "원"이었고(그 원=발밑 타이머 링은 2026-09-06 사용자 지시로 아예 삭제됐다 —
+        // Interaction/FocusWatchRenderer.cs 파일째 제거), 나머지 절반이 여기다:
         // StickConfig.pomodoroStartPoseHoldSeconds의 툴팁은 <b>"집중 모드 시작 포즈(안경+팔짱)"</b>라고
         // 적혀 있었는데 <b>그 포즈를 그리는 코드가 저장소 전체에 한 줄도 없었다</b>. FocusStart/
         // FocusComplete/FocusCancelled/FocusNudge 4개 상태는 States/TimedSpectacleState("물리/입력 변경
@@ -924,13 +925,12 @@ namespace StickMate.States
         // 104 ± 11)은 «가장 앞에 나온 손 = 가장 낮은 손»(몸통비 0.504 = 허리)이라, 각도를 어떻게
         // 흔들어도 기하학적으로 <b>반드시</b> "허리 앞에 두 손을 모은" 그림이 된다.
         //
-        // 신규는 스태거의 부호를 뒤집어 <b>최전방 손이 가슴 높이(몸통비 0.685)</b>가 되게 한다.
-        // 손 물림(위손x − 아래손x)이 −0.071 → <b>+0.165</b>(팔 획의 1.58배)로 **부호가 바뀐다** —
-        // 이 한 줄이 재설계의 전부다.
+        // 신규는 스태거의 부호를 뒤집어 <b>최전방 손이 아래 손보다 위</b>가 되게 한다.
+        // 손 물림(위손x − 아래손x)이 −0.071 → <b>양수</b>로 **부호가 바뀐다** — 이 한 줄이 재설계의 전부다.
         //
         // ★ 왜 "X자 교차"가 아닌가(불가능 증명, 3-1절): 팔꿈치는 어깨 반지름 0.380 원 위에만 있고
         //   어깨각 전 구간에서 팔꿈치 y의 폭이 0.1067 = 획 합반폭(0.1097)보다 작다. 즉 두 전완의
-        //   교차점은 <b>언제나 몸통 획 안쪽</b>(확정 해에서 x = −0.005)이라 화면에서 X가 안 보인다.
+        //   교차점은 <b>언제나 몸통 획 안쪽</b>이라 화면에서 X가 안 보인다.
         //   어깨를 좌우로 분리하면 되지만 그건 2026-08-28 사용자 스크린샷으로 되돌린 결정이다.
         //
         // ★ 왜 팔꿈치를 더 깊게 못 접는가(진짜 벽, 2절): <b>규칙 B(크리즈) 무손상 상한 116.55°</b>.
@@ -938,44 +938,73 @@ namespace StickMate.States
         //   남는다. 절대 상한은 124.14°지만 그 구간은 MOTION_SPEC 13-7의 «취약성 표»(값 하나만
         //   움직여도 즉시 위반)라 손차양에서 팀이 일부러 물러난 자리다.
 
+        // ────────────────────────────────────────────────────────────────────────────
+        // ★★ 2026-09-06 R3 처방B — «막대를 들고 있다»의 원인은 사양 자체였다
+        // ────────────────────────────────────────────────────────────────────────────
+        // 사용자 실기 신고: 팔짱이 "팔"이 아니라 <b>가슴에 붙은 막대를 들고 있는</b> 것처럼 보인다.
+        // design-motion 규명 결과, 위 재설계가 목표로 삼은 «최전방 손 몸통비 ≥ 0.65»가 팔꿈치 예산
+        // (116.5°)과 결합하면 어깨각 A를 −8.5°로 <b>유일하게</b> 못박고, 그 각도에서 A의 상완은
+        // 몸통 획 밖으로 <b>0.18 획</b>밖에 안 나온다 = 화면에서 상완이 통째로 몸통에 묻힌다.
+        // 상완이 안 보이면 남는 것은 전완 하나뿐이고, 그건 정의상 «팔»이 아니라 «막대»다.
+        // 즉 튜닝 오차가 아니라 <b>합격선이 결함을 강제</b>하고 있었다(테스트 쪽도 0.60으로 낮췄다).
+        //
+        // 처방B(리더 승인) — 어깨를 더 뒤로 열어 상완을 몸통 밖으로 꺼내고, 그만큼 잃는 손 높이를
+        // 팔꿈치 스태거로 되산다. 유도되는 실제 값:
+        //   A(앞) 어깨 −22.0° / 팔꿈치 116.5°  → 상완 노출 <b>1.15 획</b>, 전완 절대각 +4.5°(거의 수평)
+        //   B(뒤) 어깨 −38.0° / 팔꿈치  92.0°  → 전완 절대각 −36.0°
+        // · 최심 팔꿈치는 116.5°로 <b>변경 전과 같다</b> → 규칙 B(크리즈) 최악값 무변화(다리가 계속 병목).
+        // · 최심 어깨 38.0° < ShoulderSwingBackLimitDegrees(60°).
+        // · 두 전완이 «보이는 구간에서» 실제로 갈라진다(쐐기틈 −0.047 → <b>+0.095</b>, 부호 반전).
+        // 검산: design/motion/2026-09-06_R3_팔짱실루엣_처방_검산.py
+
         /// <summary>팔짱 A/B <b>어깨각의 중앙</b>(도, 0 = 곧게 아래, − = 뒤). 실제로 적용되는 두 값은
-        /// 아래 <see cref="FocusCrossFrontArmUpperDegrees"/> / <see cref="FocusCrossBackArmUpperDegrees"/>다.</summary>
-        private const float FocusCrossArmUpperDegrees = -22.75f;
+        /// 아래 <see cref="FocusCrossFrontArmUpperDegrees"/> / <see cref="FocusCrossBackArmUpperDegrees"/>다.
+        /// <para>★ 이 값을 <b>0에 가깝게 되돌리지 마라</b> — 상완이 몸통 획에 묻혀 "막대를 든 그림"이
+        /// 된다(2026-09-06 사용자 실기 신고의 원인). 상완이 몸통 밖으로 완전히 나오는 하한은 16.78°
+        /// (= asin(획 합반폭 ÷ 상완 길이))이고, 여기 −30 ∓ 8은 두 팔 모두 그 밖이다.</para></summary>
+        private const float FocusCrossArmUpperDegrees = -30f;
 
         /// <summary>팔짱 A/B <b>팔꿈치 굽힘의 중앙</b>(도).</summary>
-        private const float FocusCrossElbowDegrees = 114.75f;
+        private const float FocusCrossElbowDegrees = 104.25f;
 
         /// <summary>두 팔의 <b>어깨</b>를 어긋내는 각도(도). 2D 측면도라 좌우로 벌릴 축이 없어서, 두 팔을
         /// 같은 각도로 두면 <b>팔 하나만 그린 것처럼</b> 보인다(등반의 ClimbHandStaggerRatio와 같은 이유의
-        /// 같은 장치). 전폭 28.5°라 두 전완의 절대각 차가 32°가 되고, 그게 "팔 두 개"로 읽히는 신호다.
+        /// 같은 장치). 전폭 16.0°.
         /// <para>★ 팔꿈치 스태거와 <b>반드시 분리</b>해야 한다(옛 코드는 상수 하나로 어깨×0.5 / 팔꿈치×1.0을
-        /// 묶어서 만들었다). 신규는 어깨 전폭 28.5° / 팔꿈치 전폭 3.5°라 하나의 상수로 표현할 수 없다.</para></summary>
-        private const float FocusCrossShoulderStaggerDegrees = 14.25f;
+        /// 묶어서 만들었다). 지금은 어깨 전폭 16.0° / 팔꿈치 전폭 24.5°라 하나의 상수로 표현할 수 없고,
+        /// "팔 두 개"로 읽히는 신호(두 전완의 절대각 차 40.5°)는 <b>두 스태거의 합</b>에서 나온다.</para></summary>
+        private const float FocusCrossShoulderStaggerDegrees = 8f;
 
         /// <summary>두 팔의 <b>팔꿈치</b>를 어긋내는 각도(도). 위 어깨 스태거와 <b>같은 부호 방향</b>으로
-        /// 쓴다 — 앞으로 나온 팔(A)이 더 깊게 접혀야 그 손이 가슴 높이에 온다.</summary>
-        private const float FocusCrossElbowStaggerDegrees = 1.75f;
+        /// 쓴다 — 앞으로 나온 팔(A)이 더 깊게 접혀야 그 손이 위로 온다.
+        /// <para>★ 2026-09-06 R3에서 1.75 → 12.25로 키웠다. 어깨를 뒤로 열어 상완을 몸통 밖으로 꺼내면
+        /// (위 상수) 손이 함께 내려가는데, 그 높이를 <b>여기서 되산다</b>. 두 상수는 한 쌍이라
+        /// 한쪽만 만지면 실루엣이 깨진다.</para></summary>
+        private const float FocusCrossElbowStaggerDegrees = 12.25f;
 
         // ★ 아래 4개가 <b>실제로 적용되는 각도</b>다. 중앙±스태거에서 유도하므로 사본이 아니고,
         //   public인 이유는 크리즈 감사(Tests/EditMode/LimbCurveGeometryTests)가 이 값을 읽어야 하기
         //   때문이다 — 지금까지 이 테스트는 StickConfig의 *Elbow*Degrees 필드만 훑어서 <b>팔짱의
         //   실제 팔꿈치를 한 번도 검사한 적이 없었다</b>(감사 구멍, 문서 6절).
 
-        /// <summary>A — 위 팔(최전방). 어깨 −8.5°. limb.NeutralSign &gt; 0(Idle 중립 앞쪽 팔)에 배정된다.</summary>
+        /// <summary>A — 위 팔(최전방). 어깨 −22.0°. limb.NeutralSign &gt; 0(Idle 중립 앞쪽 팔)에 배정된다.
+        /// 상완이 몸통 획 밖으로 1.15 획 나오고, 전완은 거의 수평(+4.5°)이라 "가슴 앞으로 지나가는 팔"로 읽힌다.</summary>
         public const float FocusCrossFrontArmUpperDegrees =
             FocusCrossArmUpperDegrees + FocusCrossShoulderStaggerDegrees;
 
         /// <summary>A — 위 팔(최전방)의 팔꿈치 116.5°. 규칙 B 무손상 상한(116.55°) 바로 아래이며
-        /// 전 배율 여유 1.1694 &gt; 다리 병목 1.1682라 <b>저장소 전체 최악은 여전히 다리</b>다.</summary>
+        /// 전 배율 여유 1.1694 &gt; 다리 병목 1.1682라 <b>저장소 전체 최악은 여전히 다리</b>다.
+        /// <para>★ R3 처방B에서도 이 값은 <b>바뀌지 않았다</b>(중앙 104.25 + 스태거 12.25) — 크리즈
+        /// 최악값을 건드리지 않는 것이 처방의 전제였다.</para></summary>
         public const float FocusCrossFrontElbowDegrees =
             FocusCrossElbowDegrees + FocusCrossElbowStaggerDegrees;
 
-        /// <summary>B — 아래 팔(안쪽). 어깨 −37.0°. limb.NeutralSign &lt; 0(뒤쪽 팔)에 배정된다.
+        /// <summary>B — 아래 팔(안쪽). 어깨 −38.0°. limb.NeutralSign &lt; 0(뒤쪽 팔)에 배정된다.
         /// ShoulderSwingBackLimitDegrees(60°) 안이다.</summary>
         public const float FocusCrossBackArmUpperDegrees =
             FocusCrossArmUpperDegrees - FocusCrossShoulderStaggerDegrees;
 
-        /// <summary>B — 아래 팔(안쪽)의 팔꿈치 113.0°(규칙 B 여유 1.2519).</summary>
+        /// <summary>B — 아래 팔(안쪽)의 팔꿈치 92.0°(규칙 B 여유 2.87 — A보다 훨씬 얕다).</summary>
         public const float FocusCrossBackElbowDegrees =
             FocusCrossElbowDegrees - FocusCrossElbowStaggerDegrees;
 
@@ -1022,8 +1051,12 @@ namespace StickMate.States
         /// <summary>머리 앵커를 못 찾은 리그(테스트 더미)에서 쓰는 얼굴 높이 폴백(어깨 위로 팔 길이 배수).</summary>
         private const float FocusFaceAboveShoulderFallbackRatio = 0.5f;
 
-        /// <summary>팔짱을 낀 채 상체가 뒤로 살짝 젖혀지는 각도(도, − = 뒤). "지켜보는" 자세의 무게중심.</summary>
-        private const float FocusWatchLeanDegrees = -5f;
+        /// <summary>팔짱을 낀 채 상체가 뒤로 살짝 젖혀지는 각도(도, − = 뒤). "지켜보는" 자세의 무게중심.
+        /// <para>★ 2026-09-06 R3에서 −5 → −2. 뒤로 젖힐수록 몸통 획의 <b>뒤쪽 가장자리</b>가 팔꿈치 쪽으로
+        /// 따라와 A의 상완을 덮는다(−5°는 −2°보다 0.4 획을 더 먹었다). 아래 관망 자세의
+        /// <see cref="FocusStanceCrossLeanDegrees"/>와 <b>같은 값이어야</b> 시작 포즈 → 관망 자세 이음매에서
+        /// 상체가 튀지 않는다.</para></summary>
+        private const float FocusWatchLeanDegrees = -2f;
 
         /// <summary>완주 축하("수고했어!") — 두 팔을 위로 뻗는 벌림(도). 매달리기와 같은 180∓spread 규약.
         /// <b>무릎은 건드리지 않는다</b>: 무릎을 펴면 발이 지면 아래로 내려가고, 그걸 상쇄하는 상승
@@ -1111,8 +1144,8 @@ namespace StickMate.States
 
                     // ★ 2026-09-06 부호 반전 — NeutralSign > 0(Idle 중립 앞쪽 팔)이 <b>앞으로</b> 온다.
                     // 옛 코드는 `- stagger * 0.5`라 앞쪽 팔이 더 뒤로 갔고, 그래서 «최전방 손 = 최저 손»
-                    // 이 됐다. 이 배정은 전이 비용도 최소다: 앞팔 48.5° + 뒷팔 3.0° = 51.5°,
-                    // 반대로 배정하면 108.5°(2.1배)라 팔이 두 배로 요란하게 움직인다.
+                    // 이 됐다. 이 배정은 전이 비용도 최소다: 앞팔 62° + 뒷팔 2° = 64°,
+                    // 반대로 배정하면 96°(1.5배)라 팔이 그만큼 더 요란하게 움직인다.
                     ResolveCrossArmAngles(limb.NeutralSign, out float crossUpper, out float crossLower);
                     upper = Mathf.LerpAngle(upper, crossUpper, cross);
                     lower = Mathf.LerpAngle(lower, crossLower, cross);
@@ -1195,7 +1228,7 @@ namespace StickMate.States
         //
         // ★ 이 메서드는 <b>포즈만</b> 만든다. 수평 이동 소유권은 배회 AI에 그대로 있고
         //   (MoveInputX를 한 번도 건드리지 않는다), SpectacleEventLock도 잡지 않는다 — L0~L2는
-        //   상태 전이가 아니라 Idle 위에 얹는 포즈 층이다(FocusWatchTier.Glance와 같은 판단).
+        //   상태 전이가 아니라 Idle 위에 얹는 포즈 층이다.
         //   락을 잡으면 세션 25분 내내 파쿠르·춤·활쏘기가 <b>조용히</b> 막힌다.
         //
         // ★ P2(뒷짐)를 넣는 진짜 이유는 변주가 아니라 <b>가독성 보험</b>이다. 팔짱은 이 리그에서
@@ -1248,8 +1281,12 @@ namespace StickMate.States
         public const float FocusWatchBackRearElbowDegrees =
             FocusWatchBackElbowDegrees + FocusWatchBackElbowStaggerDegrees;
 
-        /// <summary>L0 — 팔짱 자세의 기준 상체 기울임(도, − = 뒤). "지켜보는" 자세의 무게중심.</summary>
-        private const float FocusStanceCrossLeanDegrees = -4f;
+        /// <summary>L0 — 팔짱 자세의 기준 상체 기울임(도, − = 뒤). "지켜보는" 자세의 무게중심.
+        /// <para>★ 2026-09-06 R3에서 −4 → −2. 이유는 <see cref="FocusWatchLeanDegrees"/>와 같다 —
+        /// 뒤로 젖힌 몸통 획이 A의 상완을 덮어 "막대를 든 그림"을 만든다. L1 왕복폭
+        /// (<see cref="FocusStanceLeanSwayDegrees"/> ±2°)까지 얹힌 최악(−4°)에서도 상완 노출은
+        /// 획의 0.99배로 남는다(Tests/EditMode/FocusSessionAmbientTests가 두 지점 모두 잰다).</para></summary>
+        private const float FocusStanceCrossLeanDegrees = -2f;
 
         /// <summary>L0 — 뒷짐 자세의 기준 상체 기울임(도). 팔이 뒤로 가므로 팔짱보다 덜 젖힌다.</summary>
         private const float FocusStanceBackLeanDegrees = -2.5f;
@@ -1305,13 +1342,31 @@ namespace StickMate.States
         private const float FocusGlanceFollowLeanDegrees = 2f;
 
         /// <summary>★ 2026-09-06 (perf-doc) — L0+L1이 낼 수 있는 상체 기울임의 <b>절댓값 상한</b>(도).
-        /// 두 자세(팔짱 −4.0° / 뒷짐 −2.5°) 중 큰 쪽에 L1 왕복폭을 더한 값이다.
+        /// 두 자세(팔짱 −2.0° / 뒷짐 −2.5°) 중 큰 쪽에 L1 왕복폭을 더한 값이다.
         /// <para><b>왜 공개하는가</b>: 액세서리 밑단 검사(<c>Tests/EditMode/CapeHemFloorClampTests</c>)가
         /// «관망 자세의 상시 미세 피치에서 망토가 바닥선에 닿지 않는가»를 재는데, 그 범위를 테스트에
         /// 숫자로 베끼면 여기가 바뀔 때 검사가 <b>조용히 낡는다</b>(협업 프로토콜: 프로덕션 상수를 베끼지 않는다).</para></summary>
         public static float FocusWatchStanceMaxLeanDegrees
             => Mathf.Max(Mathf.Abs(FocusStanceCrossLeanDegrees), Mathf.Abs(FocusStanceBackLeanDegrees))
              + Mathf.Abs(FocusStanceLeanSwayDegrees);
+
+        /// <summary>★ 2026-09-06 R3 — 팔짱(P1)에서 상체가 <b>실제로</b> 취하는 기울임 두 지점(도, − = 뒤).
+        /// <paramref name="baseDegrees"/>는 "한 장의 그림"이 되는 기준값이고,
+        /// <paramref name="rearmostDegrees"/>는 L1 왕복과 시작 포즈(<see cref="FocusWatchLeanDegrees"/>)까지
+        /// 포함해 <b>가장 뒤로 젖혀지는</b> 값이다.
+        ///
+        /// <para><b>왜 공개하는가</b>: 뒤로 젖힐수록 몸통 획의 뒤쪽 가장자리가 팔꿈치를 덮어 A의 상완이
+        /// 사라지고, 그게 2026-09-06 «막대를 들고 있다» 신고의 절반이었다. 그래서 팔짱 감사
+        /// (<c>Tests/EditMode/FocusSessionAmbientTests</c>)가 <b>상완 노출</b>을 이 두 지점에서 재야 하는데,
+        /// 기울임 값을 테스트에 숫자로 베끼면 여기가 바뀔 때 검사가 조용히 낡는다
+        /// (협업 프로토콜: 프로덕션 상수를 테스트에 베끼지 않는다). 위
+        /// <see cref="FocusWatchStanceMaxLeanDegrees"/>가 만들어진 이유와 같다.</para></summary>
+        public static void GetCrossStanceLeanRange(out float baseDegrees, out float rearmostDegrees)
+        {
+            baseDegrees = FocusStanceCrossLeanDegrees;
+            rearmostDegrees = Mathf.Min(FocusStanceCrossLeanDegrees - Mathf.Abs(FocusStanceLeanSwayDegrees),
+                FocusWatchLeanDegrees);
+        }
 
         /// <summary>★ 2026-09-06 (perf-doc) — 관망 자세 위에 얹히는 제스처(G2/G3)가 내는 상체 기울임의
         /// <b>절댓값 상한</b>(도). 위 상수와 같은 이유로 공개한다. 둘 다 «기울임 상한 7.60°» 아래여야 한다는

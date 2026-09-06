@@ -64,11 +64,20 @@ def load():
 # ============================================================================
 # 1. 몸 표면 변형 — y 아핀 (s, t) · 관 x 추가배수 r
 # ============================================================================
+def _crown_widened(src):
+    """이 조각이 CROWN_WIDEN 의 x 배수를 받는 조각인가.
+    ★ 2026-09-06 R27 — 관(B0)이 «채움 B0 + 열린 호 B0a» 두 조각이 됐다. r19_model 은 **분할 전에**
+      배수를 걸므로 둘 다 이미 같은 배수를 갖는데, 이 파일의 재시뮬레이션은 이름으로 고르므로
+      «a» 접미사를 안 벗기면 **호만 옛 배수에 남아** 실루엣이 가짜로 움직인다(실측 천모자↔중절모 1.43 → 1.39획).
+      그 거짓값은 프로덕션과 무관하다 — 출하 좌표의 72×5° 프로필은 R27 전후로 소수점 아래 10자리까지 같다."""
+    return src in CROWN_WIDEN_SRC or (src.endswith("a") and src[:-1] in CROWN_WIDEN_SRC)
+
+
 def xform(pieces, s=1.0, t=0.0, kx_ratio=1.0, ux=1.0):
     """s = 세로 배율 · t = 세로 평행이동 · kx_ratio = 관 조각 x 추가배수 · ux = 전체 x 배율(균일 축소용)."""
     out = []
     for p in pieces:
-        r = (kx_ratio if p["src"] in CROWN_WIDEN_SRC else 1.0) * ux
+        r = (kx_ratio if _crown_widened(p["src"]) else 1.0) * ux
         q = dict(p)
         q["pts"] = [(x * r, y * s + t) for x, y in p["pts"]]
         out.append(q)

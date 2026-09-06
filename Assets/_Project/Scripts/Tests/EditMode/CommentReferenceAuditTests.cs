@@ -137,6 +137,11 @@ namespace StickMate.Tests.EditMode
         {
             ["WindowsFramePacing.cs"] = "Platform/FramePacing.cs 클래스 문서가 '통합 전에는 따로 있었다'로 명시한 과거 파일.",
             ["MacFramePacing.cs"] = "같은 문단의 macOS 짝.",
+            ["FocusWatchRenderer.cs"] =
+                "2026-09-06 사용자 지시로 발밑 타이머 링이 삭제되면서 <b>파일째</b> 지워졌다. 이 이름을 " +
+                "인용하는 주석(FocusWatchDirector / FocusSessionPopover / SceneBootstrapper / " +
+                "SuspendedOverlayGate / StickmanPoseAnimator)은 전부 «있었다가 사라졌다»는 과거형이고, " +
+                "그 문장이 곧 「되살리지 마라」는 경고라 지우면 안 된다.",
         };
 
         /// <summary>
@@ -223,8 +228,10 @@ namespace StickMate.Tests.EditMode
         {
             ("InfoGearIconWidget.cs:51", "_Project/Scripts/Interaction/InfoGearIconWidget.cs", 51,
                 "hitTestType=Raycast"),
-            ("CharacterFxRenderer.cs:304", "_Project/Scripts/Interaction/CharacterFxRenderer.cs", 304,
-                "item <= FxNone"),
+            // ★ 2026-09-06 — <c>CharacterFxRenderer.cs:304</c> 항목을 <b>지웠다</b>. 그 줄 번호는
+            //   FX 도형 라운드가 위쪽에 줄을 넣자마자 썩었고(이 검사가 실제로 잡았다), 처방대로
+            //   가리키던 주석(CharacterPortraitStage.DrawFxPreview)을 <b>절 이름</b>으로 바꿨다.
+            //   즉 명부에서 빠진 이유는 "면제"가 아니라 <b>줄 번호 참조 자체가 사라졌기 때문</b>이다.
         };
 
         // ==================================================================

@@ -80,13 +80,18 @@ namespace StickMate.Core
         /// <summary>투두 말풍선 '들고 다니는 모드'(17절): 종이를 꺼내 확정된 할일 1개를 대사로 보여주고
         /// 다시 접어 넣는 순수 연출. Interaction/TodoReminderDirector.cs가 유휴 판정으로 트리거한다.</summary>
         TodoReminder = 15,
-        /// <summary>포모도로 감시자(18절) 타이머 시작 포즈(안경+팔짱) + "좋아, 감시 시작" 대사.</summary>
+        /// <summary>집중 세션(18절) 타이머 시작 포즈(안경+팔짱) + 시작 대사.</summary>
         FocusStart = 16,
-        /// <summary>포모도로 감시자 타이머 정상 만료 축하 포즈 + "수고했어!" 대사.</summary>
+        /// <summary>집중 세션 타이머 정상 만료 축하 포즈 + "수고했어!" 대사.</summary>
         FocusComplete = 17,
-        /// <summary>포모도로 감시자 유저의 중도 취소 시 패널티 없는 톤의 포즈 + "그래 쉬자" 대사.</summary>
+        /// <summary>집중 세션 유저의 중도 취소 시 패널티 없는 톤의 포즈 + "그래 쉬자" 대사.</summary>
         FocusCancelled = 18,
-        /// <summary>포모도로 감시자 2단계 "부드러운 리마인드" — "어? 딴 데 보고 있네?" 대사 1회.</summary>
+        /// <summary>★ <b>예약 번호</b>(2026-09-06 사용자 지시 «집중모드에서 지켜보기 기능 삭제해줘»).
+        /// 옛 「딴짓 감지」 2단계 리마인드 상태였고, <b>그 상태로 들어가는 경로는 삭제됐다</b>
+        /// (<c>Interaction/FocusWatchDirector</c>의 에스컬레이션 판정이 통째로 사라졌다).
+        /// <para><b>번호를 지우지 마라</b> — 이 정수는 DLC 매니페스트(<c>MotionPluginSO.applicableStates</c>)에
+        /// 나가는 값이라 지우면 뒤 번호가 밀린다(<c>Tests/EditMode/StickmanStateIdWireFormatTests</c>).
+        /// <c>GlobalKey.K</c>가 격파 놀이 삭제 뒤 예약으로만 남은 것과 같은 처리다.</para></summary>
         FocusNudge = 19,
         /// <summary>스트레스 게이지(19절)가 임계값(80%) 근접 시 확정 발동하는 SULKY(부루퉁함) — 한숨/짜증
         /// 대사와 처진 자세. "곧 가출한다"는 예고가 아니라 "지금 기분이 안 좋다"는 현재형 사실 보고.</summary>
@@ -323,19 +328,6 @@ namespace StickMate.Core
             Kind = kind;
             Active = active;
         }
-    }
-
-    /// <summary>docs/UX_FLOW.md 18절 포모도로 감시자 "딴짓 감지" 에스컬레이션 단계. None=정상 범위
-    /// 복귀(즉시 리셋), Glance=1단계(곁눈질, 대사 없음, 순수 앰비언트 이벤트), Nudge=2단계(대사 1회,
-    /// 실제로는 이벤트가 아니라 StickmanStateId.FocusNudge 상태 전이로 표현되므로 이 이벤트에는 잘
-    /// 실리지 않는다 — 그래도 렌더링 레이어가 "지금 몇 단계인지" 한 번에 알 수 있도록 함께 통지한다),
-    /// WindowTap=3단계(타이머 위젯 두드림+화면 흔들림, 순수 앰비언트 이벤트).</summary>
-    public enum FocusWatchTier
-    {
-        None,
-        Glance,
-        Nudge,
-        WindowTap,
     }
 
     /// <summary>가출(20절) 상태의 세부 생애주기. Phase2+ 렌더링이 이 값으로 "뛰어가는 애니메이션 →
@@ -663,11 +655,6 @@ namespace StickMate.Core
         /// 자체를 지금 확정해두는 것이 목적(LandingRollRequested/WanderAmbientMotionRequested와 동일 패턴).</summary>
         public static event Action<float> StressLevelChanged;
 
-        /// <summary>포모도로 감시자(18절) "딴짓 감지" 에스컬레이션 단계 변경 — Glance/WindowTap은 순수
-        /// 앰비언트 신호(상태 전이 없음), Nudge는 StickmanStateId.FocusNudge 상태 전이와 별도로 "지금
-        /// 몇 단계인지"를 렌더링 레이어에 알리기 위해 함께 발행된다. None은 즉시 리셋을 뜻한다.</summary>
-        public static event Action<FocusWatchTier> FocusWatchTierChanged;
-
         /// <summary>가출(20절) 생애주기 변경 — 실제 사라짐/발견/화해 연출은 Phase2+ 렌더링 담당.</summary>
         public static event Action<RunawayLifecycleEvent> RunawayLifecycleChanged;
 
@@ -744,9 +731,6 @@ namespace StickMate.Core
 
         public static void RaiseStressLevelChanged(float level)
             => StressLevelChanged?.Invoke(level);
-
-        public static void RaiseFocusWatchTierChanged(FocusWatchTier tier)
-            => FocusWatchTierChanged?.Invoke(tier);
 
         public static void RaiseRunawayLifecycleChanged(RunawayLifecyclePhase phase, Vector2 hideSpotOsScreen)
             => RunawayLifecycleChanged?.Invoke(new RunawayLifecycleEvent(phase, hideSpotOsScreen));
