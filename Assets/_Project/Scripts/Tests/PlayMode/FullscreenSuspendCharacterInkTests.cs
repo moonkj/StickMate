@@ -146,22 +146,58 @@ namespace StickMate.Tests.PlayMode
         /// 이펙트가 하나도 안 생겨 이 테스트의 전제가 조용히 무너지므로 발자국(1번)을 명시한다.</summary>
         private const int FxFootprintItem = 1;
 
-        /// <summary>7슬롯을 전부 착용시킨다 — "가장 많이 그리고 있는 상태"가 최악의 경우다.</summary>
+        /// <summary>
+        /// <b>은퇴하지 않은 슬롯을 전부</b> 착용시킨다 — "가장 많이 그리고 있는 상태"가 최악의 경우다.
+        ///
+        /// <para>★ 2026-09-06 — 원래 "7슬롯 전부"였다. 사용자 지시 *"외형에서 머리 스타일은 전체 삭제"*로
+        /// [머리]가 은퇴하면서(<see cref="EquipmentModel.IsRetiredSlot"/>) <c>TryWear</c>가 그 자리에서
+        /// <b>구조적으로</b> false를 돌려주고, 그 결과 이 파일의 세 테스트가 전부 SetUp 단계에서
+        /// 빨개졌다. <b>프로덕션이 옳고 이 전제가 낡은 것</b>이므로 전제만 좁힌다 — 잉크 관측·네거티브
+        /// 컨트롤·복귀 검증은 한 줄도 건드리지 않는다.</para>
+        ///
+        /// <para>★ 슬롯 이름을 여기에 적지 않고 <b>그 술어에 물어보는</b> 이유: 은퇴 목록이 늘거나
+        /// 줄면 이 필터가 혼자 따라와야 한다. "머리만 빼고 6개"라고 고정하면 다음 은퇴에서 이 파일이
+        /// 다시 무관한 이유로 빨개진다(CLAUDE.md — 상수·식별자는 베끼지 말고 참조한다).</para>
+        /// </summary>
         private IEnumerator EquipEverything()
         {
             CharacterProgressionModel.AddXp(1000000f, _clonedConfig);
             for (int i = 0; i < EquipmentModel.SlotCount; i++)
             {
                 var slot = (EquipmentSlot)i;
+                if (EquipmentModel.IsRetiredSlot(slot)) continue;   // 걸칠 수 있는 자리가 아니다.
                 if (!EquipmentModel.IsUnlocked(slot)) continue;
                 int item = slot == EquipmentSlot.Fx ? FxFootprintItem : 0;
                 if (EquipmentModel.WornIndex(slot) != item) EquipmentModel.TryWear(slot, item, _clonedConfig);
             }
+
+            int equippedSlots = 0;
+            int retiredSlots = 0;
             for (int i = 0; i < EquipmentModel.SlotCount; i++)
             {
-                Assert.IsTrue(EquipmentModel.IsEquipped((EquipmentSlot)i),
-                    $"{LogPrefix} 슬롯 {(EquipmentSlot)i}을 착용시키지 못했습니다 — 이 테스트의 전제가 성립하지 않습니다.");
+                var slot = (EquipmentSlot)i;
+                if (EquipmentModel.IsRetiredSlot(slot))
+                {
+                    retiredSlots++;
+                    // 은퇴한 자리는 <b>걸쳐지지 않는 것</b>이 정상이다. 뒤집히면 이 테스트가 세는 잉크에
+                    // "화면 어디에서도 벗을 수 없는 조각"이 섞이고, 그건 이 파일이 재는 것이 아니다.
+                    Assert.IsFalse(EquipmentModel.IsEquipped(slot),
+                        $"{LogPrefix} 은퇴한 카테고리 [{EquipmentModel.SlotName(slot)}]가 걸쳐졌습니다 — " +
+                        "EquipmentModel의 착용 잠금이 풀렸습니다(이 파일이 아니라 그쪽을 보세요).");
+                    continue;
+                }
+                Assert.IsTrue(EquipmentModel.IsEquipped(slot),
+                    $"{LogPrefix} 슬롯 {slot}을 착용시키지 못했습니다 — 이 테스트의 전제가 성립하지 않습니다.");
+                equippedSlots++;
             }
+
+            // ★ 양성 대조 — 위 루프의 은퇴 분기는 <b>부재 단언</b>이라, 어느 날 IsRetiredSlot이 전 슬롯에
+            //   참이 되면 <b>착용을 한 번도 안 재고</b> 조용히 초록이 된다(CLAUDE.md 부재 단언 규칙).
+            //   숫자를 적지 않고 "적어도 하나는 실제로 걸쳐졌다"만 못 박는다.
+            Assert.Greater(equippedSlots, 0,
+                $"{LogPrefix} 실제로 걸친 카테고리가 0개입니다(은퇴 {retiredSlots}개) — 아래 잉크 관측이 " +
+                "액세서리/펫/FX를 하나도 안 켜고 시작합니다. EquipmentModel.IsRetiredSlot 범위를 확인하세요.");
+
             Assert.AreEqual(FxFootprintItem, EquipmentModel.WornIndex(EquipmentSlot.Fx),
                 $"{LogPrefix} FX가 '없음'(0번)으로 남아 있습니다 — 이펙트가 하나도 생기지 않습니다.");
 

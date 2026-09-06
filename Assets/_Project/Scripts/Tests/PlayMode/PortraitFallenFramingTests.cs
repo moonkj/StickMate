@@ -34,8 +34,28 @@ namespace StickMate.Tests.PlayMode
     ///     그래서 (2)는 포즈를 <see cref="CharacterPortraitStage.SetPose"/>로 직접 넣어 <b>기하만</b>
     ///     확인하고, 없어진 옛 계약은 (5)에서 <b>반대 방향으로</b> 다시 잠근다 —
     ///     상태를 몰아도 액자가 따라오지 않는지. 잠금을 지우지 않고 <b>뒤집는다</b>.</para>
-    ///  ④ (네거티브 컨트롤) 옛 "발 회전축" 변환을 그대로 되돌려 놓으면 ①이 <b>실제로 깨진다</b> —
-    ///     이 테스트가 이 버그를 진짜로 잡는다는 증명이다.
+    ///  ④ (네거티브 컨트롤) 두 갈래다 — <b>④-A 상수 노후 감시</b> + <b>④-B 탐지 경로 생존</b>.
+    ///     <para>★★ 2026-09-06 정정 — 옛날에는 이 자리가 하나였고 <b>"옛 변환을 되돌리면 ①이 깨진다"</b>였다.
+    ///     그 단언이 러너에서 <b>빨개졌다</b>(오른쪽 여백 <b>+0.022유닛</b>, 즉 옛 포즈가 액자 <b>안</b>에
+    ///     들어왔다). 조사 결과 <b>상수가 낡은 것이 아니라 전제가 낡았다</b>:
+    ///     옛 변환(−78° · (−h·0.30, h·0.30) · 배율 1)은 지금도 <b>2026-08-30 증거와 같은 그림</b>을 만든다
+    ///     (그날 커밋 be751b7이 기록한 머리 x범위 [0.830, 1.161] ↔ 오늘 실측 [0.831, 1.161]).
+    ///     바뀐 것은 <b>액자</b>다 — 두 번 넓어졌다:</para>
+    ///     <list type="bullet">
+    ///       <item><see cref="CharacterInfoWindow.PortraitContentSize"/>에서 파생되는 종횡비 1.044 → 1.122</item>
+    ///       <item><c>CharacterPortraitStage.TallestAccessoryAboveHeadCenterInR</c> 1.80 → <b>2.551</b>
+    ///             (2026-09-05 R17, 인계본 털모자를 액자에 넣으려고)</item>
+    ///     </list>
+    ///     <para>액자 반폭이 <b>1.033 → 1.110 → 1.183</b>으로 커지는 동안 옛 포즈의 머리 우단은
+    ///     <b>1.161에 그대로 있었다.</b> 그래서 여백이 −0.128 → −0.051 → <b>+0.022</b>로 넘어갔다.
+    ///     ⇒ <b>옛 결함은 오늘의 액자에서는 더 이상 머리를 자르지 않는다.</b> 이것은 프로덕션 회귀가
+    ///     아니라 <b>네거티브 컨트롤의 수명이 다한 것</b>이다.</para>
+    ///     <para>그래서 잠금을 <b>지우지 않고 둘로 나눴다</b>:
+    ///     <b>④-A</b>는 옛 변환을 그대로 보존하되 <b>액자와 무관한</b> 두 가지만 단언한다 —
+    ///     (ⅰ) 옛 그림이 여전히 2026-08-30 증거와 같은가(= 캐릭터 조형이 바뀌면 여기서 걸린다),
+    ///     (ⅱ) 옛 회전축(발)이 머리를 프로덕션보다 최소 <b>머리 반경 하나</b>만큼 더 오른쪽으로 밀어내는가.
+    ///     <b>④-B</b>는 ①의 측정이 <b>오늘도 실제로 빨개지는가</b>를 지금 잰 여백에서 <b>유도한</b>
+    ///     이동량으로 확인한다(고정 숫자가 없으므로 액자가 또 넓어져도 썩지 않는다).</para>
     ///
     /// ============================================================================
     /// 측정 방식 — 프로덕션 공식을 베끼지 않는다
@@ -48,6 +68,49 @@ namespace StickMate.Tests.PlayMode
     public sealed class PortraitFallenFramingTests
     {
         private const string LogPrefix = "[넘어짐프레이밍-TEST]";
+
+        // ============================================================================
+        // ④-A 상수 노후 감시의 기준값 — 출처는 <b>프로덕션이 아니라 커밋 be751b7의 실측 기록</b>이다
+        // ============================================================================
+        // 그날 커밋 메시지 원문: "재현 실측: 액자 가시 x범위 [-0.870, 0.870], 머리 원 x범위
+        // [0.830, 1.161] -> 오른쪽으로 0.291유닛 잘림."
+        //
+        // ★ 교정(알려진 값으로 먼저 맞춰 본다 — 이 저장소의 공통 처방):
+        //   2026-09-06 러너 실측 = [0.831, 1.161]. 열흘이 지나고 액자가 두 번 넓어졌는데도
+        //   <b>머리 x범위는 세 자리까지 같다.</b> 즉 옛 변환 사본(−78° / (−h·0.30, h·0.30) / 배율 1)은
+        //   여전히 그날의 그림을 만들고 있고, 낡은 것은 상수가 아니라 <b>"액자가 이보다 좁다"는 전제</b>였다.
+        //
+        // ★ 왜 x만 잠그고 y는 안 잠그는가: y는 ApplyBreathing이 매 프레임 미세하게 움직인다
+        //   (CharacterPortraitStage.Breathing). x는 그 영향을 받지 않으므로 x만이 안정된 자다.
+        //
+        // ★★ 왜 유닛이 아니라 <b>키(TotalHeight) 대비 비율</b>인가 — 이걸 유닛으로 적으면
+        //   <b>캐릭터 크기 배율에 묶인다.</b> 촬영장의 모든 치수와 이 테스트의 h가 <b>같은 출처</b>
+        //   (StickmanMetrics.TotalHeight)이고, 그 값은 사용자 크기 설정(CharacterScaleController,
+        //   기본 0.75)에 따라 통째로 스케일한다. 즉 앞선 테스트가 배율을 바꿔 놓으면 절대 유닛값은
+        //   전부 어긋나는데 <b>그림의 모양은 하나도 안 바뀐 것</b>이다. 비율로 적으면 배율이 약분되고,
+        //   남는 것은 우리가 실제로 감시하려는 <b>캐릭터 비례</b>뿐이다.
+        //
+        // ★ 세 갈래로 교차 검산했다(하나였으면 못 믿는다):
+        //   ① 2026-08-30 커밋 기록  0.830 / 1.161  ÷ h(1.7059) = 0.48654 / 0.68058
+        //   ② 2026-09-06 러너 실측  0.831 / 1.161  ÷ h(1.7059) = 0.48713 / 0.68058
+        //   ③ 닫힌 식 — 옛 변환은 머리 중심을 (h−R)만큼 떨어진 반경으로 −78° 돌린 뒤 x로 −0.30h 민다:
+        //        중심비 = (1 − R/h)·sin78° − 0.30 = 0.90328 × 0.978148 − 0.30 = 0.58348
+        //        R/h    = BaselineHeadVisualRadius / BaselineCharacterTotalHeight = 0.22/2.2746944 = 0.09672
+        //        ⇒ 좌 0.48676 / 우 0.68019
+        //   세 값의 최대 편차가 0.0006이다. 아래 기대값은 그 중앙이다.
+        private const float HistoricHeadLeftRatioOfHeight = 0.4868f;
+        private const float HistoricHeadRightRatioOfHeight = 0.6804f;
+
+        /// <summary>위 두 기준값의 허용오차(키 대비 비율). 세 갈래 교차 검산의 편차가 0.0006이므로
+        /// 0.010은 그 <b>16배</b> 여유다 — 부동소수/렌더 순서는 흡수한다. 동시에 0.010은 머리 반경
+        /// (0.0967 h)의 10%, 다리 획(0.0551 h)의 18%라서 <b>캐릭터 비례가 실제로 바뀌면 걸린다</b>.</summary>
+        private const float HistoricHeadRatioTolerance = 0.010f;
+
+        /// <summary>④-B가 "오른쪽 여백"에 더해 추가로 미는 양(액자 <b>가로폭</b> 대비 비율).
+        /// 절대 숫자를 쓰지 않는 이유가 ④-A의 교훈 그 자체다 — 액자가 넓어지면 절대값은 썩는다.
+        /// 1%면 지금 액자에서 0.024유닛 = 머리 반경의 14%라, 여백을 확실히 넘기면서도
+        /// "겨우 넘겨서 통과한 것"이 아님이 로그 숫자로 드러난다.</summary>
+        private const float NudgeOvershootOfFrameWidth = 0.01f;
 
         private CharacterInfoWindow _window;
         private StickmanAgent _pinnedAgent;
@@ -296,8 +359,10 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 넘어진 그림의 중심이 액자 아래에서 {inkCenterFromBottom:P0} 지점입니다 — " +
                 "절반보다 위면 바닥에 누운 것으로 읽히지 않습니다.");
 
-            // ④ 네거티브 컨트롤 — 옛 "발 회전축" 변환을 그대로 되돌려 놓으면 머리가 실제로 잘린다.
-            //    (같은 프레임 안에서 재고 되돌린다. ApplyBreathing이 다음 프레임에 y를 되돌려 놓는다.)
+            // 옛/새 변환을 비교하려면 지금(프로덕션) 머리를 먼저 재 둬야 한다.
+            MeasureHead(stage, out Vector2 prodCenter, out float prodRadius);
+            float prodRightGap = view.xMax - (prodCenter.x + prodRadius);
+
             var metrics = Object.FindFirstObjectByType<StickmanMetrics>();
             Assert.IsNotNull(metrics, $"{LogPrefix} 씬에서 StickmanMetrics를 찾지 못했습니다 — 네거티브 컨트롤 불가.");
             float h = metrics.TotalHeight;
@@ -307,22 +372,97 @@ namespace StickMate.Tests.PlayMode
             Quaternion keepRot = figure.localRotation;
             Vector3 keepScale = figure.localScale;
 
-            figure.localScale = Vector3.one;
-            figure.localRotation = Quaternion.Euler(0f, 0f, -78f);
-            figure.localPosition = new Vector3(-h * 0.30f, h * 0.30f, 0f);
+            Vector2 oldCenter;
+            float oldRadius;
+            Vector2 nudgedCenter;
+            float nudgedRadius;
+            float nudgeX;
+            try
+            {
+                // ────────────────────────────────────────────────────────────────
+                // ④-A 옛 "발 회전축" 변환의 <b>역사 기록 + 상수 노후 감시</b>
+                // ────────────────────────────────────────────────────────────────
+                // 아래 세 줄은 be751b7이 지운 옛 프로덕션 코드 <b>원문 그대로</b>다(추정이 아니다):
+                //     _figureRoot.localRotation = Quaternion.Euler(0f, 0f, -78f);
+                //     _baseFigureY              = TotalHeight * 0.30f;
+                //     _figureRoot.localPosition = new Vector3(-TotalHeight * 0.30f, _baseFigureY, 0f);
+                // 옛 코드에는 배율 보정이 없었으므로 localScale = 1도 그 일부다.
+                // ★ 그래서 이 숫자들은 "프로덕션에서 베낀 상수"가 아니라 <b>삭제된 코드의 사본</b>이며,
+                //   프로덕션이 바뀌었다고 따라 고치면 안 된다 — 고치는 순간 기록이 사라진다.
+                figure.localScale = Vector3.one;
+                figure.localRotation = Quaternion.Euler(0f, 0f, -78f);
+                figure.localPosition = new Vector3(-h * 0.30f, h * 0.30f, 0f);
 
-            MeasureHead(stage, out Vector2 oldCenter, out float oldRadius);
+                MeasureHead(stage, out oldCenter, out oldRadius);
+
+                // ────────────────────────────────────────────────────────────────
+                // ④-B ①의 탐지 경로가 <b>오늘도 살아 있는가</b>
+                // ────────────────────────────────────────────────────────────────
+                // 지금 프로덕션 포즈를 오른쪽 여백보다 조금 더 밀면 ①의 측정이 반드시 음수를 내야 한다.
+                // 이동량을 <b>방금 잰 여백에서 유도</b>하므로 액자가 또 넓어져도 이 컨트롤은 썩지 않는다
+                // (④-A가 딱 그 이유로 2026-09-06에 수명이 다했다 — 클래스 문서 참고).
+                figure.localPosition = keepPos;
+                figure.localRotation = keepRot;
+                figure.localScale = keepScale;
+                nudgeX = prodRightGap + view.width * NudgeOvershootOfFrameWidth;
+                figure.localPosition = keepPos + new Vector3(nudgeX, 0f, 0f);
+
+                MeasureHead(stage, out nudgedCenter, out nudgedRadius);
+            }
+            finally
+            {
+                figure.localPosition = keepPos;
+                figure.localRotation = keepRot;
+                figure.localScale = keepScale;
+            }
+
             float oldRightGap = view.xMax - (oldCenter.x + oldRadius);
-            Debug.Log($"{LogPrefix} (네거티브 컨트롤) 옛 발-회전축 방식 — 머리 중심=({oldCenter.x:F3},{oldCenter.y:F3}), " +
-                $"오른쪽 여백={oldRightGap:F3}유닛(음수면 잘림).");
+            float oldPushRight = oldCenter.x - prodCenter.x;
+            float nudgedRightGap = view.xMax - (nudgedCenter.x + nudgedRadius);
 
-            figure.localPosition = keepPos;
-            figure.localRotation = keepRot;
-            figure.localScale = keepScale;
+            Debug.Log($"{LogPrefix} (④-A 역사 기록) 옛 발-회전축 방식 — 머리 중심=({oldCenter.x:F3},{oldCenter.y:F3}) " +
+                $"반경={oldRadius:F3}, 머리 x범위=[{oldCenter.x - oldRadius:F3},{oldCenter.x + oldRadius:F3}]유닛 " +
+                $"= 키({h:F3}) 대비 [{(oldCenter.x - oldRadius) / Mathf.Max(0.0001f, h):F4},{(oldCenter.x + oldRadius) / Mathf.Max(0.0001f, h):F4}]배, " +
+                $"오른쪽 여백={oldRightGap:F3}유닛. 프로덕션 대비 오른쪽으로 {oldPushRight:F3}유닛 " +
+                $"(머리 지름 {2f * prodRadius:F3}의 {oldPushRight / Mathf.Max(0.0001f, 2f * prodRadius):F2}배). " +
+                "★ 여백이 양수여도 회귀가 아니다 — 액자가 넓어져서다(클래스 문서 ④).");
+            Debug.Log($"{LogPrefix} (④-B 탐지 경로 생존) 지금 포즈를 x로 {nudgeX:F3}유닛 밀었더니 " +
+                $"오른쪽 여백 {prodRightGap:F3} -> {nudgedRightGap:F3}유닛(음수여야 정상).");
 
-            Assert.Less(oldRightGap, 0f,
-                $"{LogPrefix} 네거티브 컨트롤 실패 — 옛 방식으로 되돌렸는데도 머리가 액자 안에 있습니다. " +
-                "이 테스트가 원래 결함을 잡지 못한다는 뜻이므로 측정 방식을 의심해야 합니다.");
+            // ④-A-ⅰ 상수 노후 감시 — 옛 변환이 <b>2026-08-30 그날의 그림</b>을 여전히 만드는가.
+            //   기대값의 출처는 프로덕션 함수가 아니라 <b>커밋 be751b7의 실측 기록 + 닫힌 식</b>이다
+            //   (상수 선언부의 세 갈래 교차 검산 참고). 캐릭터 <b>비례</b>가 바뀌면 여기서 걸리고,
+            //   캐릭터 <b>크기 배율</b>만 달라진 경우에는 걸리지 않는다(비율이라 약분된다).
+            //   걸렸을 때 할 일은 이 두 숫자를 맞추는 것이 아니라, 먼저 "왜 조형이 바뀌었는가"를
+            //   확인하고 새 실측을 근거와 함께 갱신하는 일이다.
+            Assert.Greater(h, 0.0001f, $"{LogPrefix} 미니 피규어 키가 0입니다 — 비율 판정이 불가능합니다.");
+            float oldLeftRatio = (oldCenter.x - oldRadius) / h;
+            float oldRightRatio = (oldCenter.x + oldRadius) / h;
+
+            Assert.AreEqual(HistoricHeadLeftRatioOfHeight, oldLeftRatio, HistoricHeadRatioTolerance,
+                $"{LogPrefix} ④-A 실패 — 옛 변환이 만드는 머리 왼쪽 x가 키의 {oldLeftRatio:F4}배입니다" +
+                $"(2026-08-30 기준 {HistoricHeadLeftRatioOfHeight:F4}배, 유닛으로는 {oldCenter.x - oldRadius:F3} / 키 {h:F3}). " +
+                "옛 변환 자체는 삭제된 코드의 사본이라 변할 수 없고 비율이므로 크기 배율도 약분됩니다 — " +
+                "즉 캐릭터 «비례»(머리 반경/키, 관절 위치)가 바뀌었다는 뜻입니다. [디버거로 이동]");
+            Assert.AreEqual(HistoricHeadRightRatioOfHeight, oldRightRatio, HistoricHeadRatioTolerance,
+                $"{LogPrefix} ④-A 실패 — 옛 변환이 만드는 머리 오른쪽 x가 키의 {oldRightRatio:F4}배입니다" +
+                $"(2026-08-30 기준 {HistoricHeadRightRatioOfHeight:F4}배, 유닛으로는 {oldCenter.x + oldRadius:F3} / 키 {h:F3}). " +
+                "위와 같은 사유입니다. [디버거로 이동]");
+
+            // ④-A-ⅱ 결함의 본질 — "회전축이 발"이면 회전 반경이 <b>키</b>라서 머리가 크게 쓸려 나간다.
+            //   프로덕션은 회전축이 그림 중심이라 반경이 그 절반이다. 그 차이를 <b>액자와 무관한</b>
+            //   자(= 머리 반경)로 잰다. 실측 0.404유닛 vs 머리 반경 0.165유닛 = 2.45배 여유라
+            //   액자가 또 넓어져도 이 단언은 흔들리지 않는다(옛 단언은 여유가 0.05유닛이었다).
+            Assert.Greater(oldPushRight, prodRadius,
+                $"{LogPrefix} ④-A 실패 — 옛 발-회전축 방식이 머리를 오른쪽으로 {oldPushRight:F3}유닛밖에 " +
+                $"밀지 못했습니다(머리 반경 {prodRadius:F3} 미만). 두 방식의 회전축이 사실상 같아졌다는 뜻이므로, " +
+                "프로덕션이 FrameFallenFigure()의 '회전축 = 그림 중심'을 잃지 않았는지 먼저 확인하십시오.");
+
+            // ④-B 탐지 경로 생존 — 여기서 초록이면 ①의 단언은 아무것도 못 잡는 장식이다.
+            Assert.Less(nudgedRightGap, 0f,
+                $"{LogPrefix} ④-B 실패 — 오른쪽 여백({prodRightGap:F3})보다 큰 {nudgeX:F3}유닛을 밀었는데도 " +
+                $"머리가 액자 안에 있습니다(여백 {nudgedRightGap:F3}). ①의 측정 경로가 죽었다는 뜻입니다 — " +
+                "MeasureHead/VisibleRect가 무엇을 재고 있는지부터 의심하십시오.");
         }
 
         // ============================================================================

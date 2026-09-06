@@ -253,6 +253,12 @@ namespace StickMate.Interaction
         /// 카드 탭의 <see cref="_pendingEquipCard"/>와 같은 이유다(미는 손짓이 구매가 되면 안 된다).</summary>
         private int _pendingShopCard = -1;
 
+        /// <summary>직전 <b>구매</b>가 부른 <see cref="CharacterSaveStore.Save"/>의 결과.
+        /// <c>null</c>은 «이 창이 켜진 뒤 구매 저장을 시도한 적이 없다»이고, 그건 <c>false</c>(시도했는데
+        /// 실패)와 <b>다른 사실</b>이다 — 이 저장소의 <c>…Saved</c> 동반 불리언 관례와 같은 이유로
+        /// 「없음 ≠ false」를 살려 둔다. 읽는 곳은 <see cref="ShopLastSaveSucceededForTests"/> 하나뿐이다.</summary>
+        private bool? _shopLastSaveSucceeded;
+
         // ==================== 구성 ====================
 
         private void BuildShopPage(RectTransform body)
@@ -710,10 +716,35 @@ namespace StickMate.Interaction
             }
 
             _shopBoughtId = entry.Id;
-            CharacterSaveStore.Save();   // "모든 토글은 즉시 반영(별도 저장 버튼 없음)" — 구매도 같다.
 
-            Debug.Log($"[상점] {entry.DisplayName} 구매 — 동전 {price:N0} 차감, 잔액 {CurrencyModel.CoinBalance:N0}. " +
-                      $"[{WearTabName(entry)}] 탭에서 바로 입힐 수 있습니다. 즉시 저장.");
+            // ★ 2026-09-06 — 여기서 <see cref="CharacterSaveStore.Save"/>의 반환값을 <b>버리고</b> 아래
+            //   로그가 무조건 "즉시 저장."이라고 적고 있었다. 그런데 그 함수의 실패 경로 셋 중
+            //   <b>SaveSuspended</b>(Core/CharacterSaveStore.cs: <c>if (SaveSuspended) return false;</c>)
+            //   하나는 <b>로그를 단 한 줄도 남기지 않고</b> false만 돌려준다(나머지 둘 — 쓰기 중단과
+            //   예외 — 은 자기 자리에서 경고를 남긴다). 그 조합이면 동전은 깎였는데 디스크에는 닿지
+            //   않은 채 로그만 "저장됐다"고 말한다. 다음 실행에서 산 물건이 사라져도 이 로그를 믿고
+            //   엉뚱한 곳을 뒤지게 되므로, <b>저장 결과를 이 창의 사실로 만들어</b> 기록한다
+            //   (형제 파일 <see cref="InfoGearIconWidget"/>의 위치 저장이 쓰는 그 형태다).
+            //   "모든 토글은 즉시 반영(별도 저장 버튼 없음)" — 구매도 같다.
+            bool saved = CharacterSaveStore.Save();
+            _shopLastSaveSucceeded = saved;   // ★ 이 창의 사실로 남긴다(아래 테스트 창구가 읽는다).
+            string bought = $"[상점] {entry.DisplayName} 구매 — 동전 {price:N0} 차감, " +
+                            $"잔액 {CurrencyModel.CoinBalance:N0}. " +
+                            $"[{WearTabName(entry)}] 탭에서 바로 입힐 수 있습니다. ";
+
+            if (saved)
+            {
+                Debug.Log(bought + "저장 완료.");
+            }
+            else
+            {
+                // 화면과 모델은 이미 "샀다"이고 그건 되돌리지 않는다(되돌리면 눌렀는데 아무 일도 없는
+                // 버튼이 된다). 대신 <b>디스크에 닿지 않았다는 사실</b>을 여기서 시끄럽게 남긴다.
+                Debug.LogWarning(bought + "★ 저장 실패 — 메모리에는 남아 있지만 디스크에는 닿지 " +
+                    $"않았습니다(저장보류={CharacterSaveStore.SaveSuspended}). 저장보류가 켜져 있으면 " +
+                    "이번 실행에서는 다시 시도해도 쓰지 않습니다(더 새로운 저장 파일을 만난 실행). " +
+                    "앱을 다시 켜면 이 구매가 없던 일이 될 수 있습니다.");
+            }
 
             // ★ 이 넷은 <b>같은 프레임</b>에 일어나야 한다(설계 §3-5) — 하나라도 늦으면 화면이 서로
             //   다른 이야기를 한다: 헤더 잔액 / 상점 카드 / [장비]·[외형] 카드 / [보관함] 줄.
@@ -843,6 +874,18 @@ namespace StickMate.Interaction
 
         /// <summary>지금 확인 단계에 들어간 자리(−1이면 없음).</summary>
         public int ShopConfirmIndexForTests => _shopConfirmIndex;
+
+        /// <summary>
+        /// ★ 직전 구매의 <b>저장 결과</b>. <c>null</c> = 구매 저장을 아직 한 번도 시도하지 않았다.
+        ///
+        /// <para><b>왜 <c>CurrencyModel.IsDirty</c>로 재면 안 되는가</b>(2026-09-06, 거짓 빨강 1건):
+        /// 유휴 수급(<c>CharacterProgressionDirector.AccrueIdleIncome</c>)이 <b>매 프레임</b> 그 플래그를
+        /// 다시 세우므로, 「즉시 저장됐다」를 <c>IsDirty == false</c>로 재는 단언은 <b>구조적으로 항상
+        /// 실패</b>한다. 그건 구매가 안 저장됐다는 뜻이 아니라 <b>관측 불가능한 값을 재고 있었다</b>는
+        /// 뜻이다. 저장이 실제로 일어났는지는 ① 이 값과 ② <c>CharacterSaveStore.FilePath</c>의
+        /// <b>실물 JSON</b> 두 가지로 재고, 이 저장소는 그 둘을 같은 테스트에서 함께 본다.</para>
+        /// </summary>
+        public bool? ShopLastSaveSucceededForTests => _shopLastSaveSucceeded;
 
         /// <summary>카드/칩의 화면 사각형 — 테스트가 좌표를 손으로 적지 않게 하는 통로.</summary>
         public Rect ShopCardRawScreenRect(int index)

@@ -1002,8 +1002,15 @@ namespace StickMate.Interaction
         /// 자리에 반원이 겹쳐 자연스러운 라운드 조인이 <b>공짜로</b> 나온다. 별도의 조인 도형을 만들면
         /// 같은 자리에 그림이 두 벌 생긴다.</para>
         /// </summary>
+        /// <param name="sink">만들어진 선분 <see cref="Image"/>를 <b>순서대로</b> 담을 곳(<c>null</c> 허용).
+        /// <para>★ 2026-09-06 신설(docs/DESIGN_FAN_MENU_ICONS.md §8-1). 이 함수가 <c>void</c>였기 때문에
+        /// 부채꼴 메뉴는 꺾은선을 쓸 수 없었다 — 그쪽은 만든 조각을 <c>ButtonView.SymbolParts</c>에 담아
+        /// <b>호버/무장 색 보간과 접힘 알파</b>를 걸어야 하고, 목록에서 빠진 조각은 메뉴를 접어도
+        /// 알파 1.0으로 화면에 남는다(그 회귀를 <c>UiChromeNoShadowTests.접힌_버튼은_보이는_조각을_하나도_남기지_않는다</c>가
+        /// 지키고 있다). 장비 카드 경로(<see cref="AccessoryCardIcon"/>)는 <c>sink</c>가 필요 없어
+        /// <b>한 줄도 바뀌지 않는다</b> — 아래 <c>null</c> 오버로드로 그대로 들어온다.</para></param>
         public static void AddPolyline(Transform parent, string name, Vector2[] points, int count,
-            float thickness, Color color)
+            float thickness, Color color, List<Image> sink)
         {
             if (points == null) return;
             count = Mathf.Min(count, points.Length);
@@ -1015,13 +1022,22 @@ namespace StickMate.Interaction
                 if (length < 0.0001f) continue;
                 // 길이에 두께를 더하는 이유: 캡슐의 반원 중심이 사각형 안쪽 thickness/2 지점이라,
                 // 사각형을 정확히 length로 잡으면 두 선분이 만나는 자리에 thickness/2짜리 틈이 남는다.
-                AddStroke(parent, name, length + thickness, thickness,
+                Image segment = AddStroke(parent, name, length + thickness, thickness,
                     Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg, (a + b) * 0.5f, color);
+                sink?.Add(segment);
             }
         }
 
+        public static void AddPolyline(Transform parent, string name, Vector2[] points, int count,
+            float thickness, Color color)
+            => AddPolyline(parent, name, points, count, thickness, color, null);
+
         public static void AddPolyline(Transform parent, string name, Vector2[] points, float thickness, Color color)
-            => AddPolyline(parent, name, points, points != null ? points.Length : 0, thickness, color);
+            => AddPolyline(parent, name, points, points != null ? points.Length : 0, thickness, color, null);
+
+        public static void AddPolyline(Transform parent, string name, Vector2[] points, float thickness,
+            Color color, List<Image> sink)
+            => AddPolyline(parent, name, points, points != null ? points.Length : 0, thickness, color, sink);
 
         /// <summary>부모 중심 기준 <paramref name="center"/>에 놓이는 원(꽉 찬 원 또는 링).
         /// 지름 하나로 정사각을 만든다.</summary>

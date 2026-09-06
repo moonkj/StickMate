@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -30,6 +31,10 @@ namespace StickMate.Tests.PlayMode
     ///     실제 세션을 켜고 벽시계로 재는, 이 라운드에서 가장 값진 단언이다 —
     ///     I-7′ 파손은 화면에도 로그에도 «두 번 받았다»는 흔적을 남기지 않는다.</item>
     ///   <item>장비를 <b>실제로 갈아입어</b> H-8 등급 눈금이 새겨지고, 벗어도 안 내려가는가(§5).</item>
+    ///   <item>★★ <b>「유휴 수급이 멈췄다」가 정상 동작을 고장으로 신고하지 않는가</b>(§6, 2026-09-06).
+    ///     정지 판정이 «0동전»이던 동안 <b>5초에 한 줄(실측 720줄/시간)</b>이 쌓였다. 실제 씬을
+    ///     벽시계로 돌려 <b>줄 수를 세는</b> 것 말고는 이 결함을 잡을 자가 없다 — 소스 스캔은
+    ///     «어떤 조건으로 찍는가»만 보고, 모델 테스트는 로그를 아예 안 본다.</item>
     /// </list>
     ///
     /// ============================================================================
@@ -66,6 +71,7 @@ namespace StickMate.Tests.PlayMode
         [TearDown]
         public void Clean()
         {
+            StopWatchingLogs();
             _director = null;
             CurrencyModel.ResetForTesting();
         }
@@ -411,6 +417,138 @@ namespace StickMate.Tests.PlayMode
                 best = i;
             }
             return best;
+        }
+        // ====================================================================
+        // §6. ★★ 「멈췄다」 로그 — 정상 동작을 고장으로 신고하지 않는가
+        // ====================================================================
+        //
+        // ★ 무슨 일이 있었나(2026-09-06 debugger 규명): 정지 판정이 <b>«이번 틱의 지급액이 0인가»</b>
+        //   였다. 그런데 요율이 CurrencyRules.IdleCoinsPerMinute(분당 12 = 초당 0.2)라
+        //   <b>정상 상태에서도 프레임의 대부분이 0동전</b>이다 — 소수분은 다음 틱으로 넘어간다.
+        //   결과: 5초에 한 줄(동전 1개마다 플래그가 풀리고 다음 프레임에 다시 찍힌다).
+//   실측(CurrencyRules.IdleTick을 그대로 컴파일해 60fps 1시간): 옛 기준 720줄, 새 기준 0줄.
+//   그 720줄은 <b>전부</b> «지급 가능 시간(480분)을 다 썼다»고 적혔다 — 그때 창은 60분 썼다.
+        //   그 함수 바로 옆 주석이 «매 프레임 찍지 않는다(24시간 상주 앱)»라고 금지한 바로 그 상황이다.
+        //
+        // ★ <b>여기가 이 결함을 잡는 유일한 자</b>다. EditMode 소스 스캔은 «어떤 조건으로 찍는가»를
+        //   구조로만 볼 수 있고, 모델 단위 테스트는 로그를 보지 않는다. 실제 씬을 벽시계로 돌려
+        //   <b>줄 수를 세는</b> 것만이 «정상인데 시끄러운가»를 잰다.
+        //
+        // ★ 문구를 베끼지 않는다 — 표지와 사유 낱말은 프로덕션 상수를 <b>참조</b>한다
+        //   (CharacterProgressionDirector.IdleStallLogMarker 등). 문구를 다듬는 라운드에 이 테스트가
+        //   조용히 초록이 되지 않게 하는 유일한 방법이다(CLAUDE.md — 부재 단언용 니들은 썩어도 안 빨개진다).
+
+        private readonly List<string> _stallLines = new List<string>();
+        private bool _watchingLogs;
+
+        private void StartWatchingLogs()
+        {
+            _stallLines.Clear();
+            if (_watchingLogs) return;
+            Application.logMessageReceived += OnLogMessage;
+            _watchingLogs = true;
+        }
+
+        private void StopWatchingLogs()
+        {
+            if (!_watchingLogs) return;
+            Application.logMessageReceived -= OnLogMessage;
+            _watchingLogs = false;
+        }
+
+        private void OnLogMessage(string condition, string stackTrace, LogType type)
+        {
+            if (condition != null
+                && condition.IndexOf(CharacterProgressionDirector.IdleStallLogMarker,
+                    System.StringComparison.Ordinal) >= 0)
+            {
+                _stallLines.Add(condition);
+            }
+        }
+
+        /// <summary>
+        /// ★★ <b>정상 수급 중에는 «멈췄다»가 한 줄도 안 나온다.</b>
+        /// <para>양성 대조를 같은 실행에 붙인다 — 관측 시간 동안 유휴 버킷이 <b>실제로 늘어야</b>
+        /// 이 «0줄»이 «수급이 아예 안 돈다»와 구분된다.</para>
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 정상_수급_중에는_정지_로그가_한_줄도_안_찍힌다()
+        {
+            yield return LoadSceneAndFindDirector();
+
+            // 깨끗한 하루로 되돌린다 — 상한도 창도 남아 있으니 «멈출» 이유가 하나도 없는 상태다.
+            CurrencyModel.ResetForTesting();
+            Assert.Greater(CurrencyModel.RemainingDailyRoomCoins(), 0, "전제 — 오늘 상한이 남아 있어야 합니다.");
+            Assert.Greater(CurrencyModel.RemainingIdleWindowSeconds(), 0.0, "전제 — 창이 남아 있어야 합니다.");
+
+            StartWatchingLogs();
+            yield return WaitRealSeconds(IdleProbeSeconds);
+            StopWatchingLogs();
+
+            // ── 양성 대조 먼저. 이게 0이면 아래 «정지 로그 0줄»은 계약이 아니라 기능 부재다.
+            Assert.Greater(CurrencyModel.TodayGrantedCoins, 0,
+                $"{LogPrefix} 관측 시간({IdleProbeSeconds:F0}초) 동안 유휴 수급이 한 푼도 안 들어왔습니다 — " +
+                "아래 «정지 로그 0줄»은 «조용하다»가 아니라 <b>아무것도 안 돈다</b>는 뜻이 됩니다.");
+
+            Assert.AreEqual(0, _stallLines.Count,
+                $"{LogPrefix} ★ 정상 수급 중인데 «{CharacterProgressionDirector.IdleStallLogMarker}»가 " +
+                $"{_stallLines.Count}줄 찍혔습니다(관측 {IdleProbeSeconds:F0}초, 그동안 유휴 " +
+                $"{CurrencyModel.TodayGrantedCoins}동전이 실제로 들어왔습니다). 요율이 초당 " +
+                $"{CurrencyRules.IdleCoinsPerSecond}동전이라 <b>0동전 프레임은 정상</b>입니다 — " +
+                "정지 판정이 지급액이 아니라 «창이 갉혔는가»를 봐야 합니다. " +
+                "첫 줄: " + (_stallLines.Count > 0 ? _stallLines[0] : "(없음)"));
+        }
+
+        /// <summary>
+        /// ★ 진짜로 멈췄을 때는 <b>정확히 한 줄</b>, 그리고 그 줄은 <b>맞는 이유 하나만</b> 말한다.
+        /// <para>실제 로그에 «8시간 창을 0으로 리셋했다»와 «480분을 다 썼다»가 11줄 간격으로 함께
+        /// 찍힌 적이 있다. 창은 설계상 상한보다 <b>2.3배 넉넉</b>해서(<c>WindowToCeilingRatio</c>)
+        /// 거의 도달할 수 없는 쪽인데, 옛 구현이 그것을 <b>기본 분기</b>로 적었기 때문이다.</para>
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 상한에_도달하면_정지_로그가_한_줄만_그리고_상한만_말한다()
+        {
+            yield return LoadSceneAndFindDirector();
+
+            CurrencyModel.ResetForTesting();
+
+            // 오늘 상한까지 한 번에 채운다. 숫자를 베끼지 않고 상한/요율에서 <b>유도</b>한다 —
+            // 상한이나 요율이 바뀌어도 이 테스트는 저절로 따라간다.
+            double secondsToCap = CurrencyModel.DailyCapCoins() / CurrencyRules.IdleCoinsPerSecond;
+            CurrencyModel.TickIdleIncome(secondsToCap, true, out _);
+
+            Assert.AreEqual(0, CurrencyModel.RemainingDailyRoomCoins(),
+                $"{LogPrefix} 상한을 채우지 못했습니다(오늘 유휴 {CurrencyModel.TodayGrantedCoins}/" +
+                $"{CurrencyModel.DailyCapCoins()}) — 아래 단언이 재는 것은 «정지»가 아닙니다.");
+            Assert.Greater(CurrencyModel.RemainingIdleWindowSeconds(), 0.0,
+                $"{LogPrefix} 창까지 함께 소진됐습니다 — 이 실행은 «상한만 말하는가»를 가릴 수 없습니다. " +
+                "설계상 창은 상한보다 " +
+                $"{CurrencyRules.WindowToCeilingRatio:F1}배 넉넉해야 합니다(WindowToCeilingRatio).");
+
+            StartWatchingLogs();
+            yield return WaitRealSeconds(1.0f);   // 수백~수천 프레임. 반복해서 찍히면 여기서 드러난다.
+            StopWatchingLogs();
+
+            Assert.AreEqual(1, _stallLines.Count,
+                $"{LogPrefix} 정지 로그가 {_stallLines.Count}줄입니다(1이어야 합니다). " +
+                "0이면 상한에 걸린 상태가 <b>화면에서 고장과 똑같이 생긴 채</b> 아무 흔적도 안 남고, " +
+                "2 이상이면 24시간 상주 앱의 로그를 매 프레임 채웁니다.");
+
+            string line = _stallLines[0];
+            StringAssert.Contains(CharacterProgressionDirector.IdleStallCapPhrase, line,
+                $"{LogPrefix} 상한에 걸렸는데 그 사실이 로그에 없습니다: {line}");
+            Assert.IsFalse(
+                line.IndexOf(CharacterProgressionDirector.IdleStallWindowPhrase,
+                    System.StringComparison.Ordinal) >= 0,
+                $"{LogPrefix} ★ 상한 정지인데 «창을 다 썼다»까지 같이 주장합니다 — 같은 로그가 서로 " +
+                $"모순되는 두 이유를 말합니다(남은 창 {CurrencyModel.RemainingIdleWindowSeconds() / 60.0:F0}분): {line}");
+            Assert.IsFalse(
+                line.IndexOf(CharacterProgressionDirector.IdleStallUnknownPhrase,
+                    System.StringComparison.Ordinal) >= 0,
+                $"{LogPrefix} 상한 도달을 «원인 불명»으로 적었습니다 — 사유 판정이 정지 판정과 " +
+                $"어긋났습니다: {line}");
+
+            TestContext.WriteLine($"{LogPrefix} 정지 로그 1줄 — {line}");
         }
     }
 }

@@ -306,6 +306,12 @@ namespace StickMate.States
             // 착지 직후 남은 수평 속도를 지수 감쇠로 죽인다(프레임레이트 독립 — 이 프로젝트 표준 공식).
             // 0으로 즉시 대입하지 않는 이유: 공중에서의 수평 이동이 착지 순간 뚝 끊기면 미끄러지듯
             // 멈추는 것보다 오히려 더 부자연스럽다.
+            //
+            // ★ 2026-09-06 — 이 감쇠의 **총 이동거리는 |vx| / damping**이다(∫|vx|e^(-kt)dt).
+            //   던지기 착지에서 그 거리가 발판 가로범위를 넘어 "착지 직후 넘어짐"이 되던 결함은
+            //   여기가 아니라 **진입 속도 쪽**에서 고쳤다 —
+            //   States/ThrowTumbleState.ClampLandingSlideToFootholdEdge 참고. 여기를 세게 만들면
+            //   모든 착지의 미끄러짐이 함께 사라진다(landingCrouchHorizontalDamping 툴팁이 기각한 그 부작용).
             if (_blackboard.Body != null)
             {
                 float damping = _blackboard.Config != null ? _blackboard.Config.landingCrouchHorizontalDamping : 12f;

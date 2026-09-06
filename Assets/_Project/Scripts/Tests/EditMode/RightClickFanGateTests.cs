@@ -207,14 +207,36 @@ namespace StickMate.Tests.EditMode
                 "함정의 실제 값은 180°입니다(§1-3-4). 값이 다르면 기하 전제가 바뀐 것이므로 설계를 다시 보세요.");
         }
 
+        /// <summary>
+        /// ★★ 2026-09-06 — <b>이 단언의 성격이 등호에서 부등호로 바뀌었다.</b>
+        ///
+        /// <para>옛 판은 <c>FanUpBiasPoints == 위성 궤도 168 + 클램프 상자 반폭 28</c>이라는 <b>등호</b>였다.
+        /// 사용자 신고 <i>"끄기 버튼만 따로 떨어져 있다"</i>로 위성이 폐지되어 실제 도달 반경이
+        /// <b>148 + 28 = 176pt</b>로 줄었고, <c>SatelliteOrbitRadiusPoints</c>는 사라졌다.</para>
+        ///
+        /// <para><b>그래도 상수는 196 그대로 뒀다.</b> 유도식이 «앵커가 이만큼 떨어져 있으면 어느 방향으로
+        /// 열어도 들어간다»는 <b>충분조건</b>이라 크게 잡는 쪽이 안전하고, 이 값을 줄이면 §1-3-3이
+        /// 1pt 격자로 실측한 θ₀ 분포표가 통째로 낡는다 — 이번 라운드가 다시 잰 것은 <b>배치 사다리</b>이지
+        /// θ₀ 분포가 아니다.</para>
+        ///
+        /// <para>그래서 «임의값이 아니다»를 지키는 방법도 바뀐다: <b>도달 반경 이상이면서, 그 두 배는
+        /// 넘지 않는다</b>. 상한이 없으면 «크면 안전하다»가 무한정 커지는 변명이 되고, 그때 이 단언은
+        /// 무엇이든 통과시킨다.</para>
+        /// </summary>
         [Test]
-        public void F6_바이어스는_도달_반경에서_유도된다()
+        public void F6_바이어스는_도달_반경_이상이고_그_두_배를_넘지_않는다()
         {
-            // 새 상수를 「고른 값」으로 남기지 않는다: 위성 궤도 + 클램프 상자 반폭.
-            float derived = GearRadialMenuWidget.SatelliteOrbitRadiusPoints
-                + (GearRadialMenuWidget.ButtonDiameterPoints + GearRadialMenuWidget.ClampBoxPaddingPoints) * 0.5f;
-            Assert.AreEqual(derived, GearRadialMenuWidget.FanUpBiasPoints, 0.001f,
-                "FanUpBiasPoints가 「위성 궤도 + 클램프 상자 반폭」과 갈라졌습니다 — 임의값이 되었습니다(§1-3-3).");
+            float clampHalf = (GearRadialMenuWidget.ButtonDiameterPoints
+                + GearRadialMenuWidget.ClampBoxPaddingPoints) * 0.5f;
+            float reach = GearRadialMenuWidget.OrbitRadiusPoints + clampHalf;
+
+            Assert.GreaterOrEqual(GearRadialMenuWidget.FanUpBiasPoints, reach,
+                $"FanUpBiasPoints({GearRadialMenuWidget.FanUpBiasPoints:F0})가 부채꼴 도달 반경({reach:F0}pt = " +
+                $"궤도 {GearRadialMenuWidget.OrbitRadiusPoints:F0} + 클램프 상자 반폭 {clampHalf:F0})보다 작습니다 — " +
+                "§1-3-3의 «이만큼 떨어져 있으면 어느 방향으로 열어도 들어간다»가 성립하지 않습니다.");
+            Assert.LessOrEqual(GearRadialMenuWidget.FanUpBiasPoints, reach * 2f,
+                $"FanUpBiasPoints({GearRadialMenuWidget.FanUpBiasPoints:F0})가 도달 반경의 두 배({reach * 2f:F0}pt)를 " +
+                "넘습니다 — 그쯤 되면 «도달 반경에서 유도했다»가 더 이상 사실이 아니고 임의값입니다.");
         }
 
         // ==================================================================

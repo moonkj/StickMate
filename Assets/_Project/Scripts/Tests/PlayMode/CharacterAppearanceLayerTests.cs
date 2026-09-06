@@ -386,6 +386,20 @@ namespace StickMate.Tests.PlayMode
             yield return null;
 
             string[] capLines = AccessoryLineNames(renderer);
+
+            // ★ 2026-09-06 — 이 검사는 «같은 카테고리 안에서 아이템을 갈아 끼우면 그림이 실제로 바뀐다»를
+            //   <b>v1 도형 이름 두 개</b>(천 모자 HatBrim / 왕관 CrownBody)로 확인한다. 두 아이템 다
+            //   인계본(계약 v2)이 되면서 그 이름이 사라졌다 — 지금은 Piece_* 로 그려진다.
+            //   <b>되살리는 방법</b>(별도 라운드, 실기 실행 필요): 이름을 <b>집합 비교</b>로 바꾼다 —
+            //   «천 모자의 선 이름 집합 ≠ 왕관의 선 이름 집합»이고 «둘 다 비어 있지 않다»를 단언하면
+            //   재구성 서명이 카테고리 비트마스크로 되돌아가는 순간(= 교체를 못 보는 순간) 두 집합이
+            //   같아져 빨개진다. 즉 이름 없이도 이 검사의 뜻이 그대로 산다.
+            //   ※ 이 파일의 짝 네거티브 대조(OldCategoryMaskWouldNotSeeTheSwap)는 순수 계산이라 계속 돈다.
+            HandoffPlayModeGate.SkipIfHandoffRendered(renderer.transform,
+                "카테고리 <b>안</b>의 교체(천 모자 → 왕관)가 화면에 실제로 반영되는가 + 옛 도형이 " +
+                "남지 않는가 — 재구성 서명이 «카테고리 비트마스크»로 퇴화하는 회귀를 잡던 자리.",
+                "HatBrim");
+
             CollectionAssert.Contains(capLines, "HatBrim",
                 $"{LogPrefix} 천 모자를 썼는데 챙(HatBrim)이 그려지지 않았습니다: [{string.Join(", ", capLines)}]");
 

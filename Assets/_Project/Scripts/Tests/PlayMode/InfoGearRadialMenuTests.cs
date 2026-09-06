@@ -534,10 +534,12 @@ namespace StickMate.Tests.PlayMode
             }
         }
 
-        // ==================== ⑩ 위성 [앱 종료] — 2단 확인 ====================
+        // ==================== ⑩ [앱 종료] — 2단 확인 ====================
 
         /// <summary>
-        /// ★ 2026-09-03 사용자 지시로 신설된 <b>위성 [앱 종료]</b>(UX_FLOW 53-4).
+        /// ★ 2026-09-03 사용자 지시로 신설된 <b>[앱 종료]</b>(UX_FLOW 53-4).
+        /// (2026-09-06에 축 위 위성 → 다섯 번째 호 슬롯으로 옮겼다. <b>이 2단 확인은 한 줄도 안 바뀌었고</b>,
+        ///  위치로 가르던 «다름»이 사라진 만큼 여기가 오폭 방어의 전부가 됐다.)
         ///
         /// <para><b>이 테스트는 절대로 2차 클릭을 하지 않는다.</b> 2차 클릭은 <c>Application.Quit()</c>이고
         /// 에디터에서는 재생 모드를 끈다 — 러너가 그 자리에서 죽는다. 대신 잠그는 것은
@@ -558,14 +560,14 @@ namespace StickMate.Tests.PlayMode
 
             int quit = (int)GearMenuButton.Quit;
             Assume.That(fan.ButtonProgress(quit), Is.GreaterThan(GearRadialMenuWidget.MinClickableProgress),
-                "위성이 아직 눌릴 수 있는 상태가 아닙니다 — 관측 전제가 성립하지 않습니다.");
+                "[앱 종료]가 아직 눌릴 수 있는 상태가 아닙니다 — 관측 전제가 성립하지 않습니다.");
 
             // 1차 클릭 — 실제 입력 경로 그대로.
             ClickAt(fan.ButtonScreenCenter(quit));
             yield return null;
             Assert.IsTrue(fan.IsQuitArmed,
                 "1차 클릭에도 확인 상태가 되지 않았습니다 — 2단 확인이 동작하지 않거나, " +
-                "더 나쁘게는 클릭이 위성에 도착하지 않았습니다.");
+                "더 나쁘게는 클릭이 [앱 종료]에 도착하지 않았습니다.");
             Assert.IsTrue(_gear.IsMenuExpanded, "1차 클릭에 부채꼴이 접혔습니다 — 확인할 자리가 사라집니다.");
 
             // 남은 시간은 <b>줄어들어야</b> 한다(카운트다운이 실제로 도는가).
@@ -645,6 +647,99 @@ namespace StickMate.Tests.PlayMode
             Rect again = _gear.InteractiveScreenRect;
             Assert.AreEqual(closed.width, again.width, 0.5f, "접었는데 판정 사각형이 원래 크기로 돌아오지 않았습니다.");
             Assert.AreEqual(closed.height, again.height, 0.5f, "접었는데 판정 사각형 높이가 원래대로 돌아오지 않았습니다.");
+        }
+
+        // ==================== ⑧ 메뉴가 떠 있으면 캐릭터가 제자리 대기 ====================
+
+        /// <summary>
+        /// ★ 2026-09-06 사용자 지시 <i>"메뉴를 펼쳤을때는 캐릭터가 제자리대기."</i>
+        ///
+        /// <para><b>왜 이 신고가 나왔나</b>: 부채꼴은 <b>펼친 순간의 앵커에 고정</b>이고, 앵커가 움직였다고
+        /// 따라가거나 닫히는 경로는 <c>톱니 드래그</c> 하나뿐이다. 그런데 배회 AI는 부채꼴의 존재를
+        /// 몰랐다 — 즉 <b>메뉴를 열어 둔 채 캐릭터가 걸어 나가는 그림이 구조적으로 가능했다</b>.</para>
+        ///
+        /// <para><b>여기서 재는 것은 「값」이 아니라 「배선」이다.</b> 상수만 보는 테스트는 소비자가 그 값을
+        /// 그만 읽어도 초록불을 낸다(이 저장소가 R3-M1에서 겪은 형태). 그래서 <b>세 마디를 한 줄로</b> 잰다:
+        /// 위젯의 <c>IsVisible</c> → 블랙보드의 <c>IsRadialMenuHoldActive</c> → 배회 AI의
+        /// <c>MoveInputX</c>. 어느 마디가 끊겨도 빨개진다.</para>
+        ///
+        /// <para>★ <b>확률을 1로 못박아 「우연히 안 걷는」 초록을 없앤다</b>: 평상시 걷기 확률은 0.75라,
+        /// 게이트가 죽어 있어도 짧은 관찰 창에서 우연히 Idle만 나올 수 있다. Idle 길이를 0.05초로 줄이고
+        /// 걷기 확률을 1로 두면 <b>게이트가 없을 때 반드시 걷는다</b> — 그것을 마지막 단계(메뉴를 닫은 뒤
+        /// 실제로 걷기 시작하는가)가 <b>양성 대조</b>로 증명한다.</para>
+        /// </summary>
+        [UnityTest]
+        public IEnumerator FanOpenHoldsCharacterInPlaceAndReleasesOnCollapse()
+        {
+            yield return LoadSceneAndResolve();
+
+            var agent = _gear.GetComponent<StickmanAgent>();
+            Assert.IsNotNull(agent, "캐릭터 루트에 StickmanAgent가 없습니다 — 이 판정은 무효입니다.");
+            StickMate.States.StickmanBlackboard bb = agent.Blackboard;
+
+            Assert.IsFalse(bb.IsRadialMenuOpen,
+                "부채꼴을 열기도 전에 «떠 있다»고 보고합니다 — 이 판정의 전제가 성립하지 않습니다.");
+
+            // 원본 자산을 런타임에 고치지 않는다(절대 불변 원칙 3) — 복제본으로 컨트롤러를 만들어 꽂는다
+            // (Tests/PlayMode/ScreenEdgeTurnaroundTests와 동일한 관례).
+            var config = Object.Instantiate(agent.Config);
+            config.wanderIdleDurationMin = 0.05f;
+            config.wanderIdleDurationMax = 0.05f;
+            config.wanderWalkDurationMin = 30f;
+            config.wanderWalkDurationMax = 30f;
+            config.wanderDurationJitterRatio = 0f;
+            config.wanderPostIdleWalkChance = 1f;      // 게이트가 없으면 «반드시» 걷는다.
+            config.wanderPostIdleJumpChance = 0f;
+            config.radialMenuHoldsCharacterInPlace = true;
+
+            var wander = new StickMate.States.AutoWanderController(bb, config, new System.Random(20260906));
+            bb.IntentSource = wander;
+
+            yield return OpenMenuByShortClick();
+            Assert.IsTrue(bb.IsRadialMenuOpen,
+                "부채꼴이 펼쳐졌는데 블랙보드가 «떠 있다»를 못 봅니다 — 위젯↔블랙보드 배선이 끊겼습니다.");
+            Assert.IsTrue(bb.IsRadialMenuHoldActive,
+                "부채꼴이 떠 있는데 제자리 대기가 꺼져 있습니다 — 마스터 스위치를 확인하세요.");
+
+            // ── 메뉴가 떠 있는 동안: 걷기 확률이 1인데도 이동 의도가 한 번도 서면 안 된다.
+            //    벽시계 기준 예산(이 저장소의 PlayMode는 2,000fps 이상으로 돈다 — 프레임 수로 재면
+            //    실제로는 0.0x초밖에 안 기다린 것이 된다).
+            float held = 0f;
+            int ticks = 0;
+            while (held < 1.5f)
+            {
+                yield return null;
+                float dt = Time.deltaTime;
+                held += dt;
+                ticks++;
+                wander.Tick(dt);
+                Assert.AreEqual(0f, wander.MoveInputX, 0.0001f,
+                    $"부채꼴이 떠 있는 동안 {held:F2}초 지점에서 이동 의도 {wander.MoveInputX:F2}가 섰습니다 — " +
+                    "메뉴를 열어 둔 채 캐릭터가 걸어 나갑니다(2026-09-06 사용자 지시 위반).");
+            }
+            Assert.Greater(ticks, 10, $"관찰 틱이 {ticks}회뿐입니다 — 이 스윕은 사실상 아무것도 재지 않았습니다.");
+
+            // ── 접으면 풀린다. ★ 이 단계가 위 초록의 <b>양성 대조</b>다: 여기서도 안 걸으면
+            //    위의 «안 걸었다»는 게이트 때문이 아니라 배회 AI가 원래 안 걷는 상태였다는 뜻이다.
+            ClickAt(_gear.IconScreenCenter);
+            yield return new WaitForSecondsRealtime(GearRadialMenuWidget.CollapseUserSeconds + 0.2f);
+            Assert.IsFalse(bb.IsRadialMenuOpen, "부채꼴을 접었는데 블랙보드가 아직 «떠 있다»고 봅니다.");
+            Assert.IsFalse(bb.IsRadialMenuHoldActive, "부채꼴을 접었는데 제자리 대기가 안 풀렸습니다.");
+
+            float resumed = 0f;
+            while (Mathf.Approximately(wander.MoveInputX, 0f) && resumed < 3f)
+            {
+                yield return null;
+                float dt = Time.deltaTime;
+                resumed += dt;
+                wander.Tick(dt);
+            }
+            Assert.AreNotEqual(0f, wander.MoveInputX,
+                $"부채꼴을 접고 {resumed:F2}초가 지나도 배회가 재개되지 않았습니다 — 제자리 대기가 " +
+                "«일시 정지»가 아니라 «영구 정지»가 됐거나, 위의 «안 걸었다»가 애초에 게이트 때문이 " +
+                "아니었습니다(그렇다면 이 테스트 전체가 거짓 초록입니다).");
+
+            Object.Destroy(config);
         }
     }
 }

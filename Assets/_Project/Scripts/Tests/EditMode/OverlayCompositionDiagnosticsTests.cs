@@ -428,6 +428,11 @@ namespace StickMate.Tests.EditMode
             var u = Healthy(); u.LayeredFlags = OverlayCompositionVerdict.LwaAlpha; mutations.Add(("레이어드플래그", u));
             var v = Healthy(); v.OverlayHandleSource = OverlayCompositionVerdict.HandleSourceNativeDiffers; mutations.Add(("핸들출처", v));
             var w = Healthy(); w.HybridResolverState = (int)LayeredHybridResolverState.RolledBack; mutations.Add(("해소기상태", w));
+            // ★ 2026-09-06 — 표본 표면과 조상 transform 배율. 축소 폴백이 걸리는 순간
+            //   (미관측/1.000 -> 0.818)이 <전이>이고, 지문에 없으면 실기 로그에 영원히 안 남는다.
+            var x = Healthy(); x.SampleTransformScale = 0.8182f; mutations.Add(("표본 transform 배율", x));
+            var y = Healthy(); y.SampleSurfaceLabel = "부채꼴 배지"; mutations.Add(("표본 표면 이름", y));
+            var z = Healthy(); z.SampleFontSizePoints = 14; mutations.Add(("표본 폰트 pt", z));
 
             for (int idx = 0; idx < mutations.Count; idx++)
             {

@@ -439,15 +439,57 @@ namespace StickMate.Tests.EditMode
         {
             double windowBefore = CurrencyModel.IdleWindowUsedSeconds;
 
-            Assert.AreEqual(0, CurrencyModel.TickIdleIncome(600.0, false),
+            Assert.AreEqual(0, CurrencyModel.TickIdleIncome(600.0, false, out _),
                 "집중 세션 중(isIdleEarning=false)인데 유휴 수급이 지급됐습니다 — 같은 1초가 두 번 지급됩니다(I-7′).");
             Assert.AreEqual(windowBefore, CurrencyModel.IdleWindowUsedSeconds, 1e-9,
                 "지급도 안 했으면서 8시간 창을 갉았습니다 — 그건 방어가 아니라 버그입니다(T-15-1-a).");
             Assert.IsFalse(CurrencyModel.IsDirty, "아무 일도 없었는데 저장 대상이 됐습니다.");
 
             // 양성 대조 — 같은 델타를 «유휴»로 넣으면 실제로 지급된다(위 0이 «아무것도 안 도는 것»이 아니다).
-            Assert.Greater(CurrencyModel.TickIdleIncome(600.0, true), 0,
+            Assert.Greater(CurrencyModel.TickIdleIncome(600.0, true, out _), 0,
                 "유휴로 넣어도 0입니다 — 위의 «0동전»은 계약이 아니라 기능 부재입니다.");
+        }
+
+        /// <summary>
+        /// ★★ <b>«0동전»과 «멈췄다»는 다른 사실이다</b> — 그 둘을 가르는 값이
+        /// <c>windowSecondsSpent</c>라는 계약(2026-09-06).
+        ///
+        /// <para><b>왜 필요한가.</b> 요율이 <c>IdleCoinsPerMinute</c>(분당 12 = 초당 0.2)라
+        /// <b>정상 상태에서도 프레임의 대부분이 0동전</b>이다(소수분은 다음 틱으로 넘어간다).
+        /// 그 0을 정지로 읽던 <c>CharacterProgressionDirector.LogIdleStallOnce</c>가
+        /// <b>5초에 한 줄(실측 720줄/시간)</b>을 찍었다. 그 오판을 구조적으로 불가능하게 만드는 것이
+        /// 이 계약이고, 정지 판정이 이 값을 보는 한 «0동전 프레임»은 절대 정지로 읽히지 않는다.</para>
+        ///
+        /// <para>★ 이 테스트는 <b>모델의 계약</b>만 잰다. «디렉터가 실제로 조용한가»는 로그 줄 수를
+        /// 세는 <c>Tests/PlayMode/CurrencyWiringRuntimeTests</c> §6이 잰다 — 서로 다른 자 두 개다.</para>
+        /// </summary>
+        [Test]
+        public void 정상_프레임의_0동전과_정지의_0동전은_창_소비로_구별된다()
+        {
+            // 숫자를 베끼지 않는다 — «1동전이 안 되는 시간»을 요율에서 유도한다.
+            double underOneCoinSeconds = 0.5 / CurrencyRules.IdleCoinsPerSecond;
+
+            // ── (가) 정상. 0동전이지만 <b>창은 갉힌다</b>.
+            int coins = CurrencyModel.TickIdleIncome(underOneCoinSeconds, true, out double windowSpent);
+            Assert.AreEqual(0, coins,
+                $"{LogPrefix} 전제 — 초당 {CurrencyRules.IdleCoinsPerSecond}동전이라 " +
+                $"{underOneCoinSeconds:F1}초는 0동전이어야 합니다. 여기서 지급이 나오면 아래 대조가 공허합니다.");
+            Assert.Greater(windowSpent, 0.0,
+                $"{LogPrefix} ★ 0동전 프레임인데 창도 안 갉혔습니다 — 그러면 «정상»과 «정지»가 " +
+                "관측상 완전히 같아지고, 정지 로그를 <b>매 프레임</b> 찍는 것 말고는 방법이 없어집니다.");
+
+            // ── (나) 진짜 정지(오늘 상한 도달). 이번에는 창도 안 갉힌다.
+            CurrencyModel.TickIdleIncome(
+                CurrencyModel.DailyCapCoins() / CurrencyRules.IdleCoinsPerSecond, true, out _);
+            Assert.AreEqual(0, CurrencyModel.RemainingDailyRoomCoins(),
+                $"{LogPrefix} 전제 — 상한을 채우지 못하면 «정지»를 만들 수 없습니다.");
+
+            Assert.AreEqual(0,
+                CurrencyModel.TickIdleIncome(underOneCoinSeconds, true, out double stalledWindow),
+                $"{LogPrefix} 상한에 걸렸는데 지급이 나왔습니다.");
+            Assert.AreEqual(0.0, stalledWindow, 1e-12,
+                $"{LogPrefix} 지급도 없이 8시간 창만 닳았습니다 — 방어가 아니라 버그입니다(T-15-1-a). " +
+                "그리고 이 값이 0이 아니면 정지 판정이 «정지»를 영원히 못 봅니다.");
         }
     }
 }

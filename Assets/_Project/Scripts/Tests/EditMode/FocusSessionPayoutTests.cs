@@ -189,7 +189,7 @@ namespace StickMate.Tests.EditMode
         public void 집중_지급은_일일_상한_밖이라_캡을_다_채운_뒤에도_전액_들어온다()
         {
             // 전제 — 유휴 수급으로 오늘 상한을 끝까지 채운다.
-            CurrencyModel.TickIdleIncome(CurrencyRules.IdleWindowCapSeconds, true);
+            CurrencyModel.TickIdleIncome(CurrencyRules.IdleWindowCapSeconds, true, out _);
             Assert.AreEqual(0, CurrencyModel.RemainingDailyRoomCoins(),
                 "전제가 성립하지 않았습니다 — 일일 상한이 다 차지 않았습니다.");
 

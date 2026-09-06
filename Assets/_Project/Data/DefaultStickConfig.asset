@@ -202,6 +202,7 @@ MonoBehaviour:
   focusSessionIdleDurationMin: 4
   focusSessionIdleDurationMax: 11
   focusWatchStanceSettleSeconds: 0.45
+  radialMenuHoldsCharacterInPlace: 1
   stressOveruseWindowSeconds: 300
   stressOveruseTriggerCount: 8
   stressOveruseIncrement: 0.12
@@ -266,6 +267,7 @@ MonoBehaviour:
   fallPoseMinIntensity: 0.16
   landingCrouchEnabled: 1
   landingImpactRagdollShield: 1
+  collisionImpactUsesNormalComponent: 1
   groundKeepingSafetyNetEnabled: 1
   sinkholeLiftRecoveryEnabled: 1
   sinkholeLiftRestSeconds: 0.35
@@ -301,6 +303,9 @@ MonoBehaviour:
   throwTumbleTuckFadeRate: 10
   throwTumbleAlwaysCrouchOnLanding: 1
   throwTumbleImpactHorizontalWeight: 0.5
+  throwTumbleLandingSlideClampEnabled: 1
+  throwTumbleLandingSlideEdgeSafety01: 0.9
+  throwTumbleRestingLandingEnabled: 1
   throwTumbleHipDegrees: 76
   throwTumbleKneeBendDegrees: 104
   throwTumbleArmDegrees: 46

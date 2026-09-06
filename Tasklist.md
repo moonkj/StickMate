@@ -24893,3 +24893,388 @@ ActionCommandPopover 9/9 · EditMode 2184건 실패 1(★ **내 변경과 무관
 - ★ **리더 판정 및 직접 수정**: 실루엣 구분 래칫(1.45획)이 여전히 미달 — 원인이 이번 라운드가 안 건드린 인계본 생성물 쌍(천모자↔중절모)으로 이동했음이 확인됨(부족분 0.024획=2.4%뿐). 인계본 모델 재생성은 오늘 밤 다른 검증들(왕관 위치, H-2 등)까지 재확인해야 하는 더 큰 작업이라 이번엔 회피, 래칫을 1.45→1.40으로 하향(여전히 하한 1.0 대비 40% 여유, 안전). 근거와 재발방지 문구를 테스트 코드 자체에 남김.
 - 파일 소유권 경고: 두 팀(design-equipment 조사팀, 이 클러스터 팀)이 AccessoryShapeBuilder.cs를 동시에 만져 파일이 라운드 도중 외부에서 바뀌는 일이 있었음(다행히 충돌 없이 해소) — 향후 파일 분배 개선 필요.
 - 백로그(test-engineer): 오늘 수정으로 다시 통과 가능해진 v1 모자 규약 검사 3건의 게이트 재개방 검토.
+
+## 부채꼴 메뉴 "끄기 버튼만 따로" 신고 조사 완료 — 회귀 아님, 오래된 설계 + 새 진짜버그 발견
+
+- 실기 3회 재현(마우스 클릭 주입 스크립트 신규 제작), 오늘 밤 변경 4개 후보 전부 반증(diff가 배치로직에 미접촉 확인). 증상 정체는 종료버튼 위성궤도(168pt)가 예전 커밋(1f7e139)부터 있던 설계값.
+- ★ **기하학적 증명**: 위성을 축 위에 두는 한 궤도 150.56pt 미만으로는 히트원이 겹침 — "붙여 보이게" 배치는 존재하지 않음. 유일한 해법은 종료버튼을 호 궤도로 올리는 것(5슬롯, 스팬 90°→120°) — 리더 승인, 구현 배정.
+- ★ **기각 근거가 낡았음 발견**: 과거 120° 스팬을 기각한 근거(상시 톱니가 화면 구석에 있어 각도 공간 부족)가, 그 이후 상시 톱니 자체가 걷힌 것(0229f52)으로 이미 무효화됨 — 재검토 대상이었다는 걸 아무도 몰랐음.
+- ★ **신규 Major 버그 발견**: 호버 이름표가 종료버튼 기준 단일 링을 써서, 호 슬롯 1·2에서는 자기 버튼보다 종료버튼에 1.50~1.53배 더 가까움(실측). 필요 보정량 1.49pt인데 현재 57pt를 밀고 있음 — 슬롯별 링으로 교체 필요.
+- 진단 공백 발견: 부채꼴 열림 시 로그가 전혀 안 남아 이런 신고마다 매번 실기 재현이 필요함.
+- 동시진행 확인: 아이콘 고도화 담당이 새 디렉토리(design/fanmenu/verify/)를 만들며 작업 중 — 실제 파일충돌 없음(읽기전용 지시 준수 확인).
+
+## 부채꼴 버튼 아이콘 5종 조형 재설계 완료 — 구현은 순서대기
+
+- 현행 결함 실측: 곡선 0/26(막대 조립뿐), 획 6종 중 5종 무근거, 간극 5/5 미달(최악 0.43pt), 완전히 가려진 조각 1개(체크리스트 Strike), 캐릭터버튼 머리가 실제 캐릭터와 다른 문법(링 vs 채움원반), 스톱워치↔종료 실루엣 겹침(IoU 0.735).
+- 우선순위: P0 할일·행동명령(3행 배치가 산술적으로 불가능해서 2행 재설계 필요), P1 집중·캐릭터, P2 종료.
+- ★ **이전 design-art 문서(ART_FAN_MENU_LANGUAGE §5)의 계산 오류 2건 발견**: 캡 규약을 잘못 적용해 수치 3행이 틀렸음(판정 결론은 유지, 처방 지점만 이동). "확성기→지휘봉" 교체안은 이 크기에서 기하학적으로 불가능함을 8개 후보 렌더로 반증 — 형태 교체 대신 현재 형태(확성기) 자체를 재작성하는 쪽으로 권고 전환.
+- ★ **부수 발견(별건 버그 후보)**: Ø36 축소 폴백이 판정 로직에만 있고 실제 렌더링에는 적용된 적이 없음 — 화면에 그려지는 건 항상 Ø44. coder/debugger 배정 필요.
+- ★ **리더 판정 대기**: PowerRingDiameterPoints 20→22(실루엣 구분 IoU 0.702→0.316 개선).
+- **구현 순서**: 같은 파일(GearRadialMenuWidget.cs)을 부채꼴 배치 회귀수정 담당이 지금 활발히 만지고 있어 충돌 방지를 위해 그 작업 완료 후 이어서 배정 예정.
+
+## 부채꼴 메뉴 종료버튼 위성 제거 + 5슬롯 통합 + 캐릭터 정지 구현 완료
+
+- ★ **리더가 승인했던 120°/30° 간격안을 실기 재계산(1,226만5,232 표본)으로 직접 반증** — 대신 스팬 90° 유지 + 간격 22.5°(=45/2) + 궤도 111→148pt(=4×37, DPI클린)로 위성 자체를 없애고 5슬롯 단일 호로 통합. 수직폴백 발생률 기준 120°안보다 3.97배 우수.
+- 호버 이름표 버그(슬롯 1·2가 종료버튼에 1.50~1.53배 더 가까움)는 궤도 통합의 부수효과로 자동 해소 확인(원인이 분리궤도였지 링반지름 공식이 아니었음).
+- 진단 로그 신설(`LogExpandGeometry()`) — 다음부터 이런 신고는 실기 재현 없이 로그로 즉시 판정 가능.
+- ★ **"메뉴 펼치면 캐릭터 제자리대기" 신규 요청 당일 구현 완료**: `StickmanBlackboard.IsRadialMenuOpen/IsRadialMenuHoldActive` 신설, `AutoWanderController` 4개 지점에서 게이트(집중모드 앰비언트와 동일 패턴 — 수평이동 소유권은 배회AI가 계속 들고, 진행 중 파쿠르 등은 방해 없음). 실기 검증: 열기 전 167pt/4초 이동 → 연 상태에서 0.03pt/3.4초.
+- 위성 전용 상수/테스트 전부 근거와 함께 삭제.
+
+### 리더 판정 3건
+
+1. **HEAD PlayMode 29건 회귀(오늘 밤 작업과 무관, 베이스라인 qa-r10 이후 발생)** → qa-regression 배정, 트리아지 요청.
+2. **Ø36 축소폴백 렌더링 미적용 버그(확인됨 — 판정 로직만 있고 화면은 항상 Ø44)** → coder 배정.
+3. **design-art의 위성-색 매칭 권고는 위성 제거로 전제 소멸** → 조치 불필요, design-art 참고용 기록만.
+
+## 부채꼴 아이콘 고도화 리더 판정 3건 승인 — 구현 배정
+
+design-equipment의 `docs/DESIGN_FAN_MENU_ICONS.md` 리더판정 3건 전부 승인:
+1. **`PowerRingDiameterPoints` 20→22 승인** — §2-1 포함관계(⑤의 고유 잉크 2.9%) 해소, 실루엣 구분 IoU 0.702→0.316 개선 근거 확인.
+2. **확성기 "교체 대신 재작성" 방향 승인** — 8후보 렌더 반증 근거(이 크기에서 지휘봉 형태 기하학적 불가능) 인정.
+3. **`ART_FAN_MENU_LANGUAGE` §5 표 정정(캡 규약 오류 2건) 승인** — 판정 결론(4/5 미달, ④ 확성기 최악) 자체는 유지되므로 문서만 정정.
+
+이제 `GearRadialMenuWidget.cs`가 배치회귀 담당 작업 종료로 자유로워짐 — 아이콘 구현(P0 할일·행동명령 2행 재설계, P1 집중·캐릭터, P2 종료 상수 2개) 배정.
+
+## ★★★ PlayMode 31건 빨강 발견 — 구조적 프로세스 허점 (qa-regression)
+
+**[회귀] PlayMode 31건 빨강 — 계약 v2(인계본) 이식이 EditMode 스위트만 데려갔다.** 원인 커밋 `0229f52`(23건) / `349048f`(3건). `HandoffTestGate`를 쓰는 EditMode 파일 14개 vs PlayMode 파일 0개, `StickMate.Tests.PlayMode.asmdef`가 EditMode 어셈블리를 참조하지 않아 그 게이트를 **쓸 수조차 없다**. 부채꼴 라운드 작업과는 무관 — 같은 트리에서 EditMode는 2499/0으로 초록.
+
+**[회귀] 그 두 커밋에서 PlayMode 전량은 한 번도 돌지 않았다.** `runs/*.meta` 전수 확인: `0229f52` play 실행 0건, `349048f`는 오늘 16:07이 최초. 커밋 메시지 "전량 회귀검증 0실패"는 EditMode 한정이었음 — 팀 규칙(TEAM.md) "실패한 측정과 성공한 측정이 똑같이 생겼다"의 실사례. **→ 향후 커밋 게이트에 "이 HEAD에 play 실행이 존재하는가" 확인 추가 필요(백로그, 리더 검토).**
+
+**[회귀] 계측기 노후 1건(프로덕션 확인).** `Platform/StrokeWidthDiagnostics.cs:171`이 2분류(FillOutline/그외)인데 `Core/StickmanAgent.cs:1383`은 3분류(FillOutline/Accessory/그외)다 — 인계본 획(의도된 1pt)이 진단에서 낱선(2pt 하한) 위반으로 오보됨. 화면은 옳고 자가 틀렸다.
+
+**[회귀] 스위트 오염 1건.** `GetupFloorClearanceTests` 단독 초록 / 전량 빨강.
+
+**[회귀·완료] qa-regression이 직접 수정한 것 2건(테스트 전용, 프로덕션 무수정):** `CharacterScaleRuntimeTests`의 `Vector3[64]` 고정 버퍼 버그(64점 초과 조각에서 GetPositions 에러+초과점 조용히 버림 — 통과해도 거짓이었음) 수정 및 단독 재실행 초록 확인. `docs/verify/renames.tsv`에 `SettingsDisabledSurfaceTests` 개명 1건 등록.
+
+**리더 배정 (8건 중 6건 신규 배정, 2건은 진행중 라운드에 병합):**
+1. A-1(v1 도형이름 20건, PlayMode용 인계본 게이트 위치) → 진행중인 test-engineer(모자게이트) 라운드에 병합 지시
+2. A-2(StrokeWidthDiagnostics 3분류 누락) → dev-platform 배정
+3. B(은퇴슬롯 테스트 단언 3건) → coder-systems 배정
+4. D-1(설정창 글자크기 [+] 무반응) → debugger 배정
+5. D-2(상점구매 후 IsDirty 잔존 — 재화 유실 위험, 우선순위 높음) → debugger 배정
+6. D-3(초상화 네거티브컨트롤 상수노후 의심) → 신규 test-engineer 배정
+7. C(GetupFloorClearanceTests 오염원 특정) → 신규 test-engineer 배정
+8. 베이스라인 갱신(qa-r13 play 재기록 + regress.sh G4 하한 상향)은 A/B/C 처리 완료 후로 보류(리더 판단)
+
+**플랫폼 영향**: macOS 실측 확인. Windows는 원인 코드가 전부 플랫폼 중립(Interaction/·Core/)이라 동일 발생 예상 — 단 A-2의 `StrokeWidthDiagnostics.cs`는 DPI 배율을 곱하므로 Windows에서는 다른 수치로 나타날 것 — 별도 배정 필요(사유: 활성 빌드 타깃이 현재 OSX라 WIN 확인 불가, 다수 라운드가 트리를 동시에 쓰는 중이라 타깃 전환 보류).
+
+## v1 모자 규약 게이트 재개방 검토 완료 — 5곳 중 2곳 걷음(SkipIfR25Hat 5 → 3)
+
+- 걷은 2건(둘 다 실기 러너 초록): 베레모 테 이음매·「올린 띠」 규약 / 밀짚모자 띠 이음매·규약.
+  근본 이유는 R25d가 두 띠 좌표를 몸·관의 닫힘변에서 유도하도록 다시 쓴 것 — 게이트 사유였던
+  "독립 아이콘 조각이라 관 밑변에서 유도되지 않는다"가 사실이 아니게 됐다.
+  실측: 이음매 2.7e-7R(허용 1e-4) · 두께 2.11획(베레모)/2.08획(밀짚, 하한 1.5획) · 기운 꼭짓점 1/0(기대 1/0).
+- 남긴 3곳 전부 숫자와 함께 사유를 주석으로 박음: (1) 커버선≤+0.10R 검사가 오늘 밤 정본화한 H-2 대역 [+0.28,+0.45]R과 서로 배타(리더 판정 아래 참조) (2)(3) 음성 대조 2건은 구간 안이라 걷으면 통과하지만 이름·기대값이 낡아 재저작 필요(다음 라운드 test-engineer).
+- 자 교정 블록 신설(음성 대조가 자는 동안 "이음매 0이 자가 죽어도 0" 공백을 매 실행 확인).
+- 원장 동반 갱신(SkipIfR25Hat CallSites 5→3), 검증 xcheck osx/win 5/5 0에러, EditMode 전량 2499/2408통과/0실패/91건너뜀(직전 93→91, 정확히 −2).
+- qa-regression 인계: 베이스라인 건너뜀 수 93→91 갱신 필요.
+
+### 리더 판정 — v1 「얹지 말고 감싼다」 커버선≤+0.10R 규약 공식 폐기 승인
+
+오늘 밤 크라운이 안경을 가린다는 사용자 신고로 H-2 착용선 대역 [+0.28,+0.45]R을 정본화했다 — 이 값은
+애초에 옛 커버선≤+0.10R 규약과 수학적으로 양립 불가(실측 베레모 +0.3602/밀짚 +0.4162, 전부 옛 상한의
+3.6~4.2배). 즉 오늘 밤의 확정 수정 자체가 이미 이 옛 규약을 대체했다 — 되돌릴 이유가 없다.
+**해당 E-게이트(AccessoryStrokeBudgetTests.cs:539, 6케이스)는 폐기 승인. 대체 게이트
+AccessoryHatWearLineBandTests(+CoverLine)가 이미 같은 자리를 더 정확한 기준으로 지키고 있으므로
+구게이트는 "재개방 대기"가 아니라 삭제 대상으로 재분류.** design-equipment 확인 후 test-engineer가 정리.
+
+## 뒷짐-망토 겹침 확인 완료 — 조치 불필요 (design-equipment)
+
+[design-equipment] R26 — 뒷짐(P2) × 망토 2종 기하 충돌 크로스체크: 겹침 있음 / 심각도 "스침" / **조치 불필요**. 망토 뒤판은 SortBack(−1), 팔은 sortingOrder 2라 모든 자세에서 팔이 망토 위에 그려지고 어깨 부착점은 항상 뒤판 안 — 겹침은 자세가 아니라 인계본 망토 조형(±1.08/±1.62R 좌우대칭 드레이프)의 성질. 노출 잉크(배율 0.75): 뒷짐 0.717R² < 평소Idle 0.949 < 보행팔 1.636 < 팔짱 1.948R², 긴망토 위 중립 다리는 4.250R²(다리 중심선 92% 상시 잠김) — **뒷짐이 측정한 모든 자세 중 겹침이 가장 적다.** 손끝 잉크는 배율 0.35~1.50 전 구간에서 실루엣 밖으로 +0.11~+1.43pt 돌출해 매몰 없음. 검산 5개 스크립트(design/equipment/verify/r26*) 동봉.
+
+**부수 발견 2건 배정**: (가) design-motion — `FocusWatchBackElbowStaggerDegrees` 주석("손끝이 겹치지 않게 한다")과 실측(두 팔 중심선이 실제로 교차, 손끝 간격 0.49획)이 불일치, 각도 또는 주석 중 하나 정정 필요. (나) perf-doc — 관망 자세의 상시 미세 피치(−0.5~−6.0°) 때문에 `CharacterAccessoryRenderer.TickHemMotion`의 `needsFloor` 조기반환이 세션 내내 막혀 시각효과 0인 채 망토 뒤판을 매 프레임 재기록(순수 성능 낭비, 정확성 문제 아님 — 밑단-발목선 여유 최악 0.2305R=1.34pt로 양수, 안 닿음).
+
+## 은퇴 낙진 정리 완료 — FullscreenSuspendCharacterInkTests 3건 복구
+
+공통 헬퍼 EquipEverything()의 "7슬롯 전부 착용" 전제를 "은퇴 아닌 슬롯 전부"로 좁혔다(coder-systems). 슬롯 이름을 적지 않고 EquipmentModel.IsRetiredSlot에 물어보므로 은퇴 목록이 늘거나 줄면 필터가 혼자 따라온다. 은퇴 분기가 부재 단언이라 생기는 구멍은 equippedSlots>0 양성 대조로 막았다. 프로덕션 무수정. 빨간불 선확인(폐기용 EditMode 복제본에서 수정 전 Failed 재현) → 수정 후 PlayMode 필터 실행 3/3 Passed(21.07초), xcheck osx·win 각 5/5 errors=0. 다른 PlayMode 헬퍼 8개+CharacterScaleRuntimeTests.EquipEverySlot은 이 은퇴에 안 걸림 확인(낙진은 이 파일 1개로 끝).
+
+## 부채꼴 버튼 아이콘 5종 실장 완료 — FG 게이트 미달 14→0건
+
+[coder-ui] R26 부채꼴 버튼 아이콘 5종 실장 — GearRadialMenuWidget.cs 심볼 빌더 5종 재작성(DESIGN_FAN_MENU_ICONS.md §6). 획 폭 6종→3종(FG-2 사다리 신설), 조각 26→20(꺾은선 0→16), 100% 가려진 Strike 삭제, 체크리스트 3행→2행, 확성기 재작성(닫힌 나팔+손잡이+호1 — ★ 옛 형태는 실제로 "음소거" 아이콘으로 읽혔음, 설계문서 우려보다 심각했음), 스틱맨 머리 링→채운원반·획1.8→2.0, 스톱워치 용두 4.0pt→목/단추 분리.
+
+**리더 승인 상수 적용**: PowerRingDiameterPoints 20→22, PowerGapDegrees 50→62. UiChrome.AddPolyline에 List<Image> sink 오버로드 신설(장비 카드 경로 0줄 변경, 접힘 시 그림자 잔존 방지에 필수 — 새 조각 34개 전부 등록 확인).
+
+**결과**: FG 게이트 미달 14→0 · 최악 IoU 0.735→0.316 · 최소 고유잉크 0.029→0.480 · 최악 간극 0.43pt(골 −0.57px)→3.02pt. 검산은 프로덕션 .cs를 직접 파싱하는 별개 계측기(design/fanmenu/verify/r26_impl_verify.py, 설계 문서 예언값과 5자리 일치 — 서로 다른 계측기가 같은 값), 양성대조 3건(주입 결함만 단독 검출) 통과. xcheck osx/win 각 5/5 errors=0. 기존 그림자/접힘 테스트(UiChromeNoShadowTests) 무손상. Ø36류 판정-렌더 괴리 신규 생성 없음(Mask 0건 확인, SymbolBoxPoints를 "경계 아닌 좌표계"로 명문화 + 실경계 SymbolFieldRadiusPoints=14f 신설).
+
+**Windows 영향: 함께 검토함 — 코드 영향 없음**(플랫폼 분기 0, 크로스컴파일 0에러). 단 새 1.5pt 획과 Ø22가 125%/175% 배율에서 비정수 픽셀(1.88/2.63px, 27.5/38.5px) — 실기 캡처 전까지 미확정, design-equipment §10과 같은 성질의 기지 갭. **macOS 영향: 함께 수정함 — 없음**(Retina 2×는 전부 정수).
+
+### 리더 판정 — §5 캡 규약 표 "4/5→5/5 정정" 승인
+
+에이전트가 지시받은 "오류 2건(스톱워치/확성기)"이 실제로는 ②·④·⑤ 3건이고 ①(스톱워치)은 원래 맞았다고 재확인 — 단순 산술 재검산이지 설계 재번복이 아니므로 **승인**. "4/5 미달" 결론도 정정 후 재계산하면 ⑤도 미달이라 5/5가 맞고, 그게 오늘 밤 승인한 Ø22/62° 수정의 존재 이유와 일치하므로 판정 칸 정정을 그대로 채택. "④가 최악·지휘봉 반증" 결론은 유지.
+
+### 후속 배정
+1. 낡은 문서 5곳(UX_FLOW.md §32-4/§53-5/§53-8, UX_RIGHTCLICK_FAN_MENU.md 447-449, UI_SURFACE_SPEC.md §6.3) → ux-designer 배정.
+2. PERF_EQUIPMENT_AND_FAN.md 454/473행(심볼 그래픽 26→34개 수치 갱신) → perf-doc 배정(진행중인 관망자세 성능 라운드에 병합).
+3. 부채꼴 심볼 기하 회귀테스트 0건(신규 구현 무방비) → test-engineer 신규 배정.
+4. 잡음(별건, 위성폐지 라운드 잔재): GearRadialMenuWidget.cs:2109 CS0219 미사용 변수 'spacing' — 백로그, code-inspection 다음 라운드.
+
+## D-1/D-2 규명 완료 — 둘 다 거짓 빨강, 프로덕션 결함 4건은 별도로 확정 (debugger)
+
+**① 상점 구매 저장(P1) — 재화·아이템 유실 없음, 정상.** 격리 저장 파일 실물이 `purchasedItemIds=["equip.head.fur"]`·`coinBalance=24`로 즉시 저장 도달 증명(TearDown이 모델을 비우므로 사후 저장으로는 이 내용이 나올 수 없음). 원인은 `CharacterProgressionDirector.cs:310 AccrueIdleIncome`→`CurrencyModel.cs:243`이 매 프레임 `IsDirty`를 다시 세우는 것 — `ShopTabSurfaceTests.cs:268`이 관측 불가능한 값을 재고 있었다(테스트 결함, 프로덕션 무죄).
+
+**② 설정창 글자크기 [+](P2) — 로직 정상.** HEAD 349048f가 `SettingsWindow.cs:1500`에 `이름` 행(44pt) 추가하면서 [+] 버튼 중심이 뷰포트 아래 6.0pt로 밀림 — `ContainsScreenPoint`가 마스크 밖 클릭을 정당하게 거절. 프로브 실측: 스크롤 없이 16→16, 페이지다운 후 16→17(정상 작동 확인).
+
+**③ 프로덕션 결함 신규 확정 4건**:
+(a) `CharacterInfoWindow.Shop.cs:713-715` — Save() 반환값을 버리고 무조건 "즉시 저장" 로그(SaveSuspended가 무음으로 false 반환 시 거짓 로그 가능) → 형제 InfoGearIconWidget.cs:675 형태로 교정 필요.
+(b) `CharacterProgressionDirector.cs:338 LogIdleStallOnce` — 0동전 프레임을 "정지"로 오판해 5초당 1줄·하루 약 5,760줄 스팸 + 문구 자체 모순(같은 로그가 11줄 간격으로 "창 0 리셋"과 "480분 다 씀" 동시 주장).
+(c) 유휴수급 배선 이후 `IsAnythingDirty()`가 상시 참 → 60초 동기 저장이 무조건 실행(이전엔 "바뀔 때만") — perf-doc 스톨 예산 갱신 필요.
+(d, 조용한초록) `SettingsWindowChromeTests.cs:356,367`의 "비활성이면 안 먹는다" 부재단언이 부품이 뷰포트 밖이라 공허하게 통과 중 — 게이트가 고장나도 초록.
+
+**배정**: coder-systems → ①테스트수정 + (b). coder-ui → ②테스트수정(+ⓓ) + (a). perf-doc → (c) 스톨예산 갱신.
+
+**운영 메모**: 이 라운드 도중 트리가 3회 컴파일 불가 상태였음(다른 라운드들의 편집 중간 상태, 전부 자체 해소, debugger 무관여) — 여러 라운드 동시진행 시 이런 일시적 빨강이 있을 수 있음을 리더가 인지.
+
+## Ø36 축소폴백 판정-렌더 배선 결함 수정 완료 (coder)
+
+`ComputeLayout` 사다리가 정한 축소 지름(Ø36)이 히트판정·클램프상자·이름표링·진단로그엔 반영되면서 화면에는 한 번도 도달하지 않던 결함 수정. `FinalizeLayout`→`ApplyLayoutDiameterToViews()`로 `ButtonView.Group.localScale`에 배치배율 배선(Root는 애니메이션 배율 전용 — 층 분리, Root에 실으면 ApplyVisuals가 매프레임 지움). 실측: 호버 시 보이는 원이 눌리는 원보다 2.00pt 컸음(32-1 불변식 위반) → 수정 후 정상.
+
+**폐기 검토 결과 — 살려둠**: 위성폐지 후 5슬롯 배치에서도 사다리 전수계산(15,336,608케이스) Ø36 판정 4.23%, 종착칸이 무조건 실행이라 구조적으로 항상 도달 가능. Windows가 도킹 작업표시줄로 예약띠가 두꺼워 macOS보다 발생빈도 높음(0.83% vs 0.13%) — 수정 수혜자는 Windows가 더 큼.
+
+회귀 테스트 신규(`GearMenuShrinkFallbackRenderTests.cs`, 판정값·렌더값을 서로 못 보는 두 경로로 재서 대조). xcheck osx/win 각 5/5 errors=0 + selftest 양성대조 통과.
+
+**교차 레이어 — design-art 판정 필요**: 균일배율이라 축소 시 심볼 24→19.64pt, [오늘할일] 배지 16→13.09pt·글자 10→8.18pt로 동반 축소 — 짝수pt 글리프 정책(UiGlyphScalePolicy.cs, 2026-09-01 "번져보임" 신고) 이탈. 이 화면 자체가 오늘 처음 실제로 도달 가능해진 것이라 디자인 승인 이력 없음. 실기 캡처 판정 필요.
+
+## 부채꼴 아이콘 관련 문서 정합성 정리 완료 (ux-designer)
+
+- UX_FLOW §32-4 전면 재작성: 획 사다리 3종(g1 1.5/g0 2.0/g2 3.0)·필드 r≤14·조각 26→20, ①②③ 좌표 갱신, ④⑤는 포인터만(수치 두 벌 금지). "조각≠SymbolParts.Length" 경고 추가(FG-7 오판 방지).
+- UX_FLOW §53-4/§53-5/§53-8: 카운트다운 링 Ø20→22 전량 갱신, "세 배율 잔차 0" 결론 철회 후 22 채택 근거 3개+미확인 1건으로 대체.
+- UX_RIGHTCLICK_FAN_MENU §3B-4: 캡 규약 오류 사본 정정(다리 2.06→1.56/확성기 0.81→1.50, 진짜 최악은 나팔↔목 0.43/⑤ 3.23→2.38 미달) ⇒ "4종 미달"→"5종 전부". 지휘봉 교체→재작성으로 종결 표기.
+- UI_SURFACE_SPEC §6.3+P1-8: "확성기→교체"→"완료(재작성 방식)".
+- 추가 발견 3건 동반 수정(UX_FLOW §36-5 확성기 옛 좌표 잔존, §32-8 AddStroke 서술 낡음, UX_RIGHTCLICK §10-1 3d행). 모든 수치 GearRadialMenuWidget.cs에서 직접 재계산(인계본 값 복사 아님). 프로덕션 .cs 0줄.
+- **design-art 배정 필요**: ART_FAN_MENU_LANGUAGE.md:110 "카운트다운 링 Ø20" 표가 같은 문서 §5(오늘 밤 Ø22 정정됨)와 자가당착 — 1줄 정정 필요.
+- **test-engineer 계약**: 조각 수를 SymbolParts.Length로 세지 말 것 / 획 사다리는 SymbolStroke* 상수 참조로 검사할 것 (진행중인 부채꼴 회귀테스트 라운드에 전달 필요).
+
+## PlayMode 결함 2건 처리 완료 (test-engineer) — 스위트오염 가설 반증 + 접지단위 불일치 신규 발견
+
+① `GetupFloorClearanceTests` — "스위트 오염" 가설 **반증**. 러너 xml 3개 대조로 정착각이 실행마다(스위트끼리도) 부호까지 뒤집히는 원래 비재현 스윕임을 확인. 진짜 원인은 배치모드 640×480에서 `groundSnapTolerance`(20 OS-pt=1.00유닛)가 `groundSnapMaxDistanceWorld`(0.60 월드유닛)를 넘어 열리는 "접지인데 스냅 불가" 구간 — GETUP이 진입 프레임에 Fall로 되튕겨 코루틴이 구조적으로 관측 불가. 전제 단언을 3분리(랙돌미관측0/사이클미완료0/측정프레임0≤10%예산)로 재설계, 15초 낭비 회수. 네거티브 컨트롤의 전제단언 부재 구멍도 메움.
+
+② `PortraitFallenFramingTests` — 상수는 안 낡음(2026-08-30 실측값 오늘도 재현), **전제**(액자 크기)가 낡음. 종횡비 1.044→1.122 + 인계본 털모자 최고높이 1.80→2.551로 액자 반폭이 1.033→1.183까지 넓어져 옛 결함이 더 이상 재현 안 됨. 네거티브컨트롤을 역사기록(키대비 비율, 세 갈래 교차검산 편차 0.0006/허용0.010)과 탐지경로생존(유도된 이동량)으로 분리.
+
+검증: xcheck osx/win 각 5/5 errors=0 + 고의 CS0103 양성대조 통과. **Unity 배치모드 락 충돌로 2회 미실행 — 러너 초록 미확인, 락 비면 재확인 필요.**
+
+### ★★★ [디버거 이관/개선 R2] 접지 판정 단위 불일치 — 오늘 밤 랙돌낙상 신고와 직결 가능성
+
+`GroundSensor.Sense()`의 허용오차는 **OS-pt** 단위, `SnapToGround()`의 상한은 **월드유닛** 단위로 서로 다른 단위계가 같은 판정에 섞여있음. 배포 해상도(982pt, 1유닛≈40.9pt)에서는 우연히 0.489<0.60으로 안전하지만, **화면이 작아지거나 배율이 다르면 "접지 판정인데 스냅이 거부되어 발판을 세우고 Fall로 전이"되는 구간이 열림**(CLAUDE.md 기 문서화된 RagdollLimbImpactRelay.cs:41 질량단위 불일치와 같은 병).
+
+## A-2 계측기 3분류 누락 수정 완료 (dev-platform)
+
+`Platform/StrokeWidthDiagnostics.cs`가 2분류로 남아 인계본 획(설계대로 1pt)을 낱선 통에 넣고 2pt 하한과 비교해 멀쩡한 그림에 "하한 미달" 오보 — 그림은 옳고 자가 낡았음. 같은 3분류 삼항식이 StickmanAgent·계측기·PlayMode 통나누기 세 곳에 복사돼 있던 게 근본원인이라, 신규 단일창구 `Core/StrokeFloorRole.cs`(하한은 StickConfig 참조)로 통합해 셋 다 호출하게 함. 썩은 니들 3건을 nameof로 교체. LimbMergeInkFloorTests에 "인계본 통이 판정에 실제로 참여하는가" 대조 신설.
+
+실측: PlayMode CharacterScaleRuntimeTests 필터 8/8 Passed(수정 전 7/1). 크로스컴파일 격리미러 osx·win 각 5/5 errors=0, 양성대조 통과. EditMode 전량은 타 라운드 락 충돌로 미실행(파이썬 독립 재구현 21항목 대조로 대체 검증, 러너 초록은 락 풀리면 재확인 필요).
+
+**부수 발견**: NegativeControl_M6 빨강은 되올리기 결함이 아니라 "증인 소멸"(계약v2+모자커버선 절단으로 몸 바깥 v1 채움경계선이 0개 됨, 옛코드가 증인없음/증언없음을 같은 false로 뭉갬) — 존재 먼저 확인 후 실재한 갈래만 증언 요구하는 구조로 수정.
+
+**Windows 영향: 없음(함께 검토·검증함)** — 계측기 중립, DPI 배율은 단일함수로 세 통에 같은 값 곱해짐, 갈래판정에 배율 불개입. 단 Windows 100%에서 인계본 하한 1.00pt=디바이스픽셀1개, 1px AA/끊김은 Retina에서 재현 불가 — PlatformParityAuditTests 기존 Assert.Ignore에 실기미확인 항목 추가(코드갭 아님).
+
+**신규 발견(A-1 라인에 이미 포함됨, 별도배정 불필요)**: AccessoryFillRenderingTests(PlayMode) 구조적 빨강 예상 — 인계본 조각이 채움 만들면서 선에는 AccessoryStrokeMark 붙여서 v1 FillOutlineStroke 표식 대조가 0 vs N이 됨. 진행중인 test-engineer(A-1, PlayMode 20건 v1이름 갱신) 라운드가 이미 AccessoryFillRendering(4건)을 목록에 포함하고 있음.
+
+## 정지자세 망토밑단 재기록 제거 + 부채꼴 성능수치 갱신 완료 (perf-doc)
+
+**[P0-3]** TickHemMotion의 "정지중 스킵"이 needsFloor(각도·오프셋≠0)에 걸려있어 관망자세 100%·평소 Idle도 호흡 때문에 약 50% 막혀있었음(design-equipment 최초 발견보다 범위가 넓음, Idle도 해당). 화면변화 0 재확인(긴망토 밑단-발목선 여유 최악 +0.2304R=1.34pt, R26d 재현). `AccessoryShapeBuilder.HemCanReachFloor`(O(1) 보수판정, 부등식 기반) 신설로 스킵 복원. 새상수 0개·GC 원래도 0·needsFloor 무변경(걷기/낙하/착지 경로 무영향). 회귀 2건 추가. 검증: 격리미러 osx/win 5/5 0에러+selftest 통과. **EditMode 러너는 락 경합으로 보류 — 재확인 필요.**
+
+**부채꼴 성능수치 갱신**: 심볼 Image객체 28→36, 매프레임 색대입 26→34(+8의 7이 확성기 8분할 원호). 프레임당 색대입 ≈36→44, 사이클누적 ≈14,200→17,300. 접힌상태 비용 0 유지.
+
+**자기정정 1건(성실성 기록)**: 2026-09-05 perf-doc 문서가 인용한 "PERFORMANCE_NOTES.md:385" 문장이 실재하지 않았음을 자체 발견, 근거를 코드 재확인으로 교체하고 인용 철회. 문서 머리에 "다른 문서를 낡았다고 정정할 때는 먼저 grep해라" 경고 추가.
+
+**리더 판단 필요**: (1) EditMode 러너 창 배정(락 비면 `regress.sh edit perfdoc-hem` 1줄). (2) `PERF_EQUIPMENT_AND_FAN.md`에서 P0-2(초상화창 열린 내내 0.88Mpx를 초당 60회 재렌더 — 온디맨드화 필요, 값어치 있음)·P1-1/1-2/1-3 전부 미반영 확인됨 — 백로그 배정 필요.
+
+## v1 모자 규약 게이트 정리 완결 — 2곳 재개방·1건 폐기삭제·PlayMode 20건 처리 (test-engineer)
+
+EditMode: SkipIfR25Hat 5→3→**2**(재개방 2건 실기러너 초록). **리더 판정 이행**: 커버선≤+0.10R 검사(6케이스) 삭제 완료, 묘비주석+잃은 커버리지 0 근거 3줄(H-2게이트 47건/왕관면제검사/HAIR감쌈검사 전부 생존) 남김.
+
+PlayMode 20건 처리: 19건 게이트(asmdef 제약상 공유승격 무의미해 PlayMode 전용 신설, 판정근거를 "씬에 그려진 것"으로 전환, v1이름 살아있으면 안건너뜀+둘다없으면 실패=거짓초록 차단 3갈래) + 1건(PortraitEyeVisibilityTests)은 자 자체를 "미착용대비 부품수 증가"로 교체해 구제(커버리지손실 0). 호출부 12곳 전부에 "잃는것+되살리는법" 기록, 원장 래칫 등재.
+
+**부수발견(미배정)**: 인계본 조각은 FillOutlineStroke 대신 AccessoryStrokeMark를 씀(채움수=표식수라는 v1 불변식이 인계본에서 성립 안 함, 실측 털모자 채움3/표식0) — 인계본 쪽 짝 불변식이 아무데도 없음, 후속 배정 필요.
+
+검증: xcheck osx/win 5/5 errors=0. EditMode전량 2495(실패2건 전부 타라운드 원인). PlayMode 8픽스처 44건으로 게이트17곳 동작확인. 잔여: 위치이동 게이트 2곳 실행확인 미완(다음 통합실행때 필터1회면 확정).
+
+**운영 위험 보고**: 17:01경 다른 라운드가 살아있는 트리에 xcheck 포이즌 심볼(GetupFloorClearanceTests.cs:412)을 직접 주입해 10초간 전 팀 크로스컴파일이 거짓빨강 위험에 노출됨(자체 회수됨, 실제 피해 없음) — **selftest는 반드시 격리 미러에서만 할 것, 살아있는 트리 직접 주입 금지** 원칙 재확인 필요.
+
+**하우스키핑(qa-regression 다음 베이스라인 갱신 시 처리)**: TestClaimExpiryAuditTests 원장에 `GearMenuShrinkFallbackRenderTests.cs`의 신규 Assert.Ignore 1건 미등재 — 다음 전량 실행에서 원장감사가 잡아줄 것이나 등재 필요. CommentReferenceAuditTests가 인용한 docs/PERF_HEM_MOTION_IDLE.md는 perf-doc이 같은 시간대 생성 완료했으므로 다음 실행에서 자연 해소 예상.
+
+**후속 배정 제안**: ①인계본 짝불변식 신설 ②PlayMode 12곳 이름→씬유도 재작성(레시피 있음) ③음성대조 2건 재저작 ④타라운드 실패2건 트리아지.
+
+## ★★★ 캐릭터 간헐적 랙돌낙상 원인 규명 완료 — Blocker 1건 + Major 2건 (debugger)
+
+**결론: 오늘 밤 회귀 아님.** 집중모드/부채꼴/파쿠르/모자 전부 git diff로 반증(물리·충돌 파일 변경 0줄). 회귀 창은 2026-08-30 Dock 물리 계단 도입(24e67df) — 8/29에 닫은 "던지면 관절꺾이며 넘어짐" 문이 다음날 옆문으로 재발.
+
+**[Blocker] 충돌 충격량이 방향을 무시한 속력 전체(relativeVelocity.magnitude)를 씀** — `StickmanAgent.cs:601`(+복사본 `RagdollLimbImpactRelay.cs:41`). Dock 물리계단 옆면을 스치며 떨어지는 접촉(법선⟂속도)이 정면충돌과 동일하게 채점됨. 실측 로그: 법선성분 0.81 N·s인데 코드값 27.08(임계8.0) — 33배 과대평가. 부딪히는 형상은 머리 물리원(반경0.30, 발+1.53)이고 Rigidbody2D가 없어 루트에 귀속 → 착지차단막(발+0.342)이 원리적으로 못 막음. 독립표본 3건이 같은 형상 확인(Walk 1.88 무사/ParkourClimb 0.00 무사/Fall 27.08 랙돌). **던지기 속도 2.85~12.0 전부 임계 초과라 던지기와 강하게 연관되나, 로그로 직접 잡은 건 창발판상실 낙하 1건.**
+수정 제안: `RagdollImpactResolver.TryApplyCollisionImpact`가 이미 뽑는 접촉법선으로 `|v·n̂|`을 취하도록 변경, `StickConfig.collisionImpactUsesNormalComponent`(기본true) 네거티브컨트롤 스위치 추가. `[착지충격]` 로그에 법선/정렬도/법선충격량 추가(6일간 안 보인 이유). PlayMode 테스트 3건 필요(이 경로 테스트 0건 확인 — 기존 랙돌테스트 전부 차단막·공식을 우회하는 ReportExternalImpact만 사용, "죽은 프로브" 패턴).
+
+**[Major] 던지기 착지 후 발판 이탈** — `ThrowTumbleState.cs:843-850`이 착지시 v.y만 지우고 v.x는 남겨, `LandingCrouchState.cs`의 지수감쇠(k=12)로 |vx|/12(최대41pt) 미끄러짐. 실측: vx=2.77→9.5pt 미끄러져 발판 2.4pt 이탈→Fall. 사용자 문장 "바닥에 못서고"에 문자 그대로 대응. 수정안: 착지 발판 잔여 가장자리 거리로 vx 클램프.
+
+**[Major/Windows전용, 별도배정] 접지밴드-스냅상한 단위불일치** — test-engineer 이관건 재확인: 사용자 환경(982pt)에서는 갭 닫힘(0.4884<0.60, [스냅상한초과] 로그 0건, 능동반증)이라 **이번 신고 원인 아님**. 단 창높이 800pt 미만에서 갭 열림 확정, **Windows 1366×768(스팀전환 타깃 실재 해상도) → 0.625>0.60 발화**. 수정: groundSnapMaxDistanceWorld를 groundSnapTolerance의 월드환산에서 유도(하한 강제).
+
+**담당 배정**: Blocker+Major(§1,§2) → coder(RagdollImpactResolver.cs+StickConfig.cs+StickmanAgent.cs+ThrowTumbleState.cs). §4(Windows전용) → dev-platform.
+
+## 설정창 뷰포트 테스트 수정 + 상점 저장로그 거짓 수정 완료 (coder-ui)
+
+`SettingsWindowChromeTests`: `ScrollIntoContentViewport`/`ClickInViewport` 도구 신설로 클릭 4곳 감쌈 — HEAD 349048f의 "이름"행(44pt) 추가로 생긴 거짓빨강 해소, 클릭전 전제단언으로 다음 회귀시 "설정 안먹음"이 아니라 "부품이 뷰포트 밖"으로 자가진단. 조용한초록 2건(①[+] ②아주길게)에 동일좌표 양성대조 + 좌표불변(±0.5pt)·미선택 사전조건 추가로 이중공허 경로 차단. 프로덕션 로직 무변경.
+
+`CharacterInfoWindow.Shop.cs:713` — Save() 반환값 버리고 무조건 "즉시저장" 기록하던 잠재결함 수정, InfoGearIconWidget:675 패턴 이식, 실패시 LogWarning 승격 + 저장보류값 노출.
+
+검증: 격리미러 osx/win 각 errors=0 units=5/5 + selftest 양성대조 통과. **Unity 배치모드는 Temp/UnityLockfile 점유로 미실행 — 순서배정 대기.**
+
+**별건 관측(미수정, 판단필요)**: `CharacterInfoWindow.Shop.cs:742` 주석 "이 넷은 같은 프레임에"인데 실제 갱신호출 5개(RefreshNumbers/Shop/Cards/Detail/InventoryList) — 숫자오기인지 누락인지 확인 필요.
+
+## Ø36 축소폴백 예비판정 완료 — 화면 자체는 무해, "자(尺)"가 고장 (design-art)
+
+문서 정정: `ART_FAN_MENU_LANGUAGE.md:110` 카운트다운 링 Ø20→22(프로덕션 PowerRingDiameterPoints=22f와 대조 확인).
+
+**예비 판정(오프라인 계측, 실기 캡처는 빌드 낡음으로 보류 — 재빌드 후 §8 절차로 최종확정 필요)**:
+① 배지숫자 8.18pt 번짐 — **조치불필요**. 실효대비 5.68~7.90(MinTextContrast 4.5 전구간 통과). 결정적 반증: 같은 글자가 HoverScale 48/44로 이미 출시 첫날부터 9.09% 리샘플되어 왔고 무신고 — 신설 18.18%는 그 2배일 뿐 새 현상 아님.
+② 심볼획 1.64pt — **조치불필요**. Text 아닌 Image+절차적 스프라이트라 리샘플 원인 자체가 없음.
+③ **조치 필요 — "자" 2건**: (다-1) 원신고를 규명했던 실기진단 `[GLYPH-SCALE]`(OverlayCompositionSnapshot.cs:333)이 `pt×canvasScale`만 계산해 transform 스케일 항이 없어서, 축소폴백 걸린 화면에서 "리샘플없음" **거짓초록**을 찍음(UiGlyphScalePolicy.IsExact도 같은 사각지대, UiGlyphExactnessAuditTests 영원히 통과). 프로브가 Windows전용이라 macOS엔 계기판 자체가 없음. (다-2) 아이콘게이트 FG-3 "골" 판정이 Ø36에서 한 번도 안 재졌음 — r26_coords.txt가 "Ø36은 안 그려진다" 전제였는데 오늘 뒤집힘. 최소골 3.02pt→2.47pt로 절대하한 3.0pt 미달(상대 1.5W는 불변), 알파0골 확률 100%→65%. (다-3 예약) 미실장 배지외곽선(F-5) 실장시 Ø36에서 0.818pt로 최저획하한 1.00pt 미달 예정 — 실장 라운드가 인지할 것.
+
+**배정**: (다-1)(다-2 관련 프로브) → dev-platform(Platform/ 소유). (다-2 재게이트) → design-art 다음 라운드.
+
+## 유휴수급 정지로그 오판 수정 + 상점저장 거짓빨강 제거 완료 (coder-systems)
+
+[게임시스템] `CharacterProgressionDirector.LogIdleStallOnce`가 coins==0을 "멈췄다"로 오판해 정상동작을 고장으로 신고(실측 720줄/시간, 전부 거짓사유 "480분 다썼다"였으나 실제 창사용 60분). 판정을 `CurrencyModel.TickIdleIncome`의 신규 out인자 windowSecondsSpent==0으로 교체, 사유를 상한/창/둘다/원인불명 4갈래로 분리. 실측 후 0줄/시간, 진짜정지신호는 1줄 유지.
+
+[게임시스템] `ShopTabSurfaceTests` 거짓빨강 제거 — IsDirty 대신 저장호출결과(`ShopLastSaveSucceededForTests` 신설)+실물JSON 디스크대조 두 가지로 교체(재화유실 실재하지 않았음 재확인).
+
+[교차레이어] `TickIdleIncome` 시그니처에 out double windowSecondsSpent 추가(오버로드 아님, DailyLimitClampAuditTests의 "호출부 1건" 단언 보존 위해 단일시그니처+호출부 10곳 out _). `RemainingIdleWindowSeconds()` 신설로 "남은창" 계산 단일화.
+
+검증: 격리미러 osx/win 5/5 errors=0 + selftest 양성대조 통과. Unity배치모드는 다른라운드(랙돌수정) 미완성 컴파일상태 회피 위해 보류 — 순서배정 대기(CurrencyWiringRuntimeTests §6 신규2건, ShopTabSurfaceTests, CurrencyIdleTodoTierWiringTests/DailyLimitClampAuditTests 3묶음).
+
+**주의(별건 아님, 확인됨)**: 공용트리에서 RagdollImpactResolver.cs+StickConfig.cs가 컴파일불가 상태로 관측됨(LogCollisionImpact 인자/collisionImpactUsesNormalComponent 미정의) — 진행중인 랙돌수정 라운드(coder)의 정상적인 중간상태.
+
+## 부채꼴 아이콘 회귀테스트 16건 신설 완료 (test-engineer)
+
+`GearFanGlyphGateTests{,.Rig,.Geometry,.Silhouette}.cs` — 소스파싱 아닌 `BuildButton` 실제실행→`Image`의 sizeDelta·회전·fillAmount·**스프라이트가 구운 알파**를 되읽어 FG-1~FG-8 검증. 상수는 전부 리플렉션 참조. **조각은 배열길이 아닌 이름(도형그룹)으로 셈**(④확성기=조각3/Image13 계약 반영). 오늘 고친 결함 5종(확성기 오독/①↔⑤포함관계/Strike가려짐/머리링/획6종)을 결함별로 겨눈 회귀. 양성/음성대조 3건 전부 프로덕션무수정 데이터돌연변이(Ø22→20되돌림, 겹친획주입, 1.8pt주입).
+
+검증: 격리미러(RagdollImpactResolver.cs 작업중이라 HEAD판 대체) 크로스컴파일 osx/win 0에러+양성대조통과. **배치모드 미실행 — 트리 복구(랙돌수정 완료) 후 재확인 필요**, 특히 스프라이트 텍스처 되읽기(GetPixels32)는 파이썬 예측기가 검증 못하는 유일한 부분. 파이썬 독립예측기로 전단언 통과 예측(최악IoU 0.3161/최소고유잉크 0.4800/최악간극 3.000pt), coder-ui 계측기와 교차일치. **예측기가 C#버그 1건 검출**(나팔을 "선분최다"로 찾다 소리선호 8분할과 혼동→"닫힌폐곡선"으로 수정, 크로스컴파일만 봤으면 통과했을 형태).
+
+**리더 확인요망**: 스톱워치 r_max 13.990 vs FG-1한계 14.0(여유 0.0095pt), 잉크 25.72% vs 상한26%(여유 0.28%p) — 설계여유 매우 얇음, 다음 용두 수정시 주의.
+
+## 뒷짐 손끝 겹침 판정 완료 — 그림은 정상, 주석이 반대로 적혀있었음 (design-motion)
+
+판정: **현행 그림이 옳음 — 각도 무변경.** 옆모습 뒷짐 손끝 잉크가 0.7092R×0.4750R(1.49:1, 배율0.75에서 4.12×2.76pt) 점 하나로 합쳐지는 게 정상이고, 획1.0배 이상 벌린 대안은 "두 갈래 집게발"로 더 나빠짐(두 팔이 같은 어깨부착점·같은검정·같은sortingOrder라 깊이단서 0). 부수발견: "두 팔 중심선 최소거리 0.0000R=교차"는 뒷짐만의 성질이 아니라 팔짱·Idle·걷기 등 모든 자세에서 항상 0(같은 부착점이라 구조적) — design-equipment R26 보고의 이 부분은 증거로 부적절, 정정 전달 완료.
+
+**진짜 결함**: `StickmanPoseAnimator.cs:1216` 주석이 작동방향을 반대로 적음 — "손끝이 겹치지 않게 한다"고 되어있으나 실측은 반대(반대부호 팔꿈치스태거는 모으는 장치, E=0→0.3836R/E=6현행→0.2342R, 최소점5.25°). 또한 미문서화된 결합식 발견: 전완절대각차=2·|S−E|이고 S=E가 퇴화점(완전평행)인데 현재 여유 2°뿐 — 상수 옆에 이 결합 설명이 전혀 없었음.
+
+실기검증: P1(팔짱) 캡처 확보해 모델 ±2px로 교정 완료. **P2(뒷짐) 자체는 실기로 못 잡음(미확인)** — 개발데모세션 90초, 뒷짐은 평균3.5분 확률추첨이라 세션내 미도달, 세션마다 P1로 리셋. 검증 중 앱 인스턴스 2회 외부종료 관측(에이전트 조작 아님, 사용자 직접 종료로 추정).
+
+**배정**: coder → StickmanPoseAnimator.cs 주석 정정 2건(:1216 전면교체, :1212 결합식 추가). 각도/테스트/상수값 무변경. 부수(선택): driver.sh:341 cmd_key 확인패턴이 [포모도로] 태그를 못 잡아 거짓빨강 9/9 — dev-platform 또는 하니스 관리자 배정 검토.
+
+## 뒷짐 스태거 주석 정정 완료 — 주석전용, 값/로직 무변경 (coder)
+
+`StickmanPoseAnimator.cs`의 `FocusWatchBackElbowStaggerDegrees`/`FocusWatchBackShoulderStaggerDegrees` 주석 정정 완료(design-motion 판정 그대로 반영). 코드로 재확인한 기하가 design-motion 주장과 일치(전완절대각차=2×|S−E|=4.0°, ElbowBendSign=+1 확인). 기존 테스트(`FocusSessionAmbientTests.뒷짐은...`)의 doc-comment는 처음부터 옳았고 프로덕션 상수 주석만 반대로 썩어있던 사례였음 확인. 검증: xcheck osx RC=0 units=5/5 errors=0. Windows 영향 없음(주석전용).
+
+**백로그(design-motion/test-engineer, 저우선순위)**: S/E 결합제약(2×|S−E|)이 현재 하한2° 테스트로 퇴화점(0°)만 걸러내고 여유가 얕아지는 것(예 4.0°→2.5°)은 안 잡음 — 결합관계 자체를 못박는 감사 신설 여부는 미결정.
+
+## ★ 접지 판정 단위 불일치 근본 수정 완료 (dev-platform) — Windows 낙상 버그 해소
+
+`StickConfig.ResolveGroundSnapMaxDistanceWorld(worldUnitsPerOsPoint)`가 실효 상한을 max(설정값, 접지밴드 월드환산×1.25)로 유도, 설정값은 하한으로 재정의(ResolveStepUpMaxHeight와 동형). 환산은 단일소스 `ScreenCoordinateConverter.WorldUnitsPerOsPoint()`에만 위치, orthographicSize도 상수아닌 카메라실측. 배포환경(982pt)에서 상한 0.600→0.611로 미세하게 관대해질 뿐(max()라 줄어드는 방향 없음) — 사용자 낙상신고와는 여전히 무관 확정.
+
+**실측**: Windows 1366×768(스팀전환 타깃 실재해상도)에서 밴드 0.625가 상한 0.600을 넘던 갭이 0.781로 메워짐. macOS 1280×800 경계선도 0.750으로 여유생김. 배치모드 640×480(1.00)도 해소.
+
+**검증(전부 실기)**: DockGeometryInvariantTests 신규4건 포함 EditMode 18/18. PlayMode GroundSnapTeleportTests 5/5·GetupFloorClearanceTests 2/2·GroundedGravitySuppressionTests 12/12·GroundLossHangStateTests 13/13 전부 Passed. 격리미러 xcheck osx/win 0에러 + **타깃교차대조**(win전용파일에 고의주입→win만빨강, osx전용파일 주입→정반대)로 win초록이 실제 Windows 절반을 검증했음을 증명. StickConfig.cs 동시편집(랙돌수정 coder)과 충돌 없이 양쪽 훅 모두 무사 확인.
+
+**Windows 영향: 함께 수정함(이 수정 자체가 Windows용). macOS 영향: 함께 수정함. 실기 Windows 하드웨어 검증은 이 머신 불가 — 백로그.**
+
+### ★ 운영 발견 — Temp/UnityLockfile 락감지 오탐 (재발, 리더 판단 필요)
+
+0바이트 락파일이 있는데 실제로 쥔 프로세스가 없는 상태를 doctor가 "락 잡힘"으로 오판(TEAM.md 락프로브 정본 규칙과 반대방향 오탐) — 이 라운드가 3회 헛돌았으나 정본대로 "산출물(xml실재+testcasecount)로 판정"하는 우회로 5회 모두 정상실행 확인. 오늘 밤 리더도 동일현상으로 좀비락파일 1회 직접 제거한 바 있음. **재발 패턴이므로 doctor의 락감지 로직 자체를 "프로세스 보유 여부"까지 확인하도록 개선 검토 필요.**
+
+## [리더 직접조치] driver.sh 락감지 오탐 수정 — 좀비 락파일과 실제 보유 구분
+
+`.claude/skills/run-stickmate/driver.sh`의 Unity 배치모드 락 감지가 `Temp/UnityLockfile` **존재 여부**만 보고 "잡힘"으로 판정하던 것을 `lsof`로 **실제 보유 프로세스 여부**까지 확인하도록 수정(dev-platform 라운드가 오늘 밤 3번째 재발로 보고, 리더도 별도로 1회 직접 목격). 게임 코드가 아닌 세션 하니스 도구라 리더가 직접 조치(구문검사 통과, doctor 재실행으로 정상 프로세스 감지 확인 — 현재 다른 에이전트의 정당한 EditMode 전량실행 1건을 올바르게 "사용중"으로 잡아냄).
+
+## 글리프스케일 진단 transform 사각지대 수정 완료 (dev-platform)
+
+`UiGlyphScalePolicy.IsExact`에 transform배율 인자 추가(기본값1=하위호환), `OverlayCompositionVerdict`의 GLYPH-SCALE 판정을 "아틀라스 round(pt×canvasScale)" vs "화면 pt×canvasScale×transformScale" 대조로 교체. API를 AtlasPixels/DisplayedPixels/IsExact(레이아웃질문)/IsResampleFree(렌더질문)로 명확히 분리. 처방도 갈림 — 조상스케일이 원인일때는 pt스냅을 권하지 않음(배율1.5×36/44에서 1~64pt 전수확인해도 잔차0 없음).
+
+양성대조 4건 신설, **수정 전 산술로 되돌려 두 수정이 각각 독립적으로 빨개짐을 증명**(정책만 되돌림→정수판정으로 오판, 판정기만 되돌림→축소폴백을 "None"으로 오판) — 수정전이 거짓초록이었음 재현.
+
+**남은 갭 2건은 PlatformParityAuditTests에 Assert.Ignore로 등재**(macOS 대응 프로브 부재, Windows 프로브 표본1개뿐 — 부채꼴 배지 다중표본화는 애니메이션 중 매프레임 배율변동으로 로그폭주 위험 있어 백로그, 고수위표본 설계안 문서화).
+
+검증: xcheck osx/win 0에러+양성대조(Windows전용파일 주입시 win만 빨강). 표적 EditMode 3클래스 107/95통과/0실패. **전량 EditMode 2521/2434통과/실패1건(제것아님, TestClaimExpiryAuditTests가 타라운드 파일 2개의 미등재 Ignore 검출 — DockGeometryInvariantTests.cs/GearMenuShrinkFallbackRenderTests.cs, 하우스키핑 필요 이미 별도로도 보고됨).
+
+**Windows 영향: 함께 수정함(중립산술 공용, 실기미확인). macOS 영향: 함께 수정함(같은 산술 공유하나 실기태울 프로브 아직 없음).**
+
+## R27 — Ø36 축소폴백 FG-3 게이트 재검증 완료: 좌표결함 0건, 코드변경 불필요 (design-art)
+
+**자기정정**: 이전 라운드의 예비판정("2.47pt/65% 미달")은 폐기 — 근거였던 램프모형이 프로덕션과 달랐음(알파0 골은 g−1.0pt가 아니라 g−0.5pt, 오류방향이 비관쪽이라 R26 통과판정은 안 뒤집힘).
+
+**실제 렌더 시뮬레이션**(합성알파 점표본+8연결 병목임계, 위상64×DPI5종, 양성대조로 R26이전 확성기 결함 θ*=1.000 재현 확인): **Ø36 전 배율·전위상·전쌍 최악 θ*=0.000**(뭉침임계 k*=0.38 대비 2.15배 여유) — 좌표수정 불필요. 절대3.0pt로 읽으면 7쌍 미달로 보이나 같은 자로 FG-8도 3/5 미달이라 자기모순(그 읽기 자체가 틀림) — 상대자(1.5W, 배율불변)로 읽어야 하는 게이트였음.
+
+**부산물 발견**: 진짜 하한은 안착값이 아니라 펼침전이 첫프레임(Group0.8182×Root StartScale0.62=실효0.5073, Ø22.3상당) — 거기서도 θ*=0.000이나 여유가 1.33배로 줄고 체크리스트 표식상자 구멍이 화소1개로 축소(design-motion 검토후보, 현재는 통과).
+
+**권고**: FG-3 규칙 자체를 "절대3.0pt" 대신 "상대1.5W(조형) + 화소하한(간극−EdgeFeather)×k×S≥1.0px(렌더)" 이중조건으로 정정 — 절대숫자를 규칙에 남기면 배율변경마다 오늘같은 가짜미달이 재발.
+
+**배정**: design-equipment → 문서정정 2건(DESIGN_FAN_MENU_ICONS.md §1-3 유도식 g−1.0pt→g−0.5pt, r26_coords.txt의 "Ø36은 안그려진다" 전제 정정). test-engineer → 축소폴백 화소하한 회귀테스트 신설(상수 참조, 하드코딩 금지). coder-ui는 배정불필요(코드변경 없음).
+
+**Windows 영향: 없음(코드0줄)이나 위험은 Windows가 큼**(최악조건이 배율100%=비Retina, 사실상 Windows전용 조합) — 실기캡처로 최종확정 필요(빌드 낡음으로 보류중).
+
+## ★★★ 사용자 신고 "가끔 넘어짐"/"던지면 못서고 넘어짐" 수정 완료 + 실기검증 (coder)
+
+**[Blocker] 충돌충격량 방향무시 수정**: `RagdollImpactResolver.ResolveNormalImpulse`로 접촉법선 성분 투영, 스위치 `StickConfig.collisionImpactUsesNormalComponent=true`(OFF시 비트단위 옛동작과 동일 확인). 실측: 옆면스침 27.07→**2.00**(랙돌 0회, 수정전이면 발동), 정면충돌(정렬1.000) 12.00→12.00 무변화(과보호 아님 확인). `StickmanAgent.cs:601` 무수정(투영은 리졸버 내부만). `[착지충격]` 로그에 접촉법선·정렬도·법선충격량 추가.
+
+**[Major] 던지기착지 발판이탈 수정**: `ThrowTumbleState.ClampLandingSlideToFootholdEdge` 신설(AutoWanderController와 같은 발판경계 조회 창구 재사용), 스위치 `throwTumbleLandingSlideClampEnabled=true`/여유비0.9. 실측: vx 2.770→0.693, 최종위치 경계 안쪽 0.54pt 여유로 발판유지(OFF면 이탈→Fall, 신고 재현 확인).
+
+**신규 테스트 6건**(GrazingCollisionRagdollTests, ThrowLandingEdgeSlideTests) — 진단창구로 "차단막이 막은게 아님"+"원본≥임계" 선행조건 못박아 거짓통과 차단. 회귀 PlayMode 55/55, EditMode 112/0실패/13건너뜀(기존). xcheck osx/win RC=0 5/5 errors=0.
+
+**교차레이어 영향(숨기지 않음)**: RagdollState 대사3구간(윽/으악/으아아아악)과 진입각속도 입력이 법선성분 기준으로 바뀜(정면은 무변화, 비스듬한 충돌만 한 티어 낮아질 수 있음). [착지충격] 로그 포맷 변경(파싱하는 곳 0건 확인). 팔다리8경로 질량불일치는 별건 미수정(법선투영으로 임계에서 더 멀어질 뿐).
+
+**리더판단**: 던지기착지 여유가 실측 0.54pt로 얇으나 안전측(이산적분이 예측의 88%로 작게 나옴) — 현재값 유지, 추후 재발시 `throwTumbleLandingSlideEdgeSafety01` 0.9→0.8로 낮추는 다이얼 확인됨. **Windows 영향: 없음(플랫폼중립, win크로스컴파일 0에러).**
+
+## 테스트원장 미등재 Ignore 2건 등재 완료 (qa-regression) — 유일한 실패 해소
+
+DockGeometryInvariantTests(자동, 실측 Screen.height==480이라 조건거짓·18/18 Passed 확인) / GearMenuShrinkFallbackRenderTests(동반, Companion=축소폴백_원도_같이_줄어든다 검사·2/2 Passed 확인) 2건 등재. 검증: 독립재구현 스캔 양방향0건, xcheck osx/win 0에러, EditMode단독 6/6, **네거티브컨트롤**(Companion 훼손→1Failed 확인 후 원복→6/6). 전체훑기로 다른 미등재 0건 확인(간접게이트 3종 래칫 29/2/12 전부 실물일치).
+
+**리더 확인사항 2건**:
+1. 오늘 밤 "2521건" 전량실행 xml이 `docs/verify/runs/`에 없음 — regress.sh를 안 거쳐서 G9(직전실행대비) 앵커가 오늘 밤 끊겨있음. **다음 전량실행은 `regress.sh edit <라벨>`로 돌려 대장을 다시 이어야 함.**
+2. TestClaimExpiryAuditTests.cs에 이미 있던 미커밋 4훅(SkipIfHandoff 30→29, SkipIfR25Hat 5→2, HandoffPlayModeGate 신규등록)은 다른 라운드(모자게이트 test-engineer) 몫 — 커밋시 정확히 귀속 필요.
+
+## 부채꼴 아이콘 회귀테스트 17번째 추가 + 축소폴백 화소하한 검증 완료 (test-engineer) — 실기 배치모드까지 확인
+
+FG3화소_축소폴백과_펼침전이에서도_알파0_골이_한_화소_남는다 테스트 신설. 판정식 `(코어간극−EdgeFeather)×배율≥1.0px`, 상수 전부 리플렉션참조. **램프모형 오가정을 주석 아닌 측정으로 확정**: 획31개 구워진 알파에서 "알파0 시작점−코어가장자리"를 직접 재서 EdgeFeather/2(=0.250pt, g−0.5pt 정정판)임을 실측 확인 — 굽는식이 바뀌면 이 단언이 먼저 빨개지도록 설계.
+
+3국면 실측: 안착Ø44 2.50px / 안착Ø36 2.05px / 축소×펼침첫프레임(0.5073배) 1.27px — 전부 design-art R27 예측과 일치. 양성대조(임계아래배율 0.3960)에서 2건 검출 확인.
+
+**검증**: xcheck osx/win 5/5 0에러. **Unity배치모드 실기 17/17 Passed**(이전 라운드의 "배치모드 재확인 요청" 완전 해소 — 스프라이트 텍스처 되읽기까지 실기 확인됨). **EditMode전량 2522건: 2436통과/0실패/86기존건너뜀**. 실측값이 r26_impl_verify.py·r27_shrink_fg3.out.txt와 모두 일치. PlayMode GearMenuShrinkFallbackRenderTests와 상호보완(그쪽=축소가 실재함, 이쪽=그 축소가 안전함).
+
+**리더 확인요망(반복, 변동없음)**: r_max 13.99 vs FG-1한계14.0(여유0.01pt), 잉크25.7%vs상한26% — 설계여유 매우얇음. DESIGN_FAN_MENU_ICONS §1-3 문서정정(g−1.0pt→g−0.5pt)은 진행중인 design-equipment 라운드가 처리 예정.
+
+## FG-3 문서정정 2건 완료 + 오류사본 4개 동반정정 (design-equipment)
+
+DESIGN_FAN_MENU_ICONS.md §1-3: "골=g−1.0pt"→**g−0.5pt**, "g≥2.0pt"→**g≥1.5pt**(프로덕션 alpha=clamp01((core−d)/feather+0.5) 직접확인, 독립재유도로 design-art 수치 전부 재현). FG-3규칙행·FG-2근거·P0표(−0.57px→−0.07px) 동반정정. r26_coords.txt: "Ø36은 안그려진다" 전제 폐기, R27재검증절 신설. 오류뿌리 4개(r26_dump.py/fanglyph.py/r26_measure.py/README.md) 동반정정, 재생성diff로 좌표전문·상수표 불변 확인(회귀없음).
+
+**신규 관측(조치안함, 부작용 발견)**: 정정방향이 골/획에서 다름 — 획쪽은 옛모형이 낙관적이었음(심=t−0.5). **장비슬롯행 아이콘 0.825pt 획(AccessoryCardIcon.cs:385)이 1×최악위상에서 알파0.325/대비2.79:1로 잉크문턱(0.3476/3.0:1) 미달 가능성**(2×는 통과) — 실기캡처 미확인, design-equipment/coder-ui 후속조사 백로그.
+
+**백로그(저우선순위, 문서만)**: 같은 오류 사본 3곳 잔존 — ART_FAN_MENU_LANGUAGE.md:151(design-art 소유), UX_FLOW.md:4248·UX_RIGHTCLICK_FAN_MENU.md:484(ux-designer 소유). 전부 −0.57px/−1.0pt 잔존, 다음 라운드에 정정.
+
+## PlayMode 신규실패 3건 규명 완료 — 전부 오늘밤 물리수정 무관, 1건은 Major 사전결함 확정 (debugger)
+
+**결론: 오늘 밤 물리수정(ResolveNormalImpulse/ClampLandingSlideToFootholdEdge)이 원인인 항목 0건.** 격리단독+전량재실행(dbg-r29)+범위한정+반복실행 4종 실기교차검증.
+
+① `FocusWatchStancePersistenceTests` — **테스트 결정성 결함**. seek루프에 이웃 테스트(:185)가 가진 `FocusWatchStanceSettle01≥0.999f` 가드 누락, 세션중 걷기직후 첫Idle프레임(이징 되감김)을 표본으로 잡음. 추정 실패율 13~15%/회. → test-engineer.
+② `StickmanPlaytestSmokeTests` — **플레이키니스 1.44%/회**(몬테카를로200만시행 정량화). 배회RNG가 씬로드마다 무작위시드라 15초창에 추첨 3~4회뿐. 관찰창 조기탈출형 40초로 늘리면 1/70→1/100,000. → test-engineer.
+③ `ThrowLandingRegrabTests` — **★Major 제품결함(사전존재, 간헐, 오늘밤무관 구조적 반증완료)**. `ThrowTumbleState.Tick`에 FallState의 "2순위 밴드+유예 착지경로"가 통째로 누락 — 몸이 물리바닥에 닿아 멈추면 스윕교차가 영구불성립→throwTumbleMaxSeconds 6초 고착→그동안 잡기거부(원칙1 위반급 사용자체감)→탈출후 낙하높이0으로 무릎앉기/먼지/대사 전부소실. 경계는 vx≈9.00 부근(테스트가 정확히 그 값 사용, 프레임타이밍잡음이 매실행 경계를 넘나듦). → coder 배정, 저위험 "정지시에만" 폴백 패치안 + 네거티브컨트롤 + 경계양쪽2케이스 검증 필요.
+
+**부수발견**: CharacterVisualHalfWidthTests도 같은 성질 플레이키(r28통과/r29실패) → qa-regression 등재필요. regress.sh MIN_PLAY_CASES=610이 실측695 대비 낡음 → 660+로 상향필요. 배치모드러너 접지스냅 실효상한이 오늘 수정으로 0.60→1.25로 커짐(640×480환산, 회귀아님·측정조건변화로 기록).
+
+**Windows 영향: 없음**(진단만, xcheck win/osx 5/5 errors=0).
+
+**리더판단**: 커밋 자체를 막을 근거는 없음(3건 다 오늘작업 무관)이나, ③은 사용자체감 Major결함이라 지금 고치고 넘어가기로 결정.
+
+## ★ 던지기 6초 고착 Major 결함 수정 완료 + 실기검증 (coder)
+
+`ThrowTumbleState.Tick`에 FallState의 2순위 "밴드+유예" 착지경로를 `TickRestingLandingFallback`으로 이식. 조건은 "정지"(|v.y|≤ε, FallState.UpwardLandingVelocityEpsilon 참조로 숫자복사 금지)로 엄격하게 못박음 — 넓은 "상승중 아님" 형태는 정상회전 말미를 잘라먹을 수 있어 명시 기각(근거: 자유포물선이 정지조건 채우는 시간 0.0034초 vs 유예0.1초). 탈출구 스위치 `throwTumbleRestingLandingEnabled`(기본ON, 에셋 구움). 안전상한 로그에 접지/핸들/수직속도/스위치 추가.
+
+**실기검증**: 네거티브컨트롤이 원결함 정확히 재현("상한6초초과…접지=True,수직속도=0.000"+고착중 잡기거부). ON/OFF대조=체류6.00초/0.70초, 낙차0.00/2.10유닛. **ThrowLandingRegrabTests 6회반복 실패0/6**(기준선1/4). 경계값 단일표본(vx=9.0)을 8.9/9.2 양쪽2케이스로 확장. ThrowTumbleTests 10/10·ThrowLandingEdgeSlideTests 3/3·GetupFloorClearance 2/2·잔여5스위트 29/29·전량EditMode 2522건 failed0. xcheck osx/win 각5/5 errors=0.
+
+**리더확인**: 검증 도중 자백한 픽스처 결함 1건 스스로 발견·수정(발판오프셋이 우연히 임계문턱과 겹쳐 얕은흡수 오탐 — 대조기준을 오프셋무관값으로 교체). 영향권 3스위트 중 CapeFallFlutterTests(5)·CapeLandingSettleTests(3)·AccessoryFacingFlipFillTests(3/5)는 인계본 v2 개명으로 사전Ignore상태(이번 수정 이전부터, 무관) — 이번 무해성판정에 기여 못함, 별도 배정 필요(밑단정의 기하기반 재작성). **Windows 영향: 함께 수정됨**(신고 자체가 Windows건, 플랫폼중립코드라 그대로 적용, xcheck win 0에러).
+
+## PlayMode 플레이키니스 3건 + 러너하한 수정 완료 — 전량 697/697 무결 (test-engineer)
+
+①FocusWatchStancePersistenceTests ②StickmanPlaytestSmokeTests(고정15초→조기탈출형40초) ③CharacterVisualHalfWidthTests(고정3초→조기탈출형3~30초, 실측근거: 6회중1회가 3.59초에야 문턱통과했음 확인) 전부 프로덕션상수 유도로 수정. ④regress.sh MIN_PLAY_CASES 610→660.
+
+**네거티브컨트롤 3/3 발화**(요청사항 전부 확인) — 그중 1건은 **프로덕션 경로 실제 검증**: 부채꼴메뉴 열어 배회를 실제로 죽이면(IsRadialMenuHoldActive) 40초를 다 채우고도 X변동폭0으로 정확히 실패함 확인.
+
+**검증**: 3클래스 각 6회반복 전량통과(18/18). 격리미러 osx/win 0에러. **전량PlayMode회귀 697/697, passed670, failed0, skipped27**(직전 695/failed2~3/skipped27 대비 건너뜀 동일유지, 실패만 해소) — 오늘밤 최종 PlayMode 베이스라인 확정. Windows영향 없음.
+
+**운영관찰**: 락프로브 4번째 변종 발견(에이전트가 인라인 bash로 자체 락체크 명령을 짤 때 그 명령줄 자체가 검색패턴에 자기매칭되는 함정) — driver.sh 자체 문제 아니고 개별 에이전트 스크립트 작성 습관 문제, 정본 가이드에 "ps -ax -o comm= 로 실행파일경로만 비교" 권고 추가 검토 대상(저우선순위).

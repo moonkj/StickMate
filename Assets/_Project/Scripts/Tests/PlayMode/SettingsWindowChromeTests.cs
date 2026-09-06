@@ -165,6 +165,114 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
+        // ★ 클릭 도달 보장 (2026-09-06) — "안 먹는다"와 "닿지 않았다"를 갈라 놓는다
+        // ============================================================================
+        //
+        // 이 창은 «마스크에 잘린 자리는 눌리지 않는다»를 규칙으로 못박고 있다
+        // (SettingsWindow.ContainsScreenPoint). 스크롤로 화면 밖에 나간 행이 계속 눌리는 UI가
+        // 이 프로젝트가 "최악"이라고 부르는 형태이기 때문이다. 그래서 <b>뷰포트 밖 좌표에 먹인
+        // 클릭은 정당하게 거절된다</b> — 로직 결함이 아니다.
+        //
+        // ★ 그 규칙이 테스트에 두 가지 얼굴로 나타났고, 2026-09-06에 <b>둘 다</b> 실제로 났다:
+        //   (가) <b>거짓 빨강</b> — [캐릭터] 카드 맨 위에 「이름」 행(44pt)이 들어오면서 그 아래
+        //        「말풍선 글자 크기」가 통째로 밀려 [+] 중심이 뷰포트(426pt) 아래 6.0pt로 나갔다.
+        //        설정은 멀쩡한데 테스트만 "설정이 안 먹는다"고 말했다.
+        //   (나) <b>조용한 초록</b> — 같은 이유로 «비활성이면 안 먹는다»는 부재 단언 두 건이
+        //        <b>공허하게</b> 통과하고 있었다. 클릭이 애초에 도달하지 않으므로 게이트가 완전히
+        //        고장나도 초록이다. 이 저장소가 가장 자주 당하는 형태다(CLAUDE.md 부재 단언 규칙).
+        //
+        // 그래서 아래 두 도구를 <b>모든 카드 행 클릭</b>이 지나가게 한다:
+        //   ScrollIntoContentViewport — 누르기 전에 [▼]로 뷰포트 안에 올린다(있는 창구를 쓴다).
+        //   ClickInViewport           — 누르기 <b>직전</b>에 그 좌표가 정말 뷰포트 안인지 단언한다.
+        // 그러면 다음에 행이 또 밀렸을 때 테스트가 "설정이 안 먹는다"가 아니라
+        // <b>"부품이 뷰포트 밖이다"</b>라고 스스로 원인을 말한다.
+
+        /// <summary>[▼]를 몇 번까지 눌러 볼 것인가. 한 번에 얼마나 움직이는지는 프로덕션이 정한다
+        /// (<c>SettingsWindow.PageStep</c>) — 여기서 그 숫자를 베끼지 않는다. 지금 [캐릭터] 탭은
+        /// 1회면 끝까지 내려간다.</summary>
+        private const int MaxPageDownSteps = 8;
+
+        /// <summary>
+        /// 그 부품이 내용 뷰포트 <b>밖</b>이면 [▼]를 눌러 안으로 올린다(이미 안이면 아무 일도 없다).
+        ///
+        /// <para>사각형을 값이 아니라 <b>함수</b>로 받는 이유: 스크롤할 때마다 좌표가 바뀌므로 한 번
+        /// 찍어 둔 <c>Rect</c>는 첫 클릭 직후 낡는다.</para>
+        ///
+        /// <para>한 걸음도 못 움직이면 <b>그 자리에서 실패</b>한다 — 그때가 "이 행은 어떤 방법으로도
+        /// 누를 수 없다"는 진짜 결함이고, 조용히 넘기면 위 (나)의 공허한 초록이 다시 생긴다.</para>
+        /// </summary>
+        private IEnumerator ScrollIntoContentViewport(System.Func<Rect> partRect, string partName)
+        {
+            Rect viewport = _window.ContentViewportScreenRect;
+            Assert.Greater(viewport.width, 1f,
+                $"{LogPrefix} 내용 뷰포트의 화면 사각형이 비어 있습니다 — 창이 열려 있습니까?");
+
+            Rect part = partRect();
+            Assert.Greater(part.width, 1f, $"{LogPrefix} `{partName}`의 화면 사각형이 비어 있습니다.");
+            if (viewport.Contains(part.center))
+            {
+                Debug.Log($"{LogPrefix} `{partName}`은 스크롤 없이 이미 뷰포트 안입니다 " +
+                          $"(중심 y {part.center.y:F1}, 뷰포트 y {viewport.yMin:F1}~{viewport.yMax:F1}).");
+                yield break;
+            }
+
+            Assert.Greater(_window.PageDownScreenRect.width, 1f,
+                $"{LogPrefix} `{partName}`이 뷰포트 밖인데 [▼] 페이지 칩이 없습니다 — 올릴 방법이 " +
+                "없으므로 이 행은 사용자에게도 <b>영영 닿지 않습니다</b>.");
+
+            for (int step = 1; step <= MaxPageDownSteps; step++)
+            {
+                // 같은 칩의 연타는 창이 한 번으로 접는다(ActionDedupSeconds). 숫자를 베끼지 않고 그
+                // 상수를 참조해 벽시계로 기다린다 — 이걸 빼면 "안 움직였다"가 결함이 아니라
+                // <b>측정 실패</b>가 되어 아래 진행 단언이 거짓 빨강을 낸다.
+                yield return new WaitForSecondsRealtime(SettingsWindow.ActionDedupSeconds + 0.05f);
+
+                float beforeY = partRect().center.y;
+                _window.FeedClickForTests(_window.PageDownScreenRect.center);
+                yield return null;
+
+                part = partRect();
+                if (viewport.Contains(part.center))
+                {
+                    Debug.Log($"{LogPrefix} `{partName}`을 [▼] {step}회로 뷰포트 안에 올렸습니다 " +
+                              $"(중심 y {beforeY:F1} -> {part.center.y:F1}, " +
+                              $"뷰포트 y {viewport.yMin:F1}~{viewport.yMax:F1}).");
+                    yield break;
+                }
+
+                Assert.IsFalse(Mathf.Approximately(beforeY, part.center.y),
+                    $"{LogPrefix} ★ `{partName}`이 뷰포트 밖(중심 y {part.center.y:F1}, 뷰포트 y " +
+                    $"{viewport.yMin:F1}~{viewport.yMax:F1})인데 [▼]를 눌러도 페이지가 더 내려가지 " +
+                    "않습니다 — 스크롤 끝까지 갔는데도 닿지 않는다는 뜻이고, 그건 사용자도 이 행을 " +
+                    "누를 수 없다는 뜻입니다(세로 예산 초과). 행을 줄이거나 리더에게 보고하세요.");
+            }
+
+            Assert.Fail($"{LogPrefix} `{partName}`을 [▼] {MaxPageDownSteps}회로도 뷰포트 안에 " +
+                        "올리지 못했습니다.");
+        }
+
+        /// <summary>
+        /// ★ <b>클릭 직전 전제 단언</b> — 이 좌표가 지금 내용 뷰포트 안인가. 아니면 클릭을 먹이지 않고
+        /// 여기서 실패한다(뷰포트 밖 클릭은 <b>거절되는 것이 정상</b>이라, 그대로 먹이면 결과가
+        /// "설정이 안 먹는다"로 <b>잘못 읽힌다</b> — 2026-09-06 거짓 빨강 4건의 정체다).
+        /// </summary>
+        private void ClickInViewport(Rect part, string partName)
+        {
+            Assert.Greater(part.width, 1f, $"{LogPrefix} `{partName}`의 화면 사각형이 비어 있습니다.");
+
+            Rect viewport = _window.ContentViewportScreenRect;
+            float shortfall = Mathf.Max(viewport.yMin - part.center.y, part.center.y - viewport.yMax);
+            Assert.IsTrue(viewport.Contains(part.center),
+                $"{LogPrefix} ★ `{partName}`의 중심({part.center.x:F1}, {part.center.y:F1})이 내용 뷰포트" +
+                $"(x {viewport.xMin:F1}~{viewport.xMax:F1}, y {viewport.yMin:F1}~{viewport.yMax:F1}) " +
+                $"밖입니다 — 세로로 {shortfall:F1}pt 모자랍니다. 이 클릭이 안 먹는 이유는 설정 로직이 " +
+                "아니라 «마스크에 잘린 자리는 눌리지 않는다»(SettingsWindow.ContainsScreenPoint)입니다. " +
+                "행이 밀렸으면 누르기 전에 ScrollIntoContentViewport로 올리세요.");
+
+            _window.FeedClickForTests(part.center);
+        }
+
+        // ============================================================================
         // (1) 창 알파 = 1 — 유저의 다른 창이 1%도 비치지 않는다
         // ============================================================================
 
@@ -290,10 +398,14 @@ namespace StickMate.Tests.PlayMode
             _window.FeedClickForTests(_window.TabScreenRect(SettingsWindow.Tab.Character).center);
             yield return null;
 
+            // ★ 2026-09-06 — 「이름」 행이 카드 맨 위에 들어오면서 이 [+]가 뷰포트 아래로 밀려났다.
+            //   누르기 전에 올린다(창이 이미 가진 창구 [▼]를 쓴다 — 테스트가 스크롤을 직접 계산해
+            //   내부 좌표를 흉내 내면 그 계산이 프로덕션과 갈라지는 날 조용히 엉뚱한 곳을 누른다).
+            yield return ScrollIntoContentViewport(
+                () => _window.DialogueFontSizePlusScreenRect, "말풍선 글자 크기 [+]");
+
             int effectiveBefore = AppSettingsModel.ResolveDialogueFontSize(_config);
-            Rect plus = _window.DialogueFontSizePlusScreenRect;
-            Assert.Greater(plus.width, 1f, $"{LogPrefix} 글자 크기 [+] 버튼의 화면 사각형이 비어 있습니다.");
-            _window.FeedClickForTests(plus.center);
+            ClickInViewport(_window.DialogueFontSizePlusScreenRect, "말풍선 글자 크기 [+]");
             yield return null;
 
             int effectiveAfter = AppSettingsModel.ResolveDialogueFontSize(_config);
@@ -337,9 +449,23 @@ namespace StickMate.Tests.PlayMode
             Assert.IsTrue(_window.SpeechRowsEnabledForTests,
                 $"{LogPrefix} 말풍선이 켜져 있는데 세 행이 이미 비활성입니다(사전 조건).");
 
-            Rect toggle = _window.DialogueBubbleToggleScreenRect;
-            Assert.Greater(toggle.width, 1f, $"{LogPrefix} 말풍선 표시 토글의 화면 사각형이 비어 있습니다.");
-            _window.FeedClickForTests(toggle.center);
+            // ★★ 2026-09-06 — 여기가 <b>조용한 초록</b>의 현장이었다. 「이름」 행이 들어오며 [+]와
+            //   `아주 길게`가 뷰포트 밖으로 밀렸고, 그 좌표의 클릭은 «마스크에 잘린 자리는 눌리지
+            //   않는다»로 <b>정당하게 거절</b>됐다. 그래서 아래 ①②의 «비활성이면 안 먹는다»가
+            //   게이트가 통째로 사라져도 통과하는 <b>공허한 단언</b>이 되어 있었다.
+            //   [+]가 이 카드에서 가장 아래이므로 그것을 기준으로 올리면 토글과 칸이 따라 올라온다 —
+            //   "따라 올라왔는가"는 클릭마다 ClickInViewport가 다시 잰다.
+            yield return ScrollIntoContentViewport(
+                () => _window.DialogueFontSizePlusScreenRect, "말풍선 글자 크기 [+]");
+
+            // ★ 부재 단언 ①②를 <b>같은 좌표</b>로 양성 대조에 넘기기 위해 지금 찍어 둔다.
+            //   게이트가 붙은 행은 사유 한 줄 자리를 <b>미리</b> 확보하므로(SettingsRowGate의 "출렁임"
+            //   문단) 켜고 끄는 사이에 이 좌표가 움직여서는 안 된다 — 그 전제도 아래에서 잰다.
+            Rect plusRect = _window.DialogueFontSizePlusScreenRect;
+            Rect chipRect = _window.DialogueVisibleLengthSegmentScreenRect(
+                (int)DialogueVisibleLength.VeryLong);
+
+            ClickInViewport(_window.DialogueBubbleToggleScreenRect, "말풍선 표시 토글");
             yield return null;
 
             Assert.IsFalse(AppSettingsModel.ResolveDialogueBubbleEnabled(_config),
@@ -351,7 +477,7 @@ namespace StickMate.Tests.PlayMode
 
             // ① 슬라이더 [+]가 먹지 않는다.
             int fontBefore = AppSettingsModel.ResolveDialogueFontSize(_config);
-            _window.FeedClickForTests(_window.DialogueFontSizePlusScreenRect.center);
+            ClickInViewport(plusRect, "말풍선 글자 크기 [+]");
             yield return null;
             Assert.AreEqual(fontBefore, AppSettingsModel.ResolveDialogueFontSize(_config),
                 $"{LogPrefix} 비활성인 글자 크기 슬라이더의 [+]가 그대로 먹었습니다 — '회색인데 눌리는' " +
@@ -359,10 +485,10 @@ namespace StickMate.Tests.PlayMode
 
             // ② 세그먼트 칸도 먹지 않는다.
             DialogueVisibleLength lengthBefore = AppSettingsModel.DialogueVisibleLength;
-            Rect chip = _window.DialogueVisibleLengthSegmentScreenRect(
-                (int)DialogueVisibleLength.VeryLong);
-            Assert.Greater(chip.width, 1f, $"{LogPrefix} `아주 길게` 칸의 화면 사각형이 비어 있습니다.");
-            _window.FeedClickForTests(chip.center);
+            Assert.AreNotEqual(DialogueVisibleLength.VeryLong, lengthBefore,
+                $"{LogPrefix} 사전 조건: `아주 길게`가 이미 선택돼 있으면 ②의 \"안 바뀌었다\"와 아래 " +
+                "양성 대조의 \"바뀌었다\"를 구분할 수 없습니다 — 두 단언이 동시에 공허해집니다.");
+            ClickInViewport(chipRect, "`아주 길게` 칸");
             yield return null;
             Assert.AreEqual(lengthBefore, AppSettingsModel.DialogueVisibleLength,
                 $"{LogPrefix} 비활성인 `대사 표시 시간` 세그먼트가 그대로 먹었습니다.");
@@ -378,19 +504,45 @@ namespace StickMate.Tests.PlayMode
             //   같은 컨트롤의 연타는 창이 한 번으로 접으므로(ActionDedupSeconds) 그만큼 벽시계로
             //   기다린 뒤 누른다. 숫자를 베끼지 않고 그 상수를 참조한다.
             yield return new WaitForSecondsRealtime(SettingsWindow.ActionDedupSeconds + 0.05f);
-            _window.FeedClickForTests(_window.DialogueBubbleToggleScreenRect.center);
+            ClickInViewport(_window.DialogueBubbleToggleScreenRect, "말풍선 표시 토글");
             yield return null;
             Assert.IsTrue(_window.SpeechRowsEnabledForTests,
                 $"{LogPrefix} 말풍선을 다시 켰는데 세 행이 비활성인 채로 남았습니다 — 비활성이 " +
                 "영구화됐습니다.");
 
-            _window.FeedClickForTests(_window.DialogueFontSizePlusScreenRect.center);
+            // ★★ 양성 대조 — ①②에서 누른 <b>바로 그 좌표</b>를 다시 누른다.
+            //   좌표가 그대로임을 <b>먼저</b> 못박는 것이 이 대조의 핵심이다: 다른 자리를 눌러
+            //   성공하면 ①②가 "게이트가 막아서" 통과했는지 "클릭이 닿지도 않아서" 통과했는지
+            //   여전히 가릴 수 없다 — 그 구분이 안 되는 상태가 이번에 실제로 났던 조용한 초록이다.
+            Rect plusNow = _window.DialogueFontSizePlusScreenRect;
+            Rect chipNow = _window.DialogueVisibleLengthSegmentScreenRect(
+                (int)DialogueVisibleLength.VeryLong);
+            Assert.AreEqual(plusRect.center.x, plusNow.center.x, 0.5f,
+                $"{LogPrefix} 게이트를 다시 열자 [+]의 가로 위치가 움직였습니다 — 양성 대조가 ①과 " +
+                "다른 자리를 누르게 됩니다.");
+            Assert.AreEqual(plusRect.center.y, plusNow.center.y, 0.5f,
+                $"{LogPrefix} 게이트를 다시 열자 [+]의 세로 위치가 움직였습니다 — 게이트 행은 사유 " +
+                "캡션 자리를 미리 확보해 <b>출렁이지 않아야</b> 합니다(SettingsRowGate).");
+            Assert.AreEqual(chipRect.center.x, chipNow.center.x, 0.5f,
+                $"{LogPrefix} 게이트를 다시 열자 `아주 길게` 칸의 가로 위치가 움직였습니다.");
+            Assert.AreEqual(chipRect.center.y, chipNow.center.y, 0.5f,
+                $"{LogPrefix} 게이트를 다시 열자 `아주 길게` 칸의 세로 위치가 움직였습니다.");
+
+            ClickInViewport(plusRect, "말풍선 글자 크기 [+]");
             yield return null;
             Assert.AreEqual(fontBefore + 1, AppSettingsModel.ResolveDialogueFontSize(_config),
-                $"{LogPrefix} 말풍선을 다시 켰는데도 [+]가 안 먹습니다 — 비활성이 영구화됐습니다.");
+                $"{LogPrefix} 말풍선을 다시 켰는데도 [+]가 안 먹습니다 — 비활성이 영구화됐거나, " +
+                "①의 \"안 먹었다\"가 애초에 클릭이 닿지 않아서 나온 공허한 통과였습니다.");
 
-            Debug.Log($"{LogPrefix} 42-11 G 확인 — 말풍선 OFF에서 슬라이더/세그먼트 클릭이 모두 막히고, " +
-                      "사유가 화면에 있으며, 다시 켜면 같은 클릭이 복귀합니다.");
+            ClickInViewport(chipRect, "`아주 길게` 칸");
+            yield return null;
+            Assert.AreEqual(DialogueVisibleLength.VeryLong, AppSettingsModel.DialogueVisibleLength,
+                $"{LogPrefix} 말풍선을 다시 켰는데도 `아주 길게` 칸이 안 먹습니다 — 비활성이 " +
+                "영구화됐거나, ②의 \"안 먹었다\"가 클릭이 닿지 않아서 나온 공허한 통과였습니다.");
+
+            Debug.Log($"{LogPrefix} 42-11 G 확인 — 말풍선 OFF에서 슬라이더/세그먼트 클릭이 <b>같은 " +
+                      "좌표에서</b> 모두 막히고, 사유가 화면에 있으며, 다시 켜면 그 좌표의 클릭이 둘 다 " +
+                      "복귀합니다(부재 단언 ①② 각각에 양성 대조가 붙어 있습니다).");
         }
 
         private static Text FindRowCaption(string rowName)

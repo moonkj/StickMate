@@ -381,7 +381,7 @@ namespace StickMate.Tests.EditMode
 
             for (int i = 0; i < 4 && CurrencyModel.RemainingDailyRoomCoins() > 0; i++)
             {
-                CurrencyModel.TickIdleIncome(secondsToCap, true);
+                CurrencyModel.TickIdleIncome(secondsToCap, true, out _);
             }
             Assert.AreEqual(0, CurrencyModel.RemainingDailyRoomCoins(), "전제 — 상한까지 채웠어야 합니다.");
         }
@@ -397,7 +397,7 @@ namespace StickMate.Tests.EditMode
 
             FillTodayToCap();
             Assert.AreEqual(CurrencyRules.BaseDailyCapCoins, CurrencyModel.TodayGrantedCoins);
-            Assert.AreEqual(0, CurrencyModel.TickIdleIncome(60.0, true),
+            Assert.AreEqual(0, CurrencyModel.TickIdleIncome(60.0, true, out _),
                 "상한에 걸렸는데 동전이 더 나왔습니다 — 상한이 아무 일도 안 하고 있습니다.");
             int walletAtCap = CurrencyModel.CoinBalance;
             Assert.AreEqual(CurrencyRules.BaseDailyCapCoins, walletAtCap,
@@ -414,7 +414,7 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(0.0, CurrencyModel.IdleWindowUsedSeconds, 1e-9, "8시간 창이 리셋되지 않았습니다.");
 
             // ★ <b>표시만 리셋되고 실제로는 안 나오는</b> 경우를 가른다 — 진짜로 다시 벌린다.
-            Assert.Greater(CurrencyModel.TickIdleIncome(60.0, true), 0,
+            Assert.Greater(CurrencyModel.TickIdleIncome(60.0, true, out _), 0,
                 "새 날인데 유휴 수급이 다시 열리지 않았습니다.");
             Assert.Greater(CurrencyModel.CoinBalance, walletAtCap,
                 "지급됐다는데 잔액이 안 늘었습니다.");
@@ -487,7 +487,7 @@ namespace StickMate.Tests.EditMode
 
             // 전제 — 로드 직후에는 아직 사흘 전 상태 그대로다(그래야 "따라잡았다"에 의미가 있다).
             Assert.AreEqual(0, CurrencyModel.RemainingDailyRoomCoins(), "전제 — 예산이 0이어야 합니다.");
-            Assert.AreEqual(0, CurrencyModel.TickIdleIncome(600.0, true), "전제 — 유휴 수급이 막혀 있어야 합니다.");
+            Assert.AreEqual(0, CurrencyModel.TickIdleIncome(600.0, true, out _), "전제 — 유휴 수급이 막혀 있어야 합니다.");
             Assert.AreEqual(0, CurrencyModel.TryPayTodoDailyCoins(), "전제 — [오늘 할일]이 막혀 있어야 합니다.");
             Assert.AreEqual(0, CurrencyModel.TryAwardArcheryCoins(0.0), "전제 — 활쏘기가 막혀 있어야 합니다.");
             Assert.IsTrue(CurrencyModel.ArcheryDailyLimitReached, "전제 — 활쏘기 일일 상한에 걸려 있어야 합니다.");
@@ -530,7 +530,7 @@ namespace StickMate.Tests.EditMode
                 "[오늘 할일] 하루 1회가 다시 열리지 않았습니다.");
             Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.TryAwardArcheryCoins(0.0),
                 "활쏘기 상금이 다시 열리지 않았습니다.");
-            Assert.Greater(CurrencyModel.TickIdleIncome(60.0, true), 0,
+            Assert.Greater(CurrencyModel.TickIdleIncome(60.0, true, out _), 0,
                 "유휴 수급이 다시 열리지 않았습니다.");
             Assert.Greater(CurrencyModel.CoinBalance, walletBefore, "다시 열렸다는데 지갑이 안 늘었습니다.");
 
@@ -576,7 +576,7 @@ namespace StickMate.Tests.EditMode
             }
 
             Assert.AreEqual(0, CurrencyModel.RemainingDailyRoomCoins(), "상한이 저절로 풀렸습니다.");
-            Assert.AreEqual(0, CurrencyModel.TickIdleIncome(600.0, true), "유휴 수급이 저절로 풀렸습니다.");
+            Assert.AreEqual(0, CurrencyModel.TickIdleIncome(600.0, true, out _), "유휴 수급이 저절로 풀렸습니다.");
             Assert.AreEqual(0, CurrencyModel.TryPayTodoDailyCoins(), "[오늘 할일]이 저절로 풀렸습니다.");
             Assert.AreEqual(CurrencyRules.ArcheryCoinsPerAward, CurrencyModel.ArcheryCoinsToday,
                 "활쏘기 카운터가 저절로 0이 됐습니다.");

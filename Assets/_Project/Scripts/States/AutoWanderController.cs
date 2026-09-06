@@ -222,7 +222,13 @@ namespace StickMate.States
             _descendSuppressTimer = cooldown;
             int inward = _blackboard.ClimbMantleDirection >= 0 ? 1 : -1;
             EnterMoving(inward);
-            Debug.Log($"[되올라가기] 안착 — 턱 안쪽({(inward > 0 ? "오른쪽" : "왼쪽")})으로 걸어 들어갑니다. " +
+            // ★ 대사는 **행동이 확정된 뒤** 그 결과에서 파생한다(절대 불변 원칙 1을 로그에도 적용).
+            //   부채꼴 제자리 대기가 걸리면 EnterMoving은 Resting으로 되돌아가므로, 여기서 _phase를
+            //   읽지 않고 "걸어 들어갑니다"를 찍으면 화면과 로그가 갈라진다.
+            string outcome = _phase == Phase.Moving
+                ? $"턱 안쪽({(inward > 0 ? "오른쪽" : "왼쪽")})으로 걸어 들어갑니다"
+                : "부채꼴 메뉴가 떠 있어 그 자리에서 대기합니다(메뉴가 닫히면 평소대로 이어집니다)";
+            Debug.Log($"[되올라가기] 안착 — {outcome}. " +
                 $"되내려가기는 {cooldown:F1}초 동안 유예(경계에서 돌아서기/추가 되올라가기는 그대로).");
         }
 
@@ -265,6 +271,18 @@ namespace StickMate.States
         /// 판정의 정본은 <see cref="StickmanBlackboard.IsFocusSessionAmbientActive"/> 한 곳이며
         /// 여기서 다시 해석하지 않는다 — 자세/어휘/수용이 각자 판단하면 "반만 꺼진" 상태가 생긴다.</summary>
         private bool IsFocusAmbientActive => _blackboard != null && _blackboard.IsFocusSessionAmbientActive;
+
+        /// <summary>
+        /// ★ 2026-09-06 사용자 지시 <i>"메뉴를 펼쳤을때는 캐릭터가 제자리대기."</i> —
+        /// 부채꼴이 떠 있는 동안 <b>새 걷기 구간을 시작하지 않는가</b>.
+        /// 판정의 정본은 <see cref="StickmanBlackboard.IsRadialMenuHoldActive"/> 한 곳이며
+        /// 여기서 다시 해석하지 않는다(<see cref="IsFocusAmbientActive"/>와 같은 어법).
+        ///
+        /// <para>★ <b>이 클래스는 여전히 수평 이동의 소유자다.</b> 부채꼴이 캐릭터를 움직이는 것이
+        /// 아니라, 부채꼴이 «떠 있다»는 <b>사실</b>을 배회 AI가 읽고 자기 추첨을 바꾸는 형태다 —
+        /// 소유권을 넘기면 «누가 캐릭터를 움직였는가»가 두 곳에서 판정된다.</para>
+        /// </summary>
+        private bool IsRadialMenuHolding => _blackboard != null && _blackboard.IsRadialMenuHoldActive;
 
         /// <summary>커서 좌표를 <b>실제로</b> 읽을 수 있는가 — G3(화면 쪽 돌아보기)의 추첨 자격이다.
         /// 읽기 전용 조회이며(<see cref="CursorProvider"/>는 StickmanAgent.TryGetCursorPosition),
@@ -319,10 +337,15 @@ namespace StickMate.States
             //   아니다**: 파쿠르·뛰어내리기·매달리기는 전부 걷기에서 갈라지므로 0으로 내리면 그
             //   연출들이 구조적으로 도달 불가가 된다(25분 중 3.2분은 여전히 걷는다).
             //   남은 확률은 여기서도 평소와 똑같이 "Idle 연장"이 흡수한다 — 갈래 구조 무변경.
-            float walkChance = IsFocusAmbientActive
-                ? Cfg(c => c.focusSessionWalkChance, 0.4f)
-                : Cfg(c => c.wanderPostIdleWalkChance, 0.75f);
-            float jumpChance = Cfg(c => c.wanderPostIdleJumpChance, 0f);
+            // ★ 2026-09-06 «메뉴 펼침 = 제자리 대기» — 집중 세션과 **완전히 같은 어법**이다:
+            //   갈래 구조도 추첨도 그대로 두고 **읽는 확률만** 0으로 본다. 남은 확률은 여기서도
+            //   평소와 똑같이 "Idle 연장"이 흡수하므로 새 분기도, 새 타이머도 늘지 않는다.
+            bool hold = IsRadialMenuHolding;
+            float walkChance = hold ? 0f
+                : IsFocusAmbientActive
+                    ? Cfg(c => c.focusSessionWalkChance, 0.4f)
+                    : Cfg(c => c.wanderPostIdleWalkChance, 0.75f);
+            float jumpChance = hold ? 0f : Cfg(c => c.wanderPostIdleJumpChance, 0f);
 
             double roll = _rng.NextDouble();
             if (roll < walkChance)
@@ -368,6 +391,12 @@ namespace StickMate.States
         /// 강제한다 — 맨틀 직후 "올라선 턱 안쪽으로 걸어 들어가기"에만 쓴다.</param>
         private void EnterMoving(int forcedDirection)
         {
+            // ★ 걷기로 들어오는 **모든 문**이 여기를 지난다 — 추첨(ResolvePostIdleBranch)뿐 아니라
+            //   맨틀 직후 강제 진입(ConsumeClimbMantleSignalIfAny)도 마찬가지다. 그래서 조건을
+            //   호출부마다 흩지 않고 이 한 자리에 둔다(호출부에 두면 다음에 생기는 세 번째 문이
+            //   조용히 새어 나간다).
+            if (IsRadialMenuHolding) { EnterResting(); return; }
+
             _phase = Phase.Moving;
             _moveTimer = 0f;
             _moveDuration = Jitter(RandomRange(Cfg(c => c.wanderWalkDurationMin, 1.5f), Cfg(c => c.wanderWalkDurationMax, 4f)));
@@ -382,6 +411,18 @@ namespace StickMate.States
 
         private void TickMoving(float deltaTime)
         {
+            // ★ 2026-09-06 — 이미 걷고 있던 구간을 «정상 종료»시킨다. 새 정지 로직을 만들지 않고
+            //   걷기 지속시간이 다 됐을 때와 **똑같은 문**(EnterResting)으로 나간다 — 그래서
+            //   화면에서 보이는 것도 평소에 걷다 서는 그 그림 그대로다(IdleState.Enter가 잔여
+            //   수평 속도를 지우는 것까지 동일). 뛰어내리기 확약은 이 구간과 함께 끝난다 —
+            //   남기면 다음 구간이 경계에서 서지 않고 그대로 발을 뗀다.
+            if (IsRadialMenuHolding)
+            {
+                _hopDownCommitted = false;
+                EnterResting();
+                return;
+            }
+
             if (_isEdgePaused)
             {
                 TickEdgePause(deltaTime);

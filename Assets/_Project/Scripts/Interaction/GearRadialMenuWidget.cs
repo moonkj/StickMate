@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using StickMate.Core;
@@ -6,14 +7,16 @@ using StickMate.Platform;
 namespace StickMate.Interaction
 {
     /// <summary>
-    /// 부채꼴 메뉴의 칸. <b>값이 곧 슬롯 순서</b>다 — 호 넷은 θ₀ + (1.5 − i)·30°
-    /// (i=0 → θ₀+45°, i=3 → θ₀−45°)이고, <b>i=4는 호가 아니라 축 위의 위성</b>이다
-    /// (θ₀ + 0°, 궤도 168pt). docs/UX_FLOW.md 36-3-4 / 53-2.
+    /// 부채꼴 메뉴의 칸. <b>값이 곧 슬롯 순서</b>다 — 다섯이 전부 한 호 위에 θ₀ + (2 − i)·22.5°로
+    /// 선다(i=0 → θ₀+45°, i=4 → θ₀−45°, 궤도 148pt). docs/UX_FLOW.md 36-3-4 / 53.
+    ///
+    /// ★ <b>2026-09-06 — i=4는 더 이상 「축 위의 위성」이 아니다.</b> 사용자 신고
+    /// <i>"끄기 버튼만 따로 떨어져 있다"</i>로 [앱 종료]가 <b>다섯 번째 호 슬롯</b>이 됐다.
     ///
     /// ★ <b>기존 0/1/2는 재번호하지 않는다.</b> 32절이 "값이 곧 슬롯 순서"라고 못박았으므로 중간 삽입은
-    /// Todo 2→3 재번호를 일으키고, 그 값을 읽는 switch가 조용히 어긋날 수 있다. 네 버튼이 기어에서
-    /// 등거리(118~123pt)라 슬롯별 조작 비용 차이가 없어 "새 항목을 좋은 자리에" 논쟁 자체가 성립하지
-    /// 않는다 — 관례대로 끝에 붙인다.
+    /// Todo 2→3 재번호를 일으키고, 그 값을 읽는 switch가 조용히 어긋날 수 있다. 이제 <b>다섯 버튼이
+    /// 앵커에서 완전히 등거리(148pt)</b>라 슬롯별 조작 비용 차이가 없어 "새 항목을 좋은 자리에" 논쟁
+    /// 자체가 성립하지 않는다 — 관례대로 끝에 붙인다.
     /// </summary>
     public enum GearMenuButton
     {
@@ -29,13 +32,21 @@ namespace StickMate.Interaction
         /// ★ 2026-09-03 신설 — <b>앱 종료</b>(사용자 지시: *"프로그램 종료버튼은 나사 메뉴 지금 4개중에
         /// 버튼 하나 추가해서 종료버튼으로 만들어줘"*).
         ///
-        /// <para><b>이 하나만 호(弧) 위에 없다.</b> 기준각 축 위 궤도
-        /// <see cref="GearRadialMenuWidget.SatelliteOrbitRadiusPoints"/>pt에 홀로 선 <b>위성</b>이다 —
-        /// 되돌릴 수 없는 버튼을 <b>가장 멀고 가장 다른 자리</b>에 두는 것이 이 표면의 유일한 설계
-        /// 목표이고, 그것을 색이나 심볼이 아니라 <b>위치</b>로 달성한다(UX_FLOW 53-0 / UX_WIDGETS R4-3).</para>
+        /// <para>★★ <b>2026-09-06 — 위성에서 다섯 번째 호 슬롯으로 옮겼다.</b> 사용자 신고 원문:
+        /// <i>"끄기 버튼만 따로 떨어져 있다"</i>. 원래 설계(53-0)는 «되돌릴 수 없는 버튼을 가장 멀고
+        /// 가장 다른 자리에 둔다»를 <b>위치</b>로 달성하려 했고, 궤도 168pt의 축 위 위성이 그 답이었다.
+        /// <b>그 설계는 실패했다</b> — 사용자에게 그것은 «안전한 자리»가 아니라 <b>«메뉴에서 떨어져 나온
+        /// 미아»</b>로 읽혔다. 기하 증명(debugger 2026-09-06): 위성을 호에 «붙어 보이게» 하는 궤도는
+        /// <b>존재하지 않는다</b>(축 위에서 호와 히트 원이 안 겹치려면 최소 150.56pt가 필요한데,
+        /// 168을 155로 줄여도 여유가 15.23 → 3.75pt로 깎일 뿐 13pt밖에 안 가까워진다).</para>
+        ///
+        /// <para><b>그래서 「다름」을 위치가 아니라 <see cref="ApplyButtonStyle"/>의 색·무장 단계에
+        /// 전적으로 맡긴다</b>: 평상 <c>SubtleSurface</c>(다른 넷보다 어둡다) · 호버해도 강조색까지 가지
+        /// 않고 겨우 «다른 버튼의 평상 수준» · <b>2단 확인 3초</b>. 오폭 방어의 실질은 원래도 2단 확인이었다.</para>
         ///
         /// <para>★ 번호는 <b>끝</b>이다. 36-3-4가 [행동]을 넣을 때 못박은 규칙과 같다 — 기존 0~3을
-        /// 재번호하면 그 값을 읽는 switch가 조용히 어긋난다.</para>
+        /// 재번호하면 그 값을 읽는 switch가 조용히 어긋난다. 그리고 <b>세로 일렬 폴백에서 「가장 위험한
+        /// 것이 가장 멀다」가 유지되는 것도 이 번호 덕분</b>이다(폴백은 번호 순으로 멀어진다).</para>
         /// </summary>
         Quit = 4,
     }
@@ -77,13 +88,18 @@ namespace StickMate.Interaction
     }
 
     /// <summary>
-    /// ★ 톱니를 짧게 클릭했을 때 <b>촤르륵 펼쳐지는 원버튼 5개</b>(호 4 + 위성 1) —
+    /// ★ 톱니를 짧게 클릭했을 때 <b>촤르륵 펼쳐지는 원버튼 5개</b>(2026-09-06부터 <b>전부 한 호 위</b>) —
     /// docs/UX_FLOW.md <b>32절 + 36절 + 53절</b>.
     /// 2026-08-30 사용자 원문: "기어메뉴를 클릭했을때 집중모드 버튼 캐릭터 버튼 오늘 할일 버튼 3가지가
     /// 촤르륵 원버튼 3개가 나오고 각 버튼을 클릭했을때 세부 메뉴로 들어가도록".
     /// 2026-08-31 사용자 원문: "버튼 메뉴들의 텍스트는 전부삭제 필요 ... 기어아이콘에 메뉴하나 추가해서
     /// 행동들은 거기서 클릭하면 창 하나가 떠서 행동 명령 내릴수 있게".
     /// 2026-09-03 사용자 원문: "프로그램 종료버튼은 나사 메뉴 지금 4개중에 버튼 하나 추가해서 종료버튼으로 만들어줘".
+    /// 2026-09-06 사용자 원문: "끄기 버튼만 따로 떨어져 있다" → 위성 폐지, 다섯 번째 호 슬롯으로 편입.
+    /// 2026-09-06 사용자 원문: "메뉴를 펼쳤을때는 캐릭터가 제자리대기."
+    ///   → 이 위젯은 캐릭터를 <b>움직이지 않는다</b>. <see cref="IsVisible"/>이라는 사실만 내놓고,
+    ///     <c>States/StickmanBlackboard.IsRadialMenuHoldActive</c>를 거쳐 배회 AI가 스스로 멈춘다
+    ///     (수평 이동 소유권은 배회 AI에 그대로 있다).
     ///
     /// ============================================================================
     /// 왜 버튼을 4개로 늘렸는데 부채꼴이 <b>더</b> 튼튼해지는가 (36-3, 반직관적이지만 계산이 그렇다)
@@ -95,11 +111,22 @@ namespace StickMate.Interaction
     /// 0.7pt / 최대 9pt, 세로일렬 폴백 0건). 반지름은 기어에서 화면 <b>안쪽</b>으로 뻗는 방향이라 화면
     /// 여백을 거의 소모하지 않는다. 결과적으로 기어→버튼 실거리가 118~123pt로 균일해진다.
     ///
-    /// ★★ <b>그리고 다섯 번째는 호에 끼우지 않았다</b>(2026-09-03, 53-1). 간격 30°를 지킨 채 5칸이 되면
-    /// 스팬이 90° -> <b>120°</b>가 되는데, 실측 화면 1512×982의 <b>네 모서리 각도창이 73.3~73.8°</b>라
-    /// 회전 ±90°로도 못 메우고 평행이동 상한 48pt도 넘는다 — <b>네 모서리 전부에서 세로 일렬 폴백</b>,
-    /// 즉 사용자가 보게 될 기본 화면이 폴백이 된다. 그래서 [앱 종료]는 <b>축 위 궤도 168pt의 위성</b>으로
-    /// 나갔고, 그 덕분에 <b>위 문단의 계산이 한 줄도 안 바뀐다</b>(스팬은 여전히 90°다).
+    /// ★★ <b>2026-09-06 — 다섯 번째가 호로 들어왔다. 그런데도 스팬은 여전히 90°다.</b>
+    /// 사용자 신고 <i>"끄기 버튼만 따로 떨어져 있다"</i>로 위성([앱 종료], 궤도 168pt)이 폐지됐다.
+    ///
+    /// ★ <b>「간격 30°를 지킨 채 5칸」은 하면 안 된다</b> — 그러면 스팬이 <b>120°</b>가 되고,
+    /// 53-1이 계산한 대로 모서리 각도창(1512×982에서 73.3~73.8°)을 회전 ±90°로도 못 메운다.
+    /// <b>이 계산은 상시 톱니가 걷힌 뒤에도 여전히 참이다</b> — 캐릭터는 화면 한복판만 지나다니는 것이
+    /// 아니라 <b>바닥과 좌우 끝까지 걸어다니기</b> 때문이다. 2026-09-06 실측 재계산(화면 8종 × 예약 띠
+    /// 16종 · 12,265,232 표본):
+    /// <code>
+    ///   간격 30° 유지(스팬 120°)  세로 일렬 폴백 0.3770% -> <b>1.4960%</b>  (3.97배)
+    ///   간격 22.5°  (스팬  90°)   세로 일렬 폴백 0.3770% -> <b>0.3942%</b>  (1.05배, 사실상 동수)
+    /// </code>
+    /// ⇒ <b>스팬을 지키고 간격을 22.5°로 줄이고 궤도를 148pt로 넓혔다.</b> 궤도를 넓히는 이유는
+    /// 히트 원 겹침 하나뿐이다(유도는 <see cref="OrbitRadiusPoints"/> 문서). 그 결과 이웃 간
+    /// 중심거리·시각 틈·히트 여유가 <b>전부 예전보다 미세하게 넉넉해졌고</b>(57.75 / 13.75 / 5.75pt),
+    /// 부채꼴의 최대 도달 반경은 위성이 사라져 <b>196 -> 176pt로 줄었다</b>.
     ///
     /// ============================================================================
     /// 라벨(이름표)은 <b>전부 지웠다</b> — 그리고 그 비용은 다른 데서 갚는다 (36-4)
@@ -171,95 +198,77 @@ namespace StickMate.Interaction
     /// </summary>
     public sealed class GearRadialMenuWidget : MonoBehaviour, IExclusiveSurface
     {
-        /// <summary>부채꼴이 가진 버튼의 <b>총수</b>(배열/루프 크기). 2026-09-03에 4 -> 5가 됐다.
-        /// <para>★★ <b>각도식의 분모로 쓰지 마라.</b> 그 자리는 <see cref="ArcButtonCount"/>다 —
-        /// 아래 그 상수의 문서에 이 라운드에서 가장 위험했던 한 줄이 적혀 있다.</para></summary>
+        /// <summary>부채꼴이 가진 버튼의 <b>총수</b>이자 <b>각도식의 분모</b>. 2026-09-03에 4 -> 5가 됐다.
+        ///
+        /// <para>★ <b>2026-09-06 — 여기 있던 「분모로 쓰지 마라」 경고가 사라졌다.</b> 그 경고는
+        /// <c>ArcButtonCount</c>(호 4 + 위성 1)가 존재하던 동안에만 뜻이 있었고, 위성이 폐지되면서
+        /// <b>다섯이 전부 한 호 위에 있다</b> — 총수와 분모가 같은 수가 됐으므로 함정 자체가 없다.
+        /// 다시 호 밖으로 나가는 버튼을 만들 생각이라면 그 갈래를 되살리기 전에 아래
+        /// <see cref="OrbitRadiusPoints"/> 문서를 읽어라(이름표 링이 그 전제 위에 서 있다).</para></summary>
         public const int ButtonCount = 5;
 
-        /// <summary>호(弧) 위에 <b>있지 않은</b> 버튼의 수 = 위성. 지금은 [앱 종료] 하나다.
-        /// <para>★ 위성을 하나 더 늘리는 것은 <b>새 문제</b>다(UX_WIDGETS R4-4): 위성열이 둘이 되면
-        /// 그 둘 사이의 이격·각도 배분을 다시 계산해야 한다. <b>여기 숫자만 올리지 마라.</b></para></summary>
-        public const int SatelliteButtonCount = 1;
-
-        /// <summary>
-        /// ★★ <b>각도식의 분모.</b> 호에 나란히 서는 버튼의 수이고, <see cref="ButtonCount"/>와 <b>다르다</b>.
-        ///
-        /// <para><b>이 라운드에서 가장 위험했던 한 줄이 여기다</b>(UX_FLOW 53-3). 옛 식은
-        /// <c>((ButtonCount − 1) · 0.5 − i) · step</c>이었고, <see cref="ButtonCount"/>를 4에서 5로
-        /// 올리면서 그 식을 그대로 뒀다면 <b>컴파일도 되고 테스트도 대부분 통과한다 — 화면만 틀어진다.</b></para>
-        ///
-        /// <para>★★ <b>2026-09-03 정정 — 그 「틀어짐」이 무엇인지 처음에 잘못 적혀 있었다.</b>
-        /// 설계 문서와 이 주석은 *"스팬이 90° -> 120°가 된다"*고 했는데 <b>실측하면 스팬은 안 변한다</b>:
-        /// <code>
-        ///   되돌린 식 (분모 5): (2 − i)·30°   -> 호 i=0..3 = +60 / +30 /   0 / −30   스팬 <b>90°</b>
-        ///   현행     (분모 4): (1.5 − i)·30° -> 호 i=0..3 = +45 / +15 / −15 / −45   스팬 <b>90°</b>
-        /// </code>
-        /// 위성(i=4)은 자기 가지를 타므로 되돌림에 안 끌려가고, 그래서 호에 실제로 놓이는 것은 넷뿐이다.
-        /// <b>진짜로 무너지는 것은 「축 대칭」이다</b> — 부채꼴이 평균 15° 기울고, 그 결과
-        /// <b>위성(0°)이 3번째 호 슬롯(0°)과 같은 반직선 위에 겹친다</b>:
-        /// <code>
-        ///   각도 오프셋 총합        0°     ->  60°
-        ///   위성 ↔ 최근접 호 각거리  15°    ->   <b>0°</b>      (위성이 호 버튼 <b>뒤에 숨는다</b>)
-        ///   위성 ↔ 최근접 호 거리    67.23  ->  <b>57.00pt</b>  (호 이웃 하한 57.46pt 미달)
-        ///   톱니->위성 접근 직선 여유 +2.73  -> <b>−26.00pt</b>  (히트 원을 <b>관통</b>)
-        /// </code>
-        /// 마지막 줄이 실질이다. 53-4는 *"위성을 향해 가다 빗나가면 창이 열릴 뿐"*이라는
-        /// <b>오폭 방향의 비대칭</b>을 이 안의 안전 근거로 들었는데, 되돌림은 그 근거를 <b>정반대로
-        /// 뒤집는다</b> — 종료 버튼을 향해 곧게 그은 선이 다른 버튼을 정통으로 지난다.</para>
-        ///
-        /// <para>★ <b>그래서 되돌림이 더 위험하다.</b> 스팬이 넓어지는 결함은 화면 밖으로 나가 눈에
-        /// 띄지만, <b>비대칭은 조용히 틀어진 채로 돈다</b>. (스팬 120°가 네 모서리 전부에서 세로 일렬
-        /// 폴백을 만든다는 계산은 <b>「5칸을 호에 나란히 붙이는 안」</b>에 대한 것이고 그쪽은 여전히
-        /// 참이다 — 53-1. 두 서술이 섞여 있었다.)</para>
-        ///
-        /// <para><c>GearRadialFanGeometryTests</c>가 이 관계(<c>ArcButtonCount == ButtonCount −
-        /// SatelliteButtonCount</c>)와 슬롯 각도 5개를 <b>프로덕션 상수를 참조해</b> 잠근다.</para>
-        /// </summary>
-        public const int ArcButtonCount = ButtonCount - SatelliteButtonCount;
-
-        /// <summary>이 슬롯이 호가 아니라 <b>위성</b>인가. 위성은 언제나 <b>끝 번호</b>다 —
-        /// 세로 일렬 폴백에서 "가장 위험한 것이 가장 멀다"가 자동으로 유지되는 것도 이 때문이다.</summary>
-        public static bool IsSatelliteSlot(int index) => index >= ArcButtonCount && index < ButtonCount;
-
-        // ==================== 확정 수치 (docs/UX_FLOW.md 32-1 / 32-2) ====================
+        // ==================== 확정 수치 (docs/UX_FLOW.md 32-1 / 32-2 / 53) ====================
 
         public const float ButtonDiameterPoints = 44f;
         public const float ShrunkDiameterPoints = 36f;
         public const float HoverScale = 48f / 44f;
-        /// <summary>36-3-3: 62 → 111pt. 하한은 기어 판정 반경 31.36 + 버튼 판정 26 = 57.4pt이므로
-        /// 여유 53.6pt다. 반지름은 화면 안쪽으로 뻗어 여백을 거의 소모하지 않는다.</summary>
-        public const float OrbitRadiusPoints = 111f;
-
-        /// <summary>36-3-3: 60 → 30°. <see cref="ArcButtonCount"/>개 × 30° = 스팬 90°
-        /// (기존 3개 × 60° = 120°보다 <b>좁다</b>). ★ 2026-09-03에 버튼이 5개가 됐어도 <b>스팬은 90°
-        /// 그대로다</b> — 다섯 번째는 호에 끼지 않고 위성으로 나갔기 때문이다.</summary>
-        public const float ButtonAngleStepDegrees = 30f;
 
         /// <summary>
-        /// ★ 위성([앱 종료])의 궤도(pt). 호보다 <b>한 겹 바깥</b>이다(UX_FLOW 53-2).
+        /// 호(弧) 궤도. 36-3-3에서 62 → 111이었고, <b>2026-09-06에 111 → 148</b>이 됐다.
         ///
-        /// <para><b>왜 168인가</b> — 두 조건의 교집합이다:
-        /// <list type="number">
-        ///   <item><b>오폭 방지.</b> 최근접 호 버튼(±15° 슬롯)까지의 중심거리가
-        ///     <c>√(168² + 111² − 2·168·111·cos15°) = 67.23pt</c>로, 호 이웃끼리의 57.46pt보다
-        ///     <b>1.17배</b> 멀다. 히트 원(반경 <c>지름/2 + HitPadding</c> = 26)이 겹치는 조건은
-        ///     중심거리 &lt; 52pt이므로 여유 <b>15.23pt</b>다.</item>
-        ///   <item><b>DPI.</b> 168 = 4 × 42라 ×1.25 / ×1.50 / ×1.75에서 210 / 252 / 294px로
-        ///     <b>세 배율 전부 정수</b>다(등급 리본 3->4pt 사건과 같은 처방).</item>
-        /// </list></para>
+        /// <para><b>왜 늘었나</b> — 사용자 신고 <i>"끄기 버튼만 따로 떨어져 있다"</i>로 [앱 종료]가
+        /// 축 위 위성(궤도 168)에서 <b>다섯 번째 호 슬롯</b>으로 들어왔다. 다섯을 한 호에 세우면서도
+        /// <b>스팬 90°를 지키려면</b> 간격이 30° → 22.5°가 되는데(<see cref="ButtonAngleStepDegrees"/>),
+        /// 그러면 같은 궤도에서 이웃 간 중심거리가 <c>2·111·sin11.25° = 43.32pt</c>로 떨어져
+        /// <b>히트 원(지름 52pt)이 겹친다</b> — 그 순간 «보이는 것과 눌리는 것이 달라진다».
+        /// 반지름은 그 겹침을 푸는 <b>유일한 자유변수</b>다:
+        /// <code>
+        ///   비겹침 하한 : R ≥ 26 / sin(11.25°) = 133.34pt
+        ///   시각 틈 13.5pt 유지 : R ≥ 57.5 / (2·sin11.25°) = 147.36pt
+        ///   DPI(4의 배수)      : 148 = 4 × 37 → ×1.25/1.50/1.75 = 185 / 222 / 259px 전부 정수
+        /// </code>
+        /// 148에서 이웃 중심거리 <b>57.75pt</b> · 시각 틈 <b>13.75pt</b> · 히트 여유 <b>5.75pt</b>로,
+        /// 셋 다 <b>111/30° 시절(57.46 / 13.46 / 5.46)보다 미세하게 낫다</b>. 36-3-1 표의 «틈 13.5pt»가
+        /// 그대로 산다.</para>
         ///
-        /// <para>★ <b>부채꼴 좌표가 정수 픽셀이 되는 것은 아니다</b> — 기준각 θ₀가 45°의 홀수배일 때
-        /// 계수가 √2/2이기 때문이고, 그건 궤도 111도 마찬가지인 <b>기존 성질</b>이다. 4의 배수 규칙은
-        /// <b>양자화되는 스칼라</b>(두께·지름·여백·궤도)에만 적용한다(53-8).</para>
+        /// <para>★★ <b>「멀어졌다」가 아니다 — 부채꼴의 최대 도달 반경은 오히려 줄었다.</b>
+        /// 폐지된 위성이 168pt에 있었으므로 가장 바깥 원의 중심은 <b>168 → 148pt로 20pt 안쪽</b>으로
+        /// 들어왔고, 클램프 상자까지 포함한 도달 반경은 <b>196 → 176pt</b>다. 사용자가 이미 보고 있던
+        /// 어떤 버튼보다도 멀리 나가는 것이 하나도 없다.</para>
         ///
-        /// <para>★ 차단막(<see cref="UnionScreenRect"/>) 비용: 기본 톱니 위치에서 167×167 -> 175×175
-        /// (<b>+9.6%</b>). 5칸을 호에 끼우는 안은 +49.2%였다(R4-3) — 비침해 원칙 2에서 이 차이가 판정을 갈랐다.</para>
+        /// <para>★ <b>실측으로 정한 값이다</b>(2026-09-06 여백 격자 전수 재계산, 화면 8종 × 예약 띠
+        /// 16종). 리더 인계안인 «간격 30° 유지 · 스팬 120°»는 캐릭터 도달 가능 앵커 띠에서 세로 일렬
+        /// 폴백을 <b>16건 → 149건(9.3배)</b>으로 늘렸다 — 36-3의 «모서리에서 부채꼴을 막는 것은
+        /// 반지름이 아니라 각도 스팬»이 위성 폐지 후에도 그대로 참이었다. 스팬 90°를 지킨 이 안은
+        /// <b>18건</b>으로 현행과 사실상 동수다. 자세한 격자는 리더 보고 참조.</para>
+        ///
+        /// <para>★ 하한(기어 판정 반경 31.36 + 버튼 판정 26 = 57.4pt)은 전과 같이 여유롭게 넘는다.
+        /// 캐릭터 GrabArea와의 이격은 오히려 커진다(호 히트 원 내측 가장자리 85 → <b>122pt</b>,
+        /// 배율 1.00 GrabArea 최원점 91.68pt).</para>
+        ///
+        /// <para>★ 차단막(<see cref="UnionScreenRect"/>) 비용은 <b>이 변경에서 유일하게 나빠진 축</b>이고,
+        /// <b>기준각에 따라 부호가 갈린다</b>(부채꼴이 정사각 상자에 어떻게 눕느냐의 문제다):
+        /// <code>
+        ///   θ₀ = 45°의 홀수배(대각)   175×175 -> <b>204×204</b>   면적 <b>+36.2%</b>
+        ///   θ₀ = 0/90/180/270°(정방)  213×146 -> <b>265×99</b>    면적 <b>−15.0%</b>
+        /// </code>
+        /// 캐릭터 앵커는 <see cref="FanUpBiasPoints"/> 때문에 화면 중앙 넓은 영역에서 <b>θ₀=90°로
+        /// 고정</b>되므로(§1-3-3 실측: 바닥을 걷는 캐릭터의 θ₀ 분포에서 90°가 최빈) 실사용에서는
+        /// 줄어드는 쪽이 더 자주 걸린다. 어느 쪽이든 부채꼴이 <b>떠 있는 동안만</b>의 비용이고
+        /// (6초 무반응이면 자동으로 접힌다) 1512×982에서 화면의 2.1% → 2.8%(대각) / 1.8%(정방)다.</para>
         /// </summary>
-        public const float SatelliteOrbitRadiusPoints = 168f;
+        public const float OrbitRadiusPoints = 148f;
 
-        /// <summary>위성의 각도 오프셋 — <b>기준각 축 위</b>(0°). 이웃(±15°)까지 각거리가 15°로
-        /// <b>얻을 수 있는 최대값</b>이고, 좌우 대칭도 깨지지 않는다.</summary>
-        public const float SatelliteAngleOffsetDegrees = 0f;
+        /// <summary>슬롯 사이 각도. 36-3-3에서 60 → 30이었고, <b>2026-09-06에 30 → 22.5</b>가 됐다.
+        ///
+        /// <para><see cref="ButtonCount"/>개 × 22.5° = <b>스팬 90°</b> — 36-3-1이 뽑아낸 핵심 결론이
+        /// 버튼이 다섯이 되고 위성이 폐지된 뒤에도 <b>한 도(度)도 안 바뀌었다</b>. 그것이 이 값을 고른
+        /// 이유 전부다: 모서리에서 부채꼴을 막는 것은 반지름이 아니라 <b>각도 스팬</b>이고, 스팬이
+        /// 그대로면 화면 밖 방지 사다리의 통계도 그대로다(실측: 세로 일렬 폴백 16 → 18건).</para>
+        ///
+        /// <para>22.5 = 45/2라 θ₀(45° 스냅)와 <b>정확히 정합</b>한다 — 슬롯 각도가 부동소수 나머지를
+        /// 남기지 않는다. 겹침을 푸는 반지름 유도는 <see cref="OrbitRadiusPoints"/> 문서에 있다.</para></summary>
+        public const float ButtonAngleStepDegrees = 22.5f;
 
         // ★ 2026-09-02 — <b>원버튼 그림자와 그 번짐 상수(3pt)가 여기 있었다.</b> 사용자 지시
         //   "캐릭터창 둘레로도 그림자들이 있는데 다 없애줘 깔끔하게"로 UI 그림자를 전부 걷어냈다
@@ -392,10 +401,17 @@ namespace StickMate.Interaction
         /// <summary>
         /// ★ <b>캐릭터 앵커 전용 「위쪽 바이어스」</b>(pt) — docs/UX_RIGHTCLICK_FAN_MENU.md §1-3-3.
         ///
-        /// <para>임의값이 아니라 <b>부채꼴의 도달 반경</b>이다:
-        /// <see cref="SatelliteOrbitRadiusPoints"/>(168) + 클램프 상자 반폭 28 = <b>196pt</b>.
-        /// 앵커가 어느 변에서도 이만큼 떨어져 있으면 «어느 방향으로 열어도 화면에 들어간다» —
-        /// 그 영역 안에서는 방향을 자유롭게 고를 수 있으므로 <b>고정된 하나</b>(위)를 고르는 편이 낫다.</para>
+        /// <para>임의값이 아니라 <b>부채꼴의 도달 반경</b>에서 나왔다: 당시 가장 바깥 버튼이던
+        /// 위성 궤도 168 + 클램프 상자 반폭 28 = <b>196pt</b>. 앵커가 어느 변에서도 이만큼 떨어져
+        /// 있으면 «어느 방향으로 열어도 화면에 들어간다» — 그 영역 안에서는 방향을 자유롭게 고를 수
+        /// 있으므로 <b>고정된 하나</b>(위)를 고르는 편이 낫다.</para>
+        ///
+        /// <para>★ <b>2026-09-06 — 위성이 폐지되어 실제 도달 반경은 148 + 28 = 176pt로 줄었다.
+        /// 그래도 이 값은 196 그대로 둔다.</b> 유도식이 «이만큼 떨어져 있으면 안전»이라는 <b>충분조건</b>이라
+        /// 크게 잡는 쪽이 안전한 방향이고, 여기를 건드리면 §1-3-3이 1pt 격자로 실측한 θ₀ 분포표
+        /// («항상 위 90°가 되는 반경 |Δ| ≤ 75.0pt» / «180° 반전 지점 y=687»)가 통째로 낡는다 —
+        /// 이번 라운드가 재계산한 것은 <b>배치 사다리</b>이지 θ₀ 분포가 아니다.
+        /// 줄이려면 그 표를 다시 재는 라운드와 함께 와야 한다.</para>
         ///
         /// <para><b>왜 필요한가</b>: 톱니는 화면 구석에 살아서 «화면중심 − 앵커»가 늘 길었다. 캐릭터는
         /// 화면 한가운데를 하루 종일 지나다니고, 그 순간 그 벡터는 0에 수렴해 <b>1pt 이동에 방향이
@@ -417,8 +433,41 @@ namespace StickMate.Interaction
         /// 부채꼴은 방금 사용자가 부른 것이라 다른 상시 패널에 가리면 안 되고, 자기가 낳은 팝오버를
         /// 가려서도 안 된다. (2026-08-31: 32760에 있던 우클릭 제어 메뉴는 폐지됐다 — 36-9.)</summary>
         private const int SortingOrder = 31500;
+
+        // ====================================================================================
+        // ★ FG-2 획 사다리 (docs/DESIGN_FAN_MENU_ICONS.md R26-5) — 2026-09-06
+        // ====================================================================================
+        // 이 다섯 글리프는 예전에 획 폭이 **6종**(1.0 / 1.4 / 1.6 / 1.8 / 2.0 / 4.0)이었고 그중 다섯이
+        // 어떤 규칙에서도 유도되지 않았다. 장비 카드 42종은 `Frame.StrokeFraction` 하나에 **연속 배수**를
+        // 곱해 등급을 만든다(EQUIPMENT_HANDOFF_PORT_SPEC §13-2-3의 strokeGrade 0/2/3). 같은 앱 안에서
+        // 문법이 둘로 갈리지 않도록 **같은 배수**를 여기에도 둔다: ×0.75 / ×1.00 / ×1.50.
+        //
+        // ★ 이 셋 <b>밖의 값을 쓰지 마라.</b> 하한이 ×0.75인 이유는 광학이다 —
+        //   `UiChrome.EdgeFeather`(0.5pt/변)가 획 코어 바깥에 알파 램프를 붙이므로 1.5pt 획은 그려지는
+        //   폭 2.5pt 중 **38.5 %가 램프**다. 그 아래로 내려가면 1×(Windows 100 %)에서 획이 회색 얼룩이
+        //   된다(옛 체크리스트의 1.0pt 박스가 정확히 그 사고였다).
+        // ★ g2(×1.50)는 **글리프당 최대 한 조각**이다. 굵은 획은 "여기가 이 물건의 위계 꼭대기"라는
+        //   뜻이라 둘 이상이면 뜻이 사라진다(옛 스톱워치는 가장 덜 중요한 부속인 용두가 4.0pt = 2W로
+        //   메뉴에서 가장 굵은 잉크였다 — 위계가 거꾸로였다).
+
+        /// <summary>부채꼴 심볼의 <b>펜 하나</b>(g0 ×1.00). 다섯 글리프의 기본 획이다.</summary>
         private const float SymbolStroke = 2.0f;
+
+        /// <summary>FG-2 g1 = ×0.75. <b>종속 부속</b>(체크리스트의 빈 표식 상자)에만 쓴다 —
+        /// 「이것은 글줄보다 한 단 낮은 물건」을 두께 하나로 말한다.</summary>
+        private const float SymbolStrokeDetail = 0.75f * SymbolStroke;
+
+        /// <summary>FG-2 g2 = ×1.50. <b>글리프당 한 조각</b>만 허용(스톱워치의 용두 단추).</summary>
+        private const float SymbolStrokeHeavy = 1.5f * SymbolStroke;
+
+        /// <summary>심볼 레이아웃 상자(pt). <b>경계가 아니라 좌표계</b>다 — 잉크가 이 사각형을 넘는 것은
+        /// 결함이 아니고, 실제 경계는 FG-1 광학 필드(원판 중심에서 r ≤ 14.0pt, 단일 돌출만 15.0pt)다.
+        /// 조각이 원형 버튼 안에 앉으므로 판정도 원(반경)으로 해야 한다.</summary>
         private const float SymbolBoxPoints = 24f;
+
+        /// <summary>FG-1 광학 필드 반경(pt) — 잉크가 넘지 않아야 하는 선. 유도: `ART_FAN_MENU_LANGUAGE`
+        /// F-1 링의 안쪽 가장자리가 r = 20이고 거기서 <b>3W = 6.0pt</b>를 비운다.</summary>
+        private const float SymbolFieldRadiusPoints = 14f;
 
         /// <summary>
         /// 네 진입점의 이름. 두 곳에서 쓴다: <b>호버 이름표</b>(커서가 올라간 하나만)와 <b>로그/접힘
@@ -429,7 +478,7 @@ namespace StickMate.Interaction
         /// </summary>
         private static readonly string[] ButtonNames = { "집중 모드", "캐릭터", "오늘 할일", "행동", "앱 종료" };
 
-        /// <summary>위성이 <b>무장</b>됐을 때 이름표 알약에 적히는 글자.
+        /// <summary>[앱 종료]가 <b>무장</b>됐을 때 이름표 알약에 적히는 글자.
         /// <para>★ 새 문자열이 아니다 — 행동창 푸터의 [앱 종료]가 쓰던 확인 문구를 <b>그대로</b> 옮겨
         /// 왔다(그 칩은 같은 라운드에 삭제됐다). 되돌릴 수 없는 행동의 확인 문구가 앱 안에서 두 벌이
         /// 되지 않게 한다. 최종 문구 확정은 <c>design-narrative</c> 소관이다.</para>
@@ -534,7 +583,7 @@ namespace StickMate.Interaction
         private int _lastShownRemainingSeconds = -1;
         private int _lastShownBadgeCount = -1;
 
-        // ---- 위성 [앱 종료]의 2단 확인(53-4) ----
+        // ---- [앱 종료]의 2단 확인(53-4) ----
         //
         // ★ <b>새 관용구를 만들지 않았다.</b> 시간은 ActionCommandPopover.QuitConfirmSeconds(3초)를
         //   <b>참조</b>하고(TodoBoardPopover의 삭제 확인과도 같은 값), 글자는 이미 있는 호버 이름표
@@ -589,7 +638,7 @@ namespace StickMate.Interaction
             => _hoverLabel != null && _hoverLabelAlpha > 0.5f && _hoverLabelText != null
                 ? _hoverLabelText.text : string.Empty;
 
-        /// <summary>위성 [앱 종료]가 1차 클릭을 받아 <b>"정말 종료?"</b> 상태인가(53-4).</summary>
+        /// <summary>[앱 종료]가 1차 클릭을 받아 <b>"정말 종료?"</b> 상태인가(53-4).</summary>
         public bool IsQuitArmed => _quitArmed;
 
         /// <summary>무장이 저절로 풀리기까지 남은 시간(초). 무장 중이 아니면 0.
@@ -632,8 +681,44 @@ namespace StickMate.Interaction
             }
         }
 
-        /// <summary>지금 버튼 지름(포인트) — 축소 폴백이 걸렸는지 알 수 있다.</summary>
+        /// <summary>배치 사다리가 <b>정한</b> 버튼 지름(포인트) — 축소 폴백이 걸렸는지 알 수 있다.
+        /// <para>★ 이것은 <b>판정값</b>이다. 화면에 실제로 그려진 지름은
+        /// <see cref="RenderedButtonDiameterPoints"/>가 <b>씬 오브젝트에서 직접</b> 잰다 —
+        /// 둘을 갈라 둔 이유는 그 문서에 있다.</para></summary>
         public float ButtonDiameter => _diameterPoints;
+
+        /// <summary>
+        /// 버튼 <paramref name="index"/>가 <b>실제로 그려지는</b> 원의 지름(포인트).
+        ///
+        /// <para><b>왜 <see cref="ButtonDiameter"/>와 따로 있는가</b>: 2026-09-06 이전에는 판정이 Ø36을
+        /// 요구해도 화면은 <b>언제나 Ø44</b>였다(<see cref="ApplyLayoutDiameterToViews"/> 문서). 그런데
+        /// 그때도 <c>ButtonDiameter</c>는 36을 정직하게 돌려줬기 때문에, <b>판정값만 보는 어떤 테스트도
+        /// 이 사고를 볼 수 없었다.</b> 그래서 이 접근자는 <c>_diameterPoints</c>를 <b>쳐다보지 않고</b>
+        /// 구워진 원의 상자와 실제로 걸린 배치 배율을 씬에서 다시 잰다 — 두 값을 <b>다른 방법으로</b>
+        /// 재야 대조가 대조가 된다.</para>
+        ///
+        /// <para>애니메이션 배율(펼침/호버)은 <see cref="ButtonView.Root"/>에 걸리므로 여기에 섞이지
+        /// 않는다 — 이 값은 <b>안착 상태의</b> 지름이고, 펼치는 도중에 재도 같은 값이 나온다.</para>
+        ///
+        /// <para><b>왜 <see cref="ButtonView.Surface"/>를 재는가</b>: 사용자가 실제로 보는 물건이
+        /// 그것이기 때문이다. <c>Root.sizeDelta</c>는 원들이 <b>늘어붙지 않는</b> 컨테이너라 값이
+        /// 조용히 낡아도 화면은 멀쩡하다 — 그런 값을 «렌더값»이라 부르면 이 접근자가 두 번째
+        /// 거짓 측정기가 된다. 면의 상자는 <see cref="UiChrome.AddCircle"/> 규약대로
+        /// «지름 + 램프 여유 ×2»라 그 여유를 되빼면 지름이 나온다.</para>
+        ///
+        /// <para>아직 <see cref="BuildUi"/> 전이거나 범위 밖이면 0 — 형제 접근자
+        /// <see cref="ButtonScreenCenter"/>/<see cref="ButtonProgress"/>와 같은 가드 규약이고,
+        /// 0은 어떤 «Ø44/Ø36과 같다» 단언도 통과시키지 않아 조용히 넘어가지 않는다.</para>
+        /// </summary>
+        public float RenderedButtonDiameterPoints(int index)
+        {
+            if (index < 0 || index >= ButtonCount) return 0f;
+            ButtonView b = _buttons[index];
+            if (b?.Group == null || b.Surface == null) return 0f;
+
+            float bakedDiameter = b.Surface.rectTransform.sizeDelta.x - UiChrome.EdgeFeatherPoints * 2f;
+            return bakedDiameter * b.Group.localScale.x;
+        }
 
         public float ButtonProgress(int index)
             => index >= 0 && index < ButtonCount && _buttons[index] != null ? _buttons[index].Progress : 0f;
@@ -654,8 +739,8 @@ namespace StickMate.Interaction
         }
 
         /// <summary>버튼 <b>중심</b> 사이의 최소 거리(포인트) — 겹침 회귀 테스트용.
-        /// <para>★ 위성을 포함한 <b>전 쌍</b>을 잰다. 위성↔최근접 호는 67.23pt라 최소값은 여전히
-        /// 호 이웃끼리의 57.46pt다 — 즉 이 값의 뜻이 위성 도입으로 바뀌지 않는다.</para>
+        /// <para>★ <b>전 쌍</b>을 잰다. 다섯이 한 호에 등간격으로 서므로(2026-09-06 위성 폐지)
+        /// 최소값은 언제나 <b>이웃끼리</b>의 <c>2·R·sin(간격/2)</c> = 57.75pt다.</para>
         /// 아직 <see cref="BuildUi"/> 전(Awake 이전)이면 <see cref="float.MaxValue"/>를 돌려준다:
         /// "가장 좁은 간격"의 항등원이라 어떤 최소값 단언도 통과시키지 않고 조용히 넘어가지 않는다.</summary>
         public float MinimumCenterSpacingPoints()
@@ -700,13 +785,14 @@ namespace StickMate.Interaction
             _actionPopover = GetComponent<ActionCommandPopover>();
             Debug.Log("[부채꼴] 준비 완료 — 톱니를 짧게 클릭하면 [집중 모드]/[캐릭터]/[오늘 할일]/[행동]" +
                 $"/[{NameOf((int)GearMenuButton.Quit)}] " +
-                // ★ 스팬은 <b>ArcButtonCount</b>로 센다. ButtonCount로 세면 로그가 120도라고 말하는데
-                //   화면은 90도인 상태가 된다 — 원격 진단이 틀린 결론에 도달하는 종류의 거짓말이다.
-                $"**아이콘 전용** 원버튼 {ButtonCount}개(호 {ArcButtonCount} + 위성 {SatelliteButtonCount})가 " +
-                $"Ø{ButtonDiameterPoints:F0}pt, 호 궤도 {OrbitRadiusPoints:F0}pt, 간격 " +
-                $"{ButtonAngleStepDegrees:F0}도(스팬 " +
-                $"{ButtonAngleStepDegrees * (ArcButtonCount - 1):F0}도), 위성 궤도 " +
-                $"{SatelliteOrbitRadiusPoints:F0}pt(축 위)로 {ExpandTotalSeconds:F2}초 동안 " +
+                // ★ 스팬은 «(개수 − 1) × 간격»으로 센다. 상수를 베껴 적으면 기하가 바뀌었을 때
+                //   로그만 옛 숫자를 말하는 상태가 된다 — 원격 진단이 틀린 결론에 도달하는 거짓말이다.
+                $"**아이콘 전용** 원버튼 {ButtonCount}개가 <b>한 호 위에</b> " +
+                $"Ø{ButtonDiameterPoints:F0}pt, 궤도 {OrbitRadiusPoints:F0}pt, 간격 " +
+                $"{ButtonAngleStepDegrees:0.##}도(스팬 " +
+                $"{ButtonAngleStepDegrees * (ButtonCount - 1):F0}도, 이웃 중심거리 " +
+                $"{2f * OrbitRadiusPoints * Mathf.Sin(ButtonAngleStepDegrees * 0.5f * Mathf.Deg2Rad):F2}pt)로 " +
+                $"{ExpandTotalSeconds:F2}초 동안 " +
                 "촤르륵 펼쳐집니다. 상시 이름표(라벨)는 2026-08-31 사용자 지시로 전부 삭제됐고, " +
                 "대신 **커서가 올라간 버튼 하나만** 그 이름이 원 <b>바깥쪽</b>에 뜹니다" +
                 // ★ 예전에는 $"0.{v*100:F0}초"였다 — v=0.09에서 9를 찍어 <b>"0.9초"</b>가 됐다
@@ -769,6 +855,33 @@ namespace StickMate.Interaction
             TryStartOnboardingHint();
             RefreshDynamicContent(force: true);
             ApplyVisuals();
+            LogExpandGeometry();
+        }
+
+        /// <summary>
+        /// ★ 2026-09-06 진단 로그 — <b>펼침 한 번당 한 줄</b>. 매 프레임이 아니므로 문자열 보간이
+        /// 24시간 상주 비용이 되지 않는다(<c>Start()</c>의 기동 배너와 같은 성격).
+        ///
+        /// <para><b>왜 이 여섯 값인가</b>: 「부채꼴이 이상한 자리에 떴다」는 신고가 올라오면 원격에서
+        /// 물어야 하는 것이 정확히 이것들이다 — <b>어느 문으로 열었나</b>(톱니/캐릭터는 위쪽 바이어스가
+        /// 달라 θ₀ 자체가 다르다), <b>앵커가 어디였나</b>, <b>사다리의 어느 칸에서 멈췄나</b>
+        /// (θ₀ 회전량 · 지름 축소 · 평행이동 · 세로 일렬). 이 중 하나라도 없으면 로그를 보고도
+        /// 「사다리가 정상 동작한 결과」와 「기하가 틀어진 결과」를 가를 수 없다.</para>
+        /// </summary>
+        private void LogExpandGeometry()
+        {
+            float rotation = Mathf.DeltaAngle(
+                SnapFanBaseAngle(_gearCenterPoints, _screenPointsAtLayout, _fanUpBiasPoints), _baseAngleDegrees);
+            Debug.Log($"[부채꼴] 펼침 — 진입점={(_anchorSource == GearMenuAnchorSource.Character ? "캐릭터 우클릭" : "톱니")}" +
+                $"(위쪽 바이어스 {_fanUpBiasPoints:F0}pt) · 앵커=({_gearCenterPoints.x:F1}, {_gearCenterPoints.y:F1})pt " +
+                $"/ 화면 {_screenPointsAtLayout.x:F0}x{_screenPointsAtLayout.y:F0}pt · θ₀={_baseAngleDegrees:F0}도" +
+                $"(스냅값에서 {rotation:+0;-0;0}도 회전) · 지름={_diameterPoints:F0}pt" +
+                $"{(_diameterPoints < ButtonDiameterPoints ? "(축소 폴백)" : "")} · " +
+                $"평행이동=({_layoutShiftPoints.x:F1}, {_layoutShiftPoints.y:F1})pt" +
+                $"[{_layoutShiftPoints.magnitude:F1}/{MaxGroupShiftPoints:F0}] · " +
+                $"세로일렬 폴백={(_columnLayout ? "예" : "아니오")} · 여백 상{EffectiveTopMarginPoints:F0}" +
+                $"/하{EffectiveBottomMarginPoints:F0}/좌{EffectiveLeftMarginPoints:F0}" +
+                $"/우{EffectiveRightMarginPoints:F0}pt.");
         }
 
         /// <summary>
@@ -922,7 +1035,7 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// ★ 위성 [앱 종료]의 2단 확인(53-4). <b>1차 클릭은 아무것도 끝내지 않는다</b> — 무장만 한다.
+        /// ★ [앱 종료]의 2단 확인(53-4). <b>1차 클릭은 아무것도 끝내지 않는다</b> — 무장만 한다.
         ///
         /// <para><b>왜 팝오버를 안 여는가</b>: 다른 셋과 달리 이 버튼은 <b>창을 여는 진입점이 아니라
         /// 그 자체가 행동</b>이다. 창을 하나 더 만들면 되돌릴 수 없는 행동의 확인 구현이 앱 안에서
@@ -1444,7 +1557,7 @@ namespace StickMate.Interaction
         {
             if (_hoverLabel == null) return;
 
-            // ★ 무장 중에는 알약이 <b>위성에 고정</b>되고 확인 문구를 문다(53-4). 커서가 다른 버튼으로
+            // ★ 무장 중에는 알약이 <b>[앱 종료]에 고정</b>되고 확인 문구를 문다(53-4). 커서가 다른 버튼으로
             //   가면 그 순간 무장이 풀리므로(TickQuitArm) 두 문구가 경쟁하는 상태는 <b>존재할 수 없다</b> —
             //   알약 인스턴스가 하나뿐이라는 클래스 문서 ②의 성질이 그대로 유지된다.
             int target = _quitArmed ? (int)GearMenuButton.Quit : _hoverIndex;
@@ -1459,7 +1572,7 @@ namespace StickMate.Interaction
                 dt / Mathf.Max(0.0001f, HoverLabelFadeSeconds));
 
             // 글자는 <b>값이 바뀐 프레임에만</b> 쓴다(Text.text 대입은 메시 재생성이다).
-            // ★ 비교 대상이 인덱스가 아니라 <b>문자열</b>인 이유: 같은 버튼(위성)에서 이름 -> 확인 문구로
+            // ★ 비교 대상이 인덱스가 아니라 <b>문자열</b>인 이유: 같은 버튼([앱 종료])에서 이름 -> 확인 문구로
             //   글자만 바뀌는 전이가 생겼다. 인덱스만 보면 그 전이를 놓쳐 알약이 "앱 종료"인 채로 남는다.
             if (target >= 0)
             {
@@ -1531,8 +1644,9 @@ namespace StickMate.Interaction
             // 부채꼴의 <b>이등분 방향</b>으로, 가장 바깥 버튼만큼 나간 자리를 기준점으로 삼는다.
             // 그래야 이름표와 같은 기하 보장(ResolveHoverLabelCenter 문단)이 안내 알약에도 그대로
             // 적용된다 — 버튼 중심의 평균을 그대로 쓰면 기준점이 호 <b>안쪽</b>이라 보장이 약해진다.
-            // ★ reach가 <b>최대 투영</b>이라 위성(168pt)이 자동으로 기준이 된다 — 안내 알약은 위성
-            //   <b>바깥</b>에 선다(UX_WIDGETS R4-5). 위성 도입에 코드 수정이 필요 없었던 이유가 이것이다.
+            // ★ reach가 <b>최대 투영</b>이라 어느 슬롯이 가장 바깥이든 자동으로 기준이 된다 — 안내
+            //   알약은 언제나 부채꼴 <b>바깥</b>에 선다. 위성 도입에도, 2026-09-06 위성 폐지에도
+            //   이 블록이 한 줄도 안 바뀐 이유가 그것이다.
             // ★ 2026-09-03 — 기준을 <see cref="FanOriginPoints"/>로 옮겼다. 평행이동이 걸린 배치에서
             //   기어 중심으로 재면 이등분 방향이 실제 대칭축에서 벗어난다(이름표와 같은 결함).
             Vector2 origin = FanOriginPoints;
@@ -1589,11 +1703,18 @@ namespace StickMate.Interaction
         ///   <item><b>방향이 틀렸다.</b> <c>버튼중심 − 기어중심</c>으로 쟀는데, 배치 사다리 ③단계
         ///     (평행이동)는 <b>버튼만</b> 옮긴다. 기본 위치는 평행이동 (−6, −36.2)가 걸리는 자리라
         ///     방향이 실제 반지름에서 벗어나 있었다 → <see cref="FanOriginPoints"/>에서 잰다.</item>
-        ///   <item><b>반지름이 틀렸다.</b> 36-4의 「폭 무관 보장」은 <c>궤도 111 + 버튼반경 + 간격</c>을
+        ///   <item><b>반지름이 틀렸다.</b> 36-4의 「폭 무관 보장」은 <c>궤도 + 버튼반경 + 간격</c>을
         ///     전제로 세워졌는데, 위성이 궤도 <b>168</b>로 나가면서 그 전제가 깨졌다 — 호 버튼의
         ///     이름표가 놓이던 반지름(≈170pt)이 <b>위성 궤도와 같은 자리</b>였다.
         ///     이제 <see cref="HoverLabelRingRadiusPoints"/>(= 가장 바깥 버튼 + 버튼반경 + 간격)를 쓴다.</item>
         /// </list>
+        ///
+        /// <para>★★ <b>2026-09-06 — 그 수리는 「겹침」만 고쳤고 「누구 이름표인가」는 못 고쳤다.</b>
+        /// 전역 단일 링은 알약이 <b>형제 버튼을 물지 않게</b> 하는 데는 성공했지만, 궤도 111의 호
+        /// 버튼 이름표를 궤도 168짜리 링 위에 올려놓았다 — 즉 <b>겹치지는 않는데 엉뚱한 버튼 옆에
+        /// 떠 있었다</b>(슬롯 1[캐릭터]: 자기 버튼 109.04pt vs [앱 종료] 72.30pt). 두 결함은 원인이
+        /// 하나(궤도가 갈라져 있다)이고, <b>위성 폐지로 함께 사라졌다</b>. 자세한 것은
+        /// <see cref="FinalizeLayout"/> 문서.</para>
         ///
         /// <para><b>보장이 되살아난다</b>(36-4와 같은 지지 함수 논증): 모든 버튼 원은 원점에서 반지름
         /// <c>ring − 간격</c> 안에 있고, 알약의 <b>모든 점</b>은 <c>ring</c> 밖에 있다
@@ -1664,9 +1785,12 @@ namespace StickMate.Interaction
         }
 
         /// <summary>
-        /// ★ 위성 [앱 종료]는 <b>호버에서 강조색까지 가지 않는다</b>(53-4).
+        /// ★ [앱 종료]는 <b>호버에서 강조색까지 가지 않는다</b>(53-4).
         ///
-        /// <para>다른 넷은 호버에서 <c>AccentSurface</c>/<c>Accent</c>까지 가지만, 위성은 호버에서
+        /// <para>★★ <b>2026-09-06부터 이 색 규칙이 「다름」의 전부를 짊어진다.</b> 위성이 폐지되어
+        /// 위치로는 다른 넷과 구별되지 않기 때문이다 — 그 판단의 근거는 <see cref="GearMenuButton.Quit"/> 문서.</para>
+        ///
+        /// <para>다른 넷은 호버에서 <c>AccentSurface</c>/<c>Accent</c>까지 가지만, [앱 종료]는 호버에서
         /// 겨우 <b>다른 버튼의 평상 수준</b>(<c>CardSurface</c>)에 도달한다. 강조색은 <b>무장 전용</b>이다 —
         /// 그래야 이 표면에서 "이 버튼이 밝아졌다"의 뜻이 <b>「되돌릴 수 없는 것이 장전됐다」 하나</b>가 된다.</para>
         ///
@@ -1750,7 +1874,7 @@ namespace StickMate.Interaction
             if (b.RingFill != null && b.RingFill.gameObject.activeSelf)
             {
                 b.RingFill.color = Fade(UiChrome.WarmAccent, alpha);
-                // ★ 위성의 카운트다운 링에는 트랙이 없다(전원 기호의 원호가 그 자리에 이미 있다).
+                // ★ [앱 종료]의 카운트다운 링에는 트랙이 없다(전원 기호의 원호가 그 자리에 이미 있다).
                 //   가드 없이 쓰면 [앱 종료] 무장 첫 프레임에 NullReference로 죽는다.
                 if (b.RingTrack != null)
                 {
@@ -1871,15 +1995,23 @@ namespace StickMate.Interaction
         /// <summary>
         /// 배치가 끝난 뒤 <b>이름표 기하가 쓸 세 값</b>을 확정한다 — 사다리의 <b>모든</b> 출구가 여기를 지난다.
         ///
-        /// <para><b>왜 링 반지름을 여기서 「재는가」</b>: 상수(168)로 적으면 축소 폴백(Ø36)·평행이동·
+        /// <para><b>왜 링 반지름을 여기서 「재는가」</b>: 상수로 적으면 축소 폴백(Ø36)·평행이동·
         /// 세로 일렬에서 값이 어긋난다. <b>실제로 놓인 버튼까지의 최대 거리</b>를 재면 어떤 경로로
         /// 배치됐든 «모든 버튼 원이 이 반지름 안에 있다»가 사실이 된다 — 그것이 36-4가 말한
         /// <b>폭 무관 보장</b>의 전제다.</para>
         ///
-        /// <para>★ 36-4의 원래 보장은 <c>궤도 111 + 버튼반경 + 간격</c>이었고, <b>위성이 궤도 168로
-        /// 나가면서 그 전제가 깨졌다</b> — 호 버튼의 이름표가 놓이던 반지름(약 170pt)이 위성의
-        /// 궤도(168)와 <b>같은 자리</b>였기 때문이다. 보장을 되살리는 방법은 하나뿐이다:
-        /// <b>가장 바깥 버튼</b>을 기준으로 삼는 것.</para>
+        /// <para>★★ <b>그러나 「가장 바깥 버튼 하나」로 링을 만드는 것은 궤도가 하나일 때만 옳다</b>
+        /// (2026-09-06 사용자 신고의 정체). 위성이 궤도 168pt에 있던 동안, 궤도 111pt의 호 버튼들은
+        /// 이름표가 <b>자기 원에서 87pt나 떨어진 자리</b>(= 위성 옆)에 놓였다 — 실측으로 슬롯 1[캐릭터]의
+        /// 이름표가 자기 버튼에서 109.04pt, [앱 종료]에서는 <b>72.30pt</b>였다(1.51배 더 가깝다).
+        /// 이름표는 «지금 커서가 올라간 버튼이 무엇인가»를 말하는 물건이라 그 배치는 <b>틀린 말</b>이다.</para>
+        ///
+        /// <para>★ <b>위성 폐지로 궤도가 하나가 되면서 이 전역 링이 처음으로 정확해졌다</b> —
+        /// 모든 슬롯에서 <c>링 = 자기 궤도 + 버튼반경 + 간격</c>이 성립한다. 즉 <b>슬롯별 링을 만들
+        /// 필요가 없다</b>(쓰이지 않을 분기를 미리 깔면 반드시 썩는다 — 라벨 알약을 통째로 지운 것과
+        /// 같은 판단). 대신 그 <b>전제</b>를 <see cref="SlotRadiusPoints"/> 문서와
+        /// <c>GearRadialFanGeometryTests</c>가 잠근다: 궤도를 다시 가르면 러너가 «그때는 슬롯별 링이
+        /// 필요하다»고 말해 준다.</para>
         /// </summary>
         private void FinalizeLayout(bool column)
         {
@@ -1893,7 +2025,63 @@ namespace StickMate.Interaction
                 farthest = Mathf.Max(farthest, (_buttons[i].CenterPoints - origin).magnitude);
             }
             _labelRingRadiusPoints = HoverLabelRingRadius(farthest, _diameterPoints);
+            ApplyLayoutDiameterToViews();
         }
+
+        /// <summary>
+        /// ★★ 2026-09-06 — <b>사다리가 정한 지름을 화면에 옮기는 유일한 자리.</b>
+        ///
+        /// <para><b>여기가 없어서 축소 폴백은 태어나서 한 번도 그려진 적이 없었다.</b>
+        /// <see cref="_diameterPoints"/>는 히트 판정(<see cref="HitTest"/>)·클램프 상자
+        /// (<see cref="BoxFor"/>)·이름표 링(<see cref="HoverLabelRingRadius"/>)·진단 로그가 모두
+        /// 읽고 있었는데, <b>원을 만드는 코드만</b> 그 값을 안 봤다 — <see cref="BuildButton"/>이
+        /// <c>Awake</c> 때 <see cref="ButtonDiameterPoints"/>로 한 번 굽고 끝이었다.
+        /// 그래서 Ø36 판정이 걸린 화면에서 <b>판정 지름 36 · 그려지는 지름 44</b>가 됐다.</para>
+        ///
+        /// <para><b>그 어긋남의 실측 결과</b>(pt. 「설계대로 Ø44」 → 「버그(판정36/렌더44)」 → 「수정 후」):
+        /// <code>
+        ///   히트 반경 − 보이는 반경  평상 +4.00 → <b>+0.00</b> → +4.00
+        ///                            호버 +2.00 → <b>−2.00</b> → +2.36
+        ///   클램프 상자 − 보이는 원  평상  6.00 →  2.00  → 6.00
+        ///                            호버  4.00 →  <b>0.00</b> → 4.36
+        ///   세로 일렬 이웃 사이 틈   평상  8.00 →  8.00  → <b>16.00</b>
+        /// </code>
+        /// <b>가장 날카로운 것은 호버의 −2.00이다</b> — 커서를 올린 순간 <b>보이는 원이 눌리는 원보다
+        /// 커져</b>, 바깥 2pt 띠가 «보이는데 안 눌리는» 영역이 됐다. 32-1이 개별 버튼 클램프를 금지하며
+        /// 지키려던 바로 그 불변식(«보이는 것과 눌리는 것이 같다»)이 <b>축소 폴백에서만</b> 깨져 있었다.
+        /// 둘째로 호버 상자 여유 0.00 — 보이는 원의 가장자리가 <b>예약 띠 경계선에 정확히 닿았다</b>.
+        /// 셋째로 세로 일렬에서 축소가 <b>시야에 아무것도 벌어주지 못했다</b>(틈 8.00으로 Ø44와 동일).</para>
+        ///
+        /// <para><b>왜 <see cref="ButtonView.Group"/>의 스케일인가</b> — 층을 나눠야 두 배율이 서로를
+        /// 덮어쓰지 않는다:
+        /// <list type="bullet">
+        ///   <item><b>Group</b> = 위치 + <b>배치 배율</b>. 펼침 한 번에 한 번만 쓴다.</item>
+        ///   <item><b>Root</b> = 펼침/호버 <b>애니메이션 배율</b>. 매 프레임 덮어쓰인다
+        ///     (<see cref="ApplyVisuals"/>). 여기에 배치 배율을 곱해 넣으면 <b>다음 프레임이 지운다</b>.</item>
+        /// </list>
+        /// Group은 <c>sizeDelta</c>가 0이고 원은 그 중심에 놓이므로 스케일은 <b>버튼 중심을 축으로</b>
+        /// 걸린다 — <c>anchoredPosition</c>(궤도 위 위치)은 부모 좌표계 값이라 영향을 받지 않는다.</para>
+        ///
+        /// <para><b>왜 원의 <c>sizeDelta</c>를 직접 안 고치는가</b>: <see cref="UiChrome.AddCircle"/>은
+        /// 테두리 두께 비율(1.2/44)과 가장자리 램프 여유를 <b>스프라이트에 구워</b> 넣는다. 상자만
+        /// 줄이면 스프라이트가 늘어나 결국 같은 배율이 걸리는데, 원 3개 + 심볼 + 배지를 <b>각각</b>
+        /// 다시 재야 하고 그중 하나만 빠지면 그날로 어긋난다. 균일 배율은 그 어긋남이 원리상 불가능하다.
+        /// 게다가 심볼 도형 함수를 한 줄도 건드리지 않는다(같은 파일을 동시에 만지는 작업과의 충돌 회피).</para>
+        ///
+        /// <para>Ø44에서는 계수가 정확히 1이라 <b>비트 동일</b>하다 — 축소가 안 걸린 화면은 아무것도 안 바뀐다.</para>
+        /// </summary>
+        private void ApplyLayoutDiameterToViews()
+        {
+            float k = LayoutDiameterScale;
+            for (int i = 0; i < ButtonCount; i++)
+            {
+                if (_buttons[i]?.Group == null) continue;
+                _buttons[i].Group.localScale = new Vector3(k, k, 1f);
+            }
+        }
+
+        /// <summary>사다리가 정한 지름을 <b>기준 지름 대비 배율</b>로 옮긴 값(Ø44 → 1, Ø36 → 0.8181…).</summary>
+        private float LayoutDiameterScale => _diameterPoints / ButtonDiameterPoints;
 
         /// <summary>가장 바깥 버튼까지의 거리에서 <b>이름표 링 반지름</b>을 만든다.
         /// <para><b>public static 순수 함수</b>인 이유는 <see cref="EffectiveMarginPoints"/>와 같다 —
@@ -1932,35 +2120,33 @@ namespace StickMate.Interaction
             return true;
         }
 
-        /// <summary>슬롯 i의 각도 오프셋. 호는 θ₀ + ((<see cref="ArcButtonCount"/>−1)/2 − i)·step —
+        /// <summary>슬롯 i의 각도 오프셋 — θ₀ + ((<see cref="ButtonCount"/>−1)/2 − i)·step.
         /// <b>부채꼴은 언제나 θ₀를 기준으로 좌우 대칭</b>이라 버튼 개수가 바뀌어도 "가운데가 화면
-        /// 안쪽"이라는 성질이 유지된다. n=3이면 (1−i)·60°, n=4면 (1.5−i)·30°(36-3-3).
+        /// 안쪽"이라는 성질이 유지된다. n=3이면 (1−i)·60°, n=4면 (1.5−i)·30°(36-3-3),
+        /// <b>n=5면 (2−i)·22.5°</b>(2026-09-06) → {+45, +22.5, 0, −22.5, −45}, 합 0, 스팬 90°.
         ///
-        /// <para>★★ <b>분모는 <see cref="ArcButtonCount"/>이지 <see cref="ButtonCount"/>가 아니다.</b>
-        /// 2026-09-03에 위성([앱 종료])이 들어오면서 둘이 갈라졌다. 여기를 <c>ButtonCount</c>로
-        /// 되돌리면 <b>컴파일도 되고 대부분의 테스트도 통과하는데</b> 호가 <b>축에서 30° 비대칭으로
-        /// 기울고</b>, 그 결과 <b>위성이 3번째 호 슬롯과 같은 반직선 위에 겹친다</b>
-        /// (각거리 15° -> 0° · 이격 67.23 -> 57.00pt · 접근 직선 여유 +2.73 -> −26.00pt = 관통).
-        /// 스팬은 <b>안 변한다</b> — 그래서 화면 밖으로 안 나가고 <b>조용히 틀어진 채로 돈다</b>.
-        /// 숫자와 유도는 <see cref="ArcButtonCount"/> 문서에 있고,
-        /// <c>GearRadialFanGeometryTests</c>가 이 되돌림을 네 갈래로 잡는다.</para>
-        ///
-        /// <para>위성은 <b>기준각 축 위</b>(<see cref="SatelliteAngleOffsetDegrees"/> = 0°)다 —
-        /// 각도 오프셋의 총합이 0이라는 좌우 대칭 성질도 그대로 유지된다.</para>
+        /// <para>★ <b>2026-09-06 — 여기 있던 「분모를 ArcButtonCount로 갈라라」 경고가 사라졌다.</b>
+        /// 그 경고는 위성([앱 종료])이 호 밖에 있던 동안의 것이었다. 사용자 신고
+        /// <i>"끄기 버튼만 따로 떨어져 있다"</i>로 위성이 폐지되면서 <b>다섯이 전부 이 한 식을 탄다</b> —
+        /// 갈라질 분모가 없으므로 그 함정도 없다. 대신 새로 지켜야 하는 것은
+        /// <b>스팬(= (n−1)·step)이 90°라는 사실</b> 하나이고,
+        /// <c>GearRadialFanGeometryTests</c>가 그것을 프로덕션 상수에서 다시 계산해 잠근다.</para>
         ///
         /// <see cref="Snap45"/>와 같은 이유로 <b>public static 순수 함수</b>다 — 기하 확정치는 씬 없이
         /// EditMode에서 잠글 수 있어야 한다(36절의 계산이 코드에서 조용히 어긋나는 것을 막는 유일한 방법).</summary>
         public static float SlotOffsetDegrees(int index)
-            => IsSatelliteSlot(index)
-                ? SatelliteAngleOffsetDegrees
-                : ((ArcButtonCount - 1) * 0.5f - index) * ButtonAngleStepDegrees;
+            => ((ButtonCount - 1) * 0.5f - index) * ButtonAngleStepDegrees;
 
-        /// <summary>슬롯 i가 도는 <b>궤도 반지름</b>(pt). 호는 <see cref="OrbitRadiusPoints"/>,
-        /// 위성만 <see cref="SatelliteOrbitRadiusPoints"/>다.
-        /// <para>이 함수를 따로 둔 이유는 <see cref="SlotOffsetDegrees"/>와 같다 — 반지름이 슬롯마다
-        /// 다르다는 사실이 <b>한 자리</b>에만 있어야 배치 사다리·클램프·테스트가 같은 값을 본다.</para></summary>
-        public static float SlotRadiusPoints(int index)
-            => IsSatelliteSlot(index) ? SatelliteOrbitRadiusPoints : OrbitRadiusPoints;
+        /// <summary>슬롯 i가 도는 <b>궤도 반지름</b>(pt). <b>다섯이 전부 같다</b>(2026-09-06 위성 폐지).
+        ///
+        /// <para>★ <b>이 함수를 지우지 마라 — 값이 하나여도 자리는 하나여야 한다.</b> 호버 이름표 링이
+        /// «가장 바깥 버튼» 하나에서 나오는 <b>전역 값</b>이라(<see cref="FinalizeLayout"/>),
+        /// 궤도가 슬롯마다 달라지는 순간 안쪽 궤도 버튼의 이름표가 자기 원에서 그 차이만큼 떠
+        /// <b>다른 버튼 옆에 붙는다</b> — 그것이 2026-09-06 사용자 신고의 정체였다(위성 168 vs 호 111).
+        /// 그래서 «궤도가 하나»라는 사실을 <b>이 한 함수</b>가 말하고,
+        /// <c>GearRadialFanGeometryTests.전역_단일_이름표_링의_전제인_단일_궤도가_유지된다</c>가 잠근다.
+        /// 다시 갈라야 한다면 링을 <b>슬롯별</b>로 바꾸는 작업이 같은 라운드에 함께 와야 한다.</para></summary>
+        public static float SlotRadiusPoints(int index) => OrbitRadiusPoints;
 
         /// <summary>기어 중심과 기준각이 주어졌을 때 슬롯 i 버튼의 중심(캔버스 포인트). 순수 함수.</summary>
         public static Vector2 SlotCenterPoints(Vector2 gearCenterPoints, float baseDegrees, int index)
@@ -2357,15 +2543,61 @@ namespace StickMate.Interaction
             return BuildChecklistSymbol(view);
         }
 
-        /// <summary>① 집중 모드 — 스톱워치(용두 + 링 + 바늘 2). 세션이 돌면 이 링이 그대로 잔여 시간 호가 된다.</summary>
+        // ====================================================================================
+        // ① 집중 모드 — 스톱워치
+        // ====================================================================================
+
+        /// <summary>스톱워치 링의 지름(pt). <b>불변</b> — <c>RingTrack</c>/<c>RingFill</c>(잔여 시간 호)이
+        /// 같은 원을 재사용하는 계약이 여기에 걸려 있다.</summary>
+        private const float StopwatchRingDiameterPoints = 20f;
+
+        /// <summary>용두 목의 아래 끝(pt). 링 코어는 r ∈ [8, 10]이므로 9.2는 <b>코어 한가운데</b>다 —
+        /// 즉 목이 링에 <b>용접</b>되고, 옛 「혹처럼 붙은 4pt 획 하나」가 사라진다(FG-3 ①).</summary>
+        private static readonly Vector2[] StopwatchCrownStemPath =
+        {
+            new Vector2(0f, 9.2f),
+            new Vector2(0f, 11.6f),
+        };
+
+        /// <summary>분침 — 끝 y = 4.0 ⇒ 잉크 끝 5.0, 링 안쪽(8.0)까지 <b>3.00pt = 1.5W</b>(FG-3 ②).
+        /// 옛 값(길이 6.5, 끝 6.5)은 1.53pt로 링에 붙어 있었다.</summary>
+        private static readonly Vector2[] StopwatchMinuteHandPath =
+        {
+            Vector2.zero,
+            new Vector2(0f, 4f),
+        };
+
+        /// <summary>시침 — −30° 방향 길이 3.0(끝 잉크 r = 4.0, 링 안쪽까지 4.00pt).</summary>
+        private static readonly Vector2[] StopwatchHourHandPath =
+        {
+            Vector2.zero,
+            Polar(-30f, 3f),
+        };
+
+        /// <summary>① 집중 모드 — 스톱워치(용두 목 + 용두 단추 + 링 + 바늘 2). 세션이 돌면 이 링이
+        /// 그대로 잔여 시간 호가 된다.
+        /// <para>★ 2026-09-06 재조형(DESIGN_FAN_MENU_ICONS §6-①). 옛 용두는 <b>획 4.0pt = 2W</b>짜리
+        /// 캡슐 하나였다 — 이 메뉴에서 가장 굵은 잉크가 가장 덜 중요한 부속에 붙어 <b>위계가 거꾸로</b>였고,
+        /// 링과 0.5pt 겹쳐 목 없이 「혹」으로 읽혔다. 이제 <b>목(g0) + 단추(g2)</b> 두 조각이라
+        /// 물건 안에 위계가 생긴다.</para>
+        /// <para>단추를 <b>가로</b>로 두는 것이 중요하다 — 세로로 두면 ⑤ 전원의 세로획과 같은 실루엣이 된다.</para></summary>
         private Image[] BuildStopwatchSymbol(ButtonView view)
         {
             Transform p = view.Symbol;
-            var crown = UiChrome.AddStroke(p, "Crown", 6f, 4f, 0f, new Vector2(0f, 11.5f), UiChrome.TextPrimary);
-            view.RingTrack = UiChrome.AddCircle(p, "Ring", 20f, UiChrome.TextPrimary, SymbolStroke);
+            var parts = new List<Image>(8);
+
+            UiChrome.AddPolyline(p, "CrownStem", StopwatchCrownStemPath, SymbolStroke, UiChrome.TextPrimary, parts);
+            // 용두 단추 = 이 글리프의 유일한 g2. 꺾은선이 아니라 캡슐 하나라 AddStroke를 직접 쓴다.
+            parts.Add(UiChrome.AddStroke(p, "CrownCap", 6f, SymbolStrokeHeavy, 0f,
+                new Vector2(0f, 12.4f), UiChrome.TextPrimary));
+
+            view.RingTrack = UiChrome.AddCircle(p, "Ring", StopwatchRingDiameterPoints,
+                UiChrome.TextPrimary, SymbolStroke);
+            parts.Add(view.RingTrack);
 
             // 잔여 시간 호 — 같은 링 위에 겹쳐 그린다(세션 중에만 켠다).
-            view.RingFill = UiChrome.AddCircle(p, "RingFill", 20f, UiChrome.WarmAccent, SymbolStroke);
+            view.RingFill = UiChrome.AddCircle(p, "RingFill", StopwatchRingDiameterPoints,
+                UiChrome.WarmAccent, SymbolStroke);
             view.RingFill.type = Image.Type.Filled;
             view.RingFill.fillMethod = Image.FillMethod.Radial360;
             view.RingFill.fillOrigin = (int)Image.Origin360.Top;
@@ -2373,19 +2605,64 @@ namespace StickMate.Interaction
             view.RingFill.fillAmount = 1f;
             view.RingFill.gameObject.SetActive(false);
 
-            var minute = UiChrome.AddStroke(p, "MinuteHand", 6.5f, SymbolStroke, 90f, new Vector2(0f, 3.25f), UiChrome.TextPrimary);
-            float hourAngle = -30f * Mathf.Deg2Rad;
-            var hour = UiChrome.AddStroke(p, "HourHand", 5f, SymbolStroke, -30f,
-                new Vector2(Mathf.Cos(hourAngle) * 2.5f, Mathf.Sin(hourAngle) * 2.5f), UiChrome.TextPrimary);
+            UiChrome.AddPolyline(p, "MinuteHand", StopwatchMinuteHandPath, SymbolStroke, UiChrome.TextPrimary, parts);
+            UiChrome.AddPolyline(p, "HourHand", StopwatchHourHandPath, SymbolStroke, UiChrome.TextPrimary, parts);
 
-            return new[] { crown, view.RingTrack, minute, hour };
+            return parts.ToArray();
         }
 
+        // ====================================================================================
+        // ② 캐릭터 — 스틱맨
+        // ====================================================================================
+
+        private const float StickHeadDiameterPoints = 7f;
+        private const float StickHeadCenterY = 8f;
+        private const float StickShoulderY = 3.5f;
+        private const float StickPelvisY = -4.5f;
+
+        /// <summary>팔 길이 6.0 → <b>7.0</b>. 어깨에서 아래로 30° 내리면 끝점 y가 정확히 0이 되어
+        /// 좌표가 깨끗해지고, 잉크 상자 폭이 9.60 → <b>14.09pt</b>가 된다 — 다섯 칸 중 혼자 절반이던
+        /// 실루엣이 나머지 넷과 균형을 맞춘다(FG-8).</summary>
+        private const float StickArmLengthPoints = 7f;
+        private const float StickArmDropDegrees = 30f;
+
+        /// <summary>다리 벌림 = 수직에서 ±25°(옛 ±16°). 발 끝 사이 <b>3.07pt = 1.54W</b>로 FG-3을
+        /// 넘긴다(옛 1.56pt는 미달이었다 — 1×에서 두 발이 한 덩어리로 뭉갰다).</summary>
+        private const float StickLegLengthPoints = 6f;
+        private const float StickLegSpreadDegrees = 25f;
+
+        private static readonly Vector2 StickShoulder = new Vector2(0f, StickShoulderY);
+        private static readonly Vector2 StickPelvis = new Vector2(0f, StickPelvisY);
+
+        private static readonly Vector2[] StickSpinePath = { new Vector2(0f, 4.5f), StickPelvis };
+        private static readonly Vector2[] StickArmLPath =
+            { StickShoulder, StickShoulder + Polar(-180f + StickArmDropDegrees, StickArmLengthPoints) };
+        private static readonly Vector2[] StickArmRPath =
+            { StickShoulder, StickShoulder + Polar(-StickArmDropDegrees, StickArmLengthPoints) };
+        private static readonly Vector2[] StickLegLPath =
+            { StickPelvis, StickPelvis + Polar(-90f - StickLegSpreadDegrees, StickLegLengthPoints) };
+        private static readonly Vector2[] StickLegRPath =
+            { StickPelvis, StickPelvis + Polar(-90f + StickLegSpreadDegrees, StickLegLengthPoints) };
+
         /// <summary>② 캐릭터 — 미니 스틱맨. <b>영원히 같은 그림</b>이다(장비/포즈를 반영하면 내비게이션
-        /// 표지로서의 식별성을 잃는다 — 32-4 ②).</summary>
+        /// 표지로서의 식별성을 잃는다 — 32-4 ②).
+        ///
+        /// <para>★ 2026-09-06 재조형(DESIGN_FAN_MENU_ICONS §6-②). 두 가지가 바뀌었다.</para>
+        /// <para><b>(1) 머리가 링에서 「채운 원반」이 됐다.</b> 이 버튼은 「캐릭터로 가는 문」의 표지인데,
+        /// 그 캐릭터 본체의 머리는 <c>1.171932 R</c>짜리 <b>채운 원</b>이다
+        /// (docs/CHARACTER_BODY_AUDIT_2026-09-05.md §2). 표지가 가리키는 대상과 다른 문법으로 그려져
+        /// 있었다. 카툰 비례로 캐리커처하는 것은 의도된 왜곡이다(글리프 머리/전신 0.31 vs 본체 0.23) —
+        /// 작은 크기에서 머리를 키우지 않으면 사람으로 안 읽힌다.</para>
+        /// <para><b>(2) 획 1.8 → 2.0(g0).</b> 다섯 칸 중 <b>혼자</b> 10 % 가늘어 1×에서 거미줄처럼
+        /// 얇았다. 이제 사다리 위(FG-2)에 있다.</para>
+        ///
+        /// <para>여섯 조각은 전부 <b>한 덩어리로 용접</b>된다(머리 밑 y = 4.5가 척추 잉크 위 끝 5.5보다
+        /// 아래라 진짜로 겹친다). 옛 형태는 정확히 <b>접선</b>(간극 0.00)이라 「한 덩어리」로도
+        /// 「떨어진 둘」로도 판정되지 않는 애매한 자리였다.</para></summary>
         private Image[] BuildStickmanSymbol(ButtonView view)
         {
             Transform p = view.Symbol;
+            var parts = new List<Image>(8);
 
             // ★★ 2026-08-30 회귀의 <b>생산자 측</b> 수정 — 부품 이름에 "Icon" 접두사를 붙인다.
             // 예전 이름은 "Head"/"ArmL"/"LegL"이었고, 그중 "Head"가 프리팹 캐릭터의 머리 앵커와
@@ -2394,72 +2671,214 @@ namespace StickMate.Interaction
             // 이 UI 원을 진짜 머리로 착각해 캐릭터 머리·몸통이 영영 안 움직였다.
             // 소비자 쪽은 탐색 범위를 좁혀 이미 막았지만, 그 방어는 "지금의 계층 규약"에 기대는 것이라
             // 여기서 이름 충돌 자체를 없앤다(위 BuildUi의 씬 루트 부착과 합쳐 이중 차단).
-            var head = UiChrome.AddCircle(p, "IconHead", 7f, UiChrome.TextPrimary, 1.8f);
-            head.rectTransform.anchoredPosition = new Vector2(0f, 8f);
+            // ★ ringThickness를 <b>생략</b>하는 것이 곧 「채운 원반」이다(UiChrome.AddCircle).
+            parts.Add(UiChrome.AddCircle(p, "IconHead", StickHeadDiameterPoints, UiChrome.TextPrimary,
+                0f, new Vector2(0f, StickHeadCenterY)));
 
-            var spine = UiChrome.AddStroke(p, "IconSpine", 9f, 1.8f, 90f, Vector2.zero, UiChrome.TextPrimary);
-            var shoulder = new Vector2(0f, 3.5f);
-            var pelvis = new Vector2(0f, -4.5f);
-            var armL = UiChrome.AddStroke(p, "IconArmL", 6f, 1.8f, -140f, shoulder + Polar(-140f, 3f), UiChrome.TextPrimary);
-            var armR = UiChrome.AddStroke(p, "IconArmR", 6f, 1.8f, -40f, shoulder + Polar(-40f, 3f), UiChrome.TextPrimary);
-            var legL = UiChrome.AddStroke(p, "IconLegL", 7f, 1.8f, -106f, pelvis + Polar(-106f, 3.5f), UiChrome.TextPrimary);
-            var legR = UiChrome.AddStroke(p, "IconLegR", 7f, 1.8f, -74f, pelvis + Polar(-74f, 3.5f), UiChrome.TextPrimary);
+            UiChrome.AddPolyline(p, "IconSpine", StickSpinePath, SymbolStroke, UiChrome.TextPrimary, parts);
+            UiChrome.AddPolyline(p, "IconArmL", StickArmLPath, SymbolStroke, UiChrome.TextPrimary, parts);
+            UiChrome.AddPolyline(p, "IconArmR", StickArmRPath, SymbolStroke, UiChrome.TextPrimary, parts);
+            UiChrome.AddPolyline(p, "IconLegL", StickLegLPath, SymbolStroke, UiChrome.TextPrimary, parts);
+            UiChrome.AddPolyline(p, "IconLegR", StickLegRPath, SymbolStroke, UiChrome.TextPrimary, parts);
 
-            return new[] { head, spine, armL, armR, legL, legR };
+            return parts.ToArray();
         }
 
-        /// <summary>③ 오늘 할일 — 체크리스트(글줄 3 + 빈 박스 2 + 체크마크 + 취소선).</summary>
+        // ====================================================================================
+        // ③ 오늘 할일 — 체크리스트 (2행)
+        // ====================================================================================
+        // ★ 3행은 이 필드에서 <b>산술적으로 불가능하다</b>(DESIGN_FAN_MENU_ICONS §6-③).
+        //   표식(빈 박스)의 최소 세로 = 구멍 1.5W(3.0) + 획 2×g1(2×1.5) = 6.0pt이고 행 간 골도
+        //   1.5W = 3.0pt가 필요하다 ⇒ 3×6.0 + 2×3.0 = 24.0pt로 필드(Ø28의 세로 유효폭)를 꽉 채우고
+        //   여백이 0이다. 옛 코드가 3행을 우겨넣느라 박스를 4.5pt·획 1.0pt(0.5W)까지 줄인 것이
+        //   <b>1×에서 박스 둘이 점으로 뭉개지던 원인</b>이었다. 2행으로 내린다.
+        //   「몇 개 남았는가」는 이미 <b>배지</b>가 나른다(BuildButton의 Todo 배지).
+
+        private const float ChecklistRowY = 5f;          // 두 글줄의 |y|. 코어 간극 8.0pt(= 4W).
+        private const float ChecklistMarkX = -7.75f;     // 표식 칸 중심 x.
+        private const float ChecklistMarkCellPoints = 5f; // 꺾은선 경로 한 변 → 바깥 6.5 · 구멍 3.5(≥1.5W).
+        private const float ChecklistLineX0 = -0.5f;
+        private const float ChecklistLineX1 = 9.5f;
+
+        /// <summary>빈 표식 상자 — <b>꺾은선 사각형</b>이다. <c>UiChrome.RoundedOutline</c>의 두께는
+        /// <b>정수 텍셀(=정수 pt)</b> 뿐이라 g1(1.5pt)을 표현할 수 없다. 그래서 옛 <c>AddSmallBox</c>는
+        /// 폐기됐다(호출부 0).</summary>
+        private static readonly Vector2[] ChecklistBoxPath =
+        {
+            new Vector2(ChecklistMarkX - ChecklistMarkCellPoints * 0.5f, ChecklistRowY - ChecklistMarkCellPoints * 0.5f),
+            new Vector2(ChecklistMarkX + ChecklistMarkCellPoints * 0.5f, ChecklistRowY - ChecklistMarkCellPoints * 0.5f),
+            new Vector2(ChecklistMarkX + ChecklistMarkCellPoints * 0.5f, ChecklistRowY + ChecklistMarkCellPoints * 0.5f),
+            new Vector2(ChecklistMarkX - ChecklistMarkCellPoints * 0.5f, ChecklistRowY + ChecklistMarkCellPoints * 0.5f),
+            new Vector2(ChecklistMarkX - ChecklistMarkCellPoints * 0.5f, ChecklistRowY - ChecklistMarkCellPoints * 0.5f),
+        };
+
+        private static readonly Vector2[] ChecklistLine0Path =
+            { new Vector2(ChecklistLineX0, ChecklistRowY), new Vector2(ChecklistLineX1, ChecklistRowY) };
+
+        private static readonly Vector2[] ChecklistLine1Path =
+            { new Vector2(ChecklistLineX0, -ChecklistRowY), new Vector2(ChecklistLineX1, -ChecklistRowY) };
+
+        /// <summary>체크마크 — <b>꺾은선 한 조각</b>(옛 캡슐 2조각). 표식 칸 안에 앉고 아래 글줄과
+        /// 3.55pt 떨어진다.</summary>
+        private static readonly Vector2[] ChecklistCheckPath =
+        {
+            new Vector2(-9.6f, -4.8f),
+            new Vector2(-7.8f, -6.6f),
+            new Vector2(-5.6f, -2.8f),
+        };
+
+        /// <summary>③ 오늘 할일 — 체크리스트 <b>2행</b>(빈 표식 + 글줄 / 체크 + 글줄).
+        /// <para>★ 2026-09-06 재조형(DESIGN_FAN_MENU_ICONS §6-③). 사라진 것이 둘이다.</para>
+        /// <para><b>(1) <c>Strike</c>(취소선) 삭제.</b> 옛 코드는 그것을 <c>Line2</c>와 <b>정확히 같은
+        /// 자리·같은 색</b>으로 그렸다 — 화면에 존재하지 않는 <see cref="Image"/> 한 개였다(FG-4가
+        /// 금지하는 「100 % 가려진 조각」). 게다가 「선으로 그린 글줄」에 취소선을 그으면 원리상
+        /// <b>더 굵은 선 하나</b>가 될 뿐이라 되살릴 이유도 없다.</para>
+        /// <para><b>(2) 3행 → 2행.</b> 위 블록 주석의 산술.</para></summary>
         private Image[] BuildChecklistSymbol(ButtonView view)
         {
             Transform p = view.Symbol;
-            var line0 = UiChrome.AddStroke(p, "Line0", 9f, SymbolStroke, 0f, new Vector2(5.5f, 7f), UiChrome.TextPrimary);
-            var line1 = UiChrome.AddStroke(p, "Line1", 9f, SymbolStroke, 0f, new Vector2(5.5f, 0f), UiChrome.TextPrimary);
-            var line2 = UiChrome.AddStroke(p, "Line2", 9f, SymbolStroke, 0f, new Vector2(5.5f, -7f), UiChrome.TextPrimary);
-            var strike = UiChrome.AddStroke(p, "Strike", 9f, 1.4f, 0f, new Vector2(5.5f, -7f), UiChrome.TextPrimary);
+            var parts = new List<Image>(8);
 
-            Image box0 = AddSmallBox(p, "Box0", new Vector2(-6f, 7f));
-            Image box1 = AddSmallBox(p, "Box1", new Vector2(-6f, 0f));
-
-            var checkVertex = new Vector2(-7f, -8f);
-            var checkShort = UiChrome.AddStroke(p, "CheckShort", 3.2f, 1.6f, 135f,
-                checkVertex + Polar(135f, 1.6f), UiChrome.Accent);
-            var checkLong = UiChrome.AddStroke(p, "CheckLong", 6f, 1.6f, 45f,
-                checkVertex + Polar(45f, 3f), UiChrome.Accent);
+            UiChrome.AddPolyline(p, "Box", ChecklistBoxPath, SymbolStrokeDetail, UiChrome.TextPrimary, parts);
+            UiChrome.AddPolyline(p, "Line0", ChecklistLine0Path, SymbolStroke, UiChrome.TextPrimary, parts);
+            UiChrome.AddPolyline(p, "Line1", ChecklistLine1Path, SymbolStroke, UiChrome.TextPrimary, parts);
 
             // 체크마크는 Accent 고정(완료를 뜻하는 유일한 색) — 심볼 색 보간 대상에서 제외하고
             // 알파만 따라가게 한다.
-            view.SymbolFixedParts = new[] { checkShort, checkLong };
-            return new[] { line0, line1, line2, strike, box0, box1 };
+            // ★ FG-7(「Accent 고정 조각은 글리프당 최대 1개」)은 <b>조형 조각</b>을 세는 규칙이고
+            //   여기 배열은 <b>Image</b>를 담는다. 조각은 꺾은선 <b>하나</b>이고 그것이 선분 2개로
+            //   실현될 뿐이다 — 이 배열의 길이로 FG-7을 검사하지 마라(옛 형태는 캡슐 <b>2조각</b>을
+            //   따로 놓아 꼭짓점 각도가 두 곳에 흩어져 있었다).
+            var fixedParts = new List<Image>(2);
+            UiChrome.AddPolyline(p, "Check", ChecklistCheckPath, SymbolStroke, UiChrome.Accent, fixedParts);
+            view.SymbolFixedParts = fixedParts.ToArray();
+
+            return parts.ToArray();
         }
 
+        // ====================================================================================
+        // ④ 행동 명령 — 확성기 (재작성)
+        // ====================================================================================
+        // ★ design-art F-L2 「확성기 → 지휘봉 교체」는 <b>이 크기에서 반증됐다</b>
+        //   (DESIGN_FAN_MENU_ICONS §6-④, 후보 8안을 좌표로 만들어 실크기까지 렌더한 결과).
+        //   · 「봉 19pt + 방사 3획」은 기하학적으로 불가능하다 — 수렴점에서 방사 3획이 서로 3.0pt를
+        //     지키려면 안쪽 끝이 r₀ ≥ 8.2pt여야 하고 그러면 바깥 끝이 r ≈ 21pt로 필드(15pt)를 6pt 넘는다.
+        //   · 십자 반짝임은 <b>금지 글리프</b>다: 대각 십자 = ✕(창 닫기 전용), 수직 십자 = +(증가·추가).
+        //   · 남는 5안은 실크기에서 핀 / 펜 / 마이크 / 스와시 / 열쇠고리로 읽혔다.
+        //   ⇒ <b>형태 교체가 아니라 조형 재작성</b>으로 이행한다(리더 판정, 2026-09-06).
+
+        private const float MegaphoneMouthX = 5f;          // 나팔 입(오른쪽 변)의 x. 소리선 호의 중심이기도 하다.
+        private const float MegaphoneWaveRadius = 6.6f;
+        private const float MegaphoneWaveSpanDegrees = 38f;
+        private const int MegaphoneWaveSegments = 8;       // FG-5: 원호는 8분할.
+
+        /// <summary>나팔 — <b>닫힌 꺾은선 한 조각</b>(옛 낱획 4개). 옛 형태의 병은 「조각 넷이 서로
+        /// 0.43pt로 붙어 있다」였고 그 0.43pt는 이 카탈로그 <b>전체 최악</b>이었다(램프까지 세면 골이
+        /// −0.57px = 두 획이 1×에서 <b>한 줄로 합쳐진다</b>). 원래 한 물건이므로 한 조각으로 그리면
+        /// 간극 규칙 자체가 사라진다(FG-3 ①「겹쳐서 한 덩어리」).</summary>
+        private static readonly Vector2[] MegaphoneHornPath =
+        {
+            new Vector2(-8.4f, 2.6f),
+            new Vector2(-8.4f, -2.6f),
+            new Vector2(MegaphoneMouthX, -5.8f),
+            new Vector2(MegaphoneMouthX, 5.8f),
+            new Vector2(-8.4f, 2.6f),
+        };
+
+        /// <summary>손잡이 — 시작점 (−1.0, −4.37)은 나팔 <b>아랫변 위</b>다(x = −1.0에서 그 변의
+        /// y = −2.6 + (7.4/13.4)×(−3.2) = −4.368) ⇒ 용접된다.
+        /// <para>옛 주석은 <i>"24pt 상자에서 손잡이 획은 잉크 얼룩이 된다"</i>며 손잡이를 뺐는데, 그 결과
+        /// 실루엣이 <b>스피커(볼륨) 아이콘과 같아졌다</b> — 이 앱에는 소리 설정이 따로 있다. 얼룩이 되지
+        /// 않는 방법은 「가늘게」가 아니라 <b>「용접된 g0 한 획」</b>이다.</para></summary>
+        private static readonly Vector2[] MegaphoneHandlePath =
+        {
+            new Vector2(-1f, -4.37f),
+            new Vector2(-2.2f, -9.2f),
+        };
+
+        /// <summary>소리선 — 호 <b>1개</b>(옛 2개). 두 호가 서로 3.0pt를 지키려면 반경 차가
+        /// <c>3.0 + 2×(W/2) = 5.0pt</c> 필요하고, 안쪽 호는 나팔 입(코어 x = 6.0)에서 3.0pt를 띄우느라
+        /// 반경 6.6 아래로 못 내려가므로 바깥 호는 반경 11.6 — 그 먼 점이 <c>5.0 + 11.6 + 1.0 = 17.6pt</c>로
+        /// 필드 상한 15pt를 2.6pt 넘는다. 옛 코드가 소리선 2개를 우겨넣느라 입과 1.50pt(0.75W)로
+        /// 붙어 있었다.</summary>
+        private static readonly Vector2[] MegaphoneWavePath = BuildArcPath(
+            new Vector2(MegaphoneMouthX, 0f), MegaphoneWaveRadius,
+            -MegaphoneWaveSpanDegrees, MegaphoneWaveSpanDegrees, MegaphoneWaveSegments);
+
         /// <summary>
-        /// ④ 행동 — <b>확성기</b>(6획, 36-5). 나머지 셋(스톱워치=원 / 스틱맨=수직 대칭 / 체크리스트=수평
-        /// 줄)이 전부 좌우 대칭인 반면 확성기는 <b>오른쪽을 향한 비대칭 실루엣</b>이라 22pt 축소에서도
-        /// 형태가 충돌하지 않는다. 의미도 정확하다 — 이 버튼은 캐릭터의 상태를 <b>보는</b> 곳이 아니라
-        /// 캐릭터에게 <b>시키는</b> 곳이다.
+        /// ④ 행동 — <b>확성기</b>(3조각: 닫힌 나팔 + 손잡이 + 소리선 1). 나머지 넷(스톱워치=원 /
+        /// 스틱맨=수직 대칭 / 체크리스트=수평 줄 / 전원=트인 원)이 전부 좌우 대칭인 반면 확성기는
+        /// <b>오른쪽을 향한 비대칭 실루엣</b>이라 축소에서도 형태가 충돌하지 않는다. 의미도 정확하다 —
+        /// 이 버튼은 캐릭터의 상태를 <b>보는</b> 곳이 아니라 캐릭터에게 <b>시키는</b> 곳이고,
+        /// 손잡이가 있는 확성기는 스피커(수동적 알림)가 아니라 <b>들고 외치는 도구</b>다.
         ///
-        /// 손잡이는 일부러 뺐다: 24pt 상자에서 손잡이 획은 잉크 얼룩이 되고, 나팔 + 소리선만으로 이미
-        /// 확성기로 읽힌다. 배지도 상태 반영도 없다(32-4 ② — 내비게이션 표지는 영원히 같은 그림이다).
+        /// <para>배지도 상태 반영도 없다(32-4 ② — 내비게이션 표지는 영원히 같은 그림이다).</para>
         /// </summary>
         private static Image[] BuildMegaphoneSymbol(Transform p)
         {
-            var upper = UiChrome.AddStroke(p, "HornUpper", 13f, SymbolStroke, 13f, new Vector2(-1.6f, 5.0f), UiChrome.TextPrimary);
-            var lower = UiChrome.AddStroke(p, "HornLower", 13f, SymbolStroke, -13f, new Vector2(-1.6f, -5.0f), UiChrome.TextPrimary);
-            var neck = UiChrome.AddStroke(p, "HornNeck", 5.6f, SymbolStroke, 90f, new Vector2(-8.4f, 0f), UiChrome.TextPrimary);
-            var mouth = UiChrome.AddStroke(p, "HornMouth", 11.6f, SymbolStroke, 90f, new Vector2(5.0f, 0f), UiChrome.TextPrimary);
-            var waveUp = UiChrome.AddStroke(p, "WaveUpper", 4.6f, 1.6f, 30f, new Vector2(9.6f, 3.4f), UiChrome.TextPrimary);
-            var waveDown = UiChrome.AddStroke(p, "WaveLower", 4.6f, 1.6f, -30f, new Vector2(9.6f, -3.4f), UiChrome.TextPrimary);
-            return new[] { upper, lower, neck, mouth, waveUp, waveDown };
+            var parts = new List<Image>(16);
+            UiChrome.AddPolyline(p, "Horn", MegaphoneHornPath, SymbolStroke, UiChrome.TextPrimary, parts);
+            UiChrome.AddPolyline(p, "Handle", MegaphoneHandlePath, SymbolStroke, UiChrome.TextPrimary, parts);
+            UiChrome.AddPolyline(p, "Wave", MegaphoneWavePath, SymbolStroke, UiChrome.TextPrimary, parts);
+            return parts.ToArray();
         }
 
-        /// <summary>위쪽이 트인 원호의 <b>틈 각도</b>(도). 세로획이 그 틈을 지난다.</summary>
-        private const float PowerGapDegrees = 50f;
+        /// <summary>원호 한 개를 <b>꺾은선 점 목록</b>으로 편다(FG-5 — 이 앱의 곡선은 전부 평탄화 꺾은선이다.
+        /// 장비 카드 32종이 같은 방식이고, 부채꼴만 「직선 캡슐 + 정원」이라 문법이 갈려 있었다).
+        /// <para>분할 수의 근거: 24pt 상자에서 8분할이면 r = 7pt·180° 기준 현 처짐이 <b>0.13pt</b>
+        /// = 1×에서 0.13px다 — 보이지 않는다. 여기 호는 76°뿐이라 처짐이 0.03pt 아래다.</para></summary>
+        private static Vector2[] BuildArcPath(Vector2 center, float radius, float startDegrees,
+            float endDegrees, int segments)
+        {
+            segments = Mathf.Max(1, segments);
+            var points = new Vector2[segments + 1];
+            for (int i = 0; i <= segments; i++)
+            {
+                float t = (float)i / segments;
+                points[i] = center + Polar(Mathf.Lerp(startDegrees, endDegrees, t), radius);
+            }
+            return points;
+        }
+
+        /// <summary>위쪽이 트인 원호의 <b>틈 각도</b>(도). 세로획이 그 틈을 지난다.
+        /// <para>★ 2026-09-06 50 → <b>62</b>. 세로획 ↔ 틈 안쪽 가장자리는
+        /// <c>(d/2 − W)·sin(틈/2) − W/2</c>다. 옛 Ø20·50°는 <b>2.38pt = 1.19W</b>로 FG-3(1.5W)
+        /// <b>미달</b>이었다(design-art R14 표는 여기를 3.23pt = 통과로 적었는데, 캡슐 캡 중심을
+        /// ±L/2로 잡은 뒤 반지름을 한 번 더 빼는 계산 착오였다 — DESIGN_FAN_MENU_ICONS §1-2).
+        /// 새 Ø22·62°는 <b>3.64pt = 1.82W</b>다. Ø20을 유지했다면 틈 하한이 60°였다
+        /// (<c>8·sin30° − 1.0 = 3.0</c>).</para></summary>
+        private const float PowerGapDegrees = 62f;
 
         /// <summary>전원 기호가 쓰는 원의 지름(pt) — 무장 카운트다운 링과 <b>같은 값</b>이다.
         /// <para>53-4가 "링이 그 원호와 같은 반지름에 겹치므로 도형이 하나 더 늘지 않는다"고 적은 것이
         /// 이 한 줄이다. 두 곳에 따로 적으면 하나만 바뀌는 날 카운트다운이 원호에서 벗어난다.</para>
-        /// <para>DPI: 20 = 4×5라 ×1.25 / 1.5 / 1.75에서 25 / 30 / 35px로 <b>전부 정수</b>다.</para></summary>
-        private const float PowerRingDiameterPoints = 20f;
+        ///
+        /// <para>★★ <b>2026-09-06 20 → 22 (리더 판정 승인).</b> 이 상수 하나가 ⑤와 ①의
+        /// <b>실루엣 포함 관계</b>를 푼다. 실측(DESIGN_FAN_MENU_ICONS §6-⑤): Ø20에서 ⑤의 잉크는
+        /// <b>94 %가 ①(스톱워치)에 포함</b>돼 고유 잉크가 <b>2.9 %</b>뿐이었다 — 옛 주석이
+        /// <i>"원은 스톱워치와 공유하지만 트인 틈 + 관통하는 세로획이 구분한다"</i>고 적은 것은
+        /// <b>의도였지 사실이 아니었다</b>. Ø22에서 쌍 IoU 0.702 → <b>0.316</b>, 고유 잉크
+        /// 0.056 → <b>0.480</b>(FG-6 기준 IoU ≤ 0.35 · 고유 ≥ 0.45).
+        /// Ø24가 실루엣상 더 좋지만 잉크 대각이 34.6pt로 FG-8 상한(32)을 넘고, 무엇보다
+        /// <b>되돌릴 수 없는 버튼이 가장 크고 눈에 먼저 띄게</b> 된다.</para>
+        ///
+        /// <para>★ <b>옛 주석의 「정수 픽셀」 논거는 이 경로에 해당하지 않는다.</b> 여기 있던 문장은
+        /// <i>"20 = 4×5라 ×1.25/1.5/1.75에서 25/30/35px 전부 정수"</i>였다(22는 27.5/33/38.5px).
+        /// 그러나 <see cref="UiChrome.AddCircle"/>은 <c>CircleSprite</c>를 <c>Image.Type.Simple</c>로
+        /// <b>어떤 크기로든 스케일</b>하고, <c>EdgeFeather</c> 0.5pt 알파 램프가 이미 가장자리를
+        /// 지배한다. 정수 픽셀 논거는 <b>글리프 베이킹</b>(<c>Platform/UiGlyphScalePolicy.cs</c>,
+        /// uGUI <c>Text</c>)의 것이지 이 스프라이트 경로의 것이 아니다.</para></summary>
+        private const float PowerRingDiameterPoints = 22f;
+
+        /// <summary>세로획의 아래 끝(pt). 위 끝은 <b>링 반지름에서 파생</b>한다(원이 커지면 같이 큰다) —
+        /// 잉크는 <c>EdgeFeather</c> 밖의 코어 기준으로 y ∈ [0, 12]가 되어 링 바깥(11)을 1.0pt 뚫는다.</summary>
+        private const float PowerStemBottomPoints = 1f;
+
+        private static readonly Vector2[] PowerStemPath =
+        {
+            new Vector2(0f, PowerStemBottomPoints),
+            new Vector2(0f, PowerRingDiameterPoints * 0.5f),
+        };
 
         /// <summary>
         /// ⑤ 앱 종료 — <b>전원 기호</b>(위가 트인 원호 + 세로획). 2획.
@@ -2472,14 +2891,23 @@ namespace StickMate.Interaction
         /// 인체) · 체크리스트(수평 줄) · 확성기(오른쪽 비대칭) 넷 중 어느 것과도 형태가 겹치지 않는다.
         /// 원은 스톱워치와 공유하지만 <b>트인 틈 + 관통하는 세로획</b>이 구분한다.</para>
         ///
-        /// <para>★ 조형 최종 확정은 <c>design-art</c> 인계다 — 여기 값은 계산상 통과일 뿐 실기 캡처가 없다.</para>
+        /// <para>★★ <b>바로 위 문장은 2026-09-06 전까지 「의도」였지 사실이 아니었다.</b> Ø20에서 실측하면
+        /// 이 글리프의 잉크는 <b>94 %가 스톱워치에 포함</b>됐다(쌍 IoU 0.735 · 고유 잉크 <b>0.029</b>) —
+        /// 「트인 틈 + 세로획」이 실루엣을 실제로 가르지 못했다. <see cref="PowerRingDiameterPoints"/>를
+        /// 22로 올린 지금은 <b>IoU 0.316 · 고유 잉크 0.480</b>이라 그 문장이 <b>측정으로도 참</b>이다.
+        /// 되돌리면 문장이 다시 거짓이 된다.</para>
+        ///
+        /// <para>★ 위 숫자는 전부 <b>오프라인 래스터</b>다. <b>실기 캡처는 아직 없다</b> —
+        /// 최종 판정은 실제 빌드 캡처로만 한다(CLAUDE.md 디자인 공통 규약).</para>
         /// </summary>
         private Image[] BuildPowerSymbol(ButtonView view)
         {
             Transform p = view.Symbol;
+            var parts = new List<Image>(4);
 
             Image ring = UiChrome.AddCircle(p, "PowerRing", PowerRingDiameterPoints,
                 UiChrome.TextPrimary, SymbolStroke);
+            parts.Add(ring);
             // 위쪽을 <b>틔운다</b>. Filled/Radial360은 시작점(Top)에서 시계 방향으로 채우므로 남는
             // 틈이 시작점 <b>바로 앞</b>에 생긴다 — 그대로 두면 틈이 왼쪽 위로 치우친다. 링은 틈만
             // 빼면 회전 대칭이라, 링 자체를 틈의 <b>절반</b>만큼 되돌리면 틈이 정확히 위로 온다.
@@ -2490,10 +2918,8 @@ namespace StickMate.Interaction
             ring.fillAmount = 1f - PowerGapDegrees / 360f;
             ring.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -PowerGapDegrees * 0.5f);
 
-            // 세로획 — 원 중심에서 틈을 지나 위로. 길이는 원 반지름에서 파생시킨다(원이 커지면 같이 큰다).
-            float stem = PowerRingDiameterPoints * 0.55f;
-            Image stroke = UiChrome.AddStroke(p, "PowerStem", stem, SymbolStroke, 90f,
-                new Vector2(0f, stem * 0.5f), UiChrome.TextPrimary);
+            // 세로획 — 원 중심에서 틈을 지나 위로. 위 끝은 원 반지름에서 파생시킨다(원이 커지면 같이 큰다).
+            UiChrome.AddPolyline(p, "PowerStem", PowerStemPath, SymbolStroke, UiChrome.TextPrimary, parts);
 
             // ---- 무장 카운트다운 링 ---- 평소에는 꺼져 있다(도형이 하나 더 늘지 않는다는 말의 실체는
             //   "같은 반지름 위에 겹친다"이지 "Image가 0개"가 아니다 — 채움 비율을 그리려면 별도 채널이
@@ -2507,24 +2933,14 @@ namespace StickMate.Interaction
             view.RingFill.fillAmount = 1f;
             view.RingFill.gameObject.SetActive(false);
 
-            return new[] { ring, stroke };
+            return parts.ToArray();
         }
 
-        private static Image AddSmallBox(Transform parent, string name, Vector2 center)
-        {
-            var go = new GameObject(name, typeof(RectTransform), typeof(Image));
-            go.transform.SetParent(parent, false);
-            var rt = go.GetComponent<RectTransform>();
-            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(4.5f, 4.5f);
-            rt.anchoredPosition = center;
-            var image = go.GetComponent<Image>();
-            image.sprite = UiChrome.RoundedOutline(2, 1);
-            image.type = Image.Type.Sliced;
-            image.color = UiChrome.TextPrimary;
-            image.raycastTarget = false;
-            return image;
-        }
+        // ★ 2026-09-06 삭제: `AddSmallBox`(4.5pt 정사각 + RoundedOutline(2, 1)).
+        //   호출부는 체크리스트의 빈 표식 상자 2개뿐이었고 그 둘이 2행 재조형에서 <b>꺾은선 사각형</b>
+        //   하나로 바뀌었다. 되살리지 마라 — `UiChrome.RoundedOutline`의 두께 인자는 <b>정수 텍셀</b>
+        //   (= 정수 pt)이라 FG-2 사다리의 g1(1.5pt)을 표현할 수 없고, 옛 호출이 쓰던 두께 1pt는
+        //   0.5W로 사다리 밖이었다(1×에서 박스가 점으로 뭉갠 원인).
 
         private static Vector2 Polar(float degrees, float radius)
         {

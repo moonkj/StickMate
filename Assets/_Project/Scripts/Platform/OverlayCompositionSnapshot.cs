@@ -78,6 +78,28 @@ namespace StickMate.Platform
         public float AutoDpiScale;
         /// <summary>실측 대표 폰트 크기(pt). 글리프 리샘플 비를 계산하는 데만 쓴다.</summary>
         public int SampleFontSizePoints;
+        /// <summary>
+        /// ★ 2026-09-06 신설 — 그 표본 글자에 걸린 <b>순수 transform 배율</b>
+        /// (<c>RectTransform.lossyScale ÷ canvas.scaleFactor</c>, 규칙은
+        /// <see cref="UiGlyphScalePolicy.PureTransformScale"/>).
+        ///
+        /// <para><b>0 = 미관측</b>이다(1이 아니다). 둘을 가르는 것이 이 필드의 존재 이유다:
+        /// 미관측을 1로 적어 버리면 판정은 <b>"조상 스케일이 없다"고 단정</b>하게 되는데, 그건
+        /// 재 본 적 없는 사실이다. 판정기는 0을 보면 계산에는 1을 쓰되 문장에 <b>"이 프로브는
+        /// transform 배율을 재지 않았다"</b>는 단서를 붙인다.</para>
+        ///
+        /// <para><b>왜 이 항이 없어서 진단이 틀렸는가</b>: 레거시 uGUI <c>Text</c>는
+        /// <c>canvas.scaleFactor</c>만 보고 아틀라스를 굽고 조상 <c>lossyScale</c>은 무시한다.
+        /// 부채꼴 메뉴의 Ø36 축소 폴백(<c>ButtonView.Group.localScale = 36/44 = 0.8181…</c>)처럼
+        /// 조상에 스케일이 걸리면 <b>아틀라스는 그대로인데 메시만 줄어</b> 리샘플이 생기는데,
+        /// 2026-09-06 이전 판정은 <c>pt × canvasScale</c>만 보고 <b>"리샘플 없음"</b>을 찍었다.</para>
+        /// </summary>
+        public float SampleTransformScale;
+        /// <summary>그 표본이 <b>어느 표면</b>인가(사람이 읽는 이름). 비어 있으면 판정기가
+        /// <see cref="OverlayCompositionVerdict.SampleSurfaceUnknown"/>으로 적는다.
+        /// <para>표본이 하나뿐인 프로브에서 이 이름이 없으면, 로그를 읽는 사람이 <b>"모든 글자가
+        /// 괜찮다"</b>로 오독한다 — 실제로는 <b>그 한 표면만</b> 잰 것이다.</para></summary>
+        public string SampleSurfaceLabel;
 
         // ---- 합성 경로 (증상 "겹침"의 갈림길) ----
         /// <summary>UniWindowController.TransparentType. 1 = Alpha(DWM 확장 프레임), 2 = ColorKey.</summary>
@@ -148,6 +170,14 @@ namespace StickMate.Platform
             sb.Append(Mathf.RoundToInt(WindowWidth)).Append('x').Append(Mathf.RoundToInt(WindowHeight)).Append('|');
             sb.Append(FullScreenMode).Append('|');
             sb.Append(CanvasScaleFactor.ToString("F3", CultureInfo.InvariantCulture)).Append('|');
+            // ★ 2026-09-06 — 표본 표면과 그 transform 배율도 지문에 넣는다. 축소 폴백이 걸리는
+            //   순간(1.000 -> 0.818)이 <전이>이고, 그 전이가 지문에 없으면 실기 로그에 영원히
+            //   안 남는다. 값이 <b>안착 상태에서만</b> 바뀌도록 관측하는 것은 프로브의 책임이며,
+            //   매 프레임 흔들리는 값(펼침/호버 애니메이션 스케일)을 여기 넣으면 24시간 상주 앱의
+            //   로그가 폭주한다 — WindowsCompositionProbe.SampleTransformScale 주석 참고.
+            sb.Append(SampleFontSizePoints).Append('@')
+              .Append(SampleTransformScale.ToString("F3", CultureInfo.InvariantCulture)).Append('|');
+            sb.Append(string.IsNullOrEmpty(SampleSurfaceLabel) ? "?" : SampleSurfaceLabel).Append('|');
             sb.Append(UiDensityScale.ToString("F3", CultureInfo.InvariantCulture)).Append('|');
             sb.Append(AutoDpiScale.ToString("F3", CultureInfo.InvariantCulture)).Append('|');
             sb.Append(TransparentType).Append('|');
@@ -212,6 +242,20 @@ namespace StickMate.Platform
         /// <summary>배율/크기 비교 허용 오차. 1픽셀 어긋나도 표시 단계 리샘플이 일어나므로 좁게 잡는다.</summary>
         private const float SizeEpsilon = 0.5f;
         private const float RatioEpsilon = 0.001f;
+
+        /// <summary>표본 표면 이름이 비었을 때 판정 문구에 적는 말(2026-09-06 신설).</summary>
+        public const string SampleSurfaceUnknown = "이름 없는 표본";
+
+        /// <summary>
+        /// <b>살아 있는 오브젝트를 재지 않고 컴파일 상수만 쓴 표본</b>이라는 뜻의 이름.
+        /// 프로브와 테스트가 같은 문자열을 쓰도록 여기 한 벌만 둔다.
+        ///
+        /// <para>이 이름이 로그에 뜬다는 것은 <b>transform 배율이 관측되지 않았다</b>는 뜻이고,
+        /// 그래서 그 줄의 "리샘플 없음"은 <b>조상 스케일이 없는 표면에 한정된 참</b>이다.
+        /// 이 구분을 로그에 드러내지 않으면 읽는 사람이 "모든 글자가 괜찮다"로 오독한다 —
+        /// 2026-09-06에 실제로 그 오독이 한 라운드를 지연시킬 뻔했다.</para>
+        /// </summary>
+        public const string SampleSurfaceConstantOnly = "창 제목 대표 상수(살아 있는 오브젝트 미관측)";
 
         /// <summary>판정 한 줄.</summary>
         public struct Line
@@ -322,40 +366,84 @@ namespace StickMate.Platform
                     "레이어드/확장 프레임 합성과도 전제가 어긋납니다. 오버레이는 항상 Windowed여야 합니다.");
             }
 
-            // ---------- (D) 캔버스 배율 — "번짐"의 2순위(폰트 래스터화) ----------
+            // ---------- (D) 캔버스 배율 × transform 배율 — "번짐"의 2순위(폰트 래스터화) ----------
             //
             // ★ 2026-09-01 (debugger) — 판정 기준을 "배율이 정수인가"에서 <b>"이 폰트 크기의 잔차가
             //   0인가"</b>로 바꿨다. 둘은 같은 질문이 아니다: 배율 1.5에서도 <b>짝수 pt</b>는
             //   pt×1.5가 정수라 리샘플이 <b>전혀 없다</b>(14pt -> 21.0px). 예전 판정은 배율만 보고
             //   그런 경우까지 "번짐"으로 찍어, 실제로는 멀쩡한 텍스트를 원인 후보로 올렸다.
+            //
+            // ★★ 2026-09-06 (dev-platform) — <b>이 계산에 transform 항이 없었다.</b>
+            //   `requestedPixels = pt × canvasScale` 한 줄이 전부였고, 그래서 조상에 localScale이
+            //   걸린 표면(부채꼴 메뉴의 Ø36 축소 폴백 = Group.localScale 0.8181…)에서 일어나는
+            //   리샘플을 <b>구조적으로 볼 수 없었다</b> — 굽는 쪽(아틀라스)은 transform을 모르고
+            //   그리는 쪽(메시)만 아는 <b>비대칭</b>이 원인이다. 이제 두 값을 따로 계산한다:
+            //       아틀라스 = round(pt × canvasScale)                  ← transform 항 없음(uGUI 실제 동작)
+            //       화면     = pt × canvasScale × transformScale        ← transform 항 있음
+            //   산술은 전부 UiGlyphScalePolicy에 있다. 여기에 사본을 두면 소스 감사와 실기 판정이
+            //   서로 다른 규칙을 쓰게 되고, 그것이 이 저장소가 반복해 겪은 실패 형태다.
             if (s.CanvasScaleFactor > 0f && s.SampleFontSizePoints > 0)
             {
-                float requestedPixels = s.SampleFontSizePoints * s.CanvasScaleFactor;
-                int atlasPixels = Mathf.Max(1, Mathf.RoundToInt(requestedPixels));
-                float glyphRatio = requestedPixels / atlasPixels;
+                bool transformObserved = s.SampleTransformScale > 0f;
+                float transformScale = UiGlyphScalePolicy.NormalizeScale(s.SampleTransformScale);
+                bool transformNeutral = UiGlyphScalePolicy.IsTransformScaleNeutral(transformScale);
+
+                int atlasPixels = UiGlyphScalePolicy.AtlasPixels(s.SampleFontSizePoints, s.CanvasScaleFactor);
+                float screenPixels = UiGlyphScalePolicy.DisplayedPixels(
+                    s.SampleFontSizePoints, s.CanvasScaleFactor, transformScale);
+                float glyphRatio = UiGlyphScalePolicy.ResampleRatio(
+                    s.SampleFontSizePoints, s.CanvasScaleFactor, transformScale);
                 bool integerScale = Mathf.Abs(s.CanvasScaleFactor - Mathf.Round(s.CanvasScaleFactor)) <= RatioEpsilon;
-                bool exactAtThisSize = Mathf.Abs(glyphRatio - 1f) <= RatioEpsilon;
+                bool exactAtThisSize = UiGlyphScalePolicy.IsResampleFree(
+                    s.SampleFontSizePoints, s.CanvasScaleFactor, transformScale);
+
+                string surface = string.IsNullOrEmpty(s.SampleSurfaceLabel)
+                    ? SampleSurfaceUnknown : s.SampleSurfaceLabel;
+                string transformText = transformObserved
+                    ? $"조상 transform 배율={transformScale:F4}"
+                    : "조상 transform 배율=<미관측>(이 프로브는 살아 있는 오브젝트를 재지 않았습니다 — " +
+                      "아래 판정은 <그 표면에 조상 스케일이 없다>는 가정 위에 있습니다)";
 
                 if (!exactAtThisSize)
                 {
+                    // 처방이 두 갈래다. transform 배율이 원인일 때 "pt를 옮기세요"라고 말하면
+                    // <b>틀린 처방</b>이다 — 아래 두 번째 갈래 문장이 그 이유를 수로 보여 준다.
+                    string prescription = transformNeutral
+                        ? "★ 처방은 <캔버스 배율을 정수로 바꾸는 것이 아닙니다> — 그러면 UI의 물리적 크기가 " +
+                          $"{(Mathf.Round(s.CanvasScaleFactor) / s.CanvasScaleFactor - 1f) * 100f:F0}% 바뀌어 " +
+                          "2026-08-31에 이미 해결된 신고(글씨가 너무 작다/크다)가 되살아납니다. " +
+                          $"옳은 처방은 <폰트 pt를 배율에 맞추는 것>입니다: 배율 {s.CanvasScaleFactor:F3}에서는 " +
+                          $"pt×{s.CanvasScaleFactor:F3}가 정수인 크기(예: " +
+                          $"{NearestExactPoints(s.SampleFontSizePoints, s.CanvasScaleFactor)}pt)만 잔차 0으로 구워집니다."
+                        : $"★ 이 건은 <pt를 옮겨서 고칠 수 없습니다> — 원인이 폰트 크기가 아니라 " +
+                          $"<조상 오브젝트에 걸린 localScale {transformScale:F4}>이기 때문입니다. " +
+                          $"아틀라스는 canvas.scaleFactor만 보고 굽히므로 pt를 어떻게 바꿔도 " +
+                          $"메시 쪽 {transformScale:F4}배는 그대로 남습니다" +
+                          (SnapWouldHelp(s.SampleFontSizePoints, s.CanvasScaleFactor, transformScale)
+                              ? "(다만 이 배율 조합에서는 근처에 잔차 0인 pt가 우연히 존재합니다 — " +
+                                "그래도 근본은 스케일입니다)."
+                              : "(실제로 이 배율 조합에서는 1~64pt 어디에도 잔차 0인 크기가 <없습니다>).") +
+                          " 고치는 자리는 <그 스케일을 거는 레이아웃 코드>입니다: 균일 스케일 대신 " +
+                          "축소된 치수로 다시 굽거나(원/상자를 그 크기로 생성), 글자만 스케일 밖으로 빼거나, " +
+                          "축소량을 받아들이고 이 줄을 <알려진 잔차>로 기록하세요.";
+
                     Add(lines, "GLYPH-SCALE", CompositionFault.Blur,
-                        $"캔버스 배율={s.CanvasScaleFactor:F3}(정수: {integerScale}). 대표 폰트 " +
-                        $"{s.SampleFontSizePoints}pt는 아틀라스에 {atlasPixels}px로 구워진 뒤 " +
-                        $"{glyphRatio:F4}배로 <비정수 확대>되어 화면에 올라갑니다 — 레거시 uGUI Text의 " +
-                        "글자가 흐려지는 구조적 원인입니다(알파 문제가 아닙니다). " +
-                        "★ 처방은 <캔버스 배율을 정수로 바꾸는 것이 아닙니다> — 그러면 UI의 물리적 크기가 " +
-                        $"{(Mathf.Round(s.CanvasScaleFactor) / s.CanvasScaleFactor - 1f) * 100f:F0}% 바뀌어 " +
-                        "2026-08-31에 이미 해결된 신고(글씨가 너무 작다/크다)가 되살아납니다. " +
-                        $"옳은 처방은 <폰트 pt를 배율에 맞추는 것>입니다: 배율 {s.CanvasScaleFactor:F3}에서는 " +
-                        $"pt×{s.CanvasScaleFactor:F3}가 정수인 크기(예: {NearestExactPoints(s.SampleFontSizePoints, s.CanvasScaleFactor)}pt)만 " +
-                        "잔차 0으로 구워집니다.");
+                        $"표본 표면=<{surface}>. 캔버스 배율={s.CanvasScaleFactor:F3}(정수: {integerScale}), " +
+                        $"{transformText}. {s.SampleFontSizePoints}pt는 아틀라스에 {atlasPixels}px로 구워진 뒤 " +
+                        $"화면에는 {screenPixels:F2}px로 올라갑니다 = {glyphRatio:F4}배 <비정수 리샘플> — " +
+                        "레거시 uGUI Text의 글자가 흐려지는 구조적 원인입니다(알파 문제가 아닙니다). " +
+                        prescription);
                 }
                 else
                 {
                     Add(lines, "GLYPH-SCALE", CompositionFault.None,
-                        $"캔버스 배율={s.CanvasScaleFactor:F3}에서 대표 폰트 {s.SampleFontSizePoints}pt는 " +
-                        $"정확히 {atlasPixels}px로 구워집니다 — 글리프 리샘플 없음" +
-                        (integerScale ? "(배율도 정수)." : "(배율은 정수가 아니지만 이 크기에서는 잔차가 0이다)."));
+                        $"표본 표면=<{surface}>. 캔버스 배율={s.CanvasScaleFactor:F3}, {transformText}에서 " +
+                        $"{s.SampleFontSizePoints}pt는 정확히 {atlasPixels}px로 구워져 그대로 올라갑니다 — " +
+                        "글리프 리샘플 없음" +
+                        (integerScale ? "(배율도 정수)." : "(배율은 정수가 아니지만 이 크기에서는 잔차가 0이다).") +
+                        " ※ 이 줄은 <이 표본 하나>에 대한 판정입니다. 다른 표면에 조상 localScale이 " +
+                        "걸려 있으면(예: 부채꼴 메뉴 Ø36 축소 폴백) 그 글자는 여기서 <보이지 않는 채로> " +
+                        "리샘플되고 있을 수 있습니다.");
                 }
             }
 
@@ -516,6 +604,26 @@ namespace StickMate.Platform
         /// 판정 문구는 그대로다 — 같은 입력에 같은 답을 낸다(동률이면 위쪽, 탐색 폭 8pt).</para></summary>
         private static int NearestExactPoints(int points, float scale)
             => UiGlyphScalePolicy.SnapPoints(points, scale);
+
+        /// <summary>
+        /// ★ 2026-09-06 — transform 배율이 걸린 상태에서 <b>pt를 옮기면 잔차가 사라지는가</b>를
+        /// <b>탐색으로</b> 답한다(단정하지 않는다). 1~64pt를 전부 넣어 보고 하나라도 잔차 0이면 참.
+        ///
+        /// <para><b>왜 미리 "안 된다"고 적지 않는가</b>: 대부분의 조합에서는 정말 답이 없지만
+        /// (예: 배율 1.5 × 36/44에서는 22의 배수 pt만 정수가 되고 타이포 계층에 그런 크기는 없다),
+        /// 배율 조합에 따라 <b>우연히 답이 있는 경우</b>가 있다(예: 배율 1.0 × 0.5에서는 짝수 pt).
+        /// 판정 문구가 사실이 아닌 단정을 하면 그날로 진단이 신뢰를 잃는다 — 이 파일이 이미 두 번
+        /// 그렇게 틀렸다(<see cref="OverlayCompositionSnapshot.LayeredFlags"/> 문서).</para>
+        /// </summary>
+        private static bool SnapWouldHelp(int points, float canvasScale, float transformScale)
+        {
+            for (int pt = 1; pt <= 64; pt++)
+            {
+                if (pt == points) continue;
+                if (UiGlyphScalePolicy.IsResampleFree(pt, canvasScale, transformScale)) return true;
+            }
+            return false;
+        }
 
         private static void Add(System.Collections.Generic.List<Line> lines, string code,
             CompositionFault fault, string text)

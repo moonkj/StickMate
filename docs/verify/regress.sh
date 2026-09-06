@@ -102,8 +102,13 @@ SRCROOT="$REPO/Assets/_Project/Scripts"
 # ★ 2026-09-05 qa-r9 갱신 — G4a가 두 모드 모두에서 노후를 신고해 그 자리에서 올렸다.
 #   실측: edit 1982건 / play 638건. 갱신 전 하한(1780 / 585)으로는 각각 **202건 / 53건이
 #   조용히 사라져도 G4가 초록**이었다. 하한은 «직전 최대의 95%» 이상으로 둔다(1882 / 606).
+#
+# ★ 2026-09-06 test-engineer 갱신 — G4a가 play 쪽에서 다시 노후를 신고했다.
+#   실측(docs/verify/runs/dbg-r29_play.xml, r28-consolidated_play.xml): **695건**.
+#   갱신 전 하한 610으로는 **85건이 조용히 사라져도 G4가 초록**이었다(러너 자체 경고문).
+#   하한은 «직전 최대의 95%» 이상 규칙에 따라 660(= 695 × 95 / 100, 정수 나눗셈)으로 올린다.
 MIN_EDIT_CASES=1900
-MIN_PLAY_CASES=610
+MIN_PLAY_CASES=660
 
 # 하한 노후 판정 계수 — 직전 최대치의 이 비율보다 하한이 낮으면 노후로 본다.
 STALE_FLOOR_RATIO_PCT=95

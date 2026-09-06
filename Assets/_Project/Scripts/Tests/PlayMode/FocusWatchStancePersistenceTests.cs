@@ -227,26 +227,53 @@ namespace StickMate.Tests.PlayMode
             yield return null;
 
             // 시작 포즈가 끝나고 관망 자세가 완전히 설 때까지 기다린다.
+            //
+            // ★ 예산은 프로덕션 상수에서 유도한다. 옛 상수 8초는 최악 경로
+            //   (시작 포즈 2.00초 → 곧바로 걷기 4.70초 → 복귀 이징 0.45초 = 7.15초)와 0.85초밖에
+            //   차이가 없어서, 배포 값이 조금만 커져도 조용히 예산 부족이 된다.
+            float walkThenSettle =
+                _agent.Config.wanderWalkDurationMax * (1f + _agent.Config.wanderDurationJitterRatio)
+                + _agent.Blackboard.FocusWatchStanceSettleSeconds;
+            float stanceReadyBudget = Mathf.Max(1f, _agent.Config.pomodoroStartPoseHoldSeconds) * 2f
+                                    + walkThenSettle + 1f;
             float wait = 0f;
-            while (wait < 8f && !(_agent.Blackboard.IsFocusWatchStanceActive
-                                  && _agent.Blackboard.FocusWatchStanceSettle01 >= 0.999f))
+            while (wait < stanceReadyBudget && !(_agent.Blackboard.IsFocusWatchStanceActive
+                                                 && _agent.Blackboard.FocusWatchStanceSettle01 >= 0.999f))
             {
                 wait += Time.deltaTime;
                 yield return null;
             }
             Assert.IsTrue(_agent.Blackboard.IsFocusWatchStanceActive,
-                $"{LogPrefix} 관망 자세가 서지 않아 «푸는» 것을 잴 수 없습니다.");
+                $"{LogPrefix} 관망 자세가 {stanceReadyBudget:F2}초 안에 서지 않아 «푸는» 것을 잴 수 없습니다.");
 
             // 자세가 각도까지 수렴하도록 잠깐 더 둔다(지수 감쇠). 제스처(G1/G4)는 일부러 자세를
             // 풀었다 잡으므로 그 프레임을 피해서 표본을 잡는다.
+            //
+            // ★★ 2026-09-06 — 이 루프에 ①번(시작포즈가_끝난_뒤에도_Idle에서_관망_자세가_유지된다)이
+            //    이미 가지고 있던 가드 «FocusWatchStanceSettle01 >= 0.999f»가 빠져 있어 결정적이지 않았다.
+            //    (줄 번호가 아니라 <b>테스트 이름</b>으로 가리킨다 — 줄 번호는 다음 편집에 바로 썩는다.)
+            //    빠진 결과가 무엇이었나: 세션 중에 걷기가 한 번 들어오면 TickFocusWatchStance가
+            //    Idle이 아닌 프레임마다 이징을 0으로 **되감는다**(States/StickmanBlackboard.cs의
+            //    `_focusStanceSettleElapsed = 0f` 경로). 그래서 걷기가 끝난 직후 첫 Idle 프레임은
+            //    «IsFocusWatchStanceActive는 참인데 전완은 아직 중립 근처»라는 <b>과도 상태</b>다.
+            //    그 프레임을 표본으로 잡으면 바로 아래 «세션 중인데 전완이 이미 중립입니다» 단언이
+            //    자기모순으로 실패한다 — 프로덕션은 멀쩡한데 테스트만 빨개진다.
+            //    ⇒ ①번과 <b>한 글자도 다르지 않은 가드</b>를 써서 «자세가 완전히 선» 프레임만 잡는다.
+            //
+            // ★ 예산도 함께 늘린다. 옛 4초는 «걷기 한 구간(최대 4.0초 × 지터 +17.5% = 4.70초)»보다
+            //   짧아서, 표본을 찾기 시작한 순간이 걷기 시작과 겹치면 예산 안에 Idle이 아예 없었다.
+            //   숫자를 여기 적지 않고 <b>프로덕션 상수에서 유도</b>한다(CLAUDE.md: 테스트에 프로덕션
+            //   상수를 베끼지 않는다 — 배포 값이 바뀌면 이 예산도 함께 따라가야 한다).
             yield return WaitSeconds(0.5f);
+            float seekBudget = walkThenSettle + 1f;
             float stanceRise = float.NaN;
             float seek = 0f;
-            while (seek < 4f)
+            while (seek < seekBudget)
             {
                 if (_agent.Blackboard.Machine.CurrentStateId == StickmanStateId.Idle
                     && _agent.Blackboard.IsFocusWatchStanceActive
                     && !_agent.Blackboard.IsIdleAmbientMotionActive
+                    && _agent.Blackboard.FocusWatchStanceSettle01 >= 0.999f
                     && TryForearmRise(out float rise))
                 {
                     stanceRise = rise;
@@ -256,7 +283,12 @@ namespace StickMate.Tests.PlayMode
                 yield return null;
             }
             Assert.IsFalse(float.IsNaN(stanceRise),
-                $"{LogPrefix} 제스처가 없는 관망 자세 프레임을 4초 안에 못 잡았습니다.");
+                $"{LogPrefix} 제스처가 없고 «자세가 완전히 선»(이징 100%) 관망 자세 프레임을 " +
+                $"{seekBudget:F2}초 안에 못 잡았습니다 — 예산은 걷기 한 구간(최대 " +
+                $"{_agent.Config.wanderWalkDurationMax:F2}초 ±{_agent.Config.wanderDurationJitterRatio * 100f:F1}%) + " +
+                $"복귀 이징({_agent.Blackboard.FocusWatchStanceSettleSeconds:F2}초) + 여유 1초로 유도한 값입니다. " +
+                "이 시간 안에 «완전히 선 Idle»이 한 번도 없었다면 자세 층이 아예 안 서거나 " +
+                "이징이 매 프레임 되감기고 있는 것입니다(그건 진짜 회귀입니다).");
             Assert.Greater(stanceRise, StanceForearmRiseFloor,
                 $"{LogPrefix} 세션 중인데 전완이 이미 중립입니다({stanceRise:F3}) — 아래 «풀림» 판정이 " +
                 "아무것도 증명하지 못합니다.");

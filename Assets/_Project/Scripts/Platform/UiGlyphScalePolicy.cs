@@ -43,6 +43,33 @@ namespace StickMate.Platform
     ///     그래서 <b>일부러 맞추지 않았다</b>. 이 두 배율의 잔차는 각각 최대 ±12.5%로 1.5(±2.5%)보다
     ///     크며, 실제 신고가 들어오면 그때는 <see cref="SnapPoints"/>를 UI 생성 시점에 태우는
     ///     런타임 스냅이 후보다(다만 창이 다른 배율 모니터로 옮겨가면 값이 낡는다는 대가가 있다).
+    ///
+    /// ============================================================================
+    /// ★★ 2026-09-06 (dev-platform) — <b>이 규칙은 「캔버스 배율」만 보고 있었다</b>
+    /// ============================================================================
+    /// <see cref="IsExact(int,float,float)"/>의 인자는 <c>points</c>와 <c>canvasScale</c> 둘뿐이었다.
+    /// 그런데 레거시 uGUI <c>Text</c>의 <c>pixelsPerUnit</c>은 <b><c>canvas.scaleFactor</c>만</b> 보고
+    /// 아틀라스를 굽는다 — <b>부모 <c>Transform.lossyScale</c>은 쳐다보지 않는다.</b> 그래서 조상 중
+    /// 하나에 <c>localScale</c>이 걸리면:
+    /// <code>
+    ///   아틀라스 픽셀 = round(pt × canvasScale)                 ← transform 항이 <b>없다</b>
+    ///   화면 픽셀     = pt × canvasScale × transformScale       ← transform 항이 <b>있다</b>
+    ///   리샘플 비     = 화면 / 아틀라스 = transformScale (배율이 정수 pt를 만들 때)
+    /// </code>
+    /// 즉 <b>배율 항이 한쪽에만 들어간다</b>. 두 인자짜리 판정은 이 비대칭을 원리적으로 볼 수 없어
+    /// <b>영원히 "잔차 0"이라고 답했다.</b>
+    ///
+    /// <para><b>실제 사례(2026-09-06 밤)</b>: 부채꼴 메뉴의 Ø36 축소 폴백이 처음으로 화면에 나왔다.
+    /// 그 폴백은 버튼 묶음에 <c>localScale = 36/44 = 0.8181…</c>을 균일하게 건다. 배지 숫자는
+    /// 10pt이고 캔버스 배율 1.5에서 <b>15px로 구워진 뒤 12.27px로 축소</b>되어 화면에 올라간다 —
+    /// 이 저장소가 "번짐"이라 불러 온 바로 그 현상인데, 진단은 <c>10 × 1.5 = 15</c>만 보고
+    /// <b>"리샘플 없음"</b>을 찍고 있었다.</para>
+    ///
+    /// <para>★ <b>그리고 이 경우 처방이 다르다</b> — pt를 옮겨도 해결되지 않는다.
+    /// <c>transformScale = 9/11</c>에서 <c>pt × 1.5 × 9/11</c>이 정수가 되려면 pt가 22의 배수여야 하고,
+    /// 타이포 계층에 그런 pt는 없다. 그래서 <see cref="SnapPoints"/>를 권하는 문장을
+    /// <b>transform 배율이 1일 때로 제한</b>했다(<c>OverlayCompositionVerdict</c>). 틀린 처방을 내는
+    /// 진단은 없는 진단보다 나쁘다 — 이 파일이 이미 한 번 그것으로 팀을 한 라운드 끌고 갔다.</para>
     /// </summary>
     public static class UiGlyphScalePolicy
     {
@@ -65,19 +92,114 @@ namespace StickMate.Platform
         /// 이 범위 안에서 반드시 답이 나오고, 답이 없는 무리수 배율에서는 원래 값을 그대로 돌려준다.</summary>
         private const int MaxSnapSearchPoints = 8;
 
-        /// <summary><paramref name="canvasScale"/>에서 <paramref name="points"/>pt 글리프가
-        /// <b>정수 픽셀로 구워지는가</b>(= 아틀라스 픽셀과 표시 픽셀이 같아 리샘플이 없는가).
-        /// 배율이 0 이하/NaN이면 판정할 수 없으므로 <c>true</c>(무해)로 본다.</summary>
-        public static bool IsExact(int points, float canvasScale)
+        /// <summary>
+        /// <paramref name="canvasScale"/>와 <paramref name="transformScale"/>가 함께 걸린 상태에서
+        /// <paramref name="points"/>pt 글리프가 <b>정수 픽셀 격자에 떨어지는가</b>
+        /// (<c>pt × canvasScale × transformScale</c>이 정수인가).
+        ///
+        /// <para>★ 2026-09-06 — 셋째 인자가 <b>기본값 1</b>이라 기존 두 인자 호출부는 한 글자도 바뀌지
+        /// 않는다(하위호환). 조상에 <c>localScale</c>이 걸린 표면을 재는 쪽만 셋째 인자를 준다.</para>
+        ///
+        /// <para><b>이 술어의 범위를 정확히 적어 둔다</b>: 이것은 <b>레이아웃 질문</b>이다 —
+        /// "그 글자가 정수 픽셀 자리에 놓이는가". <b>렌더 질문</b>("아틀라스 비트맵이 리샘플되는가")은
+        /// <see cref="IsResampleFree"/>가 답한다. <c>transformScale = 1</c>에서 둘은 <b>같은 답</b>을
+        /// 내지만(<c>정수_격자와_리샘플없음은_transform_1에서_같은_답을_낸다</c>가 잠근다),
+        /// <c>transformScale ≠ 1</c>에서는 <b>정수 격자가 필요조건일 뿐 충분조건이 아니다</b>
+        /// (예: 배율 2로 확대하면 픽셀 자리는 정수인데 15px 비트맵이 30px로 늘어난다).
+        /// 소스 감사가 쓰는 것은 이쪽이고, 실기 프로브가 쓰는 것은 저쪽이다.</para>
+        ///
+        /// <para>배율이 0 이하/NaN이면 판정할 수 없으므로 <c>true</c>(무해)로 본다.
+        /// <paramref name="transformScale"/> 쪽 미관측(0/NaN)은 <b>1로 정규화</b>한다 —
+        /// "안 쟀다"를 "잔차가 있다"로 바꾸면 오탐이 되고, 오탐 한 번이면 아무도 진단을 안 믿는다.</para>
+        /// </summary>
+        public static bool IsExact(int points, float canvasScale, float transformScale = 1f)
         {
             if (points <= 0) return true;
             if (float.IsNaN(canvasScale) || float.IsInfinity(canvasScale) || canvasScale <= 0f) return true;
-            float pixels = points * canvasScale;
+            float pixels = points * canvasScale * NormalizeScale(transformScale);
             return Mathf.Abs(pixels - Mathf.Round(pixels)) <= ExactnessEpsilon;
         }
 
-        /// <summary><see cref="ReferenceCanvasScale"/>에서의 <see cref="IsExact(int,float)"/>.
-        /// 소스 감사 테스트가 쓰는 진입점이다.</summary>
+        /// <summary>미관측/불량 배율(0 이하·NaN·무한)을 <b>1</b>로 접는다. 관측하지 못한 항을
+        /// 결함으로 바꾸지 않기 위한 단일 규칙 — 프로브·판정기·테스트가 전부 이것을 쓴다
+        /// (각자 <c>if (x &lt;= 0) x = 1</c>을 적으면 그중 하나가 반드시 빠진다).</summary>
+        public static float NormalizeScale(float scale)
+            => float.IsNaN(scale) || float.IsInfinity(scale) || scale <= 0f ? 1f : scale;
+
+        /// <summary>
+        /// 레거시 uGUI가 글리프를 <b>실제로 굽는 픽셀 수</b>: <c>round(pt × canvasScale)</c>.
+        ///
+        /// <para>★ <b>이 함수에 transform 인자가 없는 것이 이 파일의 핵심 사실이다.</b>
+        /// <c>Text.pixelsPerUnit</c>은 <c>canvas.scaleFactor</c>만 읽고 조상의 <c>lossyScale</c>은
+        /// 무시한다. 그래서 부모에 <c>localScale</c>이 걸리면 아틀라스는 그대로인 채 메시만 늘거나
+        /// 줄고, 그 비율만큼 비트맵이 리샘플된다. 인자를 하나 더 받고 싶어지면 그 순간
+        /// <b>버그를 다시 만드는 것</b>이다 — 굽는 쪽은 transform을 모른다.</para>
+        /// </summary>
+        public static int AtlasPixels(int points, float canvasScale)
+        {
+            if (points <= 0) return 1;
+            if (float.IsNaN(canvasScale) || float.IsInfinity(canvasScale) || canvasScale <= 0f) return Mathf.Max(1, points);
+            return Mathf.Max(1, Mathf.RoundToInt(points * canvasScale));
+        }
+
+        /// <summary>그 글리프가 <b>화면에서 차지하는 픽셀 수</b>: <c>pt × canvasScale × transformScale</c>.
+        /// 아틀라스와 달리 <b>transform 항이 들어간다</b>(<see cref="AtlasPixels"/> 문서 참고).</summary>
+        public static float DisplayedPixels(int points, float canvasScale, float transformScale = 1f)
+        {
+            if (points <= 0) return 0f;
+            float cs = float.IsNaN(canvasScale) || float.IsInfinity(canvasScale) || canvasScale <= 0f ? 1f : canvasScale;
+            return points * cs * NormalizeScale(transformScale);
+        }
+
+        /// <summary>아틀라스 비트맵이 화면에 올라갈 때 걸리는 <b>리샘플 비</b>
+        /// (<see cref="DisplayedPixels"/> ÷ <see cref="AtlasPixels"/>). 1이면 픽셀 대 픽셀,
+        /// 1이 아니면 그 비율만큼 획이 이웃 픽셀로 샌다 = 사용자가 신고한 "번짐".</summary>
+        public static float ResampleRatio(int points, float canvasScale, float transformScale = 1f)
+        {
+            if (points <= 0) return 1f;
+            return DisplayedPixels(points, canvasScale, transformScale) / AtlasPixels(points, canvasScale);
+        }
+
+        /// <summary><b>렌더 질문</b>: 이 조합에서 글리프 비트맵이 리샘플되지 않는가.
+        /// <see cref="IsExact(int,float,float)"/>(레이아웃 질문)와의 차이는 그 문서에 적어 두었다.</summary>
+        public static bool IsResampleFree(int points, float canvasScale, float transformScale = 1f)
+        {
+            if (points <= 0) return true;
+            if (float.IsNaN(canvasScale) || float.IsInfinity(canvasScale) || canvasScale <= 0f) return true;
+            return Mathf.Abs(ResampleRatio(points, canvasScale, transformScale) - 1f) <= ExactnessEpsilon;
+        }
+
+        /// <summary>
+        /// 관측한 <paramref name="lossyScale"/>에서 <b>순수 transform 성분</b>만 뽑는다
+        /// (<c>lossyScale ÷ canvas.scaleFactor</c>).
+        ///
+        /// <para><b>왜 나누는가</b>: <c>RectTransform.lossyScale</c>에는 캔버스 자신의 배율이
+        /// <b>이미 곱해져</b> 있다(Screen Space 캔버스의 루트가 <c>scaleFactor</c>를 스케일로 건다).
+        /// 그걸 그대로 <c>transformScale</c>에 넣으면 캔버스 배율이 <b>두 번</b> 곱해져
+        /// 배율 1.5짜리 정상 화면이 통째로 "리샘플 있음"으로 뜬다 — 오탐 폭탄이다.</para>
+        ///
+        /// <para>이 함수가 <c>Transform</c>이 아니라 <b>float 두 개</b>를 받는 이유: 그래야
+        /// EditMode 테스트가 씬 오브젝트 없이 규칙만 전수 검증할 수 있다. 씬에서 <c>lossyScale</c>과
+        /// <c>canvas.scaleFactor</c>를 읽는 것은 플랫폼 프로브의 <b>사실 조회</b> 몫이다(CLAUDE.md).</para>
+        /// </summary>
+        public static float PureTransformScale(float lossyScale, float canvasScaleFactor)
+        {
+            if (float.IsNaN(lossyScale) || float.IsInfinity(lossyScale) || lossyScale <= 0f) return 1f;
+            if (float.IsNaN(canvasScaleFactor) || float.IsInfinity(canvasScaleFactor) || canvasScaleFactor <= 0f) return 1f;
+            return lossyScale / canvasScaleFactor;
+        }
+
+        /// <summary>그 transform 배율이 <b>사실상 1</b>인가(= 이 표면에는 조상 스케일이 걸려 있지 않다).
+        /// 판정 문구가 "pt를 옮기세요"를 권해도 되는지를 가르는 스위치다.</summary>
+        public static bool IsTransformScaleNeutral(float transformScale)
+            => Mathf.Abs(NormalizeScale(transformScale) - 1f) <= ExactnessEpsilon;
+
+        /// <summary><see cref="ReferenceCanvasScale"/>에서의 <see cref="IsExact(int,float,float)"/>.
+        /// 소스 감사 테스트가 쓰는 진입점이다.
+        /// <para>★ 2026-09-06 — <b>transform 배율은 여기에 들어오지 않는다</b>. 소스 감사는 "그 pt가
+        /// 소스에 적혀 있다"만 볼 수 있고, 그 글자가 <b>런타임에 어떤 스케일 아래로 들어가는지는</b>
+        /// 정적으로 알 수 없기 때문이다. 그 사각지대는 실기 프로브
+        /// (<c>OverlayCompositionVerdict</c>의 GLYPH-SCALE 줄)가 덮는다.</para></summary>
         public static bool IsExactAtReferenceScale(int points) => IsExact(points, ReferenceCanvasScale);
 
         /// <summary>

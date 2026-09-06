@@ -404,9 +404,28 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 베레모_보조색_테는_자기_밑변과_정확히_겹친다()
         {
-            HandoffTestGate.SkipIfR25Hat(AccessoryShapeBuilder.HeadBeret,
-                "베레모 테 = 몸통 밑변 정확히 겹침 + 「올린 띠」 규약(두께 = AccentBandThicknessRatio · 기운 꼭짓점 1) — " +
-                "R21 테는 두께 5u 의 독립 아이콘 조각이고 R25 에서 <b>수평화</b>되어 두 꼭짓점이 함께 기운다");
+            // ★★ 2026-09-06 — <b>건너뛰기 게이트를 걷었다</b>(<c>HandoffTestGate.SkipIfR25Hat</c>).
+            //    되돌리기 전에 이 문단을 읽어라 — 왜 꺼졌었고 무엇이 그것을 해소했는지가 여기 있다.
+            //
+            //    <b>왜 꺼져 있었나</b>(R25 첫 판): 베레모 테가 R21 아이콘 원문(두께 5 SVG유닛)을 그대로
+            //    옮긴 <b>독립 조각</b>이라 몸통 밑변에서 유도되지 않았다. 게이트 사유 문자열도 그렇게
+            //    적혀 있었다 — "R21 테는 두께 5u 의 독립 아이콘 조각이고 R25 에서 수평화되어 두 꼭짓점이
+            //    함께 기운다". 그 도형으로는 「올린 띠」 규약(아랫변 + 그것을
+            //    <see cref="AccessoryShapeBuilder.AccentBandThicknessRatio"/>만큼 올린 역순 윗변)을
+            //    만족시킬 방법이 없었다.
+            //
+            //    <b>무엇이 바뀌었나</b>: 같은 밤 R25d 가 <c>V1Hat_BeretBand</c> 를 <b>몸에서 유도</b>하도록
+            //    다시 썼다 — 아랫변 두 점은 <c>V1Hat_BeretBody</c> 의 첫 점·끝 점(그 폴리곤의 닫힘변 =
+            //    수평 밑변) <b>그대로</b>이고, 윗변은 그것을 0.46 R 올린 것이다(사유는 도형 주석).
+            //    그래서 이 검사가 잠그던 사실이 전부 다시 참이다. 재측정(2026-09-06, 배율 0.75):
+            //      · y 법칙 최대 오차 4.2e-17 유닛(허용 1e-5) · 기운 꼭짓점 1개(기대 1 — 몸통 왼쪽 변에 물린 자리)
+            //      · 이음매 2.5e-16 R(허용 1e-4) · 두께 0.46000 R = <b>2.11획</b>(채움 윤곽선 펜, 하한 1.5획)
+            //
+            //    <b>함께 걷지 않은 것</b>: 짝인 음성 대조(아래 <see cref="지표가_옛_베레모_테를_실제로_잡는다"/>)는
+            //    <b>여전히 건너뜀</b>이다(그 자리에 사유). 음성 대조가 자는 동안 자(尺)가 죽었을 때를 대비한
+            //    교정은 <b>이 검사 안</b>에 둔다 — 맨 아래 «자 교정» 블록.
+            //    (같은 게이트에 있던 커버선 ≤ +0.10R 검사는 걷은 것이 아니라 <b>삭제</b>됐다 —
+            //     2026-09-06 리더 판정, <c>AccessoryStrokeBudgetTests.cs</c> 묘비 주석 참조.)
             AccessoryShapeBuilder.Rig rig = Rig();
             List<AccessoryShapeBuilder.Shape> beret =
                 AccessorySilhouetteMetrics.Build(rig, EquipmentSlot.Head, AccessoryShapeBuilder.HeadBeret);
@@ -433,6 +452,28 @@ namespace StickMate.Tests.EditMode
                 $"베레모 테의 두께가 {thickness / pen:F2}획(윤곽선 펜 {pen:F5}R 기준)뿐입니다 — " +
                 "1.5획 미만이면 테가 밑단이 아니라 관을 가로지르는 띠로 읽혀 베레모가 " +
                 "'띠 두른 정모'가 됩니다(37-6 규칙 4).");
+
+            // ★ 자 교정 — 위 «이음매 0»은 <b>자가 죽어도 0</b>이다(MaxGapToShape 가 늘 0을 돌려주면
+            //   이 검사는 조용히 초록이 된다). 그래서 같은 아랫변을 <b>알려진 만큼 띄운 사본</b>을
+            //   같은 자로 재서, 그 자가 변위를 <b>그 값 그대로</b> 읽고 금지 구간(0 &lt; 간격 &lt; 1.5펜)으로
+            //   판정하는지 매 실행 확인한다. 미는 양은 숫자를 새로 적지 않고 이 자가 "확실히 떨어졌다"고
+            //   인정하는 값의 <b>절반</b>으로 유도한다 — 정의상 금지 구간 한가운데다.
+            //   프로덕션 좌표는 건드리지 않는다(사본만 민다).
+            float probeInR = pen * AccessoryFilledBandRuler.SeparationStrokes * 0.5f;
+            Vector3[] floated = AccessoryFilledBandRuler.BottomEdge(rim);
+            for (int i = 0; i < floated.Length; i++)
+            {
+                floated[i] = new Vector3(floated[i].x, floated[i].y + probeInR * rig.HeadRadius, floated[i].z);
+            }
+            float floatedGap = AccessorySilhouetteMetrics.MaxGapToShape(rig, floated, body);
+
+            Assert.AreEqual(probeInR, floatedGap, 1e-4f,
+                $"아랫변을 {probeInR:F5}R 띄웠는데 자는 {floatedGap:F5}R로 읽었습니다 — 자가 변위에 " +
+                "반응하지 않으면 위 «이음매 0»은 아무것도 증명하지 못합니다(측정이 죽어도 같은 초록).");
+            Assert.IsFalse(AccessoryFilledBandRuler.PassesRuleFour(floatedGap, pen),
+                $"띄운 아랫변의 간격 {floatedGap / pen:F2}획을 자가 규칙 4 <b>통과</b>로 읽었습니다 — " +
+                "금지 구간(0 < 간격 < 1.5펜)이 실제로 막히지 않는다는 뜻이고, 그렇다면 이 검사가 " +
+                "지키는 것은 «겹침»이 아니라 «아무거나»입니다.");
         }
 
         /// <summary>★ 네거티브 컨트롤 — 옛 테(x −1.10R ~ +0.84R, y = brimY)를 그대로 재구성한다.
@@ -443,6 +484,15 @@ namespace StickMate.Tests.EditMode
             // ★ 2026-09-06 R25 — 옛 테를 재구성하던 기준선(BeretBrimLineRatio)이 이제 <b>커버선</b>이고
             //   그 값이 0.02 → 0.3602 로 올라갔다. 그러면 이 «옛 테»는 새 몸통의 밑변 바로 위에 놓여
             //   간격이 0에 가깝게 나오고, 대조는 <b>우연히 통과</b>한다 — 통제력을 잃은 초록이다.
+            //
+            //   ★★ 2026-09-06 재검토(test-engineer) — <b>게이트 유지</b>. 위 검사는 같은 날 R25d 로
+            //   되살렸지만 이 음성 대조는 <b>아직 아니다</b>. 실측으로 확인했다: 재구성한 «옛 테»의
+            //   간격은 <b>0.00220 R = 0.0064획</b>이다(원래 이 대조가 잡던 값 0.26획의 <b>1/40</b>).
+            //   즉 단언 구간 (1e-4, 1획) 안이라 <b>지금 걷으면 초록이 되지만</b>, 그 초록이 뜻하는 것은
+            //   "자가 금지 구간을 잡는다"가 아니라 "재구성 좌표가 새 몸통 밑변에서 0.0022 R 떠 있다"뿐이다.
+            //   되살리려면 좌표를 <b>살아 있는 도형에서 유도</b>하도록 다시 쓰고(그러면 이름의 «옛 테»도
+            //   더 이상 사실이 아니다) 기대값 0.26획도 함께 갱신해야 한다 — 그것은 게이트 걷기가 아니라
+            //   대조 재저작이라 별도 배정이다. 그 사이의 자 교정은 위 검사 안 «자 교정» 블록이 맡는다.
             HandoffTestGate.SkipIfR25Hat(AccessoryShapeBuilder.HeadBeret,
                 "옛 베레모 테 음성 대조 — 기준선이 커버선으로 바뀌어 재구성 좌표가 새 몸통 밑변에 겹친다");
             AccessoryShapeBuilder.Rig rig = Rig();

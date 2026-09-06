@@ -58,8 +58,44 @@ namespace StickMate.Platform.Windows
         /// 정책이 아니라 관측값이라 CLAUDE.md의 "정책은 플랫폼 중립 위치에" 규약과도 어긋나지 않는다
         /// (판정 규칙 자체는 <see cref="UiGlyphScalePolicy"/>, 즉 <c>Platform/</c>에 있다).
         /// 같은 어셈블리의 <c>const</c>라 컴파일 시점에 값이 박히므로 상주 비용도 0이다.</para>
+        ///
+        /// ============================================================================
+        /// ★★ 2026-09-06 (dev-platform) — <b>표본이 하나라는 것은 그 자체가 사각지대다</b>
+        /// ============================================================================
+        /// 이 상수 하나가 <b>앱 전체의 글자를 대표한다고 암묵적으로 주장</b>하고 있었다. 그 주장은
+        /// <c>canvas.scaleFactor</c>만이 변수일 때만 참이다. 조상에 <c>localScale</c>이 걸린 표면
+        /// (부채꼴 메뉴 Ø36 축소 폴백 = <c>ButtonView.Group.localScale 0.8181…</c> 아래의 배지 숫자)은
+        /// <b>같은 캔버스 배율에서도</b> 리샘플되는데, 이 표본으로는 원리적으로 보이지 않는다.
+        ///
+        /// <para><b>이번 라운드에 배지를 표본에 넣지 않은 이유(실측 근거를 남긴다)</b> —
+        /// 「가능하면 추가」를 검토했고, <b>지금 구조로는 안전하게 못 넣는다</b>는 결론이다:
+        /// <list type="number">
+        ///   <item><b>배지 <c>Text</c>는 애니메이션 노드 아래에 있다.</b> 계층은
+        ///     <c>Group(배치 배율) → Root(펼침·호버 애니메이션 배율) → Badge → BadgeText</c>이고
+        ///     (<c>GearRadialMenuWidget.BuildButton</c>), <c>lossyScale</c>은 그 둘을 <b>구분 없이</b>
+        ///     곱해서 준다. 펼치는 0.19초 동안 매 프레임 값이 달라지고 호버는 48/44배를 더 건다 —
+        ///     그 값을 지문에 넣으면 <b>2초마다 새 지문</b>이 되어 24시간 상주 앱의 로그가 폭주하고,
+        ///     이 프로브의 12줄 예산이 애니메이션 중간값으로 소진된다.</item>
+        ///   <item><b>접힌 상태의 값도 1이 아니다.</b> 접기 애니메이션은 <c>Root</c>를
+        ///     <c>StartScale</c>(0.62)로 되돌리고 그대로 둔다. 즉 "안 보일 때 재면 안전"이 아니라
+        ///     <b>안 보이는 표면에 대해 큰 리샘플을 보고</b>하게 된다(오탐).</item>
+        ///   <item>안착 상태만 고르려면 위젯 쪽에 「지금 안착했는가」 접근자가 필요하다 —
+        ///     <c>Interaction/</c> 수정이고, 그것이 리더가 이번 범위에서 뺀 <b>표본 구조 재설계</b>다.</item>
+        /// </list>
+        /// 그래서 이 라운드는 <b>거짓말을 멈추는 것</b>까지만 한다: 표본에 이름을 붙이고
+        /// (<see cref="OverlayCompositionVerdict.SampleSurfaceConstantOnly"/>) transform 배율을
+        /// <b>미관측(0)</b>으로 정직하게 보고한다. 판정기는 그 0을 보면 "리샘플 없음" 줄에
+        /// <b>「이 표본 하나에 대한 판정」</b>이라는 단서를 붙인다. 갭 자체는
+        /// <c>PlatformParityAuditTests.미해결_글리프_리샘플_진단이_macOS_프로브와_표본_구조에_갭이_있다</c>가
+        /// 러너에 계속 띄운다.</para>
         /// </summary>
         private const int SampleFontSizePoints = Interaction.UiChrome.FontTitle;
+
+        /// <summary>표본 글자에 걸린 조상 <c>localScale</c>을 <b>재지 않았다</b>는 표시(0 = 미관측).
+        /// <para>1을 적으면 "조상 스케일이 없다"고 <b>단정</b>하는 것이 되는데, 이 프로브는 그것을
+        /// 확인한 적이 없다. 판정기(<see cref="OverlayCompositionVerdict.Diagnose"/>)는 0과 1을
+        /// 다르게 읽는다 — 그 구분이 이 필드의 존재 이유다.</para></summary>
+        private const float SampleTransformScaleUnobserved = 0f;
 
         /// <summary>지문이 바뀌어도 이 간격 안에서는 두 줄을 찍지 않는다(위 Update의 상한 문서 참고).
         /// 15초면 사용자가 창을 다른 모니터로 옮기는 실험을 해도 각 전이가 한 줄씩 남고,
@@ -164,6 +200,12 @@ namespace StickMate.Platform.Windows
               .Append($"fullScreenMode={(FullScreenMode)s.FullScreenMode}\n");
             sb.Append($"    배율: 캔버스={s.CanvasScaleFactor:F3}, UI밀도(GetDpiForWindow/96)={s.UiDensityScale:F3}, ")
               .Append($"AutoDpiScale={s.AutoDpiScale:F3}\n");
+            // ★ 2026-09-06 — 표본이 <무엇인가>를 관측 원문에 적는다. 이 줄이 없으면 아래 GLYPH-SCALE
+            //   판정을 읽는 사람이 "앱의 모든 글자"에 대한 판정으로 오독한다(실제로는 표본 하나다).
+            sb.Append($"    글리프 표본: 표면=<{(string.IsNullOrEmpty(s.SampleSurfaceLabel) ? OverlayCompositionVerdict.SampleSurfaceUnknown : s.SampleSurfaceLabel)}>, ")
+              .Append($"{s.SampleFontSizePoints}pt, 조상 transform 배율=")
+              .Append(s.SampleTransformScale > 0f ? s.SampleTransformScale.ToString("F4") : "미관측")
+              .Append('\n');
             sb.Append($"    합성: transparentType={(s.TransparentType == 1 ? "Alpha(DWM확장프레임)" : s.TransparentType == 2 ? "ColorKey" : s.TransparentType.ToString())}, ")
               .Append($"DWM합성={s.DwmCompositionEnabled}, 스타일실측={s.OsStyleReadOk}, ")
               .Append($"WS_EX_LAYERED={s.HasLayeredStyle}, WS_EX_TRANSPARENT={s.HasClickThroughStyle}, ")
@@ -198,6 +240,8 @@ namespace StickMate.Platform.Windows
                 UiDensityScale = ScreenCoordinateConverter.AutoUiDensityScale,
                 AutoDpiScale = ScreenCoordinateConverter.AutoDpiScale,
                 SampleFontSizePoints = SampleFontSizePoints,
+                SampleTransformScale = SampleTransformScaleUnobserved,
+                SampleSurfaceLabel = OverlayCompositionVerdict.SampleSurfaceConstantOnly,
                 RequestedMsaa = QualitySettings.antiAliasing,
                 ActualMsaa = Screen.msaaSamples,
                 LayeredAlphaByte = -1,

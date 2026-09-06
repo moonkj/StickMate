@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using StickMate.Core;
 using StickMate.Interaction;
+using StickMate.States;
 using UnityEngine;
 
 namespace StickMate.Tests.EditMode
@@ -207,6 +208,126 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(0f, AccessoryShapeBuilder.HemPressDepth(new Vector3(0f, 1f, 0f), 0.5f, 0f), 1e-6f);
             Assert.AreEqual(0.5f, AccessoryShapeBuilder.HemPressDepth(new Vector3(0f, 0f, 0f), 0.5f, 0f), 1e-6f);
             Assert.AreEqual(0.7f, AccessoryShapeBuilder.HemPressDepth(new Vector3(1f, 0f, 0f), 0.5f, 0.2f), 1e-6f, "기운 바닥선(slope)이 깊이에 들어간다.");
+        }
+
+        /// <summary>
+        /// ★ 2026-09-06 perf-doc — <see cref="AccessoryShapeBuilder.HemCanReachFloor"/>가 <b>거짓이면
+        /// <see cref="AccessoryShapeBuilder.PressHemToFloor"/>는 반드시 0</b>이다(한쪽으로만 안전한 판정).
+        ///
+        /// <para>이 성질이 <c>CharacterAccessoryRenderer.TickHemMotion</c>의 조기 반환을 정당화한다 —
+        /// 깨지면 「관망 자세에서 밑단이 바닥을 뚫는데 아무것도 안 한다」가 된다.</para>
+        ///
+        /// <para><b>양성 대조를 함께 잠근다</b>: 판정이 무조건 거짓을 내면 이 검사는 공허하게 통과한다.
+        /// 그래서 (가) 판정이 참인 자세가 실제로 있고 (나) 그때 실제로 눌리는지까지 센다.</para>
+        /// </summary>
+        [Test]
+        public void 닿을_수_없다고_판정하면_한_점도_눌리지_않는다()
+        {
+            AccessoryShapeBuilder.Rig rig = Rig();
+            float hip = rig.HipY;
+
+            // 원본은 한 번만 굽는다(PressHemToFloor가 배열을 고치므로 매 판마다 복사해 쓴다).
+            var items = new[] { AccessoryShapeBuilder.BackLongCape, AccessoryShapeBuilder.BackCape };
+            var pristine = new Vector3[items.Length][];
+            var work = new Vector3[items.Length][];
+            for (int t = 0; t < items.Length; t++)
+            {
+                pristine[t] = BackPoints(rig, items[t]);
+                work[t] = new Vector3[pristine[t].Length];
+            }
+
+            int falseCases = 0, trueCases = 0, trueAndPressed = 0;
+            // 피치 −30~30° × 오프셋 0 ~ −엉덩이높이 — 정직한 직립부터 물리 상한 웅크림까지.
+            for (int degTenth = -300; degTenth <= 300; degTenth += 5)
+            {
+                Pitch(degTenth / 10f, out float sin, out float cos);
+                for (int k = 0; k <= 20; k++)
+                {
+                    float b = -hip * (k / 20f);
+                    AccessoryShapeBuilder.HemFloorLine(hip, 1f, b, sin, cos, out float intercept, out float slope);
+
+                    for (int t = 0; t < items.Length; t++)
+                    {
+                        System.Array.Copy(pristine[t], work[t], pristine[t].Length);
+                        Vector3[] pts = work[t];
+
+                        float minY = MinY(pts);
+                        float maxAbsX = 0f;
+                        for (int i = 0; i < pts.Length; i++) maxAbsX = Mathf.Max(maxAbsX, Mathf.Abs(pts[i].x));
+
+                        bool canReach = AccessoryShapeBuilder.HemCanReachFloor(intercept, slope, minY, maxAbsX);
+                        int pressed = AccessoryShapeBuilder.PressHemToFloor(pts, intercept, slope,
+                            AccessoryShapeBuilder.HemPressSpread);
+
+                        if (canReach)
+                        {
+                            trueCases++;
+                            if (pressed > 0) trueAndPressed++;
+                            continue;
+                        }
+                        falseCases++;
+                        Assert.AreEqual(0, pressed,
+                            $"피치 {degTenth / 10f}° 오프셋 {b:F4} item {items[t]}: 「닿을 수 없다」고 판정했는데 {pressed}점이 눌렸습니다 — 조기 반환이 그림을 지웁니다.");
+                    }
+                }
+            }
+
+            Assert.Greater(falseCases, 0, "「닿을 수 없다」가 한 번도 안 나왔습니다 — 이 검사가 아무것도 재지 않았습니다.");
+            Assert.Greater(trueCases, 0, "「닿을 수 있다」가 한 번도 안 나왔습니다 — 판정이 무조건 거짓입니다(공허한 통과).");
+            Assert.Greater(trueAndPressed, 0, "양성 대조: 「닿을 수 있다」인 자세 중 실제로 눌린 것이 하나도 없습니다.");
+        }
+
+        /// <summary>
+        /// ★ 2026-09-06 perf-doc — <b>관망 자세(집중 세션 L0+L1)의 상시 미세 피치에서는 판정이 「닿을 수 없다」여야 한다.</b>
+        /// 이것이 참이라야 조기 반환이 실제로 이득을 낸다(참이 아니면 최적화는 코드만 늘리고 아무것도 안 한다).
+        ///
+        /// <para>피치 범위는 <c>StickmanPoseAnimator</c>의 관망 자세 상수에서 <b>읽는다</b> — 숫자를 베끼면
+        /// 그쪽이 바뀔 때 이 검사가 조용히 낡는다(협업 프로토콜: 프로덕션 상수를 테스트에 베끼지 않는다).
+        /// 호흡 진폭도 <c>StickConfig</c>에서 읽는다.</para>
+        /// </summary>
+        [Test]
+        public void 관망_자세_미세_피치에서는_밑단이_바닥선에_닿을_수_없다()
+        {
+            AccessoryShapeBuilder.Rig rig = Rig();
+            float hip = rig.HipY;
+
+            float maxLean = Mathf.Max(
+                Mathf.Abs(StickmanPoseAnimator.FocusWatchStanceMaxLeanDegrees),
+                Mathf.Abs(StickmanPoseAnimator.FocusWatchGestureMaxLeanDegrees));
+            Assert.Greater(maxLean, 0f, "관망 자세의 기울임 상한이 0입니다 — 이 검사의 전제가 사라졌습니다.");
+
+            float breath;
+            StickConfig config = ScriptableObject.CreateInstance<StickConfig>();
+            try { breath = config.idleBreathAmplitude; }
+            finally { Object.DestroyImmediate(config); }
+            Assert.Greater(breath, 0f, "호흡 진폭이 0입니다 — 이 검사가 최악을 못 잡습니다.");
+
+            Vector3[] pts = LongCape(rig);   // 둘 중 밑단이 낮은 쪽(여유가 작은 쪽)만 재면 충분하다
+            float minY = MinY(pts);
+            float maxAbsX = 0f;
+            for (int i = 0; i < pts.Length; i++) maxAbsX = Mathf.Max(maxAbsX, Mathf.Abs(pts[i].x));
+            var work = new Vector3[pts.Length];
+
+            int cases = 0;
+            for (int degTenth = -Mathf.CeilToInt(maxLean * 10f); degTenth <= Mathf.CeilToInt(maxLean * 10f); degTenth++)
+            {
+                Pitch(degTenth / 10f, out float sin, out float cos);
+                // 호흡 최저(몸이 가장 내려앉은 순간)가 최악이다.
+                AccessoryShapeBuilder.HemFloorLine(hip, 1f, -breath, sin, cos, out float intercept, out float slope);
+                cases++;
+                Assert.IsFalse(AccessoryShapeBuilder.HemCanReachFloor(intercept, slope, minY, maxAbsX),
+                    $"관망 자세 피치 {degTenth / 10f}° + 호흡 최저에서 「닿을 수 있다」가 나왔습니다 — 조기 반환이 안 걸립니다(최적화 무효).");
+                System.Array.Copy(pts, work, pts.Length);
+                Assert.AreEqual(0, AccessoryShapeBuilder.PressHemToFloor(work, intercept, slope,
+                    AccessoryShapeBuilder.HemPressSpread), $"피치 {degTenth / 10f}°에서 실제로 눌렸습니다.");
+            }
+            Assert.Greater(cases, 1, "피치 스윕이 비었습니다.");
+
+            // 음성 대조 — 착지 웅크림(몸 오프셋 큰 음수)에서는 반드시 「닿을 수 있다」가 나와야 한다.
+            Pitch(0f, out float s0, out float c0);
+            AccessoryShapeBuilder.HemFloorLine(hip, 1f, -hip, s0, c0, out float deepIntercept, out float deepSlope);
+            Assert.IsTrue(AccessoryShapeBuilder.HemCanReachFloor(deepIntercept, deepSlope, minY, maxAbsX),
+                "최대 웅크림에서도 「닿을 수 없다」입니다 — 판정이 무조건 거짓입니다.");
         }
 
         /// <summary>C6 — 짧은망토는 긴망토가 눌리는 얕은 웅크림에서 한 점도 안 눌린다(양성 대조: 같은 자세에서 긴망토는 눌린다).</summary>

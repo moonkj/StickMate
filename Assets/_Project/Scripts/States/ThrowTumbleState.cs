@@ -82,6 +82,10 @@ namespace StickMate.States
     /// ============================================================================
     /// 착지는 기존 LandingCrouch를 그대로 재사용한다 (리더 지시 3항)
     /// ============================================================================
+    /// ★ 2026-09-06 — <b>착지 판정은 FallState와 같은 두 단</b>이다: 1순위 스윕 교차,
+    /// 2순위 「밴드 + 유예 + 정지」(<see cref="TickRestingLandingFallback"/>). 2순위가 없던 동안
+    /// 던진 몸이 물리 바닥에 멈추면 6초 상한까지 제자리에서 돌았다 — 그 절을 지우지 마라.
+    ///
     /// 새 착지 상태를 만들지 않았다. 깊이 램프의 입력인 "낙하 높이"만 이 상태가 정해서 넘긴다 —
     /// 던지기는 옆으로도 날아오므로 기하학적 낙차만으로는 세기가 표현되지 않기 때문이다. 환산은
     /// 에너지 보존 그대로다(<see cref="ConfirmLanding"/> 참고): 순수 자유낙하에서는 이 환산값이 실제
@@ -177,6 +181,11 @@ namespace StickMate.States
         private Vector2 _prevBallisticFoot;
         private bool _hasPrevSample;
 
+        /// <summary>2순위(정지 착지) 폴백의 확정 유예 타이머(초). FallState._landingConfirmTimer와
+        /// 같은 역할이고 같은 설정값(<see cref="StickConfig.fallGraceDuration"/>)을 쓴다 —
+        /// <see cref="TickRestingLandingFallback"/> 문서 참고.</summary>
+        private float _landingConfirmTimer;
+
         /// <summary>던져진 시점의 월드 Y — 기하학적 낙차 계산용.</summary>
         private float _startWorldY;
 
@@ -229,6 +238,7 @@ namespace StickMate.States
             _planUsableSeconds = 0f;
             _tuck01 = 0f;
             _pivotOffset = Vector2.zero;
+            _landingConfirmTimer = 0f;
             MaxAbsAngleDegrees = 0f;
             LastLandingEffectiveHeight = 0f;
 
@@ -457,9 +467,12 @@ namespace StickMate.States
             // 화면(발판 좌우 범위) 이탈 -> Fall. Exit()가 회전과 보정량을 되돌린다.
             if (_blackboard.CheckScreenBoundsOrFall(info)) return;
 
-            // ★ 착지 판정은 FallState의 1순위 경로와 **같은 래퍼**를 쓴다(스윕 교차, drop-through 유예
+            // ★ 1순위 — FallState의 1순위 경로와 **같은 래퍼**를 쓴다(스윕 교차, drop-through 유예
             // 포함). 판정을 여기서 새로 짜면 "창 위에 착지할 수 있게 만든" 그 판정과 두 벌이 되고,
             // 이 프로젝트는 같은 계산이 두 곳에 생겨 어긋난 버그를 이미 두 번 겪었다.
+            // ★★ 2026-09-06 — FallState는 **두 단**인데 여기는 이 한 단뿐이었다. 그 누락이 곧
+            //    "던지면 바닥에서 6초간 제자리 회전 + 그동안 잡기 무반응"이었다. 2순위는 아래
+            //    TickRestingLandingFallback(그 문서에 유도 전체가 있다).
             if (_hasPrevSample &&
                 _blackboard.TryFindLandingCrossing(_prevBallisticFoot, ballisticFoot, out long handle, out float landingWorldY))
             {
@@ -469,13 +482,23 @@ namespace StickMate.States
             _prevBallisticFoot = ballisticFoot;
             _hasPrevSample = true;
 
+            // ★ 2순위: 정지 착지 폴백(FallState의 "밴드 + 유예" 경로와 같은 장치).
+            //   반드시 안전 상한보다 **먼저** 물어야 한다 — 이 경로가 존재하는 이유가 그 상한에
+            //   도달하는 것 자체를 막는 것이기 때문이다.
+            if (TickRestingLandingFallback(info, body, deltaTime)) return;
+
             float maxSeconds = _blackboard.Config != null ? _blackboard.Config.throwTumbleMaxSeconds : 6f;
             if (_elapsed >= maxSeconds)
             {
                 // 안전 상한 — 발판이 없거나 예측이 실패해 영영 착지하지 못하는 경우. 평범한 낙하로
                 // 넘기면 기존 낙하/구조 안전망(EnforceScreenBoundsAndRescue)이 그대로 받는다.
+                // ★ 접지 사실을 함께 찍는다 — 여기 도달했는데 Grounded=True면 위 2순위 폴백이
+                //   무슨 이유로든 열리지 않았다는 뜻이고, 그때 무엇을 봐야 하는지가 이 한 줄에 있다
+                //   (스위치가 꺼져 있는가 / 수직속도가 ε를 넘나드는가 / drop-through 유예인가).
                 Debug.Log($"[던지기회전] 상한 {maxSeconds:F1}초 초과 — 평범한 낙하로 전환합니다" +
-                    $"(총 회전 {MaxAbsAngleDegrees:F0}도).");
+                    $"(총 회전 {MaxAbsAngleDegrees:F0}도, 접지={info.Grounded}, 발판핸들={info.GroundedFootholdHandle}, " +
+                    $"수직속도={body.linearVelocity.y:F3}, 정지착지 스위치=" +
+                    $"{(_blackboard.Config == null || _blackboard.Config.throwTumbleRestingLandingEnabled)}).");
                 _blackboard.Machine.ChangeState(StickmanStateId.Fall);
                 return;
             }
@@ -810,6 +833,87 @@ namespace StickMate.States
         // ============================================================================
 
         /// <summary>
+        /// ★★ 2026-09-06 — <b>2순위 착지 판정(정지 착지 폴백)</b>. FallState.cs의 「밴드 + 유예」
+        /// 경로를 이 상태에도 들여온다.
+        ///
+        /// ============================================================================
+        /// 무엇이 고장나 있었나 (debugger 규명, 실측 로그로 확정)
+        /// ============================================================================
+        /// 이 상태의 착지 판정은 <b>스윕 교차 하나뿐</b>이었다. 그런데 그 판정은 몸이
+        /// <b>"내려가는 중"</b>일 때만 성립한다 — <see cref="GroundSensor.TryFindLandingCrossing"/>은
+        /// <c>currOs.y &lt;= prevOs.y</c>(하강이 아님)면 즉시 false이고, 발이 발판 상단선보다
+        /// 아래로 내려가지 않았으면(<c>currOs.y &lt; r.y</c>) 그 발판을 건너뛴다.
+        ///
+        /// <para>던져진 몸은 이 상태가 눈치채기 전에 <b>물리 바닥(정적 콜라이더)에 먼저 닿아 멈춘다.</b>
+        /// 멈추는 순간 발 위치가 더는 변하지 않으므로 위 두 조건이 <b>영구히 거짓</b>이 되고, 상태는
+        /// <see cref="StickConfig.throwTumbleMaxSeconds"/>(6초) 안전 상한까지 그 자리에서 계속 돌았다.
+        /// 대가는 세 겹이었다:</para>
+        /// <list type="bullet">
+        ///   <item>그 6초 동안 Interaction/DragThrowController가 Idle/Walk가 아닌 상태의 잡기를 전부
+        ///         거부한다 — 사용자에게는 <b>"마우스로 잡아도 반응이 없다"</b>로 보인다.</item>
+        ///   <item>6초 뒤 Fall이 받아 <b>낙하높이 0.00</b>으로 착지를 확정한다(그 시점엔 이미 바닥에
+        ///         있으므로). 무릎앉기·착지먼지·착지 대사가 <b>통째로 사라진다</b>.</item>
+        ///   <item>실측 증거: 상한 초과 직후 FallState가 "정지 상태에서" 즉시 착지를 확정했다 —
+        ///         2순위 경로가 있었다면 <see cref="StickConfig.fallGraceDuration"/>(0.1초)에 끝났을 일이다.</item>
+        /// </list>
+        ///
+        /// ============================================================================
+        /// 왜 「정지」이지 「상승 중이 아님」이 아닌가 (변형 금지 — 여기가 이 수정의 안전선이다)
+        /// ============================================================================
+        /// FallState의 2순위는 <c>movingUpward</c>만 막는 <b>더 넓은</b> 형태다. 그 형태를 여기에
+        /// 그대로 쓰면 <b>정상 회전의 마지막 국면을 잘라먹는다</b>: 접지 밴드는
+        /// ±<see cref="StickConfig.groundSnapTolerance"/>(OS-pt)라 낮은 해상도에서는 월드 ±1.0유닛까지
+        /// 벌어지고, 정상 하강이 그 밴드를 통과하는 시간(약 0.16초)이 유예(0.1초)보다 <b>길다</b>.
+        ///
+        /// <para>「정지」로 못박으면 그 위험이 <b>산술적으로</b> 사라진다. 자유 포물선이
+        /// <c>|v_y| &lt;= ε</c>를 만족할 수 있는 시간은 정점 부근의 <c>2ε/g</c>뿐이고,
+        /// ε = <see cref="FallState.UpwardLandingVelocityEpsilon"/>(0.05), g ≈ 29.4에서 그 값은
+        /// <b>0.0034초</b>다 — 유예 0.1초의 1/29이라 원리적으로 채울 수 없다. 즉 이 경로는
+        /// <b>정말로 멈춘 몸</b>에서만 열린다.</para>
+        ///
+        /// <para>★ ε는 <b>FallState의 상수를 참조</b>한다. 숫자를 베끼면 한쪽만 바뀌는 날 두 착지
+        /// 경로가 조용히 갈라진다(이 저장소가 반복해서 겪은 형태).</para>
+        ///
+        /// <para>탈출구/네거티브 컨트롤: <see cref="StickConfig.throwTumbleRestingLandingEnabled"/>.
+        /// 끄면 거동이 2026-09-06 이전과 같아진다(= 다시 6초 상한까지 고착한다).</para>
+        /// </summary>
+        /// <returns>착지를 확정했으면 true — 호출부는 그 즉시 반환해야 한다(전이 이후 자기 상태를
+        /// 계속 만지지 않는다는 이 상태의 규칙).</returns>
+        private bool TickRestingLandingFallback(in GroundSensor.GroundInfo info, Rigidbody2D body, float deltaTime)
+        {
+            StickConfig cfg = _blackboard.Config;
+            if (cfg != null && !cfg.throwTumbleRestingLandingEnabled)
+            {
+                _landingConfirmTimer = 0f;
+                return false;
+            }
+
+            bool restingOnSurface = Mathf.Abs(body.linearVelocity.y) <= FallState.UpwardLandingVelocityEpsilon;
+            // 방금 떠난 발판을 통과시키는 유예 중이면 이 경로로도 제자리 착지가 확정되면 안 된다
+            // (FallState.cs의 같은 확인 — 스윕 경로는 블랙보드 래퍼가 이미 걸러주지만 이 경로는
+            //  GroundSensor.Sense()의 결과를 직접 본다).
+            bool ignoredByDropThrough = _blackboard.IsFootholdDropThroughIgnored(info.GroundedFootholdHandle);
+            if (!info.Grounded || !restingOnSurface || ignoredByDropThrough)
+            {
+                _landingConfirmTimer = 0f;
+                return false;
+            }
+
+            _landingConfirmTimer += deltaTime;
+            float grace = cfg != null ? cfg.fallGraceDuration : 0.1f;
+            if (_landingConfirmTimer < grace) return false;
+
+            // 착지 1회당 한 줄 — 매 프레임 경로가 아니다(위 조건이 성립한 그 프레임에만 도달한다).
+            Debug.Log($"[던지기회전] 정지 착지 폴백 — 스윕 교차가 성립하지 않는 채 발판 위에서 " +
+                $"{_landingConfirmTimer:F2}초(유예 {grace:F2}) 멈춰 있었습니다" +
+                $"(수직속도 {body.linearVelocity.y:F3}, 정지 판정 ε={FallState.UpwardLandingVelocityEpsilon:F2}). " +
+                $"안전 상한을 기다리지 않고 여기서 착지를 확정합니다 — 발판핸들={info.GroundedFootholdHandle}, " +
+                $"비행 {_elapsed:F2}초, 총 회전 {MaxAbsAngleDegrees:F0}도.");
+            ConfirmLanding(info.GroundWorldY, info.GroundedFootholdHandle);
+            return true;
+        }
+
+        /// <summary>
         /// 착지 확정 — 위치 스냅 + 무릎앉아로 인계. FallState.ConfirmLanding과 **같은 후처리**를 하되,
         /// 무릎앉아 깊이의 입력이 되는 "낙하 높이"만 던지기에 맞게 환산한다.
         ///
@@ -848,6 +952,12 @@ namespace StickMate.States
                     v.y = 0f;
                     body.linearVelocity = v;
                 }
+
+                // ★ 수평 속도는 위에서 손대지 않는다(미끄러짐 연출은 그대로 남긴다). 다만 그
+                //   미끄러짐이 발판 밖으로 나가는 경우만 아래에서 안쪽으로 묶는다.
+                //   충격 환산(impactSpeedSq)은 **클램프 이전 속도**로 이미 끝났다 — 부딪힌 세기는
+                //   실제로 그만큼이었고, 클램프는 착지 이후의 이동에 관한 별개의 결정이다.
+                ClampLandingSlideToFootholdEdge(body, footholdHandle);
             }
 
             float g = body != null ? Mathf.Abs(Physics2D.gravity.y * body.gravityScale) : 29.43f;
@@ -889,6 +999,111 @@ namespace StickMate.States
                 ? StickmanStateId.Walk
                 : StickmanStateId.Idle;
             _blackboard.Machine.ChangeState(next);
+        }
+
+        // ============================================================================
+        // ★★ 2026-09-06 — 사용자 신고 "마우스로 던졌을때 바닥에 못서고 넘어짐"
+        // ============================================================================
+
+        /// <summary>진단 창구 — 직전 착지에서 잰 "가장자리까지 남은 거리"(월드 유닛, 진행 방향 기준).
+        /// 아직 재지 못했으면 NaN. 제품 로직은 읽지 않는다.</summary>
+        public float LastLandingSlideRemainingToEdge { get; private set; } = float.NaN;
+
+        /// <summary>진단 창구 — 직전 착지에서 클램프하지 않았다면 미끄러졌을 거리(월드 유닛). NaN이면 못 쟀다.</summary>
+        public float LastLandingSlideDistance { get; private set; } = float.NaN;
+
+        /// <summary>진단 창구 — 직전 착지에서 실제로 클램프가 걸렸는가.</summary>
+        public bool LastLandingSlideClamped { get; private set; }
+
+        /// <summary>
+        /// 착지 직후 남은 수평 속도로 <b>발판 밖까지 미끄러지는</b> 것을 막는다.
+        ///
+        /// ============================================================================
+        /// 무엇이 고장나 있었나 (실측)
+        /// ============================================================================
+        /// 위 <see cref="ConfirmLanding"/>은 착지 순간 <c>v.y</c>만 지우고 <c>v.x</c>는 그대로 뒀다.
+        /// 그 잔여 수평 속도는 States/LandingCrouchState.Tick이 지수감쇠
+        /// (<see cref="StickConfig.landingCrouchHorizontalDamping"/> = k)로 죽이는데, 지수감쇠의
+        /// <b>총 이동거리는 정확히 |vx|/k</b>다:
+        /// <code>
+        ///   ∫₀^∞ |vx| e^(−kt) dt = |vx| / k
+        /// </code>
+        /// 실측 vx = 2.77이면 9.5 OS-pt를 미끄러졌고, 그것이 딛은 발판의 가로범위를 2.4pt 벗어나
+        /// GroundSensor가 접지를 잃고 Fall로 전이했다. 착지 연출은 성공했는데 <b>0.2초 뒤에
+        /// 넘어지는</b> 그림이라 사용자에게는 "착지 실패"로 읽힌다.
+        ///
+        /// ============================================================================
+        /// 왜 감쇠를 세게 하지 않는가 / 왜 이 형태인가
+        /// ============================================================================
+        /// k를 키우면 <b>모든</b> 착지의 수평 이동이 뚝 끊긴다 — 그 부작용은
+        /// <c>landingCrouchHorizontalDamping</c> 툴팁이 이미 명시적으로 기각한 것이다. 그래서
+        /// 감쇠는 그대로 두고 <b>남은 거리가 부족할 때만</b> 초기 속도를 낮춘다. 위 적분식이
+        /// 등식이라 "얼마나 낮춰야 하는지"를 추정이 아니라 <b>역산</b>으로 정할 수 있다:
+        /// <code>
+        ///   vx' = 남은거리 x k x 여유비        (여유비 = throwTumbleLandingSlideEdgeSafety01)
+        /// </code>
+        /// 여유가 충분한 착지(<c>|vx|/k ≤ 남은거리</c>)에서는 아무 것도 하지 않으므로
+        /// <b>오늘과 비트 단위로 같다</b>.
+        ///
+        /// <para>발판 경계 조회는 <see cref="StickmanBlackboard.TryGetFootholdEdgeWorld"/>를 쓴다 —
+        /// States/AutoWanderController가 경계 정지를 판정할 때 쓰는 것과 <b>같은 창구</b>다. 같은
+        /// 기하를 두 번 적으면 어긋난다(이 저장소가 이미 두 번 겪었다).</para>
+        ///
+        /// <para>남은 거리가 이미 0 이하면(착지 지점이 경계 밖 — 이론상 스윕 교차가 발판 위에서
+        /// 잡히므로 나오지 않아야 한다) 수평 속도를 0으로 세운다. 더 밀고 나가는 것보다 그 자리에
+        /// 세우는 편이 정직하고, 그래도 발밑이 없으면 평소대로 Fall이 받는다.</para>
+        ///
+        /// <para>★ <b>측정은 스위치와 무관하게 한다</b> — 스위치는 <b>고치는 것</b>만 끈다. 이유는
+        /// 두 가지다: (1) 네거티브 컨트롤이 "그 착지가 정말 넘칠 착지였는가"를 스위치를 끈 상태에서도
+        /// 값으로 확인할 수 있어야 한다(못 하면 그 대조는 "왜 실패했는지 모르는 실패"가 된다),
+        /// (2) 꺼 둔 사용자의 로그에도 "여기서 넘쳤다"가 남는다. 물리 거동은 여전히
+        /// <b>비트 단위로 2026-09-06 이전과 같다</b>(속도를 건드리는 줄이 스위치 뒤에 있다).
+        /// 비용은 착지 1회당 발판 경계 조회 한 번이고, 이 메서드는 매 프레임 경로가 아니다.</para>
+        /// </summary>
+        private void ClampLandingSlideToFootholdEdge(Rigidbody2D body, long footholdHandle)
+        {
+            LastLandingSlideRemainingToEdge = float.NaN;
+            LastLandingSlideDistance = float.NaN;
+            LastLandingSlideClamped = false;
+
+            StickConfig cfg = _blackboard.Config;
+            if (cfg == null || body == null || footholdHandle == 0L) return;
+
+            Vector2 v = body.linearVelocity;
+            float damping = cfg.landingCrouchHorizontalDamping;
+            // 감쇠가 0이면 LandingCrouchState가 수평 속도를 즉시 0으로 만든다 = 미끄러짐이 없다.
+            if (!(damping > 0f) || Mathf.Abs(v.x) <= 0.0001f) return;
+
+            int direction = v.x > 0f ? 1 : -1;
+            if (!_blackboard.TryGetFootholdEdgeWorld(footholdHandle, direction, out _, out float edgeWorldX)) return;
+
+            float footX = body.position.x;
+            float remaining = direction > 0 ? edgeWorldX - footX : footX - edgeWorldX;
+            float slide = Mathf.Abs(v.x) / damping;
+            LastLandingSlideRemainingToEdge = remaining;
+            LastLandingSlideDistance = slide;
+            if (slide <= remaining) return;   // 여유가 충분하다 — 오늘과 비트 단위로 같은 경로.
+
+            if (!cfg.throwTumbleLandingSlideClampEnabled)
+            {
+                Debug.Log($"[던지기회전] 착지 미끄러짐이 발판을 넘칩니다(남은 {remaining:F3}유닛 < " +
+                    $"미끄러질 거리 {slide:F3}유닛) — 클램프 스위치가 꺼져 있어 그대로 둡니다" +
+                    $"(throwTumbleLandingSlideClampEnabled=false). 발판핸들={footholdHandle}.");
+                return;
+            }
+
+            float safety = Mathf.Clamp01(cfg.throwTumbleLandingSlideEdgeSafety01);
+            float clampedSpeed = Mathf.Max(0f, remaining) * damping * safety;
+            float originalVx = v.x;
+            v.x = clampedSpeed * direction;
+            body.linearVelocity = v;
+            LastLandingSlideClamped = true;
+
+            Debug.Log($"[던지기회전] 착지 미끄러짐 클램프 — 진행={(direction > 0 ? "오른쪽" : "왼쪽")}, " +
+                $"발 x={footX:F3}, 발판 경계 x={edgeWorldX:F3}(남은 {remaining:F3}유닛), " +
+                $"미끄러질 거리={slide:F3}유닛(감쇠 {damping:F1}/초) -> 수평속도 " +
+                $"{originalVx:F3} -> {v.x:F3}(여유비 {safety:F2}, 예상 이동 " +
+                $"{clampedSpeed / damping:F3}유닛). 발판핸들={footholdHandle}.");
         }
     }
 }

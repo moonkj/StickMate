@@ -64,8 +64,23 @@ namespace StickMate.Tests.EditMode
         public void 모자_띠는_자기_관_밑변과_정확히_겹친다(int item, string bandName, string crownName)
         {
             HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, item, "모자 띠 = 관 밑변 정확히 겹침 — 인계본 중절모 띠(F1)는 원문 기하");
-            HandoffTestGate.SkipIfR25Hat(item, "모자 띠 = 관 밑변 정확히 겹침 + 「올린 띠」 규약 — " +
-                "R21 밀짚모자 띠는 관을 두르는 <b>독립 아이콘 조각</b>(두께 6.5u)이라 관 밑변에서 유도되지 않는다");
+
+            // ★★ 2026-09-06 — 밀짚모자 쪽 <b>건너뛰기 게이트를 걷었다</b>(<c>HandoffTestGate.SkipIfR25Hat</c>).
+            //    되돌리기 전에 이 문단을 읽어라.
+            //
+            //    <b>왜 꺼져 있었나</b>(R25 첫 판): 게이트 사유가 "R21 밀짚모자 띠는 관을 두르는 독립 아이콘
+            //    조각(두께 6.5u)이라 관 밑변에서 유도되지 않는다"였다. 실제로 그 띠는 관 곡률을 따라 휜
+            //    34점 도형이라 「올린 띠」 규약(아랫변 + 역순 윗변)이 성립할 수 없었다.
+            //
+            //    <b>무엇이 바뀌었나</b>: 같은 밤 R25d 가 <c>V1Hat_StrawBand</c> 를 <b>관에서 유도</b>하도록
+            //    다시 썼다 — 아랫변 두 점은 <c>V1Hat_StrawCrown</c> 의 첫 점·끝 점(그 폴리곤의 닫힘변)
+            //    <b>그대로</b>이고 윗변은 그것을 0.46 R 올린 것이다. 재측정(2026-09-06, 배율 0.75):
+            //      · y 법칙 최대 오차 4.2e-17 유닛(허용 1e-5) · 기운 꼭짓점 0개(기대 0)
+            //      · 이음매 2.5e-16 R(허용 1e-4) · 두께 0.45395 R = <b>2.08획</b>(채움 윤곽선 펜, 하한 1.5획)
+            //    (중절모 쪽은 위 <c>SkipIfHandoff</c> 가 계속 담당한다 — 이번 걷기와 무관하다.)
+            //
+            //    <b>함께 걷지 않은 것</b>: 짝인 음성 대조 <see cref="지표가_옛_밀짚모자_띠를_실제로_잡는다"/>는
+            //    여전히 건너뜀이다(그 자리에 사유). 그동안의 자 교정은 이 검사 맨 아래 «자 교정» 블록이 맡는다.
             AccessoryShapeBuilder.Rig rig = Rig();
             List<AccessoryShapeBuilder.Shape> hat = AccessorySilhouetteMetrics.Build(rig, EquipmentSlot.Head, item);
             AccessoryShapeBuilder.Shape band = AccessorySilhouetteMetrics.Find(hat, bandName);
@@ -99,9 +114,29 @@ namespace StickMate.Tests.EditMode
                 $"1.5획({pen * AccessoryFilledBandRuler.SeparationStrokes:F4}R) 미만이면 띠의 윗변과 " +
                 "관 밑변이 각자의 잉크로 맞붙어, 화면에서 '선을 두 번 그린 실수'로 읽힙니다(규칙 4).");
 
+            // ★ 자 교정 — «이음매 0»은 <b>자가 죽어도 0</b>이다. 그래서 같은 아랫변을 <b>알려진 만큼
+            //   띄운 사본</b>을 같은 자로 재서, 자가 그 변위를 그대로 읽고 금지 구간으로 판정하는지
+            //   매 실행 확인한다(미는 양은 "확실히 떨어졌다" 값의 절반 = 정의상 금지 구간 한가운데).
+            //   프로덕션 좌표는 안 건드린다 — 사본만 민다.
+            float probeInR = pen * AccessoryFilledBandRuler.SeparationStrokes * 0.5f;
+            Vector3[] floated = AccessoryFilledBandRuler.BottomEdge(band);
+            for (int i = 0; i < floated.Length; i++)
+            {
+                floated[i] = new Vector3(floated[i].x, floated[i].y + probeInR * rig.HeadRadius, floated[i].z);
+            }
+            float floatedGap = AccessorySilhouetteMetrics.MaxGapToShape(rig, floated, crown);
+
+            Assert.AreEqual(probeInR, floatedGap, 1e-4f,
+                $"{label}의 아랫변을 {probeInR:F5}R 띄웠는데 자는 {floatedGap:F5}R로 읽었습니다 — " +
+                "자가 변위에 반응하지 않으면 위 «이음매 0»은 아무것도 증명하지 못합니다.");
+            Assert.IsFalse(AccessoryFilledBandRuler.PassesRuleFour(floatedGap, pen),
+                $"{label}에서 띄운 아랫변의 간격 {floatedGap / pen:F2}획을 자가 규칙 4 <b>통과</b>로 " +
+                "읽었습니다 — 금지 구간이 실제로는 안 막힌다는 뜻입니다.");
+
             Debug.Log($"{AccessoryFilledBandRuler.LogPrefix} {label} 띠 — 이음매 {seamGap:E2}R(겹침), " +
                 $"두께 {thickness:F4}R = {thickness / pen:F2}획(윤곽선 펜) / " +
-                $"{thickness / W:F2}획(낱선 획, <b>이 자로 재면 오판</b>).");
+                $"{thickness / W:F2}획(낱선 획, <b>이 자로 재면 오판</b>), " +
+                $"자 교정 {floatedGap:F5}R(민 양 {probeInR:F5}R).");
         }
 
         /// <summary>띠는 <b>보조색 그대로</b>여야 한다 — 겹치게 만들면서 톤까지 바꾸면 모자에서
@@ -163,7 +198,20 @@ namespace StickMate.Tests.EditMode
             // ★ 2026-09-06 R25 — 이 음성 대조는 <b>살아 있는 상수</b>(StrawCrownHalfWidthRatio)로 옛 띠를
             //   재구성해 왔는데, R25 재저작이 그 상수를 지웠다. 옛 관도 옛 띠도 없어졌으므로 이 대조는
             //   더 이상 아무것도 통제하지 못한다 — 숫자를 리터럴로 박아 「되살리는」 것은 사라진 도형에
-            //   대한 자기 대화일 뿐이다. 위 검사와 <b>같은 이유로</b> 함께 건너뛴다.
+            //   대한 자기 대화일 뿐이다.
+            //
+            //   ★★ 2026-09-06 재검토(test-engineer) — <b>게이트 유지</b>. 위 본 검사
+            //   (<see cref="모자_띠는_자기_관_밑변과_정확히_겹친다"/>)는 같은 날 되살렸지만 이 대조는
+            //   <b>같이 걷지 않았다</b>. 실측: 재구성한 «옛 띠»의 간격은 <b>0.10880 R = 0.32획</b>이라
+            //   단언 구간 (1e-4, 1획) 안이므로 <b>걷으면 실제로 통과는 한다</b>. 그런데 그 초록이 서는
+            //   근거가 이 검사의 이름·주석·기대값과 <b>전부 어긋난다</b>:
+            //     · 이름과 문서는 «관 밑변 <b>위</b> 0.16 R»이라고 말하는데, 새 관 밑변은 +0.685 R이라
+            //       재구성 좌표(+0.5762 R)는 관 <b>아래</b>다 — 재고 있는 것이 더 이상 «옛 띠»가 아니다.
+            //     · 실패 메시지가 못박은 기대 실측치(0.47 / 0.46획)도 0.32획으로 갈라졌다.
+            //   즉 지금 걷으면 «사실이 아닌 문장으로 감싸인 초록»이 남는다 — 이 저장소가 반복해서
+            //   당한 형태다. 되살리려면 좌표를 <b>살아 있는 관에서 유도</b>하고 이름·기대값을 함께
+            //   다시 쓰는 <b>재저작</b>이 필요하다(별도 배정). 그때까지 자 교정은 위 본 검사 안의
+            //   «자 교정» 블록이 대신한다 — 자가 죽으면 거기서 먼저 빨개진다.
             HandoffTestGate.SkipIfR25Hat(AccessoryShapeBuilder.HeadStraw,
                 "옛 밀짚모자 띠 음성 대조 — 재구성에 쓰던 StrawCrownHalfWidthRatio 가 R25 로 폐기됐다");
             AccessoryShapeBuilder.Rig rig = Rig();

@@ -219,15 +219,32 @@ namespace StickMate.Core
         /// 불변식 I-7′("같은 1초가 두 번 지급되지 않는다")를 <b>검증이 아니라 구조로</b> 참으로
         /// 만든다(GAME_ARCHITECTURE_REVIEW §12-3-b). 그림자 상태를 따로 만들지 마라.</para>
         ///
+        /// <param name="windowSecondsSpent">
+        /// ★★ 이번 틱이 8시간 창에서 <b>실제로 갉아먹은 초</b>. <b>«수급이 멈췄는가»의 유일한
+        /// 관측값</b>이라 <c>out</c>으로 내보낸다 — 반환값(동전)으로는 그것을 알 수 없기 때문이다.
+        ///
+        /// <para>요율이 <c>IdleCoinsPerMinute</c>(분당 12 = 초당 0.2)라 <b>정상 상태에서도 프레임의
+        /// 대부분이 0동전</b>이다(소수분은 <c>CarryCoins</c>로 다음 틱에 넘어간다). 그 0을 «멈췄다»로
+        /// 읽으면 <b>정상 동작을 고장으로 신고</b>하게 된다 — 2026-09-06에 실제로 그 일이 났다
+        /// (<c>Interaction/CharacterProgressionDirector.LogIdleStallOnce</c>가 5초에 한 줄씩,
+        /// <b>실측 720줄/시간</b>). 게다가 그 720줄이 <b>전부</b> «오늘의 지급 가능 시간(480분)을 다
+        /// 썼습니다»라고 적혔다 — 실제로는 창을 60분밖에 안 쓴 시점이었다.</para>
+        ///
+        /// <para>반대로 이 값은 <b>지급이 실제로 일어난 초에만</b> 값이 있다(T-15-1-a·T-D-13). 그래서
+        /// <paramref name="isIdleEarning"/>이 true이고 <paramref name="deltaSeconds"/>가 양수인데
+        /// 이 값이 0이면, 그때가 진짜로 멈춘 것이다 — 이유는 <b>일일 상한</b>
+        /// (<see cref="RemainingDailyRoomCoins"/> = 0) 또는 <b>창 소진</b>
+        /// (<see cref="RemainingIdleWindowSeconds"/> = 0) 둘뿐이다.</para></param>
         /// <returns>이번 틱에 실제로 지급된 동전.</returns>
         /// </summary>
-        public static int TickIdleIncome(double deltaSeconds, bool isIdleEarning)
+        public static int TickIdleIncome(double deltaSeconds, bool isIdleEarning, out double windowSecondsSpent)
         {
             CurrencyRules.IdleTickResult tick = CurrencyRules.IdleTick(
                 deltaSeconds, isIdleEarning, TodayGrantedCoins, PotionsUsedToday,
                 IdleWindowUsedSeconds, CurrencyRules.IdleWindowCapSeconds, s_idleCarryCoins);
 
             s_idleCarryCoins = tick.CarryCoins;
+            windowSecondsSpent = tick.WindowSecondsSpent;
             if (tick.CoinsGranted <= 0 && tick.WindowSecondsSpent <= 0.0) return 0;
 
             IdleWindowUsedSeconds = CurrencyRules.ClampIdleWindowSeconds(
@@ -296,6 +313,18 @@ namespace StickMate.Core
         {
             int room = DailyCapCoins() - TodayGrantedCoins;
             return room < 0 ? 0 : room;
+        }
+
+        /// <summary>오늘 유휴 수급 창(8시간)에 <b>남은 초</b>. <see cref="RemainingDailyRoomCoins"/>의
+        /// 창 버전이고, 「남은 시간」을 말하는 화면·로그의 <b>유일한 출처</b>다.
+        /// <para>★ 뺄셈을 호출부에 흩지 않기 위해 여기 둔다 — 클램프
+        /// (<c>CurrencyRules.ClampIdleWindowSeconds</c>: NaN은 0이 아니라 <b>상한</b>으로 간다)를
+        /// 빠뜨린 사본이 하나라도 생기면 손상된 파일에서 «남은 시간»만 다른 값을 말하게 된다.</para></summary>
+        public static double RemainingIdleWindowSeconds()
+        {
+            double room = CurrencyRules.IdleWindowCapSeconds
+                          - CurrencyRules.ClampIdleWindowSeconds(IdleWindowUsedSeconds);
+            return room < 0.0 ? 0.0 : room;
         }
 
         /// <summary>

@@ -32,7 +32,11 @@ namespace StickMate.States
     ///   <see cref="IsOwnLandingContact"/>로 자기 착지를 걸러낸다.</item>
     /// <item><b>루트의 물리 충돌 — 원리상 살아 있다.</b> 루트 질량 1.00이라 필요 상대속도가 곧 임계값
     ///   8.0이고 dragThrowMaxSpeed 12.0 안에 든다. 다만 차단막이 <b>발밑에서 올라온 접촉</b>을 걸러내므로,
-    ///   남는 것은 그 예외를 벗어난 접촉(옆/윗면, Dynamic 상대)뿐이다.</item>
+    ///   남는 것은 그 예외를 벗어난 접촉(옆/윗면, Dynamic 상대)뿐이다.
+    ///   ★ 2026-09-06 추가 — 그 남는 접촉도 이제 <b>접촉 법선 방향 성분</b>으로만 채점된다
+    ///   (<see cref="ResolveNormalImpulse"/>). 즉 "옆면을 스치며 떨어지는" 접촉은 더 이상 랙돌을
+    ///   만들지 않는다. <b>정면 타격(정렬 ≈ 1)은 한 비트도 안 바뀐다</b> — 이것은 경로를 닫은 것이
+    ///   아니라 <b>방향을 무시하던 과대평가를 없앤 것</b>이다.</item>
     /// <item><b>긴 망토 자락 밟기 — 잠재.</b> Interaction/LongCapeTripDirector가 임계값 x1.02를 넣지만
     ///   longCapeTripMeanSeconds=0(2026-08-31 사용자 요청으로 기본 OFF)이라 배포 기본값에서는 돌지 않는다.
     ///   켜면 즉시 살아나므로 <b>"경로가 없다"고 적으면 안 된다.</b></item>
@@ -94,9 +98,63 @@ namespace StickMate.States
         public static bool TryApplyCollisionImpact(StickmanBlackboard blackboard, Collision2D collision, float impulseMagnitude)
         {
             bool shielded = IsOwnLandingContact(blackboard, collision);
-            LogCollisionImpact(blackboard, collision, impulseMagnitude, shielded);
+            Vector2 push = ResolveContactPushDirection(collision);
+            float normalImpulse = ResolveNormalImpulse(blackboard, collision, impulseMagnitude, push);
+            LogCollisionImpact(blackboard, collision, impulseMagnitude, normalImpulse, push, shielded);
             if (shielded) return false;
-            return TryApplyImpact(blackboard, impulseMagnitude, ResolveContactPushDirection(collision));
+            return TryApplyImpact(blackboard, normalImpulse, push);
+        }
+
+        /// <summary>
+        /// ★★ 2026-09-06 (사용자 신고 <i>"가끔 캐릭터가 넘어짐"</i>의 본체) — 충돌 충격량에서
+        /// <b>접촉 법선 방향 성분만</b> 남긴다.
+        ///
+        /// ============================================================================
+        /// 무엇이 고장나 있었나
+        /// ============================================================================
+        /// 두 호출부(Core/StickmanAgent.OnCollisionEnter2D, Core/RagdollLimbImpactRelay)는
+        /// <c>relativeVelocity.magnitude * mass</c>를 넘긴다. <c>magnitude</c>는 <b>방향이 없는 속력</b>이라,
+        /// 접촉 법선과 <b>거의 수직</b>으로 스치는 접촉이 정면충돌과 똑같이 채점됐다.
+        ///
+        /// <para>실측(Player.log): Dock 물리 계단 <b>옆면</b>을 스치며 떨어진 접촉에서 법선 성분은
+        /// <b>0.81 N·s</b>인데 판정에 쓰인 값은 <b>27.08</b>이었다(임계 8.0). <b>33배 과대평가</b>다 —
+        /// 옆을 스쳤을 뿐인데 랙돌이 강제됐고, 이것이 "가끔 캐릭터가 넘어짐"의 그림이다.</para>
+        ///
+        /// ============================================================================
+        /// 왜 이 식인가
+        /// ============================================================================
+        /// 충돌이 <b>몸에 실제로 전달하는</b> 운동량은 법선 성분뿐이다(접선 성분은 마찰이 처리하며,
+        /// 그 크기는 마찰계수에 묶여 있지 상대속력에 비례하지 않는다). 그래서
+        /// <code>
+        ///   법선충격량 = 원본충격량 x |rel · n̂| / |rel|      (n̂ = 접촉 법선 평균의 단위벡터)
+        /// </code>
+        /// 로 정렬도(0~1)만 곱한다. 정면충돌(정렬 ≈ 1)에서는 <b>원본과 비트 단위로 같고</b>, 스치는
+        /// 접촉에서만 줄어든다 — 즉 <b>과보호가 아니라 과대평가의 제거</b>다.
+        ///
+        /// <para>방향을 못 구하면(접촉 0개, 법선이 서로 상쇄) 손대지 않고 원본을 그대로 돌려준다.
+        /// <see cref="ResolveContactPushDirection"/>이 "방향을 모르면 안 때린다"고 정한 것과 같은 어법으로,
+        /// <b>모를 때는 오늘 거동을 유지</b>한다.</para>
+        ///
+        /// <para><b>이 경로를 거치지 않는 곳은 한 줄도 바뀌지 않는다</b> — 던지기
+        /// (States/DragThrowState)와 로데오(States/RodeoCursorState)는 방향을 스스로 알고
+        /// <see cref="TryApplyImpact"/>/<c>ReportExternalImpact</c>를 직접 부른다.</para>
+        ///
+        /// <para>탈출구: <see cref="StickConfig.collisionImpactUsesNormalComponent"/>를 끄면 원본이
+        /// 그대로 흘러 <b>2026-09-06 이전과 비트 단위로 같다</b>(네거티브 컨트롤용).</para>
+        /// </summary>
+        private static float ResolveNormalImpulse(StickmanBlackboard blackboard, Collision2D collision,
+            float rawImpulse, Vector2 pushSum)
+        {
+            if (blackboard == null || blackboard.Config == null) return rawImpulse;
+            if (!blackboard.Config.collisionImpactUsesNormalComponent) return rawImpulse;
+            if (collision == null) return rawImpulse;
+
+            Vector2 rel = collision.relativeVelocity;
+            float speed = rel.magnitude;
+            if (!(speed > 0.0001f)) return rawImpulse;          // NaN도 여기서 함께 걸러진다.
+            if (pushSum.sqrMagnitude <= 1e-8f) return rawImpulse;
+
+            return rawImpulse * Mathf.Abs(Vector2.Dot(rel, pushSum.normalized)) / speed;
         }
 
         /// <summary>
@@ -187,8 +245,69 @@ namespace StickMate.States
         /// <c>역산질량 = 충격량 / 상대속도</c>가 <c>질량</c>과 어긋나면 이 줄의 보고 바디를 믿으면 안 된다.
         /// 이 저장소가 반복해서 당한 형태가 <b>"죽은 프로브의 출력이 성공한 프로브와 똑같이 생긴 것"</b>이라,
         /// 진단용 줄일수록 자기 자신을 반증할 수 있어야 한다.</para>
+        ///
+        /// <para>★★★★ 2026-09-06 — <b>접촉 법선(x,y) · 정렬도 · 법선충격량</b>을 추가했다.
+        /// <see cref="ResolveNormalImpulse"/>가 고친 그 결함(스치는 접촉이 정면충돌처럼 채점됨)은
+        /// <b>6일 동안 이 줄에 매일 찍히면서도 보이지 않았다</b> — 줄이 크기(<c>충격량</c>)만 적고
+        /// <b>방향을 한 글자도 적지 않았기</b> 때문이다. 27.08과 0.81은 이 줄에서 완전히 같은 모습이었다.
+        /// 값이 아니라 <b>판정에 실제로 들어간 양</b>을 적는다.</para>
         /// </summary>
         private const int CollisionLogSampleCount = 6;
+
+        // ════════════════════════════════════════════════════════════════════════════════════
+        // ★ 2026-09-06 진단 창구 — 제품 로직은 이 값을 절대 읽지 않는다(테스트/로그 전용).
+        // States/AutoWanderController의 LastEdgeStopDistanceUsed와 같은 성격이다.
+        //
+        // 왜 필요한가: 이 경로의 결과는 "랙돌이 됐는가/안 됐는가"라는 **이산 한 비트**로만 밖에서
+        // 관측된다. 그런데 랙돌을 막는 장치가 둘(차단막 / 법선 성분)이라, 비트 하나만 보면
+        // **어느 쪽이 막았는지 구조적으로 가릴 수 없다** — "고쳤는데 사실은 차단막이 막고 있었다"가
+        // 이 저장소가 반복해서 당한 거짓 통과의 형태다. 스칼라뿐이라 할당이 없다.
+        //
+        // ★ "가장 최근"이 아니라 **원본 충격량이 가장 큰 한 건**을 남긴다. 한 시나리오에서 통지는
+        //   루트 1건 + 팔다리 최대 8건이 뒤섞여 들어오고(Core/RagdollLimbImpactRelay), 팔다리 질량은
+        //   0.06~0.09라 값이 한 자릿수다. "최근"을 남기면 정작 판정을 좌우한 루트 건이 팔다리 건에
+        //   조용히 덮여, 테스트가 **엉뚱한 통지를 보고 초록**이 된다.
+        // ════════════════════════════════════════════════════════════════════════════════════
+
+        /// <summary><see cref="TryApplyCollisionImpact"/>가 처리한 누적 건수(초기화로 0이 된다).</summary>
+        public static int CollisionImpactCount { get; private set; }
+
+        /// <summary>초기화 이후 <b>원본 충격량이 가장 컸던</b> 통지의 그 값
+        /// (= 호출부가 넘긴 <c>relativeVelocity.magnitude * mass</c>). 아직 없으면 0.</summary>
+        public static float PeakCollisionRawImpulse { get; private set; }
+
+        /// <summary>그 통지에서 <b>실제로 임계값과 비교된</b> 충격량(법선 성분).</summary>
+        public static float PeakCollisionNormalImpulse { get; private set; }
+
+        /// <summary>그 통지의 접촉 법선 방향(단위 벡터). 0이면 방향 불명.</summary>
+        public static Vector2 PeakCollisionPushDirection { get; private set; }
+
+        /// <summary>그 통지의 정렬도 |rel·n̂|/|rel| (0=스침, 1=정면). 잴 수 없으면 NaN.</summary>
+        public static float PeakCollisionAlignment01 { get; private set; }
+
+        /// <summary>그 통지가 <see cref="IsOwnLandingContact"/> 차단막에 걸렸는지.
+        /// <b>이것이 false여야 "법선 성분이 막았다"는 주장이 성립한다.</b></summary>
+        public static bool PeakCollisionShielded { get; private set; }
+
+        /// <summary>그 통지를 보고한 바디가 루트인지(false = 팔다리 8개 중 하나 또는 불명).</summary>
+        public static bool PeakCollisionReporterIsRoot { get; private set; }
+
+        /// <summary>
+        /// 진단 창구와 로그 표본 예산을 초기화한다. <b>테스트 전용</b>이며 제품 코드에는 호출부가 없다
+        /// (있으면 상주 로그 예산이 리셋돼 로그가 무너진다).
+        /// </summary>
+        public static void ResetCollisionDiagnostics()
+        {
+            CollisionImpactCount = 0;
+            PeakCollisionRawImpulse = 0f;
+            PeakCollisionNormalImpulse = 0f;
+            PeakCollisionPushDirection = Vector2.zero;
+            PeakCollisionAlignment01 = float.NaN;
+            PeakCollisionShielded = false;
+            PeakCollisionReporterIsRoot = false;
+            _rootCollisionLogSamplesLeft = CollisionLogSampleCount;
+            _limbCollisionLogSamplesLeft = CollisionLogSampleCount;
+        }
 
         // ★ 2026-09-02 — 표본 예산을 **루트/비루트로 갈랐다**(하나였을 때의 결함은 위 문서 참고).
         // 예산이 하나면 시작 직후 루트의 낙하 충돌이 6건을 전부 먹고, 팔다리가 보고를 하는지조차
@@ -211,15 +330,38 @@ namespace StickMate.States
         }
 
         private static void LogCollisionImpact(StickmanBlackboard blackboard, Collision2D collision,
-            float impulseMagnitude, bool shielded)
+            float impulseMagnitude, float normalImpulse, Vector2 pushSum, bool shielded)
         {
             if (blackboard == null || blackboard.Config == null) return;
 
+            // 법선 방향/정렬도는 로그와 진단 창구가 함께 쓴다. 스칼라 계산뿐이라 할당이 없다.
+            Vector2 pushDir = pushSum.sqrMagnitude > 1e-8f ? pushSum.normalized : Vector2.zero;
+            float relSpeedForAlignment = collision != null ? collision.relativeVelocity.magnitude : float.NaN;
+            float alignment01 = relSpeedForAlignment > 0.0001f && pushDir != Vector2.zero
+                ? Mathf.Abs(Vector2.Dot(collision.relativeVelocity, pushDir)) / relSpeedForAlignment
+                : float.NaN;
+
+            // 진단 창구는 로그 예산과 **무관하게** 항상 갱신한다 — 예산에 묶으면 관측 자체가
+            // 표본 6건으로 잘려 테스트가 "충돌이 없었다"와 "기록을 안 했다"를 구분할 수 없게 된다.
+            CollisionImpactCount++;
+            if (impulseMagnitude >= PeakCollisionRawImpulse)
+            {
+                PeakCollisionRawImpulse = impulseMagnitude;
+                PeakCollisionNormalImpulse = normalImpulse;
+                PeakCollisionPushDirection = pushDir;
+                PeakCollisionAlignment01 = alignment01;
+                PeakCollisionShielded = shielded;
+                PeakCollisionReporterIsRoot = collision != null && blackboard.Body != null
+                    && ReferenceEquals(collision.otherRigidbody, blackboard.Body);
+            }
+
             // ★ 2026-08-29 — "외력으로 판정 -> RAGDOLL 전이"를 shielded==false일 때 무조건 적었던 것을
             // 고쳤다. 이 로그는 TryApplyImpact()가 실제로 임계값과 비교하기 *전에* 찍히므로, shielded가
-            // false라도 impulseMagnitude가 임계값 미만이면 RAGDOLL 전이는 일어나지 않는다 — 그런데도
+            // false라도 충격량이 임계값 미만이면 RAGDOLL 전이는 일어나지 않는다 — 그런데도
             // "전이"라고 단정해 로그만 보고 오판하게 만들었다(디버거가 실사용 조사 중 발견).
-            bool willRagdoll = !shielded && impulseMagnitude >= blackboard.Config.ragdollForceThreshold;
+            // ★ 2026-09-06 — 비교 대상을 **법선 성분**으로 맞췄다. 원본으로 남겨두면 이 줄의 판정과
+            // 실제 판정(TryApplyImpact가 받는 값)이 갈라져, 고친 그 결함을 로그가 다시 감춘다.
+            bool willRagdoll = !shielded && normalImpulse >= blackboard.Config.ragdollForceThreshold;
 
             // 보고 바디 식별은 게이트보다 **앞**에서 끝낸다(버킷을 고르는 데 필요하다). 여기까지는
             // 참조 비교와 네이티브 조회뿐이라 할당이 없다 — UnityEngine.Object.name은 호출마다 새
@@ -237,6 +379,11 @@ namespace StickMate.States
                 //
                 // ★ 보고 바디가 불명(otherRigidbody 없음)이면 **비루트 버킷**으로 보낸다 — 루트 예산을
                 //   잠식하지 않게 하려는 것뿐이고, 아래 로그는 그런 건을 "루트"라고 주장하지 않는다.
+                //
+                // ★ 2026-09-06 — 이 게이트만은 **원본** 충격량으로 남긴다(법선 성분이 아니라).
+                //   법선 성분으로 좁히면, 이번 라운드가 새로 잠재우는 그 접촉("원본은 27인데 스쳐서
+                //   법선은 0.8")이 verbose에서도 침묵해 **고친 결함을 다시 못 보게** 된다.
+                //   원본 >= 법선이라 이 선택은 언제나 더 넓은 쪽이고, 오늘의 verbose 거동과 같다.
                 bool verbose = blackboard.Config.verboseDiagnosticsLogging;
                 float threshold = blackboard.Config.ragdollForceThreshold;
                 bool allowed = reporterIsRoot
@@ -266,10 +413,16 @@ namespace StickMate.States
             float impliedMass = relativeSpeed > 0.0001f ? impulseMagnitude / relativeSpeed : float.NaN;
             string reporterRole = reporter == null ? "불명" : reporterIsRoot ? "루트" : "비루트";
 
+            // ★ 2026-09-06 — 법선은 **정규화해서**(위에서 계산한 pushDir) 적는다. 합 벡터의 길이는
+            //   접촉 개수에 따라 달라져 사람이 읽을 수 없고, 판정에 들어가는 것도 방향뿐이다. 길이가
+            //   0이면(방향 불명) 0,0으로 찍히고 정렬도가 NaN이라 "못 쟀다"가 그대로 드러난다.
             Debug.Log($"[착지충격] 보고바디={(reporter != null ? reporter.name : "?")}" +
                 $"({reporterRole}, 질량={reporterMass:F3}, 역산질량={impliedMass:F3}, " +
-                $"상대속도={relativeSpeed:F2}), 충돌 충격량={impulseMagnitude:F2}(랙돌 임계 " +
-                $"{blackboard.Config.ragdollForceThreshold:F1}), 상태=" +
+                $"상대속도={relativeSpeed:F2}), 충돌 충격량 원본={impulseMagnitude:F2} -> " +
+                $"법선성분={normalImpulse:F2}(랙돌 임계 " +
+                $"{blackboard.Config.ragdollForceThreshold:F1}, 접촉법선=({pushDir.x:F2},{pushDir.y:F2}), " +
+                $"정렬도={alignment01:F3}, 법선성분스위치=" +
+                $"{blackboard.Config.collisionImpactUsesNormalComponent}), 상태=" +
                 $"{(blackboard.Machine != null ? blackboard.Machine.CurrentStateId.ToString() : "?")}, " +
                 $"접촉 {count}개(최저 y={lowestContactY:F3}), 발 y={footY:F3}, " +
                 $"차단스위치={blackboard.Config.landingImpactRagdollShield} -> {verdict}.");

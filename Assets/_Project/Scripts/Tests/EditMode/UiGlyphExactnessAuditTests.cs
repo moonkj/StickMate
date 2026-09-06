@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using StickMate.Dialogue;
+using StickMate.Interaction;   // GearRadialMenuWidget — 축소 폴백 배율을 <상수에서> 가져온다(숫자를 베끼지 않는다).
 using StickMate.Platform;
 using UnityEngine;
 
@@ -525,6 +526,262 @@ namespace StickMate.Tests.EditMode
             }
             Debug.Log($"{LogPrefix} 기준 배율 {Scale:F3}에서 안전한 pt 간격 = {step} " +
                       $"(즉 {step}의 배수만 잔차 0).");
+        }
+
+        // ============================================================================
+        // ★★ (5) 2026-09-06 (dev-platform) — <b>조상 transform 배율</b>: 이 감사군 전체의 사각지대
+        // ============================================================================
+        //
+        // 무엇이 사각지대였나:
+        //   · 위 (1)(2)(3)은 전부 <b>소스에 적힌 pt</b>만 본다. 그 글자가 런타임에 어떤 스케일 아래로
+        //     들어가는지는 정적으로 알 수 없다 — 원리적 한계이고, 그래서 이 종류의 결함에 <b>영원히
+        //     초록</b>이었다.
+        //   · 실기 프로브(OverlayCompositionVerdict의 GLYPH-SCALE 줄)는 그 사각지대를 덮을 수
+        //     있었지만, 계산이 `pt × canvasScale` 한 줄이라 <b>같은 사각지대를 공유</b>하고 있었다.
+        //     2026-09-06에 부채꼴 메뉴 Ø36 축소 폴백이 처음으로 화면에 나오면서 실물이 생겼다.
+        //
+        // 아래 네 검사는 <b>고친 계산이 실제로 빨개지는가</b>를 양방향으로 못박는다.
+
+        /// <summary>1~64pt에서 기준 배율 잔차가 <b>0인</b> 첫 pt(양성 대조의 "옛 계산이 초록이던 자리").</summary>
+        private static int FirstExactPointAtReferenceScale()
+        {
+            for (int pt = 1; pt <= 64; pt++)
+            {
+                if (UiGlyphScalePolicy.IsExactAtReferenceScale(pt)) return pt;
+            }
+            return -1;
+        }
+
+        /// <summary>1~64pt에서 기준 배율 잔차가 <b>있는</b> 첫 pt(중립 처방 문구를 뽑는 데 쓴다).</summary>
+        private static int FirstInexactPointAtReferenceScale()
+        {
+            for (int pt = 1; pt <= 64; pt++)
+            {
+                if (!UiGlyphScalePolicy.IsExactAtReferenceScale(pt)) return pt;
+            }
+            return -1;
+        }
+
+        /// <summary>
+        /// 부채꼴 메뉴 <b>축소 폴백</b>이 버튼 묶음에 거는 균일 배율 —
+        /// <c>ShrunkDiameterPoints / ButtonDiameterPoints</c>.
+        /// <para>★ 0.8182를 숫자로 베끼지 않는다(CLAUDE.md). 두 상수를 참조하므로 폴백 지름이
+        /// 바뀌는 날 이 검사가 <b>스스로 따라온다</b>.</para>
+        /// </summary>
+        private static float ShrinkFallbackTransformScale
+            => GearRadialMenuWidget.ShrunkDiameterPoints / GearRadialMenuWidget.ButtonDiameterPoints;
+
+        /// <summary>글리프 판정에 필요한 항만 채운 관측 한 장. 나머지 항목이 다른 줄을 띄우든
+        /// 이 검사는 <c>GLYPH-SCALE</c> 줄만 본다.</summary>
+        private static OverlayCompositionSnapshot GlyphSnapshot(int points, float canvasScale,
+            float transformScale, string label)
+            => new OverlayCompositionSnapshot
+            {
+                CanvasScaleFactor = canvasScale,
+                SampleFontSizePoints = points,
+                SampleTransformScale = transformScale,
+                SampleSurfaceLabel = label,
+            };
+
+        private static OverlayCompositionVerdict.Line GlyphLine(OverlayCompositionSnapshot s)
+        {
+            List<OverlayCompositionVerdict.Line> lines = OverlayCompositionVerdict.Diagnose(s);
+            foreach (OverlayCompositionVerdict.Line l in lines)
+            {
+                if (l.Code == "GLYPH-SCALE") return l;
+            }
+            Assert.Fail($"{LogPrefix} 판정에 GLYPH-SCALE 줄이 없습니다 — 실기 로그에서 글리프 " +
+                $"리샘플을 가를 수 없다는 뜻입니다. 실제 줄: " +
+                string.Join(" / ", lines.ConvertAll(l => l.Code)));
+            return default;
+        }
+
+        /// <summary>
+        /// ★★ <b>양성 대조 — 축소 폴백을 실기 진단이 실제로 「번짐」으로 찍는가.</b>
+        ///
+        /// <para><b>수정 전에는 거짓 초록이었다는 것을 같은 검사 안에서 증명한다.</b> 옛 계산은
+        /// <c>requestedPixels = pt × canvasScale</c> 한 줄이었으므로, <b>기준 배율에서 잔차 0인 pt</b>를
+        /// 고르면 조상에 어떤 <c>localScale</c>이 걸려 있든 <b>반드시 "리샘플 없음"</b>이 나왔다.
+        /// 아래 (가)가 그 옛 계산을 <b>직접 재현</b>해 "정수"임을 보이고, (다)가 새 판정이 같은 입력에서
+        /// <b>빨강</b>을 내는 것을 보인다 — 두 값을 <b>서로 다른 방법</b>으로 재서 대조한다.</para>
+        ///
+        /// <para>(라)의 음성 대조가 없으면 "무엇을 넣어도 빨간 검사"와 구분되지 않는다.</para>
+        /// </summary>
+        [Test]
+        public void 양성_대조_축소_폴백의_transform_배율을_실기_진단이_번짐으로_찍는다()
+        {
+            float shrink = ShrinkFallbackTransformScale;
+            Assert.Less(shrink, 1f - UiGlyphScalePolicy.ExactnessEpsilon,
+                $"{LogPrefix} 축소 폴백 배율이 {shrink:F4}로 1과 같습니다 — 축소가 사라졌다면 이 대조는 " +
+                "성립하지 않습니다. 폴백 지름이 기준 지름과 같아진 것이라면 이 검사를 지우는 것이 맞고, " +
+                "상수 참조가 끊긴 것이라면 여기서 멈추는 것이 맞습니다.");
+
+            int pt = FirstExactPointAtReferenceScale();
+            Assert.Greater(pt, 0, $"{LogPrefix} 배율 {Scale:F3}에서 잔차 0인 pt를 찾지 못했습니다.");
+
+            // (가) 옛 계산 재현 — transform 항이 없는 한 줄. 이 값이 정수라는 것이 곧 <거짓 초록>이다.
+            float oldRequestedPixels = pt * Scale;
+            Assert.AreEqual(Mathf.Round(oldRequestedPixels), oldRequestedPixels, 1e-3f,
+                $"{LogPrefix} 양성 대조의 전제가 깨졌습니다 — {pt}pt × {Scale:F3}가 정수가 아닙니다. " +
+                "이 대조는 <옛 계산이 초록이던 자리>에서만 뜻이 있습니다.");
+            Assert.IsTrue(UiGlyphScalePolicy.IsExact(pt, Scale),
+                $"{LogPrefix} 두 인자 술어가 {pt}pt를 잔차 있음으로 봅니다 — 하위호환이 깨졌습니다.");
+
+            // (나) 새 술어 — 같은 pt에 축소 배율을 실으면 잔차가 드러나야 한다.
+            Assert.IsFalse(UiGlyphScalePolicy.IsExact(pt, Scale, shrink),
+                $"{LogPrefix} ★ {pt}pt × {Scale:F3} × {shrink:F4} = " +
+                $"{pt * Scale * shrink:F4}px인데 정수 격자로 판정했습니다 — 셋째 인자가 계산에 " +
+                "들어가지 않고 있습니다(인자만 늘리고 본문은 안 고친 형태).");
+            Assert.IsFalse(UiGlyphScalePolicy.IsResampleFree(pt, Scale, shrink),
+                $"{LogPrefix} ★ 아틀라스 {UiGlyphScalePolicy.AtlasPixels(pt, Scale)}px / 화면 " +
+                $"{UiGlyphScalePolicy.DisplayedPixels(pt, Scale, shrink):F2}px인데 <리샘플 없음>이라고 " +
+                "답했습니다. 이 술어가 이러면 실기 프로브의 초록은 아무 뜻이 없습니다.");
+
+            // (다) 실기 판정기 — 빨간 줄이 실제로 나오는가.
+            OverlayCompositionVerdict.Line red =
+                GlyphLine(GlyphSnapshot(pt, Scale, shrink, "합성(축소 폴백)"));
+            Assert.AreEqual(CompositionFault.Blur, red.Fault,
+                $"{LogPrefix} ★★ 축소 폴백({shrink:F4}배)이 걸린 표면인데 판정이 " +
+                $"'{red.Fault}'입니다. 이것이 바로 2026-09-06 이전의 상태입니다 — 진단 도구가 " +
+                $"자기 사각지대를 초록으로 덮고 있었습니다. 줄 본문: {red.Text}");
+
+            // (라) 음성 대조 — transform 배율만 1로 되돌리면 같은 pt가 초록이어야 한다.
+            //     이것이 없으면 위 (다)는 "무엇이든 빨간 검사"와 구분되지 않는다.
+            OverlayCompositionVerdict.Line green =
+                GlyphLine(GlyphSnapshot(pt, Scale, 1f, "합성(스케일 없음)"));
+            Assert.AreEqual(CompositionFault.None, green.Fault,
+                $"{LogPrefix} transform 배율 1인데 번짐으로 찍었습니다 — 오탐입니다. " +
+                $"그러면 (다)의 빨강도 아무 뜻이 없습니다. 줄 본문: {green.Text}");
+
+            Debug.Log($"{LogPrefix} 양성 대조(transform) — {pt}pt @ 배율 {Scale:F3}: " +
+                $"옛 계산 {oldRequestedPixels:F2}px(정수 = 거짓 초록) / " +
+                $"새 계산 아틀라스 {UiGlyphScalePolicy.AtlasPixels(pt, Scale)}px → 화면 " +
+                $"{UiGlyphScalePolicy.DisplayedPixels(pt, Scale, shrink):F2}px = " +
+                $"{UiGlyphScalePolicy.ResampleRatio(pt, Scale, shrink):F4}배 리샘플 → 판정 {red.Fault}.");
+        }
+
+        /// <summary>
+        /// ★ <b>하위호환</b> — 셋째 인자를 안 준 기존 호출부가 예전과 같은 답을 내는가.
+        /// <para>그리고 <c>transformScale = 1</c>에서는 <b>레이아웃 질문</b>(정수 격자)과
+        /// <b>렌더 질문</b>(리샘플 없음)이 같은 답이어야 한다 — 두 술어를 나눈 것이 기존 계약을
+        /// 조용히 바꾸지 않았다는 증명이다.</para>
+        /// </summary>
+        [Test]
+        public void transform_인자는_기본값_1로_기존_두_인자_호출부와_같은_답을_낸다()
+        {
+            int compared = 0;
+            foreach (float canvasScale in new[] { 1f, 1.25f, Scale, 1.75f, 2f, 3f })
+            {
+                for (int pt = 1; pt <= 64; pt++)
+                {
+                    bool two = UiGlyphScalePolicy.IsExact(pt, canvasScale);
+                    bool three = UiGlyphScalePolicy.IsExact(pt, canvasScale, 1f);
+                    Assert.AreEqual(two, three,
+                        $"{LogPrefix} {pt}pt @ 배율 {canvasScale:F3}에서 두 인자({two})와 " +
+                        $"셋째 인자 1({three})의 답이 다릅니다 — 하위호환이 깨졌습니다.");
+
+                    Assert.AreEqual(two, UiGlyphScalePolicy.IsResampleFree(pt, canvasScale, 1f),
+                        $"{LogPrefix} {pt}pt @ 배율 {canvasScale:F3}, transform 1에서 " +
+                        "<정수 격자>와 <리샘플 없음>의 답이 갈렸습니다. 조상 스케일이 없으면 두 질문은 " +
+                        "같은 질문입니다 — 갈렸다면 새 산술이 옛 계약을 바꾼 것입니다.");
+                    compared++;
+                }
+            }
+
+            // 미관측(0)·불량(NaN/음수)도 1과 같게 접히는가 — 관측 실패를 결함으로 바꾸면 오탐이 된다.
+            foreach (float bad in new[] { 0f, -1f, float.NaN, float.PositiveInfinity })
+            {
+                Assert.AreEqual(UiGlyphScalePolicy.IsExact(13, Scale, 1f),
+                    UiGlyphScalePolicy.IsExact(13, Scale, bad),
+                    $"{LogPrefix} 미관측 transform 배율({bad})이 1로 접히지 않습니다 — " +
+                    "재 보지 않은 항이 결함으로 보고됩니다(오탐).");
+            }
+
+            Debug.Log($"{LogPrefix} 하위호환 대조 {compared}쌍 — 두 인자 == 셋째 인자 1.");
+        }
+
+        /// <summary>
+        /// ★ <b>비대칭 잠금</b> — 아틀라스는 transform을 <b>모르고</b> 화면만 안다.
+        /// <para>이 성질이 무너지면(누가 <c>AtlasPixels</c>에 transform 항을 넣으면) 리샘플 비가
+        /// 항상 1이 되어 이 라운드의 수정이 통째로 무효가 된다 — <b>조용히</b> 무효가 된다.</para>
+        /// </summary>
+        [Test]
+        public void 아틀라스는_transform_배율을_보지_않고_화면만_본다()
+        {
+            float shrink = ShrinkFallbackTransformScale;
+            foreach (int pt in new[] { 8, 10, 12, 14, 20 })
+            {
+                int atlasNeutral = UiGlyphScalePolicy.AtlasPixels(pt, Scale);
+                Assert.AreEqual(atlasNeutral, UiGlyphScalePolicy.AtlasPixels(pt, Scale),
+                    $"{LogPrefix} AtlasPixels가 같은 입력에 다른 답을 냅니다.");
+
+                float displayedNeutral = UiGlyphScalePolicy.DisplayedPixels(pt, Scale, 1f);
+                float displayedShrunk = UiGlyphScalePolicy.DisplayedPixels(pt, Scale, shrink);
+                Assert.AreEqual(displayedNeutral * shrink, displayedShrunk, 1e-3f,
+                    $"{LogPrefix} 화면 픽셀이 transform 배율에 비례하지 않습니다 — " +
+                    "메시 쪽에 배율이 안 걸렸다는 뜻이고, 그러면 이 진단은 아무것도 재지 않습니다.");
+
+                Assert.AreEqual(displayedShrunk / atlasNeutral,
+                    UiGlyphScalePolicy.ResampleRatio(pt, Scale, shrink), 1e-3f,
+                    $"{LogPrefix} 리샘플 비가 <화면 ÷ 아틀라스>와 다릅니다.");
+            }
+        }
+
+        /// <summary>
+        /// ★ <b>처방이 갈리는 이유</b> — 축소 폴백에서는 <b>어떤 pt로도</b> 잔차를 없앨 수 없다.
+        ///
+        /// <para>그래서 판정 문구가 "pt를 배율에 맞추세요"라고 말하면 <b>틀린 처방</b>이다.
+        /// 아래는 그 사실을 1~64pt 전수로 확인하고, 실제 판정 문구가 두 갈래로 갈리는지까지 본다.</para>
+        ///
+        /// <para>★ 부재 단언(「pt 권고가 <b>없다</b>」)만 두면 문구가 바뀌는 날 <b>조용히 초록</b>이
+        /// 된다(CLAUDE.md). 그래서 같은 검사 안에 <b>존재 단언</b>을 함께 둔다 — 중립 갈래에서는
+        /// 그 권고가 <b>실재</b>해야 한다. 둘 중 하나만 틀려도 여기서 멈춘다.</para>
+        /// </summary>
+        [Test]
+        public void 축소_폴백에서는_pt를_옮겨도_잔차가_사라지지_않는다()
+        {
+            float shrink = ShrinkFallbackTransformScale;
+
+            var survivors = new List<string>();
+            for (int pt = 1; pt <= 64; pt++)
+            {
+                if (UiGlyphScalePolicy.IsResampleFree(pt, Scale, shrink))
+                {
+                    survivors.Add($"{pt}pt → {UiGlyphScalePolicy.ResampleRatio(pt, Scale, shrink):F4}배");
+                }
+            }
+            Assert.IsEmpty(survivors,
+                $"{LogPrefix} 배율 {Scale:F3} × 축소 {shrink:F4}에서 잔차 0인 pt가 발견됐습니다 " +
+                $"({survivors.Count}건: {string.Join(", ", survivors)}). 그렇다면 판정 문구의 " +
+                "「pt로는 못 고친다」는 단정이 거짓이 됩니다 — 문구를 함께 고쳐야 합니다.");
+
+            // ---- 두 갈래 문구가 실제로 갈리는가 ----
+            int inexactPt = FirstInexactPointAtReferenceScale();
+            Assert.Greater(inexactPt, 0, $"{LogPrefix} 배율 {Scale:F3}에서 잔차가 있는 pt를 못 찾았습니다.");
+            int advisedPt = UiGlyphScalePolicy.SnapPoints(inexactPt, Scale);
+
+            string neutralText = GlyphLine(GlyphSnapshot(inexactPt, Scale, 1f, "합성(중립)")).Text;
+            string shrunkText = GlyphLine(GlyphSnapshot(
+                FirstExactPointAtReferenceScale(), Scale, shrink, "합성(축소 폴백)")).Text;
+
+            // 존재 단언 — 중립 갈래는 "몇 pt로 옮겨라"를 실제로 말한다.
+            string ptAdvice = $"예: {advisedPt}pt";
+            StringAssert.Contains(ptAdvice, neutralText,
+                $"{LogPrefix} 중립 갈래 문구에서 pt 권고('{ptAdvice}')를 찾지 못했습니다 — " +
+                "문구 형식이 바뀌었다면 아래 부재 단언이 <아무것도 안 보고 초록>이 됩니다. " +
+                $"실제 문구: {neutralText}");
+
+            // 부재 단언 — 축소 갈래는 그 권고를 하면 안 된다(틀린 처방이므로).
+            StringAssert.DoesNotContain(ptAdvice, shrunkText,
+                $"{LogPrefix} ★ 축소 폴백 판정이 pt 권고('{ptAdvice}')를 하고 있습니다. " +
+                "이 조합에서는 어떤 pt로도 잔차가 0이 되지 않으므로 그건 <틀린 처방>이고, " +
+                $"틀린 처방을 내는 진단은 없는 진단보다 나쁩니다. 실제 문구: {shrunkText}");
+
+            Assert.AreNotEqual(neutralText, shrunkText,
+                $"{LogPrefix} 중립 갈래와 축소 갈래의 문구가 같습니다 — 처방이 갈리지 않았습니다.");
+
+            Debug.Log($"{LogPrefix} 처방 분기 — 중립: pt 권고 있음('{ptAdvice}') / " +
+                $"축소 {shrink:F4}배: pt 권고 없음, 1~64pt 전수에 잔차 0 없음.");
         }
     }
 }

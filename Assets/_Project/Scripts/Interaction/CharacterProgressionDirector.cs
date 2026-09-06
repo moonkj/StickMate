@@ -100,13 +100,40 @@ namespace StickMate.Interaction
         /// <summary>직전 요약 이후 유휴로 들어온 동전(요약 한 줄에 실어 보내고 0으로 되돌린다).</summary>
         private int _idleCoinsSinceLog;
 
-        /// <summary>«유휴 수급이 멈췄다»를 이미 알렸는가. 다시 벌기 시작하면 내려간다 —
-        /// 그래야 다음 정지가 <b>새 사건</b>으로 한 번 더 보고된다.</summary>
+        /// <summary>«유휴 수급이 멈췄다»를 이미 알렸는가. <b>창이 다시 갉히기 시작하면</b> 내려간다 —
+        /// 그래야 다음 정지가 <b>새 사건</b>으로 한 번 더 보고된다.
+        /// <para>★ 2026-09-06 정정 — 원래는 «동전이 1개라도 들어오면» 내렸다. 그 기준이
+        /// <see cref="LogIdleStallOnce"/>의 오판과 짝을 이뤄 <b>5초에 한 줄</b>을 만들었다
+        /// (0동전 프레임에서 찍고 → 5초 뒤 동전 1개에 플래그가 풀리고 → 다음 프레임에 또 찍는다).
+        /// 이제 올리는 조건과 내리는 조건이 <b>같은 사실 하나</b>(창이 갉혔는가)를 본다.</para></summary>
         private bool _idleStallLogged;
 
         /// <summary>유휴 수급 요약 로그의 최소 간격(초). 동전은 5초에 1개꼴로 들어오므로 지급마다
         /// 찍으면 하루 1만 줄이 넘는다 — 24시간 상주 앱에서 그건 로그가 아니라 소음이다.</summary>
         private const double IdleIncomeLogIntervalSeconds = 1800.0;
+
+        // ====================================================================
+        // ★ 정지 로그의 식별 표지 — 테스트가 문장을 <b>베끼지 않고</b> 참조한다
+        // ====================================================================
+        // 문장을 테스트에 하드코딩하면 문구를 다듬는 라운드마다 «부재 단언»이 조용히 초록이 된다
+        // (CLAUDE.md — 부재 단언용 니들이 썩으면 아무도 모른다). 여기 상수로 두면 이름이 바뀌는
+        // 순간 테스트가 컴파일되지 않는다.
+
+        /// <summary>정지 로그 한 줄의 머리말. 이 문자열이 로그에 있으면 «멈췄다»를 알린 것이다.</summary>
+        public const string IdleStallLogMarker = "[재화] 유휴 수급이 멈췄습니다";
+
+        /// <summary>정지 사유 ① — 오늘의 일일 상한을 다 채웠다.</summary>
+        public const string IdleStallCapPhrase = "오늘 상한";
+
+        /// <summary>정지 사유 ② — 8시간 창을 다 썼다. ★ 실제로는 <b>거의 도달할 수 없는</b> 사유다
+        /// (<c>CurrencyRules.WindowToCeilingRatio</c> = 2.3배 — 창이 하루 절대 천장의 2배가 넘게
+        /// 설계돼 있어 상한이 <b>먼저</b> 걸린다). 옛 구현은 이 사유를 <b>기본 분기</b>로 적었고,
+        /// 그래서 상한 정지에 «480분을 다 썼다»는 거짓 문장이 붙어 나갔다.</summary>
+        public const string IdleStallWindowPhrase = "지급 가능 시간";
+
+        /// <summary>정지 사유 ③ — 위 둘 다 아니다. 여기에 오면 <b>우리가 모르는 정지</b>이므로
+        /// 아는 척하지 않고 숫자를 그대로 늘어놓는다(두 사유를 동시에 주장하지 않는다).</summary>
+        public const string IdleStallUnknownPhrase = "원인을 특정하지 못했습니다";
 
         /// <summary>
         /// ★ <b>재화 일일 리셋의 유일한 구동자</b>(2026-09-06 배선). 상한 리셋 · 무료 회복제 부활 ·
@@ -306,6 +333,16 @@ namespace StickMate.Interaction
         ///
         /// <para>★ 시간 입력은 <b>단조 시계 두 시점의 차</b>다. <c>Time.deltaTime</c> 누적을 쓰면
         /// ① 엔진 상한 때문에 조용히 적게 쌓이고 ② 기계가 잠든 시간을 통째로 잃는다(T-3-c).</para>
+        ///
+        /// <para>★★ <b>«멈췄다»의 기준은 동전이 아니라 창이다</b>(2026-09-06 수정). 요율이
+        /// <c>IdleCoinsPerMinute</c>(분당 12 = 초당 0.2)라 <b>정상 상태에서도 프레임의 대부분이
+        /// 0동전</b>이고 — 소수분은 <c>CarryCoins</c>로 다음 틱에 넘어간다 — 그 0을 정지로 읽던
+        /// 옛 코드는 <b>정상 동작을 5초에 한 번씩 고장으로 신고</b>했다.
+        /// <b>실측</b>(<c>CurrencyRules.IdleTick</c>을 그대로 컴파일해 60fps 1시간을 돌린 결과):
+        /// 옛 기준 <b>720줄/시간</b>, 새 기준 <b>0줄</b>. 하루로는 동전 1개당 한 줄이라 상한(1,500)에
+        /// 걸릴 때까지 약 1,500줄이고, 회복제 2개면 약 2,500줄이다.
+        /// 그래서 분기는 지급액이 아니라 <c>windowSecondsSpent</c>를 본다: 그 값은 «지급이 실제로
+        /// 일어난 초»에만 값이 있으므로(T-15-1-a) 0동전과 0초가 <b>다른 사실</b>이 된다.</para>
         /// </summary>
         private void AccrueIdleIncome()
         {
@@ -314,18 +351,27 @@ namespace StickMate.Interaction
             _idleTickMonotonic = nowMonotonic;                  // ★ 조건 없이 전진(위 문단)
             if (double.IsNaN(previousMonotonic)) return;        // 첫 틱 — 기산점만 잡고 지급은 없다
 
+            double elapsedSeconds = nowMonotonic - previousMonotonic;
             bool isIdleEarning = _focusWatch == null || !_focusWatch.IsSessionActive;
-            int coins = CurrencyModel.TickIdleIncome(nowMonotonic - previousMonotonic, isIdleEarning);
+            int coins = CurrencyModel.TickIdleIncome(elapsedSeconds, isIdleEarning,
+                out double windowSecondsSpent);
 
             if (coins > 0)
             {
                 _idleCoinsSinceLog += coins;
-                _idleStallLogged = false;      // 다시 벌기 시작했다 — 다음 정지는 새 사건이다.
                 LogIdleIncomeIfDue(nowMonotonic);
-                return;
             }
 
             if (!isIdleEarning) return;        // 집중 세션 중 — 0원이 정상이고 알릴 것이 없다.
+
+            // 같은 단조 시각이 두 번 읽히면(또는 시계가 역행하면) 이 틱은 <b>수급에 대해 아무것도
+            // 말하지 않는다</b> — 창이 안 갉힌 것은 정지가 아니라 «잰 시간이 없다»는 뜻이다.
+            if (!(elapsedSeconds > 0.0)) return;
+
+            // ★ 창이 갉혔다 = 수급은 살아 있다. 이번 틱이 0동전이어도 그건 요율의 결과일 뿐이다.
+            //   여기서 플래그를 내리므로 «다음 정지»는 새 사건으로 다시 한 번 보고된다.
+            if (windowSecondsSpent > 0.0) { _idleStallLogged = false; return; }
+
             LogIdleStallOnce();
         }
 
@@ -334,6 +380,13 @@ namespace StickMate.Interaction
         /// <para>★ <b>이 로그가 없으면 이 기능은 관측할 수 없다.</b> 상한/창에 걸린 상태는 화면에서
         /// «고장»과 똑같이 생겼다 — 앱은 그대로 떠 있고 동전만 안 는다. 이 저장소는 같은 형태의
         /// 오진을 반복해서 받았다. 대신 <b>매 프레임 찍지 않는다</b>(24시간 상주 앱).</para>
+        ///
+        /// <para>★★ <b>사유를 추측하지 않는다</b>(2026-09-06 수정). 옛 구현은 «상한이 아니면 창»이라는
+        /// 2분기였는데, 하필 <b>창은 거의 도달할 수 없는 쪽</b>이다
+        /// (<c>CurrencyRules.WindowToCeilingRatio</c> = 480분×12 ÷ 2,500 = 2.3배 — 상한이 항상
+        /// 먼저 걸리도록 설계돼 있다). 그래서 그 기본 분기는 사실상 <b>거짓 문장 전용</b>이었고,
+        /// 실제 로그에 «8시간 창을 0으로 리셋했다»와 «480분을 다 썼다»가 11줄 간격으로 함께 찍혔다.
+        /// 지금은 두 사실을 <b>각각</b> 확인하고, 둘 다 아니면 그렇다고 적는다.</para>
         /// </summary>
         private void LogIdleStallOnce()
         {
@@ -341,14 +394,43 @@ namespace StickMate.Interaction
             _idleStallLogged = true;
 
             bool capReached = CurrencyModel.RemainingDailyRoomCoins() <= 0;
-            Debug.Log("[재화] 유휴 수급이 멈췄습니다 — " +
-                (capReached
-                    ? $"오늘 상한({CurrencyModel.DailyCapCoins()}동전)을 다 채웠습니다. " +
-                      $"회복제를 쓰면 상한이 늘고(오늘 {CurrencyModel.PotionsUsedToday}/{CurrencyRules.MaxPotionsPerDay}개), " +
-                      "집중 모드 지급은 이 상한 <b>밖</b>이라 계속 들어옵니다."
-                    : $"오늘의 지급 가능 시간({CurrencyRules.IdleWindowCapMinutes}분)을 다 썼습니다. " +
-                      "앱이 켜져 있던 시간이 아니라 «동전이 실제로 나온 시간»만 세는 창입니다.") +
-                $" 잔액 {CurrencyModel.CoinBalance}동전. 날짜가 바뀌면 둘 다 다시 열립니다.");
+            bool windowExhausted = CurrencyModel.RemainingIdleWindowSeconds() <= 0.0;
+
+            string capLine =
+                $"{IdleStallCapPhrase}({CurrencyModel.DailyCapCoins()}동전)을 다 채웠습니다" +
+                $"(오늘 유휴 {CurrencyModel.TodayGrantedCoins}동전). " +
+                $"회복제를 쓰면 상한이 늘고(오늘 {CurrencyModel.PotionsUsedToday}/{CurrencyRules.MaxPotionsPerDay}개), " +
+                "집중 모드 지급은 이 상한 <b>밖</b>이라 계속 들어옵니다.";
+
+            string windowLine =
+                $"오늘의 {IdleStallWindowPhrase}({CurrencyRules.IdleWindowCapMinutes}분)을 다 썼습니다. " +
+                "앱이 켜져 있던 시간이 아니라 «동전이 실제로 나온 시간»만 세는 창입니다.";
+
+            string why;
+            if (capReached && windowExhausted)
+            {
+                // 설계상 거의 나올 수 없는 조합이다 — 나왔다면 그 사실 자체가 보고할 값어치가 있다.
+                why = capLine + " 그리고 " + windowLine;
+            }
+            else if (capReached)
+            {
+                why = capLine;
+            }
+            else if (windowExhausted)
+            {
+                why = windowLine;
+            }
+            else
+            {
+                why = $"{IdleStallUnknownPhrase} — 상한도 창도 남아 있는데 창이 갉히지 않았습니다" +
+                      $"(오늘 유휴 {CurrencyModel.TodayGrantedCoins}/{CurrencyModel.DailyCapCoins()}동전, " +
+                      $"남은 창 {CurrencyModel.RemainingIdleWindowSeconds() / 60.0:F0}분). " +
+                      "이건 «의도된 천장»이 아니라 우리가 모르는 상태입니다 — 이 줄이 보이면 " +
+                      "CurrencyRules.IdleTick의 관문과 이 호출부의 인자를 함께 보십시오.";
+            }
+
+            Debug.Log($"{IdleStallLogMarker} — {why} " +
+                $"잔액 {CurrencyModel.CoinBalance}동전. 날짜가 바뀌면 상한과 창이 함께 다시 열립니다.");
         }
 
         /// <summary>주기 요약. 동전은 5초에 1개꼴로 들어오므로 <b>한 번씩 찍으면 안 된다</b> —
@@ -362,10 +444,12 @@ namespace StickMate.Interaction
             }
 
             _idleLogMonotonic = nowMonotonic;
+            // ★ 「남은 창」의 뺄셈을 여기서 다시 하지 않는다 — 클램프를 빠뜨린 사본이 하나 생기는
+            //   순간 같은 사실을 두 곳이 다르게 말하게 된다(위 정지 로그도 같은 함수를 부른다).
             Debug.Log($"[재화] 유휴 수급 +{_idleCoinsSinceLog}동전(직전 요약 이후) — " +
                 $"잔액 {CurrencyModel.CoinBalance}동전, 오늘 유휴 {CurrencyModel.TodayGrantedCoins}/" +
                 $"{CurrencyModel.DailyCapCoins()}, 남은 창 " +
-                $"{(CurrencyRules.IdleWindowCapSeconds - CurrencyModel.IdleWindowUsedSeconds) / 60.0:F0}분. " +
+                $"{CurrencyModel.RemainingIdleWindowSeconds() / 60.0:F0}분. " +
                 "저장은 다음 주기/종료 저장에 실립니다.");
             _idleCoinsSinceLog = 0;
         }

@@ -605,5 +605,248 @@ namespace StickMate.Tests.EditMode
                 $"stepUpChance({deployed.stepUpChance:F2})가 0입니다 — 내려갈 수는 있어도 되올라올 수 " +
                 "없습니다(왕복의 절반만 성립).");
         }
+
+        // ============================================================================
+        // ★ (6) 접지 판정 **단위 불일치** (2026-09-06, debugger 규명 → dev-platform 근본 수정)
+        // ============================================================================
+        //
+        // 같은 하나의 접지 판정에 단위가 다른 두 값이 섞여 있었다:
+        //   · GroundSensor.Sense()의 밴드  = StickConfig.groundSnapTolerance      → **OS 포인트**(20)
+        //   · SnapToGround()의 이동 상한   = StickConfig.groundSnapMaxDistanceWorld → **월드 유닛**(0.60)
+        // Editor/SceneBootstrapper.cs가 orthographicSize를 12로 고정하므로 "1pt = 몇 월드유닛"은
+        // **창 높이(포인트)에 반비례**한다. 창이 세로로 작아질수록 밴드가 커지고, 어느 지점부터
+        // 상한을 추월한다 — 그러면 "Sense()는 Grounded를 줬는데 SnapToGround가 상한 초과로 발판을 놓고
+        // Fall로 보낸다"는 갭이 열린다(= 걷다 말고 덜덜거리며 떨어진다).
+        //
+        //   갭 경계 = 2 x orthographicSize x tolerance / maxDistance = 24 x 20 / 0.60 = **800pt**
+        //
+        //   1512x982 (이 개발 머신)  0.4888 < 0.60  안전 — 그래서 아무도 못 봤다
+        //   1280x800 (macOS)         0.6000 = 0.60  경계선
+        //   1366x768 (Windows)       0.6250 > 0.60  ★ 갭 안. 스팀 전환 타깃의 실재 해상도다
+        //    640x480 (배치모드 러너)  1.0000 > 0.60  크게 열린다
+        //
+        // 이 절은 그 하한을 **말이 아니라 코드로** 잠근다(툴팁에는 2026-08-29부터 적혀 있었지만
+        // 강제하는 것이 아무것도 없었다).
+
+        /// <summary>이 테스트가 쓰는 독립 환산 — 프로덕션 함수를 부르지 않는다(기대값이 대상과 함께
+        /// 틀어지면 아무것도 못 잰다는 TEAM.md 규칙). orthographicSize만 프로덕션 상수를 참조한다.</summary>
+        private static float WorldUnitsPerPointAt(float windowHeightPoints)
+            => (2f * DockGeometry.ReferenceOrthographicSize) / windowHeightPoints;
+
+        /// <summary>배포 에셋을 **복제**해 돌려준다 — 원본 자산은 절대 수정하지 않는다(불변 원칙 3).</summary>
+        private static StickConfig CloneDeployedConfig()
+        {
+            StickConfig clone = Object.Instantiate(LoadDeployedConfig());
+            Assert.IsNotNull(clone, "배포 설정 복제에 실패했습니다.");
+            return clone;
+        }
+
+        /// <summary>실제 해상도 표본(세로 포인트). 격자 스윕과 별개로 반드시 함께 재는 지점들.</summary>
+        private static readonly float[] RealWorldWindowHeights =
+        {
+            480f,   // 배치모드 러너 기본
+            600f,   // 1024x600 넷북 계열
+            768f,   // ★ Windows 1366x768 — 스팀 전환 타깃
+            800f,   // macOS 1280x800 (경계선)
+            NullPlatformWindowService.ReferenceScreenHeightPoints, // 1512x982 이 개발 머신
+            1080f,  // 1920x1080
+            1440f,  // 2560x1440
+            1600f,  // 2560x1600 (16:10)
+        };
+
+        [Test]
+        public void 스냅상한이_창높이_600에서_1600pt_전구간에서_접지밴드를_덮어야_한다()
+        {
+            StickConfig deployed = LoadDeployedConfig();
+            float configuredMax = deployed.groundSnapMaxDistanceWorld;
+
+            int derivationWinCount = 0;
+            int sampleCount = 0;
+            float worstClearanceRatio = float.MaxValue;
+            float worstHeight = 0f;
+
+            // 600~1600pt를 20pt 격자로 전수 스윕 + 실제 해상도 표본(범위 밖 480 포함).
+            for (float h = 600f; h <= 1600.5f; h += 20f) EvaluateOne(h);
+            foreach (float h in RealWorldWindowHeights) EvaluateOne(h);
+
+            Debug.Log($"[SNAP-UNIT] 표본 {sampleCount}개(창높이 600~1600pt 격자 + 실제 해상도 8종) — " +
+                $"유도가 이긴 표본 {derivationWinCount}개. 최악 여유비 {worstClearanceRatio:F4}배 " +
+                $"(창높이 {worstHeight:F0}pt). 요구 배수 {StickConfig.GroundSnapToleranceHeadroomRatio:F2}.");
+
+            // 공허하지 않음 — 유도가 실제로 이기는 표본이 있어야 이 테스트가 무언가를 지킨다.
+            // (전부 '설정 승'이면 이 검사는 그냥 상수 0.60을 다시 확인하는 것에 지나지 않는다.)
+            Assert.Greater(derivationWinCount, 0,
+                $"창높이 600~1600pt 전 격자에서 유도가 한 번도 설정값({configuredMax:F3})을 이기지 못했습니다 — " +
+                "그렇다면 이 테스트는 아무것도 잠그지 않습니다(허용오차나 상한 기본값이 바뀐 것인지 확인하세요).");
+
+            void EvaluateOne(float heightPoints)
+            {
+                sampleCount++;
+                float worldPerPoint = WorldUnitsPerPointAt(heightPoints);
+                float band = deployed.groundSnapTolerance * worldPerPoint;     // 접지 밴드(월드 유닛)
+                float resolved = deployed.ResolveGroundSnapMaxDistanceWorld(worldPerPoint);
+
+                // (a) 하한 — 실효 상한은 접지 밴드보다 반드시 크다. 이게 이 라운드의 본체다.
+                Assert.Greater(resolved, band,
+                    $"창높이 {heightPoints:F0}pt에서 실효 스냅 상한({resolved:F4})이 접지 밴드({band:F4})를 " +
+                    "덮지 못합니다 — GroundSensor.Sense()가 Grounded를 준 바로 그 프레임에 " +
+                    "SnapToGround()가 상한 초과로 발판을 놓고 Fall로 보냅니다(정상 보행이 낙하가 됩니다). " +
+                    "StickConfig.ResolveGroundSnapMaxDistanceWorld의 유도를 확인하세요.");
+
+                // (b) 여유 — 밴드 가장자리에서 나온 Grounded가 부동소수 오차로 상한에 걸리지 않도록,
+                //     단순히 '크다'가 아니라 요구 배수만큼 크다.
+                Assert.GreaterOrEqual(resolved, band * StickConfig.GroundSnapToleranceHeadroomRatio - 1e-5f,
+                    $"창높이 {heightPoints:F0}pt에서 실효 상한({resolved:F4})이 접지 밴드({band:F4})의 " +
+                    $"{StickConfig.GroundSnapToleranceHeadroomRatio:F2}배에 못 미칩니다 — 밴드 가장자리 " +
+                    "프레임이 '가끔만' 낙하하는 형태의 버그가 됩니다.");
+
+                // (c) 설정값은 **하한**이다 — 유도가 상한을 줄이는 일은 정의상 없어야 한다.
+                //     (max()가 min()으로 뒤바뀌는 회귀를 잡는다.)
+                Assert.GreaterOrEqual(resolved, configuredMax - 1e-5f,
+                    $"창높이 {heightPoints:F0}pt에서 유도값({resolved:F4})이 설정 절대값({configuredMax:F4})보다 " +
+                    "작습니다 — 설정값은 하한이어야 하는데 유도가 그것을 깎았습니다.");
+
+                if (resolved > configuredMax + 1e-4f) derivationWinCount++;
+                float ratio = band > 0f ? resolved / band : float.MaxValue;
+                if (ratio < worstClearanceRatio) { worstClearanceRatio = ratio; worstHeight = heightPoints; }
+            }
+        }
+
+        /// <summary>
+        /// ★ 네거티브 컨트롤 — "유도를 끄면(= 설정 절대값만 쓰면) 실제로 깨진다"를 박제한다.
+        ///
+        /// <para>이것이 없으면 위 테스트는 "언제나 참인 단언"과 구분되지 않는다. 여기서는 갭이 열리는
+        /// 창 높이 경계를 <b>유도해서</b> 구하고(숫자를 베끼지 않는다), 그 경계가 실제 사용자 해상도
+        /// 사이에 있다는 것 — 즉 <b>이 결함이 실재한다</b>는 것 — 을 양방향으로 못박는다.</para>
+        ///
+        /// <para><b>왜 이 개발 머신에서는 한 번도 안 터졌는가</b>도 같은 계산이 설명한다: 982pt는
+        /// 경계(800pt)보다 <b>크다</b>. debugger 실측에서 <c>[스냅상한초과]</c>가 0건이었던 이유이고,
+        /// 이번 사용자 낙상 신고와 이 결함이 <b>무관</b>하다는 판정의 근거이기도 하다.</para>
+        /// </summary>
+        [Test]
+        public void 네거티브컨트롤_유도를_끄면_작은_창높이에서_접지밴드가_상한을_추월한다()
+        {
+            StickConfig deployed = LoadDeployedConfig();
+
+            // 갭이 열리기 시작하는 창 높이(포인트) = 2 x orthoSize x tolerance / maxDistance.
+            float gapOnsetHeightPoints = 2f * DockGeometry.ReferenceOrthographicSize
+                                         * deployed.groundSnapTolerance / deployed.groundSnapMaxDistanceWorld;
+
+            const float WindowsSteamTargetHeight = 768f;   // 1366x768 — 스팀 전환 타깃의 실재 해상도
+            float developerMachineHeight = NullPlatformWindowService.ReferenceScreenHeightPoints;
+
+            float bandAtWindows = deployed.groundSnapTolerance * WorldUnitsPerPointAt(WindowsSteamTargetHeight);
+            float bandAtDeveloper = deployed.groundSnapTolerance * WorldUnitsPerPointAt(developerMachineHeight);
+
+            Debug.Log($"[SNAP-UNIT] (네거티브 컨트롤) 갭 경계 창높이 = {gapOnsetHeightPoints:F1}pt " +
+                $"(허용오차 {deployed.groundSnapTolerance:F1}pt / 설정 상한 {deployed.groundSnapMaxDistanceWorld:F3}유닛). " +
+                $"Windows 1366x{WindowsSteamTargetHeight:F0} → 밴드 {bandAtWindows:F4} vs 상한 " +
+                $"{deployed.groundSnapMaxDistanceWorld:F4} (초과 {(bandAtWindows - deployed.groundSnapMaxDistanceWorld):F4}) / " +
+                $"이 개발 머신 {developerMachineHeight:F0}pt → 밴드 {bandAtDeveloper:F4} " +
+                $"(여유 {(deployed.groundSnapMaxDistanceWorld - bandAtDeveloper):F4}).");
+
+            // (1) 결함이 실재한다 — Windows 스팀 타깃 해상도에서 옛 방식은 실제로 깨진다.
+            Assert.Greater(bandAtWindows, deployed.groundSnapMaxDistanceWorld,
+                $"Windows 1366x{WindowsSteamTargetHeight:F0}에서 접지 밴드({bandAtWindows:F4})가 설정 상한" +
+                $"({deployed.groundSnapMaxDistanceWorld:F4})을 넘지 않습니다 — 그렇다면 유도가 없어도 안전하다는 " +
+                "뜻이고, 위 테스트는 아무것도 지키지 않습니다(허용오차/상한 기본값이 바뀐 것인지 확인하세요).");
+
+            // (2) 이 개발 머신은 안전하다 — 그래서 여기서는 재현되지 않았다(debugger 실측과 일치).
+            Assert.Less(bandAtDeveloper, deployed.groundSnapMaxDistanceWorld,
+                $"이 개발 머신 창높이({developerMachineHeight:F0}pt)에서도 밴드({bandAtDeveloper:F4})가 상한을 " +
+                "넘습니다 — 그렇다면 이 결함은 macOS 실기에서도 상시 재현되어야 하는데 실측 로그의 " +
+                "[스냅상한초과]는 0건이었습니다. 전제가 어긋났으니 근거를 다시 세우세요.");
+
+            // (3) 경계가 우리가 실제로 보는 해상도 사이에 있다 = 이 결함은 '이론상'이 아니다.
+            Assert.That(gapOnsetHeightPoints,
+                Is.GreaterThan(WindowsSteamTargetHeight).And.LessThan(developerMachineHeight),
+                $"갭 경계({gapOnsetHeightPoints:F1}pt)가 Windows 타깃({WindowsSteamTargetHeight:F0})과 " +
+                $"이 개발 머신({developerMachineHeight:F0}) 사이에 있지 않습니다 — 이 라운드의 문제 정의가 " +
+                "바뀌었다는 뜻이므로 표를 다시 계산하세요.");
+
+            // (4) 그리고 유도를 켜면 그 지점이 실제로 메워진다.
+            float resolvedAtWindows = deployed.ResolveGroundSnapMaxDistanceWorld(
+                WorldUnitsPerPointAt(WindowsSteamTargetHeight));
+            Assert.Greater(resolvedAtWindows, bandAtWindows,
+                $"유도를 켰는데도 Windows 1366x{WindowsSteamTargetHeight:F0}의 실효 상한({resolvedAtWindows:F4})이 " +
+                $"밴드({bandAtWindows:F4})를 못 덮습니다 — 수정이 목표 해상도에서 성립하지 않았습니다.");
+        }
+
+        /// <summary>
+        /// 유도 실패(카메라 없는 리그 / 헤드리스)에서는 <b>예전 거동과 100% 동일</b>해야 한다 —
+        /// 이 저장소의 Resolve* 계열이 전부 지키는 폴백 규약. 0 · 음수 · NaN · 무한대 전부 같은 답이다.
+        /// </summary>
+        [Test]
+        public void 환산_측정에_실패하면_설정_절대값으로_폴백한다()
+        {
+            StickConfig deployed = LoadDeployedConfig();
+            float configuredMax = deployed.groundSnapMaxDistanceWorld;
+
+            foreach (float bad in new[] { 0f, -1f, float.NaN, float.PositiveInfinity, float.NegativeInfinity })
+            {
+                float resolved = deployed.ResolveGroundSnapMaxDistanceWorld(bad);
+                Assert.AreEqual(configuredMax, resolved, 1e-6f,
+                    $"환산값 {bad}에서 실효 상한이 {resolved:F4}입니다 — 측정 실패는 설정 절대값" +
+                    $"({configuredMax:F4})으로 폴백해야 합니다(카메라 없는 테스트 리그의 거동이 바뀝니다).");
+            }
+        }
+
+        /// <summary>
+        /// ★ 프로덕션 환산 함수(<see cref="ScreenCoordinateConverter.WorldUnitsPerOsPoint"/>)가 이 테스트의
+        /// 독립 환산식과 <b>같은 답</b>을 주는지 확인한다. 이게 없으면 위 세 테스트는 "테스트가 만든
+        /// 숫자"만 검사하고, 실행 경로가 다른 환산을 쓰고 있어도 전부 초록이다.
+        ///
+        /// <para>창 높이를 흉내내는 방법: <c>WorldUnitsPerOsPoint = 2 x orthoSize / (Screen.height x dpi)</c>
+        /// 이므로 <c>dpi = 목표높이 / Screen.height</c>를 <b>복제한 설정</b>의 수동 오버라이드
+        /// (<see cref="StickConfig.desktopDpiScale"/>)에 넣으면 화면 크기와 무관하게 그 높이가 재현된다.
+        /// 전역 static(<c>AutoDpiScale</c>)은 건드리지 않는다 — 다른 테스트를 오염시킨다.</para>
+        /// </summary>
+        [Test]
+        public void 프로덕션_환산함수가_독립_환산식과_같은_답을_준다()
+        {
+            if (Screen.height <= 0)
+            {
+                Assert.Ignore("Screen.height가 0인 실행 환경이라 dpi 역산으로 창 높이를 흉내낼 수 없습니다.");
+            }
+
+            StickConfig clone = CloneDeployedConfig();
+            var camGo = new GameObject("SnapUnitProbeCamera");
+            try
+            {
+                var cam = camGo.AddComponent<Camera>();
+                cam.orthographic = true;
+                cam.orthographicSize = DockGeometry.ReferenceOrthographicSize;
+
+                foreach (float heightPoints in RealWorldWindowHeights)
+                {
+                    clone.desktopDpiScale = heightPoints / Screen.height;
+
+                    float production = ScreenCoordinateConverter.WorldUnitsPerOsPoint(cam, clone);
+                    float independent = WorldUnitsPerPointAt(heightPoints);
+
+                    Debug.Log($"[SNAP-UNIT] 창높이 {heightPoints:F0}pt(dpi 오버라이드 {clone.desktopDpiScale:F5}) → " +
+                        $"프로덕션 {production:F6} / 독립식 {independent:F6} / 밴드 " +
+                        $"{(clone.groundSnapTolerance * production):F4}유닛 → 실효 상한 " +
+                        $"{clone.ResolveGroundSnapMaxDistanceWorld(production):F4}");
+
+                    Assert.AreEqual(independent, production, 1e-6f,
+                        $"창높이 {heightPoints:F0}pt에서 프로덕션 환산({production:F6})이 독립 환산식" +
+                        $"({independent:F6})과 다릅니다 — 위 단위 테스트들이 실행 경로와 다른 숫자를 " +
+                        "검사하고 있다는 뜻입니다(ScreenCoordinateConverter.WorldUnitsPerOsPoint 확인).");
+                }
+
+                // 측정 실패 경로도 프로덕션 함수에서 직접 확인한다(0을 돌려줘야 폴백이 걸린다).
+                cam.orthographic = false;
+                Assert.AreEqual(0f, ScreenCoordinateConverter.WorldUnitsPerOsPoint(cam, clone), 1e-9f,
+                    "비직교 카메라에서 환산이 0이 아닙니다 — 유도가 근거 없는 값으로 상한을 흔들 수 있습니다.");
+                Assert.AreEqual(0f, ScreenCoordinateConverter.WorldUnitsPerOsPoint(null, clone), 1e-9f,
+                    "카메라가 null인데 환산이 0이 아닙니다 — 폴백 규약이 깨졌습니다.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(camGo);
+                Object.DestroyImmediate(clone);
+            }
+        }
     }
 }

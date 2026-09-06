@@ -209,6 +209,11 @@ namespace StickMate.Tests.PlayMode
             //   낱선의 절반을 쓴다. 하나의 최소값을 하나의 하한과 비교하던 예전 구조는 이제
             //   "정상적으로 얇은 경계선"을 결함으로 신고한다.
             float fillOutlineFloorWorld = StickConfig.MinFillOutlineScreenPoints / pointsPerWorldUnit;
+            // ★★ 2026-09-06 A-2 — 갈래가 <b>셋</b>이다. 계약 v2(인계본) 착용 조각은 자기 하한
+            //   (MinAccessoryStrokeScreenPoints = 1.00pt)을 쓴다. 이 통을 안 만들면 인계본 획이
+            //   낱선 통에 섞여 2.00pt와 비교되고, 실측 0.05000유닛(정확히 1pt)이 낱선 하한
+            //   0.0999의 <b>정확히 절반</b>이라 언제나 빨갛다 — 그림은 옳고 자가 낡은 상태다.
+            float accessoryFloorWorld = StickConfig.MinAccessoryStrokeScreenPoints / pointsPerWorldUnit;
 
             Assert.AreEqual(floorWorld, _agent.MinStrokeWorldWidth, floorWorld * 0.02f,
                 $"{LogPrefix} 에이전트가 쓰는 하한({_agent.MinStrokeWorldWidth:F5})이 이 테스트가 손계산한 " +
@@ -216,6 +221,9 @@ namespace StickMate.Tests.PlayMode
             Assert.AreEqual(fillOutlineFloorWorld, _agent.MinFillOutlineWorldWidth, fillOutlineFloorWorld * 0.02f,
                 $"{LogPrefix} 에이전트의 채움 경계선 하한({_agent.MinFillOutlineWorldWidth:F5})이 손계산" +
                 $"({fillOutlineFloorWorld:F5})과 다릅니다 — 두 하한이 서로 다른 pt/유닛으로 환산되고 있습니다.");
+            Assert.AreEqual(accessoryFloorWorld, _agent.MinAccessoryStrokeWorldWidth, accessoryFloorWorld * 0.02f,
+                $"{LogPrefix} 에이전트의 인계본 착용 조각 하한({_agent.MinAccessoryStrokeWorldWidth:F5})이 손계산" +
+                $"({accessoryFloorWorld:F5})과 다릅니다 — 세 하한이 같은 pt/유닛으로 환산되지 않고 있습니다.");
 
             // ★ 단조 증가를 <b>엄격</b>하게 요구하면 안 된다 — 화면이 작은 환경(배치 모드 창)에서는
             //   작은 배율들이 전부 하한에 걸려 같은 값이 나오는 것이 <b>정상</b>이다. 그래서
@@ -224,6 +232,7 @@ namespace StickMate.Tests.PlayMode
             float previousMax = -1f;
             float firstMax = -1f, lastMax = -1f;
             int minAccessoryLinesSeen = int.MaxValue;
+            int maxHandoffLinesSeen = 0;
             foreach (float v in Scales)
             {
                 _agent.ApplyCharacterScale(v, "테스트");
@@ -233,8 +242,13 @@ namespace StickMate.Tests.PlayMode
                 // ★ 매번 다시 조회한다(캐시 금지 — 위 문서). 몸은 계층에서, 몸 바깥의 잉크는 창구에서.
                 // ★ 2026-09-02 M6 — 최소값을 <b>역할별로</b> 나눠 담는다(하나로 합치면 채움 경계선이
                 //   낱선 하한과 비교되어 정상 그림이 결함으로 신고된다).
-                float minLine = float.MaxValue, minFill = float.MaxValue, max = 0f;
-                int bodyCount = 0, dynamicCount = 0, fillOutlineCount = 0;
+                // ★★ 2026-09-06 A-2 — 통이 셋이다. 그리고 <b>갈래 판정을 여기 다시 적지 않는다</b> —
+                //    이 통 나누기가 프로덕션의 삼항식을 베낀 세 번째 사본이었고, 계약 v2가 갈래를
+                //    하나 늘렸을 때 따라오지 못한 두 곳 중 하나가 바로 여기다.
+                //    이제 프로덕션과 <b>같은 창구</b>(Core/StrokeFloorRole)에 묻는다.
+                float minLine = float.MaxValue, minFill = float.MaxValue, minHandoff = float.MaxValue;
+                float max = 0f;
+                int bodyCount = 0, dynamicCount = 0, fillOutlineCount = 0, handoffCount = 0;
                 LineRenderer[] bodyLines = _agent.GetComponentsInChildren<LineRenderer>(true);
                 for (int i = 0; i < bodyLines.Length; i++)
                 {
@@ -243,8 +257,8 @@ namespace StickMate.Tests.PlayMode
                     float w = lr.startWidth;   // 실제 월드 두께(widthMultiplier는 프리팹에서 1.0 그대로다).
                     if (w <= 0f) continue;
                     bodyCount++;
-                    if (FillOutlineStroke.Is(lr)) { fillOutlineCount++; minFill = Mathf.Min(minFill, w); }
-                    else minLine = Mathf.Min(minLine, w);
+                    Bucket(lr, w, ref fillOutlineCount, ref handoffCount,
+                        ref minLine, ref minFill, ref minHandoff);
                     max = Mathf.Max(max, w);
                 }
 
@@ -257,17 +271,20 @@ namespace StickMate.Tests.PlayMode
                     float w = lr.startWidth;
                     if (w <= 0f) continue;
                     dynamicCount++;
-                    if (FillOutlineStroke.Is(lr)) { fillOutlineCount++; minFill = Mathf.Min(minFill, w); }
-                    else minLine = Mathf.Min(minLine, w);
+                    Bucket(lr, w, ref fillOutlineCount, ref handoffCount,
+                        ref minLine, ref minFill, ref minHandoff);
                     max = Mathf.Max(max, w);
                 }
 
                 minAccessoryLinesSeen = Mathf.Min(minAccessoryLinesSeen, dynamicCount);
+                maxHandoffLinesSeen = Mathf.Max(maxHandoffLinesSeen, handoffCount);
 
                 Debug.Log($"{LogPrefix} 배율 {v:F2} — 낱선 최소 {minLine:F5}(하한 {floorWorld:F5}유닛 " +
                     $"= {StickConfig.MinStrokeScreenPoints:F1}pt) · 채움경계선 {fillOutlineCount}개 최소 " +
                     $"{minFill:F5}(하한 {fillOutlineFloorWorld:F5}유닛 = " +
-                    $"{StickConfig.MinFillOutlineScreenPoints:F1}pt) · 최대 {max:F5}, " +
+                    $"{StickConfig.MinFillOutlineScreenPoints:F1}pt) · 인계본획 {handoffCount}개 최소 " +
+                    $"{(minHandoff == float.MaxValue ? 0f : minHandoff):F5}(하한 {accessoryFloorWorld:F5}유닛 = " +
+                    $"{StickConfig.MinAccessoryStrokeScreenPoints:F1}pt) · 최대 {max:F5}, " +
                     $"검사한 선 = 몸 {bodyCount}개 + 액세서리/펫/FX {dynamicCount}개.");
 
                 // ★★ 이 단언이 없으면 예전과 똑같이 "액세서리를 하나도 못 보고 통과"가 다시 가능해진다.
@@ -294,6 +311,16 @@ namespace StickMate.Tests.PlayMode
                     $"{StickConfig.MinFillOutlineScreenPoints:F1}pt) 아래입니다 — " +
                     "Windows 표시배율 100%에서 1pt = 1물리픽셀이라 여기서 더 내려가면 경계가 소실됩니다.");
 
+                if (handoffCount > 0)
+                {
+                    Assert.GreaterOrEqual(minHandoff, accessoryFloorWorld - 1e-4f,
+                        $"{LogPrefix} 배율 {v:F2}에서 가장 얇은 <b>인계본 착용 조각의 획</b>이 " +
+                        $"{minHandoff:F5}유닛으로 자기 하한({accessoryFloorWorld:F5}유닛 = " +
+                        $"{StickConfig.MinAccessoryStrokeScreenPoints:F1}pt) 아래입니다 — " +
+                        "이 획은 <b>낱선 하한과 비교하면 안 된다</b>(설계상 그 절반이다). " +
+                        "낱선 하한과 견주고 있다면 통 나누기가 아니라 자가 틀린 것입니다.");
+                }
+
                 if (previousMax > 0f)
                 {
                     Assert.GreaterOrEqual(max, previousMax - 1e-5f,
@@ -311,7 +338,45 @@ namespace StickMate.Tests.PlayMode
                 $"{firstMax:F5} → {lastMax:F5}로 전혀 굵어지지 않았습니다 — 획 두께 재대입이 빠졌습니다" +
                 "(Transform 스케일은 LineRenderer의 두께를 따라가게 하지 않습니다).");
 
-            Debug.Log($"{LogPrefix} 전 배율에서 검사한 몸 바깥 선의 최소 개수 = {minAccessoryLinesSeen}개.");
+            // ★★ A-2판 비공허성 잠금 — 인계본 통을 <b>한 번도</b> 못 봤다면 위 세 번째 단언이 통째로
+            //    공허하다(표식이 안 붙은 상태가 정확히 그것이다). 그때 인계본 획은 낱선 통으로 흘러가
+            //    2.00pt 하한과 비교되므로, 이 잠금이 없으면 그 회귀가 「초록」으로 지나간다.
+            //    ★ 배율마다가 아니라 <b>전 배율 통틀어 한 번</b> 요구한다 — 재구성 직후의 한 프레임을
+            //      잡아 흔들리는 것을 피하기 위해서다(다시 굽는 동안 컨테이너가 비는 순간이 있다).
+            Assert.Greater(maxHandoffLinesSeen, 0,
+                $"{LogPrefix} 다이얼 전 구간({Scales[0]:F2}~{Scales[Scales.Length - 1]:F2})에서 " +
+                "인계본 착용 조각(계약 v2)의 획을 <b>한 번도</b> 찾지 못했습니다 — " +
+                "CharacterAccessoryRenderer.AddLine의 AccessoryStrokeMark 표식이 끊겼거나 " +
+                "인계본 아이템이 하나도 착용되지 않았습니다. 어느 쪽이든 위 인계본 하한 단언은 " +
+                "지금 <b>아무것도 재고 있지 않습니다</b>.");
+
+            Debug.Log($"{LogPrefix} 전 배율에서 검사한 몸 바깥 선의 최소 개수 = {minAccessoryLinesSeen}개 · " +
+                $"인계본 획 최대 {maxHandoffLinesSeen}개.");
+        }
+
+        /// <summary>선 하나를 <b>역할 통</b>에 담는다. ★ 갈래 판정을 여기 적지 않고 프로덕션과
+        /// <b>같은 창구</b>(<see cref="StrokeFloorRoles.Of"/>)에 묻는다 — 테스트가 자기 사본을 들고
+        /// 있으면 프로덕션이 갈래를 늘릴 때 이 파일만 뒤처지고, 그 상태가 정확히 A-2였다.
+        /// <para>통이 비어 있는지는 개수(<paramref name="fillOutlineCount"/>/<paramref name="handoffCount"/>)로
+        /// 따로 잠근다 — 창구를 공유하면 «창구가 틀렸다»를 이 테스트가 못 잡기 때문이다.</para></summary>
+        private static void Bucket(LineRenderer lr, float width,
+            ref int fillOutlineCount, ref int handoffCount,
+            ref float minLine, ref float minFill, ref float minHandoff)
+        {
+            switch (StrokeFloorRoles.Of(lr))
+            {
+                case StrokeFloorRole.FillOutline:
+                    fillOutlineCount++;
+                    minFill = Mathf.Min(minFill, width);
+                    break;
+                case StrokeFloorRole.Accessory:
+                    handoffCount++;
+                    minHandoff = Mathf.Min(minHandoff, width);
+                    break;
+                default:
+                    minLine = Mathf.Min(minLine, width);
+                    break;
+            }
         }
 
         /// <summary>
@@ -383,10 +448,19 @@ namespace StickMate.Tests.PlayMode
         ///
         /// <list type="bullet">
         ///   <item><b>경로 (1) 증인</b> = 머리 링(<c>HeadOutline</c>). 구워진 선이라 (1)만 만진다.</item>
-        ///   <item><b>경로 (2) 증인</b> = 액세서리 채움 도형의 윤곽선. 런타임 생성이라 (2)만 만진다.</item>
+        ///   <item><b>경로 (2) 증인 ㄱ</b> = v1 액세서리 채움 도형의 윤곽선. 런타임 생성이라 (2)만 만진다.</item>
+        ///   <item><b>경로 (2) 증인 ㄴ</b> = 인계본 착용 조각(계약 v2)의 획. 같은 훑기의 <b>세 번째 갈래</b>.</item>
         /// </list>
         ///
-        /// <para>두 증인을 <b>따로</b> 세우는 것이 핵심이다 — 하나로 합치면 한 경로만 고쳐도 초록이 된다.</para>
+        /// <para>증인을 <b>따로</b> 세우는 것이 핵심이다 — 하나로 합치면 한 경로만 고쳐도 초록이 된다.</para>
+        ///
+        /// <para>★★ <b>2026-09-06 A-2 — 증인 ㄴ이 추가되고, ㄱ의 «침묵»을 다르게 읽게 됐다.</b>
+        /// 계약 v2 이식 뒤 이 착용 구성(전 슬롯 0번)에서 <b>몸 바깥의 v1 채움 경계선은 0개</b>다
+        /// (실측: 모자를 쓰면 머리카락이 커버선 아래로 잘리고, HEAD/EYES/NECK/BACK은 전부 인계본이다).
+        /// 그런데 옛 코드는 «증인이 없다»와 «증인이 증언을 안 한다»를 같은 <c>false</c>로 뭉개서,
+        /// 존재하지 않는 증인의 침묵을 <b>「되올리기 결함」이라는 틀린 원인</b>으로 신고했다.
+        /// 이제 (2)는 <b>먼저 증인의 존재</b>를 요구하고(둘 중 최소 하나 — 공허 금지),
+        /// <b>실재한 증인만</b> 증언을 요구한다. ㄱ이 공허한 실행에서는 그 사실을 로그에 남긴다.</para>
         /// </summary>
         [UnityTest]
         public IEnumerator NegativeControl_M6_되올리기_두_경로가_각각_채움_경계선을_2pt로_되돌리지_않는다()
@@ -413,8 +487,23 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 머리 링에 채움 경계선 표식이 없습니다 — " +
                 "StickmanAgent.MarkHeadRingAsFillOutline()이 Awake에서 불리지 않았습니다.");
 
+            // ★ 2026-09-06 A-2 — 같은 훑기에 <b>세 번째 갈래</b>(계약 v2 인계본 착용 조각)가 생겼다.
+            //   증인을 하나 더 세운다: 인계본 획이 낱선 하한 아래로 내려가는가. 이 증인이 없으면
+            //   안전망 훑기가 AccessoryStrokeMark를 무시해도 «채움 경계선 증인»이 대신 초록을 준다.
+            //   ★ 기존 두 증인을 <b>합치지 않고</b> 따로 세운다 — 합치면 한 갈래만 고쳐도 통과한다.
+            float handoffFloor = _agent.MinAccessoryStrokeWorldWidth;
+            Assert.Less(handoffFloor, lineFloor,
+                $"{LogPrefix} 인계본 하한({handoffFloor:F5})이 낱선 하한({lineFloor:F5})보다 작지 않습니다 — " +
+                "이 상태로는 아래 세 번째 증인이 무의미합니다(상수가 같아졌는지 확인하세요).");
+
             bool ringWentBelowLineFloor = false;      // 경로 (1)의 증인
-            bool accessoryWentBelowLineFloor = false; // 경로 (2)의 증인
+            bool accessoryWentBelowLineFloor = false; // 경로 (2)의 증인 ㄱ — v1 채움 경계선
+            bool handoffWentBelowLineFloor = false;   // 경로 (2)의 증인 ㄴ — 인계본 착용 조각
+            // ★ «증언을 안 했다»와 «증인이 없었다»를 <b>따로</b> 센다. 옛 코드는 이 둘이 같은
+            //   false로 뭉개져 있었고, 계약 v2가 v1 채움 경계선을 몸 바깥에서 <b>0개</b>로 만든 날
+            //   실패 문구가 "되올리고 있습니다"라고 <b>틀린 원인</b>을 지목했다(실측: 이 착용 구성의
+            //   FillOutline 표식은 머리 링 1개뿐이고 그것은 경로 (1) 소속이다).
+            int fillOutlineDynamicSeen = 0, handoffDynamicSeen = 0;
 
             foreach (float v in Scales)
             {
@@ -425,20 +514,38 @@ namespace StickMate.Tests.PlayMode
                 if (ringWidth > 0f && ringWidth < lineFloor - 1e-5f) ringWentBelowLineFloor = true;
 
                 float thinnestAccessoryFill = float.MaxValue;
+                float thinnestHandoff = float.MaxValue;
+                int fillOutlineHere = 0, handoffHere = 0;
                 CharacterVisualRegistry registry = _agent.DynamicVisuals;
                 registry.Refresh();
                 for (int i = 0; i < registry.Count; i++)
                 {
                     LineRenderer lr = registry[i].Line;
-                    if (lr == null || lr.startWidth <= 0f || !FillOutlineStroke.Is(lr)) continue;
-                    thinnestAccessoryFill = Mathf.Min(thinnestAccessoryFill, lr.startWidth);
+                    if (lr == null || lr.startWidth <= 0f) continue;
+                    // 갈래는 프로덕션과 <b>같은 창구</b>에 묻는다(Core/StrokeFloorRole).
+                    switch (StrokeFloorRoles.Of(lr))
+                    {
+                        case StrokeFloorRole.FillOutline:
+                            fillOutlineHere++;
+                            thinnestAccessoryFill = Mathf.Min(thinnestAccessoryFill, lr.startWidth);
+                            break;
+                        case StrokeFloorRole.Accessory:
+                            handoffHere++;
+                            thinnestHandoff = Mathf.Min(thinnestHandoff, lr.startWidth);
+                            break;
+                    }
                 }
+                fillOutlineDynamicSeen = Mathf.Max(fillOutlineDynamicSeen, fillOutlineHere);
+                handoffDynamicSeen = Mathf.Max(handoffDynamicSeen, handoffHere);
                 if (thinnestAccessoryFill < lineFloor - 1e-5f) accessoryWentBelowLineFloor = true;
+                if (thinnestHandoff < lineFloor - 1e-5f) handoffWentBelowLineFloor = true;
 
                 Debug.Log($"{LogPrefix} [M6 네거티브] 배율 {v:F2} — 머리 링 {ringWidth:F5} / " +
-                    $"액세서리 채움경계선 최소 " +
+                    $"액세서리 채움경계선 {fillOutlineHere}개 최소 " +
                     $"{(thinnestAccessoryFill == float.MaxValue ? 0f : thinnestAccessoryFill):F5} / " +
-                    $"낱선 하한 {lineFloor:F5} / 채움경계선 하한 {fillFloor:F5}.");
+                    $"인계본획 {handoffHere}개 최소 " +
+                    $"{(thinnestHandoff == float.MaxValue ? 0f : thinnestHandoff):F5} / " +
+                    $"낱선 하한 {lineFloor:F5} / 채움경계선 하한 {fillFloor:F5} / 인계본 하한 {handoffFloor:F5}.");
             }
 
             Assert.IsTrue(ringWentBelowLineFloor,
@@ -447,11 +554,42 @@ namespace StickMate.Tests.PlayMode
                 "<b>구워진 선 훑기</b>가 여전히 모든 선을 2pt로 되올리고 있습니다 — " +
                 "화면은 하나도 안 바뀐 채 나머지 단언만 초록입니다.");
 
-            Assert.IsTrue(accessoryWentBelowLineFloor,
-                $"{LogPrefix} ★ 경로 (2) 실패 — 다이얼 전 구간에서 액세서리 채움 경계선이 <b>한 번도</b> " +
-                $"낱선 하한({lineFloor:F5}) 아래로 내려가지 않았습니다. ApplyStrokeWidthsForScale의 " +
-                "<b>_dynamicVisuals 안전망 훑기</b>가 표식을 무시하고 되올리고 있거나, " +
-                "CharacterAccessoryRenderer가 채움 도형의 윤곽선에 낱선 두께를 쓰고 있습니다.");
+            // ---- 경로 (2) — 먼저 <b>증인이 존재하는가</b>, 그다음 <b>존재한 증인이 증언하는가</b> ----
+            // ★★ 2026-09-06 A-2. 이 순서가 핵심이다. 예전에는 «v1 채움 경계선» 하나만 요구했는데,
+            //    계약 v2 이식으로 몸 바깥의 그 선이 0개가 되면서(실측 — 모자를 쓰면 머리카락이
+            //    커버선 아래로 잘려 사라지고, 나머지 슬롯은 전부 인계본이다) 이 단언이
+            //    <b>존재하지 않는 증인의 침묵</b>을 «되올리기 결함»으로 신고했다.
+            //    이제 두 갈래 중 <b>적어도 하나</b>는 실재해야 하고(공허 금지),
+            //    실재한 갈래는 <b>각각</b> 증언해야 한다(한 갈래만 고치고 넘어가기 금지).
+            Assert.IsTrue(fillOutlineDynamicSeen > 0 || handoffDynamicSeen > 0,
+                $"{LogPrefix} ★ 경로 (2)가 통째로 공허합니다 — 몸 바깥(_dynamicVisuals)에 역할 표식이 붙은 " +
+                "선이 <b>한 종류도</b> 없습니다(채움 경계선 0개 · 인계본 획 0개). 이 상태에서는 아래 " +
+                "단언들이 아무것도 재지 않으므로 «통과»가 아무 뜻도 없습니다. 액세서리가 실제로 " +
+                "그려지고 있는지, 표식(FillOutlineStroke/AccessoryStrokeMark)이 붙는지 확인하세요.");
+
+            if (fillOutlineDynamicSeen > 0)
+            {
+                Assert.IsTrue(accessoryWentBelowLineFloor,
+                    $"{LogPrefix} ★ 경로 (2)-ㄱ 실패 — 몸 바깥에 v1 채움 경계선이 " +
+                    $"{fillOutlineDynamicSeen}개 있는데 다이얼 전 구간에서 <b>한 번도</b> 낱선 하한" +
+                    $"({lineFloor:F5}) 아래로 내려가지 않았습니다. ApplyStrokeWidthsForScale의 " +
+                    "<b>_dynamicVisuals 안전망 훑기</b>가 표식을 무시하고 되올리고 있거나, " +
+                    "CharacterAccessoryRenderer가 채움 도형의 윤곽선에 낱선 두께를 쓰고 있습니다.");
+            }
+            else
+            {
+                // 조용히 넘어가지 않는다 — 증인이 사라진 사실 자체를 매 실행 로그에 남긴다.
+                Debug.Log($"{LogPrefix} [M6 네거티브] 경로 (2)-ㄱ은 이 착용 구성에서 <b>공허</b>합니다 — " +
+                    "몸 바깥의 v1 채움 경계선이 0개입니다(계약 v2 이식 + 모자 커버선에 의한 머리카락 " +
+                    "절단). 경로 (2)의 증언은 아래 ㄴ(인계본 획)이 대신합니다.");
+            }
+
+            Assert.IsTrue(handoffDynamicSeen > 0 && handoffWentBelowLineFloor,
+                $"{LogPrefix} ★ 경로 (2)-ㄴ 실패(A-2) — 인계본 착용 조각의 획 {handoffDynamicSeen}개 중 " +
+                $"다이얼 전 구간에서 <b>한 번도</b> 낱선 하한({lineFloor:F5}) 아래로 내려간 것이 없습니다. " +
+                "안전망 훑기가 AccessoryStrokeMark를 무시하고 1.00pt 획을 2.00pt로 되올리고 있다는 뜻이고, " +
+                "그러면 <b>착용 모습이 인계본과 다르게(획 ×2로) 읽힙니다</b>. " +
+                "개수가 0이면 표식 자체가 안 붙은 것입니다(CharacterAccessoryRenderer.AddLine의 handoffWidth 분기).");
         }
 
         /// <summary>7슬롯을 전부 착용시킨다 — 액세서리/펫/FX가 <b>실제로 존재하는</b> 상태를 만든다.
@@ -635,12 +773,21 @@ namespace StickMate.Tests.PlayMode
         {
             float top = float.NegativeInfinity;
             var lines = container.GetComponentsInChildren<LineRenderer>(true);
+            // ★ 2026-09-06 qa-regression — 여기 있던 <c>new Vector3[64]</c> 고정 버퍼가 두 가지를
+            //   동시에 깨고 있었다. <c>LineRenderer.GetPositions</c>는 배열이 <c>positionCount</c>보다
+            //   짧으면 <b>아무것도 안 채우고</b> "array is too small!" 을 <c>Debug.LogError</c> 로 찍는다.
+            //   PlayMode 러너는 예상하지 않은 Error 로그를 실패로 셈하므로(Unhandled log message) 그
+            //   자체로 빨간불이고, 설령 러너가 삼켰더라도 아래 <c>Mathf.Min</c> 은 <b>64번째 이후의 점을
+            //   조용히 버려</b> "가장 높은 점"을 틀리게 답했을 것이다 — 즉 통과해도 거짓이었다.
+            //   계약 v2(인계본) 조각은 점이 64개를 넘는 것이 있어 2026-09-05 이후 실제로 터졌다.
+            //   버퍼는 재사용하되 <b>모자라면 키운다</b> — 자르지 않는다.
             var buffer = new Vector3[64];
             for (int i = 0; i < lines.Length; i++)
             {
                 LineRenderer lr = lines[i];
                 if (lr == null || lr.positionCount <= 0) continue;
-                int count = Mathf.Min(lr.positionCount, buffer.Length);
+                int count = lr.positionCount;
+                if (buffer.Length < count) buffer = new Vector3[count];
                 lr.GetPositions(buffer);
                 for (int p = 0; p < count; p++)
                 {

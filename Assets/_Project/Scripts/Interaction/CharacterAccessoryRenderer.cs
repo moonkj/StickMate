@@ -210,6 +210,13 @@ namespace StickMate.Interaction
             public Vector3[] Buffer;
             public int Start;
             public int Count;
+
+            /// <summary>★ 2026-09-06 perf-doc — <see cref="Base"/>의 최저 y / |x| 최댓값. <b>재구성 때 한 번만</b> 잰다.
+            /// <see cref="AccessoryShapeBuilder.HemCanReachFloor"/>가 「이 밑단이 이 바닥선에 닿을 수 있는가」를
+            /// 점 개수와 무관하게 판정하는 데 쓰는 두 스칼라다(그 함수의 증명 문단 참고).
+            /// 원본 배열의 값이므로 <b>버퍼가 원본과 같은 프레임</b>(기류 0 · 보행 0)에서만 유효하다.</summary>
+            public float BaseMinY;
+            public float BaseMaxAbsX;
         }
 
         private readonly List<SwayLine> _swayLines = new List<SwayLine>(4);
@@ -915,17 +922,7 @@ namespace StickMate.Interaction
                 handoffWidth: Mathf.Max(0.000001f, shape.StrokeInR * R));
             if (lr == null || !shape.HasSway) return;
 
-            var buffer = new Vector3[shape.Points.Length];
-            System.Array.Copy(shape.Points, buffer, shape.Points.Length);
-            _swayLines.Add(new SwayLine
-            {
-                Line = lr,
-                Fill = fillMesh,
-                Base = shape.Points,
-                Buffer = buffer,
-                Start = shape.SwayStart,
-                Count = Mathf.Min(shape.SwayCount, shape.Points.Length - shape.SwayStart),
-            });
+            AddSwayLine(lr, fillMesh, shape);
         }
 
         /// <summary>인계본 착용 조각의 화면상 하한(월드). 단일 소스는 <see cref="StickmanAgent.MinAccessoryStrokeWorldWidth"/>.</summary>
@@ -964,16 +961,40 @@ namespace StickMate.Interaction
             // 흔들 점이 있는 선만 별도 목록에 둔다 — 매 프레임 전체 선을 훑지 않기 위해서다.
             // ★ 채움 메시를 <b>같은 항목에</b> 넣는다(SwayLine.Fill 문서). 목록을 따로 두면 선과 면이
             //   서로 다른 프레임에 갱신될 수 있는 자리가 생기고, 그게 정확히 지금 고치는 버그다.
-            var buffer = new Vector3[shape.Points.Length];
-            System.Array.Copy(shape.Points, buffer, shape.Points.Length);
+            AddSwayLine(lr, fillMesh, shape);
+        }
+
+        /// <summary>흔들 선 하나를 목록에 넣는다 — 작업 버퍼를 뜨고 <see cref="SwayLine.BaseMinY"/>/
+        /// <see cref="SwayLine.BaseMaxAbsX"/>를 <b>여기서 한 번만</b> 잰다(재구성 경로라 매 프레임이 아니다).
+        /// v1 도형(<see cref="AddShape"/>)과 인계본 조각(<see cref="AddHandoffShape"/>) 두 자리가 이 함수를 공유한다 —
+        /// 갈라 두면 한쪽만 캐시를 채우고 다른 쪽이 조용히 0을 들고 다니는 자리가 생긴다.</summary>
+        private void AddSwayLine(LineRenderer line, Mesh fill, in AccessoryShapeBuilder.Shape shape)
+        {
+            Vector3[] points = shape.Points;
+            var buffer = new Vector3[points.Length];
+            System.Array.Copy(points, buffer, points.Length);
+
+            // 빈 배열이면 minY가 float.MaxValue로 남는다 — HemCanReachFloor가 그 값에서 「닿을 수 없다」를
+            // 내므로(상한이 −MaxValue) 안전하다. 점이 없으면 눌릴 점도 없다는 뜻이라 판정이 맞다.
+            float minY = float.MaxValue;
+            float maxAbsX = 0f;
+            for (int i = 0; i < points.Length; i++)
+            {
+                if (points[i].y < minY) minY = points[i].y;
+                float ax = Mathf.Abs(points[i].x);
+                if (ax > maxAbsX) maxAbsX = ax;
+            }
+
             _swayLines.Add(new SwayLine
             {
-                Line = lr,
-                Fill = fillMesh,
-                Base = shape.Points,
+                Line = line,
+                Fill = fill,
+                Base = points,
                 Buffer = buffer,
                 Start = shape.SwayStart,
-                Count = Mathf.Min(shape.SwayCount, shape.Points.Length - shape.SwayStart),
+                Count = Mathf.Min(shape.SwayCount, points.Length - shape.SwayStart),
+                BaseMinY = minY,
+                BaseMaxAbsX = maxAbsX,
             });
         }
 
@@ -1077,6 +1098,13 @@ namespace StickMate.Interaction
         /// <see cref="TickAirFlowInertia"/>가 기류를 유한 시간에 걸쳐 0으로 데려가므로, 되돌리기는
         /// 천이 실제로 다 잦아든 뒤에만 일어난다(그 시점의 변위는 정의상 0이라 아무것도 튀지 않는다).</para>
         ///
+        /// <para>★★ 2026-09-06 (perf-doc) — 그 스킵이 <b>상시 미세 피치를 가진 자세에서 영구히 막혀 있었다.</b>
+        /// 조건에 걸려 있던 <c>needsFloor</c>는 「각도·오프셋이 0이 아닌가」만 보므로, 집중 세션의 관망 자세
+        /// (−0.5°~−6.0°)나 평소 Idle의 호흡만으로도 참이 된다. 지금은 <see cref="AnyHemCanReachFloor"/>가
+        /// 「바닥선이 <b>실제로</b> 밑단에 닿을 수 있는가」를 한 겹 더 보고, 닿을 수 없으면 스킵으로 되돌린다.
+        /// 그림은 달라지지 않는다 — 그 조건에서는 <c>PressHemToFloor</c>가 반드시 0을 돌려준다는 것이
+        /// <see cref="AccessoryShapeBuilder.HemCanReachFloor"/>에서 증명돼 있다. 근거·실측: <c>docs/PERF_HEM_MOTION_IDLE.md</c>.</para>
+        ///
         /// <para>★ 선과 <b>채움 면</b>을 같은 루프에서 함께 갱신한다. 2026-08-31 이전에는 선만 옮기고
         /// 채움 메시는 재구성 전까지 정적이라, 화면에서 천으로 보이는 면이 한 번도 움직이지 않았다
         /// (사용자가 "고정"이라고 신고한 것의 나머지 절반).</para>
@@ -1104,7 +1132,31 @@ namespace StickMate.Interaction
             bool needsFloor = cosPitch > 0.05f && (bodyOffset < -0.0001f || Mathf.Abs(sinPitch) > 0.0001f);
             AccessoryShapeBuilder.HemFloorLine(HipY, RootScale, bodyOffset, sinPitch, cosPitch, out float floorIntercept, out float floorSlope);
 
-            if (air01 <= 0f && walk01 <= 0.0001f && !needsFloor)
+            // ★★ 2026-09-06 perf-doc — <b>「바닥선을 계산해야 한다」와 「바닥선이 밑단을 실제로 건드린다」는 다르다.</b>
+            //
+            //   위 needsFloor는 <b>각도·오프셋이 0이 아닌가</b>만 본다. 그래서 상시 미세 피치를 가진 자세가
+            //   들어오는 순간 <b>영구히 참</b>이 되고, 아래 조기 반환이 통째로 막힌다. 실제 사례:
+            //   집중 세션의 «관망 자세»(States/StickmanPoseAnimator.ApplyFocusWatchStancePose)는 상체를
+            //   −0.5°~−6.0°로 <b>쉬지 않고</b> 기울이므로 |sinPitch| ≥ 0.0087 > 0.0001이다.
+            //   ★ 그리고 이건 그 자세만의 문제가 아니었다 — 평소 Idle도 <b>호흡</b>(idleBreathAmplitude 0.012)이
+            //   bodyOffset을 매 주기 음수로 만들어 프레임의 약 절반에서 같은 길로 들어가고 있었다.
+            //
+            //   그 프레임에 무슨 일이 일어나는가: 기류 0 · 보행 0이므로 버퍼에 더해지는 오프셋이 하나도 없고,
+            //   눌린 점도 없으면 <b>버퍼가 구워진 원본과 완전히 같다.</b> 그런데도 49점 SetPositions + 채움
+            //   메시 정점 재기록 + RecalculateBounds를 매 프레임 돈다 — <b>화면 변화 0의 순수 낭비</b>다.
+            //   (실측: 출하 배율 0.75에서 긴망토 밑단–발목선 여유는 관망 자세 전 구간 최악 +0.2304 R = 1.34 pt로
+            //    <b>양수</b>다. 즉 한 점도 안 눌린다 — docs/PERF_HEM_MOTION_IDLE.md §2.)
+            //
+            //   그래서 needsFloor에 <b>「닿을 수 있는가」</b>를 한 겹 더한다. 판정은 점 개수와 무관한 O(1)이고
+            //   (AccessoryShapeBuilder.HemCanReachFloor의 증명 문단), <b>거짓이면 PressHemToFloor가 반드시 0을
+            //   돌려준다</b>는 것이 수학적으로 보장되므로 그림이 달라질 수 없다.
+            //
+            // ★ needsFloor 자체는 <b>건드리지 않는다.</b> 아래 루프의 damp와 PressHemToFloor는 여전히 그것을 본다 —
+            //   기류·보행이 있는 프레임에는 버퍼가 원본에서 <b>이미 밀려 있어</b> 원본에서 잰 BaseMinY/BaseMaxAbsX가
+            //   상한 노릇을 못 한다. 이 판정을 쓰는 자리는 <b>둘 다 0인 프레임 하나</b>뿐이다.
+            bool floorReachable = needsFloor && AnyHemCanReachFloor(floorIntercept, floorSlope);
+
+            if (air01 <= 0f && walk01 <= 0.0001f && !floorReachable)
             {
                 if (!_swayApplied) return;
                 RestoreHemBase();
@@ -1215,6 +1267,20 @@ namespace StickMate.Interaction
 
             windLocal = _airWindLocal;
             return _airFlow01;
+        }
+
+        /// <summary>★ 2026-09-06 perf-doc — 흔들 선 중 <b>하나라도</b> 이 바닥선에 닿을 수 있는가.
+        /// 하나라도 참이면 원래 경로를 그대로 돈다(그 루프가 선 전부를 처리하므로 판정도 전부에 대해 한다).
+        /// 선 하나당 부동소수 3연산이고 <see cref="SwayLine.Base"/>를 읽지 않는다 — 그것이 이 판정의 요점이다.</summary>
+        private bool AnyHemCanReachFloor(float intercept, float slope)
+        {
+            for (int i = 0; i < _swayLines.Count; i++)
+            {
+                SwayLine s = _swayLines[i];
+                if (s.Line == null) continue;
+                if (AccessoryShapeBuilder.HemCanReachFloor(intercept, slope, s.BaseMinY, s.BaseMaxAbsX)) return true;
+            }
+            return false;
         }
 
         /// <summary>흔들린 선/면을 <b>구워진 원본</b>으로 한 번에 되돌린다(멈춘 첫 프레임 전용).</summary>

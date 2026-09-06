@@ -587,6 +587,48 @@ namespace StickMate.Platform
         public static Vector2 OverlayOriginOsScreen { get; set; } = Vector2.zero;
 
         /// <summary>
+        /// ★ "OS 1포인트가 몇 월드 유닛인가"의 **실측 단일 소스**(2026-09-06, 접지 판정 단위 불일치 수정).
+        ///
+        /// <para>왜 필요한가 — 이 프로젝트에는 <b>단위가 다른 두 값이 같은 판정에 섞여 있는 자리</b>가 있다:
+        /// <see cref="StickConfig.groundSnapTolerance"/>는 <b>OS 포인트</b>(20pt)인데
+        /// <see cref="StickConfig.groundSnapMaxDistanceWorld"/>는 <b>월드 유닛</b>(0.60)이다. 전자는
+        /// 창 높이에 따라 월드 크기가 변하고 후자는 변하지 않으므로, 창이 세로로 작아질수록 접지 밴드가
+        /// 스냅 상한을 <b>추월</b>한다 — "접지 판정은 났는데 스냅이 거부되어 발판을 놓고 Fall"이 되는 구간이다.
+        /// 그 경계는 <c>창높이 = 2 x orthographicSize x tolerance / maxDistance = 24 x 20 / 0.6 = 800pt</c>이고,
+        /// <b>Windows 1366x768</b>(스팀 전환 타깃의 실재 해상도)이 정확히 그 아래다(0.625 &gt; 0.60).</para>
+        ///
+        /// <para>유도: 카메라가 덮는 세로 월드 높이는 <c>2 x orthographicSize</c>이고, 같은 세로 구간의
+        /// OS 포인트 높이는 <c>Screen.height x DpiScale</c>이다(<see cref="WorldToOsScreen"/>의 y 식과 같은
+        /// 한 벌 — OS 포인트 = Unity 픽셀 x dpi). 그래서
+        /// <c>월드유닛/포인트 = 2 x orthographicSize / (Screen.height x dpi)</c>다.
+        /// ★ 이 값은 Retina 전후로 <b>불변</b>이다 — Screen.height가 2배가 되면 dpi가 0.5가 되어 상쇄된다
+        /// (StickConfig의 "OS-px 필드 단위 규약" 블록이 말하는 그 성질). 실제로 변하는 축은
+        /// <b>창의 물리적 세로 크기(포인트)</b> 하나뿐이다.</para>
+        ///
+        /// <para>왜 여기인가: BUG-M5 컨벤션("좌표 변환식은 이 유틸에만 존재한다"). 소비자가 각자
+        /// <c>Screen.height * 0.5f / orthographicSize</c>를 다시 적으면 그 순간 환산이 두 곳에서 따로 산다.</para>
+        ///
+        /// <para><b>플랫폼 중립이다</b> — macOS/Windows 어느 쪽도 이 함수 안에 없다. 플랫폼 계층은
+        /// <see cref="ReportOverlayWindowOsRect"/>로 "사실"(창 사각형)만 보고하고, 판정은 여기서 한다.</para>
+        /// </summary>
+        /// <param name="cam">기준 카메라. null / 비직교 / orthographicSize &lt;= 0이면 <b>0</b>(측정 실패)을 준다.</param>
+        /// <returns>월드 유닛 / OS 포인트. <b>측정 불가면 0</b> — 호출부는 0을 "유도 실패"로 보고
+        /// 설정 절대값으로 폴백해야 한다(이 저장소의 Resolve* 계열이 전부 쓰는 규약).</returns>
+        public static float WorldUnitsPerOsPoint(Camera cam, StickConfig config)
+        {
+            if (cam == null || !cam.orthographic || cam.orthographicSize <= 0f) return 0f;
+            if (Screen.height <= 0) return 0f;
+
+            float dpi = ResolveDpiScale(config);
+            if (float.IsNaN(dpi) || float.IsInfinity(dpi) || dpi <= 0f) return 0f;
+
+            float screenHeightPoints = Screen.height * dpi;
+            if (screenHeightPoints <= 0f) return 0f;
+
+            return (2f * cam.orthographicSize) / screenHeightPoints;
+        }
+
+        /// <summary>
         /// Unity 월드 좌표 -> OS 데스크톱 좌표(좌상단 원점, 픽셀).
         /// </summary>
         /// <param name="cameraDepth">

@@ -155,8 +155,24 @@ namespace StickMate.Tests.PlayMode
         // 헬퍼 (AccessoryFacingFlipFillTests와 같은 관례)
         // ============================================================================
 
+        /// <summary>
+        /// ★ 2026-09-06 — 이 파일의 두 검사(본 검사 + 네거티브 대조)는 <b>모자 채움의 정점 하나</b>를
+        /// 프로브로 삼아 «상체가 기울어도 모자가 머리 로컬에서 안 움직인다»를 잰다. 프로브는 어느
+        /// 채움이든 되는데, 고르는 방법이 v1 이름 "HatCrown"이라 인계본 천 모자에서는 못 찾는다
+        /// (인계본 몸 표면 채움: Piece_B0 · Piece_F1 · Piece_B2far · Piece_B2near).
+        ///
+        /// <para><b>되살리는 방법</b>(별도 라운드 — 실기 PlayMode 실행 필요): 이 헬퍼를
+        /// «renderer 아래 MeshFilter 를 가진 첫 MeshRenderer»로 바꾸면 그대로 성립한다. 검사의 뜻은
+        /// «그 조각이 관인가»가 아니라 «머리에 붙은 채움이 머리를 따라오는가»이기 때문이다.
+        /// 두 호출부가 같은 헬퍼를 쓰므로 게이트도 여기 하나만 둔다(호출부 1 = 검사 2건).</para>
+        /// </summary>
         private static MeshRenderer FindCrown(CharacterAccessoryRenderer renderer)
         {
+            HandoffPlayModeGate.SkipIfHandoffRendered(renderer.transform,
+                "상체 기울임 중 모자가 머리 로컬에서 이탈하지 않는가(본 검사) + 컨테이너 회전을 지우면 " +
+                "실제로 이탈하는가(네거티브 대조) — 둘 다 인계본 조각에서도 그대로 성립해야 하는 성질이다.",
+                "HatCrown");
+
             MeshRenderer crown = null;
             foreach (MeshRenderer mr in renderer.GetComponentsInChildren<MeshRenderer>(true))
             {

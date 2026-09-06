@@ -55,6 +55,19 @@ namespace StickMate.Tests.PlayMode
         /// 한 자릿수 작다.</summary>
         private const float DriftTolerance = 0.12f;
 
+        /// <summary>
+        /// 네거티브 컨트롤 문턱 — 액세서리가 몸보다 이만큼(월드 유닛) 밖으로 나가는 순간을
+        /// <b>실제로 봤어야</b> 아래 «포함된다» 단언이 의미를 가진다.
+        ///
+        /// <para>★ 상수를 여기 하나로 둔 이유: 관찰창 <b>조기 탈출 조건</b>과 <b>단언</b>이 반드시 같은
+        /// 값을 봐야 한다. 두 곳에 리터럴로 적으면 한쪽만 바뀌었을 때 «조기 탈출은 했는데 단언은
+        /// 실패»라는 자기모순이 조용히 생긴다.</para>
+        /// </summary>
+        private const float OverhangFloor = 0.05f;
+
+        /// <summary>«표본이 실제로 돌았는가»의 하한(프레임). 조기 탈출 조건과 단언이 같은 값을 본다.</summary>
+        private const int MinCoveredSamples = 100;
+
         private static readonly FieldInfo BodyRenderersField =
             typeof(StickmanAgent).GetField("_renderers", BindingFlags.Instance | BindingFlags.NonPublic);
         private static readonly FieldInfo BodyLinesField =
@@ -282,7 +295,27 @@ namespace StickMate.Tests.PlayMode
             // (b) 그 뒤 3초(벽시계)를 표본한다. Idle에서는 팔이 내려와 몸 반폭이 줄어들어 돌출이
             // 실측 0.42유닛 — 문턱의 <b>8배</b>다. 즉 이 변경은 테스트를 약화시키는 것이 아니라
             // 겨냥한 순간을 반드시 보게 만드는 <b>강화</b>다. 문턱과 단언은 한 글자도 바뀌지 않았다.
-            const float SampleSeconds = 3f;
+            //
+            // ★★ 2026-09-06 — 위 (a)+(b)로도 <b>남아 있던 플레이키니스</b>를 마저 닫는다.
+            //
+            //   남은 구멍: Idle에 안착한 뒤 3초는 <b>고정</b>이었는데, 그 3초가 통째로 걷기 구간에
+            //   잡아먹힐 수 있다. 배회 AI는 Idle이 끝나면 75% 확률로 걷기로 가고(배포값
+            //   wanderPostIdleWalkChance), 걷기 한 구간은 최대 4.70초(4.0 × 지터 +17.5%)라
+            //   <b>3초짜리 창을 통째로 덮는다</b>. 걷는 동안은 팔이 벌어져 몸의 잉크 반폭이
+            //   커지므로 돌출(액세서리 − 몸)이 문턱 근처에서 오르내리고, 그러면 ① 네거티브 컨트롤이
+            //   «망토가 몸보다 나온 순간을 못 봤다»로 실패한다. 이것은
+            //   <c>StickmanPlaytestSmokeTests</c>의 1.44% 플레이키니스와 <b>같은 성질</b>이다 —
+            //   배회 RNG가 씬 로드마다 무작위 시드라 «확률적 관찰창»이 되는 것.
+            //
+            //   고친 방식도 같다: <b>조기 탈출형 관찰창</b>. 최소 3초는 무조건 표본하고(② 본 단언의
+            //   표본 수를 지킨다), 그 뒤에는 ①이 요구하는 «문턱을 넘는 돌출»을 실제로 볼 때까지
+            //   최대 30초까지 계속 본다. 조건이 채워지면 즉시 끝낸다 — 평균 실행 시간은 거의 그대로다.
+            //
+            //   ★ 이것은 판정을 무르게 하는 변경이 아니다. 문턱(OverhangFloor)도, ②의 단언도 그대로다.
+            //     달라진 것은 «몇 번 볼 기회를 주는가»뿐이고, 망토 돌출이 진짜로 사라지면 30초를
+            //     다 채워도 ①이 실패한다.
+            const float MinSampleSeconds = 3f;
+            const float MaxSampleSeconds = 30f;
 
             int capeCount = ItemCatalog.ItemCountIn(EquipmentSlot.Shoulders);
             Assert.Greater(capeCount, 0, $"{LogPrefix} 망토(Shoulders) 아이템이 하나도 없습니다.");
@@ -313,17 +346,19 @@ namespace StickMate.Tests.PlayMode
                 _agent.Blackboard, StickmanStateId.Idle, timeoutSeconds: 20f, holdSeconds: 0.1f);
 
             int idleSamples = 0;
+            float sampledSeconds = 0f;
 
-            // (b) 3초(벽시계) 표본 — 자율 배회가 유휴/걷기를 실제로 오간다.
+            // (b) 최소 3초 / 최대 30초(벽시계) 조기 탈출형 표본 — 자율 배회가 유휴/걷기를 실제로 오간다.
             ForceHalfWidthRemeasure();
-            yield return TestClock.SampleForSeconds(SampleSeconds, _ =>
+            yield return TestClock.SampleForSeconds(MaxSampleSeconds, t =>
             {
+                sampledSeconds = t;
                 ForceHalfWidthRemeasure();   // 다음 프레임에도 반드시 다시 재게 한다.
 
                 float cx = _agent.Blackboard.Body.position.x;
                 float bodyInk = BodyInkHalfWidth(cx);
                 float accInk = AccessoryInkHalfWidth(cx);
-                if (accInk <= 0f) return;   // 재구성 프레임(컨테이너가 잠깐 없다).
+                if (accInk <= 0f) return true;   // 재구성 프레임(컨테이너가 잠깐 없다).
 
                 float reported = _agent.Blackboard.CharacterVisualHalfWidthWorld;
                 float overhang = accInk - bodyInk;
@@ -335,28 +370,42 @@ namespace StickMate.Tests.PlayMode
                 minCoverage = Mathf.Min(minCoverage, reported - accInk);
                 coveredSamples++;
                 if (_agent.Blackboard.Machine.CurrentStateId == StickmanStateId.Idle) idleSamples++;
+
+                // 조기 탈출 — 아래 ①(네거티브 컨트롤)과 진단 단언이 요구하는 것을 <b>전부</b> 봤고
+                // ②의 최소 표본 구간도 채웠다. 더 봐도 판정이 달라지지 않는다.
+                // ★ 탈출 조건에 쓰는 값은 전부 아래 단언이 쓰는 그 값이다(문턱은 OverhangFloor 하나,
+                //   표본 수 하한도 같은 상수). 두 곳이 다른 자를 대면 «탈출했는데 실패»가 된다.
+                bool sawEnough = t >= MinSampleSeconds
+                                 && worstOverhang > OverhangFloor
+                                 && idleSamples > 0
+                                 && coveredSamples > MinCoveredSamples;
+                return !sawEnough;
             });
 
-            Debug.Log($"{LogPrefix} 망토 #{bestItem} (배율 {Scale:F2}) — 표본 {SampleSeconds:F1}초 동안 " +
+            Debug.Log($"{LogPrefix} 망토 #{bestItem} (배율 {Scale:F2}) — 표본 {sampledSeconds:F2}초" +
+                $"(최소 {MinSampleSeconds:F1}s / 상한 {MaxSampleSeconds:F1}s) 동안 " +
                 $"{coveredSamples}프레임(그중 Idle {idleSamples}프레임). " +
                 $"최대 돌출 프레임: 몸 {worstBody:F4} / 액세서리 {worstAcc:F4} / 보고 {worstReported:F4} " +
                 $"→ 돌출 {worstOverhang:F4}유닛. 전 표본에서 (보고 - 액세서리) 최소값 {minCoverage:F4}유닛.");
 
-            Assert.Greater(coveredSamples, 100, $"{LogPrefix} 유효 표본이 {coveredSamples}프레임뿐입니다.");
+            Assert.Greater(coveredSamples, MinCoveredSamples,
+                $"{LogPrefix} 유효 표본이 {coveredSamples}프레임뿐입니다.");
 
             // 진단용(단언 아님) — Idle을 한 프레임도 못 봤다면 아래 네거티브 컨트롤이 실패했을 때
             // "표본 창이 또 엉뚱한 구간에 갇힌 것"임을 즉시 알 수 있어야 한다.
             Assert.Greater(idleSamples, 0,
-                $"{LogPrefix} {SampleSeconds:F1}초 표본에서 Idle 프레임을 하나도 보지 못했습니다 — " +
+                $"{LogPrefix} {sampledSeconds:F2}초 표본에서 Idle 프레임을 하나도 보지 못했습니다 — " +
                 "표본 창이 또 다른 동작 안에 갇혔습니다(팔이 벌어진 포즈만 보면 망토 돌출이 문턱 " +
                 "근처에서 오르내려 이 테스트가 다시 '간헐적'이 됩니다).");
 
             // ① 네거티브 컨트롤 — 액세서리가 <b>실제로</b> 몸 밖으로 나가는 순간이 존재한다.
             //    (없다면 아래 ②는 항상 참이라 결함을 잡지 못한다.)
-            Assert.Greater(worstOverhang, 0.05f,
-                $"{LogPrefix} 표본 {coveredSamples}프레임 어디에서도 망토가 몸보다 0.05유닛 이상 " +
-                "튀어나오지 않았습니다 — 그렇다면 '액세서리를 포함해야 한다'는 단언이 이 환경에서는 " +
-                "항상 참이라 아무 의미가 없습니다(액세서리 도형/포즈 진폭이 바뀌었는지 확인하세요).");
+            Assert.Greater(worstOverhang, OverhangFloor,
+                $"{LogPrefix} {sampledSeconds:F2}초(상한 {MaxSampleSeconds:F1}s) 표본 {coveredSamples}프레임 " +
+                $"어디에서도 망토가 몸보다 {OverhangFloor}유닛 이상 튀어나오지 않았습니다 — 그렇다면 " +
+                "'액세서리를 포함해야 한다'는 단언이 이 환경에서는 항상 참이라 아무 의미가 없습니다" +
+                $"(그중 Idle 프레임 {idleSamples}개. Idle을 충분히 봤는데도 이렇다면 액세서리 도형/포즈 " +
+                "진폭이 바뀐 것이고, Idle이 거의 없다면 표본 창이 걷기 구간에 갇힌 것입니다).");
 
             // ② 본 단언 — 모든 표본에서 보고 반폭이 액세서리 잉크를 덮는다.
             Assert.GreaterOrEqual(minCoverage, -DriftTolerance,

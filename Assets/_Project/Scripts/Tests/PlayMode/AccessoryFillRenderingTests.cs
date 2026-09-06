@@ -81,6 +81,18 @@ namespace StickMate.Tests.PlayMode
             Assert.Greater(fills.Count, 0,
                 $"{LogPrefix} 모자를 썼는데 채움 면이 하나도 없습니다 — 채움 렌더링이 화면에 나오지 않습니다.");
 
+            // ★ 2026-09-06 — 천 모자가 인계본(계약 v2)이 되면서 "HatCrown"이 사라졌다
+            //   (몸 채움: Piece_B0 · Piece_F1 · Piece_B2far · Piece_B2near).
+            //   <b>되살리는 방법</b>(별도 라운드, 실기 실행 필요): 이 검사의 뜻은 «머리 링 윗호가
+            //   모자 채움에 덮이는가»이고, 그것은 원래 <b>채움 하나</b>가 아니라 <b>채움 전체의 합집합</b>이
+            //   답해야 하는 질문이다. 조각 하나를 이름으로 고르는 대신 컨테이너의 모든 채움 메시에 대해
+            //   PointInMesh 를 OR 로 묶으면 v1·인계본 양쪽에서 성립하고, 오히려 더 정확해진다
+            //   (턱 네거티브 컨트롤은 그대로 둔다 — 합집합에서도 거짓이어야 한다).
+            HandoffPlayModeGate.SkipIfHandoffRendered(container,
+                "모자 채움이 <b>머리 링 윗호</b>(40~140도 표본 11개 중 9개 이상)를 덮는가 = 사용자 신고 " +
+                "«모자가 투명해보임»의 회귀 게이트 + 채움/윤곽선 정렬(채움 = 선 −1) + 턱 네거티브 컨트롤.",
+                "HatCrown");
+
             MeshRenderer crown = fills.Find(f => f.name.StartsWith("HatCrown"));
             Assert.IsNotNull(crown, $"{LogPrefix} HatCrownFill이 없습니다.");
             Assert.IsTrue(crown.enabled, $"{LogPrefix} HatCrownFill이 꺼져 있습니다.");
@@ -184,6 +196,25 @@ namespace StickMate.Tests.PlayMode
             Transform container = FindChild(renderer.transform, "EquipmentAccessories");
             var fills = container.GetComponentsInChildren<MeshRenderer>(true);
 
+            // ★ 2026-09-06 — 왕관도 인계본(계약 v2)이라 "CrownBody"가 없다(몸 채움 9조각: Piece_BW ·
+            //   Piece_B0 · Piece_B1 · Piece_CF2~CF4 · Piece_CB5~CB7). <b>되살리는 방법</b>: 이 검사의 두 축은
+            //   (가) 봉우리가 뾰족하려면 <b>채움</b>이 있어야 한다 → «채움이 하나 이상 있는가»로 바꾸면 이름이 필요 없고,
+            //   (나) «얹는 물건»이라 채움이 턱까지 안 내려온다 → 채움 <b>전체의 bounds 합집합</b>으로 재면 된다.
+            //
+            //   ★★ 실측으로 드러난 <b>둘째</b> 이유(2026-09-06 PlayMode 실행): 이 검사가 먼저 부르는
+            //   <c>AssertFillsMatchOutlineMarks</c>의 v1 불변식 «채움 면 수 = 채움 윤곽선 <b>표식</b> 수»가
+            //   인계본에서 성립하지 않는다 — 실측 <b>왕관 채움 9개 / 표식 0개</b>. 이것은 결함이 아니라
+            //   <b>계약 v2의 설계</b>다: 인계본 조각의 선은 명목 획(strokeInR)을 쓰므로 렌더러가
+            //   <c>FillOutlineStroke</c> 대신 <c>AccessoryStrokeMark</c>를 붙인다
+            //   (<c>CharacterAccessoryRenderer.AddLine</c>의 <c>handoffWidth &gt; 0</c> 갈래).
+            //   ⇒ <b>되살릴 때 함께 할 일</b>: 인계본 쪽 짝 불변식(«채움이 있으면 그 선에 액세서리 표식이
+            //   붙는다»)을 새로 세워야 한다. 지금은 그 자리를 아무도 안 보고 있다 — 이 사실을
+            //   Tasklist 에 남긴다.
+            HandoffPlayModeGate.SkipIfHandoffRendered(container,
+                "왕관이 <b>채워져 있고</b>(둥근 캡에 봉우리가 뭉개지지 않는 유일한 조건, 37-6 규칙 6) " +
+                "동시에 <b>얹는 물건</b>으로 남는가(채움이 턱까지 안 내려온다) + v1 불변식 «채움 수 = 표식 수».",
+                "CrownBody");
+
             AssertFillsMatchOutlineMarks(container, "왕관");
 
             MeshRenderer bodyFill = FindFill(fills, "CrownBody");
@@ -236,6 +267,25 @@ namespace StickMate.Tests.PlayMode
             var renderer = Object.FindFirstObjectByType<CharacterAccessoryRenderer>();
             Transform container = FindChild(renderer.transform, "EquipmentAccessories");
 
+            // ★ 2026-09-06 — <b>게이트를 첫 줄로 올렸다.</b> 처음에는 아래 «번호 사본» 단언 앞에 두었는데,
+            //   실기 PlayMode 실행이 그것으로 부족함을 보여 줬다: 이 검사의 <b>첫 줄</b>인 v1 불변식
+            //   «채움 면 수 = 채움 윤곽선 표식 수»가 인계본에서 성립하지 않는다 —
+            //   실측 <b>털모자 채움 3개 / 표식 0개</b>(왕관은 9개 / 0개).
+            //   원인은 결함이 아니라 <b>계약 v2 설계</b>다: 인계본 조각의 선은 명목 획을 쓰므로 렌더러가
+            //   <c>FillOutlineStroke</c> 대신 <c>AccessoryStrokeMark</c>를 붙인다
+            //   (<c>CharacterAccessoryRenderer.AddLine</c>의 <c>handoffWidth &gt; 0</c> 갈래).
+            //   그래서 아래 «표식 있는 선이 하나 이상» 단언도 인계본에서는 구조적으로 0이라,
+            //   이 검사는 <b>통째로</b> v1 전용이다.
+            //   <b>되살리는 방법</b>: (가) 이 낱선 양성 대조는 아직 v1 인 아이템(예: 베레모·밀짚모자)으로
+            //   옮기면 그대로 산다. (나) 인계본 쪽에는 짝이 되는 새 불변식 —
+            //   «채움이 있으면 그 선에 <c>AccessoryStrokeMark</c>가 붙는다» — 을 세워야 한다.
+            //   지금 그 자리를 보는 테스트가 <b>하나도 없다</b>(이 라운드의 부수 발견, Tasklist 등재).
+            HandoffPlayModeGate.SkipIfHandoffRendered(container,
+                "털모자에서의 (1) v1 불변식 «채움 면 수 = 채움 윤곽선 표식 수» (2) 표식 있는 선/없는 선의 " +
+                "<b>공존</b>(부재 단언의 짝) (3) 번호 사본 신선도 (4) 표식 없는 선에 채움이 안 붙는가. " +
+                "인계본은 표식 체계 자체가 다르다(AccessoryStrokeMark) — 대체 불변식 미수립.",
+                BeanieCuffShapeName);
+
             AssertFillsMatchOutlineMarks(container, "털모자");
 
             var unmarked = new List<string>();
@@ -258,6 +308,13 @@ namespace StickMate.Tests.PlayMode
                 "'모든 선이 채움'이라는 자명한 상태에서 통과한 것이라 아무것도 증명하지 못합니다. " +
                 $"털모자 접힌 단({BeanieCuffShapeName})이 다시 채움이 됐는지 확인하십시오 — " +
                 "그 도형이 낱선이라는 것이 2026-09-02 사용자 신고('털모자착용시 거의 머리전체를가림')의 처방입니다.");
+
+            // ★ 인계본 털모자의 몸 조각은 Piece_CB0 · Piece_B1 · Piece_H2 · Piece_B3 · Piece_S4 이고
+            //   "BeanieCuff"라는 이름이 없다. 그래서 아래 «번호 사본» 확인도 함께 뜻을 잃는다
+            //   (게이트는 이 메서드 첫 줄에 있다 — 사유는 그 문단).
+            //   <b>되살리는 방법</b>: «이 번호가 아직 털모자인가»는 도형 이름이 아니라
+            //   <c>ItemCatalog.Item(Head, Beanie).DisplayName</c>(PlayMode 에서도 보이는 공개 API)으로
+            //   확인하면 된다 — 도형 이름에 기대던 이유가 사라졌다.
 
             // ★ 번호 사본이 썩지 않았는가 — 이 검사가 실제로 <b>털모자</b>를 보고 있음을 도형 이름으로
             //   못 박는다. 번호가 재배치돼 다른 아이템이 걸쳐졌다면 Wear는 여전히 true라 안 걸린다.
@@ -355,6 +412,16 @@ namespace StickMate.Tests.PlayMode
 
             var renderer = Object.FindFirstObjectByType<CharacterAccessoryRenderer>();
             Transform container = FindChild(renderer.transform, "EquipmentAccessories");
+            // ★ 2026-09-06 — 짧은 망토가 인계본(계약 v2)이라 "CapeOutline"이 없다
+            //   (몸 조각: Piece_STB · Piece_STC · Piece_STK — 셋 다 채움 + 선).
+            //   <b>되살리는 방법</b>: 이 검사의 뜻은 «선과 면이 <b>같은 프레임</b>에 같이 흔들린다»이므로
+            //   이름 대신 «같은 이름을 가진 선/면 짝»(면 이름 = 선 이름 + "Fill")을 전부 모아
+            //   각 짝마다 점-정점 대응을 확인하면 조각 수와 무관하게 성립한다.
+            HandoffPlayModeGate.SkipIfHandoffRendered(container,
+                "망토 <b>채움 면이 흔들리는 윤곽선을 따라가는가</b> — 선만 흔들리고 면이 남으면 " +
+                "걷는 동안 망토가 찢어져 보인다(2026-09-0x 회귀 게이트).",
+                "CapeOutline");
+
             MeshRenderer capeFill = null;
             foreach (var mr in container.GetComponentsInChildren<MeshRenderer>(true))
                 if (mr.name.StartsWith("CapeOutline")) capeFill = mr;

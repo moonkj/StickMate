@@ -508,77 +508,35 @@ namespace StickMate.Tests.EditMode
                 "머리를 감싼 것이 아니라 위에 얹힌 것입니다(37-6 규칙 4).");
         }
 
-        /// <summary>
-        /// ★ 모자도 <b>얹지 말고 감싼다</b> — 사용자 신고 "장비들 모양이 너무 조잡해"의 HEAD 쪽 정체.
-        ///
-        /// <para>옛 6종의 커버선은 전부 머리 중심 <b>위</b>였다(캡 +0.62 / 털모자 +0.42 / 중절모 +0.58 /
-        /// 베레모 +0.46 / 밀짚 +0.56 R). 즉 모자가 머리 위쪽 1/3에만 얹혀 있었고, 그래서 "쓴 것"이
-        /// 아니라 "올려 둔 것"으로 보였다. 참고 이미지의 모자는 전부 머리를 <b>옆으로 감싸고 뒤로 뻗는다</b>.</para>
-        ///
-        /// <para>판정선은 머리카락에 쓰는 것과 <b>같다</b>: 관자놀이 바깥(|x| ≥ 0.85R)이면서 머리 중심
-        /// 아래(y ≤ 0.05R)인 잉크가 있는가. 두 카테고리가 같은 자를 쓰는 것이 중요하다 —
-        /// 모자와 머리는 같은 머리 위에서 서로를 자르는 사이다.</para>
-        ///
-        /// <para><b>왕관은 면제다.</b> 스스로 "얹는 물건"이라 선언하기 때문이고, 그 선언은 if 분기가
-        /// 아니라 <see cref="AccessoryShapeBuilder.HatCoverLocalY"/>가 돌려주는 +∞다. 그래서 이 검사도
-        /// 아이템 이름이 아니라 <b>커버선이 유한한가</b>로 면제를 가른다 — 새 모자가 늘어도 규약이 따라온다.</para>
-        /// </summary>
-        [TestCase(0, TestName = "HEAD 야구모자")]
-        [TestCase(1, TestName = "HEAD 털모자")]
-        [TestCase(2, TestName = "HEAD 중절모")]
-        [TestCase(3, TestName = "HEAD 왕관")]
-        [TestCase(4, TestName = "HEAD 베레모")]
-        [TestCase(5, TestName = "HEAD 밀짚모자")]
-        public void 모자가_머리를_감싸고_커버선이_머리_중심_언저리까지_내려온다(int itemIndex)
-        {
-            HandoffTestGate.SkipIfHandoff(EquipmentSlot.Head, itemIndex, "규칙 4 감쌈(|x|≥0.85R·y≤0.05R 잉크) — R17 H-2 모자 맞춤은 얹는 형태(중절모 챙 4.06R 그대로 채택)");
-            // ★ 2026-09-06 R25 — 남아 있던 v1 두 종도 H-2 맞춤으로 갈아탔다. 그래서 이 검사는 이제
-            //   HEAD 6종 <b>전부</b>를 건너뛴다. 즉 이 자리는 「덜 잠긴 규칙」이 아니라 <b>빈 게이트</b>다 —
-            //   러너에 6/6 건너뜀으로 보이는 것이 그 사실의 정직한 표현이고, 대체 자(H-2 착용선 대역)를
-            //   프로덕션 테스트로 세우는 것은 test-engineer 배정 항목이다(리더 보고).
-            HandoffTestGate.SkipIfR25Hat(itemIndex, "규칙 4 감쌈(|x|≥0.85R·y≤0.05R 잉크) + 커버선 ≤ 0.10R — " +
-                "R25 는 사용자 신고(「안경을 너무 가린다」)로 모자를 올렸고, 커버선은 그 모자의 H-2 착용선이 됐다");
-            AccessoryShapeBuilder.Rig rig = Rig();
-            var sink = new List<AccessoryShapeBuilder.Shape>();
-            AccessoryShapeBuilder.Append(sink, EquipmentSlot.Head, itemIndex, rig);
-            string label = ItemCatalog.Item(EquipmentSlot.Head, itemIndex).DisplayName;
-
-            float cover = AccessoryShapeBuilder.HatCoverLocalY(itemIndex, rig);
-            if (float.IsPositiveInfinity(cover))
-            {
-                // 왕관 — 얹는 물건이라고 스스로 선언한 아이템. 감쌈을 요구하지 않는다.
-                //
-                // ★ 2026-09-02 qa-regression — 여기가 <b>맨 return</b>이었다. 그 상태에서는
-                //   커버선이 +∞로 뒤집힌 모자가 몇 개든 이 검사가 조용히 빠져나가고 6건 전부 초록이
-                //   된다(거짓 통과 유형 5 — 면제가 늘어도 아무도 세지 않는다). 면제를 <b>받는 순간
-                //   그 면제가 왕관 하나인지</b>를 여기서 못 박는다. 개수는 아래 전용 검사가 센다.
-                Assert.AreEqual(AccessoryShapeBuilder.HeadCrown, itemIndex,
-                    $"{label}(#{itemIndex})가 커버선 +∞로 감쌈 검사를 면제받았습니다 — " +
-                    "이 면제는 왕관 전용입니다. 다른 모자가 +∞가 됐다면 그 모자는 " +
-                    "'씌우는 것'인데 '얹는 것'으로 선언된 것이고, 머리카락 클리핑도 함께 틀어집니다.");
-                return;
-            }
-
-            float coverInR = (cover - rig.HeadCenterY) / rig.HeadRadius;
-            Assert.LessOrEqual(coverInR, 0.10f,
-                $"{label}의 커버선이 머리 중심 위 {coverInR:F2}R입니다 — 0.10R을 넘으면 모자가 " +
-                "머리 위쪽 1/3에만 얹힌 것이고, 그 밑으로 머리카락이 통째로 드러납니다(옛 6종이 그 상태였습니다).");
-
-            bool wraps = false;
-            for (int i = 0; i < sink.Count; i++)
-            {
-                Vector3[] pts = sink[i].Points;
-                for (int k = 0; k < pts.Length; k++)
-                {
-                    float x = pts[k].x / rig.HeadRadius;
-                    float y = (pts[k].y - rig.HeadCenterY) / rig.HeadRadius;
-                    if (Mathf.Abs(x) >= 0.85f && y <= 0.05f) wraps = true;
-                }
-            }
-            Assert.IsTrue(wraps,
-                $"{label}에 관자놀이 바깥(|x| ≥ 0.85R)이면서 머리 중심 아래(y ≤ 0.05R)인 잉크가 없습니다 — " +
-                "머리에 씌운 것이 아니라 위에 올려 둔 것입니다(37-6 규칙 4).");
-        }
+        // ====================================================================
+        // ★★ 묘비 — 삭제된 검사: 모자가_머리를_감싸고_커버선이_머리_중심_언저리까지_내려온다
+        //    (HEAD 6케이스 · 커버선 ≤ +0.10 R + 감쌈 |x| ≥ 0.85R ∧ y ≤ 0.05R)
+        //    2026-09-06 <b>리더 판정으로 폐기</b>. 「재개방 대기」가 아니라 <b>삭제 대상</b>으로 재분류됐다.
+        // ====================================================================
+        //
+        // <b>왜 지웠나</b>(리더 판정 요약): 같은 날 크라운-안경 신고로 H-2 착용선 대역
+        // <b>[+0.28, +0.45] R</b>을 정본화했는데(EQUIPMENT_HANDOFF_PORT_SPEC §14-16), 그 값 자체가
+        // 이 검사의 옛 규약(커버선 ≤ +0.10 R)과 <b>수학적으로 양립 불가</b>다 —
+        // 실측 커버선은 베레모 <b>+0.3602</b> · 밀짚모자 <b>+0.4162</b>로 옛 상한의 <b>3.6~4.2배</b>이고,
+        // 감쌈 잉크는 두 종 다 없다(가장 낮은 잉크 +0.1349 / +0.3100 R).
+        // 즉 <b>오늘 밤의 확정 수정이 이 규약을 이미 대체했다.</b> 초록으로 되돌리는 유일한 길은
+        // 모자를 다시 내리는 것 = 사용자 신고(「안경을 너무 가린다」, 최악 가려짐 78.4%)를 되돌리는 것이라
+        // 이 검사는 «아직 못 고친 갭»이 아니라 <b>폐기된 교리</b>다. 그래서 Assert.Ignore 로 남기지 않는다
+        // (CLAUDE.md 「갭은 Ignore 로 남긴다」는 <i>고칠 것이 남았을 때</i>의 규약이고, 여기는 아니다).
+        //
+        // <b>무엇이 이 자리를 지키는가</b>(삭제로 잃은 커버리지 0):
+        //   · 커버선/착용선  → <c>AccessoryHatWearLineBandTests</c>(H-2 착용선 대역 · 꼭대기부터 연속 덮임 ·
+        //     H-2b 앞층 밑단) + 짝 파일 <c>AccessoryHatWearLineBandTests.CoverLine.cs</c>(커버선 ≥ 착용선).
+        //     <b>더 정확한 기준</b>이다 — 옛 검사는 커버선 <i>상한 하나</i>만 봤고, 실제 가려짐을 정하는
+        //     앞층 밑단은 규칙 밖이었다(그 구멍으로 털모자가 71.3%까지 안경을 지웠다).
+        //   · 왕관 면제가 <b>하나뿐인가</b> → 바로 아래
+        //     <see cref="커버선_면제는_왕관_하나뿐이고_그_개수가_고정돼_있다"/>(옛 검사 안의 면제 단언보다
+        //     강하다 — 그쪽은 «면제받은 그 아이템이 왕관인가»만 봤고, 이쪽은 <b>개수</b>를 센다).
+        //   · 감쌈 규칙 자체 → HAIR 6종에는 <see cref="머리카락이_머리를_옆으로_감싼다"/>가 그대로 살아 있다.
+        //     HEAD 쪽 감쌈은 R17/R25 이후 «얹는 형태»가 채택되면서 규칙이 아니게 됐다.
+        //
+        // <b>되살리려면</b>: 이 삭제는 도형이 아니라 <b>규약</b>의 폐기다. 되살리는 것은 테스트 복원이 아니라
+        // H-2 대역 자체를 다시 판정하는 일이고, 그 판정은 design-equipment + 리더를 거친다.
 
         /// <summary>
         /// ★ 2026-09-02 qa-regression — <b>면제 개수를 세는 자리</b>. 이 저장소에 없었다.

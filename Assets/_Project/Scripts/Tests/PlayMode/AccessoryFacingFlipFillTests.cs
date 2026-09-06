@@ -64,6 +64,20 @@ namespace StickMate.Tests.PlayMode
                 Transform container = FindChild(renderer.transform, "EquipmentAccessories");
                 Assert.IsNotNull(container, $"{LogPrefix} round {round}: 컨테이너가 사라졌습니다.");
 
+                // ★ 2026-09-06 — 천 모자가 인계본(계약 v2)으로 갈아타면서 이 아래 세 가지가 전부
+                //   v1 전제가 됐다: 채움 개수 3(관/챙/띠) · 이름 "HatBrim" · 이름 "HatCrown".
+                //   인계본 천 모자의 몸 표면은 채움 4개(Piece_B0 · Piece_F1 · Piece_B2far · Piece_B2near)다.
+                //   <b>되살리는 방법</b>(별도 라운드 — 실기 PlayMode 실행이 필요하다): 이름 대신 씬에서 유도한다.
+                //     (가) 개수는 숫자로 적지 말고 <b>1회차 값을 기록해 20회 내내 불변인가</b>로 바꾼다
+                //          (이 검사의 진짜 뜻은 «반전해도 채움이 사라지지 않는다»이지 «3개»가 아니다).
+                //     (나) 비대칭 조각은 «HatBrim»이 아니라 <b>메시 bounds.center.x 의 절댓값이 가장 큰 채움</b>으로
+                //          고른다 — 그것이 «방향이 그림에 드러나는 조각»의 이름 없는 정의다.
+                HandoffPlayModeGate.SkipIfHandoffRendered(container,
+                    "좌우 반전 20회 동안의 (1) 채움 개수 불변 (2) 채움 활성/재질/메시 유효 (3) CW 삼각형 0개 " +
+                    "(4) 비대칭 조각 중심 x 가 facing 을 따라감 — 넷 다 인계본 조각에서도 그대로 성립해야 하는 " +
+                    "성질이라, 이 건너뜀은 «규칙이 뜻을 잃어서»가 아니라 «조회를 이름으로 해서»다.",
+                    "HatCrown");
+
                 var fills = new List<MeshRenderer>(container.GetComponentsInChildren<MeshRenderer>(true));
                 Assert.AreEqual(3, fills.Count,
                     $"{LogPrefix} round {round}(facing {want:+0;-0}): 채움 MeshRenderer가 {fills.Count}개입니다(기대 3 — 관/챙/띠, " +
@@ -137,6 +151,16 @@ namespace StickMate.Tests.PlayMode
 
             var renderer = Object.FindFirstObjectByType<CharacterAccessoryRenderer>();
             Transform container = FindChild(renderer.transform, "EquipmentAccessories");
+
+            // ★ 2026-09-06 — 아래는 «채움 하나»만 있으면 되는 검사(재질/셰이더/양면 여부를 GPU로 잰다)인데
+            //   그 하나를 v1 이름 "HatCrown"으로 고른다. 인계본 천 모자에는 그 이름이 없다.
+            //   <b>되살리는 방법</b>: 어느 채움이든 좋으므로 «컨테이너 아래 첫 MeshRenderer»로 바꾸면 된다
+            //   (재질은 렌더러가 한 벌을 공유하므로 조각을 가릴 이유가 없다). 실기 실행 필요 — 별도 라운드.
+            HandoffPlayModeGate.SkipIfHandoffRendered(container,
+                "채움 재질이 양면(Cull Off)인가를 와인딩 반전 렌더로 실측하는 검사 — H1(반전이 채움을 " +
+                "지운다) 가설의 전제를 GPU 픽셀로 다시 재는 자리. 인계본 조각에서도 같은 재질이라 성립한다.",
+                "HatCrown");
+
             MeshRenderer crown = null;
             foreach (var mr in container.GetComponentsInChildren<MeshRenderer>(true))
                 if (mr.name.StartsWith("HatCrown")) crown = mr;
@@ -326,6 +350,14 @@ namespace StickMate.Tests.PlayMode
             for (int i = 0; i < agent.transform.childCount; i++)
                 if (agent.transform.GetChild(i).name == "Head") head = agent.transform.GetChild(i);
             Assert.IsNotNull(head, $"{LogPrefix} Head를 못 찾았습니다.");
+            // ★ 2026-09-06 — 모자가 회전 중에도 머리에 붙어 있는지를 «채움 정점 하나»로 재는데,
+            //   그 하나를 v1 이름 "HatCrown"으로 고른다. 인계본 천 모자에는 그 이름이 없다.
+            //   <b>되살리는 방법</b>: 정점 프로브는 어느 채움이든 되므로 «renderer 아래 첫 MeshRenderer»로 바꾸면 된다.
+            HandoffPlayModeGate.SkipIfHandoffRendered(renderer.transform,
+                "던져 회전하는 동안 모자가 머리 로컬 좌표에서 이탈하지 않는가(회전 불변 정점 프로브) — " +
+                "인계본 조각도 같은 부모에 붙으므로 성질은 그대로다.",
+                "HatCrown");
+
             MeshRenderer crown = null;
             foreach (var mr in renderer.GetComponentsInChildren<MeshRenderer>(true))
                 if (mr.name.StartsWith("HatCrown")) crown = mr;

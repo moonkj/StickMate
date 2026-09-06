@@ -2856,9 +2856,21 @@ namespace StickMate.Tests.EditMode
                 "중립 계측기가 채움 경계선 하한을 나르지 않습니다 — Windows 사용자가 보낸 [렌더품질] 줄이 " +
                 "정상적으로 얇은 채움 경계선을 결함으로 신고하게 됩니다(그리고 그 신고를 받은 사람이 " +
                 "멀쩡한 코드를 고치려고 한 라운드를 씁니다).");
-            StringAssert.Contains("FillOutlineStroke", neutralSrc,
-                "중립 계측기가 선의 <b>역할</b>을 묻지 않습니다 — 하한이 둘인데 통이 하나면 " +
-                "어느 하한과 비교해야 하는지 알 수 없습니다.");
+
+            // ★★ 2026-09-06 A-2 — 하한이 <b>셋</b>이 됐다(낱선 2.00pt / 채움 경계선 1.00pt /
+            //    인계본 착용 조각 1.00pt). 위 두 줄만 있던 동안 계측기는 2분류인 채로 남았고,
+            //    설계대로 1.00pt인 인계본 획이 낱선 통에서 «하한 미달»로 오보됐다 —
+            //    이 감사가 갈래 수를 따라가지 않으면 그 사실이 러너에 보이지 않는다.
+            //    ★ 이것도 플랫폼 갭이 아니라 <b>공유 계측 갭</b>이다: 두 OS Enforcer가 같은 함수를
+            //    부르므로 오보도 양쪽에서 똑같이 난다. DPI 배율(macOS 0.5 고정 / Windows 1.0·0.8·0.667)은
+            //    pt 환산에서만 곱해지고 갈래 판정에는 개입하지 않는다.
+            StringAssert.Contains("MinAccessoryStrokeScreenPoints", neutralSrc,
+                "중립 계측기가 인계본 착용 조각(계약 v2) 하한을 나르지 않습니다 — 그 획은 설계상 1.00pt인데 " +
+                "낱선 하한 2.00pt와 비교되어 <b>정확히 절반</b>으로 언제나 결함으로 찍힙니다.");
+            StringAssert.Contains(nameof(StrokeFloorRoles) + "." + nameof(StrokeFloorRoles.Of), neutralSrc,
+                "중립 계측기가 선의 <b>역할</b>을 단일 창구(Core/StrokeFloorRole)에 묻지 않습니다 — " +
+                "하한이 셋인데 갈래 판정을 계측기가 따로 적으면 StickmanAgent와 갈라집니다" +
+                "(그 갈라짐이 정확히 A-2였습니다).");
 
             // macOS 감시자는 '사실 조회 + 출력'만 한다 = 중립 계측기를 부른다.
             string enforcer = StripLineComments(File.ReadAllText(Path.Combine(macRoot, "MacOverlayStateEnforcer.cs")));
@@ -2892,6 +2904,13 @@ namespace StickMate.Tests.EditMode
                 "그 화면이 없다.\n" +
                 "★ 함께 닫히는 항목: 아래 착지 티어/매달리기 두 항목도 같은 축(Windows에서 1pt가 몇 " +
                 "월드 유닛인가)에 걸려 있다. 실측 한 번이 세 항목을 함께 닫는다.\n" +
+                "★★ 2026-09-06 A-2로 열린 축이 하나 늘었다 — **인계본 착용 조각 하한 1.00pt**" +
+                "(MinAccessoryStrokeScreenPoints). Windows 표시배율 100%에서 이 값은 **디바이스 픽셀 1개**라 " +
+                "그 아래가 없고, 1px LineRenderer의 AA·끊김이 실기에서 어떻게 보이는지는 아직 아무도 못 봤다" +
+                "(StickConfig.MinAccessoryStrokeScreenPoints 문서의 §14-7 #1과 같은 미확인 항목이다). " +
+                "코드 갭은 없다 — 계측기·에이전트·PlayMode 통 나누기가 모두 이 하한을 알고, " +
+                "판정은 Core/StrokeFloorRole 한 곳이며, DPI 배율은 갈래가 아니라 pt 환산에만 곱해진다. " +
+                "남은 것은 macOS Retina(1.00pt = 2px)에서 재현되지 않는 **Windows 1× 육안 확인** 하나다.\n" +
                 "승격 절차: Windows 3종 배율에서 MinStrokeWorldWidth를 실측 -> 그 값으로 " +
                 "LimbCurveGeometryTests의 배율 스윕 재실행 -> 여유 > 1.0 확인 후 이 테스트를 정식 검사로 교체.");
         }
@@ -4198,6 +4217,97 @@ namespace StickMate.Tests.EditMode
                 "(docs/verify/WINDOWS_DGPU_REPORT.md 2-4절이 예고한 그대로 — 문제가 아니라 예정된 전이다).\n" +
                 "닫는 조건: 아이콘 애셋 도착 + 라이선스 판정 + 버전 확정. 근거: " +
                 "docs/strategy/WINDOWS_STEAM_LAUNCH_CRITICAL_PATH.md 3절 M-5.");
+        }
+
+        /// <summary>
+        /// ★ 2026-09-06 (dev-platform) — <b>글리프 리샘플 진단</b>에 남은 갭 둘.
+        ///
+        /// <para>이 라운드에 고친 것은 <b>판정 산술</b>이다: <c>OverlayCompositionVerdict</c>의
+        /// GLYPH-SCALE 줄이 <c>pt × canvasScale</c>만 보던 것을
+        /// <c>아틀라스 round(pt × canvasScale)</c> 대 <c>화면 pt × canvasScale × transformScale</c>의
+        /// 대조로 바꿨다(<c>UiGlyphScalePolicy</c>). 그 산술은 <b>플랫폼 중립</b>이라 양쪽이 같이
+        /// 쓴다 — 즉 이 갭은 «판정»이 아니라 «관측»에 남아 있다.</para>
+        ///
+        /// <para><b>남은 갭 (1) macOS에는 합성 프로브 자체가 없다.</b>
+        /// <c>Platform/Windows/WindowsCompositionProbe.cs</c>에 대응하는 파일이
+        /// <c>Platform/MacOS/</c>에 <b>없다</b>(실측). 리샘플 잔차는 <b>배율과 무관하게 1/k배</b>라
+        /// Retina(배율 2)에서도 축소 폴백이 걸리면 같은 종류로 번진다 — 즉 macOS는
+        /// <b>문제는 있는데 계기판이 없다</b>.</para>
+        ///
+        /// <para><b>남은 갭 (2) Windows 프로브의 표본이 하나다.</b> 대표 표본이
+        /// <c>UiChrome.FontTitle</c> 하나뿐이고, 이번 라운드에 그 표본은 transform 배율을
+        /// <b>미관측(0)</b>으로 정직하게 보고하도록 고쳤다(예전에는 재 보지도 않고 «리샘플 없음»을
+        /// 단정했다). 그래서 <b>거짓말은 멈췄지만 눈이 생긴 것은 아니다</b>.</para>
+        /// </summary>
+        [Test]
+        public void 미해결_글리프_리샘플_진단이_macOS_프로브와_표본_구조에_갭이_있다()
+        {
+            // ---- 자동 승격 ①: macOS에 합성 관측기가 생기면 이 항목은 닫힌 것이다 ----
+            string macRoot = Path.Combine(PlatformRoot, "MacOS");
+            Assert.IsTrue(Directory.Exists(macRoot),
+                $"{macRoot}를 찾지 못했습니다 — 경로가 바뀌었다면 여기도 갱신하세요. " +
+                "그대로 두면 이 항목은 '고쳐져도 영원히 건너뜀'이 됩니다.");
+            foreach (string file in Directory.GetFiles(macRoot, "*.cs", SearchOption.AllDirectories))
+            {
+                if (File.ReadAllText(file).Contains(nameof(OverlayCompositionSnapshot), StringComparison.Ordinal))
+                {
+                    Assert.Pass($"macOS 쪽 합성 관측기가 생겼습니다({Path.GetFileName(file)}) — " +
+                        "이 항목을 정식 검사로 승격하고, 두 프로브가 같은 순수 판정기를 부르는지 " +
+                        "(규칙이 두 벌이 되지 않았는지) 함께 확인하세요.");
+                }
+            }
+
+            // ---- 존재 단언: 아래 사유가 «Windows는 필드에 배선돼 있다»고 주장하므로 확인한다 ----
+            //     이것이 없으면 사유가 낡아도 아무도 모른다(부재 단언만 남은 항목의 전형적 부패).
+            string probePath = Path.Combine(PlatformRoot, "Windows", "WindowsCompositionProbe.cs");
+            Assert.IsTrue(File.Exists(probePath),
+                $"Windows 합성 프로브를 찾지 못했습니다({probePath}) — 사유가 참조하는 파일이 " +
+                "사라졌다면 이 항목의 서술 전체가 거짓입니다.");
+            string probe = File.ReadAllText(probePath);
+            StringAssert.Contains(nameof(OverlayCompositionSnapshot.SampleTransformScale), probe,
+                "Windows 프로브가 transform 배율 필드를 보고하지 않습니다 — 이번 라운드의 배선이 " +
+                "사라졌다는 뜻이고, 그러면 GLYPH-SCALE 줄이 다시 <재 보지도 않고 단정>합니다.");
+            StringAssert.Contains(nameof(OverlayCompositionVerdict.SampleSurfaceConstantOnly), probe,
+                "Windows 프로브가 표본에 이름을 붙이지 않습니다 — 로그를 읽는 사람이 " +
+                "'표본 하나에 대한 판정'을 '앱의 모든 글자에 대한 판정'으로 오독합니다.");
+
+            Assert.Ignore("【미해결 · 판정은 닫혔고 관측이 남았다】 신설 2026-09-06 (dev-platform)\n" +
+                "항목: 글리프 리샘플 진단 — 산술은 양 플랫폼 공통으로 고쳤고, <관측>에 갭 2건이 남았다.\n" +
+                "\n" +
+                "· 고친 것(양 플랫폼 동시 적용): UiGlyphScalePolicy.IsExact에 transform 인자를 " +
+                "추가하고(기본값 1 = 하위호환), OverlayCompositionVerdict의 GLYPH-SCALE 줄이 " +
+                "«아틀라스 round(pt×canvasScale)» 대 «화면 pt×canvasScale×transformScale»을 대조하게 " +
+                "했다. 레거시 uGUI Text의 pixelsPerUnit이 canvas.scaleFactor만 보고 조상 lossyScale은 " +
+                "무시하는 <비대칭>이 원인이며, 이 산술은 Platform/(중립)에 있어 두 플랫폼이 같이 쓴다.\n" +
+                "\n" +
+                "· 갭 (1) macOS에 대응 프로브가 없다 — Platform/MacOS/에 " +
+                "WindowsCompositionProbe.cs의 대응물이 <없다>(실측). 리샘플 잔차는 배율과 무관하게 " +
+                "1/k배라 Retina(배율 2)에서도 축소 폴백이 걸리면 같은 종류로 번지는데, macOS에는 " +
+                "그것을 실기에서 잴 계기판이 아예 없다. 이 머신이 macOS이므로 <만들면 바로 검증 " +
+                "가능한> 드문 항목이지만, Windows 프로브가 읽는 값의 절반(WS_EX_LAYERED / " +
+                "GetLayeredWindowAttributes / DwmIsCompositionEnabled)이 macOS에 존재하지 않아 " +
+                "구조를 그대로 옮길 수 없다 — 관측 항목을 다시 고르는 설계가 선행이고, 그건 리더가 " +
+                "이번 범위에서 뺀 <표본 구조 재설계>와 같은 덩어리다.\n" +
+                "\n" +
+                "· 갭 (2) Windows 프로브의 표본이 하나다 — 대표 표본은 UiChrome.FontTitle 하나뿐이고 " +
+                "부채꼴 배지처럼 조상 스케일이 걸린 표면은 표집되지 않는다. 이번 라운드에 배지를 " +
+                "표본에 넣지 못한 <실측 사유>: 배지 Text의 계층이 " +
+                "Group(배치 배율) → Root(펼침·호버 애니메이션 배율) → Badge → BadgeText라 " +
+                "lossyScale이 두 배율을 구분 없이 곱해 준다. 펼침 0.19초 동안 매 프레임 값이 달라지고 " +
+                "호버가 48/44배를 더 걸므로, 그 값을 지문에 넣으면 2초마다 새 지문이 되어 24시간 " +
+                "상주 앱의 로그가 폭주하고 프로브의 12줄 예산이 애니메이션 중간값으로 소진된다. " +
+                "게다가 접기 애니메이션은 Root를 StartScale(0.62)로 되돌리고 두므로 <안 보일 때 재면 " +
+                "안전>도 성립하지 않는다(안 보이는 표면에 큰 리샘플을 보고하게 된다). " +
+                "안착 상태만 고르려면 GearRadialMenuWidget에 «지금 안착했는가» 접근자가 필요한데 " +
+                "그건 Interaction/ 수정이라 이번 라운드 파일 분할 범위 밖이다.\n" +
+                "  → 그래서 이번 라운드는 <거짓말을 멈추는 것>까지만 했다: 표본에 이름을 붙이고" +
+                "(SampleSurfaceConstantOnly) transform 배율을 미관측(0)으로 보고하며, 판정기는 " +
+                "그 0을 보면 «이 표본 하나에 대한 판정»이라는 단서를 붙인다. 0과 1을 가르는 것이 " +
+                "핵심이다 — 1로 적으면 <조상 스케일이 없다>고 단정하는 것이 된다.\n" +
+                "\n" +
+                "닫는 조건: (1) macOS 관측 항목 재설계 + 프로브 신설, " +
+                "(2) 위젯 쪽 «안착» 접근자 + 표본 다중화(고수위 표본 유지가 후보다 — 순간값을 " +
+                "지문에 넣지 않고 <지금까지 본 최악>만 갱신하면 전이가 단조라 로그가 폭주하지 않는다).");
         }
 
         // ============================================================================

@@ -1,4 +1,5 @@
 using System.Collections;
+using System.IO;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
@@ -21,11 +22,26 @@ namespace StickMate.Tests.PlayMode
     ///         핸들러 안에 있다는 증거 — 클릭 경로가 둘이라 그래야 한다).</item>
     ///   <item><b>잔액이 오르면 저절로 살아난다</b> — 0.25초 주기 갱신이 잔액 변화를 본다.</item>
     ///   <item><b>두 번 눌러야 산다</b> — 첫 클릭은 라벨만 바꾸고 잔액을 건드리지 않는다(설계 §3-5).</item>
-    ///   <item><b>사면 그 자리에서 잔액이 정확히 가격만큼 줄고 「보유 중」이 되며 즉시 저장된다</b>
-    ///         (<see cref="CurrencyModel.IsDirty"/>가 false로 내려간다 — 그 값을 내리는 것은
-    ///         <c>CharacterSaveStore.Save()</c> 하나뿐이다).</item>
+    ///   <item><b>사면 그 자리에서 잔액이 정확히 가격만큼 줄고 「보유 중」이 되며 즉시 저장된다</b> —
+    ///         ★ 「저장됐다」는 <b>저장 호출의 결과</b>(<see cref="CharacterInfoWindow.ShopLastSaveSucceededForTests"/>)와
+    ///         <b>디스크 실물 JSON</b>(<see cref="CharacterSaveStore.FilePath"/>) 두 가지로 잰다.</item>
     ///   <item><b>중복 구매가 차단된다</b> — 이미 산 카드를 또 눌러도 잔액이 그대로다.</item>
     /// </list>
+    ///
+    /// ============================================================================
+    /// ★★ 「즉시 저장」을 <c>CurrencyModel.IsDirty</c>로 재지 않는다 (2026-09-06 거짓 빨강 수정)
+    /// ============================================================================
+    /// 원래 이 파일은 «즉시 저장됐다»를 <c>Assert.IsFalse(CurrencyModel.IsDirty)</c>로 쟀다.
+    /// 그런데 <c>Interaction/CharacterProgressionDirector.AccrueIdleIncome()</c>가 <b>매 프레임</b>
+    /// 유휴 수급을 돌려 그 플래그를 <b>다시 세운다</b>(유휴 수급이 배선된 이상 정상 동작이다).
+    /// ⇒ 그 단언은 <b>구조적으로 항상 실패</b>한다. 그리고 그 빨강은 «껐다 켜면 산 것이 사라진다»는
+    /// 무서운 문장을 달고 있어서, <b>실재하지 않는 데이터 유실</b>을 매 실행 신고했다
+    /// (debugger 실측: 격리 저장 파일에 구매가 <b>정상적으로</b> 들어 있었다).
+    ///
+    /// <para>교훈은 «플래그를 바꿔 달자»가 아니다 — <b>관측 가능한 것을 재라</b>는 쪽이다.
+    /// 저장이 일어났다는 사실의 종착지는 <b>디스크</b>이므로, 이제 그 파일을 직접 읽어
+    /// <c>purchasedItemIds</c>에 방금 산 id가 있고 <c>coinBalance</c>가 <b>구매전잔액 − 가격</b>인지
+    /// 확인한다. 그것이 이 테스트가 원래 하려던 주장(«껐다 켜도 남는다»)을 실제로 재는 유일한 방법이다.</para>
     ///
     /// ============================================================================
     /// ★ 좌표 클릭을 쓰지 않는다 — 숨기지 않는다
@@ -164,6 +180,63 @@ namespace StickMate.Tests.PlayMode
         }
 
         // ============================================================================
+        // ★ 디스크 실물 대조 — 「껐다 켜면 사라지는가」를 실제로 재는 유일한 자
+        // ============================================================================
+
+        /// <summary>
+        /// 저장 파일에서 <b>이 테스트가 보는 두 칸만</b> 꺼내는 최소 스키마.
+        ///
+        /// <para>프로덕션의 <c>SaveData</c>는 <c>private</c>이라 참조할 수 없어 <b>디스크 계약</b>
+        /// (키 이름)을 여기 적는다. 그래도 이 니들은 <b>썩으면 조용히 초록이 되지 않는다</b>:
+        /// 키 이름이 바뀌면 <see cref="JsonUtility"/>가 <c>0</c>/<c>null</c>을 채우는데, 기대값이
+        /// «구매전잔액 − 가격»(0이 될 수 없다 — 아래 <c>FundAtLeast</c>가 항상 가격보다 더 채운다)과
+        /// «방금 산 id»라 <b>반드시 빨개진다</b>. 존재 단언이지 부재 단언이 아니다(CLAUDE.md).</para>
+        /// </summary>
+        [System.Serializable]
+        private sealed class SaveFileProbe
+        {
+            public int version;
+            public int coinBalance;
+            public string[] purchasedItemIds;
+        }
+
+        /// <summary>저장 파일을 <b>직접 읽어</b> 방금 산 것이 실제로 적혔는지 본다.
+        /// (창이나 모델에게 묻지 않는다 — 그것들이 틀리면 기대값도 함께 틀어진다.)</summary>
+        private static void AssertSaveFileHasPurchase(string id, int expectedBalance)
+        {
+            Assert.IsTrue(CharacterSaveStore.IsRedirectedForTesting,
+                $"{LogPrefix} 저장 경로가 격리돼 있지 않습니다 — 개발자의 실제 파일을 읽게 되므로 " +
+                "여기서 멈춥니다(그 파일을 기준으로 잰 값은 아무 뜻이 없습니다).");
+
+            string path = CharacterSaveStore.FilePath;
+            Assert.IsTrue(File.Exists(path),
+                $"{LogPrefix} 구매가 즉시 저장이라면 저장 파일이 있어야 합니다: {path}. " +
+                "파일 자체가 없다는 것은 <b>디스크에 한 번도 안 썼다</b>는 뜻입니다 — " +
+                "이 경우가 바로 «껐다 켜면 산 것이 사라진다»입니다.");
+
+            SaveFileProbe probe = JsonUtility.FromJson<SaveFileProbe>(File.ReadAllText(path));
+            Assert.IsNotNull(probe, $"{LogPrefix} 저장 파일이 JSON으로 읽히지 않습니다: {path}");
+            Assert.Greater(probe.version, 0,
+                $"{LogPrefix} 저장 파일에서 스키마 버전을 못 읽었습니다({path}) — 파일이 비었거나 " +
+                "키 이름이 바뀌었습니다. 아래 두 단언은 지금 아무것도 재지 못합니다.");
+
+            Assert.IsNotNull(probe.purchasedItemIds,
+                $"{LogPrefix} 저장 파일에 구매 이력(purchasedItemIds) 자체가 없습니다 — " +
+                "필드 이름이 바뀌었거나 구매가 세이브에 실리지 않습니다.");
+            CollectionAssert.Contains(probe.purchasedItemIds, id,
+                $"{LogPrefix} ★ 저장 파일의 구매 이력에 방금 산 [{id}]가 없습니다" +
+                $"(파일에 적힌 것: {string.Join(", ", probe.purchasedItemIds)}). " +
+                "지금 껐다 켜면 이 구매는 사라집니다.");
+            Assert.AreEqual(expectedBalance, probe.coinBalance,
+                $"{LogPrefix} ★ 저장 파일의 잔액이 {probe.coinBalance}입니다(기대 {expectedBalance} = " +
+                "구매전잔액 − 가격). 구매 전 값이면 차감이 저장되지 않은 것이고, 그 상태로 다시 켜면 " +
+                "<b>돈은 그대로인데 물건도 있는</b> 상태가 됩니다.");
+
+            Debug.Log($"{LogPrefix} 디스크 대조 통과 — {path} :: coinBalance={probe.coinBalance}, " +
+                      $"purchasedItemIds=[{string.Join(", ", probe.purchasedItemIds)}] (v{probe.version}).");
+        }
+
+        // ============================================================================
         // ① 잔액이 모자라면 칩이 죽고, 그 상태로 불러도 돈이 나가지 않는다
         // ============================================================================
 
@@ -236,9 +309,13 @@ namespace StickMate.Tests.PlayMode
             StringAssert.Contains(price.ToString("N0"), liveLabel,
                 $"{LogPrefix} 칩에 가격이 안 보입니다(라벨 「{liveLabel}」, 가격 {price:N0}).");
 
-            // 즉시 저장의 양성 대조 — 지금은 저장할 것이 <b>있다</b>(집중 지급으로 더러워진 상태).
-            Assert.IsTrue(CurrencyModel.IsDirty,
-                $"{LogPrefix} 지갑을 채웠는데 저장 대상 표시가 서지 않았습니다 — 아래 대조가 공허해집니다.");
+            // ── 즉시 저장의 <b>음성 대조</b>. 아직 아무것도 안 샀으니 «구매 저장»은 시도조차 없어야
+            //    한다. null(시도 없음)과 false(시도했는데 실패)를 구분해 두는 것이 요점이다 —
+            //    아래 양성 단언이 «원래부터 true였다»로 공허해지지 않게 한다.
+            Assert.IsNull(_window.ShopLastSaveSucceededForTests,
+                $"{LogPrefix} 아직 아무것도 사지 않았는데 구매 저장 기록이 " +
+                $"{_window.ShopLastSaveSucceededForTests}로 남아 있습니다 — 아래 «샀더니 저장됐다»가 " +
+                "공허해집니다(앞 테스트의 상태가 새고 있거나, 구매가 아닌 경로가 이 값을 씁니다).");
 
             // (3) 첫 클릭은 묻기만 한다.
             _window.ShopBuyForTests(index);
@@ -265,8 +342,17 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 이미 산 카드의 칩이 살아 있습니다 — 중복 구매의 문이 열려 있습니다.");
             Assert.AreEqual(-1, _window.ShopConfirmIndexForTests,
                 $"{LogPrefix} 구매 뒤에도 확인 단계가 남아 있습니다.");
-            Assert.IsFalse(CurrencyModel.IsDirty,
-                $"{LogPrefix} 구매가 즉시 저장되지 않았습니다 — 껐다 켜면 산 것이 사라집니다.");
+
+            // ── 즉시 저장 ①: 구매 핸들러가 <b>저장을 부르고 그 호출이 성공했는가</b>.
+            Assert.AreEqual(true, _window.ShopLastSaveSucceededForTests,
+                $"{LogPrefix} 구매가 즉시 저장되지 않았습니다(저장 결과 " +
+                $"{(_window.ShopLastSaveSucceededForTests.HasValue ? _window.ShopLastSaveSucceededForTests.ToString() : "시도 없음")}). " +
+                "null이면 구매 경로가 저장을 <b>아예 안 불렀고</b>, false면 불렀는데 디스크에 못 썼습니다" +
+                $"(저장보류={CharacterSaveStore.SaveSuspended}).");
+
+            // ── 즉시 저장 ②: <b>디스크 실물</b>이 그렇게 말하는가. ①만으로는 «true를 돌려주는 함수»를
+            //    믿는 것이고, 이 테스트가 원래 주장하려던 것은 «껐다 켜도 남는다»이다.
+            AssertSaveFileHasPurchase(id, before - price);
 
             // (5) 한 번 더 눌러도 아무 일도 없다.
             int settled = CurrencyModel.CoinBalance;
@@ -278,7 +364,7 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 구매 이력이 {CurrencyModel.PurchasedItemIds.Count}줄입니다 — 같은 것을 두 번 샀습니다.");
 
             Debug.Log($"{LogPrefix} 구매 성사 — 가격 {price:N0}, 잔액 {before:N0} → {CurrencyModel.CoinBalance:N0}, " +
-                      $"칩 「{_window.ShopActionLabelForTests(index)}」, 즉시 저장 확인.");
+                      $"칩 「{_window.ShopActionLabelForTests(index)}」, 즉시 저장 확인(호출 결과 + 디스크 실물 둘 다).");
         }
 
         // ============================================================================

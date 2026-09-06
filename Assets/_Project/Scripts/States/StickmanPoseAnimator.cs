@@ -1210,10 +1210,34 @@ namespace StickMate.States
         private const float FocusWatchBackElbowDegrees = 72.5f;
 
         /// <summary>P2 뒷짐의 어깨 스태거(도). 팔짱보다 작다 — 뒷짐은 두 팔이 거의 같은 자세인 것이
-        /// 정상이고, 스태거는 "선이 하나로 보이는" 것만 막으면 된다.</summary>
+        /// 정상이고, 스태거는 "선이 하나로 보이는" 것만 막으면 된다.
+        /// <para>★ 이 값은 <b>단독으로 읽으면 안 된다</b> — 팔꿈치 스태거
+        /// (<see cref="FocusWatchBackElbowStaggerDegrees"/>)와 결합돼 있다. 두 전완의 절대각 차 =
+        /// <c>2 × |이 값 − 팔꿈치 스태거값|</c>(둘이 서로 반대 부호로 걸리기 때문). 지금은
+        /// 2 × |4 − 6| = 4.0°다. 이 값만 단독으로 4 → 6으로 올리면 차가 0°가 되어 <b>두 전완이 정확히
+        /// 평행해진다</b>(퇴화점 = "굵은 선 하나"). 왜 그 방향이 위험한지는 아래 팔꿈치 스태거 주석에
+        /// 실측과 함께 적어 뒀다.</para></summary>
         private const float FocusWatchBackShoulderStaggerDegrees = 4f;
 
-        /// <summary>P2 뒷짐의 팔꿈치 스태거(도). 어깨와 <b>반대 부호</b>로 걸어 손끝이 겹치지 않게 한다.</summary>
+        /// <summary>P2 뒷짐의 팔꿈치 스태거(도). 어깨와 <b>반대 부호</b>로 걸린다.
+        ///
+        /// <para>★ <b>2026-09-06 정정.</b> 원래 이 자리에 "손끝이 겹치지 않게 한다"고 적혀 있었으나
+        /// 실측은 <b>정반대</b>다 — 반대 부호 팔꿈치 스태거는 손끝을 <b>벌리는</b> 장치가 아니라
+        /// <b>모으는</b> 장치다. 어깨 스태거 4° 고정 기준 손끝 간격 실측:
+        /// E=0° → 0.3836R(획의 0.81배) / <b>E=6°(현행) → 0.2342R(0.49배)</b> /
+        /// 최소점 0.2298R @ E=5.25°. E를 키울수록 손이 가까워지고, 현행 값은 그 최소점 바로 옆이다.</para>
+        ///
+        /// <para>이 값이 실제로 막는 것은 손끝 겹침이 아니라 <b>두 전완이 정확히 평행해지는 것</b>이다.
+        /// 그 여유는 <c>2 × |어깨 스태거(S) − 팔꿈치 스태거(E)|</c> = 2 × |4 − 6| = <b>4.0°</b>이고,
+        /// <b>S = E가 퇴화점</b>(0°, 완전 평행 = "굵은 선 하나")이다. 그래서 이 값과
+        /// <see cref="FocusWatchBackShoulderStaggerDegrees"/>는 <b>둘 중 하나만 만지면 안 된다</b>.
+        /// <c>Tests/EditMode/FocusSessionAmbientTests</c>의 뒷짐 전완 간격 하한(2°) 검사가 이 퇴화를
+        /// 지키고 있다 — 한쪽만 움직여 4.0°가 0°로 죽으면 그 테스트가 빨개진다.</para>
+        ///
+        /// <para>손끝을 <b>벌리는</b> 방향(획 1.0배 이상)은 일부러 채택하지 않았다. 두 팔은 같은 어깨
+        /// 부착점 · 같은 검정색 · 같은 sortingOrder=2라 <b>깊이 단서가 0</b>이다. 이 상태에서 손끝을
+        /// 벌리면 "등 뒤에서 맞잡은 손"이 아니라 <b>"두 갈래 집게발"</b>로 읽힌다(실기/렌더 대조 결과).
+        /// 뒷짐은 정의상 등 뒤에서 손을 모으는 자세이므로 모이는 쪽이 맞다.</para></summary>
         private const float FocusWatchBackElbowStaggerDegrees = 6f;
 
         /// <summary>P2 뒷짐에서 앞쪽 팔이 실제로 취하는 팔꿈치 각도(도). 크리즈 감사가 읽는다.</summary>
@@ -1279,6 +1303,23 @@ namespace StickMate.States
 
         /// <summary>G3(반대쪽) — 돌아본 뒤 따라가는 기울임(도).</summary>
         private const float FocusGlanceFollowLeanDegrees = 2f;
+
+        /// <summary>★ 2026-09-06 (perf-doc) — L0+L1이 낼 수 있는 상체 기울임의 <b>절댓값 상한</b>(도).
+        /// 두 자세(팔짱 −4.0° / 뒷짐 −2.5°) 중 큰 쪽에 L1 왕복폭을 더한 값이다.
+        /// <para><b>왜 공개하는가</b>: 액세서리 밑단 검사(<c>Tests/EditMode/CapeHemFloorClampTests</c>)가
+        /// «관망 자세의 상시 미세 피치에서 망토가 바닥선에 닿지 않는가»를 재는데, 그 범위를 테스트에
+        /// 숫자로 베끼면 여기가 바뀔 때 검사가 <b>조용히 낡는다</b>(협업 프로토콜: 프로덕션 상수를 베끼지 않는다).</para></summary>
+        public static float FocusWatchStanceMaxLeanDegrees
+            => Mathf.Max(Mathf.Abs(FocusStanceCrossLeanDegrees), Mathf.Abs(FocusStanceBackLeanDegrees))
+             + Mathf.Abs(FocusStanceLeanSwayDegrees);
+
+        /// <summary>★ 2026-09-06 (perf-doc) — 관망 자세 위에 얹히는 제스처(G2/G3)가 내는 상체 기울임의
+        /// <b>절댓값 상한</b>(도). 위 상수와 같은 이유로 공개한다. 둘 다 «기울임 상한 7.60°» 아래여야 한다는
+        /// 별도 제약이 있다(<see cref="FocusStanceLeanSwayDegrees"/> 문서).</summary>
+        public static float FocusWatchGestureMaxLeanDegrees
+            => Mathf.Max(Mathf.Abs(FocusRingCheckLeanDegrees),
+               Mathf.Max(Mathf.Abs(FocusGlanceLeanDegrees),
+               Mathf.Max(Mathf.Abs(FocusGlanceWindUpLeanDegrees), Mathf.Abs(FocusGlanceFollowLeanDegrees))));
 
         /// <summary>
         /// ★ 이 자세 층이 <b>기울임을 소유하는</b> 어휘인가. G2/G3는 상체 기울임 자체가 동작이라

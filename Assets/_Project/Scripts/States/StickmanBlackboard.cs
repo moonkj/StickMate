@@ -1279,10 +1279,13 @@ namespace StickMate.States
         /// 얹어 둔 리프트를 벗긴다. StickmanAgent.Update()가 <b>상태 Tick보다 먼저</b> 무조건 부른다.
         ///
         /// 왜 매 프레임 벗겼다 다시 얹는가 — 리프트를 얹은 채로 두면 접지 판정이 전부 틀어진다.
-        /// GroundSensor.Sense()는 발이 발판 상단 ±groundSnapTolerance(0.49유닛) 안에 있을 때만
-        /// 접지로 보고, SnapToGround는 이동 요구가 groundSnapMaxDistanceWorld(0.6유닛)를 넘으면
+        /// GroundSensor.Sense()는 발이 발판 상단 ±groundSnapTolerance(20 OS-pt) 안에 있을 때만
+        /// 접지로 보고, SnapToGround는 이동 요구가 실효 스냅 상한
+        /// (<see cref="StickConfig.ResolveGroundSnapMaxDistanceWorld"/>)을 넘으면
         /// **발판을 놓고 Fall로 보낸다**. 리프트 최대치가 0.5유닛(실측 최악 20.5pt)이라 두 임계 모두
         /// 아슬아슬하게 걸린다 — "바닥을 안 뚫게 고쳤더니 기상 중에 갑자기 낙하한다"가 될 뻔한 지점이다.
+        /// ★ 2026-09-06: 두 임계는 이제 **같은 하나(허용오차의 월드 환산)에서 유도**되므로 창 높이가
+        /// 달라져도 서로 추월하지 않는다. 예전에는 앞쪽만 창 높이를 따라 커져 800pt 아래에서 갈라졌다.
         /// 벗겼다 얹으면 물리·센서·발판 판정은 **언제나 리프트 없는 진짜 접지 좌표**만 본다.
         /// </summary>
         public void ReleaseInkFloorClearanceLift()
@@ -1386,6 +1389,17 @@ namespace StickMate.States
         /// 접지로 볼 것인가(groundSnapTolerance)"와 "몸을 얼마나 순간이동시켜도 되는가"는 서로 다른
         /// 두 결정인데 지금까지 전자 하나에 묶여 있었다. 누가 groundSnapTolerance를 올리는 순간
         /// 순간이동 허용치가 조용히 함께 커지는 구조였고, 이 상한이 그 연결을 끊는다.
+        ///
+        /// <para>★★ 2026-09-06 — <b>단위 불일치 근본 수정</b>(debugger 규명). 위 문단이 "허용오차로 이미
+        /// 묶여 있다"고 적은 것은 <b>이 개발 머신의 창 높이(982pt)에서만 참</b>이었다. 허용오차는 OS
+        /// 포인트이고 상한은 월드 유닛이라, 창 높이가 <b>800pt보다 작으면 밴드가 상한을 추월</b>한다
+        /// (경계: 2 x orthographicSize(12) x 20 / 0.60 = 800). 그 구간에서는 Sense()가 Grounded를 준
+        /// 바로 그 프레임에 이 함수가 상한 초과로 <b>발판을 놓고 Fall로 보낸다</b> — 정상 보행이 낙하가 된다.
+        /// Windows 1366x768(스팀 전환 타깃)이 0.625 &gt; 0.60으로 갭 안이다. 그래서 상한을 고정 상수로
+        /// 읽지 않고 <see cref="StickConfig.ResolveGroundSnapMaxDistanceWorld"/>로 <b>허용오차의 월드
+        /// 환산에서 유도</b>한다(설정값은 하한). 환산은 좌표 변환 단일 소스
+        /// (<see cref="ScreenCoordinateConverter.WorldUnitsPerOsPoint"/>)에서만 나온다 — 여기서
+        /// <c>Screen.height / orthographicSize</c>를 다시 적으면 환산이 두 곳에서 따로 산다(BUG-M5).</para>
         /// </summary>
         /// <returns>상한 초과로 발판을 놓고 Fall로 전이했으면 true.</returns>
         private bool SnapToGround(GroundSensor.GroundInfo info)
@@ -1393,13 +1407,25 @@ namespace StickMate.States
             if (Body == null) return false;
             Vector2 pos = Body.position;
             float delta = info.GroundWorldY - pos.y; // + = 위로 끌어올림, - = 아래로 내림
-            float maxSnap = Config != null ? Mathf.Max(0f, Config.groundSnapMaxDistanceWorld) : 0.6f;
+
+            // 카메라가 없으면 환산이 0(= 유도 실패)이라 리졸버가 설정 절대값을 그대로 돌려준다.
+            float worldPerPoint = ScreenCoordinateConverter.WorldUnitsPerOsPoint(MainCamera, Config);
+            float maxSnap = Config != null
+                ? Config.ResolveGroundSnapMaxDistanceWorld(worldPerPoint)
+                : 0.6f;
 
             if (Mathf.Abs(delta) > maxSnap)
             {
+                float configuredMax = Config != null ? Config.groundSnapMaxDistanceWorld : 0.6f;
+                float toleranceWorld = Config != null ? Config.groundSnapTolerance * worldPerPoint : 0f;
                 Debug.Log($"[스냅상한초과] 접지 스냅이 상한을 넘어 발판을 놓고 낙하시킵니다 — " +
-                    $"{(delta > 0f ? "위로" : "아래로")} {Mathf.Abs(delta):F3}유닛(상한 {maxSnap:F2}) 이동 요구, " +
+                    $"{(delta > 0f ? "위로" : "아래로")} {Mathf.Abs(delta):F3}유닛(상한 {maxSnap:F3}" +
+                    $"{(maxSnap > configuredMax + 1e-4f ? " 유도" : " 설정")}) 이동 요구, " +
                     $"발 월드Y={pos.y:F3}, 발판 상단 월드Y={info.GroundWorldY:F3}, 발판핸들={CurrentFootholdHandle}. " +
+                    // ★ 단위 불일치 재발 시 로그만 보고 판정할 수 있도록 환산 재료를 함께 남긴다.
+                    //   창높이(pt)는 유도하지 않는다 — 그러려면 orthographicSize를 다시 가정해야 하고,
+                    //   그 가정이 곧 이 버그의 원형이다. 실측 재료(환산·밴드·설정상한)만 그대로 남긴다.
+                    $"[환산] 1pt={worldPerPoint:F6}유닛, 접지밴드={toleranceWorld:F3}유닛, 설정상한={configuredMax:F3}. " +
                     "딛고 있던 발판이 캐릭터를 지나쳐 크게 움직였다는 뜻이라, 끌고 가지 않고 공중에 남깁니다.");
                 CurrentFootholdHandle = 0L;
                 ReportFootholdChangeIfNeeded("접지 스냅 상한 초과 — 발판을 놓고 낙하");
@@ -2317,6 +2343,49 @@ namespace StickMate.States
         /// </summary>
         public bool IsFocusSessionAmbientActive =>
             (Config == null || Config.focusSessionAmbientEnabled) && IsFocusSessionActive;
+
+        /// <summary>
+        /// 부채꼴 메뉴(<c>Interaction.GearRadialMenuWidget</c>)가 <b>지금 화면에 떠 있는가</b> —
+        /// <see cref="IsFocusSessionActive"/>와 <b>한 글자도 다르지 않은 어법</b>의 읽기 전용 조회다
+        /// (같은 GameObject 1회 탐색 + 캐싱, 못 찾으면 다시 찾지 않는다).
+        ///
+        /// <para>★ <b>왜 <c>IsExpanded</c>가 아니라 <c>IsVisible</c>인가</b>: 재앵커
+        /// (<c>ExpandOrReanchor</c>)는 <b>접었다가 같은 프레임에 다시 편다</b>. 좁은 판정을 쓰면 그
+        /// 접힘 구간에서 «메뉴 없음»이 되어 배회 AI가 새 걷기 구간을 시작할 수 있고, 그러면 방금
+        /// 캐릭터를 겨냥해 다시 연 부채꼴에서 캐릭터가 걸어 나간다. <c>IExclusiveSurface.IsSurfaceOpen</c>도
+        /// 같은 이유로 <c>IsVisible</c>을 쓴다 — 이 저장소가 «표면이 떠 있다»를 표현하는 관례다.</para>
+        /// </summary>
+        public bool IsRadialMenuOpen
+        {
+            get
+            {
+                if (!_radialMenuSearched && Body != null)
+                {
+                    _radialMenuSearched = true;
+                    _radialMenu = Body.GetComponent<Interaction.GearRadialMenuWidget>();
+                }
+                return _radialMenu != null && _radialMenu.IsVisible;
+            }
+        }
+
+        private Interaction.GearRadialMenuWidget _radialMenu;
+        private bool _radialMenuSearched;
+
+        /// <summary>
+        /// ★ 2026-09-06 사용자 지시 <i>"메뉴를 펼쳤을때는 캐릭터가 제자리대기."</i> —
+        /// 배회 AI가 <b>새 걷기 구간을 시작하지 않아야 하는가</b>. 마스터 스위치 × 메뉴 떠 있음.
+        ///
+        /// <para>판정을 여기 한 곳에 두는 이유는 <see cref="IsFocusSessionAmbientActive"/>와 같다 —
+        /// 소비자가 스위치를 각자 해석하면 "반만 꺼진" 상태가 생긴다. 지금 소비자는
+        /// <c>States/AutoWanderController</c> 하나지만, 이 계약은 <b>수평 이동 소유권을 배회 AI에
+        /// 그대로 둔 채</b> «지금은 멈춰라»만 전달하는 형태여서 소비자가 늘어도 어법이 같다.</para>
+        ///
+        /// <para>★ <b>이것은 락이 아니다.</b> <c>SpectacleEventLock</c>을 잡지 않으므로 파쿠르·낙하·
+        /// 등반 등 <b>이미 진행 중인 연출은 전혀 막지 않는다</b>. 바꾸는 것은 «Idle이 끝났을 때
+        /// 걷기로 갈 확률» 하나뿐이다.</para>
+        /// </summary>
+        public bool IsRadialMenuHoldActive =>
+            (Config == null || Config.radialMenuHoldsCharacterInPlace) && IsRadialMenuOpen;
 
         /// <summary>
         /// 관망 자세를 이번 프레임에 적용해야 하는가. 적용하는 프레임에는 이징을 진행시키고,

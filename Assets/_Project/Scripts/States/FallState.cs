@@ -48,8 +48,13 @@ namespace StickMate.States
         /// "위로 움직이는 중"으로 볼 최소 상승 속도(월드 유닛/초). 정확히 0으로 두면 접지 직전의 미세한
         /// 수치 진동(+1e-5 같은 값)만으로도 착지가 계속 거부되어 원래의 "느린 하강 착지" 경로가 죽는다.
         /// 아주 작은 값이면 충분하다 — 실제로 문제가 되는 "던져 올린" 상승은 유닛/초 단위다.
+        ///
+        /// <para>★ 2026-09-06 — <c>private</c>에서 <c>internal</c>로 넓혔다. ThrowTumbleState가 같은
+        /// "2순위 밴드+유예" 폴백을 갖게 되면서 <b>같은 자</b>가 필요해졌기 때문이다. 숫자를 그쪽에
+        /// 복사하면 한쪽만 바뀌는 날 두 착지 경로가 조용히 갈라진다(이 저장소의 반복 사고 유형) —
+        /// 그래서 값이 아니라 이 상수를 참조한다.</para>
         /// </summary>
-        private const float UpwardLandingVelocityEpsilon = 0.05f;
+        internal const float UpwardLandingVelocityEpsilon = 0.05f;
 
         // 같은 발판에 연속 착지할 때 로그가 중복되지 않도록 하는 직전 값(long.MinValue = 아직 없음).
         private long _lastLoggedLandingHandle = long.MinValue;

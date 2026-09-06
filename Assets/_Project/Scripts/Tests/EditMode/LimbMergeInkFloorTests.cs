@@ -384,14 +384,21 @@ namespace StickMate.Tests.EditMode
             float inkPt = drawnPt - sides * membranePx;
             Assert.LessOrEqual(inkPt, 0f, $"{LogPrefix} 전제 확인 — 이 배치에서 잉크는 0 이하여야 합니다.");
 
+            // ★ 2026-09-06 A-2 — 통이 셋이 됐다(낱선 / 채움경계선 / 인계본 착용 조각).
+            //   이 배치에서 인계본 통은 <b>비워 둔다</b>(개수 0) — 그래야 아래 IsFalse가
+            //   「낱선 통의 잉크가 0이라서」 거짓이 되는 것이 확실해진다. 세 통을 동시에 깨면
+            //   무엇이 게이트를 울렸는지 구분할 수 없다.
+            float accFloorPt = StickConfig.MinAccessoryStrokeScreenPoints;
             var broken = new StrokeWidthDiagnostics.Report(
-                lineCount: 7, fillOutlineCount: 1, pixelsPerWorldUnit: 40.9167f,
+                lineCount: 7, fillOutlineCount: 1, accessoryCount: 0, pixelsPerWorldUnit: 40.9167f,
                 minPixels: drawnPt, maxPixels: drawnPt,
                 minPoints: drawnPt, maxPoints: drawnPt,
                 minLineInkCorePoints: inkPt, minFillOutlineInkCorePoints: fillFloorPt,
+                minAccessoryInkCorePoints: 0f,
                 minLineDrawnPoints: drawnPt, minFillOutlineDrawnPoints: fillFloorPt + membranePx,
+                minAccessoryDrawnPoints: 0f,
                 membranePixels: membranePx, membraneLineCount: 7,
-                floorPoints: floorPt, fillOutlineFloorPoints: fillFloorPt);
+                floorPoints: floorPt, fillOutlineFloorPoints: fillFloorPt, accessoryFloorPoints: accFloorPt);
 
             Assert.IsFalse(broken.FloorHonored,
                 $"{LogPrefix} ★★ 잉크 코어가 {inkPt:F2}pt인데 게이트가 「하한 지킴」을 돌려줍니다. " +
@@ -403,17 +410,42 @@ namespace StickMate.Tests.EditMode
                 "빨갛게 났을 것이고, 이 테스트가 잡으려는 <b>조용한</b> 형태가 아닙니다.");
 
             // 양성 대조 — 잉크가 하한을 지키면 통과해야 한다(항상 빨간 게이트는 게이트가 아니다).
+            // ★ 양성 대조에는 인계본 통을 <b>채워서</b> 넣는다(개수 1 · 잉크 = 자기 하한). 셋 다 비어 있는
+            //   대조는 "세 번째 통이 판정에 참여하지 않는다"와 구분되지 않는다.
             var healthy = new StrokeWidthDiagnostics.Report(
-                lineCount: 7, fillOutlineCount: 1, pixelsPerWorldUnit: 40.9167f,
+                lineCount: 7, fillOutlineCount: 1, accessoryCount: 1, pixelsPerWorldUnit: 40.9167f,
                 minPixels: floorPt + sides * membranePx, maxPixels: floorPt + sides * membranePx,
                 minPoints: floorPt + sides * membranePx, maxPoints: floorPt + sides * membranePx,
                 minLineInkCorePoints: floorPt, minFillOutlineInkCorePoints: fillFloorPt,
+                minAccessoryInkCorePoints: accFloorPt,
                 minLineDrawnPoints: floorPt + sides * membranePx,
                 minFillOutlineDrawnPoints: fillFloorPt + membranePx,
+                minAccessoryDrawnPoints: accFloorPt + membranePx,
                 membranePixels: membranePx, membraneLineCount: 7,
-                floorPoints: floorPt, fillOutlineFloorPoints: fillFloorPt);
+                floorPoints: floorPt, fillOutlineFloorPoints: fillFloorPt, accessoryFloorPoints: accFloorPt);
             Assert.IsTrue(healthy.FloorHonored,
                 $"{LogPrefix} 양성 대조 실패 — 잉크가 하한을 지키는데 결함으로 읽힙니다.");
+
+            // ★★ A-2의 회귀 잠금 — <b>인계본 통이 실제로 판정에 참여하는가.</b> 위 healthy에서
+            //    인계본 잉크만 하한 아래로 내리면 반드시 거짓이 나와야 한다. 이 대조가 없으면
+            //    "통은 만들었는데 FloorHonored가 안 본다"가 조용한 초록으로 남는다.
+            var accessoryStarved = new StrokeWidthDiagnostics.Report(
+                lineCount: 7, fillOutlineCount: 1, accessoryCount: 1, pixelsPerWorldUnit: 40.9167f,
+                minPixels: floorPt + sides * membranePx, maxPixels: floorPt + sides * membranePx,
+                minPoints: floorPt + sides * membranePx, maxPoints: floorPt + sides * membranePx,
+                minLineInkCorePoints: floorPt, minFillOutlineInkCorePoints: fillFloorPt,
+                minAccessoryInkCorePoints: accFloorPt * 0.5f,
+                minLineDrawnPoints: floorPt + sides * membranePx,
+                minFillOutlineDrawnPoints: fillFloorPt + membranePx,
+                minAccessoryDrawnPoints: accFloorPt * 0.5f + membranePx,
+                membranePixels: membranePx, membraneLineCount: 7,
+                floorPoints: floorPt, fillOutlineFloorPoints: fillFloorPt, accessoryFloorPoints: accFloorPt);
+            Assert.IsFalse(accessoryStarved.FloorHonored,
+                $"{LogPrefix} ★ 인계본 착용 조각(계약 v2) 통이 하한 판정에 참여하지 않습니다 — " +
+                $"잉크 {accFloorPt * 0.5f:F2}pt / 하한 {accFloorPt:F2}pt인데 「하한 지킴」이 나옵니다.");
+            StringAssert.Contains("인계본", StrokeWidthDiagnostics.Describe(accessoryStarved),
+                $"{LogPrefix} 로그 한 줄이 인계본 통을 따로 적지 않습니다 — 통을 나눠 놓고 " +
+                "출력이 합쳐져 있으면 읽는 사람은 여전히 1pt를 2pt 하한과 견줍니다.");
 
             StringAssert.Contains("잉크", StrokeWidthDiagnostics.Describe(broken),
                 $"{LogPrefix} 로그 한 줄이 「잉크」와 「그려진 두께」를 구분해 적지 않습니다 — " +
@@ -440,8 +472,20 @@ namespace StickMate.Tests.EditMode
                 $"{LogPrefix} ★ 계측기가 되빼기 단일 창구를 쓰지 않습니다 — 산술을 두 곳에 적으면 갈라집니다.");
 
             // 부재 단언은 썩으면 조용히 초록이 된다(CLAUDE.md). 그래서 <b>실재 대조</b>를 함께 건다.
-            Assert.IsTrue(src.Contains("FillOutlineStroke.Is"),
+            // ★ 2026-09-06 A-2 — 니들이 "FillOutlineStroke.Is"였는데 역할 조회가 단일 창구
+            //   (StrokeFloorRoles.Of)로 옮겨가면서 <b>거짓 빨강</b>이 될 자리였다. nameof로 바꿔
+            //   이름이 바뀌면 컴파일 에러가 나게 한다(문자열은 조용히 썩는다 — CLAUDE.md).
+            Assert.IsTrue(src.Contains(nameof(StrokeFloorRoles) + "." + nameof(StrokeFloorRoles.Of)),
                 $"{LogPrefix} 대조 실패 — 역할 조회조차 없습니다. 위 니들들이 무엇을 재고 있는지 알 수 없습니다.");
+            // 그 창구가 실제로 <b>세 표식</b>을 가르는가 — 계측기에서 사라진 조회를 창구에서 되찾는다.
+            string rolePath = Path.Combine(Application.dataPath, "_Project", "Scripts", "Core",
+                "StrokeFloorRole.cs");
+            Assert.IsTrue(File.Exists(rolePath), $"{LogPrefix} 역할 단일 창구 소스를 찾지 못했습니다: {rolePath}");
+            string roleSrc = File.ReadAllText(rolePath);
+            StringAssert.Contains(nameof(FillOutlineStroke) + "." + nameof(FillOutlineStroke.Is), roleSrc,
+                $"{LogPrefix} 단일 창구가 채움 경계선 표식을 묻지 않습니다.");
+            StringAssert.Contains(nameof(AccessoryStrokeMark) + "." + nameof(AccessoryStrokeMark.Is), roleSrc,
+                $"{LogPrefix} 단일 창구가 인계본 착용 조각 표식을 묻지 않습니다 — 2분류로 되돌아갔습니다.");
 
             Debug.Log($"{LogPrefix} 계측기 — 막 조회 + 되빼기 단일 창구 확인.");
         }

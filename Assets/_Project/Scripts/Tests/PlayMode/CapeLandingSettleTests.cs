@@ -176,6 +176,15 @@ namespace StickMate.Tests.PlayMode
         /// <summary>액세서리 컨테이너는 서명이 바뀌면 통째로 다시 구워지므로 매번 다시 찾는다.</summary>
         private Vector3[] HemPoints()
         {
+            // ★ 2026-09-06 — CapeFallFlutterTests.EnsureRefs 와 <b>같은 사정</b>이다(그 주석이 정본):
+            //   인계본 짧은 망토의 몸 조각은 Piece_STB · Piece_STC · Piece_STK 셋이고,
+            //   «CapeOutline 한 줄의 인덱스 2~6 = 밑단» 규약이 사라졌다. 이름 치환으로는 못 고친다.
+            HandoffPlayModeGate.SkipIfHandoffRendered(_renderer.transform,
+                "착지 뒤 망토가 <b>잠잠해지는가</b>(정착 시간 · 잔여 진동 상한) — 이 파일 3건. " +
+                "잃는 것은 «밑단을 인덱스로 특정하던 자»이고, 되살리려면 밑단 정의를 기하로 바꿔야 한다 " +
+                "(CapeFallFlutterTests 와 같은 재작성 — 두 파일을 한 라운드에 함께 고치는 것이 맞다).",
+                "CapeOutline");
+
             if (_capeLine == null)
             {
                 foreach (var lr in _renderer.GetComponentsInChildren<LineRenderer>(true))

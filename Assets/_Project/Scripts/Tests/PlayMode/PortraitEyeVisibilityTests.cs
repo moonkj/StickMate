@@ -192,6 +192,23 @@ namespace StickMate.Tests.PlayMode
                 $"{LogPrefix} 미착용 상태에서 초상화에 눈이 그려졌습니다 — 실제 캐릭터에는 눈이 없습니다 " +
                 "(Editor/SceneBootstrapper.BakeEyes=false). 두 소비처가 어긋났습니다.");
 
+            // ★ 2026-09-06 — <b>공허한 통과 방지 ③의 자를 하나 더 둔다</b>(이름에 기대지 않는 쪽).
+            //   EYES 0~3번이 인계본(계약 v2)으로 갈아타면서 아래 Glasses 표의 v1 렌즈 이름
+            //   (SunglassLensFront · RoundLensFront · GoggleLens · MonoclePod)이 초상화에서 사라졌다 —
+            //   지금 그 자리에는 Piece_* 조각이 그려진다. 그런데 ③이 재려는 것은 «렌즈라는 이름의
+            //   도형»이 아니라 <b>«안경이 실제로 그려졌는가»</b>다. 그래서 미착용 상태의 <b>부품 수</b>를
+            //   기준선으로 잡고, 착용 회차마다 그 수가 <b>늘었는가</b>로 같은 사실을 잰다.
+            //   개수로 재는 이유: 인계본 조각 이름은 아이템마다 같은 관례로 다시 시작해(Piece_B0 …)
+            //   <b>이름 집합의 차분</b>은 모자와 겹치면 조용히 0이 될 수 있다(LineRendererUvBandProbe T2가
+            //   같은 함정에 빠져 있다). 개수는 그 충돌에 면역이다.
+            //   ⇒ v1 아이템은 <b>이름 검사가 그대로 유지</b>되고(더 엄격), 인계본 아이템은 이 자로 검증된다.
+            //     즉 이 라운드에서 커버리지를 잃지 않는다 — 건너뛰기가 필요 없는 자리였다.
+            Transform baseFigure = stage.transform.Find("MiniFigure");
+            Assert.IsNotNull(baseFigure, $"{LogPrefix} 촬영장에서 MiniFigure를 찾지 못했습니다.");
+            int barePartCount = HandoffPlayModeGate.DrawnNames(baseFigure).Count;
+            Assert.Greater(barePartCount, 0,
+                $"{LogPrefix} 미착용 초상화에 부품이 하나도 없습니다 — 기준선이 공허합니다.");
+
             int tested = 0;
             var skipped = new System.Text.StringBuilder();
 
@@ -220,9 +237,20 @@ namespace StickMate.Tests.PlayMode
                 AssertFigureIsActuallyDrawn(stage, label);
 
                 // ③ 대조군: 안경이 진짜로 그려졌는가. 아니면 EYES 경로를 한 번도 안 밟은 공허한 통과다.
-                Assert.IsTrue(lensDrawn,
-                    $"{LogPrefix} {label}을(를) 착용했는데 렌즈 도형 '{lens}'이 초상화에 없습니다 — " +
+                //   v1 아이템은 <b>렌즈 이름</b>으로, 인계본 아이템은 <b>부품 수 증가</b>로 같은 사실을 잰다
+                //   (위 기준선 문단 참고). 둘 다 실패하면 이 회차는 공허하므로 <b>실패</b>다.
+                int nowPartCount = HandoffPlayModeGate.DrawnNames(baseFigure).Count;
+                bool grew = nowPartCount > barePartCount;
+                Assert.IsTrue(lensDrawn || grew,
+                    $"{LogPrefix} {label}을(를) 착용했는데 초상화가 그대로입니다 — 렌즈 도형 '{lens}'도 없고" +
+                    $" 부품 수도 안 늘었습니다(미착용 {barePartCount} → 지금 {nowPartCount}). " +
                     "이 회차는 아무것도 증명하지 못합니다(대조군 실패).");
+                if (!lensDrawn)
+                {
+                    Debug.Log($"{LogPrefix} {label} — v1 렌즈 이름('{lens}')은 없지만 부품이 " +
+                        $"{barePartCount} → {nowPartCount}로 늘어 <b>실제로 그려졌음</b>을 확인했습니다" +
+                        "(인계본 조각으로 갈아탄 아이템).");
+                }
 
                 // ① 절대 조건.
                 Assert.IsFalse(eyeBack,

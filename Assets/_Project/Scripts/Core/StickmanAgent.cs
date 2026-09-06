@@ -1380,9 +1380,13 @@ namespace StickMate.Core
                 if (lr == null) continue;
                 // ★ 여기서 역할을 안 물으면 액세서리 채움 경계선이 이 한 줄에 도로 2.00pt가 된다.
                 //   인계본 착용 조각(계약 v2)도 같다 — 표식(AccessoryStrokeMark)이 1pt 하한을 지킨다.
-                float lineFloor = FillOutlineStroke.Is(lr) ? fillOutlineFloorWorld
-                    : AccessoryStrokeMark.Is(lr) ? accessoryFloorWorld
-                    : floorWorld;
+                // ★★ 2026-09-06 (A-2) — 이 3분류 삼항식이 여기 · Platform/StrokeWidthDiagnostics ·
+                //    PlayMode 통 나누기 <b>세 곳에 복사</b>돼 있었고, 계약 v2가 세 번째 갈래를 만든 날
+                //    <b>이 파일만</b> 따라왔다. 남은 둘은 인계본 획(설계대로 1pt = 0.05000유닛)을 낱선으로
+                //    세어 2pt 하한(0.0999)과 비교했다 — 정확히 절반이라 언제나 "하한 미달". 그림은 옳고
+                //    자가 낡은 것이었다. 그래서 판정을 단일 창구(Core/StrokeFloorRole)로 옮겼다.
+                float lineFloor = StrokeFloorRoles.World(StrokeFloorRoles.Of(lr),
+                    floorWorld, fillOutlineFloorWorld, accessoryFloorWorld);
                 // ★ 이 선에 <b>이미 막이 걸려 있으면</b> 하한도 그만큼 올려야 잉크 코어가 하한을 지킨다.
                 //   역할이 아니라 <b>실제로 걸린 겹 수</b>를 묻는다 — 막에서 제외된 선을 올려 버리면
                 //   그 선의 잉크가 하한보다 두꺼워진다(그림이 조용히 굵어진다).

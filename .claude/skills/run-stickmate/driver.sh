@@ -208,8 +208,11 @@ cmd_doctor() {
   say "[Unity 배치모드 락] 다른 에이전트가 Library/를 쓰고 있으면 빌드/테스트가 깨진다"
   if pgrep -f "Unity.app/Contents/MacOS/Unity .*-projectPath.*StickMate" >/dev/null 2>&1; then
     say "  사용 중 — 지금 build/test 하지 말 것"; rc=1
+  elif [ -f "$REPO/Temp/UnityLockfile" ] && lsof "$REPO/Temp/UnityLockfile" >/dev/null 2>&1; then
+    say "  Temp/UnityLockfile 존재 + 보유 프로세스 확인됨 — 에디터가 열려 있을 수 있음"; rc=1
   elif [ -f "$REPO/Temp/UnityLockfile" ]; then
-    say "  Temp/UnityLockfile 존재 — 에디터가 열려 있을 수 있음"; rc=1
+    say "  Temp/UnityLockfile 존재하지만 보유 프로세스 없음 — 좀비 락파일로 판단, 배치모드 실행 가능"
+    say "  (Unity가 비정상 종료 시 이 파일을 못 지우는 경우가 있음 — 실제 락은 lsof로 재확인함)"
   else
     say "  비어 있음(배치모드 실행 가능)"
   fi

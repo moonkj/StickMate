@@ -280,7 +280,7 @@ namespace StickMate.Tests.EditMode
             // ★ I-15′ — 셋을 다른 조건으로 나누면 (카) 공격이 각 경계를 따로 넘어 상금이 배가 되고,
             //   T-14-3-a 방어를 세 곳에 걸어야 한다. 한 곳만 빠뜨려도 조용히 새는 문이 된다.
             Assert.IsTrue(CurrencyModel.TryUsePotion());
-            Assert.Greater(CurrencyModel.TickIdleIncome(120.0, true), 0, "전제 — 유휴 수급이 있어야 한다.");
+            Assert.Greater(CurrencyModel.TickIdleIncome(120.0, true, out _), 0, "전제 — 유휴 수급이 있어야 한다.");
             Assert.Greater(CurrencyModel.TryPayTodoDailyCoins(), 0, "전제 — 할일 보상이 있어야 한다.");
             Assert.Greater(CurrencyModel.TryAwardArcheryCoins(0.0), 0, "전제 — 활쏘기 상금이 있어야 한다.");
 

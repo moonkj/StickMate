@@ -169,10 +169,20 @@ namespace StickMate.Tests.EditMode
                 "22.04% → 22.291%)이 통째로 사라지고, 화면은 하나도 안 바뀝니다.");
 
             // 경로 (2) — 런타임 생성 잉크. 액세서리 채움 경계선이 여기 들어 있다.
-            StringAssert.Contains("FillOutlineStroke.Is", body,
+            // ★ 2026-09-06 A-2 — 니들이 "FillOutlineStroke.Is"였다. 갈래가 셋이 되면서 판정이
+            //   단일 창구(Core/StrokeFloorRole)로 옮겨갔고, 그 순간 이 니들은 <b>거짓 빨강</b>이 된다
+            //   (CLAUDE.md의 ArePanelsSuppressed 사고와 같은 형태). nameof로 바꿔 이름이 바뀌면
+            //   컴파일이 먼저 막게 한다.
+            StringAssert.Contains(nameof(StrokeFloorRoles) + "." + nameof(StrokeFloorRoles.Of), body,
                 $"{LogPrefix} ★ 경로 (2)가 선의 역할을 모릅니다 — 안전망 훑기가 액세서리 채움 경계선을 " +
                 "낱선 하한으로 되올립니다. 렌더러가 1.00pt로 그린 직후 여기서 2.00pt가 되므로 " +
                 "<b>렌더러만 고치면 아무 일도 일어나지 않습니다</b>.");
+
+            // ★ 갈래가 셋이므로 <b>인계본 하한</b>도 같은 자리에서 함께 쓰여야 한다. 이 항이 빠지면
+            //   인계본 획(설계대로 1.00pt)이 안전망 훑기에서 2.00pt로 되올려진다.
+            StringAssert.Contains("accessoryFloorWorld", body,
+                $"{LogPrefix} ★ 경로 (2)가 인계본 착용 조각(계약 v2) 하한을 넘기지 않습니다 — " +
+                "표식이 붙어 있어도 고를 값이 없으면 낱선 하한으로 되올라갑니다.");
 
             // 두 경로가 같은 값을 쓰는가(각자 환산하면 화면이 바뀔 때 한쪽만 따라간다).
             int uses = Regex.Matches(body, "fillOutlineFloorWorld").Count;
@@ -208,25 +218,37 @@ namespace StickMate.Tests.EditMode
         }
 
         /// <summary>
-        /// ★ 진단 로그가 <b>두 하한을 따로</b> 나른다 — 안 그러면 Windows 사용자의 <c>[렌더품질]</c> 줄이
+        /// ★ 진단 로그가 <b>역할별 하한을 따로</b> 나른다 — 안 그러면 Windows 사용자의 <c>[렌더품질]</c> 줄이
         /// 정상적으로 1.18pt인 채움 경계선을 "하한 미달 — 결함"으로 오진한다(그리고 그 신고를 받은
         /// 사람이 멀쩡한 코드를 고치려고 한 라운드를 쓴다).
+        ///
+        /// <para>★★ 2026-09-06 A-2 — 이 검사가 <b>두</b> 하한만 요구하던 동안 계측기는 2분류인 채로
+        /// 남아 있었고, 계약 v2(인계본)의 1.00pt 획이 낱선(2.00pt) 통에서 오보됐다. 검사 자체가
+        /// 갈래 수를 따라가지 않으면 갈래가 늘어난 사실이 러너에 보이지 않는다.
+        /// <b>이제 세 하한을 요구한다 — 메서드 이름의 「두」는 낡았다.</b> 이름을 고치지 않은 이유는
+        /// 개명이 <c>docs/verify/renames.tsv</c>(qa-regression 소유) 등재를 요구하는데 이 라운드가
+        /// 그 대장을 쓰는 다른 라운드와 겹쳐 있어서다 — 개명은 그쪽에 넘긴다.</para>
         /// </summary>
         [Test]
         public void 진단_계측기가_두_하한을_모두_나른다()
         {
             string src = Read(DiagnosticsPath);
 
-            StringAssert.Contains("MinStrokeScreenPoints", src,
+            StringAssert.Contains(nameof(StickConfig.MinStrokeScreenPoints), src,
                 $"{LogPrefix} 계측기가 낱선 하한을 참조하지 않습니다.");
-            StringAssert.Contains("MinFillOutlineScreenPoints", src,
+            StringAssert.Contains(nameof(StickConfig.MinFillOutlineScreenPoints), src,
                 $"{LogPrefix} ★ 계측기가 채움 경계선 하한을 모릅니다 — 최소값 하나를 하한 하나와 " +
                 "비교하는 구조라, 정상적으로 얇은 채움 경계선이 결함으로 신고됩니다. " +
                 "이 로그는 macOS/Windows가 같은 함수를 부르므로 오진도 양 플랫폼에서 똑같이 납니다.");
-            StringAssert.Contains("FillOutlineStroke.Is", src,
-                $"{LogPrefix} 계측기가 선의 역할을 묻지 않습니다 — 두 통으로 나눌 방법이 없습니다.");
+            StringAssert.Contains(nameof(StickConfig.MinAccessoryStrokeScreenPoints), src,
+                $"{LogPrefix} ★ 계측기가 인계본 착용 조각(계약 v2) 하한을 모릅니다 — 설계대로 1.00pt인 " +
+                "인계본 획이 낱선 통에 들어가 2.00pt 하한과 비교됩니다(정확히 절반이라 <b>언제나</b> " +
+                "「하한 미달 — 결함」). 그림은 옳고 자가 낡은 상태입니다.");
+            StringAssert.Contains(nameof(StrokeFloorRoles) + "." + nameof(StrokeFloorRoles.Of), src,
+                $"{LogPrefix} 계측기가 선의 역할을 <b>단일 창구</b>에 묻지 않습니다 — 갈래 판정을 " +
+                "여기 다시 적으면 StickmanAgent와 갈라집니다(그것이 A-2의 원인입니다).");
 
-            Debug.Log($"{LogPrefix} 진단 계측기 — 두 하한 + 역할 조회 확인.");
+            Debug.Log($"{LogPrefix} 진단 계측기 — 세 하한 + 단일 창구 역할 조회 확인.");
         }
 
         /// <summary>

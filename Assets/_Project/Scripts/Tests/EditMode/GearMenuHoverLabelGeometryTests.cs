@@ -188,6 +188,40 @@ namespace StickMate.Tests.EditMode
             return list;
         }
 
+        // ============================================================================
+        // ★★ 2026-09-06 — 역대조가 재현해야 하는 것은 「옛 규칙」이 <b>아니라</b> 「옛 기하」다
+        // ============================================================================
+        // 위성이 폐지되면서 다섯 슬롯이 <b>한 궤도</b>가 됐고, 그러자 옛 이름표 규칙(자기 버튼 기준
+        // 링)과 현행 규칙(전역 링)이 <b>같은 반지름</b>을 낸다 — 즉 옛 규칙만으로는 더 이상 겹침을
+        // 못 만든다(실측: 168,508개 배치에서 위반 0). 그건 «대조가 죽었다»가 아니라
+        // <b>«그 결함 부류가 구조적으로 사라졌다»</b>는 뜻이고, 그 사실 자체를 잠가야 한다.
+        //
+        // 그래서 역대조는 이제 <b>옛 기하 + 옛 규칙</b>을 함께 재현한다: 호 4칸(±45/±15°, 궤도 111pt)
+        // + 축 위 위성 1칸(0°, 궤도 168pt). 그 조합이 2026-09-03 러너 실패
+        // («[오늘 할일] 이름표가 [앱 종료]를 5.9px 덮습니다») 그 자체다.
+        //
+        // ★ 이 숫자들은 <b>프로덕션에서 삭제된 상수</b>라 참조할 대상이 없다. 협업 프로토콜의
+        //   «상수를 베끼지 마라»는 <b>살아 있는 값</b>에 대한 규칙이고, 여기 있는 것은 역사 기록이다.
+        //   이 값이 «낡는» 경로는 존재하지 않는다 — 과거는 안 바뀐다.
+        private const float LegacyArcOrbitPoints = 111f;
+        private const float LegacySatelliteOrbitPoints = 168f;
+        private const float LegacyStepDegrees = 30f;
+        private const int LegacyArcCount = 4;
+
+        private static List<Vector2> LegacyFanCenters(Vector2 origin, float baseDegrees)
+        {
+            var list = new List<Vector2>(GearRadialMenuWidget.ButtonCount);
+            for (int i = 0; i < GearRadialMenuWidget.ButtonCount; i++)
+            {
+                bool satellite = i >= LegacyArcCount;
+                float offset = satellite ? 0f : ((LegacyArcCount - 1) * 0.5f - i) * LegacyStepDegrees;
+                float r = satellite ? LegacySatelliteOrbitPoints : LegacyArcOrbitPoints;
+                float a = (baseDegrees + offset) * Mathf.Deg2Rad;
+                list.Add(origin + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * r);
+            }
+            return list;
+        }
+
         private static List<Vector2> ColumnCenters(Vector2 origin, float sign)
         {
             var list = new List<Vector2>(GearRadialMenuWidget.ButtonCount);
@@ -303,10 +337,17 @@ namespace StickMate.Tests.EditMode
 
         /// <summary>
         /// 위 두 초록이 «무엇이든 통과시키는 빈 조건»이 아님을 증명한다. <b>같은 스윕·같은 자</b>를 쓰고
-        /// 규칙만 옛것으로 바꾼다 — 그래도 통과한다면 이 파일은 아무것도 안 잠그고 있는 것이다.
+        /// <b>옛 기하 + 옛 규칙</b>으로 바꾼다 — 그래도 통과한다면 이 파일은 아무것도 안 잠그고 있는 것이다.
+        ///
+        /// <para>★★ <b>2026-09-06 — 이 대조가 한 번 죽었다가 되살아났다.</b> 위성이 폐지되어 궤도가
+        /// 하나가 되자 «옛 규칙»만으로는 168,508개 배치에서 <b>위반이 0건</b>이 됐고, 이 테스트가
+        /// 빨개졌다. 원인은 대조가 <b>규칙만</b> 되돌리고 <b>기하는 현행</b>을 쓰고 있었기 때문이다 —
+        /// 두 결함(2026-09-03 겹침 · 2026-09-06 «엉뚱한 버튼 옆»)의 실제 원인은 규칙이 아니라
+        /// <b>궤도가 갈라져 있다</b>는 사실 하나였고, 그것이 사라지면 규칙 되돌림은 무해해진다.
+        /// 그래서 대조를 <c>LegacyFanCenters</c>(호 111 + 위성 168)와 함께 돌린다.</para>
         /// </summary>
         [Test]
-        public void 대조_고치기_전_규칙은_같은_스윕에서_형제를_덮는다()
+        public void 대조_옛_기하와_옛_규칙은_같은_스윕에서_형제를_덮는다()
         {
             float worst = SweepFan(Rule.Legacy, out int judged, out int violations,
                 out _, out string worstWhere);
@@ -344,7 +385,10 @@ namespace StickMate.Tests.EditMode
                             Vector2 origin = gear + shift;
                             foreach (float baseDegrees in LadderAngles(gear, screen))
                             {
-                                List<Vector2> centers = FanCenters(origin, baseDegrees);
+                                // ★ 규칙과 기하는 <b>한 쌍</b>이다 — 위 LegacyFanCenters 문단 참고.
+                                List<Vector2> centers = rule == Rule.Legacy
+                                    ? LegacyFanCenters(origin, baseDegrees)
+                                    : FanCenters(origin, baseDegrees);
                                 if (!AllButtonsOnScreen(centers, GearRadialMenuWidget.ButtonDiameterPoints,
                                         screen)) continue;
 
@@ -381,8 +425,10 @@ namespace StickMate.Tests.EditMode
             List<Vector2> centers = FanCenters(origin, 225f);
             float farthest = FarthestFrom(origin, centers);
 
-            Assert.AreEqual(GearRadialMenuWidget.SatelliteOrbitRadiusPoints, farthest, 0.01f,
-                $"{LogPrefix} 가장 바깥 버튼이 위성이 아닙니다({farthest:F2}pt) — " +
+            // ★ 2026-09-06 — 위성이 폐지되어 «가장 바깥 버튼»은 이제 <b>아무 슬롯이나</b>다(다섯이 등거리).
+            //   그래서 기대값이 SatelliteOrbitRadiusPoints에서 OrbitRadiusPoints로 바뀌었다.
+            Assert.AreEqual(GearRadialMenuWidget.OrbitRadiusPoints, farthest, 0.01f,
+                $"{LogPrefix} 가장 바깥 버튼까지의 거리가 궤도와 다릅니다({farthest:F2}pt) — " +
                 "링 반지름의 전제가 깨졌습니다.");
 
             float ring = GearRadialMenuWidget.HoverLabelRingRadius(
@@ -398,15 +444,21 @@ namespace StickMate.Tests.EditMode
                     $"이름표 링({ring:F2}pt) 밖입니다 — 그 버튼은 자기 형제의 이름표에 덮일 수 있습니다.");
             }
 
-            // 링이 호 궤도가 아니라 <b>위성 궤도</b>에서 나온다(옛 보장이 깨진 지점).
-            float arcOnlyRing = GearRadialMenuWidget.HoverLabelRingRadius(
+            // ★★ 2026-09-06 — 여기 있던 단언이 <b>정반대로 뒤집혔다</b>.
+            //   옛 판: «링 > 호 궤도 기준» (위성이 호보다 바깥이므로 링이 더 커야 한다).
+            //   새 판: «링 == 호 궤도 기준» — 궤도가 하나뿐이라 둘이 <b>같아야</b> 한다.
+            //   이 등호가 곧 «이름표가 자기 버튼 옆에 뜬다»의 전제다(2026-09-06 사용자 신고의 수리).
+            //   갈라지는 순간 안쪽 궤도 버튼의 이름표가 바깥 궤도 옆에 떠 다른 버튼을 가리킨다.
+            float ownOrbitRing = GearRadialMenuWidget.HoverLabelRingRadius(
                 GearRadialMenuWidget.OrbitRadiusPoints, GearRadialMenuWidget.ButtonDiameterPoints);
-            Assert.Greater(ring, arcOnlyRing,
-                $"{LogPrefix} 링이 호 궤도 기준({arcOnlyRing:F2}pt)과 같습니다 — " +
-                "위성이 그 안에 들어와 있고, 그것이 2026-09-03 겹침의 원인이었습니다.");
+            Assert.AreEqual(ownOrbitRing, ring, 0.01f,
+                $"{LogPrefix} 전역 링({ring:F2}pt)이 «자기 궤도 + 반경 + 간격»({ownOrbitRing:F2}pt)과 다릅니다 — " +
+                "슬롯마다 궤도가 갈라졌다는 뜻이고, 그러면 안쪽 궤도 버튼의 이름표가 자기 원에서 그 차이만큼 " +
+                "떠서 다른 버튼 옆에 붙습니다(2026-09-06 사용자 신고의 정체). 궤도를 다시 가르려면 " +
+                "링을 «슬롯별»로 바꾸는 작업이 같은 라운드에 함께 와야 합니다.");
 
             Debug.Log($"{LogPrefix} 링 {ring:F2}pt (가장 바깥 버튼 {farthest:F2} + 반경 + 간격) " +
-                      $"/ 호 궤도만 봤을 때 {arcOnlyRing:F2}pt.");
+                      $"= 자기 궤도 기준 {ownOrbitRing:F2}pt — 궤도가 하나라 둘이 일치한다.");
         }
     }
 }

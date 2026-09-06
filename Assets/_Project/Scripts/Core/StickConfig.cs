@@ -849,6 +849,13 @@ namespace StickMate.Core
         // ⚠ 반대로 여전히 살아 있는 함정: **카메라 orthographicSize를 바꾸면** 이 값들의 "월드 환산 크기"가
         //   달라진다(월드유닛당 포인트 = 창높이[포인트] / (2*orthographicSize)). 그건 DPI와 무관한 별개의
         //   종속성이며, SceneBootstrapper의 BUG-SW-M2 경고는 그 의미로 계속 유효하다.
+        // ⚠⚠ 2026-09-06 — 그 함정이 **orthographicSize가 아니라 창 높이 쪽에서 실제로 터져 있었다.**
+        //   orthographicSize는 12로 고정이지만 **창 높이는 사용자 화면마다 다르다.** 즉 위 8개 값의 월드
+        //   환산 크기는 해상도마다 달라지고, 이 8개 중 하나라도 **월드 유닛 상수와 직접 비교되는 자리**가
+        //   있으면 그 자리는 어떤 해상도에서 조용히 뒤집힌다. 실제 사고: groundSnapTolerance(여기)와
+        //   groundSnapMaxDistanceWorld(월드 유닛)가 같은 접지 판정에 섞여 창높이 800pt 미만에서 갈라졌고,
+        //   Windows 1366x768이 그 안이었다. ⇒ **이 8개 값을 월드 상수와 비교하는 코드를 새로 쓸 때는
+        //   반드시 ScreenCoordinateConverter.WorldUnitsPerOsPoint()로 환산해서 비교하라.**
 
         [Tooltip("캐릭터 발 위치(OS 좌표)와 발판 상단 사이 허용 오차(**OS 포인트**). 이 범위 안이면 접지로 판정. " +
                  "단위 근거는 아래 \"OS-px 필드 단위 규약\" 블록 참고 — Retina를 켜도 값을 바꿀 필요가 없다.\n\n" +
@@ -1260,6 +1267,20 @@ namespace StickMate.Core
                  "★ poseSmoothingRate(35/초)는 95%까지 0.086초라 그대로 두면 팔이 «딱» 하고 붙는다 — " +
                  "이 값이 그 위에 얹히는 별도 포락선(SmoothStep)의 길이다.")]
         public float focusWatchStanceSettleSeconds = 0.45f;
+
+        // ============================================================================
+        // ★ 부채꼴 메뉴가 떠 있는 동안 제자리 대기 (2026-09-06 사용자 지시)
+        // ============================================================================
+        // 원문: "메뉴를 펼쳤을때는 캐릭터가 제자리대기."
+        // 이 값이 없던 동안 부채꼴은 **펼친 순간의 앵커에 고정**인데(앵커가 움직여도 따라가거나
+        // 닫히는 경로는 톱니 드래그 하나뿐이다) 캐릭터는 계속 걸어 다녔다 — 즉 메뉴와 캐릭터가
+        // 벌어지는 그림이 구조적으로 가능했다.
+
+        [Tooltip("부채꼴 메뉴가 떠 있는 동안 배회 AI가 새 걷기 구간을 시작하지 않는다(제자리 대기). " +
+                 "★ 네거티브 컨트롤 — 끄면 거동이 100% 이 변경 이전과 같아진다. " +
+                 "이건 락이 아니다: 파쿠르·낙하 등 이미 진행 중인 연출은 전혀 막지 않고, " +
+                 "바꾸는 것은 'Idle이 끝났을 때 걷기로 갈 확률' 하나뿐이다.")]
+        public bool radialMenuHoldsCharacterInPlace = true;
 
         [Header("스트레스 게이지 (docs/UX_FLOW.md 19절, Phase 5)")]
         [Tooltip("과다 상호작용 판정 관찰 창 길이(초). UX 명시값 5분.")]
@@ -1679,8 +1700,78 @@ namespace StickMate.Core
                  "정직한 메모: 이 상한은 현재 배선에서는 방어적 불변식이다. 이번 신고의 실제 원인은 " +
                  "RescueToSafeGround가 '가장 높은 발판'으로 복귀시킨 것이었고 그쪽에서 고쳤다. " +
                  "이 필드의 값어치는 '무엇을 접지로 볼 것인가'와 '몸을 얼마나 순간이동시켜도 되는가'를 " +
-                 "분리하는 데 있다 — 지금까지는 groundSnapTolerance 하나가 두 결정을 겸하고 있었다.")]
+                 "분리하는 데 있다 — 지금까지는 groundSnapTolerance 하나가 두 결정을 겸하고 있었다.\n\n" +
+                 "★★ 2026-09-06 — 이 값은 이제 **하한일 뿐이다**. 위 (하한) 문장이 '말로만' 적혀 있어서 " +
+                 "실제로는 지켜지지 않았다: groundSnapTolerance는 OS 포인트이고 이 값은 월드 유닛이라, " +
+                 "창 높이가 800pt보다 작으면 접지 밴드가 이 상한을 추월한다(24 x 20 / 0.6 = 800). " +
+                 "실효 상한은 ResolveGroundSnapMaxDistanceWorld()가 매 판정마다 유도한다 — " +
+                 "그 XML 주석에 실측 표가 있다.")]
         public float groundSnapMaxDistanceWorld = 0.6f;
+
+        /// <summary>
+        /// 실효 스냅 상한을 접지 허용오차의 월드 환산값보다 얼마나 더 띄울지(배수).
+        ///
+        /// <para>1.0이면 안 되는 이유: 접지 밴드의 <b>가장자리</b>에서 Grounded가 나온 프레임의 스냅
+        /// 요구량이 정확히 밴드 두께와 같아지므로, 부동소수 오차 하나로 <c>Abs(delta) &gt; maxSnap</c>이
+        /// 뒤집혀 <b>가끔만</b> 낙하하는(가장 잡기 어려운 형태의) 버그가 된다. 같은 이유로 0을 금지한
+        /// <see cref="DockGeometry.StepUpDockDropMarginUnits"/>와 같은 계열의 판단이다.</para>
+        ///
+        /// <para>1.25를 고른 근거 — 덮어야 하는 것 둘 다 25% 안에 들어온다:
+        /// (a) 접지 밴드 가장자리 프레임의 스냅 요구량 = 밴드 두께 x 1.0. (b) 그 프레임에 물리가 이미
+        /// 적분해 둔 한 스텝의 낙하량. 배포 배율/60Hz에서 중력 낙하 한 스텝은 밴드(0.489유닛)의
+        /// 20%를 넘지 않는다. 그러면서도 '순간이동'이라 부를 거리(되올라가기 상한 = 배율 0.35에서도
+        /// 0.840유닛)보다는 확실히 작게 남는다 — 1366x768에서 유도값은 0.781유닛이다.</para>
+        /// </summary>
+        public const float GroundSnapToleranceHeadroomRatio = 1.25f;
+
+        /// <summary>
+        /// ★ 실효 접지 스냅 상한(월드 유닛) = <c>max(설정값, 접지 허용오차의 월드 환산 x 여유 배수)</c>.
+        /// (2026-09-06 — debugger가 규명한 <b>접지 판정 단위 불일치</b>의 근본 수정.)
+        ///
+        /// <para><b>무엇이 문제였나</b> — 같은 하나의 판정에 단위가 다른 두 값이 섞여 있었다:
+        /// <see cref="groundSnapTolerance"/>는 <b>OS 포인트</b>(20), <see cref="groundSnapMaxDistanceWorld"/>는
+        /// <b>월드 유닛</b>(0.60). 카메라 orthographicSize가 12로 고정(Editor/SceneBootstrapper.cs)이므로
+        /// "1pt가 몇 월드유닛인가"는 <b>창 높이(포인트)</b>에 반비례한다. 그래서 창이 세로로 작을수록
+        /// 접지 밴드가 커지고, 어느 지점부터 스냅 상한을 <b>추월</b>한다.</para>
+        ///
+        /// <para><b>갭이 열리는 경계</b>: <c>2 x 12 x 20 / 0.60 = 800pt</c>. 그 아래에서는
+        /// "GroundSensor.Sense()는 Grounded를 줬는데 SnapToGround()가 상한 초과로 발판을 놓고 Fall로 보낸다"는
+        /// 구간이 생긴다 — 걷다 말고 덜덜거리며 떨어지는 그 증상이다.</para>
+        ///
+        /// <list type="table">
+        ///   <listheader><term>창 높이(pt)</term><description>밴드(월드) vs 설정 상한 0.60</description></listheader>
+        ///   <item><term>1512x982 (이 개발 머신)</term><description>0.4888 &lt; 0.60 — 안전. <b>사용자 낙상 신고와는 무관하다</b>(로그상 [스냅상한초과] 0건)</description></item>
+        ///   <item><term>1280x800 (macOS)</term><description>0.6000 = 0.60 — <b>경계선</b></description></item>
+        ///   <item><term>1366x768 (Windows, 스팀 전환 타깃)</term><description>0.6250 &gt; 0.60 — <b>갭이 열린다</b></description></item>
+        ///   <item><term>640x480 (배치모드 러너)</term><description>1.0000 &gt; 0.60 — 크게 열린다</description></item>
+        /// </list>
+        ///
+        /// <para><b>형태</b>는 이 저장소의 다른 리졸버들과 정확히 같다
+        /// (<see cref="DockGeometry.ResolveStepUpMaxHeight"/> / <see cref="DockGeometry.ResolveEdgeStopDistance"/> /
+        /// <see cref="DockGeometry.ResolveEdgeProbeReach"/>) — <b>설정값은 하한이고, 유도가 더 큰 값을
+        /// 요구하면 유도가 이긴다.</b> 어느 한쪽이 실패해도 다른 쪽이 받친다:
+        /// 환산이 0/NaN(카메라 없는 리그) → 설정값 그대로(예전 거동과 100% 동일) /
+        /// 설정값이 0 → 유도가 받친다(스냅이 통째로 죽지 않는다).</para>
+        ///
+        /// <para>★ <b>이 개발 머신(982pt)에서는 유도값 0.6110이 설정값 0.60을 근소하게 넘는다</b> —
+        /// 즉 거동이 아주 조금 관대해진다. 이는 의도된 것이다: 여유 배수의 목적이 "밴드 가장자리에서
+        /// 나온 Grounded가 상한에 걸리지 않게" 하는 것이므로, 안전한 해상도에서도 그 여유는 있어야 한다.
+        /// 반대 방향(상한이 줄어드는 일)은 <b>정의상 일어나지 않는다</b> — max()이기 때문이다.</para>
+        /// </summary>
+        /// <param name="worldUnitsPerOsPoint">
+        /// <see cref="StickMate.Platform.ScreenCoordinateConverter.WorldUnitsPerOsPoint"/>의 결과.
+        /// <b>측정 실패 시 0 이하 또는 NaN</b>을 넘길 것 — 그 경우 설정 절대값을 그대로 돌려준다.</param>
+        public float ResolveGroundSnapMaxDistanceWorld(float worldUnitsPerOsPoint)
+        {
+            float floor = Mathf.Max(0f, groundSnapMaxDistanceWorld);
+            if (float.IsNaN(worldUnitsPerOsPoint) || float.IsInfinity(worldUnitsPerOsPoint)
+                || worldUnitsPerOsPoint <= 0f) return floor;
+
+            float toleranceWorld = Mathf.Max(0f, groundSnapTolerance) * worldUnitsPerOsPoint;
+            if (toleranceWorld <= 0f) return floor;
+
+            return Mathf.Max(floor, toleranceWorld * GroundSnapToleranceHeadroomRatio);
+        }
 
         // ====================================================================================
         // Dock 실측 (2026-08-29 — 사용자 신고 '지금도 독이랑 계속 겹쳐')
@@ -1801,6 +1892,13 @@ namespace StickMate.Core
         //       (2026-08-30: 코드 기본값도 6 -> 20으로 맞춰 이 주석과 실제가 일치하게 됐다.)
         //   · groundSnapMaxDistanceWorld(0.6) → 하한이 위 groundSnapTolerance의 월드 환산값(약 0.49).
         //       비례로 바꾸면 배율 0.82 아래에서 0.6*s < 0.49가 되어 정상 접지가 상한에 걸린다.
+        //     ★★ [2026-09-06 이 항목은 **해소**됐다] 위 "약 0.49"는 **이 개발 머신의 창 높이(982pt)에서만**
+        //       참이었다. 허용오차는 OS 포인트라 창 높이에 반비례해 커지는데(창높이 800pt에서 0.60,
+        //       Windows 1366x768에서 **0.625**, 배치모드 640x480에서 1.00) 상한은 고정 월드값이었다.
+        //       ⇒ 800pt 미만에서 밴드가 상한을 추월해 "Sense()는 Grounded인데 SnapToGround가 Fall로
+        //       보낸다"는 갭이 열려 있었다. 지금은 ResolveGroundSnapMaxDistanceWorld()가 실효 상한을
+        //       **허용오차의 월드 환산 x 1.25**로 유도하고 설정값은 하한이 됐다(그 함수 문서의 실측 표 참고).
+        //       ⇒ **이 항목이 배율과 무관한 것은 여전히 맞다.** 종속되는 축은 배율이 아니라 창 높이다.
         //   · wanderEdgeStopDistance(0.3) → hopDownEdgeCommitDistance(절대)보다 커야 하고, 프레임당
         //       이동거리(30fps에서 0.083)보다도 커야 한다. 둘 다 절대값이라 이쪽도 절대값이 맞다.
         //   · coyoteTimeDuration / fallGraceDuration → 거리가 아니라 시간이라 배율과 무관하다.
@@ -2294,6 +2392,22 @@ namespace StickMate.Core
                  "이 스위치와 무관하게 그대로 랙돌을 발생시킨다.")]
         public bool landingImpactRagdollShield = true;
 
+        [Tooltip("★ 충돌 충격량을 **접촉 법선 방향 성분**으로만 채점할지(기본 ON). " +
+                 "사용자 신고 '가끔 캐릭터가 넘어짐'(2026-09-06)의 수정 스위치다.\n\n" +
+                 "무엇이 고장나 있었나: 충돌 통지가 넘기는 값은 relativeVelocity.magnitude x 질량, 즉 " +
+                 "**방향이 없는 속력**이라 접촉 법선과 거의 수직으로 스치는 접촉이 정면충돌과 똑같이 " +
+                 "채점됐다. 실측(Player.log)에서 Dock 물리 계단 옆면을 스치며 떨어진 접촉의 법선 성분은 " +
+                 "0.81 N·s인데 판정에 쓰인 값은 27.08이었다(임계 8.0) — 33배 과대평가로 불필요한 " +
+                 "RAGDOLL이 강제됐다.\n\n" +
+                 "켜면 |rel·n̂|/|rel| (0~1)을 곱해 법선 성분만 남긴다. **정면 타격(정렬≈1)에서는 " +
+                 "비트 단위로 같은 값**이라 과보호가 아니다. 방향을 못 구하는 접촉(접촉 0개, 법선 상쇄)은 " +
+                 "손대지 않고 원본을 그대로 쓴다.\n\n" +
+                 "끄면 2026-09-06 이전과 비트 단위로 동일하다(네거티브 컨트롤 — " +
+                 "Tests/PlayMode/GrazingCollisionRagdollTests.cs가 이 스위치로 대조한다). " +
+                 "던지기(DragThrowState)·로데오(RodeoCursorState)의 직접 통지 경로는 이 계산을 " +
+                 "애초에 거치지 않으므로 스위치와 무관하다.")]
+        public bool collisionImpactUsesNormalComponent = true;
+
         // ================================================================================
         // ★ 2026-08-30 (디버거) — 사용자 신고 "갑자기 독 아래로 떨어지면서 관절이 이상하게 꺾임"
         // ================================================================================
@@ -2525,6 +2639,61 @@ namespace StickMate.Core
                  "무관하게 실제 낙하 높이와 정확히 일치하므로, 기존 무릎앉아 깊이 램프와 단위가 " +
                  "어긋날 수 없다(States/ThrowTumbleState.ConfirmLanding 참고).")]
         public float throwTumbleImpactHorizontalWeight = 0.5f;
+
+        // ────────────────────────────────────────────────────────────────────────
+        // ★ 2026-09-06 — 사용자 신고 "마우스로 던졌을때 바닥에 못서고 넘어짐"
+        // ────────────────────────────────────────────────────────────────────────
+        // 실측 인과: ConfirmLanding이 착지 순간 v.y만 지우고 **v.x는 그대로 뒀다.** 그 잔여 수평
+        // 속도를 LandingCrouchState가 지수감쇠(landingCrouchHorizontalDamping = k)로 죽이는데,
+        // 지수감쇠의 총 이동거리는 정확히 |vx|/k다(∫|vx|e^(-kt)dt). 실측 vx=2.77이면 9.5 OS-pt를
+        // 미끄러지고, 그것이 발판 가로범위를 2.4pt 벗어나 Fall로 전이했다 — 사용자가 본
+        // "던졌더니 착지는 했는데 곧바로 넘어짐"이 그 그림이다.
+        //
+        // 처방은 감쇠를 세게 만드는 것이 아니다(그러면 모든 착지가 뚝 끊긴다 —
+        // landingCrouchHorizontalDamping 툴팁이 명시한 그 부작용). **미끄러질 거리를 발판 안쪽으로
+        // 묶는다**: 남은 거리가 |vx|/k보다 짧을 때만 vx를 (남은 거리 x k x 여유)로 낮춘다.
+        // 여유가 있는 착지에서는 조건이 성립하지 않아 **오늘과 비트 단위로 같다.**
+
+        [Tooltip("★ 던지기 착지 직후의 미끄러짐을 **딛은 발판 안쪽으로** 묶을지(기본 ON). " +
+                 "사용자 신고 '마우스로 던졌을때 바닥에 못서고 넘어짐'(2026-09-06)의 수정 스위치다.\n\n" +
+                 "착지 순간 남은 수평 속도 vx는 무릎앉아 연출 동안 지수감쇠로 죽는데, 그동안 몸이 " +
+                 "|vx| / landingCrouchHorizontalDamping 만큼 미끄러진다. 그 거리가 발판 가장자리까지 " +
+                 "남은 거리보다 길면 착지하자마자 발판을 벗어나 Fall이 된다.\n\n" +
+                 "켜면 그 경우에만 vx를 '남은 거리 x 감쇠계수 x 아래 여유비'로 낮춘다 — 여유가 " +
+                 "충분한 착지(대부분)에서는 조건 자체가 성립하지 않아 오늘과 비트 단위로 같다. " +
+                 "끄면 물리 거동이 2026-09-06 이전과 비트 단위로 같아진다(측정과 로그는 그대로 남는다 " +
+                 "— 꺼 둔 사용자의 로그에도 '여기서 넘쳤다'가 보여야 하기 때문. 네거티브 컨트롤은 " +
+                 "Tests/PlayMode/ThrowLandingEdgeSlideTests.cs가 이 스위치로 대조한다).")]
+        public bool throwTumbleLandingSlideClampEnabled = true;
+
+        [Tooltip("위 클램프의 여유비(0~1). 남은 거리를 정확히 다 쓰면(1.0) 감쇠 꼬리가 이론상 " +
+                 "가장자리에 점근하므로, 접지 판정의 한 프레임 지터만으로도 벗어날 수 있다. " +
+                 "0.9면 남은 거리의 90%에서 멈춘다 — 미끄러짐 자체는 그대로 보이면서 " +
+                 "경계는 넘지 않는다. 0이면 착지 즉시 수평 속도가 0이 된다(미끄러짐 없음).")]
+        public float throwTumbleLandingSlideEdgeSafety01 = 0.9f;
+
+        // ────────────────────────────────────────────────────────────────────────
+        // ★ 2026-09-06 (debugger 규명) — "던지면 바닥에서 최대 6초간 제자리 회전 + 잡기 무반응"
+        // ────────────────────────────────────────────────────────────────────────
+        // ThrowTumbleState는 착지 판정으로 **스윕 교차(1순위)만** 갖고 있었고, FallState가 가진
+        // 2순위 「밴드 + 유예」 폴백이 없었다. 스윕 교차는 몸이 "내려가는 중"일 때만 성립하는데
+        // (GroundSensor.TryFindLandingCrossing), 던져진 몸은 상태가 눈치채기 전에 물리 바닥에
+        // 닿아 멈춘다 — 그 순간 조건이 영구히 거짓이 되어 아래 throwTumbleMaxSeconds(6초)까지
+        // 고착했다. 그 6초는 잡기가 거부되는 구간이고, 빠져나온 뒤엔 낙하높이 0이라 무릎앉기/
+        // 착지먼지/착지 대사가 전부 사라진다(실측 로그: "[FallState] 착지 확정 … 낙하높이=0.00유닛").
+
+        [Tooltip("★ 던지기 회전 중 **정지한 채 발판 위에 놓인** 몸을 스윕 교차 없이도 착지로 " +
+                 "확정할지(기본 ON). 사용자 체감 '던지면 바닥에서 한참 제자리 회전하고 잡아도 " +
+                 "반응이 없다'(2026-09-06 debugger 규명)의 수정 스위치다.\n\n" +
+                 "성립 조건은 FallState의 2순위 경로와 같다 — 접지 밴드 안 + drop-through 유예 " +
+                 "아님 + fallGraceDuration 동안 연속. 거기에 **|수직속도| <= FallState의 상승 " +
+                 "판정 ε** 하나를 더 얹는다: 자유 포물선이 그 조건을 채울 수 있는 시간은 2ε/g ≈ " +
+                 "0.003초뿐이라 유예(0.1초)를 원리적으로 못 채운다. 즉 이 경로는 '정말로 멈춘 몸' " +
+                 "에서만 열리고 정상 회전의 마지막 국면은 잘리지 않는다(조건을 '상승 중이 아님'으로 " +
+                 "넓히면 저해상도에서 접지 밴드 통과에만 0.16초가 걸려 실제로 잘린다).\n\n" +
+                 "끄면 거동이 2026-09-06 이전과 같아진다 — 즉 다시 6초 상한까지 고착한다. " +
+                 "네거티브 컨트롤은 Tests/PlayMode/ThrowLandingRegrabTests.cs가 이 스위치로 대조한다.")]
+        public bool throwTumbleRestingLandingEnabled = true;
 
         [Tooltip("공중 회전 중 **엉덩이** 각도(도, + = 진행 방향). 다리를 몸 앞으로 크게 접어 올린 " +
                  "웅크린 텀블링 자세를 만든다 — 사람이 공중제비를 돌 때 몸을 웅크리는 이유는 회전 " +

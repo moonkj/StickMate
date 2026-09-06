@@ -3201,6 +3201,28 @@ namespace StickMate.Interaction
         internal static float HemPressDepth(in Vector3 p, float intercept, float slope)
             => Mathf.Max(0f, intercept + slope * p.x - p.y);
 
+        /// <summary>
+        /// ★ 2026-09-06 perf-doc — <b>이 밑단이 이 바닥선에 닿을 수 있는가</b>(보수적 상한, 점 개수와 무관한 O(1)).
+        ///
+        /// <para><b>거짓이면 <see cref="PressHemToFloor"/>가 반드시 0을 돌려준다</b>(닿는 점이 하나도 없다).
+        /// 참이면 「닿을 수도 있다」일 뿐이고 실제 여부는 모른다 — 그래서 <b>한쪽으로만 안전한</b> 판정이며,
+        /// 부르는 쪽은 참일 때 언제나 원래 경로를 그대로 돌면 된다.</para>
+        ///
+        /// <para><b>증명</b>: 바닥선은 <c>floor(x) = intercept + slope·x</c>이고 눌림 깊이는 <c>floor(p.x) − p.y</c>다.
+        /// 도형의 모든 점이 <c>|p.x| ≤ maxAbsX</c> · <c>p.y ≥ minY</c>를 만족하므로
+        /// <c>floor(p.x) − p.y ≤ intercept + |slope|·maxAbsX − minY</c>. 우변이 0 이하면 어떤 점도 깊이가 양수일 수 없다.
+        /// (<c>slope</c>의 부호를 모르므로 절댓값을 쓴다 — 좌우 어느 쪽으로 기울어도 같은 상한이 성립한다.)</para>
+        ///
+        /// <para>★ <paramref name="minY"/>/<paramref name="maxAbsX"/>는 <b>지금 눌리려는 그 점 배열</b>에서 와야 한다.
+        /// 구워진 원본(Base)의 값을 흔들린 버퍼에 대고 쓰면 상한이 깨진다 — 부르는 쪽
+        /// (<c>CharacterAccessoryRenderer.TickHemMotion</c>)이 <b>기류·보행 변위가 둘 다 0인 프레임</b>에서만
+        /// 이 판정을 쓰는 이유가 그것이다(그 프레임에는 버퍼가 원본과 같다).</para>
+        /// </summary>
+        /// <param name="minY">그 점 배열의 최저 y.</param>
+        /// <param name="maxAbsX">그 점 배열의 |x| 최댓값.</param>
+        internal static bool HemCanReachFloor(float intercept, float slope, float minY, float maxAbsX)
+            => intercept + Mathf.Abs(slope) * maxAbsX - minY > 0f;
+
         /// <summary>밑단을 기운 바닥선에 눕히고(δ 만큼 y 를 올린다) 눌린 깊이만큼 가로로 퍼뜨린다(<paramref name="spread"/>, §2-6 (가)).
         /// spread 0 · slope 0 이면 옛 <see cref="ClampAboveFloor"/>와 같다. 순수 함수 — <c>CapeHemFloorClampTests</c>가 잠근다.</summary>
         /// <returns>받친 점의 수.</returns>

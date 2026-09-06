@@ -131,7 +131,7 @@ namespace StickMate.Interaction
         /// 패턴</b>을 쓴다 — 앱 안에서 "되돌릴 수 없는 행동"의 확인 방식이 두 벌이 되지 않게.
         ///
         /// <para>★★ 2026-09-03 — <b>이 창의 [✕ 앱 종료] 칩은 삭제됐는데 이 상수는 남았다.</b>
-        /// 오탈자가 아니다: <see cref="GearRadialMenuWidget"/>의 위성 [앱 종료]가 <b>이 값을 참조</b>한다
+        /// 오탈자가 아니다: <see cref="GearRadialMenuWidget"/>의 [앱 종료] 슬롯이 <b>이 값을 참조</b>한다
         /// (UX_FLOW 53-4가 "상수를 다시 타이핑하지 말고 기존 것을 참조하라"고 못박았다).
         /// 여기가 「되돌릴 수 없는 행동의 확인 시간」의 <b>단일 출처</b>다 —
         /// 옮기고 싶다면 <c>UiChrome</c> 급의 공용 토큰으로 올리되, <b>두 벌로 만들지는 마라.</b></para>
@@ -444,7 +444,8 @@ namespace StickMate.Interaction
             _footerHint = UiChrome.AddText(content, "FooterHint", UiChrome.FontCaption,
                 TextAnchor.MiddleLeft, UiChrome.InkMeta);
             // ★★ 2026-09-03 — 여기 있던 <b>[✕ 앱 종료] 칩을 걷어냈다</b>(UX_FLOW 53-6, 사용자 지시로
-            //   신설된 <b>톱니 부채꼴 위성 [앱 종료]</b>가 그 자리를 대신한다).
+            //   신설된 <b>톱니 부채꼴의 [앱 종료]</b>가 그 자리를 대신한다. 2026-09-06에 위성에서
+            //   다섯 번째 호 슬롯이 됐고, 그 이동은 이 참조에 영향을 주지 않는다).
             //
             //   <b>왜 지우는가</b>: 36-1의 전수 분류표는 종료를 <b>(라) 앱 수준 제어</b>로 분류해 놓고
             //   실제 배치는 <b>(가) 행동 명령창</b> 안이었다. 이 창은 스스로 *"캐릭터에게 지금 시킬 수

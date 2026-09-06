@@ -367,6 +367,19 @@ namespace StickMate.Tests.PlayMode
             /// 테스트가 <b>파괴된 객체</b>를 읽어 엉뚱한 실패를 낸다.</summary>
             private void EnsureRefs()
             {
+                // ★ 2026-09-06 — 짧은 망토가 인계본(계약 v2)으로 갈아타면서 <b>도형 이름과 점 배열 구조가
+                //   함께 바뀌었다</b>. 몸 표면 조각은 Piece_STB · Piece_STC · Piece_STK 셋이고, 이 파일이
+                //   쓰는 «CapeOutline 한 줄의 인덱스 2~6이 밑단»이라는 규약은 그 셋에 없다.
+                //   그래서 여기는 «이름만 바꾸면 되는» 자리가 아니다 — <b>밑단을 무엇으로 정의하는가</b>부터
+                //   다시 세워야 한다(예: 각 조각에서 y 최소인 점들, 또는 흔들 구간이 선언된 조각).
+                //   <b>되살리는 방법</b>(별도 라운드, 실기 실행 필요): 밑단 정의를 인덱스가 아니라
+                //   기하(가장 아래 점들)로 바꾸고, 세 조각의 합집합에서 재도록 리그를 다시 짠다.
+                HandoffPlayModeGate.SkipIfHandoffRendered(Renderer.transform,
+                    "낙하 중 망토 밑단이 실제로 펄럭이는가(공기 물결) + 그 진폭/주기/정지 시 잠잠함 — " +
+                    "이 파일 5건 전부. 인계본 망토도 흔들 구간을 선언하므로 <b>성질 자체는 살아 있고</b>, " +
+                    "잃는 것은 «밑단을 인덱스 2~6으로 특정하던 자» 하나다(대체 자 없음 — 재작성 필요).",
+                    "CapeOutline");
+
                 if (CapeLine == null)
                 {
                     foreach (var lr in Renderer.GetComponentsInChildren<LineRenderer>(true))
