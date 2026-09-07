@@ -3225,6 +3225,77 @@ namespace StickMate.States
         }
 
         /// <summary>
+        /// ★★★ 2026-09-07 3차 — 로프 등반 전용 벽 탐지, 근본재설계(docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md
+        /// §9→§10 "독립 우선순위" — "밧줄던져 등반 자연발동" 재조사). <see cref="TryFindClimbableWall"/>
+        /// (좁은 탐색, 손 등반과 동일 폭)을 먼저 시도하고, 그 결과가 로프 대역([<paramref name="maxHeight"/>,
+        /// <paramref name="ropeMaxHeight"/>])에 들지 않으면(벽이 없거나, 스텝업 대역이거나, 로프로도
+        /// 못 오를 만큼 높으면) <see cref="GroundSensor.TryFindClimbableWallOverlapping"/>(로프 전용
+        /// 겹침 탐색, <see cref="StickConfig.ropeClimbAdjacentSearchRadiusMultiplier"/>가 밴드 폭을
+        /// 정한다)으로 한 번 더 시도한다.
+        ///
+        /// <para>★ 왜 필요한가(실기 관측, 2026-09-07 리더 macOS 장시간 관찰 + 이 라운드의 라이브
+        /// 재확인) — 처음엔 "로프 대역 벽이 도보 한 걸음보다 멀리 있어서 좁은 탐색이 못 찾는다"로
+        /// 진단했으나, 실제로 라이브 세션에서 재확인한 결과 진짜 형태는 <b>더 미묘했다</b>: 실제
+        /// Finder 창(OS x 976~1512)은 Dock의 오른쪽 경계(1259)보다 "멀리" 있던 게 아니라, 그 경계를
+        /// <b>가로질러 양쪽에 걸쳐</b> 있었다(왼쪽 모서리는 경계 안쪽, 오른쪽 모서리는 경계 바깥쪽).
+        /// <see cref="TryFindClimbableWall"/>은 후보의 <b>선행 모서리 하나만</b> 보므로, 탐색 폭을
+        /// 아무리 넓혀도(1차 시도가 정확히 이 함정에 빠졌다 — 폭만 넓힌 버전은 이 창을 여전히
+        /// 못 찾았다) 원리상 이 형태를 잡을 수 없었다. 그래서 <b>겹침 검사</b>로 교체했다 — 후보의
+        /// 가로 구간이 경계 주변 밴드와 조금이라도 겹치면 채택한다(GroundSensor 문서에 기하학적
+        /// 증명이 있다).</para>
+        ///
+        /// <para>★ 손 등반/매달리기/뛰어내리기는 이 겹침 탐색을 전혀 쓰지 않는다 — 이 메서드를 호출
+        /// 하는 것은 로프 등반 트리거/소비 경로(<see cref="AutoWanderController.TryRollEdgeAction"/>,
+        /// <c>WalkState</c>의 <c>RopeClimbPressed</c> 재확인)뿐이다. 기존 <see cref="TryFindClimbableWall"/>
+        /// 호출부는 전부 그대로 좁은 탐색(선행 모서리 검사)만 쓴다 — 파쿠르 전체 회귀 위험이 없다
+        /// (9-4-D가 명시적으로 경고한 "공유 로직을 건드리면 회귀 위험"을 새 전용 메서드로 피한다).</para>
+        ///
+        /// <para>★ <paramref name="maxHeight"/>/<paramref name="ropeMaxHeight"/>는 호출부가 이미 갖고
+        /// 있는 값을 그대로 넘긴다(<see cref="AutoWanderController.ResolveStepUpMaxHeightStatic"/> /
+        /// <see cref="AutoWanderController.ResolveRopeClimbMaxHeight"/>) — 이 메서드가 다시 계산하지
+        /// 않는 이유는 "판정을 쓰는 쪽이 같은 계산원을 봐야 한다"는 이 프로젝트의 반복 교훈
+        /// (ResolveEffectiveEdgeBoundary 사고와 같은 계열) 때문이다.</para>
+        /// </summary>
+        public bool TryFindRopeClimbWallWide(GroundSensor.GroundInfo info, int direction, out long wallHandle,
+            out float wallTopWorldY, float maxHeight, float ropeMaxHeight)
+        {
+            // 1) 기존 좁은 탐색 먼저 — 이미 로프 대역에 있으면 그대로 채택(손 등반과 100% 같은 경로,
+            // 재현성 유지 — 기존 RopeClimbTests/RopeClimbHopDownOrderingTests가 이 경로로 이미 통과한다).
+            if (TryFindClimbableWall(info, direction, out wallHandle, out wallTopWorldY))
+            {
+                float narrowHeight = wallTopWorldY - info.GroundWorldY;
+                if (narrowHeight > maxHeight && narrowHeight <= ropeMaxHeight) return true;
+            }
+
+            // 2) 좁은 탐색이 로프 대역을 못 찾았으면(없거나, 스텝업 대역이거나, 너무 높아 버려졌으면)
+            // 로프 전용 "겹침" 탐색(TryFindClimbableWallOverlapping 문서 참고 — 2026-09-07 3차 재관측
+            // 으로 밝혀진 사실: 실제 창은 "경계 바로 다음 칸"이 아니라 "경계를 가로질러 걸쳐 있는"
+            // 형태였다. 단순 슬랙 확장(선행 모서리만 보는 기존 공식에 폭만 넓히는 것)으로는 이 형태를
+            // 원리상 잡을 수 없어, 겹침 검사로 교체했다).
+            var footholds = FootholdPoller != null ? FootholdPoller.CachedFootholds : System.Array.Empty<PlatformFoothold>();
+            Vector2 foot = Body != null ? Body.position : Vector2.zero;
+            float detectionRadius = Config != null ? Config.parkourDetectionRadius : 0.5f;
+            float multiplier = Config != null ? Config.ropeClimbAdjacentSearchRadiusMultiplier : 16f;
+            float bandTolerance = detectionRadius * Mathf.Max(1f, multiplier);
+            bool wideFound = GroundSensor.TryFindClimbableWallOverlapping(MainCamera, foot, info, direction, footholds, Config,
+                out PlatformFoothold wideWall, out float wideTopY, EdgeProbeReachWorld, bandTolerance);
+            if (wideFound)
+            {
+                float wideHeight = wideTopY - info.GroundWorldY;
+                if (wideHeight > maxHeight && wideHeight <= ropeMaxHeight)
+                {
+                    wallHandle = wideWall.Handle;
+                    wallTopWorldY = wideTopY;
+                    return true;
+                }
+            }
+
+            wallHandle = 0L;
+            wallTopWorldY = 0f;
+            return false;
+        }
+
+        /// <summary>
         /// ParkourClimb 등반 도중, handle로 식별된 발판이 여전히 존재하는지 매 프레임 재확인하고 존재하면
         /// 그 발판의 최신 상단 월드 Y를 반환한다(창이 이동했을 수 있으므로 매 프레임 재계산). 존재하지
         /// 않으면 false — "잡을 곳이 사라짐(창 이동/닫힘)" 실패 처리(UX_FLOW.md 4절)에 사용한다.

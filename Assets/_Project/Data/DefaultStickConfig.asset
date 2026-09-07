@@ -59,6 +59,7 @@ MonoBehaviour:
   ropeClimbMaxHeights: 6.6
   ropeClimbSpeedHeightsPerSecond: 0.88
   ropeClimbChance: 0.2
+  ropeClimbAdjacentSearchRadiusMultiplier: 16
   ropeClimbCycleRiseHeights: 0.9
   ropeThrowWindUpSeconds: 0.35
   ropeThrowSwingSeconds: 0.2

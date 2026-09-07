@@ -131,7 +131,17 @@ namespace StickMate.States
             _startWorldX = _blackboard.Body != null ? _blackboard.Body.position.x : 0f;
 
             GroundSensor.GroundInfo info = _blackboard.SenseGround();
-            _hasWall = _blackboard.TryFindClimbableWall(info, _direction, out _wallHandle, out _wallTopWorldY);
+            // ★★★ 2026-09-07 3차(근본재설계 §10) — 좁은 TryFindClimbableWall이 아니라
+            // TryFindRopeClimbWallWide를 쓴다. 이 상태로 들어오는 트리거(AutoWanderController의
+            // 독립 우선순위 로프 평가, WalkState의 RopeClimbPressed 재확인)는 전부 이미 넓은 겹침
+            // 탐색으로 벽을 찾은 뒤 이 Enter()를 호출하는데, 여기서 좁은 탐색으로 다시 확인하면
+            // "생성 프레임이 본 벽"과 "Enter()가 다시 찾는 벽"이 갈라져 방금 찾은 벽을 곧바로
+            // 놓친다(실기 재관측으로 실제로 겪은 사고 — Throw 진입 직후 "목표 벽 소실"로 즉시
+            // 취소됐다. ResolveEffectiveEdgeBoundary 사고와 같은 계열: 판정을 쓰는 모든 지점이
+            // 같은 계산원을 봐야 한다).
+            float ropeStepUpMax = AutoWanderController.ResolveStepUpMaxHeightStatic(_blackboard);
+            float ropeMaxHeight = AutoWanderController.ResolveRopeClimbMaxHeight(_blackboard, info.GroundWorldY);
+            _hasWall = _blackboard.TryFindRopeClimbWallWide(info, _direction, out _wallHandle, out _wallTopWorldY, ropeStepUpMax, ropeMaxHeight);
             _hasMantleTarget = TryComputeMantleTargetX(out _, out _);
 
             if (_blackboard.Body != null)

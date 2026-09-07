@@ -25972,3 +25972,21 @@ macOS 실기 연속캡처(17초/155장/9.1fps, 픽셀diff맵)로 직접 검증: 
 **검증**: 신규테스트 34건(QA오버라이드29+시험벽4+hop순서1) 전부통과, 무회귀(RopeClimb9·EdgeHopDown7·DockSafetyNetSplit6·ConfigAssetDrift21·WanderEdgeConfig5·PlatformParity55) 전부통과. xcheck osx/win 0에러. Windows영향: 함께수정함(플랫폼중립 데코레이터).
 
 **리더판정필요**: ropeClimbChance=0.20 기본값 확정 여부 — design-motion의 "빌드캡처 시각확인" 아직 미완.
+
+## 밧줄등반 독립우선순위 재설계 — 진행상황 저장(완료 아님, 사용자 요청으로 중간저장)
+
+**배경**: "내려갈곳없음" 전제로는 실사용에서 사실상 영원히 안 나옴을 리더가 실기로 직접 확인(독↔안전망 무한순환). 사용자가 근본재설계 선택.
+
+**완료된 부분**:
+- `TryRollEdgeAction()` 재구성 — 로프대역벽 탐색·추첨을 함수맨앞에서 **독립적으로** 시도(hop/hang/stepUp 존재여부 무관), 실패시에만 기존 체인 진행. `ropeClimbChance`도 `stepUpChance`롤과 완전분리.
+- 진동방지: 새 쿨다운 없이 기존 2개(`postClimbDescendCooldown`+`_edgeActionRolledThisLeg`)로 충분함 확인.
+- **★핵심 실기발견**: 기존 탐색(`TryFindClimbableWall`, 선행모서리만 봄)은 발판경계를 가로질러 양쪽에 걸친 실제 창(Finder 등)을 탐색폭을 넓혀도 원리상 못 찾음 — `TryFindClimbableWallOverlapping`(겹침검사) 신설로 해결.
+- **실기확인 성공**: 실제 창(핸들2150, 합성벽 아님)을 대상으로 독립우선순위 트리거 발동 로그 확보 — "내려갈 곳 존재 여부와 무관하게 평가됨" 확인.
+- **2차버그 발견즉시수정**: `RopeClimbState.Enter()`가 자기 내부에서 좁은탐색으로 재확인하다 방금 찾은 벽을 놓쳐 "목표 벽 소실"로 즉시취소되던 것 발견 → `TryFindRopeClimbWallWide`로 통일.
+- EditMode 3실패 중 2건 수정완료(주석줄번호참조, 설정폴백리터럴 불일치) — 재실행 미확인. 1건(`UnlockSwitchScopeAuditTests`)은 이 라운드와 무관한 기존결함으로 판단, 미수정.
+
+**리더 직접 검증**: xcheck osx/win 재실행 — **양쪽 0에러**(위 수정들 전부 반영된 최신상태 기준).
+
+**아직 미완(다음 확인 필요)**: (1) `RopeClimbState.Enter()` 수정 후 실제로 Throw→Ascend→완료까지 끝까지 가는지 재관측 안 됨(Unity락이 전량회귀에 물려있어서 앱 재기동 못 함). (2) EditMode/PlayMode 전량 재실행 미완료. (3) Windows 실기관측 원천불가(개발환경 macOS만).
+
+**Windows영향**: 없음(플랫폼중립, xcheck win으로 확인) — 단 Windows 실기 자연발동은 미검증.

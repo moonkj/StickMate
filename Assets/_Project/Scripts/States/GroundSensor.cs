@@ -405,9 +405,18 @@ namespace StickMate.States
         /// 은 판정 상대가 캐릭터가 아니라 OS 창 사각형이라 절대값이 맞다. 그래서 <b>게이트만</b> 분리한다.
         /// 유도식/근거: Core/DockGeometry.ResolveEdgeProbeReach.
         /// </param>
+        /// <param name="searchSlackOverrideWorld">
+        /// ★★ 2026-09-07 3차 — 로프 등반 근본재설계(docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md §9-4-D
+        /// 옵션 (a)). 0 이하/NaN이면 예전처럼 <c>detectionRadius × AdjacentFootholdSearchRadiusMultiplier</c>
+        /// (손 등반/매달리기/뛰어내리기가 지금까지 써온 그 폭)를 그대로 쓴다 — 기존 호출부는 전부 이
+        /// 폴백을 타므로 한 줄도 거동이 안 바뀐다. 0보다 크면 그 값을 **그대로** 탐색 폭(월드 유닛)으로
+        /// 쓴다 — <see cref="StickmanBlackboard.TryFindRopeClimbWallWide"/>가 로프 대역 전용으로만
+        /// 이 인자를 채워 넘긴다. 손 등반(파쿠르)의 탐색 폭은 이 인자가 존재하기 전과 완전히 동일하게
+        /// 남아 있다 — 회귀 위험이 이 함수 자체가 아니라 "누가 무엇을 넘기는가"로 국한된다.
+        /// </param>
         public static bool TryFindClimbableWall(Camera cam, Vector2 footWorldPos, GroundInfo info, int direction,
             IReadOnlyList<PlatformFoothold> footholds, StickConfig config, out PlatformFoothold wallFoothold, out float wallTopWorldY,
-            float edgeProbeReach = 0f)
+            float edgeProbeReach = 0f, float searchSlackOverrideWorld = 0f)
         {
             wallFoothold = default;
             wallTopWorldY = 0f;
@@ -420,7 +429,9 @@ namespace StickMate.States
             if (distanceToEdge > probeReach) return false; // 아직 경계 근처가 아님
 
             _ = ScreenCoordinateConverter.WorldToOsScreen(cam, footWorldPos, config, out float depth);
-            float searchSlack = detectionRadius * AdjacentFootholdSearchRadiusMultiplier;
+            float searchSlack = searchSlackOverrideWorld > 0f && !float.IsNaN(searchSlackOverrideWorld)
+                ? searchSlackOverrideWorld
+                : detectionRadius * AdjacentFootholdSearchRadiusMultiplier;
             float bestTopY = float.NegativeInfinity;
             bool found = false;
 
@@ -437,6 +448,86 @@ namespace StickMate.States
                 if (!horizontallyNear) continue;
 
                 if (topLeftWorld.y - info.GroundWorldY < detectionRadius) continue; // 충분히 높지 않음(파쿠르 대상 아님)
+
+                if (topLeftWorld.y > bestTopY)
+                {
+                    bestTopY = topLeftWorld.y;
+                    wallFoothold = fh;
+                    found = true;
+                }
+            }
+
+            if (found) wallTopWorldY = bestTopY;
+            return found;
+        }
+
+        /// <summary>
+        /// ★★★ 2026-09-07 3차 — 로프 등반 전용 "겹침(interval overlap)" 벽 탐지
+        /// (docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md §9→§10, 실기 재관측으로 발견한 2차 결함 처방).
+        ///
+        /// <para><see cref="TryFindClimbableWall"/>의 좌우 검사는 후보의 <b>선행(leading) 모서리
+        /// 하나만</b> 본다 — direction&gt;0이면 "후보의 왼쪽 모서리가 내 경계 바로 앞/근처에서
+        /// 시작하는가"만 확인한다. 이는 "내 발판 바로 다음 칸에서 시작하는 다른 발판"(전형적인 인접
+        /// 창 배치)을 찾기 위한 설계이고, 손 등반/매달리기/뛰어내리기는 실제로 그 형태만 다뤄 왔으므로
+        /// 지금까지 문제가 없었다.</para>
+        ///
+        /// <para>그런데 실기 재관측(2026-09-07 3차, 리더 macOS 라이브 세션)에서 실제 Finder 창은 그
+        /// 형태가 <b>아니었다</b> — 창의 가로 구간(OS x 976~1512)이 지금 선 발판(Dock, 254~1259)의
+        /// 오른쪽 경계(1259)를 <b>가로질러 양쪽에 걸쳐</b> 있었다(왼쪽 모서리 976은 경계보다
+        /// <b>안쪽</b>, 오른쪽 모서리 1512는 경계보다 <b>바깥쪽</b>). <see cref="TryFindClimbableWall"/>
+        /// 은 후보의 왼쪽 모서리만 보므로 "976은 경계보다 한참 안쪽"이라고 판정해 <b>탐색 폭
+        /// (searchSlackOverrideWorld)을 아무리 넓혀도 이 창을 찾지 못했다</b> — 그 인자는 검사 범위를
+        /// <b>바깥쪽으로만</b> 넓히지, 후보가 <b>안쪽에서 시작해 바깥까지 걸쳐 있는</b> 경우는 원리상
+        /// 커버할 수 없다(2026-09-07 3차 1st 시도가 정확히 이 함정에 빠졌다 — 기록을 위해 남긴다).</para>
+        ///
+        /// <para>그래서 로프 전용으로 <b>겹침 검사</b>로 바꾼다 — "후보의 가로 구간이 [내 경계 −
+        /// <paramref name="bandToleranceWorld"/>, 내 경계 + <paramref name="bandToleranceWorld"/>]
+        /// 밴드와 조금이라도 겹치는가"만 본다. 후보가 경계보다 한참 앞서 시작해서 한참 뒤까지
+        /// 뻗어 있어도(Dock 위로 우뚝 솟은 빌딩처럼) 그 밴드를 스쳐 지나가기만 하면 잡힌다 — 밧줄은
+        /// 손처럼 "바로 다음 칸"만 잡는 게 아니라 "지금 서 있는 근처 어딘가 위로 솟은 것"에 걸어도
+        /// 자연스럽기 때문이다. 손 등반/매달리기/뛰어내리기는 이 메서드를 전혀 호출하지 않는다 — 로프
+        /// 경로(<see cref="StickmanBlackboard.TryFindRopeClimbWallWide"/>)만 쓰므로 회귀 위험이 없다.</para>
+        ///
+        /// <para>내가 지금 서 있는 발판 자신이 후보로 잘못 채택될 위험은 없다 — 그 발판의 상단 Y는
+        /// <paramref name="info"/>.GroundWorldY와 같으므로 아래 높이 필터(<c>detectionRadius</c> 이상
+        /// 높아야 함)에서 자연히 걸러진다(원본 <see cref="TryFindClimbableWall"/>과 같은 원리).</para>
+        /// </summary>
+        public static bool TryFindClimbableWallOverlapping(Camera cam, Vector2 footWorldPos, GroundInfo info, int direction,
+            IReadOnlyList<PlatformFoothold> footholds, StickConfig config, out PlatformFoothold wallFoothold, out float wallTopWorldY,
+            float edgeProbeReach, float bandToleranceWorld)
+        {
+            wallFoothold = default;
+            wallTopWorldY = 0f;
+            if (cam == null || !info.Grounded || footholds == null || footholds.Count == 0) return false;
+
+            float detectionRadius = config != null ? config.parkourDetectionRadius : 0.5f;
+            float probeReach = edgeProbeReach > 0f && !float.IsNaN(edgeProbeReach) ? edgeProbeReach : detectionRadius;
+            float edgeX = direction > 0 ? info.CurrentFootholdRightWorldX : info.CurrentFootholdLeftWorldX;
+            float distanceToEdge = direction > 0 ? edgeX - footWorldPos.x : footWorldPos.x - edgeX;
+            if (distanceToEdge > probeReach) return false; // 아직 경계 근처가 아님
+
+            _ = ScreenCoordinateConverter.WorldToOsScreen(cam, footWorldPos, config, out float depth);
+            float tol = bandToleranceWorld > 0f && !float.IsNaN(bandToleranceWorld)
+                ? bandToleranceWorld
+                : detectionRadius * AdjacentFootholdSearchRadiusMultiplier;
+            float bandMin = edgeX - tol;
+            float bandMax = edgeX + tol;
+            float bestTopY = float.NegativeInfinity;
+            bool found = false;
+
+            for (int i = 0; i < footholds.Count; i++)
+            {
+                PlatformFoothold fh = footholds[i];
+                Rect r = fh.ScreenRect;
+                Vector3 topLeftWorld = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(r.x, r.y), depth, config);
+                Vector3 topRightWorld = ScreenCoordinateConverter.OsScreenToWorld(cam, new Vector2(r.x + r.width, r.y), depth, config);
+                float candMin = Mathf.Min(topLeftWorld.x, topRightWorld.x);
+                float candMax = Mathf.Max(topLeftWorld.x, topRightWorld.x);
+
+                bool overlapsBand = candMax >= bandMin && candMin <= bandMax;
+                if (!overlapsBand) continue;
+
+                if (topLeftWorld.y - info.GroundWorldY < detectionRadius) continue; // 충분히 높지 않음(내 발판 자신 포함)
 
                 if (topLeftWorld.y > bestTopY)
                 {

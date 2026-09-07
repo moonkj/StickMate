@@ -202,10 +202,19 @@ namespace StickMate.States
             // ★ 밧줄 등반 진입 판정(2026-09-07, 신규) — StepUpRequested와 같은 자리, 같은 재확인
             // 계약이다. 벽을 못 찾거나 그 사이 대역이 바뀌었으면(예: 창이 더 낮아졌다) 점프로도
             // 흘러내리지 않는다 — StepUpRequested와 동일한 "실패하면 아무 일도 없다" 계약.
+            //
+            // ★★ 2026-09-07 3차(근본재설계 §10) — 좁은 TryFindClimbableWall 대신
+            // TryFindRopeClimbWallWide를 쓴다. AutoWanderController가 이 펄스를 만들 때 이미 넓은
+            // 탐색으로 벽을 찾았을 수 있으므로(도보 한 걸음보다 먼 로프 대역 벽), 여기서 좁은 탐색만
+            // 쓰면 "생성 프레임이 본 벽"과 "소비 프레임이 다시 찾는 벽"이 갈라져 펄스가 조용히
+            // 버려진다 — ResolveEffectiveEdgeBoundary 사고와 같은 계열의 함정이라 반드시 같은
+            // 계산원을 써야 한다.
             if (_blackboard.RopeClimbPressed && info.Grounded)
             {
                 int ropeDirection = _blackboard.MoveInputX >= 0f ? 1 : -1;
-                if (_blackboard.TryFindClimbableWall(info, ropeDirection, out _, out float ropeWallTopY))
+                float ropeStepUpMax = AutoWanderController.ResolveStepUpMaxHeightStatic(_blackboard);
+                float ropeMax = AutoWanderController.ResolveRopeClimbMaxHeight(_blackboard, info.GroundWorldY);
+                if (_blackboard.TryFindRopeClimbWallWide(info, ropeDirection, out _, out float ropeWallTopY, ropeStepUpMax, ropeMax))
                 {
                     StickmanStateId? band = ResolveClimbBandTarget(info, ropeWallTopY);
                     if (band.HasValue)

@@ -743,24 +743,82 @@ namespace StickMate.States
             // 정상 동작하므로 화면 밖으로 걸어 나가지 않는다(ConsumeClimbMantleSignalIfAny 문서 참고).
             bool descendSuppressed = _descendSuppressTimer > 0f;
 
-            // ★ 밧줄등반 좁은 보강(2026-09-07 2차, docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md §9-4-B) —
-            // 아래 1번 블록은 성공하면 "추첨 성공이든 실패든" 무조건 return false하므로(§9-2 실측),
-            // 같은 탐색 폭 안에 뛰어내릴 낮은 발판과 로프 대역 벽이 동시에 있으면 3번 블록의 로프 벽
-            // 평가 자체가 그 프레임에 실행되지 못한다(작은 틈 바로 너머에 큰 창이 있는 경우). 여기서는
-            // 존재만 확인한다(추첨 없음, TryFindClimbableWall은 순수 조회라 부작용 없음) — 있어도
-            // 없어도 hop-down 자체의 확률·연출은 전혀 바뀌지 않는다. 원 설계 스케치(§9-4-B)는 하한
-            // (파쿠르 상한 초과)만 확인했는데, 여기서는 상한(로프 자체의 최대 높이 이하)도 함께 확인해
-            // "로프로도 못 오를 만큼 높은 벽"이 hop-down을 헛되이 막는 것까지 방지한다.
-            float ropeWallHeight = _blackboard.TryFindClimbableWall(info, _direction, out _, out float ropeWallTopY)
-                ? ropeWallTopY - info.GroundWorldY
-                : float.NegativeInfinity;
-            bool ropeWallPresent = ropeWallHeight > ResolveStepUpMaxHeight()
-                && ropeWallHeight <= ResolveRopeClimbMaxHeight(_blackboard, info.GroundWorldY);
+            float maxHeight = ResolveStepUpMaxHeight();
+            float ropeMaxHeight = ResolveRopeClimbMaxHeight(_blackboard, info.GroundWorldY);
 
-            // 1) 뛰어내리기 — 낙차가 작아 매달릴 이유가 없는 턱. 단, 같은 방향에 로프 대역 벽이 이미
-            // 있으면(ropeWallPresent) 그 벽 평가를 원천봉쇄하지 않는다.
+            // ============================================================================
+            // ★★★ 근본 재설계(2026-09-07 3차, §10 "독립 우선순위") —
+            // docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md §1-C/§9 참고.
+            // ============================================================================
+            // 리더가 실기(macOS)에서 §9-4-A(확률 0→0.20)+§9-4-B(hop-down 좁은 보강) 적용 후에도 장시간
+            // 관찰한 결과 자연발동이 전혀 없었다 — 캐릭터가 Dock↔안전망을 무한 왕복(뛰어내리기<->되올라
+            // 가기)했을 뿐, 로프 등반은 단 한 번도 평가되지 않았다(발판핸들 순환 로그로 확정). 재조사
+            // 결과 §1-C가 우려한 "내려갈곳없음 ∩ 초고벽" 곱셈 압축은 이 사고의 주 원인이 **아니었다**
+            // (§9-2 실측 논증: TryFindHopDownTarget(아래)과 TryFindClimbableWall(위)은 같은 방향·같은
+            // 경계에서 물리적으로 상호배타적이라 "내려갈 곳이 있어서 로프 평가가 막히는" 상황 자체가
+            // 드물다) — 진짜 원인은 그 경계의 벽 높이 자체가 로프 대역에 들지 못했다는 것(파쿠르 상한
+            // 아래에 고정)과, 대역에 드는 벽이 다른 곳(Finder 창)에 있어도 좁은 탐색 폭으로는 못
+            // 찾는다는 것(TryFindRopeClimbWallWide 문서 참고, §9-4-D) 두 가지였다.
+            //
+            // 그럼에도 사용자가 "독립 우선순위 승격 근본재설계"를 명시적으로 재지시했다 — 재검토 결과
+            // §1-C의 "내려갈 수 있는데도 로프를 던지는 부자연스러움" 우려는 아래 설계로 완화된다:
+            //   - 로프 벽 탐색+추첨을 hop-down/hang **앞에서, 독립적으로** 한 번 시도한다("내려갈 곳
+            //     없음" 전제를 완전히 뗀다 — 내려갈 곳 존재 여부와 무관하게 매 다리(leg)마다 로프부터
+            //     본다).
+            //   - 다만 ropeClimbChance 자체가 낮은 확률(기본 0.20)로 남아 있어, 내려갈 곳이 있는
+            //     경계에서도 80%는 여전히 기존 하강 갈래로 그대로 흘러간다 — "가끔 이기는" 정도로
+            //     그친다(사용자 제안 "동시에 굴려서 확률적으로 등반도 가끔 이기게 한다"와 같은 효과를,
+            //     정규화 가중치 대신 "먼저 한 번 굴려보고 지면 기존 체인으로" 방식으로 더 단순하게
+            //     구현했다 — 가중치 정규화(rope와 hop의 확률을 더해 비율로 나누는 방식)는 검토했으나
+            //     hop 자신의 체감 확률까지 h²/(h+r) 형태로 줄어드는 부작용이 있어 채택하지 않았다.
+            //     이 "선-로프-후-체인" 방식은 로프 후보가 없으면 완전한 no-op이라 hop/hang의 체감
+            //     빈도가 100% 그대로 보존된다).
+            //   - stepUpChance 게이트에서도 뗐다 — 예전 코드는 로프 추첨이 되올라가기 블록의 else
+            //     안에 있어 "stepUpChance(0.85) 통과 → 벽이 로프 대역 → ropeClimbChance(0.20) 통과"
+            //     라는 원치 않은 결합이 있었다(§9-3 실측: 실효 확률 = stepUpChance × ropeClimbChance,
+            //     주석은 "별도 추첨"이라 적어 놓고 실제로는 안 그랬다). 지금은 로프 자신의 확률 하나만
+            //     본다.
+            //
+            // "진동"(§1-C) 우려 검산 — 이 재설계가 새로 여는 반복 패턴이 없는 이유:
+            //   (a) 로프로 올라간 직후 곧바로 되내려가는 것 — postClimbDescendCooldown(3-C, 기존
+            //       ReportClimbMantleCompleted/ConsumeClimbMantleSignalIfAny 재사용)이 이미 차단한다.
+            //       이 재설계는 그 신호 경로를 한 줄도 바꾸지 않았다.
+            //   (b) 같은 다리(leg)에서 로프를 여러 번 재시도 — 이 함수를 감싸는 TickMoving 쪽 게이트
+            //       (_edgeActionRolledThisLeg)가 한 다리당 이 함수 호출 자체를 1회로 제한한다. 로프가
+            //       그 1회 시도에서 지면(기본 80%) 하강 체인으로 흘러가고, 다음 시도는 다음 다리
+            //       (경계 반전 0.3~0.8초 대기 후)에서만 온다 — 기존 hop/hang/stepUp과 완전히 같은
+            //       재시도 주기라 새로운 "빠른 반복" 경로가 아니다.
+            //   → 두 안전장치 모두 이 라운드가 손대지 않았으므로 기존 검증(EdgeHopDownTests 등)이
+            //     그대로 유효하다. (a)는 RopeClimbState.Tick()의 ReportClimbMantleCompleted 호출을
+            //     직접 재확인했다(ParkourClimbState.Tick()의 동일 호출과 같은 형태) — 로프도 손 등반과
+            //     똑같이 이 신호를 올린다. 새 쿨다운을 별도로 추가하지 않은 것은 누락이 아니라 "이미 충분하다"는
+            //     검산 결과다(불필요한 상태를 늘리지 않는다 — RopeClimbIndependentPriorityTests가 이
+            //     결론을 실측으로 잠근다).
+            //
+            // §9-4-B(hop-down 원천봉쇄 좁은 보강)는 이 재설계로 **대체돼 제거됐다** — 로프가 이제
+            // hop-down보다 먼저, 독립적으로 평가되므로 "hop-down이 로프 평가를 원천봉쇄"할 여지 자체가
+            // 없다(로프가 이겼으면 이 함수가 이미 return true했고, 로프가 없거나 졌으면 그때 비로소
+            // hop-down 차례다). 죽은 이중 탐색(TryFindClimbableWall 프레임당 최대 2회 호출) 비용도
+            // 함께 없어졌다.
+            // ============================================================================
+            float ropeClimbChance = RopeClimbQaOverride.ChanceOverride ?? Cfg(c => c.ropeClimbChance, 0.2f);
+            if (ropeClimbChance > 0f
+                && _blackboard.TryFindRopeClimbWallWide(info, _direction, out long ropeWallHandle, out float ropeWallTopY, maxHeight, ropeMaxHeight)
+                && _rng.NextDouble() < ropeClimbChance)
+            {
+                _ropeClimbRequestedThisTick = true;
+                _moveInputX = _direction;
+                Debug.Log($"[밧줄등반] 결정(독립 우선순위, 근본재설계 §10) — 방향={(_direction > 0 ? "오른쪽" : "왼쪽")}, " +
+                    $"벽 높이={(ropeWallTopY - info.GroundWorldY):F3}유닛(파쿠르 상한 {maxHeight:F2} 초과, 밧줄 상한 " +
+                    $"{ropeMaxHeight:F2}), 벽 발판핸들={ropeWallHandle}. 내려갈 곳 존재 여부와 무관하게 평가됨.");
+                return true;
+            }
+
+            // ---- 이하 하강/되올라가기 체인 — 로프가 후보 없음 또는 이번엔 추첨에서 졌을 때만 도달한다 ----
+
+            // 1) 뛰어내리기 — 낙차가 작아 매달릴 이유가 없는 턱.
             float hopChance = Cfg(c => c.hopDownChance, 0.5f);
-            if (!descendSuppressed && !ropeWallPresent && hopChance > 0f && _blackboard.TryFindHopDownTarget(info, _direction, out long hopHandle, out float hopTopY))
+            if (!descendSuppressed && hopChance > 0f && _blackboard.TryFindHopDownTarget(info, _direction, out long hopHandle, out float hopTopY))
             {
                 if (_rng.NextDouble() < hopChance)
                 {
@@ -787,15 +845,20 @@ namespace StickMate.States
                 return true;
             }
 
-            // 3) 되올라가기 — 내려갈 곳이 없고 진행 방향에 낮은 턱이 있을 때. ★ 이 분기가 없으면 한 번
+            // 3) 되올라가기 — 손 등반 대역(파쿠르 상한 이내)의 턱이 있을 때. ★ 이 분기가 없으면 한 번
             // Dock 아래로 내려간 캐릭터가 영영 못 올라온다(경계 점프 확률이 기본 0이라 ParkourClimb를
             // 유발할 다른 경로가 없다) — 2026-08-29 사용자 지시의 핵심 절반이다.
+            //
+            // ★ 근본재설계(2026-09-07 3차, §10) — 로프 등반은 더 이상 이 블록의 else가 아니다(위에서
+            // 이미 독립적으로 한 번 평가됐다). 그래서 이 블록은 로프 등반이 생기기 이전의 원래 형태
+            // (파쿠르 상한 이내면 되올라가기, 아니면 아무 것도 안 함)로 돌아간다 — else 분기가 사라져
+            // wallHeight > maxHeight인 경우 이 함수는 조용히 아래 return false로 흘러가고, 호출부
+            // (TickMoving)가 기존처럼 "정지 후 반대 방향"을 진행한다.
             float stepUpChance = Cfg(c => c.stepUpChance, 0.5f);
             if (stepUpChance > 0f && _rng.NextDouble() < stepUpChance
                 && _blackboard.TryFindClimbableWall(info, _direction, out long wallHandle, out float wallTopY))
             {
                 float wallHeight = wallTopY - info.GroundWorldY;
-                float maxHeight = ResolveStepUpMaxHeight();
                 if (wallHeight <= maxHeight)
                 {
                     _stepUpRequestedThisTick = true;
@@ -803,33 +866,6 @@ namespace StickMate.States
                     Debug.Log($"[되올라가기] 결정 — 방향={(_direction > 0 ? "오른쪽" : "왼쪽")}, " +
                         $"턱 높이={wallHeight:F3}유닛(상한 {maxHeight:F2}), 턱 발판핸들={wallHandle}.");
                     return true;
-                }
-
-                // ▼ 밧줄 등반(2026-09-07, docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md 1-C) — 되올라가기가
-                // 못 미치는 벽만 여기로 떨어진다. 기존 되올라가기 블록은 위 한 줄도 바뀌지 않았다
-                // (else if로만 이어 붙인다) — _edgeActionRolledThisLeg/descendSuppressed 같은 기존
-                // 안전장치를 전부 그대로 물려받기 위해서다.
-                //
-                // ropeClimbChance로 별도 추첨한다(스텝업 확률과 독립 — Archery의 hitChance/
-                // bullseyeChance가 같은 난수를 재사용하지 않는 것과 같은 이유: 재사용하면 "스텝업
-                // 확률이 높아지면 로프도 덩달아 자주 나온다"는 의도치 않은 결합이 생긴다).
-                else
-                {
-                    float ropeMaxHeight = ResolveRopeClimbMaxHeight(_blackboard, info.GroundWorldY);
-                    // ★ QA 강제 오버라이드(§9-4-C, Core/RopeClimbQaOverride.cs) — STICKMATE_QA_ROPE_CLIMB_CHANCE가
-                    // 설정돼 있으면 StickConfig.ropeClimbChance보다 항상 우선한다(에셋은 안 건드림).
-                    float ropeClimbChance = RopeClimbQaOverride.ChanceOverride ?? Cfg(c => c.ropeClimbChance, 0f);
-                    if (wallHeight <= ropeMaxHeight && ropeClimbChance > 0f && _rng.NextDouble() < ropeClimbChance)
-                    {
-                        _ropeClimbRequestedThisTick = true;
-                        _moveInputX = _direction;
-                        Debug.Log($"[밧줄등반] 결정 — 방향={(_direction > 0 ? "오른쪽" : "왼쪽")}, " +
-                            $"벽 높이={wallHeight:F3}유닛(파쿠르 상한 {maxHeight:F2} 초과, 밧줄 상한 " +
-                            $"{ropeMaxHeight:F2}), 벽 발판핸들={wallHandle}.");
-                        return true;
-                    }
-                    // 어느 쪽도 못 맞으면(대역 밖이거나 추첨 실패) 기존처럼 그대로 흘러간다
-                    // (정지 후 반대 방향) — 새 "포기 연출"은 만들지 않는다.
                 }
             }
 
