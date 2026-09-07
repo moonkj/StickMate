@@ -25916,3 +25916,19 @@ design-systems가 레벨링 설계 중 발견: 활쏘기 XP지급에 쿨다운/�
 **수정**: `CharacterProgressionDirector.OnArcheryShotChanged`에서 XP지급을 동전지급 성공여부(`coinsAwarded>0`)에 묶음 — 동전이 이미 검증된 쿨다운/상한 관문을 그대로 공유, XP전용 신규장치 없음(design-systems 권고 그대로 채택).
 
 **검증**: TDD로 결함 먼저 재현(RED: 동전쿨다운 걸린 상태에서도 XP 2배지급 확인) → 수정후 GREEN. PlayMode신규8/8+EditMode인접82/82 무회귀. xcheck osx/win 0에러. Windows영향: 함께수정함(플랫폼중립).
+
+## 밧줄등반 구조설계 완료 (game-architect) — 신규기획, `docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md`
+
+사용자 신규요청("높은 창엔 밧줄던져 등반") 구조설계. 트리거: 기존 등반 상한(`ResolveStepUpMaxHeight`)에서 이어받아 시작, 상한은 화면상단클램프(신규 쿼리메서드 필요, 기존 수평판정이 겪은 멀티모니터버그 재발방지 위해 그 패턴 참고). 자율AI판단 그대로 유지(유저조작 신설 안함). 신규상태 `RopeClimbState`(=28, 던지기+오르기 2단계, LedgeHang이 ParkourClimb와 분리된 것과 같은 논리로 별도상태). 랙돌 강제인터럽트는 코드변경 0(이미 상태무관 설계). 원칙3(유저자산불변): 대상창을 앞으로 당기거나 흔들거나 하면 안됨, 취소시 밧줄잔상 안 남게.
+
+**★부수발견(잠재 기존버그)**: `WalkState.cs:184,202`가 감지된 벽 높이를 전혀 안 가리고 그대로 ParkourClimb로 보냄 — 지금은 `wanderEdgeJumpAttemptChance=0`이라 잠들어있지만, 이번 기능 구현시 반드시 높이대역 나누기를 함께 넣어야 함(안 넣으면 나중에 그 확률값만 올려도 임의높이 벽이 1.2초 엘리베이터처럼 순간이동하는 버그가 남).
+
+**다음단계**: design-motion(타이밍/자세 수치) → coder(구현). 문서에 파일별 착수목록 명시됨.
+
+## ★★★★★ 집중모드 XP 지급 구현완료 (세이브 스키마 v10→v11)
+
+design-systems 설계(완주분당6/취소분당5, 일일상한1080) 그대로 구현. `CurrencyRules.cs`에 코인과 동일패턴 순수함수 추가(`FocusCompletionXp`/`FocusCancelXp`/`FocusXpDailyCap`), `CurrencyModel`에 `FocusXpToday` 신규상태(코인상한과 완전독립, 상호무관 테스트로 잠금), `CharacterProgressionDirector.GrantFocusCompletionXp/GrantFocusCancelXp`가 기존 `Grant()` 재사용(레벨업로그·즉시저장·장비해금알림 자동승계), `FocusWatchDirector`의 기존 3개 종료경로(완주/중도취소/비상정지)에 코인지급과 나란히 배선.
+
+**세이브 스키마 v10→v11**(`focusXpToday` 필드) — **v10→v11 하위호환 테스트 필수동반**(CLAUDE.md 규칙): v10파일 로드시 새필드 기본값0+즉시지급가능 확인.
+
+**검증**: 신규EditMode(산식/일일상한차단/롤오버/코인-XP상호독립성/세이브왕복/오염값클램프) + 기존EditMode전체 2684/2684, PlayMode포커스관련6종40/40. 자체발견 1건: 신규테스트 자신의 손계산 대조리터럴 오류 2건을 배치실행으로 잡아 수정(프로덕션은 처음부터 정상이었음). xcheck osx/win 0에러. Windows영향: 없음(플랫폼중립).

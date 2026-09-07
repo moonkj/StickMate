@@ -141,7 +141,21 @@ namespace StickMate.Core
         /// <c>null</c>과 <c>빈 배열</c>의 뜻이 같아지도록 <b>정규화</b>로 받는다
         /// (§20-2-a·b — <c>IsOwned</c> 합집합과 「장착 ≥ 1」이 그 등가성의 근거다).
         /// 검증은 <c>Tests/EditMode/EquipmentMigrationTests</c>의 v9 하위 호환 테스트가 한다.</para>
-        internal const int CurrentVersion = 10;
+        ///
+        /// 11 = 2026-09-07 <b>집중 모드 XP 일일 상한</b>(design-systems §15, 사용자 요청 "집중모드도
+        /// 경험치"). 새 필드는 <c>focusXpToday</c> 딱 하나다(<c>Core/CurrencyModel.FocusXpToday</c>).
+        /// <para>★ <b>이 버전 상승의 근거도 v10과 같다 — 「없음 ≠ 0」이 아니라 다운그레이드 방어다.</b>
+        /// <c>focusXpToday</c>가 없는 파일에서 0으로 채워지는 것은 "오늘 집중 모드로 받은 XP가
+        /// 없다"는 정확한 사실이라, 그 규칙만으로는 버전을 강제하지 않는다. 그런데도 올리는 이유는
+        /// v10과 <b>글자 하나까지 같다</b>: 이 필드를 v10 번호로 디스크에 앉히면, v10 시절 빌드가
+        /// 그 파일을 <c>data.version &gt; CurrentVersion</c> 검사 없이 <b>자기 버전</b>으로 읽고,
+        /// <see cref="SaveSuspended"/>가 안 걸린 채로 60초 뒤 자동 저장이 <c>focusXpToday</c>뿐 아니라
+        /// 그 사이 바뀐 <c>coinBalance</c>류까지 v10 스키마로 덮어 쓸 수 있다.</para>
+        /// <para>하위 호환은 v10 게임화 묶음과 <b>같은 방식으로 저절로</b> 성립한다 — v10 이하 파일에
+        /// 이 키가 없으면 JsonUtility가 0으로 채우고, 그 0이 정확한 사실이다. 필드 하나뿐이라 명시적
+        /// 마이그레이션이 필요 없다(v5의 착용 상태 재배치 같은 특수 케이스가 아니다).
+        /// 검증은 <c>Tests/EditMode/EquipmentMigrationTests</c>의 v10 하위 호환 테스트가 한다.</para>
+        internal const int CurrentVersion = 11;
 
         /// <summary>설정창 값이 처음 들어간 버전. 이 값보다 낮은 파일에는 <c>autoHideOnFullscreen</c>/
         /// <c>gearIconVisible</c> 키가 없으므로 읽으면 안 된다(false = 꺼짐으로 오해된다 —
@@ -169,6 +183,12 @@ namespace StickMate.Core
         /// 그 검사가 <b>낡지 않는다</b>.</para>
         /// </summary>
         internal const int FirstVersionWithGameplayCurrency = 10;
+
+        /// <summary>
+        /// ★ 집중 모드 XP 일일 상한(<c>focusXpToday</c>)이 처음 들어간 버전 — <see cref="FirstVersionWithGameplayCurrency"/>와
+        /// <b>같은 이유</b>로 존재한다(로드 분기용이 아니라 다운그레이드 방어 테스트가 숫자를 베끼지 않게 하기 위해서).
+        /// </summary>
+        internal const int FirstVersionWithFocusXpDailyCap = 11;
 
         /// <summary>
         /// 직렬화 스키마. JsonUtility는 프로퍼티를 직렬화하지 않으므로 public 필드로만 구성한다.
@@ -409,9 +429,19 @@ namespace StickMate.Core
 
             /// <summary>★ <b>U-2 자리 확보</b>(§20-4). 로직 0줄 — 읽은 그대로 다시 쓴다.
             /// 스칼라(<c>float itemReachedAtSeconds</c>)로 만들면 "없음 = 0초에 도달"이 되어 42종을
-            /// 즉시 열어 주는데, 가변 길이 목록은 "없음 = 기록 없음"이라 안전하다. 지금 자리를 안 잡으면
-            /// U-2가 「존치」로 나오는 순간 v11이다.</summary>
+            /// 즉시 열어 주는데, 가변 길이 목록은 "없음 = 기록 없음"이라 안전하다.</summary>
             public ItemGraceBaseline[] itemGraceBaselines;
+
+            // ================================================================
+            // ---- v11: 집중 모드 XP 일일 상한 ----
+            // ================================================================
+            // 정본: docs/DESIGN_SYSTEMS_LEVEL_STAT_GROWTH_PROPOSAL.md §15.
+            // 값의 뜻·클램프·상한은 Core/CurrencyRules.cs(FocusXpDailyCap/ClampFocusXpToday) 한
+            // 곳에 있다 — 여기는 그릇이다. 상한 자체는 저장하지 않는다(T-D-9와 같은 이유).
+
+            /// <summary>오늘 집중 모드(완주+취소)로 받은 XP. v10 이하 파일에는 없고, 그때의 0은
+            /// "오늘 아무것도 안 받았다"는 정확한 사실이다(archeryCoinsToday와 같은 종류).</summary>
+            public int focusXpToday;
         }
 
         /// <summary>
@@ -720,6 +750,9 @@ namespace StickMate.Core
 
                     TodoCoinPaidToday = data.todoCoinPaidToday,
                     ArcheryCoinsToday = data.archeryCoinsToday,
+                    // ★ v11 게임화 XP 상한 — 버전 분기가 없다. v10 이하 파일에는 이 키가 없어
+                    //   0으로 채워지고, 그것이 "오늘 집중 모드로 받은 적 없다"는 정확한 사실이다.
+                    FocusXpToday = data.focusXpToday,
 
                     EquippedDanceIds = data.equippedDanceIds,
                     ItemGraceBaselines = data.itemGraceBaselines,
@@ -1440,6 +1473,9 @@ namespace StickMate.Core
                     archeryCoinsToday = currency.ArcheryCoinsToday,
                     equippedDanceIds = currency.EquippedDanceIds,
                     itemGraceBaselines = currency.ItemGraceBaselines,
+
+                    // ---- v11 게임화 XP 상한 ----
+                    focusXpToday = currency.FocusXpToday,
                 };
 
                 string dir = SaveDirectory;

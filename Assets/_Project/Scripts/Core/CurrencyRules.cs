@@ -457,7 +457,7 @@ namespace StickMate.Core
         public static int FocusCompletionCoins(double sessionDurationSeconds)
         {
             if (double.IsNaN(sessionDurationSeconds) || !(sessionDurationSeconds > 0.0)) return 0;
-            return ToCoinInt(Math.Floor(FocusCoinsPerMinute * sessionDurationSeconds / 60.0));
+            return ToFlooredNonNegativeInt(Math.Floor(FocusCoinsPerMinute * sessionDurationSeconds / 60.0));
         }
 
         /// <summary>
@@ -469,18 +469,99 @@ namespace StickMate.Core
         public static int FocusCancelCoins(double elapsedSeconds)
         {
             if (double.IsNaN(elapsedSeconds) || !(elapsedSeconds > 0.0)) return 0;
-            return ToCoinInt(Math.Floor(elapsedSeconds / 60.0) * FocusCancelCoinsPerMinute);
+            return ToFlooredNonNegativeInt(Math.Floor(elapsedSeconds / 60.0) * FocusCancelCoinsPerMinute);
         }
 
-        /// <summary>이미 <c>floor</c>된 동전 실수값을 <c>int</c>로 안전하게 내린다.
-        /// 상한 클램프는 <b>정책이 아니라 위생</b>이다 — 호출부가 말도 안 되는 경과 시간을 넘겨도
+        /// <summary>이미 <c>floor</c>된 실수값을 <c>int</c>로 안전하게 내린다. 이름이 <c>…Coin…</c>이
+        /// 아닌 이유: 아래 집중 모드 <b>XP</b> 지급(<see cref="FocusCompletionXp"/>·
+        /// <see cref="FocusCancelXp"/>)도 <b>같은 위생</b>이 필요해 이 함수를 그대로 재사용한다 —
+        /// 단위가 동전이든 XP든 "이미 floor된 음수 아닌 실수를 안전하게 int로 내린다"는 사실은
+        /// 하나이고, 그 사실을 두 벌로 만들 이유가 없다.
+        /// <para>상한 클램프는 <b>정책이 아니라 위생</b>이다 — 호출부가 말도 안 되는 경과 시간을 넘겨도
         /// <c>int</c> 캐스트가 <b>음수로 감기는</b> 일이 없어야 한다(캐스트 오버플로는 정의되지 않은
-        /// 값을 내고, 그 값이 잔액에 더해지면 우리 버그가 사용자 잔액을 망친다).</summary>
-        private static int ToCoinInt(double flooredCoins)
+        /// 값을 내고, 그 값이 잔액/누계에 더해지면 우리 버그가 사용자 값을 망친다).</para></summary>
+        private static int ToFlooredNonNegativeInt(double flooredValue)
         {
-            if (!(flooredCoins > 0.0)) return 0;
-            return flooredCoins >= int.MaxValue ? int.MaxValue : (int)flooredCoins;
+            if (!(flooredValue > 0.0)) return 0;
+            return flooredValue >= int.MaxValue ? int.MaxValue : (int)flooredValue;
         }
+
+        // ====================================================================
+        // ★★ 집중 모드 XP 지급 — 위 동전 지급과 「완전히 같은 구조」 (2026-09-07, design-systems
+        //    §15 확정 + 부록D). 상수만 다르다 — 새로 발명하지 않는다.
+        // ====================================================================
+        //
+        //   완주 = floor( FocusXpPerMinute × 세션초 / 60 )        ← 초를 그대로 읽고 <b>마지막에</b> floor
+        //   취소 = floor( 경과초 / 60 ) × FocusCancelXpPerMinute  ← <b>분을 먼저</b> floor한 뒤 요율
+        //
+        // ★ 이 비대칭이 필요한 이유는 위 동전 절과 <b>글자 하나까지 동일</b>하다 — 취소를 「XP에
+        //   floor」로 읽으면 지급이 초 단위로 연속이 되어 사용자가 취소 타이밍을 초 단위로 재는
+        //   동기가 생긴다. 완주가 초를 그대로 읽는 이유는 데모(90초)·최소(60초) 같은 격자 밖
+        //   세션 길이를 같은 식 하나로 처리하기 위해서다(design-systems §15-1).
+        //
+        // ★★ 왜 「일일 상한 밖」이 아니라 상한이 있는가 — 코인과 여기서 갈라진다(design-systems §15-4).
+        //   코인은 "얼마나 빨리 모으는가"가 레벨링 페이싱에 영향을 주지 않는 순수 자원 풀이라 상한
+        //   밖이어도 안전했다(§22-13, FocusWatchDirector.PayCompletionCoins/PayCancelCoins 문서).
+        //   XP는 정반대다 — 레벨 캡·LevelBonus·소프트캡 전체가 XP 하나를 조율하려는 설계이므로,
+        //   XP를 상한 밖으로 열면 그 페이싱이 집중 모드 사용량에 따라 조용히 무너진다. 그래서
+        //   <see cref="FocusXpDailyCap"/>이 새로 생겼고, 코인 쪽(§22-13)과 <b>이 한 가지만</b> 다르다 —
+        //   floor 위치·비대칭 구조·완주:취소 비율(5:6, 아래 참고)은 전부 그대로 복제했다.
+
+        /// <summary>집중 모드 완주 시의 분당 XP. design-systems §15-3 확정값 — 세 조건을 동시에
+        /// 만족하는 유일한 값이다: ① 취소 요율(<see cref="FocusCancelXpPerMinute"/>)이 정수로 딱
+        /// 떨어짐 ② 실사용 프리셋(15/25/50분)에서 전부 깔끔한 XP(90/150/300)가 나옴 ③ 일일 상한
+        /// (<see cref="FocusXpDailyCap"/>)에 도달하는 시간이 3시간으로 현실적임.</summary>
+        public const int FocusXpPerMinute = 6;
+
+        /// <summary>
+        /// 집중 모드 <b>중도 취소</b>의 분당 XP. <c>FocusXpPerMinute × 5 / 6</c>(= 정확히 5)로
+        /// 유도할 수도 있었지만 <see cref="FocusCancelCoinsPerMinute"/>가 겪은 것과 같은 이유로
+        /// 리터럴을 쓴다 — 그 문서가 이미 적어 둔 "선언 형태는 판단이 아니라 컴파일" 그대로다.
+        /// <para>취소:완주 = 5:6 = 코인의 20:24와 <b>정확히 같은 비율</b>(design-systems §15-2) —
+        /// "완주가 항상 이득"이라는 메시지를 코인·XP 어느 쪽으로 봐도 하나로 통일하기 위해서다.
+        /// <c>Tests</c>가 <c>FocusCancelXpPerMinute × 6 == FocusXpPerMinute × 5</c>를 항등식으로 고정한다.</para>
+        /// </summary>
+        public const int FocusCancelXpPerMinute = 5;
+
+        /// <summary>
+        /// 집중 모드 XP의 하루 상한. design-systems §15-4-3 확정값 — 임의가 아니라 ① 활쏘기 채널의
+        /// 기존 상한(<c>72회 × 15XP = 1,080</c>, 15는 <c>StickConfig.progressionBullseyeXp</c>라
+        /// 컴파일타임 상수로 유도할 수 없어 리터럴로 못박는다) ② 패시브 하루치(24h×90XP/h=2,160)의
+        /// <b>정확히 절반</b>이다 — "패시브가 기준선, 활쏘기·집중모드는 각각 최대 그 절반까지의
+        /// 가속 채널"이라는 대칭을 의도적으로 만든 값이다(§15-5가 "집중모드를 상한까지 밀어붙여도
+        /// 활쏘기 상한과 정확히 같아진다"를 검산했다).
+        /// <para>★ 필드가 아니라 상수다 — 코인의 <see cref="DailyCapCoins"/>와 달리 회복제 같은
+        /// 가변 입력이 없어 함수로 뽑을 이유가 없다. 오늘 쓴 양(<c>CurrencyModel.FocusXpToday</c>)만
+        /// 저장하고 상한 자체는 저장하지 않는다(T-D-9와 같은 이유 — 위조 대상을 만들지 않는다).</para>
+        /// </summary>
+        public const int FocusXpDailyCap = 1080;
+
+        /// <summary>
+        /// 집중 세션 <b>완주</b> XP. <paramref name="sessionDurationSeconds"/>는 <see cref="FocusCompletionCoins"/>와
+        /// <b>완전히 같은 계약</b>이다 — 명목 세션 길이(분×60)를 넣는다, 계측 누적값이 아니다.
+        /// 일일 상한 클램프는 여기서 하지 않는다(<see cref="ClampFocusXpToday"/>가 별도 지점).
+        /// </summary>
+        public static int FocusCompletionXp(double sessionDurationSeconds)
+        {
+            if (double.IsNaN(sessionDurationSeconds) || !(sessionDurationSeconds > 0.0)) return 0;
+            return ToFlooredNonNegativeInt(Math.Floor(FocusXpPerMinute * sessionDurationSeconds / 60.0));
+        }
+
+        /// <summary>
+        /// 집중 세션 <b>중도 취소</b> XP. <paramref name="elapsedSeconds"/>는 <see cref="FocusCancelCoins"/>와
+        /// 같은 계약이다(명목 세션 길이 − 잔여 초). <b>1분 미만은 0XP</b>이고, 코인과 같은 이유로
+        /// 별도 하한 규칙을 두지 않는다 — <c>floor(경과/60) = 0</c>에서 저절로 나온다.
+        /// </summary>
+        public static int FocusCancelXp(double elapsedSeconds)
+        {
+            if (double.IsNaN(elapsedSeconds) || !(elapsedSeconds > 0.0)) return 0;
+            return ToFlooredNonNegativeInt(Math.Floor(elapsedSeconds / 60.0) * FocusCancelXpPerMinute);
+        }
+
+        /// <summary>오늘 집중 모드로 받은 XP. <see cref="ClampArcheryCoinsToday"/>와 같은 모양의
+        /// 클램프다 — <see cref="FocusXpDailyCap"/>이 어떤 경우에도 위조 상한이다.</summary>
+        public static int ClampFocusXpToday(int xp)
+            => xp < 0 ? 0 : xp > FocusXpDailyCap ? FocusXpDailyCap : xp;
 
         // ====================================================================
         // 불변식 검산 — 이 파일 안에서 닫힌다 (T-D-15)

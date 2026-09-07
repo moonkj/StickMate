@@ -34,6 +34,18 @@ namespace StickMate.Interaction
     ///   제거). 패시브가 주 경로라는 설계 덕에 성장 속도에 미치는 영향은 사실상 없다 —
     ///   위 XP 곡선 표(CharacterProgressionModel)는 애초에 패시브만으로 계산된 값이다.
     ///
+    ///  · 집중 모드 완주/취소(2026-09-07, design-systems §15) — <see cref="GrantFocusCompletionXp"/>·
+    ///    <see cref="GrantFocusCancelXp"/>. 위 둘과 달리 <b>이벤트 구독이 아니라 직접 호출</b>이다 —
+    ///    <c>FocusWatchDirector</c>가 코인(<c>CurrencyModel.PayFocusCompletionCoins</c>류)도 같은
+    ///    방식(직접 호출)으로 지급하고 있어 그 관례를 그대로 따른다. 산식은
+    ///    <c>CurrencyRules.FocusCompletionXp</c>/<c>FocusCancelXp</c> 한 곳에만 있고, <b>일일 상한
+    ///    (<c>CurrencyRules.FocusXpDailyCap</c>)은 코인과 달리 존재한다</b> — 활쏘기/패시브와
+    ///    달리 코인 쪽 §22-13("집중 지급은 일일 상한 밖")을 XP는 물려받지 않는다(design-systems
+    ///    §15-4: 레벨 페이싱 전체가 XP 하나를 조율하므로 상한 없이 열면 그 설계가 무너진다).
+    ///    상한 체크와 카운터(<c>CurrencyModel.FocusXpToday</c>)는 <c>CurrencyModel</c>이 맡고,
+    ///    이 컴포넌트는 그 결과(클램프된 XP)를 받아 <b>기존 <see cref="Grant"/>를 그대로 재사용</b>한다
+    ///    — 레벨업 로그·즉시 저장·장비 해금 알림이 다른 세 경로와 동일하게 딸려온다.
+    ///
     /// ============================================================================
     /// ★ 2026-09-06 — 재화 <b>일일 롤오버</b>의 구동자도 여기다
     /// ============================================================================
@@ -610,6 +622,44 @@ namespace StickMate.Interaction
                 "평생 1회이고, 받았다는 사실은 저장 파일의 seedGranted 한 곳에만 남습니다. " +
                 "저장은 다음 주기/종료 저장에 실립니다 — 그 전에 앱이 죽으면 이 지급은 " +
                 "«없던 일»이 되고 다음 실행이 다시 지급합니다(두 번 지급되는 방향은 없습니다).");
+        }
+
+        // ==================== 집중 모드 XP (직접 호출, 2026-09-07) ====================
+
+        /// <summary>집중 세션 <b>완주</b> XP — <c>FocusWatchDirector</c>가 세션 완주 시점에
+        /// (코인 지급과 나란히, 그러나 <b>독립적으로</b>) 부른다.
+        /// <para>상한 체크는 이 메서드가 하지 않는다 — <see cref="CurrencyModel.TryGrantFocusCompletionXp"/>가
+        /// 오늘 이미 <c>CurrencyRules.FocusXpDailyCap</c>에 얼마나 가까운지를 판정해 클램프된 XP를
+        /// 돌려주고, 여기는 그 결과가 0보다 클 때만 기존 <see cref="Grant"/>를 부른다 — 활쏘기가
+        /// <c>coinsAwarded &gt; 0</c>을 XP 게이트로 재사용하는 것과 <b>같은 모양</b>이다.</para>
+        /// </summary>
+        public void GrantFocusCompletionXp(double sessionDurationSeconds)
+        {
+            int xp = CurrencyModel.TryGrantFocusCompletionXp(sessionDurationSeconds);
+            if (xp > 0) { Grant(xp, "집중 모드 완주"); return; }
+
+            Debug.Log("[성장] 집중 모드 완주 — 0XP(오늘 상한 도달). " +
+                $"고장이 아니라 의도된 천장입니다(오늘 집중 XP {CurrencyModel.FocusXpToday}/" +
+                $"{CurrencyRules.FocusXpDailyCap}, design-systems §15-4) — 코인은 이 상한과 무관하게 " +
+                "그대로 지급됩니다. 날짜가 바뀌면 다시 열립니다.");
+        }
+
+        /// <summary>집중 세션 <b>중도 취소</b> XP — <c>FocusWatchDirector</c>가 취소/긴급정지 시점에 부른다.
+        /// <para>0XP에는 <b>두 가지 다른 사유</b>가 있고 섞어 말하지 않는다: 경과가 1분 미만이면
+        /// 산식 자체가 0을 내는데(§22-12와 같은 계단), 그건 상한이 아니라 "아직 안 쌓였다"는 사실이라
+        /// 조용히 넘어간다(코인 쪽 <c>PayCancelCoins</c>가 이미 같은 사유로 0을 알린다 — 두 번 말하지
+        /// 않는다). 반면 <see cref="CurrencyModel.FocusXpDailyLimitReached"/>가 참이면 그건 진짜
+        /// 천장이라 활쏘기(<see cref="AwardArcheryCoins"/>)와 같은 방식으로 알린다.</para></summary>
+        public void GrantFocusCancelXp(double elapsedSeconds)
+        {
+            int xp = CurrencyModel.TryGrantFocusCancelXp(elapsedSeconds);
+            if (xp > 0) { Grant(xp, "집중 모드 중도 취소"); return; }
+            if (!CurrencyModel.FocusXpDailyLimitReached) return;   // 1분 미만 — 코인 쪽이 이미 알린다.
+
+            Debug.Log("[성장] 집중 모드 중도 취소 — 0XP(오늘 상한 도달). " +
+                $"고장이 아니라 의도된 천장입니다(오늘 집중 XP {CurrencyModel.FocusXpToday}/" +
+                $"{CurrencyRules.FocusXpDailyCap}, design-systems §15-4) — 코인은 이 상한과 무관하게 " +
+                "그대로 지급됩니다. 날짜가 바뀌면 다시 열립니다.");
         }
 
         /// <summary>XP 적립의 단일 경로 — 레벨업 감지/즉시 저장/로그가 전부 여기 한 곳에만 있다.</summary>

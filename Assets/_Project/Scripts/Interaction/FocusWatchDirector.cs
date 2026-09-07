@@ -42,8 +42,23 @@ namespace StickMate.Interaction
         [SerializeField] private StickmanAgent _player;
         [SerializeField] private StickConfig _config;
 
+        /// <summary>같은 GameObject의 성장 디렉터 — 집중 모드 XP(2026-09-07, design-systems §15)를
+        /// 지급할 때 부른다. 코인(<c>CurrencyModel.PayFocus*Coins</c>)은 이 파일이 직접 부르지만,
+        /// XP는 레벨업 로그·즉시 저장·장비 해금 알림을 <see cref="CharacterProgressionDirector.Grant"/>가
+        /// 이미 갖고 있어 그걸 재사용한다 — <c>Assets/Editor/SceneBootstrapper.cs</c>가 둘 다 같은
+        /// 루트에 붙이므로(<c>CharacterProgressionDirector</c>가 이미 <c>GetComponent&lt;FocusWatchDirector&gt;()</c>로
+        /// 그 반대 방향 참조를 쓰고 있는 것과 같은 관례) 값이 존재한다. null이면 조립 사고이고,
+        /// 코인 지급 로그와 똑같이 <b>말하게</b> 만든다(조용한 스킵을 만들지 않는다 — 아래
+        /// <see cref="PayCompletionXp"/>/<see cref="PayCancelXp"/>의 경고 로그).</summary>
+        private CharacterProgressionDirector _progression;
+
         public bool IsSessionActive { get; private set; }
         public float RemainingSeconds { get; private set; }
+
+        private void Awake()
+        {
+            _progression = GetComponent<CharacterProgressionDirector>();
+        }
 
         // ============================================================================
         // ★ 2026-09-06 — 사용자 신고 «집중모드 시작시 캐릭터다리쪽에 원이 생김.
@@ -180,6 +195,7 @@ namespace StickMate.Interaction
         {
             if (!IsSessionActive) return;
             PayCancelCoins("중도 취소");
+            PayCancelXp();
             IsSessionActive = false;
             TryTriggerPoseState(StickmanStateId.FocusCancelled);
         }
@@ -187,6 +203,7 @@ namespace StickMate.Interaction
         private void CompleteSession()
         {
             PayCompletionCoins();
+            PayCompletionXp();
             IsSessionActive = false;
             TryTriggerPoseState(StickmanStateId.FocusComplete);
         }
@@ -208,6 +225,15 @@ namespace StickMate.Interaction
         //
         // ★ 산식은 여기 없다 — <c>Core/CurrencyRules.FocusCompletionCoins/FocusCancelCoins</c> 한 곳뿐이고
         //   이 파일은 <b>어느 초를 넘길지</b>만 정한다. 요율(24/20)을 이 파일에 적지 마라.
+        //
+        // ★★ 2026-09-07 — <b>XP도 같은 세 자리에서 나란히 나간다</b>(design-systems §15,
+        //   PayCompletionXp/PayCancelXp, 바로 아래). <b>코인과 완전히 독립적</b>이다 — 코인은
+        //   §22-13대로 일일 상한 밖이고, XP는 새 일일 상한(CurrencyRules.FocusXpDailyCap)이 있다.
+        //   그래서 두 지급은 서로 다른 카운터(CurrencyModel.TodayGrantedCoins/ArcheryCoinsToday와
+        //   FocusXpToday)를 갉고, 한쪽이 상한에 걸려도 다른 쪽은 영향받지 않는다. XP 산식도 여기
+        //   없다 — <c>CurrencyRules.FocusCompletionXp/FocusCancelXp</c> 한 곳뿐이고, 상한 클램프는
+        //   <c>CurrencyModel</c>이, 레벨 적용(+로그·즉시 저장)은 <c>CharacterProgressionDirector.Grant</c>가
+        //   맡는다 — 이 파일은 여전히 <b>어느 초를 넘길지</b>만 정한다.
 
         /// <summary>
         /// 완주 지급. ★ <b>명목 세션 길이</b>(<see cref="SessionDurationSeconds"/>)를 넘긴다 —
@@ -246,6 +272,44 @@ namespace StickMate.Interaction
                     ? "취소는 「분을 먼저 내림」이라 채운 분까지만 지급됩니다(§22-12)."
                     : "★ 1분을 채우지 못해 0동전입니다 — 고장이 아니라 의도된 계단입니다(§22-12). " +
                       "패널티가 아니라 「아직 안 쌓였다」이고, 다음 1분을 채우면 그때부터 붙습니다."));
+        }
+
+        /// <summary>
+        /// 완주 XP — 코인의 <see cref="PayCompletionCoins"/>와 <b>같은 초</b>(명목 세션 길이)를
+        /// 넘기지만 <b>완전히 독립적으로</b> 상한 체크된다(design-systems §15-4). 실제 지급/레벨업
+        /// 처리는 <see cref="CharacterProgressionDirector.GrantFocusCompletionXp"/>가 맡는다 —
+        /// 그 안에서 <c>CurrencyModel.FocusXpToday</c>가 상한에 얼마나 가까운지 판정하고,
+        /// 필요한 로그도 그쪽에서 남긴다(같은 사실을 두 파일이 각자 말하지 않는다).
+        /// </summary>
+        private void PayCompletionXp()
+        {
+            if (!IsSessionActive) return;
+            if (_progression == null)
+            {
+                Debug.LogWarning("[포모도로] 같은 GameObject에서 CharacterProgressionDirector를 찾지 못해 " +
+                    "집중 모드 완주 XP를 지급하지 못했습니다 — 코인은 정상 지급됐습니다.");
+                return;
+            }
+            _progression.GrantFocusCompletionXp(SessionDurationSeconds);
+        }
+
+        /// <summary>중도 취소 XP — 코인의 <see cref="PayCancelCoins"/>와 같은 경과(명목 − 잔여)를
+        /// 넘긴다. 나머지는 <see cref="PayCompletionXp"/>와 같은 이유로 <see cref="CharacterProgressionDirector"/>에
+        /// 위임한다.</summary>
+        private void PayCancelXp()
+        {
+            if (!IsSessionActive) return;
+            if (_progression == null)
+            {
+                // ★ 완주 경로와 <b>독립적으로</b> 경고한다 — 취소로 끝난 세션은 완주 경로를 한 번도
+                //   안 지나므로, 여기서 안 찍으면 이 조립 사고가 화면·로그 어디에도 안 남는다.
+                Debug.LogWarning("[포모도로] 같은 GameObject에서 CharacterProgressionDirector를 찾지 못해 " +
+                    "집중 모드 중도 취소 XP를 지급하지 못했습니다 — 코인은 정상 지급됐습니다.");
+                return;
+            }
+
+            double elapsedSeconds = SessionDurationSeconds - RemainingSeconds;
+            _progression.GrantFocusCancelXp(elapsedSeconds);
         }
 
         private void Update()
@@ -399,8 +463,9 @@ namespace StickMate.Interaction
             //   명시한다. 여기서 지급을 빼면 «탈출구로 나간 사용자만 그때까지 번 동전을 통째로 잃는»
             //   경로가 되고, 그건 패널티를 안 주기로 한 18절 톤과도 정면으로 어긋난다.
             //   ⚠ 포즈/락 처리는 아래 그대로 둔다(FocusCancelled 포즈를 띄우지 않고 즉시 유휴로
-            //   보내는 것이 긴급정지의 정의다) — 이 줄은 <b>재화만</b> 얹는다.
+            //   보내는 것이 긴급정지의 정의다) — 이 두 줄은 <b>재화·XP만</b> 얹는다.
             PayCancelCoins("긴급정지");
+            PayCancelXp();
             IsSessionActive = false;
             ReleaseOwnedLock(forceIdle: true);
         }

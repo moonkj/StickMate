@@ -43,14 +43,15 @@ namespace StickMate.Core
 
         public bool TodoCoinPaidToday;
         public int ArcheryCoinsToday;
+        public int FocusXpToday;
 
         public string[] EquippedDanceIds;
         public ItemGraceBaseline[] ItemGraceBaselines;
     }
 
     /// <summary>
-    /// ★ 동전 지갑 · 일일 래칫 · 구매 이력 · 등급 high-water mark · 장착한 춤을 담는 모델
-    /// (저장 스키마 v10). 관례는 다른 모델과 동일하다 — <b>값 보관 + IsDirty만 알고, 언제
+    /// ★ 동전 지갑 · 일일 래칫 · 구매 이력 · 등급 high-water mark · 장착한 춤 · 집중 모드 XP
+    /// 일일 상한(v11)을 담는 모델. 관례는 다른 모델과 동일하다 — <b>값 보관 + IsDirty만 알고, 언제
     /// 저장할지는 모른다</b>(<see cref="CharacterSaveStore"/>가 읽고 쓰며, 주기 저장은
     /// <c>Interaction/CharacterProgressionDirector</c>).
     ///
@@ -158,6 +159,14 @@ namespace StickMate.Core
 
         /// <summary>오늘 활쏘기로 받은 동전. <c>lastArcheryCoinUnix</c>(벽시계)의 대체다(§20-3).</summary>
         public static int ArcheryCoinsToday { get; private set; }
+
+        /// <summary>
+        /// ★ v11 — 오늘 집중 모드(완주+취소)로 받은 XP. 상한은 <see cref="CurrencyRules.FocusXpDailyCap"/>
+        /// (design-systems §15-4, 활쏘기 채널 상한과 동일한 1,080). <b>동전 카운터(<see cref="ArcheryCoinsToday"/>·
+        /// <see cref="TodayGrantedCoins"/>)와 완전히 독립</b>이다 — 코인 상한에 도달해도 이 카운터는
+        /// 별도로 계속 쌓이고, 이 카운터가 상한에 닿아도 코인은 영향받지 않는다.
+        /// </summary>
+        public static int FocusXpToday { get; private set; }
 
         // ====================================================================
         // E군 — 댄스
@@ -304,6 +313,63 @@ namespace StickMate.Core
             IsDirty = true;
             return coins;
         }
+
+        // ====================================================================
+        // ★★ 집중 모드 XP 지급 — 위 동전 지급과 나란히, 그러나 <b>독립된</b> 상한 (v11)
+        // ====================================================================
+        //
+        // ★ 동전과 <b>여기서 갈라진다</b>: 동전 두 함수(위)는 일일 상한 밖(§22-13)이라 클램프를
+        //   지나지 않지만, XP는 design-systems §15-4가 새로 도입한 상한
+        //   (<see cref="CurrencyRules.FocusXpDailyCap"/>)을 반드시 지난다. 그래서 아래 두 함수는
+        //   <see cref="FocusXpToday"/>를 갉고, 코인 버킷(<see cref="TodayGrantedCoins"/>·
+        //   <see cref="ArcheryCoinsToday"/>·<see cref="IdleWindowUsedSeconds"/>)은 <b>전혀 건드리지
+        //   않는다</b> — 두 경제가 서로 다른 지갑을 쓴다(I-7′과 같은 "그림자 상태 금지" 원칙의
+        //   XP 버전: 상한도 하나만, 카운터도 하나만).
+        //
+        // 산식은 여기 없다 — <see cref="CurrencyRules.FocusCompletionXp"/> · <see cref="CurrencyRules.FocusCancelXp"/>
+        // 한 곳에만 있고, 이 모델은 상한 클램프와 카운터만 담당한다.
+
+        /// <summary>집중 세션 <b>완주</b> XP 지급. 인자는 <b>명목 세션 길이(초)</b>다(계측 누적값이 아니다 —
+        /// 이유는 <see cref="CurrencyRules.FocusCompletionXp"/>). 오늘 이미 상한 근처면 <b>일부만</b>
+        /// 지급될 수 있다(마지막 한 조각을 완전히 버리지 않는다 — <see cref="TryAwardArcheryCoins"/>의
+        /// "room보다 크면 room만큼만" 관례와 동일).</summary>
+        /// <returns>실제로 지급된 XP(0이면 오늘 상한에 이미 도달).</returns>
+        public static int TryGrantFocusCompletionXp(double sessionDurationSeconds)
+            => GrantFocusXp(CurrencyRules.FocusCompletionXp(sessionDurationSeconds));
+
+        /// <summary>집중 세션 <b>중도 취소</b> XP 지급. 인자는 <c>명목 세션 길이 − 잔여 초</c>다.
+        /// 1분 미만이면 산식 자체가 0을 내므로 이 함수도 0을 돌려주고 아무 일도 하지 않는다.</summary>
+        /// <returns>실제로 지급된 XP(0이면 1분 미만이거나 오늘 상한에 도달).</returns>
+        public static int TryGrantFocusCancelXp(double elapsedSeconds)
+            => GrantFocusXp(CurrencyRules.FocusCancelXp(elapsedSeconds));
+
+        /// <summary>두 집중 XP 경로가 공유하는 <b>유일한</b> 카운터 반영 지점 — 코인의
+        /// <see cref="GrantFocusCoins"/>와 대칭이지만 <b>상한을 지운다는 점이 다르다</b>(§22-13은
+        /// 코인 한정 확정 사항, design-systems §15-4).</summary>
+        private static int GrantFocusXp(int rawXp)
+        {
+            if (rawXp <= 0) return 0;
+
+            int room = CurrencyRules.FocusXpDailyCap - FocusXpToday;
+            if (room <= 0) return 0;
+
+            int pay = rawXp > room ? room : rawXp;
+            FocusXpToday = CurrencyRules.ClampFocusXpToday(FocusXpToday + pay);
+            IsDirty = true;
+            return pay;
+        }
+
+        /// <summary>오늘 집중 모드로 더 받을 수 있는 XP. 화면/로그가 "오늘 상한 도달"을 판정할 때 쓴다.</summary>
+        public static int RemainingFocusXpRoomToday()
+        {
+            int room = CurrencyRules.FocusXpDailyCap - FocusXpToday;
+            return room < 0 ? 0 : room;
+        }
+
+        /// <summary>집중 모드 XP가 <b>오늘 상한에 걸려</b> 멈췄는가. 활쏘기의
+        /// <see cref="ArcheryDailyLimitReached"/>와 같은 이유로 존재한다 — 연출(세션 완주/취소)은
+        /// 그대로 도는데 XP만 안 늘면 "고장"으로 읽힌다.</summary>
+        public static bool FocusXpDailyLimitReached => FocusXpToday >= CurrencyRules.FocusXpDailyCap;
 
         /// <summary>오늘의 상한(= <c>1500 + 500 × clamp(회복제, 0, 2)</c>). ★ 필드가 아니라 함수다.</summary>
         public static int DailyCapCoins() => CurrencyRules.DailyCapCoins(PotionsUsedToday);
@@ -514,6 +580,7 @@ namespace StickMate.Core
             IdleWindowUsedSeconds = 0.0;      // ③ 8시간 창 리셋 (T-15-1-d)
             TodoCoinPaidToday = false;
             ArcheryCoinsToday = 0;
+            FocusXpToday = 0;          // v11 — 활쏘기와 같은 이유로 같은 사건에 실린다(I-15′ 확장).
 
             s_lastRefillMonotonic = nowMonotonic;
             s_idleCarryCoins = 0.0;
@@ -521,7 +588,7 @@ namespace StickMate.Core
         }
 
         // ====================================================================
-        // 영속화 (저장 스키마 v10)
+        // 영속화 (저장 스키마 v11 — v10 게임화 묶음 + v11 집중 모드 XP 일일 상한)
         // ====================================================================
 
         /// <summary>
@@ -569,6 +636,9 @@ namespace StickMate.Core
 
             TodoCoinPaidToday = state.TodoCoinPaidToday;
             ArcheryCoinsToday = CurrencyRules.ClampArcheryCoinsToday(state.ArcheryCoinsToday);
+            // v10 이하 파일에는 이 키가 없다 — 0으로 채워지고, 그 0은 "오늘 집중 모드로 받은 적
+            // 없다"는 정확한 사실이다(archeryCoinsToday와 같은 종류).
+            FocusXpToday = CurrencyRules.ClampFocusXpToday(state.FocusXpToday);
 
             // ★ null과 빈 배열을 같은 분기가 받는다(§20-2-b). 보유 판정은 아직 배선 전이라 null —
             //   "아는 아이디는 전부 허용"으로 떨어지고, 보유/장착 화면 라운드가 여기에 조회를 꽂는다.
@@ -605,6 +675,7 @@ namespace StickMate.Core
 
                 TodoCoinPaidToday = TodoCoinPaidToday,
                 ArcheryCoinsToday = ArcheryCoinsToday,
+                FocusXpToday = FocusXpToday,
 
                 EquippedDanceIds = (string[])s_equippedDanceIds.Clone(),
                 ItemGraceBaselines = s_itemGraceBaselines,
@@ -629,6 +700,7 @@ namespace StickMate.Core
 
             TodoCoinPaidToday = false;
             ArcheryCoinsToday = 0;
+            FocusXpToday = 0;
 
             s_equippedDanceIds = DanceIds.CreateFreeDefaults();
             s_itemGraceBaselines = Array.Empty<ItemGraceBaseline>();

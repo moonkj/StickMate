@@ -935,5 +935,127 @@ namespace StickMate.Tests.EditMode
             StringAssert.Contains("\"coinBalance\"", json,
                 "v10을 선언했는데 동전 필드가 파일에 없습니다 — 버전만 올라가고 스키마가 안 따라왔습니다.");
         }
+
+        // ====================================================================
+        // ★★ v11 집중 모드 XP 일일 상한 — CLAUDE.md가 요구하는 vN-1 하위 호환 테스트
+        // ====================================================================
+
+        /// <summary>v10 픽스처. <b>v10이 실제로 담고 있던 필드만</b> 적는다(<c>focusXpToday</c>는
+        /// 없다 — 그게 이 테스트의 전제다). 다른 v10 값(동전 잔액·활쏘기 누계)을 실제로 채워
+        /// "그 값들이 살아남는가" 음성 대조에 쓴다.</summary>
+        private const string V10Json =
+            "{\n" +
+            "    \"version\": 10,\n" +
+            "    \"level\": 12,\n" +
+            "    \"currentXp\": 40.0,\n" +
+            "    \"totalXpEarned\": 5000.0,\n" +
+            "    \"characterName\": \"열동료\",\n" +
+            "    \"wornHead\": \"\",\n" +
+            "    \"wornEyes\": \"\",\n" +
+            "    \"wornNeck\": \"\",\n" +
+            "    \"wornShoulders\": \"\",\n" +
+            "    \"wornHair\": \"\",\n" +
+            "    \"wornFx\": \"\",\n" +
+            "    \"wornPet\": \"\",\n" +
+            "    \"coinBalance\": 3300,\n" +
+            "    \"seedGranted\": true,\n" +
+            "    \"dayIndex\": 77,\n" +
+            "    \"todayGrantedCoins\": 900,\n" +
+            "    \"archeryCoinsToday\": 40\n" +
+            "}";
+
+        /// <summary>
+        /// ★★ <b>v11 신설 필드(<c>focusXpToday</c>)의 하위 호환</b> — 2026-09-07,
+        /// 집중 모드 XP 지급 라운드(design-systems §15).
+        /// CLAUDE.md: <i>"저장 스키마 <c>CurrentVersion</c>을 올리는 라운드는 <c>vN-1</c> 구버전 파일을
+        /// 읽었을 때 신규 필드가 안전한 기본값으로 채워지는지 검증하는 하위 호환 테스트 1건을
+        /// 반드시 동반한다."</i>
+        ///
+        /// <para>v10 파일에는 이 필드가 없었으므로 JsonUtility가 0으로 채워야 하고, 그 0이
+        /// "오늘 집중 모드로 받은 XP가 없다"는 정확한 사실이어야 한다. 같은 파일의 v10 값들이
+        /// 함께 살아남는지(음성 대조)까지 확인한다 — 이게 없으면 위 단언이 "파일을 통째로
+        /// 버려서" 통과한 것인지 구별할 수 없다.</para>
+        /// </summary>
+        [Test]
+        public void v10_파일을_읽어도_집중모드_XP_상한이_안전한_기본값이_된다()
+        {
+            ResetModels();
+            File.WriteAllText(CharacterSaveStore.FilePath, V10Json);
+            CharacterSaveStore.Load();
+
+            Assert.IsTrue(CharacterSaveStore.LoadedFromFile, "v10 파일을 통째로 버렸습니다.");
+            Assert.IsFalse(CharacterSaveStore.SaveSuspended,
+                "v10 파일을 읽었을 뿐인데 저장이 보류됐습니다 — 그러면 이 사용자는 다시는 저장되지 않습니다.");
+
+            // ---- (1) 신설 필드가 안전한 기본값(0)인가 ----
+            Assert.AreEqual(0, CurrencyModel.FocusXpToday,
+                "v10 파일에 없던 집중 모드 XP 누계가 생겼습니다. 0 = '오늘 아무것도 안 받았다'가 " +
+                "v10 사용자에게 참입니다.");
+            Assert.AreEqual(CurrencyRules.FocusXpDailyCap, CurrencyModel.RemainingFocusXpRoomToday(),
+                "오늘 남은 집중 모드 XP 방이 전액이 아닙니다 — v10 사용자가 마이그레이션만으로 " +
+                "오늘의 XP 상한 일부를 이미 소모한 상태로 시작합니다.");
+            Assert.IsFalse(CurrencyModel.FocusXpDailyLimitReached,
+                "받은 적 없는데 오늘 상한에 도달한 것으로 읽혔습니다.");
+
+            // ---- (2) 그 신설 필드가 실제로 지급 가능한 상태인가(표시만 0이 아니라 실제로 열려 있는가) ----
+            int granted = CurrencyModel.TryGrantFocusCompletionXp(25.0 * 60.0);
+            Assert.AreEqual(CurrencyRules.FocusXpPerMinute * 25, granted,
+                "v10 사용자가 마이그레이션 직후 집중 모드 완주 XP를 전액 못 받습니다.");
+
+            // ---- (3) 음성 대조 — 같은 파일의 v10 값들이 살아남는가 ----
+            Assert.AreEqual(12, CharacterProgressionModel.Level, "v10 파일의 레벨이 사라졌습니다(전제 붕괴).");
+            Assert.AreEqual("열동료", CharacterProgressionModel.CharacterName, "v10 파일의 이름이 사라졌습니다.");
+            Assert.AreEqual(3300, CurrencyModel.CoinBalance, "v10 파일의 동전 잔액이 사라졌습니다.");
+            Assert.IsTrue(CurrencyModel.SeedGranted, "v10 파일의 시드 지급 이력이 사라졌습니다.");
+            Assert.AreEqual(900, CurrencyModel.TodayGrantedCoins, "v10 파일의 오늘 유휴 지급량이 사라졌습니다.");
+            Assert.AreEqual(40, CurrencyModel.ArcheryCoinsToday, "v10 파일의 활쏘기 누계가 사라졌습니다.");
+        }
+
+        /// <summary>
+        /// ★ v11 <b>왕복</b> — 위 테스트가 "없을 때"를 잠그므로 이것이 "있을 때"를 잠근다.
+        /// 둘 중 하나만 있으면 반대쪽이 조용히 죽는다.
+        /// </summary>
+        [Test]
+        public void v11_왕복은_집중모드_XP_누계를_보존한다()
+        {
+            CurrencyModel.ResetForTesting();
+            int granted = CurrencyModel.TryGrantFocusCompletionXp(50.0 * 60.0);
+            Assert.Greater(granted, 0, "전제 — 완주 XP 지급이 성공해야 한다.");
+            int expected = CurrencyModel.FocusXpToday;
+            Assert.Greater(expected, 0, "전제 — 오늘 XP 누계가 0이면 왕복 검증이 공허해진다.");
+
+            Assert.IsTrue(CharacterSaveStore.Save(), "저장에 실패했습니다.");
+
+            CurrencyModel.ResetForTesting();
+            Assert.AreEqual(0, CurrencyModel.FocusXpToday, "리셋 전제가 바뀌었습니다.");
+
+            CharacterSaveStore.Load();
+
+            Assert.AreEqual(expected, CurrencyModel.FocusXpToday,
+                "재시작하면 오늘 집중 모드 XP 누계가 사라집니다 — 자정 전에 재시작한 사용자가 " +
+                "일일 상한을 무제한으로 우회하게 됩니다.");
+        }
+
+        /// <summary>저장 파일이 <b>정확히 v11</b>로 기록된다. 숫자를 베끼지 않고 상수를 참조한다
+        /// (CLAUDE.md 2026-09-01 확정). ★ 이 단언이 지키는 것은 v10과 같은 이유 — 다운그레이드
+        /// 방어: v11 필드를 v10 번호로 앉히면 v10 시절 빌드가 그 파일을 <b>자기 버전</b>으로 읽어
+        /// 다운그레이드 방어가 침묵하고, 60초 뒤 자동 저장이 값을 덮어 지운다.</summary>
+        [Test]
+        public void 집중모드_XP_필드는_v11_번호로_기록된다()
+        {
+            CurrencyModel.ResetForTesting();
+            Assert.IsTrue(CharacterSaveStore.Save(), "저장에 실패했습니다.");
+
+            string json = File.ReadAllText(CharacterSaveStore.FilePath);
+            StringAssert.Contains($"\"version\": {CharacterSaveStore.CurrentVersion}", json,
+                "저장 파일의 버전 번호가 CurrentVersion과 다릅니다.");
+            Assert.GreaterOrEqual(CharacterSaveStore.CurrentVersion,
+                CharacterSaveStore.FirstVersionWithFocusXpDailyCap,
+                "집중 모드 XP 필드가 들어 있는데 스키마 버전이 그보다 낮습니다. 그러면 v10 시절 빌드가 " +
+                "이 파일을 '자기 버전'으로 읽어 다운그레이드 방어가 통째로 침묵합니다.");
+            StringAssert.Contains("\"focusXpToday\"", json,
+                "v11을 선언했는데 집중 모드 XP 필드가 파일에 없습니다 — 버전만 올라가고 스키마가 " +
+                "안 따라왔습니다.");
+        }
     }
 }
