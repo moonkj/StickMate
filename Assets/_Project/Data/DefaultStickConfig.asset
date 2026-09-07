@@ -391,7 +391,7 @@ MonoBehaviour:
   bodyLeanHitDegrees: 14
   bodyLeanHitRecoverRate: 7
   bodyLeanSmoothingRate: 12
-  activeTierRenderDivisor: 1
+  activeTierRenderDivisor: 2
   windowsTargetFrameRate: 60
   windowsDisableVSyncForFrameCap: 1
   macVSyncInterval: 2

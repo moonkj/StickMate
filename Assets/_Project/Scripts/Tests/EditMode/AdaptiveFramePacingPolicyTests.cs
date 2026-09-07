@@ -75,9 +75,11 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 캐릭터가_걷는중이면_아무리_오래_무입력이어도_활성등급이다()
         {
-            // 사용자 확정 사항: "움직일 때는 60fps". 2026-09-01부터 이 제목은 <b>문자 그대로</b>
-            // 참이다 — Away조차 characterIdle을 요구하므로 걷는 동안에는 어떤 무입력 시간에도
-            // 내려가지 않는다. 경계 넘어간 쪽의 상세 검증은 AwayTierMotionGuardTests에 있다.
+            // 2026-09-01부터 걷는 동안에는 등급이 Active 아래로(Calm/Still/Away로) 절대 내려가지
+            // 않는다 — Away조차 characterIdle을 요구하기 때문이다. ★ 이 등급이 실제로 몇 fps를
+            // 제출하는가(2026-09-07부터 activeTierRenderDivisor 기본값 2 = 30fps)는 별개 축이고,
+            // 이 테스트는 그 축을 재지 않는다 — 등급 이름만 본다. 경계 넘어간 쪽의 상세 검증과
+            // 프레임 예산 검증은 AwayTierMotionGuardTests에 있다.
             FramePacingTier tier = FramePacingPolicy.DecideTier(
                 Presence(idleSeconds: FramePacingPolicy.AwaySeconds - 1f), false, characterIdle: false);
             Assert.AreEqual(FramePacingTier.Active, tier);
@@ -127,13 +129,20 @@ namespace StickMate.Tests.EditMode
         }
 
         [Test]
-        public void 활성등급은_기준값을_한_글자도_바꾸지_않는다()
+        public void 활성등급은_표시기구와_게임루프를_한_글자도_바꾸지_않는다()
         {
+            // ★ 2026-09-07 이전 제목은 "기준값을 한 글자도 바꾸지 않는다"였고 RenderFrameInterval도
+            //   리터럴 1로 단언했다 — activeTierRenderDivisor 기본값이 1이던 시절의 사실이었다.
+            //   지금은 기본값이 2(사용자가 Windows 실기 GPU 확인 후 승인)라서 RenderFrameInterval도
+            //   정상적으로 2다. 이 테스트가 실제로 지키는 불변식은 처음부터 "vSyncCount와
+            //   targetFrameRate(표시 기구·게임 루프)는 Active에서 절대 안 바뀐다"였다 — 그것만
+            //   남기고, 렌더 간격은 정책 기본값을 참조한다(리터럴로 베끼면 기본값이 또 바뀔 때
+            //   이 테스트만 조용히 낡는다).
             FramePacingPlan plan = FramePacingPolicy.BuildPlan(
                 FramePacingTier.Active, MacBaseVSync, MacBaseTarget, lowPowerMode: false);
             Assert.AreEqual(MacBaseVSync, plan.VSyncCount);
             Assert.AreEqual(MacBaseTarget, plan.TargetFrameRate);
-            Assert.AreEqual(1, plan.RenderFrameInterval);
+            Assert.AreEqual(FramePacingPolicy.DefaultActiveDivisor, plan.RenderFrameInterval);
         }
 
         [Test]
@@ -202,8 +211,12 @@ namespace StickMate.Tests.EditMode
         [Test]
         public void 저전력모드는_활성등급만_한_칸_낮춘다()
         {
+            // ★ 2026-09-07: activeDivisor를 명시적으로 MinActiveDivisor(1)로 고정한다. 생략하면
+            //   DefaultActiveDivisor가 이제 2라서, 저전력 감쇄가 실제로 걸렸는지와 무관하게 항상
+            //   2가 나와 이 테스트가 조용히 아무것도 재지 않게 된다.
             FramePacingPlan active = FramePacingPolicy.BuildPlan(
-                FramePacingTier.Active, MacBaseVSync, MacBaseTarget, lowPowerMode: true);
+                FramePacingTier.Active, MacBaseVSync, MacBaseTarget, lowPowerMode: true,
+                FramePacingPolicy.DefaultStillDivisor, FramePacingPolicy.MinActiveDivisor);
             Assert.AreEqual(MacBaseVSync, active.VSyncCount, "저전력이어도 보는 사람이 있으면 기구는 그대로다.");
             Assert.AreEqual(2, active.RenderFrameInterval);
 

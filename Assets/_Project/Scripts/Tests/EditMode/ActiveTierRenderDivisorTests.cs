@@ -10,24 +10,39 @@ namespace StickMate.Tests.EditMode
     /// <b>활성 등급 렌더 분주</b>(<see cref="FramePacingPolicy.DefaultActiveDivisor"/>)의 계약.
     ///
     /// ============================================================================
-    /// 이 파일이 지키는 것 — <b>"손잡이는 있고, 기본값은 안 켜져 있다"</b>
+    /// 이 파일이 지키던 것(2026-09-07 초입) — <b>"손잡이는 있고, 기본값은 안 켜져 있다"</b>
+    /// ★★ 그 결정은 같은 날 안에 사용자 본인이 대체했다 — 아래 "판정 뒤집힘" 절.
     /// ============================================================================
     /// 2026-09-07 GPU 라운드에서 "Active 등급도 30fps로 상한을 걸자"는 제안이 왔다.
-    /// <b>절감은 실측으로 참이다</b>(아래 실측). 그런데 <b>켜는 것은 코더가 할 결정이 아니다</b>:
+    /// <b>절감은 실측으로 참이다</b>(아래 실측). 처음에는 <b>켜는 것은 코더가 할 결정이 아니다</b>로
+    /// 판단해 손잡이만 만들고 기본값은 그대로 뒀다:
     ///
     /// <list type="number">
     /// <item><see cref="FramePacingTier.Active"/> 문서에 <b>"여기는 절대 건드리지 않는다
-    ///   (2026-08-31 사용자 확정: 움직일 때는 60fps)"</b>가 적혀 있다. 사용자가 닫은 문이다.</item>
+    ///   (2026-08-31 사용자 확정: 움직일 때는 60fps)"</b>가 적혀 있었다. 사용자가 닫은 문이었다.</item>
     /// <item><b>Active는 "우리 창을 만지는 중"이 아니다.</b> <see cref="FramePacingPolicy.DecideTier"/>의
     ///   기본 반환값이라 <b>캐릭터가 걷는 모든 시간</b>이 여기 들어간다(자율 배회 실측:
     ///   Active 3.15초 중 걷기 2.75초 = 87%). 즉 이 분주는 UI가 아니라 <b>걷기</b>에 걸린다.</item>
     /// <item><c>AwayTierMotionGuardTests</c>가 <b>보행 한 주기 24프레임</b>을 하한으로 잠가 뒀고,
-    ///   분주 2는 22.2프레임이라 그 아래다. 그 하한은 사용자 요청
-    ///   *"캐릭터 움직임도 좀더 부드럽게 변경해야함"*에 대응해 세운 것이다.</item>
+    ///   분주 2는 22.2프레임이라 그 아래였다. 그 하한은 사용자 요청
+    ///   *"캐릭터 움직임도 좀더 부드럽게 변경해야함"*에 대응해 세운 것이었다.</item>
     /// </list>
     ///
-    /// <b>그래서 이 라운드의 산출물은 "기본값 변경"이 아니라 "재빌드 없이 눈으로 대조할 수 있는
-    /// 손잡이"다</b> — <c>STICKMATE_VSYNC</c>가 세운 것과 같은 관례(판정하지 않고 손잡이만).
+    /// ============================================================================
+    /// ★★ 판정 뒤집힘(같은 날, 2026-09-07) — 기본값이 실제로 2로 바뀌었다
+    /// ============================================================================
+    /// 사용자가 Windows 실기(Intel Iris Xe 내장GPU)에서 GPU 사용률 문제(30~90%대)를 직접 겪다가
+    /// <c>STICKMATE_ACTIVE_DIVISOR=2</c> 환경변수로 이 손잡이를 스스로 켜서 시험했고, GPU
+    /// 사용률이 40%대 위주로 개선되는 것을 실측 확인한 뒤 <b>"움직임이 좀 덜부드럽지만 그냥
+    /// 이정도로 만족할께" + "자동적용으로"</b>라고 명시적으로 승인했다 — 2026-08-31 결정을
+    /// 대체하는, 같은 사용자의 새 정보에 입각한 결정이다. design-motion의 별도 눈판정은 없었지만,
+    /// 실제 판정 주체(사용자 본인)가 실기로 이미 확인했으므로 그것으로 대신한다(리더 판단).
+    ///
+    /// 그래서 이 라운드의 최종 산출물은 "판정하지 않고 손잡이만"이 아니라 <b>기본값을 2로 올리고,
+    /// 되돌리는 쪽에 손잡이(<c>STICKMATE_ACTIVE_DIVISOR=1</c>)를 남긴 것</b>이다 — 방향이
+    /// 반대로 바뀌었을 뿐 "재빌드 없이 눈으로 대조할 수 있는 손잡이"라는 관례
+    /// (<c>STICKMATE_VSYNC</c>가 세운 것과 같은 것)는 그대로다. 아래의 "기본값 1"을 전제로 한
+    /// 테스트들은 전부 "기본값 2"로 재작성됐다 — 각 테스트의 주석에 근거가 있다.
     ///
     /// ============================================================================
     /// 실측 (2026-09-07, ioreg AGXAccelerator "Device Utilization %", 페어드 교차 2회차 × 70초)
@@ -76,19 +91,25 @@ namespace StickMate.Tests.EditMode
         // ========================================================================
 
         [Test]
-        public void 기본값은_1이다_이_숫자를_바꾸는_것은_사용자가_닫은_문을_다시_여는_일이다()
+        public void 기본값은_2다_2026_09_07_사용자가_실기로_확인하고_직접_승인했다()
         {
-            // ★ 리터럴 1은 의도적이다. 이 단언의 목적이 바로 "프로덕션 상수가 조용히 움직이는 것"을
-            //   잡는 것이라, 기대값을 프로덕션에서 가져오면 아무것도 못 잰다(저장소 규칙:
-            //   기대값을 프로덕션 함수로 만들지 마라).
-            Assert.AreEqual(1, FramePacingPolicy.DefaultActiveDivisor,
-                "활성 등급 기본 분주가 1이 아니다. 이것을 올리면 **걷는 동안** 제출이 절반이 된다 — " +
-                "FramePacingTier.Active 문서의 '2026-08-31 사용자 확정: 움직일 때는 60fps'와 정면으로 " +
-                "어긋나고, AwayTierMotionGuardTests의 보행 하한(24프레임)도 함께 깨진다. " +
-                "바꿔야 한다면 사용자 승인과 design-motion 눈판정을 먼저 받아라.");
+            // ★★ 이 테스트는 이전 버전("기본값은 1이다 — 사용자가 닫은 문을 다시 여는 일이다")을
+            //   대체한다. 그 문은 코더가 연 것이 아니라 **같은 사용자가 같은 날** 실기로 열었다 —
+            //   Windows(Intel Iris Xe)에서 STICKMATE_ACTIVE_DIVISOR=2를 직접 켜 GPU 사용률 개선
+            //   (30~90%대 -> 40%대 위주)을 확인한 뒤 "움직임이 좀 덜부드럽지만 그냥 이정도로
+            //   만족할께" + "자동적용으로"라고 명시 승인했다. 2026-08-31 결정을 대체하는 새 결정이다.
+            //
+            // ★ 리터럴 2는 의도적이다(저장소 규칙: 기대값을 프로덕션 상수 자기 자신으로 만들지
+            //   마라 — 그러면 상수가 조용히 움직여도 이 테스트가 못 잡는다).
+            Assert.AreEqual(2, FramePacingPolicy.DefaultActiveDivisor,
+                "활성 등급 기본 분주가 2가 아니다. 2026-09-07 사용자 승인(GPU 실기 확인, " +
+                "'자동적용으로')을 되돌리는 변경이라면 그 근거부터 확인하라 — 이 값을 1로 내리면 " +
+                "실측된 GPU 절감(약 -43%, 25.4%->14.5%)이 사라진다. 반대로 올리려면 " +
+                "MaxActiveDivisor(2) 자체를 먼저 검토해야 한다(그 위는 Away와 예산이 겹친다).");
 
-            Assert.AreEqual(FramePacingPolicy.MinActiveDivisor, FramePacingPolicy.DefaultActiveDivisor,
-                "기본값은 '절감 없음' 하한과 같아야 한다.");
+            Assert.AreEqual(FramePacingPolicy.MaxActiveDivisor, FramePacingPolicy.DefaultActiveDivisor,
+                "기본값은 이제 '허용 상한'과 같아야 한다 — 2026-09-07부터 Active 등급은 상한까지 " +
+                "절감한다(그 위는 Away 예산과 겹쳐 금지된다).");
         }
 
         [Test]
@@ -115,14 +136,22 @@ namespace StickMate.Tests.EditMode
         }
 
         [Test]
-        public void 기본값에서_활성등급은_여전히_매_프레임_제출한다()
+        public void 기본값에서_활성등급은_렌더분주만큼만_줄고_표시기구와_게임루프는_그대로다()
         {
+            // ★ 2026-09-07 이전 제목은 "여전히 매 프레임 제출한다"였고 RenderFrameInterval도
+            //   리터럴 1로 단언했다 — 기본값이 1이던 시절의 사실이었다. 지금은 기본값이 2라서
+            //   RenderFrameInterval도 2가 정상이다. 이 테스트가 실제로 지키는 불변식은 처음부터
+            //   그게 아니라 <b>표시 기구(vSyncCount)와 게임 루프(targetFrameRate)는 Active에서
+            //   절대 안 바뀐다</b>였다(FramePacingPolicy.BuildPlan 클래스 문서 "설계 원칙" 1번).
+            //   그 불변식만 남기고, 렌더 간격은 정책 기본값을 참조한다(리터럴로 베끼면 기본값이
+            //   또 바뀔 때 이 테스트만 조용히 낡는다 — CLAUDE.md 규칙).
             foreach ((int vsync, int target) in new[] { (MacBaseVSync, MacBaseTarget), (WinBaseVSync, WinBaseTarget) })
             {
                 FramePacingPlan plan = FramePacingPolicy.BuildPlan(
                     FramePacingTier.Active, vsync, target, lowPowerMode: false);
 
-                Assert.AreEqual(1, plan.RenderFrameInterval, $"vsync={vsync}/target={target}");
+                Assert.AreEqual(FramePacingPolicy.DefaultActiveDivisor, plan.RenderFrameInterval,
+                    $"vsync={vsync}/target={target}");
                 Assert.AreEqual(vsync, plan.VSyncCount, "표시 기구는 그대로다.");
                 Assert.AreEqual(target, plan.TargetFrameRate, "게임 루프는 그대로다.");
             }
@@ -224,9 +253,14 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(FramePacingPolicy.MaxActiveDivisor, plan.RenderFrameInterval,
                 "저전력 감쇄가 활성 분주와 곱해졌다 — 배터리 노트북에서 걷기가 15fps가 된다.");
 
-            // 네거티브 컨트롤 — 기본 분주에서는 저전력 감쇄가 **실제로** 걸린다(위 단언이 공허하지 않다).
+            // 네거티브 컨트롤 — activeDivisor를 명시적으로 MinActiveDivisor(1)로 고정해 저전력
+            // 감쇄가 **실제로** 걸리는지 격리해서 잰다.
+            // ★ 2026-09-07: 여기서 인자를 생략하면 DefaultActiveDivisor가 이제 2라서, 저전력 감쇄가
+            //   실제로 걸렸는지와 무관하게 항상 2가 나와 이 대조군이 조용히 무의미해진다 — 그
+            //   함정을 피하려고 이 인자를 명시한다.
             FramePacingPlan defaultPlan = FramePacingPolicy.BuildPlan(
-                FramePacingTier.Active, WinBaseVSync, WinBaseTarget, lowPowerMode: true);
+                FramePacingTier.Active, WinBaseVSync, WinBaseTarget, lowPowerMode: true,
+                FramePacingPolicy.DefaultStillDivisor, FramePacingPolicy.MinActiveDivisor);
             Assert.AreEqual(2, defaultPlan.RenderFrameInterval,
                 "대조군 전제 실패 — 저전력 감쇄 자체가 사라졌다면 위 테스트가 아무것도 재지 않는다.");
         }
@@ -333,21 +367,23 @@ namespace StickMate.Tests.EditMode
         // ========================================================================
 
         [Test]
-        public void 출하_애셋의_활성_분주가_1이다()
+        public void 출하_애셋의_활성_분주가_2다_2026_09_07_사용자_승인()
         {
-            // ★★ 이 테스트를 빨갛게 만드는 유일한 방법은 DefaultStickConfig.asset의
-            //    activeTierRenderDivisor를 2로 올리는 것이다. **그것이 이 테스트의 목적이다** —
-            //    출하 거동을 바꾸는 행위에 딱 한 번의 의도적 마찰을 붙인다.
+            // ★★ 2026-09-07 이전에는 이 테스트가 "출하 애셋이 1이다"였고, 빨갛게 만드는 유일한
+            //    방법이 2로 올리는 것이었다 — **의도적 마찰**이었다. 그 마찰은 같은 날 사용자
+            //    본인이 실기로 건넜다: Windows(Intel Iris Xe)에서 STICKMATE_ACTIVE_DIVISOR=2를
+            //    직접 켜 GPU 사용률 개선(30~90%대 -> 40%대 위주)을 확인한 뒤 "움직임이 좀
+            //    덜부드럽지만 그냥 이정도로 만족할께" + "자동적용으로"라고 명시 승인했다 —
+            //    2026-08-31 결정을 대체하는, 같은 사용자의 새 정보에 입각한 결정이다.
             //
-            //    2로 올리기 전에 확인해야 하는 것(리더/사용자 판단 항목):
-            //      · GPU  : 제출 59.2 -> 29.8장/초에서 25.4% -> 14.5%(실측 2회차, -43%)
-            //               ※ 다만 실제 운용에서 활성 등급 체류는 100%가 아니라 **약 44%**다
-            //                 (2026-09-07 실측: 활성 44% / 정적 8% / 정지 48%, 제출 35.7장/초).
-            //                 즉 이 스위치의 실제 절감은 제출 36.0 -> 22.8장/초(-36%)이지
-            //                 위의 -43%가 그대로 나오는 것이 아니다. 강제 등급 측정값을
-            //                 운용 절감으로 그대로 옮겨 적지 마라.
-            //      · 대가 : 보행 한 주기 44.4 -> 22.2프레임(AwayTierMotionGuardTests 하한 24 아래)
-            //      · 근거 : FramePacingTier.Active 문서의 «2026-08-31 사용자 확정: 움직일 때는 60fps»
+            //    이제 이 테스트는 **반대 방향**의 의도적 마찰이다 — 이 값을 1로 되돌리는 것
+            //    (사용자 승인을 되돌리는 행위)에 저항을 건다. 되돌리기 전에 확인해야 하는 것:
+            //      · GPU  : 위 실기 개선(약 -43%, 실측 2회차 25.4%->14.5%)이 사라진다.
+            //               ※ 실제 운용에서 활성 등급 체류는 100%가 아니라 약 44%다(2026-09-07
+            //                 실측: 활성 44% / 정적 8% / 정지 48%). 강제 등급 측정값을 운용
+            //                 절감으로 그대로 옮겨 적지 마라.
+            //      · 대가 : 보행 한 주기가 22.2 -> 44.4프레임으로 돌아간다(부드러움은 좋아진다).
+            //      · 근거 : 되돌리려면 사용자에게 위 GPU 개선을 포기하는지 먼저 다시 확인하라.
             string path = Path.Combine(Application.dataPath, "_Project", "Data", "DefaultStickConfig.asset");
             Assert.IsTrue(File.Exists(path), $"애셋을 찾지 못했다: {path}");
             string asset = File.ReadAllText(path);
@@ -367,10 +403,11 @@ namespace StickMate.Tests.EditMode
             string raw = asset.Substring(start, end - start).Trim();
 
             Assert.AreEqual(FramePacingPolicy.DefaultActiveDivisor.ToString(), raw,
-                "출하 애셋의 활성 등급 렌더 분주가 바뀌었다. 이 값이 2면 **걷는 동안 30fps로 그린다** — " +
-                "사용자가 2026-08-31에 «움직일 때는 60fps»로 닫은 문이다. " +
-                "의도한 변경이라면 이 단언과 AwayTierMotionGuardTests의 보행 하한(24프레임)을 " +
-                "같은 커밋에서 함께 갱신하고, 사용자 승인 근거를 커밋 메시지에 남겨라.");
+                "출하 애셋의 활성 등급 렌더 분주가 정책 기본값(2026-09-07부터 2)과 갈라졌다. " +
+                "이 값이 1이면 **걷는 동안에도 매 프레임(60fps)으로 그린다** — 2026-09-07 사용자 " +
+                "승인(Windows 실기 GPU 확인, '자동적용으로')이 무효화된 채 출하된다는 뜻이다. " +
+                "의도한 되돌리기라면 이 단언과 AwayTierMotionGuardTests의 보행 하한을 같은 " +
+                "커밋에서 함께 갱신하고, 근거를 커밋 메시지에 남겨라.");
         }
 
         [Test]

@@ -213,7 +213,8 @@ namespace StickMate.Platform
         /// (그 전에는 <see cref="FramePacingTier.Calm"/>에만 쓰였다 — 무입력만으로 Away를 주면 구경
         /// 중인 사용자 앞에서 걷기가 15fps로 끊겼다. 근거: <see cref="FramePacingPolicy.AwaySeconds"/>
         /// 문서). 그래서 false를 계속 넘기면 <b>Calm뿐 아니라 Away도 성립하지 않는다</b> — 즉 화면이
-        /// 꺼지지 않는 한 계속 60fps다. 24시간 상주 앱에서 이 신호가 끊기면 절감이 아니라
+        /// 꺼지지 않는 한 계속 활성 등급이다(2026-09-07부터 그 자체의 기본 제출률은
+        /// activeTierRenderDivisor에 따라 60fps 또는 30fps). 24시간 상주 앱에서 이 신호가 끊기면 절감이 아니라
         /// <b>비용</b> 쪽으로 실패한다는 뜻이므로, 배선을 지울 때 이 문단을 먼저 읽어라.
         /// (<see cref="FramePacingTier.DisplayOff"/>는 이 인자와 무관하게 그대로 동작한다.)</para></param>
         internal static void Tick(bool characterIdle = false)
@@ -323,7 +324,7 @@ namespace StickMate.Platform
         /// <para><b>왜 낮춰도 안전해졌는가</b>: 같은 라운드에서 <b>이탈을 즉시로</b> 만들었다
         /// (<see cref="TickAdaptiveGovernor"/>의 "정지 -> 이동 엣지" 처리). 히스테리시스가 막으려던
         /// 것은 "깜빡임"인데, 이제 내려가는 것만 지연되고 올라오는 것은 지연이 없으므로 깜빡여도
-        /// <b>보이는 쪽</b>은 항상 60fps다. 남는 비용은 손잡이 대입(int 2개)뿐이라 0으로 취급해도 된다.
+        /// <b>보이는 쪽</b>은 항상 활성 등급(가장 높은 제출률)이다. 남는 비용은 손잡이 대입(int 2개)뿐이라 0으로 취급해도 된다.
         /// 0으로 두지 않은 이유는 1~2프레임짜리 상태 경유(예: Landing -> Idle -> Walk)까지 등급을
         /// 흔들 필요는 없기 때문이다.</para></summary>
         private const float CalmDwellSeconds = 0.4f;
@@ -356,22 +357,31 @@ namespace StickMate.Platform
         /// <c>STICKMATE_STILL_DIVISOR</c>로 실기에서 재빌드 없이 A/B할 수 있다(4 vs 8).</summary>
         private static int _stillDivisor = FramePacingPolicy.DefaultStillDivisor;
 
-        /// <summary>계측용 Active 등급 분주 환경변수 이름. <b>지정하지 않으면 제품 동작에 영향 0</b>
-        /// (<see cref="FramePacingPolicy.DefaultActiveDivisor"/> = 1 = 현행 매 프레임 제출).
+        /// <summary>계측/폴백용 Active 등급 분주 환경변수 이름. <b>지정하지 않으면 애셋 기본값
+        /// (<see cref="Core.StickConfig.activeTierRenderDivisor"/>, 2026-09-07부터 2)이 그대로
+        /// 적용된다</b> — 이 환경변수 자체는 그 위에 얹는 오버라이드이지 스위치 그 자체가 아니다.
         ///
-        /// <para><b>이 변수가 존재하는 이유</b>: Active를 30fps로 상한 걸었을 때의 GPU 절감과 그
-        /// 대가(보행 한 주기 44.4 -> 22.2프레임)는 <see cref="FramePacingPolicy.DefaultActiveDivisor"/>
-        /// 위 문단에 숫자로 있지만, <b>"그게 눈에 띄게 끊겨 보이는가"는 사람 눈으로만 정해진다</b>.
-        /// 게다가 그 판단은 2026-08-31에 사용자가 이미 한 번 내린 것이다("움직일 때는 60fps").
-        /// 그래서 기본값을 바꾸지 않고, 재빌드 없이 눈으로 대조할 수 있는 손잡이만 둔다 —
+        /// <para><b>이 변수가 존재하는 이유(역사)</b>: 처음 만들어졌을 때는 애셋 기본값이 1(매
+        /// 프레임 제출)이었고, "Active를 30fps로 상한 걸었을 때의 GPU 절감과 그 대가(보행 한 주기
+        /// 44.4 -> 22.2프레임)는 실측으로 알려져 있지만, 그게 눈에 띄게 끊겨 보이는가는 사람 눈으로만
+        /// 정해진다"는 이유로 이 변수로만 2를 계측할 수 있게 해 두고 기본값은 건드리지 않았다
+        /// (2026-08-31 사용자 확정 "움직일 때는 60fps"와의 충돌을 코더가 스스로 피한 것).</para>
+        ///
+        /// <para><b>★ 같은 날(2026-09-07) 사용자가 이 변수를 직접 2로 켜서 실기(Windows, Intel
+        /// Iris Xe)에서 GPU 사용률 개선(30~90%대 -> 40%대 위주)을 확인하고 "자동적용으로"라고
+        /// 명시 승인해 그 결정을 대체했다</b> — 그래서 애셋·코드 기본값이 2로 바뀌었다
+        /// (<see cref="FramePacingPolicy.DefaultActiveDivisor"/>). 이 변수는 이제 <b>안전한 쪽(1,
+        /// 매 프레임 제출)으로 되돌리는 폴백</b>이자 계측 손잡이로 남는다 —
         /// <see cref="VSyncEnvironmentVariableName"/>이 세운 것과 같은 관례다.</para>
         ///
         /// <para><b>함정</b>: <c>STICKMATE_ADAPTIVE_PACING=0</c>이면 이 변수도 함께 죽는다
         /// (적응형 판단 경로 자체가 안 돈다). <c>STICKMATE_STILL_DIVISOR</c>과 같은 성질이다.</para></summary>
         internal const string ActiveDivisorEnvironmentVariableName = "STICKMATE_ACTIVE_DIVISOR";
 
-        /// <summary>Active 등급의 분주. 기본 <see cref="FramePacingPolicy.DefaultActiveDivisor"/>(=1,
-        /// 현행 동작). <see cref="ActiveDivisorEnvironmentVariableName"/>으로만 바뀐다.</summary>
+        /// <summary>Active 등급의 분주. 필드 초기값은 <see cref="FramePacingPolicy.DefaultActiveDivisor"/>
+        /// (2026-09-07부터 2)이며, <see cref="InitializeAdaptiveGovernor"/>에서 애셋 값
+        /// (<see cref="Core.StickConfig.activeTierRenderDivisor"/>)으로 갱신되고 그 위를
+        /// <see cref="ActiveDivisorEnvironmentVariableName"/>이 덮을 수 있다.</summary>
         private static int _activeDivisor = FramePacingPolicy.DefaultActiveDivisor;
 
         /// <summary>등급이 <b>더 깊어지는</b> 전이 사이의 최소 간격(초). 얕아지는 방향에는 걸지
@@ -522,13 +532,19 @@ namespace StickMate.Platform
                 $"화면꺼짐({FramePacingPolicy.DisplayOffTargetFps}fps 고정). " +
                 $"정지 등급 문턱={StillDwellSeconds:F1}초(캐릭터 정지 지속), 정적 문턱={CalmDwellSeconds:F1}초. " +
                 (_forcedTier.HasValue ? $"★ STICKMATE_FORCE_TIER={_forcedTier.Value} 강제 지정됨(계측용). " : "") +
-                // 기본값(1)일 때는 한 글자도 찍지 않는다 — 이 줄이 "이번 실행이 제품 기본값인가"를
-                // 말해야 하므로, 아무것도 안 바꾼 실행에 없던 문장이 생기면 안 된다.
+                // 기본값(2026-09-07부터 2)일 때는 한 글자도 찍지 않는다 — 이 줄이 "이번 실행이
+                // 제품 기본값인가"를 말해야 하므로, 아무것도 안 바꾼 실행에 없던 문장이 생기면 안 된다.
+                // ★ 기본값이 1에서 2로 바뀌면서 이 분기가 켜지는 방향도 뒤집혔다 — 범위가 1..2뿐이라
+                //   이제 이 분기에 들어오는 유일한 경우는 STICKMATE_ACTIVE_DIVISOR=1로 **되돌리는**
+                //   회차다. 옛 문구("...로 내려갑니다")는 그 반대 방향을 가정하고 있었다.
                 (_activeDivisor != FramePacingPolicy.DefaultActiveDivisor
                     ? $"★ {ActiveDivisorEnvironmentVariableName}={_activeDivisor} — 활성 등급 제출이 " +
-                      $"1/{_activeDivisor}로 내려갑니다(계측용). 이 회차는 **제품 기본값이 아닙니다**: " +
-                      "보행 한 주기가 44.4프레임에서 22.2프레임으로 줄어 " +
-                      "2026-08-31 사용자 확정('움직일 때는 60fps')과 어긋납니다. "
+                      $"출하 기본값(1/{FramePacingPolicy.DefaultActiveDivisor})에서 1/{_activeDivisor}로 " +
+                      "재정의됐습니다(계측/폴백용). 이 회차는 **제품 기본값이 아닙니다**: " +
+                      (_activeDivisor < FramePacingPolicy.DefaultActiveDivisor
+                          ? "보행 한 주기가 22.2프레임에서 44.4프레임(매 프레임 제출)으로 되돌아가 " +
+                            "2026-09-07 기본값 변경(사용자 GPU 실기 승인) 이전 동작과 같아집니다. "
+                          : "보행 한 주기가 44.4프레임에서 22.2프레임으로 줄어듭니다(추가 절감, 계측용). ")
                     : string.Empty) +
                 "근거/실측은 FramePacing·FramePacingPolicy 클래스 문서 참고.");
         }

@@ -3352,18 +3352,22 @@ namespace StickMate.Core
         [Header("적응형 프레임 페이싱 (2026-09-07 GPU 라운드 — 전 플랫폼)")]
 
         [Tooltip("활성 등급(캐릭터가 움직이는 중 + UI 조작 중)의 렌더 분주. " +
-                 "1 = 매 프레임 제출(60fps, 현행·기본). 2 = 30fps 제출. 게임 루프와 입력 폴링은 " +
-                 "어느 값에서도 60Hz 그대로다(renderFrameInterval만 바뀐다).\n" +
+                 "1 = 매 프레임 제출(60fps). 2 = 30fps 제출(2026-09-07부터 기본값).\n" +
                  "★★ 이 값을 2로 올리는 것은 «UI 조작을 30fps로»가 아니라 «걷기를 30fps로»다 — " +
                  "활성 등급은 DecideTier의 기본 반환값이라 캐릭터가 움직이는 모든 시간이 들어가고, " +
                  "실측상 그 체류의 약 87%가 걷기다. 보행 한 주기가 44.4프레임에서 22.2프레임으로 줄어 " +
-                 "FramePacingTier.Active 문서의 «2026-08-31 사용자 확정: 움직일 때는 60fps»와 어긋나고 " +
-                 "AwayTierMotionGuardTests의 보행 하한(24프레임)도 함께 깨진다.\n" +
-                 "그래서 기본값은 1이고, 올리려면 **사용자 승인 + design-motion 눈판정**을 먼저 받아라. " +
+                 "FramePacingTier.Active 문서의 옛 «2026-08-31 사용자 확정: 움직일 때는 60fps»와 어긋나고 " +
+                 "AwayTierMotionGuardTests의 보행 하한(24프레임)도 함께 깨진다 — 그 테스트는 이 변경과 " +
+                 "함께 갱신됐다.\n" +
+                 "★ 2026-09-07 사용자가 실기(Windows, Intel Iris Xe 내장GPU)에서 이 값을 직접 " +
+                 "STICKMATE_ACTIVE_DIVISOR=2로 켜서 시험(GPU 사용률 30~90%대→40%대 위주로 개선 체감)한 " +
+                 "뒤 명시적으로 승인했다(\"움직임이 좀 덜부드럽지만 그냥 이정도로 만족할께\" + " +
+                 "\"자동적용으로\") — 2026-08-31 결정을 대체하는 새 사용자 결정이다. design-motion의 " +
+                 "별도 눈판정은 아직 없으나, 실제 판정 주체(사용자)가 실기로 이미 확인했으므로 대신한다.\n" +
                  "GPU 절감과 대가의 실측 숫자는 FramePacingPolicy.DefaultActiveDivisor 문서에 있다. " +
-                 "범위 밖 값은 1~2로 clamp된다. 재빌드 없이 시험하려면 환경변수 STICKMATE_ACTIVE_DIVISOR " +
+                 "범위 밖 값은 1~2로 clamp된다. 되돌리려면 환경변수 STICKMATE_ACTIVE_DIVISOR=1 " +
                  "(이 값보다 우선한다).")]
-        public int activeTierRenderDivisor = 1;
+        public int activeTierRenderDivisor = 2;
 
         [Header("Windows 프레임 페이싱 (2026-08-31 — 잔상/렉 대응, Windows 전용)")]
 

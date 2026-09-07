@@ -197,23 +197,33 @@ namespace StickMate.Tests.EditMode
         {
             // 등급만 Active로 올리고 저전력 감쇄를 빼먹으면 배터리 세이버가 켜진 기기에서 증상이
             // 그대로 남는다. 손잡이 값까지 확인한다.
+            //
+            // ★ 2026-09-07: activeDivisor를 명시적으로 MinActiveDivisor(1)로 고정한다.
+            //   FramePacingPolicy.DefaultActiveDivisor가 이제 2라서, 이 인자를 생략하면 UI 홀드가
+            //   저전력 감쇄를 실제로 막았는지와 무관하게 항상 렌더 간격이 2로 나와 이 테스트가
+            //   무엇을 재는지 알 수 없게 된다(활성 분주 기본값이 저전력 감쇄와 같은 숫자를 우연히
+            //   낳는 함정). 저전력 축만 격리해서 본다 — "기준값"은 이제 activeDivisor=1(절감 없음)
+            //   기준이다.
             ViewerPresenceSnapshot p = Presence(lowPower: true, onBattery: true);
 
             FramePacingPlan win = FramePacingPolicy.BuildPlan(FramePacingTier.Active,
-                WinBaseVSync, WinBaseTarget, FramePacingPolicy.ShouldApplyLowPowerDownshift(p, true));
-            Assert.AreEqual(WinBaseTarget, win.EffectiveTargetFps, "Windows: 60fps 그대로여야 한다.");
+                WinBaseVSync, WinBaseTarget, FramePacingPolicy.ShouldApplyLowPowerDownshift(p, true),
+                FramePacingPolicy.DefaultStillDivisor, FramePacingPolicy.MinActiveDivisor);
+            Assert.AreEqual(WinBaseTarget, win.EffectiveTargetFps, "Windows: 홀드 중에는 저전력 감쇄가 없어야 한다.");
             Assert.AreEqual(1, win.RenderFrameInterval);
 
             FramePacingPlan mac = FramePacingPolicy.BuildPlan(FramePacingTier.Active,
-                MacBaseVSync, MacBaseTarget, FramePacingPolicy.ShouldApplyLowPowerDownshift(p, true));
-            Assert.AreEqual(1, mac.RenderFrameInterval, "macOS: 매 프레임 렌더여야 한다.");
+                MacBaseVSync, MacBaseTarget, FramePacingPolicy.ShouldApplyLowPowerDownshift(p, true),
+                FramePacingPolicy.DefaultStillDivisor, FramePacingPolicy.MinActiveDivisor);
+            Assert.AreEqual(1, mac.RenderFrameInterval, "macOS: 홀드 중에는 매 프레임 렌더여야 한다.");
             Assert.AreEqual(MacBaseVSync, mac.VSyncCount);
 
             // 네거티브 컨트롤 — 홀드가 없으면 같은 관측에서 실제로 반값이 된다.
             // (2026-09-01부터 Windows도 "반값"을 renderFrameInterval로 표현한다 — 루프는 60Hz 유지.
             //  그래서 TargetFrameRate가 아니라 EffectiveTargetFps를 본다.)
             FramePacingPlan winIdle = FramePacingPolicy.BuildPlan(FramePacingTier.Active,
-                WinBaseVSync, WinBaseTarget, FramePacingPolicy.ShouldApplyLowPowerDownshift(p, false));
+                WinBaseVSync, WinBaseTarget, FramePacingPolicy.ShouldApplyLowPowerDownshift(p, false),
+                FramePacingPolicy.DefaultStillDivisor, FramePacingPolicy.MinActiveDivisor);
             Assert.AreEqual(30, winIdle.EffectiveTargetFps);
         }
 

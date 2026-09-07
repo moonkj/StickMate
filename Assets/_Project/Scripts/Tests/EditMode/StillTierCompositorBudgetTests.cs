@@ -92,9 +92,13 @@ namespace StickMate.Tests.EditMode
         public void 네거티브컨트롤_같은_관측에서_걷는중이면_활성이다()
         {
             // 위 테스트가 "항상 참인 단언"이 아님을 보인다. 판정을 가르는 것은 오직 캐릭터 상태다.
+            // ★ 2026-09-07: "60fps여야 한다"는 옛 표현이다. 여기서 재는 것은 등급 이름(Active)이지
+            //   실제 제출 fps가 아니다 — Active 자체의 제출률은 activeTierRenderDivisor에 따라
+            //   지금 기본 30fps다. 이 테스트가 지키는 것은 "걷는 중에는 Calm/Still로 내려가지
+            //   않는다"이지 "항상 60fps"가 아니다.
             Assert.AreEqual(FramePacingTier.Active,
                 Decide(WorkingRightNow(), idle: false, still: false),
-                "걷는 중에는 60fps여야 한다(사용자 확정: 움직일 때는 60fps).");
+                "걷는 중에는 Active 등급이어야 한다(Calm/Still로 내려가면 안 된다).");
         }
 
         [Test]
@@ -151,7 +155,8 @@ namespace StickMate.Tests.EditMode
         {
             Assert.AreEqual(FramePacingTier.Active,
                 Decide(WorkingRightNow(), idle: true, still: true, held: true),
-                "정보창/부채꼴메뉴를 만지는 중에는 캐릭터가 얼마나 오래 서 있었든 60fps다.");
+                "정보창/부채꼴메뉴를 만지는 중에는 캐릭터가 얼마나 오래 서 있었든 Active 등급이어야 " +
+                "한다(제출률 자체는 activeTierRenderDivisor를 따른다 — 현재 기본 30fps).");
         }
 
         [Test]

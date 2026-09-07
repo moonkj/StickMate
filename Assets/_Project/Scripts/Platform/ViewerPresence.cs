@@ -98,8 +98,20 @@ namespace StickMate.Platform
     /// <summary>프레임 페이싱 등급. 숫자가 클수록 더 깊게 잠든다.</summary>
     public enum FramePacingTier
     {
-        /// <summary>평소 — 사용자가 보고 있고 뭔가 움직인다. <b>여기는 절대 건드리지 않는다</b>
-        /// (2026-08-31 사용자 확정: 움직일 때는 60fps).</summary>
+        /// <summary>평소 — 사용자가 보고 있고 뭔가 움직인다.
+        ///
+        /// <para><b>★ 2026-08-31 사용자 확정("움직일 때는 60fps")은 2026-09-07 같은 사용자의 새
+        /// 결정으로 대체됐다.</b> Windows 실기(Intel Iris Xe 내장GPU)에서 GPU 사용률(30~90%대)을
+        /// 직접 겪은 사용자가 <c>STICKMATE_ACTIVE_DIVISOR=2</c>로 직접 시험해 개선(40%대 위주)을
+        /// 확인한 뒤 "움직임이 좀 덜부드럽지만 그냥 이정도로 만족할께" + "자동적용으로"라고 명시
+        /// 승인했다 — 그래서 <see cref="FramePacingPolicy.DefaultActiveDivisor"/>가 1에서 2로
+        /// 바뀌었다(2026-09-07). 근거·실측·대가 숫자는 그 상수 문서에 있다.</para>
+        ///
+        /// <para>이 등급에서 <b>vSyncCount와 targetFrameRate는 여전히 손대지 않는다</b> — 바뀌는
+        /// 것은 <c>renderFrameInterval</c>뿐이라 게임 루프·입력/커서 폴링은 그대로 60Hz다
+        /// (<see cref="FramePacingPolicy.BuildPlan"/> 클래스 문서의 "설계 원칙" 절). 즉 "여기는
+        /// 절대 건드리지 않는다"였던 약속은 폐기된 것이 아니라 <b>"표시 기구는 절대 건드리지
+        /// 않는다"로 좁혀졌다</b> — 렌더 제출 횟수는 이제 활성 등급 안에서도 조정 대상이다.</para></summary>
         Active = 0,
 
         /// <summary>사용자가 보고는 있지만 캐릭터가 <b>잠깐</b> 서 있다(정지 지속 시간이 짧다).</summary>
@@ -506,14 +518,24 @@ namespace StickMate.Platform
         public const int MaxStillDivisor = 8;
 
         // ============================================================================
-        // ★ Active 등급 분주 (2026-09-07) — <b>기본값 1 = 현행 동작. 켜는 것은 사용자 결정이다.</b>
+        // ★ Active 등급 분주 (2026-09-07) — <b>기본값 2. 사용자가 실기로 확인하고 직접 승인했다.</b>
         // ============================================================================
         //
-        // <b>왜 손잡이만 만들고 켜지 않는가</b>: GPU 절감 자체는 실측으로 확인됐다(아래). 그런데
-        // 이 등급을 내리는 것은 <b>사용자가 명시적으로 닫은 문</b>이다 —
-        // <see cref="FramePacingTier.Active"/> 문서: *"여기는 절대 건드리지 않는다
-        // (2026-08-31 사용자 확정: 움직일 때는 60fps)"*. 그래서 이 라운드는
-        // <c>STICKMATE_VSYNC</c>가 세운 선례를 따른다: <b>판정하지 않고 손잡이만</b> 만든다.
+        // <b>이 라운드는 처음에 "손잡이만 만들고 켜지 않는다"로 시작했다</b>: GPU 절감 자체는
+        // 실측으로 확인됐지만(아래), 이 등급을 내리는 것은 그 시점까지 <see cref="FramePacingTier.Active"/>
+        // 문서가 적어 두었던 <b>사용자가 명시적으로 닫은 문</b>("2026-08-31 사용자 확정: 움직일
+        // 때는 60fps")과 충돌했기 때문이다. 그래서 <c>STICKMATE_VSYNC</c>가 세운 선례를 따라
+        // 판정하지 않고 손잡이만 만들었다.
+        //
+        // <b>★ 같은 날(2026-09-07) 그 문이 사용자 본인 손으로 다시 열렸다.</b> 사용자가 Windows
+        // 실기(Intel Iris Xe 내장GPU)에서 GPU 사용률 문제(30~90%대)를 직접 겪다가
+        // <c>STICKMATE_ACTIVE_DIVISOR=2</c> 환경변수로 이 손잡이를 스스로 켜서 시험했고, GPU
+        // 사용률이 40%대 위주로 개선되는 것을 실측 확인한 뒤 "움직임이 좀 덜부드럽지만 그냥
+        // 이정도로 만족할께" + "자동적용으로"라고 명시적으로 승인했다 — 2026-08-31 결정을
+        // 대체하는, 같은 사용자의 새 정보에 입각한 결정이다. design-motion의 별도 눈판정은 없었지만
+        // 실제 판정 주체(사용자 본인)가 실기로 이미 확인했으므로 그것으로 대신한다(리더 판단,
+        // StickConfig.activeTierRenderDivisor 툴팁 참고). 그래서 <see cref="DefaultActiveDivisor"/>가
+        // 1에서 2로 바뀌었고, <c>Assets/_Project/Data/DefaultStickConfig.asset</c>도 함께 갱신됐다.
         //
         // <b>실측 (2026-09-07, M-series macOS, ioreg AGXAccelerator "Device Utilization %",
         // 페어드 교차 2회차 · 각 70초 · 앱 없는 기저 0.1%/3.8%)</b>:
@@ -532,21 +554,35 @@ namespace StickMate.Platform
         // <code>
         //   분주 1 (60장/초) -> 44.4프레임    분주 2 (30장/초) -> 22.2프레임    Away(15장/초) -> 11.1프레임
         //                                     ^^^^^^^^^^^^^^^^^^^^^
-        //   AwayTierMotionGuardTests가 잠근 하한은 24프레임 -> 분주 2는 그 하한 아래다.
+        //   AwayTierMotionGuardTests가 원래 잠갔던 하한은 24프레임 -> 분주 2는 그 아래였다. 그
+        //   하한은 사용자 요청 *"캐릭터 움직임도 좀더 부드럽게 변경해야함"*에 대응해 세운 것이었는데,
+        //   Active 자체의 정상 기준선이 22.2로 내려온 지금은 옛 24프레임 하한을 그대로 두면 정상
+        //   동작 자체가 빨간불이 된다. 그래서 그 테스트의 하한을 Away(11.1)와 새 Active(22.2)
+        //   사이로 재조정했다(Tests/EditMode/AwayTierMotionGuardTests.cs의 MinFramesPerGaitCycle
+        //   문서 참고) — 원래 잡던 결함(구경 중 Away 오판정으로 약 11프레임까지 떨어지는 것)은
+        //   여전히 잡는다.
         // </code>
-        // 그 하한은 사용자 요청 *"캐릭터 움직임도 좀더 부드럽게 변경해야함"*에 대응해 세운 것이다.
         //
         // <b>그리고 Active는 "우리 창을 만지는 중"이 아니다</b> — <see cref="DecideTier"/>의
         // <b>기본 반환값</b>이라 캐릭터가 걷는/뛰는/떨어지는 모든 시간이 여기 들어간다.
         // 자율 배회 실측(8.08초 주기 중 Active 3.15초, 그중 <b>걷기가 2.75초</b>)으로 보면
         // 이 등급 체류의 약 87%가 UI 조작이 아니라 <b>캐릭터 이동</b>이다.
-        // ⇒ 이 분주를 2로 올리는 것은 "UI 조작을 30fps로"가 아니라 <b>"걷기를 30fps로"</b>다.
+        // ⇒ 이 분주를 2로 올리는 것은 "UI 조작을 30fps로"가 아니라 <b>"걷기를 30fps로"</b>다 —
+        //   그리고 그것이 바로 사용자가 위에서 승인한 것이다(체감을 이미 실기로 확인했다).
+        //   부수 효과로 UI 조작 중(<c>uiInteractionActive</c>로 Active가 유지되는 동안)의 제출도
+        //   같은 분주를 탄다 — DecideTier는 "왜 Active인가"를 구분하지 않고 BuildPlan도 마찬가지라,
+        //   손잡이 하나가 두 경로 모두에 걸린다(StickConfig.activeTierRenderDivisor 툴팁에도 명시).
 
         /// <summary><see cref="FramePacingTier.Active"/>의 렌더 분주 기본값.
-        /// <b>1 = 매 프레임 제출(현행 동작, 변경 없음).</b></summary>
-        public const int DefaultActiveDivisor = 1;
+        /// <b>2026-09-07부터 2(30fps 제출)</b> — 사용자가 Windows 실기에서 직접 확인하고 승인한
+        /// 값이다(위 문단). 되돌리려면 환경변수 <see cref="FramePacing.ActiveDivisorEnvironmentVariableName"/>
+        /// 을 1로 주거나(계측/폴백) <c>DefaultStickConfig.asset</c>의 값을 고친다 —
+        /// <b>둘 중 하나만 고치면 애셋과 코드 기본값이 갈라진다</b>(테스트
+        /// <c>ActiveTierRenderDivisorTests.코드_기본값과_출하_애셋이_같다</c>가 그 어긋남을 잡는다).</summary>
+        public const int DefaultActiveDivisor = 2;
 
-        /// <summary>Active 분주 하한(= 절감 없음, 현행).</summary>
+        /// <summary>Active 분주 하한(= 절감 없음, 2026-09-07 이전 기본값). 되돌리기용 폴백 값이다
+        /// (<see cref="FramePacing.ActiveDivisorEnvironmentVariableName"/>=1).</summary>
         public const int MinActiveDivisor = 1;
 
         /// <summary>Active 분주 상한. <b>2에서 멈추는 이유</b>: 3이면 보행 한 주기가 14.8프레임,
@@ -580,9 +616,12 @@ namespace StickMate.Platform
         /// <param name="stillDivisor"><see cref="FramePacingTier.Still"/> 전용 분주
         /// (<see cref="DefaultStillDivisor"/>). 범위를 벗어나면 clamp된다.</param>
         /// <param name="activeDivisor"><see cref="FramePacingTier.Active"/> 전용 분주.
-        /// <b>기본 <see cref="DefaultActiveDivisor"/>(=1)이면 이 인자는 아무 일도 하지 않는다</b> —
-        /// 즉 이 매개변수를 넘기지 않는 모든 기존 호출부의 결과는 한 글자도 바뀌지 않는다.
-        /// 켤 때의 근거·실측·대가는 <see cref="DefaultActiveDivisor"/> 위 문단에 있다.</param>
+        /// <b>2026-09-07부터 기본값이 <see cref="DefaultActiveDivisor"/>(=2)라 이 매개변수를
+        /// 넘기지 않는 호출부도 실제로 절반 제출을 받는다</b> — 그 이전에는 기본값이 1이라 이
+        /// 인자를 생략하면 아무 일도 안 일어났지만, 지금은 그것이 곧 사용자가 승인한 기본
+        /// 동작이다(테스트에서 옛날처럼 "1이어야 한다"를 가정하면 조용한 오탐이 난다 — 명시적으로
+        /// <see cref="MinActiveDivisor"/>를 넘겨 절감 없는 경로를 격리할 것). 켤 때의 근거·실측·
+        /// 대가는 <see cref="DefaultActiveDivisor"/> 위 문단에 있다.</param>
         public static FramePacingPlan BuildPlan(FramePacingTier tier, int baseVSyncCount,
             int baseTargetFrameRate, bool lowPowerMode, int stillDivisor = DefaultStillDivisor,
             int activeDivisor = DefaultActiveDivisor)
@@ -595,7 +634,9 @@ namespace StickMate.Platform
 
             int divisor = tier switch
             {
-                // 기본값 1 -> 아래 `divisor == 1` 조기 반환으로 떨어져 기존 경로와 동일하다.
+                // 2026-09-07부터 기본값이 2라서 여기서 이미 절반이 걸린다 — 더 이상 아래
+                // `divisor == 1` 조기 반환으로 떨어지지 않는다(그건 activeDivisor가 명시적으로
+                // MinActiveDivisor(1)로 넘어올 때만 해당한다).
                 FramePacingTier.Active => Mathf.Clamp(activeDivisor, MinActiveDivisor, MaxActiveDivisor),
                 FramePacingTier.Calm => 2,       // 60 -> 30
                 FramePacingTier.Still => Mathf.Clamp(stillDivisor, MinStillDivisor, MaxStillDivisor),

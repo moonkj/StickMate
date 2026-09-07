@@ -65,8 +65,26 @@ namespace StickMate.Tests.EditMode
 
         /// <summary>한 보행 주기를 <b>사람이 연속 동작으로 보려면</b> 최소한 이만큼의 프레임이 필요하다고
         /// 두는 하한. 정확한 지각 임계를 주장하는 값이 아니라, "Away(15fps)의 약 11프레임은 명백히
-        /// 모자라고 Active(60fps)의 약 44프레임은 충분하다"는 두 값 사이를 가르는 선이다.</summary>
-        private const float MinFramesPerGaitCycle = 24f;
+        /// 모자라고 Active(현재 기준선)의 예산은 그 자체가 사용자 승인된 기준"이라는 두 값을
+        /// 가르는 선이다.
+        ///
+        /// <para><b>★ 2026-09-07 재조정 — 원래 24였다.</b> <c>activeTierRenderDivisor</c> 기본값이
+        /// 1에서 2로 바뀌면서(사용자가 Windows 실기에서 GPU 사용률 개선을 직접 확인하고 "자동적용으로"
+        /// 승인 — 근거는 <c>FramePacingTier.Active</c> / <c>FramePacingPolicy.DefaultActiveDivisor</c>
+        /// 문서) Active 등급 자체의 정상 보행 예산이 44.4 -> 22.2프레임으로 내려갔다. 원래 하한 24는
+        /// "확실히 통과하는 Active(44.4)"와 "확실히 걸리는 Away(11.1)" 사이에 그은 선이었는데, 새
+        /// Active 기준선(22.2)이 그 24 아래로 내려오면서 <b>정상 동작 자체가 이 테스트를 빨갛게
+        /// 만드는</b> 상태가 됐다.</para>
+        ///
+        /// <para>그래서 선을 <b>Away(11.1)와 새 Active(22.2) 사이</b>로 다시 긋는다 — 16
+        /// (Away의 약 1.44배, 새 Active의 약 0.72배로 양쪽에 여유를 둔다). 이 재조정이 지우지
+        /// 않는 것: 원래 결함(구경 중 Away 오판정으로 보행이 약 11프레임까지 뭉개지는 것)이
+        /// 재발하면 여전히 이 하한 아래로 떨어져 빨간불이 난다 — 아래 네거티브컨트롤 테스트가
+        /// 그것을 계속 확인한다. 지우지 않는 4개 불변식은 이 클래스 문서 "처방과 그 경계" 절
+        /// 그대로다 — 걷는 중 Away 금지 / 서 있으면 Away 유지 / DisplayOff·Suspended 예외 /
+        /// 멈추면 즉시 재개, 그 무엇도 이 재조정과 무관하다(이 상수는 불변식 1의 세 번째 검사에만
+        /// 쓰인다).</para></summary>
+        private const float MinFramesPerGaitCycle = 16f;
 
         private static ViewerPresenceSnapshot Presence(bool asleep = false, float idleSeconds = 0f,
             bool lowPower = false, bool onBattery = false)
@@ -126,6 +144,11 @@ namespace StickMate.Tests.EditMode
         {
             // 이번 수정의 **근거 자체**를 숫자로 잠근다. 등급 이름이 아니라 "실제로 몇 장이 그려지는가"로
             // 확인하므로, 나중에 누가 등급 체계를 갈아엎어도 이 성질이 유지되는지가 검사된다.
+            //
+            // ★ 2026-09-07: BuildPlan에 activeDivisor를 넘기지 않으므로 FramePacingPolicy.
+            //   DefaultActiveDivisor(현재 2)가 그대로 쓰인다 — 즉 이 루프가 재는 tier는 전부
+            //   Active이고 그 예산은 22.2프레임이다. 하한(MinFramesPerGaitCycle)은 Away(11.1)와
+            //   그 22.2 사이로 재조정되어 있다 — 문서 참고.
             foreach (float sec in LongIdleSeconds)
             {
                 FramePacingTier tier = FramePacingPolicy.DecideTier(
@@ -294,10 +317,24 @@ namespace StickMate.Tests.EditMode
 
             FramePacingTier tier = FramePacingPolicy.DecideTier(p, false, characterIdle: false);
             Assert.AreEqual(FramePacingTier.Active, tier);
+
+            // ★ 2026-09-07: activeDivisor를 명시적으로 MinActiveDivisor(1)로 고정한다. 이 인자를
+            //   생략하면 FramePacingPolicy.DefaultActiveDivisor가 이제 2라서, 저전력 감쇄가 실제로
+            //   걸렸는지와 무관하게 항상 30이 나와 이 단언이 조용히 아무것도 재지 않게 된다 —
+            //   "활성 분주 기본값이 저전력 감쇄와 같은 숫자를 우연히 낳는" 함정이다.
             Assert.AreEqual(30,
-                FramePacingPolicy.BuildPlan(tier, WinBaseVSync, WinBaseTarget, lowPowerMode: true)
+                FramePacingPolicy.BuildPlan(tier, WinBaseVSync, WinBaseTarget, lowPowerMode: true,
+                        FramePacingPolicy.DefaultStillDivisor, FramePacingPolicy.MinActiveDivisor)
                     .EffectiveTargetFps,
                 "저전력 감쇄까지 사라졌다면 이번 수정이 범위를 넘었다.");
+
+            // 네거티브 컨트롤 — 저전력을 꺼도 활성 분주 기본값만으로 이미 30이 나온다는 것 자체를
+            // 못박는다(위 격리가 실제로 필요했다는 증거).
+            Assert.AreEqual(30,
+                FramePacingPolicy.BuildPlan(tier, WinBaseVSync, WinBaseTarget, lowPowerMode: false,
+                        FramePacingPolicy.DefaultStillDivisor, FramePacingPolicy.DefaultActiveDivisor)
+                    .EffectiveTargetFps,
+                "대조군 전제 실패 — 저전력을 꺼도 30이 나오지 않으면 위 문단의 함정 설명이 틀렸다.");
         }
 
         [Test]

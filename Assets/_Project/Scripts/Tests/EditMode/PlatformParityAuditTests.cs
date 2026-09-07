@@ -1547,7 +1547,8 @@ namespace StickMate.Tests.EditMode
             AssertBothContain(MacEnforcerPath, WinEnforcerPath,
                 "FramePacing.Tick(FramePacing.ResolveCharacterIdle(",
                 "캐릭터 정지 신호가 프레임 등급 판정에 공급되지 않습니다 — Calm/Away 두 등급이 " +
-                "모두 성립하지 않아 화면이 꺼지지 않는 한 계속 60fps로 돕니다.");
+                "모두 성립하지 않아 화면이 꺼지지 않는 한 계속 Active 등급(activeTierRenderDivisor를 " +
+                "따르는 제출률)으로 돕니다.");
         }
 
         /// <summary>
