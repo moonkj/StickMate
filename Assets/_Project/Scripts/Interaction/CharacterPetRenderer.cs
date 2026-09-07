@@ -959,9 +959,31 @@ namespace StickMate.Interaction
             _position = Vector2.Lerp(_position, anchor, 1f - Mathf.Exp(-BalloonFollowRate * dt));
 
             // 주머니 꼭대기까지가 화면 안에 들어와야 한다 — 끈 길이 + 지름이 곧 이 펫의 세로 크기다.
+            //
+            // ★★ 2026-09-07 4차 수정 — 실기 신고 회귀 테스트(PetBalloonClearsBodyTests)가 "공식은
+            // 맞는데 실제로 그려지는 매듭이 짧다"를 잡았다. 원인은 이 클램프였다. 원점(매듭)은 도형의
+            // <b>아래쪽 끝</b>이다(끈이 원점에서 위로만 뻗고 주머니는 그 끝에 있다 —
+            // AppearanceShapeBuilder.BalloonString/BalloonBody 참고, 둘 다 로컬 y=0이 원점이고 y가
+            // 양수 방향으로만 자란다). 그런데 옛 코드는 <b>대칭</b> 오버로드(ClampToScreen(p, margin))
+            // 로 reach의 절반(1.65R)을 가로·아래·위 세 방향에 그대로 썼다 — Mini/Snail이 이미 겪고
+            // 고친 것과 <b>같은 결함</b>(원점이 도형 중심이 아닌데 대칭 클램프를 쓴 것, 아래
+            // ClampToScreen(halfWidth, below, above) 오버로드 문서의 "예전 ClampToScreen(margin)은
+            // 스칼라 하나를 가로·세로 양방향에 그대로 썼다" 문단 참고)인데 풍선만 그 수정에서 빠져 있었다.
+            //
+            // 가로 반폭(1.65R)이 주머니 자신의 실제 가로 반경(0.80R)의 두 배가 넘게 부풀어 있어서,
+            // 화면 가장자리 근처(주인이 창 모서리에 서 있을 때 포함)에서 이 여백이 3.5R 묶인자리
+            // 오프셋을 다시 깎아 먹었다 — 검증 라운드가 잡은 "실측 0.5328 < 공식 0.5775"의 정확한
+            // 원인이다. 세로도 틀렸다: 매듭보다 <b>아래</b>로는 아무 것도 그려지지 않는데 아래쪽에도
+            // 여백(1.65R)을 주고 있었고, 반대로 <b>위</b>쪽은 주머니 꼭대기까지 실제로 reach 전체가
+            // 필요한데 절반(1.65R)만 주고 있어 화면 위 가장자리 근처에서는 주머니 꼭대기가 오히려
+            // 잘릴 수 있었다(별도 결함, 이번 수정으로 같이 해소).
+            //
+            // 고침: 가로는 주머니 자체 반경만(끈의 좌우 흔들림 0.10R은 무시할 만큼 작다), 아래는 0,
+            // 위는 reach 전체.
             float reach = r * (AppearanceShapeBuilder.BalloonStringInR
                 + AppearanceShapeBuilder.BalloonRadiusInR * 2f);
-            ClampToScreen(ref _position, reach * 0.5f);
+            float horizontalHalfWidth = r * AppearanceShapeBuilder.BalloonRadiusInR;
+            ClampToScreen(ref _position, horizontalHalfWidth, 0f, reach);
 
             float lag = anchor.x - _position.x;
             float tilt = Mathf.Clamp(lag / (r * BalloonTiltReferenceInR) * BalloonMaxTiltDegrees,
