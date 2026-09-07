@@ -743,9 +743,24 @@ namespace StickMate.States
             // 정상 동작하므로 화면 밖으로 걸어 나가지 않는다(ConsumeClimbMantleSignalIfAny 문서 참고).
             bool descendSuppressed = _descendSuppressTimer > 0f;
 
-            // 1) 뛰어내리기 — 낙차가 작아 매달릴 이유가 없는 턱.
+            // ★ 밧줄등반 좁은 보강(2026-09-07 2차, docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md §9-4-B) —
+            // 아래 1번 블록은 성공하면 "추첨 성공이든 실패든" 무조건 return false하므로(§9-2 실측),
+            // 같은 탐색 폭 안에 뛰어내릴 낮은 발판과 로프 대역 벽이 동시에 있으면 3번 블록의 로프 벽
+            // 평가 자체가 그 프레임에 실행되지 못한다(작은 틈 바로 너머에 큰 창이 있는 경우). 여기서는
+            // 존재만 확인한다(추첨 없음, TryFindClimbableWall은 순수 조회라 부작용 없음) — 있어도
+            // 없어도 hop-down 자체의 확률·연출은 전혀 바뀌지 않는다. 원 설계 스케치(§9-4-B)는 하한
+            // (파쿠르 상한 초과)만 확인했는데, 여기서는 상한(로프 자체의 최대 높이 이하)도 함께 확인해
+            // "로프로도 못 오를 만큼 높은 벽"이 hop-down을 헛되이 막는 것까지 방지한다.
+            float ropeWallHeight = _blackboard.TryFindClimbableWall(info, _direction, out _, out float ropeWallTopY)
+                ? ropeWallTopY - info.GroundWorldY
+                : float.NegativeInfinity;
+            bool ropeWallPresent = ropeWallHeight > ResolveStepUpMaxHeight()
+                && ropeWallHeight <= ResolveRopeClimbMaxHeight(_blackboard, info.GroundWorldY);
+
+            // 1) 뛰어내리기 — 낙차가 작아 매달릴 이유가 없는 턱. 단, 같은 방향에 로프 대역 벽이 이미
+            // 있으면(ropeWallPresent) 그 벽 평가를 원천봉쇄하지 않는다.
             float hopChance = Cfg(c => c.hopDownChance, 0.5f);
-            if (!descendSuppressed && hopChance > 0f && _blackboard.TryFindHopDownTarget(info, _direction, out long hopHandle, out float hopTopY))
+            if (!descendSuppressed && !ropeWallPresent && hopChance > 0f && _blackboard.TryFindHopDownTarget(info, _direction, out long hopHandle, out float hopTopY))
             {
                 if (_rng.NextDouble() < hopChance)
                 {
@@ -801,7 +816,9 @@ namespace StickMate.States
                 else
                 {
                     float ropeMaxHeight = ResolveRopeClimbMaxHeight(_blackboard, info.GroundWorldY);
-                    float ropeClimbChance = Cfg(c => c.ropeClimbChance, 0f);
+                    // ★ QA 강제 오버라이드(§9-4-C, Core/RopeClimbQaOverride.cs) — STICKMATE_QA_ROPE_CLIMB_CHANCE가
+                    // 설정돼 있으면 StickConfig.ropeClimbChance보다 항상 우선한다(에셋은 안 건드림).
+                    float ropeClimbChance = RopeClimbQaOverride.ChanceOverride ?? Cfg(c => c.ropeClimbChance, 0f);
                     if (wallHeight <= ropeMaxHeight && ropeClimbChance > 0f && _rng.NextDouble() < ropeClimbChance)
                     {
                         _ropeClimbRequestedThisTick = true;

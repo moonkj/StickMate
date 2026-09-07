@@ -25960,3 +25960,15 @@ macOS 실기 연속캡처(17초/155장/9.1fps, 픽셀diff맵)로 직접 검증: 
 **댄스 깜빡임 완화**: `dancePirouetteRevolutions` 2→1(에셋값도 함께, 코드기본값만으론 배포물에 미반영됨을 확인), `danceGracefulExitBudgetSeconds` 1.90→1.58. 세트수 탐색범위는 상수가 아니라 동적파생이라 **코드변경 불요**(자동으로 4~7로 재계산, 안전확인). **자체발견 결함**: 기존 정상퇴장 회귀테스트가 캐논배율로 위상근사하던 게 revolutions변경으로 부정확해짐(D1뿐아니라 기존에도 D2가 이미 부정확했던 것도 동시발견) → 실제-초 기반 계산으로 교체, 재검산 결과 design-motion 손계산과 정확히 일치(전역최악1.504초, 예산1.58초, 여유0.076초).
 
 **검증**: 두 라운드 병행중 서로 충돌없이 진행(사전 git status 확인 관례 유지), 밧줄등반 EditMode전체(2600+)/PlayMode신규9종, 댄스 EditMode전체(2688)/댄스관련45종 — 리더가 두 라운드 병합 후 osx+win 크로스컴파일 재검증, **양쪽 0에러**.
+
+## ★★★★★ 밧줄등반 실기관측 성공 — 확률0 수정 + QA강제트리거 구현 (실제 발동 로그 확보)
+
+**진짜 원인**: `ropeClimbChance=0f`로 완전히 꺼져있었음(design-motion이 "pose/렌더러 준비전까지" 잠가둔 것인데 이미 다 구현·검증된 상태였음). 게다가 이 macOS데스크톱 배치(독+안전망뿐)로는 확률을 올려도 실제 창들이 탐색반경(~102pt) 밖이라 구조적으로 발동불가였음.
+
+**조치**: `ropeClimbChance` 0→0.20(코드+에셋, ★리더승인대기 — 빌드캡처 시각확인에 최종확정 달림). hop-down분기에 좁은 순서조정(로프대역벽 존재시 뛰어내리기가 무조건 먼저 굶기지 않도록, 독립우선순위 승격은 기각). **QA전용 신규**: `STICKMATE_QA_ROPE_CLIMB_CHANCE=<0..1>`(확률 런타임오버라이드) + `STICKMATE_QA_ROPE_CLIMB_TEST_WALL=1`(실제창배치 무관 합성시험벽, macOS/Windows 공용 데코레이터에 구현돼 자동으로 양플랫폼 동일적용).
+
+**실기관측 성공**(1차시도 시험벽 높이계산 결함 자체발견·수정 후): 결정→Throw(0.86초)→Ascend(3.26초, 반복구간+마감구간)→완료까지 전 구간 로그로 확인.
+
+**검증**: 신규테스트 34건(QA오버라이드29+시험벽4+hop순서1) 전부통과, 무회귀(RopeClimb9·EdgeHopDown7·DockSafetyNetSplit6·ConfigAssetDrift21·WanderEdgeConfig5·PlatformParity55) 전부통과. xcheck osx/win 0에러. Windows영향: 함께수정함(플랫폼중립 데코레이터).
+
+**리더판정필요**: ropeClimbChance=0.20 기본값 확정 여부 — design-motion의 "빌드캡처 시각확인" 아직 미완.

@@ -238,6 +238,14 @@ namespace StickMate.Platform
         /// </summary>
         public const long SyntheticFootholdHandleRight = -3L;
 
+        /// <summary>
+        /// ★ QA 전용(§9-4-C) — 밧줄등반 합성 시험벽에 부여하는 핸들. Dock(-2)/안전망 좌(-1)/안전망
+        /// 우(-3)와 구분되는 네 번째 합성 발판이다. <see cref="Core.RopeClimbQaOverride.TestWallEnabled"/>가
+        /// 꺼져 있으면(=STICKMATE_QA_ROPE_CLIMB_TEST_WALL 미설정) 이 핸들은 목록에 절대 등장하지 않는다
+        /// — 실제 창이 아니므로 CLAUDE.md 원칙 3과 무관하고, 세이브/에셋에도 절대 남지 않는다.
+        /// </summary>
+        public const long SyntheticRopeClimbTestWallHandle = -4L;
+
         public IReadOnlyList<PlatformFoothold> EnumerateFootholds()
         {
             IReadOnlyList<PlatformFoothold> real = _inner.EnumerateFootholds();
@@ -513,6 +521,29 @@ namespace StickMate.Platform
             // 잘라낼 구멍 = Dock 발판과 **정확히 같은** X 구간(위 문서 참고, 단일 소스).
             bool hasDock = TryGetDockSpanOsScreen(out float dockLeftOsX, out float dockRightOsX);
 
+            // ★★ QA 전용(2026-09-07 2차, docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md §9-4-C, Core/RopeClimbQaOverride.cs) —
+            // STICKMATE_QA_ROPE_CLIMB_TEST_WALL이 꺼져 있으면 이 블록은 아무 것도 읽지도 쓰지도 않는다
+            // (ropeClimbTestWallActive=false일 때 hasDock/dockLeftOsX/dockRightOsX는 원래 계산값 그대로
+            // 한 글자도 안 바뀐다 — 오프 상태에서 프로덕션과 100% 동일 동작 보장).
+            //
+            // 켜져 있고 실제 Dock도 없으면(자동 숨김/좌우 세로 Dock/비-macOS) 기댈 기존 내부 경계가
+            // 없다 — 그때는 화면 중앙에 작은 가짜 틈을 스스로 만들어 dockLeftOsX/dockRightOsX를
+            // 대신하고, hasDock을 true로 승격해 아래 BottomSafetyNetPolicy.Resolve가 안전망도 같은
+            // 자리에서 갈라지게 한다. 내부 경계 자체가 없으면 배회 AI가 그 자리에 도달하는 판정을
+            // 아예 하지 않으므로(AutoWanderController.cs의 !isTrueScreenEdge 게이트) 시험벽만 허공에
+            // 띄워서는 실효가 없다 — 바닥도 반드시 함께 갈라야 한다.
+            bool ropeClimbTestWallActive = RopeClimbQaOverride.TestWallEnabled;
+            if (ropeClimbTestWallActive && !hasDock)
+            {
+                float ropeClimbGapCenterX = overlayOrigin.x + width * 0.5f;
+                dockLeftOsX = ropeClimbGapCenterX - RopeClimbTestWallSyntheticGapWidthOsPoints * 0.5f;
+                dockRightOsX = ropeClimbGapCenterX + RopeClimbTestWallSyntheticGapWidthOsPoints * 0.5f;
+                hasDock = true;
+                LogRopeClimbGapOnce($"Dock 없음 — 화면 중앙({ropeClimbGapCenterX:F0}pt)에 가짜 경계를 직접 " +
+                    $"만듭니다(폭 {RopeClimbTestWallSyntheticGapWidthOsPoints:F0}pt). 안전망도 이 자리에서 " +
+                    "함께 갈라집니다(그래야 배회 AI가 이 경계에 실제로 도달합니다).");
+            }
+
             // ★ 2026-09-01 — 좌표 출처 통일(BottomSafetyNetPolicy 문서 참고). 안전망은 **오버레이 창**
             // 기하에서 나오고 작업표시줄은 **모니터** 기하에서 나와, 둘이 어긋나면 화면 밖 + 막대 뒤에
             // 발판 조각이 생겼다(실측: 모니터 오른쪽 밖 2pt, 모니터 하단보다 39px 아래).
@@ -583,6 +614,90 @@ namespace StickMate.Platform
 
             if (_hasSafetyNetLeft) target.Add(_safetyNetLeft);
             if (_hasSafetyNetRight) target.Add(_safetyNetRight);
+
+            // ★ QA 전용 밧줄등반 시험벽 본체(§9-4-C) — 캐시된 안전망 조각과 달리 매 호출 새로 추가한다
+            // (토글이 다음 폴링 주기에 즉시 반영되게 하기 위해서다 — 캐시에 태우면 QA가 스위치를 끈
+            // 뒤에도 다음 지형 변화가 있을 때까지 벽이 남아있는 사고가 난다).
+            //
+            // Dock과 정확히 같은 가로 구간(hasDock=true 분기에서는 실제 Dock 폭, 위 override 분기에서는
+            // 방금 만든 가짜 틈의 폭)에 Dock보다 훨씬 높은 발판을 하나 더 둔다 — 그러면
+            // GroundSensor.TryFindClimbableWall이 "같은 탐색폭 안에서 가장 높은 후보"를 채택하므로
+            // (GroundSensor.cs의 bestTopY 비교) 새 경계를 만들 필요 없이 이 시험벽이 Dock 대신
+            // 채택된다.
+            //
+            // ★★ 2026-09-07 3차 — 실기 검증 중 발견한 결함 수정. 처음엔 상단 Y를 "화면 최상단에서
+            // 15% 내려온 지점"(화면 <b>절대</b> 좌표 기준)으로 잡았는데, 실기 로그로 확인해보니 실제
+            // 배포 기본 캐릭터 배율(characterScale=0.75, DefaultStickConfig.asset)에서는 이 높이가
+            // 지면 대비 약 20유닛이나 되어 ropeClimbMaxHeights(6.6H, H≈1.706유닛 → 상한≈11.3유닛)를
+            // 훌쩍 넘겼다 — AutoWanderController.TryRollEdgeAction의 `wallHeight <= ropeMaxHeight`
+            // 게이트가 매번 조용히 막아 밧줄등반이 단 한 번도 발동하지 못했다(로그에 실패 사유가
+            // 안 남는 조용한 실패라 특히 위험했다). 화면 클램프 인셋(ScreenClampMarginOsPx=8pt,
+            // StickmanBlackboard.cs)은 절대 상단에서 겨우 8pt뿐이라 애초에 문제가 아니었다 —
+            // 진짜 상한은 ropeClimbMaxHeights×H 쪽이었다.
+            //
+            // 그래서 <b>지면(안전망 상단) 기준 상대 높이</b>로 바꾼다 — "화면 절대 좌표에서 몇 %"가
+            // 아니라 "지금 서 있는 바닥에서 화면 높이의 몇 %만큼 위"로 재정의하면, 실측
+            // characterScale=0.75(H≈1.706유닛) 기준으로 파쿠르 상한(stepUpMaxHeights≈1.0551H≈79pt)과
+            // 밧줄 상한(6.6H≈460pt) 사이 — 기하평균에 가까운 지점(≈147pt)에 위치해 양쪽으로 넉넉한
+            // 배수 여유를 둔다. 화면 클램프도 여전히 절대 상단에서 8pt만 떨어져 있으므로 이 값이
+            // 화면 밖으로 넘칠 걱정도 없다. 극단적으로 다른 캐릭터 배율(예: 0.3 이하)에서는 여전히
+            // 어긋날 수 있다 — 이 상수는 정밀 유도가 아니라 실측 기본값(0.75)에 맞춘 안전핀이다.
+            if (ropeClimbTestWallActive)
+            {
+                float groundReferenceOsY = overlayOrigin.y + height - height * NullPlatformWindowService.DummyFootholdHeightFraction;
+                // ★ 화면이 작으면(예: 배치모드 PlayMode 테스트의 640x480) 비율만으로는 Dock의 고정
+                // 두께(dockFootholdThicknessPoints, 화면 크기와 무관한 절대 pt값)조차 못 넘을 수 있다
+                // — 실측: 480pt 화면에서 비율 15%는 72pt인데 Dock 두께 기본값이 75pt라 역전 직전까지
+                // 갔다. 하한을 함께 걸어 작은 화면에서도 Dock보다 확실히 높게 만든다.
+                float heightAboveGround = Mathf.Max(height * RopeClimbTestWallAboveGroundHeightFraction,
+                    RopeClimbTestWallMinimumAboveGroundOsPoints);
+                float topOsY = groundReferenceOsY - heightAboveGround;
+                float bottomOsY = overlayOrigin.y + height;
+                var wallRect = new Rect(dockLeftOsX, topOsY, Mathf.Max(1f, dockRightOsX - dockLeftOsX),
+                    Mathf.Max(1f, bottomOsY - topOsY));
+                target.Add(new PlatformFoothold(SyntheticRopeClimbTestWallHandle, wallRect, isTopmost: true));
+
+                LogRopeClimbWallOnce($"밧줄등반 QA 시험벽 활성 — x=[{dockLeftOsX:F0}..{dockRightOsX:F0}]pt, " +
+                    $"상단 y={topOsY:F0}pt(지면 기준 y={groundReferenceOsY:F0}pt에서 {heightAboveGround:F0}pt 위). " +
+                    $"{RopeClimbQaOverride.TestWallEnvironmentVariableName}을 지우면 다음 폴링부터 즉시 사라집니다.");
+            }
+        }
+
+        /// <summary>
+        /// QA 전용 밧줄등반 시험벽의 상단을, "지금 서 있는 바닥"(안전망 상단)에서 화면 높이의 이
+        /// 비율만큼 위로 잡는다. 근거/유도 과정은 위 <see cref="AppendBottomSafetyNet"/>의 2026-09-07
+        /// 3차 실기 수정 기록 참고 — 실측 기본 배율(characterScale=0.75)에서 파쿠르 상한(≈79pt)과
+        /// 밧줄 상한(≈460pt) 사이에 여유 있게 들어가도록 고른 값이다.
+        /// <para>★ <c>public</c>인 이유: PlayMode 테스트 어셈블리는 <c>InternalsVisibleTo</c> 대상이
+        /// 아니다(<c>AssemblyInfo.cs</c>는 EditMode만 허용) — 테스트가 이 상수를 <b>다시 베끼지 않고</b>
+        /// 직접 참조해 기대값을 계산하게 하려면 노출해야 한다(CLAUDE.md "테스트에 프로덕션 상수를
+        /// 숫자로 베끼지 않는다").</para>
+        /// </summary>
+        public const float RopeClimbTestWallAboveGroundHeightFraction = 0.15f;
+
+        /// <summary>위 비율이 만드는 절대 오프셋의 하한(OS 포인트) — 화면이 작을 때의 안전망(위 주석
+        /// 참고). <c>public</c>인 이유는 위 상수와 같다.</summary>
+        public const float RopeClimbTestWallMinimumAboveGroundOsPoints = 200f;
+
+        /// <summary>Dock이 없을 때 시험벽이 스스로 만드는 "가짜 Dock 틈"의 폭(OS 포인트) — 실제 Dock
+        /// 폭과 무관하게 BottomSafetyNetPolicy.MinPieceWidthOsPoints(1pt)보다 충분히 넓기만 하면 된다.</summary>
+        private const float RopeClimbTestWallSyntheticGapWidthOsPoints = 60f;
+
+        private string _lastRopeClimbGapLog;
+        private string _lastRopeClimbWallLog;
+
+        private void LogRopeClimbGapOnce(string message)
+        {
+            if (_lastRopeClimbGapLog == message) return;
+            _lastRopeClimbGapLog = message;
+            Debug.Log("[밧줄등반QA] " + message);
+        }
+
+        private void LogRopeClimbWallOnce(string message)
+        {
+            if (_lastRopeClimbWallLog == message) return;
+            _lastRopeClimbWallLog = message;
+            Debug.Log("[밧줄등반QA] " + message);
         }
 
         /// <summary>

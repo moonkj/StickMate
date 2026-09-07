@@ -352,11 +352,20 @@ namespace StickMate.Core
 
         [Tooltip("자율 배회 중 밧줄 등반을 시도할 확률 — stepUpChance와 별도로 추첨한다(재사용하면 " +
                  "'스텝업 확률이 높아지면 로프도 덩달아 자주 나온다'는 의도치 않은 결합이 생긴다).\n" +
-                 "★ 기본값 0(출하 시 잠재워 둠) — design-motion 권고(설계 7절/8-7). longCapeTripMeanSeconds=0 / " +
-                 "throwTumbleEnabled류의 '신중한 온보딩' 관례를 따른다. 포즈/렌더러가 실기 캡처로 " +
-                 "1차 확인되기 전까지는 구조만 배선하고 수치로는 잠재운다 — 값을 올리는 것만으로 발동한다.")]
+                 "★★ 2026-09-07(2차) — 0 → 0.20으로 상향(docs/DESIGN_ROPE_CLIMB_ARCHITECTURE.md §9-4-A). " +
+                 "원래 0이었던 근거(design-motion, §7/8-7 — '포즈/렌더러가 준비되기 전까지 잠재워 둠')는 " +
+                 "RopeClimbState.cs/RopeClimbRenderer.cs가 이미 완전히 구현·테스트통과된 지금 시점엔 재검토 " +
+                 "대상이 됐다. 0이면 확률이 아니라 결정론적으로 절대 발동하지 않는다는 것을 실기 로그로 " +
+                 "확인했다(사용자 신고 '영원히 안될거 같음'이 문자 그대로 맞았다). 0.20은 몬테카를로 " +
+                 "시뮬레이션(rope_trigger_sim.py, §9-3, 6000표본) 기준 3분 이내 관측확률 ~94%/5분 이내 ~99%로, " +
+                 "'몇 분만 지켜봐도' 요구를 만족하면서 stepUpChance(0.85)만큼 흔해지지는 않아 '특별한 " +
+                 "사건' 느낌을 유지한다.\n" +
+                 "★ 다만 이건 디자인 결정이지 최종 확정이 아니다 — 디자인 7인 공통 규칙('최종 판정은 실제 " +
+                 "빌드 캡처로만')에 따라 리더 승인이 아직 필요하다(§9-4-A). 되돌릴 근거가 생기면 이 값을 " +
+                 "0으로 되돌리기보다 STICKMATE_QA_ROPE_CLIMB_CHANCE 환경변수(Core/RopeClimbQaOverride.cs)로 " +
+                 "먼저 실기 재검증할 것 — 그 훅은 이 값과 독립적으로 언제나 우선한다.")]
         [Range(0f, 1f)]
-        public float ropeClimbChance = 0f;
+        public float ropeClimbChance = 0.20f;
 
         [Tooltip("Ascend(오르기) 반복 사이클 1회당 상승폭 — 신장 배수(H). 손이 담당하는 아치형 이동량이 " +
                  "팔 길이(design-character 실측 0.3297H)의 약 2.7배쯤이어야 '손만 까딱이는' 느낌이 아니라 " +
