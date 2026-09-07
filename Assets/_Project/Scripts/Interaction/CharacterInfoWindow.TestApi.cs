@@ -89,6 +89,11 @@ namespace StickMate.Interaction
 
         public int CardItemForTests(int index) => CardAt(index)?.Item ?? -1;
 
+        /// <summary>★ 2026-09-07 — 이 카드의 <b>현재 탭</b> 아이콘 세트가 실제로 구운 카탈로그
+        /// 인덱스(없으면 −1). <see cref="CardItemForTests"/>(텍스트 경로)와 <b>같은 값</b>이어야
+        /// 그림과 설명이 같은 아이템을 가리킨다 — CardIconIdentityTests가 전 카드에 걸쳐 대조한다.</summary>
+        public int CardIconItemForTests(int index) => CardAt(index)?.IconItem[IconSetForTab(_tab)] ?? -1;
+
         /// <summary>그 카드가 가리키는 슬롯. 섹션→슬롯 규칙(<see cref="SectionSlot"/>)을 테스트가
         /// <b>베껴 적지 않게</b> 하는 창구다 — 카테고리를 더하거나 지우면 그 규칙만 바뀌어야 한다.
         /// 카드가 없으면 false.</summary>

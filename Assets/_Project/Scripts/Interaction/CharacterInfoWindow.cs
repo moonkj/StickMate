@@ -632,6 +632,17 @@ namespace StickMate.Interaction
             public readonly RectTransform[] IconRoot = new RectTransform[IconSetCount];
             public readonly Image[][] IconGraphics = new Image[IconSetCount][];
 
+            /// <summary>★ 2026-09-07 — 아이콘 세트별로 <b>실제 그림을 구운 카탈로그 인덱스</b>
+            /// (없으면 −1). <see cref="Item"/>은 <c>RefreshCards</c>가 매 갱신마다 다시 심는
+            /// <b>표시용</b> 값이라 텍스트 경로를 증명하지만, 그림은 <c>BuildCard</c>가 <b>한 번</b>
+            /// 구운 뒤 다시 굽지 않으므로 같은 인덱스를 쓴다는 보장이 코드만 봐서는 안 보인다.
+            /// 이 배열이 그 사실을 기록해 회귀 테스트가 "그림 인덱스 == 텍스트 인덱스"를 직접
+            /// 대조할 수 있게 한다(실사고: 은퇴 아이템 뒤 카드들의 그림이 한 칸 앞선 아이템을
+            /// 그렸다 — CardIconIdentityTests). <c>BuildCard</c>의 세트 루프가 매번 채우므로
+            /// (아래 <see cref="IconRoot"/>/<see cref="IconGraphics"/>와 같은 시점) 초기값은
+            /// 굽지 않는다 — 다 채워지기 전에 읽는 소비자가 없다.</summary>
+            public readonly int[] IconItem = new int[IconSetCount];
+
             /// <summary>해금 상태에서 되돌릴 <b>조각별 원래 색</b>(ItemCatalog가 정한 소재색).
             /// 잠긴 카드는 무채색 실루엣으로 덮어쓰므로, 덮어쓰기 전 색을 어딘가에 갖고 있어야 한다.
             /// 매 프레임 카탈로그를 다시 뒤지지 않으려고 카드가 굽는 시점에 한 번만 캐시한다.</summary>

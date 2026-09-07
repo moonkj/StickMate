@@ -1102,7 +1102,15 @@ namespace StickMate.Interaction
                 // 폴백(Head)이 돌아와 <b>모자 아이콘</b>을 몰래 한 벌 더 굽고 있었다.
                 bool inThisTab = sectionIndex < SectionCountForTab(tab);
                 EquipmentSlot slot = inThisTab ? SectionSlot(tab, sectionIndex) : EquipmentSlot.Head;
-                ItemCatalogEntry entry = inThisTab ? ItemCatalog.Item(slot, columnIndex) : null;
+                // ★ 2026-09-07 — <b>카드 자리 columnIndex는 목록 순번이지 카탈로그 순번이 아니다</b>
+                //   (RefreshCards 문단과 같은 사실). 텍스트(ApplyCardStyle)는 이미
+                //   ItemCatalog.ListedItemIndex로 환산한 값을 쓰는데, 이 자리만 columnIndex를
+                //   카탈로그 인덱스로 그대로 먹여 <b>은퇴 아이템 뒤의 모든 자리에서 그림이 한 칸
+                //   앞선 아이템을 그렸다</b>(실사고: 이펙트 「없음」 은퇴 뒤 카드 그림-설명 불일치,
+                //   2026-09-06). 환산은 여기서도 <see cref="ItemCatalog.ListedItemIndex"/> 하나만
+                //   쓴다 — 텍스트 경로와 <b>같은 함수</b>를 써야 두 경로가 갈라질 수 없다.
+                int mappedItem = inThisTab ? ItemCatalog.ListedItemIndex(slot, columnIndex) : -1;
+                ItemCatalogEntry entry = mappedItem >= 0 ? ItemCatalog.Item(slot, mappedItem) : null;
 
                 var iconGo = new GameObject("Icon" + set, typeof(RectTransform));
                 iconGo.transform.SetParent(thumb.transform, false);
@@ -1111,7 +1119,10 @@ namespace StickMate.Interaction
                 irt.sizeDelta = new Vector2(IconSize, IconSize);
                 irt.anchoredPosition = Vector2.zero;
 
-                if (entry != null) BuildCardArt(irt, slot, columnIndex, entry);
+                if (entry != null) BuildCardArt(irt, slot, mappedItem, entry);
+                // ★ 회귀 잠금용 기록 — entry가 null이어도(이 세트의 탭에 없는 섹션) −1로 남겨
+                //   "그림이 없다"와 "그림이 있는데 다른 아이템"을 구분한다(CardIconIdentityTests).
+                card.IconItem[set] = entry != null ? mappedItem : -1;
                 card.IconRoot[set] = irt;
                 Image[] graphics = iconGo.GetComponentsInChildren<Image>(true);
                 card.IconGraphics[set] = graphics;
