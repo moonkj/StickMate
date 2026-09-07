@@ -25810,3 +25810,11 @@ font-rendering라운드의 관찰·diff분석은 정확했음(원인이 그쪽�
 **제거**: `CharacterInfoWindow.cs`의 `_presenceText`/`TickPresenceLine()`/`WritePresence()` 및 관련필드(`_lastShownState`/`_hasShownState`/`_presenceHoldUntil`) 전체 삭제. 테스트훅(`PresenceTextForTests`)·전용테스트(`PresenceLineHoldsLongEnoughToBeRead`) 동반삭제. 단일 인스턴스화 지점만 존재 확인(중복 표시 없음, 이게 유일한 소스였음). `StateLabel()` 헬퍼는 호출자 0이 됐지만 어휘테이블로만 유지(문서정정).
 
 **검증**: xcheck osx/win 0에러. Windows영향: 없음(플랫폼중립 UI, 양쪽define 교차컴파일 확인).
+
+## 종이비행기 펫 궤도 확대 완료 (사용자 실기신고, 근본원인 명확)
+
+**원인**: 궤도 수평반경(0.33유닛)이 **캐릭터 몸통 물리반폭(0.4유닛)보다 작아서**, 어느 위상각에서도 몸 실루엣을 한 번도 못 벗어나고 있었음(0% 클리어) — "머리뒤에서만 도는것처럼 보임" 신고와 정확히 일치. 앞뒤정렬토글까지 겹쳐 그중 절반은 몸 뒤로 그려짐.
+
+**수정**: 반경 2배 확대(수평0.33→0.66/수직→비례, 기존 3.33:1 타원비율·"원근착시" 설계의도는 유지), 중심오프셋도 재계산해 모자/머리카락 클리핑 새로 안 생기게 보정. 클리어비율 0%→58.6%.
+
+**검증**: 실제 Unity PlayMode 배치실행(4초 실벽시계 샘플링)으로 렌더된 실좌표가 공식과 일치+몸통클리어 확인. 음성대조(옛상수로 재현시 실패) 포함 신규테스트 2건. 관련 기존테스트(BodyLeanHeadAnchor/PetFallSync/AppearanceShapeBudget) 전량 무회귀. xcheck osx/win 0에러. Windows영향: 없음(플랫폼중립, 순수기하계산). 카드아이콘 모양은 무변경(이번 신고 범위 아님, 별도 카드↔월드 어휘분기 건은 여전히 리더판정 대기).

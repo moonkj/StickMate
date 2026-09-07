@@ -67,9 +67,39 @@ namespace StickMate.Interaction
         //   읽히게 했다. 이제 호출부가 빌더 상수를 그대로 넘긴다.
 
         private const float PlaneOrbitSeconds = 3.2f;
-        private const float PlaneCenterAboveHeadInR = 1.9f;
-        private const float PlaneOrbitHalfWidthInR = 1.50f;
-        private const float PlaneOrbitHalfHeightInR = 0.45f;
+
+        // ★★ 2026-09-07 — 실기(Windows) 실시간 사용자 신고: "종이비행기 착용했는데 캐릭터머리
+        //   뒤에서만 돌고있음 너무 범위가 좁음. 캐릭터 주위로 돌아야하는데 그래서 거의 종이비행기가
+        //   안보임." 원래 값(1.9 / 1.50 / 0.45)은 docs/DESIGN_PETS.md R22 조형 감사에서 "현행 유지"로
+        //   그대로 남아 있었는데, 그 감사는 카드 도형 규칙만 봤고 실기 가시성은 안 봤다(이 저장소
+        //   규약상 최종 판정은 실제 빌드 캡처로만 — 이번이 그 실측이다).
+        //
+        //   확정된 원인(계산으로 확정, 추측 아님): 가로 반폭은 머리 반경(r)의 배수인데, 배율 1.0
+        //   기준 r=0.22이라 옛 가로 진폭(1.50r=0.33유닛)이 캐릭터 자신의 <b>물리적 반폭</b>
+        //   (StickConfig.BaselineBodyPhysicsHalfWidth=0.4유닛, Core/StickmanAgent.TickPhysicalHalfWidth가
+        //   재는 그 값)보다 <b>작았다</b>. 즉 위상 전체(cosθ 어떤 값이어도) 비행기가 몸통 자신의
+        //   반폭 밖으로 단 한 번도 못 나갔다 — 언제나 몸 폭 <b>안쪽</b>에 갇혀 있었다는 뜻이다.
+        //   여기에 반주기마다 도는 앞/뒤 레이어 전환(SetSortingOrder)이 겹치면서, 몸 폭 안에 갇힌 채로
+        //   절반은 뒤 레이어에 깔리니 "머리 뒤에서만 도는 것처럼" 보인 것이 정확히 재현된다.
+        //   세로 반폭도 0.45r=0.099유닛뿐이라 머리 꼭대기에서 손가락 한 마디도 안 되는 높이로만
+        //   까딱였다 — 궤도라기보다 제자리 떨림에 가까웠다.
+        //
+        //   고침: 가로/세로 반폭을 정확히 2배로 늘렸다(납작한 타원 비율 3.33:1은 그대로 보존 —
+        //   "궤도가 원근 착시를 낸다"는 이 파일의 원래 설계 의도를 그대로 살린다). 궤도 중심은
+        //   머리에 가장 가까이 접근하는 지점(궤도 바닥)이 옛 설계와 <b>정확히 같은 높이</b>이도록
+        //   역산했다 — 새 중심 = 옛 중심(1.9) − 옛 반높이(0.45) + 새 반높이(0.90) = 2.35. 그 결과
+        //   머리와의 최소 간격은 그대로 유지한 채 위쪽·양옆으로만 궤도가 넓어진다(머리카락/모자
+        //   장신구를 새로 뚫고 들어가지 않는다).
+        //
+        //   검산(배율 1.0, r=0.22):
+        //     가로 진폭  0.33 → 0.66유닛(몸 물리 반폭 0.4의 1.65배 — 이제 확실히 몸 밖으로 나간다)
+        //     세로 진폭  0.099 → 0.198유닛(머리 위로 뜨는 높이가 2배)
+        //     "몸 폭보다 밖에 있는" 위상 비율 = 2·arccos(0.4/0.66)/π ≈ 58.6%(옛 값은 0%였다 —
+        //     0.33 < 0.4라 어느 위상에서도 몸 폭을 벗어나지 못했다).
+        //   Tests/PlayMode/PetPlaneOrbitRadiusTests.cs가 "궤도 반폭 > 몸 물리 반폭"을 잠근다.
+        private const float PlaneCenterAboveHeadInR = 2.35f;
+        private const float PlaneOrbitHalfWidthInR = 3.00f;
+        private const float PlaneOrbitHalfHeightInR = 0.90f;
         private const float PlaneWingSpanInR = AppearanceShapeBuilder.PlaneWingSpanInR;
 
         private const float MiniTrailInHeight = 0.75f;
@@ -246,6 +276,15 @@ namespace StickMate.Interaction
         /// 종이비행기 궤도 중심 기준. 테스트가 "기울이지 않았다면 어디였을지"를
         /// <see cref="StickmanMetrics"/>만으로 계산할 수 있게 열어 둔다.</summary>
         public float HeadAnchorAboveHeadCenter => HeadRadius * PlaneCenterAboveHeadInR;
+
+        /// <summary>테스트/진단용 — 종이비행기 궤도의 가로 반폭(월드 유닛, 지금 머리 반경 기준).
+        /// 2026-09-07 실기 신고("머리 뒤에서만 돌고 좁아 보임") 회귀 잠금의 근거값 — PlayMode 테스트가
+        /// 이 값이 <c>StickmanBlackboard.CharacterPhysicalHalfWidthWorld</c>(몸통 물리 반폭)보다
+        /// 충분히 큰지를 잠근다.</summary>
+        public float PlaneOrbitHalfWidthWorld => HeadRadius * PlaneOrbitHalfWidthInR;
+
+        /// <summary>테스트/진단용 — 종이비행기 궤도의 세로 반폭(월드 유닛, 지금 머리 반경 기준).</summary>
+        public float PlaneOrbitHalfHeightWorld => HeadRadius * PlaneOrbitHalfHeightInR;
 
         /// <summary>테스트/진단용 — 지금 알파(숨김 페이드 확인).</summary>
         public float Alpha => _alpha;
