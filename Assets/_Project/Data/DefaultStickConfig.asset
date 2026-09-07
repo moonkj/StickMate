@@ -111,6 +111,7 @@ MonoBehaviour:
   wanderSpontaneousTurnChance: 0.08
   wanderPostIdleWalkChance: 0.75
   wanderPostIdleJumpChance: 0
+  awayWanderWalkChance: 0.15
   wanderEdgeStopDistance: 0.3
   wanderEdgeTurnPauseMin: 0.3
   wanderEdgeTurnPauseMax: 0.8
@@ -327,6 +328,9 @@ MonoBehaviour:
   archeryMinTargetDistanceRatio: 2.6
   archeryMaxTargetDistanceRatio: 6.6
   archeryMinDistanceSpanFraction: 0.55
+  archeryMaxDistanceSpanFraction: 0.45
+  archeryMaxDistanceHardCapRatio: 13.4
+  archeryMinTargetDistanceScreenFraction: 0.22
   archeryTargetRadiusRatio: 0.4
   archeryMissShortfallRadii: 1.5
   archeryHitChance: 0.667
@@ -387,6 +391,7 @@ MonoBehaviour:
   bodyLeanHitDegrees: 14
   bodyLeanHitRecoverRate: 7
   bodyLeanSmoothingRate: 12
+  activeTierRenderDivisor: 1
   windowsTargetFrameRate: 60
   windowsDisableVSyncForFrameCap: 1
   macVSyncInterval: 2

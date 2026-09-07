@@ -91,8 +91,11 @@ namespace StickMate.Tests.EditMode
             List<(string File, string Method, string Body)> methods = AllAvailabilityMethods();
 
             // ★ 스캔이 깨져 "0개를 찾고 전부 통과"하는 것을 먼저 막는다(이 저장소의 거짓 통과 #5).
-            //   2026-09-03 현재 실제 개수는 7개다(활쏘기/그라피티/창도둑/창크래시/할일알림 +
-            //   가출 2종). 하한을 실제 개수와 같게 두어 하나라도 줄면 바로 걸리게 한다.
+            //   하한 7 = 활쏘기/그라피티/창도둑/창크래시/할일알림 + 가출 2종. 하한을 실제 개수와
+            //   같게 두어 하나라도 줄면 바로 걸리게 한다.
+            //   ★ 2026-09-07 — 실제 개수가 8 → 7이 됐다(AppControlDirector.GetSayNowAvailability가
+            //     사용자 지시로 삭제). 하한은 <b>그대로 7</b>이고, 지금 처음으로 하한과 실제가
+            //     정확히 같아졌다 — 이 주석이 원래 세던 7항목에 말 걸기는 애초에 빠져 있었다.
             Assert.GreaterOrEqual(methods.Count, 7,
                 $"CommandAvailability 판정을 {methods.Count}개밖에 못 찾았습니다 — 스캔이 깨졌습니다. " +
                 "찾은 것: " + Describe(methods));
@@ -144,23 +147,42 @@ namespace StickMate.Tests.EditMode
         // ====================================================================
 
         /// <summary>
-        /// ★ <b>부재 단언 + 같은 파일 안의 존재 대조.</b> 아래 세 경로에 게이트가 붙으면 사용자는
+        /// ★ <b>부재 단언 + 존재 대조.</b> 아래 세 경로에 게이트가 붙으면 사용자는
         /// 숨긴 캐릭터를 되돌릴 방법을 잃는다 — 2026-09-03 신고
         /// <i>"다시 나오게 할 방법이 없어"</i> 그 자체다.
         ///
-        /// <para>같은 파일(<c>AppControlDirector.cs</c>)의 <c>GetSayNowAvailability</c>에는 게이트가
-        /// <b>있어야</b> 한다. 이 대조가 없으면 «게이트가 이 파일에 아예 배선되지 않았다»도
-        /// 조용히 통과한다.</para>
+        /// <para>★★ <b>2026-09-07 — 존재 대조가 「같은 파일 안」에서 「같은 폴더 안」으로 옮겨졌다.</b>
+        /// 종전에는 같은 파일(<c>AppControlDirector.cs</c>)의 <c>GetSayNowAvailability</c>에 게이트가
+        /// <b>있음</b>을 확인해 «게이트가 이 파일에 아예 배선되지 않았다»도 조용히 통과하는 것을
+        /// 막았다. 그 메서드가 <b>사용자 지시로 삭제</b>됐다(말 걸기 폐지) — 그리고 그와 함께
+        /// <b>이 파일에는 막아야 할 명령 판정이 하나도 남지 않았다</b>. 즉 «이 파일에 게이트가 없다»는
+        /// 이제 결함이 아니라 <b>설계 사실</b>이고, 같은 파일 대조는 성립할 수 없다.</para>
+        ///
+        /// <para>그래도 <b>부재 단언을 맨몸으로 두지는 않는다</b>: 니들(<see cref="GateCall"/>)이
+        /// 아직 <b>어딘가에서 실재</b>함을 <c>Interaction/</c> 전체 스캔으로 먼저 보인다. 니들이
+        /// 오타가 되거나 프로덕션이 이름을 바꾸면 아래 세 개의 "없다"는 <b>아무것도 재지 않은
+        /// 초록</b>이 되는데, 그 형태가 이 저장소가 반복해서 밟은 함정이다(CLAUDE.md 부재 단언 절).</para>
         /// </summary>
         [Test]
         public void 탈출구_명령에는_게이트가_붙지_않는다()
         {
             string src = ReadFile(InteractionDirectory, "AppControlDirector.cs");
 
-            string sayNow = MethodBody(src, "GetSayNowAvailability", "public CommandAvailability ");
-            StringAssert.Contains(GateCall, sayNow,
-                "말 걸기 판정에 게이트가 없습니다 — 아래 '탈출구에는 없다'가 " +
-                "'이 파일에 게이트가 아예 없다'로도 통과하게 됩니다(공허한 부재 단언).");
+            // ---- 존재 대조: 니들이 살아 있는가(같은 폴더 안에 실재하는가) ----
+            List<(string File, string Method, string Body)> gated = AllAvailabilityMethods()
+                .FindAll(m => m.Body.IndexOf(GateCall, StringComparison.Ordinal) >= 0);
+            Assert.IsNotEmpty(gated,
+                $"Interaction/ 어디에서도 '{GateCall}'을 찾지 못했습니다 — 니들이 죽었거나 게이트가 " +
+                "통째로 사라졌습니다. 이 상태로 아래 '탈출구에는 없다' 3건을 통과시키면 그것은 " +
+                "측정이 아니라 공허한 부재 단언입니다.");
+
+            // ★ 이 파일에는 이제 막을 명령 판정이 없다 — 2026-09-07 말 걸기 폐지의 직접 결과다.
+            //   그 사실을 <b>단언으로</b> 못박아 둔다: 여기에 새 명령 판정이 생기면 위 ②번 감사가
+            //   게이트를 요구하는데, 그때 이 줄이 함께 빨개져 "탈출구 파일에 명령이 늘었다"를 알린다.
+            Assert.AreEqual(-1, src.IndexOf("public CommandAvailability ", StringComparison.Ordinal),
+                "AppControlDirector.cs에 명령 가용성 판정이 새로 생겼습니다. 이 파일은 2026-09-07부터 " +
+                "<b>탈출구 전용</b>입니다(말 걸기 폐지로 마지막 명령 판정이 사라졌다). 새 명령을 여기 " +
+                "두려면 ②번 감사대로 숨김 게이트를 붙이고, 이 단언도 함께 고치십시오.");
 
             foreach (string escape in new[] { "ToggleUserHide", "ToggleSettings", "ToggleCharacterInfo" })
             {

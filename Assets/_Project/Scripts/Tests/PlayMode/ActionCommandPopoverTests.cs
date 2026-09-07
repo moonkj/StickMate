@@ -302,6 +302,16 @@ namespace StickMate.Tests.PlayMode
         ///   <item>"닫히지 않았다"는 <b>닫기 자체가 고장나도</b> 초록이다 — 마지막에 실제 [✕] 클릭
         ///     경로로 닫아 보고, <b>차단막까지</b> 거둬졌는지 확인한다.</item>
         /// </list>
+        ///
+        /// <para>★★ <b>2026-09-07 — 눌러 보는 칸이 [말 걸기]에서 [활쏘기]로 바뀌었다.</b>
+        /// 테스트를 약화시킨 것이 아니라 <b>대상이 사라졌다</b>: 사용자 지시로 [말 걸기] 타일과
+        /// 전역 단축키 B가 함께 폐지됐다(<c>ActionCommandPopover.Command</c> 문서).
+        /// <b>무엇을 잃었는지 정직하게 적는다</b> — 옛 선택의 이유는 "그 칸만 상호배제 락을 잡지
+        /// 않아 실행 뒤에도 창이 거의 변하지 않는다 = 접수 플래시가 유일한 피드백인 가장 까다로운
+        /// 경우"였다. 그런 칸은 이제 <b>존재하지 않는다</b>(남은 네 칸 전부 락을 잡는다).
+        /// 그래서 이 테스트가 지금 재는 것은 <b>"성공 실행이 창을 닫지 않는다"</b>이고, 그것이
+        /// 2026-09-02 사용자 신고의 문면 그 자체다(<i>"활쏘기 한번 누르면 메뉴가 사라져버리는데"</i>) —
+        /// 신고된 바로 그 칸으로 재게 됐다.</para>
         /// </summary>
         [UnityTest]
         public IEnumerator ExecutingACommandKeepsTheWindowOpen()
@@ -310,10 +320,9 @@ namespace StickMate.Tests.PlayMode
             _popover.Open(new Rect(400f, 400f, 44f, 44f), "PlayMode 테스트");
             yield return new WaitForSecondsRealtime(0.3f);
 
-            // [말 걸기]를 고른다: 상호배제 락을 잡지 않고 <b>같은 상태로 재진입</b>만 하므로,
-            // 실행 뒤에도 창의 다른 값이 거의 변하지 않는다 — 즉 "접수 플래시"가 유일한 피드백인
-            // 가장 까다로운 경우다. 여기가 통하면 나머지는 상태 변화로 더 크게 말한다.
-            const ActionCommandPopover.Command pressed = ActionCommandPopover.Command.SayNow;
+            // 신고 문면과 같은 칸을 고른다. 실행되면 상호배제 락이 잡히므로 아래 TearDown이
+            // <b>주인이 누구든</b> 반드시 풀어 준다(안 풀면 뒤따르는 테스트가 전부 "불가"로 보인다).
+            const ActionCommandPopover.Command pressed = ActionCommandPopover.Command.Archery;
             const ActionCommandPopover.Command untouched = ActionCommandPopover.Command.Graffiti;
 
             float deadline = Time.realtimeSinceStartup + 3f;   // 벽시계 예산(프레임 수 금지).
@@ -322,8 +331,9 @@ namespace StickMate.Tests.PlayMode
                 yield return null;
             }
             Assume.That(_popover.GetAvailability(pressed).IsReady, Is.True,
-                "[말 걸기]가 3초 안에 실행 가능해지지 않았습니다 — 캐릭터가 Idle/Walk가 아닌 상태에 " +
-                "머무르고 있어 이 테스트의 전제(실행 가능한 타일을 누른다)가 성립하지 않습니다.");
+                $"[{pressed}]가 3초 안에 실행 가능해지지 않았습니다 — 캐릭터가 진입 조건 상태에 " +
+                "머무르지 못했거나 자리 조건이 성립하지 않아, 이 테스트의 전제(실행 가능한 타일을 " +
+                "누른다)가 성립하지 않습니다.");
 
             Assert.IsFalse(_popover.IsCommandAcceptFlashing(pressed),
                 "누르기도 전에 접수 플래시가 켜져 있습니다 — 이 프로브는 항상 true라 아무것도 증명하지 못합니다.");
@@ -424,14 +434,30 @@ namespace StickMate.Tests.PlayMode
 
         private bool _lockHeld;
 
-        /// <summary>테스트가 잡은 상호배제 락은 <b>단언이 중간에 터져도</b> 반드시 풀린다 —
-        /// 남기면 뒤따라 도는 모든 테스트가 "전부 불가"로 보여 원인 불명 연쇄 실패가 된다.</summary>
+        /// <summary>상호배제 락은 <b>단언이 중간에 터져도</b> 반드시 풀린다 —
+        /// 남기면 뒤따라 도는 모든 테스트가 "전부 불가"로 보여 원인 불명 연쇄 실패가 된다.
+        ///
+        /// <para>★ 2026-09-07 — <b>주인이 우리가 아닌 경우까지 푼다.</b> 종전에는 <c>_lockHeld</c>
+        /// (테스트가 직접 잡은 경우)만 봤는데, 같은 날
+        /// <see cref="ExecutingACommandKeepsTheWindowOpen"/>이 <b>진짜 명령을 실행</b>하도록 바뀌면서
+        /// 락의 주인이 <b>Director</b>가 됐다. 그 상태로 씬이 내려가면 주인 객체가 파괴되어
+        /// <c>Release(owner)</c>를 부를 수 있는 코드가 <b>영원히 사라진다</b>(락은 static이고
+        /// 씬 로드로 초기화되지 않는다) — 그때부터 모든 후속 테스트가 "지금 활쏘기 중이에요"를 본다.
+        /// 그래서 <c>CurrentOwner</c>를 그대로 넘겨 <b>남은 것이 있으면 무조건</b> 푼다.</para></summary>
         [TearDown]
         public void ReleaseSpectacleLock()
         {
-            if (!_lockHeld) return;
-            _lockHeld = false;
-            SpectacleEventLock.Release(this);
+            if (_lockHeld)
+            {
+                _lockHeld = false;
+                SpectacleEventLock.Release(this);
+            }
+
+            if (!SpectacleEventLock.IsActive) return;
+            object stranded = SpectacleEventLock.CurrentOwner;
+            SpectacleEventLock.Release(stranded);
+            Debug.Log($"[테스트정리] 상호배제 락이 {stranded}에게 잡힌 채 남아 있어 풀었습니다 " +
+                "— 명령을 실제로 실행한 테스트가 있으면 정상 경로입니다(연출이 끝나기 전에 픽스처가 끝난다).");
         }
     }
 }

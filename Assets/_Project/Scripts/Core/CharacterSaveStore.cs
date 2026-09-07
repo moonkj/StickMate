@@ -220,6 +220,41 @@ namespace StickMate.Core
             public float gearCenterXPoints;
             public float gearCenterYPoints;
 
+            // ---- 창 3종의 자리 (2026-09-07, 사용자 요청 PART1-1) — <b>버전을 올리지 않았다</b> ----
+            //
+            // ★ 왜 v10 그대로인가: 위 CurrentVersion 문서가 못박은 규칙은
+            //   **"필드의 「없음」이 그 필드의 0값과 다른 뜻일 때만 버전을 강제한다"**이다.
+            //   *PositionSaved는 JsonUtility가 없는 키를 false로 채우는데, 그 false가 곧
+            //   "아직 옮긴 적 없다 = 기본 자리(화면 중앙 / 부채꼴 앵커)"라는 <b>정확한 사실</b>이다.
+            //   v9 preferredMonitorSaved / v6 characterScaleSaved / v3 gearPositionSaved와 같은 종류다.
+            //   (버전을 올렸다면 v10 하위 호환 테스트 한 벌이 의무가 된다 — CLAUDE.md. 그 의무를
+            //    피하려고 안 올린 것이 아니라, 올릴 근거가 없어서 안 올린 것이다.
+            //    검증은 Tests/EditMode/UiLayoutPersistenceTests가 v1/v2 파일과 v10 왕복 양쪽으로 한다.)
+            //
+            // ★ 좌표계는 톱니와 <b>다르다</b> — 화면 중앙 원점의 «오프셋»이다(Core/UiLayoutModel.cs
+            //   "창 위치 3종" 절이 그 근거를 든다). 창은 전부 화면 중앙에서 열리는 표면이라,
+            //   절대 좌표로 담으면 해상도가 바뀐 날 «중앙에서 조금 오른쪽»이 «화면 끝»이 된다.
+            //
+            // ★ 배열(Vector2[3])이 아니라 이름 붙은 필드 9개인 이유는 위 wornXxx 8필드와 같다 —
+            //   배열은 enum 순서에 의존하고, 누가 UiWindowId에 값을 끼워 넣는 순간 모든 사용자의
+            //   창 위치가 한 칸씩 밀린다. 그 사고는 저장 파일을 열어봐도 눈에 띄지 않는다.
+
+            /// <summary>캐릭터 정보창을 한 번이라도 옮겼는가. false면 아래 오프셋은 무시하고 화면 중앙에서 연다.</summary>
+            public bool infoWindowPositionSaved;
+            public float infoWindowOffsetXPoints;
+            public float infoWindowOffsetYPoints;
+
+            /// <summary>설정창을 한 번이라도 옮겼는가.</summary>
+            public bool settingsWindowPositionSaved;
+            public float settingsWindowOffsetXPoints;
+            public float settingsWindowOffsetYPoints;
+
+            /// <summary>집중 모드 팝오버를 한 번이라도 옮겼는가. false면 부채꼴 버튼에서 자라나는
+            /// 예전 배치(PopoverPanel.UpdatePlacement)를 그대로 쓴다.</summary>
+            public bool focusPopoverPositionSaved;
+            public float focusPopoverOffsetXPoints;
+            public float focusPopoverOffsetYPoints;
+
             // ---- v4: 할일 목록(Core/TodoListModel.cs) ----
 
             /// <summary>미완료/유예 중인 활성 목록. v1~v3 파일에는 없어 null이 되고, null은 "없음"이다.</summary>
@@ -630,6 +665,17 @@ namespace StickMate.Core
                     data.archeryShots, data.archeryBullseyes, data.companionSeconds,
                     data.ragdollFalls, data.firstRunUnixSeconds);
                 UiLayoutModel.RestoreFromSave(data.gearPositionSaved, data.gearCenterXPoints, data.gearCenterYPoints);
+                // ★ 창 3종의 자리(2026-09-07) — <b>버전 분기가 없다</b>. 옛 파일에는 이 키가 없어
+                //   *PositionSaved가 false로 채워지고, 그 false가 "아직 옮긴 적 없다 = 기본 자리"라는
+                //   정확한 사실이다(v9 preferredMonitorSaved와 완전히 같은 종류의 필드다).
+                //   enum 값이 아니라 <b>이름 붙은 필드</b>를 한 줄에 하나씩 짝지어 넘기므로,
+                //   UiWindowId에 값을 끼워 넣어도 사용자의 창 위치가 밀리지 않는다.
+                UiLayoutModel.RestoreWindowFromSave(UiWindowId.CharacterInfo,
+                    data.infoWindowPositionSaved, data.infoWindowOffsetXPoints, data.infoWindowOffsetYPoints);
+                UiLayoutModel.RestoreWindowFromSave(UiWindowId.Settings,
+                    data.settingsWindowPositionSaved, data.settingsWindowOffsetXPoints, data.settingsWindowOffsetYPoints);
+                UiLayoutModel.RestoreWindowFromSave(UiWindowId.FocusSession,
+                    data.focusPopoverPositionSaved, data.focusPopoverOffsetXPoints, data.focusPopoverOffsetYPoints);
                 // v5 이하에는 cornerPanelEnabled 키가 없다 — 읽으면 false(꺼짐)로 오해되므로 기본값(켜짐)을 쓴다.
                 UiLayoutModel.RestoreCornerPanelFromSave(data.characterScaleSaved, data.characterScale,
                     data.version >= FirstVersionWithCornerPanel ? data.cornerPanelEnabled : true);
@@ -1338,6 +1384,15 @@ namespace StickMate.Core
                     gearPositionSaved = UiLayoutModel.HasGearCenter,
                     gearCenterXPoints = UiLayoutModel.GearCenterPoints.x,
                     gearCenterYPoints = UiLayoutModel.GearCenterPoints.y,
+                    infoWindowPositionSaved = UiLayoutModel.HasWindowOffset(UiWindowId.CharacterInfo),
+                    infoWindowOffsetXPoints = UiLayoutModel.WindowOffsetPoints(UiWindowId.CharacterInfo).x,
+                    infoWindowOffsetYPoints = UiLayoutModel.WindowOffsetPoints(UiWindowId.CharacterInfo).y,
+                    settingsWindowPositionSaved = UiLayoutModel.HasWindowOffset(UiWindowId.Settings),
+                    settingsWindowOffsetXPoints = UiLayoutModel.WindowOffsetPoints(UiWindowId.Settings).x,
+                    settingsWindowOffsetYPoints = UiLayoutModel.WindowOffsetPoints(UiWindowId.Settings).y,
+                    focusPopoverPositionSaved = UiLayoutModel.HasWindowOffset(UiWindowId.FocusSession),
+                    focusPopoverOffsetXPoints = UiLayoutModel.WindowOffsetPoints(UiWindowId.FocusSession).x,
+                    focusPopoverOffsetYPoints = UiLayoutModel.WindowOffsetPoints(UiWindowId.FocusSession).y,
                     characterScaleSaved = UiLayoutModel.HasCharacterScale,
                     characterScale = UiLayoutModel.CharacterScale,
                     cornerPanelEnabled = UiLayoutModel.CornerPanelEnabled,

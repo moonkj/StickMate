@@ -198,7 +198,11 @@ namespace StickMate.Tests.PlayMode
             float sparkle = 0f, bubble = 0f, leaf = 0f, ball = 0f, balloon = 0f, snail = 0f;
 
             yield return WearAndSettle(EquipmentSlot.Fx, FxSparkle, "반짝임");
-            sparkle = StrokeOf(stage, "FxSparkleA0");
+            // ★ 2026-09-07 — 니들이 "FxSparkleA0"이었다. 끝의 0 은 십자 2획 시절의 조각 인덱스이고
+            //   도형이 윤곽 별 하나가 된 뒤로 뜻이 없어, 프로덕션 이름에서 지우면서 여기도 함께 고쳤다.
+            //   아래 Assert.Greater(sparkle, 0) 가 이 니들의 <b>존재 단언</b>이다 — 니들이 다시 썩으면
+            //   조용히 초록이 되는 대신 "기준이 될 기존 미리보기를 읽지 못했습니다"로 빨개진다.
+            sparkle = StrokeOf(stage, "FxSparkleA");
 
             yield return WearAndSettle(EquipmentSlot.Fx, FxBubble, "물방울");
             bubble = StrokeOf(stage, "FxBubbleA");

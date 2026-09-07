@@ -166,7 +166,7 @@ namespace StickMate.Interaction
             {
                 case WanderAmbientMotion.SitAndYawn: return "기지개";
                 case WanderAmbientMotion.FocusRecross: return "집중-자세 고쳐잡기";
-                case WanderAmbientMotion.FocusRingCheck: return "집중-발밑 링 확인";
+                case WanderAmbientMotion.FocusNod: return "집중-끄덕임";
                 case WanderAmbientMotion.FocusScreenGlance: return "집중-화면 쪽 돌아보기";
                 case WanderAmbientMotion.FocusStanceSwap: return "집중-관망 자세 바꾸기";
                 default: return "주위 살피기";

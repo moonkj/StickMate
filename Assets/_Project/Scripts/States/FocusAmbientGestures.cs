@@ -30,8 +30,13 @@ namespace StickMate.States
         /// <summary>G1 자세 고쳐 잡기. 풀기 0.36초 + 유지 0.10초 + 다시 접기 0.55초 + 안착.</summary>
         public const float RecrossSeconds = 1.30f;
 
-        /// <summary>G2 발밑 링 확인. 유지 구간 0.28초가 "봤다"의 최소 체류다.</summary>
-        public const float RingCheckSeconds = 1.00f;
+        /// <summary>G2 끄덕임 2박. 두 정점 사이 0.587초(1.70Hz)가 «끄덕끄덕» 한 묶음의 박자다.
+        /// <para>★ 2026-09-07 — 1.00 → 1.20. 옛 G2(발밑 링 확인)는 «한 번 숙이고 0.28초 머문다»라
+        /// 1.00초로 충분했지만, 두 박을 넣으면 <b>상체 기울임 감쇠</b>(bodyLeanSmoothingRate 12/초,
+        /// τ = 0.083초)가 2박을 삼킨다. 1.00초에서는 2박 진폭이 배율 0.75에서 <b>1.24pt</b>까지
+        /// 줄어 L1 상시 흔들림(왕복폭 2.07pt)보다 작아졌다 — 즉 «두 박»으로 안 읽힌다.
+        /// 1.20초에서 2박은 <b>2.88pt</b>로 L1의 1.39배다.</para></summary>
+        public const float NodSeconds = 1.20f;
 
         /// <summary>G3 화면 쪽 돌아보기. 4종 중 가장 짧다 — 시선 이동은 원래 빠르다.</summary>
         public const float ScreenGlanceSeconds = 0.90f;
@@ -45,12 +50,12 @@ namespace StickMate.States
         // 더 잦으면 안절부절못하는 그림이 되고, 더 드물면 25분에 몇 번 안 나와 P2가 없는 것과 같다.
 
         public const float RecrossWeight = 0.34f;
-        public const float RingCheckWeight = 0.26f;
+        public const float NodWeight = 0.26f;
         public const float ScreenGlanceWeight = 0.24f;
         public const float StanceSwapWeight = 0.16f;
 
         /// <summary>가중치 합. 테스트가 1.00을 잠근다(숫자를 베끼지 않고 이 값을 읽는다).</summary>
-        public const float WeightSum = RecrossWeight + RingCheckWeight + ScreenGlanceWeight + StanceSwapWeight;
+        public const float WeightSum = RecrossWeight + NodWeight + ScreenGlanceWeight + StanceSwapWeight;
 
         /// <summary>이 신호가 집중 세션 전용 어휘인가. 평소 어휘(LookAround/SitAndYawn)와 섞이면
         /// 관망 자세 위에 손차양/만세가 얹혀 "지켜보는 그림"이 통째로 깨진다 — 그래서
@@ -60,7 +65,7 @@ namespace StickMate.States
             switch (motion)
             {
                 case WanderAmbientMotion.FocusRecross:
-                case WanderAmbientMotion.FocusRingCheck:
+                case WanderAmbientMotion.FocusNod:
                 case WanderAmbientMotion.FocusScreenGlance:
                 case WanderAmbientMotion.FocusStanceSwap:
                     return true;
@@ -75,7 +80,7 @@ namespace StickMate.States
             switch (motion)
             {
                 case WanderAmbientMotion.FocusRecross: return RecrossSeconds;
-                case WanderAmbientMotion.FocusRingCheck: return RingCheckSeconds;
+                case WanderAmbientMotion.FocusNod: return NodSeconds;
                 case WanderAmbientMotion.FocusScreenGlance: return ScreenGlanceSeconds;
                 case WanderAmbientMotion.FocusStanceSwap: return StanceSwapSeconds;
                 default: return 0f;
@@ -95,8 +100,8 @@ namespace StickMate.States
             double r = roll01;
             if (r < recross) return WanderAmbientMotion.FocusRecross;
             r -= recross;
-            if (r < RingCheckWeight) return WanderAmbientMotion.FocusRingCheck;
-            r -= RingCheckWeight;
+            if (r < NodWeight) return WanderAmbientMotion.FocusNod;
+            r -= NodWeight;
             if (cursorAvailable)
             {
                 if (r < ScreenGlanceWeight) return WanderAmbientMotion.FocusScreenGlance;

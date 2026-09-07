@@ -40,9 +40,14 @@ namespace StickMate.Tests.EditMode
             => slot == EquipmentSlot.Shoulders
                && (item == AccessoryShapeBuilder.BackCape || item == AccessoryShapeBuilder.BackLongCape);
 
+        /// <summary>탐침이 찍는 자리. ★ 2026-09-07 <b>FX/PET 이 들어왔다</b> — 그 12칸이 §14-12-3 의
+        /// 64u 아이콘 경로로 넘어오기 전까지는 <see cref="AccessoryCardIcon.TryBuild"/>가 false 를 내어
+        /// 빈 PNG 만 나왔고, 그래서 <b>눈으로 대조하는 도구가 42종 중 30종만 보고 있었다</b>.
+        /// 사용자 신고 <i>"펫들도 아직 업데이트가 안되어 있는데"</i>가 정확히 그 사각지대에서 나왔다.</summary>
         private static readonly EquipmentSlot[] Slots =
         {
             EquipmentSlot.Head, EquipmentSlot.Eyes, EquipmentSlot.Neck, EquipmentSlot.Shoulders, EquipmentSlot.Hair,
+            EquipmentSlot.Fx, EquipmentSlot.Pet,
         };
 
         public static void Render()

@@ -360,13 +360,32 @@ namespace StickMate.Tests.EditMode
                 "Dock이 벽이 됩니다.");
 
             string interactionRoot = Path.Combine(Application.dataPath, "_Project", "Scripts", "Interaction");
-            string[] mustConsume = { "PopoverPanel.cs", "CharacterInfoWindow.Layout.cs", "InfoGearIconWidget.cs" };
+
+            // ★★ 2026-09-07 — 이 목록에서 <c>CharacterInfoWindow.Layout.cs</c>가
+            //   <c>UiWindowDrag.cs</c>로 <b>바뀌었다</b>. 창 3종(정보창·설정창·집중 팝오버)이 전부
+            //   드래그로 움직이게 되면서 클램프 식과 예약 띠 조회가 그 파일 한 곳으로 모였다.
+            //   파일명을 그대로 뒀다면 이 감사는 «정보창이 하단 인셋을 안 쓴다»는 <b>거짓 빨강</b>을
+            //   냈을 것이고, 그것을 지우는 순간 이 항목이 통째로 눈이 멀었을 것이다
+            //   (파일을 쪼개거나 옮기면 파일명 감사가 눈이 먼다 — 이 저장소가 이미 두 번 당했다).
+            string[] mustConsume = { "PopoverPanel.cs", "UiWindowDrag.cs", "InfoGearIconWidget.cs" };
             foreach (string file in mustConsume)
             {
                 string src = StripLineComments(ReadSource(Path.Combine(interactionRoot, file)));
                 StringAssert.Contains(nameof(ReservedEdgeProbe.EnforcedBottomInsetPoints) + "(", src,
                     $"{file}이 하단 인셋을 배치에 넣지 않습니다 — 이 셋은 모두 화면 하단까지 내려갈 수 " +
-                    "있는 표면입니다(팝오버는 캐릭터 아래로 열리고, 정보창과 톱니는 드래그로 내려갑니다).");
+                    "있는 표면입니다(팝오버는 캐릭터 아래로 열리고, 정보창·설정창·톱니는 드래그로 내려갑니다).");
+            }
+
+            // ★ 중앙화는 <b>새로운 조용한 실패</b>를 만들 수 있다 — "한 곳에 모았는데 아무도 안 부른다".
+            //   그래서 «그 한 곳이 실제로 창에 도달하는가»를 이어서 확인한다. 이게 없으면 위 세 줄은
+            //   «UiWindowDrag.cs 안에 문자열이 있다»만 증명하고, 창들은 인셋을 몰라도 초록이다.
+            string[] mustDelegate = { "CharacterInfoWindow.Layout.cs", "SettingsWindow.cs" };
+            foreach (string file in mustDelegate)
+            {
+                string src = StripLineComments(ReadSource(Path.Combine(interactionRoot, file)));
+                StringAssert.Contains(nameof(UiWindowDrag.ResolveReservedInsets) + "(", src,
+                    $"{file}이 예약 띠 조회를 하지 않습니다 — 클램프 식을 {nameof(UiWindowDrag)}로 모으면서 " +
+                    "이 창이 인셋을 넘기는 줄을 잃었습니다. 그러면 드래그로 창을 작업표시줄 뒤에 둘 수 있습니다.");
             }
 
             // ---- (5-b) ★ 의도적 제외 — TodoPostItWidget은 하단 인셋을 받지 않는다 (2026-09-05) ----
@@ -4115,45 +4134,319 @@ namespace StickMate.Tests.EditMode
             }
         }
 
+        private static string HybridGpuReportPath => Path.Combine(Application.dataPath, "..",
+            "docs", "verify", "WINDOWS_DGPU_REPORT.md");
+
+        private static string HybridGpuVerifierPath => Path.Combine(Application.dataPath, "..",
+            "Tools", "BuildVerify", "check_dgpu_exports.py");
+
         /// <summary>
-        /// ★ macOS에도 <b>정확히 대응하는 현상</b>이 있는데 아직 배선되지 않았다. 잊히지 않게 띄운다.
+        /// ★ <b>2026-09-07 신설 — 보고서 §6이 요구한 넷 중 이것 하나가 빠져 있었다.</b>
+        /// <c>docs/verify/WINDOWS_DGPU_REPORT.md</c> §6-3은 "<c>PlatformParityAuditTests</c>에 항목을
+        /// 추가하고 G1~G4를 통과하기 전까지 <c>Ignore</c>로 러너에 계속 보이게 하라"고 못박았는데,
+        /// 실제로 만들어진 것은 <b>macOS 쪽 항목 하나뿐</b>이었다(2026-09-07). Windows 쪽은
+        /// 문서에만 있었고, <b>문서는 러너에 뜨지 않는다</b> — 그래서 넉 달이 지나도 아무도 안 본다.
+        ///
+        /// <para><b>★ 이 항목이 지금 특별히 중요한 이유</b>: 사용자가 외장 GPU 사용을 <b>재신고</b>했다
+        /// (2026-09-07). 그 재신고를 "패치가 안 먹는다(G1 실패)"로 바로 읽으면 <b>안 된다</b> —
+        /// 그 판정은 <b>사용자가 어느 빌드를 돌렸는가</b>에 전적으로 달려 있고, 이 라운드의 실측은
+        /// 그 둘이 실제로 갈린다는 것을 보여 준다(아래 <c>Ignore</c> 본문의 표).
+        /// 여기서 성급하게 "안 먹는다"로 결론 내면 다음 사람이 후처리를 <b>지운다</b>.</para>
+        ///
+        /// <para><b>★★ 같은 날 늦게 실기 관측이 도착했고, 이 파일이 적어 둔 「가장 강한 가설」이
+        /// 반증됐다.</b> 이 라운드는 "화면을 NVIDIA가 몰고 있어서 어떤 per-app 설정도 무효일 것"을
+        /// 최강 가설로 세웠는데, 사용자 실기에서 <b>StickMate.exe와 dwm.exe가 둘 다 GPU0(Intel)</b>,
+        /// <b>NVIDIA(GPU1) 0%</b>였다. 그 가설이 맞았다면 0%가 나올 수 없다 — <b>배제됐다.</b>
+        /// 반증된 가설을 사유에 그대로 두면 그게 이 파일이 스스로 금지한 「낡은 사유 = 거짓말」이므로
+        /// 아래 <c>Ignore</c> 본문을 그 자리에서 고쳤다.</para>
+        ///
+        /// <para><b>그런데 이름의 <c>실기미확인_</c> 접두사는 여전히 옳다 — 뭉치지 마라.</b>
+        /// 확인된 것은 <b>"사용자가 손으로 절전을 지정한 상태에서 내장에 도달한다"</b>이고,
+        /// 원래 G1이 묻는 것은 <b>"모든 GPU 설정을 「Windows 결정」으로 되돌린 상태에서
+        /// 코드 패치 단독으로도 내장에 가는가"</b>(보고서 §5)다. 두 설정이 같은 방향이라
+        /// 이번 관측으로는 <b>분리되지 않는다.</b> 접두사를 떼면 그 분리 안 된 축이 목록에서 사라진다.</para>
         /// </summary>
         [Test]
-        public void 미해결_하이브리드GPU_선택이_macOS에는_배선되지_않았다()
+        public void 실기미확인_Windows_dGPU_export_값0이_내장선택으로_귀결되는지_확인되지_않았다()
         {
-            // 에디터 후처리가 macOS 키를 다루기 시작하면 갭이 닫힌 것이므로 자동 승격시킨다.
-            string editorRoot = Path.Combine(Application.dataPath, "Editor");
-            if (Directory.Exists(editorRoot))
-            {
-                foreach (string file in Directory.GetFiles(editorRoot, "*.cs", SearchOption.AllDirectories))
-                {
-                    if (File.ReadAllText(file).Contains(HybridGpuPreferencePolicy.MacAutomaticGraphicsSwitchingKey))
-                    {
-                        Assert.Pass($"macOS 쪽 처리가 생겼습니다({Path.GetFileName(file)}) — 이 항목을 정식 " +
-                            "검사로 승격하고, GPU 전환 시점에 투명 오버레이 합성이 버티는지 함께 확인하세요.");
-                    }
-                }
-            }
+            // 비공허성 — 아래 Ignore 본문이 「존재하지 않는 코드·문서」를 설명하지 않게 못박는다.
+            Assert.IsTrue(File.Exists(HybridGpuHookPath),
+                $"Windows 빌드 후처리 훅이 없습니다({HybridGpuHookPath}) — 이 항목의 사유는 " +
+                "존재하지 않는 코드를 설명하고 있습니다. 사유부터 다시 쓰세요.");
+            Assert.IsTrue(File.Exists(HybridGpuVerifierPath),
+                $"독립 검증기가 없습니다({HybridGpuVerifierPath}). 훅과 코드를 한 줄도 공유하지 않는 " +
+                "제2 계기가 사라지면 '훅이 스스로를 검증하는' 구조가 되고, 그건 이 저장소가 반복해 " +
+                "당한 「생성기와 검사기가 같이 틀린다」 형태입니다.");
+            Assert.IsTrue(File.Exists(HybridGpuReportPath),
+                $"근거 문서를 찾지 못했습니다({HybridGpuReportPath}) — 아래 사유가 인용하는 게이트 " +
+                "정의가 사라졌습니다. 죽은 인용은 낡은 사유보다 나쁩니다.");
+            StringAssert.Contains("G1", File.ReadAllText(HybridGpuReportPath),
+                "근거 문서에 게이트 G1 정의가 없습니다 — 문서가 갈아엎였다면 이 항목의 사유도 " +
+                "함께 다시 쓰세요(양성 대조).");
 
-            Assert.Ignore("【미해결 · 갭 실측 완료 / 착수 미배정】 신설 2026-09-03 (dev-platform)\n" +
-                "항목: 하이브리드 GPU 선택 — Windows는 닫혔고 macOS는 열려 있다.\n" +
+            Assert.Ignore("【부분 확인 · 코드는 닫힘 / 남은 것은 「코드 패치 단독」 축 하나】 " +
+                "신설 2026-09-07, 같은 날 실기 관측으로 갱신 (dev-platform)\n" +
+                "항목: Windows 하이브리드 GPU — PE export 값 0(외장 요청 철회)이 실제로 내장 GPU " +
+                "선택으로 귀결되는가. 보고서 §2-5 · §5 게이트 G1.\n" +
                 "\n" +
-                "· Windows: 빌드 후처리가 PE export 값 두 개를 1(외장 요청) -> 0(힌트 무시)으로 바꾼다. " +
-                "구조는 닫혔으나 **실기 미확인**이다 — 이 머신에 Windows가 없다. 값 0이 실제로 내장 GPU로 " +
-                "귀결되는지는 사용자 실기에서 로그의 GPU 이름과 작업 관리자를 함께 봐야 확정된다.\n" +
-                "· macOS: 출하 중인 Info.plist에 NSSupportsAutomaticGraphicsSwitching 키가 **없다**(실측). " +
-                "이 키가 없는 앱이 Metal 컨텍스트를 만들면 듀얼 GPU Intel Mac에서 macOS가 자동으로 " +
-                "디스크리트 GPU로 전환한다 — 증상(발열·팬·배터리)이 Windows 건과 같은 계열이다.\n" +
+                "★★ 실기 관측 2026-09-07 (사용자 Windows 노트북, RTX 2050 + Iris Xe) — 두 칸으로 나눠 적는다.\n" +
+                "  [확인됨] 사용자가 Windows 설정에서 StickMate.exe를 '절전'으로 지정한 상태에서 " +
+                "작업 관리자 관측: StickMate.exe와 '데스크톱 창 관리자'가 **둘 다 GPU0(Intel)**, " +
+                "**NVIDIA(GPU1) 사용률 0%**. ⇒ 목적지(내장)에 실제로 도달하고, dGPU는 정말로 쉬고 있다. " +
+                "보고서 §8-3이 경고한 '이름만 내장인 부분 성공'도 함께 배제됐다(퍼센트 축으로 봤다).\n" +
+                "  [여전히 미확인] **코드 패치 단독의 효과**. 이번 관측은 사용자 수동 설정이 걸린 " +
+                "상태에서 났고, 수동 설정과 우리 패치는 **같은 방향**이라 둘의 기여가 분리되지 않는다. " +
+                "원래 G1 문구는 '모든 GPU 설정을 「Windows 결정」으로 되돌린 상태에서'다(§5) — " +
+                "그 조건의 실행은 아직 없었다. **이 한 줄 때문에 이 항목은 아직 정식 검사로 승격하지 않는다.**\n" +
+                "  ★ 분리 실험(다음 라운드): 설정>시스템>디스플레이>그래픽에서 StickMate 항목을 " +
+                "'Windows가 결정'으로 되돌리고 재실행 → 그래도 GPU0/NVIDIA 0%면 코드 패치 단독으로 " +
+                "성립한 것이고, 외장으로 돌아가면 지금까지 효과를 낸 것은 수동 설정뿐이었다는 뜻이다.\n" +
                 "\n" +
-                "★ 왜 이번 라운드에서 안 고쳤는가(사유를 남긴다 — 낡은 사유는 거짓말이다):\n" +
-                "  1. 개발/사용 머신이 Apple Silicon이라 GPU가 하나뿐이다. 고쳐도 **초록을 만들 수 없다**.\n" +
-                "  2. 이 키를 켜는 것은 'GPU 전환을 앱이 감당한다'는 선언이다. 전환 시점에 드로어블/디바이스가 " +
-                "갈아끼워져도 이 앱의 투명 오버레이 합성이 버티는지 검증 없이 켜면 위험하다.\n" +
-                "  3. PlayerSettings에 이 키를 넣는 API가 확인되지 않았다 — plist 후처리 형태가 되는데, " +
-                "그건 Windows PE 패치와 같은 등급의 결정이라 별도 판정이 필요하다.\n" +
+                "★ 반증 기록 — 이 항목이 세웠던 최강 가설은 틀렸다.\n" +
+                "  가설: '화면을 NVIDIA가 몰고 있어(MUX 디스크리트/외부 모니터) 어떤 per-app 설정도 무효다.'\n" +
+                "  반증: NVIDIA 0%가 관측됐다. 그 가설이 참이면 dwm.exe가 NVIDIA에 있어야 하므로 " +
+                "0%가 나올 수 없다. **배제.** 이 노트북은 평범한 muxless Optimus이고 내장이 화면을 문다.\n" +
+                "  그리고 '설정 자체가 안 먹힌다'는 사용자 인상도 **반증됐다** — 설정은 먹고 있었다. " +
+                "실제 정체는 보고서 §4-1이 이미 예고한 것이다: **약한 내장 GPU에서는 같은 절대 작업량이 " +
+                "더 큰 퍼센트로 보인다**(09-03 실측도 내장 13.5% > 외장 5.8%였다). 합산 퍼센트만 보면 " +
+                "'안 좋아졌다'로 읽힌다. ⇒ **판정은 합산 퍼센트가 아니라 어댑터별 분해로 한다.**\n" +
                 "\n" +
-                "닫는 조건: 듀얼 GPU Intel Mac 실기 확보 + 투명/클릭관통 무회귀 확인. " +
-                "근거와 게이트 전량: docs/verify/WINDOWS_DGPU_REPORT.md 7-2절.");
+                "닫힘(코드): 빌드 후처리가 NvOptimusEnablement / " +
+                "AmdPowerXpressRequestHighPerformance를 1 -> 0으로 바꾼다. 오프셋을 박지 않고 export " +
+                "테이블을 이름으로 파싱하며, 쓴 뒤 디스크에서 되읽어 재파싱하고, 달라진 바이트가 값 " +
+                "DWORD 밖에 하나라도 있으면 빌드를 세운다. 산출물 옆 dgpu-export-patch.txt 영수증.\n" +
+                "\n" +
+                "★ 열림(실측) — 2026-09-07 사용자 재신고를 성급히 'G1 실패'로 읽지 마라.\n" +
+                "  이 라운드가 배포 zip을 직접 열어 잰 값(독립 검증기, 방법1 PE 파싱 + 방법2 템플릿 대조):\n" +
+                "    StickMate-Windows-20260902.zip   Nv=1 Amd=1  (미패치)\n" +
+                "    StickMate-Windows-20260902b.zip  Nv=1 Amd=1  (미패치)\n" +
+                "    StickMate-Windows-20260903.zip   Nv=1 Amd=1  (미패치 — 후처리가 이 빌드 뒤에 착지했다)\n" +
+                "    Builds/Windows (2026-09-07 06:51) Nv=0 Amd=0  (패치됨 — 최초의 패치된 산출물)\n" +
+                "  ⇒ 사용자가 09-03 이전 zip을 계속 쓰고 있었다면 그것은 G1 실패가 아니라 " +
+                "**패치가 아직 사용자에게 닿지 않은 것**이다. 두 경우는 신고 문장이 똑같이 생겼다 — " +
+                "이 저장소가 반복해 당한 형태 그대로다. **먼저 물어볼 것: 어느 빌드인가.**\n" +
+                "\n" +
+                "  그리고 값 0을 무력화하는 경로가 우선순위 위에 둘 더 있다(보고서 §2-5의 우선순위표):\n" +
+                "    (a) NVIDIA 앱 프로필 / 우클릭 메뉴, (b) Windows 설정의 UserGpuPreferences.\n" +
+                "    ★ (b)는 값 이름이 **exe 전체 경로**다. 새 zip을 다른 폴더에 풀면 예전에 손으로 " +
+                "지정해 둔 '절전'이 따라오지 않는다 — 사용자에게는 '되돌아갔다'로 보인다.\n" +
+                "\n" +
+                "★ 이 라운드에 새로 찾은 지렛대(09-03 보고서 §3이 검토하지 않은 제3의 길):\n" +
+                "  -force-device-index <N> — Unity 6000.0 매뉴얼 1차 출처가 **D3D11/D3D12/Metal/Vulkan " +
+                "지원**이라 명시한다(OpenGL 제외). 우리 Windows 경로가 정확히 D3D11이다. " +
+                "Windows UnityPlayer.dll 문자열 실측으로도 존재를 확인했다(force-d3d11/force-d3d12와 " +
+                "같은 인자 블록, 양성·음성 대조 붙임). 반면 -force-low-power-device는 " +
+                "Windows 플레이어에 **0건**(macOS 전용, 보고서 서술과 일치).\n" +
+                "  ★ 그러나 기본값으로 출하하지 않는다(판정): 어댑터 인덱스는 " +
+                "**머신마다 순서가 다르고** 보장이 없다. boot.config에 고정 인덱스를 박으면 GPU가 " +
+                "하나뿐인 사용자에게 그래픽 초기화 실패를 줄 수 있다 — 지금 문제보다 나쁘다. " +
+                "그리고 인자라서 exe 더블클릭에는 아무 효과가 없고, 옆에 .bat를 두는 것은 " +
+                "무서명 exe의 AV 휴리스틱(게이트 G3)을 악화시킨다.\n" +
+                "  ⇒ **출하 기본값이 아니라 「사용자가 한 번 돌려 보는 진단 계기」로 쓴다.** " +
+                "이것이 §9-6('요청이 없어도 D3D 앱이면 외장인 구성이 있는가')을 가르는 유일한 " +
+                "코드측 수단이다.\n" +
+                "\n" +
+                "확인 수단(사용자 실기, 둘을 **반드시 함께** 본다 — 보고서 §8-3):\n" +
+                "  (1) 로그의 GPU 이름: Player.log에서 'Renderer:' 또는 '[렌더진단] 콜드스타트'의 " +
+                "'그래픽API=Direct3D11 (<이름>...), VRAM='.\n" +
+                "  (2) 작업 관리자 > 성능 > NVIDIA의 사용률/전용 메모리가 **0인가**. " +
+                "이름만 내장이고 dGPU가 켜져 있는 '부분 성공'을 여기서 거른다. " +
+                "★ 2026-09-07 이 축은 **실기에서 답이 나왔다**(NVIDIA 0%). " +
+                "그리고 어느 어댑터인지는 프로세스 탭의 'GPU' 열이 아니라 **'GPU 엔진' 열**로만 갈린다 " +
+                "— 'GPU' 열은 모든 어댑터 중 최댓값이라 어느 쪽인지 말해 주지 않는다.\n" +
+                "  (3) 산출물 옆 dgpu-export-patch.txt / " +
+                "python3 Tools/BuildVerify/check_dgpu_exports.py <exe> --expect 0 --template.\n" +
+                "\n" +
+                "게이트 현황: G1 **부분 통과**(수동 설정 하에서 내장 도달 확인 / 코드 패치 단독 축은 미분리). " +
+                "G2(투명·클릭관통·항상위 무회귀 + 입력지연 체감) · G3(V3 오탐) · " +
+                "G4(3시간 최악 GPU ms)는 **여전히 미확인**. 전부 사용자 실기에서만 갈린다.\n" +
+                "\n" +
+                "★★ 2026-09-07 사용자 실기 단서 둘 — 이 항목의 **한계**를 못박는다.\n" +
+                "  (가) '실행하면 DWM과 스틱맨이 GPU 점유율을 절반씩 가져간다'.\n" +
+                "    이 앱의 Windows 투명은 WS_EX_LAYERED 픽셀별 알파 + **BitBlt 모델 스왑체인**에 선다 " +
+                "(Editor/BuildStandalone.cs ConfigureWindowsTransparencySettings: useFlipModelSwapchain=false — " +
+                "Flip 모델로 바꾸면 픽셀별 알파가 아예 안 먹어서 투명이 깨진다). BitBlt 모델은 Present마다 " +
+                "백버퍼 **전면 복사**를 DWM 리다이렉션 표면으로 하고, DWM이 그것을 데스크톱 위에 " +
+                "**블렌드**한다. 두 일 모두 **창 면적 x 제출률**에 비례하고 **그리는 내용과 무관**하다 — " +
+                "그래서 'DWM이 우리만큼 쓴다'가 정상 동작으로 나온다. macOS에서 perf-doc이 실측한 " +
+                "구조(아무것도 안 그리는 대조프로그램이 85% 재현)와 같은 것이 Windows에서는 " +
+                "dwm.exe 쪽 계정으로 보이는 것이다.\n" +
+                "    ⇒ **이 항목(GPU 선택)은 DWM 합성 비용을 1%도 줄이지 않는다.** 줄이는 것은 " +
+                "제출률(FramePacing의 Active 분주 — 환경변수 STICKMATE_ACTIVE_DIVISOR, 기본값은 " +
+                "FramePacingPolicy.DefaultActiveDivisor로 Platform/ViewerPresence.cs에 있다)과 " +
+                "창 면적(백로그, 과거 스왑체인 " +
+                "무한재생성 P0의 진원지)뿐이다. 이 항목이 지우는 것은 **dGPU 기동 자체**와, " +
+                "하이브리드 노트북에서 dGPU가 그린 프레임을 화면을 모는 iGPU로 옮기는 " +
+                "**크로스어댑터 복사** 한 항뿐이다.\n" +
+                "    ★ 그리고 dwm.exe는 **per-app GPU 선호를 걸 수 없다**(SYSTEM/DWM-1 컨텍스트에서 돈다). " +
+                "즉 사용자가 보는 dGPU 사용률의 DWM 몫은 우리도 사용자도 설정으로 못 옮긴다 — " +
+                "화면을 모는 어댑터가 무엇이냐로만 갈린다.\n" +
+                "    ★★ 2026-09-07 실기 결말: 그 어댑터는 **Intel이었다**. StickMate와 dwm.exe가 " +
+                "둘 다 GPU0에 있었다 ⇒ '절반씩'은 고장이 아니라 **위 BitBlt+DWM 구조가 정상 동작하는 " +
+                "모습**이었고, 그 절반은 dGPU가 아니라 내장에서 났다. 이 문단의 기전 서술은 " +
+                "**관측으로 뒷받침됐고**, 다만 '그 어댑터가 NVIDIA일 것'이라는 추정만 틀렸다.\n" +
+                "  (나) '지난번엔 수동 절전이 효과가 있었는데 이번엔 설정 자체가 안 먹는 것 같다' " +
+                "— ★ **2026-09-07 실기로 반증됨. 설정은 먹고 있었다**(NVIDIA 0%). " +
+                "아래 경로 식별 서술은 그대로 유효하니 남긴다(다음에 같은 인상이 올라올 때 " +
+                "먼저 확인할 것이 여전히 이것이다).\n" +
+                "    Windows의 per-app GPU 선호는 HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences에 " +
+                "**값 이름 = exe의 전체 경로**, 값 데이터 = 'GpuPreference=N;'으로 산다. " +
+                "**해시도 버전도 크기도 식별에 안 들어간다** ⇒ *같은 경로에 재빌드로 덮어써도 설정은 " +
+                "유지된다*(리더 가설 중 이 가지는 **기각**). 그러나 **경로가 바뀌면 전혀 다른 항목**이 된다. " +
+                "우리 배포 zip은 이름에 날짜가 들어가고(StickMate-Windows-2026MMDD.zip) 탐색기 '압축 풀기'는 " +
+                "**zip 이름의 폴더**를 기본 대상으로 만든다 ⇒ **릴리즈마다 exe 절대경로가 달라진다.** " +
+                "설정 목록에는 옛 경로 항목이 같은 이름·같은 아이콘으로 남아 있어, 사용자가 그것을 " +
+                "토글하면 **지금 돌리는 exe에는 아무 일도 안 일어난다.** 두 항목은 화면에서 똑같이 생겼다.\n" +
+                "    ⇒ 안내: **매번 같은 고정 폴더에 덮어쓰기로 풀 것**(예: C:\\StickMate\\). 그러면 경로가 " +
+                "고정되어 한 번 건 설정이 이후 업데이트에도 계속 먹는다. exe 파일 이름은 우리가 " +
+                "BuildStandalone.WindowsExeFileName으로 고정해 두었으므로 폴더만 고정하면 된다.\n" +
+                "macOS 쪽 대응 항목: 실기미확인_macOS_자동그래픽전환_선언이_듀얼GPU_실기에서_확인되지_않았다.");
+        }
+
+        private static string MacHybridGpuHookPath =>
+            Path.Combine(Application.dataPath, "Editor", "MacHybridGpuInfoPlistPostprocessor.cs");
+
+        private static string PlistReaderPath =>
+            Path.Combine(PlatformRoot, "PropertyListRootReader.cs");
+
+        /// <summary>
+        /// ★ <b>2026-09-07 — 이 항목은 승격됐다.</b> 옛 이름은
+        /// <c>미해결_하이브리드GPU_선택이_macOS에는_배선되지_않았다</c>였고, 그 <c>Ignore</c> 본문은
+        /// "개발/사용 머신이 Apple Silicon이라 재현·검증이 불가능하다"를 사유로 들고 있었다.
+        /// <b>사용자가 듀얼 GPU Mac 실기에서 직접 신고했다</b>("내장 그래픽을 강제사용하도록
+        /// 자동설정이 되어야 하는데 외장 그래픽을 사용함") — 기다리던 실기 근거가 생겼고,
+        /// 그 라운드에 적용기를 붙였다. 낡은 사유를 그대로 두면 그건 거짓말이다.
+        ///
+        /// <para><b>여기서 지키는 것은 Windows와 같은 구조다</b>: 판정은 중립 위치
+        /// (<see cref="HybridGpuPreferencePolicy"/>)에, 읽기·계산은 <c>Platform/</c>에,
+        /// <b>산출물에 쓰는 일만</b> 플랫폼별 빌드 후처리에.</para>
+        ///
+        /// <para><b>★ macOS에만 있는 추가 위험 하나</b>: <c>Info.plist</c>는 코드 서명에 <b>봉인</b>돼
+        /// 있어서, 후처리로 한 글자만 고쳐도 서명이 깨진다(실측:
+        /// <c>invalid Info.plist (plist or signature have been modified)</c>).
+        /// <b>Apple Silicon에서 서명이 깨진 앱은 아예 실행되지 않는다</b> — Windows의 PE 값 패치에는
+        /// 없는 사고 지점이다. 그래서 재서명·재검증이 훅에 있는지를 여기서 함께 잠근다.</para>
+        /// </summary>
+        [Test]
+        public void 하이브리드GPU_선택이_macOS에도_빌드_후처리로_배선돼_있다()
+        {
+            // ---- 판정은 중립 위치에서 macOS 몫까지 답한다 ----
+            string policy = ReadSource(HybridGpuPolicyPath);
+            StringAssert.Contains(nameof(HybridGpuPreferencePolicy.MacAutomaticGraphicsSwitchingKey), policy,
+                "중립 판정이 macOS 키를 모릅니다 — 그러면 macOS 쪽이 자기만의 기대값을 갖게 되고, " +
+                "기준이 두 곳으로 갈라집니다(FullscreenSuspendPolicy 사고와 같은 모양).");
+            StringAssert.Contains(nameof(HybridGpuPreferencePolicy.ClassifyMacPlistEntry), policy,
+                "중립 판정에 macOS 판정 함수가 없습니다 — 판정이 플랫폼 전용 후처리 안으로 " +
+                "내려갔다는 뜻입니다.");
+
+            // 판정이 실제로 세 갈래로 갈라지는가(소스 문자열이 아니라 실행으로 확인한다).
+            Assert.AreEqual(HybridGpuPreferencePolicy.PlistVerdict.NeedsDeclaration,
+                HybridGpuPreferencePolicy.ClassifyMacPlistEntry(false, null, out _),
+                "키가 없는데 삽입이 필요 없다고 판정했습니다.");
+            Assert.AreEqual(HybridGpuPreferencePolicy.PlistVerdict.AlreadyDeclared,
+                HybridGpuPreferencePolicy.ClassifyMacPlistEntry(true,
+                    HybridGpuPreferencePolicy.MacTrueElementName, out _),
+                "이미 선언돼 있는데 다시 쓰겠다고 판정했습니다 — 멱등이 깨집니다.");
+            Assert.AreEqual(HybridGpuPreferencePolicy.PlistVerdict.Unexpected,
+                HybridGpuPreferencePolicy.ClassifyMacPlistEntry(true,
+                    HybridGpuPreferencePolicy.MacFalseElementName, out _),
+                "누가 일부러 false로 꺼 둔 상태를 조용히 덮어쓰겠다고 판정했습니다.");
+
+            // ---- 읽는 쪽은 중립 위치에 있고 디스크에 쓰지 않는다(Windows PE 파서와 같은 배치) ----
+            Assert.IsTrue(File.Exists(PlistReaderPath),
+                $"plist 파서가 Platform/ 바로 아래에 없습니다({PlistReaderPath}). 플랫폼 폴더로 내리면 " +
+                "테스트가 산출물 없이 로직을 먹여 볼 수 없게 되고, '빌드가 없어서 초록'이 생깁니다.");
+            string reader = ReadSource(PlistReaderPath);
+            StringAssert.Contains(nameof(PropertyListRootReader.TryReadRootEntries), reader,
+                "plist 파서에서 진입점을 찾지 못했습니다 — 이 검사가 엉뚱한 파일을 읽고 있습니다(양성 대조).");
+            StringAssert.DoesNotContain("File.", reader,
+                "plist 파서가 파일 API를 갖고 있습니다. 읽기(파싱)와 쓰기(후처리)를 갈라 둔 이유는 " +
+                "테스트가 쓰기 없이 파싱만 전량 검증할 수 있게 하기 위해서입니다.");
+
+            // ---- 쓰는 쪽은 macOS 전용 빌드 후처리 하나뿐이다 ----
+            Assert.IsTrue(File.Exists(MacHybridGpuHookPath),
+                $"macOS 빌드 후처리 훅을 찾지 못했습니다({MacHybridGpuHookPath}). 훅이 사라지면 macOS " +
+                "산출물은 다시 선언 없이 출하되고, 듀얼 GPU Mac에서 외장 GPU가 깨어납니다 " +
+                "(사용자 실기 신고 2026-09-07).");
+            string hook = File.ReadAllText(MacHybridGpuHookPath);
+            StringAssert.Contains(nameof(HybridGpuPreferencePolicy), hook,
+                "후처리가 중립 판정을 부르지 않습니다 — 기대값이 두 곳으로 갈라집니다.");
+            StringAssert.Contains(nameof(PropertyListRootReader), hook,
+                "후처리가 plist 파서를 쓰지 않습니다 — 문서 구조를 스스로 추측한다는 뜻이고, " +
+                "그러면 중첩 dict 안의 같은 이름을 루트 선언으로 오인할 수 있습니다.");
+            StringAssert.Contains(nameof(UnityEditor.BuildTarget.StandaloneOSX), hook,
+                "후처리에 플랫폼 게이트가 없습니다 — Windows 산출물에 손댈 수 있게 됩니다.");
+            StringAssert.Contains(nameof(UnityEditor.Build.BuildFailedException), hook,
+                "후처리가 실패해도 빌드를 세우지 않습니다. 선언이 빠졌는데 .app은 나오는 상태가 " +
+                "이 저장소가 반복해 당한 '거짓 통과'의 최악형입니다.");
+
+            // ★ macOS 고유 — 재서명이 없으면 «앱이 아예 안 켜지는» 회귀가 된다.
+            StringAssert.Contains("--force", hook,
+                "후처리에 재서명 단계가 없습니다. Info.plist는 코드 서명에 봉인돼 있어 고치면 서명이 " +
+                "깨지고(실측 확인), Apple Silicon에서 서명이 깨진 앱은 실행 자체가 되지 않습니다.");
+            StringAssert.Contains("--verify", hook,
+                "재서명 후 검증이 없습니다. 서명을 다시 걸었는지 확인하지 않으면 '서명이 깨진 .app'과 " +
+                "'정상 .app'이 로그에서 똑같이 생깁니다.");
+
+            // ---- 두 플랫폼이 같은 판정을 읽는가(패리티의 본체) ----
+            string winHook = File.ReadAllText(HybridGpuHookPath);
+            foreach ((string label, string source) in new[]
+                     {
+                         ("Windows", winHook),
+                         ("macOS", hook),
+                     })
+            {
+                StringAssert.Contains(nameof(HybridGpuPreferencePolicy), source,
+                    $"{label} 후처리가 중립 판정을 참조하지 않습니다 — 한쪽만 기대값을 바꾸면 " +
+                    "두 플랫폼의 동작이 조용히 갈라집니다.");
+            }
+        }
+
+        /// <summary>
+        /// ★ <b>코드는 닫혔고 듀얼 GPU 하드웨어만 남았다.</b> 구조는 위 검사가 실제로 재고,
+        /// plist 조작 로직은 <c>MacHybridGpuPlistTests</c>가 합성 표본으로 전량 실행해 확인한다.
+        /// 그러나 <b>"그 키가 정말로 내장 GPU 선택으로 귀결되는가"는 이 머신에서 잴 수 없다</b> —
+        /// 개발 머신이 Apple Silicon이라 <b>내장/외장이라는 개념 자체가 없다</b>.
+        ///
+        /// <para><b>왜 <c>미해결_</c>이 아니라 <c>실기미확인_</c>인가</b>: 고칠 코드가 남아 있지 않다.
+        /// 남은 것은 하드웨어에서의 관측뿐이고, 둘을 뭉치면 "절반이 닫혔다"는 사실이 목록에서 사라진다.</para>
+        /// </summary>
+        [Test]
+        public void 실기미확인_macOS_자동그래픽전환_선언이_듀얼GPU_실기에서_확인되지_않았다()
+        {
+            // 비공허성 — 아래 Ignore가 "확인했다"가 아니라 "아무것도 안 봤다"가 되지 않게,
+            // 주장의 근거가 되는 두 파일이 실제로 존재하는지부터 확인한다.
+            Assert.IsTrue(File.Exists(MacHybridGpuHookPath),
+                $"macOS 후처리 훅을 찾지 못했습니다({MacHybridGpuHookPath}) — 이 항목의 사유는 " +
+                "존재하지 않는 코드를 설명하고 있습니다. 사유부터 다시 쓰세요.");
+            Assert.IsTrue(File.Exists(PlistReaderPath),
+                "plist 파서가 없습니다 — 코드 절반이 닫혔다는 이 항목의 전제가 무너졌습니다.");
+
+            Assert.Ignore("【실기 미확인 · 코드는 닫힘】 기록 2026-09-07 (dev-platform)\n" +
+                "항목: 하이브리드 GPU 선택 — macOS 쪽 선언이 배선됐다. 남은 것은 듀얼 GPU 실기 관측뿐이다.\n" +
+                "\n" +
+                "닫힘(코드): 빌드 후처리가 .app/Contents/Info.plist에 " +
+                "NSSupportsAutomaticGraphicsSwitching=true를 보장한다(없으면 삽입 · 이미 있으면 무동작 · " +
+                "false면 빌드 중단). 삽입·멱등·기존 키 무손상·중첩 dict 오인 방지는 " +
+                "MacHybridGpuPlistTests가 합성 표본으로 **실제로 실행해** 확인한다. " +
+                "plist를 고치면 애드혹 서명이 깨진다는 사실도 이 머신에서 실측했고" +
+                "(invalid Info.plist), 훅이 재서명 + 재검증을 수행한다.\n" +
+                "\n" +
+                "열림(실측) — 이 머신에서 잴 수 없는 것 셋:\n" +
+                "  1. 이 키가 실제로 **내장 GPU 선택**으로 귀결되는가. 개발 머신이 Apple Silicon이라 " +
+                "GPU가 하나뿐이고 내장/외장이라는 개념 자체가 없다. 재현 불가.\n" +
+                "  2. GPU가 전환되는 **그 순간** 투명 오버레이 합성이 버티는가. 드로어블/디바이스가 " +
+                "갈아끼워지는 시점에 창이 한 프레임 불투명해지거나 클릭 관통이 풀릴 수 있다 — " +
+                "이 앱에서는 그게 곧 '비침해' 원칙 위반이다.\n" +
+                "  3. 사용자가 함께 신고한 'GPU 사용률 90%'는 **이 항목과 다른 축**이다. 이 선언은 " +
+                "어느 GPU가 그리는가만 바꾸고 얼마나 그리는가는 손대지 않는다. 부하가 그대로면 " +
+                "그 부하가 내장 GPU로 옮겨가 발열·배터리가 **더 나빠질 수도** 있다. 렌더 부하는 별건이다.\n" +
+                "\n" +
+                "확인 수단(사용자 실기): (a) 시스템 정보/활성 상태 보기에서 이 앱이 '높은 성능 GPU 요청' " +
+                "목록에 뜨지 않는지, (b) 산출물 옆 mac-gpu-switching-plist.txt 영수증, " +
+                "(c) python3 Tools/BuildVerify/check_mac_gpu_switching.py Builds/macOS/StickMate.app " +
+                "(훅과 코드를 한 줄도 공유하지 않는 독립 계기).\n" +
+                "Windows 쪽 대응 항목: 실기미확인 — docs/verify/WINDOWS_DGPU_REPORT.md.");
         }
 
         /// <summary>
@@ -4324,7 +4617,9 @@ namespace StickMate.Tests.EditMode
         private static readonly (string Prefix, string Meaning, bool MustBeIgnored)[] LedgerCategories =
         {
             ("미해결_",     "진짜 코드 갭 — 고칠 코드가 있다",                       true),
-            ("실기미확인_", "코드는 닫혔고 Windows 하드웨어만 남았다",                true),
+            // 2026-09-07 문구 정정: 원래 "Windows 하드웨어만 남았다"였는데, 같은 성격의 macOS 항목이
+            // 생겼다(듀얼 GPU Mac). 접두사의 뜻은 «플랫폼»이 아니라 «남은 것이 하드웨어 관측뿐»이다.
+            ("실기미확인_", "코드는 닫혔고 실기 하드웨어 관측만 남았다",              true),
             ("결정_",       "의도된 차이 — 되돌리면 실패한다",                        false),
             ("역방향_",     "macOS가 뒤처진 쪽 — Windows 구현을 보호한다",            false),
             ("해당없음_",   "반대 플랫폼에 그 문제가 구조적으로 존재하지 않는다",     false),

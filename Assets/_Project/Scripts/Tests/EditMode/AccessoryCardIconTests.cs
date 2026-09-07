@@ -94,13 +94,24 @@ namespace StickMate.Tests.EditMode
             }
         }
 
+        /// <summary>
+        /// ★ 2026-09-07 <b>단언이 뒤집혔다</b> — 옛 이름은 「몸_도형이_없는_카테고리는_폴백으로_넘어가고…」였고
+        /// FX/PET 12종에 대해 <c>TryBuild == false</c>를 잠그고 있었다. 그것이 사용자 신고
+        /// <i>"펫들도 아직 업데이트가 안되어 있는데"</i>의 형태다: 그 12칸만 옛 40u 폴백이라
+        /// <b>채움 0개 · 잉크 윤곽 없음 · 하이라이트 없음 · 획 +23.6%</b>였다.
+        /// §14-12-3 이 설계해 둔 64u 아이콘을 §14-12-5 #23 대로 구우면서 이 자리가 새 경로로 넘어왔다.
+        ///
+        /// <para><b>바뀌지 않은 사실 둘</b>을 여기서 계속 잠근다: (가) 이펙트·펫은 여전히 <b>몸 도형이 없다</b>
+        /// (좌표 대조는 <see cref="FxPetCardShapeTests"/>), (나) 폴백 SVG 는 <b>그대로 남아 있다</b> —
+        /// 새 경로가 통째로 틀려도 카드가 비지 않는다.</para>
+        /// </summary>
         [Test]
-        public void 몸_도형이_없는_카테고리는_폴백으로_넘어가고_폴백_그림이_존재한다()
+        public void 이펙트_펫도_새_경로로_그려지고_폴백_그림은_그대로_남아_있다()
         {
-            var noBodyShape = new[] { EquipmentSlot.Fx, EquipmentSlot.Pet };
-            for (int s = 0; s < noBodyShape.Length; s++)
+            var fxPet = new[] { EquipmentSlot.Fx, EquipmentSlot.Pet };
+            for (int s = 0; s < fxPet.Length; s++)
             {
-                EquipmentSlot slot = noBodyShape[s];
+                EquipmentSlot slot = fxPet[s];
                 int count = ItemCatalog.ItemCountIn(slot);
                 Assert.Greater(count, 0, $"{slot} 카테고리가 비었습니다.");
 
@@ -112,15 +123,15 @@ namespace StickMate.Tests.EditMode
                     bool built = AccessoryCardIcon.TryBuild(root, slot, i, IconSize, CallerStroke,
                         entry.PrimaryColor, entry.SecondaryColor);
 
-                    Assert.IsFalse(built,
-                        $"{slot} {i}번이 몸 도형에서 그려졌습니다 — 이펙트/펫은 " +
-                        "Interaction/AppearanceShapeBuilder 소관이라 여기서 나올 수 없습니다.");
-                    Assert.AreEqual(0, root.childCount, $"{slot} {i}번: 실패했는데 조각이 남았습니다.");
+                    Assert.IsTrue(built,
+                        $"{slot} {i}번({entry.DisplayName})이 카드 그림을 만들지 못했습니다 — " +
+                        "폴백으로 새면 이 12칸만 다시 옛 40u SVG 로 남아 나머지 30종과 갈라집니다(§14-12-5 #23).");
+                    Assert.Greater(root.childCount, 0, $"{slot} {i}번의 카드 그림이 비었습니다.");
 
-                    // 폴백이 실제로 그릴 것이 있어야 한다 — 없으면 카드가 빈 칸이 된다.
+                    // 폴백이 실제로 그릴 것이 있어야 한다 — 없으면 새 경로가 실패하는 날 카드가 빈 칸이 된다.
                     Assert.IsNotNull(entry.Icon,
                         $"{slot} {i}번({entry.DisplayName})의 폴백 아이콘이 없습니다. " +
-                        "AccessoryDefSO.icon[]을 이번 라운드에 지우지 않은 이유가 이것입니다.");
+                        "AccessoryDefSO.icon[]을 지우지 않은 이유가 이것입니다.");
                     Assert.Greater(entry.Icon.Length, 0, $"{slot} {i}번의 폴백 아이콘이 비었습니다.");
                 }
             }

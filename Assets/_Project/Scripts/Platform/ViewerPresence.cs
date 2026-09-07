@@ -257,6 +257,31 @@ namespace StickMate.Platform
         /// </summary>
         public const float AwaySeconds = 180f;
 
+        /// <summary>
+        /// **"지금 사용자가 자리를 비웠다고 볼 만한가"** — 프레임 등급이 아니라
+        /// <b>배회 AI의 걷기 확률</b>이 읽는 판정(2026-09-07 design-motion 처방).
+        ///
+        /// <para><b>왜 <see cref="DecideTier"/>의 Away를 그대로 쓰지 않는가</b> — 세 가지가 의도적으로 다르다.
+        /// 셋 다 design-motion이 반증 실험으로 확정한 것이라 "같은 뜻이니 합치자"로 되돌리지 마라:
+        /// <list type="number">
+        /// <item><b><c>characterIdle</c>을 인자로 받지 않는다.</b> 받으면 <b>되먹임 고리</b>가 생긴다 —
+        ///   이 판정이 걷기 확률을 낮추고, 낮아진 확률이 캐릭터를 더 오래 서 있게 하고, 그 정지가
+        ///   다시 이 판정을 강화한다. 판정은 <b>순수하게 OS 관측</b>(무입력 시간)에서만 와야 한다.</item>
+        /// <item><b><see cref="ViewerPresenceSnapshot.DisplayAsleep"/> /
+        ///   <see cref="ViewerPresenceSnapshot.SessionLocked"/>를 OR로 넣지 않는다.</b> 그 두 등급에서는
+        ///   프레임 제출이 이미 바닥(4fps / 절감 등급)이라 <b>걷든 서든 제출이 늘지 않는다</b> —
+        ///   즉 걷기 확률을 낮춰서 얻는 절감이 0이고, 대가(캐릭터가 덜 움직인다)만 남는다.</item>
+        /// <item><b>Calm/Still 게이트를 쓰지 않는다.</b> design-motion이 그 안을 반증 실험으로
+        ///   기각했다 — 그 등급들은 캐릭터 상태에서 파생되므로 1번의 되먹임을 그대로 끌고 온다.</item>
+        /// </list></para>
+        ///
+        /// <para><b>관측이 없으면 false다</b>(<c>Valid=false</c>). 에디터·테스트·적응형 페이싱이 꺼진
+        /// 실행에서는 <c>FramePacing.LastPresence</c>가 채워지지 않으므로 이 기능은 조용히 꺼진 상태가
+        /// 된다 — "모르면 평소대로 걷는다"가 안전한 쪽이다.</para>
+        /// </summary>
+        public static bool IsViewerLikelyAway(in ViewerPresenceSnapshot presence)
+            => presence.Valid && presence.SecondsSinceUserInput >= AwaySeconds;
+
         /// <summary>Calm 등급의 전제 — 최근 이 시간(초) 안에 입력이 있었으면 사용자가 상호작용
         /// 중이라고 보고 무조건 Active를 유지한다.
         ///
@@ -480,6 +505,56 @@ namespace StickMate.Platform
         public const int MinStillDivisor = 1;
         public const int MaxStillDivisor = 8;
 
+        // ============================================================================
+        // ★ Active 등급 분주 (2026-09-07) — <b>기본값 1 = 현행 동작. 켜는 것은 사용자 결정이다.</b>
+        // ============================================================================
+        //
+        // <b>왜 손잡이만 만들고 켜지 않는가</b>: GPU 절감 자체는 실측으로 확인됐다(아래). 그런데
+        // 이 등급을 내리는 것은 <b>사용자가 명시적으로 닫은 문</b>이다 —
+        // <see cref="FramePacingTier.Active"/> 문서: *"여기는 절대 건드리지 않는다
+        // (2026-08-31 사용자 확정: 움직일 때는 60fps)"*. 그래서 이 라운드는
+        // <c>STICKMATE_VSYNC</c>가 세운 선례를 따른다: <b>판정하지 않고 손잡이만</b> 만든다.
+        //
+        // <b>실측 (2026-09-07, M-series macOS, ioreg AGXAccelerator "Device Utilization %",
+        // 페어드 교차 2회차 · 각 70초 · 앱 없는 기저 0.1%/3.8%)</b>:
+        // <code>
+        //   제출 59.2장/초 (분주 1)  GPU 평균 25.4%      제출 29.8장/초 (분주 2)  GPU 평균 14.5%
+        //   제출 59.9장/초 (분주 1)  GPU 평균 29.4%      제출 29.8장/초 (분주 2)  GPU 평균 16.4%
+        //   -> 두 회차 모두 같은 방향, -10.9%p / -13.0%p (약 -43%)
+        // </code>
+        // ※ 이 A/B는 코드 변경 없이 <c>STICKMATE_FORCE_TIER=Active</c> vs <c>=Calm</c>으로 쟀다.
+        //   두 등급의 계획은 아래 <see cref="BuildPlan"/>의 viewerPresent 분기에서
+        //   <c>renderFrameInterval</c> 하나만 다르므로(vSyncCount·targetFrameRate 동일),
+        //   <b>Calm 등급이 곧 "분주 2를 건 Active"</b>다. 즉 절감량은 이미 알려져 있다.
+        //
+        // <b>대가도 숫자로 알려져 있다</b>(이쪽이 켜지 않는 이유다). 보행 사이클 1.35Hz
+        // (<c>StickmanPoseAnimator.TickWalkPose</c> 실측)에서 한 주기에 그려지는 장수:
+        // <code>
+        //   분주 1 (60장/초) -> 44.4프레임    분주 2 (30장/초) -> 22.2프레임    Away(15장/초) -> 11.1프레임
+        //                                     ^^^^^^^^^^^^^^^^^^^^^
+        //   AwayTierMotionGuardTests가 잠근 하한은 24프레임 -> 분주 2는 그 하한 아래다.
+        // </code>
+        // 그 하한은 사용자 요청 *"캐릭터 움직임도 좀더 부드럽게 변경해야함"*에 대응해 세운 것이다.
+        //
+        // <b>그리고 Active는 "우리 창을 만지는 중"이 아니다</b> — <see cref="DecideTier"/>의
+        // <b>기본 반환값</b>이라 캐릭터가 걷는/뛰는/떨어지는 모든 시간이 여기 들어간다.
+        // 자율 배회 실측(8.08초 주기 중 Active 3.15초, 그중 <b>걷기가 2.75초</b>)으로 보면
+        // 이 등급 체류의 약 87%가 UI 조작이 아니라 <b>캐릭터 이동</b>이다.
+        // ⇒ 이 분주를 2로 올리는 것은 "UI 조작을 30fps로"가 아니라 <b>"걷기를 30fps로"</b>다.
+
+        /// <summary><see cref="FramePacingTier.Active"/>의 렌더 분주 기본값.
+        /// <b>1 = 매 프레임 제출(현행 동작, 변경 없음).</b></summary>
+        public const int DefaultActiveDivisor = 1;
+
+        /// <summary>Active 분주 하한(= 절감 없음, 현행).</summary>
+        public const int MinActiveDivisor = 1;
+
+        /// <summary>Active 분주 상한. <b>2에서 멈추는 이유</b>: 3이면 보행 한 주기가 14.8프레임,
+        /// 4면 11.1프레임으로 <see cref="FramePacingTier.Away"/>와 같아진다 — 그 값은 이미
+        /// "무릎이 눈에 보이게 튄다"로 <b>신고되어 고쳐진 값</b>이다(<see cref="AwaySeconds"/> 문서).
+        /// 상한을 2로 못 박아 그 구간이 계측 변수로도 되살아나지 못하게 한다.</summary>
+        public const int MaxActiveDivisor = 2;
+
         /// <summary>
         /// 등급 -> 실제 손잡이 값.
         ///
@@ -504,8 +579,13 @@ namespace StickMate.Platform
         /// <param name="lowPowerMode">OS 저전력 모드. Active 등급을 한 칸 낮추는 데만 쓴다.</param>
         /// <param name="stillDivisor"><see cref="FramePacingTier.Still"/> 전용 분주
         /// (<see cref="DefaultStillDivisor"/>). 범위를 벗어나면 clamp된다.</param>
+        /// <param name="activeDivisor"><see cref="FramePacingTier.Active"/> 전용 분주.
+        /// <b>기본 <see cref="DefaultActiveDivisor"/>(=1)이면 이 인자는 아무 일도 하지 않는다</b> —
+        /// 즉 이 매개변수를 넘기지 않는 모든 기존 호출부의 결과는 한 글자도 바뀌지 않는다.
+        /// 켤 때의 근거·실측·대가는 <see cref="DefaultActiveDivisor"/> 위 문단에 있다.</param>
         public static FramePacingPlan BuildPlan(FramePacingTier tier, int baseVSyncCount,
-            int baseTargetFrameRate, bool lowPowerMode, int stillDivisor = DefaultStillDivisor)
+            int baseTargetFrameRate, bool lowPowerMode, int stillDivisor = DefaultStillDivisor,
+            int activeDivisor = DefaultActiveDivisor)
         {
             // 화면이 꺼졌을 때만 예외적으로 절대값을 쓴다(디스플레이 주기와의 관계 자체가 무의미하다).
             if (tier == FramePacingTier.DisplayOff)
@@ -515,6 +595,8 @@ namespace StickMate.Platform
 
             int divisor = tier switch
             {
+                // 기본값 1 -> 아래 `divisor == 1` 조기 반환으로 떨어져 기존 경로와 동일하다.
+                FramePacingTier.Active => Mathf.Clamp(activeDivisor, MinActiveDivisor, MaxActiveDivisor),
                 FramePacingTier.Calm => 2,       // 60 -> 30
                 FramePacingTier.Still => Mathf.Clamp(stillDivisor, MinStillDivisor, MaxStillDivisor),
                 FramePacingTier.Away => 4,       // 60 -> 15

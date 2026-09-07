@@ -145,6 +145,38 @@ namespace StickMate.Interaction
         private bool _hasTestCursor;
         private Vector2 _testCursor;
 
+        // ==================== 창 이동 (2026-09-07 사용자 요청 PART1-1) ====================
+        //
+        // 사용자 원문: "모든 창(집중모드 타이머, 캐릭터 정보창, 설정창)이 마우스로 끌어도 움직이지
+        // 않음 — 전부 드래그 이동 가능해야 함" · "헤더가 없는 집중 모드 시계는 창 전체가 핸들".
+        //
+        // ★ 손잡이 목록을 <b>손으로 적지 않는다</b>: 이 창의 모든 컨트롤은 반드시
+        //   <see cref="Wire"/>를 지나 <see cref="Button"/>이 되므로, 빌드가 끝난 뒤 자식 Button을
+        //   통째로 긁어 «손잡이가 아닌 자리» 목록으로 쓴다. 컨트롤을 하나 더 넣는 사람이
+        //   여기를 잊을 자리가 <b>구조적으로 없다</b>(정보창 헤더가 배열을 도는 것과 같은 이유이고,
+        //   이쪽은 그 배열조차 자동으로 만들어진다).
+        //
+        // ★ 기본값은 <b>끔</b>이다. 리더 배정이 [집중 모드] 하나였고, 팝오버 3종 중 나머지 둘
+        //   (오늘 할일 / 행동)은 이 라운드의 대상이 아니다. 켜는 데 필요한 것은 아래 두 줄 override뿐.
+
+        /// <summary>이 팝오버를 끌어서 옮길 수 있는가. <b>기본은 false</b> — 켜는 팝오버가
+        /// <see cref="WindowDragId"/>도 함께 준다(저장 칸이 없으면 «옮겼는데 안 남는다»가 된다).</summary>
+        protected virtual bool WindowDragEnabled => false;
+
+        /// <summary>옮긴 자리를 담을 세이브 칸. <see cref="WindowDragEnabled"/>가 true일 때만 쓰인다.</summary>
+        protected virtual UiWindowId WindowDragId => UiWindowId.FocusSession;
+
+        private UiWindowDrag _windowDrag;
+
+        /// <summary>손잡이에서 빼는 사각형들 = 이 창의 <b>모든 버튼</b>(빌드 때 한 번만 긁는다).</summary>
+        private RectTransform[] _controlRects = System.Array.Empty<RectTransform>();
+
+        /// <summary>사용자가 정한 창 중심(화면 중앙 원점, OS 포인트). false면 예전 그대로
+        /// <b>누른 부채꼴 버튼에서 자라나는</b> 배치를 쓴다.</summary>
+        private bool _hasUserCenter;
+
+        private Vector2 _userCenterPoints;
+
         public bool IsOpen => _open;
 
         // ★ 배타 표면 등록(2026-09-01) — 이 한 벌로 FocusSessionPopover/TodoBoardPopover/
@@ -248,6 +280,7 @@ namespace StickMate.Interaction
             _animTimer = 0f;
             _leftInitialized = false;   // 여는 그 클릭이 곧바로 행 클릭으로 오인되지 않게.
             NoteUserActivity();         // 무입력 시계는 열리는 순간부터 다시 센다.
+            RestoreUserPlacement();     // ★ 2026-09-07 — 옮긴 적이 있으면 그 자리에서 연다.
             if (_canvas != null) _canvas.gameObject.SetActive(true);
             if (_clickBlocker != null) _clickBlocker.enabled = true;
             UpdatePlacement();
@@ -273,6 +306,9 @@ namespace StickMate.Interaction
         {
             _open = false;
             _closing = false;
+            // ★ 확정하지 않고 놓는다 — 닫히는 창의 마지막 좌표를 저장하면 "옮긴 적 없는데 자리가
+            //   바뀌었다"가 된다(전체화면 감지로 즉시 거둬지는 경로도 여기로 들어온다).
+            _windowDrag?.Cancel();
             if (_canvas != null) _canvas.gameObject.SetActive(false);
             if (_clickBlocker != null) _clickBlocker.enabled = false;
         }
@@ -437,13 +473,24 @@ namespace StickMate.Interaction
             Vector2 size = PanelSizePoints * pxPerPoint;
             var screenCenter = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
 
-            Vector2 dir = screenCenter - _anchorCenterScreen;
-            if (dir.sqrMagnitude < 1e-4f) dir = Vector2.down;
-            dir.Normalize();
+            Vector2 center;
+            if (_hasUserCenter)
+            {
+                // ★ 2026-09-07 — 사용자가 끌어다 놓은 자리가 앵커를 <b>이긴다</b>. 아래 앵커 배치는
+                //   "아직 한 번도 안 옮겼다"의 기본값으로 남는다(옮긴 적 없는 사용자에게는 이 분기가
+                //   존재하지 않는 것과 결과가 같다 — 회귀는 그 집합에서 0이다).
+                center = screenCenter + _userCenterPoints * pxPerPoint;
+            }
+            else
+            {
+                Vector2 dir = screenCenter - _anchorCenterScreen;
+                if (dir.sqrMagnitude < 1e-4f) dir = Vector2.down;
+                dir.Normalize();
 
-            // 팝오버 중심까지의 거리 = 버튼 반지름 + 간격 + 그 방향의 패널 반폭.
-            float halfExtent = Mathf.Abs(dir.x) * size.x * 0.5f + Mathf.Abs(dir.y) * size.y * 0.5f;
-            Vector2 center = _anchorCenterScreen + dir * (_anchorRadiusScreen + AnchorGapPoints * pxPerPoint + halfExtent);
+                // 팝오버 중심까지의 거리 = 버튼 반지름 + 간격 + 그 방향의 패널 반폭.
+                float halfExtent = Mathf.Abs(dir.x) * size.x * 0.5f + Mathf.Abs(dir.y) * size.y * 0.5f;
+                center = _anchorCenterScreen + dir * (_anchorRadiusScreen + AnchorGapPoints * pxPerPoint + halfExtent);
+            }
 
             float margin = ScreenMarginPoints * pxPerPoint;
             float minX = margin + size.x * 0.5f;
@@ -469,6 +516,12 @@ namespace StickMate.Interaction
             _panel.anchoredPosition = new Vector2(
                 ScreenCoordinateConverter.UnityScreenToCanvas(center.x, Config),
                 ScreenCoordinateConverter.UnityScreenToCanvas(center.y, Config));
+
+            // ★ 세이브에 내려가는 것은 <b>클램프를 지난</b> 자리다 — 화면 밖으로 끌어낸 좌표가
+            //   파일에 앉으면 다음 실행에서 «닫을 수 없는 창»이 된다(창 밖 클릭은 창을 닫지 않는다).
+            if (!_hasUserCenter || pxPerPoint <= 0f) return;
+            _userCenterPoints = (center - screenCenter) / pxPerPoint;
+            _windowDrag?.NoteAppliedCenter(_userCenterPoints);
         }
 
         private void ApplyCanvasScaleFactor()
@@ -495,19 +548,114 @@ namespace StickMate.Interaction
         {
             if (_buttonService == null || _closing) return;
 
-            _clickPollTimer += Time.unscaledDeltaTime;
-            if (_clickPollTimer < ClickPollInterval) return;
-            _clickPollTimer = 0f;
+            // ★ 창을 끄는 중에는 폴링 간격을 없앤다 — 20Hz로 끌면 창이 커서에서 뚝뚝 떨어진다
+            //   (정보창·설정창이 같은 이유로 같은 가드를 쓴다). 잡고 있지 않으면 예전 그대로다.
+            bool dragging = _windowDrag != null && _windowDrag.IsGrabbed;
+            if (!dragging)
+            {
+                _clickPollTimer += Time.unscaledDeltaTime;
+                if (_clickPollTimer < ClickPollInterval) return;
+                _clickPollTimer = 0f;
+            }
 
             if (!_buttonService.TryGetPrimaryButtonPressed(out bool left)) return;
-            if (!_leftInitialized) { _leftInitialized = true; _leftPrev = left; return; }
-            bool rising = left && !_leftPrev;
-            _leftPrev = left;
-            if (!rising) return;
 
-            if (Agent == null || !Agent.TryGetCursorPosition(out Vector2 osScreen)) return;
-            Vector2 cursor = ScreenCoordinateConverter.OsScreenToUnityScreen(osScreen, Config);
-            FeedClick(cursor);
+            // ★ 커서는 <b>필요할 때만</b> 묻는다 — 잡고 있지도 않고 상승 엣지도 아니면 예전과
+            //   완전히 같이 아무것도 하지 않는다(팝오버 3종의 상시 비용이 이 라운드로 늘지 않는다).
+            bool needCursor = dragging || (_leftInitialized && left && !_leftPrev);
+            Vector2 cursor = Vector2.zero;
+            bool hasCursor = needCursor && TryGetCursor(out cursor);
+            ProcessPointer(left, cursor, hasCursor);
+        }
+
+        /// <summary>
+        /// 실제 입력과 테스트가 <b>공유하는</b> 포인터 처리(정보창·설정창과 같은 관례).
+        /// 누름 = 클릭 라우팅 또는 창 잡기, 누른 채 이동 = 창 이동, 뗌 = 확정.
+        /// </summary>
+        private void ProcessPointer(bool buttonDown, Vector2 cursor, bool hasCursor)
+        {
+            if (!_leftInitialized) { _leftInitialized = true; _leftPrev = buttonDown; return; }
+            bool prev = _leftPrev;
+            _leftPrev = buttonDown;
+
+            if (buttonDown && !prev)
+            {
+                if (hasCursor) FeedClick(cursor);
+                return;
+            }
+            // 여기부터는 <b>창을 잡고 있을 때만</b> 도는 길이다. 드래그를 쓰지 않는 팝오버 2종은
+            // 이 아래로 절대 내려오지 않는다(_windowDrag가 null이다).
+            if (_windowDrag == null || !_windowDrag.IsGrabbed) return;
+            if (buttonDown)
+            {
+                if (hasCursor) DragWindowTo(cursor);
+                return;
+            }
+            if (prev) EndWindowDrag();
+        }
+
+        private bool TryGetCursor(out Vector2 cursorUnityScreen)
+        {
+            if (Agent != null && Agent.TryGetCursorPosition(out Vector2 osScreen))
+            {
+                cursorUnityScreen = ScreenCoordinateConverter.OsScreenToUnityScreen(osScreen, Config);
+                return true;
+            }
+            cursorUnityScreen = default;
+            return false;
+        }
+
+        // ==================== 창 이동 — 판정만 여기, 기구는 UiWindowDrag ====================
+
+        /// <summary>
+        /// 손잡이를 잡았는가 — <b>패널 안이면서 어떤 버튼 위도 아닌</b> 자리다("창 전체가 핸들").
+        /// <para>버튼 목록은 <see cref="_controlRects"/>가 자동으로 들고 있다(클래스 상단 문단).</para>
+        /// </summary>
+        private bool TryBeginWindowDrag(Vector2 cursor)
+        {
+            if (_windowDrag == null || _panel == null) return false;
+            if (UiWindowDrag.AnyContains(_controlRects, cursor)) return false;
+
+            float sf = ScreenCoordinateConverter.ResolveCanvasScaleFactor(Config);
+            float pxPerPoint = sf > 0f ? sf : 1f;
+            var screenCenter = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+            Vector2 currentCenter = (PanelScreenRect.center - screenCenter) / pxPerPoint;
+
+            _windowDrag.Grab(UiWindowDrag.ScreenToCenterOriginPoints(cursor, pxPerPoint), currentCenter);
+            return true;
+        }
+
+        private void DragWindowTo(Vector2 cursor)
+        {
+            if (_windowDrag == null) return;
+            float sf = ScreenCoordinateConverter.ResolveCanvasScaleFactor(Config);
+            // 문턱(UiWindowDrag.MoveThresholdPoints)을 넘기 전에는 창이 한 픽셀도 움직이지 않는다.
+            if (!_windowDrag.TryResolveCenter(
+                    UiWindowDrag.ScreenToCenterOriginPoints(cursor, sf), out Vector2 desired)) return;
+
+            _userCenterPoints = desired;
+            _hasUserCenter = true;
+            NoteUserActivity();
+            UpdatePlacement();   // 클램프까지 이 자리에서 태운다(한 프레임 늦게 따라오지 않게).
+        }
+
+        private void EndWindowDrag()
+        {
+            if (_windowDrag == null || !_windowDrag.IsGrabbed) return;
+            if (!_windowDrag.Release()) return;   // 문턱을 안 넘었으면 저장도 로그도 없다.
+
+            Debug.Log($"[팝오버] {TitleText} 이동 완료 — 화면 중앙에서 " +
+                $"({_userCenterPoints.x:F0}, {_userCenterPoints.y:F0})pt 옮긴 자리입니다. " +
+                "다시 열어도 이 자리에서 뜹니다(부채꼴 앵커 배치는 더 이상 쓰지 않습니다).");
+        }
+
+        /// <summary>창을 열 때의 자리 — 옮긴 적이 있으면 그 자리, 없으면 <b>부채꼴 앵커에서 자라나는</b>
+        /// 예전 배치. 드래그를 켜지 않은 팝오버에서는 <see cref="_hasUserCenter"/>가 영원히 false다.</summary>
+        private void RestoreUserPlacement()
+        {
+            _windowDrag?.Cancel();
+            _hasUserCenter = _windowDrag != null && _windowDrag.TryGetSavedCenter(out _userCenterPoints);
+            if (!_hasUserCenter) _userCenterPoints = Vector2.zero;
         }
 
         /// <summary>
@@ -515,6 +663,29 @@ namespace StickMate.Interaction
         /// 진짜 전역 클릭을 만들 수 없다 — InfoGearIconWidget.FeedPointerForTests와 같은 사정).
         /// </summary>
         public void FeedClickForTests(Vector2 cursorUnityScreen) => FeedClick(cursorUnityScreen);
+
+        /// <summary>테스트 전용 — 버튼 상태와 커서를 <b>실제 입력과 같은 처리 경로</b>에 먹인다.
+        /// 드래그는 누름/이동/뗌의 연속이라 단발 클릭 진입점으로는 재현할 수 없다
+        /// (<c>CharacterInfoWindow.FeedPointerForTests</c>와 같은 관례).</summary>
+        public void FeedPointerForTests(bool buttonDown, Vector2 cursorUnityScreen)
+            => ProcessPointer(buttonDown, cursorUnityScreen, hasCursor: true);
+
+        /// <summary>이 팝오버를 끌어서 옮길 수 있는가(진단/테스트 창구) — 켠 팝오버만 true.</summary>
+        public bool IsWindowDraggableForTests => _windowDrag != null;
+
+        /// <summary>지금 창을 잡고 있는가(문턱을 넘기 전에도 true — "조작 중"의 정의다).</summary>
+        public bool IsDraggingWindow => _windowDrag != null && _windowDrag.IsGrabbed;
+
+        /// <summary>사용자가 정한 창 중심(화면 중앙 원점, OS 포인트). 옮긴 적이 없으면
+        /// <see cref="Vector2.zero"/>이고 <see cref="HasUserPlacedCenter"/>가 false다.</summary>
+        public Vector2 UserCenterPointsForTests => _userCenterPoints;
+
+        /// <summary>지금 «부채꼴 앵커 배치»가 아니라 «사용자가 옮긴 자리»를 쓰고 있는가.</summary>
+        public bool HasUserPlacedCenter => _hasUserCenter;
+
+        /// <summary>손잡이에서 빠지는 컨트롤 사각형의 개수 — <b>이 목록이 비면 창 전체가 손잡이가
+        /// 되어 버튼이 안 눌린다</b>. 그 공허한 통과를 테스트가 단언으로 막는다.</summary>
+        public int DragExcludedControlCountForTests => _controlRects.Length;
 
         private void FeedClick(Vector2 cursor)
         {
@@ -534,6 +705,11 @@ namespace StickMate.Interaction
                 if (TryClaimAction("close")) Close("[✕] 클릭");
                 return;
             }
+            // ★ 2026-09-07 — 버튼 위가 아니면 «창을 잡은 것»이다(창 전체가 손잡이).
+            //   그 판정은 아래 <see cref="OnGlobalClick"/>이 검사하는 사각형들과 <b>같은 집합</b>을
+            //   본다(둘 다 이 창의 Button들이다) — 그래서 어느 쪽도 상대의 클릭을 삼키지 않는다.
+            //   드래그를 켜지 않은 팝오버에서는 이 줄이 항상 false다.
+            if (TryBeginWindowDrag(cursor)) return;
             OnGlobalClick(cursor);
         }
 
@@ -673,6 +849,19 @@ namespace StickMate.Interaction
                 PanelSizePoints.x - UiChrome.Space4 * 2f,
                 PanelSizePoints.y - (UiChrome.Space3 + 22f + UiChrome.Space2) - UiChrome.Space4);
             BuildContent(content);
+
+            // ★ 손잡이에서 뺄 사각형 = 이 창의 <b>모든 버튼</b>. 빌드가 끝난 지금 한 번만 긁는다
+            //   (매 프레임 GetComponentsInChildren을 도는 것은 상주 앱에서 금지다).
+            //   ※ 꺼져 있는 버튼도 포함해 긁고(true), 눌린 순간의 활성 여부는
+            //     <see cref="UiWindowDrag.AnyContains"/>가 activeInHierarchy로 판정한다 —
+            //     프리셋/직접 두 행처럼 <b>서로 교대로 켜지는</b> 컨트롤이 있기 때문이다.
+            if (WindowDragEnabled)
+            {
+                _windowDrag = new UiWindowDrag(WindowDragId);
+                Button[] buttons = _panel.GetComponentsInChildren<Button>(true);
+                _controlRects = new RectTransform[buttons.Length];
+                for (int i = 0; i < buttons.Length; i++) _controlRects[i] = buttons[i].transform as RectTransform;
+            }
 
             var blockerGo = new GameObject(GetType().Name + "Blocker");
             _clickBlocker = blockerGo.AddComponent<BoxCollider2D>();

@@ -210,9 +210,15 @@ namespace StickMate.Interaction
         // 33-7-7/34-7은 "화면 중앙 고정 모달"로 확정했고 드래그 코드는 처음부터 <b>없었다</b>(버그가
         // 아니라 미구현이었다). 사용자가 "끌면 옮겨져야 하는데 고정돼 있다"고 해서 리더가 뒤집었다 —
         // <b>열릴 때는 여전히 화면 중앙</b>에서 시작하고, 헤더를 잡은 동안만 옮길 수 있다.
-        // 옮긴 자리는 기억하지 않는다(다음에 열면 다시 중앙 — "열면 중앙" 규칙을 그대로 지킨다).
         // 클릭 경로가 전역 폴링인 것과 같은 이유로 드래그도 전역 폴링을 쓴다(uGUI 이벤트는 앱이
         // 활성화된 뒤에만 도착한다 — 이 앱은 그 전제를 둘 수 없다).
+        //
+        // ★★ 2026-09-07 (사용자 요청 PART1-1) — 여기 있던 «옮긴 자리는 기억하지 않는다(다음에 열면
+        //   다시 중앙)»가 <b>뒤집혔다</b>. 사용자 원문: "이동한 위치는 창별로 저장되어 재시작 후에도
+        //   유지". 그리고 임계·좌표·클램프·저장이 <see cref="UiWindowDrag"/> 한 벌로 빠졌다 —
+        //   설정창과 집중 팝오버가 <b>같은 코드</b>를 쓴다(세 벌로 갈라지면 하나가 반드시 낡는다).
+        //
+        // ★ 이 창이 여기 남겨 두는 것은 <b>«어디가 손잡이인가»</b>뿐이고, 그건 창마다 실제로 다르다.
 
         /// <summary>
         /// ★ L-2 — 드래그 표면이 「타이틀바 40」에서 <b>「헤더 66 − 알려진 자식 사각형들」</b>이 됐다.
@@ -233,10 +239,12 @@ namespace StickMate.Interaction
                 if (RectContainsScreenPoint(_tabRects[i], cursor)) return false;
             }
 
-            // 잡은 지점과 창 중심의 차이를 기억한다 — 드래그가 시작될 때 창이 커서로 순간이동하지 않게.
-            _dragGrabOffsetPoints = _panel.anchoredPosition - ScreenToPanelPoints(cursor, CanvasScale());
+            // 잡은 지점과 창 중심의 차이는 기구가 기억한다 — 드래그 첫 프레임에 창이 커서로
+            // 순간이동하지 않게 하는 그 계산이 이제 UiWindowDrag 한 곳에 있다.
+            _windowDrag.Grab(UiWindowDrag.ScreenToCenterOriginPoints(cursor, CanvasScale()),
+                _panel.anchoredPosition);
             _dragStartOffsetPoints = _panel.anchoredPosition;
-            _draggingPanel = true;
+            _draggingPanel = true;   // ★ "잡았다" = 조작 중이다(아직 문턱을 안 넘었어도).
             return true;
         }
 
@@ -244,23 +252,27 @@ namespace StickMate.Interaction
         {
             if (_panel == null) return;
             float sf = CanvasScale();
-            _panel.anchoredPosition = ClampPanelPosition(ScreenToPanelPoints(cursor, sf) + _dragGrabOffsetPoints, sf);
+            // ★ 문턱(UiWindowDrag.MoveThresholdPoints)을 넘기 전에는 <b>false</b>가 나오고 창은
+            //   한 픽셀도 움직이지 않는다 — 스치듯 지나간 클릭 하나가 창을 영구히 옮기지 않게.
+            if (!_windowDrag.TryResolveCenter(
+                    UiWindowDrag.ScreenToCenterOriginPoints(cursor, sf), out Vector2 desired)) return;
+
+            Vector2 applied = ClampPanelPosition(desired, sf);
+            _panel.anchoredPosition = applied;
+            _windowDrag.NoteAppliedCenter(applied);   // 세이브로 내려가는 것은 <b>클램프를 지난</b> 값이다.
         }
 
         private void EndPanelDrag()
         {
             if (!_draggingPanel) return;
             _draggingPanel = false;
-            Vector2 p = _panel != null ? _panel.anchoredPosition : Vector2.zero;
-            if ((p - _dragStartOffsetPoints).sqrMagnitude < 0.25f) return;   // 제자리 클릭은 이동이 아니다.
-            Debug.Log($"[정보창] 이동 완료 — 화면 중앙에서 ({p.x:F0}, {p.y:F0})pt 옮긴 자리입니다. " +
-                "다시 열면 중앙에서 시작합니다.");
-        }
+            if (!_windowDrag.Release()) return;       // 문턱을 안 넘었으면 저장도 로그도 없다.
 
-        /// <summary>화면 중앙을 원점으로 하는 캔버스 좌표(패널 anchoredPosition과 <b>같은 계</b>).</summary>
-        private static Vector2 ScreenToPanelPoints(Vector2 cursorUnityScreen, float scaleFactor)
-            => new Vector2((cursorUnityScreen.x - Screen.width * 0.5f) / scaleFactor,
-                           (cursorUnityScreen.y - Screen.height * 0.5f) / scaleFactor);
+            Vector2 p = _panel != null ? _panel.anchoredPosition : Vector2.zero;
+            Debug.Log($"[정보창] 이동 완료 — 화면 중앙에서 ({p.x:F0}, {p.y:F0})pt 옮긴 자리입니다" +
+                $"(직전 {_dragStartOffsetPoints.x:F0}, {_dragStartOffsetPoints.y:F0}). " +
+                "재시작해도 이 자리에서 열립니다.");
+        }
 
         private float CanvasScale()
         {
@@ -268,10 +280,25 @@ namespace StickMate.Interaction
             return sf > 0f ? sf : 1f;
         }
 
-        private void ResetPanelToCenter()
+        /// <summary>
+        /// ★ 창을 열 때의 자리 — <b>옮긴 적이 있으면 그 자리, 없으면 화면 중앙</b>(2026-09-07).
+        ///
+        /// <para>옛 이름은 <c>ResetPanelToCenter()</c>였고 무조건 <see cref="Vector2.zero"/>를 넣었다.
+        /// 옮긴 적이 없는 사용자에게는 <b>지금도 그 줄이 그대로 도는 것과 결과가 같다</b> —
+        /// 저장 플래그가 false면 <c>Vector2.zero</c>가 나온다. 회귀는 그 집합에서 0이다.</para>
+        ///
+        /// <para>여기서 클램프까지 하는 이유: 저장된 자리는 <b>다른 화면 크기에서 만들어진 값</b>일 수
+        /// 있다(외장 모니터를 뽑았거나 해상도를 바꿨거나). 클램프 없이 앉히면 창이 화면 밖에서 열리고,
+        /// 창 밖 클릭이 창을 닫지 않는 이 앱에서 그건 <b>닫을 수 없는 창</b>이다.</para>
+        /// </summary>
+        private void RestorePanelPosition()
         {
             _draggingPanel = false;
-            if (_panel != null) _panel.anchoredPosition = Vector2.zero;
+            _windowDrag.Cancel();
+            if (_panel == null) return;
+
+            Vector2 target = _windowDrag.TryGetSavedCenter(out Vector2 saved) ? saved : Vector2.zero;
+            _panel.anchoredPosition = ClampPanelPosition(target, CanvasScale());
         }
 
         private static Rect RawScreenRectOf(RectTransform rt)

@@ -10,8 +10,12 @@ namespace StickMate.Platform
     /// 왜 별도 클래스인가
     /// ============================================================================
     ///  (1) <b>소비 호출부가 다섯 파일이다</b> — <c>Interaction/PopoverPanel.cs</c> ·
-    ///      <c>Interaction/CharacterInfoWindow.Layout.cs</c> · <c>Interaction/InfoGearIconWidget.cs</c> ·
+    ///      <c>Interaction/UiWindowDrag.cs</c> · <c>Interaction/InfoGearIconWidget.cs</c> ·
     ///      <c>Interaction/GearRadialMenuWidget.cs</c> · <c>Interaction/TodoPostItWidget.cs</c>.
+    ///      ★ <b>2026-09-07 이름 정정</b>: 옛 목록의 <c>CharacterInfoWindow.Layout.cs</c>가
+    ///      <c>UiWindowDrag.cs</c>가 됐다. 창 3종(정보창·설정창·집중 팝오버)이 드래그로 움직이게
+    ///      되면서 클램프 식과 이 조회가 그 파일 한 곳으로 모였다 — <b>개수는 그대로 다섯</b>이고
+    ///      설정창은 이제 그 한 곳을 <b>거쳐서</b> 소비자가 됐다(직접 호출부는 여전히 0건이다).
     ///      다섯이 각자 캐스팅하고 각자 캐시하면 "메뉴바를 안 덮는다"는 규칙이 다섯 벌이 되고,
     ///      다음 라운드에 반드시 한 벌만 고쳐진다.
     ///      ★ <b>2026-09-03 실측 정정</b>: 이 목록은 원래 <i>"넷(팝오버/정보창/설정창/톱니)"</i>이라고

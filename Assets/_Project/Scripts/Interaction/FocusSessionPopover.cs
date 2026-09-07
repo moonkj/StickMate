@@ -249,6 +249,27 @@ namespace StickMate.Interaction
 
         protected override string TitleText => "집중 모드";
 
+        // ==================== 창 이동 (2026-09-07 사용자 요청 PART1-1) ====================
+        //
+        // 사용자 원문: <i>"모든 창(집중모드 타이머, 캐릭터 정보창, 설정창)이 마우스로 끌어도 움직이지
+        // 않음 — 전부 드래그 이동 가능해야 함"</i> · <i>"헤더가 없는 집중 모드 시계는 창 전체가 핸들"</i>.
+        //
+        // ★ 기구는 <see cref="PopoverPanel"/>에 있고 <b>세 창이 같은 코드</b>를 쓴다
+        //   (<see cref="UiWindowDrag"/>). 여기서 하는 일은 «켠다 + 어느 세이브 칸을 쓴다» 두 줄뿐이다.
+        // ★ 「창 전체가 핸들」의 실체: 패널 안이면서 <b>어떤 버튼 위도 아닌</b> 자리.
+        //   이 창의 컨트롤은 시간 칩 4 + 직접 입력 6 + [시작] + [그만두기] + [✕]이고 전부
+        //   <c>Wire()</c>를 지나 <c>Button</c>이 되므로 부모가 자동으로 손잡이에서 뺀다 —
+        //   칩이 또 늘어나도 여기에 손댈 일이 없다(이 파일이 두 번 당한 «for(i&lt;3)» 사고의 반대 형태).
+        //   값 상자 <c>CustomValue</c>는 버튼이 아니라 <b>손잡이에 포함된다</b> — 그건 옳다.
+        //   그 상자는 누를 곳이 아니고(BuildCustomRow의 판단), 그래서 잡아 끌어도 잃는 조작이 없다.
+        //
+        // ★ 나머지 팝오버 2종(오늘 할일 / 행동)은 <b>이 라운드의 배정 밖</b>이라 켜지 않았다.
+        //   켜려면 이 두 줄과 세이브 칸(UiWindowId + CharacterSaveStore 3필드)만 있으면 된다.
+
+        protected override bool WindowDragEnabled => true;
+
+        protected override UiWindowId WindowDragId => UiWindowId.FocusSession;
+
         /// <summary>지금 고른 세션 길이(분) — 회귀 테스트가 "25분을 골랐는데 90초가 시작됐다"를 잡는다.
         /// <para>★ <b>회귀 계약</b>: 프리셋 모드에서 index 1은 언제나 25f다(팝오버는 프리셋 모드로 열린다).</para></summary>
         public float SelectedMinutes

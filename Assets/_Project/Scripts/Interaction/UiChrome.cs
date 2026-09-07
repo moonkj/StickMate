@@ -1858,12 +1858,24 @@ namespace StickMate.Interaction
             => Mathf.Approximately(a.r, b.r) && Mathf.Approximately(a.g, b.g)
                && Mathf.Approximately(a.b, b.b) && Mathf.Approximately(a.a, b.a);
 
+        /// <summary>
+        /// 이 앱의 <b>모든 UI 글자</b>가 태어나는 자리(말풍선만 예외 — 그쪽은
+        /// <c>DialogueBubbleRenderer</c>가 직접 만든다).
+        ///
+        /// <para>★ 2026-09-07 — 붙이는 컴포넌트를 <see cref="Text"/>에서 <see cref="CrispText"/>로
+        /// 바꿨다(사용자 신고 "전체적으로 글자가 흐리고 일부는 번져 보임"). <c>CrispText</c>는
+        /// <c>Text</c> 파생이라 <b>반환 타입도 호출부도 한 글자도 바뀌지 않는다</b> — 82개 호출부와
+        /// <c>GetComponent&lt;Text&gt;()</c>를 쓰는 테스트가 전부 그대로 동작한다.
+        /// 하는 일은 <b>메시 정점을 물리 픽셀 격자에 맞추는 것</b> 하나이고, 레이아웃 값
+        /// (<c>anchoredPosition</c>/<c>rect</c>/<c>preferredWidth</c>)은 건드리지 않는다.
+        /// 기전과 대가는 <see cref="StickMate.Platform.GlyphPixelSnapPolicy"/> 문서에 있다.</para>
+        /// </summary>
         public static Text AddText(Transform parent, string name, int fontSize, TextAnchor anchor,
             Color color, bool bold = false, bool wrap = false)
         {
-            var go = new GameObject(name, typeof(RectTransform), typeof(Text));
+            var go = new GameObject(name, typeof(RectTransform), typeof(CrispText));
             go.transform.SetParent(parent, false);
-            var text = go.GetComponent<Text>();
+            var text = go.GetComponent<CrispText>();
             text.font = Font;
             text.fontSize = fontSize;
             text.alignment = anchor;

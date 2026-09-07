@@ -1161,9 +1161,12 @@ namespace StickMate.Interaction
         /// 그래서 도형을 고칠 때마다 카드만 옛 모양으로 남았다 — 이번 라운드에 머리 4종을 다시 그리므로,
         /// 통합하지 않으면 사용자가 지적한 "카드와 실제가 다름"이 <b>오히려 더 심해진다</b>.</para>
         ///
-        /// <para><b>폴백은 남긴다.</b> 새 경로가 도형을 못 만들면(FX/PET처럼 몸 도형이 없는 카테고리가
-        /// 정상적으로 여기 해당한다) 옛 아이콘을 그대로 그린다. 즉 새 경로가 통째로 틀려도 카드가
-        /// 비지 않는다 — <see cref="AccessoryDefSO.icon"/>을 이번에 지우지 않은 이유가 이것이다.</para>
+        /// <para><b>폴백은 남긴다.</b> 새 경로가 도형을 못 만들면 옛 아이콘을 그대로 그린다. 즉 새 경로가
+        /// 통째로 틀려도 카드가 비지 않는다 — <see cref="AccessoryDefSO.icon"/>을 지우지 않은 이유가 이것이다.
+        /// <br/>★ 2026-09-07 정정 — 옛 문장은 "FX/PET처럼 몸 도형이 없는 카테고리가 <b>정상적으로</b> 여기
+        /// 해당한다"였다. 그 12종이 §14-12-5 #23 의 64u 카드 아이콘을 갖게 되어(생성 파일
+        /// <c>AccessoryShapeBuilder.FxPetCard.cs</c>) <b>지금 폴백을 정상 경로로 타는 아이템은 42종 중 0종</b>이다.
+        /// 몸 도형이 없다는 사실은 그대로다 — 갈라진 것은 카드뿐이다.</para>
         /// </summary>
         private static void BuildCardArt(RectTransform root, EquipmentSlot slot, int itemIndex,
             ItemCatalogEntry entry)

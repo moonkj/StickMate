@@ -376,10 +376,10 @@ actions=12
     status=<chord>A
     primary=(0.83922,0.85882,0.89020,1.00000) secondary=(0.83922,0.85882,0.89020,1.00000)
     icon=none
-  item id=action.chatter cat=Action slot=- idx=-1 lv=- invocable=1 cohort=0 rarity=Derived
+  item id=action.chatter cat=Action slot=- idx=-1 lv=- invocable=0 cohort=0 rarity=Derived
     name=혼잣말
-    desc=가만히 있거나 걷는 동안 가끔 혼자 중얼거린다. 단축키를 누르면 지금 당장 한마디 한다.
-    status=<chord>B
+    desc=가만히 있거나 걷는 동안 가끔 혼자 중얼거린다.
+    status=가끔 알아서
     primary=(0.83922,0.85882,0.89020,1.00000) secondary=(0.83922,0.85882,0.89020,1.00000)
     icon=none
   item id=action.graffiti cat=Action slot=- idx=-1 lv=- invocable=1 cohort=0 rarity=Derived

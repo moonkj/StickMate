@@ -55,13 +55,25 @@ namespace StickMate.Interaction
     /// <c>CardShapeContractTests.카드_조각은_슬롯_프레임_안에_든다</c>가 잠근다) <b>구조적으로 항등</b>이다.</para>
     ///
     /// ============================================================================
+    /// ★ 2026-09-07 — 마지막 12칸(이펙트·펫)이 이 경로에 들어왔다
+    /// ============================================================================
+    /// 사용자 신고 <i>"펫들도 아직 업데이트가 안되어 있는데"</i>. 42종 중 <b>FX/PET 12종만</b> 옛 폴백
+    /// (<c>CharacterInfoWindow.BuildIcon</c> + <c>AccessoryDefSO.icon</c> 40u SVG)에 남아 있었고,
+    /// 나머지 30종과 넷이 달랐다 — <b>채움 0개 · 잉크 윤곽 없음 · 하이라이트 없음 · 획 +23.6%</b>
+    /// (폴백 획 <c>1.7 × size/40</c> = 상자의 4.25% vs 인계본 2.2/64 = 3.4375%).
+    /// 그 12종의 64u 아이콘은 §14-12-3 이 이미 설계해 두었고 §14-12-5 #23 이 coder 인계 항목으로
+    /// 남긴 것이라, 이번 라운드가 그 조각표(<c>AccessoryShapeBuilder.FxPetCard.cs</c>, 생성 파일)를 굽고
+    /// 프레임(<see cref="Frame.TryGetCardFrame"/>)을 열었다.
+    /// <para>이 12종의 <b>몸(월드) 도형은 한 점도 바뀌지 않는다</b> — 카드 조각은 전부
+    /// <see cref="AccessorySurface.Card"/> 전용이다(§14-12-5 #23 「카드만 갈라진다」).</para>
+    ///
+    /// ============================================================================
     /// 폴백을 남긴다 (전환 리스크 관리)
     /// ============================================================================
     /// <see cref="TryBuild"/>가 false를 돌려주면 부르는 쪽은 <b>옛 아이콘</b>을 그린다.
-    ///  · 몸 도형이 없는 카테고리(FX/PET) — 이펙트·펫은 애초에 <see cref="AccessoryShapeBuilder"/>가
-    ///    모른다(Interaction/AppearanceShapeBuilder.cs 소관). <b>정상 경로</b>다.
+    ///  · 조각이 없는 자리 — 42종에는 지금 없다(위 라운드로 FX/PET 도 조각을 갖는다).
     ///  · 카드 프레임이 없는 자리 — 지금은 없다. 새 슬롯이 생기면 카드가 <b>비는 대신</b> 옛 아이콘이 나온다.
-    /// 그래서 이 파일이 통째로 틀려도 카드가 <b>비지는 않는다</b>.
+    /// 그래서 이 파일이 통째로 틀려도 카드가 <b>비지는 않는다</b>. 폴백 SVG 를 지우지 않는 이유가 그것이다.
     /// </summary>
     internal static class AccessoryCardIcon
     {
@@ -117,18 +129,46 @@ namespace StickMate.Interaction
                 return true;
             }
 
+            /// <summary>1 R 이 몇 아이콘 단위인가 — <b>슬롯 박스가 없는</b> 카드(HAIR · FX · PET)의 전체 상자 프레이밍.
+            /// 인계본이 §14-12-5 #22 에서 "HAIR 카드 = 1 R = 16u · 머리 중심 (32, 30)"으로 <b>직접 선언한</b> 값이고,
+            /// FX/PET(§14-12-3 「64u 상자 전체」)도 슬롯 박스가 없어 같은 처지라 그 선언을 그대로 쓴다.
+            /// <para>새 숫자를 만들지 않는다 — 지어낸 배율은 카드와 좌표 전문을 조용히 갈라놓는다.</para></summary>
+            internal const float FullBoxUnitsPerR = 16f;
+
+            /// <summary>전체 상자 프레이밍의 머리 중심(아이콘 단위, y 아래). §14-12-5 #22 선언값.</summary>
+            internal const float FullBoxHeadCenterX = 32f, FullBoxHeadCenterY = 30f;
+
             /// <summary>
             /// 카드가 <b>실제로</b> 쓰는 프레임. <see cref="TryGet"/>과 다른 이유는 하나뿐이다 —
-            /// 머리(<see cref="EquipmentSlot.Hair"/>)에는 인계본이 선언한 슬롯 박스가 <b>없다</b>.
-            /// <para>머리 6종은 카드에서 <b>머리 위에 얹히는 것</b>이라는 점에서 HEAD 와 같은 자리이므로 HEAD 박스를
-            /// 빌린다 — 새 숫자를 만들지 않는다. 봉투 맞춤이던 시절 머리 6종은 9.59~15.78 px/R 로 흩어져
-            /// <b>민머리가 포니테일보다 1.65배 크게</b> 떴다. ★ 머리 6종은 2026-09-06 라운드에 은퇴 중이고
-            /// (착용/외형탭/보관함/상점에서 제외), 여기는 그 뒤에도 카드 경로가 남을 경우의 배율만 맞춰 둔 자리다.</para>
+            /// 인계본이 슬롯 박스를 선언하지 <b>않은</b> 자리(머리 · 이펙트 · 펫)가 있다.
+            /// <list type="bullet">
+            ///   <item><b>머리</b>(<see cref="EquipmentSlot.Hair"/>)는 카드에서 <b>머리 위에 얹히는 것</b>이라는 점에서
+            ///     HEAD 와 같은 자리이므로 HEAD 박스를 빌린다 — 새 숫자를 만들지 않는다. 봉투 맞춤이던 시절 머리 6종은
+            ///     9.59~15.78 px/R 로 흩어져 <b>민머리가 포니테일보다 1.65배 크게</b> 떴다. ★ 머리 6종은 2026-09-06
+            ///     라운드에 은퇴 중이고(착용/외형탭/보관함/상점에서 제외), 여기는 그 뒤에도 카드 경로가 남을 경우의
+            ///     배율만 맞춰 둔 자리다.</item>
+            ///   <item><b>이펙트·펫</b>은 §14-12-3 이 "64u <b>상자 전체</b>를 쓰는 아이콘"으로 설계했다 — 슬롯 박스도,
+            ///     머리와의 크기 관계도 선언된 적이 없다. 그래서 인계본이 같은 처지(전체 상자)를 위해 유일하게 선언한
+            ///     프레이밍(<see cref="FullBoxUnitsPerR"/>)을 쓴다. 조각 좌표가 이미 아이콘 단위이므로 이 프레임은
+            ///     <b>좌표 전문 ↔ 화면</b>을 왕복 항등으로 잇는다(생성기가 그 왕복을 검산하고,
+            ///     <c>FxPetCardShapeTests</c>가 좌표 전문과 다시 대조한다).</item>
+            /// </list>
             /// <para><see cref="TryGet"/>은 <b>인계본이 선언한 4개</b> 그대로 둔다 — 골든의 FRAME 줄과 대조하는
-            /// <c>CardShapeContractTests</c>가 "머리에는 슬롯 박스가 없다"를 그 함수로 잠그고 있고, 그 사실은 지금도 참이다.</para>
+            /// <c>CardShapeContractTests</c>가 "머리·이펙트·펫에는 슬롯 박스가 없다"를 그 함수로 잠그고 있고,
+            /// 그 사실은 지금도 참이다. ★ <b>여기 있는 자리를 저기로 옮기지 마라</b> — 옮기는 순간 그 검사가
+            /// "인계본이 선언한 적 없는 박스"를 선언된 것으로 읽는다.</para>
             /// </summary>
             public static bool TryGetCardFrame(EquipmentSlot slot, out float unitsPerR, out float centerYInR)
-                => TryGet(slot == EquipmentSlot.Hair ? EquipmentSlot.Head : slot, out unitsPerR, out centerYInR);
+            {
+                if (slot == EquipmentSlot.Fx || slot == EquipmentSlot.Pet)
+                {
+                    unitsPerR = FullBoxUnitsPerR;
+                    // 상자 중심(32, 32)의 y 를 머리 중심 기준 R 로. y 는 아이콘에서 아래로 자란다.
+                    centerYInR = (FullBoxHeadCenterY - IconViewBox * 0.5f) / FullBoxUnitsPerR;
+                    return true;
+                }
+                return TryGet(slot == EquipmentSlot.Hair ? EquipmentSlot.Head : slot, out unitsPerR, out centerYInR);
+            }
         }
 
         /// <summary>
@@ -167,7 +207,14 @@ namespace StickMate.Interaction
         private static readonly List<AccessoryShapeBuilder.Shape> _shapes =
             new List<AccessoryShapeBuilder.Shape>(16);
 
-        private static readonly Vector2[] _points = new Vector2[128];
+        /// <summary>한 조각을 그릴 때 쓰는 점 버퍼의 칸 수. <b>이 값을 넘는 조각은 앞쪽만 그려지고</b>
+        /// 닫힌 도형은 엉뚱한 자리에서 닫힌다 — 화면에는 "원래 그런 아이콘"으로 보여 신고되지 않는다.
+        /// <para>지금 가장 점이 많은 조각은 발자국 카드의 밑창(112점, §14-12-3)이고 고리 닫기까지 113칸이다.
+        /// 그 여유를 <c>FxPetCardShapeTests.이펙트_펫_카드_조각이_카드_그리기_버퍼_안에_든다</c>가 잰다 —
+        /// 상수를 테스트에 <b>숫자로 베끼지 않으려고</b> 이름으로 연다.</para></summary>
+        internal const int CardPointBudget = 128;
+
+        private static readonly Vector2[] _points = new Vector2[CardPointBudget];
 
         /// <summary>사전 합성의 밑색 — 앞 조각의 평면화된 채움색.</summary>
         private static readonly Color[] _flat = new Color[32];
@@ -176,12 +223,14 @@ namespace StickMate.Interaction
         /// <summary>
         /// <paramref name="root"/> 아래에 이 아이템의 카드 그림을 그린다.
         /// </summary>
-        /// <param name="slot">장비 자리. FX/PET처럼 몸 도형이 없는 자리면 false를 돌려준다.</param>
+        /// <param name="slot">장비 자리. 조각이나 카드 프레임이 없는 자리면 false를 돌려준다(부르는 쪽이 폴백한다).
+        /// ★ 2026-09-07부터 FX/PET 도 <b>카드 조각을 갖는다</b> — 몸 도형은 여전히 없다.</param>
         /// <param name="size">아이콘 정사각 크기(캔버스 유닛).</param>
         /// <param name="legacyStroke">★ <b>카드는 이 값을 쓰지 않는다</b>(2026-09-06). 획은 두 계통 모두
         /// 인계본 아이콘 획(<see cref="Frame.StrokeFraction"/>) 하나다. 파라미터가 남아 있는 이유는 부르는 쪽
-        /// (<c>CharacterInfoWindow.Cards</c>)이 <b>같은 값을 옛 폴백 아이콘</b>(<c>BuildIcon</c> — FX/PET 전용)에도
-        /// 쓰기 때문이고, 그 파일은 이 라운드에 다른 작업이 점유 중이라 손대지 않았다.
+        /// (<c>CharacterInfoWindow.Cards</c>)이 <b>같은 값을 옛 폴백 아이콘</b>(<c>BuildIcon</c>)에도 쓰기 때문이다.
+        /// ★ 2026-09-07부터 그 폴백을 <b>정상 경로로 타는 아이템은 0종</b>이다(FX/PET 12종이 이 경로에 들어왔다) —
+        /// 그래도 지우지 않는 이유는 위 「폴백을 남긴다」 문단에 있다.
         /// <para>죽은 인자가 조용히 되살아나지 않도록
         /// <c>AccessoryCardIconTests.카드_획은_인계본_비율이고_부르는_쪽_값에_좌우되지_않는다</c>가
         /// 서로 다른 두 값으로 같은 두께가 나오는지 잰다.</para></param>

@@ -695,7 +695,7 @@ namespace StickMate.Tests.EditMode
                 $"{LogPrefix} G3가 빠진 몫({glanceShare:F3})을 G1이 받지 않았습니다 — 분포가 찌그러졌습니다.");
 
             Debug.Log($"{LogPrefix} 어휘 분포(균등 롤 {samples}회) — 커서 있음 " +
-                $"G1 {recrossWith:F3} / G2 {withCursor[WanderAmbientMotion.FocusRingCheck] / (float)samples:F3} / " +
+                $"G1 {recrossWith:F3} / G2 {withCursor[WanderAmbientMotion.FocusNod] / (float)samples:F3} / " +
                 $"G3 {glanceShare:F3} / G4 {withCursor[WanderAmbientMotion.FocusStanceSwap] / (float)samples:F3}. " +
                 $"커서 없음 G1 {recrossWithout:F3}(= G1 + G3).");
         }

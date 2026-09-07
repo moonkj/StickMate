@@ -58,8 +58,10 @@ namespace StickMate.Platform.MacOS
     ///
     /// <para><b>이 클래스를 지우지 않는 이유</b>: 상단 계약의 소비 호출부가 이미 다섯 곳이고
     /// (<c>Interaction/InfoGearIconWidget.cs</c> · <c>Interaction/GearRadialMenuWidget.cs</c> ·
-    /// <c>Interaction/CharacterInfoWindow.Layout.cs</c> · <c>Interaction/TodoPostItWidget.cs</c> ·
-    /// <c>Interaction/PopoverPanel.cs</c>) 전부 <see cref="ReservedTopBarProbe"/>를 지난다.
+    /// <c>Interaction/UiWindowDrag.cs</c> · <c>Interaction/TodoPostItWidget.cs</c> ·
+    /// <c>Interaction/PopoverPanel.cs</c> — ★ 2026-09-07 이름 정정: 옛 목록의
+    /// <c>CharacterInfoWindow.Layout.cs</c>가 창 3종 드래그 라운드에서 <c>UiWindowDrag.cs</c>로 모였다.
+    /// 개수는 그대로 다섯이다) 전부 <see cref="ReservedTopBarProbe"/>를 지난다.
     /// 계약을 갈아엎는 것과 산술을 한 벌로 만드는 것은 다른 일이고, 지금 필요한 것은 뒤쪽이다.</para>
     /// </summary>
     public sealed class MacReservedTopBarService : IReservedTopBarService

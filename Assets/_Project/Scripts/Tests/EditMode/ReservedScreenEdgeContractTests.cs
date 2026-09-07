@@ -976,14 +976,27 @@ namespace StickMate.Tests.EditMode
         public void 팝오버와_정보창의_가로축은_아직_예약띠를_모른다_미해결()
         {
             string popover = ReadSource(Path.Combine(InteractionRoot, "PopoverPanel.cs"));
-            string infoWin = ReadSource(Path.Combine(InteractionRoot, "CharacterInfoWindow.Layout.cs"));
 
-            // ★ 존재 대조 — 두 파일 다 <b>세로축</b>은 이미 정책을 부른다. 이게 참이라야
+            // ★★ 2026-09-07 — <b>이 니들이 한 번 썩을 뻔했다. 그래서 읽는 대상을 넓혔다.</b>
+            //   창 3종(정보창·설정창·집중 팝오버)이 전부 드래그로 움직이게 되면서
+            //   <c>ClampPanelPosition</c>의 <b>식 자체</b>가 <c>Interaction/UiWindowDrag.cs</c>
+            //   (<c>UiWindowDrag.ClampCenterPoints</c>)로 옮겨 갔다 — 세 창이 <b>같은 코드</b>로
+            //   클램프하기 위해서다. <c>CharacterInfoWindow.Layout.cs</c>만 읽던 옛 코드는 그 순간
+            //   «세로축 정책조차 안 부른다»고 거짓 빨강을 냈을 것이고, 더 나쁘게는 누군가
+            //   <b>니들을 지워서</b> 아래 가로축 판정까지 함께 눈멀게 했을 것이다.
+            //   ⇒ 「정보창의 클램프 코드」= 호출부(Layout) + 그 식이 사는 곳(UiWindowDrag) <b>둘 다</b>.
+            //   ⇒ 나중에 <c>UiWindowDrag</c>가 가로축 정책을 부르게 되면 그것도 «갭이 닫혔다»로
+            //     정확히 잡힌다(아래 <c>infoFixed</c>가 같은 텍스트를 본다).
+            string infoWin = ReadSource(Path.Combine(InteractionRoot, "CharacterInfoWindow.Layout.cs"))
+                + "\n" + ReadSource(Path.Combine(InteractionRoot, "UiWindowDrag.cs"));
+
+            // ★ 존재 대조 — 두 쪽 다 <b>세로축</b>은 이미 정책을 부른다. 이게 참이라야
             //   아래 "가로축 부재"가 '스캐너가 죽었다'가 아니라 '정말 없다'가 된다.
             StringAssert.Contains(nameof(SurfaceSafeAreaPolicy.ClampCenterY), popover,
                 $"{LogPrefix} PopoverPanel이 세로축 정책조차 안 부릅니다 — 니들이 썩었습니다.");
             StringAssert.Contains(nameof(SurfaceSafeAreaPolicy.ClampCenterOriginOffsetY), infoWin,
-                $"{LogPrefix} CharacterInfoWindow.Layout이 세로축 정책조차 안 부릅니다 — 니들이 썩었습니다.");
+                $"{LogPrefix} 정보창 클램프(CharacterInfoWindow.Layout + UiWindowDrag)가 세로축 정책조차 " +
+                "안 부릅니다 — 니들이 썩었거나 식이 또 다른 파일로 옮겨 갔습니다.");
 
             bool popoverFixed = popover.IndexOf(nameof(SurfaceSafeAreaPolicy.ClampCenterX),
                 StringComparison.Ordinal) >= 0;
@@ -1000,7 +1013,12 @@ namespace StickMate.Tests.EditMode
             Assert.Ignore(
                 $"{LogPrefix} 【미해결 · 가로축 잔여 2곳】 2026-09-03 (dev-platform)\n" +
                 "  · 이 라운드에 착지: 톱니(InfoGearIconWidget) · 부채꼴(GearRadialMenuWidget) 가로축.\n" +
-                "  · 미착지 ①  CharacterInfoWindow.Layout.ClampPanelPosition — 실제 침해가 있다.\n" +
+                "  ★ 2026-09-07 정정 — 정보창의 클램프 <b>식</b>은 Interaction/UiWindowDrag.cs\n" +
+                "    (UiWindowDrag.ClampCenterPoints)로 옮겨 갔다. 창 3종이 같은 코드로 클램프한다.\n" +
+                "    갭의 내용은 그대로다(가로가 여전히 Mathf.Clamp(±maxX)이고 띠를 모른다).\n" +
+                "    다만 이제 그 갭은 <b>정보창 하나가 아니라 설정창·집중 팝오버까지 셋</b>이다.\n" +
+                "  · 미착지 ①  CharacterInfoWindow.Layout.ClampPanelPosition → UiWindowDrag.ClampCenterPoints —\n" +
+                "      실제 침해가 있다.\n" +
                 "      계산(1512폭 / 창폭 1042 / ScreenMargin 16): maxX = (1512−1042)/2 − 16 = 219 →\n" +
                 "      오른쪽 끝까지 끌면 창 우변이 화면 오른쪽에서 16pt → 우예약 48이면 32pt, 62면 46pt 침해.\n" +
                 "      다만 톱니와 달리 <b>버튼이 죽는 결함이 아니다</b>(창은 1010pt가 남고 드래그로 되돌릴 수 있다).\n" +

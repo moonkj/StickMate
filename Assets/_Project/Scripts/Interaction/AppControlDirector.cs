@@ -56,6 +56,9 @@ namespace StickMate.Interaction
     /// <b>(가) 사용자 행동 명령 7개</b> → <see cref="ActionCommandPopover"/>(부채꼴 ④) /
     /// <b>(나) 설정 3개</b> → 정보창·설정창 / <b>(다) 개발 전용 5개 + 가출 발동</b> →
     /// <see cref="StickMateDevTools"/> 게이트 뒤 단축키만 / <b>(라) 종료</b> → 아래.
+    /// <para>★ 「7개」는 <b>2026-08-31 분류 당시의 숫자</b>이고 그대로 둔다(그때의 판단 근거라서).
+    /// 지금 그 창에 남은 타일은 <b>4개</b>다 — 격파 놀이(2026-09-02)와 말 걸기(2026-09-07)가
+    /// 사용자 지시로 폐지됐고, 로데오 커서는 설정창으로 갔다.</para>
     ///
     /// ============================================================================
     /// 종료 경로는 <b>3중</b>이다 (36-10 / 53-6) — 단축키 하나로는 부족하다
@@ -105,7 +108,9 @@ namespace StickMate.Interaction
         // 전역 단축키 엣지 판정 — 첫 폴링은 기록만 하고 넘어가, 앱 시작 순간 이미 눌려 있던 키를
         // 명령으로 오인하지 않는다(StickmanClickHitbox의 _globalPressedInitialized와 동일한 관례).
         private bool _hotkeyInitialized;
-        private bool _prevQ, _prevC, _prevD, _prevR, _prevB, _prevG;
+        // ★ 2026-09-07 — <c>_prevB</c>가 여기서 빠졌다(말 걸기 폐지, 사용자 지시). 아래
+        //   「말 걸기 폐지」 절이 그 전말이다. B를 다시 쓰려면 그 절을 먼저 읽어라.
+        private bool _prevQ, _prevC, _prevD, _prevR, _prevG;
         private bool _prevT, _prevX, _prevH;
         private bool _prevS, _prevN, _prevJ, _prevF;
         private bool _prevA;
@@ -139,7 +144,8 @@ namespace StickMate.Interaction
             InkColor,
             Rodeo,
             Diagnostics,        // (다)
-            SayNow,
+            // ★ 2026-09-07 — 여기 있던 <c>SayNow</c>를 지웠다(말 걸기 폐지, 사용자 지시).
+            //   아래 「말 걸기 폐지」 절 참고. 값에 의존하는 코드가 없으므로 번호는 자유롭다.
             Graffiti,
             WindowTheft,
             WindowCrash,
@@ -203,8 +209,11 @@ namespace StickMate.Interaction
                 "톱니 아이콘은 **평소에는 뜨지 않고**, 캐릭터가 화면에서 사라진 동안(숨기기 / 가출)에만 " +
                 "되돌아올 문으로 나타납니다. ";
 
+            // ★ 2026-09-07 — 여기 있던 **B(말 걸기)**를 지웠다(사용자 지시로 기능 폐지).
+            //   배너가 <b>존재하지 않는 조합을 광고하지 않게</b> 하는 것이 이 함수의 존재 이유다
+            //   (바로 위 문단: "릴리스 로그가 존재하지 않는 기능을 광고하지 않게 한다").
             string userKeys = "사용자 단축키: " + ShortcutLabel.Chord("C") + "(잉크색 전환) / R(로데오 커서 on-off) / " +
-                "**B(말 걸기)** / **G(그라피티)** / **T(창 도둑)** / " +
+                "**G(그라피티)** / **T(창 도둑)** / " +
                 "**X(창 부수기)** / **A(활쏘기)** / **N(가출 중이면 돌아오라고 부르기)** / " +
                 "**I(캐릭터 정보/장비 창)** / **P(설정창)** / " +
                 // ★ 2026-09-02 — K를 다시 목록에 올린다. 격파 놀이 삭제 라운드에 바인딩만 지워지면서
@@ -279,7 +288,10 @@ namespace StickMate.Interaction
             bool q = chord && IsKeyDown(GlobalKey.Q);
             bool c = chord && IsKeyDown(GlobalKey.C);
             bool r = chord && IsKeyDown(GlobalKey.R);
-            bool b = chord && IsKeyDown(GlobalKey.B);
+            // ★ 2026-09-07 — <c>GlobalKey.B</c> 조회 줄을 지웠다(말 걸기 폐지, 사용자 지시).
+            //   <b>바인딩만 지우고 표기를 남기지 않았다</b>: 배너 · ItemCatalog 카드 ·
+            //   ShortcutLabel의 「출하 중」 표시를 같은 라운드에 함께 걷었다. 2026-09-02 격파 놀이
+            //   삭제가 정확히 그 반대(바인딩만 제거)로 처리되어 약 9시간짜리 거짓 주석을 남겼다.
             bool g = chord && IsKeyDown(GlobalKey.G);
             bool t = chord && IsKeyDown(GlobalKey.T);
             bool x = chord && IsKeyDown(GlobalKey.X);
@@ -309,7 +321,7 @@ namespace StickMate.Interaction
             if (!_hotkeyInitialized)
             {
                 _hotkeyInitialized = true;
-                _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevG = g;
+                _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevG = g;
                 _prevT = t; _prevX = x; _prevH = h;
                 _prevS = sKey; _prevN = n; _prevJ = j; _prevF = f;
                 _prevA = aKey;
@@ -323,7 +335,6 @@ namespace StickMate.Interaction
             bool cRise = c && !_prevC;
             bool dRise = d && !_prevD;
             bool rRise = r && !_prevR;
-            bool bRise = b && !_prevB;
             bool gRise = g && !_prevG;
             bool tRise = t && !_prevT;
             bool xRise = x && !_prevX;
@@ -336,7 +347,7 @@ namespace StickMate.Interaction
             bool iRise = iKey && !_prevI;
             bool pRise = pKey && !_prevP;
             bool kRise = kKey && !_prevK;
-            _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevB = b; _prevG = g;
+            _prevQ = q; _prevC = c; _prevD = d; _prevR = r; _prevG = g;
             _prevT = t; _prevX = x; _prevH = h;
             _prevS = sKey; _prevN = n; _prevJ = j; _prevF = f;
             _prevA = aKey;
@@ -348,7 +359,6 @@ namespace StickMate.Interaction
             else if (cRise) Invoke(ControlAction.InkColor, HotkeySource("C"));
             else if (rRise) Invoke(ControlAction.Rodeo, HotkeySource("R"));
             else if (dRise) Invoke(ControlAction.Diagnostics, HotkeySource("D"));
-            else if (bRise) Invoke(ControlAction.SayNow, HotkeySource("B"));
             else if (gRise) Invoke(ControlAction.Graffiti, HotkeySource("G"));
             else if (tRise) Invoke(ControlAction.WindowTheft, HotkeySource("T"));
             else if (xRise) Invoke(ControlAction.WindowCrash, HotkeySource("X"));
@@ -442,10 +452,6 @@ namespace StickMate.Interaction
                     if (_config == null) break;
                     _config.verboseDiagnosticsLogging = !_config.verboseDiagnosticsLogging;
                     Debug.Log($"[앱제어] 진단 로그 {(_config.verboseDiagnosticsLogging ? "켬(촘촘)" : "끔(60초 심장박동만)")}({source}).");
-                    break;
-
-                case ControlAction.SayNow:
-                    ForceSayNow(source);
                     break;
 
                 case ControlAction.Graffiti:
@@ -587,60 +593,29 @@ namespace StickMate.Interaction
                     : "캐릭터를 다시 보이게 했습니다."));
         }
 
-        // ==================== 말 걸기 (행동 명령창의 7번째 명령) ====================
-
-        /// <summary>
-        /// ★ 지금 말을 걸 수 있는가 — 행동 명령창의 회색 처리와 <see cref="ForceSayNow"/>가 함께 쓰는
-        /// 단 하나의 판정(docs/UX_FLOW.md 36-7).
-        ///
-        /// 다른 6개와 달리 <see cref="SpectacleEventLock"/>을 보지 않는다: 이 명령은 락을 잡지 않고
-        /// 상태 전이도 <b>같은 상태로의 재진입</b>뿐이기 때문이다. 대신 진입 조건(Idle/Walk)은 같다.
-        /// </summary>
-        public CommandAvailability GetSayNowAvailability()
-        {
-            StickmanBlackboard blackboard = _agent != null ? _agent.Blackboard : null;
-            if (blackboard == null || blackboard.Machine == null) return CommandAvailability.Missing;
-
-            // ★★★ 2026-09-03 — 캐릭터가 안 보이면 말풍선의 주인이 없다(원칙 1). 다른 6개와 같은 게이트.
-            if (HiddenCharacterCommandGate.BlocksNow(_agent)) return HiddenCharacterCommandGate.WhileHidden;
-
-            StickmanStateId current = blackboard.Machine.CurrentStateId;
-            if (current != StickmanStateId.Idle && current != StickmanStateId.Walk)
-                return CommandAvailability.Blocked(StickMateDisplayNames.BusyText(current));
-
-            return CommandAvailability.Ready;
-        }
-
-        /// <summary>
-        /// "지금 즉시 한마디 하게 한다"(Ctrl+Opt+Cmd+B / 행동 명령창 [말 걸기]).
-        ///
-        /// **원칙 1을 우회하지 않는다**: 대사 문자열을 직접 만들어 이벤트로 쏘는 게 아니라,
-        /// 블랙보드에 강제 발화 펄스를 세운 뒤 <b>실제 상태 전이</b>(지금 상태로의 재진입)를 일으킨다.
-        /// 대사는 여전히 그 전이가 확정된 뒤 Idle/WalkState.Enter() 안에서만 파생된다 —
-        /// "혼잣말을 한다"는 행동 자체가 이 전이로 확정된 사실이 된다. 36-1이 이 항목을 (가)로 분류하며
-        /// "원칙 1을 우회하지 않는 유일한 방식"이라고 적은 근거가 이것이다.
-        ///
-        /// Idle/Walk가 아닐 때는 아무것도 하지 않는다. 진행 중인 행동을 대사를 보여주자고 중단시키는
-        /// 것이야말로 5절이 막으려는 "텍스트가 행동을 끌고 가는" 구조다.
-        /// </summary>
-        /// <returns>실제로 발화 전이를 일으켰는가.</returns>
-        public bool ForceSayNow(string source)
-        {
-            CommandAvailability availability = GetSayNowAvailability();
-            if (!availability.IsReady)
-            {
-                Debug.Log($"[앱제어] 말 걸기({source}) 건너뜀 — {availability.Reason}" +
-                    "(진행 중인 행동을 대사 때문에 중단시키지 않는다 — UX_FLOW.md 5절).");
-                return false;
-            }
-
-            StickmanBlackboard blackboard = _agent.Blackboard;
-            StickmanStateId current = blackboard.Machine.CurrentStateId;
-            blackboard.ForcedChatterSignaled = true;      // 확률/쿨다운을 건너뛰는 1프레임 펄스.
-            blackboard.Machine.ChangeState(current);      // 같은 상태로 재진입 = Enter()가 다시 확정 실행된다.
-            Debug.Log($"[앱제어] 말 걸기({source}) — {current} 재진입으로 대사를 파생시켰습니다.");
-            return true;
-        }
+        // ============================================================================
+        // ★★ 말 걸기 폐지 (2026-09-07 사용자 지시) — 되살리지 마라
+        // ============================================================================
+        //
+        // 사용자 지시: <b>부채꼴 ④[행동]의 [말 걸기] 항목을 삭제하고, 전역 단축키 B도 함께 완전히
+        // 해제</b>. 이 자리에 있던 두 함수를 지웠다:
+        //   · <c>GetSayNowAvailability()</c> — 회색 처리와 실행이 함께 쓰던 단 하나의 판정(36-7)
+        //   · <c>ForceSayNow(string)</c>     — 블랙보드 펄스 + 같은 상태 재진입으로 대사를 파생
+        // 함께 사라진 것: <c>ControlAction.SayNow</c> · <c>GlobalKey.B</c> 조회 줄 · <c>_prevB</c> ·
+        // 부팅 배너의 «B(말 걸기)» · <c>ActionCommandPopover.Command.SayNow</c> 타일 ·
+        // <c>ItemCatalog</c> 「혼잣말」 카드의 단축키 표기.
+        //
+        // ★ <b>「혼잣말」 기능 자체는 살아 있다</b> — 헷갈리지 마라. 사라진 것은 <b>강제 발화 경로</b>
+        //   하나뿐이고, 유휴/보행 중 확률 발화(<c>Dialogue/AmbientChatter</c>, 출하 기본값
+        //   idle 0.28 / walk 0.14)는 그대로다. 그래서 보관함 카드도 지우지 않고 상태 슬롯만
+        //   「가끔 알아서」로 내렸다(카드를 지웠다면 <b>있는 기능을 없다고</b> 말하게 된다).
+        //
+        // ★ <b>남은 배선 1건 — 리더에게 보고했다.</b> <c>StickmanBlackboard.ForcedChatterSignaled</c>와
+        //   그것을 소비하는 <c>AmbientChatter.TryRollChatter</c>의 <c>forced</c> 분기는 <b>그대로 뒀다</b>.
+        //   이 파일이 유일한 생산자였으므로 지금은 <b>프로덕션 생산자가 0</b>이다. 여기서 함께 걷지
+        //   않은 이유는 그 두 파일이 design-narrative 라운드의 작업 대상이기 때문이다(별도 배정 대상).
+        //
+        // ★ <b>되살리려면 사용자에게 다시 물어라.</b> 사용자가 닫은 문이다.
 
         // ==================== (가) 사용자 명령 진입점 ====================
 

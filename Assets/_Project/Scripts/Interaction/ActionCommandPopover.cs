@@ -75,15 +75,17 @@ namespace StickMate.Interaction
         private const float Width = 480f;
 
         /// <summary>
-        /// ★ 2026-09-02 <b>560 → 508</b> (격파 놀이 타일 삭제). 세로는 <b>내용에 정확히 맞춘 값</b>이지
+        /// ★ 2026-09-07 <b>508 → 456</b>(말 걸기 타일 삭제, 사용자 지시). 그 앞은 2026-09-02
+        /// <b>560 → 508</b>(격파 놀이 타일 삭제). 세로는 <b>내용에 정확히 맞춘 값</b>이지
         /// 임의의 라운드 수가 아니다 — 검산:
         /// <code>
-        /// 콘텐츠 높이 = Height - (Space3 + 22 + Space2) - Space4 = 508 - 42 - 16 = 450
-        /// 푸터 바닥   = FooterY - QuitButtonHeight = -422 - 28 = -450   (2026-09-03 종료 칩 삭제 후에도 동일)
+        /// 콘텐츠 높이 = Height - (Space3 + 22 + Space2) - Space4 = 456 - 42 - 16 = 398
+        /// 푸터 바닥   = FooterY - QuitButtonHeight = -370 - 28 = -398
         /// </code>
-        /// 둘이 같다. 종전 560도 같은 방식의 <b>정확히 맞는 값</b>이었고(502 = 502), 타일을 하나 빼면서
-        /// 그대로 두면 푸터 아래에 <b>정확히 한 행(52pt)의 빈 띠</b>가 생긴다. 그 띠는 아무것도 말하지
-        /// 않으면서 창을 아래로 무겁게 만든다("빈 상태를 굳이 보여주지 않는다", 17절).
+        /// 둘이 같다. 종전 508도(450 = 450), 그 앞의 560도(502 = 502) 같은 방식의 <b>정확히 맞는
+        /// 값</b>이었고, 타일을 하나 빼면서 그대로 두면 푸터 아래에 <b>정확히 한 행(52pt)의 빈 띠</b>가
+        /// 생긴다. 그 띠는 아무것도 말하지 않으면서 창을 아래로 무겁게 만든다
+        /// ("빈 상태를 굳이 보여주지 않는다", 17절).
         ///
         /// <para><b>깨진 것</b>: 예전 주석은 "세로는 설정창(720×560)과 같은 560 — 같은 앱 가족으로
         /// 보이게 한다"고 적고 있었다. 이제 그 정렬은 성립하지 않는다. 둘 중 하나를 골라야 했고
@@ -94,7 +96,7 @@ namespace StickMate.Interaction
         /// <para>★ 이 판단은 <b>UI 표면</b> 영역이라 리더를 거쳐 ux-designer 확인을 받아야 한다
         /// (coder 단독 결정이 아니다 — 완료 보고에 명시했다).</para>
         /// </summary>
-        private const float Height = 508f;
+        private const float Height = 456f;
         private const float ContentWidth = Width - UiChrome.Space4 * 2f;   // 448.
 
         private const float StatusRowHeight = 26f;
@@ -118,13 +120,14 @@ namespace StickMate.Interaction
         // ---- 세로 배치(콘텐츠 상단 기준, 아래로 음수) ----
         private const float StatusY = 0f;
         private const float Group1Y = -(StatusRowHeight + 8f);                       // -34.
-        /// <summary>그룹1은 <b>3행</b>(말 걸기/활쏘기/그라피티). 2026-09-02까지는 4행이었다(격파 놀이).</summary>
-        private const float Group1Height = CardPadding * 2f + GroupTitleHeight + 4f + RowHeight * 3f;  // 198.
-        private const float Group2Y = Group1Y - Group1Height - 12f;                  // -244.
+        /// <summary>그룹1은 <b>2행</b>(활쏘기/그라피티). 2026-09-02까지는 4행(격파 놀이),
+        /// 2026-09-07까지는 3행이었다(말 걸기 — 사용자 지시로 삭제).</summary>
+        private const float Group1Height = CardPadding * 2f + GroupTitleHeight + 4f + RowHeight * 2f;  // 146.
+        private const float Group2Y = Group1Y - Group1Height - 12f;                  // -192.
         private const float Group2CaptionHeight = 16f;
         private const float Group2Height = CardPadding * 2f + GroupTitleHeight + 4f + RowHeight * 2f
                                            + 4f + Group2CaptionHeight;              // 166.
-        private const float FooterY = Group2Y - Group2Height - 12f;                  // -422.
+        private const float FooterY = Group2Y - Group2Height - 12f;                  // -370.
 
         /// <summary>
         /// 2단 확인이 열려 있는 시간. <see cref="TodoBoardPopover"/>의 삭제 확인과 <b>같은 3초, 같은
@@ -160,10 +163,19 @@ namespace StickMate.Interaction
         /// 명령이 <b>접수됐다</b>는 순간 신호 — 눌린 타일 바닥이 액센트로 한 번 밝아졌다 꺼진다.
         ///
         /// <para>★ 왜 필요한가: 종전에는 <b>창이 닫히는 것</b>이 곧 "눌렸다"는 신호였다. 창을 유지하기로
-        /// 한 이상 그 신호가 통째로 사라진다. 대부분의 명령은 실행 즉시 상호배제 락이 잡혀 다섯 타일이
-        /// 전부 "지금 ○○ 중이에요"로 바뀌므로 화면이 크게 변하지만, <b>[말 걸기]는 그렇지 않다</b> —
-        /// <c>AppControlDirector.ForceSayNow</c>가 <b>같은 상태로 재진입</b>할 뿐이라 가용성이 Ready
-        /// 그대로고, 창에는 아무 변화도 남지 않는다. 그 한 칸 때문에 "눌렀는데 반응이 없다"가 생긴다.</para>
+        /// 한 이상 그 신호가 통째로 사라진다.
+        ///
+        /// <b>★ 2026-09-07 — 이 문단의 근거 절반이 사라졌다. 정직하게 적는다.</b> 원문은
+        /// <i>"대부분의 명령은 실행 즉시 락이 잡혀 화면이 크게 변하지만 <b>[말 걸기]는 그렇지 않다</b>
+        /// (같은 상태로 재진입할 뿐이라 가용성이 Ready 그대로다) — 그 한 칸 때문에 «눌렀는데 반응이
+        /// 없다»가 생긴다"</i>였다. 그 한 칸이 사용자 지시로 삭제되어 지금은 <b>네 칸 전부</b>가
+        /// 실행 즉시 상호배제 락을 잡는다.
+        ///
+        /// <b>그래도 이 플래시는 남긴다</b> — 락이 잡히면 네 칸이 <b>동시에</b> "지금 ○○ 중이에요"로
+        /// 바뀌므로 화면은 «무언가 시작됐다»만 말하고 <b>«내가 어느 칸을 눌렀는가»는 말하지 않는다</b>.
+        /// 그리고 그 갱신은 상태 전이 이벤트를 타므로 <b>클릭과 같은 프레임이라는 보장이 없다</b>
+        /// (전이가 안 나는 실행 경로가 생기면 최대 0.25초 폴링까지 밀린다). 지우려면 그 두 가지를
+        /// 먼저 실측으로 닫아라.</para>
         ///
         /// <para>★ 이 플래시는 <b>결과를 말하지 않는다</b> — "접수했다"만 말한다. 결과(지금 무엇을 하는
         /// 중인가)는 여전히 상태에서 파생된 타일 문구와 헤더 캡션이 말한다(원칙 1: 텍스트는 확정된
@@ -174,32 +186,40 @@ namespace StickMate.Interaction
 
         // ==================== 명령 정의 ====================
 
-        /// <summary>값이 곧 화면상의 순서다(위에서 아래).</summary>
+        /// <summary>
+        /// 값이 곧 화면상의 순서다(위에서 아래).
+        ///
+        /// <para>★★ <b>2026-09-07 — <c>SayNow</c>(말 걸기)를 지웠다. 되살리지 마라.</b>
+        /// 사용자 지시로 <b>부채꼴 ④[행동]의 [말 걸기] 항목과 전역 단축키 B를 함께</b> 폐지했다.
+        /// 「행동 명령창의 7번째 명령」이라 부르던 그 칸이고, 실행부였던
+        /// <c>AppControlDirector.ForceSayNow</c>/<c>GetSayNowAvailability</c>도 같은 라운드에 사라졌다.
+        /// 여기에 값을 다시 넣으면 <see cref="GetAvailability"/>·<see cref="Execute"/>·
+        /// <see cref="BuildContent"/>가 <b>세 곳 모두</b> 컴파일 에러를 내며 그 사실을 알린다 —
+        /// 그때는 되살리는 것이 아니라 <b>사용자에게 다시 물어야 한다</b>.</para>
+        /// </summary>
         public enum Command
         {
-            SayNow = 0,
-            Archery = 1,
-            Graffiti = 2,
-            WindowTheft = 3,
-            WindowCrash = 4,
+            Archery = 0,
+            Graffiti = 1,
+            WindowTheft = 2,
+            WindowCrash = 3,
         }
 
         /// <summary>★ 이 값은 <see cref="Command"/>에서 <b>파생</b>된다 — 손으로 적으면 enum과
         /// 어긋나는 순간 <c>_tiles</c> 배열이 짧아져 타일 하나가 조용히 사라진다(36-7 "조용한 실패
-        /// 금지"). 2026-09-02 격파 놀이 삭제로 6 → 5가 됐고, 그때 이 값을 상수로 두는 것이 정확히
-        /// 그 사고의 재료였다.</summary>
+        /// 금지"). 2026-09-02 격파 놀이 삭제로 6 → 5, 2026-09-07 말 걸기 삭제로 5 → 4가 됐고,
+        /// 그때마다 이 값을 상수로 두는 것이 정확히 그 사고의 재료였다.</summary>
         // System.Enum을 정규화해 쓴다 — 이 파일은 UnityEngine.Object를 이름으로 부르므로
         // `using System;`을 넣으면 System.Object와 CS0104(모호한 참조)로 충돌한다.
         public static readonly int CommandCount = System.Enum.GetValues(typeof(Command)).Length;
 
         private static readonly string[] CommandNames =
         {
-            "말 걸기", "활쏘기", "그라피티", "창 도둑", "창 부수기",
+            "활쏘기", "그라피티", "창 도둑", "창 부수기",
         };
 
         private static readonly string[] CommandDescriptions =
         {
-            "지금 상태 그대로 한마디 합니다",
             "과녁을 세우고 세 발 쏩니다",
             "빈 자리에 낙서했다 지웁니다",
             "작은 창을 미는 시늉을 합니다",
@@ -243,7 +263,8 @@ namespace StickMate.Interaction
             UiChrome.Flatten(UiChrome.AccentSurface, UiChrome.CardSurface);
         private static readonly Color AcceptFlashEnd = UiChrome.CardSurface;
 
-        private AppControlDirector _appControl;
+        // ★ 2026-09-07 — 여기 있던 <c>_appControl</c> 참조를 지웠다. 이 창이
+        //   AppControlDirector를 부를 이유는 [말 걸기] 하나뿐이었고, 그 칸이 사용자 지시로 폐지됐다.
         private ArcheryDirector _archery;
         private GraffitiDirector _graffiti;
         private WindowTheftDirector _theft;
@@ -326,11 +347,6 @@ namespace StickMate.Interaction
 
         private void ResolveDirectors()
         {
-            if (_appControl == null)
-            {
-                _appControl = GetComponent<AppControlDirector>();
-                if (_appControl == null) _appControl = Object.FindFirstObjectByType<AppControlDirector>();
-            }
             if (_archery == null) _archery = Object.FindFirstObjectByType<ArcheryDirector>();
             if (_graffiti == null) _graffiti = Object.FindFirstObjectByType<GraffitiDirector>();
             if (_theft == null) _theft = Object.FindFirstObjectByType<WindowTheftDirector>();
@@ -345,9 +361,8 @@ namespace StickMate.Interaction
             BuildHeaderStatus(content);
 
             RectTransform group1 = BuildGroupCard(content, "Group1", "혼자 노는 것", Group1Y, Group1Height);
-            _tiles[(int)Command.SayNow] = BuildTile(group1, Command.SayNow, 0);
-            _tiles[(int)Command.Archery] = BuildTile(group1, Command.Archery, 1);
-            _tiles[(int)Command.Graffiti] = BuildTile(group1, Command.Graffiti, 2);
+            _tiles[(int)Command.Archery] = BuildTile(group1, Command.Archery, 0);
+            _tiles[(int)Command.Graffiti] = BuildTile(group1, Command.Graffiti, 1);
 
             RectTransform group2 = BuildGroupCard(content, "Group2", "남의 창으로 노는 것", Group2Y, Group2Height);
             _tiles[(int)Command.WindowTheft] = BuildTile(group2, Command.WindowTheft, 0);
@@ -477,8 +492,6 @@ namespace StickMate.Interaction
             ResolveDirectors();
             switch (command)
             {
-                case Command.SayNow:
-                    return _appControl != null ? _appControl.GetSayNowAvailability() : CommandAvailability.Missing;
                 case Command.Archery:
                     return _archery != null ? _archery.GetAvailability() : CommandAvailability.Missing;
                 case Command.Graffiti:
@@ -496,7 +509,6 @@ namespace StickMate.Interaction
             ResolveDirectors();
             switch (command)
             {
-                case Command.SayNow: return _appControl != null && _appControl.ForceSayNow(source);
                 case Command.Archery: return _archery != null && _archery.ForceTriggerNow(source);
                 case Command.Graffiti: return _graffiti != null && _graffiti.ForceTriggerNow(source);
                 case Command.WindowTheft: return _theft != null && _theft.ForceTriggerNow(source);
@@ -565,7 +577,7 @@ namespace StickMate.Interaction
 
             if (availability.IsReady && Execute(command, $"행동 명령창 [{CommandNames[i]}]"))
             {
-                // ★ 실행이 상태 전이를 일으켰다면 StateTransitioned가 이미 RefreshContent를 돌려 다섯 타일을
+                // ★ 실행이 상태 전이를 일으켰다면 StateTransitioned가 이미 RefreshContent를 돌려 네 타일을
                 //   "지금 ○○ 중이에요"로 바꿔 놓았다. 접수 플래시는 그 위에 "이 칸을 눌렀다"만 얹는다.
                 _tiles[i].AcceptTimer = 0f;
                 Debug.Log($"[행동창] [{CommandNames[i]}] 실행 — 창은 닫지 않습니다" +
@@ -728,7 +740,7 @@ namespace StickMate.Interaction
         private void SetStatusCaption(bool runaway, int readyCount)
         {
             // ★★★ 2026-09-03 — <b>«다른 일 하는 중»이 거짓이 되는 경우가 새로 생겼다.</b>
-            //   사용자가 캐릭터만 숨겨 두면 5칸이 전부 불가가 되어 readyCount == 0이 되는데,
+            //   사용자가 캐릭터만 숨겨 두면 명령 칸이 전부 불가가 되어 readyCount == 0이 되는데,
             //   그때 캐릭터는 «다른 일»을 하는 게 아니라 <b>숨어 있다</b>. 헤더가 실제 값에서만
             //   파생한다는 이 함수의 계약(36-7)이 그 순간 깨진다.
             //   ★ 문구를 여기서 새로 짓지 않는다 — 타일 5칸이 이미 쓰고 있는
@@ -787,33 +799,22 @@ namespace StickMate.Interaction
             }
         }
 
-        // ==================== 명령 아이콘 5종 (28×28, 두께 1.8, 프로시저럴) ====================
+        // ==================== 명령 아이콘 4종 (28×28, 두께 1.8, 프로시저럴) ====================
 
         /// <summary>부채꼴 심볼과 <b>같은 프로시저럴 규약</b>이다: 상자 중심 원점, +y 위, 스트로크만으로
         /// 그린다. 비트맵을 쓰지 않는 이유는 32-4와 같다 — 임의의 배율/잉크색에서 선 굵기를 우리가
         /// 통제할 수 있어야 하고, 에셋 파일이 늘면 Addressables 매니페스트와 이중 관리가 된다.</summary>
+        /// <remarks>★ 2026-09-07 — <c>Command.SayNow => BuildSpeechIcon(box)</c> 한 줄과
+        /// <c>BuildSpeechIcon</c>(말풍선 외곽 4획 + 꼬리 1획 + 점 3개) 전체를 지웠다. 그 칸이
+        /// 사용자 지시로 폐지됐고, <b>쓰이지 않는 아이콘 팩토리를 남겨 두면 다음 사람이 "타일만
+        /// 다시 붙이면 되겠네"로 읽는다</b> — 그 문은 닫힌 문이다(<see cref="Command"/> 문서).</remarks>
         private static Image[] BuildIcon(Command command, RectTransform box) => command switch
         {
-            Command.SayNow => BuildSpeechIcon(box),
             Command.Archery => BuildArcheryIcon(box),
             Command.Graffiti => BuildSprayIcon(box),
             Command.WindowTheft => BuildWindowPushIcon(box),
             _ => BuildWindowCrackIcon(box),
         };
-
-        /// <summary>말 걸기 — 둥근 말풍선 외곽 4획 + 꼬리 1획 + 점 3개.</summary>
-        private static Image[] BuildSpeechIcon(RectTransform p)
-        {
-            var top = Stroke(p, "Top", 16f, 0f, new Vector2(0f, 7f));
-            var bottom = Stroke(p, "Bottom", 16f, 0f, new Vector2(0f, -3f));
-            var left = Stroke(p, "Left", 10f, 90f, new Vector2(-8f, 2f));
-            var right = Stroke(p, "Right", 10f, 90f, new Vector2(8f, 2f));
-            var tail = Stroke(p, "Tail", 5f, -70f, new Vector2(-3.5f, -5.5f));
-            var d0 = Dot(p, "Dot0", new Vector2(-4.5f, 2f));
-            var d1 = Dot(p, "Dot1", new Vector2(0f, 2f));
-            var d2 = Dot(p, "Dot2", new Vector2(4.5f, 2f));
-            return new[] { top, bottom, left, right, tail, d0, d1, d2 };
-        }
 
         /// <summary>활쏘기 — 동심 링 2겹 + 오른쪽 위에서 들어오는 화살대 1획 + 깃 2획.</summary>
         private static Image[] BuildArcheryIcon(RectTransform p)

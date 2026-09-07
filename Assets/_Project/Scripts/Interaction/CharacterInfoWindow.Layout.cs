@@ -66,8 +66,6 @@ namespace StickMate.Interaction
         {
             if (_panel == null || scaleFactor <= 0f) return desired;
             float sf = scaleFactor;
-            Vector2 size = _panel.sizeDelta;
-            float maxX = Mathf.Max(0f, (Screen.width / sf - size.x) * 0.5f - ScreenMargin);
 
             // ★ 2026-09-02 (41-1) — 세로는 <b>대칭이 아니다</b>. 옛 코드의 대칭 클램프는 이 창을 위로
             //   44.5pt 끌어올리게 허용했고, 그러면 창 위쪽이 OS y=16pt에 앉아 macOS 메뉴바(0~33)를
@@ -77,12 +75,14 @@ namespace StickMate.Interaction
             //   macOS: 0 — Dock을 덮는 것은 macOS의 모든 앱이 하는 표준 동작이고, 이 앱은 그 위를
             //          발판으로도 쓴다(예전과 비트 단위로 동일하다).
             //   Windows: 작업표시줄 두께만큼 좁아진다 — 드래그로 창을 작업표시줄 위에 겹쳐 둘 수 없다.
-            float topInset = ReservedTopBarProbe.TopInsetPoints(_agent != null ? _agent.PlatformService : null);
-            float bottomInset =
-                ReservedEdgeProbe.EnforcedBottomInsetPoints(_agent != null ? _agent.PlatformService : null);
-            float y = SurfaceSafeAreaPolicy.ClampCenterOriginOffsetY(
-                desired.y, size.y, Screen.height / sf, topInset, bottomInset, ScreenMargin);
-            return new Vector2(Mathf.Clamp(desired.x, -maxX, maxX), y);
+            //
+            // ★★★ 2026-09-07 — 식 자체는 <see cref="UiWindowDrag.ClampCenterPoints"/>로 옮겼다.
+            //   설정창·집중 팝오버가 같은 규칙을 <b>같은 코드</b>로 쓰게 하기 위해서다(세 벌로 갈라지면
+            //   하나가 반드시 낡는다). 계산 결과는 이전과 <b>비트 동일</b>하다 — 가로의
+            //   <c>Mathf.Max(0f, …)</c> 형태까지 그대로 옮겼다.
+            UiWindowDrag.ResolveReservedInsets(_agent, out float topInset, out float bottomInset);
+            return UiWindowDrag.ClampCenterPoints(desired, _panel.sizeDelta,
+                new Vector2(Screen.width / sf, Screen.height / sf), topInset, bottomInset, ScreenMargin);
         }
 
         /// <summary>

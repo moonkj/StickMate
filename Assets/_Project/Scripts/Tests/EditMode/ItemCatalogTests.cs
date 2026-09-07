@@ -382,6 +382,13 @@ namespace StickMate.Tests.EditMode
         ///
         /// <para>접두사는 <see cref="ShortcutLabel"/>의 상수에서 온다 — 문자열을 여기 다시 적으면
         /// 표기가 바뀌는 날 이 테스트가 조용히 아무것도 재지 않게 된다.</para>
+        ///
+        /// <para>★★ <b>2026-09-07 — 「혼잣말」(<c>action.chatter</c>)이 명부에 추가됐다.</b> 사유가
+        /// 위 셋과 <b>다르다</b>: 그 바인딩은 개발 게이트 뒤로 간 것이 아니라 <b>통째로 사라졌다</b>
+        /// (사용자 지시로 부채꼴 ④[행동]의 [말 걸기] 타일과 전역 단축키 B를 함께 폐지 —
+        /// <c>Interaction/AppControlDirector.cs</c>의 「말 걸기 폐지」 절). 그래서 이 항목은
+        /// <b>「가끔 알아서」</b>여야 한다: 유휴/보행 확률 발화는 출하 기본값에서 살아 있으므로
+        /// (idle 0.28 / walk 0.14) 「톱니 메뉴에서」로 내리면 <b>반대 방향의 거짓</b>이 된다.</para>
         /// </summary>
         [Test]
         public void 개발_게이트_뒤의_행동은_카드에_조합키를_광고하지_않는다()
@@ -416,6 +423,18 @@ namespace StickMate.Tests.EditMode
             Assert.AreEqual(ItemCatalogEntry.AutoOnlyStatus,
                 FindById("action.hardware_reaction").ResolveStatusSlot(config),
                 "하드웨어 반응에는 사용자 진입점이 없습니다 — 자율 발동 전용 문구여야 합니다.");
+
+            // ---- 2026-09-07 폐지분: 바인딩이 게이트 뒤로 간 것이 아니라 <b>사라졌다</b> ----
+            string chatter = FindById("action.chatter").ResolveStatusSlot(config);
+            Assert.IsFalse(HasChordPrefix(chatter),
+                $"「혼잣말」의 상태 슬롯이 조합키('{chatter}')를 광고합니다 — 그 바인딩(⌃⌥⌘B / " +
+                "Ctrl+Alt+Win+B)은 2026-09-07 사용자 지시로 <b>삭제</b>됐습니다. 눌러도 아무 일도 " +
+                "일어나지 않는 조합을 카드가 계속 가르칩니다(유령 단축키). 되살리려면 표기가 아니라 " +
+                "<b>사용자에게</b> 먼저 물어야 합니다.");
+            Assert.AreEqual(ItemCatalogEntry.AutoOnlyStatus, chatter,
+                "「혼잣말」은 유휴/보행 중 확률로 <b>스스로</b> 뜹니다(출하 기본값 idle 0.28 / " +
+                "walk 0.14) — 강제 경로만 사라졌지 기능이 사라진 것이 아닙니다. 「톱니 메뉴에서」로 " +
+                "내리면 없는 진입점을 가르치게 되고, 카드를 지우면 있는 기능을 없다고 말하게 됩니다.");
         }
 
         /// <summary>상태 슬롯이 <b>조합키 표기</b>인가. 두 플랫폼 접두사를 모두 본다 —

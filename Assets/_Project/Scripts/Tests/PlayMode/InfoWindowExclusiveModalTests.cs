@@ -35,7 +35,10 @@ namespace StickMate.Tests.PlayMode
     ///  ④ <b>정렬</b>: 창이 부채꼴/팝오버보다 위, 말풍선과는 값이 <b>다르다</b>(동률은 Unity가 순서를
     ///     보장하지 않는다).
     ///  ⑤ <b>드래그</b>: 타이틀바를 끌면 창이 그 방향으로 움직이고, 아무리 끌어도 화면을 벗어나지 않으며,
-    ///     닫았다 다시 열면 화면 중앙에서 시작한다(33-7-7의 "열면 중앙"은 유지).
+    ///     ★ <b>2026-09-07에 뒤집혔다</b> — 닫았다 다시 열면 <b>옮긴 자리</b>에서 시작한다.
+    ///     사용자 요청 PART1-1: <i>"이동한 위치는 창별로 저장되어 재시작 후에도 유지"</i>.
+    ///     그래서 옛 단언(<c>다시 열면 Vector2.zero</c>)은 <b>사라진 것이 아니라 반대 방향으로
+    ///     다시 세워졌다</b> — 「옮긴 적 없으면 중앙」은 아래 첫 단언이 그대로 잰다.
     ///  ⑥ <b>가로 클램프</b>: 창이 화면 폭 안에 들어온다(예전에는 폭이 항상 880 고정이라 좁은 화면에서
     ///     좌우로 흘러나갔다).
     ///
@@ -332,6 +335,10 @@ namespace StickMate.Tests.PlayMode
 
             // ⑥ 열자마자 창은 화면 안에 들어와 있어야 한다(가로 클램프가 없으면 여기서 좌우로 샌다).
             AssertPanelInsideScreen("열린 직후");
+            // ★ 「아직 한 번도 안 옮겼으면 중앙」 — 2026-09-07 이후에도 <b>이 절반은 그대로다</b>.
+            //   [SetUp]이 UiLayoutModel을 밀고 시작하므로 여기는 언제나 "옮긴 적 없음"이다.
+            Assert.IsFalse(UiLayoutModel.HasWindowOffset(UiWindowId.CharacterInfo),
+                $"{LogPrefix} 전제 실패 — 테스트 시작 시점에 이미 «옮긴 적 있음»입니다([SetUp] 격리가 깨졌습니다).");
             Assert.AreEqual(Vector2.zero, _window.PanelOffsetPoints, $"{LogPrefix} 창이 화면 중앙에서 시작하지 않았습니다.");
 
             // ★ 이하 한 프레임 안에서 측정한다 — Update가 매 프레임 실제 화면 크기로 다시 클램프하므로
@@ -364,19 +371,102 @@ namespace StickMate.Tests.PlayMode
             _window.FeedPointerForTests(false, grab + new Vector2(100000f, 100000f));
             Assert.IsFalse(_window.IsDraggingPanel, $"{LogPrefix} 버튼을 뗐는데 드래그가 계속됩니다.");
 
+            // ★ 뗀 순간 «옮긴 자리»가 모델에 확정된다(2026-09-07). 저장된 것은 <b>클램프를 지난</b>
+            //   값이어야 한다 — 방금 화면 밖 100000pt로 끌었는데 그 좌표가 파일에 앉으면
+            //   다음 실행에서 «닫을 수 없는 창»이 된다(창 밖 클릭은 창을 닫지 않는다).
+            Assert.IsTrue(UiLayoutModel.HasWindowOffset(UiWindowId.CharacterInfo),
+                $"{LogPrefix} 헤더로 창을 옮겼는데 «옮긴 적 있음»이 서지 않았습니다 — 재시작하면 자리가 날아갑니다.");
+            Vector2 stored = UiLayoutModel.WindowOffsetPoints(UiWindowId.CharacterInfo);
+            Assert.Greater(stored.x, 0.5f,
+                $"{LogPrefix} 오른쪽으로 끌었는데 저장된 x가 {stored.x:F2}입니다.");
+            Assert.Less(Mathf.Abs(stored.x), 100000f,
+                $"{LogPrefix} 화면 밖 좌표({stored})가 그대로 저장됐습니다 — 클램프 전 값이 세이브로 내려갔습니다.");
+
             // 다음 프레임: 실제 화면 크기로 다시 클램프되어도 창은 여전히 화면 안이다.
             yield return null;
             AssertPanelInsideScreen("실제 화면 크기로 복귀한 뒤");
 
-            // ⑤ 닫았다 다시 열면 화면 중앙에서 시작한다(33-7-7의 "열면 중앙"은 유지).
+            // ⑤ 닫았다 다시 열면 <b>옮긴 자리</b>에서 시작한다(2026-09-07 사용자 요청으로 뒤집힘).
             _window.Close("테스트 — 재개 확인");
             yield return null;
-            _window.Open("테스트 — 재개 확인");
-            yield return null;
-            Assert.AreEqual(Vector2.zero, _window.PanelOffsetPoints,
-                $"{LogPrefix} 다시 열었는데 화면 중앙이 아닙니다 — '열면 중앙' 규칙이 깨졌습니다.");
 
-            Debug.Log($"{LogPrefix} ⑤⑥ 통과 — 타이틀바로 옮겨지고, 화면을 벗어나지 않고, 다시 열면 중앙입니다.");
+            // ★ 좁은 배치 화면(640×480)에서는 창이 화면을 거의 다 채워 <b>어떤 자리로 열어도 클램프가
+            //   0으로 만든다</b> — 그 상태로 재면 "복원됐다"와 "중앙으로 되돌았다"가 똑같이 생긴다
+            //   (이 저장소가 반복해 당한 형태). 그래서 위에서 쓴 것과 <b>같은 방법</b>으로 창을 다시
+            //   줄여 «옮길 여백이 있는 화면»을 만든 뒤에 연다.
+            ClampMethod.Invoke(_window, new object[] { ScaleFactorForSmallPanel() });
+            _window.Open("테스트 — 재개 확인");
+            // ★ Update가 창을 실제 화면 크기로 되돌리기 <b>전에</b> 잰다(한 프레임 안에서 측정).
+            Vector2 reopened = _window.PanelOffsetPoints;
+            Assert.AreEqual(stored.x, reopened.x, 0.5f,
+                $"{LogPrefix} 다시 열었는데 옮긴 자리가 아닙니다(저장 {stored}, 복원 {reopened}) — " +
+                "«이동한 위치는 재시작 후에도 유지»(2026-09-07 사용자 요청)가 깨졌습니다.");
+            Assert.AreEqual(stored.y, reopened.y, 0.5f,
+                $"{LogPrefix} 세로도 복원되지 않았습니다(저장 {stored}, 복원 {reopened}).");
+            yield return null;
+            AssertPanelInsideScreen("옮긴 자리로 다시 연 뒤");
+
+            Debug.Log($"{LogPrefix} ⑤⑥ 통과 — 타이틀바로 옮겨지고, 화면을 벗어나지 않고, " +
+                $"다시 열면 옮긴 자리({stored})에서 시작합니다.");
+        }
+
+        /// <summary>
+        /// ★ <b>문턱을 넘지 않은 누름은 창을 옮기지도, 저장하지도 않는다</b>(2026-09-07).
+        ///
+        /// <para>왜 이 테스트가 필요한가: 창 위치가 이번 라운드부터 <b>세이브에 내려간다</b>.
+        /// 톱니가 2026-09-02에 당한 사고(<c>0.02초 / 16.5pt</c>가 「길게 누름」으로 판정되어 스치듯
+        /// 지나간 클릭 하나가 아이콘을 <b>영구히</b> 옮긴 것)의 피해는 대부분 영속화가 만든 것이었고,
+        /// 그 위험이 방금 창에도 생겼다. 그것을 닫는 것이 거리 임계다.</para>
+        ///
+        /// <para>임계값을 숫자로 베끼지 않는다 — <see cref="UiWindowDrag.MoveThresholdPoints"/>를
+        /// 참조해 «절반»과 «두 배»를 만든다. 그리고 <b>양성 대조</b>로 같은 경로가 문턱을 넘겼을 때는
+        /// 실제로 저장하는 것을 보인다(그게 없으면 이 IsFalse는 "판정이 죽었다"와 구별되지 않는다).</para>
+        /// </summary>
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator ShortNudgeOnHeaderNeitherMovesNorPersists()
+        {
+            yield return LoadSceneAndResolve();
+            Assert.IsNotNull(ClampMethod, $"{LogPrefix} ClampPanelToScreen을 찾지 못했습니다 — 이름이 바뀌었습니다.");
+
+            _window.Open("테스트 — 문턱");
+            yield return null;
+            yield return null;
+            ClampMethod.Invoke(_window, new object[] { ScaleFactorForSmallPanel() });
+
+            Rect bar = _window.TitleBarScreenRect;
+            Vector2 grab = FindHeaderGrabPoint(bar);
+            float threshold = UiWindowDrag.MoveThresholdPoints;
+            Assert.Greater(threshold, 0f, $"{LogPrefix} 이동 임계가 0입니다 — 이 테스트가 아무것도 재지 못합니다.");
+
+            Vector2 before = _window.PanelOffsetPoints;
+
+            // ---- 본 검증: 임계의 절반만 밀고 뗀다 ----
+            _window.FeedPointerForTests(false, grab);   // 첫 표본 소모.
+            _window.FeedPointerForTests(true, grab);
+            _window.FeedPointerForTests(true, grab + new Vector2(threshold * 0.5f, 0f));
+            Assert.AreEqual(before, _window.PanelOffsetPoints,
+                $"{LogPrefix} 임계({threshold:F1}pt)의 절반만 밀었는데 창이 움직였습니다.");
+            _window.FeedPointerForTests(false, grab + new Vector2(threshold * 0.5f, 0f));
+            Assert.IsFalse(UiLayoutModel.HasWindowOffset(UiWindowId.CharacterInfo),
+                $"{LogPrefix} 문턱을 안 넘은 누름이 창 위치를 <b>영구히</b> 저장했습니다 — " +
+                "톱니가 2026-09-02에 당한 사고와 같은 형태입니다.");
+
+            // ---- 양성 대조: 같은 경로가 문턱을 넘으면 실제로 옮기고 저장한다 ----
+            // ★ 여기서 <b>프레임을 넘기지 않는다</b>. Update가 한 번이라도 돌면 ClampPanelToScreen이
+            //   창을 실제 화면 크기(640×480에서 608×448)로 되돌리고, 그러면 가로 여유가 0이 되어
+            //   «끌어도 안 움직인다»가 <b>정상</b>이 된다 — 양성 대조가 그 자리에서 죽는다.
+            _window.FeedPointerForTests(true, grab);
+            _window.FeedPointerForTests(true, grab + new Vector2(threshold * 2f, 0f));
+            Assert.AreNotEqual(before, _window.PanelOffsetPoints,
+                $"{LogPrefix} 양성 대조 실패 — 임계의 2배를 밀었는데도 창이 안 움직입니다. " +
+                "위 IsFalse는 «판정이 옳다»가 아니라 «드래그가 통째로 죽었다»를 보고 있었습니다.");
+            _window.FeedPointerForTests(false, grab + new Vector2(threshold * 2f, 0f));
+            Assert.IsTrue(UiLayoutModel.HasWindowOffset(UiWindowId.CharacterInfo),
+                $"{LogPrefix} 양성 대조 실패 — 실제로 옮겼는데도 저장되지 않았습니다.");
+
+            Debug.Log($"{LogPrefix} 문턱 통과 — {threshold:F1}pt 미만은 움직이지도 저장되지도 않고, " +
+                "넘기면 둘 다 일어납니다.");
         }
 
         /// <summary>창을 클램프 하한(320×320)까지 줄여 "옮길 여백이 있는 화면"을 만드는 배율.</summary>

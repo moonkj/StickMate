@@ -53,10 +53,20 @@ namespace StickMate.Tests.EditMode
         /// <c>archeryMinDistanceSpanFraction</c> 도입 뒤에도 <b>f=0에서 비트 단위로 그대로</b> 살아 있어야
         /// 한다 — 그게 이 필드가 안전한 킬 스위치라는 뜻이다. 출하 비율(0.55)의 동작은 ④가 따로 잠근다.
         /// </summary>
+        /// <remarks>
+        /// ★ 2026-09-06 확장 — 새로 생긴 세 인자(g / Ucap / 화면 비례 바닥)의 기본값이 <b>전부 무효값</b>
+        /// (g=0, Ucap=상한, 화면바닥=0)이다. 그래서 ①②③ 절의 기존 판정은 <b>2026-09-06 이전과 비트
+        /// 단위로 같은 입력</b>을 보게 되고, 그 절들이 여전히 초록이라는 사실 자체가 "새 knob 세 개가
+        /// 안전한 킬 스위치다"의 증명이 된다(⑤-1이 그 동치를 따로 전수 확인한다).
+        /// <paramref name="dirRoll01"/> 기본 0은 "두 방향이 다 자격이 있으면 오른쪽"이라 예전
+        /// 결정론적 규칙과 같은 갈래를 고른다.
+        /// </remarks>
         private static ArcheryDirector.Placement Place(float footX, float lo, float hi, float roll01,
-            float spanFraction = 0f)
+            float spanFraction = 0f, float maxSpanFraction = 0f, float hardCap = MaxDistance,
+            float screenFloor = 0f, float dirRoll01 = 0f)
             => ArcheryDirector.ResolvePlacement(footX, lo, hi, CharInset, TargetInset, BackStep,
-                MinDistance, MaxDistance, spanFraction, roll01);
+                MinDistance, MaxDistance, spanFraction, maxSpanFraction, hardCap, screenFloor,
+                roll01, dirRoll01);
 
         /// <summary>시드 고정 난수 — 실행할 때마다 같은 표본을 본다(플레이키 금지).</summary>
         private static float[] Rolls(int seed, int count)
@@ -261,18 +271,29 @@ namespace StickMate.Tests.EditMode
             Assert.IsFalse(Place(0f, 5f, -5f, 0.5f).Ok, "뒤집힌 구간(lo > hi)을 걸러내지 못했습니다.");
         }
 
+        /// <summary>
+        /// ★ 2026-09-06 이후에도 이 판정은 그대로다 — <b>방향 추첨은 화면 끝을 이기지 못한다</b>.
+        /// 좌우 추첨의 후보 자격이 "여분의 도보가 필요 없는 방향"이라, 화면 끝에서는 바깥쪽이 자격을
+        /// 잃고 안쪽 한 방향만 남는다. 그래서 <b>어떤 dirRoll을 넣어도</b> 답이 같아야 한다 —
+        /// 그것을 아래에서 스윕으로 못박는다(추첨이 비침해 규칙을 뚫지 못한다는 증명).
+        /// </summary>
         [Test]
         public void 오른쪽_끝에_서_있으면_왼쪽으로_쏜다()
         {
             float lo = -VisibleHalfWidth, hi = VisibleHalfWidth;
-            ArcheryDirector.Placement p = Place(hi - 1f, lo, hi, 0.5f);
-            Assert.IsTrue(p.Ok);
-            Assert.AreEqual(-1f, p.Facing, Eps,
-                "오른쪽 끝에 서서 오른쪽으로 쏘려 하고 있습니다 — 과녁이 화면 밖으로 나갑니다.");
-            Assert.Less(p.TargetX, p.StandX, "왼쪽을 보는데 과녁이 오른쪽에 있습니다.");
+            foreach (float dir in new[] { 0f, 0.25f, 0.499f, 0.5f, 0.75f, 1f })
+            {
+                ArcheryDirector.Placement p = Place(hi - 1f, lo, hi, 0.5f, dirRoll01: dir);
+                Assert.IsTrue(p.Ok);
+                Assert.AreEqual(-1f, p.Facing, Eps,
+                    $"dirRoll={dir:F3}: 오른쪽 끝에 서서 오른쪽으로 쏘려 하고 있습니다 — " +
+                    "과녁이 화면 밖으로 나가거나 화면을 가로질러 행진하게 됩니다.");
+                Assert.Less(p.TargetX, p.StandX, "왼쪽을 보는데 과녁이 오른쪽에 있습니다.");
 
-            ArcheryDirector.Placement q = Place(lo + 1f, lo, hi, 0.5f);
-            Assert.AreEqual(1f, q.Facing, Eps, "왼쪽 끝에서 왼쪽으로 쏘려 하고 있습니다.");
+                ArcheryDirector.Placement q = Place(lo + 1f, lo, hi, 0.5f, dirRoll01: dir);
+                Assert.AreEqual(1f, q.Facing, Eps,
+                    $"dirRoll={dir:F3}: 왼쪽 끝에서 왼쪽으로 쏘려 하고 있습니다.");
+            }
         }
 
         [Test]
@@ -300,7 +321,10 @@ namespace StickMate.Tests.EditMode
             float span = (nhi - TargetInset) - (nlo + CharInset);
             ArcheryDirector.Placement q = Place(0f, nlo, nhi, 1f); // 구간이 허용하는 최대 사거리.
             Assert.IsTrue(q.Ok);
-            Assert.AreEqual(1f, q.Facing, Eps, "좌우 대칭 위치에서는 오른쪽을 향해 쏜다(기존 규칙).");
+            // ★ 2026-09-06 — 여기서 오른쪽이 나오는 것은 "규칙"이 아니라 **추첨값 0을 넣었기 때문**이다
+            //   (Place의 dirRoll01 기본 0 = 오른쪽). 좌우가 완전 대칭인 이 형상에서 방향이 실제로
+            //   추첨된다는 사실은 ⑤-3이 잠근다. 여기서는 나머지 좌표 계약만 본다.
+            Assert.AreEqual(1f, q.Facing, Eps, "dirRoll 0은 오른쪽이어야 한다(추첨 매핑의 정의).");
             Assert.AreEqual(span, q.Distance, Eps);
             Assert.AreEqual(nhi - TargetInset - q.Distance, q.StandX, Eps,
                 "앞 공간이 모자랄 때 물러서는 거리가 '딱 필요한 만큼'이 아닙니다.");
@@ -367,7 +391,8 @@ namespace StickMate.Tests.EditMode
             { 227f, 300f, 400f, 422f, 500f, 501f, 600f, 935f, 1058f, 1280f, 1490f, 1512f };
 
         private static ArcheryDirector.Placement PlaceScaled(StickConfig cfg, float scale, float footX,
-            float lo, float hi, float spanFraction, float roll01)
+            float lo, float hi, float spanFraction, float roll01,
+            float maxSpanFraction = 0f, float screenFloor = 0f, float dirRoll01 = 0f)
         {
             float h = StickConfig.BaselineCharacterTotalHeight * scale;
             return ArcheryDirector.ResolvePlacement(footX, lo, hi,
@@ -376,7 +401,8 @@ namespace StickMate.Tests.EditMode
                 h * ArcheryDirector.BackStepRatio,
                 h * cfg.archeryMinTargetDistanceRatio,
                 h * cfg.archeryMaxTargetDistanceRatio,
-                spanFraction, roll01);
+                spanFraction, maxSpanFraction, h * cfg.archeryMaxDistanceHardCapRatio, screenFloor,
+                roll01, dirRoll01);
         }
 
         [Test]
@@ -712,6 +738,551 @@ namespace StickMate.Tests.EditMode
                     "폭 비례 하한이 절대 하한보다 낮아 아무 효과가 없습니다.");
                 Assert.Less(floorRatio, maxRatio,
                     "폭 비례 하한이 밴드 상한 이상입니다 — 밴드가 붕괴합니다.");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(cfg); }
+        }
+
+        // ============================================================================
+        // ⑤ 2026-09-06 신고(세 번째) — "너무 가까운 위치에 생김 / 화면 폭 비율 기준 최소 거리 /
+        //    거리·좌우 방향 둘 다 매번 랜덤"
+        // ============================================================================
+        //
+        // 진단: ④의 폭 비례 하한(f)이 왜 안 먹혔는가 —
+        //   하한 = f × 밴드상한인데 **상한이 신장 배수(절대치)**라 하한도 절대치였다.
+        //   같은 3.63H가 배율 0.75에서 화면 폭의 16.8%, 0.45에서 10.1%, 0.35에서 7.8%다.
+        //   신장 배수로만 보면 셋이 똑같아 보여서 세 번의 신고 동안 아무도 못 봤다.
+        //
+        // 처방 3종:
+        //   g    archeryMaxDistanceSpanFraction        상한을 발판 폭에 비례시킨다(하한을 올릴 여유를 만든다)
+        //   Ucap archeryMaxDistanceHardCapRatio        그 상한의 절대 천장(연출: 한 발 = 한 박자)
+        //   s    archeryMinTargetDistanceScreenFraction ★ 하한을 **화면 폭**에 비례시킨다
+        //   + 좌우 방향 추첨(dirRoll)
+        //
+        // ★ 이 절의 기대값은 프로덕션 함수가 아니라 **정의를 다시 쓴 식**에서 나온다
+        //   (TEAM.md: 기대값을 프로덕션 함수로 만들면 아무것도 못 잰다).
+
+        /// <summary>독립 재계산 — 프로덕션 코드를 부르지 않고 계약 문장 그대로 다시 쓴 것.</summary>
+        private static void ExpectedBand(StickConfig cfg, float scale, float span, float screenWidth,
+            out float lo, out float hi)
+        {
+            float h = StickConfig.BaselineCharacterTotalHeight * scale;
+            float u0 = h * cfg.archeryMaxTargetDistanceRatio;
+            float hard = Mathf.Max(u0, h * cfg.archeryMaxDistanceHardCapRatio);
+            float g = Mathf.Clamp(cfg.archeryMaxDistanceSpanFraction, 0f,
+                ArcheryDirector.MaxMaxDistanceSpanFraction);
+            float f = cfg.archeryMinDistanceSpanFraction;
+            hi = Mathf.Min(span, Mathf.Max(u0, Mathf.Min(g * span, hard)));
+            lo = Mathf.Max(h * cfg.archeryMinTargetDistanceRatio,
+                Mathf.Max(f * Mathf.Min(hi, u0),
+                          Mathf.Min(screenWidth * cfg.archeryMinTargetDistanceScreenFraction, f * hi)));
+        }
+
+        /// <summary>실측 화면 형상. Player.log 2026-09-06 실기: 카메라픽셀 3024x1964(=1512pt @2x),
+        /// orthographicSize 12 → 가시 반폭 <see cref="VisibleHalfWidth"/>. 새 숫자가 아니다.</summary>
+        private const float ScreenWidthWorld = 2f * VisibleHalfWidth;
+
+        /// <summary>
+        /// ⑤-1 ★ <b>세 knob이 전부 안전한 킬 스위치</b> — g=0 · 화면바닥=0이면 2026-09-06 이전과
+        /// <b>비트 단위로</b> 같다. 이게 참이라야 ①②③④의 초록이 여전히 무언가를 재는 것이다.
+        /// </summary>
+        [Test]
+        public void 킬스위치_g0과_화면바닥0은_구동작과_비트_동일하다([Values(11, 2026)] int seed)
+        {
+            var cfg = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                float f = cfg.archeryMinDistanceSpanFraction;
+                int compared = 0;
+                foreach (float scale in Scales)
+                foreach (float widthPt in FootholdWidthsPt)
+                {
+                    float half = widthPt / PtPerUnit * 0.5f;
+                    foreach (float footFrac in new[] { -0.45f, 0f, 0.45f })
+                    foreach (float roll in Rolls(seed, 60))
+                    {
+                        float footX = half * 2f * footFrac;
+                        // 구동작 = 이 파일이 ④까지 쓰던 호출(새 인자 전부 무효값).
+                        var legacy = PlaceScaled(cfg, scale, footX, -half, half, f, roll);
+                        var offed = PlaceScaled(cfg, scale, footX, -half, half, f, roll,
+                            maxSpanFraction: 0f, screenFloor: 0f);
+                        Assert.AreEqual(legacy.Ok, offed.Ok);
+                        if (!legacy.Ok) continue;
+                        compared++;
+                        Assert.AreEqual(legacy.Distance, offed.Distance, 0f,
+                            $"배율 {scale}, {widthPt:F0}pt, roll {roll:F4}: 킬 스위치가 비트 동일하지 않습니다.");
+                        Assert.AreEqual(legacy.BandLo, offed.BandLo, 0f);
+                        Assert.AreEqual(legacy.BandHi, offed.BandHi, 0f);
+                        Assert.AreEqual(legacy.StandX, offed.StandX, 0f);
+                        Assert.AreEqual(legacy.TargetX, offed.TargetX, 0f);
+                    }
+                }
+                Assert.Greater(compared, 1000, "비교 표본이 너무 적습니다 — 공허하게 참이 됩니다.");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(cfg); }
+        }
+
+        /// <summary>
+        /// ⑤-2 ★★ <b>신고의 본체</b> — 넓은 발판에서 최소 사거리가 <b>화면 폭 비율</b>로 바닥을 갖는다.
+        /// 사용자가 직접 제시한 대역("화면 폭의 15~25%") 안이어야 하고, 신고 상태보다 내려가면 안 된다.
+        /// </summary>
+        [Test]
+        public void 최소_사거리가_화면_폭_비율_바닥을_갖는다(
+            [Values(0.35f, 0.45f, 0.60f, 0.75f, 1.00f)] float scale)
+        {
+            var cfg = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                float h = StickConfig.BaselineCharacterTotalHeight * scale;
+                float f = cfg.archeryMinDistanceSpanFraction;
+                float s = cfg.archeryMinTargetDistanceScreenFraction;
+                float lo = -VisibleHalfWidth, hi = VisibleHalfWidth;
+                float span = (hi - (h * cfg.archeryTargetRadiusRatio + h * ArcheryDirector.TargetEdgeInsetRatio))
+                             - (lo + h * ArcheryDirector.CharacterEdgeInsetRatio);
+
+                ExpectedBand(cfg, scale, span, ScreenWidthWorld, out float wantLo, out float wantHi);
+
+                float screenFloor = ScreenWidthWorld * s;
+                ArcheryDirector.Placement atFloor = PlaceScaled(cfg, scale, 0f, lo, hi, f, 0f,
+                    maxSpanFraction: cfg.archeryMaxDistanceSpanFraction, screenFloor: screenFloor);
+                ArcheryDirector.Placement atCeil = PlaceScaled(cfg, scale, 0f, lo, hi, f, 1f,
+                    maxSpanFraction: cfg.archeryMaxDistanceSpanFraction, screenFloor: screenFloor);
+                Assert.IsTrue(atFloor.Ok && atCeil.Ok, $"배율 {scale}: 화면 전폭에서 배치에 실패했습니다.");
+
+                // ★ 기대값은 프로덕션 함수가 아니라 계약 문장을 다시 쓴 식에서 온다(ExpectedBand).
+                Assert.AreEqual(wantLo, atFloor.Distance, Eps,
+                    $"배율 {scale}: roll 0의 사거리가 독립 재계산과 다릅니다.");
+                Assert.AreEqual(wantHi, atCeil.Distance, Eps,
+                    $"배율 {scale}: roll 1의 사거리가 독립 재계산과 다릅니다.");
+
+                // ★ 신고 상태(구동작)와의 직접 대조 — 하한이 내려가는 일은 없어야 한다.
+                //   ※ 배율 1.00에서는 폭 비례 하한(f×6.6H = 22.3%W)이 이미 화면 비례 바닥(22%W)보다
+                //     크므로 «변화 없음»이 정답이다. 그래서 여기서는 «안 내려갔다»만 잠그고,
+                //     «실제로 올라갔다»는 아래 배율 무의존성 테스트가 잠근다.
+                ArcheryDirector.Placement legacyFloor = PlaceScaled(cfg, scale, 0f, lo, hi, f, 0f);
+                Assert.GreaterOrEqual(atFloor.Distance, legacyFloor.Distance - Eps,
+                    $"배율 {scale}: 하한이 신고 상태 " +
+                    $"{legacyFloor.Distance / ScreenWidthWorld:P1}W보다 **내려갔습니다**.");
+
+                // ★ 사용자가 직접 제시한 대역 — "화면 폭의 15~25%".
+                float floorFraction = atFloor.Distance / ScreenWidthWorld;
+                Assert.GreaterOrEqual(floorFraction, 0.15f,
+                    $"배율 {scale}: 최소 사거리가 화면 폭의 {floorFraction:P1}뿐입니다 — " +
+                    "사용자가 제시한 하한 15%를 못 채웁니다.");
+                Assert.LessOrEqual(floorFraction, 0.25f,
+                    $"배율 {scale}: 최소 사거리가 화면 폭의 {floorFraction:P1}입니다 — " +
+                    "사용자가 제시한 상한 25%를 넘겼습니다.");
+
+                // '적당히 먼 거리'(2026-08-31) — 가장 먼 사격도 화면 폭의 절반을 넘지 않는다.
+                Assert.Less(atCeil.Distance, ScreenWidthWorld * 0.5f,
+                    $"배율 {scale}: 최대 사거리가 화면 폭의 " +
+                    $"{atCeil.Distance / ScreenWidthWorld:P1}입니다 — 다시 화면 끝으로 갑니다.");
+
+                // 밴드는 살아 있어야 한다("거리는 항상 랜덤", 2026-08-31).
+                Assert.LessOrEqual(atFloor.Distance, f * atCeil.Distance + Eps,
+                    $"배율 {scale}: 하한이 f×상한을 넘었습니다 — 붕괴 클램프가 안 걸렸습니다.");
+                Assert.Greater((atCeil.Distance - atFloor.Distance) / 3f, h,
+                    $"배율 {scale}: 연속 2회 사거리 차의 기댓값이 " +
+                    $"{(atCeil.Distance - atFloor.Distance) / 3f / h:F2}H뿐입니다(요구 1H).");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(cfg); }
+        }
+
+        /// <summary>
+        /// ⑤-2b ★★ <b>이 라운드의 진단 그 자체</b> — 신고의 원인은 하한이 <b>신장 배수</b>라서
+        /// 화면 대비 값이 배율을 따라 미끄러진 것이었다. 같은 "3.63H"가 배율 0.75에서 16.8%W,
+        /// 0.45에서 10.1%W, 0.35에서 7.8%W다. <b>신장 배수로만 보면 셋이 똑같아 보여서</b>
+        /// 세 번의 신고 동안 아무도 못 봤다.
+        ///
+        /// <para>그래서 이 테스트는 값 하나가 아니라 <b>배율 축의 스프레드</b>를 잰다.
+        /// 구동작을 같은 파일에서 함께 재어 대조군으로 쓴다(판정이 헐거워서 통과하는 게 아님을 증명).</para>
+        /// </summary>
+        [Test]
+        public void 최소_사거리의_화면_비율이_배율에_끌려다니지_않는다()
+        {
+            var cfg = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                float f = cfg.archeryMinDistanceSpanFraction;
+                float screenFloor = ScreenWidthWorld * cfg.archeryMinTargetDistanceScreenFraction;
+                float lo = -VisibleHalfWidth, hi = VisibleHalfWidth;
+                float[] scales = { 0.45f, 0.60f, 0.75f, 1.00f }; // 0.35는 Ucap이 먼저 걸린다(⑤-2가 커버)
+
+                float newMin = float.MaxValue, newMax = float.MinValue;
+                float oldMin = float.MaxValue, oldMax = float.MinValue;
+                int raised = 0;
+                foreach (float scale in scales)
+                {
+                    ArcheryDirector.Placement now = PlaceScaled(cfg, scale, 0f, lo, hi, f, 0f,
+                        maxSpanFraction: cfg.archeryMaxDistanceSpanFraction, screenFloor: screenFloor);
+                    ArcheryDirector.Placement was = PlaceScaled(cfg, scale, 0f, lo, hi, f, 0f);
+                    Assert.IsTrue(now.Ok && was.Ok);
+                    float a = now.Distance / ScreenWidthWorld, b = was.Distance / ScreenWidthWorld;
+                    newMin = Mathf.Min(newMin, a); newMax = Mathf.Max(newMax, a);
+                    oldMin = Mathf.Min(oldMin, b); oldMax = Mathf.Max(oldMax, b);
+                    if (now.Distance > was.Distance + Eps) raised++;
+                }
+
+                float newSpread = newMax - newMin, oldSpread = oldMax - oldMin;
+                Assert.Less(newSpread, 0.04f,
+                    $"배율 0.45~1.00에서 최소 사거리의 화면 비율이 {newMin:P1}~{newMax:P1}로 " +
+                    $"{newSpread:P1}p 흔들립니다 — 하한이 여전히 배율에 끌려다닙니다.");
+                // ★ 네거티브 컨트롤 — 구동작에서는 실제로 크게 흔들렸다.
+                Assert.Greater(oldSpread, newSpread * 3f,
+                    $"구동작 스프레드 {oldSpread:P1}p가 신동작 {newSpread:P1}p의 3배도 안 됩니다 — " +
+                    "이 판정이 실제로 배율 축을 재고 있지 않다는 뜻입니다(대조군 파손).");
+                Assert.GreaterOrEqual(raised, scales.Length - 1,
+                    $"배율 {scales.Length}종 중 {raised}종에서만 하한이 올라갔습니다 — " +
+                    "화면 비례 바닥이 대부분의 배율에서 안 걸린다는 뜻입니다.");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(cfg); }
+        }
+
+        /// <summary>구 방향 규칙("구간이 더 넓게 남은 쪽")의 <b>독립 재현</b>. 프로덕션에서는 지워졌으므로
+        /// 대조군으로 쓰려면 여기서 다시 써야 한다 — 이 한 줄이 ⑤-3의 네거티브 컨트롤 전체다.</summary>
+        private static float LegacyFacing(float footX, float lo, float hi)
+            => Mathf.Abs(footX - lo) <= Mathf.Abs(hi - footX) ? 1f : -1f;
+
+        /// <summary>
+        /// ⑤-3 ★★ <b>좌우 방향이 매 발동 추첨된다</b>. 예전 규칙은 <b>캐릭터 위치의 순수 함수</b>라
+        /// "지금 x를 알면 방향이 100% 정해졌다" — 그게 "매번 같은 자리"의 절반이었다.
+        ///
+        /// <para>그래서 판정도 <b>조건부</b>로 한다: 같은 (발위치, 사거리)에서 dirRoll만 바꿔
+        /// 방향이 실제로 갈리는가. 구 규칙은 정의상 갈릴 수 없다(대조군).</para>
+        /// </summary>
+        [Test]
+        public void 좌우_방향이_매_발동_추첨된다()
+        {
+            var cfg = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                float f = cfg.archeryMinDistanceSpanFraction;
+                float g = cfg.archeryMaxDistanceSpanFraction;
+                float screenFloor = ScreenWidthWorld * cfg.archeryMinTargetDistanceScreenFraction;
+                float lo = -VisibleHalfWidth, hi = VisibleHalfWidth;
+                const float scale = 0.75f;
+
+                int live = 0, forced = 0, right = 0, unequalCost = 0, samples = 0, agreeLegacy = 0;
+                var targetXs = new System.Collections.Generic.List<float>();
+
+                for (int i = 0; i <= 24; i++)
+                {
+                    float footX = Mathf.Lerp(-VisibleHalfWidth * 0.96f, VisibleHalfWidth * 0.96f, i / 24f);
+                    float legacy = LegacyFacing(footX, lo, hi);
+
+                    for (int k = 0; k < 40; k++)
+                    {
+                        float roll = k / 39f;
+                        ArcheryDirector.Placement a = PlaceScaled(cfg, scale, footX, lo, hi, f, roll,
+                            maxSpanFraction: g, screenFloor: screenFloor, dirRoll01: 0f);
+                        ArcheryDirector.Placement b = PlaceScaled(cfg, scale, footX, lo, hi, f, roll,
+                            maxSpanFraction: g, screenFloor: screenFloor, dirRoll01: 0.999f);
+                        Assert.IsTrue(a.Ok && b.Ok);
+                        Assert.AreEqual(a.Distance, b.Distance, Eps,
+                            "방향 추첨값이 **사거리**를 바꿨습니다 — 두 추첨이 섞였습니다.");
+
+                        targetXs.Add(a.TargetX);
+                        targetXs.Add(b.TargetX);
+                        samples += 2;
+                        if (a.Facing > 0f) right++;
+                        if (b.Facing > 0f) right++;
+                        // ★ 대조군 — 구 규칙은 발위치만 읽으므로 «footX를 알면 방향을 100% 맞힐 수 있다».
+                        //   새 규칙에서 이 적중률이 떨어진 만큼이 곧 «추첨이 실제로 일어난 양»이다.
+                        if (a.Facing == legacy) agreeLegacy++;
+                        if (b.Facing == legacy) agreeLegacy++;
+
+                        if (a.Facing == b.Facing) { forced++; continue; }
+                        live++;
+
+                        // ★★ 이 라운드의 핵심 불변식 — 추첨은 **도보 비용이 동률일 때만** 일어난다.
+                        //    (실측: 6688/6688, 최대 차 0.000000H) 그래서 방향을 무작위로 골라도
+                        //    도보가 한 걸음도 늘지 않는다.
+                        float ta = Mathf.Abs(a.StandX - footX), tb = Mathf.Abs(b.StandX - footX);
+                        if (Mathf.Abs(ta - tb) > Eps) unequalCost++;
+                    }
+                }
+
+                // ★ 네거티브 컨트롤 — 구 규칙의 적중률은 정의상 100%다. 새 규칙에서 그것이 떨어져야
+                //   "위치가 방향을 정한다"가 실제로 깨진 것이다(80.6% 실측).
+                float agreement = agreeLegacy / (float)samples;
+                Assert.Less(agreement, 0.90f,
+                    $"새 규칙의 방향이 구 규칙(발위치의 순수 함수)과 {agreement:P1} 일치합니다 — " +
+                    "사실상 예전처럼 위치가 방향을 정하고 있다는 뜻입니다.");
+                Assert.Greater(live, 0, "어떤 (발위치, 사거리)에서도 방향이 갈리지 않았습니다 — 추첨이 죽었습니다.");
+                float liveRatio = live / (float)(live + forced);
+                Assert.Greater(liveRatio, 0.25f,
+                    $"방향이 실제로 추첨되는 지점이 표본의 {liveRatio:P1}뿐입니다 — " +
+                    "사실상 예전처럼 위치가 방향을 정합니다.");
+                Assert.AreEqual(0, unequalCost,
+                    $"방향이 갈린 {live}건 중 {unequalCost}건에서 두 방향의 접근 도보가 다릅니다 — " +
+                    "추첨이 '더 많이 걷는 쪽'을 고를 수 있다는 뜻이고, 그러면 화면을 가로지르는 " +
+                    "행진(2026-08-31 신고)이 재발합니다.");
+
+                float rightRatio = right / (float)(2 * (live + forced));
+                Assert.Greater(rightRatio, 0.35f, $"오른쪽 비율 {rightRatio:P1} — 좌우가 한쪽으로 쏠렸습니다.");
+                Assert.Less(rightRatio, 0.65f, $"오른쪽 비율 {rightRatio:P1} — 좌우가 한쪽으로 쏠렸습니다.");
+
+                // 과녁 x가 실제로 흩어지는가 — "매번 같은 자리에 생기지 않을 것"(사용자 원문).
+                targetXs.Sort();
+                float spread = targetXs[targetXs.Count - 1] - targetXs[0];
+                Assert.Greater(spread, VisibleHalfWidth * 1.5f,
+                    $"과녁 x의 퍼짐이 {spread:F2}유닛뿐입니다(실측 34.87유닛) — 매번 비슷한 자리에 생깁니다.");
+                int leftHalf = 0;
+                foreach (float x in targetXs) if (x < 0f) leftHalf++;
+                Assert.Greater(leftHalf / (float)targetXs.Count, 0.25f, "과녁이 화면 왼쪽 절반에 거의 안 생깁니다.");
+                Assert.Less(leftHalf / (float)targetXs.Count, 0.75f, "과녁이 화면 오른쪽 절반에 거의 안 생깁니다.");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(cfg); }
+        }
+
+        /// <summary>
+        /// ⑤-4 ★ <b>방향 추첨이 비침해·연출 제약을 뚫지 않는다</b> — 이 라운드의 가장 큰 위험이었다.
+        /// 방향을 무작위로 고르면 (가) 과녁이 구간 끝에 못박히거나 (나) 캐릭터가 화면을 가로질러
+        /// 행진해 <c>archeryApproachTimeoutSeconds</c>에 걸릴 수 있다. 발판 12종 × 배율 4종 ×
+        /// 발위치 5종 × 추첨 120회 × dirRoll 6종을 전수로 훑는다.
+        ///
+        /// <para>대조군은 <see cref="LegacyFacing"/>(구 방향 규칙) + <b>같은 밴드</b>다 —
+        /// 밴드 변경과 방향 변경을 섞으면 무엇이 나빠졌는지 못 가른다.</para>
+        /// </summary>
+        [Test]
+        public void 방향_추첨이_못박힘과_장거리_행진을_만들지_않는다()
+        {
+            var cfg = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                float f = cfg.archeryMinDistanceSpanFraction;
+                float g = cfg.archeryMaxDistanceSpanFraction;
+                float screenFloor = ScreenWidthWorld * cfg.archeryMinTargetDistanceScreenFraction;
+                float[] rolls = Rolls(31337, 120);
+                float[] dirRolls = { 0f, 0.25f, 0.4999f, 0.5f, 0.75f, 1f };
+                int pinnedNew = 0, pinnedLegacyDir = 0, cases = 0, legacyDirCases = 0;
+                float worstTravelNew = 0f, worstTravelLegacyDir = 0f;
+
+                foreach (float scale in Scales)
+                {
+                    float h = StickConfig.BaselineCharacterTotalHeight * scale;
+                    float charInset = h * ArcheryDirector.CharacterEdgeInsetRatio;
+                    float targetInset = h * cfg.archeryTargetRadiusRatio
+                                        + h * ArcheryDirector.TargetEdgeInsetRatio;
+                    float backStep = h * ArcheryDirector.BackStepRatio;
+
+                    foreach (float widthPt in FootholdWidthsPt)
+                    {
+                        float half = widthPt / PtPerUnit * 0.5f;
+                        foreach (float footFrac in new[] { -0.48f, -0.25f, 0f, 0.25f, 0.48f })
+                        {
+                            float footX = half * 2f * footFrac;
+                            float legacyFacing = LegacyFacing(footX, -half, half);
+
+                            foreach (float roll in rolls)
+                            {
+                                // 포기 판정은 dirRoll에 완전히 불변이어야 한다.
+                                bool? okRef = null;
+                                foreach (float dir in dirRolls)
+                                {
+                                    ArcheryDirector.Placement n = PlaceScaled(cfg, scale, footX, -half, half,
+                                        f, roll, maxSpanFraction: g, screenFloor: screenFloor, dirRoll01: dir);
+                                    if (okRef == null) okRef = n.Ok;
+                                    Assert.AreEqual(okRef.Value, n.Ok,
+                                        $"배율 {scale}, {widthPt:F0}pt, footX {footX:F2}, roll {roll:F4}: " +
+                                        $"dirRoll {dir:F4}에서 발동 가부가 뒤집혔습니다 — " +
+                                        "회색 처리(고정 roll)와 실제 실행이 어긋납니다.");
+                                    if (!n.Ok) continue;
+                                    cases++;
+
+                                    float edge = n.Facing > 0f
+                                        ? (half - targetInset) - n.TargetX
+                                        : n.TargetX - (-half + targetInset);
+                                    if (edge < 0.01f * h) pinnedNew++;
+                                    worstTravelNew = Mathf.Max(worstTravelNew,
+                                        Mathf.Abs(n.StandX - footX) / h);
+
+                                    Assert.GreaterOrEqual(n.TargetX, -half + targetInset - Eps,
+                                        "방향 추첨이 과녁을 구간 왼쪽 밖으로 밀었습니다.");
+                                    Assert.LessOrEqual(n.TargetX, half - targetInset + Eps,
+                                        "방향 추첨이 과녁을 구간 오른쪽 밖으로 밀었습니다.");
+                                    Assert.GreaterOrEqual(n.StandX, -half + charInset - Eps);
+                                    Assert.LessOrEqual(n.StandX, half - charInset + Eps);
+                                    Assert.AreEqual(n.Facing, Mathf.Sign(n.TargetX - n.StandX), Eps,
+                                        "바라보는 방향과 과녁 방향이 반대입니다(등 뒤로 쏘는 그림).");
+                                }
+
+                                // ★ 대조군 — 같은 밴드에 **구 방향 규칙**을 적용했다면 어땠는가.
+                                if (okRef != true) continue;
+                                ArcheryDirector.Placement probe = PlaceScaled(cfg, scale, footX, -half, half,
+                                    f, roll, maxSpanFraction: g, screenFloor: screenFloor, dirRoll01: 0f);
+                                float d = probe.Distance;
+                                float standLo = -half + charInset, standHi = half - charInset;
+                                float targetLo = -half + targetInset, targetHi = half - targetInset;
+                                float slotLo = legacyFacing > 0f ? standLo : Mathf.Max(standLo, targetLo + d);
+                                float slotHi = legacyFacing > 0f ? Mathf.Min(standHi, targetHi - d) : standHi;
+                                if (slotHi < slotLo)
+                                {
+                                    if (slotLo - slotHi > Eps) continue;
+                                    slotLo = slotHi = (slotLo + slotHi) * 0.5f;
+                                }
+                                float legacyStand = Mathf.Clamp(footX - legacyFacing * backStep, slotLo, slotHi);
+                                float legacyTarget = legacyStand + legacyFacing * d;
+                                float legacyEdge = legacyFacing > 0f
+                                    ? targetHi - legacyTarget : legacyTarget - targetLo;
+                                legacyDirCases++;
+                                if (legacyEdge < 0.01f * h) pinnedLegacyDir++;
+                                worstTravelLegacyDir = Mathf.Max(worstTravelLegacyDir,
+                                    Mathf.Abs(legacyStand - footX) / h);
+                            }
+                        }
+                    }
+                }
+
+                Assert.Greater(cases, 10000, "표본이 너무 적습니다.");
+                Assert.Greater(legacyDirCases, 1000, "대조군 표본이 너무 적습니다 — 비교가 공허합니다.");
+
+                // ★ 못박힘 — 구 방향 규칙 대비 **실질적으로** 늘지 않아야 한다.
+                //   경계 한 점(footX − backStep == targetHi − distance)에서 과녁이 여백선에 «닿는»
+                //   경우가 있어 완전 동일은 아니다. 실측 8.156% vs 8.122%(+0.03%p)이므로 0.5%p를 문턱으로 둔다.
+                float pinNew = pinnedNew / (float)cases;
+                float pinOld = pinnedLegacyDir / (float)legacyDirCases;
+                Assert.LessOrEqual(pinNew, pinOld + 0.005f,
+                    $"과녁이 구간 끝에 닿는 비율이 구 방향 규칙 {pinOld:P2} -> 방향 추첨 {pinNew:P2}로 " +
+                    "늘었습니다 — 2026-08-31 신고('무조건 과녁이 화면 끝에만 생김')의 재발입니다.");
+
+                // ★ 접근 도보 — 방향 추첨이 걷는 거리를 늘리면 안 되고(불변식),
+                //   그 시간이 archeryApproachTimeoutSeconds 안이어야 한다.
+                //   보행 속도는 배율에 비례하므로(StickConfig.ResolveWalkSpeed) H/초는 배율 무관이다.
+                float walkHPerSecond = cfg.ResolveWalkSpeed()
+                    / (StickConfig.BaselineCharacterTotalHeight * cfg.ResolveCharacterScale());
+                float worstSeconds = worstTravelNew / walkHPerSecond;
+
+                Assert.LessOrEqual(worstTravelNew, worstTravelLegacyDir + Eps,
+                    $"최대 접근 도보가 구 방향 규칙 {worstTravelLegacyDir:F4}H -> 방향 추첨 " +
+                    $"{worstTravelNew:F4}H로 늘었습니다 — 추첨이 '화면을 가로지르는 행진'을 만듭니다.");
+                Assert.Less(worstSeconds, cfg.archeryApproachTimeoutSeconds * 0.5f,
+                    $"최악의 접근 도보가 {worstSeconds:F2}초로 타임아웃 " +
+                    $"{cfg.archeryApproachTimeoutSeconds:F0}초의 절반을 넘습니다 — 타임아웃으로 " +
+                    "'덜 걸은 자리에서 쏘는' 사고가 납니다.");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(cfg); }
+        }
+
+        /// <summary>
+        /// ⑤-5 출하 설정 3종의 <b>자기 정합성</b>. 값을 베끼지 않고 근거를 재계산한다.
+        /// </summary>
+        [Test]
+        public void 출하_화면비례_설정이_설계_근거를_만족한다()
+        {
+            var cfg = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                float s = cfg.archeryMinTargetDistanceScreenFraction;
+                float g = cfg.archeryMaxDistanceSpanFraction;
+                float ucap = cfg.archeryMaxDistanceHardCapRatio;
+
+                Assert.Greater(s, 0f, "화면 비례 바닥이 꺼진 채로 출하됩니다(킬 스위치 ON).");
+                Assert.GreaterOrEqual(s, 0.15f, "사용자가 제시한 대역 '화면 폭의 15~25%'의 아래를 벗어납니다.");
+                Assert.LessOrEqual(s, 0.25f, "사용자가 제시한 대역 '화면 폭의 15~25%'의 위를 벗어납니다.");
+                Assert.LessOrEqual(s, ArcheryDirector.MaxMinTargetDistanceScreenFraction);
+
+                Assert.Greater(g, 0f, "폭 비례 상한이 꺼져 있으면 화면 비례 바닥이 구조적으로 무효입니다.");
+                Assert.LessOrEqual(g, ArcheryDirector.MaxMaxDistanceSpanFraction,
+                    "폭 비례 상한이 '무조건 화면 끝' 재발 방지선을 넘었습니다.");
+
+                // ★ g가 s를 실제로 통과시키는가 — 하한은 f × 상한으로 클램프된다.
+                //   화면 전폭에서 상한 ≈ g × 화면폭이므로 요구는 f × g ≥ s 다.
+                float f = cfg.archeryMinDistanceSpanFraction;
+                Assert.GreaterOrEqual(f * g, s - 0.02f,
+                    $"f×g = {f * g:F3} 인데 s = {s:F3} 입니다 — 붕괴 클램프가 화면 비례 바닥을 " +
+                    "통째로 먹어 설정이 아무 일도 하지 않습니다(g를 올리거나 s를 내려야 합니다).");
+
+                // ★ Ucap은 '한 발 = 한 박자' 임계 아래여야 한다 — 상수를 계산해서 비교한다.
+                //   비행시간 T(d) = archeryArrowFlightSeconds × √(d / 기준사거리)
+                //   임계 = 회복 + 당김 + 조준.
+                float beat = cfg.archeryRecoverSeconds + cfg.archeryDrawSeconds + cfg.archeryAimHoldSeconds;
+                float beatLimitRatio = cfg.archeryTargetDistanceRatio
+                                       * Mathf.Pow(beat / cfg.archeryArrowFlightSeconds, 2f);
+                Assert.Less(ucap, beatLimitRatio,
+                    $"Ucap {ucap}H가 '한 발 = 한 박자' 임계 {beatLimitRatio:F2}H 이상입니다 — " +
+                    "앞 화살이 착탄하기 전에 다음 화살이 떠나 착탄음과 발사음이 겹칩니다.");
+                Assert.Greater(ucap, cfg.archeryMaxTargetDistanceRatio,
+                    "Ucap이 기준 상한 이하라 폭 비례 상한이 아무 효과도 없습니다.");
+
+                // ★ 어떤 배율에서도 최대 사거리가 화면 밖으로 나가지 않는다.
+                foreach (float scale in Scales)
+                {
+                    float h = StickConfig.BaselineCharacterTotalHeight * scale;
+                    float span = 2f * VisibleHalfWidth
+                                 - h * ArcheryDirector.CharacterEdgeInsetRatio
+                                 - (h * cfg.archeryTargetRadiusRatio
+                                    + h * ArcheryDirector.TargetEdgeInsetRatio);
+                    ExpectedBand(cfg, scale, span, ScreenWidthWorld, out float lo, out float hi);
+                    Assert.Less(hi, ScreenWidthWorld * 0.5f,
+                        $"배율 {scale}: 최대 사거리 {hi / ScreenWidthWorld:P1}W가 화면 폭의 절반 이상입니다 — " +
+                        "'적당히 먼 거리'(2026-08-31)를 지나쳐 다시 화면 끝으로 갑니다.");
+                    Assert.GreaterOrEqual(lo / ScreenWidthWorld, 0.15f,
+                        $"배율 {scale}: 최소 사거리가 화면 폭의 {lo / ScreenWidthWorld:P1}입니다.");
+                }
+            }
+            finally { UnityEngine.Object.DestroyImmediate(cfg); }
+        }
+
+        /// <summary>
+        /// ⑤-6 밴드 하한의 <b>근거 보고</b>(<see cref="ArcheryDirector.FloorSource"/>)가 실제와 맞는가.
+        /// 실기 로그가 이 값을 찍으므로, 여기가 거짓말하면 <b>실기 판정 전체가 오염된다</b>.
+        /// </summary>
+        [Test]
+        public void 밴드_하한_근거_보고가_실제와_일치한다()
+        {
+            var cfg = ScriptableObject.CreateInstance<StickConfig>();
+            try
+            {
+                float f = cfg.archeryMinDistanceSpanFraction;
+                float g = cfg.archeryMaxDistanceSpanFraction;
+                float screenFloor = ScreenWidthWorld * cfg.archeryMinTargetDistanceScreenFraction;
+                int abs = 0, spanSrc = 0, screenSrc = 0;
+
+                foreach (float scale in Scales)
+                foreach (float widthPt in FootholdWidthsPt)
+                {
+                    float h = StickConfig.BaselineCharacterTotalHeight * scale;
+                    float half = widthPt / PtPerUnit * 0.5f;
+                    ArcheryDirector.Placement p = PlaceScaled(cfg, scale, 0f, -half, half, f, 0f,
+                        maxSpanFraction: g, screenFloor: screenFloor);
+                    if (!p.Ok) continue;
+
+                    float absFloor = h * cfg.archeryMinTargetDistanceRatio;
+                    float u0 = h * cfg.archeryMaxTargetDistanceRatio;
+                    float wantSpan = f * Mathf.Min(p.BandHi, u0);
+                    float wantScreen = Mathf.Min(screenFloor, f * p.BandHi);
+                    string ctx = $"배율 {scale}, 발판 {widthPt:F0}pt";
+
+                    switch (p.BandLoSource)
+                    {
+                        case ArcheryDirector.FloorSource.Absolute:
+                            abs++;
+                            Assert.AreEqual(absFloor, p.BandLo, Eps, $"{ctx}: 절대 바닥이라는데 값이 다릅니다.");
+                            break;
+                        case ArcheryDirector.FloorSource.Span:
+                            spanSrc++;
+                            Assert.AreEqual(wantSpan, p.BandLo, Eps, $"{ctx}: 폭 비례라는데 값이 다릅니다.");
+                            Assert.GreaterOrEqual(wantSpan, wantScreen - Eps,
+                                $"{ctx}: 폭 비례로 보고했는데 화면 비례가 더 큽니다.");
+                            break;
+                        default:
+                            screenSrc++;
+                            Assert.AreEqual(wantScreen, p.BandLo, Eps, $"{ctx}: 화면 비례라는데 값이 다릅니다.");
+                            // ★ 동률은 Screen이 아니다 — **엄격히** 커야 한다. 2026-09-06 실기에서
+                            //   동률 14/14가 "★화면비례"로 찍혀 "처방이 걸렸다"로 읽힐 뻔했다.
+                            //   그 동률의 정체는 화면 비례 바닥이 f×상한에 눌려 폭 비례와 같아진 것,
+                            //   즉 **아무 일도 안 한 것**이었다.
+                            Assert.Greater(wantScreen, wantSpan + Eps,
+                                $"{ctx}: 화면 비례로 보고했는데 폭 비례와 동률이거나 더 작습니다 — " +
+                                "로그가 '처방이 걸렸다'고 거짓말을 합니다.");
+                            break;
+                    }
+                }
+
+                // 세 근거가 표본에 전부 등장해야 이 판정이 의미를 갖는다(빈 집합 방지).
+                Assert.Greater(abs, 0, "표본에 '절대 바닥'이 한 건도 없습니다 — 좁은 발판이 빠졌습니다.");
+                Assert.Greater(screenSrc, 0,
+                    "표본에 '화면 비례'가 한 건도 없습니다 — 이번 라운드의 처방이 어디에서도 안 걸렸다는 뜻입니다.");
             }
             finally { UnityEngine.Object.DestroyImmediate(cfg); }
         }

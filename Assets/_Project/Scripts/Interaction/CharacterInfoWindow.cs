@@ -34,7 +34,11 @@ namespace StickMate.Interaction
     /// 802pt 높이는 톱니 아래(top 84)에서 시작하면 886pt라 어떤 노트북에도 들어가지 않는다.
     /// 그래서 중앙 정렬로 바꿨다. <b>2026-08-30 보강</b>: "중앙 <b>고정</b>"이던 부분만 리더가 뒤집었다 —
     /// 열릴 때는 여전히 화면 중앙이지만 <b>헤더를 잡으면 옮길 수 있다</b>(화면 밖으로는 못 나간다).
-    /// 옮긴 자리는 기억하지 않는다. 반대로 스펙의 배경색 <c>#dcdbd7</c>(<see cref="UiChrome.ScreenScrim"/>)은
+    /// ★★ <b>2026-09-07 — "옮긴 자리는 기억하지 않는다"가 뒤집혔다</b>(사용자 요청 PART1-1:
+    /// <i>"이동한 위치는 창별로 저장되어 재시작 후에도 유지"</i>). 이제 <b>한 번이라도 옮겼으면</b>
+    /// 그 자리에서 열리고(<see cref="RestorePanelPosition"/>), 옮긴 적이 없으면 예전 그대로 화면
+    /// 중앙이다. 즉 33-7-7의 "열면 중앙"은 <b>기본값</b>으로 남고 규칙에서 내려왔다.
+    /// 기구는 세 창이 공유한다(<see cref="UiWindowDrag"/>). 반대로 스펙의 배경색 <c>#dcdbd7</c>(<see cref="UiChrome.ScreenScrim"/>)은
     /// <b>깔지 않는다</b> — 그건 브라우저 프로토타입의 "지면"이지 모달 딤이 아니고, 우리가 화면 전체를
     /// 덮으면 유저의 작업 화면을 통째로 가려 <b>비침해 원칙 2 정면 위반</b>이 된다.
     ///
@@ -119,7 +123,12 @@ namespace StickMate.Interaction
         private const float HeaderHeight = 66f;
 
         internal const float BodyHeight = PanelHeight - HeaderHeight;   // 736
-        private const float ScreenMargin = 16f;
+
+        /// <summary>화면 가장자리 여백(16pt). ★ 2026-09-07 — <b>숫자를 여기서 정하지 않는다</b>.
+        /// 창 셋(정보창·설정창·집중 팝오버)이 같은 클램프를 쓰게 되면서 같은 16을 세 번 적을 뻔했고,
+        /// 그러면 다음 라운드에 반드시 한 벌만 고쳐진다. 단일 출처는
+        /// <see cref="UiWindowDrag.ScreenMarginPoints"/>이고 값은 예전과 <b>비트 동일</b>하다.</summary>
+        private const float ScreenMargin = UiWindowDrag.ScreenMarginPoints;
 
         // ---- 헤더 내부 (§4-2) ----
         private const float HeaderPadLeft = 28f;
@@ -728,7 +737,10 @@ namespace StickMate.Interaction
         /// <see cref="TickFramePacingHold"/> 참고.</summary>
         private float _lastSurfaceTouchTime = float.NegativeInfinity;
 
-        private Vector2 _dragGrabOffsetPoints;
+        /// <summary>창을 손으로 옮기는 기구 — <b>세 창이 공유하는 한 벌</b>(<see cref="UiWindowDrag"/>).
+        /// 임계·클램프·저장이 전부 그 안에 있고, 이 창이 아는 것은 «헤더의 어디가 손잡이인가»뿐이다.</summary>
+        private readonly UiWindowDrag _windowDrag = new UiWindowDrag(UiWindowId.CharacterInfo);
+
         private Vector2 _dragStartOffsetPoints;
 
         /// <summary>지금 컬럼 3 격자를 잡고 있는가.</summary>
@@ -858,7 +870,9 @@ namespace StickMate.Interaction
             if (_open) return;
             _open = true;
             CloseOverlappingSurfaces($"캐릭터 창 열림({source})");
-            ResetPanelToCenter();      // 33-7-7의 "열면 화면 중앙"은 유지한다(드래그는 그 뒤의 이야기).
+            // ★ 2026-09-07 — 옛 <c>ResetPanelToCenter()</c> 자리다. 옮긴 적이 없으면 이 함수가
+            //   하는 일이 예전과 <b>완전히 같다</b>(중앙). 옮긴 적이 있으면 그 자리에서 연다.
+            RestorePanelPosition();
             _leftInitialized = false; // 창을 여는 그 클릭이 곧바로 카드 클릭으로 오인되지 않게.
             // 여는 그 순간은 정의상 조작 중이다 — 첫 커서 폴링(최대 0.05초)까지의 공백을 메운다.
             _lastSurfaceTouchTime = Time.unscaledTime;
@@ -884,6 +898,9 @@ namespace StickMate.Interaction
             if (!_open) return;
             _open = false;
             _draggingPanel = false;
+            // ★ 확정하지 않고 놓는다 — 닫히는 창의 마지막 좌표를 저장하면 "옮긴 적 없는데 자리가
+            //   바뀌었다"가 된다(전체화면 자동 숨김도 이 경로로 들어온다).
+            _windowDrag.Cancel();
             _pendingEquipCard = -1;
             _pendingShopCard = -1;
             ClearShopConfirm();        // 창을 닫는 것도 「가만히 두기」다 — 확정되지 않은 구매는 사라진다.

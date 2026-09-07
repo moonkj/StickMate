@@ -167,6 +167,7 @@ namespace StickMate.Platform
             _summaryTimer = 0f;
             _firstSummaryDone = false;
             _stillDivisor = FramePacingPolicy.DefaultStillDivisor;
+            _activeDivisor = FramePacingPolicy.DefaultActiveDivisor;
             _vSyncForcedByEnv = false;
             _vSyncRequestedByEnv = -1;
             _presentBaselineValid = false;
@@ -199,7 +200,7 @@ namespace StickMate.Platform
             ApplyWindows(config);
             _presenceService = new Windows.WindowsViewerPresenceService();
 #endif
-            InitializeAdaptiveGovernor();
+            InitializeAdaptiveGovernor(config);
         }
 
         /// <summary>
@@ -355,6 +356,24 @@ namespace StickMate.Platform
         /// <c>STICKMATE_STILL_DIVISOR</c>로 실기에서 재빌드 없이 A/B할 수 있다(4 vs 8).</summary>
         private static int _stillDivisor = FramePacingPolicy.DefaultStillDivisor;
 
+        /// <summary>계측용 Active 등급 분주 환경변수 이름. <b>지정하지 않으면 제품 동작에 영향 0</b>
+        /// (<see cref="FramePacingPolicy.DefaultActiveDivisor"/> = 1 = 현행 매 프레임 제출).
+        ///
+        /// <para><b>이 변수가 존재하는 이유</b>: Active를 30fps로 상한 걸었을 때의 GPU 절감과 그
+        /// 대가(보행 한 주기 44.4 -> 22.2프레임)는 <see cref="FramePacingPolicy.DefaultActiveDivisor"/>
+        /// 위 문단에 숫자로 있지만, <b>"그게 눈에 띄게 끊겨 보이는가"는 사람 눈으로만 정해진다</b>.
+        /// 게다가 그 판단은 2026-08-31에 사용자가 이미 한 번 내린 것이다("움직일 때는 60fps").
+        /// 그래서 기본값을 바꾸지 않고, 재빌드 없이 눈으로 대조할 수 있는 손잡이만 둔다 —
+        /// <see cref="VSyncEnvironmentVariableName"/>이 세운 것과 같은 관례다.</para>
+        ///
+        /// <para><b>함정</b>: <c>STICKMATE_ADAPTIVE_PACING=0</c>이면 이 변수도 함께 죽는다
+        /// (적응형 판단 경로 자체가 안 돈다). <c>STICKMATE_STILL_DIVISOR</c>과 같은 성질이다.</para></summary>
+        internal const string ActiveDivisorEnvironmentVariableName = "STICKMATE_ACTIVE_DIVISOR";
+
+        /// <summary>Active 등급의 분주. 기본 <see cref="FramePacingPolicy.DefaultActiveDivisor"/>(=1,
+        /// 현행 동작). <see cref="ActiveDivisorEnvironmentVariableName"/>으로만 바뀐다.</summary>
+        private static int _activeDivisor = FramePacingPolicy.DefaultActiveDivisor;
+
         /// <summary>등급이 <b>더 깊어지는</b> 전이 사이의 최소 간격(초). 얕아지는 방향에는 걸지
         /// 않는다(그쪽을 늦추면 걷기 시작이 끊긴다). 1초인 이유: 실측 유휴 에피소드가 평균 5.3초라
         /// Calm(0.4초)→Still(1.6초) 계단은 그대로 통과하면서, 상태머신이 한 프레임씩 튀는 병적인
@@ -470,13 +489,19 @@ namespace StickMate.Platform
             return blackboard.Machine.CurrentStateId == Core.StickmanStateId.Idle;
         }
 
-        private static void InitializeAdaptiveGovernor()
+        private static void InitializeAdaptiveGovernor(Core.StickConfig config)
         {
             _adaptiveEnabled = _presenceService != null && ReadEnvFlag("STICKMATE_ADAPTIVE_PACING", true);
             _forcedTier = ReadEnvTier("STICKMATE_FORCE_TIER");
             _stillDivisor = Mathf.Clamp(
                 ReadEnvInt("STICKMATE_STILL_DIVISOR", FramePacingPolicy.DefaultStillDivisor),
                 FramePacingPolicy.MinStillDivisor, FramePacingPolicy.MaxStillDivisor);
+            // 출하 값은 애셋(StickConfig)이 정하고, 환경변수는 그 위에 얹는 **계측용 덮어쓰기**다.
+            // 순서가 반대면 재빌드 없는 A/B가 애셋에 막힌다(STICKMATE_VSYNC와 같은 관례).
+            _activeDivisor = Mathf.Clamp(
+                ReadEnvInt(ActiveDivisorEnvironmentVariableName,
+                    config != null ? config.activeTierRenderDivisor : FramePacingPolicy.DefaultActiveDivisor),
+                FramePacingPolicy.MinActiveDivisor, FramePacingPolicy.MaxActiveDivisor);
             _baseVSyncCount = QualitySettings.vSyncCount;
             _baseTargetFrameRate = Application.targetFrameRate;
             _currentTier = FramePacingTier.Active;
@@ -497,6 +522,14 @@ namespace StickMate.Platform
                 $"화면꺼짐({FramePacingPolicy.DisplayOffTargetFps}fps 고정). " +
                 $"정지 등급 문턱={StillDwellSeconds:F1}초(캐릭터 정지 지속), 정적 문턱={CalmDwellSeconds:F1}초. " +
                 (_forcedTier.HasValue ? $"★ STICKMATE_FORCE_TIER={_forcedTier.Value} 강제 지정됨(계측용). " : "") +
+                // 기본값(1)일 때는 한 글자도 찍지 않는다 — 이 줄이 "이번 실행이 제품 기본값인가"를
+                // 말해야 하므로, 아무것도 안 바꾼 실행에 없던 문장이 생기면 안 된다.
+                (_activeDivisor != FramePacingPolicy.DefaultActiveDivisor
+                    ? $"★ {ActiveDivisorEnvironmentVariableName}={_activeDivisor} — 활성 등급 제출이 " +
+                      $"1/{_activeDivisor}로 내려갑니다(계측용). 이 회차는 **제품 기본값이 아닙니다**: " +
+                      "보행 한 주기가 44.4프레임에서 22.2프레임으로 줄어 " +
+                      "2026-08-31 사용자 확정('움직일 때는 60fps')과 어긋납니다. "
+                    : string.Empty) +
                 "근거/실측은 FramePacing·FramePacingPolicy 클래스 문서 참고.");
         }
 
@@ -575,7 +608,7 @@ namespace StickMate.Platform
             FramePacingTier tier = _forcedTier
                 ?? FramePacingPolicy.DecideTier(_presence, _suspendedNow, characterIdle, held, characterStill);
             FramePacingPlan plan = FramePacingPolicy.BuildPlan(tier, _baseVSyncCount, _baseTargetFrameRate,
-                FramePacingPolicy.ShouldApplyLowPowerDownshift(_presence, held), _stillDivisor);
+                FramePacingPolicy.ShouldApplyLowPowerDownshift(_presence, held), _stillDivisor, _activeDivisor);
             ApplyPlan(plan);
         }
 

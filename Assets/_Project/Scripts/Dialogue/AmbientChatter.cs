@@ -417,8 +417,15 @@ namespace StickMate.Dialogue
             if (blackboard == null || target == null) return false;
             StickConfig config = blackboard.Config;
 
-            // 강제 발화 펄스(Interaction/AppControlDirector.cs의 Ctrl+Opt+Cmd+B 데모 단축키)는 확률과
-            // 쿨다운을 모두 건너뛴다 — "지금 말풍선을 보고 싶다"는 사용자 명령 자체가 확정 사실이다.
+            // 강제 발화 펄스는 확률과 쿨다운을 모두 건너뛴다 — "지금 말풍선을 보고 싶다"는 사용자
+            // 명령 자체가 확정 사실이다.
+            // ★★ 2026-09-07 — <b>지금 이 펄스를 세우는 프로덕션 코드는 없다.</b> 유일한 생산자였던
+            //    Interaction/AppControlDirector.ForceSayNow(단축키 ⌃⌥⌘B / 행동 명령창 [말 걸기])가
+            //    사용자 지시로 폐지됐다. 이 분기는 <b>그 라운드에서 일부러 남겼다</b>(그 파일의
+            //    「말 걸기 폐지」 절): 여기와 StickmanBlackboard는 design-narrative 라운드의 작업
+            //    대상이라 다른 담당이 정리한다 — 리더에게 별건으로 올렸다.
+            //    ⇒ 지금 이 분기를 태우는 것은 EditMode 테스트뿐이다. 그 사실을 모르고 읽으면
+            //      "사용자 명령 경로가 살아 있다"로 오해한다.
             bool forced = blackboard.ForcedChatterSignaled;
             blackboard.ForcedChatterSignaled = false; // 소비 즉시 리셋(이 프로젝트의 1프레임 펄스 관례).
 

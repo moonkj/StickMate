@@ -146,8 +146,10 @@ namespace StickMate.Platform
     ///        <b>같은 조회를 네 번</b> 하게 된다.</item>
     ///  <item><b>그런데 상단 계약은 못 지운다</b> — 소비 호출부가 이미 다섯 곳이다
     ///        (<c>Interaction/InfoGearIconWidget.cs</c> · <c>Interaction/GearRadialMenuWidget.cs</c> ·
-    ///        <c>Interaction/CharacterInfoWindow.Layout.cs</c> · <c>Interaction/TodoPostItWidget.cs</c> ·
-    ///        <c>Interaction/PopoverPanel.cs</c>). 그래서 <b>계약은 나란히 두되 산술은 한 벌</b>로 만든다:
+    ///        <c>Interaction/UiWindowDrag.cs</c> · <c>Interaction/TodoPostItWidget.cs</c> ·
+    ///        <c>Interaction/PopoverPanel.cs</c>. ★ 2026-09-07 이름 정정 — 옛 목록의
+    ///        <c>CharacterInfoWindow.Layout.cs</c>가 창 3종 드래그 라운드에서 <c>UiWindowDrag.cs</c>로
+    ///        모였다. 개수는 그대로 다섯이다). 그래서 <b>계약은 나란히 두되 산술은 한 벌</b>로 만든다:
     ///        양 플랫폼의 상단 전용 구현이 이 네 방향 조회를 호출해 <c>Top</c>만 꺼내 쓴다.
     ///        <b>두 벌이 되면 반드시 한쪽만 고쳐진다</b>는 이 저장소의 규칙을 계약이 아니라
     ///        <b>구현 층</b>에서 지킨다.</item>

@@ -303,6 +303,20 @@ namespace StickMate.Interaction
         private RectMask2D[] _masks = System.Array.Empty<RectMask2D>();
 
         private RectTransform _closeRect;
+
+        /// <summary>드래그 손잡이 — <b>헤더 48pt</b>에서 <see cref="_closeRect"/>를 뺀 나머지.
+        /// 판정은 <see cref="TryBeginWindowDrag"/> 한 곳이고, 기구는 세 창이 공유한다
+        /// (<see cref="UiWindowDrag"/>). 2026-09-07 사용자 요청 PART1-1.</summary>
+        private RectTransform _headerRect;
+
+        /// <summary>손잡이에서 빼는 사각형들 — <b>배열을 도는</b> 형태로 둔다(헤더에 컨트롤을
+        /// 하나 더 넣는 사람이 여기를 잊으면 그 컨트롤을 누를 때마다 창이 끌려간다).
+        /// 지금 헤더에 있는 것은 제목(raycast 대상이 아니다)과 [✕]뿐이다.</summary>
+        private RectTransform[] _headerNonDragRects = System.Array.Empty<RectTransform>();
+
+        /// <summary>창을 손으로 옮기는 기구(정보창·집중 팝오버와 <b>같은 한 벌</b>).</summary>
+        private readonly UiWindowDrag _windowDrag = new UiWindowDrag(UiWindowId.Settings);
+
         private readonly RectTransform[] _tabRects = new RectTransform[TabCount];
         private readonly Text[] _tabLabels = new Text[TabCount];
         private readonly Image[] _tabUnderlines = new Image[TabCount];
@@ -408,6 +422,35 @@ namespace StickMate.Interaction
 
         public Tab ActiveTab => _tab;
         public Vector2 PanelSizePoints => _panel != null ? _panel.sizeDelta : Vector2.zero;
+
+        // ==================== 창 이동 진단/테스트 창구 (2026-09-07) ====================
+
+        /// <summary>창의 현재 위치(화면 중앙 원점, 캔버스 포인트) — 정보창의 같은 이름 창구와 같은 계다.</summary>
+        public Vector2 PanelOffsetPoints => _panel != null ? _panel.anchoredPosition : Vector2.zero;
+
+        /// <summary>드래그 손잡이(<b>헤더</b>)의 화면 사각형. 실제로 끌리는 자리는 여기서 [✕]를 뺀
+        /// 나머지이고, 그 판정은 <see cref="TryBeginWindowDrag"/> 한 곳에 있다.</summary>
+        public Rect HeaderScreenRect => SettingsControlHost.ScreenRectOf(_headerRect);
+
+        /// <summary>헤더 안에서 <b>드래그가 시작되지 않는</b> 자식들의 사각형 — 테스트가 "빈 자리"를
+        /// 고를 때 이 목록을 피한다(좌표를 손으로 적으면 헤더에 컨트롤이 늘 때 엉뚱한 곳을 누른다).</summary>
+        public Rect[] HeaderNonDragRectsForTests()
+        {
+            var rects = new Rect[_headerNonDragRects.Length];
+            for (int i = 0; i < rects.Length; i++)
+                rects[i] = SettingsControlHost.ScreenRectOf(_headerNonDragRects[i]);
+            return rects;
+        }
+
+        /// <summary>지금 헤더를 잡고 있는가(문턱을 넘기 전에도 true — "조작 중"의 정의다).</summary>
+        public bool IsDraggingWindow => _windowDrag.IsGrabbed;
+
+        /// <summary>테스트 전용 — 버튼 상태와 커서를 <b>실제 입력과 같은 처리 경로</b>에 먹인다
+        /// (드래그는 누름/이동/뗌의 연속이라 단발 클릭 진입점으로는 재현할 수 없다).</summary>
+        public void FeedPointerForTests(bool buttonDown, Vector2 cursorUnityScreen)
+        {
+            if (_open) ProcessPointer(buttonDown, cursorUnityScreen, hasCursor: true);
+        }
 
         /// <summary>설정창이 지금 보여주고 있는 캐릭터 배율 — 테스트가 "두 UI가 같은 값을 가리키는가"를
         /// 확인하는 창구다(원칙 1).</summary>
@@ -605,6 +648,8 @@ namespace StickMate.Interaction
             // 여는 그 순간은 정의상 조작 중이다 — 첫 커서 폴링(최대 0.05초)까지의 공백을 메운다.
             _lastSurfaceTouchTime = Time.unscaledTime;
             _dragIndex = -1;
+            // ★ 2026-09-07 — 옮긴 적이 있으면 그 자리에서, 없으면 예전 그대로 화면 중앙에서 연다.
+            RestorePanelPosition();
             DisarmQuit();
             CloseOverlappingSurfaces($"설정창 열림({source})");
             if (_canvas != null) _canvas.gameObject.SetActive(true);
@@ -619,6 +664,9 @@ namespace StickMate.Interaction
             if (!_open) return;
             _open = false;
             _dragIndex = -1;
+            // ★ 확정하지 않고 놓는다 — 닫히는 창의 마지막 좌표를 저장하면 "옮긴 적 없는데 자리가
+            //   바뀌었다"가 된다(전체화면 자동 숨김도 이 경로로 들어온다).
+            _windowDrag.Cancel();
             // 사용자가 직접 닫았으면 "전체화면이 지나가면 돌려놓는다" 예약은 뜻을 잃는다.
             // (전체화면 경로는 이 호출 <b>뒤에</b> 다시 무장한다.)
             DisarmReopenAfterSuspend();
@@ -759,8 +807,9 @@ namespace StickMate.Interaction
             // 자체가 없다. 그 환경(에디터/Null 서비스)에서는 적응형 페이싱도 함께 꺼져 있으므로
             // 홀드가 없어서 생기는 손해가 없다.
 
-            // 드래그(슬라이더) 중에는 폴링 간격을 없앤다 — 20Hz로 끌면 손잡이가 커서에서 뚝뚝 떨어진다.
-            if (_dragIndex < 0)
+            // 드래그(슬라이더 / 창 이동) 중에는 폴링 간격을 없앤다 — 20Hz로 끌면 손잡이도 창도
+            // 커서에서 뚝뚝 떨어진다(정보창이 같은 이유로 같은 가드를 쓴다).
+            if (_dragIndex < 0 && !_windowDrag.IsGrabbed)
             {
                 _clickPollTimer += Time.unscaledDeltaTime;
                 if (_clickPollTimer < ClickPollInterval) return;
@@ -794,7 +843,9 @@ namespace StickMate.Interaction
         private void TickFramePacingHold(bool hasCursor, Vector2 cursor)
         {
             // _quitArmed는 "정말 종료?"가 떠 있는 몇 초 — 그 순간의 클릭이 굼뜨면 안 된다.
-            bool manipulating = _dragIndex >= 0 || _quitArmed;
+            // ★ 창을 잡고 끄는 중도 조작이다(2026-09-07) — 커서가 창 밖으로 나가도 이어지므로
+            //   아래 사각형 판정만으로는 못 잡는다. 슬라이더 드래그와 정확히 같은 사정이다.
+            bool manipulating = _dragIndex >= 0 || _quitArmed || _windowDrag.IsGrabbed;
             bool cursorOver = hasCursor && RectContainsScreenPoint(_panel, cursor);
             if (manipulating || cursorOver) _lastSurfaceTouchTime = Time.unscaledTime;
 
@@ -819,7 +870,16 @@ namespace StickMate.Interaction
 
             if (buttonDown && !prev)
             {
-                if (hasCursor) FeedClick(cursor);
+                if (!hasCursor) return;
+                // ★ 헤더의 빈 자리를 잡았으면 클릭 처리로 넘기지 않는다(정보창과 같은 순서).
+                //   손잡이는 «누를 때 아무 일도 일어나지 않는 자리»라 클릭을 삼켜도 잃는 것이 없다.
+                if (TryBeginWindowDrag(cursor)) return;
+                FeedClick(cursor);
+                return;
+            }
+            if (buttonDown && _windowDrag.IsGrabbed)
+            {
+                if (hasCursor) DragWindowTo(cursor);
                 return;
             }
             if (buttonDown && _dragIndex >= 0)
@@ -827,12 +887,104 @@ namespace StickMate.Interaction
                 if (hasCursor) _host.DragTo(_dragIndex, cursor);
                 return;
             }
-            if (!buttonDown && prev && _dragIndex >= 0)
+            if (!buttonDown && prev)
             {
-                _dragIndex = -1;
-                FlushPendingSave();   // 드래그가 끝난 시점에 한 번만 디스크를 두드린다.
+                EndWindowDrag();
+                if (_dragIndex >= 0)
+                {
+                    _dragIndex = -1;
+                    FlushPendingSave();   // 드래그가 끝난 시점에 한 번만 디스크를 두드린다.
+                }
             }
         }
+
+        // ==================== 창 이동 (2026-09-07 사용자 요청 PART1-1) ====================
+        //
+        // 사용자 원문: "모든 창(집중모드 타이머, 캐릭터 정보창, 설정창)이 마우스로 끌어도 움직이지
+        // 않음 — 전부 드래그 이동 가능해야 함" · "이동한 위치는 창별로 저장되어 재시작 후에도 유지".
+        // 이 창에는 <b>드래그 코드가 아예 없었다</b>(정보창에만 있었다). 판정·클램프·저장은 전부
+        // <see cref="UiWindowDrag"/> 한 벌이고, 여기 남는 것은 «어디가 손잡이인가»뿐이다.
+
+        /// <summary>헤더 48pt에서 <see cref="_headerNonDragRects"/>를 뺀 자리를 잡았는가.</summary>
+        private bool TryBeginWindowDrag(Vector2 cursor)
+        {
+            if (_headerRect == null || _panel == null) return false;
+            if (!RectContainsScreenPoint(_headerRect, cursor)) return false;
+            if (UiWindowDrag.AnyContains(_headerNonDragRects, cursor)) return false;
+
+            _windowDrag.Grab(UiWindowDrag.ScreenToCenterOriginPoints(cursor, CanvasScale()),
+                _panel.anchoredPosition);
+            return true;
+        }
+
+        private void DragWindowTo(Vector2 cursor)
+        {
+            if (_panel == null) return;
+            // 문턱(UiWindowDrag.MoveThresholdPoints)을 넘기 전에는 창이 한 픽셀도 움직이지 않는다.
+            if (!_windowDrag.TryResolveCenter(
+                    UiWindowDrag.ScreenToCenterOriginPoints(cursor, CanvasScale()), out Vector2 desired)) return;
+
+            Vector2 applied = ClampPanelPosition(desired);
+            _panel.anchoredPosition = applied;
+            _windowDrag.NoteAppliedCenter(applied);   // 저장되는 것은 <b>클램프를 지난</b> 값이다.
+        }
+
+        private void EndWindowDrag()
+        {
+            if (!_windowDrag.IsGrabbed) return;
+            bool moved = _windowDrag.Release();
+            if (!moved) return;
+
+            Vector2 p = _panel != null ? _panel.anchoredPosition : Vector2.zero;
+            Debug.Log($"[설정창] 이동 완료 — 화면 중앙에서 ({p.x:F0}, {p.y:F0})pt 옮긴 자리입니다. " +
+                "재시작해도 이 자리에서 열립니다.");
+        }
+
+        /// <summary>
+        /// ★ 창을 열 때의 자리 — <b>옮긴 적이 있으면 그 자리, 없으면 화면 중앙</b>.
+        /// <para>옮긴 적이 없는 사용자에게는 <c>anchoredPosition = Vector2.zero</c>가 되어
+        /// <b>예전과 결과가 같다</b>(이 창은 지금까지 빌드 시점의 0에서 한 번도 움직이지 않았다).</para>
+        /// <para>클램프를 함께 하는 이유는 정보창과 같다 — 저장된 자리는 <b>다른 화면 크기에서 만든
+        /// 값</b>일 수 있고, 창 밖 클릭이 닫지 않는 이 앱에서 화면 밖 창은 <b>닫을 수 없는 창</b>이다.</para>
+        /// </summary>
+        private void RestorePanelPosition()
+        {
+            _windowDrag.Cancel();
+            if (_panel == null) return;
+
+            // 옮긴 적이 없으면 <b>클램프도 태우지 않는다</b> — 위 ApplyCanvasScaleFactor의 가드와
+            // 같은 이유다(720×560 고정 창이라 좁은 화면에서 클램프가 이동을 만든다).
+            if (!_windowDrag.TryGetSavedCenter(out Vector2 saved))
+            {
+                _panel.anchoredPosition = Vector2.zero;   // 예전과 비트 동일.
+                return;
+            }
+            _panel.anchoredPosition = ClampPanelPosition(saved);
+        }
+
+        /// <summary>창 전체가 화면(과 OS 예약 띠) 안에 남는 자리로 자른다 — 규칙은 정보창·팝오버와
+        /// <b>같은 코드</b>(<see cref="UiWindowDrag.ClampCenterPoints"/>)다.
+        /// <para>이 창은 크기가 720×560 고정이라 <b>줄이지 않는다</b>(정보창의 <c>ClampPanelToScreen</c>과
+        /// 다른 점). 화면이 그보다 좁으면 가로는 가운데, 세로는 예약 띠를 피해 위쪽에 붙는다 —
+        /// 그건 이 라운드가 만든 동작이 아니라 <c>SurfaceSafeAreaPolicy</c>가 이미 정한 규칙이다.</para></summary>
+        private Vector2 ClampPanelPosition(Vector2 desired)
+        {
+            if (_panel == null) return desired;
+            float sf = CanvasScale();
+            UiWindowDrag.ResolveReservedInsets(_agent, out float topInset, out float bottomInset);
+            return UiWindowDrag.ClampCenterPoints(desired, _panel.sizeDelta,
+                new Vector2(Screen.width / sf, Screen.height / sf), topInset, bottomInset, ScreenMarginPoints);
+        }
+
+        private float CanvasScale()
+        {
+            float sf = _scaler != null ? _scaler.scaleFactor : 1f;
+            return sf > 0f ? sf : 1f;
+        }
+
+        /// <summary>화면 가장자리 여백 — <b>숫자를 다시 적지 않는다</b>. 세 창의 단일 출처는
+        /// <see cref="UiWindowDrag.ScreenMarginPoints"/>이고 정보창도 같은 값을 참조한다.</summary>
+        public const float ScreenMarginPoints = UiWindowDrag.ScreenMarginPoints;
 
         private void FeedClick(Vector2 cursor)
         {
@@ -1024,6 +1176,7 @@ namespace StickMate.Interaction
             barGo.transform.SetParent(_panel, false);
             var bar = barGo.GetComponent<RectTransform>();
             UiChrome.PlaceTopLeft(bar, 0f, 0f, PanelWidth, HeaderHeight);
+            _headerRect = bar;   // 드래그 손잡이 — 여기를 잡은 동안만 창이 움직인다(2026-09-07).
 
             Text title = UiChrome.AddText(bar, "Title", UiChrome.FontTitle, TextAnchor.MiddleLeft,
                 UiChrome.TextPrimary, bold: true);
@@ -1047,6 +1200,9 @@ namespace StickMate.Interaction
             closeButton.targetGraphic = close;
             closeButton.transition = Selectable.Transition.None;   // ColorTint pressed(×0.7843) 함정 — UiChrome 절 참고.
             closeButton.onClick.AddListener(() => { if (TryClaimAction("close")) Close("[✕] 클릭"); });
+
+            // 손잡이에서 빼는 목록 — 여기 한 줄이 «[✕]를 누르면 창이 끌려간다»를 막는다.
+            _headerNonDragRects = new[] { _closeRect };
 
             // ★ 2026-09-02 — 헤더의 닫기 힌트("창 밖을 클릭해도 닫혀요")는 <b>같은 날 걷어냈다</b>.
             //   바깥 클릭이 더 이상 닫지 않으므로 그 문장은 거짓이 됐다. 닫는 법은 푸터 아랫줄이
@@ -2053,6 +2209,20 @@ namespace StickMate.Interaction
             if (_scaler == null) return;
             float target = ScreenCoordinateConverter.ResolveCanvasScaleFactor(_config);
             if (!Mathf.Approximately(_scaler.scaleFactor, target)) _scaler.scaleFactor = target;
+
+            // ★ 2026-09-07 — 창이 움직일 수 있게 된 순간부터 «화면이 작아졌다 / 배율이 바뀌었다»가
+            //   창을 화면 밖으로 밀어낼 수 있다. 드래그와 <b>같은 규칙</b>으로 매 프레임 되끌어온다
+            //   (정보창의 <c>ClampPanelToScreen</c>이 하는 일과 같다).
+            //
+            // ★★ <b>옮긴 적이 없으면 손대지 않는다</b> — 이 가드가 없으면 회귀가 난다.
+            //   이 창은 720×560 <b>고정</b>이라(정보창과 달리 줄이지 않는다) 화면이 그보다 낮으면
+            //   <c>SurfaceSafeAreaPolicy</c>의 «넘칠 때는 상단 우선» 규칙이 발동해 창이 위로 붙는다.
+            //   그건 그 자체로는 옳지만 <b>이 라운드가 요청받은 변경이 아니다</b>(배치모드 480px
+            //   화면에서 설정창 전체가 56pt 위로 올라간다 = 아무도 부탁하지 않은 이동).
+            //   그래서 «사용자가 실제로 옮긴 창»에만 적용한다 — 그 집합 밖에서는 한 픽셀도 안 바뀐다.
+            if (_panel == null || !UiLayoutModel.HasWindowOffset(UiWindowId.Settings)) return;
+            Vector2 clamped = ClampPanelPosition(_panel.anchoredPosition);
+            if (clamped != _panel.anchoredPosition) _panel.anchoredPosition = clamped;
         }
 
         private void SyncClickBlocker()

@@ -1642,15 +1642,19 @@ namespace StickMate.Interaction
         }
 
         /// <summary>반짝임 한 알(윤곽 별 1도형).
-        /// <para>★ 이름 끝의 <c>0</c>은 <b>십자 2획 시절의 인덱스</b>다. 도형이 하나가 된 지금은 의미가
-        /// 없지만, Tests/PlayMode/PortraitNewItemPreviewTests가 <c>"FxSparkleA0"</c>으로 획 두께를 재고
-        /// 있어 그대로 둔다(그 파일은 다른 라운드가 편집 중이라 이 라운드가 손대지 않는다).
-        /// 그 라운드가 착지하면 이 접미사와 그쪽 니들을 함께 지워라.</para></summary>
+        /// <para>★ 2026-09-07 — 이름 끝에 붙던 <c>"0"</c>을 <b>지웠다</b>. 그것은 십자 2획 시절의
+        /// 조각 인덱스였고 도형이 하나가 된 뒤로는 뜻이 없었다. 앞 라운드가 남긴 이름빚이며,
+        /// 그때 못 지운 이유는 니들 <c>"FxSparkleA0"</c>을 쓰는
+        /// Tests/PlayMode/PortraitNewItemPreviewTests 가 다른 작업자 소유였기 때문이다.
+        /// 이번에 <b>그 니들과 함께</b> 지웠다 — 이름만 바꾸면 그 테스트가 대상을 잃고
+        /// <b>조용히</b> 다른 것을 재게 된다(부재 니들이 썩는 형태).</para>
+        /// <para>다른 FX 미리보기(<c>FxFootprintA</c> · <c>FxDustA</c> · <c>FxLeafABlade</c>)는 원래
+        /// 인덱스를 붙이지 않았다 — 이제 다섯이 같은 규칙이다.</para></summary>
         private void AddSparklePreview(string name, float x, float y, float arm, Color ink)
         {
             Vector3[] pts = AppearanceShapeBuilder.SparkleStar(arm);
             Offset(pts, x, y);
-            AddLine(name + "0", pts, ink, true, PreviewSortingOrder);
+            AddLine(name, pts, ink, true, PreviewSortingOrder);
         }
 
         /// <summary>잎 한 장 = 잎몸 + 잎자루. 두 조각을 <b>같은 각도로</b> 돌린 뒤 함께 옮긴다 —

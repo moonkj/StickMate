@@ -899,6 +899,12 @@ namespace StickMate.Core
                  "0.05로 되돌리면 원래 동작이 그대로 복원된다(States/AutoWanderController.cs 로직 무수정).")]
         public float wanderPostIdleJumpChance = 0f;
 
+        [Tooltip("자리 비움(무입력 >= FramePacingPolicy.AwaySeconds=180초) 중 Idle 종료 후 Walk로 전이할 확률(0~1). " +
+                 "평소 wanderPostIdleWalkChance=0.75. 밤 걷기 주기를 사용자가 승인한 앰비언트 주기 30초에 맞춘 값 " +
+                 "(4.0/w + 2.75 = 30 -> w = 0.1468). ★ 음수면 기능 자체가 꺼지고 평소 확률을 그대로 쓴다(네거티브 컨트롤). " +
+                 "0은 «절대 안 걷는다»라는 유효하지만 권장하지 않는 값이라 OFF 센티널로 쓰지 않는다.")]
+        public float awayWanderWalkChance = 0.15f;
+
         [Tooltip("진행 방향 앞쪽, 지금 딛고 있는 발판의 잔여 길이가 이 값(유닛) 이하이면 경계 도달로 판정. 26-2.\n" +
                  "★★ 2026-08-30 R3-M1 — 이 값은 이제 **절대값이 아니라 하한**이다. 실제 판정 거리 = " +
                  "max(이 값, 몸의 물리 반폭 + 0.10)을 States/StickmanBlackboard.EdgeStopDistanceWorld가 " +
@@ -2878,6 +2884,66 @@ namespace StickMate.Core
                  "Interaction/ArcheryDirector.ResolvePlacement 주석).")]
         public float archeryMinDistanceSpanFraction = 0.55f;
 
+        [Tooltip("★ 2026-09-06 신설(g) — 랜덤 사거리 밴드의 **상한을 발판 폭에 비례**시키는 비율(0~0.5).\n\n" +
+                 "왜 상한부터 손대는가: 사용자가 '너무 가깝다'를 세 번(08-29 / 09-02 / 09-06) 말했는데 " +
+                 "밴드 하한만 올리는 처방(archeryMinDistanceSpanFraction)은 구조적으로 효과가 " +
+                 "없었다. 하한은 위 archeryMinDistanceSpanFraction × 상한이라 **상한이 절대치인 한 " +
+                 "하한도 절대치**이고, 배율이 작을수록 화면 대비 사거리가 같이 줄어든다(상한 6.6H가 " +
+                 "화면 폭에서 차지하는 비율: 배율 0.75에서 30.5%, 0.45에서 18.3%, 0.35에서 14.2%). " +
+                 "그래서 상한을 폭 비례로 열어야 " +
+                 "그 위에 화면 비례 하한(아래 archeryMinTargetDistanceScreenFraction)을 얹을 수 있다.\n\n" +
+                 "밴드 상한 = min(발판이 허용하는 최대, max(archeryMaxTargetDistanceRatio × 신장, " +
+                 "min(이 값 × 발판폭, archeryMaxDistanceHardCapRatio × 신장))).\n\n" +
+                 "★ 0.5 상한은 튜닝 취향이 아니라 **2026-08-31 신고('무조건 과녁이 화면 끝에만 생김') " +
+                 "재발 방지 장치**다: 방향 규칙상 캐릭터 앞에 남는 여유는 항상 0.5 × 발판폭 + 0.875H " +
+                 "이상이므로, g ≤ 0.5면 어떤 추첨에서도 과녁이 구간 끝에 못박히지 않는다" +
+                 "(design/systems/2026-09-02_활쏘기_사거리밴드_재설계.md 3-2절, 표본 200,000 검증).\n\n" +
+                 "0.45의 근거(design/systems/archery_screen_floor_r25.py [F]): 화면 비례 하한 0.22가 " +
+                 "**실제로 걸리는 최소 g**다. 밴드 하한은 코드에서 f × 밴드상한으로 클램프되므로 " +
+                 "g=0.40 이하에서는 하한이 21.0%W에서 멈춰 0.22가 무효가 된다. g=0.45에서 상한 43.0%W, " +
+                 "f×상한 23.7%W가 되어 0.22가 그 아래로 들어간다. 그리고 상한 사거리의 화살 비행 시간이 " +
+                 "0.883초로 '한 발 = 한 박자' 임계 1.06초 아래에 남는다.\n\n" +
+                 "★ 0으로 두면 2026-09-06 이전 동작으로 **비트 단위** 복귀한다(안전한 킬 스위치).")]
+        public float archeryMaxDistanceSpanFraction = 0.45f;
+
+        [Tooltip("★ 2026-09-06 신설(Ucap) — 위 폭 비례 상한의 **절대 천장**(캐릭터 신장 배수).\n\n" +
+                 "공간이 아니라 **연출**이 정한 값이다. 화살 비행 시간은 " +
+                 "clamp(archeryArrowFlightSeconds × √(사거리 / 기준사거리), …)인데, 이것이 " +
+                 "회복(0.34) + 당김(0.42) + 조준(0.30) = 1.06초를 넘으면 앞 화살이 아직 날고 있는데 " +
+                 "다음 화살이 떠나 '한 발 = 한 박자'가 깨진다. 그 임계는 " +
+                 "4.6H × (1.06/0.62)² = **13.45H**이고 13.4는 그 바로 아래다.\n\n" +
+                 "★ 이 값을 올리려면 design-motion / design-sound 판정이 먼저다(착탄음과 다음 발사음이 " +
+                 "겹친다). 참고로 비행 시간 상한 1.25초에 물리는 사거리는 18.7H이며, " +
+                 "design-motion R4의 '착탄 비트 게이트'가 채택되면 그때 18.7까지 열 수 있다.\n\n" +
+                 "archeryMaxTargetDistanceRatio보다 낮게 두면 무시된다(그쪽이 이긴다).")]
+        public float archeryMaxDistanceHardCapRatio = 13.4f;
+
+        [Tooltip("★★ 2026-09-06 신설(s) — 최소 사거리의 **화면 폭 비율** 바닥(0~0.30).\n\n" +
+                 "사용자 신고(세 번째): '활쏘기 과녁이 캐릭터와 너무 가까운 위치에 생김. 캐릭터로부터 " +
+                 "최소 거리를 확보해줘(화면 폭 비율 기준)'.\n\n" +
+                 "★ 왜 신장 배수가 아니라 **화면 폭 비율**인가: 기존 하한은 전부 신장 배수라 " +
+                 "**캐릭터를 작게 쓰는 사용자일수록 과녁이 화면상 가까워진다**. 신고 상태의 실효 하한 " +
+                 "3.63H는 화면 폭(1512pt) 대비 배율 0.75에서 16.8%(253pt), 배율 0.45에서 10.1%(152pt), " +
+                 "배율 0.35에서 7.8%(118pt)로 **미끄러진다**. 신장 배수로만 보면 셋 다 '3.63H'라 " +
+                 "똑같아 보였고, 그래서 세 번의 신고 동안 아무도 이걸 못 봤다. 화면 비율로 바닥을 깔면 " +
+                 "배율 0.60~1.00 전 구간에서 하한이 화면 폭의 22%로 **같아진다**(1512pt 화면에서 333pt).\n\n" +
+                 "0.22의 근거 — 위아래에서 조여 나온 값이다" +
+                 "(검산: design/systems/archery_screen_floor_r25.py [A][E][F]).\n" +
+                 "· 아래: 사용자가 직접 제시한 대역이 '화면 폭의 15~25%'다. 같은 신고가 " +
+                 "**세 번째**이므로 그 대역의 위쪽을 잡는다.\n" +
+                 "· 위: 밴드가 붕괴하면 안 되므로 하한은 코드에서 " +
+                 "archeryMinDistanceSpanFraction × 밴드상한(= 0.55 × 43.0%W = 23.7%W)으로 " +
+                 "**자동 클램프**된다 → 0.22는 그 천장 바로 아래다. 0.25 이상은 구조적으로 무효다.\n" +
+                 "· 그 결과 배율 0.75에서 밴드가 253~461pt → **333~651pt**가 되고, 연속 2회 " +
+                 "사거리 차의 기댓값이 0.99H → 1.52H로 올라간다(= '거리는 항상 랜덤'이 오히려 더 잘 보인다).\n\n" +
+                 "★ 이 클램프가 사용자가 09-02에 말한 양보절('창위에서는 창길이에 따라 변해야겠지만')을 " +
+                 "그대로 구현한다 — 좁은 창에서는 밴드 상한이 폭에 눌리므로 이 바닥도 함께 내려가고, " +
+                 "**포기 빈도는 한 건도 늘지 않는다**(발동 가부는 archeryMinTargetDistanceRatio만 본다).\n\n" +
+                 "★ 0으로 두면 이 바닥이 사라진다(킬 스위치). 기준이 되는 '화면 폭'은 " +
+                 "StickmanBlackboard.TryGetWalkableScreenBoundsWorld가 주는 **걸어다닐 수 있는 폭**이며, " +
+                 "발판(창) 폭이 아니다.")]
+        public float archeryMinTargetDistanceScreenFraction = 0.22f;
+
         [Tooltip("과녁 바깥 링의 반지름 — **캐릭터 신장 배수**. 과녁 중심 높이는 별도 설정값이 아니라 " +
                  "이 값에서 유도된다: 과녁 꼭대기가 정확히 캐릭터 정수리 높이가 되도록 " +
                  "중심 높이 = 신장 - 반지름 (Interaction/ArcheryDirector.TargetCenterHeight). " +
@@ -3282,6 +3348,22 @@ namespace StickMate.Core
         [Tooltip("상체 기울임이 목표 각도를 따라가는 지수 감쇠 계수(1/초). 걷기 진입/이탈에서 " +
                  "상체가 툭 튀지 않게 하는 유일한 장치다(프레임레이트 독립).")]
         public float bodyLeanSmoothingRate = 12f;
+
+        [Header("적응형 프레임 페이싱 (2026-09-07 GPU 라운드 — 전 플랫폼)")]
+
+        [Tooltip("활성 등급(캐릭터가 움직이는 중 + UI 조작 중)의 렌더 분주. " +
+                 "1 = 매 프레임 제출(60fps, 현행·기본). 2 = 30fps 제출. 게임 루프와 입력 폴링은 " +
+                 "어느 값에서도 60Hz 그대로다(renderFrameInterval만 바뀐다).\n" +
+                 "★★ 이 값을 2로 올리는 것은 «UI 조작을 30fps로»가 아니라 «걷기를 30fps로»다 — " +
+                 "활성 등급은 DecideTier의 기본 반환값이라 캐릭터가 움직이는 모든 시간이 들어가고, " +
+                 "실측상 그 체류의 약 87%가 걷기다. 보행 한 주기가 44.4프레임에서 22.2프레임으로 줄어 " +
+                 "FramePacingTier.Active 문서의 «2026-08-31 사용자 확정: 움직일 때는 60fps»와 어긋나고 " +
+                 "AwayTierMotionGuardTests의 보행 하한(24프레임)도 함께 깨진다.\n" +
+                 "그래서 기본값은 1이고, 올리려면 **사용자 승인 + design-motion 눈판정**을 먼저 받아라. " +
+                 "GPU 절감과 대가의 실측 숫자는 FramePacingPolicy.DefaultActiveDivisor 문서에 있다. " +
+                 "범위 밖 값은 1~2로 clamp된다. 재빌드 없이 시험하려면 환경변수 STICKMATE_ACTIVE_DIVISOR " +
+                 "(이 값보다 우선한다).")]
+        public int activeTierRenderDivisor = 1;
 
         [Header("Windows 프레임 페이싱 (2026-08-31 — 잔상/렉 대응, Windows 전용)")]
 

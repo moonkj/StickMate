@@ -1318,13 +1318,46 @@ namespace StickMate.States
         private const float FocusStanceSwapRelease01 = 0.4f;
         private const float FocusStanceSwapNeutralEnd01 = 0.52f;
 
-        // G2 박자 경계 — 0.34~0.62의 유지(0.28초)가 "봤다"의 최소 체류다.
-        private const float FocusRingCheckBow01 = 0.34f;
-        private const float FocusRingCheckHoldEnd01 = 0.62f;
+        // G2 박자 경계 — «끄덕임 2박». 옛 G2(발밑 링 확인)의 0.34~0.62 «유지 0.28초»를 지운 것이
+        // 이 개정의 핵심이다: 긴 체류는 «무언가를 들여다보고 있다»의 문법이고, 들여다볼 대상(발밑 링)이
+        // 2026-09-06에 삭제된 뒤로 그 문법 자체가 절대 불변 원칙 1 위반이었다. 끄덕임은 체류가 아니라
+        // «방향 반전 두 번»이 동작이라 대상이 필요 없다.
+        //
+        // ★ 두 번의 목표 깊이는 <b>같다</b>(둘 다 FocusNodDipDegrees).
+        //   ★ 2026-09-07 test-engineer 실측 정정 — 이 자리에 원래 "2박이 작게 보인다(실측 81%)"라고
+        //   적혀 있었으나 그 서술은 <b>부호가 반대</b>였다. 실제로 출하 상수(0.12/0.27/0.48/0.62/0.76,
+        //   rate=12/초)로 감쇠를 통과시키면 2박 진폭은 1박의 <b>100.4%</b>다(C#·Python 두 독립 경로 +
+        //   본 라운드의 세 번째 독립 재현이 일치). 이유: «되올림» 구간(0.27~0.48)이 baseLean까지 다
+        //   못 내려온 채로 다음 램프(0.48~0.62)가 곧바로 시작돼 <b>골이 얕다</b> — 그래서 2박이 1박보다
+        //   짧지 않은 유효 접근 시간을 번다. 사람의 두 번째 끄덕임이 작아지는 것과 같은 원리라는
+        //   비유 자체가 이 데이터에는 맞지 않는다(작아지지 않는다). 그래도 <b>인위적으로 2박 목표를
+        //   조정하지 않는다</b>는 결론은 그대로 유지한다 — 어차피 같은 값을 쓰고 있었다.
+        //   ★ 아래 <see cref="FocusNodDipDegrees"/> 문서의 "1박 3.57pt / 2박 2.88pt / 1.39배"는
+        //   옛 81% 위에서 파생된 숫자라 <b>같이 낡았을 가능성이 높다</b> — 재도출은 design-motion 소관.
+        private const float FocusNodFirstDip01 = 0.12f;
+        private const float FocusNodFirstHoldEnd01 = 0.27f;
+        private const float FocusNodRecover01 = 0.48f;
+        private const float FocusNodSecondDip01 = 0.62f;
+        private const float FocusNodSecondHoldEnd01 = 0.76f;
 
-        /// <summary>G2 — 발밑 링을 내려다보는 상체 기울임(도, + = 앞). 상한 7.60°의 86%라
-        /// <b>이 구간에서는 L1 흔들림을 0으로 눌러야 한다</b>(안 누르면 순간 8.5°로 상한을 넘는다).</summary>
-        private const float FocusRingCheckLeanDegrees = 6.5f;
+        /// <summary>G2 — 끄덕임 정점의 상체 기울임(도, + = 앞). 두 박이 같은 값을 쓴다.
+        ///
+        /// <para>★ 2026-09-07 — 옛 값 6.5°(발밑 링을 내려다보는 각)는 상한 7.60°의 <b>86%</b>라
+        /// «L1 흔들림(±2.0°)을 반드시 0으로 눌러야 한다»가 <b>구조적 필수 조건</b>이었다(안 누르면
+        /// 8.50°로 상한 초과 → 팔이 몸에서 떨어져 보인다). 5.2°에서는 눌리지 않아도 최악이
+        /// 7.20° &lt; 7.60°라 그 전제가 <b>취약점이 아니게 된다</b>. 누르는 것은 그대로 유지하지만
+        /// (11초 주기 사인이 얹히면 2박의 박자가 흐려진다) 이제는 <b>선택</b>이지 안전장치가 아니다.</para>
+        ///
+        /// <para><b>실측(배율 0.75, 감쇠 12/초 통과 후)</b>: 정점 간격 0.587초 = 1.70Hz / |최대| 4.93°
+        /// (상한의 64.9%) — 이 두 값은 재검증됨(2026-09-07, 아래 참고).
+        /// <b>★ 1박 진폭 3.57pt / 2박 2.88pt / "L1의 1.39배" 세 값은 신뢰 보류다</b> — 2박이 1박보다
+        /// 작다(81%)는 <see cref="FocusNodFirstDip01"/> 옆 주석의 옛 전제 위에서 나온 파생값인데,
+        /// 그 전제가 2026-09-07 test-engineer 실측으로 <b>뒤집혔다</b>(2박은 1박의 100.4% — 더 작지
+        /// 않다). pt 환산식 자체는 이 라운드에서 재도출하지 않았다(도(度)→pt 환산 계수가 design-motion
+        /// 산출물이라 임의로 다시 안 만든다) — 정확한 대체값은 design-motion 재확인 항목. 다만 방향은
+        /// 분명하다: 2박이 L1(2.07pt)에 <b>더</b> 못 묻힌다(비율이 1.39배보다 커지면 커졌지 작아지지
+        /// 않는다) — 그러니 "2박이 배경 흔들림에 묻히지 않는다"는 결론 자체는 안전 방향으로만 바뀐다.</para></summary>
+        private const float FocusNodDipDegrees = 5.2f;
 
         // G3 박자 경계 — 두 변주(같은 쪽 / 반대쪽)의 경계가 다르다.
         private const float FocusGlanceLead01 = 0.3f;
@@ -1372,7 +1405,7 @@ namespace StickMate.States
         /// <b>절댓값 상한</b>(도). 위 상수와 같은 이유로 공개한다. 둘 다 «기울임 상한 7.60°» 아래여야 한다는
         /// 별도 제약이 있다(<see cref="FocusStanceLeanSwayDegrees"/> 문서).</summary>
         public static float FocusWatchGestureMaxLeanDegrees
-            => Mathf.Max(Mathf.Abs(FocusRingCheckLeanDegrees),
+            => Mathf.Max(Mathf.Abs(FocusNodDipDegrees),
                Mathf.Max(Mathf.Abs(FocusGlanceLeanDegrees),
                Mathf.Max(Mathf.Abs(FocusGlanceWindUpLeanDegrees), Mathf.Abs(FocusGlanceFollowLeanDegrees))));
 
@@ -1381,7 +1414,7 @@ namespace StickMate.States
         /// L1 흔들림을 눌러야 하고(합치면 상한 7.60°를 넘는다), G1/G4는 팔만 움직이므로 L1을 그대로 둔다.
         /// </summary>
         private static bool FocusGestureOwnsLean(StickMate.Core.WanderAmbientMotion gesture)
-            => gesture == StickMate.Core.WanderAmbientMotion.FocusRingCheck
+            => gesture == StickMate.Core.WanderAmbientMotion.FocusNod
             || gesture == StickMate.Core.WanderAmbientMotion.FocusScreenGlance;
 
         /// <summary>G1/G4가 만드는 «자세 혼합비»(0~1). 나머지 어휘는 1 — 자세를 유지한 채 다른 축만 움직인다.</summary>
@@ -1414,13 +1447,22 @@ namespace StickMate.States
         private static float FocusGestureLeanDegrees(StickMate.Core.WanderAmbientMotion gesture, float p,
             float baseLean, bool glanceTurnsAround)
         {
-            if (gesture == StickMate.Core.WanderAmbientMotion.FocusRingCheck)
+            if (gesture == StickMate.Core.WanderAmbientMotion.FocusNod)
             {
-                if (p < FocusRingCheckBow01)
-                    return Mathf.SmoothStep(baseLean, FocusRingCheckLeanDegrees, Ratio01(p, 0f, FocusRingCheckBow01));
-                if (p < FocusRingCheckHoldEnd01) return FocusRingCheckLeanDegrees;
-                return Mathf.SmoothStep(FocusRingCheckLeanDegrees, baseLean,
-                    Ratio01(p, FocusRingCheckHoldEnd01, 1f));
+                // 숙임 → 정점 → 되올림(base까지) → 숙임 → 정점 → 안착. 양 끝이 baseLean이라
+                // 도중에 끊겨도 관망 자세와 이어진다(이 함수의 전체 계약).
+                if (p < FocusNodFirstDip01)
+                    return Mathf.SmoothStep(baseLean, FocusNodDipDegrees, Ratio01(p, 0f, FocusNodFirstDip01));
+                if (p < FocusNodFirstHoldEnd01) return FocusNodDipDegrees;
+                if (p < FocusNodRecover01)
+                    return Mathf.SmoothStep(FocusNodDipDegrees, baseLean,
+                        Ratio01(p, FocusNodFirstHoldEnd01, FocusNodRecover01));
+                if (p < FocusNodSecondDip01)
+                    return Mathf.SmoothStep(baseLean, FocusNodDipDegrees,
+                        Ratio01(p, FocusNodRecover01, FocusNodSecondDip01));
+                if (p < FocusNodSecondHoldEnd01) return FocusNodDipDegrees;
+                return Mathf.SmoothStep(FocusNodDipDegrees, baseLean,
+                    Ratio01(p, FocusNodSecondHoldEnd01, 1f));
             }
 
             if (gesture != StickMate.Core.WanderAmbientMotion.FocusScreenGlance) return baseLean;

@@ -256,9 +256,14 @@ namespace StickMate.States
         public float NextChatterAllowedUnscaledTime;
 
         /// <summary>
-        /// "지금 즉시 혼잣말을 하라"는 강제 발화 펄스(Interaction/AppControlDirector.cs의 데모 단축키
-        /// Ctrl+Opt+Cmd+B). AmbientChatter.TryRollChatter()가 소비 즉시 리셋하며, 소비되면 확률/쿨다운을
-        /// 모두 건너뛴다(DragReleaseSignaled와 동일한 1프레임 펄스 계약).
+        /// "지금 즉시 혼잣말을 하라"는 강제 발화 펄스. AmbientChatter.TryRollChatter()가 소비 즉시
+        /// 리셋하며, 소비되면 확률/쿨다운을 모두 건너뛴다(DragReleaseSignaled와 동일한 1프레임 펄스 계약).
+        ///
+        /// <para>★★ <b>2026-09-07 — 프로덕션 생산자가 0이다.</b> 유일한 생산자였던
+        /// Interaction/AppControlDirector.ForceSayNow(단축키 ⌃⌥⌘B / 행동 명령창 [말 걸기])가
+        /// <b>사용자 지시로 폐지</b>됐다. 이 필드와 소비측 분기를 함께 걷지 않은 것은 그 두 파일이
+        /// 다른 담당의 작업 대상이기 때문이고, <b>리더에게 별건으로 올렸다</b>(그 파일의
+        /// 「말 걸기 폐지」 절 참고). 지금 이 값을 true로 만드는 것은 EditMode 테스트뿐이다.</para>
         /// </summary>
         public bool ForcedChatterSignaled;
 
@@ -2386,6 +2391,25 @@ namespace StickMate.States
         /// </summary>
         public bool IsRadialMenuHoldActive =>
             (Config == null || Config.radialMenuHoldsCharacterInPlace) && IsRadialMenuOpen;
+
+        /// <summary>
+        /// ★ 2026-09-07 design-motion — 배회 AI가 <b>밤에 걷기 확률을 낮춰야 하는가</b>.
+        /// 마스터 스위치(<c>StickConfig.awayWanderWalkChance</c>가 음수가 아님) × OS 관측(자리 비움).
+        ///
+        /// <para>판정을 여기 한 곳에 두는 어법은 <see cref="IsFocusSessionAmbientActive"/> /
+        /// <see cref="IsRadialMenuHoldActive"/>와 같다. 다만 <b>사실의 출처가 다르다</b> — 저 둘은
+        /// 우리 UI 상태이고 이것은 <b>OS 관측</b>(<see cref="FramePacing.LastPresence"/>)이다.
+        /// 캐릭터 상태를 섞지 않는 이유는 <see cref="FramePacingPolicy.IsViewerLikelyAway"/> 문서의
+        /// 되먹임 고리 항목에 있다.</para>
+        ///
+        /// <para><b>꺼지는 경로가 셋이고 전부 「평소대로 걷는다」로 떨어진다</b>(안전한 쪽):
+        /// 설정이 음수 / 관측이 없음(에디터·테스트·<c>STICKMATE_ADAPTIVE_PACING=0</c>) /
+        /// 무입력이 180초 미만. 즉 <b>이 기능이 조용히 죽어도 증상은 «절감이 없다»뿐이고,
+        /// «캐릭터가 안 움직인다»는 아니다.</b></para>
+        /// </summary>
+        public bool IsViewerAwayWanderActive =>
+            (Config == null || Config.awayWanderWalkChance >= 0f)
+            && FramePacingPolicy.IsViewerLikelyAway(FramePacing.LastPresence);
 
         /// <summary>
         /// 관망 자세를 이번 프레임에 적용해야 하는가. 적용하는 프레임에는 이징을 진행시키고,

@@ -4081,7 +4081,7 @@ Director가 `BeginOnboardingPlacement`로 **빌려 주는 push**다. 결과는 �
 | 1 | 잉크색: 검정/흰색 | ⌃⌥⌘C | **(나)** | 영구 설정. **같은 동작이 정보창 잉크 스와치에 이미 있다**(`CharacterInfoWindow.OnInkSwatchClicked` — 저장 경로까지 동일) | 정보창(이미 있음) → 설정창 [캐릭터] |
 | 2 | 로데오 커서: 켬/끔 | ⌃⌥⌘R | **(나)** | `rodeoCursorEnabled`는 **자동 발동 게이트**이지 발동 명령이 아니다. `RodeoCursorWatcher`에 `ForceTriggerNow`가 **없다** → 애초에 "시킬 수" 없는 항목 | 설정창 [이벤트] |
 | 3 | 진단 로그: 켬/끔 | ⌃⌥⌘D | **(다)** | 로그 촘촘함 토글. 사용자 가치 0, 버그 리포트용 | 개발 전용 + 설정창 [접근성·성능] 맨 아래 |
-| 4 | 말풍선 띄우기 | ⌃⌥⌘B | **(가)** | `ForceSayNow`는 문자열을 만들지 않는다 — 블랙보드 펄스 후 **같은 상태로 재진입**시켜 대사를 파생시킨다. **원칙 1을 우회하지 않는 유일한 방식** | **행동 명령창 [말 걸기]** |
+| 4 | ~~말풍선 띄우기~~ | ~~⌃⌥⌘B~~ | — | **2026-09-07 폐지**(사용자 지시: *"부채꼴 ④[행동]에서 「말 걸기」 삭제 + 전역 단축키 B도 완전히 해제"*). `ForceSayNow`/`GetSayNowAvailability`와 `ControlAction.SayNow`, `ActionCommandPopover.Command.SayNow` 타일이 함께 사라졌다. **「혼잣말」 기능 자체는 산다** — 유휴/보행 확률 발화(`Dialogue/AmbientChatter`, 출하 기본 idle 0.28 / walk 0.14)는 그대로이고, 사라진 것은 **강제 발화 경로 하나**다. 잠금: `Tests/EditMode/SayNowRemovalAuditTests` | — |
 | 5 | ~~격파 놀이 시작~~ | ~~⌃⌥⌘K~~ | — | **2026-09-02 기능 삭제**(10절). `GlobalKey.K`는 예약(비어 있음)으로 남아 있다 | — |
 | 6 | 그라피티 그리기 | ⌃⌥⌘G | **(가)** | 위와 동일 | **행동 명령창** |
 | 7 | 창 도둑 놀이 | ⌃⌥⌘T | **(가)** | 위와 동일. 실제 창 좌표 변경 API는 **설계상 존재하지 않는다**(`StickmanStateId.WindowTheft` 문서) | **행동 명령창**(비침해 캡션 필수) |

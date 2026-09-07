@@ -29,7 +29,21 @@ namespace StickMate.Platform
         D,
         R,
 
-        /// <summary>말풍선 즉시 발화 데모(Ctrl+Opt+Cmd+B) — Interaction/AppControlDirector.cs.</summary>
+        /// <summary>
+        /// ★★ <b>지금 아무 데도 배선돼 있지 않다</b>(2026-09-07). 원래 「말풍선 즉시 발화
+        /// (Ctrl+Opt+Cmd+B)」였고 <b>사용자 지시로 폐지</b>됐다 — 부채꼴 ④[행동]의 [말 걸기] 타일과
+        /// 이 단축키를 함께 해제했다. <c>Interaction/AppControlDirector.cs</c>의
+        /// 「말 걸기 폐지」 절이 전말이고, 그 파일에는 <c>GlobalKey.B</c> 조회가 <b>한 줄도 없다</b>.
+        ///
+        /// <para>값 자체와 양 플랫폼 키코드 매핑(<c>kVK_ANSI_B</c> / <c>'B'</c>)은 남겼다 —
+        /// 지우면 <c>Platform/</c> 양쪽과 감사 테스트가 함께 움직여야 하는데, 그건 이 라운드의
+        /// 범위(<c>Interaction/</c>)가 아니다. <b>정리 여부는 dev-platform 판단 대상으로 리더에게
+        /// 올렸다.</b></para>
+        ///
+        /// <para>★ 이 문장을 <i>"비어 있다(예약)"</i>로 줄여 쓰지 마라. 바로 아래 <see cref="K"/>가
+        /// 정확히 그렇게 적혔다가 <b>거짓이 된 채로 굳었다</b>(2026-09-02 정정). 여기 필요한 사실은
+        /// 「비었다」가 아니라 <b>「사용자가 닫은 문이다 — 되살리려면 다시 물어라」</b>다.</para>
+        /// </summary>
         B,
 
         /// <summary>★ <b>사용자 명시 숨김 토글</b>(Ctrl+Opt+Cmd+K) — Interaction/AppControlDirector.cs가

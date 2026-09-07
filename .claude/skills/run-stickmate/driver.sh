@@ -178,6 +178,21 @@ other_pids() {
   stickmate_app_pids | grep -v -x "${mine:-__none__}" || true
 }
 
+# ★ 같은 버그 계열, 다른 자리 (2026-09-07 실측 — 형제 에이전트 2개가 서로를 "Unity 실행중"으로
+# 오인해 영구 대기 상태였다). doctor의 Unity 배치락 판정이 `pgrep -f "Unity.app/...-projectPath...StickMate"`
+# 로 전체 커맨드라인 문자열을 검색했는데, 이 스크립트를 cat/grep하거나 이 패턴을 인자로 든 무관한
+# 셸의 커맨드라인에도 걸린다. comm(실행파일 경로)이 정확히 Unity 바이너리인 프로세스만 먼저 고르고,
+# 이미 실제 Unity로 확인된 그 PID들의 args만 따로 봐서 -projectPath/StickMate를 확인한다 —
+# 무관한 셸의 텍스트는 애초에 comm 단계에서 걸러진다.
+unity_batch_pids() {
+  ps -axo pid=,comm= 2>/dev/null | awk '$2 ~ /Unity\.app\/Contents\/MacOS\/Unity$/ {print $1}' | \
+    while read -r p; do
+      if ps -p "$p" -o args= 2>/dev/null | grep -q -- '-projectPath.*StickMate'; then
+        echo "$p"
+      fi
+    done
+}
+
 # ---------------------------------------------------------------- doctor
 cmd_doctor() {
   local rc=0
@@ -214,8 +229,9 @@ cmd_doctor() {
   fi
   say ""
   say "[Unity 배치모드 락] 다른 에이전트가 Library/를 쓰고 있으면 빌드/테스트가 깨진다"
-  if pgrep -f "Unity.app/Contents/MacOS/Unity .*-projectPath.*StickMate" >/dev/null 2>&1; then
-    say "  사용 중 — 지금 build/test 하지 말 것"; rc=1
+  local batch_pids; batch_pids="$(unity_batch_pids)"
+  if [ -n "$batch_pids" ]; then
+    say "  사용 중 — 지금 build/test 하지 말 것 (PID $(echo "$batch_pids" | tr '\n' ' '))"; rc=1
   elif [ -f "$REPO/Temp/UnityLockfile" ] && lsof "$REPO/Temp/UnityLockfile" >/dev/null 2>&1; then
     say "  Temp/UnityLockfile 존재 + 보유 프로세스 확인됨 — 에디터가 열려 있을 수 있음"; rc=1
   elif [ -f "$REPO/Temp/UnityLockfile" ]; then

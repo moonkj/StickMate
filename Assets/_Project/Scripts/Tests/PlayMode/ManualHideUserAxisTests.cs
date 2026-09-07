@@ -590,7 +590,9 @@ namespace StickMate.Tests.PlayMode
             _agent.SetUserHidden(true, "연출 차단 검사");
             yield return Wait(SettleSeconds);
 
-            // ── ① 행동 명령창 5칸이 전부 «숨어 있어요»로 회색이 되는가 ────────────
+            // ── ① 행동 명령창의 <b>모든</b> 칸이 «숨어 있어요»로 회색이 되는가 ────────
+            //    (칸 수는 CommandCount에서 온다. 2026-09-07 말 걸기 폐지로 5 → 4가 됐고,
+            //     그때 이 주석이 "5칸"이라고 적혀 있었다면 아무도 안 고쳤을 자리다.)
             //    사유 문자열은 <b>베끼지 않고</b> 프로덕션 상수를 참조한다(design-narrative가 글자를
             //    바꾸는 날 이 테스트가 조용히 초록으로 남지 않게).
             for (int i = 0; i < ActionCommandPopover.CommandCount; i++)

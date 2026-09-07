@@ -3,6 +3,28 @@ using UnityEngine;
 namespace StickMate.Core
 {
     /// <summary>
+    /// ★ <b>사용자가 끌어서 옮길 수 있는 창</b>의 식별자 — <see cref="UiLayoutModel"/>이 창별 위치를
+    /// 이 값으로 색인한다.
+    ///
+    /// <para><b>숫자를 바꾸지 마라.</b> 이 enum은 모델 <b>안쪽 배열</b>의 색인일 뿐이고, 저장 파일에는
+    /// 숫자가 아니라 <b>이름 붙은 필드</b>로 내려간다(<c>infoWindowPositionSaved</c> 등).
+    /// 저장 스키마가 enum 순서에 의존하지 않는 이유는 <see cref="CharacterSaveStore"/>의
+    /// "배열 대신 이름 붙은 필드 8개" 문단과 같다 — 누가 값을 끼워 넣는 순간 모든 사용자의
+    /// 창 위치가 한 칸씩 밀리는 사고를 구조적으로 막는다.</para>
+    /// </summary>
+    public enum UiWindowId
+    {
+        /// <summary>캐릭터 정보창(Interaction/CharacterInfoWindow.cs).</summary>
+        CharacterInfo = 0,
+
+        /// <summary>설정창(Interaction/SettingsWindow.cs).</summary>
+        Settings = 1,
+
+        /// <summary>집중 모드 팝오버(Interaction/FocusSessionPopover.cs).</summary>
+        FocusSession = 2,
+    }
+
+    /// <summary>
     /// ★ 사용자가 <b>직접 옮긴 화면 UI의 위치</b>를 담는 모델 — 2026-08-30 사용자 요청
     /// ("캐릭터 설정 기어들도 길게 클릭해서 위치 옮길 수 있게 해줘").
     ///
@@ -10,6 +32,12 @@ namespace StickMate.Core
     /// 앞으로 "사용자가 옮길 수 있는 화면 요소"가 늘어나도 저장 스키마가 다시 갈라지지 않도록
     /// 별도 모델로 둔다. CharacterProgressionModel / CharacterStatsModel과 <b>같은 관례</b>다:
     /// 값 보관 + IsDirty만 알고, 언제 저장할지는 모른다(Core/CharacterSaveStore.cs가 읽고 쓴다).
+    ///
+    /// ★★ 2026-09-07 — <b>창 3종의 위치</b>가 여기 함께 들어왔다(사용자 요청 PART1-1:
+    /// <i>"모든 창(집중모드 타이머, 캐릭터 정보창, 설정창)이 마우스로 끌어도 움직이지 않음 —
+    /// 전부 드래그 이동 가능해야 함"</i>, "이동한 위치는 창별로 저장되어 재시작 후에도 유지").
+    /// <b>위 문단이 예고한 그 확장이 실제로 왔다</b> — 그래서 새 모델을 만들지 않고 여기에 붙인다.
+    /// 창 위치의 좌표계는 톱니와 다르다(아래 <see cref="WindowOffsetPoints"/> 문서 참고).
     ///
     /// ============================================================================
     /// 좌표계 — <b>창 좌상단 원점의 OS 포인트</b>다 (픽셀이 아니다)
@@ -131,6 +159,99 @@ namespace StickMate.Core
             return true;
         }
 
+        // ====================================================================================
+        // ★★ 창 위치 3종 (2026-09-07, 사용자 요청 PART1-1)
+        // ====================================================================================
+        //
+        // ★ 좌표계가 톱니와 <b>다르다</b> — 여기 담는 것은 «화면 중앙 기준 오프셋(OS 포인트)»다.
+        //   톱니는 «창 좌상단 원점 절대 좌표»다. 왜 갈랐는가:
+        //     · 톱니는 «화면 오른쪽 위 구석»에 사는 물건이라 절대 좌표가 곧 그 뜻이다.
+        //     · 창 3종은 전부 <b>화면 중앙에서 열리는</b> 표면이다(33-7-7). 절대 좌표로 담으면
+        //       모니터를 바꾸거나 해상도가 바뀐 날 «중앙에서 조금 오른쪽»이 «화면 오른쪽 끝»이 된다.
+        //       중앙 기준 오프셋은 그 변화에서 뜻이 보존된다(0 = 여전히 한가운데).
+        //   그리고 이 계는 uGUI <c>anchoredPosition</c>(anchor·pivot 0.5)과 <b>비트 단위로 같다</b> —
+        //   정보창·설정창은 값을 변환 없이 그대로 주고받는다.
+        //
+        // ★ 화면 밖으로 나가지 않게 하는 클램프는 여기서 <b>하지 않는다</b> — 톱니와 같은 규칙이다.
+        //   화면 크기와 창 치수를 아는 것은 창이고, 이 모델은 그 결과만 받는다.
+
+        private static readonly bool[] _hasWindowOffset = new bool[WindowCount];
+        private static readonly Vector2[] _windowOffsets = new Vector2[WindowCount];
+
+        /// <summary><see cref="UiWindowId"/>의 개수. 배열 길이를 손으로 적지 않기 위한 단일 출처다
+        /// (테스트도 이 값을 참조한다 — 숫자를 베끼면 창이 하나 늘 때 조용히 갈라진다).</summary>
+        public const int WindowCount = 3;
+
+        /// <summary>사용자가 그 창을 한 번이라도 옮겼는가. false면 창이 기본 자리(화면 중앙 /
+        /// 팝오버는 부채꼴 앵커)에서 열린다.</summary>
+        public static bool HasWindowOffset(UiWindowId id)
+            => IsValid(id) && _hasWindowOffset[(int)id];
+
+        /// <summary>그 창 <b>중심</b>의 위치 — 화면 중앙 원점, OS 포인트(위 절 참고).
+        /// <see cref="HasWindowOffset"/>가 false면 의미 없는 값이다.</summary>
+        public static Vector2 WindowOffsetPoints(UiWindowId id)
+            => IsValid(id) ? _windowOffsets[(int)id] : Vector2.zero;
+
+        /// <summary>
+        /// 창을 옮긴 결과를 확정한다. <see cref="SetGearCenter"/>와 <b>같은 세 가지 방어</b>를 쓴다:
+        /// NaN 거르기 · <see cref="MeaningfulMovePoints"/> 미만 무시 · 실제로 바뀐 경우에만 IsDirty.
+        /// <para>같은 방어가 필요한 이유도 같다 — 창들은 매 프레임 클램프 결과를 이 모델로 되돌려
+        /// 주므로, 부동소수 흔들림만으로 IsDirty가 서면 주기 저장이 계속 디스크를 두드린다.</para>
+        /// </summary>
+        public static void SetWindowOffset(UiWindowId id, Vector2 offsetPoints)
+        {
+            if (!IsValid(id)) return;
+            if (float.IsNaN(offsetPoints.x) || float.IsNaN(offsetPoints.y)) return;
+
+            int i = (int)id;
+            if (_hasWindowOffset[i] &&
+                (_windowOffsets[i] - offsetPoints).sqrMagnitude < MeaningfulMovePoints * MeaningfulMovePoints)
+            {
+                return;
+            }
+
+            _windowOffsets[i] = offsetPoints;
+            _hasWindowOffset[i] = true;
+            IsDirty = true;
+        }
+
+        /// <summary>
+        /// ★ 그 창을 <b>기본 자리</b>로 되돌린다 — <see cref="ClearGearCenter"/>와 같은 계약이다
+        /// (영구히 저장되는 것에는 되돌리는 문이 있어야 한다, docs/UX_FLOW.md 41-8).
+        ///
+        /// <para><b>아직 이 문을 여는 UI 버튼은 없다.</b> 문구와 배치는 <c>ux-designer</c> 소관이라
+        /// 여기서 지어내지 않았다. 다만 톱니와 달리 <b>잃어버릴 수 없는</b> 값이다 —
+        /// 창 클램프가 «창 전체가 화면 안»을 매 프레임 강제하므로 [✕]가 화면 밖으로 사라지는
+        /// 실패 모드가 구조적으로 없다(톱니는 예약 띠 뒤에 숨을 수 있어서 그 문이 P0였다).</para>
+        /// </summary>
+        /// <returns>실제로 되돌릴 것이 있었는가. 이미 기본 자리면 false이고 <see cref="IsDirty"/>도
+        /// 건드리지 않는다(아무것도 안 바뀐 저장으로 디스크를 두드리지 않는다).</returns>
+        public static bool ClearWindowOffset(UiWindowId id)
+        {
+            if (!IsValid(id) || !_hasWindowOffset[(int)id]) return false;
+
+            _hasWindowOffset[(int)id] = false;
+            _windowOffsets[(int)id] = Vector2.zero;
+            IsDirty = true;
+            return true;
+        }
+
+        private static bool IsValid(UiWindowId id) => (int)id >= 0 && (int)id < WindowCount;
+
+        /// <summary>저장 파일 복원 전용(Core/CharacterSaveStore.cs) — 창 <b>하나</b>씩 받는다.
+        /// <para>한 번에 배열로 받지 않는 이유는 저장 스키마가 <b>이름 붙은 필드</b>이기 때문이다.
+        /// 호출부가 <c>infoWindowPositionSaved</c> 같은 이름과 enum 값을 같은 줄에 적으므로,
+        /// enum에 값을 끼워 넣어도 사용자의 창 위치가 밀리지 않는다(<see cref="UiWindowId"/> 문서).</para></summary>
+        internal static void RestoreWindowFromSave(UiWindowId id, bool saved, float offsetXPoints, float offsetYPoints)
+        {
+            if (!IsValid(id)) return;
+            int i = (int)id;
+            bool ok = saved && !float.IsNaN(offsetXPoints) && !float.IsNaN(offsetYPoints);
+            _hasWindowOffset[i] = ok;
+            _windowOffsets[i] = ok ? new Vector2(offsetXPoints, offsetYPoints) : Vector2.zero;
+            IsDirty = false;
+        }
+
         /// <summary>저장 파일 복원 전용(Core/CharacterSaveStore.cs). 이벤트를 쏘지 않는 이유는
         /// 다른 모델의 RestoreFromSave와 같다(복원은 변화가 아니라 초기 상태 확정).</summary>
         internal static void RestoreFromSave(bool hasCenter, float centerXPoints, float centerYPoints)
@@ -167,6 +288,11 @@ namespace StickMate.Core
             HasCharacterScale = false;
             CharacterScale = 0.75f;
             CornerPanelEnabled = true;
+            for (int i = 0; i < WindowCount; i++)
+            {
+                _hasWindowOffset[i] = false;
+                _windowOffsets[i] = Vector2.zero;
+            }
             IsDirty = false;
         }
     }

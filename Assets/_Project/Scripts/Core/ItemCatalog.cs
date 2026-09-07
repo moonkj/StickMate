@@ -757,8 +757,20 @@ namespace StickMate.Core
             //   Dialogue/AmbientChatter.cs(유휴/보행 중 확률 발화)와 그 강제 경로
             //   Interaction/AppControlDirector.ForceSayNow(단축키 B)가 Phase 3부터 살아 있었는데
             //   보관함 목록에만 빠져 있었다. 라이벌 대결 항목이 삭제되며 발견됐다.
-            ItemCatalogEntry.ForAction("action.chatter", "혼잣말", ShortcutLabel.Chord("B"),
-                "가만히 있거나 걷는 동안 가끔 혼자 중얼거린다. 단축키를 누르면 지금 당장 한마디 한다."),
+            //
+            // ★★ 2026-09-07 — <b>단축키 표기를 걷었다</b>(사용자 지시로 「말 걸기」 폐지: 부채꼴
+            //   ④[행동]의 타일과 전역 단축키 B를 함께 해제). 남겨 두면 <b>유령 단축키</b>가 된다 —
+            //   2026-09-05에 F/J/H로 정확히 같은 결함을 고쳤고, 그 재발 방지선이
+            //   Tests/EditMode/ItemCatalogTests의 「개발 게이트 뒤의 행동은 카드에 조합키를
+            //   광고하지 않는다」다(이 항목도 그 명부에 넣었다).
+            //
+            //   <b>카드 자체는 지우지 않는다</b>: 사라진 것은 강제 발화 경로 하나뿐이고 유휴/보행
+            //   확률 발화는 그대로 출하된다(idleChatterChance 0.28 / walkChatterChance 0.14).
+            //   지우면 <b>있는 기능을 없다고</b> 말하게 되고, 그건 표기를 남기는 것과 방향만 반대인
+            //   같은 거짓이다. 그래서 상태 슬롯은 <see cref="ItemCatalogEntry.AutoOnlyStatus"/>
+            //   (「가끔 알아서」)로 내려간다 — 실제로 지금 참인 문장이 그것 하나다.
+            ItemCatalogEntry.ForAction("action.chatter", "혼잣말", null,
+                "가만히 있거나 걷는 동안 가끔 혼자 중얼거린다."),
             ItemCatalogEntry.ForAction("action.graffiti", "그라피티", ShortcutLabel.Chord("G"),
                 "남의 창 위에 낙서를 한 장 남긴다. 잠시 뒤 저절로 옅어져 사라진다."),
             ItemCatalogEntry.ForAction("action.window_theft", "창 도둑", ShortcutLabel.Chord("T"),

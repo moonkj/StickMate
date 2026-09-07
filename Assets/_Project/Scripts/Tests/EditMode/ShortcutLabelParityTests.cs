@@ -37,10 +37,14 @@ namespace StickMate.Tests.EditMode
         /// <summary>이 앱이 안내하는 동작키 전부. 표기 규칙은 키 종류와 무관해야 한다.
         /// <para><c>V</c>는 아직 배선 대기(설정창 [일반] 숨기기/보이기)라 <see cref="GlobalKey"/>에
         /// 없지만 화면에는 안내되므로 여기 있다. <b>2026-09-01 <c>","</c>가 <c>"P"</c>로 바뀌었다</b> —
-        /// 아래 "OS가 예약한 조합" 절 참고.</para></summary>
+        /// 아래 "OS가 예약한 조합" 절 참고.</para>
+        /// <para>★ <b>2026-09-07 <c>"B"</c>가 빠졌다</b> — 사용자 지시로 「말 걸기」가 폐지되면서
+        /// 부팅 배너에서도 보관함 카드에서도 <b>더 이상 안내되지 않는다</b>. 이 배열의 계약이
+        /// «안내하는 동작키 전부»이므로 남겨 두면 배열이 곧 거짓이 된다(표기 규칙 검사 자체는
+        /// 키 종류와 무관해서 커버리지 손실은 0이다).</para></summary>
         private static readonly string[] Keys =
         {
-            "A", "B", "C", "D", "F", "G", "H", "I", "J", "K", "N", "P", "Q", "R", "S", "T", "V", "X",
+            "A", "C", "D", "F", "G", "H", "I", "J", "K", "N", "P", "Q", "R", "S", "T", "V", "X",
         };
 
         private static bool IsLatinLetter(char c) => (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');

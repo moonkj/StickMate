@@ -619,6 +619,19 @@ namespace StickMate.Tests.EditMode
                     Kind = RatchetKind.자동,
                     Why = "속공간이 운용점을 채우면 Assert.Pass로 빠져 '실단언으로 바꾸라'고 말한다.",
                 },
+                // ★ 2026-09-07 dev-platform 등록 — 글리프 «위상» 축(GlyphPixelSnapPolicy / CrispText).
+                //   고침은 착지했고 <실기 계기판>이 없다. 크기 축은 [GLYPH-SCALE] 줄이 Windows 실기
+                //   값을 찍지만 위상은 어느 플랫폼 로그에도 안 나온다.
+                new IgnoreEntry
+                {
+                    File = "GlyphPixelPhaseAuditTests.cs",
+                    Method = "미해결_위상_축에는_실기_계기판이_없다",
+                    Kind = RatchetKind.자동,
+                    Why = "Platform/ 안의 어떤 파일이든 GlyphPixelSnapPolicy를 참조하기 시작하면 " +
+                          "(= 위상 계기판이 생기면) Assert.Pass로 Ignore <b>앞에서</b> 빠져 " +
+                          "'정식 검사로 승격하라'고 말한다. 규칙 파일 자신은 제외하므로 자기 참조로 " +
+                          "조용히 닫히지 않는다. 켤 스위치가 없다.",
+                },
                 new IgnoreEntry
                 {
                     File = "CommentReferenceAuditTests.cs",
@@ -832,9 +845,14 @@ namespace StickMate.Tests.EditMode
                           "(W/2 + dx) - W/2 왕복이 dx 하위 비트를 잃고, 팝오버는 상·하한 뺄셈 순서가 옛 식과 " +
                           "달라 경계에서 1 ULP가 갈릴 수 있다). 성립시키려면 정책에 새 창구가 필요하다. " +
                           "★ 역방향 장치는 <b>같은 메서드 안</b>: PopoverPanel.cs에 ClampCenterX가, " +
-                          "CharacterInfoWindow.Layout.cs에 ClampCenterOriginOffsetX가 나타나면 Assert.Fail이 " +
-                          "Ignore보다 먼저 터진다. 그리고 <b>존재 대조</b>가 붙어 있다 — 같은 스캐너로 두 파일의 " +
+                          "정보창 클램프(CharacterInfoWindow.Layout.cs <b>+ UiWindowDrag.cs</b>)에 " +
+                          "ClampCenterOriginOffsetX가 나타나면 Assert.Fail이 " +
+                          "Ignore보다 먼저 터진다. 그리고 <b>존재 대조</b>가 붙어 있다 — 같은 스캐너로 두 쪽의 " +
                           "세로축 호출이 실재함을 먼저 증명해 '0건'이 '아직 없다'인지 '스캐너가 죽었다'인지를 가른다. " +
+                          "★★ 2026-09-07 — 읽는 파일이 <b>하나 늘었다</b>. 창 3종 드래그 라운드가 클램프 식을 " +
+                          "UiWindowDrag.ClampCenterPoints로 옮겼고, Layout.cs만 읽던 옛 니들은 그 순간 " +
+                          "«세로축조차 안 부른다»는 거짓 빨강을 냈을 것이다(파일을 쪼개면 파일명 감사가 눈이 먼다 — " +
+                          "이 저장소가 이미 두 번 당한 형태). 갭 자체는 그대로이고, 이제 <b>셋</b>이 함께 그 갭을 쓴다. " +
                           "★ 실기 미확인(Windows 좌/우 도킹 4항목)은 승격된 테스트 쪽에 남아 있다. 그중 " +
                           "<b>자동 숨김 작업표시줄을 우리가 강제로 보이게 한 상태(승인된 예외 1건)에서 rcWork가 " +
                           "실제로 좁아지는가</b>가 가장 무겁다 — 안 좁아지면 이 회피 전체가 헛돈다.",

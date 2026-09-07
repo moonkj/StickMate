@@ -284,6 +284,27 @@ namespace StickMate.States
         /// </summary>
         private bool IsRadialMenuHolding => _blackboard != null && _blackboard.IsRadialMenuHoldActive;
 
+        /// <summary>
+        /// ★ 2026-09-07 design-motion — 사용자가 <b>자리를 비운 동안</b> 걷기 확률만 낮추는가.
+        /// 판정의 정본은 <see cref="StickmanBlackboard.IsViewerAwayWanderActive"/> 한 곳이며
+        /// 여기서 다시 해석하지 않는다(<see cref="IsFocusAmbientActive"/> · <see cref="IsRadialMenuHolding"/>와
+        /// 같은 어법).
+        ///
+        /// <para><b>이것도 «묶어두기»가 아니라 분포 변경이다</b> — 집중 세션 절과 같은 이유로 0이 아니라
+        /// 0.15다. 0으로 내리면 파쿠르·뛰어내리기·매달리기가 밤새 <b>구조적으로 도달 불가</b>가 된다.</para>
+        ///
+        /// <para>★ <b>Idle 길이(<c>wanderIdleDurationMin/Max</c>)는 건드리지 않는다.</b> 집중 세션은
+        /// 그 값을 4~11초로 늘렸고 그만큼 복귀 지연이 커졌는데, 자리 비움에서 같은 수를 쓰면
+        /// <b>"돌아왔는데 캐릭터가 11초간 안 움직인다"</b>가 된다. 확률만 낮추면 복귀 지연 p99가
+        /// 13.37 -> 13.79초로 거의 변하지 않는다(design-motion 시뮬레이션).</para>
+        /// </summary>
+        private bool IsViewerAwayForWander => _blackboard != null && _blackboard.IsViewerAwayWanderActive;
+
+        /// <summary>자리 비움 걷기 감쇄를 <b>이미 로그로 알렸는가</b>(엣지에서만 한 줄 — 24시간 상주
+        /// 앱에서 추첨마다 찍으면 하룻밤에 수천 줄이다). 입력이 돌아오면 조용히 내려가고, 다시
+        /// 비우면 그때 한 줄이 더 나간다.</summary>
+        private bool _awayWanderNoticeLogged;
+
         /// <summary>커서 좌표를 <b>실제로</b> 읽을 수 있는가 — G3(화면 쪽 돌아보기)의 추첨 자격이다.
         /// 읽기 전용 조회이며(<see cref="CursorProvider"/>는 StickmanAgent.TryGetCursorPosition),
         /// 실패하면 G3를 추첨에서 빼고 그 가중치를 G1에 합친다. 없는 대상을 향해 돌아보는 그림은
@@ -340,12 +361,20 @@ namespace StickMate.States
             // ★ 2026-09-06 «메뉴 펼침 = 제자리 대기» — 집중 세션과 **완전히 같은 어법**이다:
             //   갈래 구조도 추첨도 그대로 두고 **읽는 확률만** 0으로 본다. 남은 확률은 여기서도
             //   평소와 똑같이 "Idle 연장"이 흡수하므로 새 분기도, 새 타이머도 늘지 않는다.
+            // ★ 2026-09-07 자리 비움 — 위 둘과 **또 같은 어법**이다: 갈래도 추첨도 그대로 두고
+            //   읽는 확률만 낮춘다(0.75 -> 0.15). 사다리 순서는 부채꼴 0 > 자리비움 0.15 >
+            //   집중 0.40 > 평소 0.75로 **단조 내림차순**이라, 두 조건이 겹쳐도 "더 조용한 쪽"이
+            //   자동으로 이긴다 — 우선순위를 따로 판정하는 코드가 필요 없다.
+            //   ★ Idle 길이는 여기서도 안 건드린다(IsViewerAwayForWander 문서의 복귀 지연 항목).
             bool hold = IsRadialMenuHolding;
+            bool away = !hold && IsViewerAwayForWander;
             float walkChance = hold ? 0f
-                : IsFocusAmbientActive
-                    ? Cfg(c => c.focusSessionWalkChance, 0.4f)
-                    : Cfg(c => c.wanderPostIdleWalkChance, 0.75f);
+                : away                ? Cfg(c => c.awayWanderWalkChance,     0.15f)
+                : IsFocusAmbientActive ? Cfg(c => c.focusSessionWalkChance,   0.4f)
+                :                        Cfg(c => c.wanderPostIdleWalkChance, 0.75f);
             float jumpChance = hold ? 0f : Cfg(c => c.wanderPostIdleJumpChance, 0f);
+
+            LogAwayWanderEdge(away, walkChance);
 
             double roll = _rng.NextDouble();
             if (roll < walkChance)
@@ -381,6 +410,31 @@ namespace StickMate.States
                 }
                 EnterResting();
             }
+        }
+
+        /// <summary>
+        /// 자리 비움 감쇄가 <b>켜지는 그 한 번</b>만 로그를 남긴다.
+        ///
+        /// <para>왜 엣지인가: 이 추첨은 Idle 구간마다(실측 약 8초 주기) 돌고, 자리 비움은 하룻밤
+        /// 이어진다 — 매번 찍으면 하룻밤에 수천 줄이고 그때마다 문자열 보간이 할당된다. 24시간 상주
+        /// 앱에서 로그도 자원이다(FramePacing의 등급 전이 요약이 같은 이유로 요약형이다).</para>
+        ///
+        /// <para>꺼지는 엣지는 <b>일부러 조용하다</b>. 사용자가 돌아오면 화면에서 캐릭터가 다시 걷는
+        /// 것이 보이므로 로그가 알려 줄 것이 없고, 자리 비움 체류 비율은 이미
+        /// <c>[FramePacing/적응형]</c> 주기 요약의 "자리비움 %"가 말해 준다.</para>
+        /// </summary>
+        private void LogAwayWanderEdge(bool away, float walkChance)
+        {
+            if (away == _awayWanderNoticeLogged) return;
+            _awayWanderNoticeLogged = away;
+            if (!away) return;
+
+            Debug.Log(
+                $"[배회] 자리 비움 감지(무입력 {Platform.FramePacing.LastPresence.SecondsSinceUserInput:F0}초 " +
+                $">= {Platform.FramePacingPolicy.AwaySeconds:F0}) — 걷기 확률 " +
+                $"{Cfg(c => c.wanderPostIdleWalkChance, 0.75f):0.##} -> {walkChance:0.##}로 낮춥니다.\n" +
+                "      Idle 길이·두리번 주기·경계 행동은 그대로이고, 입력이 들어오면 다음 추첨부터 " +
+                "즉시 평소대로 돌아옵니다.");
         }
 
         // ==================== Moving (26-1, 26-2) ====================

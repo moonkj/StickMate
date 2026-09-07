@@ -1812,7 +1812,29 @@ namespace StickMate.Dialogue
             // 명시 크기**를 쓰는 이유: 아래 localScale(1/TextSupersample)과 스트레치 앵커를 같이 쓰면
             // 부모 크기에서 한 번, 스케일에서 또 한 번 줄어들어 글자 영역이 절반이 된다.
             // 실제 크기는 ApplyText()가 타원의 내접 사각형으로 매번 다시 잡는다.
-            var labelGo = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            // ★ 2026-09-07 — 컴포넌트를 Text에서 StickMate.Interaction.CrispText로 바꿨다
+            //   (사용자 신고 "전체적으로 글자가 흐리고 일부는 번져 보임"). CrispText는 Text 파생이라
+            //   아래 _label(Text) 대입도, ApplyText()의 모든 사용도 한 글자도 바뀌지 않는다.
+            //
+            // ★★ 정직하게 — <b>지금 이 표면에서는 스냅이 실제로 돌지 않는다.</b>
+            //   만화 레터링 모드는 _panel에 손글씨 기울기(_tiltDegrees, 실측 -9.2도)를 걸고
+            //   글자는 그 자식이다. CrispText는 축이 회전돼 있으면 <b>스스로 손을 뗀다</b>
+            //   (GlyphPixelSnapPolicy.IsAxisAligned = false). 회전 상태에서 화면 좌표를 반올림하면
+            //   글리프 축이 어차피 격자와 어긋나 있어 이득이 없고, 역변환된 이동량이 글자를
+            //   <b>비스듬히</b> 밀어 위치만 틀어지기 때문이다.
+            //
+            //   그래도 여기에 붙여 두는 이유는 둘이다:
+            //     (1) DrawBubbleShapes = true(말풍선 모드)로 되돌리면 기울기가 없어져 즉시 유효해진다.
+            //     (2) 이 저장소는 «맨 Text를 새로 만드는 곳이 없다»를 감사로 잠근다
+            //         (Tests/EditMode/GlyphPixelPhaseAuditTests). 여기만 예외로 두면 그 감사가
+            //         면제 목록을 갖게 되고, 면제 목록은 자란다.
+            //
+            //   ⇒ 기울어진 말풍선 글자의 선명도는 <b>여전히 미해결</b>이다. 다만 2026-09-01 라운드가
+            //      오프라인 A/B로 «범인은 외곽선이고 기울기가 아니다»(기울기 9.1도→0도에서 전이
+            //      픽셀 -9%, 속공간 열림 변화 0.000)를 실측했으므로 이 표면의 주 원인은 이미
+            //      다른 곳에서 다뤄졌다. 위 "말풍선만 글자가 뭉갠다" 주석 블록 참고.
+            var labelGo = new GameObject("Label", typeof(RectTransform),
+                typeof(StickMate.Interaction.CrispText));
             labelGo.transform.SetParent(_panel, false);
             _labelRect = labelGo.GetComponent<RectTransform>();
             _labelRect.anchorMin = new Vector2(0.5f, 0.5f);

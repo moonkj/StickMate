@@ -1414,12 +1414,17 @@ namespace StickMate.Interaction
                     case EquipmentSlot.Shoulders: AppendBack(sink, itemIndex, rig); break;
                     case EquipmentSlot.Hair: AppendHair(sink, itemIndex, rig, hatCoverLocalY, strokeHalfWidth); break;
 
-                    // ★ FX/PET은 몸에 붙는 도형이 <b>원래</b> 없다(Interaction/AppearanceShapeBuilder.cs 소관).
+                    // ★ FX/PET은 <b>몸에 붙는</b> 도형이 원래 없다(Interaction/AppearanceShapeBuilder.cs 소관).
                     //   default로 흘려보내면 정상 경로가 매 재구성마다 결함으로 신고된다 — 렌더러는 7개 자리를
                     //   전부 순회하며 이 함수를 부르고, 카드(AccessoryCardIcon)도 FX/PET으로 부른다.
-                    //   그래서 "여기서는 아무것도 그리지 않는다"를 <b>명시한다</b>.
+                    //   그래서 "몸에는 아무것도 그리지 않는다"를 <b>명시한다</b>.
+                    //
+                    //   ★ 2026-09-07 — <b>카드 표면만</b> 갈라진다(§14-12-5 #23). 12종의 64u 아이콘 조각이
+                    //   AccessoryShapeBuilder.FxPetCard.cs(생성 파일)에 있고, 그 조각은 전부 Card 전용이라
+                    //   몸 요청에는 한 개도 나오지 않는다 — 위 문장은 지금도 참이다.
                     case EquipmentSlot.Fx:
                     case EquipmentSlot.Pet:
+                        AppendFxPetCard(sink, slot, itemIndex, rig, surface);
                         break;
 
                     default:
